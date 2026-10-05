@@ -21,6 +21,18 @@ const FLASHLIGHT_M := 8.0    ## stożek latarki
 const FLARE_M := 12.0        ## flara (znacznik ekstrakcji)
 const CONE_HALF_DEG := 24.0
 
+## Migotanie wszystkich świateł graczy do tej chwili (ms) — krzyk Żyły w fazie 3.
+static var flicker_until_ms := 0
+
+static func flickering() -> bool:
+	return Time.get_ticks_msec() < flicker_until_ms
+
+## Mnożnik energii przy migotaniu: krótkie zaniki, jak przy słabym kontakcie.
+static func flicker_mult() -> float:
+	if not flickering():
+		return 1.0
+	return 0.08 if randf() < 0.35 else 1.0
+
 static var _radial: Texture2D
 static var _cone: Texture2D
 static var _unshaded: CanvasItemMaterial

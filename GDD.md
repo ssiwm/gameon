@@ -1,6 +1,6 @@
 # DEAD AIR '87 — Game Design Document
 
-**Wersja:** 1.3.8 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
+**Wersja:** 1.3.9 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
 **Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
 **Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
 **Silnik:** Godot 4.x + GodotSteam
@@ -684,6 +684,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 1.3.6 | 2026-10-05 | Po pierwszej sesji: (a) **ciemniej bez latarki** — światło otoczenia i niebo strojone pomiarem luminancji (§8.3); (b) **warstwa muzyki „cisza"** (Uwaga < 20%) grała statyczny, nieprzyjemny dźwięk: wszystkie 4 akordy naraz (dysonansowy klaster 24 pił), 4 suby dudniące 6–21 Hz, wąskopasmowy szum (56% dudnienia obwiedni) i filtr przesuwany przez całą pętlę. Teraz jeden akord na takt z przenikaniem 0,6 s, sub-pedał D z pełną liczbą okresów w pętli, bez szumu i saturacji |
 | 1.3.7 | 2026-10-05 | Prototyp: (a) **nawigacja A*** (§16.0 pkt 5) — graf platformówki z mapy (264 węzły; chodzenie, skok do 2 kafli, spadek z krawędzi, zeskok przez kładkę); bot idzie ścieżką (start → szczyt tartaku 13 s), Stalker chodzi po powierzchniach zamiast przez ściany (0 próbek w bryle). (b) **Boss misji: Żyła — matka gniazd** (§7.1): śpi i jest nietykalna, dopóki żyją gniazda (jej odnóża); ostatnie gniazdo ją budzi (krzyk +15 hałasu, +1 ładunek Q); 200 HP + 100 za każdego dodatkowego człowieka; co ~7 s rodzi Trzoska (limit 3 + gracze); smagnięcie macką z 0,75 s zapowiedzią — z zasięgu da się uciec; przy 50% HP furia; śmierć = potomstwo usycha, otwiera się ekstrakcja. Misja: gniazda → Żyła → ekstrakcja → wynik |
 | 1.3.8 | 2026-10-05 | Żyła: koniec bezkarnego ostrzału z rusztowań (półki 160–190 px nad nią, poza zasięgiem macki i potomstwa). (a) **Pancerny grzbiet** — pocisk z góry pod stromym kątem: 20% obrażeń + rykoszet; słaby punkt = paszcza z poziomu ziemi (test: 2 s ognia z półki 19 obrażeń, z ziemi 109). (b) **Plucie zarodnikami** na graczy poza zasięgiem macki do 300 px: 0,8 s nabrzmiewania (paszcza świeci na zielono, bulgot), potem wolny pocisk po łuku w miejsce z początku zapowiedzi — stojący obrywa, ruszający się unika (test potwierdza oba) |
+| 1.3.9 | 2026-10-05 | Żyła przeprojektowana — wcześniej padała w ~4 s z ziemi i nie używała filarów gry. (a) **Rytm:** paszcza zamknięta (5% obrażeń), otwiera się na 1 s po każdym ataku; ataki z harmonogramu, jeden naraz, każdy z zapowiedzią. (b) **Zamach ogonem:** fala po podłodze do 170 px w obie strony — przeskocz albo stań na kładce. (c) **Latarka** (filar 4): snop w paszczę w trakcie zapowiedzi oślepia ją — atak przerwany, paszcza otwarta 2 s (co 10 s). (d) **Q** (filar 2): Przesterowanie w pobliżu odciąga ją na 5 s — pluje w miejsce Q, nie smaga, nie zamiata. (e) **Fazy:** 66% furia, 33% krzyk — Uwaga 100%, światła migoczą, budzi się Stalker. (f) HP 750 + 250 za dodatkowego człowieka. Symulacja idealnego gracza z botem: 42 s bez latarki, 48 s z latarką, 3–4 upadki drużyny (cel dla realnej gry: 60–90 s) |
 
 ---
 

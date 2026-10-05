@@ -216,7 +216,7 @@ func _mission_test() -> void:
 	var boss := get_tree().get_first_node_in_group("boss")
 	if boss != null:
 		boss.take_bullet(boss.global_position + Vector2(-20, 0), 50.0)
-		print("[TEST] mission: strzał w śpiącą Żyłę -> hp=%.0f (oczekiwane 200, nietykalna)" % boss.hp)
+		print("[TEST] mission: strzał w śpiącą Żyłę -> hp=%.0f (oczekiwane %.0f, nietykalna)" % [boss.hp, boss.BASE_HP])
 	var q_before := NoiseMgr.overcharge_charges
 	for n in get_tree().get_nodes_in_group("nests"):
 		n.take_bullet(n.global_position + Vector2(-10, 0), 999.0)
@@ -226,7 +226,7 @@ func _mission_test() -> void:
 		await get_tree().create_timer(3.5).timeout
 		var brood := level.get_children().filter(func(n: Node) -> bool: return n.name.begins_with("Brood"))
 		print("[TEST] mission: Żyła hp=%.0f/%.0f potomstwo=%d" % [boss.hp, boss.max_hp, brood.size()])
-		boss.take_bullet(boss.global_position + Vector2(-20, 0), 9999.0)
+		boss.take_bullet(boss.global_position + Vector2(-20, 0), 1.0e9)
 		await get_tree().create_timer(0.3).timeout
 		var alive_brood := brood.filter(func(n: Node) -> bool: return is_instance_valid(n) and n.alive)
 		print("[TEST] mission: po śmierci Żyły faza=%s exit=%s żywe_potomstwo=%d" % [PH[mission.phase], mission.exit_pos, alive_brood.size()])

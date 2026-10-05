@@ -199,13 +199,14 @@ func _process(delta: float) -> void:
 	_overlay.queue_redraw()
 
 func _update_lights() -> void:
+	var fl := Lights.flicker_mult()
 	_aura.enabled = not dead
-	_aura.energy = Lights.AURA_ENERGY * (1.0 if not crouching else 0.75)
+	_aura.energy = Lights.AURA_ENERGY * (1.0 if not crouching else 0.75) * fl
 	_beam.enabled = flashlight and not dead
 	if _beam.enabled:
 		_beam.rotation = aim_dir.angle()
 		# lekkie drżenie snopu — latarka w ręku, nie reflektor
-		_beam.energy = 0.85 + 0.04 * sin(Time.get_ticks_msec() * 0.023)
+		_beam.energy = (0.85 + 0.04 * sin(Time.get_ticks_msec() * 0.023)) * fl
 	_muzzle_light.enabled = _muzzle > 0.0
 	_muzzle_light.position = Vector2(0, -9) + aim_dir * 10.0
 

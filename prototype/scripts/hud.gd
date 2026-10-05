@@ -29,8 +29,8 @@ var _result_text: Label
 ## Linia celu i ekran wyniku tworzone w kodzie — main.tscn zostaje prosty.
 func _ready() -> void:
 	_objective = Label.new()
-	_objective.position = Vector2(170, 30)
-	_objective.size = Vector2(300, 18)
+	_objective.position = Vector2(120, 30)
+	_objective.size = Vector2(400, 18)
 	_objective.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_objective.add_theme_font_size_override("font_size", 11)
 	_objective.add_theme_color_override("font_color", Color(0.95, 0.85, 0.55))
