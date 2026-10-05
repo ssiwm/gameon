@@ -30,7 +30,7 @@ godot --path . -- --host
 godot --path . -- --join=127.0.0.1
 ```
 
-Bez parametrów: lobby z przyciskami HOSTUJ / DOŁĄCZ.
+Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP = dołącz). Interfejs gry jest po angielsku (1.4.0).
 
 ## Sterowanie
 
@@ -44,6 +44,7 @@ Bez parametrów: lobby z przyciskami HOSTUJ / DOŁĄCZ.
 | Podnieś kolegę (przytrzymaj) | E |
 | Broń | 1 / 2 / 3, kółko myszy |
 | Latarka | L |
+| Pokaż / ukryj sterowanie | F1 |
 | Zeskok z kładki | dół + SPACJA |
 | Nowa misja (host, po ekstrakcji) | Enter |
 
@@ -92,7 +93,9 @@ scripts/
   enemy.gd          # Trzosek / Wołek (symulacja na serwerze)
   bullet.gd         # pociski serwerowe
   stalker.gd        # AI stalkera (symulacja na serwerze)
-  hud.gd            # hałas, HP, ładunki Q, ostrzeżenia
+  hud.gd            # HUD (EN): hałas z progami, serca, ładunki Q, broń, latarka, cel, boss, podpowiedzi, winieta, wynik
+  lobby.gd          # lobby (EN): host / join, sterowanie
+  ui_theme.gd       # wspólny motyw UI: obrys tekstu, panele, przyciski
 scenes/
   main.tscn  player.tscn  bot_companion.tscn  bullet.tscn  stalker.tscn  enemy.tscn  nest.tscn  boss.tscn
 tools/

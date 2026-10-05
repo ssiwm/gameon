@@ -230,25 +230,49 @@ func _event(kind: String) -> void:
 
 # ---------------------------------------------------------------- HUD
 
-## Tekst celu dla HUD.
+## Teksty dla HUD (angielski interfejs).
+func objective_caption() -> String:
+	match phase:
+		Phase.OBJECTIVE:
+			return "OBJECTIVE"
+		Phase.BOSS:
+			return "BOSS"
+		Phase.EXTRACT:
+			return "EXTRACT"
+	return ""
+
 func objective_text() -> String:
 	match phase:
 		Phase.OBJECTIVE:
-			return "CEL: zniszcz gniazda  %d/%d" % [nests_total - nests_left, nests_total]
+			return "Destroy the nests   %d / %d" % [nests_total - nests_left, nests_total]
 		Phase.BOSS:
-			return "CEL: Żyła — bij w OTWARTĄ paszczę · latarka ją otwiera · Q odciąga"
+			return "Kill The Vein — shoot her mouth while it's OPEN"
 		Phase.EXTRACT:
 			var me := _local_human()
-			var dir := ""
-			if me != null:
-				var dx := exit_pos.x - me.global_position.x
-				dir = ("  ← %d m" if dx < 0.0 else "  → %d m") % int(absf(dx) / 16.0)
-				if me.dead:
-					dir = "  — leżysz: drużyna musi cię podnieść"
-				elif _in_exit(me.global_position):
-					dir = "  — czekaj na drużynę" if extract_progress <= 0.0 else "  — EWAKUACJA %d%%" % int(extract_progress * 100.0)
-			return "EKSTRAKCJA: dotrzyj do flary" + dir
+			if me == null:
+				return "Reach the green flare"
+			var dx := exit_pos.x - me.global_position.x
+			if _in_exit(me.global_position):
+				return "At the flare"
+			return "Reach the green flare   %s %d m" % ["←" if dx < 0.0 else "→", int(absf(dx) / 16.0)]
 	return ""
+
+func objective_hint() -> String:
+	match phase:
+		Phase.OBJECTIVE:
+			return "Nests are loud when destroyed — they wake what's nearby"
+		Phase.BOSS:
+			return "Light her mouth mid wind-up to stun  ·  Q lures her away"
+		Phase.EXTRACT:
+			return "The whole squad, standing, at the flare for 3 s"
+	return ""
+
+## Stan ekstrakcji lokalnego gracza (pasek kontekstowy HUD).
+func local_extract_state() -> Dictionary:
+	var me := _local_human()
+	if me == null or phase != Phase.EXTRACT:
+		return {}
+	return {"inside": not me.dead and _in_exit(me.global_position)}
 
 func _local_human() -> Node2D:
 	for p in get_tree().get_nodes_in_group("players"):

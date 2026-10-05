@@ -1,128 +1,485 @@
 extends Control
-## HUD: pasek hałasu, HP, ostrzeżenie o stalkerze, status sieci, broń, down/revive.
+## In-game HUD (English). Built in code on the shared theme (ui_theme.gd).
+##
+## Layout (640×360 viewport):
+##   top-left    status card — NOISE meter with thresholds, HEALTH hearts,
+##               OVERCHARGE charges, weapon slots, flashlight battery
+##   top-centre  objective card — phase, objective, hint, boss bar
+##   top-right   session — host/client, players, mission clock
+##   centre      threat warning (something listening / HE HEARS YOU), wipe
+##   bottom      context prompt with progress (revive, extraction, bleed-out)
+##   bottom      controls strip — shown for the first seconds, F1 toggles
+##   full screen damage vignette; result card after extraction
+## Adaptive music and the warning sting are driven from here (GDD §13).
 
 const Weapons := preload("res://scripts/weapons.gd")
 const Mission := preload("res://scripts/mission.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
 
-@onready var _bar: ProgressBar = $NoiseBar
-@onready var _noise_label: Label = $NoiseLabel
-@onready var _hearts: Label = $Hearts
-@onready var _warn: Label = $StalkerWarn
-@onready var _status: Label = $Status
-@onready var _oc: Label = $Overcharge
-@onready var _weapon: Label = $Weapon
-@onready var _prompt: Label = $Prompt
+const CONTROLS_SHOW_S := 20.0
+const NOISE_COL_CALM := Color(0.62, 0.72, 0.78)
+const OBJ_W := 250.0             ## szerokość treści karty celu (zawijanie)
+const OBJ_CENTER_X := 335.0      ## między kartą stanu (do ~195) a sesją (od 480)
+
+## Horizontal bar with optional threshold ticks.
+class Bar extends Control:
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var value := 0.0
+	var fill := Color.WHITE
+	var back := Color(1, 1, 1, 0.08)
+	var ticks: Array = []          ## [[0..1, Color], ...]
+	func _draw() -> void:
+		var r := Rect2(Vector2.ZERO, size)
+		draw_rect(r, back)
+		draw_rect(Rect2(Vector2.ZERO, Vector2(size.x * clampf(value, 0.0, 1.0), size.y)), fill)
+		for t in ticks:
+			var x: float = size.x * float(t[0])
+			draw_rect(Rect2(x - 0.5, -2.0, 1.0, size.y + 4.0), t[1])
+
+## Row of icons (hearts or diamonds), `filled` of `count` lit.
+class Pips extends Control:
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var count := 3
+	var filled := 3
+	var shape := "heart"
+	var on := Color(0.95, 0.28, 0.32)
+	var off := Color(1, 1, 1, 0.14)
+	func _draw() -> void:
+		for i in count:
+			var c := on if i < filled else off
+			var o := Vector2(i * 11.0, 0.0)
+			if shape == "heart":
+				draw_circle(o + Vector2(2.5, 2.5), 2.6, c)
+				draw_circle(o + Vector2(6.5, 2.5), 2.6, c)
+				draw_colored_polygon(PackedVector2Array([o + Vector2(0, 3), o + Vector2(9, 3), o + Vector2(4.5, 8.5)]), c)
+			else:
+				draw_colored_polygon(PackedVector2Array([o + Vector2(4.5, 0), o + Vector2(9, 4.5), o + Vector2(4.5, 9), o + Vector2(0, 4.5)]), c)
 
 var _player: Node = null
 var _blink := 0.0
-## Jeden stinger na wejście w stan, inaczej przy 10 Hz synchronizacji
-## warn_pulse grzmiałby bez przerwy.
 var _warn_was := false
 var _music_layer := -1
-var _objective: Label
-var _battery: Label
-var _boss_bar: ColorRect
-var _boss_fill: ColorRect
-var _result: Panel
-var _result_text: Label
+var _session_t := 0.0
+## Pasek sterowania: -1 = auto (pierwsze CONTROLS_SHOW_S s), 0 = ukryty, 1 = pokazany (F1).
+var _controls_mode := -1
+var _hit_flash := 0.0
+var _last_hp := -1
 
-## Linia celu i ekran wyniku tworzone w kodzie — main.tscn zostaje prosty.
+var _noise_bar: Bar
+var _noise_val: Label
+var _hearts: Pips
+var _health_note: Label
+var _charges: Pips
+var _slots: Array[PanelContainer] = []
+var _slot_labels: Array[Label] = []
+var _battery: Bar
+var _battery_note: Label
+
+var _obj_card: PanelContainer
+var _obj_caption: Label
+var _obj_text: Label
+var _obj_hint: Label
+var _boss_row: VBoxContainer
+var _boss_bar: Bar
+var _boss_name: Label
+
+var _session: Label
+var _clock: Label
+var _warn: Label
+var _warn_sub: Label
+var _center: Label
+var _center_sub: Label
+var _prompt_card: PanelContainer
+var _prompt: Label
+var _prompt_bar: Bar
+var _controls: Label
+var _f1: Label
+var _result: PanelContainer
+var _result_stats: GridContainer
+var _result_prompt: Label
+
+var _slot_on: StyleBoxFlat
+var _slot_off: StyleBoxFlat
+
 func _ready() -> void:
-	_objective = Label.new()
-	_objective.position = Vector2(120, 30)
-	_objective.size = Vector2(400, 18)
-	_objective.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_objective.add_theme_font_size_override("font_size", 11)
-	_objective.add_theme_color_override("font_color", Color(0.95, 0.85, 0.55))
-	add_child(_objective)
+	theme = UiTheme.get_theme()
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_build_status_card()
+	_build_objective_card()
+	_build_session()
+	_build_center()
+	_build_prompt()
+	_build_controls()
+	_build_result()
 
-	_battery = Label.new()
-	_battery.position = Vector2(12, 110)
-	_battery.size = Vector2(300, 16)
-	_battery.add_theme_font_size_override("font_size", 11)
-	add_child(_battery)
+# ---------------------------------------------------------------- budowa
 
-	# pasek Żyły (faza BOSS) pod linią celu — dwa prostokąty, bo ProgressBar
-	# ma minimalną wysokość z motywu (~27 px) i wychodził gruby
-	_boss_bar = ColorRect.new()
-	_boss_bar.position = Vector2(220, 50)
-	_boss_bar.size = Vector2(200, 5)
-	_boss_bar.color = Color(0.12, 0.04, 0.05, 0.85)
-	_boss_bar.visible = false
-	add_child(_boss_bar)
-	_boss_fill = ColorRect.new()
-	_boss_fill.size = Vector2(200, 5)
-	_boss_fill.color = Color(0.85, 0.22, 0.2)
-	_boss_bar.add_child(_boss_fill)
+## Pozycja i rozmiar PO dodaniu do drzewa: wcześniej etykieta nie ma motywu,
+## liczy minimalny rozmiar domyślną czcionką 16 px i zostaje za szeroka.
+func _place(c: Control, pos: Vector2, sz: Vector2) -> void:
+	c.position = pos
+	c.size = sz
 
-	_result = Panel.new()
-	_result.position = Vector2(170, 80)
-	_result.size = Vector2(300, 190)
+func _card(pos: Vector2) -> PanelContainer:
+	var c := PanelContainer.new()
+	c.position = pos
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(c)
+	return c
+
+func _row(parent: Container, caption: String) -> HBoxContainer:
+	var r := HBoxContainer.new()
+	r.add_theme_constant_override("separation", 6)
+	var cap := UiTheme.label(caption, 7, UiTheme.MUTED)
+	cap.custom_minimum_size = Vector2(62, 0)
+	r.add_child(cap)
+	parent.add_child(r)
+	return r
+
+func _build_status_card() -> void:
+	var card := _card(Vector2(8, 8))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	card.add_child(box)
+
+	var noise_head := HBoxContainer.new()
+	noise_head.add_child(UiTheme.label("NOISE", 8, UiTheme.MUTED))
+	var spring := Control.new()
+	spring.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	noise_head.add_child(spring)
+	_noise_val = UiTheme.label("0%", 8, UiTheme.TEXT)
+	noise_head.add_child(_noise_val)
+	box.add_child(noise_head)
+	_noise_bar = Bar.new()
+	_noise_bar.custom_minimum_size = Vector2(160, 5)
+	# progi z NoiseMgr: 30 = zasypia, 40 = niepokój (szept), 60 = budzi się ON
+	_noise_bar.ticks = [
+		[NoiseMgr.SLEEP_THRESHOLD / 100.0, Color(1, 1, 1, 0.35)],
+		[NoiseMgr.UNEASY_THRESHOLD / 100.0, Color(1.0, 0.72, 0.28, 0.8)],
+		[NoiseMgr.AWAKE_THRESHOLD / 100.0, Color(1.0, 0.28, 0.22, 0.95)],
+	]
+	box.add_child(_noise_bar)
+
+	var hr := _row(box, "HEALTH")
+	_hearts = Pips.new()
+	_hearts.custom_minimum_size = Vector2(34, 9)
+	hr.add_child(_hearts)
+	_health_note = UiTheme.label("", 7, UiTheme.DANGER)
+	hr.add_child(_health_note)
+
+	var qr := _row(box, "OVERCHARGE  Q")
+	_charges = Pips.new()
+	_charges.shape = "diamond"
+	_charges.count = NoiseMgr.OVERCHARGE_MAX
+	_charges.on = UiTheme.ACCENT
+	_charges.custom_minimum_size = Vector2(34, 9)
+	qr.add_child(_charges)
+
+	_slot_on = UiTheme.panel_box()
+	_slot_on.bg_color = Color(0.25, 0.18, 0.06, 0.9)
+	_slot_on.border_color = UiTheme.ACCENT
+	_slot_on.set_content_margin_all(2)
+	_slot_off = UiTheme.panel_box()
+	_slot_off.bg_color = Color(1, 1, 1, 0.04)
+	_slot_off.set_content_margin_all(2)
+	var wr := HBoxContainer.new()
+	wr.add_theme_constant_override("separation", 3)
+	for i in Weapons.COUNT:
+		var s := PanelContainer.new()
+		s.custom_minimum_size = Vector2(52, 0)
+		var l := UiTheme.label("%d  %s" % [i + 1, Weapons.def(i)["name"]], 7, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+		s.add_child(l)
+		wr.add_child(s)
+		_slots.append(s)
+		_slot_labels.append(l)
+	box.add_child(wr)
+
+	var lr := _row(box, "LIGHT  L")
+	_battery = Bar.new()
+	_battery.custom_minimum_size = Vector2(60, 4)
+	_battery.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	lr.add_child(_battery)
+	_battery_note = UiTheme.label("OFF", 7, UiTheme.MUTED)
+	lr.add_child(_battery_note)
+
+func _build_objective_card() -> void:
+	_obj_card = _card(Vector2(220, 8))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	_obj_card.add_child(box)
+	_obj_caption = UiTheme.label("OBJECTIVE", 7, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
+	box.add_child(_obj_caption)
+	_obj_text = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	_obj_text.custom_minimum_size = Vector2(OBJ_W, 0)
+	_obj_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(_obj_text)
+	_obj_hint = UiTheme.label("", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	_obj_hint.custom_minimum_size = Vector2(OBJ_W, 0)
+	_obj_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(_obj_hint)
+	_boss_row = VBoxContainer.new()
+	_boss_row.add_theme_constant_override("separation", 2)
+	_boss_name = UiTheme.label("THE VEIN — MOTHER OF NESTS", 7, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
+	_boss_row.add_child(_boss_name)
+	_boss_bar = Bar.new()
+	_boss_bar.custom_minimum_size = Vector2(OBJ_W, 5)
+	_boss_bar.fill = Color(0.88, 0.22, 0.2)
+	_boss_bar.ticks = [[0.66, Color(1, 1, 1, 0.5)], [0.33, Color(1, 1, 1, 0.5)]]
+	_boss_row.add_child(_boss_bar)
+	box.add_child(_boss_row)
+
+func _build_session() -> void:
+	_session = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
+	add_child(_session)
+	_place(_session, Vector2(480, 8), Vector2(152, 12))
+	_clock = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	add_child(_clock)
+	_place(_clock, Vector2(480, 19), Vector2(152, 14))
+
+func _build_center() -> void:
+	_warn = UiTheme.label("", 14, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
+	add_child(_warn)
+	_place(_warn, Vector2(120, 92), Vector2(400, 20))
+	_warn_sub = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	add_child(_warn_sub)
+	_place(_warn_sub, Vector2(120, 112), Vector2(400, 12))
+	_center = UiTheme.label("", 20, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
+	add_child(_center)
+	_place(_center, Vector2(120, 140), Vector2(400, 28))
+	_center_sub = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	add_child(_center_sub)
+	_place(_center_sub, Vector2(120, 168), Vector2(400, 16))
+
+func _build_prompt() -> void:
+	_prompt_card = _card(Vector2(220, 286))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 3)
+	_prompt_card.add_child(box)
+	_prompt = UiTheme.label("", 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	box.add_child(_prompt)
+	_prompt_bar = Bar.new()
+	_prompt_bar.custom_minimum_size = Vector2(180, 3)
+	box.add_child(_prompt_bar)
+
+func _build_controls() -> void:
+	_controls = UiTheme.label(
+		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J fire · 1-3 gun · Q lure · L light · E revive",
+		7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	add_child(_controls)
+	_place(_controls, Vector2(8, 344), Vector2(624, 12))
+	_f1 = UiTheme.label("F1  controls", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
+	add_child(_f1)
+	_place(_f1, Vector2(480, 344), Vector2(152, 12))
+
+func _build_result() -> void:
+	_result = _card(Vector2(200, 92))
+	_result.custom_minimum_size = Vector2(240, 0)
+	var rb := UiTheme.panel_box()
+	rb.bg_color = Color(0.02, 0.025, 0.035, 0.95)
+	rb.border_color = Color(UiTheme.OK, 0.5)
+	rb.set_content_margin_all(12)
+	_result.add_theme_stylebox_override("panel", rb)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	_result.add_child(box)
+	box.add_child(UiTheme.label("EXTRACTION COMPLETE", 16, UiTheme.OK, HORIZONTAL_ALIGNMENT_CENTER))
+	box.add_child(UiTheme.label("The squad made it out of the woods.", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	_result_stats = GridContainer.new()
+	_result_stats.columns = 2
+	_result_stats.add_theme_constant_override("h_separation", 16)
+	_result_stats.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(_result_stats)
+	_result_prompt = UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
+	box.add_child(_result_prompt)
 	_result.visible = false
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.03, 0.04, 0.05, 0.92)
-	sb.border_color = Color(0.4, 1.0, 0.5, 0.7)
-	sb.set_border_width_all(1)
-	_result.add_theme_stylebox_override("panel", sb)
-	add_child(_result)
-	_result_text = Label.new()
-	_result_text.position = Vector2(10, 10)
-	_result_text.size = Vector2(280, 170)
-	_result_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_result_text.add_theme_font_size_override("font_size", 12)
-	_result.add_child(_result_text)
+
+# ---------------------------------------------------------------- klatka
 
 func _process(delta: float) -> void:
-	_bar.value = NoiseMgr.level
-	_noise_label.text = "HAŁAS %d%%" % int(NoiseMgr.level)
-	_bar.modulate = Color(1, 1, 1).lerp(Color(1, 0.25, 0.2), NoiseMgr.level / 100.0)
-
 	_drive_music()
-	_drive_warning(delta)
-
-	# ładunki Przesterowania (GDD §8.4) — to decyzja, więc musi być widoczna
-	var full := NoiseMgr.overcharge_charges
-	var empty := maxi(0, NoiseMgr.OVERCHARGE_MAX - full)
-	_oc.text = "Q PRZESTEROWANIE: " + "|".repeat(full) + "_".repeat(empty)
-	_oc.modulate = Color(1, 0.85, 0.4) if full > 0 else Color(0.4, 0.4, 0.42)
-
-	_drive_mission()
-
+	var in_session := NoiseMgr.has_network()
+	visible = in_session
+	if not in_session:
+		_session_t = 0.0
+		_last_hp = -1
+		return
+	_session_t += delta
+	_blink += delta
+	_hit_flash = maxf(0.0, _hit_flash - delta * 1.8)
 	_player = _find_local_player()
-	_status.text = _net_status()
+
+	_drive_noise()
+	_drive_warning()
+	_drive_status()
+	_drive_mission()
+	_drive_prompt()
+	_drive_controls()
+	queue_redraw()
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("help"):
+		_controls_mode = 0 if _controls.visible else 1
+
+func _drive_noise() -> void:
+	var lvl := NoiseMgr.level
+	_noise_val.text = "%d%%" % int(lvl)
+	_noise_bar.value = lvl / 100.0
+	var col := NOISE_COL_CALM
+	if lvl >= NoiseMgr.AWAKE_THRESHOLD:
+		col = UiTheme.DANGER.lerp(Color.WHITE, 0.25 * (0.5 + 0.5 * sin(_blink * 8.0)))
+	elif lvl >= NoiseMgr.UNEASY_THRESHOLD:
+		col = UiTheme.ACCENT
+	_noise_bar.fill = col
+	_noise_val.add_theme_color_override("font_color", col if lvl >= NoiseMgr.UNEASY_THRESHOLD else UiTheme.TEXT)
+	_noise_bar.queue_redraw()
+	_charges.filled = NoiseMgr.overcharge_charges
+	_charges.queue_redraw()
+
+func _drive_status() -> void:
+	_session.text = _net_status()
+	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
+	if m != null:
+		var secs := int(m.elapsed)
+		_clock.text = "%02d:%02d" % [secs / 60, secs % 60]
 	if _player == null:
-		_hearts.text = ""
-		_prompt.text = ""
-		_battery.text = ""
 		return
 	var hp: int = maxi(_player.hp, 0)
-	_hearts.text = "HP " + "|".repeat(hp) + "_".repeat(maxi(0, 3 - hp))
-	_weapon.text = "BROŃ: %s  [1/2/3]" % Weapons.def(_player.weapon)["name"]
-	# latarka (GDD §14: licznik baterii) — światło to hałas, więc widoczny stan
-	var pct := int(_player.battery / _player.BATTERY_MAX * 100.0)
-	_battery.text = "LATARKA [L]: %s %d%%" % ["WŁ" if _player.flashlight else "wył", pct]
-	_battery.add_theme_color_override("font_color",
-		Color(1.0, 0.95, 0.7) if _player.flashlight else (Color(0.85, 0.4, 0.35) if pct < 20 else Color(0.6, 0.62, 0.66)))
-	_prompt.remove_theme_color_override("font_color")
-	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
-	if wipe_left > 0.0:
-		# wipe = nieudana ekstrakcja, restart misji (GDD §4)
-		_prompt.text = "WSZYSCY LEŻĄ — restart misji za %ds" % ceili(wipe_left)
-		_prompt.add_theme_color_override("font_color", Color(1, 0.3, 0.25))
-	elif _player.dead:
-		# down: wykrwawianie 25 s — kolega może podnieść (GDD §4)
-		_hearts.text += "  [LEŻYSZ — wykrwawienie za %ds]" % ceili(_player.bleed_left)
-		if _player.revive_progress > 0.0:
-			_prompt.text = "Podnoszą cię… %d%%" % int(_player.revive_progress * 100.0)
-		else:
-			_prompt.text = "Czekaj na pomoc kolegi…"
+	if _last_hp >= 0 and hp < _last_hp:
+		_hit_flash = 1.0
+	_last_hp = hp
+	_hearts.filled = hp
+	_hearts.queue_redraw()
+	_health_note.text = "DOWN  %ds" % ceili(_player.bleed_left) if _player.dead else ""
+	for i in _slots.size():
+		var sel: bool = i == _player.weapon
+		_slots[i].add_theme_stylebox_override("panel", _slot_on if sel else _slot_off)
+		_slot_labels[i].add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.MUTED)
+	var pct: float = _player.battery / _player.BATTERY_MAX
+	_battery.value = pct
+	_battery.fill = Color(1.0, 0.95, 0.72) if _player.flashlight else (UiTheme.DANGER if pct < 0.2 else UiTheme.MUTED)
+	_battery.queue_redraw()
+	_battery_note.text = ("ON  %d%%" if _player.flashlight else "OFF  %d%%") % int(pct * 100.0)
+	_battery_note.add_theme_color_override("font_color", Color(1.0, 0.95, 0.72) if _player.flashlight else UiTheme.MUTED)
+
+## Ostrzeżenie przed karą (GDD §8.1): niepokój ZANIM ON się obudzi.
+func _drive_warning() -> void:
+	var awake: bool = NoiseMgr.stalker_awake
+	var uneasy: bool = (not awake) and NoiseMgr.level >= NoiseMgr.UNEASY_THRESHOLD
+	if awake:
+		_warn.text = "HE HEARS YOU"
+		_warn.add_theme_color_override("font_color", UiTheme.DANGER)
+		_warn.modulate.a = 0.6 + 0.4 * sin(_blink * 6.0)
+		_warn_sub.text = "Go quiet until the noise drops below 30% — or use Q to lure him off"
+	elif uneasy:
+		_warn.text = "SOMETHING IS LISTENING…"
+		_warn.add_theme_color_override("font_color", UiTheme.ACCENT)
+		_warn.modulate.a = 0.55 + 0.3 * sin(_blink * 3.0)
+		_warn_sub.text = "Above 60% noise he wakes up"
 	else:
-		_prompt.text = _player.revive_hint()
+		_warn.text = ""
+		_warn_sub.text = ""
+	_warn_sub.modulate.a = _warn.modulate.a
+	if awake and not _warn_was:
+		Audio.play("warn_pulse", Audio.BUS_UI, -12.0)
+	_warn_was = awake
 
+func _drive_mission() -> void:
+	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
+	if m == null:
+		_obj_card.visible = false
+		_result.visible = false
+		return
+	var boss := get_tree().get_first_node_in_group("boss")
+	_obj_card.visible = m.phase != Mission.Phase.SUCCESS
+	_obj_caption.text = m.objective_caption()
+	_obj_caption.add_theme_color_override("font_color", UiTheme.DANGER if m.phase == Mission.Phase.BOSS else (UiTheme.OK if m.phase == Mission.Phase.EXTRACT else UiTheme.ACCENT))
+	_obj_text.text = m.objective_text()
+	_obj_hint.text = m.objective_hint()
+	_obj_hint.visible = _obj_hint.text != ""
+	_boss_row.visible = boss != null and m.phase == Mission.Phase.BOSS
+	if _boss_row.visible:
+		_boss_bar.value = boss.hp / maxf(1.0, boss.max_hp)
+		_boss_bar.queue_redraw()
+		_boss_name.text = "THE VEIN — MOTHER OF NESTS" + ("   ·   ENRAGED" if boss.phase >= 2 else "")
+	# karta celu: wyśrodkowana, szerokość wg treści
+	_obj_card.reset_size()
+	_obj_card.position = Vector2(OBJ_CENTER_X - _obj_card.size.x * 0.5, 8.0)
+	# ostrzeżenie zawsze pod kartą celu (karta bossa jest wyższa)
+	var wy := maxf(92.0, _obj_card.position.y + _obj_card.size.y + 10.0)
+	_warn.position.y = wy
+	_warn_sub.position.y = wy + 20.0
 
-## Muzyka adaptacyjna: 4 warstwy po progach Uwagi (GDD §13). Progi są sztywne,
-## bo potrzebujemy przewidywalnych przejść, a NoiseMgr ma już swoje progi
-## (60 obudzenie, 30 sen) i nie chcemy ich dublować.
+	var show_result: bool = m.phase == Mission.Phase.SUCCESS
+	if show_result and not _result.visible:
+		_fill_result(m)
+	_result.visible = show_result
+
+func _fill_result(m: Node) -> void:
+	for c in _result_stats.get_children():
+		_result_stats.remove_child(c)
+		c.free()
+	var secs := int(m.elapsed)
+	for row in [["Time", "%d:%02d" % [secs / 60, secs % 60]], ["Nests destroyed", "%d / %d" % [m.nests_total, m.nests_total]],
+			["The Vein", "slain"], ["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts]]:
+		_result_stats.add_child(UiTheme.label(row[0], 9, UiTheme.MUTED))
+		_result_stats.add_child(UiTheme.label(row[1], 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
+	_result_prompt.text = "[ENTER]  New mission" if multiplayer.is_server() else "Waiting for the host to start a new mission…"
+	_result.reset_size()
+	_result.position = Vector2(320.0 - _result.size.x * 0.5, 180.0 - _result.size.y * 0.5)
+
+## Pasek kontekstowy: wipe, leżenie, podnoszenie, ekstrakcja.
+func _drive_prompt() -> void:
+	var text := ""
+	var prog := -1.0
+	var col := UiTheme.TEXT
+	_center.text = ""
+	_center_sub.text = ""
+	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
+	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
+	if wipe_left > 0.0:
+		_center.text = "SQUAD DOWN"
+		_center_sub.text = "Extraction failed — restarting the mission in %d" % ceili(wipe_left)
+	elif _player != null and _player.dead:
+		if _player.revive_progress > 0.0:
+			text = "Being revived…"
+			prog = _player.revive_progress
+			col = UiTheme.OK
+		else:
+			text = "You're down — a teammate can revive you (bleeding out in %ds)" % ceili(_player.bleed_left)
+			prog = _player.bleed_left / _player.BLEED_TIME
+			col = UiTheme.DANGER
+	elif _player != null and _player.revive_hint() != "":
+		text = _player.revive_hint()
+		col = UiTheme.OK
+	elif m != null and m.phase == Mission.Phase.EXTRACT:
+		var st: Dictionary = m.local_extract_state()
+		if st.get("inside", false):
+			if m.extract_progress > 0.0:
+				text = "EVACUATING…"
+				prog = m.extract_progress
+				col = UiTheme.OK
+			else:
+				text = "Hold here — the whole squad must reach the flare"
+				col = UiTheme.ACCENT
+	_prompt_card.visible = text != ""
+	if _prompt_card.visible:
+		_prompt.text = text
+		_prompt.add_theme_color_override("font_color", col)
+		_prompt_bar.visible = prog >= 0.0
+		_prompt_bar.value = prog
+		_prompt_bar.fill = col
+		_prompt_bar.queue_redraw()
+		_prompt_card.reset_size()
+		_prompt_card.position = Vector2(320.0 - _prompt_card.size.x * 0.5, 292.0)
+
+func _drive_controls() -> void:
+	var show := _session_t < CONTROLS_SHOW_S if _controls_mode < 0 else _controls_mode == 1
+	_controls.visible = show
+	_f1.visible = not show
+
+## Muzyka adaptacyjna: 4 warstwy po progach Uwagi (GDD §13).
 func _drive_music() -> void:
 	var lvl := NoiseMgr.level
 	var layer := 0
@@ -136,43 +493,26 @@ func _drive_music() -> void:
 		_music_layer = layer
 		Audio.music_set_layer(layer)
 
-
-func _drive_warning(delta: float) -> void:
-	_blink += delta
-	var awake: bool = NoiseMgr.stalker_awake
-	# faza niepokoju (GDD §8.1): ostrzeżenie ZANIM zacznie się kara
-	var uneasy: bool = (not awake) and NoiseMgr.level >= NoiseMgr.UNEASY_THRESHOLD
-	_warn.visible = awake or uneasy
-	if awake:
-		_warn.text = "ON SŁYSZY"
-		_warn.add_theme_color_override("font_color", Color(1, 0.2, 0.15))
-		_warn.modulate.a = 0.55 + 0.45 * sin(_blink * 6.0)
-	elif uneasy:
-		_warn.text = "COŚ SŁUCHA…"
-		_warn.add_theme_color_override("font_color", Color(1, 0.75, 0.3))
-		_warn.modulate.a = 0.5 + 0.3 * sin(_blink * 3.0)
-	if awake and not _warn_was:
-		Audio.play("warn_pulse", Audio.BUS_UI, -12.0)
-	_warn_was = awake
-
-func _drive_mission() -> void:
-	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
-	if m == null or not NoiseMgr.has_network():
-		_objective.text = ""
-		_result.visible = false
-		_boss_bar.visible = false
+## Winieta: błysk po trafieniu, puls przy 1 HP, mrok przy leżeniu.
+func _draw() -> void:
+	var a := _hit_flash * 0.55
+	if _player != null:
+		if _player.dead:
+			a = maxf(a, 0.45)
+		elif _player.hp == 1:
+			a = maxf(a, 0.18 + 0.1 * sin(_blink * 4.0))
+	if a <= 0.01:
 		return
-	_objective.text = m.objective_text()
-	var boss := get_tree().get_first_node_in_group("boss")
-	_boss_bar.visible = boss != null and m.phase == Mission.Phase.BOSS
-	if _boss_bar.visible:
-		_boss_fill.size.x = 200.0 * clampf(boss.hp / maxf(1.0, boss.max_hp), 0.0, 1.0)
-	_result.visible = m.phase == Mission.Phase.SUCCESS
-	if _result.visible:
-		var secs := int(m.elapsed)
-		_result_text.text = "EKSTRAKCJA UDANA\n\nCzas: %d:%02d\nGniazda: %d/%d\nUpadki drużyny: %d\nPróba: %d\n\n%s" % [
-			secs / 60, secs % 60, m.nests_total, m.nests_total, m.downs, m.attempts,
-			"[Enter] nowa misja" if multiplayer.is_server() else "Czekaj — host zaczyna nową misję"]
+	var sz := size
+	var steps := 10
+	for i in steps:
+		var t := float(i) / steps
+		var w := 4.0 + i * 5.0
+		var c := Color(0.55, 0.0, 0.03, a * (1.0 - t) * 0.35)
+		draw_rect(Rect2(0, 0, sz.x, w), c)
+		draw_rect(Rect2(0, sz.y - w, sz.x, w), c)
+		draw_rect(Rect2(0, 0, w, sz.y), c)
+		draw_rect(Rect2(sz.x - w, 0, w, sz.y), c)
 
 func _find_local_player() -> Node:
 	for p in get_tree().get_nodes_in_group("players"):
@@ -184,6 +524,12 @@ func _find_local_player() -> Node:
 func _net_status() -> String:
 	if not NoiseMgr.has_network():
 		return "SOLO"
-	if multiplayer.is_server():
-		return "HOST · %d/4" % (multiplayer.get_peers().size() + 1)
-	return "KLIENT"
+	var humans := 0
+	var bots := 0
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot:
+			bots += 1
+		else:
+			humans += 1
+	var who := "HOST" if multiplayer.is_server() else "CLIENT"
+	return "%s  ·  %d/4 players%s" % [who, humans, ("  +%d AI" % bots) if bots > 0 else ""]

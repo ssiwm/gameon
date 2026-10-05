@@ -23,11 +23,7 @@ var mission: Node2D
 @onready var level: Node2D = $Level
 @onready var _players: Node2D = $Players
 @onready var _spawner: MultiplayerSpawner = $PlayerSpawner
-@onready var _lobby: Control = $UI/Lobby
-@onready var _status: Label = $UI/Lobby/Panel/Status
-@onready var _ip: LineEdit = $UI/Lobby/Panel/IP
-@onready var _host_btn: Button = $UI/Lobby/Panel/Host
-@onready var _join_btn: Button = $UI/Lobby/Panel/Join
+@onready var _lobby: Control = $UI/Lobby   # lobby.gd
 
 func _ready() -> void:
 	# Własna funkcja spawnu: dane startowe (pozycja, display_id) dostaje KAŻDY
@@ -42,11 +38,11 @@ func _ready() -> void:
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
-	_host_btn.pressed.connect(host_game)
-	_join_btn.pressed.connect(_on_join_pressed)
+	_lobby.host_requested.connect(host_game)
+	_lobby.join_requested.connect(join_game)
 	# Ambient startuje dopiero przy sesji — w lobby grałby na pustce.
-	_host_btn.pressed.connect(func() -> void: Audio.play("ui_confirm", Audio.BUS_UI, -8.0))
-	_join_btn.pressed.connect(func() -> void: Audio.play("ui_click", Audio.BUS_UI, -8.0))
+	_lobby.host_requested.connect(func() -> void: Audio.play("ui_confirm", Audio.BUS_UI, -8.0))
+	_lobby.join_requested.connect(func(_ip: String) -> void: Audio.play("ui_click", Audio.BUS_UI, -8.0))
 	_handle_cmdline()
 
 # ---------------------------------------------------------------- wipe (GDD §4)
@@ -251,7 +247,7 @@ func host_game() -> void:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(port, MAX_PLAYERS)
 	if err != OK:
-		_status.text = "Błąd hostowania (%s)" % error_string(err)
+		_lobby.set_status("Could not host on port %d (%s)" % [port, error_string(err)], true)
 		return
 	multiplayer.multiplayer_peer = peer
 	_lobby.visible = false
@@ -265,14 +261,12 @@ func join_game(ip: String) -> void:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_client(ip, port)
 	if err != OK:
-		_status.text = "Błąd połączenia (%s)" % error_string(err)
+		_lobby.set_status("Could not connect (%s)" % error_string(err), true)
 		return
 	multiplayer.multiplayer_peer = peer
-	_status.text = "Łączenie z %s..." % ip
+	_lobby.set_status("Connecting to %s…" % ip)
 	Audio.play("radio_beep", Audio.BUS_UI, -10.0)
 
-func _on_join_pressed() -> void:
-	join_game(_ip.text.strip_edges())
 
 func _on_peer_connected(id: int) -> void:
 	print("[NET] peer connected: %d" % id)
@@ -299,7 +293,7 @@ func _start_ambience() -> void:
 	Audio.start_loop("amb_machine", Audio.BUS_AMB, -20.0)
 
 func _on_connection_failed() -> void:
-	_status.text = "Nie udało się połączyć"
+	_lobby.set_status("Connection failed — check the IP and that the host is running.", true)
 	_lobby.visible = true
 	multiplayer.multiplayer_peer = null
 
@@ -311,7 +305,7 @@ func _on_server_disconnected() -> void:
 		c.queue_free()
 	multiplayer.multiplayer_peer = null
 	_lobby.visible = true
-	_status.text = "Rozłączono z hostem"
+	_lobby.set_status("Disconnected from the host.", true)
 
 func _spawn_player(id: int) -> void:
 	if _players.has_node(str(id)):

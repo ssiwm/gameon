@@ -520,7 +520,7 @@ func revive_hint() -> String:
 	var t := _revive_target()
 	if t == null:
 		return ""
-	return "Przytrzymaj [E]: podnieś %s" % ("BOT" if t.is_bot else "P%d" % t.display_id)
+	return "Hold [E] to revive %s" % ("the bot" if t.is_bot else "P%d" % t.display_id)
 
 ## Prośba o podniesienie — rozstrzyga właściciel leżącej postaci.
 func request_revive() -> void:
@@ -1015,24 +1015,27 @@ func _gun_len() -> float:
 	return 14.0 if weapon == Weapons.SPREAD12 else (9.0 if weapon == Weapons.P64 else 12.0)
 
 ## Rzeczy czytelne w ciemności (materiał unshaded): etykieta, HP, rozbłysk,
-## stan „DOWN" i pasek podnoszenia.
+## stan „DOWN" i pasek podnoszenia. Teksty wyśrodkowane nad postacią.
 func _draw_overlay(ov: Node2D) -> void:
 	var font := ThemeDB.fallback_font
 	var col := _body_color()
+	var name_txt := "BOT" if is_bot else "P%d" % display_id
 	if dead:
-		ov.draw_string(font, Vector2(-26, -12), "P%d DOWN %ds" % [display_id, ceili(bleed_left)],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(0.9, 0.4, 0.4))
+		_center_text(ov, font, name_txt, -27.0, 8, col)
+		_center_text(ov, font, "%ds" % ceili(bleed_left), -17.0, 7, Color(0.95, 0.4, 0.4))
 		if revive_progress > 0.0:
-			ov.draw_rect(Rect2(-12, -22, 24, 4), Color(0.1, 0.1, 0.12))
-			ov.draw_rect(Rect2(-12, -22, 24.0 * revive_progress, 4), Color(0.4, 0.95, 0.5))
+			ov.draw_rect(Rect2(-12, -12, 24, 3), Color(0.1, 0.1, 0.12))
+			ov.draw_rect(Rect2(-12, -12, 24.0 * revive_progress, 3), Color(0.4, 0.95, 0.5))
 		return
 	var top := -11.0 if crouching else -17.0
 	if _muzzle > 0.0:
 		ov.draw_circle(Vector2(0, top + 9) + aim_dir * _gun_len(), 3.5, Color(1.0, 0.9, 0.4, 0.9))
 	for i in MAX_HP:
 		var c := Color(0.92, 0.25, 0.3) if i < hp else Color(0.22, 0.22, 0.26)
-		ov.draw_rect(Rect2(-9 + i * 6.0, top - 8.0, 4, 4), c)
-	var label := "BOT" if is_bot else "P%d" % display_id
-	ov.draw_string(font, Vector2(-18, top - 12), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, col)
-	if is_bot:
-		ov.draw_string(font, Vector2(-20, top - 21), "AI", HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color(0.5, 0.5, 0.58))
+		ov.draw_rect(Rect2(-8 + i * 6.0, top - 7.0, 4, 3), c)
+	_center_text(ov, font, name_txt, top - 10.0, 8, col)
+
+func _center_text(ov: Node2D, font: Font, txt: String, y: float, sz: int, c: Color) -> void:
+	# cień pod tekstem — czytelność na jasnym tle (snop latarki, flara)
+	ov.draw_string(font, Vector2(-30 + 0.6, y + 0.6), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, sz, Color(0, 0, 0, 0.8))
+	ov.draw_string(font, Vector2(-30, y), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, sz, c)
