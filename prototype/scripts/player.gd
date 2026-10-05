@@ -515,7 +515,10 @@ func _update_breath() -> void:
 
 # ---------------------------------------------------------------- bot AI
 
+const LEADER_SWITCH := 60.0
+
 var _bot_target_pos := Vector2.ZERO
+var _bot_leader: Node2D = null
 var _bot_repath := 0.0
 
 func _bot_brain(delta: float) -> void:
@@ -533,7 +536,7 @@ func _bot_brain(delta: float) -> void:
 
 	# ruch w stronę celu (poziomo), skok przy przeszkodzie lub celu wyżej
 	# bot naśladuje skradanie dowódcy — inaczej drużyna nie może grać cicho
-	var leader := _local_player()
+	var leader := _leader()
 	var stealth: bool = leader != null and not leader.dead and leader.crouching
 	crouching = stealth and is_on_floor()
 
@@ -593,7 +596,7 @@ func _pick_bot_goal() -> void:
 	if downed != null:
 		_bot_target_pos = downed.global_position
 		return
-	var leader := _local_player()
+	var leader := _leader()
 	if leader != null:
 		# trzyma się 2 kafle za dowódcą
 		var side := 1.0 if display_id % 2 == 0 else -1.0
@@ -614,14 +617,27 @@ func _downed_teammate() -> Node2D:
 			best = pp
 	return best
 
-func _local_player() -> Node2D:
+## Dowódca bota = NAJBLIŻSZY stojący człowiek (dowolny peer). Wcześniej bot
+## szedł zawsze za graczem z autorytetem lokalnym — na serwerze to host, więc
+## przy 2 ludziach klient nie miał wsparcia, nawet stojąc obok bota.
+## Histereza: zmiana dowódcy dopiero gdy inny jest bliżej o LEADER_SWITCH px,
+## inaczej bot dygotałby między dwoma graczami w podobnej odległości.
+func _leader() -> Node2D:
+	var cur := _bot_leader if is_instance_valid(_bot_leader) and not _bot_leader.dead else null
+	var cur_d := global_position.distance_to(cur.global_position) if cur != null else INF
+	var best: Node2D = null
+	var best_d := INF
 	for p in get_tree().get_nodes_in_group("players"):
-		if p.is_bot:
+		var pp := p as Node2D
+		if pp == null or pp.is_bot or pp.dead:
 			continue
-		if not p.is_multiplayer_authority():
-			continue
-		return p as Node2D
-	return null
+		var d := global_position.distance_to(pp.global_position)
+		if d < best_d:
+			best_d = d
+			best = pp
+	if cur == null or (best != null and best_d < cur_d - LEADER_SWITCH):
+		_bot_leader = best
+	return _bot_leader if is_instance_valid(_bot_leader) else null
 
 func _nearest_enemy(max_dist: float) -> Node2D:
 	var best: Node2D = null

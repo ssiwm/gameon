@@ -103,6 +103,29 @@ func use_overcharge(pos: Vector2) -> bool:
 	print("[NOISE] overcharge used, charges=%d level=%.0f" % [overcharge_charges, level])
 	return true
 
+## Cel główny wykonany: +1 ładunek Przesterowania od razu (GDD §8.4).
+func objective_bonus() -> void:
+	if not is_server():
+		return
+	overcharge_charges = mini(OVERCHARGE_MAX, overcharge_charges + 1)
+	if overcharge_charges >= OVERCHARGE_MAX:
+		_regen_needed = false
+	_push_now()
+	overcharge_used.emit(overcharge_charges)
+
+## Udana ekstrakcja: teren cichnie (Uwaga 0, Stalker śpi).
+func calm() -> void:
+	if not is_server():
+		return
+	level = 0.0
+	stalker_awake = false
+	level_changed.emit(level, stalker_awake)
+	_push_now()
+
+func _push_now() -> void:
+	if has_network():
+		_push.rpc(level, last_noise_pos, stalker_awake, overcharge_charges)
+
 ## Ile sekund minęło od ostatniego Q (serwer). Boty wstrzymują wtedy ogień.
 func seconds_since_overcharge() -> float:
 	return Time.get_ticks_msec() / 1000.0 - _last_overcharge

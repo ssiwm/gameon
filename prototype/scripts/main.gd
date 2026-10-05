@@ -2,6 +2,8 @@ extends Node2D
 ## Lobby + host/join + spawn graczy (MultiplayerSpawner).
 
 const PORT := 8910
+## Nadpisywany flagą --port=N (np. testy headless przy otwartym oknie gry).
+var port := PORT
 const MAX_PLAYERS := 4
 const PLAYER_SCENE := preload("res://scenes/player.tscn")
 ## Bot NIE jest preload — używamy load() w runtime. Bot scene dziedziczy po
@@ -10,8 +12,13 @@ const BOT_SCENE_PATH := "res://scenes/bot_companion.tscn"
 ## Wipe (wszyscy down) = nieudana ekstrakcja: restart misji po tylu sekundach (GDD §4).
 const WIPE_DELAY := 3.0
 
+const MISSION_SCRIPT := preload("res://scripts/mission.gd")
+
 ## >0 w trakcie odliczania do restartu po wipe; widoczne na każdym peerze (HUD).
 var wipe_left := 0.0
+## Pętla misji: cel → ekstrakcja → wynik (mission.gd). Węzeł o stałej nazwie,
+## tworzony na każdym peerze, więc RPC trafia w tę samą ścieżkę.
+var mission: Node2D
 
 @onready var _players: Node2D = $Players
 @onready var _spawner: MultiplayerSpawner = $PlayerSpawner
@@ -26,6 +33,9 @@ func _ready() -> void:
 	# peer, także dołączający później. Synchronizator postaci klienta należy do
 	# klienta, więc serwer nie może już przekazać stanu początkowego przez niego.
 	_spawner.spawn_function = _spawn_actor
+	mission = MISSION_SCRIPT.new()
+	mission.name = "Mission"
+	add_child(mission)
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
@@ -49,7 +59,12 @@ func _physics_process(delta: float) -> void:
 		wipe_left -= delta
 		if wipe_left <= 0.0:
 			wipe_left = 0.0
-			_restart_mission()
+			_restart_mission(false)
+		return
+	# po udanej ekstrakcji host zaczyna nową misję
+	if mission.phase == MISSION_SCRIPT.Phase.SUCCESS:
+		if Input.is_action_just_pressed("restart"):
+			_restart_mission(true)
 		return
 	if _all_down():
 		print("[WIPE] all players down -> mission restart in %.0fs" % WIPE_DELAY)
@@ -71,22 +86,29 @@ func _announce_wipe(seconds: float) -> void:
 	wipe_left = seconds
 	Audio.play("tape_stop", Audio.BUS_UI, -6.0)
 
-## Restart misji (serwer): Uwaga, ładunki Q, wrogowie i gracze wracają na start.
-## Łup misji przepadłby tutaj — postęp fabularny nie (GDD §4).
-func _restart_mission() -> void:
-	print("[WIPE] mission restart")
+## Restart misji (serwer): Uwaga, ładunki Q, wrogowie, gniazda i gracze wracają
+## na start. new_run=false to kolejna próba po wipe (licznik prób +1), true to
+## nowa misja po udanej ekstrakcji. Łup misji przepadłby tutaj — postęp
+## fabularny nie (GDD §4).
+func _restart_mission(new_run: bool) -> void:
+	print("[MISSION] restart (%s)" % ("nowa misja" if new_run else "wipe"))
 	NoiseMgr.reset_mission()
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e.has_method("reset_enemy"):
 			e.reset_enemy()
 	for c in _players.get_children():
 		c.request_full_reset()
+	mission.on_restart(new_run)
 
 func _handle_cmdline() -> void:
 	var autoquit := -1.0
 	var stealthtest := -1.0
 	var wipetest := -1.0
+	var missiontest := false
 	var args := OS.get_cmdline_user_args()
+	for a in args:
+		if a.begins_with("--port="):
+			port = a.substr("--port=".length()).to_int()
 	for a in args:
 		if a == "--host":
 			host_game()
@@ -98,6 +120,8 @@ func _handle_cmdline() -> void:
 			stealthtest = 20.0
 		elif a.begins_with("--stealthtest="):
 			stealthtest = a.substr("--stealthtest=".length()).to_float()
+		elif a == "--missiontest":
+			missiontest = true
 		elif a == "--wipetest":
 			wipetest = 2.0
 		elif a.begins_with("--wipetest="):
@@ -106,6 +130,8 @@ func _handle_cmdline() -> void:
 		_stealth_test_loop(stealthtest)
 	if wipetest >= 0.0:
 		_wipe_test(wipetest)
+	if missiontest:
+		_mission_test()
 	if autoquit >= 0.0:
 		await get_tree().create_timer(autoquit).timeout
 		get_tree().quit()
@@ -169,14 +195,41 @@ func _wipe_test(delay: float) -> void:
 	var states := []
 	for c in _players.get_children():
 		states.append("%s hp=%d dead=%s" % [c.name, c.hp, str(c.dead)])
-	print("[TEST] after restart: %s | trzosek1_alive=%s noise=%.0f charges=%d" % [
-		", ".join(states), str(victim.alive if victim else null), NoiseMgr.level, NoiseMgr.overcharge_charges])
+	print("[TEST] after restart: %s | trzosek1_alive=%s noise=%.0f charges=%d attempt=%d" % [
+		", ".join(states), str(victim.alive if victim else null), NoiseMgr.level, NoiseMgr.overcharge_charges,
+		mission.attempts])
+
+## Test pętli misji: niszczy gniazda, sprawdza otwarcie ekstrakcji i bonus Q,
+## przenosi ludzi (tylko hosta — jego autorytet) do flary, czeka na sukces,
+## potem nowa misja [Enter] symulowana wprost. --missiontest
+func _mission_test() -> void:
+	await get_tree().create_timer(2.0).timeout
+	if not multiplayer.is_server():
+		return
+	var q_before := NoiseMgr.overcharge_charges
+	for n in get_tree().get_nodes_in_group("nests"):
+		n.take_bullet(n.global_position + Vector2(-10, 0), 999.0)
+	await get_tree().create_timer(0.3).timeout
+	print("[TEST] mission: phase=%d nests_left=%d exit=%s q=%d->%d" % [
+		mission.phase, mission.nests_left, mission.exit_pos, q_before, NoiseMgr.overcharge_charges])
+	for c in _players.get_children():
+		if not c.is_bot:
+			c.global_position = mission.exit_pos
+	await get_tree().create_timer(mission.EXTRACT_TIME + 0.6).timeout
+	print("[TEST] mission: phase=%d progress=%.2f time=%.1f downs=%d attempts=%d noise=%.0f" % [
+		mission.phase, mission.extract_progress, mission.elapsed, mission.downs, mission.attempts, NoiseMgr.level])
+	_restart_mission(true)
+	await get_tree().create_timer(0.5).timeout
+	var alive := 0
+	for n in get_tree().get_nodes_in_group("nests"):
+		alive += 1 if n.alive else 0
+	print("[TEST] mission restart: phase=%d nests_alive=%d attempts=%d" % [mission.phase, alive, mission.attempts])
 
 func host_game() -> void:
 	if NoiseMgr.has_network():
 		return
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(PORT, MAX_PLAYERS)
+	var err := peer.create_server(port, MAX_PLAYERS)
 	if err != OK:
 		_status.text = "Błąd hostowania (%s)" % error_string(err)
 		return
@@ -186,11 +239,11 @@ func host_game() -> void:
 	_start_ambience()
 	NoiseMgr.reset_mission()
 	_spawn_player(1)
-	print("[NET] hosting on port %d" % PORT)
+	print("[NET] hosting on port %d" % port)
 
 func join_game(ip: String) -> void:
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_client(ip, PORT)
+	var err := peer.create_client(ip, port)
 	if err != OK:
 		_status.text = "Błąd połączenia (%s)" % error_string(err)
 		return

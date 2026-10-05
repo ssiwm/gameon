@@ -1,9 +1,10 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/hud.gd" id="2"]
 [ext_resource type="PackedScene" path="res://scenes/stalker.tscn" id="3"]
 [ext_resource type="PackedScene" path="res://scenes/enemy.tscn" id="4"]
+[ext_resource type="PackedScene" path="res://scenes/nest.tscn" id="5"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
 size = Vector2(1800, 60)
@@ -143,6 +144,15 @@ position = Vector2(1088, 200)
 [node name="Wolek2" parent="." instance=ExtResource("4")]
 position = Vector2(1300, 200)
 kind = "wolek"
+
+[node name="Nest1" parent="." instance=ExtResource("5")]
+position = Vector2(480, 200)
+
+[node name="Nest2" parent="." instance=ExtResource("5")]
+position = Vector2(850, 132)
+
+[node name="Nest3" parent="." instance=ExtResource("5")]
+position = Vector2(1330, 200)
 
 [node name="UI" type="CanvasLayer" parent="."]
 
