@@ -21,6 +21,8 @@ var _warn_was := false
 var _music_layer := -1
 var _objective: Label
 var _battery: Label
+var _boss_bar: ColorRect
+var _boss_fill: ColorRect
 var _result: Panel
 var _result_text: Label
 
@@ -39,6 +41,19 @@ func _ready() -> void:
 	_battery.size = Vector2(300, 16)
 	_battery.add_theme_font_size_override("font_size", 11)
 	add_child(_battery)
+
+	# pasek Żyły (faza BOSS) pod linią celu — dwa prostokąty, bo ProgressBar
+	# ma minimalną wysokość z motywu (~27 px) i wychodził gruby
+	_boss_bar = ColorRect.new()
+	_boss_bar.position = Vector2(220, 50)
+	_boss_bar.size = Vector2(200, 5)
+	_boss_bar.color = Color(0.12, 0.04, 0.05, 0.85)
+	_boss_bar.visible = false
+	add_child(_boss_bar)
+	_boss_fill = ColorRect.new()
+	_boss_fill.size = Vector2(200, 5)
+	_boss_fill.color = Color(0.85, 0.22, 0.2)
+	_boss_bar.add_child(_boss_fill)
 
 	_result = Panel.new()
 	_result.position = Vector2(170, 80)
@@ -145,8 +160,13 @@ func _drive_mission() -> void:
 	if m == null or not NoiseMgr.has_network():
 		_objective.text = ""
 		_result.visible = false
+		_boss_bar.visible = false
 		return
 	_objective.text = m.objective_text()
+	var boss := get_tree().get_first_node_in_group("boss")
+	_boss_bar.visible = boss != null and m.phase == Mission.Phase.BOSS
+	if _boss_bar.visible:
+		_boss_fill.size.x = 200.0 * clampf(boss.hp / maxf(1.0, boss.max_hp), 0.0, 1.0)
 	_result.visible = m.phase == Mission.Phase.SUCCESS
 	if _result.visible:
 		var secs := int(m.elapsed)

@@ -17,7 +17,8 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
 - **friendly fire = hałas**: pocisk kolegi przelatuje (zero HP), trafiony krzyczy (+4 Uwagi, max raz na 0,6 s) i dostaje odrzut; 1 HP tylko od strzelby z bliska (<40 px). Bot nie strzela, gdy kolega jest na linii — podskakuje
 - 3 HP, **down/revive** (GDD §4): leżysz 25 s, kolega trzyma E 4 s → wstajesz z 2 HP; wykrwawienie = powrót na start z 1 HP; **wipe** (wszyscy leżą) = restart misji po 3 s
 - audio: 85 ścieżek, muzyka warstwowa wg Uwagi, szept stalkera
-- **pętla misji** (GDD §4): zniszcz 3 gniazda (głośne — budzą okolicę) → wyjście otwiera się w punkcie najdalszym od drużyny (+1 ładunek Q) → cała stojąca drużyna 3 s przy flarze → ekran wyniku, host [Enter] = nowa misja
+- **pętla misji** (GDD §4): zniszcz 3 gniazda (głośne — budzą okolicę) → budzi się **Żyła, matka gniazd** (boss w tartaku: rodzi Trzoski, smagnięcie macką z zapowiedzią; +1 ładunek Q) → po jej śmierci wyjście otwiera się w punkcie najdalszym od drużyny → cała stojąca drużyna 3 s przy flarze → ekran wyniku, host [Enter] = nowa misja
+- **nawigacja A*** (`nav.gd`): bot chodzi za drużyną po całej mapie (skoki, zeskoki przez kładki), Stalker chodzi po powierzchniach zamiast przez ściany
 
 ## Uruchomienie
 
@@ -64,7 +65,7 @@ godot --headless --path . -- --host --stealthtest=25 --autoquit=27
 # test wipe: wszyscy padają → restart misji po 3 s (działa też z klientem)
 godot --headless --path . -- --host --wipetest --autoquit=8
 
-# test pętli misji: gniazda → ekstrakcja → sukces → nowa misja
+# test pętli misji: gniazda → Żyła → ekstrakcja → sukces → nowa misja
 godot --headless --path . -- --host --missiontest --autoquit=9
 ```
 
@@ -84,21 +85,23 @@ scripts/
   mission.gd        # pętla misji: cel → ekstrakcja → wynik (serwer + sync)
   level.gd          # mapa: siatka ASCII → TileSet/TileMapLayer, znaczniki postaci
   lights.gd         # światło: tekstury, materiał unshaded, „kogo oświetla latarka"
-  nest.gd           # gniazdo — cel misji
+  nest.gd           # gniazdo — cel misji (odnóże Żyły)
+  boss.gd           # Żyła — matka gniazd (boss misji)
+  nav.gd            # A* platformówki: węzły = kafle do stania, skok/spadek/zeskok
   player.gd         # ruch, broń, HP, down/revive, synchronizer, AI (is_bot)
   enemy.gd          # Trzosek / Wołek (symulacja na serwerze)
   bullet.gd         # pociski serwerowe
   stalker.gd        # AI stalkera (symulacja na serwerze)
   hud.gd            # hałas, HP, ładunki Q, ostrzeżenia
 scenes/
-  main.tscn  player.tscn  bot_companion.tscn  bullet.tscn  stalker.tscn  enemy.tscn  nest.tscn
+  main.tscn  player.tscn  bot_companion.tscn  bullet.tscn  stalker.tscn  enemy.tscn  nest.tscn  boss.tscn
 tools/
   bake_audio.py  audio_dsp.py   # generowanie ścieżek audio
 ```
 
 ## Znane ograniczenia (świadome, prototyp)
 
-- boty: brak nawigacji A*, proste „trzymaj się 2 kafle za dowódcą” (dowódca = najbliższy stojący człowiek)
-- jedna mapa, bez bossa; grafika kafli to placeholder generowany w kodzie
+- zwykli wrogowie (Trzosek, Wołek) bez A* — gonią prosto i doskakują
+- jedna mapa; grafika kafli i postaci to placeholder rysowany w kodzie
 - pozycje zdalnych graczy ufane (OK dla kooperacji, blokuje host migration)
 - brak WebSocket/relay fallback (tylko ENet P2P/LAN)

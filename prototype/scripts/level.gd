@@ -29,6 +29,7 @@ const Nav := preload("res://scripts/nav.gd")
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const NEST_SCENE := preload("res://scenes/nest.tscn")
 const STALKER_SCENE := preload("res://scenes/stalker.tscn")
+const BOSS_SCENE := preload("res://scenes/boss.tscn")
 
 const MAP := [
 	"##............................................................................................................................##",
@@ -175,6 +176,7 @@ func _spawn_entities() -> void:
 				"S": spawns.append(p)
 				"E": exits.append(p)
 				"X": stalker_home = p
+				"B": boss_home = p
 				"T", "W", "N": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
@@ -191,6 +193,11 @@ func _spawn_entities() -> void:
 	s.name = "Stalker"
 	s.position = stalker_home
 	add_child(s)
+	if boss_home != Vector2.ZERO:
+		var b := BOSS_SCENE.instantiate()
+		b.name = "Boss"
+		b.position = boss_home
+		add_child(b)
 
 func _add_enemy(n: String, kind: String, p: Vector2) -> void:
 	var e := ENEMY_SCENE.instantiate()

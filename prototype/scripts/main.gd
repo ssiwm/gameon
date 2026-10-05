@@ -206,28 +206,44 @@ func _wipe_test(delay: float) -> void:
 ## Test pętli misji: niszczy gniazda, sprawdza otwarcie ekstrakcji i bonus Q,
 ## przenosi ludzi (tylko hosta — jego autorytet) do flary, czeka na sukces,
 ## potem nowa misja [Enter] symulowana wprost. --missiontest
+## Test pętli misji: gniazda → Żyła → ekstrakcja → sukces → nowa misja.
+## Ludzi (tylko hosta — jego autorytet) przenosi do flary. --missiontest
 func _mission_test() -> void:
+	const PH := ["OBJECTIVE", "BOSS", "EXTRACT", "SUCCESS"]
 	await get_tree().create_timer(2.0).timeout
 	if not multiplayer.is_server():
 		return
+	var boss := get_tree().get_first_node_in_group("boss")
+	if boss != null:
+		boss.take_bullet(boss.global_position + Vector2(-20, 0), 50.0)
+		print("[TEST] mission: strzał w śpiącą Żyłę -> hp=%.0f (oczekiwane 200, nietykalna)" % boss.hp)
 	var q_before := NoiseMgr.overcharge_charges
 	for n in get_tree().get_nodes_in_group("nests"):
 		n.take_bullet(n.global_position + Vector2(-10, 0), 999.0)
 	await get_tree().create_timer(0.3).timeout
-	print("[TEST] mission: phase=%d nests_left=%d exit=%s q=%d->%d" % [
-		mission.phase, mission.nests_left, mission.exit_pos, q_before, NoiseMgr.overcharge_charges])
+	print("[TEST] mission: faza=%s nests_left=%d q=%d->%d" % [PH[mission.phase], mission.nests_left, q_before, NoiseMgr.overcharge_charges])
+	if boss != null:
+		await get_tree().create_timer(3.5).timeout
+		var brood := level.get_children().filter(func(n: Node) -> bool: return n.name.begins_with("Brood"))
+		print("[TEST] mission: Żyła hp=%.0f/%.0f potomstwo=%d" % [boss.hp, boss.max_hp, brood.size()])
+		boss.take_bullet(boss.global_position + Vector2(-20, 0), 9999.0)
+		await get_tree().create_timer(0.3).timeout
+		var alive_brood := brood.filter(func(n: Node) -> bool: return is_instance_valid(n) and n.alive)
+		print("[TEST] mission: po śmierci Żyły faza=%s exit=%s żywe_potomstwo=%d" % [PH[mission.phase], mission.exit_pos, alive_brood.size()])
 	for c in _players.get_children():
 		if not c.is_bot:
 			c.global_position = mission.exit_pos
 	await get_tree().create_timer(mission.EXTRACT_TIME + 0.6).timeout
-	print("[TEST] mission: phase=%d progress=%.2f time=%.1f downs=%d attempts=%d noise=%.0f" % [
-		mission.phase, mission.extract_progress, mission.elapsed, mission.downs, mission.attempts, NoiseMgr.level])
+	print("[TEST] mission: faza=%s progress=%.2f time=%.1f downs=%d attempts=%d noise=%.0f" % [
+		PH[mission.phase], mission.extract_progress, mission.elapsed, mission.downs, mission.attempts, NoiseMgr.level])
 	_restart_mission(true)
 	await get_tree().create_timer(0.5).timeout
 	var alive := 0
 	for n in get_tree().get_nodes_in_group("nests"):
 		alive += 1 if n.alive else 0
-	print("[TEST] mission restart: phase=%d nests_alive=%d attempts=%d" % [mission.phase, alive, mission.attempts])
+	var left_brood := level.get_children().filter(func(n: Node) -> bool: return n.name.begins_with("Brood") and not n.is_queued_for_deletion()).size()
+	print("[TEST] mission restart: faza=%s nests_alive=%d attempts=%d Żyła=%s hp=%.0f potomstwo=%d" % [
+		PH[mission.phase], alive, mission.attempts, ["śpi", "czuwa", "martwa"][boss.state] if boss else "-", boss.hp if boss else 0.0, left_brood])
 
 func host_game() -> void:
 	if NoiseMgr.has_network():

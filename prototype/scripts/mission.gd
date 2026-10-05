@@ -2,6 +2,7 @@ extends Node2D
 ## Pętla misji (GDD §4): CEL → EKSTRAKCJA → WYNIK. Autorytet: serwer.
 ##
 ##   OBJECTIVE  zniszcz wszystkie gniazda (grupa „nests")
+##   BOSS       gniazda były odnóżami Żyły (boss.gd) — budzi się; zabij ją
 ##   EXTRACT    wyjście otwiera się w INNYM miejscu niż start (§4: „po wykonaniu
 ##              celu pozycja wyjścia się zmienia") — najdalszy od drużyny punkt
 ##              z EXIT_CANDIDATES, więc trzeba wrócić przez obudzony teren.
@@ -12,7 +13,7 @@ extends Node2D
 ## Wipe (main.gd) = nieudana ekstrakcja: misja wraca do OBJECTIVE, licznik prób +1.
 ## Klienci dostają stan przez _sync (5 Hz + natychmiast przy zmianie fazy).
 
-enum Phase { OBJECTIVE, EXTRACT, SUCCESS }
+enum Phase { OBJECTIVE, BOSS, EXTRACT, SUCCESS }
 
 const Lights := preload("res://scripts/lights.gd")
 
@@ -35,8 +36,13 @@ var _sync_t := 0.0
 var _flare: PointLight2D
 var _was_dead := {}          # nazwa gracza -> bool (liczenie upadków, serwer)
 
+var _boss: Node = null
+
 func _ready() -> void:
 	z_index = 5
+	_boss = get_tree().get_first_node_in_group("boss")
+	if _boss != null:
+		_boss.died.connect(_on_boss_died)
 	# znacznik (słup, strefa, paski) czytelny w ciemności; sama flara to
 	# prawdziwe światło 12 m (GDD §8.3) — widać ją z daleka i oświetla wyjście
 	material = Lights.unshaded()
@@ -90,11 +96,29 @@ func _on_nest_destroyed(_nest: Node) -> void:
 		return
 	_count_nests()
 	print("[MISSION] nest destroyed, left=%d/%d" % [nests_left, nests_total])
+	if _boss != null and phase == Phase.OBJECTIVE:
+		_boss.on_nest_lost(nests_left)
 	if nests_left == 0 and phase == Phase.OBJECTIVE:
-		_open_extraction()
+		if _boss != null and _boss.is_alive():
+			_start_boss()
+		else:
+			_open_extraction()
 	_broadcast()
 
-func _open_extraction() -> void:
+## Ostatnie gniazdo padło — matka się budzi. Ładunek Q wraca tu (GDD §8.4:
+## „przy wykonaniu celu"), bo na walkę z Żyłą jest najbardziej potrzebny.
+func _start_boss() -> void:
+	phase = Phase.BOSS
+	NoiseMgr.objective_bonus()
+	_boss.awaken()
+	print("[MISSION] gniazda zniszczone -> Żyła")
+
+func _on_boss_died() -> void:
+	if phase == Phase.BOSS:
+		_open_extraction(false)
+		_broadcast()
+
+func _open_extraction(q_bonus: bool = true) -> void:
 	phase = Phase.EXTRACT
 	extract_progress = 0.0
 	# najdalszy kandydat od środka drużyny — powrót przez obudzony teren
@@ -107,7 +131,9 @@ func _open_extraction() -> void:
 			best = c
 	exit_pos = best
 	# GDD §8.4: ładunek Przesterowania wraca natychmiast przy celu głównym
-	NoiseMgr.objective_bonus()
+	# (z bossem bonus był już przy przebudzeniu)
+	if q_bonus:
+		NoiseMgr.objective_bonus()
 	print("[MISSION] objective complete -> extraction at %s" % exit_pos)
 	_event.rpc("objective")
 
@@ -136,7 +162,7 @@ func _success() -> void:
 	print("[MISSION] SUCCESS time=%.1fs downs=%d attempts=%d" % [elapsed, downs, attempts])
 	# teren cichnie: wrogowie (nie gniazda) wracają do snu, Uwaga spada do zera
 	for e in get_tree().get_nodes_in_group("enemies"):
-		if not e.is_in_group("nests") and e.has_method("reset_enemy"):
+		if not e.is_in_group("nests") and not e.is_in_group("boss") and e.has_method("reset_enemy"):
 			e.reset_enemy()
 	NoiseMgr.calm()
 	_event.rpc("success")
@@ -209,6 +235,8 @@ func objective_text() -> String:
 	match phase:
 		Phase.OBJECTIVE:
 			return "CEL: zniszcz gniazda  %d/%d" % [nests_total - nests_left, nests_total]
+		Phase.BOSS:
+			return "CEL: zabij Żyłę — matkę gniazd (tartak)"
 		Phase.EXTRACT:
 			var me := _local_human()
 			var dir := ""

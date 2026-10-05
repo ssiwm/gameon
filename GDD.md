@@ -1,6 +1,6 @@
 # DEAD AIR '87 — Game Design Document
 
-**Wersja:** 1.3.6 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
+**Wersja:** 1.3.7 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
 **Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
 **Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
 **Silnik:** Godot 4.x + GodotSteam
@@ -299,7 +299,7 @@ Sedno poprawki. Problem: pierwotna wersja traktowała hałas jako coś, czego si
 - **Kucający gracz jest niemal niewidoczny:** Stalker zauważa go dopiero z **8 px** (stojącego z 14 px). Kucanie obok przechodzącego Stalkera to świadoma, nagradzana decyzja.
 - **Widoczność — „słyszysz, nigdy nie widzisz":** ciało pojawia się dopiero w promieniu ~60 px od lokalnego gracza (płynnie do 160 px), poza tym widać tylko słabo błyszczące oczy. Gdy dojdzie oświetlenie 2D, widoczny jest w świetle latarki/flary.
 - **Atak z zapowiedzią (v2):** zamach 1 HP, cooldown 1,5 s, **bez generowania hałasu**. Przed ciosem jest **0,55 s zapowiedzi** (szept milknie, oczy rozbłyskują, ryk) — gracz może uciec; jeśli odejdzie poza zasięg, cios chybia. Po ciosie Stalker cofa się 6 m — okno na decyzję, nie natychmiastowy kolejny cios. Zasada: **śmierć od Stalkera jest zawsze „fair" i zapowiedziana.**
-- **Poruszanie się:** idzie po powierzchniach poziomu (ziemia → wspinaczka przy celu na platformie, ograniczony ścianami). Pełna nawigacja A* czeka na tilemapę poziomu (patrz §16.0).
+- **Poruszanie się:** idzie po powierzchniach poziomu ścieżką A* (`nav.gd`, 1.3.7) — chodzi, wspina się na wyższe poziomy i zeskakuje, nie przenika przez ściany. Ten sam graf prowadzi bota.
 
 ---
 
@@ -616,7 +616,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 16 | Próg budzenia wrogów 1,0 > hałas strzału zimnego M-83 (0,6) | `enemy.gd` | Pojedyncze strzały M-83 były dla wrogów nieme | **P2 — naprawione (1.3.1)**: próg 0,5 (kroki 0,25 nadal nie budzą) |
 | 17 | Postęp podnoszenia widoczny tylko u podnoszącego | `player.gd` | Leżący nie wiedział, że ktoś go ratuje | **P2 — naprawione (1.3.1)**: synchronizacja 10 Hz, HUD „Podnoszą cię… N%" |
 
-**Pozostałe znane ograniczenia:** brak bossa misji, brak flar jako przedmiotu (tylko znacznik ekstrakcji), boty i Stalker bez A* (tilemapa już jest — §16.0 pkt 5 odblokowany), brak WebSocket/relay fallback, łup misji nie istnieje, więc wipe odbiera tylko postęp próby.
+**Pozostałe znane ograniczenia:** zwykli wrogowie (Trzosek, Wołek) jeszcze bez A* — gonią prosto i doskakują; brak flar jako przedmiotu (tylko znacznik ekstrakcji); dołączający w trakcie walki nie widzi już istniejącego potomstwa Żyły; brak WebSocket/relay fallback; łup misji nie istnieje, więc wipe odbiera tylko postęp próby.
 
 **Testy regresji (headless):** `--stealthtest=25` (sama pętla ciszy ze stalkerem — zwykli wrogowie są w tym teście usuwani; PASS = zasnął, 0 HP straty; wynik 1.3.1: zasnął po 20,5 s), `--wipetest` (wipe + restart, także z klientem), `--missiontest` (gniazda → ekstrakcja → sukces → nowa misja). `--port=N` pozwala je puścić przy otwartym oknie gry.
 
@@ -682,6 +682,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 1.3.4 | 2026-10-05 | Friendly fire = hałas (filar 3): na jednej płaszczyźnie drużyna stoi w kolejce i seria M-83 w plecy kładła kolegę — kara za samo ustawienie. Pocisk kolegi przelatuje, trafiony krzyczy (`N_FF` = 4, cooldown 0,6 s ≈ 6,7 Uwagi/s przy ciągłej serii) i dostaje odrzut; obrażenie tylko od strzelby z bliska. Bot: linia strzału uwzględnia ludzi (wcześniej strzelał przez plecy), przy zasłonięciu podskakuje. Następny krok: mapa wielopoziomowa na TileMapLayer (drużyna w pionie, A*) |
 | 1.3.5 | 2026-10-05 | Prototyp: (a) **mapa na TileMapLayer** z siatki ASCII (`level.gd`) — 3 sekcje: las + posterunek (wataha w korytarzu, obejście dachem), arena z 3 poziomami kładek (wrogowie z obu stron), tartak z rusztowaniami nad wodą; kładki jednokierunkowe (wskok od spodu, zeskok dół+skok) rozkładają drużynę w pionie; kroki czytają powierzchnię z kafla; wyjścia na obu końcach mapy. (b) **Ciemność i latarka** wg §8.3 (szczegóły tamże). Testy: stealth/mission/wipe PASS, w sieci latarka klienta budzi watahę na serwerze |
 | 1.3.6 | 2026-10-05 | Po pierwszej sesji: (a) **ciemniej bez latarki** — światło otoczenia i niebo strojone pomiarem luminancji (§8.3); (b) **warstwa muzyki „cisza"** (Uwaga < 20%) grała statyczny, nieprzyjemny dźwięk: wszystkie 4 akordy naraz (dysonansowy klaster 24 pił), 4 suby dudniące 6–21 Hz, wąskopasmowy szum (56% dudnienia obwiedni) i filtr przesuwany przez całą pętlę. Teraz jeden akord na takt z przenikaniem 0,6 s, sub-pedał D z pełną liczbą okresów w pętli, bez szumu i saturacji |
+| 1.3.7 | 2026-10-05 | Prototyp: (a) **nawigacja A*** (§16.0 pkt 5) — graf platformówki z mapy (264 węzły; chodzenie, skok do 2 kafli, spadek z krawędzi, zeskok przez kładkę); bot idzie ścieżką (start → szczyt tartaku 13 s), Stalker chodzi po powierzchniach zamiast przez ściany (0 próbek w bryle). (b) **Boss misji: Żyła — matka gniazd** (§7.1): śpi i jest nietykalna, dopóki żyją gniazda (jej odnóża); ostatnie gniazdo ją budzi (krzyk +15 hałasu, +1 ładunek Q); 200 HP + 100 za każdego dodatkowego człowieka; co ~7 s rodzi Trzoska (limit 3 + gracze); smagnięcie macką z 0,75 s zapowiedzią — z zasięgu da się uciec; przy 50% HP furia; śmierć = potomstwo usycha, otwiera się ekstrakcja. Misja: gniazda → Żyła → ekstrakcja → wynik |
 
 ---
 
