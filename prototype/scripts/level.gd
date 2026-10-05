@@ -17,6 +17,7 @@ extends Node2D
 ##   b  tło: beton (wnętrze)  w  tło: drewno (pnie, belki)
 ##   S  start  E  wyjście  T  Trzosek  W  Wołek  N  gniazdo  X  dom Stalkera
 ##   B  Żyła — matka gniazd (boss misji)
+##   k  skrzynia (fizyczna)   o  beczka (fizyczna, wybucha)
 
 const TILE := 16
 ## Warstwy fizyki: bryły na 1 (jak dawny World), kładki na 16 — pociski
@@ -33,6 +34,7 @@ const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const NEST_SCENE := preload("res://scenes/nest.tscn")
 const STALKER_SCENE := preload("res://scenes/stalker.tscn")
 const BOSS_SCENE := preload("res://scenes/boss.tscn")
+const PROP := preload("res://scripts/prop.gd")
 
 const MAP := [
 	"##............................................................................................................................##",
@@ -52,15 +54,15 @@ const MAP := [
 	"##.............................................................................................w.........w.........w---------.##",
 	"##.............................................................................................w.........w........Tw..........##",
 	"##.............................................................................................w.........w......---------.....##",
-	"##.......w...w.................................................................................w.........w..T......w..........##",
+	"##.......w...w.................................................................................w.........wk.T......w..........##",
 	"##.......w...w.................................................................................w........-------....w..........##",
 	"##.......w...w................................................N................................w.........w.........w..........##",
 	"##.......w...w............................................=========............................w-------..w.........w..........##",
-	"##.......w...w....CCCCCCCCCCCCCCCCCCC.............................T............................w.........w.........w..........##",
+	"##.......w...w....CCCCCCCCCCCCCCCCCCC.............................T...k........................w.........w.........w..........##",
 	"##.......w...w.---bbbbbbbbbbbbbbbbbbC...........=========.....===========...=========..........w......-------......w..........##",
 	"##.......w...w....bbbbbbbbbbbbbbbbbbC..........................................................w.........w.........w..........##",
 	"##.......w..---...bbbbbbbbbbbbbbbbbb........=========...===========...===========.............-------....w.........w..........##",
-	"##.ES..S.w...w....bbbbbbbbTbTbTbbNbb..................M.....W.........X...M.......T.T..........w.........w....W....w...B....E.##",
+	"##.ES..S.w...w.kk.bbbbbbobTbTbTbbNbb..................M..o..W.........X...M.......T.T..........w.........w.o..W....w...B....E.##",
 	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
@@ -242,7 +244,7 @@ func _exposure(c: int, r: int) -> int:
 ## Znaczniki → postacie. Nazwy numerowane od lewej do prawej, identycznie
 ## na każdym peerze.
 func _spawn_entities() -> void:
-	var found := {"T": [], "W": [], "N": []}
+	var found := {"T": [], "W": [], "N": [], "k": [], "o": []}
 	for r in MAP.size():
 		var row: String = MAP[r]
 		for c in row.length():
@@ -254,7 +256,7 @@ func _spawn_entities() -> void:
 				"E": exits.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "N": found[ch].append(p)
+				"T", "W", "N", "k", "o": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -266,6 +268,15 @@ func _spawn_entities() -> void:
 		n.name = "Nest%d" % (i + 1)
 		n.position = found["N"][i]
 		add_child(n)
+	for k in [["k", "Crate", "crate"], ["o", "Barrel", "barrel"]]:
+		for i in found[k[0]].size():
+			var pr: RigidBody2D = PROP.new()
+			pr.name = "%s%d" % [k[1], i + 1]
+			pr.kind = k[2]
+			# 1 px nad podłogą: start dokładnie na krawędzi kładki jednokierunkowej
+			# fizyka uznawała za „w środku" i skrzynia przelatywała piętro niżej
+			pr.position = found[k[0]][i] + Vector2(0, -1)
+			add_child(pr)
 	var s := STALKER_SCENE.instantiate()
 	s.name = "Stalker"
 	s.position = stalker_home

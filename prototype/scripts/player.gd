@@ -303,6 +303,14 @@ func _dust_motes() -> CPUParticles2D:
 	p.color = Color(0.8, 0.78, 0.7, 0.55)
 	return p
 
+## Popychanie skrzyń/beczek: CharacterBody2D sam nie pcha ciał fizycznych.
+func _push_props(_delta: float) -> void:
+	for i in get_slide_collision_count():
+		var col := get_slide_collision(i)
+		var b := col.get_collider()
+		if b != null and b.is_in_group("props") and absf(col.get_normal().x) > 0.6:
+			b.push(-signf(col.get_normal().x))
+
 func _in_water() -> bool:
 	var lvl := get_tree().get_first_node_in_group("level")
 	return lvl != null and lvl.surface_at(global_position) == "water"
@@ -464,6 +472,7 @@ func _local_brain(delta: float) -> void:
 	_was_on_floor = is_on_floor()
 
 	move_and_slide()
+	_push_props(delta)
 	_update_footsteps()
 	_update_breath()
 
@@ -842,6 +851,7 @@ func _bot_brain(delta: float) -> void:
 		velocity.y = JUMP_VELOCITY
 	_bot_wants_jump = false
 	move_and_slide()
+	_push_props(delta)
 
 	if reviving:
 		return

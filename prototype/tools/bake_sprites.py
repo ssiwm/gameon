@@ -386,6 +386,32 @@ def bake_nest():
             g.put(x + 1, y, rgb(1.0, 0.45, 0.2, 0.5))
     sheet("nest", 24, 22, [("pulse", 3, 3, True)], draw)
 
+# ---------------------------------------------------------------- obiekty fizyczne (1.5)
+
+def bake_objects():
+    wood = rgb(0.46, 0.31, 0.16)
+    wood_d = shade(wood, 0.7)
+    red = rgb(0.62, 0.14, 0.10)
+    def draw(c, g, an, i):
+        if an == "crate":
+            c.rect(1, 2, 14, 14, wood)
+            c.rect(1, 2, 14, 2, shade(wood, 1.15))
+            c.rect(1, 14, 14, 2, wood_d)
+            c.line(2, 4, 13, 13, wood_d)               # zastrzał
+            c.line(2, 5, 12, 14, wood_d)
+            for (x, y) in ((2, 3), (13, 3), (2, 14), (13, 14)):
+                c.put(x, y, rgb(0.6, 0.6, 0.62))
+        elif an == "barrel":
+            c.rect(3, 1, 10, 15, red)
+            c.rect(3, 1, 2, 15, shade(red, 1.25))
+            c.rect(11, 1, 2, 15, shade(red, 0.7))
+            for y in (3, 12):
+                c.rect(3, y, 10, 1, rgb(0.25, 0.22, 0.2))
+            for x in range(4, 12, 2):                  # pas ostrzegawczy
+                c.rect(x, 6, 1, 3, rgb(0.95, 0.78, 0.15))
+            c.rect(5, 0, 3, 1, rgb(0.35, 0.33, 0.3))
+    sheet("objects", 16, 16, [("crate", 1, 1, False), ("barrel", 1, 1, False)], draw)
+
 # ---------------------------------------------------------------- kafle i dekoracje
 
 TILE = 16
@@ -549,6 +575,7 @@ def main():
     bake_wolek()
     bake_stalker()
     bake_nest()
+    bake_objects()
     bake_tiles()
     bake_props()
     with open(os.path.join(ART, "sprites.json"), "w") as f:

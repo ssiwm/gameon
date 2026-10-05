@@ -389,6 +389,27 @@
      "loop": true
     }
    }
+  },
+  "objects": {
+   "frame": [
+    16,
+    16
+   ],
+   "glow": false,
+   "anims": {
+    "crate": {
+     "row": 0,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "barrel": {
+     "row": 1,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   }
   }
  },
  "props": [
