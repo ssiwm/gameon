@@ -108,6 +108,7 @@ var _overlay: Node2D
 func _ready() -> void:
 	add_to_group("enemies")
 	add_to_group("boss")
+	nests_left = _nest_count()
 	_light = Lights.make_light(Lights.radial(), 3.5, Color(1.0, 0.35, 0.25), 0.5, false)
 	_light.position = Vector2(0, -20)
 	add_child(_light)
@@ -120,6 +121,10 @@ func is_alive() -> bool:
 	return state != State.DEAD
 
 # ---------------------------------------------------------------- misja (serwer)
+
+## Liczba gniazd na mapie (tyle żył świeci, dopóki Żyła śpi).
+func _nest_count() -> int:
+	return maxi(1, get_tree().get_nodes_in_group("nests").size())
 
 func on_nest_lost(left: int) -> void:
 	nests_left = left
@@ -149,7 +154,7 @@ func reset_enemy() -> void:
 	hp = BASE_HP
 	max_hp = BASE_HP
 	phase = 1
-	nests_left = 3
+	nests_left = _nest_count()
 	_set_atk(Atk.NONE)
 	_maw_t = 0.0
 	maw_open = false
@@ -705,7 +710,8 @@ func _draw_overlay(ov: Node2D) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	var awake := state == State.AWAKE
 	var pulse := 0.5 + 0.5 * sin(t * (6.0 if enraged else (3.0 if awake else 1.5)))
-	var veins := 3 if awake else nests_left
+	# trzy żyły na sylwetce niezależnie od liczby gniazd: gasną proporcjonalnie
+	var veins := 3 if awake else ceili(3.0 * nests_left / _nest_count())
 	var vcol := Color(1.0, 0.35, 0.2, (0.45 + 0.5 * pulse) if awake else (0.25 + 0.25 * pulse))
 	var pts := [Vector2(-14, -22), Vector2(4, -30), Vector2(18, -16)]
 	for i in 3:
