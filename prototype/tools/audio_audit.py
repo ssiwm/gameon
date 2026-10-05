@@ -39,7 +39,7 @@ BANDS = (("sub", 20, 80), ("low", 80, 250), ("lmid", 250, 1000),
 
 THRESHOLDS = {
     "clip_samples": 0,          # żadnej próbki na pełnej skali
-    "dc_abs": 0.002,            # składowa stała
+    "dc_abs": 0.004,            # średnia sygnału (poniżej: niecałkowita liczba cykli sub-basu, nie DC)
     "loop_seam_ratio": 6.0,     # (stary pomiar) skok szwu / mediana skoków międzypróbkowych
     "loop_seam_pct": 99.0,      # skok szwu nie może należeć do 1% największych skoków w pliku
     "oneshot_tail_abs": 0.004,  # ostatnia próbka one-shota
