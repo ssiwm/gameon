@@ -40,7 +40,8 @@ BANDS = (("sub", 20, 80), ("low", 80, 250), ("lmid", 250, 1000),
 THRESHOLDS = {
     "clip_samples": 0,          # żadnej próbki na pełnej skali
     "dc_abs": 0.002,            # składowa stała
-    "loop_seam_ratio": 6.0,     # skok szwu / mediana skoków międzypróbkowych
+    "loop_seam_ratio": 6.0,     # (stary pomiar) skok szwu / mediana skoków międzypróbkowych
+    "loop_seam_pct": 99.0,      # skok szwu nie może należeć do 1% największych skoków w pliku
     "oneshot_tail_abs": 0.004,  # ostatnia próbka one-shota
     "mono_compat_db": -3.0,     # spadek energii po zsumowaniu do mono
     "true_peak_db": -1.0,
@@ -169,6 +170,10 @@ def analyze(path: str, is_loop: bool) -> dict:
     p90 = diffs[int(len(diffs) * 0.9)] if diffs else 0.0
     seam = abs(mono[0] - mono[-1])
     seam_ratio = seam / max(med, 1e-6)
+    # percentyl: jak wiele skoków między próbkami w pliku jest mniejszych niż skok na szwie
+    allsteps = sorted(abs(mono[i + 1] - mono[i]) for i in range(0, n - 1, max(1, n // 40000)))
+    import bisect
+    seam_pct = 100.0 * bisect.bisect_left(allsteps, seam) / max(1, len(allsteps))
     spec = spectrum(mono, sr)
     r = {
         "dur": n / sr, "ch": len(ch), "sr": sr, "loop": is_loop,
@@ -176,7 +181,7 @@ def analyze(path: str, is_loop: bool) -> dict:
         "dc": dc, "clip": clip,
         "lead_ms": lead / sr * 1000, "trail_ms": trail / sr * 1000,
         "end_abs": abs(mono[-1]), "start_abs": abs(mono[0]),
-        "seam_ratio": seam_ratio, "step_p90": p90,
+        "seam_ratio": seam_ratio, "seam_pct": seam_pct, "step_p90": p90,
         "bands": band_energy(spec, sr),
     }
     if len(ch) == 2:
@@ -200,15 +205,19 @@ def verdicts(key: str, r: dict) -> list:
         v.append("CLIP(%d)" % r["clip"])
     if abs(r["dc"]) > T["dc_abs"]:
         v.append("DC(%.4f)" % r["dc"])
-    if r["loop"] and r["seam_ratio"] > T["loop_seam_ratio"]:
-        v.append("SEAM(x%.0f)" % r["seam_ratio"])
+    if r["loop"]:
+        if "seam_pct" in r:
+            if r["seam_pct"] > T["loop_seam_pct"]:
+                v.append("SEAM(p%.1f)" % r["seam_pct"])
+        elif r["seam_ratio"] > T["loop_seam_ratio"]:
+            v.append("SEAM(x%.0f)" % r["seam_ratio"])
     if not r["loop"] and r["end_abs"] > T["oneshot_tail_abs"]:
         v.append("TAIL-CUT(%.4f)" % r["end_abs"])
     if r["ch"] == 2 and r.get("mono_loss_db", 0) < T["mono_compat_db"]:
         v.append("MONO(%.1fdB)" % r["mono_loss_db"])
     if r.get("tp") is not None and r["tp"] > T["true_peak_db"]:
         v.append("TP(%.1f)" % r["tp"])
-    if not r["loop"] and r["lead_ms"] > 25:
+    if not r["loop"] and r["lead_ms"] > 25 and not key.startswith("amb_"):
         v.append("LEAD(%dms)" % r["lead_ms"])
     return v
 

@@ -7,17 +7,57 @@
   "amb/amb_air",
   1
  ],
+ "amb_creak_1": [
+  "sfx/world/amb_creak_1",
+  0
+ ],
+ "amb_creak_2": [
+  "sfx/world/amb_creak_2",
+  0
+ ],
+ "amb_creak_3": [
+  "sfx/world/amb_creak_3",
+  0
+ ],
  "amb_drips": [
   "amb/amb_drips",
   1
+ ],
+ "amb_far_cry_1": [
+  "sfx/stalker/amb_far_cry_1",
+  0
+ ],
+ "amb_far_cry_2": [
+  "sfx/stalker/amb_far_cry_2",
+  0
  ],
  "amb_forest": [
   "amb/amb_forest",
   1
  ],
+ "amb_gust_1": [
+  "sfx/world/amb_gust_1",
+  0
+ ],
+ "amb_gust_2": [
+  "sfx/world/amb_gust_2",
+  0
+ ],
+ "amb_gust_3": [
+  "sfx/world/amb_gust_3",
+  0
+ ],
  "amb_machine": [
   "amb/amb_machine",
   1
+ ],
+ "amb_thud_1": [
+  "sfx/world/amb_thud_1",
+  0
+ ],
+ "amb_thud_2": [
+  "sfx/world/amb_thud_2",
+  0
  ],
  "amb_wind": [
   "amb/amb_wind",
@@ -26,6 +66,26 @@
  "breath_loop": [
   "sfx/player/breath_loop",
   1
+ ],
+ "casing_brass_1": [
+  "sfx/weapons/casing_brass_1",
+  0
+ ],
+ "casing_brass_2": [
+  "sfx/weapons/casing_brass_2",
+  0
+ ],
+ "casing_brass_3": [
+  "sfx/weapons/casing_brass_3",
+  0
+ ],
+ "casing_shell_1": [
+  "sfx/weapons/casing_shell_1",
+  0
+ ],
+ "casing_shell_2": [
+  "sfx/weapons/casing_shell_2",
+  0
  ],
  "door_1": [
   "sfx/world/door_1",
@@ -37,6 +97,10 @@
  ],
  "dry_fire": [
   "sfx/weapons/dry_fire",
+  0
+ ],
+ "ear_ring": [
+  "sfx/weapons/ear_ring",
   0
  ],
  "effort_1": [
@@ -62,6 +126,18 @@
  "flare_loop": [
   "sfx/world/flare_loop",
   1
+ ],
+ "foley_gear_1": [
+  "sfx/weapons/foley_gear_1",
+  0
+ ],
+ "foley_gear_2": [
+  "sfx/weapons/foley_gear_2",
+  0
+ ],
+ "foley_gear_3": [
+  "sfx/weapons/foley_gear_3",
+  0
  ],
  "generator_loop": [
   "sfx/world/generator_loop",
@@ -127,6 +203,14 @@
   "sfx/weapons/m83_shot_4",
   0
  ],
+ "m83_shot_5": [
+  "sfx/weapons/m83_shot_5",
+  0
+ ],
+ "m83_shot_6": [
+  "sfx/weapons/m83_shot_6",
+  0
+ ],
  "maczeta_1": [
   "sfx/weapons/maczeta_1",
   0
@@ -171,6 +255,10 @@
   "sfx/weapons/p64_shot_3",
   0
  ],
+ "p64_shot_4": [
+  "sfx/weapons/p64_shot_4",
+  0
+ ],
  "player_down": [
   "sfx/player/player_down",
   0
@@ -213,6 +301,18 @@
  ],
  "ricochet_2": [
   "sfx/weapons/ricochet_2",
+  0
+ ],
+ "spread12_shot_1": [
+  "sfx/weapons/spread12_shot_1",
+  0
+ ],
+ "spread12_shot_2": [
+  "sfx/weapons/spread12_shot_2",
+  0
+ ],
+ "spread12_shot_3": [
+  "sfx/weapons/spread12_shot_3",
   0
  ],
  "stalker_appear": [
@@ -263,6 +363,14 @@
   "sfx/player/step_concrete_3",
   0
  ],
+ "step_concrete_4": [
+  "sfx/player/step_concrete_4",
+  0
+ ],
+ "step_concrete_5": [
+  "sfx/player/step_concrete_5",
+  0
+ ],
  "step_dirt_1": [
   "sfx/player/step_dirt_1",
   0
@@ -273,6 +381,14 @@
  ],
  "step_dirt_3": [
   "sfx/player/step_dirt_3",
+  0
+ ],
+ "step_dirt_4": [
+  "sfx/player/step_dirt_4",
+  0
+ ],
+ "step_dirt_5": [
+  "sfx/player/step_dirt_5",
   0
  ],
  "step_metal_1": [
@@ -287,6 +403,14 @@
   "sfx/player/step_metal_3",
   0
  ],
+ "step_metal_4": [
+  "sfx/player/step_metal_4",
+  0
+ ],
+ "step_metal_5": [
+  "sfx/player/step_metal_5",
+  0
+ ],
  "step_water_1": [
   "sfx/player/step_water_1",
   0
@@ -297,6 +421,14 @@
  ],
  "step_water_3": [
   "sfx/player/step_water_3",
+  0
+ ],
+ "step_water_4": [
+  "sfx/player/step_water_4",
+  0
+ ],
+ "step_water_5": [
+  "sfx/player/step_water_5",
   0
  ],
  "sting_chase": [

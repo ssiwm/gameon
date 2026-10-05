@@ -1,24 +1,43 @@
 extends RefCounted
 # GENEROWANE przez tools/bake_audio.py — nie edytuj ręcznie.
-# Tablica ścieżek + flagi pętli. Runtime ładuje leniwie (load) i cache'uje.
+# Tablica ścieżek + flagi pętli + parametry muzyki. Runtime ładuje leniwie (load) i cache'uje.
 
 const PATHS := {
 	"alarm_bell": "res://audio/sfx/world/alarm_bell.wav",
 	"amb_air": "res://audio/amb/amb_air.wav",
+	"amb_creak_1": "res://audio/sfx/world/amb_creak_1.wav",
+	"amb_creak_2": "res://audio/sfx/world/amb_creak_2.wav",
+	"amb_creak_3": "res://audio/sfx/world/amb_creak_3.wav",
 	"amb_drips": "res://audio/amb/amb_drips.wav",
+	"amb_far_cry_1": "res://audio/sfx/stalker/amb_far_cry_1.wav",
+	"amb_far_cry_2": "res://audio/sfx/stalker/amb_far_cry_2.wav",
 	"amb_forest": "res://audio/amb/amb_forest.wav",
+	"amb_gust_1": "res://audio/sfx/world/amb_gust_1.wav",
+	"amb_gust_2": "res://audio/sfx/world/amb_gust_2.wav",
+	"amb_gust_3": "res://audio/sfx/world/amb_gust_3.wav",
 	"amb_machine": "res://audio/amb/amb_machine.wav",
+	"amb_thud_1": "res://audio/sfx/world/amb_thud_1.wav",
+	"amb_thud_2": "res://audio/sfx/world/amb_thud_2.wav",
 	"amb_wind": "res://audio/amb/amb_wind.wav",
 	"breath_loop": "res://audio/sfx/player/breath_loop.wav",
+	"casing_brass_1": "res://audio/sfx/weapons/casing_brass_1.wav",
+	"casing_brass_2": "res://audio/sfx/weapons/casing_brass_2.wav",
+	"casing_brass_3": "res://audio/sfx/weapons/casing_brass_3.wav",
+	"casing_shell_1": "res://audio/sfx/weapons/casing_shell_1.wav",
+	"casing_shell_2": "res://audio/sfx/weapons/casing_shell_2.wav",
 	"door_1": "res://audio/sfx/world/door_1.wav",
 	"door_2": "res://audio/sfx/world/door_2.wav",
 	"dry_fire": "res://audio/sfx/weapons/dry_fire.wav",
+	"ear_ring": "res://audio/sfx/weapons/ear_ring.wav",
 	"effort_1": "res://audio/sfx/player/effort_1.wav",
 	"effort_2": "res://audio/sfx/player/effort_2.wav",
 	"explosion_1": "res://audio/sfx/weapons/explosion_1.wav",
 	"explosion_2": "res://audio/sfx/weapons/explosion_2.wav",
 	"flare_ignite": "res://audio/sfx/world/flare_ignite.wav",
 	"flare_loop": "res://audio/sfx/world/flare_loop.wav",
+	"foley_gear_1": "res://audio/sfx/weapons/foley_gear_1.wav",
+	"foley_gear_2": "res://audio/sfx/weapons/foley_gear_2.wav",
+	"foley_gear_3": "res://audio/sfx/weapons/foley_gear_3.wav",
 	"generator_loop": "res://audio/sfx/world/generator_loop.wav",
 	"glass_break_1": "res://audio/sfx/world/glass_break_1.wav",
 	"glass_break_2": "res://audio/sfx/world/glass_break_2.wav",
@@ -35,6 +54,8 @@ const PATHS := {
 	"m83_shot_2": "res://audio/sfx/weapons/m83_shot_2.wav",
 	"m83_shot_3": "res://audio/sfx/weapons/m83_shot_3.wav",
 	"m83_shot_4": "res://audio/sfx/weapons/m83_shot_4.wav",
+	"m83_shot_5": "res://audio/sfx/weapons/m83_shot_5.wav",
+	"m83_shot_6": "res://audio/sfx/weapons/m83_shot_6.wav",
 	"maczeta_1": "res://audio/sfx/weapons/maczeta_1.wav",
 	"maczeta_2": "res://audio/sfx/weapons/maczeta_2.wav",
 	"mine_beep_loop": "res://audio/sfx/world/mine_beep_loop.wav",
@@ -46,6 +67,7 @@ const PATHS := {
 	"p64_shot_1": "res://audio/sfx/weapons/p64_shot_1.wav",
 	"p64_shot_2": "res://audio/sfx/weapons/p64_shot_2.wav",
 	"p64_shot_3": "res://audio/sfx/weapons/p64_shot_3.wav",
+	"p64_shot_4": "res://audio/sfx/weapons/p64_shot_4.wav",
 	"player_down": "res://audio/sfx/player/player_down.wav",
 	"player_hurt_1": "res://audio/sfx/player/player_hurt_1.wav",
 	"player_hurt_2": "res://audio/sfx/player/player_hurt_2.wav",
@@ -57,6 +79,9 @@ const PATHS := {
 	"revive": "res://audio/sfx/player/revive.wav",
 	"ricochet_1": "res://audio/sfx/weapons/ricochet_1.wav",
 	"ricochet_2": "res://audio/sfx/weapons/ricochet_2.wav",
+	"spread12_shot_1": "res://audio/sfx/weapons/spread12_shot_1.wav",
+	"spread12_shot_2": "res://audio/sfx/weapons/spread12_shot_2.wav",
+	"spread12_shot_3": "res://audio/sfx/weapons/spread12_shot_3.wav",
 	"stalker_appear": "res://audio/sfx/stalker/stalker_appear.wav",
 	"stalker_growl_1": "res://audio/sfx/stalker/stalker_growl_1.wav",
 	"stalker_growl_2": "res://audio/sfx/stalker/stalker_growl_2.wav",
@@ -69,15 +94,23 @@ const PATHS := {
 	"step_concrete_1": "res://audio/sfx/player/step_concrete_1.wav",
 	"step_concrete_2": "res://audio/sfx/player/step_concrete_2.wav",
 	"step_concrete_3": "res://audio/sfx/player/step_concrete_3.wav",
+	"step_concrete_4": "res://audio/sfx/player/step_concrete_4.wav",
+	"step_concrete_5": "res://audio/sfx/player/step_concrete_5.wav",
 	"step_dirt_1": "res://audio/sfx/player/step_dirt_1.wav",
 	"step_dirt_2": "res://audio/sfx/player/step_dirt_2.wav",
 	"step_dirt_3": "res://audio/sfx/player/step_dirt_3.wav",
+	"step_dirt_4": "res://audio/sfx/player/step_dirt_4.wav",
+	"step_dirt_5": "res://audio/sfx/player/step_dirt_5.wav",
 	"step_metal_1": "res://audio/sfx/player/step_metal_1.wav",
 	"step_metal_2": "res://audio/sfx/player/step_metal_2.wav",
 	"step_metal_3": "res://audio/sfx/player/step_metal_3.wav",
+	"step_metal_4": "res://audio/sfx/player/step_metal_4.wav",
+	"step_metal_5": "res://audio/sfx/player/step_metal_5.wav",
 	"step_water_1": "res://audio/sfx/player/step_water_1.wav",
 	"step_water_2": "res://audio/sfx/player/step_water_2.wav",
 	"step_water_3": "res://audio/sfx/player/step_water_3.wav",
+	"step_water_4": "res://audio/sfx/player/step_water_4.wav",
+	"step_water_5": "res://audio/sfx/player/step_water_5.wav",
 	"sting_chase": "res://audio/music/sting_chase.wav",
 	"sting_tension": "res://audio/music/sting_tension.wav",
 	"tape_stop": "res://audio/sfx/world/tape_stop.wav",
@@ -111,8 +144,41 @@ const LOOPS := [
 	"stalker_whisper_loop",
 ]
 
-# Warstwy muzyki adaptacyjnej — w tej kolejności nakładają się (kumulatywne: cisza ⊂ napięcie ⊂ walka ⊂ pościg).
+# Muzyka: STEMY NAKŁADAJĄ SIĘ (addytywne): cisza ⊂ napięcie ⊂ walka ⊂ pościg.
+# Wszystkie mają identyczną długość i siatkę, więc wchodzą w tym samym miejscu taktu.
 const MUSIC_STEMS := ["mus_silence", "mus_tension", "mus_combat", "mus_chase"]
-
-# Sugerowane czasy przejścia w sekundach (asymetryczne celowo).
+# Czas dochodzenia stemu do pełnej głośności [s] (asymetryczne: spokój wolno, akcja szybko).
 const MUSIC_BLEND := [4.0, 1.6, 0.7, 0.35]
+# Tempo i długość pętli — runtime kwantyzuje wejścia stemów do beatu.
+const MUSIC_BPM := 96.0
+const MUSIC_BEATS := 32
+const MUSIC_LOOP_SEC := 20.000000
+
+# Napisy dla niesłyszących: prefiks klucza -> [tekst, ważność 0-3].
+const CAPTIONS := {
+	"m83_shot": ["[Gunfire]", 1],
+	"p64_shot": ["[Pistol shot]", 1],
+	"spread12_shot": ["[Shotgun blast]", 2],
+	"explosion": ["[Explosion]", 3],
+	"stalker_growl": ["[Low growl]", 3],
+	"stalker_shriek": ["[Shriek]", 3],
+	"stalker_step": ["[Heavy footsteps]", 3],
+	"stalker_whisper": ["[Whispering]", 2],
+	"stalker_appear": ["[Something appears]", 3],
+	"amb_far_cry": ["[Distant cry]", 2],
+	"amb_creak": ["[Creaking]", 1],
+	"amb_thud": ["[Distant thud]", 1],
+	"amb_gust": ["[Wind gust]", 0],
+	"step_": ["[Footsteps]", 0],
+	"player_hurt": ["[Cry of pain]", 2],
+	"player_down": ["[Teammate down]", 3],
+	"revive": ["[Revived]", 2],
+	"glass_break": ["[Glass breaks]", 2],
+	"alarm_bell": ["[Alarm bell]", 2],
+	"door_": ["[Door]", 1],
+	"impact_flesh": ["[Impact]", 0],
+	"ricochet": ["[Ricochet]", 1],
+	"radio_beep": ["[Radio beep]", 1],
+	"casing_": ["[Casing drops]", 0],
+	"ear_ring": ["[Ringing]", 1],
+}
