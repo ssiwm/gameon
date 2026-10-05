@@ -20,6 +20,7 @@ var wipe_left := 0.0
 ## tworzony na każdym peerze, więc RPC trafia w tę samą ścieżkę.
 var mission: Node2D
 
+@onready var level: Node2D = $Level
 @onready var _players: Node2D = $Players
 @onready var _spawner: MultiplayerSpawner = $PlayerSpawner
 @onready var _lobby: Control = $UI/Lobby
@@ -143,15 +144,18 @@ func _stealth_test_loop(duration: float) -> void:
 	var t := 0.0
 	var fired := false
 	var overcharged := false
-	# Test mierzy SAMĄ pętlę ciszy ze stalkerem. Zwykli wrogowie (wataha przy
-	# x=520–1300) budziliby się od wstrzykniętego hałasu i robili walkę, a to
-	# test czego innego — usuwamy ich.
+	# Test mierzy SAMĄ pętlę ciszy ze stalkerem. Zwykli wrogowie budziliby się
+	# od wstrzykniętego hałasu i robili walkę, a to test czego innego — usuwamy
+	# ich. Punkty hałasu liczymy od startu (mapa nie ma stałych współrzędnych).
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e.get("kind") != null:
 			e.queue_free()
 	var hp_start := _total_hp()
 	var slept_at := -1.0
-	var stalker := get_node_or_null("Stalker")
+	var stalker := level.get_node_or_null("Stalker")
+	var base: Vector2 = level.spawn_for(1)
+	var noise_at := base + Vector2(340, 0)
+	var q_at := base + Vector2(940, 0)
 	while t < duration and is_inside_tree():
 		await get_tree().create_timer(0.5).timeout
 		t += 0.5
@@ -159,13 +163,13 @@ func _stealth_test_loop(duration: float) -> void:
 			slept_at = t
 			print("[TEST] stealth: stalker asleep at t=%.1fs noise=%.0f" % [t, NoiseMgr.level])
 		if not fired:
-			NoiseMgr.add_noise(70.0, Vector2(400, 200))
+			NoiseMgr.add_noise(70.0, noise_at)
 			fired = true
-			print("[TEST] stealth: injected 70 at x=400, waiting for silence")
+			print("[TEST] stealth: injected 70 at x=%.0f, waiting for silence" % noise_at.x)
 		elif not overcharged and t >= 3.0:
-			var ok := NoiseMgr.use_overcharge(Vector2(1000, 200))
+			var ok := NoiseMgr.use_overcharge(q_at)
 			overcharged = true
-			print("[TEST] overcharge accepted=%s charges=%d target=x=1000" % [str(ok), NoiseMgr.overcharge_charges])
+			print("[TEST] overcharge accepted=%s charges=%d target=x=%.0f" % [str(ok), NoiseMgr.overcharge_charges, q_at.x])
 	print("[TEST] stealth result: slept=%s hp_lost=%d (PASS = zasnął i 0 HP straty)" % [
 		"t=%.1fs" % slept_at if slept_at >= 0.0 else "NIE", hp_start - _total_hp()])
 
@@ -182,7 +186,7 @@ func _wipe_test(delay: float) -> void:
 	await get_tree().create_timer(delay).timeout
 	if not multiplayer.is_server():
 		return
-	var victim := get_node_or_null("Trzosek1")
+	var victim := level.get_node_or_null("Trzosek1")
 	if victim != null:
 		victim.take_bullet(victim.global_position + Vector2(-10, 0), 999.0)
 	NoiseMgr.add_noise(50.0, Vector2(400, 200))
@@ -363,15 +367,6 @@ func _spawn_actor(data: Dictionary) -> Node:
 		n.set_multiplayer_authority(1)  # boty steruje serwer
 	return n
 
+## Punkty startu ze znaczników „S" mapy (level.gd).
 func _spawn_pos_for(slot: int) -> Vector2:
-	var a: Marker2D = $Spawns/A
-	var b: Marker2D = $Spawns/B
-	match slot % 4:
-		1:
-			return a.position
-		2:
-			return b.position
-		3:
-			return a.position + Vector2(-28, -28)
-		_:
-			return b.position + Vector2(28, -28)
+	return level.spawn_for(slot)

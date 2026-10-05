@@ -274,6 +274,10 @@ func _free_pool(pool: Array) -> Node:
 ## pasami. To PLACEHOLDER — przy własnych tilemapach wystarczy podmienić
 ## ciało tej funkcji na odczyt z tilemapy, interfejs zostaje ten sam.
 func surface_at(pos: Vector2) -> String:
+	# poziom na tilemapie zna powierzchnię kafla pod stopami
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl != null:
+		return lvl.surface_at(pos)
 	if pos.y < 190.0:
 		return "metal"                      # stoisz na platformie
 	if pos.x < 500.0:

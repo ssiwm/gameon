@@ -11,6 +11,8 @@ extends CharacterBody2D
 ##   Atak NIE generuje hałasu, po ciosie Stalker się cofa
 ##   Ciało widać tylko z bliska; z daleka są same oczy
 
+const Lights := preload("res://scripts/lights.gd")
+
 const AWAKE_THRESHOLD := 60.0
 const SLEEP_THRESHOLD := 30.0
 const HUNT_SPEED := 88.0
@@ -27,8 +29,9 @@ const REACH_CROUCH := 8.0
 const REACH_SLACK := 6.0       ## o tyle gracz może się wycofać w trakcie zapowiedzi i nadal oberwać
 const MISS_COOLDOWN := 0.8
 
-const X_MIN := -270.0
-const X_MAX := 1470.0
+## Granice ruchu w poziomie — z mapy (level.gd), z marginesem na ściany.
+var _x_min := -270.0
+var _x_max := 1470.0
 
 # widoczność ciała względem lokalnego gracza
 const SEE_FULL := 60.0
@@ -66,6 +69,8 @@ var _step_accum := 0.0
 var _last_aud_pos := Vector2.ZERO
 var _hunting_cached := false
 var _winding_cached := false
+var _overlay: Node2D
+var _lit_cd := 0.0
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -73,8 +78,13 @@ func _ready() -> void:
 	_remote_pos = global_position
 	_home = global_position
 	_ground_y = global_position.y
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl != null:
+		_x_min = lvl.bounds.position.x + 40.0
+		_x_max = lvl.bounds.end.x - 40.0
 	visible = false
 	_last_aud_pos = global_position
+	_overlay = Lights.add_overlay(self)
 
 ## Stalker nie jest zagrożeniem do ostrzelania — boty mają go ignorować.
 func is_threat() -> bool:
@@ -99,7 +109,7 @@ func _physics_process(delta: float) -> void:
 	# więc cache'owany _server_sim bywał błędny i klient wysyłał _sync do serwera
 	if not NoiseMgr.is_server():
 		global_position = global_position.lerp(_remote_pos, 0.25)
-		queue_redraw()
+		_redraw()
 		return
 
 	_attack_timer = maxf(0.0, _attack_timer - delta)
@@ -122,6 +132,18 @@ func _physics_process(delta: float) -> void:
 		_windup = 0.0
 		print("[STALKER] asleep")
 
+	_lit_cd = maxf(0.0, _lit_cd - delta)
+	if awake and _lit_cd <= 0.0:
+		# „Światło go przyciąga (latarka na wrogu = śmierć)" (GDD §7.3/§8.3):
+		# jedyny wyjątek od reguły „tylko hałas" — snop latarki na Stalkerze
+		# ściąga go na świecącego. Sprawdzamy 4×/s, nie co klatkę.
+		_lit_cd = 0.25
+		var lighter := Lights.flashlight_on(global_position + Vector2(0, -20), get_tree(), get_world_2d().direct_space_state)
+		if lighter != null:
+			target_pos = lighter.global_position
+			_arrived = false
+			_listen = 0.0
+
 	if awake:
 		# Idzie do ostatniego NOWEGO źródła hałasu — nigdy do gracza.
 		if NoiseMgr.noise_serial != _seen_serial:
@@ -140,7 +162,7 @@ func _physics_process(delta: float) -> void:
 
 	visible = awake
 	_update_audio(delta, awake, noise)
-	queue_redraw()
+	_redraw()
 	_send_state(delta)
 
 ## Ruch po powierzchniach poziomu: poziomo w stronę celu, wspinaczka tylko
@@ -162,7 +184,7 @@ func _move_toward_target(delta: float, noise: float) -> void:
 	var ny := global_position.y
 	if absf(to_target.x) < 90.0:
 		ny = move_toward(ny, target_pos.y, CLIMB_SPEED * delta)
-	global_position = Vector2(clampf(nx, X_MIN, X_MAX), minf(ny, _ground_y))
+	global_position = Vector2(clampf(nx, _x_min, _x_max), minf(ny, _ground_y))
 
 ## Zasięg wykrycia: kucający gracz jest zauważany dopiero z bliska (GDD §8.5).
 func _reach_for(pp: Node2D) -> float:
@@ -301,36 +323,53 @@ func _sync(pos: Vector2, is_awake: bool, is_winding: bool) -> void:
 	# Klient nie symuluje AI (GDD §8.5), więc audio też musi iść tu —
 	# inaczej zdalny gracz usłyszy stalkera dopiero przy trafieniu.
 	_update_audio(get_process_delta_time(), awake, NoiseMgr.level)
-	queue_redraw()
+	_redraw()
 
+## Sylwetka — cieniowana: w ciemności (CanvasModulate) niemal niewidoczna,
+## w snopie latarki albo przy rozbłysku strzału wychodzi z mroku. Kolor jest
+## jaśniejszy niż w wersji bez oświetlenia, inaczej nawet oświetlona byłaby czarna.
 func _draw() -> void:
 	var t := Time.get_ticks_msec() / 1000.0
-	# kolor zależy od fazy: poluje (czerwone oczy, wąska sylwetka) vs czatuje (przygaszone)
 	var hunting := NoiseMgr.level >= HUNT_NOISE
-	# „Słyszysz, nigdy nie widzisz": ciało pojawia się dopiero z bliska,
-	# z daleka widać same oczy. Zapowiedź ataku zawsze jest widoczna.
+	var reveal := _reveal()
+	var body_base := Color(0.20, 0.16, 0.24) if hunting else Color(0.24, 0.21, 0.27)
+	var body := Color(body_base.r, body_base.g, body_base.b, reveal)
+	if reveal > 0.02:
+		draw_rect(Rect2(-8, -28, 16, 28), body)
+		draw_rect(Rect2(-6, -36, 12, 10), body.lightened(0.05))
+		for i in 6:
+			var x := -7.5 + i * 3.0
+			var sway := sin(t * 3.0 + i) * 2.5
+			draw_line(Vector2(x, -1), Vector2(x + sway, 5), Color(0.14, 0.12, 0.16, reveal), 1.5)
+
+## „Słyszysz, nigdy nie widzisz": ciało z bliska, w snopie latarki
+## i w zapowiedzi ataku; z daleka same oczy.
+func _reveal() -> float:
 	var d := global_position.distance_to(_local_player_pos())
 	var reveal := clampf(1.0 - (d - SEE_FULL) / (SEE_NONE - SEE_FULL), 0.0, 1.0)
 	if winding:
 		reveal = 1.0
-	var body_base := Color(0.025, 0.02, 0.035) if hunting else Color(0.05, 0.045, 0.06)
-	var body := Color(body_base.r, body_base.g, body_base.b, reveal)
-	if reveal > 0.02:
-		draw_rect(Rect2(-8, -28, 16, 28), body)
-		draw_rect(Rect2(-6, -36, 12, 10), body.lightened(0.03))
+	elif is_inside_tree() and Lights.flashlight_on(global_position + Vector2(0, -20), get_tree(), get_world_2d().direct_space_state) != null:
+		reveal = 1.0
+	return reveal
+
+## Oczy — unshaded: świecą w ciemności (słabo z daleka, mocno z bliska
+## i w zapowiedzi ataku).
+func _draw_overlay(ov: Node2D) -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	var hunting := NoiseMgr.level >= HUNT_NOISE
+	var d := global_position.distance_to(_local_player_pos())
+	var reveal := clampf(1.0 - (d - SEE_FULL) / (SEE_NONE - SEE_FULL), 0.0, 1.0)
 	var pulse := 0.55 + 0.45 * sin(t * (6.0 if hunting else 2.0))
 	var eye_base := 1.0 if hunting else 0.45
-	# oczy: zawsze słabo widoczne w promieniu 260 px, jaśniejsze z bliska
 	var eye_far := 0.18 if d < 260.0 else 0.06
 	var eye_a := maxf(reveal, eye_far) * eye_base
 	if winding:
-		# błysk zapowiedzi ataku — sygnał „uciekaj"
 		eye_a = 1.0
 		pulse = 1.0
-	draw_circle(Vector2(-3, -32), 1.8, Color(1.0, 0.18 * pulse * eye_a, 0.12 * pulse * eye_a, eye_a))
-	draw_circle(Vector2(3, -32), 1.8, Color(1.0, 0.18 * pulse * eye_a, 0.12 * pulse * eye_a, eye_a))
-	if reveal > 0.02:
-		for i in 6:
-			var x := -7.5 + i * 3.0
-			var sway := sin(t * 3.0 + i) * 2.5
-			draw_line(Vector2(x, -1), Vector2(x + sway, 5), Color(0.02, 0.02, 0.03, reveal), 1.5)
+	ov.draw_circle(Vector2(-3, -32), 1.8, Color(1.0, 0.18 * pulse * eye_a, 0.12 * pulse * eye_a, eye_a))
+	ov.draw_circle(Vector2(3, -32), 1.8, Color(1.0, 0.18 * pulse * eye_a, 0.12 * pulse * eye_a, eye_a))
+
+func _redraw() -> void:
+	queue_redraw()
+	_overlay.queue_redraw()

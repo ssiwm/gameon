@@ -29,6 +29,8 @@ var _server_side := true
 
 func _ready() -> void:
 	_server_side = NoiseMgr.is_server()
+	# smuga widoczna w ciemności
+	material = preload("res://scripts/lights.gd").unshaded()
 	body_entered.connect(_on_body_entered)
 	queue_redraw()
 
@@ -41,11 +43,11 @@ func _physics_process(delta: float) -> void:
 func _on_body_entered(body: Node) -> void:
 	# Klient: tylko znika wizualnie przy ścianie/wrogu. Obrażenia liczy serwer.
 	if not _server_side:
-		if body is StaticBody2D or body.is_in_group("enemies"):
+		if _is_wall(body) or body.is_in_group("enemies"):
 			queue_free()
 		return
 
-	if body is StaticBody2D:
+	if _is_wall(body):
 		Audio.play_variant_at("impact_hard", 3, global_position, Audio.BUS_WORLD, -12.0)
 		Audio.play_variant_at("ricochet", 2, global_position, Audio.BUS_WORLD, -20.0, 1.0, 0.12)
 		queue_free()
@@ -74,6 +76,11 @@ func _on_body_entered(body: Node) -> void:
 		Audio.play_variant_at("impact_hard", 3, global_position, Audio.BUS_WORLD, -14.0)
 		body.take_bullet(global_position, damage)
 		queue_free()
+
+## Ściana = kafle mapy (TileMapLayer) albo dawne StaticBody2D. Kładki
+## jednokierunkowe są na innej warstwie (16) — maska pocisku ich nie widzi.
+func _is_wall(body: Node) -> bool:
+	return body is TileMapLayer or body is StaticBody2D
 
 func _draw() -> void:
 	draw_rect(Rect2(-3, -1, 6, 2), Color(1.0, 0.85, 0.35))

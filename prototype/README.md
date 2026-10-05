@@ -4,6 +4,8 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
 
 - ruch 8-kierunkowy (WASD/strzałki) + strzelanie (J/LPM) + skok (SPACJA) + skradanie (SHIFT)
 - czucie gry (GDD §23): coyote time, jump buffer, jump cut, hitstop, screen shake
+- **mapa wielopoziomowa** (TileMapLayer z siatki ASCII w `scripts/level.gd`): las + posterunek, arena z kładkami, tartak; kładki jednokierunkowe — wskok od spodu, zeskok **dół + skok**
+- **ciemność i latarka** (GDD §8.3): aura 6 m, latarka **L** (stożek 8 m, bateria, +1 Uwagi co 10 s, budzi oświetlonych wrogów, ściąga Stalkera), flara ekstrakcji 12 m, cienie od kafli
 - 3 bronie (M-83, SPREAD-12, P-64) z modelem rozgrzania lufy — krótka seria cicha, ciągły ogień głośny
 - wrogowie: Trzosek (wataha) i Wołek (tank) — śpią, budzi ich strzał w pobliżu albo bliskość gracza
 - **Przesterowanie (Q)** — zasób: celowo podnosisz HAŁAS, żeby odciągnąć stalkera (GDD §8.4)
@@ -40,6 +42,8 @@ Bez parametrów: lobby z przyciskami HOSTUJ / DOŁĄCZ.
 | **Przesterowanie** | **Q** |
 | Podnieś kolegę (przytrzymaj) | E |
 | Broń | 1 / 2 / 3, kółko myszy |
+| Latarka | L |
+| Zeskok z kładki | dół + SPACJA |
 | Nowa misja (host, po ekstrakcji) | Enter |
 
 ## Testy headless
@@ -78,6 +82,8 @@ scripts/
   weapons.gd        # tabela broni (rytm, obrażenia, hałas)
   main.gd           # lobby, host/join, spawn (spawn_function), boty, wipe, testy
   mission.gd        # pętla misji: cel → ekstrakcja → wynik (serwer + sync)
+  level.gd          # mapa: siatka ASCII → TileSet/TileMapLayer, znaczniki postaci
+  lights.gd         # światło: tekstury, materiał unshaded, „kogo oświetla latarka"
   nest.gd           # gniazdo — cel misji
   player.gd         # ruch, broń, HP, down/revive, synchronizer, AI (is_bot)
   enemy.gd          # Trzosek / Wołek (symulacja na serwerze)
@@ -93,6 +99,6 @@ tools/
 ## Znane ograniczenia (świadome, prototyp)
 
 - boty: brak nawigacji A*, proste „trzymaj się 2 kafle za dowódcą” (dowódca = najbliższy stojący człowiek)
-- jedna ręcznie zbudowana mapa, bez ciemności/latarki (§8.3), bez bossa
+- jedna mapa, bez bossa; grafika kafli to placeholder generowany w kodzie
 - pozycje zdalnych graczy ufane (OK dla kooperacji, blokuje host migration)
 - brak WebSocket/relay fallback (tylko ENet P2P/LAN)

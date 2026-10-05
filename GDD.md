@@ -1,6 +1,6 @@
 # DEAD AIR '87 — Game Design Document
 
-**Wersja:** 1.3.4 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
+**Wersja:** 1.3.5 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
 **Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
 **Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
 **Silnik:** Godot 4.x + GodotSteam
@@ -277,6 +277,7 @@ Misja → złom + wroga wiedza + próbki → Ulepszenia broni / Perki / Bezpiecz
 - Światło przyciąga wzrok Trzosków i Stalkera.
 - Tilesety mają „dark zones” — pokoje, gdzie bez światła nie widzisz podłogowych pułapek.
 - CRT/scanline filter opcjonalny; głębia tła sterowana warstwami parallax.
+- **W prototypie (1.3.5):** skala 16 px = 1 m. `CanvasModulate` przyciemnia świat; każdy gracz ma aurę 6 m, latarka (L) to stożek 8 m (±24°) z baterią 180 s, kosztem +1 Uwagi co 10 s świecenia i budzeniem wrogów, na których padnie snop (z linią widzenia). Snop na Stalkerze ściąga go na świecącego (§7.3) i odsłania sylwetkę. Flara ekstrakcji = zielone światło 12 m, gniazda słabo się żarzą, strzał daje rozbłysk 4 m. Kafle rzucają cienie (okluder cofnięty o 4 px na odsłoniętych bokach — wierzch i lica łapią światło). Oczy wrogów, etykiety i paski są „unshaded" — widać je w ciemności. **Do playtestu:** bateria odnawia się 0,25 s/s przy zgaszonej latarce (GDD nie przewiduje ładowania — bez tego misja po 3 min byłaby czarna).
 
 ### 8.4 PRZESTEROWANIE — hałas jako zasób (nie zakaz)
 
@@ -615,7 +616,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 16 | Próg budzenia wrogów 1,0 > hałas strzału zimnego M-83 (0,6) | `enemy.gd` | Pojedyncze strzały M-83 były dla wrogów nieme | **P2 — naprawione (1.3.1)**: próg 0,5 (kroki 0,25 nadal nie budzą) |
 | 17 | Postęp podnoszenia widoczny tylko u podnoszącego | `player.gd` | Leżący nie wiedział, że ktoś go ratuje | **P2 — naprawione (1.3.1)**: synchronizacja 10 Hz, HUD „Podnoszą cię… N%" |
 
-**Pozostałe znane ograniczenia:** brak ciemności i latarki (§8.3 — filar 4 istnieje tylko w audio), brak bossa misji, brak WebSocket/relay fallback, łup misji nie istnieje, więc wipe odbiera tylko postęp próby.
+**Pozostałe znane ograniczenia:** brak bossa misji, brak flar jako przedmiotu (tylko znacznik ekstrakcji), boty i Stalker bez A* (tilemapa już jest — §16.0 pkt 5 odblokowany), brak WebSocket/relay fallback, łup misji nie istnieje, więc wipe odbiera tylko postęp próby.
 
 **Testy regresji (headless):** `--stealthtest=25` (sama pętla ciszy ze stalkerem — zwykli wrogowie są w tym teście usuwani; PASS = zasnął, 0 HP straty; wynik 1.3.1: zasnął po 20,5 s), `--wipetest` (wipe + restart, także z klientem), `--missiontest` (gniazda → ekstrakcja → sukces → nowa misja). `--port=N` pozwala je puścić przy otwartym oknie gry.
 
@@ -679,6 +680,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 1.3.2 | 2026-10-05 | Audio: (a) pętle bez trzasków — filtr HP przed szwem zamiast po nim (amb_air, szept, oddech, muzyka klikały co obieg); (b) muzyka = dokładnie 16 taktów (11,43 s), serce = dokładnie 4 uderzenia — wcześniej rytm przeskakiwał przy każdym zapętleniu; (c) `tape()` czytał 0,35% za szybko (dryf taktu, zawijanie one-shotów); (d) słuchawka przypięta do kamery człowieka (skakała gracz↔bot co klatkę i stała w złym miejscu dla okluzji); (e) serce startuje po wejściu z lobby; (f) wygaszone warstwy muzyki się zatrzymują, nowa wchodzi w tym samym miejscu taktu; (g) słychać kroki kolegi i bota; (h) limiter na Masterze; (i) cisza po rozłączeniu |
 | 1.3.3 | 2026-10-05 | Prototyp: pętla misji z §4 / §16.0 pkt 1 — cel „zniszcz 3 gniazda" (misja 1.3; zniszczenie = hałas 8, budzi okolicę), ekstrakcja w punkcie najdalszym od drużyny (+1 ładunek Q wg §8.4), wymóg: cała stojąca drużyna 3 s w strefie, ekran wyniku (czas, upadki, próba), wipe = kolejna próba. Bot idzie za najbliższym stojącym człowiekiem (nie za hostem) |
 | 1.3.4 | 2026-10-05 | Friendly fire = hałas (filar 3): na jednej płaszczyźnie drużyna stoi w kolejce i seria M-83 w plecy kładła kolegę — kara za samo ustawienie. Pocisk kolegi przelatuje, trafiony krzyczy (`N_FF` = 4, cooldown 0,6 s ≈ 6,7 Uwagi/s przy ciągłej serii) i dostaje odrzut; obrażenie tylko od strzelby z bliska. Bot: linia strzału uwzględnia ludzi (wcześniej strzelał przez plecy), przy zasłonięciu podskakuje. Następny krok: mapa wielopoziomowa na TileMapLayer (drużyna w pionie, A*) |
+| 1.3.5 | 2026-10-05 | Prototyp: (a) **mapa na TileMapLayer** z siatki ASCII (`level.gd`) — 3 sekcje: las + posterunek (wataha w korytarzu, obejście dachem), arena z 3 poziomami kładek (wrogowie z obu stron), tartak z rusztowaniami nad wodą; kładki jednokierunkowe (wskok od spodu, zeskok dół+skok) rozkładają drużynę w pionie; kroki czytają powierzchnię z kafla; wyjścia na obu końcach mapy. (b) **Ciemność i latarka** wg §8.3 (szczegóły tamże). Testy: stealth/mission/wipe PASS, w sieci latarka klienta budzi watahę na serwerze |
 
 ---
 

@@ -20,6 +20,7 @@ var _blink := 0.0
 var _warn_was := false
 var _music_layer := -1
 var _objective: Label
+var _battery: Label
 var _result: Panel
 var _result_text: Label
 
@@ -32,6 +33,12 @@ func _ready() -> void:
 	_objective.add_theme_font_size_override("font_size", 11)
 	_objective.add_theme_color_override("font_color", Color(0.95, 0.85, 0.55))
 	add_child(_objective)
+
+	_battery = Label.new()
+	_battery.position = Vector2(12, 110)
+	_battery.size = Vector2(300, 16)
+	_battery.add_theme_font_size_override("font_size", 11)
+	add_child(_battery)
 
 	_result = Panel.new()
 	_result.position = Vector2(170, 80)
@@ -71,10 +78,16 @@ func _process(delta: float) -> void:
 	if _player == null:
 		_hearts.text = ""
 		_prompt.text = ""
+		_battery.text = ""
 		return
 	var hp: int = maxi(_player.hp, 0)
 	_hearts.text = "HP " + "|".repeat(hp) + "_".repeat(maxi(0, 3 - hp))
 	_weapon.text = "BROŃ: %s  [1/2/3]" % Weapons.def(_player.weapon)["name"]
+	# latarka (GDD §14: licznik baterii) — światło to hałas, więc widoczny stan
+	var pct := int(_player.battery / _player.BATTERY_MAX * 100.0)
+	_battery.text = "LATARKA [L]: %s %d%%" % ["WŁ" if _player.flashlight else "wył", pct]
+	_battery.add_theme_color_override("font_color",
+		Color(1.0, 0.95, 0.7) if _player.flashlight else (Color(0.85, 0.4, 0.35) if pct < 20 else Color(0.6, 0.62, 0.66)))
 	_prompt.remove_theme_color_override("font_color")
 	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
 	if wipe_left > 0.0:

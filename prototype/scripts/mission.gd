@@ -14,10 +14,11 @@ extends Node2D
 
 enum Phase { OBJECTIVE, EXTRACT, SUCCESS }
 
+const Lights := preload("res://scripts/lights.gd")
+
 const EXTRACT_TIME := 3.0
 const EXIT_RADIUS_X := 34.0
 const EXIT_RADIUS_Y := 40.0
-const EXIT_CANDIDATES := [Vector2(-220, 200), Vector2(1420, 200)]
 const SYNC_INTERVAL := 0.2
 
 var phase: int = Phase.OBJECTIVE
@@ -31,10 +32,17 @@ var downs := 0
 var attempts := 1
 
 var _sync_t := 0.0
+var _flare: PointLight2D
 var _was_dead := {}          # nazwa gracza -> bool (liczenie upadków, serwer)
 
 func _ready() -> void:
 	z_index = 5
+	# znacznik (słup, strefa, paski) czytelny w ciemności; sama flara to
+	# prawdziwe światło 12 m (GDD §8.3) — widać ją z daleka i oświetla wyjście
+	material = Lights.unshaded()
+	_flare = Lights.make_light(Lights.radial(), Lights.FLARE_M, Color(0.45, 1.0, 0.55), 1.1, true)
+	_flare.enabled = false
+	add_child(_flare)
 	# gniazda są w scenie (ta sama ścieżka na każdym peerze)
 	for n in get_tree().get_nodes_in_group("nests"):
 		n.destroyed.connect(_on_nest_destroyed)
@@ -55,6 +63,11 @@ func is_active() -> bool:
 
 func _physics_process(delta: float) -> void:
 	queue_redraw()
+	_flare.enabled = phase == Phase.EXTRACT or phase == Phase.SUCCESS
+	if _flare.enabled:
+		_flare.position = exit_pos + Vector2(0, -6)
+		var t := Time.get_ticks_msec() / 1000.0
+		_flare.energy = 1.0 + 0.2 * sin(t * 11.0) * sin(t * 4.3)
 	if not NoiseMgr.has_network():
 		return
 	if not multiplayer.is_server():
@@ -86,8 +99,10 @@ func _open_extraction() -> void:
 	extract_progress = 0.0
 	# najdalszy kandydat od środka drużyny — powrót przez obudzony teren
 	var centroid := _humans_centroid()
-	var best: Vector2 = EXIT_CANDIDATES[0]
-	for c in EXIT_CANDIDATES:
+	# kandydaci = znaczniki „E" mapy (level.gd)
+	var cands: Array[Vector2] = get_tree().get_first_node_in_group("level").exits
+	var best: Vector2 = cands[0]
+	for c in cands:
 		if (c as Vector2).distance_to(centroid) > best.distance_to(centroid):
 			best = c
 	exit_pos = best
