@@ -18,6 +18,11 @@ extends Node2D
 ##   S  start  E  wyjście  T  Trzosek  W  Wołek  N  gniazdo  X  dom Stalkera
 ##   B  Żyła — matka gniazd (boss misji)
 ##   k  skrzynia (fizyczna)   o  beczka (fizyczna, wybucha)
+##   g  broń na ziemi         a  skrzynka z amunicją
+##
+## Układ (192 × 44 kafli): las + posterunek → arena z kładkami → Skład (hala z antresolą,
+## dach, schody z rusztowań) → tartak z bossem; pod całą mapą biegną podziemia
+## (sale i niskie tunele) połączone trzema szybami ze schodami z kładek.
 
 const TILE := 16
 ## Warstwy fizyki: bryły na 1 (jak dawny World), kładki na 16 — pociski
@@ -39,36 +44,50 @@ const PICKUP := preload("res://scripts/pickup.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 
 const MAP := [
-	"##............................................................................................................................##",
-	"##............................................................................................................................##",
-	"##............................................................................................................................##",
-	"##............................................................................................................................##",
-	"##............................................................................................................................##",
-	"##............................................................................................................................##",
-	"##............................................................................................................................##",
-	"##............................................................................................................................##",
-	"##............................................................................................................................##",
-	"##............................................................................................................................##",
-	"##............................................................................................................................##",
-	"##............................................................................................................................##",
-	"##............................................................................................................................##",
-	"##........................................................................................................................N...##",
-	"##.............................................................................................w.........w.........w---------.##",
-	"##.............................................................................................w.........w........Tw..........##",
-	"##.............................................................................................w.........w......---------.....##",
-	"##.......w...w.................................................................................w.........wk.T......w..........##",
-	"##.......w...w.................................................................................w........-------....w..........##",
-	"##.......w...w................................................N................................w.........w.........w..........##",
-	"##.......w...w............................................=========............................w-------..w.........w..........##",
-	"##.......w...w....CCCCCCCCCCCCCCCCCCC.............................T...k........................w.........w.........w..........##",
-	"##.......w...w.---bbbbbbbbbbbbbbbbbbC...........=========.....===========...=========..........w......-------......w..........##",
-	"##.......w...w....bbbbbbbbbbbbbbbbbbC..........................................................w.........w.........w..........##",
-	"##.......w..---...bbbbbbbbbbbbbbbbbb........=========...===========...===========.............-------....w.........w..........##",
-	"##.ES..S.w.g.w.kk.bbbbbbobTbTbTbbNbb....g...a.........M..og.W.a.......X...M.g.....TaT...g......w..a.....gw.og.W.a..w.g.B....E.##",
-	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
-	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
-	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
-	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
+	"##............................................................................................................................................................................................##",
+	"##............................................................................................................................................................................................##",
+	"##............................................................................................................................................................................................##",
+	"##............................................................................................................................................................................................##",
+	"##............................................................................................................................................................................................##",
+	"##............................................................................................................................................................................................##",
+	"##............................................................................................................................................................................................##",
+	"##............................................................................................................................................................................................##",
+	"##............................................................................................................................................................................................##",
+	"##............................................................................................................................................................................................##",
+	"##............................................................................................................................................................................................##",
+	"##............................................................................................................................................................................................##",
+	"##............................................................................................................................................................................................##",
+	"##........................................................................................................................................................................................N...##",
+	"##.............................................................................................................................................................w.........w.........w---------.##",
+	"##.............................................................................................................................................................w.........w........Tw..........##",
+	"##.............................................................................................................................................................w.........w......---------.....##",
+	"##.......w...w..............................................................................................................MM..T..M...........................w.........wk.T......w..........##",
+	"##.......w...w..................................................................................................CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC................w........-------....w..........##",
+	"##.......w...w................................................N.................................................CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC................w...g.....w.........w..........##",
+	"##.......w...w............................................=========.........................................----CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC----............w-------..w.........w..........##",
+	"##.......w...w....CCCCCCCCCCCCCCCCCCC.............................T...k.........................................CbbbbbbbbbbgbbbbbbbbbbbTbbbbbbC................w.........w.........w..........##",
+	"##.......w...w.---bbbbbbbbbbbbbbbbbbC...........=========.....===========...=========....................----....bb=========================bb....----.........w......-------......w..........##",
+	"##.......w...w....bbbbbbbbbbbbbbbbbbC............................................................................bbbbbbbbbbbbbbbbbbbbbbbbbbbbb.................w.........w.........w..........##",
+	"##.......w..---...bbbbbbbbbbbbbbbbbb........=========...===========...===========......................----......====bbbbbbbbbbbbbbbbbbbbb====......----......-------....w.........w..........##",
+	"##.ES..S.w.g.w.kk.bbbbbbobTbTbTbbNbb........a.........M..o..W.a.......X...M.......TaT..................k....kko..bbbbbTbbTbbbbbabbbbbWbbbbbbbb....o...k........w..a......w.o..W.a..w...B....E.##",
+	"######################################bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
+	"######################################bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
+	"######################################======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~C======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC======~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
+	"######################################bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
+	"######################################====bb################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC====bbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC====bbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
+	"######bbbbbbbbbbbbbbbbbbbbbbbbb#######bbbbbb################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbbbbbbCCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
+	"######bbbbbbbbbbbbbbbbbbbbbbbbb#######bb====################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbb====CCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbb====CCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
+	"######bbbbbbbbbbbbbgbbbbbbbbbbb#######bbbbbb################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbbbbbbCCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
+	"######bbbbbbbbb=========bbbbbbb#######====bb################CCCbbbbbbbbb=========bbbbbbbbbbCCCC====bbCCCCCCCCbbbbbbbbb=================bbbbbbbbbCCCCCCCC====bbCCCCCCCCCCCCCbbbbbbbbb======bCCC##",
+	"######bbbbbbbbbbbbbbbbbbbbbbbbb#######bbbbbb################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbbbbbbCCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
+	"######bbbb=======bbbbb=======bbbbbbbbbbb====bbbbbbbbbbbbbbbbbbbbbbb=======bbbbb=======bbbbbbbbbbb====bbbbbbbbbbbb=======bbbbbbbbbbbbb=======bbbbbbbbbbbbbb====bbbbbbbbbbbbbbbbb=======bbbbbCCC##",
+	"######bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCC##",
+	"######bb===bbbbbbMMbbbbbbbbb===bbbbbbb====bbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbMMbbbbbbbb===bbbbbbb====bbbbbbbbbbbb===bbbbbbbbbbMMbbbbbbbbbbbbb===bbbbbbbbbb====bbbbbbbbbbbbbbbbb===MMbbbbbbbbbCCC##",
+	"######bbbbbbbbbbbMMTbbbbbbbabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbTbTbbbbMMbbbbbbbWbbbbbbbbbbbbbbbbbbbbbbbbbabbbbbTbbbbbbbMMbbTbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbMMbbbbTbbbbCCC##",
+	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
+	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
+	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
+	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
 ]
 
 ## znak -> [kolumna atlasu, powierzchnia kroków, rodzaj]
@@ -208,7 +227,7 @@ func _place_deco() -> void:
 			if pick >= 0:
 				_deco_list.append([feet, pick, (h >> 5) & 1 == 1])
 	# akcenty ręczne: płot przy starcie, kłody w tartaku
-	for p in [[Vector2(9 * TILE + 8, 26 * TILE), 6], [Vector2(11 * TILE + 8, 26 * TILE), 6], [Vector2(89 * TILE + 8, 26 * TILE), 7], [Vector2(118 * TILE - 40, 26 * TILE), 7]]:
+	for p in [[Vector2(9 * TILE + 8, 26 * TILE), 6], [Vector2(11 * TILE + 8, 26 * TILE), 6], [Vector2(89 * TILE + 8, 26 * TILE), 7], [Vector2(182 * TILE - 40, 26 * TILE), 7]]:
 		_deco_list.append([p[0], p[1], false])
 	_deco.queue_redraw()
 
@@ -300,11 +319,11 @@ func _add_enemy(n: String, kind: String, p: Vector2) -> void:
 
 # ---------------------------------------------------------------- przedmioty z mapy
 
-## Broń leżąca na mapie w kolejności od lewej (rosnąca moc) — GDD §21 odblokowuje ją
-## strefami; w prototypie jest do wzięcia w terenie. „g” = broń, „a” = skrzynka z amunicją
+## Broń leżąca na mapie w kolejności od lewej (rosnąca moc) — jest jej mało i leży w
+## miejscach, do których trzeba się dostać: las przy starcie, półka w podziemnej sali,
+## antresola hali w Składzie, rusztowanie tartaku. „g” = broń, „a” = skrzynka z amunicją
 ## dla wszystkich noszonych broni głównych (zapas jest wspólny).
-const MAP_WEAPONS := [Weapons.KILOF, Weapons.SRUT8, Weapons.CIEGNO6, Weapons.SOKOL6,
-	Weapons.LR7, Weapons.HKM9, Weapons.GNIEW4, Weapons.WIDMO1]
+const MAP_WEAPONS := [Weapons.SRUT8, Weapons.CIEGNO6, Weapons.HKM9, Weapons.GNIEW4]
 
 var _map_items := {}
 
