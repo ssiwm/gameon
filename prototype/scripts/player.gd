@@ -135,7 +135,7 @@ func _ready() -> void:
 ## Etykiety i paski idą na nakładkę „unshaded" — w ciemności mają być czytelne.
 func _setup_lights() -> void:
 	var chest := Vector2(0, -9)
-	_aura = Lights.make_light(Lights.radial(), Lights.BASE_M, Color(1.0, 0.9, 0.78), 0.55, true)
+	_aura = Lights.make_light(Lights.radial(), Lights.BASE_M, Color(1.0, 0.9, 0.78), Lights.AURA_ENERGY, true)
 	_aura.position = chest
 	add_child(_aura)
 	_beam = Lights.make_light(Lights.cone(), Lights.FLASHLIGHT_M, Color(1.0, 0.96, 0.84), 0.85, true)
@@ -199,7 +199,7 @@ func _process(delta: float) -> void:
 
 func _update_lights() -> void:
 	_aura.enabled = not dead
-	_aura.energy = 0.55 if not crouching else 0.4
+	_aura.energy = Lights.AURA_ENERGY * (1.0 if not crouching else 0.75)
 	_beam.enabled = flashlight and not dead
 	if _beam.enabled:
 		_beam.rotation = aim_dir.angle()

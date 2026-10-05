@@ -23,6 +23,7 @@ const TILE := 16
 const LAYER_SOLID := 1
 const LAYER_PLATFORM := 16
 
+const Lights := preload("res://scripts/lights.gd")
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const NEST_SCENE := preload("res://scenes/nest.tscn")
 const STALKER_SCENE := preload("res://scenes/stalker.tscn")
@@ -84,6 +85,11 @@ var _back: TileMapLayer
 
 func _ready() -> void:
 	add_to_group("level")
+	# poziom ciemności w jednym miejscu (lights.gd)
+	var dark := get_parent().get_node_or_null("Darkness") as CanvasModulate
+	if dark != null:
+		dark.color = Lights.AMBIENT
+	RenderingServer.set_default_clear_color(Lights.SKY)
 	var ts := _build_tileset()
 	_back = TileMapLayer.new()
 	_back.name = "Back"
