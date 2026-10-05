@@ -8,9 +8,15 @@ extends Area2D
 ## pociski mają automatyczne nazwy różne na każdym peerze, więc RPC nie miał
 ## adresata. Lot po prostej jest deterministyczny, więc nie potrzeba synchronizacji.
 
+const Weapons := preload("res://scripts/weapons.gd")
+## Friendly fire z obrażeniem tylko z bliska i tylko ze strzelby — świadome
+## ryzyko, nie przypadek (GDD §2 filar 3, wariant „FF = hałas").
+const FF_DAMAGE_RANGE := 40.0
+
 var speed := 320.0
 var damage := 8.0
 var life_max := 1.2
+var weapon := 0
 
 var direction := Vector2.RIGHT:
 	set(value):
@@ -46,16 +52,22 @@ func _on_body_entered(body: Node) -> void:
 		return
 
 	if body.is_in_group("players"):
-		if body.player_id != shooter_id:
-			# Głośniej przy bliższym trafieniu — zwykle odległość = kilka pikseli,
-			# więc różnica głośności niesie informację o dystansie.
-			var d := global_position.distance_to((body as Node2D).global_position)
-			Audio.play_variant_at("impact_flesh", 3, global_position, Audio.BUS_WORLD,
-				lerpf(-8.0, -18.0, clampf(d / 240.0, 0.0, 1.0)))
-			# Friendly fire: 1 obrażenie, dostarczone właścicielowi postaci
-			# (deliver_hit rozstrzyga lokalnie albo przez RPC do autorytetu).
+		# własny pocisk (np. celowanie w dół z lufą w sobie) — leci dalej
+		if body.player_id == shooter_id or body.dead:
+			return
+		# Friendly fire (GDD §2 filar 3, wariant 1.3.4): na jednej płaszczyźnie
+		# drużyna stoi w kolejce, więc FF za HP karało za samo ustawienie —
+		# seria M-83 w plecy kładła kolegę. Teraz pocisk PRZELATUJE przez
+		# kolegę, a kosztem jest hałas (krzyk) i odrzut — konsekwencja w
+		# głównym systemie gry, Uwadze. Obrażenie zostaje tylko dla strzelby
+		# z bliska, gdzie ryzyko jest świadomym wyborem.
+		var travelled := _life * speed
+		if weapon == Weapons.SPREAD12 and travelled < FF_DAMAGE_RANGE:
+			Audio.play_variant_at("impact_flesh", 3, global_position, Audio.BUS_WORLD, -8.0)
 			(body as Node).deliver_hit(1, global_position)
-		queue_free()
+			queue_free()
+		else:
+			(body as Node).deliver_ff(global_position)
 		return
 
 	if body.is_in_group("enemies"):

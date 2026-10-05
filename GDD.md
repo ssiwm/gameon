@@ -1,6 +1,6 @@
 # DEAD AIR '87 — Game Design Document
 
-**Wersja:** 1.3.3 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
+**Wersja:** 1.3.4 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
 **Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
 **Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
 **Silnik:** Godot 4.x + GodotSteam
@@ -27,7 +27,7 @@ Rok 1987. Oddział specjalny „Cicha Godzina" wkracza do zamkniętego kompleksu
 |---|-------|-----------|
 | 1 | **Strzelanina z klasą** | Responsywna, 8-kierunkowa, czytelna — czysta przyjemność run-and-gun |
 | 2 | **Hałas to waluta, którą się wydaje** | Poziom Uwagi rośnie od strzałów, biegu i mikrofonu. **Przesterowanie (Q)** pozwala go celowo podnieść, żeby ściągnąć Stalkera z drużyny. Hałas to decyzja, nie zakaz — patrz §8.4 |
-| 3 | **Co-op albo śmierć** | Down = dźwigasz kolegę. Friendly fire ON. Szeptanie do mikrofonu to mechanika |
+| 3 | **Co-op albo śmierć** | Down = dźwigasz kolegę. **Friendly fire = hałas**: pocisk kolegi przelatuje bez obrażeń, ale trafiony krzyczy (+4 Uwagi, odrzut) — obrażenie tylko od strzelby z bliska (<40 px) i wybuchów. Szeptanie do mikrofonu to mechanika |
 | 4 | **Groza przez dźwięk i światło** | Zero jump scare'ów-tanich. Grozę budują: ciemność, audio, stalker i cisza |
 | 5 | **Krótkie misje, długi progres** | 8–15 min misje, meta-progresja na 20 h+, powtarzalne modyfikatory |
 | 6 | **Gracze albo AI, nigdy pusto** | AI towarzysz od EA. Hot-join do botów w trakcie misji. Pusta drużyna = zepsuta sesja |
@@ -678,6 +678,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 1.3.1 | 2026-10-05 | Audyt prototypu po 1.3 + poprawki (§19 poz. 11–17): synchronizacja postaci klienta (klient nie mógł się ruszyć), wipe podłączony, dyscyplina ognia bota (nie kasuje Q), `display_id` bota, hitstop wyłączony na hoście z klientami, próg budzenia wrogów, postęp podnoszenia u leżącego. Test ciszy izolowany od zwykłych wrogów (wynik z 1.2 przestał być miarodajny po ich dodaniu); dodano `--wipetest`. Dodano §23 |
 | 1.3.2 | 2026-10-05 | Audio: (a) pętle bez trzasków — filtr HP przed szwem zamiast po nim (amb_air, szept, oddech, muzyka klikały co obieg); (b) muzyka = dokładnie 16 taktów (11,43 s), serce = dokładnie 4 uderzenia — wcześniej rytm przeskakiwał przy każdym zapętleniu; (c) `tape()` czytał 0,35% za szybko (dryf taktu, zawijanie one-shotów); (d) słuchawka przypięta do kamery człowieka (skakała gracz↔bot co klatkę i stała w złym miejscu dla okluzji); (e) serce startuje po wejściu z lobby; (f) wygaszone warstwy muzyki się zatrzymują, nowa wchodzi w tym samym miejscu taktu; (g) słychać kroki kolegi i bota; (h) limiter na Masterze; (i) cisza po rozłączeniu |
 | 1.3.3 | 2026-10-05 | Prototyp: pętla misji z §4 / §16.0 pkt 1 — cel „zniszcz 3 gniazda" (misja 1.3; zniszczenie = hałas 8, budzi okolicę), ekstrakcja w punkcie najdalszym od drużyny (+1 ładunek Q wg §8.4), wymóg: cała stojąca drużyna 3 s w strefie, ekran wyniku (czas, upadki, próba), wipe = kolejna próba. Bot idzie za najbliższym stojącym człowiekiem (nie za hostem) |
+| 1.3.4 | 2026-10-05 | Friendly fire = hałas (filar 3): na jednej płaszczyźnie drużyna stoi w kolejce i seria M-83 w plecy kładła kolegę — kara za samo ustawienie. Pocisk kolegi przelatuje, trafiony krzyczy (`N_FF` = 4, cooldown 0,6 s ≈ 6,7 Uwagi/s przy ciągłej serii) i dostaje odrzut; obrażenie tylko od strzelby z bliska. Bot: linia strzału uwzględnia ludzi (wcześniej strzelał przez plecy), przy zasłonięciu podskakuje. Następny krok: mapa wielopoziomowa na TileMapLayer (drużyna w pionie, A*) |
 
 ---
 

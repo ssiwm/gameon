@@ -21,6 +21,8 @@ const JUMP_BUFFER := 0.10       ## skok wciśnięty tuż przed lądowaniem się 
 const JUMP_CUT := 0.45          ## puszczenie skoku skraca go (zmienna wysokość)
 const INVULN_AFTER_HIT := 0.6   ## chroni przed „serią\" trafień z kilku wrogów naraz
 const KICK_DECAY := 600.0
+const FF_KICK := 70.0          ## odrzut od pocisku kolegi (px/s, wygasa KICK_DECAY)
+const FF_COOLDOWN := 0.6       ## krzyk/hałas od FF najwyżej raz na tyle sekund
 
 # Down / revive (GDD §4)
 const BLEED_TIME := 25.0
@@ -65,6 +67,7 @@ var _muzzle := 0.0
 var _invuln := 0.0
 var _heat := 0.0
 var _kick := 0.0
+var _ff_cd := 0.0
 var _coyote := 0.0
 var _jump_buf := 0.0
 var _was_on_floor := true
@@ -152,6 +155,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_invuln = maxf(0.0, _invuln - delta)
+	_ff_cd = maxf(0.0, _ff_cd - delta)
 	_heat = maxf(0.0, _heat - Weapons.HEAT_DECAY * delta)
 
 	if dead:
@@ -519,6 +523,7 @@ const LEADER_SWITCH := 60.0
 
 var _bot_target_pos := Vector2.ZERO
 var _bot_leader: Node2D = null
+var _bot_wants_jump := false
 var _bot_repath := 0.0
 
 func _bot_brain(delta: float) -> void:
@@ -546,10 +551,14 @@ func _bot_brain(delta: float) -> void:
 		velocity.x = 0.0
 	else:
 		velocity.x = signf(dx) * (CROUCH_SPEED if crouching else SPEED * 0.85)
+	# odrzut (np. od pocisku kolegi) działa też na bota
+	_kick = move_toward(_kick, 0.0, KICK_DECAY * delta)
+	velocity.x += _kick
 	if not is_on_floor():
 		velocity.y = minf(velocity.y + GRAVITY * delta, MAX_FALL)
-	elif not crouching and ((absf(dx) > 6.0 and is_on_wall()) or (dy < -24.0 and absf(dx) < 70.0)):
+	elif _bot_wants_jump or (not crouching and ((absf(dx) > 6.0 and is_on_wall()) or (dy < -24.0 and absf(dx) < 70.0))):
 		velocity.y = JUMP_VELOCITY
+	_bot_wants_jump = false
 	move_and_slide()
 
 	if reviving:
@@ -561,7 +570,11 @@ func _bot_brain(delta: float) -> void:
 		var d := (enemy.global_position - global_position)
 		if d.length() > 6.0:
 			aim_dir = _snap8(d)
-		if _fire_timer <= 0.0 and _aim_ok(d) and _bot_may_fire(d) and _has_los(enemy):
+		var los := _los_state(enemy) if _fire_timer <= 0.0 else Los.WALL
+		if los == Los.TEAMMATE and is_on_floor() and not crouching:
+			# kolega na linii — podskok daje czystą linię nad nim
+			_bot_wants_jump = true
+		if _fire_timer <= 0.0 and _aim_ok(d) and _bot_may_fire(d) and los == Los.CLEAR:
 			_fire_timer = float(Weapons.def(Weapons.M83)["cooldown"]) * 1.8
 			_muzzle = 0.06
 			weapon = Weapons.M83
@@ -579,12 +592,31 @@ func _bot_may_fire(d: Vector2) -> bool:
 		return false
 	return NoiseMgr.seconds_since_overcharge() >= BOT_Q_HOLD
 
-## Linia strzału: bot nie strzela w ścianę (strzał w nią to sam hałas).
-func _has_los(target: Node2D) -> bool:
+enum Los { CLEAR, WALL, TEAMMATE }
+
+## Linia strzału bota: ściana (strzał w nią to sam hałas) albo stojący kolega.
+## Wcześniej promień widział tylko ściany (maska 1), więc bot strzelał
+## w wroga przez plecy człowieka. Leżących kolegów pomijamy — pocisk i tak
+## przez nich przelatuje (bullet.gd).
+func _los_state(target: Node2D) -> int:
 	var from := global_position + Vector2(0, -9)
 	var to := target.global_position + Vector2(0, -6)
-	var q := PhysicsRayQueryParameters2D.create(from, to, 1)
-	return get_world_2d().direct_space_state.intersect_ray(q).is_empty()
+	var q := PhysicsRayQueryParameters2D.create(from, to, 1 | 2)
+	var exclude: Array[RID] = [get_rid()]
+	var space := get_world_2d().direct_space_state
+	for _i in 4:
+		q.exclude = exclude
+		var hit := space.intersect_ray(q)
+		if hit.is_empty():
+			return Los.CLEAR
+		var c: Object = hit["collider"]
+		if c is Node and (c as Node).is_in_group("players"):
+			if c.dead:
+				exclude.append(hit["rid"])
+				continue
+			return Los.TEAMMATE
+		return Los.WALL
+	return Los.CLEAR
 
 func _aim_ok(d: Vector2) -> bool:
 	# strzela tylko gdy wróg jest mniej więcej na tej samej wysokości lub tuż obok
@@ -702,11 +734,34 @@ func _make_bullet(muzzle: Vector2, dir: Vector2, shooter: int, w: int) -> void:
 	b.speed = d["speed"]
 	b.damage = d["damage"]
 	b.life_max = d["life"]
+	b.weapon = w
 
 ## Dostarcza obrażenia WŁAŚCICIELOWI postaci. apply_hit ma straż
 ## is_multiplayer_authority(), więc wywołanie go bezpośrednio na serwerze dla
 ## cudzej postaci kończyło się po cichu — gracze-klienci nie dostawali obrażeń
 ## od Stalkera ani od friendly fire. Wszystkie źródła obrażeń wołają tę metodę.
+## Friendly fire bez obrażeń (bullet.gd): rozstrzyga właściciel postaci.
+func deliver_ff(from_pos: Vector2) -> void:
+	if not NoiseMgr.has_network() or is_multiplayer_authority():
+		apply_ff(from_pos)
+	else:
+		apply_ff.rpc_id(get_multiplayer_authority(), from_pos)
+
+## Trafienie przez kolegę: odrzut, błysk i krzyk = HAŁAS (Uwaga), zero HP.
+@rpc("any_peer", "call_remote", "reliable")
+func apply_ff(from_pos: Vector2) -> void:
+	if not is_multiplayer_authority() or dead:
+		return
+	_kick = signf(global_position.x - from_pos.x) * FF_KICK
+	_flash = maxf(_flash, 0.12)
+	if _ff_cd > 0.0:
+		return
+	_ff_cd = FF_COOLDOWN
+	Audio.play_variant_at("player_hurt", 2, global_position, Audio.BUS_PLAYER, -12.0, 1.15)
+	NoiseMgr.add_noise(NoiseMgr.N_FF, global_position)
+	if not is_bot:
+		Feel.shake(1.5)
+
 func deliver_hit(amount: int, from_pos: Vector2) -> void:
 	if not NoiseMgr.has_network() or is_multiplayer_authority():
 		apply_hit(amount, from_pos)

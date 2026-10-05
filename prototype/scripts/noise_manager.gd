@@ -24,6 +24,10 @@ const N_SHOOT_SILENT := 1.0
 const N_GRENADE := 15.0
 const N_SCREAM := 20.0
 const N_HURT := 6.0
+## Trafienie kolegi (friendly fire bez obrażeń): krzyk zaskoczenia. Mniej niż
+## N_HURT, ale z cooldownem per ofiara (player.FF_COOLDOWN), więc ciągła seria
+## przez kolegę kosztuje ~6,7 Uwagi/s — tyle co gorąca lufa M-83.
+const N_FF := 4.0
 const N_OVERCHARGE := 12.0
 
 # Faza niepokoju: Stalker jeszcze śpi, ale słychać szept i HUD ostrzega (GDD §8.1)
