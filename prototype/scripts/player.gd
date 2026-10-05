@@ -10,6 +10,8 @@ const Weapons := preload("res://scripts/weapons.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Nav := preload("res://scripts/nav.gd")
 const Vfx := preload("res://scripts/vfx.gd")
+const Sprites := preload("res://scripts/sprites.gd")
+const GUN_ROWS := {0: 0, 1: 1, 2: 2}   ## Weapons.M83/SPREAD12/P64 → rząd w guns.png
 
 const SPEED := 95.0
 const CROUCH_SPEED := 45.0
@@ -102,6 +104,9 @@ var squash := Vector2.ONE
 var _prev_vy := 0.0
 var _prev_floor_y := 0.0
 var _splash_t := 0.0
+var _spr: Array = []            ## [ciało, glow] — AnimatedSprite2D (sprites.gd)
+var _gun: Sprite2D
+var _facing := 1.0
 var _light_noise_t := 0.0
 var _aura: PointLight2D
 var _beam: PointLight2D
@@ -164,7 +169,61 @@ func _setup_lights() -> void:
 	_muzzle_light.position = chest
 	_muzzle_light.enabled = false
 	add_child(_muzzle_light)
-	_overlay = Lights.add_overlay(self)
+	_setup_sprites()
+	_overlay = Lights.add_overlay(self)   # ostatnie dziecko: etykiety nad sprite'ami
+
+## Pixel-art z art/sprites (bake_sprites.py). Bez arkuszy zostaje rysowanie w kodzie.
+func _setup_sprites() -> void:
+	var sheet := "bot" if is_bot else "player_%d" % ((display_id - 1) % 4 + 1)
+	if not Sprites.has(sheet):
+		return
+	_spr = Sprites.attach(self, sheet)
+	if Sprites.has("guns"):
+		_gun = Sprite2D.new()
+		_gun.name = "Gun"
+		_gun.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		_gun.centered = false
+		_gun.offset = Vector2(-3, -4)          # dłoń w (0,0) — obrót wokół dłoni
+		var at := AtlasTexture.new()
+		at.atlas = Sprites.texture(Sprites.DIR + "guns.png")
+		_gun.texture = at
+		add_child(_gun)
+
+## Animacja z (replikowanego) stanu — działa też dla zdalnych graczy i bota.
+func _update_sprite() -> void:
+	if _spr.is_empty():
+		return
+	var body: AnimatedSprite2D = _spr[0]
+	var grounded := is_on_floor() if not _is_remote else absf(velocity.y) < 5.0
+	if absf(aim_dir.x) > 0.1:
+		_facing = signf(aim_dir.x)
+	elif absf(velocity.x) > 10.0:
+		_facing = signf(velocity.x)
+	var anim := "idle"
+	if dead:
+		anim = "down"
+	elif not grounded:
+		anim = "jump" if velocity.y < 0.0 else "fall"
+	elif crouching:
+		anim = "crouch_walk" if absf(velocity.x) > 8.0 else "crouch"
+	elif absf(velocity.x) > 10.0:
+		anim = "run"
+	body.scale = squash
+	Sprites.play(_spr, anim, _facing < 0.0)
+	var m := Color.WHITE
+	if _flash > 0.0:
+		m = Color(2.4, 2.4, 2.4)
+	elif _invuln > 0.0 and int(Time.get_ticks_msec() / 60) % 2 == 0:
+		m.a = 0.45
+	body.modulate = m
+	if _gun != null:
+		_gun.visible = not dead
+		var at := _gun.texture as AtlasTexture
+		at.region = Rect2(0, GUN_ROWS.get(weapon, 0) * 7, 16, 7)
+		_gun.position = Vector2(_facing * 1.0, -8.0 if crouching else -12.0) * Vector2(1, squash.y)
+		_gun.rotation = aim_dir.angle()
+		_gun.flip_v = aim_dir.x < -0.05
+		_gun.modulate = m
 
 ## Synchronizacja stanu przez MultiplayerSynchronizer (GDD §19 poz. 2).
 ## Zamiast ręcznych RPC 20 Hz mamy delta-sync z wbudowaną interpolacją.
@@ -214,6 +273,7 @@ func _process(delta: float) -> void:
 		_update_footsteps_passive()
 	_update_lights()
 	_update_squash(delta)
+	_update_sprite()
 	queue_redraw()
 	_overlay.queue_redraw()
 
@@ -1086,6 +1146,10 @@ func _body_color() -> Color:
 # ---------------------------------------------------------------- draw
 
 func _draw() -> void:
+	if not _spr.is_empty():
+		if not dead:
+			draw_rect(Rect2(-6, -1, 12, 2), Color(0, 0, 0, 0.35))
+		return
 	var col := _body_color()
 	if _flash > 0.0:
 		col = Color.WHITE
@@ -1127,8 +1191,11 @@ func _draw_overlay(ov: Node2D) -> void:
 			ov.draw_rect(Rect2(-12, -12, 24.0 * revive_progress, 3), Color(0.4, 0.95, 0.5))
 		return
 	var top := -11.0 if crouching else -17.0
+	if not _spr.is_empty():
+		top = -16.0 if crouching else -22.0
 	if _muzzle > 0.0:
-		ov.draw_circle(Vector2(0, top + 9) + aim_dir * _gun_len(), 3.5, Color(1.0, 0.9, 0.4, 0.9))
+		var gun_at := (_gun.position if _gun != null else Vector2(0, top + 9))
+		ov.draw_circle(gun_at + aim_dir * _gun_len(), 3.5, Color(1.0, 0.9, 0.4, 0.9))
 	for i in MAX_HP:
 		var c := Color(0.92, 0.25, 0.3) if i < hp else Color(0.22, 0.22, 0.26)
 		ov.draw_rect(Rect2(-8 + i * 6.0, top - 7.0, 4, 3), c)

@@ -26,6 +26,9 @@ const LAYER_PLATFORM := 16
 
 const Lights := preload("res://scripts/lights.gd")
 const Nav := preload("res://scripts/nav.gd")
+const Sprites := preload("res://scripts/sprites.gd")
+const ART_TILES := "res://art/tiles.png"     ## 8×4: rzędy 0/2 wierzch, 1/3 wypełnienie
+const ART_PROPS := "res://art/props.png"
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const NEST_SCENE := preload("res://scenes/nest.tscn")
 const STALKER_SCENE := preload("res://scenes/stalker.tscn")
@@ -89,6 +92,10 @@ var nav: AStar2D
 var _solid: TileMapLayer
 var _back: TileMapLayer
 var _decals: Node2D
+var _deco: Node2D
+var _props_tex: Texture2D
+var _deco_list: Array = []             ## [pozycja stóp, indeks dekoracji, flip]
+var _rows := 2                         ## wierszy w atlasie (2 = kod, 4 = art/tiles.png)
 var _decal_list: Array = []            ## [pos, radius, seed]
 
 func _ready() -> void:
@@ -108,6 +115,14 @@ func _ready() -> void:
 	_solid.name = "Solid"
 	_solid.tile_set = ts
 	add_child(_solid)
+	for l in [_back, _solid]:
+		l.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	# dekoracje (trawa, kamienie, trzciny…) — nad kaflami, cieniowane
+	_deco = Node2D.new()
+	_deco.name = "Deco"
+	_deco.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_deco.draw.connect(_draw_deco)
+	add_child(_deco)
 	# plamy krwi — nad kaflami, pod postaciami; cieniowane (widać je w świetle)
 	_decals = Node2D.new()
 	_decals.name = "Decals"
@@ -140,7 +155,7 @@ func _build_map() -> void:
 				# postać w posterunku nie zostawiała dziury w ścianie
 				var left := _ch(c - 1, r)
 				if ch != "." and KINDS.has(left) and KINDS[left][2] == 2:
-					_back.set_cell(Vector2i(c, r), 0, Vector2i(KINDS[left][0], 1))
+					_back.set_cell(Vector2i(c, r), 0, Vector2i(KINDS[left][0], _row(c, r, false)))
 				continue
 			var k: Array = KINDS[ch]
 			# wariant „wierzch" (rząd 0 atlasu), gdy nad kaflem nie ma bryły
@@ -148,7 +163,61 @@ func _build_map() -> void:
 			var layer := _back if k[2] == 2 else _solid
 			# bryły: alternatywa kafla z okluderem cofniętym na odsłoniętych bokach
 			var alt := _exposure(c, r) if k[2] == 0 else 0
-			layer.set_cell(Vector2i(c, r), 0, Vector2i(k[0], 0 if top else 1), alt)
+			layer.set_cell(Vector2i(c, r), 0, Vector2i(k[0], _row(c, r, top)), alt)
+	_place_deco()
+
+## Rząd atlasu: wierzch/wypełnienie + wariant (deterministyczny z pozycji).
+func _row(c: int, r: int, top: bool) -> int:
+	var base := 0 if top else 1
+	if _rows < 4:
+		return base
+	return base + (2 if (c * 7 + r * 13) % 3 == 0 else 0)
+
+## Dekoracje z art/props.png na wierzchach brył — deterministycznie z pozycji.
+## Indeksy jak w bake_sprites.PROPS: grass_a, grass_b, fern, rock, bones, reeds, fence, logs.
+func _place_deco() -> void:
+	_props_tex = Sprites.texture(ART_PROPS)
+	if _props_tex == null:
+		return
+	for r in MAP.size():
+		var row: String = MAP[r]
+		for c in row.length():
+			var ch := row[c]
+			if not KINDS.has(ch) or KINDS[ch][2] != 0 or _is_solid(c, r - 1):
+				continue
+			if _ch(c, r - 1) != ".":
+				continue                     # znacznik / tło nad kaflem
+			var h := (c * 73856093) ^ (r * 19349663)
+			var roll := absi(h) % 100
+			var feet := Vector2(c * TILE + TILE * 0.5, r * TILE)
+			var pick := -1
+			match ch:
+				"#":
+					if roll < 55:
+						pick = [0, 1, 0, 1, 2, 3, 0, 4][absi(h >> 3) % 8]
+				"C":
+					if roll < 12:
+						pick = [4, 3][absi(h >> 3) % 2]
+				"~":
+					if roll < 30:
+						pick = 5
+			if pick >= 0:
+				_deco_list.append([feet, pick, (h >> 5) & 1 == 1])
+	# akcenty ręczne: płot przy starcie, kłody w tartaku
+	for p in [[Vector2(9 * TILE + 8, 26 * TILE), 6], [Vector2(11 * TILE + 8, 26 * TILE), 6], [Vector2(89 * TILE + 8, 26 * TILE), 7], [Vector2(118 * TILE - 40, 26 * TILE), 7]]:
+		_deco_list.append([p[0], p[1], false])
+	_deco.queue_redraw()
+
+func _draw_deco() -> void:
+	if _props_tex == null:
+		return
+	for d in _deco_list:
+		var feet: Vector2 = d[0]
+		var src := Rect2(int(d[1]) * 16, 0, 16, 16)
+		var dst := Rect2(feet.x - 8, feet.y - 16, 16, 16)
+		if d[2]:
+			dst = Rect2(feet.x + 8, feet.y - 16, -16, 16)
+		_deco.draw_texture_rect_region(_props_tex, dst, src)
 
 func _is_solid(c: int, r: int) -> bool:
 	# poza mapą = bryła (krawędzie mapy nie świecą)
@@ -275,7 +344,10 @@ func _build_tileset() -> TileSet:
 	ts.set_custom_data_layer_type(0, TYPE_STRING)
 
 	var src := TileSetAtlasSource.new()
-	src.texture = ImageTexture.create_from_image(_build_atlas())
+	# atlas z art/tiles.png (bake_sprites.py / artysta), inaczej generowany w kodzie
+	var art := Sprites.texture(ART_TILES)
+	_rows = 4 if art != null else 2
+	src.texture = art if art != null else ImageTexture.create_from_image(_build_atlas())
 	src.texture_region_size = Vector2i(TILE, TILE)
 	ts.add_source(src, 0)
 
@@ -284,7 +356,7 @@ func _build_tileset() -> TileSet:
 	var plank := PackedVector2Array([Vector2(-h, -h), Vector2(h, -h), Vector2(h, -h + 4), Vector2(-h, -h + 4)])
 	for ch in KINDS:
 		var k: Array = KINDS[ch]
-		for variant in 2:
+		for variant in _rows:
 			var coords := Vector2i(k[0], variant)
 			if src.has_tile(coords):
 				continue

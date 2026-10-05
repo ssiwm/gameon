@@ -11,6 +11,7 @@ signal destroyed(nest: Node)
 
 const Lights := preload("res://scripts/lights.gd")
 const Vfx := preload("res://scripts/vfx.gd")
+const Sprites := preload("res://scripts/sprites.gd")
 
 const MAX_HP := 60.0
 ## Hałas zniszczenia (GDD §8.1): pękające gniazdo budzi okolicę — to cena celu.
@@ -23,6 +24,7 @@ var _flash := 0.0
 var _net_timer := 0.0
 var _glow: PointLight2D
 var _embers: CPUParticles2D
+var _spr: Array = []
 var _overlay: Node2D
 
 func _ready() -> void:
@@ -33,6 +35,9 @@ func _ready() -> void:
 	_glow = Lights.make_light(Lights.radial(), 2.5, Color(1.0, 0.45, 0.2), 0.7, false)
 	_glow.position = Vector2(0, -8)
 	add_child(_glow)
+	if Sprites.has("nest"):
+		_spr = Sprites.attach(self, "nest")
+		Sprites.play(_spr, "pulse", position.x > 1000.0)
 	_overlay = Lights.add_overlay(self)
 	# żar unoszący się nad gniazdem — widać je z daleka w mroku
 	_embers = CPUParticles2D.new()
@@ -146,6 +151,11 @@ func _process(_delta: float) -> void:
 		_glow.energy = 0.5 + 0.3 * (0.5 + 0.5 * sin(Time.get_ticks_msec() / 1000.0 * 2.2 + position.x * 0.01))
 
 func _draw() -> void:
+	if not _spr.is_empty():
+		(_spr[0] as AnimatedSprite2D).modulate = Color(2.4, 2.4, 2.4) if _flash > 0.0 else Color.WHITE
+		if _spr[1] != null:
+			(_spr[1] as AnimatedSprite2D).frame = (_spr[0] as AnimatedSprite2D).frame
+		return
 	var t := Time.get_ticks_msec() / 1000.0
 	var pulse := 0.5 + 0.5 * sin(t * 2.2 + position.x * 0.01)
 	var base := Color(0.32, 0.12, 0.16).lerp(Color(0.45, 0.16, 0.2), pulse)
@@ -161,10 +171,11 @@ func _draw() -> void:
 func _draw_overlay(ov: Node2D) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	var pulse := 0.5 + 0.5 * sin(t * 2.2 + position.x * 0.01)
-	var glow := Color(1.0, 0.45, 0.25, 0.35 + 0.45 * pulse)
-	ov.draw_circle(Vector2(-3, -9), 1.6, glow)
-	ov.draw_circle(Vector2(3, -6), 1.3, glow)
-	ov.draw_circle(Vector2(0, -15), 1.2, glow)
+	if _spr.is_empty():
+		var glow := Color(1.0, 0.45, 0.25, 0.35 + 0.45 * pulse)
+		ov.draw_circle(Vector2(-3, -9), 1.6, glow)
+		ov.draw_circle(Vector2(3, -6), 1.3, glow)
+		ov.draw_circle(Vector2(0, -15), 1.2, glow)
 	if hp < MAX_HP:
 		ov.draw_rect(Rect2(-11, -24, 22, 2), Color(0.15, 0.05, 0.05))
 		ov.draw_rect(Rect2(-11, -24, 22.0 * clampf(hp / MAX_HP, 0.0, 1.0), 2), Color(1.0, 0.5, 0.2))

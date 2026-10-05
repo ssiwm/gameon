@@ -21,6 +21,7 @@ const KINDS := {
 
 const Lights := preload("res://scripts/lights.gd")
 const Vfx := preload("res://scripts/vfx.gd")
+const Sprites := preload("res://scripts/sprites.gd")
 
 const GRAVITY := 900.0
 const MAX_FALL := 620.0
@@ -52,6 +53,9 @@ var _net_timer := 0.0
 var _remote_pos := Vector2.ZERO
 var _max_hp := 30.0
 var _overlay: Node2D
+var _spr: Array = []
+var _facing := 1.0
+var _last_x := 0.0
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -70,6 +74,9 @@ func _ready() -> void:
 	cs.position = Vector2(0, -size.y * 0.5)
 	# oczy i pasek HP świecą w ciemności — śpiącego wroga widać jako
 	# przygaszone oczy, a nie wcale (skradanie musi mieć informację)
+	if Sprites.has(kind):
+		_spr = Sprites.attach(self, kind)
+	_last_x = global_position.x
 	_overlay = Lights.add_overlay(self)
 
 ## Aktywny, żywy wróg = realne zagrożenie (boty strzelają tylko do takich).
@@ -281,10 +288,44 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 
 func _process(_delta: float) -> void:
 	if visible:
+		_update_sprite()
 		queue_redraw()
 		_overlay.queue_redraw()
 
+## Animacja: sen / zapowiedź / bieg / czuwanie. Kierunek z przesunięcia pozycji
+## (u klientów prędkość wroga nie jest replikowana).
+func _update_sprite() -> void:
+	if _spr.is_empty():
+		return
+	var dx := global_position.x - _last_x
+	_last_x = global_position.x
+	if absf(dx) > 0.05:
+		_facing = signf(dx)
+	var moving := absf(dx) > 0.05
+	var anim := "sleep"
+	if active:
+		if winding:
+			anim = "windup"
+		elif moving:
+			anim = "run" if kind == "trzosek" else "walk"
+		else:
+			anim = "idle"
+	Sprites.play(_spr, anim, _facing < 0.0)
+	var body: AnimatedSprite2D = _spr[0]
+	var m := Color.WHITE
+	if _flash > 0.0:
+		m = Color(2.4, 2.4, 2.4)
+	elif winding:
+		# zapowiedź ciosu: pulsujące czerwienienie (klatka „windup" unosi łapę)
+		var p := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.03)
+		m = Color(1.6 + 0.6 * p, 0.55, 0.5)
+	elif not active:
+		m = Color(0.8, 0.8, 0.8)
+	body.modulate = m
+
 func _draw() -> void:
+	if not _spr.is_empty():
+		return
 	var size: Vector2 = _def["size"]
 	var col: Color = _def["color"]
 	if _flash > 0.0:
@@ -301,14 +342,15 @@ func _draw_overlay(ov: Node2D) -> void:
 	var size: Vector2 = _def["size"]
 	var t := Time.get_ticks_msec() / 1000.0
 	var crouch := 0.0 if active else 3.0
-	if winding:
+	if winding and _spr.is_empty():
 		var body := Rect2(-size.x * 0.5, -size.y + crouch, size.x, size.y - crouch)
 		ov.draw_rect(body.grow(1.5), Color(1.0, 0.15, 0.1, 0.8), false, 1.5)
-	var eye_y := -size.y + 4.0 + crouch
-	var eye_a := 1.0 if active else 0.25
-	var pulse := 0.6 + 0.4 * sin(t * 8.0)
-	ov.draw_circle(Vector2(-size.x * 0.22, eye_y), 1.4, Color(1.0, 0.7 * pulse, 0.2, eye_a))
-	ov.draw_circle(Vector2(size.x * 0.22, eye_y), 1.4, Color(1.0, 0.7 * pulse, 0.2, eye_a))
+	if _spr.is_empty():
+		var eye_y := -size.y + 4.0 + crouch
+		var eye_a := 1.0 if active else 0.25
+		var pulse := 0.6 + 0.4 * sin(t * 8.0)
+		ov.draw_circle(Vector2(-size.x * 0.22, eye_y), 1.4, Color(1.0, 0.7 * pulse, 0.2, eye_a))
+		ov.draw_circle(Vector2(size.x * 0.22, eye_y), 1.4, Color(1.0, 0.7 * pulse, 0.2, eye_a))
 	# pasek HP po pierwszym trafieniu
 	if hp < _max_hp:
 		var w := size.x + 4.0
