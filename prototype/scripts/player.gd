@@ -29,6 +29,9 @@ const AIR_ACCEL := 650.0       ## kontrola w powietrzu
 const FALL_MULT := 1.35        ## grawitacja przy opadaniu
 const WATER_SPEED := 0.8       ## brodzenie w tartaku
 const MAX_HP := 3
+## Apteczki kumulują się ponad MAX_HP aż do tego sufitu (złote serca); respawn i nowa misja wracają do MAX_HP.
+const STACK_HP := 6
+const BONUS_HEART := Color(1.0, 0.8, 0.25)
 
 # Czucie gry (GDD §23)
 const COYOTE_TIME := 0.10       ## skok jeszcze chwilę po zejściu z krawędzi
@@ -1041,7 +1044,7 @@ func apply_heal(amount: int) -> void:
 		return
 	if NoiseMgr.has_network() and multiplayer.get_remote_sender_id() not in [0, 1]:
 		return          # tylko serwer (albo lokalnie) może leczyć
-	hp = mini(MAX_HP, hp + amount)
+	hp = mini(STACK_HP, hp + amount)
 	Vfx.burst(_fx_root(), global_position + Vector2(0, -10), Color(0.4, 1.0, 0.5), 10, 15.0, 45.0,
 		Vector2.UP, 60.0, -30.0, 0.6, Vector2(1.0, 1.8), true)
 	if not is_bot:
@@ -1142,9 +1145,12 @@ func _draw_overlay(ov: Node2D) -> void:
 	var top := -11.0 if crouching else -17.0
 	if not _spr.is_empty():
 		top = -16.0 if crouching else -22.0
-	for i in MAX_HP:
+	var hearts := maxi(MAX_HP, hp)
+	for i in hearts:
 		var c := Color(0.92, 0.25, 0.3) if i < hp else Color(0.22, 0.22, 0.26)
-		ov.draw_rect(Rect2(-8 + i * 6.0, top - 7.0, 4, 3), c)
+		if i >= MAX_HP:
+			c = BONUS_HEART      # serca ponad podstawowe — złote
+		ov.draw_rect(Rect2(-8 + i * 6.0 - (hearts - MAX_HP) * 3.0, top - 7.0, 4, 3), c)
 	_center_text(ov, font, name_txt, top - 9.0, NAME_SIZE, col)
 
 func _center_text(ov: Node2D, font: Font, txt: String, y: float, sz: int, c: Color) -> void:

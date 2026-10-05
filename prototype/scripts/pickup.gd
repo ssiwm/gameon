@@ -16,6 +16,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 
 const HEAL := 1
 const PICK_R := 12.0
+const HURT_RESERVE_R := 120.0     ## ranny w tym promieniu ma pierwszeństwo przed kumulowaniem serc
 const WEAPON_R := 26.0            ## zasięg „E” po broń
 const FALL_G := 700.0
 
@@ -142,22 +143,32 @@ func _near(p: Node2D) -> bool:
 func _level() -> Node:
 	return get_tree().get_first_node_in_group("level")
 
-## Pierwszy ranny w zasięgu. Bot nie zabiera apteczki, gdy obok jest
-## ranny człowiek — ludzie mają pierwszeństwo.
+## Apteczka leczy rannego; pełne serca można kumulować ponad MAX_HP (do STACK_HP), ale
+## dopiero gdy w pobliżu nikt nie potrzebuje leczenia. Bot nie zabiera apteczki, gdy obok
+## jest ranny człowiek — ludzie mają pierwszeństwo.
 func _try_health() -> void:
 	var hurt_human_near := false
 	for p in get_tree().get_nodes_in_group("players"):
 		if not p.is_bot and not p.dead and p.hp < p.MAX_HP and p.global_position.distance_to(global_position) < 80.0:
 			hurt_human_near = true
 	for p in get_tree().get_nodes_in_group("players"):
-		if p.dead or p.hp >= p.MAX_HP:
+		if p.dead or p.hp >= p.STACK_HP:
 			continue
 		if p.is_bot and hurt_human_near:
+			continue
+		if p.hp >= p.MAX_HP and _hurt_teammate_near(p):
 			continue
 		if _near(p):
 			p.deliver_heal(HEAL)
 			_level().take_item(name)
 			return
+
+## Czy ktoś inny (żywy) obok apteczki ma mniej niż MAX_HP — wtedy zostaje dla niego.
+func _hurt_teammate_near(who: Node2D) -> bool:
+	for p in get_tree().get_nodes_in_group("players"):
+		if p != who and not p.dead and p.hp < p.MAX_HP and p.global_position.distance_to(global_position) < HURT_RESERVE_R:
+			return true
+	return false
 
 ## Amunicja: bierze ją każdy człowiek w zasięgu, ale tylko jeśli ktoś z ludzi nosi
 ## tę broń (P-64 ma nieskończoną amunicję — jej skrzynek nie ma) i zapas nie jest pełny.
