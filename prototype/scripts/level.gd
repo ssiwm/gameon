@@ -28,6 +28,8 @@ const TILE := 16
 ## Warstwy fizyki: bryły na 1 (jak dawny World), kładki na 16 — pociski
 ## (maska 7) i promienie okluzji/linii strzału (maska 1) przez nie przechodzą.
 const LAYER_SOLID := 1
+## Od tej wysokości (px) postać jest w podziemiach: dno szybu i sale pod ziemią (mapa: rzędy ≥ 31).
+const UNDERGROUND_Y := 31 * TILE
 const LAYER_PLATFORM := 16
 
 const Lights := preload("res://scripts/lights.gd")
@@ -496,6 +498,9 @@ func spawn_for(slot: int) -> Vector2:
 		return Vector2(64, 400)
 	var base: Vector2 = spawns[(slot - 1) % spawns.size()]
 	return base + Vector2(((slot - 1) / spawns.size()) * 14.0, 0)
+
+func is_underground(pos: Vector2) -> bool:
+	return pos.y > UNDERGROUND_Y
 
 ## Czy pod stopami jest kładka jednokierunkowa (zeskok dół+skok).
 func is_platform_at(pos: Vector2) -> bool:
