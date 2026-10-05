@@ -2,21 +2,40 @@ extends Node
 ## AudioDirector — autoload `Audio`. Jedyne miejsce w projekcie, które wie
 ## o plikach WAV; reszta kodu woła tylko Audio.play(...) / Audio.play_at(...).
 ##
-## Trzy rzeczy, które dzieją się tu i są kluczowe dla GDD §13 („Audio (filar!)"):
+## Wersja 2 (overhaul „AAA"). Co robi ten skrypt, a czego nie robi sam bus layout:
 ##
-##   1. PROPAGACJA PRZEZ ŚCIANY. Raycast ze źródła do słuchawki; jeśli
-##      przeszkoda na linii, głos leci na bus „Occluded" (lowpass 620 Hz).
-##      To jest cały efekt „słyszysz, ale nie widzisz" — bez niego stalker
-##      za ścianą brzmi jakby stał obok.
+##   1. PROPAGACJA PRZEZ ŚCIANY (GDD §13). Trzy promienie źródło→słuchawka (środkowy
+##      + dwa boczne): ile jest zasłoniętych, taki próg okluzji (0 = czysto, 1 = lekko,
+##      2 = mocno, 3 = całkiem za ścianą) i taki bus z filtrem dolnoprzepustowym
+##      (OccLight/OccHeavy/OccBlocked). Boczne promienie dają „dyfrakcję": źródło
+##      za rogiem brzmi inaczej niż źródło za grubą ścianą. Pętle pozycyjne (szept
+##      stalkera) są przeliczane co 0,2 s z histerezą, żeby próg nie migotał.
 ##
-##   2. MUZYKA ADAPTACYJNA. Warstwy z manifestu przełączane crossfadem.
-##      UWAGA na rozjazd z komentarzem w manifeście: manifest mówi „kumulatywne",
-##      ale bake renderuje każdą warstwę jako PEŁNY, samodzielny utwór
-##      (d.buf_norm na całości, osobny zapis). Nakładanie ich = podwójny bas
-##      i podwójna perkusja, więc tu jest crossfade, a nie stack.
+##   2. POGŁOS ŚRODOWISKOWY. Wachlarz promieni wokół słuchawki mierzy „zamknięcie"
+##      (ile promieni uderza w ścianę) i średnią odległość; z tego rośnie wet/room_size
+##      efektu Reverb na szynie SFX. Te same próbki brzmią inaczej w lesie i w korytarzu —
+##      dlatego assety mają tylko krótki ogon źródła (bake), a halę dokłada silnik.
 ##
-##   3. SERCE. Poziom Uwagi (NoiseMgr) steruje tempem i głośnością — najtańszy
-##      sposób na zrobienie z HUD-u strachu.
+##   3. MUZYKA STEMOWA. Cztery stemy grają CAŁY CZAS w idealnej synchronizacji
+##      (start pod AudioServer.lock()), a Uwaga steruje tylko ich głośnością:
+##      wejście stemu jest kwantyzowane do beatu (nie „w pół taktu"), wyjście
+##      opóźnione (hold), żeby muzyka nie milkła w sekundę po walce. Zmiany głośności
+##      idą liniowo w amplitudzie (nie w dB), więc crossfade jest równomierny.
+##
+##   4. MIKS DYNAMICZNY. Sidechain muzyki/ambientu pod SFX robi bus layout (kompresory),
+##      a tu: ducking na stingery, „ogłuszenie" (LP na Music/Ambience/SFX + szum w uszach)
+##      po wybuchu obok i po trafieniu, serce sterowane Uwagą.
+##
+##   5. ZARZĄDZANIE GŁOSAMI. Priorytety, limity równoczesnych instancji i minimalny
+##      odstęp na rodzinę dźwięków, kradzież najniższego priorytetu, brak powtórzeń
+##      tego samego wariantu z rzędu, drobny jitter głośności.
+##
+##   6. EMITERY AMBIENTU. Losowe zdarzenia wokół gracza (podmuch, skrzypienie, odległy
+##      huk, odległy zew) — gęstsze przy wysokiej Uwadze — żeby świat „żył".
+##
+## Napisy dla niesłyszących: sygnał `caption` (manifest: CAPTIONS).
+
+signal caption(text: String, pos: Vector2, priority: int)
 
 const Manifest := preload("res://scripts/audio_manifest.gd")
 
@@ -27,36 +46,96 @@ const BUS_WEAPONS := "Weapons"
 const BUS_WORLD := "World"
 const BUS_STALKER := "Stalker"
 const BUS_UI := "UI"
-const BUS_OCCLUDED := "Occluded"
+const BUS_SFX := "SFX"
+const BUS_OCC_LIGHT := "OccLight"
+const BUS_OCC_HEAVY := "OccHeavy"
+const BUS_OCC_BLOCKED := "OccBlocked"
+## Zgodność wsteczna: dawny pojedynczy bus okluzji.
+const BUS_OCCLUDED := BUS_OCC_HEAVY
+const OCC_BUSES := [BUS_OCC_LIGHT, BUS_OCC_HEAVY, BUS_OCC_BLOCKED]
 
 ## Warstwa kolizji ścian (World w main.tscn ustawia collision_layer = 1).
 const OCCLUSION_MASK := 1
-## Siatka kwantowania pozycji w cache'u przeszkód — 24 px wystarcza, żeby
-## krok po kaflu nie odpytywał świata co klatkę z osobna dla każdego piksela.
+## Siatka kwantowania pozycji w cache'u przeszkód (jeden raz na klatkę na komórkę).
 const OCCL_CELL := 24.0
+## Rozstaw bocznych promieni okluzji (px) — „szerokość" ściany, którą dźwięk omija.
+const OCCL_FLANK := 18.0
 
-const ONESHOT_POOL := 24
-const POSITIONAL_POOL := 16
+const ONESHOT_POOL := 32
+const POSITIONAL_POOL := 28
+const MAX_DISTANCE := 1600.0
 
 # Serce: próg, od którego bije szybciej (GDD: Uwaga napędza strach).
 const HEART_FAST_AT := 0.45
 const HEART_SLOW_KEY := "heart_slow_loop"
 const HEART_FAST_KEY := "heart_fast_loop"
 
+## Rodzina dźwięku -> [priorytet 0-100, max równoczesnych, min odstęp ms]. Dopasowanie
+## po NAJDŁUŻSZYM prefiksie; wszystko inne dostaje DEFAULT_VOICE.
+const VOICE := {
+	"stalker_shriek": [100, 2, 0], "player_down": [95, 1, 0], "explosion": [92, 3, 0],
+	"sting": [90, 2, 0], "stalker_growl": [85, 2, 700], "revive": [80, 1, 0],
+	"player_hurt": [80, 2, 120], "stalker_step": [70, 3, 140], "spread12_shot": [75, 4, 0],
+	"p64_shot": [65, 5, 0], "m83_shot": [60, 8, 0], "ui_": [55, 3, 0], "warn_pulse": [55, 1, 300],
+	"oc_load": [55, 1, 0], "radio_beep": [50, 2, 0], "impact_flesh": [45, 5, 30],
+	"land_hard": [40, 2, 100], "dry_fire": [40, 1, 90], "effort": [38, 1, 200],
+	"impact_hard": [35, 6, 25], "step_": [30, 6, 0], "ricochet": [30, 3, 60],
+	"whizz": [25, 3, 70], "amb_": [20, 3, 0], "foley_gear": [10, 2, 120], "shell_": [8, 4, 60],
+}
+const DEFAULT_VOICE := [40, 6, 0]
+
+## Emitery ambientu: [baza, liczba wariantów, odległość min, odległość max, głośność dB,
+## waga, minimalna Uwaga, tylko gdy Stalker śpi]
+const EMITTERS := [
+	["amb_gust", 3, 200.0, 520.0, -4.0, 3.0, 0.0, false],
+	["amb_creak", 3, 260.0, 680.0, -3.0, 2.0, 0.0, false],
+	["amb_thud", 2, 650.0, 1050.0, 2.0, 1.2, 0.0, false],
+	["amb_far_cry", 2, 900.0, 1400.0, 4.0, 0.9, 25.0, true],
+]
+
 var _cache: Dictionary = {}          # String -> AudioStream
 var _pool: Array[AudioStreamPlayer] = []
 var _pos_pool: Array[AudioStreamPlayer2D] = []
 var _loops: Dictionary = {}          # String -> AudioStreamPlayer
+var _pos_loops: Dictionary = {}      # String -> AudioStreamPlayer2D
 var _reported: Dictionary = {}       # klucze zgłoszone jako brakujące (raz)
-var _music: Array[AudioStreamPlayer] = []
-var _music_layer := -1
-var _music_tween: Tween
+var _voice_cache: Dictionary = {}    # klucz -> [prio, max, gap]
+var _last_ms: Dictionary = {}        # rodzina -> czas ostatniego startu (ms)
+var _last_variant: Dictionary = {}   # baza -> ostatnio wylosowany wariant
+var _last_caption: Dictionary = {}   # tekst -> czas (ms)
 var _listener: AudioListener2D
 var _listener_pos := Vector2.ZERO
-var _occl: Dictionary = {}            # Vector2i -> bool
+var _occl: Dictionary = {}           # Vector2i -> int (próg okluzji)
 var _heart_key := ""
-var _heart_vol := -80.0
 var _enabled := true
+var _clock := 0.0
+
+# --- muzyka
+var _music: Array[AudioStreamPlayer] = []
+var _stem_gain: Array[float] = []     # amplituda liniowa 0..1
+var _stem_target: Array[float] = []
+var _stem_enter_at: Array[float] = []  # od kiedy (zegar) stem może zacząć wchodzić
+var _music_layer := -1
+var _music_started := false
+var _drop_to := -1
+var _drop_at := -1.0
+var _duck_db := 0.0
+var _duck_hold := 0.0
+
+# --- miks / środowisko
+var _deaf := 0.0
+var _deaf_hold := 0.0
+var _rev_fx: AudioEffectReverb
+var _lp_fx: Array[AudioEffectLowPassFilter] = []
+var _rev_timer := 0.0
+var _rev_wet := 0.08
+var _rev_room := 0.45
+var _rev_damp := 0.6
+var _rev_wet_t := 0.08
+var _rev_room_t := 0.45
+var _rev_damp_t := 0.6
+var _loop_occl_timer := 0.0
+var _emit_t := 8.0
 
 
 func _ready() -> void:
@@ -75,18 +154,22 @@ func _ready() -> void:
 
 	for _i in POSITIONAL_POOL:
 		var q := AudioStreamPlayer2D.new()
-		q.max_distance = 1600.0
+		q.max_distance = MAX_DISTANCE
 		q.attenuation = 1.1
 		add_child(q)
 		_pos_pool.append(q)
 
-	for _i in Manifest.MUSIC_STEMS.size():
+	for i in Manifest.MUSIC_STEMS.size():
 		var m := AudioStreamPlayer.new()
 		m.bus = BUS_MUSIC
 		m.volume_db = -80.0
 		add_child(m)
 		_music.append(m)
+		_stem_gain.append(0.0)
+		_stem_target.append(0.0)
+		_stem_enter_at.append(0.0)
 
+	_bind_effects()
 	_verify_manifest()
 
 
@@ -101,37 +184,38 @@ func shutdown() -> void:
 
 ## Zamykanie audio: stop + zwolnienie referencji do strumieni, potem free()
 ## (nie queue_free() — kolejka nie zdąża się przetworzyć przy wyjściu).
-##
-## UWAGA, zweryfikowane eksperymentem: to NIE eliminuje ostrzeżenia
-## „leaked instances" w headless. Wywołanie shutdown() przed get_tree().quit()
-## daje identyczny wynik, a referencje do zapętlonych AudioStreamWAV trzyma
-## wątek audio Godota 4.7. Wyciek jest więc wyłącznie kosmetyczny i dotyczy
-## momentu zamykania procesu, nie działania gry.
+## Zweryfikowane eksperymentem: nie eliminuje ostrzeżenia „leaked instances" w headless
+## (referencje do zapętlonych AudioStreamWAV trzyma wątek audio Godota) — kosmetyka.
 func _shutdown() -> void:
 	for key in _loops.keys():
 		var p: AudioStreamPlayer = _loops[key]
 		_loops.erase(key)
-		p.stop()
-		p.stream = null      # samo stop() zostawia referencję do AudioStreamWAV
-		p.free()
+		if is_instance_valid(p):
+			p.stop()
+			p.stream = null
+			p.free()
+	for key in _pos_loops.keys():
+		var q = _pos_loops[key]          # bez typu: węzeł mógł zostać zwolniony razem ze źródłem
+		_pos_loops.erase(key)
+		if is_instance_valid(q):
+			q.stop()
+			q.stream = null
+			q.free()
 	for n in _pool:
-		(n as AudioStreamPlayer).stop()
-		(n as AudioStreamPlayer).stream = null
+		n.stop()
+		n.stream = null
 	for n in _pos_pool:
-		(n as AudioStreamPlayer2D).stop()
-		(n as AudioStreamPlayer2D).stream = null
+		n.stop()
+		n.stream = null
 	for n in _music:
-		(n as AudioStreamPlayer).stop()
-		(n as AudioStreamPlayer).stream = null
+		n.stop()
+		n.stream = null
 	_heart_key = ""
 	_music_layer = -1
-	# Cache trzyma AudioStreamWAV w referencjach — bez tego wyciekają w
-	# raporcie ObjectDB mimo stopnięcia wszystkich odtwarzaczy.
+	_music_started = false
 	_cache.clear()
 	_reported.clear()
 	_occl.clear()
-	if _music_tween != null and _music_tween.is_valid():
-		_music_tween.kill()
 
 
 # ---------------------------------------------------------------- strumienie
@@ -170,7 +254,7 @@ func _report_missing(key: String, why: String) -> void:
 	push_warning("[AUDIO] brak '%s' (%s) — pomijam" % [key, why])
 
 
-## Losuje wariant z rodziny „m83_shot_1..4". Zwraca -1 gdy żadnego nie ma.
+## Liczba istniejących wariantów rodziny „m83_shot_1..N" (0 gdy brak), do `count`.
 func variant(base: String, count: int) -> int:
 	var found := -1
 	for i in count:
@@ -179,8 +263,17 @@ func variant(base: String, count: int) -> int:
 	return found
 
 
+## Losuje wariant NIE powtarzając poprzedniego z rzędu (przy ciągłym ogniu ta sama
+## próbka dwa razy pod rząd to słyszalny „efekt karabinu maszynowego").
 func pick(base: String, count: int) -> String:
-	var idx := randi_range(0, maxi(0, variant(base, count)))
+	var n := variant(base, count) + 1
+	if n <= 1:
+		return "%s_1" % base
+	var idx := randi_range(0, n - 1)
+	var last: int = _last_variant.get(base, -1)
+	if idx == last:
+		idx = (idx + randi_range(1, n - 1)) % n
+	_last_variant[base] = idx
 	return "%s_%d" % [base, idx + 1]
 
 
@@ -199,6 +292,78 @@ func _verify_manifest() -> void:
 		missing.size(), ", ".join(missing.slice(0, 12))])
 
 
+# ---------------------------------------------------------------- zarządzanie głosami
+
+func _family(key: String) -> String:
+	return key.rstrip("0123456789").rstrip("_")
+
+
+## [priorytet, max równoczesnych, min odstęp ms] — najdłuższy pasujący prefiks, z cache'em.
+func _voice(key: String) -> Array:
+	if _voice_cache.has(key):
+		return _voice_cache[key]
+	var best := ""
+	for k in VOICE:
+		if key.begins_with(k) and k.length() > best.length():
+			best = k
+	var v: Array = VOICE[best] if best != "" else DEFAULT_VOICE
+	_voice_cache[key] = v
+	return v
+
+
+## Zwraca gracza z puli albo null (gdy nowy dźwięk jest ważniejszy od niczego, ale
+## wszystkie głosy są ważniejsze od niego — wtedy NOWY jest porzucany, nie stary).
+## Najpierw rodzina: przy przekroczeniu limitu kradniemy najstarszy głos TEJ rodziny
+## (podobne widmo = kradzież najmniej słyszalna).
+func _acquire(pool: Array, key: String) -> Node:
+	var v := _voice(key)
+	var prio: int = v[0]
+	var fam := _family(key)
+	var now := Time.get_ticks_msec()
+	var min_gap: int = v[2]
+	if min_gap > 0 and prio < 90 and now - int(_last_ms.get(fam, -100000)) < min_gap:
+		return null
+	var max_n: int = v[1]
+	var same := 0
+	var oldest_same: Node = null
+	var oldest_same_t := INF
+	var free_one: Node = null
+	var weakest: Node = null
+	var weakest_score := INF
+	for n in pool:
+		if not n.playing:
+			if free_one == null:
+				free_one = n
+			continue
+		var t0: int = n.get_meta("t0", 0)
+		if n.get_meta("fam", "") == fam:
+			same += 1
+			if float(t0) < oldest_same_t:
+				oldest_same_t = float(t0)
+				oldest_same = n
+		# wynik kradzieży: niski priorytet i stary głos = pierwszy do wyrzucenia
+		var score := float(n.get_meta("prio", 40)) * 100000.0 + float(t0)
+		if score < weakest_score:
+			weakest_score = score
+			weakest = n
+	var chosen: Node = null
+	if same >= max_n and oldest_same != null:
+		chosen = oldest_same
+	elif free_one != null:
+		chosen = free_one
+	elif weakest != null and int(weakest.get_meta("prio", 40)) <= prio:
+		chosen = weakest
+	if chosen == null:
+		return null
+	if chosen.playing:
+		chosen.stop()
+	chosen.set_meta("prio", prio)
+	chosen.set_meta("fam", fam)
+	chosen.set_meta("t0", now)
+	_last_ms[fam] = now
+	return chosen
+
+
 # ---------------------------------------------------------------- one-shoty
 
 func play(key: String, bus: String = BUS_PLAYER, vol_db := 0.0, pitch := 1.0) -> void:
@@ -207,20 +372,24 @@ func play(key: String, bus: String = BUS_PLAYER, vol_db := 0.0, pitch := 1.0) ->
 	var s := stream(key)
 	if s == null:
 		return
-	var p := _free_pool(_pool)
+	var p := _acquire(_pool, key) as AudioStreamPlayer
+	if p == null:
+		return
 	p.stream = s
 	p.bus = bus
 	p.volume_db = vol_db
 	p.pitch_scale = pitch
 	p.play()
+	_caption(key, _listener_pos)
 
 
-## Wariant losowy w jednym wywołaniu: Audio.play_variant("m83_shot", 4, ...)
+## Wariant losowy w jednym wywołaniu: Audio.play_variant("m83_shot", 6, ...)
 func play_variant(base: String, count: int, bus: String = BUS_WEAPONS,
 		vol_db := 0.0, pitch := 1.0, pitch_jitter := 0.06) -> void:
 	if variant(base, count) < 0:
 		return
-	play(pick(base, count), bus, vol_db, pitch + randf_range(-pitch_jitter, pitch_jitter))
+	play(pick(base, count), bus, vol_db + randf_range(-1.0, 1.0),
+		pitch + randf_range(-pitch_jitter, pitch_jitter))
 
 
 ## Gra dźwięku w świecie: pozycyjny, z attenuation i z propagacją przez ściany.
@@ -228,58 +397,45 @@ func play_at(key: String, pos: Vector2, bus: String = BUS_WORLD,
 		vol_db := 0.0, pitch := 1.0) -> void:
 	if not _enabled:
 		return
+	# poza zasięgiem słyszalności nie zajmujemy głosu
+	if pos.distance_to(_listener_pos) > MAX_DISTANCE * 0.98:
+		return
 	var s := stream(key)
 	if s == null:
 		return
-	var p := _free_pool(_pos_pool)
+	var p := _acquire(_pos_pool, key) as AudioStreamPlayer2D
+	if p == null:
+		return
 	p.stream = s
 	p.position = pos
-	p.bus = BUS_OCCLUDED if is_occluded(pos) else bus
+	p.max_distance = MAX_DISTANCE
+	p.attenuation = 1.1
+	p.bus = _tier_bus(bus, occlusion_tier(pos))
 	p.volume_db = vol_db
 	p.pitch_scale = pitch
 	p.play()
+	_caption(key, pos)
+	if key.begins_with("explosion"):
+		_on_explosion(pos)
 
 
 func play_variant_at(base: String, count: int, pos: Vector2, bus: String = BUS_WORLD,
 		vol_db := 0.0, pitch := 1.0, pitch_jitter := 0.06) -> void:
 	if variant(base, count) < 0:
 		return
-	play_at(pick(base, count), pos, bus, vol_db,
+	play_at(pick(base, count), pos, bus, vol_db + randf_range(-1.0, 1.0),
 		pitch + randf_range(-pitch_jitter, pitch_jitter))
 
 
-## Zwraca wolnego gracza z puli; jak wszystkie grają, przekreca najdłużej
-## grającego. Celowo bez `as AudioStreamPlayer` — AudioStreamPlayer2D NIE
-## dziedziczy z AudioStreamPlayer, więc taki cast zamieniał całą pulę
-## pozycyjną w null i każde play_at() wywracało się.
-func _free_pool(pool: Array) -> Node:
-	var oldest: Node = null
-	var oldest_pos := -1.0
-	for n in pool:
-		if not n.playing:
-			return n
-		var pp: float = n.get_playback_position()
-		if oldest == null or pp > oldest_pos:
-			oldest = n
-			oldest_pos = pp
-	if oldest == null:
-		return null
-	oldest.stop()
-	return oldest
-
-
 ## --- powierzchnie pod stopami -------------------------------------------
-## W prototypie poziom nie ma tilemapy, więc powierzchnia wyliczana jest
-## z geometrii (main.tscn): platformy P1..P6 to blacha, ziemia dzieli się
-## pasami. To PLACEHOLDER — przy własnych tilemapach wystarczy podmienić
-## ciało tej funkcji na odczyt z tilemapy, interfejs zostaje ten sam.
+## Poziom na tilemapie zna powierzchnię kafla pod stopami (level.surface_at).
+## Bez poziomu (scena testowa) zostaje wyliczenie z geometrii main.tscn.
 func surface_at(pos: Vector2) -> String:
-	# poziom na tilemapie zna powierzchnię kafla pod stopami
 	var lvl := get_tree().get_first_node_in_group("level")
 	if lvl != null:
 		return lvl.surface_at(pos)
 	if pos.y < 190.0:
-		return "metal"                      # stoisz na platformie
+		return "metal"
 	if pos.x < 500.0:
 		return "dirt"
 	if pos.x < 1000.0:
@@ -287,14 +443,17 @@ func surface_at(pos: Vector2) -> String:
 	return "water"
 
 
-## Losuje krok na danej powierzchni (3 warianty na powierzchnię).
+## Krok na danej powierzchni (5 wariantów na powierzchnię). Przy biegu co jakiś
+## czas dochodzi szelest ekwipunku — drobiazg, który odróżnia „postać" od „źródła kroków".
 func play_footstep(pos: Vector2, crouching: bool, vol_db := -14.0) -> void:
 	var surf := surface_at(pos)
-	if variant("step_" + surf, 3) < 0:
+	if variant("step_" + surf, 5) < 0:
 		return
 	# Kucanie musi być ROZPOZNAWALNE jako cisza (GDD §8.1) — stąd cicho.
 	var v := vol_db - 6.0 if crouching else vol_db
-	play_variant_at("step_" + surf, 3, pos, BUS_PLAYER, v, 1.0, 0.09)
+	play_variant_at("step_" + surf, 5, pos, BUS_PLAYER, v, 1.0, 0.09)
+	if not crouching and randf() < 0.3:
+		play_variant_at("foley_gear", 3, pos, BUS_PLAYER, v + 4.0, 1.0, 0.1)
 
 
 # ---------------------------------------------------------------- pętle
@@ -316,64 +475,123 @@ func start_loop(key: String, bus: String = BUS_PLAYER, vol_db := -6.0, pitch := 
 	_loops[key] = p
 
 
+## Pętla POZYCYJNA przypięta do węzła (np. szept stalkera). Głośność zostaje
+## sterowana skryptem źródła (spatial=false wyłącza tłumienie dystansem, żeby nie
+## liczyć go dwa razy), ale dochodzą panorama stereo i okluzja przez ściany.
+func start_loop_at(key: String, node: Node2D, bus: String = BUS_WORLD, vol_db := -6.0,
+		spatial := false) -> void:
+	if _pos_loops.has(key):
+		set_loop_volume(key, vol_db)
+		return
+	var s := stream(key)
+	if s == null or node == null:
+		return
+	var p := AudioStreamPlayer2D.new()
+	p.max_distance = 4000.0 if not spatial else MAX_DISTANCE
+	p.attenuation = 0.0 if not spatial else 1.1
+	p.volume_db = vol_db
+	p.set_meta("base_bus", bus)
+	p.set_meta("tier", 0)
+	p.set_meta("tier_t", 0.0)
+	p.bus = bus
+	node.add_child(p)
+	p.stream = s
+	p.play()
+	_pos_loops[key] = p
+
+
 func stop_loop(key: String) -> void:
 	var p: AudioStreamPlayer = _loops.get(key)
-	if p == null:
-		return
-	_loops.erase(key)
-	p.queue_free()
+	if p != null:
+		_loops.erase(key)
+		if is_instance_valid(p):
+			p.queue_free()
+	var q = _pos_loops.get(key)          # bez typu: patrz _shutdown
+	if q != null:
+		_pos_loops.erase(key)
+		if is_instance_valid(q):
+			q.queue_free()
 
 
 func stop_all() -> void:
 	for key in _loops.keys():
 		stop_loop(key)
+	for key in _pos_loops.keys():
+		stop_loop(key)
 	for n in _pool:
-		(n as AudioStreamPlayer).stop()
+		n.stop()
 	for n in _pos_pool:
-		(n as AudioStreamPlayer2D).stop()
-	for n in _music:
-		(n as AudioStreamPlayer).stop()
+		n.stop()
+	for i in _music.size():
+		_music[i].stop()
+		_stem_gain[i] = 0.0
+		_stem_target[i] = 0.0
 	_music_layer = -1
-	if _music_tween != null and _music_tween.is_valid():
-		_music_tween.kill()
+	_music_started = false
+	_drop_to = -1
+	_drop_at = -1.0
+	_deaf = 0.0
+	_duck_db = 0.0
 
 
 func set_loop_volume(key: String, vol_db: float) -> void:
 	var p: AudioStreamPlayer = _loops.get(key)
 	if p != null:
 		p.volume_db = vol_db
+		return
+	var q = _pos_loops.get(key)
+	if q != null and is_instance_valid(q):
+		q.volume_db = vol_db
 
 
 func loop_playing(key: String) -> bool:
 	var p: AudioStreamPlayer = _loops.get(key)
-	return p != null and p.playing
+	if p != null and is_instance_valid(p):
+		return p.playing
+	var q = _pos_loops.get(key)
+	return q != null and is_instance_valid(q) and q.playing
 
 
 # ---------------------------------------------------------------- propagacja
 
-## Czy słyszalność źródła do słuchawki blokuje przeszkoda (ściana).
-func is_occluded(from: Vector2) -> bool:
+## Próg okluzji źródła względem słuchawki: 0 czysto, 1 lekko (jeden promień zasłonięty —
+## róg ściany), 2 mocno, 3 całkiem za ścianą. Cache per komórka i klatka.
+func occlusion_tier(from: Vector2) -> int:
 	var cell := Vector2i(round(from.x / OCCL_CELL), round(from.y / OCCL_CELL))
 	if _occl.has(cell):
 		return _occl[cell]
+	var tier := 0
 	var world := get_viewport().get_world_2d()
-	var blocked := false
 	if world != null:
-		var q := PhysicsRayQueryParameters2D.create(from, _listener_pos)
-		q.collision_mask = OCCLUSION_MASK
-		q.hit_from_inside = false
-		blocked = not world.direct_space_state.intersect_ray(q).is_empty()
-	_occl[cell] = blocked
-	return blocked
+		var to := _listener_pos
+		var dir := to - from
+		if dir.length() > 20.0:
+			var side := Vector2(-dir.y, dir.x).normalized() * OCCL_FLANK
+			var space := world.direct_space_state
+			for off in [Vector2.ZERO, side, -side]:
+				var q := PhysicsRayQueryParameters2D.create(from + off, to)
+				q.collision_mask = OCCLUSION_MASK
+				q.hit_from_inside = false
+				if not space.intersect_ray(q).is_empty():
+					tier += 1
+	_occl[cell] = tier
+	return tier
+
+
+## Zgodność wsteczna: czy źródło jest w ogóle zasłonięte.
+func is_occluded(from: Vector2) -> bool:
+	return occlusion_tier(from) >= 2
+
+
+func _tier_bus(base: String, tier: int) -> String:
+	if tier <= 0:
+		return base
+	return OCC_BUSES[clampi(tier, 1, 3) - 1]
 
 
 ## Słuchawka jedzie za kamerą lokalnego CZŁOWIEKA. Przepinamy ją tylko, gdy
-## zmienia się właściciel. Dwa błędy z wcześniejszej wersji:
-##   - boty też mają autorytet hosta, a pętla przerywała się dopiero PO
-##     przepięciu, więc na hoście słuchawka skakała co klatkę gracz↔bot;
-##   - reparent() domyślnie zachowuje pozycję GLOBALNĄ, więc słuchawka
-##     zostawała w (0,0) świata zamiast w środku kamery i promienie okluzji
-##     szły do złego punktu.
+## zmienia się właściciel (boty też mają autorytet hosta; reparent z keep_global=false,
+## inaczej słuchawka zostawałaby w (0,0) świata i promienie okluzji szłyby w złe miejsce).
 func _follow_listener() -> void:
 	for p in get_tree().get_nodes_in_group("players"):
 		var pp := p as Node2D
@@ -392,83 +610,298 @@ func _follow_listener() -> void:
 		_listener.position = Vector2.ZERO
 
 
+## Co 0,2 s: próg okluzji pętli pozycyjnych, z histerezą (min. 0,35 s na progu).
+func _update_loop_occlusion() -> void:
+	for key in _pos_loops.keys():
+		var q = _pos_loops[key]
+		if not is_instance_valid(q):
+			_pos_loops.erase(key)
+			continue
+		var tier := occlusion_tier(q.global_position)
+		var cur: int = q.get_meta("tier", 0)
+		if tier != cur and _clock - float(q.get_meta("tier_t", 0.0)) > 0.35:
+			q.set_meta("tier", tier)
+			q.set_meta("tier_t", _clock)
+			q.bus = _tier_bus(String(q.get_meta("base_bus", BUS_WORLD)), tier)
+
+
+# ---------------------------------------------------------------- środowisko (pogłos)
+
+func _bind_effects() -> void:
+	var sfx := AudioServer.get_bus_index(BUS_SFX)
+	if sfx >= 0:
+		for i in AudioServer.get_bus_effect_count(sfx):
+			var fx := AudioServer.get_bus_effect(sfx, i)
+			if fx is AudioEffectReverb:
+				_rev_fx = fx
+	for b in [BUS_MUSIC, BUS_AMB, BUS_SFX]:
+		var idx := AudioServer.get_bus_index(b)
+		if idx < 0:
+			continue
+		for i in AudioServer.get_bus_effect_count(idx):
+			var fx := AudioServer.get_bus_effect(idx, i)
+			if fx is AudioEffectLowPassFilter:
+				_lp_fx.append(fx)
+	if _rev_fx == null or _lp_fx.size() < 3:
+		push_warning("[AUDIO] bus layout bez oczekiwanych efektów (Reverb na SFX, LP na Music/Ambience/SFX)")
+
+
+## Wachlarz 12 promieni wokół słuchawki → zamknięcie i średnia odległość ścian.
+func _probe_environment() -> void:
+	var world := get_viewport().get_world_2d()
+	if world == null or _rev_fx == null:
+		return
+	var space := world.direct_space_state
+	var reach := 520.0
+	var hits := 0
+	var dsum := 0.0
+	var n := 12
+	for i in n:
+		var a := TAU * float(i) / float(n)
+		var q := PhysicsRayQueryParameters2D.create(_listener_pos,
+			_listener_pos + Vector2.from_angle(a) * reach)
+		q.collision_mask = OCCLUSION_MASK
+		var r := space.intersect_ray(q)
+		if r.is_empty():
+			dsum += reach
+		else:
+			hits += 1
+			dsum += _listener_pos.distance_to(r["position"])
+	var enclosure := float(hits) / float(n)
+	var mean_d := dsum / float(n) / reach          # 0 ciasno .. 1 otwarcie
+	_rev_wet_t = lerpf(0.04, 0.26, enclosure)
+	_rev_room_t = lerpf(0.30, 0.82, clampf(enclosure * (1.15 - 0.6 * mean_d), 0.0, 1.0))
+	_rev_damp_t = lerpf(0.70, 0.32, enclosure)
+
+
+func _update_reverb(delta: float) -> void:
+	_rev_timer -= delta
+	if _rev_timer <= 0.0:
+		_rev_timer = 0.25
+		_probe_environment()
+	if _rev_fx == null:
+		return
+	var k := 1.0 - exp(-delta * 1.4)                 # ~0,7 s stałej czasowej — bez skoków
+	_rev_wet = lerpf(_rev_wet, _rev_wet_t, k)
+	_rev_room = lerpf(_rev_room, _rev_room_t, k)
+	_rev_damp = lerpf(_rev_damp, _rev_damp_t, k)
+	_rev_fx.wet = _rev_wet
+	_rev_fx.room_size = _rev_room
+	_rev_fx.damping = _rev_damp
+
+
+# ---------------------------------------------------------------- ogłuszenie / szum w uszach
+
+## Wybuch w pobliżu słuchawki: muffling całego miksu + szum w uszach, proporcjonalnie do bliskości.
+func _on_explosion(pos: Vector2) -> void:
+	var d := pos.distance_to(_listener_pos)
+	if d >= 420.0:
+		return
+	var amt := 1.0 - d / 420.0
+	deafen(amt, 0.6 + amt * 1.8)
+	if amt > 0.25:
+		play("ear_ring", BUS_UI, lerpf(-24.0, -10.0, amt))
+
+
+## Trafienie lokalnego gracza: krótkie przytłumienie; mocne (2→1 HP) dorzuca szum w uszach.
+func on_player_hurt(severe := false) -> void:
+	deafen(0.45 if severe else 0.22, 0.35)
+	if severe:
+		play("ear_ring", BUS_UI, -20.0)
+
+
+## amount 0..1 (1 = głęboko przytłumiony), hold = ile sekund trzymać zanim zacznie się odbudowywać słuch.
+func deafen(amount: float, hold: float) -> void:
+	_deaf = maxf(_deaf, clampf(amount, 0.0, 1.0))
+	_deaf_hold = maxf(_deaf_hold, hold)
+
+
+func _update_deafness(delta: float) -> void:
+	if _deaf_hold > 0.0:
+		_deaf_hold -= delta
+	elif _deaf > 0.0:
+		_deaf = maxf(0.0, _deaf - delta * 0.3)         # ~3 s powrotu do pełnego słuchu
+	var cutoff := 20500.0 * pow(850.0 / 20500.0, _deaf)
+	for fx in _lp_fx:
+		fx.cutoff_hz = cutoff
+
+
 # ---------------------------------------------------------------- muzyka
 
-## layer: 0 cisza, 1 napięcie, 2 walka, 3 pościg.
+## layer: 0 cisza, 1 napięcie, 2 walka, 3 pościg — STEMY NAKŁADAJĄ SIĘ (0..layer grają).
+## Wejście stemu kwantyzowane do beatu; zejście w dół opóźnione (hold), żeby muzyka
+## nie opadała w sekundę po ostatnim strzale.
 func music_set_layer(layer: int) -> void:
 	if not _enabled:
 		return
 	var top := Manifest.MUSIC_STEMS.size() - 1
 	layer = clampi(layer, 0, top)
-	if layer == _music_layer:
+	if not _music_start():
 		return
-	var s := stream(Manifest.MUSIC_STEMS[layer])
-	if s == null:
+	if layer == _music_layer and _drop_to < 0:
 		return
-	var incoming := _music[layer]
-	# Warstwy mają tę samą długość (16 taktów), więc nowa wchodzi w tym samym
-	# miejscu taktu co grająca — przejście nie gubi rytmu. Jeśli ta warstwa
-	# wciąż wybrzmiewa (szybki powrót), gra dalej od miejsca, w którym jest.
-	if not incoming.playing:
-		incoming.stream = s
-		incoming.volume_db = -80.0
-		var pos := _music_position()
-		incoming.play(fmod(pos, s.get_length()) if pos >= 0.0 else 0.0)
-	_music_layer = layer
-	# Czas wjścia na warstwę jest asymetryczny (MUSIC_BLEND): wchodzenie
-	# w spokój trwa, w akcję jest natychmiastowe.
-	if _music_tween != null and _music_tween.is_valid():
-		_music_tween.kill()
-	_music_tween = create_tween().set_parallel(true)
-	var blend := float(Manifest.MUSIC_BLEND[layer])
-	_music_tween.tween_property(incoming, "volume_db", 0.0, blend)
-	# Wygaszamy WSZYSTKIE pozostałe warstwy, nie tylko poprzednią — przy
-	# szybkiej zmianie 0→1→2 przerwany tween zostawiał warstwę 0 na
-	# połowie głośności na zawsze. Wygaszone zatrzymujemy.
+	if layer >= _music_layer:
+		_drop_to = -1
+		_drop_at = -1.0
+		for i in range(layer + 1):
+			if _stem_target[i] < 1.0:
+				_stem_target[i] = 1.0
+				_stem_enter_at[i] = _clock + _quant_delay(i)
+		_music_layer = layer
+	else:
+		var hold: float = [0.0, 2.5, 6.0, 8.0][clampi(_music_layer, 0, 3)]
+		_drop_to = layer
+		_drop_at = _clock + hold
+
+
+func _music_start() -> bool:
+	if _music_started:
+		return true
+	var ok := true
+	for i in Manifest.MUSIC_STEMS.size():
+		if stream(Manifest.MUSIC_STEMS[i]) == null:
+			ok = false
+	if not ok:
+		return false
+	# Start wszystkich stemów w TEJ SAMEJ chwili miksu (lock = wątek audio czeka),
+	# inaczej jeden z nich mógłby ruszyć bufor później → przesunięcie fazy rytmu.
+	AudioServer.lock()
 	for i in _music.size():
-		var m := _music[i]
-		if i == layer or not m.playing:
-			continue
-		_music_tween.tween_property(m, "volume_db", -80.0, blend)
-	_music_tween.chain().tween_callback(_stop_silent_stems)
+		_music[i].stream = stream(Manifest.MUSIC_STEMS[i])
+		_music[i].volume_db = -80.0
+		_music[i].play()
+	AudioServer.unlock()
+	_music_started = true
+	_stem_target[0] = 1.0
+	_stem_enter_at[0] = _clock
+	_music_layer = 0
+	return true
 
 
-## Pozycja odtwarzania grającej warstwy (do synchronizacji wejścia nowej).
-func _music_position() -> float:
-	for m in _music:
-		if m.playing and m.volume_db > -79.0:
-			return m.get_playback_position()
-	return -1.0
+## Czas do następnej siatki rytmicznej danego stemu (s). 0 = natychmiast.
+func _quant_delay(stem: int) -> float:
+	if not _music_started or not _music[0].playing:
+		return 0.0
+	var beat := 60.0 / float(Manifest.MUSIC_BPM)
+	var grid: float = beat * [1.0, 1.0, 0.5, 0.25][clampi(stem, 0, 3)]
+	var pos := _music[0].get_playback_position() + AudioServer.get_time_since_last_mix()
+	var d := grid - fmod(pos, grid)
+	return 0.0 if d > grid - 0.02 else d
 
 
-func _stop_silent_stems() -> void:
+func _update_music(delta: float) -> void:
+	if not _music_started:
+		return
+	if _drop_to >= 0 and _clock >= _drop_at:
+		for i in range(_drop_to + 1, _stem_target.size()):
+			_stem_target[i] = 0.0
+		_music_layer = _drop_to
+		_drop_to = -1
+		_drop_at = -1.0
+	if _duck_hold > 0.0:
+		_duck_hold -= delta
+	else:
+		_duck_db = minf(0.0, _duck_db + delta * 6.0)    # ~1 s powrotu z -6 dB
+	var duck := db_to_linear(_duck_db)
 	for i in _music.size():
-		if i != _music_layer and _music[i].volume_db <= -79.0:
-			_music[i].stop()
+		var blend: float = Manifest.MUSIC_BLEND[i]
+		if _stem_target[i] > 0.5:
+			if _clock >= _stem_enter_at[i]:
+				_stem_gain[i] = minf(1.0, _stem_gain[i] + delta / maxf(0.05, blend))
+		else:
+			_stem_gain[i] = maxf(0.0, _stem_gain[i] - delta / maxf(1.2, blend * 1.5))
+		var g := _stem_gain[i] * duck
+		_music[i].volume_db = -80.0 if g <= 0.0001 else linear_to_db(g)
 
 
 func music_layer() -> int:
 	return _music_layer
 
 
+## Chwilowe przyciszenie muzyki (stingery, krzyk) — wraca po `hold` sekundach.
+func duck_music(db: float, hold: float) -> void:
+	_duck_db = minf(_duck_db, db)
+	_duck_hold = maxf(_duck_hold, hold)
+
+
 func sting(layer: int) -> void:
-	# Stinger to moment, nie warstwa — gra na muzykę i znika.
+	# Stinger to moment, nie warstwa — gra na muzykę i znika, a muzyka na chwilę ustępuje.
 	var key := "sting_%s" % ("chase" if layer >= 2 else "tension")
 	if Manifest.PATHS.has(key):
 		play(key, BUS_MUSIC, -2.0)
+		duck_music(-6.0 if layer >= 2 else -4.0, 1.4)
+
+
+# ---------------------------------------------------------------- napisy (dostępność)
+
+func _caption(key: String, pos: Vector2) -> void:
+	if caption.get_connections().is_empty():
+		return
+	var best := ""
+	for k in Manifest.CAPTIONS:
+		if key.begins_with(k) and k.length() > best.length():
+			best = k
+	if best == "":
+		return
+	var c: Array = Manifest.CAPTIONS[best]
+	var text: String = c[0]
+	var now := Time.get_ticks_msec()
+	if now - int(_last_caption.get(text, -100000)) < 1200:
+		return
+	_last_caption[text] = now
+	caption.emit(text, pos, int(c[1]))
+
+
+# ---------------------------------------------------------------- emitery ambientu
+
+func _update_emitters(delta: float) -> void:
+	if not (_loops.has("amb_forest") or _loops.has("amb_machine")):
+		return
+	_emit_t -= delta
+	if _emit_t > 0.0:
+		return
+	var lvl := NoiseMgr.level
+	_emit_t = randf_range(7.0, 15.0) * lerpf(1.0, 0.55, clampf(lvl / 60.0, 0.0, 1.0))
+	var total := 0.0
+	var cand: Array = []
+	for e in EMITTERS:
+		if lvl < float(e[6]):
+			continue
+		if bool(e[7]) and NoiseMgr.stalker_awake:
+			continue
+		cand.append(e)
+		total += float(e[5])
+	if cand.is_empty():
+		return
+	var roll := randf() * total
+	for e in cand:
+		roll -= float(e[5])
+		if roll <= 0.0:
+			var pos := _listener_pos + Vector2.from_angle(randf() * TAU) * randf_range(float(e[2]), float(e[3]))
+			play_variant_at(String(e[0]), int(e[1]), pos, BUS_AMB, float(e[4]), 1.0, 0.05)
+			return
 
 
 # ---------------------------------------------------------------- per-frame
 
 func _process(delta: float) -> void:
+	_clock += delta
 	_listener_pos = _listener.global_position
 	_occl.clear()                      # przeszkody zmieniają się dynamicznie
 	_follow_listener()
+	_loop_occl_timer -= delta
+	if _loop_occl_timer <= 0.0:
+		_loop_occl_timer = 0.2
+		_update_loop_occlusion()
+	_update_reverb(delta)
+	_update_deafness(delta)
+	_update_music(delta)
+	_update_emitters(delta)
 	_update_heart(delta)
 
 
 ## Serce: powyżej progu bije szybciej i głośniej. Cisza = cisza (GDD §13).
-func _update_heart(delta: float) -> void:
+func _update_heart(_delta: float) -> void:
 	if not _enabled:
 		return
 	var lvl := NoiseMgr.level / NoiseMgr.MAX_LEVEL
@@ -480,10 +913,8 @@ func _update_heart(delta: float) -> void:
 		if _heart_key != "":
 			stop_loop(_heart_key)
 		_heart_key = want
-	# Startujemy też wtedy, gdy klucz się nie zmienił, a pętla nie gra —
-	# wcześniej start był tylko przy ZMIANIE klucza, więc gdy w lobby
-	# (Uwaga 0) klucz ustawił się na wolne serce bez startu, serce milczało
-	# aż do pierwszego przejścia w szybkie.
+	# Startujemy też wtedy, gdy klucz się nie zmienił, a pętla nie gra (np. wejście z lobby
+	# przy Uwadze 0 ustawiło klucz bez startu).
 	if want_vol > -80.0 and not loop_playing(_heart_key):
 		start_loop(_heart_key, BUS_PLAYER, want_vol)
 	elif loop_playing(_heart_key):

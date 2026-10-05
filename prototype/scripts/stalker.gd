@@ -324,7 +324,7 @@ func _update_audio(delta: float, is_awake: bool, noise: float) -> void:
 			if Audio.loop_playing("stalker_whisper_loop"):
 				Audio.set_loop_volume("stalker_whisper_loop", v)
 			else:
-				Audio.start_loop("stalker_whisper_loop", Audio.BUS_STALKER, v)
+				Audio.start_loop_at("stalker_whisper_loop", self, Audio.BUS_STALKER, v)
 		else:
 			Audio.stop_loop("stalker_whisper_loop")
 		_growl_timer = 0.0
@@ -336,7 +336,7 @@ func _update_audio(delta: float, is_awake: bool, noise: float) -> void:
 	if Audio.loop_playing("stalker_whisper_loop"):
 		Audio.set_loop_volume("stalker_whisper_loop", wv)
 	else:
-		Audio.start_loop("stalker_whisper_loop", Audio.BUS_STALKER, wv)
+		Audio.start_loop_at("stalker_whisper_loop", self, Audio.BUS_STALKER, wv)
 
 	# kroki: co ~26 px drogi, tylko w fazie polowania
 	if hunting:

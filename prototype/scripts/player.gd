@@ -1159,6 +1159,7 @@ func apply_hit(amount: int, _from_pos: Vector2) -> void:
 	if not is_bot:
 		Feel.shake(4.0)
 		Feel.hitstop(0.07)
+		Audio.on_player_hurt(hp <= 1)
 	if hp <= 0:
 		_go_down()
 

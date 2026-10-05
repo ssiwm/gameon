@@ -1,731 +1,736 @@
 """
-audio_dsp.py — synteza audio na czystym stdlib Pythona (brak numpy w środowisku).
+audio_dsp.py — rdzeń syntezy i obróbki dźwięku dla bake_audio.py (numpy + scipy).
 
-To jest "zastępca sound designera" dla prototypu: bake'uje deterministyczne,
-proceduralne assety WAV (GDD §13: analogowe syntezatory lat 80., taśma, szum
-+ industrialne uderzenia). Docelowo te pliki zastępuje prawdziwy materiał
-nagrany — architektura runtime nie wie, czy dźwięk jest proceduralny, czy nagrany.
+Wersja 2. Poprzedni rdzeń (stdlib) miał błędy fundamentalne, wykryte przez
+tools/audio_audit.py i test_audio_dsp.py:
+  * osc() zwiększał fazę o `f` próbek na krok zamiast f·len(tabeli)/SR —
+    „sinus" przy całkowitych Hz dawał ciszę, reszta oscylatorów aliasowany szum
+    (wysokość dźwięku nie istniała: bas, kick, pady, akordy, serce, brzęczyki UI);
+  * fm2() podawał fazę w cyklach do sin() jak w radianach (piła z DC, nie FM);
+  * svf() miał punkt -3 dB ~3× za nisko i +5 dB wzmocnienia w paśmie przepustowym;
+  * stereoize() = opóźnienie Haas 9-30 ms na KAŻDYM dźwięku → filtr grzebieniowy,
+    do -10 dB przy sumowaniu do mono.
 
-Bufor to lista floatów w zakresie [-1, 1] (mono) albo krotka dwóch takich list
-(stereo). Wewnętrznie liczymy mono, stereo powstaje przez Haas/rozszerzenie.
-
-Kontrakt: bake jest deterministyczny (własny RNG z seeda), więc ponowne
-wygenerowanie daje bajt w bajt ten sam plik.
+Konwencje:
+  * SR = 48000, bufor = np.ndarray float64, mono (n,) albo stereo (2, n).
+  * Generatory zwracają nominalnie ±1 (szum: odchylenie std 0.4). Poziomy
+    ustala dopiero finalize() w bake_audio.py.
+  * Wszystko jest DETERMINISTYCZNE: losowość tylko z Rng(seed). Ten sam seed =
+    ten sam plik (kontrakt bake'u).
+  * Pętle robimy KOŁOWO (circular()): sygnał okresowy → filtr → środkowa kopia.
+    Szew jest idealny z konstrukcji, bez crossfade'u i bez dziury w energii.
 """
 
 from __future__ import annotations
 
 import math
-import struct
 import wave
 
+import numpy as np
+from scipy import ndimage
+from scipy import signal as sg
+
 SR = 48000
-TAU = math.tau
+TAU = 2.0 * math.pi
+NYQ_SAFE = 0.45 * SR
 
 
-# --------------------------------------------------------------------------- rng
+def ms(v: float) -> int:
+    return int(round(SR * v / 1000.0))
+
+
+def sec(v: float) -> int:
+    return int(round(SR * v))
+
+
+def db_to_lin(db: float) -> float:
+    return 10.0 ** (db / 20.0)
+
+
+def lin_to_db(x: float) -> float:
+    return 20.0 * math.log10(max(float(x), 1e-12))
+
+
+# ------------------------------------------------------------------ rng
 
 class Rng:
-    """xorshift64* — szybki, deterministyczny, bez zależności zewnętrznych."""
-
-    __slots__ = ("_s",)
+    """PCG64 z jawnym seedem. fork(tag) daje niezależny, deterministyczny strumień."""
 
     def __init__(self, seed: int = 0x9E3779B97F4A7C15):
-        s = seed & 0xFFFFFFFFFFFFFFFF
-        self._s = s if s else 0x123456789ABCDEF
+        self.seed = int(seed) & 0xFFFFFFFFFFFFFFFF
+        self.g = np.random.Generator(np.random.PCG64(self.seed))
 
-    def _next(self) -> int:
-        s = self._s
-        s ^= (s << 13) & 0xFFFFFFFFFFFFFFFF
-        s ^= s >> 7
-        s ^= (s << 17) & 0xFFFFFFFFFFFFFFFF
-        self._s = s
-        return s
+    def fork(self, tag: int) -> "Rng":
+        return Rng((self.seed * 0x9E3779B97F4A7C15 + int(tag) * 0xBF58476D1CE4E5B9 + 0x94D049BB133111EB)
+                   & 0xFFFFFFFFFFFFFFFF)
 
-    def uniform(self, lo: float = 0.0, hi: float = 1.0) -> float:
-        return lo + (hi - lo) * ((self._next() >> 11) / float(1 << 53))
+    def uniform(self, lo=0.0, hi=1.0, size=None):
+        return self.g.uniform(lo, hi, size)
 
-    def bipolar(self, amp: float = 1.0) -> float:
-        return (self.uniform() * 2.0 - 1.0) * amp
+    def normal(self, mu=0.0, sd=1.0, size=None):
+        return self.g.normal(mu, sd, size)
 
-    def choice(self, seq):
-        return seq[self._next() % len(seq)]
+    def bipolar(self, amp=1.0):
+        return float(self.g.uniform(-amp, amp))
+
+    def integers(self, lo, hi, size=None):
+        return self.g.integers(lo, hi, size)
 
     def chance(self, p: float) -> bool:
-        return ((self._next() >> 11) / float(1 << 53)) < p
+        return bool(self.g.uniform() < p)
+
+    def choice(self, seq):
+        return seq[int(self.g.integers(0, len(seq)))]
 
 
-# --------------------------------------------------------------------------- buf
+# ------------------------------------------------------------------ pomocnicze
 
-def buf_new(n: int) -> list:
-    return [0.0] * n
-
-
-def buf_add(dst: list, src: list) -> list:
-    """dst += src, z automatycznym wydłużeniem dst. Zwraca dst, żeby dało się
-    użyć w wyrażeniu `x = buf_add(x, y)` bez podwójnego zapisywania.
-
-    Auto-rozszerzanie jest tu celowe: mieszaniny mają różne długości (offset,
-    env, głośniki) i ręczne wyrównywanie w każdym builderze to główne źródło
-    błędów poza zakresem."""
-    if len(src) > len(dst):
-        dst.extend([0.0] * (len(src) - len(dst)))
-    n = len(src)
-    for i in range(n):
-        dst[i] += src[i]
-    return dst
-
-
-def buf_add_scaled(dst: list, src: list, k: float) -> list:
-    if k == 0.0:
-        return dst
-    if k == 1.0:
-        return buf_add(dst, src)
-    if len(src) > len(dst):
-        dst.extend([0.0] * (len(src) - len(dst)))
-    n = len(src)
-    for i in range(n):
-        dst[i] += src[i] * k
-    return dst
-
-
-def buf_scale(a: list, k: float) -> list:
-    return [x * k for x in a]
-
-
-def buf_mul(a: list, b) -> list:
-    """Mnożenie elementowe. Drugi argument może być listą (env, modulacja)
-    albo skalarem. Wynik ma długość max(a, b) — krótszy czynnik jest
-    traktowany jak wyzerowany ogon, żeby nigdy nie ucinać sygnału po cichu."""
-    if isinstance(b, (int, float)):
-        return [x * b for x in a]
-    n = max(len(a), len(b))
-    if len(a) < n:
-        a = a + [0.0] * (n - len(a))
-    if len(b) < n:
-        b = b + [0.0] * (n - len(b))
-    return [a[i] * b[i] for i in range(n)]
-
-
-def buf_offset(a: list, delay_s: float) -> list:
-    """Przesunięcie w SEKUNDACH. Używaj buf_offset_n() dla offsetów w próbkach."""
-    d = int(delay_s * SR)
-    if d <= 0:
-        return list(a)
-    if d > len(a) + SR * 60:
-        raise ValueError(
-            "buf_offset: delay_s=%r daje %d próbek — chyba podano liczbę próbek "
-            "zamiast sekund (np. _at() z bake_audio.py)?" % (delay_s, d))
-    return [0.0] * d + list(a)
-
-
-def buf_offset_n(a: list, offset_samples: int) -> list:
-    """Przesunięcie w PRÓBKACH — kontrakt _at() w bake_audio.py.
-
-    Osobna funkcja od buf_offset() bo mieszanie tych dwóch jednostek kosztowało
-    segfault: _at() zwraca już próbki, a mnożenie przez SR dawało 204 GB listy.
-    """
-    n = int(offset_samples)
-    if n <= 0:
-        return list(a)
-    return [0.0] * n + list(a)
-
-
-def buf_norm(a: list, peak: float = 0.98) -> list:
-    m = 0.0
-    for x in a:
-        ax = x if x >= 0.0 else -x
-        if ax > m:
-            m = ax
-    if m < 1e-9:
+def _arr(v, n: int) -> np.ndarray:
+    """Skalar albo tablica → tablica długości n (tablica krótsza: dopełniana ostatnią wartością)."""
+    a = np.asarray(v, dtype=np.float64)
+    if a.ndim == 0:
+        return np.full(n, float(a))
+    if len(a) == n:
         return a
-    k = peak / m
-    return [x * k for x in a]
-
-
-def buf_rms(a: list) -> float:
-    if not a:
-        return 0.0
-    return math.sqrt(sum(x * x for x in a) / len(a))
-
-
-def buf_norm_rms(a: list, target: float, peak_ceiling: float = 0.98) -> list:
-    """Normalizuje do zadanego RMS zamiast do peaku.
-
-    Normalizacja po peaku wyrównuje fakturę, nie głośność: ciągły pad
-    (nisk crest factor) przy peak=0.95 brzmi jak ściana, a perkusja
-    (wysoki crest) przy tym samym peakie jest cicha. Warstwy muzyki
-    nakładają się, więc liczy się głośność względna, nie szczyt.
-
-    Gdy RMS-owe wzmocnienie podniosłoby peak nad sufit, bierzemy mniejszy
-    współczynnik — celem jest nie przesterować, a trafność jest drugorzędna.
-    """
-    r = buf_rms(a)
-    if r < 1e-9:
-        return a
-    k = target / r
-    pk = 0.0
-    for x in a:
-        ax = x if x >= 0.0 else -x
-        if ax > pk:
-            pk = ax
-    if pk > 1e-9:
-        k_ceiling = peak_ceiling / pk
-        if k_ceiling < k:
-            k = k_ceiling
-    if abs(k - 1.0) < 1e-9:
-        return a
-    return [x * k for x in a]
-
-
-def buf_hp(a: list, fc: float = 22.0) -> list:
-    """Usuwa składową stałą filtrem górnoprzepustowym 1. rzędu.
-
-    Konieczne PRZED normalizacją. Kilka budżetów używa wt_square(0.42),
-    czyli fali o wypełnieniu 42% — jej średnia jest różna od zera, a svf
-    to zachowuje. Po normalizacji do peaku zostaje wielka stała składowa:
-    w pętli daje klik co obieg, a na głośnikach intermodulację słyszalną
-    jak szum/tło.
-
-    22 Hz to dolna granica słyszalności basu; wszystkie instrumenty w tym
-    projekcie (baz od ~50 Hz w górę) przechodzą bez zmian, a podstawa
-    składowej stałej znika.
-    """
-    if not a:
-        return a
-    rc = 1.0 / (2.0 * math.pi * fc)
-    k = rc / (rc + 1.0 / SR)
-    out = [0.0] * len(a)
-    y = 0.0
-    x_prev = 0.0
-    for i, x in enumerate(a):
-        y = k * (y + x - x_prev)
-        x_prev = x
-        out[i] = y
-    return out
-
-
-def buf_fade(a: list, fade_in: float = 0.005, fade_out: float = 0.02) -> list:
-    n = len(a)
-    fi = min(int(fade_in * SR), n // 2)
-    fo = min(int(fade_out * SR), n // 2)
-    out = list(a)
-    for i in range(fi):
-        out[i] *= i / fi
-    for i in range(fo):
-        out[n - 1 - i] *= i / fo
-    return out
-
-
-def buf_taper(a: list, curve: float = 1.0, curve_out: float = 1.0) -> list:
-    """Potęjkowe wygładzenie — brzmi naturalniej niż liniowe fade."""
-    n = len(a)
-    out = list(a)
-    for i in range(n):
-        t = i / n
-        g = (t ** curve) * ((1.0 - t) ** curve_out)
-        out[i] *= g
-    return out
-
-
-def loop_xfade(a: list, xfade_s: float = 0.5) -> list:
-    """Zamienia dowolny bufor w pętlę bez szwu (crossfade ostatnich próbek
-    z początkiem, prawo mocy równaj).
-
-    Nic nie dodaje do początku — dla materiału
-    zbudowanego na pełnej długości bufora (np. hum 100 Hz + szum) tamto
-    wstrzykiwało energię, której w sygnale nie było, i rozrywało szew.
-
-    Skoro nie ma „ogonu do zawinięcia", zostaje skrócić i scrossfade'ować.
-    Bufor WYCAINA się o xfade z przodu, a ostatnie xfade próbek zostają
-    zmieszane z początkiem:
-
-        out = a[c:]                      # reszta nietknięta
-        out[-c:] <- a[n-c:] -> a[:c]     # zejście w głowę
-
-    Dzięki temu out[-1] == a[c-1] i out[0] == a[c], czyli szew zawija się
-    na sąsiednich próbkach oryginału — a nie na dwóch przypadkowych
-    fragmentach szumu. Skrócenie o c jest ceną: nic nie znika, energia
-    jedynie przechodzi z głowy w ogon.
-    """
-    c = int(xfade_s * SR)
-    n = len(a)
-    if c <= 1 or n <= 2 * c:
-        return a
-    out = list(a[c:n])
-    for i in range(c):
-        th = (math.pi / 2.0) * (i + 1) / c
-        idx = n - c - c + i
-        out[idx] = out[idx] * math.cos(th) + a[i] * math.sin(th)
-    return out
-
-
-def loop_period(a: list, period: int, xfade: int) -> list:
-    """Pętla o DOKŁADNEJ długości `period` (rytm: takty, uderzenia serca).
-
-    loop_xfade() skraca bufor o długość crossfade'u — dla szumu to bez
-    znaczenia, ale pętla 16 taktów skrócona o 0,5 s przeskakuje o pół
-    uderzenia przy każdym obiegu. Tutaj builder dostarcza `period + xfade`
-    próbek, w których wzór jest PRZEDŁUŻONY (np. takt 5 = takt 1), a ogon
-    a[period:period+xfade] przechodzi liniowo w głowę:
-
-        out[i] = a[i]·t + a[period+i]·(1-t),  i < xfade
-        out[i] = a[i],                        i ≥ xfade
-
-    Szew: out[period-1] = a[period-1], out[0] ≈ a[period] — sąsiednie
-    próbki. Crossfade liniowy, bo przedłużony wzór jest SKORELOWANY z głową
-    (te same uderzenia) — prawo mocy dałoby +3 dB na każdej perkusji w szwie.
-    """
-    need = period + xfade
-    if len(a) < need:
-        a = list(a) + [0.0] * (need - len(a))
-    out = list(a[:period])
-    for i in range(xfade):
-        t = (i + 0.5) / xfade
-        out[i] = a[i] * t + a[period + i] * (1.0 - t)
-    return out
-
-
-def buf_slice_pad(a: list, n: int) -> list:
-    if len(a) >= n:
+    if len(a) > n:
         return a[:n]
-    return list(a) + [0.0] * (n - len(a))
+    return np.concatenate([a, np.full(n - len(a), a[-1])])
 
 
-def buf_energy(a: list) -> float:
-    s = 0.0
-    for x in a:
-        s += x * x
-    return s
+def glide(f0: float, f1: float, n: int, curve: float = 1.0) -> np.ndarray:
+    """Przebieg częstotliwości f0→f1. curve=1 liniowo (w Hz); curve<1 szybki start (kick)."""
+    t = np.linspace(0.0, 1.0, n, endpoint=False) ** curve
+    return f0 + (f1 - f0) * t
 
 
-def stereoize(mono: list, width_ms: float = 9.0, haas_hz: float = 340.0) -> tuple:
-    """Proste rozszerzenie stereo: mid + posunięcie fazy (Haas) na kanałach + deltas."""
-    d = max(1, int(width_ms * 0.001 * SR))
-    haas = int(SR / haas_hz)
-    left = list(mono)
-    right = [0.0] * len(mono)
-    for i in range(d, len(mono)):
-        right[i] = mono[i - d]
-    for i in range(min(haas, len(mono))):
-        right[i] = mono[i]
-    return left, right
+def glide_exp(f0: float, f1: float, n: int, tau: float) -> np.ndarray:
+    """Wykładnicze opadanie f0→f1 ze stałą czasową tau [s] (naturalne dla kicka/toma)."""
+    t = np.arange(n) / SR
+    return f1 + (f0 - f1) * np.exp(-t / tau)
 
 
-# --------------------------------------------------------------------------- wav
-
-def write_wav(path: str, data, sr: int = SR, channels: int = 1) -> None:
-    if channels == 1:
-        inter = data
-    else:
-        left, right = data
-        n = min(len(left), len(right))
-        inter = [0.0] * (n * 2)
-        for i in range(n):
-            inter[i * 2] = left[i]
-            inter[i * 2 + 1] = right[i]
-    frames = bytearray()
-    packer = struct.Struct("<h").pack
-    for x in inter:
-        if x > 1.0:
-            x = 1.0
-        elif x < -1.0:
-            x = -1.0
-        frames += packer(int(x * 32767.0))
-    with wave.open(path, "wb") as w:
-        w.setnchannels(channels)
-        w.setsampwidth(2)
-        w.setframerate(sr)
-        w.writeframes(bytes(frames))
+def pad_to(a: np.ndarray, n: int) -> np.ndarray:
+    if a.shape[-1] >= n:
+        return a[..., :n]
+    pw = [(0, 0)] * (a.ndim - 1) + [(0, n - a.shape[-1])]
+    return np.pad(a, pw)
 
 
-# --------------------------------------------------------------------------- wavetables
+def at(buf: np.ndarray, start: float) -> np.ndarray:
+    """Opóźnia bufor o `start` SEKUND (zawsze sekundy — jedna jednostka w całym projekcie)."""
+    d = int(round(start * SR))
+    if d <= 0:
+        return buf
+    pw = [(0, 0)] * (buf.ndim - 1) + [(d, 0)]
+    return np.pad(buf, pw)
 
-def wt_from_harmonics(amps: list) -> list:
-    """Buduje tablicę jednocyklową z listy amplitud harmonicznych."""
-    n = len(amps)
-    w = [0.0] * n
-    for h, a in enumerate(amps, start=1):
-        if a == 0.0:
+
+def mix(parts, n: int | None = None) -> np.ndarray:
+    """parts: [(bufor, wzmocnienie)] albo [(bufor, wzmocnienie, start_s)]. Mono i stereo
+    mogą się mieszać (mono jest kopiowane na oba kanały)."""
+    items = []
+    for p in parts:
+        b, g = p[0], p[1]
+        if len(p) > 2:
+            b = at(b, p[2])
+        items.append((b, g))
+    length = n if n is not None else max(b.shape[-1] for b, _ in items)
+    stereo = any(b.ndim == 2 for b, _ in items)
+    out = np.zeros((2, length) if stereo else length)
+    for b, g in items:
+        b = pad_to(b, length)
+        if stereo and b.ndim == 1:
+            b = np.stack([b, b])
+        out += b * g
+    return out
+
+
+def plus(*bufs) -> np.ndarray:
+    """Suma buforów o różnych długościach (krótszy dopełniany zerami)."""
+    return mix([(b, 1.0) for b in bufs])
+
+
+def to_mono(x: np.ndarray) -> np.ndarray:
+    return x if x.ndim == 1 else x.mean(axis=0)
+
+
+def pan(x: np.ndarray, p: float) -> np.ndarray:
+    """Panorama stałej mocy; p ∈ [-1, 1]."""
+    th = (p + 1.0) * math.pi / 4.0
+    return np.stack([x * math.cos(th), x * math.sin(th)])
+
+
+# ------------------------------------------------------------------ szum
+
+def white(n: int, rng: Rng) -> np.ndarray:
+    return rng.g.standard_normal(n) * 0.4
+
+
+def colored(n: int, rng: Rng, slope: float) -> np.ndarray:
+    """Szum o widmie mocy ~ 1/f^slope (0 = biały, 1 = różowy, 2 = brązowy).
+    Kształtowanie w dziedzinie FFT daje szum DOKŁADNIE okresowy w n próbkach."""
+    x = rng.g.standard_normal(n)
+    X = np.fft.rfft(x)
+    k = np.arange(len(X), dtype=np.float64)
+    k[0] = 1.0
+    X *= k ** (-slope / 2.0)
+    X[0] = 0.0
+    y = np.fft.irfft(X, n)
+    return y / (np.std(y) + 1e-12) * 0.4
+
+
+def pink(n: int, rng: Rng) -> np.ndarray:
+    return colored(n, rng, 1.0)
+
+
+def brown(n: int, rng: Rng) -> np.ndarray:
+    return colored(n, rng, 2.0)
+
+
+# ------------------------------------------------------------------ oscylatory
+
+def _phase(f: np.ndarray, phase0: float = 0.0) -> np.ndarray:
+    """Faza w CYKLACH; pierwsza próbka = phase0."""
+    c = np.cumsum(f) / SR
+    return phase0 + np.concatenate([[0.0], c[:-1]])
+
+
+def _blep(t: np.ndarray, dt: np.ndarray) -> np.ndarray:
+    y = np.zeros_like(t)
+    m = t < dt
+    if m.any():
+        x = t[m] / dt[m]
+        y[m] = x + x - x * x - 1.0
+    m = t > 1.0 - dt
+    if m.any():
+        x = (t[m] - 1.0) / dt[m]
+        y[m] = x * x + x + x + 1.0
+    return y
+
+
+def osc(shape: str, f, n: int, phase0: float = 0.0, pw: float = 0.5) -> np.ndarray:
+    """Oscylator. f: Hz (skalar albo tablica długości n → glissando/wibrato).
+    saw/square: PolyBLEP (bez aliasingu słyszalnego); sine: dokładny; tri: złożony z piły."""
+    f = _arr(f, n)
+    ph = _phase(f, phase0)
+    if shape == "sine":
+        return np.sin(TAU * ph)
+    p = ph % 1.0
+    dt = np.clip(f / SR, 1e-9, 0.49)
+    if shape == "saw":
+        return 2.0 * p - 1.0 - _blep(p, dt)
+    if shape == "square":
+        y = np.where(p < pw, 1.0, -1.0)
+        return y + _blep(p, dt) - _blep((p + 1.0 - pw) % 1.0, dt)
+    if shape == "tri":
+        return 2.0 * np.abs(2.0 * p - 1.0) - 1.0
+    raise ValueError("nieznany kształt fali: %r" % shape)
+
+
+def vibrato(f0: float, n: int, hz: float, cents: float, phase0: float = 0.0) -> np.ndarray:
+    """Przebieg częstotliwości z wibrato (do osc/fm)."""
+    t = np.arange(n) / SR
+    return f0 * 2.0 ** ((cents / 1200.0) * np.sin(TAU * hz * t + phase0))
+
+
+def fm(f, n: int, ratio: float = 2.0, index=3.0, phase0: float = 0.0, fb: float = 0.0) -> np.ndarray:
+    """2-operatorowy FM (modulacja fazy), jak DX7. index: skalar albo obwiednia."""
+    f = _arr(f, n)
+    idx = _arr(index, n)
+    pc = _phase(f, phase0)
+    pm = _phase(f * ratio, 0.0)
+    return np.sin(TAU * pc + idx * np.sin(TAU * pm))
+
+
+def modal(freqs, amps, t60s, n: int, rng: Rng | None = None, jitter: float = 0.0,
+          strike_lp: float = 0.0) -> np.ndarray:
+    """Synteza modalna: suma tłumionych sinusów (rezonanse metalu, szkła, dzwonu).
+    t60s — czas zaniku o 60 dB dla każdego modu [s]. To jest właściwy model uderzenia
+    w obiekt rezonansowy — FM tylko go udaje."""
+    t = np.arange(n) / SR
+    out = np.zeros(n)
+    for i, (f, a, t60) in enumerate(zip(freqs, amps, t60s)):
+        if jitter and rng is not None:
+            f = f * (1.0 + rng.bipolar(jitter))
+        if f >= NYQ_SAFE:
             continue
-        w[h % n] += a
-    norm = max(abs(x) for x in w) or 1.0
-    return [x / norm for x in w]
-
-
-def wt_sine() -> list:
-    return [0.0, 1.0]
-
-
-def wt_saw(harmonics: int = 40) -> list:
-    n = harmonics * 2
-    amps = [0.0] * n
-    for h in range(1, n // 2 + 1):
-        amps[h % n] += (1.0 / h) * (1.0 if h % 2 else -1.0)
-    return wt_from_harmonics(amps)
-
-
-def wt_square(width: float = 0.5, harmonics: int = 48) -> list:
-    n = harmonics * 2
-    amps = [0.0] * n
-    for h in range(1, n // 2 + 1):
-        amps[h % n] += math.sin(math.pi * h * width) / h
-    return wt_from_harmonics(amps)
-
-
-def wt_triangle(harmonics: int = 32) -> list:
-    n = harmonics * 2
-    amps = [0.0] * n
-    for h in range(1, n // 2 + 1):
-        odd = h if h % 2 else 0
-        if odd:
-            amps[h % n] += ((-1) ** ((odd - 1) // 2)) / (odd * odd)
-    return wt_from_harmonics(amps)
-
-
-def wt_bell(nh: int = 14) -> list:
-    """Metaliczny/brzękowy: harmoniczne z losowym spadkiem i fazą."""
-    amps = [0.0] * 512
-    rng = Rng(0xB311)
-    for h in range(1, nh + 1):
-        amps[h] = (1.0 / (h ** 1.35)) * rng.uniform(0.6, 1.0)
-    return wt_from_harmonics(amps)
-
-
-def wt_organ(nh: int = 8) -> list:
-    amps = [0.0] * 256
-    for h in range(1, nh + 1):
-        amps[h] = (1.0 / h) * (1.0 if h % 2 == 0 else 0.55)
-    return wt_from_harmonics(amps)
-
-
-def wt_noise_floor(n: int = 2048, rng_seed: int = 0x1234) -> list:
-    """Szum jako 'wavetable' — pozwala odtwarzać go z modulacją fazy."""
-    r = Rng(rng_seed)
-    return [r.bipolar() for _ in range(n)]
-
-
-# --------------------------------------------------------------------------- oscillators
-
-def osc(wt: list, n: int, f0: float, f1: float | None = None,
-        phase: float = 0.0, vib_hz: float = 0.0, vib_cents: float = 0.0,
-        phase_noise: float = 0.0, rng: Rng | None = None) -> list:
-    """Oscillator z interpolacją częstotliwości (f0 -> f1) i wibracją."""
-    f1 = f0 if f1 is None else f1
-    wn = len(wt)
-    out = [0.0] * n
-    ph = phase % wn
-    df = (f1 - f0) / n
-    f = f0
-    vib_phase = 0.0
-    vib_step = TAU * vib_hz / SR if vib_hz > 0.0 else 0.0
-    vib_scale = (2.0 ** (vib_cents / 1200.0)) - 1.0
-    rn = rng
-    for i in range(n):
-        fcur = f
-        if vib_step:
-            fcur = f * (1.0 + vib_scale * math.sin(vib_phase))
-            vib_phase += vib_step
-        ph += fcur
-        if phase_noise and rn is not None:
-            ph += rn.bipolar(phase_noise)
-        p = ph
-        i0 = int(p) % wn
-        i1 = (i0 + 1) % wn
-        fr = p - int(p)
-        out[i] = wt[i0] + (wt[i1] - wt[i0]) * fr
-        f += df
-        while ph >= wn:
-            ph -= wn
+        ph = rng.uniform(0, TAU) if rng is not None else 0.0
+        out += a * np.sin(TAU * f * t + ph) * np.exp(-6.9078 * t / max(t60, 1e-3))
     return out
 
 
-def noise_white(n: int, rng: Rng) -> list:
-    return [rng.bipolar() for _ in range(n)]
+# ------------------------------------------------------------------ obwiednie
+
+def env_exp(n: int, tau: float) -> np.ndarray:
+    return np.exp(-np.arange(n) / (tau * SR))
 
 
-def noise_pink(n: int, rng: Rng) -> list:
-    out = [0.0] * n
-    b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0
-    for i in range(n):
-        w = rng.bipolar()
-        b0 = 0.99886 * b0 + w * 0.0555179
-        b1 = 0.99332 * b1 + w * 0.0750759
-        b2 = 0.96900 * b2 + w * 0.1538520
-        b3 = 0.86650 * b3 + w * 0.3104856
-        b4 = 0.55000 * b4 + w * 0.5329522
-        b5 = -0.7616 * b5 - w * 0.0168980
-        out[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11
-        b6 = w * 0.115926
-    return out
-
-
-def noise_brown(n: int, rng: Rng) -> list:
-    out = [0.0] * n
-    last = 0.0
-    for i in range(n):
-        last = (last + 0.02 * rng.bipolar()) / 1.02
-        out[i] = last * 3.5
-    return out
-
-
-# --------------------------------------------------------------------------- filters
-
-def svf(buf: list, cut0: float, cut1: float | None = None, q: float = 0.7,
-        mode: str = "lp") -> list:
-    """State Variable Filter (Chamberlin) z liniową zmianą cutoff i rezonansem."""
-    n = len(buf)
-    cut1 = cut0 if cut1 is None else cut1
-    out = [0.0] * n
-    low = band = 0.0
-    dcut = (cut1 - cut0) / n
-    cut = cut0
-    inv_q = 1.0 / max(0.5, q)
-    two_pi_sr = TAU / SR
-    for i in range(n):
-        f = cut
-        if f > SR * 0.45:
-            f = SR * 0.45
-        elif f < 12.0:
-            f = 12.0
-        g = math.tan(math.pi * f / SR)
-        k = inv_q
-        hp = (buf[i] - k * g * low - band) / (1.0 + g * (g + k))
-        band += g * hp
-        low += g * band
-        if mode == "lp":
-            out[i] = low
-        elif mode == "hp":
-            out[i] = hp
-        else:
-            out[i] = band
-        cut += dcut
-    return out
-
-
-def onepole_lp(buf: list, cut: float) -> list:
-    a = math.exp(-TAU * cut / SR)
-    b = 1.0 - a
-    out = [0.0] * len(buf)
-    y = 0.0
-    for i, x in enumerate(buf):
-        y = b * x + a * y
-        out[i] = y
-    return out
-
-
-def highpass(buf: list, cut: float) -> list:
-    lp = onepole_lp(buf, cut)
-    return [buf[i] - lp[i] for i in range(len(buf))]
-
-
-def tilt(buf: list, amount: float) -> list:
-    """Proste tilt EQ: amount<0 cieńej, >0 jaśniej."""
-    if amount == 0.0:
-        return list(buf)
-    lp = onepole_lp(buf, 1200.0)
-    if amount < 0.0:
-        k = amount * 2.0
-        return [buf[i] + lp[i] * k for i in range(len(buf))]
-    k = amount
-    return [lp[i] * k for i in range(len(buf))]
-
-
-# --------------------------------------------------------------------------- envelopes
-
-def env_adsr(n: int, a: float, d: float, s: float, r: float) -> list:
-    na = max(1, int(a * SR))
-    nd = max(1, int(d * SR))
-    nr = max(1, int(r * SR))
-    ns = max(0, n - na - nd - nr)
-    out = [0.0] * n
-    idx = 0
-    for i in range(min(na, n)):
-        out[idx] = i / na
-        idx += 1
-    for i in range(min(nd, n - idx)):
-        out[idx] = 1.0 + (s - 1.0) * (i / nd)
-        idx += 1
-    for _ in range(min(ns, n - idx)):
-        out[idx] = s
-        idx += 1
-    rem = n - idx
-    if rem > 0:
-        for i in range(rem):
-            out[idx] = s * (1.0 - i / rem)
-            idx += 1
-    return out
-
-
-def env_exp(n: int, tau: float, curve: float = 1.0) -> list:
-    """Wykładniczy ogon — naturalny dla strzałów, uderzeń, ech."""
-    out = [0.0] * n
-    k = 1.0 / (tau * SR)
-    for i in range(n):
-        out[i] = math.exp(-k * i) ** curve if curve != 1.0 else math.exp(-k * i)
-    return out
-
-
-def env_perc(n: int, attack: float = 0.002, decay: float = 0.12) -> list:
+def env_perc(n: int, attack: float = 0.002, decay: float = 0.12) -> np.ndarray:
+    """Narastanie liniowe (attack) → opadanie wykładnicze (stała decay)."""
     na = max(1, int(attack * SR))
-    out = [0.0] * n
-    for i in range(n):
-        if i < na:
-            out[i] = i / na
+    t = np.arange(n)
+    out = np.exp(-(t - na) / (decay * SR))
+    out[:na] = t[:na] / na
+    return out
+
+
+def env_adsr(n: int, a: float, d: float, s: float, r: float) -> np.ndarray:
+    na, nd, nr = max(1, int(a * SR)), max(1, int(d * SR)), max(1, int(r * SR))
+    nr = min(nr, n)
+    hold = max(0, n - na - nd - nr)
+    parts = [np.linspace(0.0, 1.0, na, endpoint=False),
+             np.linspace(1.0, s, nd, endpoint=False),
+             np.full(hold, s),
+             np.linspace(s, 0.0, nr)]
+    return pad_to(np.concatenate(parts), n)
+
+
+def env_pts(n: int, pts) -> np.ndarray:
+    """Obwiednia z punktów [(czas_s, amp), ...], interpolacja liniowa."""
+    ts = np.array([p[0] for p in pts]) * SR
+    vs = np.array([p[1] for p in pts])
+    return np.interp(np.arange(n), ts, vs)
+
+
+def env_curve(n: int, a: float, b: float, power: float = 2.0) -> np.ndarray:
+    """a→b po krzywej t^power (power>1: powolny start, szybki koniec)."""
+    return a + (b - a) * np.linspace(0.0, 1.0, n) ** power
+
+
+def lfo(n: int, hz: float, depth: float = 1.0, phase: float = 0.0, floor: float = 0.0) -> np.ndarray:
+    """LFO sinusoidalne o przebiegu w [floor, 1]; hz powinno dawać całkowitą liczbę
+    cykli w pętli, jeśli sygnał ma być zapętlony."""
+    t = np.arange(n) / SR
+    s = 0.5 + 0.5 * np.sin(TAU * hz * t + phase)
+    return floor + (1.0 - floor) * (1.0 - depth + depth * s)
+
+
+# ------------------------------------------------------------------ filtry
+
+def _rbj(kind: str, f: float, q: float, gain_db: float = 0.0) -> np.ndarray:
+    f = min(max(f, 10.0), NYQ_SAFE)
+    w0 = TAU * f / SR
+    cw, sw = math.cos(w0), math.sin(w0)
+    al = sw / (2.0 * max(q, 0.05))
+    A = 10.0 ** (gain_db / 40.0)
+    if kind == "lp":
+        b = [(1 - cw) / 2, 1 - cw, (1 - cw) / 2]; a = [1 + al, -2 * cw, 1 - al]
+    elif kind == "hp":
+        b = [(1 + cw) / 2, -(1 + cw), (1 + cw) / 2]; a = [1 + al, -2 * cw, 1 - al]
+    elif kind == "bp":      # stałe wzmocnienie szczytowe 0 dB
+        b = [al, 0.0, -al]; a = [1 + al, -2 * cw, 1 - al]
+    elif kind == "notch":
+        b = [1.0, -2 * cw, 1.0]; a = [1 + al, -2 * cw, 1 - al]
+    elif kind == "peak":
+        b = [1 + al * A, -2 * cw, 1 - al * A]; a = [1 + al / A, -2 * cw, 1 - al / A]
+    elif kind in ("lowshelf", "highshelf"):
+        sq = 2.0 * math.sqrt(A) * al
+        if kind == "lowshelf":
+            b = [A * ((A + 1) - (A - 1) * cw + sq), 2 * A * ((A - 1) - (A + 1) * cw),
+                 A * ((A + 1) - (A - 1) * cw - sq)]
+            a = [(A + 1) + (A - 1) * cw + sq, -2 * ((A - 1) + (A + 1) * cw),
+                 (A + 1) + (A - 1) * cw - sq]
         else:
-            out[i] = math.exp(-(i - na) / (decay * SR))
+            b = [A * ((A + 1) + (A - 1) * cw + sq), -2 * A * ((A - 1) + (A + 1) * cw),
+                 A * ((A + 1) + (A - 1) * cw - sq)]
+            a = [(A + 1) - (A - 1) * cw + sq, 2 * ((A - 1) - (A + 1) * cw),
+                 (A + 1) - (A - 1) * cw - sq]
+    else:
+        raise ValueError(kind)
+    a0 = a[0]
+    return np.array([[b[0] / a0, b[1] / a0, b[2] / a0, 1.0, a[1] / a0, a[2] / a0]])
+
+
+def filt(x: np.ndarray, kind: str, f: float, q: float = 0.7071, gain_db: float = 0.0,
+         order: int = 2) -> np.ndarray:
+    """Filtr stały. lp/hp rzędu >2 = Butterworth (q ignorowane); reszta: biquad RBJ."""
+    if kind in ("lp", "hp") and order > 2:
+        sos = sg.butter(order, min(f, NYQ_SAFE), btype="low" if kind == "lp" else "high",
+                        fs=SR, output="sos")
+    else:
+        sos = _rbj(kind, f, q, gain_db)
+    return sg.sosfilt(sos, x, axis=-1)
+
+
+def lp(x, f, q=0.7071, order=2): return filt(x, "lp", f, q, order=order)
+def hp(x, f, q=0.7071, order=2): return filt(x, "hp", f, q, order=order)
+def bp(x, f, q=1.0): return filt(x, "bp", f, q)
+
+
+def sweep(x: np.ndarray, kind: str, f, q: float = 0.7071, block: int = 48) -> np.ndarray:
+    """Filtr z przestrajaną częstotliwością odcięcia (f: tablica Hz długości n).
+    Przetwarzanie blokowe z przenoszeniem stanu; q może być skalarem."""
+    n = x.shape[-1]
+    f = _arr(f, n)
+    out = np.zeros_like(x)
+    zi = None
+    for s in range(0, n, block):
+        e = min(s + block, n)
+        sos = _rbj(kind, float(f[(s + e) // 2]), q)
+        if zi is None:
+            zi = np.zeros((1, 2) if x.ndim == 1 else (1, x.shape[0], 2))
+        out[..., s:e], zi = sg.sosfilt(sos, x[..., s:e], axis=-1, zi=zi)
     return out
 
 
-# --------------------------------------------------------------------------- shaping
+def dc_block(x: np.ndarray, fc: float = 18.0) -> np.ndarray:
+    return filt(x, "hp", fc, 0.7071)
 
-def saturate(buf: list, drive: float = 2.0) -> list:
-    """Soft clip / tape saturation — grubość lat 80."""
+
+def formant(x: np.ndarray, formants, bw_q: float = 8.0) -> np.ndarray:
+    """Bank rezonatorów pasmowych [(f, amp), ...] — barwa „ustna/krtaniowa" (growl, krzyk)."""
+    out = np.zeros_like(x)
+    for f, a in formants:
+        out += a * filt(x, "bp", f, bw_q)
+    return out
+
+
+# ------------------------------------------------------------------ nieliniowość / dynamika
+
+def saturate(x: np.ndarray, drive: float = 2.0, bias: float = 0.0, os: int = 4) -> np.ndarray:
+    """tanh z nadpróbkowaniem (bez aliasingu harmonicznych). Jednostkowe wejście → ~jednostkowe
+    wyjście. bias>0 dodaje parzyste harmoniczne (ciepło lamp/taśmy)."""
     if drive <= 0.0:
-        return list(buf)
-    k = 1.0 / (1.0 + drive)
-    return [math.tanh(x * drive) * k * (1.0 + drive) for x in buf]
+        return x
+    up = sg.resample_poly(x, os, 1, axis=-1)
+    y = np.tanh(drive * up + bias) - math.tanh(bias)
+    y = y / math.tanh(drive)
+    out = sg.resample_poly(y, 1, os, axis=-1)
+    return pad_to(out, x.shape[-1]) if bias == 0 else dc_block(pad_to(out, x.shape[-1]))
 
 
-def bitcrush(buf: list, bits: int = 8, downsample: int = 1) -> list:
-    levels = float(2 ** (bits - 1))
-    out = [0.0] * len(buf)
-    hold = 0.0
-    cnt = 0
-    for i, x in enumerate(buf):
-        if cnt <= 0:
-            hold = x
-            cnt = downsample
-        cnt -= 1
-        out[i] = round(hold * levels) / levels
+def fold(x: np.ndarray, amount: float) -> np.ndarray:
+    """Wavefolder — metaliczna, „elektroniczna" agresja (mało użyteczny bez oversamplingu)."""
+    up = sg.resample_poly(x, 4, 1, axis=-1)
+    y = np.sin(up * (1.0 + amount))
+    return pad_to(sg.resample_poly(y, 1, 4, axis=-1), x.shape[-1])
+
+
+def bitcrush(x: np.ndarray, bits: int = 8, hold: int = 1) -> np.ndarray:
+    q = 2.0 ** (bits - 1)
+    y = np.round(x * q) / q
+    if hold > 1:
+        y = np.repeat(y[::hold], hold)[:len(x)]
+    return y
+
+
+def tape(x: np.ndarray, wow_hz: float = 0.6, wow_depth: float = 0.0035, sat: float = 1.2,
+         hiss: float = 0.0, rng: Rng | None = None) -> np.ndarray:
+    """Taśma: wow/flutter (modulacja czasu odczytu, średnia prędkość = 1) + miękka saturacja
+    + opcjonalny szum. Odczyt kołowy → pętla pozostaje zamknięta, jeśli wow_hz daje całkowitą
+    liczbę cykli w buforze."""
+    n = x.shape[-1]
+    t = np.arange(n) / SR
+    mod = (wow_depth * np.sin(TAU * wow_hz * t) + wow_depth * 0.4 * np.sin(TAU * wow_hz * 6.7 * t + 1.3))
+    # przesunięcie czasu = całka z modulacji prędkości
+    shift = np.cumsum(mod) / 1.0 - np.mean(np.cumsum(mod))
+    pos = (np.arange(n) + shift) % n
+    i0 = pos.astype(np.int64)
+    fr = pos - i0
+    if x.ndim == 1:
+        y = x[i0] * (1.0 - fr) + x[(i0 + 1) % n] * fr
+    else:
+        y = np.stack([c[i0] * (1.0 - fr) + c[(i0 + 1) % n] * fr for c in x])
+    if hiss and rng is not None:
+        y = y + (white(n, rng) if y.ndim == 1 else np.stack([white(n, rng), white(n, rng)])) * hiss
+    return saturate(y, sat) if sat else y
+
+
+def compress(x: np.ndarray, thresh_db: float = -18.0, ratio: float = 3.0, attack_ms: float = 8.0,
+             release_ms: float = 120.0, makeup_db: float = 0.0, block: int = 32) -> np.ndarray:
+    """Kompresor feed-forward (detektor szczytów w blokach, wygładzanie attack/release)."""
+    mono = np.abs(x) if x.ndim == 1 else np.abs(x).max(axis=0)
+    n = len(mono)
+    nb = (n + block - 1) // block
+    lvl = np.pad(mono, (0, nb * block - n)).reshape(nb, block).max(axis=1)
+    lvl_db = 20.0 * np.log10(np.maximum(lvl, 1e-6))
+    over = np.maximum(lvl_db - thresh_db, 0.0)
+    target = -over * (1.0 - 1.0 / ratio)             # redukcja docelowa [dB] (≤ 0)
+    ca = math.exp(-block / (SR * attack_ms / 1000.0))
+    cr = math.exp(-block / (SR * release_ms / 1000.0))
+    g = np.zeros(nb)
+    cur = 0.0
+    for i in range(nb):
+        c = ca if target[i] < cur else cr
+        cur = c * cur + (1.0 - c) * target[i]
+        g[i] = cur
+    gs = np.interp(np.arange(n), (np.arange(nb) + 0.5) * block, g)
+    return x * 10.0 ** ((gs + makeup_db) / 20.0)
+
+
+def limiter(x: np.ndarray, ceiling_db: float = -1.5, lookahead_ms: float = 2.0,
+            release_ms: float = 60.0) -> np.ndarray:
+    """Limiter z podglądem (min-filter + wygładzanie); gwarantuje szczyt ≤ ceiling."""
+    c = db_to_lin(ceiling_db)
+    pk = np.abs(x) if x.ndim == 1 else np.abs(x).max(axis=0)
+    g = np.minimum(1.0, c / np.maximum(pk, 1e-9))
+    la = max(2, ms(lookahead_ms))
+    gmin = ndimage.minimum_filter1d(g, size=la * 2, mode="nearest")
+    gm = ndimage.uniform_filter1d(gmin, size=la * 2, mode="nearest")
+    # powolne zwalnianie: max(g, wygładzone) w kierunku do przodu
+    rel = math.exp(-1.0 / (SR * release_ms / 1000.0))
+    out = np.empty_like(gm)
+    cur = 1.0
+    # przejście blokowe (co 16 próbek) — wystarczy dla wygładzenia release
+    step = 16
+    for i in range(0, len(gm), step):
+        tgt = gm[i:i + step].min()
+        cur = tgt if tgt < cur else rel ** step * cur + (1 - rel ** step) * tgt
+        out[i:i + step] = cur
+    out = np.minimum(out, gm)       # nigdy powyżej wymaganego tłumienia
+    return x * out
+
+
+def transient_shape(x: np.ndarray, attack_gain_db: float = 6.0, sustain_gain_db: float = 0.0,
+                    fast_ms: float = 1.0, slow_ms: float = 30.0) -> np.ndarray:
+    """Podbicie/stłumienie transjentu (różnica obwiedni szybkiej i wolnej)."""
+    a = np.abs(x) if x.ndim == 1 else np.abs(x).max(axis=0)
+    fast = ndimage.uniform_filter1d(a, max(1, ms(fast_ms)))
+    slow = ndimage.uniform_filter1d(a, max(2, ms(slow_ms)))
+    tr = np.clip((fast - slow) / (slow + 1e-4), 0.0, 4.0) / 4.0
+    g = db_to_lin(sustain_gain_db) * (1.0 + tr * (db_to_lin(attack_gain_db) - 1.0))
+    return x * g
+
+
+# ------------------------------------------------------------------ przestrzeń
+
+def _ir_band_noise(L: int, t60: float, rng: Rng) -> np.ndarray:
+    t = np.arange(L) / SR
+    return rng.g.standard_normal(L) * np.exp(-6.9078 * t / max(t60, 0.02))
+
+
+def make_ir(rt60: float, rng: Rng, size: float = 1.0, damping: float = 0.5, pre_ms: float = 6.0,
+            er_gain: float = 0.8, bright: float = 1.0, stereo: bool = True,
+            max_len_s: float | None = None) -> np.ndarray:
+    """Syntetyczna odpowiedź impulsowa pomieszczenia.
+      rt60    — czas pogłosu [s] w średnich pasmach
+      size    — skala wczesnych odbić i narastania gęstości (0.3 = szafa, 1 = sala, 3 = hala)
+      damping — 0..1, im więcej tym szybciej zanikają wysokie tony (miękkie ściany/las)
+      bright  — mnożnik górnych pasm
+    Koniec IR jest wygaszony (okno), energia znormalizowana do 1 → mix wet/dry przewidywalny."""
+    L = int(min(rt60 * 1.4 + 0.12, max_len_s or 6.0) * SR)
+    t = np.arange(L) / SR
+    bands = ((60, 250, 1.25), (250, 1000, 1.0), (1000, 3500, 0.8 - 0.45 * damping),
+             (3500, 8000, 0.55 - 0.45 * damping), (8000, 20000, 0.35 - 0.3 * damping))
+    chans = 2 if stereo else 1
+    irs = []
+    for c in range(chans):
+        r = rng.fork(c + 1)
+        tail = np.zeros(L)
+        for lo, hi, mult in bands:
+            hi_c = min(hi, NYQ_SAFE)
+            sos = sg.butter(2, [lo, hi_c], btype="band", fs=SR, output="sos")
+            band = sg.sosfilt(sos, _ir_band_noise(L, rt60 * 1.3 * max(mult, 0.08), r))
+            tail += band * (bright if lo >= 3500 else 1.0)
+        build = 1.0 - np.exp(-t / max(0.012 * size, 1e-3))     # narastanie gęstości echa
+        tail *= build
+        # wczesne odbicia: rzadkie impulsy w pierwszych ~90 ms·size, rosnąca gęstość
+        er = np.zeros(L)
+        n_er = int(18 + 10 * size)
+        times = np.sort(r.uniform(0.002, 0.09 * size, n_er)) ** 1.0
+        for k, tt in enumerate(times):
+            i = int(tt * SR)
+            if i < L:
+                er[i] += r.bipolar(1.0) * (1.0 / (1.0 + 7.0 * tt / size))
+        er = sg.sosfilt(sg.butter(1, min(7000.0 * bright, NYQ_SAFE), fs=SR, output="sos"), er)
+        ir = tail * 0.045 + er * er_gain * 0.9
+        pre = ms(pre_ms)
+        ir = np.concatenate([np.zeros(pre), ir])[:L]
+        ir *= np.minimum(1.0, (L - np.arange(L)) / (0.06 * SR))  # wygaszenie końca
+        irs.append(ir)
+    ir = np.stack(irs) if stereo else irs[0]
+    e = math.sqrt(np.sum(ir ** 2))
+    return ir / max(e, 1e-12)
+
+
+def reverb(x: np.ndarray, ir: np.ndarray, wet: float = 0.25, dry: float = 1.0,
+           keep_len: bool = False, hp_wet: float = 120.0) -> np.ndarray:
+    """Pogłos splotowy. Wejście mono → wyjście stereo (jeśli IR stereo). Ogon NIE jest
+    obcinany (wydłuża bufor), chyba że keep_len=True."""
+    xm = to_mono(x)
+    n = len(xm)
+    if ir.ndim == 1:
+        wetsig = sg.fftconvolve(xm, ir)
+        wetsig = filt(wetsig, "hp", hp_wet) if hp_wet else wetsig
+        out_n = n if keep_len else len(wetsig)
+        return pad_to(xm, out_n) * dry + pad_to(wetsig, out_n) * wet
+    chans = [sg.fftconvolve(xm, ir[c]) for c in range(2)]
+    wetsig = np.stack(chans)
+    if hp_wet:
+        wetsig = filt(wetsig, "hp", hp_wet)
+    out_n = n if keep_len else wetsig.shape[-1]
+    return np.stack([pad_to(xm, out_n)] * 2) * dry + pad_to(wetsig, out_n) * wet
+
+
+def reverb_stereo(x: np.ndarray, ir_st: np.ndarray, wet: float = 0.25, dry: float = 1.0,
+                  keep_len: bool = False) -> np.ndarray:
+    """Pogłos splotowy zachowujący obraz stereo: L*IR_L, R*IR_R (IR nieskorelowane)."""
+    if x.ndim == 1:
+        x = np.stack([x, x])
+    w = np.stack([sg.fftconvolve(x[c], ir_st[c]) for c in range(2)])
+    out_n = x.shape[-1] if keep_len else w.shape[-1]
+    return pad_to(x, out_n) * dry + pad_to(w, out_n) * wet
+
+
+def echo_tail(x: np.ndarray, delays_ms, gains, lp_hz: float = 4000.0) -> np.ndarray:
+    """Wielokrotne echa (rozbicie dźwięku od drzew/ścian w oddali: slapback)."""
+    out = x.copy() if x.ndim == 1 else x.copy()
+    tot = max(ms(d) for d in delays_ms) + x.shape[-1]
+    out = pad_to(out, tot)
+    for d, g in zip(delays_ms, gains):
+        e = filt(x, "lp", lp_hz) * g
+        k = ms(d)
+        out[..., k:k + x.shape[-1]] += e
     return out
 
 
-def tape(buf: list, wow_hz: float = 0.6, wow_depth: float = 0.0035,
-         hiss: float = 0.0, sat: float = 1.2, rng: Rng | None = None) -> list:
-    """Taśma: napięcie + wow/flutter + szum. Rdzeń brzmienia 'analogowego' z GDD §13."""
-    n = len(buf)
-    out = [0.0] * n
-    rn = rng or Rng(0x77)
-    # Średnia prędkość odczytu = 1,0; wow/flutter tylko ją modulują. Wcześniej
-    # step = 1 + wow_depth: taśma czytała ~0,35% szybciej, więc pętle muzyki
-    # rozjeżdżały się z taktem (~40 ms na obieg), a one-shoty pod koniec
-    # zawijały się do własnego początku (klik na końcu tape_stop itp.).
-    step = 1.0
-    phase = 0.0
-    w1 = TAU * wow_hz / SR
-    w2 = TAU * (wow_hz * 6.7) / SR
-    p1 = p2 = 0.0
-    h = 0.0
-    hstep = (TAU * 5400.0) / SR
-    for i in range(n):
-        p1 += w1
-        p2 += w2
-        mod = step * (1.0 + wow_depth * math.sin(p1)) * (1.0 + wow_depth * 0.4 * math.sin(p2))
-        read = phase
-        i0 = int(read) % n
-        i1 = (i0 + 1) % n
-        fr = read - int(read)
-        v = buf[i0] + (buf[i1] - buf[i0]) * fr
-        phase += mod
-        if phase >= n:
-            phase -= n
-        h += hstep
-        if h >= TAU:
-            h -= TAU
-        if hiss:
-            v += math.sin(h) * hiss + rn.bipolar(hiss * 0.6)
-        out[i] = math.tanh(v * sat) / (1.0 + sat) * (1.0 + sat)
+def decorrelate(x: np.ndarray, rng: Rng, amount: float = 1.0) -> np.ndarray:
+    """Mono → stereo przez dwie niezależne kaskady allpass (zero opóźnienia Haas):
+    płaska magnituda na każdym kanale, mała strata przy sumie do mono."""
+    def chain(seed_off: int) -> np.ndarray:
+        r = rng.fork(100 + seed_off)
+        y = x
+        for _ in range(4):
+            d = ms(r.uniform(0.6, 4.5) * amount + 0.2)
+            g = 0.45 + 0.3 * r.uniform()
+            b = np.zeros(d + 1); b[0] = g; b[-1] = 1.0
+            a = np.zeros(d + 1); a[0] = 1.0; a[-1] = g
+            y = sg.lfilter(b, a, y)
+        return y
+    return np.stack([chain(0), chain(1)])
+
+
+def stereo_noise_bed(fn, rng: Rng, corr: float = 0.0) -> np.ndarray:
+    """Buduje stereo z DWÓCH niezależnych realizacji generatora fn(rng) — naturalna szerokość,
+    brak filtra grzebieniowego. corr∈[0,1] domiesza wspólny sygnał (środek obrazu)."""
+    a, b = fn(rng.fork(11)), fn(rng.fork(12))
+    if corr > 0:
+        c = fn(rng.fork(13))
+        a = a * math.sqrt(1 - corr) + c * math.sqrt(corr)
+        b = b * math.sqrt(1 - corr) + c * math.sqrt(corr)
+    return np.stack([a, b])
+
+
+# ------------------------------------------------------------------ pętle
+
+def circ_filter(x: np.ndarray, fn) -> np.ndarray:
+    """Zastosuj dowolną obróbkę fn do okresowego x tak, by wynik był okresowy (3× kafel → środek)."""
+    n = x.shape[-1]
+    t = np.concatenate([x, x, x], axis=-1)
+    return fn(t)[..., n:2 * n]
+
+
+def fold_loop(x: np.ndarray, n: int) -> np.ndarray:
+    """Zawija nadmiarowy ogon (poza n) na początek: zdarzenia rytmiczne z pogłosem/ogonami
+    tworzą idealną pętlę (ogon ostatniej nuty wybrzmiewa pod pierwszą)."""
+    if x.shape[-1] <= n:
+        return pad_to(x, n)
+    out = x[..., :n].copy()
+    rest = x[..., n:]
+    while rest.shape[-1] > 0:
+        k = min(n, rest.shape[-1])
+        out[..., :k] += rest[..., :k]
+        rest = rest[..., k:]
     return out
 
 
-def schroeder(buf: list, room: float = 0.72, damp: float = 0.35,
-              mix: float = 0.3, pre_s: float = 0.012) -> list:
-    """Lekki algorytmiczny reverb do pieczenia ogonów (Schroeder/FDN-lite).
-
-    Używany tylko przy bake'owaniu — runtime rewerberuje Godotem.
-    """
-    n = len(buf)
-    wet = [0.0] * n
-    pre = int(pre_s * SR)
-    combs = (0.0297, 0.0371, 0.0411, 0.0437)
-    g = 0.72 + room * 0.25
-    for ct in combs:
-        d = int(ct * SR * (0.7 + room * 0.6))
-        if d <= 0 or d >= n:
-            continue
-        line = [0.0] * d
-        idx = 0
-        store = 0.0
-        for i in range(n):
-            src = buf[i - pre] if i >= pre else 0.0
-            y = line[idx]
-            store = y * (1.0 - damp) + store * damp
-            line[idx] = src + store * g
-            idx += 1
-            if idx >= d:
-                idx = 0
-            wet[i] += y * 0.25
-    aps = (0.0050, 0.0017)
-    for at in aps:
-        d = int(at * SR)
-        line = [0.0] * d
-        idx = 0
-        for i in range(n):
-            buf_v = wet[i]
-            y = line[idx]
-            outv = -buf_v + y
-            line[idx] = buf_v + y * 0.5
-            wet[i] = outv
-            idx += 1
-            if idx >= d:
-                idx = 0
-    return [buf[i] * (1.0 - mix) + wet[i] * mix for i in range(n)]
-
-
-# --------------------------------------------------------------------------- fm
-
-def fm2(n: int, carrier: float, ratio: float = 2.0, index: float = 3.0,
-        index_end: float | None = None, vib_hz: float = 0.0, vib_cents: float = 0.0,
-        rng: Rng | None = None) -> list:
-    """2-operatorowy FM — charakter DX7 (GDD §13) i metaliczne brzmienia."""
-    index_end = index if index_end is None else index_end
-    out = [0.0] * n
-    pc = 0.0
-    pm = 0.0
-    dpc = carrier / SR
-    dpm = carrier * ratio / SR
-    dind = (index_end - index) / n
-    ind = index
-    vp = 0.0
-    vs = TAU * vib_hz / SR if vib_hz else 0.0
-    vsc = (2.0 ** (vib_cents / 1200.0)) - 1.0 if vib_hz else 0.0
-    for i in range(n):
-        mc = math.sin(pm) * ind
-        out[i] = math.sin(pc + mc)
-        pc += dpc
-        pm += dpm
-        ind += dind
-        if vs:
-            vp += vs
-        if pc >= 1.0:
-            pc -= 1.0
-        if pm >= 1.0:
-            pm -= 1.0
-        if vsc:
-            dpc = carrier * (1.0 + vsc * math.sin(vp)) / SR
-            dpm = carrier * ratio * (1.0 + vsc * math.sin(vp)) / SR
+def seam_xfade(x: np.ndarray, xf: int, power: bool = True) -> np.ndarray:
+    """Pętla z materiału nieokresowego: skraca o xf i przenika ogon w głowę
+    (power=True: prawo mocy dla nieskorelowanego, False: liniowo dla skorelowanego)."""
+    n = x.shape[-1]
+    if xf <= 1 or n <= 2 * xf:
+        return x
+    out = x[..., xf:].copy()
+    th = np.linspace(0.0, 1.0, xf, endpoint=False) + 0.5 / xf
+    if power:
+        fin, fout = np.sin(th * math.pi / 2), np.cos(th * math.pi / 2)
+    else:
+        fin, fout = th, 1.0 - th
+    out[..., -xf:] = out[..., -xf:] * fout + x[..., :xf] * fin
     return out
 
 
-# --------------------------------------------------------------------------- mix utils
+# ------------------------------------------------------------------ miary głośności
 
-def mixdown(parts: list, lengths: int) -> list:
-    out = [0.0] * lengths
-    for p, k in parts:
-        buf_add_scaled(out, buf_slice_pad(p, lengths), k)
-    return out
+_K_SHELF = (np.array([1.53512485958697, -2.69169618940638, 1.19839281085285]),
+            np.array([1.0, -1.69065929318241, 0.73248077421585]))
+_K_HP = (np.array([1.0, -2.0, 1.0]), np.array([1.0, -1.99004745483398, 0.99007225036621]))
 
 
-def time_ms(n: int, ms: float) -> int:
-    return int(SR * ms / 1000.0)
+def k_weight(x: np.ndarray) -> np.ndarray:
+    y = sg.lfilter(_K_SHELF[0], _K_SHELF[1], x, axis=-1)
+    return sg.lfilter(_K_HP[0], _K_HP[1], y, axis=-1)
+
+
+def lufs(x: np.ndarray) -> float:
+    """Loudness BS.1770 (K-weighted, bez bramkowania) dla całego bufora — dla pętli i
+    krótkich zdarzeń to dobry odpowiednik głośności postrzeganej."""
+    y = k_weight(x)
+    ms_ = np.mean(y ** 2, axis=-1)
+    return -0.691 + 10.0 * math.log10(max(float(np.sum(ms_)), 1e-12))
+
+
+def active_lufs(x: np.ndarray, gate_db: float = 30.0) -> float:
+    """Głośność liczona tylko z okien 25 ms o poziomie w zakresie gate_db poniżej najgłośniejszego:
+    krótki strzał z długim ogonem nie wychodzi „cichy" przez uśrednianie z ciszą."""
+    y = k_weight(x)
+    p = (y ** 2) if y.ndim == 1 else (y ** 2).sum(axis=0)
+    w = ms(25)
+    nb = max(1, len(p) // w)
+    blk = p[:nb * w].reshape(nb, w).mean(axis=1)
+    top = blk.max()
+    sel = blk[blk >= top * 10.0 ** (-gate_db / 10.0)]
+    return -0.691 + 10.0 * math.log10(max(float(sel.mean()), 1e-12))
+
+
+def peak(x: np.ndarray) -> float:
+    return float(np.max(np.abs(x)))
+
+
+def true_peak_db(x: np.ndarray) -> float:
+    up = sg.resample_poly(x, 4, 1, axis=-1)
+    return lin_to_db(np.max(np.abs(up)))
+
+
+def normalize_peak(x: np.ndarray, db: float = -1.5) -> np.ndarray:
+    p = peak(x)
+    return x if p < 1e-9 else x * (db_to_lin(db) / p)
+
+
+def fade_edges(x: np.ndarray, fin_ms: float = 1.0, fout_ms: float = 8.0) -> np.ndarray:
+    n = x.shape[-1]
+    fi = min(ms(fin_ms), n // 4)
+    fo = min(ms(fout_ms), n // 2)
+    g = np.ones(n)
+    if fi > 0:
+        g[:fi] = 0.5 - 0.5 * np.cos(np.pi * np.arange(fi) / fi)
+    if fo > 0:
+        g[n - fo:] = 0.5 + 0.5 * np.cos(np.pi * np.arange(fo) / fo)
+    return x * g
+
+
+def trim_silence(x: np.ndarray, thr_db: float = -66.0, keep_ms: float = 5.0) -> np.ndarray:
+    """Obcina ciszę z końca (ogon pogłosu poniżej progu) — pliki nie niosą ciszy w pamięci."""
+    m = np.abs(x) if x.ndim == 1 else np.abs(x).max(axis=0)
+    idx = np.nonzero(m > db_to_lin(thr_db))[0]
+    if len(idx) == 0:
+        return x
+    end = min(x.shape[-1], idx[-1] + ms(keep_ms))
+    return x[..., :end]
+
+
+# ------------------------------------------------------------------ zapis
+
+def write_wav(path: str, x: np.ndarray, rng: Rng | None = None) -> None:
+    """16-bit PCM z dithererem TPDF (deterministycznym). x: (n,) albo (2, n)."""
+    r = rng or Rng(0xD17E5)
+    q = x * 32767.0
+    q = q + (r.g.uniform(-0.5, 0.5, x.shape) + r.g.uniform(-0.5, 0.5, x.shape))
+    pcm = np.clip(np.round(q), -32768, 32767).astype("<i2")
+    ch = 1 if x.ndim == 1 else 2
+    data = pcm if ch == 1 else pcm.T.reshape(-1)
+    with wave.open(path, "wb") as w:
+        w.setnchannels(ch)
+        w.setsampwidth(2)
+        w.setframerate(SR)
+        w.writeframes(data.tobytes())

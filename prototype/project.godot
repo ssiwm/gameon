@@ -15,6 +15,10 @@ NoiseMgr="*res://scripts/noise_manager.gd"
 Audio="*res://scripts/audio_director.gd"
 Feel="*res://scripts/feel.gd"
 
+[audio]
+
+driver/mix_rate=48000
+
 [display]
 
 window/size/viewport_width=640
