@@ -1,6 +1,6 @@
 # DEAD AIR '87 — Game Design Document
 
-**Wersja:** 1.5.2 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
+**Wersja:** 1.5.3 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
 **Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
 **Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
 **Silnik:** Godot 4.x + GodotSteam
@@ -689,6 +689,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 1.5.0 | 2026-10-05 | **Fizyka i grafika.** (1) Ruch z bezwładnością (rozpęd 0,1 s, hamowanie ~2 px), opadanie 1,35× szybsze, skok bez zmian (44 px); przysiad/rozciąganie; łuski, szczątki, krew i plamy, iskry, rozbryzgi w wodzie. (2) Tło parallax (niebo, księżyc, dwie linie sosen, mgła), pył widoczny w snopie latarki, żar gniazd. (3) Pixel-art generowany w kodzie (`tools/bake_sprites.py`): animowane postacie z warstwą świecącą (oczy), broń, kafle z wariantami, dekoracje; podmiana PNG przez artystę bez zmian w kodzie. (4) **Obiekty fizyczne**: skrzynie (pchanie, stawanie, zepchnięta z wysokości = hałas w miejscu upadku → wabik bez ładunku Q) i beczki (wybuch: obrażenia w promieniu 4 m, odrzut, reakcja łańcuchowa, hałas +15); symulacja na serwerze, sync do klientów |
 | 1.5.1 | 2026-10-05 | Usunięty filtr VHS (ziarno, linie, aberracja) — decyzja po obejrzeniu w grze |
 | 1.5.2 | 2026-10-05 | Friendly fire: usunięty wyjątek strzelby SPREAD-12 z bliska (<40 px zabierała koledze 1 HP). Żadna broń nie rani już kolegi — tylko hałas i odrzut; drużynę ranią jedynie wybuchy |
+| 1.5.3 | 2026-10-05 | **Apteczki** (+1 HP, maks. 3): wypadają z Wołków (75%) i z Żyły (2 sztuki — na drogę do ekstrakcji); Trzoski nic nie dają. Podnosi ranny przez dotknięcie, przy pełnym HP apteczka zostaje, leżący nie podnosi; bot ustępuje rannemu człowiekowi w promieniu 80 px. Zielona poświata — widać je w ciemności. Restart misji czyści apteczki |
 
 ---
 

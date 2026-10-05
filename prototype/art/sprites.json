@@ -395,7 +395,7 @@
     16,
     16
    ],
-   "glow": false,
+   "glow": true,
    "anims": {
     "crate": {
      "row": 0,
@@ -405,6 +405,12 @@
     },
     "barrel": {
      "row": 1,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "medkit": {
+     "row": 2,
      "frames": 1,
      "fps": 1,
      "loop": false

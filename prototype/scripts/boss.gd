@@ -532,6 +532,11 @@ func _die() -> void:
 			b.take_bullet(global_position, 999.0)
 	_brood.clear()
 	print("[BOSS] Żyła nie żyje")
+	# dwie apteczki na drogę do ekstrakcji przez obudzony teren
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl != null:
+		lvl.spawn_health(global_position + Vector2(-20, -30))
+		lvl.spawn_health(global_position + Vector2(20, -30))
 	_event.rpc("death")
 	_send_state(true)
 	died.emit()

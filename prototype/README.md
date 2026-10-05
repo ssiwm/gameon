@@ -15,6 +15,7 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
 - 1–4 graczy online (ENet, port **8910**), synchronizacja przez `MultiplayerSynchronizer`
 - **serwerowe pociski** — spawn i kolizje rozstrzyga serwer, klienci tylko rysują
 - **friendly fire = hałas**: pocisk kolegi przelatuje (zero HP), trafiony krzyczy (+4 Uwagi, max raz na 0,6 s) i dostaje odrzut; żadna broń nie rani kolegi (ranić może tylko wybuch beczki). Bot nie strzela, gdy kolega jest na linii — podskakuje
+- **apteczki** (+1 HP): wypadają z Wołków (75%) i z Żyły (2 sztuki); podnosi ranny przez dotknięcie, bot ustępuje rannemu człowiekowi
 - 3 HP, **down/revive** (GDD §4): leżysz 25 s, kolega trzyma E 4 s → wstajesz z 2 HP; wykrwawienie = powrót na start z 1 HP; **wipe** (wszyscy leżą) = restart misji po 3 s
 - audio: 88 ścieżek, muzyka warstwowa wg Uwagi, szept stalkera
 - **fizyka (1.5)**: bezwładność ruchu, szybsze opadanie, przysiad/rozciąganie; łuski, szczątki, krew i plamy, iskry, rozbryzgi; **skrzynie** (pchaj, stań, zepchnij z kładki = hałas-wabik) i **beczki** (wybuchają, reakcja łańcuchowa)
@@ -109,6 +110,7 @@ scripts/
   ui_theme.gd       # wspólny motyw UI: obrys tekstu, panele, przyciski
   vfx.gd            # kurz, iskry, krew, szczątki i łuski (RigidBody2D), plamy
   prop.gd           # skrzynie i beczki (fizyka na serwerze, sync, wybuch)
+  pickup.gd         # apteczka (+1 HP)
   sprites.gd        # SpriteFrames z arkusza + manifestu (warstwy ciało / glow)
   backdrop.gd       # tło parallax
 scenes/

@@ -410,7 +410,16 @@ def bake_objects():
             for x in range(4, 12, 2):                  # pas ostrzegawczy
                 c.rect(x, 6, 1, 3, rgb(0.95, 0.78, 0.15))
             c.rect(5, 0, 3, 1, rgb(0.35, 0.33, 0.3))
-    sheet("objects", 16, 16, [("crate", 1, 1, False), ("barrel", 1, 1, False)], draw)
+        elif an == "medkit":
+            # apteczka (1.5): biała skrzynka z czerwonym krzyżem; krzyż świeci (glow)
+            c.rect(3, 7, 10, 8, rgb(0.86, 0.86, 0.82))
+            c.rect(3, 13, 10, 2, rgb(0.62, 0.62, 0.6))
+            c.rect(6, 5, 4, 2, rgb(0.5, 0.5, 0.5))     # rączka
+            c.rect(7, 8, 2, 6, rgb(0.85, 0.12, 0.12))
+            c.rect(5, 10, 6, 2, rgb(0.85, 0.12, 0.12))
+            g.rect(7, 8, 2, 6, rgb(0.4, 1.0, 0.5, 0.9))
+            g.rect(5, 10, 6, 2, rgb(0.4, 1.0, 0.5, 0.9))
+    sheet("objects", 16, 16, [("crate", 1, 1, False), ("barrel", 1, 1, False), ("medkit", 1, 1, False)], draw)
 
 # ---------------------------------------------------------------- kafle i dekoracje
 

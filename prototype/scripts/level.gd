@@ -35,6 +35,7 @@ const NEST_SCENE := preload("res://scenes/nest.tscn")
 const STALKER_SCENE := preload("res://scenes/stalker.tscn")
 const BOSS_SCENE := preload("res://scenes/boss.tscn")
 const PROP := preload("res://scripts/prop.gd")
+const PICKUP := preload("res://scripts/pickup.gd")
 
 const MAP := [
 	"##............................................................................................................................##",
@@ -293,6 +294,58 @@ func _add_enemy(n: String, kind: String, p: Vector2) -> void:
 	e.kind = kind
 	e.position = p
 	add_child(e)
+
+# ---------------------------------------------------------------- apteczki
+
+var _pickup_serial := 0
+
+## Serwer: apteczka wypada w punkcie (Wołek, Żyła). Stała nazwa na każdym peerze.
+func spawn_health(pos: Vector2) -> void:
+	if not NoiseMgr.is_server():
+		return
+	_pickup_serial += 1
+	if NoiseMgr.has_network():
+		_spawn_health_rpc.rpc("Health%d" % _pickup_serial, pos)
+	else:
+		_spawn_health_rpc("Health%d" % _pickup_serial, pos)
+
+@rpc("authority", "call_local", "reliable")
+func _spawn_health_rpc(n: String, pos: Vector2) -> void:
+	if has_node(n):
+		return
+	var h: Node2D = PICKUP.new()
+	h.name = n
+	h.position = pos
+	add_child(h)
+
+## Serwer: apteczka podniesiona — znika u wszystkich.
+func take_health(n: String) -> void:
+	if NoiseMgr.has_network():
+		_take_health_rpc.rpc(n)
+	else:
+		_take_health_rpc(n)
+
+@rpc("authority", "call_local", "reliable")
+func _take_health_rpc(n: String) -> void:
+	var h := get_node_or_null(n)
+	if h == null:
+		return
+	Audio.play_at("revive", h.global_position, Audio.BUS_WORLD, -8.0, 1.4)
+	h.queue_free()
+
+## Serwer: restart misji czyści apteczki.
+func clear_pickups() -> void:
+	if not NoiseMgr.is_server():
+		return
+	if NoiseMgr.has_network():
+		_clear_pickups_rpc.rpc()
+	else:
+		_clear_pickups_rpc()
+
+@rpc("authority", "call_local", "reliable")
+func _clear_pickups_rpc() -> void:
+	for h in get_tree().get_nodes_in_group("pickups"):
+		h.queue_free()
 
 ## Plama krwi na powierzchni (vfx.splat). Lokalna, kosmetyczna.
 func add_decal(pos: Vector2, radius: float) -> void:

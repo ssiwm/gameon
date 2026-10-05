@@ -1120,6 +1120,25 @@ func apply_ff(from_pos: Vector2) -> void:
 	if not is_bot:
 		Feel.shake(1.5)
 
+## Leczenie (apteczka): rozstrzyga właściciel postaci — jak obrażenia.
+func deliver_heal(amount: int) -> void:
+	if not NoiseMgr.has_network() or is_multiplayer_authority():
+		apply_heal(amount)
+	else:
+		apply_heal.rpc_id(get_multiplayer_authority(), amount)
+
+@rpc("any_peer", "call_remote", "reliable")
+func apply_heal(amount: int) -> void:
+	if not is_multiplayer_authority() or dead:
+		return
+	if NoiseMgr.has_network() and multiplayer.get_remote_sender_id() not in [0, 1]:
+		return          # tylko serwer (albo lokalnie) może leczyć
+	hp = mini(MAX_HP, hp + amount)
+	Vfx.burst(_fx_root(), global_position + Vector2(0, -10), Color(0.4, 1.0, 0.5), 10, 15.0, 45.0,
+		Vector2.UP, 60.0, -30.0, 0.6, Vector2(1.0, 1.8), true)
+	if not is_bot:
+		Audio.play("revive", Audio.BUS_PLAYER, -6.0, 1.4)
+
 func deliver_hit(amount: int, from_pos: Vector2) -> void:
 	if not NoiseMgr.has_network() or is_multiplayer_authority():
 		apply_hit(amount, from_pos)

@@ -28,6 +28,7 @@ const MAX_FALL := 620.0
 ## Kroki (0,25 na tick) nie budzą; każdy strzał tak — także pierwszy z zimnej
 ## lufy M-83 (0,6). Przy progu 1,0 pojedyncze strzały M-83 były dla wrogów nieme.
 const MIN_WAKE_NOISE := 0.5
+const HEALTH_DROP := {"wolek": 0.75}   ## szansa na apteczkę (1.5) — tylko mocniejsi wrogowie
 const SIBLING_WAKE_RADIUS := 140.0
 const DEATH_FX_COLOR_VAR := 0.15
 
@@ -237,6 +238,10 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 		_die()
 
 func _die() -> void:
+	if NoiseMgr.is_server() and randf() < float(HEALTH_DROP.get(kind, 0.0)):
+		var lvl := get_tree().get_first_node_in_group("level")
+		if lvl != null:
+			lvl.spawn_health(global_position + Vector2(0, -14))
 	_set_alive(false)
 	winding = false
 	_windup = 0.0
