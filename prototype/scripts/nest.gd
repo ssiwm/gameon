@@ -9,6 +9,8 @@ extends CharacterBody2D
 
 signal destroyed(nest: Node)
 
+const Lights := preload("res://scripts/lights.gd")
+
 const MAX_HP := 60.0
 ## Hałas zniszczenia (GDD §8.1): pękające gniazdo budzi okolicę — to cena celu.
 const N_DESTROY := 8.0
@@ -18,10 +20,18 @@ var alive := true
 
 var _flash := 0.0
 var _net_timer := 0.0
+var _glow: PointLight2D
+var _overlay: Node2D
 
 func _ready() -> void:
 	add_to_group("enemies")
 	add_to_group("nests")
+	# słaba pomarańczowa poświata — cel misji ma być do znalezienia w mroku,
+	# ale nie oświetla okolicy (2,5 m, bez cieni)
+	_glow = Lights.make_light(Lights.radial(), 2.5, Color(1.0, 0.45, 0.2), 0.7, false)
+	_glow.position = Vector2(0, -8)
+	add_child(_glow)
+	_overlay = Lights.add_overlay(self)
 
 func is_threat() -> bool:
 	return false
@@ -114,6 +124,8 @@ func _sync(new_hp: float, is_alive: bool) -> void:
 func _process(_delta: float) -> void:
 	if visible:
 		queue_redraw()
+		_overlay.queue_redraw()
+		_glow.energy = 0.5 + 0.3 * (0.5 + 0.5 * sin(Time.get_ticks_msec() / 1000.0 * 2.2 + position.x * 0.01))
 
 func _draw() -> void:
 	var t := Time.get_ticks_msec() / 1000.0
@@ -126,12 +138,15 @@ func _draw() -> void:
 	draw_circle(Vector2(-6, -4), 6.0, base.darkened(0.15))
 	draw_circle(Vector2(6, -4), 6.0, base.darkened(0.1))
 	draw_circle(Vector2(0, -14), 5.5, base.lightened(0.05))
-	# żyłki / jaja — pulsują, żeby gniazdo było widać w półmroku
+
+## Żyłki i HP — unshaded, pulsują w ciemności.
+func _draw_overlay(ov: Node2D) -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	var pulse := 0.5 + 0.5 * sin(t * 2.2 + position.x * 0.01)
 	var glow := Color(1.0, 0.45, 0.25, 0.35 + 0.45 * pulse)
-	draw_circle(Vector2(-3, -9), 1.6, glow)
-	draw_circle(Vector2(3, -6), 1.3, glow)
-	draw_circle(Vector2(0, -15), 1.2, glow)
-	# HP po pierwszym trafieniu
+	ov.draw_circle(Vector2(-3, -9), 1.6, glow)
+	ov.draw_circle(Vector2(3, -6), 1.3, glow)
+	ov.draw_circle(Vector2(0, -15), 1.2, glow)
 	if hp < MAX_HP:
-		draw_rect(Rect2(-11, -24, 22, 2), Color(0.15, 0.05, 0.05))
-		draw_rect(Rect2(-11, -24, 22.0 * clampf(hp / MAX_HP, 0.0, 1.0), 2), Color(1.0, 0.5, 0.2))
+		ov.draw_rect(Rect2(-11, -24, 22, 2), Color(0.15, 0.05, 0.05))
+		ov.draw_rect(Rect2(-11, -24, 22.0 * clampf(hp / MAX_HP, 0.0, 1.0), 2), Color(1.0, 0.5, 0.2))

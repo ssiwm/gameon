@@ -19,6 +19,8 @@ const KINDS := {
 	},
 }
 
+const Lights := preload("res://scripts/lights.gd")
+
 const GRAVITY := 900.0
 const MAX_FALL := 620.0
 ## Kroki (0,25 na tick) nie budzą; każdy strzał tak — także pierwszy z zimnej
@@ -48,6 +50,7 @@ var _seen_serial := 0
 var _net_timer := 0.0
 var _remote_pos := Vector2.ZERO
 var _max_hp := 30.0
+var _overlay: Node2D
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -64,6 +67,9 @@ func _ready() -> void:
 	shape.size = size
 	cs.shape = shape
 	cs.position = Vector2(0, -size.y * 0.5)
+	# oczy i pasek HP świecą w ciemności — śpiącego wroga widać jako
+	# przygaszone oczy, a nie wcale (skradanie musi mieć informację)
+	_overlay = Lights.add_overlay(self)
 
 ## Aktywny, żywy wróg = realne zagrożenie (boty strzelają tylko do takich).
 func is_threat() -> bool:
@@ -167,6 +173,10 @@ func _check_wake() -> void:
 		if global_position.distance_to(pp.global_position) < near:
 			wake()
 			return
+	# „Światło przyciąga wzrok Trzosków" (GDD §8.3): snop latarki na
+	# śpiącym wrogu go budzi — świecenie po pokoju ma cenę.
+	if Lights.flashlight_on(global_position + Vector2(0, -6), get_tree(), get_world_2d().direct_space_state) != null:
+		wake()
 
 func _nearest_player() -> Node2D:
 	var best: Node2D = null
@@ -283,11 +293,11 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 func _process(_delta: float) -> void:
 	if visible:
 		queue_redraw()
+		_overlay.queue_redraw()
 
 func _draw() -> void:
 	var size: Vector2 = _def["size"]
 	var col: Color = _def["color"]
-	var t := Time.get_ticks_msec() / 1000.0
 	if _flash > 0.0:
 		col = Color.WHITE
 	# śpiący: przygaszony i przygarbiony; zapowiedź ataku: czerwony kontur
@@ -296,15 +306,22 @@ func _draw() -> void:
 	if not active:
 		col = col.darkened(0.4)
 	draw_rect(body, col)
+
+## Oczy, kontur zapowiedzi ataku i HP — unshaded, widoczne w ciemności.
+func _draw_overlay(ov: Node2D) -> void:
+	var size: Vector2 = _def["size"]
+	var t := Time.get_ticks_msec() / 1000.0
+	var crouch := 0.0 if active else 3.0
 	if winding:
-		draw_rect(body.grow(1.5), Color(1.0, 0.15, 0.1, 0.8), false, 1.5)
+		var body := Rect2(-size.x * 0.5, -size.y + crouch, size.x, size.y - crouch)
+		ov.draw_rect(body.grow(1.5), Color(1.0, 0.15, 0.1, 0.8), false, 1.5)
 	var eye_y := -size.y + 4.0 + crouch
 	var eye_a := 1.0 if active else 0.25
 	var pulse := 0.6 + 0.4 * sin(t * 8.0)
-	draw_circle(Vector2(-size.x * 0.22, eye_y), 1.4, Color(1.0, 0.7 * pulse, 0.2, eye_a))
-	draw_circle(Vector2(size.x * 0.22, eye_y), 1.4, Color(1.0, 0.7 * pulse, 0.2, eye_a))
+	ov.draw_circle(Vector2(-size.x * 0.22, eye_y), 1.4, Color(1.0, 0.7 * pulse, 0.2, eye_a))
+	ov.draw_circle(Vector2(size.x * 0.22, eye_y), 1.4, Color(1.0, 0.7 * pulse, 0.2, eye_a))
 	# pasek HP po pierwszym trafieniu
 	if hp < _max_hp:
 		var w := size.x + 4.0
-		draw_rect(Rect2(-w * 0.5, -size.y - 7.0, w, 2.0), Color(0.15, 0.05, 0.05))
-		draw_rect(Rect2(-w * 0.5, -size.y - 7.0, w * clampf(hp / _max_hp, 0.0, 1.0), 2.0), Color(0.9, 0.25, 0.2))
+		ov.draw_rect(Rect2(-w * 0.5, -size.y - 7.0, w, 2.0), Color(0.15, 0.05, 0.05))
+		ov.draw_rect(Rect2(-w * 0.5, -size.y - 7.0, w * clampf(hp / _max_hp, 0.0, 1.0), 2.0), Color(0.9, 0.25, 0.2))

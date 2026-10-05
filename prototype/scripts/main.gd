@@ -20,13 +20,10 @@ var wipe_left := 0.0
 ## tworzony na każdym peerze, więc RPC trafia w tę samą ścieżkę.
 var mission: Node2D
 
+@onready var level: Node2D = $Level
 @onready var _players: Node2D = $Players
 @onready var _spawner: MultiplayerSpawner = $PlayerSpawner
-@onready var _lobby: Control = $UI/Lobby
-@onready var _status: Label = $UI/Lobby/Panel/Status
-@onready var _ip: LineEdit = $UI/Lobby/Panel/IP
-@onready var _host_btn: Button = $UI/Lobby/Panel/Host
-@onready var _join_btn: Button = $UI/Lobby/Panel/Join
+@onready var _lobby: Control = $UI/Lobby   # lobby.gd
 
 func _ready() -> void:
 	# Własna funkcja spawnu: dane startowe (pozycja, display_id) dostaje KAŻDY
@@ -41,11 +38,11 @@ func _ready() -> void:
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
-	_host_btn.pressed.connect(host_game)
-	_join_btn.pressed.connect(_on_join_pressed)
+	_lobby.host_requested.connect(host_game)
+	_lobby.join_requested.connect(join_game)
 	# Ambient startuje dopiero przy sesji — w lobby grałby na pustce.
-	_host_btn.pressed.connect(func() -> void: Audio.play("ui_confirm", Audio.BUS_UI, -8.0))
-	_join_btn.pressed.connect(func() -> void: Audio.play("ui_click", Audio.BUS_UI, -8.0))
+	_lobby.host_requested.connect(func() -> void: Audio.play("ui_confirm", Audio.BUS_UI, -8.0))
+	_lobby.join_requested.connect(func(_ip: String) -> void: Audio.play("ui_click", Audio.BUS_UI, -8.0))
 	_handle_cmdline()
 
 # ---------------------------------------------------------------- wipe (GDD §4)
@@ -143,15 +140,18 @@ func _stealth_test_loop(duration: float) -> void:
 	var t := 0.0
 	var fired := false
 	var overcharged := false
-	# Test mierzy SAMĄ pętlę ciszy ze stalkerem. Zwykli wrogowie (wataha przy
-	# x=520–1300) budziliby się od wstrzykniętego hałasu i robili walkę, a to
-	# test czego innego — usuwamy ich.
+	# Test mierzy SAMĄ pętlę ciszy ze stalkerem. Zwykli wrogowie budziliby się
+	# od wstrzykniętego hałasu i robili walkę, a to test czego innego — usuwamy
+	# ich. Punkty hałasu liczymy od startu (mapa nie ma stałych współrzędnych).
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e.get("kind") != null:
 			e.queue_free()
 	var hp_start := _total_hp()
 	var slept_at := -1.0
-	var stalker := get_node_or_null("Stalker")
+	var stalker := level.get_node_or_null("Stalker")
+	var base: Vector2 = level.spawn_for(1)
+	var noise_at := base + Vector2(340, 0)
+	var q_at := base + Vector2(940, 0)
 	while t < duration and is_inside_tree():
 		await get_tree().create_timer(0.5).timeout
 		t += 0.5
@@ -159,13 +159,13 @@ func _stealth_test_loop(duration: float) -> void:
 			slept_at = t
 			print("[TEST] stealth: stalker asleep at t=%.1fs noise=%.0f" % [t, NoiseMgr.level])
 		if not fired:
-			NoiseMgr.add_noise(70.0, Vector2(400, 200))
+			NoiseMgr.add_noise(70.0, noise_at)
 			fired = true
-			print("[TEST] stealth: injected 70 at x=400, waiting for silence")
+			print("[TEST] stealth: injected 70 at x=%.0f, waiting for silence" % noise_at.x)
 		elif not overcharged and t >= 3.0:
-			var ok := NoiseMgr.use_overcharge(Vector2(1000, 200))
+			var ok := NoiseMgr.use_overcharge(q_at)
 			overcharged = true
-			print("[TEST] overcharge accepted=%s charges=%d target=x=1000" % [str(ok), NoiseMgr.overcharge_charges])
+			print("[TEST] overcharge accepted=%s charges=%d target=x=%.0f" % [str(ok), NoiseMgr.overcharge_charges, q_at.x])
 	print("[TEST] stealth result: slept=%s hp_lost=%d (PASS = zasnął i 0 HP straty)" % [
 		"t=%.1fs" % slept_at if slept_at >= 0.0 else "NIE", hp_start - _total_hp()])
 
@@ -182,7 +182,7 @@ func _wipe_test(delay: float) -> void:
 	await get_tree().create_timer(delay).timeout
 	if not multiplayer.is_server():
 		return
-	var victim := get_node_or_null("Trzosek1")
+	var victim := level.get_node_or_null("Trzosek1")
 	if victim != null:
 		victim.take_bullet(victim.global_position + Vector2(-10, 0), 999.0)
 	NoiseMgr.add_noise(50.0, Vector2(400, 200))
@@ -202,28 +202,44 @@ func _wipe_test(delay: float) -> void:
 ## Test pętli misji: niszczy gniazda, sprawdza otwarcie ekstrakcji i bonus Q,
 ## przenosi ludzi (tylko hosta — jego autorytet) do flary, czeka na sukces,
 ## potem nowa misja [Enter] symulowana wprost. --missiontest
+## Test pętli misji: gniazda → Żyła → ekstrakcja → sukces → nowa misja.
+## Ludzi (tylko hosta — jego autorytet) przenosi do flary. --missiontest
 func _mission_test() -> void:
+	const PH := ["OBJECTIVE", "BOSS", "EXTRACT", "SUCCESS"]
 	await get_tree().create_timer(2.0).timeout
 	if not multiplayer.is_server():
 		return
+	var boss := get_tree().get_first_node_in_group("boss")
+	if boss != null:
+		boss.take_bullet(boss.global_position + Vector2(-20, 0), 50.0)
+		print("[TEST] mission: strzał w śpiącą Żyłę -> hp=%.0f (oczekiwane %.0f, nietykalna)" % [boss.hp, boss.BASE_HP])
 	var q_before := NoiseMgr.overcharge_charges
 	for n in get_tree().get_nodes_in_group("nests"):
 		n.take_bullet(n.global_position + Vector2(-10, 0), 999.0)
 	await get_tree().create_timer(0.3).timeout
-	print("[TEST] mission: phase=%d nests_left=%d exit=%s q=%d->%d" % [
-		mission.phase, mission.nests_left, mission.exit_pos, q_before, NoiseMgr.overcharge_charges])
+	print("[TEST] mission: faza=%s nests_left=%d q=%d->%d" % [PH[mission.phase], mission.nests_left, q_before, NoiseMgr.overcharge_charges])
+	if boss != null:
+		await get_tree().create_timer(3.5).timeout
+		var brood := level.get_children().filter(func(n: Node) -> bool: return n.name.begins_with("Brood"))
+		print("[TEST] mission: Żyła hp=%.0f/%.0f potomstwo=%d" % [boss.hp, boss.max_hp, brood.size()])
+		boss.take_bullet(boss.global_position + Vector2(-20, 0), 1.0e9)
+		await get_tree().create_timer(0.3).timeout
+		var alive_brood := brood.filter(func(n: Node) -> bool: return is_instance_valid(n) and n.alive)
+		print("[TEST] mission: po śmierci Żyły faza=%s exit=%s żywe_potomstwo=%d" % [PH[mission.phase], mission.exit_pos, alive_brood.size()])
 	for c in _players.get_children():
 		if not c.is_bot:
 			c.global_position = mission.exit_pos
 	await get_tree().create_timer(mission.EXTRACT_TIME + 0.6).timeout
-	print("[TEST] mission: phase=%d progress=%.2f time=%.1f downs=%d attempts=%d noise=%.0f" % [
-		mission.phase, mission.extract_progress, mission.elapsed, mission.downs, mission.attempts, NoiseMgr.level])
+	print("[TEST] mission: faza=%s progress=%.2f time=%.1f downs=%d attempts=%d noise=%.0f" % [
+		PH[mission.phase], mission.extract_progress, mission.elapsed, mission.downs, mission.attempts, NoiseMgr.level])
 	_restart_mission(true)
 	await get_tree().create_timer(0.5).timeout
 	var alive := 0
 	for n in get_tree().get_nodes_in_group("nests"):
 		alive += 1 if n.alive else 0
-	print("[TEST] mission restart: phase=%d nests_alive=%d attempts=%d" % [mission.phase, alive, mission.attempts])
+	var left_brood := level.get_children().filter(func(n: Node) -> bool: return n.name.begins_with("Brood") and not n.is_queued_for_deletion()).size()
+	print("[TEST] mission restart: faza=%s nests_alive=%d attempts=%d Żyła=%s hp=%.0f potomstwo=%d" % [
+		PH[mission.phase], alive, mission.attempts, ["śpi", "czuwa", "martwa"][boss.state] if boss else "-", boss.hp if boss else 0.0, left_brood])
 
 func host_game() -> void:
 	if NoiseMgr.has_network():
@@ -231,7 +247,7 @@ func host_game() -> void:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(port, MAX_PLAYERS)
 	if err != OK:
-		_status.text = "Błąd hostowania (%s)" % error_string(err)
+		_lobby.set_status("Could not host on port %d (%s)" % [port, error_string(err)], true)
 		return
 	multiplayer.multiplayer_peer = peer
 	_lobby.visible = false
@@ -245,14 +261,12 @@ func join_game(ip: String) -> void:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_client(ip, port)
 	if err != OK:
-		_status.text = "Błąd połączenia (%s)" % error_string(err)
+		_lobby.set_status("Could not connect (%s)" % error_string(err), true)
 		return
 	multiplayer.multiplayer_peer = peer
-	_status.text = "Łączenie z %s..." % ip
+	_lobby.set_status("Connecting to %s…" % ip)
 	Audio.play("radio_beep", Audio.BUS_UI, -10.0)
 
-func _on_join_pressed() -> void:
-	join_game(_ip.text.strip_edges())
 
 func _on_peer_connected(id: int) -> void:
 	print("[NET] peer connected: %d" % id)
@@ -279,7 +293,7 @@ func _start_ambience() -> void:
 	Audio.start_loop("amb_machine", Audio.BUS_AMB, -20.0)
 
 func _on_connection_failed() -> void:
-	_status.text = "Nie udało się połączyć"
+	_lobby.set_status("Connection failed — check the IP and that the host is running.", true)
 	_lobby.visible = true
 	multiplayer.multiplayer_peer = null
 
@@ -291,7 +305,7 @@ func _on_server_disconnected() -> void:
 		c.queue_free()
 	multiplayer.multiplayer_peer = null
 	_lobby.visible = true
-	_status.text = "Rozłączono z hostem"
+	_lobby.set_status("Disconnected from the host.", true)
 
 func _spawn_player(id: int) -> void:
 	if _players.has_node(str(id)):
@@ -363,15 +377,6 @@ func _spawn_actor(data: Dictionary) -> Node:
 		n.set_multiplayer_authority(1)  # boty steruje serwer
 	return n
 
+## Punkty startu ze znaczników „S" mapy (level.gd).
 func _spawn_pos_for(slot: int) -> Vector2:
-	var a: Marker2D = $Spawns/A
-	var b: Marker2D = $Spawns/B
-	match slot % 4:
-		1:
-			return a.position
-		2:
-			return b.position
-		3:
-			return a.position + Vector2(-28, -28)
-		_:
-			return b.position + Vector2(28, -28)
+	return level.spawn_for(slot)

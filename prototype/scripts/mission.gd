@@ -2,6 +2,7 @@ extends Node2D
 ## Pętla misji (GDD §4): CEL → EKSTRAKCJA → WYNIK. Autorytet: serwer.
 ##
 ##   OBJECTIVE  zniszcz wszystkie gniazda (grupa „nests")
+##   BOSS       gniazda były odnóżami Żyły (boss.gd) — budzi się; zabij ją
 ##   EXTRACT    wyjście otwiera się w INNYM miejscu niż start (§4: „po wykonaniu
 ##              celu pozycja wyjścia się zmienia") — najdalszy od drużyny punkt
 ##              z EXIT_CANDIDATES, więc trzeba wrócić przez obudzony teren.
@@ -12,12 +13,13 @@ extends Node2D
 ## Wipe (main.gd) = nieudana ekstrakcja: misja wraca do OBJECTIVE, licznik prób +1.
 ## Klienci dostają stan przez _sync (5 Hz + natychmiast przy zmianie fazy).
 
-enum Phase { OBJECTIVE, EXTRACT, SUCCESS }
+enum Phase { OBJECTIVE, BOSS, EXTRACT, SUCCESS }
+
+const Lights := preload("res://scripts/lights.gd")
 
 const EXTRACT_TIME := 3.0
 const EXIT_RADIUS_X := 34.0
 const EXIT_RADIUS_Y := 40.0
-const EXIT_CANDIDATES := [Vector2(-220, 200), Vector2(1420, 200)]
 const SYNC_INTERVAL := 0.2
 
 var phase: int = Phase.OBJECTIVE
@@ -31,10 +33,22 @@ var downs := 0
 var attempts := 1
 
 var _sync_t := 0.0
+var _flare: PointLight2D
 var _was_dead := {}          # nazwa gracza -> bool (liczenie upadków, serwer)
+
+var _boss: Node = null
 
 func _ready() -> void:
 	z_index = 5
+	_boss = get_tree().get_first_node_in_group("boss")
+	if _boss != null:
+		_boss.died.connect(_on_boss_died)
+	# znacznik (słup, strefa, paski) czytelny w ciemności; sama flara to
+	# prawdziwe światło 12 m (GDD §8.3) — widać ją z daleka i oświetla wyjście
+	material = Lights.unshaded()
+	_flare = Lights.make_light(Lights.radial(), Lights.FLARE_M, Color(0.45, 1.0, 0.55), 1.1, true)
+	_flare.enabled = false
+	add_child(_flare)
 	# gniazda są w scenie (ta sama ścieżka na każdym peerze)
 	for n in get_tree().get_nodes_in_group("nests"):
 		n.destroyed.connect(_on_nest_destroyed)
@@ -55,6 +69,11 @@ func is_active() -> bool:
 
 func _physics_process(delta: float) -> void:
 	queue_redraw()
+	_flare.enabled = phase == Phase.EXTRACT or phase == Phase.SUCCESS
+	if _flare.enabled:
+		_flare.position = exit_pos + Vector2(0, -6)
+		var t := Time.get_ticks_msec() / 1000.0
+		_flare.energy = 1.0 + 0.2 * sin(t * 11.0) * sin(t * 4.3)
 	if not NoiseMgr.has_network():
 		return
 	if not multiplayer.is_server():
@@ -77,22 +96,44 @@ func _on_nest_destroyed(_nest: Node) -> void:
 		return
 	_count_nests()
 	print("[MISSION] nest destroyed, left=%d/%d" % [nests_left, nests_total])
+	if _boss != null and phase == Phase.OBJECTIVE:
+		_boss.on_nest_lost(nests_left)
 	if nests_left == 0 and phase == Phase.OBJECTIVE:
-		_open_extraction()
+		if _boss != null and _boss.is_alive():
+			_start_boss()
+		else:
+			_open_extraction()
 	_broadcast()
 
-func _open_extraction() -> void:
+## Ostatnie gniazdo padło — matka się budzi. Ładunek Q wraca tu (GDD §8.4:
+## „przy wykonaniu celu"), bo na walkę z Żyłą jest najbardziej potrzebny.
+func _start_boss() -> void:
+	phase = Phase.BOSS
+	NoiseMgr.objective_bonus()
+	_boss.awaken()
+	print("[MISSION] gniazda zniszczone -> Żyła")
+
+func _on_boss_died() -> void:
+	if phase == Phase.BOSS:
+		_open_extraction(false)
+		_broadcast()
+
+func _open_extraction(q_bonus: bool = true) -> void:
 	phase = Phase.EXTRACT
 	extract_progress = 0.0
 	# najdalszy kandydat od środka drużyny — powrót przez obudzony teren
 	var centroid := _humans_centroid()
-	var best: Vector2 = EXIT_CANDIDATES[0]
-	for c in EXIT_CANDIDATES:
+	# kandydaci = znaczniki „E" mapy (level.gd)
+	var cands: Array[Vector2] = get_tree().get_first_node_in_group("level").exits
+	var best: Vector2 = cands[0]
+	for c in cands:
 		if (c as Vector2).distance_to(centroid) > best.distance_to(centroid):
 			best = c
 	exit_pos = best
 	# GDD §8.4: ładunek Przesterowania wraca natychmiast przy celu głównym
-	NoiseMgr.objective_bonus()
+	# (z bossem bonus był już przy przebudzeniu)
+	if q_bonus:
+		NoiseMgr.objective_bonus()
 	print("[MISSION] objective complete -> extraction at %s" % exit_pos)
 	_event.rpc("objective")
 
@@ -121,7 +162,7 @@ func _success() -> void:
 	print("[MISSION] SUCCESS time=%.1fs downs=%d attempts=%d" % [elapsed, downs, attempts])
 	# teren cichnie: wrogowie (nie gniazda) wracają do snu, Uwaga spada do zera
 	for e in get_tree().get_nodes_in_group("enemies"):
-		if not e.is_in_group("nests") and e.has_method("reset_enemy"):
+		if not e.is_in_group("nests") and not e.is_in_group("boss") and e.has_method("reset_enemy"):
 			e.reset_enemy()
 	NoiseMgr.calm()
 	_event.rpc("success")
@@ -189,23 +230,49 @@ func _event(kind: String) -> void:
 
 # ---------------------------------------------------------------- HUD
 
-## Tekst celu dla HUD.
+## Teksty dla HUD (angielski interfejs).
+func objective_caption() -> String:
+	match phase:
+		Phase.OBJECTIVE:
+			return "OBJECTIVE"
+		Phase.BOSS:
+			return "BOSS"
+		Phase.EXTRACT:
+			return "EXTRACT"
+	return ""
+
 func objective_text() -> String:
 	match phase:
 		Phase.OBJECTIVE:
-			return "CEL: zniszcz gniazda  %d/%d" % [nests_total - nests_left, nests_total]
+			return "Destroy the nests   %d / %d" % [nests_total - nests_left, nests_total]
+		Phase.BOSS:
+			return "Kill The Vein — shoot her mouth while it's OPEN"
 		Phase.EXTRACT:
 			var me := _local_human()
-			var dir := ""
-			if me != null:
-				var dx := exit_pos.x - me.global_position.x
-				dir = ("  ← %d m" if dx < 0.0 else "  → %d m") % int(absf(dx) / 16.0)
-				if me.dead:
-					dir = "  — leżysz: drużyna musi cię podnieść"
-				elif _in_exit(me.global_position):
-					dir = "  — czekaj na drużynę" if extract_progress <= 0.0 else "  — EWAKUACJA %d%%" % int(extract_progress * 100.0)
-			return "EKSTRAKCJA: dotrzyj do flary" + dir
+			if me == null:
+				return "Reach the green flare"
+			var dx := exit_pos.x - me.global_position.x
+			if _in_exit(me.global_position):
+				return "At the flare"
+			return "Reach the green flare   %s %d m" % ["←" if dx < 0.0 else "→", int(absf(dx) / 16.0)]
 	return ""
+
+func objective_hint() -> String:
+	match phase:
+		Phase.OBJECTIVE:
+			return "Nests are loud when destroyed — they wake what's nearby"
+		Phase.BOSS:
+			return "Light her mouth mid wind-up to stun  ·  Q lures her away"
+		Phase.EXTRACT:
+			return "The whole squad, standing, at the flare for 3 s"
+	return ""
+
+## Stan ekstrakcji lokalnego gracza (pasek kontekstowy HUD).
+func local_extract_state() -> Dictionary:
+	var me := _local_human()
+	if me == null or phase != Phase.EXTRACT:
+		return {}
+	return {"inside": not me.dead and _in_exit(me.global_position)}
 
 func _local_human() -> Node2D:
 	for p in get_tree().get_nodes_in_group("players"):

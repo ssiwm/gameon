@@ -24,6 +24,10 @@ const N_SHOOT_SILENT := 1.0
 const N_GRENADE := 15.0
 const N_SCREAM := 20.0
 const N_HURT := 6.0
+## Trafienie kolegi (friendly fire bez obrażeń): krzyk zaskoczenia. Mniej niż
+## N_HURT, ale z cooldownem per ofiara (player.FF_COOLDOWN), więc ciągła seria
+## przez kolegę kosztuje ~6,7 Uwagi/s — tyle co gorąca lufa M-83.
+const N_FF := 4.0
 const N_OVERCHARGE := 12.0
 
 # Faza niepokoju: Stalker jeszcze śpi, ale słychać szept i HUD ostrzega (GDD §8.1)
@@ -50,6 +54,8 @@ var _sync_timer := 0.0
 var _server_last_active := 0.0
 ## Czas (s, zegar silnika) ostatniego udanego Przesterowania — tylko serwer.
 var _last_overcharge := -INF
+## Gdzie ostatnio użyto Q (serwer) — Żyła daje się tam odciągnąć (boss.gd).
+var last_overcharge_pos := Vector2.ZERO
 
 func has_network() -> bool:
 	var peer := multiplayer.multiplayer_peer
@@ -92,6 +98,7 @@ func use_overcharge(pos: Vector2) -> bool:
 		return false
 	overcharge_charges -= 1
 	_last_overcharge = Time.get_ticks_msec() / 1000.0
+	last_overcharge_pos = pos
 	if not _regen_needed:
 		_regen_needed = true
 		_regen_timer = OVERCHARGE_REGEN

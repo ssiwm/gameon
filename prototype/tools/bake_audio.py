@@ -767,17 +767,41 @@ def build_music() -> None:
     rng = Rng(0x2200)
     rnd = lambda: rng.uniform()
 
-    # --- warstwa 0: CISZA — sub + powietrze. Zawsze gra (to „głośność ciszy")
+    # --- warstwa 0: CISZA — cichy, ciemny pad + sub + powietrze (Uwaga < 20%)
+    # Wcześniej pętla dodawała WSZYSTKIE 4 akordy naraz na całą długość
+    # (24 piły: A z B♭, C♯ z D) i 4 suby naraz (37/49/55/58 Hz dudniły),
+    # a filtry przesuwały odcięcie przez cały bufor (2400→620 Hz), więc na
+    # szwie barwa skakała. Po saturacji wychodził statyczny, nieprzyjemny
+    # klaster. Teraz: jeden akord na takt z przenikaniem, sub-pedał D, stałe
+    # filtry, bez saturacji i bez szumu. Takt 5 = takt 1 (Dm) — szew pętli (loop_period).
     sil = [0.0] * n_i
-    for bar in range(4):
+    bar_n = _at(4)
+    xs = ms(600)                       # przenikanie akordów 0,6 s
+    seg = bar_n + xs
+    for bar in range(5):
         ch = _chord(bar)
-        d.buf_add_scaled(sil, pad(ch, 0.002), 0.10)
-        d.buf_add_scaled(sil, sub(ch[0] / 2.0), 0.42)
-    air = d.svf(d.noise_white(n_i, rng), 380, 150, 0.8)
-    d.buf_add_scaled(sil, d.buf_mul(air, 0.05), 1.0)
-    sil = d.tape(sil, wow_hz=0.23, wow_depth=0.0022, hiss=0.0016, sat=1.1)
+        st = bar * bar_n
+        env = d.env_adsr(seg, 0.6, 0.2, 0.85, 0.6)
+        pd = [0.0] * seg
+        for f in ch:
+            for k in (-1, 1):
+                fk = f * (1.0 + k * 0.0018)
+                w = d.osc(d.wt_saw(12), seg, fk, fk, phase=rng.uniform(0.0, 1.0))
+                d.buf_add_scaled(pd, d.svf(w, 700, 700, 0.6), 0.33)
+        d.buf_add_scaled(sil, d.buf_offset_n(d.buf_mul(pd, env), st), 0.10)
+    # Sub = jeden pedał D przez całą pętlę (sub per takt nakładał się przy
+    # zmianie akordu: 49 + 55 Hz dudniły 6 Hz). Częstotliwość dobrana tak,
+    # żeby w pętli zmieściła się całkowita liczba okresów — szew bez skoku fazy.
+    loop_s = loop_n / SR
+    f_ped = round(36.71 * loop_s) / loop_s
+    d.buf_add_scaled(sil, d.osc(d.wt_sine(), n_i, f_ped, f_ped), 0.30)
+    # Bez „powietrza": szum po wąskim filtrze dolnoprzepustowym ma losowo
+    # falującą obwiednię 4–40 Hz (pomiar: 56% dudnienia wobec 0,6% padu) —
+    # to był słyszalny „statyczny" szum przy Uwadze 0%. Atmosferę daje ambient.
+    # Bez syku taśmy z tego samego powodu; wow zostaje (ruch padu).
+    sil = d.tape(sil, wow_hz=0.23, wow_depth=0.0018, hiss=0.0, sat=1.0)
     asset("mus_silence", "music/mus_silence", loop=True)
-    render("mus_silence", d.saturate(sil, 1.8), 30.0, rms=0.050, period=loop_n, xfade=xf)
+    render("mus_silence", sil, 30.0, rms=0.045, period=loop_n, xfade=xf)
 
     # --- warstwa 1: NAPIĘCIE — pulsujący ostinato + rytm na rozmytych
     ten = [0.0] * n_i

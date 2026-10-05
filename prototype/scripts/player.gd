@@ -7,6 +7,8 @@ extends CharacterBody2D
 ## (spawn i kolizje rozstrzyga serwer, klienci tylko rysują).
 
 const Weapons := preload("res://scripts/weapons.gd")
+const Lights := preload("res://scripts/lights.gd")
+const Nav := preload("res://scripts/nav.gd")
 
 const SPEED := 95.0
 const CROUCH_SPEED := 45.0
@@ -21,6 +23,10 @@ const JUMP_BUFFER := 0.10       ## skok wciśnięty tuż przed lądowaniem się 
 const JUMP_CUT := 0.45          ## puszczenie skoku skraca go (zmienna wysokość)
 const INVULN_AFTER_HIT := 0.6   ## chroni przed „serią\" trafień z kilku wrogów naraz
 const KICK_DECAY := 600.0
+const DROP_TIME := 0.25         ## tyle trwa zeskok przez kładkę (dół + skok)
+const PLATFORM_LAYER_BIT := 5   ## warstwa kładek = 16 (level.gd LAYER_PLATFORM)
+const FF_KICK := 70.0          ## odrzut od pocisku kolegi (px/s, wygasa KICK_DECAY)
+const FF_COOLDOWN := 0.6       ## krzyk/hałas od FF najwyżej raz na tyle sekund
 
 # Down / revive (GDD §4)
 const BLEED_TIME := 25.0
@@ -33,6 +39,13 @@ const REVIVE_SYNC_MS := 100     ## postęp podnoszenia wysyłany do innych peer�
 const BOT_ENGAGE_RANGE := 260.0
 const BOT_SELF_DEFENSE := 70.0  ## w tym promieniu strzela zawsze — obrona własna
 const BOT_Q_HOLD := 8.0         ## po Q wstrzymuje ogień, żeby nie nadpisać celu stalkera
+
+# Latarka (GDD §6.6 / §8.3): stożek 8 m, bateria 3 min, światło = hałas
+const BATTERY_MAX := 180.0
+## Prototyp: bateria wolno się odnawia przy zgaszonej latarce (do playtestu —
+## GDD nie mówi o ładowaniu; bez tego po 3 min misja byłaby czarna).
+const BATTERY_RECHARGE := 0.25
+const LIGHT_NOISE_EVERY := 10.0   ## +1 Uwagi co tyle sekund świecenia
 
 const BULLET_SCENE := preload("res://scenes/bullet.tscn")
 
@@ -57,6 +70,10 @@ var bleed_left := 0.0
 var weapon := 0
 ## Postęp podnoszenia widoczny TYLKO lokalnie u podnoszącego (rysowany nad leżącym).
 var revive_progress := 0.0
+## Latarka włączona — replikowane, bo snop widzą wszyscy, a wrogowie
+## (serwer) reagują na światło.
+var flashlight := false
+var battery := BATTERY_MAX
 
 var _fire_timer := 0.0
 var _run_noise_tick := 0.0
@@ -65,7 +82,14 @@ var _muzzle := 0.0
 var _invuln := 0.0
 var _heat := 0.0
 var _kick := 0.0
+var _ff_cd := 0.0
 var _coyote := 0.0
+var _drop_t := 0.0
+var _light_noise_t := 0.0
+var _aura: PointLight2D
+var _beam: PointLight2D
+var _muzzle_light: PointLight2D
+var _overlay: Node2D
 var _jump_buf := 0.0
 var _was_on_floor := true
 var _spawn_point := Vector2.ZERO
@@ -105,7 +129,25 @@ func _enter_tree() -> void:
 func _ready() -> void:
 	add_to_group("players")
 	_spawn_point = position
+	_setup_lights()
 	call_deferred("_setup_local")
+
+## Światła postaci (każdy peer): aura 6 m, snop latarki 8 m, rozbłysk lufy.
+## Etykiety i paski idą na nakładkę „unshaded" — w ciemności mają być czytelne.
+func _setup_lights() -> void:
+	var chest := Vector2(0, -9)
+	_aura = Lights.make_light(Lights.radial(), Lights.BASE_M, Color(1.0, 0.9, 0.78), Lights.AURA_ENERGY, true)
+	_aura.position = chest
+	add_child(_aura)
+	_beam = Lights.make_light(Lights.cone(), Lights.FLASHLIGHT_M, Color(1.0, 0.96, 0.84), 0.85, true)
+	_beam.position = chest
+	_beam.enabled = false
+	add_child(_beam)
+	_muzzle_light = Lights.make_light(Lights.radial(), 4.0, Color(1.0, 0.8, 0.45), 1.4, false)
+	_muzzle_light.position = chest
+	_muzzle_light.enabled = false
+	add_child(_muzzle_light)
+	_overlay = Lights.add_overlay(self)
 
 ## Synchronizacja stanu przez MultiplayerSynchronizer (GDD §19 poz. 2).
 ## Zamiast ręcznych RPC 20 Hz mamy delta-sync z wbudowaną interpolacją.
@@ -118,7 +160,7 @@ func _setup_sync() -> void:
 	sync.replication_interval = 0.05
 	sync.delta_interval = 0.05
 	var cfg := SceneReplicationConfig.new()
-	for path in [":position", ":velocity", ":aim_dir", ":hp", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon"]:
+	for path in [":position", ":velocity", ":aim_dir", ":hp", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight"]:
 		cfg.add_property(path)
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
 	for path in [":position", ":velocity", ":hp", ":crouching", ":dead", ":is_bot", ":display_id"]:
@@ -133,6 +175,14 @@ func _setup_local() -> void:
 	_camera.enabled = local_human
 	if local_human:
 		_camera.make_current()
+		# granice kamery z mapy (level.gd) zamiast stałych z player.tscn
+		var lvl := get_tree().get_first_node_in_group("level")
+		if lvl != null:
+			var b: Rect2 = lvl.bounds
+			_camera.limit_left = int(b.position.x)
+			_camera.limit_top = int(b.position.y)
+			_camera.limit_right = int(b.end.x)
+			_camera.limit_bottom = int(b.end.y)
 	print("[NET] player ready id=%d display=%d remote=%s bot=%s" % [player_id, display_id, str(_is_remote), str(is_bot)])
 
 ## Rysowanie odświeżamy na każdym peerze (zdalni gracze też zmieniają celowanie,
@@ -144,7 +194,44 @@ func _process(delta: float) -> void:
 		_camera.offset = Feel.shake_offset()
 	if _is_remote or is_bot:
 		_update_footsteps_passive()
+	_update_lights()
 	queue_redraw()
+	_overlay.queue_redraw()
+
+func _update_lights() -> void:
+	var fl := Lights.flicker_mult()
+	_aura.enabled = not dead
+	_aura.energy = Lights.AURA_ENERGY * (1.0 if not crouching else 0.75) * fl
+	_beam.enabled = flashlight and not dead
+	if _beam.enabled:
+		_beam.rotation = aim_dir.angle()
+		# lekkie drżenie snopu — latarka w ręku, nie reflektor
+		_beam.energy = (0.85 + 0.04 * sin(Time.get_ticks_msec() * 0.023)) * fl
+	_muzzle_light.enabled = _muzzle > 0.0
+	_muzzle_light.position = Vector2(0, -9) + aim_dir * 10.0
+
+## Latarka: bateria, hałas „+1 Uwagi co 10 s" (GDD §6.6). Tylko właściciel.
+func _update_flashlight(delta: float) -> void:
+	if flashlight and not dead:
+		battery = maxf(0.0, battery - delta)
+		_light_noise_t += delta
+		if _light_noise_t >= LIGHT_NOISE_EVERY:
+			_light_noise_t = 0.0
+			NoiseMgr.add_noise(1.0, global_position)
+		if battery <= 0.0:
+			flashlight = false
+			if not is_bot:
+				Audio.play("dry_fire", Audio.BUS_UI, -10.0, 0.6)
+	else:
+		battery = minf(BATTERY_MAX, battery + delta * BATTERY_RECHARGE)
+
+func _toggle_flashlight() -> void:
+	if not flashlight and battery < 1.0:
+		Audio.play("ui_deny", Audio.BUS_UI, -10.0)
+		return
+	flashlight = not flashlight
+	_light_noise_t = 0.0
+	Audio.play("ui_click", Audio.BUS_PLAYER, -10.0, 0.7 if flashlight else 0.55)
 
 ## Zdalni gracze: pozycję interpoluje synchronizator, więc nie ruszamy tu nic.
 func _physics_process(delta: float) -> void:
@@ -152,8 +239,10 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_invuln = maxf(0.0, _invuln - delta)
+	_ff_cd = maxf(0.0, _ff_cd - delta)
 	_heat = maxf(0.0, _heat - Weapons.HEAT_DECAY * delta)
 
+	_update_flashlight(delta)
 	if dead:
 		_down_physics(delta)
 		return
@@ -198,6 +287,7 @@ func _local_brain(delta: float) -> void:
 	_jump_buf = maxf(0.0, _jump_buf - delta)
 	if Input.is_action_just_pressed("jump"):
 		_jump_buf = JUMP_BUFFER
+	_update_drop(delta, on_floor)
 
 	if not on_floor:
 		velocity.y = minf(velocity.y + GRAVITY * delta, MAX_FALL)
@@ -244,6 +334,37 @@ func _local_brain(delta: float) -> void:
 
 	if Input.is_action_just_pressed("overcharge"):
 		_try_overcharge()
+	if Input.is_action_just_pressed("flashlight"):
+		_toggle_flashlight()
+
+## Zeskok z kładki: dół + skok, stojąc na kładce. Na chwilę wyłączamy
+## kolizję z warstwą kładek; skok jest wtedy „zjedzony".
+func _update_drop(delta: float, on_floor: bool) -> void:
+	if _tick_drop(delta):
+		return
+	if _jump_buf <= 0.0 or not on_floor or not Input.is_action_pressed("move_down"):
+		return
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null or not lvl.is_platform_at(global_position):
+		return
+	_jump_buf = 0.0
+	_start_drop()
+
+func _start_drop() -> void:
+	if _drop_t > 0.0:
+		return
+	_drop_t = DROP_TIME
+	set_collision_mask_value(PLATFORM_LAYER_BIT, false)
+	position.y += 1.0
+
+## Zwraca true, dopóki trwa zeskok.
+func _tick_drop(delta: float) -> bool:
+	if _drop_t <= 0.0:
+		return false
+	_drop_t -= delta
+	if _drop_t <= 0.0:
+		set_collision_mask_value(PLATFORM_LAYER_BIT, true)
+	return true
 
 func _update_weapon_select() -> void:
 	if Input.is_action_just_pressed("weapon_1"):
@@ -399,7 +520,7 @@ func revive_hint() -> String:
 	var t := _revive_target()
 	if t == null:
 		return ""
-	return "Przytrzymaj [E]: podnieś %s" % ("BOT" if t.is_bot else "P%d" % t.display_id)
+	return "Hold [E] to revive %s" % ("the bot" if t.is_bot else "P%d" % t.display_id)
 
 ## Prośba o podniesienie — rozstrzyga właściciel leżącej postaci.
 func request_revive() -> void:
@@ -518,14 +639,23 @@ func _update_breath() -> void:
 const LEADER_SWITCH := 60.0
 
 var _bot_target_pos := Vector2.ZERO
+## Ścieżka A* (nav.gd): lista kroków {pos, kind, id}; _bot_path_i = następny krok.
+var _bot_path: Array = []
+var _bot_path_i := 0
+var _bot_stuck := 0.0
+var _bot_prev_x := 0.0
 var _bot_leader: Node2D = null
+var _bot_wants_jump := false
 var _bot_repath := 0.0
 
 func _bot_brain(delta: float) -> void:
+	_tick_drop(delta)
 	_bot_repath -= delta
-	if _bot_repath <= 0.0:
+	# trasę liczymy tylko z ziemi — w locie najbliższy węzeł jest „pod nami"
+	if _bot_repath <= 0.0 and is_on_floor():
 		_bot_repath = 0.4
 		_pick_bot_goal()
+		_bot_plan()
 
 	# podnoszenie leżącego towarzysza — bot nie jest szybszy od człowieka (GDD §4)
 	var downed := _downed_teammate()
@@ -539,17 +669,30 @@ func _bot_brain(delta: float) -> void:
 	var leader := _leader()
 	var stealth: bool = leader != null and not leader.dead and leader.crouching
 	crouching = stealth and is_on_floor()
+	# latarka jak u dowódcy — bot nie świeci sam (światło = hałas, §8.3)
+	flashlight = leader != null and leader.flashlight and not crouching and battery > 1.0
 
-	var dx := _bot_target_pos.x - global_position.x
+	# Ruch po ścieżce A*; bez grafu — po staremu (prosto do celu + skok przy ścianie).
+	var has_path := not _bot_path.is_empty()
+	var goal_x := _bot_follow_path() if has_path else _bot_target_pos.x
+	var dx := goal_x - global_position.x
 	var dy := _bot_target_pos.y - global_position.y
-	if reviving or absf(dx) < 8.0:
+	var done := _bot_path_i >= _bot_path.size()
+	var dead_zone := 8.0 if done else 3.0
+	if reviving or absf(dx) < dead_zone:
 		velocity.x = 0.0
 	else:
-		velocity.x = signf(dx) * (CROUCH_SPEED if crouching else SPEED * 0.85)
+		var spd := SPEED if not is_on_floor() else (CROUCH_SPEED if crouching else SPEED * 0.85)
+		velocity.x = signf(dx) * spd
+	_bot_check_stuck(delta, done or reviving)
+	# odrzut (np. od pocisku kolegi) działa też na bota
+	_kick = move_toward(_kick, 0.0, KICK_DECAY * delta)
+	velocity.x += _kick
 	if not is_on_floor():
 		velocity.y = minf(velocity.y + GRAVITY * delta, MAX_FALL)
-	elif not crouching and ((absf(dx) > 6.0 and is_on_wall()) or (dy < -24.0 and absf(dx) < 70.0)):
+	elif _bot_wants_jump or (not has_path and not crouching and ((absf(dx) > 6.0 and is_on_wall()) or (dy < -24.0 and absf(dx) < 70.0))):
 		velocity.y = JUMP_VELOCITY
+	_bot_wants_jump = false
 	move_and_slide()
 
 	if reviving:
@@ -561,7 +704,11 @@ func _bot_brain(delta: float) -> void:
 		var d := (enemy.global_position - global_position)
 		if d.length() > 6.0:
 			aim_dir = _snap8(d)
-		if _fire_timer <= 0.0 and _aim_ok(d) and _bot_may_fire(d) and _has_los(enemy):
+		var los := _los_state(enemy) if _fire_timer <= 0.0 else Los.WALL
+		if los == Los.TEAMMATE and is_on_floor() and not crouching:
+			# kolega na linii — podskok daje czystą linię nad nim
+			_bot_wants_jump = true
+		if _fire_timer <= 0.0 and _aim_ok(d) and _bot_may_fire(d) and los == Los.CLEAR:
 			_fire_timer = float(Weapons.def(Weapons.M83)["cooldown"]) * 1.8
 			_muzzle = 0.06
 			weapon = Weapons.M83
@@ -579,16 +726,93 @@ func _bot_may_fire(d: Vector2) -> bool:
 		return false
 	return NoiseMgr.seconds_since_overcharge() >= BOT_Q_HOLD
 
-## Linia strzału: bot nie strzela w ścianę (strzał w nią to sam hałas).
-func _has_los(target: Node2D) -> bool:
+enum Los { CLEAR, WALL, TEAMMATE }
+
+## Linia strzału bota: ściana (strzał w nią to sam hałas) albo stojący kolega.
+## Wcześniej promień widział tylko ściany (maska 1), więc bot strzelał
+## w wroga przez plecy człowieka. Leżących kolegów pomijamy — pocisk i tak
+## przez nich przelatuje (bullet.gd).
+func _los_state(target: Node2D) -> int:
 	var from := global_position + Vector2(0, -9)
 	var to := target.global_position + Vector2(0, -6)
-	var q := PhysicsRayQueryParameters2D.create(from, to, 1)
-	return get_world_2d().direct_space_state.intersect_ray(q).is_empty()
+	var q := PhysicsRayQueryParameters2D.create(from, to, 1 | 2)
+	var exclude: Array[RID] = [get_rid()]
+	var space := get_world_2d().direct_space_state
+	for _i in 4:
+		q.exclude = exclude
+		var hit := space.intersect_ray(q)
+		if hit.is_empty():
+			return Los.CLEAR
+		var c: Object = hit["collider"]
+		if c is Node and (c as Node).is_in_group("players"):
+			if c.dead:
+				exclude.append(hit["rid"])
+				continue
+			return Los.TEAMMATE
+		return Los.WALL
+	return Los.CLEAR
 
 func _aim_ok(d: Vector2) -> bool:
 	# strzela tylko gdy wróg jest mniej więcej na tej samej wysokości lub tuż obok
 	return absf(d.y) < 60.0 or absf(d.x) < 40.0
+
+## Nowa trasa A* do _bot_target_pos (krok 0 = miejsce, w którym stoimy).
+func _bot_plan() -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null or lvl.nav == null:
+		_bot_path = []
+		return
+	_bot_path = lvl.nav.find_path(global_position, _bot_target_pos)
+	_bot_path_i = 1
+
+func _cell_id(nav: AStar2D) -> int:
+	return int(floor((global_position.y - 1.0) / 16.0)) * nav.cols + int(floor(global_position.x / 16.0))
+
+## Zwraca docelowe x na tę klatkę i ustawia chęć skoku / zeskoku.
+## Skok: najpierw dojście do punktu wybicia (poprzedni węzeł), w locie sterowanie
+## do węzła docelowego. Zeskok: stanąć nad kładką i zeskoczyć.
+func _bot_follow_path() -> float:
+	if _bot_path_i >= _bot_path.size():
+		return _bot_target_pos.x
+	var lvl := get_tree().get_first_node_in_group("level")
+	var on_floor := is_on_floor()
+	if on_floor:
+		var me := _cell_id(lvl.nav)
+		# węzeł osiągnięty (także po przeskoczeniu kilku naraz)
+		for i in range(_bot_path_i, mini(_bot_path_i + 4, _bot_path.size())):
+			if _bot_path[i].id == me:
+				_bot_path_i = i + 1
+				break
+		if _bot_path_i >= _bot_path.size():
+			return _bot_target_pos.x
+	var step: Dictionary = _bot_path[_bot_path_i]
+	var prev: Dictionary = _bot_path[_bot_path_i - 1]
+	if not on_floor:
+		return step.pos.x
+	match step.kind:
+		Nav.Edge.JUMP:
+			if absf(global_position.x - prev.pos.x) <= 4.0:
+				_bot_wants_jump = true
+				crouching = false
+				return step.pos.x
+			return prev.pos.x
+		Nav.Edge.DROP:
+			if absf(global_position.x - prev.pos.x) <= 4.0:
+				_start_drop()
+			return prev.pos.x
+	return step.pos.x
+
+## Zablokowany na ziemi (np. skok nie wyszedł) → nowa trasa i podskok.
+func _bot_check_stuck(delta: float, idle: bool) -> void:
+	if idle or not is_on_floor() or absf(global_position.x - _bot_prev_x) > 0.5:
+		_bot_stuck = 0.0
+		_bot_prev_x = global_position.x
+		return
+	_bot_stuck += delta
+	if _bot_stuck > 0.8:
+		_bot_stuck = 0.0
+		_bot_plan()
+		_bot_wants_jump = true
 
 func _pick_bot_goal() -> void:
 	# 1) leżący towarzysz do podniesienia
@@ -702,11 +926,34 @@ func _make_bullet(muzzle: Vector2, dir: Vector2, shooter: int, w: int) -> void:
 	b.speed = d["speed"]
 	b.damage = d["damage"]
 	b.life_max = d["life"]
+	b.weapon = w
 
 ## Dostarcza obrażenia WŁAŚCICIELOWI postaci. apply_hit ma straż
 ## is_multiplayer_authority(), więc wywołanie go bezpośrednio na serwerze dla
 ## cudzej postaci kończyło się po cichu — gracze-klienci nie dostawali obrażeń
 ## od Stalkera ani od friendly fire. Wszystkie źródła obrażeń wołają tę metodę.
+## Friendly fire bez obrażeń (bullet.gd): rozstrzyga właściciel postaci.
+func deliver_ff(from_pos: Vector2) -> void:
+	if not NoiseMgr.has_network() or is_multiplayer_authority():
+		apply_ff(from_pos)
+	else:
+		apply_ff.rpc_id(get_multiplayer_authority(), from_pos)
+
+## Trafienie przez kolegę: odrzut, błysk i krzyk = HAŁAS (Uwaga), zero HP.
+@rpc("any_peer", "call_remote", "reliable")
+func apply_ff(from_pos: Vector2) -> void:
+	if not is_multiplayer_authority() or dead:
+		return
+	_kick = signf(global_position.x - from_pos.x) * FF_KICK
+	_flash = maxf(_flash, 0.12)
+	if _ff_cd > 0.0:
+		return
+	_ff_cd = FF_COOLDOWN
+	Audio.play_variant_at("player_hurt", 2, global_position, Audio.BUS_PLAYER, -12.0, 1.15)
+	NoiseMgr.add_noise(NoiseMgr.N_FF, global_position)
+	if not is_bot:
+		Feel.shake(1.5)
+
 func deliver_hit(amount: int, from_pos: Vector2) -> void:
 	if not NoiseMgr.has_network() or is_multiplayer_authority():
 		apply_hit(amount, from_pos)
@@ -742,19 +989,12 @@ func _body_color() -> Color:
 # ---------------------------------------------------------------- draw
 
 func _draw() -> void:
-	var font := ThemeDB.fallback_font
 	var col := _body_color()
 	if _flash > 0.0:
 		col = Color.WHITE
 
 	if dead:
 		draw_rect(Rect2(-7, -3, 14, 4), Color(0.35, 0.05, 0.08))
-		draw_string(font, Vector2(-26, -12), "P%d DOWN %ds" % [display_id, ceili(bleed_left)],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(0.9, 0.4, 0.4))
-		# pasek podnoszenia (widoczny u podnoszącego)
-		if revive_progress > 0.0:
-			draw_rect(Rect2(-12, -22, 24, 4), Color(0.1, 0.1, 0.12))
-			draw_rect(Rect2(-12, -22, 24.0 * revive_progress, 4), Color(0.4, 0.95, 0.5))
 		return
 
 	# migotanie podczas niewrażliwości po trafieniu
@@ -769,15 +1009,33 @@ func _draw() -> void:
 	var eye_off := Vector2(aim_dir.x * 2.5, clampf(aim_dir.y, -1.0, 0.35) * 2.0)
 	draw_rect(Rect2(eye_off.x - 1.0, top + 3.0 + eye_off.y, 2, 2), Color(0.06, 0.06, 0.08))
 	var arm_start := Vector2(0, top + 9)
-	var gun_len := 14.0 if weapon == Weapons.SPREAD12 else (9.0 if weapon == Weapons.P64 else 12.0)
-	var muzzle := arm_start + aim_dir * gun_len
-	draw_line(arm_start, muzzle, Color(0.78, 0.78, 0.85), 2.0 if weapon != Weapons.SPREAD12 else 3.0)
+	draw_line(arm_start, arm_start + aim_dir * _gun_len(), Color(0.78, 0.78, 0.85), 2.0 if weapon != Weapons.SPREAD12 else 3.0)
+
+func _gun_len() -> float:
+	return 14.0 if weapon == Weapons.SPREAD12 else (9.0 if weapon == Weapons.P64 else 12.0)
+
+## Rzeczy czytelne w ciemności (materiał unshaded): etykieta, HP, rozbłysk,
+## stan „DOWN" i pasek podnoszenia. Teksty wyśrodkowane nad postacią.
+func _draw_overlay(ov: Node2D) -> void:
+	var font := ThemeDB.fallback_font
+	var col := _body_color()
+	var name_txt := "BOT" if is_bot else "P%d" % display_id
+	if dead:
+		_center_text(ov, font, name_txt, -27.0, 8, col)
+		_center_text(ov, font, "%ds" % ceili(bleed_left), -17.0, 7, Color(0.95, 0.4, 0.4))
+		if revive_progress > 0.0:
+			ov.draw_rect(Rect2(-12, -12, 24, 3), Color(0.1, 0.1, 0.12))
+			ov.draw_rect(Rect2(-12, -12, 24.0 * revive_progress, 3), Color(0.4, 0.95, 0.5))
+		return
+	var top := -11.0 if crouching else -17.0
 	if _muzzle > 0.0:
-		draw_circle(muzzle, 3.5, Color(1.0, 0.9, 0.4, 0.9))
+		ov.draw_circle(Vector2(0, top + 9) + aim_dir * _gun_len(), 3.5, Color(1.0, 0.9, 0.4, 0.9))
 	for i in MAX_HP:
 		var c := Color(0.92, 0.25, 0.3) if i < hp else Color(0.22, 0.22, 0.26)
-		draw_rect(Rect2(-9 + i * 6.0, top - 8.0, 4, 4), c)
-	var label := "BOT" if is_bot else "P%d" % display_id
-	draw_string(font, Vector2(-18, top - 12), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, col)
-	if is_bot:
-		draw_string(font, Vector2(-20, top - 21), "AI", HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color(0.5, 0.5, 0.58))
+		ov.draw_rect(Rect2(-8 + i * 6.0, top - 7.0, 4, 3), c)
+	_center_text(ov, font, name_txt, top - 10.0, 8, col)
+
+func _center_text(ov: Node2D, font: Font, txt: String, y: float, sz: int, c: Color) -> void:
+	# cień pod tekstem — czytelność na jasnym tle (snop latarki, flara)
+	ov.draw_string(font, Vector2(-30 + 0.6, y + 0.6), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, sz, Color(0, 0, 0, 0.8))
+	ov.draw_string(font, Vector2(-30, y), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, sz, c)
