@@ -88,6 +88,8 @@ var nav: AStar2D
 
 var _solid: TileMapLayer
 var _back: TileMapLayer
+var _decals: Node2D
+var _decal_list: Array = []            ## [pos, radius, seed]
 
 func _ready() -> void:
 	add_to_group("level")
@@ -105,6 +107,11 @@ func _ready() -> void:
 	_solid.name = "Solid"
 	_solid.tile_set = ts
 	add_child(_solid)
+	# plamy krwi — nad kaflami, pod postaciami; cieniowane (widać je w świetle)
+	_decals = Node2D.new()
+	_decals.name = "Decals"
+	_decals.draw.connect(_draw_decals)
+	add_child(_decals)
 	_build_map()
 	nav = Nav.new()
 	nav.build((MAP[0] as String).length(), MAP.size(), _is_solid, _is_platform_cell)
@@ -205,6 +212,28 @@ func _add_enemy(n: String, kind: String, p: Vector2) -> void:
 	e.kind = kind
 	e.position = p
 	add_child(e)
+
+## Plama krwi na powierzchni (vfx.splat). Lokalna, kosmetyczna.
+func add_decal(pos: Vector2, radius: float) -> void:
+	_decal_list.append([pos, radius, randi()])
+	if _decal_list.size() > 260:
+		_decal_list.pop_front()
+	_decals.queue_redraw()
+
+func _draw_decals() -> void:
+	var rng := RandomNumberGenerator.new()
+	for d in _decal_list:
+		rng.seed = d[2]
+		var p: Vector2 = d[0]
+		var r: float = d[1]
+		# płaska plama na podłodze: kilka spłaszczonych kropel
+		for i in 5:
+			var off := Vector2(rng.randf_range(-r, r), rng.randf_range(-0.6, 0.4))
+			var rr := rng.randf_range(0.35, 0.8) * r
+			var c := Color(0.32, 0.02, 0.04, rng.randf_range(0.55, 0.85))
+			_decals.draw_set_transform(p + off, 0.0, Vector2(1.0, 0.32))
+			_decals.draw_circle(Vector2.ZERO, rr, c)
+	_decals.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 ## Punkt startowy dla slotu gracza (1..4); kolejne sloty lekko przesunięte.
 func spawn_for(slot: int) -> Vector2:

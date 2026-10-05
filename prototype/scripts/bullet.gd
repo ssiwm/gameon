@@ -9,6 +9,7 @@ extends Area2D
 ## adresata. Lot po prostej jest deterministyczny, więc nie potrzeba synchronizacji.
 
 const Weapons := preload("res://scripts/weapons.gd")
+const Vfx := preload("res://scripts/vfx.gd")
 ## Friendly fire z obrażeniem tylko z bliska i tylko ze strzelby — świadome
 ## ryzyko, nie przypadek (GDD §2 filar 3, wariant „FF = hałas").
 const FF_DAMAGE_RANGE := 40.0
@@ -43,11 +44,14 @@ func _physics_process(delta: float) -> void:
 func _on_body_entered(body: Node) -> void:
 	# Klient: tylko znika wizualnie przy ścianie/wrogu. Obrażenia liczy serwer.
 	if not _server_side:
+		if _is_wall(body):
+			Vfx.sparks(get_parent(), global_position, direction)
 		if _is_wall(body) or body.is_in_group("enemies"):
 			queue_free()
 		return
 
 	if _is_wall(body):
+		Vfx.sparks(get_parent(), global_position, direction)
 		Audio.play_variant_at("impact_hard", 3, global_position, Audio.BUS_WORLD, -12.0)
 		Audio.play_variant_at("ricochet", 2, global_position, Audio.BUS_WORLD, -20.0, 1.0, 0.12)
 		queue_free()

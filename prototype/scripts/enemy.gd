@@ -20,6 +20,7 @@ const KINDS := {
 }
 
 const Lights := preload("res://scripts/lights.gd")
+const Vfx := preload("res://scripts/vfx.gd")
 
 const GRAVITY := 900.0
 const MAX_FALL := 620.0
@@ -220,6 +221,7 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 	hp -= dmg
 	_flash = 0.1
 	_stagger = 0.12
+	Vfx.blood(get_parent(), global_position + Vector2(0, -8), (global_position - from_pos).normalized(), 5)
 	var knock: float = _def["knock"]
 	velocity.x += signf(global_position.x - from_pos.x) * knock
 	if not active:
@@ -241,23 +243,9 @@ func _death_fx() -> void:
 	if local.distance_to(global_position) < 220.0:
 		Feel.shake(1.8 if kind == "trzosek" else 3.0)
 		Feel.hitstop(0.05 if kind == "trzosek" else 0.09)
-	var fx := CPUParticles2D.new()
-	fx.one_shot = true
-	fx.emitting = true
-	fx.amount = 16 if kind == "trzosek" else 30
-	fx.lifetime = 0.55
-	fx.explosiveness = 1.0
-	fx.direction = Vector2(0, -1)
-	fx.spread = 75.0
-	fx.initial_velocity_min = 50.0
-	fx.initial_velocity_max = 150.0
-	fx.gravity = Vector2(0, 420)
-	fx.scale_amount_min = 1.0
-	fx.scale_amount_max = 2.2
-	fx.color = (_def["color"] as Color).lightened(DEATH_FX_COLOR_VAR)
-	get_tree().current_scene.add_child(fx)
-	fx.global_position = global_position + Vector2(0, -8)
-	get_tree().create_timer(1.0).timeout.connect(fx.queue_free)
+	# szczątki (fizyczne, lokalne) + krew na podłożu; odrzut z kierunku trafienia
+	Vfx.gibs(get_parent(), global_position + Vector2(0, -6), (_def["color"] as Color).lightened(DEATH_FX_COLOR_VAR),
+		6 if kind == "trzosek" else 11, Vector2(signf(velocity.x) * 60.0, 0))
 
 func _local_player_pos() -> Vector2:
 	for p in get_tree().get_nodes_in_group("players"):
@@ -280,6 +268,7 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 	_remote_pos = pos
 	if new_hp < hp - 0.01:
 		_flash = 0.1
+		Vfx.blood(get_parent(), global_position + Vector2(0, -8), Vector2.UP, 5)
 	hp = new_hp
 	active = is_active
 	winding = is_winding

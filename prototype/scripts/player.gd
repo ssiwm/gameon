@@ -9,12 +9,22 @@ extends CharacterBody2D
 const Weapons := preload("res://scripts/weapons.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Nav := preload("res://scripts/nav.gd")
+const Vfx := preload("res://scripts/vfx.gd")
 
 const SPEED := 95.0
 const CROUCH_SPEED := 45.0
 const JUMP_VELOCITY := -275.0
 const GRAVITY := 900.0
 const MAX_FALL := 620.0
+# Fizyka ruchu (1.5): bezwładność zamiast natychmiastowego startu/stopu.
+# Wznoszenie bez zmian (skok 42 px — poziomy i nawigacja bota na tym stoją),
+# opadanie szybsze: skok jest „cięższy" i bardziej kontrolowany.
+const ACCEL := 1100.0          ## px/s² na ziemi
+const DECEL := 1500.0          ## hamowanie bez wejścia
+const TURN_ACCEL := 2400.0     ## zwrot w przeciwną stronę
+const AIR_ACCEL := 650.0       ## kontrola w powietrzu
+const FALL_MULT := 1.35        ## grawitacja przy opadaniu
+const WATER_SPEED := 0.8       ## brodzenie w tartaku
 const MAX_HP := 3
 
 # Czucie gry (GDD §23)
@@ -85,6 +95,13 @@ var _kick := 0.0
 var _ff_cd := 0.0
 var _coyote := 0.0
 var _drop_t := 0.0
+var _run_vx := 0.0              ## składowa ruchu z wejścia (bez odrzutu)
+## Skala ciała: rozciąganie przy wybiciu, przysiad przy lądowaniu (każdy peer
+## wylicza ją z replikowanej prędkości — działa też dla zdalnych i bota).
+var squash := Vector2.ONE
+var _prev_vy := 0.0
+var _prev_floor_y := 0.0
+var _splash_t := 0.0
 var _light_noise_t := 0.0
 var _aura: PointLight2D
 var _beam: PointLight2D
@@ -195,8 +212,38 @@ func _process(delta: float) -> void:
 	if _is_remote or is_bot:
 		_update_footsteps_passive()
 	_update_lights()
+	_update_squash(delta)
 	queue_redraw()
 	_overlay.queue_redraw()
+
+func _in_water() -> bool:
+	var lvl := get_tree().get_first_node_in_group("level")
+	return lvl != null and lvl.surface_at(global_position) == "water"
+
+## Rozciąganie/przysiad i efekty ruchu (kurz, rozbryzgi) z prędkości — na
+## każdym peerze, bez dodatkowej synchronizacji.
+func _update_squash(delta: float) -> void:
+	var vy := velocity.y
+	var parent := get_parent()
+	if not dead:
+		if _prev_vy > 140.0 and absf(vy) < 30.0:
+			# lądowanie: przysiad tym głębszy, im szybciej spadał
+			var k := clampf((_prev_vy - 140.0) / 420.0, 0.0, 1.0)
+			squash = Vector2(1.0 + 0.35 * k + 0.1, 1.0 - 0.3 * k - 0.08)
+			if _in_water():
+				Vfx.splash(parent, global_position, 0.6 + k)
+			else:
+				Vfx.dust(parent, global_position, 0.5 + k)
+		elif vy < -180.0 and _prev_vy > -60.0:
+			squash = Vector2(0.78, 1.22)          # wybicie
+			Vfx.dust(parent, global_position, 0.35)
+		# brodzenie: drobne rozbryzgi przy biegu w wodzie
+		_splash_t -= delta
+		if absf(velocity.x) > 30.0 and absf(vy) < 5.0 and _splash_t <= 0.0 and _in_water():
+			_splash_t = 0.22
+			Vfx.splash(parent, global_position + Vector2(-signf(velocity.x) * 4.0, 0), 0.25)
+	_prev_vy = vy
+	squash = squash.lerp(Vector2.ONE, minf(1.0, delta * 12.0))
 
 func _update_lights() -> void:
 	var fl := Lights.flicker_mult()
@@ -275,8 +322,20 @@ func _local_brain(delta: float) -> void:
 			aim_dir = to_mouse.normalized()
 
 	var speed := CROUCH_SPEED if crouching else SPEED
+	if _in_water():
+		speed *= WATER_SPEED
 	_kick = move_toward(_kick, 0.0, KICK_DECAY * delta)
-	velocity.x = move_x * speed + _kick
+	var target := move_x * speed
+	var rate := AIR_ACCEL
+	if is_on_floor():
+		if absf(target) < 0.01:
+			rate = DECEL
+		elif signf(target) != signf(_run_vx) and absf(_run_vx) > 1.0:
+			rate = TURN_ACCEL
+		else:
+			rate = ACCEL
+	_run_vx = move_toward(_run_vx, target, rate * delta)
+	velocity.x = _run_vx + _kick
 
 	# --- skok: coyote time + jump buffer + zmienna wysokość (GDD §23)
 	var on_floor := is_on_floor()
@@ -290,7 +349,8 @@ func _local_brain(delta: float) -> void:
 	_update_drop(delta, on_floor)
 
 	if not on_floor:
-		velocity.y = minf(velocity.y + GRAVITY * delta, MAX_FALL)
+		var g := GRAVITY * (FALL_MULT if velocity.y > 0.0 else 1.0)
+		velocity.y = minf(velocity.y + g * delta, MAX_FALL)
 
 	if _jump_buf > 0.0 and _coyote > 0.0 and not crouching and not reviving:
 		velocity.y = JUMP_VELOCITY
@@ -555,6 +615,7 @@ func _respawn(hp_amount: int) -> void:
 	velocity = Vector2.ZERO
 	_invuln = 1.5
 	_heat = 0.0
+	_run_vx = 0.0
 	_last_step_pos = global_position
 	_step_dist = 0.0
 	Audio.play("revive", Audio.BUS_PLAYER, -9.0)
@@ -895,6 +956,7 @@ func _server_fire(muzzle: Vector2, dir: Vector2, shooter: int, w: int, play_sfx:
 		dirs.append(dir.rotated(deg_to_rad(off)))
 	for dd in dirs:
 		_make_bullet(muzzle, dd, shooter, w)
+	_shot_fx(muzzle, dir, w)
 	if play_sfx:
 		Audio.play_variant_at(d["sfx"], d["sfx_count"], muzzle, Audio.BUS_WEAPONS,
 			float(d["sfx_vol"]) - 3.0, d["sfx_pitch"])
@@ -915,6 +977,13 @@ func _fire_remote(muzzle: Vector2, dirs: PackedVector2Array, shooter: int, w: in
 			float(d["sfx_vol"]) - 3.0, d["sfx_pitch"])
 	for dd in dirs:
 		_make_bullet(muzzle, dd, shooter, w)
+	_shot_fx(muzzle, dirs[0] if dirs.size() > 0 else Vector2.RIGHT, w)
+
+## Łuska i dym — kosmetyka strzału na każdym peerze (raz na strzał).
+func _shot_fx(muzzle: Vector2, dir: Vector2, w: int) -> void:
+	var parent := get_parent()
+	Vfx.casing(parent, muzzle - dir * 6.0, dir, w == Weapons.SPREAD12)
+	Vfx.smoke(parent, muzzle, dir)
 
 func _make_bullet(muzzle: Vector2, dir: Vector2, shooter: int, w: int) -> void:
 	var d := Weapons.def(w)
@@ -967,6 +1036,7 @@ func apply_hit(amount: int, _from_pos: Vector2) -> void:
 	hp -= amount
 	_invuln = INVULN_AFTER_HIT
 	_flash = 0.25
+	Vfx.blood(get_parent(), global_position + Vector2(0, -9), (global_position - _from_pos).normalized(), 8)
 	Audio.play_variant("player_hurt", 2, Audio.BUS_PLAYER, -8.0)
 	# krzyk bólu zawsze, w każdym trybie (wcześniej tylko solo)
 	NoiseMgr.add_noise(NoiseMgr.N_HURT, global_position)
@@ -1004,12 +1074,14 @@ func _draw() -> void:
 	var h := 11.0 if crouching else 17.0
 	var top := -h
 	draw_rect(Rect2(-7, -1, 14, 3), Color(0, 0, 0, 0.35))
+	draw_set_transform(Vector2.ZERO, 0.0, squash)
 	draw_rect(Rect2(-5, top + 7, 10, h - 7), col)
 	draw_rect(Rect2(-4, top, 8, 8), col.lightened(0.3))
 	var eye_off := Vector2(aim_dir.x * 2.5, clampf(aim_dir.y, -1.0, 0.35) * 2.0)
 	draw_rect(Rect2(eye_off.x - 1.0, top + 3.0 + eye_off.y, 2, 2), Color(0.06, 0.06, 0.08))
 	var arm_start := Vector2(0, top + 9)
 	draw_line(arm_start, arm_start + aim_dir * _gun_len(), Color(0.78, 0.78, 0.85), 2.0 if weapon != Weapons.SPREAD12 else 3.0)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _gun_len() -> float:
 	return 14.0 if weapon == Weapons.SPREAD12 else (9.0 if weapon == Weapons.P64 else 12.0)

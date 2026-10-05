@@ -202,6 +202,20 @@ def build_weapons() -> None:
                                 d.env_perc(ms(30), 0.0003, 0.005)), 0.012), 0.5),
     ], ms(70)))
 
+    # Łuska — metaliczne „dzyń" przy upadku (1.5: łuski jako fizyczne szczątki).
+    # Dwa niewspółmierne tony (mosiądz) + krótki stuk + drugie odbicie ciszej.
+    for i in range(3):
+        rng = Rng(0x5800 + i * 7919)
+        n_i = ms(160)
+        f1 = 3150.0 + i * 260.0
+        tone = d.mixdown([
+            (d.buf_mul(d.osc(d.wt_sine(), n_i, f1, f1 * 0.995), d.env_perc(n_i, 0.0005, 0.045)), 0.7),
+            (d.buf_mul(d.osc(d.wt_sine(), n_i, f1 * 1.47, f1 * 1.46), d.env_perc(n_i, 0.0005, 0.03)), 0.45),
+            (d.buf_mul(d.svf(d.noise_white(ms(8), rng), 5000, 3000, 0.8), d.env_perc(ms(8), 0.0002, 0.002)), 0.6),
+        ], n_i)
+        bounce = d.buf_offset_n(d.buf_scale(tone[:ms(60)], 0.35), ms(55 + i * 12))
+        render("shell_%d" % (i + 1), d.mixdown([(tone, 1.0), (bounce, 1.0)], ms(160)))
+
     # Maczeta — zamach (whoosh) + cięcie
     for i in range(2):
         rng = Rng(0x5000 + i * 31337)

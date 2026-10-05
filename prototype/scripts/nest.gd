@@ -10,6 +10,7 @@ extends CharacterBody2D
 signal destroyed(nest: Node)
 
 const Lights := preload("res://scripts/lights.gd")
+const Vfx := preload("res://scripts/vfx.gd")
 
 const MAX_HP := 60.0
 ## Hałas zniszczenia (GDD §8.1): pękające gniazdo budzi okolicę — to cena celu.
@@ -70,6 +71,7 @@ func _destroy_fx() -> void:
 	Audio.play_variant_at("impact_flesh", 3, global_position, Audio.BUS_WORLD, -2.0, 0.6)
 	if _local_dist() < 240.0:
 		Feel.shake(2.5)
+	Vfx.gibs(get_parent(), global_position + Vector2(0, -8), Color(0.42, 0.14, 0.18), 9)
 	var fx := CPUParticles2D.new()
 	fx.one_shot = true
 	fx.emitting = true

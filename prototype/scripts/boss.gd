@@ -28,6 +28,7 @@ signal died
 
 const Lights := preload("res://scripts/lights.gd")
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
+const Vfx := preload("res://scripts/vfx.gd")
 
 enum State { DORMANT, AWAKE, DEAD }
 enum Atk { NONE, LASH, SPIT, SWEEP }
@@ -599,6 +600,7 @@ func _event(kind: String) -> void:
 			_shake_near(7.0)
 			Feel.hitstop(0.12)
 			_death_fx()
+			Vfx.gibs(get_parent(), global_position + Vector2(0, -24), Color(0.4, 0.1, 0.14), 26)
 			visible = false
 			($CollisionShape2D as CollisionShape2D).set_deferred("disabled", true)
 

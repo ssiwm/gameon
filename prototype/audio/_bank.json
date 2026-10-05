@@ -215,6 +215,18 @@
   "sfx/weapons/ricochet_2",
   0
  ],
+ "shell_1": [
+  "sfx/weapons/shell_1",
+  0
+ ],
+ "shell_2": [
+  "sfx/weapons/shell_2",
+  0
+ ],
+ "shell_3": [
+  "sfx/weapons/shell_3",
+  0
+ ],
  "stalker_appear": [
   "sfx/stalker/stalker_appear",
   0
