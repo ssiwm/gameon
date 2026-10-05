@@ -23,7 +23,7 @@ from __future__ import annotations
 import numpy as np
 
 import audio_dsp as d
-from audio_dsp import Rng, ms
+from audio_dsp import SR, Rng, ms, sec
 from bake_common import (asset, burst, finalize, group, ir, ring, thump, tick, vary)
 
 
@@ -68,6 +68,11 @@ def gun(rng: Rng, *, body=(190.0, 55.0), body_tau=0.028, body_dur=0.16, crack_f=
 
 def build_weapons() -> None:
     group("sfx/weapons")
+    _build_core_weapons()
+    build_weapons_ext()
+
+
+def _build_core_weapons() -> None:
 
     # M-83 „Krótki" — SMG 600 RPM: suchy, krótki, kontrolowany (długie serie nie męczą)
     for i in range(6):
@@ -243,3 +248,211 @@ def build_weapons() -> None:
     tone *= (1 + .08 * np.sin(2 * np.pi * 5.3 * t))
     tone *= d.env_pts(n, [(0, 0), (.05, 1), (.7, .9), (1.8, .35), (3.6, 0)])
     finalize("ear_ring", tone, lufs=-22.0, fade_out_ms=300)
+
+
+# ============================================================ BROŃ — rozszerzenie (1.6)
+# Nowe bronie z GDD §6, foley przeładowań, potwierdzenia trafień, podnoszenie.
+
+TAU = 2.0 * np.pi
+
+
+def build_weapons_ext() -> None:
+    group("sfx/weapons")
+
+    # SRUT-8 — ciężka strzelba: głębszy sub, osiem cracków śrutu, długi ogon
+    for i in range(3):
+        r = Rng(0x2D00 + i * 6113)
+        x = gun(r, body=(vary(r, (125, 112, 100)[i], .05), vary(r, (36, 32, 28)[i], .05)), body_tau=vary(r, .05, .06),
+                body_dur=0.36, crack_f=vary(r, 2100, .1), crack_amt=1.15,
+                blast=(vary(r, 6000, .1), vary(r, 600, .12)), blast_tau=vary(r, .052, .1),
+                blast_amt=1.5, punch_f=vary(r, 280, .1), punch_amt=1.15, mech=.3, mech_f=1900.0,
+                tail_rt=(.7, 1.0, 1.4)[i], tail_wet=(.32, .38, .44)[i], drive=2.6, dur=0.95, pellets=8, sub=(.9, 1.2, 1.5)[i])
+        finalize("srut8_shot_%d" % (i + 1), x, lufs=-12.5)
+
+    # Pompka: zamek do tyłu (szum + dzwonek metalu) i do przodu z łuską — dwa wariaty
+    for i in range(2):
+        r = Rng(0x2E00 + i * 4177)
+        back = d.mix([(d.filt(d.white(ms(120), r), "bp", vary(r, 1100, .1), 1.3) * d.env_perc(ms(120), .01, .06), 1.0),
+                      (ring(r, [vary(r, 1700, .08), vary(r, 3100, .08)], [.05, .03], dur=.12), .45, .02)], ms(140))
+        fwd = d.mix([(thump(.08, 240, 100, .02, .03), 1.0), (tick(r, vary(r, 2100, .08), 1.5, 14, .004), 1.0),
+                     (ring(r, [vary(r, 780, .1), vary(r, 2200, .1)], [.07, .04], dur=.14), .7)], ms(180))
+        x = d.mix([(back, .8, 0.0), (fwd, 1.0, .17 + r.uniform(0, .02))], ms(420))
+        finalize("srut8_pump_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), peak=-4.0)
+
+    # LR-7: rozruch (świst wznoszący + trzaski) i pętla promienia (brzęczenie 120 Hz + trzaski)
+    r = Rng(0x2F00)
+    n = ms(280)
+    wh = d.osc("saw", d.glide_exp(260, 2100, n, .16), n) * d.env_pts(n, [(0, 0), (.03, .9), (.18, .55), (.28, 0)])
+    wh = d.filt(wh, "lp", 4200.0) * .7
+    crk = d.filt(d.white(n, r), "hp", 2500.0) * d.env_perc(n, .002, .06) * .5
+    finalize("lr7_start", d.reverb(d.mix([(wh, 1.0), (crk, .6, .02)], n), ir("close"), wet=.14), lufs=-19.0)
+
+    asset("lr7_beam_loop", "sfx/weapons/lr7_beam_loop", loop=True)
+    n = sec(2.0)
+    t = np.arange(n) / SR
+    r = Rng(0x2F10)
+    hum = sum(a * np.sin(TAU * f * t + p) for f, a, p in ((120.0, 1.0, 0.0), (240.0, .55, .8), (360.0, .32, 1.7), (1200.0, .10, .4)))
+    amod = 0.75 + 0.25 * np.sin(TAU * 30.0 * t)                               # 60 cykli w pętli
+    whine = np.sin(TAU * 1800.0 * t + 2.0 * np.sin(TAU * 4.0 * t)) * .08
+    spit = d.circ_filter(d.white(n, r), lambda z: d.hp(z, 3500.0)) * (np.maximum(0, np.sin(TAU * 7.0 * t + 1.0)) ** 8) * .5
+    x = (hum * amod + whine + spit)
+    finalize("lr7_beam_loop", x, loop=True, lufs=-20.0)
+
+    # HKM-9: zapłon „whump” i pętla płomienia (szum szerokopasmowy z trzepotem)
+    r = Rng(0x3010)
+    n = ms(520)
+    rush = d.sweep(d.colored(n, r, .8), "bp", d.env_pts(n, [(0, 300), (.12, 1400), (.5, 700)]), q=.7) * d.env_pts(n, [(0, 0), (.03, 1.0), (.2, .8), (.5, 0)])
+    whump = thump(.35, 110, 38, .09, .16) * 1.3
+    tick_ = d.filt(d.white(ms(30), r), "bp", 2400, .9) * d.env_perc(ms(30), .0005, .01) * 2.0
+    x = d.mix([(rush, 1.0), (whump, 1.0), (tick_, .5)], n)
+    finalize("hkm9_ignite", d.reverb(d.saturate(x, 1.6), ir("close"), wet=.16), lufs=-17.0)
+
+    asset("hkm9_flame_loop", "sfx/weapons/hkm9_flame_loop", loop=True)
+    n = sec(2.0)
+    t = np.arange(n) / SR
+    r = Rng(0x3020)
+    base = d.colored(n, r, .8)
+    rush = d.circ_filter(base, lambda z: d.bp(z, 700.0, .6)) * (.65 + .35 * np.sin(TAU * 14.0 * t + 1.0))   # trzepot 28 cykli
+    low = d.circ_filter(base, lambda z: d.lp(z, 160.0)) * 1.2
+    crackle = d.circ_filter(d.white(n, r), lambda z: d.hp(z, 2800.0)) * (np.maximum(0, np.sin(TAU * 11.0 * t)) ** 12) * .6
+    x = d.mix([(rush, 1.0), (low, .9), (crackle, .7)], n)
+    finalize("hkm9_flame_loop", x, loop=True, lufs=-19.0)
+
+    # GNIEW-4: „bump” granatnika — niski korpus + pusty rezonans lufy
+    for i in range(2):
+        r = Rng(0x3100 + i * 5003)
+        n = ms(700)
+        body = thump(.30, vary(r, 95, .08), 36, .06, .11) * 1.2
+        blast = burst(ms(120), r, vary(r, 3500, .1), 500, .03, color=.3) * .9
+        tube = ring(r, [vary(r, 210, .06), vary(r, 430, .06), vary(r, 890, .06)], [.18, .12, .08], dur=.4) * .6
+        bloop = d.osc("sine", d.glide_exp(520, 140, ms(120), .04), ms(120)) * d.env_perc(ms(120), .001, .05) * .5
+        x = d.mix([(body, 1.0), (blast, 1.0), (tube, .8, .004), (bloop, .6, .01)], n)
+        finalize("gniew4_shot_%d" % (i + 1), d.reverb(d.saturate(x, 1.8), ir("hall"), wet=.3), peak=-2.0)
+
+    # SOKOL-6: odpalenie mikrorakiety — syk i świst
+    for i in range(3):
+        r = Rng(0x3200 + i * 3989)
+        n = ms(520)
+        k = (0.8, 1.0, 1.25)[i]
+        sw = d.sweep(d.white(n, r), "bp", d.env_pts(n, [(0, 1300 * k), (.08, 3800 * k), (.25, 2400 * k), (.52, 900 * k)]), q=(0.8, 1.1, 1.6)[i])
+        sw = sw * d.env_pts(n, [(0, 0), (.015, 1.0), (.15, .7), (.52, 0)])
+        pop = d.mix([(thump(.06, 260, 120, .015, .03), 1.0), (tick(r, 2600, 1.4, 12, .003), .8)], ms(80))
+        x = d.mix([(sw, 1.0), (pop, 1.0)], n)
+        finalize("sokol6_shot_%d" % (i + 1), d.reverb(x, ir("close"), wet=.16), lufs=-19.0)
+
+    # WIDMO-1: ładowanie 1,2 s (wznosząca się cewka) i strzał (trzask + sub + wyładowanie)
+    r = Rng(0x3300)
+    n = sec(1.2)
+    t = np.arange(n) / SR
+    f = d.env_pts(n, [(0, 140), (.9, 1100), (1.2, 3300)])
+    whine = d.osc("saw", f, n) * .5 + d.osc("sine", f * 2.01, n) * .35
+    trem = .6 + .4 * np.sin(TAU * np.cumsum(6.0 + 38.0 * (t / 1.2) ** 2) / SR)
+    hum = d.osc("sine", 60.0, n) * .7
+    crk = d.filt(d.white(n, r), "hp", 4000.0) * (t / 1.2) ** 3 * .35
+    x = d.mix([(whine * trem, 1.0), (hum, .8), (crk, .7)], n) * d.env_pts(n, [(0, 0), (.12, .6), (1.15, 1.0), (1.2, 0)])
+    finalize("widmo1_charge", d.filt(x, "lp", 9000.0), lufs=-19.0, fade_out_ms=20)
+
+    for i in range(2):
+        r = Rng(0x3310 + i * 2741)
+        n = ms(1500)
+        crack = d.filt(d.white(ms(14), r), "hp", 900.0, order=3) * d.env_perc(ms(14), .0002, .004) * 6.0
+        sub = thump(1.0, vary(r, 62, .06), 20, .22, .38, attack=.002) * 1.5
+        zap = d.osc("saw", d.glide_exp(7200, 280, ms(260), .05), ms(260)) * d.env_perc(ms(260), .0005, .07) * .6
+        zap = d.filt(zap, "bp", vary(r, 2400, .1), .6) * 1.2
+        body = d.sweep(d.colored(n, r, 1.0), "lp", d.glide_exp(5200, 130, n, .22), q=.8) * d.env_perc(n, .001, .24) * 1.6
+        arcs = np.zeros(n)
+        for _ in range(26):
+            k = ms(r.uniform(5, 420))
+            tk = tick(r, r.uniform(2500, 8000), 1.6, r.uniform(2, 8), .001)
+            if k + len(tk) < n:
+                arcs[k:k + len(tk)] += tk * r.uniform(.1, .5) * np.exp(-k / ms(500))
+        x = d.mix([(crack, 1.0), (sub, 1.0), (zap, .8, .002), (body, 1.0), (arcs, 1.0)], n)
+        x = d.saturate(x, 2.0)
+        finalize("widmo1_shot_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.34), peak=-1.5, fade_out_ms=100)
+
+    # CIEGNO-6: cięciwa (dźwięczny „twang”) + świst bełtu — cicha broń
+    for i in range(2):
+        r = Rng(0x3400 + i * 2113)
+        n = ms(420)
+        tw = ring(r, [vary(r, 168, .06), vary(r, 336, .06), vary(r, 505, .06)], [.35, .22, .12], dur=.4) * 1.0
+        sn = d.mix([(thump(.05, 400, 160, .01, .02), 1.0), (tick(r, 1700, 1.2, 20, .006), .8)], ms(60))
+        whz = d.sweep(d.white(ms(160), r), "bp", d.glide_exp(4200, 1500, ms(160), .06), 1.4) * d.env_perc(ms(160), .004, .05) * .4
+        x = d.mix([(tw, .9), (sn, 1.0), (whz, .6, .005)], n)
+        finalize("ciegno6_shot_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), peak=-5.0)
+
+    # Kilof: ciężki zamach (niższy i wolniejszy niż maczeta)
+    for i in range(2):
+        r = Rng(0x3500 + i * 3331)
+        n = ms(520)
+        sw = d.sweep(d.colored(n, r, .6), "bp", d.env_pts(n, [(0, (170, 280)[i]), (.16, (560, 900)[i]), (.26, (1500, 2300)[i]), (.5, (340, 520)[i])]), q=(1.0, 1.8)[i])
+        sw = sw * d.env_pts(n, [(0, 0), (.12, .5), (.23, 1.0), (.36, .3), (.52, 0)]) ** 1.2
+        wood = thump(.12, vary(r, 130, .1), 60, .03, .05) * .35
+        x = d.mix([(sw, 1.0), (wood, 1.0, .19)], n)
+        finalize("kilof_swing_%d" % (i + 1), d.reverb(x, ir("close"), wet=.12), lufs=-18.0)
+
+    # Przeładowania specyficzne: łuska do komory, ogniwo, granat, kondensator, cięciwa
+    for i in range(3):
+        r = Rng(0x3600 + i * 2339)
+        f0 = vary(r, 2200, .12)
+        x = d.mix([(tick(r, f0, 2.0, 12, .003), 1.0), (ring(r, [f0 * .55, f0 * 1.4], [.05, .03], dur=.1), .5),
+                   (thump(.07, vary(r, 180, .1), 80, .015, .025), .6, .004)], ms(160))
+        finalize("reload_shell_%d" % (i + 1), d.reverb(x, ir("dead"), wet=.12), peak=-5.0)
+
+    for i in range(2):
+        r = Rng(0x3700 + i * 2677)
+        latch = d.mix([(tick(r, (1500, 2400)[i], 1.8, 14, .004), 1.0), (thump(.08, (130, 200)[i], 80, .02, .03), .6)], ms(120))
+        slide = d.filt(d.white(ms(150), r), "bp", (900, 1700)[i], 1.2) * d.env_curve(ms(150), 0, 1, 1.4) * d.env_exp(ms(150), .08)
+        seat = d.mix([(thump(.09, 210, 90, .02, .03), 1.0), (tick(r, 2600, 1.6, 10, .003), .7)], ms(120))
+        up = d.osc("sine", d.glide_exp((200, 320)[i], (1200, 2000)[i], ms(380), .22), ms(380)) * d.env_pts(ms(380), [(0, 0), (.05, .5), (.3, .6), (.38, 0)]) * .35
+        x = d.mix([(latch, 1.0, 0.0), (slide, .5, .06), (seat, 1.0, .30), (up, 1.0, .42)], ms(900))
+        finalize("reload_cell_%d" % (i + 1), d.reverb(x, ir("close"), wet=.13), peak=-4.0)
+
+    r = Rng(0x3800)
+    creak = d.sweep(d.colored(ms(260), r, .8), "bp", d.glide(380, 760, ms(260)), 3.0) * d.env_pts(ms(260), [(0, 0), (.04, .6), (.22, .4), (.26, 0)])
+    ins = d.mix([(thump(.1, 150, 70, .02, .04), 1.0), (tick(r, 1500, 1.4, 16, .005), .8)], ms(150))
+    clack = d.mix([(tick(r, 2300, 1.8, 14, .004), 1.0), (thump(.09, 200, 90, .02, .03), .8), (ring(r, [900, 2600], [.08, .04], dur=.15), .4)], ms(200))
+    x = d.mix([(creak, .8, 0.0), (ins, 1.0, .38), (clack, 1.0, .72)], ms(1000))
+    finalize("reload_launcher_1", d.reverb(x, ir("room"), wet=.16), peak=-4.0)
+
+    r = Rng(0x3900)
+    hum = d.osc("sine", d.glide_exp(90, 520, ms(700), .3), ms(700)) * d.env_pts(ms(700), [(0, 0), (.1, .5), (.55, .7), (.7, 0)]) * .5
+    clunk = d.mix([(thump(.14, 130, 55, .03, .06), 1.0), (tick(r, 1400, 1.2, 20, .006), .8)], ms(240))
+    lat = d.mix([(tick(r, 2800, 2.0, 12, .003), 1.0), (ring(r, [1500, 3300], [.07, .04], dur=.15), .5)], ms(180))
+    x = d.mix([(clunk, 1.0, 0.0), (hum, 1.0, .12), (lat, 1.0, .88)], ms(1100))
+    finalize("reload_rail_1", d.reverb(x, ir("room"), wet=.16), peak=-4.0)
+
+    r = Rng(0x3A00)
+    x = np.zeros(ms(1000))
+    for k in range(7):                                            # zapadki naciągu cięciwy
+        tk = d.mix([(tick(r, 1100 + 90 * k, 2.2, 10, .003), 1.0), (thump(.04, 300, 150, .01, .015), .3)], ms(60))
+        o = ms(6 + k * 72)
+        x[o:o + len(tk)] += tk[:len(x) - o] * (.6 + .06 * k)
+    seat = d.mix([(thump(.08, 190, 80, .02, .03), 1.0), (tick(r, 2400, 1.6, 12, .004), .9)], ms(120))
+    x = d.mix([(x, 1.0), (seat, 1.0, .66)], ms(1000))
+    finalize("reload_bolt_1", d.reverb(x, ir("close"), wet=.12), peak=-5.0)
+
+    # Potwierdzenia trafień (UI): krótkie, jasne, nie męczą przy 9 trafieniach/s
+    for i in range(2):
+        r = Rng(0x3B00 + i * 997)
+        x = d.mix([(tick(r, vary(r, 3400, .06), 3.0, 9, .002), 1.0),
+                   (ring(r, [vary(r, 2300, .04)], [.02], dur=.04), .35)], ms(50))
+        finalize("hitmark_%d" % (i + 1), x, peak=-9.0, trim=False)
+    r = Rng(0x3B10)
+    x = d.mix([(tick(r, 4200, 3.0, 9, .002), 1.0), (ring(r, [1900, 3300], [.05, .03], dur=.1), .7, .018)], ms(110))
+    finalize("hitmark_crit", x, peak=-5.0, trim=False)
+    r = Rng(0x3B20)
+    x = d.mix([(thump(.12, 150, 64, .03, .05), 1.0), (tick(r, 2900, 2.5, 10, .003), .9), (ring(r, [1200, 2100], [.08, .05], dur=.12), .5, .01)], ms(180))
+    finalize("killmark", d.saturate(x, 1.5), peak=-4.0)
+    r = Rng(0x3B30)
+    x = d.mix([(tick(r, 900, 1.2, 14, .004), 1.0), (thump(.05, 190, 100, .015, .02), .5)], ms(60))
+    finalize("armor_tick", x, peak=-10.0, trim=False)
+
+    # Podniesienie amunicji i broni
+    r = Rng(0x3C00)
+    x = d.mix([(tick(r, 2100, 1.8, 14, .004), 1.0), (thump(.07, 190, 90, .02, .03), .7, .004),
+               (ring(r, [3600, 5200], [.06, .04], dur=.1), .5, .03), (tick(r, 2900, 1.6, 10, .003), .7, .07)], ms(200))
+    finalize("ammo_pickup", d.reverb(x, ir("dead"), wet=.12), peak=-6.0)
+    r = Rng(0x3C10)
+    x = d.mix([(thump(.12, 150, 60, .03, .05), 1.0), (tick(r, 1500, 1.4, 18, .005), .9, .004),
+               (tick(r, 2600, 2.0, 10, .003), .9, .09), (ring(r, [1100, 2400], [.1, .06], dur=.2), .5, .01)], ms(300))
+    finalize("weapon_pickup", d.reverb(x, ir("close"), wet=.14), peak=-5.0)

@@ -76,6 +76,11 @@ var _slots: Array[PanelContainer] = []
 var _slot_labels: Array[Label] = []
 var _battery: Bar
 var _battery_note: Label
+var _ammo_name: Label
+var _ammo_count: Label
+var _ammo_note: Label
+var _heat_bar: Bar
+var _heat_note: Label
 
 var _obj_card: PanelContainer
 var _obj_caption: Label
@@ -184,15 +189,33 @@ func _build_status_card() -> void:
 	_slot_off = UiTheme.panel_box()
 	_slot_off.bg_color = Color(1, 1, 1, 0.04)
 	_slot_off.set_content_margin_all(2)
+	# amunicja: nazwa broni, magazynek / zapas drużyny, status (przeładowanie, brak naboi)
+	var ar := _row(box, "AMMO")
+	_ammo_name = UiTheme.label("", 8, UiTheme.TEXT)
+	ar.add_child(_ammo_name)
+	_ammo_count = UiTheme.label("", 10, UiTheme.TEXT)
+	_ammo_count.custom_minimum_size = Vector2(52, 0)
+	ar.add_child(_ammo_count)
+	_ammo_note = UiTheme.label("", 7, UiTheme.MUTED)
+	ar.add_child(_ammo_note)
+	# rozgrzanie lufy → hałas strzału (GDD §8.1): gracz widzi, ile Uwagi kosztuje następny strzał
+	var hr2 := _row(box, "BARREL")
+	_heat_bar = Bar.new()
+	_heat_bar.custom_minimum_size = Vector2(60, 4)
+	_heat_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hr2.add_child(_heat_bar)
+	_heat_note = UiTheme.label("", 7, UiTheme.MUTED)
+	hr2.add_child(_heat_note)
+
 	var wr := HBoxContainer.new()
 	wr.add_theme_constant_override("separation", 3)
-	for i in Weapons.COUNT:
-		var s := PanelContainer.new()
-		s.custom_minimum_size = Vector2(52, 0)
-		var l := UiTheme.label("%d  %s" % [i + 1, Weapons.def(i)["name"]], 7, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
-		s.add_child(l)
-		wr.add_child(s)
-		_slots.append(s)
+	for i in 4:
+		var sl := PanelContainer.new()
+		sl.custom_minimum_size = Vector2(52, 0)
+		var l := UiTheme.label("", 7, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+		sl.add_child(l)
+		wr.add_child(sl)
+		_slots.append(sl)
 		_slot_labels.append(l)
 	box.add_child(wr)
 
@@ -265,7 +288,7 @@ func _build_prompt() -> void:
 
 func _build_controls() -> void:
 	_controls = UiTheme.label(
-		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J fire · 1-3 gun · Q lure · L light · E revive",
+		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J/LMB fire · R reload · V/RMB melee · 1-3 gun · E take/revive · Q lure · L light",
 		7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_controls)
 	_place(_controls, Vector2(8, 344), Vector2(624, 12))
@@ -352,16 +375,63 @@ func _drive_status() -> void:
 	_hearts.filled = hp
 	_hearts.queue_redraw()
 	_health_note.text = "DOWN  %ds" % ceili(_player.bleed_left) if _player.dead else ""
-	for i in _slots.size():
-		var sel: bool = i == _player.weapon
-		_slots[i].add_theme_stylebox_override("panel", _slot_on if sel else _slot_off)
-		_slot_labels[i].add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.MUTED)
+	_drive_weapons()
 	var pct: float = _player.battery / _player.BATTERY_MAX
 	_battery.value = pct
 	_battery.fill = Color(1.0, 0.95, 0.72) if _player.flashlight else (UiTheme.DANGER if pct < 0.2 else UiTheme.MUTED)
 	_battery.queue_redraw()
 	_battery_note.text = ("ON  %d%%" if _player.flashlight else "OFF  %d%%") % int(pct * 100.0)
 	_battery_note.add_theme_color_override("font_color", Color(1.0, 0.95, 0.72) if _player.flashlight else UiTheme.MUTED)
+
+## Karta broni: sloty z aktualnego zestawu, magazynek / zapas, ciepło lufy i koszt hałasu.
+func _drive_weapons() -> void:
+	var wc: Node = _player.weapons
+	var cur: RefCounted = wc.cur()
+	var names: Array = []
+	for i in 3:
+		names.append(wc.def_of_slot(i).name)
+	names.append(Weapons.def(wc.melee_id).name)
+	for i in _slots.size():
+		var sel: bool = (i == wc.slot) if i < 3 else (wc.state == wc.State.MELEE)
+		var key := str(i + 1) if i < 3 else "V"
+		_slot_labels[i].text = "%s  %s" % [key, names[i]]
+		_slots[i].add_theme_stylebox_override("panel", _slot_on if sel else _slot_off)
+		_slot_labels[i].add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.MUTED)
+	_ammo_name.text = cur.name
+	var mag: int = wc.mag_of(cur.id)
+	var note := ""
+	var col := UiTheme.TEXT
+	if not cur.uses_ammo():
+		_ammo_count.text = "—"
+	elif cur.infinite:
+		_ammo_count.text = "%d / ∞" % mag
+	else:
+		var res := Arsenal.get_reserve(cur.id)
+		_ammo_count.text = "%d / %d" % [mag, res]
+		if mag <= 0 and res <= 0:
+			col = UiTheme.DANGER
+			note = "NO AMMO"
+		elif mag <= maxi(1, int(cur.mag * 0.25)):
+			col = UiTheme.ACCENT if mag > 0 else UiTheme.DANGER
+	if wc.state == wc.State.RELOAD:
+		note = "RELOADING %d%%" % int(wc.reload_progress() * 100.0)
+	elif wc.state == wc.State.CHARGE:
+		note = "CHARGING %d%%" % int(wc.charge * 100.0)
+	elif note == "" and cur.uses_ammo() and mag <= 0 and wc.ammo_enabled:
+		note = "[R] RELOAD"
+	_ammo_count.add_theme_color_override("font_color", col)
+	_ammo_note.text = note
+	_ammo_note.add_theme_color_override("font_color", UiTheme.ACCENT if note != "" and col != UiTheme.DANGER else col)
+	var heat: float = wc.heat_of(cur.id)
+	_heat_bar.value = heat if cur.n_max > cur.n_min else 0.0
+	_heat_bar.fill = Color(0.62, 0.72, 0.78).lerp(Color(1.0, 0.3, 0.2), clampf(heat * 1.15, 0.0, 1.0))
+	_heat_bar.queue_redraw()
+	if cur.is_melee():
+		_heat_note.text = ""
+	elif cur.n_max > cur.n_min:
+		_heat_note.text = "SHOT %.1f → %.1f" % [cur.noise(heat), cur.n_max]
+	else:
+		_heat_note.text = "SHOT %.1f" % cur.noise(0.0)
 
 ## Ostrzeżenie przed karą (GDD §8.1): niepokój ZANIM ON się obudzi.
 func _drive_warning() -> void:
@@ -453,6 +523,13 @@ func _drive_prompt() -> void:
 	elif _player != null and _player.revive_hint() != "":
 		text = _player.revive_hint()
 		col = UiTheme.OK
+	elif _player != null and _player.weapons.nearby_weapon_item() != null:
+		var it: Node2D = _player.weapons.nearby_weapon_item()
+		var nd: RefCounted = Weapons.def(it.arg)
+		var wc2: Node = _player.weapons
+		var swap_out: String = Weapons.def(wc2.loadout[wc2.slot if wc2.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc2.melee_id).name
+		text = "[E]  Take %s  (drops %s)" % [nd.name, swap_out] if not wc2.carries(it.arg) else "[E]  Take ammo for %s" % nd.name
+		col = UiTheme.ACCENT
 	elif m != null and m.phase == Mission.Phase.EXTRACT:
 		var st: Dictionary = m.local_extract_state()
 		if st.get("inside", false):

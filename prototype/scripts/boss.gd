@@ -451,7 +451,7 @@ func _clear_brood() -> void:
 
 # ---------------------------------------------------------------- obrażenia
 
-## Trafienie z kierunkiem (bullet.gd). Pełne obrażenia tylko w OTWARTĄ paszczę
+## Trafienie z kierunkiem (projectile.gd). Pełne obrażenia tylko w OTWARTĄ paszczę
 ## i nie z góry; reszta (zamknięta paszcza, pancerny grzbiet) — 5% + iskra.
 func take_bullet_dir(from_pos: Vector2, dmg: float, dir: Vector2) -> void:
 	if not NoiseMgr.is_server():
@@ -464,14 +464,30 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 		return
 	_hit(from_pos, dmg, false)
 
-func _hit(from_pos: Vector2, dmg: float, from_above: bool) -> void:
+## Obrażenia z broni (combat.gd). Otwarta paszcza i trafienie z poziomu ziemi = pełne
+## obrażenia; zamknięta paszcza albo pancerny grzbiet (z góry) = 5% + iskry (efekt
+## „twardego” celu rysuje generyczny efekt trafienia, więc _hit nie dubluje go).
+func take_hit(info: Dictionary) -> Dictionary:
+	if not NoiseMgr.is_server():
+		return {}
+	var dir: Vector2 = info["dir"]
+	var pos: Vector2 = info["pos"]
+	var from_above := dir.y > ARMOR_DOWN and pos.y < global_position.y - 26.0
+	var armored := state != State.AWAKE or from_above or not maw_open
+	var before := hp
+	_hit(pos, float(info["amount"]), from_above, false)
+	return {"hit": true, "dealt": before - hp, "killed": state == State.DEAD,
+		"mat": Arsenal.Mat.ARMOR if armored else Arsenal.Mat.FLESH}
+
+func _hit(from_pos: Vector2, dmg: float, from_above: bool, fx := true) -> void:
 	if state != State.AWAKE:
-		if state == State.DORMANT:
+		if state == State.DORMANT and fx:
 			Audio.play_variant_at("ricochet", 2, global_position, Audio.BUS_WORLD, -16.0)
 		return
 	if from_above or not maw_open:
 		dmg *= CLOSED_MULT
-		_armor_fx.rpc(from_pos)
+		if fx:
+			_armor_fx.rpc(from_pos)
 	else:
 		_flash = 0.08
 	hp -= dmg

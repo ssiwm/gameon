@@ -1,0 +1,184 @@
+extends Node
+## Autoload „Arsenal": amunicja WSPÓŁDZIELONA drużyny (GDD §6 — „jeden typ na broń")
+## i zdarzenia walki rozsyłane przez sieć (efekty trafień, wybuchy, potwierdzenia).
+##
+## Model amunicji: magazynek należy do gracza (kontroler broni), zapas jest wspólny
+## i autorytatywny na serwerze. Gracz prosi o naboje przy KOŃCU przeładowania
+## (request_rounds), serwer zdejmuje je z zapasu i odsyła przyznaną liczbę.
+## Dzięki temu dwóch graczy z tą samą bronią nie wyda tych samych naboi dwa razy,
+## a anulowane przeładowanie nic nie kosztuje.
+
+const Weapons := preload("res://scripts/weapons.gd")
+const Vfx := preload("res://scripts/vfx.gd")
+
+## Materiał trafionego celu — dobiera efekt i dźwięk uderzenia.
+enum Mat { FLESH, ARMOR, WOOD, METAL, WORLD }
+## Co strzelec widzi po trafieniu (hitmarker).
+enum Confirm { HIT, CRIT, KILL, ARMOR }
+
+signal reserve_changed
+signal hit_confirmed(kind: int, pos: Vector2)
+signal rounds_granted(weapon: int, count: int)
+
+var reserve: Dictionary = {}
+
+func _ready() -> void:
+	_reset_local()
+	multiplayer.peer_connected.connect(_on_peer_connected)
+
+func _reset_local() -> void:
+	reserve.clear()
+	for d in Weapons.defs():
+		if d.uses_ammo() and not d.infinite:
+			reserve[d.id] = d.reserve_start
+	reserve_changed.emit()
+
+## Serwer: początek misji / nowa próba. Klienci dostają nowy stan przez sync.
+func reset_mission() -> void:
+	if NoiseMgr.has_network() and not NoiseMgr.is_server():
+		return
+	_reset_local()
+	_push()
+
+func get_reserve(w: int) -> int:
+	var d := Weapons.def(w)
+	if d.infinite:
+		return 9999
+	return int(reserve.get(w, 0))
+
+func is_full(w: int) -> bool:
+	var d := Weapons.def(w)
+	return d.infinite or get_reserve(w) >= d.reserve_max
+
+# ---------------------------------------------------------------- zapas (serwer)
+
+## Dodaje naboje do zapasu (skrzynka, znaleziona broń, zwrot z porzuconego magazynka).
+## Zwraca ile faktycznie weszło (zapas ma sufit).
+func add_reserve(w: int, n: int) -> int:
+	if not NoiseMgr.is_server():
+		return 0
+	var d := Weapons.def(w)
+	if d.infinite or not d.uses_ammo():
+		return 0
+	var before := int(reserve.get(w, 0))
+	var after := mini(d.reserve_max, before + n)
+	reserve[w] = after
+	_push()
+	return after - before
+
+func take_rounds(w: int, want: int) -> int:
+	if not NoiseMgr.is_server():
+		return 0
+	var d := Weapons.def(w)
+	if d.infinite:
+		return want
+	var have := int(reserve.get(w, 0))
+	var got := mini(have, want)
+	if got > 0:
+		reserve[w] = have - got
+		_push()
+	return got
+
+func _push() -> void:
+	reserve_changed.emit()
+	if NoiseMgr.has_network() and NoiseMgr.is_server():
+		_sync_reserve.rpc(reserve)
+
+func _on_peer_connected(id: int) -> void:
+	if NoiseMgr.is_server():
+		_sync_reserve.rpc_id(id, reserve)
+
+@rpc("authority", "call_remote", "reliable")
+func _sync_reserve(data: Dictionary) -> void:
+	reserve = data
+	reserve_changed.emit()
+
+## Gracz (właściciel magazynka) prosi o `want` naboi na koniec przeładowania.
+## Wołane lokalnie na serwerze albo przez sieć z klienta; odpowiedź = rounds_granted.
+func request_rounds(w: int, want: int) -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		rounds_granted.emit(w, take_rounds(w, want))
+	else:
+		_req_rounds.rpc_id(1, w, want)
+
+## Zwrot / porzucenie naboi do wspólnego zapasu (porzucona broń, nadmiar z przerwanego przeładowania).
+func deposit(w: int, n: int) -> void:
+	if n <= 0:
+		return
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		add_reserve(w, n)
+	else:
+		_deposit_rpc.rpc_id(1, w, n)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _deposit_rpc(w: int, n: int) -> void:
+	if NoiseMgr.is_server() and Weapons.is_valid(w):
+		add_reserve(w, clampi(n, 0, Weapons.def(w).mag))
+
+@rpc("any_peer", "call_remote", "reliable")
+func _req_rounds(w: int, want: int) -> void:
+	if not NoiseMgr.is_server() or not Weapons.is_valid(w):
+		return
+	var got := take_rounds(w, clampi(want, 0, Weapons.def(w).mag))
+	_grant.rpc_id(multiplayer.get_remote_sender_id(), w, got)
+
+@rpc("authority", "call_remote", "reliable")
+func _grant(w: int, n: int) -> void:
+	rounds_granted.emit(w, n)
+
+## Broń, do której warto upuścić amunicję: noszona przez żywego człowieka, z zapasem
+## poniżej 80% maksimum (nic nie wypada „na zapas”). -1 = nic nie potrzeba.
+func pick_drop_weapon() -> int:
+	var cands: Array = []
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot or p.dead:
+			continue
+		for w in p.kit_primaries():
+			var d := Weapons.def(w)
+			if not d.infinite and get_reserve(w) < int(d.reserve_max * 0.8) and not cands.has(w):
+				cands.append(w)
+	return -1 if cands.is_empty() else int(cands.pick_random())
+
+# ---------------------------------------------------------------- zdarzenia walki
+
+## Serwer: efekt trafienia widoczny i słyszalny u wszystkich peerów.
+func broadcast_hit(pos: Vector2, dir: Vector2, mat: int, crit: bool, heavy: bool) -> void:
+	if NoiseMgr.has_network():
+		_hit_fx.rpc(pos, dir, mat, crit, heavy)
+	else:
+		_hit_fx(pos, dir, mat, crit, heavy)
+
+@rpc("authority", "call_local", "unreliable")
+func _hit_fx(pos: Vector2, dir: Vector2, mat: int, crit: bool, heavy: bool) -> void:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	var lvl := get_tree().get_first_node_in_group("level")
+	var parent: Node = lvl if lvl != null else scene
+	Vfx.hit(parent, pos, dir, mat, crit, heavy)
+
+## Serwer: wybuch — efekt wszędzie (obrażenia liczy Combat.explode na serwerze).
+func broadcast_explosion(pos: Vector2, radius: float) -> void:
+	if NoiseMgr.has_network():
+		_explosion_fx.rpc(pos, radius)
+	else:
+		_explosion_fx(pos, radius)
+
+@rpc("authority", "call_local", "reliable")
+func _explosion_fx(pos: Vector2, radius: float) -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	var parent: Node = lvl if lvl != null else get_tree().current_scene
+	Vfx.explosion(parent, pos, radius)
+
+## Serwer: hitmarker dla strzelca (człowiek — przez sieć, host — lokalnie, bot — nic).
+func confirm(shooter_id: int, kind: int, pos: Vector2) -> void:
+	if not NoiseMgr.has_network():
+		hit_confirmed.emit(kind, pos)
+	elif shooter_id == NoiseMgr.local_id():
+		hit_confirmed.emit(kind, pos)
+	elif multiplayer.get_peers().has(shooter_id):
+		_confirm_rpc.rpc_id(shooter_id, kind, pos)
+
+@rpc("authority", "call_remote", "unreliable")
+func _confirm_rpc(kind: int, pos: Vector2) -> void:
+	hit_confirmed.emit(kind, pos)

@@ -10,17 +10,18 @@ const KINDS := {
 	"trzosek": {
 		"hp": 30.0, "speed": 88.0, "damage": 1, "windup": 0.28, "reach": 13.0,
 		"cooldown": 0.9, "leap": true, "hear": 200.0, "wake_near": 90.0,
-		"color": Color(0.62, 0.2, 0.22), "size": Vector2(10, 14), "knock": 70.0,
+		"color": Color(0.62, 0.2, 0.22), "size": Vector2(10, 14), "knock": 70.0, "knock_mult": 1.0, "head": 0.0,
 	},
 	"wolek": {
 		"hp": 140.0, "speed": 36.0, "damage": 2, "windup": 0.6, "reach": 20.0,
 		"cooldown": 1.6, "leap": false, "hear": 150.0, "wake_near": 70.0,
-		"color": Color(0.36, 0.27, 0.34), "size": Vector2(20, 26), "knock": 14.0,
+		"color": Color(0.36, 0.27, 0.34), "size": Vector2(20, 26), "knock": 14.0, "knock_mult": 0.2, "head": 0.28,
 	},
 }
 
 const Lights := preload("res://scripts/lights.gd")
 const Vfx := preload("res://scripts/vfx.gd")
+const Weapons := preload("res://scripts/weapons.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 
 const GRAVITY := 900.0
@@ -28,9 +29,11 @@ const MAX_FALL := 620.0
 ## Kroki (0,25 na tick) nie budzą; każdy strzał tak — także pierwszy z zimnej
 ## lufy M-83 (0,6). Przy progu 1,0 pojedyncze strzały M-83 były dla wrogów nieme.
 const MIN_WAKE_NOISE := 0.5
+const AMMO_DROP := {"trzosek": 0.22, "wolek": 0.6}   ## szansa na skrzynkę z amunicją do broni, którą ktoś nosi
 const HEALTH_DROP := {"wolek": 0.75}   ## szansa na apteczkę (1.5) — tylko mocniejsi wrogowie
 const SIBLING_WAKE_RADIUS := 140.0
 const DEATH_FX_COLOR_VAR := 0.15
+const BURN_DPS := 8.0
 
 @export var kind := "trzosek"
 
@@ -40,6 +43,7 @@ var hp := 30.0
 var active := false
 var alive := true
 var winding := false
+var burning := false          ## replikowane wizualnie przez RPC (_ignite_fx); logika tylko na serwerze
 
 var _def: Dictionary
 var _home := Vector2.ZERO
@@ -48,6 +52,8 @@ var _windup_target: Node2D = null
 var _cd := 0.0
 var _leap_cd := 0.0
 var _stagger := 0.0
+var _burn := 0.0              ## s płonięcia (serwer)
+var _panic := 0.0             ## s paniki po podpaleniu (Trzosek ucieka zamiast atakować)
 var _flash := 0.0
 var _seen_serial := 0
 var _net_timer := 0.0
@@ -101,6 +107,8 @@ func reset_enemy() -> void:
 	_windup = 0.0
 	_windup_target = null
 	_cd = 0.0
+	_burn = 0.0
+	_panic = 0.0
 	velocity = Vector2.ZERO
 	global_position = _home
 	_remote_pos = _home
@@ -122,6 +130,10 @@ func _physics_process(delta: float) -> void:
 	_cd = maxf(0.0, _cd - delta)
 	_leap_cd = maxf(0.0, _leap_cd - delta)
 	_stagger = maxf(0.0, _stagger - delta)
+	_panic = maxf(0.0, _panic - delta)
+	_tick_burn(delta)
+	if not alive:
+		return
 
 	if not active:
 		_check_wake()
@@ -142,6 +154,9 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, 800.0 * delta)
 		if _windup <= 0.0:
 			_resolve_attack()
+	elif target != null and _panic > 0.0:
+		# płonący Trzosek ucieka (HKM-9: „strach wśród Trzosków”), nie atakuje
+		velocity.x = -signf(target.global_position.x - global_position.x) * speed * 0.9
 	elif target != null:
 		var dx := target.global_position.x - global_position.x
 		velocity.x = signf(dx) * speed if absf(dx) > 3.0 else 0.0
@@ -221,6 +236,81 @@ func _resolve_attack() -> void:
 	if pp != null and is_instance_valid(pp) and not pp.dead and _in_reach(pp, 6.0):
 		pp.deliver_hit(_def["damage"], global_position)
 
+## --- API walki (combat.gd) -------------------------------------------------
+
+## Górna część sylwetki = głowa; trafienie powyżej tej linii to krytyk. Niski Trzosek (14 px)
+## nie ma słabego punktu — strzał z wysokości barku (−12 px) trafiałby go w „głowę” zawsze,
+## więc krytyk byłby stałym mnożnikiem, a nie nagrodą za celowanie. Wołek (26 px) ma głowę
+## w górnych 28%: trzeba celować w górę, skakać albo strzelać ze wzniesienia.
+func head_y() -> float:
+	var frac: float = _def.get("head", 0.0)
+	if frac <= 0.0:
+		return -INF
+	return global_position.y - (_def["size"] as Vector2).y * (1.0 - frac)
+
+func body_center() -> Vector2:
+	return global_position + Vector2(0, -(_def["size"] as Vector2).y * 0.5)
+
+func hit_radius() -> float:
+	var sz: Vector2 = _def["size"]
+	return maxf(sz.x, sz.y) * 0.45
+
+## Cios w plecy: wróg patrzy w tę samą stronę, w którą zadajemy cios (atakujący stoi za nim).
+func _is_behind(dir: Vector2) -> bool:
+	return signf(dir.x) != 0.0 and signf(dir.x) == _facing
+
+## Obrażenia z broni (serwer). Zwraca {hit, dealt, killed, mat}.
+## Maczeta zabija śpiącego albo odwróconego plecami wroga natychmiast i po cichu.
+func take_hit(info: Dictionary) -> Dictionary:
+	if not NoiseMgr.is_server() or not alive:
+		return {}
+	var dmg: float = info["amount"]
+	var silent: bool = info.get("silent", false)
+	if info.get("backstab", false) and (not active or _is_behind(info["dir"])):
+		dmg = maxf(dmg, hp + 1.0)
+		silent = true
+		info["crit"] = true
+	hp -= dmg
+	_flash = 0.1
+	_stagger = maxf(_stagger, 0.12 + float(info.get("stun", 0.0)))
+	velocity.x += signf(info["dir"].x) * float(info.get("knock", 0.0)) * float(_def["knock_mult"])
+	var fire: float = info.get("ignite", 0.0)
+	if fire > 0.0:
+		_ignite(fire)
+	if not active and not silent:
+		wake()
+	var dead := hp <= 0.0
+	if dead:
+		_die()
+	return {"hit": true, "dealt": dmg, "killed": dead, "mat": 0}
+
+# ---------------------------------------------------------------- ogień
+
+func _ignite(seconds: float) -> void:
+	var fresh := _burn <= 0.0
+	_burn = maxf(_burn, seconds)
+	if kind == "trzosek":
+		_panic = maxf(_panic, 1.2)
+	if fresh:
+		if NoiseMgr.has_network():
+			_ignite_fx.rpc(seconds)
+		else:
+			_ignite_fx(seconds)
+
+func _tick_burn(delta: float) -> void:
+	if _burn <= 0.0:
+		return
+	_burn = maxf(0.0, _burn - delta)
+	# 8 HP/s przez czas płonięcia; wynik liczony ciągle, bez tykania co 0,1 s
+	hp -= BURN_DPS * delta
+	if hp <= 0.0 and alive:
+		_die()
+
+## Płomienie na ciele — każdy peer, na czas płonięcia.
+@rpc("authority", "call_local", "reliable")
+func _ignite_fx(seconds: float) -> void:
+	Vfx.burning(self, seconds)
+
 ## Trafienie pociskiem (tylko serwer). Odrzut i krótkie ogłuszenie dają
 ## „mięso" strzałowi (GDD §23).
 func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
@@ -242,6 +332,12 @@ func _die() -> void:
 		var lvl := get_tree().get_first_node_in_group("level")
 		if lvl != null:
 			lvl.spawn_health(global_position + Vector2(0, -14))
+	if NoiseMgr.is_server() and randf() < float(AMMO_DROP.get(kind, 0.0)):
+		var w := Arsenal.pick_drop_weapon()
+		var lv := get_tree().get_first_node_in_group("level")
+		if w >= 0 and lv != null:
+			var n: int = maxi(1, int(Weapons.def(w).pickup_rounds * 0.5))
+			lv.spawn_item("ammo", w, global_position + Vector2(randf_range(-6.0, 6.0), -14), n)
 	_set_alive(false)
 	winding = false
 	_windup = 0.0

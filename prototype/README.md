@@ -2,11 +2,11 @@
 
 Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
 
-- ruch 8-kierunkowy (WASD/strzałki) + strzelanie (J/LPM) + skok (SPACJA) + skradanie (SHIFT)
+- ruch 8-kierunkowy (WASD/strzałki) + strzelanie (J/LPM) + przeładowanie (R) + cios (V/PPM) + skok (SPACJA) + skradanie (SHIFT)
 - czucie gry (GDD §23): coyote time, jump buffer, jump cut, hitstop, screen shake
 - **mapa wielopoziomowa** (TileMapLayer z siatki ASCII w `scripts/level.gd`): las + posterunek, arena z kładkami, tartak; kładki jednokierunkowe — wskok od spodu, zeskok **dół + skok**
 - **ciemność i latarka** (GDD §8.3): aura 6 m, latarka **L** (stożek 8 m, bateria, +1 Uwagi co 10 s, budzi oświetlonych wrogów, ściąga Stalkera), flara ekstrakcji 12 m, cienie od kafli
-- 3 bronie (M-83, SPREAD-12, P-64) z modelem rozgrzania lufy — krótka seria cicha, ciągły ogień głośny
+- **12 broni** (overhaul 1.6, `WEAPONS.md`): M-83, SPREAD-12, P-64, SRUT-8, LR-7 (promień), HKM-9 (miotacz), GNIEW-4 (granatnik), SOKOL-6 (naprowadzane), WIDMO-1 (szyna), CIEGNO-6 (cicha kusza), maczeta (cichy backstab), kilof. Model rozgrzania lufy per broń — krótka seria cicha, ciągły ogień głośny; **magazynki, przeładowanie, wspólny zapas drużyny**, skrzynki z mapy i drop z wrogów, podnoszenie i wymiana broni (**E**), krytyk w głowę, spadek obrażeń z dystansem, przebicie, podpalenie, wybuchy; predykcja strzału po stronie strzelca i walidacja serwera
 - wrogowie: Trzosek (wataha) i Wołek (tank) — śpią, budzi ich strzał w pobliżu albo bliskość gracza
 - **Przesterowanie (Q)** — zasób: celowo podnosisz HAŁAS, żeby odciągnąć stalkera (GDD §8.4)
 - **Poziom Uwagi**: bieganie/strzały dodają, cisza odejmuje; dwie prędkości decayu
@@ -17,7 +17,7 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
 - **friendly fire = hałas**: pocisk kolegi przelatuje (zero HP), trafiony krzyczy (+4 Uwagi, max raz na 0,6 s) i dostaje odrzut; żadna broń nie rani kolegi (ranić może tylko wybuch beczki). Bot nie strzela, gdy kolega jest na linii — podskakuje
 - **apteczki** (+1 HP): wypadają z Wołków (75%) i z Żyły (2 sztuki); podnosi ranny przez dotknięcie, bot ustępuje rannemu człowiekowi
 - 3 HP, **down/revive** (GDD §4): leżysz 25 s, kolega trzyma E 4 s → wstajesz z 2 HP; wykrwawienie = powrót na start z 1 HP; **wipe** (wszyscy leżą) = restart misji po 3 s
-- audio (overhaul v2, patrz `AUDIO.md`): 116 ścieżek, muzyka stemowa wg Uwagi (kwantyzacja do beatu), okluzja z dyfrakcją, pogłos środowiskowy, ogłuszenie po wybuchu, pozycyjny szept stalkera
+- audio (overhaul v2, patrz `AUDIO.md`; broń 1.6: +36 assetów): 152 ścieżki, muzyka stemowa wg Uwagi (kwantyzacja do beatu), okluzja z dyfrakcją, pogłos środowiskowy, ogłuszenie po wybuchu, pozycyjny szept stalkera
 - **fizyka (1.5)**: bezwładność ruchu, szybsze opadanie, przysiad/rozciąganie; łuski, szczątki, krew i plamy, iskry, rozbryzgi; **skrzynie** (pchaj, stań, zepchnij z kładki = hałas-wabik) i **beczki** (wybuchają, reakcja łańcuchowa)
 - **grafika (1.5)**: pixel-art ze sprite'ami (`tools/bake_sprites.py` → `art/`), kafle z wariantami, dekoracje, tło parallax
 - **pętla misji** (GDD §4): zniszcz 3 gniazda (głośne — budzą okolicę) → budzi się **Żyła, matka gniazd** (boss w tartaku: paszcza otwiera się tylko na chwilę po ataku — wtedy strzelaj; ataki z zapowiedzią: macka, fala ogona po podłodze — przeskocz, plucie zarodnikami; latarka w paszczę podczas zapowiedzi ją ogłusza, Q w pobliżu ją odciąga; przy 33% HP krzyk budzi Stalkera; +1 ładunek Q) → po jej śmierci wyjście otwiera się w punkcie najdalszym od drużyny → cała stojąca drużyna 3 s przy flarze → ekran wyniku, host [Enter] = nowa misja
@@ -45,11 +45,32 @@ Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP =
 | Skradanie (cisza) | SHIFT |
 | **Przesterowanie** | **Q** |
 | Podnieś kolegę (przytrzymaj) | E |
-| Broń | 1 / 2 / 3, kółko myszy |
+| Broń (2 główne + sidearm) | 1 / 2 / 3, kółko myszy |
+| Przeładowanie | R |
+| Cios (maczeta / kilof) | V lub PPM |
+| Podnieś broń z ziemi | E |
 | Latarka | L |
 | Pokaż / ukryj sterowanie | F1 |
 | Zeskok z kładki | dół + SPACJA |
 | Nowa misja (host, po ekstrakcji) | Enter |
+
+## Testy broni
+
+```bash
+# wszystko naraz (jednostkowe ~2,5 min + sieć host/klient ~20 s; kod wyjścia 0 = OK)
+tools/test_weapons.sh
+
+# osobno — jednostkowe: prawdziwy gracz, pociski i poziom, manekiny zamiast wrogów
+godot --headless --path . -- --host --weapontest --autoquit=220
+
+# osobno — sieć: host + klient (predykcja, walidacja serwera, limiter tempa)
+godot --headless --path . -- --host --weaptestnet --autoquit=60 &
+sleep 3
+godot --headless --path . -- --join=127.0.0.1 --weaptestclient --autoquit=40
+
+# wizualna kontrola: zrzuty efektów (rozbłysk, promień, płomień, szyna, wybuch…) — wymaga renderowania
+xvfb-run -a godot --rendering-driver opengl3 --path . -- --host --weaponshots=/tmp/shots
+```
 
 ## Testy headless
 
@@ -73,7 +94,7 @@ godot --headless --path . -- --host --wipetest --autoquit=8
 godot --headless --path . -- --host --missiontest --autoquit=9
 ```
 
-Flagi: `--host`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`.
+Flagi: `--host`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
 
 ## Grafika — generowanie i podmiana
 
@@ -93,7 +114,14 @@ scripts/
   feel.gd           # autoload: screen shake + hitstop
   audio_director.gd # autoload: odtwarzanie, busy, muzyka warstwowa
   audio_manifest.gd # lista ścieżek audio
-  weapons.gd        # tabela broni (rytm, obrażenia, hałas)
+  weapon_def.gd     # typowana definicja broni (dane)
+  weapons.gd        # rejestr 12 broni, walidacja, symulacja rozgrzania
+  weapon_controller.gd  # węzeł „Weapons” gracza/bota: magazynek, przeładowanie, rytm, ogień, melee, sieć
+  weapon_view.gd    # sprite i animacje broni, rozbłysk, promień/płomień, celownik, hitmarkery
+  combat.gd         # warstwa obrażeń: krytyk, backstab, podpalenie, wybuch, ślad promienia
+  projectile.gd     # pocisk z przeciąganiem promienia (przebicie, naprowadzanie, łuk, bełt)
+  arsenal.gd        # autoload: wspólny zapas amunicji + zdarzenia walki przez sieć
+  weapon_test.gd    # testy headless broni
   main.gd           # lobby, host/join, spawn (spawn_function), boty, wipe, testy
   mission.gd        # pętla misji: cel → ekstrakcja → wynik (serwer + sync)
   level.gd          # mapa: siatka ASCII → TileSet/TileMapLayer, znaczniki postaci
@@ -103,18 +131,17 @@ scripts/
   nav.gd            # A* platformówki: węzły = kafle do stania, skok/spadek/zeskok
   player.gd         # ruch, broń, HP, down/revive, synchronizer, AI (is_bot)
   enemy.gd          # Trzosek / Wołek (symulacja na serwerze)
-  bullet.gd         # pociski serwerowe
   stalker.gd        # AI stalkera (symulacja na serwerze)
   hud.gd            # HUD (EN): hałas z progami, serca, ładunki Q, broń, latarka, cel, boss, podpowiedzi, winieta, wynik
   lobby.gd          # lobby (EN): host / join, sterowanie
   ui_theme.gd       # wspólny motyw UI: obrys tekstu, panele, przyciski
   vfx.gd            # kurz, iskry, krew, szczątki i łuski (RigidBody2D), plamy
   prop.gd           # skrzynie i beczki (fizyka na serwerze, sync, wybuch)
-  pickup.gd         # apteczka (+1 HP)
+  pickup.gd         # apteczka, amunicja, skrzynia z mapy, broń na ziemi
   sprites.gd        # SpriteFrames z arkusza + manifestu (warstwy ciało / glow)
   backdrop.gd       # tło parallax
 scenes/
-  main.tscn  player.tscn  bot_companion.tscn  bullet.tscn  stalker.tscn  enemy.tscn  nest.tscn  boss.tscn
+  main.tscn  player.tscn  bot_companion.tscn  stalker.tscn  enemy.tscn  nest.tscn  boss.tscn
 tools/
   bake_audio.py  audio_dsp.py   # generowanie ścieżek audio
 ```
