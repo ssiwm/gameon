@@ -17,7 +17,7 @@ const CONTROLS := [
 	["Q", "Overcharge — lure HIM away"],
 	["L", "Flashlight — light is noise"],
 	["Hold E", "Revive a teammate"],
-	["F1 / F2", "Controls strip / VHS filter"],
+	["F1", "Show / hide controls in game"],
 ]
 
 var _ip: LineEdit
