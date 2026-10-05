@@ -9,9 +9,7 @@ extends Area2D
 ## adresata. Lot po prostej jest deterministyczny, więc nie potrzeba synchronizacji.
 
 const Weapons := preload("res://scripts/weapons.gd")
-## Friendly fire z obrażeniem tylko z bliska i tylko ze strzelby — świadome
-## ryzyko, nie przypadek (GDD §2 filar 3, wariant „FF = hałas").
-const FF_DAMAGE_RANGE := 40.0
+const Vfx := preload("res://scripts/vfx.gd")
 
 var speed := 320.0
 var damage := 8.0
@@ -43,11 +41,14 @@ func _physics_process(delta: float) -> void:
 func _on_body_entered(body: Node) -> void:
 	# Klient: tylko znika wizualnie przy ścianie/wrogu. Obrażenia liczy serwer.
 	if not _server_side:
+		if _is_wall(body):
+			Vfx.sparks(get_parent(), global_position, direction)
 		if _is_wall(body) or body.is_in_group("enemies"):
 			queue_free()
 		return
 
 	if _is_wall(body):
+		Vfx.sparks(get_parent(), global_position, direction)
 		Audio.play_variant_at("impact_hard", 3, global_position, Audio.BUS_WORLD, -12.0)
 		Audio.play_variant_at("ricochet", 2, global_position, Audio.BUS_WORLD, -20.0, 1.0, 0.12)
 		queue_free()
@@ -61,15 +62,9 @@ func _on_body_entered(body: Node) -> void:
 		# drużyna stoi w kolejce, więc FF za HP karało za samo ustawienie —
 		# seria M-83 w plecy kładła kolegę. Teraz pocisk PRZELATUJE przez
 		# kolegę, a kosztem jest hałas (krzyk) i odrzut — konsekwencja w
-		# głównym systemie gry, Uwadze. Obrażenie zostaje tylko dla strzelby
-		# z bliska, gdzie ryzyko jest świadomym wyborem.
-		var travelled := _life * speed
-		if weapon == Weapons.SPREAD12 and travelled < FF_DAMAGE_RANGE:
-			Audio.play_variant_at("impact_flesh", 3, global_position, Audio.BUS_WORLD, -8.0)
-			(body as Node).deliver_hit(1, global_position)
-			queue_free()
-		else:
-			(body as Node).deliver_ff(global_position)
+		# głównym systemie gry, Uwadze. Bez wyjątków dla żadnej broni (1.5.2:
+		# usunięty wyjątek strzelby z bliska — nadal raniła kolegów).
+		(body as Node).deliver_ff(global_position)
 		return
 
 	if body.is_in_group("enemies"):

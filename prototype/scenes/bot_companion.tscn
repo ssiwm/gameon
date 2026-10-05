@@ -7,7 +7,7 @@ size = Vector2(10, 16)
 
 [node name="Bot" type="CharacterBody2D"]
 collision_layer = 2
-collision_mask = 17
+collision_mask = 49
 script = ExtResource("1")
 is_bot = true
 

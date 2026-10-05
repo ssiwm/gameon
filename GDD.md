@@ -1,6 +1,6 @@
 # DEAD AIR '87 — Game Design Document
 
-**Wersja:** 1.4.0 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
+**Wersja:** 1.5.3 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
 **Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
 **Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
 **Silnik:** Godot 4.x + GodotSteam
@@ -27,7 +27,7 @@ Rok 1987. Oddział specjalny „Cicha Godzina" wkracza do zamkniętego kompleksu
 |---|-------|-----------|
 | 1 | **Strzelanina z klasą** | Responsywna, 8-kierunkowa, czytelna — czysta przyjemność run-and-gun |
 | 2 | **Hałas to waluta, którą się wydaje** | Poziom Uwagi rośnie od strzałów, biegu i mikrofonu. **Przesterowanie (Q)** pozwala go celowo podnieść, żeby ściągnąć Stalkera z drużyny. Hałas to decyzja, nie zakaz — patrz §8.4 |
-| 3 | **Co-op albo śmierć** | Down = dźwigasz kolegę. **Friendly fire = hałas**: pocisk kolegi przelatuje bez obrażeń, ale trafiony krzyczy (+4 Uwagi, odrzut) — obrażenie tylko od strzelby z bliska (<40 px) i wybuchów. Szeptanie do mikrofonu to mechanika |
+| 3 | **Co-op albo śmierć** | Down = dźwigasz kolegę. **Friendly fire = hałas**: pocisk kolegi przelatuje bez obrażeń, ale trafiony krzyczy (+4 Uwagi, odrzut) — żadna broń nie rani kolegi; obrażenia drużynie zadają tylko wybuchy (beczki). Szeptanie do mikrofonu to mechanika |
 | 4 | **Groza przez dźwięk i światło** | Zero jump scare'ów-tanich. Grozę budują: ciemność, audio, stalker i cisza |
 | 5 | **Krótkie misje, długi progres** | 8–15 min misje, meta-progresja na 20 h+, powtarzalne modyfikatory |
 | 6 | **Gracze albo AI, nigdy pusto** | AI towarzysz od EA. Hot-join do botów w trakcie misji. Pusta drużyna = zepsuta sesja |
@@ -686,6 +686,10 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 1.3.8 | 2026-10-05 | Żyła: koniec bezkarnego ostrzału z rusztowań (półki 160–190 px nad nią, poza zasięgiem macki i potomstwa). (a) **Pancerny grzbiet** — pocisk z góry pod stromym kątem: 20% obrażeń + rykoszet; słaby punkt = paszcza z poziomu ziemi (test: 2 s ognia z półki 19 obrażeń, z ziemi 109). (b) **Plucie zarodnikami** na graczy poza zasięgiem macki do 300 px: 0,8 s nabrzmiewania (paszcza świeci na zielono, bulgot), potem wolny pocisk po łuku w miejsce z początku zapowiedzi — stojący obrywa, ruszający się unika (test potwierdza oba) |
 | 1.3.9 | 2026-10-05 | Żyła przeprojektowana — wcześniej padała w ~4 s z ziemi i nie używała filarów gry. (a) **Rytm:** paszcza zamknięta (5% obrażeń), otwiera się na 1 s po każdym ataku; ataki z harmonogramu, jeden naraz, każdy z zapowiedzią. (b) **Zamach ogonem:** fala po podłodze do 170 px w obie strony — przeskocz albo stań na kładce. (c) **Latarka** (filar 4): snop w paszczę w trakcie zapowiedzi oślepia ją — atak przerwany, paszcza otwarta 2 s (co 10 s). (d) **Q** (filar 2): Przesterowanie w pobliżu odciąga ją na 5 s — pluje w miejsce Q, nie smaga, nie zamiata. (e) **Fazy:** 66% furia, 33% krzyk — Uwaga 100%, światła migoczą, budzi się Stalker. (f) HP 750 + 250 za dodatkowego człowieka. Symulacja idealnego gracza z botem: 42 s bez latarki, 48 s z latarką, 3–4 upadki drużyny (cel dla realnej gry: 60–90 s) |
 | 1.4.0 | 2026-10-05 | **UI/UX i język angielski.** Interfejs gry w całości po angielsku (lobby, HUD, cele, podpowiedzi, wynik); GDD i komentarze w kodzie zostają po polsku. Wspólny motyw (`ui_theme.gd`): obrys tekstu (czytelność w ciemności), spójne panele, przyciski i pola. Lobby od nowa: tytuł, IP + HOST GAME / JOIN (Enter = join), czytelna siatka sterowania; HUD nie prześwituje już spod lobby. HUD od nowa: karta stanu (pasek hałasu z progami 30/40/60, serca, ładunki Q, sloty broni, bateria), karta celu z podpowiedzią i paskiem bossa (progi faz), sesja + zegar misji, ostrzeżenie z wyjaśnieniem, pasek kontekstowy z postępem (podnoszenie, wykrwawianie, ewakuacja), ekran SQUAD DOWN, karta wyniku, czerwona winieta przy trafieniu/1 HP, sterowanie przez 20 s potem F1. Etykiety nad postaciami wyśrodkowane, z cieniem |
+| 1.5.0 | 2026-10-05 | **Fizyka i grafika.** (1) Ruch z bezwładnością (rozpęd 0,1 s, hamowanie ~2 px), opadanie 1,35× szybsze, skok bez zmian (44 px); przysiad/rozciąganie; łuski, szczątki, krew i plamy, iskry, rozbryzgi w wodzie. (2) Tło parallax (niebo, księżyc, dwie linie sosen, mgła), pył widoczny w snopie latarki, żar gniazd. (3) Pixel-art generowany w kodzie (`tools/bake_sprites.py`): animowane postacie z warstwą świecącą (oczy), broń, kafle z wariantami, dekoracje; podmiana PNG przez artystę bez zmian w kodzie. (4) **Obiekty fizyczne**: skrzynie (pchanie, stawanie, zepchnięta z wysokości = hałas w miejscu upadku → wabik bez ładunku Q) i beczki (wybuch: obrażenia w promieniu 4 m, odrzut, reakcja łańcuchowa, hałas +15); symulacja na serwerze, sync do klientów |
+| 1.5.1 | 2026-10-05 | Usunięty filtr VHS (ziarno, linie, aberracja) — decyzja po obejrzeniu w grze |
+| 1.5.2 | 2026-10-05 | Friendly fire: usunięty wyjątek strzelby SPREAD-12 z bliska (<40 px zabierała koledze 1 HP). Żadna broń nie rani już kolegi — tylko hałas i odrzut; drużynę ranią jedynie wybuchy |
+| 1.5.3 | 2026-10-05 | **Apteczki** (+1 HP, maks. 3): wypadają z Wołków (75%) i z Żyły (2 sztuki — na drogę do ekstrakcji); Trzoski nic nie dają. Podnosi ranny przez dotknięcie, przy pełnym HP apteczka zostaje, leżący nie podnosi; bot ustępuje rannemu człowiekowi w promieniu 80 px. Zielona poświata — widać je w ciemności. Restart misji czyści apteczki |
 
 ---
 

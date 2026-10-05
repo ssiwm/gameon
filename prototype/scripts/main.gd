@@ -95,6 +95,7 @@ func _restart_mission(new_run: bool) -> void:
 			e.reset_enemy()
 	for c in _players.get_children():
 		c.request_full_reset()
+	level.clear_pickups()
 	mission.on_restart(new_run)
 
 func _handle_cmdline() -> void:

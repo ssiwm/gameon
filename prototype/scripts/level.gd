@@ -17,6 +17,7 @@ extends Node2D
 ##   b  tło: beton (wnętrze)  w  tło: drewno (pnie, belki)
 ##   S  start  E  wyjście  T  Trzosek  W  Wołek  N  gniazdo  X  dom Stalkera
 ##   B  Żyła — matka gniazd (boss misji)
+##   k  skrzynia (fizyczna)   o  beczka (fizyczna, wybucha)
 
 const TILE := 16
 ## Warstwy fizyki: bryły na 1 (jak dawny World), kładki na 16 — pociski
@@ -26,10 +27,15 @@ const LAYER_PLATFORM := 16
 
 const Lights := preload("res://scripts/lights.gd")
 const Nav := preload("res://scripts/nav.gd")
+const Sprites := preload("res://scripts/sprites.gd")
+const ART_TILES := "res://art/tiles.png"     ## 8×4: rzędy 0/2 wierzch, 1/3 wypełnienie
+const ART_PROPS := "res://art/props.png"
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const NEST_SCENE := preload("res://scenes/nest.tscn")
 const STALKER_SCENE := preload("res://scenes/stalker.tscn")
 const BOSS_SCENE := preload("res://scenes/boss.tscn")
+const PROP := preload("res://scripts/prop.gd")
+const PICKUP := preload("res://scripts/pickup.gd")
 
 const MAP := [
 	"##............................................................................................................................##",
@@ -49,15 +55,15 @@ const MAP := [
 	"##.............................................................................................w.........w.........w---------.##",
 	"##.............................................................................................w.........w........Tw..........##",
 	"##.............................................................................................w.........w......---------.....##",
-	"##.......w...w.................................................................................w.........w..T......w..........##",
+	"##.......w...w.................................................................................w.........wk.T......w..........##",
 	"##.......w...w.................................................................................w........-------....w..........##",
 	"##.......w...w................................................N................................w.........w.........w..........##",
 	"##.......w...w............................................=========............................w-------..w.........w..........##",
-	"##.......w...w....CCCCCCCCCCCCCCCCCCC.............................T............................w.........w.........w..........##",
+	"##.......w...w....CCCCCCCCCCCCCCCCCCC.............................T...k........................w.........w.........w..........##",
 	"##.......w...w.---bbbbbbbbbbbbbbbbbbC...........=========.....===========...=========..........w......-------......w..........##",
 	"##.......w...w....bbbbbbbbbbbbbbbbbbC..........................................................w.........w.........w..........##",
 	"##.......w..---...bbbbbbbbbbbbbbbbbb........=========...===========...===========.............-------....w.........w..........##",
-	"##.ES..S.w...w....bbbbbbbbTbTbTbbNbb..................M.....W.........X...M.......T.T..........w.........w....W....w...B....E.##",
+	"##.ES..S.w...w.kk.bbbbbbobTbTbTbbNbb..................M..o..W.........X...M.......T.T..........w.........w.o..W....w...B....E.##",
 	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
@@ -88,6 +94,12 @@ var nav: AStar2D
 
 var _solid: TileMapLayer
 var _back: TileMapLayer
+var _decals: Node2D
+var _deco: Node2D
+var _props_tex: Texture2D
+var _deco_list: Array = []             ## [pozycja stóp, indeks dekoracji, flip]
+var _rows := 2                         ## wierszy w atlasie (2 = kod, 4 = art/tiles.png)
+var _decal_list: Array = []            ## [pos, radius, seed]
 
 func _ready() -> void:
 	add_to_group("level")
@@ -96,6 +108,7 @@ func _ready() -> void:
 	if dark != null:
 		dark.color = Lights.AMBIENT
 	RenderingServer.set_default_clear_color(Lights.SKY)
+	add_child(preload("res://scripts/backdrop.gd").new())
 	var ts := _build_tileset()
 	_back = TileMapLayer.new()
 	_back.name = "Back"
@@ -105,6 +118,19 @@ func _ready() -> void:
 	_solid.name = "Solid"
 	_solid.tile_set = ts
 	add_child(_solid)
+	for l in [_back, _solid]:
+		l.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	# dekoracje (trawa, kamienie, trzciny…) — nad kaflami, cieniowane
+	_deco = Node2D.new()
+	_deco.name = "Deco"
+	_deco.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_deco.draw.connect(_draw_deco)
+	add_child(_deco)
+	# plamy krwi — nad kaflami, pod postaciami; cieniowane (widać je w świetle)
+	_decals = Node2D.new()
+	_decals.name = "Decals"
+	_decals.draw.connect(_draw_decals)
+	add_child(_decals)
 	_build_map()
 	nav = Nav.new()
 	nav.build((MAP[0] as String).length(), MAP.size(), _is_solid, _is_platform_cell)
@@ -132,7 +158,7 @@ func _build_map() -> void:
 				# postać w posterunku nie zostawiała dziury w ścianie
 				var left := _ch(c - 1, r)
 				if ch != "." and KINDS.has(left) and KINDS[left][2] == 2:
-					_back.set_cell(Vector2i(c, r), 0, Vector2i(KINDS[left][0], 1))
+					_back.set_cell(Vector2i(c, r), 0, Vector2i(KINDS[left][0], _row(c, r, false)))
 				continue
 			var k: Array = KINDS[ch]
 			# wariant „wierzch" (rząd 0 atlasu), gdy nad kaflem nie ma bryły
@@ -140,7 +166,61 @@ func _build_map() -> void:
 			var layer := _back if k[2] == 2 else _solid
 			# bryły: alternatywa kafla z okluderem cofniętym na odsłoniętych bokach
 			var alt := _exposure(c, r) if k[2] == 0 else 0
-			layer.set_cell(Vector2i(c, r), 0, Vector2i(k[0], 0 if top else 1), alt)
+			layer.set_cell(Vector2i(c, r), 0, Vector2i(k[0], _row(c, r, top)), alt)
+	_place_deco()
+
+## Rząd atlasu: wierzch/wypełnienie + wariant (deterministyczny z pozycji).
+func _row(c: int, r: int, top: bool) -> int:
+	var base := 0 if top else 1
+	if _rows < 4:
+		return base
+	return base + (2 if (c * 7 + r * 13) % 3 == 0 else 0)
+
+## Dekoracje z art/props.png na wierzchach brył — deterministycznie z pozycji.
+## Indeksy jak w bake_sprites.PROPS: grass_a, grass_b, fern, rock, bones, reeds, fence, logs.
+func _place_deco() -> void:
+	_props_tex = Sprites.texture(ART_PROPS)
+	if _props_tex == null:
+		return
+	for r in MAP.size():
+		var row: String = MAP[r]
+		for c in row.length():
+			var ch := row[c]
+			if not KINDS.has(ch) or KINDS[ch][2] != 0 or _is_solid(c, r - 1):
+				continue
+			if _ch(c, r - 1) != ".":
+				continue                     # znacznik / tło nad kaflem
+			var h := (c * 73856093) ^ (r * 19349663)
+			var roll := absi(h) % 100
+			var feet := Vector2(c * TILE + TILE * 0.5, r * TILE)
+			var pick := -1
+			match ch:
+				"#":
+					if roll < 55:
+						pick = [0, 1, 0, 1, 2, 3, 0, 4][absi(h >> 3) % 8]
+				"C":
+					if roll < 12:
+						pick = [4, 3][absi(h >> 3) % 2]
+				"~":
+					if roll < 30:
+						pick = 5
+			if pick >= 0:
+				_deco_list.append([feet, pick, (h >> 5) & 1 == 1])
+	# akcenty ręczne: płot przy starcie, kłody w tartaku
+	for p in [[Vector2(9 * TILE + 8, 26 * TILE), 6], [Vector2(11 * TILE + 8, 26 * TILE), 6], [Vector2(89 * TILE + 8, 26 * TILE), 7], [Vector2(118 * TILE - 40, 26 * TILE), 7]]:
+		_deco_list.append([p[0], p[1], false])
+	_deco.queue_redraw()
+
+func _draw_deco() -> void:
+	if _props_tex == null:
+		return
+	for d in _deco_list:
+		var feet: Vector2 = d[0]
+		var src := Rect2(int(d[1]) * 16, 0, 16, 16)
+		var dst := Rect2(feet.x - 8, feet.y - 16, 16, 16)
+		if d[2]:
+			dst = Rect2(feet.x + 8, feet.y - 16, -16, 16)
+		_deco.draw_texture_rect_region(_props_tex, dst, src)
 
 func _is_solid(c: int, r: int) -> bool:
 	# poza mapą = bryła (krawędzie mapy nie świecą)
@@ -165,7 +245,7 @@ func _exposure(c: int, r: int) -> int:
 ## Znaczniki → postacie. Nazwy numerowane od lewej do prawej, identycznie
 ## na każdym peerze.
 func _spawn_entities() -> void:
-	var found := {"T": [], "W": [], "N": []}
+	var found := {"T": [], "W": [], "N": [], "k": [], "o": []}
 	for r in MAP.size():
 		var row: String = MAP[r]
 		for c in row.length():
@@ -177,7 +257,7 @@ func _spawn_entities() -> void:
 				"E": exits.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "N": found[ch].append(p)
+				"T", "W", "N", "k", "o": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -189,6 +269,15 @@ func _spawn_entities() -> void:
 		n.name = "Nest%d" % (i + 1)
 		n.position = found["N"][i]
 		add_child(n)
+	for k in [["k", "Crate", "crate"], ["o", "Barrel", "barrel"]]:
+		for i in found[k[0]].size():
+			var pr: RigidBody2D = PROP.new()
+			pr.name = "%s%d" % [k[1], i + 1]
+			pr.kind = k[2]
+			# 1 px nad podłogą: start dokładnie na krawędzi kładki jednokierunkowej
+			# fizyka uznawała za „w środku" i skrzynia przelatywała piętro niżej
+			pr.position = found[k[0]][i] + Vector2(0, -1)
+			add_child(pr)
 	var s := STALKER_SCENE.instantiate()
 	s.name = "Stalker"
 	s.position = stalker_home
@@ -205,6 +294,80 @@ func _add_enemy(n: String, kind: String, p: Vector2) -> void:
 	e.kind = kind
 	e.position = p
 	add_child(e)
+
+# ---------------------------------------------------------------- apteczki
+
+var _pickup_serial := 0
+
+## Serwer: apteczka wypada w punkcie (Wołek, Żyła). Stała nazwa na każdym peerze.
+func spawn_health(pos: Vector2) -> void:
+	if not NoiseMgr.is_server():
+		return
+	_pickup_serial += 1
+	if NoiseMgr.has_network():
+		_spawn_health_rpc.rpc("Health%d" % _pickup_serial, pos)
+	else:
+		_spawn_health_rpc("Health%d" % _pickup_serial, pos)
+
+@rpc("authority", "call_local", "reliable")
+func _spawn_health_rpc(n: String, pos: Vector2) -> void:
+	if has_node(n):
+		return
+	var h: Node2D = PICKUP.new()
+	h.name = n
+	h.position = pos
+	add_child(h)
+
+## Serwer: apteczka podniesiona — znika u wszystkich.
+func take_health(n: String) -> void:
+	if NoiseMgr.has_network():
+		_take_health_rpc.rpc(n)
+	else:
+		_take_health_rpc(n)
+
+@rpc("authority", "call_local", "reliable")
+func _take_health_rpc(n: String) -> void:
+	var h := get_node_or_null(n)
+	if h == null:
+		return
+	Audio.play_at("revive", h.global_position, Audio.BUS_WORLD, -8.0, 1.4)
+	h.queue_free()
+
+## Serwer: restart misji czyści apteczki.
+func clear_pickups() -> void:
+	if not NoiseMgr.is_server():
+		return
+	if NoiseMgr.has_network():
+		_clear_pickups_rpc.rpc()
+	else:
+		_clear_pickups_rpc()
+
+@rpc("authority", "call_local", "reliable")
+func _clear_pickups_rpc() -> void:
+	for h in get_tree().get_nodes_in_group("pickups"):
+		h.queue_free()
+
+## Plama krwi na powierzchni (vfx.splat). Lokalna, kosmetyczna.
+func add_decal(pos: Vector2, radius: float) -> void:
+	_decal_list.append([pos, radius, randi()])
+	if _decal_list.size() > 260:
+		_decal_list.pop_front()
+	_decals.queue_redraw()
+
+func _draw_decals() -> void:
+	var rng := RandomNumberGenerator.new()
+	for d in _decal_list:
+		rng.seed = d[2]
+		var p: Vector2 = d[0]
+		var r: float = d[1]
+		# płaska plama na podłodze: kilka spłaszczonych kropel
+		for i in 5:
+			var off := Vector2(rng.randf_range(-r, r), rng.randf_range(-0.6, 0.4))
+			var rr := rng.randf_range(0.35, 0.8) * r
+			var c := Color(0.32, 0.02, 0.04, rng.randf_range(0.55, 0.85))
+			_decals.draw_set_transform(p + off, 0.0, Vector2(1.0, 0.32))
+			_decals.draw_circle(Vector2.ZERO, rr, c)
+	_decals.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 ## Punkt startowy dla slotu gracza (1..4); kolejne sloty lekko przesunięte.
 func spawn_for(slot: int) -> Vector2:
@@ -245,7 +408,10 @@ func _build_tileset() -> TileSet:
 	ts.set_custom_data_layer_type(0, TYPE_STRING)
 
 	var src := TileSetAtlasSource.new()
-	src.texture = ImageTexture.create_from_image(_build_atlas())
+	# atlas z art/tiles.png (bake_sprites.py / artysta), inaczej generowany w kodzie
+	var art := Sprites.texture(ART_TILES)
+	_rows = 4 if art != null else 2
+	src.texture = art if art != null else ImageTexture.create_from_image(_build_atlas())
 	src.texture_region_size = Vector2i(TILE, TILE)
 	ts.add_source(src, 0)
 
@@ -254,7 +420,7 @@ func _build_tileset() -> TileSet:
 	var plank := PackedVector2Array([Vector2(-h, -h), Vector2(h, -h), Vector2(h, -h + 4), Vector2(-h, -h + 4)])
 	for ch in KINDS:
 		var k: Array = KINDS[ch]
-		for variant in 2:
+		for variant in _rows:
 			var coords := Vector2i(k[0], variant)
 			if src.has_tile(coords):
 				continue

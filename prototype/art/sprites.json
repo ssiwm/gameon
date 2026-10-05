@@ -1,0 +1,431 @@
+{
+ "sheets": {
+  "player_1": {
+   "frame": [
+    16,
+    24
+   ],
+   "glow": false,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 4,
+     "loop": true
+    },
+    "run": {
+     "row": 1,
+     "frames": 6,
+     "fps": 12,
+     "loop": true
+    },
+    "jump": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "fall": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch": {
+     "row": 4,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch_walk": {
+     "row": 5,
+     "frames": 4,
+     "fps": 8,
+     "loop": true
+    },
+    "down": {
+     "row": 6,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   }
+  },
+  "player_2": {
+   "frame": [
+    16,
+    24
+   ],
+   "glow": false,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 4,
+     "loop": true
+    },
+    "run": {
+     "row": 1,
+     "frames": 6,
+     "fps": 12,
+     "loop": true
+    },
+    "jump": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "fall": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch": {
+     "row": 4,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch_walk": {
+     "row": 5,
+     "frames": 4,
+     "fps": 8,
+     "loop": true
+    },
+    "down": {
+     "row": 6,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   }
+  },
+  "player_3": {
+   "frame": [
+    16,
+    24
+   ],
+   "glow": false,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 4,
+     "loop": true
+    },
+    "run": {
+     "row": 1,
+     "frames": 6,
+     "fps": 12,
+     "loop": true
+    },
+    "jump": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "fall": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch": {
+     "row": 4,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch_walk": {
+     "row": 5,
+     "frames": 4,
+     "fps": 8,
+     "loop": true
+    },
+    "down": {
+     "row": 6,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   }
+  },
+  "player_4": {
+   "frame": [
+    16,
+    24
+   ],
+   "glow": false,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 4,
+     "loop": true
+    },
+    "run": {
+     "row": 1,
+     "frames": 6,
+     "fps": 12,
+     "loop": true
+    },
+    "jump": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "fall": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch": {
+     "row": 4,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch_walk": {
+     "row": 5,
+     "frames": 4,
+     "fps": 8,
+     "loop": true
+    },
+    "down": {
+     "row": 6,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   }
+  },
+  "bot": {
+   "frame": [
+    16,
+    24
+   ],
+   "glow": false,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 4,
+     "loop": true
+    },
+    "run": {
+     "row": 1,
+     "frames": 6,
+     "fps": 12,
+     "loop": true
+    },
+    "jump": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "fall": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch": {
+     "row": 4,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch_walk": {
+     "row": 5,
+     "frames": 4,
+     "fps": 8,
+     "loop": true
+    },
+    "down": {
+     "row": 6,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   }
+  },
+  "guns": {
+   "frame": [
+    16,
+    7
+   ],
+   "glow": false,
+   "anims": {
+    "m83": {
+     "row": 0,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "spread": {
+     "row": 1,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "p64": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   }
+  },
+  "trzosek": {
+   "frame": [
+    16,
+    16
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 2,
+     "fps": 3,
+     "loop": true
+    },
+    "run": {
+     "row": 1,
+     "frames": 4,
+     "fps": 10,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sleep": {
+     "row": 3,
+     "frames": 2,
+     "fps": 1.5,
+     "loop": true
+    }
+   }
+  },
+  "wolek": {
+   "frame": [
+    30,
+    30
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 2,
+     "fps": 2,
+     "loop": true
+    },
+    "walk": {
+     "row": 1,
+     "frames": 4,
+     "fps": 6,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sleep": {
+     "row": 3,
+     "frames": 2,
+     "fps": 1.2,
+     "loop": true
+    }
+   }
+  },
+  "stalker": {
+   "frame": [
+    20,
+    40
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 3,
+     "loop": true
+    },
+    "walk": {
+     "row": 1,
+     "frames": 6,
+     "fps": 7,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   }
+  },
+  "nest": {
+   "frame": [
+    24,
+    22
+   ],
+   "glow": true,
+   "anims": {
+    "pulse": {
+     "row": 0,
+     "frames": 3,
+     "fps": 3,
+     "loop": true
+    }
+   }
+  },
+  "objects": {
+   "frame": [
+    16,
+    16
+   ],
+   "glow": true,
+   "anims": {
+    "crate": {
+     "row": 0,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "barrel": {
+     "row": 1,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "medkit": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   }
+  }
+ },
+ "props": [
+  "grass_a",
+  "grass_b",
+  "fern",
+  "rock",
+  "bones",
+  "reeds",
+  "fence",
+  "logs"
+ ]
+}
