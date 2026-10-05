@@ -2,6 +2,8 @@ extends Node2D
 ## Lobby + host/join + spawn graczy (MultiplayerSpawner).
 
 const PORT := 8910
+## Nadpisywany flagą --port=N (np. testy headless przy otwartym oknie gry).
+var port := PORT
 const MAX_PLAYERS := 4
 const PLAYER_SCENE := preload("res://scenes/player.tscn")
 ## Bot NIE jest preload — używamy load() w runtime. Bot scene dziedziczy po
@@ -87,6 +89,9 @@ func _handle_cmdline() -> void:
 	var stealthtest := -1.0
 	var wipetest := -1.0
 	var args := OS.get_cmdline_user_args()
+	for a in args:
+		if a.begins_with("--port="):
+			port = a.substr("--port=".length()).to_int()
 	for a in args:
 		if a == "--host":
 			host_game()
@@ -176,7 +181,7 @@ func host_game() -> void:
 	if NoiseMgr.has_network():
 		return
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(PORT, MAX_PLAYERS)
+	var err := peer.create_server(port, MAX_PLAYERS)
 	if err != OK:
 		_status.text = "Błąd hostowania (%s)" % error_string(err)
 		return
@@ -186,11 +191,11 @@ func host_game() -> void:
 	_start_ambience()
 	NoiseMgr.reset_mission()
 	_spawn_player(1)
-	print("[NET] hosting on port %d" % PORT)
+	print("[NET] hosting on port %d" % port)
 
 func join_game(ip: String) -> void:
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_client(ip, PORT)
+	var err := peer.create_client(ip, port)
 	if err != OK:
 		_status.text = "Błąd połączenia (%s)" % error_string(err)
 		return
