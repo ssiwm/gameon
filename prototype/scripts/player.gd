@@ -392,6 +392,7 @@ func _fire() -> void:
 	_muzzle = 0.06
 	Audio.play_variant(d["sfx"], d["sfx_count"], Audio.BUS_WEAPONS, d["sfx_vol"], d["sfx_pitch"])
 	Audio.play_variant("whizz", 3, Audio.BUS_WEAPONS, -26.0, 1.0)
+	Audio.play_casing(global_position, weapon == Weapons.SPREAD12)
 	# własny dźwięk już zagrany — serwer nie dubluje go dla strzelającego
 	_request_bullet(weapon, false)
 	_add_shot_noise()
@@ -898,6 +899,7 @@ func _server_fire(muzzle: Vector2, dir: Vector2, shooter: int, w: int, play_sfx:
 	if play_sfx:
 		Audio.play_variant_at(d["sfx"], d["sfx_count"], muzzle, Audio.BUS_WEAPONS,
 			float(d["sfx_vol"]) - 3.0, d["sfx_pitch"])
+		Audio.play_casing(muzzle, w == Weapons.SPREAD12)
 	# wizualne kopie na klientach (call_remote — serwer nie duplikuje u siebie)
 	if NoiseMgr.has_network():
 		_fire_remote.rpc(muzzle, dirs, shooter, w)
@@ -913,6 +915,7 @@ func _fire_remote(muzzle: Vector2, dirs: PackedVector2Array, shooter: int, w: in
 	if shooter != NoiseMgr.local_id():
 		Audio.play_variant_at(d["sfx"], d["sfx_count"], muzzle, Audio.BUS_WEAPONS,
 			float(d["sfx_vol"]) - 3.0, d["sfx_pitch"])
+		Audio.play_casing(muzzle, w == Weapons.SPREAD12)
 	for dd in dirs:
 		_make_bullet(muzzle, dd, shooter, w)
 
@@ -973,6 +976,7 @@ func apply_hit(amount: int, _from_pos: Vector2) -> void:
 	if not is_bot:
 		Feel.shake(4.0)
 		Feel.hitstop(0.07)
+		Audio.on_player_hurt(hp <= 1)
 	if hp <= 0:
 		_go_down()
 

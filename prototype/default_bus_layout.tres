@@ -1,19 +1,73 @@
-[gd_resource type="AudioBusLayout" load_steps=4 format=3]
+[gd_resource type="AudioBusLayout" load_steps=12 format=3]
 
-[sub_resource type="AudioEffectLowPassFilter" id="AudioEffectLowPassFilter_occl"]
-cutoff_hz = 620.0
-resonance = 0.6
+[sub_resource type="AudioEffectHardLimiter" id="Limiter_master"]
+ceiling_db = -0.5
+pre_gain_db = 0.0
+release = 0.1
 
-[sub_resource type="AudioEffectReverb" id="AudioEffectReverb_amb"]
+[sub_resource type="AudioEffectCompressor" id="Duck_music"]
+threshold = -20.0
+ratio = 2.2
+gain = 0.0
+attack_us = 8000.0
+release_ms = 450.0
+mix = 1.0
+sidechain = &"SFX"
+
+[sub_resource type="AudioEffectLowPassFilter" id="Deaf_music"]
+cutoff_hz = 20500.0
+resonance = 0.5
+db = 1
+
+[sub_resource type="AudioEffectReverb" id="Reverb_amb"]
 room_size = 0.85
 damping = 0.2
 dry = 1.0
 wet = 0.06
 
-[sub_resource type="AudioEffectHardLimiter" id="AudioEffectHardLimiter_master"]
-ceiling_db = -0.5
-pre_gain_db = 0.0
-release = 0.1
+[sub_resource type="AudioEffectCompressor" id="Duck_amb"]
+threshold = -22.0
+ratio = 2.0
+gain = 0.0
+attack_us = 10000.0
+release_ms = 600.0
+mix = 1.0
+sidechain = &"Weapons"
+
+[sub_resource type="AudioEffectLowPassFilter" id="Deaf_amb"]
+cutoff_hz = 20500.0
+resonance = 0.5
+db = 1
+
+[sub_resource type="AudioEffectReverb" id="Reverb_env"]
+predelay_msec = 12.0
+predelay_feedback = 0.0
+room_size = 0.45
+damping = 0.6
+spread = 1.0
+hipass = 0.08
+dry = 1.0
+wet = 0.08
+
+[sub_resource type="AudioEffectLowPassFilter" id="Deaf_sfx"]
+cutoff_hz = 20500.0
+resonance = 0.5
+db = 1
+
+[sub_resource type="AudioEffectLowPassFilter" id="Occ_light"]
+cutoff_hz = 3400.0
+resonance = 0.5
+db = 1
+
+[sub_resource type="AudioEffectLowPassFilter" id="Occ_heavy"]
+cutoff_hz = 1300.0
+resonance = 0.5
+db = 1
+
+[sub_resource type="AudioEffectLowPassFilter" id="Occ_blocked"]
+cutoff_hz = 480.0
+resonance = 0.5
+db = 2
 
 [resource]
 bus/0/name = &"Master"
@@ -22,7 +76,7 @@ bus/0/mute = false
 bus/0/bypass_fx = false
 bus/0/volume_db = 0.0
 bus/0/send = &""
-bus/0/effect/0/effect = SubResource("AudioEffectHardLimiter_master")
+bus/0/effect/0/effect = SubResource("Limiter_master")
 bus/0/effect/0/enabled = true
 bus/1/name = &"Music"
 bus/1/solo = false
@@ -30,20 +84,32 @@ bus/1/mute = false
 bus/1/bypass_fx = false
 bus/1/volume_db = -4.0
 bus/1/send = &"Master"
+bus/1/effect/0/effect = SubResource("Duck_music")
+bus/1/effect/0/enabled = true
+bus/1/effect/1/effect = SubResource("Deaf_music")
+bus/1/effect/1/enabled = true
 bus/2/name = &"Ambience"
 bus/2/solo = false
 bus/2/mute = false
 bus/2/bypass_fx = false
 bus/2/volume_db = -6.0
 bus/2/send = &"Master"
-bus/2/effect/0/effect = SubResource("AudioEffectReverb_amb")
+bus/2/effect/0/effect = SubResource("Reverb_amb")
 bus/2/effect/0/enabled = true
+bus/2/effect/1/effect = SubResource("Duck_amb")
+bus/2/effect/1/enabled = true
+bus/2/effect/2/effect = SubResource("Deaf_amb")
+bus/2/effect/2/enabled = true
 bus/3/name = &"SFX"
 bus/3/solo = false
 bus/3/mute = false
 bus/3/bypass_fx = false
 bus/3/volume_db = 0.0
 bus/3/send = &"Master"
+bus/3/effect/0/effect = SubResource("Reverb_env")
+bus/3/effect/0/enabled = true
+bus/3/effect/1/effect = SubResource("Deaf_sfx")
+bus/3/effect/1/enabled = true
 bus/4/name = &"Player"
 bus/4/solo = false
 bus/4/mute = false
@@ -67,18 +133,34 @@ bus/7/solo = false
 bus/7/mute = false
 bus/7/bypass_fx = false
 bus/7/volume_db = 2.0
-bus/7/send = &"Master"
+bus/7/send = &"SFX"
 bus/8/name = &"UI"
 bus/8/solo = false
 bus/8/mute = false
 bus/8/bypass_fx = false
 bus/8/volume_db = -2.0
 bus/8/send = &"Master"
-bus/9/name = &"Occluded"
+bus/9/name = &"OccLight"
 bus/9/solo = false
 bus/9/mute = false
 bus/9/bypass_fx = false
-bus/9/volume_db = -6.0
-bus/9/send = &"Master"
-bus/9/effect/0/effect = SubResource("AudioEffectLowPassFilter_occl")
+bus/9/volume_db = -1.5
+bus/9/send = &"SFX"
+bus/9/effect/0/effect = SubResource("Occ_light")
 bus/9/effect/0/enabled = true
+bus/10/name = &"OccHeavy"
+bus/10/solo = false
+bus/10/mute = false
+bus/10/bypass_fx = false
+bus/10/volume_db = -4.0
+bus/10/send = &"SFX"
+bus/10/effect/0/effect = SubResource("Occ_heavy")
+bus/10/effect/0/enabled = true
+bus/11/name = &"OccBlocked"
+bus/11/solo = false
+bus/11/mute = false
+bus/11/bypass_fx = false
+bus/11/volume_db = -8.0
+bus/11/send = &"SFX"
+bus/11/effect/0/effect = SubResource("Occ_blocked")
+bus/11/effect/0/enabled = true
