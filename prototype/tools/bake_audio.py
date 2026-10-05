@@ -61,7 +61,7 @@ CAPTIONS = {
     "step_": ["[Footsteps]", 0], "player_hurt": ["[Cry of pain]", 2], "player_down": ["[Teammate down]", 3],
     "revive": ["[Revived]", 2], "glass_break": ["[Glass breaks]", 2], "alarm_bell": ["[Alarm bell]", 2],
     "door_": ["[Door]", 1], "impact_flesh": ["[Impact]", 0], "ricochet": ["[Ricochet]", 1],
-    "radio_beep": ["[Radio beep]", 1], "casing_": ["[Casing drops]", 0], "ear_ring": ["[Ringing]", 1],
+    "radio_beep": ["[Radio beep]", 1], "shell_": ["[Casing drops]", 0], "ear_ring": ["[Ringing]", 1],
 }
 
 

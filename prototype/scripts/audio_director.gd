@@ -80,7 +80,7 @@ const VOICE := {
 	"oc_load": [55, 1, 0], "radio_beep": [50, 2, 0], "impact_flesh": [45, 5, 30],
 	"land_hard": [40, 2, 100], "dry_fire": [40, 1, 90], "effort": [38, 1, 200],
 	"impact_hard": [35, 6, 25], "step_": [30, 6, 0], "ricochet": [30, 3, 60],
-	"whizz": [25, 3, 70], "amb_": [20, 3, 0], "foley_gear": [10, 2, 120], "casing_": [8, 4, 60],
+	"whizz": [25, 3, 70], "amb_": [20, 3, 0], "foley_gear": [10, 2, 120], "shell_": [8, 4, 60],
 }
 const DEFAULT_VOICE := [40, 6, 0]
 
@@ -136,7 +136,6 @@ var _rev_room_t := 0.45
 var _rev_damp_t := 0.6
 var _loop_occl_timer := 0.0
 var _emit_t := 8.0
-var _last_casing_ms := 0
 
 
 func _ready() -> void:
@@ -455,23 +454,6 @@ func play_footstep(pos: Vector2, crouching: bool, vol_db := -14.0) -> void:
 	play_variant_at("step_" + surf, 5, pos, BUS_PLAYER, v, 1.0, 0.09)
 	if not crouching and randf() < 0.3:
 		play_variant_at("foley_gear", 3, pos, BUS_PLAYER, v + 4.0, 1.0, 0.1)
-
-
-## Łuska spadająca na ziemię ~0,2-0,4 s po strzale. Przy ogniu ciągłym co druga.
-func play_casing(pos: Vector2, shotgun := false) -> void:
-	if not _enabled:
-		return
-	var now := Time.get_ticks_msec()
-	if now - _last_casing_ms < 70:
-		return
-	if not shotgun and randf() < 0.45:
-		return
-	_last_casing_ms = now
-	var base := "casing_shell" if shotgun else "casing_brass"
-	var cnt := 2 if shotgun else 3
-	var where := pos + Vector2(randf_range(-14.0, 14.0), 10.0)
-	get_tree().create_timer(randf_range(0.22, 0.4)).timeout.connect(
-		func() -> void: play_variant_at(base, cnt, where, BUS_WORLD, -3.0, 1.0, 0.1))
 
 
 # ---------------------------------------------------------------- pętle

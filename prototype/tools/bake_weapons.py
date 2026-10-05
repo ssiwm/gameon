@@ -205,7 +205,8 @@ def build_weapons() -> None:
         x = d.reverb(x, ir("hall_st"), wet=.38, keep_len=True)
         finalize("explosion_%d" % (i + 1), x, peak=-1.5, fade_out_ms=120)
 
-    # Łuski na ziemi: sprężysty ping mosiądzu z odbiciami (≈ 0,25–0,4 s po strzale)
+    # Łuska na ziemi: sprężysty ping mosiądzu z odbiciami. Gra ją Vfx.casing() przy lądowaniu
+    # fizycznej łuski (klucz `shell`, głośność w vfx.gd strojona pod peak ≈ −1,5 dBFS).
     for i in range(3):
         r = Rng(0xB100 + i * 2111)
         f = vary(r, 4300, .18)
@@ -220,16 +221,7 @@ def build_weapons() -> None:
             t_b += (.085 - .018 * b) * r.uniform(.8, 1.2)
             amp *= .5
         x[:ms(6)] += tick(r, 5500, 1.5, 6, .0012)[:ms(6)] * .3
-        finalize("casing_brass_%d" % (i + 1), d.reverb(x, ir("dead"), wet=.15), peak=-6.0)
-    for i in range(2):
-        r = Rng(0xB200 + i * 3023)
-        n = ms(380)
-        hull = ring(r, [vary(r, 1250, .1), vary(r, 2300, .1)], [.045, .03], dur=.14)
-        base = ring(r, [vary(r, 3100, .1), vary(r, 4900, .1)], [.08, .05], dur=.2) * .5
-        x = d.mix([(d.mix([(hull, 1.0), (tick(r, 900, 1.2, 14, .004), .8)]), 1.0), (base, .8, .004),
-                   (hull * .45, 1.0, .11), (base * .3, 1.0, .12)], n)
-        finalize("casing_shell_%d" % (i + 1), d.reverb(x, ir("dead"), wet=.15), peak=-6.0)
-
+        finalize("shell_%d" % (i + 1), d.reverb(x, ir("dead"), wet=.15), peak=-1.5)
     # Foley ekwipunku (podczas biegu): pasy, klamry, magazynki
     for i in range(3):
         r = Rng(0xB300 + i * 1999)

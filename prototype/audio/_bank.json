@@ -67,26 +67,6 @@
   "sfx/player/breath_loop",
   1
  ],
- "casing_brass_1": [
-  "sfx/weapons/casing_brass_1",
-  0
- ],
- "casing_brass_2": [
-  "sfx/weapons/casing_brass_2",
-  0
- ],
- "casing_brass_3": [
-  "sfx/weapons/casing_brass_3",
-  0
- ],
- "casing_shell_1": [
-  "sfx/weapons/casing_shell_1",
-  0
- ],
- "casing_shell_2": [
-  "sfx/weapons/casing_shell_2",
-  0
- ],
  "door_1": [
   "sfx/world/door_1",
   0
@@ -301,6 +281,18 @@
  ],
  "ricochet_2": [
   "sfx/weapons/ricochet_2",
+  0
+ ],
+ "shell_1": [
+  "sfx/weapons/shell_1",
+  0
+ ],
+ "shell_2": [
+  "sfx/weapons/shell_2",
+  0
+ ],
+ "shell_3": [
+  "sfx/weapons/shell_3",
   0
  ],
  "spread12_shot_1": [

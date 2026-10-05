@@ -25,12 +25,12 @@ dźwięku miał błędy fundamentalne**, których nie było widać bez pomiaru a
 
 | Metryka | Przed | Po |
 |---|---|---|
-| Assety z uwagami audytu | 76 / 85 | **0 / 118** |
+| Assety z uwagami audytu | 76 / 85 | **0 / 116** |
 | True peak > −1 dBTP | 74 | **0** (max −1,5 dBTP) |
 | Pliki tracące >3 dB w mono | 19 (do −10,8 dB) | **0** (najgorszy −2,6 dB) |
 | Szwy pętli poza normą | 6 | **0** (szew w typowym zakresie skoków, `seam_pct` ≤ 95) |
-| Warianty w rodzinach | 52 | **84** (kroki ×5, M-83 ×6, P-64 ×4, strzelba ×3) |
-| Średnia różnorodność wariantów (odl. widmowa) | 0,41 | **0,74**; rodziny „prawie identyczne" 4 → 0 |
+| Warianty w rodzinach | 52 | **82** (kroki ×5, M-83 ×6, P-64 ×4, strzelba ×3) |
+| Średnia różnorodność wariantów (odl. widmowa) | 0,41 | **0.71**; rodziny „prawie identyczne" 4 → 0 |
 | Centroid „serca" / „revive" / „ui_confirm" | 17,7 kHz / 12,1 kHz / 11,0 kHz | **54 Hz / 277 Hz / 1,6 kHz** — wreszcie mają ton |
 | Pliki stereo | 35 (z Haas) | 16 (tylko to, co ma szerokość: ambient, muzyka, wybuchy, whizz) |
 | Czas pełnego bake'u | — | 41 s, **bit w bit deterministyczny** |
@@ -53,10 +53,10 @@ bez crossfade'u i bez dziury w energii.
 > Poprzedni komentarz „stdlib, brak numpy w środowisku" przestał być prawdą; `matplotlib` jest tylko do podglądu.
 > Gra (Godot) nie potrzebuje Pythona — pliki WAV są w repozytorium.
 
-### 3.2 Assety (118, `tools/bake_*.py`)
+### 3.2 Assety (116, `tools/bake_*.py`)
 * **Broń** — strzał warstwowy: crack (1,5 ms) / blast (swept LP) / body (sinus z opadającą wysokością) /
   punch / mechanika modalna / krótki ogon źródła. Własna **strzelba** (5 cracków śrutu + sub), przeładowanie
-  w 5 zdarzeniach, **łuski** (mosiądz/plastik z odbiciami), **foley ekwipunku**, **szum w uszach**.
+  w 5 zdarzeniach, **łuska** `shell_1..3` (mosiądz z odbiciami; gra ją `Vfx.casing()` przy lądowaniu fizycznej łuski), **foley ekwipunku**, **szum w uszach**.
 * **Stalker i głosy** — źródło głosowe (jitter/shimmer) → formanty: growl z „vocal fry" i AM-szorstkością,
   krzyk z konturem wysokości, szept z płynnie wędrującymi formantami (pętla okresowa, 7 sylab), odległy zew.
   Głos gracza: wysiłek, ból (2 różne samogłoski/kontury), upadek.
@@ -81,7 +81,7 @@ bez crossfade'u i bez dziury w energii.
 * **Ogłuszenie**: LP na Music/Ambience/SFX + szum w uszach po wybuchu blisko słuchawki i mocnym trafieniu.
 * **Voice management**: priorytety, limity na rodzinę, minimalny odstęp, kradzież najsłabszego, brak powtórzeń tego
   samego wariantu, jitter głośności, pomijanie źródeł poza zasięgiem.
-* **Emitery ambientu** (gęstsze przy wysokiej Uwadze), **łuski**, foley biegu, sygnał **`caption`** + `CAPTIONS` w manifeście
+* **Emitery ambientu** (gęstsze przy wysokiej Uwadze), foley biegu, sygnał **`caption`** + `CAPTIONS` w manifeście
   (napisy dla niesłyszących, GDD §14 — jeszcze bez UI).
 * `project.godot`: `audio/driver/mix_rate = 48000` (assety są 48 kHz; wcześniej resampling do 44,1 kHz).
 
@@ -110,7 +110,7 @@ godot --headless --path . --import               # po bake'u — inaczej grają 
 * **Zmian w silniku nie uruchomiłem** (Godot 4.7 nie był dostępny w środowisku). Sprawdzone: parser GDScript
   (`gdparse`) dla wszystkich skryptów, statyczna zgodność wywołań `Audio.*` i kluczy z manifestem, struktura bus layoutu
   (własny walidator), nazwy właściwości efektów względem typów API 4.7.2. **Do zrobienia przy pierwszym uruchomieniu**:
-  `godot --headless --path . --import` (wygeneruje `.import` dla nowych WAV-ów), sprawdzić log `[AUDIO] manifest OK: 118`,
+  `godot --headless --path . --import` (wygeneruje `.import` dla nowych WAV-ów), sprawdzić log `[AUDIO] manifest OK: 116`,
   posłuchać okluzji za ścianą, przejść Uwagę 0→100→0 i sprawdzić wejścia stemów, wybuch blisko (ogłuszenie + szum w uszach).
   Najbardziej ryzykowne miejsce: `AudioServer.lock()` wokół startu stemów (idiom znany z praktyki, nie testowany tutaj).
 * Rozmiar WAV: 38 MB (było 24). Przed wydaniem warto przejść na Vorbis/QOA dla muzyki i ambientu (kod nie wymaga zmian

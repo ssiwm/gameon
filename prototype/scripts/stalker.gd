@@ -13,6 +13,7 @@ extends CharacterBody2D
 
 const Lights := preload("res://scripts/lights.gd")
 const Nav := preload("res://scripts/nav.gd")
+const Sprites := preload("res://scripts/sprites.gd")
 
 const AWAKE_THRESHOLD := 60.0
 const SLEEP_THRESHOLD := 30.0
@@ -72,6 +73,9 @@ var _hunting_cached := false
 var _winding_cached := false
 var _overlay: Node2D
 var _lit_cd := 0.0
+var _spr: Array = []
+var _facing := 1.0
+var _last_x := 0.0
 ## Ścieżka A* po powierzchniach (nav.gd) do target_pos.
 var _path: Array = []
 var _path_i := 0
@@ -92,6 +96,8 @@ func _ready() -> void:
 		_x_max = lvl.bounds.end.x - 40.0
 	visible = false
 	_last_aud_pos = global_position
+	if Sprites.has("stalker"):
+		_spr = Sprites.attach(self, "stalker")
 	_overlay = Lights.add_overlay(self)
 
 ## Stalker nie jest zagrożeniem do ostrzelania — boty mają go ignorować.
@@ -396,6 +402,9 @@ func _draw() -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	var hunting := NoiseMgr.level >= HUNT_NOISE
 	var reveal := _reveal()
+	if not _spr.is_empty():
+		_sprite_frame(reveal, hunting, t)
+		return
 	var body_base := Color(0.20, 0.16, 0.24) if hunting else Color(0.24, 0.21, 0.27)
 	var body := Color(body_base.r, body_base.g, body_base.b, reveal)
 	if reveal > 0.02:
@@ -405,6 +414,29 @@ func _draw() -> void:
 			var x := -7.5 + i * 3.0
 			var sway := sin(t * 3.0 + i) * 2.5
 			draw_line(Vector2(x, -1), Vector2(x + sway, 5), Color(0.14, 0.12, 0.16, reveal), 1.5)
+
+## Sprite: ciało z przezroczystością „reveal", oczy (glow) z jasnością jak
+## w rysowanej wersji — słabo z daleka, mocno z bliska i w zapowiedzi.
+func _sprite_frame(reveal: float, hunting: bool, t: float) -> void:
+	var dx := global_position.x - _last_x
+	_last_x = global_position.x
+	if absf(dx) > 0.05:
+		_facing = signf(dx)
+	var anim := "windup" if winding else ("walk" if absf(dx) > 0.05 else "idle")
+	Sprites.play(_spr, anim, _facing < 0.0)
+	var body: AnimatedSprite2D = _spr[0]
+	var tint := Color(0.85, 0.8, 0.9) if hunting else Color.WHITE
+	body.modulate = Color(tint, reveal)
+	var glow: AnimatedSprite2D = _spr[1]
+	if glow != null:
+		var d := global_position.distance_to(_local_player_pos())
+		var near := clampf(1.0 - (d - SEE_FULL) / (SEE_NONE - SEE_FULL), 0.0, 1.0)
+		var pulse := 0.55 + 0.45 * sin(t * (6.0 if hunting else 2.0))
+		var eye_a := maxf(near, 0.18 if d < 260.0 else 0.06) * (1.0 if hunting else 0.45)
+		if winding:
+			eye_a = 1.0
+			pulse = 1.0
+		glow.modulate = Color(1.0 + pulse, 1.0, 1.0, eye_a)
 
 ## „Słyszysz, nigdy nie widzisz": ciało z bliska, w snopie latarki
 ## i w zapowiedzi ataku; z daleka same oczy.
@@ -420,6 +452,8 @@ func _reveal() -> float:
 ## Oczy — unshaded: świecą w ciemności (słabo z daleka, mocno z bliska
 ## i w zapowiedzi ataku).
 func _draw_overlay(ov: Node2D) -> void:
+	if not _spr.is_empty():
+		return
 	var t := Time.get_ticks_msec() / 1000.0
 	var hunting := NoiseMgr.level >= HUNT_NOISE
 	var d := global_position.distance_to(_local_player_pos())
