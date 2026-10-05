@@ -10,9 +10,6 @@ extends Area2D
 
 const Weapons := preload("res://scripts/weapons.gd")
 const Vfx := preload("res://scripts/vfx.gd")
-## Friendly fire z obrażeniem tylko z bliska i tylko ze strzelby — świadome
-## ryzyko, nie przypadek (GDD §2 filar 3, wariant „FF = hałas").
-const FF_DAMAGE_RANGE := 40.0
 
 var speed := 320.0
 var damage := 8.0
@@ -65,15 +62,9 @@ func _on_body_entered(body: Node) -> void:
 		# drużyna stoi w kolejce, więc FF za HP karało za samo ustawienie —
 		# seria M-83 w plecy kładła kolegę. Teraz pocisk PRZELATUJE przez
 		# kolegę, a kosztem jest hałas (krzyk) i odrzut — konsekwencja w
-		# głównym systemie gry, Uwadze. Obrażenie zostaje tylko dla strzelby
-		# z bliska, gdzie ryzyko jest świadomym wyborem.
-		var travelled := _life * speed
-		if weapon == Weapons.SPREAD12 and travelled < FF_DAMAGE_RANGE:
-			Audio.play_variant_at("impact_flesh", 3, global_position, Audio.BUS_WORLD, -8.0)
-			(body as Node).deliver_hit(1, global_position)
-			queue_free()
-		else:
-			(body as Node).deliver_ff(global_position)
+		# głównym systemie gry, Uwadze. Bez wyjątków dla żadnej broni (1.5.2:
+		# usunięty wyjątek strzelby z bliska — nadal raniła kolegów).
+		(body as Node).deliver_ff(global_position)
 		return
 
 	if body.is_in_group("enemies"):
