@@ -1,0 +1,717 @@
+# DEAD AIR '87 — Game Design Document
+
+**Wersja:** 1.3.1 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
+**Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
+**Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
+**Silnik:** Godot 4.x + GodotSteam
+**Platformy:** Steam (PC) → GOG → Epic (decyzja odroczona do ≥25k sprzedaży, patrz §15)
+**Model:** premium, bez MTX
+**Cena:** **$9.99** (EA i 1.0) — patrz §17.3, dlaczego nisko
+**Zespół:** 1–3 osoby
+**Czas do EA:** 18–30 mies. pracy własnej (nie 9–14 — patrz §16.4)
+**Kill criteria:** patrz §16.5
+
+---
+
+## 1. High concept
+
+Rok 1987. Oddział specjalny „Cicha Godzina" wkracza do zamkniętego kompleksu **Obiekt 86** na Syberii, gdzie radziecki program biologiczny obudził coś, co poluje dźwiękiem. Strzelasz jak w *Contrze*, ale **każdy strzał, krzyk i bieg przywołują Istotę, której nie da się zabić**.
+
+> **Pitch sprzedażowy (jedno zdanie):** „Contra spotyka Lethal Company — run-and-gun, w którym twoja własna krzycząca ekipa jest najgroźniejszym wrogiem."
+
+---
+
+## 2. Filary projektowe
+
+| # | Filar | Znaczenie |
+|---|-------|-----------|
+| 1 | **Strzelanina z klasą** | Responsywna, 8-kierunkowa, czytelna — czysta przyjemność run-and-gun |
+| 2 | **Hałas to waluta, którą się wydaje** | Poziom Uwagi rośnie od strzałów, biegu i mikrofonu. **Przesterowanie (Q)** pozwala go celowo podnieść, żeby ściągnąć Stalkera z drużyny. Hałas to decyzja, nie zakaz — patrz §8.4 |
+| 3 | **Co-op albo śmierć** | Down = dźwigasz kolegę. Friendly fire ON. Szeptanie do mikrofonu to mechanika |
+| 4 | **Groza przez dźwięk i światło** | Zero jump scare'ów-tanich. Grozę budują: ciemność, audio, stalker i cisza |
+| 5 | **Krótkie misje, długi progres** | 8–15 min misje, meta-progresja na 20 h+, powtarzalne modyfikatory |
+| 6 | **Gracze albo AI, nigdy pusto** | AI towarzysz od EA. Hot-join do botów w trakcie misji. Pusta drużyna = zepsuta sesja |
+| 7 | **Czucie gry przed zawartością** | Skok, strzał i trafienie muszą być przyjemne *zanim* dodamy kolejną broń, wroga czy strefę. Standard: §23 (coyote time, jump buffer, hitstop, shake, rytm broni). Jedna dopracowana strefa > sześć bladych |
+
+---
+
+## 3. Setting i fabuła
+
+**Miejsce:** ZSRR, okolice jeziora Bajkał, jesień 1987. Kompleks **Obiekt 86** — połączenie kopalni, wioski górniczej, laboratoriów biologicznych i reaktora. Oficjalnie: kopalnia uranu. W rzeczywistości: program badawczy nad organizmem z rdzenia meteorytu tunguskiego — **„Pierwszym Głosem"**.
+
+**Incydent:** 14 dni przed akcją cała obsada Obiektu 86 przestała nadawać. Ostatnia transmisja to 40 sekund oddechu i czyjś głos mówiący do mikrofonu: *„Nie strzelajcie. On nie widzi. On słyszy."*
+
+**Cel fabularny:** drużyna ma potwierdzić likwidację kompleksu (ładunki atomowe), ale odkrywa, że Pierwszy Głos nie jest organizmem — jest **anteną**, a cała okolica jego uchem.
+
+**Struktura narracji:** 6 stref, narracja przez radio (nadająca wciąż obsada? ich głosy?), znajdźki (taśmy, listy robotników), dialogi NPC-ów uratowanych w misjach.
+
+### Postacie grywalne (4)
+
+| Postać | Rola | Unikalny gadżet | Charakter |
+|--------|------|-----------------|-----------|
+| **Borsuk** | Dowódca / wszechstronny | Radio taktyczne: 1× ping ujawniający wrogów | Weteran Afganistanu |
+| **Igła** | Sanitariuszka / szybka | Strzykawka adrenaliny: revive na dystans | Cyniczna, opanowana |
+| **Wulkan** | Granadier / tank | Tarcza balistyczna (stawiana, 8 s) | Głośny, dosłownie i w przenośni |
+| **Sowa** | Snajperka / skradanie | Skaner ciszy: pokazuje promień słuchu wrogów | Mówi szeptem, także w intrukcji |
+
+---
+
+## 4. Pętla rozgrywki
+
+### Pętla misji (8–15 min)
+```
+WEJŚCIE → ROZPOZNANIE → WYKONANIE CELU → ALARM/STALKER → EKSTRAKCJA
+```
+1. **Wejście** — ekwipunek, loadout (max 2 bronie + sidearm).
+2. **Rozpoznanie** — semi-losowe pomieszczenia z tilesetów; przedmioty w 3–4 możliwych miejscach.
+3. **Cel** — znajdź / uruchom / zniszcz / eskortuj / przetrzymaj.
+4. **Napięcie** — hałas kumuluje się w Poziom Uwagi; po progu budzi się Stalker i następuje pętla pościgu.
+5. **Ekstrakcja** — po wykonaniu celu pozycja wyjścia się zmienia; opcjonalne skrytki z łupem po drodze (ryzyko/nagroda).
+
+### Pętla meta
+```
+Misja → złom + wroga wiedza + próbki → Ulepszenia broni / Perki / Bezpieczna Kryjówka → trudniejsze misje
+```
+
+### Zasady śmierci
+- HP: 3 serca (Weteran), 1 trafienie (Koszmar).
+- **Down** — gracz pada, **wykrwawia się 25 s** (licznik widoczny na HUD i nad postacią). Kolega staje obok i **trzyma E przez 4 s** (perk Krwioobieg: 2,5 s) — gracz wstaje z 2 serc. Bot też podnosi (z tym samym czasem — nie jest szybszy od człowieka).
+- **Wykrwawienie** (25 s bez pomocy) = powrót w punkcie startu misji z 1 sercem. To kara dystansem i czasem, nie ekranem „game over".
+- **Wipe** (wszyscy down jednocześnie) = **nieudana ekstrakcja**: po 3 s restart misji (Uwaga, wrogowie, ładunki Q), tracicie łup misji, ale nie postęp fabularny.
+- **Dlaczego bez auto-respawnu:** darmowy respawn po 3 s zabija napięcie i sens Przesterowania. Down + revive tworzy momenty, o których drużyna opowiada po sesji.
+- Uratowani NPC mogą zginąć na stałe (wpływ na zakończenie i sklep).
+
+---
+
+## 5. Sterowanie i ruch
+
+| Akcja | Klawiatura | Pad |
+|-------|------------|-----|
+| Ruch / celowanie 8 kier. | WASD / strzałki | Lewy drążek (ruch) / prawy (aim) |
+| Strzał | LPM / J | RT |
+| Skok | Spacja | A |
+| Kucanie (cisza) | Shift | L3 |
+| **Przesterowanie** (§8.4) | Q | LB |
+| Zmiana broni | 1 / 2 / 3, kółko myszy | D-pad ← / → |
+| Granat | G | RB |
+| Miecz/maczeta | F | X |
+| Latarka | L | Y |
+| Interakcja / dźwiganie | E | B |
+| Ping (drużyna) | V | D-pad ↑ |
+| Radio | R | D-pad ↓ |
+| Mikrofon | push-to-talk / open | push-to-talk / open |
+
+**Ruch:** bieg, sprint, kucanie (hałas 0), wspinaczka po drabinach, chwyt krawędzi, unik w bok (i-frames 0.2 s), spadanie z platform.
+
+**Kluczowe:** gra jest single-plane (klasyczna Contra), ale z warstwami tła (przeciwnicy strzelający z drugiego planu) i sekcjami wewnętrznymi (budynki, sztolnie).
+
+---
+
+## 6. SYSTEM BRONI — pełna lista
+
+### Zasady ogólne
+- Gracz nosi **2 bronie główne** + **sidearm** (P-64, nieskończona amunicja) + **broń białą**.
+- Bronie główne wypadają z pickupów w misji i są odblokowywane na stałe przez zakup w Kryjówce.
+- Amunicja jest **współdzielona w drużynie** (jeden typ na broń) — ekonomia zespołowa.
+- Każda broń ma 3 poziomy ulepszeń kupowane za złom.
+- **Hałas** = promień w metrach, który wrzuca punkty do Poziomu Uwagi. Jest to pełnoprawny statystyk.
+
+### 6.1 Bronie główne
+
+| # | Broń | Typ | Dmg | RPM | Mag. | Zasięg | Hałas | Cechy |
+|---|------|-----|-----|-----|------|--------|-------|-------|
+| 1 | **M-83 „Krótki"** | SMG (start) | 8 | 600 | 30 | 12 m | 3 / 6 m | Wszechstronny, szybki reload |
+| 2 | **SPREAD-12 „Rozrzut"** | Karabin rozrzutowy | 4×5 | 240 | 24 | 8 m | 3 / 7 m | Klasyk Contry, szeroki stożek, cięższy odrzut |
+| 3 | **LR-7 „Promień"** | Laser ciągły | 12/tyk | — | Bateria 100 | 14 m | 2 / 4 m | Przebija 3 wrogów; cichy, ale świeci w ciemności (przyciąga wzrok wrogów) |
+| 4 | **HKM-9 „Miotacz"** | Miotacz ognia | 15/s DoT | — | Paliwo 80 | 4 m | 1 / 3 m | Podpala teren; **UV +3 Uwagi** (światło); strach wśród Trzosków |
+| 5 | **GNIEW-4** | Granatnik | 80 AoE 3 m | 40 | 6 | 10 m | 4 / 18 m | Niszczy Gniazda i Żyły; friendly fire 100% |
+| 6 | **SOKÓŁ-6** | Naprowadzane mikro-rakietki | 6 | 300 | 40 | 10 m | 3 / 7 m | Auto-namierzanie, słabe, dobre na Skoczków |
+| 7 | **ŚRUT-8** | Strzelba | 7×8 | 75 | 8 | 6 m | 4 / 12 m | Odrzut wrogów, door-breacher |
+| 8 | **WIDMO-1** | Railgun | 150 przebicie | 12 (charge 1,2 s) | 5 | 30 m | 5 / 25 m | Najgłośniejsza broń w grze — używasz jej, budzisz wszystko |
+| 9 | **CIĘGNO-6** | Harpun (kusza) | 45 | 60 | 1 (bełt do odzysku) | 15 m | **1 / 1 m** | **Jedyna cicha broń główna**; przybija Trzoski do ścian; bełty można odzyskać |
+
+### 6.2 Sidearm
+| Broń | Dmg | RPM | Ammo | Hałas | Uwagi |
+|------|-----|-----|------|-------|-------|
+| **P-64 „Igła"** | 10 | 300 | ∞ (rezerwa) | 2 / 4 m | Nigdy się nie kończy; ratunek w sytuacjach awaryjnych |
+
+### 6.3 Broń biała
+| Broń | Dmg | Szybkość | Hałas | Uwagi |
+|------|-----|----------|-------|-------|
+| **Maczeta** | 30 | szybka | 0 | Ciche zabójstwo od tyłu (instant), niszczy cienkie drzwi |
+| **Kilof** | 55 | wolna | 1 / 2 m | Otwiera zamurowane przejścia, ogłusza elitki |
+
+### 6.4 Ulepszenia broni (przykłady)
+
+| Broń | Poziom II | Poziom III |
+|------|-----------|------------|
+| M-83 | +10 mag, szybszy reload | Tryb burst 3× (mniejszy hałas) |
+| SPREAD-12 | +2 pestki | Podpala trafionych |
+| LR-7 | Bateria 150 | Przebicie 6 wrogów |
+| HKM-9 | Paliwo 120, wolniejsze zużycie | Ściany ognia (blokada przejścia) |
+| GNIEW-4 | Zapas 10 | Granaty kasetowe (3× AoE) |
+| SOKÓŁ-6 | 60 rakiet | Rakiety rozdzielają się na 3 cele |
+| ŚRUT-8 | Auto-ładowanie 2 pestek | Pociski ogłuszające (stun 1,5 s) |
+| WIDMO-1 | Szybsze ładowanie | Przebija ściany (1 warstwa) |
+| CIĘGNO-6 | 2 bełty w magazynku | Bełty zatrute (DoT), linka do przyciągania |
+
+### 6.5 Granaty i przedmioty zużywalne
+
+| Przedmiot | Efekt | Hałas | Cena |
+|-----------|-------|-------|------|
+| **Granat odłamkowy** | 90 AoE 4 m | 4 | 100 zł |
+| **Dymna** | Wizja 0 dla wrogów i graczy w chmurze | 2 | 80 zł |
+| **Flara** | Światło 20 m / 60 s; Ślepce ją ignorują, Stalker na moment traci trop | 1 | 60 zł |
+| **Fosforowa** | Obszar ognia 15 s, blokada przejścia | 3 | 150 zł |
+| **Wabik (kostka dźwiękowa)** | Rzut: generuje hałas 4 w punkcie przez 5 s — **odciąga Stalkera i hordy** | 4 (w punkcie rzutu) | 120 zł |
+| **Mina kierunkowa** | 120 dmg w stożku | 3 | 140 zł |
+| **Ładunek wyburzeniowy** | Otwiera nowe przejście, zabija bossa-pomocniczo | 5 | 250 zł |
+
+### 6.6 Narzędzia drużynowe
+
+| Narzędzie | Efekt | Uwagi |
+|-----------|-------|-------|
+| **Latarka** | Stożek 8 m; bateria 3 min | Światło = +1 Uwagi co 10 s |
+| **Skaner ruchu (Sowa)** | Ujawnia sylwetki przez ściany, 15 m | Emituje hałas 1/s — używaj krótko |
+| **Apteczka** | +1 serce sojusznikowi | Czas użycia 5 s (ryzyko) |
+| **Defibrylator** | Revive na dystans 10 m | 1 użycie na misję |
+| **Klucz francuski** | Otwiera zamki, naprawia generatory | Postęp celu |
+| **Taśma klejąca** | Podnosi prowizoryczne barykady | Gameplay obronny |
+
+---
+
+## 7. WROGOWIE
+
+### 7.1 Standardowe
+
+| Wróg | HP | Szybkość | Zachowanie | Kontra |
+|------|----|----------|------------|--------|
+| **Trzosek** | 30 | szybka | Wataha 3–6, biegnie wprost | Ogień ciągły, maczeta |
+| **Wołek** | 140 | wolna | Tankuje, potężny cios | Unik, strzelba w plecy |
+| **Skoczek** | 40 | skok | Spada z sufitu/wysokości | Ciągły ogień w górę, SOKÓŁ |
+| **Pijawka** | 15 | pełznie | Dopada, wysysa HP, QTE (30 s) | Maczeta, strzał w twarz kolegi? (friendly fire) |
+| **Ślepiec** | 60 | węszy | **Nie widzi — słyszy.** Idzie do ostatniego hałasu | Kucnij i przejdź; harpun |
+| **Podsłuchacz** | 35 | stoi | Nieruchomy „słuchacz" — krzyczy i ściąga hordę | Priorytet: zabić cicho (harpun) |
+| **Mimik** | 70 | udaje | Udaje sylwetkę/radio kolegi z drużyny | Sprawdź pingiem/kodem drużyny |
+| **Żyła** | 200 | rośnie | Splot 5–10 m, rodzi Trzoski | Ogień, GNIEW-4, ładunek |
+
+### 7.2 Elity
+
+| Wróg | HP | Cechy |
+|------|----|-------|
+| **Kapłan** | 250 | Emituje falę krzyku (AoE 6 m, stun), leczy Trzosków. Zabij pierwszego |
+| **Rzeźnik** | 600 | Miniboss stref; ładuje się przez ściany, niszczy barykady |
+| **Żerca** | 300 | Zjada downed graczy — jeśli nie uratujesz w 20 s, postać ginie do końca misji |
+
+### 7.3 Stalker — „ON" (On/To)
+
+- **Nie da się go zabić.** HP ∞.
+- Aktywuje się, gdy Poziom Uwagi misji przekroczy próg (start: 60/100).
+- Porusza się poza kadrem (dźwięk z głośników 3D), atakuje znienacka.
+- **Mechanika tropu:** idzie do ostatniego głośnego punktu. Wabik odciąga go na 20–30 s.
+- **Światło go przyciąga** (latarka na wrogu = śmierć). Ciemność i kucanie = szansa ucieczki.
+- Można go „uspokoić": obniżyć Uwagę poniżej progu przez 60 s (żadnych strzałów, wabik gdzieś daleko).
+- Pojawia się w 3 formach zależnie od strefy (sylwetka, dźwięk, cień).
+
+### 7.4 Bossowie
+
+| # | Boss | Strefa | Mechanika |
+|---|------|--------|-----------|
+| 1 | **PIJAWKA** | I | Arena zalana wodą; pod wodą niewidoczna — flary ujawniają cień; 3 fazy, wciąga graczy pod wodę (QTE drużyny) |
+| 2 | **KAPŁAN** | II | Fale krzyku niszczące światło; 4 totemy do zniszczenia; fazy ciszy, gdy boss „nasłuchuje" — nie wolno strzelać |
+| 3 | **MATKA ŻYŁ** | III | Gigantyczny robak w grocie; segmenty z pancerzem, słabe punkty od spodu; sekwencja ucieczki kolejką górniczą |
+| 4 | **BLIŹNIAK** | IV | Mimikuje losowego gracza (broń, sylwetka, linie głosowe); trzeba go zdemaskować (tells: brak cienia, brak oddechu), potem pokonać jego loadoutem |
+| 5 | **KOLEKCJONER** | V | Wrzuca downed graczy do klatek na arenie; drużyna walczy i odbija ich mid-fight; kradnie broń i używa jej |
+| 6 | **PIERWSZY GŁOS** | VI | Żywa antena. Faza 1: mówi głosami drużyny, gracze muszą zachować ciszę (mikrofon!). Faza 2: tarcza reaguje na dźwięk — trzeba **krzyczeć** do mikrofonu, żeby ją przeciążyć. Finał: cisza vs. krzyk |
+
+---
+
+## 8. SYSTEM GROZY — Hałas, Mikrofon, Ciemność
+
+### 8.1 Poziom Uwagi (globalny licznik misji 0–100)
+| Źródło | Punkty |
+|--------|--------|
+| Krok (bieg) | +0,5/s na gracza |
+| Krok (chód / kucanie) | +0 (kucanie = 0) |
+| Strzał z broni cichej (harpun, maczeta) | +1 |
+| Strzał z P-64 | +1,0 → +1,6 (rozgrzanie) |
+| Strzał z broni głównej | **zależny od rozgrzania lufy** — patrz „Model rozgrzania" niżej (SMG: +0,6 → +2,6 / strzał; strzelba: +3,5 → +5) |
+| Granat/ładunek | +15 |
+| Krzyk do mikrofonu (VAD > progu) | +20 (jednorazowo) |
+| Głośnik alarmowy / dzwon | +30 |
+| **Przesterowanie (Q, czynne)** | **+12 celowo** |
+| Cisza (kucanie + chód, brak strzałów) | −4/s |
+| Założony Wabik / Flara (odległy punkt) | −8 jednorazowo |
+
+**Balans (obowiązujący numer, wszystko pochodzi z niego):**
+- Świeża misja startuje na **20**. Średnia misja ma dawać 3–5 serii i ~6 s biegu → w środku misji jesteś w okolicach **45–55** (to nie jest wartość startowa).
+- **60+:** Stalker budzi się i idzie do ostatniego hałasu. 80+: hordy podwójne, Ślepce agresywniejsze.
+- Dekrement ciszy **−4/s** (nie −1) — bo w praktyce gracz spędza dużo czasu poza walką, i przy −1/s nigdy nie schodził z 60. Prototyp pokazał dokładnie ten błąd (§19 poz. 3).
+- **Stalker NIE podnosi hałasu przy ataku.** Zamach z targetu jest za cichy, żeby go zasygnalizować — ostrzeżeniem jest sam ruch i audio. W przeciwnym razie śmierć jest samopodtrzymująca się: atak rodził hałas, który trzymał stalkera obudzonego, a gracz nie mógł uciec, bo stalker był szybszy od biegu (105 vs 95 px/s). Prototyp: 3 ataki pod rząd, bez możliwości wyjścia.
+- Poziom nie resetuje się między misjami w obrębie strefy — kolejne misje startują z 25% poprzedniego.
+
+**Model rozgrzania lufy (obowiązujący, zastępuje stałe +4/strzał):**
+- Każda broń ma `n_min`, `n_max`, `heat_gain`. Rozgrzanie `h` (0–1) rośnie o `heat_gain` na strzał i spada o 1,2/s. Hałas strzału = `lerp(n_min, n_max, h)`.
+- Efekt: **krótka seria (3–5 strzałów) jest tania** (~6 pkt), **ciągły ogień drogi** (~21 pkt/s → próg 60 po ok. 3 s). To zostawia Contrę — strzelanie seriami i wyjście z cienia — bez zamieniania każdego strzału w alarm.
+- Wartości startowe (prototyp): M-83 `0,6 → 2,6`, gain `0,10`; P-64 `1,0 → 1,6`, gain `0,08`; SPREAD-12 `3,5 → 5,0`, gain `0,40`.
+- Wszystkie wartości hałasu pochodzą z jednej tabeli (`weapons.gd` / `noise_manager.gd`) i są identyczne w trybie solo i sieciowym. Stare „połowienie w sieci" usunięte (to było obejście, nie balans).
+- Bieg: **0,5 pkt/s** (dokładnie jak w tabeli). Trafienie gracza: +6 (krzyk bólu), niezależnie od trybu.
+
+**Faza niepokoju (40–60): ostrzeżenie zanim zacznie się kara.**
+- Poniżej 40: cisza. **40–59:** Stalker jeszcze śpi, ale słychać szept i HUD pokazuje „COŚ SŁUCHA". To okno na decyzję: przestań strzelać, użyj Wabika, kucnij.
+- **60+:** Stalker się budzi (§8.5). Gracz zawsze dostaje ostrzeżenie, nigdy zaskoczenie.
+
+**Start misji — jedna liczba:** misja zaczyna się od **20**. „45–55" to *typowy poziom w środku misji* (po kilku seriach i biegu), nie wartość startowa. Zasypianie: ≤30.
+
+### 8.2 Mikrofon (Voice Activity Detection)
+- Opcjonalny w menu (domyślnie ON w trybie co-op, z push-to-talk).
+- **Krzyk** = Uwaga +20 i przyciągnięcie wrogów w promieniu 25 m. Wideo-reakcje = marketing.
+- **Szept** (niski wolumen) — działa jak interkom, nie generuje hałasu.
+- **Ślepcy** w misji 4.2 reagują na mikrofon gracza, nie tylko postać.
+- **PIERWSZY GŁOS** używa mikrofonu jako mechaniki finałowej.
+- Dostępność: **finał nie może zależeć od mikrofonu.** Krzyk w bossie 6 działa też przyciskiem „Krzyk" (V) bez VAD — patrz §14, bo wymaganie mikrofonu blokuje streamerów bez mikrofonu i dzieci.
+- Ochrona strumieniowców: automatyczna cenzura wulgaryzmów w VAD (opcja), brak zapisu audio (przetwarzane lokalnie, nie wysyłane).
+
+### 8.3 Ciemność
+- Widoczność bazowa: 6 m. Latarka: 8 m. Flara: 12 m.
+- Światło przyciąga wzrok Trzosków i Stalkera.
+- Tilesety mają „dark zones” — pokoje, gdzie bez światła nie widzisz podłogowych pułapek.
+- CRT/scanline filter opcjonalny; głębia tła sterowana warstwami parallax.
+
+### 8.4 PRZESTEROWANIE — hałas jako zasób (nie zakaz)
+
+Sedno poprawki. Problem: pierwotna wersja traktowała hałas jako coś, czego się unika, co oznacza **permanentne zakazanie run-and-gunu** — gatunku, dla którego gracz kupił grę. Rozwiązanie: hałas staje się **walutą do wydawania**, a nie zakazem.
+
+**Mechanika:** przycisk **Q** (przesterowanie). Daje **+12 Uwagi celowo** i jednorazowo „przesterowuje" **ostatnie źródło hałasu** — Stalker rusza w stronę miejsca, gdzie użyto Q, zamiast miejsca ostatniego strzału. Koszt: zużycie ładunku.
+
+- **Ładunek przesterowania:** misja startuje z 2. Regeneracja: +1 co 45 s (albo natychmiast przy wykonaniu celu głównego). Max 3.
+- **Efekt taktyczny:** jeśli Stalker właśnie poluje na kolegę, gracz używa Q *daleko od niego* i Stalker przekierowuje się na gracza-innego-człowieka (albo na podstawiony Wabik). Drużyna zyskuje 20 s.
+- **Dlaczego to jest hook, a nie nerf:** aktywne „przesterowanie" brzmi jak coś, co *ty* robisz celowo — sygnał dla streamera „spróbujcie tego", zamiast statystyki, której się unika.
+
+**Napięcie gatunków rozstrzygnięte w ten sposób:** w trybie **szumu** (walka) hałas jest nieunikniony i Stalker ciśnie — tu grasz jak w Contra. W trybie **napięcia** (cele, skradanie) cisza jest możliwa i oszczędzasz ładunek Q. Misje przełączają te tryby jawnie, żeby gracz wiedział, w którym jest. Bez tego GDD opisywał dwa różne produkty.
+
+### 8.5 Stalker — pozycje i celowość (reguła dla AI, nie tylko opis)
+- **Stalker NIE biega szybciej od gracza.** 88 px/s vs gracz 95 px/s — gracze da się wyprzedzić, ale trzeba biec w linii prostej, co rzadko możliwe w labiryncie. To zostawia szansę na ucieczkę.
+- **Stalker kieruje się źródłem hałasu, nie pozycją gracza.** Nie ma „trybu szukania"; idzie tam, gdzie ostatnio było głośno.
+- **W fazie napięcia (niski hałas) jest powolny (55 px/s)** i omija graczy — groźba bez ataku. W fazie szumu jest szybki i agresywny.
+- **Nasłuchiwanie (v2):** po dotarciu do źródła hałasu Stalker **zatrzymuje się i nasłuchuje 4 s**. Idzie dalej tylko do *nowego* hałasu. Nigdy nie przełącza się na pozycję gracza — to oddaje ciszy realną wartość (wcześniej kod po dotarciu do punktu celował w najbliższego gracza, co robiło z niego zwykłego goniącego wroga).
+- **Kucający gracz jest niemal niewidoczny:** Stalker zauważa go dopiero z **8 px** (stojącego z 14 px). Kucanie obok przechodzącego Stalkera to świadoma, nagradzana decyzja.
+- **Widoczność — „słyszysz, nigdy nie widzisz":** ciało pojawia się dopiero w promieniu ~60 px od lokalnego gracza (płynnie do 160 px), poza tym widać tylko słabo błyszczące oczy. Gdy dojdzie oświetlenie 2D, widoczny jest w świetle latarki/flary.
+- **Atak z zapowiedzią (v2):** zamach 1 HP, cooldown 1,5 s, **bez generowania hałasu**. Przed ciosem jest **0,55 s zapowiedzi** (szept milknie, oczy rozbłyskują, ryk) — gracz może uciec; jeśli odejdzie poza zasięg, cios chybia. Po ciosie Stalker cofa się 6 m — okno na decyzję, nie natychmiastowy kolejny cios. Zasada: **śmierć od Stalkera jest zawsze „fair" i zapowiedziana.**
+- **Poruszanie się:** idzie po powierzchniach poziomu (ziemia → wspinaczka przy celu na platformie, ograniczony ścianami). Pełna nawigacja A* czeka na tilemapę poziomu (patrz §16.0).
+
+---
+
+## 9. KAMPANIA — pełna lista misji
+
+### STREFA I: BÓR CIEMNY (Dark Pinery) — „Zaginiony patrol"
+Las, posterunek, tartak. Kolory: mgła, brąz, zieleń. Wprowadza: strzelanie, skok, latarkę.
+
+| # | Misja | Cel główny | Cel poboczny | Nowa mechanika | Wrogowie | Czas |
+|---|-------|------------|--------------|----------------|----------|------|
+| 1.1 | **Zaginiony Patrol** | Znajdź 3 nieśmiertelniki | 2 skrytki ze złomem | Ruch, strzał, latarka. **Tutorial ciszy:** kucz i chodź — pasek Uwagi spada | Trzoski, Wołki | 8 min |
+| 1.2 | **Przerwa w Nadawaniu** | Uruchom 3 generatory radiostacji | Nie przekrocz 40 Uwagi | Poziom Uwagi, Podsłuchacze. **Tutorial Przesterowania:** użyj Q, żeby odciągnąć stalkera od koledów | Trzoski, Podsłuchacze, Stalker (skrypt) | 10 min |
+| 1.3 | **Gniazdo** | Spal 3 gniazda | Uratuj zwiadowcę (NPC) + **zabij stalkera w ciszy**: obniż Uwagę <30, gdy celuje w NPC | **Pierwsze pejne starcie ze stalkerem** (bez skryptu). AI towarzysz ćwiczy dźwiganie | Trzoski, Żyła, Stalker | 12 min |
+| **B1** | **PIJAWKA** | Zabij bossa | — | Flary ujawniają cień pod wodą | Pijawka, Trzoski | 6 min |
+
+**Nagroda strefy:** odblokowanie sklepu broni (SPREAD-12, ŚRUT-8), postać Igła.
+
+---
+
+### STREFA II: MARTWA WIEŚ (Dead Village) — „Nie budź wioski"
+Niszczejąca wioska górnicza, cerkiew, piwnice. Nowy wróg: Ślepcy (słuch), Mimiki.
+
+| # | Misja | Cel główny | Cel poboczny | Nowa mechanika | Wrogowie | Czas |
+|---|-------|------------|--------------|----------------|----------|------|
+| 2.1 | **Cisza** | Przeprowadź drużynę przez wioskę bez alarmu | „Duch" — zero wykrycia | Szept, przejście obok Ślepców | Ślepcy, Trzoski | 10 min |
+| 2.2 | **Piwnice** | Uratuj 4 ocalałych z piwnic | Znajdź pamiętnik górnika | Dźwiganie rannych NPC; pierwszy Mimik udaje ocalałego | Mimiki, Pijawki, Wołki | 12 min |
+| 2.3 | **Dzwon** | Ochroniaj dzwonnicy, potem uciekaj | Zniszcz 2 gniazda | Dzwon budzi hordę; obrona 3 fali | Horda, Kapłan (elita), Stalker | 12 min |
+| **B2** | **KAPŁAN** | Zniszcz 4 totemy i zabij bossa | — | Fazy ciszy: nie wolno strzelać | Kapłan, Trzoski | 7 min |
+
+**Nagroda strefy:** CIĘGNO-6 (harpun), SOKÓŁ-6, postać Wulkan.
+
+---
+
+### STREFA III: KOPALNIA KOŚCI (Bone Mine) — „Zjazd w ciemność"
+Sztolnie, windy, podziemne jezioro. Zarządzanie światłem i bateriami.
+
+| # | Misja | Cel główny | Cel poboczny | Nowa mechanika | Wrogowie | Czas |
+|---|-------|------------|--------------|----------------|----------|------|
+| 3.1 | **Zjazd** | Przetrwaj 3 fale na opadającej windzie | Bez utraty apteczki zespołowej | Arena obronna w ruchu | Trzoski, Skoczkowie, Rzeźnik | 10 min |
+| 3.2 | **Ciemność** | Znajdź 3 bezpieczniki | Odnajdź zaginionych górników | Zarządzanie baterią: ładowarki co 90 s | Ślepcy, Skoczkowie | 12 min |
+| 3.3 | **Żyły** | Zniszcz sieć żył (5 węzłów) | Przejedź kolejką bez śmierci | Sekcja kolejki: strzelanie w ruchu | Żyły, Trzoski, Wołki | 12 min |
+| **B3** | **MATKA ŻYŁ** | Przetrwaj pościg i zabij bossa | — | Fazy z pancerzem segmentów; ucieczka kolejką | Matka Żył | 8 min |
+
+**Nagroda strefy:** HKM-9 (miotacz), GNIEW-4 (granatnik), postać Sowa.
+
+---
+
+### STREFA IV: OBIEKT 86 (Facility 86) — „Kwarantanna"
+Laboratoria, kwatery, serwerownia. Automatyczne turret-y z czasów ZSRR. Mimiki w pełnej krasie.
+
+| # | Misja | Cel główny | Cel poboczny | Nowa mechanika | Wrogowie | Czas |
+|---|-------|------------|--------------|----------------|----------|------|
+| 4.1 | **Kwarantanna** | Uratuj naukowca z bloku B | Wyłącz 3 turret-y | Turret-y: skradanie lub EMP (ładunek) | Turret-y, Trzoski, Wołki | 12 min |
+| 4.2 | **Eksperyment 9** | Pobierz 3 próbki z kwarantanny | Nie zabij ani jednego Ślepca | Jeden gracz **zarażony** — musi dotrzeć do medbay w 5 min (efekt: miga na radarze) | Ślepcy, Mimiki | 13 min |
+| 4.3 | **Wyciek** | Uciekaj w 6 min, zanim strefa zostanie odcięta | Uratuj 2 techników | Zamknięte drzwi, mapy ucieczki, Bliźniak za plecami | Bliźniak (skrypt), Trzoski | 8 min |
+| **B4** | **BLIŹNIAK** | Zdemaskuj i zabij bossa | — | Boss kopiuje loadout gracza | Bliźniak | 7 min |
+
+**Nagroda strefy:** WIDMO-1 (railgun), ulepszenia pancerza, finałowa zbroja dla drużyny.
+
+---
+
+### STREFA V: SARKOFAG (Reactor Sarcophagus) — „Rdzeń słyszy"
+Reaktor, strefy radiacji, rdzeń. Sekcje zero-hałasu — broń palna = śmierć.
+
+| # | Misja | Cel główny | Cel poboczny | Nowa mechanika | Wrogowie | Czas |
+|---|-------|------------|--------------|----------------|----------|------|
+| 5.1 | **Sarkofag** | Włóż 3 pręty paliwowe w wyznaczone miejsca | Zbierz 5 taśm audio | Strefy radiacji: licznik Geigera, skafandry (HP spada w skażeniu) | Wołki, Żyły, Pijawki | 12 min |
+| 5.2 | **Rdzeń** | Wyłącz reaktor (3 panele) | Zero strzałów (osiągnięcie) | **Sekcja ciszy:** każdy strzał = natychmiastowa horda; tylko harpun/maczeta/wabik | Ślepcy, Rzeźnik | 10 min |
+| 5.3 | **Zejście** | Zejdź do gardzieli (platformy) | Bez śmierci | Platforming, spadające fragmenty | Skoczkowie, Trzoski | 10 min |
+| **B5** | **KOLEKCJONER** | Zabij bossa i odbij pojmanych | Uwolnij wszystkich w 1. próbie | Boss porywa downed graczy do klatek | Kolekcjoner, Trzoski | 8 min |
+
+**Nagroda strefy:** wszystkie ulepszenia poziomu III, finałowa scena fabularna.
+
+---
+
+### STREFA VI: MARTWA CISZA (Dead Air) — „Pierwszy Głos"
+Inny wymiar: organiczne korytarze, grawitacja się zmienia, radio mówi głosami drużyny. Finał.
+
+| # | Misja | Cel główny | Cel poboczny | Nowa mechanika | Wrogowie | Czas |
+|---|-------|------------|--------------|----------------|----------|------|
+| 6.1 | **Membrana** | Przejdź przez membranę (3 sekcje) | Znajdź 3 wspomnienia (taśmy) | Grawitacja: chodzenie po sufitach; organiczne ściany | Mimiki, Trzoski | 12 min |
+| 6.2 | **Głosy** | Odnajdź prawdziwe wyjście | Nie daj się zwieść ani raz | Radio podaje **fałszywe cele**; kod drużyny (hasło z 4 słów) odróżnia prawdę | Mimiki, Kapłan | 12 min |
+| 6.3 | **Martwa Cisza** | Dotrzyj do Pierwszego Głosu | Przetrwaj z 3 nabojami zapasu | Finałowy gauntlet: wszyscy wrogowie, mało amunicji | Wszyscy | 15 min |
+| **B6** | **PIERWSZY GŁOS** | Zniszcz antenę | — | Faza ciszy (mikrofon!) i faza krzyku (przeciążenie) | Pierwszy Głos | 10 min |
+
+**Nagroda:** zakończenie zależne od uratowanych NPC i zebranych taśm (3 warianty: „Likwidacja", „Powrót", „Dead Air").
+
+---
+
+## 10. Progresja
+
+### 10.1 Waluty
+| Waluta | Źródło | Wydatki |
+|--------|--------|---------|
+| **Złom** | Skrytki, sprzedaż próbek | Bronie, ulepszenia, granaty, perki |
+| **Wroga wiedza** (XP) | Zabójstwa, cele, pierwsze ukończenie | Poziomy gracza → sloty perków |
+| **Próbki** | Cele poboczne, elitki | Odblokowanie stref, badania w Kryjówce |
+| **Taśmy** | Ukryte znajdźki | Fabuła, zakończenia, tapety koncept-artów |
+
+### 10.2 Perki (przykłady, 2 sloty na postać)
+| Perk | Efekt |
+|------|-------|
+| Ciche kroki | Bieg generuje hałas 0,25/s zamiast 0,5/s |
+| Szerokie ramię | Rzut granatem +30% zasięgu |
+| Druga szansa | Raz na misję wstajesz sam z down (30 s cooldown ekstra na misję) |
+| Krwioobieg | Szybsze dźwiganie rannego (4 s → 2,5 s) |
+| Zimna krew | Twój krzyk do mikrofonu = tylko +10 Uwagi |
+| Kowal | −20% kosztu ulepszeń broni |
+| Skaut | Skaner pokazuje Stalkera w promieniu 10 m |
+| Weteran | +1 serce |
+
+### 10.3 Kryjówka (hub)
+- **Warsztat** — bronie i ulepszenia.
+- **Szpital** — stan uratowanych NPC, bonusy fabularne (np. uratowany naukowiec daje schemat EMP).
+- **Radiostacja** — wywiad: prognoza pogody (modyfikatory misji), tygodniowe wyzwania.
+- **Ściana pamięci** — statystyki drużyny, osiągnięcia.
+- **Tablica misji** — kampania + tryby dodatkowe.
+
+---
+
+## 11. Tryby gry
+
+| Tryb | Opis | Uwięzienie |
+|------|------|------------|
+| **Kampania** | 18 misji + 6 bossów, 15–20 h | Postęp fabularny |
+| **Nocny Dyżur** (endless) | 5 losowych misji pod rząd, jedna śmierć kończy serię | Cotygodniowy ranking |
+| **Koszmar Tygodnia** | Misja + 3 losowe modyfikatory (np. blackout, podwójne hordy, alway-on Stalker) | Skiny, złom ×3 |
+| **Strzelnica** | Test broni, tutorial | — |
+
+### Modyfikatory (losowane / tygodniowe)
+Cisza radiowa (brak minimapy), Przeciążenie (Uwaga 50 start), Głód amunicji (−50% amunicji), Oczy w ciemności (wrogowie widzą w ciemności), Wyciek (Stalker zawsze aktywny), Podwójna horda, Delikatni (1 HP), Bunt maszyn (turret-y w każdej strefie).
+
+---
+
+## 12. Multiplayer i architektura
+
+- **Host-authoritative**, 1–4 graczy, Steam P2P + relay (fallback).
+- Tickrate 20 Hz; predykcja ruchu po stronie klienta; server-authoritative hit detection z lag compensation 150 ms.
+- **Reconnect:** okno 2 min, postać czeka jako „down" w miejscu rozłączenia.
+- **Voice:** Steam Voice API (proximity + push-to-talk), VAD lokalnie (bez wysyłania audio na serwer gry).
+- **Drop-in/drop-out** między misjami; lobby hosta z ustawieniami (modyfikatory, trudność, VAD).
+- Late-join: tylko między misjami (spójność fabularna).
+- **AI towarzysz wypełnia puste sloty od EA** (§16.3) — nie dopiero w 1.0. Bez tego „tryb solo" nie istnieje.
+
+---
+
+## 13. Kierunek artystyczny i audio
+
+### Grafika
+- Pixel art 16-bit, render 320×180 skalowany ×4–6 (opcja pixel-perfect).
+- Paleta: 48 kolorów bazowych + warstwa świateł (Godot 2D Lights), CRT/scanline opcjonalnie.
+- Animacje 12 fps feel, reakcje trafień (hitstop 50–90 ms przy zabójstwie, wartości w §23), duży gore (pixel, stylizowany, bez foto-realizmu).
+- Tła: 3 warstwy parallax; strefy mają własne palety (Bór: brąz/zieleń; Obiekt 86: stal/cyjan; Marwa Cisza: czerń/magenta).
+
+### Audio (filar!)
+- Muzyka adaptacyjna: warstwy (cisza / napięcie / walka / pościg) przełączane płynnie.
+- Brzmienie: analogowe syntezatory lat 80. (DX7, taśma, szum) + industrialne uderzenia.
+- **Propagacja dźwięku przez ściany** — kroki i strzały są filtrowane (muffled) zależnie od geometrii; kluczowe dla horroru.
+- Dźwięk 3D dla Stalkera (zawsze słyszysz, nigdy nie widzisz).
+- Lektor: tylko radio (nadające głosy), brak pełnego dubbingu.
+
+---
+
+## 14. UI/UX i dostępność
+
+- HUD minimalny: serca, amunicja (liczba), wskaźnik Uwagi (ikona oka/heartbeat), status drużyny (ikony), licznik baterii.
+- Brak minimapy — tylko kompas ekstrakcji po wykonaniu celu.
+- Ping system (jak w Apex): oznaczaj wroga/przedmiot/drogę.
+- **Ustawienia dostępności:** VAD ON/OFF, „Krzyk" na przycisk, napisy z opisem dźwięków ([kroki za tobą]), mono audio, redukcja screen shake, tryb dla daltonistów (3 presety + kształty), skalowanie czcionek, pełne remapowanie klawiszy, tryb streamera (cenzura, brak muzyki licencjonowanej).
+
+---
+
+## 15. Monetyzacja i platformy
+
+| Platforma | Kiedy | Uwagi |
+|-----------|-------|-------|
+| **Steam (EA)** | Premiera EA | **Jedyna premiera.** Wszystkie decyzje o iteracji i szybkim feedbackzie są ważniejsze niż 12% prowizji |
+| **GOG** | Po 1.0 | Retro + DRM-free = naturalna publiczność; soundtrack i PDF artbook. Realistycznie: dodatkowe 2–5% sprzedaży, nie główny kanał |
+| **Epic** | **Odroczone do ≥25k sprzedanych** | Nie bierzemy First Run (6 mies. ekskluzywności) — zamraża naszą ścieżkę iteracji w Early Access, gdzie potrzebujemy szybkiego feedbacku. Jeśli kiedyś: wariant bez ekskluzywności, tylko 100% z 1. mln $ rocznie |
+| **Konsole** | Nieplanowane | Tylko po 1.0 i sprzedaży >100k. To zadanie na 6+ mies. pracy — nie na tę fazę |
+
+- Model: premium, **zero MTX**.
+- DLC po 1.0: kosmetyki (skiny oddziału, retro filtry), soundtrack, artbook. Nigdy nie dzielimy map ani broni.
+- Demo: Strefa I (bez zapisu postępu) — konwersja na wishlistę.
+
+---
+
+## 16. Zakres MVP, budżet, roadmapa
+
+### 16.0 Strategia zakresu — demo najpierw (v1.3)
+Budżet z §16.4 (10–16 mies. do EA) jest ryzykiem, dopóki nie wiemy, że rdzeń bawi. Dlatego kolejność jest odwrócona:
+1. **Pionowy wycinek = jedna misja w całości** (ręcznie zbudowana mapa, cel, ekstrakcja, 1 boss), 2 bronie, 2 wrogowie + Stalker. To jest **demo na Steam** i materiał do pierwszych playtestów ze znajomymi.
+2. **Playtest „kiedy się nudziłeś, a kiedy się bałeś"** (3–5 osób, nagrany gameplay) — przed jakąkolwiek nową zawartością. Wyniki decydują o priorytetach (§23).
+3. **Dopiero potem** pozostałe misje Strefy I, losowe pokoje i EA. Losowość pokoi odkładamy, dopóki pętla na jednej mapie nie jest przyjemna po 20 powtórkach.
+4. **Progresja w EA — wersja minimalna:** jedna waluta (złom), 3 bronie do kupienia, 2–3 perki, bez Kryjówki-huba i bez Taśm/Próbek. Pełna tabela §10 to cel 1.0, nie EA.
+5. **Nawigacja:** pełne A* dla Stalkera i botów po zbudowaniu poziomu na tilemapie (do tego czasu: ruch po powierzchniach, patrz §8.5).
+
+### 16.1 MVP — co musi działać w premierze EA
+- [ ] Online 1–4 (Steam P2P) + **AI towarzysz wypełniający puste sloty** (nie opcjonalne — patrz 16.3)
+- [ ] Strefa I kompletna (3 misje + boss) jako „vertical slice" nośny
+- [ ] 3 bronie główne, sidearm, maczeta, Wabik (funkcjonalny od EA — to infrastruktura Przesterowania)
+- [ ] 4 typy wrogów + Stalker w wersji z §8.1/§8.5 (mniej, ale poprawnie zbalansowanych)
+- [ ] System Uwagi, Przesterowanie (Q), ładunek i regeneracja, system światła
+- [ ] Serwerowe pociski z lag compensation (nie per-peer symulacja — patrz 18.2)
+- [ ] Tryb Nocny Dyżur v1
+- [ ] Demo
+
+### 16.2 Czego świadomie NIE ma w EA
+Strefy II–VI, większość broni, Bliźniak/Kolekcjoner, Wyzwania tygodniowe, mod support, konsola. To świadome odcięcie — patrz 16.5.
+
+### 16.3 AI towarzysz — dlaczego nie może być „opcjonalne w 1.0"
+Multiplayer jest najsilniejszym czynnikiem sukcesu w tej niszy (10x hit rate vs singleplayer), ale zakłada, że **gracz ma kogo zaprosić**. Realnie to połowa dostępnej publiczności: nie każdy ma znajomego w grze, a multiplayer o 3 w nocy jest pusty. Hot-join do botów musi działać bez gadżetu sieciowego (Peer-to-peer LAN feel) — inaczej „gra co-op" staje się „gra, w której potrzebujesz znajomego".
+
+AI towarzysz w EA: podąża, strzela, dźwiga, reaguje na stalkera. To 2–4 mies. pracy i ratuje całą bazę graczy solo.
+
+### 16.4 Realny budżet i czas (liczby z researchu zestawione z kosztem)
+Dane rynkowe: mediana przychodu gry na Steam ~$250–300; mediana kosztu developmentu indie ~$30–60k. To znaczy, że **mediana projektu nie zwraca kosztu** — potrzebujemy albo lepszej realizacji, albo akceptujemy, że to portfolio +uczenie. Budżetujemy to świadomie.
+
+| Pozycja | Godziny (solo+1 pomocnik) | Uwagi |
+|---|---|---|
+| Netcode + synchronizacja serwerowa (16.1) | 200–300 | Największe ryzyko techniczne; zrobić w pierwszej kolejności |
+| AI towarzysz (16.3) | 150–250 | Zależne od istniejącego AI stalkera |
+| Strefa I (3 misje + boss) + tilesety | 250–400 | Audio jako filar grozy — nie zaniedbywać |
+| Broń + pociski + pociski serwerowe | 120–200 | 3 bronie, nie 9 |
+| System Uwagi + Przesterowanie | 60–100 | Prototyp już ma serwerowy rdzeń |
+| UI/HUD, Kryjówka, Endless | 120–180 | |
+| Marketing / wishlisty / demo / VOD | 80–150 | Równolegle, nie na końcu |
+| **RAZEM do EA (Strefa I)** | **~1000–1600 h** | Przy ~25 h/tydz. na osobę: **~10–16 mies. pracy własnej**; przy 2 osobach ~6–10 mies. |
+| Pełna kampania (Strefy II–VI) | +2500–4000 h | Dopiero po przejściu gate'u w 16.5 |
+
+To jest realistyczne. Przy pracy **jednej osoby** ~25 h/tydz. daje to **~10–16 mies. do EA (Strefa I)** i **18–30 mies. do 1.0**; przy dwóch osobach dzielących sie realnie ~35 h/tydz. łącznie miesiące kalendarzowe skracają się, ale nie liniowo (netcode i audio nie dzielą się czysto). Pierwotna wersja GDD mówiła „9–14 miesięcy do EA z 3 strefami i 4-osobowym netcodem" — to było zaniżone i pomijało AI towarzysza, serwerowe pociski i audio.
+
+### 16.5 Kill criteria (bramki „kontynuujemy / kasujemy")
+- **Gate 0 (przed EA):** 20 zamkniętych playtestów, ≥60% graczy dociera do Stalkera bez pomocy, średni czas do bossa 6–12 min, zero crashów sesji 4-osobowej przez 10 kolejnych sesji. Jeśli nie → popraw, nie wydawaj na Strefę II.
+- **Gate 1 (po premierze EA, 90 dni):** ≥8k sprzedanych, ≥75% pozytywnych recenzji, konwersja wishlist→kupno ≥25%. Poniżej → nie idziemy do Strefy II–VI; albo mała poprawka i próba 2, albo zamknięcie.
+- **Gate 2 (przed 1.0):** 25k sprzedanych łącznie. Poniżej → 1.0 jako „ Early Access forever", porty konsolowe odpadają.
+Twarde progi, żeby nie palić miesięcy pracy na „a może się uda".
+
+### 16.6 Roadmapa (post gate)
+| Etap | Warunek | Zawartość |
+|------|------|-----------|
+| **EA launch** | Gate 0 | Strefa I, Endless, AI towarzysz |
+| Update 1 | Gate 1 ✓ | Strefa II + Przesterowanie loadouty + Koszmar Tygodnia |
+| Update 2 | sprzedaż ≥12k | Strefa III + drugi typ stalkera |
+| Update 3 | sprzedaż ≥20k | Strefy IV–VI + finał + 3 zakończenia |
+| **1.0** | Gate 2 ✓ | Balans, mod support (rozważ), GOG |
+
+Roadmapa jest warunkowa, nie kalendarzowa. Nie ma sensu planować Strefy IV przed Gate 1.
+
+---
+
+## 17. KPI i marketing
+
+| Metryka | Cel |
+|---------|-----|
+| Wishlisty przed EA | 10 000–15 000 |
+| Konwersja wishlist → zakup (1. mies.) | ≥25% |
+| Oceny Steam | ≥75% pozytywnych (próg danych rynkowych; cel operacyjny ≥80%) |
+| Sprzedaż EA (3 mies.) | 8 000–15 000 kopii (Gate 1) |
+| Refundy | <8% |
+| CCU szczyt (1. mies.) | 1 500–2 500 |
+
+### 17.3 Cena $9.99 — dlaczego nisko (korekta wobec pierwotnej wersji)
+Pierwotny GDD ustawiał $12.99 na podstawie „$10–20 daje 1,9x lift". To było **sprzeczne z danymi o mechanice sukcesu w tej niszy**. Hity, do których się odwołujemy (*Lethal Company*, *R.E.P.O.*), kosztują $9.99. W grze, którą kupuje cała ekipa (4 kopie = 4x ruch), **niska cena jest mechaniką wiralową, nie ustawieniem marży**: obniża koszt wejścia do „wyślij znajomym". $12.99 pomija główny czynnik, który wyjaśnia sukces tych tytułów. Utrzymujemy $9.99 do 1.0; DLC kosmetyczne, nigdy mapa/warunki.
+
+### Plan marketingowy
+1. **Steam page od dnia 1** (devlogi, GIFy) — cel: 3k wishlist przed gameplay reveal.
+2. **Klipy „scream moments"** — TikTok/Shorts/Reels; hasło: „gra, która słyszy twój krzyk".
+3. **Klucze dla streamerów horror co-op** (największa dźwignia) — dzień premiery EA.
+4. **Demo na Steam Next Fest** — 2 festiwale przed EA.
+5. **Discord + playtesty** — zamknięte bety co 2 miesiące (zbieranie feedbacku o VAD).
+6. **Press kit** — polski i angielski; festiwale (Pixel Heaven, Game Arena).
+
+---
+
+## 18. Ryzyka i mitygacje
+
+| Ryzyko | Prawd. | Wpływ | Mitygacja |
+|--------|--------|-------|-----------|
+| Netcode 4 graczy opóźnia produkcję | wysoka | wysoki | Pion z 2 graczami w 1. mies.; serwerowe pociski + lag compensation przed wszystkim (18.2); AI towarzysz jako bufor |
+| **Cisza nie da się utrzymać → pętla horror nie do przejścia** | **wystąpiła w prototypie** | **wysoki** | **Naprawione w GDD §8.1/§8.5: spadek −4/s, Stalker wolniejszy (88/55 vs 95), atak nie generuje hałasu, cofnięcie po ciosie. Weryfikacja w playteście: gracz musi umieć „uśpić" stalkera w <20 s** |
+| VAD działa źle na tanich mikrofonach | średnia | wysoki | Progi kalibracyjne + tryb bez VAD + finał na przycisku (8.2) + testy na 20 konfiguracjach |
+| Finał wymaga mikrofonu → blokuje streamery i dzieci | średnia | średni | Krzyk = przycisk V równolegle z VAD (8.2) |
+| Multiplayer bez znajomych = pusta baza | wysoka | wysoki | AI towarzysz od EA, hot-join do botów (16.3) |
+| Groza nie działa w 2D | średnia | wysoki | Inwestycja w audio + dźwięk przestrzenny; testy „na słuchawkach" co sprint |
+| Klon po sukcesie | średnia | średni | Szybkie wejście w EA, społeczność, Przesterowanie jako rozróżnialna mechanika |
+| Przesycenie co-op horroru | średnia | średni | Hook: retro side-scroll + mikrofon + aktywne Przesterowanie; cena $9.99 |
+| Stalker irytuje zamiast straszyć | średnia | średni | Reguły z 8.5 (dwie prędkości, cofnięcie po ciosie), okna oddechu, playtesty |
+| Zasięg EA zbyt duży, Gate 1 nieosiągalny | średnia | wysoki | Warunkowa roadmapa (16.6); Strefa I jako jedyny nośnik EA |
+
+---
+
+## 19. Znane ograniczenia prototypu (do naprawy przed playtestem z drugą osobą)
+
+Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe ograniczenia są **udokumentowanymi błędami**, nie opcjonalnymi upgrade'ami — każdy z nich psuje rdzeń doświadczenia i musi zniknąć przed pierwszym zewnętrznym playtestem:
+
+| # | Problem | Gdzie | Skutek | Priorytet |
+|---|---------|-------|--------|-----------|
+| 1 | Pociski symulowane per-peer; obrażenia tylko od kopii strzelca | `bullet.gd` | Pocisk przechodzi przez wroga na jednym ekranie, trafia na drugim — widał desync | **P0 — naprawione**: serwerowe pociski |
+| 2 | Ręczne RPC 20 Hz, bez bufora interpolacji/predykcji | `player.gd` `_sync_state` | Zdalny gracz szarpie się przy jitterze | **P0 — naprawione**: `MultiplayerSynchronizer` |
+| 3 | Stalker szybszy od gracza + atak generuje hałas + za słaby decay | `stalker.gd`, `noise_manager.gd` | Pętla ciszy nie do przejścia (potwierdzone testem: 3 ataki pod rząd) | **P0 — naprawione**: 88/55 vs 95 px/s, atak bez hałasu, decay 4.0/1.5. Test: obudził się przy 89, zasnął przy 30, zero ataków |
+| 4 | Brak Przesterowania / Wabiku | — | Filar 2 GDD nie istnieje w kodzie | **P0 — naprawione**: Q + ładunek 2/regen 45s/max 3, HUD |
+| 5 | Brak limitów kamery | `player.tscn` | Widać pustkę poza poziomem | **P1 — naprawione**: limit_left/top/right/bottom |
+| 6 | `display_id` z kolejności spawnu | `player.gd` `_ready` | Kolizja indeksów po rozłączeniu/dołączeniu | **P1 — naprawione**: licznik `_display_counter` w main.gd |
+| 7 | Pozycje zdalnych graczy ufane (brak anticheat) | `player.gd` | OK dla kooperacji, blokuje host migration | P2 (1.0) — świadomie |
+| 8 | Brak AI towarzysza | — | Nie da się grać solo (16.3) | **P1 — naprawione**: `bot_companion.tscn`, reconcile 1 bot przy 1–2 graczach |
+| 9 | preload-cykl main→bot→player | `main.gd` | `bot_companion.tscn` nie parsował się („Parse Error: Busy") | **P1 — naprawione**: `load()` w runtime zamiast `preload` |
+| 10 | Bot bez nawigacji | `player.gd` `_bot_brain` | Bot gubi się przy przeszkodach, nie skacze celowo | P2 — A* lub navmesh |
+| 11 | `MultiplayerSynchronizer` postaci klienta miał autorytet 1 (tworzony w `_ready` po `set_multiplayer_authority`) | `player.gd` | Serwer nadpisywał stan klienta: **klient nie mógł się ruszyć**, jego obrażenia/down znikały. Poz. 2 de facto nie działała dla 2. człowieka | **P0 — naprawione (1.3.1)**: synchronizator w `_init`, autorytet w `_enter_tree`, spawn przez `spawn_function` (dane startowe dla każdego peera). Test: ruch klienta 32→127 px widoczny u hosta |
+| 12 | Wipe nie był podłączony (`full_reset`/`reset_enemy` bez wywołań) | `main.gd` | Brak restartu misji z §4 — każdy wykrwawiał się osobno, zabici wrogowie zostawali martwi | **P0 — naprawione (1.3.1)**: wykrywanie na serwerze, 3 s, reset Uwagi/Q/wrogów/graczy przez autorytet. Test `--wipetest` host+klient |
+| 13 | Bot strzelał do każdego aktywnego wroga w zasięgu 260 px | `player.gd` `_bot_brain` | Strzały bota w ~1 s kasowały Przesterowanie drużyny i nie dawały Uwadze opaść — AI łamało filar 2 | **P1 — naprawione (1.3.1)**: po Q wstrzymuje ogień 8 s, kuca i milczy, gdy dowódca kuca, strzela tylko z linią strzału; ≤70 px broni się zawsze |
+| 14 | `display_id` bota liczony z liczby graczy | `main.gd` `_reconcile_bots` | Bot i dołączający klient dostawali ten sam numer (P2) — regresja poz. 6 | **P1 — naprawione (1.3.1)**: wspólny licznik |
+| 15 | Hitstop (`Engine.time_scale`) na hoście | `feel.gd` | Spowalniał symulację serwera — szarpanie u wszystkich klientów przy każdym zabójstwie | **P1 — naprawione (1.3.1)**: na hoście z klientami tylko shake |
+| 16 | Próg budzenia wrogów 1,0 > hałas strzału zimnego M-83 (0,6) | `enemy.gd` | Pojedyncze strzały M-83 były dla wrogów nieme | **P2 — naprawione (1.3.1)**: próg 0,5 (kroki 0,25 nadal nie budzą) |
+| 17 | Postęp podnoszenia widoczny tylko u podnoszącego | `player.gd` | Leżący nie wiedział, że ktoś go ratuje | **P2 — naprawione (1.3.1)**: synchronizacja 10 Hz, HUD „Podnoszą cię… N%" |
+
+**Pozostałe znane ograniczenia:** bot podąża tylko za hostem (nie za dowolnym człowiekiem), brak WebSocket/relay fallback, brak celu misji i ekstrakcji (regeneracja Q „przy celu" z §8.4 nie ma jeszcze punktu zaczepienia), łup misji nie istnieje, więc wipe niczego nie odbiera.
+
+**Testy regresji (headless):** `--stealthtest=25` (sama pętla ciszy ze stalkerem — zwykli wrogowie są w tym teście usuwani; PASS = zasnął, 0 HP straty; wynik 1.3.1: zasnął po 20,5 s), `--wipetest` (wipe + restart, także z klientem).
+
+---
+
+## 20. Aneks A — Tabela misji (skrót)
+
+| # | Strefa | Misja | Typ celu | Boss |
+|---|--------|-------|----------|------|
+| 1.1 | Bór | Zaginiony Patrol | Zbieranie | — |
+| 1.2 | Bór | Przerwa w Nadawaniu | Aktywacja | — |
+| 1.3 | Bór | Gniazdo | Zniszczenie | — |
+| B1 | Bór | — | Walka | Pijawka |
+| 2.1 | Wieś | Cisza | Przejście | — |
+| 2.2 | Wieś | Piwnice | Ratunek | — |
+| 2.3 | Wieś | Dzwon | Obrona | — |
+| B2 | Wieś | — | Walka | Kapłan |
+| 3.1 | Kopalnia | Zjazd | Obrona w ruchu | — |
+| 3.2 | Kopalnia | Ciemność | Zbieranie | — |
+| 3.3 | Kopalnia | Żyły | Zniszczenie + przejazd | — |
+| B3 | Kopalnia | — | Pościg + walka | Matka Żył |
+| 4.1 | Obiekt 86 | Kwarantanna | Ratunek | — |
+| 4.2 | Obiekt 86 | Eksperyment 9 | Zbieranie + status | — |
+| 4.3 | Obiekt 86 | Wyciek | Ucieczka (timed) | — |
+| B4 | Obiekt 86 | — | Walka | Bliźniak |
+| 5.1 | Sarkofag | Sarkofag | Dostarczanie | — |
+| 5.2 | Sarkofag | Rdzeń | Wyłączenie (cisza) | — |
+| 5.3 | Sarkofag | Zejście | Platforming | — |
+| B5 | Sarkofag | — | Walka + odbicie | Kolekcjoner |
+| 6.1 | Martwa Cisza | Membrana | Przejście | — |
+| 6.2 | Martwa Cisza | Głosy | Nawigacja | — |
+| 6.3 | Martwa Cisza | Martwa Cisza | Gauntlet | — |
+| B6 | Martwa Cisza | — | Walka finałowa | Pierwszy Głos |
+
+**Razem:** 18 misji + 6 bossów. Szacowany czas kampanii: 4–5 h przejścia, 15–20 h z replayem i wyzwaniami.
+
+## 21. Aneks B — Bronie (ściąga)
+
+| Broń | Odblokowanie | Cena | Rola |
+|------|--------------|------|------|
+| M-83 „Krótki" | start | — | Domyślna, wszechstronna |
+| P-64 „Igła" | start | — | Sidearm, ∞ ammo |
+| Maczeta | start | — | Cicha, backstab |
+| SPREAD-12 | Strefa I | 400 zł | Szeroki ostrzał |
+| ŚRUT-8 | Strefa I | 500 zł | Bliski zasięg, odrzut |
+| CIĘGNO-6 | Strefa II | 600 zł | **Cicha** (harpun) |
+| SOKÓŁ-6 | Strefa II | 700 zł | Auto-namierzanie |
+| HKM-9 | Strefa III | 800 zł | DoT, kontrola tłumu |
+| GNIEW-4 | Strefa III | 900 zł | AoE, niszczenie gniazd |
+| WIDMO-1 | Strefa IV | 1200 zł | Przebicie, elitki |
+
+## 22. Aneks C — Historia wersji
+
+| Wersja | Data | Zmiany |
+|--------|------|--------|
+| 1.0 | — | Pierwszy pełny koncept produkcyjny |
+| 1.1 | 2026-10-05 | Korekta po analizie krytycznej: (a) hałas → zasób (Przesterowanie Q, §8.4/8.5) rozstrzyga napięcie Contra/horror, (b) realny balans Uwagi z wartościami z testów prototypu, (c) AI towarzysz w EA nie w 1.0 (§16.3), (d) budżet 1000–1600 h + kill criteria (§16.4/16.5), (e) cena $9.99 z uzasadnieniem mechaniki wiralowej (§17.3), (f) Epic odroczone — nie bierzemy First Run (§15), (g) rejestr znanych błędów prototypu (§19), (h) misje Strefy I przestawione pod Przesterowanie + AI |
+| 1.2 | 2026-10-05 | Wdrożenie priorytetów 1–3 w prototypie: pętla cichości naprawiona (test: stalker obudził się przy 89, zasnął przy 30, zero ataków), Przesterowanie Q działa (charges 2→1, przekierowanie celu), serwerowe pociski, synchronizacja przez MultiplayerSynchronizer, AI towarzysz + reconcile, limity kamery, stabilny display_id. Błędy P0/P1 z §19 zamknięte; zostały P2 (anticheat/host migration, nawigacja bota) i brak audio |
+| 1.3 | 2026-10-05 | Analiza „wciągająca, przyjemna gra": filar 7 „czucie gry przed zawartością" (§2, §23), down/revive zamiast respawnu po 3 s (§4), Stalker v2 — nasłuchiwanie, zapowiedź ataku, widoczność (§8.5), strategia „demo najpierw" (§16.0). W prototypie: coyote/buffer/jump cut, hitstop i shake, 3 bronie z modelem rozgrzania lufy, Trzosek i Wołek, down/revive, audio (85 ścieżek) |
+| 1.3.1 | 2026-10-05 | Audyt prototypu po 1.3 + poprawki (§19 poz. 11–17): synchronizacja postaci klienta (klient nie mógł się ruszyć), wipe podłączony, dyscyplina ognia bota (nie kasuje Q), `display_id` bota, hitstop wyłączony na hoście z klientami, próg budzenia wrogów, postęp podnoszenia u leżącego. Test ciszy izolowany od zwykłych wrogów (wynik z 1.2 przestał być miarodajny po ich dodaniu); dodano `--wipetest`. Dodano §23 |
+| 1.3.2 | 2026-10-05 | Audio: (a) pętle bez trzasków — filtr HP przed szwem zamiast po nim (amb_air, szept, oddech, muzyka klikały co obieg); (b) muzyka = dokładnie 16 taktów (11,43 s), serce = dokładnie 4 uderzenia — wcześniej rytm przeskakiwał przy każdym zapętleniu; (c) `tape()` czytał 0,35% za szybko (dryf taktu, zawijanie one-shotów); (d) słuchawka przypięta do kamery człowieka (skakała gracz↔bot co klatkę i stała w złym miejscu dla okluzji); (e) serce startuje po wejściu z lobby; (f) wygaszone warstwy muzyki się zatrzymują, nowa wchodzi w tym samym miejscu taktu; (g) słychać kroki kolegi i bota; (h) limiter na Masterze; (i) cisza po rozłączeniu |
+
+---
+
+## 23. Czucie gry — standard i priorytety z playtestów
+
+Filar 7 (§2): nowa zawartość dopiero, gdy podstawy są przyjemne. Poniższe wartości są **wdrożone w prototypie** (`player.gd`, `feel.gd`, `weapons.gd`, `enemy.gd`) i są punktem odniesienia — zmiana wymaga uzasadnienia z playtestu.
+
+### 23.1 Ruch i skok
+
+| Parametr | Wartość | Po co |
+|---|---|---|
+| Prędkość / kucanie | 95 / 45 px/s | Gracz szybszy od Stalkera (88), kucanie wyraźnie wolniejsze — koszt ciszy |
+| Coyote time | 0,10 s | Skok jeszcze chwilę po zejściu z krawędzi — brak „zjadanych" skoków |
+| Jump buffer | 0,10 s | Skok wciśnięty tuż przed lądowaniem się liczy |
+| Jump cut | ×0,45 | Puszczenie skoku skraca lot — kontrola wysokości |
+| Nietykalność po trafieniu | 0,6 s (1,2 s po podniesieniu, 1,5 s po respawnie) | Brak „serii" trafień od kilku wrogów naraz |
+| Twarde lądowanie | dźwięk + shake rosnące z czasem lotu (> 0,25 s) | Lądowanie jest aktywnością w sensie §8.1 |
+
+### 23.2 Strzał i trafienie
+
+| Broń | Rytm | Obrażenia | Hałas (zimna → gorąca lufa) | Feel |
+|---|---|---|---|---|
+| M-83 (auto) | 0,12 s | 8 | 0,6 → 2,6 | shake 0,7 |
+| SPREAD-12 | 0,26 s, 5 śrucin ±14° | 5×7 | 3,5 → 5,0 | shake 2,4, odrzut gracza 55 |
+| P-64 | 0,20 s | 10 | 1,0 → 1,6 | shake 0,5 |
+
+- Lufa grzeje się z każdym strzałem i stygnie 1,2/s: krótka seria jest tania, ciągły ogień drogi (§8.1).
+- Trafienie wroga: biały błysk 0,1 s, ogłuszenie 0,12 s, odrzut (Trzosek 70, Wołek 14).
+- **Hitstop:** zabójstwo Trzoska 50 ms, Wołka 90 ms, własne trafienie 70 ms; cooldown 250 ms (przy 8 strz./s hitstop na każde trafienie zamroziłby grę). **Na hoście z podłączonymi klientami hitstop jest wyłączony** — `Engine.time_scale` spowalniałby symulację wszystkim; zostaje shake.
+- Shake jest lokalny (kamera każdego peera), wygaszany czasem rzeczywistym.
+
+### 23.3 Priorytety po playteście
+
+Wypełniane po playteście „kiedy się nudziłeś, a kiedy się bałeś" (§16.0 pkt 2). Do tego czasu kolejność prac wyznacza §19.
+
+| Data | Osoby | Nuda (moment) | Strach (moment) | Wniosek → zmiana |
+|---|---|---|---|---|
+| — | — | — | — | — |

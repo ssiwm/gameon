@@ -1,0 +1,7 @@
+# Godot — cache importu, generowany przez `godot --headless --path prototype --import`
+.godot/
+*.tmp
+
+# Python
+__pycache__/
+*.pyc

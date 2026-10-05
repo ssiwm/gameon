@@ -1,0 +1,342 @@
+{
+ "alarm_bell": [
+  "sfx/world/alarm_bell",
+  0
+ ],
+ "amb_air": [
+  "amb/amb_air",
+  1
+ ],
+ "amb_drips": [
+  "amb/amb_drips",
+  1
+ ],
+ "amb_forest": [
+  "amb/amb_forest",
+  1
+ ],
+ "amb_machine": [
+  "amb/amb_machine",
+  1
+ ],
+ "amb_wind": [
+  "amb/amb_wind",
+  1
+ ],
+ "breath_loop": [
+  "sfx/player/breath_loop",
+  1
+ ],
+ "door_1": [
+  "sfx/world/door_1",
+  0
+ ],
+ "door_2": [
+  "sfx/world/door_2",
+  0
+ ],
+ "dry_fire": [
+  "sfx/weapons/dry_fire",
+  0
+ ],
+ "effort_1": [
+  "sfx/player/effort_1",
+  0
+ ],
+ "effort_2": [
+  "sfx/player/effort_2",
+  0
+ ],
+ "explosion_1": [
+  "sfx/weapons/explosion_1",
+  0
+ ],
+ "explosion_2": [
+  "sfx/weapons/explosion_2",
+  0
+ ],
+ "flare_ignite": [
+  "sfx/world/flare_ignite",
+  0
+ ],
+ "flare_loop": [
+  "sfx/world/flare_loop",
+  1
+ ],
+ "generator_loop": [
+  "sfx/world/generator_loop",
+  1
+ ],
+ "glass_break_1": [
+  "sfx/world/glass_break_1",
+  0
+ ],
+ "glass_break_2": [
+  "sfx/world/glass_break_2",
+  0
+ ],
+ "heart_fast_loop": [
+  "sfx/player/heart_fast_loop",
+  1
+ ],
+ "heart_slow_loop": [
+  "sfx/player/heart_slow_loop",
+  1
+ ],
+ "impact_flesh_1": [
+  "sfx/weapons/impact_flesh_1",
+  0
+ ],
+ "impact_flesh_2": [
+  "sfx/weapons/impact_flesh_2",
+  0
+ ],
+ "impact_flesh_3": [
+  "sfx/weapons/impact_flesh_3",
+  0
+ ],
+ "impact_hard_1": [
+  "sfx/weapons/impact_hard_1",
+  0
+ ],
+ "impact_hard_2": [
+  "sfx/weapons/impact_hard_2",
+  0
+ ],
+ "impact_hard_3": [
+  "sfx/weapons/impact_hard_3",
+  0
+ ],
+ "land_hard": [
+  "sfx/player/land_hard",
+  0
+ ],
+ "m83_shot_1": [
+  "sfx/weapons/m83_shot_1",
+  0
+ ],
+ "m83_shot_2": [
+  "sfx/weapons/m83_shot_2",
+  0
+ ],
+ "m83_shot_3": [
+  "sfx/weapons/m83_shot_3",
+  0
+ ],
+ "m83_shot_4": [
+  "sfx/weapons/m83_shot_4",
+  0
+ ],
+ "maczeta_1": [
+  "sfx/weapons/maczeta_1",
+  0
+ ],
+ "maczeta_2": [
+  "sfx/weapons/maczeta_2",
+  0
+ ],
+ "mine_beep_loop": [
+  "sfx/world/mine_beep_loop",
+  1
+ ],
+ "mus_chase": [
+  "music/mus_chase",
+  1
+ ],
+ "mus_combat": [
+  "music/mus_combat",
+  1
+ ],
+ "mus_silence": [
+  "music/mus_silence",
+  1
+ ],
+ "mus_tension": [
+  "music/mus_tension",
+  1
+ ],
+ "oc_load": [
+  "sfx/ui/oc_load",
+  0
+ ],
+ "p64_shot_1": [
+  "sfx/weapons/p64_shot_1",
+  0
+ ],
+ "p64_shot_2": [
+  "sfx/weapons/p64_shot_2",
+  0
+ ],
+ "p64_shot_3": [
+  "sfx/weapons/p64_shot_3",
+  0
+ ],
+ "player_down": [
+  "sfx/player/player_down",
+  0
+ ],
+ "player_hurt_1": [
+  "sfx/player/player_hurt_1",
+  0
+ ],
+ "player_hurt_2": [
+  "sfx/player/player_hurt_2",
+  0
+ ],
+ "radio_beep": [
+  "sfx/world/radio_beep",
+  0
+ ],
+ "radio_static_loop": [
+  "sfx/world/radio_static_loop",
+  1
+ ],
+ "reload_1": [
+  "sfx/weapons/reload_1",
+  0
+ ],
+ "reload_2": [
+  "sfx/weapons/reload_2",
+  0
+ ],
+ "reload_3": [
+  "sfx/weapons/reload_3",
+  0
+ ],
+ "revive": [
+  "sfx/player/revive",
+  0
+ ],
+ "ricochet_1": [
+  "sfx/weapons/ricochet_1",
+  0
+ ],
+ "ricochet_2": [
+  "sfx/weapons/ricochet_2",
+  0
+ ],
+ "stalker_appear": [
+  "sfx/stalker/stalker_appear",
+  0
+ ],
+ "stalker_growl_1": [
+  "sfx/stalker/stalker_growl_1",
+  0
+ ],
+ "stalker_growl_2": [
+  "sfx/stalker/stalker_growl_2",
+  0
+ ],
+ "stalker_shriek_1": [
+  "sfx/stalker/stalker_shriek_1",
+  0
+ ],
+ "stalker_shriek_2": [
+  "sfx/stalker/stalker_shriek_2",
+  0
+ ],
+ "stalker_step_1": [
+  "sfx/stalker/stalker_step_1",
+  0
+ ],
+ "stalker_step_2": [
+  "sfx/stalker/stalker_step_2",
+  0
+ ],
+ "stalker_step_3": [
+  "sfx/stalker/stalker_step_3",
+  0
+ ],
+ "stalker_whisper_loop": [
+  "sfx/stalker/stalker_whisper_loop",
+  1
+ ],
+ "step_concrete_1": [
+  "sfx/player/step_concrete_1",
+  0
+ ],
+ "step_concrete_2": [
+  "sfx/player/step_concrete_2",
+  0
+ ],
+ "step_concrete_3": [
+  "sfx/player/step_concrete_3",
+  0
+ ],
+ "step_dirt_1": [
+  "sfx/player/step_dirt_1",
+  0
+ ],
+ "step_dirt_2": [
+  "sfx/player/step_dirt_2",
+  0
+ ],
+ "step_dirt_3": [
+  "sfx/player/step_dirt_3",
+  0
+ ],
+ "step_metal_1": [
+  "sfx/player/step_metal_1",
+  0
+ ],
+ "step_metal_2": [
+  "sfx/player/step_metal_2",
+  0
+ ],
+ "step_metal_3": [
+  "sfx/player/step_metal_3",
+  0
+ ],
+ "step_water_1": [
+  "sfx/player/step_water_1",
+  0
+ ],
+ "step_water_2": [
+  "sfx/player/step_water_2",
+  0
+ ],
+ "step_water_3": [
+  "sfx/player/step_water_3",
+  0
+ ],
+ "sting_chase": [
+  "music/sting_chase",
+  0
+ ],
+ "sting_tension": [
+  "music/sting_tension",
+  0
+ ],
+ "tape_stop": [
+  "sfx/world/tape_stop",
+  0
+ ],
+ "ui_click": [
+  "sfx/ui/ui_click",
+  0
+ ],
+ "ui_confirm": [
+  "sfx/ui/ui_confirm",
+  0
+ ],
+ "ui_deny": [
+  "sfx/ui/ui_deny",
+  0
+ ],
+ "warn_pulse": [
+  "sfx/ui/warn_pulse",
+  0
+ ],
+ "whizz_1": [
+  "sfx/weapons/whizz_1",
+  0
+ ],
+ "whizz_2": [
+  "sfx/weapons/whizz_2",
+  0
+ ],
+ "whizz_3": [
+  "sfx/weapons/whizz_3",
+  0
+ ]
+}
