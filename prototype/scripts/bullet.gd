@@ -74,7 +74,11 @@ func _on_body_entered(body: Node) -> void:
 
 	if body.is_in_group("enemies"):
 		Audio.play_variant_at("impact_hard", 3, global_position, Audio.BUS_WORLD, -14.0)
-		body.take_bullet(global_position, damage)
+		# cele wrażliwe na kierunek (pancerny grzbiet Żyły) dostają też wektor lotu
+		if body.has_method("take_bullet_dir"):
+			body.take_bullet_dir(global_position, damage, direction)
+		else:
+			body.take_bullet(global_position, damage)
 		queue_free()
 
 ## Ściana = kafle mapy (TileMapLayer) albo dawne StaticBody2D. Kładki

@@ -236,7 +236,7 @@ func objective_text() -> String:
 		Phase.OBJECTIVE:
 			return "CEL: zniszcz gniazda  %d/%d" % [nests_total - nests_left, nests_total]
 		Phase.BOSS:
-			return "CEL: zabij Żyłę — matkę gniazd (tartak)"
+			return "CEL: zabij Żyłę — grzbiet pancerny, celuj w paszczę z dołu"
 		Phase.EXTRACT:
 			var me := _local_human()
 			var dir := ""
