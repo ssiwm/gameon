@@ -1,6 +1,6 @@
 # DEAD AIR '87 — Game Design Document
 
-**Wersja:** 1.3.1 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
+**Wersja:** 1.3.3 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
 **Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
 **Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
 **Silnik:** Godot 4.x + GodotSteam
@@ -615,9 +615,9 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 16 | Próg budzenia wrogów 1,0 > hałas strzału zimnego M-83 (0,6) | `enemy.gd` | Pojedyncze strzały M-83 były dla wrogów nieme | **P2 — naprawione (1.3.1)**: próg 0,5 (kroki 0,25 nadal nie budzą) |
 | 17 | Postęp podnoszenia widoczny tylko u podnoszącego | `player.gd` | Leżący nie wiedział, że ktoś go ratuje | **P2 — naprawione (1.3.1)**: synchronizacja 10 Hz, HUD „Podnoszą cię… N%" |
 
-**Pozostałe znane ograniczenia:** bot podąża tylko za hostem (nie za dowolnym człowiekiem), brak WebSocket/relay fallback, brak celu misji i ekstrakcji (regeneracja Q „przy celu" z §8.4 nie ma jeszcze punktu zaczepienia), łup misji nie istnieje, więc wipe niczego nie odbiera.
+**Pozostałe znane ograniczenia:** brak ciemności i latarki (§8.3 — filar 4 istnieje tylko w audio), brak bossa misji, brak WebSocket/relay fallback, łup misji nie istnieje, więc wipe odbiera tylko postęp próby.
 
-**Testy regresji (headless):** `--stealthtest=25` (sama pętla ciszy ze stalkerem — zwykli wrogowie są w tym teście usuwani; PASS = zasnął, 0 HP straty; wynik 1.3.1: zasnął po 20,5 s), `--wipetest` (wipe + restart, także z klientem).
+**Testy regresji (headless):** `--stealthtest=25` (sama pętla ciszy ze stalkerem — zwykli wrogowie są w tym teście usuwani; PASS = zasnął, 0 HP straty; wynik 1.3.1: zasnął po 20,5 s), `--wipetest` (wipe + restart, także z klientem), `--missiontest` (gniazda → ekstrakcja → sukces → nowa misja). `--port=N` pozwala je puścić przy otwartym oknie gry.
 
 ---
 
@@ -677,6 +677,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 1.3 | 2026-10-05 | Analiza „wciągająca, przyjemna gra": filar 7 „czucie gry przed zawartością" (§2, §23), down/revive zamiast respawnu po 3 s (§4), Stalker v2 — nasłuchiwanie, zapowiedź ataku, widoczność (§8.5), strategia „demo najpierw" (§16.0). W prototypie: coyote/buffer/jump cut, hitstop i shake, 3 bronie z modelem rozgrzania lufy, Trzosek i Wołek, down/revive, audio (85 ścieżek) |
 | 1.3.1 | 2026-10-05 | Audyt prototypu po 1.3 + poprawki (§19 poz. 11–17): synchronizacja postaci klienta (klient nie mógł się ruszyć), wipe podłączony, dyscyplina ognia bota (nie kasuje Q), `display_id` bota, hitstop wyłączony na hoście z klientami, próg budzenia wrogów, postęp podnoszenia u leżącego. Test ciszy izolowany od zwykłych wrogów (wynik z 1.2 przestał być miarodajny po ich dodaniu); dodano `--wipetest`. Dodano §23 |
 | 1.3.2 | 2026-10-05 | Audio: (a) pętle bez trzasków — filtr HP przed szwem zamiast po nim (amb_air, szept, oddech, muzyka klikały co obieg); (b) muzyka = dokładnie 16 taktów (11,43 s), serce = dokładnie 4 uderzenia — wcześniej rytm przeskakiwał przy każdym zapętleniu; (c) `tape()` czytał 0,35% za szybko (dryf taktu, zawijanie one-shotów); (d) słuchawka przypięta do kamery człowieka (skakała gracz↔bot co klatkę i stała w złym miejscu dla okluzji); (e) serce startuje po wejściu z lobby; (f) wygaszone warstwy muzyki się zatrzymują, nowa wchodzi w tym samym miejscu taktu; (g) słychać kroki kolegi i bota; (h) limiter na Masterze; (i) cisza po rozłączeniu |
+| 1.3.3 | 2026-10-05 | Prototyp: pętla misji z §4 / §16.0 pkt 1 — cel „zniszcz 3 gniazda" (misja 1.3; zniszczenie = hałas 8, budzi okolicę), ekstrakcja w punkcie najdalszym od drużyny (+1 ładunek Q wg §8.4), wymóg: cała stojąca drużyna 3 s w strefie, ekran wyniku (czas, upadki, próba), wipe = kolejna próba. Bot idzie za najbliższym stojącym człowiekiem (nie za hostem) |
 
 ---
 

@@ -2,6 +2,7 @@ extends Control
 ## HUD: pasek hałasu, HP, ostrzeżenie o stalkerze, status sieci, broń, down/revive.
 
 const Weapons := preload("res://scripts/weapons.gd")
+const Mission := preload("res://scripts/mission.gd")
 
 @onready var _bar: ProgressBar = $NoiseBar
 @onready var _noise_label: Label = $NoiseLabel
@@ -18,6 +19,36 @@ var _blink := 0.0
 ## warn_pulse grzmiałby bez przerwy.
 var _warn_was := false
 var _music_layer := -1
+var _objective: Label
+var _result: Panel
+var _result_text: Label
+
+## Linia celu i ekran wyniku tworzone w kodzie — main.tscn zostaje prosty.
+func _ready() -> void:
+	_objective = Label.new()
+	_objective.position = Vector2(170, 30)
+	_objective.size = Vector2(300, 18)
+	_objective.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_objective.add_theme_font_size_override("font_size", 11)
+	_objective.add_theme_color_override("font_color", Color(0.95, 0.85, 0.55))
+	add_child(_objective)
+
+	_result = Panel.new()
+	_result.position = Vector2(170, 80)
+	_result.size = Vector2(300, 190)
+	_result.visible = false
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.03, 0.04, 0.05, 0.92)
+	sb.border_color = Color(0.4, 1.0, 0.5, 0.7)
+	sb.set_border_width_all(1)
+	_result.add_theme_stylebox_override("panel", sb)
+	add_child(_result)
+	_result_text = Label.new()
+	_result_text.position = Vector2(10, 10)
+	_result_text.size = Vector2(280, 170)
+	_result_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_result_text.add_theme_font_size_override("font_size", 12)
+	_result.add_child(_result_text)
 
 func _process(delta: float) -> void:
 	_bar.value = NoiseMgr.level
@@ -32,6 +63,8 @@ func _process(delta: float) -> void:
 	var empty := maxi(0, NoiseMgr.OVERCHARGE_MAX - full)
 	_oc.text = "Q PRZESTEROWANIE: " + "|".repeat(full) + "_".repeat(empty)
 	_oc.modulate = Color(1, 0.85, 0.4) if full > 0 else Color(0.4, 0.4, 0.42)
+
+	_drive_mission()
 
 	_player = _find_local_player()
 	_status.text = _net_status()
@@ -93,6 +126,20 @@ func _drive_warning(delta: float) -> void:
 	if awake and not _warn_was:
 		Audio.play("warn_pulse", Audio.BUS_UI, -12.0)
 	_warn_was = awake
+
+func _drive_mission() -> void:
+	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
+	if m == null or not NoiseMgr.has_network():
+		_objective.text = ""
+		_result.visible = false
+		return
+	_objective.text = m.objective_text()
+	_result.visible = m.phase == Mission.Phase.SUCCESS
+	if _result.visible:
+		var secs := int(m.elapsed)
+		_result_text.text = "EKSTRAKCJA UDANA\n\nCzas: %d:%02d\nGniazda: %d/%d\nUpadki drużyny: %d\nPróba: %d\n\n%s" % [
+			secs / 60, secs % 60, m.nests_total, m.nests_total, m.downs, m.attempts,
+			"[Enter] nowa misja" if multiplayer.is_server() else "Czekaj — host zaczyna nową misję"]
 
 func _find_local_player() -> Node:
 	for p in get_tree().get_nodes_in_group("players"):
