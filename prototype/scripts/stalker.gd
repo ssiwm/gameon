@@ -12,6 +12,7 @@ extends CharacterBody2D
 ##   Ciało widać tylko z bliska; z daleka są same oczy
 
 const Lights := preload("res://scripts/lights.gd")
+const Nav := preload("res://scripts/nav.gd")
 
 const AWAKE_THRESHOLD := 60.0
 const SLEEP_THRESHOLD := 30.0
@@ -71,6 +72,13 @@ var _hunting_cached := false
 var _winding_cached := false
 var _overlay: Node2D
 var _lit_cd := 0.0
+## Ścieżka A* po powierzchniach (nav.gd) do target_pos.
+var _path: Array = []
+var _path_i := 0
+var _path_goal := Vector2.INF
+## Tor bieżącej krawędzi skoku/spadku jako łamana (punkty pośrednie).
+var _leg: Array[Vector2] = []
+var _leg_for := -1
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -103,6 +111,8 @@ func reset_enemy() -> void:
 	_listen = 0.0
 	_arrived = false
 	visible = false
+	_path = []
+	_path_goal = Vector2.INF
 
 func _physics_process(delta: float) -> void:
 	# sprawdzamy NA BIEŻĄCO: peer w _ready() to jeszcze OfflineMultiplayerPeer,
@@ -168,10 +178,64 @@ func _physics_process(delta: float) -> void:
 ## Ruch po powierzchniach poziomu: poziomo w stronę celu, wspinaczka tylko
 ## gdy jest już blisko celu w poziomie (cel na platformie). Ograniczony ścianami.
 ## Pełne A* przyjdzie z tilemapą poziomu (GDD §16.0).
+## Ruch po powierzchniach poziomu ścieżką A* (GDD §8.5, §16.0 pkt 5): poziomo
+## własną prędkością, skoki/spadki/zeskoki „wspinaczką" (CLIMB_SPEED).
+## Wcześniej szedł prosto i przenikał przez ściany (maska kolizji 0).
 func _move_toward_target(delta: float, noise: float) -> void:
 	var speed := HUNT_SPEED if noise >= HUNT_NOISE else LURK_SPEED
 	if _slow > 0.0:
 		speed *= 0.4
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl != null and lvl.nav != null:
+		_follow_path(delta, speed, lvl.nav)
+		return
+	_move_direct(delta, speed)
+
+func _follow_path(delta: float, speed: float, nav: AStar2D) -> void:
+	if target_pos != _path_goal:
+		_path_goal = target_pos
+		_path = nav.find_path(global_position, target_pos)
+		_path_i = 1
+		_leg_for = -1
+	if _path_i >= _path.size():
+		if not _arrived:
+			# dotarł do źródła hałasu (najbliższy punkt na powierzchni): NASŁUCHUJE
+			_arrived = true
+			_listen = LISTEN_TIME
+			_hesitate = HESITATION
+		return
+	var wp: Vector2 = _path[_path_i].pos
+	var kind: int = _path[_path_i].kind
+	var v := speed
+	var aim := wp
+	if kind != Nav.Edge.WALK:
+		v = minf(speed, CLIMB_SPEED)
+		if _leg_for != _path_i:
+			_leg_for = _path_i
+			_leg = _leg_points(global_position, wp, kind)
+		while not _leg.is_empty() and global_position.distance_to(_leg[0]) <= 0.5:
+			_leg.remove_at(0)
+		if not _leg.is_empty():
+			aim = _leg[0]
+	global_position = global_position.move_toward(aim, v * delta)
+	if global_position.distance_to(wp) < 0.5:
+		_path_i += 1
+
+## Tor krawędzi zamiast skosu (skos ścinał rogi kafli i przechodził przez
+## skrzynie). Odcinki biegną dokładnie korytarzami sprawdzanymi przy budowie
+## grafu (nav._jump_clear, spadek w kolumnie obok, zeskok w pionie).
+func _leg_points(from: Vector2, to: Vector2, kind: int) -> Array[Vector2]:
+	var up := 16.0   # kafel nad wyższym poziomem — przelot nad przeszkodą
+	match kind:
+		Nav.Edge.JUMP:
+			var top := minf(from.y, to.y) - up
+			return [Vector2(from.x, top), Vector2(to.x, top), to]
+		Nav.Edge.FALL:
+			return [Vector2(to.x, from.y), to]
+	return [to]
+
+## Bez grafu (np. stara scena): prosto do celu.
+func _move_direct(delta: float, speed: float) -> void:
 	var to_target := target_pos - global_position
 	if to_target.length() <= 5.0:
 		if not _arrived:

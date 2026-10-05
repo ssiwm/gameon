@@ -8,6 +8,7 @@ extends CharacterBody2D
 
 const Weapons := preload("res://scripts/weapons.gd")
 const Lights := preload("res://scripts/lights.gd")
+const Nav := preload("res://scripts/nav.gd")
 
 const SPEED := 95.0
 const CROUCH_SPEED := 45.0
@@ -338,10 +339,7 @@ func _local_brain(delta: float) -> void:
 ## Zeskok z kładki: dół + skok, stojąc na kładce. Na chwilę wyłączamy
 ## kolizję z warstwą kładek; skok jest wtedy „zjedzony".
 func _update_drop(delta: float, on_floor: bool) -> void:
-	if _drop_t > 0.0:
-		_drop_t -= delta
-		if _drop_t <= 0.0:
-			set_collision_mask_value(PLATFORM_LAYER_BIT, true)
+	if _tick_drop(delta):
 		return
 	if _jump_buf <= 0.0 or not on_floor or not Input.is_action_pressed("move_down"):
 		return
@@ -349,9 +347,23 @@ func _update_drop(delta: float, on_floor: bool) -> void:
 	if lvl == null or not lvl.is_platform_at(global_position):
 		return
 	_jump_buf = 0.0
+	_start_drop()
+
+func _start_drop() -> void:
+	if _drop_t > 0.0:
+		return
 	_drop_t = DROP_TIME
 	set_collision_mask_value(PLATFORM_LAYER_BIT, false)
 	position.y += 1.0
+
+## Zwraca true, dopóki trwa zeskok.
+func _tick_drop(delta: float) -> bool:
+	if _drop_t <= 0.0:
+		return false
+	_drop_t -= delta
+	if _drop_t <= 0.0:
+		set_collision_mask_value(PLATFORM_LAYER_BIT, true)
+	return true
 
 func _update_weapon_select() -> void:
 	if Input.is_action_just_pressed("weapon_1"):
@@ -626,15 +638,23 @@ func _update_breath() -> void:
 const LEADER_SWITCH := 60.0
 
 var _bot_target_pos := Vector2.ZERO
+## Ścieżka A* (nav.gd): lista kroków {pos, kind, id}; _bot_path_i = następny krok.
+var _bot_path: Array = []
+var _bot_path_i := 0
+var _bot_stuck := 0.0
+var _bot_prev_x := 0.0
 var _bot_leader: Node2D = null
 var _bot_wants_jump := false
 var _bot_repath := 0.0
 
 func _bot_brain(delta: float) -> void:
+	_tick_drop(delta)
 	_bot_repath -= delta
-	if _bot_repath <= 0.0:
+	# trasę liczymy tylko z ziemi — w locie najbliższy węzeł jest „pod nami"
+	if _bot_repath <= 0.0 and is_on_floor():
 		_bot_repath = 0.4
 		_pick_bot_goal()
+		_bot_plan()
 
 	# podnoszenie leżącego towarzysza — bot nie jest szybszy od człowieka (GDD §4)
 	var downed := _downed_teammate()
@@ -651,18 +671,25 @@ func _bot_brain(delta: float) -> void:
 	# latarka jak u dowódcy — bot nie świeci sam (światło = hałas, §8.3)
 	flashlight = leader != null and leader.flashlight and not crouching and battery > 1.0
 
-	var dx := _bot_target_pos.x - global_position.x
+	# Ruch po ścieżce A*; bez grafu — po staremu (prosto do celu + skok przy ścianie).
+	var has_path := not _bot_path.is_empty()
+	var goal_x := _bot_follow_path() if has_path else _bot_target_pos.x
+	var dx := goal_x - global_position.x
 	var dy := _bot_target_pos.y - global_position.y
-	if reviving or absf(dx) < 8.0:
+	var done := _bot_path_i >= _bot_path.size()
+	var dead_zone := 8.0 if done else 3.0
+	if reviving or absf(dx) < dead_zone:
 		velocity.x = 0.0
 	else:
-		velocity.x = signf(dx) * (CROUCH_SPEED if crouching else SPEED * 0.85)
+		var spd := SPEED if not is_on_floor() else (CROUCH_SPEED if crouching else SPEED * 0.85)
+		velocity.x = signf(dx) * spd
+	_bot_check_stuck(delta, done or reviving)
 	# odrzut (np. od pocisku kolegi) działa też na bota
 	_kick = move_toward(_kick, 0.0, KICK_DECAY * delta)
 	velocity.x += _kick
 	if not is_on_floor():
 		velocity.y = minf(velocity.y + GRAVITY * delta, MAX_FALL)
-	elif _bot_wants_jump or (not crouching and ((absf(dx) > 6.0 and is_on_wall()) or (dy < -24.0 and absf(dx) < 70.0))):
+	elif _bot_wants_jump or (not has_path and not crouching and ((absf(dx) > 6.0 and is_on_wall()) or (dy < -24.0 and absf(dx) < 70.0))):
 		velocity.y = JUMP_VELOCITY
 	_bot_wants_jump = false
 	move_and_slide()
@@ -727,6 +754,64 @@ func _los_state(target: Node2D) -> int:
 func _aim_ok(d: Vector2) -> bool:
 	# strzela tylko gdy wróg jest mniej więcej na tej samej wysokości lub tuż obok
 	return absf(d.y) < 60.0 or absf(d.x) < 40.0
+
+## Nowa trasa A* do _bot_target_pos (krok 0 = miejsce, w którym stoimy).
+func _bot_plan() -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null or lvl.nav == null:
+		_bot_path = []
+		return
+	_bot_path = lvl.nav.find_path(global_position, _bot_target_pos)
+	_bot_path_i = 1
+
+func _cell_id(nav: AStar2D) -> int:
+	return int(floor((global_position.y - 1.0) / 16.0)) * nav.cols + int(floor(global_position.x / 16.0))
+
+## Zwraca docelowe x na tę klatkę i ustawia chęć skoku / zeskoku.
+## Skok: najpierw dojście do punktu wybicia (poprzedni węzeł), w locie sterowanie
+## do węzła docelowego. Zeskok: stanąć nad kładką i zeskoczyć.
+func _bot_follow_path() -> float:
+	if _bot_path_i >= _bot_path.size():
+		return _bot_target_pos.x
+	var lvl := get_tree().get_first_node_in_group("level")
+	var on_floor := is_on_floor()
+	if on_floor:
+		var me := _cell_id(lvl.nav)
+		# węzeł osiągnięty (także po przeskoczeniu kilku naraz)
+		for i in range(_bot_path_i, mini(_bot_path_i + 4, _bot_path.size())):
+			if _bot_path[i].id == me:
+				_bot_path_i = i + 1
+				break
+		if _bot_path_i >= _bot_path.size():
+			return _bot_target_pos.x
+	var step: Dictionary = _bot_path[_bot_path_i]
+	var prev: Dictionary = _bot_path[_bot_path_i - 1]
+	if not on_floor:
+		return step.pos.x
+	match step.kind:
+		Nav.Edge.JUMP:
+			if absf(global_position.x - prev.pos.x) <= 4.0:
+				_bot_wants_jump = true
+				crouching = false
+				return step.pos.x
+			return prev.pos.x
+		Nav.Edge.DROP:
+			if absf(global_position.x - prev.pos.x) <= 4.0:
+				_start_drop()
+			return prev.pos.x
+	return step.pos.x
+
+## Zablokowany na ziemi (np. skok nie wyszedł) → nowa trasa i podskok.
+func _bot_check_stuck(delta: float, idle: bool) -> void:
+	if idle or not is_on_floor() or absf(global_position.x - _bot_prev_x) > 0.5:
+		_bot_stuck = 0.0
+		_bot_prev_x = global_position.x
+		return
+	_bot_stuck += delta
+	if _bot_stuck > 0.8:
+		_bot_stuck = 0.0
+		_bot_plan()
+		_bot_wants_jump = true
 
 func _pick_bot_goal() -> void:
 	# 1) leżący towarzysz do podniesienia

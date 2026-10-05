@@ -16,6 +16,7 @@ extends Node2D
 ##   -  rusztowanie drewniane (jednokierunkowe)
 ##   b  tło: beton (wnętrze)  w  tło: drewno (pnie, belki)
 ##   S  start  E  wyjście  T  Trzosek  W  Wołek  N  gniazdo  X  dom Stalkera
+##   B  Żyła — matka gniazd (boss misji)
 
 const TILE := 16
 ## Warstwy fizyki: bryły na 1 (jak dawny World), kładki na 16 — pociski
@@ -24,6 +25,7 @@ const LAYER_SOLID := 1
 const LAYER_PLATFORM := 16
 
 const Lights := preload("res://scripts/lights.gd")
+const Nav := preload("res://scripts/nav.gd")
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const NEST_SCENE := preload("res://scenes/nest.tscn")
 const STALKER_SCENE := preload("res://scenes/stalker.tscn")
@@ -54,7 +56,7 @@ const MAP := [
 	"##.......w...w.---bbbbbbbbbbbbbbbbbbC...........=========.....===========...=========..........w......-------......w..........##",
 	"##.......w...w....bbbbbbbbbbbbbbbbbbC..........................................................w.........w.........w..........##",
 	"##.......w..---...bbbbbbbbbbbbbbbbbb........=========...===========...===========.............-------....w.........w..........##",
-	"##.ES..S.w...w....bbbbbbbbTbTbTbbNbb..................M.....W.........X...M.......T.T..........w.........w....W....w........E.##",
+	"##.ES..S.w...w....bbbbbbbbTbTbTbbNbb..................M.....W.........X...M.......T.T..........w.........w....W....w...B....E.##",
 	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
@@ -79,6 +81,9 @@ var bounds := Rect2()
 var spawns: Array[Vector2] = []
 var exits: Array[Vector2] = []
 var stalker_home := Vector2.ZERO
+var boss_home := Vector2.ZERO
+## Graf A* platformówki (nav.gd) — bot i Stalker.
+var nav: AStar2D
 
 var _solid: TileMapLayer
 var _back: TileMapLayer
@@ -100,6 +105,8 @@ func _ready() -> void:
 	_solid.tile_set = ts
 	add_child(_solid)
 	_build_map()
+	nav = Nav.new()
+	nav.build((MAP[0] as String).length(), MAP.size(), _is_solid, _is_platform_cell)
 	_spawn_entities()
 
 # ---------------------------------------------------------------- mapa
@@ -140,6 +147,10 @@ func _is_solid(c: int, r: int) -> bool:
 		return true
 	var ch := _ch(c, r)
 	return KINDS.has(ch) and KINDS[ch][2] == 0
+
+func _is_platform_cell(c: int, r: int) -> bool:
+	var ch := _ch(c, r)
+	return KINDS.has(ch) and KINDS[ch][2] == 1
 
 ## Maska odsłoniętych boków: 1 góra, 2 prawo, 4 dół, 8 lewo.
 func _exposure(c: int, r: int) -> int:
