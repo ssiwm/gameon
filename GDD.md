@@ -1,6 +1,6 @@
 # DEAD AIR '87 — Game Design Document
 
-**Wersja:** 1.3.5 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
+**Wersja:** 1.3.6 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
 **Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
 **Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
 **Silnik:** Godot 4.x + GodotSteam
@@ -681,6 +681,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 1.3.3 | 2026-10-05 | Prototyp: pętla misji z §4 / §16.0 pkt 1 — cel „zniszcz 3 gniazda" (misja 1.3; zniszczenie = hałas 8, budzi okolicę), ekstrakcja w punkcie najdalszym od drużyny (+1 ładunek Q wg §8.4), wymóg: cała stojąca drużyna 3 s w strefie, ekran wyniku (czas, upadki, próba), wipe = kolejna próba. Bot idzie za najbliższym stojącym człowiekiem (nie za hostem) |
 | 1.3.4 | 2026-10-05 | Friendly fire = hałas (filar 3): na jednej płaszczyźnie drużyna stoi w kolejce i seria M-83 w plecy kładła kolegę — kara za samo ustawienie. Pocisk kolegi przelatuje, trafiony krzyczy (`N_FF` = 4, cooldown 0,6 s ≈ 6,7 Uwagi/s przy ciągłej serii) i dostaje odrzut; obrażenie tylko od strzelby z bliska. Bot: linia strzału uwzględnia ludzi (wcześniej strzelał przez plecy), przy zasłonięciu podskakuje. Następny krok: mapa wielopoziomowa na TileMapLayer (drużyna w pionie, A*) |
 | 1.3.5 | 2026-10-05 | Prototyp: (a) **mapa na TileMapLayer** z siatki ASCII (`level.gd`) — 3 sekcje: las + posterunek (wataha w korytarzu, obejście dachem), arena z 3 poziomami kładek (wrogowie z obu stron), tartak z rusztowaniami nad wodą; kładki jednokierunkowe (wskok od spodu, zeskok dół+skok) rozkładają drużynę w pionie; kroki czytają powierzchnię z kafla; wyjścia na obu końcach mapy. (b) **Ciemność i latarka** wg §8.3 (szczegóły tamże). Testy: stealth/mission/wipe PASS, w sieci latarka klienta budzi watahę na serwerze |
+| 1.3.6 | 2026-10-05 | Po pierwszej sesji: (a) **ciemniej bez latarki** — światło otoczenia i niebo strojone pomiarem luminancji (§8.3); (b) **warstwa muzyki „cisza"** (Uwaga < 20%) grała statyczny, nieprzyjemny dźwięk: wszystkie 4 akordy naraz (dysonansowy klaster 24 pił), 4 suby dudniące 6–21 Hz, wąskopasmowy szum (56% dudnienia obwiedni) i filtr przesuwany przez całą pętlę. Teraz jeden akord na takt z przenikaniem 0,6 s, sub-pedał D z pełną liczbą okresów w pętli, bez szumu i saturacji |
 
 ---
 
