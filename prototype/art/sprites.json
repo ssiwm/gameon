@@ -260,7 +260,7 @@
     24,
     9
    ],
-   "glow": false,
+   "glow": true,
    "anims": {
     "m83": {
      "row": 0,

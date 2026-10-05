@@ -1,7 +1,9 @@
 extends Control
 ## In-game HUD (English). Built in code on the shared theme (ui_theme.gd).
 ##
-## Layout (640×360 viewport):
+## Skala: cały HUD jest rysowany w 70% (UI_SCALE) — węzeł ma `scale` i logiczny rozmiar
+## viewport / UI_SCALE (≈914×514), więc układ liczy się względem `size`, nie stałych 640×360.
+## Layout (proporcje jak w viewporcie 640×360):
 ##   top-left    status card — NOISE meter with thresholds, HEALTH hearts,
 ##               OVERCHARGE charges, weapon slots, flashlight battery
 ##   top-centre  objective card — phase, objective, hint, boss bar
@@ -16,10 +18,16 @@ const Weapons := preload("res://scripts/weapons.gd")
 const Mission := preload("res://scripts/mission.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 
+## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
+const UI_SCALE := 0.7
+const MARGIN := 8.0              ## odstęp kart od krawędzi (jednostki logiczne HUD)
 const CONTROLS_SHOW_S := 20.0
 const NOISE_COL_CALM := Color(0.62, 0.72, 0.78)
 const OBJ_W := 250.0             ## szerokość treści karty celu (zawijanie)
-const OBJ_CENTER_X := 335.0      ## między kartą stanu (do ~195) a sesją (od 480)
+const SESSION_W := 152.0         ## szerokość bloku „sesja + zegar" w prawym górnym rogu
+const WARN_Y := 0.255            ## wysokość ostrzeżenia nad środkiem ekranu (ułamek wysokości; 92/360)
+const CENTER_Y := 0.39           ## napis „SQUAD DOWN" (140/360)
+const PROMPT_Y := 0.81           ## pasek kontekstowy (292/360)
 
 ## Horizontal bar with optional threshold ticks.
 class Bar extends Control:
@@ -111,6 +119,9 @@ var _slot_off: StyleBoxFlat
 func _ready() -> void:
 	theme = UiTheme.get_theme()
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# pełny ekran w jednostkach logicznych: viewport / UI_SCALE, skala 0.7 od lewego górnego rogu
+	set_anchors_preset(Control.PRESET_TOP_LEFT)
+	scale = Vector2(UI_SCALE, UI_SCALE)
 	_build_status_card()
 	_build_objective_card()
 	_build_session()
@@ -118,6 +129,23 @@ func _ready() -> void:
 	_build_prompt()
 	_build_controls()
 	_build_result()
+	get_viewport().size_changed.connect(_fit)
+	_fit()
+
+## Dopasowuje rozmiar logiczny do viewportu i układa elementy przypięte do krawędzi / środka.
+func _fit() -> void:
+	size = get_viewport_rect().size / UI_SCALE
+	var w := size.x
+	var h := size.y
+	_place(_session, Vector2(w - MARGIN - SESSION_W, MARGIN), Vector2(SESSION_W, 12))
+	_place(_clock, Vector2(w - MARGIN - SESSION_W, MARGIN + 11.0), Vector2(SESSION_W, 14))
+	var cw := 400.0
+	_place(_warn, Vector2((w - cw) * 0.5, h * WARN_Y), Vector2(cw, 20))
+	_place(_warn_sub, Vector2((w - cw) * 0.5, h * WARN_Y + 20.0), Vector2(cw, 12))
+	_place(_center, Vector2((w - cw) * 0.5, h * CENTER_Y), Vector2(cw, 28))
+	_place(_center_sub, Vector2((w - cw) * 0.5, h * CENTER_Y + 28.0), Vector2(cw, 16))
+	_place(_controls, Vector2(MARGIN, h - 16.0), Vector2(w - 2.0 * MARGIN, 12))
+	_place(_f1, Vector2(w - MARGIN - SESSION_W, h - 16.0), Vector2(SESSION_W, 12))
 
 # ---------------------------------------------------------------- budowa
 
@@ -144,7 +172,7 @@ func _row(parent: Container, caption: String) -> HBoxContainer:
 	return r
 
 func _build_status_card() -> void:
-	var card := _card(Vector2(8, 8))
+	var card := _card(Vector2(MARGIN, MARGIN))
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
 	card.add_child(box)
@@ -228,7 +256,7 @@ func _build_status_card() -> void:
 	lr.add_child(_battery_note)
 
 func _build_objective_card() -> void:
-	_obj_card = _card(Vector2(220, 8))
+	_obj_card = _card(Vector2(MARGIN, MARGIN))
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 	_obj_card.add_child(box)
@@ -256,27 +284,21 @@ func _build_objective_card() -> void:
 func _build_session() -> void:
 	_session = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
 	add_child(_session)
-	_place(_session, Vector2(480, 8), Vector2(152, 12))
 	_clock = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
 	add_child(_clock)
-	_place(_clock, Vector2(480, 19), Vector2(152, 14))
 
 func _build_center() -> void:
 	_warn = UiTheme.label("", 14, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_warn)
-	_place(_warn, Vector2(120, 92), Vector2(400, 20))
 	_warn_sub = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_warn_sub)
-	_place(_warn_sub, Vector2(120, 112), Vector2(400, 12))
 	_center = UiTheme.label("", 20, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_center)
-	_place(_center, Vector2(120, 140), Vector2(400, 28))
 	_center_sub = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_center_sub)
-	_place(_center_sub, Vector2(120, 168), Vector2(400, 16))
 
 func _build_prompt() -> void:
-	_prompt_card = _card(Vector2(220, 286))
+	_prompt_card = _card(Vector2(MARGIN, MARGIN))
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)
 	_prompt_card.add_child(box)
@@ -291,13 +313,11 @@ func _build_controls() -> void:
 		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J/LMB fire · R reload · V/RMB melee · 1-3 gun · E take/revive · Q lure · L light",
 		7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_controls)
-	_place(_controls, Vector2(8, 344), Vector2(624, 12))
 	_f1 = UiTheme.label("F1  controls", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
 	add_child(_f1)
-	_place(_f1, Vector2(480, 344), Vector2(152, 12))
 
 func _build_result() -> void:
-	_result = _card(Vector2(200, 92))
+	_result = _card(Vector2(MARGIN, MARGIN))
 	_result.custom_minimum_size = Vector2(240, 0)
 	var rb := UiTheme.panel_box()
 	rb.bg_color = Color(0.02, 0.025, 0.035, 0.95)
@@ -475,9 +495,9 @@ func _drive_mission() -> void:
 		_boss_name.text = "THE VEIN — MOTHER OF NESTS" + ("   ·   ENRAGED" if boss.phase >= 2 else "")
 	# karta celu: wyśrodkowana, szerokość wg treści
 	_obj_card.reset_size()
-	_obj_card.position = Vector2(OBJ_CENTER_X - _obj_card.size.x * 0.5, 8.0)
+	_obj_card.position = Vector2((size.x - _obj_card.size.x) * 0.5, MARGIN)
 	# ostrzeżenie zawsze pod kartą celu (karta bossa jest wyższa)
-	var wy := maxf(92.0, _obj_card.position.y + _obj_card.size.y + 10.0)
+	var wy := maxf(size.y * WARN_Y, _obj_card.position.y + _obj_card.size.y + 10.0)
 	_warn.position.y = wy
 	_warn_sub.position.y = wy + 20.0
 
@@ -497,7 +517,7 @@ func _fill_result(m: Node) -> void:
 		_result_stats.add_child(UiTheme.label(row[1], 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
 	_result_prompt.text = "[ENTER]  New mission" if multiplayer.is_server() else "Waiting for the host to start a new mission…"
 	_result.reset_size()
-	_result.position = Vector2(320.0 - _result.size.x * 0.5, 180.0 - _result.size.y * 0.5)
+	_result.position = (size - _result.size) * 0.5
 
 ## Pasek kontekstowy: wipe, leżenie, podnoszenie, ekstrakcja.
 func _drive_prompt() -> void:
@@ -549,7 +569,7 @@ func _drive_prompt() -> void:
 		_prompt_bar.fill = col
 		_prompt_bar.queue_redraw()
 		_prompt_card.reset_size()
-		_prompt_card.position = Vector2(320.0 - _prompt_card.size.x * 0.5, 292.0)
+		_prompt_card.position = Vector2((size.x - _prompt_card.size.x) * 0.5, size.y * PROMPT_Y)
 
 func _drive_controls() -> void:
 	var show := _session_t < CONTROLS_SHOW_S if _controls_mode < 0 else _controls_mode == 1
