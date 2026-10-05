@@ -14,6 +14,7 @@ const WIPE_DELAY := 3.0
 
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
 const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
+const DREAD := preload("res://scripts/dread.gd")
 
 ## >0 w trakcie odliczania do restartu po wipe; widoczne na każdym peerze (HUD).
 var wipe_left := 0.0
@@ -34,6 +35,9 @@ func _ready() -> void:
 	mission = MISSION_SCRIPT.new()
 	mission.name = "Mission"
 	add_child(mission)
+	var dread := DREAD.new()
+	dread.name = "Dread"
+	add_child(dread)
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)

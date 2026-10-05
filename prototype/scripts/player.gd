@@ -42,8 +42,8 @@ const FF_KICK := 70.0          ## odrzut od pocisku kolegi (px/s, wygasa KICK_DE
 const FF_COOLDOWN := 0.6       ## krzyk/hałas od FF najwyżej raz na tyle sekund
 
 # Down / revive (GDD §4)
-const NAME_SIZE := 6            ## etykieta nad głową (px świata) — mała, żeby nie dominowała nad sylwetką
-const BLEED_TIME := 25.0
+const NAME_SIZE := 4            ## etykieta nad głową (px świata) — mała, żeby nie dominowała nad sylwetką
+const BLEED_TIME := 10.0
 const REVIVE_TIME := 4.0
 const REVIVE_RANGE := 26.0
 const REVIVE_HP := 2
@@ -795,6 +795,10 @@ func _bot_brain(delta: float) -> void:
 	else:
 		var spd := SPEED if not is_on_floor() else (CROUCH_SPEED if crouching else SPEED * 0.85)
 		velocity.x = signf(dx) * spd
+	# skrzynia / beczka na drodze: przeskakujemy ją (graf A* nie zna rekwizytów)
+	if is_on_floor() and not reviving and absf(velocity.x) > 0.0 and _prop_ahead(signf(velocity.x)):
+		_bot_wants_jump = true
+		crouching = false
 	_bot_check_stuck(delta, done or reviving)
 	# odrzut (np. od pocisku kolegi) działa też na bota
 	_kick = move_toward(_kick, 0.0, KICK_DECAY * delta)
@@ -909,6 +913,15 @@ func _bot_follow_path() -> float:
 				_start_drop()
 			return prev.pos.x
 	return step.pos.x
+
+## Czy tuż przed botem (kierunek dir) stoi rekwizyt fizyczny — skrzynia albo beczka.
+## Skok (42 px) przekracza ich wysokość (14–15 px), także dwóch ułożonych na sobie.
+func _prop_ahead(dir: float) -> bool:
+	var col := KinematicCollision2D.new()
+	if not test_move(global_transform, Vector2(dir * 6.0, 0.0), col):
+		return false
+	var c := col.get_collider() as Node
+	return c != null and c.is_in_group("props")
 
 ## Zablokowany na ziemi (np. skok nie wyszedł) → nowa trasa i podskok.
 func _bot_check_stuck(delta: float, idle: bool) -> void:
