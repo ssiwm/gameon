@@ -192,6 +192,7 @@ func _setup_local() -> void:
 	_camera.enabled = local_human
 	if local_human:
 		_camera.make_current()
+		_camera.add_child(_dust_motes())
 		# granice kamery z mapy (level.gd) zamiast stałych z player.tscn
 		var lvl := get_tree().get_first_node_in_group("level")
 		if lvl != null:
@@ -221,6 +222,26 @@ func _process(delta: float) -> void:
 func _fx_root() -> Node:
 	var lvl := get_tree().get_first_node_in_group("level")
 	return lvl if lvl != null else get_tree().current_scene
+
+## Pył w powietrzu wokół kadru — cieniowany, więc widać go tylko w świetle
+## (snop latarki „ma objętość"). Emitowany w świecie, nie w kadrze.
+func _dust_motes() -> CPUParticles2D:
+	var p := CPUParticles2D.new()
+	p.amount = 70
+	p.lifetime = 9.0
+	p.preprocess = 9.0
+	p.local_coords = false
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	p.emission_rect_extents = Vector2(230, 140)
+	p.direction = Vector2(1, -0.2)
+	p.spread = 180.0
+	p.initial_velocity_min = 2.0
+	p.initial_velocity_max = 7.0
+	p.gravity = Vector2(0.6, 1.2)
+	p.scale_amount_min = 0.6
+	p.scale_amount_max = 1.3
+	p.color = Color(0.8, 0.78, 0.7, 0.55)
+	return p
 
 func _in_water() -> bool:
 	var lvl := get_tree().get_first_node_in_group("level")

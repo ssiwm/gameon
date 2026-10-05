@@ -22,6 +22,7 @@ var alive := true
 var _flash := 0.0
 var _net_timer := 0.0
 var _glow: PointLight2D
+var _embers: CPUParticles2D
 var _overlay: Node2D
 
 func _ready() -> void:
@@ -33,6 +34,21 @@ func _ready() -> void:
 	_glow.position = Vector2(0, -8)
 	add_child(_glow)
 	_overlay = Lights.add_overlay(self)
+	# żar unoszący się nad gniazdem — widać je z daleka w mroku
+	_embers = CPUParticles2D.new()
+	_embers.amount = 10
+	_embers.lifetime = 1.8
+	_embers.position = Vector2(0, -12)
+	_embers.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	_embers.emission_rect_extents = Vector2(8, 3)
+	_embers.direction = Vector2.UP
+	_embers.spread = 25.0
+	_embers.initial_velocity_min = 6.0
+	_embers.initial_velocity_max = 16.0
+	_embers.gravity = Vector2(0, -4)
+	_embers.color = Color(1.0, 0.55, 0.2, 0.8)
+	_embers.material = Lights.unshaded()
+	add_child(_embers)
 
 func is_threat() -> bool:
 	return false

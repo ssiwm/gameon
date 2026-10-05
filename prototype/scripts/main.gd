@@ -33,6 +33,7 @@ func _ready() -> void:
 	mission = MISSION_SCRIPT.new()
 	mission.name = "Mission"
 	add_child(mission)
+	_setup_post()
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
@@ -44,6 +45,30 @@ func _ready() -> void:
 	_lobby.host_requested.connect(func() -> void: Audio.play("ui_confirm", Audio.BUS_UI, -8.0))
 	_lobby.join_requested.connect(func(_ip: String) -> void: Audio.play("ui_click", Audio.BUS_UI, -8.0))
 	_handle_cmdline()
+
+# ---------------------------------------------------------------- post-process
+
+## Filtr VHS na świat (warstwa 5) — pod UI (warstwa 10), żeby HUD był czytelny.
+## F2 włącza/wyłącza (dostępność: ziarno i aberracja nie każdemu służą).
+var _post: CanvasLayer
+
+func _setup_post() -> void:
+	$UI.layer = 10
+	_post = CanvasLayer.new()
+	_post.name = "Post"
+	_post.layer = 5
+	var rect := ColorRect.new()
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = preload("res://scripts/vhs.gdshader")
+	rect.material = mat
+	_post.add_child(rect)
+	add_child(_post)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("vhs"):
+		_post.visible = not _post.visible
 
 # ---------------------------------------------------------------- wipe (GDD §4)
 

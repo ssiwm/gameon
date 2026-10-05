@@ -98,6 +98,7 @@ func _ready() -> void:
 	if dark != null:
 		dark.color = Lights.AMBIENT
 	RenderingServer.set_default_clear_color(Lights.SKY)
+	add_child(preload("res://scripts/backdrop.gd").new())
 	var ts := _build_tileset()
 	_back = TileMapLayer.new()
 	_back.name = "Back"
