@@ -23,6 +23,21 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
 - **pętla misji** (GDD §4): zniszcz 3 gniazda (głośne — budzą okolicę) → budzi się **Żyła, matka gniazd** (boss w tartaku: paszcza otwiera się tylko na chwilę po ataku — wtedy strzelaj; ataki z zapowiedzią: macka, fala ogona po podłodze — przeskocz, plucie zarodnikami; latarka w paszczę podczas zapowiedzi ją ogłusza, Q w pobliżu ją odciąga; przy 33% HP krzyk budzi Stalkera; +1 ładunek Q) → po jej śmierci wyjście otwiera się w punkcie najdalszym od drużyny → cała stojąca drużyna 3 s przy flarze → ekran wyniku, host [Enter] = nowa misja
 - **nawigacja A*** (`nav.gd`): bot chodzi za drużyną po całej mapie (skoki, zeskoki przez kładki), Stalker chodzi po powierzchniach zamiast przez ściany
 
+## Poziomy trudności
+
+Host wybiera w lobby przyciskiem **DIFFICULTY** albo flagą `--difficulty=easy|normal|hard` (domyślnie **NORMAL** = dotychczasowa gra). Wartość trafia do klientów przy dołączeniu, widać ją w HUD (prawy górny róg). Mnożniki: `scripts/difficulty.gd` (autoload `Difficulty`).
+
+| | EASY | NORMAL | HARD |
+|---|---|---|---|
+| HP wrogów / Żyły | ×0,7 | ×1 | ×1,35 / ×1,4 |
+| Prędkość wrogów / Stalkera | ×0,85 | ×1 | ×1,15 / ×1,05 (Stalker nadal wolniejszy od gracza) |
+| Zapowiedź i przerwy ataków (wrogowie, Stalker, Żyła) | ×1,3 | ×1 | ×0,8 |
+| Zasięg słyszenia wrogów | ×0,8 | ×1 | ×1,25 |
+| Obrażenia wrogów | Wołek 2→1 | bez zmian | bez zmian |
+| Przyrost Uwagi (hałas) | ×0,75 | ×1 | ×1,25 |
+| Drop apteczek / amunicji | ×1,5 | ×1 | ×0,7 |
+| Wykrwawianie / podnoszenie kolegi | 37,5 s / 3 s | 25 s / 4 s | 17,5 s / 5 s |
+
 ## Uruchomienie
 
 ```bash
@@ -94,7 +109,7 @@ godot --headless --path . -- --host --wipetest --autoquit=8
 godot --headless --path . -- --host --missiontest --autoquit=9
 ```
 
-Flagi: `--host`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
+Flagi: `--host`, `--difficulty=easy|normal|hard`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
 
 ## Grafika — generowanie i podmiana
 

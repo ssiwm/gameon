@@ -68,7 +68,7 @@ func _physics_process(delta: float) -> void:
 		_vel.y += FALL_G * delta
 		global_position += _vel * delta
 		if _vel.y > 0.0 and global_position.y >= _floor_y:
-			global_position.y = _floor_y
+			global_position = Vector2(roundf(global_position.x), _floor_y)   # lądowanie na pełnym pikselu
 			_landed = true
 	var bob := 0.0 if not _landed else sin(_t * 3.0) * 1.5 - 1.5
 	if not _spr.is_empty():
