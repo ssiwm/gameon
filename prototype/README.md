@@ -4,7 +4,7 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
 
 - ruch 8-kierunkowy (WASD/strzałki) + strzelanie (J/LPM) + przeładowanie (R) + cios (V/PPM) + skok (SPACJA) + skradanie (SHIFT)
 - czucie gry (GDD §23): coyote time, jump buffer, jump cut, hitstop, screen shake
-- **mapa wielopoziomowa** (TileMapLayer z siatki ASCII w `scripts/level.gd`): las + posterunek, arena z kładkami, tartak; kładki jednokierunkowe — wskok od spodu, zeskok **dół + skok**
+- **mapa wielopoziomowa** (TileMapLayer z siatki ASCII w `scripts/level.gd`, 192 × 44 kafli): las + posterunek, arena z kładkami, **Skład** (hala z antresolą, dach, schody z rusztowań), tartak z bossem, a pod całością **podziemia** — sale i niskie tunele połączone trzema szybami ze schodami z kładek; kładki jednokierunkowe — wskok od spodu, zeskok **dół + skok**. Broni do znalezienia są tylko **4** (las, półka w podziemnej sali, antresola hali, rusztowanie tartaku), reszta arsenału to start + skrzynki z amunicją
 - **ciemność i latarka** (GDD §8.3): aura 6 m, latarka **L** (stożek 8 m, bateria, +1 Uwagi co 10 s, budzi oświetlonych wrogów, ściąga Stalkera), flara ekstrakcji 12 m, cienie od kafli
 - **12 broni** (overhaul 1.6, `WEAPONS.md`): M-83, SPREAD-12, P-64, SRUT-8, LR-7 (promień), HKM-9 (miotacz), GNIEW-4 (granatnik), SOKOL-6 (naprowadzane), WIDMO-1 (szyna), CIEGNO-6 (cicha kusza), maczeta (cichy backstab), kilof. Model rozgrzania lufy per broń — krótka seria cicha, ciągły ogień głośny; **magazynki, przeładowanie, wspólny zapas drużyny**, skrzynki z mapy i drop z wrogów, podnoszenie i wymiana broni (**E**), krytyk w głowę, spadek obrażeń z dystansem, przebicie, podpalenie, wybuchy; predykcja strzału po stronie strzelca i walidacja serwera
 - wrogowie: Trzosek (wataha) i Wołek (tank) — śpią, budzi ich strzał w pobliżu albo bliskość gracza
@@ -164,6 +164,6 @@ tools/
 ## Znane ograniczenia (świadome, prototyp)
 
 - zwykli wrogowie (Trzosek, Wołek) bez A* — gonią prosto i doskakują
-- jedna mapa; grafika kafli i postaci to placeholder rysowany w kodzie
+- jedna mapa (choć duża); wrogowie podziemi budzą się od hałasu tylko w promieniu słyszenia, a goniąc „prosto” mogą utknąć pod sufitem, gdy gracz jest na powierzchni; grafika kafli i postaci to placeholder rysowany w kodzie
 - pozycje zdalnych graczy ufane (OK dla kooperacji, blokuje host migration)
 - brak WebSocket/relay fallback (tylko ENet P2P/LAN)
