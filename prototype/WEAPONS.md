@@ -38,7 +38,7 @@ pickup.gd             apteczka / amunicja / skrzynia z mapy / broń na ziemi
 weapon_test.gd        testy headless (jednostkowe i sieciowe)
 ```
 
-**Nowa broń = jeden wpis w `weapons.gd` + wiersz w `art/sprites/guns.png` + klucze audio.**
+**Nowa broń = jeden wpis w `weapons.gd` + rysunek w `tools/gun_art.py` (wiersz w `guns.png`) + klucze audio.**
 Kontroler, HUD, boty i testy nie wymagają zmian.
 
 ### Obrażenia
@@ -120,10 +120,20 @@ Nazwy w HUD są ASCII (interfejs EN); GDD zostaje przy nazwach z diakrytykami.
 | Rozrzut | bazowy + **bloom** rosnący z serią (M-83 do 4°), +0,8° w biegu, ×0,5–0,6 w kucaniu |
 | Uderzenie | wg materiału: krew (krytyk = złoty błysk), iskry + rykoszet (blacha/pancerz), drzazgi (skrzynia), pył/odłamki/rozbryzg (ściana wg kafla) |
 | Hitmarker | biały / złoty (krytyk) / czerwony większy (zabójstwo) / szary (pancerz) + dźwięk potwierdzenia w UI |
-| Celownik | kursor systemowy ukryty; 4 ramiona rozchodzą się z rozrzutem, **łuk ciepła lufy** (biały → czerwony), pierścień przeładowania/ładowania, czerwony X przy pustym magazynku, miganie przy niskim stanie |
+| Celownik | kursor systemowy ukryty; **30% mniejszy niż w 1.6** (`CROSS_SCALE` = 0,7 skaluje wszystko razem); 4 ramiona rozchodzą się z rozrzutem, **łuk ciepła lufy** (biały → czerwony), pierścień przeładowania/ładowania, czerwony X przy pustym magazynku, miganie przy niskim stanie |
 | Animacje broni | dobycie (broń „wchodzi” z dołu), przeładowanie (opadanie i powrót), ładowanie szyny (drżenie), cios (zamach przez łuk z pchnięciem) |
 | Przeładowanie | tryb taktyczny: z nabojem w komorze szybciej niż pusty (+0,4–0,5 s); automatycznie po „kliku” na pustym i po wzięciu pustej broni |
-| HUD | nazwa, `magazynek / zapas drużyny`, status (RELOADING %, CHARGING %, NO AMMO), **pasek lufy z kosztem następnego strzału** (`SHOT 0,8 → 1,5`) |
+| HUD | (cały HUD 70% — `UI_SCALE` w `hud.gd`) nazwa, `magazynek / zapas drużyny`, status (RELOADING %, CHARGING %, NO AMMO), **pasek lufy z kosztem następnego strzału** (`SHOT 0,8 → 1,5`) |
+
+### Grafika broni (1.6.1)
+
+Każdy model to siatka 24×9 w `tools/gun_art.py`, składana pociągnięciami `h/v/r` (pozycje jawne, `check()` w
+`bake_sprites.py` pilnuje: dłoń 2×2 na (3..4, 3..4), wylot lufy = `3 + gun_len`, wolne pierwszy i ostatni
+wiersz na obrys). Materiały mają rampy 5 tonów (połysk · światło · ton · cień · głęboki cień; światła cieplejsze,
+cienie chłodniejsze), obrys 1 px dokłada `sheet()` tak samo jak postaciom — dlatego broń leży w tej samej
+estetyce i gęstości pikseli co gracz (16×24) i wrogowie. Znaki z drugim kolorem trafiają także do
+`guns_glow.png` — warstwy unshaded rysowanej w `weapon_view.gd`, która świeci w ciemności (LR-7, WIDMO-1,
+HKM-9, SOKÓŁ-6). Podgląd: `python3 tools/bake_sprites.py`, potem zrzuty `--weaponshots` (patrz §6).
 
 ## 5. Zasada projektowa: jedna waluta ryzyka
 
@@ -173,5 +183,5 @@ Regresje starych testów (`--stealthtest`, `--missiontest`, `--wipetest`) nadal 
   z mapy, serwer zignoruje próbę podniesienia). Jak ze znanym potomstwem Żyły (GDD §19).
 - **Brzmienia nie oceniano uchem** (jak w AUDIO.md) — wymagany odsłuch i strojenie głośności
   względem reszty miksu; wartości `sfx_vol` w `weapons.gd` to punkt wyjścia.
-- **Grafika broni** jest proceduralna (`tools/bake_sprites.py`); do poziomu AAA potrzebny
-  artysta — podmiana `art/sprites/guns.png` (24×9 na broń, dłoń w (4,4)) nie wymaga zmian w kodzie.
+- **Grafika broni** jest „ręcznym” pixel-artem w kodzie (`tools/gun_art.py` → `bake_sprites.py`);
+  artysta może podmienić `art/sprites/guns.png` (+ `guns_glow.png`; 24×9 na broń, dłoń w (4,4)) bez zmian w kodzie.

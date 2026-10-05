@@ -20,12 +20,17 @@ const HAND := Vector2(4, 4)           ## dłoń w klatce broni (obrót wokół n
 const FLASH_TIME := 0.055
 const HIT_TIME := 0.2
 const CROSS_DIST := 72.0              ## px od wylotu, gdy celujesz klawiaturą
+## Rozmiar celownika (promień, ramiona, łuki, hitmarker i grubość linii) względem wersji 1.6: −30%.
+## Skaluje całość razem, więc proporcje między rozrzutem, ciepłem i przeładowaniem zostają.
+const CROSS_SCALE := 0.7
 
 var player: CharacterBody2D
 var ctrl: Node
 
 var _gun: Sprite2D
 var _atlas: AtlasTexture
+var _glow: Sprite2D                    ## warstwa świecąca broni (taśma LR-7, cewki WIDMO-1…), unshaded
+var _glow_atlas: AtlasTexture
 var _fx: Node2D                        ## nakładka bez cieniowania: rozbłysk, promień, celownik
 var _flash_light: PointLight2D
 var _beam_light: PointLight2D
@@ -67,6 +72,19 @@ func setup(p: CharacterBody2D, c: Node) -> void:
 		_atlas.atlas = Sprites.texture(Sprites.DIR + "guns.png")
 		_gun.texture = _atlas
 		add_child(_gun)
+		# świecące elementy modelu (guns_glow.png, te same klatki) — widać je w ciemności jak oczy wrogów
+		var glow_tex := Sprites.texture(Sprites.DIR + "guns_glow.png")
+		if glow_tex != null:
+			_glow = Sprite2D.new()
+			_glow.name = "GunGlow"
+			_glow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			_glow.centered = false
+			_glow.offset = -HAND
+			_glow.material = Lights.unshaded()
+			_glow_atlas = AtlasTexture.new()
+			_glow_atlas.atlas = glow_tex
+			_glow.texture = _glow_atlas
+			add_child(_glow)
 	_fx = Node2D.new()
 	_fx.name = "Fx"
 	_fx.material = Lights.unshaded()
@@ -217,6 +235,19 @@ func _update_gun(d: WeaponDef) -> void:
 	_gun.rotation = rot + extra
 	_gun.flip_v = flip
 	_gun.modulate = _tint
+	if _glow != null:
+		_glow_atlas.region = _atlas.region
+		_glow.visible = _gun.visible
+		_glow.position = _gun.position
+		_glow.rotation = _gun.rotation
+		_glow.flip_v = flip
+		# żar narasta z ładowaniem szyny, przy przeładowaniu przygasa; kolor ciała (błysk trafienia) nie wpływa
+		var lum := 1.0
+		if player.w_state == Controller.State.CHARGE:
+			lum = 0.75 + 0.5 * clampf(player.w_charge, 0.0, 1.0)
+		elif player.w_state == Controller.State.RELOAD:
+			lum = 0.55
+		_glow.modulate = Color(lum, lum, lum, _tint.a)
 
 func _update_flash_light(d: WeaponDef) -> void:
 	var on: bool = _flash_t > 0.0 or (player.w_firing and d.is_continuous())
@@ -334,9 +365,11 @@ func _aim_world() -> Vector2:
 	return player.global_position + muzzle_local(d) + player.aim_dir * CROSS_DIST
 
 func _draw_crosshair(d: WeaponDef) -> void:
+	var k := CROSS_SCALE
 	var at := _aim_world() - player.global_position
 	var extra: float = ctrl.spread_extra(d) + d.jitter_deg
-	var r := 3.0 + extra * 1.1
+	var r := (3.0 + extra * 1.1) * k
+	var w := maxf(1.0 * k, 0.8)            ## grubość linii nie schodzi poniżej ~1 px sprite'a
 	var col := Color(1, 1, 1, 0.85)
 	var mag: int = ctrl.mag_of(d.id)
 	var low: bool = d.uses_ammo() and not d.infinite and ctrl.ammo_enabled and mag <= maxi(1, int(d.mag * 0.25))
@@ -346,41 +379,42 @@ func _draw_crosshair(d: WeaponDef) -> void:
 		col.a = 0.45
 	# cztery ramiona + punkt środka
 	for dir in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
-		_fx.draw_line(at + dir * r, at + dir * (r + 2.6), col, 1.0)
-	_fx.draw_circle(at, 0.7, col)
+		_fx.draw_line(at + dir * r, at + dir * (r + 2.6 * k), col, w)
+	_fx.draw_circle(at, 0.7 * k, col)
 	# pasek ciepła lufy (hałas rośnie z ciepłem): łuk wokół celownika
 	var heat: float = ctrl.heat_of(d.id)
 	if d.n_max > d.n_min:
 		var hc := Color(1, 1, 1, 0.5).lerp(Color(1.0, 0.25, 0.15, 0.95), clampf(heat * 1.2, 0.0, 1.0))
-		_fx.draw_arc(at, r + 5.5, -PI * 0.5, -PI * 0.5 + TAU * 0.999, 28, Color(0, 0, 0, 0.25), 1.6)
+		_fx.draw_arc(at, r + 5.5 * k, -PI * 0.5, -PI * 0.5 + TAU * 0.999, 28, Color(0, 0, 0, 0.25), 1.6 * k)
 		if heat > 0.02:
-			_fx.draw_arc(at, r + 5.5, -PI * 0.5, -PI * 0.5 + TAU * heat, 28, hc, 1.6)
+			_fx.draw_arc(at, r + 5.5 * k, -PI * 0.5, -PI * 0.5 + TAU * heat, 28, hc, 1.6 * k)
 	# przeładowanie: pierścień postępu
 	if player.w_state == Controller.State.RELOAD:
 		var prog: float = ctrl.reload_progress()
-		_fx.draw_arc(at, r + 9.0, -PI * 0.5, -PI * 0.5 + TAU * prog, 28, Color(0.7, 0.9, 1.0, 0.9), 1.4)
+		_fx.draw_arc(at, r + 9.0 * k, -PI * 0.5, -PI * 0.5 + TAU * prog, 28, Color(0.7, 0.9, 1.0, 0.9), 1.4 * k)
 	elif player.w_state == Controller.State.CHARGE:
-		_fx.draw_arc(at, r + 9.0, -PI * 0.5, -PI * 0.5 + TAU * player.w_charge, 28, d.tracer_color, 1.6)
+		_fx.draw_arc(at, r + 9.0 * k, -PI * 0.5, -PI * 0.5 + TAU * player.w_charge, 28, d.tracer_color, 1.6 * k)
 	if mag <= 0 and d.uses_ammo() and ctrl.ammo_enabled and player.w_state == Controller.State.READY:
-		_fx.draw_line(at + Vector2(-3, -3), at + Vector2(3, 3), Color(1.0, 0.3, 0.25, 0.95), 1.2)
-		_fx.draw_line(at + Vector2(-3, 3), at + Vector2(3, -3), Color(1.0, 0.3, 0.25, 0.95), 1.2)
+		var xr := 3.0 * k
+		_fx.draw_line(at + Vector2(-xr, -xr), at + Vector2(xr, xr), Color(1.0, 0.3, 0.25, 0.95), w)
+		_fx.draw_line(at + Vector2(-xr, xr), at + Vector2(xr, -xr), Color(1.0, 0.3, 0.25, 0.95), w)
 	# hitmarker
 	if _hit_t > 0.0:
-		var k := _hit_t / HIT_TIME
-		var hcol := Color(1, 1, 1, k)
-		var gap := 3.0 + (1.0 - k) * 2.0
-		var ln := 3.0
+		var t := _hit_t / HIT_TIME
+		var hcol := Color(1, 1, 1, t)
+		var gap := (3.0 + (1.0 - t) * 2.0) * k
+		var ln := 3.0 * k
 		match _hit_kind:
 			Arsenal.Confirm.CRIT:
-				hcol = Color(1.0, 0.85, 0.3, k)
-				ln = 4.0
+				hcol = Color(1.0, 0.85, 0.3, t)
+				ln = 4.0 * k
 			Arsenal.Confirm.KILL:
-				hcol = Color(1.0, 0.25, 0.2, k)
-				ln = 5.0
-				gap = 4.0 + (1.0 - k) * 3.0
+				hcol = Color(1.0, 0.25, 0.2, t)
+				ln = 5.0 * k
+				gap = (4.0 + (1.0 - t) * 3.0) * k
 			Arsenal.Confirm.ARMOR:
-				hcol = Color(0.65, 0.65, 0.7, k)
+				hcol = Color(0.65, 0.65, 0.7, t)
 		for sx in [-1.0, 1.0]:
 			for sy in [-1.0, 1.0]:
 				var dir := Vector2(sx, sy).normalized()
-				_fx.draw_line(at + dir * gap, at + dir * (gap + ln), hcol, 1.2)
+				_fx.draw_line(at + dir * gap, at + dir * (gap + ln), hcol, w)

@@ -19,7 +19,7 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
 - 3 HP, **down/revive** (GDD §4): leżysz 25 s, kolega trzyma E 4 s → wstajesz z 2 HP; wykrwawienie = powrót na start z 1 HP; **wipe** (wszyscy leżą) = restart misji po 3 s
 - audio (overhaul v2, patrz `AUDIO.md`; broń 1.6: +36 assetów): 152 ścieżki, muzyka stemowa wg Uwagi (kwantyzacja do beatu), okluzja z dyfrakcją, pogłos środowiskowy, ogłuszenie po wybuchu, pozycyjny szept stalkera
 - **fizyka (1.5)**: bezwładność ruchu, szybsze opadanie, przysiad/rozciąganie; łuski, szczątki, krew i plamy, iskry, rozbryzgi; **skrzynie** (pchaj, stań, zepchnij z kładki = hałas-wabik) i **beczki** (wybuchają, reakcja łańcuchowa)
-- **grafika (1.5)**: pixel-art ze sprite'ami (`tools/bake_sprites.py` → `art/`), kafle z wariantami, dekoracje, tło parallax
+- **grafika (1.5)**: pixel-art ze sprite'ami (`tools/bake_sprites.py` → `art/`), kafle z wariantami, dekoracje, tło parallax; **(1.6.1)** broń przerysowana (`tools/gun_art.py`, warstwa świecąca `guns_glow.png`), HUD i celownik o 30% mniejsze (`UI_SCALE`, `CROSS_SCALE`)
 - **pętla misji** (GDD §4): zniszcz 3 gniazda (głośne — budzą okolicę) → budzi się **Żyła, matka gniazd** (boss w tartaku: paszcza otwiera się tylko na chwilę po ataku — wtedy strzelaj; ataki z zapowiedzią: macka, fala ogona po podłodze — przeskocz, plucie zarodnikami; latarka w paszczę podczas zapowiedzi ją ogłusza, Q w pobliżu ją odciąga; przy 33% HP krzyk budzi Stalkera; +1 ładunek Q) → po jej śmierci wyjście otwiera się w punkcie najdalszym od drużyny → cała stojąca drużyna 3 s przy flarze → ekran wyniku, host [Enter] = nowa misja
 - **nawigacja A*** (`nav.gd`): bot chodzi za drużyną po całej mapie (skoki, zeskoki przez kładki), Stalker chodzi po powierzchniach zamiast przez ściany
 
@@ -99,7 +99,7 @@ Flagi: `--host`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwart
 ## Grafika — generowanie i podmiana
 
 ```bash
-python3 tools/bake_sprites.py      # art/sprites/*.png, art/tiles.png, art/props.png, art/sprites.json
+python3 tools/bake_sprites.py      # art/sprites/*.png (broń: tools/gun_art.py), art/tiles.png, art/props.png, art/sprites.json
 godot --headless --path . --import
 ```
 
@@ -132,7 +132,7 @@ scripts/
   player.gd         # ruch, broń, HP, down/revive, synchronizer, AI (is_bot)
   enemy.gd          # Trzosek / Wołek (symulacja na serwerze)
   stalker.gd        # AI stalkera (symulacja na serwerze)
-  hud.gd            # HUD (EN): hałas z progami, serca, ładunki Q, broń, latarka, cel, boss, podpowiedzi, winieta, wynik
+  hud.gd            # HUD (EN, skala 0,7): hałas z progami, serca, ładunki Q, broń, latarka, cel, boss, podpowiedzi, winieta, wynik
   lobby.gd          # lobby (EN): host / join, sterowanie
   ui_theme.gd       # wspólny motyw UI: obrys tekstu, panele, przyciski
   vfx.gd            # kurz, iskry, krew, szczątki i łuski (RigidBody2D), plamy
