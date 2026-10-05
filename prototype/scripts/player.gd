@@ -216,6 +216,12 @@ func _process(delta: float) -> void:
 	queue_redraw()
 	_overlay.queue_redraw()
 
+## Węzeł na efekty: poziom (NIE „Players" — main.gd traktuje każde dziecko
+## Players jako gracza, a cząsteczki i łuski tam psuły wipe/restart).
+func _fx_root() -> Node:
+	var lvl := get_tree().get_first_node_in_group("level")
+	return lvl if lvl != null else get_tree().current_scene
+
 func _in_water() -> bool:
 	var lvl := get_tree().get_first_node_in_group("level")
 	return lvl != null and lvl.surface_at(global_position) == "water"
@@ -224,7 +230,7 @@ func _in_water() -> bool:
 ## każdym peerze, bez dodatkowej synchronizacji.
 func _update_squash(delta: float) -> void:
 	var vy := velocity.y
-	var parent := get_parent()
+	var parent := _fx_root()
 	if not dead:
 		if _prev_vy > 140.0 and absf(vy) < 30.0:
 			# lądowanie: przysiad tym głębszy, im szybciej spadał
@@ -981,7 +987,7 @@ func _fire_remote(muzzle: Vector2, dirs: PackedVector2Array, shooter: int, w: in
 
 ## Łuska i dym — kosmetyka strzału na każdym peerze (raz na strzał).
 func _shot_fx(muzzle: Vector2, dir: Vector2, w: int) -> void:
-	var parent := get_parent()
+	var parent := _fx_root()
 	Vfx.casing(parent, muzzle - dir * 6.0, dir, w == Weapons.SPREAD12)
 	Vfx.smoke(parent, muzzle, dir)
 
@@ -1036,7 +1042,7 @@ func apply_hit(amount: int, _from_pos: Vector2) -> void:
 	hp -= amount
 	_invuln = INVULN_AFTER_HIT
 	_flash = 0.25
-	Vfx.blood(get_parent(), global_position + Vector2(0, -9), (global_position - _from_pos).normalized(), 8)
+	Vfx.blood(_fx_root(), global_position + Vector2(0, -9), (global_position - _from_pos).normalized(), 8)
 	Audio.play_variant("player_hurt", 2, Audio.BUS_PLAYER, -8.0)
 	# krzyk bólu zawsze, w każdym trybie (wcześniej tylko solo)
 	NoiseMgr.add_noise(NoiseMgr.N_HURT, global_position)
