@@ -40,6 +40,8 @@ var _glow: PointLight2D
 func _ready() -> void:
 	add_to_group("pickups")
 	z_index = 2
+	# bez filtrowania liniowego: sprite broni 24×9 px rozmywał się przy skalowaniu okna
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	if kind == "health" and Sprites.has("objects"):
 		_spr = Sprites.attach(self, "objects")
 		Sprites.play(_spr, "medkit", false)
@@ -66,7 +68,7 @@ func _physics_process(delta: float) -> void:
 		_vel.y += FALL_G * delta
 		global_position += _vel * delta
 		if _vel.y > 0.0 and global_position.y >= _floor_y:
-			global_position.y = _floor_y
+			global_position = Vector2(roundf(global_position.x), _floor_y)   # lądowanie na pełnym pikselu
 			_landed = true
 	var bob := 0.0 if not _landed else sin(_t * 3.0) * 1.5 - 1.5
 	if not _spr.is_empty():
@@ -103,13 +105,23 @@ func _draw() -> void:
 		draw_rect(Rect2(-5, -2 + bob, 10, 1), Color(0.14, 0.15, 0.1))
 	else:
 		# broń: sylwetka z arkusza guns.png nad ciemną skrzynką-podstawką
-		draw_rect(Rect2(-8, -4 + bob, 16, 3), Color(0.12, 0.13, 0.16))
-		draw_rect(Rect2(-8, -4 + bob, 16, 1), c.darkened(0.4))
+		# pozycje na CAŁYCH pikselach — ułamki rozmywają pixel-art
+		var ibob := roundf(bob)
+		draw_rect(Rect2(-8, -4 + ibob, 16, 3), Color(0.12, 0.13, 0.16))
+		draw_rect(Rect2(-8, -4 + ibob, 16, 1), c.darkened(0.4))
 		var tex := Sprites.texture(Sprites.DIR + "guns.png")
 		if tex != null and Sprites.has("guns"):
 			var fs := Sprites.frame_size("guns")
 			var row := int(Weapons.def(arg).gun_row)
-			draw_texture_rect_region(tex, Rect2(-fs.x * 0.5, -4 - fs.y + bob, fs.x, fs.y), Rect2(0, row * fs.y, fs.x, fs.y))
+			var dst := Rect2(roundf(-fs.x * 0.5), -4.0 - fs.y + ibob, fs.x, fs.y)
+			var src := Rect2(0, row * fs.y, fs.x, fs.y)
+			# ciemny kontur 1 px — sylwetka czytelna na jasnym i ciemnym tle
+			for o: Vector2 in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
+				draw_texture_rect_region(tex, Rect2(dst.position + o, dst.size), src, Color(0, 0, 0, 0.85))
+			draw_texture_rect_region(tex, dst, src)
+			var glow_tex := Sprites.texture(Sprites.DIR + "guns_glow.png")
+			if glow_tex != null:
+				draw_texture_rect_region(glow_tex, dst, src)
 		else:
 			draw_rect(Rect2(-6, -7 + bob, 12, 3), c)
 

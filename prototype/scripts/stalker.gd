@@ -188,7 +188,7 @@ func _physics_process(delta: float) -> void:
 ## własną prędkością, skoki/spadki/zeskoki „wspinaczką" (CLIMB_SPEED).
 ## Wcześniej szedł prosto i przenikał przez ściany (maska kolizji 0).
 func _move_toward_target(delta: float, noise: float) -> void:
-	var speed := HUNT_SPEED if noise >= HUNT_NOISE else LURK_SPEED
+	var speed := (HUNT_SPEED if noise >= HUNT_NOISE else LURK_SPEED) * Difficulty.m("stalker_speed")
 	if _slow > 0.0:
 		speed *= 0.4
 	var lvl := get_tree().get_first_node_in_group("level")
@@ -268,7 +268,7 @@ func _try_begin_windup() -> void:
 		if pp == null or pp.dead:
 			continue
 		if global_position.distance_to(pp.global_position) <= _reach_for(pp):
-			_windup = WINDUP_TIME
+			_windup = WINDUP_TIME * Difficulty.m("stalker_windup")
 			_windup_target = pp
 			winding = true
 			return
@@ -290,10 +290,10 @@ func _tick_windup(delta: float) -> void:
 		_retreat_timer = 0.8
 		var away := (global_position - pp.global_position).normalized()
 		global_position += away * RETREAT_DIST
-		_attack_timer = ATTACK_COOLDOWN
+		_attack_timer = ATTACK_COOLDOWN * Difficulty.m("stalker_cd")
 	else:
 		print("[STALKER] swing missed")
-		_attack_timer = MISS_COOLDOWN
+		_attack_timer = MISS_COOLDOWN * Difficulty.m("stalker_cd")
 
 ## Dźwięk stalkera: szept gdy czatuje (też w fazie niepokoju, zanim się obudzi),
 ## ryk przy przebudzeniu i zapowiedzi ataku, kroki gdy poluje.

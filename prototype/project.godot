@@ -15,6 +15,7 @@ NoiseMgr="*res://scripts/noise_manager.gd"
 Audio="*res://scripts/audio_director.gd"
 Feel="*res://scripts/feel.gd"
 Arsenal="*res://scripts/arsenal.gd"
+Difficulty="*res://scripts/difficulty.gd"
 
 [audio]
 

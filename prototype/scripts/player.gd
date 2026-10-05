@@ -42,6 +42,7 @@ const FF_KICK := 70.0          ## odrzut od pocisku kolegi (px/s, wygasa KICK_DE
 const FF_COOLDOWN := 0.6       ## krzyk/hałas od FF najwyżej raz na tyle sekund
 
 # Down / revive (GDD §4)
+const NAME_SIZE := 6            ## etykieta nad głową (px świata) — mała, żeby nie dominowała nad sylwetką
 const BLEED_TIME := 25.0
 const REVIVE_TIME := 4.0
 const REVIVE_RANGE := 26.0
@@ -548,10 +549,16 @@ func _down_physics(delta: float) -> void:
 		# kara dystansem i czasem, nie ekranem „game over" (GDD §4)
 		_respawn(1)
 
+func bleed_time() -> float:
+	return BLEED_TIME * Difficulty.m("bleed")
+
+func _revive_time() -> float:
+	return REVIVE_TIME * Difficulty.m("revive")
+
 func _go_down() -> void:
 	hp = 0
 	dead = true
-	bleed_left = BLEED_TIME
+	bleed_left = bleed_time()
 	velocity = Vector2.ZERO
 	crouching = false
 	weapons.on_down()
@@ -589,8 +596,8 @@ func _handle_revive(delta: float, holding: bool) -> bool:
 	if t == null:
 		return false
 	_revive_hold += delta
-	t.set_revive_progress(clampf(_revive_hold / REVIVE_TIME, 0.0, 1.0))
-	if _revive_hold >= REVIVE_TIME:
+	t.set_revive_progress(clampf(_revive_hold / _revive_time(), 0.0, 1.0))
+	if _revive_hold >= _revive_time():
 		_revive_hold = 0.0
 		t.set_revive_progress(0.0)
 		t.request_revive()
@@ -1113,8 +1120,8 @@ func _draw_overlay(ov: Node2D) -> void:
 	var col := _body_color()
 	var name_txt := "BOT" if is_bot else "P%d" % display_id
 	if dead:
-		_center_text(ov, font, name_txt, -27.0, 8, col)
-		_center_text(ov, font, "%ds" % ceili(bleed_left), -17.0, 7, Color(0.95, 0.4, 0.4))
+		_center_text(ov, font, name_txt, -26.0, NAME_SIZE, col)
+		_center_text(ov, font, "%ds" % ceili(bleed_left), -18.0, NAME_SIZE, Color(0.95, 0.4, 0.4))
 		if revive_progress > 0.0:
 			ov.draw_rect(Rect2(-12, -12, 24, 3), Color(0.1, 0.1, 0.12))
 			ov.draw_rect(Rect2(-12, -12, 24.0 * revive_progress, 3), Color(0.4, 0.95, 0.5))
@@ -1125,9 +1132,9 @@ func _draw_overlay(ov: Node2D) -> void:
 	for i in MAX_HP:
 		var c := Color(0.92, 0.25, 0.3) if i < hp else Color(0.22, 0.22, 0.26)
 		ov.draw_rect(Rect2(-8 + i * 6.0, top - 7.0, 4, 3), c)
-	_center_text(ov, font, name_txt, top - 10.0, 8, col)
+	_center_text(ov, font, name_txt, top - 9.0, NAME_SIZE, col)
 
 func _center_text(ov: Node2D, font: Font, txt: String, y: float, sz: int, c: Color) -> void:
 	# cień pod tekstem — czytelność na jasnym tle (snop latarki, flara)
-	ov.draw_string(font, Vector2(-30 + 0.6, y + 0.6), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, sz, Color(0, 0, 0, 0.8))
+	ov.draw_string(font, Vector2(-30 + 0.5, y + 0.5), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, sz, Color(0, 0, 0, 0.8))
 	ov.draw_string(font, Vector2(-30, y), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, sz, c)

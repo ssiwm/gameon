@@ -538,7 +538,7 @@ func _drive_prompt() -> void:
 			col = UiTheme.OK
 		else:
 			text = "You're down — a teammate can revive you (bleeding out in %ds)" % ceili(_player.bleed_left)
-			prog = _player.bleed_left / _player.BLEED_TIME
+			prog = _player.bleed_left / _player.bleed_time()
 			col = UiTheme.DANGER
 	elif _player != null and _player.revive_hint() != "":
 		text = _player.revive_hint()
@@ -619,8 +619,9 @@ func _find_local_player() -> Node:
 	return null
 
 func _net_status() -> String:
+	var diff: String = Difficulty.level_name()
 	if not NoiseMgr.has_network():
-		return "SOLO"
+		return "SOLO  ·  %s" % diff
 	var humans := 0
 	var bots := 0
 	for p in get_tree().get_nodes_in_group("players"):
@@ -629,4 +630,4 @@ func _net_status() -> String:
 		else:
 			humans += 1
 	var who := "HOST" if multiplayer.is_server() else "CLIENT"
-	return "%s  ·  %d/4 players%s" % [who, humans, ("  +%d AI" % bots) if bots > 0 else ""]
+	return "%s  ·  %d/4 players%s  ·  %s" % [who, humans, ("  +%d AI" % bots) if bots > 0 else "", diff]
