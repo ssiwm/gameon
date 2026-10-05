@@ -63,9 +63,25 @@
   "amb/amb_wind",
   1
  ],
+ "ammo_pickup": [
+  "sfx/weapons/ammo_pickup",
+  0
+ ],
+ "armor_tick": [
+  "sfx/weapons/armor_tick",
+  0
+ ],
  "breath_loop": [
   "sfx/player/breath_loop",
   1
+ ],
+ "ciegno6_shot_1": [
+  "sfx/weapons/ciegno6_shot_1",
+  0
+ ],
+ "ciegno6_shot_2": [
+  "sfx/weapons/ciegno6_shot_2",
+  0
  ],
  "door_1": [
   "sfx/world/door_1",
@@ -131,6 +147,14 @@
   "sfx/world/glass_break_2",
   0
  ],
+ "gniew4_shot_1": [
+  "sfx/weapons/gniew4_shot_1",
+  0
+ ],
+ "gniew4_shot_2": [
+  "sfx/weapons/gniew4_shot_2",
+  0
+ ],
  "heart_fast_loop": [
   "sfx/player/heart_fast_loop",
   1
@@ -138,6 +162,26 @@
  "heart_slow_loop": [
   "sfx/player/heart_slow_loop",
   1
+ ],
+ "hitmark_1": [
+  "sfx/weapons/hitmark_1",
+  0
+ ],
+ "hitmark_2": [
+  "sfx/weapons/hitmark_2",
+  0
+ ],
+ "hitmark_crit": [
+  "sfx/weapons/hitmark_crit",
+  0
+ ],
+ "hkm9_flame_loop": [
+  "sfx/weapons/hkm9_flame_loop",
+  1
+ ],
+ "hkm9_ignite": [
+  "sfx/weapons/hkm9_ignite",
+  0
  ],
  "impact_flesh_1": [
   "sfx/weapons/impact_flesh_1",
@@ -163,8 +207,28 @@
   "sfx/weapons/impact_hard_3",
   0
  ],
+ "killmark": [
+  "sfx/weapons/killmark",
+  0
+ ],
+ "kilof_swing_1": [
+  "sfx/weapons/kilof_swing_1",
+  0
+ ],
+ "kilof_swing_2": [
+  "sfx/weapons/kilof_swing_2",
+  0
+ ],
  "land_hard": [
   "sfx/player/land_hard",
+  0
+ ],
+ "lr7_beam_loop": [
+  "sfx/weapons/lr7_beam_loop",
+  1
+ ],
+ "lr7_start": [
+  "sfx/weapons/lr7_start",
   0
  ],
  "m83_shot_1": [
@@ -271,6 +335,38 @@
   "sfx/weapons/reload_3",
   0
  ],
+ "reload_bolt_1": [
+  "sfx/weapons/reload_bolt_1",
+  0
+ ],
+ "reload_cell_1": [
+  "sfx/weapons/reload_cell_1",
+  0
+ ],
+ "reload_cell_2": [
+  "sfx/weapons/reload_cell_2",
+  0
+ ],
+ "reload_launcher_1": [
+  "sfx/weapons/reload_launcher_1",
+  0
+ ],
+ "reload_rail_1": [
+  "sfx/weapons/reload_rail_1",
+  0
+ ],
+ "reload_shell_1": [
+  "sfx/weapons/reload_shell_1",
+  0
+ ],
+ "reload_shell_2": [
+  "sfx/weapons/reload_shell_2",
+  0
+ ],
+ "reload_shell_3": [
+  "sfx/weapons/reload_shell_3",
+  0
+ ],
  "revive": [
   "sfx/player/revive",
   0
@@ -295,6 +391,18 @@
   "sfx/weapons/shell_3",
   0
  ],
+ "sokol6_shot_1": [
+  "sfx/weapons/sokol6_shot_1",
+  0
+ ],
+ "sokol6_shot_2": [
+  "sfx/weapons/sokol6_shot_2",
+  0
+ ],
+ "sokol6_shot_3": [
+  "sfx/weapons/sokol6_shot_3",
+  0
+ ],
  "spread12_shot_1": [
   "sfx/weapons/spread12_shot_1",
   0
@@ -305,6 +413,26 @@
  ],
  "spread12_shot_3": [
   "sfx/weapons/spread12_shot_3",
+  0
+ ],
+ "srut8_pump_1": [
+  "sfx/weapons/srut8_pump_1",
+  0
+ ],
+ "srut8_pump_2": [
+  "sfx/weapons/srut8_pump_2",
+  0
+ ],
+ "srut8_shot_1": [
+  "sfx/weapons/srut8_shot_1",
+  0
+ ],
+ "srut8_shot_2": [
+  "sfx/weapons/srut8_shot_2",
+  0
+ ],
+ "srut8_shot_3": [
+  "sfx/weapons/srut8_shot_3",
   0
  ],
  "stalker_appear": [
@@ -451,6 +579,10 @@
   "sfx/ui/warn_pulse",
   0
  ],
+ "weapon_pickup": [
+  "sfx/weapons/weapon_pickup",
+  0
+ ],
  "whizz_1": [
   "sfx/weapons/whizz_1",
   0
@@ -461,6 +593,18 @@
  ],
  "whizz_3": [
   "sfx/weapons/whizz_3",
+  0
+ ],
+ "widmo1_charge": [
+  "sfx/weapons/widmo1_charge",
+  0
+ ],
+ "widmo1_shot_1": [
+  "sfx/weapons/widmo1_shot_1",
+  0
+ ],
+ "widmo1_shot_2": [
+  "sfx/weapons/widmo1_shot_2",
   0
  ]
 }

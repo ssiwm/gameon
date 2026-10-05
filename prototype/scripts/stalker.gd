@@ -368,6 +368,13 @@ func _local_player_pos() -> Vector2:
 			return pp.global_position
 	return _remote_pos
 
+## Stalker nie ginie od broni (GDD §7.3) — trafienie tylko go spowalnia i zbija z tropu.
+func take_hit(info: Dictionary) -> Dictionary:
+	if not NoiseMgr.is_server():
+		return {}
+	take_bullet(info["pos"], 0.0)
+	return {"hit": true, "dealt": 0.0, "killed": false, "mat": Arsenal.Mat.FLESH}
+
 @rpc("any_peer", "call_local", "unreliable")
 func take_bullet(_from_pos: Vector2, _dmg: float = 0.0) -> void:
 	if not NoiseMgr.is_server():

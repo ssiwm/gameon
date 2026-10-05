@@ -7,7 +7,7 @@ extends RigidBody2D
 ## kilku trafieniach wybucha: rani wszystko w promieniu, odrzuca obiekty,
 ## odpala sąsiednie beczki — i budzi okolicę (+15).
 ##
-## W grupie „enemies": pociski (bullet.gd), reset po wipe i po misji obejmują
+## W grupie „enemies": pociski (projectile.gd), reset po wipe i po misji obejmują
 ## obiekty bez osobnego kodu; is_threat = false, więc boty do nich nie strzelają.
 
 const Sprites := preload("res://scripts/sprites.gd")
@@ -149,6 +149,15 @@ func _apply_push(dir: float) -> void:
 		linear_velocity.x = dir * PUSH_SPEED
 
 # ---------------------------------------------------------------- trafienia, upadki
+
+## Obrażenia z broni (combat.gd): skrzynia = drewno, beczka = blacha.
+func take_hit(info: Dictionary) -> Dictionary:
+	if not NoiseMgr.is_server() or exploded:
+		return {}
+	var was_exploded := exploded
+	take_bullet_dir(info["pos"], float(info["amount"]), info["dir"])
+	return {"hit": true, "dealt": info["amount"], "killed": exploded and not was_exploded,
+		"mat": Arsenal.Mat.WOOD if kind == "crate" else Arsenal.Mat.METAL}
 
 func take_bullet_dir(from_pos: Vector2, dmg: float, dir: Vector2) -> void:
 	if not NoiseMgr.is_server() or exploded:

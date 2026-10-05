@@ -7,11 +7,12 @@ extends CharacterBody2D
 ## (spawn i kolizje rozstrzyga serwer, klienci tylko rysują).
 
 const Weapons := preload("res://scripts/weapons.gd")
+const WeaponController := preload("res://scripts/weapon_controller.gd")
+const WeaponView := preload("res://scripts/weapon_view.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Nav := preload("res://scripts/nav.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Sprites := preload("res://scripts/sprites.gd")
-const GUN_ROWS := {0: 0, 1: 1, 2: 2}   ## Weapons.M83/SPREAD12/P64 → rząd w guns.png
 
 const SPEED := 95.0
 const CROUCH_SPEED := 45.0
@@ -48,7 +49,7 @@ const REVIVE_HP := 2
 const REVIVE_SYNC_MS := 100     ## postęp podnoszenia wysyłany do innych peerów 10 Hz
 
 # Bot a cisza (filar 2): bot nie może sam psuć skradania ani Przesterowania
-const BOT_ENGAGE_RANGE := 260.0
+const BOT_ENGAGE_RANGE := 220.0   ## ≤ zasięg M-83 (240 px): bot nie strzela pociskami, które zgasną w locie
 const BOT_SELF_DEFENSE := 70.0  ## w tym promieniu strzela zawsze — obrona własna
 const BOT_Q_HOLD := 8.0         ## po Q wstrzymuje ogień, żeby nie nadpisać celu stalkera
 
@@ -58,8 +59,6 @@ const BATTERY_MAX := 180.0
 ## GDD nie mówi o ładowaniu; bez tego po 3 min misja byłaby czarna).
 const BATTERY_RECHARGE := 0.25
 const LIGHT_NOISE_EVERY := 10.0   ## +1 Uwagi co tyle sekund świecenia
-
-const BULLET_SCENE := preload("res://scenes/bullet.tscn")
 
 const BODY_COLORS := [
 	Color(0.91, 0.69, 0.29),
@@ -79,7 +78,17 @@ var crouching := false
 ## `dead` znaczy „down": gracz leży i wykrwawia się, ale można go podnieść.
 var dead := false
 var bleed_left := 0.0
-var weapon := 0
+var weapon := 0                 ## id broni w ręku (replikowane); ustawia kontroler
+## Stan broni dla widoku u pozostałych peerów (replikowane): faza, ładowanie szyny, ogień ciągły,
+## zestaw (główna A, główna B, biała) — serwer z niego dobiera, do jakiej broni upuszczać amunicję.
+var w_state := 0
+var w_charge := 0.0
+var w_firing := false
+var kit := Vector3i(Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Weapons.START_MELEE)
+## Celowanie myszą (swobodne) a klawiaturą (8 kierunków) — celownik rysuje się odpowiednio.
+var aim_by_mouse := false
+var weapons: WeaponController
+var view: WeaponView
 ## Postęp podnoszenia widoczny TYLKO lokalnie u podnoszącego (rysowany nad leżącym).
 var revive_progress := 0.0
 ## Latarka włączona — replikowane, bo snop widzą wszyscy, a wrogowie
@@ -87,12 +96,9 @@ var revive_progress := 0.0
 var flashlight := false
 var battery := BATTERY_MAX
 
-var _fire_timer := 0.0
 var _run_noise_tick := 0.0
 var _flash := 0.0
-var _muzzle := 0.0
 var _invuln := 0.0
-var _heat := 0.0
 var _kick := 0.0
 var _ff_cd := 0.0
 var _coyote := 0.0
@@ -105,12 +111,10 @@ var _prev_vy := 0.0
 var _prev_floor_y := 0.0
 var _splash_t := 0.0
 var _spr: Array = []            ## [ciało, glow] — AnimatedSprite2D (sprites.gd)
-var _gun: Sprite2D
 var _facing := 1.0
 var _light_noise_t := 0.0
 var _aura: PointLight2D
 var _beam: PointLight2D
-var _muzzle_light: PointLight2D
 var _overlay: Node2D
 var _jump_buf := 0.0
 var _was_on_floor := true
@@ -136,6 +140,11 @@ var _air_time_accum := 0.0
 ## spawnera („no network ID") — Godot wymaga _enter_tree.
 func _init() -> void:
 	_setup_sync()
+	# Kontroler broni też w _init: jego RPC (strzał, cios, przyznanie broni) muszą dziedziczyć
+	# autorytet gracza z _enter_tree, a węzeł dodany później by go nie dostał.
+	weapons = WeaponController.new()
+	weapons.name = "Weapons"
+	add_child(weapons)
 
 func _enter_tree() -> void:
 	player_id = name.to_int()
@@ -165,11 +174,10 @@ func _setup_lights() -> void:
 	_beam.position = chest
 	_beam.enabled = false
 	add_child(_beam)
-	_muzzle_light = Lights.make_light(Lights.radial(), 4.0, Color(1.0, 0.8, 0.45), 1.4, false)
-	_muzzle_light.position = chest
-	_muzzle_light.enabled = false
-	add_child(_muzzle_light)
 	_setup_sprites()
+	view = WeaponView.new()
+	view.setup(self, weapons)
+	add_child(view)
 	_overlay = Lights.add_overlay(self)   # ostatnie dziecko: etykiety nad sprite'ami
 
 ## Pixel-art z art/sprites (bake_sprites.py). Bez arkuszy zostaje rysowanie w kodzie.
@@ -178,16 +186,6 @@ func _setup_sprites() -> void:
 	if not Sprites.has(sheet):
 		return
 	_spr = Sprites.attach(self, sheet)
-	if Sprites.has("guns"):
-		_gun = Sprite2D.new()
-		_gun.name = "Gun"
-		_gun.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		_gun.centered = false
-		_gun.offset = Vector2(-3, -4)          # dłoń w (0,0) — obrót wokół dłoni
-		var at := AtlasTexture.new()
-		at.atlas = Sprites.texture(Sprites.DIR + "guns.png")
-		_gun.texture = at
-		add_child(_gun)
 
 ## Animacja z (replikowanego) stanu — działa też dla zdalnych graczy i bota.
 func _update_sprite() -> void:
@@ -210,20 +208,23 @@ func _update_sprite() -> void:
 		anim = "run"
 	body.scale = squash
 	Sprites.play(_spr, anim, _facing < 0.0)
+	body.modulate = _tint_color()
+
+## Kolor ciała: błysk po trafieniu i migotanie nietykalności (broń dostaje ten sam).
+func _tint_color() -> Color:
 	var m := Color.WHITE
 	if _flash > 0.0:
 		m = Color(2.4, 2.4, 2.4)
 	elif _invuln > 0.0 and int(Time.get_ticks_msec() / 60) % 2 == 0:
 		m.a = 0.45
-	body.modulate = m
-	if _gun != null:
-		_gun.visible = not dead
-		var at := _gun.texture as AtlasTexture
-		at.region = Rect2(0, GUN_ROWS.get(weapon, 0) * 7, 16, 7)
-		_gun.position = Vector2(_facing * 1.0, -8.0 if crouching else -12.0) * Vector2(1, squash.y)
-		_gun.rotation = aim_dir.angle()
-		_gun.flip_v = aim_dir.x < -0.05
-		_gun.modulate = m
+	return m
+
+## Facing z celowania/ruchu — wspólny dla sprite'a ciała i broni.
+func _update_facing() -> void:
+	if absf(aim_dir.x) > 0.1:
+		_facing = signf(aim_dir.x)
+	elif absf(velocity.x) > 10.0:
+		_facing = signf(velocity.x)
 
 ## Synchronizacja stanu przez MultiplayerSynchronizer (GDD §19 poz. 2).
 ## Zamiast ręcznych RPC 20 Hz mamy delta-sync z wbudowaną interpolacją.
@@ -236,7 +237,7 @@ func _setup_sync() -> void:
 	sync.replication_interval = 0.05
 	sync.delta_interval = 0.05
 	var cfg := SceneReplicationConfig.new()
-	for path in [":position", ":velocity", ":aim_dir", ":hp", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight"]:
+	for path in [":position", ":velocity", ":aim_dir", ":hp", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":kit"]:
 		cfg.add_property(path)
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
 	for path in [":position", ":velocity", ":hp", ":crouching", ":dead", ":is_bot", ":display_id"]:
@@ -265,7 +266,6 @@ func _setup_local() -> void:
 ## Rysowanie odświeżamy na każdym peerze (zdalni gracze też zmieniają celowanie,
 ## kucanie i HP), a kamera dostaje lokalny shake.
 func _process(delta: float) -> void:
-	_muzzle = maxf(0.0, _muzzle - delta)
 	_flash = maxf(0.0, _flash - delta)
 	if _camera.enabled:
 		_camera.offset = Feel.shake_offset()
@@ -273,7 +273,10 @@ func _process(delta: float) -> void:
 		_update_footsteps_passive()
 	_update_lights()
 	_update_squash(delta)
+	_update_facing()
 	_update_sprite()
+	if view != null:
+		view.update(delta, _tint_color(), _facing, squash.y)
 	queue_redraw()
 	_overlay.queue_redraw()
 
@@ -349,8 +352,6 @@ func _update_lights() -> void:
 		_beam.rotation = aim_dir.angle()
 		# lekkie drżenie snopu — latarka w ręku, nie reflektor
 		_beam.energy = (0.85 + 0.04 * sin(Time.get_ticks_msec() * 0.023)) * fl
-	_muzzle_light.enabled = _muzzle > 0.0
-	_muzzle_light.position = Vector2(0, -9) + aim_dir * 10.0
 
 ## Latarka: bateria, hałas „+1 Uwagi co 10 s" (GDD §6.6). Tylko właściciel.
 func _update_flashlight(delta: float) -> void:
@@ -382,16 +383,14 @@ func _physics_process(delta: float) -> void:
 
 	_invuln = maxf(0.0, _invuln - delta)
 	_ff_cd = maxf(0.0, _ff_cd - delta)
-	_heat = maxf(0.0, _heat - Weapons.HEAT_DECAY * delta)
 
 	_update_flashlight(delta)
 	if dead:
 		_down_physics(delta)
 		return
 
-	_fire_timer = maxf(0.0, _fire_timer - delta)
-
 	if is_bot:
+		weapons.tick_bot(delta)
 		_bot_brain(delta)
 		return
 
@@ -400,8 +399,8 @@ func _physics_process(delta: float) -> void:
 # ---------------------------------------------------------------- local input
 
 func _local_brain(delta: float) -> void:
-	_update_weapon_select()
 	var reviving := _handle_revive(delta, Input.is_action_pressed("interact"))
+	weapons.tick_local(delta, reviving)
 
 	var move_x := 0.0 if reviving else Input.get_axis("move_left", "move_right")
 	var aim_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
@@ -410,11 +409,13 @@ func _local_brain(delta: float) -> void:
 	if aim_input != Vector2.ZERO:
 		# klawiatura/pad: 8 kierunków (klasyka Contry)
 		aim_dir = _snap8(aim_input)
+		aim_by_mouse = false
 	elif Input.get_last_mouse_velocity().length() > 20.0:
 		# mysz: celowanie swobodne — snap do 8 kierunków czuje się dziwnie
 		var to_mouse := get_global_mouse_position() - (global_position + Vector2(0, -9))
 		if to_mouse.length() > 6.0:
 			aim_dir = to_mouse.normalized()
+			aim_by_mouse = true
 
 	var speed := CROUCH_SPEED if crouching else SPEED
 	if _in_water():
@@ -483,11 +484,6 @@ func _local_brain(delta: float) -> void:
 			_run_noise_tick = 0.0
 			NoiseMgr.add_noise(NoiseMgr.N_RUN_PER_SEC * 0.5, global_position)
 
-	var d := Weapons.def(weapon)
-	var want_fire: bool = Input.is_action_pressed("fire") if d["auto"] else Input.is_action_just_pressed("fire")
-	if want_fire and _fire_timer <= 0.0 and not reviving:
-		_fire()
-
 	if Input.is_action_just_pressed("overcharge"):
 		_try_overcharge()
 	if Input.is_action_just_pressed("flashlight"):
@@ -522,45 +518,6 @@ func _tick_drop(delta: float) -> bool:
 		set_collision_mask_value(PLATFORM_LAYER_BIT, true)
 	return true
 
-func _update_weapon_select() -> void:
-	if Input.is_action_just_pressed("weapon_1"):
-		_select_weapon(Weapons.M83)
-	elif Input.is_action_just_pressed("weapon_2"):
-		_select_weapon(Weapons.SPREAD12)
-	elif Input.is_action_just_pressed("weapon_3"):
-		_select_weapon(Weapons.P64)
-	elif Input.is_action_just_pressed("weapon_next"):
-		_select_weapon((weapon + 1) % Weapons.COUNT)
-	elif Input.is_action_just_pressed("weapon_prev"):
-		_select_weapon((weapon + Weapons.COUNT - 1) % Weapons.COUNT)
-
-func _select_weapon(w: int) -> void:
-	if w == weapon:
-		return
-	weapon = w
-	_fire_timer = maxf(_fire_timer, 0.15)
-	Audio.play("ui_click", Audio.BUS_UI, -12.0)
-
-func _fire() -> void:
-	var d := Weapons.def(weapon)
-	var cooldown: float = d["cooldown"]
-	_fire_timer = cooldown
-	_muzzle = 0.06
-	Audio.play_variant(d["sfx"], d["sfx_count"], Audio.BUS_WEAPONS, d["sfx_vol"], d["sfx_pitch"])
-	Audio.play_variant("whizz", 3, Audio.BUS_WEAPONS, -26.0, 1.0)
-	# własny dźwięk już zagrany — serwer nie dubluje go dla strzelającego
-	_request_bullet(weapon, false)
-	_add_shot_noise()
-	Feel.shake(d["shake"])
-	var kick: float = d["kick"]
-	if kick > 0.0:
-		_kick = -aim_dir.x * kick
-
-## Hałas strzału z modelu rozgrzania (weapons.gd); potem lufa się grzeje.
-func _add_shot_noise() -> void:
-	NoiseMgr.add_noise(Weapons.shot_noise(weapon, _heat), global_position)
-	_heat = minf(1.0, _heat + float(Weapons.def(weapon)["heat_gain"]))
-
 func _try_overcharge() -> void:
 	# Dźwięk od razu, niezależnie od tego czy ładunek się uda — klik ma potwierdzać
 	# akcję, a nie rozstrzygać (rozstrzyga use_overcharge).
@@ -572,19 +529,6 @@ func _try_overcharge() -> void:
 		NoiseMgr.use_overcharge(pos)
 	else:
 		_noise_manager_request.rpc_id(1, pos)
-
-## Pociski są serwerowe: klient prosi serwer, serwer spawnuje i rozstrzyga trafienia.
-func _request_bullet(w: int, play_sfx: bool) -> void:
-	var muzzle := global_position + Vector2(0, -9) + aim_dir * 9.0
-	if not NoiseMgr.has_network() or multiplayer.is_server():
-		_server_fire(muzzle, aim_dir, player_id, w, play_sfx)
-	else:
-		_fire_request.rpc_id(1, muzzle, aim_dir, w)
-
-@rpc("any_peer", "call_remote", "reliable")
-func _fire_request(muzzle: Vector2, dir: Vector2, w: int) -> void:
-	if multiplayer.is_server() and not dead:
-		_server_fire(muzzle, dir, player_id, clampi(w, 0, Weapons.COUNT - 1), true)
 
 @rpc("any_peer", "call_remote", "reliable")
 func _noise_manager_request(pos: Vector2) -> void:
@@ -610,6 +554,7 @@ func _go_down() -> void:
 	bleed_left = BLEED_TIME
 	velocity = Vector2.ZERO
 	crouching = false
+	weapons.on_down()
 	Audio.play("player_down", Audio.BUS_PLAYER, -5.0)
 	if _breath_on:
 		_breath_on = false
@@ -710,7 +655,8 @@ func _respawn(hp_amount: int) -> void:
 	global_position = _spawn_point
 	velocity = Vector2.ZERO
 	_invuln = 1.5
-	_heat = 0.0
+	weapons.on_down()
+	weapons.cool()
 	_run_vx = 0.0
 	_last_step_pos = global_position
 	_step_dist = 0.0
@@ -719,6 +665,7 @@ func _respawn(hp_amount: int) -> void:
 ## Restart po wipe (wszyscy leżą): pełne zdrowie w punkcie startu.
 func full_reset() -> void:
 	_respawn(MAX_HP)
+	weapons.reset()
 	_kick = 0.0
 	_revive_hold = 0.0
 	_revive_target_ref = null
@@ -862,17 +809,13 @@ func _bot_brain(delta: float) -> void:
 		var d := (enemy.global_position - global_position)
 		if d.length() > 6.0:
 			aim_dir = _snap8(d)
-		var los := _los_state(enemy) if _fire_timer <= 0.0 else Los.WALL
+		var los := _los_state(enemy) if weapons.cd <= 0.0 else Los.WALL
 		if los == Los.TEAMMATE and is_on_floor() and not crouching:
 			# kolega na linii — podskok daje czystą linię nad nim
 			_bot_wants_jump = true
-		if _fire_timer <= 0.0 and _aim_ok(d) and _bot_may_fire(d) and los == Los.CLEAR:
-			_fire_timer = float(Weapons.def(Weapons.M83)["cooldown"]) * 1.8
-			_muzzle = 0.06
-			weapon = Weapons.M83
-			# Boty symulowane są tylko na serwerze; serwer gra też ich dźwięk.
-			_request_bullet(Weapons.M83, true)
-			_add_shot_noise()
+		if weapons.cd <= 0.0 and _aim_ok(d) and _bot_may_fire(d) and los == Los.CLEAR:
+			# Boty symulowane są tylko na serwerze; serwer gra też ich dźwięk i efekty.
+			weapons.bot_fire(aim_dir)
 
 ## Dyscyplina ognia bota (filar 2). Strzał to hałas, a każdy nowy hałas
 ## przekierowuje stalkera — bot strzelający „bo widzi wroga" kasował Q drużyny
@@ -889,7 +832,7 @@ enum Los { CLEAR, WALL, TEAMMATE }
 ## Linia strzału bota: ściana (strzał w nią to sam hałas) albo stojący kolega.
 ## Wcześniej promień widział tylko ściany (maska 1), więc bot strzelał
 ## w wroga przez plecy człowieka. Leżących kolegów pomijamy — pocisk i tak
-## przez nich przelatuje (bullet.gd).
+## przez nich przelatuje (projectile.gd).
 func _los_state(target: Node2D) -> int:
 	var from := global_position + Vector2(0, -9)
 	var to := target.global_position + Vector2(0, -6)
@@ -1039,66 +982,11 @@ func _nearest_enemy(max_dist: float) -> Node2D:
 
 # ---------------------------------------------------------------- serwer
 
-## Autorytatywny strzał na serwerze: pociski (śrut = kilka), dźwięk dla peerów.
-func _server_fire(muzzle: Vector2, dir: Vector2, shooter: int, w: int, play_sfx: bool) -> void:
-	var d := Weapons.def(w)
-	var pellets: int = d["pellets"]
-	var spread: float = d["spread_deg"]
-	var jitter: float = d["jitter_deg"]
-	var dirs := PackedVector2Array()
-	for i in pellets:
-		var off := randf_range(-jitter, jitter)
-		if pellets > 1:
-			off += lerpf(-spread, spread, float(i) / float(pellets - 1))
-		dirs.append(dir.rotated(deg_to_rad(off)))
-	for dd in dirs:
-		_make_bullet(muzzle, dd, shooter, w)
-	_shot_fx(muzzle, dir, w)
-	if play_sfx:
-		Audio.play_variant_at(d["sfx"], d["sfx_count"], muzzle, Audio.BUS_WEAPONS,
-			float(d["sfx_vol"]) - 3.0, d["sfx_pitch"])
-	# wizualne kopie na klientach (call_remote — serwer nie duplikuje u siebie)
-	if NoiseMgr.has_network():
-		_fire_remote.rpc(muzzle, dirs, shooter, w)
-
-## Mode „any_peer": serwer woła to na węźle należącym do KLIENTA, a tryb
-## „authority" by na to nie pozwolił (wcześniej klienci nie widzieli cudzych strzałów).
-@rpc("any_peer", "call_remote", "reliable")
-func _fire_remote(muzzle: Vector2, dirs: PackedVector2Array, shooter: int, w: int) -> void:
-	if NoiseMgr.is_server():
-		return
-	var d := Weapons.def(w)
-	# własny strzał słyszeliśmy lokalnie, cudzy gramy pozycyjnie
-	if shooter != NoiseMgr.local_id():
-		Audio.play_variant_at(d["sfx"], d["sfx_count"], muzzle, Audio.BUS_WEAPONS,
-			float(d["sfx_vol"]) - 3.0, d["sfx_pitch"])
-	for dd in dirs:
-		_make_bullet(muzzle, dd, shooter, w)
-	_shot_fx(muzzle, dirs[0] if dirs.size() > 0 else Vector2.RIGHT, w)
-
-## Łuska i dym — kosmetyka strzału na każdym peerze (raz na strzał).
-func _shot_fx(muzzle: Vector2, dir: Vector2, w: int) -> void:
-	var parent := _fx_root()
-	Vfx.casing(parent, muzzle - dir * 6.0, dir, w == Weapons.SPREAD12)
-	Vfx.smoke(parent, muzzle, dir)
-
-func _make_bullet(muzzle: Vector2, dir: Vector2, shooter: int, w: int) -> void:
-	var d := Weapons.def(w)
-	var b := BULLET_SCENE.instantiate()
-	get_tree().current_scene.add_child(b)
-	b.global_position = muzzle
-	b.direction = dir
-	b.shooter_id = shooter
-	b.speed = d["speed"]
-	b.damage = d["damage"]
-	b.life_max = d["life"]
-	b.weapon = w
-
 ## Dostarcza obrażenia WŁAŚCICIELOWI postaci. apply_hit ma straż
 ## is_multiplayer_authority(), więc wywołanie go bezpośrednio na serwerze dla
 ## cudzej postaci kończyło się po cichu — gracze-klienci nie dostawali obrażeń
 ## od Stalkera ani od friendly fire. Wszystkie źródła obrażeń wołają tę metodę.
-## Friendly fire bez obrażeń (bullet.gd): rozstrzyga właściciel postaci.
+## Friendly fire bez obrażeń (projectile.gd): rozstrzyga właściciel postaci.
 func deliver_ff(from_pos: Vector2) -> void:
 	if not NoiseMgr.has_network() or is_multiplayer_authority():
 		apply_ff(from_pos)
@@ -1163,6 +1051,17 @@ func apply_hit(amount: int, _from_pos: Vector2) -> void:
 	if hp <= 0:
 		_go_down()
 
+## Odrzut broni popycha postać (px/s, wygasa KICK_DECAY).
+func apply_recoil_kick(v: float) -> void:
+	_kick = v
+
+## Czy gracz nosi daną broń (zestaw replikowany w `kit`; sidearm P-64 ma każdy).
+func carries(w: int) -> bool:
+	return w == Weapons.P64 or w == kit.x or w == kit.y
+
+func kit_primaries() -> Array:
+	return [kit.x, kit.y]
+
 func _snap8(v: Vector2) -> Vector2:
 	if v == Vector2.ZERO:
 		return aim_dir
@@ -1201,11 +1100,11 @@ func _draw() -> void:
 	var eye_off := Vector2(aim_dir.x * 2.5, clampf(aim_dir.y, -1.0, 0.35) * 2.0)
 	draw_rect(Rect2(eye_off.x - 1.0, top + 3.0 + eye_off.y, 2, 2), Color(0.06, 0.06, 0.08))
 	var arm_start := Vector2(0, top + 9)
-	draw_line(arm_start, arm_start + aim_dir * _gun_len(), Color(0.78, 0.78, 0.85), 2.0 if weapon != Weapons.SPREAD12 else 3.0)
+	draw_line(arm_start, arm_start + aim_dir * _gun_len(), Color(0.78, 0.78, 0.85), 3.0 if weapons.cur().pellets > 1 else 2.0)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _gun_len() -> float:
-	return 14.0 if weapon == Weapons.SPREAD12 else (9.0 if weapon == Weapons.P64 else 12.0)
+	return weapons.cur().gun_len
 
 ## Rzeczy czytelne w ciemności (materiał unshaded): etykieta, HP, rozbłysk,
 ## stan „DOWN" i pasek podnoszenia. Teksty wyśrodkowane nad postacią.
@@ -1223,9 +1122,6 @@ func _draw_overlay(ov: Node2D) -> void:
 	var top := -11.0 if crouching else -17.0
 	if not _spr.is_empty():
 		top = -16.0 if crouching else -22.0
-	if _muzzle > 0.0:
-		var gun_at := (_gun.position if _gun != null else Vector2(0, top + 9))
-		ov.draw_circle(gun_at + aim_dir * _gun_len(), 3.5, Color(1.0, 0.9, 0.4, 0.9))
 	for i in MAX_HP:
 		var c := Color(0.92, 0.25, 0.3) if i < hp else Color(0.22, 0.22, 0.26)
 		ov.draw_rect(Rect2(-8 + i * 6.0, top - 7.0, 4, 3), c)

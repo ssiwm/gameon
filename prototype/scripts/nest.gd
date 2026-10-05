@@ -2,7 +2,7 @@ extends CharacterBody2D
 ## Gniazdo — cel misji „Gniazdo" (GDD §9, misja 1.3: „spal 3 gniazda").
 ## Symulacja i HP TYLKO na serwerze; klienci dostają stan przez _sync.
 ##
-## Gniazdo jest w grupie „enemies", bo tak trafiają je pociski (bullet.gd)
+## Gniazdo jest w grupie „enemies", bo tak trafiają je pociski (projectile.gd)
 ## i tak resetuje je wipe (main._restart_mission → reset_enemy). Nie jest
 ## jednak zagrożeniem: boty go nie ostrzeliwują (is_threat = false), bo
 ## zniszczenie gniazda jest GŁOŚNE — to decyzja drużyny, nie bota.
@@ -68,6 +68,14 @@ func _set_alive(a: bool) -> void:
 	alive = a
 	visible = a
 	($CollisionShape2D as CollisionShape2D).set_deferred("disabled", not a)
+
+## Obrażenia z broni (combat.gd).
+func take_hit(info: Dictionary) -> Dictionary:
+	if not NoiseMgr.is_server() or not alive:
+		return {}
+	var dmg: float = info["amount"]
+	take_bullet(info["pos"], dmg)
+	return {"hit": true, "dealt": dmg, "killed": not alive, "mat": Arsenal.Mat.FLESH}
 
 func take_bullet(_from_pos: Vector2, dmg: float = 8.0) -> void:
 	if not NoiseMgr.is_server() or not alive:

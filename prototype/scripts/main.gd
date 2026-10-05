@@ -13,6 +13,7 @@ const BOT_SCENE_PATH := "res://scenes/bot_companion.tscn"
 const WIPE_DELAY := 3.0
 
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
+const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
 
 ## >0 w trakcie odliczania do restartu po wipe; widoczne na każdym peerze (HUD).
 var wipe_left := 0.0
@@ -90,6 +91,7 @@ func _announce_wipe(seconds: float) -> void:
 func _restart_mission(new_run: bool) -> void:
 	print("[MISSION] restart (%s)" % ("nowa misja" if new_run else "wipe"))
 	NoiseMgr.reset_mission()
+	Arsenal.reset_mission()
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e.has_method("reset_enemy"):
 			e.reset_enemy()
@@ -103,6 +105,8 @@ func _handle_cmdline() -> void:
 	var stealthtest := -1.0
 	var wipetest := -1.0
 	var missiontest := false
+	var weapon_mode := ""
+	var shots_dir := ""
 	var args := OS.get_cmdline_user_args()
 	for a in args:
 		if a.begins_with("--port="):
@@ -120,6 +124,15 @@ func _handle_cmdline() -> void:
 			stealthtest = a.substr("--stealthtest=".length()).to_float()
 		elif a == "--missiontest":
 			missiontest = true
+		elif a == "--weapontest":
+			weapon_mode = "unit"
+		elif a.begins_with("--weaponshots="):
+			weapon_mode = "shots"
+			shots_dir = a.substr("--weaponshots=".length())
+		elif a == "--weaptestnet":
+			weapon_mode = "net_host"
+		elif a == "--weaptestclient":
+			weapon_mode = "net_client"
 		elif a == "--wipetest":
 			wipetest = 2.0
 		elif a.begins_with("--wipetest="):
@@ -130,6 +143,15 @@ func _handle_cmdline() -> void:
 		_wipe_test(wipetest)
 	if missiontest:
 		_mission_test()
+	if weapon_mode != "":
+		var wt := WEAPON_TEST.new()
+		wt.name = "WeaponTest"
+		add_child(wt)
+		match weapon_mode:
+			"unit": wt.run_unit(self)
+			"net_host": wt.run_net_host(self)
+			"net_client": wt.run_net_client(self)
+			"shots": wt.run_shots(self, shots_dir)
 	if autoquit >= 0.0:
 		await get_tree().create_timer(autoquit).timeout
 		get_tree().quit()

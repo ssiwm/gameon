@@ -36,6 +36,7 @@ const STALKER_SCENE := preload("res://scenes/stalker.tscn")
 const BOSS_SCENE := preload("res://scenes/boss.tscn")
 const PROP := preload("res://scripts/prop.gd")
 const PICKUP := preload("res://scripts/pickup.gd")
+const Weapons := preload("res://scripts/weapons.gd")
 
 const MAP := [
 	"##............................................................................................................................##",
@@ -63,7 +64,7 @@ const MAP := [
 	"##.......w...w.---bbbbbbbbbbbbbbbbbbC...........=========.....===========...=========..........w......-------......w..........##",
 	"##.......w...w....bbbbbbbbbbbbbbbbbbC..........................................................w.........w.........w..........##",
 	"##.......w..---...bbbbbbbbbbbbbbbbbb........=========...===========...===========.............-------....w.........w..........##",
-	"##.ES..S.w...w.kk.bbbbbbobTbTbTbbNbb..................M..o..W.........X...M.......T.T..........w.........w.o..W....w...B....E.##",
+	"##.ES..S.w.g.w.kk.bbbbbbobTbTbTbbNbb....g...a.........M..og.W.a.......X...M.g.....TaT...g......w..a.....gw.og.W.a..w.g.B....E.##",
 	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"########################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
@@ -245,7 +246,7 @@ func _exposure(c: int, r: int) -> int:
 ## Znaczniki → postacie. Nazwy numerowane od lewej do prawej, identycznie
 ## na każdym peerze.
 func _spawn_entities() -> void:
-	var found := {"T": [], "W": [], "N": [], "k": [], "o": []}
+	var found := {"T": [], "W": [], "N": [], "k": [], "o": [], "a": [], "g": []}
 	for r in MAP.size():
 		var row: String = MAP[r]
 		for c in row.length():
@@ -257,7 +258,7 @@ func _spawn_entities() -> void:
 				"E": exits.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "N", "k", "o": found[ch].append(p)
+				"T", "W", "N", "k", "o", "a", "g": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -278,6 +279,8 @@ func _spawn_entities() -> void:
 			# fizyka uznawała za „w środku" i skrzynia przelatywała piętro niżej
 			pr.position = found[k[0]][i] + Vector2(0, -1)
 			add_child(pr)
+	_map_items = {"a": found["a"], "g": found["g"]}
+	_spawn_map_items()
 	var s := STALKER_SCENE.instantiate()
 	s.name = "Stalker"
 	s.position = stalker_home
@@ -295,45 +298,85 @@ func _add_enemy(n: String, kind: String, p: Vector2) -> void:
 	e.position = p
 	add_child(e)
 
+# ---------------------------------------------------------------- przedmioty z mapy
+
+## Broń leżąca na mapie w kolejności od lewej (rosnąca moc) — GDD §21 odblokowuje ją
+## strefami; w prototypie jest do wzięcia w terenie. „g” = broń, „a” = skrzynka z amunicją
+## dla wszystkich noszonych broni głównych (zapas jest wspólny).
+const MAP_WEAPONS := [Weapons.KILOF, Weapons.SRUT8, Weapons.CIEGNO6, Weapons.SOKOL6,
+	Weapons.LR7, Weapons.HKM9, Weapons.GNIEW4, Weapons.WIDMO1]
+
+var _map_items := {}
+
+## Każdy peer tworzy te same przedmioty o tych samych nazwach (mapa jest statyczna), więc
+## podniesienie rozstrzygane przez serwer znika wszędzie. Wołane też po restarcie misji.
+func _spawn_map_items() -> void:
+	var guns: Array = _map_items.get("g", [])
+	for i in guns.size():
+		_add_map_item("MapGun%d" % i, "weapon", MAP_WEAPONS[i % MAP_WEAPONS.size()], guns[i])
+	var caches: Array = _map_items.get("a", [])
+	for i in caches.size():
+		_add_map_item("MapCache%d" % i, "cache", 0, caches[i])
+
+func _add_map_item(n: String, kind: String, arg: int, pos: Vector2) -> void:
+	if has_node(n):
+		return
+	var it: Node2D = PICKUP.new()
+	it.name = n
+	it.kind = kind
+	it.arg = arg
+	it.position = pos + Vector2(0, -2)
+	add_child(it)
+
 # ---------------------------------------------------------------- apteczki
 
 var _pickup_serial := 0
 
 ## Serwer: apteczka wypada w punkcie (Wołek, Żyła). Stała nazwa na każdym peerze.
 func spawn_health(pos: Vector2) -> void:
+	spawn_item("health", 0, pos)
+
+## Serwer: przedmiot na ziemi — "health", "ammo" (arg = broń, rounds = naboje)
+## albo "weapon" (arg = broń). Nazwa węzła jest stała na każdym peerze.
+func spawn_item(kind: String, arg: int, pos: Vector2, rounds := 0) -> void:
 	if not NoiseMgr.is_server():
 		return
 	_pickup_serial += 1
+	var n := "Item%d" % _pickup_serial
 	if NoiseMgr.has_network():
-		_spawn_health_rpc.rpc("Health%d" % _pickup_serial, pos)
+		_spawn_item_rpc.rpc(n, kind, arg, rounds, pos)
 	else:
-		_spawn_health_rpc("Health%d" % _pickup_serial, pos)
+		_spawn_item_rpc(n, kind, arg, rounds, pos)
 
 @rpc("authority", "call_local", "reliable")
-func _spawn_health_rpc(n: String, pos: Vector2) -> void:
+func _spawn_item_rpc(n: String, kind: String, arg: int, rounds: int, pos: Vector2) -> void:
 	if has_node(n):
 		return
 	var h: Node2D = PICKUP.new()
 	h.name = n
+	h.kind = kind
+	h.arg = arg
+	h.rounds = rounds
 	h.position = pos
 	add_child(h)
 
-## Serwer: apteczka podniesiona — znika u wszystkich.
-func take_health(n: String) -> void:
+## Serwer: przedmiot podniesiony — znika u wszystkich.
+func take_item(n: String) -> void:
 	if NoiseMgr.has_network():
-		_take_health_rpc.rpc(n)
+		_take_item_rpc.rpc(n)
 	else:
-		_take_health_rpc(n)
+		_take_item_rpc(n)
 
 @rpc("authority", "call_local", "reliable")
-func _take_health_rpc(n: String) -> void:
+func _take_item_rpc(n: String) -> void:
 	var h := get_node_or_null(n)
 	if h == null:
 		return
-	Audio.play_at("revive", h.global_position, Audio.BUS_WORLD, -8.0, 1.4)
+	var snd := "revive" if h.kind == "health" else ("weapon_pickup" if h.kind == "weapon" else "ammo_pickup")
+	Audio.play_at(snd, h.global_position, Audio.BUS_WORLD, -8.0, 1.4 if h.kind == "health" else 1.0)
 	h.queue_free()
 
-## Serwer: restart misji czyści apteczki.
+## Serwer: restart misji czyści przedmioty.
 func clear_pickups() -> void:
 	if not NoiseMgr.is_server():
 		return
@@ -346,6 +389,65 @@ func clear_pickups() -> void:
 func _clear_pickups_rpc() -> void:
 	for h in get_tree().get_nodes_in_group("pickups"):
 		h.queue_free()
+		# nazwa zwalnia się dopiero po klatce — przedmioty z mapy wracają odroczone
+		h.name = "Old_%s" % h.name
+	_spawn_map_items.call_deferred()
+
+## Najbliższa broń na ziemi w zasięgu „E” (HUD podpowiada, kontroler podnosi).
+func weapon_item_near(pos: Vector2) -> Node2D:
+	var best: Node2D = null
+	var best_d := INF
+	for h in get_tree().get_nodes_in_group("pickups"):
+		if h.kind != "weapon" or h.is_queued_for_deletion():
+			continue
+		var d: float = h.global_position.distance_to(pos)
+		if d <= h.WEAPON_R and d < best_d:
+			best_d = d
+			best = h
+	return best
+
+## Gracz (właściciel) prosi o podniesienie broni z ziemi. Serwer sprawdza odległość,
+## dolicza do zapasu naboje „z łupu”, usuwa przedmiot i odsyła przyznanie.
+func request_weapon_pickup(item_name: String) -> void:
+	if NoiseMgr.has_network() and not NoiseMgr.is_server():
+		_weapon_pickup_rpc.rpc_id(1, item_name)
+	else:
+		_weapon_pickup_server(item_name, NoiseMgr.local_id())
+
+@rpc("any_peer", "call_remote", "reliable")
+func _weapon_pickup_rpc(item_name: String) -> void:
+	if NoiseMgr.is_server():
+		_weapon_pickup_server(item_name, multiplayer.get_remote_sender_id())
+
+func _weapon_pickup_server(item_name: String, peer_id: int) -> void:
+	var it := get_node_or_null(item_name)
+	if it == null or it.kind != "weapon" or it.is_queued_for_deletion():
+		return
+	var pl: Node2D = null
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.player_id == peer_id and not p.is_bot:
+			pl = p
+	if pl == null or pl.dead or not it.in_reach(pl):
+		return
+	var w: int = it.arg
+	Arsenal.add_reserve(w, int(Weapons.def(w).pickup_rounds))
+	take_item(item_name)
+	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
+		pl.weapons.grant_weapon(w)
+	else:
+		pl.weapons.grant_weapon.rpc_id(peer_id, w)
+
+## Gracz porzuca zastąpioną broń (leży pod stopami) — przez serwer, żeby miała stałą nazwę.
+func request_drop(w: int, pos: Vector2) -> void:
+	if NoiseMgr.has_network() and not NoiseMgr.is_server():
+		_drop_rpc.rpc_id(1, w, pos)
+	else:
+		spawn_item("weapon", w, pos)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _drop_rpc(w: int, pos: Vector2) -> void:
+	if NoiseMgr.is_server() and Weapons.is_valid(w):
+		spawn_item("weapon", w, pos)
 
 ## Plama krwi na powierzchni (vfx.splat). Lokalna, kosmetyczna.
 func add_decal(pos: Vector2, radius: float) -> void:
@@ -381,6 +483,15 @@ func is_platform_at(pos: Vector2) -> bool:
 	var cell := _solid.local_to_map(_solid.to_local(pos + Vector2(0, 3)))
 	var ac := _solid.get_cell_atlas_coords(cell)
 	return ac.x == KINDS["="][0] or ac.x == KINDS["-"][0]
+
+## Powierzchnia kafla, w który uderzył pocisk (punkt trafienia przesunięty w głąb ściany).
+func surface_at_hit(pos: Vector2, normal: Vector2) -> String:
+	var cell := _solid.local_to_map(_solid.to_local(pos - normal * 2.0))
+	var td := _solid.get_cell_tile_data(cell)
+	if td == null:
+		return "dirt"
+	var s: String = td.get_custom_data("surface")
+	return s if s != "" else "dirt"
 
 ## Powierzchnia pod stopami (dźwięk kroków). Pusto = kroki „dirt".
 func surface_at(pos: Vector2) -> String:

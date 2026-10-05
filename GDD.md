@@ -1,6 +1,6 @@
 # DEAD AIR '87 — Game Design Document
 
-**Wersja:** 1.5.3 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
+**Wersja:** 1.6.0 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
 **Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
 **Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
 **Silnik:** Godot 4.x + GodotSteam
@@ -177,6 +177,24 @@ Misja → złom + wroga wiedza + próbki → Ulepszenia broni / Perki / Bezpiecz
 | **Defibrylator** | Revive na dystans 10 m | 1 użycie na misję |
 | **Klucz francuski** | Otwiera zamki, naprawia generatory | Postęp celu |
 | **Taśma klejąca** | Podnosi prowizoryczne barykady | Gameplay obronny |
+
+
+### 6.7 Stan implementacji w prototypie (1.6)
+
+Pełna analiza i architektura: `prototype/WEAPONS.md`. W prototypie działa **12 pozycji**: M-83, SPREAD-12,
+P-64, ŚRUT-8, LR-7, HKM-9, GNIEW-4, SOKÓŁ-6, WIDMO-1, CIĘGNO-6, maczeta, kilof (w HUD nazwy ASCII). Różnice
+względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapons.gd`, testy `--weapontest`):
+
+- **Amunicja:** magazynki i przeładowanie (tryb taktyczny: z nabojem w komorze szybciej), **wspólny zapas drużyny**
+  autorytatywny na serwerze; sidearm ∞. Wrogowie upuszczają amunicję tylko do broni, którą ktoś nosi; skrzynie
+  z mapy zasilają wszystkie noszone bronie główne.
+- **Hałas:** każda broń ma własny `heat_gain`/`heat_decay` (wcześniej wspólny decay sprawiał, że rozgrzewała się
+  tylko strzelba). P-64 jest **cichsza** od M-83 (0,5→0,9 vs 0,6→1,5), zgodnie z tabelą §6.2.
+- **Krytyk w głowę:** tylko cele wysokie (Wołek: górne 28% sylwetki; Trzosek nie ma słabego punktu). P-64 i CIĘGNO ×2, M-83 ×1,5.
+- **Maczeta** zabija natychmiast i po cichu wroga śpiącego **albo odwróconego plecami**.
+- **HKM-9** podpala (8 HP/s), płonące Trzoski uciekają w panice. **GNIEW-4** liczy się jako wabik (+15 Uwagi) i rani drużynę.
+- Zasięgi to zasięg *lotu* pocisku; efektywny (bez spadku obrażeń) jest krótszy (M-83 12 m, SPREAD-12 2,5 m).
+- Poza zakresem prototypu: ulepszenia 3-poziomowe, granaty/flary/miny (§6.5), zakup w Kryjówce, wyważanie drzwi.
 
 ---
 
@@ -615,6 +633,12 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 15 | Hitstop (`Engine.time_scale`) na hoście | `feel.gd` | Spowalniał symulację serwera — szarpanie u wszystkich klientów przy każdym zabójstwie | **P1 — naprawione (1.3.1)**: na hoście z klientami tylko shake |
 | 16 | Próg budzenia wrogów 1,0 > hałas strzału zimnego M-83 (0,6) | `enemy.gd` | Pojedyncze strzały M-83 były dla wrogów nieme | **P2 — naprawione (1.3.1)**: próg 0,5 (kroki 0,25 nadal nie budzą) |
 | 17 | Postęp podnoszenia widoczny tylko u podnoszącego | `player.gd` | Leżący nie wiedział, że ktoś go ratuje | **P2 — naprawione (1.3.1)**: synchronizacja 10 Hz, HUD „Podnoszą cię… N%" |
+| 18 | Wspólny `HEAT_DECAY` 1,2/s większy niż przyrost ciepła × tempo (M-83: 0,10 × 8,3; P-64: 0,08 × 5) | `weapons.gd` | Rozgrzewała się tylko strzelba; hałas M-83/P-64 stały, `n_max` nieosiągalne — wbrew §8.1 i README | **P1 — naprawione (1.6)**: `heat_decay` per broń, walidacja i test pilnują `peak heat ≥ 0,99` |
+| 19 | Własny pocisk strzelca-klienta pojawiał się po RTT; `whizz` grał strzelającemu | `player.gd` | Smuga spóźniona o 50–150 ms względem huku | **P1 — naprawione (1.6)**: predykcja kosmetyczna po stronie strzelca, serwer autorytatywny |
+| 20 | Pocisk = `Area2D` przesuwany dyskretnie | `bullet.gd` | Szybka broń tunelowałaby przez wąskich wrogów i cienkie ściany | **P1 — naprawione (1.6)**: przeciąganie promienia; test: 9000 px/s trafia wroga 10 px |
+| 21 | Serwer ufał żądaniu strzału (tempo, wylot) | `player.gd` | Zmodyfikowany klient: strzał bez limitu | **P1 — naprawione (1.6)**: token bucket, korekta wylotu, walidacja nadawcy; test sieciowy |
+| 22 | Efekty trafień (krew, dźwięk uderzenia) tylko u serwera | `bullet.gd`, `enemy.gd` | Klient widział pocisk znikający w wrogu bez śladu | **P2 — naprawione (1.6)**: `Arsenal` rozsyła efekt trafienia do wszystkich peerów |
+| 23 | Przedmioty z mapy (broń, skrzynie) mają stałe nazwy tworzone lokalnie | `level.gd` | Dołączający w trakcie misji widzi przedmioty, które inni już zabrali | P2 — znane, jak potomstwo Żyły |
 
 **Pozostałe znane ograniczenia:** zwykli wrogowie (Trzosek, Wołek) jeszcze bez A* — gonią prosto i doskakują; brak flar jako przedmiotu (tylko znacznik ekstrakcji); dołączający w trakcie walki nie widzi już istniejącego potomstwa Żyły; brak WebSocket/relay fallback; łup misji nie istnieje, więc wipe odbiera tylko postęp próby.
 
@@ -691,6 +715,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 1.5.2 | 2026-10-05 | Friendly fire: usunięty wyjątek strzelby SPREAD-12 z bliska (<40 px zabierała koledze 1 HP). Żadna broń nie rani już kolegi — tylko hałas i odrzut; drużynę ranią jedynie wybuchy |
 | 1.5.3 | 2026-10-05 | **Apteczki** (+1 HP, maks. 3): wypadają z Wołków (75%) i z Żyły (2 sztuki — na drogę do ekstrakcji); Trzoski nic nie dają. Podnosi ranny przez dotknięcie, przy pełnym HP apteczka zostaje, leżący nie podnosi; bot ustępuje rannemu człowiekowi w promieniu 80 px. Zielona poświata — widać je w ciemności. Restart misji czyści apteczki |
 | 1.5.4 | 2026-10-05 | **Overhaul audio (szczegóły: `prototype/AUDIO.md`).** Audyt (`tools/audio_audit.py`) wykrył, że rdzeń syntezy był zepsuty: `osc()` bez dzielenia fazy przez SR (sinus = cisza, reszta = aliasowany szum → bas, kick, akordy, serce i UI nie miały wysokości), `fm2()`/`svf()`/`stereoize()` błędne, 74/85 plików z true-peakiem > −1 dBTP, 19 tracących >3 dB w mono. Nowy rdzeń DSP (numpy/scipy, testy), 116 assetów (było 85): broń warstwowa + własna strzelba + łuski, głosy z formantami, kroki ×5 na powierzchnię, ambient stereo bez Haas, muzyka jako 4 **stemy addytywne** (96 BPM, 8 taktów). Runtime: okluzja progowa z dyfrakcją, pogłos środowiskowy z promieni, muzyka kwantyzowana do beatu, sidechain, ogłuszenie + szum w uszach, voice management, emitery ambientu, szept stalkera pozycyjny, sygnał napisów. Audyt: 76 → 0 assetów z uwagami. Brzmienia nie oceniano uchem, zmian w silniku nie uruchomiono — wymagany odsłuch i test w Godocie |
+| 1.6.0 | 2026-10-05 | **Overhaul broni (szczegóły: `prototype/WEAPONS.md`).** Analiza wykryła, że model rozgrzania działał tylko dla strzelby (wspólny decay > przyrost ciepła × tempo), ciepła nie było w UI, P-64 była zdominowana przez M-83, nie było magazynków/przeładowania/zapasu, a strzał klienta miał lag o RTT. Przebudowa: typowany `WeaponDef` + rejestr **12 broni** (dane → zero zmian w kodzie przy nowej broni), warstwa obrażeń `Combat` (krytyk, backstab, podpalenie, wybuch, przebicie), pociski z przeciąganiem promienia (bez tunelowania, spadek obrażeń, naprowadzanie, łuk, bełt do odzysku), promień/płomień/szyna/granat/cios, **amunicja ze wspólnym zapasem drużyny** + skrzynki, drop wrogów, podnoszenie i wymiana broni (E), predykcja po stronie strzelca + walidacja serwera (token bucket) + seed rozrzutu, efekty trafień do wszystkich peerów. Feel: rozbłysk ze światłem, smugi, odrzut kierunkowy kamery, bloom, celownik z łukiem ciepła i pierścieniem przeładowania, hitmarkery z dźwiękiem, animacje broni, impact wg powierzchni. HUD: magazynek/zapas, pasek lufy z kosztem strzału. Audio: +36 assetów (152 ścieżki). Testy: `--weapontest` (≈60 asercji), test sieciowy host+klient |
 
 ---
 
@@ -713,11 +738,12 @@ Filar 7 (§2): nowa zawartość dopiero, gdy podstawy są przyjemne. Poniższe w
 
 | Broń | Rytm | Obrażenia | Hałas (zimna → gorąca lufa) | Feel |
 |---|---|---|---|---|
-| M-83 (auto) | 0,12 s | 8 | 0,6 → 2,6 | shake 0,7 |
-| SPREAD-12 | 0,26 s, 5 śrucin ±14° | 5×7 | 3,5 → 5,0 | shake 2,4, odrzut gracza 55 |
-| P-64 | 0,20 s | 10 | 1,0 → 1,6 | shake 0,5 |
+| M-83 (auto) | 0,11 s | 8 (×1,5 w głowę) | 0,6 → 1,5 | shake 0,7, kick kamery 0,5, bloom do 4° |
+| SPREAD-12 | 0,26 s, 5 śrucin ±14° | 5×7, spadek do 35% | 3,5 → 5,0 | shake 2,4, odrzut gracza 55 |
+| P-64 | 0,20 s | 11 (×2 w głowę) | 0,5 → 0,9 | shake 0,5 |
+| SRUT-8 | 0,8 s, 8 śrucin ±17° | 8×7, spadek do 25% | 4,5 → 6,0 | shake 4,0, odrzut 130, ogłuszenie 0,2 s |
 
-- Lufa grzeje się z każdym strzałem i stygnie 1,2/s: krótka seria jest tania, ciągły ogień drogi (§8.1).
+- Lufa grzeje się z każdym strzałem i stygnie z **własną prędkością broni** (M-83 0,30/s, SPREAD-12 1,2/s, P-64 0,6/s…): krótka seria jest tania, ciągły ogień drogi (§8.1). Pełny roster i liczby: §6.7 i `prototype/WEAPONS.md`.
 - Trafienie wroga: biały błysk 0,1 s, ogłuszenie 0,12 s, odrzut (Trzosek 70, Wołek 14).
 - **Hitstop:** zabójstwo Trzoska 50 ms, Wołka 90 ms, własne trafienie 70 ms; cooldown 250 ms (przy 8 strz./s hitstop na każde trafienie zamroziłby grę). **Na hoście z podłączonymi klientami hitstop jest wyłączony** — `Engine.time_scale` spowalniałby symulację wszystkim; zostaje shake.
 - Shake jest lokalny (kamera każdego peera), wygaszany czasem rzeczywistym.

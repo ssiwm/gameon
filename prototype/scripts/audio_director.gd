@@ -478,10 +478,13 @@ func start_loop(key: String, bus: String = BUS_PLAYER, vol_db := -6.0, pitch := 
 ## Pętla POZYCYJNA przypięta do węzła (np. szept stalkera). Głośność zostaje
 ## sterowana skryptem źródła (spatial=false wyłącza tłumienie dystansem, żeby nie
 ## liczyć go dwa razy), ale dochodzą panorama stereo i okluzja przez ściany.
+## `id` pozwala mieć kilka pętli z tej samej próbki naraz (np. promień LR-7 u dwóch
+## graczy); stop_loop / set_loop_volume / loop_playing przyjmują wtedy to `id`.
 func start_loop_at(key: String, node: Node2D, bus: String = BUS_WORLD, vol_db := -6.0,
-		spatial := false) -> void:
-	if _pos_loops.has(key):
-		set_loop_volume(key, vol_db)
+		spatial := false, id := "") -> void:
+	var reg := id if id != "" else key
+	if _pos_loops.has(reg):
+		set_loop_volume(reg, vol_db)
 		return
 	var s := stream(key)
 	if s == null or node == null:
@@ -497,7 +500,7 @@ func start_loop_at(key: String, node: Node2D, bus: String = BUS_WORLD, vol_db :=
 	node.add_child(p)
 	p.stream = s
 	p.play()
-	_pos_loops[key] = p
+	_pos_loops[reg] = p
 
 
 func stop_loop(key: String) -> void:

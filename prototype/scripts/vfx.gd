@@ -156,3 +156,206 @@ static func splat(parent: Node, pos: Vector2, radius: float) -> void:
 	if hit.is_empty():
 		return
 	lvl.add_decal(hit["position"], radius)
+
+# ---------------------------------------------------------------- walka (1.6 — overhaul broni)
+
+static var _hit_snd_ms := 0
+static var _impact_snd_ms := 0
+
+## Efekt trafienia celu: krew / iskry / drzazgi + dźwięk dobrany do materiału.
+## Śrut (8 pocisków naraz) nie gra 8 dźwięków — krótki próg na dźwięk, efekt zawsze.
+static func hit(parent: Node, pos: Vector2, dir: Vector2, mat: int, crit: bool, heavy: bool) -> void:
+	if parent == null or not parent.is_inside_tree():
+		return
+	var now := Time.get_ticks_msec()
+	var snd := heavy or now - _hit_snd_ms > 40
+	if snd:
+		_hit_snd_ms = now
+	match mat:
+		Arsenal.Mat.FLESH:
+			blood(parent, pos, dir, 5 + (5 if heavy else 0) + (4 if crit else 0))
+			if snd:
+				Audio.play_variant_at("impact_flesh", 3, pos, Audio.BUS_WORLD, -9.0 + (3.0 if heavy else 0.0) + (2.0 if crit else 0.0),
+					1.18 if crit else 1.0)
+			if crit:
+				# złoty błysk — trafienie w głowę ma być widać i słychać
+				burst(parent, pos, Color(1.0, 0.88, 0.45), 7, 40.0, 120.0, -dir, 90.0, 160.0, 0.18, Vector2(0.8, 1.6), true)
+		Arsenal.Mat.ARMOR, Arsenal.Mat.METAL:
+			sparks(parent, pos, dir)
+			if snd:
+				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -12.0, 1.25)
+				Audio.play_variant_at("ricochet", 2, pos, Audio.BUS_WORLD, -17.0, 1.1, 0.12)
+		Arsenal.Mat.WOOD:
+			burst(parent, pos, Color(0.55, 0.38, 0.2), 7, 30.0, 90.0, -dir, 70.0, 420.0, 0.35, Vector2(1.0, 2.0))
+			if snd:
+				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -14.0, 0.62)
+
+## Pocisk w ścianę: efekt wg powierzchni (kafel mapy), z krótkim progiem na dźwięk.
+static func impact(parent: Node, pos: Vector2, normal: Vector2, surface: String, heavy := false) -> void:
+	if parent == null or not parent.is_inside_tree():
+		return
+	var out := normal if normal.length() > 0.1 else Vector2.UP
+	var now := Time.get_ticks_msec()
+	var snd := heavy or now - _impact_snd_ms > 45
+	if snd:
+		_impact_snd_ms = now
+	match surface:
+		"water":
+			splash(parent, pos, 0.6)
+		"dirt":
+			burst(parent, pos, Color(0.5, 0.4, 0.28, 0.8), 6, 20.0, 70.0, out, 60.0, 380.0, 0.35, Vector2(1.0, 2.0))
+			if snd:
+				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -15.0, 0.7)
+		"concrete":
+			burst(parent, pos, Color(0.6, 0.6, 0.62, 0.9), 5, 30.0, 90.0, out, 55.0, 420.0, 0.3, Vector2(0.8, 1.6))
+			sparks(parent, pos, -out)
+			if snd:
+				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -12.0, 1.0)
+				if randf() < 0.5:
+					Audio.play_variant_at("ricochet", 2, pos, Audio.BUS_WORLD, -20.0, 1.0, 0.12)
+		_:
+			sparks(parent, pos, -out)
+			if snd:
+				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -12.0, 1.2)
+				Audio.play_variant_at("ricochet", 2, pos, Audio.BUS_WORLD, -19.0, 1.0, 0.12)
+
+## Smuga o zanikającej jasności (tor szyny, promień, trasa kuli). Rysowana bez cieniowania.
+static func streak(parent: Node, a: Vector2, b: Vector2, color: Color, width := 2.0, life := 0.12) -> void:
+	if parent == null or not parent.is_inside_tree():
+		return
+	var s := Streak.new()
+	s.a = a
+	s.b = b
+	s.color = color
+	s.width = width
+	s.life = life
+	s.material = Lights.unshaded()
+	s.z_index = 3
+	parent.add_child(s)
+
+## Fala uderzeniowa wybuchu.
+static func shock(parent: Node, pos: Vector2, radius: float) -> void:
+	if parent == null or not parent.is_inside_tree():
+		return
+	var r := ShockRing.new()
+	r.max_r = radius
+	r.material = Lights.unshaded()
+	r.z_index = 3
+	parent.add_child(r)
+	r.global_position = pos
+
+## Pełny wybuch (granat, rakieta, beczka): ogień, dym, odłamki, błysk światła i fala.
+## `radius` w px; wszystko w skali do promienia, więc jeden efekt obsługuje każdy rozmiar.
+static func explosion(parent: Node, pos: Vector2, radius: float) -> void:
+	if parent == null or not parent.is_inside_tree():
+		return
+	var k := clampf(radius / 64.0, 0.4, 2.0)
+	Audio.play_variant_at("explosion", 2, pos, Audio.BUS_WORLD, 2.0, 1.0 / maxf(k * 0.5 + 0.55, 0.7))
+	burst(parent, pos, Color(1.0, 0.6, 0.2), int(30.0 * k), 60.0, 220.0 * k, Vector2.UP, 180.0, 200.0, 0.5, Vector2(1.5, 3.0), true)
+	burst(parent, pos, Color(0.25, 0.24, 0.24, 0.6), int(14.0 * k), 20.0, 60.0 * k, Vector2.UP, 70.0, -40.0, 1.6, Vector2(3.0, 5.0))
+	for i in int(6.0 * k):
+		debris(parent, pos, Vector2(randf_range(-160, 160), randf_range(-260, -90)) * k, Vector2(3, 2),
+			Color(0.55, 0.14, 0.1).darkened(randf() * 0.4), 0.3, 14.0)
+	shock(parent, pos, radius)
+	var flash := Lights.make_light(Lights.radial(), 7.0 * k, Color(1.0, 0.65, 0.3), 2.2, true)
+	parent.add_child(flash)
+	flash.global_position = pos
+	var tw := flash.create_tween()
+	tw.tween_property(flash, "energy", 0.0, 0.45)
+	tw.tween_callback(flash.queue_free)
+	for p in parent.get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and p.is_multiplayer_authority():
+			var d: float = p.global_position.distance_to(pos)
+			if d < 300.0:
+				Feel.shake(5.0 * k * (1.0 - d / 400.0))
+				Feel.kick(((p.global_position - pos).normalized()) * 3.0 * k)
+				Feel.hitstop(0.06)
+
+## Płomienie na ciele (wróg, beczka) przez `seconds`: cząstki + migoczące światło.
+static func burning(host: Node2D, seconds: float) -> void:
+	if host == null or not host.is_inside_tree():
+		return
+	var fx := CPUParticles2D.new()
+	fx.amount = 16
+	fx.lifetime = 0.5
+	fx.local_coords = false
+	fx.direction = Vector2.UP
+	fx.spread = 30.0
+	fx.initial_velocity_min = 14.0
+	fx.initial_velocity_max = 34.0
+	fx.gravity = Vector2(0, -50)
+	fx.scale_amount_min = 1.2
+	fx.scale_amount_max = 2.6
+	fx.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	fx.emission_rect_extents = Vector2(4, 5)
+	var g := Gradient.new()
+	g.colors = PackedColorArray([Color(1.0, 0.9, 0.5, 0.95), Color(1.0, 0.45, 0.12, 0.8), Color(0.3, 0.1, 0.05, 0.0)])
+	g.offsets = PackedFloat32Array([0.0, 0.45, 1.0])
+	fx.color_ramp = g
+	fx.material = Lights.unshaded()
+	fx.position = Vector2(0, -8)
+	host.add_child(fx)
+	var lt := Lights.make_light(Lights.radial(), 2.6, Color(1.0, 0.55, 0.22), 0.9, false)
+	lt.position = Vector2(0, -8)
+	host.add_child(lt)
+	# czas życia przez Timer-dziecko: znika razem z wrogiem, bez lambd trzymających zwolnione węzły
+	var tm := Timer.new()
+	tm.one_shot = true
+	tm.wait_time = seconds
+	host.add_child(tm)
+	tm.timeout.connect(_end_burning.bind(fx, lt))
+	tm.start()
+	var flick := Timer.new()
+	flick.wait_time = 0.08
+	host.add_child(flick)
+	flick.timeout.connect(_flicker.bind(lt))
+	flick.start()
+
+static func _flicker(lt: PointLight2D) -> void:
+	if is_instance_valid(lt):
+		lt.energy = randf_range(0.6, 1.1)
+
+static func _end_burning(fx: CPUParticles2D, lt: PointLight2D) -> void:
+	if is_instance_valid(fx):
+		fx.emitting = false
+		fx.get_tree().create_timer(0.6).timeout.connect(fx.queue_free)
+	if is_instance_valid(lt):
+		lt.queue_free()
+
+class Streak extends Node2D:
+	var a := Vector2.ZERO
+	var b := Vector2.ZERO
+	var color := Color.WHITE
+	var width := 2.0
+	var life := 0.12
+	var _t := 0.0
+
+	func _process(delta: float) -> void:
+		_t += delta
+		if _t >= life:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		var k := 1.0 - _t / life
+		# halo + rdzeń: szyna i promień mają „żarzyć się”, nie być kreską
+		draw_line(a, b, Color(color.r, color.g, color.b, 0.28 * k), width * 3.0)
+		draw_line(a, b, Color(color.r, color.g, color.b, 0.7 * k), width * 1.6)
+		draw_line(a, b, Color(1.0, 1.0, 1.0, k), maxf(width * 0.6, 1.0))
+
+class ShockRing extends Node2D:
+	var max_r := 48.0
+	var _t := 0.0
+
+	func _process(delta: float) -> void:
+		_t += delta
+		if _t >= 0.3:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		var k := _t / 0.3
+		var r := max_r * (0.25 + 0.85 * (1.0 - pow(1.0 - k, 3.0)))
+		draw_arc(Vector2.ZERO, r, 0.0, TAU, 40, Color(1.0, 0.85, 0.55, 0.7 * (1.0 - k)), 2.0)

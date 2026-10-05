@@ -238,27 +238,113 @@ def bake_players():
 
 # ---------------------------------------------------------------- broń
 
+GUN_FRAME = (24, 9)      # klatka broni; dłoń (pivot obrotu) w (4, 4), lufa w stronę +x
+GUN_NAMES = ["m83", "spread12", "p64", "srut8", "lr7", "hkm9", "gniew4", "sokol6", "widmo1", "ciegno6", "maczeta", "kilof"]
+
+
 def bake_guns():
-    metal = rgb(0.55, 0.57, 0.62)
-    dark = rgb(0.22, 0.23, 0.26)
-    wood = rgb(0.42, 0.27, 0.14)
+    """12 modeli w jednym arkuszu, wiersz = broń (kolejność = id w weapons.gd, `gun_row`).
+    Wylot lufy = x dłoni (4) + gun_len z weapons.gd — trzymaj to w zgodzie przy zmianie sylwetki."""
+    metal = rgb(0.58, 0.60, 0.66)
+    metal_l = rgb(0.74, 0.76, 0.82)
+    dark = rgb(0.22, 0.23, 0.27)
+    darker = rgb(0.13, 0.13, 0.16)
+    wood = rgb(0.45, 0.29, 0.15)
+    wood_l = rgb(0.58, 0.40, 0.22)
+    olive = rgb(0.27, 0.31, 0.2)
+    cyan = rgb(0.45, 0.85, 1.0)
+    orange = rgb(1.0, 0.6, 0.2)
+    hand = rgb(0.86, 0.68, 0.54)
+
     def draw(c, g, an, i):
-        hand = rgb(0.86, 0.68, 0.54)
         if an == "m83":
-            c.rect(2, 2, 10, 2, dark)
-            c.rect(10, 2, 4, 1, metal)
-            c.rect(5, 4, 2, 2, dark)                   # magazynek
-            c.rect(0, 2, 3, 2, metal)
-        elif an == "spread":
-            c.rect(1, 2, 13, 2, metal)
-            c.rect(0, 3, 4, 2, wood)
-            c.rect(6, 4, 4, 1, wood)
+            c.rect(0, 2, 3, 2, metal)                    # kolba
+            c.rect(2, 2, 10, 2, dark)                    # komora
+            c.rect(2, 2, 10, 1, shade(dark, 1.3))
+            c.rect(8, 1, 2, 1, metal)                    # szczerbinka
+            c.rect(12, 2, 4, 1, metal)                   # lufa
+            c.rect(6, 4, 2, 3, darker)                   # magazynek
+            c.rect(3, 4, 2, 2, darker)                   # chwyt
+        elif an == "spread12":
+            c.rect(0, 2, 4, 3, wood)                     # kolba
+            c.rect(2, 2, 16, 2, metal)                   # lufa
+            c.rect(6, 1, 10, 1, shade(metal, 0.8))       # dwulufowy „żebro”
+            c.rect(8, 4, 5, 1, wood_l)                   # łoże
+            c.rect(17, 1, 1, 3, dark)                    # muszka
         elif an == "p64":
-            c.rect(4, 2, 7, 2, dark)
-            c.rect(9, 2, 2, 1, metal)
-            c.rect(5, 4, 2, 2, dark)
-        c.rect(2, 3, 2, 2, hand)
-    sheet("guns", 16, 7, [("m83", 1, 1, False), ("spread", 1, 1, False), ("p64", 1, 1, False)], draw)
+            c.rect(3, 2, 8, 2, dark)                     # zamek
+            c.rect(3, 2, 8, 1, shade(dark, 1.4))
+            c.rect(10, 2, 3, 1, metal)                   # lufa
+            c.rect(4, 4, 2, 3, darker)                   # chwyt
+            c.rect(7, 4, 2, 1, darker)                   # kabłąk
+        elif an == "srut8":
+            c.rect(0, 2, 3, 4, wood)                     # kolba
+            c.rect(2, 2, 17, 1, metal)                   # lufa
+            c.rect(2, 3, 14, 1, dark)                    # rura magazynka
+            c.rect(8, 3, 4, 2, wood_l)                   # pompka
+            c.rect(18, 1, 1, 2, dark)
+        elif an == "lr7":
+            c.rect(3, 2, 10, 3, dark)                    # korpus
+            c.rect(3, 2, 10, 1, shade(dark, 1.4))
+            c.rect(5, 3, 6, 1, cyan)                     # pasek energii
+            c.rect(13, 2, 4, 2, metal_l)                 # emiter
+            c.rect(16, 2, 1, 2, cyan)                    # soczewka
+            c.rect(5, 5, 4, 2, darker)                   # bateria
+            c.rect(2, 3, 1, 1, metal)
+        elif an == "hkm9":
+            c.ellipse(3, 5, 2.5, 2.6, rgb(0.62, 0.20, 0.16))     # zbiornik
+            c.rect(2, 3, 3, 1, rgb(0.78, 0.30, 0.22))
+            c.rect(5, 3, 12, 2, metal)                   # rura
+            c.rect(16, 1, 2, 5, dark)                    # dysza
+            c.put(18, 3, orange)                         # płomień pilotujący
+            c.rect(6, 5, 1, 2, darker)                   # wąż
+        elif an == "gniew4":
+            c.rect(0, 2, 2, 3, dark)                     # kolba
+            c.rect(2, 1, 14, 4, olive)                   # lufa
+            c.rect(2, 1, 14, 1, shade(olive, 1.4))
+            c.rect(16, 1, 2, 4, metal)                   # wylot
+            c.rect(6, 5, 5, 3, darker)                   # bęben
+            c.rect(7, 6, 3, 1, metal)
+        elif an == "sokol6":
+            c.rect(2, 1, 12, 5, rgb(0.28, 0.32, 0.40))   # kontener
+            c.rect(2, 1, 12, 1, rgb(0.42, 0.47, 0.56))
+            c.rect(14, 1, 3, 5, metal)                   # front z rurami
+            for yy in (2, 3, 4):
+                c.rect(15, yy, 2, 1, darker)
+            c.rect(5, 6, 4, 1, darker)
+        elif an == "widmo1":
+            c.rect(0, 2, 3, 3, dark)                     # kolba
+            c.rect(2, 2, 18, 2, metal_l)                 # szyny
+            for xx in range(8, 18, 2):
+                c.rect(xx, 1, 1, 4, cyan)                # cewki
+            c.rect(4, 4, 5, 2, darker)                   # kondensator
+            c.rect(19, 2, 1, 2, cyan)
+        elif an == "ciegno6":
+            c.rect(0, 3, 12, 2, wood)                    # łoże
+            c.rect(4, 2, 12, 1, metal)                   # prowadnica z bełtem
+            c.rect(14, 2, 3, 1, metal_l)                 # grot
+            c.rect(11, 0, 2, 9, dark)                    # ramiona łuku
+            c.line(11, 0, 7, 3, rgb(0.85, 0.82, 0.7))    # cięciwa
+            c.line(7, 3, 11, 8, rgb(0.85, 0.82, 0.7))
+        elif an == "maczeta":
+            c.rect(1, 3, 4, 2, wood)                     # rękojeść
+            c.rect(5, 1, 1, 6, metal)                    # jelec
+            c.rect(6, 3, 8, 2, metal_l)                  # głownia
+            c.rect(14, 3, 3, 1, metal_l)                 # szpic
+            c.rect(6, 3, 10, 1, rgb(0.9, 0.92, 0.97))    # ostrze
+        elif an == "kilof":
+            c.rect(0, 3, 17, 1, wood)                    # trzonek
+            c.rect(0, 4, 17, 1, shade(wood, 0.8))
+            c.rect(14, 0, 3, 8, metal)                   # głowica
+            c.rect(16, 0, 1, 8, metal_l)
+            c.put(13, 0, metal)
+            c.put(13, 7, metal)
+        if an not in ("maczeta", "kilof"):
+            c.rect(3, 3, 2, 2, hand)                     # dłoń na chwycie
+        else:
+            c.rect(3, 3, 2, 2, hand)
+
+    sheet("guns", GUN_FRAME[0], GUN_FRAME[1], [(n, 1, 1, False) for n in GUN_NAMES], draw)
 
 # ---------------------------------------------------------------- wrogowie
 
