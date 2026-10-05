@@ -166,10 +166,10 @@ func _push(new_level: float, noise_pos: Vector2, awake: bool, charges: int) -> v
 func _apply(amount: float, pos: Vector2) -> void:
 	if amount > 0.0:
 		last_noise_pos = pos
-		last_noise_amount = amount
+		last_noise_amount = amount          # surowa głośność: próg budzenia wrogów nie zależy od trudności
 		noise_serial += 1
 		_server_last_active = Time.get_ticks_msec() / 1000.0
-	level = clampf(level + amount, 0.0, MAX_LEVEL)
+	level = clampf(level + (amount * Difficulty.m("noise") if amount > 0.0 else amount), 0.0, MAX_LEVEL)
 	if level >= AWAKE_THRESHOLD:
 		stalker_awake = true
 	level_changed.emit(level, stalker_awake)

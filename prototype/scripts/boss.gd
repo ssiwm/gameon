@@ -130,7 +130,7 @@ func on_nest_lost(left: int) -> void:
 func awaken() -> void:
 	if not NoiseMgr.is_server() or state != State.DORMANT:
 		return
-	max_hp = BASE_HP + HP_PER_EXTRA_HUMAN * maxi(0, _humans() - 1)
+	max_hp = (BASE_HP + HP_PER_EXTRA_HUMAN * maxi(0, _humans() - 1)) * Difficulty.m("boss_hp")
 	hp = max_hp
 	state = State.AWAKE
 	phase = 1
@@ -190,7 +190,7 @@ func _physics_process(delta: float) -> void:
 		_send_state(false)
 
 func _cd(base: float) -> float:
-	return base * (ENRAGED_CD if phase >= 2 else 1.0)
+	return base * (ENRAGED_CD if phase >= 2 else 1.0) * Difficulty.m("boss_cd")
 
 func _set_atk(a: int) -> void:
 	atk = a
@@ -265,7 +265,7 @@ func _tick_attacks(delta: float) -> void:
 
 func _begin(a: int, windup: float, target: Vector2) -> void:
 	_set_atk(a)
-	_atk_t = windup
+	_atk_t = windup * Difficulty.m("boss_cd")
 	_spit_target = target
 	_event.rpc(["", "lash_windup", "spit_windup", "sweep_windup"][a])
 	_send_state(true)
@@ -289,7 +289,7 @@ func _resolve_attack() -> void:
 			_sweep_cd = _cd(SWEEP_CD)
 	# po każdym ataku paszcza się otwiera — okno na ostrzał
 	_open_maw(MAW_WINDOW, false)
-	_atk_gap = ATK_GAP_ENRAGED if phase >= 2 else ATK_GAP
+	_atk_gap = (ATK_GAP_ENRAGED if phase >= 2 else ATK_GAP) * Difficulty.m("boss_cd")
 
 func _players_in_reach(slack: float) -> Array:
 	var out := []

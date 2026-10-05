@@ -67,8 +67,9 @@ var _last_x := 0.0
 func _ready() -> void:
 	add_to_group("enemies")
 	_def = KINDS.get(kind, KINDS["trzosek"])
-	_max_hp = _def["hp"]
+	_max_hp = _scaled_hp()
 	hp = _max_hp
+	Difficulty.changed.connect(_on_difficulty_changed)
 	_home = global_position
 	_remote_pos = global_position
 	_seen_serial = NoiseMgr.noise_serial
@@ -99,8 +100,20 @@ func wake() -> void:
 		if e != self and e.has_method("wake") and e.global_position.distance_to(global_position) < SIBLING_WAKE_RADIUS:
 			e.wake()
 
+## HP z uwzględnieniem poziomu trudności (difficulty.gd).
+func _scaled_hp() -> float:
+	return float(_def["hp"]) * Difficulty.m("enemy_hp")
+
+## Zmiana trudności w lobby/na starcie: nietknięty wróg dostaje nowe HP.
+func _on_difficulty_changed(_lvl: int) -> void:
+	var untouched := is_equal_approx(hp, _max_hp)
+	_max_hp = _scaled_hp()
+	if untouched:
+		hp = _max_hp
+
 ## Restart misji (wipe) — wszystko wraca na start.
 func reset_enemy() -> void:
+	_max_hp = _scaled_hp()
 	hp = _max_hp
 	active = false
 	winding = false
@@ -145,7 +158,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var target := _nearest_player()
-	var speed: float = _def["speed"]
+	var speed: float = float(_def["speed"]) * Difficulty.m("enemy_speed")
 	if _stagger > 0.0:
 		speed *= 0.25
 
@@ -185,7 +198,7 @@ func _check_wake() -> void:
 	if NoiseMgr.noise_serial != _seen_serial:
 		_seen_serial = NoiseMgr.noise_serial
 		if NoiseMgr.last_noise_amount >= MIN_WAKE_NOISE \
-				and global_position.distance_to(NoiseMgr.last_noise_pos) < float(_def["hear"]):
+				and global_position.distance_to(NoiseMgr.last_noise_pos) < float(_def["hear"]) * Difficulty.m("enemy_hear"):
 			wake()
 			return
 	for p in get_tree().get_nodes_in_group("players"):
@@ -193,7 +206,7 @@ func _check_wake() -> void:
 		if pp == null or pp.dead:
 			continue
 		# kucający gracz musi podejść bliżej — skradanie się opłaca się
-		var near: float = _def["wake_near"] * (0.5 if pp.crouching else 1.0)
+		var near: float = float(_def["wake_near"]) * Difficulty.m("enemy_hear") * (0.5 if pp.crouching else 1.0)
 		if global_position.distance_to(pp.global_position) < near:
 			wake()
 			return
@@ -224,7 +237,7 @@ func _try_begin_attack(target: Node2D) -> void:
 	if _cd > 0.0 or _windup > 0.0:
 		return
 	if _in_reach(target, 0.0):
-		_windup = _def["windup"]
+		_windup = float(_def["windup"]) * Difficulty.m("enemy_windup")
 		_windup_target = target
 		winding = true
 
@@ -232,9 +245,9 @@ func _resolve_attack() -> void:
 	winding = false
 	var pp := _windup_target
 	_windup_target = null
-	_cd = _def["cooldown"]
+	_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
 	if pp != null and is_instance_valid(pp) and not pp.dead and _in_reach(pp, 6.0):
-		pp.deliver_hit(_def["damage"], global_position)
+		pp.deliver_hit(maxi(1, roundi(float(_def["damage"]) * Difficulty.m("enemy_damage"))), global_position)
 
 ## --- API walki (combat.gd) -------------------------------------------------
 
@@ -328,11 +341,11 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 		_die()
 
 func _die() -> void:
-	if NoiseMgr.is_server() and randf() < float(HEALTH_DROP.get(kind, 0.0)):
+	if NoiseMgr.is_server() and randf() < minf(1.0, float(HEALTH_DROP.get(kind, 0.0)) * Difficulty.m("drops")):
 		var lvl := get_tree().get_first_node_in_group("level")
 		if lvl != null:
 			lvl.spawn_health(global_position + Vector2(0, -14))
-	if NoiseMgr.is_server() and randf() < float(AMMO_DROP.get(kind, 0.0)):
+	if NoiseMgr.is_server() and randf() < minf(1.0, float(AMMO_DROP.get(kind, 0.0)) * Difficulty.m("drops")):
 		var w := Arsenal.pick_drop_weapon()
 		var lv := get_tree().get_first_node_in_group("level")
 		if w >= 0 and lv != null:

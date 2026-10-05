@@ -116,6 +116,12 @@ func _handle_cmdline() -> void:
 			host_game()
 		elif a.begins_with("--join="):
 			join_game(a.substr("--join=".length()))
+		elif a.begins_with("--difficulty="):
+			var d := Difficulty.parse(a.substr("--difficulty=".length()))
+			if d >= 0:
+				Difficulty.set_level(d)
+			else:
+				push_warning("Unknown --difficulty (use easy|normal|hard)")
 		elif a.begins_with("--autoquit="):
 			autoquit = a.substr("--autoquit=".length()).to_float()
 		elif a == "--stealthtest":
@@ -275,6 +281,7 @@ func host_game() -> void:
 	multiplayer.multiplayer_peer = peer
 	_lobby.visible = false
 	Audio.play("oc_load", Audio.BUS_UI, -8.0)
+	print("[NET] difficulty: %s" % Difficulty.level_name())
 	_start_ambience()
 	NoiseMgr.reset_mission()
 	_spawn_player(1)
@@ -294,7 +301,14 @@ func join_game(ip: String) -> void:
 func _on_peer_connected(id: int) -> void:
 	print("[NET] peer connected: %d" % id)
 	if multiplayer.is_server():
+		_sync_difficulty.rpc_id(id, Difficulty.level)
 		_spawn_player(id)
+
+## Trudność ustala host; klient dostaje ją przy dołączeniu (HP wrogów, paski, czasy).
+@rpc("authority", "call_remote", "reliable")
+func _sync_difficulty(level: int) -> void:
+	Difficulty.set_level(level)
+	_lobby.lock_difficulty()
 
 func _on_peer_disconnected(id: int) -> void:
 	print("[NET] peer disconnected: %d" % id)

@@ -23,6 +23,7 @@ const CONTROLS := [
 var _ip: LineEdit
 var _status: Label
 var _host: Button
+var _diff: Button
 
 func _ready() -> void:
 	theme = UiTheme.get_theme()
@@ -34,8 +35,8 @@ func _ready() -> void:
 	add_child(dim)
 
 	var card := PanelContainer.new()
-	card.position = Vector2(150, 22)
-	card.size = Vector2(340, 316)
+	card.position = Vector2(150, 12)
+	card.size = Vector2(340, 336)
 	add_child(card)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 5)
@@ -68,6 +69,16 @@ func _ready() -> void:
 	btns.add_child(join)
 	box.add_child(btns)
 
+	_diff = Button.new()
+	_diff.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_diff.tooltip_text = "Chosen by the host. Applies to enemies, the stalker, the boss, noise and drops."
+	_diff.pressed.connect(func() -> void:
+		Difficulty.set_level((Difficulty.level + 1) % Difficulty.NAMES.size())
+		Audio.play("ui_click", Audio.BUS_UI, -10.0))
+	box.add_child(_diff)
+	Difficulty.changed.connect(func(_l: int) -> void: _refresh_difficulty())
+	_refresh_difficulty()
+
 	_status = UiTheme.label("Host a game, or enter the host's IP and join.", 9, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_status)
@@ -97,3 +108,13 @@ func _spacer(h: float) -> Control:
 	var c := Control.new()
 	c.custom_minimum_size = Vector2(0, h)
 	return c
+
+func _refresh_difficulty() -> void:
+	_diff.text = "DIFFICULTY:  < %s >" % Difficulty.level_name()
+	var col: Color = [UiTheme.OK, UiTheme.TEXT, UiTheme.DANGER][Difficulty.level]
+	for k in ["font_color", "font_hover_color", "font_disabled_color"]:
+		_diff.add_theme_color_override(k, col)
+
+## Klient nie wybiera trudności — ustala ją host (main.gd rozsyła wybór).
+func lock_difficulty() -> void:
+	_diff.disabled = true
