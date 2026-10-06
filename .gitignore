@@ -5,3 +5,6 @@
 # Python
 __pycache__/
 *.pyc
+
+# Eksporty (godot --export-release, patrz prototype/README.md)
+build/
