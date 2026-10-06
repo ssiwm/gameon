@@ -159,6 +159,21 @@ godot --headless --path . -- --host --missiontest --autoquit=9
 
 Flagi: `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
 
+## Zrzuty ekranu bez GPU (xvfb)
+
+Silnik z renderem programowym (Mesa llvmpipe) pozwala sprawdzić wygląd w CI / na serwerze bez ekranu — w ten sposób znaleziono
+białe prostokąty zamiast broni (tekstura wczytana po raz pierwszy w `_draw()`). Wymaga `xvfb` i `godot`:
+
+```bash
+godot --headless --path . --import                       # raz po zmianie grafik
+xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3 \
+    --script tools/shot_menu.gd -- --tab=2 --out=/tmp/weapons.png     # menu pauzy: 0 ustawienia, 1 bestiariusz, 2 bronie, 3 sterowanie
+xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3 \
+    --script tools/shot_game.gd -- --wait=200 --out=/tmp/game.png      # gra: host + HUD; `--menu` dodatkowo otwiera menu pauzy
+xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3 \
+    --script tools/shot_enemies.gd -- --dir=/tmp/shots                 # po jednym zrzucie przy każdym rodzaju wroga / gnieździe / bossie
+```
+
 ## Grafika — generowanie i podmiana
 
 ```bash
