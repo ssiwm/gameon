@@ -40,7 +40,13 @@ decydują o priorytetach przed jakąkolwiek nową zawartością.
 - [ ] Droga powrotna na początek mapy: czy jest za długa / za pusta? Czy wrogowie z tyłu nie wyskakują nieuczciwie?
 - [ ] Podsłuchacze na wieży i w hali: czy da się je cicho zdjąć (kusza, maczeta)?
 - [ ] Czas misji (cel GDD: ~10 min) i ile osób opuszcza ją po wipe.
-- [ ] Kampania: [Enter] po 1.2 → 1.3 (zmiana mapy u klienta bez zawieszenia), po 1.3 → znowu 1.2.
+- [ ] Drezyna: czy gracze znajdują szyb i rozumieją, że trzeba trzymać E? Czy wybór „pompuj albo strzelaj" tworzy napięcie, czy frustruje?
+- [ ] Drezyna: czy tunel (23 wrogów, Skoczki z sufitu komór) jest za trudny / za łatwy? Czy Stalker dogania, gdy ktoś przestaje pompować?
+- [ ] Drezyna w sieci: czy klient na pokładzie nie szarpie się i nie spada? Czy boty wsiadają i pomagają?
+- [ ] Kryjówka: czy karta statystyk broni jest czytelna i pomaga wybrać? Czy tablica z odprawą zostaje zauważona i czy lista zagrożeń jest przydatna (nie za długa)?
+- [ ] Kryjówka: czy nic się tam nie pojawia (żadnych wrogów, żadnych odgłosów straszaków)?
+- [ ] Kryjówka: czy gracze zauważają skrzynki i bronie? Czy [Enter] hosta nie pojawia się za wcześnie (klient czeka)?
+- [ ] Kampania: [Enter] po 1.2 → kryjówka → 1.3 (zmiana mapy u klienta bez zawieszenia), po 1.3 → kryjówka → znowu 1.2.
 
 ## 4. Sieć (osobny test, 2 komputery w różnych sieciach)
 

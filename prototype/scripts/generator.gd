@@ -10,14 +10,14 @@ const Lights := preload("res://scripts/lights.gd")
 
 signal started(gen: Node)
 
-const WORK_TIME := 4.0
+const WORK_TIME := 5.5
 const REACH_X := 30.0
 const REACH_Y := 44.0
-const WORK_NOISE_PER_S := 1.3        ## Uwaga na sekundę pracy jednej osoby (start ≈ +5)
+const WORK_NOISE_PER_S := 1.6        ## Uwaga na sekundę pracy jednej osoby (start ≈ +9)
 const NOISE_CHUNK := 0.3             ## hałas pracy zgłaszamy porcjami, nie co klatkę (każde zgłoszenie to push sieciowy)
-const START_BURST := 4.0             ## wybuch hałasu przy uruchomieniu
-const HUM_NOISE := 0.6               ## buczenie: ≥ progu budzenia (0,5), więc słyszą je także śpiący w zasięgu
-const HUM_INTERVAL := 6.0
+const START_BURST := 5.0             ## wybuch hałasu przy uruchomieniu
+const HUM_NOISE := 0.9               ## buczenie: ≥ progu budzenia (0,5), więc słyszą je także śpiący w zasięgu
+const HUM_INTERVAL := 4.5
 const DECAY_PER_S := 0.6             ## postęp cofa się, gdy nikt nie pracuje
 const SYNC_INTERVAL := 0.1
 

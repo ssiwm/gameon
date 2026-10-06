@@ -120,11 +120,13 @@ func _can_spawn_now() -> bool:
 	var main := get_tree().current_scene
 	var mission = main.get("mission") if main != null else null
 	# 0 = OBJECTIVE (mission.gd Phase) — boss i ekstrakcja mają własny rytm
-	return mission != null and int(mission.phase) == 0
+	return mission != null and int(mission.phase) == 0 and not NoiseMgr.safe_zone       # kryjówka (safe_zone) jest wolna od wrogów
 
 # ---------------------------------------------------------------- wędrowcy
 
 func _spawn_group(humans: Array) -> void:
+	if NoiseMgr.safe_zone:
+		return
 	var lvl := get_tree().get_first_node_in_group("level")
 	if lvl == null or lvl.get("nav") == null:
 		return

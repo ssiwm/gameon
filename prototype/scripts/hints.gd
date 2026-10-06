@@ -14,6 +14,7 @@ const TIPS := [
 	["move", "WASD to move  ·  SPACE to jump  ·  hold SHIFT to sneak — sneaking is silent"],
 	["noise", "Every shot makes NOISE. Watch the meter in the top-left corner"],
 	["broadcast", "The transmitter is live and HE heard it. Press Q to throw a lure and pull him away — then run for the exit"],
+	["handcar", "Stand on the handcar and HOLD E to pump — more hands, more speed. You cannot shoot while pumping"],
 	["generator", "Hold E at a generator to start it. The work is loud, and a running generator keeps humming"],
 	["uneasy", "Something is listening. Stop shooting, sneak (SHIFT) — or press Q to lure it away"],
 	["revive", "A friend is down — stand next to them and HOLD E to revive"],
@@ -98,6 +99,8 @@ func _collect(p: Node) -> void:
 			break
 	_queue("generator", near_gen, false)
 	var m = p.get_tree().current_scene.get("mission") if p.get_tree().current_scene else null
+	var car = p.get_tree().get_first_node_in_group("handcar")
+	_queue("handcar", car != null and car.enabled and not car.arrived and car.local_state != "", false)
 	_queue("broadcast", m != null and m.kind == "generators" and m.phase == m.Phase.EXTRACT and NoiseMgr.stalker_awake, false)
 
 func _queue(id: String, cond: bool, sticky: bool) -> void:

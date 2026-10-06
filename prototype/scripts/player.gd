@@ -84,6 +84,7 @@ var aim_dir := Vector2.RIGHT
 var crouching := false
 ## `dead` znaczy „down": gracz leży i wykrwawia się, ale można go podnieść.
 var dead := false
+var pumping := false            ## drezyna (handcar.gd): gracz pompuje — nie chodzi, nie skacze i nie strzela
 var bleed_left := 0.0
 var weapon := 0                 ## id broni w ręku (replikowane); ustawia kontroler
 ## Stan broni dla widoku u pozostałych peerów (replikowane): faza, ładowanie szyny, ogień ciągły,
@@ -429,9 +430,10 @@ func _physics_process(delta: float) -> void:
 
 func _local_brain(delta: float) -> void:
 	var reviving := _handle_revive(delta, Input.is_action_pressed("interact"))
-	weapons.tick_local(delta, reviving)
+	var busy := reviving or pumping
+	weapons.tick_local(delta, busy)
 
-	var move_x := 0.0 if reviving else Input.get_axis("move_left", "move_right")
+	var move_x := 0.0 if busy else Input.get_axis("move_left", "move_right")
 	var aim_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	crouching = Input.is_action_pressed("crouch") and is_on_floor()
 
@@ -477,7 +479,7 @@ func _local_brain(delta: float) -> void:
 		var g := GRAVITY * (FALL_MULT if velocity.y > 0.0 else 1.0)
 		velocity.y = minf(velocity.y + g * delta, MAX_FALL)
 
-	if _jump_buf > 0.0 and _coyote > 0.0 and not crouching and not reviving:
+	if _jump_buf > 0.0 and _coyote > 0.0 and not crouching and not busy:
 		velocity.y = JUMP_VELOCITY * float(surf["jump"])
 		_jump_buf = 0.0
 		_coyote = 0.0
@@ -729,27 +731,28 @@ func _respawn(hp_amount: int) -> void:
 	Audio.play("revive", Audio.BUS_PLAYER, -9.0)
 
 ## Restart po wipe (wszyscy leżą): pełne zdrowie w punkcie startu.
-func full_reset() -> void:
+func full_reset(keep_loadout := false) -> void:
 	_respawn(MAX_HP)
-	weapons.reset()
+	if not keep_loadout:
+		weapons.reset()            # przejście między misjami kampanii (kryjówka) zachowuje ekwipunek
 	_kick = 0.0
 	_revive_hold = 0.0
 	_revive_target_ref = null
 
 ## Wołane przez serwer po wipe — reset wykonuje właściciel postaci, bo tylko on
 ## ma autorytet nad jej pozycją i HP (synchronizator by to nadpisał).
-func request_full_reset() -> void:
+func request_full_reset(keep_loadout := false) -> void:
 	if not NoiseMgr.has_network() or is_multiplayer_authority():
-		full_reset()
+		full_reset(keep_loadout)
 	else:
-		_full_reset_rpc.rpc_id(get_multiplayer_authority())
+		_full_reset_rpc.rpc_id(get_multiplayer_authority(), keep_loadout)
 
 ## „any_peer", bo woła serwer na postaci należącej do klienta; przyjmujemy
 ## tylko od serwera.
 @rpc("any_peer", "call_remote", "reliable")
-func _full_reset_rpc() -> void:
+func _full_reset_rpc(keep_loadout: bool) -> void:
 	if multiplayer.get_remote_sender_id() == 1:
-		full_reset()
+		full_reset(keep_loadout)
 
 # ---------------------------------------------------------------- audio
 

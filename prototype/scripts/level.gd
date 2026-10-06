@@ -17,6 +17,8 @@ extends Node2D
 ##   -  rusztowanie drewniane (jednokierunkowe)
 ##   b  tło: beton (wnętrze)  w  tło: drewno (pnie, belki)
 ##   S  start  E  wyjście  T  Trzosek  W  Wołek  N  gniazdo  X  dom Stalkera  G  generator radiostacji
+##   D  drezyna (stacja startowa; tor kończy się przy wyjściu E)
+##   n  tablica z odprawą (kryjówka)   l  lampa pod sufitem (kryjówka)   — przy RACKS=true każde „g" dostaje stojak
 ##   B  Żyła — matka gniazd (boss misji)
 ##   k  skrzynia (fizyczna)   o  beczka (fizyczna, wybucha)
 ##   g  broń na ziemi         a  skrzynka z amunicją
@@ -46,11 +48,16 @@ const PICKUP := preload("res://scripts/pickup.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const FLARE := preload("res://scripts/flare.gd")
 const GENERATOR := preload("res://scripts/generator.gd")
+const HANDCAR := preload("res://scripts/handcar.gd")
+const RACK := preload("res://scripts/rack.gd")
+const LAMP := preload("res://scripts/lamp.gd")
+const BOARD := preload("res://scripts/board.gd")
 
 ## Mapy misji (scripts/maps/): każda niesie MAP, ID, TITLE, OBJECTIVE, UNDERGROUND_ROW, WEAPONS, ACCENTS.
 const MAPS := {
 	"z1_m2": preload("res://scripts/maps/z1_m2.gd"),
 	"z1_m3": preload("res://scripts/maps/z1_m3.gd"),
+	"z1_hub": preload("res://scripts/maps/z1_hub.gd"),     # kryjówka między misjami (nie należy do CAMPAIGN)
 }
 ## Kolejność kampanii Strefy I (1.1 nie ma jeszcze w prototypie).
 const CAMPAIGN := ["z1_m2", "z1_m3"]
@@ -79,6 +86,11 @@ const ATLAS_COLS := 12
 var map_id := ""
 var title := ""
 var objective := "nests"
+var radio: Array = []             ## linie radia z danych mapy (kryjówka)
+var ambient := Color(0.0245, 0.0266, 0.0406)   ## kolor ciemności (CanvasModulate): domyślny z lights.gd albo z AMBIENT mapy
+var _racks := false
+var _dark_node: CanvasModulate
+var hp_mult := 1.0               ## mnożnik HP wrogów tej mapy (ENEMY_HP w danych mapy)
 var underground_y := 0.0         ## od tej wysokości (px) postać jest w podziemiach
 var bounds := Rect2()
 var spawns: Array[Vector2] = []
@@ -105,9 +117,9 @@ var _stable: Array = []                ## węzły stałe (tło, warstwy) — res
 func _ready() -> void:
 	add_to_group("level")
 	# poziom ciemności w jednym miejscu (lights.gd)
-	var dark := get_parent().get_node_or_null("Darkness") as CanvasModulate
-	if dark != null:
-		dark.color = Lights.AMBIENT
+	_dark_node = get_parent().get_node_or_null("Darkness") as CanvasModulate
+	if _dark_node != null:
+		_dark_node.color = Lights.AMBIENT
 	RenderingServer.set_default_clear_color(Lights.SKY)
 	var bd := preload("res://scripts/backdrop.gd").new()
 	add_child(bd)
@@ -161,6 +173,13 @@ func _load(id: String) -> void:
 	map_id = id
 	title = m.TITLE
 	objective = m.OBJECTIVE
+	hp_mult = float(m.ENEMY_HP)
+	radio = m.RADIO
+	_racks = m.RACKS
+	ambient = m.AMBIENT if m.AMBIENT.a > 0.0 else Lights.AMBIENT      # alfa 0 = domyślna ciemność gry
+	if _dark_node != null:
+		_dark_node.color = ambient
+	NoiseMgr.safe_zone = objective == "hub"
 	underground_y = float(m.UNDERGROUND_ROW * TILE)
 	_map = m.MAP
 	_weapons = m.WEAPONS
@@ -286,7 +305,7 @@ func _exposure(c: int, r: int) -> int:
 ## Znaczniki → postacie. Nazwy numerowane od lewej do prawej, identycznie
 ## na każdym peerze.
 func _spawn_entities() -> void:
-	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "k": [], "o": [], "a": [], "g": []}
+	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "l": [], "k": [], "o": [], "a": [], "g": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -298,7 +317,7 @@ func _spawn_entities() -> void:
 				"E": exits.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "k", "o", "a", "g": found[ch].append(p)
+				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "l", "k", "o", "a", "g": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -325,6 +344,27 @@ func _spawn_entities() -> void:
 		g.name = "Generator%d" % (i + 1)
 		g.position = found["G"][i]
 		add_child(g)
+	for i in found["D"].size():
+		var car: AnimatableBody2D = HANDCAR.new()
+		car.name = "Handcar" if i == 0 else "Handcar%d" % (i + 1)
+		car.position = found["D"][i]
+		add_child(car)
+	for i in found["n"].size():
+		var bd: Node2D = BOARD.new()
+		bd.name = "Board%d" % (i + 1)
+		bd.position = found["n"][i]
+		add_child(bd)
+	for i in found["l"].size():
+		var lp: Node2D = LAMP.new()
+		lp.name = "Lamp%d" % (i + 1)
+		lp.position = _hang_pos(found["l"][i], 0.0)
+		add_child(lp)
+	if _racks:
+		for i in found["g"].size():
+			var rk: Node2D = RACK.new()
+			rk.name = "Rack%d" % (i + 1)
+			rk.position = found["g"][i]
+			add_child(rk)
 	for k in [["k", "Crate", "crate"], ["o", "Barrel", "barrel"]]:
 		for i in found[k[0]].size():
 			var pr: RigidBody2D = PROP.new()
@@ -336,15 +376,42 @@ func _spawn_entities() -> void:
 			add_child(pr)
 	_map_items = {"a": found["a"], "g": found["g"]}
 	_spawn_map_items()
-	var s := STALKER_SCENE.instantiate()
-	s.name = "Stalker"
-	s.position = stalker_home
-	add_child(s)
+	if stalker_home != Vector2.ZERO:         # kryjówka (bez znacznika X) nie ma Stalkera
+		var s := STALKER_SCENE.instantiate()
+		s.name = "Stalker"
+		s.position = stalker_home
+		add_child(s)
 	if boss_home != Vector2.ZERO:
 		var b := BOSS_SCENE.instantiate()
 		b.name = "Boss"
 		b.position = boss_home
 		add_child(b)
+
+## Odprawa misji `id` z danych mapy (kryjówka, tablica): tytuł, cel, liczba wrogów każdego rodzaju policzona ze znaczników.
+const THREAT_CHARS := {"T": "trzosek", "W": "wolek", "L": "slepiec", "P": "podsluchacz", "Y": "mimik", "J": "skoczek", "Z": "cma"}
+
+func briefing(id: String) -> Dictionary:
+	if not MAPS.has(id):
+		return {}
+	var m = MAPS[id]
+	var counts := {}
+	var stalker := false
+	var nests := 0
+	var boss := false
+	var gens := 0
+	for row in m.MAP:
+		for ch in (row as String):
+			if THREAT_CHARS.has(ch):
+				counts[THREAT_CHARS[ch]] = int(counts.get(THREAT_CHARS[ch], 0)) + 1
+			elif ch == "X":
+				stalker = true
+			elif ch == "N":
+				nests += 1
+			elif ch == "B":
+				boss = true
+			elif ch == "G":
+				gens += 1
+	return {"title": m.TITLE, "brief": m.BRIEF, "counts": counts, "stalker": stalker, "nests": nests, "boss": boss, "generators": gens}
 
 ## Punkt zawieszenia pod sufitem nad znacznikiem: pierwsza bryła w górę (kolumna znacznika), a wróg
 ## wisi tuż pod nią (stopy = dół sprite'a). Bez sufitu zostaje na podłodze.
@@ -388,6 +455,7 @@ func _add_map_item(n: String, kind: String, arg: int, pos: Vector2) -> void:
 	it.kind = kind
 	it.arg = arg
 	it.position = pos + Vector2(0, -2)
+	it.static_display = kind == "weapon" and _racks      # broń na stojaku stoi w miejscu
 	add_child(it)
 
 # ---------------------------------------------------------------- flary

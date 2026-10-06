@@ -30,6 +30,7 @@ const GLOW := {
 var kind := "health"
 var arg := 0                      ## ammo/weapon: id broni
 var rounds := 0                   ## ammo: ile naboi
+var static_display := false       ## broń na stojaku (kryjówka): stoi w miejscu — bez podskoku przy spawnie i bez bujania
 
 var _vel := Vector2.ZERO
 var _floor_y := 0.0
@@ -57,8 +58,13 @@ func _ready() -> void:
 	_glow = Lights.make_light(Lights.radial(), 1.6, GLOW.get(kind, Color.WHITE), 0.6, false)
 	_glow.position = Vector2(0, -8)
 	add_child(_glow)
-	_vel = Vector2(randf_range(-40.0, 40.0), -170.0)
-	_floor_y = _find_floor(global_position)
+	if static_display:
+		_landed = true                  # wisi na stojaku: bez spadania i bujania
+		_vel = Vector2.ZERO
+		_floor_y = global_position.y
+	else:
+		_vel = Vector2(randf_range(-40.0, 40.0), -170.0)
+		_floor_y = _find_floor(global_position)
 	queue_redraw()
 
 func _find_floor(from: Vector2) -> float:
@@ -75,7 +81,7 @@ func _physics_process(delta: float) -> void:
 		if _vel.y > 0.0 and global_position.y >= _floor_y:
 			global_position = Vector2(roundf(global_position.x), _floor_y)   # lądowanie na pełnym pikselu
 			_landed = true
-	var bob := 0.0 if not _landed else sin(_t * 3.0) * 1.5 - 1.5
+	var bob := 0.0 if (not _landed or static_display) else sin(_t * 3.0) * 1.5 - 1.5
 	if not _spr.is_empty():
 		(_spr[0] as Node2D).position.y = bob
 		if _spr[1] != null:
@@ -93,7 +99,7 @@ func _physics_process(delta: float) -> void:
 func _draw() -> void:
 	if kind == "health":
 		return
-	var bob := 0.0 if not _landed else sin(_t * 3.0) * 1.5 - 1.5
+	var bob := 0.0 if (not _landed or static_display) else sin(_t * 3.0) * 1.5 - 1.5
 	var c: Color = GLOW.get(kind, Color.WHITE)
 	if kind == "cache":
 		# skrzynia z zapasem: większa, z pasami i mosiężnymi okuciami
@@ -112,8 +118,9 @@ func _draw() -> void:
 		# broń: sylwetka z arkusza guns.png nad ciemną skrzynką-podstawką
 		# pozycje na CAŁYCH pikselach — ułamki rozmywają pixel-art
 		var ibob := roundf(bob)
-		draw_rect(Rect2(-8, -4 + ibob, 16, 3), Color(0.12, 0.13, 0.16))
-		draw_rect(Rect2(-8, -4 + ibob, 16, 1), c.darkened(0.4))
+		if not static_display:                                           # na stojaku podstawką jest kołyska stojaka
+			draw_rect(Rect2(-8, -4 + ibob, 16, 3), Color(0.12, 0.13, 0.16))
+			draw_rect(Rect2(-8, -4 + ibob, 16, 1), c.darkened(0.4))
 		var tex := Sprites.texture(Sprites.DIR + "guns.png")
 		if tex != null and Sprites.has("guns"):
 			var tfs := Sprites.frame_size("guns")                       # rozmiar klatki w pikselach arkusza

@@ -18,6 +18,7 @@ const DREAD := preload("res://scripts/dread.gd")
 const STEAM_NET := preload("res://scripts/steam_net.gd")
 const PAUSE_MENU := preload("res://scripts/pause_menu.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
+const Weapons := preload("res://scripts/weapons.gd")
 
 ## >0 w trakcie odliczania do restartu po wipe; widoczne na każdym peerze (HUD).
 var wipe_left := 0.0
@@ -90,6 +91,10 @@ func _physics_process(delta: float) -> void:
 		if Input.is_action_just_pressed("restart"):
 			_continue_after_result()
 		return
+	if mission.kind == "hub":
+		if Input.is_action_just_pressed("restart"):
+			_depart_hub()
+		return
 	if _all_down():
 		print("[WIPE] all players down -> mission restart in %.0fs" % WIPE_DELAY)
 		_announce_wipe.rpc(WIPE_DELAY)
@@ -114,24 +119,35 @@ func _announce_wipe(seconds: float) -> void:
 ## na start. new_run=false to kolejna próba po wipe (licznik prób +1), true to
 ## nowa misja po udanej ekstrakcji. Łup misji przepadłby tutaj — postęp
 ## fabularny nie (GDD §4).
-func _restart_mission(new_run: bool, map_id := "") -> void:
+func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 	print("[MISSION] restart (%s)%s" % ["nowa misja" if new_run else "wipe", (" -> " + map_id) if map_id != "" else ""])
 	if map_id != "" and map_id != level.map_id:
 		_set_map(map_id)
 	NoiseMgr.reset_mission()
-	Arsenal.reset_mission()
+	if not carry:
+		Arsenal.reset_mission()          # ekwipunek i amunicja wracają na start; z carry (kryjówka) zostają
 	Director.reset()
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e.has_method("reset_enemy"):
 			e.reset_enemy()
 	for g in get_tree().get_nodes_in_group("generators"):
 		g.reset_generator()
+	for car in get_tree().get_nodes_in_group("handcar"):
+		car.reset_handcar()
 	for c in _players.get_children():
-		c.request_full_reset()
+		c.request_full_reset(carry)
 	level.clear_pickups()
 	mission.on_restart(new_run)
+	if level.objective == "hub":
+		NoiseMgr.calm()                  # w kryjówce jest cicho
 
 # ---------------------------------------------------------------- mapy / kampania
+
+## [Enter] w kryjówce (host): wyjście do kolejnej misji kampanii z zachowanym ekwipunkiem.
+func _depart_hub() -> void:
+	var target := after_hub if after_hub != "" else String(level.CAMPAIGN[0])
+	after_hub = ""
+	_restart_mission(true, target, true)
 
 ## [Enter] na ekranie wyniku (host): kolejna misja kampanii (po ostatniej — od początku) albo kolejna misja / nowa seria
 ## Nocnego Dyżuru. Po porażce w kampanii (nie występuje: wipe = powtórka) zostałaby ta sama mapa.
@@ -141,7 +157,9 @@ func _continue_after_result() -> void:
 		mission.shift_advance()
 		next_map = _shift_map()
 	elif mission.phase == MISSION_SCRIPT.Phase.SUCCESS:
-		next_map = _next_campaign_map()
+		after_hub = _next_campaign_map()          # kampania: najpierw kryjówka, potem kolejna misja Strefy I
+		_restart_mission(true, "z1_hub", true)
+		return
 	_restart_mission(true, next_map)
 
 ## Serwer: przełącza poziom na `id` u wszystkich peerów (przebudowa mapy, nowy punkt startu, nowy cel).
@@ -176,6 +194,9 @@ func _handle_cmdline() -> void:
 	var missiontest := false
 	var shifttest := false
 	var maptest := false
+	var ridetest := false
+	var ridehost := false
+	var rideclient := false
 	var gentest := false
 	var weapon_mode := ""
 	var shots_dir := ""
@@ -222,6 +243,12 @@ func _handle_cmdline() -> void:
 			maptest = true
 		elif a == "--gentest":
 			gentest = true
+		elif a == "--ridetest":
+			ridetest = true
+		elif a == "--ridehost":
+			ridehost = true
+		elif a == "--rideclient":
+			rideclient = true
 		elif a == "--weapontest":
 			weapon_mode = "unit"
 		elif a.begins_with("--weaponshots="):
@@ -247,6 +274,12 @@ func _handle_cmdline() -> void:
 		_map_test()
 	if gentest:
 		_gen_test()
+	if ridetest:
+		_ride_test()
+	if ridehost:
+		_ride_host_test()
+	if rideclient:
+		_ride_client_test()
 	if weapon_mode != "":
 		var wt := WEAPON_TEST.new()
 		wt.name = "WeaponTest"
@@ -379,7 +412,7 @@ func host_game() -> void:
 	multiplayer.multiplayer_peer = peer
 	_begin_hosting("port %d" % port)
 
-## Test misji 1.2 (--host --mission=z1_m2 --gentest): trzy generatory (przytrzymanie E), skok Uwagi po ostatnim, ekstrakcja,
+## Test misji 1.2 (--host --mission=z1_m2 --gentest): cztery generatory (przytrzymanie E), skok Uwagi po ostatnim, ekstrakcja,
 ## a potem [Enter] → mapa 1.3 i z powrotem. Wrogowie są zamrożeni, żeby test był powtarzalny.
 func _gen_test() -> void:
 	await get_tree().create_timer(1.0).timeout
@@ -392,7 +425,7 @@ func _gen_test() -> void:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		e.set_physics_process(false)
 		e.set_process(false)
-	check.call("start: mapa 1.2, cel generators, 3 generatory", level.map_id == "z1_m2" and mission.kind == "generators" and mission.goal_total == 3)
+	check.call("start: mapa 1.2, cel generators, 4 generatory", level.map_id == "z1_m2" and mission.kind == "generators" and mission.goal_total == 4)
 	var gens: Array = get_tree().get_nodes_in_group("generators")
 	gens.sort_custom(func(a: Node2D, b: Node2D) -> bool: return a.global_position.x < b.global_position.x)
 	for i in gens.size():
@@ -402,33 +435,160 @@ func _gen_test() -> void:
 		Input.action_press("interact")
 		await get_tree().create_timer(gens[i].WORK_TIME + 0.8).timeout
 		Input.action_release("interact")
-		check.call("generator %d uruchomiony, zostało %d" % [i + 1, 2 - i], gens[i].running and mission.goal_left == 2 - i)
+		check.call("generator %d uruchomiony, zostało %d" % [i + 1, gens.size() - 1 - i], gens[i].running and mission.goal_left == gens.size() - 1 - i)
 		if i == 0:
 			check.call("stealth po pierwszym generatorze (szczyt Uwagi %.0f < 40)" % mission.peak_noise, mission.stealth_ok())
-	check.call("po 3 generatorach: EXTRACT, Uwaga %.0f (skok do %.0f), Stalker obudzony=%s" % [NoiseMgr.level, mission.BROADCAST_NOISE, str(NoiseMgr.stalker_awake)],
+	check.call("po wszystkich generatorach: EXTRACT, Uwaga %.0f (skok do %.0f), Stalker obudzony=%s" % [NoiseMgr.level, mission.BROADCAST_NOISE, str(NoiseMgr.stalker_awake)],
 		mission.phase == MISSION_SCRIPT.Phase.EXTRACT and NoiseMgr.level >= 60.0 and NoiseMgr.stalker_awake)
 	p.global_position = mission.exit_pos + Vector2(0, -2)
 	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
 	check.call("ekstrakcja → SUCCESS", mission.phase == MISSION_SCRIPT.Phase.SUCCESS)
+	var ammo_before: int = Arsenal.get_reserve(Weapons.def(p.weapons.loadout[0]).id)
+	var loadout_before: Array = (p.weapons.loadout as Array).duplicate()
 	_continue_after_result()
 	await get_tree().create_timer(0.5).timeout
-	check.call("[Enter] → mapa 1.3 (gniazda), gracz na starcie nowej mapy",
-		level.map_id == "z1_m3" and mission.kind == "nests" and mission.goal_total == 4 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE
-		and p.global_position.distance_to(level.spawn_for(1)) < 40.0 and get_tree().get_nodes_in_group("generators").is_empty())
+	var foes: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return not (e is RigidBody2D))      # rekwizyty (skrzynie) też są w tej grupie
+	check.call("[Enter] po 1.2 → kryjówka (następna: %s, wrogów %d)" % [after_hub, foes.size()],
+		level.map_id == "z1_hub" and mission.kind == "hub" and after_hub == "z1_m3" and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE
+		and foes.is_empty() and p.global_position.distance_to(level.spawn_for(1)) < 40.0)
+	var racks := 0
+	var lamps := 0
+	for c in level.get_children():
+		if String(c.name).begins_with("Rack"):
+			racks += 1
+		elif String(c.name).begins_with("Lamp"):
+			lamps += 1
+	var brief: Dictionary = level.briefing(after_hub)
+	check.call("kryjówka: 6 stojaków, 5 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
+		racks == 6 and lamps == 5 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
+	check.call("odprawa następnej misji (%s): tytuł, cel, %d rodzajów wrogów, %d gniazd, boss=%s" % [after_hub, (brief["counts"] as Dictionary).size(), int(brief["nests"]), str(brief["boss"])],
+		String(brief["title"]) != "" and String(brief["brief"]) != "" and (brief["counts"] as Dictionary).has("trzosek") and int(brief["nests"]) == 4 and bool(brief["boss"]))
+	# kryjówka jest bezpieczna: wymuszamy warunki, w których Dyrektor grozy dosypałby wędrowców, i sprawdzamy, że nikt się nie pojawia
+	Director._spawn_t = 0.0
+	Director._since_enc = 999.0
+	Director._relax_t = 0.0
+	Director.stress = 0.0
+	await get_tree().create_timer(2.0).timeout
+	var roamers: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return String(e.name).begins_with("Roamer"))
+	var live_foes: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return not (e is RigidBody2D))
+	check.call("kryjówka: Dyrektor nie dosypuje wrogów (wędrowców %d, wrogów %d)" % [roamers.size(), live_foes.size()], roamers.is_empty() and live_foes.is_empty())
+	check.call("ekwipunek i amunicja przechodzą do kryjówki", p.weapons.loadout == loadout_before and Arsenal.get_reserve(Weapons.def(loadout_before[0]).id) == ammo_before)
+	_depart_hub()
+	await get_tree().create_timer(0.5).timeout
+	check.call("ambient po wyjściu z kryjówki wraca do domyślnego (%.3f)" % level.ambient.r, level.ambient.r < 0.05)
+	check.call("[Enter] w kryjówce → mapa 1.3 (gniazda), ekwipunek zachowany",
+		level.map_id == "z1_m3" and mission.kind == "nests" and mission.goal_total == 4 and p.weapons.loadout == loadout_before
+		and Arsenal.get_reserve(Weapons.def(loadout_before[0]).id) == ammo_before and get_tree().get_nodes_in_group("generators").is_empty())
 	mission.elapsed = 5.0
 	mission._success()
 	_continue_after_result()
 	await get_tree().create_timer(0.5).timeout
-	check.call("po ostatniej misji kampania wraca do 1.2 (generatory zresetowane)",
-		level.map_id == "z1_m2" and mission.goal_left == 3 and gens.size() == 3 and get_tree().get_nodes_in_group("generators").size() == 3)
+	check.call("po 1.3 znowu kryjówka, następna: 1.2 (kampania w kółko)", level.map_id == "z1_hub" and after_hub == "z1_m2")
+	_depart_hub()
+	await get_tree().create_timer(0.5).timeout
+	check.call("wyjście z kryjówki → 1.2 (generatory zresetowane)",
+		level.map_id == "z1_m2" and mission.goal_left == 4 and gens.size() == 4 and get_tree().get_nodes_in_group("generators").size() == 4)
 	print("[GEN-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
+
+## Długość ścieżki A* między dwoma punktami podłogi (px); 0, gdy brak drogi.
+func _nav_len(nav: AStar2D, from: Vector2, to: Vector2) -> float:
+	var path := nav.get_point_path(nav.get_closest_point(from), nav.get_closest_point(to))
+	var d := 0.0
+	for i in range(1, path.size()):
+		d += path[i].distance_to(path[i - 1])
+	return d
+
+## Test drezyny (--host --mission=z1_m2 --ridetest): generatory → zasilenie, wejście na pokład, pompowanie (gracz jedzie
+## razem z platformą), dojazd do końca toru, wyjście → SUCCESS. Wrogowie zamrożeni.
+func _ride_test() -> void:
+	await get_tree().create_timer(1.0).timeout
+	var fails := [0]
+	var check := func(label: String, ok: bool) -> void:
+		print("[RIDE-TEST] %s  %s" % ["PASS" if ok else "FAIL", label])
+		if not ok:
+			fails[0] += 1
+	var p: Node2D = _players.get_node_or_null("1")
+	for e in get_tree().get_nodes_in_group("enemies"):
+		e.set_physics_process(false)
+		e.set_process(false)
+	var car: AnimatableBody2D = get_tree().get_first_node_in_group("handcar")
+	check.call("drezyna istnieje, bez zasilania", car != null and not car.enabled)
+	for g in get_tree().get_nodes_in_group("generators"):
+		g._start()
+	await get_tree().create_timer(0.3).timeout
+	check.call("po generatorach: EXTRACT, drezyna zasilona", mission.phase == MISSION_SCRIPT.Phase.EXTRACT and car.enabled)
+	var x0: float = car.global_position.x
+	p.global_position = car.global_position + Vector2(0, -8)
+	p.velocity = Vector2.ZERO
+	await get_tree().create_timer(0.6).timeout
+	check.call("gracz stoi na pokładzie (stan: %s)" % car.local_state, car.aboard(p) and car.local_state == "aboard")
+	Input.action_press("interact")
+	await get_tree().create_timer(3.0).timeout
+	check.call("pompowanie: prędkość %.0f px/s, drezyna ruszyła o %.0f px" % [car.speed, x0 - car.global_position.x], car.speed > 60.0 and car.global_position.x < x0 - 60.0 and p.pumping)
+	check.call("gracz jedzie z drezyną (odległość %.0f px)" % absf(p.global_position.x - car.global_position.x), car.aboard(p))
+	var t := 0.0
+	while not car.arrived and t < 75.0:
+		await get_tree().create_timer(0.5).timeout
+		t += 0.5
+		if int(t * 2) % 10 == 0:
+			print("[RIDE-TEST] t=%.0f car.x=%.0f speed=%.0f power=%.1f | p=(%.0f,%.0f) aboard=%s pumping=%s dead=%s" % [t, car.global_position.x, car.speed, car.power, p.global_position.x, p.global_position.y, str(car.aboard(p)), str(p.pumping), str(p.dead)])
+	Input.action_release("interact")
+	check.call("dojazd do końca toru po %.0f s (x=%.0f, cel %.0f)" % [t, car.global_position.x, car.end_x], car.arrived and absf(car.global_position.x - car.end_x) < 2.0)
+	check.call("gracz nadal na pokładzie po całej jeździe", car.aboard(p))
+	p.global_position = mission.exit_pos + Vector2(0, -2)
+	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
+	check.call("wyjście → SUCCESS", mission.phase == MISSION_SCRIPT.Phase.SUCCESS)
+	print("[RIDE-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
+
+## Test sieciowy drezyny, strona hosta (--host --mission=z1_m2 --ridehost): czeka na klienta, zasila drezynę
+## i obserwuje, czy ruszyła od pompowania KLIENTA (host sam nie wsiada).
+func _ride_host_test() -> void:
+	var waited := 0.0
+	while _players.get_child_count() < 3 and waited < 15.0:      # host + bot + klient
+		await get_tree().create_timer(0.5).timeout
+		waited += 0.5
+	for e in get_tree().get_nodes_in_group("enemies"):
+		e.set_physics_process(false)
+		e.set_process(false)
+	var car: AnimatableBody2D = get_tree().get_first_node_in_group("handcar")
+	var x0: float = car.global_position.x
+	for g in get_tree().get_nodes_in_group("generators"):
+		g._start()
+	for i in 8:
+		await get_tree().create_timer(3.0).timeout
+		print("[RIDE-HOST] t=%d car.x=%.0f speed=%.0f power=%.1f enabled=%s arrived=%s" % [(i + 1) * 3, car.global_position.x, car.speed, car.power, str(car.enabled), str(car.arrived)])
+	var ok: bool = car.global_position.x < x0 - 300.0
+	print("[RIDE-HOST] %s (drezyna przejechała %.0f px dzięki pompowaniu klienta)" % ["PASS" if ok else "FAIL", x0 - car.global_position.x])
+
+## Strona klienta (--join=IP --rideclient): po zasileniu drezyny wsiada własnym graczem i pompuje.
+func _ride_client_test() -> void:
+	var car: AnimatableBody2D = null
+	var waited := 0.0
+	while waited < 30.0:
+		await get_tree().create_timer(0.5).timeout
+		waited += 0.5
+		car = get_tree().get_first_node_in_group("handcar")
+		if car != null and car.enabled:
+			break
+	if car == null or not car.enabled:
+		print("[RIDE-CLIENT] FAIL: drezyna nie została zasilona u klienta")
+		return
+	var p: Node2D = _players.get_node_or_null(str(multiplayer.get_unique_id()))
+	p.global_position = car.global_position + Vector2(10, -8)
+	p.velocity = Vector2.ZERO
+	await get_tree().create_timer(0.6).timeout
+	Input.action_press("interact")
+	for i in 8:
+		await get_tree().create_timer(2.5).timeout
+		print("[RIDE-CLIENT] t=%.1f car.x=%.0f speed=%.0f aboard=%s pumping=%s | moja pozycja względem drezyny dx=%.0f" % [(i + 1) * 2.5, car.global_position.x, car.speed, str(car.aboard(p)), str(p.pumping), p.global_position.x - car.global_position.x])
+	Input.action_release("interact")
 
 ## Test map (--maptest): dla każdej misji kampanii sprawdza kształt siatki i że z punktów startu da się dojść (po grafie
 ## nawigacji, z uwzględnieniem skoków i spadania) do wszystkich celów, wrogów, przedmiotów i wyjść oraz wrócić na start.
 func _map_test() -> void:
 	var fails := 0
 	var original: String = level.map_id
-	for id in level.CAMPAIGN:
+	for id in level.MAPS.keys():
 		level.load_map(id)
 		var data = level.MAPS[id]
 		var rows: Array = data.MAP
@@ -448,6 +608,10 @@ func _map_test() -> void:
 			points.append(["wyjście %d" % i, level.exits[i]])
 		for g in get_tree().get_nodes_in_group("generators"):
 			points.append([String(g.name), g.global_position])
+		for car in get_tree().get_nodes_in_group("handcar"):
+			points.append(["Drezyna", car.global_position])
+		for b in get_tree().get_nodes_in_group("board"):
+			points.append(["Tablica", b.global_position])
 		for n in get_tree().get_nodes_in_group("nests"):
 			points.append([String(n.name), n.global_position])
 		for e in get_tree().get_nodes_in_group("enemies"):
@@ -474,6 +638,26 @@ func _map_test() -> void:
 				bad.append("%s: brak drogi ze startu" % p[0])
 			elif nav.get_id_path(cid, start_id).is_empty():
 				bad.append("%s: brak drogi powrotnej na start" % p[0])
+		if not level.exits.is_empty():           # kryjówka nie ma celów ani wyjścia
+			# szacunek długości trasy: start → cele (od lewej) → najdalsze wyjście; sam marsz 95 px/s, bez walki i czekania
+			var goals: Array = []
+			for p in points:
+				if String(p[0]).begins_with("Generator") or String(p[0]).begins_with("Nest"):
+					goals.append(p[1])
+			if level.boss_home != Vector2.ZERO:
+				goals.append(level.boss_home)
+			goals.sort_custom(func(u: Vector2, v: Vector2) -> bool: return u.x < v.x)
+			var route := 0.0
+			var cur: Vector2 = level.spawns[0]
+			for gp in goals:
+				route += _nav_len(nav, cur, gp)
+				cur = gp
+			var far_exit: Vector2 = level.exits[0]
+			for ex in level.exits:
+				if (ex as Vector2).distance_to(cur) > far_exit.distance_to(cur):
+					far_exit = ex
+			route += _nav_len(nav, cur, far_exit)
+			print("[MAPTEST] %s: trasa start → %d celów → wyjście ≈ %.0f px, sam marsz ≈ %.0f s (%.1f min)" % [id, goals.size(), route, route / 95.0, route / 95.0 / 60.0])
 		for b in bad:
 			print("[MAPTEST]   BŁĄD: %s" % b)
 		fails += bad.size()
@@ -532,6 +716,8 @@ func _shift_test() -> void:
 
 ## Mapa startowa wymuszona flagą `--mission=ID` (testy headless używają z_1_m3, patrz _handle_cmdline).
 var _start_map := ""
+## Mapa, do której wyjdzie drużyna z kryjówki (kampania: następna misja po tej, którą właśnie ukończono).
+var after_hub := ""
 
 ## Wspólny koniec startu hosta (ENet i Steam): UI, ambient, nowa misja, gracz hosta.
 func _begin_hosting(where: String) -> void:

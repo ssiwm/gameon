@@ -39,6 +39,8 @@ const SLEEP_THRESHOLD := 30.0
 const NightShift := preload("res://scripts/night_shift.gd")
 
 var level: float = 0.0
+## Strefa bezpieczna (kryjówka, level.gd ustawia ją z mapy): hałas się nie liczy, Dyrektor grozy i straszaki milczą, nikt się nie pojawia.
+var safe_zone := false
 
 ## Flary (F): wspólna pula drużyny, jak ładunki Przesterowania (serwer rozstrzyga, klienci dostają stan).
 const FLARE_MAX := 5
@@ -159,7 +161,7 @@ func objective_bonus() -> void:
 ## Skryptowy skok Uwagi (misja 1.2: nadajnik włącza się na cały las): Uwaga co najmniej `min_level`, źródło hałasu
 ## w `pos`, więc Stalker budzi się i idzie w to miejsce. Omija mnożniki trudności — ma być zawsze tak samo.
 func script_spike(min_level: float, pos: Vector2) -> void:
-	if not is_server():
+	if not is_server() or safe_zone:
 		return
 	level = clampf(maxf(level, min_level), 0.0, MAX_LEVEL)
 	last_noise_pos = pos
@@ -238,6 +240,8 @@ func _push(new_level: float, noise_pos: Vector2, awake: bool, charges: int) -> v
 	overcharge_used.emit(charges)
 
 func _apply(amount: float, pos: Vector2, track := true) -> void:
+	if safe_zone:
+		return
 	if amount > 0.0:
 		_server_last_active = Time.get_ticks_msec() / 1000.0
 	if amount > 0.0 and track:

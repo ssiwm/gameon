@@ -57,6 +57,10 @@ func _process(delta: float) -> void:
 		return
 	var deep: bool = lvl.is_underground(pl.global_position)
 	_update_darkness(delta, pl, lvl)
+	if NoiseMgr.safe_zone:
+		_eyes_life = 0.0                # kryjówka: bez fałszywych odgłosów, migotania i oczu w mroku
+		_eyes.visible = false
+		return
 	_update_eyes(delta, pl)
 	# tempo: Uwaga przyspiesza, podziemia i trudność też
 	var pace: float = Difficulty.m("dread") * (1.0 + 1.2 * NoiseMgr.level / NoiseMgr.MAX_LEVEL) * (1.6 if deep else 1.0) * (1.0 + 0.8 * Director.tension)
@@ -80,7 +84,7 @@ func _update_darkness(delta: float, pl: Node2D, lvl: Node) -> void:
 	if _dark == null:
 		return
 	var depth := clampf((pl.global_position.y - (lvl.underground_y - DEEP_FADE_PX)) / DEEP_FADE_PX, 0.0, 1.0)
-	var a := Lights.AMBIENT
+	var a: Color = lvl.ambient
 	var target := Color(a.r, a.g, a.b).lerp(Color(a.r * DEEP_DARK, a.g * DEEP_DARK, a.b * DEEP_DARK), depth)
 	_dark.color = _dark.color.lerp(target, clampf(delta * 1.5, 0.0, 1.0))
 

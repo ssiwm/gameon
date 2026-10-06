@@ -249,7 +249,8 @@ func wake() -> void:
 
 ## HP z uwzględnieniem poziomu trudności (difficulty.gd).
 func _scaled_hp() -> float:
-	return float(_def["hp"]) * Difficulty.m("enemy_hp") * NightShift.hp_mult()
+	var lvl := get_tree().get_first_node_in_group("level") if is_inside_tree() else null
+	return float(_def["hp"]) * Difficulty.m("enemy_hp") * NightShift.hp_mult() * (float(lvl.hp_mult) if lvl != null else 1.0)
 
 ## Zmiana trudności w lobby/na starcie: nietknięty wróg dostaje nowe HP.
 func _on_difficulty_changed(_lvl: int) -> void:
