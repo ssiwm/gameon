@@ -26,7 +26,14 @@ static func fit(ci: CanvasItem, frame: Vector2, avail: Vector2, max_n := 12) -> 
 ## Skala lokalna najbliższa `want`, ale dająca całkowitą liczbę pikseli ekranu na piksel rysunku (min. 1).
 static func snap_scale(ci: CanvasItem, want: float) -> float:
 	var dev := device_scale(ci)
-	return maxf(1.0, roundf(want * dev)) / dev
+	var w := want * dev
+	if w >= 1.0:
+		return roundf(w) / dev
+	# poniżej 1:1 — równe zmniejszenie 1/m (1, 1/2, 1/3…); wybieramy to, które jest bliżej żądanego (w stosunku, nie różnicy)
+	var inv := 1.0 / maxf(w, 0.05)
+	var lo := 1.0 / floorf(inv)
+	var hi := 1.0 / ceilf(inv)
+	return (lo if lo / w < w / hi else hi) / dev
 
 ## Przyciąga punkt (jednostki lokalne) do siatki pikseli ekranu.
 static func snap(ci: CanvasItem, p: Vector2) -> Vector2:

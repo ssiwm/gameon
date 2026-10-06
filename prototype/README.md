@@ -205,7 +205,8 @@ scripts/
   pause_menu.gd     # menu pauzy (Esc/P): ustawienia + ściąga sterowania; solo zatrzymuje grę, w koopie świat idzie dalej
   codex.gd          # kodeks w menu pauzy: opisy i wskazówki wrogów/broni + statystyki z kodu
   codex_page.gd     # widok kodeksu: lista + portret + statystyki (bestiariusz i bronie)
-  gun_icon.gd       # miniatura broni z guns.png (HUD), rysowana ostro
+  gun_icon.gd       # miniatura broni z gun_icons.png 64×24 (HUD), rysowana ostro
+  # broń: tools/gun_icons_hd.py → guns.png (świat 36×14) + gun_icons.png (UI 64×24)
   codex_portrait.gd # portret / miniatura wpisu kodeksu (tło, poświata, podłoga, cień, ostry pixel-art)
   pixel_art.gd      # skala pixel-artu w UI: całkowita liczba pikseli ekranu na piksel rysunku (bez rozmycia)
   hints.gd          # jednorazowe podpowiedzi dla nowego gracza (ruch, hałas, wabik, podnoszenie…)

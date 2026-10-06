@@ -114,14 +114,15 @@ func _draw_sprite(floor_y: float) -> void:
 			draw_texture_rect_region(g, Rect2(pos, w), src)
 
 func _draw_gun() -> void:
-	var tex := Sprites.texture(GunIcon.GUN_SHEET)
+	var info := GunIcon.sheet_info()
+	var tex: Texture2D = info["tex"]
 	if tex == null:
 		return
-	var fsz := Vector2(GunIcon.FW, GunIcon.FH)
+	var fsz := Vector2(info["fw"], info["fh"])
 	var s := PixelArt.fit(self, fsz, size - Vector2(10.0, 10.0), 12 if not thumb else 2)
 	var gs := fsz * s
 	var dst := Rect2(PixelArt.snap(self, (size - gs) * 0.5), gs)
-	var src := Rect2(0, int(spec["row"]) * GunIcon.FH, GunIcon.FW, GunIcon.FH)
+	var src := Rect2(0, int(spec["row"]) * fsz.y, fsz.x, fsz.y)
 	var dev := PixelArt.device_scale(self)
 	var px := 1.0 / dev
 	if not thumb:
@@ -133,7 +134,7 @@ func _draw_gun() -> void:
 	for d: Vector2 in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
 		draw_texture_rect_region(tex, Rect2(dst.position + d * o, dst.size), src, Color(0, 0, 0, 0.9))
 	draw_texture_rect_region(tex, dst, src)
-	var g := Sprites.texture(GunIcon.GUN_GLOW)
+	var g: Texture2D = info["glow"]
 	if g != null:
 		draw_texture_rect_region(g, dst, src)
 

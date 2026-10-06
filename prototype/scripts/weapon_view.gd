@@ -16,7 +16,7 @@ const Vfx := preload("res://scripts/vfx.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 
-const HAND := Vector2(4, 4)           ## dłoń w klatce broni (obrót wokół niej)
+const HAND := Vector2(6.5, 7.0)       ## dłoń w klatce broni 36×14 (obrót wokół niej; y = środek klatki, więc flip_v nie przesuwa); zgodne z tools/gun_icons_hd.py
 const FLASH_TIME := 0.055
 const HIT_TIME := 0.2
 const CROSS_DIST := 72.0              ## px od wylotu, gdy celujesz klawiaturą

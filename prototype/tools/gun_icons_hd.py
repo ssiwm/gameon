@@ -1,13 +1,31 @@
-"""Ikony broni w wysokiej rozdzielczości (1.7.17) — do HUD i kodeksu (powiększane), nie do świata.
-Sprite'y broni w grze (guns.png, 24×9) zostają, bo obracają się wokół dłoni gracza i wyznaczają wylot lufy;
-tu każda broń jest renderowana tym samym silnikiem co potwory (char_art: render 4×, rampy, obrys, warstwa świecąca)
-w klatce 64×24, widok z boku, lufa w prawo. Kolejność arkusza = gun_row z weapons.gd.
+"""Bronie w wysokiej rozdzielczości (1.7.17) — jeden projekt, dwa arkusze:
+  gun_icons.png  64×24  ikony do HUD i kodeksu (pełna broń, powiększana),
+  guns.png       36×14  broń w świecie: ten sam projekt przeskalowany tak, by chwyt wypadł w dłoni (HAND) a wylot lufy
+                        w HAND.x + gun_len (weapons.gd) — kolba za dłonią jest ucięta, jak w starym arkuszu.
+Renderowane silnikiem postaci (char_art: render 4×, rampy, obrys, warstwa świecąca), widok z boku, lufa w prawo.
+Kolejność wierszy = gun_row z weapons.gd.
 """
 import math
 from char_art import Hi, Frame, ramp
 from char_monsters import _finish
+from char_monsters_hd import Sc
 
-FW, FH = 64, 24
+FW, FH = 64, 24                    # ikona (HUD, kodeks)
+WFW, WFH = 36, 14                  # sprite w świecie
+HAND = (6.5, 7.0)                  # dłoń (pivot obrotu) w klatce świata; zgodne z weapon_view.gd
+# nazwa → (x chwytu, y chwytu, x wylotu w rysunku ikony, skala rysunku→świat); gun_len = (x wylotu − x chwytu) · skala
+GRIP = {
+    "m83": (26.0, 15.5, 63.0, 0.50), "spread12": (26.0, 15.2, 62.4, 0.50), "p64": (28.0, 13.4, 61.0, 0.42),
+    "srut8": (26.0, 15.2, 62.6, 0.50), "lr7": (28.5, 14.8, 63.8, 0.50), "hkm9": (32.5, 15.4, 63.0, 0.50),
+    "gniew4": (36.0, 12.5, 61.0, 0.56), "sokol6": (28.5, 14.5, 60.0, 0.50), "widmo1": (32.5, 14.0, 64.0, 0.55),
+    "ciegno6": (28.0, 15.4, 62.0, 0.50), "maczeta": (10.0, 12.0, 62.0, 0.42), "kilof": (12.0, 14.0, 62.4, 0.40),
+}
+
+
+def gun_len(name):
+    """Odległość dłoń → wylot w świecie [px]; ta liczba idzie do `gun_len` w weapons.gd."""
+    gx, _gy, mx, k = GRIP[name]
+    return round((mx - gx) * k)
 NAMES = ["m83", "spread12", "p64", "srut8", "lr7", "hkm9", "gniew4", "sokol6", "widmo1", "ciegno6", "maczeta", "kilof"]
 BANDS = (-0.05, 0.25, 0.55, 0.85)
 
@@ -42,10 +60,14 @@ def _grip(hi, M, x, y, h=8.0, lean=-0.35, w=3.4, mat="poly"):
     hi.poly([(x, y), (x + w, y), (x + w + lean * h * -1 - 0.4, y + h), (x - 0.4 + lean * h * -1 * 0.2, y + h)], M[mat])
 
 
-def gun(name):
-    hi = Hi(FW, FH)
+def gun(name, world=False):
+    fw, fh = (WFW, WFH) if world else (FW, FH)
+    if world:
+        gx, gy, mx, k = GRIP[name]
+        hi = Sc(fw, fh, k, HAND[0] - gx * k, HAND[1] - gy * k)
+    else:
+        hi = Sc(fw, fh)
     M = _mats(hi)
-    glow = Frame(FW, FH)
     glow_pts = []
     gcol = (120, 220, 255)
     cy = 12.0
@@ -269,10 +291,25 @@ def gun(name):
         hi.poly([(47.8, cy - 3.8), (48.4, cy + 0.6), (41.0, cy + 3.4), (39.0, cy + 1.6), (44.0, cy - 2.6)], M["steel_l"])
         hi.capsule((49, cy - 3.2), (60, cy + 1.2), 0.45, 0.35, M["steel_l"])
         glow_pts = []
+    if world:
+        skin = hi.material(ramp((226, 174, 142), cool=(0.3, 0.2, 0.34)))
+        Hi.ellipse(hi, HAND, 2.0, 1.8, skin)                                       # dłoń na chwycie (pivot obrotu)
+        Hi.ellipse(hi, (HAND[0] + 1.0, HAND[1] - 0.8), 1.2, 0.8, skin)
     fr = _finish(hi, 0.3)
-    glow_fr = Frame(FW, FH)
-    _glow_dots(glow_fr, glow_pts, gcol)
+    glow_fr = Frame(fw, fh)
+    _glow_dots(glow_fr, [hi._t(p) for p in glow_pts], gcol)
     return fr, glow_fr
+
+
+def tip_x(fr, glow):
+    """Skrajnie prawy niepusty piksel (ciało lub żar) — do sprawdzenia zgodności z gun_len."""
+    best = -1
+    for f in (fr, glow):
+        for row in f.px:
+            for x, p in enumerate(row):
+                if p is not None and (len(p) < 4 or p[3] > 0):
+                    best = max(best, x)
+    return best
 
 
 ICON_ANIMS = [(n, 1, 1, False) for n in NAMES]

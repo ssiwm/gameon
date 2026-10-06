@@ -285,7 +285,7 @@ func _build_gear_card() -> void:
 	# 0) miniatura aktualnej broni na ciemnej płytce z paskiem w kolorze smugi pocisku
 	_gun_main = GunIcon.new()
 	_gun_main.plate = true
-	_gun_main.k = 2
+	_gun_main.k = 0.75
 	_gun_main.custom_minimum_size = Vector2(58, 26)
 	_gun_main.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(_gun_main)
@@ -335,6 +335,7 @@ func _build_gear_card() -> void:
 	for i in 4:
 		var sl := PanelContainer.new()
 		var ic := GunIcon.new()
+		ic.k = 0.375
 		ic.custom_minimum_size = Vector2(30, 12)
 		var l := UiTheme.label("", 6, UiTheme.TEXT)
 		l.position = Vector2(0, -2)

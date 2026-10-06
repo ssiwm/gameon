@@ -1,21 +1,26 @@
 extends Control
-## Miniatura broni z arkusza guns.png (wiersz = `gun_row`): sylwetka z obrysem i cieniem, warstwa świecąca,
-## opcjonalnie „płytka" (ciemne tło z poświatą i paskiem w kolorze smugi pocisku). Rysowana ostro:
-## filtr NEAREST i skala dobrana tak, by piksel rysunku = całkowita liczba pikseli ekranu (pixel_art.gd).
-## `k` = żądana skala lokalna; `tint` przygasza bronie niewybrane.
+## Miniatura broni (wiersz = `gun_row`) z arkusza gun_icons.png (64×24, wysoka jakość); gdy go brak — ze starego
+## guns.png. Sylwetka z obrysem i cieniem, warstwa świecąca, opcjonalnie „płytka" (ciemne tło z poświatą i paskiem
+## w kolorze smugi pocisku). Rysowana ostro: filtr NEAREST i skala dobrana tak, by piksel rysunku = całkowita liczba
+## pikseli ekranu albo 1/2, 1/3… (pixel_art.gd). `k` = żądana skala lokalna; `tint` przygasza bronie niewybrane.
 
 const PixelArt := preload("res://scripts/pixel_art.gd")
-
-const GUN_SHEET := "res://art/sprites/guns.png"
-const GUN_GLOW := "res://art/sprites/guns_glow.png"
-const FW := 24
-const FH := 9
+const Sprites := preload("res://scripts/sprites.gd")
 
 var row := -1
-var k := 1
+var k := 0.375
 var plate := false
 var accent := Color(1.0, 0.85, 0.35)
 var tint := Color.WHITE
+
+## Arkusz do miniatur: {tex, glow, fw, fh}; tex = null, gdy nie ma żadnego.
+static func sheet_info() -> Dictionary:
+	var sheet := "gun_icons" if Sprites.has("gun_icons") else "guns"
+	if not Sprites.has(sheet):
+		return {"tex": null, "glow": null, "fw": 24, "fh": 9}
+	var fs := Sprites.frame_size(sheet)
+	return {"tex": Sprites.texture(Sprites.DIR + sheet + ".png"), "glow": Sprites.texture(Sprites.DIR + sheet + "_glow.png"),
+		"fw": int(fs.x), "fh": int(fs.y)}
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -44,18 +49,22 @@ func _draw() -> void:
 		for i in 4:
 			var inset := 2.0 + i * 4.0
 			draw_rect(Rect2(inset, inset * 0.5, size.x - 2.0 * inset, size.y - 2.0 - inset), Color(accent.r, accent.g, accent.b, 0.045))
-	if row < 0 or not ResourceLoader.exists(GUN_SHEET):
+	var info := sheet_info()
+	var tex: Texture2D = info["tex"]
+	if row < 0 or tex == null:
 		return
-	var tex: Texture2D = load(GUN_SHEET)
-	var s := PixelArt.snap_scale(self, float(k))
-	var gs := Vector2(FW, FH) * s
+	var fw: int = info["fw"]
+	var fh: int = info["fh"]
+	var s := PixelArt.snap_scale(self, k)
+	var gs := Vector2(fw, fh) * s
 	var body := plate_inset()
 	var dst := Rect2(PixelArt.snap(self, (body - gs) * 0.5 + Vector2(0, 1)), gs)
-	var src := Rect2(0, row * FH, FW, FH)
+	var src := Rect2(0, row * fh, fw, fh)
 	# cień pod bronią i obrys 1 px ekranu (nie 0,5 piksela rysunku)
-	draw_texture_rect_region(tex, Rect2(dst.position + Vector2(0, s), dst.size), src, Color(0, 0, 0, 0.55))
+	draw_texture_rect_region(tex, Rect2(dst.position + Vector2(0, maxf(px, s)), dst.size), src, Color(0, 0, 0, 0.55))
 	for o: Vector2 in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
-		draw_texture_rect_region(tex, Rect2(dst.position + o * px * maxf(1.0, floorf(s * dev * 0.5)), dst.size), src, Color(0, 0, 0, 0.85 * tint.a))
+		draw_texture_rect_region(tex, Rect2(dst.position + o * px, dst.size), src, Color(0, 0, 0, 0.85 * tint.a))
 	draw_texture_rect_region(tex, dst, src, tint)
-	if ResourceLoader.exists(GUN_GLOW):
-		draw_texture_rect_region(load(GUN_GLOW), dst, src, Color(1, 1, 1, tint.a))
+	var glow: Texture2D = info["glow"]
+	if glow != null:
+		draw_texture_rect_region(glow, dst, src, Color(1, 1, 1, tint.a))

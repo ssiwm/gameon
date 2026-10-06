@@ -38,7 +38,7 @@ pickup.gd             apteczka / amunicja / skrzynia z mapy / broń na ziemi
 weapon_test.gd        testy headless (jednostkowe i sieciowe)
 ```
 
-**Nowa broń = jeden wpis w `weapons.gd` + rysunek w `tools/gun_art.py` (wiersz w `guns.png`) + klucze audio.**
+**Nowa broń = jeden wpis w `weapons.gd` + rysunek w `tools/gun_icons_hd.py` (wiersz w `guns.png` i `gun_icons.png`; `gun_len` w `weapons.gd` musi równać się `gun_icons_hd.gun_len(nazwa)` — `bake_sprites.py` to sprawdza) + klucze audio.**
 Kontroler, HUD, boty i testy nie wymagają zmian.
 
 ### Obrażenia
@@ -127,7 +127,7 @@ Nazwy w HUD są ASCII (interfejs EN); GDD zostaje przy nazwach z diakrytykami.
 
 ### Grafika broni (1.6.1)
 
-Każdy model to siatka 24×9 w `tools/gun_art.py`, składana pociągnięciami `h/v/r` (pozycje jawne, `check()` w
+*(Stary opis, 1.6 — dziś bronie rysuje `tools/gun_icons_hd.py`, patrz niżej; `gun_art.py` zostaje jako zapas bez numpy.)* Każdy model to siatka 24×9 w `tools/gun_art.py`, składana pociągnięciami `h/v/r` (pozycje jawne, `check()` w
 `bake_sprites.py` pilnuje: dłoń 2×2 na (3..4, 3..4), wylot lufy = `3 + gun_len`, wolne pierwszy i ostatni
 wiersz na obrys). Materiały mają rampy 5 tonów (połysk · światło · ton · cień · głęboki cień; światła cieplejsze,
 cienie chłodniejsze), obrys 1 px dokłada `sheet()` tak samo jak postaciom — dlatego broń leży w tej samej
@@ -183,5 +183,4 @@ Regresje starych testów (`--stealthtest`, `--missiontest`, `--wipetest`) nadal 
   z mapy, serwer zignoruje próbę podniesienia). Jak ze znanym potomstwem Żyły (GDD §19).
 - **Brzmienia nie oceniano uchem** (jak w AUDIO.md) — wymagany odsłuch i strojenie głośności
   względem reszty miksu; wartości `sfx_vol` w `weapons.gd` to punkt wyjścia.
-- **Grafika broni** jest „ręcznym” pixel-artem w kodzie (`tools/gun_art.py` → `bake_sprites.py`);
-  artysta może podmienić `art/sprites/guns.png` (+ `guns_glow.png`; 24×9 na broń, dłoń w (4,4)) bez zmian w kodzie.
+- **Grafika broni (1.7.17)**: jeden projekt na broń w `tools/gun_icons_hd.py` (silnik postaci: render 4×, rampy, obrys, warstwa świecąca), dwa arkusze: `art/sprites/guns.png` (+ `guns_glow.png`) — broń w świecie, klatka 36×14, dłoń (pivot obrotu) w (6,5; 7), wylot lufy = dłoń + `gun_len`; oraz `gun_icons.png` (+ glow) — ikony 64×24 do HUD i kodeksu. Wiersz = `gun_row`. Artysta może podmienić PNG (układ z `art/sprites.json`) bez zmian w kodzie. Lufa nie wychodzi za ścianę (`weapon_controller.muzzle_pos` skraca wylot do przeszkody).

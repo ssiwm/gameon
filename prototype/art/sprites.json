@@ -551,8 +551,89 @@
   },
   "guns": {
    "frame": [
-    24,
-    9
+    36,
+    14
+   ],
+   "glow": true,
+   "anims": {
+    "m83": {
+     "row": 0,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "spread12": {
+     "row": 1,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "p64": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "srut8": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "lr7": {
+     "row": 4,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "hkm9": {
+     "row": 5,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "gniew4": {
+     "row": 6,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sokol6": {
+     "row": 7,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "widmo1": {
+     "row": 8,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "ciegno6": {
+     "row": 9,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "maczeta": {
+     "row": 10,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "kilof": {
+     "row": 11,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   }
+  },
+  "gun_icons": {
+   "frame": [
+    64,
+    24
    ],
    "glow": true,
    "anims": {
