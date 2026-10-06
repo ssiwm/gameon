@@ -135,9 +135,19 @@ func spread_extra(d: WeaponDef) -> float:
 	return e
 
 ## Wylot lufy w świecie: dłoń (jak w widoku broni) + długość lufy wzdłuż celowania.
+## Lufa nie wychodzi za ścianę: gdy między dłonią a wylotem jest przeszkoda, wylot stoi tuż przed nią
+## (długa broń nie strzela przez cienką ścianę, gdy stoisz przy niej).
 func muzzle_pos(dir: Vector2, d: WeaponDef) -> Vector2:
 	var side := signf(dir.x) if absf(dir.x) > 0.1 else 1.0
-	return player.global_position + Vector2(side, -8.0 if player.crouching else -12.0) + dir * d.gun_len
+	var hand := player.global_position + Vector2(side, -8.0 if player.crouching else -12.0)
+	var tip := hand + dir * d.gun_len
+	if not player.is_inside_tree():
+		return tip
+	var q := PhysicsRayQueryParameters2D.create(hand, tip, Combat.LAYER_WORLD)
+	var hit := player.get_world_2d().direct_space_state.intersect_ray(q)
+	if not hit.is_empty():
+		return hit["position"] - dir * 1.0
+	return tip
 
 # ---------------------------------------------------------------- reset / zestaw
 

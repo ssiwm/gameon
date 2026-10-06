@@ -17,6 +17,7 @@ import json
 import math
 import os
 import random
+import re
 import struct
 import sys
 import zlib
@@ -26,6 +27,7 @@ import gun_art  # noqa: E402  (siatki pixel-artu 12 broni)
 try:  # postacie 1.7: rigi + render 4× (numpy + Pillow); bez nich zostaje stary rysunek z prostokątów
     import char_art  # noqa: E402
     import char_boss  # noqa: E402
+    import gun_icons_hd  # noqa: E402
     import char_monsters_hd as hd  # noqa: E402
     import char_monsters  # noqa: E402
     import char_player  # noqa: E402
@@ -185,10 +187,12 @@ def bake_chars_hd():
         ("cma", hd.cma, hd.CMA_ANIMS) + hd.CMA_HD,
         ("skoczek", hd.skoczek, hd.SKOCZEK_ANIMS) + hd.SKOCZEK_HD,
         ("nest", hd.nest, hd.NEST_ANIMS) + hd.NEST_HD,
-        ("vein", char_boss.vein, char_boss.BOSS_ANIMS, char_boss.FW, char_boss.FH),
+        ("vein", char_boss.vein, char_boss.BOSS_ANIMS, char_boss.FWD, char_boss.FHD),
     ):
         body, glow = char_monsters.monster_frames(fn, anims)
         char_sheet(name, fw, fh, anims, body, glow)
+        if name == "vein":
+            MANIFEST["sheets"][name]["scale"] = 1.0 / char_boss.DENSITY       # gra rysuje arkusz bossa w tej skali
 
 # ---------------------------------------------------------------- gracz
 
@@ -287,6 +291,27 @@ def bake_players():
 
 GUN_FRAME = (gun_art.W, gun_art.H)   # klatka broni; dłoń (pivot obrotu) w (4, 4), lufa w stronę +x
 GUN_NAMES = ["m83", "spread12", "p64", "srut8", "lr7", "hkm9", "gniew4", "sokol6", "widmo1", "ciegno6", "maczeta", "kilof"]
+
+
+def bake_guns_hd():
+    """Wysoka jakość (1.7.17): jeden projekt, dwa arkusze — `guns` 36×14 (świat; dłoń w HAND, wylot = HAND.x + gun_len)
+    i `gun_icons` 64×24 (HUD, kodeks). Rysunki: tools/gun_icons_hd.py."""
+    # spójność z grą: gun_len w weapons.gd musi równać się odległości dłoń → wylot z rysunku
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts", "weapons.gd"), encoding="utf-8").read()
+    for n in gun_icons_hd.NAMES:
+        m = re.search(r'"key": "%s".*?"gun_len": ([0-9.]+)' % n, src, re.S)
+        assert m and abs(float(m.group(1)) - gun_icons_hd.gun_len(n)) < 0.01, \
+            "%s: gun_len w weapons.gd (%s) != %s z tools/gun_icons_hd.py" % (n, m.group(1) if m else "?", gun_icons_hd.gun_len(n))
+    anims = [(n, 1, 1, False) for n in gun_icons_hd.NAMES]
+    for name, world, fw, fh in (("guns", True, gun_icons_hd.WFW, gun_icons_hd.WFH), ("gun_icons", False, gun_icons_hd.FW, gun_icons_hd.FH)):
+        body, glow = [], []
+        for n in gun_icons_hd.NAMES:
+            b, g = gun_icons_hd.gun(n, world)
+            body.append([b])
+            glow.append([g])
+        char_sheet(name, fw, fh, anims, body, glow)
+        if world:
+            MANIFEST["sheets"][name]["scale"] = 1.0 / gun_icons_hd.WORLD_DENSITY     # gra rysuje arkusz broni w tej skali
 
 
 def bake_guns():
@@ -671,8 +696,10 @@ def main():
         bake_trzosek()
         bake_wolek()
         bake_stalker()
-    bake_guns()
-    if not HAVE_CHARS:
+    if HAVE_CHARS:
+        bake_guns_hd()
+    else:
+        bake_guns()
         bake_nest()
     bake_objects()
     bake_tiles()

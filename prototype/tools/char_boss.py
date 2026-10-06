@@ -1,4 +1,4 @@
-"""The Vein / Żyła — boss (128×80), ten sam silnik co potwory (char_art.py: render 4×, rampy, obrys).
+"""The Vein / Żyła — boss (128×80 świata = 256×160 pikseli arkusza), ten sam silnik co potwory (char_art.py: render 4×, rampy, obrys).
 
 Bryła: ciemnoczerwona masa mięsa z pancernym grzbietem (5 płyt kostnych z kolcami), sześć macek-odnóży
 (gniazda to jej kończyny), korona wąsów, rząd oczu i paszcza na dole — zamknięta = dwie płyty ze szwem,
@@ -8,10 +8,14 @@ Układ jak u potworów: wiersz = animacja, ciało cieniowane + warstwa `glow` (u
 Rejon gry: wiersz GROUND_Y arkusza = y 0 w świecie, środek paszczy = (MAW_X, MAW_Y) → świat (0, MAW_Y − GROUND_Y).
 """
 import math
+import random
 from char_art import Hi, Frame, ramp, mix
 from char_monsters import _finish
+from char_monsters_hd import Sc
 
-FW, FH = 128, 80
+FW, FH = 128, 80                   # rozmiar w świecie (px)
+DENSITY = 2                        # pikseli arkusza na piksel świata (gra rysuje arkusz w skali 1/DENSITY)
+FWD, FHD = FW * DENSITY, FH * DENSITY
 GROUND_Y = 74                      # wiersz arkusza odpowiadający y = 0 w świecie (korzenie leżą tuż pod)
 MAW_X, MAW_Y = 64, 60              # środek paszczy w arkuszu
 BOSS_ANIMS = [("dormant", 4, 1.5, True), ("idle", 6, 5, True), ("open", 4, 6, True),
@@ -57,7 +61,8 @@ def _tentacle(hi, mat, mat_d, bone, origin, a0, curl, segs, seg_len, r0, r1, t, 
 
 
 def vein(an, i):
-    hi = Hi(FW, FH)
+    D = DENSITY
+    hi = Sc(FWD, FHD, float(D))
     dorm = an == "dormant"
     base = (100, 42, 48) if dorm else (136, 40, 44)
     flesh = hi.material(ramp(base, cool=(0.22, 0.08, 0.20)))
@@ -127,6 +132,16 @@ def vein(an, i):
     for dx in (-17, -9, 9, 17):
         hi.capsule((bx + dx, by + 1), (bx + dx * 1.15, by + 12), 0.9, 0.6, flesh_d)
 
+    # --- pory i guzki skóry: stały rozkład (te same w każdej klatce), widoczne dzięki 2× gęstości
+    rnd = random.Random(11)
+    for _ in range(54):
+        px_ = bx + rnd.uniform(-0.88, 0.88) * rx
+        py_ = by + rnd.uniform(-0.8, 0.9) * ry
+        if ((px_ - bx) / rx) ** 2 + ((py_ - by) / ry) ** 2 > 0.8 or abs(px_ - MAW_X) < 17 and abs(py_ - (by + 10)) < 11:
+            continue
+        hi.ellipse((px_, py_), 0.55, 0.42, flesh_d)
+        hi.ellipse((px_ - 0.2, py_ - 0.2), 0.22, 0.16, flesh_l)
+
     # --- wypukłe żyły (cięciwy mięsa); nakładka dorysowuje w nich żar
     for vi, v in enumerate(VEINS):
         vv = [(x, y + sag) for x, y in v]
@@ -144,6 +159,11 @@ def vein(an, i):
         hi.ellipse((px, py), 9.2 * big, 4.6 * big, plate, rot=rot)
         hi.ellipse((px - math.cos(a) * 1.0, py - math.sin(a) * 1.0), 6.0, 2.6, plate, rot=rot, bias=0.18)
         hi.ellipse((px + math.cos(a) * 1.9, py + math.sin(a) * 1.9), 7.4, 1.8, plate_d, rot=rot)
+        tx_, ty_ = -math.sin(a), math.cos(a)
+        for off in (-0.9, 0.0, 0.9):                                          # żebra płyty (drobny detal gęstszej siatki)
+            c0 = (px - tx_ * 6.4 + math.cos(a) * off, py - ty_ * 6.4 + math.sin(a) * off)
+            c1 = (px + tx_ * 6.4 + math.cos(a) * off, py + ty_ * 6.4 + math.sin(a) * off)
+            hi.capsule(c0, c1, 0.22, 0.22, plate_d)
         if k in (0, 2, 4):
             nx, ny = math.cos(a), math.sin(a)
             tx, ty = -ny, nx
@@ -196,7 +216,15 @@ def vein(an, i):
             hi.ellipse((mx, my - 1.0), orx * 0.55, ory * 0.6, pust)
 
     fr = _finish(hi)
-    glow = Frame(FW, FH)
+    fr.outline(0.3)                                       # 2 px arkusza = 1 px świata, jak u reszty sprite'ów
+    glow = Frame(FWD, FHD)
+
+    def gput(frame, x, y, col, w=1):
+        """Punkt świecący (współrzędne świata): w×1 px świata = w·D × D pikseli arkusza; wyśrodkowany na (x, y)."""
+        x0, y0 = int(round(x * D)), int(round(y * D))
+        for yy in range(D):
+            for xx in range(w * D):
+                frame.put(x0 + xx, y0 + yy, col)
     # --- oczy: rząd szczelin na górnej partii (zamknięte w uśpieniu)
     ecol = EYE_DORM if dorm else EYE
     ea = 110 if dorm else 255
@@ -206,16 +234,16 @@ def vein(an, i):
     elif an == "spit":
         ecol = (190, 255, 90)
     for ex, ey in eyes:
-        glow.put(int(round(ex)), int(round(ey)), (*ecol, ea))
-        if not dorm:
-            glow.put(int(round(ex)) + 1, int(round(ey)), (*ecol, ea))
+        gput(glow, ex, ey, (*ecol, ea), 1 if dorm else 2)
     # ozdobne guzki-lampiony wzdłuż boków: słabe tlenie
     for px, py in ((bx - 31, by + 4), (bx - 27, by + 12), (bx + 31, by + 4), (bx + 27, by + 12), (bx - 8, by + 17), (bx + 8, by + 17)):
-        fr.only_opaque_put(int(round(px)), int(round(py)), (*mix(base, (255, 150, 90), 0.6), 255))
-        glow.put(int(round(px)), int(round(py)), (*THROAT_EMBER, 90 if dorm else 150))
+        for yy in range(D):
+            for xx in range(D):
+                fr.only_opaque_put(int(round(px * D)) + xx, int(round(py * D)) + yy, (*mix(base, (255, 150, 90), 0.6), 255))
+        gput(glow, px, py, (*THROAT_EMBER, 90 if dorm else 150))
     # żar w głębi gardła (dynamiczny blask dodaje nakładka)
     if open_amt > 0.0:
         col = SPORE if an == "spit" else THROAT_EMBER
         for dx, dy in ((0, 0), (1, 0), (0, 1), (-1, 0)):
-            glow.put(int(round(mx)) + dx, int(round(my)) + dy, (*col, 200))
+            gput(glow, mx + dx, my + dy, (*col, 200))
     return fr, glow
