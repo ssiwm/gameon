@@ -262,15 +262,29 @@ func _setup_local() -> void:
 	if local_human:
 		_camera.make_current()
 		_camera.add_child(_dust_motes())
-		# granice kamery z mapy (level.gd) zamiast stałych z player.tscn
-		var lvl := get_tree().get_first_node_in_group("level")
-		if lvl != null:
-			var b: Rect2 = lvl.bounds
-			_camera.limit_left = int(b.position.x)
-			_camera.limit_top = int(b.position.y)
-			_camera.limit_right = int(b.end.x)
-			_camera.limit_bottom = int(b.end.y)
+		_apply_level_bounds()
+	var lvl_node := get_tree().get_first_node_in_group("level")
+	if lvl_node != null:
+		lvl_node.map_changed.connect(_on_map_changed)
 	print("[NET] player ready id=%d display=%d remote=%s bot=%s" % [player_id, display_id, str(_is_remote), str(is_bot)])
+
+## Granice kamery z mapy (level.gd) zamiast stałych z player.tscn.
+func _apply_level_bounds() -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl != null and _camera != null:
+		var b: Rect2 = lvl.bounds
+		_camera.limit_left = int(b.position.x)
+		_camera.limit_top = int(b.position.y)
+		_camera.limit_right = int(b.end.x)
+		_camera.limit_bottom = int(b.end.y)
+
+## Nowa mapa (level.load_map): punkt startu i granice kamery z nowej mapy, postać wraca na start.
+func _on_map_changed(_id: String) -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	_spawn_point = lvl.spawn_for(display_id)
+	global_position = _spawn_point
+	velocity = Vector2.ZERO
+	_apply_level_bounds()
 
 ## Rysowanie odświeżamy na każdym peerze (zdalni gracze też zmieniają celowanie,
 ## kucanie i HP), a kamera dostaje lokalny shake.

@@ -88,9 +88,7 @@ func _physics_process(delta: float) -> void:
 	# po udanej ekstrakcji (albo końcu serii Nocnego Dyżuru) host zaczyna nową misję
 	if mission.phase == MISSION_SCRIPT.Phase.SUCCESS or mission.phase == MISSION_SCRIPT.Phase.FAILED:
 		if Input.is_action_just_pressed("restart"):
-			if NightShift.active:
-				mission.shift_advance()
-			_restart_mission(true)
+			_continue_after_result()
 		return
 	if _all_down():
 		print("[WIPE] all players down -> mission restart in %.0fs" % WIPE_DELAY)
@@ -116,18 +114,60 @@ func _announce_wipe(seconds: float) -> void:
 ## na start. new_run=false to kolejna próba po wipe (licznik prób +1), true to
 ## nowa misja po udanej ekstrakcji. Łup misji przepadłby tutaj — postęp
 ## fabularny nie (GDD §4).
-func _restart_mission(new_run: bool) -> void:
-	print("[MISSION] restart (%s)" % ("nowa misja" if new_run else "wipe"))
+func _restart_mission(new_run: bool, map_id := "") -> void:
+	print("[MISSION] restart (%s)%s" % ["nowa misja" if new_run else "wipe", (" -> " + map_id) if map_id != "" else ""])
+	if map_id != "" and map_id != level.map_id:
+		_set_map(map_id)
 	NoiseMgr.reset_mission()
 	Arsenal.reset_mission()
 	Director.reset()
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e.has_method("reset_enemy"):
 			e.reset_enemy()
+	for g in get_tree().get_nodes_in_group("generators"):
+		g.reset_generator()
 	for c in _players.get_children():
 		c.request_full_reset()
 	level.clear_pickups()
 	mission.on_restart(new_run)
+
+# ---------------------------------------------------------------- mapy / kampania
+
+## [Enter] na ekranie wyniku (host): kolejna misja kampanii (po ostatniej — od początku) albo kolejna misja / nowa seria
+## Nocnego Dyżuru. Po porażce w kampanii (nie występuje: wipe = powtórka) zostałaby ta sama mapa.
+func _continue_after_result() -> void:
+	var next_map := ""
+	if NightShift.active:
+		mission.shift_advance()
+		next_map = _shift_map()
+	elif mission.phase == MISSION_SCRIPT.Phase.SUCCESS:
+		next_map = _next_campaign_map()
+	_restart_mission(true, next_map)
+
+## Serwer: przełącza poziom na `id` u wszystkich peerów (przebudowa mapy, nowy punkt startu, nowy cel).
+func _set_map(id: String) -> void:
+	if not level.MAPS.has(id):
+		push_warning("Unknown map: %s" % id)
+		return
+	if NoiseMgr.has_network():
+		_load_map_rpc.rpc(id)
+	else:
+		_load_map_rpc(id)
+
+@rpc("authority", "call_local", "reliable")
+func _load_map_rpc(id: String) -> void:
+	level.load_map(id)
+	mission.rebind()
+	print("[MISSION] map: %s (%s)" % [level.map_id, level.title])
+
+func _next_campaign_map() -> String:
+	var order: Array = level.CAMPAIGN
+	return order[(order.find(level.map_id) + 1) % order.size()]
+
+## Nocny Dyżur: każda misja serii na losowej mapie z kampanii.
+func _shift_map() -> String:
+	var order: Array = level.CAMPAIGN
+	return order[randi() % order.size()]
 
 func _handle_cmdline() -> void:
 	var autoquit := -1.0
@@ -135,6 +175,8 @@ func _handle_cmdline() -> void:
 	var wipetest := -1.0
 	var missiontest := false
 	var shifttest := false
+	var maptest := false
+	var gentest := false
 	var weapon_mode := ""
 	var shots_dir := ""
 	var args := OS.get_cmdline_user_args()
@@ -143,6 +185,14 @@ func _handle_cmdline() -> void:
 	for a in args:
 		if a.begins_with("--port="):
 			port = a.substr("--port=".length()).to_int()
+		elif a.begins_with("--mission="):
+			_start_map = a.substr("--mission=".length())
+	# testy headless zakładają mapę 1.3 (gniazda, boss), chyba że flaga --mission wskaże inną
+	if _start_map == "":
+		for a in args:
+			if a.begins_with("--stealthtest") or a.begins_with("--wipetest") or a == "--missiontest" or a == "--shifttest" \
+					or a == "--weapontest" or a.begins_with("--weaponshots=") or a == "--weaptestnet" or a == "--weaptestclient":
+				_start_map = "z1_m3"
 	for a in args:
 		if a == "--host":
 			host_game()
@@ -168,6 +218,10 @@ func _handle_cmdline() -> void:
 			missiontest = true
 		elif a == "--shifttest":
 			shifttest = true
+		elif a == "--maptest":
+			maptest = true
+		elif a == "--gentest":
+			gentest = true
 		elif a == "--weapontest":
 			weapon_mode = "unit"
 		elif a.begins_with("--weaponshots="):
@@ -189,6 +243,10 @@ func _handle_cmdline() -> void:
 		_mission_test()
 	if shifttest:
 		_shift_test()
+	if maptest:
+		_map_test()
+	if gentest:
+		_gen_test()
 	if weapon_mode != "":
 		var wt := WEAPON_TEST.new()
 		wt.name = "WeaponTest"
@@ -321,17 +379,119 @@ func host_game() -> void:
 	multiplayer.multiplayer_peer = peer
 	_begin_hosting("port %d" % port)
 
+## Test misji 1.2 (--host --mission=z1_m2 --gentest): trzy generatory (przytrzymanie E), skok Uwagi po ostatnim, ekstrakcja,
+## a potem [Enter] → mapa 1.3 i z powrotem. Wrogowie są zamrożeni, żeby test był powtarzalny.
+func _gen_test() -> void:
+	await get_tree().create_timer(1.0).timeout
+	var fails := [0]                      # tablica: lambda kopiuje liczby, a tablicę współdzieli
+	var check := func(label: String, ok: bool) -> void:
+		print("[GEN-TEST] %s  %s" % ["PASS" if ok else "FAIL", label])
+		if not ok:
+			fails[0] += 1
+	var p: Node2D = _players.get_node_or_null("1")
+	for e in get_tree().get_nodes_in_group("enemies"):
+		e.set_physics_process(false)
+		e.set_process(false)
+	check.call("start: mapa 1.2, cel generators, 3 generatory", level.map_id == "z1_m2" and mission.kind == "generators" and mission.goal_total == 3)
+	var gens: Array = get_tree().get_nodes_in_group("generators")
+	gens.sort_custom(func(a: Node2D, b: Node2D) -> bool: return a.global_position.x < b.global_position.x)
+	for i in gens.size():
+		p.global_position = gens[i].global_position + Vector2(-10, 0)
+		p.velocity = Vector2.ZERO
+		await get_tree().create_timer(0.3).timeout
+		Input.action_press("interact")
+		await get_tree().create_timer(gens[i].WORK_TIME + 0.8).timeout
+		Input.action_release("interact")
+		check.call("generator %d uruchomiony, zostało %d" % [i + 1, 2 - i], gens[i].running and mission.goal_left == 2 - i)
+		if i == 0:
+			check.call("stealth po pierwszym generatorze (szczyt Uwagi %.0f < 40)" % mission.peak_noise, mission.stealth_ok())
+	check.call("po 3 generatorach: EXTRACT, Uwaga %.0f (skok do %.0f), Stalker obudzony=%s" % [NoiseMgr.level, mission.BROADCAST_NOISE, str(NoiseMgr.stalker_awake)],
+		mission.phase == MISSION_SCRIPT.Phase.EXTRACT and NoiseMgr.level >= 60.0 and NoiseMgr.stalker_awake)
+	p.global_position = mission.exit_pos + Vector2(0, -2)
+	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
+	check.call("ekstrakcja → SUCCESS", mission.phase == MISSION_SCRIPT.Phase.SUCCESS)
+	_continue_after_result()
+	await get_tree().create_timer(0.5).timeout
+	check.call("[Enter] → mapa 1.3 (gniazda), gracz na starcie nowej mapy",
+		level.map_id == "z1_m3" and mission.kind == "nests" and mission.goal_total == 4 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE
+		and p.global_position.distance_to(level.spawn_for(1)) < 40.0 and get_tree().get_nodes_in_group("generators").is_empty())
+	mission.elapsed = 5.0
+	mission._success()
+	_continue_after_result()
+	await get_tree().create_timer(0.5).timeout
+	check.call("po ostatniej misji kampania wraca do 1.2 (generatory zresetowane)",
+		level.map_id == "z1_m2" and mission.goal_left == 3 and gens.size() == 3 and get_tree().get_nodes_in_group("generators").size() == 3)
+	print("[GEN-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
+
+## Test map (--maptest): dla każdej misji kampanii sprawdza kształt siatki i że z punktów startu da się dojść (po grafie
+## nawigacji, z uwzględnieniem skoków i spadania) do wszystkich celów, wrogów, przedmiotów i wyjść oraz wrócić na start.
+func _map_test() -> void:
+	var fails := 0
+	var original: String = level.map_id
+	for id in level.CAMPAIGN:
+		level.load_map(id)
+		var data = level.MAPS[id]
+		var rows: Array = data.MAP
+		var w := (rows[0] as String).length()
+		var shape_ok := true
+		for r in rows:
+			if (r as String).length() != w:
+				shape_ok = false
+		print("[MAPTEST] %s %s: %d x %d, kształt %s" % [id, level.title, w, rows.size(), "OK" if shape_ok else "BŁĄD (różne szerokości wierszy)"])
+		if not shape_ok:
+			fails += 1
+		var nav: AStar2D = level.nav
+		var points: Array = []          # [etykieta, pozycja]
+		for i in level.spawns.size():
+			points.append(["start %d" % i, level.spawns[i]])
+		for i in level.exits.size():
+			points.append(["wyjście %d" % i, level.exits[i]])
+		for g in get_tree().get_nodes_in_group("generators"):
+			points.append([String(g.name), g.global_position])
+		for n in get_tree().get_nodes_in_group("nests"):
+			points.append([String(n.name), n.global_position])
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if not e.is_in_group("nests") and not e.is_in_group("boss") and str(e.get("kind")) not in ["skoczek", "cma", "<null>"]:
+				points.append([String(e.name), e.global_position])
+		if level.stalker_home != Vector2.ZERO:
+			points.append(["dom Stalkera", level.stalker_home])
+		for k in level._map_items:
+			for i in (level._map_items[k] as Array).size():
+				points.append(["przedmiot %s%d" % [k, i], level._map_items[k][i]])
+		var ids := {}
+		var bad: Array = []
+		for p in points:
+			var cid := nav.get_closest_point(p[1])
+			if cid < 0 or nav.get_point_position(cid).distance_to(p[1]) > 2.0:
+				bad.append("%s nie stoi na podłodze (%s)" % [p[0], str(p[1])])
+			ids[p[0]] = cid
+		var start_id: int = ids["start 0"]
+		for p in points:
+			var cid: int = ids[p[0]]
+			if cid < 0:
+				continue
+			if nav.get_id_path(start_id, cid).is_empty():
+				bad.append("%s: brak drogi ze startu" % p[0])
+			elif nav.get_id_path(cid, start_id).is_empty():
+				bad.append("%s: brak drogi powrotnej na start" % p[0])
+		for b in bad:
+			print("[MAPTEST]   BŁĄD: %s" % b)
+		fails += bad.size()
+		print("[MAPTEST] %s: %d punktów sprawdzonych, błędów %d" % [id, points.size(), bad.size()])
+	level.load_map(original)
+	print("[MAPTEST] %s (%d błędów)" % ["PASS" if fails == 0 else "FAIL", fails])
+
 ## Test Nocnego Dyżuru: przechodzi całą serię (5 × sukces), sprawdza modyfikatory i skalowanie, potem porażkę
 ## i nową serię. Rekordy w Settings zostają przywrócone. --nightshift --host --shifttest
 func _shift_test() -> void:
 	await get_tree().create_timer(1.0).timeout
 	var best_c: int = Settings.shift_best_cleared
 	var best_t: float = Settings.shift_best_time
-	var fails := 0
+	var fails := [0]                      # tablica: lambda kopiuje liczby, a tablicę współdzieli
 	var check := func(label: String, ok: bool) -> void:
 		print("[SHIFT-TEST] %s  %s" % ["PASS" if ok else "FAIL", label])
 		if not ok:
-			fails += 1
+			fails[0] += 1
 	check.call("start: seria aktywna, misja 1, bez modyfikatorów", NightShift.active and NightShift.stage == 1 and NightShift.mods.is_empty())
 	check.call("start: HP wrogów ×1,00", is_equal_approx(NightShift.hp_mult(), 1.0))
 	for st in range(1, NightShift.MISSIONS + 1):
@@ -368,7 +528,10 @@ func _shift_test() -> void:
 	Settings.shift_best_cleared = best_c
 	Settings.shift_best_time = best_t
 	Settings._save()
-	print("[SHIFT-TEST] %s (%d błędów)" % ["PASS" if fails == 0 else "FAIL", fails])
+	print("[SHIFT-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
+
+## Mapa startowa wymuszona flagą `--mission=ID` (testy headless używają z_1_m3, patrz _handle_cmdline).
+var _start_map := ""
 
 ## Wspólny koniec startu hosta (ENet i Steam): UI, ambient, nowa misja, gracz hosta.
 func _begin_hosting(where: String) -> void:
@@ -377,6 +540,9 @@ func _begin_hosting(where: String) -> void:
 	print("[NET] difficulty: %s" % Difficulty.level_name())
 	if NightShift.selected:
 		mission.begin_shift()
+	var first_map: String = _start_map if _start_map != "" else (_shift_map() if NightShift.selected else level.CAMPAIGN[0])
+	if first_map != level.map_id:
+		_set_map(first_map)
 	print("[NET] mode: %s" % ("NIGHT SHIFT" if NightShift.active else "CAMPAIGN"))
 	_start_ambience()
 	NoiseMgr.reset_mission()
@@ -427,6 +593,7 @@ func _on_peer_connected(id: int) -> void:
 	print("[NET] peer connected: %d" % id)
 	if multiplayer.is_server():
 		_sync_difficulty.rpc_id(id, Difficulty.level)
+		_load_map_rpc.rpc_id(id, level.map_id)       # mapa zanim pojawi się postać
 		_spawn_player(id)
 
 ## Trudność ustala host; klient dostaje ją przy dołączeniu (HP wrogów, paski, czasy).

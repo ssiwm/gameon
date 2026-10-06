@@ -1,7 +1,9 @@
 extends Node2D
 ## Pętla misji (GDD §4): CEL → EKSTRAKCJA → WYNIK. Autorytet: serwer.
+## Rodzaj celu (`kind`) podaje poziom (level.objective): „nests" = misja 1.3, „generators" = misja 1.2.
 ##
-##   OBJECTIVE  zniszcz wszystkie gniazda (grupa „nests")
+##   OBJECTIVE  zniszcz wszystkie gniazda (grupa „nests") — albo uruchom wszystkie generatory (grupa „generators"),
+##              a po ostatnim nadajnik rozbrzmiewa na cały las (skok Uwagi, Stalker idzie na źródło)
 ##   BOSS       gniazda były odnóżami Żyły (boss.gd) — budzi się; zabij ją
 ##   EXTRACT    wyjście otwiera się w INNYM miejscu niż start (§4: „po wykonaniu
 ##              celu pozycja wyjścia się zmienia") — najdalszy od drużyny punkt
@@ -23,9 +25,25 @@ const EXIT_RADIUS_X := 34.0
 const EXIT_RADIUS_Y := 40.0
 const SYNC_INTERVAL := 0.2
 
+const STEALTH_CAP := 40.0              ## cel poboczny misji 1.2: Uwaga poniżej tej wartości do końca celu głównego
+const BROADCAST_NOISE := 70.0          ## skok Uwagi po uruchomieniu ostatniego generatora
+
 var phase: int = Phase.OBJECTIVE
-var nests_total := 0
-var nests_left := 0
+var kind := "nests"
+var goal_total := 0
+var goal_left := 0
+## Stare nazwy (gniazda) — HUD, testy i misja 1.3 czytają je dalej; to ten sam licznik celu.
+var nests_total: int:
+	get:
+		return goal_total
+	set(v):
+		goal_total = v
+var nests_left: int:
+	get:
+		return goal_left
+	set(v):
+		goal_left = v
+var peak_noise := 0.0                  ## najwyższa Uwaga od startu do końca celu głównego (cel poboczny)
 var exit_pos := Vector2.ZERO
 var extract_progress := 0.0
 ## Statystyki do ekranu wyniku
@@ -46,27 +64,44 @@ var _boss: Node = null
 
 func _ready() -> void:
 	z_index = 5
-	_boss = get_tree().get_first_node_in_group("boss")
-	if _boss != null:
-		_boss.died.connect(_on_boss_died)
 	# znacznik (słup, strefa, paski) czytelny w ciemności; sama flara to
 	# prawdziwe światło 12 m (GDD §8.3) — widać ją z daleka i oświetla wyjście
 	material = Lights.unshaded()
 	_flare = Lights.make_light(Lights.radial(), Lights.FLARE_M, Color(0.45, 1.0, 0.55), 1.1, true)
 	_flare.enabled = false
 	add_child(_flare)
-	# gniazda są w scenie (ta sama ścieżka na każdym peerze)
-	for n in get_tree().get_nodes_in_group("nests"):
-		n.destroyed.connect(_on_nest_destroyed)
-	_count_nests()
+	rebind()
 
-func _count_nests() -> void:
-	nests_total = 0
-	nests_left = 0
+## Podpina cel do bieżącego poziomu: gniazda i boss (misja 1.3) albo generatory (misja 1.2). Wołane na starcie i po
+## każdej zmianie mapy (main.gd) — encje starej mapy zniknęły razem z nią.
+func rebind() -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	kind = String(lvl.objective) if lvl != null else "nests"
+	_boss = get_tree().get_first_node_in_group("boss")
+	if _boss != null and not _boss.died.is_connected(_on_boss_died):
+		_boss.died.connect(_on_boss_died)
+	# cele są w scenie (ta sama ścieżka na każdym peerze)
 	for n in get_tree().get_nodes_in_group("nests"):
-		nests_total += 1
-		if n.alive:
-			nests_left += 1
+		if not n.destroyed.is_connected(_on_nest_destroyed):
+			n.destroyed.connect(_on_nest_destroyed)
+	for g in get_tree().get_nodes_in_group("generators"):
+		if not g.started.is_connected(_on_generator_started):
+			g.started.connect(_on_generator_started)
+	_count_goal()
+
+func _count_goal() -> void:
+	goal_total = 0
+	goal_left = 0
+	if kind == "generators":
+		for g in get_tree().get_nodes_in_group("generators"):
+			goal_total += 1
+			if not g.running:
+				goal_left += 1
+	else:
+		for n in get_tree().get_nodes_in_group("nests"):
+			goal_total += 1
+			if n.alive:
+				goal_left += 1
 
 func is_active() -> bool:
 	return NoiseMgr.has_network()
@@ -90,6 +125,8 @@ func _physics_process(delta: float) -> void:
 	if phase != Phase.SUCCESS and phase != Phase.FAILED:
 		elapsed += delta
 	_track_downs()
+	if phase == Phase.OBJECTIVE:
+		peak_noise = maxf(peak_noise, NoiseMgr.level)
 	if phase == Phase.EXTRACT:
 		_tick_extract(delta)
 
@@ -100,7 +137,7 @@ func _physics_process(delta: float) -> void:
 func _on_nest_destroyed(_nest: Node) -> void:
 	if not NoiseMgr.is_server():
 		return
-	_count_nests()
+	_count_goal()
 	print("[MISSION] nest destroyed, left=%d/%d" % [nests_left, nests_total])
 	if _boss != null and phase == Phase.OBJECTIVE:
 		_boss.on_nest_lost(nests_left)
@@ -110,6 +147,29 @@ func _on_nest_destroyed(_nest: Node) -> void:
 		else:
 			_open_extraction()
 	_broadcast()
+
+## Generator ruszył (misja 1.2). Po ostatnim: nadajnik rozbrzmiewa na cały las — skok Uwagi budzi Stalkera i kieruje go
+## na źródło, a drużyna musi dotrzeć do wyjścia (lekcja Q: wabik odciąga Stalkera). Cel poboczny liczy Uwagę tylko do tego momentu.
+func _on_generator_started(_gen: Node) -> void:
+	if not NoiseMgr.is_server():
+		return
+	_count_goal()
+	print("[MISSION] generator started, left=%d/%d peak=%.0f" % [goal_left, goal_total, peak_noise])
+	_event.rpc("generator")
+	if goal_left == 0 and phase == Phase.OBJECTIVE:
+		peak_noise = maxf(peak_noise, NoiseMgr.level)
+		var src := _last_generator_pos(_gen)
+		_open_extraction()
+		NoiseMgr.script_spike(BROADCAST_NOISE, src)
+		_event.rpc("broadcast")
+	_broadcast()
+
+func _last_generator_pos(gen: Node) -> Vector2:
+	return (gen as Node2D).global_position if gen is Node2D else exit_pos
+
+## Czy cel poboczny „Uwaga poniżej 40" jest nadal w grze (misja 1.2).
+func stealth_ok() -> bool:
+	return peak_noise < STEALTH_CAP
 
 ## Ostatnie gniazdo padło — matka się budzi. Ładunek Q wraca tu (GDD §8.4:
 ## „przy wykonaniu celu"), bo na walkę z Żyłą jest najbardziej potrzebny.
@@ -238,6 +298,10 @@ func shift_complete() -> bool:
 func shift_banner_visible() -> bool:
 	return NightShift.active and phase == Phase.OBJECTIVE and elapsed < 9.0
 
+## Tytuł misji w pierwszych sekundach (kampania; w Nocnym Dyżurze HUD dokłada zasady serii).
+func banner_visible() -> bool:
+	return phase == Phase.OBJECTIVE and elapsed < (9.0 if NightShift.active else 6.0)
+
 ## Wołane przez main._restart_mission() — po wipe (nowa próba) albo nowej misji.
 func on_restart(new_run: bool) -> void:
 	phase = Phase.OBJECTIVE
@@ -249,19 +313,21 @@ func on_restart(new_run: bool) -> void:
 	else:
 		attempts += 1
 	_was_dead.clear()
-	# gniazda wróciły (reset_enemy) — liczymy od nowa
-	_count_nests()
-	nests_left = nests_total
+	# cele wróciły (reset_enemy / reset_generator) — liczymy od nowa
+	peak_noise = 0.0
+	_count_goal()
+	goal_left = goal_total
 	_broadcast()
 
 func _broadcast() -> void:
 	_sync_t = SYNC_INTERVAL
 	if NoiseMgr.has_network() and multiplayer.is_server():
 		_sync.rpc(phase, nests_left, nests_total, exit_pos, extract_progress, elapsed, downs, attempts,
-			[NightShift.active, NightShift.stage, NightShift.mods, shift_cleared, shift_time, shift_downs, shift_record])
+			[NightShift.active, NightShift.stage, NightShift.mods, shift_cleared, shift_time, shift_downs, shift_record], peak_noise)
 
 @rpc("authority", "call_remote", "reliable")
-func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d: int, att: int, shift: Array) -> void:
+func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d: int, att: int, shift: Array, peak: float) -> void:
+	peak_noise = peak
 	NightShift.active = bool(shift[0])
 	NightShift.stage = int(shift[1])
 	NightShift.mods = Array(shift[2])
@@ -290,6 +356,11 @@ func _event(kind: String) -> void:
 			Audio.play("tape_stop", Audio.BUS_UI, -10.0)
 		"shift_over":
 			Audio.play("tape_stop", Audio.BUS_UI, -4.0)
+		"generator":
+			Audio.play("ui_confirm", Audio.BUS_UI, -6.0)
+		"broadcast":
+			Audio.play("alarm_bell", Audio.BUS_UI, -6.0)
+			Audio.sting(2)
 
 # ---------------------------------------------------------------- HUD
 
@@ -310,6 +381,8 @@ func objective_caption() -> String:
 func objective_text() -> String:
 	match phase:
 		Phase.OBJECTIVE:
+			if kind == "generators":
+				return "Start the radio generators   %d / %d" % [goal_total - goal_left, goal_total]
 			return "Destroy the nests   %d / %d" % [nests_total - nests_left, nests_total]
 		Phase.BOSS:
 			return "Kill The Vein — shoot her mouth while it's OPEN"
@@ -326,10 +399,16 @@ func objective_text() -> String:
 func objective_hint() -> String:
 	match phase:
 		Phase.OBJECTIVE:
+			if kind == "generators":
+				if not stealth_ok():
+					return "Hold E at a generator  ·  a running one keeps humming  ·  stealth bonus lost"
+				return "Hold E at a generator  ·  it is loud  ·  bonus: stay under %d%% Attention" % int(STEALTH_CAP)
 			return "Nests are loud when destroyed — they wake what's nearby"
 		Phase.BOSS:
 			return "Light her mouth mid wind-up to stun  ·  Q lures her away"
 		Phase.EXTRACT:
+			if kind == "generators":
+				return "The transmitter is live — he heard it  ·  Q lures him away"
 			return "The whole squad, standing, at the flare for 3 s"
 	return ""
 

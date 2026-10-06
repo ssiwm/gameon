@@ -156,6 +156,20 @@ func objective_bonus() -> void:
 	_push_now()
 	overcharge_used.emit(overcharge_charges)
 
+## Skryptowy skok Uwagi (misja 1.2: nadajnik włącza się na cały las): Uwaga co najmniej `min_level`, źródło hałasu
+## w `pos`, więc Stalker budzi się i idzie w to miejsce. Omija mnożniki trudności — ma być zawsze tak samo.
+func script_spike(min_level: float, pos: Vector2) -> void:
+	if not is_server():
+		return
+	level = clampf(maxf(level, min_level), 0.0, MAX_LEVEL)
+	last_noise_pos = pos
+	last_noise_amount = 30.0
+	noise_serial += 1
+	if level >= NightShift.awake_threshold(AWAKE_THRESHOLD):
+		stalker_awake = true
+	level_changed.emit(level, stalker_awake)
+	_push_now()
+
 ## Udana ekstrakcja: teren cichnie (Uwaga 0, Stalker śpi).
 func calm() -> void:
 	if not is_server():

@@ -13,6 +13,8 @@ const FADE_S := 0.5
 const TIPS := [
 	["move", "WASD to move  ·  SPACE to jump  ·  hold SHIFT to sneak — sneaking is silent"],
 	["noise", "Every shot makes NOISE. Watch the meter in the top-left corner"],
+	["broadcast", "The transmitter is live and HE heard it. Press Q to throw a lure and pull him away — then run for the exit"],
+	["generator", "Hold E at a generator to start it. The work is loud, and a running generator keeps humming"],
 	["uneasy", "Something is listening. Stop shooting, sneak (SHIFT) — or press Q to lure it away"],
 	["revive", "A friend is down — stand next to them and HOLD E to revive"],
 	["downed", "You are down. Stay still — a teammate can revive you before you bleed out"],
@@ -88,6 +90,15 @@ func _collect(p: Node) -> void:
 			friend_down = true
 			break
 	_queue("revive", friend_down, false)
+	# misja 1.2: generator pod ręką; po ostatnim — lekcja Q na Stalkerze
+	var near_gen := false
+	for g in p.get_tree().get_nodes_in_group("generators"):
+		if not g.running and absf(g.global_position.x - p.global_position.x) < 110.0 and absf(g.global_position.y - p.global_position.y) < 60.0:
+			near_gen = true
+			break
+	_queue("generator", near_gen, false)
+	var m = p.get_tree().current_scene.get("mission") if p.get_tree().current_scene else null
+	_queue("broadcast", m != null and m.kind == "generators" and m.phase == m.Phase.EXTRACT and NoiseMgr.stalker_awake, false)
 
 func _queue(id: String, cond: bool, sticky: bool) -> void:
 	if cond:

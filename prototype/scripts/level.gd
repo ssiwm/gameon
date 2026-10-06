@@ -1,7 +1,8 @@
 extends Node2D
-## Poziom misji „Gniazdo" na TileMapLayer (GDD §16.0 pkt 1, 1.3.5).
+## Poziom misji na TileMapLayer (GDD §16.0 pkt 1, 1.3.5). Mapy leżą w scripts/maps/ (jedna na misję),
+## a load_map(id) przebudowuje poziom — na każdym peerze identycznie (host rozsyła id, main.gd).
 ##
-## Mapa jest siatką ASCII (MAP), żeby dało się ją czytać i edytować bez
+## Mapa jest siatką ASCII (MAP w pliku mapy), żeby dało się ją czytać i edytować bez
 ## edytora. TileSet i tekstury kafli budujemy w kodzie — każdy peer składa
 ## identyczny poziom, a znaczniki w siatce rozstawiają postacie pod stałymi
 ## nazwami (Trzosek1…, Nest1…), więc ścieżki RPC zgadzają się na wszystkich.
@@ -15,7 +16,7 @@ extends Node2D
 ##   ~  woda (podłoga-bryła)  =  kładka metalowa (jednokierunkowa)
 ##   -  rusztowanie drewniane (jednokierunkowe)
 ##   b  tło: beton (wnętrze)  w  tło: drewno (pnie, belki)
-##   S  start  E  wyjście  T  Trzosek  W  Wołek  N  gniazdo  X  dom Stalkera
+##   S  start  E  wyjście  T  Trzosek  W  Wołek  N  gniazdo  X  dom Stalkera  G  generator radiostacji
 ##   B  Żyła — matka gniazd (boss misji)
 ##   k  skrzynia (fizyczna)   o  beczka (fizyczna, wybucha)
 ##   g  broń na ziemi         a  skrzynka z amunicją
@@ -24,16 +25,11 @@ extends Node2D
 ##   Y  Mimik (udaje kolegę z drużyny)
 ##   J  Skoczek (wisi pod sufitem i spada)   Z  Ćma (światłolubna, wisi pod sufitem)
 ##
-## Układ (192 × 44 kafli): las + posterunek → arena z kładkami → Skład (hala z antresolą,
-## dach, schody z rusztowań) → tartak z bossem; pod całą mapą biegną podziemia
-## (sale i niskie tunele) połączone trzema szybami ze schodami z kładek.
 
 const TILE := 16
 ## Warstwy fizyki: bryły na 1 (jak dawny World), kładki na 16 — pociski
 ## (maska 7) i promienie okluzji/linii strzału (maska 1) przez nie przechodzą.
 const LAYER_SOLID := 1
-## Od tej wysokości (px) postać jest w podziemiach: dno szybu i sale pod ziemią (mapa: rzędy ≥ 31).
-const UNDERGROUND_Y := 31 * TILE
 const LAYER_PLATFORM := 16
 
 const Lights := preload("res://scripts/lights.gd")
@@ -49,53 +45,17 @@ const PROP := preload("res://scripts/prop.gd")
 const PICKUP := preload("res://scripts/pickup.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const FLARE := preload("res://scripts/flare.gd")
+const GENERATOR := preload("res://scripts/generator.gd")
 
-const MAP := [
-	"##............................................................................................................................................................................................##",
-	"##............................................................................................................................................................................................##",
-	"##............................................................................................................................................................................................##",
-	"##............................................................................................................................................................................................##",
-	"##............................................................................................................................................................................................##",
-	"##............................................................................................................................................................................................##",
-	"##............................................................................................................................................................................................##",
-	"##............................................................................................................................................................................................##",
-	"##............................................................................................................................................................................................##",
-	"##............................................................................................................................................................................................##",
-	"##............................................................................................................................................................................................##",
-	"##............................................................................................................................................................................................##",
-	"##............................................................................................................................................................................................##",
-	"##........................................................................................................................................................................................N...##",
-	"##.............................................................................................................................................................w.........w.........w---------.##",
-	"##.............................................................................................................................................................w.........w........Tw..........##",
-	"##.............................................................................................................................................................w.........w......---------.....##",
-	"##.......w...w...........................................................................................................P..MM..T..M...........................w.........wk.T......w..........##",
-	"##.......w...w..................................................................................................CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC................w........-------....w..........##",
-	"##.......w...w..................................................................................................CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC................w...g.....w.........w..........##",
-	"##.......w...w............................................=========.........................................----CbbbbbbbbbbbbbbbbbJbbbbbbbbbbbC----............w-------..w.........w..........##",
-	"##.......w...w....CCCCCCCCCCCCCCCCCCC.............................T...k.........................................CbbbbbbbbbbgbbbbbbbbbbbTbbbbbbC................w.........w.........w..........##",
-	"##.......w...w.---bbbbbbbbbbbbbbbbbbC...........=========.....===========...=========....................----....bb=========================bb....----.........w......-------......w..........##",
-	"##.......w...w....bbbbbbbbbbbbbbbbbbC............................................................................bbbbbbbbbbbbbbbbbbbbbbbbbbbbb.................w.........w.........w..........##",
-	"##.......w..---...bbbbbbbbbbbbbbbbbb........=========...===========...===========......................----......====bbbbbbbbbbbbbbbbbbbbb====......----......-------....w.........w..........##",
-	"##.ES..S.w.g.w.kk.bbbbbbobTbTbTbbNbb........a.....L...M..ok.W.a.......X...M.......TaT..................k....kko..bYbbbTbbTbbbbbabbbkbWbbbbbbbb....oP..k........w..a......w.o..W.a.kw...B....E.##",
-	"#############mmmmmm###################bbbbbbCCCCCCCCCCOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCOOOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
-	"######################################bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
-	"######################################======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~C======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC======~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
-	"######################################bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
-	"######################################====bb################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC====bbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC====bbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
-	"######bbbbbbbbbbbbbbbbbbbbbbbbb#######bbbbbb################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbbbbbbCCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
-	"######bbbbbbbbbbbbbbbbbbbbbbbbb#######bb====################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbb====CCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbb====CCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
-	"######bbbbZbbbbbbbbgbbbbbbZbbbb#######bbbbbb################CCCbbbZbZbbbbbbbNbbbbbbbbbbbZbbCCCCbbbbbbCCCCCCCCbbbZbbbbbbbbbbbbbNbbbbbbbbbbbbbZbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
-	"######bbbbbbbbb=========bbbbbbb#######====bb################CCCbbbbbbbbb=========bbbbbbbbbbCCCC====bbCCCCCCCCbbbbbbbbb=================bbbbbbbbbCCCCCCCC====bbCCCCCCCCCCCCCbbbbbbbbb======bCCC##",
-	"######bbbbbbbPbbbbbbbbbbbbbbbbb#######bbbbbb################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbbbbbbCCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
-	"######bbbb=======bbbbb=======bbbbbbbbbbb====bbbbbbbbbbbbbbbbbbbbbbb=======bbbbb=======bbbbbbbbbbb====bbbbbbbbbbbb=======bbbbbbbbbbbbb=======bbbbbbbbbbbbbb====bbbbbbbbbbbbbbbbb=======bbbbbCCC##",
-	"######bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbJbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCC##",
-	"######bb===bbbbbbMMbbbbbbbbb===bbbbbbb====bbbbbbbbJbbbbbbbbbbbbbb===bbbbbbbMMbbbbbbbb===bbbbbbb====bbbbbJbbbbbb===bbbbbbbbbbMMbbbbbbbbbbbbb===bbbbbbbbbb====bbbbbbbbbbbbbbbbb===MMbbbbbbbbbCCC##",
-	"######bbbbbbbbbbbMMTbbbbbbbabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbTbLbbbbMMbbbbbbbWbkbbbbbYbbbbbbbbbbbbbbbbbabbbbbTbbbbbbbMMbbLbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbMMbbbbTbbbbCCC##",
-	"####################mmmmmm##################################CCCCCCCCCCCCCCCCCCOOOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCOOOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
-	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
-	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
-	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
-]
+## Mapy misji (scripts/maps/): każda niesie MAP, ID, TITLE, OBJECTIVE, UNDERGROUND_ROW, WEAPONS, ACCENTS.
+const MAPS := {
+	"z1_m2": preload("res://scripts/maps/z1_m2.gd"),
+	"z1_m3": preload("res://scripts/maps/z1_m3.gd"),
+}
+## Kolejność kampanii Strefy I (1.1 nie ma jeszcze w prototypie).
+const CAMPAIGN := ["z1_m2", "z1_m3"]
+
+signal map_changed(id: String)
 
 ## znak -> [kolumna atlasu, powierzchnia kroków, rodzaj]
 ## rodzaj: 0 bryła, 1 kładka jednokierunkowa, 2 tło bez kolizji
@@ -116,6 +76,10 @@ const KINDS := {
 }
 const ATLAS_COLS := 12
 
+var map_id := ""
+var title := ""
+var objective := "nests"
+var underground_y := 0.0         ## od tej wysokości (px) postać jest w podziemiach
 var bounds := Rect2()
 var spawns: Array[Vector2] = []
 var exits: Array[Vector2] = []
@@ -132,6 +96,11 @@ var _props_tex: Texture2D
 var _deco_list: Array = []             ## [pozycja stóp, indeks dekoracji, flip]
 var _rows := 2                         ## wierszy w atlasie (2 = kod, 4 = art/tiles.png)
 var _decal_list: Array = []            ## [pos, radius, seed]
+var _map: Array = []                   ## MAP bieżącej misji
+var _weapons: Array = []               ## broń z „g” (po kolei od lewej)
+var _accents: Array = []
+var _ts: TileSet
+var _stable: Array = []                ## węzły stałe (tło, warstwy) — reszta to encje misji
 
 func _ready() -> void:
 	add_to_group("level")
@@ -140,15 +109,16 @@ func _ready() -> void:
 	if dark != null:
 		dark.color = Lights.AMBIENT
 	RenderingServer.set_default_clear_color(Lights.SKY)
-	add_child(preload("res://scripts/backdrop.gd").new())
-	var ts := _build_tileset()
+	var bd := preload("res://scripts/backdrop.gd").new()
+	add_child(bd)
+	_ts = _build_tileset()
 	_back = TileMapLayer.new()
 	_back.name = "Back"
-	_back.tile_set = ts
+	_back.tile_set = _ts
 	add_child(_back)
 	_solid = TileMapLayer.new()
 	_solid.name = "Solid"
-	_solid.tile_set = ts
+	_solid.tile_set = _ts
 	add_child(_solid)
 	for l in [_back, _solid]:
 		l.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -163,24 +133,60 @@ func _ready() -> void:
 	_decals.name = "Decals"
 	_decals.draw.connect(_draw_decals)
 	add_child(_decals)
+	_stable = [bd, _back, _solid, _deco, _decals]
+	_load(CAMPAIGN[0])
+
+## Przebudowuje poziom na mapę `id` (wołane na każdym peerze z tym samym id). Encje starej mapy znikają od razu
+## (remove_child), żeby nowe mogły dostać te same nazwy — ścieżki RPC muszą się zgadzać na wszystkich peerach.
+func load_map(id: String) -> void:
+	if id == map_id or not MAPS.has(id):
+		return
+	for c in get_children():
+		if not _stable.has(c):
+			remove_child(c)
+			c.queue_free()
+	_back.clear()
+	_solid.clear()
+	_deco_list.clear()
+	_decal_list.clear()
+	spawns.clear()
+	exits.clear()
+	stalker_home = Vector2.ZERO
+	boss_home = Vector2.ZERO
+	_load(id)
+	map_changed.emit(id)
+
+func _load(id: String) -> void:
+	var m = MAPS[id]
+	map_id = id
+	title = m.TITLE
+	objective = m.OBJECTIVE
+	underground_y = float(m.UNDERGROUND_ROW * TILE)
+	_map = m.MAP
+	_weapons = m.WEAPONS
+	_accents = m.ACCENTS
+	_map_items = {}
 	_build_map()
 	nav = Nav.new()
-	nav.build((MAP[0] as String).length(), MAP.size(), _is_solid, _is_platform_cell)
+	nav.build((_map[0] as String).length(), _map.size(), _is_solid, _is_platform_cell)
 	_spawn_entities()
+	_deco.queue_redraw()
+	_decals.queue_redraw()
+
 
 # ---------------------------------------------------------------- mapa
 
 func _ch(c: int, r: int) -> String:
-	if r < 0 or r >= MAP.size():
+	if r < 0 or r >= _map.size():
 		return "."
-	var row: String = MAP[r]
+	var row: String = _map[r]
 	if c < 0 or c >= row.length():
 		return "."
 	return row[c]
 
 func _build_map() -> void:
-	var rows := MAP.size()
-	var cols: int = (MAP[0] as String).length()
+	var rows := _map.size()
+	var cols: int = (_map[0] as String).length()
 	bounds = Rect2(0, 0, cols * TILE, rows * TILE)
 	for r in rows:
 		for c in cols:
@@ -214,8 +220,8 @@ func _place_deco() -> void:
 	_props_tex = Sprites.texture(ART_PROPS)
 	if _props_tex == null:
 		return
-	for r in MAP.size():
-		var row: String = MAP[r]
+	for r in _map.size():
+		var row: String = _map[r]
 		for c in row.length():
 			var ch := row[c]
 			if not KINDS.has(ch) or KINDS[ch][2] != 0 or _is_solid(c, r - 1):
@@ -241,8 +247,8 @@ func _place_deco() -> void:
 						pick = 5
 			if pick >= 0:
 				_deco_list.append([feet, pick, (h >> 5) & 1 == 1])
-	# akcenty ręczne: płot przy starcie, kłody w tartaku
-	for p in [[Vector2(9 * TILE + 8, 26 * TILE), 6], [Vector2(11 * TILE + 8, 26 * TILE), 6], [Vector2(89 * TILE + 8, 26 * TILE), 7], [Vector2(182 * TILE - 40, 26 * TILE), 7]]:
+	# akcenty ręczne z danych mapy (płot, kłody…)
+	for p in _accents:
 		_deco_list.append([p[0], p[1], false])
 	_deco.queue_redraw()
 
@@ -259,7 +265,7 @@ func _draw_deco() -> void:
 
 func _is_solid(c: int, r: int) -> bool:
 	# poza mapą = bryła (krawędzie mapy nie świecą)
-	if r < 0 or r >= MAP.size() or c < 0 or c >= (MAP[0] as String).length():
+	if r < 0 or r >= _map.size() or c < 0 or c >= (_map[0] as String).length():
 		return true
 	var ch := _ch(c, r)
 	return KINDS.has(ch) and KINDS[ch][2] == 0
@@ -280,9 +286,9 @@ func _exposure(c: int, r: int) -> int:
 ## Znaczniki → postacie. Nazwy numerowane od lewej do prawej, identycznie
 ## na każdym peerze.
 func _spawn_entities() -> void:
-	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "k": [], "o": [], "a": [], "g": []}
-	for r in MAP.size():
-		var row: String = MAP[r]
+	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "k": [], "o": [], "a": [], "g": []}
+	for r in _map.size():
+		var row: String = _map[r]
 		for c in row.length():
 			var ch := row[c]
 			# punkt na podłodze: środek kafla w poziomie, dół kafla w pionie
@@ -292,7 +298,7 @@ func _spawn_entities() -> void:
 				"E": exits.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "L", "P", "Y", "J", "Z", "N", "k", "o", "a", "g": found[ch].append(p)
+				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "k", "o", "a", "g": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -314,6 +320,11 @@ func _spawn_entities() -> void:
 		n.name = "Nest%d" % (i + 1)
 		n.position = found["N"][i]
 		add_child(n)
+	for i in found["G"].size():
+		var g: Node2D = GENERATOR.new()
+		g.name = "Generator%d" % (i + 1)
+		g.position = found["G"][i]
+		add_child(g)
 	for k in [["k", "Crate", "crate"], ["o", "Barrel", "barrel"]]:
 		for i in found[k[0]].size():
 			var pr: RigidBody2D = PROP.new()
@@ -355,11 +366,8 @@ func _add_enemy(n: String, kind: String, p: Vector2) -> void:
 # ---------------------------------------------------------------- przedmioty z mapy
 
 ## Broń leżąca na mapie w kolejności od lewej (rosnąca moc) — jest jej mało i leży w
-## miejscach, do których trzeba się dostać: las przy starcie, półka w podziemnej sali,
-## antresola hali w Składzie, rusztowanie tartaku. „g” = broń, „a” = skrzynka z amunicją
-## dla wszystkich noszonych broni głównych (zapas jest wspólny).
-const MAP_WEAPONS := [Weapons.SRUT8, Weapons.CIEGNO6, Weapons.HKM9, Weapons.GNIEW4]
-
+## miejscach, do których trzeba się dostać. „g” = broń (lista w danych mapy), „a” = skrzynka
+## z amunicją dla wszystkich noszonych broni głównych (zapas jest wspólny).
 var _map_items := {}
 
 ## Każdy peer tworzy te same przedmioty o tych samych nazwach (mapa jest statyczna), więc
@@ -367,7 +375,7 @@ var _map_items := {}
 func _spawn_map_items() -> void:
 	var guns: Array = _map_items.get("g", [])
 	for i in guns.size():
-		_add_map_item("MapGun%d" % i, "weapon", MAP_WEAPONS[i % MAP_WEAPONS.size()], guns[i])
+		_add_map_item("MapGun%d" % i, "weapon", _weapons[i % _weapons.size()], guns[i])
 	var caches: Array = _map_items.get("a", [])
 	for i in caches.size():
 		_add_map_item("MapCache%d" % i, "cache", 0, caches[i])
@@ -560,7 +568,7 @@ func spawn_for(slot: int) -> Vector2:
 	return base + Vector2(((slot - 1) / spawns.size()) * 14.0, 0)
 
 func is_underground(pos: Vector2) -> bool:
-	return pos.y > UNDERGROUND_Y
+	return pos.y > underground_y
 
 ## Czy pod stopami jest kładka jednokierunkowa (zeskok dół+skok).
 func is_platform_at(pos: Vector2) -> bool:

@@ -149,6 +149,7 @@ var _result_prompt: Label
 var _result_title: Label
 var _result_sub: Label
 var _result_box: StyleBoxFlat
+var _demo_footer: Control = null     ## stopka dema na ekranie wyniku — tylko na końcu kampanii / serii
 
 var _slot_on: StyleBoxFlat
 var _slot_off: StyleBoxFlat
@@ -620,15 +621,19 @@ func _build_result() -> void:
 	_result_prompt = UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(_result_prompt)
 	if Settings.DEMO:
-		# wersja demo: zachęta do listy życzeń (tekst do dopracowania razem ze stroną sklepu)
+		# wersja demo: zachęta do listy życzeń (tekst do dopracowania razem ze stroną sklepu); pokazuje ją _fill_result
+		var foot := VBoxContainer.new()
+		foot.add_theme_constant_override("separation", 6)
 		var rule := ColorRect.new()
 		rule.color = Color(1, 1, 1, 0.10)
 		rule.custom_minimum_size = Vector2(0, 1)
-		box.add_child(rule)
-		box.add_child(UiTheme.label("THANKS FOR PLAYING THE DEMO", 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-		box.add_child(UiTheme.label("Wishlist DEAD AIR '87 on Steam — more zones, weapons and monsters are coming.", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		foot.add_child(rule)
+		foot.add_child(UiTheme.label("THANKS FOR PLAYING THE DEMO", 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+		foot.add_child(UiTheme.label("Wishlist DEAD AIR '87 on Steam — more zones, weapons and monsters are coming.", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 		if Settings.STORE_URL != "":
-			box.add_child(UiTheme.label("[O]  Open the Steam page", 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
+			foot.add_child(UiTheme.label("[O]  Open the Steam page", 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
+		box.add_child(foot)
+		_demo_footer = foot
 	_result.visible = false
 
 # ---------------------------------------------------------------- klatka
@@ -660,7 +665,7 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("help"):
 		_controls_mode = 0 if _controls.visible else 1
-	elif Settings.STORE_URL != "" and _result.visible and event is InputEventKey and event.pressed \
+	elif Settings.STORE_URL != "" and _result.visible and _demo_footer != null and _demo_footer.visible and event is InputEventKey and event.pressed \
 			and not event.echo and event.physical_keycode == KEY_O:
 		OS.shell_open(Settings.STORE_URL)
 
@@ -839,13 +844,24 @@ func _fill_result(m: Node) -> void:
 		rows = _shift_result(m)
 		prompt = "New shift" if (m.phase == Mission.Phase.FAILED or m.shift_complete()) else "Next mission"
 	else:
-		_style_result("EXTRACTION COMPLETE", "The squad made it out of the woods.", UiTheme.OK)
-		rows = [["Time", _mmss(m.elapsed)], ["Nests destroyed", "%d / %d" % [m.nests_total, m.nests_total]],
-			["The Vein", "slain"], ["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts]]
+		if m.kind == "generators":
+			_style_result("EXTRACTION COMPLETE", "The broadcast is over — the squad is out.", UiTheme.OK)
+			rows = [["Time", _mmss(m.elapsed)], ["Generators started", "%d / %d" % [m.goal_total, m.goal_total]],
+				["Stealth (Attention < %d)" % int(m.STEALTH_CAP), "kept" if m.stealth_ok() else "lost  (peak %d)" % int(m.peak_noise)],
+				["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts]]
+		else:
+			_style_result("EXTRACTION COMPLETE", "The squad made it out of the woods.", UiTheme.OK)
+			rows = [["Time", _mmss(m.elapsed)], ["Nests destroyed", "%d / %d" % [m.nests_total, m.nests_total]],
+				["The Vein", "slain"], ["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts]]
 	for row in rows:
 		_result_stats.add_child(UiTheme.label(row[0], 9, UiTheme.MUTED))
 		_result_stats.add_child(UiTheme.label(row[1], 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
 	_result_prompt.text = "[ENTER]  " + prompt if multiplayer.is_server() else "Waiting for the host to continue…"
+	if _demo_footer != null:
+		# stopka dema: koniec kampanii (ostatnia misja Strefy I) albo koniec serii Nocnego Dyżuru
+		var lvl := get_tree().get_first_node_in_group("level")
+		var last: bool = lvl != null and lvl.map_id == String(lvl.CAMPAIGN[lvl.CAMPAIGN.size() - 1])
+		_demo_footer.visible = (m.phase == Mission.Phase.FAILED or m.shift_complete()) if NightShift.active else last
 	_result.reset_size()
 	_result.position = (size - _result.size) * 0.5
 
@@ -880,6 +896,13 @@ func _shift_result(m: Node) -> Array:
 		rows.append(["", "NEW RECORD"])
 	return rows
 
+## Generator, przy którym stoi lokalny gracz (misja 1.2) albo null.
+func _near_generator() -> Node:
+	for g in get_tree().get_nodes_in_group("generators"):
+		if g.local_in_range:
+			return g
+	return null
+
 ## Pasek kontekstowy: wipe, leżenie, podnoszenie, ekstrakcja.
 func _drive_prompt() -> void:
 	var text := ""
@@ -889,6 +912,7 @@ func _drive_prompt() -> void:
 	_center_sub.text = ""
 	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
+	var gen := _near_generator()
 	if wipe_left > 0.0:
 		_center.text = "SQUAD DOWN"
 		_center_sub.text = ("Extraction failed — the shift ends in %d" if NightShift.active else "Extraction failed — restarting the mission in %d") % ceili(wipe_left)
@@ -904,6 +928,14 @@ func _drive_prompt() -> void:
 	elif _player != null and _player.revive_hint() != "":
 		text = _player.revive_hint()
 		col = UiTheme.OK
+	elif gen != null and _player != null and _player.weapons.nearby_weapon_item() == null:
+		if gen.progress > 0.0:
+			text = "Starting the generator…"
+			prog = gen.progress
+			col = UiTheme.OK
+		else:
+			text = "Hold [E]  Start the generator  (loud)"
+			col = UiTheme.ACCENT
 	elif _player != null and _player.weapons.nearby_weapon_item() != null:
 		var it: Node2D = _player.weapons.nearby_weapon_item()
 		var nd: RefCounted = Weapons.def(it.arg)
@@ -921,15 +953,23 @@ func _drive_prompt() -> void:
 			else:
 				text = "Hold here — the whole squad must reach the flare"
 				col = UiTheme.ACCENT
-	if wipe_left <= 0.0 and m != null and m.shift_banner_visible():
-		# Nocny Dyżur: zasady misji w pierwszych sekundach
+	if wipe_left <= 0.0 and m != null and m.banner_visible():
+		# tytuł misji w pierwszych sekundach; w Nocnym Dyżurze także zasady serii
+		var lvl := get_tree().get_first_node_in_group("level")
 		var lines: Array = []
-		for id in NightShift.mods:
-			lines.append("%s — %s" % [NightShift.MODS[id]["name"], NightShift.MODS[id]["text"]])
-		if NightShift.stage > 1:
-			lines.append("Enemies +%d%% HP" % int(round(NightShift.HP_STEP * float(NightShift.stage - 1) * 100.0)))
-		_center.text = NightShift.title()
-		_center_sub.text = "\n".join(lines) if not lines.is_empty() else "The first mission — no modifiers"
+		if NightShift.active:
+			lines.append(String(lvl.title) if lvl != null else "")
+			for id in NightShift.mods:
+				lines.append("%s — %s" % [NightShift.MODS[id]["name"], NightShift.MODS[id]["text"]])
+			if NightShift.stage > 1:
+				lines.append("Enemies +%d%% HP" % int(round(NightShift.HP_STEP * float(NightShift.stage - 1) * 100.0)))
+			elif NightShift.mods.is_empty():
+				lines.append("The first mission — no modifiers")
+			_center.text = NightShift.title()
+		else:
+			_center.text = String(lvl.title) if lvl != null else ""
+			lines.append(m.objective_text())
+		_center_sub.text = "\n".join(lines)
 	_prompt_card.visible = text != ""
 	if _prompt_card.visible:
 		_prompt.text = text
