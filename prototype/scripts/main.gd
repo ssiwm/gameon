@@ -379,7 +379,7 @@ func host_game() -> void:
 	multiplayer.multiplayer_peer = peer
 	_begin_hosting("port %d" % port)
 
-## Test misji 1.2 (--host --mission=z1_m2 --gentest): trzy generatory (przytrzymanie E), skok Uwagi po ostatnim, ekstrakcja,
+## Test misji 1.2 (--host --mission=z1_m2 --gentest): cztery generatory (przytrzymanie E), skok Uwagi po ostatnim, ekstrakcja,
 ## a potem [Enter] → mapa 1.3 i z powrotem. Wrogowie są zamrożeni, żeby test był powtarzalny.
 func _gen_test() -> void:
 	await get_tree().create_timer(1.0).timeout
@@ -392,7 +392,7 @@ func _gen_test() -> void:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		e.set_physics_process(false)
 		e.set_process(false)
-	check.call("start: mapa 1.2, cel generators, 3 generatory", level.map_id == "z1_m2" and mission.kind == "generators" and mission.goal_total == 3)
+	check.call("start: mapa 1.2, cel generators, 4 generatory", level.map_id == "z1_m2" and mission.kind == "generators" and mission.goal_total == 4)
 	var gens: Array = get_tree().get_nodes_in_group("generators")
 	gens.sort_custom(func(a: Node2D, b: Node2D) -> bool: return a.global_position.x < b.global_position.x)
 	for i in gens.size():
@@ -402,10 +402,10 @@ func _gen_test() -> void:
 		Input.action_press("interact")
 		await get_tree().create_timer(gens[i].WORK_TIME + 0.8).timeout
 		Input.action_release("interact")
-		check.call("generator %d uruchomiony, zostało %d" % [i + 1, 2 - i], gens[i].running and mission.goal_left == 2 - i)
+		check.call("generator %d uruchomiony, zostało %d" % [i + 1, gens.size() - 1 - i], gens[i].running and mission.goal_left == gens.size() - 1 - i)
 		if i == 0:
 			check.call("stealth po pierwszym generatorze (szczyt Uwagi %.0f < 40)" % mission.peak_noise, mission.stealth_ok())
-	check.call("po 3 generatorach: EXTRACT, Uwaga %.0f (skok do %.0f), Stalker obudzony=%s" % [NoiseMgr.level, mission.BROADCAST_NOISE, str(NoiseMgr.stalker_awake)],
+	check.call("po wszystkich generatorach: EXTRACT, Uwaga %.0f (skok do %.0f), Stalker obudzony=%s" % [NoiseMgr.level, mission.BROADCAST_NOISE, str(NoiseMgr.stalker_awake)],
 		mission.phase == MISSION_SCRIPT.Phase.EXTRACT and NoiseMgr.level >= 60.0 and NoiseMgr.stalker_awake)
 	p.global_position = mission.exit_pos + Vector2(0, -2)
 	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
@@ -420,8 +420,16 @@ func _gen_test() -> void:
 	_continue_after_result()
 	await get_tree().create_timer(0.5).timeout
 	check.call("po ostatniej misji kampania wraca do 1.2 (generatory zresetowane)",
-		level.map_id == "z1_m2" and mission.goal_left == 3 and gens.size() == 3 and get_tree().get_nodes_in_group("generators").size() == 3)
+		level.map_id == "z1_m2" and mission.goal_left == 4 and gens.size() == 4 and get_tree().get_nodes_in_group("generators").size() == 4)
 	print("[GEN-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
+
+## Długość ścieżki A* między dwoma punktami podłogi (px); 0, gdy brak drogi.
+func _nav_len(nav: AStar2D, from: Vector2, to: Vector2) -> float:
+	var path := nav.get_point_path(nav.get_closest_point(from), nav.get_closest_point(to))
+	var d := 0.0
+	for i in range(1, path.size()):
+		d += path[i].distance_to(path[i - 1])
+	return d
 
 ## Test map (--maptest): dla każdej misji kampanii sprawdza kształt siatki i że z punktów startu da się dojść (po grafie
 ## nawigacji, z uwzględnieniem skoków i spadania) do wszystkich celów, wrogów, przedmiotów i wyjść oraz wrócić na start.
@@ -474,6 +482,25 @@ func _map_test() -> void:
 				bad.append("%s: brak drogi ze startu" % p[0])
 			elif nav.get_id_path(cid, start_id).is_empty():
 				bad.append("%s: brak drogi powrotnej na start" % p[0])
+		# szacunek długości trasy: start → cele (od lewej) → najdalsze wyjście; sam marsz 95 px/s, bez walki i czekania
+		var goals: Array = []
+		for p in points:
+			if String(p[0]).begins_with("Generator") or String(p[0]).begins_with("Nest"):
+				goals.append(p[1])
+		if level.boss_home != Vector2.ZERO:
+			goals.append(level.boss_home)
+		goals.sort_custom(func(u: Vector2, v: Vector2) -> bool: return u.x < v.x)
+		var route := 0.0
+		var cur: Vector2 = level.spawns[0]
+		for gp in goals:
+			route += _nav_len(nav, cur, gp)
+			cur = gp
+		var far_exit: Vector2 = level.exits[0]
+		for ex in level.exits:
+			if (ex as Vector2).distance_to(cur) > far_exit.distance_to(cur):
+				far_exit = ex
+		route += _nav_len(nav, cur, far_exit)
+		print("[MAPTEST] %s: trasa start → %d celów → wyjście ≈ %.0f px, sam marsz ≈ %.0f s (%.1f min)" % [id, goals.size(), route, route / 95.0, route / 95.0 / 60.0])
 		for b in bad:
 			print("[MAPTEST]   BŁĄD: %s" % b)
 		fails += bad.size()

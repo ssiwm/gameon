@@ -79,6 +79,7 @@ const ATLAS_COLS := 12
 var map_id := ""
 var title := ""
 var objective := "nests"
+var hp_mult := 1.0               ## mnożnik HP wrogów tej mapy (ENEMY_HP w danych mapy)
 var underground_y := 0.0         ## od tej wysokości (px) postać jest w podziemiach
 var bounds := Rect2()
 var spawns: Array[Vector2] = []
@@ -161,6 +162,7 @@ func _load(id: String) -> void:
 	map_id = id
 	title = m.TITLE
 	objective = m.OBJECTIVE
+	hp_mult = float(m.ENEMY_HP)
 	underground_y = float(m.UNDERGROUND_ROW * TILE)
 	_map = m.MAP
 	_weapons = m.WEAPONS

@@ -9,6 +9,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 
 const ID := "z1_m3"
 const TITLE := "1.3  THE NEST"
+const ENEMY_HP := 1.0                     ## mnożnik HP wrogów tej mapy
 const OBJECTIVE := "nests"                ## nests = gniazda + boss; generators = generatory radiostacji
 const UNDERGROUND_ROW := 31               ## od tego rzędu postać jest w podziemiach (ambient, straszaki)
 ## Broń na ziemi („g") w kolejności od lewej (rosnąca moc).
