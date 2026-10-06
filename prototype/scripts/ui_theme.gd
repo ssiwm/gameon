@@ -29,7 +29,9 @@ static func get_theme() -> Theme:
 	var hover := _box(Color(0.16, 0.15, 0.13, 0.98), ACCENT.darkened(0.2))
 	var pressed := _box(Color(0.22, 0.17, 0.08, 1.0), ACCENT)
 	var focus := _box(Color(0, 0, 0, 0), ACCENT, 1)
-	for s in [normal, hover, pressed]:
+	# wyłączony przycisk (np. Steam bez wtyczki): wyraźnie przygaszony, bez reakcji na hover
+	var disabled := _box(Color(0.07, 0.075, 0.09, 0.8), Color(1, 1, 1, 0.05))
+	for s in [normal, hover, pressed, disabled]:
 		s.content_margin_left = 10
 		s.content_margin_right = 10
 		s.content_margin_top = 5
@@ -37,7 +39,9 @@ static func get_theme() -> Theme:
 	t.set_stylebox("normal", "Button", normal)
 	t.set_stylebox("hover", "Button", hover)
 	t.set_stylebox("pressed", "Button", pressed)
+	t.set_stylebox("disabled", "Button", disabled)
 	t.set_stylebox("focus", "Button", focus)
+	t.set_color("font_disabled_color", "Button", MUTED.darkened(0.45))
 	t.set_color("font_color", "Button", TEXT)
 	t.set_color("font_hover_color", "Button", ACCENT)
 	t.set_color("font_pressed_color", "Button", ACCENT)
@@ -51,6 +55,13 @@ static func get_theme() -> Theme:
 	edit.content_margin_bottom = 4
 	t.set_stylebox("normal", "LineEdit", edit)
 	t.set_stylebox("focus", "LineEdit", _box(Color(0, 0, 0, 0), ACCENT, 1))
+	var ro := _box(Color(0.03, 0.035, 0.045, 0.7), Color(1, 1, 1, 0.05))
+	ro.content_margin_left = 8
+	ro.content_margin_right = 8
+	ro.content_margin_top = 4
+	ro.content_margin_bottom = 4
+	t.set_stylebox("read_only", "LineEdit", ro)
+	t.set_color("font_uneditable_color", "LineEdit", MUTED.darkened(0.4))
 	t.set_color("font_color", "LineEdit", TEXT)
 	t.set_color("font_placeholder_color", "LineEdit", MUTED.darkened(0.3))
 	t.set_color("caret_color", "LineEdit", ACCENT)
@@ -64,6 +75,10 @@ static func get_theme() -> Theme:
 static func panel_box() -> StyleBoxFlat:
 	var b := _box(PANEL_BG, PANEL_EDGE)
 	b.set_corner_radius_all(4)
+	# ciepła, ledwo widoczna ramka i miękki cień — karty odrywają się od ciemnej sceny
+	b.border_color = Color(1.0, 0.86, 0.62, 0.14)
+	b.shadow_color = Color(0, 0, 0, 0.45)
+	b.shadow_size = 5
 	b.content_margin_left = 8
 	b.content_margin_right = 8
 	b.content_margin_top = 6

@@ -166,6 +166,14 @@ func _card(pos: Vector2) -> PanelContainer:
 	add_child(c)
 	return c
 
+## Cienka linia oddzielająca grupy w karcie (czytelniejsza hierarchia niż same odstępy).
+func _hr(parent: Container) -> void:
+	var r := ColorRect.new()
+	r.color = Color(1, 1, 1, 0.08)
+	r.custom_minimum_size = Vector2(0, 1)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(r)
+
 func _row(parent: Container, caption: String) -> HBoxContainer:
 	var r := HBoxContainer.new()
 	r.add_theme_constant_override("separation", 6)
@@ -213,14 +221,17 @@ func _build_status_card() -> void:
 	_charges.on = UiTheme.ACCENT
 	_charges.custom_minimum_size = Vector2(34, 9)
 	qr.add_child(_charges)
+	_hr(box)          # grupa „stan" | grupa „broń"
 
 	_slot_on = UiTheme.panel_box()
 	_slot_on.bg_color = Color(0.25, 0.18, 0.06, 0.9)
 	_slot_on.border_color = UiTheme.ACCENT
 	_slot_on.set_content_margin_all(2)
+	_slot_on.shadow_size = 0                  # cień karty na małych slotach tylko brudzi
 	_slot_off = UiTheme.panel_box()
 	_slot_off.bg_color = Color(1, 1, 1, 0.04)
 	_slot_off.set_content_margin_all(2)
+	_slot_off.shadow_size = 0
 	# amunicja: nazwa broni, magazynek / zapas drużyny, status (przeładowanie, brak naboi)
 	var ar := _row(box, "AMMO")
 	_ammo_name = UiTheme.label("", 8, UiTheme.TEXT)
@@ -251,6 +262,7 @@ func _build_status_card() -> void:
 		_slot_labels.append(l)
 	box.add_child(wr)
 
+	_hr(box)
 	var lr := _row(box, "LIGHT  L")
 	_battery = Bar.new()
 	_battery.custom_minimum_size = Vector2(60, 4)
@@ -266,6 +278,7 @@ func _build_objective_card() -> void:
 	_obj_card.add_child(box)
 	_obj_caption = UiTheme.label("OBJECTIVE", 7, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(_obj_caption)
+	_hr(box)
 	_obj_text = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	_obj_text.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
