@@ -1,4 +1,6 @@
 numpy>=1.26
 scipy>=1.11
+# postacie (tools/char_*.py)
+pillow>=10.0
 # tylko do tools/audio_view.py (podgląd spektrogramów):
 matplotlib>=3.8

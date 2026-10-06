@@ -23,6 +23,13 @@ import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gun_art  # noqa: E402  (siatki pixel-artu 12 broni)
+try:  # postacie 1.7: rigi + render 4× (numpy + Pillow); bez nich zostaje stary rysunek z prostokątów
+    import char_art  # noqa: E402
+    import char_monsters  # noqa: E402
+    import char_player  # noqa: E402
+    HAVE_CHARS = True
+except ImportError:
+    HAVE_CHARS = False
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ART = os.path.join(ROOT, "art")
@@ -146,6 +153,32 @@ def sheet(name, fw, fh, anims, draw, glow=None):
         "glow": has_glow,
         "anims": {a[0]: {"row": r, "frames": a[1], "fps": a[2], "loop": a[3]} for r, a in enumerate(anims)},
     }
+
+def char_sheet(name, fw, fh, anims, body, glow):
+    """Arkusz z gotowych klatek (char_art.Frame): ciało + opcjonalny glow, wpis do manifestu."""
+    cols = max(a[1] for a in anims)
+    char_art.write_png(char_art.sheet_rows(body, fw, fh, cols), os.path.join(SPR, name + ".png"))
+    has_glow = any(p is not None for row in glow for fr in row for r in fr.px for p in r)
+    if has_glow:
+        char_art.write_png(char_art.sheet_rows(glow, fw, fh, cols), os.path.join(SPR, name + "_glow.png"))
+    MANIFEST["sheets"][name] = {
+        "frame": [fw, fh],
+        "glow": has_glow,
+        "anims": {a[0]: {"row": r, "frames": a[1], "fps": a[2], "loop": a[3]} for r, a in enumerate(anims)},
+    }
+
+
+def bake_chars_hd():
+    for name, col in PLAYER_VARIANTS.items():
+        body, glow = char_player.frames_for(tuple(int(v * 255) for v in col), bot=(name == "bot"))
+        char_sheet(name, char_player.FW, char_player.FH, char_player.PLAYER_ANIMS, body, glow)
+    for name, fn, anims, fw, fh in (
+        ("trzosek", char_monsters.trzosek, char_monsters.TRZOSEK_ANIMS, 16, 16),
+        ("wolek", char_monsters.wolek, char_monsters.WOLEK_ANIMS, 30, 30),
+        ("stalker", char_monsters.stalker, char_monsters.STALKER_ANIMS, 20, 40),
+    ):
+        body, glow = char_monsters.monster_frames(fn, anims)
+        char_sheet(name, fw, fh, anims, body, glow)
 
 # ---------------------------------------------------------------- gracz
 
@@ -581,11 +614,15 @@ def bake_props():
 
 
 def main():
-    bake_players()
+    if HAVE_CHARS:
+        bake_chars_hd()
+    else:
+        print("UWAGA: brak numpy/Pillow — postacie rysowane po staremu (pip install -r tools/requirements.txt)")
+        bake_players()
+        bake_trzosek()
+        bake_wolek()
+        bake_stalker()
     bake_guns()
-    bake_trzosek()
-    bake_wolek()
-    bake_stalker()
     bake_nest()
     bake_objects()
     bake_tiles()

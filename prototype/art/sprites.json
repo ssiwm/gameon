@@ -9,14 +9,14 @@
    "anims": {
     "idle": {
      "row": 0,
-     "frames": 4,
-     "fps": 4,
+     "frames": 6,
+     "fps": 5,
      "loop": true
     },
     "run": {
      "row": 1,
-     "frames": 6,
-     "fps": 12,
+     "frames": 8,
+     "fps": 14,
      "loop": true
     },
     "jump": {
@@ -39,8 +39,8 @@
     },
     "crouch_walk": {
      "row": 5,
-     "frames": 4,
-     "fps": 8,
+     "frames": 6,
+     "fps": 9,
      "loop": true
     },
     "down": {
@@ -60,14 +60,14 @@
    "anims": {
     "idle": {
      "row": 0,
-     "frames": 4,
-     "fps": 4,
+     "frames": 6,
+     "fps": 5,
      "loop": true
     },
     "run": {
      "row": 1,
-     "frames": 6,
-     "fps": 12,
+     "frames": 8,
+     "fps": 14,
      "loop": true
     },
     "jump": {
@@ -90,8 +90,8 @@
     },
     "crouch_walk": {
      "row": 5,
-     "frames": 4,
-     "fps": 8,
+     "frames": 6,
+     "fps": 9,
      "loop": true
     },
     "down": {
@@ -111,14 +111,14 @@
    "anims": {
     "idle": {
      "row": 0,
-     "frames": 4,
-     "fps": 4,
+     "frames": 6,
+     "fps": 5,
      "loop": true
     },
     "run": {
      "row": 1,
-     "frames": 6,
-     "fps": 12,
+     "frames": 8,
+     "fps": 14,
      "loop": true
     },
     "jump": {
@@ -141,8 +141,8 @@
     },
     "crouch_walk": {
      "row": 5,
-     "frames": 4,
-     "fps": 8,
+     "frames": 6,
+     "fps": 9,
      "loop": true
     },
     "down": {
@@ -162,14 +162,14 @@
    "anims": {
     "idle": {
      "row": 0,
-     "frames": 4,
-     "fps": 4,
+     "frames": 6,
+     "fps": 5,
      "loop": true
     },
     "run": {
      "row": 1,
-     "frames": 6,
-     "fps": 12,
+     "frames": 8,
+     "fps": 14,
      "loop": true
     },
     "jump": {
@@ -192,8 +192,8 @@
     },
     "crouch_walk": {
      "row": 5,
-     "frames": 4,
-     "fps": 8,
+     "frames": 6,
+     "fps": 9,
      "loop": true
     },
     "down": {
@@ -209,18 +209,18 @@
     16,
     24
    ],
-   "glow": false,
+   "glow": true,
    "anims": {
     "idle": {
      "row": 0,
-     "frames": 4,
-     "fps": 4,
+     "frames": 6,
+     "fps": 5,
      "loop": true
     },
     "run": {
      "row": 1,
-     "frames": 6,
-     "fps": 12,
+     "frames": 8,
+     "fps": 14,
      "loop": true
     },
     "jump": {
@@ -243,12 +243,105 @@
     },
     "crouch_walk": {
      "row": 5,
-     "frames": 4,
-     "fps": 8,
+     "frames": 6,
+     "fps": 9,
      "loop": true
     },
     "down": {
      "row": 6,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   }
+  },
+  "trzosek": {
+   "frame": [
+    16,
+    16
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 3,
+     "loop": true
+    },
+    "run": {
+     "row": 1,
+     "frames": 6,
+     "fps": 12,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sleep": {
+     "row": 3,
+     "frames": 4,
+     "fps": 1.5,
+     "loop": true
+    }
+   }
+  },
+  "wolek": {
+   "frame": [
+    30,
+    30
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 2,
+     "loop": true
+    },
+    "walk": {
+     "row": 1,
+     "frames": 6,
+     "fps": 7,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sleep": {
+     "row": 3,
+     "frames": 4,
+     "fps": 1.2,
+     "loop": true
+    }
+   }
+  },
+  "stalker": {
+   "frame": [
+    20,
+    40
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 6,
+     "fps": 4,
+     "loop": true
+    },
+    "walk": {
+     "row": 1,
+     "frames": 8,
+     "fps": 9,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
      "frames": 1,
      "fps": 1,
      "loop": false
@@ -330,99 +423,6 @@
     },
     "kilof": {
      "row": 11,
-     "frames": 1,
-     "fps": 1,
-     "loop": false
-    }
-   }
-  },
-  "trzosek": {
-   "frame": [
-    16,
-    16
-   ],
-   "glow": true,
-   "anims": {
-    "idle": {
-     "row": 0,
-     "frames": 2,
-     "fps": 3,
-     "loop": true
-    },
-    "run": {
-     "row": 1,
-     "frames": 4,
-     "fps": 10,
-     "loop": true
-    },
-    "windup": {
-     "row": 2,
-     "frames": 1,
-     "fps": 1,
-     "loop": false
-    },
-    "sleep": {
-     "row": 3,
-     "frames": 2,
-     "fps": 1.5,
-     "loop": true
-    }
-   }
-  },
-  "wolek": {
-   "frame": [
-    30,
-    30
-   ],
-   "glow": true,
-   "anims": {
-    "idle": {
-     "row": 0,
-     "frames": 2,
-     "fps": 2,
-     "loop": true
-    },
-    "walk": {
-     "row": 1,
-     "frames": 4,
-     "fps": 6,
-     "loop": true
-    },
-    "windup": {
-     "row": 2,
-     "frames": 1,
-     "fps": 1,
-     "loop": false
-    },
-    "sleep": {
-     "row": 3,
-     "frames": 2,
-     "fps": 1.2,
-     "loop": true
-    }
-   }
-  },
-  "stalker": {
-   "frame": [
-    20,
-    40
-   ],
-   "glow": true,
-   "anims": {
-    "idle": {
-     "row": 0,
-     "frames": 4,
-     "fps": 3,
-     "loop": true
-    },
-    "walk": {
-     "row": 1,
-     "frames": 6,
-     "fps": 7,
-     "loop": true
-    },
-    "windup": {
-     "row": 2,
      "frames": 1,
      "fps": 1,
      "loop": false
