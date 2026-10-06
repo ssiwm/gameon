@@ -36,9 +36,12 @@ var _skip: Array[RID] = []
 var _target: Node2D = null
 var _light: PointLight2D
 var _done := false
+var lag := 0.0                      ## s kompensacji opóźnienia (serwer, strzał klienta) — patrz lag_comp.gd
+var _comp_rids: Array[RID] = []     ## wrogowie z historią: w trakcie dogonienia pomijamy ich ciała fizyczne
 
 ## Ustawia pocisk przed add_child. `auth` = serwer rozstrzyga trafienia.
-func launch(w: int, from: Vector2, dir: Vector2, shooter: int, auth: bool) -> void:
+func launch(w: int, from: Vector2, dir: Vector2, shooter: int, auth: bool, lag_s := 0.0) -> void:
+	lag = lag_s
 	weapon = w
 	_def = Weapons.def(w)
 	shooter_id = shooter
@@ -59,6 +62,8 @@ func _ready() -> void:
 	if float(_def.homing) > 0.0:
 		_target = _acquire_target()
 	_check_origin()
+	if authoritative and lag > 0.0 and not _done:
+		_catch_up(lag)
 	queue_redraw()
 
 func _physics_process(delta: float) -> void:
@@ -84,16 +89,61 @@ func _physics_process(delta: float) -> void:
 	if _dist >= float(_def.range_px):
 		_expire()
 
+# ---------------------------------------------------------------- kompensacja opóźnienia
+
+## Pocisk klienta „dogania" czas strzału: leci `lag_s` sekund krokami po LagComp.STEP, testując
+## trafienia w pozycje wrogów sprzed (lag_s − postęp) s. Po dogonieniu zwykła fizyka w czasie
+## rzeczywistym. Ściany i koledzy: zwykłe promienie, bo świat statyczny się nie cofa.
+func _catch_up(lag_s: float) -> void:
+	var t_now := LagComp.now()
+	_comp_rids = LagComp.rewound_rids()
+	var elapsed := 0.0
+	while elapsed < lag_s and not _done:
+		var dt := minf(LagComp.STEP, lag_s - elapsed)
+		_age += dt
+		if float(_def.homing) > 0.0 and _age > HOMING_DELAY:
+			_steer(dt)
+		if float(_def.gravity) > 0.0:
+			_vel.y += float(_def.gravity) * dt
+		var step := _vel * dt
+		var from := global_position
+		var rewind_t := t_now - lag_s + elapsed + dt          # chwila, w której pocisk kończy ten krok
+		if _sweep(from, from + step, rewind_t):
+			return
+		_dist += step.length()
+		rotation = _vel.angle()
+		var fuse := float(_def.fuse)
+		if fuse > 0.0 and _age >= fuse:
+			_detonate(global_position, Vector2.UP)
+			return
+		if _dist >= float(_def.range_px):
+			_expire()
+			return
+		elapsed += dt
+	_comp_rids.clear()
+
 # ---------------------------------------------------------------- trafienia
 
 ## Odcinek lotu: world → kolega (przelot) → wróg. Zwraca true, gdy pocisk się skończył.
-func _sweep(from: Vector2, to: Vector2) -> bool:
+func _sweep(from: Vector2, to: Vector2, rewind := -1.0) -> bool:
 	var space := get_world_2d().direct_space_state
 	var cur := from
+	var comp := rewind >= 0.0 and authoritative
 	for _i in MAX_SEGMENTS:
 		var q := PhysicsRayQueryParameters2D.create(cur, to, MASK_AUTH if authoritative else MASK_COSMETIC)
-		q.exclude = _skip
+		if comp:
+			var ex: Array[RID] = _skip.duplicate()
+			ex.append_array(_comp_rids)
+			q.exclude = ex
+		else:
+			q.exclude = _skip
 		var hit := space.intersect_ray(q)
+		if comp:
+			# wróg w pozycji sprzed `lag` s (jeśli wcześniej niż ściana / kolega) zastępuje trafienie fizyczne
+			var lim: Vector2 = to if hit.is_empty() else hit["position"]
+			var eh := LagComp.enemy_hit(cur, lim, rewind, _skip)
+			if not eh.is_empty() and (hit.is_empty() or cur.distance_to(eh["pos"]) <= cur.distance_to(hit["position"])):
+				hit = {"collider": eh["node"], "position": eh["pos"], "normal": -direction, "rid": (eh["node"] as CollisionObject2D).get_rid()}
 		if hit.is_empty():
 			global_position = to
 			return false

@@ -62,6 +62,7 @@ const DROP_TIME := 0.25
 ## Podsłuchacz: krzyk to hałas (podnosi Uwagę, budzi okolicę) i wskazuje hordzie źródło.
 const SCREAM_NOISE := 14.0
 const ALARM_R := 420.0           ## wrogowie w tym promieniu dostają ślad do krzyku
+const HISTORY_S := 0.5            ## historia pozycji do kompensacji opóźnienia (lag_comp.gd)
 const SCREAM_LURE_R := 400.0     ## krzyk GRACZA (voice.gd, GDD §8.2) przyciąga wrogów w 25 m
 
 @export var kind := "trzosek"
@@ -108,6 +109,7 @@ var _repath := 0.0
 var _path_goal := Vector2.ZERO
 var _drop_t := 0.0
 var _blocked := false         ## następny krok grafu to skok, którego nie potrafi
+var _hist: Array = []         ## Vector3(czas, x, y) — pozycje z ostatnich HISTORY_S s (serwer)
 var _scream_cd := 0.0         ## Podsłuchacz: przerwa między krzykami
 var _alerted := false         ## Podsłuchacz: już krzyknął (od tej pory boty go widzą jako zagrożenie)
 var _ring := 0.0              ## efekt fali krzyku (każdy peer)
@@ -176,6 +178,7 @@ func reset_enemy() -> void:
 	_burn = 0.0
 	_panic = 0.0
 	_target = null
+	_hist.clear()
 	_has_lead = false
 	_lose_t = 0.0
 	_search_t = 0.0
@@ -205,6 +208,7 @@ func _physics_process(delta: float) -> void:
 	if not alive:
 		return
 
+	_record_history()
 	_cd = maxf(0.0, _cd - delta)
 	_leap_cd = maxf(0.0, _leap_cd - delta)
 	_stagger = maxf(0.0, _stagger - delta)
@@ -266,6 +270,33 @@ func hear_scream(pos: Vector2) -> void:
 		return
 	_lead_at(pos)
 	wake()
+
+## --- kompensacja opóźnienia (lag_comp.gd) ----------------------------------
+
+func _record_history() -> void:
+	var t := LagComp.now()
+	_hist.append(Vector3(t, global_position.x, global_position.y))
+	while _hist.size() > 2 and (_hist[0] as Vector3).x < t - HISTORY_S:
+		_hist.pop_front()
+
+## Prostokąt trafień wroga tak, jak stał w chwili `at_time` (interpolacja z historii).
+func lag_rect(at_time: float) -> Rect2:
+	var p := global_position
+	var n := _hist.size()
+	if n > 0 and at_time < (_hist[n - 1] as Vector3).x:
+		var first: Vector3 = _hist[0]
+		if at_time <= first.x:
+			p = Vector2(first.y, first.z)
+		else:
+			for i in range(n - 1, 0, -1):
+				var a: Vector3 = _hist[i - 1]
+				var b: Vector3 = _hist[i]
+				if at_time >= a.x:
+					var k := inverse_lerp(a.x, b.x, at_time)
+					p = Vector2(lerpf(a.y, b.y, k), lerpf(a.z, b.z, k))
+					break
+	var size: Vector2 = _def["size"]
+	return Rect2(p.x - size.x * 0.5 - 1.0, p.y - size.y - 1.0, size.x + 2.0, size.y + 2.0)
 
 ## --- Podsłuchacz -----------------------------------------------------------
 

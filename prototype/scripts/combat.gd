@@ -87,7 +87,7 @@ static func apply_and_report(target: Node, info: Dictionary) -> Dictionary:
 ##   wall_pos / wall_normal  punkt i normalna ściany (gdy wall)
 ## `pierce` = ile dodatkowych celów przebija, `wall_px` = ile px ściany przebija (RAIL).
 static func trace(space: PhysicsDirectSpaceState2D, from: Vector2, dir: Vector2, length: float,
-		pierce: int, wall_px: float = 0.0, exclude: Array[RID] = []) -> Dictionary:
+		pierce: int, wall_px: float = 0.0, exclude: Array[RID] = [], rewind := -1.0) -> Dictionary:
 	var out := {"end": from + dir * length, "hits": [], "wall": false, "wall_pos": Vector2.ZERO, "wall_normal": Vector2.ZERO}
 	var ex: Array[RID] = exclude.duplicate()
 	var cur := from
@@ -95,11 +95,26 @@ static func trace(space: PhysicsDirectSpaceState2D, from: Vector2, dir: Vector2,
 	var targets_hit := 0
 	var wall_budget := wall_px
 	var guard := 0
+	# kompensacja opóźnienia (szyna klienta): ciała wrogów z historią pomijamy, trafiamy ich pozycje sprzed `rewind`
+	var comp := rewind >= 0.0
+	var comp_rids: Array[RID] = []
+	if comp:
+		comp_rids = LagComp.rewound_rids()
 	while left > 0.5 and guard < 64:
 		guard += 1
 		var q := PhysicsRayQueryParameters2D.create(cur, cur + dir * left, LAYER_WORLD | LAYER_TARGET)
-		q.exclude = ex
+		if comp:
+			var all_ex: Array[RID] = ex.duplicate()
+			all_ex.append_array(comp_rids)
+			q.exclude = all_ex
+		else:
+			q.exclude = ex
 		var hit := space.intersect_ray(q)
+		if comp:
+			var lim: Vector2 = cur + dir * left if hit.is_empty() else hit["position"]
+			var eh := LagComp.enemy_hit(cur, lim, rewind, ex)
+			if not eh.is_empty() and (hit.is_empty() or cur.distance_to(eh["pos"]) <= cur.distance_to(hit["position"])):
+				hit = {"collider": eh["node"], "position": eh["pos"], "normal": -dir, "rid": (eh["node"] as CollisionObject2D).get_rid()}
 		if hit.is_empty():
 			break
 		var collider: Object = hit["collider"]

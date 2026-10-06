@@ -17,6 +17,7 @@ Feel="*res://scripts/feel.gd"
 Arsenal="*res://scripts/arsenal.gd"
 Difficulty="*res://scripts/difficulty.gd"
 Voice="*res://scripts/voice.gd"
+LagComp="*res://scripts/lag_comp.gd"
 
 [audio]
 
