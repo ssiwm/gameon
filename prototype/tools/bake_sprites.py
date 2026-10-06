@@ -468,9 +468,9 @@ TILE = 16
 
 
 def bake_tiles():
-    """Atlas 8×4: kolumny jak w level.gd (# C M ~ = - b w), rzędy 0/2 wierzch, 1/3 wypełnienie."""
-    c = Canvas(TILE * 8, TILE * 4)
-    for col in range(8):
+    """Atlas 12×4: kolumny jak w level.gd (# C M ~ = - b w m O i s), rzędy 0/2 wierzch, 1/3 wypełnienie."""
+    c = Canvas(TILE * 12, TILE * 4)
+    for col in range(12):
         for row in range(4):
             top = row in (0, 2)
             var = row // 2
@@ -554,6 +554,45 @@ def draw_tile(t, col, top, var, rnd):
         t.rect(8 if var else 0, 0, 1, 7, rgb(0.09, 0.09, 0.11))
         if rnd.random() < 0.4:
             t.ellipse(rnd.randrange(3, 13), rnd.randrange(9, 14), 2, 3, rgb(0.10, 0.11, 0.10))
+    elif col == 8:    # błoto z bagna: ciemna breja, wierzch oliwkowy z kałużami i bąblami
+        noise_fill(t, rgb(0.14, 0.11, 0.07), 0.10, rnd)
+        if top:
+            t.rect(0, 0, 16, 3, rgb(0.20, 0.23, 0.11))
+            for _ in range(3):
+                x = rnd.randrange(1, 12)
+                t.rect(x, 1, rnd.randrange(2, 5), 1, rgb(0.10, 0.12, 0.07))      # kałuża
+                t.put(x + 1, 0, rgb(0.42, 0.50, 0.30))                           # połysk
+            for _ in range(2):
+                t.put(rnd.randrange(16), 2, rgb(0.30, 0.34, 0.18))               # bąbel
+        for _ in range(3):
+            t.put(rnd.randrange(16), rnd.randrange(5, 16), rgb(0.08, 0.06, 0.04))
+    elif col == 9:    # plama oleju: czarna, lśniąca, z tęczowym połyskiem
+        noise_fill(t, rgb(0.12, 0.12, 0.14), 0.04, rnd)
+        if top:
+            t.rect(0, 0, 16, 3, rgb(0.04, 0.04, 0.06))
+            for x in range(16):
+                if rnd.random() < 0.45:
+                    t.put(x, 0, rgb(0.20, 0.14, 0.34))                           # fiolet
+                if rnd.random() < 0.3:
+                    t.put(x, 1, rgb(0.10, 0.26, 0.30))                           # turkus
+            for _ in range(2):
+                t.rect(rnd.randrange(1, 12), 0, 3, 1, rgb(0.55, 0.60, 0.70))     # odblask
+    elif col == 10:   # lód: błękitny, z białymi rysami
+        noise_fill(t, rgb(0.38, 0.55, 0.70), 0.06, rnd)
+        for _ in range(3):
+            x = rnd.randrange(2, 14)
+            t.line(x, rnd.randrange(0, 6), x + rnd.randrange(-3, 4), rnd.randrange(8, 16), rgb(0.62, 0.80, 0.90))
+        if top:
+            t.rect(0, 0, 16, 3, rgb(0.72, 0.88, 0.95))
+            for _ in range(3):
+                t.put(rnd.randrange(16), 0, rgb(1.0, 1.0, 1.0))
+    elif col == 11:   # śnieg: biały puch, na boku błękitne cienie
+        noise_fill(t, rgb(0.62, 0.70, 0.82), 0.05, rnd)
+        if top:
+            t.rect(0, 0, 16, 3, rgb(0.93, 0.96, 1.0))
+            for x in range(16):
+                if rnd.random() < 0.35:
+                    t.put(x, 3, rgb(0.86, 0.92, 1.0))
     elif col == 7:    # tło: belka / pień (środkowe 8 px), kora
         for y in range(16):
             for x in range(4, 12):

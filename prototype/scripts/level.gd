@@ -19,6 +19,7 @@ extends Node2D
 ##   B  Żyła — matka gniazd (boss misji)
 ##   k  skrzynia (fizyczna)   o  beczka (fizyczna, wybucha)
 ##   g  broń na ziemi         a  skrzynka z amunicją
+##   m  błoto (bagno: wolno, grząsko)   O  plama oleju (ślizg)   i  lód   s  śnieg  — kafle-podłoża z własną fizyką
 ##   L  Ślepiec (nie widzi, słyszy)   P  Podsłuchacz (stoi, krzyczy i ściąga hordę)
 ##   Y  Mimik (udaje kolegę z drużyny)
 ##   J  Skoczek (wisi pod sufitem i spada)   Z  Ćma (światłolubna, wisi pod sufitem)
@@ -76,7 +77,7 @@ const MAP := [
 	"##.......w...w....bbbbbbbbbbbbbbbbbbC............................................................................bbbbbbbbbbbbbbbbbbbbbbbbbbbbb.................w.........w.........w..........##",
 	"##.......w..---...bbbbbbbbbbbbbbbbbb........=========...===========...===========......................----......====bbbbbbbbbbbbbbbbbbbbb====......----......-------....w.........w..........##",
 	"##.ES..S.w.g.w.kk.bbbbbbobTbTbTbbNbb........a.....L...M..ok.W.a.......X...M.......TaT..................k....kko..bYbbbTbbTbbbbbabbbkbWbbbbbbbb....oP..k........w..a......w.o..W.a.kw...B....E.##",
-	"######################################bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
+	"#############mmmmmm###################bbbbbbCCCCCCCCCCOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCOOOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"######################################bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"######################################======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~C======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC======~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"######################################bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
@@ -90,7 +91,7 @@ const MAP := [
 	"######bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbJbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCC##",
 	"######bb===bbbbbbMMbbbbbbbbb===bbbbbbb====bbbbbbbbJbbbbbbbbbbbbbb===bbbbbbbMMbbbbbbbb===bbbbbbb====bbbbbJbbbbbb===bbbbbbbbbbMMbbbbbbbbbbbbb===bbbbbbbbbb====bbbbbbbbbbbbbbbbb===MMbbbbbbbbbCCC##",
 	"######bbbbbbbbbbbMMTbbbbbbbabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbTbLbbbbMMbbbbbbbWbkbbbbbYbbbbbbbbbbbbbbbbbabbbbbTbbbbbbbMMbbLbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbMMbbbbTbbbbCCC##",
-	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
+	"####################mmmmmm##################################CCCCCCCCCCCCCCCCCCOOOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCOOOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
 	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
 	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
 	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
@@ -107,8 +108,13 @@ const KINDS := {
 	"-": [5, "dirt", 1],
 	"b": [6, "", 2],
 	"w": [7, "", 2],
+	# powierzchnie o własnej fizyce i brzmieniu (surfaces.gd): bagno, plama oleju; lód i śnieg to zapas pod biom zimowy
+	"m": [8, "mud", 0],
+	"O": [9, "oil", 0],
+	"i": [10, "ice", 0],
+	"s": [11, "snow", 0],
 }
-const ATLAS_COLS := 8
+const ATLAS_COLS := 12
 
 var bounds := Rect2()
 var spawns: Array[Vector2] = []
@@ -229,6 +235,9 @@ func _place_deco() -> void:
 						pick = [4, 3][absi(h >> 3) % 2]
 				"~":
 					if roll < 30:
+						pick = 5
+				"m":
+					if roll < 40:
 						pick = 5
 			if pick >= 0:
 				_deco_list.append([feet, pick, (h >> 5) & 1 == 1])
@@ -696,6 +705,14 @@ func _texel(col: int, top: bool, x: int, y: int, rng: RandomNumberGenerator) -> 
 			return Color(0.45 + n, 0.31 + n, 0.17 + n) if x % 8 != 0 else Color(0.30, 0.20, 0.11)
 		6:  # tło: beton wnętrza
 			return Color(0.12 + n * 0.5, 0.12 + n * 0.5, 0.14 + n * 0.5)
+		8:  # błoto
+			return Color(0.22 + n, 0.25 + n, 0.12 + n) if top and y < 3 else Color(0.14 + n, 0.11 + n, 0.07 + n)
+		9:  # olej
+			return Color(0.06 + n, 0.06 + n, 0.09 + n) if top and y < 3 else Color(0.14 + n, 0.14 + n, 0.16 + n)
+		10:  # lód
+			return Color(0.72 + n, 0.88 + n, 0.95) if top and y < 3 else Color(0.38 + n, 0.55 + n, 0.70)
+		11:  # śnieg
+			return Color(0.92, 0.95, 1.0) if top and y < 3 else Color(0.62 + n, 0.70 + n, 0.82)
 		7:  # tło: pień / belka (środkowe 8 px)
 			if x < 4 or x > 11:
 				return Color(0, 0, 0, 0)

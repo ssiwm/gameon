@@ -37,6 +37,7 @@ extends Node
 
 signal caption(text: String, pos: Vector2, priority: int)
 
+const Surfaces := preload("res://scripts/surfaces.gd")
 const Manifest := preload("res://scripts/audio_manifest.gd")
 
 const BUS_MUSIC := "Music"
@@ -445,13 +446,24 @@ func surface_at(pos: Vector2) -> String:
 
 ## Krok na danej powierzchni (5 wariantów na powierzchnię). Przy biegu co jakiś
 ## czas dochodzi szelest ekwipunku — drobiazg, który odróżnia „postać" od „źródła kroków".
-func play_footstep(pos: Vector2, crouching: bool, vol_db := -14.0) -> void:
+func play_footstep(pos: Vector2, crouching: bool, vol_db := -8.0) -> void:
 	var surf := surface_at(pos)
-	if variant("step_" + surf, 5) < 0:
+	var prof: Dictionary = Surfaces.of(surf)
+	var base: String = prof["step"]
+	if variant(base, 5) < 0:
 		return
 	# Kucanie musi być ROZPOZNAWALNE jako cisza (GDD §8.1) — stąd cicho.
-	var v := vol_db - 6.0 if crouching else vol_db
-	play_variant_at("step_" + surf, 5, pos, BUS_PLAYER, v, 1.0, 0.09)
+	var v := vol_db + float(prof["db"]) - (7.0 if crouching else 0.0)
+	var pitch := float(prof["pitch"]) * (0.96 if crouching else 1.0)
+	play_variant_at(base, 5, pos, BUS_PLAYER, v, pitch, 0.07)
+	# warstwa charakterystyczna dla powierzchni (słychać, po czym idziesz)
+	var layer: String = prof["layer"]
+	if layer == "water":
+		play_variant_at("step_water", 5, pos, BUS_PLAYER, v - 4.0, pitch * 1.5, 0.1)
+	elif layer == "squelch":
+		play_variant_at("impact_flesh", 3, pos, BUS_PLAYER, v - 7.0, 0.55, 0.1)
+	elif layer == "ring" and not crouching:
+		play_variant_at("ricochet", 2, pos, BUS_PLAYER, v - 13.0, 0.5, 0.08)
 	if not crouching and randf() < 0.3:
 		play_variant_at("foley_gear", 3, pos, BUS_PLAYER, v + 4.0, 1.0, 0.1)
 
