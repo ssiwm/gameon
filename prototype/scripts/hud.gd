@@ -7,8 +7,8 @@ extends Control
 ##   top-left    NOISE meter with thresholds and state (CALM / UNEASY / HUNTED) — the one gauge to watch
 ##   bottom-left SQUAD card: every player (own card largest, teammates above), slot-coloured badge,
 ##               hearts (gold = bonus), DOWN / REVIVING / CRITICAL state, bleed-out / revive bar
-##   bottom-right GEAR card: weapon, big magazine / team reserve, reload bar, barrel noise cost,
-##               weapon slots, LURE (Q) and FLARE (F) charges, flashlight battery
+##   bottom-centre GEAR strip (flat, one row): weapon + noise cost, big magazine / team reserve, reload and
+##               barrel-heat bars, weapon slots, LURE (Q), FLARE (F) charges, flashlight — centred and low so it never covers the boss
 ##   top-centre  objective card — phase, objective, hint, boss bar
 ##   top-right   session — host/client, players, mission clock
 ##   centre      threat warning (something listening / HE HEARS YOU), wipe
@@ -30,12 +30,11 @@ const OBJ_W := 250.0             ## szerokość treści karty celu (zawijanie)
 const SESSION_W := 152.0         ## szerokość bloku „sesja + zegar" w prawym górnym rogu
 const WARN_Y := 0.255            ## wysokość ostrzeżenia nad środkiem ekranu (ułamek wysokości; 92/360)
 const CENTER_Y := 0.39           ## napis „SQUAD DOWN" (140/360)
-const PROMPT_Y := 0.81           ## pasek kontekstowy (292/360)
+const PROMPT_Y := 0.76           ## pasek kontekstowy — nad paskiem broni (dół, środek)
 ## Układ wzorowany na koop-strzelankach (Left 4 Dead, Deep Rock Galactic, Helldivers): drużyna i zdrowie w lewym dolnym
-## rogu (własna karta największa, koledzy nad nią), broń i zasoby w prawym dolnym, a w lewym górnym tylko miernik hałasu.
+## rogu (własna karta największa, koledzy nad nią), broń i zasoby w płaskim pasku na środku dołu, a w lewym górnym tylko miernik hałasu.
 const BOTTOM_PAD := 20.0         ## odstęp kart dolnych od krawędzi (nad paskiem sterowania)
 const SQUAD_W := 176.0
-const GEAR_W := 130.0            ## karta broni zmniejszona o połowę (powierzchni): kompaktowe sloty, jeden wiersz zasobów
 ## Kolory slotów = kolory kurtek sprite'ów graczy (bake_sprites.PLAYER_VARIANTS).
 const SLOT_COLORS := [Color(0.91, 0.62, 0.22), Color(0.25, 0.72, 0.85), Color(0.86, 0.28, 0.36), Color(0.45, 0.80, 0.30)]
 const BOT_COLOR := Color(0.58, 0.60, 0.66)
@@ -247,13 +246,13 @@ func _build_squad_card() -> void:
 	_squad_box.add_theme_constant_override("separation", 5)
 	outer.add_child(_squad_box)
 
-## Prawy dolny róg: broń (nazwa, magazynek / zapas, przeładowanie, koszt hałasu, sloty) i zasoby (Q, F, L).
+## Dół, środek: płaski pasek broni i zasobów w jednym rzędzie (nie zasłania bossa po prawej stronie sceny):
+## [nazwa + koszt strzału] [magazynek / zapas] [stan + przeładowanie + ciepło lufy] [sloty] [wabik, flary, latarka].
 func _build_gear_card() -> void:
 	_gear_card = _card(Vector2(MARGIN, MARGIN))
-	_gear_card.custom_minimum_size = Vector2(GEAR_W, 0)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 3)
-	_gear_card.add_child(box)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 9)
+	_gear_card.add_child(row)
 
 	_slot_on = UiTheme.panel_box()
 	_slot_on.bg_color = Color(0.25, 0.18, 0.06, 0.9)
@@ -265,88 +264,95 @@ func _build_gear_card() -> void:
 	_slot_off.set_content_margin_all(2)
 	_slot_off.shadow_size = 0
 
-	# nagłówek: nazwa broni + stan (przeładowanie, brak naboi)
-	var head := HBoxContainer.new()
+	# 1) nazwa broni nad kosztem następnego strzału (ile Uwagi — GDD §8.1)
+	var name_col := VBoxContainer.new()
+	name_col.add_theme_constant_override("separation", 0)
+	name_col.custom_minimum_size = Vector2(54, 0)
+	name_col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_ammo_name = UiTheme.label("", 9, UiTheme.TEXT)
-	head.add_child(_ammo_name)
-	var spring := Control.new()
-	spring.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(spring)
-	_ammo_note = UiTheme.label("", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
-	head.add_child(_ammo_note)
-	box.add_child(head)
-	# amunicja: duży magazynek, mniejszy zapas drużyny — wyrównane do prawej jak w grach z amunicją w rogu
+	name_col.add_child(_ammo_name)
+	_heat_note = UiTheme.label("", 7, UiTheme.MUTED)
+	name_col.add_child(_heat_note)
+	row.add_child(name_col)
+
+	# 2) magazynek (duży) i zapas drużyny
 	var nums := HBoxContainer.new()
-	nums.alignment = BoxContainer.ALIGNMENT_END
-	nums.add_theme_constant_override("separation", 4)
+	nums.add_theme_constant_override("separation", 3)
 	_ammo_mag = UiTheme.label("", 18, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	_ammo_mag.custom_minimum_size = Vector2(26, 0)
 	nums.add_child(_ammo_mag)
-	_ammo_res = UiTheme.label("", 10, UiTheme.MUTED)
+	_ammo_res = UiTheme.label("", 9, UiTheme.MUTED)
 	_ammo_res.size_flags_vertical = Control.SIZE_SHRINK_END
 	nums.add_child(_ammo_res)
-	box.add_child(nums)
+	row.add_child(nums)
+
+	# 3) stan (RELOADING / NO AMMO) nad paskami: przeładowanie i ciepło lufy
+	var bars := VBoxContainer.new()
+	bars.add_theme_constant_override("separation", 2)
+	bars.custom_minimum_size = Vector2(78, 0)
+	bars.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_ammo_note = UiTheme.label("", 7, UiTheme.MUTED)
+	bars.add_child(_ammo_note)
 	_reload_bar = Bar.new()
 	_reload_bar.custom_minimum_size = Vector2(0, 3)
 	_reload_bar.fill = UiTheme.ACCENT
-	box.add_child(_reload_bar)
-	# rozgrzanie lufy → hałas strzału (GDD §8.1): pasek + koszt następnego strzału w jednym wierszu
-	var hr2 := HBoxContainer.new()
-	hr2.add_theme_constant_override("separation", 5)
+	bars.add_child(_reload_bar)
 	_heat_bar = Bar.new()
 	_heat_bar.custom_minimum_size = Vector2(0, 3)
-	_heat_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_heat_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	hr2.add_child(_heat_bar)
-	_heat_note = UiTheme.label("", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
-	hr2.add_child(_heat_note)
-	box.add_child(hr2)
-	# sloty: same klawisze (aktywny podświetlony) — nazwa broni jest w nagłówku
+	bars.add_child(_heat_bar)
+	row.add_child(bars)
+
+	# 4) sloty: same klawisze, aktywny podświetlony
 	var wr := HBoxContainer.new()
 	wr.add_theme_constant_override("separation", 3)
+	wr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	for i in 4:
 		var sl := PanelContainer.new()
-		sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sl.custom_minimum_size = Vector2(17, 0)
 		var l := UiTheme.label("", 7, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 		sl.add_child(l)
 		wr.add_child(sl)
 		_slots.append(sl)
 		_slot_labels.append(l)
-	box.add_child(wr)
-	_hr(box)
-	# zasoby w jednym wierszu: wabik (Q) i flary (F); pod spodem latarka
-	var res := HBoxContainer.new()
-	res.add_theme_constant_override("separation", 3)
-	res.add_child(UiTheme.label("Q", 7, UiTheme.MUTED))
+	row.add_child(wr)
+
+	# 5) zasoby: wabik (Q) i flary (F) w jednym wierszu, pod nimi latarka (L)
+	var res := VBoxContainer.new()
+	res.add_theme_constant_override("separation", 2)
+	res.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var qf := HBoxContainer.new()
+	qf.add_theme_constant_override("separation", 3)
+	qf.add_child(UiTheme.label("Q", 7, UiTheme.MUTED))
 	_charges = Pips.new()
 	_charges.shape = "diamond"
 	_charges.count = NoiseMgr.OVERCHARGE_MAX
 	_charges.on = UiTheme.ACCENT
 	_charges.u = 0.8
 	_charges.custom_minimum_size = Vector2(NoiseMgr.OVERCHARGE_MAX * 11.0 * 0.8 - 2.0, 7.2)
-	res.add_child(_charges)
+	qf.add_child(_charges)
 	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(5, 0)
-	res.add_child(gap)
-	res.add_child(UiTheme.label("F", 7, UiTheme.MUTED))
+	gap.custom_minimum_size = Vector2(4, 0)
+	qf.add_child(gap)
+	qf.add_child(UiTheme.label("F", 7, UiTheme.MUTED))
 	_flares = Pips.new()
 	_flares.shape = "diamond"
 	_flares.count = NoiseMgr.FLARE_MAX
 	_flares.on = Color(1.0, 0.5, 0.25)
 	_flares.u = 0.8
 	_flares.custom_minimum_size = Vector2(NoiseMgr.FLARE_MAX * 11.0 * 0.8 - 2.0, 7.2)
-	res.add_child(_flares)
-	box.add_child(res)
+	qf.add_child(_flares)
+	res.add_child(qf)
 	var lr := HBoxContainer.new()
 	lr.add_theme_constant_override("separation", 4)
 	lr.add_child(UiTheme.label("L", 7, UiTheme.MUTED))
 	_battery = Bar.new()
-	_battery.custom_minimum_size = Vector2(0, 3)
-	_battery.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_battery.custom_minimum_size = Vector2(34, 3)
 	_battery.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	lr.add_child(_battery)
-	_battery_note = UiTheme.label("OFF", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
+	_battery_note = UiTheme.label("OFF", 7, UiTheme.MUTED)
 	lr.add_child(_battery_note)
-	box.add_child(lr)
+	res.add_child(lr)
+	row.add_child(res)
 
 # ---------------------------------------------------------------- karta drużyny
 
@@ -684,7 +690,7 @@ func _drive_weapons() -> void:
 	else:
 		_heat_note.text = "%.1f" % cur.noise(0.0)
 	_gear_card.reset_size()
-	_gear_card.position = Vector2(size.x - MARGIN - _gear_card.size.x, size.y - BOTTOM_PAD - _gear_card.size.y)
+	_gear_card.position = Vector2((size.x - _gear_card.size.x) * 0.5, size.y - BOTTOM_PAD - _gear_card.size.y)
 
 ## Ostrzeżenie przed karą (GDD §8.1): niepokój ZANIM ON się obudzi.
 func _drive_warning() -> void:
