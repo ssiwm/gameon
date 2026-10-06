@@ -12,6 +12,7 @@ const BOT_SCENE_PATH := "res://scenes/bot_companion.tscn"
 ## Wipe (wszyscy down) = nieudana ekstrakcja: restart misji po tylu sekundach (GDD §4).
 const WIPE_DELAY := 3.0
 
+const Combat := preload("res://scripts/combat.gd")
 const RunLog := preload("res://scripts/run_log.gd")
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
 const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
@@ -536,7 +537,7 @@ func _gen_test() -> void:
 	var loadout_before: Array = (p.weapons.loadout as Array).duplicate()
 	_continue_after_result()
 	await get_tree().create_timer(0.5).timeout
-	var foes: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return not (e is RigidBody2D))      # rekwizyty (skrzynie) też są w tej grupie
+	var foes: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return not (e is RigidBody2D) and not e.is_in_group("range_targets"))      # rekwizyty (skrzynie) też są w tej grupie
 	check.call("[Enter] po 1.2 → kryjówka (następna: %s, wrogów %d)" % [after_hub, foes.size()],
 		level.map_id == "z1_hub" and mission.kind == "hub" and after_hub == "z1_m3" and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE
 		and foes.is_empty() and p.global_position.distance_to(level.spawn_for(1)) < 40.0)
@@ -548,8 +549,8 @@ func _gen_test() -> void:
 		elif String(c.name).begins_with("Lamp"):
 			lamps += 1
 	var brief: Dictionary = level.briefing(after_hub)
-	check.call("kryjówka: 6 stojaków, 5 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
-		racks == 6 and lamps == 5 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
+	check.call("kryjówka: 6 stojaków, 9 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
+		racks == 6 and lamps == 9 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
 	check.call("odprawa następnej misji (%s): tytuł, cel, %d rodzajów wrogów, %d gniazd, boss=%s" % [after_hub, (brief["counts"] as Dictionary).size(), int(brief["nests"]), str(brief["boss"])],
 		String(brief["title"]) != "" and String(brief["brief"]) != "" and (brief["counts"] as Dictionary).has("trzosek") and int(brief["nests"]) == 4 and bool(brief["boss"]))
 	# kryjówka jest bezpieczna: wymuszamy warunki, w których Dyrektor grozy dosypałby wędrowców, i sprawdzamy, że nikt się nie pojawia
@@ -559,7 +560,16 @@ func _gen_test() -> void:
 	Director.stress = 0.0
 	await get_tree().create_timer(2.0).timeout
 	var roamers: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return String(e.name).begins_with("Roamer"))
-	var live_foes: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return not (e is RigidBody2D))
+	var live_foes: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return not (e is RigidBody2D) and not e.is_in_group("range_targets"))
+	var rts := get_tree().get_nodes_in_group("range_targets")
+	var rt_ok := rts.size() == 1 and get_tree().get_nodes_in_group("range_line").size() == 1
+	if rt_ok:
+		var tgt: Node2D = rts[0]
+		var wid: int = p.weapons.loadout[0]
+		var body := Combat.apply(tgt, Combat.make_info(wid, 10.0, tgt.global_position + Vector2(0, -10), Vector2.RIGHT, 1, "bullet"))
+		var head := Combat.apply(tgt, Combat.make_info(wid, 10.0, Vector2(tgt.global_position.x, tgt.head_y() - 2.0), Vector2.RIGHT, 1, "bullet"))
+		rt_ok = bool(body["hit"]) and not bool(body["killed"]) and bool(head["hit"]) and (bool(head["crit"]) or Weapons.def(wid).crit_mult <= 1.0) and tgt.distance_m > 0.0
+	check.call("strzelnica: linia + tarcza (%s), tarcza przyjmuje trafienia, nie ginie, głowa = crit, ma odległość" % ", ".join(rts.map(func(t: Node) -> String: return "%dm" % int(t.distance_m))), rt_ok)
 	var wall_nodes := get_tree().get_nodes_in_group("results_wall")
 	check.call("ściana wyników: stoi w kryjówce, zapisała misję 1.2 (%d wpis, %s)" % [RunLog.entries.size(), str(RunLog.entries.back()) if not RunLog.entries.is_empty() else "-"],
 		wall_nodes.size() == 1 and RunLog.entries.size() >= 1 and String(RunLog.entries.back()["id"]) == "z1_m2" and float(RunLog.entries.back()["time"]) >= 0.0 and int(RunLog.entries.back()["stealth"]) >= 0)
@@ -827,9 +837,11 @@ func _begin_hosting(where: String) -> void:
 	print("[NET] difficulty: %s" % Difficulty.level_name())
 	if NightShift.selected:
 		mission.begin_shift()
-	var first_map: String = _start_map if _start_map != "" else (_shift_map() if NightShift.selected else level.CAMPAIGN[0])
+	var first_map: String = _start_map if _start_map != "" else ("z1_hub" if _lobby.start_in_hub else (_shift_map() if NightShift.selected else level.CAMPAIGN[0]))
 	if first_map != level.map_id:
 		_set_map(first_map)
+	if first_map == "z1_hub" and after_hub == "":
+		after_hub = String(level.CAMPAIGN[0])        # start w kryjówce z lobby: odprawa i „Depart" muszą znać pierwszą misję
 	print("[NET] mode: %s" % ("NIGHT SHIFT" if NightShift.active else "CAMPAIGN"))
 	_start_ambience()
 	NoiseMgr.reset_mission()

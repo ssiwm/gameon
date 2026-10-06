@@ -166,6 +166,10 @@ func _sweep(from: Vector2, to: Vector2, rewind := -1.0) -> bool:
 				return true
 			var res := _hit_target(node, p, at_dist)
 			if bool(res.get("hit", false)):
+				if bool(res.get("pass", false)) and _def.blast_radius <= 0.0:
+					_skip.append(hit["rid"])         # tarcza strzelnicy: pocisk leci dalej (każda tarcza w linii liczy swoje obrażenia)
+					cur = p
+					continue
 				if sticks_on_hit():
 					_stick(p)
 				if _def.blast_radius > 0.0:
@@ -229,6 +233,8 @@ func _check_origin() -> void:
 			var res := _hit_target(node, global_position, 0.0)
 			if bool(res.get("hit", false)):
 				_skip.append(f["rid"])
+				if bool(res.get("pass", false)) and _def.blast_radius <= 0.0:
+					continue
 				if sticks_on_hit():
 					_stick(global_position)
 				if _def.blast_radius > 0.0:

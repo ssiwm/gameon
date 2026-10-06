@@ -1059,6 +1059,11 @@ func _pick_bot_goal() -> void:
 	if leader != null:
 		# trzyma się za dowódcą; kilku botów ustawia się w różnych odstępach, a nie w jednym punkcie
 		var side := 1.0 if display_id % 2 == 0 else -1.0
+		# strzelnica w kryjówce (tarcze na wschód od linii „RANGE"): bot staje ZA strzelającym, nie w linii ognia
+		var rl := get_tree().get_first_node_in_group("range_line")
+		if NoiseMgr.safe_zone and rl != null and leader.global_position.x > rl.global_position.x - 70.0:
+			_bot_target_pos = leader.global_position - Vector2(34.0 + float(display_id % 3) * 12.0, 0)
+			return
 		_bot_target_pos = leader.global_position + Vector2(side * (22.0 + float(display_id % 3) * 10.0), 0)
 		return
 	_bot_target_pos = _spawn_point
