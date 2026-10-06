@@ -8,7 +8,8 @@ extends Control
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Lobby := preload("res://scripts/lobby.gd")
 
-const CARD_W := 330.0
+const CARD_W := 300.0
+const BASE_SCALE := 0.7              ## jak HUD (hud.gd UI_SCALE): menu rysowane w 70%, razem z ustawieniem HUD SIZE
 
 var _settings_page: VBoxContainer
 var _controls_page: VBoxContainer
@@ -21,8 +22,11 @@ var _open := false
 func _ready() -> void:
 	theme = UiTheme.get_theme()
 	process_mode = Node.PROCESS_MODE_ALWAYS       # menu działa także przy zatrzymanym drzewie (solo)
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_preset(Control.PRESET_TOP_LEFT)
 	visible = false
+	get_viewport().size_changed.connect(_fit)
+	Settings.changed.connect(_fit)
+	_fit()
 
 	var dim := ColorRect.new()
 	dim.color = Color(0.0, 0.0, 0.0, 0.72)
@@ -35,7 +39,7 @@ func _ready() -> void:
 	card.custom_minimum_size = Vector2(CARD_W, 0)
 	center.add_child(card)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 4)
+	box.add_theme_constant_override("separation", 3)
 	card.add_child(box)
 
 	box.add_child(UiTheme.label("PAUSED", 20, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
@@ -82,6 +86,12 @@ func _exit_tree() -> void:
 	if _open:
 		close()
 
+## Rozmiar logiczny = viewport / skala (tak samo jak HUD), żeby menu mieściło się na ekranie.
+func _fit() -> void:
+	var k := BASE_SCALE * Settings.ui_mult()
+	scale = Vector2(k, k)
+	size = get_viewport_rect().size / k
+
 # ---------------------------------------------------------------- budowa
 
 func _build_settings() -> void:
@@ -120,6 +130,7 @@ func _cycler(key: String, text: String, action: Callable) -> void:
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(l)
 	var b := Button.new()
+	_compact(b)
 	b.custom_minimum_size = Vector2(96, 0)
 	b.pressed.connect(func() -> void:
 		action.call()
@@ -130,6 +141,7 @@ func _cycler(key: String, text: String, action: Callable) -> void:
 
 func _small_button(text: String, action: Callable) -> Button:
 	var b := Button.new()
+	_compact(b)
 	b.text = text
 	b.custom_minimum_size = Vector2(22, 0)
 	b.pressed.connect(func() -> void:
@@ -171,6 +183,15 @@ func _control(grid: GridContainer, row: Array) -> void:
 	var desc := UiTheme.label(row[1], 8, UiTheme.MUTED)
 	desc.custom_minimum_size = Vector2(88, 0)
 	grid.add_child(desc)
+
+## Niższy przycisk (mniejsze marginesy pionowe) — wiersze ustawień nie rozpychają karty.
+func _compact(b: Button) -> void:
+	for state in ["normal", "hover", "pressed", "disabled"]:
+		var sb: StyleBox = theme.get_stylebox(state, "Button").duplicate()
+		sb.content_margin_top = 2
+		sb.content_margin_bottom = 2
+		b.add_theme_stylebox_override(state, sb)
+	b.add_theme_font_size_override("font_size", 9)
 
 func _caption(text: String) -> Label:
 	return UiTheme.label(text, 7, UiTheme.ACCENT.darkened(0.15))
