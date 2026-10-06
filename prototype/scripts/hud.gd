@@ -54,9 +54,13 @@ class Pips extends Control:
 	var shape := "heart"
 	var on := Color(0.95, 0.28, 0.32)
 	var off := Color(1, 1, 1, 0.14)
+	var bonus_from := 99          ## ikony od tego indeksu to serca „ponad stan" (złote)
+	var bonus := Color(1.0, 0.8, 0.25)
 	func _draw() -> void:
 		for i in count:
 			var c := on if i < filled else off
+			if i >= bonus_from:
+				c = bonus
 			var o := Vector2(i * 11.0, 0.0)
 			if shape == "heart":
 				draw_circle(o + Vector2(2.5, 2.5), 2.6, c)
@@ -392,6 +396,9 @@ func _drive_status() -> void:
 	if _last_hp >= 0 and hp < _last_hp:
 		_hit_flash = 1.0
 	_last_hp = hp
+	_hearts.count = maxi(3, hp)
+	_hearts.bonus_from = _player.MAX_HP
+	_hearts.custom_minimum_size.x = _hearts.count * 11.0 - 2.0
 	_hearts.filled = hp
 	_hearts.queue_redraw()
 	_health_note.text = "DOWN  %ds" % ceili(_player.bleed_left) if _player.dead else ""
