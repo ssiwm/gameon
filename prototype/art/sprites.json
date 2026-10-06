@@ -348,6 +348,66 @@
     }
    }
   },
+  "slepiec": {
+   "frame": [
+    16,
+    20
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 3,
+     "loop": true
+    },
+    "walk": {
+     "row": 1,
+     "frames": 6,
+     "fps": 8,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sleep": {
+     "row": 3,
+     "frames": 4,
+     "fps": 1.5,
+     "loop": true
+    }
+   }
+  },
+  "podsluchacz": {
+   "frame": [
+    16,
+    26
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 3,
+     "loop": true
+    },
+    "windup": {
+     "row": 1,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sleep": {
+     "row": 2,
+     "frames": 2,
+     "fps": 1.5,
+     "loop": true
+    }
+   }
+  },
   "guns": {
    "frame": [
     24,

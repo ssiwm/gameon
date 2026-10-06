@@ -12,6 +12,19 @@ const KINDS := {
 		"cooldown": 0.9, "leap": true, "hear": 200.0, "wake_near": 90.0, "sight": 260.0,
 		"color": Color(0.62, 0.2, 0.22), "size": Vector2(10, 14), "knock": 70.0, "knock_mult": 1.0, "head": 0.0,
 	},
+	# Ślepiec (GDD §7.1): nie widzi, tylko słyszy — idzie do źródła hałasu; kucanie i cisza go mijają.
+	"slepiec": {
+		"hp": 60.0, "speed": 70.0, "damage": 1, "windup": 0.35, "reach": 14.0,
+		"cooldown": 1.1, "leap": false, "hear": 300.0, "wake_near": 36.0, "sight": 26.0,
+		"keen": true, "min_noise": 0.25, "blind": true,
+		"color": Color(0.8, 0.78, 0.76), "size": Vector2(12, 17), "knock": 40.0, "knock_mult": 0.6, "head": 0.0,
+	},
+	# Podsłuchacz (GDD §7.1): stoi nieruchomo i nasłuchuje; zobaczy albo usłyszy — krzyczy i ściąga hordę.
+	"podsluchacz": {
+		"hp": 35.0, "speed": 0.0, "damage": 0, "windup": 0.9, "reach": 0.0,
+		"cooldown": 6.0, "leap": false, "hear": 170.0, "wake_near": 0.0, "sight": 240.0,
+		"color": Color(0.58, 0.5, 0.57), "size": Vector2(12, 24), "knock": 30.0, "knock_mult": 0.5, "head": 0.0,
+	},
 	"wolek": {
 		"hp": 140.0, "speed": 36.0, "damage": 2, "windup": 0.6, "reach": 20.0,
 		"cooldown": 1.6, "leap": false, "hear": 150.0, "wake_near": 70.0, "sight": 200.0,
@@ -30,7 +43,7 @@ const MAX_FALL := 620.0
 ## Kroki (0,25 na tick) nie budzą; każdy strzał tak — także pierwszy z zimnej
 ## lufy M-83 (0,6). Przy progu 1,0 pojedyncze strzały M-83 były dla wrogów nieme.
 const MIN_WAKE_NOISE := 0.5
-const AMMO_DROP := {"trzosek": 0.22, "wolek": 0.6}   ## szansa na skrzynkę z amunicją do broni, którą ktoś nosi
+const AMMO_DROP := {"trzosek": 0.22, "wolek": 0.6, "slepiec": 0.3, "podsluchacz": 0.15}   ## szansa na skrzynkę z amunicją do broni, którą ktoś nosi
 const HEALTH_DROP := {"wolek": 0.75}   ## szansa na apteczkę (1.5) — tylko mocniejsi wrogowie
 const SIBLING_WAKE_RADIUS := 140.0
 const DEATH_FX_COLOR_VAR := 0.15
@@ -46,6 +59,9 @@ const CROUCH_SIGHT := 0.6        ## kucającego widać z mniejszej odległości
 const JUMP_V := -275.0           ## skok po grafie A* (42 px, tyle co gracz)
 const PLATFORM_BIT := 5          ## warstwa kładek w masce (zeskok)
 const DROP_TIME := 0.25
+## Podsłuchacz: krzyk to hałas (podnosi Uwagę, budzi okolicę) i wskazuje hordzie źródło.
+const SCREAM_NOISE := 14.0
+const ALARM_R := 420.0           ## wrogowie w tym promieniu dostają ślad do krzyku
 
 @export var kind := "trzosek"
 
@@ -91,6 +107,9 @@ var _repath := 0.0
 var _path_goal := Vector2.ZERO
 var _drop_t := 0.0
 var _blocked := false         ## następny krok grafu to skok, którego nie potrafi
+var _scream_cd := 0.0         ## Podsłuchacz: przerwa między krzykami
+var _alerted := false         ## Podsłuchacz: już krzyknął (od tej pory boty go widzą jako zagrożenie)
+var _ring := 0.0              ## efekt fali krzyku (każdy peer)
 var _level_t := 0.0           ## s, przez które cel jest na innym poziomie (histereza: skok gracza to nie zmiana piętra)
 
 func _ready() -> void:
@@ -118,7 +137,7 @@ func _ready() -> void:
 
 ## Aktywny, żywy wróg = realne zagrożenie (boty strzelają tylko do takich).
 func is_threat() -> bool:
-	return alive and active
+	return alive and active and (kind != "podsluchacz" or _alerted)
 
 func wake() -> void:
 	if not NoiseMgr.is_server() or not alive or active:
@@ -160,6 +179,8 @@ func reset_enemy() -> void:
 	_lose_t = 0.0
 	_search_t = 0.0
 	_retreat = 0.0
+	_scream_cd = 0.0
+	_alerted = false
 	_level_t = 0.0
 	_home_t = 0.0
 	_path.clear()
@@ -191,6 +212,10 @@ func _physics_process(delta: float) -> void:
 	_tick_drop(delta)
 	_tick_burn(delta)
 	if not alive:
+		return
+
+	if kind == "podsluchacz":
+		_listener_tick(delta)
 		return
 
 	if not active:
@@ -232,6 +257,59 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	_send_state(delta)
 
+## --- Podsłuchacz -----------------------------------------------------------
+
+## Stoi i czuwa (zawsze „aktywny", ale się nie rusza). Zobaczy gracza albo usłyszy hałas —
+## krzyk z zapowiedzią (0,9 s); zabity po cichu (maczeta w plecy) nie krzyczy.
+func _listener_tick(delta: float) -> void:
+	active = true
+	_scream_cd = maxf(0.0, _scream_cd - delta)
+	velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+	if _windup > 0.0:
+		_windup -= delta
+		if _windup <= 0.0:
+			winding = false
+			_scream()
+	else:
+		_listen()
+		_perceive(delta)
+		if _target != null or (_has_lead and _lose_t < 0.3):
+			_begin_scream()
+	_apply_gravity(delta)
+	move_and_slide()
+	_send_state(delta)
+
+func _begin_scream() -> void:
+	if _scream_cd > 0.0 or _windup > 0.0:
+		return
+	_windup = float(_def["windup"]) * Difficulty.m("enemy_windup")
+	winding = true
+
+func _scream() -> void:
+	_scream_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
+	_alerted = true
+	_has_lead = false
+	NoiseMgr.add_noise(SCREAM_NOISE, global_position)
+	# ściąga hordę: wrogowie w promieniu idą do źródła krzyku (śpiących budzi)
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e == self or e.get_script() != get_script() or not e.alive or e.kind == "podsluchacz":
+			continue
+		if e.global_position.distance_to(global_position) < ALARM_R:
+			e._lead_at(global_position)
+			e.wake()
+	if NoiseMgr.has_network():
+		_scream_fx.rpc()
+	else:
+		_scream_fx()
+
+## Krzyk na każdym peerze: dźwięk, fala, lekki wstrząs kamery.
+@rpc("authority", "call_local", "reliable")
+func _scream_fx() -> void:
+	_ring = 0.7
+	Audio.play_variant_at("stalker_shriek", 2, global_position, Audio.BUS_WORLD, -3.0, 1.35)
+	if _local_player_pos().distance_to(global_position) < 300.0:
+		Feel.shake(2.2)
+
 ## --- percepcja ------------------------------------------------------------
 
 func _lead_at(pos: Vector2) -> void:
@@ -245,9 +323,19 @@ func _listen() -> void:
 	if NoiseMgr.noise_serial == _seen_serial:
 		return
 	_seen_serial = NoiseMgr.noise_serial
-	if NoiseMgr.last_noise_amount >= MIN_WAKE_NOISE \
-			and global_position.distance_to(NoiseMgr.last_noise_pos) < float(_def["hear"]) * Difficulty.m("enemy_hear") * 1.4:
+	var reach := _noise_reach(NoiseMgr.last_noise_amount, 1.4)
+	if reach > 0.0 and global_position.distance_to(NoiseMgr.last_noise_pos) < reach:
 		_lead_at(NoiseMgr.last_noise_pos)
+
+## Zasięg, z którego wróg usłyszy hałas o danej sile (−1 = za cichy). Ślepiec (`keen`) słyszy
+## ciche dźwięki (kroki) z bliska, a głośne z daleka — zasięg rośnie z głośnością.
+func _noise_reach(amount: float, mult := 1.0) -> float:
+	if amount < float(_def.get("min_noise", MIN_WAKE_NOISE)):
+		return -1.0
+	var r: float = float(_def["hear"]) * Difficulty.m("enemy_hear") * mult
+	if _def.get("keen", false):
+		r *= clampf(amount / 1.5, 0.35, 1.5)
+	return r
 
 ## Najbliższy WIDOCZNY gracz (zasięg wzroku + brak ściany na linii). Co PERCEIVE_DT, nie co klatkę.
 func _perceive(delta: float) -> void:
@@ -422,8 +510,8 @@ func _apply_gravity(delta: float) -> void:
 func _check_wake() -> void:
 	if NoiseMgr.noise_serial != _seen_serial:
 		_seen_serial = NoiseMgr.noise_serial
-		if NoiseMgr.last_noise_amount >= MIN_WAKE_NOISE \
-				and global_position.distance_to(NoiseMgr.last_noise_pos) < float(_def["hear"]) * Difficulty.m("enemy_hear"):
+		var reach := _noise_reach(NoiseMgr.last_noise_amount)
+		if reach > 0.0 and global_position.distance_to(NoiseMgr.last_noise_pos) < reach:
 			_lead_at(NoiseMgr.last_noise_pos)     # idzie do źródła hałasu, nie wprost do gracza
 			wake()
 			return
@@ -438,7 +526,8 @@ func _check_wake() -> void:
 			return
 	# „Światło przyciąga wzrok Trzosków" (GDD §8.3): snop latarki na
 	# śpiącym wrogu go budzi — świecenie po pokoju ma cenę.
-	if Lights.flashlight_on(global_position + Vector2(0, -6), get_tree(), get_world_2d().direct_space_state) != null:
+	if not _def.get("blind", false) \
+			and Lights.flashlight_on(global_position + Vector2(0, -6), get_tree(), get_world_2d().direct_space_state) != null:
 		wake()
 
 func _nearest_player() -> Node2D:
@@ -523,6 +612,8 @@ func take_hit(info: Dictionary) -> Dictionary:
 	var dead := hp <= 0.0
 	if dead:
 		_die()
+	elif kind == "podsluchacz" and not silent:
+		_begin_scream()
 	return {"hit": true, "dealt": dmg, "killed": dead, "mat": 0}
 
 # ---------------------------------------------------------------- ogień
@@ -567,6 +658,8 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 		wake()
 	if hp <= 0.0:
 		_die()
+	elif kind == "podsluchacz":
+		_begin_scream()
 
 func _die() -> void:
 	if NoiseMgr.is_server() and randf() < minf(1.0, float(HEALTH_DROP.get(kind, 0.0)) * Difficulty.m("drops")):
@@ -628,7 +721,8 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 		_set_alive(true)
 		global_position = pos
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_ring = maxf(0.0, _ring - delta)
 	if visible:
 		_update_sprite()
 		queue_redraw()
@@ -644,6 +738,11 @@ func _update_sprite() -> void:
 	if absf(dx) > 0.05:
 		_facing = signf(dx)
 	var moving := absf(dx) > 0.05
+	if kind == "podsluchacz":
+		# stoi w miejscu — patrzy na lokalnego gracza (nasłuchuje)
+		var lp := _local_player_pos()
+		if is_finite(lp.x) and absf(lp.x - global_position.x) > 4.0:
+			_facing = signf(lp.x - global_position.x)
 	var anim := "sleep"
 	if active:
 		if winding:
@@ -693,6 +792,9 @@ func _draw_overlay(ov: Node2D) -> void:
 		var pulse := 0.6 + 0.4 * sin(t * 8.0)
 		ov.draw_circle(Vector2(-size.x * 0.22, eye_y), 1.4, Color(1.0, 0.7 * pulse, 0.2, eye_a))
 		ov.draw_circle(Vector2(size.x * 0.22, eye_y), 1.4, Color(1.0, 0.7 * pulse, 0.2, eye_a))
+	if _ring > 0.0:
+		var k := 1.0 - _ring / 0.7
+		ov.draw_arc(Vector2(0, -size.y * 0.7), 8.0 + k * 70.0, 0.0, TAU, 28, Color(1.0, 0.55, 0.35, (1.0 - k) * 0.8), 1.5)
 	# pasek HP po pierwszym trafieniu
 	if hp < _max_hp:
 		var w := size.x + 4.0
