@@ -19,6 +19,7 @@ enum Phase { OBJECTIVE, BOSS, EXTRACT, SUCCESS, FAILED }      # FAILED: tylko No
 
 const Lights := preload("res://scripts/lights.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
+const RunLog := preload("res://scripts/run_log.gd")
 
 const EXTRACT_TIME := 3.0
 const EXIT_RADIUS_X := 34.0
@@ -228,6 +229,7 @@ func _success() -> void:
 	phase = Phase.SUCCESS
 	extract_progress = 1.0
 	print("[MISSION] SUCCESS time=%.1fs downs=%d attempts=%d" % [elapsed, downs, attempts])
+	_record_result()
 	if NightShift.active:
 		shift_cleared += 1
 		shift_time += elapsed
@@ -242,6 +244,18 @@ func _success() -> void:
 	NoiseMgr.calm()
 	_event.rpc("success")
 	_broadcast()
+
+## Zapis ukończonej misji do dziennika kampanii (ściana wyników). Każdy peer robi to sam, raz na sukces.
+func _record_result() -> void:
+	if NightShift.active:
+		return
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null or kind == "hub":
+		return
+	var id := String(lvl.map_id)
+	var title := String(lvl.MAPS[id].TITLE) if lvl.MAPS.has(id) else id
+	var stealth := (1 if stealth_ok() else 0) if kind == "generators" else -1
+	RunLog.add(id, title, elapsed, downs, attempts, stealth)
 
 ## Upadki ludzi (statystyka). Liczone na serwerze z replikowanego `dead`.
 func _track_downs() -> void:
@@ -337,6 +351,7 @@ func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d
 	shift_time = float(shift[4])
 	shift_downs = int(shift[5])
 	shift_record = bool(shift[6])
+	var was_success := phase == Phase.SUCCESS
 	phase = p
 	nests_left = left
 	nests_total = total
@@ -345,6 +360,8 @@ func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d
 	elapsed = el
 	downs = d
 	attempts = att
+	if phase == Phase.SUCCESS and not was_success:
+		_record_result()
 
 ## Jednorazowe sygnały dźwiękowe na każdym peerze.
 @rpc("authority", "call_local", "reliable")
@@ -414,7 +431,14 @@ func objective_hint() -> String:
 		var nxt := String(main.get("after_hub")) if main != null else ""
 		var lvl := get_tree().get_first_node_in_group("level")
 		var title := String(lvl.MAPS[nxt].TITLE) if lvl != null and lvl.MAPS.has(nxt) else "the next mission"
-		return ("[ENTER]  Depart: %s" % title) if multiplayer.is_server() else "The host decides when to depart: %s" % title
+		if main == null:
+			return ""
+		if main.hub_countdown >= 0.0:
+			return "Departing: %s in %d…   [ENTER] cancel" % [title, int(ceil(main.hub_countdown))]
+		var status := "%d / %d ready" % [main.hub_ready_n, main.hub_total]
+		if main.hub_mine:
+			return "READY  ·  %s  ·  waiting for the squad   [ENTER] cancel" % status
+		return "[ENTER]  Ready to depart: %s  ·  %s" % [title, status]
 	match phase:
 		Phase.OBJECTIVE:
 			if kind == "generators":

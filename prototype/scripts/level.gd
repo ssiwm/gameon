@@ -52,6 +52,7 @@ const HANDCAR := preload("res://scripts/handcar.gd")
 const RACK := preload("res://scripts/rack.gd")
 const LAMP := preload("res://scripts/lamp.gd")
 const BOARD := preload("res://scripts/board.gd")
+const RESULTS_WALL := preload("res://scripts/results_wall.gd")
 
 ## Mapy misji (scripts/maps/): każda niesie MAP, ID, TITLE, OBJECTIVE, UNDERGROUND_ROW, WEAPONS, ACCENTS.
 const MAPS := {
@@ -305,7 +306,7 @@ func _exposure(c: int, r: int) -> int:
 ## Znaczniki → postacie. Nazwy numerowane od lewej do prawej, identycznie
 ## na każdym peerze.
 func _spawn_entities() -> void:
-	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "l": [], "k": [], "o": [], "a": [], "g": []}
+	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "w": [], "l": [], "k": [], "o": [], "a": [], "g": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -317,7 +318,7 @@ func _spawn_entities() -> void:
 				"E": exits.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "l", "k", "o", "a", "g": found[ch].append(p)
+				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "w", "l", "k", "o", "a", "g": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -354,6 +355,11 @@ func _spawn_entities() -> void:
 		bd.name = "Board%d" % (i + 1)
 		bd.position = found["n"][i]
 		add_child(bd)
+	for i in found["w"].size():
+		var rw: Node2D = RESULTS_WALL.new()
+		rw.name = "ResultsWall%d" % (i + 1)
+		rw.position = found["w"][i]
+		add_child(rw)
 	for i in found["l"].size():
 		var lp: Node2D = LAMP.new()
 		lp.name = "Lamp%d" % (i + 1)

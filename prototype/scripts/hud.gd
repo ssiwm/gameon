@@ -24,6 +24,7 @@ const Hints := preload("res://scripts/hints.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Codex := preload("res://scripts/codex.gd")
+const RunLog := preload("res://scripts/run_log.gd")
 
 ## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.7
@@ -35,6 +36,8 @@ const SESSION_W := 152.0         ## szerokość bloku „sesja + zegar" w prawym
 const WARN_Y := 0.255            ## wysokość ostrzeżenia nad środkiem ekranu (ułamek wysokości; 92/360)
 const CENTER_Y := 0.39           ## napis „SQUAD DOWN" (140/360)
 const HINT_Y := 0.66             ## karta podpowiedzi (nad paskiem kontekstowym)
+const WALL_ROWS := 6              ## ile ostatnich misji pokazuje ściana wyników
+const BRIEF_ROWS := 5             ## ile wierszy zagrożeń pokazuje odprawa (reszta: „+N more")
 const PROMPT_Y := 0.76           ## pasek kontekstowy — nad paskiem broni (dół, środek)
 ## Układ wzorowany na koop-strzelankach (Left 4 Dead, Deep Rock Galactic, Helldivers): drużyna i zdrowie w lewym dolnym
 ## rogu (własna karta największa, koledzy nad nią), broń i zasoby w płaskim pasku na środku dołu, a w lewym górnym tylko miernik hałasu.
@@ -151,9 +154,11 @@ var _result_title: Label
 var _result_sub: Label
 var _result_box: StyleBoxFlat
 var _item: Dictionary = {}                ## karta statystyk broni leżącej w zasięgu [E] (stojak w kryjówce, łup z mapy)
+var _wall: Dictionary = {}                ## karta ściany wyników w kryjówce
 var _brief: Dictionary = {}               ## karta odprawy przy tablicy w kryjówce
 var _item_id := -2
 var _brief_id := ""
+var _wall_n := -1
 var _demo_footer: Control = null     ## stopka dema na ekranie wyniku — tylko na końcu kampanii / serii
 
 var _slot_on: StyleBoxFlat
@@ -176,7 +181,8 @@ func _ready() -> void:
 	_build_hint()
 	_build_result()
 	_item = _make_info_card(250.0, 2)
-	_brief = _make_info_card(330.0, 3)
+	_brief = _make_info_card(300.0, 3)
+	_wall = _make_info_card(330.0, 5)
 	get_viewport().size_changed.connect(_fit)
 	Settings.changed.connect(_apply_scale)
 	_fit()
@@ -932,6 +938,7 @@ func _fill_info(c: Dictionary, title: String, tag: String, rows: Array, text: St
 	(c["title"] as Label).text = title
 	(c["title"] as Label).add_theme_color_override("font_color", accent)
 	(c["tag"] as Label).text = tag
+	(c["tag"] as Label).visible = tag != ""
 	(c["text"] as Label).text = text
 	(c["text"] as Label).visible = text != ""
 	var grid: GridContainer = c["grid"]
@@ -966,9 +973,11 @@ func _drive_cards() -> void:
 		ic.position = Vector2(clampf(hx - ic.size.x * 0.5, 6.0, maxf(6.0, size.x - ic.size.x - 6.0)), maxf(6.0, hy - ic.size.y - 6.0))
 	# --- odprawa przy tablicy
 	var near_board := false
+	var board: Node2D = null
 	for b in get_tree().get_nodes_in_group("board"):
 		if b.local_in_range:
 			near_board = true
+			board = b
 			break
 	var bc: Control = _brief["card"]
 	bc.visible = near_board
@@ -979,7 +988,42 @@ func _drive_cards() -> void:
 		if target != _brief_id and lvl != null:
 			_brief_id = target
 			_fill_brief(lvl.briefing(target))
-		bc.position = Vector2((size.x - bc.size.x) * 0.5, size.y * 0.2)
+		# nad tablicą (jak karta broni), więc nie zasłania stojącego przy niej gracza
+		var btop: Vector2 = get_viewport().get_canvas_transform() * (board.global_position + Vector2(0, -46))
+		bc.position = Vector2(clampf(btop.x / scale.x - bc.size.x * 0.5, 6.0, maxf(6.0, size.x - bc.size.x - 6.0)), maxf(6.0, btop.y / scale.y - bc.size.y - 6.0))
+	# --- ściana wyników (też nad obiektem, jak odprawa)
+	var wall: Node2D = null
+	for w in get_tree().get_nodes_in_group("results_wall"):
+		if w.local_in_range:
+			wall = w
+			break
+	var wc: Control = _wall["card"]
+	wc.visible = wall != null
+	if wall != null:
+		if _wall_n != RunLog.entries.size():
+			_wall_n = RunLog.entries.size()
+			_fill_wall()
+		var wtop: Vector2 = get_viewport().get_canvas_transform() * (wall.global_position + Vector2(0, -46))
+		wc.position = Vector2(clampf(wtop.x / scale.x - wc.size.x * 0.5, 6.0, maxf(6.0, size.x - wc.size.x - 6.0)), maxf(6.0, wtop.y / scale.y - wc.size.y - 6.0))
+
+## Ściana wyników: lista ukończonych misji kampanii (nowe na górze) i sumy.
+func _fill_wall() -> void:
+	var es: Array = RunLog.entries
+	if es.is_empty():
+		_fill_info(_wall, "RESULTS WALL", "", [], "Nothing chalked up yet. Finish a mission and it goes here.", UiTheme.ACCENT)
+		return
+	var rows: Array = [["MISSION", "TIME", "DOWNS", "TRIES", "SIDE"]]
+	for i in range(es.size() - 1, maxi(-1, es.size() - 1 - WALL_ROWS), -1):
+		var e: Dictionary = es[i]
+		var side := "—"
+		if int(e["stealth"]) == 1:
+			side = "kept"
+		elif int(e["stealth"]) == 0:
+			side = "lost"
+		rows.append([String(e["title"]), RunLog.fmt_time(float(e["time"])), str(int(e["downs"])), str(int(e["attempts"])), side])
+	var more := es.size() - WALL_ROWS
+	_fill_info(_wall, "RESULTS WALL", "%d missions  ·  %s  ·  %d downs" % [es.size(), RunLog.fmt_time(RunLog.total_time()), RunLog.total_downs()], rows,
+		("+%d older" % more) if more > 0 else "", UiTheme.ACCENT)
 
 func _fill_brief(info: Dictionary) -> void:
 	if info.is_empty():
@@ -999,7 +1043,11 @@ func _fill_brief(info: Dictionary) -> void:
 		rows.append(["NEST", "x%d" % int(info["nests"]), "Mission objective"])
 	if bool(info["boss"]):
 		rows.append(["THE VEIN", "x1", "Boss — Mother of Nests"])
-	_fill_info(_brief, "BRIEFING  ·  " + String(info["title"]), "Threats on this mission (from the map)", rows, String(info["brief"]), UiTheme.ACCENT)
+	if rows.size() > BRIEF_ROWS:                  # krótka lista: karta nad tablicą ma się mieścić nad graczem
+		var extra := rows.size() - (BRIEF_ROWS - 1)
+		rows = rows.slice(0, BRIEF_ROWS - 1)
+		rows.append(["+%d more" % extra, "", "see the bestiary (Esc)"])
+	_fill_info(_brief, "BRIEFING  ·  " + String(info["title"]), "", rows, String(info["brief"]), UiTheme.ACCENT)
 
 ## Generator, przy którym stoi lokalny gracz (misja 1.2) albo null.
 func _near_generator() -> Node:
@@ -1073,7 +1121,7 @@ func _drive_prompt() -> void:
 			else:
 				text = "Hold here — the whole squad must reach the flare"
 				col = UiTheme.ACCENT
-	if wipe_left <= 0.0 and m != null and m.banner_visible() and not (bool(_item["card"].visible) or bool(_brief["card"].visible)):
+	if wipe_left <= 0.0 and m != null and m.banner_visible() and not (bool(_item["card"].visible) or bool(_brief["card"].visible) or bool(_wall["card"].visible)):
 		# tytuł misji w pierwszych sekundach; w Nocnym Dyżurze także zasady serii
 		var lvl := get_tree().get_first_node_in_group("level")
 		var lines: Array = []

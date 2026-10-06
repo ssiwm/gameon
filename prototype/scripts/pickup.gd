@@ -38,10 +38,11 @@ var _landed := false
 var _t := 0.0
 var _spr: Array = []
 var _glow: PointLight2D
+static var _bbox := {}            ## wiersz arkusza broni → prostokąt nieprzezroczystych pikseli w klatce (do wyśrodkowania na stojaku)
 
 func _ready() -> void:
 	add_to_group("pickups")
-	z_index = 2
+	z_index = 0 if static_display else 2          # broń na stojaku wisi ZA graczem (gracz ma z_index 0 i jest później w drzewie); łup na ziemi na wierzchu
 	# bez filtrowania liniowego: sprite broni 24×9 px rozmywał się przy skalowaniu okna
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	if kind == "weapon":
@@ -127,6 +128,12 @@ func _draw() -> void:
 			var fs := tfs * Sprites.scale_of("guns")                     # rozmiar w świecie (arkusz ma 2× gęstość)
 			var row := int(Weapons.def(arg).gun_row)
 			var dst := Rect2(roundf(-fs.x * 0.5), -4.0 - fs.y + ibob, fs.x, fs.y)
+			if static_display:
+				# sylwetka nie leży w środku klatki (chwyt, lufa) — na stojaku wyśrodkowujemy ją po zawartości, a spód stawiamy na półce
+				var box := _content_box(tex, row, tfs)
+				if box.size.x > 0:
+					var sc := Sprites.scale_of("guns")
+					dst = Rect2(roundf(-(float(box.position.x) + float(box.size.x) * 0.5) * sc), roundf(-7.0 - float(box.end.y) * sc), fs.x, fs.y)
 			var src := Rect2(0, row * tfs.y, tfs.x, tfs.y)
 			# ciemny kontur 1 px — sylwetka czytelna na jasnym i ciemnym tle
 			for o: Vector2 in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
@@ -137,6 +144,28 @@ func _draw() -> void:
 				draw_texture_rect_region(glow_tex, dst, src)
 		else:
 			draw_rect(Rect2(-6, -7 + bob, 12, 3), c)
+
+## Prostokąt nieprzezroczystych pikseli broni `row` w jej klatce (px arkusza); liczony raz i zapamiętany.
+static func _content_box(tex: Texture2D, row: int, tfs: Vector2) -> Rect2i:
+	if _bbox.has(row):
+		return _bbox[row]
+	var img := tex.get_image()
+	var fw := int(tfs.x)
+	var fh := int(tfs.y)
+	var x0 := fw
+	var x1 := -1
+	var y0 := fh
+	var y1 := -1
+	for y in fh:
+		for x in fw:
+			if img.get_pixel(x, row * fh + y).a > 0.1:
+				x0 = mini(x0, x)
+				x1 = maxi(x1, x)
+				y0 = mini(y0, y)
+				y1 = maxi(y1, y)
+	var box := Rect2i(x0, y0, x1 - x0 + 1, y1 - y0 + 1) if x1 >= 0 else Rect2i()
+	_bbox[row] = box
+	return box
 
 # ---------------------------------------------------------------- podnoszenie (serwer)
 
