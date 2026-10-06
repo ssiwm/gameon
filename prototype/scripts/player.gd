@@ -27,7 +27,7 @@ const DECEL := 1500.0          ## hamowanie bez wejścia
 const TURN_ACCEL := 2400.0     ## zwrot w przeciwną stronę
 const AIR_ACCEL := 650.0       ## kontrola w powietrzu
 const FALL_MULT := 1.35        ## grawitacja przy opadaniu
-const WATER_SPEED := 0.8       ## brodzenie w tartaku
+const Surfaces := preload("res://scripts/surfaces.gd")
 const MAX_HP := 3
 ## Apteczki kumulują się ponad MAX_HP aż do tego sufitu (złote serca); respawn i nowa misja wracają do MAX_HP.
 const STACK_HP := 6
@@ -322,6 +322,11 @@ func _push_props(_delta: float) -> void:
 		if b != null and b.is_in_group("props") and absf(col.get_normal().x) > 0.6:
 			b.push(-signf(col.get_normal().x))
 
+## Nazwa powierzchni pod stopami (kafel), np. "dirt", "water", "oil".
+func _floor_surface() -> String:
+	var lvl := get_tree().get_first_node_in_group("level")
+	return lvl.surface_at(global_position) if lvl != null else "dirt"
+
 func _in_water() -> bool:
 	var lvl := get_tree().get_first_node_in_group("level")
 	return lvl != null and lvl.surface_at(global_position) == "water"
@@ -425,19 +430,19 @@ func _local_brain(delta: float) -> void:
 			aim_dir = to_mouse.normalized()
 			aim_by_mouse = true
 
-	var speed := CROUCH_SPEED if crouching else SPEED
-	if _in_water():
-		speed *= WATER_SPEED
+	# powierzchnia pod stopami (surfaces.gd): bagno i błoto spowalniają, olej i lód ślizgają
+	var surf: Dictionary = Surfaces.of(_floor_surface()) if is_on_floor() else Surfaces.of("dirt")
+	var speed := (CROUCH_SPEED if crouching else SPEED) * float(surf["speed"])
 	_kick = move_toward(_kick, 0.0, KICK_DECAY * delta)
 	var target := move_x * speed
 	var rate := AIR_ACCEL
 	if is_on_floor():
 		if absf(target) < 0.01:
-			rate = DECEL
+			rate = DECEL * float(surf["decel"])
 		elif signf(target) != signf(_run_vx) and absf(_run_vx) > 1.0:
-			rate = TURN_ACCEL
+			rate = TURN_ACCEL * float(surf["turn"])
 		else:
-			rate = ACCEL
+			rate = ACCEL * float(surf["accel"])
 	_run_vx = move_toward(_run_vx, target, rate * delta)
 	velocity.x = _run_vx + _kick
 
@@ -457,7 +462,7 @@ func _local_brain(delta: float) -> void:
 		velocity.y = minf(velocity.y + g * delta, MAX_FALL)
 
 	if _jump_buf > 0.0 and _coyote > 0.0 and not crouching and not reviving:
-		velocity.y = JUMP_VELOCITY
+		velocity.y = JUMP_VELOCITY * float(surf["jump"])
 		_jump_buf = 0.0
 		_coyote = 0.0
 		Audio.play_variant("effort", 2, Audio.BUS_PLAYER, -20.0)
@@ -490,7 +495,7 @@ func _local_brain(delta: float) -> void:
 		_run_noise_tick += delta
 		if _run_noise_tick >= 0.5:
 			_run_noise_tick = 0.0
-			NoiseMgr.add_noise(NoiseMgr.N_RUN_PER_SEC * 0.5, global_position)
+			NoiseMgr.add_noise(NoiseMgr.N_RUN_PER_SEC * 0.5 * float(surf["noise"]), global_position)
 
 	if Input.is_action_just_pressed("overcharge"):
 		_try_overcharge()
@@ -764,7 +769,7 @@ func _update_footsteps_passive() -> void:
 	var stride := 34.0 if crouching else 22.0
 	if _step_dist >= stride:
 		_step_dist = 0.0
-		Audio.play_footstep(global_position, crouching, -19.0)
+		Audio.play_footstep(global_position, crouching, -13.0)
 
 ## Oddech: ciągły przy wysiłku (skradanie w napięciu, bieg) i cisza gdy stoisz.
 func _update_breath() -> void:
@@ -776,9 +781,9 @@ func _update_breath() -> void:
 	var want := exertion > 0.0
 	if want and not _breath_on:
 		_breath_on = true
-		Audio.start_loop("breath_loop", Audio.BUS_PLAYER, -24.0)
+		Audio.start_loop("breath_loop", Audio.BUS_PLAYER, -32.0)
 	elif want and Audio.loop_playing("breath_loop"):
-		Audio.set_loop_volume("breath_loop", lerpf(-30.0, -18.0, exertion))
+		Audio.set_loop_volume("breath_loop", lerpf(-38.0, -26.0, exertion))
 	elif not want and _breath_on:
 		_breath_on = false
 		Audio.stop_loop("breath_loop")
@@ -831,7 +836,7 @@ func _bot_brain(delta: float) -> void:
 	if reviving or absf(dx) < dead_zone:
 		velocity.x = 0.0
 	else:
-		var spd := SPEED if not is_on_floor() else (CROUCH_SPEED if crouching else SPEED * 0.85)
+		var spd := SPEED if not is_on_floor() else (CROUCH_SPEED if crouching else SPEED * 0.85) * float(Surfaces.of(_floor_surface())["speed"])
 		velocity.x = signf(dx) * spd
 	# unik: wróg w zasięgu ciosu albo w zapowiedzi → bot odskakuje (nie stoi, żeby oberwać)
 	if not reviving and is_on_floor():

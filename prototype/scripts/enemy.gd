@@ -63,6 +63,7 @@ const Vfx := preload("res://scripts/vfx.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const Nav := preload("res://scripts/nav.gd")
+const Surfaces := preload("res://scripts/surfaces.gd")
 
 const GRAVITY := 900.0
 const MAX_FALL := 620.0
@@ -349,6 +350,8 @@ func _physics_process(delta: float) -> void:
 	var speed: float = float(_def["speed"]) * Difficulty.m("enemy_speed")
 	if _stagger > 0.0:
 		speed *= 0.25
+	if not _def.get("fly", false):
+		speed *= _surface_speed()          # bagno, błoto i olej spowalniają też potwory — da się je tam zwabić
 
 	_stalker_t -= delta
 	if _stalker_t <= 0.0:
@@ -451,6 +454,13 @@ func lag_rect(at_time: float) -> Rect2:
 					break
 	var size: Vector2 = _def["size"]
 	return Rect2(p.x - size.x * 0.5 - 1.0, p.y - size.y - 1.0, size.x + 2.0, size.y + 2.0)
+
+## Mnożnik prędkości wynikający z powierzchni pod stopami (surfaces.gd).
+func _surface_speed() -> float:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null:
+		return 1.0
+	return float(Surfaces.of(lvl.surface_at(global_position))["speed"])
 
 ## --- światło ---------------------------------------------------------------
 
