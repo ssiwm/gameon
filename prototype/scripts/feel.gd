@@ -30,7 +30,7 @@ func shake_offset() -> Vector2:
 	var rnd := Vector2.ZERO
 	if _amp >= 0.05:
 		rnd = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _amp
-	return rnd + _kick
+	return (rnd + _kick) * Settings.shake_mult()   # ustawienie gracza: FULL / HALF / OFF
 
 ## Krótkie „zamrożenie\" przy ważnym zdarzeniu. Ignorowane, jeśli poprzedni
 ## hitstop był niedawno — gra ma być responsywna, nie szarpana.

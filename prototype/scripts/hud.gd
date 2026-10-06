@@ -20,6 +20,7 @@ extends Control
 const Weapons := preload("res://scripts/weapons.gd")
 const Mission := preload("res://scripts/mission.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
+const Hints := preload("res://scripts/hints.gd")
 
 ## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.7
@@ -30,6 +31,7 @@ const OBJ_W := 250.0             ## szerokość treści karty celu (zawijanie)
 const SESSION_W := 152.0         ## szerokość bloku „sesja + zegar" w prawym górnym rogu
 const WARN_Y := 0.255            ## wysokość ostrzeżenia nad środkiem ekranu (ułamek wysokości; 92/360)
 const CENTER_Y := 0.39           ## napis „SQUAD DOWN" (140/360)
+const HINT_Y := 0.66             ## karta podpowiedzi (nad paskiem kontekstowym)
 const PROMPT_Y := 0.76           ## pasek kontekstowy — nad paskiem broni (dół, środek)
 ## Układ wzorowany na koop-strzelankach (Left 4 Dead, Deep Rock Galactic, Helldivers): drużyna i zdrowie w lewym dolnym
 ## rogu (własna karta największa, koledzy nad nią), broń i zasoby w płaskim pasku na środku dołu, a w lewym górnym tylko miernik hałasu.
@@ -185,6 +187,9 @@ var _prompt_bar: Bar
 var _controls: Label
 var _f1: Label
 var _result: PanelContainer
+var _hints := Hints.new()
+var _hint_card: PanelContainer
+var _hint_label: Label
 var _result_stats: GridContainer
 var _result_prompt: Label
 
@@ -196,7 +201,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# pełny ekran w jednostkach logicznych: viewport / UI_SCALE, skala 0.7 od lewego górnego rogu
 	set_anchors_preset(Control.PRESET_TOP_LEFT)
-	scale = Vector2(UI_SCALE, UI_SCALE)
+	scale = Vector2(_scale_now(), _scale_now())
 	_build_noise_card()
 	_build_squad_card()
 	_build_gear_card()
@@ -205,13 +210,23 @@ func _ready() -> void:
 	_build_center()
 	_build_prompt()
 	_build_controls()
+	_build_hint()
 	_build_result()
 	get_viewport().size_changed.connect(_fit)
+	Settings.changed.connect(_apply_scale)
+	_fit()
+
+## Skala HUD = bazowe 70% × ustawienie gracza (SMALL / NORMAL / LARGE).
+func _scale_now() -> float:
+	return UI_SCALE * Settings.ui_mult()
+
+func _apply_scale() -> void:
+	scale = Vector2(_scale_now(), _scale_now())
 	_fit()
 
 ## Dopasowuje rozmiar logiczny do viewportu i układa elementy przypięte do krawędzi / środka.
 func _fit() -> void:
-	size = get_viewport_rect().size / UI_SCALE
+	size = get_viewport_rect().size / _scale_now()
 	var w := size.x
 	var h := size.y
 	_place(_session, Vector2(w - MARGIN - SESSION_W, MARGIN), Vector2(SESSION_W, 12))
@@ -595,6 +610,33 @@ func _build_controls() -> void:
 	_f1 = UiTheme.label("F1  controls", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
 	add_child(_f1)
 
+## Podpowiedź dla nowego gracza: wąska karta nad paskiem kontekstowym (hints.gd decyduje, co i kiedy).
+func _build_hint() -> void:
+	_hint_card = _card(Vector2(MARGIN, MARGIN))
+	_hint_card.visible = false
+	var hb := UiTheme.panel_box()
+	hb.border_color = Color(UiTheme.ACCENT, 0.45)
+	hb.set_content_margin_all(7)
+	_hint_card.add_theme_stylebox_override("panel", hb)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 7)
+	_hint_card.add_child(row)
+	row.add_child(UiTheme.label("TIP", 7, UiTheme.ACCENT))
+	_hint_label = UiTheme.label("", 9, UiTheme.TEXT)
+	_hint_label.custom_minimum_size = Vector2(330, 0)
+	_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(_hint_label)
+
+func _drive_hint(delta: float) -> void:
+	var text := _hints.update(delta, _player)
+	_hint_card.visible = text != "" and not _result.visible
+	if not _hint_card.visible:
+		return
+	_hint_label.text = text
+	_hint_card.modulate.a = _hints.alpha
+	_hint_card.reset_size()
+	_hint_card.position = Vector2((size.x - _hint_card.size.x) * 0.5, size.y * HINT_Y)
+
 func _build_result() -> void:
 	_result = _card(Vector2(MARGIN, MARGIN))
 	_result.custom_minimum_size = Vector2(240, 0)
@@ -615,6 +657,16 @@ func _build_result() -> void:
 	box.add_child(_result_stats)
 	_result_prompt = UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(_result_prompt)
+	if Settings.DEMO:
+		# wersja demo: zachęta do listy życzeń (tekst do dopracowania razem ze stroną sklepu)
+		var rule := ColorRect.new()
+		rule.color = Color(1, 1, 1, 0.10)
+		rule.custom_minimum_size = Vector2(0, 1)
+		box.add_child(rule)
+		box.add_child(UiTheme.label("THANKS FOR PLAYING THE DEMO", 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+		box.add_child(UiTheme.label("Wishlist DEAD AIR '87 on Steam — more zones, weapons and monsters are coming.", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		if Settings.STORE_URL != "":
+			box.add_child(UiTheme.label("[O]  Open the Steam page", 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
 	_result.visible = false
 
 # ---------------------------------------------------------------- klatka
@@ -626,6 +678,7 @@ func _process(delta: float) -> void:
 	if not in_session:
 		_session_t = 0.0
 		_last_hp = -1
+		_hints.reset()
 		return
 	_session_t += delta
 	_blink += delta
@@ -638,12 +691,16 @@ func _process(delta: float) -> void:
 	_drive_status()
 	_drive_mission()
 	_drive_prompt()
+	_drive_hint(delta)
 	_drive_controls()
 	queue_redraw()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("help"):
 		_controls_mode = 0 if _controls.visible else 1
+	elif Settings.STORE_URL != "" and _result.visible and event is InputEventKey and event.pressed \
+			and not event.echo and event.physical_keycode == KEY_O:
+		OS.shell_open(Settings.STORE_URL)
 
 ## Krótki komunikat środkowy (znika po `secs`).
 func show_note(text: String, secs := 3.0) -> void:
