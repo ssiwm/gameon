@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gun_art  # noqa: E402  (siatki pixel-artu 12 broni)
 try:  # postacie 1.7: rigi + render 4× (numpy + Pillow); bez nich zostaje stary rysunek z prostokątów
     import char_art  # noqa: E402
+    import char_boss  # noqa: E402
     import char_monsters  # noqa: E402
     import char_player  # noqa: E402
     HAVE_CHARS = True
@@ -181,6 +182,7 @@ def bake_chars_hd():
         ("mimik", char_monsters.mimik, char_monsters.MIMIK_ANIMS, 16, 24),
         ("cma", char_monsters.cma, char_monsters.CMA_ANIMS, 16, 14),
         ("skoczek", char_monsters.skoczek, char_monsters.SKOCZEK_ANIMS, 16, 16),
+        ("vein", char_boss.vein, char_boss.BOSS_ANIMS, char_boss.FW, char_boss.FH),
     ):
         body, glow = char_monsters.monster_frames(fn, anims)
         char_sheet(name, fw, fh, anims, body, glow)
