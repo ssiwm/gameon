@@ -14,6 +14,10 @@ var spec := {}
 var accent := Color(1.0, 0.72, 0.28)
 var thumb := false
 var _t := 0.0
+## Tekstury wczytujemy w show_spec (poza `_draw`) — pierwsze wczytanie w trakcie rysowania daje białe prostokąty.
+var _tex: Texture2D
+var _tex_glow: Texture2D
+var _gun_info := {}
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -24,6 +28,15 @@ func show_spec(s: Dictionary, col: Color) -> void:
 	spec = s
 	accent = col
 	_t = 0.0
+	_tex = null
+	_tex_glow = null
+	match s.get("type", ""):
+		"sprite":
+			if Sprites.has(s["sheet"]):
+				_tex = Sprites.texture(Sprites.DIR + String(s["sheet"]) + ".png")
+				_tex_glow = Sprites.texture(Sprites.DIR + String(s["sheet"]) + "_glow.png")
+		"gun":
+			_gun_info = GunIcon.sheet_info()
 	queue_redraw()
 
 func _process(delta: float) -> void:
@@ -106,15 +119,19 @@ func _draw_sprite(floor_y: float) -> void:
 	var pos := PixelArt.snap(self, Vector2((size.x - w.x) * 0.5, floor_y - w.y))
 	_shadow(pos.x + w.x * 0.5, floor_y, w.x * 1.1)
 	var src := Rect2(frame * fsz.x, int(an["row"]) * fsz.y, fsz.x, fsz.y)
-	var tex := Sprites.texture(Sprites.DIR + sheet + ".png")
+	var tex := _tex
+	if tex == null:
+		return
 	draw_texture_rect_region(tex, Rect2(pos, w), src)
 	if bool(man.get("glow", false)):
-		var g := Sprites.texture(Sprites.DIR + sheet + "_glow.png")
+		var g := _tex_glow
 		if g != null:
 			draw_texture_rect_region(g, Rect2(pos, w), src)
 
 func _draw_gun() -> void:
-	var info := GunIcon.sheet_info()
+	var info := _gun_info
+	if info.is_empty():
+		return
 	var tex: Texture2D = info["tex"]
 	if tex == null:
 		return

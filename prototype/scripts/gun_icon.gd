@@ -13,6 +13,10 @@ var plate := false
 var accent := Color(1.0, 0.85, 0.35)
 var tint := Color.WHITE
 
+## Tekstury ładujemy W KONSTRUKTORZE, nie w `_draw`: tekstura wczytana po raz pierwszy w trakcie rysowania daje w Godocie
+## białe prostokąty (sprawdzone w silniku 4.7) i zostaje taka, dopóki kontrolka się nie przerysuje.
+var _info := {}
+
 ## Arkusz do miniatur: {tex, glow, fw, fh}; tex = null, gdy nie ma żadnego.
 static func sheet_info() -> Dictionary:
 	var sheet := "gun_icons" if Sprites.has("gun_icons") else "guns"
@@ -25,6 +29,7 @@ static func sheet_info() -> Dictionary:
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_info = sheet_info()
 
 func set_gun(r: int, col: Color, t: Color) -> void:
 	if r == row and col == accent and t == tint:
@@ -49,7 +54,7 @@ func _draw() -> void:
 		for i in 4:
 			var inset := 2.0 + i * 4.0
 			draw_rect(Rect2(inset, inset * 0.5, size.x - 2.0 * inset, size.y - 2.0 - inset), Color(accent.r, accent.g, accent.b, 0.045))
-	var info := sheet_info()
+	var info := _info
 	var tex: Texture2D = info["tex"]
 	if row < 0 or tex == null:
 		return

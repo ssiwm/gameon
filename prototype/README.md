@@ -159,6 +159,21 @@ godot --headless --path . -- --host --missiontest --autoquit=9
 
 Flagi: `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
 
+## Zrzuty ekranu bez GPU (xvfb)
+
+Silnik z renderem programowym (Mesa llvmpipe) pozwala sprawdzić wygląd w CI / na serwerze bez ekranu — w ten sposób znaleziono
+białe prostokąty zamiast broni (tekstura wczytana po raz pierwszy w `_draw()`). Wymaga `xvfb` i `godot`:
+
+```bash
+godot --headless --path . --import                       # raz po zmianie grafik
+xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3 \
+    --script tools/shot_menu.gd -- --tab=2 --out=/tmp/weapons.png     # menu pauzy: 0 ustawienia, 1 bestiariusz, 2 bronie, 3 sterowanie
+xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3 \
+    --script tools/shot_game.gd -- --wait=200 --out=/tmp/game.png      # gra: host + HUD; `--menu` dodatkowo otwiera menu pauzy
+xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3 \
+    --script tools/shot_enemies.gd -- --dir=/tmp/shots                 # po jednym zrzucie przy każdym rodzaju wroga / gnieździe / bossie
+```
+
 ## Grafika — generowanie i podmiana
 
 ```bash
@@ -166,7 +181,7 @@ python3 tools/bake_sprites.py      # (postacie wymagają numpy + Pillow: pip ins
 godot --headless --path . --import
 ```
 
-**Potwory w wyższej jakości (1.7.16)** — `tools/char_monsters_hd.py`: Trzosek 24×22, Wołek 44×44, Skoczek 26×26, Ślepiec 26×32, Podsłuchacz 26×40, Cma 26×20, Stalker 32×60, gniazdo 40×34 (ok. 1,5× większe klatki, więcej brył i detali, ten sam silnik co boss). Hitboxy zostały bez zmian — sprite jest większy od hitboxu. Mimik zostaje 16×24, bo musi pasować do sylwetki gracza.
+**Potwory w wyższej jakości (1.7.16)** — `tools/char_monsters_hd.py`: Trzosek 24×22, Wołek 44×44, Skoczek 26×26, Ślepiec 26×32, Podsłuchacz 26×40, Cma 26×20, Stalker 32×60, gniazdo 40×34 (ok. 1,5× większe klatki, więcej brył i detali, ten sam silnik co boss). Hitboxy zostały bez zmian — sprite jest większy od hitboxu. **Arkusze mają 2× gęstość pikseli** (np. Wołek 88×88 rysowany w skali 0,5 = 44×44 w świecie; manifest `scale`, filtr liniowy, `filter_clip`). Mimik zostaje 16×24 w gęstości 1×, bo musi pasować do sylwetki gracza.
 
 **Boss The Vein** (`art/sprites/vein.png` + `vein_glow.png`, klatka 256×160 = 2× gęstość pikseli, rysowana w skali 0,5 → 128×80 w świecie, 5 animacji: dormant / idle / open / windup / spit) powstaje w `tools/char_boss.py` tym samym silnikiem co potwory (render 4×, rampy, obrys). `boss.gd` wybiera animację wg stanu, nakładka dorysowuje żar żył i paszczy; bez arkusza wraca do rysunku z kółek. Po `bake_sprites.py` uruchom import (`--import`), żeby Godot wygenerował pliki `.import` nowych PNG.
 
