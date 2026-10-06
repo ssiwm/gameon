@@ -26,6 +26,7 @@ import gun_art  # noqa: E402  (siatki pixel-artu 12 broni)
 try:  # postacie 1.7: rigi + render 4× (numpy + Pillow); bez nich zostaje stary rysunek z prostokątów
     import char_art  # noqa: E402
     import char_boss  # noqa: E402
+    import char_monsters_hd as hd  # noqa: E402
     import char_monsters  # noqa: E402
     import char_player  # noqa: E402
     HAVE_CHARS = True
@@ -174,14 +175,16 @@ def bake_chars_hd():
         body, glow = char_player.frames_for(tuple(int(v * 255) for v in col), bot=(name == "bot"))
         char_sheet(name, char_player.FW, char_player.FH, char_player.PLAYER_ANIMS, body, glow)
     for name, fn, anims, fw, fh in (
-        ("trzosek", char_monsters.trzosek, char_monsters.TRZOSEK_ANIMS, 16, 16),
-        ("wolek", char_monsters.wolek, char_monsters.WOLEK_ANIMS, 30, 30),
-        ("stalker", char_monsters.stalker, char_monsters.STALKER_ANIMS, 20, 40),
-        ("slepiec", char_monsters.slepiec, char_monsters.SLEPIEC_ANIMS, 16, 20),
-        ("podsluchacz", char_monsters.podsluchacz, char_monsters.PODSLUCHACZ_ANIMS, 16, 26),
+        # potwory w wyższej jakości (1.7.16, tools/char_monsters_hd.py); Mimik zostaje w rozmiarze gracza (musi go udawać)
+        ("trzosek", hd.trzosek, hd.TRZOSEK_ANIMS) + hd.TRZOSEK_HD,
+        ("wolek", hd.wolek, hd.WOLEK_ANIMS) + hd.WOLEK_HD,
+        ("stalker", hd.stalker, hd.STALKER_ANIMS) + hd.STALKER_HD,
+        ("slepiec", hd.slepiec, hd.SLEPIEC_ANIMS) + hd.SLEPIEC_HD,
+        ("podsluchacz", hd.podsluchacz, hd.PODSLUCHACZ_ANIMS) + hd.PODSLUCHACZ_HD,
         ("mimik", char_monsters.mimik, char_monsters.MIMIK_ANIMS, 16, 24),
-        ("cma", char_monsters.cma, char_monsters.CMA_ANIMS, 16, 14),
-        ("skoczek", char_monsters.skoczek, char_monsters.SKOCZEK_ANIMS, 16, 16),
+        ("cma", hd.cma, hd.CMA_ANIMS) + hd.CMA_HD,
+        ("skoczek", hd.skoczek, hd.SKOCZEK_ANIMS) + hd.SKOCZEK_HD,
+        ("nest", hd.nest, hd.NEST_ANIMS) + hd.NEST_HD,
         ("vein", char_boss.vein, char_boss.BOSS_ANIMS, char_boss.FW, char_boss.FH),
     ):
         body, glow = char_monsters.monster_frames(fn, anims)
@@ -669,7 +672,8 @@ def main():
         bake_wolek()
         bake_stalker()
     bake_guns()
-    bake_nest()
+    if not HAVE_CHARS:
+        bake_nest()
     bake_objects()
     bake_tiles()
     bake_props()
