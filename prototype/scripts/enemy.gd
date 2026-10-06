@@ -9,12 +9,12 @@ extends CharacterBody2D
 const KINDS := {
 	"trzosek": {
 		"hp": 30.0, "speed": 88.0, "damage": 1, "windup": 0.28, "reach": 13.0,
-		"cooldown": 0.9, "leap": true, "hear": 200.0, "wake_near": 90.0,
+		"cooldown": 0.9, "leap": true, "hear": 200.0, "wake_near": 90.0, "sight": 260.0,
 		"color": Color(0.62, 0.2, 0.22), "size": Vector2(10, 14), "knock": 70.0, "knock_mult": 1.0, "head": 0.0,
 	},
 	"wolek": {
 		"hp": 140.0, "speed": 36.0, "damage": 2, "windup": 0.6, "reach": 20.0,
-		"cooldown": 1.6, "leap": false, "hear": 150.0, "wake_near": 70.0,
+		"cooldown": 1.6, "leap": false, "hear": 150.0, "wake_near": 70.0, "sight": 200.0,
 		"color": Color(0.36, 0.27, 0.34), "size": Vector2(20, 26), "knock": 14.0, "knock_mult": 0.2, "head": 0.28,
 	},
 }
@@ -23,6 +23,7 @@ const Lights := preload("res://scripts/lights.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Sprites := preload("res://scripts/sprites.gd")
+const Nav := preload("res://scripts/nav.gd")
 
 const GRAVITY := 900.0
 const MAX_FALL := 620.0
@@ -34,6 +35,17 @@ const HEALTH_DROP := {"wolek": 0.75}   ## szansa na apteczkę (1.5) — tylko mo
 const SIBLING_WAKE_RADIUS := 140.0
 const DEATH_FX_COLOR_VAR := 0.15
 const BURN_DPS := 8.0
+## Percepcja (1.7): wróg goni tylko to, co widzi (promień wzroku + linia bez ściany), albo idzie
+## na ostatni znany ślad (hałas, ostatnia pozycja gracza), rozgląda się, a po dłuższym braku
+## kontaktu wraca do domu i zasypia. Wcześniej obudzony wróg znał położenie gracza na całej mapie.
+const SEARCH_TIME := 3.5         ## s rozglądania się po dojściu na ślad
+const GIVE_UP_TIME := 9.0        ## s bez kontaktu, po których porzuca ślad
+const HOME_SLEEP_TIME := 1.2     ## s w domu, po których znów zasypia
+const PERCEIVE_DT := 0.12        ## co tyle sprawdzamy wzrok (promień)
+const CROUCH_SIGHT := 0.6        ## kucającego widać z mniejszej odległości
+const JUMP_V := -275.0           ## skok po grafie A* (42 px, tyle co gracz)
+const PLATFORM_BIT := 5          ## warstwa kładek w masce (zeskok)
+const DROP_TIME := 0.25
 
 @export var kind := "trzosek"
 
@@ -63,6 +75,23 @@ var _overlay: Node2D
 var _spr: Array = []
 var _facing := 1.0
 var _last_x := 0.0
+## Percepcja i nawigacja (serwer)
+var omniscient := false       ## potomstwo Żyły zawsze zna położenie graczy
+var _target: Node2D = null    ## gracz, którego widzi
+var _perceive_t := 0.0
+var _has_lead := false        ## ma ślad do sprawdzenia
+var _last_known := Vector2.ZERO
+var _lose_t := 0.0
+var _search_t := 0.0
+var _home_t := 0.0
+var _retreat := 0.0           ## Trzosek odskakuje po ciosie (uderz i uciekaj)
+var _path: Array = []
+var _path_i := 0
+var _repath := 0.0
+var _path_goal := Vector2.ZERO
+var _drop_t := 0.0
+var _blocked := false         ## następny krok grafu to skok, którego nie potrafi
+var _level_t := 0.0           ## s, przez które cel jest na innym poziomie (histereza: skok gracza to nie zmiana piętra)
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -95,6 +124,10 @@ func wake() -> void:
 	if not NoiseMgr.is_server() or not alive or active:
 		return
 	active = true
+	if not _has_lead:
+		var p := _nearest_player()
+		if p != null:
+			_lead_at(p.global_position)
 	# cała wataha budzi się razem
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e != self and e.has_method("wake") and e.global_position.distance_to(global_position) < SIBLING_WAKE_RADIUS:
@@ -122,6 +155,16 @@ func reset_enemy() -> void:
 	_cd = 0.0
 	_burn = 0.0
 	_panic = 0.0
+	_target = null
+	_has_lead = false
+	_lose_t = 0.0
+	_search_t = 0.0
+	_retreat = 0.0
+	_level_t = 0.0
+	_home_t = 0.0
+	_path.clear()
+	_drop_t = 0.0
+	set_collision_mask_value(PLATFORM_BIT, true)
 	velocity = Vector2.ZERO
 	global_position = _home
 	_remote_pos = _home
@@ -144,6 +187,8 @@ func _physics_process(delta: float) -> void:
 	_leap_cd = maxf(0.0, _leap_cd - delta)
 	_stagger = maxf(0.0, _stagger - delta)
 	_panic = maxf(0.0, _panic - delta)
+	_retreat = maxf(0.0, _retreat - delta)
+	_tick_drop(delta)
 	_tick_burn(delta)
 	if not alive:
 		return
@@ -157,7 +202,9 @@ func _physics_process(delta: float) -> void:
 		_send_state(delta)
 		return
 
-	var target := _nearest_player()
+	_listen()
+	_perceive(delta)
+	var target := _target
 	var speed: float = float(_def["speed"]) * Difficulty.m("enemy_speed")
 	if _stagger > 0.0:
 		speed *= 0.25
@@ -170,23 +217,201 @@ func _physics_process(delta: float) -> void:
 	elif target != null and _panic > 0.0:
 		# płonący Trzosek ucieka (HKM-9: „strach wśród Trzosków”), nie atakuje
 		velocity.x = -signf(target.global_position.x - global_position.x) * speed * 0.9
+	elif target != null and _retreat > 0.0:
+		# uderz i uciekaj: po ciosie Trzosek odskakuje, więc wataha nie stoi w miejscu
+		velocity.x = -signf(target.global_position.x - global_position.x) * speed * 0.8
 	elif target != null:
-		var dx := target.global_position.x - global_position.x
-		velocity.x = signf(dx) * speed if absf(dx) > 3.0 else 0.0
-		# Trzosek doskakuje do gracza na platformie
-		if _def["leap"] and is_on_floor() and _leap_cd <= 0.0 \
-				and target.global_position.y < global_position.y - 22.0 and absf(dx) < 70.0:
-			velocity.y = -250.0
-			_leap_cd = 1.2
-		elif is_on_wall() and is_on_floor() and _def["leap"]:
-			velocity.y = -230.0
+		_chase(target, speed, delta)
 		_try_begin_attack(target)
+	elif _has_lead:
+		_investigate(speed, delta)
 	else:
-		velocity.x = 0.0
+		_return_home(speed, delta)
 
 	_apply_gravity(delta)
 	move_and_slide()
 	_send_state(delta)
+
+## --- percepcja ------------------------------------------------------------
+
+func _lead_at(pos: Vector2) -> void:
+	_last_known = pos
+	_has_lead = true
+	_lose_t = 0.0
+	_search_t = 0.0
+
+## Nowy głośny dźwięk w pobliżu odświeża ślad (wróg idzie do źródła, nie do gracza).
+func _listen() -> void:
+	if NoiseMgr.noise_serial == _seen_serial:
+		return
+	_seen_serial = NoiseMgr.noise_serial
+	if NoiseMgr.last_noise_amount >= MIN_WAKE_NOISE \
+			and global_position.distance_to(NoiseMgr.last_noise_pos) < float(_def["hear"]) * Difficulty.m("enemy_hear") * 1.4:
+		_lead_at(NoiseMgr.last_noise_pos)
+
+## Najbliższy WIDOCZNY gracz (zasięg wzroku + brak ściany na linii). Co PERCEIVE_DT, nie co klatkę.
+func _perceive(delta: float) -> void:
+	_perceive_t -= delta
+	if _perceive_t > 0.0:
+		if _target != null and (not is_instance_valid(_target) or _target.dead):
+			_target = null
+		return
+	_perceive_t = PERCEIVE_DT
+	var sight: float = float(_def.get("sight", 240.0)) * Difficulty.m("enemy_hear")
+	var best: Node2D = null
+	var best_d := INF
+	for p in get_tree().get_nodes_in_group("players"):
+		var pp := p as Node2D
+		if pp == null or pp.dead:
+			continue
+		var d := global_position.distance_to(pp.global_position)
+		if d >= best_d:
+			continue
+		if not omniscient:
+			if d > sight * (CROUCH_SIGHT if pp.crouching else 1.0) or not _clear_line(pp):
+				continue
+		best = pp
+		best_d = d
+	_target = best
+	if best != null:
+		_lead_at(best.global_position)
+	else:
+		_lose_t += PERCEIVE_DT
+
+func _clear_line(pp: Node2D) -> bool:
+	var h: float = (_def["size"] as Vector2).y * 0.6
+	var q := PhysicsRayQueryParameters2D.create(global_position + Vector2(0, -h), pp.global_position + Vector2(0, -8), 1)
+	return get_world_2d().direct_space_state.intersect_ray(q).is_empty()
+
+## --- zachowanie bez widocznego celu ----------------------------------------
+
+## Idzie na ostatni ślad, rozgląda się i rezygnuje; po dłuższym braku kontaktu wraca do domu.
+func _investigate(speed: float, delta: float) -> void:
+	var d := _last_known - global_position
+	if absf(d.x) < 10.0 and absf(d.y) < 28.0 or _blocked and _search_t > 0.0:
+		velocity.x = 0.0
+		_search_t += delta
+		if _search_t > SEARCH_TIME:
+			_has_lead = false
+	else:
+		if _blocked:
+			_search_t += delta       # stoi pod przeszkodą, której nie przeskoczy — krótko czeka i rezygnuje
+			velocity.x = 0.0
+		else:
+			_steer_to(_last_known, speed * 0.85, delta)
+	if _lose_t > GIVE_UP_TIME:
+		_has_lead = false
+
+func _return_home(speed: float, delta: float) -> void:
+	var d := _home - global_position
+	if absf(d.x) < 14.0 and absf(d.y) < 28.0:
+		velocity.x = 0.0
+		_home_t += delta
+		if _home_t > HOME_SLEEP_TIME:
+			_home_t = 0.0
+			active = false
+			winding = false
+			_seen_serial = NoiseMgr.noise_serial
+	else:
+		_home_t = 0.0
+		_steer_to(_home, speed * 0.6, delta)
+
+## Pościg za widocznym graczem: na tym samym poziomie prosto (linia czysta), inaczej grafem A*.
+func _chase(target: Node2D, speed: float, delta: float) -> void:
+	var d := target.global_position - global_position
+	_level_t = _level_t + delta if absf(d.y) >= 24.0 else 0.0
+	if _level_t > 0.35 and _has_nav():
+		_steer_to(target.global_position, speed, delta)
+		return
+	_blocked = false
+	var want := signf(d.x) * speed if absf(d.x) > 3.0 else 0.0
+	# rozsuwanie watahy: nie stają w jednym punkcie, tylko w szeregu (można strzelać po kolei)
+	if absf(d.x) > float(_def["reach"]):
+		want += _separation(speed)
+	velocity.x = want
+	if is_on_wall() and is_on_floor() and _def["leap"]:
+		velocity.y = -230.0
+
+func _separation(speed: float) -> float:
+	var push := 0.0
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e == self or e.get_script() != get_script() or not e.alive or not e.active:
+			continue
+		var dx: float = global_position.x - e.global_position.x
+		if absf(dx) < 9.0 and absf(global_position.y - e.global_position.y) < 12.0:
+			push += (signf(dx) if dx != 0.0 else (1.0 if get_instance_id() > e.get_instance_id() else -1.0))
+	return clampf(push, -1.0, 1.0) * speed * 0.5
+
+func _has_nav() -> bool:
+	var lvl := get_tree().get_first_node_in_group("level")
+	return lvl != null and lvl.get("nav") != null
+
+## Idzie do celu po grafie nawigacji (nav.gd); blisko celu i na tym samym poziomie — prosto.
+func _steer_to(goal: Vector2, speed: float, delta: float) -> void:
+	var d := goal - global_position
+	var lvl := get_tree().get_first_node_in_group("level")
+	var nav = lvl.get("nav") if lvl != null else null
+	if nav == null or (absf(d.y) < 20.0 and absf(d.x) < 48.0):
+		_blocked = false
+		velocity.x = signf(d.x) * speed if absf(d.x) > 3.0 else 0.0
+		return
+	_repath -= delta
+	if is_on_floor() and (_repath <= 0.0 or _path_goal.distance_to(goal) > 40.0):
+		_repath = 0.45
+		_path_goal = goal
+		_path = nav.find_path(global_position, goal)
+		_path_i = 1
+		_blocked = false
+	if _path.size() < 2 or _path_i >= _path.size():
+		velocity.x = signf(d.x) * speed if absf(d.x) > 3.0 else 0.0
+		return
+	if is_on_floor():
+		for i in range(_path_i, mini(_path_i + 3, _path.size())):
+			if absf(_path[i].pos.x - global_position.x) < 6.0 and absf(_path[i].pos.y - global_position.y) < 20.0:
+				_path_i = i + 1
+				break
+		if _path_i >= _path.size():
+			velocity.x = signf(d.x) * speed if absf(d.x) > 3.0 else 0.0
+			return
+	var step: Dictionary = _path[_path_i]
+	var prev: Dictionary = _path[_path_i - 1]
+	var sx: float = step.pos.x - global_position.x
+	if not is_on_floor():
+		velocity.x = signf(sx) * speed if absf(sx) > 3.0 else 0.0
+		return
+	var px: float = prev.pos.x - global_position.x
+	match int(step.kind):
+		Nav.Edge.JUMP:
+			if absf(px) > 4.0:
+				velocity.x = signf(px) * speed
+			elif _def["leap"]:
+				velocity.y = JUMP_V
+				velocity.x = signf(sx) * speed
+			else:
+				_blocked = true
+				velocity.x = 0.0
+		Nav.Edge.DROP:
+			if absf(px) > 4.0:
+				velocity.x = signf(px) * speed
+			else:
+				velocity.x = 0.0
+				_start_drop()
+		_:
+			velocity.x = signf(sx) * speed if absf(sx) > 3.0 else 0.0
+
+func _start_drop() -> void:
+	if _drop_t > 0.0:
+		return
+	_drop_t = DROP_TIME
+	set_collision_mask_value(PLATFORM_BIT, false)
+	position.y += 1.0
+
+func _tick_drop(delta: float) -> void:
+	if _drop_t <= 0.0:
+		return
+	_drop_t -= delta
+	if _drop_t <= 0.0:
+		set_collision_mask_value(PLATFORM_BIT, true)
 
 func _apply_gravity(delta: float) -> void:
 	if not is_on_floor():
@@ -199,6 +424,7 @@ func _check_wake() -> void:
 		_seen_serial = NoiseMgr.noise_serial
 		if NoiseMgr.last_noise_amount >= MIN_WAKE_NOISE \
 				and global_position.distance_to(NoiseMgr.last_noise_pos) < float(_def["hear"]) * Difficulty.m("enemy_hear"):
+			_lead_at(NoiseMgr.last_noise_pos)     # idzie do źródła hałasu, nie wprost do gracza
 			wake()
 			return
 	for p in get_tree().get_nodes_in_group("players"):
@@ -246,6 +472,8 @@ func _resolve_attack() -> void:
 	var pp := _windup_target
 	_windup_target = null
 	_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
+	if kind == "trzosek":
+		_retreat = 0.32
 	if pp != null and is_instance_valid(pp) and not pp.dead and _in_reach(pp, 6.0):
 		pp.deliver_hit(maxi(1, roundi(float(_def["damage"]) * Difficulty.m("enemy_damage"))), global_position)
 

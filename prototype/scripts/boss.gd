@@ -440,6 +440,7 @@ func _spawn_brood(n: String, pos: Vector2) -> void:
 	var e := ENEMY_SCENE.instantiate()
 	e.name = n
 	e.kind = "trzosek"
+	e.omniscient = true      # potomstwo zawsze wie, gdzie są gracze
 	e.position = pos
 	lvl.add_child(e)
 	_brood.append(e)
