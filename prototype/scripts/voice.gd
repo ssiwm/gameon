@@ -209,6 +209,6 @@ func _build_bar() -> void:
 	add_child(layer)
 	_bar = Bar.new()
 	_bar.voice = self
-	_bar.position = Vector2(8, 326)
+	_bar.position = Vector2(8, 44)       # pod miernikiem hałasu (lewy górny róg); dół zajmuje karta drużyny
 	_bar.visible = false
 	layer.add_child(_bar)
