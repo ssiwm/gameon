@@ -10,11 +10,11 @@ const PX_PER_M := 16.0
 const TEX_RADIUS := 128.0
 
 ## Światło otoczenia (CanvasModulate) i tło nieba. Strojone pomiarem
-## luminancji ekranu (1.3.6): przy 0,13 świat poza aurą był prawie tak jasny
+## luminancji ekranu (1.3.6), potem −30% (1.6.7: ambient i aura gracza ×0,7): przy 0,13 świat poza aurą był prawie tak jasny
 ## jak przy graczu (0,035 vs 0,077) — ciemność nie robiła różnicy.
-const AMBIENT := Color(0.035, 0.038, 0.058)
+const AMBIENT := Color(0.0245, 0.0266, 0.0406)
 const SKY := Color(0.008, 0.010, 0.017)
-const AURA_ENERGY := 0.75
+const AURA_ENERGY := 0.525
 
 const BASE_M := 6.0          ## widoczność bazowa wokół gracza
 const FLASHLIGHT_M := 8.0    ## stożek latarki
