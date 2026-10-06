@@ -21,6 +21,7 @@ func _enter_tree() -> void:
 	_add_keys("reload", [KEY_R])
 	_add_keys("melee", [KEY_V])
 	_add_keys("help", [KEY_F1])
+	_add_keys("pause", [KEY_ESCAPE, KEY_P])
 	_add_mouse("fire", MOUSE_BUTTON_LEFT)
 	_add_mouse("melee", MOUSE_BUTTON_RIGHT)
 	_add_mouse("weapon_next", MOUSE_BUTTON_WHEEL_DOWN)

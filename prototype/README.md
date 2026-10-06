@@ -28,6 +28,17 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
 - **pętla misji** (GDD §4): zniszcz **4 gniazda** — dwa na powierzchni (posterunek, szczyt tartaku) i dwa **w podziemiach** (trzeba zejść szybem) — są głośne i budzą okolicę → budzi się **Żyła, matka gniazd** (boss w tartaku: paszcza otwiera się tylko na chwilę po ataku — wtedy strzelaj; ataki z zapowiedzią: macka, fala ogona po podłodze — przeskocz, plucie zarodnikami; latarka w paszczę podczas zapowiedzi ją ogłusza, Q w pobliżu ją odciąga; przy 33% HP krzyk budzi Stalkera; +1 ładunek Q) → po jej śmierci wyjście otwiera się w punkcie najdalszym od drużyny → cała stojąca drużyna 3 s przy flarze → ekran wyniku, host [Enter] = nowa misja
 - **nawigacja A*** (`nav.gd`): bot chodzi za drużyną po całej mapie (skoki, zeskoki przez kładki), Stalker chodzi po powierzchniach zamiast przez ściany
 
+## Menu pauzy, ustawienia, podpowiedzi (demo)
+
+- **Esc / P** — menu pauzy: głośność (ogólna, muzyka + ambient, efekty), wstrząsy kamery (FULL / HALF / OFF), rozmiar HUD
+  (SMALL / NORMAL / LARGE), podpowiedzi, mikrofon (krzyk), pełny ekran (też F11) i ściąga sterowania. Ustawienia zapisują się
+  w `user://settings.cfg`. W trybie solo gra jest zatrzymana; w kooperacji świat idzie dalej (menu to mówi) i klawisze gry są
+  wyłączone na czas menu.
+- **Podpowiedzi** (`hints.gd`): krótkie, jednorazowe wskazówki w chwili, gdy mechanika się przydaje (pierwszy ruch, pierwszy
+  hałas, „SOMETHING IS LISTENING", leżący kolega, latarka, flara). Zapamiętane — weteran ich nie zobaczy; wyłącznik w menu.
+- **Wersja demo**: `Settings.DEMO` (domyślnie `true`) dodaje na ekranie końcowym misji zachętę do listy życzeń; po wpisaniu
+  `Settings.STORE_URL` pojawia się klawisz [O] otwierający stronę sklepu. Lista kontrolna playtestu i publikacji: `PLAYTEST.md`.
+
 ## Poziomy trudności
 
 Host wybiera w lobby przyciskiem **DIFFICULTY** albo flagą `--difficulty=easy|normal|hard` (domyślnie **NORMAL** = dotychczasowa gra). Wartość trafia do klientów przy dołączeniu, widać ją w HUD (prawy górny róg). Mnożniki: `scripts/difficulty.gd` (autoload `Difficulty`).
@@ -99,6 +110,8 @@ Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP =
 | **Krzyk** (także mikrofon, jeśli włączony w lobby) | G |
 | Zeskok z kładki | dół + SPACJA |
 | Nowa misja (host, po ekstrakcji) | Enter |
+| Menu pauzy / ustawienia | Esc lub P |
+| Pełny ekran | F11 |
 
 ## Testy broni
 
@@ -180,6 +193,9 @@ scripts/
   stalker.gd        # AI stalkera (symulacja na serwerze)
   hud.gd            # HUD (EN, skala 0,7): hałas z progami, serca, ładunki Q, broń, latarka, cel, boss, podpowiedzi, winieta, wynik
   lobby.gd          # lobby (EN): host / join, sterowanie
+  settings.gd       # autoload Settings: głośność, wstrząsy, rozmiar HUD, podpowiedzi, pełny ekran (user://settings.cfg), flaga DEMO
+  pause_menu.gd     # menu pauzy (Esc/P): ustawienia + ściąga sterowania; solo zatrzymuje grę, w koopie świat idzie dalej
+  hints.gd          # jednorazowe podpowiedzi dla nowego gracza (ruch, hałas, wabik, podnoszenie…)
   ui_theme.gd       # wspólny motyw UI: obrys tekstu, panele, przyciski
   vfx.gd            # kurz, iskry, krew, szczątki i łuski (RigidBody2D), plamy
   prop.gd           # skrzynie i beczki (fizyka na serwerze, sync, wybuch)
