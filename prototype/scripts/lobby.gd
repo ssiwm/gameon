@@ -4,6 +4,8 @@ extends Control
 
 signal host_requested
 signal join_requested(ip: String)
+signal steam_host_requested
+signal steam_join_requested(lobby_id: String)
 
 const UiTheme := preload("res://scripts/ui_theme.gd")
 
@@ -24,6 +26,9 @@ var _ip: LineEdit
 var _status: Label
 var _host: Button
 var _diff: Button
+var _steam_host: Button
+var _steam_join: Button
+var _steam_id: LineEdit
 
 func _ready() -> void:
 	theme = UiTheme.get_theme()
@@ -35,8 +40,8 @@ func _ready() -> void:
 	add_child(dim)
 
 	var card := PanelContainer.new()
-	card.position = Vector2(150, 12)
-	card.size = Vector2(340, 336)
+	card.position = Vector2(150, 4)
+	card.size = Vector2(340, 352)
 	add_child(card)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 5)
@@ -69,6 +74,24 @@ func _ready() -> void:
 	btns.add_child(join)
 	box.add_child(btns)
 
+	# Steam: lobby + zaproszenia (steam_net.gd); bez wtyczki GodotSteam przyciski są wyszarzone
+	var steam_row := HBoxContainer.new()
+	_steam_host = Button.new()
+	_steam_host.text = "STEAM HOST"
+	_steam_host.pressed.connect(func() -> void: steam_host_requested.emit())
+	steam_row.add_child(_steam_host)
+	_steam_id = LineEdit.new()
+	_steam_id.placeholder_text = "lobby ID"
+	_steam_id.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_steam_id.text_submitted.connect(func(t: String) -> void: steam_join_requested.emit(t.strip_edges()))
+	steam_row.add_child(_steam_id)
+	_steam_join = Button.new()
+	_steam_join.text = "STEAM JOIN"
+	_steam_join.pressed.connect(func() -> void: steam_join_requested.emit(_steam_id.text.strip_edges()))
+	steam_row.add_child(_steam_join)
+	box.add_child(steam_row)
+	set_steam_available(false)
+
 	_diff = Button.new()
 	_diff.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_diff.tooltip_text = "Chosen by the host. Applies to enemies, the stalker, the boss, noise and drops."
@@ -99,6 +122,15 @@ func _ready() -> void:
 		if visible and is_inside_tree():
 			_host.grab_focus())
 	_host.call_deferred("grab_focus")
+
+## Przyciski Steam działają tylko z wtyczką GodotSteam i uruchomionym klientem Steam.
+func set_steam_available(on: bool) -> void:
+	var tip := "Steam lobby + invites (App ID 480 test)" if on else "Needs the GodotSteam addon and the Steam client — see README"
+	for c in [_steam_host, _steam_join, _steam_id]:
+		c.tooltip_text = tip
+	_steam_host.disabled = not on
+	_steam_join.disabled = not on
+	_steam_id.editable = on
 
 func set_status(text: String, is_error: bool = false) -> void:
 	_status.text = text

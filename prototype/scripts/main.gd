@@ -15,12 +15,15 @@ const WIPE_DELAY := 3.0
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
 const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
 const DREAD := preload("res://scripts/dread.gd")
+const STEAM_NET := preload("res://scripts/steam_net.gd")
 
 ## >0 w trakcie odliczania do restartu po wipe; widoczne na każdym peerze (HUD).
 var wipe_left := 0.0
 ## Pętla misji: cel → ekstrakcja → wynik (mission.gd). Węzeł o stałej nazwie,
 ## tworzony na każdym peerze, więc RPC trafia w tę samą ścieżkę.
 var mission: Node2D
+## Steam (opcjonalnie, steam_net.gd): lobby i transport przez GodotSteam.
+var steam: Node
 
 @onready var level: Node2D = $Level
 @onready var _players: Node2D = $Players
@@ -44,6 +47,17 @@ func _ready() -> void:
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 	_lobby.host_requested.connect(host_game)
+	steam = STEAM_NET.new()
+	steam.name = "SteamNet"
+	add_child(steam)
+	_lobby.set_steam_available(STEAM_NET.is_available())
+	_lobby.steam_host_requested.connect(steam.host)
+	_lobby.steam_join_requested.connect(steam.join)
+	steam.hosting.connect(_on_steam_hosting)
+	steam.joining.connect(_on_steam_joining)
+	steam.invite_join.connect(func(id: int) -> void: steam.join_lobby(id))
+	steam.status.connect(func(t: String) -> void: _lobby.set_status(t))
+	steam.failed.connect(func(t: String) -> void: _lobby.set_status(t, true))
 	_lobby.join_requested.connect(join_game)
 	# Ambient startuje dopiero przy sesji — w lobby grałby na pustce.
 	_lobby.host_requested.connect(func() -> void: Audio.play("ui_confirm", Audio.BUS_UI, -8.0))
@@ -120,6 +134,10 @@ func _handle_cmdline() -> void:
 			host_game()
 		elif a.begins_with("--join="):
 			join_game(a.substr("--join=".length()))
+		elif a == "--steam-host":
+			steam.host.call_deferred()
+		elif a.begins_with("--steam-join="):
+			steam.join.call_deferred(a.substr("--steam-join=".length()))
 		elif a.begins_with("--difficulty="):
 			var d := Difficulty.parse(a.substr("--difficulty=".length()))
 			if d >= 0:
@@ -283,13 +301,40 @@ func host_game() -> void:
 		_lobby.set_status("Could not host on port %d (%s)" % [port, error_string(err)], true)
 		return
 	multiplayer.multiplayer_peer = peer
+	_begin_hosting("port %d" % port)
+
+## Wspólny koniec startu hosta (ENet i Steam): UI, ambient, nowa misja, gracz hosta.
+func _begin_hosting(where: String) -> void:
 	_lobby.visible = false
 	Audio.play("oc_load", Audio.BUS_UI, -8.0)
 	print("[NET] difficulty: %s" % Difficulty.level_name())
 	_start_ambience()
 	NoiseMgr.reset_mission()
 	_spawn_player(1)
-	print("[NET] hosting on port %d" % port)
+	print("[NET] hosting on %s" % where)
+
+## Steam: peer podpinamy od razu (inaczej się nie odpytuje), a sesję startujemy, gdy lobby
+## naprawdę działa (CONNECTION_CONNECTED) — wcześniej NoiseMgr.is_server() jest fałszem.
+func _on_steam_hosting(peer: MultiplayerPeer) -> void:
+	if NoiseMgr.has_network():
+		return
+	multiplayer.multiplayer_peer = peer
+	var waited := 0.0
+	while peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED and waited < 10.0:
+		await get_tree().create_timer(0.1).timeout
+		waited += 0.1
+	if peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		multiplayer.multiplayer_peer = null
+		_lobby.set_status("Steam lobby did not start in time.", true)
+		return
+	_begin_hosting("Steam lobby %d" % steam.lobby_id)
+
+func _on_steam_joining(peer: MultiplayerPeer) -> void:
+	if NoiseMgr.has_network():
+		return
+	multiplayer.multiplayer_peer = peer
+	_lobby.set_status("Connecting via Steam…")
+	Audio.play("radio_beep", Audio.BUS_UI, -10.0)
 
 func join_game(ip: String) -> void:
 	var peer := ENetMultiplayerPeer.new()
