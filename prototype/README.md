@@ -59,6 +59,12 @@ Host wybiera w lobby przyciskiem **DIFFICULTY** albo flagą `--difficulty=easy|n
 | Drop apteczek / amunicji | ×1,5 | ×1 | ×0,7 |
 | Wykrwawianie / podnoszenie kolegi | 15 s / 3 s | 10 s / 4 s | 7 s / 5 s |
 
+## Misje i mapy (Strefa I)
+
+Kampania gra misje po kolei: **1.2 „Przerwa w Nadawaniu"** (uruchom 3 generatory — przytrzymaj [E] — nadajnik rozbrzmiewa na cały las, Stalker idzie na źródło, wracasz na początek mapy; cel poboczny: Uwaga < 40 do ostatniego generatora) → **1.3 „Gniazdo"** (zniszcz gniazda, zabij Żyłę, ekstrakcja) → od początku. Mapy to dane w `scripts/maps/<id>.gd` (`MAP` jako siatka ASCII, `TITLE`, `OBJECTIVE`, `UNDERGROUND_ROW`, `WEAPONS`, `ACCENTS`), rejestr i kolejność kampanii (`MAPS`, `CAMPAIGN`) w `level.gd`; legenda znaczników w nagłówku `level.gd` (m.in. `G` = generator). Nowa mapa: dodaj plik, wpisz do `MAPS`/`CAMPAIGN`, uruchom `--maptest`. Host przełącza mapę u wszystkich peerów (`main._set_map`), a dołączający dostaje ją przed postacią.
+
+Testy: `godot --headless --path . -- --maptest --autoquit=4` (kształt siatki + osiągalność z grafu nawigacji: start → cele/wrogowie/przedmioty/wyjścia i z powrotem), `godot --headless --path . -- --host --mission=z1_m2 --gentest --autoquit=35` (cała misja 1.2 i przejście 1.3 ↔ 1.2). `--mission=ID` wybiera mapę startową (testy 1.3 wymuszają `z1_m3` same).
+
 ## Nocny Dyżur (tryb endless, v1)
 
 W lobby host przełącza `MODE: CAMPAIGN / NIGHT SHIFT` (albo `--nightshift`). **Seria 5 misji pod rząd** na tej samej mapie; **wipe kończy serię**, [Enter] na ekranie wyniku zaczyna następną misję (po serii lub porażce — nową serię). Każda kolejna misja: **HP wrogów i bossa +12%** oraz losowe modyfikatory (misje 2–3: jeden, 4–5: dwa) — OVERLOAD (Uwaga startuje od 50), AMMO FAMINE (połowa amunicji), LEAK (Stalker budzi się przy 45, zasypia przy 15), THIN WALLS (hałas +50%). Zasady misji pokazuje HUD w pierwszych sekundach. Rekord (najwięcej misji; przy pełnej serii — czas) zapisuje się lokalnie w `user://settings.cfg`; rankingu online nie ma. Stan: `scripts/night_shift.gd` (statyczny, replikowany przez `mission._sync`). Test: `godot --headless --path . -- --nightshift --host --shifttest --autoquit=8`.
@@ -161,7 +167,7 @@ godot --headless --path . -- --host --wipetest --autoquit=8
 godot --headless --path . -- --host --missiontest --autoquit=9
 ```
 
-Flagi: `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--nightshift` (tryb Nocny Dyżur), `--shifttest`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
+Flagi: `--mission=ID` (mapa startowa), `--maptest`, `--gentest`, `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--nightshift` (tryb Nocny Dyżur), `--shifttest`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
 
 ## Zrzuty ekranu bez GPU (xvfb)
 

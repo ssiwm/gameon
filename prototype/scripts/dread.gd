@@ -79,7 +79,7 @@ func _process(delta: float) -> void:
 func _update_darkness(delta: float, pl: Node2D, lvl: Node) -> void:
 	if _dark == null:
 		return
-	var depth := clampf((pl.global_position.y - (lvl.UNDERGROUND_Y - DEEP_FADE_PX)) / DEEP_FADE_PX, 0.0, 1.0)
+	var depth := clampf((pl.global_position.y - (lvl.underground_y - DEEP_FADE_PX)) / DEEP_FADE_PX, 0.0, 1.0)
 	var a := Lights.AMBIENT
 	var target := Color(a.r, a.g, a.b).lerp(Color(a.r * DEEP_DARK, a.g * DEEP_DARK, a.b * DEEP_DARK), depth)
 	_dark.color = _dark.color.lerp(target, clampf(delta * 1.5, 0.0, 1.0))

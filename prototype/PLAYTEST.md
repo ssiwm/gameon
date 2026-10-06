@@ -32,6 +32,16 @@ decydują o priorytetach przed jakąkolwiek nową zawartością.
 | Reakcje na głos / śmiech / krzyk do mikrofonu | Czy VAD działa u kogoś innego niż my? |
 | Ile powtórek bez znudzenia | Powtarzalność mapy (GDD §16.0) |
 
+## 3b. Misja 1.2 „Przerwa w Nadawaniu" (kampania zaczyna od niej)
+
+- [ ] Czy gracz rozumie, co robić z generatorem (podpowiedź „Hold E”, pasek postępu)? Ile prób, zanim to zrobi?
+- [ ] Czy generator jest „za głośny / za cichy”? Ile Uwagi zwykle wyrabia drużyna do końca celu (karta wyniku: stealth kept/lost)?
+- [ ] Skok Uwagi po ostatnim generatorze: czy gracze rozumieją, że Stalker idzie na źródło, i czy używają Q (podpowiedź)?
+- [ ] Droga powrotna na początek mapy: czy jest za długa / za pusta? Czy wrogowie z tyłu nie wyskakują nieuczciwie?
+- [ ] Podsłuchacze na wieży i w hali: czy da się je cicho zdjąć (kusza, maczeta)?
+- [ ] Czas misji (cel GDD: ~10 min) i ile osób opuszcza ją po wipe.
+- [ ] Kampania: [Enter] po 1.2 → 1.3 (zmiana mapy u klienta bez zawieszenia), po 1.3 → znowu 1.2.
+
 ## 4. Sieć (osobny test, 2 komputery w różnych sieciach)
 
 - [ ] Steam P2P: host + klient przez internet (własny App ID — `steam_appid.txt`; 480 działa tylko do testów).
