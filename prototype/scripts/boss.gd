@@ -29,6 +29,7 @@ signal died
 const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
+const NightShift := preload("res://scripts/night_shift.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 
 enum State { DORMANT, AWAKE, DEAD }
@@ -152,7 +153,7 @@ func on_nest_lost(left: int) -> void:
 func awaken() -> void:
 	if not NoiseMgr.is_server() or state != State.DORMANT:
 		return
-	max_hp = (BASE_HP + HP_PER_EXTRA_HUMAN * maxi(0, _humans() - 1)) * Difficulty.m("boss_hp")
+	max_hp = (BASE_HP + HP_PER_EXTRA_HUMAN * maxi(0, _humans() - 1)) * Difficulty.m("boss_hp") * NightShift.hp_mult()
 	hp = max_hp
 	state = State.AWAKE
 	phase = 1

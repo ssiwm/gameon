@@ -36,6 +36,7 @@ const N_OVERCHARGE := 12.0
 const UNEASY_THRESHOLD := 40.0
 const AWAKE_THRESHOLD := 60.0
 const SLEEP_THRESHOLD := 30.0
+const NightShift := preload("res://scripts/night_shift.gd")
 
 var level: float = 0.0
 
@@ -174,8 +175,8 @@ func seconds_since_overcharge() -> float:
 
 func reset_mission() -> void:
 	_last_overcharge = -INF
-	level = 20.0
-	stalker_awake = false
+	level = NightShift.start_noise(20.0)
+	stalker_awake = level >= NightShift.awake_threshold(AWAKE_THRESHOLD)
 	last_noise_pos = Vector2.ZERO
 	overcharge_charges = 2
 	flares = FLARE_START
@@ -231,8 +232,8 @@ func _apply(amount: float, pos: Vector2, track := true) -> void:
 		noise_serial += 1
 		if amount >= HOT_SPOT_MIN:
 			_note_hot_spot(pos)
-	level = clampf(level + (amount * Difficulty.m("noise") if amount > 0.0 else amount), 0.0, MAX_LEVEL)
-	if level >= AWAKE_THRESHOLD:
+	level = clampf(level + (amount * Difficulty.m("noise") * NightShift.noise_mult() if amount > 0.0 else amount), 0.0, MAX_LEVEL)
+	if level >= NightShift.awake_threshold(AWAKE_THRESHOLD):
 		stalker_awake = true
 	level_changed.emit(level, stalker_awake)
 
@@ -253,7 +254,7 @@ func _process(delta: float) -> void:
 	if level > 0.0:
 		var decay := DECAY_SILENT if is_local_player_quiet() else DECAY_LOUD
 		level = maxf(0.0, level - decay * delta)
-		if stalker_awake and level <= SLEEP_THRESHOLD:
+		if stalker_awake and level <= NightShift.sleep_threshold(SLEEP_THRESHOLD):
 			stalker_awake = false
 			print("[NOISE] level %.0f -> stalker asleep" % level)
 		level_changed.emit(level, stalker_awake)

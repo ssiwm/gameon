@@ -17,6 +17,7 @@ const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
 const DREAD := preload("res://scripts/dread.gd")
 const STEAM_NET := preload("res://scripts/steam_net.gd")
 const PAUSE_MENU := preload("res://scripts/pause_menu.gd")
+const NightShift := preload("res://scripts/night_shift.gd")
 
 ## >0 w trakcie odliczania do restartu po wipe; widoczne na każdym peerze (HUD).
 var wipe_left := 0.0
@@ -79,11 +80,16 @@ func _physics_process(delta: float) -> void:
 		wipe_left -= delta
 		if wipe_left <= 0.0:
 			wipe_left = 0.0
-			_restart_mission(false)
+			if NightShift.active:
+				mission.fail_shift()          # Nocny Dyżur: wipe kończy serię
+			else:
+				_restart_mission(false)
 		return
-	# po udanej ekstrakcji host zaczyna nową misję
-	if mission.phase == MISSION_SCRIPT.Phase.SUCCESS:
+	# po udanej ekstrakcji (albo końcu serii Nocnego Dyżuru) host zaczyna nową misję
+	if mission.phase == MISSION_SCRIPT.Phase.SUCCESS or mission.phase == MISSION_SCRIPT.Phase.FAILED:
 		if Input.is_action_just_pressed("restart"):
+			if NightShift.active:
+				mission.shift_advance()
 			_restart_mission(true)
 		return
 	if _all_down():
@@ -128,9 +134,12 @@ func _handle_cmdline() -> void:
 	var stealthtest := -1.0
 	var wipetest := -1.0
 	var missiontest := false
+	var shifttest := false
 	var weapon_mode := ""
 	var shots_dir := ""
 	var args := OS.get_cmdline_user_args()
+	if args.has("--nightshift"):
+		NightShift.selected = true               # przed --host: tryb zapada przy starcie sesji
 	for a in args:
 		if a.begins_with("--port="):
 			port = a.substr("--port=".length()).to_int()
@@ -157,6 +166,8 @@ func _handle_cmdline() -> void:
 			stealthtest = a.substr("--stealthtest=".length()).to_float()
 		elif a == "--missiontest":
 			missiontest = true
+		elif a == "--shifttest":
+			shifttest = true
 		elif a == "--weapontest":
 			weapon_mode = "unit"
 		elif a.begins_with("--weaponshots="):
@@ -176,6 +187,8 @@ func _handle_cmdline() -> void:
 		_wipe_test(wipetest)
 	if missiontest:
 		_mission_test()
+	if shifttest:
+		_shift_test()
 	if weapon_mode != "":
 		var wt := WEAPON_TEST.new()
 		wt.name = "WeaponTest"
@@ -308,11 +321,63 @@ func host_game() -> void:
 	multiplayer.multiplayer_peer = peer
 	_begin_hosting("port %d" % port)
 
+## Test Nocnego Dyżuru: przechodzi całą serię (5 × sukces), sprawdza modyfikatory i skalowanie, potem porażkę
+## i nową serię. Rekordy w Settings zostają przywrócone. --nightshift --host --shifttest
+func _shift_test() -> void:
+	await get_tree().create_timer(1.0).timeout
+	var best_c: int = Settings.shift_best_cleared
+	var best_t: float = Settings.shift_best_time
+	var fails := 0
+	var check := func(label: String, ok: bool) -> void:
+		print("[SHIFT-TEST] %s  %s" % ["PASS" if ok else "FAIL", label])
+		if not ok:
+			fails += 1
+	check.call("start: seria aktywna, misja 1, bez modyfikatorów", NightShift.active and NightShift.stage == 1 and NightShift.mods.is_empty())
+	check.call("start: HP wrogów ×1,00", is_equal_approx(NightShift.hp_mult(), 1.0))
+	for st in range(1, NightShift.MISSIONS + 1):
+		var want: int = NightShift.MODS_PER_MISSION[st - 1]
+		check.call("misja %d: %d modyfikatorów (%s), HP ×%.2f" % [st, NightShift.mods.size(), NightShift.mod_names(), NightShift.hp_mult()],
+			NightShift.stage == st and NightShift.mods.size() == want and is_equal_approx(NightShift.hp_mult(), 1.0 + NightShift.HP_STEP * (st - 1)))
+		mission.elapsed = 60.0
+		mission._success()
+		check.call("misja %d: sukces zaliczony (%d)" % [st, mission.shift_cleared], mission.shift_cleared == st)
+		if st < NightShift.MISSIONS:
+			mission.shift_advance()
+			_restart_mission(true)
+	check.call("po 5 misjach: seria ukończona, czas serii 300 s", mission.shift_complete() and is_equal_approx(mission.shift_time, 300.0))
+	mission.shift_advance()
+	_restart_mission(true)
+	check.call("Enter po serii: nowa seria od misji 1", NightShift.stage == 1 and mission.shift_cleared == 0 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
+	mission.elapsed = 30.0
+	mission._success()
+	mission.shift_advance()
+	_restart_mission(true)
+	mission.elapsed = 12.0
+	mission.fail_shift()
+	check.call("wipe: seria zakończona (FAILED), 1 misja ukończona", mission.phase == MISSION_SCRIPT.Phase.FAILED and mission.shift_cleared == 1)
+	mission.shift_advance()
+	_restart_mission(true)
+	check.call("Enter po porażce: nowa seria", NightShift.stage == 1 and mission.shift_cleared == 0 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
+	# modyfikatory: wartości systemowe
+	NightShift.mods = ["overload", "famine", "leak", "thin"]
+	check.call("modyfikatory: start 50, ammo ×0,5, hałas ×1,5, Stalker 45/15",
+		is_equal_approx(NightShift.start_noise(20.0), 50.0) and is_equal_approx(NightShift.ammo_mult(), 0.5)
+		and is_equal_approx(NightShift.noise_mult(), 1.5) and is_equal_approx(NightShift.awake_threshold(60.0), 45.0)
+		and is_equal_approx(NightShift.sleep_threshold(30.0), 15.0))
+	NightShift.mods = []
+	Settings.shift_best_cleared = best_c
+	Settings.shift_best_time = best_t
+	Settings._save()
+	print("[SHIFT-TEST] %s (%d błędów)" % ["PASS" if fails == 0 else "FAIL", fails])
+
 ## Wspólny koniec startu hosta (ENet i Steam): UI, ambient, nowa misja, gracz hosta.
 func _begin_hosting(where: String) -> void:
 	_lobby.visible = false
 	Audio.play("oc_load", Audio.BUS_UI, -8.0)
 	print("[NET] difficulty: %s" % Difficulty.level_name())
+	if NightShift.selected:
+		mission.begin_shift()
+	print("[NET] mode: %s" % ("NIGHT SHIFT" if NightShift.active else "CAMPAIGN"))
 	_start_ambience()
 	NoiseMgr.reset_mission()
 	_spawn_player(1)

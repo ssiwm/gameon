@@ -64,6 +64,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const Nav := preload("res://scripts/nav.gd")
 const Surfaces := preload("res://scripts/surfaces.gd")
+const NightShift := preload("res://scripts/night_shift.gd")
 
 const GRAVITY := 900.0
 const MAX_FALL := 620.0
@@ -248,7 +249,7 @@ func wake() -> void:
 
 ## HP z uwzględnieniem poziomu trudności (difficulty.gd).
 func _scaled_hp() -> float:
-	return float(_def["hp"]) * Difficulty.m("enemy_hp")
+	return float(_def["hp"]) * Difficulty.m("enemy_hp") * NightShift.hp_mult()
 
 ## Zmiana trudności w lobby/na starcie: nietknięty wróg dostaje nowe HP.
 func _on_difficulty_changed(_lvl: int) -> void:

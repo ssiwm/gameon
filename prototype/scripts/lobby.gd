@@ -13,6 +13,7 @@ signal steam_host_requested
 signal steam_join_requested(lobby_id: String)
 
 const UiTheme := preload("res://scripts/ui_theme.gd")
+const NightShift := preload("res://scripts/night_shift.gd")
 
 const CARD_W := 470.0
 const BTN_W := 108.0                ## stała szerokość przycisków bocznych — kolumny wierszy się pokrywają
@@ -40,6 +41,7 @@ var _ip: LineEdit
 var _status: Label
 var _host: Button
 var _diff: Button
+var _mode: Button
 var _steam_host: Button
 var _steam_join: Button
 var _steam_id: LineEdit
@@ -128,6 +130,16 @@ func _ready() -> void:
 	opts.add_child(_mic)
 	Voice.changed.connect(func() -> void: _mic.text = Voice.label())
 	_mic.text = Voice.label()
+	# Tryb: kampania albo Nocny Dyżur (seria 5 misji, wipe kończy serię). Wybiera host.
+	_mode = Button.new()
+	_mode.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_mode.tooltip_text = "Chosen by the host. NIGHT SHIFT: five missions in a row, each harder and with random modifiers. A squad wipe ends the run."
+	_mode.pressed.connect(func() -> void:
+		NightShift.selected = not NightShift.selected
+		_refresh_mode()
+		Audio.play("ui_click", Audio.BUS_UI, -10.0))
+	opts.add_child(_mode)
+	_refresh_mode()
 	box.add_child(opts)
 
 	# --- status (stała wysokość: układ nie skacze, gdy pojawia się komunikat w dwóch liniach)
@@ -183,6 +195,7 @@ func set_steam_available(on: bool) -> void:
 ## Klient nie wybiera trudności — ustala ją host (main.gd rozsyła wybór).
 func lock_difficulty() -> void:
 	_diff.disabled = true
+	_mode.disabled = true
 
 # ---------------------------------------------------------------- elementy
 
@@ -226,6 +239,12 @@ func _add_control(grid: GridContainer, row: Array) -> void:
 	var desc := UiTheme.label(row[1], 8, UiTheme.MUTED)
 	desc.custom_minimum_size = Vector2(120, 0)
 	grid.add_child(desc)
+
+func _refresh_mode() -> void:
+	_mode.text = "MODE: < %s >" % ("NIGHT SHIFT" if NightShift.selected else "CAMPAIGN")
+	var col: Color = UiTheme.DANGER if NightShift.selected else UiTheme.TEXT
+	for k in ["font_color", "font_hover_color", "font_disabled_color"]:
+		_mode.add_theme_color_override(k, col)
 
 func _refresh_difficulty() -> void:
 	_diff.text = "DIFFICULTY:  < %s >" % Difficulty.level_name()
