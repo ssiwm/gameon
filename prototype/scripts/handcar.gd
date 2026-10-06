@@ -7,9 +7,14 @@ extends AnimatableBody2D
 ## trzeba wybierać: jechać czy się bronić. Puszczone E = drezyna hamuje. Jazda hałasuje i budzi to, co śpi przy torze.
 ## Stalker idzie 88 px/s, więc stanie w miejscu oznacza, że ON dogoni.
 ##
+## Pokład jest równo z torem (stopy gracza na y = 0 drezyny, tak jak stopy wrogów na ziemi), więc strzały z pokładu
+## lecą na tej samej wysokości co z ziemi. Wcześniej pokład był osobnym, uniesionym o 6 px kolajderem — gracz stojący
+## na nim strzelał ponad hitboksami niskich wrogów. Dlatego drezyna nie ma kolizji: wszystko, co stoi w obrysie pokładu,
+## przesuwa ona sama (_carry_riders) o ten sam krok co siebie.
+##
 ## Autorytet: serwer (prędkość, położenie, hałas). Klienci całkują położenie sami z replikowanej prędkości i
-## korygują je o stan z serwera (_sync) — gracz stojący na pokładzie jedzie razem z lokalną kopią drezyny
-## (AnimatableBody2D, sync_to_physics), więc nie ma szarpnięć. Każdy gracz zgłasza serwerowi tylko „pompuję / nie".
+## korygują je o stan z serwera (_sync). Każdy peer przesuwa razem z drezyną tylko SWOICH graczy (autorytet:
+## lokalny człowiek, a na serwerze boty), więc jazda nie szarpie. Każdy gracz zgłasza serwerowi tylko „pompuję / nie".
 
 const Lights := preload("res://scripts/lights.gd")
 
@@ -24,6 +29,8 @@ const NOISE_EVERY := 1.2
 const NOISE_AMOUNT := 0.8            ## ≥ progu budzenia wrogów (0,5) — jazda budzi śpiących przy torze
 const SYNC_INTERVAL := 0.066
 const SNAP_PX := 48.0
+const CARRY_MAX_STEP := 12.0         ## większy skok położenia w jednej klatce (reset, snap do serwera) to teleport — nikogo nie wozimy
+const RIDER_RANGE := 220.0           ## człowiek bliżej drezyny niż HALF_W + tyle = boty wsiadają i jadą
 
 var enabled := false                 ## zasilanie (włącza je koniec celu głównego — mission.gd)
 var arrived := false
@@ -48,22 +55,14 @@ var _inited := false
 func _ready() -> void:
 	add_to_group("handcar")
 	z_index = 3
-	sync_to_physics = true
-	collision_layer = 16             # warstwa kładek (level.gd LAYER_PLATFORM): gracz staje na pokładzie, pociski przelatują
+	collision_layer = 0              # bez kolizji: pokład jest równo z torem, pasażerów wozi _carry_riders
 	collision_mask = 0
-	var cs := CollisionShape2D.new()
-	var shape := RectangleShape2D.new()
-	shape.size = Vector2(HALF_W * 2.0, 4.0)
-	cs.shape = shape
-	cs.position = Vector2(0, -4)
-	cs.one_way_collision = true
-	add_child(cs)
 	_lamp = Node2D.new()
 	_lamp.material = Lights.unshaded()
 	_lamp.draw.connect(_draw_lamp)
 	add_child(_lamp)
 	_light = Lights.make_light(Lights.radial(), 7.0, Color(1.0, 0.82, 0.5), 0.0, true)
-	_light.position = Vector2(-HALF_W + 8.0, -20)
+	_light.position = Vector2(-HALF_W + 8.0, -16)
 	add_child(_light)
 	start_x = position.x
 	end_x = start_x
@@ -83,6 +82,31 @@ func _init_track() -> void:
 func aboard(p: Node2D) -> bool:
 	return absf(p.global_position.x - global_position.x) <= HALF_W - 4.0 and p.global_position.y <= global_position.y + 6.0 \
 		and p.global_position.y >= global_position.y - 40.0
+
+## Boty jadą, gdy drezyna jest zasilona i jedzie (jeszcze nie dojechała), a któryś żywy człowiek jest przy niej.
+func wants_riders() -> bool:
+	if not enabled or arrived:
+		return false
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot or p.dead or p.is_queued_for_deletion():
+			continue
+		if absf(p.global_position.x - global_position.x) <= HALF_W + RIDER_RANGE and absf(p.global_position.y - global_position.y) <= 60.0:
+			return true
+	return false
+
+## Miejsce bota na pokładzie (x w świecie): trzy sloty, żeby boty nie stały w jednym punkcie.
+func slot_x(slot: int) -> float:
+	return global_position.x + float(slot % 3 - 1) * 26.0
+
+## Wozi graczy stojących w obrysie pokładu o ten sam krok co drezyna. Tylko własnych (autorytet), reszta
+## przyjeżdża z replikacją. move_and_collide: pasażer nie wjedzie w ścianę ani w rekwizyt.
+func _carry_riders(dx: float) -> void:
+	if absf(dx) < 0.001 or absf(dx) > CARRY_MAX_STEP:
+		return
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_queued_for_deletion() or not p.is_multiplayer_authority() or not aboard(p):
+			continue
+		p.move_and_collide(Vector2(dx, 0.0))
 
 func _local_human() -> Node2D:
 	for p in get_tree().get_nodes_in_group("players"):
@@ -140,10 +164,12 @@ func _physics_process(delta: float) -> void:
 	_update_local()
 	_lamp.queue_redraw()
 	queue_redraw()
+	var x_before := position.x
 	if NoiseMgr.is_server():
 		_server_tick(delta)
 	else:
 		_client_tick(delta)
+	_carry_riders(position.x - x_before)
 	_phase += speed * delta * 0.09
 	_update_audio()
 
@@ -247,35 +273,36 @@ func _update_audio() -> void:
 		Audio.stop_loop(name)
 
 # ---------------------------------------------------------------- rysowanie (stopy w (0, 0), jedzie na zachód = w lewo)
+# Pokład leży płasko na torze (wysokość 3 px) — gracz stoi na y = 0, jak na ziemi.
 
 func _draw() -> void:
 	var body := Color(0.30, 0.27, 0.22)
 	var dark := Color(0.12, 0.12, 0.13)
 	var rust := Color(0.45, 0.28, 0.16)
 	# pokład i rama
-	draw_rect(Rect2(-HALF_W, -7, HALF_W * 2.0, 4), body)
-	draw_rect(Rect2(-HALF_W, -7, HALF_W * 2.0, 1), Color(0.5, 0.45, 0.36))
-	draw_rect(Rect2(-HALF_W + 2, -3, HALF_W * 2.0 - 4, 2), dark)
-	# koła z szprychami
+	draw_rect(Rect2(-HALF_W, -3, HALF_W * 2.0, 3), body)
+	draw_rect(Rect2(-HALF_W, -3, HALF_W * 2.0, 1), Color(0.5, 0.45, 0.36))
+	draw_rect(Rect2(-HALF_W + 2, -1, HALF_W * 2.0 - 4, 1), dark)
+	# koła z szprychami (widoczne z boku, w ramie pokładu)
 	for wx in [-HALF_W + 12.0, HALF_W - 12.0]:
-		draw_circle(Vector2(wx, -2), 4.5, dark)
-		draw_circle(Vector2(wx, -2), 2.0, rust)
+		draw_circle(Vector2(wx, -1.5), 2.6, dark)
+		draw_circle(Vector2(wx, -1.5), 1.2, rust)
 		var a: float = _phase + wx
-		draw_line(Vector2(wx, -2), Vector2(wx + cos(a) * 4.0, -2 + sin(a) * 4.0), Color(0.7, 0.6, 0.5), 1.0)
+		draw_line(Vector2(wx, -1.5), Vector2(wx + cos(a) * 2.6, -1.5 + sin(a) * 2.6), Color(0.7, 0.6, 0.5), 1.0)
 	# podpora i ramię pompy (kiwa się z prędkością)
-	draw_rect(Rect2(-3, -17, 6, 10), dark)
+	draw_rect(Rect2(-3, -13, 6, 10), dark)
 	var sway := sin(_phase * 1.6) * (0.35 if speed > 5.0 or power > 0.0 else 0.04)
-	var tip := Vector2(sin(sway) * 20.0, -17.0 - cos(sway) * 3.0)
-	draw_line(Vector2(0, -16), tip + Vector2(0, 0), Color(0.55, 0.5, 0.42), 2.5)
+	var tip := Vector2(sin(sway) * 20.0, -13.0 - cos(sway) * 3.0)
+	draw_line(Vector2(0, -12), tip, Color(0.55, 0.5, 0.42), 2.5)
 	draw_line(tip + Vector2(-5, 0), tip + Vector2(5, 0), Color(0.75, 0.65, 0.5), 2.0)
 	# latarnia z przodu (zachód)
-	draw_rect(Rect2(-HALF_W + 3, -18, 4, 11), dark)
-	draw_rect(Rect2(-HALF_W + 1, -21, 8, 4), rust)
+	draw_rect(Rect2(-HALF_W + 3, -14, 4, 11), dark)
+	draw_rect(Rect2(-HALF_W + 1, -17, 8, 4), rust)
 
 func _draw_lamp() -> void:
 	var on := enabled
 	var col := Color(1.0, 0.85, 0.5) if on else Color(0.5, 0.15, 0.12)
-	_lamp.draw_circle(Vector2(-HALF_W + 5, -19), 1.8, col)
+	_lamp.draw_circle(Vector2(-HALF_W + 5, -15), 1.8, col)
 	if on:
-		_lamp.draw_circle(Vector2(-HALF_W + 5, -19), 4.5, Color(col, 0.18))
-		_lamp.draw_polygon(PackedVector2Array([Vector2(-HALF_W + 3, -19), Vector2(-HALF_W - 70, -30), Vector2(-HALF_W - 70, -8)]), PackedColorArray([Color(1.0, 0.9, 0.6, 0.07), Color(1.0, 0.9, 0.6, 0.0), Color(1.0, 0.9, 0.6, 0.0)]))
+		_lamp.draw_circle(Vector2(-HALF_W + 5, -15), 4.5, Color(col, 0.18))
+		_lamp.draw_polygon(PackedVector2Array([Vector2(-HALF_W + 3, -15), Vector2(-HALF_W - 70, -26), Vector2(-HALF_W - 70, -4)]), PackedColorArray([Color(1.0, 0.9, 0.6, 0.07), Color(1.0, 0.9, 0.6, 0.0), Color(1.0, 0.9, 0.6, 0.0)]))
