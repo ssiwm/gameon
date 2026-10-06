@@ -187,10 +187,12 @@ def bake_chars_hd():
         ("cma", hd.cma, hd.CMA_ANIMS) + hd.CMA_HD,
         ("skoczek", hd.skoczek, hd.SKOCZEK_ANIMS) + hd.SKOCZEK_HD,
         ("nest", hd.nest, hd.NEST_ANIMS) + hd.NEST_HD,
-        ("vein", char_boss.vein, char_boss.BOSS_ANIMS, char_boss.FW, char_boss.FH),
+        ("vein", char_boss.vein, char_boss.BOSS_ANIMS, char_boss.FWD, char_boss.FHD),
     ):
         body, glow = char_monsters.monster_frames(fn, anims)
         char_sheet(name, fw, fh, anims, body, glow)
+        if name == "vein":
+            MANIFEST["sheets"][name]["scale"] = 1.0 / char_boss.DENSITY       # gra rysuje arkusz bossa w tej skali
 
 # ---------------------------------------------------------------- gracz
 

@@ -512,8 +512,8 @@
   },
   "vein": {
    "frame": [
-    128,
-    80
+    256,
+    160
    ],
    "glow": true,
    "anims": {
@@ -547,7 +547,8 @@
      "fps": 9,
      "loop": true
     }
-   }
+   },
+   "scale": 0.5
   },
   "guns": {
    "frame": [

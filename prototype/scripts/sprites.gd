@@ -50,6 +50,7 @@ static func frames(sheet: String, glow := false) -> SpriteFrames:
 		for i in int(a["frames"]):
 			var at := AtlasTexture.new()
 			at.atlas = tex
+			at.filter_clip = scale_of(sheet) != 1.0                       # arkusz w innej gęstości: filtrowanie nie podciąga sąsiedniej klatki
 			at.region = Rect2(i * fw, int(a["row"]) * fh, fw, fh)
 			sf.add_frame(an, at)
 	_cache[key] = sf
@@ -58,10 +59,14 @@ static func frames(sheet: String, glow := false) -> SpriteFrames:
 ## Tworzy warstwy postaci pod `host`: [ciało, glow albo null]. Stopy w (0,0).
 static func attach(host: Node2D, sheet: String) -> Array:
 	var size := frame_size(sheet)
+	var sc := scale_of(sheet)
+	# arkusz o gęstości ≠ 1 (np. boss 2×, skala 0,5) rysujemy filtrem liniowym — gładki obrót i krawędzie, bez nierównych pikseli
+	var filt := CanvasItem.TEXTURE_FILTER_NEAREST if sc == 1.0 else CanvasItem.TEXTURE_FILTER_LINEAR
 	var body := AnimatedSprite2D.new()
 	body.name = "Body"
 	body.sprite_frames = frames(sheet)
-	body.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	body.texture_filter = filt
+	body.scale = Vector2(sc, sc)
 	body.offset = Vector2(0, -size.y * 0.5)
 	host.add_child(body)
 	var glow: AnimatedSprite2D = null
@@ -70,7 +75,8 @@ static func attach(host: Node2D, sheet: String) -> Array:
 		glow = AnimatedSprite2D.new()
 		glow.name = "Glow"
 		glow.sprite_frames = gf
-		glow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		glow.texture_filter = filt
+		glow.scale = body.scale
 		glow.offset = body.offset
 		glow.material = Lights.unshaded()
 		host.add_child(glow)

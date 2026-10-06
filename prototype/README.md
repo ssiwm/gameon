@@ -168,7 +168,7 @@ godot --headless --path . --import
 
 **Potwory w wyższej jakości (1.7.16)** — `tools/char_monsters_hd.py`: Trzosek 24×22, Wołek 44×44, Skoczek 26×26, Ślepiec 26×32, Podsłuchacz 26×40, Cma 26×20, Stalker 32×60, gniazdo 40×34 (ok. 1,5× większe klatki, więcej brył i detali, ten sam silnik co boss). Hitboxy zostały bez zmian — sprite jest większy od hitboxu. Mimik zostaje 16×24, bo musi pasować do sylwetki gracza.
 
-**Boss The Vein** (`art/sprites/vein.png` + `vein_glow.png`, klatka 128×80, 5 animacji: dormant / idle / open / windup / spit) powstaje w `tools/char_boss.py` tym samym silnikiem co potwory (render 4×, rampy, obrys). `boss.gd` wybiera animację wg stanu, nakładka dorysowuje żar żył i paszczy; bez arkusza wraca do rysunku z kółek. Po `bake_sprites.py` uruchom import (`--import`), żeby Godot wygenerował pliki `.import` nowych PNG.
+**Boss The Vein** (`art/sprites/vein.png` + `vein_glow.png`, klatka 256×160 = 2× gęstość pikseli, rysowana w skali 0,5 → 128×80 w świecie, 5 animacji: dormant / idle / open / windup / spit) powstaje w `tools/char_boss.py` tym samym silnikiem co potwory (render 4×, rampy, obrys). `boss.gd` wybiera animację wg stanu, nakładka dorysowuje żar żył i paszczy; bez arkusza wraca do rysunku z kółek. Po `bake_sprites.py` uruchom import (`--import`), żeby Godot wygenerował pliki `.import` nowych PNG.
 
 Artysta może podmienić PNG w `art/` zachowując układ z `art/sprites.json` (rozmiar klatki, wiersz = animacja) — bez zmian w kodzie. Tło: pliki `art/backdrop/{sky,ridge_far,ridge_near,fog}.png` mają pierwszeństwo przed generowanymi.
 
