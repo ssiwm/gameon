@@ -481,11 +481,11 @@ func _predict(d: WeaponDef, muzzle: Vector2, dir: Vector2, seed: int, extra: flo
 		_:
 			_spawn_projectiles(d, muzzle, dir, seed, extra, player.player_id, false)
 
-func _spawn_projectiles(d: WeaponDef, muzzle: Vector2, dir: Vector2, seed: int, extra: float, shooter: int, auth: bool) -> void:
+func _spawn_projectiles(d: WeaponDef, muzzle: Vector2, dir: Vector2, seed: int, extra: float, shooter: int, auth: bool, lag := 0.0) -> void:
 	var scene := get_tree().current_scene
 	for dd in Weapons.pellet_dirs(d, dir, seed, extra):
 		var p := Projectile.new()
-		p.launch(d.id, muzzle, dd, shooter, auth)
+		p.launch(d.id, muzzle, dd, shooter, auth, lag)
 		scene.add_child(p)
 
 ## Serwer: waliduje (tempo, wylot) i wykonuje strzał; resztę peerów informuje o kosmetyce.
@@ -508,17 +508,19 @@ func _fire_request(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: floa
 	var expect := muzzle_pos(dir.normalized(), d)
 	if muzzle.distance_to(expect) > MUZZLE_TOLERANCE:
 		muzzle = expect
-	_server_fire(muzzle, dir.normalized(), w, seed, clampf(extra, 0.0, 12.0), player.player_id, false)
+	# kompensacja opóźnienia: serwer sam mierzy RTT strzelca (lag_comp.gd), klient niczego nie deklaruje
+	var lag := LagComp.rewind_for(player.player_id)
+	_server_fire(muzzle, dir.normalized(), w, seed, clampf(extra, 0.0, 12.0), player.player_id, false, lag)
 
 ## Autorytatywny strzał (serwer). `own_fx_done` = strzelec (host) już zagrał swoje efekty.
-func _server_fire(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, shooter: int, own_fx_done: bool) -> void:
+func _server_fire(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, shooter: int, own_fx_done: bool, lag := 0.0) -> void:
 	var d := Weapons.def(w)
 	srv_shots += 1
 	match d.kind:
 		WeaponDef.Kind.RAIL:
-			_server_rail(d, muzzle, dir, shooter)
+			_server_rail(d, muzzle, dir, shooter, lag)
 		_:
-			_spawn_projectiles(d, muzzle, dir, seed, extra, shooter, true)
+			_spawn_projectiles(d, muzzle, dir, seed, extra, shooter, true, lag)
 	if not own_fx_done:
 		_remote_shot_fx(d, muzzle, dir)
 	if NoiseMgr.has_network():
@@ -538,9 +540,10 @@ func _fire_remote(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float
 
 ## Szyna: trafienie natychmiastowe, przebija wszystkich (i opcjonalnie cienką ścianę).
 ## Serwer rysuje tor u siebie; strzelec-klient narysował go sam w predykcji, reszta dostaje RPC.
-func _server_rail(d: WeaponDef, muzzle: Vector2, dir: Vector2, shooter: int) -> void:
+func _server_rail(d: WeaponDef, muzzle: Vector2, dir: Vector2, shooter: int, lag := 0.0) -> void:
 	var space := player.get_world_2d().direct_space_state
-	var tr := Combat.trace(space, muzzle, dir, d.range_px, int(d.pierce), d.wall_pierce, [player.get_rid()])
+	# lag > 0: trafiamy wrogów w pozycjach sprzed `lag` s (szyna jest natychmiastowa — jeden test w przeszłość)
+	var tr := Combat.trace(space, muzzle, dir, d.range_px, int(d.pierce), d.wall_pierce, [player.get_rid()], LagComp.now() - lag if lag > 0.0 else -1.0)
 	for h in tr["hits"]:
 		var info := Combat.make_info(d.id, d.damage, h["pos"], dir, shooter, "rail")
 		info["heavy"] = true

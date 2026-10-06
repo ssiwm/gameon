@@ -367,6 +367,7 @@ func _sync_difficulty(level: int) -> void:
 
 func _on_peer_disconnected(id: int) -> void:
 	print("[NET] peer disconnected: %d" % id)
+	LagComp.forget(id)
 	var p := _players.get_node_or_null(str(id))
 	if p != null:
 		p.queue_free()

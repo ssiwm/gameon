@@ -134,6 +134,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_ammo_reload()
 	await _t_heat_noise()
 	await _t_pickups()
+	await _t_lag()
 	await _t_bot()
 	print("[WTEST] ==== %d/%d OK, błędów: %d ====" % [total - failed, total, failed])
 	get_tree().quit(1 if failed > 0 else 0)
@@ -454,6 +455,30 @@ func _step_on_item(kind: String, arg: int) -> void:
 		if p.kind == kind and p.arg == arg and not p.is_queued_for_deletion():
 			player.global_position = p.global_position
 	await frames(2)
+
+## Kompensacja opóźnienia (lag_comp.gd): historia pozycji, odcinek vs prostokąt, trafienie w przeszłość.
+func _t_lag() -> void:
+	print("--- kompensacja opóźnienia")
+	var e: Node = await dummy(100.0)
+	var t0 := LagComp.now()
+	var x1: float = e.global_position.x
+	var y1: float = e.global_position.y
+	e._hist.clear()
+	e._hist.append(Vector3(t0 - 0.2, x1 - 20.0, y1))
+	e._hist.append(Vector3(t0, x1, y1))
+	var old_rect: Rect2 = e.lag_rect(t0 - 0.2)
+	check("lag_rect: 0,2 s temu wróg stał 20 px bliżej", absf(old_rect.get_center().x - (x1 - 20.0)) < 1.5, str(old_rect))
+	var mid: Rect2 = e.lag_rect(t0 - 0.1)
+	check("lag_rect: w połowie interpolacja (−10 px)", absf(mid.get_center().x - (x1 - 10.0)) < 1.5, str(mid))
+	var from := Vector2(x1 - 60.0, y1 - 7.0)
+	var stop := from + Vector2(40.0, 0.0)        # kończy się w x1−20: dotyka dawnej pozycji, nie obecnej (lewa krawędź x1−6)
+	check("odcinek nie trafia w obecną pozycję", LagComp.enemy_hit(from, stop, t0, []).is_empty())
+	var past := LagComp.enemy_hit(from, stop, t0 - 0.2, [])
+	check("ten sam odcinek trafia wroga sprzed 0,2 s", not past.is_empty() and past["node"] == e, str(past))
+	check("seg_rect: poza prostokątem", LagComp.seg_rect(Vector2(0, 0), Vector2(5, 0), Rect2(10, -2, 4, 4)).is_empty())
+	check("seg_rect: punkt wejścia", absf(float(LagComp.seg_rect(Vector2(0, 0), Vector2(20, 0), Rect2(10, -2, 4, 4)).get("pos", Vector2.ZERO).x) - 10.0) < 0.01)
+	check("rewind_for: host i nieznany peer = 0", LagComp.rewind_for(1) == 0.0 and LagComp.rewind_for(99) == 0.0)
+	e.queue_free()
 
 func _t_pickups() -> void:
 	Arsenal.reset_mission()
