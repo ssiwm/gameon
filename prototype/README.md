@@ -34,6 +34,10 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
   (SMALL / NORMAL / LARGE), podpowiedzi, mikrofon (krzyk), pełny ekran (też F11) i ściąga sterowania. Ustawienia zapisują się
   w `user://settings.cfg`. W trybie solo gra jest zatrzymana; w kooperacji świat idzie dalej (menu to mówi) i klawisze gry są
   wyłączone na czas menu.
+- **Zakładki menu:** SETTINGS · **BESTIARY** (Trzosek, Wołek, Skoczek, Ślepiec, Podsłuchacz, Mimik, Cma, Stalker „ON", gniazdo,
+  boss Żyła — animowany portret z arkusza, statystyki liczone z `Enemy.KINDS`, opis i wskazówka) · **WEAPONS** (wszystkie 12 pozycji:
+  miniatura, obrażenia, tempo, zasięg, magazynek/zapas, przeładowanie, hałas, opis i wskazówka — statystyki liczone z `WeaponDef`,
+  więc nie rozjeżdżają się z grą) · CONTROLS. Dane i teksty: `codex.gd`, widok: `codex_page.gd`.
 - **Podpowiedzi** (`hints.gd`): krótkie, jednorazowe wskazówki w chwili, gdy mechanika się przydaje (pierwszy ruch, pierwszy
   hałas, „SOMETHING IS LISTENING", leżący kolega, latarka, flara). Zapamiętane — weteran ich nie zobaczy; wyłącznik w menu.
 - **Wersja demo**: `Settings.DEMO` (domyślnie `true`) dodaje na ekranie końcowym misji zachętę do listy życzeń; po wpisaniu
@@ -195,6 +199,9 @@ scripts/
   lobby.gd          # lobby (EN): host / join, sterowanie
   settings.gd       # autoload Settings: głośność, wstrząsy, rozmiar HUD, podpowiedzi, pełny ekran (user://settings.cfg), flaga DEMO
   pause_menu.gd     # menu pauzy (Esc/P): ustawienia + ściąga sterowania; solo zatrzymuje grę, w koopie świat idzie dalej
+  codex.gd          # kodeks w menu pauzy: opisy i wskazówki wrogów/broni + statystyki z kodu
+  codex_page.gd     # widok kodeksu: lista + portret + statystyki (bestiariusz i bronie)
+  gun_icon.gd       # miniatura broni z guns.png (HUD i kodeks)
   hints.gd          # jednorazowe podpowiedzi dla nowego gracza (ruch, hałas, wabik, podnoszenie…)
   ui_theme.gd       # wspólny motyw UI: obrys tekstu, panele, przyciski
   vfx.gd            # kurz, iskry, krew, szczątki i łuski (RigidBody2D), plamy

@@ -1,5 +1,5 @@
 extends Control
-## Menu pauzy (Esc / P): ustawienia i ściąga sterowania. Budowane w kodzie na wspólnym motywie.
+## Menu pauzy (Esc / P): ustawienia, bestiariusz, opisy broni i ściąga sterowania (zakładki). Budowane w kodzie na wspólnym motywie.
 ##
 ## Gra solo (żaden zdalny gracz) jest naprawdę zatrzymywana. W kooperacji świat idzie dalej — host jest
 ## autorytetem, a zatrzymanie go zamroziłoby kolegów — i menu mówi to wprost. Na czas menu akcje gry
@@ -7,15 +7,21 @@ extends Control
 
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Lobby := preload("res://scripts/lobby.gd")
+const Codex := preload("res://scripts/codex.gd")
+const CodexPage := preload("res://scripts/codex_page.gd")
 
-const CARD_W := 300.0
+const CARD_W := 440.0
+const PAGE_H := 270.0                ## stała wysokość zakładek — karta nie skacze przy przełączaniu
+const TABS := ["SETTINGS", "BESTIARY", "WEAPONS", "CONTROLS"]
 const BASE_SCALE := 0.7              ## jak HUD (hud.gd UI_SCALE): menu rysowane w 70%, razem z ustawieniem HUD SIZE
 
 var _settings_page: VBoxContainer
 var _controls_page: VBoxContainer
+var _pages: Array[Control] = []
+var _tab_buttons: Array[Button] = []
+var _tab := 0
 var _sub: Label
 var _values := {}                    ## klucz → Label z bieżącą wartością
-var _toggle_pages: Button
 var _prev_mouse := Input.MOUSE_MODE_VISIBLE
 var _open := false
 
@@ -47,15 +53,39 @@ func _ready() -> void:
 	box.add_child(_sub)
 	box.add_child(_rule())
 
+	# zakładki
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 3)
+	for i in TABS.size():
+		var tb := Button.new()
+		_compact(tb)
+		tb.text = TABS[i]
+		tb.toggle_mode = true
+		tb.focus_mode = Control.FOCUS_NONE
+		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tb.pressed.connect(_show_tab.bind(i))
+		tabs.add_child(tb)
+		_tab_buttons.append(tb)
+	box.add_child(tabs)
+
 	_settings_page = VBoxContainer.new()
 	_settings_page.add_theme_constant_override("separation", 3)
-	box.add_child(_settings_page)
 	_build_settings()
-
 	_controls_page = VBoxContainer.new()
-	box.add_child(_controls_page)
 	_build_controls()
-	_controls_page.visible = false
+	# kolejność = TABS; bestiariusz i bronie powstają przy pierwszym otwarciu zakładki
+	var holder := Control.new()
+	holder.custom_minimum_size = Vector2(0, PAGE_H)
+	box.add_child(holder)
+	var bestiary := CodexPage.new()
+	var arsenal := CodexPage.new()
+	_pages = [_settings_page, bestiary, arsenal, _controls_page]
+	for p in _pages:
+		p.set_anchors_preset(Control.PRESET_FULL_RECT)
+		p.visible = false
+		holder.add_child(p)
+	bestiary.setup(Codex.bestiary())
+	arsenal.setup(Codex.arsenal())
 
 	box.add_child(_rule())
 	var btns := HBoxContainer.new()
@@ -64,11 +94,6 @@ func _ready() -> void:
 	resume.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	resume.pressed.connect(close)
 	btns.add_child(resume)
-	_toggle_pages = Button.new()
-	_toggle_pages.text = "CONTROLS"
-	_toggle_pages.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_toggle_pages.pressed.connect(_flip_page)
-	btns.add_child(_toggle_pages)
 	var quit := Button.new()
 	quit.text = "QUIT GAME"
 	quit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -214,11 +239,11 @@ func _refresh() -> void:
 	_values["ui"].text = Settings.UI_NAMES[Settings.ui_idx]
 	_values["full"].text = "ON" if Settings.fullscreen else "OFF"
 
-func _flip_page() -> void:
-	var to_controls := _settings_page.visible
-	_settings_page.visible = not to_controls
-	_controls_page.visible = to_controls
-	_toggle_pages.text = "SETTINGS" if to_controls else "CONTROLS"
+func _show_tab(i: int) -> void:
+	_tab = i
+	for j in _pages.size():
+		_pages[j].visible = j == i
+		_tab_buttons[j].set_pressed_no_signal(j == i)
 
 func _lobby_visible() -> bool:
 	var lobby := get_node_or_null("../Lobby") as Control
@@ -237,8 +262,7 @@ func open() -> void:
 	Settings.block_game_input(true)
 	_prev_mouse = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	if _settings_page.visible == false:
-		_flip_page()
+	_show_tab(_tab)
 	Audio.play("ui_click", Audio.BUS_UI, -10.0)
 
 func close() -> void:
