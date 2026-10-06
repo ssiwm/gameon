@@ -741,9 +741,9 @@ func _update_breath() -> void:
 	var want := exertion > 0.0
 	if want and not _breath_on:
 		_breath_on = true
-		Audio.start_loop("breath_loop", Audio.BUS_PLAYER, -18.0)
+		Audio.start_loop("breath_loop", Audio.BUS_PLAYER, -24.0)
 	elif want and Audio.loop_playing("breath_loop"):
-		Audio.set_loop_volume("breath_loop", lerpf(-24.0, -12.0, exertion))
+		Audio.set_loop_volume("breath_loop", lerpf(-30.0, -18.0, exertion))
 	elif not want and _breath_on:
 		_breath_on = false
 		Audio.stop_loop("breath_loop")
