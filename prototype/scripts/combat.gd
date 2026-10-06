@@ -138,7 +138,8 @@ static func trace(space: PhysicsDirectSpaceState2D, from: Vector2, dir: Vector2,
 			return out
 		(out["hits"] as Array).append({"collider": collider, "pos": p, "normal": n, "dist": (p - from).length()})
 		ex.append(hit["rid"])
-		targets_hit += 1
+		if not (collider as Node).is_in_group("range_targets"):      # tarcze strzelnicy nie zatrzymują promienia
+			targets_hit += 1
 		if targets_hit > pierce:
 			out["end"] = p
 			return out

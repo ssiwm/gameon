@@ -1,5 +1,5 @@
 extends Control
-## Lobby: host / join (LAN po IP, Steam po lobby ID), trudność, mikrofon, ściąga sterowania.
+## Lobby: host / join (LAN po IP, Steam po lobby ID), trudność, mikrofon, tryb startu (kampania / kryjówka / Nocny Dyżur), ściąga sterowania.
 ## Budowane w kodzie na wspólnym motywie (ui_theme.gd). main.gd słucha sygnałów i ustawia status.
 ##
 ## Układ (viewport 640×360, karta wyśrodkowana): nagłówek → MULTIPLAYER (dwa wiersze o tych samych
@@ -37,6 +37,21 @@ const CONTROLS := [
 	["F2", "Steam invite (host)"],
 ]
 
+enum Mode { CAMPAIGN, SAFE_ROOM, NIGHT_SHIFT }
+const MODE_NAMES := ["CAMPAIGN", "SAFE ROOM", "NIGHT SHIFT"]
+const MODE_HINTS := [
+	"Campaign: Zone I missions in order, with the safe room between them.",
+	"Safe room: start in the hideout — swap guns, read the board and the results wall, ready up to head out on the campaign.",
+	"Night Shift: five missions in a row, each harder, with random modifiers. A squad wipe ends the run.",
+]
+const DEFAULT_HINT := "Host a game, or enter the host's IP and join."
+
+## Wybrany tryb startu hosta (main.gd czyta przy hostowaniu): kampania, kryjówka albo Nocny Dyżur.
+var mode: int = Mode.CAMPAIGN
+var start_in_hub: bool:
+	get:
+		return mode == Mode.SAFE_ROOM
+
 var _ip: LineEdit
 var _status: Label
 var _host: Button
@@ -52,12 +67,10 @@ var _t := 0.0
 func _ready() -> void:
 	theme = UiTheme.get_theme()
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-
 	var dim := ColorRect.new()
 	dim.color = Color(0.0, 0.0, 0.0, 0.86)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(dim)
-
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
@@ -68,88 +81,102 @@ func _ready() -> void:
 	box.add_theme_constant_override("separation", 4)
 	card.add_child(box)
 
-	# --- nagłówek
+	_build_header(box)
+	_build_multiplayer(box)
+	_build_options(box)
+	_build_status(box)
+	_build_controls(box)
+
+	visibility_changed.connect(func() -> void:
+		if visible and is_inside_tree():
+			_host.grab_focus())
+	_host.call_deferred("grab_focus")
+
+# ---------------------------------------------------------------- sekcje
+
+func _build_header(box: VBoxContainer) -> void:
 	_title = UiTheme.label("DEAD AIR '87", 24, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(_title)
 	box.add_child(UiTheme.label("Co-op horror run & gun  ·  prototype", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 	box.add_child(_rule(UiTheme.ACCENT, 0.45))
 	box.add_child(_spacer(2))
 
-	# --- MULTIPLAYER: dwa wiersze o wspólnych kolumnach
+## Dwa wiersze o wspólnych kolumnach: [przycisk | pole | przycisk] — LAN po IP i Steam po ID lobby.
+func _build_multiplayer(box: VBoxContainer) -> void:
 	box.add_child(_caption("MULTIPLAYER"))
-	var lan := HBoxContainer.new()
 	_host = _side_button("HOST GAME")
 	_host.pressed.connect(func() -> void: host_requested.emit())
-	lan.add_child(_host)
 	_ip = LineEdit.new()
 	_ip.text = "127.0.0.1"
 	_ip.placeholder_text = "host IP, e.g. 192.168.0.12"
-	_ip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_ip.tooltip_text = "LAN / direct: the host's IP address (port 8910)"
 	_ip.text_submitted.connect(func(t: String) -> void: join_requested.emit(t.strip_edges()))
-	lan.add_child(_ip)
 	var join := _side_button("JOIN")
 	join.pressed.connect(func() -> void: join_requested.emit(_ip.text.strip_edges()))
-	lan.add_child(join)
-	box.add_child(lan)
+	box.add_child(_connect_row(_host, _ip, join))
 
-	var steam_row := HBoxContainer.new()
 	_steam_host = _side_button("STEAM HOST")
 	_steam_host.pressed.connect(func() -> void: steam_host_requested.emit())
-	steam_row.add_child(_steam_host)
 	_steam_id = LineEdit.new()
 	_steam_id.placeholder_text = "Steam lobby ID"
-	_steam_id.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_steam_id.text_submitted.connect(func(t: String) -> void: steam_join_requested.emit(t.strip_edges()))
-	steam_row.add_child(_steam_id)
 	_steam_join = _side_button("STEAM JOIN")
 	_steam_join.pressed.connect(func() -> void: steam_join_requested.emit(_steam_id.text.strip_edges()))
-	steam_row.add_child(_steam_join)
-	box.add_child(steam_row)
+	box.add_child(_connect_row(_steam_host, _steam_id, _steam_join))
 	set_steam_available(false)
 
-	# --- OPTIONS
+func _connect_row(left: Button, field: LineEdit, right: Button) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(left)
+	row.add_child(field)
+	row.add_child(right)
+	return row
+
+## Trudność, mikrofon (VAD, opt-in) i tryb startu (kampania / kryjówka / Nocny Dyżur). Trudność i tryb wybiera host.
+func _build_options(box: VBoxContainer) -> void:
 	box.add_child(_caption("OPTIONS"))
 	var opts := HBoxContainer.new()
-	_diff = Button.new()
-	_diff.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_diff.tooltip_text = "Chosen by the host. Applies to enemies, the stalker, the boss, noise and drops."
+	_diff = _option_button("Chosen by the host. Applies to enemies, the stalker, the boss, noise and drops.")
 	_diff.pressed.connect(func() -> void:
 		Difficulty.set_level((Difficulty.level + 1) % Difficulty.NAMES.size())
 		Audio.play("ui_click", Audio.BUS_UI, -10.0))
-	opts.add_child(_diff)
 	Difficulty.changed.connect(func(_l: int) -> void: _refresh_difficulty())
 	_refresh_difficulty()
-	# Mikrofon (VAD): opt-in; krzyk do mikrofonu = hałas + przyciągnięcie wrogów (voice.gd)
-	_mic = Button.new()
-	_mic.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_mic.tooltip_text = "Shout into the microphone to scream (same as G). Processed locally, never recorded. Click: OFF > LOW > MED > HIGH sensitivity."
+	opts.add_child(_diff)
+	_mic = _option_button("Shout into the microphone to scream (same as G). Processed locally, never recorded. Click: OFF > LOW > MED > HIGH sensitivity.")
 	_mic.pressed.connect(func() -> void:
 		Voice.cycle()
 		Audio.play("ui_click", Audio.BUS_UI, -10.0))
-	opts.add_child(_mic)
 	Voice.changed.connect(func() -> void: _mic.text = Voice.label())
 	_mic.text = Voice.label()
-	# Tryb: kampania albo Nocny Dyżur (seria 5 misji, wipe kończy serię). Wybiera host.
-	_mode = Button.new()
-	_mode.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_mode.tooltip_text = "Chosen by the host. NIGHT SHIFT: five missions in a row, each harder and with random modifiers. A squad wipe ends the run."
+	opts.add_child(_mic)
+	_mode = _option_button("Chosen by the host. Click to cycle: campaign, safe room, night shift.")
 	_mode.pressed.connect(func() -> void:
-		NightShift.selected = not NightShift.selected
+		mode = (mode + 1) % MODE_NAMES.size()
+		NightShift.selected = mode == Mode.NIGHT_SHIFT
 		_refresh_mode()
 		Audio.play("ui_click", Audio.BUS_UI, -10.0))
 	opts.add_child(_mode)
 	_refresh_mode()
 	box.add_child(opts)
 
-	# --- status (stała wysokość: układ nie skacze, gdy pojawia się komunikat w dwóch liniach)
-	_status = UiTheme.label("Host a game, or enter the host's IP and join.", 9, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+func _option_button(tip: String) -> Button:
+	var b := Button.new()
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.tooltip_text = tip
+	return b
+
+## Stała wysokość: układ nie skacze, gdy komunikat zajmuje dwie linie. Bez błędu pokazuje opis wybranego trybu.
+func _build_status(box: VBoxContainer) -> void:
+	_status = UiTheme.label(DEFAULT_HINT, 9, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.custom_minimum_size = Vector2(0, 24)
 	_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	box.add_child(_status)
 
-	# --- CONTROLS: dwie kolumny par [klawisz | opis]
+## Dwie kolumny par [klawisz | opis].
+func _build_controls(box: VBoxContainer) -> void:
 	box.add_child(_rule(Color(1, 1, 1), 0.10))
 	box.add_child(_caption("CONTROLS"))
 	var grid := GridContainer.new()
@@ -165,11 +192,6 @@ func _ready() -> void:
 			grid.add_child(Control.new())
 			grid.add_child(Control.new())
 	box.add_child(grid)
-
-	visibility_changed.connect(func() -> void:
-		if visible and is_inside_tree():
-			_host.grab_focus())
-	_host.call_deferred("grab_focus")
 
 ## Tytuł lekko „migocze" — rzadkie, krótkie zaniki jak przy słabym kontakcie (klimat, nie szum).
 func _process(delta: float) -> void:
@@ -241,10 +263,12 @@ func _add_control(grid: GridContainer, row: Array) -> void:
 	grid.add_child(desc)
 
 func _refresh_mode() -> void:
-	_mode.text = "MODE: < %s >" % ("NIGHT SHIFT" if NightShift.selected else "CAMPAIGN")
-	var col: Color = UiTheme.DANGER if NightShift.selected else UiTheme.TEXT
+	_mode.text = "MODE: < %s >" % MODE_NAMES[mode]
+	var col: Color = [UiTheme.TEXT, UiTheme.OK, UiTheme.DANGER][mode]
 	for k in ["font_color", "font_hover_color", "font_disabled_color"]:
 		_mode.add_theme_color_override(k, col)
+	if _status != null:
+		set_status(MODE_HINTS[mode])
 
 func _refresh_difficulty() -> void:
 	_diff.text = "DIFFICULTY:  < %s >" % Difficulty.level_name()
