@@ -1,5 +1,5 @@
 extends Node2D
-## Ściana wyników w kryjówce (znacznik „w"): tablica z kredowymi kreskami — jedna kreska na ukończoną misję kampanii.
+## Ściana wyników w kryjówce (znacznik „v"): tablica z kredowymi kreskami — jedna kreska na ukończoną misję kampanii.
 ## Gdy lokalny gracz stoi przy niej, HUD pokazuje listę (czas, upadki, próby, cel poboczny; run_log.gd).
 
 const RunLog := preload("res://scripts/run_log.gd")

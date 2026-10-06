@@ -229,6 +229,11 @@ func _success() -> void:
 	phase = Phase.SUCCESS
 	extract_progress = 1.0
 	print("[MISSION] SUCCESS time=%.1fs downs=%d attempts=%d" % [elapsed, downs, attempts])
+	if kind != "hub" and Scrap.enabled():
+		var side_ok := kind == "generators" and stealth_ok()
+		var bonus := Scrap.BONUS_CLEAR + (Scrap.BONUS_SIDE if side_ok else 0) + (Scrap.BONUS_NO_DOWNS if downs == 0 else 0)
+		var gain := Scrap.bank_loot(bonus)
+		print("[SCRAP] mission banked +%d (bonus %d), wallet %d" % [gain, bonus, Scrap.bank])
 	_record_result()
 	if NightShift.active:
 		shift_cleared += 1
@@ -255,7 +260,7 @@ func _record_result() -> void:
 	var id := String(lvl.map_id)
 	var title := String(lvl.MAPS[id].TITLE) if lvl.MAPS.has(id) else id
 	var stealth := (1 if stealth_ok() else 0) if kind == "generators" else -1
-	RunLog.add(id, title, elapsed, downs, attempts, stealth)
+	RunLog.add(id, title, elapsed, downs, attempts, stealth, Scrap.last_gain)
 
 ## Upadki ludzi (statystyka). Liczone na serwerze z replikowanego `dead`.
 func _track_downs() -> void:

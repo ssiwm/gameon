@@ -308,7 +308,7 @@ func _exposure(c: int, r: int) -> int:
 ## Znaczniki → postacie. Nazwy numerowane od lewej do prawej, identycznie
 ## na każdym peerze.
 func _spawn_entities() -> void:
-	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "w": [], "r": [], "t": [], "l": [], "k": [], "o": [], "a": [], "g": []}
+	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "v": [], "r": [], "t": [], "u": [], "l": [], "k": [], "o": [], "a": [], "g": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -320,7 +320,7 @@ func _spawn_entities() -> void:
 				"E": exits.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "w", "r", "t", "l", "k", "o", "a", "g": found[ch].append(p)
+				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "v", "r", "t", "u", "l", "k", "o", "a", "g": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -357,10 +357,10 @@ func _spawn_entities() -> void:
 		bd.name = "Board%d" % (i + 1)
 		bd.position = found["n"][i]
 		add_child(bd)
-	for i in found["w"].size():
+	for i in found["v"].size():
 		var rw: Node2D = RESULTS_WALL.new()
 		rw.name = "ResultsWall%d" % (i + 1)
-		rw.position = found["w"][i]
+		rw.position = found["v"][i]
 		add_child(rw)
 	for i in found["r"].size():
 		var rl: Node2D = RANGE_LINE.new()
@@ -392,7 +392,7 @@ func _spawn_entities() -> void:
 			# fizyka uznawała za „w środku" i skrzynia przelatywała piętro niżej
 			pr.position = found[k[0]][i] + Vector2(0, -1)
 			add_child(pr)
-	_map_items = {"a": found["a"], "g": found["g"]}
+	_map_items = {"a": found["a"], "g": found["g"], "u": found["u"]}
 	_spawn_map_items()
 	if stalker_home != Vector2.ZERO:         # kryjówka (bez znacznika X) nie ma Stalkera
 		var s := STALKER_SCENE.instantiate()
@@ -464,14 +464,19 @@ func _spawn_map_items() -> void:
 	var caches: Array = _map_items.get("a", [])
 	for i in caches.size():
 		_add_map_item("MapCache%d" % i, "cache", 0, caches[i])
+	if Scrap.enabled():
+		var stash: Array = _map_items.get("u", [])
+		for i in stash.size():
+			_add_map_item("MapScrap%d" % i, "scrap", 0, stash[i], Scrap.CACHE_VALUE)
 
-func _add_map_item(n: String, kind: String, arg: int, pos: Vector2) -> void:
+func _add_map_item(n: String, kind: String, arg: int, pos: Vector2, value := 0) -> void:
 	if has_node(n):
 		return
 	var it: Node2D = PICKUP.new()
 	it.name = n
 	it.kind = kind
 	it.arg = arg
+	it.rounds = value
 	it.position = pos + Vector2(0, -2)
 	it.static_display = kind == "weapon" and _racks      # broń na stojaku stoi w miejscu
 	add_child(it)

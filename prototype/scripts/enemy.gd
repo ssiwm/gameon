@@ -1221,6 +1221,10 @@ func _die() -> void:
 		if w >= 0 and lv != null:
 			var n: int = maxi(1, int(Weapons.def(w).pickup_rounds * 0.5))
 			lv.spawn_item("ammo", w, global_position + Vector2(randf_range(-6.0, 6.0), -14), n)
+	if NoiseMgr.is_server() and Scrap.enabled() and Scrap.DROP.has(kind) and randf() < Scrap.DROP_CHANCE:
+		var ls := get_tree().get_first_node_in_group("level")
+		if ls != null:
+			ls.spawn_item("scrap", 0, global_position + Vector2(randf_range(-6.0, 6.0), -14), int(Scrap.DROP[kind]))
 	_notify_pack_death()
 	_set_alive(false)
 	winding = false
