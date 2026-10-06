@@ -57,6 +57,8 @@ const BOT_ENGAGE_RANGE := 220.0   ## ≤ zasięg M-83 (240 px): bot nie strzela 
 const BOT_SELF_DEFENSE := 70.0  ## w tym promieniu strzela zawsze — obrona własna
 const BOT_Q_HOLD := 8.0         ## po Q wstrzymuje ogień, żeby nie nadpisać celu stalkera
 const BOT_EVADE_RANGE := 46.0   ## wróg bliżej niż tyle: bot rozważa unik
+const BOT_CAR_LAG := 150.0      ## drezyna (handcar.gd): bot dalej od niej niż tyle px, gdy już jedzie, goni ją...
+const BOT_CAR_LAG_T := 1.5      ## ... i po tylu sekundach bez dogonienia ląduje na pokładzie (bot chodzi wolniej niż drezyna)
 const BOT_KITE_RANGE := 30.0    ## ... i cofa się, gdy jest bliżej niż to (strzela w biegu, M-83 nie ma minimalnego zasięgu)
 const BOT_MEDKIT_RANGE := 180.0 ## ranny bot szuka apteczki w takim promieniu
 
@@ -820,10 +822,30 @@ var _bot_prev_x := 0.0
 var _bot_leader: Node2D = null
 var _bot_wants_jump := false
 var _bot_repath := 0.0
+var _bot_car_lag := 0.0
+
+## Zasilona drezyna z człowiekiem w pobliżu: boty wsiadają i jadą z drużyną (null = zwykłe podążanie za dowódcą).
+func _bot_car() -> Node2D:
+	for c in get_tree().get_nodes_in_group("handcar"):
+		if c.wants_riders():
+			return c
+	return null
 
 func _bot_brain(delta: float) -> void:
 	_tick_drop(delta)
 	_bot_repath -= delta
+	var car := _bot_car()
+	var on_deck: bool = car != null and car.aboard(self)
+	# drezyna jedzie szybciej niż bot chodzi — zostawiony w tyle ląduje na pokładzie (nie zostaje sam w tunelu)
+	if car != null and not on_deck and car.speed > 20.0 and absf(car.global_position.x - global_position.x) > BOT_CAR_LAG:
+		_bot_car_lag += delta
+		if _bot_car_lag > BOT_CAR_LAG_T:
+			_bot_car_lag = 0.0
+			global_position = Vector2(car.slot_x(display_id), car.global_position.y - 1.0)
+			velocity = Vector2.ZERO
+			on_deck = true
+	else:
+		_bot_car_lag = 0.0
 	# trasę liczymy tylko z ziemi — w locie najbliższy węzeł jest „pod nami"
 	if _bot_repath <= 0.0 and is_on_floor():
 		_bot_repath = 0.4
@@ -846,19 +868,29 @@ func _bot_brain(delta: float) -> void:
 	flashlight = leader != null and leader.flashlight and not crouching and battery > 1.0
 
 	# Ruch po ścieżce A*; bez grafu — po staremu (prosto do celu + skok przy ścianie).
-	var has_path := not _bot_path.is_empty()
-	var goal_x := _bot_follow_path() if has_path else _bot_target_pos.x
+	# Na pokładzie drezyny: stoi w swoim slocie (albo przy leżącym koledze z pokładu) — bez A*, bez uników
+	# i skoków, które zrzuciłyby go z jadącej platformy; ruch drezyny załatwia handcar.gd.
+	var has_path := not _bot_path.is_empty() and not on_deck
+	var goal_x := _bot_target_pos.x
+	if on_deck:
+		goal_x = car.slot_x(display_id)
+		if downed != null and car.aboard(downed):
+			goal_x = downed.global_position.x
+	elif has_path:
+		goal_x = _bot_follow_path()
 	var dx := goal_x - global_position.x
 	var dy := _bot_target_pos.y - global_position.y
-	var done := _bot_path_i >= _bot_path.size()
+	var done := on_deck or _bot_path_i >= _bot_path.size()
 	var dead_zone := 8.0 if done else 3.0
 	if reviving or absf(dx) < dead_zone:
 		velocity.x = 0.0
 	else:
 		var spd := SPEED if not is_on_floor() else (CROUCH_SPEED if crouching else SPEED * 0.85) * float(Surfaces.of(_floor_surface())["speed"])
+		if car != null and is_on_floor():
+			spd = SPEED * 0.5 if on_deck else SPEED       # dojście do drezyny biegiem, na pokładzie powoli
 		velocity.x = signf(dx) * spd
 	# unik: wróg w zasięgu ciosu albo w zapowiedzi → bot odskakuje (nie stoi, żeby oberwać)
-	if not reviving and is_on_floor():
+	if not reviving and is_on_floor() and not on_deck:
 		var close := _nearest_enemy(BOT_EVADE_RANGE)
 		if close != null and (bool(close.get("winding")) or absf(close.global_position.x - global_position.x) < BOT_KITE_RANGE):
 			var away := signf(global_position.x - close.global_position.x)
@@ -876,7 +908,7 @@ func _bot_brain(delta: float) -> void:
 	velocity.x += _kick
 	if not is_on_floor():
 		velocity.y = minf(velocity.y + GRAVITY * delta, MAX_FALL)
-	elif _bot_wants_jump or (not has_path and not crouching and ((absf(dx) > 6.0 and is_on_wall()) or (dy < -24.0 and absf(dx) < 70.0))):
+	elif _bot_wants_jump or (not has_path and not on_deck and not crouching and ((absf(dx) > 6.0 and is_on_wall()) or (dy < -24.0 and absf(dx) < 70.0))):
 		velocity.y = JUMP_VELOCITY
 	_bot_wants_jump = false
 	move_and_slide()
@@ -892,7 +924,7 @@ func _bot_brain(delta: float) -> void:
 		if d.length() > 6.0:
 			aim_dir = _snap8(d)
 		var los := _los_state(enemy) if weapons.cd <= 0.0 else Los.WALL
-		if los == Los.TEAMMATE and is_on_floor() and not crouching:
+		if los == Los.TEAMMATE and is_on_floor() and not crouching and not on_deck:
 			# kolega na linii — podskok daje czystą linię nad nim
 			_bot_wants_jump = true
 		if weapons.cd <= 0.0 and _aim_ok(d) and _bot_may_fire(d) and los == Los.CLEAR:
@@ -1007,8 +1039,13 @@ func _bot_check_stuck(delta: float, idle: bool) -> void:
 		_bot_wants_jump = true
 
 func _pick_bot_goal() -> void:
-	# 1) leżący towarzysz do podniesienia
 	var downed := _downed_teammate()
+	# 0) drezyna: wsiąść i jechać z ludźmi (leżący przy drezynie i tak ma pierwszeństwo — bot go podniesie z pokładu)
+	var car := _bot_car()
+	if car != null and (downed == null or not (car.aboard(downed) or downed.global_position.distance_to(global_position) < 90.0)):
+		_bot_target_pos = Vector2(car.slot_x(display_id), car.global_position.y)
+		return
+	# 1) leżący towarzysz do podniesienia
 	if downed != null:
 		_bot_target_pos = downed.global_position
 		return
