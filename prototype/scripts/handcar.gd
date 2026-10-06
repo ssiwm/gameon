@@ -57,12 +57,13 @@ func _ready() -> void:
 	z_index = 3
 	collision_layer = 0              # bez kolizji: pokład jest równo z torem, pasażerów wozi _carry_riders
 	collision_mask = 0
+	sync_to_physics = false          # bez tego position czytane w tej samej klatce jest nieaktualne (dx = 0) i nikogo nie wozimy
 	_lamp = Node2D.new()
 	_lamp.material = Lights.unshaded()
 	_lamp.draw.connect(_draw_lamp)
 	add_child(_lamp)
 	_light = Lights.make_light(Lights.radial(), 7.0, Color(1.0, 0.82, 0.5), 0.0, true)
-	_light.position = Vector2(-HALF_W + 8.0, -16)
+	_light.position = Vector2(-HALF_W + 1.5, -17)
 	add_child(_light)
 	start_x = position.x
 	end_x = start_x
@@ -276,33 +277,65 @@ func _update_audio() -> void:
 # Pokład leży płasko na torze (wysokość 3 px) — gracz stoi na y = 0, jak na ziemi.
 
 func _draw() -> void:
-	var body := Color(0.30, 0.27, 0.22)
-	var dark := Color(0.12, 0.12, 0.13)
-	var rust := Color(0.45, 0.28, 0.16)
-	# pokład i rama
-	draw_rect(Rect2(-HALF_W, -3, HALF_W * 2.0, 3), body)
-	draw_rect(Rect2(-HALF_W, -3, HALF_W * 2.0, 1), Color(0.5, 0.45, 0.36))
-	draw_rect(Rect2(-HALF_W + 2, -1, HALF_W * 2.0 - 4, 1), dark)
-	# koła z szprychami (widoczne z boku, w ramie pokładu)
-	for wx in [-HALF_W + 12.0, HALF_W - 12.0]:
-		draw_circle(Vector2(wx, -1.5), 2.6, dark)
-		draw_circle(Vector2(wx, -1.5), 1.2, rust)
-		var a: float = _phase + wx
-		draw_line(Vector2(wx, -1.5), Vector2(wx + cos(a) * 2.6, -1.5 + sin(a) * 2.6), Color(0.7, 0.6, 0.5), 1.0)
-	# podpora i ramię pompy (kiwa się z prędkością)
-	draw_rect(Rect2(-3, -13, 6, 10), dark)
-	var sway := sin(_phase * 1.6) * (0.35 if speed > 5.0 or power > 0.0 else 0.04)
-	var tip := Vector2(sin(sway) * 20.0, -13.0 - cos(sway) * 3.0)
-	draw_line(Vector2(0, -12), tip, Color(0.55, 0.5, 0.42), 2.5)
-	draw_line(tip + Vector2(-5, 0), tip + Vector2(5, 0), Color(0.75, 0.65, 0.5), 2.0)
-	# latarnia z przodu (zachód)
-	draw_rect(Rect2(-HALF_W + 3, -14, 4, 11), dark)
-	draw_rect(Rect2(-HALF_W + 1, -17, 8, 4), rust)
+	var plank := Color(0.43, 0.32, 0.20)
+	var plank_hi := Color(0.58, 0.45, 0.29)
+	var plank_lo := Color(0.27, 0.19, 0.12)
+	var steel := Color(0.22, 0.23, 0.26)
+	var steel_hi := Color(0.46, 0.48, 0.52)
+	var rust := Color(0.50, 0.29, 0.15)
+	var yellow := Color(0.85, 0.66, 0.16)
+	var moving := speed > 5.0 or power > 0.0
+	# koła (za pokładem): żeliwne, z szprychami i piastą
+	for wx in [-HALF_W + 13.0, HALF_W - 13.0]:
+		var c := Vector2(wx, -2.5)
+		draw_circle(c, 3.4, steel)
+		draw_arc(c, 3.0, 0.0, TAU, 14, steel_hi, 0.8)
+		for k in 4:
+			var a: float = _phase + wx + float(k) * PI * 0.5
+			draw_line(c, c + Vector2(cos(a), sin(a)) * 2.9, rust, 0.8)
+		draw_circle(c, 0.9, yellow)
+	# belka ramy pod pokładem + zderzaki na końcach
+	draw_rect(Rect2(-HALF_W + 2, -4, HALF_W * 2.0 - 4, 2), steel)
+	draw_rect(Rect2(-HALF_W - 3, -5, 4, 3), rust)
+	draw_rect(Rect2(HALF_W - 1, -5, 4, 3), rust)
+	draw_rect(Rect2(-HALF_W - 3, -5, 4, 1), steel_hi)
+	draw_rect(Rect2(HALF_W - 1, -5, 4, 1), steel_hi)
+	# pokład: deski z fugami i okuciem
+	draw_rect(Rect2(-HALF_W, -5, HALF_W * 2.0, 3), plank)
+	draw_rect(Rect2(-HALF_W, -5, HALF_W * 2.0, 1), plank_hi)
+	draw_rect(Rect2(-HALF_W, -3, HALF_W * 2.0, 1), plank_lo)
+	var gx := -HALF_W + 8.0
+	while gx < HALF_W:
+		draw_rect(Rect2(gx, -5, 1, 3), plank_lo)
+		gx += 11.0
+	for bx in [-HALF_W + 3.0, HALF_W - 4.0, -9.0, 8.0]:
+		draw_rect(Rect2(bx, -4, 1, 1), steel_hi)
+	# słup pompy na środku i dźwignia (wahadło) — kiwa się z prędkością jazdy
+	draw_rect(Rect2(-2, -14, 4, 9), steel)
+	draw_rect(Rect2(-2, -14, 1, 9), steel_hi)
+	draw_rect(Rect2(-4, -7, 8, 2), rust)
+	var sway := sin(_phase * 1.6) * (0.38 if moving else 0.05)
+	var l := Vector2(cos(sway), sin(sway)) * 22.0
+	var pivot := Vector2(0, -13)
+	draw_line(pivot - l, pivot + l, Color(0.34, 0.26, 0.17), 3.0)
+	draw_line(pivot - l, pivot + l, plank_hi, 1.0)
+	for e in [pivot - l, pivot + l]:
+		draw_rect(Rect2(e.x - 1.5, e.y - 4, 3, 5), steel)       # uchwyty do pompowania
+		draw_rect(Rect2(e.x - 2.0, e.y - 4, 4, 1), yellow)
+	draw_circle(pivot, 1.6, yellow)
+	# żółto-czarne pasy ostrzegawcze na przodzie belki
+	for i in 4:
+		draw_rect(Rect2(HALF_W - 9 + float(i) * 2.0, -4, 1, 2), Color(0.1, 0.1, 0.1) if i % 2 == 0 else yellow)
+	# latarnia z przodu (zachód): wspornik, obudowa z kratką
+	draw_rect(Rect2(-HALF_W + 2, -16, 2, 11), steel)
+	draw_rect(Rect2(-HALF_W - 1, -20, 8, 5), steel)
+	draw_rect(Rect2(-HALF_W - 1, -20, 8, 1), steel_hi)
+	draw_rect(Rect2(-HALF_W, -19, 3, 3), Color(0.05, 0.05, 0.05))
 
 func _draw_lamp() -> void:
 	var on := enabled
 	var col := Color(1.0, 0.85, 0.5) if on else Color(0.5, 0.15, 0.12)
-	_lamp.draw_circle(Vector2(-HALF_W + 5, -15), 1.8, col)
+	_lamp.draw_circle(Vector2(-HALF_W + 1.5, -17.5), 1.8, col)
 	if on:
-		_lamp.draw_circle(Vector2(-HALF_W + 5, -15), 4.5, Color(col, 0.18))
-		_lamp.draw_polygon(PackedVector2Array([Vector2(-HALF_W + 3, -15), Vector2(-HALF_W - 70, -26), Vector2(-HALF_W - 70, -4)]), PackedColorArray([Color(1.0, 0.9, 0.6, 0.07), Color(1.0, 0.9, 0.6, 0.0), Color(1.0, 0.9, 0.6, 0.0)]))
+		_lamp.draw_circle(Vector2(-HALF_W + 1.5, -17.5), 4.5, Color(col, 0.18))
+		_lamp.draw_polygon(PackedVector2Array([Vector2(-HALF_W - 1, -17.5), Vector2(-HALF_W - 75, -30), Vector2(-HALF_W - 75, -5)]), PackedColorArray([Color(1.0, 0.9, 0.6, 0.07), Color(1.0, 0.9, 0.6, 0.0), Color(1.0, 0.9, 0.6, 0.0)]))
