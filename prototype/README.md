@@ -7,12 +7,12 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
 - **mapa wielopoziomowa** (TileMapLayer z siatki ASCII w `scripts/level.gd`, 192 × 44 kafli): las + posterunek, arena z kładkami, **Skład** (hala z antresolą, dach, schody z rusztowań), tartak z bossem, a pod całością **podziemia** — sale i niskie tunele połączone trzema szybami ze schodami z kładek; kładki jednokierunkowe — wskok od spodu, zeskok **dół + skok**. Broni do znalezienia są tylko **4** (las, półka w podziemnej sali, antresola hali, rusztowanie tartaku), reszta arsenału to start + skrzynki z amunicją
 - **ciemność i latarka** (GDD §8.3): aura 6 m, latarka **L** (stożek 8 m, bateria, +1 Uwagi co 10 s, budzi oświetlonych wrogów, ściąga Stalkera), flara ekstrakcji 12 m, cienie od kafli
 - **12 broni** (overhaul 1.6, `WEAPONS.md`): M-83, SPREAD-12, P-64, SRUT-8, LR-7 (promień), HKM-9 (miotacz), GNIEW-4 (granatnik), SOKOL-6 (naprowadzane), WIDMO-1 (szyna), CIEGNO-6 (cicha kusza), maczeta (cichy backstab), kilof. Model rozgrzania lufy per broń — krótka seria cicha, ciągły ogień głośny; **magazynki, przeładowanie, wspólny zapas drużyny**, skrzynki z mapy i drop z wrogów, podnoszenie i wymiana broni (**E**), krytyk w głowę, spadek obrażeń z dystansem, przebicie, podpalenie, wybuchy; predykcja strzału po stronie strzelca i walidacja serwera
-- wrogowie: Trzosek (wataha) i Wołek (tank) — śpią, budzi ich strzał w pobliżu albo bliskość gracza
+- wrogowie: Trzosek (wataha) i Wołek (tank) — śpią, budzi ich strzał w pobliżu albo bliskość gracza. **Percepcja (1.6.8)**: goni tylko to, co widzi (zasięg wzroku + linia bez ściany; kucającego z bliższa), inaczej idzie na ostatni ślad (źródło hałasu, ostatnia pozycja), rozgląda się 3,5 s, a po ~9 s bez kontaktu wraca do domu i zasypia. Chodzi po grafie A* (skoki Trzosków, zeskoki przez kładki; Wołek nie przeskoczy — czeka i rezygnuje), wataha się rozsuwa, a Trzosek po ciosie odskakuje
 - **Przesterowanie (Q)** — zasób: celowo podnosisz HAŁAS, żeby odciągnąć stalkera (GDD §8.4)
 - **Poziom Uwagi**: bieganie/strzały dodają, cisza odejmuje; dwie prędkości decayu
 - **Stalker „ON"**: budzi się przy 60%, poluje szybciej niż czatuje, wolniejszy od gracza (88 vs 95 px/s), atak nie podnosi hałasu, po ciosie się cofa
 - **groza** (`scripts/dread.gd`, lokalna i kosmetyczna): fałszywe odgłosy (kroki zza pleców, skrzypienie, drzwi, szkło, pomruk), migotanie świateł po uderzeniu, **oczy w mroku** (znikają, gdy podejdziesz lub poświecisz), a w podziemiach ciemniej i częściej; tempo rośnie z Uwagą
-- **AI towarzysz (BOT)** wypełnia puste sloty — 1 bot gdy jesteś sam, znika przy 3+ graczach; podnosi leżących, kuca gdy kucasz, po Q wstrzymuje ogień 8 s (broni się z ≤70 px)
+- **AI towarzysz (BOT)** (unika ciosów: odskakuje przed zapowiedzią i cofa się od wroga w zasięgu ręki, ranny idzie po apteczkę, nie stoi w jednym punkcie z innymi botami) wypełnia puste sloty — 1 bot gdy jesteś sam, znika przy 3+ graczach; podnosi leżących, kuca gdy kucasz, po Q wstrzymuje ogień 8 s (broni się z ≤70 px)
 - 1–4 graczy online (ENet, port **8910**), synchronizacja przez `MultiplayerSynchronizer`
 - **serwerowe pociski** — spawn i kolizje rozstrzyga serwer, klienci tylko rysują
 - **friendly fire = hałas**: pocisk kolegi przelatuje (zero HP), trafiony krzyczy (+4 Uwagi, max raz na 0,6 s) i dostaje odrzut; żadna broń nie rani kolegi (ranić może tylko wybuch beczki). Bot nie strzela, gdy kolega jest na linii — podskakuje; **przeskakuje skrzynie i beczki** na drodze
@@ -39,6 +39,18 @@ Host wybiera w lobby przyciskiem **DIFFICULTY** albo flagą `--difficulty=easy|n
 | Częstość straszaków (groza) | ×0,6 | ×1 | ×1,5 |
 | Drop apteczek / amunicji | ×1,5 | ×1 | ×0,7 |
 | Wykrwawianie / podnoszenie kolegi | 15 s / 3 s | 10 s / 4 s | 7 s / 5 s |
+
+## Steam (opcjonalnie): lobby, zaproszenia, relay
+
+Gra łączy się przez ENet (IP) jak dotąd, a **Steam** jest dodatkowym transportem — bez konfiguracji routera, z zaproszeniami od znajomych i relayem Valve (graczom z różnych krajów nie trzeba otwierać portów). Kod (`scripts/steam_net.gd`) jest gotowy, ale **wtyczki GodotSteam nie ma w repo** (binaria, licencja MIT) — bez niej przyciski Steam w lobby są wyszarzone, a reszta gry działa normalnie.
+
+Instalacja (raz):
+1. Pobierz **GodotSteam (GDExtension) dla Godot 4.x** i **GodotSteam MultiplayerPeer** (klasa `SteamMultiplayerPeer`) z godotsteam.com / GitHub `godotsteam` i rozpakuj do `prototype/addons/`.
+2. Zainstaluj i uruchom klienta Steam, zaloguj się. W katalogu projektu leży `steam_appid.txt` z `480` (**Spacewar** — publiczny App ID testowy, darmowy; w bibliotece gra pokazuje się jako „Spacewar"). Testerzy muszą mieć Steama i być znajomymi hosta.
+3. W lobby: **STEAM HOST** tworzy lobby (ID ląduje w schowku i w statusie), **F2** w grze otwiera okno zaproszeń Steam, znajomi klikają „Dołącz do gry" albo wklejają ID i dają **STEAM JOIN**. Flagi: `--steam-host`, `--steam-join=ID`; start z zaproszenia (`+connect_lobby ID`) też działa.
+4. Pod wydanie: własny App ID (Steam Direct, 100 USD zwrotne po 1000 USD przychodu) — zmień `APP_ID` w `steam_net.gd` i `steam_appid.txt`, a plik usuń z paczki sklepowej.
+
+API GodotSteam różni się między wersjami, więc wrapper dobiera argumenty po nazwach i obsługuje dwa warianty peera (wbudowane lobby `create_lobby`/`connect_lobby` oraz surowe `create_host`/`create_client`). Nie testowano z prawdziwym Steamem — pierwszy test: dwa konta Steam będące znajomymi.
 
 ## Uruchomienie
 
@@ -68,6 +80,7 @@ Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP =
 | Podnieś broń z ziemi | E |
 | Latarka | L |
 | Pokaż / ukryj sterowanie | F1 |
+| Zaproszenie przez Steam (host) | F2 |
 | Zeskok z kładki | dół + SPACJA |
 | Nowa misja (host, po ekstrakcji) | Enter |
 
@@ -111,7 +124,7 @@ godot --headless --path . -- --host --wipetest --autoquit=8
 godot --headless --path . -- --host --missiontest --autoquit=9
 ```
 
-Flagi: `--host`, `--difficulty=easy|normal|hard`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
+Flagi: `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
 
 ## Grafika — generowanie i podmiana
 
@@ -168,4 +181,4 @@ tools/
 - zwykli wrogowie (Trzosek, Wołek) bez A* — gonią prosto i doskakują
 - jedna mapa (choć duża); wrogowie podziemi budzą się od hałasu tylko w promieniu słyszenia, a goniąc „prosto” mogą utknąć pod sufitem, gdy gracz jest na powierzchni; grafika kafli i postaci to placeholder rysowany w kodzie
 - pozycje zdalnych graczy ufane (OK dla kooperacji, blokuje host migration)
-- brak WebSocket/relay fallback (tylko ENet P2P/LAN)
+- relay tylko przez Steam (wymaga wtyczki GodotSteam, patrz wyżej); bez niej tylko ENet P2P/LAN

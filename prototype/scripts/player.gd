@@ -56,6 +56,9 @@ const REVIVE_SYNC_MS := 100     ## postęp podnoszenia wysyłany do innych peer�
 const BOT_ENGAGE_RANGE := 220.0   ## ≤ zasięg M-83 (240 px): bot nie strzela pociskami, które zgasną w locie
 const BOT_SELF_DEFENSE := 70.0  ## w tym promieniu strzela zawsze — obrona własna
 const BOT_Q_HOLD := 8.0         ## po Q wstrzymuje ogień, żeby nie nadpisać celu stalkera
+const BOT_EVADE_RANGE := 46.0   ## wróg bliżej niż tyle: bot rozważa unik
+const BOT_KITE_RANGE := 30.0    ## ... i cofa się, gdy jest bliżej niż to (strzela w biegu, M-83 nie ma minimalnego zasięgu)
+const BOT_MEDKIT_RANGE := 180.0 ## ranny bot szuka apteczki w takim promieniu
 
 # Latarka (GDD §6.6 / §8.3): stożek 8 m, bateria 3 min, światło = hałas
 const BATTERY_MAX := 180.0
@@ -798,6 +801,15 @@ func _bot_brain(delta: float) -> void:
 	else:
 		var spd := SPEED if not is_on_floor() else (CROUCH_SPEED if crouching else SPEED * 0.85)
 		velocity.x = signf(dx) * spd
+	# unik: wróg w zasięgu ciosu albo w zapowiedzi → bot odskakuje (nie stoi, żeby oberwać)
+	if not reviving and is_on_floor():
+		var close := _nearest_enemy(BOT_EVADE_RANGE)
+		if close != null and (bool(close.get("winding")) or absf(close.global_position.x - global_position.x) < BOT_KITE_RANGE):
+			var away := signf(global_position.x - close.global_position.x)
+			velocity.x = (away if away != 0.0 else -_facing) * SPEED
+			if is_on_wall():
+				_bot_wants_jump = true
+				crouching = false
 	# skrzynia / beczka na drodze: przeskakujemy ją (graf A* nie zna rekwizytów)
 	if is_on_floor() and not reviving and absf(velocity.x) > 0.0 and _prop_ahead(signf(velocity.x)):
 		_bot_wants_jump = true
@@ -944,13 +956,38 @@ func _pick_bot_goal() -> void:
 	if downed != null:
 		_bot_target_pos = downed.global_position
 		return
+	# 2) ranny bot idzie po apteczkę (ludzie mają pierwszeństwo — jak w pickup.gd)
+	if hp < MAX_HP:
+		var kit := _nearest_medkit(BOT_MEDKIT_RANGE)
+		if kit != null:
+			_bot_target_pos = kit.global_position
+			return
 	var leader := _leader()
 	if leader != null:
-		# trzyma się 2 kafle za dowódcą
+		# trzyma się za dowódcą; kilku botów ustawia się w różnych odstępach, a nie w jednym punkcie
 		var side := 1.0 if display_id % 2 == 0 else -1.0
-		_bot_target_pos = leader.global_position + Vector2(side * 26.0, 0)
+		_bot_target_pos = leader.global_position + Vector2(side * (22.0 + float(display_id % 3) * 10.0), 0)
 		return
 	_bot_target_pos = _spawn_point
+
+## Najbliższa apteczka na ziemi w zasięgu, o ile żaden ranny człowiek nie stoi przy niej.
+func _nearest_medkit(max_dist: float) -> Node2D:
+	var best: Node2D = null
+	var best_d := max_dist
+	for h in get_tree().get_nodes_in_group("pickups"):
+		if h.kind != "health" or h.is_queued_for_deletion():
+			continue
+		var d := global_position.distance_to(h.global_position)
+		if d >= best_d:
+			continue
+		var taken := false
+		for p in get_tree().get_nodes_in_group("players"):
+			if not p.is_bot and not p.dead and p.hp < p.MAX_HP and p.global_position.distance_to(h.global_position) < 80.0:
+				taken = true
+		if not taken:
+			best = h
+			best_d = d
+	return best
 
 func _downed_teammate() -> Node2D:
 	var best: Node2D = null
