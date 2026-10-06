@@ -9,6 +9,10 @@ const Weapons := preload("res://scripts/weapons.gd")
 
 const ID := "z1_m3"
 const TITLE := "1.3  THE NEST"
+const RADIO := []
+const RACKS := false                      ## true: każde „g" dostaje stojak (zbrojownia)
+const AMBIENT := Color(0, 0, 0, 0)         ## kolor ciemności mapy; alfa 0 = domyślny z lights.gd
+const BRIEF := "Destroy every nest, kill The Vein when she wakes, then get the whole squad to the green flare."
 const ENEMY_HP := 1.0                     ## mnożnik HP wrogów tej mapy
 const OBJECTIVE := "nests"                ## nests = gniazda + boss; generators = generatory radiostacji
 const UNDERGROUND_ROW := 31               ## od tego rzędu postać jest w podziemiach (ambient, straszaki)

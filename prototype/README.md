@@ -63,6 +63,10 @@ Host wybiera w lobby przyciskiem **DIFFICULTY** albo flagą `--difficulty=easy|n
 
 Kampania gra misje po kolei: **1.2 „Przerwa w Nadawaniu"** (uruchom 4 generatory rozrzucone po mapie 288×44 — przytrzymaj [E], ok. 5,5 s i hałas — nadajnik rozbrzmiewa na cały las, Stalker idzie na źródło, wracasz na początek mapy; cel poboczny: Uwaga < 40 do ostatniego generatora) → **1.3 „Gniazdo"** (zniszcz gniazda, zabij Żyłę, ekstrakcja) → od początku. Mapy to dane w `scripts/maps/<id>.gd` (`MAP` jako siatka ASCII, `TITLE`, `OBJECTIVE`, `UNDERGROUND_ROW`, `WEAPONS`, `ACCENTS`), rejestr i kolejność kampanii (`MAPS`, `CAMPAIGN`) w `level.gd`; legenda znaczników w nagłówku `level.gd` (m.in. `G` = generator). Nowa mapa: dodaj plik, wpisz do `MAPS`/`CAMPAIGN`, uruchom `--maptest`. Host przełącza mapę u wszystkich peerów (`main._set_map`), a dołączający dostaje ją przed postacią.
 
+**Drezyna (ucieczka z 1.2).** Po ostatnim generatorze zasilanie dostaje drezyna (`D`) na wschodnim końcu głębokiego tunelu pod mapą; wejście szybem przy maszcie. Stań na pokładzie i **trzymaj [E] — pompujesz** (nie możesz wtedy strzelać ani chodzić); dwie osoby jadą szybciej, boty na pokładzie pomagają. Jazda hałasuje i budzi wrogów przy torze, a Stalker goni (88 px/s). Tor kończy się przy wyjściu `E`. **Kryjówka** (`z1_hub`, strefa bezpieczna — bez wrogów i straszaków) czeka między misjami kampanii: amunicja, **zbrojownia** (6 stojaków z bronią i kartą statystyk), **tablica z odprawą** następnej misji (podejdź: cel i zagrożenia z mapy), ciepłe światło lamp, radio; ekwipunek przechodzi dalej, a [Enter] hosta rusza do następnej misji. Mapa może mieć własny `AMBIENT`, `RACKS` i `BRIEF` w danych.
+
+Testy jazdy: `godot --headless --path . -- --host --mission=z1_m2 --ridetest --autoquit=100`; sieciowy: host `-- --host --mission=z1_m2 --ridehost --autoquit=45` i klient `-- --join=127.0.0.1 --rideclient --autoquit=40`.
+
 Testy: `godot --headless --path . -- --maptest --autoquit=4` (kształt siatki + osiągalność z grafu nawigacji: start → cele/wrogowie/przedmioty/wyjścia i z powrotem), `godot --headless --path . -- --host --mission=z1_m2 --gentest --autoquit=35` (cała misja 1.2 i przejście 1.3 ↔ 1.2). `--mission=ID` wybiera mapę startową (testy 1.3 wymuszają `z1_m3` same).
 
 ## Nocny Dyżur (tryb endless, v1)
@@ -167,7 +171,7 @@ godot --headless --path . -- --host --wipetest --autoquit=8
 godot --headless --path . -- --host --missiontest --autoquit=9
 ```
 
-Flagi: `--mission=ID` (mapa startowa), `--maptest`, `--gentest`, `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--nightshift` (tryb Nocny Dyżur), `--shifttest`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
+Flagi: `--mission=ID` (mapa startowa), `--maptest`, `--gentest`, `--ridetest`, `--ridehost`, `--rideclient`, `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--nightshift` (tryb Nocny Dyżur), `--shifttest`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
 
 ## Zrzuty ekranu bez GPU (xvfb)
 

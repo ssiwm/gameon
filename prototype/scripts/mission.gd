@@ -201,6 +201,8 @@ func _open_extraction(q_bonus: bool = true) -> void:
 	if q_bonus:
 		NoiseMgr.objective_bonus()
 	print("[MISSION] objective complete -> extraction at %s" % exit_pos)
+	for c in get_tree().get_nodes_in_group("handcar"):
+		c.activate()                 # misja 1.2: zasilanie drezyny — ucieczka podziemnym torem
 	_event.rpc("objective")
 
 func _tick_extract(delta: float) -> void:
@@ -366,6 +368,8 @@ func _event(kind: String) -> void:
 
 ## Teksty dla HUD (angielski interfejs).
 func objective_caption() -> String:
+	if kind == "hub":
+		return "SAFE ROOM"
 	var base := ""
 	match phase:
 		Phase.OBJECTIVE:
@@ -379,6 +383,8 @@ func objective_caption() -> String:
 	return base
 
 func objective_text() -> String:
+	if kind == "hub":
+		return "Safe room — restock and swap weapons"
 	match phase:
 		Phase.OBJECTIVE:
 			if kind == "generators":
@@ -388,6 +394,12 @@ func objective_text() -> String:
 			return "Kill The Vein — shoot her mouth while it's OPEN"
 		Phase.EXTRACT:
 			var me := _local_human()
+			var car := get_tree().get_first_node_in_group("handcar")
+			if car != null and me != null and not car.arrived:
+				var cdx: float = car.global_position.x - me.global_position.x
+				if car.speed > 5.0 or car.power > 0.0:
+					return "Keep pumping — the exit is %d m ahead" % int(absf(car.global_position.x - exit_pos.x) / 16.0)
+				return "Get to the handcar   %s %d m" % ["←" if cdx < 0.0 else "→", int(absf(cdx) / 16.0)]
 			if me == null:
 				return "Reach the green flare"
 			var dx := exit_pos.x - me.global_position.x
@@ -397,6 +409,12 @@ func objective_text() -> String:
 	return ""
 
 func objective_hint() -> String:
+	if kind == "hub":
+		var main := get_tree().current_scene
+		var nxt := String(main.get("after_hub")) if main != null else ""
+		var lvl := get_tree().get_first_node_in_group("level")
+		var title := String(lvl.MAPS[nxt].TITLE) if lvl != null and lvl.MAPS.has(nxt) else "the next mission"
+		return ("[ENTER]  Depart: %s" % title) if multiplayer.is_server() else "The host decides when to depart: %s" % title
 	match phase:
 		Phase.OBJECTIVE:
 			if kind == "generators":
@@ -408,6 +426,9 @@ func objective_hint() -> String:
 			return "Light her mouth mid wind-up to stun  ·  Q lures her away"
 		Phase.EXTRACT:
 			if kind == "generators":
+				var car2 := get_tree().get_first_node_in_group("handcar")
+				if car2 != null and not car2.arrived:
+					return "Hold E aboard to pump  ·  more hands = faster  ·  he is coming — Q lures him"
 				return "The transmitter is live — he heard it  ·  Q lures him away"
 			return "The whole squad, standing, at the flare for 3 s"
 	return ""

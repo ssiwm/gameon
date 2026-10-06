@@ -23,6 +23,7 @@ const UiTheme := preload("res://scripts/ui_theme.gd")
 const Hints := preload("res://scripts/hints.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
+const Codex := preload("res://scripts/codex.gd")
 
 ## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.7
@@ -149,6 +150,10 @@ var _result_prompt: Label
 var _result_title: Label
 var _result_sub: Label
 var _result_box: StyleBoxFlat
+var _item: Dictionary = {}                ## karta statystyk broni leżącej w zasięgu [E] (stojak w kryjówce, łup z mapy)
+var _brief: Dictionary = {}               ## karta odprawy przy tablicy w kryjówce
+var _item_id := -2
+var _brief_id := ""
 var _demo_footer: Control = null     ## stopka dema na ekranie wyniku — tylko na końcu kampanii / serii
 
 var _slot_on: StyleBoxFlat
@@ -170,6 +175,8 @@ func _ready() -> void:
 	_build_controls()
 	_build_hint()
 	_build_result()
+	_item = _make_info_card(250.0, 2)
+	_brief = _make_info_card(330.0, 3)
 	get_viewport().size_changed.connect(_fit)
 	Settings.changed.connect(_apply_scale)
 	_fit()
@@ -658,6 +665,7 @@ func _process(delta: float) -> void:
 	_drive_status()
 	_drive_mission()
 	_drive_prompt()
+	_drive_cards()
 	_drive_hint(delta)
 	_drive_controls()
 	queue_redraw()
@@ -839,7 +847,7 @@ func _fill_result(m: Node) -> void:
 		_result_stats.remove_child(c)
 		c.free()
 	var rows: Array
-	var prompt := "New mission"
+	var prompt := "Continue"
 	if NightShift.active:
 		rows = _shift_result(m)
 		prompt = "New shift" if (m.phase == Mission.Phase.FAILED or m.shift_complete()) else "Next mission"
@@ -896,6 +904,103 @@ func _shift_result(m: Node) -> Array:
 		rows.append(["", "NEW RECORD"])
 	return rows
 
+## Karta informacyjna: tytuł, podpis, siatka wierszy i opis. `cols` = liczba kolumn siatki (2 = etykieta + wartość).
+func _make_info_card(width: float, cols: int) -> Dictionary:
+	var card := _card(Vector2(MARGIN, MARGIN))
+	card.custom_minimum_size = Vector2(width, 0)
+	card.visible = false
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	card.add_child(box)
+	var title := UiTheme.label("", 12, UiTheme.ACCENT)
+	box.add_child(title)
+	var tag := UiTheme.label("", 8, UiTheme.MUTED)
+	box.add_child(tag)
+	_hr(box)
+	var grid := GridContainer.new()
+	grid.columns = cols
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 1)
+	box.add_child(grid)
+	var text := UiTheme.label("", 8, UiTheme.TEXT)
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.custom_minimum_size = Vector2(width - 26.0, 0)
+	box.add_child(text)
+	return {"card": card, "title": title, "tag": tag, "grid": grid, "text": text, "cols": cols}
+
+func _fill_info(c: Dictionary, title: String, tag: String, rows: Array, text: String, accent: Color) -> void:
+	(c["title"] as Label).text = title
+	(c["title"] as Label).add_theme_color_override("font_color", accent)
+	(c["tag"] as Label).text = tag
+	(c["text"] as Label).text = text
+	(c["text"] as Label).visible = text != ""
+	var grid: GridContainer = c["grid"]
+	for ch in grid.get_children():
+		grid.remove_child(ch)
+		ch.free()
+	for r in rows:
+		for i in (r as Array).size():
+			grid.add_child(UiTheme.label(String(r[i]), 9, UiTheme.MUTED if i == 0 else UiTheme.TEXT))
+	(c["card"] as Control).reset_size()
+
+## Karty: statystyki broni w zasięgu [E] (nad paskiem kontekstowym) i odprawa przy tablicy (u góry, pod kartą celu).
+func _drive_cards() -> void:
+	# --- broń na stojaku w zasięgu [E]: karta tylko w kryjówce (w misjach zasłaniałaby grę; tam wystarcza pasek „[E] Take…")
+	var it: Node2D = null
+	if NoiseMgr.safe_zone and _player != null and not _player.dead:
+		it = _player.weapons.nearby_weapon_item()
+	var wid: int = int(it.arg) if it != null else -1
+	if wid != _item_id:
+		_item_id = wid
+		if wid >= 0:
+			var d: RefCounted = Weapons.def(wid)
+			var notes: Array = Codex.WEAPON_TEXT.get(String(d.key), ["", ""])
+			_fill_info(_item, String(d.name), Codex._slot_name(d), Codex._weapon_stats(d), String(notes[0]), d.tracer_color)
+	var ic: Control = _item["card"]
+	ic.visible = it != null
+	if ic.visible:
+		# nad stojakiem: punkt tuż nad deską w świecie → ekran (macierz kamery, z zoomem) → jednostki HUD; karta nie zasłania gracza ani broni
+		var top: Vector2 = get_viewport().get_canvas_transform() * (it.global_position + Vector2(0, -42))
+		var hx := top.x / scale.x
+		var hy := top.y / scale.y
+		ic.position = Vector2(clampf(hx - ic.size.x * 0.5, 6.0, maxf(6.0, size.x - ic.size.x - 6.0)), maxf(6.0, hy - ic.size.y - 6.0))
+	# --- odprawa przy tablicy
+	var near_board := false
+	for b in get_tree().get_nodes_in_group("board"):
+		if b.local_in_range:
+			near_board = true
+			break
+	var bc: Control = _brief["card"]
+	bc.visible = near_board
+	if near_board:
+		var main := get_tree().current_scene
+		var target := String(main.get("after_hub")) if main != null else ""
+		var lvl := get_tree().get_first_node_in_group("level")
+		if target != _brief_id and lvl != null:
+			_brief_id = target
+			_fill_brief(lvl.briefing(target))
+		bc.position = Vector2((size.x - bc.size.x) * 0.5, size.y * 0.2)
+
+func _fill_brief(info: Dictionary) -> void:
+	if info.is_empty():
+		_fill_info(_brief, "BRIEFING", "No orders yet", [], "", UiTheme.ACCENT)
+		return
+	var rows: Array = []
+	var counts: Dictionary = info["counts"]
+	var kinds: Array = counts.keys()
+	kinds.sort_custom(func(a: String, b: String) -> bool: return int(counts[a]) > int(counts[b]))
+	for k in kinds:
+		for e in Codex.ENEMIES:
+			if e[0] == k:
+				rows.append([String(e[3]), "x%d" % int(counts[k]), String(e[4])])
+	if bool(info["stalker"]):
+		rows.append(["STALKER", "x1", "Cannot be killed"])
+	if int(info["nests"]) > 0:
+		rows.append(["NEST", "x%d" % int(info["nests"]), "Mission objective"])
+	if bool(info["boss"]):
+		rows.append(["THE VEIN", "x1", "Boss — Mother of Nests"])
+	_fill_info(_brief, "BRIEFING  ·  " + String(info["title"]), "Threats on this mission (from the map)", rows, String(info["brief"]), UiTheme.ACCENT)
+
 ## Generator, przy którym stoi lokalny gracz (misja 1.2) albo null.
 func _near_generator() -> Node:
 	for g in get_tree().get_nodes_in_group("generators"):
@@ -913,6 +1018,7 @@ func _drive_prompt() -> void:
 	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	var gen := _near_generator()
+	var car := get_tree().get_first_node_in_group("handcar")
 	if wipe_left > 0.0:
 		_center.text = "SQUAD DOWN"
 		_center_sub.text = ("Extraction failed — the shift ends in %d" if NightShift.active else "Extraction failed — restarting the mission in %d") % ceili(wipe_left)
@@ -928,6 +1034,20 @@ func _drive_prompt() -> void:
 	elif _player != null and _player.revive_hint() != "":
 		text = _player.revive_hint()
 		col = UiTheme.OK
+	elif car != null and car.local_state != "" and _player != null:
+		match String(car.local_state):
+			"nopower":
+				text = "The handcar has no power — start all the generators"
+				col = UiTheme.MUTED
+			"near":
+				text = "Step onto the handcar"
+				col = UiTheme.ACCENT
+			"aboard":
+				text = "Hold [E]  Pump  (you can't shoot while pumping)"
+				col = UiTheme.ACCENT
+			"pumping":
+				text = "Pumping…  release [E] to shoot"
+				col = UiTheme.OK
 	elif gen != null and _player != null and _player.weapons.nearby_weapon_item() == null:
 		if gen.progress > 0.0:
 			text = "Starting the generator…"
@@ -953,7 +1073,7 @@ func _drive_prompt() -> void:
 			else:
 				text = "Hold here — the whole squad must reach the flare"
 				col = UiTheme.ACCENT
-	if wipe_left <= 0.0 and m != null and m.banner_visible():
+	if wipe_left <= 0.0 and m != null and m.banner_visible() and not (bool(_item["card"].visible) or bool(_brief["card"].visible)):
 		# tytuł misji w pierwszych sekundach; w Nocnym Dyżurze także zasady serii
 		var lvl := get_tree().get_first_node_in_group("level")
 		var lines: Array = []
@@ -966,6 +1086,10 @@ func _drive_prompt() -> void:
 			elif NightShift.mods.is_empty():
 				lines.append("The first mission — no modifiers")
 			_center.text = NightShift.title()
+		elif lvl != null and not (lvl.radio as Array).is_empty():
+			_center.text = String(lvl.title)
+			for rl in lvl.radio:
+				lines.append(String(rl))
 		else:
 			_center.text = String(lvl.title) if lvl != null else ""
 			lines.append(m.objective_text())
