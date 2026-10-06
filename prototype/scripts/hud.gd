@@ -314,7 +314,7 @@ func _build_prompt() -> void:
 
 func _build_controls() -> void:
 	_controls = UiTheme.label(
-		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J/LMB fire · R reload · V/RMB melee · 1-3 gun · E take/revive · Q lure · L light",
+		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J/LMB fire · R reload · V/RMB melee · 1-3 gun · E take/revive · Q lure · G scream · L light",
 		7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_controls)
 	_f1 = UiTheme.label("F1  controls", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)

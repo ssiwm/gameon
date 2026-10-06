@@ -274,6 +274,7 @@ func _setup_local() -> void:
 ## kucanie i HP), a kamera dostaje lokalny shake.
 func _process(delta: float) -> void:
 	_flash = maxf(0.0, _flash - delta)
+	_scream_ring = maxf(0.0, _scream_ring - delta)
 	if _camera.enabled:
 		_camera.offset = Feel.shake_offset()
 	if _is_remote or is_bot:
@@ -493,6 +494,8 @@ func _local_brain(delta: float) -> void:
 
 	if Input.is_action_just_pressed("overcharge"):
 		_try_overcharge()
+	if Input.is_action_just_pressed("scream"):
+		Voice.try_scream(self)
 	if Input.is_action_just_pressed("flashlight"):
 		_toggle_flashlight()
 
@@ -524,6 +527,25 @@ func _tick_drop(delta: float) -> bool:
 	if _drop_t <= 0.0:
 		set_collision_mask_value(PLATFORM_LAYER_BIT, true)
 	return true
+
+## Krzyk (mikrofon albo G, voice.gd): hałas + przyciągnięcie wrogów; efekt widzą wszyscy.
+func do_scream(amount: float) -> void:
+	if dead or is_bot or not is_multiplayer_authority():
+		return
+	NoiseMgr.add_scream(amount, global_position)
+	if NoiseMgr.has_network():
+		_scream_fx.rpc()
+	else:
+		_scream_fx()
+
+var _scream_ring := 0.0
+
+@rpc("authority", "call_local", "reliable")
+func _scream_fx() -> void:
+	_scream_ring = 0.6
+	Audio.play_variant_at("player_hurt", 2, global_position, Audio.BUS_WORLD, 1.0, 0.8)
+	if is_multiplayer_authority():
+		Feel.shake(1.8)
 
 func _try_overcharge() -> void:
 	# Dźwięk od razu, niezależnie od tego czy ładunek się uda — klik ma potwierdzać
@@ -1170,6 +1192,9 @@ func _gun_len() -> float:
 ## stan „DOWN" i pasek podnoszenia. Teksty wyśrodkowane nad postacią.
 func _draw_overlay(ov: Node2D) -> void:
 	var font := ThemeDB.fallback_font
+	if _scream_ring > 0.0:
+		var k := 1.0 - _scream_ring / 0.6
+		ov.draw_arc(Vector2(0, -12), 6.0 + k * 52.0, 0.0, TAU, 28, Color(1.0, 0.85, 0.5, (1.0 - k) * 0.7), 1.5)
 	var col := _body_color()
 	var name_txt := "BOT" if is_bot else "P%d" % display_id
 	if dead:

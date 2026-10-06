@@ -62,6 +62,7 @@ const DROP_TIME := 0.25
 ## Podsłuchacz: krzyk to hałas (podnosi Uwagę, budzi okolicę) i wskazuje hordzie źródło.
 const SCREAM_NOISE := 14.0
 const ALARM_R := 420.0           ## wrogowie w tym promieniu dostają ślad do krzyku
+const SCREAM_LURE_R := 400.0     ## krzyk GRACZA (voice.gd, GDD §8.2) przyciąga wrogów w 25 m
 
 @export var kind := "trzosek"
 
@@ -256,6 +257,15 @@ func _physics_process(delta: float) -> void:
 	_apply_gravity(delta)
 	move_and_slide()
 	_send_state(delta)
+
+## Krzyk gracza (mikrofon albo G): wróg w promieniu 25 m rusza do źródła; śpiącego budzi.
+func hear_scream(pos: Vector2) -> void:
+	if not NoiseMgr.is_server() or not alive:
+		return
+	if global_position.distance_to(pos) > SCREAM_LURE_R * Difficulty.m("enemy_hear"):
+		return
+	_lead_at(pos)
+	wake()
 
 ## --- Podsłuchacz -----------------------------------------------------------
 

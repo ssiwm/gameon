@@ -149,6 +149,26 @@ func reset_mission() -> void:
 	level_changed.emit(level, stalker_awake)
 	overcharge_used.emit(overcharge_charges)
 
+## Krzyk gracza (voice.gd, GDD §8.2): hałas + przyciągnięcie wrogów w promieniu 25 m.
+func add_scream(amount: float, pos: Vector2) -> void:
+	if is_server():
+		_apply_scream(amount, pos)
+	else:
+		_report_scream.rpc_id(1, amount, pos)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _report_scream(amount: float, pos: Vector2) -> void:
+	if multiplayer.is_server():
+		_apply_scream(amount, pos)
+
+func _apply_scream(amount: float, pos: Vector2) -> void:
+	_apply(clampf(amount, 0.0, 30.0), pos)
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e.has_method("hear_scream"):
+			e.hear_scream(pos)
+	if has_network():
+		_push.rpc(level, last_noise_pos, stalker_awake, overcharge_charges)
+
 @rpc("any_peer", "call_remote", "reliable")
 func _report(amount: float, pos: Vector2) -> void:
 	if multiplayer.is_server():
