@@ -493,6 +493,96 @@ def mimik(an, i):
     return fr, glow
 
 
+# ================================================================ ĆMA
+
+CMA_ANIMS = [("idle", 4, 14, True), ("sleep", 1, 1, False)]
+
+
+def _flip_v(fr, glow):
+    """Odbicie w pionie (wiszący na suficie): odwraca kolejność wierszy obu warstw."""
+    fr.px = fr.px[::-1]
+    glow.px = glow.px[::-1]
+
+
+def cma(an, i):
+    """Ćma: wielkie, blade skrzydła, drobne ciało; w locie trzepocze, śpiąc wisi złożona (odbita w pionie)."""
+    W, H = 16, 14
+    hi = Hi(W, H)
+    wing = hi.material(ramp((196, 186, 150), warm=(1.0, 0.95, 0.8), cool=(0.3, 0.25, 0.4)))
+    wing_d = hi.material(ramp((140, 130, 106), cool=(0.25, 0.2, 0.4)))
+    body = hi.material(ramp((92, 80, 70), cool=(0.15, 0.12, 0.3)))
+    sleep = an == "sleep"
+    lift = [1.0, 0.35, -0.5, 0.35][i % 4] if not sleep else -0.9
+    # dalekie skrzydło (ciemniejsze), ciało, bliższe skrzydło
+    hi.ellipse((7.0, 7.0 - 2.4 * lift), 2.2, 3.6, wing_d, rot=math.radians(-18 - 22 * lift))
+    hi.ellipse((8.0, 9.6), 3.4, 1.7, body)
+    hi.ellipse((11.2, 9.0), 1.5, 1.4, body)
+    hi.capsule((11.8, 8.2), (13.6, 5.8), 0.3, 0.2, body)         # czułek
+    hi.capsule((12.2, 8.4), (14.4, 6.6), 0.3, 0.2, body)
+    if sleep:
+        hi.ellipse((6.4, 8.0), 4.0, 2.2, wing, rot=math.radians(14))     # złożone wzdłuż ciała
+    else:
+        hi.ellipse((6.0, 6.6 - 2.8 * lift), 2.6, 4.0, wing, rot=math.radians(-12 - 26 * lift))
+    fr = _finish(hi, 0.3)
+    glow = Frame(W, H)
+    _glow_px(glow, fr, [(12.2, 9.0)], (255, 214, 140), 170 if sleep else 255)
+    if sleep:
+        _flip_v(fr, glow)
+    return fr, glow
+
+
+# ================================================================ SKOCZEK
+
+SKOCZEK_ANIMS = [("idle", 4, 3, True), ("run", 6, 12, True), ("windup", 1, 1, False), ("sleep", 1, 1, False)]
+
+
+def skoczek(an, i):
+    """Chudy, długonogi owadzi drapieżnik. Śpi wisząc głową w dół (odbity w pionie), spada rozkraczony,
+    po lądowaniu biega długimi susami."""
+    W, H = 16, 16
+    hi = Hi(W, H)
+    shell = hi.material(ramp((150, 144, 120), warm=(1.0, 0.95, 0.8), cool=(0.2, 0.18, 0.35)))
+    shell_d = hi.material(ramp((96, 90, 76), cool=(0.18, 0.15, 0.35)))
+    bone = hi.material(ramp((214, 206, 176), cool=(0.3, 0.2, 0.3)), bands=(0.0, 0.3, 0.6, 0.88))
+    t = i / {"idle": 4, "run": 6}.get(an, 1) * math.tau
+    sleep, wind = an == "sleep", an == "windup"
+    ground = 15.6
+    cy = 8.0 + (0.4 * math.sin(t) if an == "idle" else (-1.0 * abs(math.sin(t)) if an == "run" else 0.0))
+    if sleep:
+        cy = 9.0
+    # cztery długie nogi: dwie bliższe, dwie dalsze (ciemniejsze)
+    legs = [(9.6, 1), (6.4, 1), (8.6, 0), (5.4, 0)]
+    for k, (hx, near) in enumerate(legs):
+        if sleep:
+            a1, a2 = (-35.0 + 12 * k, 120.0)
+        elif wind:
+            a1, a2 = (50.0 - 22 * k, -30.0)          # rozkraczone do lądowania
+        elif an == "run":
+            ph = t + k * math.pi * 0.5
+            a1, a2 = (38 * math.sin(ph), 48 + 40 * max(0, math.cos(ph)))
+        else:
+            a1, a2 = ([-30.0, -10.0, 12.0, 32.0][k], 38.0)
+        hip = (hx, cy + 0.6)
+        kn = fk(hip, a1, 4.2)
+        ft = fk(kn, a1 - a2, 4.6)
+        if not sleep and not wind:
+            ft = (ft[0], min(ft[1], ground))
+        m = shell if near else shell_d
+        hi.capsule(hip, kn, 0.9, 0.7, m)
+        hi.capsule(kn, ft, 0.7, 0.45, m)
+    hi.ellipse((7.4, cy), 3.6, 2.0, shell)                                   # korpus
+    hi.ellipse((5.4, cy - 0.6), 2.4, 1.6, shell_d)
+    hi.ellipse((11.2, cy - 0.6), 2.0, 1.7, shell)                            # głowa
+    hi.capsule((12.4, cy + 0.3), (14.2, cy + 1.2), 0.5, 0.3, bone)           # szczęki
+    fr = _finish(hi, 0.3)
+    glow = Frame(W, H)
+    col = (255, 64, 38) if wind else (255, 140, 70)
+    _glow_px(glow, fr, [(11.6, cy - 1.0), (12.8, cy - 0.6), (10.8, cy - 1.6)], col, 140 if sleep else 255)
+    if sleep:
+        _flip_v(fr, glow)
+    return fr, glow
+
+
 # ================================================================ API
 
 def monster_frames(fn, anims):

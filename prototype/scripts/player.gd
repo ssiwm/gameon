@@ -496,6 +496,8 @@ func _local_brain(delta: float) -> void:
 		_try_overcharge()
 	if Input.is_action_just_pressed("scream"):
 		Voice.try_scream(self)
+	if Input.is_action_just_pressed("flare"):
+		_throw_flare()
 	if Input.is_action_just_pressed("flashlight"):
 		_toggle_flashlight()
 
@@ -527,6 +529,14 @@ func _tick_drop(delta: float) -> bool:
 	if _drop_t <= 0.0:
 		set_collision_mask_value(PLATFORM_LAYER_BIT, true)
 	return true
+
+## Flara (F): rzut łukiem w stronę celowania; pulę i spawn rozstrzyga serwer (NoiseMgr.request_flare).
+func _throw_flare() -> void:
+	if dead or is_bot:
+		return
+	var origin := global_position + Vector2(aim_dir.x * 6.0, -12.0)
+	var vel := aim_dir.normalized() * 190.0 + Vector2(velocity.x * 0.5, -70.0)
+	NoiseMgr.request_flare(origin, vel)
 
 ## Krzyk (mikrofon albo G, voice.gd): hałas + przyciągnięcie wrogów; efekt widzą wszyscy.
 func do_scream(amount: float) -> void:

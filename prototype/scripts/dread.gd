@@ -59,7 +59,7 @@ func _process(delta: float) -> void:
 	_update_darkness(delta, pl, lvl)
 	_update_eyes(delta, pl)
 	# tempo: Uwaga przyspiesza, podziemia i trudność też
-	var pace: float = Difficulty.m("dread") * (1.0 + 1.2 * NoiseMgr.level / NoiseMgr.MAX_LEVEL) * (1.6 if deep else 1.0)
+	var pace: float = Difficulty.m("dread") * (1.0 + 1.2 * NoiseMgr.level / NoiseMgr.MAX_LEVEL) * (1.6 if deep else 1.0) * (1.0 + 0.8 * Director.tension)
 	_t_event -= delta * pace
 	_t_flicker -= delta * pace
 	_t_eyes -= delta * pace

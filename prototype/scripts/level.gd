@@ -21,6 +21,7 @@ extends Node2D
 ##   g  broń na ziemi         a  skrzynka z amunicją
 ##   L  Ślepiec (nie widzi, słyszy)   P  Podsłuchacz (stoi, krzyczy i ściąga hordę)
 ##   Y  Mimik (udaje kolegę z drużyny)
+##   J  Skoczek (wisi pod sufitem i spada)   Z  Ćma (światłolubna, wisi pod sufitem)
 ##
 ## Układ (192 × 44 kafli): las + posterunek → arena z kładkami → Skład (hala z antresolą,
 ## dach, schody z rusztowań) → tartak z bossem; pod całą mapą biegną podziemia
@@ -46,6 +47,7 @@ const BOSS_SCENE := preload("res://scenes/boss.tscn")
 const PROP := preload("res://scripts/prop.gd")
 const PICKUP := preload("res://scripts/pickup.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const FLARE := preload("res://scripts/flare.gd")
 
 const MAP := [
 	"##............................................................................................................................................................................................##",
@@ -68,7 +70,7 @@ const MAP := [
 	"##.......w...w...........................................................................................................P..MM..T..M...........................w.........wk.T......w..........##",
 	"##.......w...w..................................................................................................CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC................w........-------....w..........##",
 	"##.......w...w..................................................................................................CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC................w...g.....w.........w..........##",
-	"##.......w...w............................................=========.........................................----CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC----............w-------..w.........w..........##",
+	"##.......w...w............................................=========.........................................----CbbbbbbbbbbbbbbbbbJbbbbbbbbbbbC----............w-------..w.........w..........##",
 	"##.......w...w....CCCCCCCCCCCCCCCCCCC.............................T...k.........................................CbbbbbbbbbbgbbbbbbbbbbbTbbbbbbC................w.........w.........w..........##",
 	"##.......w...w.---bbbbbbbbbbbbbbbbbbC...........=========.....===========...=========....................----....bb=========================bb....----.........w......-------......w..........##",
 	"##.......w...w....bbbbbbbbbbbbbbbbbbC............................................................................bbbbbbbbbbbbbbbbbbbbbbbbbbbbb.................w.........w.........w..........##",
@@ -81,12 +83,12 @@ const MAP := [
 	"######################################====bb################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC====bbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC====bbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
 	"######bbbbbbbbbbbbbbbbbbbbbbbbb#######bbbbbb################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbbbbbbCCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
 	"######bbbbbbbbbbbbbbbbbbbbbbbbb#######bb====################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbb====CCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbb====CCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
-	"######bbbbbbbbbbbbbgbbbbbbbbbbb#######bbbbbb################CCCbbbbbbbbbbbbbNbbbbbbbbbbbbbbCCCCbbbbbbCCCCCCCCbbbbbbbbbbbbbbbbbNbbbbbbbbbbbbbbbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
+	"######bbbbZbbbbbbbbgbbbbbbZbbbb#######bbbbbb################CCCbbbZbZbbbbbbbNbbbbbbbbbbbZbbCCCCbbbbbbCCCCCCCCbbbZbbbbbbbbbbbbbNbbbbbbbbbbbbbZbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
 	"######bbbbbbbbb=========bbbbbbb#######====bb################CCCbbbbbbbbb=========bbbbbbbbbbCCCC====bbCCCCCCCCbbbbbbbbb=================bbbbbbbbbCCCCCCCC====bbCCCCCCCCCCCCCbbbbbbbbb======bCCC##",
 	"######bbbbbbbPbbbbbbbbbbbbbbbbb#######bbbbbb################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbbbbbbCCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
 	"######bbbb=======bbbbb=======bbbbbbbbbbb====bbbbbbbbbbbbbbbbbbbbbbb=======bbbbb=======bbbbbbbbbbb====bbbbbbbbbbbb=======bbbbbbbbbbbbb=======bbbbbbbbbbbbbb====bbbbbbbbbbbbbbbbb=======bbbbbCCC##",
-	"######bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCC##",
-	"######bb===bbbbbbMMbbbbbbbbb===bbbbbbb====bbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbMMbbbbbbbb===bbbbbbb====bbbbbbbbbbbb===bbbbbbbbbbMMbbbbbbbbbbbbb===bbbbbbbbbb====bbbbbbbbbbbbbbbbb===MMbbbbbbbbbCCC##",
+	"######bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbJbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCC##",
+	"######bb===bbbbbbMMbbbbbbbbb===bbbbbbb====bbbbbbbbJbbbbbbbbbbbbbb===bbbbbbbMMbbbbbbbb===bbbbbbb====bbbbbJbbbbbb===bbbbbbbbbbMMbbbbbbbbbbbbb===bbbbbbbbbb====bbbbbbbbbbbbbbbbb===MMbbbbbbbbbCCC##",
 	"######bbbbbbbbbbbMMTbbbbbbbabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbTbLbbbbMMbbbbbbbWbkbbbbbYbbbbbbbbbbbbbbbbbabbbbbTbbbbbbbMMbbLbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbMMbbbbTbbbbCCC##",
 	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
 	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
@@ -269,7 +271,7 @@ func _exposure(c: int, r: int) -> int:
 ## Znaczniki → postacie. Nazwy numerowane od lewej do prawej, identycznie
 ## na każdym peerze.
 func _spawn_entities() -> void:
-	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "N": [], "k": [], "o": [], "a": [], "g": []}
+	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "k": [], "o": [], "a": [], "g": []}
 	for r in MAP.size():
 		var row: String = MAP[r]
 		for c in row.length():
@@ -281,7 +283,7 @@ func _spawn_entities() -> void:
 				"E": exits.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "L", "P", "Y", "N", "k", "o", "a", "g": found[ch].append(p)
+				"T", "W", "L", "P", "Y", "J", "Z", "N", "k", "o", "a", "g": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -294,6 +296,10 @@ func _spawn_entities() -> void:
 		_add_enemy("Podsluchacz%d" % (i + 1), "podsluchacz", found["P"][i])
 	for i in found["Y"].size():
 		_add_enemy("Mimik%d" % (i + 1), "mimik", found["Y"][i])
+	for i in found["J"].size():
+		_add_enemy("Skoczek%d" % (i + 1), "skoczek", _hang_pos(found["J"][i], 14.0))
+	for i in found["Z"].size():
+		_add_enemy("Cma%d" % (i + 1), "cma", _hang_pos(found["Z"][i], 8.0))
 	for i in found["N"].size():
 		var n := NEST_SCENE.instantiate()
 		n.name = "Nest%d" % (i + 1)
@@ -319,6 +325,16 @@ func _spawn_entities() -> void:
 		b.name = "Boss"
 		b.position = boss_home
 		add_child(b)
+
+## Punkt zawieszenia pod sufitem nad znacznikiem: pierwsza bryła w górę (kolumna znacznika), a wróg
+## wisi tuż pod nią (stopy = dół sprite'a). Bez sufitu zostaje na podłodze.
+func _hang_pos(p: Vector2, body_h: float) -> Vector2:
+	var c := int(p.x / TILE)
+	var r := int(p.y / TILE) - 1
+	for rr in range(r, -1, -1):
+		if _is_solid(c, rr):
+			return Vector2(p.x, (rr + 1) * TILE + body_h)
+	return p
 
 func _add_enemy(n: String, kind: String, p: Vector2) -> void:
 	var e := ENEMY_SCENE.instantiate()
@@ -356,6 +372,31 @@ func _add_map_item(n: String, kind: String, arg: int, pos: Vector2) -> void:
 	it.arg = arg
 	it.position = pos + Vector2(0, -2)
 	add_child(it)
+
+# ---------------------------------------------------------------- flary
+
+var _flare_serial := 0
+
+## Serwer: flara rzucona przez gracza (NoiseMgr.request_flare) — powstaje u wszystkich peerów.
+func spawn_flare(pos: Vector2, vel: Vector2) -> void:
+	if not NoiseMgr.is_server():
+		return
+	_flare_serial += 1
+	var n := "Flare%d" % _flare_serial
+	if NoiseMgr.has_network():
+		_spawn_flare_rpc.rpc(n, pos, vel)
+	else:
+		_spawn_flare_rpc(n, pos, vel)
+
+@rpc("authority", "call_local", "reliable")
+func _spawn_flare_rpc(n: String, pos: Vector2, vel: Vector2) -> void:
+	if has_node(n):
+		return
+	var f: Node2D = FLARE.new()
+	f.name = n
+	f.position = pos
+	f.vel = vel
+	add_child(f)
 
 # ---------------------------------------------------------------- apteczki
 
@@ -416,6 +457,8 @@ func clear_pickups() -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _clear_pickups_rpc() -> void:
+	for f in get_tree().get_nodes_in_group("flares"):
+		f.queue_free()
 	for h in get_tree().get_nodes_in_group("pickups"):
 		h.queue_free()
 		# nazwa zwalnia się dopiero po klatce — przedmioty z mapy wracają odroczone

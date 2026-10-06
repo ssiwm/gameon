@@ -207,6 +207,7 @@ func _try_cache() -> void:
 	for w in carried:
 		added += Arsenal.add_reserve(w, maxi(1, int(Weapons.def(w).pickup_rounds * 0.6)))
 	if added > 0:
+		NoiseMgr.add_flare()          # skrzynia z mapy zawiera też flarę
 		_level().take_item(name)
 
 ## Broń leży na ziemi i czeka na E — czy ten gracz stoi dość blisko?

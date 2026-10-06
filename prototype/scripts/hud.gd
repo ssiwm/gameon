@@ -84,6 +84,9 @@ var _noise_val: Label
 var _hearts: Pips
 var _health_note: Label
 var _charges: Pips
+var _flares: Pips
+var _note: Label
+var _note_t := 0.0
 var _slots: Array[PanelContainer] = []
 var _slot_labels: Array[Label] = []
 var _battery: Bar
@@ -146,6 +149,7 @@ func _fit() -> void:
 	var cw := 400.0
 	_place(_warn, Vector2((w - cw) * 0.5, h * WARN_Y), Vector2(cw, 20))
 	_place(_warn_sub, Vector2((w - cw) * 0.5, h * WARN_Y + 20.0), Vector2(cw, 12))
+	_place(_note, Vector2((w - cw) * 0.5, h * WARN_Y + 36.0), Vector2(cw, 14))
 	_place(_center, Vector2((w - cw) * 0.5, h * CENTER_Y), Vector2(cw, 28))
 	_place(_center_sub, Vector2((w - cw) * 0.5, h * CENTER_Y + 28.0), Vector2(cw, 16))
 	_place(_controls, Vector2(MARGIN, h - 16.0), Vector2(w - 2.0 * MARGIN, 12))
@@ -221,6 +225,13 @@ func _build_status_card() -> void:
 	_charges.on = UiTheme.ACCENT
 	_charges.custom_minimum_size = Vector2(34, 9)
 	qr.add_child(_charges)
+	var fr := _row(box, "FLARE  F")
+	_flares = Pips.new()
+	_flares.shape = "diamond"
+	_flares.count = NoiseMgr.FLARE_MAX
+	_flares.on = Color(1.0, 0.5, 0.25)
+	_flares.custom_minimum_size = Vector2(54, 9)
+	fr.add_child(_flares)
 	_hr(box)          # grupa „stan" | grupa „broń"
 
 	_slot_on = UiTheme.panel_box()
@@ -309,6 +320,11 @@ func _build_center() -> void:
 	add_child(_warn)
 	_warn_sub = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_warn_sub)
+	# krótkie komunikaty (np. „wabik już nie działa tutaj")
+	_note = UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
+	_note.modulate.a = 0.0
+	add_child(_note)
+	NoiseMgr.overcharge_stale.connect(func() -> void: show_note("They know this trick — move before you lure again"))
 	_center = UiTheme.label("", 20, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_center)
 	_center_sub = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
@@ -327,7 +343,7 @@ func _build_prompt() -> void:
 
 func _build_controls() -> void:
 	_controls = UiTheme.label(
-		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J/LMB fire · R reload · V/RMB melee · 1-3 gun · E take/revive · Q lure · G scream · L light",
+		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J/LMB fire · R reload · V/RMB melee · 1-3 gun · E take/revive · Q lure · F flare · G scream · L light",
 		7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_controls)
 	_f1 = UiTheme.label("F1  controls", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
@@ -382,7 +398,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("help"):
 		_controls_mode = 0 if _controls.visible else 1
 
+## Krótki komunikat środkowy (znika po `secs`).
+func show_note(text: String, secs := 3.0) -> void:
+	_note.text = text
+	_note.modulate.a = 1.0
+	_note_t = secs
+
 func _drive_noise() -> void:
+	if _note_t > 0.0:
+		_note_t -= get_process_delta_time()
+		_note.modulate.a = clampf(_note_t / 0.6, 0.0, 1.0)
 	var lvl := NoiseMgr.level
 	_noise_val.text = "%d%%" % int(lvl)
 	_noise_bar.value = lvl / 100.0
@@ -396,6 +421,8 @@ func _drive_noise() -> void:
 	_noise_bar.queue_redraw()
 	_charges.filled = NoiseMgr.overcharge_charges
 	_charges.queue_redraw()
+	_flares.filled = NoiseMgr.flares
+	_flares.queue_redraw()
 
 func _drive_status() -> void:
 	_session.text = _net_status()
