@@ -347,6 +347,12 @@ func join_game(ip: String) -> void:
 	Audio.play("radio_beep", Audio.BUS_UI, -10.0)
 
 
+## F2: okno zaproszeń Steam dla bieżącego lobby (host).
+func _unhandled_key_input(event: InputEvent) -> void:
+	var k := event as InputEventKey
+	if k != null and k.pressed and not k.echo and k.keycode == KEY_F2 and steam != null:
+		steam.invite()
+
 func _on_peer_connected(id: int) -> void:
 	print("[NET] peer connected: %d" % id)
 	if multiplayer.is_server():

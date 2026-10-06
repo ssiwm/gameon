@@ -40,6 +40,18 @@ Host wybiera w lobby przyciskiem **DIFFICULTY** albo flagą `--difficulty=easy|n
 | Drop apteczek / amunicji | ×1,5 | ×1 | ×0,7 |
 | Wykrwawianie / podnoszenie kolegi | 15 s / 3 s | 10 s / 4 s | 7 s / 5 s |
 
+## Steam (opcjonalnie): lobby, zaproszenia, relay
+
+Gra łączy się przez ENet (IP) jak dotąd, a **Steam** jest dodatkowym transportem — bez konfiguracji routera, z zaproszeniami od znajomych i relayem Valve (graczom z różnych krajów nie trzeba otwierać portów). Kod (`scripts/steam_net.gd`) jest gotowy, ale **wtyczki GodotSteam nie ma w repo** (binaria, licencja MIT) — bez niej przyciski Steam w lobby są wyszarzone, a reszta gry działa normalnie.
+
+Instalacja (raz):
+1. Pobierz **GodotSteam (GDExtension) dla Godot 4.x** i **GodotSteam MultiplayerPeer** (klasa `SteamMultiplayerPeer`) z godotsteam.com / GitHub `godotsteam` i rozpakuj do `prototype/addons/`.
+2. Zainstaluj i uruchom klienta Steam, zaloguj się. W katalogu projektu leży `steam_appid.txt` z `480` (**Spacewar** — publiczny App ID testowy, darmowy; w bibliotece gra pokazuje się jako „Spacewar"). Testerzy muszą mieć Steama i być znajomymi hosta.
+3. W lobby: **STEAM HOST** tworzy lobby (ID ląduje w schowku i w statusie), **F2** w grze otwiera okno zaproszeń Steam, znajomi klikają „Dołącz do gry" albo wklejają ID i dają **STEAM JOIN**. Flagi: `--steam-host`, `--steam-join=ID`; start z zaproszenia (`+connect_lobby ID`) też działa.
+4. Pod wydanie: własny App ID (Steam Direct, 100 USD zwrotne po 1000 USD przychodu) — zmień `APP_ID` w `steam_net.gd` i `steam_appid.txt`, a plik usuń z paczki sklepowej.
+
+API GodotSteam różni się między wersjami, więc wrapper dobiera argumenty po nazwach i obsługuje dwa warianty peera (wbudowane lobby `create_lobby`/`connect_lobby` oraz surowe `create_host`/`create_client`). Nie testowano z prawdziwym Steamem — pierwszy test: dwa konta Steam będące znajomymi.
+
 ## Uruchomienie
 
 ```bash
@@ -68,6 +80,7 @@ Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP =
 | Podnieś broń z ziemi | E |
 | Latarka | L |
 | Pokaż / ukryj sterowanie | F1 |
+| Zaproszenie przez Steam (host) | F2 |
 | Zeskok z kładki | dół + SPACJA |
 | Nowa misja (host, po ekstrakcji) | Enter |
 
@@ -111,7 +124,7 @@ godot --headless --path . -- --host --wipetest --autoquit=8
 godot --headless --path . -- --host --missiontest --autoquit=9
 ```
 
-Flagi: `--host`, `--difficulty=easy|normal|hard`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
+Flagi: `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
 
 ## Grafika — generowanie i podmiana
 
@@ -168,4 +181,4 @@ tools/
 - zwykli wrogowie (Trzosek, Wołek) bez A* — gonią prosto i doskakują
 - jedna mapa (choć duża); wrogowie podziemi budzą się od hałasu tylko w promieniu słyszenia, a goniąc „prosto” mogą utknąć pod sufitem, gdy gracz jest na powierzchni; grafika kafli i postaci to placeholder rysowany w kodzie
 - pozycje zdalnych graczy ufane (OK dla kooperacji, blokuje host migration)
-- brak WebSocket/relay fallback (tylko ENet P2P/LAN)
+- relay tylko przez Steam (wymaga wtyczki GodotSteam, patrz wyżej); bez niej tylko ENet P2P/LAN

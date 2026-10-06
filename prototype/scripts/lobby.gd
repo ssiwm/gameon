@@ -20,6 +20,7 @@ const CONTROLS := [
 	["L", "Flashlight — light is noise"],
 	["Hold E", "Revive a teammate"],
 	["F1", "Show / hide controls in game"],
+	["F2", "Steam: invite friends (host)"],
 ]
 
 var _ip: LineEdit
