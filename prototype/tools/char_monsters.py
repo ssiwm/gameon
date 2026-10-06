@@ -314,6 +314,152 @@ def _stalker_torso_back(hi, hx, hy, sway, an, t, skin_d, cloth_d):
     pass
 
 
+# ================================================================ ŚLEPIEC
+
+SLEPIEC_ANIMS = [("idle", 4, 3, True), ("walk", 6, 8, True), ("windup", 1, 1, False), ("sleep", 4, 1.5, True)]
+
+
+def slepiec(an, i):
+    """Blada, niewidząca istota: zaszyte oczy, wielkie ucho, ręce wyciągnięte przed siebie, macha głową."""
+    W, H = 16, 20
+    hi = Hi(W, H)
+    skin = hi.material(ramp((206, 200, 196), warm=(1.0, 0.95, 0.85), cool=(0.3, 0.25, 0.4)))
+    skin_d = hi.material(ramp((150, 144, 150), cool=(0.25, 0.2, 0.4)))
+    rag = hi.material(ramp((92, 84, 76), cool=(0.15, 0.12, 0.3)))
+    stitch = hi.material(ramp((90, 40, 44), cool=(0.2, 0.1, 0.2)))
+    sleep = an == "sleep"
+    t = i / {"idle": 4, "walk": 6, "sleep": 4}.get(an, 1) * math.tau
+    ground = 19.7
+    lean = 38.0 if not sleep else 80.0
+    hip = [7.0, 12.4]
+    if an == "walk":
+        hip[1] += 0.3 * math.sin(2 * t)
+    if sleep:
+        hip = [6.0, 15.0 - 0.3 * math.sin(t)]
+    sh = up(tuple(hip), lean, 5.0)
+    # nogi
+    for k in (1, 0):
+        a, fl = (6.0, 8.0) if k == 0 else (-6.0, 8.0)
+        if an == "walk":
+            ph = t + (0 if k == 0 else math.pi)
+            a = 30 * math.sin(ph)
+            fl = 10 + 40 * max(0, math.cos(ph))
+        if sleep:
+            a, fl = (70.0, 110.0)
+        h0 = (hip[0] + (0.4 if k == 0 else -0.4), hip[1])
+        kn = fk(h0, a, 3.6)
+        ft = fk(kn, a - fl, 3.6)
+        m = skin if k == 0 else skin_d
+        hi.capsule(h0, kn, 1.5, 1.2, m)
+        hi.capsule(kn, ft, 1.2, 1.0, m)
+        hi.capsule((ft[0] - 0.5, ft[1] + 0.3), (ft[0] + 1.7, ft[1] + 0.5), 0.9, 0.7, m)
+    # daleka ręka, tułów w łachmanach
+    sway = math.sin(t) * (10.0 if an != "walk" else 18.0)
+
+    def arm(k):
+        s0 = (sh[0] + (0.4 if k == 0 else -0.5), sh[1] + 0.8)
+        if sleep:
+            el = (s0[0] + 1.5, s0[1] + 2.5)
+            fi = (el[0] + 1.5, el[1] + 1.5)
+        elif an == "windup":
+            el = (s0[0] + 2.2, s0[1] - 1.0)
+            fi = (el[0] + 2.4, el[1] - 1.8)
+        else:
+            a1 = 70 + sway * (1 if k == 0 else -1)
+            el = fk(s0, a1, 3.0)
+            fi = fk(el, a1 + 12, 3.0)
+        m = skin if k == 0 else skin_d
+        hi.capsule(s0, el, 1.1, 0.9, m)
+        hi.capsule(el, fi, 0.9, 0.7, m)
+        for d in (-0.7, 0.0, 0.7):
+            hi.capsule(fi, (fi[0] + 1.2, fi[1] + d * 0.8), 0.3, 0.2, m)
+    arm(1)
+    hi.capsule(tuple(hip), sh, 2.4, 2.6, rag)
+    hi.ellipse(up(tuple(hip), lean, 2.0), 2.5, 2.0, skin_d)
+    arm(0)
+    # głowa przechylona, wielkie ucho nasłuchuje
+    hc = up(sh, lean * 0.5 + 12.0 * math.sin(t * (1 if an != "walk" else 2)) * 0.6 + 6.0, 3.0)
+    hc = (hc[0] + 1.0, hc[1] + (1.6 if sleep else 0.0))
+    hi.ellipse(hc, 2.7, 3.0, skin)
+    hi.ellipse((hc[0] - 0.8, hc[1] - 0.4), 1.4, 2.6, skin_d)                                  # ucho
+    hi.ellipse((hc[0] - 1.1, hc[1] - 0.6), 0.9, 1.9, skin)
+    hi.capsule((hc[0] + 1.2, hc[1] + 1.4), (hc[0] + 2.6, hc[1] + 1.8), 0.7, 0.5, skin_d)     # bezzębna szczęka
+    fr = _finish(hi, 0.32)
+    glow = Frame(W, H)
+    # zaszyte oczy: dwie czerwone nitki (detal na siatce)
+    ex, ey = int(round(hc[0] + 1.2)), int(round(hc[1] - 0.8))
+    for dx in (0, 1):
+        fr.only_opaque_put(ex + dx, ey, (120, 40, 48, 255))
+    if an == "windup":
+        _glow_px(glow, fr, [(hc[0] + 2.2, hc[1] + 1.8)], (255, 90, 70), 200)
+    return fr, glow
+
+
+# ================================================================ PODSŁUCHACZ
+
+PODSLUCHACZ_ANIMS = [("idle", 4, 3, True), ("windup", 1, 1, False), ("sleep", 2, 1.5, True)]
+
+
+def podsluchacz(an, i):
+    """Nieruchomy „słuchacz": długa szyja, wielkie lejkowate uszy, paszcza otwiera się do krzyku."""
+    W, H = 16, 26
+    hi = Hi(W, H)
+    skin = hi.material(ramp((150, 132, 146), cool=(0.2, 0.15, 0.4)))
+    skin_d = hi.material(ramp((104, 88, 104), cool=(0.18, 0.12, 0.4)))
+    ear = hi.material(ramp((182, 120, 128), cool=(0.3, 0.1, 0.3)))
+    rag = hi.material(ramp((70, 62, 72), cool=(0.14, 0.12, 0.3)))
+    mouth = hi.material(ramp((90, 22, 34), cool=(0.2, 0.1, 0.2)))
+    t = i / {"idle": 4, "sleep": 2}.get(an, 1) * math.tau
+    scream = an == "windup"
+    ground = 25.7
+    base = (7.5, 20.0)
+    # nogi: proste, cienkie
+    for k, x in ((1, 6.7), (0, 8.5)):
+        hi.capsule((x, 18.6), (x - 0.2 + (0.4 if k else 0), ground - 1.2), 1.1, 0.8, skin_d if k else skin)
+        hi.capsule((x - 0.8, ground - 0.5), (x + 1.4, ground - 0.4), 0.9, 0.7, skin_d if k else skin)
+    # tułów w łachmanach
+    lean = 4.0 + (-12.0 if scream else 0.0)
+    sh = up((7.5, 18.5), lean, 6.0)
+    hi.capsule((7.5, 18.5), sh, 2.6, 2.2, rag)
+    # ręce przy uszach (nasłuchuje) albo rozłożone w krzyku
+    for k in (1, 0):
+        s0 = (sh[0] + (0.4 if k == 0 else -0.4), sh[1] + 0.6)
+        if scream:
+            el = (s0[0] + (2.4 if k == 0 else -2.2), s0[1] + 1.6)
+            fi = (el[0] + (1.6 if k == 0 else -1.6), el[1] + 3.2)
+        else:
+            el = (s0[0] + (1.4 if k == 0 else -1.2), s0[1] + 3.4)
+            fi = (el[0] + 0.6, el[1] + 3.0)
+        m = skin if k == 0 else skin_d
+        hi.capsule(s0, el, 0.95, 0.8, m)
+        hi.capsule(el, fi, 0.8, 0.6, m)
+    # szyja i głowa
+    sway = 0.7 * math.sin(t) if an != "windup" else 0.0
+    neck_top = up(sh, lean * 0.6 + sway * 4, 3.4)
+    hi.capsule((sh[0], sh[1] - 0.6), neck_top, 1.2, 1.0, skin)
+    hc = (neck_top[0] + (-0.4 if scream else 0.8), neck_top[1] - (1.5 if not scream else 0.4))
+    hi.ellipse(hc, 2.9, 2.7, skin)
+    # lejkowate uszy
+    for k, dx in ((1, -2.6), (0, 2.2)):
+        e = (hc[0] + dx * 0.55, hc[1] - 1.8 - (0.4 if an == "idle" and (i % 2) else 0.0))
+        hi.ellipse((e[0] + dx * 0.35, e[1]), 1.5, 3.0, ear if k == 0 else skin_d, rot=math.radians(18 * (1 if k == 0 else -1)))
+    # paszcza: zamknięta szparka albo szeroko otwarta
+    if scream:
+        hi.ellipse((hc[0] + 0.9, hc[1] + 1.4), 2.1, 2.5, mouth)
+    else:
+        hi.capsule((hc[0] + 0.8, hc[1] + 1.4), (hc[0] + 2.4, hc[1] + 1.6), 0.5, 0.4, mouth)
+    fr = _finish(hi, 0.32)
+    glow = Frame(W, H)
+    # oczy: dwa blade punkty (czujny), w krzyku — żar paszczy
+    ex, ey = int(round(hc[0] + 1.2)), int(round(hc[1] - 0.6))
+    col = (255, 214, 140)
+    if scream:
+        _glow_px(glow, fr, [(hc[0] + 0.6, hc[1] + 1.0), (hc[0] + 1.4, hc[1] + 1.8), (hc[0] + 0.6, hc[1] + 2.2)], (255, 80, 60), 230)
+    if an != "sleep":
+        _glow_px(glow, fr, [(ex, ey), (ex + 2, ey)], (255, 60, 40) if scream else col, 220)
+    return fr, glow
+
+
 # ================================================================ API
 
 def monster_frames(fn, anims):
