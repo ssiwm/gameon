@@ -55,6 +55,54 @@ class Bar extends Control:
 			var x: float = size.x * float(t[0])
 			draw_rect(Rect2(x - 0.5, -2.0, 1.0, size.y + 4.0), t[1])
 
+## Miniatura broni z arkusza guns.png (wiersz = `gun_row`): sylwetka z obrysem i cieniem, warstwa świecąca,
+## opcjonalnie „płytka" (ciemne tło z poświatą i paskiem w kolorze smugi pocisku). Całkowita skala `k` —
+## ułamki rozmywają pixel-art. `tint` przygasza bronie niewybrane.
+class GunIcon extends Control:
+	const GUN_SHEET := "res://art/sprites/guns.png"
+	const GUN_GLOW := "res://art/sprites/guns_glow.png"
+	const FW := 24
+	const FH := 9
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var row := -1
+	var k := 1
+	var plate := false
+	var accent := Color(1.0, 0.85, 0.35)
+	var tint := Color.WHITE
+	func set_gun(r: int, col: Color, t: Color) -> void:
+		if r == row and col == accent and t == tint:
+			return
+		row = r
+		accent = col
+		tint = t
+		queue_redraw()
+	func _draw() -> void:
+		if plate:
+			draw_rect(Rect2(Vector2.ZERO, size), Color(0.04, 0.05, 0.07, 0.78))
+			draw_rect(Rect2(0, 0, size.x, 1), Color(1, 1, 1, 0.07))
+			draw_rect(Rect2(0, size.y - 2, size.x, 2), Color(accent.r, accent.g, accent.b, 0.85))
+			# miękka poświata za bronią: kilka coraz mniejszych prostokątów
+			for i in 4:
+				var inset := 2.0 + i * 4.0
+				draw_rect(Rect2(inset, inset * 0.5, size.x - 2.0 * inset, size.y - 2.0 - inset), Color(accent.r, accent.g, accent.b, 0.045))
+		if row < 0 or not ResourceLoader.exists(GUN_SHEET):
+			return
+		var tex: Texture2D = load(GUN_SHEET)
+		var gs := Vector2(FW * k, FH * k)
+		var body := plate_inset()
+		var dst := Rect2(((body - gs) * 0.5).round() + Vector2(0, 1), gs)
+		var src := Rect2(0, row * FH, FW, FH)
+		draw_texture_rect_region(tex, Rect2(dst.position + Vector2(0, k), dst.size), src, Color(0, 0, 0, 0.55))
+		for o: Vector2 in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
+			draw_texture_rect_region(tex, Rect2(dst.position + o * float(maxi(1, k / 2)), dst.size), src, Color(0, 0, 0, 0.85 * tint.a))
+		draw_texture_rect_region(tex, dst, src, tint)
+		if ResourceLoader.exists(GUN_GLOW):
+			draw_texture_rect_region(load(GUN_GLOW), dst, src, Color(1, 1, 1, tint.a))
+	## Obszar bez paska akcentu (płytka ma 2 px paska na dole).
+	func plate_inset() -> Vector2:
+		return Vector2(size.x, size.y - (2.0 if plate else 0.0))
+
 ## Row of icons (hearts or diamonds), `filled` of `count` lit.
 class Pips extends Control:
 	func _init() -> void:
@@ -106,6 +154,8 @@ var _note: Label
 var _note_t := 0.0
 var _slots: Array[PanelContainer] = []
 var _slot_labels: Array[Label] = []
+var _slot_icons: Array[GunIcon] = []
+var _gun_main: GunIcon
 var _battery: Bar
 var _battery_note: Label
 var _ammo_name: Label
@@ -264,6 +314,14 @@ func _build_gear_card() -> void:
 	_slot_off.set_content_margin_all(2)
 	_slot_off.shadow_size = 0
 
+	# 0) miniatura aktualnej broni na ciemnej płytce z paskiem w kolorze smugi pocisku
+	_gun_main = GunIcon.new()
+	_gun_main.plate = true
+	_gun_main.k = 2
+	_gun_main.custom_minimum_size = Vector2(58, 26)
+	_gun_main.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(_gun_main)
+
 	# 1) nazwa broni nad kosztem następnego strzału (ile Uwagi — GDD §8.1)
 	var name_col := VBoxContainer.new()
 	name_col.add_theme_constant_override("separation", 0)
@@ -308,9 +366,13 @@ func _build_gear_card() -> void:
 	wr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	for i in 4:
 		var sl := PanelContainer.new()
-		sl.custom_minimum_size = Vector2(17, 0)
-		var l := UiTheme.label("", 7, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
-		sl.add_child(l)
+		var ic := GunIcon.new()
+		ic.custom_minimum_size = Vector2(30, 12)
+		var l := UiTheme.label("", 6, UiTheme.TEXT)
+		l.position = Vector2(0, -2)
+		ic.add_child(l)                     # numer klawisza w rogu miniatury
+		sl.add_child(ic)
+		_slot_icons.append(ic)
 		wr.add_child(sl)
 		_slots.append(sl)
 		_slot_labels.append(l)
@@ -645,10 +707,13 @@ func _drive_weapons() -> void:
 		var sel: bool = (i == wc.slot) if i < 3 else (wc.state == wc.State.MELEE)
 		var key := str(i + 1) if i < 3 else "V"
 		_slot_labels[i].text = key
+		var d: RefCounted = wc.def_of_slot(i) if i < 3 else Weapons.def(wc.melee_id)
+		_slot_icons[i].set_gun(int(d.gun_row), d.tracer_color, Color.WHITE if sel else Color(0.5, 0.52, 0.58, 0.9))
 		_slots[i].tooltip_text = names[i]
 		_slots[i].add_theme_stylebox_override("panel", _slot_on if sel else _slot_off)
 		_slot_labels[i].add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.MUTED)
 	_ammo_name.text = cur.name
+	_gun_main.set_gun(int(cur.gun_row), cur.tracer_color, Color.WHITE)
 	var mag: int = wc.mag_of(cur.id)
 	var note := ""
 	var col := UiTheme.TEXT
