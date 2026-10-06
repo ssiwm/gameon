@@ -577,6 +577,8 @@ func _die() -> void:
 	if lvl != null:
 		lvl.spawn_health(global_position + Vector2(-20, -30))
 		lvl.spawn_health(global_position + Vector2(20, -30))
+		if Scrap.enabled():
+			lvl.spawn_item("scrap", 0, global_position + Vector2(0, -30), Scrap.BOSS_VALUE)
 	_event.rpc("death")
 	_send_state(true)
 	died.emit()

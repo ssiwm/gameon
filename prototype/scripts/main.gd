@@ -140,6 +140,7 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 		c.request_full_reset(carry)
 	level.clear_pickups()
 	mission.on_restart(new_run)
+	Scrap.reset_loot()                   # wipe / nowa misja: łup z poprzedniej próby przepada (po sukcesie już trafił do banku)
 	hub_ready.clear()
 	hub_mine = false
 	hub_ready_n = 0
@@ -516,6 +517,15 @@ func _gen_test() -> void:
 		e.set_physics_process(false)
 		e.set_process(false)
 	check.call("start: mapa 1.2, cel generators, 4 generatory", level.map_id == "z1_m2" and mission.kind == "generators" and mission.goal_total == 4)
+	Scrap.add_loot(25)
+	level.spawn_item("scrap", 0, p.global_position + Vector2(10, -4), 7)
+	await get_tree().create_timer(1.0).timeout
+	check.call("złom: pickup 7 wpadł do łupu (loot %d, bank %d)" % [Scrap.loot, Scrap.bank], Scrap.loot == 32 and Scrap.bank == 0)
+	Scrap.reset_loot()
+	check.call("złom: restart kasuje łup, bank bez zmian", Scrap.loot == 0 and Scrap.bank == 0)
+	Scrap.add_loot(25)
+	var map_scrap := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "scrap")
+	check.call("złom: skrytki na mapie 1.2 (%d)" % map_scrap.size(), map_scrap.size() >= 4)
 	var gens: Array = get_tree().get_nodes_in_group("generators")
 	gens.sort_custom(func(a: Node2D, b: Node2D) -> bool: return a.global_position.x < b.global_position.x)
 	for i in gens.size():
@@ -533,6 +543,9 @@ func _gen_test() -> void:
 	p.global_position = mission.exit_pos + Vector2(0, -2)
 	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
 	check.call("ekstrakcja → SUCCESS", mission.phase == MISSION_SCRIPT.Phase.SUCCESS)
+	check.call("złom: po misji bank = łup (min. 25) + bonus (min. 40) (bank %d, loot %d, ostatni zysk %d)" % [Scrap.bank, Scrap.loot, Scrap.last_gain],
+		Scrap.last_gain >= 65 and Scrap.bank == Scrap.last_gain and Scrap.loot == 0)
+	check.call("złom: wpis w dzienniku misji ma zysk", not RunLog.entries.is_empty() and int(RunLog.entries.back()["scrap"]) == Scrap.last_gain)
 	var ammo_before: int = Arsenal.get_reserve(Weapons.def(p.weapons.loadout[0]).id)
 	var loadout_before: Array = (p.weapons.loadout as Array).duplicate()
 	_continue_after_result()
@@ -838,6 +851,7 @@ func _begin_hosting(where: String) -> void:
 	if NightShift.selected:
 		mission.begin_shift()
 	var first_map: String = _start_map if _start_map != "" else ("z1_hub" if _lobby.start_in_hub else (_shift_map() if NightShift.selected else level.CAMPAIGN[0]))
+	Scrap.load_progress()                # host zaczyna od zapisanego portfela
 	if first_map != level.map_id:
 		_set_map(first_map)
 	if first_map == "z1_hub" and after_hub == "":

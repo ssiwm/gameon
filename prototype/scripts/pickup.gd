@@ -7,6 +7,7 @@ extends Node2D
 ##   ammo    dotknięcie dodaje `rounds` naboi do WSPÓLNEGO zapasu drużyny — o ile
 ##           ktoś z ludzi nosi tę broń i zapas nie jest pełny (nic się nie marnuje)
 ##   cache   skrzynia z mapy: dodaje amunicję do WSZYSTKICH broni głównych noszonych przez drużynę
+##   scrap   złom (rounds = wartość): dotknięcie przez dowolnego żywego gracza dodaje do łupu misji (scrap.gd)
 ##   weapon  nie podnosi się samo: gracz naciska E (wymiana broni to decyzja, a nie
 ##           wypadek); serwer sprawdza odległość i przyznaje (level.gd)
 
@@ -25,6 +26,7 @@ const GLOW := {
 	"ammo": Color(1.0, 0.78, 0.3),
 	"weapon": Color(0.5, 0.85, 1.0),
 	"cache": Color(1.0, 0.78, 0.3),
+	"scrap": Color(0.95, 0.8, 0.4),
 }
 
 var kind := "health"
@@ -102,7 +104,19 @@ func _draw() -> void:
 		return
 	var bob := 0.0 if (not _landed or static_display) else sin(_t * 3.0) * 1.5 - 1.5
 	var c: Color = GLOW.get(kind, Color.WHITE)
-	if kind == "cache":
+	if kind == "scrap":
+		# kupka złomu: blachy, trybik i śruba (większa wartość = większa kupka)
+		var big := rounds >= 6
+		draw_rect(Rect2(-5, -3 + bob, 10, 3), Color(0.32, 0.33, 0.37))
+		draw_rect(Rect2(-5, -3 + bob, 10, 1), Color(0.55, 0.57, 0.62))
+		draw_rect(Rect2(-3, -6 + bob, 5, 3), Color(0.42, 0.3, 0.2))
+		draw_rect(Rect2(1, -5 + bob, 3, 2), Color(0.5, 0.52, 0.56))
+		if big:
+			draw_rect(Rect2(-6, -9 + bob, 4, 3), Color(0.3, 0.31, 0.35))
+			draw_circle(Vector2(3, -8 + bob), 2.2, Color(0.6, 0.48, 0.2))
+			draw_circle(Vector2(3, -8 + bob), 0.9, Color(0.15, 0.15, 0.16))
+		draw_rect(Rect2(-5, -1 + bob, 10, 1), Color(0.95, 0.8, 0.4, 0.5))
+	elif kind == "cache":
 		# skrzynia z zapasem: większa, z pasami i mosiężnymi okuciami
 		draw_rect(Rect2(-8, -11 + bob, 16, 10), Color(0.26, 0.28, 0.19))
 		draw_rect(Rect2(-8, -11 + bob, 16, 2), Color(0.4, 0.43, 0.3))
@@ -177,6 +191,19 @@ func _try_pickup() -> void:
 			_try_ammo()
 		"cache":
 			_try_cache()
+		"scrap":
+			_try_scrap()
+
+## Złom zbiera każdy żywy gracz (też bot) — wspólny łup drużyny.
+func _try_scrap() -> void:
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.dead or not _near(p):
+			continue
+		Scrap.add_loot(rounds)
+		var lvl := _level()
+		if lvl != null:
+			lvl.take_item(String(name))
+		return
 
 func _near(p: Node2D) -> bool:
 	return (p.global_position + Vector2(0, -8)).distance_to(global_position + Vector2(0, -6)) <= PICK_R + 6.0

@@ -5,11 +5,11 @@ extends RefCounted
 
 const MAX_ENTRIES := 8
 
-## Wpis: {id, title, time, downs, attempts, stealth} — stealth: 1 cel poboczny zaliczony, 0 stracony, -1 brak celu.
+## Wpis: {id, title, time, downs, attempts, stealth, scrap} — stealth: 1 cel poboczny zaliczony, 0 stracony, -1 brak celu.
 static var entries: Array = []
 
-static func add(id: String, title: String, time: float, downs: int, attempts: int, stealth: int) -> void:
-	entries.append({"id": id, "title": title, "time": time, "downs": downs, "attempts": attempts, "stealth": stealth})
+static func add(id: String, title: String, time: float, downs: int, attempts: int, stealth: int, scrap := 0) -> void:
+	entries.append({"id": id, "title": title, "time": time, "downs": downs, "attempts": attempts, "stealth": stealth, "scrap": scrap})
 	if entries.size() > MAX_ENTRIES:
 		entries.pop_front()
 
@@ -21,6 +21,12 @@ static func total_time() -> float:
 	for e in entries:
 		t += float(e["time"])
 	return t
+
+static func total_scrap() -> int:
+	var n := 0
+	for e in entries:
+		n += int(e.get("scrap", 0))
+	return n
 
 static func total_downs() -> int:
 	var n := 0

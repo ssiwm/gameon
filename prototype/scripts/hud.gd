@@ -135,6 +135,7 @@ var _boss_name: Label
 
 var _session: Label
 var _clock: Label
+var _scrap: Label                    ## portfel złomu (bank) i łup z bieżącej misji
 var _warn: Label
 var _warn_sub: Label
 var _center: Label
@@ -182,7 +183,7 @@ func _ready() -> void:
 	_build_result()
 	_item = _make_info_card(250.0, 2)
 	_brief = _make_info_card(300.0, 3)
-	_wall = _make_info_card(330.0, 5)
+	_wall = _make_info_card(360.0, 6)
 	get_viewport().size_changed.connect(_fit)
 	Settings.changed.connect(_apply_scale)
 	_fit()
@@ -202,6 +203,7 @@ func _fit() -> void:
 	var h := size.y
 	_place(_session, Vector2(w - MARGIN - SESSION_W, MARGIN), Vector2(SESSION_W, 12))
 	_place(_clock, Vector2(w - MARGIN - SESSION_W, MARGIN + 11.0), Vector2(SESSION_W, 14))
+	_place(_scrap, Vector2(w - MARGIN - SESSION_W, MARGIN + 37.0), Vector2(SESSION_W, 12))
 	var cw := 400.0
 	_place(_warn, Vector2((w - cw) * 0.5, h * WARN_Y), Vector2(cw, 20))
 	_place(_warn_sub, Vector2((w - cw) * 0.5, h * WARN_Y + 20.0), Vector2(cw, 12))
@@ -548,6 +550,8 @@ func _build_session() -> void:
 	add_child(_session)
 	_clock = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
 	add_child(_clock)
+	_scrap = UiTheme.label("", 8, Color(0.95, 0.8, 0.4), HORIZONTAL_ALIGNMENT_RIGHT)
+	add_child(_scrap)
 
 func _build_center() -> void:
 	_warn = UiTheme.label("", 14, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
@@ -714,6 +718,8 @@ func _drive_noise() -> void:
 
 func _drive_status() -> void:
 	_session.text = _net_status()
+	_scrap.visible = Scrap.enabled()
+	_scrap.text = "SCRAP  %d%s" % [Scrap.bank, ("  +%d" % Scrap.loot) if Scrap.loot > 0 else ""]
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	if m != null:
 		var secs := int(m.elapsed)
@@ -862,11 +868,11 @@ func _fill_result(m: Node) -> void:
 			_style_result("EXTRACTION COMPLETE", "The broadcast is over — the squad is out.", UiTheme.OK)
 			rows = [["Time", _mmss(m.elapsed)], ["Generators started", "%d / %d" % [m.goal_total, m.goal_total]],
 				["Stealth (Attention < %d)" % int(m.STEALTH_CAP), "kept" if m.stealth_ok() else "lost  (peak %d)" % int(m.peak_noise)],
-				["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts]]
+				["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts], ["Scrap banked", "+%d" % Scrap.last_gain]]
 		else:
 			_style_result("EXTRACTION COMPLETE", "The squad made it out of the woods.", UiTheme.OK)
 			rows = [["Time", _mmss(m.elapsed)], ["Nests destroyed", "%d / %d" % [m.nests_total, m.nests_total]],
-				["The Vein", "slain"], ["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts]]
+				["The Vein", "slain"], ["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts], ["Scrap banked", "+%d" % Scrap.last_gain]]
 	for row in rows:
 		_result_stats.add_child(UiTheme.label(row[0], 9, UiTheme.MUTED))
 		_result_stats.add_child(UiTheme.label(row[1], 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
@@ -1012,7 +1018,7 @@ func _fill_wall() -> void:
 	if es.is_empty():
 		_fill_info(_wall, "RESULTS WALL", "", [], "Nothing chalked up yet. Finish a mission and it goes here.", UiTheme.ACCENT)
 		return
-	var rows: Array = [["MISSION", "TIME", "DOWNS", "TRIES", "SIDE"]]
+	var rows: Array = [["MISSION", "TIME", "DOWNS", "TRIES", "SIDE", "SCRAP"]]
 	for i in range(es.size() - 1, maxi(-1, es.size() - 1 - WALL_ROWS), -1):
 		var e: Dictionary = es[i]
 		var side := "—"
@@ -1020,9 +1026,9 @@ func _fill_wall() -> void:
 			side = "kept"
 		elif int(e["stealth"]) == 0:
 			side = "lost"
-		rows.append([String(e["title"]), RunLog.fmt_time(float(e["time"])), str(int(e["downs"])), str(int(e["attempts"])), side])
+		rows.append([String(e["title"]), RunLog.fmt_time(float(e["time"])), str(int(e["downs"])), str(int(e["attempts"])), side, "+%d" % int(e.get("scrap", 0))])
 	var more := es.size() - WALL_ROWS
-	_fill_info(_wall, "RESULTS WALL", "%d missions  ·  %s  ·  %d downs" % [es.size(), RunLog.fmt_time(RunLog.total_time()), RunLog.total_downs()], rows,
+	_fill_info(_wall, "RESULTS WALL", "%d missions  ·  %s  ·  %d downs  ·  %d scrap" % [es.size(), RunLog.fmt_time(RunLog.total_time()), RunLog.total_downs(), RunLog.total_scrap()], rows,
 		("+%d older" % more) if more > 0 else "", UiTheme.ACCENT)
 
 func _fill_brief(info: Dictionary) -> void:

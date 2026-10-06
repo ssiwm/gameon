@@ -60,7 +60,7 @@ const MAP := [
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
-	"########CbbwSbbSbbkkbakbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbababbbbnbkbbbbbbbbrbbbbbbbbbtbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
+	"########CbbvSbbSbbkkbakbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbababbbbnbkbbbbbbbbrbbbbbbbbbtbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
 	"########CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC#######",
 	"################################################################################################################################",
 	"################################################################################################################################",
