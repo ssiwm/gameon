@@ -43,6 +43,10 @@ func _ready() -> void:
 	z_index = 2
 	# bez filtrowania liniowego: sprite broni 24×9 px rozmywał się przy skalowaniu okna
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	if kind == "weapon":
+		# tekstury broni wczytujemy przed pierwszym _draw (wczytanie w trakcie rysowania daje biały prostokąt)
+		Sprites.texture(Sprites.DIR + "guns.png")
+		Sprites.texture(Sprites.DIR + "guns_glow.png")
 	if kind == "health" and Sprites.has("objects"):
 		_spr = Sprites.attach(self, "objects")
 		Sprites.play(_spr, "medkit", false)
