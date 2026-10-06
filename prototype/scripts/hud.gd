@@ -338,6 +338,7 @@ func _build_gear_card() -> void:
 		ic.custom_minimum_size = Vector2(30, 12)
 		var l := UiTheme.label("", 6, UiTheme.TEXT)
 		l.position = Vector2(0, -2)
+		l.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR   # miniatura rysuje NEAREST; tekst ma zostać gładki
 		ic.add_child(l)                     # numer klawisza w rogu miniatury
 		sl.add_child(ic)
 		_slot_icons.append(ic)
