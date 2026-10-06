@@ -25,6 +25,7 @@ const APP_ID := 480
 const MAX_MEMBERS := 4
 const LOBBY_FRIENDS_ONLY := 1              ## ELobbyType::k_ELobbyTypeFriendsOnly
 const LOBBY_TIMEOUT := 10.0
+const JOIN_TIMEOUT := 15.0
 const GAME_TAG := "deadair87"
 
 var lobby_id := 0
@@ -34,6 +35,7 @@ var _embedded := false
 var _peer: MultiplayerPeer = null
 var _mode := ""                            ## "host" | "join" | ""
 var _wait := 0.0                           ## s do uznania, że lobby się nie utworzy
+var _join_wait := 0.0                      ## s do uznania, że dołączenie się nie powiodło
 
 static func is_available() -> bool:
 	return Engine.has_singleton("Steam") and ClassDB.class_exists("SteamMultiplayerPeer")
@@ -67,6 +69,8 @@ func init_steam() -> bool:
 	_connect_signal("lobby_created", _on_lobby_created)
 	_connect_signal("lobby_joined", _on_lobby_joined)
 	_connect_signal("join_requested", _on_join_requested)
+	if _steam.has_method("initRelayNetworkAccess"):
+		_steam.call("initRelayNetworkAccess")   # relay Steam (P2P bez otwierania portów)
 	print("[STEAM] initialized (app %d), user %s" % [APP_ID, str(_steam.call("getPersonaName")) if _steam.has_method("getPersonaName") else "?"])
 	return true
 
@@ -76,15 +80,24 @@ func _process(delta: float) -> void:
 	if not _embedded and _steam.has_method("run_callbacks"):
 		_steam.call("run_callbacks")
 	# peer z wbudowanym lobby: id lobby bywa dostępne dopiero po chwili
-	if _mode == "host" and lobby_id == 0 and _peer != null and _peer.has_method("get_lobby_id"):
-		var id := int(_peer.call("get_lobby_id"))
+	if _mode == "host" and lobby_id == 0 and _peer != null:
+		var id := _peer_lobby_id()
 		if id != 0:
 			_on_lobby_ready(id)
 	if _wait > 0.0:
 		_wait -= delta
 		if _wait <= 0.0 and _mode == "host" and lobby_id == 0:
 			_mode = ""
+			_drop_peer()
 			failed.emit("Steam lobby was not created in time — is Steam running?")
+	if _join_wait > 0.0 and _peer != null and _peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+		_join_wait = 0.0                       # peer połączony, nawet jeśli sygnał lobby_joined nie przyszedł
+	if _join_wait > 0.0:
+		_join_wait -= delta
+		if _join_wait <= 0.0 and _mode == "join":
+			_mode = ""
+			_drop_peer()
+			failed.emit("Steam: joining the lobby timed out — check the lobby ID and that you are friends with the host.")
 
 # ---------------------------------------------------------------- host / join
 
@@ -98,6 +111,7 @@ func host() -> void:
 	_mode = "host"
 	lobby_id = 0
 	_wait = LOBBY_TIMEOUT
+	_connect_peer_signals()
 	status.emit("Creating Steam lobby…")
 	if _peer.has_method("create_lobby"):
 		_peer.call("create_lobby", LOBBY_FRIENDS_ONLY, MAX_MEMBERS)
@@ -122,6 +136,8 @@ func join_lobby(id: int) -> void:
 		failed.emit("Steam: SteamMultiplayerPeer could not be created (wrong GodotSteam version?).")
 		return
 	_mode = "join"
+	_join_wait = JOIN_TIMEOUT
+	_connect_peer_signals()
 	status.emit("Joining Steam lobby %d…" % id)
 	if _peer.has_method("connect_lobby"):
 		_peer.call("connect_lobby", id)
@@ -141,6 +157,9 @@ func leave() -> void:
 		_steam.call("leaveLobby", lobby_id)
 	lobby_id = 0
 	_mode = ""
+	_wait = 0.0
+	_join_wait = 0.0
+	_drop_peer()
 
 # ---------------------------------------------------------------- callbacki Steam
 
@@ -149,6 +168,7 @@ func _on_lobby_created(result: int, id: int) -> void:
 		return
 	if result != 1:                            # k_EResultOK
 		_mode = ""
+		_drop_peer()
 		failed.emit("Steam lobby failed (code %d)." % result)
 		return
 	_on_lobby_ready(id)
@@ -171,14 +191,33 @@ func _on_lobby_joined(id: int, _permissions := 0, _locked := false, response := 
 		return
 	if int(response) != 1:                     # k_EChatRoomEnterResponseSuccess
 		_mode = ""
+		_join_wait = 0.0
+		_drop_peer()
 		failed.emit("Could not join the Steam lobby (code %d)." % int(response))
 		return
 	lobby_id = id
+	_join_wait = 0.0
 	# peer z wbudowanym lobby podłączył się sam (connect_lobby); surowy P2P łączymy z właścicielem
 	if _peer != null and _peer.has_method("create_client") and not _peer.has_method("connect_lobby"):
-		var owner := int(_steam.call("getLobbyOwner", id))
-		_peer.call("create_client", owner, 0)
+		var lobby_owner := int(_steam.call("getLobbyOwner", id))
+		_peer.call("create_client", lobby_owner, 0)
 		joining.emit(_peer)
+
+## Peer z wbudowanym lobby sam zgłasza utworzenie/dołączenie — nie polegamy tylko na sygnałach
+## singletona Steam (te mogą nie przyjść, gdy lobby zakłada peer). Liczba argumentów sygnału
+## różni się między wersjami, więc handlery przyjmują opcjonalne argumenty.
+func _on_peer_lobby_created(a: Variant = 0, b: Variant = 0) -> void:
+	if _mode != "host" or lobby_id != 0:
+		return
+	var id := int(b) if int(b) != 0 else int(a)
+	if id <= 1:                                # 1 = samo „OK" bez ID
+		id = _peer_lobby_id()
+	if id > 1:
+		_on_lobby_ready(id)
+
+func _on_peer_lobby_joined(_a: Variant = 0, _b: Variant = 0) -> void:
+	if _mode == "join":
+		_join_wait = 0.0
 
 func _on_join_requested(id: int, _friend := 0) -> void:
 	invite_join.emit(id)
@@ -194,6 +233,27 @@ func _check_launch_args() -> void:
 			return
 
 # ---------------------------------------------------------------- pomocnicze
+
+func _peer_lobby_id() -> int:
+	if _peer == null:
+		return 0
+	if _peer.has_method("get_lobby_id"):
+		return int(_peer.call("get_lobby_id"))
+	var v: Variant = _peer.get("lobby_id")
+	return int(v) if v != null else 0
+
+func _connect_peer_signals() -> void:
+	if _peer == null:
+		return
+	if _peer.has_signal("lobby_created"):
+		_peer.connect("lobby_created", _on_peer_lobby_created)
+	if _peer.has_signal("lobby_joined"):
+		_peer.connect("lobby_joined", _on_peer_lobby_joined)
+
+func _drop_peer() -> void:
+	if _peer != null and _peer.has_method("close"):
+		_peer.call("close")
+	_peer = null
 
 func _ensure_ready() -> bool:
 	if not is_available():
