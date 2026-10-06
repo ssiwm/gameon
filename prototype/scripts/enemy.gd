@@ -10,7 +10,17 @@ const KINDS := {
 	"trzosek": {
 		"hp": 30.0, "speed": 88.0, "damage": 1, "windup": 0.28, "reach": 13.0,
 		"cooldown": 0.9, "leap": true, "hear": 200.0, "wake_near": 90.0, "sight": 260.0,
+		"pack": true, "fears": true,
 		"color": Color(0.62, 0.2, 0.22), "size": Vector2(10, 14), "knock": 70.0, "knock_mult": 1.0, "head": 0.0,
+	},
+	# Mimik (GDD §7.1): udaje kolegę z drużyny — stoi jak człowiek i wzywa pomocy głosem gracza.
+	# Zdradzają go: brak serduszek nad głową, brak kroków i oddechu, oczy świecące w ciemności,
+	# dziwny numer w etykiecie. Latarka, strzał albo podejście (46 px) go demaskują.
+	"mimik": {
+		"hp": 70.0, "speed": 95.0, "damage": 2, "windup": 0.4, "reach": 14.0,
+		"cooldown": 1.2, "leap": true, "hear": 0.0, "wake_near": 46.0, "sight": 220.0,
+		"mimic": true,
+		"color": Color(0.6, 0.72, 0.6), "size": Vector2(10, 16), "knock": 50.0, "knock_mult": 0.8, "head": 0.0,
 	},
 	# Ślepiec (GDD §7.1): nie widzi, tylko słyszy — idzie do źródła hałasu; kucanie i cisza go mijają.
 	"slepiec": {
@@ -28,6 +38,7 @@ const KINDS := {
 	"wolek": {
 		"hp": 140.0, "speed": 36.0, "damage": 2, "windup": 0.6, "reach": 20.0,
 		"cooldown": 1.6, "leap": false, "hear": 150.0, "wake_near": 70.0, "sight": 200.0,
+		"bruiser": true,
 		"color": Color(0.36, 0.27, 0.34), "size": Vector2(20, 26), "knock": 14.0, "knock_mult": 0.2, "head": 0.28,
 	},
 }
@@ -43,7 +54,7 @@ const MAX_FALL := 620.0
 ## Kroki (0,25 na tick) nie budzą; każdy strzał tak — także pierwszy z zimnej
 ## lufy M-83 (0,6). Przy progu 1,0 pojedyncze strzały M-83 były dla wrogów nieme.
 const MIN_WAKE_NOISE := 0.5
-const AMMO_DROP := {"trzosek": 0.22, "wolek": 0.6, "slepiec": 0.3, "podsluchacz": 0.15}   ## szansa na skrzynkę z amunicją do broni, którą ktoś nosi
+const AMMO_DROP := {"trzosek": 0.22, "wolek": 0.6, "slepiec": 0.3, "podsluchacz": 0.15, "mimik": 0.3}   ## szansa na skrzynkę z amunicją do broni, którą ktoś nosi
 const HEALTH_DROP := {"wolek": 0.75}   ## szansa na apteczkę (1.5) — tylko mocniejsi wrogowie
 const SIBLING_WAKE_RADIUS := 140.0
 const DEATH_FX_COLOR_VAR := 0.15
@@ -59,6 +70,27 @@ const CROUCH_SIGHT := 0.6        ## kucającego widać z mniejszej odległości
 const JUMP_V := -275.0           ## skok po grafie A* (42 px, tyle co gracz)
 const PLATFORM_BIT := 5          ## warstwa kładek w masce (zeskok)
 const DROP_TIME := 0.25
+## Słyszalność po trasie (1.7.4): dźwięk nie przechodzi przez ściany ani piętra — liczy się długość
+## ścieżki po grafie nawigacji, nie linia prosta. Bez ścieżki (brak węzła) — tłumienie przez mur.
+const SOUND_MUFFLE := 3.0
+## Wataha (Trzosek): max atakujących naraz, pasmo krążenia, morale, strach przed Stalkerem.
+const MAX_ATTACKERS := 2
+const HOVER_MIN := 26.0
+const HOVER_MAX := 44.0
+const PACK_R := 220.0
+const FEAR_PER_DEATH := 0.34
+const FEAR_ALPHA := 0.7              ## śmierć przewodnika (najstarszy w watasze) łamie morale mocniej
+const FEAR_DECAY := 0.12             ## /s
+const PANIC_TIME := 2.4
+const STALKER_FEAR_R := 260.0
+## Wołek (bruiser): szarża z zapowiedzią (rozbija skrzynie i beczki, o ścianę się ogłusza) i rzut skrzynią.
+const CHARGE_WINDUP := 0.7
+const CHARGE_TIME := 0.9
+const CHARGE_MULT := 3.4
+const CHARGE_CD := 7.0
+const THROW_WINDUP := 0.8
+const THROW_CD := 6.0
+const CRASH_STUN := 1.3
 ## Podsłuchacz: krzyk to hałas (podnosi Uwagę, budzi okolicę) i wskazuje hordzie źródło.
 const SCREAM_NOISE := 14.0
 const ALARM_R := 420.0           ## wrogowie w tym promieniu dostają ślad do krzyku
@@ -110,6 +142,17 @@ var _path_goal := Vector2.ZERO
 var _drop_t := 0.0
 var _blocked := false         ## następny krok grafu to skok, którego nie potrafi
 var _hist: Array = []         ## Vector3(czas, x, y) — pozycje z ostatnich HISTORY_S s (serwer)
+var _fear := 0.0              ## morale watahy: śmierć kolegów go podnosi, 1.0 = ucieczka
+var _flee_src := Vector2.ZERO ## od czego ucieka w panice (ZERO = od gracza)
+var _stalker_t := 0.0
+var _lure_t := 4.0            ## Mimik: odstęp między fałszywymi wołaniami
+var _sp := 0                  ## Wołek: 0 nic, 1 zapowiedź szarży, 2 szarża, 3 zapowiedź rzutu, 4 ogłuszony po uderzeniu
+var _sp_t := 0.0
+var _sp_dir := 1.0
+var _sp_crate: Node = null
+var _charge_cd := 3.0
+var _throw_cd := 2.0
+var _charge_hit := false
 var _scream_cd := 0.0         ## Podsłuchacz: przerwa między krzykami
 var _alerted := false         ## Podsłuchacz: już krzyknął (od tej pory boty go widzą jako zagrożenie)
 var _ring := 0.0              ## efekt fali krzyku (każdy peer)
@@ -146,6 +189,15 @@ func wake() -> void:
 	if not NoiseMgr.is_server() or not alive or active:
 		return
 	active = true
+	if _def.get("mimic", false):
+		# demaskacja: krzyk, fala i chwila na zmianę postaci (zapowiedź), potem normalny pościg
+		NoiseMgr.add_noise(6.0, global_position)
+		if NoiseMgr.has_network():
+			_scream_fx.rpc()
+		else:
+			_scream_fx()
+		_windup = 0.35
+		winding = true
 	if not _has_lead:
 		var p := _nearest_player()
 		if p != null:
@@ -183,6 +235,13 @@ func reset_enemy() -> void:
 	_lose_t = 0.0
 	_search_t = 0.0
 	_retreat = 0.0
+	_fear = 0.0
+	_flee_src = Vector2.ZERO
+	_sp = 0
+	_sp_crate = null
+	_charge_cd = 3.0
+	_throw_cd = 2.0
+	_lure_t = 4.0
 	_scream_cd = 0.0
 	_alerted = false
 	_level_t = 0.0
@@ -214,6 +273,7 @@ func _physics_process(delta: float) -> void:
 	_stagger = maxf(0.0, _stagger - delta)
 	_panic = maxf(0.0, _panic - delta)
 	_retreat = maxf(0.0, _retreat - delta)
+	_fear = maxf(0.0, _fear - FEAR_DECAY * delta)
 	_tick_drop(delta)
 	_tick_burn(delta)
 	if not alive:
@@ -225,6 +285,8 @@ func _physics_process(delta: float) -> void:
 
 	if not active:
 		_check_wake()
+		if kind == "mimik":
+			_mimik_lure(delta)
 		# śpiący wróg stoi i słucha, ale grawitacja działa
 		velocity.x = move_toward(velocity.x, 0.0, 400.0 * delta)
 		_apply_gravity(delta)
@@ -239,14 +301,28 @@ func _physics_process(delta: float) -> void:
 	if _stagger > 0.0:
 		speed *= 0.25
 
+	_stalker_t -= delta
+	if _stalker_t <= 0.0:
+		_stalker_t = 0.3
+		_check_stalker_fear()
+
+	# Wołek: szarża i rzut skrzynią przejmują ruch na czas swoich faz
+	if _def.get("bruiser", false) and _bruiser_tick(delta, target):
+		_apply_gravity(delta)
+		move_and_slide()
+		_after_move_bruiser()
+		_send_state(delta)
+		return
+
 	if _windup > 0.0:
 		_windup -= delta
 		velocity.x = move_toward(velocity.x, 0.0, 800.0 * delta)
 		if _windup <= 0.0:
 			_resolve_attack()
-	elif target != null and _panic > 0.0:
-		# płonący Trzosek ucieka (HKM-9: „strach wśród Trzosków”), nie atakuje
-		velocity.x = -signf(target.global_position.x - global_position.x) * speed * 0.9
+	elif _panic > 0.0:
+		# ucieczka: płonący Trzosek (HKM-9), załamane morale watahy, strach przed Stalkerem
+		var src_x := _flee_src.x if _flee_src != Vector2.ZERO else (target.global_position.x if target != null else global_position.x - _facing)
+		velocity.x = -signf(src_x - global_position.x) * speed * 0.9
 	elif target != null and _retreat > 0.0:
 		# uderz i uciekaj: po ciosie Trzosek odskakuje, więc wataha nie stoi w miejscu
 		velocity.x = -signf(target.global_position.x - global_position.x) * speed * 0.8
@@ -266,7 +342,8 @@ func _physics_process(delta: float) -> void:
 func hear_scream(pos: Vector2) -> void:
 	if not NoiseMgr.is_server() or not alive:
 		return
-	if global_position.distance_to(pos) > SCREAM_LURE_R * Difficulty.m("enemy_hear"):
+	var lim := SCREAM_LURE_R * Difficulty.m("enemy_hear")
+	if _sound_distance(pos, lim) > lim:
 		return
 	_lead_at(pos)
 	wake()
@@ -297,6 +374,170 @@ func lag_rect(at_time: float) -> Rect2:
 					break
 	var size: Vector2 = _def["size"]
 	return Rect2(p.x - size.x * 0.5 - 1.0, p.y - size.y - 1.0, size.x + 2.0, size.y + 2.0)
+
+## --- Mimik ----------------------------------------------------------------
+
+## Zamaskowany Mimik woła o pomoc głosem gracza (próbka bólu), gdy ktoś jest w zasięgu słuchu, ale jeszcze
+## nie przy nim — wabi do zasadzki. Kto podejdzie, poświeci albo strzeli, ten go demaskuje (wake()).
+func _mimik_lure(delta: float) -> void:
+	_lure_t -= delta
+	if _lure_t > 0.0:
+		return
+	var p := _nearest_player()
+	var d := p.global_position.distance_to(global_position) if p != null else INF
+	if d < 340.0 and d > 70.0:
+		_lure_t = randf_range(6.0, 10.0)
+		if NoiseMgr.has_network():
+			_mimic_call.rpc()
+		else:
+			_mimic_call()
+	else:
+		_lure_t = 1.0
+
+@rpc("authority", "call_local", "unreliable")
+func _mimic_call() -> void:
+	Audio.play_variant_at("player_hurt", 2, global_position, Audio.BUS_WORLD, -5.0, randf_range(0.95, 1.1))
+
+## --- Wołek: szarża i rzut skrzynią ------------------------------------------
+
+## Zwraca true, gdy faza specjalna przejęła ruch w tej klatce.
+func _bruiser_tick(delta: float, target: Node2D) -> bool:
+	_charge_cd = maxf(0.0, _charge_cd - delta)
+	_throw_cd = maxf(0.0, _throw_cd - delta)
+	match _sp:
+		0:
+			if target == null or _windup > 0.0 or _stagger > 0.0 or _panic > 0.0:
+				return false
+			var d := target.global_position - global_position
+			if absf(d.y) > 24.0:
+				return false
+			var ax := absf(d.x)
+			if ax > 100.0 and ax < 280.0 and _charge_cd <= 0.0 and _run_clear(signf(d.x), ax):
+				_sp = 1
+				_sp_t = CHARGE_WINDUP * Difficulty.m("enemy_windup")
+				_sp_dir = signf(d.x)
+				_charge_hit = false
+				winding = true
+				return true
+			if ax > 60.0 and ax < 220.0 and _throw_cd <= 0.0:
+				var c := _find_crate()
+				if c != null:
+					_sp = 3
+					_sp_t = THROW_WINDUP * Difficulty.m("enemy_windup")
+					_sp_dir = signf(d.x)
+					_sp_crate = c
+					winding = true
+					return true
+			return false
+		1:
+			velocity.x = 0.0
+			_sp_t -= delta
+			if _sp_t <= 0.0:
+				_sp = 2
+				_sp_t = CHARGE_TIME
+				winding = false
+			return true
+		2:
+			_sp_t -= delta
+			velocity.x = _sp_dir * float(_def["speed"]) * Difficulty.m("enemy_speed") * CHARGE_MULT
+			if _sp_t <= 0.0:
+				_end_charge()
+			return true
+		3:
+			velocity.x = 0.0
+			_sp_t -= delta
+			if _sp_t <= 0.0:
+				_throw_crate(target)
+			return true
+		4:
+			velocity.x = 0.0
+			_sp_t -= delta
+			if _sp_t <= 0.0:
+				_sp = 0
+				winding = false
+			return true
+	return false
+
+## Czy przed Wołkiem jest wolna droga na rozbieg (bez ściany).
+func _run_clear(dir: float, dist: float) -> bool:
+	var from := global_position + Vector2(0, -10)
+	var q := PhysicsRayQueryParameters2D.create(from, from + Vector2(dir * minf(dist, 200.0), 0), 1)
+	return get_world_2d().direct_space_state.intersect_ray(q).is_empty()
+
+func _end_charge() -> void:
+	_sp = 0
+	winding = false
+	_charge_cd = CHARGE_CD * Difficulty.m("enemy_cd")
+
+## Po ruchu: szarża rozbija skrzynie, detonuje beczki (wybuch rani też Wołka), uderza gracza; ściana ogłusza.
+func _after_move_bruiser() -> void:
+	if _sp != 2:
+		return
+	var crashed := false
+	for i in get_slide_collision_count():
+		var c := get_slide_collision(i)
+		var col := c.get_collider() as Node
+		if col == null:
+			continue
+		if col.is_in_group("props"):
+			if col.has_method("take_bullet"):
+				col.take_bullet(global_position, 45.0)
+		elif absf(c.get_normal().x) > 0.7:
+			crashed = true
+	if not _charge_hit:
+		for p in get_tree().get_nodes_in_group("players"):
+			if not p.dead and absf(p.global_position.x - global_position.x) < 16.0 and absf(p.global_position.y - global_position.y) < 18.0:
+				p.deliver_hit(2, global_position)
+				_charge_hit = true
+	if crashed:
+		_crash()
+
+func _crash() -> void:
+	_sp = 4
+	_sp_t = CRASH_STUN
+	winding = false
+	_charge_cd = CHARGE_CD * Difficulty.m("enemy_cd")
+	velocity.x = -_sp_dir * 40.0
+	NoiseMgr.add_noise(7.0, global_position)
+	if NoiseMgr.has_network():
+		_crash_fx.rpc()
+	else:
+		_crash_fx()
+
+@rpc("authority", "call_local", "reliable")
+func _crash_fx() -> void:
+	Audio.play_variant_at("impact_hard", 3, global_position, Audio.BUS_WORLD, 0.0, 0.5)
+	Vfx.dust(get_parent(), global_position, 1.0)
+	if _local_player_pos().distance_to(global_position) < 300.0:
+		Feel.shake(3.5)
+
+func _find_crate() -> Node:
+	var best: Node = null
+	var best_d := 60.0
+	for p in get_tree().get_nodes_in_group("props"):
+		if p.get("kind") != "crate" or p.get("exploded") or float(p.get("thrown_t")) > 0.0:
+			continue
+		var dx := absf(p.global_position.x - global_position.x)
+		if dx < best_d and absf(p.global_position.y - global_position.y) < 30.0:
+			best_d = dx
+			best = p
+	return best
+
+## Rzut: balistyczny łuk w gracza (grawitacja ciał fizycznych 980), skrzynia rani przy trafieniu (prop.gd).
+func _throw_crate(target: Node2D) -> void:
+	var crate := _sp_crate
+	_sp = 0
+	winding = false
+	_throw_cd = THROW_CD * Difficulty.m("enemy_cd")
+	_sp_crate = null
+	if crate == null or not is_instance_valid(crate) or crate.exploded or target == null or not is_instance_valid(target):
+		return
+	var from := global_position + Vector2(_sp_dir * 10.0, -26.0)
+	var aim := (target.global_position + Vector2(0, -10.0)) - from
+	var t := clampf(absf(aim.x) / 300.0, 0.3, 0.8)
+	var vel := Vector2(clampf(aim.x / t, -420.0, 420.0), (aim.y - 0.5 * 980.0 * t * t) / t)
+	crate.throw_to(from, vel)
+	NoiseMgr.add_noise(4.0, global_position)
 
 ## --- Podsłuchacz -----------------------------------------------------------
 
@@ -335,7 +576,7 @@ func _scream() -> void:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e == self or e.get_script() != get_script() or not e.alive or e.kind == "podsluchacz":
 			continue
-		if e.global_position.distance_to(global_position) < ALARM_R:
+		if e._sound_distance(global_position, ALARM_R) < ALARM_R:
 			e._lead_at(global_position)
 			e.wake()
 	if NoiseMgr.has_network():
@@ -365,8 +606,28 @@ func _listen() -> void:
 		return
 	_seen_serial = NoiseMgr.noise_serial
 	var reach := _noise_reach(NoiseMgr.last_noise_amount, 1.4)
-	if reach > 0.0 and global_position.distance_to(NoiseMgr.last_noise_pos) < reach:
+	if reach > 0.0 and _sound_distance(NoiseMgr.last_noise_pos, reach) < reach:
 		_lead_at(NoiseMgr.last_noise_pos)
+
+## Odległość „słyszalna" do punktu: długość trasy po grafie nawigacji (nav.gd), nie linia prosta —
+## strzał nad głową przez piętro betonu jest daleko, ten sam strzał w sąsiednim korytarzu blisko.
+## Trasa nie bywa krótsza niż linia prosta, więc dla odległych źródeł (≥ limit) nie liczymy A*.
+func _sound_distance(pos: Vector2, limit: float) -> float:
+	var d := global_position.distance_to(pos)
+	if d >= limit or d < 24.0:
+		return d
+	var lvl := get_tree().get_first_node_in_group("level")
+	var nav = lvl.get("nav") if lvl != null else null
+	if nav == null:
+		return d
+	var path: Array = nav.find_path(global_position, pos)
+	if path.size() < 2:
+		return d * SOUND_MUFFLE
+	var total := (path[0].pos as Vector2).distance_to(global_position)
+	for i in range(1, path.size()):
+		total += (path[i].pos as Vector2).distance_to(path[i - 1].pos)
+	total += (path[path.size() - 1].pos as Vector2).distance_to(pos)
+	return maxf(d, total)
 
 ## Zasięg, z którego wróg usłyszy hałas o danej sile (−1 = za cichy). Ślepiec (`keen`) słyszy
 ## ciche dźwięki (kroki) z bliska, a głośne z daleka — zasięg rośnie z głośnością.
@@ -453,6 +714,9 @@ func _chase(target: Node2D, speed: float, delta: float) -> void:
 		_steer_to(target.global_position, speed, delta)
 		return
 	_blocked = false
+	if _def.get("pack", false) and _pack_hold(target):
+		_hover(d, speed)
+		return
 	var want := signf(d.x) * speed if absf(d.x) > 3.0 else 0.0
 	# rozsuwanie watahy: nie stają w jednym punkcie, tylko w szeregu (można strzelać po kolei)
 	if absf(d.x) > float(_def["reach"]):
@@ -460,6 +724,65 @@ func _chase(target: Node2D, speed: float, delta: float) -> void:
 	velocity.x = want
 	if is_on_wall() and is_on_floor() and _def["leap"]:
 		velocity.y = -230.0
+
+## Wataha atakuje po kolei: gdy MAX_ATTACKERS kolegów już jest przy celu (zapowiedź albo w zasięgu),
+## reszta krąży w pasmie HOVER_MIN..HOVER_MAX i czeka na wolne miejsce — zamiast stać w kolejce w jednym punkcie.
+func _pack_hold(target: Node2D) -> bool:
+	var dx := absf(target.global_position.x - global_position.x)
+	if winding or dx <= float(_def["reach"]) + 6.0:
+		return false
+	var committed := 0
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e == self or e.get_script() != get_script() or not e.alive or not e.active or e.kind != kind:
+			continue
+		if e._target != target:
+			continue
+		if e.winding or (absf(e.global_position.x - target.global_position.x) <= float(e._def["reach"]) + 6.0 \
+				and absf(e.global_position.y - target.global_position.y) < 18.0):
+			committed += 1
+	return committed >= MAX_ATTACKERS
+
+func _hover(d: Vector2, speed: float) -> void:
+	var ax := absf(d.x)
+	if ax > HOVER_MAX:
+		velocity.x = signf(d.x) * speed
+	elif ax < HOVER_MIN:
+		velocity.x = -signf(d.x) * speed * 0.5
+	else:
+		velocity.x = sin(Time.get_ticks_msec() * 0.004 + float(get_instance_id() % 7)) * speed * 0.3
+
+## Morale: śmierć kolegi z watahy w PACK_R podnosi strach; przy 1.0 reszta się rozbiega (PANIC_TIME).
+func _notify_pack_death() -> void:
+	if not _def.get("pack", false):
+		return
+	var alpha := true
+	var mates: Array = []
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e == self or e.get_script() != get_script() or not e.alive or not e.active or e.kind != kind:
+			continue
+		if e.global_position.distance_to(global_position) > PACK_R:
+			continue
+		mates.append(e)
+		if e.get_instance_id() < get_instance_id():
+			alpha = false          # przewodnik = najstarszy w watasze
+	for e in mates:
+		e._on_packmate_died(alpha, global_position)
+
+func _on_packmate_died(was_alpha: bool, pos: Vector2) -> void:
+	_fear += FEAR_ALPHA if was_alpha else FEAR_PER_DEATH
+	if _fear >= 1.0:
+		_fear = 0.0
+		_panic = maxf(_panic, PANIC_TIME)
+		_flee_src = _target.global_position if _target != null else pos
+
+## Strach przed Stalkerem: gdy ON jest aktywny i blisko, Trzoski uciekają od niego.
+func _check_stalker_fear() -> void:
+	if not _def.get("fears", false) or not NoiseMgr.stalker_awake:
+		return
+	var st := get_parent().get_node_or_null("Stalker") as Node2D
+	if st != null and global_position.distance_to(st.global_position) < STALKER_FEAR_R:
+		_panic = maxf(_panic, 1.6)
+		_flee_src = st.global_position
 
 func _separation(speed: float) -> float:
 	var push := 0.0
@@ -552,7 +875,7 @@ func _check_wake() -> void:
 	if NoiseMgr.noise_serial != _seen_serial:
 		_seen_serial = NoiseMgr.noise_serial
 		var reach := _noise_reach(NoiseMgr.last_noise_amount)
-		if reach > 0.0 and global_position.distance_to(NoiseMgr.last_noise_pos) < reach:
+		if reach > 0.0 and _sound_distance(NoiseMgr.last_noise_pos, reach) < reach:
 			_lead_at(NoiseMgr.last_noise_pos)     # idzie do źródła hałasu, nie wprost do gracza
 			wake()
 			return
@@ -664,6 +987,7 @@ func _ignite(seconds: float) -> void:
 	_burn = maxf(_burn, seconds)
 	if kind == "trzosek":
 		_panic = maxf(_panic, 1.2)
+		_flee_src = Vector2.ZERO
 	if fresh:
 		if NoiseMgr.has_network():
 			_ignite_fx.rpc(seconds)
@@ -713,9 +1037,11 @@ func _die() -> void:
 		if w >= 0 and lv != null:
 			var n: int = maxi(1, int(Weapons.def(w).pickup_rounds * 0.5))
 			lv.spawn_item("ammo", w, global_position + Vector2(randf_range(-6.0, 6.0), -14), n)
+	_notify_pack_death()
 	_set_alive(false)
 	winding = false
 	_windup = 0.0
+	_sp = 0
 	_death_fx()
 	_send_state(999.0)
 
@@ -792,6 +1118,8 @@ func _update_sprite() -> void:
 			anim = "run" if kind == "trzosek" else "walk"
 		else:
 			anim = "idle"
+	elif kind == "mimik":
+		anim = "idle"          # zamaskowany stoi jak żywy kolega, nie „śpi"
 	Sprites.play(_spr, anim, _facing < 0.0)
 	var body: AnimatedSprite2D = _spr[0]
 	var m := Color.WHITE
@@ -801,7 +1129,7 @@ func _update_sprite() -> void:
 		# zapowiedź ciosu: pulsujące czerwienienie (klatka „windup" unosi łapę)
 		var p := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.03)
 		m = Color(1.6 + 0.6 * p, 0.55, 0.5)
-	elif not active:
+	elif not active and kind != "mimik":
 		m = Color(0.8, 0.8, 0.8)
 	body.modulate = m
 
@@ -833,6 +1161,12 @@ func _draw_overlay(ov: Node2D) -> void:
 		var pulse := 0.6 + 0.4 * sin(t * 8.0)
 		ov.draw_circle(Vector2(-size.x * 0.22, eye_y), 1.4, Color(1.0, 0.7 * pulse, 0.2, eye_a))
 		ov.draw_circle(Vector2(size.x * 0.22, eye_y), 1.4, Color(1.0, 0.7 * pulse, 0.2, eye_a))
+	if kind == "mimik" and not active:
+		# etykieta jak u gracza, ale bez serduszek (zdradza go) i z numerem, którego nie ma w drużynie
+		var f := ThemeDB.fallback_font
+		var txt := "P%d" % (2 + int(get_instance_id() % 3))
+		ov.draw_string(f, Vector2(-30 + 0.5, -31 + 0.5), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, 4, Color(0, 0, 0, 0.8))
+		ov.draw_string(f, Vector2(-30, -31), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, 4, Color(0.72, 0.8, 0.72))
 	if _ring > 0.0:
 		var k := 1.0 - _ring / 0.7
 		ov.draw_arc(Vector2(0, -size.y * 0.7), 8.0 + k * 70.0, 0.0, TAU, 28, Color(1.0, 0.55, 0.35, (1.0 - k) * 0.8), 1.5)

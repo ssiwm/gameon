@@ -20,6 +20,7 @@ extends Node2D
 ##   k  skrzynia (fizyczna)   o  beczka (fizyczna, wybucha)
 ##   g  broń na ziemi         a  skrzynka z amunicją
 ##   L  Ślepiec (nie widzi, słyszy)   P  Podsłuchacz (stoi, krzyczy i ściąga hordę)
+##   Y  Mimik (udaje kolegę z drużyny)
 ##
 ## Układ (192 × 44 kafli): las + posterunek → arena z kładkami → Skład (hala z antresolą,
 ## dach, schody z rusztowań) → tartak z bossem; pod całą mapą biegną podziemia
@@ -72,7 +73,7 @@ const MAP := [
 	"##.......w...w.---bbbbbbbbbbbbbbbbbbC...........=========.....===========...=========....................----....bb=========================bb....----.........w......-------......w..........##",
 	"##.......w...w....bbbbbbbbbbbbbbbbbbC............................................................................bbbbbbbbbbbbbbbbbbbbbbbbbbbbb.................w.........w.........w..........##",
 	"##.......w..---...bbbbbbbbbbbbbbbbbb........=========...===========...===========......................----......====bbbbbbbbbbbbbbbbbbbbb====......----......-------....w.........w..........##",
-	"##.ES..S.w.g.w.kk.bbbbbbobTbTbTbbNbb........a.....L...M..o..W.a.......X...M.......TaT..................k....kko..bbbbbTbbTbbbbbabbbbbWbbbbbbbb....oP..k........w..a......w.o..W.a..w...B....E.##",
+	"##.ES..S.w.g.w.kk.bbbbbbobTbTbTbbNbb........a.....L...M..ok.W.a.......X...M.......TaT..................k....kko..bYbbbTbbTbbbbbabbbkbWbbbbbbbb....oP..k........w..a......w.o..W.a.kw...B....E.##",
 	"######################################bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"######################################bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"######################################======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~C======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC======~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
@@ -86,7 +87,7 @@ const MAP := [
 	"######bbbb=======bbbbb=======bbbbbbbbbbb====bbbbbbbbbbbbbbbbbbbbbbb=======bbbbb=======bbbbbbbbbbb====bbbbbbbbbbbb=======bbbbbbbbbbbbb=======bbbbbbbbbbbbbb====bbbbbbbbbbbbbbbbb=======bbbbbCCC##",
 	"######bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCC##",
 	"######bb===bbbbbbMMbbbbbbbbb===bbbbbbb====bbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbMMbbbbbbbb===bbbbbbb====bbbbbbbbbbbb===bbbbbbbbbbMMbbbbbbbbbbbbb===bbbbbbbbbb====bbbbbbbbbbbbbbbbb===MMbbbbbbbbbCCC##",
-	"######bbbbbbbbbbbMMTbbbbbbbabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbTbLbbbbMMbbbbbbbWbbbbbbbbbbbbbbbbbbbbbbbbbabbbbbTbbbbbbbMMbbLbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbMMbbbbTbbbbCCC##",
+	"######bbbbbbbbbbbMMTbbbbbbbabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbTbLbbbbMMbbbbbbbWbkbbbbbYbbbbbbbbbbbbbbbbbabbbbbTbbbbbbbMMbbLbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbMMbbbbTbbbbCCC##",
 	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
 	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
 	"############################################################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
@@ -268,7 +269,7 @@ func _exposure(c: int, r: int) -> int:
 ## Znaczniki → postacie. Nazwy numerowane od lewej do prawej, identycznie
 ## na każdym peerze.
 func _spawn_entities() -> void:
-	var found := {"T": [], "W": [], "L": [], "P": [], "N": [], "k": [], "o": [], "a": [], "g": []}
+	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "N": [], "k": [], "o": [], "a": [], "g": []}
 	for r in MAP.size():
 		var row: String = MAP[r]
 		for c in row.length():
@@ -280,7 +281,7 @@ func _spawn_entities() -> void:
 				"E": exits.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "L", "P", "N", "k", "o", "a", "g": found[ch].append(p)
+				"T", "W", "L", "P", "Y", "N", "k", "o", "a", "g": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -291,6 +292,8 @@ func _spawn_entities() -> void:
 		_add_enemy("Slepiec%d" % (i + 1), "slepiec", found["L"][i])
 	for i in found["P"].size():
 		_add_enemy("Podsluchacz%d" % (i + 1), "podsluchacz", found["P"][i])
+	for i in found["Y"].size():
+		_add_enemy("Mimik%d" % (i + 1), "mimik", found["Y"][i])
 	for i in found["N"].size():
 		var n := NEST_SCENE.instantiate()
 		n.name = "Nest%d" % (i + 1)

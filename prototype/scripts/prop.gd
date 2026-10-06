@@ -36,6 +36,11 @@ var _remote_rot := 0.0
 var _push_t := 0.0
 var _spr: Array = []
 var _reset_pending := false
+## Rzut przez Wołka (enemy.gd): skrzynia leci z prędkością `_throw_vel` i przez `thrown_t` s rani gracza przy kontakcie.
+var thrown_t := 0.0
+var _throw_pending := false
+var _throw_pos := Vector2.ZERO
+var _throw_vel := Vector2.ZERO
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -95,7 +100,22 @@ func _reset_rpc() -> void:
 	_remote_rot = 0.0
 	collision_layer = LAYER
 
+## Serwer: ciało zostaje przeniesione do `pos` i wystrzelone z prędkością `vel` (przez _integrate_forces).
+func throw_to(pos: Vector2, vel: Vector2) -> void:
+	if not NoiseMgr.is_server() or exploded:
+		return
+	_throw_pending = true
+	_throw_pos = pos
+	_throw_vel = vel
+	thrown_t = 1.6
+	sleeping = false
+
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
+	if _throw_pending:
+		_throw_pending = false
+		state.transform = Transform2D(0.0, _throw_pos)
+		state.linear_velocity = _throw_vel
+		state.angular_velocity = randf_range(-6.0, 6.0)
 	if _reset_pending:
 		_reset_pending = false
 		state.transform = Transform2D(0.0, _home)
@@ -110,6 +130,13 @@ func _physics_process(delta: float) -> void:
 		rotation = lerp_angle(rotation, _remote_rot, 0.4)
 		return
 	_prev_speed = linear_velocity.length()
+	if thrown_t > 0.0:
+		thrown_t = maxf(0.0, thrown_t - delta)
+		for p in get_tree().get_nodes_in_group("players"):
+			if not p.dead and (p.global_position + Vector2(0, -8)).distance_to(global_position) < 11.0:
+				p.deliver_hit(1, global_position)
+				thrown_t = 0.0
+				break
 	_net_t -= delta
 	if _net_t <= 0.0 and NoiseMgr.has_network() and not exploded:
 		_net_t = SYNC_DT

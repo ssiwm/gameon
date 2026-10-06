@@ -178,6 +178,7 @@ def bake_chars_hd():
         ("stalker", char_monsters.stalker, char_monsters.STALKER_ANIMS, 20, 40),
         ("slepiec", char_monsters.slepiec, char_monsters.SLEPIEC_ANIMS, 16, 20),
         ("podsluchacz", char_monsters.podsluchacz, char_monsters.PODSLUCHACZ_ANIMS, 16, 26),
+        ("mimik", char_monsters.mimik, char_monsters.MIMIK_ANIMS, 16, 24),
     ):
         body, glow = char_monsters.monster_frames(fn, anims)
         char_sheet(name, fw, fh, anims, body, glow)
