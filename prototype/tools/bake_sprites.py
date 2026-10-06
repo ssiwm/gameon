@@ -308,6 +308,8 @@ def bake_guns_hd():
             body.append([b])
             glow.append([g])
         char_sheet(name, fw, fh, anims, body, glow)
+        if world:
+            MANIFEST["sheets"][name]["scale"] = 1.0 / gun_icons_hd.WORLD_DENSITY     # gra rysuje arkusz broni w tej skali
 
 
 def bake_guns():

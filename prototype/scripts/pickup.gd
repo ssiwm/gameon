@@ -112,10 +112,11 @@ func _draw() -> void:
 		draw_rect(Rect2(-8, -4 + ibob, 16, 1), c.darkened(0.4))
 		var tex := Sprites.texture(Sprites.DIR + "guns.png")
 		if tex != null and Sprites.has("guns"):
-			var fs := Sprites.frame_size("guns")
+			var tfs := Sprites.frame_size("guns")                       # rozmiar klatki w pikselach arkusza
+			var fs := tfs * Sprites.scale_of("guns")                     # rozmiar w świecie (arkusz ma 2× gęstość)
 			var row := int(Weapons.def(arg).gun_row)
 			var dst := Rect2(roundf(-fs.x * 0.5), -4.0 - fs.y + ibob, fs.x, fs.y)
-			var src := Rect2(0, row * fs.y, fs.x, fs.y)
+			var src := Rect2(0, row * tfs.y, tfs.x, tfs.y)
 			# ciemny kontur 1 px — sylwetka czytelna na jasnym i ciemnym tle
 			for o: Vector2 in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
 				draw_texture_rect_region(tex, Rect2(dst.position + o, dst.size), src, Color(0, 0, 0, 0.85))

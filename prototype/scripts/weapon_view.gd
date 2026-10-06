@@ -16,7 +16,7 @@ const Vfx := preload("res://scripts/vfx.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 
-const HAND := Vector2(6.5, 7.0)       ## dłoń w klatce broni 36×14 (obrót wokół niej; y = środek klatki, więc flip_v nie przesuwa); zgodne z tools/gun_icons_hd.py
+const HAND := Vector2(13, 14)         ## dłoń w klatce broni 72×28 w pikselach arkusza (obrót wokół niej; y = środek klatki, więc flip_v nie przesuwa); zgodne z tools/gun_icons_hd.py
 const FLASH_TIME := 0.055
 const HIT_TIME := 0.2
 const CROSS_DIST := 72.0              ## px od wylotu, gdy celujesz klawiaturą
@@ -65,10 +65,13 @@ func setup(p: CharacterBody2D, c: Node) -> void:
 	if _sheet_ok:
 		_gun = Sprite2D.new()
 		_gun.name = "Gun"
-		_gun.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		# arkusz ma 2× gęstość pikseli (skala 0,5 → rozmiar jak dawniej); filtr liniowy wygładza obrót pod dowolnym kątem
+		_gun.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		_gun.centered = false
 		_gun.offset = -HAND
+		_gun.scale = Vector2.ONE * Sprites.scale_of("guns")
 		_atlas = AtlasTexture.new()
+		_atlas.filter_clip = true                 # nie podciągaj pikseli sąsiedniej klatki przy filtrowaniu
 		_atlas.atlas = Sprites.texture(Sprites.DIR + "guns.png")
 		_gun.texture = _atlas
 		add_child(_gun)
@@ -77,11 +80,13 @@ func setup(p: CharacterBody2D, c: Node) -> void:
 		if glow_tex != null:
 			_glow = Sprite2D.new()
 			_glow.name = "GunGlow"
-			_glow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			_glow.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 			_glow.centered = false
 			_glow.offset = -HAND
+			_glow.scale = _gun.scale
 			_glow.material = Lights.unshaded()
 			_glow_atlas = AtlasTexture.new()
+			_glow_atlas.filter_clip = true
 			_glow_atlas.atlas = glow_tex
 			_glow.texture = _glow_atlas
 			add_child(_glow)

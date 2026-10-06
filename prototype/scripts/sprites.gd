@@ -21,6 +21,10 @@ static func manifest() -> Dictionary:
 static func has(sheet: String) -> bool:
 	return manifest().get("sheets", {}).has(sheet) and ResourceLoader.exists(DIR + sheet + ".png")
 
+## Skala rysowania arkusza w świecie (domyślnie 1). Arkusz broni ma 2× gęstość pikseli i skalę 0,5.
+static func scale_of(sheet: String) -> float:
+	return float(manifest().get("sheets", {}).get(sheet, {}).get("scale", 1.0))
+
 static func frame_size(sheet: String) -> Vector2:
 	var f: Array = manifest()["sheets"][sheet]["frame"]
 	return Vector2(f[0], f[1])

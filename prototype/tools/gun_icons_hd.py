@@ -1,6 +1,6 @@
 """Bronie w wysokiej rozdzielczości (1.7.17) — jeden projekt, dwa arkusze:
   gun_icons.png  64×24  ikony do HUD i kodeksu (pełna broń, powiększana),
-  guns.png       36×14  broń w świecie: ten sam projekt przeskalowany tak, by chwyt wypadł w dłoni (HAND) a wylot lufy
+  guns.png       72×28  broń w świecie (2× gęstość pikseli, rysowana w grze w skali 0,5 → rozmiar na ekranie jak 36×14): ten sam projekt przeskalowany tak, by chwyt wypadł w dłoni (HAND) a wylot lufy
                         w HAND.x + gun_len (weapons.gd) — kolba za dłonią jest ucięta, jak w starym arkuszu.
 Renderowane silnikiem postaci (char_art: render 4×, rampy, obrys, warstwa świecąca), widok z boku, lufa w prawo.
 Kolejność wierszy = gun_row z weapons.gd.
@@ -11,8 +11,9 @@ from char_monsters import _finish
 from char_monsters_hd import Sc
 
 FW, FH = 64, 24                    # ikona (HUD, kodeks)
-WFW, WFH = 36, 14                  # sprite w świecie
-HAND = (6.5, 7.0)                  # dłoń (pivot obrotu) w klatce świata; zgodne z weapon_view.gd
+WORLD_DENSITY = 2                  # ile pikseli arkusza przypada na piksel świata (gra rysuje sprite w skali 1/2)
+WFW, WFH = 36 * WORLD_DENSITY, 14 * WORLD_DENSITY   # sprite w świecie
+HAND = (6.5 * WORLD_DENSITY, 7.0 * WORLD_DENSITY)    # dłoń (pivot obrotu) w klatce, w pikselach arkusza; zgodne z weapon_view.gd
 # nazwa → (x chwytu, y chwytu, x wylotu w rysunku ikony, skala rysunku→świat); gun_len = (x wylotu − x chwytu) · skala
 GRIP = {
     "m83": (26.0, 15.5, 63.0, 0.50), "spread12": (26.0, 15.2, 62.4, 0.50), "p64": (28.0, 13.4, 61.0, 0.42),
@@ -64,6 +65,7 @@ def gun(name, world=False):
     fw, fh = (WFW, WFH) if world else (FW, FH)
     if world:
         gx, gy, mx, k = GRIP[name]
+        k *= WORLD_DENSITY                                  # ten sam rozmiar w świecie, więcej pikseli
         hi = Sc(fw, fh, k, HAND[0] - gx * k, HAND[1] - gy * k)
     else:
         hi = Sc(fw, fh)
@@ -293,9 +295,11 @@ def gun(name, world=False):
         glow_pts = []
     if world:
         skin = hi.material(ramp((226, 174, 142), cool=(0.3, 0.2, 0.34)))
-        Hi.ellipse(hi, HAND, 2.0, 1.8, skin)                                       # dłoń na chwycie (pivot obrotu)
-        Hi.ellipse(hi, (HAND[0] + 1.0, HAND[1] - 0.8), 1.2, 0.8, skin)
+        Hi.ellipse(hi, HAND, 2.0 * WORLD_DENSITY, 1.8 * WORLD_DENSITY, skin)         # dłoń na chwycie (pivot obrotu)
+        Hi.ellipse(hi, (HAND[0] + 1.0 * WORLD_DENSITY, HAND[1] - 0.8 * WORLD_DENSITY), 1.2 * WORLD_DENSITY, 0.8 * WORLD_DENSITY, skin)
     fr = _finish(hi, 0.3)
+    if world:
+        fr.outline(0.3)                                   # obrys 2 px arkusza = 1 px świata, jak u reszty sprite'ów
     glow_fr = Frame(fw, fh)
     _glow_dots(glow_fr, [hi._t(p) for p in glow_pts], gcol)
     return fr, glow_fr
