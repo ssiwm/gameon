@@ -460,6 +460,39 @@ def podsluchacz(an, i):
     return fr, glow
 
 
+# ================================================================ MIMIK
+
+MIMIK_ANIMS = [("idle", 6, 5, True), ("walk", 8, 12, True), ("windup", 1, 1, False), ("sleep", 1, 1, False)]
+MIMIC_COLOR = (118, 172, 118)        # nieco przygaszona zieleń — prawie slot P4, ale „nie ta"
+
+
+def mimik(an, i):
+    """Udaje gracza: ta sama sylwetka i animacje co postać (char_player), plus zdradzające szczegóły —
+    świecące oczy (warstwa glow, widać je w ciemności) i, po demaskacji, czerwona szczelina paszczy."""
+    import char_player
+    src = {"idle": ("idle", i), "walk": ("run", i), "windup": ("jump", 0), "sleep": ("idle", 0)}[an]
+    fr, _ = char_player.build(MIMIC_COLOR, False, src[0], src[1])
+    glow = Frame(fr.w, fr.h)
+    eye = None
+    for y in range(fr.h):
+        for x in range(fr.w):
+            px = fr.px[y][x]
+            if px is not None and tuple(px[:3]) == (34, 26, 38):
+                eye = (x, y)
+    if eye is not None:
+        ex, ey = eye
+        hot = an == "windup"
+        col = (255, 60, 40) if hot else (255, 120, 90)
+        glow.put(ex, ey, (*col, 255 if hot else 170))
+        glow.put(ex + 1, ey, (*col, 255 if hot else 110))
+        if hot:
+            # po demaskacji: paszcza rozcięta od ucha do ucha
+            for dx in range(-1, 2):
+                fr.only_opaque_put(ex + dx, ey + 2, (150, 20, 30, 255))
+                glow.put(ex + dx, ey + 2, (255, 70, 50, 200))
+    return fr, glow
+
+
 # ================================================================ API
 
 def monster_frames(fn, anims):

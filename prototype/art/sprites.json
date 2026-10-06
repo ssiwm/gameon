@@ -408,6 +408,39 @@
     }
    }
   },
+  "mimik": {
+   "frame": [
+    16,
+    24
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 6,
+     "fps": 5,
+     "loop": true
+    },
+    "walk": {
+     "row": 1,
+     "frames": 8,
+     "fps": 12,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sleep": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   }
+  },
   "guns": {
    "frame": [
     24,
