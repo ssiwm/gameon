@@ -35,7 +35,7 @@ const PROMPT_Y := 0.81           ## pasek kontekstowy (292/360)
 ## rogu (własna karta największa, koledzy nad nią), broń i zasoby w prawym dolnym, a w lewym górnym tylko miernik hałasu.
 const BOTTOM_PAD := 20.0         ## odstęp kart dolnych od krawędzi (nad paskiem sterowania)
 const SQUAD_W := 176.0
-const GEAR_W := 184.0
+const GEAR_W := 130.0            ## karta broni zmniejszona o połowę (powierzchni): kompaktowe sloty, jeden wiersz zasobów
 ## Kolory slotów = kolory kurtek sprite'ów graczy (bake_sprites.PLAYER_VARIANTS).
 const SLOT_COLORS := [Color(0.91, 0.62, 0.22), Color(0.25, 0.72, 0.85), Color(0.86, 0.28, 0.36), Color(0.45, 0.80, 0.30)]
 const BOT_COLOR := Color(0.58, 0.60, 0.66)
@@ -279,7 +279,7 @@ func _build_gear_card() -> void:
 	var nums := HBoxContainer.new()
 	nums.alignment = BoxContainer.ALIGNMENT_END
 	nums.add_theme_constant_override("separation", 4)
-	_ammo_mag = UiTheme.label("", 22, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	_ammo_mag = UiTheme.label("", 18, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
 	nums.add_child(_ammo_mag)
 	_ammo_res = UiTheme.label("", 10, UiTheme.MUTED)
 	_ammo_res.size_flags_vertical = Control.SIZE_SHRINK_END
@@ -289,14 +289,18 @@ func _build_gear_card() -> void:
 	_reload_bar.custom_minimum_size = Vector2(0, 3)
 	_reload_bar.fill = UiTheme.ACCENT
 	box.add_child(_reload_bar)
-	# rozgrzanie lufy → hałas strzału (GDD §8.1): gracz widzi, ile Uwagi kosztuje następny strzał
-	var hr2 := _row(box, "BARREL")
+	# rozgrzanie lufy → hałas strzału (GDD §8.1): pasek + koszt następnego strzału w jednym wierszu
+	var hr2 := HBoxContainer.new()
+	hr2.add_theme_constant_override("separation", 5)
 	_heat_bar = Bar.new()
-	_heat_bar.custom_minimum_size = Vector2(54, 4)
+	_heat_bar.custom_minimum_size = Vector2(0, 3)
+	_heat_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_heat_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hr2.add_child(_heat_bar)
-	_heat_note = UiTheme.label("", 7, UiTheme.MUTED)
+	_heat_note = UiTheme.label("", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
 	hr2.add_child(_heat_note)
+	box.add_child(hr2)
+	# sloty: same klawisze (aktywny podświetlony) — nazwa broni jest w nagłówku
 	var wr := HBoxContainer.new()
 	wr.add_theme_constant_override("separation", 3)
 	for i in 4:
@@ -309,28 +313,40 @@ func _build_gear_card() -> void:
 		_slot_labels.append(l)
 	box.add_child(wr)
 	_hr(box)
-	# zasoby: wabik, flary, latarka
-	var qr := _row(box, "LURE  Q")
+	# zasoby w jednym wierszu: wabik (Q) i flary (F); pod spodem latarka
+	var res := HBoxContainer.new()
+	res.add_theme_constant_override("separation", 3)
+	res.add_child(UiTheme.label("Q", 7, UiTheme.MUTED))
 	_charges = Pips.new()
 	_charges.shape = "diamond"
 	_charges.count = NoiseMgr.OVERCHARGE_MAX
 	_charges.on = UiTheme.ACCENT
-	_charges.custom_minimum_size = Vector2(34, 9)
-	qr.add_child(_charges)
-	var fr := _row(box, "FLARE  F")
+	_charges.u = 0.8
+	_charges.custom_minimum_size = Vector2(NoiseMgr.OVERCHARGE_MAX * 11.0 * 0.8 - 2.0, 7.2)
+	res.add_child(_charges)
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(5, 0)
+	res.add_child(gap)
+	res.add_child(UiTheme.label("F", 7, UiTheme.MUTED))
 	_flares = Pips.new()
 	_flares.shape = "diamond"
 	_flares.count = NoiseMgr.FLARE_MAX
 	_flares.on = Color(1.0, 0.5, 0.25)
-	_flares.custom_minimum_size = Vector2(54, 9)
-	fr.add_child(_flares)
-	var lr := _row(box, "LIGHT  L")
+	_flares.u = 0.8
+	_flares.custom_minimum_size = Vector2(NoiseMgr.FLARE_MAX * 11.0 * 0.8 - 2.0, 7.2)
+	res.add_child(_flares)
+	box.add_child(res)
+	var lr := HBoxContainer.new()
+	lr.add_theme_constant_override("separation", 4)
+	lr.add_child(UiTheme.label("L", 7, UiTheme.MUTED))
 	_battery = Bar.new()
-	_battery.custom_minimum_size = Vector2(54, 4)
+	_battery.custom_minimum_size = Vector2(0, 3)
+	_battery.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_battery.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	lr.add_child(_battery)
-	_battery_note = UiTheme.label("OFF", 7, UiTheme.MUTED)
+	_battery_note = UiTheme.label("OFF", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
 	lr.add_child(_battery_note)
+	box.add_child(lr)
 
 # ---------------------------------------------------------------- karta drużyny
 
@@ -608,7 +624,7 @@ func _drive_status() -> void:
 	_battery.value = pct
 	_battery.fill = Color(1.0, 0.95, 0.72) if _player.flashlight else (UiTheme.DANGER if pct < 0.2 else UiTheme.MUTED)
 	_battery.queue_redraw()
-	_battery_note.text = ("ON  %d%%" if _player.flashlight else "OFF  %d%%") % int(pct * 100.0)
+	_battery_note.text = ("ON %d%%" if _player.flashlight else "OFF %d%%") % int(pct * 100.0)
 	_battery_note.add_theme_color_override("font_color", Color(1.0, 0.95, 0.72) if _player.flashlight else UiTheme.MUTED)
 
 ## Karta broni: sloty z aktualnego zestawu, magazynek / zapas, ciepło lufy i koszt hałasu.
@@ -622,7 +638,8 @@ func _drive_weapons() -> void:
 	for i in _slots.size():
 		var sel: bool = (i == wc.slot) if i < 3 else (wc.state == wc.State.MELEE)
 		var key := str(i + 1) if i < 3 else "V"
-		_slot_labels[i].text = "%s  %s" % [key, names[i]]
+		_slot_labels[i].text = key
+		_slots[i].tooltip_text = names[i]
 		_slots[i].add_theme_stylebox_override("panel", _slot_on if sel else _slot_off)
 		_slot_labels[i].add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.MUTED)
 	_ammo_name.text = cur.name
@@ -663,9 +680,9 @@ func _drive_weapons() -> void:
 	if cur.is_melee():
 		_heat_note.text = ""
 	elif cur.n_max > cur.n_min:
-		_heat_note.text = "SHOT %.1f → %.1f" % [cur.noise(heat), cur.n_max]
+		_heat_note.text = "%.1f→%.1f" % [cur.noise(heat), cur.n_max]
 	else:
-		_heat_note.text = "SHOT %.1f" % cur.noise(0.0)
+		_heat_note.text = "%.1f" % cur.noise(0.0)
 	_gear_card.reset_size()
 	_gear_card.position = Vector2(size.x - MARGIN - _gear_card.size.x, size.y - BOTTOM_PAD - _gear_card.size.y)
 
