@@ -50,19 +50,20 @@ static func bestiary() -> Array:
 		]
 		if bool(d.get("fly", false)):
 			stats.append(["Movement", "flies"])
-		out.append({"title": e[3], "tag": e[4], "portrait": {"type": "sprite", "sheet": e[1], "anim": e[2]},
+		var col: Color = (d["color"] as Color).lerp(Color(1.0, 0.85, 0.7), 0.35)
+		out.append({"title": e[3], "tag": e[4], "accent": col, "portrait": {"type": "sprite", "sheet": e[1], "anim": e[2]},
 			"stats": stats, "text": e[5], "tip": e[6]})
-	out.append({"title": "ON", "tag": "Stalker — cannot be killed",
+	out.append({"title": "ON", "tag": "Stalker — cannot be killed", "accent": Color(0.55, 0.75, 1.0),
 		"portrait": {"type": "sprite", "sheet": "stalker", "anim": "idle"},
 		"stats": [["HP", "∞"], ["Hunting", "5.5 m/s"], ["Lurking", "3.4 m/s"], ["Wakes at", "60% noise"], ["Sleeps at", "30% noise"], ["Reach", "0.9 m (0.5 m crouched)"]],
 		"text": "Reacts to noise only, never to you directly. Walks to the loudest recent sound, listens there, then strikes — with a wind-up you can run from. Light draws him. Attacks make no noise.",
 		"tip": "Stop shooting and let the meter fall below 30%. Q lures him away for 20–30 s. Crouch in the dark. You can outrun him (slower than you)."})
-	out.append({"title": "NEST", "tag": "Mission objective",
+	out.append({"title": "NEST", "tag": "Mission objective", "accent": Color(1.0, 0.5, 0.2),
 		"portrait": {"type": "sprite", "sheet": "nest", "anim": "pulse"},
 		"stats": [["HP", "60"], ["Noise when destroyed", "+8"]],
 		"text": "The Vein's limbs. As long as one lives, the mother sleeps and cannot be hurt. A nest is not a threat — bots will not shoot it; destroying one is the squad's decision. It is loud.",
 		"tip": "Clear the area first, destroy nests one at a time and let the noise settle between them."})
-	out.append({"title": "THE VEIN", "tag": "Boss — Mother of Nests",
+	out.append({"title": "THE VEIN", "tag": "Boss — Mother of Nests", "accent": Color(0.85, 0.28, 0.22),
 		"portrait": {"type": "vein"},
 		"stats": [["HP", "750 (+250 per extra player)"], ["Maw closed", "5% damage"], ["Phase 2", "below 66% — enraged"], ["Phase 3", "below 33% — scream"]],
 		"text": "Wakes when the last nest dies. Her maw is shut and armoured — it opens only briefly after each attack. Lash up close, tail sweep along the floor, spore spit at range. She spawns young. At 33% she screams: noise goes to 100% and the Stalker wakes.",
@@ -103,7 +104,7 @@ static func arsenal() -> Array:
 	var out: Array = []
 	for d: WeaponDef in Weapons.defs():
 		var notes: Array = WEAPON_TEXT.get(d.key, ["", ""])
-		out.append({"title": d.name, "tag": _slot_name(d), "portrait": {"type": "gun", "row": d.gun_row, "color": d.tracer_color},
+		out.append({"title": d.name, "tag": _slot_name(d), "accent": d.tracer_color, "portrait": {"type": "gun", "row": d.gun_row, "color": d.tracer_color},
 			"stats": _weapon_stats(d), "text": notes[0], "tip": notes[1]})
 	return out
 

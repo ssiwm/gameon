@@ -10,7 +10,7 @@ const Lobby := preload("res://scripts/lobby.gd")
 const Codex := preload("res://scripts/codex.gd")
 const CodexPage := preload("res://scripts/codex_page.gd")
 
-const CARD_W := 440.0
+const CARD_W := 450.0
 const PAGE_H := 270.0                ## stała wysokość zakładek — karta nie skacze przy przełączaniu
 const TABS := ["SETTINGS", "BESTIARY", "WEAPONS", "CONTROLS"]
 const BASE_SCALE := 0.7              ## jak HUD (hud.gd UI_SCALE): menu rysowane w 70%, razem z ustawieniem HUD SIZE
