@@ -12,6 +12,7 @@ const BOT_SCENE_PATH := "res://scenes/bot_companion.tscn"
 ## Wipe (wszyscy down) = nieudana ekstrakcja: restart misji po tylu sekundach (GDD §4).
 const WIPE_DELAY := 3.0
 
+const RunLog := preload("res://scripts/run_log.gd")
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
 const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
 const DREAD := preload("res://scripts/dread.gd")
@@ -73,6 +74,7 @@ func _ready() -> void:
 # ---------------------------------------------------------------- wipe (GDD §4)
 
 func _physics_process(delta: float) -> void:
+	_hub_input()
 	if not NoiseMgr.has_network() or not multiplayer.is_server():
 		# klient tylko odlicza lokalnie to, co ogłosił serwer
 		wipe_left = maxf(0.0, wipe_left - delta)
@@ -92,8 +94,7 @@ func _physics_process(delta: float) -> void:
 			_continue_after_result()
 		return
 	if mission.kind == "hub":
-		if Input.is_action_just_pressed("restart"):
-			_depart_hub()
+		_hub_server_tick(delta)
 		return
 	if _all_down():
 		print("[WIPE] all players down -> mission restart in %.0fs" % WIPE_DELAY)
@@ -138,12 +139,100 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 		c.request_full_reset(carry)
 	level.clear_pickups()
 	mission.on_restart(new_run)
+	hub_ready.clear()
+	hub_mine = false
+	hub_ready_n = 0
+	hub_countdown = -1.0
 	if level.objective == "hub":
 		NoiseMgr.calm()                  # w kryjówce jest cicho
 
 # ---------------------------------------------------------------- mapy / kampania
 
-## [Enter] w kryjówce (host): wyjście do kolejnej misji kampanii z zachowanym ekwipunkiem.
+# ---------------------------------------------------------------- gotowość w kryjówce
+
+const HUB_COUNTDOWN := 2.0           ## tyle sekund po zgłoszeniu gotowości przez wszystkich ludzi do wyjścia na misję
+
+var hub_ready := {}                  ## serwer: id peera (jako tekst) -> gotowy
+var hub_mine := false                ## ten peer: czy jestem gotowy (HUD)
+var hub_ready_n := 0                 ## ilu ludzi gotowych / ilu w ogóle (replikowane serwerem do HUD)
+var hub_total := 0
+var hub_countdown := -1.0            ## < 0: nie odliczamy
+var _hub_sync_t := 0.0
+
+## Każdy człowiek w kryjówce przełącza gotowość [Enter]em. Gdy wszyscy ludzie są gotowi, po krótkim odliczaniu
+## drużyna rusza na misję; odznaczenie przez kogokolwiek przerywa odliczanie. Boty się nie liczą.
+func _hub_input() -> void:
+	if mission == null or mission.kind != "hub":
+		return
+	if hub_countdown > 0.0 and NoiseMgr.has_network() and not multiplayer.is_server():
+		hub_countdown = maxf(0.0, hub_countdown - get_physics_process_delta_time())     # klient odlicza sam, serwer w _hub_server_tick
+	if not Input.is_action_just_pressed("restart"):
+		return
+	hub_mine = not hub_mine
+	Audio.play("ui_click", Audio.BUS_UI, -8.0)
+	if not NoiseMgr.has_network() or multiplayer.is_server():
+		_hub_set_ready(NoiseMgr.local_id(), hub_mine)
+	else:
+		_hub_ready_rpc.rpc_id(1, hub_mine)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _hub_ready_rpc(on: bool) -> void:
+	if multiplayer.is_server():
+		_hub_set_ready(multiplayer.get_remote_sender_id(), on)
+
+func _hub_set_ready(peer_id: int, on: bool) -> void:
+	var key := str(peer_id)
+	if on:
+		hub_ready[key] = true
+	else:
+		hub_ready.erase(key)
+	_hub_sync_t = 0.0
+
+func _hub_humans() -> Array:
+	var out := []
+	for c in _players.get_children():
+		if not c.is_queued_for_deletion() and not c.is_bot:
+			out.append(String(c.name))
+	return out
+
+func _hub_server_tick(delta: float) -> void:
+	var humans := _hub_humans()
+	for k in hub_ready.keys():
+		if not humans.has(k):
+			hub_ready.erase(k)                # ktoś wyszedł
+	var n := 0
+	for k in humans:
+		if hub_ready.has(k):
+			n += 1
+	var all := not humans.is_empty() and n == humans.size()
+	var was := hub_countdown
+	if not all:
+		hub_countdown = -1.0
+	elif hub_countdown < 0.0:
+		hub_countdown = HUB_COUNTDOWN
+	elif hub_countdown > 0.0:
+		hub_countdown = maxf(0.0, hub_countdown - delta)
+	if all and hub_countdown <= 0.0:
+		_depart_hub()
+		return
+	if n != hub_ready_n or humans.size() != hub_total or (was < 0.0) != (hub_countdown < 0.0):
+		_hub_sync_t = 0.0
+	hub_ready_n = n
+	hub_total = humans.size()
+	_hub_sync_t -= delta
+	if _hub_sync_t <= 0.0:
+		_hub_sync_t = 1.0
+		if NoiseMgr.has_network():
+			_hub_state.rpc(hub_ready.keys(), hub_total, hub_countdown)
+
+@rpc("authority", "call_remote", "reliable")
+func _hub_state(ready_ids: Array, total: int, countdown: float) -> void:
+	hub_ready_n = ready_ids.size()
+	hub_total = total
+	hub_countdown = countdown
+	hub_mine = ready_ids.has(str(multiplayer.get_unique_id()))
+
+## Wyjście z kryjówki (wszyscy ludzie gotowi): wyjście do kolejnej misji kampanii z zachowanym ekwipunkiem.
 func _depart_hub() -> void:
 	var target := after_hub if after_hub != "" else String(level.CAMPAIGN[0])
 	after_hub = ""
@@ -471,9 +560,21 @@ func _gen_test() -> void:
 	await get_tree().create_timer(2.0).timeout
 	var roamers: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return String(e.name).begins_with("Roamer"))
 	var live_foes: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return not (e is RigidBody2D))
+	var wall_nodes := get_tree().get_nodes_in_group("results_wall")
+	check.call("ściana wyników: stoi w kryjówce, zapisała misję 1.2 (%d wpis, %s)" % [RunLog.entries.size(), str(RunLog.entries.back()) if not RunLog.entries.is_empty() else "-"],
+		wall_nodes.size() == 1 and RunLog.entries.size() >= 1 and String(RunLog.entries.back()["id"]) == "z1_m2" and float(RunLog.entries.back()["time"]) >= 0.0 and int(RunLog.entries.back()["stealth"]) >= 0)
 	check.call("kryjówka: Dyrektor nie dosypuje wrogów (wędrowców %d, wrogów %d)" % [roamers.size(), live_foes.size()], roamers.is_empty() and live_foes.is_empty())
 	check.call("ekwipunek i amunicja przechodzą do kryjówki", p.weapons.loadout == loadout_before and Arsenal.get_reserve(Weapons.def(loadout_before[0]).id) == ammo_before)
-	_depart_hub()
+	await get_tree().create_timer(2.5).timeout
+	check.call("kryjówka: bez gotowości nie ruszamy (%d/%d)" % [hub_ready_n, hub_total], level.map_id == "z1_hub" and hub_countdown < 0.0)
+	_hub_set_ready(NoiseMgr.local_id(), true)
+	await get_tree().create_timer(0.5).timeout
+	check.call("kryjówka: wszyscy ludzie gotowi → odliczanie (%.1f s, %d/%d)" % [hub_countdown, hub_ready_n, hub_total], level.map_id == "z1_hub" and hub_countdown > 0.0 and hub_ready_n == hub_total and hub_total >= 1)
+	_hub_set_ready(NoiseMgr.local_id(), false)
+	await get_tree().create_timer(0.5).timeout
+	check.call("kryjówka: odznaczenie przerywa odliczanie", level.map_id == "z1_hub" and hub_countdown < 0.0)
+	_hub_set_ready(NoiseMgr.local_id(), true)
+	await get_tree().create_timer(HUB_COUNTDOWN + 1.0).timeout
 	await get_tree().create_timer(0.5).timeout
 	check.call("ambient po wyjściu z kryjówki wraca do domyślnego (%.3f)" % level.ambient.r, level.ambient.r < 0.05)
 	check.call("[Enter] w kryjówce → mapa 1.3 (gniazda), ekwipunek zachowany",

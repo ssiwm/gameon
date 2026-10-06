@@ -1,7 +1,7 @@
 extends RefCounted
 ## Kryjówka między misjami kampanii (GDD §10.3, etap 1): bez wrogów (NoiseMgr.safe_zone), ciepłe światło lamp, zbrojownia
 ## z sześcioma stojakami (SPREAD-12, PELLET-8, LR-7, HKM-9, FALCON-6, SINEW-6 — wymiana broni z podglądem statystyk),
-## skrzynki z amunicją i tablica z odprawą następnej misji (podejdź — HUD pokaże cel i zagrożenia). Ekwipunek i amunicja
+## skrzynki z amunicją i tablica z odprawą następnej misji (podejdź — HUD pokaże cel i zagrożenia) oraz ściana wyników (kreska za każdą ukończoną misję, lista czasów i upadków). Ekwipunek i amunicja
 ## przechodzą z poprzedniej misji i do następnej (main._restart_mission z carry). Host rusza dalej [Enter]. 84 × 44 kafli.
 
 const Weapons := preload("res://scripts/weapons.gd")
@@ -60,7 +60,7 @@ const MAP := [
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
-	"########CbbbSbbSbbkkbakbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbababbbbnbkbbC#######",
+	"########CbbbSbbSbbkkbakbbwbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbababbbbnbkbbC#######",
 	"########CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC#######",
 	"####################################################################################",
 	"####################################################################################",
