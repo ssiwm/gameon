@@ -27,6 +27,7 @@ extends CharacterBody2D
 signal died
 
 const Lights := preload("res://scripts/lights.gd")
+const Sprites := preload("res://scripts/sprites.gd")
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const Vfx := preload("res://scripts/vfx.gd")
 
@@ -69,6 +70,16 @@ const N_STUN := 4.0
 const N_SPLASH := 2.0
 const N_DEATH := 20.0
 
+## Sprite vein (tools/char_boss.py, klatka 128x80): wiersz 74 arkusza = y 0 w swiecie, paszcza w (64, 60).
+const SPRITE_DROP := 6.0              ## o tyle w dol przesuwamy klatke (korzenie leza tuz pod y 0)
+const MAW_POS := Vector2(0, -14)      ## srodek paszczy w swiecie (sprite); stary rysunek z kolek: (0, -8)
+## Zyly na korpusie (jak VEINS w char_boss.py, po odjeciu (64, 74)): nakladka rysuje w nich zar.
+const VEINS := [
+	[Vector2(-6, -18), Vector2(-11, -24), Vector2(-17, -26), Vector2(-22, -31)],
+	[Vector2(0, -20), Vector2(2, -27), Vector2(-1, -33), Vector2(2, -39)],
+	[Vector2(6, -18), Vector2(12, -22), Vector2(18, -24), Vector2(23, -30)],
+]
+
 var state: int = State.DORMANT
 var hp := BASE_HP
 var max_hp := BASE_HP
@@ -104,6 +115,7 @@ var _net_t := 0.0
 var _armor_snd_ms := 0
 var _light: PointLight2D
 var _overlay: Node2D
+var _spr: Array = []                  ## [cialo, glow] z arkusza vein; puste = rysunek zastepczy z kolek
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -113,6 +125,11 @@ func _ready() -> void:
 	_light.position = Vector2(0, -20)
 	add_child(_light)
 	_overlay = Lights.add_overlay(self)
+	if Sprites.has("vein"):
+		_spr = Sprites.attach(self, "vein")
+		for l in _spr:
+			if l != null:
+				l.position = Vector2(0, SPRITE_DROP)
 
 func is_threat() -> bool:
 	return state == State.AWAKE
@@ -666,10 +683,42 @@ func _process(_delta: float) -> void:
 	_light.energy = (0.9 if awake else 0.35) + 0.25 * sin(t * (5.0 if enraged else 2.0))
 	if maw_open:
 		_light.energy += 0.4
+	_animate_sprite(t, awake)
 	queue_redraw()
 	_overlay.queue_redraw()
 
+## Animacja z arkusza: uspiona / bezczynna (paszcza zamknieta) / otwarta / zapowiedz macek / plucie.
+func _animate_sprite(t: float, awake: bool) -> void:
+	if _spr.is_empty():
+		return
+	var anim := "dormant"
+	if awake:
+		if spitting:
+			anim = "spit"
+		elif atk != Atk.NONE:
+			anim = "windup"
+		elif maw_open or stunned:
+			anim = "open"
+		else:
+			anim = "idle"
+	Sprites.play(_spr, anim, false)
+	var body: AnimatedSprite2D = _spr[0]
+	body.speed_scale = 1.45 if enraged else 1.0
+	# drzenie po trafieniu gniazda / ogluszeniu i bialy blysk po obrazeniach w paszcze
+	var shake := sin(t * 40.0) * (1.6 if _flinch > 0.0 or stunned else 0.0)
+	var flash := Color(2.4, 2.2, 2.2) if _flash > 0.0 else Color.WHITE
+	for l in _spr:
+		if l != null:
+			l.position.x = shake
+	body.modulate = flash
+	# furia / krzyk: oczy i zar mocniej swieca
+	var glow: AnimatedSprite2D = _spr[1]
+	if glow != null:
+		glow.modulate = Color(1.0, 0.8, 0.7).lerp(Color(1.4, 0.7, 0.6), 0.5 * (phase - 1)) if awake else Color(0.7, 0.7, 0.7)
+
 func _draw() -> void:
+	if not _spr.is_empty():
+		return                            # cialo i oczy rysuje arkusz; zar i fale - nakladka
 	var t := Time.get_ticks_msec() / 1000.0
 	var awake := state == State.AWAKE
 	var base := Color(0.30, 0.10, 0.14) if awake else Color(0.22, 0.10, 0.14)
@@ -714,11 +763,21 @@ func _draw_overlay(ov: Node2D) -> void:
 	# trzy żyły na sylwetce niezależnie od liczby gniazd: gasną proporcjonalnie
 	var veins := 3 if awake else ceili(3.0 * nests_left / _nest_count())
 	var vcol := Color(1.0, 0.35, 0.2, (0.45 + 0.5 * pulse) if awake else (0.25 + 0.25 * pulse))
-	var pts := [Vector2(-14, -22), Vector2(4, -30), Vector2(18, -16)]
-	for i in 3:
-		var c := vcol if i < veins else Color(0.3, 0.1, 0.1, 0.3)
-		ov.draw_line(Vector2(0, -12), pts[i], c, 2.0)
-		ov.draw_circle(pts[i], 2.2, c)
+	var mp := MAW_POS if not _spr.is_empty() else Vector2(0, -8)
+	if _spr.is_empty():
+		var pts := [Vector2(-14, -22), Vector2(4, -30), Vector2(18, -16)]
+		for i in 3:
+			var c := vcol if i < veins else Color(0.3, 0.1, 0.1, 0.3)
+			ov.draw_line(Vector2(0, -12), pts[i], c, 2.0)
+			ov.draw_circle(pts[i], 2.2, c)
+	else:
+		# zar plynie wzdluz wypuklych zyl korpusu; gasna proporcjonalnie do liczby zywych gniazd
+		for i in VEINS.size():
+			var c := vcol if i < veins else Color(0.3, 0.1, 0.1, 0.3)
+			var v: Array = VEINS[i]
+			for k in v.size() - 1:
+				ov.draw_line(v[k], v[k + 1], c, 1.4)
+			ov.draw_circle(v[v.size() - 1], 1.8, c)
 	# paszcza — słaby punkt: zamknięta tli się, otwarta płonie, oślepiona miga na biało
 	var maw := Color(1.0, 0.35, 0.2, 0.18)
 	var r := 3.0
@@ -731,7 +790,7 @@ func _draw_overlay(ov: Node2D) -> void:
 	elif maw_open:
 		maw = Color(1.0, 0.6, 0.25, 0.75 + 0.25 * pulse)
 		r = 8.5
-	ov.draw_circle(Vector2(0, -8), r, maw)
+	ov.draw_circle(mp, r * (1.25 if not _spr.is_empty() else 1.0), maw)
 	if winding:
 		ov.draw_arc(Vector2(0, -10), LASH_RANGE_X, PI * 1.05, PI * 1.95, 24, Color(1.0, 0.15, 0.1, 0.4 + 0.5 * pulse), 2.0)
 	# zapowiedź zamachu: drżąca woda na całym zasięgu fali

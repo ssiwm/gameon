@@ -166,6 +166,8 @@ python3 tools/bake_sprites.py      # (postacie wymagają numpy + Pillow: pip ins
 godot --headless --path . --import
 ```
 
+**Boss The Vein** (`art/sprites/vein.png` + `vein_glow.png`, klatka 128×80, 5 animacji: dormant / idle / open / windup / spit) powstaje w `tools/char_boss.py` tym samym silnikiem co potwory (render 4×, rampy, obrys). `boss.gd` wybiera animację wg stanu, nakładka dorysowuje żar żył i paszczy; bez arkusza wraca do rysunku z kółek. Po `bake_sprites.py` uruchom import (`--import`), żeby Godot wygenerował pliki `.import` nowych PNG.
+
 Artysta może podmienić PNG w `art/` zachowując układ z `art/sprites.json` (rozmiar klatki, wiersz = animacja) — bez zmian w kodzie. Tło: pliki `art/backdrop/{sky,ridge_far,ridge_near,fog}.png` mają pierwszeństwo przed generowanymi.
 
 ## Struktura
