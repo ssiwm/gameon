@@ -43,9 +43,9 @@ func _ready() -> void:
 	_embers = CPUParticles2D.new()
 	_embers.amount = 10
 	_embers.lifetime = 1.8
-	_embers.position = Vector2(0, -12)
+	_embers.position = Vector2(0, -16)
 	_embers.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
-	_embers.emission_rect_extents = Vector2(8, 3)
+	_embers.emission_rect_extents = Vector2(12, 3)
 	_embers.direction = Vector2.UP
 	_embers.spread = 25.0
 	_embers.initial_velocity_min = 6.0
@@ -185,5 +185,6 @@ func _draw_overlay(ov: Node2D) -> void:
 		ov.draw_circle(Vector2(3, -6), 1.3, glow)
 		ov.draw_circle(Vector2(0, -15), 1.2, glow)
 	if hp < MAX_HP:
-		ov.draw_rect(Rect2(-11, -24, 22, 2), Color(0.15, 0.05, 0.05))
-		ov.draw_rect(Rect2(-11, -24, 22.0 * clampf(hp / MAX_HP, 0.0, 1.0), 2), Color(1.0, 0.5, 0.2))
+		var bar_y := -38.0 if not _spr.is_empty() else -24.0       # sprite gniazda 40x34 jest wyższy niż stary rysunek
+		ov.draw_rect(Rect2(-14, bar_y, 28, 2), Color(0.15, 0.05, 0.05))
+		ov.draw_rect(Rect2(-14, bar_y, 28.0 * clampf(hp / MAX_HP, 0.0, 1.0), 2), Color(1.0, 0.5, 0.2))
