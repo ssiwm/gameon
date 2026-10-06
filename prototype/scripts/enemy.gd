@@ -10,8 +10,23 @@ const KINDS := {
 	"trzosek": {
 		"hp": 30.0, "speed": 88.0, "damage": 1, "windup": 0.28, "reach": 13.0,
 		"cooldown": 0.9, "leap": true, "hear": 200.0, "wake_near": 90.0, "sight": 260.0,
-		"pack": true, "fears": true,
+		"pack": true, "fears": true, "phototaxis": true,
 		"color": Color(0.62, 0.2, 0.22), "size": Vector2(10, 14), "knock": 70.0, "knock_mult": 1.0, "head": 0.0,
+	},
+	# Ćma (1.7.5): światłolubna — wisi pod sufitem, budzi ją światło (latarka, flara) i leci na nie.
+	# Przy flarze spala się, przy latarce gryzie gracza: rzuć flarę daleko, żeby ją odciągnąć.
+	"cma": {
+		"hp": 18.0, "speed": 74.0, "damage": 1, "windup": 0.2, "reach": 10.0,
+		"cooldown": 1.2, "leap": false, "hear": 0.0, "wake_near": 0.0, "sight": 0.0,
+		"fly": true, "moth": true, "phototaxis": true,
+		"color": Color(0.74, 0.7, 0.55), "size": Vector2(10, 8), "knock": 40.0, "knock_mult": 1.0, "head": 0.0,
+	},
+	# Skoczek (GDD §7.1): wisi pod sufitem nad przejściem i spada na tego, kto pod nim przejdzie (2 obrażenia).
+	"skoczek": {
+		"hp": 40.0, "speed": 84.0, "damage": 1, "windup": 0.3, "reach": 13.0,
+		"cooldown": 1.0, "leap": true, "hear": 230.0, "wake_near": 60.0, "sight": 280.0,
+		"hang": true,
+		"color": Color(0.62, 0.6, 0.5), "size": Vector2(12, 14), "knock": 60.0, "knock_mult": 0.9, "head": 0.0,
 	},
 	# Mimik (GDD §7.1): udaje kolegę z drużyny — stoi jak człowiek i wzywa pomocy głosem gracza.
 	# Zdradzają go: brak serduszek nad głową, brak kroków i oddechu, oczy świecące w ciemności,
@@ -54,7 +69,7 @@ const MAX_FALL := 620.0
 ## Kroki (0,25 na tick) nie budzą; każdy strzał tak — także pierwszy z zimnej
 ## lufy M-83 (0,6). Przy progu 1,0 pojedyncze strzały M-83 były dla wrogów nieme.
 const MIN_WAKE_NOISE := 0.5
-const AMMO_DROP := {"trzosek": 0.22, "wolek": 0.6, "slepiec": 0.3, "podsluchacz": 0.15, "mimik": 0.3}   ## szansa na skrzynkę z amunicją do broni, którą ktoś nosi
+const AMMO_DROP := {"trzosek": 0.22, "wolek": 0.6, "slepiec": 0.3, "podsluchacz": 0.15, "mimik": 0.3, "skoczek": 0.25, "cma": 0.0}   ## szansa na skrzynkę z amunicją do broni, którą ktoś nosi
 const HEALTH_DROP := {"wolek": 0.75}   ## szansa na apteczkę (1.5) — tylko mocniejsi wrogowie
 const SIBLING_WAKE_RADIUS := 140.0
 const DEATH_FX_COLOR_VAR := 0.15
@@ -91,6 +106,16 @@ const CHARGE_CD := 7.0
 const THROW_WINDUP := 0.8
 const THROW_CD := 6.0
 const CRASH_STUN := 1.3
+## Ćma i światło
+const MOTH_SEEK_R := 420.0           ## z tej odległości ćma wyczuwa światło
+const MOTH_BURN_DPS := 6.0           ## spalanie przy flarze
+const LIGHT_LURE_R := 360.0          ## ciekawość Trzosków: flara w tym promieniu (po trasie) daje im ślad
+## Skoczek: zasadzka spod sufitu
+const AMBUSH_DX := 36.0
+const AMBUSH_DY_MAX := 220.0
+## Pamięć: wracający do domu wróg sprawdza „gorące miejsce" (gdzie ostatnio strzelano)
+const PATROL_RADIUS := 600.0
+const PATROL_MAX_AGE := 90.0
 ## Podsłuchacz: krzyk to hałas (podnosi Uwagę, budzi okolicę) i wskazuje hordzie źródło.
 const SCREAM_NOISE := 14.0
 const ALARM_R := 420.0           ## wrogowie w tym promieniu dostają ślad do krzyku
@@ -153,6 +178,10 @@ var _sp_crate: Node = null
 var _charge_cd := 3.0
 var _throw_cd := 2.0
 var _charge_hit := false
+var _hanging := false         ## Skoczek / ćma wiszą pod sufitem, dopóki ich nic nie obudzi
+var _drop_attack := false     ## Skoczek spada na gracza (obrażenia przy lądowaniu)
+var _patrolled := false       ## wracając do domu sprawdził już jedno gorące miejsce
+var _t_moth := 0.0
 var _scream_cd := 0.0         ## Podsłuchacz: przerwa między krzykami
 var _alerted := false         ## Podsłuchacz: już krzyknął (od tej pory boty go widzą jako zagrożenie)
 var _ring := 0.0              ## efekt fali krzyku (każdy peer)
@@ -179,6 +208,9 @@ func _ready() -> void:
 	if Sprites.has(kind):
 		_spr = Sprites.attach(self, kind)
 	_last_x = global_position.x
+	_hanging = bool(_def.get("hang", false)) or bool(_def.get("moth", false))
+	if _def.get("fly", false):
+		motion_mode = CharacterBody2D.MOTION_MODE_FLOATING     # ćma lata — bez „podłogi" i grawitacji
 	_overlay = Lights.add_overlay(self)
 
 ## Aktywny, żywy wróg = realne zagrożenie (boty strzelają tylko do takich).
@@ -189,6 +221,12 @@ func wake() -> void:
 	if not NoiseMgr.is_server() or not alive or active:
 		return
 	active = true
+	if _hanging and _def.get("hang", false):
+		# zasadzka: odczepia się od sufitu i spada (lądowanie rani, patrz _land_hit)
+		_hanging = false
+		_drop_attack = true
+		winding = true
+		velocity = Vector2(0.0, 40.0)
 	if _def.get("mimic", false):
 		# demaskacja: krzyk, fala i chwila na zmianę postaci (zapowiedź), potem normalny pościg
 		NoiseMgr.add_noise(6.0, global_position)
@@ -242,6 +280,9 @@ func reset_enemy() -> void:
 	_charge_cd = 3.0
 	_throw_cd = 2.0
 	_lure_t = 4.0
+	_hanging = bool(_def.get("hang", false)) or bool(_def.get("moth", false))
+	_drop_attack = false
+	_patrolled = false
 	_scream_cd = 0.0
 	_alerted = false
 	_level_t = 0.0
@@ -282,11 +323,19 @@ func _physics_process(delta: float) -> void:
 	if kind == "podsluchacz":
 		_listener_tick(delta)
 		return
+	if kind == "cma":
+		_moth_tick(delta)
+		return
 
 	if not active:
 		_check_wake()
 		if kind == "mimik":
 			_mimik_lure(delta)
+		if _hanging:
+			_check_ambush()
+			velocity = Vector2.ZERO          # wisi pod sufitem — bez grawitacji
+			_send_state(delta)
+			return
 		# śpiący wróg stoi i słucha, ale grawitacja działa
 		velocity.x = move_toward(velocity.x, 0.0, 400.0 * delta)
 		_apply_gravity(delta)
@@ -336,7 +385,35 @@ func _physics_process(delta: float) -> void:
 
 	_apply_gravity(delta)
 	move_and_slide()
+	if _drop_attack and is_on_floor():
+		_land_hit()
 	_send_state(delta)
+
+## Skoczek lądujący na graczu: 2 obrażenia, łoskot (hałas) i pył.
+func _land_hit() -> void:
+	_drop_attack = false
+	winding = false
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.dead and absf(p.global_position.x - global_position.x) < 16.0 and absf(p.global_position.y - global_position.y) < 22.0:
+			p.deliver_hit(2, global_position)
+	NoiseMgr.add_noise(5.0, global_position)
+	if NoiseMgr.has_network():
+		_crash_fx.rpc()
+	else:
+		_crash_fx()
+
+## Wiszący Skoczek spada, gdy ktoś stoi (prawie) pod nim i go widać (linia bez ściany).
+func _check_ambush() -> void:
+	if not _def.get("hang", false):
+		return
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.dead:
+			continue
+		var dx := absf(p.global_position.x - global_position.x)
+		var dy: float = p.global_position.y - global_position.y
+		if dx < AMBUSH_DX and dy > 10.0 and dy < AMBUSH_DY_MAX and _clear_line(p):
+			wake()
+			return
 
 ## Krzyk gracza (mikrofon albo G): wróg w promieniu 25 m rusza do źródła; śpiącego budzi.
 func hear_scream(pos: Vector2) -> void:
@@ -374,6 +451,88 @@ func lag_rect(at_time: float) -> Rect2:
 					break
 	var size: Vector2 = _def["size"]
 	return Rect2(p.x - size.x * 0.5 - 1.0, p.y - size.y - 1.0, size.x + 2.0, size.y + 2.0)
+
+## --- światło ---------------------------------------------------------------
+
+## Flara (flare.gd, serwer) świeci w `pos`: światłolubni (Trzosek) dostają ślad, jeśli to blisko po trasie;
+## ślepych i niewidzących światło nie obchodzi. Wabik bez hałasu — za to widoczny.
+func see_light(pos: Vector2) -> void:
+	if not NoiseMgr.is_server() or not alive or not _def.get("phototaxis", false) or _def.get("moth", false):
+		return
+	if _target != null:
+		return                          # ma gracza przed oczami — nie da się odciągnąć
+	if _sound_distance(pos, LIGHT_LURE_R) > LIGHT_LURE_R:
+		return
+	_lead_at(pos)
+	if not active:
+		wake()
+
+## Najbliższe źródło światła dla ćmy: flara albo włączona latarka gracza (w promieniu `max_r`).
+func _nearest_light(max_r: float) -> Dictionary:
+	var best := {}
+	var best_d := max_r
+	for f in get_tree().get_nodes_in_group("flares"):
+		var d := global_position.distance_to(f.global_position)
+		if d < best_d:
+			best_d = d
+			best = {"pos": f.global_position, "kind": "flare", "node": f}
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.dead or not p.flashlight:
+			continue
+		var d2 := global_position.distance_to(p.global_position)
+		if d2 < best_d:
+			best_d = d2
+			best = {"pos": p.global_position + Vector2(0, -8), "kind": "player", "node": p}
+	return best
+
+## Ćma: wisi (śpi), dopóki w zasięgu nie pojawi się światło; wtedy leci na nie falistym lotem.
+## Flara ją spala, latarka — kąsa gracza. Bez światła wraca pod sufit.
+func _moth_tick(delta: float) -> void:
+	_t_moth += delta
+	_cd = maxf(0.0, _cd - delta)
+	var lt := _nearest_light(MOTH_SEEK_R)
+	if not active:
+		velocity = Vector2.ZERO
+		if not lt.is_empty():
+			wake()
+		_send_state(delta)
+		return
+	var speed: float = float(_def["speed"]) * Difficulty.m("enemy_speed")
+	var want := Vector2.ZERO
+	if not lt.is_empty():
+		_lose_t = 0.0
+		var tp: Vector2 = lt["pos"]
+		var to := tp - global_position
+		var dist := to.length()
+		var dir := to / maxf(dist, 0.001)
+		want = dir * speed + Vector2(-dir.y, dir.x) * sin(_t_moth * 9.0 + float(get_instance_id() % 5)) * speed * 0.6
+		if lt["kind"] == "flare" and dist < 14.0:
+			hp -= MOTH_BURN_DPS * delta                 # krąży przy płomieniu i się spala
+			want = Vector2(-dir.y, dir.x) * speed * 0.7
+			if hp <= 0.0:
+				_die()
+				return
+		elif lt["kind"] == "player" and dist < 12.0 and _cd <= 0.0:
+			var pl: Node = lt["node"]
+			pl.deliver_hit(1, global_position)
+			_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
+	else:
+		_lose_t += delta
+		want = Vector2(sin(_t_moth * 3.1), cos(_t_moth * 2.3)) * speed * 0.35
+		if _lose_t > 6.0:
+			# światło zgasło: wraca pod sufit i znów zasypia
+			var back := _home - global_position
+			want = back.normalized() * speed * 0.7
+			if back.length() < 8.0:
+				active = false
+				velocity = Vector2.ZERO
+				global_position = _home
+				_lose_t = 0.0
+	velocity = velocity.lerp(want, 0.18)
+	if is_on_wall() or is_on_ceiling():
+		velocity.y += 25.0 * (-1.0 if is_on_floor() else 1.0)
+	move_and_slide()
+	_send_state(delta)
 
 ## --- Mimik ----------------------------------------------------------------
 
@@ -595,6 +754,7 @@ func _scream_fx() -> void:
 ## --- percepcja ------------------------------------------------------------
 
 func _lead_at(pos: Vector2) -> void:
+	_patrolled = false
 	_last_known = pos
 	_has_lead = true
 	_lose_t = 0.0
@@ -693,6 +853,17 @@ func _investigate(speed: float, delta: float) -> void:
 		_has_lead = false
 
 func _return_home(speed: float, delta: float) -> void:
+	if kind == "skoczek":
+		velocity.x = 0.0            # po zasadzce nie wraca na sufit — czatuje tam, gdzie wylądował
+		return
+	# pamięć: zanim wróci do domu, raz sprawdza „gorące miejsce" — gdzie drużyna ostatnio strzelała
+	if not _patrolled:
+		_patrolled = true
+		var spot: Variant = NoiseMgr.hot_spot_near(global_position, PATROL_RADIUS, PATROL_MAX_AGE)
+		if spot != null and (spot as Vector2).distance_to(_last_known) > 90.0:
+			_lead_at(spot)
+			_lose_t = GIVE_UP_TIME - 5.0      # krótki obchód, nie pełne poszukiwania
+			return
 	var d := _home - global_position
 	if absf(d.x) < 14.0 and absf(d.y) < 28.0:
 		velocity.x = 0.0
@@ -701,6 +872,7 @@ func _return_home(speed: float, delta: float) -> void:
 			_home_t = 0.0
 			active = false
 			winding = false
+			_patrolled = false
 			_seen_serial = NoiseMgr.noise_serial
 	else:
 		_home_t = 0.0
@@ -1120,6 +1292,8 @@ func _update_sprite() -> void:
 			anim = "idle"
 	elif kind == "mimik":
 		anim = "idle"          # zamaskowany stoi jak żywy kolega, nie „śpi"
+	if kind == "cma" and active:
+		anim = "idle"          # trzepocze skrzydłami w locie
 	Sprites.play(_spr, anim, _facing < 0.0)
 	var body: AnimatedSprite2D = _spr[0]
 	var m := Color.WHITE

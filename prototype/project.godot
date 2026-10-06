@@ -18,6 +18,7 @@ Arsenal="*res://scripts/arsenal.gd"
 Difficulty="*res://scripts/difficulty.gd"
 Voice="*res://scripts/voice.gd"
 LagComp="*res://scripts/lag_comp.gd"
+Director="*res://scripts/director.gd"
 
 [audio]
 

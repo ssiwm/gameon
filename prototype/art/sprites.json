@@ -441,6 +441,60 @@
     }
    }
   },
+  "cma": {
+   "frame": [
+    16,
+    14
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 14,
+     "loop": true
+    },
+    "sleep": {
+     "row": 1,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   }
+  },
+  "skoczek": {
+   "frame": [
+    16,
+    16
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 3,
+     "loop": true
+    },
+    "run": {
+     "row": 1,
+     "frames": 6,
+     "fps": 12,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sleep": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   }
+  },
   "guns": {
    "frame": [
     24,

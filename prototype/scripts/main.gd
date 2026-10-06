@@ -110,6 +110,7 @@ func _restart_mission(new_run: bool) -> void:
 	print("[MISSION] restart (%s)" % ("nowa misja" if new_run else "wipe"))
 	NoiseMgr.reset_mission()
 	Arsenal.reset_mission()
+	Director.reset()
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e.has_method("reset_enemy"):
 			e.reset_enemy()

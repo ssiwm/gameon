@@ -9,6 +9,8 @@ extends Node
 
 signal level_changed(level: float, awake: bool)
 signal overcharge_used(charges: int)
+signal overcharge_stale                  ## wabik użyty drugi raz w tym samym miejscu — „przestaje działać"
+signal flares_changed(n: int)
 
 const MAX_LEVEL := 100.0
 
@@ -36,6 +38,21 @@ const AWAKE_THRESHOLD := 60.0
 const SLEEP_THRESHOLD := 30.0
 
 var level: float = 0.0
+
+## Flary (F): wspólna pula drużyny, jak ładunki Przesterowania (serwer rozstrzyga, klienci dostają stan).
+const FLARE_MAX := 5
+const FLARE_START := 3
+var flares := FLARE_START
+
+## Pamięć wrogów (1.7.5): gdzie ostatnio używano wabika Q (habituacja) i gdzie ostatnio strzelano
+## (wataha, wracając do domu, sprawdza „gorące miejsca").
+const Q_MEMORY := 120.0              ## s, przez które powtórka wabika w tym samym miejscu jest „znana"
+const Q_RADIUS := 140.0
+const N_OVERCHARGE_STALE := 3.0      ## tyle Uwagi kosztuje „zwietrzały" wabik (bez przekierowania)
+const HOT_SPOT_MIN := 2.0            ## od tej głośności zdarzenie liczy się jako „strzelanina"
+const HOT_SPOT_MAX := 6
+var hot_spots: Array = []            ## Vector3(x, y, czas)
+var _q_log: Array = []               ## Vector3(x, y, czas)
 var last_noise_pos := Vector2.ZERO
 var last_noise_amount := 0.0
 ## Rośnie przy każdym zdarzeniu hałasu (tylko serwer). Wrogowie i Stalker
@@ -102,7 +119,24 @@ func use_overcharge(pos: Vector2) -> bool:
 	if not _regen_needed:
 		_regen_needed = true
 		_regen_timer = OVERCHARGE_REGEN
-	_apply(N_OVERCHARGE, pos)
+	# habituacja: wabik użyty ponownie w tym samym miejscu (Q_RADIUS) w ciągu Q_MEMORY s nie przekierowuje
+	# nikogo — kosztuje ładunek i trochę Uwagi, a wrogowie „już to znają". Zmusza do zmiany miejsca.
+	var now_s := Time.get_ticks_msec() / 1000.0
+	var stale := false
+	for e in _q_log:
+		var v: Vector3 = e
+		if now_s - v.z < Q_MEMORY and Vector2(v.x, v.y).distance_to(pos) < Q_RADIUS:
+			stale = true
+	_q_log.append(Vector3(pos.x, pos.y, now_s))
+	if _q_log.size() > 6:
+		_q_log.pop_front()
+	if stale:
+		_apply(N_OVERCHARGE_STALE, pos, false)
+		overcharge_stale.emit()
+		if has_network():
+			_stale_fx.rpc()
+	else:
+		_apply(N_OVERCHARGE, pos)
 	# przekieruj: last_noise_pos już = pos, stalker pójdzie tutaj (GDD §8.4)
 	if has_network():
 		_push.rpc(level, last_noise_pos, stalker_awake, overcharge_charges)
@@ -114,6 +148,7 @@ func use_overcharge(pos: Vector2) -> bool:
 func objective_bonus() -> void:
 	if not is_server():
 		return
+	add_flare()
 	overcharge_charges = mini(OVERCHARGE_MAX, overcharge_charges + 1)
 	if overcharge_charges >= OVERCHARGE_MAX:
 		_regen_needed = false
@@ -143,9 +178,13 @@ func reset_mission() -> void:
 	stalker_awake = false
 	last_noise_pos = Vector2.ZERO
 	overcharge_charges = 2
+	flares = FLARE_START
+	hot_spots.clear()
+	_q_log.clear()
 	_regen_needed = false
 	_regen_timer = 0.0
 	_server_last_active = Time.get_ticks_msec() / 1000.0
+	flares_changed.emit(flares)
 	level_changed.emit(level, stalker_awake)
 	overcharge_used.emit(overcharge_charges)
 
@@ -183,12 +222,15 @@ func _push(new_level: float, noise_pos: Vector2, awake: bool, charges: int) -> v
 	level_changed.emit(level, awake)
 	overcharge_used.emit(charges)
 
-func _apply(amount: float, pos: Vector2) -> void:
+func _apply(amount: float, pos: Vector2, track := true) -> void:
 	if amount > 0.0:
+		_server_last_active = Time.get_ticks_msec() / 1000.0
+	if amount > 0.0 and track:
 		last_noise_pos = pos
 		last_noise_amount = amount          # surowa głośność: próg budzenia wrogów nie zależy od trudności
 		noise_serial += 1
-		_server_last_active = Time.get_ticks_msec() / 1000.0
+		if amount >= HOT_SPOT_MIN:
+			_note_hot_spot(pos)
 	level = clampf(level + (amount * Difficulty.m("noise") if amount > 0.0 else amount), 0.0, MAX_LEVEL)
 	if level >= AWAKE_THRESHOLD:
 		stalker_awake = true
@@ -221,3 +263,74 @@ func _process(delta: float) -> void:
 		if _sync_timer <= 0.0:
 			_sync_timer = 0.1
 			_push.rpc(level, last_noise_pos, stalker_awake, overcharge_charges)
+
+
+# ---------------------------------------------------------------- pamięć: gorące miejsca
+
+func _note_hot_spot(pos: Vector2) -> void:
+	var now_s := Time.get_ticks_msec() / 1000.0
+	for i in hot_spots.size():
+		var v: Vector3 = hot_spots[i]
+		if Vector2(v.x, v.y).distance_to(pos) < 80.0:
+			hot_spots[i] = Vector3(pos.x, pos.y, now_s)
+			return
+	hot_spots.append(Vector3(pos.x, pos.y, now_s))
+	if hot_spots.size() > HOT_SPOT_MAX:
+		hot_spots.pop_front()
+
+## Najświeższe „gorące miejsce" w promieniu `radius` od `from` nie starsze niż `max_age` s — albo null.
+func hot_spot_near(from: Vector2, radius: float, max_age: float) -> Variant:
+	var now_s := Time.get_ticks_msec() / 1000.0
+	var best: Variant = null
+	var best_t := -INF
+	for e in hot_spots:
+		var v: Vector3 = e
+		if now_s - v.z > max_age or Vector2(v.x, v.y).distance_to(from) > radius:
+			continue
+		if v.z > best_t:
+			best_t = v.z
+			best = Vector2(v.x, v.y)
+	return best
+
+@rpc("authority", "call_remote", "reliable")
+func _stale_fx() -> void:
+	overcharge_stale.emit()
+
+# ---------------------------------------------------------------- flary
+
+func add_flare(n := 1) -> void:
+	if not is_server():
+		return
+	flares = mini(FLARE_MAX, flares + n)
+	_push_flares()
+
+func _push_flares() -> void:
+	flares_changed.emit(flares)
+	if has_network():
+		_flares_rpc.rpc(flares)
+
+@rpc("authority", "call_remote", "reliable")
+func _flares_rpc(n: int) -> void:
+	flares = n
+	flares_changed.emit(n)
+
+## Rzut flarą (F). Serwer sprawdza pulę i tworzy flarę u wszystkich peerów (level.spawn_flare).
+func request_flare(pos: Vector2, vel: Vector2) -> void:
+	if is_server():
+		_throw_flare(pos, vel)
+	else:
+		_flare_request.rpc_id(1, pos, vel)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _flare_request(pos: Vector2, vel: Vector2) -> void:
+	if is_server():
+		_throw_flare(pos, vel)
+
+func _throw_flare(pos: Vector2, vel: Vector2) -> void:
+	if flares <= 0:
+		return
+	flares -= 1
+	_push_flares()
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl != null:
+		lvl.spawn_flare(pos, vel.limit_length(420.0))
