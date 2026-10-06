@@ -17,6 +17,7 @@ const Sprites := preload("res://scripts/sprites.gd")
 
 const AWAKE_THRESHOLD := 60.0
 const SLEEP_THRESHOLD := 30.0
+const NightShift := preload("res://scripts/night_shift.gd")
 const HUNT_SPEED := 88.0
 const LURK_SPEED := 55.0
 const CLIMB_SPEED := 60.0
@@ -136,13 +137,13 @@ func _physics_process(delta: float) -> void:
 
 	var noise := NoiseMgr.level
 
-	if not awake and noise >= AWAKE_THRESHOLD:
+	if not awake and noise >= NightShift.awake_threshold(AWAKE_THRESHOLD):
 		awake = true
 		target_pos = NoiseMgr.last_noise_pos
 		_seen_serial = NoiseMgr.noise_serial
 		_arrived = false
 		print("[STALKER] awake at noise %.0f" % noise)
-	if awake and noise <= SLEEP_THRESHOLD:
+	if awake and noise <= NightShift.sleep_threshold(SLEEP_THRESHOLD):
 		awake = false
 		winding = false
 		_windup = 0.0

@@ -59,6 +59,10 @@ Host wybiera w lobby przyciskiem **DIFFICULTY** albo flagą `--difficulty=easy|n
 | Drop apteczek / amunicji | ×1,5 | ×1 | ×0,7 |
 | Wykrwawianie / podnoszenie kolegi | 15 s / 3 s | 10 s / 4 s | 7 s / 5 s |
 
+## Nocny Dyżur (tryb endless, v1)
+
+W lobby host przełącza `MODE: CAMPAIGN / NIGHT SHIFT` (albo `--nightshift`). **Seria 5 misji pod rząd** na tej samej mapie; **wipe kończy serię**, [Enter] na ekranie wyniku zaczyna następną misję (po serii lub porażce — nową serię). Każda kolejna misja: **HP wrogów i bossa +12%** oraz losowe modyfikatory (misje 2–3: jeden, 4–5: dwa) — OVERLOAD (Uwaga startuje od 50), AMMO FAMINE (połowa amunicji), LEAK (Stalker budzi się przy 45, zasypia przy 15), THIN WALLS (hałas +50%). Zasady misji pokazuje HUD w pierwszych sekundach. Rekord (najwięcej misji; przy pełnej serii — czas) zapisuje się lokalnie w `user://settings.cfg`; rankingu online nie ma. Stan: `scripts/night_shift.gd` (statyczny, replikowany przez `mission._sync`). Test: `godot --headless --path . -- --nightshift --host --shifttest --autoquit=8`.
+
 ## Steam (opcjonalnie): lobby, zaproszenia, relay
 
 Gra łączy się przez ENet (IP) jak dotąd, a **Steam** jest dodatkowym transportem — bez konfiguracji routera, z zaproszeniami od znajomych i relayem Valve (graczom z różnych krajów nie trzeba otwierać portów). Kod: `scripts/steam_net.gd`. Wtyczka **GodotSteam 4.23 (GDExtension, Godot 4.4+)** leży w `addons/godotsteam/` (tylko Linux x64 + Windows x64) i zawiera już `SteamMultiplayerPeer` — **nie dodawaj** osobnego addonu steam-multiplayer-peer, bo klasy się dublują. Bez Steama przyciski w lobby są wyszarzone, a reszta gry działa normalnie.
@@ -157,7 +161,7 @@ godot --headless --path . -- --host --wipetest --autoquit=8
 godot --headless --path . -- --host --missiontest --autoquit=9
 ```
 
-Flagi: `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
+Flagi: `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--nightshift` (tryb Nocny Dyżur), `--shifttest`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
 
 ## Zrzuty ekranu bez GPU (xvfb)
 

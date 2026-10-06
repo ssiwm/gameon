@@ -10,6 +10,7 @@ extends Node
 
 const Weapons := preload("res://scripts/weapons.gd")
 const Vfx := preload("res://scripts/vfx.gd")
+const NightShift := preload("res://scripts/night_shift.gd")
 
 ## Materiał trafionego celu — dobiera efekt i dźwięk uderzenia.
 enum Mat { FLESH, ARMOR, WOOD, METAL, WORLD }
@@ -30,7 +31,7 @@ func _reset_local() -> void:
 	reserve.clear()
 	for d in Weapons.defs():
 		if d.uses_ammo() and not d.infinite:
-			reserve[d.id] = d.reserve_start
+			reserve[d.id] = int(d.reserve_start * NightShift.ammo_mult())
 	reserve_changed.emit()
 
 ## Serwer: początek misji / nowa próba. Klienci dostają nowy stan przez sync.
@@ -61,7 +62,8 @@ func add_reserve(w: int, n: int) -> int:
 	if d.infinite or not d.uses_ammo():
 		return 0
 	var before := int(reserve.get(w, 0))
-	var after := mini(d.reserve_max, before + n)
+	var gained := n if n <= 0 else maxi(1, int(round(n * NightShift.ammo_mult())))     # AMMO FAMINE: połowa naboi
+	var after := mini(d.reserve_max, before + gained)
 	reserve[w] = after
 	_push()
 	return after - before

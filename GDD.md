@@ -126,9 +126,9 @@ Misja → złom + wroga wiedza + próbki → Ulepszenia broni / Perki / Bezpiecz
 | 4 | **HKM-9 „Miotacz"** | Miotacz ognia | 15/s DoT | — | Paliwo 80 | 4 m | 1 / 3 m | Podpala teren; **UV +3 Uwagi** (światło); strach wśród Trzosków |
 | 5 | **WRATH-4** | Granatnik | 80 AoE 3 m | 40 | 6 | 10 m | 4 / 18 m | Niszczy Gniazda i Żyły; friendly fire 100% |
 | 6 | **FALCON-6** | Naprowadzane mikro-rakietki | 6 | 300 | 40 | 10 m | 3 / 7 m | Auto-namierzanie, słabe, dobre na Skoczków |
-| 7 | **ŚRUT-8** | Strzelba | 7×8 | 75 | 8 | 6 m | 4 / 12 m | Odrzut wrogów, door-breacher |
+| 7 | **PELLET-8** | Strzelba | 7×8 | 75 | 8 | 6 m | 4 / 12 m | Odrzut wrogów, door-breacher |
 | 8 | **SPECTER-1** | Railgun | 150 przebicie | 12 (charge 1,2 s) | 5 | 30 m | 5 / 25 m | Najgłośniejsza broń w grze — używasz jej, budzisz wszystko |
-| 9 | **CIĘGNO-6** | Harpun (kusza) | 45 | 60 | 1 (bełt do odzysku) | 15 m | **1 / 1 m** | **Jedyna cicha broń główna**; przybija Trzoski do ścian; bełty można odzyskać |
+| 9 | **SINEW-6** | Harpun (kusza) | 45 | 60 | 1 (bełt do odzysku) | 15 m | **1 / 1 m** | **Jedyna cicha broń główna**; przybija Trzoski do ścian; bełty można odzyskać |
 
 ### 6.2 Sidearm
 | Broń | Dmg | RPM | Ammo | Hałas | Uwagi |
@@ -151,9 +151,9 @@ Misja → złom + wroga wiedza + próbki → Ulepszenia broni / Perki / Bezpiecz
 | HKM-9 | Paliwo 120, wolniejsze zużycie | Ściany ognia (blokada przejścia) |
 | WRATH-4 | Zapas 10 | Granaty kasetowe (3× AoE) |
 | FALCON-6 | 60 rakiet | Rakiety rozdzielają się na 3 cele |
-| ŚRUT-8 | Auto-ładowanie 2 pestek | Pociski ogłuszające (stun 1,5 s) |
+| PELLET-8 | Auto-ładowanie 2 pestek | Pociski ogłuszające (stun 1,5 s) |
 | SPECTER-1 | Szybsze ładowanie | Przebija ściany (1 warstwa) |
-| CIĘGNO-6 | 2 bełty w magazynku | Bełty zatrute (DoT), linka do przyciągania |
+| SINEW-6 | 2 bełty w magazynku | Bełty zatrute (DoT), linka do przyciągania |
 
 ### 6.5 Granaty i przedmioty zużywalne
 
@@ -182,7 +182,7 @@ Misja → złom + wroga wiedza + próbki → Ulepszenia broni / Perki / Bezpiecz
 ### 6.7 Stan implementacji w prototypie (1.6)
 
 Pełna analiza i architektura: `prototype/WEAPONS.md`. W prototypie działa **12 pozycji**: M-83, SPREAD-12,
-P-64, ŚRUT-8, LR-7, HKM-9, WRATH-4, FALCON-6, SPECTER-1, CIĘGNO-6, maczeta, kilof (w HUD nazwy ASCII). Różnice
+P-64, PELLET-8, LR-7, HKM-9, WRATH-4, FALCON-6, SPECTER-1, SINEW-6, maczeta, kilof (w HUD nazwy ASCII). Różnice
 względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapons.gd`, testy `--weapontest`):
 
 - **Amunicja:** magazynki i przeładowanie (tryb taktyczny: z nabojem w komorze szybciej), **wspólny zapas drużyny**
@@ -190,7 +190,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
   z mapy zasilają wszystkie noszone bronie główne.
 - **Hałas:** każda broń ma własny `heat_gain`/`heat_decay` (wcześniej wspólny decay sprawiał, że rozgrzewała się
   tylko strzelba). P-64 jest **cichsza** od M-83 (0,5→0,9 vs 0,6→1,5), zgodnie z tabelą §6.2.
-- **Krytyk w głowę:** tylko cele wysokie (Wołek: górne 28% sylwetki; Trzosek nie ma słabego punktu). P-64 i CIĘGNO ×2, M-83 ×1,5.
+- **Krytyk w głowę:** tylko cele wysokie (Wołek: górne 28% sylwetki; Trzosek nie ma słabego punktu). P-64 i SINEW ×2, M-83 ×1,5.
 - **Maczeta** zabija natychmiast i po cichu wroga śpiącego **albo odwróconego plecami**.
 - **HKM-9** podpala (8 HP/s), płonące Trzoski uciekają w panice. **WRATH-4** liczy się jako wabik (+15 Uwagi) i rani drużynę.
 - Zasięgi to zasięg *lotu* pocisku; efektywny (bez spadku obrażeń) jest krótszy (M-83 12 m, SPREAD-12 2,5 m).
@@ -206,7 +206,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 |------|----|----------|------------|--------|
 | **Trzosek** | 30 | szybka | Wataha 3–6, biegnie wprost | Ogień ciągły, maczeta |
 | **Wołek** | 140 | wolna | Tankuje, potężny cios | Unik, strzelba w plecy |
-| **Skoczek** | 40 | skok | Spada z sufitu/wysokości | Ciągły ogień w górę, SOKÓŁ |
+| **Skoczek** | 40 | skok | Spada z sufitu/wysokości | Ciągły ogień w górę, FALCON |
 | **Pijawka** | 15 | pełznie | Dopada, wysysa HP, QTE (30 s) | Maczeta, strzał w twarz kolegi? (friendly fire) |
 | **Ślepiec** | 60 | węszy | **Nie widzi — słyszy.** Idzie do ostatniego hałasu | Kucnij i przejdź; harpun |
 | **Podsłuchacz** | 35 | stoi | Nieruchomy „słuchacz" — krzyczy i ściąga hordę | Priorytet: zabić cicho (harpun) |
@@ -333,7 +333,7 @@ Las, posterunek, tartak. Kolory: mgła, brąz, zieleń. Wprowadza: strzelanie, s
 | 1.3 | **Gniazdo** | Spal 3 gniazda | Uratuj zwiadowcę (NPC) + **zabij stalkera w ciszy**: obniż Uwagę <30, gdy celuje w NPC | **Pierwsze pejne starcie ze stalkerem** (bez skryptu). AI towarzysz ćwiczy dźwiganie | Trzoski, Żyła, Stalker | 12 min |
 | **B1** | **PIJAWKA** | Zabij bossa | — | Flary ujawniają cień pod wodą | Pijawka, Trzoski | 6 min |
 
-**Nagroda strefy:** odblokowanie sklepu broni (SPREAD-12, ŚRUT-8), postać Igła.
+**Nagroda strefy:** odblokowanie sklepu broni (SPREAD-12, PELLET-8), postać Igła.
 
 ---
 
@@ -347,7 +347,7 @@ Niszczejąca wioska górnicza, cerkiew, piwnice. Nowy wróg: Ślepcy (słuch), M
 | 2.3 | **Dzwon** | Ochroniaj dzwonnicy, potem uciekaj | Zniszcz 2 gniazda | Dzwon budzi hordę; obrona 3 fali | Horda, Kapłan (elita), Stalker | 12 min |
 | **B2** | **KAPŁAN** | Zniszcz 4 totemy i zabij bossa | — | Fazy ciszy: nie wolno strzelać | Kapłan, Trzoski | 7 min |
 
-**Nagroda strefy:** CIĘGNO-6 (harpun), FALCON-6, postać Wulkan.
+**Nagroda strefy:** SINEW-6 (harpun), FALCON-6, postać Wulkan.
 
 ---
 
@@ -443,7 +443,7 @@ Inny wymiar: organiczne korytarze, grawitacja się zmienia, radio mówi głosami
 | Tryb | Opis | Uwięzienie |
 |------|------|------------|
 | **Kampania** | 18 misji + 6 bossów, 15–20 h | Postęp fabularny |
-| **Nocny Dyżur** (endless) | 5 losowych misji pod rząd, jedna śmierć kończy serię | Cotygodniowy ranking |
+| **Nocny Dyżur** (endless) | 5 losowych misji pod rząd, wipe kończy serię. **W prototypie od 1.7.23** (HP +12%/misję, modyfikatory), ranking tylko lokalny | Cotygodniowy ranking |
 | **Koszmar Tygodnia** | Misja + 3 losowe modyfikatory (np. blackout, podwójne hordy, alway-on Stalker) | Skiny, złom ×3 |
 | **Strzelnica** | Test broni, tutorial | — |
 
@@ -522,7 +522,7 @@ Budżet z §16.4 (10–16 mies. do EA) jest ryzykiem, dopóki nie wiemy, że rdz
 - [ ] 4 typy wrogów + Stalker w wersji z §8.1/§8.5 (mniej, ale poprawnie zbalansowanych)
 - [ ] System Uwagi, Przesterowanie (Q), ładunek i regeneracja, system światła
 - [ ] Serwerowe pociski z lag compensation (nie per-peer symulacja — patrz 18.2)
-- [ ] Tryb Nocny Dyżur v1
+- [x] Tryb Nocny Dyżur v1 (1.7.23; bez rankingu online)
 - [ ] Demo
 
 ### 16.2 Czego świadomie NIE ma w EA
@@ -685,8 +685,8 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | P-64 „Igła" | start | — | Sidearm, ∞ ammo |
 | Maczeta | start | — | Cicha, backstab |
 | SPREAD-12 | Strefa I | 400 zł | Szeroki ostrzał |
-| ŚRUT-8 | Strefa I | 500 zł | Bliski zasięg, odrzut |
-| CIĘGNO-6 | Strefa II | 600 zł | **Cicha** (harpun) |
+| PELLET-8 | Strefa I | 500 zł | Bliski zasięg, odrzut |
+| SINEW-6 | Strefa II | 600 zł | **Cicha** (harpun) |
 | FALCON-6 | Strefa II | 700 zł | Auto-namierzanie |
 | HKM-9 | Strefa III | 800 zł | DoT, kontrola tłumu |
 | WRATH-4 | Strefa III | 900 zł | AoE, niszczenie gniazd |
@@ -717,7 +717,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 1.5.4 | 2026-10-05 | **Overhaul audio (szczegóły: `prototype/AUDIO.md`).** Audyt (`tools/audio_audit.py`) wykrył, że rdzeń syntezy był zepsuty: `osc()` bez dzielenia fazy przez SR (sinus = cisza, reszta = aliasowany szum → bas, kick, akordy, serce i UI nie miały wysokości), `fm2()`/`svf()`/`stereoize()` błędne, 74/85 plików z true-peakiem > −1 dBTP, 19 tracących >3 dB w mono. Nowy rdzeń DSP (numpy/scipy, testy), 116 assetów (było 85): broń warstwowa + własna strzelba + łuski, głosy z formantami, kroki ×5 na powierzchnię, ambient stereo bez Haas, muzyka jako 4 **stemy addytywne** (96 BPM, 8 taktów). Runtime: okluzja progowa z dyfrakcją, pogłos środowiskowy z promieni, muzyka kwantyzowana do beatu, sidechain, ogłuszenie + szum w uszach, voice management, emitery ambientu, szept stalkera pozycyjny, sygnał napisów. Audyt: 76 → 0 assetów z uwagami. Brzmienia nie oceniano uchem, zmian w silniku nie uruchomiono — wymagany odsłuch i test w Godocie |
 | 1.6.0 | 2026-10-05 | **Overhaul broni (szczegóły: `prototype/WEAPONS.md`).** Analiza wykryła, że model rozgrzania działał tylko dla strzelby (wspólny decay > przyrost ciepła × tempo), ciepła nie było w UI, P-64 była zdominowana przez M-83, nie było magazynków/przeładowania/zapasu, a strzał klienta miał lag o RTT. Przebudowa: typowany `WeaponDef` + rejestr **12 broni** (dane → zero zmian w kodzie przy nowej broni), warstwa obrażeń `Combat` (krytyk, backstab, podpalenie, wybuch, przebicie), pociski z przeciąganiem promienia (bez tunelowania, spadek obrażeń, naprowadzanie, łuk, bełt do odzysku), promień/płomień/szyna/granat/cios, **amunicja ze wspólnym zapasem drużyny** + skrzynki, drop wrogów, podnoszenie i wymiana broni (E), predykcja po stronie strzelca + walidacja serwera (token bucket) + seed rozrzutu, efekty trafień do wszystkich peerów. Feel: rozbłysk ze światłem, smugi, odrzut kierunkowy kamery, bloom, celownik z łukiem ciepła i pierścieniem przeładowania, hitmarkery z dźwiękiem, animacje broni, impact wg powierzchni. HUD: magazynek/zapas, pasek lufy z kosztem strzału. Audio: +36 assetów (152 ścieżki). Testy: `--weapontest` (≈60 asercji), test sieciowy host+klient |
 | 1.6.1 | 2026-10-05 | **Grafika broni i skala interfejsu.** (1) 12 sprite'ów broni narysowanych od nowa (`tools/gun_art.py`): rampy 5 tonów na materiał ze światłem z lewej-góry i chłodnymi cieniami, detale (szyny, wentylacje, pompki, żebra, lotki), te same rozmiary i wyloty lufy co wcześniej (zero zmian w balansie); **warstwa świecąca** `guns_glow.png` — taśma LR-7, cewki SPECTER-1, pilot HKM-9, diody i czubki rakiet FALCON-6 widać w ciemności jak oczy wrogów (żar SPECTER-1 narasta z ładowaniem). (2) **HUD o 30% mniejszy** (`UI_SCALE` 0,7 w `hud.gd`; układ liczony względem rozmiaru ekranu — koniec z nakładaniem się karty stanu na kartę celu). (3) **Celownik o 30% mniejszy** (`CROSS_SCALE` 0,7 w `weapon_view.gd`: ramiona, łuki ciepła i przeładowania, hitmarker, X) |
-| 1.6.2 | 2026-10-05 | **Mapa rozbudowana, mniej broni w terenie.** (1) Mapa 128×30 → **192×44**: nowa strefa **Skład** między areną a tartakiem (dwupoziomowa hala z antresolą i dachem, schody z rusztowań po obu stronach, skrzynie i beczki) oraz **podziemia** pod całą mapą — trzy sale (pod posterunkiem, areną/Składem, tartakiem) połączone niskimi tunelami i trzema szybami (S1 przy posterunku, S2 i S3 w Składzie) z zygzakiem kładek; zawartość: wataha, Wołek, skrzynki. Liczba gniazd bez zmian (3, boss jest zbudowany na 3). (2) Loot: broni na ziemi **8 → 4** (PELLET-8, CIĘGNO-6, HKM-9, WRATH-4; kilof, LR-7 i SPECTER-1 nie leżą już na mapie), każda w miejscu wymagającym eksploracji; skrzynek z amunicją 5 → 10 (mapa jest ponad 1,5× większa). Wrogowie 8+2 → 18+4. Weryfikacja: port grafu `nav.gd` do Pythona potwierdził, że każdy znacznik jest osiągalny ze startu i da się z niego wrócić (768 węzłów). Nie uruchamiano w Godocie — wymagany test ręczny i `tools/test_weapons.sh` |
+| 1.6.2 | 2026-10-05 | **Mapa rozbudowana, mniej broni w terenie.** (1) Mapa 128×30 → **192×44**: nowa strefa **Skład** między areną a tartakiem (dwupoziomowa hala z antresolą i dachem, schody z rusztowań po obu stronach, skrzynie i beczki) oraz **podziemia** pod całą mapą — trzy sale (pod posterunkiem, areną/Składem, tartakiem) połączone niskimi tunelami i trzema szybami (S1 przy posterunku, S2 i S3 w Składzie) z zygzakiem kładek; zawartość: wataha, Wołek, skrzynki. Liczba gniazd bez zmian (3, boss jest zbudowany na 3). (2) Loot: broni na ziemi **8 → 4** (PELLET-8, SINEW-6, HKM-9, WRATH-4; kilof, LR-7 i SPECTER-1 nie leżą już na mapie), każda w miejscu wymagającym eksploracji; skrzynek z amunicją 5 → 10 (mapa jest ponad 1,5× większa). Wrogowie 8+2 → 18+4. Weryfikacja: port grafu `nav.gd` do Pythona potwierdził, że każdy znacznik jest osiągalny ze startu i da się z niego wrócić (768 węzłów). Nie uruchamiano w Godocie — wymagany test ręczny i `tools/test_weapons.sh` |
 | 1.6.3 | 2026-10-05 | (1) Bot **przeskakuje skrzynie i beczki** (graf A* ich nie zna: test ruchu w bok, a gdy koliduje rekwizyt — skok 42 px). (2) Etykiety graczy/botów **−30%** (`NAME_SIZE` 6 → 4). (3) Wykrwawianie **25 s → 10 s** (×1,5 / ×0,7 wg trudności: 15 / 10 / 7 s); czas podnoszenia kolegi bez zmian (4 s). (4) **Więcej grozy** — `dread.gd`: fałszywe odgłosy (kroki zza pleców urywają się, skrzypienie, trzask drzwi, szkło, odległy pomruk), migotanie świateł po uderzeniu, blade **oczy w mroku** (znikają przy podejściu/poświeceniu, nie atakują), podziemia ciemniejsze (×0,6 ambientu) i z częstszymi straszakami; tempo skaluje Uwaga i trudność (`dread` w `difficulty.gd`). Wszystko lokalne i kosmetyczne (zero wpływu na symulację/sieć), wyłączone w headless. Nie uruchamiano w Godocie — wymaga strojenia na ucho/oko |
 | 1.6.4 | 2026-10-05 | **Gniazda w podziemiach.** Gniazd 3 → **4**: posterunek (powierzchnia), sala pod areną i sala pod Składem (podziemia, na górnych kładkach), szczyt tartaku. Gniazdo z areny przeniesione do podziemi — nie da się już ukończyć misji bez zejścia szybem. Żyła liczy gniazda z grupy `nests` (wcześniej na sztywno 3); jej trzy żyły na sylwetce gasną proporcjonalnie. Graf A*: wszystkie znaczniki nadal osiągalne ze startu i z powrotem. Nie uruchamiano w Godocie |
 | 1.6.5 | 2026-10-05 | **Kumulowanie serc.** Apteczka przy pełnym zdrowiu dodaje serce ponad `MAX_HP` (3) — sufit `STACK_HP` = 6, serca ponad podstawowe złote (HUD i etykieta nad postacią). Ranny w promieniu 120 px od apteczki ma pierwszeństwo (pełny nie zabiera jej sprzed nosa), bot nadal ustępuje rannemu człowiekowi. Odrodzenie, wykrwawienie i restart misji wracają do 3 serc. Nie uruchamiano w Godocie |
@@ -742,11 +742,13 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 1.7.14 | 2026-10-06 | **Ostrzejsze miniatury w bestiariuszu, katalogu broni i HUD.** Przyczyna rozmycia: kontrolki rysowały sprite'y z domyślnym filtrem liniowym (reszta gry używa NEAREST), a skala HUD 0,7 razem z rozciągnięciem okna dawała nieliczbową liczbę pikseli ekranu na piksel rysunku. Nowy `pixel_art.gd` liczy skalę tak, by piksel rysunku = całkowita liczba pikseli ekranu (przy braku miejsca schodzi do 1/2, 1/3…), przyciąga pozycje do siatki ekranu i rysuje obrys o grubości 1 piksela ekranu. Portrety (`codex_portrait.gd`): gradient tła, poświata w kolorze wpisu (kolor stwora / smugi pocisku), podłoga z cieniem, nawiasy w rogach, animowana klatka z warstwą świecącą. Nowość: **miniatury w wierszach listy** (bestiariusz i bronie). `GunIcon` w HUD używa tej samej skali; tekst numerów slotów zostaje gładki. |
 | 1.7.15 | 2026-10-06 | **Nowy wygląd bossa The Vein (Żyła).** Zamiast kilku kółek w `_draw()` — sprite 128×80 z `tools/char_boss.py` (silnik jak u potworów: render 4×, rampy cieni, obrys, warstwa świecąca). Bryła: ciemnoczerwona masa mięsa, pancerny grzbiet z pięciu płyt kostnych z kolcami, sześć macek-odnóży ze stawami, dwa czułki korony, rząd oczu, wypukłe żyły i paszcza na dole — zamknięta (dwie płyty ze szwem, żebra, kły w szwie) albo otwarta (ciemna jama z kręgiem 12 zębów). Pięć animacji: `dormant` (zapadnięta, ospała), `idle`, `open` (paszcza otwarta — okno obrażeń/ogłuszenie), `windup` (macki uniesione przed smagnięciem/zamachem), `spit` (nabrzmiały worek zarodników). Furia (faza 2) przyspiesza animację ×1,45, faza 3 mocniej rozżarza oczy; biały błysk po trafieniu w paszczę, drżenie po utracie gniazda. Nakładka (`_draw_overlay`) rysuje żar wzdłuż żył korpusu (gasną z liczbą gniazd) i blask paszczy w nowym punkcie (0, −14); fale i zapowiedzi bez zmian. Kolizja 64×44 → 70×46 pod większą bryłę. Kodeks (bestiariusz) pokazuje nowy sprite. Bez arkusza gra wraca do rysunku z kółek. |
 | 1.7.16 | 2026-10-06 | **Nowy wygląd pozostałych wrogów (za akceptacją porównania PNG).** `tools/char_monsters_hd.py` (silnik jak boss: render 4×, rampy, obrys, warstwa świecąca) zastępuje arkusze: Trzosek 24×22 (kolce grzbietu, żebra, kły, trójpalczaste łapy), Wołek 44×44 (rogi, płyty kostne, kolce na pięściach, szwy), Skoczek 26×26 (segmentowany odwłok, żuwaczki, kolce na stawach), Ślepiec 26×32 (zaszyte oczodoły, sterczące ucho, zębata szczelina), Podsłuchacz 26×40 (uszy w „V", szczelina ust, w krzyku uszy odchylone), Cma 26×20 (puszyste ciało, pierzaste czułki, skrzydła z „oczami"), Stalker 32×60 (płaszcz z kapturem, czarna pustka z czerwonymi oczami, długie palce), gniazdo 40×34 (kępa worków z żyłami, korzenie, kolce). Nazwy i liczba klatek animacji bez zmian. **Hitboxy i kolizje bez zmian** (sprite większy od hitboxu); pasek HP gniazda przesunięty na −38. Mimik zostaje 16×24 (musi pasować do gracza — poprawa razem z graczem to osobne zadanie). Podgląd w kodeksie (bestiariusz) bierze nowe arkusze automatycznie. |
-| 1.7.17 | 2026-10-06 | **Nowy wygląd broni — w świecie i w UI** (za akceptacją porównania PNG). `tools/gun_icons_hd.py` (silnik jak boss i potwory) rysuje 12 broni jako jeden projekt w dwóch arkuszach: **`guns.png` 36×14** — broń w rękach graczy i na podłodze (wcześniej 24×9), dłoń w (6,5; 7), kolba za dłonią ucięta jak dawniej; oraz **`gun_icons.png` 64×24** — ikony HUD i kodeksu (miniatury ostro skalowane do 1/2, 1/3… gdy trzeba). Nowe `gun_len` (px dłoń → wylot): M-83 18, SPREAD-12 18, P-64 14, PELLET-8 18, LR-7 18, HKM-9 15, WRATH-4 14, FALCON-6 16, SPECTER-1 17, CIĘGNO-6 17, maczeta 22, kilof 20 (wcześniej 9–16); `bake_sprites.py` sprawdza zgodność z `weapons.gd`. Wylot lufy skracany do ściany (`muzzle_pos`), żeby dłuższa broń nie strzelała przez cienką przegrodę. Ciężkie bronie (WRATH-4, FALCON-6, SPECTER-1) osadzone niżej względem dłoni, by nie zasłaniać twarzy. Tolerancja wylotu u serwera (40 px) bez zmian. |
+| 1.7.17 | 2026-10-06 | **Nowy wygląd broni — w świecie i w UI** (za akceptacją porównania PNG). `tools/gun_icons_hd.py` (silnik jak boss i potwory) rysuje 12 broni jako jeden projekt w dwóch arkuszach: **`guns.png` 36×14** — broń w rękach graczy i na podłodze (wcześniej 24×9), dłoń w (6,5; 7), kolba za dłonią ucięta jak dawniej; oraz **`gun_icons.png` 64×24** — ikony HUD i kodeksu (miniatury ostro skalowane do 1/2, 1/3… gdy trzeba). Nowe `gun_len` (px dłoń → wylot): M-83 18, SPREAD-12 18, P-64 14, PELLET-8 18, LR-7 18, HKM-9 15, WRATH-4 14, FALCON-6 16, SPECTER-1 17, SINEW-6 17, maczeta 22, kilof 20 (wcześniej 9–16); `bake_sprites.py` sprawdza zgodność z `weapons.gd`. Wylot lufy skracany do ściany (`muzzle_pos`), żeby dłuższa broń nie strzelała przez cienką przegrodę. Ciężkie bronie (WRATH-4, FALCON-6, SPECTER-1) osadzone niżej względem dłoni, by nie zasłaniać twarzy. Tolerancja wylotu u serwera (40 px) bez zmian. |
 | 1.7.18 | 2026-10-06 | **Broń w świecie: 2× więcej pikseli przy tym samym rozmiarze.** Arkusz `guns.png` ma klatkę 72×28 (było 36×14), a manifest niesie `scale` 0,5 (nowe `Sprites.scale_of`), więc broń zajmuje na ekranie dokładnie tyle co wcześniej, ale z 4× większą liczbą pikseli na powierzchnię — drobniejsze żebra, szyny, słoje, cewki. Rysunki powstają tym samym projektem co ikony (`tools/gun_icons_hd.py`, `WORLD_DENSITY = 2`), obrys 2 px arkusza = 1 px świata. W `weapon_view.gd` broń i jej warstwa świecąca mają skalę 0,5, filtr liniowy (obrót pod dowolnym kątem bez „schodków” nearest) i `filter_clip` na atlasie (brak przeciekania sąsiedniej klatki); pivot dłoni (13; 14). `gun_len`, rozbłysk i pozycja wylotu bez zmian (liczone w pikselach świata). Broń na podłodze (`pickup.gd`) rysowana w tej samej skali. Kompromis: broń jest gładsza i bardziej szczegółowa niż reszta świata (krawędzie sprite'ów o gęstości 1×) — do oceny w grze. |
 | 1.7.19 | 2026-10-06 | **Boss The Vein w 2× gęstości pikseli.** Arkusz `vein.png` ma klatkę 256×160 (było 128×80), manifest niesie `scale` 0,5, więc boss zajmuje na ekranie tyle co wcześniej (128×80 px świata), ale z 4× większą liczbą pikseli. `char_boss.py` renderuje projekt z `DENSITY = 2` (obrys 2 px arkusza = 1 px świata) i dodaje drobne detale możliwe dopiero przy gęstszej siatce: pory i guzki skóry, żebra na płytach grzbietu. Ogólna obsługa arkuszy o innej gęstości w `Sprites` (`scale_of`, skala węzła, filtr liniowy, `filter_clip` w atlasie) — ten sam mechanizm co dla broni. Boss.gd bez zmian: współrzędne świata (maw, żyły, kolizja 70×46) te same. Kodeks pokazuje bossa w pełnej gęstości. |
 | 1.7.20 | 2026-10-06 | **Pozostali wrogowie w 2× gęstości pikseli.** Trzosek, Wołek, Skoczek, Ślepiec, Podsłuchacz, Cma, Stalker i gniazdo mają arkusze o dwukrotnie większej liczbie pikseli (np. Trzosek 48×44, Wołek 88×88, Stalker 64×120, gniazdo 80×68), rysowane w grze w skali 0,5 (manifest `scale`), więc ich rozmiar na ekranie się nie zmienia. `char_monsters_hd.py` renderuje z `DENSITY = 2` (helpery `_sc`, `_finish2` z obrysem 2 px arkusza = 1 px świata, `_eye` dla świecących punktów, `_speckle` dla drobnych detali: pory skóry Wołka, kępki sierści Trzoska, ziarnistość gniazda). Ten sam mechanizm w `Sprites` co dla broni i bossa (skala węzła, filtr liniowy, `filter_clip` w atlasie). Mimik zostaje w 1× (16×24), bo musi pasować do sylwetki gracza. Zmiany bez wpływu na hitboxy, animacje i logikę. |
 | 1.7.21 | 2026-10-06 | **Naprawa: białe prostokąty zamiast broni w HUD i kodeksie.** Przyczyna (odtworzona w silniku 4.7 pod xvfb): tekstura wczytana po raz pierwszy W TRAKCIE `_draw()` rysuje się jako biały prostokąt i taką zostaje, dopóki kontrolka się nie przerysuje (kontrolki broni przerysowują się tylko przy zmianie). `GunIcon` ładuje teraz arkusz w konstruktorze, portret kodeksu w `show_spec`, a podnośnik broni w `_ready`. Dodane brakujące pliki `.import` (gun_icons, vein) i `.uid` skryptów — wygenerowane przez `godot --headless --import`. |
+| 1.7.22 | 2026-10-06 | **Gracz, bot i Mimik w 2× gęstości pikseli + angielskie nazwy.** `tools/char_player.py`: klatka 32×48 rysowana w skali 0,5 (16×24 w świecie; hitbox i oś broni (9, 12) bez zmian), manifest `scale`. Mimik rysuje się z tego samego rigu, więc ma tę samą gęstość i sylwetkę. Naprawa: `player.gd` co klatkę nadpisywał skalę sprite'a (`body.scale = squash`), więc postacie były 2× za duże — teraz `squash * skala z manifestu`. Wyświetlane nazwy: WRATH-4, FALCON-6, SPECTER-1, SINEW-6, PELLET-8 oraz Cutpurse, Bullock, Leaper, Blind One, Eavesdropper, Mimic, Moth, Stalker (identyfikatory i nazwy plików bez zmian). |
+| 1.7.23 | 2026-10-06 | **Nocny Dyżur v1 (§11, §16.1).** Tryb wybierany przez hosta w lobby (`MODE: CAMPAIGN / NIGHT SHIFT`) albo `--nightshift`: seria **5 misji pod rząd** na tej samej mapie, **wipe kończy serię** (zamiast powtórki misji), [Enter] na ekranie wyniku = następna misja, po serii albo porażce = nowa seria. Każda kolejna misja jest twardsza: **HP wrogów i bossa +12% na misję** oraz losowe modyfikatory (misje 2–3: jeden, 4–5: dwa): **OVERLOAD** (Uwaga startuje od 50), **AMMO FAMINE** (połowa amunicji w skrzyniach i z wrogów), **LEAK** (Stalker budzi się przy 45, zasypia przy 15), **THIN WALLS** (każdy hałas +50%). Stan (`night_shift.gd`, statyczny) replikuje `mission._sync`; HUD pokazuje „NIGHT SHIFT n/5", zasady misji w pierwszych 9 s i karty wyniku (misja ukończona / SHIFT OVER / SHIFT COMPLETE) z rekordem lokalnym (`Settings.shift_best_*`, `user://settings.cfg`). **Poza zakresem v1:** cotygodniowy ranking online (brak backendu), losowe układy map (jedna mapa — §16.0 pkt 3), modyfikatory z §11 wymagające nowych systemów (Delikatni, Podwójna horda, Bunt maszyn). Test: `--nightshift --host --shifttest` (seria, modyfikatory, porażka, nowa seria). |
 
 ---
 

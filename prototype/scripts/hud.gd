@@ -22,6 +22,7 @@ const Mission := preload("res://scripts/mission.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Hints := preload("res://scripts/hints.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
+const NightShift := preload("res://scripts/night_shift.gd")
 
 ## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.7
@@ -145,6 +146,9 @@ var _hint_card: PanelContainer
 var _hint_label: Label
 var _result_stats: GridContainer
 var _result_prompt: Label
+var _result_title: Label
+var _result_sub: Label
+var _result_box: StyleBoxFlat
 
 var _slot_on: StyleBoxFlat
 var _slot_off: StyleBoxFlat
@@ -600,11 +604,14 @@ func _build_result() -> void:
 	rb.border_color = Color(UiTheme.OK, 0.5)
 	rb.set_content_margin_all(12)
 	_result.add_theme_stylebox_override("panel", rb)
+	_result_box = rb
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
 	_result.add_child(box)
-	box.add_child(UiTheme.label("EXTRACTION COMPLETE", 16, UiTheme.OK, HORIZONTAL_ALIGNMENT_CENTER))
-	box.add_child(UiTheme.label("The squad made it out of the woods.", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	_result_title = UiTheme.label("EXTRACTION COMPLETE", 16, UiTheme.OK, HORIZONTAL_ALIGNMENT_CENTER)
+	box.add_child(_result_title)
+	_result_sub = UiTheme.label("The squad made it out of the woods.", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	box.add_child(_result_sub)
 	_result_stats = GridContainer.new()
 	_result_stats.columns = 2
 	_result_stats.add_theme_constant_override("h_separation", 16)
@@ -798,7 +805,7 @@ func _drive_mission() -> void:
 		_result.visible = false
 		return
 	var boss := get_tree().get_first_node_in_group("boss")
-	_obj_card.visible = m.phase != Mission.Phase.SUCCESS
+	_obj_card.visible = m.phase != Mission.Phase.SUCCESS and m.phase != Mission.Phase.FAILED
 	_obj_caption.text = m.objective_caption()
 	_obj_caption.add_theme_color_override("font_color", UiTheme.DANGER if m.phase == Mission.Phase.BOSS else (UiTheme.OK if m.phase == Mission.Phase.EXTRACT else UiTheme.ACCENT))
 	_obj_text.text = m.objective_text()
@@ -817,7 +824,7 @@ func _drive_mission() -> void:
 	_warn.position.y = wy
 	_warn_sub.position.y = wy + 20.0
 
-	var show_result: bool = m.phase == Mission.Phase.SUCCESS
+	var show_result: bool = m.phase == Mission.Phase.SUCCESS or m.phase == Mission.Phase.FAILED
 	if show_result and not _result.visible:
 		_fill_result(m)
 	_result.visible = show_result
@@ -826,14 +833,52 @@ func _fill_result(m: Node) -> void:
 	for c in _result_stats.get_children():
 		_result_stats.remove_child(c)
 		c.free()
-	var secs := int(m.elapsed)
-	for row in [["Time", "%d:%02d" % [secs / 60, secs % 60]], ["Nests destroyed", "%d / %d" % [m.nests_total, m.nests_total]],
-			["The Vein", "slain"], ["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts]]:
+	var rows: Array
+	var prompt := "New mission"
+	if NightShift.active:
+		rows = _shift_result(m)
+		prompt = "New shift" if (m.phase == Mission.Phase.FAILED or m.shift_complete()) else "Next mission"
+	else:
+		_style_result("EXTRACTION COMPLETE", "The squad made it out of the woods.", UiTheme.OK)
+		rows = [["Time", _mmss(m.elapsed)], ["Nests destroyed", "%d / %d" % [m.nests_total, m.nests_total]],
+			["The Vein", "slain"], ["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts]]
+	for row in rows:
 		_result_stats.add_child(UiTheme.label(row[0], 9, UiTheme.MUTED))
 		_result_stats.add_child(UiTheme.label(row[1], 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
-	_result_prompt.text = "[ENTER]  New mission" if multiplayer.is_server() else "Waiting for the host to start a new mission…"
+	_result_prompt.text = "[ENTER]  " + prompt if multiplayer.is_server() else "Waiting for the host to continue…"
 	_result.reset_size()
 	_result.position = (size - _result.size) * 0.5
+
+func _mmss(secs: float) -> String:
+	var s := int(secs)
+	return "%d:%02d" % [s / 60, s % 60]
+
+func _style_result(title: String, sub: String, col: Color) -> void:
+	_result_title.text = title
+	_result_title.add_theme_color_override("font_color", col)
+	_result_sub.text = sub
+	_result_box.border_color = Color(col, 0.5)
+
+## Karta wyniku w Nocnym Dyżurze: ukończona misja, koniec serii (porażka) albo cała seria.
+func _shift_result(m: Node) -> Array:
+	var best_c: int = Settings.shift_best_cleared
+	var best_t: float = Settings.shift_best_time
+	var rows: Array
+	if m.phase == Mission.Phase.FAILED:
+		_style_result("SHIFT OVER", "The night took the squad.", UiTheme.DANGER)
+		rows = [["Missions cleared", "%d / %d" % [m.shift_cleared, NightShift.MISSIONS]], ["Series time", _mmss(m.shift_time)],
+			["Squad downs", str(m.shift_downs)], ["Best", "%d / %d" % [best_c, NightShift.MISSIONS]]]
+	elif m.shift_complete():
+		_style_result("SHIFT COMPLETE", "The whole night, survived.", UiTheme.OK)
+		rows = [["Series time", _mmss(m.shift_time)], ["Squad downs", str(m.shift_downs)],
+			["Best time", _mmss(best_t) if best_t > 0.0 else "—"]]
+	else:
+		_style_result("MISSION %d CLEARED" % NightShift.stage, "Night Shift — the next one is harder.", UiTheme.OK)
+		rows = [["Mission time", _mmss(m.elapsed)], ["Missions cleared", "%d / %d" % [m.shift_cleared, NightShift.MISSIONS]],
+			["Series time", _mmss(m.shift_time)], ["Squad downs", str(m.shift_downs)]]
+	if m.shift_record:
+		rows.append(["", "NEW RECORD"])
+	return rows
 
 ## Pasek kontekstowy: wipe, leżenie, podnoszenie, ekstrakcja.
 func _drive_prompt() -> void:
@@ -846,7 +891,7 @@ func _drive_prompt() -> void:
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	if wipe_left > 0.0:
 		_center.text = "SQUAD DOWN"
-		_center_sub.text = "Extraction failed — restarting the mission in %d" % ceili(wipe_left)
+		_center_sub.text = ("Extraction failed — the shift ends in %d" if NightShift.active else "Extraction failed — restarting the mission in %d") % ceili(wipe_left)
 	elif _player != null and _player.dead:
 		if _player.revive_progress > 0.0:
 			text = "Being revived…"
@@ -876,6 +921,15 @@ func _drive_prompt() -> void:
 			else:
 				text = "Hold here — the whole squad must reach the flare"
 				col = UiTheme.ACCENT
+	if wipe_left <= 0.0 and m != null and m.shift_banner_visible():
+		# Nocny Dyżur: zasady misji w pierwszych sekundach
+		var lines: Array = []
+		for id in NightShift.mods:
+			lines.append("%s — %s" % [NightShift.MODS[id]["name"], NightShift.MODS[id]["text"]])
+		if NightShift.stage > 1:
+			lines.append("Enemies +%d%% HP" % int(round(NightShift.HP_STEP * float(NightShift.stage - 1) * 100.0)))
+		_center.text = NightShift.title()
+		_center_sub.text = "\n".join(lines) if not lines.is_empty() else "The first mission — no modifiers"
 	_prompt_card.visible = text != ""
 	if _prompt_card.visible:
 		_prompt.text = text

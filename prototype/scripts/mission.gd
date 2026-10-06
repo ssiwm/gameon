@@ -13,9 +13,10 @@ extends Node2D
 ## Wipe (main.gd) = nieudana ekstrakcja: misja wraca do OBJECTIVE, licznik prób +1.
 ## Klienci dostają stan przez _sync (5 Hz + natychmiast przy zmianie fazy).
 
-enum Phase { OBJECTIVE, BOSS, EXTRACT, SUCCESS }
+enum Phase { OBJECTIVE, BOSS, EXTRACT, SUCCESS, FAILED }      # FAILED: tylko Nocny Dyżur (wipe kończy serię)
 
 const Lights := preload("res://scripts/lights.gd")
+const NightShift := preload("res://scripts/night_shift.gd")
 
 const EXTRACT_TIME := 3.0
 const EXIT_RADIUS_X := 34.0
@@ -31,6 +32,11 @@ var extract_progress := 0.0
 var elapsed := 0.0
 var downs := 0
 var attempts := 1
+## Nocny Dyżur (night_shift.gd): suma z ukończonych misji serii
+var shift_cleared := 0
+var shift_time := 0.0
+var shift_downs := 0
+var shift_record := false     ## seria właśnie pobiła lokalny rekord
 
 var _sync_t := 0.0
 var _flare: PointLight2D
@@ -77,11 +83,11 @@ func _physics_process(delta: float) -> void:
 	if not NoiseMgr.has_network():
 		return
 	if not multiplayer.is_server():
-		if phase != Phase.SUCCESS:
+		if phase != Phase.SUCCESS and phase != Phase.FAILED:
 			elapsed += delta     # lokalna interpolacja zegara między synchronizacjami
 		return
 
-	if phase != Phase.SUCCESS:
+	if phase != Phase.SUCCESS and phase != Phase.FAILED:
 		elapsed += delta
 	_track_downs()
 	if phase == Phase.EXTRACT:
@@ -160,6 +166,13 @@ func _success() -> void:
 	phase = Phase.SUCCESS
 	extract_progress = 1.0
 	print("[MISSION] SUCCESS time=%.1fs downs=%d attempts=%d" % [elapsed, downs, attempts])
+	if NightShift.active:
+		shift_cleared += 1
+		shift_time += elapsed
+		shift_downs += downs
+		if NightShift.stage >= NightShift.MISSIONS:
+			shift_record = Settings.record_shift(shift_cleared, shift_time, true)
+		print("[SHIFT] mission %d/%d cleared, series time %.1fs" % [NightShift.stage, NightShift.MISSIONS, shift_time])
 	# teren cichnie: wrogowie (nie gniazda) wracają do snu, Uwaga spada do zera
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if not e.is_in_group("nests") and not e.is_in_group("boss") and e.has_method("reset_enemy"):
@@ -172,7 +185,7 @@ func _success() -> void:
 func _track_downs() -> void:
 	for p in get_tree().get_nodes_in_group("players"):
 		var was: bool = _was_dead.get(p.name, false)
-		if p.dead and not was and not p.is_bot and phase != Phase.SUCCESS:
+		if p.dead and not was and not p.is_bot and phase != Phase.SUCCESS and phase != Phase.FAILED:
 			downs += 1
 		_was_dead[p.name] = p.dead
 
@@ -184,6 +197,46 @@ func _humans_centroid() -> Vector2:
 			sum += p.global_position
 			n += 1
 	return sum / n if n > 0 else Vector2.ZERO
+
+# ---------------------------------------------------------------- Nocny Dyżur (serwer)
+
+## Nowa seria: misja 1, bez modyfikatorów, wyzerowane sumy. Wołane przy starcie sesji w trybie Nocnego Dyżuru
+## i po zakończonej serii; po nim main._restart_mission(true).
+func begin_shift() -> void:
+	NightShift.active = true
+	NightShift.stage = 1
+	NightShift.mods = []
+	shift_cleared = 0
+	shift_time = 0.0
+	shift_downs = 0
+	shift_record = false
+	print("[SHIFT] new series")
+
+## [Enter] na ekranie wyniku: kolejna misja serii (z nowymi modyfikatorami), a po ostatniej albo po porażce — nowa seria.
+func shift_advance() -> void:
+	if phase == Phase.FAILED or NightShift.stage >= NightShift.MISSIONS:
+		begin_shift()
+	else:
+		NightShift.stage += 1
+		NightShift.mods = NightShift.roll(NightShift.stage)
+		print("[SHIFT] mission %d/%d, modifiers: %s" % [NightShift.stage, NightShift.MISSIONS, NightShift.mod_names()])
+
+## Wipe w Nocnym Dyżurze: koniec serii (zamiast powtórki misji).
+func fail_shift() -> void:
+	phase = Phase.FAILED
+	shift_time += elapsed
+	shift_downs += downs
+	shift_record = Settings.record_shift(shift_cleared, shift_time, false)
+	print("[SHIFT] series over: %d/%d cleared, time %.1fs, record=%s" % [shift_cleared, NightShift.MISSIONS, shift_time, str(shift_record)])
+	_event.rpc("shift_over")
+	_broadcast()
+
+func shift_complete() -> bool:
+	return NightShift.active and phase == Phase.SUCCESS and NightShift.stage >= NightShift.MISSIONS
+
+## Plansza z zasadami misji (HUD, pierwsze sekundy misji w Nocnym Dyżurze).
+func shift_banner_visible() -> bool:
+	return NightShift.active and phase == Phase.OBJECTIVE and elapsed < 9.0
 
 ## Wołane przez main._restart_mission() — po wipe (nowa próba) albo nowej misji.
 func on_restart(new_run: bool) -> void:
@@ -204,10 +257,18 @@ func on_restart(new_run: bool) -> void:
 func _broadcast() -> void:
 	_sync_t = SYNC_INTERVAL
 	if NoiseMgr.has_network() and multiplayer.is_server():
-		_sync.rpc(phase, nests_left, nests_total, exit_pos, extract_progress, elapsed, downs, attempts)
+		_sync.rpc(phase, nests_left, nests_total, exit_pos, extract_progress, elapsed, downs, attempts,
+			[NightShift.active, NightShift.stage, NightShift.mods, shift_cleared, shift_time, shift_downs, shift_record])
 
 @rpc("authority", "call_remote", "reliable")
-func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d: int, att: int) -> void:
+func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d: int, att: int, shift: Array) -> void:
+	NightShift.active = bool(shift[0])
+	NightShift.stage = int(shift[1])
+	NightShift.mods = Array(shift[2])
+	shift_cleared = int(shift[3])
+	shift_time = float(shift[4])
+	shift_downs = int(shift[5])
+	shift_record = bool(shift[6])
 	phase = p
 	nests_left = left
 	nests_total = total
@@ -227,19 +288,24 @@ func _event(kind: String) -> void:
 		"success":
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 			Audio.play("tape_stop", Audio.BUS_UI, -10.0)
+		"shift_over":
+			Audio.play("tape_stop", Audio.BUS_UI, -4.0)
 
 # ---------------------------------------------------------------- HUD
 
 ## Teksty dla HUD (angielski interfejs).
 func objective_caption() -> String:
+	var base := ""
 	match phase:
 		Phase.OBJECTIVE:
-			return "OBJECTIVE"
+			base = "OBJECTIVE"
 		Phase.BOSS:
-			return "BOSS"
+			base = "BOSS"
 		Phase.EXTRACT:
-			return "EXTRACT"
-	return ""
+			base = "EXTRACT"
+	if base != "" and NightShift.active:
+		return "NIGHT SHIFT %d/%d  ·  %s" % [NightShift.stage, NightShift.MISSIONS, base]
+	return base
 
 func objective_text() -> String:
 	match phase:

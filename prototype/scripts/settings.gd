@@ -33,6 +33,8 @@ var ui_idx := 1
 var hints_on := true
 var fullscreen := false
 var seen_tips: Array = []              ## identyfikatory podpowiedzi, które gracz już widział
+var shift_best_cleared := 0            ## Nocny Dyżur: najwięcej ukończonych misji w jednej serii (rekord lokalny)
+var shift_best_time := 0.0             ## Nocny Dyżur: najkrótszy czas pełnej serii w s (0 = jeszcze nikt nie ukończył)
 
 var _base_db := {}                     ## szyna → głośność z układu szyn (bez ustawień gracza)
 var _stash := {}                       ## akcja → zdarzenia schowane na czas menu
@@ -135,6 +137,21 @@ func block_game_input(on: bool) -> void:
 				InputMap.action_add_event(a, e)
 		_stash.clear()
 
+# ---------------------------------------------------------------- Nocny Dyżur: rekord
+
+## Zapisuje wynik serii (host). Rekord = więcej ukończonych misji albo, przy pełnej serii, krótszy czas.
+## Zwraca true, gdy wynik jest nowym rekordem.
+func record_shift(cleared: int, secs: float, completed: bool) -> bool:
+	var better := cleared > shift_best_cleared
+	if completed and (shift_best_time <= 0.0 or secs < shift_best_time):
+		shift_best_time = secs
+		better = true
+	if cleared > shift_best_cleared:
+		shift_best_cleared = cleared
+	if better:
+		_save()
+	return better
+
 # ---------------------------------------------------------------- zapis
 
 func _load() -> void:
@@ -148,6 +165,8 @@ func _load() -> void:
 	hints_on = bool(cf.get_value("game", "hints", true))
 	fullscreen = bool(cf.get_value("game", "fullscreen", false))
 	seen_tips = Array(cf.get_value("game", "seen_tips", []))
+	shift_best_cleared = int(cf.get_value("shift", "best_cleared", 0))
+	shift_best_time = float(cf.get_value("shift", "best_time", 0.0))
 
 func _save() -> void:
 	var cf := ConfigFile.new()
@@ -159,4 +178,6 @@ func _save() -> void:
 	cf.set_value("game", "hints", hints_on)
 	cf.set_value("game", "fullscreen", fullscreen)
 	cf.set_value("game", "seen_tips", seen_tips)
+	cf.set_value("shift", "best_cleared", shift_best_cleared)
+	cf.set_value("shift", "best_time", shift_best_time)
 	cf.save(SAVE_PATH)
