@@ -473,23 +473,27 @@ def mimik(an, i):
     src = {"idle": ("idle", i), "walk": ("run", i), "windup": ("jump", 0), "sleep": ("idle", 0)}[an]
     fr, _ = char_player.build(MIMIC_COLOR, False, src[0], src[1])
     glow = Frame(fr.w, fr.h)
+    D = char_player.D                    # gęstość arkusza (gracz 2×): oczy i paszcza liczone w pikselach świata
     eye = None
     for y in range(fr.h):
         for x in range(fr.w):
             px = fr.px[y][x]
             if px is not None and tuple(px[:3]) == (34, 26, 38):
-                eye = (x, y)
+                eye = (x, y)                                       # najniższy piksel oka
     if eye is not None:
         ex, ey = eye
         hot = an == "windup"
         col = (255, 60, 40) if hot else (255, 120, 90)
-        glow.put(ex, ey, (*col, 255 if hot else 170))
-        glow.put(ex + 1, ey, (*col, 255 if hot else 110))
+        for dy in range(D):
+            for dx in range(2 * D):
+                a = (255 if hot else (170 if dx < D else 110))
+                glow.put(ex + dx, ey - dy, (*col, a))
         if hot:
             # po demaskacji: paszcza rozcięta od ucha do ucha
-            for dx in range(-1, 2):
-                fr.only_opaque_put(ex + dx, ey + 2, (150, 20, 30, 255))
-                glow.put(ex + dx, ey + 2, (255, 70, 50, 200))
+            for dx in range(-D, 2 * D - 1):
+                for dy in range(D):
+                    fr.only_opaque_put(ex + dx, ey + 2 * D + dy, (150, 20, 30, 255))
+                    glow.put(ex + dx, ey + 2 * D + dy, (255, 70, 50, 200))
     return fr, glow
 
 

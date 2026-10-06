@@ -118,6 +118,7 @@ var _prev_vy := 0.0
 var _prev_floor_y := 0.0
 var _splash_t := 0.0
 var _spr: Array = []            ## [ciało, glow] — AnimatedSprite2D (sprites.gd)
+var _spr_scale := 1.0           ## skala rysowania arkusza (2× gęstość pikseli → 0,5); mnoży ściśnięcie (squash)
 var _facing := 1.0
 var _light_noise_t := 0.0
 var _aura: PointLight2D
@@ -193,6 +194,7 @@ func _setup_sprites() -> void:
 	if not Sprites.has(sheet):
 		return
 	_spr = Sprites.attach(self, sheet)
+	_spr_scale = Sprites.scale_of(sheet)
 
 ## Animacja z (replikowanego) stanu — działa też dla zdalnych graczy i bota.
 func _update_sprite() -> void:
@@ -213,7 +215,7 @@ func _update_sprite() -> void:
 		anim = "crouch_walk" if absf(velocity.x) > 8.0 else "crouch"
 	elif absf(velocity.x) > 10.0:
 		anim = "run"
-	body.scale = squash
+	body.scale = squash * _spr_scale
 	Sprites.play(_spr, anim, _facing < 0.0)
 	body.modulate = _tint_color()
 

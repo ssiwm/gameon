@@ -76,12 +76,12 @@ Wartości domyślne z `weapons.gd`; DPS = pełne trafienie, bez krytyków i spad
 | 1 | **M-83** | SMG, auto | Wszechstronna. Krótka seria cicha, ciągły ogień głośny (0,6 → 1,5 Uwagi/strzał) |
 | 2 | **SPREAD-12** | rozrzut 5×7, półauto | Klasyk Contry; dobra z bliska, spadek obrażeń z dystansem |
 | 3 | **P-64** | sidearm, ∞ amunicji | Cichsza od M-83, celna, **krytyk ×2** — ratunek i broń „na cicho” |
-| 4 | **SRUT-8** | ciężka strzelba 8×7, pompka | Odrzut, ogłuszenie; ładowanie po 1 naboju (przerywane strzałem) |
+| 4 | **PELLET-8** | ciężka strzelba 8×7, pompka | Odrzut, ogłuszenie; ładowanie po 1 naboju (przerywane strzałem) |
 | 5 | **LR-7** | promień ciągły, przebija 3 | Prawie bezgłośny (0,18/tyk), 70 DPS na 3 cele; promień **świeci** (światło na końcu i przy lufie), a bateria (100) kończy się w 10 s |
 | 6 | **HKM-9** | miotacz ognia | 4 m, podpala (8 HP/s), **Trzoski uciekają w panice** |
-| 7 | **GNIEW-4** | granatnik po łuku | AoE 3 m, 80 dmg; niszczy gniazda; wybuch = +15 Uwagi; rani drużynę |
-| 8 | **SOKÓŁ-6** | mikrorakiety naprowadzane | Słabe, ale same dochodzą do celu poza osią |
-| 9 | **WIDMO-1** | szyna, ładowanie 1,2 s | 150 dmg przez wszystkich; **najgłośniejsza** (14 Uwagi); puszczenie przed końcem anuluje |
+| 7 | **WRATH-4** | granatnik po łuku | AoE 3 m, 80 dmg; niszczy gniazda; wybuch = +15 Uwagi; rani drużynę |
+| 8 | **FALCON-6** | mikrorakiety naprowadzane | Słabe, ale same dochodzą do celu poza osią |
+| 9 | **SPECTER-1** | szyna, ładowanie 1,2 s | 150 dmg przez wszystkich; **najgłośniejsza** (14 Uwagi); puszczenie przed końcem anuluje |
 | 10 | **CIĘGNO-6** | kusza, bełt do odzysku | **Cicha** (0,08); bełt zostaje w świecie jako skrzynka z 1 nabojem |
 | 11 | **Maczeta** | melee | 30 dmg, cisza; **zabija śpiącego lub odwróconego plecami natychmiast** i bez hałasu |
 | 12 | **Kilof** | melee | 55 dmg, ogłusza (1,2 s), odrzut, hałas 0,8 |
@@ -97,13 +97,13 @@ bez spadku obrażeń z dystansu.
 | M-83 | 545 | 72.7 | 30 | 1.80s | 12.8 | 0.41s | 1.92s |
 | SPREAD-12 | 231 | 134.6 | 24 | 2.50s | 17.4 | 0.22s | 1.04s |
 | P-64 | 300 | 55.0 | 12 | 1.40s | 3.9 | 0.55s | 2.55s |
-| SRUT-8 | 75 | 70.0 | 8 | 3.60s | 7.2 | 0.43s | 2.00s |
+| PELLET-8 | 75 | 70.0 | 8 | 3.60s | 7.2 | 0.43s | 2.00s |
 | LR-7 | 600 | 70.0 | 100 | 2.00s | 1.8 | 0.43s | 2.00s |
 | HKM-9 | 600 | 30.0 | 80 | 2.60s | 3.0 | 1.00s | 4.67s |
-| GNIEW-4 | 50 | 66.7 | 6 | 4.20s | 2.8 | 0.45s | 2.10s |
-| SOKOL-6 | 300 | 35.0 | 40 | 2.70s | 10.5 | 0.86s | 4.00s |
-| WIDMO-1 | 67 | 71.4 | 5 | 3.30s | 6.7 | 0.42s | 1.96s |
-| CIEGNO-6 | 75 | 56.2 | 1 | 1.50s | 0.1 | 0.53s | 2.49s |
+| WRATH-4 | 50 | 66.7 | 6 | 4.20s | 2.8 | 0.45s | 2.10s |
+| FALCON-6 | 300 | 35.0 | 40 | 2.70s | 10.5 | 0.86s | 4.00s |
+| SPECTER-1 | 67 | 71.4 | 5 | 3.30s | 6.7 | 0.42s | 1.96s |
+| SINEW-6 | 75 | 56.2 | 1 | 1.50s | 0.1 | 0.53s | 2.49s |
 | MACHETE | 143 | 71.4 | — | — | 0.0 | 0.42s | 1.96s |
 | PICKAXE | 67 | 61.1 | — | — | 0.9 | 0.49s | 2.29s |
 
@@ -132,8 +132,8 @@ Nazwy w HUD są ASCII (interfejs EN); GDD zostaje przy nazwach z diakrytykami.
 wiersz na obrys). Materiały mają rampy 5 tonów (połysk · światło · ton · cień · głęboki cień; światła cieplejsze,
 cienie chłodniejsze), obrys 1 px dokłada `sheet()` tak samo jak postaciom — dlatego broń leży w tej samej
 estetyce i gęstości pikseli co gracz (16×24) i wrogowie. Znaki z drugim kolorem trafiają także do
-`guns_glow.png` — warstwy unshaded rysowanej w `weapon_view.gd`, która świeci w ciemności (LR-7, WIDMO-1,
-HKM-9, SOKÓŁ-6). Podgląd: `python3 tools/bake_sprites.py`, potem zrzuty `--weaponshots` (patrz §6).
+`guns_glow.png` — warstwy unshaded rysowanej w `weapon_view.gd`, która świeci w ciemności (LR-7, SPECTER-1,
+HKM-9, FALCON-6). Podgląd: `python3 tools/bake_sprites.py`, potem zrzuty `--weaponshots` (patrz §6).
 
 ## 5. Zasada projektowa: jedna waluta ryzyka
 
@@ -178,7 +178,7 @@ Regresje starych testów (`--stealthtest`, `--missiontest`, `--wipetest`) nadal 
 - **Ulepszenia** (GDD §6.4, 3 poziomy) — struktura gotowa (`tier_notes`, pola definicji
   są modyfikowalne), ale bez Kryjówki nie ma gdzie ich kupować.
 - **Granaty, flary, miny, wabik** (GDD §6.5) — poza zakresem; `Combat.explode` jest gotowy.
-- **Kilof** nie otwiera zamurowanych przejść, a SRUT-8 nie wyważa drzwi — mapa nie ma takich kafli.
+- **Kilof** nie otwiera zamurowanych przejść, a PELLET-8 nie wyważa drzwi — mapa nie ma takich kafli.
 - **Dołączający w trakcie misji** widzi przedmioty z mapy, które inni już zabrali (stałe nazwy
   z mapy, serwer zignoruje próbę podniesienia). Jak ze znanym potomstwem Żyły (GDD §19).
 - **Brzmienia nie oceniano uchem** (jak w AUDIO.md) — wymagany odsłuch i strojenie głośności
