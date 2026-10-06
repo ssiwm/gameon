@@ -175,16 +175,17 @@ def char_sheet(name, fw, fh, anims, body, glow):
 def bake_chars_hd():
     for name, col in PLAYER_VARIANTS.items():
         body, glow = char_player.frames_for(tuple(int(v * 255) for v in col), bot=(name == "bot"))
-        char_sheet(name, char_player.FW, char_player.FH, char_player.PLAYER_ANIMS, body, glow)
+        char_sheet(name, char_player.FWD, char_player.FHD, char_player.PLAYER_ANIMS, body, glow)
+        MANIFEST["sheets"][name]["scale"] = 1.0 / char_player.DENSITY      # 2× gęstość pikseli: gra rysuje arkusz w skali 0,5
     for name, fn, anims, fw, fh in (
         # potwory w wyższej jakości (1.7.16) i 2× gęstości pikseli (1.7.20), tools/char_monsters_hd.py; arkusz ma 2× więcej
-        # pikseli, gra rysuje go w skali 0,5 (manifest „scale"). Mimik zostaje w rozmiarze gracza (musi go udawać).
+        # pikseli, gra rysuje go w skali 0,5 (manifest „scale"). Mimik ma gęstość i sylwetkę gracza (musi go udawać).
         ("trzosek", hd.trzosek, hd.TRZOSEK_ANIMS) + tuple(v * hd.DENSITY for v in hd.TRZOSEK_HD),
         ("wolek", hd.wolek, hd.WOLEK_ANIMS) + tuple(v * hd.DENSITY for v in hd.WOLEK_HD),
         ("stalker", hd.stalker, hd.STALKER_ANIMS) + tuple(v * hd.DENSITY for v in hd.STALKER_HD),
         ("slepiec", hd.slepiec, hd.SLEPIEC_ANIMS) + tuple(v * hd.DENSITY for v in hd.SLEPIEC_HD),
         ("podsluchacz", hd.podsluchacz, hd.PODSLUCHACZ_ANIMS) + tuple(v * hd.DENSITY for v in hd.PODSLUCHACZ_HD),
-        ("mimik", char_monsters.mimik, char_monsters.MIMIK_ANIMS, 16, 24),
+        ("mimik", char_monsters.mimik, char_monsters.MIMIK_ANIMS, char_player.FWD, char_player.FHD),
         ("cma", hd.cma, hd.CMA_ANIMS) + tuple(v * hd.DENSITY for v in hd.CMA_HD),
         ("skoczek", hd.skoczek, hd.SKOCZEK_ANIMS) + tuple(v * hd.DENSITY for v in hd.SKOCZEK_HD),
         ("nest", hd.nest, hd.NEST_ANIMS) + tuple(v * hd.DENSITY for v in hd.NEST_HD),
@@ -194,7 +195,9 @@ def bake_chars_hd():
         char_sheet(name, fw, fh, anims, body, glow)
         if name == "vein":
             MANIFEST["sheets"][name]["scale"] = 1.0 / char_boss.DENSITY       # gra rysuje arkusz bossa w tej skali
-        elif name != "mimik":
+        elif name == "mimik":
+            MANIFEST["sheets"][name]["scale"] = 1.0 / char_player.DENSITY     # Mimik ma sylwetkę gracza — ta sama gęstość
+        else:
             MANIFEST["sheets"][name]["scale"] = 1.0 / hd.DENSITY
 
 # ---------------------------------------------------------------- gracz

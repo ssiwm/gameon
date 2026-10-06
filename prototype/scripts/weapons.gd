@@ -80,7 +80,7 @@ static func _table() -> Array:
 			"sfx": "p64_shot", "sfx_count": 4, "sfx_vol": -8.0,
 		},
 		{
-			"key": "srut8", "name": "SRUT-8", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
+			"key": "srut8", "name": "PELLET-8", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
 			"auto": false, "cooldown": 0.8, "draw_time": 0.45,
 			"damage": 7.0, "pellets": 8, "knock": 45.0, "stun": 0.2,
 			"spread_deg": 17.0, "jitter_deg": 1.0,
@@ -119,7 +119,7 @@ static func _table() -> Array:
 			"sfx": "hkm9_ignite", "sfx_count": 1, "sfx_vol": -7.0, "sfx_loop": "hkm9_flame_loop",
 		},
 		{
-			"key": "gniew4", "name": "GNIEW-4", "slot": Slot.PRIMARY, "kind": Kind.LAUNCHER,
+			"key": "gniew4", "name": "WRATH-4", "slot": Slot.PRIMARY, "kind": Kind.LAUNCHER,
 			"auto": false, "cooldown": 1.2, "draw_time": 0.55,
 			"damage": 25.0, "knock": 160.0, "stun": 0.5,
 			"jitter_deg": 0.5, "speed": 280.0, "range_px": 330.0, "gravity": 300.0,
@@ -132,7 +132,7 @@ static func _table() -> Array:
 			"sfx": "gniew4_shot", "sfx_count": 2, "sfx_vol": -2.0,
 		},
 		{
-			"key": "sokol6", "name": "SOKOL-6", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
+			"key": "sokol6", "name": "FALCON-6", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
 			"auto": true, "cooldown": 0.2, "draw_time": 0.35,
 			"damage": 7.0, "knock": 25.0,
 			"jitter_deg": 5.0, "speed": 170.0, "range_px": 210.0,
@@ -146,7 +146,7 @@ static func _table() -> Array:
 			"sfx": "sokol6_shot", "sfx_count": 3, "sfx_vol": -8.0,
 		},
 		{
-			"key": "widmo1", "name": "WIDMO-1", "slot": Slot.PRIMARY, "kind": Kind.RAIL,
+			"key": "widmo1", "name": "SPECTER-1", "slot": Slot.PRIMARY, "kind": Kind.RAIL,
 			"auto": false, "cooldown": 0.9, "draw_time": 0.6, "charge_time": 1.2,
 			"damage": 150.0, "pierce": 99, "knock": 200.0, "stun": 0.6,
 			"range_px": 480.0,
@@ -159,7 +159,7 @@ static func _table() -> Array:
 			"sfx": "widmo1_shot", "sfx_count": 2, "sfx_vol": 0.0, "sfx_loop": "widmo1_charge",
 		},
 		{
-			"key": "ciegno6", "name": "CIEGNO-6", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
+			"key": "ciegno6", "name": "SINEW-6", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
 			"auto": false, "cooldown": 0.8, "draw_time": 0.4,
 			"damage": 45.0, "crit_mult": 2.0, "knock": 150.0, "stun": 0.8, "sticks": true,
 			"jitter_deg": 0.2, "speed": 400.0, "range_px": 300.0,

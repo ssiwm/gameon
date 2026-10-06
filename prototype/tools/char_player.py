@@ -4,9 +4,13 @@ Klatka powstaje z pozy — patrz char_art.py. Postać patrzy w prawo; gra odbija
 Dłoń trzymająca broń musi wypaść w (9, 12) — tam jest oś obrotu sprite'a broni (weapon_view.gd).
 """
 import math
-from char_art import Hi, Frame, ramp, mix, fk, up
+from char_art import Frame, ramp, mix, fk, up
+from char_monsters_hd import Sc
 
-FW, FH = 16, 24
+FW, FH = 16, 24              # rozmiar w pikselach ŚWIATA (hitbox, oś broni (9, 12) — bez zmian)
+DENSITY = 2                  # pikseli arkusza na piksel świata; gra rysuje arkusz w skali 1/DENSITY (manifest „scale")
+D = DENSITY
+FWD, FHD = FW * D, FH * D    # rozmiar klatki w arkuszu
 GROUND = 23.7
 
 SKIN = (222, 172, 138)
@@ -98,7 +102,7 @@ def pose_for(an, i):
 
 def build(col, bot, an, i):
     p = pose_for(an, i)
-    hi = Hi(FW, FH)
+    hi = Sc(FWD, FHD, float(D))      # geometria w pikselach świata, rysowana w gęstości D
     jacket = hi.material(ramp(col))
     jacket_d = hi.material(ramp(mix(col, (20, 20, 30), 0.45)))
     skin = hi.material(ramp(SKIN, warm=(1.0, 0.92, 0.75), cool=(0.38, 0.14, 0.10), sh=0.8))
@@ -181,16 +185,21 @@ def build(col, bot, an, i):
     fr = Frame.from_hi(hi)
     fr.despeckle()
     fr.outline()
-    glow = Frame(FW, FH)
-    # --- detale na siatce gry
-    ex, ey = round(hc[0] + 1.1), round(hc[1] + (0.7 if not bot else 0.4))
+    glow = Frame(FWD, FHD)
+    # --- detale na siatce arkusza (1 px arkusza = 0,5 px świata)
+    ex, ey = hi._t((hc[0] + 1.1, hc[1] + (0.7 if not bot else 0.4)))
+    ex, ey = round(ex), round(ey)
     if bot:
-        for dx in (0, 1):
-            glow.put(ex + dx, ey, (70, 240, 255, 255))
-            fr.put(ex + dx, ey, (40, 150, 190, 255))
+        for dx in range(2 * D):                                    # wizjer: pasek 2 px świata × 1 px świata
+            for dy in range(D):
+                glow.put(ex + dx, ey + dy, (70, 240, 255, 255))
+                fr.put(ex + dx, ey + dy, (40, 150, 190, 255))
     else:
-        fr.put(ex, ey, EYE + (255,))
-        fr.only_opaque_put(ex - 1, ey + 2, mix(SKIN, (90, 40, 40), 0.35) + (255,))   # usta/cień pod nosem
+        for dy in range(D):                                        # oko: wąski, pionowy ślad (1 × 2 px arkusza)
+            fr.put(ex, ey + dy, EYE + (255,))
+        fr.only_opaque_put(ex - 1, ey - 2, mix(SKIN, (60, 40, 40), 0.55) + (255,))       # brew
+        for dx in range(D):
+            fr.only_opaque_put(ex - D + dx, ey + 2 * D, mix(SKIN, (90, 40, 40), 0.35) + (255,))   # usta/cień pod nosem
     return fr, glow
 
 
@@ -240,20 +249,29 @@ def _prone(hi, p, bot, jacket, jacket_d, skin, pants, boots, gear, cap, helm, co
     fr = Frame.from_hi(hi)
     fr.despeckle()
     fr.outline()
-    glow = Frame(FW, FH)
-    ex, ey = round(hc[0] + 1.2), round(hc[1] + 0.4)
-    if bot:
-        fr.put(ex, ey, (40, 150, 190, 255))
-        glow.put(ex, ey, (70, 240, 255, 150))
-    else:
-        fr.put(ex, ey, (34, 26, 38, 255))
-    # kałuża krwi pod ciałem
+    glow = Frame(FWD, FHD)
+    ex, ey = hi._t((hc[0] + 1.2, hc[1] + 0.4))
+    ex, ey = round(ex), round(ey)
+    for dy in range(D):
+        if bot:
+            fr.put(ex, ey + dy, (40, 150, 190, 255))
+            glow.put(ex, ey + dy, (70, 240, 255, 150))
+        else:
+            fr.put(ex, ey + dy, (34, 26, 38, 255))
+    # kałuża krwi pod ciałem (dwa wiersze arkusza = 1 px świata)
     blood = (120, 12, 20, 255)
     blood_d = (84, 8, 16, 255)
-    for x in range(3, 13):
-        fr.put(x, 23, blood_d if x % 3 else blood)
-    fr.put(1, 23, blood)
-    fr.put(14, 23, blood_d)
+    for x in range(3 * D, 13 * D):
+        c = blood_d if (x // D) % 3 else blood
+        for yy in range(D):
+            fr.put(x, 23 * D + yy, c)
+        if x % 2 == 0:
+            fr.put(x, 23 * D - 1, blood_d)                       # nierówny brzeg kałuży
+    for yy in range(D):
+        fr.put(1 * D, 23 * D + yy, blood)
+        fr.put(1 * D + 1, 23 * D + yy, blood)
+        fr.put(14 * D, 23 * D + yy, blood_d)
+        fr.put(14 * D + 1, 23 * D + yy, blood_d)
     return fr, glow
 
 

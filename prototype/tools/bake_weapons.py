@@ -259,7 +259,7 @@ TAU = 2.0 * np.pi
 def build_weapons_ext() -> None:
     group("sfx/weapons")
 
-    # SRUT-8 — ciężka strzelba: głębszy sub, osiem cracków śrutu, długi ogon
+    # PELLET-8 — ciężka strzelba: głębszy sub, osiem cracków śrutu, długi ogon
     for i in range(3):
         r = Rng(0x2D00 + i * 6113)
         x = gun(r, body=(vary(r, (125, 112, 100)[i], .05), vary(r, (36, 32, 28)[i], .05)), body_tau=vary(r, .05, .06),
@@ -318,7 +318,7 @@ def build_weapons_ext() -> None:
     x = d.mix([(rush, 1.0), (low, .9), (crackle, .7)], n)
     finalize("hkm9_flame_loop", x, loop=True, lufs=-19.0)
 
-    # GNIEW-4: „bump” granatnika — niski korpus + pusty rezonans lufy
+    # WRATH-4: „bump” granatnika — niski korpus + pusty rezonans lufy
     for i in range(2):
         r = Rng(0x3100 + i * 5003)
         n = ms(700)
@@ -329,7 +329,7 @@ def build_weapons_ext() -> None:
         x = d.mix([(body, 1.0), (blast, 1.0), (tube, .8, .004), (bloop, .6, .01)], n)
         finalize("gniew4_shot_%d" % (i + 1), d.reverb(d.saturate(x, 1.8), ir("hall"), wet=.3), peak=-2.0)
 
-    # SOKOL-6: odpalenie mikrorakiety — syk i świst
+    # FALCON-6: odpalenie mikrorakiety — syk i świst
     for i in range(3):
         r = Rng(0x3200 + i * 3989)
         n = ms(520)
@@ -340,7 +340,7 @@ def build_weapons_ext() -> None:
         x = d.mix([(sw, 1.0), (pop, 1.0)], n)
         finalize("sokol6_shot_%d" % (i + 1), d.reverb(x, ir("close"), wet=.16), lufs=-19.0)
 
-    # WIDMO-1: ładowanie 1,2 s (wznosząca się cewka) i strzał (trzask + sub + wyładowanie)
+    # SPECTER-1: ładowanie 1,2 s (wznosząca się cewka) i strzał (trzask + sub + wyładowanie)
     r = Rng(0x3300)
     n = sec(1.2)
     t = np.arange(n) / SR
@@ -370,7 +370,7 @@ def build_weapons_ext() -> None:
         x = d.saturate(x, 2.0)
         finalize("widmo1_shot_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.34), peak=-1.5, fade_out_ms=100)
 
-    # CIEGNO-6: cięciwa (dźwięczny „twang”) + świst bełtu — cicha broń
+    # SINEW-6: cięciwa (dźwięczny „twang”) + świst bełtu — cicha broń
     for i in range(2):
         r = Rng(0x3400 + i * 2113)
         n = ms(420)

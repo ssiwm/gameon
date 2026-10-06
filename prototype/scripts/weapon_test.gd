@@ -250,16 +250,16 @@ func _t_pierce_beam_rail() -> void:
 	var r := equip(Weapons.WIDMO1)
 	wc.sim_fire = true
 	await wait(0.5)
-	check("WIDMO-1: w trakcie ładowania stan CHARGE", wc.state == Controller.State.CHARGE, "stan %d ładunek %.2f" % [wc.state, wc.charge])
+	check("SPECTER-1: w trakcie ładowania stan CHARGE", wc.state == Controller.State.CHARGE, "stan %d ładunek %.2f" % [wc.state, wc.charge])
 	await wait(1.0)
 	wc.sim_fire = false
 	await wait(0.4)
 	var all_hit := true
 	for t in targets:
 		all_hit = all_hit and absf(dealt(t) - 150.0) < 0.01
-	check("WIDMO-1: naładowany strzał przebija wszystkich za 150", all_hit, "%s" % str(targets.map(func(t): return snappedf(dealt(t), 0.1))))
-	check("WIDMO-1: magazynek −1", wc.mag_of(r.id) == r.mag - 1)
-	check("WIDMO-1: najgłośniejsza broń (≥ 14 Uwagi)", NoiseMgr.last_noise_amount >= 14.0 or NoiseMgr.level >= 14.0, "ostatni %.1f" % NoiseMgr.last_noise_amount)
+	check("SPECTER-1: naładowany strzał przebija wszystkich za 150", all_hit, "%s" % str(targets.map(func(t): return snappedf(dealt(t), 0.1))))
+	check("SPECTER-1: magazynek −1", wc.mag_of(r.id) == r.mag - 1)
+	check("SPECTER-1: najgłośniejsza broń (≥ 14 Uwagi)", NoiseMgr.last_noise_amount >= 14.0 or NoiseMgr.level >= 14.0, "ostatni %.1f" % NoiseMgr.last_noise_amount)
 	# przedwczesne puszczenie anuluje bez kosztu
 	equip(Weapons.WIDMO1)
 	for t in targets:
@@ -268,7 +268,7 @@ func _t_pierce_beam_rail() -> void:
 	await wait(0.4)
 	wc.sim_fire = false
 	await wait(0.2)
-	check("WIDMO-1: puszczenie przed końcem ładowania anuluje (0 obrażeń, 0 kosztu)", dealt(targets[0]) == 0.0 and wc.mag_of(Weapons.WIDMO1) == r.mag)
+	check("SPECTER-1: puszczenie przed końcem ładowania anuluje (0 obrażeń, 0 kosztu)", dealt(targets[0]) == 0.0 and wc.mag_of(Weapons.WIDMO1) == r.mag)
 	free_dummies()
 	await frames(2)
 
@@ -296,10 +296,10 @@ func _t_launcher() -> void:
 	player.aim_dir = Vector2.from_angle(deg_to_rad(-9.0))       # łuk: celuj trochę w górę (wylot jest nad głową niskiego wroga)
 	wc._fire_shot(Weapons.def(Weapons.GNIEW4))
 	await wait(1.4)
-	check("GNIEW-4: trafienie bezpośrednie + wybuch (≥ 80)", dealt(a) >= 80.0, "%.1f" % dealt(a))
-	check("GNIEW-4: wybuch rani sąsiada w promieniu 3 m", dealt(b) >= 30.0, "%.1f" % dealt(b))
-	check("GNIEW-4: poza promieniem nietknięty", dealt(c) == 0.0)
-	check("GNIEW-4: wybuch to hałas (≥ 15 Uwagi)", NoiseMgr.level >= 15.0, "uwaga %.1f" % NoiseMgr.level)
+	check("WRATH-4: trafienie bezpośrednie + wybuch (≥ 80)", dealt(a) >= 80.0, "%.1f" % dealt(a))
+	check("WRATH-4: wybuch rani sąsiada w promieniu 3 m", dealt(b) >= 30.0, "%.1f" % dealt(b))
+	check("WRATH-4: poza promieniem nietknięty", dealt(c) == 0.0)
+	check("WRATH-4: wybuch to hałas (≥ 15 Uwagi)", NoiseMgr.level >= 15.0, "uwaga %.1f" % NoiseMgr.level)
 	free_dummies()
 	await frames(2)
 
@@ -314,7 +314,7 @@ func _t_homing() -> void:
 		wc._fire_shot(Weapons.def(Weapons.SOKOL6))
 		await wait(0.3)
 	await wait(0.7)
-	check("SOKÓŁ-6: rakiety naprowadzają się na cel poza osią", dealt(e) >= 7.0, "%.1f" % dealt(e))
+	check("FALCON-6: rakiety naprowadzają się na cel poza osią", dealt(e) >= 7.0, "%.1f" % dealt(e))
 	free_dummies()
 	await frames(2)
 
@@ -410,11 +410,11 @@ func _t_ammo_reload() -> void:
 	Arsenal.reserve[s.id] = 24
 	wc.try_reload()
 	await wait(s.reload_time * 3.0 + 0.3)
-	check("SRUT-8: ładowanie po 1 naboju (2→5 po ~3 krokach)", wc.mag_of(s.id) >= 4 and wc.mag_of(s.id) <= 6, "mag %d" % wc.mag_of(s.id))
+	check("PELLET-8: ładowanie po 1 naboju (2→5 po ~3 krokach)", wc.mag_of(s.id) >= 4 and wc.mag_of(s.id) <= 6, "mag %d" % wc.mag_of(s.id))
 	var mag_before: int = wc.mag_of(s.id)
 	wc.sim_press = true
 	await frames(3)
-	check("SRUT-8: strzał przerywa ładowanie", wc.state != Controller.State.RELOAD and wc.mag_of(s.id) <= mag_before, "stan %d mag %d→%d" % [wc.state, mag_before, wc.mag_of(s.id)])
+	check("PELLET-8: strzał przerywa ładowanie", wc.state != Controller.State.RELOAD and wc.mag_of(s.id) <= mag_before, "stan %d mag %d→%d" % [wc.state, mag_before, wc.mag_of(s.id)])
 	await wait(s.cooldown + 0.2)
 	# sidearm: nieskończony zapas
 	var p := equip(Weapons.P64, false)
@@ -511,7 +511,7 @@ func _t_pickups() -> void:
 	check("broń na ziemi jest w zasięgu E", wc.nearby_weapon_item() != null)
 	wc._try_pickup()
 	await wait(0.6)
-	check("podniesienie: SRUT-8 w slocie, stara broń porzucona", wc.loadout[0] == Weapons.SRUT8 and wc.loadout.count(old) == 0)
+	check("podniesienie: PELLET-8 w slocie, stara broń porzucona", wc.loadout[0] == Weapons.SRUT8 and wc.loadout.count(old) == 0)
 	var dropped := false
 	for p in get_tree().get_nodes_in_group("pickups"):
 		if p.kind == "weapon" and p.arg == old:
@@ -593,7 +593,7 @@ func run_shots(m: Node2D, out_dir: String) -> void:
 	await _snap(out_dir, "05_hkm9_flame", 0)
 	wc.sim_fire = false
 	await wait(0.4)
-	# 6. WIDMO-1: ładowanie, potem strzał
+	# 6. SPECTER-1: ładowanie, potem strzał
 	d = equip(Weapons.WIDMO1)
 	wc.sim_fire = true
 	await wait(1.0)
@@ -602,7 +602,7 @@ func run_shots(m: Node2D, out_dir: String) -> void:
 	wc.sim_fire = false
 	await _snap(out_dir, "07_widmo_shot", 2)
 	await wait(0.8)
-	# 7. GNIEW-4: wybuch
+	# 7. WRATH-4: wybuch
 	for e in [e1, e2, e3]:
 		e.hp = e._max_hp
 	d = equip(Weapons.GNIEW4)

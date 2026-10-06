@@ -11,7 +11,7 @@ Konwencje, od których zależy reszta gry (nie ruszać bez zmiany `weapons.gd`):
   * zawartość mieści się w x ≤ 22 i y ∈ [1, 7] — obrys potrzebuje 1 px wokół.
 
 Znaki: patrz LEGEND. Znak z drugim kolorem (glow) trafia też do guns_glow.png — warstwy unshaded,
-która świeci w ciemności (taśma energii LR-7, cewki WIDMO-1, płomień pilota HKM-9 …).
+która świeci w ciemności (taśma energii LR-7, cewki SPECTER-1, płomień pilota HKM-9 …).
 """
 
 W, H = 24, 9
@@ -168,7 +168,7 @@ _gun("p64",
      h(4, 5, "Ppp"), h(4, 6, "Ppq"), h(3, 7, "Ppq"),
      h(7, 5, "d"), h(8, 4, "d"))
 
-# SRUT-8 — ciężka strzelba pompka: wentylowana osłona, rura magazynka, pompka, hamulec wylotowy
+# PELLET-8 — ciężka strzelba pompka: wentylowana osłona, rura magazynka, pompka, hamulec wylotowy
 _gun("srut8",
      v(1, 2, "kkkk"), h(2, 2, "UT"), v(2, 3, "Tt"), h(2, 5, "tut"),
      h(10, 1, "mdmdmdmd"),
@@ -200,7 +200,7 @@ _gun("hkm9",
      h(18, 3, "E"), h(17, 3, "e"),
      h(8, 4, "D"))
 
-# GNIEW-4 — granatnik: oliwkowa tuba z obręczami, bęben z mosiężnymi pociskami, szczerbinki
+# WRATH-4 — granatnik: oliwkowa tuba z obręczami, bęben z mosiężnymi pociskami, szczerbinki
 _gun("gniew4",
      h(1, 2, "pp"), h(1, 3, "pq"),
      h(6, 1, "d"), h(14, 1, "d"),
@@ -210,7 +210,7 @@ _gun("gniew4",
      h(6, 6, "mYyYyYm"), h(6, 7, "ddddddd"),
      v(3, 6, "pp"), v(4, 6, "qq"))
 
-# SOKÓŁ-6 — wyrzutnia mikrorakiet: kontener, front z tubami i czubkami rakiet, czujnik naprowadzania
+# FALCON-6 — wyrzutnia mikrorakiet: kontener, front z tubami i czubkami rakiet, czujnik naprowadzania
 _gun("sokol6",
      h(5, 1, "dD"),
      h(2, 2, "BBBBBBBBBBBBB"), h(2, 3, "MMMMMMMMMMMMM"), h(2, 4, "MMMMMMMMMMMMM"), h(2, 5, "LLLLLLLLLLLLL"),
@@ -219,7 +219,7 @@ _gun("sokol6",
      v(1, 3, "ll"),
      v(3, 6, "pp"), v(4, 6, "qq"))
 
-# WIDMO-1 — działo szynowe: dwie szyny, cewki (świecą), kondensator z diodą, jarzący się wylot
+# SPECTER-1 — działo szynowe: dwie szyny, cewki (świecą), kondensator z diodą, jarzący się wylot
 _gun("widmo1",
      r(1, 2, 2, 3, "p"), v(1, 2, "PPp"),
      h(3, 2, "WwwwwwwwwwwwwwwW"),

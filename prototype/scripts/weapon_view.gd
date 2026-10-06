@@ -29,7 +29,7 @@ var ctrl: Node
 
 var _gun: Sprite2D
 var _atlas: AtlasTexture
-var _glow: Sprite2D                    ## warstwa świecąca broni (taśma LR-7, cewki WIDMO-1…), unshaded
+var _glow: Sprite2D                    ## warstwa świecąca broni (taśma LR-7, cewki SPECTER-1…), unshaded
 var _glow_atlas: AtlasTexture
 var _fx: Node2D                        ## nakładka bez cieniowania: rozbłysk, promień, celownik
 var _flash_light: PointLight2D

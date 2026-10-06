@@ -2,8 +2,8 @@
  "sheets": {
   "player_1": {
    "frame": [
-    16,
-    24
+    32,
+    48
    ],
    "glow": false,
    "anims": {
@@ -49,12 +49,13 @@
      "fps": 1,
      "loop": false
     }
-   }
+   },
+   "scale": 0.5
   },
   "player_2": {
    "frame": [
-    16,
-    24
+    32,
+    48
    ],
    "glow": false,
    "anims": {
@@ -100,12 +101,13 @@
      "fps": 1,
      "loop": false
     }
-   }
+   },
+   "scale": 0.5
   },
   "player_3": {
    "frame": [
-    16,
-    24
+    32,
+    48
    ],
    "glow": false,
    "anims": {
@@ -151,12 +153,13 @@
      "fps": 1,
      "loop": false
     }
-   }
+   },
+   "scale": 0.5
   },
   "player_4": {
    "frame": [
-    16,
-    24
+    32,
+    48
    ],
    "glow": false,
    "anims": {
@@ -202,12 +205,13 @@
      "fps": 1,
      "loop": false
     }
-   }
+   },
+   "scale": 0.5
   },
   "bot": {
    "frame": [
-    16,
-    24
+    32,
+    48
    ],
    "glow": true,
    "anims": {
@@ -253,7 +257,8 @@
      "fps": 1,
      "loop": false
     }
-   }
+   },
+   "scale": 0.5
   },
   "trzosek": {
    "frame": [
@@ -415,8 +420,8 @@
   },
   "mimik": {
    "frame": [
-    16,
-    24
+    32,
+    48
    ],
    "glow": true,
    "anims": {
@@ -444,7 +449,8 @@
      "fps": 1,
      "loop": false
     }
-   }
+   },
+   "scale": 0.5
   },
   "cma": {
    "frame": [
