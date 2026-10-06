@@ -3,10 +3,13 @@ ten sam silnik (char_art: render 4×, rampy, obrys) i te same nazwy animacji —
 poza rozmiarem klatki. Wszystkie patrzą w prawo, stopy przy dolnej krawędzi; oczy i żar → warstwa `glow`.
 """
 import math
+import random
 from char_art import Hi, Frame, ramp, mix, fk, up
 from char_monsters import _finish, _glow_px, _flip_v, EYE, EYE_HOT, EYE_SLEEP, monster_frames
 
 BONE_BANDS = (0.0, 0.3, 0.6, 0.88)
+DENSITY = 2                        # pikseli arkusza na piksel świata; gra rysuje te arkusze w skali 1/DENSITY (manifest „scale")
+D = DENSITY
 
 
 class Sc(Hi):
@@ -31,6 +34,44 @@ class Sc(Hi):
     def poly(self, pts, m, normal=(0.0, -0.25, 0.97), **kw):
         super().poly([self._t(p) for p in pts], m, normal=normal, **kw)
 
+def _sc(w, h, sc=1.0, ox=0.0, oy=0.0):
+    """Rysownik klatki o rozmiarze świata (w, h), gęstość D: współrzędne projektu zostają w pikselach świata."""
+    return Sc(w * D, h * D, sc * D, ox * D, oy * D)
+
+
+def _finish2(hi, k=0.34):
+    """Obrys 2 px arkusza = 1 px świata (jak u reszty sprite'ów przy gęstości 1×)."""
+    fr = _finish(hi, k)
+    fr.outline(k)
+    return fr
+
+
+def _blk(glow, x, y, col, a=255, w=1):
+    """Świecący punkt w×1 pikseli ŚWIATA (w·D × D pikseli arkusza), lewy górny róg w (x, y) arkusza."""
+    x0, y0 = int(round(x)), int(round(y))
+    for yy in range(D):
+        for xx in range(w * D):
+            glow.put(x0 + xx, y0 + yy, (*col, a))
+
+
+def _eye(glow, hi, p, offs, col, a=255):
+    """Punkty świecące: p = punkt w układzie projektu, offs = przesunięcia w pikselach ŚWIATA."""
+    ax, ay = hi._t(p)
+    for dx, dy in offs:
+        _blk(glow, ax + dx * D, ay + dy * D, col, a)
+
+
+def _speckle(hi, mat_d, mat_l, c, rx, ry, n, seed, r=0.5):
+    """Drobne pory / guzki w elipsie: wzór stały (seed), więc taki sam w każdej klatce; widoczny dopiero przy gęstszej siatce."""
+    rnd = random.Random(seed)
+    for _ in range(n):
+        a = rnd.uniform(0, math.tau)
+        d_ = math.sqrt(rnd.uniform(0.0, 1.0))
+        x, y = c[0] + math.cos(a) * rx * d_, c[1] + math.sin(a) * ry * d_
+        hi.ellipse((x, y), r, r * 0.78, mat_d)
+        hi.ellipse((x - r * 0.35, y - r * 0.35), r * 0.4, r * 0.3, mat_l)
+
+
 # ================================================================ TRZOSEK (wataha, szybki)
 
 TRZOSEK_HD = (24, 22)
@@ -39,7 +80,7 @@ TRZOSEK_ANIMS = [("idle", 4, 3, True), ("run", 6, 12, True), ("windup", 1, 1, Fa
 
 def trzosek(an, i):
     W, H = TRZOSEK_HD
-    hi = Hi(W, H)
+    hi = _sc(W, H)
     hide = hi.material(ramp((156, 54, 58), cool=(0.22, 0.08, 0.2)))
     hide_l = hi.material(ramp((184, 74, 70), cool=(0.22, 0.08, 0.2)))
     hide_d = hi.material(ramp((98, 34, 46), cool=(0.2, 0.08, 0.22)))
@@ -138,18 +179,20 @@ def trzosek(an, i):
     # ucho: poszarpane, odchylone do tyłu
     hi.poly([(hx - 1.8, hy - 2.0), (hx - 4.4, hy - 4.8), (hx - 0.8, hy - 3.0)], hide_d, normal=(-0.3, -0.5, 0.8))
     hi.poly([(hx - 0.6, hy - 2.4), (hx - 2.2, hy - 5.6), (hx + 0.6, hy - 2.6)], hide, normal=(-0.2, -0.6, 0.78))
-    # blizna na boku
+    # blizna na boku i sierść: drobne kępki (wzór stały)
     hi.capsule((8.4, by + 0.2), (11.0, by - 1.6), 0.35, 0.3, flesh)
-    fr = _finish(hi)
-    glow = Frame(W, H)
+    _speckle(hi, hide_d, hide_l, (9.4, by), 4.6, 2.2, 13, 3, 0.4)
+    fr = _finish2(hi)
+    glow = Frame(W * D, H * D)
     col = EYE_HOT if wind else (EYE_SLEEP if sleep else EYE)
-    ex, ey = hx + 1.6, hy - 0.9
+    p_eye = (hx + 1.6, hy - 0.9)
     if sleep:
-        _glow_px(glow, fr, [(ex, ey + 0.5)], col, 150)
+        _eye(glow, hi, p_eye, [(0, 0.5)], col, 150)
     else:
-        _glow_px(glow, fr, [(ex, ey), (ex + 1.0, ey + 0.1), (ex + 2.0, ey + 0.2)], col)
+        _eye(glow, hi, p_eye, [(0, 0), (1.0, 0.1), (2.0, 0.2)], col)
         if wind:
-            _glow_px(glow, fr, [(hx + 3.0, hy + 2.6), (hx + 2.0, hy + 2.8)], (255, 110, 70), 200)   # żar w paszczy
+            _eye(glow, hi, (hx + 3.0, hy + 2.6), [(0, 0)], (255, 110, 70), 200)    # żar w paszczy
+            _eye(glow, hi, (hx + 2.0, hy + 2.8), [(0, 0)], (255, 110, 70), 200)
     return fr, glow
 
 
@@ -161,7 +204,7 @@ WOLEK_ANIMS = [("idle", 4, 2, True), ("walk", 6, 7, True), ("windup", 1, 1, Fals
 
 def wolek(an, i):
     W, H = WOLEK_HD
-    hi = Sc(W, H, 0.78, 1.8, 9.6)
+    hi = _sc(W, H, 0.78, 1.8, 9.6)
     hide = hi.material(ramp((134, 96, 110), cool=(0.2, 0.1, 0.28)))
     hide_l = hi.material(ramp((160, 114, 124), cool=(0.2, 0.1, 0.28)))
     hide_d = hi.material(ramp((74, 52, 68), cool=(0.15, 0.08, 0.3)))
@@ -170,7 +213,7 @@ def wolek(an, i):
     scar = hi.material(ramp((176, 74, 84), cool=(0.3, 0.1, 0.2)))
     sleep, wind = an == "sleep", an == "windup"
     if sleep:
-        hi.oy = 4.0
+        hi.oy = 4.0 * D
     n = {"idle": 4, "walk": 6, "sleep": 4}.get(an, 1)
     t = i / n * math.tau
     breath = 0.7 * math.sin(t) if an in ("idle", "sleep") else 0.0
@@ -254,6 +297,7 @@ def wolek(an, i):
         px, py = sh[0] + dx, sh[1] + dy + 4.2
         hi.ellipse((px, py), rr * 1.5, rr, plate, rot=math.radians(-30 + 28 * k))
         hi.poly([(px - 1.2, py - rr * 0.6), (px + 0.2, py - rr - 3.6), (px + 1.8, py - rr * 0.6)], horn, normal=(0.2, -0.6, 0.75))
+    _speckle(hi, hide_d, hide_l, tc, 10.0, 8.6, 28, 5, 0.85)          # pory i guzki skóry
     # blizny: szwy na piersi i brzuchu
     for dx in (-2.6, -0.4, 1.8, 4.0):
         hi.capsule((tc[0] + dx, tc[1] + 0.4), (tc[0] + dx + 1.4, tc[1] + 5.0), 0.5, 0.45, scar)
@@ -271,14 +315,14 @@ def wolek(an, i):
         hi.capsule((hc[0] + sx, hc[1] + sy), (mx, my), 2.0, 1.5, horn)
         hi.capsule((mx, my), (hc[0] + ex2, hc[1] + ey2), 1.5, 0.4, horn)
     arm(0)
-    fr = _finish(hi)
-    glow = Frame(W, H)
+    fr = _finish2(hi)
+    glow = Frame(W * D, H * D)
     col = EYE_HOT if wind else (EYE_SLEEP if sleep else EYE)
-    ex, ey = hi._t((hc[0] + 3.6, hc[1] - 0.8))
+    p_eye = (hc[0] + 3.6, hc[1] - 0.8)
     if sleep:
-        _glow_px(glow, fr, [(ex, ey + 0.6)], col, 140)
+        _eye(glow, hi, p_eye, [(0, 0.6)], col, 140)
     else:
-        _glow_px(glow, fr, [(ex, ey), (ex + 1.0, ey), (ex + 2.0, ey + 0.2)], col)
+        _eye(glow, hi, p_eye, [(0, 0), (1.0, 0), (2.0, 0.2)], col)
     return fr, glow
 
 
@@ -291,7 +335,7 @@ STALKER_ANIMS = [("idle", 6, 4, True), ("walk", 8, 9, True), ("windup", 1, 1, Fa
 def stalker(an, i):
     """Wysoka, wychudzona sylwetka bez twarzy w podartym płaszczu z kapturem; ramiona do kolan, długie palce."""
     W, H = STALKER_HD
-    hi = Sc(W, H, 0.96, 1.0, 2.0)
+    hi = _sc(W, H, 0.96, 1.0, 2.0)
     cloth = hi.material(ramp((58, 56, 76), cool=(0.14, 0.12, 0.34)))
     cloth_l = hi.material(ramp((84, 82, 106), cool=(0.14, 0.12, 0.34)))
     cloth_d = hi.material(ramp((30, 30, 44), cool=(0.1, 0.08, 0.3)))
@@ -354,15 +398,13 @@ def stalker(an, i):
     hi.ellipse((head[0] - 0.8, head[1] + 0.6), 5.4, 6.8, cloth, rot=math.radians(lean * 0.4))
     hi.poly([(head[0] - 5.0, head[1] + 6.0), (head[0] - 0.8, head[1] - 9.6), (head[0] + 4.6, head[1] + 5.2)], cloth, normal=(-0.1, -0.3, 0.9))    # szpic kaptura
     hi.ellipse((head[0] + 1.4, head[1] + 0.8), 3.4, 4.6, void)                              # wnętrze kaptura
-    fr = _finish(hi, 0.3)
-    glow = Frame(W, H)
+    fr = _finish2(hi, 0.3)
+    glow = Frame(W * D, H * D)
     ecol = (255, 40, 30) if wind else (255, 70, 50)
-    ex, ey = (int(round(v)) for v in hi._t((head[0] + 1.6, head[1] - 0.2)))
-    for dx, dy in ((0, 0), (1, 0), (3, 0), (4, 0)):
-        glow.put(ex + dx, ey + dy, (*ecol, 255))
+    p_eye = (head[0] + 1.6, head[1] - 0.2)
+    _eye(glow, hi, p_eye, [(0, 0), (1, 0), (3, 0), (4, 0)], ecol, 255)
     if wind:
-        for dx in (0, 1, 3, 4):
-            glow.put(ex + dx, ey + 1, (*ecol, 200))
+        _eye(glow, hi, p_eye, [(0, 1), (1, 1), (3, 1), (4, 1)], ecol, 200)
     return fr, glow
 
 
@@ -375,7 +417,7 @@ SLEPIEC_ANIMS = [("idle", 4, 3, True), ("walk", 6, 8, True), ("windup", 1, 1, Fa
 def slepiec(an, i):
     """Blada, zgarbiona istota z zaszytymi oczodołami, ogromnymi nasłuchującymi uszami i zębatą szczeliną na twarzy."""
     W, H = SLEPIEC_HD
-    hi = Sc(W, H, 1.0, 0.0, 0.0)
+    hi = _sc(W, H, 1.0, 0.0, 0.0)
     skin = hi.material(ramp((206, 200, 196), warm=(1.0, 0.95, 0.9), cool=(0.3, 0.26, 0.42)))
     skin_d = hi.material(ramp((146, 140, 142), cool=(0.26, 0.22, 0.4)))
     skin_l = hi.material(ramp((226, 222, 216), warm=(1.0, 0.96, 0.9), cool=(0.3, 0.26, 0.42)))
@@ -454,11 +496,10 @@ def slepiec(an, i):
         hi.poly([(hc[0] + dx, hc[1] + 1.8), (hc[0] + dx + 0.7, hc[1] + 1.8), (hc[0] + dx + 0.35, hc[1] + 3.0 + jaw_open * 0.3)], bone)
     hi.capsule((hc[0] - 1.0, hc[1] - 1.6), (hc[0] + 2.6, hc[1] - 1.2), 0.6, 0.5, skin_d)         # brew
     hi.capsule((hc[0] + 0.6, hc[1] - 0.8), (hc[0] + 2.6, hc[1] - 0.6), 0.28, 0.28, wound)          # zaszyte oczodoły
-    fr = _finish(hi, 0.3)
-    glow = Frame(W, H)
+    fr = _finish2(hi, 0.3)
+    glow = Frame(W * D, H * D)
     # pod skórą tli się coś w oczodołach — słaby, bladoczerwony punkt (nie widzi, ale „patrzy")
-    ex, ey = (int(round(v)) for v in hi._t((hc[0] + 1.6, hc[1] - 0.7)))
-    glow.put(ex, ey, (255, 90, 90, 120 if sleep else 190))
+    _eye(glow, hi, (hc[0] + 1.6, hc[1] - 0.7), [(0, 0)], (255, 90, 90), 120 if sleep else 190)
     return fr, glow
 
 
@@ -471,7 +512,7 @@ PODSLUCHACZ_ANIMS = [("idle", 4, 3, True), ("windup", 1, 1, False), ("sleep", 2,
 def podsluchacz(an, i):
     """Wysoka, cienka postać na miejscu: ogromne, wachlarzowate uszy-czasze, brak oczu, wąska szyja; w windup głowa odrzucona i krzyk."""
     W, H = PODSLUCHACZ_HD
-    hi = Sc(W, H, 1.0, 0.0, 0.0)
+    hi = _sc(W, H, 1.0, 0.0, 0.0)
     skin = hi.material(ramp((150, 128, 146), cool=(0.24, 0.14, 0.34)))
     skin_l = hi.material(ramp((184, 156, 172), cool=(0.24, 0.14, 0.34)))
     skin_d = hi.material(ramp((96, 80, 98), cool=(0.2, 0.1, 0.34)))
@@ -523,13 +564,12 @@ def podsluchacz(an, i):
         hi.poly([(hc[0] + dx, hc[1] + 0.9), (hc[0] + dx + 0.6, hc[1] + 0.9), (hc[0] + dx + 0.3, hc[1] + 2.4)], bone)
     for e in range(2):                                                            # zmarszczki nad ustami — w miejscu oczu gładka skóra
         hi.capsule((hc[0] - 0.4 + e * 1.8, hc[1] - 1.4), (hc[0] + 0.2 + e * 1.8, hc[1] + 0.2), 0.2, 0.18, skin_d)
-    fr = _finish(hi, 0.3)
-    glow = Frame(W, H)
+    fr = _finish2(hi, 0.3)
+    glow = Frame(W * D, H * D)
     # brak oczu: tylko blady żar w gardle przy krzyku
     if wind:
-        gx, gy = (int(round(v)) for v in hi._t((hc[0] + 1.6, hc[1] + 2.2)))
-        glow.put(gx, gy, (255, 100, 90, 210))
-        glow.put(gx + 1, gy, (255, 100, 90, 170))
+        _eye(glow, hi, (hc[0] + 1.6, hc[1] + 2.2), [(0, 0)], (255, 100, 90), 210)
+        _eye(glow, hi, (hc[0] + 2.6, hc[1] + 2.2), [(0, 0)], (255, 100, 90), 170)
     return fr, glow
 
 
@@ -542,7 +582,7 @@ CMA_ANIMS = [("idle", 4, 14, True), ("sleep", 1, 1, False)]
 def cma(an, i):
     """Duża ćma: puszyste ciało, pierzaste czułki, skrzydła z „oczami"; w locie trzepocze, śpiąc wisi złożona (odbita w pionie)."""
     W, H = CMA_HD
-    hi = Sc(W, H, 1.0, 0.0, 0.0)
+    hi = _sc(W, H, 1.0, 0.0, 0.0)
     wing = hi.material(ramp((206, 196, 160), warm=(1.0, 0.95, 0.8), cool=(0.3, 0.25, 0.4)))
     wing_d = hi.material(ramp((148, 136, 108), cool=(0.25, 0.2, 0.4)))
     wing_f = hi.material(ramp((110, 96, 82), cool=(0.22, 0.18, 0.38)))
@@ -584,12 +624,10 @@ def cma(an, i):
         eye = (wc[0] - 0.4 + 2.0 * math.sin(rot), wc[1] - 1.8 - 1.2 * lift)
     hi.ellipse(eye, 1.7, 1.7, spot)
     hi.ellipse(eye, 0.8, 0.8, pupil)
-    fr = _finish(hi, 0.3)
-    glow = Frame(W, H)
-    gx, gy = int(round(cx + 5.4)), int(round(cy + 0.0))
-    _glow_px(glow, fr, [(gx, gy), (gx + 1, gy)], (255, 214, 140), 170 if sleep else 255)
-    ex, ey = int(round(eye[0])), int(round(eye[1]))
-    glow.put(ex, ey, (255, 190, 100, 90))
+    fr = _finish2(hi, 0.3)
+    glow = Frame(W * D, H * D)
+    _eye(glow, hi, (cx + 5.4, cy), [(0, 0), (1, 0)], (255, 214, 140), 170 if sleep else 255)
+    _eye(glow, hi, eye, [(0, 0)], (255, 190, 100), 90)
     if sleep:
         _flip_v(fr, glow)
     return fr, glow
@@ -605,7 +643,7 @@ def skoczek(an, i):
     """Chudy, długonogi owadzi drapieżnik. Śpi wisząc głową w dół (odbity w pionie), spada rozkraczony z pazurami,
     po lądowaniu biega długimi susami."""
     W, H = SKOCZEK_HD
-    hi = Sc(W, H, 1.0, 0.0, 0.0)
+    hi = _sc(W, H, 1.0, 0.0, 0.0)
     shell = hi.material(ramp((156, 148, 118), warm=(1.0, 0.95, 0.8), cool=(0.2, 0.18, 0.35)))
     shell_l = hi.material(ramp((190, 180, 142), warm=(1.0, 0.95, 0.8), cool=(0.2, 0.18, 0.35)))
     shell_d = hi.material(ramp((92, 86, 70), cool=(0.18, 0.15, 0.35)))
@@ -654,10 +692,11 @@ def skoczek(an, i):
     hi.ellipse((20.0, cy + 1.2), 1.0, 0.5 + mo * 0.3, mouth)
     hi.capsule((17.0, cy - 2.4), (20.0, cy - 5.4), 0.3, 0.15, shell_d)                                           # czułki
     hi.capsule((16.0, cy - 2.4), (17.4, cy - 5.8), 0.3, 0.15, shell_d)
-    fr = _finish(hi, 0.3)
-    glow = Frame(W, H)
+    fr = _finish2(hi, 0.3)
+    glow = Frame(W * D, H * D)
     col = (255, 64, 38) if wind else (255, 140, 70)
-    _glow_px(glow, fr, [(17.8, cy - 1.4), (19.0, cy - 1.0), (16.8, cy - 2.0)], col, 140 if sleep else 255)
+    for pt in ((17.8, cy - 1.4), (19.0, cy - 1.0), (16.8, cy - 2.0)):
+        _eye(glow, hi, pt, [(0, 0)], col, 140 if sleep else 255)
     if sleep:
         _flip_v(fr, glow)
     return fr, glow
@@ -672,7 +711,7 @@ NEST_ANIMS = [("pulse", 3, 3, True)]
 def nest(an, i):
     """Gniazdo: kępa pulsujących worków z żyłami, korzenie wrastające w ziemię, gałki zarodników."""
     W, H = NEST_HD
-    hi = Sc(W, H, 1.0, 0.0, 0.0)
+    hi = _sc(W, H, 1.0, 0.0, 0.0)
     flesh = hi.material(ramp((132, 40, 50), cool=(0.22, 0.08, 0.2)))
     flesh_l = hi.material(ramp((170, 62, 66), cool=(0.22, 0.08, 0.2)))
     flesh_d = hi.material(ramp((76, 22, 36), cool=(0.18, 0.06, 0.2)))
@@ -693,17 +732,18 @@ def nest(an, i):
     for (x, y, rr) in ((9.0, ground - 13.0, 2.6), (30.0, ground - 14.0, 2.9), (20.0, ground - 22.0, 3.0 + p * 0.3), (23.5, ground - 9.0, 2.2), (15.0, ground - 7.0, 2.0)):
         hi.ellipse((x, y), rr, rr, sac)
         hi.ellipse((x - rr * 0.3, y - rr * 0.3), rr * 0.4, rr * 0.35, sac, bias=0.4)
+    _speckle(hi, flesh_d, flesh_l, (20, ground - 10), 14.0, 8.0, 26, 9, 0.55)       # ziarnista powierzchnia worków
     # żyły
     for (a, b) in (((20, ground - 8), (14, ground - 14)), ((20, ground - 8), (27, ground - 15)), ((20, ground - 8), (20, ground - 20)), ((20, ground - 7), (30, ground - 8))):
         hi.capsule(a, b, 0.7, 0.5, flesh_d)
     # kolce kostne u podstawy
     for x in (7, 14, 26, 33):
         hi.poly([(x - 1.0, ground - 1.0), (x + 0.1, ground - 5.0), (x + 1.1, ground - 1.0)], bone)
-    fr = _finish(hi, 0.3)
-    glow = Frame(W, H)
+    fr = _finish2(hi, 0.3)
+    glow = Frame(W * D, H * D)
     # żar w pęcherzach i żyłach; pulsuje
     a = 255 if p > 0.5 else 190
     for (x, y) in ((9, ground - 13), (30, ground - 14), (20, ground - 22), (23, ground - 9), (15, ground - 7)):
-        glow.put(int(round(x)), int(round(y)), (255, 130, 70, a))
-        glow.put(int(round(x)) + 1, int(round(y)), (255, 110, 60, int(a * 0.8)))
+        _eye(glow, hi, (x, y), [(0, 0)], (255, 130, 70), a)
+        _eye(glow, hi, (x + 1, y), [(0, 0)], (255, 110, 60), int(a * 0.8))
     return fr, glow

@@ -257,8 +257,8 @@
   },
   "trzosek": {
    "frame": [
-    24,
-    22
+    48,
+    44
    ],
    "glow": true,
    "anims": {
@@ -286,12 +286,13 @@
      "fps": 1.5,
      "loop": true
     }
-   }
+   },
+   "scale": 0.5
   },
   "wolek": {
    "frame": [
-    44,
-    44
+    88,
+    88
    ],
    "glow": true,
    "anims": {
@@ -319,12 +320,13 @@
      "fps": 1.2,
      "loop": true
     }
-   }
+   },
+   "scale": 0.5
   },
   "stalker": {
    "frame": [
-    32,
-    60
+    64,
+    120
    ],
    "glow": true,
    "anims": {
@@ -346,12 +348,13 @@
      "fps": 1,
      "loop": false
     }
-   }
+   },
+   "scale": 0.5
   },
   "slepiec": {
    "frame": [
-    26,
-    32
+    52,
+    64
    ],
    "glow": true,
    "anims": {
@@ -379,12 +382,13 @@
      "fps": 1.5,
      "loop": true
     }
-   }
+   },
+   "scale": 0.5
   },
   "podsluchacz": {
    "frame": [
-    26,
-    40
+    52,
+    80
    ],
    "glow": true,
    "anims": {
@@ -406,7 +410,8 @@
      "fps": 1.5,
      "loop": true
     }
-   }
+   },
+   "scale": 0.5
   },
   "mimik": {
    "frame": [
@@ -443,8 +448,8 @@
   },
   "cma": {
    "frame": [
-    26,
-    20
+    52,
+    40
    ],
    "glow": true,
    "anims": {
@@ -460,12 +465,13 @@
      "fps": 1,
      "loop": false
     }
-   }
+   },
+   "scale": 0.5
   },
   "skoczek": {
    "frame": [
-    26,
-    26
+    52,
+    52
    ],
    "glow": true,
    "anims": {
@@ -493,12 +499,13 @@
      "fps": 1,
      "loop": false
     }
-   }
+   },
+   "scale": 0.5
   },
   "nest": {
    "frame": [
-    40,
-    34
+    80,
+    68
    ],
    "glow": true,
    "anims": {
@@ -508,7 +515,8 @@
      "fps": 3,
      "loop": true
     }
-   }
+   },
+   "scale": 0.5
   },
   "vein": {
    "frame": [
