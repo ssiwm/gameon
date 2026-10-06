@@ -8,6 +8,7 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
 - **ciemność i latarka** (GDD §8.3): aura 6 m, latarka **L** (stożek 8 m, bateria, +1 Uwagi co 10 s, budzi oświetlonych wrogów, ściąga Stalkera), flara ekstrakcji 12 m, cienie od kafli
 - **12 broni** (overhaul 1.6, `WEAPONS.md`): M-83, SPREAD-12, P-64, SRUT-8, LR-7 (promień), HKM-9 (miotacz), GNIEW-4 (granatnik), SOKOL-6 (naprowadzane), WIDMO-1 (szyna), CIEGNO-6 (cicha kusza), maczeta (cichy backstab), kilof. Model rozgrzania lufy per broń — krótka seria cicha, ciągły ogień głośny; **magazynki, przeładowanie, wspólny zapas drużyny**, skrzynki z mapy i drop z wrogów, podnoszenie i wymiana broni (**E**), krytyk w głowę, spadek obrażeń z dystansem, przebicie, podpalenie, wybuchy; predykcja strzału po stronie strzelca i walidacja serwera
 - wrogowie: Trzosek (wataha), Wołek (tank), **Ślepiec** (nie widzi, tylko słyszy: idzie do źródła hałasu — kroki wyczuwa z bliska, strzały z daleka; kucanie i cisza go mijają, latarka go nie budzi, dotyk już tak) i **Podsłuchacz** (stoi i nasłuchuje; zobaczy albo usłyszy — krzyczy po zapowiedzi 0,9 s: +14 Uwagi i cała okolica 420 px idzie do źródła; zabij go po cichu maczetą w plecy) — śpią, budzi ich strzał w pobliżu albo bliskość gracza. **Percepcja (1.6.8)**: goni tylko to, co widzi (zasięg wzroku + linia bez ściany; kucającego z bliższa), inaczej idzie na ostatni ślad (źródło hałasu, ostatnia pozycja), rozgląda się 3,5 s, a po ~9 s bez kontaktu wraca do domu i zasypia. Chodzi po grafie A* (skoki Trzosków, zeskoki przez kładki; Wołek nie przeskoczy — czeka i rezygnuje), wataha się rozsuwa, a Trzosek po ciosie odskakuje
+- **Krzyk (G albo mikrofon)**: GDD §8.2 — krzyk = Uwaga +20 i przyciągnięcie wrogów w promieniu 25 m (budzi śpiących, Podsłuchacz alarmuje, Ślepiec słyszy); cooldown 2,5 s, efekt (fala, dźwięk) widzą wszyscy. **Mikrofon (VAD)** to opt-in z lobby (przycisk MIC: OFF → LOW → MED → HIGH): wykrywa głośny, utrzymany krzyk, ignoruje szept i mowę, adaptuje się do szumu tła; dźwięk przetwarzany tylko lokalnie, nigdy nie nagrywany ani wysyłany. Bez mikrofonu to samo robi klawisz **G** (dostępność: nic nie wymaga mikrofonu)
 - **Przesterowanie (Q)** — zasób: celowo podnosisz HAŁAS, żeby odciągnąć stalkera (GDD §8.4)
 - **Poziom Uwagi**: bieganie/strzały dodają, cisza odejmuje; dwie prędkości decayu
 - **Stalker „ON"**: budzi się przy 60%, poluje szybciej niż czatuje, wolniejszy od gracza (88 vs 95 px/s), atak nie podnosi hałasu, po ciosie się cofa
@@ -91,6 +92,7 @@ Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP =
 | Latarka | L |
 | Pokaż / ukryj sterowanie | F1 |
 | Zaproszenie przez Steam (host) | F2 |
+| **Krzyk** (także mikrofon, jeśli włączony w lobby) | G |
 | Zeskok z kładki | dół + SPACJA |
 | Nowa misja (host, po ekstrakcji) | Enter |
 

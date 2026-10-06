@@ -19,8 +19,8 @@ const CONTROLS := [
 	["Q", "Overcharge — lure HIM away"],
 	["L", "Flashlight — light is noise"],
 	["Hold E", "Revive a teammate"],
-	["F1", "Show / hide controls in game"],
-	["F2", "Steam: invite friends (host)"],
+	["F1 / F2", "Controls on/off / Steam invite (host)"],
+	["G", "Scream — lures enemies, +20 noise (or the mic)"],
 ]
 
 var _ip: LineEdit
@@ -30,6 +30,7 @@ var _diff: Button
 var _steam_host: Button
 var _steam_join: Button
 var _steam_id: LineEdit
+var _mic: Button
 
 func _ready() -> void:
 	theme = UiTheme.get_theme()
@@ -93,13 +94,25 @@ func _ready() -> void:
 	box.add_child(steam_row)
 	set_steam_available(false)
 
+	var opts := HBoxContainer.new()
+	box.add_child(opts)
 	_diff = Button.new()
 	_diff.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_diff.tooltip_text = "Chosen by the host. Applies to enemies, the stalker, the boss, noise and drops."
 	_diff.pressed.connect(func() -> void:
 		Difficulty.set_level((Difficulty.level + 1) % Difficulty.NAMES.size())
 		Audio.play("ui_click", Audio.BUS_UI, -10.0))
-	box.add_child(_diff)
+	opts.add_child(_diff)
+	# Mikrofon (VAD): opt-in; krzyk do mikrofonu = hałas + przyciągnięcie wrogów (voice.gd)
+	_mic = Button.new()
+	_mic.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_mic.tooltip_text = "Shout into the microphone to scream (same as G). Processed locally, never recorded. Click: OFF > LOW > MED > HIGH sensitivity."
+	_mic.pressed.connect(func() -> void:
+		Voice.cycle()
+		Audio.play("ui_click", Audio.BUS_UI, -10.0))
+	opts.add_child(_mic)
+	Voice.changed.connect(func() -> void: _mic.text = Voice.label())
+	_mic.text = Voice.label()
 	Difficulty.changed.connect(func(_l: int) -> void: _refresh_difficulty())
 	_refresh_difficulty()
 

@@ -16,10 +16,12 @@ Audio="*res://scripts/audio_director.gd"
 Feel="*res://scripts/feel.gd"
 Arsenal="*res://scripts/arsenal.gd"
 Difficulty="*res://scripts/difficulty.gd"
+Voice="*res://scripts/voice.gd"
 
 [audio]
 
 driver/mix_rate=48000
+driver/enable_input=true
 
 [display]
 

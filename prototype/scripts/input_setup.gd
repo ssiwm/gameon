@@ -10,6 +10,7 @@ func _enter_tree() -> void:
 	_add_keys("fire", [KEY_J])
 	_add_keys("crouch", [KEY_SHIFT])
 	_add_keys("overcharge", [KEY_Q])
+	_add_keys("scream", [KEY_G])
 	_add_keys("interact", [KEY_E])
 	_add_keys("weapon_1", [KEY_1])
 	_add_keys("weapon_2", [KEY_2])
