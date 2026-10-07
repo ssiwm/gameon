@@ -17,7 +17,7 @@ const TILE_W := 150.0
 const TILE_H := 46.0
 const DETAIL_W := 270.0
 ## Kolejność siatki: bronie od początku, potem do kupienia za złom, na końcu zablokowane do późniejszych stref.
-const LIST := [Weapons.M83, Weapons.SPREAD12, Weapons.P64, Weapons.LR7, Weapons.HKM9, Weapons.SRUT8, Weapons.SOKOL6, Weapons.CIEGNO6]
+const LIST := [Weapons.M83, Weapons.SPREAD12, Weapons.P64, Weapons.LR7, Weapons.HKM9, Weapons.SRUT8, Weapons.GNIEW4, Weapons.WIDMO1, Weapons.SOKOL6, Weapons.CIEGNO6]
 
 ## Moneta złomu (8×8).
 class Coin extends Control:
@@ -293,6 +293,8 @@ func _on_result(w: int, ok: bool, reason: String) -> void:
 			_say("%s is already unlocked." % name, UiTheme.BP_MUTED)
 		"later":
 			_say("Not available yet — a later zone.", UiTheme.BP_MUTED)
+		"reward":
+			_say("Defeat the Leech to unlock it.", UiTheme.BP_MUTED)
 		"up_ok":
 			_say("%s upgraded to tier %d." % [name, Scrap.level_of(w)], UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
@@ -328,7 +330,7 @@ func _refresh_tile(t: Tile, selected: bool) -> void:
 	t.add_theme_stylebox_override("pressed", sbox)
 	t.add_theme_stylebox_override("focus", sbox)
 	var unlocked := Scrap.is_unlocked(w)
-	var later := Scrap.LATER.has(w)
+	var later := Scrap.is_later(w)
 	(t.icon_node as GunIcon).set_gun(int(Weapons.base_def(w).gun_row), Weapons.base_def(w).tracer_color, Color.WHITE if unlocked else Color(0.45, 0.5, 0.55))
 	t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if selected else (UiTheme.BP_TEXT if unlocked else UiTheme.BP_MUTED))
 	t.bar.visible = unlocked
@@ -341,7 +343,7 @@ func _refresh_tile(t: Tile, selected: bool) -> void:
 		t.bar.maxed = lv >= Upgrades.MAX_LEVEL
 		t.bar.queue_redraw()
 	elif later:
-		t.state_label.text = "LATER ZONE"
+		t.state_label.text = "BOSS REWARD" if Scrap.is_gated(w) else "LATER ZONE"
 	else:
 		var price := Scrap.price_of(w)
 		t.price_label.text = "%d" % price
@@ -396,8 +398,8 @@ func _refresh_detail(w: int) -> void:
 	var notes: Array = Codex.WEAPON_TEXT.get(String(base.key), ["", ""])
 	_d_text.text = String(notes[0])
 	# przycisk akcji
-	if not unlocked and Scrap.LATER.has(w):
-		_action.text = "Available in a later zone"
+	if not unlocked and Scrap.is_later(w):
+		_action.text = "Reward for the Leech" if Scrap.is_gated(w) else "Available in a later zone"
 	elif not unlocked:
 		_action.text = "Buy  ·  %d scrap" % Scrap.price_of(w)
 	elif can_next:

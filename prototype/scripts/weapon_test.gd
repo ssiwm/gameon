@@ -14,6 +14,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Projectile := preload("res://scripts/projectile.gd")
+const Enemy := preload("res://scripts/enemy.gd")
 const Controller := preload("res://scripts/weapon_controller.gd")
 
 var main: Node2D
@@ -124,6 +125,7 @@ func run_unit(m: Node2D) -> void:
 	_t_data()
 	await _t_bullets()
 	await _t_falloff_crit()
+	await _t_phase1()
 	await _t_sweep()
 	await _t_pierce_beam_rail()
 	await _t_flame()
@@ -194,11 +196,11 @@ func _t_falloff_crit() -> void:
 	var e := await dummy(60.0, 100000.0, "wolek")
 	var info := Combat.make_info(Weapons.P64, 10.0, Vector2(e.global_position.x - 4.0, e.head_y() - 1.0), Vector2.RIGHT, 1, "bullet")
 	var res := Combat.apply(e, info)
-	check("trafienie w głowę Wołka: krytyk ×2 (P-64)", bool(res["crit"]) and absf(dealt(e) - 20.0) < 0.01, "dealt %.1f" % dealt(e))
+	check("trafienie w głowę Wołka: krytyk ×2 (P-64), potem pancerz −3 (20 → 17)", bool(res["crit"]) and absf(dealt(e) - 17.0) < 0.01, "dealt %.1f" % dealt(e))
 	var info2 := Combat.make_info(Weapons.P64, 10.0, Vector2(e.global_position.x - 4.0, e.global_position.y - 4.0), Vector2.RIGHT, 1, "bullet")
 	var before := dealt(e)
 	Combat.apply(e, info2)
-	check("trafienie w tułów: bez krytyka", absf(dealt(e) - before - 10.0) < 0.01)
+	check("trafienie w tułów: bez krytyka (10 − pancerz 3 = 7)", absf(dealt(e) - before - 7.0) < 0.01)
 	free_dummies()
 	await frames(2)
 	# strzał z wysokości barku w niskiego Trzoska nie jest „headshotem”
@@ -208,6 +210,78 @@ func _t_falloff_crit() -> void:
 	check("Trzosek nie ma słabego punktu (3× P-64 = 33, nie 66)", absf(dealt(t) - 33.0) < 0.5, "%.1f" % dealt(t))
 	free_dummies()
 	await frames(2)
+
+## Zmiany z fazy 1 przeglądu broni: pancerz Wołka, strefy głowy, ćmy a wiązka, naprowadzanie FALCON-6, źródła broni, widełki hałasu.
+func _t_phase1() -> void:
+	var w := await dummy(60.0, 100000.0, "wolek")
+	var r1 := Combat.apply(w, Combat.make_info(Weapons.M83, 8.0, w.global_position + Vector2(-4, -6), Vector2.RIGHT, 1, "bullet"))
+	check("pancerz Wołka: kula 8 → 5, znacznik ARMOR (mat 1)", absf(dealt(w) - 5.0) < 0.01 and int(r1["mat"]) == 1, "dealt %.2f mat %d" % [dealt(w), int(r1["mat"])])
+	var b0 := dealt(w)
+	Combat.apply(w, Combat.make_info(Weapons.SRUT8, 10.0, w.global_position + Vector2(-4, -6), Vector2.RIGHT, 1, "bullet"))
+	check("pancerz Wołka: śrucina PELLET-8 (10) traci 3, nie więcej", absf(dealt(w) - b0 - 7.0) < 0.01)
+	var b1 := dealt(w)
+	Combat.apply(w, Combat.make_info(Weapons.HKM9, 3.0, w.global_position + Vector2(-4, -6), Vector2.RIGHT, 1, "fire"))
+	check("pancerz nie działa na ogień (3 → 3)", absf(dealt(w) - b1 - 3.0) < 0.01)
+	var b2 := dealt(w)
+	Combat.apply(w, Combat.make_info(Weapons.WIDMO1, 150.0, w.global_position + Vector2(-4, -6), Vector2.RIGHT, 1, "rail"))
+	check("pancerz nie działa na szynę (150 → 150)", absf(dealt(w) - b2 - 150.0) < 0.01)
+	free_dummies()
+	await frames(2)
+	var heads_ok := true
+	for k in ["wolek", "slepiec", "podsluchacz", "mimik"]:
+		var kd: Dictionary = Enemy.KINDS[k]
+		var line: float = (kd["size"] as Vector2).y * (1.0 - float(kd["head"]))
+		heads_ok = heads_ok and float(kd["head"]) > 0.0 and line > 9.5        # strzał z wysokości piersi (−9 px) nie jest headshotem
+	check("strefy głowy: Wołek, Ślepiec, Podsłuchacz i Mimik (linia głowy wyżej niż pierś strzelca)", heads_ok)
+	var ps := Weapons.def(Weapons.SRUT8)
+	check("PELLET-8: 8 × 10 = 80 na strzał z bliska, ogłuszenie ≥ 0,5 s", absf(ps.damage * ps.pellets - 80.0) < 0.01 and ps.stun >= 0.5)
+	check("FALCON-6: 10 obrażeń na rakietę", Weapons.def(Weapons.SOKOL6).damage >= 10.0)
+	# naprowadzanie woli cele trudne do trafienia: bliższy Trzosek kontra dalszy Skoczek
+	var near := await dummy(50.0, 100000.0, "trzosek")
+	var far := await dummy(110.0, 100000.0, "skoczek")
+	near.active = true
+	far.active = true
+	var rk := Projectile.new()
+	rk.launch(Weapons.SOKOL6, player.global_position + Vector2(10, -6), Vector2.RIGHT, 1, true)
+	get_tree().current_scene.add_child(rk)
+	check("FALCON-6: naprowadzanie wybiera Skoczka zamiast bliższego Trzoska", rk._target == far, "cel %s" % str(rk._target))
+	rk.queue_free()
+	free_dummies()
+	await frames(2)
+	# ćma budzi się od wiązki LR-7, ale nie od zwykłego strzału
+	var moth := await dummy(60.0, 100000.0, "cma")
+	player.flashlight = false
+	player.w_firing = true
+	player.weapon = Weapons.LR7
+	var lit_beam: Dictionary = moth._nearest_light(300.0)
+	player.weapon = Weapons.M83
+	var lit_gun: Dictionary = moth._nearest_light(300.0)
+	player.w_firing = false
+	check("ćma leci na wiązkę LR-7, a nie na strzał z M-83", not lit_beam.is_empty() and lit_gun.is_empty())
+	free_dummies()
+	await frames(2)
+	# źródła broni: SPECTER-1 i WRATH-4 do kupienia, SPECTER-1 po pokonaniu Pijawki
+	var gated_before := Scrap.is_gated(Weapons.WIDMO1) and not Scrap.is_unlocked(Weapons.WIDMO1)
+	var had_trophy := Scrap.trophies.has("z1_b1")
+	Scrap.trophies["z1_b1"] = true
+	var gated_after := not Scrap.is_gated(Weapons.WIDMO1) and not Scrap.is_unlocked(Weapons.WIDMO1) and Scrap.price_of(Weapons.WIDMO1) > 0
+	if not had_trophy:
+		Scrap.trophies.erase("z1_b1")
+	check("SPECTER-1: trofeum po Pijawce (przed: zablokowana; po: do kupienia za %d)" % Scrap.price_of(Weapons.WIDMO1), gated_before and gated_after)
+	check("WRATH-4: do kupienia w warsztacie (%d)" % Scrap.price_of(Weapons.GNIEW4), Scrap.price_of(Weapons.GNIEW4) > 0 and not Scrap.is_gated(Weapons.GNIEW4))
+	# widełki: hałas na jednostkę obrażeń broni palnych (poza wybuchowymi) ≤ 0,25 — pilnuje, żeby żadna broń nie była głośna za mało dla swojego DPS
+	var worst := ""
+	var worst_r := 0.0
+	for d in Weapons.defs():
+		if d.slot == Weapons.Slot.MELEE or d.kind == WeaponDef.Kind.LAUNCHER or d.kind == WeaponDef.Kind.RAIL:
+			continue
+		var sim := Weapons.simulate_heat(d.id, 12.0)
+		var ns: float = float(sim["noise_per_s"]) if not d.is_continuous() else d.noise(0.0) / d.cooldown
+		var ratio := ns / maxf(d.dps(), 0.1)
+		if ratio > worst_r:
+			worst_r = ratio
+			worst = d.name
+	check("hałas / DPS ≤ 0,25 dla broni palnych (najgorsza: %s %.2f)" % [worst, worst_r], worst_r <= 0.25)
 
 ## Szybki pocisk nie może przeskoczyć wąskiego wroga (przeciąganie promienia, nie przesuwany obszar).
 func _t_sweep() -> void:
@@ -241,7 +315,7 @@ func _t_pierce_beam_rail() -> void:
 	for t in targets:
 		if dealt(t) > 0.0:
 			hit_count += 1
-	check("LR-7: promień przebija 3 cele (pierce 2), czwarty nietknięty", hit_count == 3 and dealt(targets[3]) == 0.0, "trafionych %d" % hit_count)
+	check("LR-7: promień przebija 2 cele (pierce 1), trzeci nietknięty", hit_count == 2 and dealt(targets[2]) == 0.0, "trafionych %d" % hit_count)
 	check("LR-7: bateria spada o tyknięcia", wc.mag_of(d.id) < mag0 and mag0 - wc.mag_of(d.id) <= 8, "zużyto %d" % (mag0 - wc.mag_of(d.id)))
 	check("LR-7: ciągły ogień cichy (szum/tyk ≤ 0,2)", d.noise(0.0) <= 0.2)
 	for t in targets:

@@ -35,25 +35,25 @@ const KINDS := {
 		"hp": 70.0, "speed": 95.0, "damage": 2, "windup": 0.4, "reach": 14.0,
 		"cooldown": 1.2, "leap": true, "hear": 0.0, "wake_near": 46.0, "sight": 220.0,
 		"mimic": true,
-		"color": Color(0.6, 0.72, 0.6), "size": Vector2(10, 16), "knock": 50.0, "knock_mult": 0.8, "head": 0.0,
+		"color": Color(0.6, 0.72, 0.6), "size": Vector2(10, 16), "knock": 50.0, "knock_mult": 0.8, "head": 0.28,
 	},
 	# Ślepiec (GDD §7.1): nie widzi, tylko słyszy — idzie do źródła hałasu; kucanie i cisza go mijają.
 	"slepiec": {
 		"hp": 60.0, "speed": 70.0, "damage": 1, "windup": 0.35, "reach": 14.0,
 		"cooldown": 1.1, "leap": false, "hear": 300.0, "wake_near": 36.0, "sight": 26.0,
 		"keen": true, "min_noise": 0.25, "blind": true,
-		"color": Color(0.8, 0.78, 0.76), "size": Vector2(12, 17), "knock": 40.0, "knock_mult": 0.6, "head": 0.0,
+		"color": Color(0.8, 0.78, 0.76), "size": Vector2(12, 17), "knock": 40.0, "knock_mult": 0.6, "head": 0.28,
 	},
 	# Podsłuchacz (GDD §7.1): stoi nieruchomo i nasłuchuje; zobaczy albo usłyszy — krzyczy i ściąga hordę.
 	"podsluchacz": {
 		"hp": 35.0, "speed": 0.0, "damage": 0, "windup": 0.9, "reach": 0.0,
 		"cooldown": 6.0, "leap": false, "hear": 170.0, "wake_near": 0.0, "sight": 240.0,
-		"color": Color(0.58, 0.5, 0.57), "size": Vector2(12, 24), "knock": 30.0, "knock_mult": 0.5, "head": 0.0,
+		"color": Color(0.58, 0.5, 0.57), "size": Vector2(12, 24), "knock": 30.0, "knock_mult": 0.5, "head": 0.28,
 	},
 	"wolek": {
 		"hp": 140.0, "speed": 36.0, "damage": 2, "windup": 0.6, "reach": 20.0,
 		"cooldown": 1.6, "leap": false, "hear": 150.0, "wake_near": 70.0, "sight": 200.0,
-		"bruiser": true,
+		"bruiser": true, "armor": 3.0,
 		"color": Color(0.36, 0.27, 0.34), "size": Vector2(20, 26), "knock": 14.0, "knock_mult": 0.2, "head": 0.28,
 	},
 }
@@ -76,6 +76,7 @@ const HEALTH_DROP := {"wolek": 0.75}   ## szansa na apteczkę (1.5) — tylko mo
 const SIBLING_WAKE_RADIUS := 140.0
 const DEATH_FX_COLOR_VAR := 0.15
 const BURN_DPS := 8.0
+const ARMOR_MIN_FRAC := 0.4           ## pancerz nigdy nie zbija trafienia poniżej tego ułamka
 ## Percepcja (1.7): wróg goni tylko to, co widzi (promień wzroku + linia bez ściany), albo idzie
 ## na ostatni znany ślad (hałas, ostatnia pozycja gracza), rozgląda się, a po dłuższym braku
 ## kontaktu wraca do domu i zasypia. Wcześniej obudzony wróg znał położenie gracza na całej mapie.
@@ -489,13 +490,17 @@ func _nearest_light(max_r: float) -> Dictionary:
 			best_d = d
 			best = {"pos": f.global_position, "kind": "flare", "node": f}
 	for p in get_tree().get_nodes_in_group("players"):
-		if p.dead or not p.flashlight:
+		if p.dead or not (p.flashlight or _beam_lit(p)):
 			continue
 		var d2 := global_position.distance_to(p.global_position)
 		if d2 < best_d:
 			best_d = d2
 			best = {"pos": p.global_position + Vector2(0, -8), "kind": "player", "node": p}
 	return best
+
+## Gracz strzela wiązką (LR-7): świeci jak latarka, ćmy lecą na tę wiązkę.
+func _beam_lit(p: Node) -> bool:
+	return bool(p.w_firing) and Weapons.def(int(p.weapon)).kind == Weapons.Kind.BEAM
 
 ## Ćma: wisi (śpi), dopóki w zasięgu nie pojawi się światło; wtedy leci na nie falistym lotem.
 ## Flara ją spala, latarka — kąsa gracza. Bez światła wraca pod sufit.
@@ -1148,6 +1153,14 @@ func take_hit(info: Dictionary) -> Dictionary:
 		dmg = maxf(dmg, hp + 1.0)
 		silent = true
 		info["crit"] = true
+	var mat := 0
+	var armor: float = _def.get("armor", 0.0)
+	if armor > 0.0 and (info.get("type", "bullet") == "bullet" or info.get("type", "") == "beam"):
+		# pancerz: stała redukcja na trafienie (min. 40% obrażeń) — rozrzut i seria słabną, ciężkie trafienia nie
+		var reduced := maxf(dmg - armor, dmg * ARMOR_MIN_FRAC)
+		if reduced < dmg * 0.7:
+			mat = 1                      # Arsenal.Mat.ARMOR: iskry i szary hitmarker
+		dmg = reduced
 	hp -= dmg
 	_flash = 0.1
 	_stagger = maxf(_stagger, 0.12 + float(info.get("stun", 0.0)))
@@ -1162,7 +1175,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 		_die()
 	elif kind == "podsluchacz" and not silent:
 		_begin_scream()
-	return {"hit": true, "dealt": dmg, "killed": dead, "mat": 0}
+	return {"hit": true, "dealt": dmg, "killed": dead, "mat": mat}
 
 # ---------------------------------------------------------------- ogień
 

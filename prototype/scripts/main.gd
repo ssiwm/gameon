@@ -1016,8 +1016,8 @@ func _gen_test() -> void:
 		elif String(c.name).begins_with("Lamp"):
 			lamps += 1
 	var brief: Dictionary = level.briefing(after_hub)
-	check.call("kryjówka: 6 stojaków, 9 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
-		racks == 6 and lamps == 9 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
+	check.call("kryjówka: 8 stojaków, 9 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
+		racks == 8 and lamps == 9 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
 	check.call("odprawa następnej misji (%s): tytuł, cel, %d rodzajów wrogów, %d gniazd, boss=%s" % [after_hub, (brief["counts"] as Dictionary).size(), int(brief["nests"]), str(brief["boss"])],
 		String(brief["title"]) != "" and String(brief["brief"]) != "" and (brief["counts"] as Dictionary).has("trzosek") and int(brief["nests"]) == 4 and bool(brief["boss"]))
 	# kryjówka jest bezpieczna: wymuszamy warunki, w których Dyrektor grozy dosypałby wędrowców, i sprawdzamy, że nikt się nie pojawia
@@ -1042,7 +1042,7 @@ func _gen_test() -> void:
 	var racks_w := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "weapon" and n.static_display)
 	var locked_n := racks_w.filter(func(n: Node) -> bool: return level.is_locked_item(n)).size()
 	check.call("warsztat: ława + panel, stojaki zablokowane (%d z %d)" % [locked_n, racks_w.size()],
-		get_tree().get_nodes_in_group("workshop").size() == 1 and get_tree().get_nodes_in_group("workshop_ui").size() == 1 and racks_w.size() == 6 and locked_n == 5)
+		get_tree().get_nodes_in_group("workshop").size() == 1 and get_tree().get_nodes_in_group("workshop_ui").size() == 1 and racks_w.size() == 8 and locked_n == 7)
 	var results: Array = []
 	var cb := func(w: int, ok: bool, reason: String) -> void: results.append([w, ok, reason])
 	Scrap.purchase_result.connect(cb)
@@ -1057,8 +1057,8 @@ func _gen_test() -> void:
 	check.call("warsztat: zakup (za mało → poor, późniejsza strefa → later, ok, ponownie → owned): %s, portfel %d" % [str(reasons), Scrap.bank],
 		reasons == ["poor", "later", "ok", "owned"] and Scrap.bank == 400 - Scrap.price_of(Weapons.LR7) and Scrap.is_unlocked(Weapons.LR7) and not Scrap.is_unlocked(Weapons.HKM9))
 	var locked_after := racks_w.filter(func(n: Node) -> bool: return level.is_locked_item(n)).size()
-	check.call("warsztat: kupiony stojak się odblokował (zablokowane %d)" % locked_after, locked_after == 4)
-	# panel warsztatu (UI faza 3): otwarcie przy ławie, siatka 8 broni, wybór myszą (kafel), zamknięcie przywraca mysz
+	check.call("warsztat: kupiony stojak się odblokował (zablokowane %d)" % locked_after, locked_after == 6)
+	# panel warsztatu (UI faza 3): otwarcie przy ławie, siatka 10 broni, wybór myszą (kafel), zamknięcie przywraca mysz
 	var wk_node: Node2D = get_tree().get_first_node_in_group("workshop")
 	p.global_position = wk_node.global_position + Vector2(0, -2)
 	p.velocity = Vector2.ZERO
@@ -1068,9 +1068,9 @@ func _gen_test() -> void:
 	await get_tree().create_timer(0.3).timeout
 	var tiles: Array = wui._tiles
 	(tiles[3] as Button).pressed.emit()
-	var opened_ok: bool = wui.is_open() and tiles.size() == 8 and wui._sel == 3 and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE
+	var opened_ok: bool = wui.is_open() and tiles.size() == 10 and wui._sel == 3 and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE
 	wui.close()
-	check.call("panel warsztatu: otwiera się przy ławie, 8 kafli, kliknięcie kafla wybiera broń (sel %d), mysz widoczna; po zamknięciu zamknięty" % wui._sel, opened_ok and not wui.is_open())
+	check.call("panel warsztatu: otwiera się przy ławie, 10 kafli, kliknięcie kafla wybiera broń (sel %d), mysz widoczna; po zamknięciu zamknięty" % wui._sel, opened_ok and not wui.is_open())
 	# faza C: ulepszenia
 	results.clear()
 	var base_mag: int = Weapons.base_def(Weapons.M83).mag

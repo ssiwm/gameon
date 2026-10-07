@@ -76,11 +76,11 @@ Wartości domyślne z `weapons.gd`; DPS = pełne trafienie, bez krytyków i spad
 | 1 | **M-83** | SMG, auto | Wszechstronna. Krótka seria cicha, ciągły ogień głośny (0,6 → 1,5 Uwagi/strzał) |
 | 2 | **SPREAD-12** | rozrzut 5×7, półauto | Klasyk Contry; dobra z bliska, spadek obrażeń z dystansem |
 | 3 | **P-64** | sidearm, ∞ amunicji | Cichsza od M-83, celna, **krytyk ×2** — ratunek i broń „na cicho” |
-| 4 | **PELLET-8** | ciężka strzelba 8×7, pompka | Odrzut, ogłuszenie; ładowanie po 1 naboju (przerywane strzałem) |
-| 5 | **LR-7** | promień ciągły, przebija 3 | Prawie bezgłośny (0,18/tyk), 70 DPS na 3 cele; promień **świeci** (światło na końcu i przy lufie), a bateria (100) kończy się w 10 s |
+| 4 | **PELLET-8** | ciężka strzelba 8×10, pompka | 80 na strzał z bliska (zabija Mimika i Skoczka jednym), odrzut, ogłuszenie 0,5 s; ładowanie po 1 naboju (przerywane strzałem); śrucina 10 mało traci na pancerzu Wołka |
+| 5 | **LR-7** | promień ciągły, przebija 2 | Prawie bezgłośny (0,18/tyk), 70 DPS na 2 cele; promień **świeci** (światło na końcu i przy lufie) i **przyciąga ćmy** (1.7.57), a bateria (100) kończy się w 10 s |
 | 6 | **HKM-9** | miotacz ognia | 4 m, podpala (8 HP/s), **Trzoski uciekają w panice** |
 | 7 | **WRATH-4** | granatnik po łuku | AoE 3 m, 80 dmg; niszczy gniazda; wybuch = +15 Uwagi; rani drużynę |
-| 8 | **FALCON-6** | mikrorakiety naprowadzane | Słabe, ale same dochodzą do celu poza osią |
+| 8 | **FALCON-6** | mikrorakiety naprowadzane (10 dmg) | Same dochodzą do celu poza osią i **wolą cele trudne do trafienia**: ćmę, skoczka, podsłuchacza |
 | 9 | **SPECTER-1** | szyna, ładowanie 1,2 s | 150 dmg przez wszystkich; **najgłośniejsza** (14 Uwagi); puszczenie przed końcem anuluje |
 | 10 | **SINEW-6** | kusza, bełt do odzysku | **Cicha** (0,08); bełt zostaje w świecie jako skrzynka z 1 nabojem |
 | 11 | **Maczeta** | melee | 30 dmg, cisza; **zabija śpiącego lub odwróconego plecami natychmiast** i bez hałasu |
@@ -97,11 +97,11 @@ bez spadku obrażeń z dystansu.
 | M-83 | 545 | 72.7 | 30 | 1.80s | 12.8 | 0.41s | 1.92s |
 | SPREAD-12 | 231 | 134.6 | 24 | 2.50s | 17.4 | 0.22s | 1.04s |
 | P-64 | 300 | 55.0 | 12 | 1.40s | 3.9 | 0.55s | 2.55s |
-| PELLET-8 | 75 | 70.0 | 8 | 3.60s | 7.2 | 0.43s | 2.00s |
+| PELLET-8 | 75 | 100.0 | 8 | 3.60s | 7.2 | 0.30s | 1.40s |
 | LR-7 | 600 | 70.0 | 100 | 2.00s | 1.8 | 0.43s | 2.00s |
 | HKM-9 | 600 | 30.0 | 80 | 2.60s | 3.0 | 1.00s | 4.67s |
 | WRATH-4 | 50 | 66.7 | 6 | 4.20s | 2.8 | 0.45s | 2.10s |
-| FALCON-6 | 300 | 35.0 | 40 | 2.70s | 10.5 | 0.86s | 4.00s |
+| FALCON-6 | 300 | 50.0 | 40 | 2.70s | 10.5 | 0.60s | 2.80s |
 | SPECTER-1 | 67 | 71.4 | 5 | 3.30s | 6.7 | 0.42s | 1.96s |
 | SINEW-6 | 75 | 56.2 | 1 | 1.50s | 0.1 | 0.53s | 2.49s |
 | MACHETE | 143 | 71.4 | — | — | 0.0 | 0.42s | 1.96s |
@@ -184,3 +184,20 @@ Regresje starych testów (`--stealthtest`, `--missiontest`, `--wipetest`) nadal 
 - **Brzmienia nie oceniano uchem** (jak w AUDIO.md) — wymagany odsłuch i strojenie głośności
   względem reszty miksu; wartości `sfx_vol` w `weapons.gd` to punkt wyjścia.
 - **Grafika broni (1.7.17)**: jeden projekt na broń w `tools/gun_icons_hd.py` (silnik postaci: render 4×, rampy, obrys, warstwa świecąca), dwa arkusze: `art/sprites/guns.png` (+ `guns_glow.png`) — broń w świecie, klatka **72×28 = 2× gęstość pikseli** (manifest: `scale` 0,5, więc na ekranie zajmuje tyle co 36×14), dłoń (pivot obrotu) w (13; 14) pikseli arkusza, wylot lufy = dłoń + `gun_len` (w pikselach świata); gra rysuje ją z filtrem liniowym i `filter_clip`, żeby obrót pod dowolnym kątem był gładki; oraz `gun_icons.png` (+ glow) — ikony 64×24 do HUD i kodeksu. Wiersz = `gun_row`. Artysta może podmienić PNG (układ z `art/sprites.json`) bez zmian w kodzie. Lufa nie wychodzi za ścianę (`weapon_controller.muzzle_pos` skraca wylot do przeszkody).
+
+## 6. Faza 1 przeglądu broni (1.7.57)
+
+Wnioski z analizy (hałas na jednostkę obrażeń różnił się ~100×, dwie bronie były nieosiągalne, PELLET-8 i FALCON-6 zdominowane,
+krytyk i pancerz prawie martwe) i zmiany tylko w danych:
+
+| Obszar | Zmiana |
+|---|---|
+| Dostępność | **WRATH-4** w warsztacie (300), **SPECTER-1** w warsztacie (400) po pokonaniu Pijawki (trofeum `Scrap.trophies`, zapis u hosta); hub ma 8 stojaków |
+| LR-7 | bazowe przebicie 2 → 1 (trafia 2 cele; poziom 3 dokłada +1); ćmy lecą na wiązkę jak na latarkę — światło ma cenę |
+| PELLET-8 | 7 → 10 na śrucinę (80 na strzał), ogłuszenie 0,2 → 0,5 s |
+| FALCON-6 | 7 → 10 na rakietę; naprowadzanie premiuje ćmę, skoczka i podsłuchacza (`EVASIVE_KINDS`) |
+| Strefy głowy | Ślepiec, Podsłuchacz i Mimik (28% sylwetki) obok Wołka — krytyk P-64 / SINEW / M-83 ma sens |
+| Pancerz Wołka | −3 na trafienie kulą i wiązką (min. 40% obrażeń); ogień, wybuchy, szyna i broń biała bez zmian; trafienie osłabione ≥ 30% ma znacznik ARMOR |
+
+`--weapontest` pilnuje teraz: pancerza, stref głowy, naprowadzania na cele trudne, ćmy a wiązki, źródeł SPECTER-1 / WRATH-4 oraz
+widełek hałas/DPS ≤ 0,25 dla broni palnych (najgorszy dziś FALCON-6 0,21).

@@ -1134,8 +1134,7 @@ func _drive_cards() -> void:
 			var notes: Array = Codex.WEAPON_TEXT.get(String(d.key), ["", ""])
 			var tag: String = Codex._slot_name(d)
 			if locked:
-				var price := Scrap.price_of(wid)
-				tag += "  ·  LOCKED — " + ("%d scrap at the workshop" % price if price > 0 else "available in a later zone")
+				tag += "  ·  LOCKED — " + Scrap.lock_text(wid)
 			_fill_info(_item, String(d.name), tag, Codex._weapon_stats(d), String(notes[0]), d.tracer_color)
 	var ic: Control = _item["card"]
 	ic.visible = it != null
@@ -1279,8 +1278,7 @@ func _drive_prompt() -> void:
 		var nd: RefCounted = Weapons.def(it.arg)
 		var lvl_p := get_tree().get_first_node_in_group("level")
 		if lvl_p != null and lvl_p.is_locked_item(it):
-			var pr := Scrap.price_of(it.arg)
-			text = "LOCKED  ·  %s" % ("%d scrap at the workshop" % pr if pr > 0 else "later zone")
+			text = "LOCKED  ·  %s" % Scrap.lock_text(it.arg)
 			col = UiTheme.MUTED
 		else:
 			var wc2: Node = _player.weapons
