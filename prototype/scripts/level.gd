@@ -55,6 +55,7 @@ const BOARD := preload("res://scripts/board.gd")
 const RESULTS_WALL := preload("res://scripts/results_wall.gd")
 const RANGE_LINE := preload("res://scripts/range_line.gd")
 const WORKSHOP := preload("res://scripts/workshop.gd")
+const LEECH := preload("res://scripts/leech.gd")
 const RANGE_TARGET := preload("res://scripts/range_target.gd")
 
 ## Mapy misji (scripts/maps/): każda niesie MAP, ID, TITLE, OBJECTIVE, UNDERGROUND_ROW, WEAPONS, ACCENTS.
@@ -62,6 +63,7 @@ const MAPS := {
 	"z1_m1": preload("res://scripts/maps/z1_m1.gd"),
 	"z1_m2": preload("res://scripts/maps/z1_m2.gd"),
 	"z1_m3": preload("res://scripts/maps/z1_m3.gd"),
+	"z1_b1": preload("res://scripts/maps/z1_b1.gd"),
 	"z1_hub": preload("res://scripts/maps/z1_hub.gd"),     # kryjówka między misjami (nie należy do CAMPAIGN)
 }
 ## Kolejność kampanii Strefy I; po ostatniej misji (1.3) kampania wraca przez kryjówkę do 1.1.
@@ -421,7 +423,7 @@ func _exposure(c: int, r: int) -> int:
 ## Znaczniki → postacie. Nazwy numerowane od lewej do prawej, identycznie
 ## na każdym peerze.
 func _spawn_entities() -> void:
-	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "l": [], "k": [], "o": [], "a": [], "g": []}
+	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -434,7 +436,7 @@ func _spawn_entities() -> void:
 				"e": exits_alt.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "v", "r", "t", "u", "h", "F", "H", "l", "k", "o", "a", "g": found[ch].append(p)
+				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -511,13 +513,21 @@ func _spawn_entities() -> void:
 			# fizyka uznawała za „w środku" i skrzynia przelatywała piętro niżej
 			pr.position = found[k[0]][i] + Vector2(0, -1)
 			add_child(pr)
-	_map_items = {"a": found["a"], "g": found["g"], "u": found["u"], "F": found["F"], "H": found["H"]}
+	_map_items = {"a": found["a"], "g": found["g"], "u": found["u"], "F": found["F"], "H": found["H"], "f": found["f"]}
 	_spawn_map_items()
 	if stalker_home != Vector2.ZERO:         # kryjówka (bez znacznika X) nie ma Stalkera
 		var s := STALKER_SCENE.instantiate()
 		s.name = "Stalker"
 		s.position = stalker_home
 		add_child(s)
+	for i in found["K"].size():                   # Pijawka (misja B1): basen z danych mapy (POOL = kolumny)
+		var lc: CharacterBody2D = LEECH.new()
+		lc.name = "Boss"
+		lc.position = found["K"][i]
+		var pool: Array = ((MAPS[map_id] as GDScript).get_script_constant_map().get("POOL", []) as Array)
+		lc.pool_x0 = float(int(pool[0]) * TILE) if pool.size() >= 2 else lc.position.x - 200.0
+		lc.pool_x1 = float((int(pool[1]) + 1) * TILE) if pool.size() >= 2 else lc.position.x + 200.0
+		add_child(lc)
 	if boss_home != Vector2.ZERO:
 		var b := BOSS_SCENE.instantiate()
 		b.name = "Boss"
@@ -543,6 +553,7 @@ func briefing(id: String) -> Dictionary:
 	var stalker := false
 	var nests := 0
 	var boss := false
+	var boss_name := ""
 	var gens := 0
 	var tags := 0
 	var stashes := 0
@@ -556,13 +567,17 @@ func briefing(id: String) -> Dictionary:
 				nests += 1
 			elif ch == "B":
 				boss = true
+				boss_name = "THE VEIN"
+			elif ch == "K":
+				boss = true
+				boss_name = "THE LEECH"
 			elif ch == "G":
 				gens += 1
 			elif ch == "F":
 				tags += 1
 			elif ch == "H":
 				stashes += 1
-	return {"title": m.TITLE, "brief": m.BRIEF, "counts": counts, "stalker": stalker, "nests": nests, "boss": boss, "generators": gens, "tags": tags, "stashes": stashes}
+	return {"title": m.TITLE, "brief": m.BRIEF, "counts": counts, "stalker": stalker, "nests": nests, "boss": boss, "boss_name": boss_name, "generators": gens, "tags": tags, "stashes": stashes}
 
 ## Punkt zawieszenia pod sufitem nad znacznikiem: pierwsza bryła w górę (kolumna znacznika), a wróg
 ## wisi tuż pod nią (stopy = dół sprite'a). Bez sufitu zostaje na podłodze.
@@ -598,6 +613,9 @@ func _spawn_map_items() -> void:
 		var stash: Array = _map_items.get("H", [])
 		for i in stash.size():
 			_add_map_item("MapStash%d" % i, "stash", 0, stash[i], Scrap.STASH_VALUE)
+	var flare_boxes: Array = _map_items.get("f", [])
+	for i in flare_boxes.size():
+		_add_map_item("MapFlares%d" % i, "flares", 0, flare_boxes[i], 2)
 	var tags: Array = _map_items.get("F", [])
 	for i in tags.size():
 		_add_map_item("MapTag%d" % i, "tag", 0, tags[i])

@@ -956,7 +956,8 @@ func _drive_mission() -> void:
 	if _boss_row.visible:
 		_boss_bar.value = boss.hp / maxf(1.0, boss.max_hp)
 		_boss_bar.queue_redraw()
-		_boss_name.text = "THE VEIN — MOTHER OF NESTS" + ("   ·   ENRAGED" if boss.phase >= 2 else "")
+		var bname: String = String(boss.get("boss_name")) if boss.get("boss_name") != null else "THE VEIN — MOTHER OF NESTS"
+		_boss_name.text = bname + ("   ·   ENRAGED" if boss.phase >= 2 else "")
 	# karta celu: wyśrodkowana, szerokość wg treści
 	_obj_card.reset_size()
 	_obj_card.position = Vector2((size.x - _obj_card.size.x) * 0.5, MARGIN)
@@ -1183,7 +1184,7 @@ func _fill_brief(info: Dictionary) -> void:
 	if int(info["nests"]) > 0:
 		rows.append([Color(0.85, 0.4, 0.35), "NEST", "x%d" % int(info["nests"]), "Mission objective"])
 	if bool(info["boss"]):
-		rows.append([Color(0.7, 0.25, 0.3), "THE VEIN", "x1", "Boss — Mother of Nests"])
+		rows.append([Color(0.7, 0.25, 0.3), String(info.get("boss_name", "THE VEIN")), "x1", "Boss — Mother of Nests" if String(info.get("boss_name", "")) != "THE LEECH" else "Boss — hides under water"])
 	if rows.size() > BRIEF_ROWS:                  # krótka lista: karta nad tablicą ma się mieścić nad graczem
 		var extra := rows.size() - (BRIEF_ROWS - 1)
 		rows = rows.slice(0, BRIEF_ROWS - 1)
