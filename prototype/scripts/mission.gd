@@ -347,6 +347,10 @@ func _success() -> void:
 		var bonus := Scrap.BONUS_CLEAR + (Scrap.BONUS_SIDE if side_ok else 0) + (Scrap.BONUS_NO_DOWNS if downs == 0 else 0)
 		var gain := Scrap.bank_loot(bonus)
 		print("[SCRAP] mission banked +%d (bonus %d), wallet %d" % [gain, bonus, Scrap.bank])
+		if kind == "boss":
+			var tl := get_tree().get_first_node_in_group("level")
+			if tl != null:
+				Scrap.add_trophy(String(tl.map_id))        # pokonany boss odblokowuje broń-trofeum w warsztacie (SPECTER-1)
 	_record_result()
 	if NightShift.active:
 		shift_cleared += 1

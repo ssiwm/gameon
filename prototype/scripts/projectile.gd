@@ -20,6 +20,8 @@ const Lights := preload("res://scripts/lights.gd")
 const MASK_AUTH := Combat.LAYER_WORLD | Combat.LAYER_PLAYER | Combat.LAYER_TARGET
 const MASK_COSMETIC := Combat.LAYER_WORLD | Combat.LAYER_TARGET
 const HOMING_DELAY := 0.12          ## s lotu prosto, zanim rakieta zacznie skręcać
+const EVASIVE_KINDS := ["cma", "skoczek", "podsluchacz"]    ## cele „trudne do trafienia" — naprowadzanie (FALCON-6) wybiera je w pierwszej kolejności
+const EVASIVE_BONUS := 40.0
 const MAX_SEGMENTS := 6             ## ile trafień (przebić, pomijanych kolegów) na jedną klatkę
 
 var weapon := 0
@@ -300,6 +302,8 @@ func _acquire_target() -> Node2D:
 		if not Combat.clear_line(space, global_position, c):
 			continue
 		var score := ang * 2.0 + dist * 0.1
+		if n.get("kind") in EVASIVE_KINDS:
+			score -= EVASIVE_BONUS           # naprowadzanie woli cele trudne do trafienia z ręki: ćmę, skoczka, podsłuchacza
 		if score < best_score:
 			best_score = score
 			best = n

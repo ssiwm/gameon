@@ -28,13 +28,16 @@ const BONUS_SIDE := 15                ## za cel poboczny
 const BONUS_NO_DOWNS := 10            ## za misję bez upadków
 
 ## Warsztat (faza B): ceny broni z kryjówki. Broń spoza tej tabeli i spoza LATER jest odblokowana od początku (M-83, SPREAD-12, P-64, maczeta).
-const PRICES := {Weapons.LR7: 150, Weapons.HKM9: 200, Weapons.SRUT8: 250}
+const PRICES := {Weapons.LR7: 150, Weapons.HKM9: 200, Weapons.SRUT8: 250, Weapons.GNIEW4: 300, Weapons.WIDMO1: 400}
 const LATER := [Weapons.SOKOL6, Weapons.CIEGNO6]       ## stojaki zablokowane do późniejszych stref
+## Bronie-trofea: dostępne w warsztacie dopiero po ukończeniu wskazanej misji (id mapy). SPECTER-1 → po Pijawce (B1).
+const REWARDS := {Weapons.WIDMO1: "z1_b1"}
 
 var bank := 0
 var loot := 0
 var levels: Dictionary = Weapons.levels      ## id broni → poziom ulepszenia 0..3 (TEN SAM słownik co Weapons.levels; zmieniamy go tylko w miejscu)
 var unlocked: Dictionary = {}         ## id broni → true: kupione w warsztacie (zapis u hosta)
+var trophies: Dictionary = {}         ## id misji (boss) → true: ukończona, odblokowuje broń-trofeum (zapis u hosta)
 var last_gain := 0                    ## ile trafiło do banku po ostatniej misji (karta wyniku, ściana wyników)
 var persist := DisplayServer.get_name() != "headless"      ## testy headless nie czytają ani nie nadpisują prawdziwego zapisu
 
@@ -42,7 +45,7 @@ func _ready() -> void:
 	load_progress()
 	multiplayer.peer_connected.connect(func(id: int) -> void:
 		if NoiseMgr.is_server():
-			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), levels))
+			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), levels, trophies.keys()))
 
 ## Złom nie obowiązuje w Nocnym Dyżurze (osobna seria z własnymi zasadami).
 func enabled() -> bool:
@@ -97,9 +100,32 @@ func _set_levels(src: Dictionary) -> void:
 func level_of(w: int) -> int:
 	return int(levels.get(w, 0))
 
+## Broń-trofeum, której misja jeszcze nie jest ukończona.
+func is_gated(w: int) -> bool:
+	return REWARDS.has(w) and not trophies.has(String(REWARDS[w]))
+
+## Broń niedostępna do kupienia: późniejsza strefa albo trofeum bez ukończonej misji.
+func is_later(w: int) -> bool:
+	return LATER.has(w) or is_gated(w)
+
+## Misja ukończona (boss): odblokowuje broń-trofeum. Serwer; zapis i sync.
+func add_trophy(map_id: String) -> void:
+	if not NoiseMgr.is_server() or not enabled() or trophies.has(map_id):
+		return
+	trophies[map_id] = true
+	save_progress()
+	_push()
+
+## Czemu stojak jest zablokowany (HUD, katalog, warsztat).
+func lock_text(w: int) -> String:
+	if is_gated(w):
+		return "reward for the Leech"
+	var price := price_of(w)
+	return ("%d scrap at the workshop" % price) if price > 0 else "available in a later zone"
+
 ## Czy broń z kryjówki jest dostępna (stojak odblokowany).
 func is_unlocked(w: int) -> bool:
-	if LATER.has(w):
+	if is_later(w):
 		return false
 	return not PRICES.has(w) or unlocked.has(w)
 
@@ -124,6 +150,8 @@ func _buy_server(w: int, peer_id: int) -> void:
 		reason = "invalid"
 	elif LATER.has(w):
 		reason = "later"
+	elif is_gated(w):
+		reason = "reward"
 	elif not PRICES.has(w):
 		reason = "invalid"
 	elif unlocked.has(w):
@@ -177,16 +205,19 @@ func _upgrade_server(w: int, peer_id: int) -> void:
 func _push() -> void:
 	changed.emit()
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_sync.rpc(bank, loot, last_gain, unlocked.keys(), levels)
+		_sync.rpc(bank, loot, last_gain, unlocked.keys(), levels, trophies.keys())
 
 @rpc("authority", "call_remote", "reliable")
-func _sync(b: int, l: int, g: int, unl: Array, lv: Dictionary) -> void:
+func _sync(b: int, l: int, g: int, unl: Array, lv: Dictionary, tro: Array) -> void:
 	bank = b
 	loot = l
 	last_gain = g
 	unlocked.clear()
 	for w in unl:
 		unlocked[int(w)] = true
+	trophies.clear()
+	for m in tro:
+		trophies[String(m)] = true
 	_set_levels(lv)
 	changed.emit()
 
@@ -197,10 +228,13 @@ func load_progress() -> void:
 	var ok: bool = persist and cfg.load(SAVE_PATH) == OK
 	bank = int(cfg.get_value("scrap", "bank", 0)) if ok else 0
 	unlocked.clear()
+	trophies.clear()
 	levels.clear()
 	if ok:
 		for w in Array(cfg.get_value("workshop", "unlocked", [])):
 			unlocked[int(w)] = true
+		for m in Array(cfg.get_value("workshop", "trophies", [])):
+			trophies[String(m)] = true
 		_set_levels(cfg.get_value("workshop", "levels", {}) as Dictionary)
 	loot = 0
 	last_gain = 0
@@ -213,5 +247,6 @@ func save_progress() -> void:
 	cfg.load(SAVE_PATH)
 	cfg.set_value("scrap", "bank", bank)
 	cfg.set_value("workshop", "unlocked", unlocked.keys())
+	cfg.set_value("workshop", "trophies", trophies.keys())
 	cfg.set_value("workshop", "levels", levels)
 	cfg.save(SAVE_PATH)

@@ -83,7 +83,7 @@ static func _table() -> Array:
 		{
 			"key": "srut8", "name": "PELLET-8", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
 			"auto": false, "cooldown": 0.8, "draw_time": 0.45,
-			"damage": 7.0, "pellets": 8, "knock": 45.0, "stun": 0.2,
+			"damage": 10.0, "pellets": 8, "knock": 45.0, "stun": 0.5,
 			"spread_deg": 17.0, "jitter_deg": 1.0,
 			"speed": 280.0, "range_px": 100.0, "falloff_start": 20.0, "falloff_min": 0.25,
 			"n_min": 4.5, "n_max": 6.0, "heat_gain": 0.5, "heat_decay": 0.4,
@@ -96,7 +96,7 @@ static func _table() -> Array:
 		{
 			"key": "lr7", "name": "LR-7", "slot": Slot.PRIMARY, "kind": Kind.BEAM,
 			"auto": true, "cooldown": 0.1, "draw_time": 0.4,
-			"damage": 7.0, "pierce": 2, "knock": 8.0,
+			"damage": 7.0, "pierce": 1, "knock": 8.0,
 			"range_px": 224.0,
 			"n_min": 0.18, "n_max": 0.18, "heat_gain": 0.0,
 			"mag": 100, "reserve_start": 200, "reserve_max": 400, "pickup_rounds": 80,
@@ -135,7 +135,7 @@ static func _table() -> Array:
 		{
 			"key": "sokol6", "name": "FALCON-6", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
 			"auto": true, "cooldown": 0.2, "draw_time": 0.35,
-			"damage": 7.0, "knock": 25.0,
+			"damage": 10.0, "knock": 25.0,
 			"jitter_deg": 5.0, "speed": 170.0, "range_px": 210.0,
 			"homing": 4.5, "homing_cone": 60.0, "homing_range": 190.0,
 			"n_min": 1.2, "n_max": 2.4, "heat_gain": 0.10, "heat_decay": 0.3,

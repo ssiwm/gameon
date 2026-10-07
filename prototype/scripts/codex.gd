@@ -22,7 +22,7 @@ const ENEMIES := [
 		"Continuous fire or the machete. Kill the leader first and the pack scatters."],
 	["wolek", "wolek", "idle", "BULLOCK", "Bruiser",
 		"Slow, huge and hard to kill. Winds up a charge that smashes crates and barrels — and stuns itself against a wall. Also hurls loose crates from a distance.",
-		"Sidestep the charge and let it hit a wall, then shoot. A shot to the head hurts more. Drops medkits."],
+		"Sidestep the charge and let it hit a wall, then shoot. Its hide is armored: weak bullets and pellets lose damage, heavy hits do not. A shot to the head hurts more. Drops medkits."],
 	["skoczek", "skoczek", "idle", "LEAPER", "Ambusher",
 		"Hangs from the ceiling above a passage and drops on whoever walks under it.",
 		"Look up before you cross a gap, and keep moving."],
@@ -53,6 +53,10 @@ static func bestiary() -> Array:
 		]
 		if bool(d.get("fly", false)):
 			stats.append(["Movement", "flies"])
+		if float(d.get("armor", 0.0)) > 0.0:
+			stats.append(["Armor", "−%d per bullet" % int(d["armor"])])
+		if float(d.get("head", 0.0)) > 0.0:
+			stats.append(["Weak spot", "head"])
 		var col: Color = (d["color"] as Color).lerp(Color(1.0, 0.85, 0.7), 0.35)
 		out.append({"title": e[3], "tag": e[4], "accent": col, "portrait": {"type": "sprite", "sheet": e[1], "anim": e[2]},
 			"stats": stats, "text": e[5], "tip": e[6]})
@@ -92,14 +96,14 @@ const WEAPON_TEXT := {
 		"Your answer when everything else is empty. Crouch to tighten the spread."],
 	"srut8": ["Heavy pump shotgun: eight pellets, huge knock-back and a short stun, loaded shell by shell.",
 		"Shells load one at a time and loading can be interrupted by firing. Brace — it shoves you back."],
-	"lr7": ["Energy beam: a continuous ray that pierces up to two enemies. Barely audible.",
-		"The quietest way to hurt a pack. Cell-powered — watch the magazine, not the heat."],
+	"lr7": ["Energy beam: a continuous ray that pierces one extra enemy (two in a line). Barely audible — but moths fly at the beam.",
+		"The quietest way to hurt a pack. Cell-powered — watch the magazine, not the heat. Fire it near a hanging Moth and it will wake and come for you."],
 	"hkm9": ["Flamethrower: short cone of fire that ignites enemies. Burning pack hunters panic and run.",
 		"Burning enemies take damage over time and run in panic. Keep it for tight corridors."],
 	"gniew4": ["Grenade launcher: lobbed shell that explodes on contact or after a fuse, with a wide blast.",
 		"Counts as a lure (+15 noise) and hurts the squad too. Do not fire at your own feet."],
 	"sokol6": ["Seeker rifle: bullets bend toward a target inside a cone in front of you. Sloppy aim, steady hits.",
-		"Good when you cannot line up the shot. The bullets are slow — lead moving targets."],
+		"Good when you cannot line up the shot: it prefers Moths, Leapers and Eavesdroppers. The bullets are slow — lead moving targets."],
 	"widmo1": ["Rail rifle: hold to charge, release for a hit that pierces everything in line. Enormous damage, enormous noise.",
 		"Release before the charge completes and the shot is cancelled. The loudest weapon — plan the escape first."],
 	"ciegno6": ["Silent bolt gun: one bolt per magazine, huge damage, almost no noise. The bolt sticks in the target and can be picked up.",
@@ -125,8 +129,7 @@ static func weapon_entry(id: int) -> Dictionary:
 	var tiers: Array = []
 	var access := ""
 	if not Scrap.is_unlocked(id):
-		var price := Scrap.price_of(id)
-		access = ("Locked — %d scrap at the workshop" % price) if price > 0 else "Locked — available in a later zone"
+		access = "Locked — " + Scrap.lock_text(id)
 	if Upgrades.has_tiers(String(d.key)):
 		var lv := Scrap.level_of(id)
 		tag += "  ·  TIER %d / %d" % [lv, Upgrades.MAX_LEVEL] if Scrap.is_unlocked(id) else ""
