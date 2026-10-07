@@ -581,6 +581,14 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		pm._show_tab(1)
 		var bp: Node = pm._pages[1]
 		bp.select(bp._entries.size() - 1)
+	if "--shotperkcard" in OS.get_cmdline_user_args():
+		Profile.reset_for_test()                      # --shotperkcard: karta PERKS w menu pauzy (L4, Smith w slocie 1)
+		Profile.add_xp(800, "demo")
+		Profile.equip(0, "smith")
+		var ppm: Node = $UI.get_node("PauseMenu")
+		ppm.open()
+		ppm._show_tab(4)
+		(ppm._pages[4]).select(3)
 	if "--shotgear" in OS.get_cmdline_user_args():
 		var gpm: Node = $UI.get_node("PauseMenu")           # --shotgear: karta GEAR kodeksu (mina)
 		gpm.open()
@@ -637,6 +645,12 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			wui.open()
 			if "--shotsup" in OS.get_cmdline_user_args():
 				wui._set_page(1)                     # --shotsup: zakładka SUPPLIES panelu warsztatu
+			if "--shotperks" in OS.get_cmdline_user_args():
+				Profile.reset_for_test()             # --shotperks: zakładka PERKS z przykładowym profilem (L4, Smith w slocie 1)
+				Profile.add_xp(800, "demo")
+				Profile.equip(0, "smith")
+				wui._perk_sel = 3
+				wui._set_page(2)
 	if demo:
 		RunLog.add("z1_m1", "1.1  MISSING PATROL", 214.0, 0, 1, -1, 86)         # przykładowe wpisy do podglądu ściany wyników
 		RunLog.add("z1_m2", "1.2  RADIO SILENCE", 402.0, 2, 1, 1, 148)
@@ -1345,6 +1359,31 @@ func _gen_test() -> void:
 	var tiles: Array = wui._tiles
 	(tiles[3] as Button).pressed.emit()
 	var opened_ok: bool = wui.is_open() and tiles.size() == 12 and wui._sel == 3 and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE
+	# zakładka PERKS (B2): 8 kafli, zakładanie / zdejmowanie perku przez panel, zablokowany perk nie wchodzi, Tab przechodzi przez 3 zakładki
+	Profile.reset_for_test()
+	Profile.add_xp(800, "test")                                        # L4: 2 sloty, perki do L4
+	wui._set_page(2)
+	await get_tree().create_timer(0.1).timeout
+	var perk_tiles_n: int = wui._perk_tiles.size()
+	wui._perk_sel = 3                                                  # Smith
+	wui._perk_slot = 0
+	wui._act_perk()
+	var perk_on: bool = Profile.equipped[0] == "smith"
+	wui._act_perk()
+	var perk_off: bool = Profile.equipped[0] == ""
+	wui._perk_sel = 7                                                  # Veteran (L6) przy L4
+	wui._act_perk()
+	var perk_locked: bool = not Profile.equipped.has("veteran")
+	var tab_ev := InputEventKey.new()
+	tab_ev.keycode = KEY_TAB
+	tab_ev.pressed = true
+	wui._input(tab_ev)
+	var tab_wrapped: bool = wui._page == 0                              # 2 → 0
+	wui._set_page(0)
+	var pm_node: Node = $UI.get_node("PauseMenu")
+	check.call("zakładka PERKS: %d kafli, załóż → %s, zdejmij → %s, perk L6 przy L4 zablokowany → %s, Tab zawija 2→0 → %s; menu pauzy ma %d kart, kodeks %d perków" % [perk_tiles_n, str(perk_on), str(perk_off), str(perk_locked), str(tab_wrapped), pm_node._pages.size(), Codex.perks().size()],
+		perk_tiles_n == 8 and perk_on and perk_off and perk_locked and tab_wrapped and pm_node._pages.size() == 6 and Codex.perks().size() == 8)
+	Profile.reset_for_test()
 	wui.close()
 	check.call("panel warsztatu: otwiera się przy ławie, 12 kafli, kliknięcie kafla wybiera broń (sel %d), mysz widoczna; po zamknięciu zamknięty" % wui._sel, opened_ok and not wui.is_open())
 	# faza C: ulepszenia

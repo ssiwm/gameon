@@ -111,6 +111,8 @@ func select(i: int) -> void:
 	var e: Dictionary = _entries[i]
 	if e.has("weapon_id"):
 		e = Codex.weapon_entry(int(e["weapon_id"]))          # świeże statystyki / poziomy ulepszeń
+	elif e.has("perk_id"):
+		e = Codex.perk_entry(String(e["perk_id"]))           # świeży status perku (poziom, założone sloty)
 	_portrait.show_spec(e["portrait"], e["accent"])
 	_title.text = e["title"]
 	_tag.text = e["tag"]

@@ -11,6 +11,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Throwables := preload("res://scripts/throwables.gd")
+const Perks := preload("res://scripts/perks.gd")
 
 const PX_PER_M := 16.0               ## lights.gd: 1 m = 16 px
 
@@ -134,6 +135,23 @@ const GEAR_TEXT := {
 	"scanner": ["The Owl motion scanner: for 10 s you see enemy silhouettes through walls within 15 m (red = awake). It emits 1 noise per second.",
 		"Use it briefly before entering a dark room. A Stalker is not a threat on the scanner — it is just noise."],
 }
+
+## Karta PERKS w menu pauzy: wpis perku liczony świeżo (stan zależy od profilu: poziom, założone sloty).
+static func perks() -> Array:
+	var out: Array = []
+	for id in Perks.ORDER:
+		out.append(perk_entry(String(id)))
+	return out
+
+static func perk_entry(id: String) -> Dictionary:
+	var d: Dictionary = Perks.PERKS[id]
+	var at: int = Profile.equipped.find(id)
+	var status := "Equipped — slot %d" % (at + 1) if at >= 0 else ("Available" if Profile.is_unlocked(id) else "Locked — level %d" % int(d["level"]))
+	return {"title": String(d["name"]).to_upper(), "tag": "Perk  ·  unlocks at level %d" % int(d["level"]), "accent": d["color"],
+		"portrait": {"type": "perk", "id": id}, "perk_id": id,
+		"stats": [["Status", status], ["Your level", "%d" % Profile.level()], ["Slots open", "%d of 2" % Profile.slots()]],
+		"text": String(d["desc"]),
+		"tip": "Equip perks at the workshop bench in the safe room (PERKS tab). The first slot opens at level 2, the second at level 4. Effects arrive with the next update."}
 
 static func gear() -> Array:
 	var out: Array = []
