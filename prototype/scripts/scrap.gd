@@ -8,8 +8,11 @@ extends Node
 ## Źródła: wrogowie (enemy.gd, szansa), skrytki na mapie (znacznik „u", pickup „scrap"), bonus za misję (mission.gd).
 
 signal changed
+## Wynik zakupu w warsztacie (u kupującego): id broni, powodzenie, kod: "ok" | "poor" | "owned" | "later" | "invalid".
+signal purchase_result(weapon: int, ok: bool, reason: String)
 
 const NightShift := preload("res://scripts/night_shift.gd")
+const Weapons := preload("res://scripts/weapons.gd")
 
 const SAVE_PATH := "user://progress.cfg"
 
@@ -22,8 +25,13 @@ const BONUS_CLEAR := 30               ## za ukończenie misji
 const BONUS_SIDE := 15                ## za cel poboczny
 const BONUS_NO_DOWNS := 10            ## za misję bez upadków
 
+## Warsztat (faza B): ceny broni z kryjówki. Broń spoza tej tabeli i spoza LATER jest odblokowana od początku (M-83, P-64, maczeta).
+const PRICES := {Weapons.SPREAD12: 150, Weapons.LR7: 200, Weapons.HKM9: 250}
+const LATER := [Weapons.SRUT8, Weapons.SOKOL6, Weapons.CIEGNO6]       ## stojaki zablokowane do późniejszych stref
+
 var bank := 0
 var loot := 0
+var unlocked: Dictionary = {}         ## id broni → true: kupione w warsztacie (zapis u hosta)
 var last_gain := 0                    ## ile trafiło do banku po ostatniej misji (karta wyniku, ściana wyników)
 var persist := DisplayServer.get_name() != "headless"      ## testy headless nie czytają ani nie nadpisują prawdziwego zapisu
 
@@ -31,7 +39,7 @@ func _ready() -> void:
 	load_progress()
 	multiplayer.peer_connected.connect(func(id: int) -> void:
 		if NoiseMgr.is_server():
-			_sync.rpc_id(id, bank, loot, last_gain))
+			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys()))
 
 ## Złom nie obowiązuje w Nocnym Dyżurze (osobna seria z własnymi zasadami).
 func enabled() -> bool:
@@ -75,23 +83,79 @@ func spend(n: int) -> bool:
 	_push()
 	return true
 
+# ---------------------------------------------------------------- warsztat: odblokowanie broni
+
+## Czy broń z kryjówki jest dostępna (stojak odblokowany).
+func is_unlocked(w: int) -> bool:
+	if LATER.has(w):
+		return false
+	return not PRICES.has(w) or unlocked.has(w)
+
+func price_of(w: int) -> int:
+	return int(PRICES.get(w, -1))
+
+## Gracz (dowolny peer) prosi o zakup broni. Serwer sprawdza cenę i stan portfela.
+func request_buy(w: int) -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_buy_server(w, NoiseMgr.local_id())
+	else:
+		_buy_rpc.rpc_id(1, w)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _buy_rpc(w: int) -> void:
+	if NoiseMgr.is_server():
+		_buy_server(w, multiplayer.get_remote_sender_id())
+
+func _buy_server(w: int, peer_id: int) -> void:
+	var reason := "ok"
+	if not Weapons.is_valid(w):
+		reason = "invalid"
+	elif LATER.has(w):
+		reason = "later"
+	elif not PRICES.has(w):
+		reason = "invalid"
+	elif unlocked.has(w):
+		reason = "owned"
+	elif not spend(int(PRICES[w])):
+		reason = "poor"
+	else:
+		unlocked[w] = true
+		save_progress()
+		_push()
+	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
+		purchase_result.emit(w, reason == "ok", reason)
+	else:
+		_result_rpc.rpc_id(peer_id, w, reason)
+
+@rpc("authority", "call_remote", "reliable")
+func _result_rpc(w: int, reason: String) -> void:
+	purchase_result.emit(w, reason == "ok", reason)
+
 func _push() -> void:
 	changed.emit()
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_sync.rpc(bank, loot, last_gain)
+		_sync.rpc(bank, loot, last_gain, unlocked.keys())
 
 @rpc("authority", "call_remote", "reliable")
-func _sync(b: int, l: int, g: int) -> void:
+func _sync(b: int, l: int, g: int, unl: Array) -> void:
 	bank = b
 	loot = l
 	last_gain = g
+	unlocked.clear()
+	for w in unl:
+		unlocked[int(w)] = true
 	changed.emit()
 
 # ---------------------------------------------------------------- zapis (host)
 
 func load_progress() -> void:
 	var cfg := ConfigFile.new()
-	bank = int(cfg.get_value("scrap", "bank", 0)) if persist and cfg.load(SAVE_PATH) == OK else 0
+	var ok: bool = persist and cfg.load(SAVE_PATH) == OK
+	bank = int(cfg.get_value("scrap", "bank", 0)) if ok else 0
+	unlocked.clear()
+	if ok:
+		for w in Array(cfg.get_value("workshop", "unlocked", [])):
+			unlocked[int(w)] = true
 	loot = 0
 	last_gain = 0
 	changed.emit()
@@ -102,4 +166,5 @@ func save_progress() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(SAVE_PATH)
 	cfg.set_value("scrap", "bank", bank)
+	cfg.set_value("workshop", "unlocked", unlocked.keys())
 	cfg.save(SAVE_PATH)

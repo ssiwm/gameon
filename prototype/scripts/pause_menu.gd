@@ -284,6 +284,9 @@ func _process(_delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	if not event.is_action_pressed("pause"):
 		return
+	var ws := get_tree().get_first_node_in_group("workshop_ui")
+	if ws != null and ws.is_open():
+		return                                  # Esc zamyka panel warsztatu (workshop_ui.gd), nie otwiera pauzy
 	if _open:
 		close()
 	elif NoiseMgr.has_network() and not _lobby_visible():     # w lobby Esc nic nie robi

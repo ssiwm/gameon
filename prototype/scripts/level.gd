@@ -54,6 +54,7 @@ const LAMP := preload("res://scripts/lamp.gd")
 const BOARD := preload("res://scripts/board.gd")
 const RESULTS_WALL := preload("res://scripts/results_wall.gd")
 const RANGE_LINE := preload("res://scripts/range_line.gd")
+const WORKSHOP := preload("res://scripts/workshop.gd")
 const RANGE_TARGET := preload("res://scripts/range_target.gd")
 
 ## Mapy misji (scripts/maps/): każda niesie MAP, ID, TITLE, OBJECTIVE, UNDERGROUND_ROW, WEAPONS, ACCENTS.
@@ -308,7 +309,7 @@ func _exposure(c: int, r: int) -> int:
 ## Znaczniki → postacie. Nazwy numerowane od lewej do prawej, identycznie
 ## na każdym peerze.
 func _spawn_entities() -> void:
-	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "v": [], "r": [], "t": [], "u": [], "l": [], "k": [], "o": [], "a": [], "g": []}
+	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "v": [], "r": [], "t": [], "u": [], "h": [], "l": [], "k": [], "o": [], "a": [], "g": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -320,7 +321,7 @@ func _spawn_entities() -> void:
 				"E": exits.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "v", "r", "t", "u", "l", "k", "o", "a", "g": found[ch].append(p)
+				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "v", "r", "t", "u", "h", "l", "k", "o", "a", "g": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -362,6 +363,11 @@ func _spawn_entities() -> void:
 		rw.name = "ResultsWall%d" % (i + 1)
 		rw.position = found["v"][i]
 		add_child(rw)
+	for i in found["h"].size():
+		var ws: Node2D = WORKSHOP.new()
+		ws.name = "Workshop%d" % (i + 1)
+		ws.position = found["h"][i]
+		add_child(ws)
 	for i in found["r"].size():
 		var rl: Node2D = RANGE_LINE.new()
 		rl.name = "RangeLine%d" % (i + 1)
@@ -588,6 +594,10 @@ func weapon_item_near(pos: Vector2) -> Node2D:
 
 ## Gracz (właściciel) prosi o podniesienie broni z ziemi. Serwer sprawdza odległość,
 ## dolicza do zapasu naboje „z łupu”, usuwa przedmiot i odsyła przyznanie.
+## Broń na stojaku kryjówki, której drużyna jeszcze nie kupiła w warsztacie (scrap.gd) — nie da się jej wziąć.
+func is_locked_item(it: Node2D) -> bool:
+	return it != null and it.kind == "weapon" and it.static_display and not Scrap.is_unlocked(int(it.arg))
+
 func request_weapon_pickup(item_name: String) -> void:
 	if NoiseMgr.has_network() and not NoiseMgr.is_server():
 		_weapon_pickup_rpc.rpc_id(1, item_name)
@@ -601,7 +611,7 @@ func _weapon_pickup_rpc(item_name: String) -> void:
 
 func _weapon_pickup_server(item_name: String, peer_id: int) -> void:
 	var it := get_node_or_null(item_name)
-	if it == null or it.kind != "weapon" or it.is_queued_for_deletion():
+	if it == null or it.kind != "weapon" or it.is_queued_for_deletion() or is_locked_item(it):
 		return
 	var pl: Node2D = null
 	for p in get_tree().get_nodes_in_group("players"):

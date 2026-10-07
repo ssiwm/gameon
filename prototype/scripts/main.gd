@@ -518,7 +518,10 @@ func _gen_test() -> void:
 		e.set_process(false)
 	check.call("start: mapa 1.2, cel generators, 4 generatory", level.map_id == "z1_m2" and mission.kind == "generators" and mission.goal_total == 4)
 	Scrap.add_loot(25)
-	level.spawn_item("scrap", 0, p.global_position + Vector2(10, -4), 7)
+	level.spawn_item("scrap", 0, p.global_position + Vector2(0, -4), 7)
+	var scrap_item := level.get_node_or_null("Item%d" % level._pickup_serial)
+	if scrap_item != null:
+		scrap_item._vel = Vector2.ZERO          # bez losowego podskoku: test ma być deterministyczny
 	await get_tree().create_timer(1.0).timeout
 	check.call("złom: pickup 7 wpadł do łupu (loot %d, bank %d)" % [Scrap.loot, Scrap.bank], Scrap.loot == 32 and Scrap.bank == 0)
 	Scrap.reset_loot()
@@ -583,6 +586,30 @@ func _gen_test() -> void:
 		var head := Combat.apply(tgt, Combat.make_info(wid, 10.0, Vector2(tgt.global_position.x, tgt.head_y() - 2.0), Vector2.RIGHT, 1, "bullet"))
 		rt_ok = bool(body["hit"]) and not bool(body["killed"]) and bool(head["hit"]) and (bool(head["crit"]) or Weapons.def(wid).crit_mult <= 1.0) and tgt.distance_m > 0.0
 	check.call("strzelnica: linia + tarcza (%s), tarcza przyjmuje trafienia, nie ginie, głowa = crit, ma odległość" % ", ".join(rts.map(func(t: Node) -> String: return "%dm" % int(t.distance_m))), rt_ok)
+
+	# warsztat (faza B złomu): ława, panel, zablokowane stojaki, zakup
+	var racks_w := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "weapon" and n.static_display)
+	var locked_n := racks_w.filter(func(n: Node) -> bool: return level.is_locked_item(n)).size()
+	check.call("warsztat: ława + panel, stojaki zablokowane (%d z %d)" % [locked_n, racks_w.size()],
+		get_tree().get_nodes_in_group("workshop").size() == 1 and get_tree().get_nodes_in_group("workshop_ui").size() == 1 and racks_w.size() == 6 and locked_n == 6)
+	var results: Array = []
+	var cb := func(w: int, ok: bool, reason: String) -> void: results.append([w, ok, reason])
+	Scrap.purchase_result.connect(cb)
+	var saved_bank := Scrap.bank
+	Scrap.bank = 100
+	Scrap.request_buy(Weapons.SPREAD12)
+	Scrap.request_buy(Weapons.SRUT8)
+	Scrap.bank = 400
+	Scrap.request_buy(Weapons.SPREAD12)
+	Scrap.request_buy(Weapons.SPREAD12)
+	Scrap.purchase_result.disconnect(cb)
+	var reasons := results.map(func(r: Array) -> String: return String(r[2]))
+	check.call("warsztat: zakup (za mało → poor, późniejsza strefa → later, ok, ponownie → owned): %s, portfel %d" % [str(reasons), Scrap.bank],
+		reasons == ["poor", "later", "ok", "owned"] and Scrap.bank == 400 - Scrap.price_of(Weapons.SPREAD12) and Scrap.is_unlocked(Weapons.SPREAD12) and not Scrap.is_unlocked(Weapons.LR7))
+	var locked_after := racks_w.filter(func(n: Node) -> bool: return level.is_locked_item(n)).size()
+	check.call("warsztat: kupiony stojak się odblokował (zablokowane %d)" % locked_after, locked_after == 5)
+	Scrap.unlocked.clear()
+	Scrap.bank = saved_bank
 	var wall_nodes := get_tree().get_nodes_in_group("results_wall")
 	check.call("ściana wyników: stoi w kryjówce, zapisała misję 1.2 (%d wpis, %s)" % [RunLog.entries.size(), str(RunLog.entries.back()) if not RunLog.entries.is_empty() else "-"],
 		wall_nodes.size() == 1 and RunLog.entries.size() >= 1 and String(RunLog.entries.back()["id"]) == "z1_m2" and float(RunLog.entries.back()["time"]) >= 0.0 and int(RunLog.entries.back()["stealth"]) >= 0)

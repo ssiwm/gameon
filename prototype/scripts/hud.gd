@@ -25,6 +25,7 @@ const GunIcon := preload("res://scripts/gun_icon.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Codex := preload("res://scripts/codex.gd")
 const RunLog := preload("res://scripts/run_log.gd")
+const WorkshopUi := preload("res://scripts/workshop_ui.gd")
 
 ## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.7
@@ -184,6 +185,8 @@ func _ready() -> void:
 	_item = _make_info_card(250.0, 2)
 	_brief = _make_info_card(300.0, 3)
 	_wall = _make_info_card(360.0, 6)
+	var wsp := WorkshopUi.new()
+	add_child(wsp)
 	get_viewport().size_changed.connect(_fit)
 	Settings.changed.connect(_apply_scale)
 	_fit()
@@ -963,12 +966,19 @@ func _drive_cards() -> void:
 	if NoiseMgr.safe_zone and _player != null and not _player.dead:
 		it = _player.weapons.nearby_weapon_item()
 	var wid: int = int(it.arg) if it != null else -1
-	if wid != _item_id:
-		_item_id = wid
+	var lvl_i := get_tree().get_first_node_in_group("level")
+	var locked: bool = it != null and lvl_i != null and lvl_i.is_locked_item(it)
+	var key := wid + (1000 if locked else 0)
+	if key != _item_id:
+		_item_id = key
 		if wid >= 0:
 			var d: RefCounted = Weapons.def(wid)
 			var notes: Array = Codex.WEAPON_TEXT.get(String(d.key), ["", ""])
-			_fill_info(_item, String(d.name), Codex._slot_name(d), Codex._weapon_stats(d), String(notes[0]), d.tracer_color)
+			var tag: String = Codex._slot_name(d)
+			if locked:
+				var price := Scrap.price_of(wid)
+				tag += "  ·  LOCKED — " + ("%d scrap at the workshop" % price if price > 0 else "available in a later zone")
+			_fill_info(_item, String(d.name), tag, Codex._weapon_stats(d), String(notes[0]), d.tracer_color)
 	var ic: Control = _item["card"]
 	ic.visible = it != null
 	if ic.visible:
@@ -1055,6 +1065,14 @@ func _fill_brief(info: Dictionary) -> void:
 		rows.append(["+%d more" % extra, "", "see the bestiary (Esc)"])
 	_fill_info(_brief, "BRIEFING  ·  " + String(info["title"]), "", rows, String(info["brief"]), UiTheme.ACCENT)
 
+## Czy lokalny gracz stoi przy ławie warsztatu (kryjówka) i panel jest zamknięty.
+func _near_workshop() -> bool:
+	for w in get_tree().get_nodes_in_group("workshop"):
+		if w.local_in_range:
+			var ui := get_tree().get_first_node_in_group("workshop_ui")
+			return ui == null or not ui.is_open()
+	return false
+
 ## Generator, przy którym stoi lokalny gracz (misja 1.2) albo null.
 func _near_generator() -> Node:
 	for g in get_tree().get_nodes_in_group("generators"):
@@ -1110,13 +1128,22 @@ func _drive_prompt() -> void:
 		else:
 			text = "Hold [E]  Start the generator  (loud)"
 			col = UiTheme.ACCENT
+	elif _near_workshop():
+		text = "[E]  Workshop  ·  SCRAP %d" % Scrap.bank
+		col = UiTheme.ACCENT
 	elif _player != null and _player.weapons.nearby_weapon_item() != null:
 		var it: Node2D = _player.weapons.nearby_weapon_item()
 		var nd: RefCounted = Weapons.def(it.arg)
-		var wc2: Node = _player.weapons
-		var swap_out: String = Weapons.def(wc2.loadout[wc2.slot if wc2.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc2.melee_id).name
-		text = "[E]  Take %s  (drops %s)" % [nd.name, swap_out] if not wc2.carries(it.arg) else "[E]  Take ammo for %s" % nd.name
-		col = UiTheme.ACCENT
+		var lvl_p := get_tree().get_first_node_in_group("level")
+		if lvl_p != null and lvl_p.is_locked_item(it):
+			var pr := Scrap.price_of(it.arg)
+			text = "LOCKED  ·  %s" % ("%d scrap at the workshop" % pr if pr > 0 else "later zone")
+			col = UiTheme.MUTED
+		else:
+			var wc2: Node = _player.weapons
+			var swap_out: String = Weapons.def(wc2.loadout[wc2.slot if wc2.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc2.melee_id).name
+			text = "[E]  Take %s  (drops %s)" % [nd.name, swap_out] if not wc2.carries(it.arg) else "[E]  Take ammo for %s" % nd.name
+			col = UiTheme.ACCENT
 	elif m != null and m.phase == Mission.Phase.EXTRACT:
 		var st: Dictionary = m.local_extract_state()
 		if st.get("inside", false):
