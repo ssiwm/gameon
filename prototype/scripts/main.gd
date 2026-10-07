@@ -591,23 +591,43 @@ func _gen_test() -> void:
 	var racks_w := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "weapon" and n.static_display)
 	var locked_n := racks_w.filter(func(n: Node) -> bool: return level.is_locked_item(n)).size()
 	check.call("warsztat: ława + panel, stojaki zablokowane (%d z %d)" % [locked_n, racks_w.size()],
-		get_tree().get_nodes_in_group("workshop").size() == 1 and get_tree().get_nodes_in_group("workshop_ui").size() == 1 and racks_w.size() == 6 and locked_n == 6)
+		get_tree().get_nodes_in_group("workshop").size() == 1 and get_tree().get_nodes_in_group("workshop_ui").size() == 1 and racks_w.size() == 6 and locked_n == 5)
 	var results: Array = []
 	var cb := func(w: int, ok: bool, reason: String) -> void: results.append([w, ok, reason])
 	Scrap.purchase_result.connect(cb)
 	var saved_bank := Scrap.bank
 	Scrap.bank = 100
-	Scrap.request_buy(Weapons.SPREAD12)
-	Scrap.request_buy(Weapons.SRUT8)
+	Scrap.request_buy(Weapons.LR7)
+	Scrap.request_buy(Weapons.SOKOL6)
 	Scrap.bank = 400
-	Scrap.request_buy(Weapons.SPREAD12)
-	Scrap.request_buy(Weapons.SPREAD12)
-	Scrap.purchase_result.disconnect(cb)
+	Scrap.request_buy(Weapons.LR7)
+	Scrap.request_buy(Weapons.LR7)
 	var reasons := results.map(func(r: Array) -> String: return String(r[2]))
 	check.call("warsztat: zakup (za mało → poor, późniejsza strefa → later, ok, ponownie → owned): %s, portfel %d" % [str(reasons), Scrap.bank],
-		reasons == ["poor", "later", "ok", "owned"] and Scrap.bank == 400 - Scrap.price_of(Weapons.SPREAD12) and Scrap.is_unlocked(Weapons.SPREAD12) and not Scrap.is_unlocked(Weapons.LR7))
+		reasons == ["poor", "later", "ok", "owned"] and Scrap.bank == 400 - Scrap.price_of(Weapons.LR7) and Scrap.is_unlocked(Weapons.LR7) and not Scrap.is_unlocked(Weapons.HKM9))
 	var locked_after := racks_w.filter(func(n: Node) -> bool: return level.is_locked_item(n)).size()
-	check.call("warsztat: kupiony stojak się odblokował (zablokowane %d)" % locked_after, locked_after == 5)
+	check.call("warsztat: kupiony stojak się odblokował (zablokowane %d)" % locked_after, locked_after == 4)
+	# faza C: ulepszenia
+	results.clear()
+	var base_mag: int = Weapons.base_def(Weapons.M83).mag
+	var base_dmg: float = Weapons.base_def(Weapons.M83).damage
+	var base_nmax: float = Weapons.base_def(Weapons.M83).n_max
+	Scrap.bank = 10
+	Scrap.request_upgrade(Weapons.M83)                 # poor
+	Scrap.request_upgrade(Weapons.HKM9)                # locked (nie kupiona)
+	Scrap.request_upgrade(Weapons.SOKOL6)              # invalid (brak ulepszeń / zablokowana)
+	Scrap.bank = 1000
+	for i in 4:
+		Scrap.request_upgrade(Weapons.M83)             # 3 × ok, potem max
+	Scrap.purchase_result.disconnect(cb)
+	var rs := results.map(func(r: Array) -> String: return String(r[2]))
+	var ed: RefCounted = Weapons.def(Weapons.M83)
+	check.call("ulepszenia: poor / locked / invalid / 3×ok / max: %s, portfel %d" % [str(rs), Scrap.bank],
+		rs == ["up_poor", "up_locked", "up_invalid", "up_ok", "up_ok", "up_ok", "up_max"] and Scrap.bank == 1000 - 60 - 120 - 220 and Scrap.level_of(Weapons.M83) == 3)
+	check.call("ulepszenia: M-83 T3 = magazynek %d→%d, obrażenia %.1f→%.2f, hałas %.2f→%.2f; baza nietknięta" % [base_mag, ed.mag, base_dmg, ed.damage, base_nmax, ed.n_max],
+		ed.mag == base_mag + 10 and is_equal_approx(ed.damage, base_dmg * 1.15) and is_equal_approx(ed.n_max, base_nmax * 0.7)
+		and Weapons.base_def(Weapons.M83).mag == base_mag and Weapons.def(Weapons.SPREAD12) == Weapons.base_def(Weapons.SPREAD12))
+	Scrap.levels.clear()
 	Scrap.unlocked.clear()
 	Scrap.bank = saved_bank
 	var wall_nodes := get_tree().get_nodes_in_group("results_wall")
