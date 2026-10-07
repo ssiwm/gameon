@@ -55,10 +55,19 @@ class Bar extends Control:
 	var fill := Color.WHITE
 	var back := Color(1, 1, 1, 0.08)
 	var ticks: Array = []          ## [[0..1, Color], ...]
+	var seg := 0.0                 ## > 0: pasek „diodowy" — bloki szerokości seg z 1-pikselową przerwą (pixel art), zamiast gładkiej wypełnionej belki
 	func _draw() -> void:
 		var r := Rect2(Vector2.ZERO, size)
-		draw_rect(r, back)
-		draw_rect(Rect2(Vector2.ZERO, Vector2(size.x * clampf(value, 0.0, 1.0), size.y)), fill)
+		if seg > 0.0:
+			var filled_w := size.x * clampf(value, 0.0, 1.0)
+			var x := 0.0
+			while x < size.x - 0.5:
+				var bw := minf(seg - 1.0, size.x - x)
+				draw_rect(Rect2(x, 0, bw, size.y), fill if x + bw * 0.5 <= filled_w else back)
+				x += seg
+		else:
+			draw_rect(r, back)
+			draw_rect(Rect2(Vector2.ZERO, Vector2(size.x * clampf(value, 0.0, 1.0), size.y)), fill)
 		for t in ticks:
 			var x: float = size.x * float(t[0])
 			draw_rect(Rect2(x - 0.5, -2.0, 1.0, size.y + 4.0), t[1])
@@ -75,6 +84,27 @@ class Pips extends Control:
 	var bonus_from := 99          ## ikony od tego indeksu to serca „ponad stan" (złote)
 	var bonus := Color(1.0, 0.8, 0.25)
 	var u := 1.0                  ## skala ikon (własne serca w karcie drużyny są większe)
+	## Serce 9×8 pikseli: ciemny obrys (przesunięcia o 1 px) pod wypełnieniem i jasny piksel odblasku — jak sprite'y świata.
+	const HEART := ["011000110", "111101111", "111111111", "111111111", "011111110", "001111100", "000111000", "000010000"]
+	func _pixel_heart(o: Vector2, c: Color) -> void:
+		var edge := Color(0.12, 0.05, 0.05, 0.9)
+		for d in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
+			_heart_rows(o + d, edge)
+		_heart_rows(o, c)
+		draw_rect(Rect2(o + Vector2(1, 1), Vector2(1, 1)), c.lightened(0.55))
+	func _heart_rows(o: Vector2, c: Color) -> void:
+		for y in HEART.size():
+			var row: String = HEART[y]
+			var x := 0
+			while x < row.length():
+				if row[x] == "1":
+					var x1 := x
+					while x1 < row.length() and row[x1] == "1":
+						x1 += 1
+					draw_rect(Rect2(o + Vector2(float(x), float(y)), Vector2(float(x1 - x), 1.0)), c)
+					x = x1
+				else:
+					x += 1
 	func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(u, u))
 		for i in count:
@@ -83,9 +113,7 @@ class Pips extends Control:
 				c = bonus
 			var o := Vector2(i * 11.0, 0.0)
 			if shape == "heart":
-				draw_circle(o + Vector2(2.5, 2.5), 2.6, c)
-				draw_circle(o + Vector2(6.5, 2.5), 2.6, c)
-				draw_colored_polygon(PackedVector2Array([o + Vector2(0, 3), o + Vector2(9, 3), o + Vector2(4.5, 8.5)]), c)
+				_pixel_heart(o, c)
 			elif shape == "ready":
 				# gotowość w kryjówce: kwadracik pełny (gotowy) albo sam obrys
 				if i < filled:
@@ -320,6 +348,7 @@ func _build_noise_card() -> void:
 	box.add_child(head)
 	_noise_bar = Bar.new()
 	_noise_bar.custom_minimum_size = Vector2(170, 6)
+	_noise_bar.seg = 3.0
 	# progi z NoiseMgr: 30 = zasypia, 40 = niepokój (szept), 60 = budzi się ON
 	_noise_bar.ticks = [
 		[NoiseMgr.SLEEP_THRESHOLD / 100.0, Color(1, 1, 1, 0.35)],
@@ -349,7 +378,7 @@ func _build_squad_card() -> void:
 func _build_gear_card() -> void:
 	_gear_card = _card(Vector2(MARGIN, MARGIN))
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 9)
+	row.add_theme_constant_override("separation", 7)
 	_gear_card.add_child(row)
 
 	_slot_on = UiTheme.panel_box()
@@ -366,7 +395,7 @@ func _build_gear_card() -> void:
 	_gun_main = GunIcon.new()
 	_gun_main.plate = true
 	_gun_main.k = 0.75
-	_gun_main.custom_minimum_size = Vector2(58, 26)
+	_gun_main.custom_minimum_size = Vector2(50, 26)
 	_gun_main.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(_gun_main)
 
@@ -384,8 +413,8 @@ func _build_gear_card() -> void:
 	# 2) magazynek (duży) i zapas drużyny
 	var nums := HBoxContainer.new()
 	nums.add_theme_constant_override("separation", 3)
-	_ammo_mag = UiTheme.label("", 18, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
-	_ammo_mag.custom_minimum_size = Vector2(26, 0)
+	_ammo_mag = UiTheme.heading("", 24, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	_ammo_mag.custom_minimum_size = Vector2(38, 0)
 	nums.add_child(_ammo_mag)
 	_ammo_res = UiTheme.label("", 9, UiTheme.MUTED)
 	_ammo_res.size_flags_vertical = Control.SIZE_SHRINK_END
@@ -610,6 +639,7 @@ func _build_objective_card() -> void:
 	_boss_bar = Bar.new()
 	_boss_bar.custom_minimum_size = Vector2(OBJ_W, 5)
 	_boss_bar.fill = Color(0.88, 0.22, 0.2)
+	_boss_bar.seg = 4.0
 	_boss_bar.ticks = [[0.66, Color(1, 1, 1, 0.5)], [0.33, Color(1, 1, 1, 0.5)]]
 	_boss_row.add_child(_boss_bar)
 	box.add_child(_boss_row)

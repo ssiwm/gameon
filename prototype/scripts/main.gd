@@ -306,6 +306,7 @@ func _handle_cmdline() -> void:
 	var shot_flicker := false
 	var shot_demo := false
 	var shot_ws := false
+	var shot_result := false
 	var weapon_mode := ""
 	var shots_dir := ""
 	var args := OS.get_cmdline_user_args()
@@ -359,6 +360,8 @@ func _handle_cmdline() -> void:
 			finaletest = true
 		elif a.begins_with("--shot="):
 			shot_path = a.substr("--shot=".length())
+		elif a == "--shotresult":
+			shot_result = true
 		elif a == "--shotws":
 			shot_ws = true
 		elif a == "--shotdemo":
@@ -409,7 +412,7 @@ func _handle_cmdline() -> void:
 	if finaletest:
 		_finale_test()
 	if shot_path != "":
-		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker, shot_demo, shot_ws)
+		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker, shot_demo, shot_ws, shot_result)
 	if ridetest:
 		_ride_test()
 	if ridehost:
@@ -550,8 +553,11 @@ func host_game() -> void:
 
 ## Narzędzie deweloperskie (--shot=ŚCIEŻKA [--shotat=KOLUMNA]): po 2,5 s zapisuje obraz z widoku gry (tylko okno gry, bez pulpitu)
 ## do PNG i kończy. --shotat przenosi człowieka na podłogę w danej kolumnie mapy (np. do obejrzenia strefy kryjówki).
-func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false, workshop := false) -> void:
+func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false, workshop := false, result := false) -> void:
 	await get_tree().create_timer(1.0).timeout
+	if result:
+		mission.elapsed = 214.0
+		mission._success()                 # podgląd karty wyniku
 	if workshop:
 		# podgląd panelu warsztatu: portfel, jedna kupiona broń i ulepszenia (tylko w pamięci; zapis wyłączony w trybie podglądu)
 		Scrap.persist = false
@@ -615,6 +621,16 @@ func _tag_test() -> void:
 	var gallery_nav: Array = level.nav.find_path(Vector2(166.0 * 16.0 + 8.0, 42.0 * 16.0), Vector2(145.0 * 16.0 + 8.0, 51.0 * 16.0))
 	check.call("podziemia: dolna galeria (wrogów %d, skrytek złomu na mapie %d), droga z sali szybem serwisowym (%d węzłów)" % [gallery.size(), scrap_caches.size(), gallery_nav.size()],
 		gallery.size() >= 8 and scrap_caches.size() >= 5 and not gallery_nav.is_empty())
+	# przedmioty nie wpadają w ściany: podskok w stronę skały zatrzymuje się przed nią, a przedmiot zaczęty w skale jest wypychany
+	level.spawn_item("health", 0, Vector2(44.0, 30.0 * 16.0 - 10.0))
+	var wall_item := level.get_node_or_null("Item%d" % level._pickup_serial)
+	if wall_item != null:
+		wall_item._vel = Vector2(-600.0, -120.0)
+	level.spawn_item("health", 0, Vector2(16.0, 30.0 * 16.0))
+	var stuck_item := level.get_node_or_null("Item%d" % level._pickup_serial)
+	await get_tree().create_timer(1.5).timeout
+	var xs_ok: bool = wall_item != null and stuck_item != null and wall_item.global_position.x >= 30.0 and stuck_item.global_position.x >= 30.0 and wall_item._landed and stuck_item._landed
+	check.call("przedmioty a ściany: podskok w skałę zatrzymany (x %.0f), przedmiot zaczęty w skale wypchnięty (x %.0f)" % [wall_item.global_position.x if wall_item != null else -1.0, stuck_item.global_position.x if stuck_item != null else -1.0], xs_ok)
 	var order: Array = tags_now.call()
 	order.sort_custom(func(a: Node, b: Node) -> bool: return a.global_position.x < b.global_position.x)
 	var positions: Array = order.map(func(n: Node) -> Vector2: return n.global_position)
