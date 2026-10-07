@@ -1455,6 +1455,14 @@ func run_net_host(m: Node2D) -> void:
 	await wait(0.5)
 	var e := await dummy(80.0)
 	print("[WTEST] host: manekin %s przed klientem (%s)" % [e.name, str(cp.global_position.round())])
+	# perki klienta (B4): para indeksów dociera do hosta, a serwer liczy z niej serca i cenę Kowala dla tego peera
+	var pw := 0.0
+	while cp.perks == Vector2i(-1, -1) and pw < 6.0:
+		await wait(0.2)
+		pw += 0.2
+	check("sieć: host widzi perki klienta (%s)" % str(Perks.ids_of(cp.perks)), Perks.ids_of(cp.perks) == ["veteran", "smith"])
+	check("sieć: serce Weterana klienta liczy serwer (max %d), a cena Kowala dla peera klienta %d zamiast %d" % [cp.max_hp(), Scrap.tier_cost("m83", 2, cid), Upgrades.cost("m83", 2)],
+		cp.max_hp() == cp.MAX_HP + 1 and Scrap.tier_cost("m83", 2, cid) == Upgrades.cost("m83", 2, 0.8) and Scrap.tier_cost("m83", 2) == Upgrades.cost("m83", 2))
 	# podglądamy serwerowy licznik przyjętych strzałów i obrażenia, dopóki klient jest połączony
 	var legit_dmg := -1.0
 	var accepted := 0
@@ -1493,6 +1501,9 @@ func run_net_client(m: Node2D) -> void:
 	if me == null:
 		get_tree().quit(1)
 		return
+	Profile.add_xp(1800, "test")                  # L6: oba sloty i Weteran
+	Profile.equip(0, "veteran")
+	Profile.equip(1, "smith")
 	# manekin lokalnie na kliencie (RPC stanu wroga z serwera potrzebuje węzła o tej samej ścieżce)
 	main.level._add_enemy("TDummy1", "trzosek", me.global_position + Vector2(80.0, 0.0))
 	await wait(4.0)
