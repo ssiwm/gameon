@@ -708,6 +708,8 @@ def bake_only(names):
     with open(path) as f:
         MANIFEST.update(json.load(f))
     bake_chars_hd(set(names))
+    if "guns" in names:
+        bake_guns_hd()                            # arkusze broni (guns + gun_icons) — po zmianie WORLD_FIT w tools/gun_icons_hd.py
     with open(path, "w") as f:
         json.dump(MANIFEST, f, indent=1)
     print("przepieczone: %s" % ", ".join(sorted(names)))
