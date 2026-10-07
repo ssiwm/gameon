@@ -13,6 +13,7 @@ extends RefCounted
 ## `--weapontest`, który pilnuje, żeby każda broń z n_min < n_max osiągała n_max.
 
 const WeaponDef := preload("res://scripts/weapon_def.gd")
+const Upgrades := preload("res://scripts/upgrades.gd")
 
 const M83 := 0
 const SPREAD12 := 1
@@ -195,7 +196,26 @@ static func defs() -> Array:
 			_defs.append(WeaponDef.make(i, t[i]))
 	return _defs
 
+## Poziomy ulepszeń (id broni → 0..3). Ten sam słownik ma Scrap.levels (scrap.gd wskazuje go tutaj i zmienia go tylko w miejscu),
+## więc każdy peer widzi te same statystyki. Bez wpisu = broń bazowa.
+static var levels: Dictionary = {}
+static var _upgraded: Dictionary = {}          ## id * 10 + poziom → zbudowana definicja
+
+## Definicja broni z uwzględnieniem ulepszeń drużyny. Wszystkie systemy czytają ją przez tę funkcję.
 static func def(id: int) -> WeaponDef:
+	var i := clampi(id, 0, COUNT - 1)
+	var lv := int(levels.get(i, 0))
+	if lv <= 0:
+		return defs()[i]
+	var k := i * 10 + lv
+	if not _upgraded.has(k):
+		var d: WeaponDef = WeaponDef.make(i, _table()[i])
+		Upgrades.apply(d, lv)
+		_upgraded[k] = d
+	return _upgraded[k]
+
+## Definicja bazowa (bez ulepszeń) — podgląd „przed" w warsztacie.
+static func base_def(id: int) -> WeaponDef:
 	return defs()[clampi(id, 0, COUNT - 1)]
 
 static func is_valid(id: int) -> bool:
