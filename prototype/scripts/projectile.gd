@@ -22,6 +22,9 @@ const MASK_COSMETIC := Combat.LAYER_WORLD | Combat.LAYER_TARGET
 const HOMING_DELAY := 0.12          ## s lotu prosto, zanim rakieta zacznie skręcać
 const EVASIVE_KINDS := ["cma", "skoczek", "podsluchacz"]    ## cele „trudne do trafienia" — naprowadzanie (FALCON-6) wybiera je w pierwszej kolejności
 const EVASIVE_BONUS := 40.0
+const CLUSTER_RADIUS := 0.6         ## bomba kasetowa: ułamek promienia głównego wybuchu…
+const CLUSTER_DAMAGE := 0.5         ## …i jego obrażeń
+const CLUSTER_SPREAD := 24.0        ## px od punktu wybuchu w bok
 const MAX_SEGMENTS := 6             ## ile trafień (przebić, pomijanych kolegów) na jedną klatkę
 
 var weapon := 0
@@ -270,7 +273,22 @@ func _expire() -> void:
 func _detonate(at: Vector2, _normal: Vector2) -> void:
 	if authoritative:
 		Combat.explode(get_tree(), at, float(_def.blast_radius), float(_def.blast_damage), shooter_id, weapon)
+		if int(_def.cluster) > 0:
+			_scatter_cluster(at)
 	_finish(at)
+
+## Granaty kasetowe (WRATH-4, poziom 3): po głównym wybuchu rozsypują się mniejsze bomby po bokach, kolejno co 0,12 s. Bez dodatkowego hałasu.
+func _scatter_cluster(at: Vector2) -> void:
+	var tree := get_tree()
+	var r := float(_def.blast_radius) * CLUSTER_RADIUS
+	var dmg := float(_def.blast_damage) * CLUSTER_DAMAGE
+	var sid := shooter_id
+	var w := weapon
+	for i in int(_def.cluster):
+		var side := -1.0 if i % 2 == 0 else 1.0
+		var pos := at + Vector2(side * (CLUSTER_SPREAD + 10.0 * float(i / 2)), -6.0)
+		tree.create_timer(0.12 * float(i + 1)).timeout.connect(func() -> void:
+			Combat.explode(tree, pos, r, dmg, sid, w, true))
 
 ## Bełt zostaje w świecie jako skrzynka z 1 nabojem (GDD §6.1: „bełt do odzysku”).
 func _stick(at: Vector2) -> void:

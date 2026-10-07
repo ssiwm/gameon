@@ -13,6 +13,7 @@ extends RefCounted
 ##   knock    odrzut (px/s)                stun     ogłuszenie (s)      ignite  podpalenie (s)
 ##   crit_mult mnożnik za głowę            backstab cios w plecy/śpiącego (melee)
 ##   heavy    ciężki efekt (strzelba, wybuch)  silent  nie budzi i nie hałasuje
+##   execute  ułamek HP, poniżej którego cios białą bronią zabija na miejscu (ulepszenie maczety)
 
 const Weapons := preload("res://scripts/weapons.gd")
 
@@ -29,7 +30,7 @@ static func make_info(w: int, amount: float, pos: Vector2, dir: Vector2, shooter
 		"w": w, "amount": amount, "pos": pos, "dir": dir, "shooter": shooter, "type": type,
 		"knock": d.knock, "stun": d.stun, "ignite": d.ignite, "crit_mult": d.crit_mult,
 		"backstab": false, "heavy": d.pellets >= 5 or d.kind == Weapons.Kind.RAIL,
-		"silent": false, "crit": false,
+		"silent": false, "crit": false, "execute": d.execute_frac,
 	}
 
 ## Zadaje obrażenia celowi (serwer). Zwraca {hit, dealt, killed, mat, crit}.

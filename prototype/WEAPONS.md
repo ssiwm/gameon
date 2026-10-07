@@ -201,3 +201,26 @@ krytyk i pancerz prawie martwe) i zmiany tylko w danych:
 
 `--weapontest` pilnuje teraz: pancerza, stref głowy, naprowadzania na cele trudne, ćmy a wiązki, źródeł SPECTER-1 / WRATH-4 oraz
 widełek hałas/DPS ≤ 0,25 dla broni palnych (najgorszy dziś FALCON-6 0,21).
+
+## 7. Faza 2 przeglądu broni (1.7.58): ulepszenia
+
+Dane w `scripts/upgrades.gd` (`TIERS`, `COST_MULT`, `cost()`); `Upgrades.validate()` sprawdza tabelę w `--weapontest`.
+Poziom 1 to zwykle pojemność, poziom 2 statystyka, **poziom 3 to zmiana zachowania**:
+
+| Broń | Poziom 1 | Poziom 2 | Poziom 3 (zmiana zachowania) |
+|---|---|---|---|
+| M-83 | +10 magazynek | +15% obrażeń, szybszy reload | Tłumik (cichszy) |
+| P-64 | +4 magazynek | +20% obrażeń | Tłumik |
+| SPREAD-12 | +6 magazynek | ciaśniejszy rozrzut, +15% | **Podpalająca amunicja** (2 s) |
+| PELLET-8 | +4 magazynek | +15%, szybszy cykl | **Pociski ogłuszające** (do 1,5 s) |
+| LR-7 | +20 ładunku | +20% | Soczewka: przebija +1 cel |
+| HKM-9 | +20 paliwa | +25%, dłuższe palenie | Dłuższa dysza (+30% zasięgu) |
+| WRATH-4 | +2 granaty | +25% wybuch, +12% promień | **Granaty kasetowe** (2 bomby) |
+| FALCON-6 | +20 rakiet | ostrzejszy czujnik, +15% | **Salwa 3 rakiet** za 2 naboje |
+| SPECTER-1 | +2 magazynek | ładowanie −30% | **Przebija jedną warstwę ściany** |
+| SINEW-6 | 2 bełty | większy kołczan, szybszy reload | **Bełt z hakami** (przebija cel, ogłuszenie, +20%) |
+| Maczeta | +20% obrażeń | +50% łuku, +6 px zasięgu | **Executioner**: dobija wroga < 35% HP |
+| Kilof | +15%, szybszy zamach | ogłuszenie +0,6 s, odrzut | **Szeroki łuk** (+60%) i ogłuszenie +0,8 s |
+
+Cena poziomu = bazowa (60 / 120 / 220) × klasa broni, zaokrąglona do 5: P-64 i broń biała ×0,8, PELLET-8 / LR-7 / HKM-9 ×1,2,
+FALCON-6 ×1,3, WRATH-4 i SINEW-6 ×1,5, SPECTER-1 ×1,7 (M-83 i SPREAD-12 bez zmian).

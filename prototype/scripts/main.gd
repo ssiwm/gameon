@@ -1058,7 +1058,7 @@ func _gen_test() -> void:
 		reasons == ["poor", "later", "ok", "owned"] and Scrap.bank == 400 - Scrap.price_of(Weapons.LR7) and Scrap.is_unlocked(Weapons.LR7) and not Scrap.is_unlocked(Weapons.HKM9))
 	var locked_after := racks_w.filter(func(n: Node) -> bool: return level.is_locked_item(n)).size()
 	check.call("warsztat: kupiony stojak się odblokował (zablokowane %d)" % locked_after, locked_after == 6)
-	# panel warsztatu (UI faza 3): otwarcie przy ławie, siatka 10 broni, wybór myszą (kafel), zamknięcie przywraca mysz
+	# panel warsztatu (UI faza 3): otwarcie przy ławie, siatka 12 broni, wybór myszą (kafel), zamknięcie przywraca mysz
 	var wk_node: Node2D = get_tree().get_first_node_in_group("workshop")
 	p.global_position = wk_node.global_position + Vector2(0, -2)
 	p.velocity = Vector2.ZERO
@@ -1068,9 +1068,9 @@ func _gen_test() -> void:
 	await get_tree().create_timer(0.3).timeout
 	var tiles: Array = wui._tiles
 	(tiles[3] as Button).pressed.emit()
-	var opened_ok: bool = wui.is_open() and tiles.size() == 10 and wui._sel == 3 and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE
+	var opened_ok: bool = wui.is_open() and tiles.size() == 12 and wui._sel == 3 and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE
 	wui.close()
-	check.call("panel warsztatu: otwiera się przy ławie, 10 kafli, kliknięcie kafla wybiera broń (sel %d), mysz widoczna; po zamknięciu zamknięty" % wui._sel, opened_ok and not wui.is_open())
+	check.call("panel warsztatu: otwiera się przy ławie, 12 kafli, kliknięcie kafla wybiera broń (sel %d), mysz widoczna; po zamknięciu zamknięty" % wui._sel, opened_ok and not wui.is_open())
 	# faza C: ulepszenia
 	results.clear()
 	var base_mag: int = Weapons.base_def(Weapons.M83).mag
@@ -1079,7 +1079,7 @@ func _gen_test() -> void:
 	Scrap.bank = 10
 	Scrap.request_upgrade(Weapons.M83)                 # poor
 	Scrap.request_upgrade(Weapons.HKM9)                # locked (nie kupiona)
-	Scrap.request_upgrade(Weapons.SOKOL6)              # invalid (brak ulepszeń / zablokowana)
+	Scrap.request_upgrade(Weapons.COUNT)               # invalid (nieistniejąca broń)
 	Scrap.bank = 1000
 	for i in 4:
 		Scrap.request_upgrade(Weapons.M83)             # 3 × ok, potem max
