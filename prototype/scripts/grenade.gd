@@ -1,5 +1,5 @@
 extends Node2D
-## Granat rzucany (T): leci łukiem jak flara, odbija się od podłogi, po zapalniku wybucha. Lot jest deterministyczny
+## Granat rzucany (lewy Alt): leci łukiem jak flara, odbija się od podłogi, po zapalniku wybucha. Lot jest deterministyczny
 ## (parametry startu), więc nie trzeba go synchronizować; wybuch rozstrzyga serwer (Combat.explode / pole ognia),
 ## efekt widzą wszyscy przez Arsenal/Vfx. Odłamkowy rani też drużynę (Combat.explode), fosforowy zostawia pole ognia.
 
@@ -63,6 +63,11 @@ func _physics_process(delta: float) -> void:
 ## Serwer: wybuch w miejscu granatu.
 func _detonate() -> void:
 	match kind:
+		"smoke":
+			NoiseMgr.add_noise(float(_data["noise"]), global_position)
+			var slvl := get_tree().get_first_node_in_group("level")
+			if slvl != null:
+				slvl.spawn_smoke(global_position + Vector2(0, -6), float(_data["cloud_life"]))
 		"frag":
 			Combat.explode(get_tree(), global_position + Vector2(0, -4), float(_data["radius"]), float(_data["damage"]), shooter_id, Weapons.GNIEW4)
 		"phos":
@@ -86,6 +91,10 @@ func _draw() -> void:
 		draw_circle(Vector2(0, -3), 3.0, Color(0.22, 0.3, 0.18))
 		draw_rect(Rect2(-1, -7, 2, 2), Color(0.5, 0.5, 0.45))
 		draw_circle(Vector2(-1, -4), 1.0, c)
+	elif kind == "smoke":
+		draw_rect(Rect2(-2, -7, 4, 6), Color(0.38, 0.4, 0.42))
+		draw_rect(Rect2(-2, -4, 4, 2), c)
+		draw_rect(Rect2(-1, -8, 2, 1), Color(0.6, 0.6, 0.6))
 	else:
 		draw_rect(Rect2(-2, -7, 4, 6), Color(0.55, 0.55, 0.5))
 		draw_rect(Rect2(-2, -5, 4, 2), c)

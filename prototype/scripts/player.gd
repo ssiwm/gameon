@@ -7,6 +7,7 @@ extends CharacterBody2D
 ## (spawn i kolizje rozstrzyga serwer, klienci tylko rysują).
 
 const Weapons := preload("res://scripts/weapons.gd")
+const Throwables := preload("res://scripts/throwables.gd")
 const WeaponController := preload("res://scripts/weapon_controller.gd")
 const WeaponView := preload("res://scripts/weapon_view.gd")
 const Lights := preload("res://scripts/lights.gd")
@@ -439,7 +440,8 @@ func _physics_process(delta: float) -> void:
 
 func _local_brain(delta: float) -> void:
 	var reviving := _handle_revive(delta, Input.is_action_pressed("interact"))
-	var busy := reviving or pumping
+	var gear_busy := _gear_tick(delta)
+	var busy := reviving or pumping or gear_busy
 	weapons.tick_local(delta, busy)
 
 	var move_x := 0.0 if (busy or grabbed) else Input.get_axis("move_left", "move_right")
@@ -530,11 +532,7 @@ func _local_brain(delta: float) -> void:
 		Voice.try_scream(self)
 	if Input.is_action_just_pressed("flare"):
 		_throw_flare()
-	if Input.is_action_just_pressed("throw"):
-		_throw_grenade()
-	if Input.is_action_just_pressed("throw_next"):
-		Arsenal.cycle_throwable()
-		Audio.play("ui_click", Audio.BUS_UI, -12.0, 1.1)
+
 	if Input.is_action_just_pressed("flashlight"):
 		_toggle_flashlight()
 
@@ -575,18 +573,179 @@ func _throw_flare() -> void:
 	var vel := aim_dir.normalized() * 190.0 + Vector2(velocity.x * 0.5, -70.0)
 	NoiseMgr.request_flare(origin, vel)
 
-## Rzut granatem (T): wybrany rodzaj (X), łuk mocniejszy niż flary. Brak zapasu = suchy klik.
-func _throw_grenade() -> void:
+# ---------------------------------------------------------------- ekwipunek zużywalny (lewy Alt / X)
+
+## Skaner „Sowa”: ile sekund jeszcze działa (lokalny gracz); nakładkę rysuje scanner_view.gd.
+var scan_left := 0.0
+## Tekst i postęp środkowego paska HUD dla narzędzi (apteczka, defibrylator) — tylko lokalny człowiek.
+var gear_text := ""
+var gear_progress := 0.0
+var _med_hold := 0.0
+var _med_hp := 0
+var _defib_hold := 0.0
+var _defib_ref: Node2D = null
+var _scan_noise_t := 0.0
+var _scan_view: Node2D = null
+
+## Co klatkę (lokalny człowiek): X zmienia wybór, T używa wybranego przedmiotu. Zwraca true, gdy postać jest „zajęta”
+## (apteczka i defibrylator wymagają stania w miejscu i nie strzelania, jak podnoszenie).
+func _gear_tick(delta: float) -> bool:
+	gear_text = ""
+	gear_progress = 0.0
+	if scan_left > 0.0:
+		scan_left = maxf(0.0, scan_left - delta)
+		_scan_noise_t += delta
+		if _scan_noise_t >= 1.0:
+			_scan_noise_t = 0.0
+			NoiseMgr.add_noise(float(Throwables.KINDS["scanner"]["noise"]), global_position)     # skaner emituje hałas 1/s
 	if dead or is_bot:
-		return
+		_gear_cancel()
+		return false
+	if Input.is_action_just_pressed("throw_next"):
+		Arsenal.cycle_throwable()
+		Audio.play("ui_click", Audio.BUS_UI, -12.0, 1.1)
 	var kind := Arsenal.selected_throwable()
+	match Throwables.mode_of(kind):
+		"throw", "place":
+			_gear_cancel()
+			if Input.is_action_just_pressed("throw"):
+				_throw_item(kind)
+			return false
+		"use":
+			match kind:
+				"medkit":
+					return _tick_medkit(delta, Input.is_action_pressed("throw"))
+				"defib":
+					return _tick_defib(delta, Input.is_action_pressed("throw"))
+				"scanner":
+					_gear_cancel()
+					if Input.is_action_just_pressed("throw"):
+						_start_scan()
+					elif scan_left <= 0.0 and Arsenal.get_throwable("scanner") > 0:
+						gear_text = "[%s]  Owl scanner — %d s, shows enemies through walls (emits noise)" % [Throwables.key_name(), int(Throwables.KINDS["scanner"]["time"])]
+	return false
+
+func _gear_cancel() -> void:
+	if _med_hold > 0.0:
+		_med_hold = 0.0
+	if _defib_hold > 0.0 or _defib_ref != null:
+		_defib_hold = 0.0
+		if _defib_ref != null and is_instance_valid(_defib_ref):
+			_defib_ref.set_revive_progress(0.0)
+		_defib_ref = null
+
+## Rzut / postawienie (lewy Alt): wybrany rodzaj (X). Brak zapasu = suchy klik.
+func _throw_item(kind: String) -> void:
 	if Arsenal.get_throwable(kind) <= 0:
 		Audio.play("dry_fire", Audio.BUS_WEAPONS, -10.0, 1.2)
 		return
 	var origin := global_position + Vector2(aim_dir.x * 6.0, -12.0)
 	var vel := aim_dir.normalized() * 230.0 + Vector2(velocity.x * 0.5, -90.0)
+	if Throwables.mode_of(kind) == "place":
+		origin = global_position + Vector2(0, -6.0)
+		vel = aim_dir.normalized()                 # mina: kierunek stożka = celowanie; ładunek ignoruje
 	Audio.play_variant("foley_gear", 3, Audio.BUS_PLAYER, -10.0, 0.8)
 	Arsenal.request_throw(kind, origin, vel)
+
+## Najbliższy ranny towarzysz w zasięgu apteczki (z lewej/prawej), a gdy nikogo — ja sam, jeśli jestem ranny.
+func _medkit_target() -> Node2D:
+	var best: Node2D = null
+	var best_d := float(Throwables.KINDS["medkit"]["range"])
+	for q in get_tree().get_nodes_in_group("players"):
+		var pp := q as Node2D
+		if pp == null or pp == self or pp.dead or pp.hp >= pp.MAX_HP:
+			continue
+		if absf(pp.global_position.y - global_position.y) > 30.0:
+			continue
+		var dx := absf(pp.global_position.x - global_position.x)
+		if dx < best_d:
+			best_d = dx
+			best = pp
+	if best == null and hp < MAX_HP:
+		return self
+	return best
+
+func _tick_medkit(delta: float, held: bool) -> bool:
+	var data: Dictionary = Throwables.KINDS["medkit"]
+	var t := _medkit_target()
+	if Arsenal.get_throwable("medkit") <= 0 or t == null:
+		_med_hold = 0.0
+		return false
+	var who := "yourself" if t == self else ("the bot" if t.is_bot else "P%d" % t.display_id)
+	if not held:
+		_med_hold = 0.0
+		gear_text = "Hold [%s]  Use the medkit on %s  (%d s)" % [Throwables.key_name(), who, int(data["time"])]
+		return false
+	if _med_hold <= 0.0:
+		_med_hp = hp
+	elif hp < _med_hp:
+		_med_hold = 0.0                         # oberwał w trakcie — przerwane
+		return false
+	_med_hold += delta
+	gear_text = "Healing %s…" % who
+	gear_progress = clampf(_med_hold / float(data["time"]), 0.0, 1.0)
+	if _med_hold >= float(data["time"]):
+		_med_hold = 0.0
+		Arsenal.request_use("medkit", int(t.player_id))
+	return true
+
+## Najbliższy leżący towarzysz w zasięgu defibrylatora i w linii wzroku.
+func _defib_target() -> Node2D:
+	var best: Node2D = null
+	var best_d := float(Throwables.KINDS["defib"]["range"])
+	var space := get_world_2d().direct_space_state
+	for q in get_tree().get_nodes_in_group("players"):
+		var pp := q as Node2D
+		if pp == null or pp == self or not pp.dead:
+			continue
+		var d := pp.global_position.distance_to(global_position)
+		if d >= best_d:
+			continue
+		var ray := PhysicsRayQueryParameters2D.create(global_position + Vector2(0, -9), pp.global_position + Vector2(0, -6), 1)
+		if not space.intersect_ray(ray).is_empty():
+			continue
+		best_d = d
+		best = pp
+	return best
+
+func _tick_defib(delta: float, held: bool) -> bool:
+	var data: Dictionary = Throwables.KINDS["defib"]
+	var t := _defib_target()
+	if Arsenal.get_throwable("defib") <= 0 or t == null:
+		_gear_cancel()
+		return false
+	var who := "the bot" if t.is_bot else "P%d" % t.display_id
+	if not held:
+		_gear_cancel()
+		gear_text = "Hold [%s]  Defibrillate %s  (%d m away)" % [Throwables.key_name(), who, int(t.global_position.distance_to(global_position) / 16.0)]
+		return false
+	if t != _defib_ref:
+		if _defib_ref != null and is_instance_valid(_defib_ref):
+			_defib_ref.set_revive_progress(0.0)
+		_defib_ref = t
+		_defib_hold = 0.0
+	_defib_hold += delta
+	gear_text = "Defibrillating %s…" % who
+	gear_progress = clampf(_defib_hold / float(data["time"]), 0.0, 1.0)
+	t.set_revive_progress(gear_progress)
+	if _defib_hold >= float(data["time"]):
+		_defib_hold = 0.0
+		t.set_revive_progress(0.0)
+		_defib_ref = null
+		Arsenal.request_use("defib", int(t.player_id))
+	return true
+
+func _start_scan() -> void:
+	if scan_left > 0.0 or Arsenal.get_throwable("scanner") <= 0:
+		return
+	Arsenal.request_use("scanner", 0)
+	scan_left = float(Throwables.KINDS["scanner"]["time"])
+	_scan_noise_t = 0.0
+	Audio.play("ui_click", Audio.BUS_UI, -6.0, 0.7)
+	if _scan_view == null:
+		_scan_view = (load("res://scripts/scanner_view.gd") as GDScript).new()
+		_scan_view.player = self
+		add_child(_scan_view)
 
 ## Krzyk (mikrofon albo G, voice.gd): hałas + przyciągnięcie wrogów; efekt widzą wszyscy.
 func do_scream(amount: float) -> void:

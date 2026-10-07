@@ -20,7 +20,9 @@ func _enter_tree() -> void:
 	_add_keys("flashlight", [KEY_L])
 	_add_keys("reload", [KEY_R])
 	_add_keys("firemode", [KEY_B])
-	_add_keys("throw", [KEY_T])
+	_add_key_left("throw", KEY_ALT)                    # użycie przedmiotu: lewy Alt (na macOS także lewy Cmd)
+	if OS.get_name() == "macOS":
+		_add_key_left("throw", KEY_META)
 	_add_keys("throw_next", [KEY_X])
 	_add_keys("melee", [KEY_V])
 	_add_keys("help", [KEY_F1])
@@ -37,6 +39,15 @@ func _add_keys(action: StringName, keys: Array) -> void:
 		var ev := InputEventKey.new()
 		ev.physical_keycode = k
 		InputMap.action_add_event(action, ev)
+
+## Klawisz modyfikujący tylko z lewej strony klawiatury (prawy Alt / Cmd zostaje wolny).
+func _add_key_left(action: StringName, key: Key) -> void:
+	if not InputMap.has_action(action):
+		InputMap.add_action(action)
+	var ev := InputEventKey.new()
+	ev.physical_keycode = key
+	ev.location = KEY_LOCATION_LEFT
+	InputMap.action_add_event(action, ev)
 
 func _add_mouse(action: StringName, button: MouseButton) -> void:
 	if not InputMap.has_action(action):

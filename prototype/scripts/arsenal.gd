@@ -128,15 +128,22 @@ func _sync_stock(data: Dictionary) -> void:
 	stock = data
 	stock_changed.emit()
 
-## Klawisz X: kolejny rodzaj rzucanego przedmiotu (lokalnie).
+## Klawisz X: kolejny rodzaj przedmiotu (lokalnie); puste rodzaje pomijamy, jeśli jest jakiś z zapasem.
 func cycle_throwable() -> void:
-	throw_sel = (throw_sel + 1) % Throwables.ORDER.size()
+	var n := Throwables.ORDER.size()
+	var next := (throw_sel + 1) % n
+	for i in n:
+		var cand := (throw_sel + 1 + i) % n
+		if get_throwable(String(Throwables.ORDER[cand])) > 0:
+			next = cand
+			break
+	throw_sel = next
 	stock_changed.emit()
 
 func selected_throwable() -> String:
 	return String(Throwables.ORDER[throw_sel % Throwables.ORDER.size()])
 
-## Rzut (T): serwer sprawdza zapas, zdejmuje sztukę i tworzy granat u wszystkich peerów (level.spawn_grenade).
+## Rzut (lewy Alt): serwer sprawdza zapas, zdejmuje sztukę i tworzy granat u wszystkich peerów (level.spawn_grenade).
 func request_throw(kind: String, pos: Vector2, vel: Vector2) -> void:
 	if not NoiseMgr.has_network() or NoiseMgr.is_server():
 		_throw_server(kind, pos, vel, NoiseMgr.local_id())
@@ -149,7 +156,7 @@ func _throw_request(kind: String, pos: Vector2, vel: Vector2) -> void:
 		_throw_server(kind, pos, vel, multiplayer.get_remote_sender_id())
 
 func _throw_server(kind: String, pos: Vector2, vel: Vector2, shooter: int) -> void:
-	if not Throwables.is_valid(kind) or get_throwable(kind) <= 0:
+	if not Throwables.is_valid(kind) or get_throwable(kind) <= 0 or Throwables.mode_of(kind) == "use":
 		return
 	for p in get_tree().get_nodes_in_group("players"):
 		if int(p.player_id) == shooter:
@@ -161,8 +168,15 @@ func _throw_server(kind: String, pos: Vector2, vel: Vector2, shooter: int) -> vo
 	stock[kind] = get_throwable(kind) - 1
 	_push_stock()
 	var lvl := get_tree().get_first_node_in_group("level")
-	if lvl != null:
-		lvl.spawn_grenade(kind, pos, vel.limit_length(420.0), shooter)
+	if lvl == null:
+		return
+	match Throwables.mode_of(kind):
+		"throw":
+			lvl.spawn_grenade(kind, pos, vel.limit_length(420.0), shooter)
+		"place":
+			lvl.spawn_placed(kind, pos, vel.normalized() if vel.length() > 0.1 else Vector2.RIGHT, shooter)
+		_:
+			pass
 
 @rpc("authority", "call_remote", "reliable")
 func _sync_reserve(data: Dictionary) -> void:
@@ -270,3 +284,49 @@ func confirm(shooter_id: int, kind: int, pos: Vector2) -> void:
 @rpc("authority", "call_remote", "unreliable")
 func _confirm_rpc(kind: int, pos: Vector2) -> void:
 	hit_confirmed.emit(kind, pos)
+
+# ---------------------------------------------------------------- narzędzia (apteczka, defibrylator, skaner)
+
+func _player_by_id(id: int) -> Node2D:
+	for p in get_tree().get_nodes_in_group("players"):
+		if int(p.player_id) == id:
+			return p
+	return null
+
+## Użycie narzędzia (klawisz użycia przy celu): serwer sprawdza zapas, cel i odległość, zdejmuje sztukę i stosuje efekt.
+## `target_id` — gracz-cel (apteczka, defibrylator); skaner go nie używa (efekt lokalny u użytkownika).
+func request_use(kind: String, target_id: int) -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_use_server(kind, target_id, NoiseMgr.local_id())
+	else:
+		_use_request.rpc_id(1, kind, target_id)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _use_request(kind: String, target_id: int) -> void:
+	if NoiseMgr.is_server():
+		_use_server(kind, target_id, multiplayer.get_remote_sender_id())
+
+func _use_server(kind: String, target_id: int, user_id: int) -> void:
+	if not Throwables.is_valid(kind) or Throwables.mode_of(kind) != "use" or get_throwable(kind) <= 0:
+		return
+	var user := _player_by_id(user_id)
+	if user == null or user.dead:
+		return
+	var data: Dictionary = Throwables.KINDS[kind]
+	var ok := false
+	match kind:
+		"medkit":
+			var t := _player_by_id(target_id)
+			ok = t != null and not t.dead and t.hp < t.MAX_HP and user.global_position.distance_to(t.global_position) <= float(data["range"]) + 24.0
+			if ok:
+				t.deliver_heal(1)
+		"defib":
+			var t2 := _player_by_id(target_id)
+			ok = t2 != null and t2.dead and user.global_position.distance_to(t2.global_position) <= float(data["range"]) + 24.0
+			if ok:
+				t2.request_revive()
+		"scanner":
+			ok = true
+	if ok:
+		stock[kind] = get_throwable(kind) - 1
+		_push_stock()

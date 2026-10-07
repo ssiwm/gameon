@@ -49,6 +49,8 @@ const Weapons := preload("res://scripts/weapons.gd")
 const FIRE_PATCH := preload("res://scripts/fire_patch.gd")
 const BRICK_WALL := preload("res://scripts/brick_wall.gd")
 const GRENADE := preload("res://scripts/grenade.gd")
+const PLACED := preload("res://scripts/placed.gd")
+const SMOKE_CLOUD := preload("res://scripts/smoke_cloud.gd")
 const FLARE := preload("res://scripts/flare.gd")
 const GENERATOR := preload("res://scripts/generator.gd")
 const HANDCAR := preload("res://scripts/handcar.gd")
@@ -809,6 +811,58 @@ func _spawn_fire_rpc(n: String, pos: Vector2, weapon: int, shooter: int, life: f
 	f.life = life
 	add_child(f)
 
+# ---------------------------------------------------------------- miny, ładunki i dym (A2)
+
+var _placed_serial := 0
+var _smoke_serial := 0
+
+## Serwer: mina / ładunek postawiony pod nogami gracza (Arsenal.request_throw dla rodzaju „place”): przyklejony do podłogi.
+func spawn_placed(kind: String, pos: Vector2, dir: Vector2, shooter: int) -> void:
+	if not NoiseMgr.is_server():
+		return
+	var space := get_world_2d().direct_space_state
+	var fh := space.intersect_ray(PhysicsRayQueryParameters2D.create(pos, pos + Vector2(0, 40.0), 1 | 16))
+	var at: Vector2 = (fh["position"] as Vector2) + Vector2(0, -1) if not fh.is_empty() else pos
+	_placed_serial += 1
+	var n := "Placed%d" % _placed_serial
+	if NoiseMgr.has_network():
+		_spawn_placed_rpc.rpc(n, kind, at, dir, shooter)
+	else:
+		_spawn_placed_rpc(n, kind, at, dir, shooter)
+
+@rpc("authority", "call_local", "reliable")
+func _spawn_placed_rpc(n: String, kind: String, pos: Vector2, dir: Vector2, shooter: int) -> void:
+	if has_node(n):
+		return
+	var p: Node2D = PLACED.new()
+	p.name = n
+	p.kind = kind
+	p.position = pos
+	p.dir = dir
+	p.shooter_id = shooter
+	add_child(p)
+
+## Serwer: chmura dymu w punkcie (granat dymny po zapalniku).
+func spawn_smoke(pos: Vector2, life: float) -> void:
+	if not NoiseMgr.is_server():
+		return
+	_smoke_serial += 1
+	var n := "Smoke%d" % _smoke_serial
+	if NoiseMgr.has_network():
+		_spawn_smoke_rpc.rpc(n, pos, life)
+	else:
+		_spawn_smoke_rpc(n, pos, life)
+
+@rpc("authority", "call_local", "reliable")
+func _spawn_smoke_rpc(n: String, pos: Vector2, life: float) -> void:
+	if has_node(n):
+		return
+	var s: Node2D = SMOKE_CLOUD.new()
+	s.name = n
+	s.position = pos
+	s.life = life
+	add_child(s)
+
 # ---------------------------------------------------------------- granaty (rzucane przedmioty)
 
 var _grenade_serial := 0
@@ -899,6 +953,10 @@ func _clear_pickups_rpc() -> void:
 		f.queue_free()
 	for gr in get_tree().get_nodes_in_group("grenades"):
 		gr.queue_free()
+	for pl in get_tree().get_nodes_in_group("placed"):
+		pl.queue_free()
+	for sm in get_tree().get_nodes_in_group("smoke_clouds"):
+		sm.queue_free()
 	for fp in get_tree().get_nodes_in_group("fire_patches"):
 		fp.queue_free()
 	for h in get_tree().get_nodes_in_group("pickups"):

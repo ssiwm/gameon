@@ -486,9 +486,9 @@ func _build_gear_card() -> void:
 	_flares.custom_minimum_size = Vector2(NoiseMgr.FLARE_MAX * 11.0 * 0.8 - 2.0, 7.2)
 	qf.add_child(_flares)
 	res.add_child(qf)
-	var tg := HBoxContainer.new()                  # granaty (T rzut, X zmiana rodzaju): rodzaj i zapas drużyny
+	var tg := HBoxContainer.new()                  # przedmioty (lewy Alt użyj, X zmiana rodzaju): rodzaj i zapas drużyny
 	tg.add_theme_constant_override("separation", 3)
-	tg.add_child(UiTheme.label("T", 7, UiTheme.MUTED))
+	tg.add_child(UiTheme.label("ALT" if OS.get_name() != "macOS" else "CMD", 7, UiTheme.MUTED))
 	_gren = Pips.new()
 	_gren.shape = "diamond"
 	_gren.count = 4
@@ -698,7 +698,7 @@ func _build_prompt() -> void:
 
 func _build_controls() -> void:
 	_controls = UiTheme.label(
-		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J/LMB fire · R reload · B fire mode · T grenade · V/RMB melee · 1-3 gun · E take/revive · Q lure · F flare · G scream · L light",
+		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J/LMB fire · R reload · B fire mode · L-Alt item (X switch) · V/RMB melee · 1-3 gun · E take/revive · Q lure · F flare · G scream · L light",
 		7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_controls)
 	_f1 = UiTheme.label("F1  controls", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
@@ -1271,6 +1271,10 @@ func _drive_prompt() -> void:
 	elif _player != null and _player.revive_hint() != "":
 		text = _player.revive_hint()
 		col = UiTheme.OK
+	elif _player != null and _player.gear_text != "":
+		text = _player.gear_text                     # narzędzia (lewy Alt): apteczka, defibrylator, skaner — podpowiedź albo trwające użycie
+		prog = _player.gear_progress
+		col = UiTheme.OK if prog > 0.0 else UiTheme.ACCENT
 	elif car != null and car.local_state != "" and _player != null:
 		match String(car.local_state):
 			"nopower":

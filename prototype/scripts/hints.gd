@@ -25,7 +25,7 @@ const TIPS := [
 	["downed", "You are down. Stay still — a teammate can revive you before you bleed out"],
 	["light", "L toggles the flashlight. Light is noise too — turn it off to hide"],
 	["flare", "F throws a flare: bait that draws enemies with light instead of noise"],
-	["grenade", "T throws the selected grenade, X switches the type. A frag hurts the squad too — phosphorus does not"],
+	["grenade", "Left Alt (Cmd on Mac) uses the selected item (grenades, mine, charge, medkit, defibrillator, scanner), X switches. A frag or a charge hurts the squad too"],
 	["pickaxe", "Swing the pickaxe (V) at the cracked brick wall to break through — it is loud"],
 	["firemode", "B switches the M-83 between full auto and a quiet 3-round burst"],
 ]

@@ -275,6 +275,24 @@ Plan całości (A1–A3): szkielet rzutu → pozostałe przedmioty (dymna, mina,
 | Efekt | wybuch 4 m, 90 w środku (50% na brzegu), rani drużynę, rozbija zamurowane przejścia | pole ognia 15 s z 3 plam (72 px), podpala, mur dla `fire_shy`, nie rani drużyny |
 | Hałas | wybuch (`N_GRENADE` 15) | 3 |
 
-- Klawisze: **T** rzut, **X** zmiana rodzaju (wybór lokalny, zapas wspólny). Rzut: łuk 230 px/s, odbija się od podłogi, zapalnik liczy się od rzutu.
+- Klawisze: **lewy Alt** (macOS: lewy Cmd) rzut / użycie, **X** zmiana rodzaju (wybór lokalny, zapas wspólny). Rzut: łuk 230 px/s, odbija się od podłogi, zapalnik liczy się od rzutu.
 - Zapas trzyma `Arsenal` (`stock`, `request_throw`, `add_throwable`, `reset_throwables`), dane `throwables.gd`; nowy rodzaj = wpis w `KINDS`/`ORDER` + gałąź w `grenade.gd` (`_detonate`).
 - Sieć: klient prosi serwer o rzut (korekta wylotu, jak przy strzale), serwer zdejmuje sztukę i rozsyła `spawn_grenade`; lot deterministyczny, wybuch tylko na serwerze.
+
+## 12. Ekwipunek zużywalny, faza A2 (1.7.63): pozostałe przedmioty
+
+Karuzela (lewy Alt / X), dane w `throwables.gd` (`ORDER`, `KINDS`, `mode`):
+
+| Przedmiot | Tryb | Efekt | Start / maks. |
+|---|---|---|---|
+| FRAG | rzut | 4 m, 90, zapalnik 1,8 s, rani drużynę | 2 / 4 |
+| PHOS | rzut | pole ognia 15 s (3 plamy), mur dla `fire_shy` | 1 / 3 |
+| **SMOKE** | rzut | chmura 3,5 m na 12 s; wróg nie widzi celu przez dym, dalej słyszy; hałas 2 | 1 / 3 |
+| **MINE** | postaw | po 1 s uzbrojona; przebudzony wróg w stożku ±38° / 84 px → 120 obrażeń każdemu w stożku; nie rani drużyny; hałas 10 | 1 / 3 |
+| **CHARGE** | postaw | zapalnik 4 s, 5 m, 150, rozbija zamurowane przejścia, rani drużynę, hałas 20 | 1 / 2 |
+| **MEDKIT** | użyj (przytrzymaj klawisz) | 5 s przy rannym koledze (do 36 px) albo sobie: +1 serce; obrażenia przerywają | 1 / 3 |
+| **DEFIB** | użyj (przytrzymaj klawisz) | 1,5 s: podnosi leżącego do 10 m w linii wzroku; 1 na misję | 1 / 1 |
+| **OWL** | użyj | 10 s: sylwetki wrogów przez ściany do 15 m (czerwone = zagrożenie), hałas 1/s | 2 / 3 |
+
+Start „po 1–2 sztuki” to tymczasowy zestaw do prób — faza A3 przeniesie go do zakupu w warsztacie.
+Kod: `grenade.gd` (rzucane), `placed.gd` (mina, ładunek), `smoke_cloud.gd`, `scanner_view.gd`, `player._gear_tick`, `Arsenal.request_use`.

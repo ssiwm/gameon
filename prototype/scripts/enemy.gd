@@ -59,6 +59,7 @@ const KINDS := {
 }
 
 const Lights := preload("res://scripts/lights.gd")
+const SmokeCloud := preload("res://scripts/smoke_cloud.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Sprites := preload("res://scripts/sprites.gd")
@@ -863,7 +864,11 @@ func _perceive(delta: float) -> void:
 
 func _clear_line(pp: Node2D) -> bool:
 	var h: float = (_def["size"] as Vector2).y * 0.6
-	var q := PhysicsRayQueryParameters2D.create(global_position + Vector2(0, -h), pp.global_position + Vector2(0, -8), 1)
+	var a := global_position + Vector2(0, -h)
+	var b := pp.global_position + Vector2(0, -8)
+	if SmokeCloud.blocks(get_tree(), a, b):
+		return false                      # dym (granat dymny) zasłania cel — słyszą, ale nie widzą
+	var q := PhysicsRayQueryParameters2D.create(a, b, 1)
 	return get_world_2d().direct_space_state.intersect_ray(q).is_empty()
 
 ## --- zachowanie bez widocznego celu ----------------------------------------
