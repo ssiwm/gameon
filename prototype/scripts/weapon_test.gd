@@ -14,6 +14,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Projectile := preload("res://scripts/projectile.gd")
+const Upgrades := preload("res://scripts/upgrades.gd")
 const Enemy := preload("res://scripts/enemy.gd")
 const Controller := preload("res://scripts/weapon_controller.gd")
 
@@ -126,6 +127,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_bullets()
 	await _t_falloff_crit()
 	await _t_phase1()
+	await _t_upgrades()
 	await _t_sweep()
 	await _t_pierce_beam_rail()
 	await _t_flame()
@@ -144,6 +146,10 @@ func run_unit(m: Node2D) -> void:
 func _t_data() -> void:
 	var errs := Weapons.validate()
 	check("tabele broni spójne (validate)", errs.is_empty(), "; ".join(errs))
+	var uerrs := Upgrades.validate(Weapons.defs())
+	check("tabela ulepszeń spójna: 12 broni × 3 poziomy, pola istnieją (%d wpisów)" % Upgrades.TIERS.size(), uerrs.is_empty() and Upgrades.TIERS.size() == Weapons.COUNT, "; ".join(uerrs))
+	check("ceny ulepszeń skalowane klasą broni (M-83 60/120/220, P-64 T3 %d, SPECTER-1 T3 %d)" % [Upgrades.cost("p64", 3), Upgrades.cost("widmo1", 3)],
+		Upgrades.cost("m83", 1) == 60 and Upgrades.cost("m83", 2) == 120 and Upgrades.cost("m83", 3) == 220 and Upgrades.cost("p64", 3) < 220 and Upgrades.cost("widmo1", 3) > 220)
 	print("[WTEST] %-9s %5s %6s %5s %7s %9s %9s %8s" % ["broń", "rpm", "dps", "mag", "reload", "szum/s@12s", "TTK trz.", "TTK wołek"])
 	for d in Weapons.defs():
 		var sim := Weapons.simulate_heat(d.id, 12.0)
@@ -282,6 +288,87 @@ func _t_phase1() -> void:
 			worst_r = ratio
 			worst = d.name
 	check("hałas / DPS ≤ 0,25 dla broni palnych (najgorsza: %s %.2f)" % [worst, worst_r], worst_r <= 0.25)
+
+## Faza 2 przeglądu broni: ulepszenia poziomu 3 zmieniają zachowanie broni (kasetowe, salwa, podpalenie, dobicie, przebicie ścian).
+func _t_upgrades() -> void:
+	var saved: Dictionary = Weapons.levels.duplicate()
+	for w in [Weapons.GNIEW4, Weapons.SOKOL6, Weapons.WIDMO1, Weapons.CIEGNO6, Weapons.MACZETA, Weapons.KILOF, Weapons.SPREAD12, Weapons.SRUT8]:
+		Weapons.levels[w] = 3
+	var g := Weapons.def(Weapons.GNIEW4)
+	check("WRATH-4 T3: bomby kasetowe (%d), wybuch %.0f / promień %.0f px" % [g.cluster, g.blast_damage, g.blast_radius], g.cluster == 2 and absf(g.blast_damage - 100.0) < 0.01 and absf(g.blast_radius - 54.0) < 0.5)
+	# bomby kasetowe naprawdę ranią cele po bokach punktu wybuchu
+	var left := await dummy(76.0)
+	var right := await dummy(124.0)
+	var rk := Projectile.new()
+	rk.launch(Weapons.GNIEW4, player.global_position + Vector2(10, -4), Vector2.RIGHT, 1, true)
+	get_tree().current_scene.add_child(rk)
+	rk.set_physics_process(false)                       # sam rakieta stoi w miejscu — sprawdzamy tylko bomby kasetowe
+	rk._scatter_cluster(player.global_position + Vector2(100.0, 0.0))
+	await wait(0.5)
+	check("WRATH-4 T3: obie bomby kasetowe trafiają cele po bokach", dealt(left) > 5.0 and dealt(right) > 5.0, "lewy %.1f prawy %.1f" % [dealt(left), dealt(right)])
+	if is_instance_valid(rk):
+		rk.queue_free()
+	free_dummies()
+	await frames(2)
+	var f := Weapons.def(Weapons.SOKOL6)
+	check("FALCON-6 T3: salwa 3 rakiet za 2 naboje (pellets %d, koszt %d, magazynek %d)" % [f.pellets, f.ammo_per_shot, f.mag], f.pellets == 3 and f.ammo_per_shot == 2 and f.mag == 60 and f.mag >= f.ammo_per_shot)
+	check("SPECTER-1 T3: przebija jedną warstwę ściany, ładuje się szybciej (%.2f s)" % Weapons.def(Weapons.WIDMO1).charge_time, Weapons.def(Weapons.WIDMO1).wall_pierce >= 24.0 and Weapons.def(Weapons.WIDMO1).charge_time < Weapons.base_def(Weapons.WIDMO1).charge_time * 0.75)
+	var sn := Weapons.def(Weapons.CIEGNO6)
+	check("SINEW-6 T3: bełt przebija 1 cel, magazynek 2", sn.pierce == 1 and sn.mag == 2 and sn.damage > Weapons.base_def(Weapons.CIEGNO6).damage)
+	var sp := Weapons.def(Weapons.SPREAD12)
+	check("SPREAD-12 T3: pociski podpalają (%.1f s)" % sp.ignite, sp.ignite >= 2.0)
+	var pe := Weapons.def(Weapons.SRUT8)
+	check("PELLET-8 T3: ogłuszenie do 1,5 s (%.2f)" % pe.stun, absf(pe.stun - 1.5) < 0.01)
+	var ki := Weapons.def(Weapons.KILOF)
+	check("KILOF T3: szerszy łuk i dłuższe ogłuszenie (%.0f°, %.1f s)" % [ki.arc_deg, ki.stun], ki.arc_deg > Weapons.base_def(Weapons.KILOF).arc_deg * 1.5 and ki.stun >= 2.0)
+	# salwa FALCON-6 T3 w kontrolerze: jeden strzał = 3 rakiety i −2 naboje
+	var fd := equip(Weapons.SOKOL6)
+	var mag_f: int = wc.mag_of(fd.id)
+	var proj_before := get_tree().current_scene.get_children().filter(func(n: Node) -> bool: return n is Projectile).size()
+	wc.cd = 0.0
+	wc._fire_shot(fd)
+	await frames(2)
+	var proj_after := get_tree().current_scene.get_children().filter(func(n: Node) -> bool: return n is Projectile).size()
+	check("FALCON-6 T3: jeden strzał = 3 rakiety (%d → %d) i −2 naboje (%d → %d)" % [proj_before, proj_after, mag_f, wc.mag_of(fd.id)], proj_after - proj_before == 3 and mag_f - wc.mag_of(fd.id) == 2)
+	free_dummies()
+	await frames(2)
+	# SPECTER-1 T3 przez prawdziwą ścianę (10 px): bez ulepszenia stop na murze, z ulepszeniem trafia cel za nim
+	var wall := StaticBody2D.new()
+	var ws := CollisionShape2D.new()
+	var wr := RectangleShape2D.new()
+	wr.size = Vector2(10, 60)
+	ws.shape = wr
+	wall.add_child(ws)
+	wall.collision_layer = Combat.LAYER_WORLD
+	wall.global_position = player.global_position + Vector2(80, -10)
+	get_tree().current_scene.add_child(wall)
+	var behind := await dummy(120.0)
+	await frames(2)
+	var space := player.get_world_2d().direct_space_state
+	var org := player.global_position + Vector2(0, -9)
+	var plain := Combat.trace(space, org, Vector2.RIGHT, 300.0, 99, 0.0, [player.get_rid()])
+	var rail_d := Weapons.def(Weapons.WIDMO1)
+	var pierced := Combat.trace(space, org, Vector2.RIGHT, 300.0, 99, rail_d.wall_pierce, [player.get_rid()])
+	check("SPECTER-1 T3: szyna bez przebicia staje na murze, z ulepszeniem trafia cel za ścianą", bool(plain["wall"]) and (plain["hits"] as Array).is_empty() and (pierced["hits"] as Array).size() == 1,
+		"bez: ściana %s trafień %d, z: trafień %d" % [str(plain["wall"]), (plain["hits"] as Array).size(), (pierced["hits"] as Array).size()])
+	wall.queue_free()
+	free_dummies()
+	await frames(2)
+	# maczeta T3: dobija wroga poniżej 35% HP, wyżej zadaje zwykłe obrażenia
+	var mz := Weapons.def(Weapons.MACZETA)
+	check("MACZETA T3: dobicie poniżej %.0f%% HP, zasięg %.0f px" % [mz.execute_frac * 100.0, mz.reach], absf(mz.execute_frac - 0.35) < 0.001 and mz.reach > Weapons.base_def(Weapons.MACZETA).reach)
+	var hi := await dummy(40.0, 100.0)
+	hi.hp = 50.0
+	var r_hi := Combat.apply(hi, Combat.make_info(Weapons.MACZETA, mz.damage, hi.global_position, Vector2.RIGHT, 1, "melee"))
+	var lo := await dummy(60.0, 100.0)
+	lo.hp = 30.0
+	var r_lo := Combat.apply(lo, Combat.make_info(Weapons.MACZETA, mz.damage, lo.global_position, Vector2.RIGHT, 1, "melee"))
+	check("MACZETA T3: wróg na 50% HP dostaje zwykły cios, na 30% ginie od razu", not bool(r_hi["killed"]) and bool(r_lo["killed"]), "50%%: %s, 30%%: %s" % [str(r_hi["killed"]), str(r_lo["killed"])])
+	free_dummies()
+	await frames(2)
+	Weapons.levels.clear()
+	for k in saved:
+		Weapons.levels[k] = saved[k]
 
 ## Szybki pocisk nie może przeskoczyć wąskiego wroga (przeciąganie promienia, nie przesuwany obszar).
 func _t_sweep() -> void:

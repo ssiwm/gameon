@@ -191,7 +191,7 @@ func _upgrade_server(w: int, peer_id: int) -> void:
 		reason = "locked"
 	elif level_of(w) >= Upgrades.MAX_LEVEL:
 		reason = "max"
-	elif not spend(int(Upgrades.COSTS[level_of(w)])):
+	elif not spend(Upgrades.cost(String(Weapons.base_def(w).key), level_of(w) + 1)):
 		reason = "poor"
 	else:
 		levels[w] = level_of(w) + 1

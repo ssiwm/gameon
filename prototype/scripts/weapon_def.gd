@@ -38,6 +38,8 @@ var stun := 0.0               ## ogłuszenie wroga (s)
 var ignite := 0.0             ## podpalenie (s); wróg płonie i panikuje
 var pierce := 0               ## ile DODATKOWYCH wrogów przebija
 var wall_pierce := 0.0        ## ile px ściany przebija (RAIL, ulepszenie)
+var cluster := 0              ## LAUNCHER (ulepszenie): ile bomb kasetowych rozsypuje się po wybuchu
+var execute_frac := 0.0       ## MELEE (ulepszenie): cios dobija wroga poniżej tego ułamka maks. HP
 
 # --- celność
 var spread_deg := 0.0         ## rozstaw śrutu (±, rozłożony równo)

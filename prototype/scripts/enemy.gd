@@ -1153,6 +1153,10 @@ func take_hit(info: Dictionary) -> Dictionary:
 		dmg = maxf(dmg, hp + 1.0)
 		silent = true
 		info["crit"] = true
+	var exec: float = info.get("execute", 0.0)
+	if exec > 0.0 and hp <= _max_hp * exec:
+		dmg = maxf(dmg, hp + 1.0)        # dobicie: maczeta z ulepszeniem „Executioner”
+		info["crit"] = true
 	var mat := 0
 	var armor: float = _def.get("armor", 0.0)
 	if armor > 0.0 and (info.get("type", "bullet") == "bullet" or info.get("type", "") == "beam"):
