@@ -64,8 +64,10 @@ const MAPS := {
 	"z1_m3": preload("res://scripts/maps/z1_m3.gd"),
 	"z1_hub": preload("res://scripts/maps/z1_hub.gd"),     # kryjówka między misjami (nie należy do CAMPAIGN)
 }
-## Kolejność kampanii Strefy I. 1.1 (z1_m1) jest już w grze, ale do kampanii wchodzi dopiero w fazie D (--mission=z1_m1 uruchamia ją wprost).
-const CAMPAIGN := ["z1_m2", "z1_m3"]
+## Kolejność kampanii Strefy I; po ostatniej misji (1.3) kampania wraca przez kryjówkę do 1.1.
+const CAMPAIGN := ["z1_m1", "z1_m2", "z1_m3"]
+## Mapy losowane w Nocnym Dyżurze: bez 1.1 (samouczek bez bossa i Stalkera zaniżałby trudność serii).
+const SHIFT_POOL := ["z1_m2", "z1_m3"]
 
 signal map_changed(id: String)
 

@@ -278,7 +278,7 @@ func _next_campaign_map() -> String:
 
 ## Nocny Dyżur: każda misja serii na losowej mapie z kampanii.
 func _shift_map() -> String:
-	var order: Array = level.CAMPAIGN
+	var order: Array = level.SHIFT_POOL
 	return order[randi() % order.size()]
 
 func _handle_cmdline() -> void:
@@ -566,6 +566,12 @@ func _tag_test() -> void:
 	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
 	check.call("ekstrakcja → SUCCESS, złom z bonusu misji (%d)" % Scrap.last_gain, mission.phase == MISSION_SCRIPT.Phase.SUCCESS and Scrap.last_gain >= Scrap.BONUS_CLEAR)
 	check.call("dziennik misji: wpis 1.1", not RunLog.entries.is_empty() and String(RunLog.entries.back()["id"]) == "z1_m1")
+	_continue_after_result()
+	await get_tree().create_timer(0.6).timeout
+	check.call("[Enter] po 1.1 → kryjówka, następna 1.2 (po hubie: %s)" % after_hub, level.map_id == "z1_hub" and after_hub == "z1_m2")
+	_depart_hub()
+	await get_tree().create_timer(0.6).timeout
+	check.call("wyjście z kryjówki → 1.2 (generatory)", level.map_id == "z1_m2" and mission.kind == "generators" and mission.goal_total == 4)
 	print("[TAG-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
 
 ## Test samouczka ciszy misji 1.1 (--host --mission=z1_m1 --sneaktest): Trzosek śpiący na półce 4 kafle nad ścieżką nie budzi się
@@ -821,11 +827,13 @@ func _gen_test() -> void:
 	mission._success()
 	_continue_after_result()
 	await get_tree().create_timer(0.5).timeout
-	check.call("po 1.3 znowu kryjówka, następna: 1.2 (kampania w kółko)", level.map_id == "z1_hub" and after_hub == "z1_m2")
+	check.call("po 1.3 znowu kryjówka, następna: 1.1 (kampania w kółko od początku)", level.map_id == "z1_hub" and after_hub == "z1_m1")
 	_depart_hub()
 	await get_tree().create_timer(0.5).timeout
-	check.call("wyjście z kryjówki → 1.2 (generatory zresetowane)",
-		level.map_id == "z1_m2" and mission.goal_left == 4 and gens.size() == 4 and get_tree().get_nodes_in_group("generators").size() == 4)
+	check.call("wyjście z kryjówki → 1.1 (3 nieśmiertelniki, bez generatorów)",
+		level.map_id == "z1_m1" and mission.kind == "tags" and mission.goal_left == 3 and mission.goal_total == 3 and get_tree().get_nodes_in_group("generators").is_empty())
+	check.call("kolejność kampanii 1.1 → 1.2 → 1.3, Nocny Dyżur losuje tylko z 1.2 i 1.3 (pula %s)" % str(level.SHIFT_POOL),
+		level.CAMPAIGN == ["z1_m1", "z1_m2", "z1_m3"] and level.SHIFT_POOL == ["z1_m2", "z1_m3"] and not level.SHIFT_POOL.has("z1_m1"))
 	print("[GEN-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
 
 ## Długość ścieżki A* między dwoma punktami podłogi (px); 0, gdy brak drogi.
