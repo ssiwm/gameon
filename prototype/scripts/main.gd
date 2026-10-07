@@ -305,6 +305,7 @@ func _handle_cmdline() -> void:
 	var shot_depart := false
 	var shot_flicker := false
 	var shot_demo := false
+	var shot_ws := false
 	var weapon_mode := ""
 	var shots_dir := ""
 	var args := OS.get_cmdline_user_args()
@@ -358,6 +359,8 @@ func _handle_cmdline() -> void:
 			finaletest = true
 		elif a.begins_with("--shot="):
 			shot_path = a.substr("--shot=".length())
+		elif a == "--shotws":
+			shot_ws = true
 		elif a == "--shotdemo":
 			shot_demo = true
 		elif a == "--shotflicker":
@@ -406,7 +409,7 @@ func _handle_cmdline() -> void:
 	if finaletest:
 		_finale_test()
 	if shot_path != "":
-		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker, shot_demo)
+		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker, shot_demo, shot_ws)
 	if ridetest:
 		_ride_test()
 	if ridehost:
@@ -547,8 +550,22 @@ func host_game() -> void:
 
 ## Narzędzie deweloperskie (--shot=ŚCIEŻKA [--shotat=KOLUMNA]): po 2,5 s zapisuje obraz z widoku gry (tylko okno gry, bez pulpitu)
 ## do PNG i kończy. --shotat przenosi człowieka na podłogę w danej kolumnie mapy (np. do obejrzenia strefy kryjówki).
-func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false) -> void:
+func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false, workshop := false) -> void:
 	await get_tree().create_timer(1.0).timeout
+	if workshop:
+		# podgląd panelu warsztatu: portfel, jedna kupiona broń i ulepszenia (tylko w pamięci; zapis wyłączony w trybie podglądu)
+		Scrap.persist = false
+		Scrap.bank = 480
+		Scrap.unlocked[Weapons.LR7] = true
+		Scrap.levels[Weapons.M83] = 2
+		Scrap.levels[Weapons.LR7] = 1
+		var wp: Node2D = _players.get_node_or_null("1")
+		if wp != null:
+			wp.global_position = Vector2(31.0 * 16.0 + 8.0, 39.0 * 16.0)
+		await get_tree().create_timer(0.5).timeout
+		var wui := get_tree().get_first_node_in_group("workshop_ui")
+		if wui != null:
+			wui.open()
 	if demo:
 		RunLog.add("z1_m1", "1.1  MISSING PATROL", 214.0, 0, 1, -1, 86)         # przykładowe wpisy do podglądu ściany wyników
 		RunLog.add("z1_m2", "1.2  RADIO SILENCE", 402.0, 2, 1, 1, 148)
@@ -837,6 +854,19 @@ func _gen_test() -> void:
 		reasons == ["poor", "later", "ok", "owned"] and Scrap.bank == 400 - Scrap.price_of(Weapons.LR7) and Scrap.is_unlocked(Weapons.LR7) and not Scrap.is_unlocked(Weapons.HKM9))
 	var locked_after := racks_w.filter(func(n: Node) -> bool: return level.is_locked_item(n)).size()
 	check.call("warsztat: kupiony stojak się odblokował (zablokowane %d)" % locked_after, locked_after == 4)
+	# panel warsztatu (UI faza 3): otwarcie przy ławie, siatka 8 broni, wybór myszą (kafel), zamknięcie przywraca mysz
+	var wk_node: Node2D = get_tree().get_first_node_in_group("workshop")
+	p.global_position = wk_node.global_position + Vector2(0, -2)
+	p.velocity = Vector2.ZERO
+	await get_tree().create_timer(0.5).timeout
+	var wui := get_tree().get_first_node_in_group("workshop_ui")
+	wui.open()
+	await get_tree().create_timer(0.3).timeout
+	var tiles: Array = wui._tiles
+	(tiles[3] as Button).pressed.emit()
+	var opened_ok: bool = wui.is_open() and tiles.size() == 8 and wui._sel == 3 and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE
+	wui.close()
+	check.call("panel warsztatu: otwiera się przy ławie, 8 kafli, kliknięcie kafla wybiera broń (sel %d), mysz widoczna; po zamknięciu zamknięty" % wui._sel, opened_ok and not wui.is_open())
 	# faza C: ulepszenia
 	results.clear()
 	var base_mag: int = Weapons.base_def(Weapons.M83).mag

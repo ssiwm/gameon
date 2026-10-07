@@ -204,7 +204,11 @@ static var _upgraded: Dictionary = {}          ## id * 10 + poziom → zbudowana
 ## Definicja broni z uwzględnieniem ulepszeń drużyny. Wszystkie systemy czytają ją przez tę funkcję.
 static func def(id: int) -> WeaponDef:
 	var i := clampi(id, 0, COUNT - 1)
-	var lv := int(levels.get(i, 0))
+	return def_at(i, int(levels.get(i, 0)))
+
+## Definicja broni na podanym poziomie ulepszeń (0 = baza) — też do podglądu „po zakupie” w warsztacie.
+static func def_at(id: int, lv: int) -> WeaponDef:
+	var i := clampi(id, 0, COUNT - 1)
 	if lv <= 0:
 		return defs()[i]
 	var k := i * 10 + lv
