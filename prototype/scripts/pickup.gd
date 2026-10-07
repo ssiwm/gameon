@@ -9,6 +9,7 @@ extends Node2D
 ##   cache   skrzynia z mapy: dodaje amunicję do WSZYSTKICH broni głównych noszonych przez drużynę
 ##   scrap   złom (rounds = wartość): dotknięcie przez dowolnego żywego gracza dodaje do łupu misji (scrap.gd)
 ##   tag     nieśmiertelnik (misja 1.1): dotknięcie przez dowolnego żywego gracza zalicza cel główny (mission.on_tag_taken)
+##   stash   ukryta skrytka (cel poboczny misji 1.1): jak złom (rounds = wartość), a do tego zalicza skrytkę w misji (mission.on_stash_found)
 ##   weapon  nie podnosi się samo: gracz naciska E (wymiana broni to decyzja, a nie
 ##           wypadek); serwer sprawdza odległość i przyznaje (level.gd)
 
@@ -29,6 +30,7 @@ const GLOW := {
 	"cache": Color(1.0, 0.78, 0.3),
 	"scrap": Color(0.95, 0.8, 0.4),
 	"tag": Color(0.6, 0.85, 1.0),
+	"stash": Color(0.95, 0.75, 0.35),
 }
 
 var kind := "health"
@@ -60,7 +62,7 @@ func _ready() -> void:
 		material = Lights.unshaded()          # skrzynkę i broń widać w ciemności
 		modulate = Color(0.88, 0.88, 0.88)
 	# poświata — przedmiot widać w ciemności, ale nie oświetla okolicy
-	_glow = Lights.make_light(Lights.radial(), 1.6, GLOW.get(kind, Color.WHITE), 0.6, false)
+	_glow = Lights.make_light(Lights.radial(), 0.9 if kind == "stash" else 1.6, GLOW.get(kind, Color.WHITE), 0.6, false)      # skrytka świeci słabo — trzeba ją znaleźć
 	_glow.position = Vector2(0, -8)
 	add_child(_glow)
 	if static_display:
@@ -141,7 +143,17 @@ func _draw() -> void:
 		return
 	var bob := 0.0 if (not _landed or static_display) else sin(_t * 3.0) * 1.5 - 1.5
 	var c: Color = GLOW.get(kind, Color.WHITE)
-	if kind == "tag":
+	if kind == "stash":
+		# zakopany worek: brązowy, ściągnięty rzemieniem, ze złotym połyskiem (widać go tylko z bliska)
+		var gl2 := 0.5 + 0.5 * sin(_t * 2.6)
+		draw_rect(Rect2(-6, -9 + bob, 12, 9), Color(0.14, 0.1, 0.06))
+		draw_rect(Rect2(-5, -8 + bob, 10, 8), Color(0.42, 0.3, 0.17))
+		draw_rect(Rect2(-5, -8 + bob, 10, 2), Color(0.55, 0.4, 0.22))
+		draw_rect(Rect2(-3, -10 + bob, 6, 3), Color(0.35, 0.25, 0.14))
+		draw_rect(Rect2(-4, -7 + bob, 8, 1), Color(0.2, 0.14, 0.08))
+		draw_rect(Rect2(1, -5 + bob, 3, 2), Color(0.95, 0.78, 0.32, 0.5 + 0.5 * gl2))
+		draw_rect(Rect2(-5, -12 + bob, 1, 1), Color(1.0, 0.9, 0.6, gl2))
+	elif kind == "tag":
 		# nieśmiertelnik: dwie blaszki na łańcuszku, błysk (widać go w ciemności)
 		var gl := 0.6 + 0.4 * sin(_t * 5.0)
 		draw_arc(Vector2(0, -9 + bob), 4.0, 0.2, PI - 0.2, 8, Color(0.55, 0.57, 0.62), 1.0)
@@ -256,6 +268,8 @@ func _try_pickup() -> void:
 			_try_scrap()
 		"tag":
 			_try_tag()
+		"stash":
+			_try_stash()
 
 ## Złom zbiera każdy żywy gracz (też bot) — wspólny łup drużyny.
 func _try_scrap() -> void:
@@ -263,6 +277,20 @@ func _try_scrap() -> void:
 		if p.dead or not _near(p):
 			continue
 		Scrap.add_loot(rounds)
+		var lvl := _level()
+		if lvl != null:
+			lvl.take_item(String(name))
+		return
+
+## Skrytkę zbiera każdy żywy gracz: złom do łupu i zaliczenie celu pobocznego misji.
+func _try_stash() -> void:
+	for pl in get_tree().get_nodes_in_group("players"):
+		if pl.dead or not _near(pl):
+			continue
+		Scrap.add_loot(rounds)
+		var mis := get_tree().get_first_node_in_group("mission")
+		if mis != null:
+			mis.on_stash_found()
 		var lvl := _level()
 		if lvl != null:
 			lvl.take_item(String(name))

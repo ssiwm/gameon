@@ -75,6 +75,8 @@ var _boss: Node = null
 var finale := false                    ## misja 1.1: trzeci nieśmiertelnik wziął kopalnię w obroty (zawał + wyjście po drugiej stronie)
 var finale_clock := 0.0               ## s od startu finału (wszystkie peery liczą lokalnie — radio na HUD)
 var _finale_t := -1.0                  ## serwer: odliczanie do zawału (s); < 0 = brak
+var stashes_found := 0                 ## cel poboczny 1.1: ukryte skrytki (replikowane)
+var stash_total := 0
 var _tags_taken := 0                   ## serwer: ile nieśmiertelników już podniesiono (misja 1.1)
 
 func _ready() -> void:
@@ -95,6 +97,7 @@ func rebind() -> void:
 	kind = String(lvl.objective) if lvl != null else "nests"
 	_boss = get_tree().get_first_node_in_group("boss")
 	_tags_taken = 0
+	stashes_found = 0
 	if _boss != null and not _boss.died.is_connected(_on_boss_died):
 		_boss.died.connect(_on_boss_died)
 	# cele są w scenie (ta sama ścieżka na każdym peerze)
@@ -113,6 +116,7 @@ func _count_goal() -> void:
 		var lvl := get_tree().get_first_node_in_group("level")
 		goal_total = lvl.tag_total() if lvl != null else 0
 		goal_left = maxi(0, goal_total - _tags_taken)
+		stash_total = lvl.stash_total() if lvl != null else 0
 	elif kind == "generators":
 		for g in get_tree().get_nodes_in_group("generators"):
 			goal_total += 1
@@ -156,6 +160,23 @@ func _physics_process(delta: float) -> void:
 	_sync_t -= delta
 	if _sync_t <= 0.0:
 		_broadcast()
+
+## Ukryta skrytka znaleziona (pickup.gd, serwer) — cel poboczny misji 1.1; za komplet jest bonus złomu.
+func on_stash_found() -> void:
+	if not NoiseMgr.is_server() or kind != "tags":
+		return
+	stashes_found += 1
+	print("[MISSION] hidden stash found %d/%d" % [stashes_found, stash_total])
+	_event.rpc("generator")
+	_broadcast()
+
+## Czy cel poboczny jest zaliczony: 1.1 — komplet skrytek, 1.2 — cicho (Uwaga poniżej progu); inne misje nie mają celu pobocznego.
+func side_done() -> bool:
+	if kind == "tags":
+		return stash_total > 0 and stashes_found >= stash_total
+	if kind == "generators":
+		return stealth_ok()
+	return false
 
 ## Nieśmiertelnik podniesiony (pickup.gd, serwer) — misja 1.1. Po ostatnim otwiera się ekstrakcja (bez bossa).
 func on_tag_taken() -> void:
@@ -303,7 +324,7 @@ func _success() -> void:
 	extract_progress = 1.0
 	print("[MISSION] SUCCESS time=%.1fs downs=%d attempts=%d" % [elapsed, downs, attempts])
 	if kind != "hub" and Scrap.enabled():
-		var side_ok := kind == "generators" and stealth_ok()
+		var side_ok := side_done()
 		var bonus := Scrap.BONUS_CLEAR + (Scrap.BONUS_SIDE if side_ok else 0) + (Scrap.BONUS_NO_DOWNS if downs == 0 else 0)
 		var gain := Scrap.bank_loot(bonus)
 		print("[SCRAP] mission banked +%d (bonus %d), wallet %d" % [gain, bonus, Scrap.bank])
@@ -332,7 +353,7 @@ func _record_result() -> void:
 		return
 	var id := String(lvl.map_id)
 	var title := String(lvl.MAPS[id].TITLE) if lvl.MAPS.has(id) else id
-	var stealth := (1 if stealth_ok() else 0) if kind == "generators" else -1
+	var stealth := (1 if side_done() else 0) if (kind == "generators" or kind == "tags") else -1
 	RunLog.add(id, title, elapsed, downs, attempts, stealth, Scrap.last_gain)
 
 ## Upadki ludzi (statystyka). Liczone na serwerze z replikowanego `dead`.
@@ -408,6 +429,7 @@ func on_restart(new_run: bool) -> void:
 		attempts += 1
 	_was_dead.clear()
 	_tags_taken = 0
+	stashes_found = 0
 	finale = false
 	_finale_t = -1.0
 	# cele wróciły (reset_enemy / reset_generator) — liczymy od nowa
@@ -420,11 +442,13 @@ func _broadcast() -> void:
 	_sync_t = SYNC_INTERVAL
 	if NoiseMgr.has_network() and multiplayer.is_server():
 		_sync.rpc(phase, nests_left, nests_total, exit_pos, extract_progress, elapsed, downs, attempts,
-			[NightShift.active, NightShift.stage, NightShift.mods, shift_cleared, shift_time, shift_downs, shift_record], peak_noise, finale)
+			[NightShift.active, NightShift.stage, NightShift.mods, shift_cleared, shift_time, shift_downs, shift_record], peak_noise, finale, stashes_found, stash_total)
 
 @rpc("authority", "call_remote", "reliable")
-func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d: int, att: int, shift: Array, peak: float, fin: bool) -> void:
+func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d: int, att: int, shift: Array, peak: float, fin: bool, st_found: int, st_total: int) -> void:
 	finale = fin
+	stashes_found = st_found
+	stash_total = st_total
 	peak_noise = peak
 	NightShift.active = bool(shift[0])
 	NightShift.stage = int(shift[1])
@@ -537,7 +561,7 @@ func objective_hint() -> String:
 	match phase:
 		Phase.OBJECTIVE:
 			if kind == "tags":
-				return "Walk over a dog tag to take it  ·  shooting is loud — sneak (SHIFT) to stay quiet"
+				return "Walk over a dog tag to take it  ·  side goal: %d hidden stashes (%d / %d)" % [stash_total, stashes_found, stash_total] if stash_total > 0 else "Walk over a dog tag to take it  ·  shooting is loud — sneak (SHIFT) to stay quiet"
 			if kind == "generators":
 				if not stealth_ok():
 					return "Hold E at a generator  ·  a running one keeps humming  ·  stealth bonus lost"
