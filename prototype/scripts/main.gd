@@ -13,6 +13,7 @@ const BOT_SCENE_PATH := "res://scenes/bot_companion.tscn"
 const WIPE_DELAY := 3.0
 
 const Combat := preload("res://scripts/combat.gd")
+const Codex := preload("res://scripts/codex.gd")
 const RunLog := preload("res://scripts/run_log.gd")
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
 const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
@@ -627,6 +628,11 @@ func _gen_test() -> void:
 	check.call("ulepszenia: M-83 T3 = magazynek %d→%d, obrażenia %.1f→%.2f, hałas %.2f→%.2f; baza nietknięta" % [base_mag, ed.mag, base_dmg, ed.damage, base_nmax, ed.n_max],
 		ed.mag == base_mag + 10 and is_equal_approx(ed.damage, base_dmg * 1.15) and is_equal_approx(ed.n_max, base_nmax * 0.7)
 		and Weapons.base_def(Weapons.M83).mag == base_mag and Weapons.def(Weapons.SPREAD12) == Weapons.base_def(Weapons.SPREAD12))
+	var cat := Codex.weapon_entry(Weapons.M83)
+	var cat_lr := Codex.weapon_entry(Weapons.SOKOL6)
+	var tier_states := (cat["tiers"] as Array).map(func(t: Dictionary) -> int: return int(t["state"]))
+	check.call("katalog broni: M-83 pokazuje 3 poziomy (stany %s, tag '%s'), zablokowana broń ma informację o dostępie ('%s')" % [str(tier_states), cat["tag"], (cat_lr["access"] as String)],
+		tier_states == [0, 0, 0] and (cat["tag"] as String).contains("TIER 3 / 3") and (cat_lr["access"] as String).begins_with("Locked"))
 	Scrap.levels.clear()
 	Scrap.unlocked.clear()
 	Scrap.bank = saved_bank

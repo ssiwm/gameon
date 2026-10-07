@@ -7,6 +7,7 @@ extends RefCounted
 const Enemy := preload("res://scripts/enemy.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const Upgrades := preload("res://scripts/upgrades.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 
 const PX_PER_M := 16.0               ## lights.gd: 1 m = 16 px
@@ -104,10 +105,29 @@ const WEAPON_TEXT := {
 static func arsenal() -> Array:
 	var out: Array = []
 	for d: WeaponDef in Weapons.defs():
-		var notes: Array = WEAPON_TEXT.get(d.key, ["", ""])
-		out.append({"title": d.name, "tag": _slot_name(d), "accent": d.tracer_color, "portrait": {"type": "gun", "row": d.gun_row, "color": d.tracer_color},
-			"stats": _weapon_stats(d), "text": notes[0], "tip": notes[1]})
+		out.append(weapon_entry(d.id))
 	return out
+
+## Wpis katalogu dla broni `id` — liczony świeżo (statystyki z ulepszeniami drużyny, poziomy, dostęp), bo zmieniają się w kryjówce.
+static func weapon_entry(id: int) -> Dictionary:
+	var base: WeaponDef = Weapons.base_def(id)
+	var d: WeaponDef = Weapons.def(id)
+	var notes: Array = WEAPON_TEXT.get(d.key, ["", ""])
+	var tag := _slot_name(d)
+	var tiers: Array = []
+	var access := ""
+	if not Scrap.is_unlocked(id):
+		var price := Scrap.price_of(id)
+		access = ("Locked — %d scrap at the workshop" % price) if price > 0 else "Locked — available in a later zone"
+	if Upgrades.has_tiers(String(d.key)):
+		var lv := Scrap.level_of(id)
+		tag += "  ·  TIER %d / %d" % [lv, Upgrades.MAX_LEVEL] if Scrap.is_unlocked(id) else ""
+		for i in range(1, Upgrades.MAX_LEVEL + 1):
+			var t := Upgrades.tier(String(d.key), i)
+			var state := 0 if i <= lv else (1 if i == lv + 1 else 2)      # 0 zainstalowany, 1 następny, 2 dalszy
+			tiers.append({"head": "T%d  %s" % [i, t["name"]], "desc": t["desc"], "cost": Upgrades.COSTS[i - 1], "state": state})
+	return {"title": base.name, "tag": tag, "accent": base.tracer_color, "portrait": {"type": "gun", "row": base.gun_row, "color": base.tracer_color},
+		"stats": _weapon_stats(d), "text": notes[0], "tip": notes[1], "weapon_id": id, "tiers": tiers, "access": access}
 
 static func _slot_name(d: WeaponDef) -> String:
 	match d.slot:
