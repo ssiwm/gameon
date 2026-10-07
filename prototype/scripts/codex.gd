@@ -74,9 +74,8 @@ static func bestiary() -> Array:
 	out.append({"title": "THE LEECH", "tag": "Boss — hides under water", "accent": Color(0.35, 0.68, 0.62),
 		"portrait": {"type": "leech"},
 		"stats": [["HP", "%d (+%d per extra player)" % [int(Leech.BASE_HP), int(Leech.HP_PER_EXTRA_HUMAN)]],
-			["Submerged, in the dark", "%d%% damage" % int(Leech.SUB_MULT * 100.0)], ["Shadow in light / surfaced", "full damage"],
-			["Grab", "%d s — free it with %d%% of its HP" % [int(Leech.GRAB_TIME), int(Leech.GRAB_FRAC * 100.0)]],
-			["Phase 2", "below 66% — Cutpurses from the shores"], ["Phase 3", "below 33% — scream, double ambush"]],
+			["Hidden", "%d%% damage" % int(Leech.SUB_MULT * 100.0)], ["Phase 2", "below 66% — adds"], ["Phase 3", "below 33% — scream"],
+			["Surfaced", "full damage"], ["Grab", "%d s — free: %d%% HP" % [int(Leech.GRAB_TIME), int(Leech.GRAB_FRAC * 100.0)]]],   # krótkie etykiety i wartości: siatka 4-kolumnowa nie może być szersza niż DETAIL_W (jak u Żyły)
 		"text": "Lives under the flooded hall's pool. Unseen in the dark: only ripples betray it. It swims under whoever wades in the water, telegraphs with churning rings, then bursts out, bites and grabs. A grabbed player is dragged under in four seconds and goes down. Anyone on a catwalk above the water is out of its reach.",
 		"tip": "Throw a flare (F) or sweep the flashlight over the ripples — the shadow shows, and then it takes full damage. Shoot a surfaced leech with everything. If someone is grabbed, the whole squad must hurt it; a grabbed player's melee counts double."})
 	return out

@@ -35,6 +35,10 @@ func show_spec(s: Dictionary, col: Color) -> void:
 			if Sprites.has(s["sheet"]):
 				_tex = Sprites.texture(Sprites.DIR + String(s["sheet"]) + ".png")
 				_tex_glow = Sprites.texture(Sprites.DIR + String(s["sheet"]) + "_glow.png")
+		"leech":
+			if Sprites.has("leech"):                         # wynurzoną Pijawkę rysuje arkusz; bez niego zostaje rysunek z kodu
+				_tex = Sprites.texture(Sprites.DIR + "leech.png")
+				_tex_glow = Sprites.texture(Sprites.DIR + "leech_glow.png")
 		"gun":
 			_gun_info = GunIcon.sheet_info()
 	queue_redraw()
@@ -184,6 +188,10 @@ func _draw_leech(floor_y: float) -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		draw_circle(Vector2(cx + 12.0 * k, floor_y + 5.0 * k), 1.6 * k, Color(0.85, 0.95, 0.9, a))
 		draw_circle(Vector2(cx + 18.0 * k, floor_y + 5.0 * k), 1.6 * k, Color(0.85, 0.95, 0.9, a))
+	if _tex != null:
+		if up > 0.02:
+			_draw_leech_sprite(floor_y, up, cyc)
+		return
 	if up > 0.02:
 		var skin := Color(0.2, 0.32, 0.27)
 		for i in 6:
@@ -200,6 +208,26 @@ func _draw_leech(floor_y: float) -> void:
 			var o := Vector2(cx + 5.0 * k, hy + 2.0 * k)
 			draw_line(o + Vector2(cos(ang), sin(ang)) * 4.0 * k, o + Vector2(cos(ang), sin(ang)) * 7.5 * k, Color(0.92, 0.9, 0.8), maxf(1.0, k * 0.8))
 		draw_rect(Rect2(cx - 4.0 * k, hy - 4.0 * k, 2.0 * k, 2.0 * k), Color(0.95, 0.9, 0.5))
+
+## Wynurzona Pijawka z arkusza: wynurza się od góry (okno przycięte przy linii wody), w środku cyklu otwiera paszczę szeroko („grab").
+func _draw_leech_sprite(floor_y: float, up: float, cyc: float) -> void:
+	var man: Dictionary = Sprites.manifest()["sheets"]["leech"]
+	var fr: Array = man["frame"]
+	var an_name := "grab" if (cyc >= 3.8 and cyc < 4.9) else "idle"
+	var an: Dictionary = man["anims"][an_name]
+	var frame := int(_t * float(an["fps"])) % int(an["frames"])
+	var top := 8.0                                             # pusty margines nad głową: bez niego skala przeskakuje na 1/2
+	var rows := 154.0 - top                                    # wiersze arkusza do dołu piany (linia wody = wiersz 148)
+	var fsz := Vector2(float(fr[0]), float(fr[1]))
+	var s := PixelArt.fit(self, Vector2(fsz.x, rows), Vector2(size.x - 6.0, floor_y + 6.0), 8 if not thumb else 3)
+	var shown := rows * up
+	var bottom := floor_y + (154.0 - 148.0) * s * up
+	var pos := PixelArt.snap(self, Vector2((size.x - fsz.x * s) * 0.5, bottom - shown * s))
+	var src := Rect2(frame * fsz.x, int(an["row"]) * fsz.y + top, fsz.x, shown)
+	var dst := Rect2(pos, Vector2(fsz.x * s, shown * s))
+	draw_texture_rect_region(_tex, dst, src)
+	if _tex_glow != null and bool(man.get("glow", false)):
+		draw_texture_rect_region(_tex_glow, dst, src)
 
 func _draw_vein(floor_y: float) -> void:
 	var k := minf(size.x / 150.0, (floor_y + 6.0) / 62.0)

@@ -43,6 +43,9 @@ func _ready() -> void:
 	add_child(center)
 	var card := PanelContainer.new()
 	card.custom_minimum_size = Vector2(CARD_W, 0)
+	var card_bg := UiTheme.panel_box()
+	card_bg.bg_color.a = 1.0                       # pełne krycie: napisy świata (tablice, ściana wyników) nie prześwitują przez opisy
+	card.add_theme_stylebox_override("panel", card_bg)
 	center.add_child(card)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)

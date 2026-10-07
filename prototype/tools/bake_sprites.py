@@ -27,6 +27,7 @@ import gun_art  # noqa: E402  (siatki pixel-artu 12 broni)
 try:  # postacie 1.7: rigi + render 4× (numpy + Pillow); bez nich zostaje stary rysunek z prostokątów
     import char_art  # noqa: E402
     import char_boss  # noqa: E402
+    import char_leech  # noqa: E402
     import gun_icons_hd  # noqa: E402
     import char_monsters_hd as hd  # noqa: E402
     import char_monsters  # noqa: E402
@@ -172,8 +173,11 @@ def char_sheet(name, fw, fh, anims, body, glow):
     }
 
 
-def bake_chars_hd():
+def bake_chars_hd(only=None):
+    """only: zbiór nazw arkuszy do przepieczenia (reszta zostaje nietknięta); None = wszystkie."""
     for name, col in PLAYER_VARIANTS.items():
+        if only:
+            break
         body, glow = char_player.frames_for(tuple(int(v * 255) for v in col), bot=(name == "bot"))
         char_sheet(name, char_player.FWD, char_player.FHD, char_player.PLAYER_ANIMS, body, glow)
         MANIFEST["sheets"][name]["scale"] = 1.0 / char_player.DENSITY      # 2× gęstość pikseli: gra rysuje arkusz w skali 0,5
@@ -190,11 +194,16 @@ def bake_chars_hd():
         ("skoczek", hd.skoczek, hd.SKOCZEK_ANIMS) + tuple(v * hd.DENSITY for v in hd.SKOCZEK_HD),
         ("nest", hd.nest, hd.NEST_ANIMS) + tuple(v * hd.DENSITY for v in hd.NEST_HD),
         ("vein", char_boss.vein, char_boss.BOSS_ANIMS, char_boss.FWD, char_boss.FHD),
+        ("leech", char_leech.leech, char_leech.LEECH_ANIMS, char_leech.FWD, char_leech.FHD),
     ):
+        if only and name not in only:
+            continue
         body, glow = char_monsters.monster_frames(fn, anims)
         char_sheet(name, fw, fh, anims, body, glow)
         if name == "vein":
             MANIFEST["sheets"][name]["scale"] = 1.0 / char_boss.DENSITY       # gra rysuje arkusz bossa w tej skali
+        elif name == "leech":
+            MANIFEST["sheets"][name]["scale"] = 1.0 / char_leech.DENSITY      # jw. (Pijawka)
         elif name == "mimik":
             MANIFEST["sheets"][name]["scale"] = 1.0 / char_player.DENSITY     # Mimik ma sylwetkę gracza — ta sama gęstość
         else:
@@ -693,7 +702,22 @@ def bake_props():
     MANIFEST["props"] = PROPS
 
 
+def bake_only(names):
+    """Przepieka tylko wskazane arkusze postaci (np. `--only=leech`) i dopisuje je do istniejącego sprites.json."""
+    path = os.path.join(ART, "sprites.json")
+    with open(path) as f:
+        MANIFEST.update(json.load(f))
+    bake_chars_hd(set(names))
+    with open(path, "w") as f:
+        json.dump(MANIFEST, f, indent=1)
+    print("przepieczone: %s" % ", ".join(sorted(names)))
+    print("NASTĘPNY KROK: godot --headless --path . --import")
+
+
 def main():
+    only = [a[7:].split(",") for a in sys.argv[1:] if a.startswith("--only=")]
+    if only and HAVE_CHARS:
+        return bake_only(only[0])
     if HAVE_CHARS:
         bake_chars_hd()
     else:
