@@ -235,7 +235,11 @@ func _place_cell(c: int, r: int) -> void:
 	if not KINDS.has(ch):
 		# znacznik albo pusto — tło dziedziczymy z lewego sąsiada, żeby
 		# postać w posterunku nie zostawiała dziury w ścianie
-		var left := _ch(c - 1, r)
+		# (szukamy w lewo ponad sąsiednimi znacznikami — kilka znaczników obok siebie nie zostawia czarnych dziur w tle)
+		var lc := c - 1
+		while lc >= 0 and c - lc <= 8 and ch != "." and not KINDS.has(_ch(lc, r)) and _ch(lc, r) != ".":
+			lc -= 1
+		var left := _ch(lc, r) if lc >= 0 else "."
 		if ch != "." and KINDS.has(left) and KINDS[left][2] == 2:
 			_back.set_cell(Vector2i(c, r), 0, Vector2i(KINDS[left][0], _row(c, r, false)))
 		return

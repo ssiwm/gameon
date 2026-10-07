@@ -1,8 +1,11 @@
 extends RefCounted
-## Kryjówka między misjami kampanii (GDD §10.3, etap 1): bez wrogów (NoiseMgr.safe_zone), ciepłe światło lamp, zbrojownia
-## z sześcioma stojakami (SPREAD-12, PELLET-8, LR-7, HKM-9, FALCON-6, SINEW-6 — wymiana broni z podglądem statystyk),
-## skrzynki z amunicją i tablica z odprawą następnej misji (podejdź — HUD pokaże cel i zagrożenia) warsztat (ława: [E] otwiera panel zakupów broni za złom), strzelnica (prawy koniec: linia strzału i 1 tarcza: 10 m, trafienia liczą obrażenia, serię i DPS) oraz ściana wyników (kreska za każdą ukończoną misję, lista czasów i upadków). Ekwipunek i amunicja
-## przechodzą z poprzedniej misji i do następnej (main._restart_mission z carry). Host rusza dalej [Enter]. 128 × 44 kafli.
+## Kryjówka między misjami kampanii (GDD §10.3): bez wrogów (NoiseMgr.safe_zone), ciepłe światło lamp. 128 × 44 kafli.
+## Układ w strefach od lewej, w kolejności „co robi drużyna po powrocie": wejście (dwa punkty startu) → ściana wyników (v) →
+## warsztat (h: [E] panel zakupów i ulepszeń za złom) → zbrojownia (sześć stojaków g od startowych po zablokowane: SPREAD-12,
+## PELLET-8, LR-7, HKM-9, FALCON-6, SINEW-6; skrzynki z amunicją a na obu końcach) → tablica z odprawą następnej misji (n) →
+## strzelnica (linia r i tarcza t 10 m). Bez rekwizytów-skrzyń — pusta podłoga to droga. Ekwipunek i amunicja przechodzą
+## z poprzedniej misji i do następnej (main._restart_mission z carry); wyjście na misję po gotowości wszystkich ([Enter]).
+## Mapa ma jeden wiersz znaczników i jeden wiersz lamp — po zmianie uruchom `--maptest`.
 
 const Weapons := preload("res://scripts/weapons.gd")
 
@@ -52,7 +55,7 @@ const MAP := [
 	"################################################################################################################################",
 	"################################################################################################################################",
 	"########CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC#######",
-	"########CbbbbblbbbbbbbbbbbbbbblbbbbbbbbbbbbbbblbbbbbbbbbbbbbbblbbbbbbbbblbbbbbbbbbbbbblbbbbbbbbblbbbbbbbbblbbbbbbbbblbbbC#######",
+	"########CbbbbbbblbbbbbbbbbbblbbbbbbbbbbblbbbbbbbbbbblbbbbbbbbbbblbbbbbbbbbbblbbbbbbbbbbblbbbbbbbbbbblbbbbbbbbblbbbbbbbbbC#######",
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
@@ -60,7 +63,7 @@ const MAP := [
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
-	"########CbbvSbbSbbkkbakbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbababbbbnbkbbhbbbbbrbbbbbbbbbtbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
+	"########CbbbSbSbbbbbvbbbbbbbbbbhbbbbbbabbbbbbgbbbbbbgbbbbbbgbbbbbbgbbbbbbgbbbbbbgbbbbbbabbbbbbbnbbbbbbrbbbbbbbbbtbbbbbbbC#######",
 	"########CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC#######",
 	"################################################################################################################################",
 	"################################################################################################################################",
