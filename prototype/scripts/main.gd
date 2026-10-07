@@ -644,6 +644,16 @@ func _tag_test() -> void:
 	await get_tree().create_timer(0.8).timeout
 	check.call("wipe: nieśmiertelniki wróciły (%d na ziemi, cel %d/%d, próba %d)" % [tags_now.call().size(), mission.goal_left, mission.goal_total, mission.attempts],
 		tags_now.call().size() == 3 and mission.goal_left == 3 and mission.attempts == 2 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
+	# cel poboczny: dwie ukryte skrytki (na półkach poza główną trasą), każda wpada do łupu i zalicza licznik
+	var stash_nodes := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "stash")
+	check.call("skrytki: %d na mapie, cel poboczny 0 / %d, odprawa liczy %d" % [stash_nodes.size(), mission.stash_total, int(brief.get("stashes", 0))], stash_nodes.size() == 2 and mission.stash_total == 2 and int(brief.get("stashes", 0)) == 2 and mission.stashes_found == 0)
+	var loot_before := Scrap.loot
+	for sn in stash_nodes:
+		p.global_position = (sn as Node2D).global_position + Vector2(0, -4)
+		p.velocity = Vector2.ZERO
+		await get_tree().create_timer(0.8).timeout
+	check.call("skrytki zebrane: %d / %d, łup +%d, cel poboczny zaliczony=%s" % [mission.stashes_found, mission.stash_total, Scrap.loot - loot_before, str(mission.side_done())],
+		mission.stashes_found == 2 and Scrap.loot - loot_before == 2 * Scrap.STASH_VALUE and mission.side_done())
 	for i in 3:
 		var near: Array = tags_now.call()
 		near.sort_custom(func(a: Node, b: Node) -> bool: return a.global_position.x < b.global_position.x)
@@ -654,7 +664,9 @@ func _tag_test() -> void:
 		mission.goal_left == 0 and mission.phase == MISSION_SCRIPT.Phase.EXTRACT and mission.exit_pos.x > 2900.0)
 	p.global_position = mission.exit_pos + Vector2(0, -2)
 	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
-	check.call("ekstrakcja → SUCCESS, złom z bonusu misji (%d)" % Scrap.last_gain, mission.phase == MISSION_SCRIPT.Phase.SUCCESS and Scrap.last_gain >= Scrap.BONUS_CLEAR)
+	check.call("ekstrakcja → SUCCESS, złom: łup skrytek + bonus misji + bonus celu pobocznego (%d)" % Scrap.last_gain,
+		mission.phase == MISSION_SCRIPT.Phase.SUCCESS and Scrap.last_gain >= 2 * Scrap.STASH_VALUE + Scrap.BONUS_CLEAR + Scrap.BONUS_SIDE)
+	check.call("dziennik: cel poboczny 1.1 zaliczony (side=%s)" % str(RunLog.entries.back()["stealth"]), int(RunLog.entries.back()["stealth"]) == 1)
 	check.call("dziennik misji: wpis 1.1", not RunLog.entries.is_empty() and String(RunLog.entries.back()["id"]) == "z1_m1")
 	_continue_after_result()
 	await get_tree().create_timer(0.6).timeout
@@ -1068,6 +1080,8 @@ func _map_test() -> void:
 			points.append(["Drezyna", car.global_position])
 		for i in (level._map_items.get("F", []) as Array).size():
 			points.append(["Nieśmiertelnik %d" % (i + 1), (level._map_items["F"] as Array)[i]])
+		for i in (level._map_items.get("H", []) as Array).size():
+			points.append(["Skrytka %d" % (i + 1), (level._map_items["H"] as Array)[i]])
 		for b in get_tree().get_nodes_in_group("board"):
 			points.append(["Tablica", b.global_position])
 		for n in get_tree().get_nodes_in_group("nests"):

@@ -22,6 +22,7 @@ const DROP_CHANCE := 0.35
 const DROP := {"trzosek": 2, "wolek": 6, "slepiec": 5, "podsluchacz": 4, "mimik": 10, "skoczek": 5, "cma": 4}
 const CACHE_VALUE := 6               ## skrytka z mapy
 const BOSS_VALUE := 30
+const STASH_VALUE := 20               ## ukryta skrytka (cel poboczny misji 1.1)
 const BONUS_CLEAR := 30               ## za ukończenie misji
 const BONUS_SIDE := 15                ## za cel poboczny
 const BONUS_NO_DOWNS := 10            ## za misję bez upadków

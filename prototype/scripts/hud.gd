@@ -983,6 +983,7 @@ func _fill_result(m: Node) -> void:
 		if m.kind == "tags":
 			_style_result("EXTRACTION COMPLETE", "The patrol's tags are with the squad — time to go home.", UiTheme.OK)
 			rows = [["Time", _mmss(m.elapsed)], ["Dog tags found", "%d / %d" % [m.goal_total, m.goal_total]],
+				["Hidden stashes", ("%d / %d" % [m.stashes_found, m.stash_total]) + ("  — bonus" if m.side_done() else "")],
 				["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts], ["Scrap banked", "+%d" % Scrap.last_gain]]
 		elif m.kind == "generators":
 			_style_result("EXTRACTION COMPLETE", "The broadcast is over — the squad is out.", UiTheme.OK)
@@ -1177,6 +1178,8 @@ func _fill_brief(info: Dictionary) -> void:
 		rows.append([Color(0.2, 0.2, 0.24), "STALKER", "x1", "Cannot be killed"])
 	if int(info.get("tags", 0)) > 0:
 		rows.append([Color(0.62, 0.85, 1.0), "DOG TAG", "x%d" % int(info["tags"]), "Mission objective"])
+	if int(info.get("stashes", 0)) > 0:
+		rows.append([Color(0.95, 0.75, 0.35), "STASH", "x%d" % int(info["stashes"]), "Side goal — hidden"])
 	if int(info["nests"]) > 0:
 		rows.append([Color(0.85, 0.4, 0.35), "NEST", "x%d" % int(info["nests"]), "Mission objective"])
 	if bool(info["boss"]):

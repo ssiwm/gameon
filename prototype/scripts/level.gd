@@ -421,7 +421,7 @@ func _exposure(c: int, r: int) -> int:
 ## Znaczniki → postacie. Nazwy numerowane od lewej do prawej, identycznie
 ## na każdym peerze.
 func _spawn_entities() -> void:
-	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "l": [], "k": [], "o": [], "a": [], "g": []}
+	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "l": [], "k": [], "o": [], "a": [], "g": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -434,7 +434,7 @@ func _spawn_entities() -> void:
 				"e": exits_alt.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "v", "r", "t", "u", "h", "F", "l", "k", "o", "a", "g": found[ch].append(p)
+				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "v", "r", "t", "u", "h", "F", "H", "l", "k", "o", "a", "g": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -511,7 +511,7 @@ func _spawn_entities() -> void:
 			# fizyka uznawała za „w środku" i skrzynia przelatywała piętro niżej
 			pr.position = found[k[0]][i] + Vector2(0, -1)
 			add_child(pr)
-	_map_items = {"a": found["a"], "g": found["g"], "u": found["u"], "F": found["F"]}
+	_map_items = {"a": found["a"], "g": found["g"], "u": found["u"], "F": found["F"], "H": found["H"]}
 	_spawn_map_items()
 	if stalker_home != Vector2.ZERO:         # kryjówka (bez znacznika X) nie ma Stalkera
 		var s := STALKER_SCENE.instantiate()
@@ -523,6 +523,10 @@ func _spawn_entities() -> void:
 		b.name = "Boss"
 		b.position = boss_home
 		add_child(b)
+
+## Ile ukrytych skrytek (znaczniki „H") ma bieżąca mapa — cel poboczny misji 1.1.
+func stash_total() -> int:
+	return (_map_items.get("H", []) as Array).size() if Scrap.enabled() else 0
 
 ## Ile nieśmiertelników (znaczniki „F") ma bieżąca mapa — cel główny misji 1.1.
 func tag_total() -> int:
@@ -541,6 +545,7 @@ func briefing(id: String) -> Dictionary:
 	var boss := false
 	var gens := 0
 	var tags := 0
+	var stashes := 0
 	for row in m.MAP:
 		for ch in (row as String):
 			if THREAT_CHARS.has(ch):
@@ -555,7 +560,9 @@ func briefing(id: String) -> Dictionary:
 				gens += 1
 			elif ch == "F":
 				tags += 1
-	return {"title": m.TITLE, "brief": m.BRIEF, "counts": counts, "stalker": stalker, "nests": nests, "boss": boss, "generators": gens, "tags": tags}
+			elif ch == "H":
+				stashes += 1
+	return {"title": m.TITLE, "brief": m.BRIEF, "counts": counts, "stalker": stalker, "nests": nests, "boss": boss, "generators": gens, "tags": tags, "stashes": stashes}
 
 ## Punkt zawieszenia pod sufitem nad znacznikiem: pierwsza bryła w górę (kolumna znacznika), a wróg
 ## wisi tuż pod nią (stopy = dół sprite'a). Bez sufitu zostaje na podłodze.
@@ -587,6 +594,10 @@ func _spawn_map_items() -> void:
 	var guns: Array = _map_items.get("g", [])
 	for i in guns.size():
 		_add_map_item("MapGun%d" % i, "weapon", _weapons[i % _weapons.size()], guns[i])
+	if Scrap.enabled():
+		var stash: Array = _map_items.get("H", [])
+		for i in stash.size():
+			_add_map_item("MapStash%d" % i, "stash", 0, stash[i], Scrap.STASH_VALUE)
 	var tags: Array = _map_items.get("F", [])
 	for i in tags.size():
 		_add_map_item("MapTag%d" % i, "tag", 0, tags[i])
