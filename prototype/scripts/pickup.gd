@@ -69,9 +69,26 @@ func _ready() -> void:
 		_vel = Vector2.ZERO
 		_floor_y = global_position.y
 	else:
-		_vel = Vector2(randf_range(-40.0, 40.0), -170.0)
+		# podskok deterministyczny z nazwy węzła (ta sama u wszystkich peerów) — przedmiot ląduje w tym samym miejscu u każdego
+		var rng := RandomNumberGenerator.new()
+		rng.seed = hash(String(name))
+		_vel = Vector2(rng.randf_range(-40.0, 40.0), -170.0)
+		_unstick()
 		_floor_y = _find_floor(global_position)
 	queue_redraw()
+
+## Przedmiot nie może zaczynać w bryle (np. wróg zginął przy ścianie): wypychamy go w bok na najbliższe wolne miejsce.
+func _unstick() -> void:
+	var space := get_world_2d().direct_space_state
+	for step in range(0, 40):
+		for sgn in [1.0, -1.0]:
+			var pt := global_position + Vector2(sgn * float(step) * 2.0, -6.0)
+			var q := PhysicsPointQueryParameters2D.new()
+			q.position = pt
+			q.collision_mask = 1
+			if space.intersect_point(q, 1).is_empty():
+				global_position.x += sgn * float(step) * 2.0
+				return
 
 func _find_floor(from: Vector2) -> float:
 	var q := PhysicsRayQueryParameters2D.create(from + Vector2(0, -6), from + Vector2(0, 200), 1 | 16)
@@ -83,10 +100,27 @@ func _physics_process(delta: float) -> void:
 	if not _landed:
 		# podskok i opad na podłogę (bez ciała fizycznego — to tylko znacznik)
 		_vel.y += FALL_G * delta
-		global_position += _vel * delta
-		if _vel.y > 0.0 and global_position.y >= _floor_y:
-			global_position = Vector2(roundf(global_position.x), _floor_y)   # lądowanie na pełnym pikselu
-			_landed = true
+		var from := global_position
+		var next := from + _vel * delta
+		var space := get_world_2d().direct_space_state
+		# ściana na drodze w poziomie: zatrzymaj się przed nią (wcześniej przedmiot wpadał w skałę i był nie do podniesienia)
+		if absf(_vel.x) > 0.01:
+			var hq := PhysicsRayQueryParameters2D.create(from + Vector2(0, -6), Vector2(next.x + signf(_vel.x) * 3.0, from.y - 6.0), 1)
+			var hh := space.intersect_ray(hq)
+			if not hh.is_empty():
+				next.x = from.x
+				_vel.x = 0.0
+		# podłoga pod nowym punktem (przy dryfie bywa inna niż pod punktem startu)
+		if _vel.y > 0.0:
+			var fq := PhysicsRayQueryParameters2D.create(Vector2(next.x, from.y - 4.0), Vector2(next.x, next.y + 1.0), 1 | 16)
+			var fh := space.intersect_ray(fq)
+			if not fh.is_empty():
+				global_position = Vector2(roundf(next.x), fh["position"].y)         # lądowanie na pełnym pikselu
+				_landed = true
+			else:
+				global_position = next
+		else:
+			global_position = next
 	var bob := 0.0 if (not _landed or static_display) else sin(_t * 3.0) * 1.5 - 1.5
 	if not _spr.is_empty():
 		(_spr[0] as Node2D).position.y = bob
