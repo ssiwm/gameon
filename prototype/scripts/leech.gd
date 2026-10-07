@@ -15,7 +15,7 @@ const Vfx := preload("res://scripts/vfx.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 
 enum State { DORMANT, AWAKE, DEAD }
-enum Mode { SUB, WIND, UP }               ## zanurzona / zapowiedź zasadzki / wynurzona
+enum Mode { SUB, WIND, UP, GRAB }         ## zanurzona / zapowiedź zasadzki / wynurzona / trzyma ofiarę (QTE drużyny)
 
 const BASE_HP := 600.0
 const HP_PER_EXTRA_HUMAN := 200.0
@@ -31,6 +31,10 @@ const POOL_FLOOR_TOL := 8.0               ## gracz stoi „w wodzie", gdy jego s
 const N_AMBUSH := 3.0
 const N_DEATH := 18.0
 const NOISE_FOLLOW_R := 260.0
+const GRAB_TIME := 4.0                    ## tyle trwa wciąganie; potem ofiara trafia pod wodę (down)
+const GRAB_FRAC := 0.12                   ## ułamek maks. HP, który drużyna musi zadać w tym oknie, żeby Pijawka puściła
+const GRAB_MELEE_MULT := 2.0              ## cios chwyconego (maczeta) liczy się do uwolnienia podwójnie
+const GRAB_CD := [3.0, 2.4, 1.8]          ## przerwa po chwycie (puszczonym albo dokończonym)
 
 ## Pola, których oczekują wspólne systemy wrogów (boty, haki, testy) — Pijawka udaje „wroga": zapowiedź, żywy, aktywny.
 var kind := "leech"
@@ -57,6 +61,11 @@ var pool_x1 := 0.0
 var surf_y := 0.0                          ## poziom dna basenu (y stóp postaci)
 var home_x := 0.0
 
+var grab_victim_id := 0                    ## player_id chwyconego (synchronizowane do HUD), 0 = nikt
+var grab_progress := 0.0                   ## 0..1: ile z wymaganych obrażeń drużyna już zadała
+var grab_time_left := 0.0
+var _grab_victim: Node2D = null            ## serwer
+var _grab_dmg := 0.0
 var _t_mode := 0.0
 var _cd := 0.0
 var _target_x := 0.0
@@ -127,6 +136,11 @@ func on_nest_lost(_left: int) -> void:
 	pass                                   # zgodność z mission.gd (gniazda to sprawa Żyły)
 
 func reset_enemy() -> void:
+	if _grab_victim != null and is_instance_valid(_grab_victim):
+		_grab_victim.deliver_grab(false, Vector2.ZERO)
+	_grab_victim = null
+	grab_victim_id = 0
+	grab_progress = 0.0
 	state = State.DORMANT
 	mode = Mode.SUB
 	hp = BASE_HP
@@ -211,6 +225,17 @@ func _tick_mode(delta: float) -> void:
 			_t_mode -= delta
 			if _t_mode <= 0.0:
 				_surface()
+		Mode.GRAB:
+			_t_mode -= delta
+			grab_time_left = maxf(0.0, _t_mode)
+			var need := max_hp * GRAB_FRAC
+			grab_progress = clampf(_grab_dmg / need, 0.0, 1.0)
+			if _grab_victim == null or not is_instance_valid(_grab_victim) or _grab_victim.dead:
+				_release(true)                       # ofiara padła z innej przyczyny albo zniknęła — nic nie trzymamy
+			elif _grab_dmg >= need:
+				_release(true)
+			elif _t_mode <= 0.0:
+				_release(false)
 		Mode.UP:
 			_t_mode -= delta
 			if _t_mode <= 0.0:
@@ -226,12 +251,48 @@ func _surface() -> void:
 	_t_mode = float(UP_TIME[ph])
 	_set_hitbox(true)
 	NoiseMgr.add_noise(N_AMBUSH, global_position)
+	var victim: Node2D = null
+	var best_d := INF
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.dead or p.is_queued_for_deletion():
 			continue
 		if absf(p.global_position.x - global_position.x) <= STRIKE_HALF_X and p.global_position.y >= surf_y - STRIKE_Y:
 			p.deliver_hit(1, global_position)
+			var d := absf(p.global_position.x - global_position.x) + (0.0 if not p.is_bot else 6.0)     # człowiek ma pierwszeństwo przy remisie
+			if p.hp > 0 and d < best_d:
+				best_d = d
+				victim = p
 	_event.rpc("surface")
+	if victim != null and not victim.dead:
+		_begin_grab(victim)
+
+## Chwyt: ofiara przypięta przy pysku, Pijawka odsłonięta na GRAB_TIME; drużyna musi zadać GRAB_FRAC maks. HP, żeby ją puściła.
+func _begin_grab(victim: Node2D) -> void:
+	_grab_victim = victim
+	_grab_dmg = 0.0
+	mode = Mode.GRAB
+	_t_mode = GRAB_TIME
+	grab_victim_id = int(victim.player_id)
+	victim.deliver_grab(true, Vector2(global_position.x - 16.0, surf_y))
+	_event.rpc("grab")
+
+func _release(success: bool) -> void:
+	var ph := clampi(phase - 1, 0, 2)
+	var victim := _grab_victim
+	_grab_victim = null
+	grab_victim_id = 0
+	grab_progress = 0.0
+	grab_time_left = 0.0
+	if victim != null and is_instance_valid(victim):
+		victim.deliver_grab(false, Vector2.ZERO)
+		if not success:
+			victim.deliver_hit(99, global_position)        # wciągnięta pod wodę: down (można podnieść)
+	mode = Mode.SUB
+	_set_hitbox(false)
+	_cd = float(GRAB_CD[ph])
+	if success:
+		global_position.x = clampf(global_position.x + (60.0 if randf() < 0.5 else -60.0), pool_x0, pool_x1)    # cofa się po dostaniu w pysk
+	_event.rpc("released" if success else "dragged")
 
 # ---------------------------------------------------------------- obrażenia
 
@@ -239,19 +300,21 @@ func _surface() -> void:
 func take_hit(info: Dictionary) -> Dictionary:
 	if not NoiseMgr.is_server():
 		return {}
-	var exposed := mode == Mode.UP or revealed
+	var exposed := mode == Mode.UP or mode == Mode.GRAB or revealed
 	var before := hp
+	if mode == Mode.GRAB and _grab_victim != null and String(info.get("type", "")) == "melee" and int(info.get("shooter", -1)) == int(_grab_victim.player_id):
+		_grab_dmg += float(info["amount"]) * (GRAB_MELEE_MULT - 1.0)       # cios chwyconego liczy się podwójnie (reszta w _hit)
 	_hit(float(info["amount"]), exposed)
 	return {"hit": true, "dealt": before - hp, "killed": state == State.DEAD,
 		"mat": Arsenal.Mat.FLESH if exposed else Arsenal.Mat.WOOD}
 
 func take_bullet_dir(_from_pos: Vector2, dmg: float, _dir: Vector2) -> void:
 	if NoiseMgr.is_server():
-		_hit(dmg, mode == Mode.UP or revealed)
+		_hit(dmg, mode == Mode.UP or mode == Mode.GRAB or revealed)
 
 func take_bullet(_from_pos: Vector2, dmg: float = 8.0) -> void:
 	if NoiseMgr.is_server():
-		_hit(dmg, mode == Mode.UP or revealed)
+		_hit(dmg, mode == Mode.UP or mode == Mode.GRAB or revealed)
 
 func _hit(dmg: float, exposed: bool) -> void:
 	if state != State.AWAKE:
@@ -260,6 +323,8 @@ func _hit(dmg: float, exposed: bool) -> void:
 		dmg *= SUB_MULT
 	else:
 		_flash = 0.08
+		if mode == Mode.GRAB:
+			_grab_dmg += dmg
 	hp -= dmg
 	if phase == 1 and hp <= max_hp * 0.66:
 		phase = 2
@@ -273,6 +338,12 @@ func _hit(dmg: float, exposed: bool) -> void:
 		_send_state(false)
 
 func _die() -> void:
+	if _grab_victim != null:
+		var v := _grab_victim
+		_grab_victim = null
+		grab_victim_id = 0
+		if is_instance_valid(v):
+			v.deliver_grab(false, Vector2.ZERO)
 	state = State.DEAD
 	mode = Mode.UP
 	hp = 0.0
@@ -296,17 +367,20 @@ func _send_state(now: bool) -> void:
 	if not now and _net_t > 0.0:
 		return
 	_net_t = 0.066
-	_sync.rpc(state, hp, max_hp, mode, revealed, phase, global_position.x)
+	_sync.rpc(state, hp, max_hp, mode, revealed, phase, global_position.x, grab_victim_id, grab_progress, grab_time_left)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(s: int, h: float, mh: float, m: int, rev: bool, ph: int, x: float) -> void:
+func _sync(s: int, h: float, mh: float, m: int, rev: bool, ph: int, x: float, gv: int, gp: float, gt: float) -> void:
+	grab_victim_id = gv
+	grab_progress = gp
+	grab_time_left = gt
 	if h < hp - 0.01 and (m == Mode.UP or rev):
 		_flash = 0.08
 	state = s
 	hp = h
 	max_hp = mh
 	if m != mode:
-		_set_hitbox(m == Mode.UP)
+		_set_hitbox(m == Mode.UP or m == Mode.GRAB)
 	mode = m
 	revealed = rev
 	phase = ph
@@ -333,6 +407,17 @@ func _event(kind: String) -> void:
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 3.0, 0.5)
 			Audio.play_variant_at("stalker_growl", 2, pos, Audio.BUS_STALKER, -2.0, 0.8)
 			_shake_near(3.0)
+		"grab":
+			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, -4.0, 0.9)
+			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 2.0, 0.45)
+			_shake_near(4.0)
+		"released":
+			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, -6.0, 1.15)
+			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 0.0, 0.8)
+		"dragged":
+			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 4.0, 0.4)
+			Audio.play_variant_at("stalker_growl", 2, pos, Audio.BUS_STALKER, 0.0, 0.55)
+			_shake_near(5.0)
 		"dive":
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, -2.0, 0.7)
 		"phase2":
@@ -362,7 +447,7 @@ func _process(delta: float) -> void:
 	if not visible:
 		return
 	_show = move_toward(_show, 1.0 if (revealed or mode != Mode.SUB or state == State.DEAD) else 0.0, delta * 3.0)
-	_light.energy = 0.55 if mode == Mode.UP else 0.0
+	_light.energy = 0.55 if (mode == Mode.UP or mode == Mode.GRAB) else 0.0
 	_ripple_t += delta
 	queue_redraw()
 
@@ -380,7 +465,7 @@ func _draw() -> void:
 			_draw_ripples(1.0, 1.7)                                  # szybsze, większe kręgi — zaraz się wynurzy
 			_draw_shadow(maxf(_show, 0.5))
 			draw_circle(Vector2(0, -2), 5.0 + 3.0 * sin(t * 18.0), Color(0.5, 0.65, 0.62, 0.25))
-		Mode.UP:
+		Mode.UP, Mode.GRAB:
 			_draw_body(t)
 
 ## Kręgi na powierzchni wody nad Pijawką — jedyna wskazówka w ciemności (ruch zdradza jej położenie).

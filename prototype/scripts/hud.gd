@@ -1199,6 +1199,13 @@ func _near_workshop() -> bool:
 			return ui == null or not ui.is_open()
 	return false
 
+## Pijawka trzymająca teraz kogoś (chwyt, QTE) albo null.
+func _grab_boss() -> Node:
+	var b := get_tree().get_first_node_in_group("boss")
+	if b != null and b.get("grab_victim_id") != null and int(b.grab_victim_id) != 0:
+		return b
+	return null
+
 ## Generator, przy którym stoi lokalny gracz (misja 1.2) albo null.
 func _near_generator() -> Node:
 	for g in get_tree().get_nodes_in_group("generators"):
@@ -1217,9 +1224,16 @@ func _drive_prompt() -> void:
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	var gen := _near_generator()
 	var car := get_tree().get_first_node_in_group("handcar")
+	var grab_boss := _grab_boss()
 	if wipe_left > 0.0:
 		_center.text = "SQUAD DOWN"
 		_center_sub.text = ("Extraction failed — the shift ends in %d" if NightShift.active else "Extraction failed — restarting the mission in %d") % ceili(wipe_left)
+	elif grab_boss != null and _player != null and not _player.dead:
+		# chwyt Pijawki (QTE drużyny): ofiara i koledzy widzą ten sam pasek — ile obrażeń jeszcze brakuje do uwolnienia
+		var mine: bool = int(grab_boss.grab_victim_id) == int(_player.player_id)
+		text = ("GRABBED — shoot the leech to break free  ·  %.0fs" if mine else "Teammate grabbed — shoot the leech!  ·  %.0fs") % float(grab_boss.grab_time_left)
+		prog = float(grab_boss.grab_progress)
+		col = UiTheme.DANGER
 	elif _player != null and _player.dead:
 		if _player.revive_progress > 0.0:
 			text = "Being revived…"
