@@ -37,7 +37,6 @@ const SESSION_W := 152.0         ## szerokość bloku „sesja + zegar" w prawym
 const WARN_Y := 0.255            ## wysokość ostrzeżenia nad środkiem ekranu (ułamek wysokości; 92/360)
 const CENTER_Y := 0.39           ## napis „SQUAD DOWN" (140/360)
 const HINT_Y := 0.66             ## karta podpowiedzi (nad paskiem kontekstowym)
-const WALL_ROWS := 6              ## ile ostatnich misji pokazuje ściana wyników
 const BRIEF_ROWS := 5             ## ile wierszy zagrożeń pokazuje odprawa (reszta: „+N more")
 const PROMPT_Y := 0.76           ## pasek kontekstowy — nad paskiem broni (dół, środek)
 ## Układ wzorowany na koop-strzelankach (Left 4 Dead, Deep Rock Galactic, Helldivers): drużyna i zdrowie w lewym dolnym
@@ -101,12 +100,31 @@ class Pips extends Control:
 class TailPanel extends PanelContainer:
 	var tail := false
 	var tail_color := Color.WHITE
+	var pin := false               ## czerwona pinezka na środku górnej krawędzi (kartka przypięta do tablicy)
 	func _init() -> void:
 		resized.connect(queue_redraw)
 	func _draw() -> void:
+		if pin:
+			var px := roundf(size.x * 0.5)
+			draw_circle(Vector2(px, 1.0), 3.5, Color(0.45, 0.1, 0.08))
+			draw_circle(Vector2(px, 0.0), 3.0, Color(0.82, 0.2, 0.15))
+			draw_rect(Rect2(px - 1.0, -1.0, 1.0, 1.0), Color(1.0, 0.7, 0.6))
 		if tail:
 			var cx := roundf(size.x * 0.5)
 			draw_colored_polygon(PackedVector2Array([Vector2(cx - 6.0, size.y - 3.0), Vector2(cx + 6.0, size.y - 3.0), Vector2(cx, size.y + 6.0)]), tail_color)
+
+## Znacznik wroga w odprawie: sylwetka-kropka w kolorze rodzaju (z tabeli Enemy.KINDS).
+class Swatch extends Control:
+	var col := Color.WHITE
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(9, 9)
+	func _draw() -> void:
+		if col.a <= 0.0:
+			return
+		draw_rect(Rect2(1, 1, 7, 8), Color(0.15, 0.1, 0.05))
+		draw_rect(Rect2(2, 2, 5, 6), col)
+		draw_rect(Rect2(3, 3, 1, 1), Color(0.95, 0.9, 0.8))
 
 ## Moneta złomu (8×8, pixel art) — obok licznika portfela.
 class Coin extends Control:
@@ -188,7 +206,6 @@ var _result_title: Label
 var _result_sub: Label
 var _result_box: StyleBoxFlat
 var _item: Dictionary = {}                ## karta statystyk broni leżącej w zasięgu [E] (stojak w kryjówce, łup z mapy)
-var _wall: Dictionary = {}                ## karta ściany wyników w kryjówce
 var _noise_card: PanelContainer      ## karta hałasu (w kryjówce zastępuje ją znacznik SAFE)
 var _safe_chip: PanelContainer
 var _ready_pips: Pips              ## kwadraciki gotowości w pasku misji kryjówki
@@ -196,7 +213,6 @@ var _scrap_coin: Coin
 var _brief: Dictionary = {}               ## karta odprawy przy tablicy w kryjówce
 var _item_id := -2
 var _brief_id := ""
-var _wall_n := -1
 var _demo_footer: Control = null     ## stopka dema na ekranie wyniku — tylko na końcu kampanii / serii
 
 var _slot_on: StyleBoxFlat
@@ -219,8 +235,8 @@ func _ready() -> void:
 	_build_hint()
 	_build_result()
 	_item = _make_info_card(250.0, 2, true)
-	_brief = _make_info_card(300.0, 3, true)
-	_wall = _make_info_card(360.0, 6)
+	_brief = _make_info_card(310.0, 4, true)
+	(_brief["card"] as TailPanel).pin = true
 	var wsp := WorkshopUi.new()
 	add_child(wsp)
 	get_viewport().size_changed.connect(_fit)
@@ -1055,6 +1071,11 @@ func _fill_info(c: Dictionary, title: String, tag: String, rows: Array, text: St
 		ch.free()
 	for r in rows:
 		for i in (r as Array).size():
+			if r[i] is Color:
+				var sw := Swatch.new()
+				sw.col = r[i]
+				grid.add_child(sw)
+				continue
 			var gl := UiTheme.label(String(r[i]), 9, (UiTheme.INK_MUTED if i == 0 else UiTheme.INK) if paper else (UiTheme.MUTED if i == 0 else UiTheme.TEXT))
 			if paper:
 				gl.add_theme_constant_override("outline_size", 0)
@@ -1109,64 +1130,31 @@ func _drive_cards() -> void:
 		# nad tablicą (jak karta broni), więc nie zasłania stojącego przy niej gracza
 		var btop: Vector2 = get_viewport().get_canvas_transform() * (board.global_position + Vector2(0, -46))
 		bc.position = Vector2(clampf(btop.x / scale.x - bc.size.x * 0.5, 6.0, maxf(6.0, size.x - bc.size.x - 6.0)), maxf(6.0, btop.y / scale.y - bc.size.y - 12.0))
-	# --- ściana wyników (też nad obiektem, jak odprawa)
-	var wall: Node2D = null
-	for w in get_tree().get_nodes_in_group("results_wall"):
-		if w.local_in_range:
-			wall = w
-			break
-	var wc: Control = _wall["card"]
-	wc.visible = wall != null
-	if wall != null:
-		if _wall_n != RunLog.entries.size():
-			_wall_n = RunLog.entries.size()
-			_fill_wall()
-		var wtop: Vector2 = get_viewport().get_canvas_transform() * (wall.global_position + Vector2(0, -46))
-		wc.position = Vector2(clampf(wtop.x / scale.x - wc.size.x * 0.5, 6.0, maxf(6.0, size.x - wc.size.x - 6.0)), maxf(6.0, wtop.y / scale.y - wc.size.y - 6.0))
-
-## Ściana wyników: lista ukończonych misji kampanii (nowe na górze) i sumy.
-func _fill_wall() -> void:
-	var es: Array = RunLog.entries
-	if es.is_empty():
-		_fill_info(_wall, "RESULTS WALL", "", [], "Nothing chalked up yet. Finish a mission and it goes here.", UiTheme.ACCENT)
-		return
-	var rows: Array = [["MISSION", "TIME", "DOWNS", "TRIES", "SIDE", "SCRAP"]]
-	for i in range(es.size() - 1, maxi(-1, es.size() - 1 - WALL_ROWS), -1):
-		var e: Dictionary = es[i]
-		var side := "—"
-		if int(e["stealth"]) == 1:
-			side = "kept"
-		elif int(e["stealth"]) == 0:
-			side = "lost"
-		rows.append([String(e["title"]), RunLog.fmt_time(float(e["time"])), str(int(e["downs"])), str(int(e["attempts"])), side, "+%d" % int(e.get("scrap", 0))])
-	var more := es.size() - WALL_ROWS
-	_fill_info(_wall, "RESULTS WALL", "%d missions  ·  %s  ·  %d downs  ·  %d scrap" % [es.size(), RunLog.fmt_time(RunLog.total_time()), RunLog.total_downs(), RunLog.total_scrap()], rows,
-		("+%d older" % more) if more > 0 else "", UiTheme.ACCENT)
 
 func _fill_brief(info: Dictionary) -> void:
 	if info.is_empty():
 		_fill_info(_brief, "BRIEFING", "No orders yet", [], "", UiTheme.ACCENT)
 		return
-	var rows: Array = []
+	var rows: Array = []                          # [kolor znacznika, nazwa, liczba, opis]
 	var counts: Dictionary = info["counts"]
 	var kinds: Array = counts.keys()
 	kinds.sort_custom(func(a: String, b: String) -> bool: return int(counts[a]) > int(counts[b]))
 	for k in kinds:
 		for e in Codex.ENEMIES:
 			if e[0] == k:
-				rows.append([String(e[3]), "x%d" % int(counts[k]), String(e[4])])
+				rows.append([Codex.Enemy.KINDS[k]["color"], String(e[3]), "x%d" % int(counts[k]), String(e[4])])
 	if bool(info["stalker"]):
-		rows.append(["STALKER", "x1", "Cannot be killed"])
+		rows.append([Color(0.2, 0.2, 0.24), "STALKER", "x1", "Cannot be killed"])
 	if int(info.get("tags", 0)) > 0:
-		rows.append(["DOG TAG", "x%d" % int(info["tags"]), "Mission objective"])
+		rows.append([Color(0.62, 0.85, 1.0), "DOG TAG", "x%d" % int(info["tags"]), "Mission objective"])
 	if int(info["nests"]) > 0:
-		rows.append(["NEST", "x%d" % int(info["nests"]), "Mission objective"])
+		rows.append([Color(0.85, 0.4, 0.35), "NEST", "x%d" % int(info["nests"]), "Mission objective"])
 	if bool(info["boss"]):
-		rows.append(["THE VEIN", "x1", "Boss — Mother of Nests"])
+		rows.append([Color(0.7, 0.25, 0.3), "THE VEIN", "x1", "Boss — Mother of Nests"])
 	if rows.size() > BRIEF_ROWS:                  # krótka lista: karta nad tablicą ma się mieścić nad graczem
 		var extra := rows.size() - (BRIEF_ROWS - 1)
 		rows = rows.slice(0, BRIEF_ROWS - 1)
-		rows.append(["+%d more" % extra, "", "see the bestiary (Esc)"])
+		rows.append([Color(0, 0, 0, 0), "+%d more" % extra, "", "see the bestiary (Esc)"])
 	_fill_info(_brief, "BRIEFING  ·  " + String(info["title"]), "", rows, String(info["brief"]), UiTheme.ACCENT)
 
 ## Czy lokalny gracz stoi przy ławie warsztatu (kryjówka) i panel jest zamknięty.
@@ -1258,7 +1246,7 @@ func _drive_prompt() -> void:
 			else:
 				text = "Hold here — the whole squad must reach the flare"
 				col = UiTheme.ACCENT
-	if wipe_left <= 0.0 and m != null and m.banner_visible() and not (bool(_item["card"].visible) or bool(_brief["card"].visible) or bool(_wall["card"].visible)):
+	if wipe_left <= 0.0 and m != null and m.banner_visible() and not (bool(_item["card"].visible) or bool(_brief["card"].visible)):
 		# tytuł misji w pierwszych sekundach; w Nocnym Dyżurze także zasady serii
 		var lvl := get_tree().get_first_node_in_group("level")
 		var lines: Array = []
