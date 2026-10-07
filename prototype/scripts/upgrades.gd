@@ -65,7 +65,7 @@ const TIERS := {
 	"ciegno6": [
 		{"name": "Twin bolt", "desc": "Two bolts in the magazine", "mods": [["mag", "add", 1], ["reserve_max", "add", 2]]},
 		{"name": "Waxed quiver", "desc": "Bigger reserve, 20% faster reload", "mods": [["reserve_max", "add", 6], ["reload_time", "mul", 0.8]]},
-		{"name": "Barbed bolt", "desc": "Pierces one more enemy, longer stun, +20% damage", "mods": [["pierce", "add", 1], ["stun", "add", 0.4], ["damage", "mul", 1.2]]},
+		{"name": "Barbed tether", "desc": "Pierces one more enemy, +20% damage; a line yanks hit enemies toward you", "mods": [["pierce", "add", 1], ["stun", "add", 0.4], ["damage", "mul", 1.2], ["pull", "add", 260.0]]},
 	],
 	"maczeta": [
 		{"name": "Honed edge", "desc": "+20% damage", "mods": [["damage", "mul", 1.2]]},

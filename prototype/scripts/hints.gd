@@ -5,6 +5,8 @@ extends RefCounted
 ##
 ## `update()` jest wołane co klatkę przez hud.gd i zwraca bieżący tekst ("" = brak) — hud tylko go rysuje.
 
+const Weapons := preload("res://scripts/weapons.gd")
+
 const SHOW_S := 7.0                  ## ile sekund wisi podpowiedź
 const GAP_S := 2.5                   ## przerwa między podpowiedziami
 const FADE_S := 0.5
@@ -23,6 +25,7 @@ const TIPS := [
 	["downed", "You are down. Stay still — a teammate can revive you before you bleed out"],
 	["light", "L toggles the flashlight. Light is noise too — turn it off to hide"],
 	["flare", "F throws a flare: bait that draws enemies with light instead of noise"],
+	["pickaxe", "Swing the pickaxe (V) at the cracked brick wall to break through — it is loud"],
 	["firemode", "B switches the M-83 between full auto and a quiet 3-round burst"],
 ]
 
@@ -86,6 +89,11 @@ func _collect(p: Node) -> void:
 	var below: bool = lvl_n != null and p.global_position.y > float(lvl_n.underground_y) and float(lvl_n.underground_y) > 0.0
 	_queue("light", _session > 45.0 or (below and not p.flashlight == true), true)
 	_queue("flare", _session > 150.0, true)
+	var wall_near := false
+	for bw in p.get_tree().get_nodes_in_group("breakables"):
+		if p.global_position.distance_to(bw.global_position) < 70.0:
+			wall_near = true
+	_queue("pickaxe", wall_near and p.weapons != null and Weapons.def(p.weapons.melee_id).breaks_walls, false)
 	_queue("firemode", _session > 90.0 and p.weapons != null and p.weapons.cur().burst_size > 0, true)
 	# chwilowe: gdy sytuacja minie, zanim przyjdzie kolej, podpowiedź przepada
 	_queue("uneasy", NoiseMgr.level >= NoiseMgr.UNEASY_THRESHOLD or NoiseMgr.stalker_awake, false)

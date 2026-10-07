@@ -182,7 +182,7 @@ static func _table() -> Array:
 		{
 			"key": "kilof", "name": "PICKAXE", "slot": Slot.MELEE, "kind": Kind.MELEE,
 			"auto": false, "cooldown": 0.9, "draw_time": 0.3,
-			"damage": 55.0, "knock": 160.0, "stun": 1.2, "reach": 24.0, "arc_deg": 50.0,
+			"damage": 55.0, "knock": 160.0, "stun": 1.2, "reach": 24.0, "arc_deg": 50.0, "breaks_walls": true,
 			"n_min": 0.8, "n_max": 0.8, "mag": 0, "infinite": true,
 			"shake": 2.0, "recoil": 0.0, "flash_size": 0.0, "flash_light": 0.0, "casing": 0,
 			"gun_len": 20.0, "gun_row": 11, "sfx": "kilof_swing", "sfx_count": 2, "sfx_vol": -5.0,
