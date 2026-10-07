@@ -218,6 +218,11 @@ var _boss_name: Label
 var _session: Label
 var _clock: Label
 var _scrap: Label                    ## portfel złomu (bank) i łup z bieżącej misji
+var _lv_label: Label                 ## poziom profilu i postęp XP (profile.gd)
+var _xp_feed: Label                  ## „+12 XP” — sumuje XP z ostatnich sekund i blaknie
+var _xp_acc := 0
+var _xp_t := 0.0
+var _result_xp_val: Label
 var _warn: Label
 var _warn_sub: Label
 var _center: Label
@@ -290,6 +295,8 @@ func _fit() -> void:
 	_place(_session, Vector2(w - MARGIN - SESSION_W, MARGIN), Vector2(SESSION_W, 12))
 	_place(_clock, Vector2(w - MARGIN - SESSION_W, MARGIN + 11.0), Vector2(SESSION_W, 14))
 	_place(_scrap, Vector2(w - MARGIN - SESSION_W, MARGIN + 37.0), Vector2(SESSION_W, 12))
+	_place(_lv_label, Vector2(w - MARGIN - SESSION_W, MARGIN + 50.0), Vector2(SESSION_W, 11))
+	_place(_xp_feed, Vector2(w - MARGIN - SESSION_W, MARGIN + 61.0), Vector2(SESSION_W, 12))
 	var cw := 400.0
 	_place(_warn, Vector2((w - cw) * 0.5, h * WARN_Y), Vector2(cw, 20))
 	_place(_warn_sub, Vector2((w - cw) * 0.5, h * WARN_Y + 20.0), Vector2(cw, 12))
@@ -669,6 +676,13 @@ func _build_session() -> void:
 	add_child(_scrap)
 	_scrap_coin = Coin.new()
 	add_child(_scrap_coin)
+	_lv_label = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
+	add_child(_lv_label)
+	_xp_feed = UiTheme.label("", 9, Color(0.55, 0.8, 1.0), HORIZONTAL_ALIGNMENT_RIGHT)
+	_xp_feed.modulate.a = 0.0
+	add_child(_xp_feed)
+	Profile.xp_gained.connect(_on_xp_gained)
+	Profile.leveled_up.connect(_on_level_up)
 
 func _build_center() -> void:
 	_warn = UiTheme.heading("", 16, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
@@ -842,7 +856,31 @@ func _drive_noise() -> void:
 	_gren_name.text = "%s  [X]" % Throwables.KINDS[gk]["name"]
 	_gren_name.add_theme_color_override("font_color", UiTheme.TEXT if Arsenal.get_throwable(gk) > 0 else UiTheme.MUTED)
 
+func _on_xp_gained(amount: int, _reason: String) -> void:
+	_xp_acc += amount
+	_xp_t = 2.5
+
+func _on_level_up(lv: int) -> void:
+	var msg := "LEVEL %d" % lv
+	if Profile.SLOT_LEVELS.has(lv):
+		msg += "  —  perk slot unlocked"
+	var names: Array = []
+	for id in Profile.Perks.unlocked_at(lv):
+		names.append(Profile.Perks.display_name(String(id)))
+	if not names.is_empty():
+		msg += "  —  new perks: " + ", ".join(names)
+	show_note(msg, 5.0)
+	Audio.play("ui_confirm", Audio.BUS_UI, -6.0)
+
 func _drive_status() -> void:
+	var lp := Profile.level_progress()
+	_lv_label.text = "LV %d  ·  %d / %d XP" % [Profile.level(), int(lp[0]), int(lp[1])]
+	if _xp_t > 0.0:
+		_xp_t -= get_process_delta_time()
+		_xp_feed.text = "+%d XP" % _xp_acc
+		_xp_feed.modulate.a = clampf(_xp_t / 0.6, 0.0, 1.0)
+		if _xp_t <= 0.0:
+			_xp_acc = 0
 	_session.text = _net_status()
 	_scrap.visible = Scrap.enabled()
 	_scrap_coin.visible = _scrap.visible
@@ -993,6 +1031,11 @@ func _drive_mission() -> void:
 	if show_result and not _result.visible:
 		_fill_result(m)
 	_result.visible = show_result
+	if show_result and _result_xp_val != null and is_instance_valid(_result_xp_val):
+		var xt := "+%d  ·  LV %d" % [Profile.last_mission_xp, Profile.level()]
+		if _result_xp_val.text != xt:
+			_result_xp_val.text = xt
+			_result.reset_size()
 
 func _fill_result(m: Node) -> void:
 	for c in _result_stats.get_children():
@@ -1024,6 +1067,9 @@ func _fill_result(m: Node) -> void:
 	for row in rows:
 		_result_stats.add_child(UiTheme.label(row[0], 9, UiTheme.MUTED))
 		_result_stats.add_child(UiTheme.label(row[1], 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
+	_result_stats.add_child(UiTheme.label("XP", 9, UiTheme.MUTED))
+	_result_xp_val = UiTheme.label("", 9, Color(0.55, 0.8, 1.0), HORIZONTAL_ALIGNMENT_RIGHT)      # uzupełniany co klatkę — XP przychodzi od serwera chwilę po zmianie fazy
+	_result_stats.add_child(_result_xp_val)
 	_result_prompt.text = "[ENTER]  " + prompt if multiplayer.is_server() else "Waiting for the host to continue…"
 	if _demo_footer != null:
 		# stopka dema: koniec kampanii (ostatnia misja Strefy I) albo koniec serii Nocnego Dyżuru

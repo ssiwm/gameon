@@ -17,6 +17,8 @@ const Projectile := preload("res://scripts/projectile.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Throwables := preload("res://scripts/throwables.gd")
+const Perks := preload("res://scripts/perks.gd")
+const NightShiftMode := preload("res://scripts/night_shift.gd")
 const SmokeCloud := preload("res://scripts/smoke_cloud.gd")
 const BrickWall := preload("res://scripts/brick_wall.gd")
 const WALL_HP_REF := 120.0
@@ -142,6 +144,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_phase3()
 	await _t_phase4()
 	await _t_throwables()
+	await _t_profile()
 	await _t_sweep()
 	await _t_pierce_beam_rail()
 	await _t_flame()
@@ -318,6 +321,80 @@ func _t_phase1() -> void:
 	check("LR-7: wiązka słabnie z dystansem (blisko %.0f, 150 px %.0f) i grzeje się (heat %.2f)" % [near_d, far_d, wc.heat_of(Weapons.LR7)], near_d > 0.0 and far_d > 0.0 and far_d < near_d * 0.85 and wc.heat_of(Weapons.LR7) > 0.1)
 	free_dummies()
 	await frames(2)
+
+## Faza B1: profil gracza — krzywa poziomów, sloty, XP za zabójstwa / misję / podniesienie, perki, zapis.
+func _t_profile() -> void:
+	Profile.reset_for_test()
+	check("krzywa XP: progi L1–L5 = %s" % str([Profile.xp_for_level(1), Profile.xp_for_level(2), Profile.xp_for_level(3), Profile.xp_for_level(4), Profile.xp_for_level(5)]),
+		Profile.xp_for_level(1) == 0 and Profile.xp_for_level(2) == 150 and Profile.xp_for_level(3) == 400 and Profile.xp_for_level(4) == 750 and Profile.xp_for_level(5) == 1200)
+	check("poziom z XP: 0→L1, 149→L1, 150→L2, 749→L3, 750→L4", Profile.level_of(0) == 1 and Profile.level_of(149) == 1 and Profile.level_of(150) == 2 and Profile.level_of(749) == 3 and Profile.level_of(750) == 4)
+	var lv_seen: Array = []
+	var cb_lv := func(l: int) -> void: lv_seen.append(l)
+	Profile.leveled_up.connect(cb_lv)
+	Profile.add_xp(140, "test")
+	var slots_l1: int = Profile.slots()
+	Profile.add_xp(15, "test")                                    # 155 → L2
+	var slots_l2: int = Profile.slots()
+	Profile.add_xp(600, "test")                                   # 755 → L4 (przeskok o dwa poziomy: sygnały L3 i L4)
+	check("awans: sloty L1/L2/L4 = %d/%d/%d, sygnały poziomów %s, XP %d" % [slots_l1, slots_l2, Profile.slots(), str(lv_seen), Profile.xp], slots_l1 == 0 and slots_l2 == 1 and Profile.slots() == 2 and lv_seen == [2, 3, 4])
+	Profile.leveled_up.disconnect(cb_lv)
+	# perki: katalog, odblokowanie poziomem, sloty
+	var perk_errs: Array = []
+	var seen := {}
+	for id in Perks.ORDER:
+		if seen.has(id) or not Perks.PERKS.has(id) or String(Perks.PERKS[id]["desc"]) == "" or Perks.unlock_level(String(id)) < 2:
+			perk_errs.append(String(id))
+		seen[id] = true
+	check("katalog perków: 8 unikalnych, z opisem i progiem poziomu (%d), brak błędów" % Perks.ORDER.size(), Perks.ORDER.size() == Perks.PERKS.size() and Perks.ORDER.size() == 8 and perk_errs.is_empty(), str(perk_errs))
+	Profile.reset_for_test()
+	Profile.add_xp(150, "test")                                   # L2: 1 slot, perki z progiem 2
+	var e_ok: bool = Profile.equip(0, "smith")
+	var e_slot2: bool = Profile.equip(1, "quiet_steps")           # drugi slot dopiero od L4
+	var e_locked: bool = Profile.equip(0, "scout")                # perk L4 przy L2
+	var held: bool = Profile.has_perk("smith")
+	Profile.add_xp(600, "test")                                   # L4
+	var e_dup: bool = Profile.equip(1, "smith")                   # ten sam perk w drugim slocie przenosi go
+	check("zakładanie perków: L2 smith=%s, drugi slot zablokowany=%s, perk L4 zablokowany=%s; po L4 przeniesienie smith → slot 2 (%s)" % [str(e_ok), str(not e_slot2), str(not e_locked), str(Profile.equipped)],
+		e_ok and not e_slot2 and not e_locked and held and e_dup and Profile.equipped[0] == "" and Profile.equipped[1] == "smith")
+	# XP za misję: bonusy i pierwsze ukończenie, Nocny Dyżur połowa
+	Profile.reset_for_test()
+	var first: int = Profile.apply_mission_result("z1_test", true, true, false)
+	var second: int = Profile.apply_mission_result("z1_test", false, false, false)
+	var boss: int = Profile.apply_mission_result("z1_boss", false, true, true)
+	var was_night: bool = NightShiftMode.active
+	NightShiftMode.active = true
+	var night: int = Profile.apply_mission_result("z1_test", true, true, false, true)
+	NightShiftMode.active = was_night
+	check("XP za misję: pierwsza z bonusami %d (=275), powtórka bez bonusów %d (=100), boss %d (=100+25+300+100), Nocny Dyżur %d (=eksp. 175/2)" % [first, second, boss, night],
+		first == 275 and second == 100 and boss == 525 and night == 88)
+	# XP za zabójstwo: zabójca dostaje XP rodzaju wroga, bot i nieznany strzelec nie
+	Profile.reset_for_test()
+	var wolek := await dummy(60.0, 20.0, "wolek")
+	Combat.apply(wolek, Combat.make_info(Weapons.M83, 50.0, wolek.global_position + Vector2(-4, -6), Vector2.RIGHT, int(player.player_id), "bullet"))
+	var xp_wolek: int = Profile.xp
+	var tr := await dummy(80.0, 5.0, "trzosek")
+	Combat.apply(tr, Combat.make_info(Weapons.M83, 50.0, tr.global_position, Vector2.RIGHT, 9999, "bullet"))      # strzelec spoza gry
+	var xp_unknown: int = Profile.xp
+	var tr2 := await dummy(100.0, 5.0, "trzosek")
+	tr2.name = "LeechSpawn99"
+	Combat.apply(tr2, Combat.make_info(Weapons.M83, 50.0, tr2.global_position, Vector2.RIGHT, int(player.player_id), "bullet"))   # Trzoski bossa bez XP
+	var xp_minion: int = Profile.xp
+	check("XP za zabójstwo: Wołek +%d (=12), nieznany strzelec +0 (%d), Trzosek Pijawki +0 (%d)" % [xp_wolek, xp_unknown - xp_wolek, xp_minion - xp_unknown], xp_wolek == 12 and xp_unknown == xp_wolek and xp_minion == xp_unknown)
+	free_dummies()
+	await frames(2)
+	# zapis i odczyt
+	Profile.reset_for_test()
+	Profile.add_xp(800, "test")
+	Profile.apply_mission_result("z1_m2", false, false, false)
+	Profile.equip(0, "wide_arm")
+	var path := "user://profile_test.cfg"
+	Profile.save_to(path)
+	var xp0: int = Profile.xp
+	Profile.reset_for_test()
+	Profile.load_from(path)
+	check("zapis profilu: XP %d (=%d), ukończone misje %s, założone %s" % [Profile.xp, xp0, str(Profile.completed.keys()), str(Profile.equipped)], Profile.xp == xp0 and Profile.completed.has("z1_m2") and Profile.equipped[0] == "wide_arm")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	Profile.reset_for_test()
 
 ## Faza A1 ekwipunku: granaty (odłamkowy, fosforowy) — zapas drużyny, rzut, zapalnik, wybuch, pole ognia, ściany.
 func give_gear(frag := 2, phos := 1, smoke := 1, mine := 1, charge := 1, medkit := 1, defib := 1, scanner := 2) -> void:

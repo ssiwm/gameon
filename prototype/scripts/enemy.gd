@@ -189,6 +189,7 @@ var _hanging := false         ## Skoczek / ćma wiszą pod sufitem, dopóki ich 
 var _drop_attack := false     ## Skoczek spada na gracza (obrażenia przy lądowaniu)
 var _patrolled := false       ## wracając do domu sprawdził już jedno gorące miejsce
 var _t_moth := 0.0
+var _last_attacker := 0               ## player_id ostatniego trafiającego (XP za zabójstwo, profile.gd)
 var _scream_cd := 0.0         ## Podsłuchacz: przerwa między krzykami
 var _alerted := false         ## Podsłuchacz: już krzyknął (od tej pory boty go widzą jako zagrożenie)
 var _ring := 0.0              ## efekt fali krzyku (każdy peer)
@@ -1172,6 +1173,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 		return {}
 	var dmg: float = info["amount"]
 	var silent: bool = info.get("silent", false)
+	_last_attacker = int(info.get("shooter", _last_attacker))          # kto dobił (też od podpalenia) dostaje XP w _die
 	if info.get("backstab", false) and (not active or _is_behind(info["dir"])):
 		dmg = maxf(dmg, hp + 1.0)
 		silent = true
@@ -1254,6 +1256,8 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 		_begin_scream()
 
 func _die() -> void:
+	if NoiseMgr.is_server() and _last_attacker != 0 and not String(name).begins_with("LeechSpawn") and not is_in_group("roamers"):
+		Profile.server_award_kill(_last_attacker, kind)         # XP profilu strzelca (boty, Trzoski bossa i wędrowcy Dyrektora nie liczą się)
 	if NoiseMgr.is_server() and randf() < minf(1.0, float(HEALTH_DROP.get(kind, 0.0)) * Difficulty.m("drops")):
 		var lvl := get_tree().get_first_node_in_group("level")
 		if lvl != null:
