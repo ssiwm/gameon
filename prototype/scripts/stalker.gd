@@ -101,6 +101,10 @@ func _ready() -> void:
 		_spr = Sprites.attach(self, "stalker")
 	_overlay = Lights.add_overlay(self)
 
+## Skaner z perkiem „Scout" pokazuje śpiącego (niewidocznego) Stalkera z bliska.
+func is_stalker() -> bool:
+	return true
+
 ## Stalker nie jest zagrożeniem do ostrzelania — boty mają go ignorować.
 func is_threat() -> bool:
 	return false

@@ -375,14 +375,14 @@ func _level() -> Node:
 func _try_health() -> void:
 	var hurt_human_near := false
 	for p in get_tree().get_nodes_in_group("players"):
-		if not p.is_bot and not p.dead and p.hp < p.MAX_HP and p.global_position.distance_to(global_position) < 80.0:
+		if not p.is_bot and not p.dead and p.hp < p.max_hp() and p.global_position.distance_to(global_position) < 80.0:
 			hurt_human_near = true
 	for p in get_tree().get_nodes_in_group("players"):
-		if p.dead or p.hp >= p.STACK_HP:
+		if p.dead or p.hp >= p.stack_hp():
 			continue
 		if p.is_bot and hurt_human_near:
 			continue
-		if p.hp >= p.MAX_HP and _hurt_teammate_near(p):
+		if p.hp >= p.max_hp() and _hurt_teammate_near(p):
 			continue
 		if _near(p):
 			p.deliver_heal(HEAL)
@@ -392,7 +392,7 @@ func _try_health() -> void:
 ## Czy ktoś inny (żywy) obok apteczki ma mniej niż MAX_HP — wtedy zostaje dla niego.
 func _hurt_teammate_near(who: Node2D) -> bool:
 	for p in get_tree().get_nodes_in_group("players"):
-		if p != who and not p.dead and p.hp < p.MAX_HP and p.global_position.distance_to(global_position) < HURT_RESERVE_R:
+		if p != who and not p.dead and p.hp < p.max_hp() and p.global_position.distance_to(global_position) < HURT_RESERVE_R:
 			return true
 	return false
 

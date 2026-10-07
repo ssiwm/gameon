@@ -511,7 +511,7 @@ func _refresh_perks() -> void:
 		_p_stats.add_child(UiTheme.label(String(r[0]), 9, UiTheme.BP_MUTED))
 		_p_stats.add_child(UiTheme.label(String(r[1]), 9, UiTheme.OK if at2 >= 0 and String(r[0]) == "Status" else UiTheme.BP_TEXT))
 		_p_stats.add_child(Control.new())
-	_p_text.text = String(d["desc"]) + "\nEffects arrive with the next update — slots and levels are already tracked."
+	_p_text.text = String(d["desc"])
 	if at2 >= 0:
 		_p_action.text = "Remove from slot %d" % (at2 + 1)
 		_p_action.disabled = false
@@ -776,7 +776,7 @@ func _on_result(w: int, ok: bool, reason: String) -> void:
 			_say("%s upgraded to tier %d." % [name, Scrap.level_of(w)], UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 		"up_poor":
-			_say("Not enough scrap (%d needed)." % Upgrades.cost(String(Weapons.base_def(w).key), Scrap.level_of(w) + 1), UiTheme.DANGER)
+			_say("Not enough scrap (%d needed)." % Scrap.tier_cost(String(Weapons.base_def(w).key), Scrap.level_of(w) + 1), UiTheme.DANGER)
 		"up_max":
 			_say("%s is fully upgraded." % name, UiTheme.BP_MUTED)
 		"up_locked":
@@ -945,7 +945,7 @@ func _refresh_detail(w: int) -> void:
 			var t := Upgrades.tier(String(base.key), i)
 			var state := 0 if (unlocked and i <= lv) else (1 if (unlocked and i == lv + 1) else 2)
 			var col: Color = UiTheme.OK if state == 0 else (GOLD if state == 1 else UiTheme.BP_MUTED)
-			var tail := "installed" if state == 0 else "%d" % Upgrades.cost(String(base.key), i)
+			var tail := "installed" if state == 0 else "%d" % Scrap.tier_cost(String(base.key), i)
 			var l := UiTheme.label("T%d  %s — %s  [%s]" % [i, t["name"], t["desc"], tail], 8, col)
 			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			l.custom_minimum_size = Vector2(DETAIL_W, 0)
@@ -958,7 +958,7 @@ func _refresh_detail(w: int) -> void:
 	elif not unlocked:
 		_action.text = "Buy  ·  %d scrap" % Scrap.price_of(w)
 	elif can_next:
-		_action.text = "Upgrade to tier %d  ·  %d scrap" % [next_lv, Upgrades.cost(String(base.key), next_lv)]
+		_action.text = "Upgrade to tier %d  ·  %d scrap" % [next_lv, Scrap.tier_cost(String(base.key), next_lv)]
 	else:
 		_action.text = "Fully upgraded"
 	_card.reset_size()

@@ -97,9 +97,10 @@ static func apply(d: RefCounted, level: int) -> void:
 			d.set(String(m[0]), int(roundf(out)) if typeof(cur) == TYPE_INT else out)
 
 ## Cena poziomu `level` (1..3) broni `key`: baza × mnożnik klasy, zaokrąglona do 5.
-static func cost(key: String, level: int) -> int:
+## `mult` = mnożnik kupującego (perk „Smith", patrz Scrap.upgrade_cost).
+static func cost(key: String, level: int, mult := 1.0) -> int:
 	var base := float(COSTS[clampi(level, 1, MAX_LEVEL) - 1])
-	return int(roundf(base * float(COST_MULT.get(key, 1.0)) / 5.0)) * 5
+	return int(roundf(base * float(COST_MULT.get(key, 1.0)) * mult / 5.0)) * 5
 
 ## Sprawdza tabelę: każdy klucz to istniejąca broń, każdy modyfikator wskazuje istniejące pole, trzy poziomy na broń. Wołane przez --weapontest.
 static func validate(defs: Array) -> Array:

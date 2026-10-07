@@ -356,6 +356,46 @@ func _t_profile() -> void:
 	var e_dup: bool = Profile.equip(1, "smith")                   # ten sam perk w drugim slocie przenosi go
 	check("zakładanie perków: L2 smith=%s, drugi slot zablokowany=%s, perk L4 zablokowany=%s; po L4 przeniesienie smith → slot 2 (%s)" % [str(e_ok), str(not e_slot2), str(not e_locked), str(Profile.equipped)],
 		e_ok and not e_slot2 and not e_locked and held and e_dup and Profile.equipped[0] == "" and Profile.equipped[1] == "smith")
+	# skutki perków (B3): replikowane indeksy, Kowal w cenniku, Krwiobieg, Weteran, Druga szansa, parametry pozostałych
+	Profile.reset_for_test()
+	Profile.add_xp(750, "test")                                   # L4: dwa sloty
+	Profile.equip(0, "smith")
+	Profile.equip(1, "second_chance")
+	player._sync_perks()
+	var rep_ok: bool = player.has_perk("smith") and player.has_perk("second_chance") and not player.has_perk("veteran") and Perks.ids_of(player.perks) == ["smith", "second_chance"]
+	check("perki: gracz publikuje założone perki (indeksy %s → %s)" % [str(player.perks), str(Perks.ids_of(player.perks))], rep_ok)
+	var plain: int = Upgrades.cost("m83", 2)
+	var smithed: int = Scrap.tier_cost("m83", 2)
+	check("Kowal: M-83 T2 %d → %d scrap (−20%%, zaokrąglone do 5), bez perka %d" % [plain, smithed, Scrap.tier_cost("m83", 2, 99)],
+		smithed == Upgrades.cost("m83", 2, 0.8) and smithed < plain and Scrap.tier_cost("m83", 2, 99) == plain)
+	var bf_before: float = player._revive_time()
+	player.perks = Perks.to_indexes(["blood_flow", "veteran"])
+	check("Krwiobieg: podnoszenie %.1f s zamiast %.1f s" % [player._revive_time(), bf_before], is_equal_approx(player._revive_time(), 2.5 * Difficulty.m("revive")) and player._revive_time() < bf_before)
+	check("Weteran: serca %d (stos %d) zamiast %d (%d)" % [player.max_hp(), player.stack_hp(), player.MAX_HP, player.STACK_HP], player.max_hp() == player.MAX_HP + 1 and player.stack_hp() == player.STACK_HP + 1)
+	player.perks = Perks.to_indexes(["quiet_steps", "wide_arm"])
+	check("Ciche kroki ×%.2f, Szerokie ramię ×%.1f, bez perka ×1" % [player.perk_param("quiet_steps", "run_noise_mult", 1.0), player.perk_param("wide_arm", "throw_mult", 1.0)],
+		is_equal_approx(player.perk_param("quiet_steps", "run_noise_mult", 1.0), 0.5) and is_equal_approx(player.perk_param("wide_arm", "throw_mult", 1.0), 1.3) and is_equal_approx(player.perk_param("scout", "scan_stalker_range", 0.0), 0.0))
+	player.perks = Perks.to_indexes(["cold_blood", "scout"])
+	check("Zimna krew: limit krzyku %.0f, Zwiadowca: Stalker na skanerze do %.0f px" % [player.perk_param("cold_blood", "scream_cap", 99.0), player.perk_param("scout", "scan_stalker_range", 0.0)],
+		is_equal_approx(player.perk_param("cold_blood", "scream_cap", 99.0), 10.0) and is_equal_approx(player.perk_param("scout", "scan_stalker_range", 0.0), 160.0))
+	player.perks = Perks.to_indexes(["second_chance", ""])
+	player._second_used = false
+	player._go_down()
+	player._down_physics(3.0)
+	var still_down: bool = player.dead
+	player._down_physics(6.0)                                     # łącznie 9 s > 8 s
+	var up_hp: int = player.hp
+	var got_up: bool = not player.dead
+	player._go_down()
+	player._down_physics(9.0)
+	var second_time_down: bool = player.dead                      # tylko raz na misję
+	player.dead = false
+	player.hp = player.MAX_HP
+	player.bleed_left = 0.0
+	player._second_used = false
+	player.perks = Vector2i(-1, -1)
+	Profile.reset_for_test()
+	check("Druga szansa: po 3 s leży (%s), po 9 s wstaje na %d sercu (%s), drugi raz w misji już nie (%s)" % [str(still_down), up_hp, str(got_up), str(second_time_down)], still_down and got_up and up_hp == 1 and second_time_down)
 	# XP za misję: bonusy i pierwsze ukończenie, Nocny Dyżur połowa
 	Profile.reset_for_test()
 	var first: int = Profile.apply_mission_result("z1_test", true, true, false)
