@@ -21,6 +21,45 @@ const FLASHLIGHT_M := 8.0    ## stożek latarki
 const FLARE_M := 12.0        ## flara (znacznik ekstrakcji)
 const CONE_HALF_DEG := 24.0
 
+const Weapons := preload("res://scripts/weapons.gd")
+
+## Błysk z lufy jako sygnał świetlny (faza 3 przeglądu broni): strzał o błysku ≥ FLASH_MIN widać przez FLASH_LIFE_MS.
+## Budzi i przyciąga ćmy (enemy.gd `_nearest_light`) — głośna broń ma drugą cenę poza hałasem.
+const FLASH_MIN := 1.6                ## `flash_light` broni od tej wartości (strzelba i cięższe) liczy się jako sygnał
+const FLASH_LIFE_MS := 600
+const LIGHT_WEAPON_M := 10.0          ## wiązka i płomień widoczne dla Stalkera z tej odległości (jak flashlight_on, bez stożka)
+static var flashes: Array = []        ## [{pos, until, node}] — tylko serwer ich używa
+
+static func add_flash(pos: Vector2, power: float, node: Node2D) -> void:
+	if power < FLASH_MIN:
+		return
+	var now := Time.get_ticks_msec()
+	flashes = flashes.filter(func(f: Dictionary) -> bool: return int(f["until"]) > now)
+	flashes.append({"pos": pos, "until": now + FLASH_LIFE_MS, "node": node})
+	if flashes.size() > 12:
+		flashes.pop_front()
+
+static func active_flashes() -> Array:
+	var now := Time.get_ticks_msec()
+	return flashes.filter(func(f: Dictionary) -> bool: return int(f["until"]) > now)
+
+## Gracz strzelający wiązką albo płomieniem (broń cicha, ale jasna) w zasięgu `LIGHT_WEAPON_M` i bez ściany do `pos` — albo null.
+## Stalker idzie do takiego światła tak samo jak do latarki.
+static func light_weapon_on(pos: Vector2, tree: SceneTree, space: PhysicsDirectSpaceState2D) -> Node2D:
+	for p in tree.get_nodes_in_group("players"):
+		if p.dead or not p.w_firing:
+			continue
+		var k: int = Weapons.def(int(p.weapon)).kind
+		if k != Weapons.Kind.BEAM and k != Weapons.Kind.FLAME:
+			continue
+		var from: Vector2 = p.global_position + Vector2(0, -9)
+		if from.distance_to(pos) > LIGHT_WEAPON_M * PX_PER_M:
+			continue
+		if not space.intersect_ray(PhysicsRayQueryParameters2D.create(from, pos, 1)).is_empty():
+			continue
+		return p
+	return null
+
 ## Migotanie wszystkich świateł graczy do tej chwili (ms) — krzyk Żyły w fazie 3.
 static var flicker_until_ms := 0
 

@@ -28,6 +28,13 @@ var auto := false             ## przytrzymanie = ogień ciągły
 var cooldown := 0.12          ## s między strzałami / tyknięciami
 var draw_time := 0.3          ## s dobycia (po zmianie broni)
 var charge_time := 0.0        ## s ładowania (RAIL); puszczenie przed końcem anuluje
+# --- tryb serii (klawisz B; tylko broń z burst_size > 0): jedno naciśnięcie = seria, cichsza i celniejsza niż ogień ciągły
+var burst_size := 0           ## strzałów w serii (0 = broń bez trybu serii)
+var burst_gap := 0.07         ## s między strzałami serii
+var burst_rest := 0.28        ## s przerwy po serii
+var burst_quiet := 0.8        ## mnożnik hałasu strzału w serii
+var burst_heat := 0.6         ## mnożnik rozgrzewania lufy w serii
+var burst_bloom := 0.5        ## mnożnik narastania rozrzutu w serii
 
 # --- obrażenia
 var damage := 8.0             ## na pocisk / tyknięcie

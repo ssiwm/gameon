@@ -156,6 +156,8 @@ func _physics_process(delta: float) -> void:
 		# ściąga go na świecącego. Sprawdzamy 4×/s, nie co klatkę.
 		_lit_cd = 0.25
 		var lighter := Lights.flashlight_on(global_position + Vector2(0, -20), get_tree(), get_world_2d().direct_space_state)
+		if lighter == null:
+			lighter = Lights.light_weapon_on(global_position + Vector2(0, -20), get_tree(), get_world_2d().direct_space_state)   # LR-7 i HKM-9 świecą bez hałasu
 		if lighter != null:
 			target_pos = lighter.global_position
 			_arrived = false

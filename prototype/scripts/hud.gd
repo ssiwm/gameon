@@ -682,7 +682,7 @@ func _build_prompt() -> void:
 
 func _build_controls() -> void:
 	_controls = UiTheme.label(
-		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J/LMB fire · R reload · V/RMB melee · 1-3 gun · E take/revive · Q lure · F flare · G scream · L light",
+		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J/LMB fire · R reload · B fire mode · V/RMB melee · 1-3 gun · E take/revive · Q lure · F flare · G scream · L light",
 		7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_controls)
 	_f1 = UiTheme.label("F1  controls", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
@@ -863,7 +863,7 @@ func _drive_weapons() -> void:
 		_slots[i].tooltip_text = names[i]
 		_slots[i].add_theme_stylebox_override("panel", _slot_on if sel else _slot_off)
 		_slot_labels[i].add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.MUTED)
-	_ammo_name.text = cur.name
+	_ammo_name.text = cur.name + ("  ·  BURST" if wc.is_burst(cur) else ("  ·  AUTO" if cur.burst_size > 0 else ""))
 	_gun_main.set_gun(int(cur.gun_row), cur.tracer_color, Color.WHITE)
 	var mag: int = wc.mag_of(cur.id)
 	var note := ""

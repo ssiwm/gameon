@@ -46,6 +46,7 @@ const BOSS_SCENE := preload("res://scenes/boss.tscn")
 const PROP := preload("res://scripts/prop.gd")
 const PICKUP := preload("res://scripts/pickup.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const FIRE_PATCH := preload("res://scripts/fire_patch.gd")
 const FLARE := preload("res://scripts/flare.gd")
 const GENERATOR := preload("res://scripts/generator.gd")
 const HANDCAR := preload("res://scripts/handcar.gd")
@@ -662,6 +663,53 @@ func _spawn_flare_rpc(n: String, pos: Vector2, vel: Vector2) -> void:
 	f.name = n
 	f.position = pos
 	f.vel = vel
+	add_child(f)
+
+# ---------------------------------------------------------------- ogień na podłodze
+
+const MAX_FIRE_PATCHES := 10
+const FIRE_MERGE_DIST := 18.0
+var _fire_serial := 0
+
+## Serwer: HKM-9 zostawia ogień na podłodze w `pos`. Blisko istniejącego ognia tylko go odnawia; pula jest ograniczona (najstarszy gaśnie).
+func spawn_fire_patch(pos: Vector2, weapon: int, shooter: int) -> void:
+	if not NoiseMgr.is_server():
+		return
+	var live: Array = get_tree().get_nodes_in_group("fire_patches").filter(func(p: Node) -> bool: return is_instance_valid(p) and not p.is_queued_for_deletion())
+	for p in live:
+		if absf(p.global_position.x - pos.x) < FIRE_MERGE_DIST and absf(p.global_position.y - pos.y) < 10.0:
+			_refresh_fire_patch(String(p.name))
+			return
+	if live.size() >= MAX_FIRE_PATCHES:
+		(live[0] as Node).queue_free()
+	_fire_serial += 1
+	var n := "Fire%d" % _fire_serial
+	if NoiseMgr.has_network():
+		_spawn_fire_rpc.rpc(n, pos, weapon, shooter)
+	else:
+		_spawn_fire_rpc(n, pos, weapon, shooter)
+
+func _refresh_fire_patch(n: String) -> void:
+	if NoiseMgr.has_network():
+		_refresh_fire_rpc.rpc(n)
+	else:
+		_refresh_fire_rpc(n)
+
+@rpc("authority", "call_local", "reliable")
+func _refresh_fire_rpc(n: String) -> void:
+	var f := get_node_or_null(n)
+	if f != null:
+		f.life = FIRE_PATCH.FIRE_LIFE
+
+@rpc("authority", "call_local", "reliable")
+func _spawn_fire_rpc(n: String, pos: Vector2, weapon: int, shooter: int) -> void:
+	if has_node(n):
+		return
+	var f: Node2D = FIRE_PATCH.new()
+	f.name = n
+	f.position = pos
+	f.weapon = weapon
+	f.shooter_id = shooter
 	add_child(f)
 
 # ---------------------------------------------------------------- apteczki

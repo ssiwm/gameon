@@ -489,6 +489,19 @@ func _nearest_light(max_r: float) -> Dictionary:
 		if d < best_d:
 			best_d = d
 			best = {"pos": f.global_position, "kind": "flare", "node": f}
+	for fp in get_tree().get_nodes_in_group("fire_patches"):
+		var df := global_position.distance_to(fp.global_position)
+		if df < best_d:
+			best_d = df
+			best = {"pos": fp.global_position + Vector2(0, -4), "kind": "flare", "node": fp}       # ogień na podłodze spala ćmę jak flara
+	for f in Lights.active_flashes():
+		var shooter: Node = f["node"]
+		if shooter == null or not is_instance_valid(shooter):
+			continue
+		var d3 := global_position.distance_to(f["pos"])
+		if d3 < best_d:
+			best_d = d3
+			best = {"pos": f["pos"], "kind": "player", "node": shooter}                             # błysk z lufy: ćma leci na strzelca
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.dead or not (p.flashlight or _beam_lit(p)):
 			continue

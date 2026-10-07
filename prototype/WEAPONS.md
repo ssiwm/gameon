@@ -224,3 +224,14 @@ Poziom 1 to zwykle pojemność, poziom 2 statystyka, **poziom 3 to zmiana zachow
 
 Cena poziomu = bazowa (60 / 120 / 220) × klasa broni, zaokrąglona do 5: P-64 i broń biała ×0,8, PELLET-8 / LR-7 / HKM-9 ×1,2,
 FALCON-6 ×1,3, WRATH-4 i SINEW-6 ×1,5, SPECTER-1 ×1,7 (M-83 i SPREAD-12 bez zmian).
+
+## 8. Faza 3 przeglądu broni (1.7.59): nowe mechaniki
+
+| Mechanika | Jak działa | Kod |
+|---|---|---|
+| **Tryb serii M-83** (B) | seria 3 strzałów (0,07 s) + 0,28 s przerwy; przytrzymanie powtarza serie. Hałas strzału ×0,8, rozgrzanie ×0,6, rozrzut ×0,5. Symulacja 12 s: **6,3 hałasu/s przy 58 DPS** (ogień ciągły 12,8 przy 73) — hałas na DPS 0,11 zamiast 0,18 | `WeaponDef.burst_*`, `weapon_controller.gd` (`toggle_fire_mode`, `is_burst`) |
+| **Ogień na podłodze HKM-9** | co 0,5 s ciągłego płomienia plama ognia na 4 s w miejscu lądowania; podpala wrogów i skrzynie (nie drużynę), scala się z sąsiednią, maks. 10; ćmy lecą i spalają się | `fire_patch.gd`, `level.gd` (`spawn_fire_patch`) |
+| **Błysk lufy** | strzał o `flash_light` ≥ 1,6 budzi i przyciąga ćmy do strzelca przez 0,6 s | `lights.gd` (`add_flash`), `enemy.gd` (`_nearest_light`) |
+| **Światło broni → Stalker** | wiązka LR-7 i płomień HKM-9 w zasięgu 10 m i linii wzroku ściągają przebudzonego Stalkera jak latarka | `lights.gd` (`light_weapon_on`), `stalker.gd` |
+
+Broń z trybem serii dostaje `burst_size > 0` w tabeli (dziś tylko M-83); bot zawsze strzela ogniem ciągłym.

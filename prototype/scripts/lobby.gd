@@ -26,6 +26,7 @@ const CONTROLS := [
 	["Shift", "Sneak — silent"],
 	["J / LMB", "Fire — makes NOISE"],
 	["R", "Reload"],
+	["B", "Fire mode (auto / burst)"],
 	["V / RMB", "Melee"],
 	["1 2 3 / Wheel", "Switch weapon"],
 	["Q", "Overcharge — lure HIM away"],

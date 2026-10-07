@@ -44,7 +44,7 @@ static func _table() -> Array:
 	return [
 		{
 			"key": "m83", "name": "M-83", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
-			"auto": true, "cooldown": 0.11, "draw_time": 0.28,
+			"auto": true, "cooldown": 0.11, "draw_time": 0.28, "burst_size": 3,
 			"damage": 8.0, "crit_mult": 1.5, "knock": 55.0,
 			"jitter_deg": 0.8, "bloom_per_shot": 0.45, "bloom_max": 4.0, "bloom_decay": 9.0,
 			"speed": 340.0, "range_px": 240.0, "falloff_start": 190.0, "falloff_min": 0.5,
