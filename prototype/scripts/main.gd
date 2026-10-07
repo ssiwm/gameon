@@ -138,6 +138,7 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 		g.reset_generator()
 	for car in get_tree().get_nodes_in_group("handcar"):
 		car.reset_handcar()
+	level.reset_collapse()
 	for c in _players.get_children():
 		c.request_full_reset(carry)
 	level.clear_pickups()
@@ -293,6 +294,7 @@ func _handle_cmdline() -> void:
 	var gentest := false
 	var tagtest := false
 	var sneaktest := false
+	var finaletest := false
 	var weapon_mode := ""
 	var shots_dir := ""
 	var args := OS.get_cmdline_user_args()
@@ -342,6 +344,8 @@ func _handle_cmdline() -> void:
 			tagtest = true
 		elif a == "--sneaktest":
 			sneaktest = true
+		elif a == "--finaletest":
+			finaletest = true
 		elif a == "--ridetest":
 			ridetest = true
 		elif a == "--ridehost":
@@ -377,6 +381,8 @@ func _handle_cmdline() -> void:
 		_tag_test()
 	if sneaktest:
 		_sneak_test()
+	if finaletest:
+		_finale_test()
 	if ridetest:
 		_ride_test()
 	if ridehost:
@@ -554,8 +560,8 @@ func _tag_test() -> void:
 		p.global_position = (near[0] as Node2D).global_position + Vector2(0, -4)
 		p.velocity = Vector2.ZERO
 		await get_tree().create_timer(0.8).timeout
-	check.call("3 nieśmiertelniki → EXTRACT (zostało %d, faza %d), wyjście na początku mapy (x=%.0f)" % [mission.goal_left, mission.phase, mission.exit_pos.x],
-		mission.goal_left == 0 and mission.phase == MISSION_SCRIPT.Phase.EXTRACT and mission.exit_pos.x < 400.0)
+	check.call("3 nieśmiertelniki → EXTRACT (zostało %d, faza %d), wyjście po zawale przy szybie (x=%.0f)" % [mission.goal_left, mission.phase, mission.exit_pos.x],
+		mission.goal_left == 0 and mission.phase == MISSION_SCRIPT.Phase.EXTRACT and mission.exit_pos.x > 2900.0)
 	p.global_position = mission.exit_pos + Vector2(0, -2)
 	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
 	check.call("ekstrakcja → SUCCESS, złom z bonusu misji (%d)" % Scrap.last_gain, mission.phase == MISSION_SCRIPT.Phase.SUCCESS and Scrap.last_gain >= Scrap.BONUS_CLEAR)
@@ -606,6 +612,58 @@ func _sneak_test() -> void:
 	hh._collect(p)
 	check.call("podpowiedź light: gracz w podziemiach bez latarki", hh._queued.has("light"))
 	print("[SNEAK-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
+
+## Test finału misji 1.1 (--host --mission=z1_m1 --finaletest): po trzecim nieśmiertelniku wstrząs, zawał rampy (kafle zamieniają się
+## w skałę, graf nawigacji traci drogę powrotną, uwięziony gracz ląduje za skałą), wyjście po drugiej stronie, sukces, reset po restarcie.
+func _finale_test() -> void:
+	await get_tree().create_timer(1.0).timeout
+	var fails := [0]
+	var check := func(label: String, ok: bool) -> void:
+		print("[FINALE-TEST] %s  %s" % ["PASS" if ok else "FAIL", label])
+		if not ok:
+			fails[0] += 1
+	var p: Node2D = _players.get_node_or_null("1")
+	for e in get_tree().get_nodes_in_group("enemies"):
+		e.set_physics_process(false)
+		e.set_process(false)
+	check.call("dane finału w mapie 1.1: obszar zawału (%d) i wyjście „e” (%d)" % [level.collapse_rects.size(), level.exits_alt.size()],
+		level.collapse_rects.size() == 1 and level.exits_alt.size() == 1)
+	var hall := Vector2(166.0 * 16.0 + 8.0, 42.0 * 16.0)
+	var start: Vector2 = level.spawns[0]
+	var ramp_pre := Vector2(146.0 * 16.0 + 8.0, 37.0 * 16.0)
+	var area := Rect2(150.0 * 16.0, 33.0 * 16.0, 8.0 * 16.0, 9.0 * 16.0)
+	var through := func(path: Array) -> bool:           # czy trasa przechodzi przez obszar zawału
+		for n in path:
+			if area.has_point(n.pos):
+				return true
+		return false
+	check.call("przed zawałem: rampa wolna (%s), droga z sali w górę rampy biegnie przez nią" % level._ch(152, 38),
+		not level._is_solid(152, 38) and through.call(level.nav.find_path(hall, ramp_pre)))
+	var tags_now := func() -> Array: return get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "tag" and not n.is_queued_for_deletion())
+	for i in 3:
+		var near: Array = tags_now.call()
+		near.sort_custom(func(a: Node, b: Node) -> bool: return a.global_position.x < b.global_position.x)
+		p.global_position = (near[0] as Node2D).global_position + Vector2(0, -4)
+		p.velocity = Vector2.ZERO
+		await get_tree().create_timer(0.8).timeout
+	check.call("trzeci nieśmiertelnik → finał (finale=%s, faza %d), wyjście po drugiej stronie (x=%.0f)" % [str(mission.finale), mission.phase, mission.exit_pos.x],
+		mission.finale and mission.phase == MISSION_SCRIPT.Phase.EXTRACT and mission.exit_pos.x > 2900.0)
+	# gracz „uwięziony" w obszarze zawału: ma wylądować za skałą (po stronie sali)
+	p.global_position = Vector2(153.0 * 16.0, 40.0 * 16.0)
+	p.velocity = Vector2.ZERO
+	await get_tree().create_timer(2.6).timeout
+	check.call("po zawale: rampa to skała (%s), trasa grafu z sali na rampę nie przechodzi przez zawał (idzie szybem i górą), gracz za skałą (x=%.0f)" % [level._ch(152, 38), p.global_position.x],
+		level._is_solid(152, 38) and not through.call(level.nav.find_path(hall, ramp_pre)) and p.global_position.x > 158.0 * 16.0)
+	var shaft_path: Array = level.nav.find_path(hall, level.exits_alt[0])
+	check.call("po zawale: z sali da się wspiąć szybem do flary (ścieżka %d węzłów)" % shaft_path.size(), not shaft_path.is_empty())
+	p.global_position = mission.exit_pos + Vector2(0, -2)
+	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
+	check.call("ewakuacja przy nowym wyjściu → SUCCESS", mission.phase == MISSION_SCRIPT.Phase.SUCCESS)
+	_restart_mission(true)
+	await get_tree().create_timer(0.8).timeout
+	check.call("restart: rampa znów wolna, droga wraca, finał zresetowany (finale=%s)" % str(mission.finale),
+		not level._is_solid(152, 38) and through.call(level.nav.find_path(hall, ramp_pre)) and not mission.finale and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
+	print("[FINALE-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
 
 ## Test misji 1.2 (--host --mission=z1_m2 --gentest): cztery generatory (przytrzymanie E), skok Uwagi po ostatnim, ekstrakcja,
 ## a potem [Enter] → mapa 1.3 i z powrotem. Wrogowie są zamrożeni, żeby test był powtarzalny.
@@ -886,6 +944,8 @@ func _map_test() -> void:
 			points.append(["start %d" % i, level.spawns[i]])
 		for i in level.exits.size():
 			points.append(["wyjście %d" % i, level.exits[i]])
+		for i in level.exits_alt.size():
+			points.append(["wyjście po zawale %d" % i, level.exits_alt[i]])
 		for g in get_tree().get_nodes_in_group("generators"):
 			points.append([String(g.name), g.global_position])
 		for car in get_tree().get_nodes_in_group("handcar"):
@@ -938,6 +998,8 @@ func _map_test() -> void:
 			for ex in level.exits:
 				if (ex as Vector2).distance_to(cur) > far_exit.distance_to(cur):
 					far_exit = ex
+			if not level.exits_alt.is_empty():
+				far_exit = level.exits_alt[0]                # finał: wyjście po zawale zamiast powrotu na start
 			route += _nav_len(nav, cur, far_exit)
 			print("[MAPTEST] %s: trasa start → %d celów → wyjście ≈ %.0f px, sam marsz ≈ %.0f s (%.1f min)" % [id, goals.size(), route, route / 95.0, route / 95.0 / 60.0])
 		for b in bad:
@@ -1065,6 +1127,7 @@ func _on_peer_connected(id: int) -> void:
 	if multiplayer.is_server():
 		_sync_difficulty.rpc_id(id, Difficulty.level)
 		_load_map_rpc.rpc_id(id, level.map_id)       # mapa zanim pojawi się postać
+		level.send_collapse_to(id)                   # zawały, które już się wydarzyły w tej misji
 		_spawn_player(id)
 
 ## Trudność ustala host; klient dostaje ją przy dołączeniu (HP wrogów, paski, czasy).
