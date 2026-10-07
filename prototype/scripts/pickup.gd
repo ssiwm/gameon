@@ -62,6 +62,7 @@ func _ready() -> void:
 	_glow.position = Vector2(0, -8)
 	add_child(_glow)
 	if static_display:
+		Scrap.changed.connect(queue_redraw)     # zakup w warsztacie odblokowuje stojak
 		_landed = true                  # wisi na stojaku: bez spadania i bujania
 		_vel = Vector2.ZERO
 		_floor_y = global_position.y
@@ -152,12 +153,27 @@ func _draw() -> void:
 			# ciemny kontur 1 px — sylwetka czytelna na jasnym i ciemnym tle
 			for o: Vector2 in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
 				draw_texture_rect_region(tex, Rect2(dst.position + o, dst.size), src, Color(0, 0, 0, 0.85))
-			draw_texture_rect_region(tex, dst, src)
+			var locked := static_display and not Scrap.is_unlocked(arg)
+			draw_texture_rect_region(tex, dst, src, Color(0.32, 0.33, 0.4) if locked else Color.WHITE)
 			var glow_tex := Sprites.texture(Sprites.DIR + "guns_glow.png")
-			if glow_tex != null:
+			if glow_tex != null and not locked:
 				draw_texture_rect_region(glow_tex, dst, src)
+			if locked:
+				_draw_lock(dst)
 		else:
 			draw_rect(Rect2(-6, -7 + bob, 12, 3), c)
+
+## Zablokowany stojak: kłódka nad bronią i cena (albo „SOON") na tabliczce stojaka.
+func _draw_lock(dst: Rect2) -> void:
+	var cx := roundf(dst.position.x + dst.size.x * 0.5)
+	var cy := roundf(dst.position.y + dst.size.y * 0.5) - 4.0
+	draw_arc(Vector2(cx, cy - 3.0), 2.6, PI, TAU, 8, Color(0.75, 0.75, 0.8), 1.0)
+	draw_rect(Rect2(cx - 3.5, cy - 3.0, 7, 6), Color(0.15, 0.15, 0.18))
+	draw_rect(Rect2(cx - 2.5, cy - 2.0, 5, 4), Color(0.85, 0.7, 0.3))
+	draw_rect(Rect2(cx - 0.5, cy - 0.5, 1, 2), Color(0.15, 0.15, 0.18))
+	var price := Scrap.price_of(arg)
+	var label := "%d" % price if price > 0 else "SOON"
+	draw_string(ThemeDB.fallback_font, Vector2(-12, -2), label, HORIZONTAL_ALIGNMENT_CENTER, 24.0, 6, Color(0.12, 0.09, 0.06))
 
 ## Prostokąt nieprzezroczystych pikseli broni `row` w jej klatce (px arkusza); liczony raz i zapamiętany.
 static func _content_box(tex: Texture2D, row: int, tfs: Vector2) -> Rect2i:

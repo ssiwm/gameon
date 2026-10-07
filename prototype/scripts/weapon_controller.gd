@@ -813,7 +813,11 @@ func _try_pickup() -> void:
 	var it := nearby_weapon_item()
 	if it == null:
 		return
-	get_tree().get_first_node_in_group("level").request_weapon_pickup(it.name)
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl.is_locked_item(it):
+		Audio.play("ui_click", Audio.BUS_UI, -14.0)         # zablokowany stojak: najpierw kup w warsztacie
+		return
+	lvl.request_weapon_pickup(it.name)
 
 ## Serwer przyznał broń (po sprawdzeniu odległości). Zastępuje bieżącą główną, jeśli nie masz
 ## już tej samej; porzucona broń leży pod stopami, jej magazynek wraca do wspólnego zapasu.
