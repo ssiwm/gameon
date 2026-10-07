@@ -77,7 +77,7 @@ Wartości domyślne z `weapons.gd`; DPS = pełne trafienie, bez krytyków i spad
 | 2 | **SPREAD-12** | rozrzut 5×7, półauto | Klasyk Contry; dobra z bliska, spadek obrażeń z dystansem |
 | 3 | **P-64** | sidearm, ∞ amunicji | Cichsza od M-83, celna, **krytyk ×2** — ratunek i broń „na cicho” |
 | 4 | **PELLET-8** | ciężka strzelba 8×10, pompka | 80 na strzał z bliska (zabija Mimika i Skoczka jednym), odrzut, ogłuszenie 0,5 s; ładowanie po 1 naboju (przerywane strzałem); śrucina 10 mało traci na pancerzu Wołka |
-| 5 | **LR-7** | promień ciągły, przebija 2 | Prawie bezgłośny (0,18/tyk), 70 DPS na 2 cele; promień **świeci** (światło na końcu i przy lufie) i **przyciąga ćmy** (1.7.57), a bateria (100) kończy się w 10 s |
+| 5 | **LR-7** | promień ciągły, przebija 2 | 60 DPS na 2 cele, zasięg 11 m i wiązka słabnie z dystansem (do 55%); **hałas rośnie z rozgrzaniem** (0,25 → 0,8 na tyk), bateria 60 kończy się w 6 s; promień **świeci** i **przyciąga ćmy** oraz Stalkera |
 | 6 | **HKM-9** | miotacz ognia | 4 m, podpala (8 HP/s), **Trzoski uciekają w panice** |
 | 7 | **WRATH-4** | granatnik po łuku | AoE 3 m, 80 dmg; niszczy gniazda; wybuch = +15 Uwagi; rani drużynę |
 | 8 | **FALCON-6** | mikrorakiety naprowadzane (10 dmg) | Same dochodzą do celu poza osią i **wolą cele trudne do trafienia**: ćmę, skoczka, podsłuchacza |
@@ -98,7 +98,7 @@ bez spadku obrażeń z dystansu.
 | SPREAD-12 | 231 | 134.6 | 24 | 2.50s | 17.4 | 0.22s | 1.04s |
 | P-64 | 300 | 55.0 | 12 | 1.40s | 3.9 | 0.55s | 2.55s |
 | PELLET-8 | 75 | 100.0 | 8 | 3.60s | 7.2 | 0.30s | 1.40s |
-| LR-7 | 600 | 70.0 | 100 | 2.00s | 1.8 | 0.43s | 2.00s |
+| LR-7 | 600 | 60.0 | 60 | 2.60s | 6.4 | 0.50s | 2.33s |
 | HKM-9 | 600 | 30.0 | 80 | 2.60s | 3.0 | 1.00s | 4.67s |
 | WRATH-4 | 50 | 66.7 | 6 | 4.20s | 2.8 | 0.45s | 2.10s |
 | FALCON-6 | 300 | 50.0 | 40 | 2.70s | 10.5 | 0.60s | 2.80s |
@@ -246,3 +246,20 @@ Broń z trybem serii dostaje `burst_size > 0` w tabeli (dziś tylko M-83); bot z
 
 Przejście z kilofem jest w misji 1.2 (hala pod wieżą widokową). Nowa ściana = marker `q` w dolnym wierszu przejścia (3 kafle wysokości
 i bryła nad nimi); `--maptest` otwiera wszystkie ściany przed sprawdzeniem osiągalności.
+
+## 10. Osłabienie LR-7 (1.7.61)
+
+Po rozgrywkach LR-7 była zbyt mocna: hitscan, zasięg 14 m, 70 DPS na dwa cele, prawie bezgłośna (hałas/DPS 0,026) i 30 s ognia z jednego zapasu.
+
+| Parametr | Było | Jest |
+|---|---|---|
+| Obrażenia na tyk / DPS | 7 / 70 | 6 / 60 |
+| Zasięg | 14 m, bez spadku | 11 m, spadek od 5 m do 55% obrażeń na końcu |
+| Hałas na tyk | 0,18 stały | 0,25 → 0,8, rośnie z rozgrzaniem (+0,04 na tyk, chłodzenie 0,25/s) |
+| Hałas / DPS (seria 12 s) | 0,026 | 0,106 (M-83 0,175, P-64 0,07) |
+| Bateria / zapas / max | 100 / 200 / 400 | 60 / 120 / 240 (skrzynka 50, przeładowanie 2,6 s) |
+| Pancerz Wołka | — | 6 → 3 na tyk (połowa DPS), tak jak kule |
+
+Ulepszenie „Extended cell” daje teraz +20 ładunku i +40 zapasu max. `--weapontest` pilnuje DPS ≤ 65, zasięgu ≤ 12 m, hałasu/DPS ≥ 0,05,
+spadku wiązki z dystansem i grzania się lufy (119/119). Hałas ciągłej broni liczy się teraz z rozgrzaniem (`weapon_controller.gd`,
+HKM-9 bez zmian — jego `heat_gain` = 0).

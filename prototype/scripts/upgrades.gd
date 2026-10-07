@@ -38,7 +38,7 @@ const TIERS := {
 		{"name": "Concussion shells", "desc": "Stun up to 1.5 s, +30% knock-back", "mods": [["stun", "add", 1.0], ["knock", "mul", 1.3]]},
 	],
 	"lr7": [
-		{"name": "Extended cell", "desc": "+20 charge per cell, bigger reserve", "mods": [["mag", "add", 20], ["reserve_max", "add", 60]]},
+		{"name": "Extended cell", "desc": "+20 charge per cell, bigger reserve", "mods": [["mag", "add", 20], ["reserve_max", "add", 40]]},
 		{"name": "Overdrive coil", "desc": "+20% beam damage", "mods": [["damage", "mul", 1.2]]},
 		{"name": "Focusing lens", "desc": "The beam pierces one more target", "mods": [["pierce", "add", 1]]},
 	],

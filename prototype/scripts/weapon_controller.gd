@@ -388,7 +388,9 @@ func _handle_continuous(d: WeaponDef, held: bool) -> void:
 		cd += d.cooldown
 		if ammo_enabled:
 			mags[d.id] = mag_of(d.id) - d.ammo_per_shot
-		NoiseMgr.add_noise(d.noise(0.0), player.global_position)
+		var heat := heat_of(d.id)
+		NoiseMgr.add_noise(d.noise(heat), player.global_position)       # wiązka się grzeje: hałas rośnie z czasem ciągłego ognia (LR-7)
+		_heat[d.id] = minf(1.0, heat + d.heat_gain)
 		recoil = maxf(recoil, 0.25)
 		Feel.shake(d.shake)
 		shot.emit(d.id)
@@ -647,7 +649,7 @@ func _physics_process(delta: float) -> void:
 	if d.kind == WeaponDef.Kind.BEAM:
 		var tr := Combat.trace(space, origin + dir * 6.0, dir, d.range_px, int(d.pierce), 0.0, [player.get_rid()])
 		for h in tr["hits"]:
-			_continuous_hit(d, h["collider"], h["pos"], dir, "beam", report)
+			_continuous_hit(d, h["collider"], h["pos"], dir, "beam", report, d.damage * d.falloff(float(h["dist"])))   # wiązka słabnie z dystansem
 	else:
 		for t in Combat.in_cone(get_tree(), space, origin + dir * 4.0, dir, d.range_px, d.arc_deg):
 			var c := Combat.center_of(t)

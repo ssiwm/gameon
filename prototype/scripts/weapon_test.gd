@@ -165,7 +165,7 @@ func _t_data() -> void:
 		var dps: float = d.dps() if d.kind != WeaponDef.Kind.LAUNCHER else maxf(d.damage, d.blast_damage) / d.cooldown
 		if d.kind == WeaponDef.Kind.RAIL:
 			dps = d.damage / (d.cooldown + d.charge_time)
-		var noise_s: float = float(sim["noise_per_s"]) if not d.is_continuous() and d.kind != WeaponDef.Kind.RAIL else d.noise(0.0) / d.cooldown
+		var noise_s: float = float(sim["noise_per_s"]) if d.kind != WeaponDef.Kind.RAIL else d.noise(0.0) / d.cooldown
 		if d.kind == WeaponDef.Kind.RAIL:
 			noise_s = d.noise(0.0) / (d.cooldown + d.charge_time)
 		print("[WTEST] %-9s %5.0f %6.1f %5d %6.2fs %9.1f %8.2fs %8.2fs" % [
@@ -291,12 +291,28 @@ func _t_phase1() -> void:
 		if d.slot == Weapons.Slot.MELEE or d.kind == WeaponDef.Kind.LAUNCHER or d.kind == WeaponDef.Kind.RAIL:
 			continue
 		var sim := Weapons.simulate_heat(d.id, 12.0)
-		var ns: float = float(sim["noise_per_s"]) if not d.is_continuous() else d.noise(0.0) / d.cooldown
+		var ns: float = float(sim["noise_per_s"])
 		var ratio := ns / maxf(d.dps(), 0.1)
 		if ratio > worst_r:
 			worst_r = ratio
 			worst = d.name
 	check("hałas / DPS ≤ 0,25 dla broni palnych (najgorsza: %s %.2f)" % [worst, worst_r], worst_r <= 0.25)
+	# LR-7 po osłabieniu: DPS ≤ 65, zasięg ≤ 12 m, hałas na DPS nie mniejszy niż ~0,05 (wcześniej 0,026) i rozgrzewa się w serii
+	var lr := Weapons.def(Weapons.LR7)
+	var lr_sim := Weapons.simulate_heat(lr.id, 12.0)
+	var lr_ratio: float = float(lr_sim["noise_per_s"]) / lr.dps()
+	check("LR-7: DPS %.0f (≤ 65), zasięg %.0f m (≤ 12), hałas/DPS %.3f (≥ 0,05), magazynek %d" % [lr.dps(), lr.range_px / 16.0, lr_ratio, lr.mag], lr.dps() <= 65.0 and lr.range_px <= 192.0 and lr_ratio >= 0.05 and lr.mag <= 70)
+	var beam_t := await dummy(40.0, 100000.0, "trzosek", 0.0)
+	var beam_far := await dummy(150.0, 100000.0, "trzosek", 0.0)
+	equip(Weapons.LR7)
+	wc.sim_fire = true
+	await wait(0.9)
+	wc.sim_fire = false
+	var near_d := dealt(beam_t)
+	var far_d := dealt(beam_far)
+	check("LR-7: wiązka słabnie z dystansem (blisko %.0f, 150 px %.0f) i grzeje się (heat %.2f)" % [near_d, far_d, wc.heat_of(Weapons.LR7)], near_d > 0.0 and far_d > 0.0 and far_d < near_d * 0.85 and wc.heat_of(Weapons.LR7) > 0.1)
+	free_dummies()
+	await frames(2)
 
 ## Dodatki po fazie 3: linka SINEW-6, zamurowane przejście i kilof, ogień jako mur dla tchórzliwych wrogów.
 func _t_phase4() -> void:
@@ -608,7 +624,7 @@ func _t_pierce_beam_rail() -> void:
 			hit_count += 1
 	check("LR-7: promień przebija 2 cele (pierce 1), trzeci nietknięty", hit_count == 2 and dealt(targets[2]) == 0.0, "trafionych %d" % hit_count)
 	check("LR-7: bateria spada o tyknięcia", wc.mag_of(d.id) < mag0 and mag0 - wc.mag_of(d.id) <= 8, "zużyto %d" % (mag0 - wc.mag_of(d.id)))
-	check("LR-7: ciągły ogień cichy (szum/tyk ≤ 0,2)", d.noise(0.0) <= 0.2)
+	check("LR-7: zimna wiązka cicha (szum/tyk ≤ 0,3), rozgrzana głośniejsza (%.2f → %.2f)" % [d.noise(0.0), d.n_max], d.noise(0.0) <= 0.3 and d.n_max >= 0.7)
 	for t in targets:
 		t.hp = t._max_hp
 	# szyna: ładowanie 1,2 s, puszczenie = strzał, przebija wszystkich
