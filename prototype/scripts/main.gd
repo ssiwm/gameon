@@ -129,6 +129,7 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 	if map_id != "" and map_id != level.map_id:
 		_set_map(map_id)
 	NoiseMgr.reset_mission()
+	Arsenal.reset_throwables()           # granaty: zapas startowy co misję i próbę (też z kryjówki — jak flary)
 	if not carry:
 		Arsenal.reset_mission()          # ekwipunek i amunicja wracają na start; z carry (kryjówka) zostają
 	Director.reset()
@@ -586,6 +587,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if sw != null and sp != null:
 			sp.global_position = sw.global_position + Vector2(40.0, -1.0)
 			sp.velocity = Vector2.ZERO
+	if "--shotnade" in OS.get_cmdline_user_args():
+		var gp: Node2D = _players.get_node_or_null("1")      # --shotnade: granat fosforowy rzucony przed gracza (pole ognia po ~1,5 s)
+		if gp != null:
+			Arsenal.cycle_throwable()
+			Arsenal.request_throw("phos", gp.global_position + Vector2(50.0, -20.0), Vector2(60.0, -20.0))
 	if "--shotfire" in OS.get_cmdline_user_args():
 		var fp: Node2D = _players.get_node_or_null("1")      # --shotfire: trzy plamy ognia HKM-9 przed graczem (podgląd)
 		if fp != null:

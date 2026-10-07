@@ -20,6 +20,7 @@ extends Control
 const Weapons := preload("res://scripts/weapons.gd")
 const Mission := preload("res://scripts/mission.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
+const Throwables := preload("res://scripts/throwables.gd")
 const Hints := preload("res://scripts/hints.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
@@ -189,6 +190,8 @@ var _gear_card: PanelContainer
 var _reload_bar: Bar
 var _charges: Pips
 var _flares: Pips
+var _gren: Pips
+var _gren_name: Label
 var _note: Label
 var _note_t := 0.0
 var _slots: Array[PanelContainer] = []
@@ -483,6 +486,19 @@ func _build_gear_card() -> void:
 	_flares.custom_minimum_size = Vector2(NoiseMgr.FLARE_MAX * 11.0 * 0.8 - 2.0, 7.2)
 	qf.add_child(_flares)
 	res.add_child(qf)
+	var tg := HBoxContainer.new()                  # granaty (T rzut, X zmiana rodzaju): rodzaj i zapas drużyny
+	tg.add_theme_constant_override("separation", 3)
+	tg.add_child(UiTheme.label("T", 7, UiTheme.MUTED))
+	_gren = Pips.new()
+	_gren.shape = "diamond"
+	_gren.count = 4
+	_gren.on = Color(0.5, 0.72, 0.4)
+	_gren.u = 0.8
+	_gren.custom_minimum_size = Vector2(4 * 11.0 * 0.8 - 2.0, 7.2)
+	tg.add_child(_gren)
+	_gren_name = UiTheme.label("FRAG", 7, UiTheme.MUTED)
+	tg.add_child(_gren_name)
+	res.add_child(tg)
 	var lr := HBoxContainer.new()
 	lr.add_theme_constant_override("separation", 4)
 	lr.add_child(UiTheme.label("L", 7, UiTheme.MUTED))
@@ -682,7 +698,7 @@ func _build_prompt() -> void:
 
 func _build_controls() -> void:
 	_controls = UiTheme.label(
-		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J/LMB fire · R reload · B fire mode · V/RMB melee · 1-3 gun · E take/revive · Q lure · F flare · G scream · L light",
+		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J/LMB fire · R reload · B fire mode · T grenade · V/RMB melee · 1-3 gun · E take/revive · Q lure · F flare · G scream · L light",
 		7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_controls)
 	_f1 = UiTheme.label("F1  controls", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
@@ -818,6 +834,13 @@ func _drive_noise() -> void:
 	_charges.queue_redraw()
 	_flares.filled = NoiseMgr.flares
 	_flares.queue_redraw()
+	var gk := Arsenal.selected_throwable()
+	_gren.on = Throwables.KINDS[gk]["color"]
+	_gren.count = int(Throwables.KINDS[gk]["max"])
+	_gren.filled = Arsenal.get_throwable(gk)
+	_gren.queue_redraw()
+	_gren_name.text = "%s  [X]" % Throwables.KINDS[gk]["name"]
+	_gren_name.add_theme_color_override("font_color", UiTheme.TEXT if Arsenal.get_throwable(gk) > 0 else UiTheme.MUTED)
 
 func _drive_status() -> void:
 	_session.text = _net_status()

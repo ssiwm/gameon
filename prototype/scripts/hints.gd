@@ -25,6 +25,7 @@ const TIPS := [
 	["downed", "You are down. Stay still — a teammate can revive you before you bleed out"],
 	["light", "L toggles the flashlight. Light is noise too — turn it off to hide"],
 	["flare", "F throws a flare: bait that draws enemies with light instead of noise"],
+	["grenade", "T throws the selected grenade, X switches the type. A frag hurts the squad too — phosphorus does not"],
 	["pickaxe", "Swing the pickaxe (V) at the cracked brick wall to break through — it is loud"],
 	["firemode", "B switches the M-83 between full auto and a quiet 3-round burst"],
 ]
@@ -93,6 +94,7 @@ func _collect(p: Node) -> void:
 	for bw in p.get_tree().get_nodes_in_group("breakables"):
 		if p.global_position.distance_to(bw.global_position) < 70.0:
 			wall_near = true
+	_queue("grenade", _session > 120.0, true)
 	_queue("pickaxe", wall_near and p.weapons != null and Weapons.def(p.weapons.melee_id).breaks_walls, false)
 	_queue("firemode", _session > 90.0 and p.weapons != null and p.weapons.cur().burst_size > 0, true)
 	# chwilowe: gdy sytuacja minie, zanim przyjdzie kolej, podpowiedź przepada

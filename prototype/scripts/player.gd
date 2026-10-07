@@ -530,6 +530,11 @@ func _local_brain(delta: float) -> void:
 		Voice.try_scream(self)
 	if Input.is_action_just_pressed("flare"):
 		_throw_flare()
+	if Input.is_action_just_pressed("throw"):
+		_throw_grenade()
+	if Input.is_action_just_pressed("throw_next"):
+		Arsenal.cycle_throwable()
+		Audio.play("ui_click", Audio.BUS_UI, -12.0, 1.1)
 	if Input.is_action_just_pressed("flashlight"):
 		_toggle_flashlight()
 
@@ -569,6 +574,19 @@ func _throw_flare() -> void:
 	var origin := global_position + Vector2(aim_dir.x * 6.0, -12.0)
 	var vel := aim_dir.normalized() * 190.0 + Vector2(velocity.x * 0.5, -70.0)
 	NoiseMgr.request_flare(origin, vel)
+
+## Rzut granatem (T): wybrany rodzaj (X), łuk mocniejszy niż flary. Brak zapasu = suchy klik.
+func _throw_grenade() -> void:
+	if dead or is_bot:
+		return
+	var kind := Arsenal.selected_throwable()
+	if Arsenal.get_throwable(kind) <= 0:
+		Audio.play("dry_fire", Audio.BUS_WEAPONS, -10.0, 1.2)
+		return
+	var origin := global_position + Vector2(aim_dir.x * 6.0, -12.0)
+	var vel := aim_dir.normalized() * 230.0 + Vector2(velocity.x * 0.5, -90.0)
+	Audio.play_variant("foley_gear", 3, Audio.BUS_PLAYER, -10.0, 0.8)
+	Arsenal.request_throw(kind, origin, vel)
 
 ## Krzyk (mikrofon albo G, voice.gd): hałas + przyciągnięcie wrogów; efekt widzą wszyscy.
 func do_scream(amount: float) -> void:

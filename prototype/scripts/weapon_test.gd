@@ -16,6 +16,7 @@ const Combat := preload("res://scripts/combat.gd")
 const Projectile := preload("res://scripts/projectile.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
 const Lights := preload("res://scripts/lights.gd")
+const Throwables := preload("res://scripts/throwables.gd")
 const BrickWall := preload("res://scripts/brick_wall.gd")
 const WALL_HP_REF := 120.0
 const Enemy := preload("res://scripts/enemy.gd")
@@ -86,6 +87,8 @@ func free_dummies() -> void:
 	Lights.flashes.clear()
 	for fp in get_tree().get_nodes_in_group("fire_patches"):
 		fp.queue_free()
+	for gr in get_tree().get_nodes_in_group("grenades"):
+		gr.queue_free()
 	for e in level.get_children():
 		if e.name.begins_with("TDummy"):
 			e.queue_free()
@@ -137,6 +140,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_upgrades()
 	await _t_phase3()
 	await _t_phase4()
+	await _t_throwables()
 	await _t_sweep()
 	await _t_pierce_beam_rail()
 	await _t_flame()
@@ -313,6 +317,58 @@ func _t_phase1() -> void:
 	check("LR-7: wiązka słabnie z dystansem (blisko %.0f, 150 px %.0f) i grzeje się (heat %.2f)" % [near_d, far_d, wc.heat_of(Weapons.LR7)], near_d > 0.0 and far_d > 0.0 and far_d < near_d * 0.85 and wc.heat_of(Weapons.LR7) > 0.1)
 	free_dummies()
 	await frames(2)
+
+## Faza A1 ekwipunku: granaty (odłamkowy, fosforowy) — zapas drużyny, rzut, zapalnik, wybuch, pole ognia, ściany.
+func _t_throwables() -> void:
+	Arsenal.reset_throwables()
+	check("granaty: zapas startowy (frag %d, phos %d), maks. %d / %d" % [Arsenal.get_throwable("frag"), Arsenal.get_throwable("phos"), Throwables.KINDS["frag"]["max"], Throwables.KINDS["phos"]["max"]],
+		Arsenal.get_throwable("frag") == 2 and Arsenal.get_throwable("phos") == 1)
+	# --- odłamkowy
+	var tgt := await dummy(70.0)
+	var wall: Node2D = BrickWall.new()
+	wall.name = "TWallG"
+	wall.rows = 2
+	wall.global_position = player.global_position + Vector2(118.0, 0.0)
+	level.add_child(wall)
+	await frames(2)
+	NoiseMgr.level = 0.0
+	Arsenal.request_throw("frag", player.global_position + Vector2(70.0, -30.0), Vector2.ZERO)
+	await frames(2)
+	var live := get_tree().get_nodes_in_group("grenades").size()
+	check("granat odłamkowy: rzut zdejmuje sztukę (zostało %d) i tworzy granat (%d)" % [Arsenal.get_throwable("frag"), live], Arsenal.get_throwable("frag") == 1 and live == 1)
+	await wait(1.2)
+	check("granat: przed zapalnikiem nic nie boli (obrażenia %.0f)" % dealt(tgt), dealt(tgt) == 0.0)
+	await wait(1.2)
+	var frag_dealt := dealt(tgt)
+	check("granat odłamkowy: wybuch po zapalniku rani cel w promieniu 4 m (%.0f, spodziewane 45–90), granat znika, hałas %.0f" % [frag_dealt, NoiseMgr.level],
+		frag_dealt >= 45.0 and frag_dealt <= 90.5 and get_tree().get_nodes_in_group("grenades").is_empty() and NoiseMgr.level >= 10.0)
+	check("granat odłamkowy uszkadza też zamurowane przejście (HP %.0f / 120)" % wall.hp, wall.hp < 120.0)
+	wall.queue_free()
+	level._opened_walls.erase("TWallG")
+	free_dummies()
+	await frames(2)
+	# --- fosforowy
+	var burner := await dummy(60.0)
+	Arsenal.request_throw("phos", player.global_position + Vector2(60.0, -30.0), Vector2.ZERO)
+	await wait(2.0)
+	var patches := get_tree().get_nodes_in_group("fire_patches")
+	var long_lived := patches.filter(func(p: Node) -> bool: return p.life > 12.0).size()
+	check("granat fosforowy: pole ognia z %d plam trwających ~15 s (żyje %d), cel w ogniu płonie (%.1f)" % [patches.size(), long_lived, dealt(burner)], patches.size() == 3 and long_lived == 3 and burner._burn > 0.0 and dealt(burner) > 0.0)
+	check("granat fosforowy: zapas %d" % Arsenal.get_throwable("phos"), Arsenal.get_throwable("phos") == 0)
+	free_dummies()
+	await frames(2)
+	# --- brak zapasu, sufit, reset
+	Arsenal.request_throw("phos", player.global_position + Vector2(60.0, -30.0), Vector2.ZERO)
+	await frames(2)
+	check("rzut bez zapasu nic nie robi", get_tree().get_nodes_in_group("grenades").is_empty() and Arsenal.get_throwable("phos") == 0)
+	var added: int = Arsenal.add_throwable("frag", 10)
+	check("zapas ma sufit (dodano %d, jest %d / %d)" % [added, Arsenal.get_throwable("frag"), Throwables.KINDS["frag"]["max"]], Arsenal.get_throwable("frag") == Throwables.KINDS["frag"]["max"])
+	Arsenal.cycle_throwable()
+	var sel2: String = Arsenal.selected_throwable()
+	Arsenal.cycle_throwable()
+	check("X przełącza rodzaj (%s → %s → %s)" % ["frag", sel2, Arsenal.selected_throwable()], sel2 == "phos" and Arsenal.selected_throwable() == "frag")
+	Arsenal.reset_throwables()
+	check("reset misji przywraca zapas startowy", Arsenal.get_throwable("frag") == 2 and Arsenal.get_throwable("phos") == 1)
 
 ## Dodatki po fazie 3: linka SINEW-6, zamurowane przejście i kilof, ogień jako mur dla tchórzliwych wrogów.
 func _t_phase4() -> void:

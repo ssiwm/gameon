@@ -20,6 +20,8 @@ func _enter_tree() -> void:
 	_add_keys("flashlight", [KEY_L])
 	_add_keys("reload", [KEY_R])
 	_add_keys("firemode", [KEY_B])
+	_add_keys("throw", [KEY_T])
+	_add_keys("throw_next", [KEY_X])
 	_add_keys("melee", [KEY_V])
 	_add_keys("help", [KEY_F1])
 	_add_keys("pause", [KEY_ESCAPE, KEY_P])

@@ -48,6 +48,7 @@ const PICKUP := preload("res://scripts/pickup.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const FIRE_PATCH := preload("res://scripts/fire_patch.gd")
 const BRICK_WALL := preload("res://scripts/brick_wall.gd")
+const GRENADE := preload("res://scripts/grenade.gd")
 const FLARE := preload("res://scripts/flare.gd")
 const GENERATOR := preload("res://scripts/generator.gd")
 const HANDCAR := preload("res://scripts/handcar.gd")
@@ -762,42 +763,42 @@ func walls_total() -> int:
 
 # ---------------------------------------------------------------- ogień na podłodze
 
-const MAX_FIRE_PATCHES := 10
+const MAX_FIRE_PATCHES := 16
 const FIRE_MERGE_DIST := 18.0
 var _fire_serial := 0
 
 ## Serwer: HKM-9 zostawia ogień na podłodze w `pos`. Blisko istniejącego ognia tylko go odnawia; pula jest ograniczona (najstarszy gaśnie).
-func spawn_fire_patch(pos: Vector2, weapon: int, shooter: int) -> void:
+func spawn_fire_patch(pos: Vector2, weapon: int, shooter: int, life := FIRE_PATCH.FIRE_LIFE) -> void:
 	if not NoiseMgr.is_server():
 		return
 	var live: Array = get_tree().get_nodes_in_group("fire_patches").filter(func(p: Node) -> bool: return is_instance_valid(p) and not p.is_queued_for_deletion())
 	for p in live:
 		if absf(p.global_position.x - pos.x) < FIRE_MERGE_DIST and absf(p.global_position.y - pos.y) < 10.0:
-			_refresh_fire_patch(String(p.name))
+			_refresh_fire_patch(String(p.name), life)
 			return
 	if live.size() >= MAX_FIRE_PATCHES:
 		(live[0] as Node).queue_free()
 	_fire_serial += 1
 	var n := "Fire%d" % _fire_serial
 	if NoiseMgr.has_network():
-		_spawn_fire_rpc.rpc(n, pos, weapon, shooter)
+		_spawn_fire_rpc.rpc(n, pos, weapon, shooter, life)
 	else:
-		_spawn_fire_rpc(n, pos, weapon, shooter)
+		_spawn_fire_rpc(n, pos, weapon, shooter, life)
 
-func _refresh_fire_patch(n: String) -> void:
+func _refresh_fire_patch(n: String, life: float) -> void:
 	if NoiseMgr.has_network():
-		_refresh_fire_rpc.rpc(n)
+		_refresh_fire_rpc.rpc(n, life)
 	else:
-		_refresh_fire_rpc(n)
+		_refresh_fire_rpc(n, life)
 
 @rpc("authority", "call_local", "reliable")
-func _refresh_fire_rpc(n: String) -> void:
+func _refresh_fire_rpc(n: String, life: float) -> void:
 	var f := get_node_or_null(n)
 	if f != null:
-		f.life = FIRE_PATCH.FIRE_LIFE
+		f.life = maxf(f.life, life)
 
 @rpc("authority", "call_local", "reliable")
-func _spawn_fire_rpc(n: String, pos: Vector2, weapon: int, shooter: int) -> void:
+func _spawn_fire_rpc(n: String, pos: Vector2, weapon: int, shooter: int, life: float) -> void:
 	if has_node(n):
 		return
 	var f: Node2D = FIRE_PATCH.new()
@@ -805,7 +806,35 @@ func _spawn_fire_rpc(n: String, pos: Vector2, weapon: int, shooter: int) -> void
 	f.position = pos
 	f.weapon = weapon
 	f.shooter_id = shooter
+	f.life = life
 	add_child(f)
+
+# ---------------------------------------------------------------- granaty (rzucane przedmioty)
+
+var _grenade_serial := 0
+
+## Serwer: granat rzucony przez gracza (Arsenal.request_throw) — powstaje u wszystkich peerów.
+func spawn_grenade(kind: String, pos: Vector2, vel: Vector2, shooter: int) -> void:
+	if not NoiseMgr.is_server():
+		return
+	_grenade_serial += 1
+	var n := "Grenade%d" % _grenade_serial
+	if NoiseMgr.has_network():
+		_spawn_grenade_rpc.rpc(n, kind, pos, vel, shooter)
+	else:
+		_spawn_grenade_rpc(n, kind, pos, vel, shooter)
+
+@rpc("authority", "call_local", "reliable")
+func _spawn_grenade_rpc(n: String, kind: String, pos: Vector2, vel: Vector2, shooter: int) -> void:
+	if has_node(n):
+		return
+	var g: Node2D = GRENADE.new()
+	g.name = n
+	g.kind = kind
+	g.position = pos
+	g.vel = vel
+	g.shooter_id = shooter
+	add_child(g)
 
 # ---------------------------------------------------------------- apteczki
 
@@ -868,6 +897,10 @@ func clear_pickups() -> void:
 func _clear_pickups_rpc() -> void:
 	for f in get_tree().get_nodes_in_group("flares"):
 		f.queue_free()
+	for gr in get_tree().get_nodes_in_group("grenades"):
+		gr.queue_free()
+	for fp in get_tree().get_nodes_in_group("fire_patches"):
+		fp.queue_free()
 	for h in get_tree().get_nodes_in_group("pickups"):
 		h.queue_free()
 		# nazwa zwalnia się dopiero po klatce — przedmioty z mapy wracają odroczone
