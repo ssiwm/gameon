@@ -850,6 +850,8 @@ func _handle_revive(delta: float, holding: bool) -> bool:
 		t.set_revive_progress(0.0)
 		t.request_revive()
 		_revive_target_ref = null
+		if not is_bot and is_multiplayer_authority():
+			Profile.add_xp(Profile.XP_REVIVE, "Revive")           # XP za podniesienie kolegi (lokalny profil podnoszącego)
 	return true
 
 ## Postęp liczy podnoszący, ale widzieć go musi też leżący (i reszta drużyny),

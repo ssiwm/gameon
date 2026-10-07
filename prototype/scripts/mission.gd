@@ -352,6 +352,9 @@ func _success() -> void:
 			if tl != null:
 				Scrap.add_trophy(String(tl.map_id))        # pokonany boss odblokowuje broń-trofeum w warsztacie (SPECTER-1)
 	_record_result()
+	if kind != "hub":
+		var xl := get_tree().get_first_node_in_group("level")
+		Profile.server_award_mission(String(xl.map_id) if xl != null else "", side_done(), downs == 0, kind == "boss")      # XP profili ludzi
 	if NightShift.active:
 		shift_cleared += 1
 		shift_time += elapsed
