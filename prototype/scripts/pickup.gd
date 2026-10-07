@@ -10,6 +10,7 @@ extends Node2D
 ##   scrap   złom (rounds = wartość): dotknięcie przez dowolnego żywego gracza dodaje do łupu misji (scrap.gd)
 ##   tag     nieśmiertelnik (misja 1.1): dotknięcie przez dowolnego żywego gracza zalicza cel główny (mission.on_tag_taken)
 ##   stash   ukryta skrytka (cel poboczny misji 1.1): jak złom (rounds = wartość), a do tego zalicza skrytkę w misji (mission.on_stash_found)
+##   flares  skrzynka z flarami (arena Pijawki): +rounds flar do wspólnej puli (NoiseMgr.add_flare), o ile pula nie jest pełna
 ##   weapon  nie podnosi się samo: gracz naciska E (wymiana broni to decyzja, a nie
 ##           wypadek); serwer sprawdza odległość i przyznaje (level.gd)
 
@@ -31,6 +32,7 @@ const GLOW := {
 	"scrap": Color(0.95, 0.8, 0.4),
 	"tag": Color(0.6, 0.85, 1.0),
 	"stash": Color(0.95, 0.75, 0.35),
+	"flares": Color(1.0, 0.45, 0.22),
 }
 
 var kind := "health"
@@ -143,7 +145,16 @@ func _draw() -> void:
 		return
 	var bob := 0.0 if (not _landed or static_display) else sin(_t * 3.0) * 1.5 - 1.5
 	var c: Color = GLOW.get(kind, Color.WHITE)
-	if kind == "stash":
+	if kind == "flares":
+		# skrzynka z flarami: trzy czerwone tuby z jasnymi paskami w drewnianej ramce
+		draw_rect(Rect2(-7, -8 + bob, 14, 8), Color(0.18, 0.13, 0.09))
+		draw_rect(Rect2(-6, -7 + bob, 12, 6), Color(0.3, 0.22, 0.14))
+		for i in 3:
+			var fx := -4.0 + float(i) * 4.0
+			draw_rect(Rect2(fx, -11 + bob, 2, 7), Color(0.75, 0.16, 0.12))
+			draw_rect(Rect2(fx, -9 + bob, 2, 1), Color(0.95, 0.85, 0.55))
+			draw_rect(Rect2(fx, -12 + bob, 2, 1), Color(1.0, 0.6, 0.3))
+	elif kind == "stash":
 		# zakopany worek: brązowy, ściągnięty rzemieniem, ze złotym połyskiem (widać go tylko z bliska)
 		var gl2 := 0.5 + 0.5 * sin(_t * 2.6)
 		draw_rect(Rect2(-6, -9 + bob, 12, 9), Color(0.14, 0.1, 0.06))
@@ -270,6 +281,8 @@ func _try_pickup() -> void:
 			_try_tag()
 		"stash":
 			_try_stash()
+		"flares":
+			_try_flares()
 
 ## Złom zbiera każdy żywy gracz (też bot) — wspólny łup drużyny.
 func _try_scrap() -> void:
@@ -277,6 +290,19 @@ func _try_scrap() -> void:
 		if p.dead or not _near(p):
 			continue
 		Scrap.add_loot(rounds)
+		var lvl := _level()
+		if lvl != null:
+			lvl.take_item(String(name))
+		return
+
+## Skrzynka z flarami: bierze ją człowiek, gdy pula flar nie jest pełna (nic się nie marnuje, jak z amunicją).
+func _try_flares() -> void:
+	if NoiseMgr.flares >= NoiseMgr.FLARE_MAX:
+		return
+	for pl in get_tree().get_nodes_in_group("players"):
+		if pl.dead or pl.is_bot or not _near(pl):
+			continue
+		NoiseMgr.add_flare(maxi(1, rounds))
 		var lvl := _level()
 		if lvl != null:
 			lvl.take_item(String(name))

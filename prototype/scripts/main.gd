@@ -299,6 +299,7 @@ func _handle_cmdline() -> void:
 	var tagtest := false
 	var sneaktest := false
 	var finaletest := false
+	var leechtest := false
 	var shot_path := ""
 	var shot_col := -1
 	var shot_delay := 1.5
@@ -307,6 +308,7 @@ func _handle_cmdline() -> void:
 	var shot_demo := false
 	var shot_ws := false
 	var shot_result := false
+	var shot_boss := false
 	var weapon_mode := ""
 	var shots_dir := ""
 	var args := OS.get_cmdline_user_args()
@@ -358,8 +360,12 @@ func _handle_cmdline() -> void:
 			sneaktest = true
 		elif a == "--finaletest":
 			finaletest = true
+		elif a == "--leechtest":
+			leechtest = true
 		elif a.begins_with("--shot="):
 			shot_path = a.substr("--shot=".length())
+		elif a == "--shotboss":
+			shot_boss = true
 		elif a == "--shotresult":
 			shot_result = true
 		elif a == "--shotws":
@@ -411,8 +417,10 @@ func _handle_cmdline() -> void:
 		_sneak_test()
 	if finaletest:
 		_finale_test()
+	if leechtest:
+		_leech_test()
 	if shot_path != "":
-		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker, shot_demo, shot_ws, shot_result)
+		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker, shot_demo, shot_ws, shot_result, shot_boss)
 	if ridetest:
 		_ride_test()
 	if ridehost:
@@ -553,8 +561,14 @@ func host_game() -> void:
 
 ## Narzędzie deweloperskie (--shot=ŚCIEŻKA [--shotat=KOLUMNA]): po 2,5 s zapisuje obraz z widoku gry (tylko okno gry, bez pulpitu)
 ## do PNG i kończy. --shotat przenosi człowieka na podłogę w danej kolumnie mapy (np. do obejrzenia strefy kryjówki).
-func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false, workshop := false, result := false) -> void:
+func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false, workshop := false, result := false, boss := false) -> void:
 	await get_tree().create_timer(1.0).timeout
+	if boss:
+		mission._start_boss()               # podgląd walki z bossem: budzi bossa i rzuca flarę nad jego cień
+		await get_tree().create_timer(0.6).timeout
+		var bs := get_tree().get_first_node_in_group("boss")
+		if bs != null:
+			level.spawn_flare(Vector2(bs.global_position.x + 30.0, bs.global_position.y - 20.0), Vector2.ZERO)
 	if result:
 		mission.elapsed = 214.0
 		mission._success()                 # podgląd karty wyniku
@@ -595,6 +609,90 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 	img.save_png(path)
 	print("[SHOT] %s (%dx%d)" % [path, img.get_width(), img.get_height()])
 	get_tree().quit()
+
+## Test bossa B1 (--host --mission=z1_b1 --leechtest): zanurzona Pijawka dostaje 5% obrażeń, w świetle flary 100%, zasadzka rani gracza
+## stojącego w wodzie, a stojący na kładce jest bezpieczny; fazy HP, śmierć → ekstrakcja → sukces; skrzynka z flarami.
+func _leech_test() -> void:
+	await get_tree().create_timer(1.0).timeout
+	var fails := [0]
+	var check := func(label: String, ok: bool) -> void:
+		print("[LEECH-TEST] %s  %s" % ["PASS" if ok else "FAIL", label])
+		if not ok:
+			fails[0] += 1
+	var p: Node2D = _players.get_node_or_null("1")
+	var bot: Node2D = _players.get_node_or_null("2")
+	if bot != null:
+		bot.set_physics_process(false)
+		bot.global_position = Vector2(100.0, 400.0)
+	var lc: Node2D = get_tree().get_first_node_in_group("boss")
+	check.call("start: mapa B1, cel boss, Pijawka śpi (stan %d), basen %.0f–%.0f px" % [lc.state, lc.pool_x0, lc.pool_x1],
+		level.map_id == "z1_b1" and mission.kind == "boss" and lc != null and lc.state == lc.State.DORMANT and lc.pool_x1 > lc.pool_x0)
+	var surf: float = lc.surf_y
+	# stoimy daleko od basenu, więc walka rusza dopiero po czasie / zbliżeniu — wymuszamy start
+	mission._start_boss()
+	await get_tree().create_timer(0.3).timeout
+	check.call("walka: Pijawka obudzona, faza BOSS, HP %.0f" % lc.hp, lc.state == lc.State.AWAKE and mission.phase == MISSION_SCRIPT.Phase.BOSS and lc.hp > 0.0)
+	# obrażenia: zanurzona w ciemności 5%, w świetle flary 100%
+	lc.position.x = 69.0 * 16.0
+	lc.mode = lc.Mode.SUB
+	lc.revealed = false
+	var h0: float = lc.hp
+	var r1: Dictionary = lc.take_hit({"amount": 100.0, "pos": lc.global_position, "dir": Vector2.RIGHT, "w": 0})
+	var dealt_dark: float = h0 - lc.hp
+	level.spawn_flare(lc.global_position + Vector2(10.0, -30.0), Vector2.ZERO)
+	await get_tree().create_timer(1.2).timeout
+	var h1: float = lc.hp
+	lc.take_hit({"amount": 100.0, "pos": lc.global_position, "dir": Vector2.RIGHT, "w": 0})
+	var dealt_lit: float = h1 - lc.hp
+	check.call("obrażenia: ciemność %.1f (5%%), w świetle flary %.1f (100%%), cień ujawniony=%s" % [dealt_dark, dealt_lit, str(lc.revealed)],
+		is_equal_approx(dealt_dark, 5.0) and is_equal_approx(dealt_lit, 100.0) and lc.revealed)
+	# zasadzka: gracz stoi w wodzie obok Pijawki
+	lc.hp = lc.max_hp
+	lc.mode = lc.Mode.SUB
+	lc._cd = 0.0
+	p.global_position = Vector2(lc.global_position.x + 20.0, surf)
+	p.velocity = Vector2.ZERO
+	var hp_before: int = p.hp
+	var saw_wind := false
+	var saw_up := false
+	for i in 40:
+		await get_tree().create_timer(0.1).timeout
+		saw_wind = saw_wind or lc.mode == lc.Mode.WIND
+		saw_up = saw_up or lc.mode == lc.Mode.UP
+	check.call("zasadzka: zapowiedź=%s, wynurzenie=%s, gracz w wodzie stracił HP (%d → %d)" % [str(saw_wind), str(saw_up), hp_before, p.hp], saw_wind and saw_up and p.hp < hp_before)
+	# kładka: gracz nad wodą jest poza zasięgiem
+	await get_tree().create_timer(2.5).timeout
+	p.hp = 3
+	p.global_position = Vector2(66.0 * 16.0, 27.0 * 16.0 - 1.0)     # kładka B (rząd 27), cztery kafle nad wodą
+	p.velocity = Vector2.ZERO
+	lc._cd = 0.0
+	await get_tree().create_timer(4.0).timeout
+	check.call("kładka: gracz nad wodą nietknięty (HP %d), Pijawka nie wynurza się pod nim (tryb %d)" % [p.hp, lc.mode], p.hp == 3 and lc.mode == lc.Mode.SUB)
+	# fazy HP
+	lc._hit(lc.max_hp * 0.40, true)
+	var ph2: int = lc.phase
+	lc._hit(lc.max_hp * 0.30, true)
+	var ph3: int = lc.phase
+	check.call("fazy: po -40%% HP faza %d, po -70%% HP faza %d" % [ph2, ph3], ph2 == 2 and ph3 == 3)
+	# skrzynka z flarami
+	NoiseMgr.flares = 1
+	var boxes := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "flares")
+	var box_ok := false
+	if not boxes.is_empty():
+		p.global_position = (boxes[0] as Node2D).global_position + Vector2(0, -4)
+		p.velocity = Vector2.ZERO
+		await get_tree().create_timer(0.8).timeout
+		box_ok = NoiseMgr.flares == 3
+	check.call("skrzynki z flarami: %d na mapie, podniesienie dodaje 2 (flary %d)" % [boxes.size(), NoiseMgr.flares], boxes.size() >= 3 and box_ok)
+	# śmierć → ekstrakcja → sukces
+	lc._hit(lc.max_hp, true)
+	await get_tree().create_timer(0.5).timeout
+	check.call("śmierć Pijawki → ekstrakcja (stan %d, faza misji %d)" % [lc.state, mission.phase], lc.state == lc.State.DEAD and mission.phase == MISSION_SCRIPT.Phase.EXTRACT)
+	p.global_position = mission.exit_pos + Vector2(0, -2)
+	p.velocity = Vector2.ZERO
+	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
+	check.call("ekstrakcja → SUCCESS", mission.phase == MISSION_SCRIPT.Phase.SUCCESS)
+	print("[LEECH-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
 
 ## Test misji 1.1 (--host --mission=z1_m1 --tagtest): trzy nieśmiertelniki, ekstrakcja, wipe (nieśmiertelniki wracają),
 ## sukces i złom. Wrogowie są zamrożeni, żeby test był powtarzalny.

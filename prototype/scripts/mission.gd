@@ -27,6 +27,7 @@ const EXIT_RADIUS_Y := 40.0
 const SYNC_INTERVAL := 0.2
 
 const STEALTH_CAP := 40.0              ## cel poboczny misji 1.2: Uwaga poniżej tej wartości do końca celu głównego
+const BOSS_WAIT := 40.0               ## s, po których budzi się boss misji „boss", nawet jeśli nikt nie podszedł
 const FINALE_DELAY := 2.5             ## s od trzeciego nieśmiertelnika do zawału rampy
 const FINALE_NOISE := 14.0            ## skok Uwagi przy wstrząsie (budzi to, co śpi w sali)
 ## Ostatnia transmisja patrolu w finale: [sekunda od startu finału, linia]; ostatnia wisi do FINALE_RADIO_END.
@@ -75,6 +76,7 @@ var _boss: Node = null
 var finale := false                    ## misja 1.1: trzeci nieśmiertelnik wziął kopalnię w obroty (zawał + wyjście po drugiej stronie)
 var finale_clock := 0.0               ## s od startu finału (wszystkie peery liczą lokalnie — radio na HUD)
 var _finale_t := -1.0                  ## serwer: odliczanie do zawału (s); < 0 = brak
+var _boss_wait := 0.0                 ## serwer, misja „boss": odliczanie do przebudzenia bossa, jeśli nikt nie podejdzie do basenu
 var stashes_found := 0                 ## cel poboczny 1.1: ukryte skrytki (replikowane)
 var stash_total := 0
 var _tags_taken := 0                   ## serwer: ile nieśmiertelników już podniesiono (misja 1.1)
@@ -153,12 +155,29 @@ func _physics_process(delta: float) -> void:
 	_track_downs()
 	if phase == Phase.OBJECTIVE:
 		peak_noise = maxf(peak_noise, NoiseMgr.level)
+		_tick_boss_start(delta)
 	if phase == Phase.EXTRACT:
 		_tick_extract(delta)
 		_tick_finale(delta)
 
 	_sync_t -= delta
 	if _sync_t <= 0.0:
+		_broadcast()
+
+## Misja „boss" (B1): walka zaczyna się, gdy ktoś podejdzie do basenu (promień 160 px od jego krawędzi) albo po BOSS_WAIT s.
+func _tick_boss_start(delta: float) -> void:
+	if kind != "boss" or _boss == null or not is_instance_valid(_boss):
+		return
+	_boss_wait += delta
+	var near := false
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot or p.dead:
+			continue
+		if p.global_position.x > float(_boss.get("pool_x0")) - 160.0:
+			near = true
+			break
+	if near or _boss_wait >= BOSS_WAIT:
+		_start_boss()
 		_broadcast()
 
 ## Ukryta skrytka znaleziona (pickup.gd, serwer) — cel poboczny misji 1.1; za komplet jest bonus złomu.
@@ -428,6 +447,7 @@ func on_restart(new_run: bool) -> void:
 	else:
 		attempts += 1
 	_was_dead.clear()
+	_boss_wait = 0.0
 	_tags_taken = 0
 	stashes_found = 0
 	finale = false
@@ -524,12 +544,16 @@ func objective_text() -> String:
 		return "Next: %s" % _hub_next_title()
 	match phase:
 		Phase.OBJECTIVE:
+			if kind == "boss":
+				return "Kill the %s" % (String(_boss.get("boss_name")).to_lower().replace("the ", "") if _boss != null else "boss")
 			if kind == "tags":
 				return "Find the patrol's dog tags   %d / %d" % [goal_total - goal_left, goal_total]
 			if kind == "generators":
 				return "Start the radio generators   %d / %d" % [goal_total - goal_left, goal_total]
 			return "Destroy the nests   %d / %d" % [nests_total - nests_left, nests_total]
 		Phase.BOSS:
+			if kind == "boss":
+				return "Kill the leech — shoot its shadow in the light"
 			return "Kill The Vein — shoot her mouth while it's OPEN"
 		Phase.EXTRACT:
 			var me := _local_human()
@@ -560,6 +584,8 @@ func objective_hint() -> String:
 		return "[ENTER]  Ready up  ·  %s" % status
 	match phase:
 		Phase.OBJECTIVE:
+			if kind == "boss":
+				return String(_boss.get("boss_hint")) if _boss != null else ""
 			if kind == "tags":
 				return "Walk over a dog tag to take it  ·  side goal: %d hidden stashes (%d / %d)" % [stash_total, stashes_found, stash_total] if stash_total > 0 else "Walk over a dog tag to take it  ·  shooting is loud — sneak (SHIFT) to stay quiet"
 			if kind == "generators":
@@ -568,6 +594,8 @@ func objective_hint() -> String:
 				return "Hold E at a generator  ·  it is loud  ·  bonus: stay under %d%% Attention" % int(STEALTH_CAP)
 			return "Nests are loud when destroyed — they wake what's nearby"
 		Phase.BOSS:
+			if kind == "boss":
+				return "Stay out of the water or keep moving  ·  a surfaced leech is fully exposed"
 			return "Light her mouth mid wind-up to stun  ·  Q lures her away"
 		Phase.EXTRACT:
 			if kind == "generators":
