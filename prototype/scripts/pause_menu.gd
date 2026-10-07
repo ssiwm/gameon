@@ -12,7 +12,7 @@ const CodexPage := preload("res://scripts/codex_page.gd")
 
 const CARD_W := 450.0
 const PAGE_H := 270.0                ## stała wysokość zakładek — karta nie skacze przy przełączaniu
-const TABS := ["SETTINGS", "BESTIARY", "WEAPONS", "CONTROLS"]
+const TABS := ["SETTINGS", "BESTIARY", "WEAPONS", "GEAR", "CONTROLS"]
 const BASE_SCALE := 0.7              ## jak HUD (hud.gd UI_SCALE): menu rysowane w 70%, razem z ustawieniem HUD SIZE
 
 var _settings_page: VBoxContainer
@@ -82,13 +82,15 @@ func _ready() -> void:
 	box.add_child(holder)
 	var bestiary := CodexPage.new()
 	var arsenal := CodexPage.new()
-	_pages = [_settings_page, bestiary, arsenal, _controls_page]
+	var gear := CodexPage.new()
+	_pages = [_settings_page, bestiary, arsenal, gear, _controls_page]
 	for p in _pages:
 		p.set_anchors_preset(Control.PRESET_FULL_RECT)
 		p.visible = false
 		holder.add_child(p)
 	bestiary.setup(Codex.bestiary())
 	arsenal.setup(Codex.arsenal())
+	gear.setup(Codex.gear())
 
 	box.add_child(_rule())
 	var btns := HBoxContainer.new()

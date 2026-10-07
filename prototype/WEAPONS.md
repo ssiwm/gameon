@@ -296,3 +296,24 @@ Karuzela (lewy Alt / X), dane w `throwables.gd` (`ORDER`, `KINDS`, `mode`):
 
 Start „po 1–2 sztuki” to tymczasowy zestaw do prób — faza A3 przeniesie go do zakupu w warsztacie.
 Kod: `grenade.gd` (rzucane), `placed.gd` (mina, ładunek), `smoke_cloud.gd`, `scanner_view.gd`, `player._gear_tick`, `Arsenal.request_use`.
+
+## 13. Ekwipunek zużywalny, faza A3 (1.7.65): zakup, zapas, boty
+
+**Źródła przedmiotów:** (1) darmowy zestaw przed każdą misją, (2) zakup w warsztacie (zakładka SUPPLIES), (3) skrzynki zaopatrzenia z wrogów.
+
+| Przedmiot | Cena | Zestaw darmowy | Maks. |
+|---|---|---|---|
+| FRAG | 100 | 1 | 4 |
+| PHOS | 150 | — | 3 |
+| SMOKE | 80 | — | 3 |
+| MINE | 140 | — | 3 |
+| CHARGE | 250 | — | 2 |
+| MEDKIT | 70 | 1 | 3 |
+| DEFIB | nie na sprzedaż | 1 | 1 |
+| OWL | 120 | — | 3 |
+
+- **Zapas przechodzi** między misjami (kryjówka → misja → kryjówka) i sesjami (zapis hosta, `progress.cfg` → `gear/stock`), przed misją dopełniany do zestawu. **Wipe** wraca do stanu z początku misji (`Arsenal.begin_mission(false)`); Nocny Dyżur (bez złomu) dostaje sam zestaw.
+- **Skrzynki:** Wołek 35%, Mimik 40%, Podsłuchacz 15%, Ślepiec 10%, Skoczek 8% (× mnożnik trudności „drops"); rodzaj losowany z wag frag 3 / apteczka 3 / dym 2 / fosfor 1 / mina 1 / skaner 1; bez ładunku. Skrzynka zostaje na ziemi, gdy zapas tego rodzaju jest pełny.
+- **Boty:** defibrylator na leżącym człowieku (≤ 10 m, linia wzroku, 1,5 s), apteczka na rannym człowieku (≤ 36 px, 5 s, bez wroga w 150 px), na końcu na sobie. Granatów i min nie używają (ryzyko friendly fire).
+- **Menu pauzy → GEAR:** karta każdego przedmiotu (typ, zapas, cena, parametry, hałas, opis, wskazówka).
+- Kod: `throwables.gd` (`issue`, `price`, `DROP_WEIGHTS`), `Arsenal.begin_mission` / `load_gear` / `use_as`, `scrap.gd` (`request_buy_supply`), `workshop_ui.gd` (strona SUPPLIES), `pickup.gd` (`supply`), `codex.gd` (`gear`).

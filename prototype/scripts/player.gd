@@ -1016,6 +1016,52 @@ func _bot_car() -> Node2D:
 			return c
 	return null
 
+var _bot_gear_hold := 0.0
+var _bot_gear_kind := ""
+var _bot_gear_target := 0
+
+## Bot używa zapasu drużyny: defibrylatorem stawia leżącego CZŁOWIEKA w zasięgu 10 m i linii wzroku (1,5 s), a gdy nikt nie jest
+## zagrożony — apteczką leczy rannego człowieka obok (5 s), na końcu siebie. Stoi w miejscu na czas użycia. Zwraca true, gdy zajęty.
+func _bot_gear(delta: float, downed: Node2D) -> bool:
+	if not NoiseMgr.is_server() or dead:
+		_bot_gear_hold = 0.0
+		return false
+	var kind := ""
+	var target: Node2D = null
+	var space := get_world_2d().direct_space_state
+	if downed != null and not downed.is_bot and Arsenal.get_throwable("defib") > 0:
+		var dd := downed.global_position.distance_to(global_position)
+		var ray := PhysicsRayQueryParameters2D.create(global_position + Vector2(0, -9), downed.global_position + Vector2(0, -6), 1)
+		if dd <= float(Throwables.KINDS["defib"]["range"]) and space.intersect_ray(ray).is_empty():
+			kind = "defib"
+			target = downed
+	if kind == "" and Arsenal.get_throwable("medkit") > 0 and _nearest_enemy(150.0) == null:
+		var best_d := float(Throwables.KINDS["medkit"]["range"])
+		for q in get_tree().get_nodes_in_group("players"):
+			var pp := q as Node2D
+			if pp == null or pp == self or pp.dead or pp.is_bot or pp.hp >= pp.MAX_HP:
+				continue
+			var dx := absf(pp.global_position.x - global_position.x)
+			if dx < best_d and absf(pp.global_position.y - global_position.y) < 30.0:
+				best_d = dx
+				target = pp
+		if target == null and hp < MAX_HP:
+			target = self
+		if target != null:
+			kind = "medkit"
+	if kind == "":
+		_bot_gear_hold = 0.0
+		return false
+	if kind != _bot_gear_kind or int(target.player_id) != _bot_gear_target:
+		_bot_gear_kind = kind
+		_bot_gear_target = int(target.player_id)
+		_bot_gear_hold = 0.0
+	_bot_gear_hold += delta
+	if _bot_gear_hold >= float(Throwables.KINDS[kind]["time"]):
+		_bot_gear_hold = 0.0
+		Arsenal.use_as(kind, int(target.player_id), int(player_id))
+	return true
+
 func _bot_brain(delta: float) -> void:
 	_tick_drop(delta)
 	_bot_repath -= delta
@@ -1043,6 +1089,7 @@ func _bot_brain(delta: float) -> void:
 		and absf(downed.global_position.x - global_position.x) < REVIVE_RANGE - 6.0 \
 		and absf(downed.global_position.y - global_position.y) < 30.0
 	var reviving := _handle_revive(delta, near_downed)
+	reviving = _bot_gear(delta, downed) or reviving
 
 	# ruch w stronę celu (poziomo), skok przy przeszkodzie lub celu wyżej
 	# bot naśladuje skradanie dowódcy — inaczej drużyna nie może grać cicho

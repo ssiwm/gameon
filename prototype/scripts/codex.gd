@@ -10,6 +10,7 @@ const Sprites := preload("res://scripts/sprites.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
+const Throwables := preload("res://scripts/throwables.gd")
 
 const PX_PER_M := 16.0               ## lights.gd: 1 m = 16 px
 
@@ -113,6 +114,57 @@ const WEAPON_TEXT := {
 	"kilof": ["Pickaxe: slow swing, heavy damage and a long stun on hit. A little noise. It is the only tool that breaks cracked brick walls (and a grenade does too).",
 		"Use it as the opener, then back off before the next swing. A bricked-up passage usually hides a stash — but breaking it is LOUD."],
 }
+
+## Opisy i wskazówki ekwipunku zużywalnego (karta GEAR w menu pauzy); liczby bierzemy z throwables.gd.
+const GEAR_TEXT := {
+	"frag": ["A fragmentation grenade on a short fuse. Everything within 4 m takes up to 90 damage — the squad included.",
+		"Throw it at a pack from behind cover. It also breaks cracked brick walls. Loud."],
+	"phos": ["Phosphorus: a field of fire on the floor for 15 s. It ignites whoever stands in it and enemies that are afraid of fire will not cross it.",
+		"Use it to close a corridor behind you. Cutpurses, Blind Ones and Leapers stop at the flames; a Bullock walks through. It does not hurt the squad."],
+	"smoke": ["A smoke cloud for 12 s. Enemies cannot see through it — but they still hear everything.",
+		"Break line of sight to slip away or to reach a downed teammate. Stay quiet inside the cloud."],
+	"mine": ["Placed at your feet, facing where you aim. Arms in 1 s, then the first awake enemy in its cone sets it off for 120 damage to everything in front of it. Sleepers and the squad do not trigger it.",
+		"Put it in a corridor behind you and run. It does not fire at a sleeping enemy."],
+	"charge": ["A demolition charge: 4 s fuse, 5 m blast, 150 damage. Breaks cracked brick walls and wounds a boss. The loudest item you carry, and it hurts the squad too.",
+		"Place it, then get out of range. Plan the noise before you use it."],
+	"medkit": ["Hold the item key for 5 s next to a wounded teammate (or yourself): +1 heart. You cannot move or shoot meanwhile, and taking damage cancels it.",
+		"Use it in cover or behind smoke. The AI companion will use the squad's medkits on you too."],
+	"defib": ["Hold the item key for 1.5 s: revives a downed teammate up to 10 m away in line of sight. One is issued every mission and it cannot be bought.",
+		"Faster and safer than walking to a downed friend under fire. The AI companion uses it on you."],
+	"scanner": ["The Owl motion scanner: for 10 s you see enemy silhouettes through walls within 15 m (red = awake). It emits 1 noise per second.",
+		"Use it briefly before entering a dark room. A Stalker is not a threat on the scanner — it is just noise."],
+}
+
+static func gear() -> Array:
+	var out: Array = []
+	for k in Throwables.ORDER:
+		var d: Dictionary = Throwables.KINDS[k]
+		var text: Array = GEAR_TEXT.get(k, ["", ""])
+		var mode: String = {"throw": "Throwable", "place": "Placed", "use": "Tool"}[String(d["mode"])]
+		var price := Throwables.price_of(k)
+		var stats: Array = [["Type", mode], ["Carry", "%d (issued %d)" % [int(d["max"]), int(d["issue"])]],
+			["Price", "%d scrap" % price if price > 0 else "issued only"]]
+		match k:
+			"frag":
+				stats.append_array([["Fuse", "%.1f s" % float(d["fuse"])], ["Blast", "%d m · %d dmg" % [int(float(d["radius"]) / PX_PER_M), int(d["damage"])]]])
+			"phos":
+				stats.append_array([["Fuse", "%.1f s" % float(d["fuse"])], ["Fire", "%d s · 4.5 m wide" % int(d["field_life"])]])
+			"smoke":
+				stats.append_array([["Fuse", "%.1f s" % float(d["fuse"])], ["Cloud", "3.5 m · %d s" % int(d["cloud_life"])]])
+			"mine":
+				stats.append_array([["Arms in", "%.0f s" % float(d["arm"])], ["Cone", "±%d° · %d m" % [int(d["half_deg"]), int(float(d["range"]) / PX_PER_M)]], ["Damage", "%d" % int(d["damage"])]])
+			"charge":
+				stats.append_array([["Fuse", "%.0f s" % float(d["fuse"])], ["Blast", "%d m · %d dmg" % [int(float(d["radius"]) / PX_PER_M), int(d["damage"])]]])
+			"medkit":
+				stats.append_array([["Use time", "%.0f s" % float(d["time"])], ["Heals", "+1 heart"]])
+			"defib":
+				stats.append_array([["Use time", "%.1f s" % float(d["time"])], ["Range", "%d m" % int(float(d["range"]) / PX_PER_M)]])
+			"scanner":
+				stats.append_array([["Duration", "%d s" % int(d["time"])], ["Range", "%d m" % int(float(d["range"]) / PX_PER_M)]])
+		stats.append(["Noise", "%.0f" % float(d["noise"]) if d.has("noise") else ("explosion" if k in ["frag", "charge"] else "—")])
+		out.append({"title": String(d["name"]), "tag": String(d["full"]) + "  ·  " + mode, "accent": d["color"],
+			"portrait": {"type": "item", "kind": k}, "stats": stats, "text": text[0], "tip": text[1]})
+	return out
 
 static func arsenal() -> Array:
 	var out: Array = []

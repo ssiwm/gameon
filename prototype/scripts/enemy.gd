@@ -59,6 +59,7 @@ const KINDS := {
 }
 
 const Lights := preload("res://scripts/lights.gd")
+const Throwables := preload("res://scripts/throwables.gd")
 const SmokeCloud := preload("res://scripts/smoke_cloud.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Weapons := preload("res://scripts/weapons.gd")
@@ -72,6 +73,7 @@ const MAX_FALL := 620.0
 ## Kroki (0,25 na tick) nie budzą; każdy strzał tak — także pierwszy z zimnej
 ## lufy M-83 (0,6). Przy progu 1,0 pojedyncze strzały M-83 były dla wrogów nieme.
 const MIN_WAKE_NOISE := 0.5
+const SUPPLY_DROP := {"wolek": 0.35, "mimik": 0.4, "slepiec": 0.1, "podsluchacz": 0.15, "skoczek": 0.08}   ## szansa na skrzynkę zaopatrzenia (throwables.gd)
 const AMMO_DROP := {"trzosek": 0.22, "wolek": 0.6, "slepiec": 0.3, "podsluchacz": 0.15, "mimik": 0.3, "skoczek": 0.25, "cma": 0.0}   ## szansa na skrzynkę z amunicją do broni, którą ktoś nosi
 const HEALTH_DROP := {"wolek": 0.75}   ## szansa na apteczkę (1.5) — tylko mocniejsi wrogowie
 const SIBLING_WAKE_RADIUS := 140.0
@@ -1262,6 +1264,11 @@ func _die() -> void:
 		if w >= 0 and lv != null:
 			var n: int = maxi(1, int(Weapons.def(w).pickup_rounds * 0.5))
 			lv.spawn_item("ammo", w, global_position + Vector2(randf_range(-6.0, 6.0), -14), n)
+	if NoiseMgr.is_server() and not NightShift.active and randf() < minf(1.0, float(SUPPLY_DROP.get(kind, 0.0)) * Difficulty.m("drops")):
+		var lsup := get_tree().get_first_node_in_group("level")
+		if lsup != null:
+			var sk := Throwables.drop_kind()                     # skrzynka zaopatrzenia: granat, apteczka, mina… do wspólnego zapasu
+			lsup.spawn_item("supply", Throwables.ORDER.find(sk), global_position + Vector2(randf_range(-6.0, 6.0), -14))
 	if NoiseMgr.is_server() and Scrap.enabled() and Scrap.DROP.has(kind) and randf() < Scrap.DROP_CHANCE:
 		var ls := get_tree().get_first_node_in_group("level")
 		if ls != null:
