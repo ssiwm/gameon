@@ -13,6 +13,8 @@ const FADE_S := 0.5
 const TIPS := [
 	["move", "WASD to move  ·  SPACE to jump  ·  hold SHIFT to sneak — sneaking is silent"],
 	["noise", "Every shot makes NOISE. Watch the meter in the top-left corner"],
+	["sneak", "Something is asleep close by — hold SHIFT and walk: a crouching step is silent and wakes it from half the distance"],
+	["quiet", "Attention is up. Stop shooting — in silence the meter drains fast. Sneaking (SHIFT) is silent too"],
 	["broadcast", "The transmitter is live and HE heard it. Press Q to throw a lure and pull him away — then run for the exit"],
 	["handcar", "Stand on the handcar and HOLD E to pump — more hands, more speed. You cannot shoot while pumping"],
 	["generator", "Hold E at a generator to start it. The work is loud, and a running generator keeps humming"],
@@ -79,11 +81,27 @@ func _collect(p: Node) -> void:
 	# trwałe: warunek raz spełniony, podpowiedź czeka na swoją kolej
 	_queue("move", _session > 2.0, true)
 	_queue("noise", NoiseMgr.level >= 8.0, true)
-	_queue("light", _session > 45.0, true)
+	var lvl_n = p.get_tree().get_first_node_in_group("level")
+	var below: bool = lvl_n != null and p.global_position.y > float(lvl_n.underground_y) and float(lvl_n.underground_y) > 0.0
+	_queue("light", _session > 45.0 or (below and not p.flashlight == true), true)
 	_queue("flare", _session > 150.0, true)
 	# chwilowe: gdy sytuacja minie, zanim przyjdzie kolej, podpowiedź przepada
 	_queue("uneasy", NoiseMgr.level >= NoiseMgr.UNEASY_THRESHOLD or NoiseMgr.stalker_awake, false)
 	_queue("downed", bool(p.dead), false)
+	# cisza (misja 1.1): śpiący wróg tuż obok, a gracz idzie wyprostowany; po strzelaninie — nic nie goni, a Uwaga wciąż wysoka
+	var sleeper_near := false
+	var threat_near := false
+	for e in p.get_tree().get_nodes_in_group("enemies"):
+		if not (e is Node2D) or not e.has_method("is_threat") or e.get("alive") != true:
+			continue
+		var dd: float = (e as Node2D).global_position.distance_to(p.global_position)
+		if e.get("active") == true:
+			if dd < 420.0:
+				threat_near = true
+		elif dd < 130.0:
+			sleeper_near = true
+	_queue("sneak", sleeper_near and not p.crouching == true, false)
+	_queue("quiet", NoiseMgr.level >= 22.0 and NoiseMgr.level < NoiseMgr.AWAKE_THRESHOLD and not threat_near, false)
 	var friend_down := false
 	for o in p.get_tree().get_nodes_in_group("players"):
 		if o != p and bool(o.dead) and not o.is_queued_for_deletion() \

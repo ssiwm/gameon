@@ -14,6 +14,7 @@ const WIPE_DELAY := 3.0
 
 const Combat := preload("res://scripts/combat.gd")
 const Codex := preload("res://scripts/codex.gd")
+const Hints := preload("res://scripts/hints.gd")
 const RunLog := preload("res://scripts/run_log.gd")
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
 const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
@@ -291,6 +292,7 @@ func _handle_cmdline() -> void:
 	var rideclient := false
 	var gentest := false
 	var tagtest := false
+	var sneaktest := false
 	var weapon_mode := ""
 	var shots_dir := ""
 	var args := OS.get_cmdline_user_args()
@@ -338,6 +340,8 @@ func _handle_cmdline() -> void:
 			gentest = true
 		elif a == "--tagtest":
 			tagtest = true
+		elif a == "--sneaktest":
+			sneaktest = true
 		elif a == "--ridetest":
 			ridetest = true
 		elif a == "--ridehost":
@@ -371,6 +375,8 @@ func _handle_cmdline() -> void:
 		_gen_test()
 	if tagtest:
 		_tag_test()
+	if sneaktest:
+		_sneak_test()
 	if ridetest:
 		_ride_test()
 	if ridehost:
@@ -555,6 +561,51 @@ func _tag_test() -> void:
 	check.call("ekstrakcja → SUCCESS, złom z bonusu misji (%d)" % Scrap.last_gain, mission.phase == MISSION_SCRIPT.Phase.SUCCESS and Scrap.last_gain >= Scrap.BONUS_CLEAR)
 	check.call("dziennik misji: wpis 1.1", not RunLog.entries.is_empty() and String(RunLog.entries.back()["id"]) == "z1_m1")
 	print("[TAG-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
+
+## Test samouczka ciszy misji 1.1 (--host --mission=z1_m1 --sneaktest): Trzosek śpiący na półce 4 kafle nad ścieżką nie budzi się
+## od kucającego gracza pod nim, ale budzi się od wyprostowanego; podpowiedzi quiet i light łapią swoje warunki.
+## Wrogowie działają normalnie (nie są zamrożeni).
+func _sneak_test() -> void:
+	await get_tree().create_timer(1.0).timeout
+	var fails := [0]
+	var check := func(label: String, ok: bool) -> void:
+		print("[SNEAK-TEST] %s  %s" % ["PASS" if ok else "FAIL", label])
+		if not ok:
+			fails[0] += 1
+	var p: Node2D = _players.get_node_or_null("1")
+	var ledge: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return e.get("kind") == "trzosek" and e.global_position.x > 1400.0 and e.global_position.x < 1700.0)
+	ledge.sort_custom(func(a: Node, b: Node) -> bool: return a.global_position.x < b.global_position.x)
+	check.call("półki: śpiący Trzosek na półce (%d), nieaktywny" % ledge.size(), ledge.size() >= 1 and ledge[0].active == false)
+	var e: Node2D = ledge[0]
+	var floor_y: float = e.global_position.y + 64.0
+	Input.action_press("crouch")
+	p.global_position = Vector2(e.global_position.x - 150.0, floor_y)      # najpierw z daleka: kucanie wymaga stania na podłodze
+	p.velocity = Vector2.ZERO
+	await get_tree().create_timer(0.6).timeout
+	p.global_position = Vector2(e.global_position.x, floor_y)
+	p.velocity = Vector2.ZERO
+	await get_tree().create_timer(1.5).timeout
+	check.call("kucający gracz pod półką (dy 64 px, crouching=%s): wróg śpi" % str(p.crouching), p.crouching and e.active == false)
+	Input.action_release("crouch")
+	await get_tree().create_timer(1.2).timeout
+	check.call("ten sam gracz wyprostowany: wróg się budzi", e.active == true)
+	# podpowiedzi
+	Settings.seen_tips.clear()
+	var hh := Hints.new()
+	NoiseMgr.level = 30.0
+	for en in get_tree().get_nodes_in_group("enemies"):
+		if en.get("alive") == true and en.get("active") == true:
+			en.set_process(false)
+			en.set_physics_process(false)
+			en.active = false
+	p.global_position = Vector2(300.0, floor_y - 2.0)
+	hh._collect(p)
+	check.call("podpowiedź quiet: Uwaga 30, nic nie goni", hh._queued.has("quiet"))
+	p.global_position = Vector2(2300.0, 41.0 * 16.0)
+	p.flashlight = false
+	hh._collect(p)
+	check.call("podpowiedź light: gracz w podziemiach bez latarki", hh._queued.has("light"))
+	print("[SNEAK-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
 
 ## Test misji 1.2 (--host --mission=z1_m2 --gentest): cztery generatory (przytrzymanie E), skok Uwagi po ostatnim, ekstrakcja,
 ## a potem [Enter] → mapa 1.3 i z powrotem. Wrogowie są zamrożeni, żeby test był powtarzalny.
