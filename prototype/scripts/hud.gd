@@ -867,7 +867,11 @@ func _fill_result(m: Node) -> void:
 		rows = _shift_result(m)
 		prompt = "New shift" if (m.phase == Mission.Phase.FAILED or m.shift_complete()) else "Next mission"
 	else:
-		if m.kind == "generators":
+		if m.kind == "tags":
+			_style_result("EXTRACTION COMPLETE", "The patrol's tags are with the squad — time to go home.", UiTheme.OK)
+			rows = [["Time", _mmss(m.elapsed)], ["Dog tags found", "%d / %d" % [m.goal_total, m.goal_total]],
+				["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts], ["Scrap banked", "+%d" % Scrap.last_gain]]
+		elif m.kind == "generators":
 			_style_result("EXTRACTION COMPLETE", "The broadcast is over — the squad is out.", UiTheme.OK)
 			rows = [["Time", _mmss(m.elapsed)], ["Generators started", "%d / %d" % [m.goal_total, m.goal_total]],
 				["Stealth (Attention < %d)" % int(m.STEALTH_CAP), "kept" if m.stealth_ok() else "lost  (peak %d)" % int(m.peak_noise)],
@@ -1055,6 +1059,8 @@ func _fill_brief(info: Dictionary) -> void:
 				rows.append([String(e[3]), "x%d" % int(counts[k]), String(e[4])])
 	if bool(info["stalker"]):
 		rows.append(["STALKER", "x1", "Cannot be killed"])
+	if int(info.get("tags", 0)) > 0:
+		rows.append(["DOG TAG", "x%d" % int(info["tags"]), "Mission objective"])
 	if int(info["nests"]) > 0:
 		rows.append(["NEST", "x%d" % int(info["nests"]), "Mission objective"])
 	if bool(info["boss"]):

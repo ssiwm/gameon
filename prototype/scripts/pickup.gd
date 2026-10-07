@@ -8,6 +8,7 @@ extends Node2D
 ##           ktoś z ludzi nosi tę broń i zapas nie jest pełny (nic się nie marnuje)
 ##   cache   skrzynia z mapy: dodaje amunicję do WSZYSTKICH broni głównych noszonych przez drużynę
 ##   scrap   złom (rounds = wartość): dotknięcie przez dowolnego żywego gracza dodaje do łupu misji (scrap.gd)
+##   tag     nieśmiertelnik (misja 1.1): dotknięcie przez dowolnego żywego gracza zalicza cel główny (mission.on_tag_taken)
 ##   weapon  nie podnosi się samo: gracz naciska E (wymiana broni to decyzja, a nie
 ##           wypadek); serwer sprawdza odległość i przyznaje (level.gd)
 
@@ -27,6 +28,7 @@ const GLOW := {
 	"weapon": Color(0.5, 0.85, 1.0),
 	"cache": Color(1.0, 0.78, 0.3),
 	"scrap": Color(0.95, 0.8, 0.4),
+	"tag": Color(0.6, 0.85, 1.0),
 }
 
 var kind := "health"
@@ -105,7 +107,16 @@ func _draw() -> void:
 		return
 	var bob := 0.0 if (not _landed or static_display) else sin(_t * 3.0) * 1.5 - 1.5
 	var c: Color = GLOW.get(kind, Color.WHITE)
-	if kind == "scrap":
+	if kind == "tag":
+		# nieśmiertelnik: dwie blaszki na łańcuszku, błysk (widać go w ciemności)
+		var gl := 0.6 + 0.4 * sin(_t * 5.0)
+		draw_arc(Vector2(0, -9 + bob), 4.0, 0.2, PI - 0.2, 8, Color(0.55, 0.57, 0.62), 1.0)
+		draw_rect(Rect2(-4, -7 + bob, 4, 6), Color(0.62, 0.66, 0.72))
+		draw_rect(Rect2(-4, -7 + bob, 4, 1), Color(0.85, 0.9, 0.95))
+		draw_rect(Rect2(0, -6 + bob, 4, 6), Color(0.5, 0.54, 0.6))
+		draw_rect(Rect2(-3, -5 + bob, 2, 1), Color(0.2, 0.22, 0.26))
+		draw_circle(Vector2(0, -6 + bob), 5.0, Color(0.6, 0.85, 1.0, 0.12 * gl))
+	elif kind == "scrap":
 		# kupka złomu: blachy, trybik i śruba (większa wartość = większa kupka)
 		var big := rounds >= 6
 		draw_rect(Rect2(-5, -3 + bob, 10, 3), Color(0.32, 0.33, 0.37))
@@ -209,6 +220,8 @@ func _try_pickup() -> void:
 			_try_cache()
 		"scrap":
 			_try_scrap()
+		"tag":
+			_try_tag()
 
 ## Złom zbiera każdy żywy gracz (też bot) — wspólny łup drużyny.
 func _try_scrap() -> void:
@@ -216,6 +229,19 @@ func _try_scrap() -> void:
 		if p.dead or not _near(p):
 			continue
 		Scrap.add_loot(rounds)
+		var lvl := _level()
+		if lvl != null:
+			lvl.take_item(String(name))
+		return
+
+## Nieśmiertelnik zbiera każdy żywy gracz (też bot): cel drużyny, nie pojedynczego gracza.
+func _try_tag() -> void:
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.dead or not _near(p):
+			continue
+		var mis := get_tree().get_first_node_in_group("mission")
+		if mis != null:
+			mis.on_tag_taken()
 		var lvl := _level()
 		if lvl != null:
 			lvl.take_item(String(name))

@@ -62,8 +62,10 @@ var _flare: PointLight2D
 var _was_dead := {}          # nazwa gracza -> bool (liczenie upadków, serwer)
 
 var _boss: Node = null
+var _tags_taken := 0                   ## serwer: ile nieśmiertelników już podniesiono (misja 1.1)
 
 func _ready() -> void:
+	add_to_group("mission")
 	z_index = 5
 	# znacznik (słup, strefa, paski) czytelny w ciemności; sama flara to
 	# prawdziwe światło 12 m (GDD §8.3) — widać ją z daleka i oświetla wyjście
@@ -79,6 +81,7 @@ func rebind() -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
 	kind = String(lvl.objective) if lvl != null else "nests"
 	_boss = get_tree().get_first_node_in_group("boss")
+	_tags_taken = 0
 	if _boss != null and not _boss.died.is_connected(_on_boss_died):
 		_boss.died.connect(_on_boss_died)
 	# cele są w scenie (ta sama ścieżka na każdym peerze)
@@ -93,7 +96,11 @@ func rebind() -> void:
 func _count_goal() -> void:
 	goal_total = 0
 	goal_left = 0
-	if kind == "generators":
+	if kind == "tags":
+		var lvl := get_tree().get_first_node_in_group("level")
+		goal_total = lvl.tag_total() if lvl != null else 0
+		goal_left = maxi(0, goal_total - _tags_taken)
+	elif kind == "generators":
 		for g in get_tree().get_nodes_in_group("generators"):
 			goal_total += 1
 			if not g.running:
@@ -134,6 +141,18 @@ func _physics_process(delta: float) -> void:
 	_sync_t -= delta
 	if _sync_t <= 0.0:
 		_broadcast()
+
+## Nieśmiertelnik podniesiony (pickup.gd, serwer) — misja 1.1. Po ostatnim otwiera się ekstrakcja (bez bossa).
+func on_tag_taken() -> void:
+	if not NoiseMgr.is_server() or kind != "tags" or phase != Phase.OBJECTIVE:
+		return
+	_tags_taken += 1
+	_count_goal()
+	print("[MISSION] dog tag taken, left=%d/%d" % [goal_left, goal_total])
+	_event.rpc("generator")
+	if goal_left == 0:
+		_open_extraction()
+	_broadcast()
 
 func _on_nest_destroyed(_nest: Node) -> void:
 	if not NoiseMgr.is_server():
@@ -334,6 +353,7 @@ func on_restart(new_run: bool) -> void:
 	else:
 		attempts += 1
 	_was_dead.clear()
+	_tags_taken = 0
 	# cele wróciły (reset_enemy / reset_generator) — liczymy od nowa
 	peak_noise = 0.0
 	_count_goal()
@@ -409,6 +429,8 @@ func objective_text() -> String:
 		return "Safe room — restock and swap weapons"
 	match phase:
 		Phase.OBJECTIVE:
+			if kind == "tags":
+				return "Find the patrol's dog tags   %d / %d" % [goal_total - goal_left, goal_total]
 			if kind == "generators":
 				return "Start the radio generators   %d / %d" % [goal_total - goal_left, goal_total]
 			return "Destroy the nests   %d / %d" % [nests_total - nests_left, nests_total]
@@ -446,6 +468,8 @@ func objective_hint() -> String:
 		return "[ENTER]  Ready to depart: %s  ·  %s" % [title, status]
 	match phase:
 		Phase.OBJECTIVE:
+			if kind == "tags":
+				return "Walk over a dog tag to take it  ·  shooting is loud — sneak (SHIFT) to stay quiet"
 			if kind == "generators":
 				if not stealth_ok():
 					return "Hold E at a generator  ·  a running one keeps humming  ·  stealth bonus lost"

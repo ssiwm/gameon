@@ -59,11 +59,12 @@ const RANGE_TARGET := preload("res://scripts/range_target.gd")
 
 ## Mapy misji (scripts/maps/): każda niesie MAP, ID, TITLE, OBJECTIVE, UNDERGROUND_ROW, WEAPONS, ACCENTS.
 const MAPS := {
+	"z1_m1": preload("res://scripts/maps/z1_m1.gd"),
 	"z1_m2": preload("res://scripts/maps/z1_m2.gd"),
 	"z1_m3": preload("res://scripts/maps/z1_m3.gd"),
 	"z1_hub": preload("res://scripts/maps/z1_hub.gd"),     # kryjówka między misjami (nie należy do CAMPAIGN)
 }
-## Kolejność kampanii Strefy I (1.1 nie ma jeszcze w prototypie).
+## Kolejność kampanii Strefy I. 1.1 (z1_m1) jest już w grze, ale do kampanii wchodzi dopiero w fazie D (--mission=z1_m1 uruchamia ją wprost).
 const CAMPAIGN := ["z1_m2", "z1_m3"]
 
 signal map_changed(id: String)
@@ -309,7 +310,7 @@ func _exposure(c: int, r: int) -> int:
 ## Znaczniki → postacie. Nazwy numerowane od lewej do prawej, identycznie
 ## na każdym peerze.
 func _spawn_entities() -> void:
-	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "v": [], "r": [], "t": [], "u": [], "h": [], "l": [], "k": [], "o": [], "a": [], "g": []}
+	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "l": [], "k": [], "o": [], "a": [], "g": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -321,7 +322,7 @@ func _spawn_entities() -> void:
 				"E": exits.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "v", "r", "t", "u", "h", "l", "k", "o", "a", "g": found[ch].append(p)
+				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "v", "r", "t", "u", "h", "F", "l", "k", "o", "a", "g": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -398,7 +399,7 @@ func _spawn_entities() -> void:
 			# fizyka uznawała za „w środku" i skrzynia przelatywała piętro niżej
 			pr.position = found[k[0]][i] + Vector2(0, -1)
 			add_child(pr)
-	_map_items = {"a": found["a"], "g": found["g"], "u": found["u"]}
+	_map_items = {"a": found["a"], "g": found["g"], "u": found["u"], "F": found["F"]}
 	_spawn_map_items()
 	if stalker_home != Vector2.ZERO:         # kryjówka (bez znacznika X) nie ma Stalkera
 		var s := STALKER_SCENE.instantiate()
@@ -410,6 +411,10 @@ func _spawn_entities() -> void:
 		b.name = "Boss"
 		b.position = boss_home
 		add_child(b)
+
+## Ile nieśmiertelników (znaczniki „F") ma bieżąca mapa — cel główny misji 1.1.
+func tag_total() -> int:
+	return (_map_items.get("F", []) as Array).size()
 
 ## Odprawa misji `id` z danych mapy (kryjówka, tablica): tytuł, cel, liczba wrogów każdego rodzaju policzona ze znaczników.
 const THREAT_CHARS := {"T": "trzosek", "W": "wolek", "L": "slepiec", "P": "podsluchacz", "Y": "mimik", "J": "skoczek", "Z": "cma"}
@@ -423,6 +428,7 @@ func briefing(id: String) -> Dictionary:
 	var nests := 0
 	var boss := false
 	var gens := 0
+	var tags := 0
 	for row in m.MAP:
 		for ch in (row as String):
 			if THREAT_CHARS.has(ch):
@@ -435,7 +441,9 @@ func briefing(id: String) -> Dictionary:
 				boss = true
 			elif ch == "G":
 				gens += 1
-	return {"title": m.TITLE, "brief": m.BRIEF, "counts": counts, "stalker": stalker, "nests": nests, "boss": boss, "generators": gens}
+			elif ch == "F":
+				tags += 1
+	return {"title": m.TITLE, "brief": m.BRIEF, "counts": counts, "stalker": stalker, "nests": nests, "boss": boss, "generators": gens, "tags": tags}
 
 ## Punkt zawieszenia pod sufitem nad znacznikiem: pierwsza bryła w górę (kolumna znacznika), a wróg
 ## wisi tuż pod nią (stopy = dół sprite'a). Bez sufitu zostaje na podłodze.
@@ -467,6 +475,9 @@ func _spawn_map_items() -> void:
 	var guns: Array = _map_items.get("g", [])
 	for i in guns.size():
 		_add_map_item("MapGun%d" % i, "weapon", _weapons[i % _weapons.size()], guns[i])
+	var tags: Array = _map_items.get("F", [])
+	for i in tags.size():
+		_add_map_item("MapTag%d" % i, "tag", 0, tags[i])
 	var caches: Array = _map_items.get("a", [])
 	for i in caches.size():
 		_add_map_item("MapCache%d" % i, "cache", 0, caches[i])
