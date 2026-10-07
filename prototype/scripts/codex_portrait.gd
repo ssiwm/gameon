@@ -4,7 +4,7 @@ extends Control
 ##   thumb — mała miniatura w wierszu listy.
 ## Pixel-art jest rysowany OSTRO (NEAREST + całkowita skala ekranu, pixel_art.gd), z obrysem i warstwą świecącą.
 ##
-## spec: {type: "sprite", sheet, anim} | {type: "gun", row} | {type: "vein"}; accent: kolor wpisu.
+## spec: {type: "sprite", sheet, anim} | {type: "gun", row} | {type: "vein"} | {type: "leech"}; accent: kolor wpisu.
 
 const Sprites := preload("res://scripts/sprites.gd")
 const PixelArt := preload("res://scripts/pixel_art.gd")
@@ -43,7 +43,7 @@ func _process(delta: float) -> void:
 	if not is_visible_in_tree():
 		return
 	var t: String = spec.get("type", "")
-	if t == "sprite" or t == "vein":
+	if t == "sprite" or t == "vein" or t == "leech":
 		_t += delta
 		queue_redraw()
 
@@ -60,6 +60,8 @@ func _draw() -> void:
 			_draw_gun()
 		"vein":
 			_draw_vein(floor_y)
+		"leech":
+			_draw_leech(floor_y)
 	if not thumb:
 		_draw_brackets(px)
 
@@ -156,6 +158,49 @@ func _draw_gun() -> void:
 		draw_texture_rect_region(g, dst, src)
 
 ## Żyła: masa cielsk i otwierająca się paszcza — uproszczona wersja tego, co rysuje boss.gd.
+## Pijawka w kodeksie: cykl 6 s — cień i kręgi pod wodą, wynurzenie, otwarta paszcza, zanurzenie (jak w walce, uproszczone).
+func _draw_leech(floor_y: float) -> void:
+	var k := minf(size.x / 150.0, (floor_y + 6.0) / 62.0)
+	var cx := size.x * 0.5
+	var cyc := fposmod(_t, 6.0)
+	var up := 0.0
+	if cyc >= 2.4 and cyc < 3.0:
+		up = (cyc - 2.4) / 0.6
+	elif cyc >= 3.0 and cyc < 5.4:
+		up = 1.0
+	elif cyc >= 5.4:
+		up = 1.0 - (cyc - 5.4) / 0.6
+	# woda: pas pod linią podłogi i kręgi
+	draw_rect(Rect2(0, floor_y, size.x, size.y - floor_y + 2.0), Color(0.12, 0.3, 0.34, 0.55))
+	for i in 3:
+		var ph := fposmod(_t * 0.9 + float(i) * 0.33, 1.0)
+		draw_arc(Vector2(cx, floor_y), (8.0 + ph * 40.0) * k, PI, TAU, 18, Color(0.55, 0.78, 0.74, (1.0 - ph) * 0.6), 1.0)
+	# cień pod wodą (zanim się wynurzy)
+	if up < 0.95:
+		var a := 0.85 * (1.0 - up)
+		draw_set_transform(Vector2(cx, floor_y + 5.0 * k), 0.0, Vector2(1.0, 0.28))
+		draw_circle(Vector2(-6.0 * k, 0), 22.0 * k, Color(0.02, 0.07, 0.07, a))
+		draw_circle(Vector2(8.0 * k, 0), 14.0 * k, Color(0.02, 0.07, 0.07, a))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_circle(Vector2(cx + 12.0 * k, floor_y + 5.0 * k), 1.6 * k, Color(0.85, 0.95, 0.9, a))
+		draw_circle(Vector2(cx + 18.0 * k, floor_y + 5.0 * k), 1.6 * k, Color(0.85, 0.95, 0.9, a))
+	if up > 0.02:
+		var skin := Color(0.2, 0.32, 0.27)
+		for i in 6:
+			var f := float(i) / 5.0
+			var y := floor_y - (4.0 + f * 28.0 * up) * k
+			var r := (11.0 - f * 3.5) * k
+			draw_circle(Vector2(cx + sin(_t * 3.0) * 2.0 * f * k, y), r, skin)
+			draw_rect(Rect2(cx - r + 2.0 * k, y + r * 0.35, r * 2.0 - 4.0 * k, maxf(1.0, k)), Color(0.5, 0.38, 0.32))
+		var hy := floor_y - (4.0 + 31.0 * up) * k
+		draw_circle(Vector2(cx, hy), 9.0 * k, skin)
+		draw_circle(Vector2(cx + 5.0 * k, hy + 2.0 * k), 6.0 * k, Color(0.55, 0.1, 0.12))
+		for j in 5:
+			var ang := -0.5 + float(j) * 0.5
+			var o := Vector2(cx + 5.0 * k, hy + 2.0 * k)
+			draw_line(o + Vector2(cos(ang), sin(ang)) * 4.0 * k, o + Vector2(cos(ang), sin(ang)) * 7.5 * k, Color(0.92, 0.9, 0.8), maxf(1.0, k * 0.8))
+		draw_rect(Rect2(cx - 4.0 * k, hy - 4.0 * k, 2.0 * k, 2.0 * k), Color(0.95, 0.9, 0.5))
+
 func _draw_vein(floor_y: float) -> void:
 	var k := minf(size.x / 150.0, (floor_y + 6.0) / 62.0)
 	var c := Vector2(size.x * 0.5, floor_y - 22.0 * k)
