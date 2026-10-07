@@ -304,6 +304,7 @@ func _handle_cmdline() -> void:
 	var shot_delay := 1.5
 	var shot_depart := false
 	var shot_flicker := false
+	var shot_demo := false
 	var weapon_mode := ""
 	var shots_dir := ""
 	var args := OS.get_cmdline_user_args()
@@ -357,6 +358,8 @@ func _handle_cmdline() -> void:
 			finaletest = true
 		elif a.begins_with("--shot="):
 			shot_path = a.substr("--shot=".length())
+		elif a == "--shotdemo":
+			shot_demo = true
 		elif a == "--shotflicker":
 			shot_flicker = true
 		elif a == "--shotdepart":
@@ -403,7 +406,7 @@ func _handle_cmdline() -> void:
 	if finaletest:
 		_finale_test()
 	if shot_path != "":
-		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker)
+		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker, shot_demo)
 	if ridetest:
 		_ride_test()
 	if ridehost:
@@ -544,8 +547,12 @@ func host_game() -> void:
 
 ## Narzędzie deweloperskie (--shot=ŚCIEŻKA [--shotat=KOLUMNA]): po 2,5 s zapisuje obraz z widoku gry (tylko okno gry, bez pulpitu)
 ## do PNG i kończy. --shotat przenosi człowieka na podłogę w danej kolumnie mapy (np. do obejrzenia strefy kryjówki).
-func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false) -> void:
+func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false) -> void:
 	await get_tree().create_timer(1.0).timeout
+	if demo:
+		RunLog.add("z1_m1", "1.1  MISSING PATROL", 214.0, 0, 1, -1, 86)         # przykładowe wpisy do podglądu ściany wyników
+		RunLog.add("z1_m2", "1.2  RADIO SILENCE", 402.0, 2, 1, 1, 148)
+		RunLog.add("z1_m3", "1.3  THE NEST", 515.0, 1, 2, -1, 121)
 	if depart:
 		_hub_set_ready(NoiseMgr.local_id(), true)      # jak [Enter] w kryjówce: gotowość → odliczanie → wyjście z kryjówki w ticku serwera
 	if col >= 0:
