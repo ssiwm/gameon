@@ -47,6 +47,7 @@ const PROP := preload("res://scripts/prop.gd")
 const PICKUP := preload("res://scripts/pickup.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const FIRE_PATCH := preload("res://scripts/fire_patch.gd")
+const BRICK_WALL := preload("res://scripts/brick_wall.gd")
 const FLARE := preload("res://scripts/flare.gd")
 const GENERATOR := preload("res://scripts/generator.gd")
 const HANDCAR := preload("res://scripts/handcar.gd")
@@ -115,6 +116,8 @@ var collapse_rects: Array = []
 var exits_alt: Array[Vector2] = []
 var _orig_map: Array = []
 var _blocks: Array = []          ## już zastosowane obszary (do synchronizacji dołączających i resetu)
+var _wall_cells: Dictionary = {}  ## Vector2i → nazwa ściany: kafle zajęte przez zamurowane przejścia (marker „q")
+var _opened_walls: Array = []    ## nazwy już rozbitych ścian (synchronizacja dołączających)
 
 var _solid: TileMapLayer
 var _back: TileMapLayer
@@ -202,10 +205,13 @@ func _load(id: String) -> void:
 	_map = (m.MAP as Array).duplicate()          # kopia: zawał (collapse) zmienia wiersze w trakcie misji
 	collapse_rects = ((m as GDScript).get_script_constant_map().get("COLLAPSE", []) as Array).duplicate()
 	_blocks.clear()
+	_wall_cells.clear()
+	_opened_walls.clear()
 	_weapons = m.WEAPONS
 	_accents = m.ACCENTS
 	_map_items = {}
 	_build_map()
+	_register_walls()
 	nav = Nav.new()
 	nav.build((_map[0] as String).length(), _map.size(), _is_solid, _is_platform_cell)
 	_spawn_entities()
@@ -405,6 +411,8 @@ func _is_solid(c: int, r: int) -> bool:
 	# poza mapą = bryła (krawędzie mapy nie świecą)
 	if r < 0 or r >= _map.size() or c < 0 or c >= (_map[0] as String).length():
 		return true
+	if _wall_cells.has(Vector2i(c, r)):
+		return true                       # zamurowane przejście (brick_wall.gd) — dla nawigacji i krawędzi kafli to bryła
 	var ch := _ch(c, r)
 	return KINDS.has(ch) and KINDS[ch][2] == 0
 
@@ -424,7 +432,8 @@ func _exposure(c: int, r: int) -> int:
 ## Znaczniki → postacie. Nazwy numerowane od lewej do prawej, identycznie
 ## na każdym peerze.
 func _spawn_entities() -> void:
-	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": []}
+	_spawn_walls()
+	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -437,7 +446,7 @@ func _spawn_entities() -> void:
 				"e": exits_alt.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g": found[ch].append(p)
+				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -664,6 +673,92 @@ func _spawn_flare_rpc(n: String, pos: Vector2, vel: Vector2) -> void:
 	f.position = pos
 	f.vel = vel
 	add_child(f)
+
+# ---------------------------------------------------------------- zamurowane przejścia
+
+const WALL_MAX_ROWS := 6
+var _wall_defs: Array = []       ## [{name, pos (stopy), rows, cells}] od lewej do prawej
+
+## Znaczniki „q" → zamurowane przejścia: ściana zajmuje kafle od znacznika w górę do pierwszej bryły (maks. WALL_MAX_ROWS).
+## Rejestrujemy je przed zbudowaniem grafu nawigacji — dla A* to bryła, więc nikt nie planuje drogi do skrytki za ścianą.
+func _register_walls() -> void:
+	_wall_defs.clear()
+	var found: Array = []
+	for r in _map.size():
+		var row: String = _map[r]
+		for c in row.length():
+			if row[c] == "q":
+				found.append(Vector2i(c, r))
+	found.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.x < b.x or (a.x == b.x and a.y < b.y))
+	for i in found.size():
+		var cell: Vector2i = found[i]
+		var rows := 1
+		while rows < WALL_MAX_ROWS and cell.y - rows >= 0 and not _is_solid(cell.x, cell.y - rows):
+			rows += 1
+		var cells: Array = []
+		for k in rows:
+			cells.append(Vector2i(cell.x, cell.y - k))
+			_wall_cells[Vector2i(cell.x, cell.y - k)] = "BrickWall%d" % (i + 1)
+		_wall_defs.append({"name": "BrickWall%d" % (i + 1), "pos": Vector2(cell.x * TILE + TILE * 0.5, (cell.y + 1) * TILE), "rows": rows, "cells": cells})
+
+func _spawn_walls() -> void:
+	for wd in _wall_defs:
+		var w: Node2D = BRICK_WALL.new()
+		w.name = String(wd["name"])
+		w.position = wd["pos"]
+		w.rows = int(wd["rows"])
+		add_child(w)
+
+## Serwer: ściana rozbita — znika u wszystkich peerów, kafle odblokowują nawigację.
+func break_wall(wall_name: String) -> void:
+	if not NoiseMgr.is_server() or _opened_walls.has(wall_name):
+		return
+	if NoiseMgr.has_network():
+		_break_wall_rpc.rpc(map_id, wall_name)
+	else:
+		_break_wall_rpc(map_id, wall_name)
+
+@rpc("authority", "call_local", "reliable")
+func _break_wall_rpc(id: String, wall_name: String) -> void:
+	if id != map_id or _opened_walls.has(wall_name):
+		return
+	_open_wall(wall_name, true)
+
+func _open_wall(wall_name: String, with_fx: bool) -> void:
+	_opened_walls.append(wall_name)
+	var rc := Rect2i()
+	var first := true
+	for cell in _wall_cells.keys():
+		if String(_wall_cells[cell]) == wall_name:
+			var cr := Rect2i(cell, Vector2i(1, 1))
+			rc = cr if first else rc.merge(cr)
+			first = false
+	for cell in _wall_cells.keys():
+		if String(_wall_cells[cell]) == wall_name:
+			_wall_cells.erase(cell)
+	var w := get_node_or_null(wall_name)
+	if w != null:
+		if with_fx and w.has_method("crumble"):
+			w.crumble()
+		else:
+			w.queue_free()
+	if not first:
+		_refresh_region(rc)
+
+## Dołączający gracz dostaje listę już rozbitych ścian.
+func send_walls_to(peer_id: int) -> void:
+	if NoiseMgr.is_server() and NoiseMgr.has_network():
+		for n in _opened_walls:
+			_break_wall_rpc.rpc_id(peer_id, map_id, n)
+
+## Test map: otwiera wszystkie ściany bez efektów (maptest sprawdza osiągalność skrytek za nimi).
+func open_all_walls_for_test() -> void:
+	for wd in _wall_defs.duplicate():
+		if not _opened_walls.has(String(wd["name"])):
+			_open_wall(String(wd["name"]), false)
+
+func walls_total() -> int:
+	return _wall_defs.size()
 
 # ---------------------------------------------------------------- ogień na podłodze
 

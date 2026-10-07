@@ -235,3 +235,14 @@ FALCON-6 ×1,3, WRATH-4 i SINEW-6 ×1,5, SPECTER-1 ×1,7 (M-83 i SPREAD-12 bez z
 | **Światło broni → Stalker** | wiązka LR-7 i płomień HKM-9 w zasięgu 10 m i linii wzroku ściągają przebudzonego Stalkera jak latarka | `lights.gd` (`light_weapon_on`), `stalker.gd` |
 
 Broń z trybem serii dostaje `burst_size > 0` w tabeli (dziś tylko M-83); bot zawsze strzela ogniem ciągłym.
+
+## 9. Brakujące elementy (1.7.60)
+
+| Element | Jak działa | Kod |
+|---|---|---|
+| **Linka SINEW-6** (T3) | trafiony wróg dostaje prędkość ku strzelcowi (`pull` 260 px/s × `knock_mult`) zamiast odrzutu; kreska od strzelca do celu przez 0,45 s u wszystkich peerów | `WeaponDef.pull`, `combat.gd` (`_tether_fx`), `enemy.gd` (`take_hit`), `arsenal.gd` |
+| **Zamurowane przejście** (marker `q`) | ściana 16 px × do 6 kafli: bryła dla fizyki i nawigacji; HP 120; niszczą ją tylko kilof (`breaks_walls`) i wybuch; rozbicie = hałas 6, gruz, odblokowanie nawigacji, synchronizacja z dołączającymi | `brick_wall.gd`, `level.gd` (`_register_walls`, `break_wall`), `combat.gd` (`in_cone`, `explode`) |
+| **Ogień jako mur** | ciało statyczne na warstwie 64 (bit 7), 40 px wysokości; maska tylko u wrogów `fire_shy` (Trzosek, Ślepiec, Skoczek) | `fire_patch.gd`, `enemy.gd` (`FIRE_BIT`) |
+
+Przejście z kilofem jest w misji 1.2 (hala pod wieżą widokową). Nowa ściana = marker `q` w dolnym wierszu przejścia (3 kafle wysokości
+i bryła nad nimi); `--maptest` otwiera wszystkie ściany przed sprawdzeniem osiągalności.

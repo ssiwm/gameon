@@ -1,7 +1,8 @@
 extends Node2D
 ## Ogień na podłodze (HKM-9, faza 3 przeglądu broni): płomień zostawia w punkcie lądowania żar, który pali się FIRE_LIFE s.
-## Kto w nim stoi (wróg, skrzynia), dostaje podpalenie — płonący Trzosek panikuje i ucieka, więc ogień zamyka przejście
-## i zatrzymuje hordę. Nie rani drużyny. Świeci: ćmy lecą na ogień i się w nim spalają (enemy.gd `_nearest_light`).
+## Kto w nim stoi (wróg, skrzynia), dostaje podpalenie — płonący Trzosek panikuje i ucieka. Dla wrogów z flagą `fire_shy`
+## (Trzosek, Ślepiec, Skoczek) ogień jest też fizycznym murem (ciało na warstwie FIRE_LAYER, 40 px) — zamyka przejście i
+## zatrzymuje hordę; Wołek i Mimik przechodzą przez płomienie, paląc się. Nie rani drużyny i nie blokuje graczy. Świeci: ćmy lecą na ogień i się w nim spalają (enemy.gd `_nearest_light`).
 ##
 ## Powstaje u wszystkich peerów (level.gd `spawn_fire_patch`), a obrażenia liczy tylko serwer. Czas życia liczy każdy peer sam.
 
@@ -14,6 +15,8 @@ const HEIGHT := 22.0              ## px nad podłogą, w których cel się pali
 const TICK := 0.25
 const TICK_DAMAGE := 0.5          ## obrażenia na tyk — resztę robi podpalenie (enemy.gd BURN_DPS)
 const IGNITE := 1.2               ## s podpalenia odnawiane przy każdym tyku
+const FIRE_LAYER := 64            ## warstwa „muru ognia” (bit 7): maska wrogów z flagą fire_shy (enemy.gd FIRE_BIT); gracze i reszta jej nie mają
+const WALL_HEIGHT := 40.0         ## wyższy niż skok wroga (≈29 px), żeby nie przeskakiwali płomieni
 
 var weapon := 0
 var shooter_id := 0
@@ -32,6 +35,17 @@ func _ready() -> void:
 	_light = Lights.make_light(Lights.radial(), 3.5, Color(1.0, 0.5, 0.18), 0.9, false)
 	_light.position = Vector2(0, -6)
 	add_child(_light)
+	# mur ognia: ciało statyczne tylko na warstwie FIRE_LAYER — blokuje tchórzliwych wrogów (Trzosek, Ślepiec, Skoczek), nie graczy
+	var body := StaticBody2D.new()
+	body.collision_layer = FIRE_LAYER
+	body.collision_mask = 0
+	var cs := CollisionShape2D.new()
+	var rs := RectangleShape2D.new()
+	rs.size = Vector2(HALF_W * 2.0, WALL_HEIGHT)
+	cs.shape = rs
+	cs.position = Vector2(0, -WALL_HEIGHT * 0.5)
+	body.add_child(cs)
+	add_child(body)
 
 func _physics_process(delta: float) -> void:
 	life -= delta

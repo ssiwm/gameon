@@ -580,6 +580,12 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			level.spawn_flare(Vector2(bs.global_position.x + 30.0, bs.global_position.y - 20.0), Vector2.ZERO)
 			if "--shotup" in OS.get_cmdline_user_args() and bs.has_method("_surface"):
 				bs.call("_surface")         # --shotup: Pijawka od razu wynurzona (podgląd arkusza, z chwytem, jeśli gracz stoi w zasięgu)
+	if "--shotwall" in OS.get_cmdline_user_args():
+		var sw := get_tree().get_first_node_in_group("breakables")      # --shotwall: gracz tuż przed zamurowanym przejściem (mapa 1.2)
+		var sp: Node2D = _players.get_node_or_null("1")
+		if sw != null and sp != null:
+			sp.global_position = sw.global_position + Vector2(40.0, -1.0)
+			sp.velocity = Vector2.ZERO
 	if "--shotfire" in OS.get_cmdline_user_args():
 		var fp: Node2D = _players.get_node_or_null("1")      # --shotfire: trzy plamy ognia HKM-9 przed graczem (podgląd)
 		if fp != null:
@@ -973,6 +979,18 @@ func _gen_test() -> void:
 		e.set_physics_process(false)
 		e.set_process(false)
 	check.call("start: mapa 1.2, cel generators, 4 generatory", level.map_id == "z1_m2" and mission.kind == "generators" and mission.goal_total == 4)
+	# zamurowane przejście w hali (kilof): skrytka za ścianą jest nieosiągalna, dopóki ściana stoi
+	var alcove: Array = (level._map_items.get("u", []) as Array).filter(func(v: Vector2) -> bool: return v.x > 2290.0 and v.x < 2400.0)
+	var start_id: int = level.nav.get_closest_point(level.spawns[0])
+	var sealed := false
+	if alcove.size() > 0:
+		sealed = level.nav.get_id_path(start_id, level.nav.get_closest_point(alcove[0])).is_empty()
+	var wall_node := level.get_node_or_null("BrickWall1")
+	check.call("zamurowane przejście: ściana + skrytka za nią (%d × złom), nawigacja jej nie widzi (szczelna: %s)" % [alcove.size(), str(sealed)], wall_node != null and alcove.size() == 2 and sealed and level.walls_total() == 1)
+	level.break_wall("BrickWall1")
+	await get_tree().create_timer(0.3).timeout
+	var open_id: int = level.nav.get_closest_point(alcove[0]) if alcove.size() > 0 else -1
+	check.call("po rozbiciu: ściana znika, skrytka osiągalna ze startu", not is_instance_valid(level.get_node_or_null("BrickWall1")) and open_id >= 0 and not level.nav.get_id_path(level.nav.get_closest_point(level.spawns[0]), open_id).is_empty())
 	Scrap.add_loot(25)
 	level.spawn_item("scrap", 0, p.global_position + Vector2(0, -4), 7)
 	var scrap_item := level.get_node_or_null("Item%d" % level._pickup_serial)
@@ -1258,6 +1276,8 @@ func _map_test() -> void:
 		print("[MAPTEST] %s %s: %d x %d, kształt %s" % [id, level.title, w, rows.size(), "OK" if shape_ok else "BŁĄD (różne szerokości wierszy)"])
 		if not shape_ok:
 			fails += 1
+		if level.walls_total() > 0:
+			level.open_all_walls_for_test()          # skrytki za zamurowanymi przejściami też muszą być osiągalne po rozbiciu
 		var nav: AStar2D = level.nav
 		var points: Array = []          # [etykieta, pozycja]
 		for i in level.spawns.size():
@@ -1451,6 +1471,7 @@ func _on_peer_connected(id: int) -> void:
 		_sync_difficulty.rpc_id(id, Difficulty.level)
 		_load_map_rpc.rpc_id(id, level.map_id)       # mapa zanim pojawi się postać
 		level.send_collapse_to(id)                   # zawały, które już się wydarzyły w tej misji
+		level.send_walls_to(id)                      # rozbite zamurowane przejścia
 		_spawn_player(id)
 
 ## Trudność ustala host; klient dostaje ją przy dołączeniu (HP wrogów, paski, czasy).

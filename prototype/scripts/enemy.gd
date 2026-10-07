@@ -10,7 +10,7 @@ const KINDS := {
 	"trzosek": {
 		"hp": 30.0, "speed": 88.0, "damage": 1, "windup": 0.28, "reach": 13.0,
 		"cooldown": 0.9, "leap": true, "hear": 200.0, "wake_near": 90.0, "sight": 260.0,
-		"pack": true, "fears": true, "phototaxis": true,
+		"pack": true, "fears": true, "phototaxis": true, "fire_shy": true,
 		"color": Color(0.62, 0.2, 0.22), "size": Vector2(10, 14), "knock": 70.0, "knock_mult": 1.0, "head": 0.0,
 	},
 	# Ćma (1.7.5): światłolubna — wisi pod sufitem, budzi ją światło (latarka, flara) i leci na nie.
@@ -25,7 +25,7 @@ const KINDS := {
 	"skoczek": {
 		"hp": 40.0, "speed": 84.0, "damage": 1, "windup": 0.3, "reach": 13.0,
 		"cooldown": 1.0, "leap": true, "hear": 230.0, "wake_near": 60.0, "sight": 280.0,
-		"hang": true,
+		"hang": true, "fire_shy": true,
 		"color": Color(0.62, 0.6, 0.5), "size": Vector2(12, 14), "knock": 60.0, "knock_mult": 0.9, "head": 0.0,
 	},
 	# Mimik (GDD §7.1): udaje kolegę z drużyny — stoi jak człowiek i wzywa pomocy głosem gracza.
@@ -41,7 +41,7 @@ const KINDS := {
 	"slepiec": {
 		"hp": 60.0, "speed": 70.0, "damage": 1, "windup": 0.35, "reach": 14.0,
 		"cooldown": 1.1, "leap": false, "hear": 300.0, "wake_near": 36.0, "sight": 26.0,
-		"keen": true, "min_noise": 0.25, "blind": true,
+		"keen": true, "min_noise": 0.25, "blind": true, "fire_shy": true,
 		"color": Color(0.8, 0.78, 0.76), "size": Vector2(12, 17), "knock": 40.0, "knock_mult": 0.6, "head": 0.28,
 	},
 	# Podsłuchacz (GDD §7.1): stoi nieruchomo i nasłuchuje; zobaczy albo usłyszy — krzyczy i ściąga hordę.
@@ -87,6 +87,7 @@ const PERCEIVE_DT := 0.12        ## co tyle sprawdzamy wzrok (promień)
 const CROUCH_SIGHT := 0.6        ## kucającego widać z mniejszej odległości
 const JUMP_V := -275.0           ## skok po grafie A* (42 px, tyle co gracz)
 const PLATFORM_BIT := 5          ## warstwa kładek w masce (zeskok)
+const FIRE_BIT := 7              ## warstwa „muru ognia” (fire_patch.gd): blokuje wrogów z flagą fire_shy, drużyny nie rusza
 const DROP_TIME := 0.25
 ## Słyszalność po trasie (1.7.4): dźwięk nie przechodzi przez ściany ani piętra — liczy się długość
 ## ścieżki po grafie nawigacji, nie linia prosta. Bez ścieżki (brak węzła) — tłumienie przez mur.
@@ -211,6 +212,8 @@ func _ready() -> void:
 	if Sprites.has(kind):
 		_spr = Sprites.attach(self, kind)
 	_last_x = global_position.x
+	if _def.get("fire_shy", false):
+		set_collision_mask_value(FIRE_BIT, true)         # ogień na podłodze jest dla nich murem
 	_hanging = bool(_def.get("hang", false)) or bool(_def.get("moth", false))
 	if _def.get("fly", false):
 		motion_mode = CharacterBody2D.MOTION_MODE_FLOATING     # ćma lata — bez „podłogi" i grawitacji
@@ -1182,6 +1185,9 @@ func take_hit(info: Dictionary) -> Dictionary:
 	_flash = 0.1
 	_stagger = maxf(_stagger, 0.12 + float(info.get("stun", 0.0)))
 	velocity.x += signf(info["dir"].x) * float(info.get("knock", 0.0)) * float(_def["knock_mult"])
+	var pull: float = info.get("pull", 0.0)
+	if pull > 0.0:
+		velocity.x = -signf(info["dir"].x) * pull * float(_def["knock_mult"])        # linka: szarpnięcie ku strzelcowi zamiast odrzutu
 	var fire: float = info.get("ignite", 0.0)
 	if fire > 0.0:
 		_ignite(fire)

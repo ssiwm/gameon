@@ -16,6 +16,8 @@ const Combat := preload("res://scripts/combat.gd")
 const Projectile := preload("res://scripts/projectile.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
 const Lights := preload("res://scripts/lights.gd")
+const BrickWall := preload("res://scripts/brick_wall.gd")
+const WALL_HP_REF := 120.0
 const Enemy := preload("res://scripts/enemy.gd")
 const Controller := preload("res://scripts/weapon_controller.gd")
 
@@ -134,6 +136,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_phase1()
 	await _t_upgrades()
 	await _t_phase3()
+	await _t_phase4()
 	await _t_sweep()
 	await _t_pierce_beam_rail()
 	await _t_flame()
@@ -294,6 +297,93 @@ func _t_phase1() -> void:
 			worst_r = ratio
 			worst = d.name
 	check("hałas / DPS ≤ 0,25 dla broni palnych (najgorsza: %s %.2f)" % [worst, worst_r], worst_r <= 0.25)
+
+## Dodatki po fazie 3: linka SINEW-6, zamurowane przejście i kilof, ogień jako mur dla tchórzliwych wrogów.
+func _t_phase4() -> void:
+	# --- linka SINEW-6 (poziom 3): trafiony wróg leci ku strzelcowi, bez ulepszenia odlatuje
+	var saved: Dictionary = Weapons.levels.duplicate()
+	var plain_t := await dummy(80.0)
+	var info0 := Combat.make_info(Weapons.CIEGNO6, 45.0, plain_t.global_position, Vector2.RIGHT, 1, "bullet")
+	Combat.apply(plain_t, info0)
+	var plain_v: float = plain_t.velocity.x
+	Weapons.levels[Weapons.CIEGNO6] = 3
+	var teth := await dummy(120.0)
+	var tank := await dummy(160.0, 100000.0, "wolek")
+	var info1 := Combat.make_info(Weapons.CIEGNO6, 45.0, teth.global_position, Vector2.RIGHT, 1, "bullet")
+	Combat.apply(teth, info1)
+	var info2 := Combat.make_info(Weapons.CIEGNO6, 45.0, tank.global_position, Vector2.RIGHT, 1, "bullet")
+	Combat.apply(tank, info2)
+	check("linka SINEW-6 (T3): trafiony Trzosek leci ku strzelcowi (%.0f px/s), bez ulepszenia odlatuje (%.0f)" % [teth.velocity.x, plain_v], teth.velocity.x < -150.0 and plain_v > 0.0)
+	check("linka: Wołek (knock_mult 0,2) szarpnięty słabiej (%.0f px/s)" % tank.velocity.x, tank.velocity.x < 0.0 and absf(tank.velocity.x) < absf(teth.velocity.x) * 0.5)
+	Weapons.levels.clear()
+	for k in saved:
+		Weapons.levels[k] = saved[k]
+	free_dummies()
+	await frames(2)
+	# --- zamurowane przejście
+	var wall: Node2D = BrickWall.new()
+	wall.name = "TWall1"
+	wall.rows = 2
+	wall.global_position = player.global_position + Vector2(30.0, 0.0)
+	level.add_child(wall)
+	await frames(2)
+	var space := player.get_world_2d().direct_space_state
+	var org := player.global_position + Vector2(0, -9)
+	var in_reach: Array = Combat.in_cone(get_tree(), space, org, Vector2.RIGHT, Weapons.def(Weapons.KILOF).reach, 50.0)
+	check("zamurowane przejście: kilof je widzi w zasięgu ciosu", in_reach.has(wall))
+	var hp0: float = wall.hp
+	Combat.apply(wall, Combat.make_info(Weapons.M83, 8.0, wall.global_position, Vector2.RIGHT, 1, "bullet"))
+	Combat.apply(wall, Combat.make_info(Weapons.MACZETA, 30.0, wall.global_position, Vector2.RIGHT, 1, "melee"))
+	check("ściana: kula i maczeta nie robią jej nic", wall.hp == hp0)
+	var pick := Weapons.def(Weapons.KILOF)
+	var swings := 0
+	while is_instance_valid(wall) and not wall.is_queued_for_deletion() and swings < 6:
+		Combat.apply(wall, Combat.make_info(Weapons.KILOF, pick.damage, wall.global_position, Vector2.RIGHT, 1, "melee"))
+		swings += 1
+		await frames(2)
+	await frames(3)
+	check("ściana: kilof rozbija ją w %d uderzeniach (120 HP / %.0f)" % [swings, pick.damage], swings == 3 and (not is_instance_valid(wall) or wall.is_queued_for_deletion()))
+	check("rozbicie zapisane (dla dołączających): %s" % str(level._opened_walls), level._opened_walls.has("TWall1"))
+	level._opened_walls.erase("TWall1")
+	var w2: Node2D = BrickWall.new()
+	w2.name = "TWall2"
+	w2.rows = 2
+	w2.global_position = player.global_position + Vector2(60.0, 0.0)
+	level.add_child(w2)
+	await frames(2)
+	var gd := Weapons.def(Weapons.GNIEW4)
+	Combat.explode(get_tree(), w2.global_position + Vector2(0, -10), gd.blast_radius, gd.blast_damage, 1, Weapons.GNIEW4, true)
+	var after_one: float = w2.hp
+	Combat.explode(get_tree(), w2.global_position + Vector2(0, -10), gd.blast_radius, gd.blast_damage, 1, Weapons.GNIEW4, true)
+	await frames(3)
+	check("ściana: dwa wybuchy WRATH-4 ją rozwalają (po pierwszym %.0f HP)" % after_one, after_one < WALL_HP_REF and (not is_instance_valid(w2) or w2.is_queued_for_deletion()))
+	level._opened_walls.erase("TWall2")
+	free_dummies()
+	await frames(2)
+	# --- ogień jako mur: tchórzliwi wrogowie (Trzosek, Ślepiec, Skoczek) stają przed płomieniami, Wołek i gracz nie
+	var shy_ok := true
+	for k in ["trzosek", "slepiec", "skoczek"]:
+		var dm := await dummy(200.0, 100000.0, k)
+		shy_ok = shy_ok and dm.get_collision_mask_value(7)
+	var tank2 := await dummy(220.0, 100000.0, "wolek")
+	check("mur ognia: maska FIRE_BIT tylko u Trzoska, Ślepca i Skoczka (nie u Wołka %s ani gracza %s)" % [str(tank2.get_collision_mask_value(7)), str(player.get_collision_mask_value(7))], shy_ok and not tank2.get_collision_mask_value(7) and not player.get_collision_mask_value(7))
+	free_dummies()
+	await frames(2)
+	var runner := await dummy(110.0)
+	level.spawn_fire_patch(player.global_position + Vector2(70.0, 0.0), Weapons.HKM9, 1)
+	await frames(3)
+	var hit_shy: KinematicCollision2D = runner.move_and_collide(Vector2(-60.0, 0.0))
+	var shy_x: float = runner.global_position.x - player.global_position.x
+	runner.queue_free()
+	await frames(2)
+	var fighter := await dummy(110.0, 100000.0, "wolek")
+	var hit_tank: KinematicCollision2D = fighter.move_and_collide(Vector2(-60.0, 0.0))
+	var tank_x: float = fighter.global_position.x - player.global_position.x
+	check("mur ognia: Trzosek zatrzymany przed płomieniami (x +%.0f, ogień do +84), Wołek przechodzi (x +%.0f)" % [shy_x, tank_x], hit_shy != null and shy_x > 84.0 and hit_tank == null and tank_x < 70.0)
+	for bw in get_tree().get_nodes_in_group("breakables"):
+		bw.queue_free()
+	free_dummies()
+	await frames(2)
 
 ## Faza 3 przeglądu broni: tryb serii M-83, ogień na podłodze HKM-9, błysk lufy i światło broni jako sygnał.
 func _t_phase3() -> void:

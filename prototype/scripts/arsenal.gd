@@ -159,6 +159,18 @@ func _hit_fx(pos: Vector2, dir: Vector2, mat: int, crit: bool, heavy: bool) -> v
 	var parent: Node = lvl if lvl != null else scene
 	Vfx.hit(parent, pos, dir, mat, crit, heavy)
 
+## Serwer: linka SINEW-6 — kreska od strzelca do trafionego wroga u wszystkich peerów.
+func broadcast_tether(a: Vector2, b: Vector2) -> void:
+	if NoiseMgr.has_network():
+		_tether_fx.rpc(a, b)
+	else:
+		_tether_fx(a, b)
+
+@rpc("authority", "call_local", "unreliable")
+func _tether_fx(a: Vector2, b: Vector2) -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	Vfx.streak(lvl if lvl != null else get_tree().current_scene, a, b, Color(0.86, 0.8, 0.62), 1.0, 0.45)
+
 ## Serwer: wybuch — efekt wszędzie (obrażenia liczy Combat.explode na serwerze).
 func broadcast_explosion(pos: Vector2, radius: float) -> void:
 	if NoiseMgr.has_network():

@@ -107,11 +107,11 @@ const WEAPON_TEXT := {
 	"widmo1": ["Rail rifle: hold to charge, release for a hit that pierces everything in line. Enormous damage, enormous noise.",
 		"Release before the charge completes and the shot is cancelled. The loudest weapon — plan the escape first."],
 	"ciegno6": ["Silent bolt gun: one bolt per magazine, huge damage, almost no noise. The bolt sticks in the target and can be picked up.",
-		"Aim for the head (×2). The assassin's tool for an Eavesdropper."],
+		"Aim for the head (×2). The assassin's tool for an Eavesdropper. Tier 3 adds a tether line that yanks hit enemies toward you."],
 	"maczeta": ["Machete: fast, silent, short reach. Kills a sleeping enemy — or one with its back to you — instantly.",
 		"The first answer to any sleeper. No ammo, no noise."],
-	"kilof": ["Pickaxe: slow swing, heavy damage and a long stun on hit. A little noise.",
-		"Use it as the opener, then back off before the next swing."],
+	"kilof": ["Pickaxe: slow swing, heavy damage and a long stun on hit. A little noise. It is the only tool that breaks cracked brick walls (and a grenade does too).",
+		"Use it as the opener, then back off before the next swing. A bricked-up passage usually hides a stash — but breaking it is LOUD."],
 }
 
 static func arsenal() -> Array:

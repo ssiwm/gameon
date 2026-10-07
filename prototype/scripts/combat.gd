@@ -13,6 +13,7 @@ extends RefCounted
 ##   knock    odrzut (px/s)                stun     ogłuszenie (s)      ignite  podpalenie (s)
 ##   crit_mult mnożnik za głowę            backstab cios w plecy/śpiącego (melee)
 ##   heavy    ciężki efekt (strzelba, wybuch)  silent  nie budzi i nie hałasuje
+##   pull     linka (ulepszenie SINEW-6): px/s, z jaką trafiony wróg leci ku strzelcowi
 ##   execute  ułamek HP, poniżej którego cios białą bronią zabija na miejscu (ulepszenie maczety)
 
 const Weapons := preload("res://scripts/weapons.gd")
@@ -30,7 +31,7 @@ static func make_info(w: int, amount: float, pos: Vector2, dir: Vector2, shooter
 		"w": w, "amount": amount, "pos": pos, "dir": dir, "shooter": shooter, "type": type,
 		"knock": d.knock, "stun": d.stun, "ignite": d.ignite, "crit_mult": d.crit_mult,
 		"backstab": false, "heavy": d.pellets >= 5 or d.kind == Weapons.Kind.RAIL,
-		"silent": false, "crit": false, "execute": d.execute_frac,
+		"silent": false, "crit": false, "execute": d.execute_frac, "pull": d.pull,
 	}
 
 ## Zadaje obrażenia celowi (serwer). Zwraca {hit, dealt, killed, mat, crit}.
@@ -58,7 +59,17 @@ static func apply(target: Node, info: Dictionary) -> Dictionary:
 		res["hit"] = true
 		res["dealt"] = info["amount"]
 	res["crit"] = bool(info.get("crit", false)) and bool(res["hit"])
+	if float(info.get("pull", 0.0)) > 0.0 and bool(res["hit"]):
+		_tether_fx(target, info)
 	return res
+
+## Linka SINEW-6: kreska od trafionego wroga do strzelca (u wszystkich peerów) przez chwilę.
+static func _tether_fx(target: Node, info: Dictionary) -> void:
+	var tree := target.get_tree()
+	for p in tree.get_nodes_in_group("players"):
+		if int(p.player_id) == int(info.get("shooter", -1)):
+			Arsenal.broadcast_tether((p.global_position + Vector2(0, -9)), info["pos"])
+			return
 
 ## Efekt trafienia u wszystkich peerów + hitmarker dla strzelca.
 static func report(info: Dictionary, res: Dictionary) -> void:
@@ -192,6 +203,15 @@ static func in_cone(tree: SceneTree, space: PhysicsDirectSpaceState2D, origin: V
 		if not clear_line(space, origin, c):
 			continue
 		found.append(n)
+	for b in tree.get_nodes_in_group("breakables"):
+		var rc: Rect2 = b.call("hit_rect")
+		var q := Vector2(clampf(origin.x, rc.position.x, rc.end.x), clampf(origin.y, rc.position.y, rc.end.y))
+		var vq := q - origin
+		if vq.length() > reach:
+			continue
+		if vq.length() > 1.0 and absf(rad_to_deg(dir.angle_to(vq))) > half_deg + 25.0:
+			continue
+		found.append(b)                       # ściana jest sama w sobie przeszkodą — linii wzroku nie sprawdzamy
 	return found
 
 # ---------------------------------------------------------------- wybuch
@@ -227,6 +247,12 @@ static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float,
 			Arsenal.confirm(shooter, Arsenal.Confirm.KILL, c)
 		elif bool(res["hit"]):
 			Arsenal.confirm(shooter, Arsenal.Confirm.HIT, c)
+	for b in tree.get_nodes_in_group("breakables"):
+		var rc: Rect2 = b.call("hit_rect")
+		var q := Vector2(clampf(pos.x, rc.position.x, rc.end.x), clampf(pos.y, rc.position.y, rc.end.y))
+		if q.distance_to(pos) <= radius:
+			var binfo := make_info(w, damage, q, (q - pos).normalized() if q.distance_to(pos) > 0.5 else Vector2.UP, shooter, "blast")
+			apply(b, binfo)
 	for p in tree.get_nodes_in_group("players"):
 		if p.dead:
 			continue
