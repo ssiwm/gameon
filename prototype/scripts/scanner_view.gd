@@ -29,8 +29,13 @@ func _draw() -> void:
 	draw_arc(to_local(c), r, 0.0, TAU, 64, Color(0.9, 0.9, 0.5, 0.12 * fade), 1.0)
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var n := e as Node2D
-		if n == null or not is_instance_valid(n) or not n.visible or n.is_in_group("props") or n.is_in_group("breakables"):
+		if n == null or not is_instance_valid(n) or n.is_in_group("props") or n.is_in_group("breakables"):
 			continue
+		var scouted := false             # „Scout": Stalker widoczny na skanerze także uśpiony, ale tylko z bliska
+		if not n.visible:
+			scouted = n.has_method("is_stalker") and player.has_perk("scout") and n.global_position.distance_to(c) <= player.perk_param("scout", "scan_stalker_range", 0.0)
+			if not scouted:
+				continue
 		if n.get("alive") == false:
 			continue
 		var d := n.global_position.distance_to(c)

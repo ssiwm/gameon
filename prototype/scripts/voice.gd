@@ -164,7 +164,7 @@ func _process(delta: float) -> void:
 			var loud := clampf((level_db - thr) / 12.0, 0.0, 1.0)
 			var p := _local_player()
 			if p != null:
-				try_scream(p, lerpf(12.0, 26.0, loud))
+				try_scream(p, minf(lerpf(12.0, 26.0, loud), p.perk_param("cold_blood", "scream_cap", 99.0)))   # „Cold blood" ucina krzyk z mikrofonu
 	elif level_db < thr - HYSTERESIS_DB:
 		_above = 0.0
 		_armed = true

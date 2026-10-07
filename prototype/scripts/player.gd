@@ -8,6 +8,7 @@ extends CharacterBody2D
 
 const Weapons := preload("res://scripts/weapons.gd")
 const Throwables := preload("res://scripts/throwables.gd")
+const Perks := preload("res://scripts/perks.gd")
 const WeaponController := preload("res://scripts/weapon_controller.gd")
 const WeaponView := preload("res://scripts/weapon_view.gd")
 const Lights := preload("res://scripts/lights.gd")
@@ -32,6 +33,8 @@ const Surfaces := preload("res://scripts/surfaces.gd")
 const MAX_HP := 3
 ## Apteczki kumulują się ponad MAX_HP aż do tego sufitu (złote serca); respawn i nowa misja wracają do MAX_HP.
 const STACK_HP := 6
+## Sekundy leżenia, po których perk „Second chance" stawia gracza na nogi (nie więcej niż 80% czasu wykrwawienia).
+const SECOND_CHANCE_FRAC := 0.8
 const BONUS_HEART := Color(1.0, 0.8, 0.25)
 
 # Czucie gry (GDD §23)
@@ -97,6 +100,10 @@ var weapon := 0                 ## id broni w ręku (replikowane); ustawia kontr
 var w_state := 0
 var w_charge := 0.0
 var w_firing := false
+## Założone perki jako indeksy z `Perks.ORDER` (-1 = pusty slot); replikowane, ustawia je właściciel z lokalnego profilu.
+var perks := Vector2i(-1, -1)
+var _second_used := false
+var _down_t := 0.0
 var kit := Vector3i(Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Weapons.START_MELEE)
 ## Celowanie myszą (swobodne) a klawiaturą (8 kierunków) — celownik rysuje się odpowiednio.
 var aim_by_mouse := false
@@ -252,7 +259,7 @@ func _setup_sync() -> void:
 	sync.replication_interval = 0.05
 	sync.delta_interval = 0.05
 	var cfg := SceneReplicationConfig.new()
-	for path in [":position", ":velocity", ":aim_dir", ":hp", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":kit"]:
+	for path in [":position", ":velocity", ":aim_dir", ":hp", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":kit", ":perks"]:
 		cfg.add_property(path)
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
 	for path in [":position", ":velocity", ":hp", ":crouching", ":dead", ":is_bot", ":display_id"]:
@@ -272,7 +279,36 @@ func _setup_local() -> void:
 	var lvl_node := get_tree().get_first_node_in_group("level")
 	if lvl_node != null:
 		lvl_node.map_changed.connect(_on_map_changed)
+	if local_human:
+		Profile.changed.connect(_sync_perks)
+		_sync_perks()
 	print("[NET] player ready id=%d display=%d remote=%s bot=%s" % [player_id, display_id, str(_is_remote), str(is_bot)])
+
+## Perki ------------------------------------------------------------------------------------------------------------------
+
+func has_perk(id: String) -> bool:
+	var i := Perks.ORDER.find(id)
+	return i >= 0 and (perks.x == i or perks.y == i)
+
+func perk_param(id: String, key: String, fallback: float) -> float:
+	return Perks.param(id, key, fallback) if has_perk(id) else fallback
+
+## Lokalny człowiek publikuje założone perki (zmieniają się tylko w kryjówce); zmiana perka „Veteran" od razu dolicza/odejmuje serce.
+func _sync_perks() -> void:
+	var before := max_hp()
+	perks = Perks.to_indexes(Profile.equipped)
+	var after := max_hp()
+	if dead or after == before:
+		return
+	if hp == before:
+		hp = after                      # pełne zdrowie zostaje pełne
+	hp = mini(hp, stack_hp())
+
+func max_hp() -> int:
+	return MAX_HP + int(perk_param("veteran", "extra_hearts", 0.0))
+
+func stack_hp() -> int:
+	return STACK_HP + int(perk_param("veteran", "extra_hearts", 0.0))
 
 ## Granice kamery z mapy (level.gd) zamiast stałych z player.tscn.
 func _apply_level_bounds() -> void:
@@ -524,7 +560,7 @@ func _local_brain(delta: float) -> void:
 		_run_noise_tick += delta
 		if _run_noise_tick >= 0.5:
 			_run_noise_tick = 0.0
-			NoiseMgr.add_noise(NoiseMgr.N_RUN_PER_SEC * 0.5 * float(surf["noise"]), global_position)
+			NoiseMgr.add_noise(NoiseMgr.N_RUN_PER_SEC * 0.5 * float(surf["noise"]) * perk_param("quiet_steps", "run_noise_mult", 1.0), global_position)
 
 	if Input.is_action_just_pressed("overcharge"):
 		_try_overcharge()
@@ -640,7 +676,7 @@ func _throw_item(kind: String) -> void:
 		Audio.play("dry_fire", Audio.BUS_WEAPONS, -10.0, 1.2)
 		return
 	var origin := global_position + Vector2(aim_dir.x * 6.0, -12.0)
-	var vel := aim_dir.normalized() * 230.0 + Vector2(velocity.x * 0.5, -90.0)
+	var vel := (aim_dir.normalized() * 230.0 + Vector2(velocity.x * 0.5, -90.0)) * perk_param("wide_arm", "throw_mult", 1.0)
 	if Throwables.mode_of(kind) == "place":
 		origin = global_position + Vector2(0, -6.0)
 		vel = aim_dir.normalized()                 # mina: kierunek stożka = celowanie; ładunek ignoruje
@@ -653,7 +689,7 @@ func _medkit_target() -> Node2D:
 	var best_d := float(Throwables.KINDS["medkit"]["range"])
 	for q in get_tree().get_nodes_in_group("players"):
 		var pp := q as Node2D
-		if pp == null or pp == self or pp.dead or pp.hp >= pp.MAX_HP:
+		if pp == null or pp == self or pp.dead or pp.hp >= pp.max_hp():
 			continue
 		if absf(pp.global_position.y - global_position.y) > 30.0:
 			continue
@@ -661,7 +697,7 @@ func _medkit_target() -> Node2D:
 		if dx < best_d:
 			best_d = dx
 			best = pp
-	if best == null and hp < MAX_HP:
+	if best == null and hp < max_hp():
 		return self
 	return best
 
@@ -788,6 +824,13 @@ func _noise_manager_request(pos: Vector2) -> void:
 ## Leżący gracz: wykrwawia się, spada na ziemię i czeka na pomoc.
 func _down_physics(delta: float) -> void:
 	bleed_left = maxf(0.0, bleed_left - delta)
+	_down_t += delta
+	if not _second_used and has_perk("second_chance") and bleed_left > 0.0 \
+			and _down_t >= minf(perk_param("second_chance", "self_revive_after", 8.0), bleed_time() * SECOND_CHANCE_FRAC):
+		_second_used = true
+		_do_revive()
+		hp = 1                          # wstaje na jednym sercu (REVIVE_HP daje dwa)
+		return
 	velocity.x = 0.0
 	velocity.y = minf(velocity.y + GRAVITY * delta, MAX_FALL)
 	move_and_slide()
@@ -800,13 +843,14 @@ func bleed_time() -> float:
 	return BLEED_TIME * Difficulty.m("bleed")
 
 func _revive_time() -> float:
-	return REVIVE_TIME * Difficulty.m("revive")
+	return perk_param("blood_flow", "revive_time", REVIVE_TIME) * Difficulty.m("revive")
 
 func _go_down() -> void:
 	grabbed = false
 	hp = 0
 	dead = true
 	bleed_left = bleed_time()
+	_down_t = 0.0
 	velocity = Vector2.ZERO
 	crouching = false
 	weapons.on_down()
@@ -921,7 +965,8 @@ func _respawn(hp_amount: int) -> void:
 
 ## Restart po wipe (wszyscy leżą): pełne zdrowie w punkcie startu.
 func full_reset(keep_loadout := false) -> void:
-	_respawn(MAX_HP)
+	_second_used = false            # „Second chance" — raz na misję
+	_respawn(max_hp())
 	if not keep_loadout:
 		weapons.reset()            # przejście między misjami kampanii (kryjówka) zachowuje ekwipunek
 	_kick = 0.0
@@ -1052,13 +1097,13 @@ func _bot_gear(delta: float, downed: Node2D) -> bool:
 		var best_d := float(Throwables.KINDS["medkit"]["range"])
 		for q in get_tree().get_nodes_in_group("players"):
 			var pp := q as Node2D
-			if pp == null or pp == self or pp.dead or pp.is_bot or pp.hp >= pp.MAX_HP:
+			if pp == null or pp == self or pp.dead or pp.is_bot or pp.hp >= pp.max_hp():
 				continue
 			var dx := absf(pp.global_position.x - global_position.x)
 			if dx < best_d and absf(pp.global_position.y - global_position.y) < 30.0:
 				best_d = dx
 				target = pp
-		if target == null and hp < MAX_HP:
+		if target == null and hp < max_hp():
 			target = self
 		if target != null:
 			kind = "medkit"
@@ -1296,7 +1341,7 @@ func _pick_bot_goal() -> void:
 		_bot_target_pos = downed.global_position
 		return
 	# 2) ranny bot idzie po apteczkę (ludzie mają pierwszeństwo — jak w pickup.gd)
-	if hp < MAX_HP:
+	if hp < max_hp():
 		var kit := _nearest_medkit(BOT_MEDKIT_RANGE)
 		if kit != null:
 			_bot_target_pos = kit.global_position
@@ -1326,7 +1371,7 @@ func _nearest_medkit(max_dist: float) -> Node2D:
 			continue
 		var taken := false
 		for p in get_tree().get_nodes_in_group("players"):
-			if not p.is_bot and not p.dead and p.hp < p.MAX_HP and p.global_position.distance_to(h.global_position) < 80.0:
+			if not p.is_bot and not p.dead and p.hp < p.max_hp() and p.global_position.distance_to(h.global_position) < 80.0:
 				taken = true
 		if not taken:
 			best = h
@@ -1425,7 +1470,7 @@ func apply_heal(amount: int) -> void:
 		return
 	if NoiseMgr.has_network() and multiplayer.get_remote_sender_id() not in [0, 1]:
 		return          # tylko serwer (albo lokalnie) może leczyć
-	hp = mini(STACK_HP, hp + amount)
+	hp = mini(stack_hp(), hp + amount)
 	Vfx.burst(_fx_root(), global_position + Vector2(0, -10), Color(0.4, 1.0, 0.5), 10, 15.0, 45.0,
 		Vector2.UP, 60.0, -30.0, 0.6, Vector2(1.0, 1.8), true)
 	if not is_bot:
@@ -1545,12 +1590,12 @@ func _draw_overlay(ov: Node2D) -> void:
 	var top := -11.0 if crouching else -17.0
 	if not _spr.is_empty():
 		top = -16.0 if crouching else -22.0
-	var hearts := maxi(MAX_HP, hp)
+	var hearts := maxi(max_hp(), hp)
 	for i in hearts:
 		var c := Color(0.92, 0.25, 0.3) if i < hp else Color(0.22, 0.22, 0.26)
-		if i >= MAX_HP:
+		if i >= max_hp():
 			c = BONUS_HEART      # serca ponad podstawowe — złote
-		ov.draw_rect(Rect2(-8 + i * 6.0 - (hearts - MAX_HP) * 3.0, top - 7.0, 4, 3), c)
+		ov.draw_rect(Rect2(-8 + i * 6.0 - (hearts - max_hp()) * 3.0, top - 7.0, 4, 3), c)
 	_center_text(ov, font, name_txt, top - 9.0, NAME_SIZE, col)
 
 func _center_text(ov: Node2D, font: Font, txt: String, y: float, sz: int, c: Color) -> void:

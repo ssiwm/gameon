@@ -588,8 +588,8 @@ func _drive_squad(delta: float) -> void:
 func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 	var hp := maxi(p.hp, 0)
 	var pips: Pips = row["pips"]
-	pips.count = maxi(p.MAX_HP, hp)
-	pips.bonus_from = p.MAX_HP
+	pips.count = maxi(p.max_hp(), hp)
+	pips.bonus_from = p.max_hp()
 	pips.filled = hp
 	pips.on = Color(0.5, 0.2, 0.22) if p.dead else Color(0.95, 0.28, 0.32)
 	pips.custom_minimum_size = Vector2(pips.count * 11.0 * pips.u - 2.0, 9.0 * pips.u)

@@ -1,6 +1,6 @@
 extends RefCounted
 ## Katalog perków (GDD §10.2) — dane bez logiki. Perk odblokowuje się poziomem profilu (profile.gd), zakłada się w kryjówce
-## (2 sloty: od poziomu 2 i 4). Skutki podpina faza B3 (hooki w player.gd, voice.gd, upgrades.gd, scanner_view.gd); tu tylko opisy
+## (2 sloty: od poziomu 2 i 4). Skutki podpięte w player.gd, voice.gd, upgrades.gd/scrap.gd i scanner_view.gd (hooki czytają `params`); tu tylko opisy
 ## i progi, żeby ekran w kryjówce (B2) i testy miały jedno źródło prawdy. Wartości liczbowe w `params` czytają hooki.
 
 const ORDER := ["quiet_steps", "blood_flow", "wide_arm", "smith", "cold_blood", "scout", "second_chance", "veteran"]
@@ -39,6 +39,20 @@ const PERKS := {
 		"desc": "One more heart.",
 	},
 }
+
+## Perki jako para indeksów z ORDER (-1 = brak) — tak gracz replikuje swoje perki (player.perks).
+static func to_indexes(ids: Array) -> Vector2i:
+	var out := [-1, -1]
+	for i in mini(2, ids.size()):
+		out[i] = ORDER.find(String(ids[i]))
+	return Vector2i(out[0], out[1])
+
+static func ids_of(v: Vector2i) -> Array:
+	var out: Array = []
+	for i in [v.x, v.y]:
+		if i >= 0 and i < ORDER.size():
+			out.append(ORDER[i])
+	return out
 
 static func color_of(id: String) -> Color:
 	return PERKS[id]["color"] if PERKS.has(id) else Color(0.8, 0.8, 0.8)

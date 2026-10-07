@@ -15,6 +15,7 @@ signal purchase_result(weapon: int, ok: bool, reason: String)    ## kody zakupu:
 const NightShift := preload("res://scripts/night_shift.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
+const Perks := preload("res://scripts/perks.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 
 const SAVE_PATH := "user://progress.cfg"
@@ -220,6 +221,25 @@ func _upgrade_rpc(w: int) -> void:
 	if NoiseMgr.is_server():
 		_upgrade_server(w, multiplayer.get_remote_sender_id())
 
+## Cena następnego poziomu broni `w` dla kupującego `peer_id` (perk „Smith"). Lokalnego czytamy z profilu, zdalnego z replikowanych perków.
+func upgrade_cost(w: int, peer_id: int) -> int:
+	return tier_cost(String(Weapons.base_def(w).key), level_of(w) + 1, peer_id)
+
+## Cena poziomu `level` broni `key` dla `peer_id` (domyślnie lokalnego gracza) — z perkiem „Smith"; pokazują ją warsztat i kodeks.
+func tier_cost(key: String, level: int, peer_id := -1) -> int:
+	var mult := 1.0
+	if _perks_of(NoiseMgr.local_id() if peer_id < 0 else peer_id).has("smith"):
+		mult = Perks.param("smith", "upgrade_cost_mult", 1.0)
+	return Upgrades.cost(key, level, mult)
+
+func _perks_of(peer_id: int) -> Array:
+	if peer_id == NoiseMgr.local_id():
+		return Profile.equipped
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and int(p.player_id) == peer_id:
+			return Perks.ids_of(p.perks)
+	return []
+
 func _upgrade_server(w: int, peer_id: int) -> void:
 	var reason := "ok"
 	if not Weapons.is_valid(w) or not Upgrades.has_tiers(String(Weapons.base_def(w).key)):
@@ -228,7 +248,7 @@ func _upgrade_server(w: int, peer_id: int) -> void:
 		reason = "locked"
 	elif level_of(w) >= Upgrades.MAX_LEVEL:
 		reason = "max"
-	elif not spend(Upgrades.cost(String(Weapons.base_def(w).key), level_of(w) + 1)):
+	elif not spend(upgrade_cost(w, peer_id)):
 		reason = "poor"
 	else:
 		levels[w] = level_of(w) + 1

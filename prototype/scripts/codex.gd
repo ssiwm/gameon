@@ -151,7 +151,7 @@ static func perk_entry(id: String) -> Dictionary:
 		"portrait": {"type": "perk", "id": id}, "perk_id": id,
 		"stats": [["Status", status], ["Your level", "%d" % Profile.level()], ["Slots open", "%d of 2" % Profile.slots()]],
 		"text": String(d["desc"]),
-		"tip": "Equip perks at the workshop bench in the safe room (PERKS tab). The first slot opens at level 2, the second at level 4. Effects arrive with the next update."}
+		"tip": "Equip perks at the workshop bench in the safe room (PERKS tab). The first slot opens at level 2, the second at level 4."}
 
 static func gear() -> Array:
 	var out: Array = []
@@ -206,7 +206,7 @@ static func weapon_entry(id: int) -> Dictionary:
 		for i in range(1, Upgrades.MAX_LEVEL + 1):
 			var t := Upgrades.tier(String(d.key), i)
 			var state := 0 if i <= lv else (1 if i == lv + 1 else 2)      # 0 zainstalowany, 1 następny, 2 dalszy
-			tiers.append({"head": "T%d  %s" % [i, t["name"]], "desc": t["desc"], "cost": Upgrades.cost(String(d.key), i), "state": state})
+			tiers.append({"head": "T%d  %s" % [i, t["name"]], "desc": t["desc"], "cost": Scrap.tier_cost(String(d.key), i), "state": state})
 	return {"title": base.name, "tag": tag, "accent": base.tracer_color, "portrait": {"type": "gun", "row": base.gun_row, "color": base.tracer_color},
 		"stats": _weapon_stats(d), "text": notes[0], "tip": notes[1], "weapon_id": id, "tiers": tiers, "access": access}
 

@@ -350,7 +350,7 @@ func _use_server(kind: String, target_id: int, user_id: int) -> void:
 	match kind:
 		"medkit":
 			var t := _player_by_id(target_id)
-			ok = t != null and not t.dead and t.hp < t.MAX_HP and user.global_position.distance_to(t.global_position) <= float(data["range"]) + 24.0
+			ok = t != null and not t.dead and t.hp < t.max_hp() and user.global_position.distance_to(t.global_position) <= float(data["range"]) + 24.0
 			if ok:
 				t.deliver_heal(1)
 		"defib":
