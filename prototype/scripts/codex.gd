@@ -80,9 +80,9 @@ static func bestiary() -> Array:
 		"portrait": {"type": "leech"},
 		"stats": [["HP", "%d (+%d per extra player)" % [int(Leech.BASE_HP), int(Leech.HP_PER_EXTRA_HUMAN)]],
 			["Hidden", "%d%% damage" % int(Leech.SUB_MULT * 100.0)], ["Phase 2", "below 66% — adds"], ["Phase 3", "below 33% — scream"],
-			["Surfaced", "full damage"], ["Grab", "%d s — free: %d%% HP" % [int(Leech.GRAB_TIME), int(Leech.GRAB_FRAC * 100.0)]]],   # krótkie etykiety i wartości: siatka 4-kolumnowa nie może być szersza niż DETAIL_W (jak u Żyły)
-		"text": "Lives under the flooded hall's pool. Unseen in the dark: only ripples betray it. It swims under whoever wades in the water, telegraphs with churning rings, then bursts out, bites and grabs. A grabbed player is dragged under in four seconds and goes down. Anyone on a catwalk above the water is out of its reach.",
-		"tip": "Throw a flare (F) or sweep the flashlight over the ripples — the shadow shows, and then it takes full damage. Shoot a surfaced leech with everything. If someone is grabbed, the whole squad must hurt it; a grabbed player's melee counts double."})
+			["Surfaced", "full damage"], ["Grab", "%.1f s — free: %d%% HP" % [Leech.GRAB_TIME, int(Leech.GRAB_FRAC * 100.0)]]],   # krótkie etykiety i wartości: siatka 4-kolumnowa nie może być szersza niż DETAIL_W (jak u Żyły)
+		"text": "Lives under the flooded hall's pool. Unseen in the dark: only ripples betray it — and in the dark it heals. It swims under whoever wades in the water, stands on a low catwalk or crowds the shore, telegraphs with churning rings, then bursts out, bites and grabs. A grabbed player is dragged under in three and a half seconds and goes down. From the second phase it also spits acid at anyone it cannot reach, even on the high catwalks. Its minions crawl out of the water from the start.",
+		"tip": "Throw a flare (F) or sweep the flashlight over the ripples — the shadow shows, and then it takes full damage. A flare that lands in the water burns out in 8 s. Keep moving: the high catwalks only stop its bite, not its acid. Shoot a surfaced leech with everything; if someone is grabbed, the whole squad must hurt it and their melee counts double."})
 	return out
 
 # ---------------------------------------------------------------- bronie
