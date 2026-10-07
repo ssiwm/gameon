@@ -7,8 +7,16 @@ const DANGER := Color(1.0, 0.28, 0.22)
 const OK := Color(0.45, 1.0, 0.55)
 const TEXT := Color(0.92, 0.92, 0.94)
 const MUTED := Color(0.62, 0.64, 0.68)
-const PANEL_BG := Color(0.03, 0.035, 0.05, 0.72)
-const PANEL_EDGE := Color(1, 1, 1, 0.08)
+const PANEL_BG := Color(0.07, 0.058, 0.046, 0.88)       ## ciepła, ciemna „deska” — panele należą do świata kryjówki, nie do arkusza kalkulacyjnego
+const PANEL_EDGE := Color(0.46, 0.36, 0.22, 0.9)         ## mosiężna krawędź
+const PANEL_EDGE_LOW := Color(0.30, 0.23, 0.13, 1.0)     ## dolna, grubsza krawędź (fałd materiału)
+## Materiały obiektów świata (karty zakotwiczone w kryjówce): papier z tekstem tuszem.
+const PAPER := Color(0.85, 0.78, 0.59)
+const PAPER_EDGE := Color(0.55, 0.44, 0.24)
+const INK := Color(0.17, 0.13, 0.07)
+const INK_MUTED := Color(0.42, 0.34, 0.2)
+const INK_ACCENT := Color(0.58, 0.22, 0.1)
+const HEADING_FONT := "res://art/fonts/Silkscreen-Regular.ttf"   ## pikselowa czcionka nagłówków (SIL OFL, art/fonts/OFL.txt)
 
 static var _theme: Theme
 
@@ -74,15 +82,24 @@ static func get_theme() -> Theme:
 
 static func panel_box() -> StyleBoxFlat:
 	var b := _box(PANEL_BG, PANEL_EDGE)
-	b.set_corner_radius_all(4)
-	# ciepła, ledwo widoczna ramka i miękki cień — karty odrywają się od ciemnej sceny
-	b.border_color = Color(1.0, 0.86, 0.62, 0.14)
-	b.shadow_color = Color(0, 0, 0, 0.45)
-	b.shadow_size = 5
+	b.set_corner_radius_all(0)
+	b.border_width_bottom = 2                       # twarda krawędź, jak w pixel arcie świata; bez zaokrągleń i cieni
+	b.border_color = PANEL_EDGE
 	b.content_margin_left = 8
 	b.content_margin_right = 8
 	b.content_margin_top = 6
 	b.content_margin_bottom = 6
+	return b
+
+## Papier (karty broni i odprawy przy obiektach): jasna kartka z ciemną dolną krawędzią.
+static func paper_box() -> StyleBoxFlat:
+	var b := _box(PAPER, PAPER_EDGE)
+	b.set_corner_radius_all(0)
+	b.border_width_bottom = 3
+	b.content_margin_left = 9
+	b.content_margin_right = 9
+	b.content_margin_top = 7
+	b.content_margin_bottom = 7
 	return b
 
 static func _box(bg: Color, edge: Color, width: int = 1) -> StyleBoxFlat:
@@ -90,7 +107,7 @@ static func _box(bg: Color, edge: Color, width: int = 1) -> StyleBoxFlat:
 	b.bg_color = bg
 	b.border_color = edge
 	b.set_border_width_all(width)
-	b.set_corner_radius_all(3)
+	b.set_corner_radius_all(0)
 	return b
 
 ## Label helper with size/colour in one call.
@@ -101,4 +118,21 @@ static func label(text: String, size: int, color: Color = TEXT, align := HORIZON
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+static var _heading_font: Font
+
+## Pikselowa czcionka nagłówków (null, gdy pliku brak — wtedy zostaje czcionka motywu).
+static func heading_font() -> Font:
+	if _heading_font == null and ResourceLoader.exists(HEADING_FONT):
+		_heading_font = load(HEADING_FONT) as Font
+	return _heading_font
+
+## Nagłówek: ta sama sygnatura co label(), ale pikselowa czcionka. Rozmiary dobieraj wielokrotnościami 8 (siatka czcionki).
+static func heading(text: String, size: int, color: Color = TEXT, align := HORIZONTAL_ALIGNMENT_LEFT) -> Label:
+	var l := label(text, size, color, align)
+	var f := heading_font()
+	if f != null:
+		l.add_theme_font_override("font", f)
+		l.add_theme_constant_override("outline_size", 2)
 	return l

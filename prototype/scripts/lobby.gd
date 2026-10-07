@@ -95,7 +95,7 @@ func _ready() -> void:
 # ---------------------------------------------------------------- sekcje
 
 func _build_header(box: VBoxContainer) -> void:
-	_title = UiTheme.label("DEAD AIR '87", 24, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
+	_title = UiTheme.heading("DEAD AIR '87", 24, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(_title)
 	box.add_child(UiTheme.label("Co-op horror run & gun  ·  prototype", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 	box.add_child(_rule(UiTheme.ACCENT, 0.45))
@@ -228,7 +228,7 @@ func _side_button(text: String) -> Button:
 	return b
 
 func _caption(text: String) -> Label:
-	return UiTheme.label(text, 7, UiTheme.ACCENT.darkened(0.15))
+	return UiTheme.heading(text, 8, UiTheme.ACCENT.darkened(0.15))
 
 func _rule(color: Color, alpha: float) -> ColorRect:
 	var r := ColorRect.new()

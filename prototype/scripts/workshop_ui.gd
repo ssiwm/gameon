@@ -36,7 +36,7 @@ func _ready() -> void:
 	box.add_theme_constant_override("separation", 4)
 	_card.add_child(box)
 	var head := HBoxContainer.new()
-	var title := UiTheme.label("WORKSHOP", 14, UiTheme.ACCENT)
+	var title := UiTheme.heading("WORKSHOP", 16, UiTheme.ACCENT)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(title)
 	_wallet = UiTheme.label("", 11, GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
