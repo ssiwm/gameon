@@ -5,6 +5,7 @@ extends RefCounted
 ## Portrety: "sprite" (arkusz + animacja z manifestu), "gun" (wiersz guns.png), "vein" (rysowany w kodzie).
 
 const Enemy := preload("res://scripts/enemy.gd")
+const Leech := preload("res://scripts/leech.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
@@ -70,6 +71,14 @@ static func bestiary() -> Array:
 		"stats": [["HP", "750 (+250 per extra player)"], ["Maw closed", "5% damage"], ["Phase 2", "below 66% — enraged"], ["Phase 3", "below 33% — scream"]],
 		"text": "Wakes when the last nest dies. Her maw is shut and armoured — it opens only briefly after each attack. Lash up close, tail sweep along the floor, spore spit at range. She spawns young. At 33% she screams: noise goes to 100% and the Stalker wakes.",
 		"tip": "Dodge, then shoot while the maw is open. Light her maw during a wind-up to blind her. Q pulls her fire to the lure. Shots from above at a steep angle always do 5%."})
+	out.append({"title": "THE LEECH", "tag": "Boss — hides under water", "accent": Color(0.35, 0.68, 0.62),
+		"portrait": {"type": "leech"},
+		"stats": [["HP", "%d (+%d per extra player)" % [int(Leech.BASE_HP), int(Leech.HP_PER_EXTRA_HUMAN)]],
+			["Submerged, in the dark", "%d%% damage" % int(Leech.SUB_MULT * 100.0)], ["Shadow in light / surfaced", "full damage"],
+			["Grab", "%d s — free it with %d%% of its HP" % [int(Leech.GRAB_TIME), int(Leech.GRAB_FRAC * 100.0)]],
+			["Phase 2", "below 66% — Cutpurses from the shores"], ["Phase 3", "below 33% — scream, double ambush"]],
+		"text": "Lives under the flooded hall's pool. Unseen in the dark: only ripples betray it. It swims under whoever wades in the water, telegraphs with churning rings, then bursts out, bites and grabs. A grabbed player is dragged under in four seconds and goes down. Anyone on a catwalk above the water is out of its reach.",
+		"tip": "Throw a flare (F) or sweep the flashlight over the ripples — the shadow shows, and then it takes full damage. Shoot a surfaced leech with everything. If someone is grabbed, the whole squad must hurt it; a grabbed player's melee counts double."})
 	return out
 
 # ---------------------------------------------------------------- bronie

@@ -503,6 +503,7 @@ func _event(kind: String) -> void:
 		"windup":
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 0.0, 0.55)
 		"surface":
+			Vfx.splash(get_parent(), pos, 1.6)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 3.0, 0.5)
 			Audio.play_variant_at("stalker_growl", 2, pos, Audio.BUS_STALKER, -2.0, 0.8)
 			_shake_near(3.0)
@@ -514,10 +515,12 @@ func _event(kind: String) -> void:
 			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, -6.0, 1.15)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 0.0, 0.8)
 		"dragged":
+			Vfx.splash(get_parent(), pos, 2.0)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 4.0, 0.4)
 			Audio.play_variant_at("stalker_growl", 2, pos, Audio.BUS_STALKER, 0.0, 0.55)
 			_shake_near(5.0)
 		"dive":
+			Vfx.splash(get_parent(), pos, 0.9)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, -2.0, 0.7)
 		"phase2":
 			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, -3.0, 0.7)
@@ -528,6 +531,7 @@ func _event(kind: String) -> void:
 			Lights.flicker_until_ms = Time.get_ticks_msec() + 3000
 			_shake_near(6.0)
 		"surface2":
+			Vfx.splash(get_parent(), Vector2(second_x if second_x >= 0.0 else pos.x, pos.y), 1.3)
 			Audio.play_variant_at("step_water", 3, Vector2(second_x if second_x >= 0.0 else pos.x, pos.y), Audio.BUS_WORLD, 2.0, 0.55)
 		"death":
 			Audio.play_variant_at("explosion", 2, pos, Audio.BUS_WORLD, -2.0, 0.6)

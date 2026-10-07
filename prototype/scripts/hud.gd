@@ -986,6 +986,9 @@ func _fill_result(m: Node) -> void:
 			rows = [["Time", _mmss(m.elapsed)], ["Dog tags found", "%d / %d" % [m.goal_total, m.goal_total]],
 				["Hidden stashes", ("%d / %d" % [m.stashes_found, m.stash_total]) + ("  — bonus" if m.side_done() else "")],
 				["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts], ["Scrap banked", "+%d" % Scrap.last_gain]]
+		elif m.kind == "boss":
+			_style_result("THE LEECH IS DEAD", "The hall is quiet again — only the water drips.", UiTheme.OK)
+			rows = [["Time", _mmss(m.elapsed)], ["The Leech", "slain"], ["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts], ["Scrap banked", "+%d" % Scrap.last_gain]]
 		elif m.kind == "generators":
 			_style_result("EXTRACTION COMPLETE", "The broadcast is over — the squad is out.", UiTheme.OK)
 			rows = [["Time", _mmss(m.elapsed)], ["Generators started", "%d / %d" % [m.goal_total, m.goal_total]],

@@ -309,6 +309,7 @@ func _handle_cmdline() -> void:
 	var shot_ws := false
 	var shot_result := false
 	var shot_boss := false
+	var shot_codex := false
 	var weapon_mode := ""
 	var shots_dir := ""
 	var args := OS.get_cmdline_user_args()
@@ -364,6 +365,8 @@ func _handle_cmdline() -> void:
 			leechtest = true
 		elif a.begins_with("--shot="):
 			shot_path = a.substr("--shot=".length())
+		elif a == "--shotcodex":
+			shot_codex = true
 		elif a == "--shotboss":
 			shot_boss = true
 		elif a == "--shotresult":
@@ -420,7 +423,7 @@ func _handle_cmdline() -> void:
 	if leechtest:
 		_leech_test()
 	if shot_path != "":
-		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker, shot_demo, shot_ws, shot_result, shot_boss)
+		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker, shot_demo, shot_ws, shot_result, shot_boss, shot_codex)
 	if ridetest:
 		_ride_test()
 	if ridehost:
@@ -561,8 +564,14 @@ func host_game() -> void:
 
 ## Narzędzie deweloperskie (--shot=ŚCIEŻKA [--shotat=KOLUMNA]): po 2,5 s zapisuje obraz z widoku gry (tylko okno gry, bez pulpitu)
 ## do PNG i kończy. --shotat przenosi człowieka na podłogę w danej kolumnie mapy (np. do obejrzenia strefy kryjówki).
-func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false, workshop := false, result := false, boss := false) -> void:
+func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false, workshop := false, result := false, boss := false, codex := false) -> void:
 	await get_tree().create_timer(1.0).timeout
+	if codex:
+		var pm: Node = $UI.get_node("PauseMenu")             # podgląd bestiariusza: ostatni wpis (boss)
+		pm.open()
+		pm._show_tab(1)
+		var bp: Node = pm._pages[1]
+		bp.select(bp._entries.size() - 1)
 	if boss:
 		mission._start_boss()               # podgląd walki z bossem: budzi bossa i rzuca flarę nad jego cień
 		await get_tree().create_timer(0.6).timeout
@@ -1112,13 +1121,24 @@ func _gen_test() -> void:
 	mission._success()
 	_continue_after_result()
 	await get_tree().create_timer(0.5).timeout
-	check.call("po 1.3 znowu kryjówka, następna: 1.1 (kampania w kółko od początku)", level.map_id == "z1_hub" and after_hub == "z1_m1")
+	check.call("po 1.3 kryjówka, następna: B1 Pijawka (boss zamyka Strefę I)", level.map_id == "z1_hub" and after_hub == "z1_b1")
+	var brief_b1: Dictionary = level.briefing("z1_b1")
+	check.call("odprawa B1: tytuł '%s', boss '%s', bez Trzosków w odprawie" % [brief_b1["title"], brief_b1.get("boss_name", "")], String(brief_b1["title"]).contains("LEECH") and bool(brief_b1["boss"]) and String(brief_b1.get("boss_name", "")) == "THE LEECH")
+	_depart_hub()
+	await get_tree().create_timer(0.5).timeout
+	check.call("wyjście z kryjówki → B1 (arena z basenem, misja boss, Pijawka śpi)",
+		level.map_id == "z1_b1" and mission.kind == "boss" and get_tree().get_first_node_in_group("boss") != null and get_tree().get_nodes_in_group("generators").is_empty())
+	mission.elapsed = 9.0
+	mission._success()
+	_continue_after_result()
+	await get_tree().create_timer(0.5).timeout
+	check.call("po B1 kryjówka, następna: 1.1 (kampania w kółko od początku)", level.map_id == "z1_hub" and after_hub == "z1_m1")
 	_depart_hub()
 	await get_tree().create_timer(0.5).timeout
 	check.call("wyjście z kryjówki → 1.1 (3 nieśmiertelniki, bez generatorów)",
 		level.map_id == "z1_m1" and mission.kind == "tags" and mission.goal_left == 3 and mission.goal_total == 3 and get_tree().get_nodes_in_group("generators").is_empty())
-	check.call("kolejność kampanii 1.1 → 1.2 → 1.3, Nocny Dyżur losuje tylko z 1.2 i 1.3 (pula %s)" % str(level.SHIFT_POOL),
-		level.CAMPAIGN == ["z1_m1", "z1_m2", "z1_m3"] and level.SHIFT_POOL == ["z1_m2", "z1_m3"] and not level.SHIFT_POOL.has("z1_m1"))
+	check.call("kolejność kampanii 1.1 → 1.2 → 1.3 → B1, Nocny Dyżur losuje tylko z 1.2 i 1.3 (pula %s)" % str(level.SHIFT_POOL),
+		level.CAMPAIGN == ["z1_m1", "z1_m2", "z1_m3", "z1_b1"] and level.SHIFT_POOL == ["z1_m2", "z1_m3"])
 	print("[GEN-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
 
 ## Długość ścieżki A* między dwoma punktami podłogi (px); 0, gdy brak drogi.
