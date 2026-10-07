@@ -698,12 +698,48 @@ func _leech_test() -> void:
 	lc._cd = 0.0
 	await get_tree().create_timer(4.0).timeout
 	check.call("kładka: gracz nad wodą nietknięty (HP %d), Pijawka nie wynurza się pod nim (tryb %d)" % [p.hp, lc.mode], p.hp == 3 and lc.mode == lc.Mode.SUB)
-	# fazy HP
+	# fazy HP: faza 2 dosyła Trzoski z brzegów, faza 3 — krzyk (Uwaga na maksimum), kolejne Trzoski i podwójna zasadzka
+	var spawns_now := func() -> Array: return level.get_children().filter(func(n: Node) -> bool: return String(n.name).begins_with("LeechSpawn") and not n.is_queued_for_deletion())
 	lc._hit(lc.max_hp * 0.40, true)
 	var ph2: int = lc.phase
+	await get_tree().create_timer(0.5).timeout
+	var minions2: int = spawns_now.call().size()
+	for mn in spawns_now.call():
+		mn.set_physics_process(false)                      # test: Trzoski nie biegają (nie przeszkadzają w pomiarach)
+		mn.set_process(false)
+	NoiseMgr.level = 10.0
 	lc._hit(lc.max_hp * 0.30, true)
 	var ph3: int = lc.phase
-	check.call("fazy: po -40%% HP faza %d, po -70%% HP faza %d" % [ph2, ph3], ph2 == 2 and ph3 == 3)
+	await get_tree().create_timer(0.5).timeout
+	var minions3: int = spawns_now.call().size()
+	check.call("fazy: po -40%% HP faza %d (Trzoski z brzegów: %d), po -70%% HP faza %d (krzyk: Uwaga %.0f, Trzoski łącznie %d)" % [ph2, minions2, ph3, NoiseMgr.level, minions3],
+		ph2 == 2 and minions2 >= 2 and ph3 == 3 and NoiseMgr.level >= NoiseMgr.MAX_LEVEL - 1.0 and minions3 >= minions2 + 3)
+	for mn in spawns_now.call():
+		mn.set_physics_process(false)
+		mn.set_process(false)
+	# faza 3: podwójna zasadzka — drugi punkt zapowiedzi (kręgi) w innym miejscu basenu
+	lc.mode = lc.Mode.SUB
+	lc._cd = 0.0
+	lc.position.x = 69.0 * 16.0
+	p.dead = false
+	p.hp = 3
+	p._invuln = 0.0
+	p.global_position = Vector2(lc.global_position.x + 20.0, surf)
+	p.velocity = Vector2.ZERO
+	var saw_second := -1.0
+	for i in 40:
+		await get_tree().create_timer(0.1).timeout
+		if lc.mode == lc.Mode.WIND and lc.second_x >= 0.0:
+			saw_second = lc.second_x
+			break
+	check.call("faza 3: podwójna zasadzka — drugi punkt zapowiedzi x=%.0f (pierwszy %.0f)" % [saw_second, lc.global_position.x], saw_second >= 0.0 and absf(saw_second - lc.global_position.x) >= lc.SECOND_STRIKE_MIN_DX - 1.0)
+	await get_tree().create_timer(1.2).timeout
+	p.dead = false
+	p.hp = 3
+	lc.mode = lc.Mode.SUB
+	lc._grab_victim = null
+	lc.grab_victim_id = 0
+	p.grabbed = false
 	# skrzynka z flarami
 	NoiseMgr.flares = 1
 	var boxes := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "flares")
@@ -717,7 +753,8 @@ func _leech_test() -> void:
 	# śmierć → ekstrakcja → sukces
 	lc._hit(lc.max_hp, true)
 	await get_tree().create_timer(0.5).timeout
-	check.call("śmierć Pijawki → ekstrakcja (stan %d, faza misji %d)" % [lc.state, mission.phase], lc.state == lc.State.DEAD and mission.phase == MISSION_SCRIPT.Phase.EXTRACT)
+	check.call("śmierć Pijawki → ekstrakcja (stan %d, faza misji %d), Trzoski bossa padły (żywych %d)" % [lc.state, mission.phase, spawns_now.call().filter(func(n: Node) -> bool: return n.alive).size()],
+		lc.state == lc.State.DEAD and mission.phase == MISSION_SCRIPT.Phase.EXTRACT and spawns_now.call().filter(func(n: Node) -> bool: return n.alive).is_empty())
 	p.global_position = mission.exit_pos + Vector2(0, -2)
 	p.velocity = Vector2.ZERO
 	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
