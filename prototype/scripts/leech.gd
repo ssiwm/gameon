@@ -19,29 +19,40 @@ const NightShift := preload("res://scripts/night_shift.gd")
 enum State { DORMANT, AWAKE, DEAD }
 enum Mode { SUB, WIND, UP, GRAB }         ## zanurzona / zapowiedź zasadzki / wynurzona / trzyma ofiarę (QTE drużyny)
 
-const BASE_HP := 600.0
-const HP_PER_EXTRA_HUMAN := 200.0
+const BASE_HP := 900.0                    ## 1.7.68: 600 → 900 (walka trwała ~15 s)
+const HP_PER_EXTRA_HUMAN := 300.0
 const SUB_MULT := 0.05                    ## zanurzona i nieoświetlona
 const SPEED := [105.0, 140.0, 175.0]      ## px/s w fazach 1–3
 const WINDUP := [0.85, 0.7, 0.55]         ## zapowiedź zasadzki (s)
 const UP_TIME := [1.7, 1.5, 1.3]          ## jak długo wynurzona i odsłonięta
 const AMBUSH_CD := [1.8, 1.3, 0.9]        ## przerwa po zasadzce
 const STRIKE_HALF_X := 24.0               ## zasięg poziomy ugryzienia
-const STRIKE_Y := 20.0                    ## ile nad poziomem wody gracz jest jeszcze w zasięgu
+const STRIKE_Y := 44.0                    ## ile nad poziomem wody gracz jest jeszcze w zasięgu (niska kładka 32 px — tak, wysoka 64 px — nie)
+const SHORE_REACH := 44.0                 ## gracz na brzegu tak blisko basenu też jest celem zasadzki…
+const SHORE_LUNGE := 22.0                 ## …a Pijawka wyskakuje z wody dalej (zasięg ugryzienia +22 px), żeby go dosięgnąć
+const SPIT_RANGE := 340.0                 ## faza 2+: gracz poza zasięgiem zasadzki w tej odległości dostaje kwasem
+const SPIT_WINDUP := [0.0, 0.9, 0.7]      ## zapowiedź plucia (s) w fazach 1–3
+const SPIT_CD := [0.0, 5.0, 3.5]          ## przerwa po pluciu
+const SPIT_UP := 1.1                      ## ile s jest wynurzona i odsłonięta po plunięciu
+const SPIT_SPEED := 250.0
+const REGEN_FRAC := 0.015                 ## zanurzona i nieoświetlona leczy się tyle maks. HP na sekundę (nigdy ponad próg bieżącej fazy)
+const FURY_HP_FRAC := 0.15                ## faza 3 poniżej tego HP: furia
+const FURY_SPEED := 1.4
+const FURY_TIMING := 0.7                  ## mnożnik zapowiedzi i przerw w furii
 const LIGHT_REVEAL_R := 150.0             ## flara w tym promieniu ujawnia cień
 const POOL_FLOOR_TOL := 8.0               ## gracz stoi „w wodzie", gdy jego stopy są przy poziomie dna basenu
 const N_AMBUSH := 3.0
 const N_DEATH := 18.0
 const NOISE_FOLLOW_R := 260.0
-const MINION_EVERY := [0.0, 16.0, 10.0]  ## co ile s dosyła Trzoski w fazie 2 / 3 (0 = faza 1: bez Trzosków)
-const MINION_MAX := [0, 3, 4]             ## ile Trzosków naraz (+1 za dodatkowego człowieka)
+const MINION_EVERY := [22.0, 12.0, 8.0]   ## co ile s dosyła Trzoski w fazach 1 / 2 / 3 (od 1.7.68 także w fazie 1)
+const MINION_MAX := [2, 4, 5]             ## ile Trzosków naraz (+1 za dodatkowego człowieka)
 const SECOND_STRIKE_MIN_DX := 40.0        ## drugi punkt zasadzki (faza 3) co najmniej tyle px od pierwszego
-const GRAB_TIME := 4.0                    ## tyle trwa wciąganie; potem ofiara trafia pod wodę (down)
-const GRAB_FRAC := 0.12                   ## ułamek maks. HP, który drużyna musi zadać w tym oknie, żeby Pijawka puściła
+const GRAB_TIME := 3.5                    ## tyle trwa wciąganie; potem ofiara trafia pod wodę (down)
+const GRAB_FRAC := 0.18                   ## ułamek maks. HP, który drużyna musi zadać w tym oknie, żeby Pijawka puściła
 const GRAB_MELEE_MULT := 2.0              ## cios chwyconego (maczeta) liczy się do uwolnienia podwójnie
 const SPRITE_DROP := 6.0                  ## o tyle w dół przesuwamy klatkę — linia wody arkusza leży 6 px nad dołem klatki
 const RISE_TIME := 0.3                    ## czas animacji „rise" (4 klatki / 14 fps)
-const GRAB_CD := [3.0, 2.4, 1.8]          ## przerwa po chwycie (puszczonym albo dokończonym)
+const GRAB_CD := [3.0, 2.2, 1.2]          ## przerwa po chwycie (puszczonym albo dokończonym)
 
 ## Pola, których oczekują wspólne systemy wrogów (boty, haki, testy) — Pijawka udaje „wroga": zapowiedź, żywy, aktywny.
 var kind := "leech"
@@ -79,6 +90,10 @@ var _minion_serial := 0
 var _minion_t := 0.0
 var _t_mode := 0.0
 var _cd := 0.0
+var _spit_pending := false                ## zapowiedź (WIND) kończy się pluciem zamiast ugryzieniem
+var _fury_on := false
+var _spat := false                        ## ostatnie wynurzenie było pluciem (inna przerwa po nim)
+var _spit_ref: Node2D = null
 var _target_x := 0.0
 var _reveal_t := 0.0
 var _net_t := 0.0
@@ -149,6 +164,8 @@ func awaken() -> void:
 	phase = 1
 	mode = Mode.SUB
 	_cd = 2.0
+	_minion_t = 10.0                           # pierwsze Trzoski z brzegów już w fazie 1, po 10 s
+	_fury_on = false
 	NoiseMgr.add_noise(6.0, global_position)
 	print("[BOSS] Pijawka budzi się, HP=%.0f" % max_hp)
 	_event.rpc("awaken")
@@ -169,6 +186,9 @@ func reset_enemy() -> void:
 			_clear_minions.rpc()
 		else:
 			_clear_minions()
+	_spit_pending = false
+	_spat = false
+	_fury_on = false
 	state = State.DORMANT
 	mode = Mode.SUB
 	hp = BASE_HP
@@ -192,6 +212,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if state == State.AWAKE:
 		_tick_reveal(delta)
+		_tick_regen(delta)
 		_tick_mode(delta)
 		_tick_minions(delta)
 	_net_t -= delta
@@ -201,17 +222,57 @@ func _physics_process(delta: float) -> void:
 func _in_pool(p: Node2D) -> bool:
 	return p.global_position.x >= pool_x0 and p.global_position.x <= pool_x1 and absf(p.global_position.y - surf_y) <= POOL_FLOOR_TOL
 
+## Gracz w zasięgu zasadzki (1.7.68): w basenie albo na niskiej kładce nad nim (≤ STRIKE_Y nad wodą), a także na brzegu do SHORE_REACH od krawędzi.
+## Wysokie kładki (64 px) i dalszy brzeg zostają poza zasięgiem — tam sięga tylko kwas (faza 2+).
+func _in_reach(p: Node2D) -> bool:
+	var px := p.global_position.x
+	var py := p.global_position.y
+	if px < pool_x0 - SHORE_REACH or px > pool_x1 + SHORE_REACH:
+		return false
+	return py >= surf_y - STRIKE_Y and py <= surf_y + POOL_FLOOR_TOL
+
+## Czy gracz leży w zasięgu ugryzienia z punktu `x`: poziomo STRIKE_HALF_X (na brzegu +SHORE_LUNGE), pionowo w STRIKE_Y.
+func _strike_hits(p: Node2D, x: float) -> bool:
+	var reach := STRIKE_HALF_X
+	if p.global_position.x < pool_x0 or p.global_position.x > pool_x1:
+		reach += SHORE_LUNGE
+	return absf(p.global_position.x - x) <= reach and p.global_position.y >= surf_y - STRIKE_Y
+
 func _best_target() -> Node2D:
 	var best: Node2D = null
 	var best_d := INF
 	for p in get_tree().get_nodes_in_group("players"):
-		if p.dead or p.is_queued_for_deletion() or not _in_pool(p):
+		if p.dead or p.is_queued_for_deletion() or not _in_reach(p):
 			continue
 		var d := absf(p.global_position.x - global_position.x)
 		if d < best_d:
 			best_d = d
 			best = p
 	return best
+
+## Plucie kwasem (faza 2+): najbliższy żywy gracz w SPIT_RANGE, którego zasadzka nie dosięga (kładka, dalszy brzeg).
+func _spit_target() -> Node2D:
+	var best: Node2D = null
+	var best_d := SPIT_RANGE
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.dead or p.is_queued_for_deletion() or p.grabbed:
+			continue
+		var d := absf(p.global_position.x - global_position.x)
+		if d < best_d and absf(p.global_position.y - surf_y) < 220.0:
+			best_d = d
+			best = p
+	return best
+
+func _fury() -> bool:
+	return phase >= 3 and hp <= max_hp * FURY_HP_FRAC
+
+## Zanurzona i nieoświetlona Pijawka się leczy — ale nie ponad próg bieżącej fazy (faza nie cofa się). Strzelanie na ślepo nie ma sensu.
+func _tick_regen(delta: float) -> void:
+	if mode != Mode.SUB or revealed or hp <= 0.0:
+		return
+	var cap := max_hp * (1.0 if phase <= 1 else (0.66 if phase == 2 else 0.33))
+	if hp < cap:
+		hp = minf(cap, hp + max_hp * REGEN_FRAC * delta)
 
 ## Cień jest widoczny, gdy pływa w świetle flary / latarki albo gdy jest wynurzona.
 func _tick_reveal(delta: float) -> void:
@@ -235,26 +296,47 @@ func _tick_mode(delta: float) -> void:
 	var ph := clampi(phase - 1, 0, 2)
 	match mode:
 		Mode.SUB:
+			var fury := _fury()
+			if fury and not _fury_on:
+				_fury_on = true
+				_event.rpc("fury")
 			var tgt := _best_target()
+			var spitter: Node2D = null
 			if tgt != null:
 				_target_x = tgt.global_position.x
-			elif NoiseMgr.last_noise_pos.distance_to(global_position) < NOISE_FOLLOW_R and NoiseMgr.level > 5.0:
-				_target_x = NoiseMgr.last_noise_pos.x
 			else:
-				_target_x = global_position.x
+				spitter = _spit_target() if phase >= 2 else null
+				if spitter != null:
+					_target_x = spitter.global_position.x          # nikt w zasięgu zasadzki — podpływa pod tego, w którego może pluć
+				elif NoiseMgr.last_noise_pos.distance_to(global_position) < NOISE_FOLLOW_R and NoiseMgr.level > 5.0:
+					_target_x = NoiseMgr.last_noise_pos.x
+				else:
+					_target_x = global_position.x
 			_target_x = clampf(_target_x, pool_x0, pool_x1)
 			var dx := _target_x - global_position.x
-			var step := minf(absf(dx), float(SPEED[ph]) * delta)
+			var step := minf(absf(dx), float(SPEED[ph]) * (FURY_SPEED if fury else 1.0) * delta)
 			global_position.x = clampf(global_position.x + signf(dx) * step, pool_x0, pool_x1)
+			var timing := FURY_TIMING if fury else 1.0
 			if tgt != null and absf(dx) < 12.0 and _cd <= 0.0:
+				_spit_pending = false
 				mode = Mode.WIND
-				_t_mode = float(WINDUP[ph])
+				_t_mode = float(WINDUP[ph]) * timing
 				second_x = _pick_second_x(tgt) if phase >= 3 else -1.0
+				_event.rpc("windup")
+			elif tgt == null and spitter != null and _cd <= 0.0 and absf(spitter.global_position.x - global_position.x) <= SPIT_RANGE * 0.9:
+				_spit_pending = true
+				_spit_ref = spitter
+				mode = Mode.WIND
+				_t_mode = float(SPIT_WINDUP[ph]) * timing
+				second_x = -1.0
 				_event.rpc("windup")
 		Mode.WIND:
 			_t_mode -= delta
 			if _t_mode <= 0.0:
-				_surface()
+				if _spit_pending:
+					_spit()
+				else:
+					_surface()
 		Mode.GRAB:
 			_t_mode -= delta
 			grab_time_left = maxf(0.0, _t_mode)
@@ -271,7 +353,8 @@ func _tick_mode(delta: float) -> void:
 			if _t_mode <= 0.0:
 				mode = Mode.SUB
 				_set_hitbox(false)
-				_cd = float(AMBUSH_CD[ph])
+				_cd = (float(SPIT_CD[ph]) if _spat else float(AMBUSH_CD[ph])) * (FURY_TIMING if _fury() else 1.0)
+				_spat = false
 				_event.rpc("dive")
 
 ## Trzoski wychodzące z wody na brzegach: co MINION_EVERY[faza] s para, do limitu żywych.
@@ -327,7 +410,7 @@ func _pick_second_x(first: Node2D) -> float:
 	var best := -1.0
 	var best_d := INF
 	for p in get_tree().get_nodes_in_group("players"):
-		if p == first or p.dead or p.is_queued_for_deletion() or not _in_pool(p):
+		if p == first or p.dead or p.is_queued_for_deletion() or not _in_reach(p):
 			continue
 		var d := absf(p.global_position.x - global_position.x)
 		if d >= SECOND_STRIKE_MIN_DX and d < best_d:
@@ -350,7 +433,7 @@ func _surface() -> void:
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.dead or p.is_queued_for_deletion():
 			continue
-		if absf(p.global_position.x - global_position.x) <= STRIKE_HALF_X and p.global_position.y >= surf_y - STRIKE_Y:
+		if _strike_hits(p, global_position.x):
 			p.deliver_hit(1, global_position)
 			var d := absf(p.global_position.x - global_position.x) + (0.0 if not p.is_bot else 6.0)     # człowiek ma pierwszeństwo przy remisie
 			if p.hp > 0 and d < best_d:
@@ -361,12 +444,35 @@ func _surface() -> void:
 		for p in get_tree().get_nodes_in_group("players"):
 			if p.dead or p.is_queued_for_deletion() or p == victim:
 				continue
-			if absf(p.global_position.x - second_x) <= STRIKE_HALF_X and p.global_position.y >= surf_y - STRIKE_Y:
+			if _strike_hits(p, second_x):
 				p.deliver_hit(1, Vector2(second_x, surf_y))
 		_event.rpc("surface2")
 		second_x = -1.0
 	if victim != null and not victim.dead:
 		_begin_grab(victim)
+
+## Plucie (faza 2+): wynurza się na SPIT_UP s (odsłonięta — można ją bić), pluje łukiem w gracza spoza zasięgu zasadzki.
+func _spit() -> void:
+	_spit_pending = false
+	_spat = true
+	mode = Mode.UP
+	_t_mode = SPIT_UP
+	_set_hitbox(true)
+	NoiseMgr.add_noise(N_AMBUSH * 0.6, global_position)
+	var st := _spit_ref if (_spit_ref != null and is_instance_valid(_spit_ref) and not _spit_ref.dead) else _spit_target()
+	_spit_ref = null
+	_event.rpc("spit")
+	if st == null:
+		return
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null:
+		return
+	var from := global_position + Vector2(0.0, -34.0)
+	var aim: Vector2 = st.global_position + Vector2(0.0, -9.0) + st.velocity * 0.35         # z wyprzedzeniem
+	var dist := from.distance_to(aim)
+	var flight := clampf(dist / SPIT_SPEED, 0.35, 1.2)
+	var v := Vector2((aim.x - from.x) / flight, (aim.y - from.y - 0.5 * 520.0 * flight * flight) / flight)
+	lvl.spawn_acid(from, v)
 
 ## Chwyt: ofiara przypięta przy pysku, Pijawka odsłonięta na GRAB_TIME; drużyna musi zadać GRAB_FRAC maks. HP, żeby ją puściła.
 func _begin_grab(victim: Node2D) -> void:
@@ -391,7 +497,7 @@ func _release(success: bool) -> void:
 			victim.deliver_hit(99, global_position)        # wciągnięta pod wodę: down (można podnieść)
 	mode = Mode.SUB
 	_set_hitbox(false)
-	_cd = float(GRAB_CD[ph])
+	_cd = float(GRAB_CD[ph]) * (FURY_TIMING if _fury() else 1.0)
 	if success:
 		global_position.x = clampf(global_position.x + (60.0 if randf() < 0.5 else -60.0), pool_x0, pool_x1)    # cofa się po dostaniu w pysk
 	_event.rpc("released" if success else "dragged")
@@ -544,6 +650,14 @@ func _event(kind: String) -> void:
 			Audio.sting(2)
 			Lights.flicker_until_ms = Time.get_ticks_msec() + 3000
 			_shake_near(6.0)
+		"spit":
+			Vfx.splash(get_parent(), pos, 1.0)
+			Audio.play_variant_at("stalker_growl", 2, pos, Audio.BUS_STALKER, -3.0, 1.1)
+			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 1.0, 0.9)
+		"fury":
+			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, 1.0, 0.45)
+			Lights.flicker_until_ms = Time.get_ticks_msec() + 1800
+			_shake_near(5.0)
 		"surface2":
 			Vfx.splash(get_parent(), Vector2(second_x if second_x >= 0.0 else pos.x, pos.y), 1.3)
 			Audio.play_variant_at("step_water", 3, Vector2(second_x if second_x >= 0.0 else pos.x, pos.y), Audio.BUS_WORLD, 2.0, 0.55)

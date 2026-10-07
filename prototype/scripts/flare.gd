@@ -11,6 +11,7 @@ const Lights := preload("res://scripts/lights.gd")
 const FLARE_LIFE := 25.0
 const GRAVITY := 520.0
 const LURE_EVERY := 0.5
+const WATER_LIFE := 8.0           ## flara, która spadła do wody (basen areny Pijawki), gaśnie po tylu s — cień trzeba oświetlać stale
 
 var vel := Vector2.ZERO
 var life := FLARE_LIFE
@@ -27,6 +28,13 @@ func _ready() -> void:
 	_light = Lights.make_light(Lights.radial(), 8.0, Color(1.0, 0.42, 0.2), 1.5, true)
 	add_child(_light)
 	Audio.play_at("flare_ignite", global_position, Audio.BUS_WORLD, -4.0)
+
+## Wylądowała na kaflu wody: dopala się tylko WATER_LIFE s (dym i plusk).
+func _check_water() -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl != null and lvl.has_method("surface_at") and lvl.surface_at(global_position) == "water":
+		life = minf(life, WATER_LIFE)
+		Audio.play_variant_at("step_water", 3, global_position, Audio.BUS_WORLD, -6.0, 1.4)
 
 func _physics_process(delta: float) -> void:
 	life -= delta
@@ -48,6 +56,7 @@ func _physics_process(delta: float) -> void:
 			if n.y < -0.5:
 				_landed = true
 				vel = Vector2.ZERO
+				_check_water()
 			else:
 				vel = vel.bounce(n) * 0.4
 	# dogasanie na końcu i migotanie płomienia

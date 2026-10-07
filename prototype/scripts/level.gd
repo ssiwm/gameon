@@ -49,6 +49,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const FIRE_PATCH := preload("res://scripts/fire_patch.gd")
 const BRICK_WALL := preload("res://scripts/brick_wall.gd")
 const GRENADE := preload("res://scripts/grenade.gd")
+const ACID := preload("res://scripts/acid_spit.gd")
 const PLACED := preload("res://scripts/placed.gd")
 const SMOKE_CLOUD := preload("res://scripts/smoke_cloud.gd")
 const FLARE := preload("res://scripts/flare.gd")
@@ -863,6 +864,29 @@ func _spawn_smoke_rpc(n: String, pos: Vector2, life: float) -> void:
 	s.life = life
 	add_child(s)
 
+var _acid_serial := 0
+
+## Serwer: kwas Pijawki (leech.gd `_spit`) — pocisk po łuku u wszystkich peerów.
+func spawn_acid(pos: Vector2, vel: Vector2) -> void:
+	if not NoiseMgr.is_server():
+		return
+	_acid_serial += 1
+	var n := "Acid%d" % _acid_serial
+	if NoiseMgr.has_network():
+		_spawn_acid_rpc.rpc(n, pos, vel)
+	else:
+		_spawn_acid_rpc(n, pos, vel)
+
+@rpc("authority", "call_local", "reliable")
+func _spawn_acid_rpc(n: String, pos: Vector2, vel: Vector2) -> void:
+	if has_node(n):
+		return
+	var a: Node2D = ACID.new()
+	a.name = n
+	a.position = pos
+	a.vel = vel
+	add_child(a)
+
 # ---------------------------------------------------------------- granaty (rzucane przedmioty)
 
 var _grenade_serial := 0
@@ -953,6 +977,8 @@ func _clear_pickups_rpc() -> void:
 		f.queue_free()
 	for gr in get_tree().get_nodes_in_group("grenades"):
 		gr.queue_free()
+	for ac in get_tree().get_nodes_in_group("acid"):
+		ac.queue_free()
 	for pl in get_tree().get_nodes_in_group("placed"):
 		pl.queue_free()
 	for sm in get_tree().get_nodes_in_group("smoke_clouds"):

@@ -1016,6 +1016,17 @@ func _bot_car() -> Node2D:
 			return c
 	return null
 
+## Unik przed kwasem Pijawki (acid_spit.gd): nadlatujący pocisk w pobliżu → bot odskakuje w przeciwną stronę i skacze.
+func _bot_dodge_acid() -> void:
+	for a in get_tree().get_nodes_in_group("acid"):
+		var d := (a as Node2D).global_position - (global_position + Vector2(0, -9))
+		var incoming: bool = d.length() < 80.0 and signf(a.vel.x) == signf(-d.x)
+		if incoming or d.length() < 28.0:
+			velocity.x = -signf(d.x if absf(d.x) > 1.0 else 1.0) * SPEED
+			if is_on_floor():
+				velocity.y = JUMP_VELOCITY
+			return
+
 var _bot_gear_hold := 0.0
 var _bot_gear_kind := ""
 var _bot_gear_target := 0
@@ -1090,6 +1101,7 @@ func _bot_brain(delta: float) -> void:
 		and absf(downed.global_position.y - global_position.y) < 30.0
 	var reviving := _handle_revive(delta, near_downed)
 	reviving = _bot_gear(delta, downed) or reviving
+	_bot_dodge_acid()
 
 	# ruch w stronę celu (poziomo), skok przy przeszkodzie lub celu wyżej
 	# bot naśladuje skradanie dowódcy — inaczej drużyna nie może grać cicho
