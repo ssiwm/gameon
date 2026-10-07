@@ -11,6 +11,7 @@ extends Node
 const Weapons := preload("res://scripts/weapons.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
+const Throwables := preload("res://scripts/throwables.gd")
 
 ## Materiał trafionego celu — dobiera efekt i dźwięk uderzenia.
 enum Mat { FLESH, ARMOR, WOOD, METAL, WORLD }
@@ -22,17 +23,29 @@ signal hit_confirmed(kind: int, pos: Vector2)
 signal rounds_granted(weapon: int, count: int)
 
 var reserve: Dictionary = {}
+var stock: Dictionary = {}               ## rzucane przedmioty (throwables.gd): rodzaj → liczba, wspólny zapas drużyny
+var throw_sel := 0                       ## wybrany rodzaj u TEGO gracza (indeks w Throwables.ORDER), nie replikowany
+signal stock_changed
 
 func _ready() -> void:
 	_reset_local()
 	multiplayer.peer_connected.connect(_on_peer_connected)
 
 func _reset_local() -> void:
+	stock = Throwables.start_stock()
+	stock_changed.emit()
 	reserve.clear()
 	for d in Weapons.defs():
 		if d.uses_ammo() and not d.infinite:
 			reserve[d.id] = int(d.reserve_start * NightShift.ammo_mult())
 	reserve_changed.emit()
+
+## Granaty i inne rzucane przedmioty wracają do zapasu startowego przy każdej misji i próbie (też z carry z kryjówki — jak flary).
+func reset_throwables() -> void:
+	if NoiseMgr.has_network() and not NoiseMgr.is_server():
+		return
+	stock = Throwables.start_stock()
+	_push_stock()
 
 ## Serwer: początek misji / nowa próba. Klienci dostają nowy stan przez sync.
 func reset_mission() -> void:
@@ -89,6 +102,67 @@ func _push() -> void:
 func _on_peer_connected(id: int) -> void:
 	if NoiseMgr.is_server():
 		_sync_reserve.rpc_id(id, reserve)
+		_sync_stock.rpc_id(id, stock)
+
+# ---------------------------------------------------------------- rzucane przedmioty
+
+func get_throwable(kind: String) -> int:
+	return int(stock.get(kind, 0))
+
+## Serwer: dokłada do zapasu (skrzynki, zakup w warsztacie). Zwraca ile weszło (sufit z throwables.gd).
+func add_throwable(kind: String, n: int) -> int:
+	if not NoiseMgr.is_server() or not Throwables.is_valid(kind):
+		return 0
+	var before := get_throwable(kind)
+	stock[kind] = mini(int(Throwables.KINDS[kind]["max"]), before + n)
+	_push_stock()
+	return get_throwable(kind) - before
+
+func _push_stock() -> void:
+	stock_changed.emit()
+	if NoiseMgr.has_network() and NoiseMgr.is_server():
+		_sync_stock.rpc(stock)
+
+@rpc("authority", "call_remote", "reliable")
+func _sync_stock(data: Dictionary) -> void:
+	stock = data
+	stock_changed.emit()
+
+## Klawisz X: kolejny rodzaj rzucanego przedmiotu (lokalnie).
+func cycle_throwable() -> void:
+	throw_sel = (throw_sel + 1) % Throwables.ORDER.size()
+	stock_changed.emit()
+
+func selected_throwable() -> String:
+	return String(Throwables.ORDER[throw_sel % Throwables.ORDER.size()])
+
+## Rzut (T): serwer sprawdza zapas, zdejmuje sztukę i tworzy granat u wszystkich peerów (level.spawn_grenade).
+func request_throw(kind: String, pos: Vector2, vel: Vector2) -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_throw_server(kind, pos, vel, NoiseMgr.local_id())
+	else:
+		_throw_request.rpc_id(1, kind, pos, vel)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _throw_request(kind: String, pos: Vector2, vel: Vector2) -> void:
+	if NoiseMgr.is_server():
+		_throw_server(kind, pos, vel, multiplayer.get_remote_sender_id())
+
+func _throw_server(kind: String, pos: Vector2, vel: Vector2, shooter: int) -> void:
+	if not Throwables.is_valid(kind) or get_throwable(kind) <= 0:
+		return
+	for p in get_tree().get_nodes_in_group("players"):
+		if int(p.player_id) == shooter:
+			if p.dead:
+				return
+			if p.global_position.distance_to(pos) > 80.0:
+				pos = p.global_position + Vector2(0, -12)         # wylot za daleko od rzucającego — korekta jak przy strzale
+			break
+	stock[kind] = get_throwable(kind) - 1
+	_push_stock()
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl != null:
+		lvl.spawn_grenade(kind, pos, vel.limit_length(420.0), shooter)
 
 @rpc("authority", "call_remote", "reliable")
 func _sync_reserve(data: Dictionary) -> void:

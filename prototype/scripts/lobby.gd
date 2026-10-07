@@ -32,6 +32,7 @@ const CONTROLS := [
 	["Q", "Overcharge — lure HIM away"],
 	["G", "Scream — lures enemies"],
 	["F", "Flare — light bait, no noise"],
+	["T / X", "Throw grenade / switch type"],
 	["L", "Flashlight — light is noise"],
 	["Hold E", "Take weapon / revive"],
 	["F1", "Controls on / off"],

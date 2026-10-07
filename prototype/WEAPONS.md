@@ -263,3 +263,18 @@ Po rozgrywkach LR-7 była zbyt mocna: hitscan, zasięg 14 m, 70 DPS na dwa cele,
 Ulepszenie „Extended cell” daje teraz +20 ładunku i +40 zapasu max. `--weapontest` pilnuje DPS ≤ 65, zasięgu ≤ 12 m, hałasu/DPS ≥ 0,05,
 spadku wiązki z dystansem i grzania się lufy (119/119). Hałas ciągłej broni liczy się teraz z rozgrzaniem (`weapon_controller.gd`,
 HKM-9 bez zmian — jego `heat_gain` = 0).
+
+## 11. Ekwipunek zużywalny, faza A1 (1.7.62): granaty
+
+Plan całości (A1–A3): szkielet rzutu → pozostałe przedmioty (dymna, mina, ładunek wyburzeniowy, apteczka, defibrylator, skaner) → zakup, boty i balans.
+
+| | Odłamkowy (`frag`) | Fosforowy (`phos`) |
+|---|---|---|
+| Zapas start / maks. | 2 / 4 | 1 / 3 |
+| Zapalnik | 1,8 s | 1,3 s |
+| Efekt | wybuch 4 m, 90 w środku (50% na brzegu), rani drużynę, rozbija zamurowane przejścia | pole ognia 15 s z 3 plam (72 px), podpala, mur dla `fire_shy`, nie rani drużyny |
+| Hałas | wybuch (`N_GRENADE` 15) | 3 |
+
+- Klawisze: **T** rzut, **X** zmiana rodzaju (wybór lokalny, zapas wspólny). Rzut: łuk 230 px/s, odbija się od podłogi, zapalnik liczy się od rzutu.
+- Zapas trzyma `Arsenal` (`stock`, `request_throw`, `add_throwable`, `reset_throwables`), dane `throwables.gd`; nowy rodzaj = wpis w `KINDS`/`ORDER` + gałąź w `grenade.gd` (`_detonate`).
+- Sieć: klient prosi serwer o rzut (korekta wylotu, jak przy strzale), serwer zdejmuje sztukę i rozsyła `spawn_grenade`; lot deterministyczny, wybuch tylko na serwerze.
