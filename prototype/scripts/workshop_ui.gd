@@ -11,6 +11,8 @@ const Codex := preload("res://scripts/codex.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const ItemIcon := preload("res://scripts/item_icon.gd")
+const PerkIcon := preload("res://scripts/perk_icon.gd")
+const Perks := preload("res://scripts/perks.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 
 const GOLD := Color(0.95, 0.8, 0.4)
@@ -79,6 +81,29 @@ class StockBar extends Control:
 			else:
 				draw_rect(r, Color(0.5, 0.66, 0.7, 0.8), false, 1.0)
 
+## Pasek poziomu profilu: wypełnienie = postęp XP w bieżącym poziomie.
+class LevelBar extends Control:
+	var frac := 0.0
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(0, 7)
+		size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.04, 0.05, 0.07, 0.9))
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.5, 0.66, 0.7, 0.8), false, 1.0)
+		draw_rect(Rect2(1, 1, maxf(0.0, (size.x - 2.0) * frac), size.y - 2.0), Color(0.55, 0.8, 1.0))
+
+## Kafel perku w siatce: miniatura + nazwa + stan (poziom odblokowania / założony / dostępny).
+class PerkTile extends Button:
+	var perk := ""
+	var icon_node: Control
+	var name_label: Label
+	var state_label: Label
+	func _init() -> void:
+		focus_mode = Control.FOCUS_NONE
+		toggle_mode = false
+		custom_minimum_size = Vector2(150.0, 46.0)
+
 ## Kafel zaopatrzenia w siatce: miniatura przedmiotu + nazwa + cena (moneta) + zapas drużyny.
 class SupplyTile extends Button:
 	var kind := ""
@@ -105,6 +130,20 @@ var _s_stats: GridContainer
 var _s_text: Label
 var _s_action: Button
 var _page_btns: Array[Button] = []
+var _perk_body: HBoxContainer
+var _perk_sel := 0
+var _perk_slot := 0
+var _perk_tiles: Array = []
+var _slot_chips: Array = []           ## [{root, icon, name, sub}] dla dwóch slotów
+var _lvl_label: Label
+var _lvl_bar: LevelBar
+var _xp_label: Label
+var _p_icon: PerkIcon
+var _p_title: Label
+var _p_tag: Label
+var _p_stats: GridContainer
+var _p_text: Label
+var _p_action: Button
 var _sel := 0
 var _prev_mouse := Input.MOUSE_MODE_VISIBLE
 var _card: PanelContainer
@@ -136,9 +175,9 @@ func _ready() -> void:
 	var title := UiTheme.heading("WORKSHOP", 16, UiTheme.ACCENT)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(title)
-	for pi in 2:
-		var pb := Button.new()                                 # zakładki ARMS / SUPPLIES (Tab przełącza)
-		pb.text = "ARMS" if pi == 0 else "SUPPLIES"
+	for pi in 3:
+		var pb := Button.new()                                 # zakładki ARMS / SUPPLIES / PERKS (Tab przełącza)
+		pb.text = ["ARMS", "SUPPLIES", "PERKS"][pi]
 		pb.toggle_mode = true
 		pb.focus_mode = Control.FOCUS_NONE
 		pb.add_theme_font_size_override("font_size", 9)
@@ -164,6 +203,9 @@ func _ready() -> void:
 	_sup_body = _build_supplies()
 	root.add_child(_sup_body)
 	_sup_body.visible = false
+	_perk_body = _build_perks()
+	root.add_child(_perk_body)
+	_perk_body.visible = false
 	var grid := GridContainer.new()
 	grid.columns = COLS
 	grid.add_theme_constant_override("h_separation", 6)
@@ -177,11 +219,12 @@ func _ready() -> void:
 	root.add_child(_rule())
 	_msg = UiTheme.label("", 9, UiTheme.BP_TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	root.add_child(_msg)
-	var hint := UiTheme.label("ARROWS select   ·   ENTER buy / upgrade   ·   TAB arms / supplies   ·   ESC close   ·   or click", 8, UiTheme.BP_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	var hint := UiTheme.label("ARROWS select   ·   ENTER buy / upgrade / equip   ·   TAB arms / supplies / perks   ·   ESC close   ·   or click", 8, UiTheme.BP_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	root.add_child(hint)
 	Scrap.changed.connect(_refresh)
 	Scrap.purchase_result.connect(_on_result)
 	Scrap.supply_result.connect(_on_supply_result)
+	Profile.changed.connect(_refresh)
 	Arsenal.stock_changed.connect(_refresh)
 
 ## Zakładka SUPPLIES: ten sam układ co ARMS — siatka kafli po lewej (miniatura, nazwa, cena, zapas), szczegóły po prawej.
@@ -260,6 +303,227 @@ func _build_supply_detail() -> Control:
 	_s_action.pressed.connect(_buy_selected_supply)
 	v.add_child(_s_action)
 	return v
+
+## Zakładka PERKS: ten sam układ co ARMS i SUPPLIES — po lewej pasek poziomu, siatka kafli i dwa sloty, po prawej szczegóły wybranego perku.
+func _build_perks() -> HBoxContainer:
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 12)
+	body.custom_minimum_size = Vector2(0, 6.0 * (TILE_H + 6.0))
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 6)
+	left.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	body.add_child(left)
+	var lv := HBoxContainer.new()
+	lv.add_theme_constant_override("separation", 6)
+	_lvl_label = UiTheme.heading("LV 1", 12, UiTheme.ACCENT)
+	lv.add_child(_lvl_label)
+	_lvl_bar = LevelBar.new()
+	_lvl_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	lv.add_child(_lvl_bar)
+	_xp_label = UiTheme.label("", 9, Color(0.55, 0.8, 1.0), HORIZONTAL_ALIGNMENT_RIGHT)
+	lv.add_child(_xp_label)
+	left.add_child(lv)
+	var grid := GridContainer.new()
+	grid.columns = COLS
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	left.add_child(grid)
+	for i in Perks.ORDER.size():
+		var t := _make_perk_tile(String(Perks.ORDER[i]), i)
+		grid.add_child(t)
+		_perk_tiles.append(t)
+	left.add_child(_rule())
+	var slots := HBoxContainer.new()
+	slots.add_theme_constant_override("separation", 6)
+	left.add_child(slots)
+	for si in 2:
+		slots.add_child(_make_slot_chip(si))
+	body.add_child(_build_perk_detail())
+	return body
+
+func _make_perk_tile(id: String, idx: int) -> PerkTile:
+	var t := PerkTile.new()
+	t.perk = id
+	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
+		t.add_theme_stylebox_override(st, UiTheme.tile_box("hover" if st == "hover" else "normal"))
+	var ic := PerkIcon.new()
+	ic.k = 1.0
+	ic.position = Vector2(4, 5)
+	ic.size = Vector2(54, 36)
+	ic.set_perk(id, Color.WHITE)
+	t.add_child(ic)
+	t.icon_node = ic
+	t.name_label = UiTheme.label(Perks.display_name(id), 10, UiTheme.BP_TEXT)
+	t.name_label.position = Vector2(64, 6)
+	t.add_child(t.name_label)
+	t.state_label = UiTheme.label("", 8, UiTheme.BP_MUTED)
+	t.state_label.position = Vector2(64, 25)
+	t.add_child(t.state_label)
+	t.pressed.connect(_select_perk.bind(idx))
+	return t
+
+## Slot perka (0–1) pod siatką: miniatura założonego perka, nazwa albo „empty” / poziom odblokowania. Klik albo klawisz 1 / 2 wybiera slot docelowy.
+func _make_slot_chip(si: int) -> Control:
+	var root := PanelContainer.new()
+	root.custom_minimum_size = Vector2(150, 40)
+	root.add_theme_stylebox_override("panel", UiTheme.tile_box("normal"))
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	root.add_child(h)
+	var ic := PerkIcon.new()
+	ic.k = 1.0
+	ic.custom_minimum_size = Vector2(40, 30)
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(ic)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 0)
+	col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(col)
+	var cap := UiTheme.label("SLOT %d  [%d]" % [si + 1, si + 1], 8, UiTheme.BP_MUTED)
+	col.add_child(cap)
+	var nm := UiTheme.label("", 9, UiTheme.BP_TEXT)
+	col.add_child(nm)
+	root.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			_perk_slot = si
+			_refresh())
+	_slot_chips.append({"root": root, "icon": ic, "name": nm})
+	return root
+
+func _build_perk_detail() -> Control:
+	var v := VBoxContainer.new()
+	v.custom_minimum_size = Vector2(DETAIL_W, 0)
+	v.add_theme_constant_override("separation", 4)
+	_p_icon = PerkIcon.new()
+	_p_icon.k = 2.0
+	_p_icon.custom_minimum_size = Vector2(0, 58)
+	v.add_child(_p_icon)
+	_p_title = UiTheme.heading("", 16, UiTheme.ACCENT)
+	v.add_child(_p_title)
+	_p_tag = UiTheme.label("", 8, UiTheme.BP_MUTED)
+	v.add_child(_p_tag)
+	_p_stats = GridContainer.new()
+	_p_stats.columns = 3
+	_p_stats.add_theme_constant_override("h_separation", 10)
+	_p_stats.add_theme_constant_override("v_separation", 1)
+	v.add_child(_p_stats)
+	v.add_child(_rule())
+	_p_text = UiTheme.label("", 8, UiTheme.BP_TEXT)
+	_p_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_p_text.custom_minimum_size = Vector2(DETAIL_W, 0)
+	v.add_child(_p_text)
+	_p_action = Button.new()
+	_p_action.focus_mode = Control.FOCUS_NONE
+	_p_action.add_theme_font_size_override("font_size", 10)
+	_p_action.pressed.connect(_act_perk)
+	v.add_child(_p_action)
+	return v
+
+func _select_perk(i: int) -> void:
+	if i != _perk_sel:
+		Audio.play("ui_click", Audio.BUS_UI, -14.0)
+	_perk_sel = i
+	_refresh()
+
+## Które sloty zajmuje perk: indeks slotu albo -1.
+func _perk_slot_of(id: String) -> int:
+	return Profile.equipped.find(id)
+
+## Akcja na wybranym perku: zdejmij (jeśli założony) albo załóż w wybranym slocie.
+func _act_perk() -> void:
+	var id := String(Perks.ORDER[_perk_sel])
+	var have := _perk_slot_of(id)
+	if have >= 0:
+		Profile.unequip(have)
+		_say("%s removed." % Perks.display_name(id), UiTheme.BP_MUTED)
+		Audio.play("ui_click", Audio.BUS_UI, -10.0)
+		return
+	if not Profile.is_unlocked(id):
+		_say("Reach level %d to unlock %s." % [Perks.unlock_level(id), Perks.display_name(id)], UiTheme.BP_MUTED)
+		return
+	if _perk_slot >= Profile.slots():
+		_say("Slot %d unlocks at level %d." % [_perk_slot + 1, int(Profile.SLOT_LEVELS[_perk_slot])], UiTheme.BP_MUTED)
+		return
+	if Profile.equip(_perk_slot, id):
+		_say("%s equipped in slot %d." % [Perks.display_name(id), _perk_slot + 1], UiTheme.OK)
+		Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
+
+func _refresh_perks() -> void:
+	var lp := Profile.level_progress()
+	_lvl_label.text = "LV %d" % Profile.level()
+	_lvl_bar.frac = clampf(float(lp[0]) / maxf(1.0, float(lp[1])), 0.0, 1.0)
+	_lvl_bar.queue_redraw()
+	_xp_label.text = "%d / %d XP" % [int(lp[0]), int(lp[1])]
+	if _perk_slot >= maxi(1, Profile.slots()):
+		_perk_slot = 0
+	for i in _perk_tiles.size():
+		var t := _perk_tiles[i] as PerkTile
+		var id := t.perk
+		var sel := i == _perk_sel
+		var sbox := UiTheme.tile_box("selected") if sel else UiTheme.tile_box("normal")
+		t.add_theme_stylebox_override("normal", sbox)
+		t.add_theme_stylebox_override("pressed", sbox)
+		t.add_theme_stylebox_override("focus", sbox)
+		var unlocked := Profile.is_unlocked(id)
+		var at := _perk_slot_of(id)
+		(t.icon_node as PerkIcon).set_perk(id, Color.WHITE if unlocked else Color(0.45, 0.5, 0.55))
+		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else (UiTheme.BP_TEXT if unlocked else UiTheme.BP_MUTED))
+		if at >= 0:
+			t.state_label.text = "EQUIPPED  ·  SLOT %d" % (at + 1)
+			t.state_label.add_theme_color_override("font_color", UiTheme.OK)
+		elif unlocked:
+			t.state_label.text = "AVAILABLE"
+			t.state_label.add_theme_color_override("font_color", UiTheme.BP_MUTED)
+		else:
+			t.state_label.text = "LV %d" % Perks.unlock_level(id)
+			t.state_label.add_theme_color_override("font_color", GOLD if Profile.level() + 1 >= Perks.unlock_level(id) else UiTheme.DANGER)
+	for si in _slot_chips.size():
+		var c: Dictionary = _slot_chips[si]
+		var open := si < Profile.slots()
+		var eq := String(Profile.equipped[si])
+		var chosen := si == _perk_slot
+		(c["root"] as PanelContainer).add_theme_stylebox_override("panel", UiTheme.tile_box("selected") if chosen else UiTheme.tile_box("normal"))
+		if not open:
+			(c["icon"] as PerkIcon).set_perk(String(Perks.ORDER[0]), Color(0.25, 0.28, 0.32, 0.6))
+			(c["name"] as Label).text = "LV %d" % int(Profile.SLOT_LEVELS[si])
+			(c["name"] as Label).add_theme_color_override("font_color", UiTheme.DANGER)
+		elif eq == "":
+			(c["icon"] as PerkIcon).set_perk(String(Perks.ORDER[0]), Color(0.25, 0.28, 0.32, 0.6))
+			(c["name"] as Label).text = "empty"
+			(c["name"] as Label).add_theme_color_override("font_color", UiTheme.BP_MUTED)
+		else:
+			(c["icon"] as PerkIcon).set_perk(eq, Color.WHITE)
+			(c["name"] as Label).text = Perks.display_name(eq)
+			(c["name"] as Label).add_theme_color_override("font_color", UiTheme.BP_TEXT)
+	var id2 := String(Perks.ORDER[_perk_sel])
+	var d: Dictionary = Perks.PERKS[id2]
+	var unlocked2 := Profile.is_unlocked(id2)
+	var at2 := _perk_slot_of(id2)
+	_p_icon.set_perk(id2, Color.WHITE if unlocked2 else Color(0.55, 0.6, 0.65))
+	_p_title.text = String(d["name"]).to_upper()
+	_p_tag.text = "Perk  ·  unlocks at level %d" % int(d["level"])
+	for ch in _p_stats.get_children():
+		_p_stats.remove_child(ch)
+		ch.free()
+	var status := "Equipped — slot %d" % (at2 + 1) if at2 >= 0 else ("Available" if unlocked2 else "Locked — reach level %d" % int(d["level"]))
+	for r in [["Status", status], ["Slots", "%d of 2 open" % Profile.slots()]]:
+		_p_stats.add_child(UiTheme.label(String(r[0]), 9, UiTheme.BP_MUTED))
+		_p_stats.add_child(UiTheme.label(String(r[1]), 9, UiTheme.OK if at2 >= 0 and String(r[0]) == "Status" else UiTheme.BP_TEXT))
+		_p_stats.add_child(Control.new())
+	_p_text.text = String(d["desc"]) + "\nEffects arrive with the next update — slots and levels are already tracked."
+	if at2 >= 0:
+		_p_action.text = "Remove from slot %d" % (at2 + 1)
+		_p_action.disabled = false
+	elif not unlocked2:
+		_p_action.text = "Locked  ·  reach level %d" % int(d["level"])
+		_p_action.disabled = true
+	elif _perk_slot >= Profile.slots():
+		_p_action.text = "Slot %d unlocks at level %d" % [_perk_slot + 1, int(Profile.SLOT_LEVELS[_perk_slot])]
+		_p_action.disabled = true
+	else:
+		_p_action.text = "Equip in slot %d" % (_perk_slot + 1)
+		_p_action.disabled = false
 
 func _select_supply(i: int) -> void:
 	if i != _sup_sel:
@@ -407,7 +671,32 @@ func _input(event: InputEvent) -> void:
 		return
 	var k := (event as InputEventKey).keycode
 	if k == KEY_TAB:
-		_set_page(1 - _page)
+		_set_page((_page + 1) % 3)
+		get_viewport().set_input_as_handled()
+		return
+	if _page == 2:
+		var pn := Perks.ORDER.size()
+		var pstep := 0
+		if k == KEY_LEFT or k == KEY_A:
+			pstep = -1
+		elif k == KEY_RIGHT or k == KEY_D:
+			pstep = 1
+		elif k == KEY_UP or k == KEY_W:
+			pstep = -COLS
+		elif k == KEY_DOWN or k == KEY_S:
+			pstep = COLS
+		if pstep != 0 and _perk_sel + pstep >= 0 and _perk_sel + pstep < pn:
+			_perk_sel += pstep
+			Audio.play("ui_click", Audio.BUS_UI, -14.0)
+			_refresh()
+		elif k == KEY_1 or k == KEY_2:
+			_perk_slot = 0 if k == KEY_1 else 1
+			Audio.play("ui_click", Audio.BUS_UI, -14.0)
+			_refresh()
+		elif k == KEY_ENTER or k == KEY_KP_ENTER or k == KEY_SPACE:
+			_act_perk()
+		elif k == KEY_ESCAPE or k == KEY_E or k == KEY_BACKSPACE:
+			close()
 		get_viewport().set_input_as_handled()
 		return
 	if _page == 1:
@@ -511,6 +800,11 @@ func _refresh() -> void:
 		_page_btns[pi].set_pressed_no_signal(pi == _page)
 	_arms_body.visible = _page == 0
 	_sup_body.visible = _page == 1
+	_perk_body.visible = _page == 2
+	if _page == 2:
+		_refresh_perks()
+		_card.reset_size()
+		return
 	if _page == 1:
 		_refresh_supplies()
 		_card.reset_size()

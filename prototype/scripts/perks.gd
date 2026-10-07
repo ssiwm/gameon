@@ -7,38 +7,41 @@ const ORDER := ["quiet_steps", "blood_flow", "wide_arm", "smith", "cold_blood", 
 
 const PERKS := {
 	"quiet_steps": {
-		"name": "Quiet steps", "level": 2, "params": {"run_noise_mult": 0.5},
+		"color": Color(0.6, 0.8, 1.0), "name": "Quiet steps", "level": 2, "params": {"run_noise_mult": 0.5},
 		"desc": "Running makes half the noise (0.25 instead of 0.5 per second).",
 	},
 	"blood_flow": {
-		"name": "Bloodflow", "level": 2, "params": {"revive_time": 2.5},
+		"color": Color(0.9, 0.3, 0.3), "name": "Bloodflow", "level": 2, "params": {"revive_time": 2.5},
 		"desc": "You lift a downed teammate faster: 2.5 s instead of 4 s.",
 	},
 	"wide_arm": {
-		"name": "Wide arm", "level": 2, "params": {"throw_mult": 1.3},
+		"color": Color(0.55, 0.78, 0.45), "name": "Wide arm", "level": 2, "params": {"throw_mult": 1.3},
 		"desc": "Grenades and other thrown items fly 30% farther.",
 	},
 	"smith": {
-		"name": "Smith", "level": 2, "params": {"upgrade_cost_mult": 0.8},
+		"color": Color(0.95, 0.7, 0.3), "name": "Smith", "level": 2, "params": {"upgrade_cost_mult": 0.8},
 		"desc": "Weapon upgrades you buy cost 20% less.",
 	},
 	"cold_blood": {
-		"name": "Cold blood", "level": 4, "params": {"scream_cap": 10.0},
+		"color": Color(0.6, 0.85, 1.0), "name": "Cold blood", "level": 4, "params": {"scream_cap": 10.0},
 		"desc": "Your scream into the microphone costs at most +10 Attention.",
 	},
 	"scout": {
-		"name": "Scout", "level": 4, "params": {"scan_stalker_range": 160.0},
+		"color": Color(0.9, 0.9, 0.5), "name": "Scout", "level": 4, "params": {"scan_stalker_range": 160.0},
 		"desc": "Your scanner shows the Stalker within 10 m.",
 	},
 	"second_chance": {
-		"name": "Second chance", "level": 4, "params": {"self_revive_after": 8.0},
+		"color": Color(0.45, 1.0, 0.55), "name": "Second chance", "level": 4, "params": {"self_revive_after": 8.0},
 		"desc": "Once per mission you get back up on your own after 8 s (1 heart).",
 	},
 	"veteran": {
-		"name": "Veteran", "level": 6, "params": {"extra_hearts": 1},
+		"color": Color(1.0, 0.8, 0.3), "name": "Veteran", "level": 6, "params": {"extra_hearts": 1},
 		"desc": "One more heart.",
 	},
 }
+
+static func color_of(id: String) -> Color:
+	return PERKS[id]["color"] if PERKS.has(id) else Color(0.8, 0.8, 0.8)
 
 static func is_valid(id: String) -> bool:
 	return PERKS.has(id)

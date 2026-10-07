@@ -10,6 +10,7 @@ const Sprites := preload("res://scripts/sprites.gd")
 const PixelArt := preload("res://scripts/pixel_art.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const ItemIcon := preload("res://scripts/item_icon.gd")
+const PerkIcon := preload("res://scripts/perk_icon.gd")
 
 var spec := {}
 var accent := Color(1.0, 0.72, 0.28)
@@ -48,7 +49,7 @@ func _process(delta: float) -> void:
 	if not is_visible_in_tree():
 		return
 	var t: String = spec.get("type", "")
-	if t == "sprite" or t == "vein" or t == "leech" or t == "item":
+	if t == "sprite" or t == "vein" or t == "leech" or t == "item" or t == "perk":
 		_t += delta
 		queue_redraw()
 
@@ -69,6 +70,8 @@ func _draw() -> void:
 			_draw_leech(floor_y)
 		"item":
 			_draw_item(floor_y)
+		"perk":
+			_draw_perk(floor_y)
 	if not thumb:
 		_draw_brackets(px)
 
@@ -245,6 +248,20 @@ func _draw_item(floor_y: float) -> void:
 	for o: Vector2 in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
 		ItemIcon.draw_glyph(self, kind, cx + o.x * px, y + o.y * px, s, _t, accent, Color(0, 0, 0, 0.85))
 	ItemIcon.draw_glyph(self, kind, cx, y, s, _t, accent)
+
+## Perk (karta PERKS): ta sama bryła co miniatura w warsztacie (perk_icon.gd), większa, z cieniem i obrysem.
+func _draw_perk(floor_y: float) -> void:
+	var id := String(spec.get("id", "quiet_steps"))
+	var dev := PixelArt.device_scale(self)
+	var px := 1.0 / dev
+	var s := PixelArt.snap_scale(self, maxf(1.0, floorf(size.y * 0.5 / 14.0)))
+	var cx := roundf(size.x * 0.5)
+	var y := roundf(floor_y - (1.0 if thumb else 5.0))
+	_shadow(cx, floor_y, 22.0 * s * 0.6)
+	PerkIcon.draw_glyph(self, id, cx, y + maxf(px, s), s, _t, accent, Color(0, 0, 0, 0.5))
+	for o: Vector2 in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
+		PerkIcon.draw_glyph(self, id, cx + o.x * px, y + o.y * px, s, _t, accent, Color(0, 0, 0, 0.85))
+	PerkIcon.draw_glyph(self, id, cx, y, s, _t, accent)
 
 func _draw_vein(floor_y: float) -> void:
 	var k := minf(size.x / 150.0, (floor_y + 6.0) / 62.0)
