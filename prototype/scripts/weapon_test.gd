@@ -17,6 +17,7 @@ const Projectile := preload("res://scripts/projectile.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Throwables := preload("res://scripts/throwables.gd")
+const SmokeCloud := preload("res://scripts/smoke_cloud.gd")
 const BrickWall := preload("res://scripts/brick_wall.gd")
 const WALL_HP_REF := 120.0
 const Enemy := preload("res://scripts/enemy.gd")
@@ -363,12 +364,147 @@ func _t_throwables() -> void:
 	check("rzut bez zapasu nic nie robi", get_tree().get_nodes_in_group("grenades").is_empty() and Arsenal.get_throwable("phos") == 0)
 	var added: int = Arsenal.add_throwable("frag", 10)
 	check("zapas ma sufit (dodano %d, jest %d / %d)" % [added, Arsenal.get_throwable("frag"), Throwables.KINDS["frag"]["max"]], Arsenal.get_throwable("frag") == Throwables.KINDS["frag"]["max"])
+	Arsenal.throw_sel = 0
+	Arsenal.reset_throwables()
 	Arsenal.cycle_throwable()
 	var sel2: String = Arsenal.selected_throwable()
+	Arsenal.stock["smoke"] = 0
 	Arsenal.cycle_throwable()
-	check("X przełącza rodzaj (%s → %s → %s)" % ["frag", sel2, Arsenal.selected_throwable()], sel2 == "phos" and Arsenal.selected_throwable() == "frag")
+	var sel3: String = Arsenal.selected_throwable()
+	Arsenal.throw_sel = 0
+	check("X przełącza rodzaj (%s → %s → %s, puste pomijane)" % ["frag", sel2, sel3], sel2 == "phos" and sel3 == "mine")
 	Arsenal.reset_throwables()
-	check("reset misji przywraca zapas startowy", Arsenal.get_throwable("frag") == 2 and Arsenal.get_throwable("phos") == 1)
+	check("reset misji przywraca zapas startowy", Arsenal.get_throwable("frag") == 2 and Arsenal.get_throwable("phos") == 1 and Arsenal.get_throwable("smoke") == 1 and Arsenal.get_throwable("mine") == 1)
+	_t_item_key()
+	await _t_gear()
+
+## Klawisz użycia przedmiotu: lewy Alt tak, prawy Alt nie (input_setup.gd).
+func _t_item_key() -> void:
+	var left := InputEventKey.new()
+	left.physical_keycode = KEY_ALT
+	left.location = KEY_LOCATION_LEFT
+	var right := InputEventKey.new()
+	right.physical_keycode = KEY_ALT
+	right.location = KEY_LOCATION_RIGHT
+	var left_ok: bool = InputMap.event_is_action(left, "throw")
+	var right_bad: bool = InputMap.event_is_action(right, "throw")
+	var t_bad: bool = false
+	var tk := InputEventKey.new()
+	tk.physical_keycode = KEY_T
+	t_bad = InputMap.event_is_action(tk, "throw")
+	check("klawisz użycia przedmiotu: lewy Alt tak (%s), prawy Alt nie (%s), T nie (%s)" % [str(left_ok), str(right_bad), str(t_bad)], left_ok and not right_bad and not t_bad)
+
+## Faza A2: dym, mina, ładunek wyburzeniowy, apteczka, defibrylator, skaner.
+func _t_gear() -> void:
+	var data_ok := Throwables.ORDER.size() == 8 and Throwables.ORDER.all(func(k: String) -> bool: return Throwables.KINDS.has(k) and ["throw", "place", "use"].has(Throwables.mode_of(k)))
+	check("tabela przedmiotów: 8 rodzajów (3 rzucane, 2 stawiane, 3 narzędzia)", data_ok)
+	# --- dym
+	var watcher := await dummy(130.0)
+	var a: Vector2 = watcher.global_position + Vector2(0, -8)
+	var b: Vector2 = player.global_position + Vector2(0, -8)
+	var clear_before: bool = watcher._clear_line(player)
+	Arsenal.request_throw("smoke", player.global_position + Vector2(60.0, -30.0), Vector2.ZERO)
+	await wait(2.4)
+	var clouds := get_tree().get_nodes_in_group("smoke_clouds")
+	var cloud: Node2D = clouds[0] if clouds.size() > 0 else null
+	var blocked: bool = SmokeCloud.blocks(get_tree(), a, b)
+	var clear_after: bool = watcher._clear_line(player)
+	var outside: bool = SmokeCloud.blocks(get_tree(), a + Vector2(0, -200), b + Vector2(0, -200))
+	check("granat dymny: chmura %d (promień %.0f px) zasłania wroga przed celem (widział %s → %s), obok nie" % [clouds.size(), cloud.radius if cloud != null else 0.0, str(clear_before), str(clear_after)],
+		cloud != null and cloud.radius > 40.0 and clear_before and blocked and not clear_after and not outside)
+	free_dummies()
+	await frames(2)
+	# --- mina kierunkowa
+	var sleeper := await dummy(52.0)
+	var behind := await dummy(-52.0)
+	sleeper.active = false
+	var hp0: int = player.hp
+	Arsenal.request_throw("mine", player.global_position + Vector2(0, -6.0), Vector2.RIGHT)
+	await frames(2)
+	var mines := get_tree().get_nodes_in_group("placed")
+	check("mina: postawiona pod nogami (zapas %d), jeszcze nieuzbrojona" % Arsenal.get_throwable("mine"), mines.size() == 1 and Arsenal.get_throwable("mine") == 0 and not mines[0].is_armed())
+	await wait(1.6)
+	check("mina: śpiący wróg w stożku jej nie odpala (mina stoi, obrażenia %.0f)" % dealt(sleeper), mines.size() == 1 and is_instance_valid(mines[0]) and dealt(sleeper) == 0.0)
+	sleeper.active = true
+	await wait(0.6)
+	check("mina: przebudzony wróg w stożku odpala ją — %.0f obrażeń, za miną %.0f, gracz cały (HP %d → %d)" % [dealt(sleeper), dealt(behind), hp0, player.hp],
+		dealt(sleeper) >= 100.0 and dealt(behind) == 0.0 and player.hp == hp0 and get_tree().get_nodes_in_group("placed").is_empty())
+	free_dummies()
+	await frames(2)
+	# --- ładunek wyburzeniowy
+	var cwall: Node2D = BrickWall.new()
+	cwall.name = "TWallC"
+	cwall.rows = 2
+	cwall.global_position = player.global_position + Vector2(112.0, 0.0)
+	level.add_child(cwall)
+	var victim := await dummy(100.0)
+	await frames(2)
+	NoiseMgr.level = 0.0
+	Arsenal.request_throw("charge", player.global_position + Vector2(78.0, -6.0), Vector2.RIGHT)
+	await wait(3.2)
+	check("ładunek: przed zapalnikiem nic się nie dzieje (obrażenia %.0f, ściana %.0f HP)" % [dealt(victim), cwall.hp], dealt(victim) == 0.0 and cwall.hp > 119.0)
+	await wait(1.4)
+	check("ładunek: wybuch po 4 s — wróg %.0f obrażeń, zamurowane przejście rozbite, hałas %.0f" % [dealt(victim), NoiseMgr.level],
+		dealt(victim) >= 60.0 and level._opened_walls.has("TWallC") and NoiseMgr.level >= 15.0)
+	level._opened_walls.erase("TWallC")
+	free_dummies()
+	await frames(2)
+	# --- apteczka, defibrylator (na graczu i bocie)
+	Arsenal.reset_throwables()
+	player.hp = 3
+	Arsenal.request_use("medkit", int(player.player_id))
+	var full_hp_ok: bool = player.hp == 3 and Arsenal.get_throwable("medkit") == 1
+	player.hp = 1
+	Arsenal.request_use("medkit", int(player.player_id))
+	check("apteczka: pełne HP nie zużywa sztuki; ranny dostaje +1 serce (HP %d, zostało %d)" % [player.hp, Arsenal.get_throwable("medkit")], full_hp_ok and player.hp == 2 and Arsenal.get_throwable("medkit") == 0)
+	Arsenal.reset_throwables()
+	player.hp = 1
+	Arsenal.throw_sel = Throwables.ORDER.find("medkit")
+	Input.action_press("throw")
+	await wait(2.0)
+	var mid_prog: float = player.gear_progress
+	var mid_busy: bool = player.gear_text.begins_with("Healing")
+	await wait(3.6)
+	Input.action_release("throw")
+	await frames(3)
+	check("apteczka: trzymanie T leczy się po 5 s (postęp w połowie %.2f, HP %d, zostało %d)" % [mid_prog, player.hp, Arsenal.get_throwable("medkit")], mid_prog > 0.25 and mid_prog < 0.6 and mid_busy and player.hp == 2 and Arsenal.get_throwable("medkit") == 0)
+	player.hp = 3
+	Arsenal.reset_throwables()
+	main._spawn_bot()
+	await wait(1.0)
+	var bot: Node2D = null
+	for c in main._players.get_children():
+		if c.is_bot and not c.is_queued_for_deletion():
+			bot = c
+	if bot == null:
+		check("defibrylator: bot do testu", false)
+	else:
+		bot.set_physics_process(false)
+		bot.global_position = player.global_position + Vector2(120.0, 0.0)
+		bot._go_down()
+		await frames(2)
+		check("defibrylator: leżący bot w zasięgu 10 m i w linii wzroku jest celem", player._defib_target() == bot)
+		Arsenal.request_use("defib", int(bot.player_id))
+		await frames(3)
+		check("defibrylator: podnosi leżącego z 7 m (martwy %s, HP %d), zużywa sztukę (%d)" % [str(bot.dead), bot.hp, Arsenal.get_throwable("defib")], not bot.dead and bot.hp > 0 and Arsenal.get_throwable("defib") == 0)
+		bot.hp = 1
+		Arsenal.reset_throwables()
+		bot.global_position = player.global_position + Vector2(20.0, 0.0)
+		Arsenal.request_use("medkit", int(bot.player_id))
+		check("apteczka: leczy też kolegę obok (bot HP %d)" % bot.hp, bot.hp == 2)
+		bot.queue_free()
+	# --- skaner
+	Arsenal.reset_throwables()
+	Arsenal.throw_sel = Throwables.ORDER.find("scanner")
+	var scan_n0 := Arsenal.get_throwable("scanner")
+	NoiseMgr.level = 0.0
+	player._start_scan()
+	await wait(2.2)
+	check("skaner: aktywny (zostało %.1f s), zapas %d → %d, hałas ostatni %.1f, nakładka istnieje" % [player.scan_left, scan_n0, Arsenal.get_throwable("scanner"), NoiseMgr.last_noise_amount],
+		player.scan_left > 6.0 and player.scan_left < 9.0 and Arsenal.get_throwable("scanner") == scan_n0 - 1 and NoiseMgr.last_noise_amount >= 0.99 and player._scan_view != null)
+	player.scan_left = 0.0
+	Arsenal.throw_sel = 0
+	Arsenal.reset_throwables()
 
 ## Dodatki po fazie 3: linka SINEW-6, zamurowane przejście i kilof, ogień jako mur dla tchórzliwych wrogów.
 func _t_phase4() -> void:

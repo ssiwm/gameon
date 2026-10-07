@@ -24,6 +24,7 @@ const STEAM_NET := preload("res://scripts/steam_net.gd")
 const PAUSE_MENU := preload("res://scripts/pause_menu.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const Throwables := preload("res://scripts/throwables.gd")
 
 ## >0 w trakcie odliczania do restartu po wipe; widoczne na każdym peerze (HUD).
 var wipe_left := 0.0
@@ -587,6 +588,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if sw != null and sp != null:
 			sp.global_position = sw.global_position + Vector2(40.0, -1.0)
 			sp.velocity = Vector2.ZERO
+	if "--shotscan" in OS.get_cmdline_user_args():
+		var scp: Node2D = _players.get_node_or_null("1")     # --shotscan: skaner Sowa włączony (użyj z --shotat=KOLUMNA przy wrogach)
+		if scp != null:
+			Arsenal.throw_sel = Throwables.ORDER.find("scanner")
+			scp.call_deferred("_start_scan")
 	if "--shotnade" in OS.get_cmdline_user_args():
 		var gp: Node2D = _players.get_node_or_null("1")      # --shotnade: granat fosforowy rzucony przed gracza (pole ognia po ~1,5 s)
 		if gp != null:
