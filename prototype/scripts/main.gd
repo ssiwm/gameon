@@ -541,6 +541,11 @@ func _tag_test() -> void:
 		level.map_id == "z1_m1" and mission.kind == "tags" and mission.goal_total == 3 and tags_now.call().size() == 3 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
 	check.call("odprawa: tytuł, 3 nieśmiertelniki, Trzoski %d, Wołki %d, bez Stalkera i bossa" % [int(counts.get("trzosek", 0)), int(counts.get("wolek", 0))],
 		String(brief["title"]) != "" and int(brief["tags"]) == 3 and int(counts.get("trzosek", 0)) >= 8 and int(counts.get("wolek", 0)) >= 2 and not bool(brief["stalker"]) and not bool(brief["boss"]))
+	var gallery: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return e is CharacterBody2D and e.global_position.y > 45.0 * 16.0)
+	var scrap_caches := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "scrap")
+	var gallery_nav: Array = level.nav.find_path(Vector2(166.0 * 16.0 + 8.0, 42.0 * 16.0), Vector2(145.0 * 16.0 + 8.0, 51.0 * 16.0))
+	check.call("podziemia: dolna galeria (wrogów %d, skrytek złomu na mapie %d), droga z sali szybem serwisowym (%d węzłów)" % [gallery.size(), scrap_caches.size(), gallery_nav.size()],
+		gallery.size() >= 8 and scrap_caches.size() >= 5 and not gallery_nav.is_empty())
 	var order: Array = tags_now.call()
 	order.sort_custom(func(a: Node, b: Node) -> bool: return a.global_position.x < b.global_position.x)
 	var positions: Array = order.map(func(n: Node) -> Vector2: return n.global_position)
@@ -662,11 +667,16 @@ func _finale_test() -> void:
 		level._is_solid(152, 38) and not through.call(level.nav.find_path(hall, ramp_pre)) and p.global_position.x > 158.0 * 16.0)
 	var shaft_path: Array = level.nav.find_path(hall, level.exits_alt[0])
 	check.call("po zawale: z sali da się wspiąć szybem do flary (ścieżka %d węzłów)" % shaft_path.size(), not shaft_path.is_empty())
+	check.call("radio patrolu: linie 0 s / 3 s / 6 s / 9 s i cisza po %.1f s" % mission.FINALE_RADIO_END,
+		mission.radio_line_at(0.0).begins_with("…Seven") and mission.radio_line_at(3.5).contains("mine") and mission.radio_line_at(6.5).contains("shaft")
+		and mission.radio_line_at(9.5).contains("flare") and mission.radio_line_at(mission.FINALE_RADIO_END) == "" and mission.radio_line_at(-1.0) == "")
+	check.call("radio na HUD tylko w finale (clock %.1f, linia '%s')" % [mission.finale_clock, mission.finale_radio_line().substr(0, 20)], mission.finale and mission.finale_radio_line() != "")
 	p.global_position = mission.exit_pos + Vector2(0, -2)
 	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
 	check.call("ewakuacja przy nowym wyjściu → SUCCESS", mission.phase == MISSION_SCRIPT.Phase.SUCCESS)
 	_restart_mission(true)
 	await get_tree().create_timer(0.8).timeout
+	check.call("restart: radio zresetowane", mission.finale_radio_line() == "" and mission.finale_clock == 0.0)
 	check.call("restart: rampa znów wolna, droga wraca, finał zresetowany (finale=%s)" % str(mission.finale),
 		not level._is_solid(152, 38) and through.call(level.nav.find_path(hall, ramp_pre)) and not mission.finale and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
 	print("[FINALE-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])

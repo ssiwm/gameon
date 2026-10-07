@@ -1181,6 +1181,10 @@ func _drive_prompt() -> void:
 			_center.text = String(lvl.title) if lvl != null else ""
 			lines.append(m.objective_text())
 		_center_sub.text = "\n".join(lines)
+	# ostatnia transmisja patrolu w finale misji 1.1 (zamiast baneru tytułu)
+	if wipe_left <= 0.0 and m != null and m.finale_radio_line() != "":
+		_center.text = "PATROL SEVEN — RADIO"
+		_center_sub.text = m.finale_radio_line()
 	_prompt_card.visible = text != ""
 	if _prompt_card.visible:
 		_prompt.text = text

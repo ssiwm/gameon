@@ -29,6 +29,14 @@ const SYNC_INTERVAL := 0.2
 const STEALTH_CAP := 40.0              ## cel poboczny misji 1.2: Uwaga poniżej tej wartości do końca celu głównego
 const FINALE_DELAY := 2.5             ## s od trzeciego nieśmiertelnika do zawału rampy
 const FINALE_NOISE := 14.0            ## skok Uwagi przy wstrząsie (budzi to, co śpi w sali)
+## Ostatnia transmisja patrolu w finale: [sekunda od startu finału, linia]; ostatnia wisi do FINALE_RADIO_END.
+const FINALE_RADIO := [
+	[0.0, "…Seven, last transmission. If you can hear this — you found our tags."],
+	[3.0, "It was never the woods listening. It's the mine. It woke when we dug."],
+	[6.0, "Don't go back up the ramp. There's an old shaft on the east side — climb."],
+	[9.0, "Keep the light off. Stay quiet. The flare is at the top… run."],
+]
+const FINALE_RADIO_END := 12.5
 const BROADCAST_NOISE := 70.0          ## skok Uwagi po uruchomieniu ostatniego generatora
 
 var phase: int = Phase.OBJECTIVE
@@ -65,6 +73,7 @@ var _was_dead := {}          # nazwa gracza -> bool (liczenie upadków, serwer)
 
 var _boss: Node = null
 var finale := false                    ## misja 1.1: trzeci nieśmiertelnik wziął kopalnię w obroty (zawał + wyjście po drugiej stronie)
+var finale_clock := 0.0               ## s od startu finału (wszystkie peery liczą lokalnie — radio na HUD)
 var _finale_t := -1.0                  ## serwer: odliczanie do zawału (s); < 0 = brak
 var _tags_taken := 0                   ## serwer: ile nieśmiertelników już podniesiono (misja 1.1)
 
@@ -122,6 +131,7 @@ func is_active() -> bool:
 
 func _physics_process(delta: float) -> void:
 	queue_redraw()
+	finale_clock = finale_clock + delta if finale else 0.0
 	_flare.enabled = phase == Phase.EXTRACT or phase == Phase.SUCCESS
 	if _flare.enabled:
 		_flare.position = exit_pos + Vector2(0, -6)
@@ -173,6 +183,19 @@ func _start_finale(lvl: Node) -> void:
 	NoiseMgr.script_spike(FINALE_NOISE, _humans_centroid())
 	_event.rpc("rumble")
 	print("[MISSION] finale: collapse in %.1fs, exit -> %s" % [FINALE_DELAY, str(exit_pos)])
+
+## Linia radia patrolu dla sekundy `t` od startu finału ("" po zakończeniu transmisji).
+func radio_line_at(t: float) -> String:
+	if t < 0.0 or t >= FINALE_RADIO_END:
+		return ""
+	var line := ""
+	for e in FINALE_RADIO:
+		if t >= float(e[0]):
+			line = String(e[1])
+	return line
+
+func finale_radio_line() -> String:
+	return radio_line_at(finale_clock) if finale else ""
 
 func _tick_finale(delta: float) -> void:
 	if _finale_t < 0.0:
@@ -525,7 +548,7 @@ func objective_hint() -> String:
 					return "Hold E aboard to pump  ·  more hands = faster  ·  he is coming — Q lures him"
 				return "The transmitter is live — he heard it  ·  Q lures him away"
 			if finale:
-				return "The mine is coming down — the way back is gone. Find another way out!"
+				return "The mine is coming down — the way back is gone. Climb the shaft to the flare!"
 			return "The whole squad, standing, at the flare for 3 s"
 	return ""
 
