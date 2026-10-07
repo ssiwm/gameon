@@ -48,7 +48,7 @@ func _ready() -> void:
 	box.add_theme_constant_override("separation", 3)
 	card.add_child(box)
 
-	box.add_child(UiTheme.label("PAUSED", 20, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
+	box.add_child(UiTheme.heading("PAUSED", 24, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
 	_sub = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(_sub)
 	box.add_child(_rule())

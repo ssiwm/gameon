@@ -488,9 +488,16 @@ func objective_caption() -> String:
 		return "NIGHT SHIFT %d/%d  ·  %s" % [NightShift.stage, NightShift.MISSIONS, base]
 	return base
 
+## Tytuł następnej misji (kryjówka): z danych mapy wskazanej przez main.after_hub.
+func _hub_next_title() -> String:
+	var main := get_tree().current_scene
+	var nxt := String(main.get("after_hub")) if main != null else ""
+	var lvl := get_tree().get_first_node_in_group("level")
+	return String(lvl.MAPS[nxt].TITLE) if lvl != null and lvl.MAPS.has(nxt) else "the next mission"
+
 func objective_text() -> String:
 	if kind == "hub":
-		return "Safe room — restock and swap weapons"
+		return "Next: %s" % _hub_next_title()
 	match phase:
 		Phase.OBJECTIVE:
 			if kind == "tags":
@@ -519,17 +526,14 @@ func objective_text() -> String:
 func objective_hint() -> String:
 	if kind == "hub":
 		var main := get_tree().current_scene
-		var nxt := String(main.get("after_hub")) if main != null else ""
-		var lvl := get_tree().get_first_node_in_group("level")
-		var title := String(lvl.MAPS[nxt].TITLE) if lvl != null and lvl.MAPS.has(nxt) else "the next mission"
 		if main == null:
 			return ""
 		if main.hub_countdown >= 0.0:
-			return "Departing: %s in %d…   [ENTER] cancel" % [title, int(ceil(main.hub_countdown))]
+			return "Departing in %d…   [ENTER] cancel" % int(ceil(main.hub_countdown))
 		var status := "%d / %d ready" % [main.hub_ready_n, main.hub_total]
 		if main.hub_mine:
-			return "READY  ·  %s  ·  waiting for the squad   [ENTER] cancel" % status
-		return "[ENTER]  Ready to depart: %s  ·  %s" % [title, status]
+			return "READY  ·  %s  ·  [ENTER] cancel" % status
+		return "[ENTER]  Ready up  ·  %s" % status
 	match phase:
 		Phase.OBJECTIVE:
 			if kind == "tags":

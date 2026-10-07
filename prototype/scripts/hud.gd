@@ -87,9 +87,41 @@ class Pips extends Control:
 				draw_circle(o + Vector2(2.5, 2.5), 2.6, c)
 				draw_circle(o + Vector2(6.5, 2.5), 2.6, c)
 				draw_colored_polygon(PackedVector2Array([o + Vector2(0, 3), o + Vector2(9, 3), o + Vector2(4.5, 8.5)]), c)
+			elif shape == "ready":
+				# gotowość w kryjówce: kwadracik pełny (gotowy) albo sam obrys
+				if i < filled:
+					draw_rect(Rect2(o + Vector2(0, 0), Vector2(9, 9)), c)
+				else:
+					draw_rect(Rect2(o + Vector2(0.5, 0.5), Vector2(8, 8)), Color(1, 1, 1, 0.55), false, 1.0)
 			else:
 				draw_colored_polygon(PackedVector2Array([o + Vector2(4.5, 0), o + Vector2(9, 4.5), o + Vector2(4.5, 9), o + Vector2(0, 4.5)]), c)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+## Karta zakotwiczona w obiekcie świata: panel z „ogonkiem” (strzałką) pod spodem, wskazującym obiekt.
+class TailPanel extends PanelContainer:
+	var tail := false
+	var tail_color := Color.WHITE
+	func _init() -> void:
+		resized.connect(queue_redraw)
+	func _draw() -> void:
+		if tail:
+			var cx := roundf(size.x * 0.5)
+			draw_colored_polygon(PackedVector2Array([Vector2(cx - 6.0, size.y - 3.0), Vector2(cx + 6.0, size.y - 3.0), Vector2(cx, size.y + 6.0)]), tail_color)
+
+## Moneta złomu (8×8, pixel art) — obok licznika portfela.
+class Coin extends Control:
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(8, 8)
+	func _draw() -> void:
+		var gold := Color(0.95, 0.78, 0.32)
+		var dark := Color(0.5, 0.36, 0.1)
+		draw_rect(Rect2(2, 0, 4, 8), dark)
+		draw_rect(Rect2(0, 2, 8, 4), dark)
+		draw_rect(Rect2(2, 1, 4, 6), gold)
+		draw_rect(Rect2(1, 2, 6, 4), gold)
+		draw_rect(Rect2(3, 2, 2, 4), dark)
+		draw_rect(Rect2(3, 2, 1, 1), Color(1, 0.95, 0.7))
 
 var _player: Node = null
 var _blink := 0.0
@@ -157,6 +189,10 @@ var _result_sub: Label
 var _result_box: StyleBoxFlat
 var _item: Dictionary = {}                ## karta statystyk broni leżącej w zasięgu [E] (stojak w kryjówce, łup z mapy)
 var _wall: Dictionary = {}                ## karta ściany wyników w kryjówce
+var _noise_card: PanelContainer      ## karta hałasu (w kryjówce zastępuje ją znacznik SAFE)
+var _safe_chip: PanelContainer
+var _ready_pips: Pips              ## kwadraciki gotowości w pasku misji kryjówki
+var _scrap_coin: Coin
 var _brief: Dictionary = {}               ## karta odprawy przy tablicy w kryjówce
 var _item_id := -2
 var _brief_id := ""
@@ -182,8 +218,8 @@ func _ready() -> void:
 	_build_controls()
 	_build_hint()
 	_build_result()
-	_item = _make_info_card(250.0, 2)
-	_brief = _make_info_card(300.0, 3)
+	_item = _make_info_card(250.0, 2, true)
+	_brief = _make_info_card(300.0, 3, true)
 	_wall = _make_info_card(360.0, 6)
 	var wsp := WorkshopUi.new()
 	add_child(wsp)
@@ -251,12 +287,13 @@ func _row(parent: Container, caption: String) -> HBoxContainer:
 ## Lewy górny róg: sam miernik hałasu — jedyny wskaźnik, na który trzeba patrzeć bez przerwy (filar ciszy).
 func _build_noise_card() -> void:
 	var card := _card(Vector2(MARGIN, MARGIN))
+	_noise_card = card
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)
 	card.add_child(box)
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 5)
-	head.add_child(UiTheme.label("NOISE", 8, UiTheme.MUTED))
+	head.add_child(UiTheme.heading("NOISE", 8, UiTheme.MUTED))
 	_noise_state = UiTheme.label("", 7, UiTheme.MUTED)
 	head.add_child(_noise_state)
 	var spring := Control.new()
@@ -274,6 +311,10 @@ func _build_noise_card() -> void:
 		[NoiseMgr.AWAKE_THRESHOLD / 100.0, Color(1.0, 0.28, 0.22, 0.95)],
 	]
 	box.add_child(_noise_bar)
+	# w kryjówce miernik hałasu nic nie mówi (zawsze 0%) — zastępuje go mały znacznik SAFE
+	_safe_chip = _card(Vector2(MARGIN, MARGIN))
+	_safe_chip.add_child(UiTheme.heading("SAFE", 8, UiTheme.OK))
+	_safe_chip.visible = false
 
 ## Lewy dolny róg: karta drużyny (L4D / DRG). Wiersze powstają dynamicznie — _drive_squad().
 func _build_squad_card() -> void:
@@ -282,7 +323,7 @@ func _build_squad_card() -> void:
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 3)
 	_squad_card.add_child(outer)
-	outer.add_child(UiTheme.label("SQUAD", 6, UiTheme.MUTED))
+	outer.add_child(UiTheme.heading("SQUAD", 8, UiTheme.MUTED))
 	_squad_box = VBoxContainer.new()
 	_squad_box.add_theme_constant_override("separation", 5)
 	outer.add_child(_squad_box)
@@ -526,7 +567,7 @@ func _build_objective_card() -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 	_obj_card.add_child(box)
-	_obj_caption = UiTheme.label("OBJECTIVE", 7, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
+	_obj_caption = UiTheme.heading("OBJECTIVE", 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(_obj_caption)
 	_hr(box)
 	_obj_text = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
@@ -537,9 +578,18 @@ func _build_objective_card() -> void:
 	_obj_hint.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_obj_hint)
+	# kryjówka: kwadraciki gotowości (jeden na człowieka) — widać, na kogo czeka drużyna
+	_ready_pips = Pips.new()
+	_ready_pips.shape = "ready"
+	_ready_pips.on = UiTheme.OK
+	_ready_pips.visible = false
+	var pip_row := HBoxContainer.new()
+	pip_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	pip_row.add_child(_ready_pips)
+	box.add_child(pip_row)
 	_boss_row = VBoxContainer.new()
 	_boss_row.add_theme_constant_override("separation", 2)
-	_boss_name = UiTheme.label("THE VEIN — MOTHER OF NESTS", 7, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
+	_boss_name = UiTheme.heading("THE VEIN — MOTHER OF NESTS", 8, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
 	_boss_row.add_child(_boss_name)
 	_boss_bar = Bar.new()
 	_boss_bar.custom_minimum_size = Vector2(OBJ_W, 5)
@@ -553,11 +603,13 @@ func _build_session() -> void:
 	add_child(_session)
 	_clock = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
 	add_child(_clock)
-	_scrap = UiTheme.label("", 8, Color(0.95, 0.8, 0.4), HORIZONTAL_ALIGNMENT_RIGHT)
+	_scrap = UiTheme.heading("", 8, Color(0.95, 0.8, 0.4), HORIZONTAL_ALIGNMENT_RIGHT)
 	add_child(_scrap)
+	_scrap_coin = Coin.new()
+	add_child(_scrap_coin)
 
 func _build_center() -> void:
-	_warn = UiTheme.label("", 14, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
+	_warn = UiTheme.heading("", 16, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_warn)
 	_warn_sub = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_warn_sub)
@@ -566,7 +618,7 @@ func _build_center() -> void:
 	_note.modulate.a = 0.0
 	add_child(_note)
 	NoiseMgr.overcharge_stale.connect(func() -> void: show_note("They know this trick — move before you lure again"))
-	_center = UiTheme.label("", 20, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
+	_center = UiTheme.heading("", 24, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_center)
 	_center_sub = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_center_sub)
@@ -601,7 +653,7 @@ func _build_hint() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 7)
 	_hint_card.add_child(row)
-	row.add_child(UiTheme.label("TIP", 7, UiTheme.ACCENT))
+	row.add_child(UiTheme.heading("TIP", 8, UiTheme.ACCENT))
 	_hint_label = UiTheme.label("", 9, UiTheme.TEXT)
 	_hint_label.custom_minimum_size = Vector2(330, 0)
 	_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -629,7 +681,7 @@ func _build_result() -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
 	_result.add_child(box)
-	_result_title = UiTheme.label("EXTRACTION COMPLETE", 16, UiTheme.OK, HORIZONTAL_ALIGNMENT_CENTER)
+	_result_title = UiTheme.heading("EXTRACTION COMPLETE", 16, UiTheme.OK, HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(_result_title)
 	_result_sub = UiTheme.label("The squad made it out of the woods.", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(_result_sub)
@@ -648,7 +700,7 @@ func _build_result() -> void:
 		rule.color = Color(1, 1, 1, 0.10)
 		rule.custom_minimum_size = Vector2(0, 1)
 		foot.add_child(rule)
-		foot.add_child(UiTheme.label("THANKS FOR PLAYING THE DEMO", 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+		foot.add_child(UiTheme.heading("THANKS FOR PLAYING THE DEMO", 8, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 		foot.add_child(UiTheme.label("Wishlist DEAD AIR '87 on Steam — more zones, weapons and monsters are coming.", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 		if Settings.STORE_URL != "":
 			foot.add_child(UiTheme.label("[O]  Open the Steam page", 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
@@ -697,6 +749,8 @@ func show_note(text: String, secs := 3.0) -> void:
 	_note_t = secs
 
 func _drive_noise() -> void:
+	_noise_card.visible = not NoiseMgr.safe_zone
+	_safe_chip.visible = NoiseMgr.safe_zone
 	if _note_t > 0.0:
 		_note_t -= get_process_delta_time()
 		_note.modulate.a = clampf(_note_t / 0.6, 0.0, 1.0)
@@ -722,7 +776,11 @@ func _drive_noise() -> void:
 func _drive_status() -> void:
 	_session.text = _net_status()
 	_scrap.visible = Scrap.enabled()
-	_scrap.text = "SCRAP  %d%s" % [Scrap.bank, ("  +%d" % Scrap.loot) if Scrap.loot > 0 else ""]
+	_scrap_coin.visible = _scrap.visible
+	_scrap.text = "%d%s" % [Scrap.bank, ("  +%d" % Scrap.loot) if Scrap.loot > 0 else ""]
+	var sf := _scrap.get_theme_font("font")
+	var tw := sf.get_string_size(_scrap.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 8).x if sf != null else 30.0
+	_scrap_coin.position = Vector2(_scrap.position.x + _scrap.size.x - tw - 12.0, _scrap.position.y + 1.0)
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	if m != null:
 		var secs := int(m.elapsed)
@@ -839,6 +897,15 @@ func _drive_mission() -> void:
 	_obj_text.text = m.objective_text()
 	_obj_hint.text = m.objective_hint()
 	_obj_hint.visible = _obj_hint.text != ""
+	var in_hub: bool = m.kind == "hub"
+	_ready_pips.visible = in_hub
+	if in_hub:
+		var main_n := get_tree().current_scene
+		var total: int = maxi(1, int(main_n.get("hub_total")))
+		_ready_pips.count = total
+		_ready_pips.filled = int(main_n.get("hub_ready_n"))
+		_ready_pips.custom_minimum_size = Vector2(float(total) * 11.0 - 2.0, 9.0)
+		_ready_pips.queue_redraw()
 	_boss_row.visible = boss != null and m.phase == Mission.Phase.BOSS
 	if _boss_row.visible:
 		_boss_bar.value = boss.hp / maxf(1.0, boss.max_hp)
@@ -924,32 +991,60 @@ func _shift_result(m: Node) -> Array:
 	return rows
 
 ## Karta informacyjna: tytuł, podpis, siatka wierszy i opis. `cols` = liczba kolumn siatki (2 = etykieta + wartość).
-func _make_info_card(width: float, cols: int) -> Dictionary:
-	var card := _card(Vector2(MARGIN, MARGIN))
+## `paper`: karta przy obiekcie świata — papier z tekstem tuszem i ogonkiem wskazującym obiekt (zamiast ciemnego panelu HUD).
+func _make_info_card(width: float, cols: int, paper := false) -> Dictionary:
+	var card: PanelContainer
+	if paper:
+		var tp := TailPanel.new()
+		tp.tail = true
+		tp.tail_color = UiTheme.PAPER_EDGE
+		tp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tp.position = Vector2(MARGIN, MARGIN)
+		tp.add_theme_stylebox_override("panel", UiTheme.paper_box())
+		add_child(tp)
+		card = tp
+	else:
+		card = _card(Vector2(MARGIN, MARGIN))
 	card.custom_minimum_size = Vector2(width, 0)
 	card.visible = false
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
 	card.add_child(box)
-	var title := UiTheme.label("", 12, UiTheme.ACCENT)
+	var title := UiTheme.heading("", 16 if paper else 8, UiTheme.INK_ACCENT if paper else UiTheme.ACCENT)
+	if paper:
+		title.add_theme_constant_override("outline_size", 0)
 	box.add_child(title)
-	var tag := UiTheme.label("", 8, UiTheme.MUTED)
+	var tag := UiTheme.label("", 8, UiTheme.INK_MUTED if paper else UiTheme.MUTED)
+	if paper:
+		tag.add_theme_constant_override("outline_size", 0)
 	box.add_child(tag)
-	_hr(box)
+	if paper:
+		var r := ColorRect.new()
+		r.color = Color(UiTheme.INK, 0.35)
+		r.custom_minimum_size = Vector2(0, 1)
+		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(r)
+	else:
+		_hr(box)
 	var grid := GridContainer.new()
 	grid.columns = cols
 	grid.add_theme_constant_override("h_separation", 14)
 	grid.add_theme_constant_override("v_separation", 1)
 	box.add_child(grid)
-	var text := UiTheme.label("", 8, UiTheme.TEXT)
+	var text := UiTheme.label("", 8, UiTheme.INK if paper else UiTheme.TEXT)
+	if paper:
+		text.add_theme_constant_override("outline_size", 0)
 	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	text.custom_minimum_size = Vector2(width - 26.0, 0)
 	box.add_child(text)
-	return {"card": card, "title": title, "tag": tag, "grid": grid, "text": text, "cols": cols}
+	return {"card": card, "title": title, "tag": tag, "grid": grid, "text": text, "cols": cols, "paper": paper}
 
 func _fill_info(c: Dictionary, title: String, tag: String, rows: Array, text: String, accent: Color) -> void:
+	var paper: bool = bool(c.get("paper", false))
 	(c["title"] as Label).text = title
-	(c["title"] as Label).add_theme_color_override("font_color", accent)
+	(c["title"] as Label).add_theme_color_override("font_color", UiTheme.INK_ACCENT if paper else accent)
+	if paper:
+		(c["title"] as Label).add_theme_font_size_override("font_size", 16 if title.length() <= 12 else 8)   # długie tytuły (odprawa) mniejszą czcionką
 	(c["tag"] as Label).text = tag
 	(c["tag"] as Label).visible = tag != ""
 	(c["text"] as Label).text = text
@@ -960,7 +1055,10 @@ func _fill_info(c: Dictionary, title: String, tag: String, rows: Array, text: St
 		ch.free()
 	for r in rows:
 		for i in (r as Array).size():
-			grid.add_child(UiTheme.label(String(r[i]), 9, UiTheme.MUTED if i == 0 else UiTheme.TEXT))
+			var gl := UiTheme.label(String(r[i]), 9, (UiTheme.INK_MUTED if i == 0 else UiTheme.INK) if paper else (UiTheme.MUTED if i == 0 else UiTheme.TEXT))
+			if paper:
+				gl.add_theme_constant_override("outline_size", 0)
+			grid.add_child(gl)
 	(c["card"] as Control).reset_size()
 
 ## Karty: statystyki broni w zasięgu [E] (nad paskiem kontekstowym) i odprawa przy tablicy (u góry, pod kartą celu).
@@ -990,7 +1088,7 @@ func _drive_cards() -> void:
 		var top: Vector2 = get_viewport().get_canvas_transform() * (it.global_position + Vector2(0, -42))
 		var hx := top.x / scale.x
 		var hy := top.y / scale.y
-		ic.position = Vector2(clampf(hx - ic.size.x * 0.5, 6.0, maxf(6.0, size.x - ic.size.x - 6.0)), maxf(6.0, hy - ic.size.y - 6.0))
+		ic.position = Vector2(clampf(hx - ic.size.x * 0.5, 6.0, maxf(6.0, size.x - ic.size.x - 6.0)), maxf(6.0, hy - ic.size.y - 12.0))
 	# --- odprawa przy tablicy
 	var near_board := false
 	var board: Node2D = null
@@ -1010,7 +1108,7 @@ func _drive_cards() -> void:
 			_fill_brief(lvl.briefing(target))
 		# nad tablicą (jak karta broni), więc nie zasłania stojącego przy niej gracza
 		var btop: Vector2 = get_viewport().get_canvas_transform() * (board.global_position + Vector2(0, -46))
-		bc.position = Vector2(clampf(btop.x / scale.x - bc.size.x * 0.5, 6.0, maxf(6.0, size.x - bc.size.x - 6.0)), maxf(6.0, btop.y / scale.y - bc.size.y - 6.0))
+		bc.position = Vector2(clampf(btop.x / scale.x - bc.size.x * 0.5, 6.0, maxf(6.0, size.x - bc.size.x - 6.0)), maxf(6.0, btop.y / scale.y - bc.size.y - 12.0))
 	# --- ściana wyników (też nad obiektem, jak odprawa)
 	var wall: Node2D = null
 	for w in get_tree().get_nodes_in_group("results_wall"):

@@ -15,6 +15,7 @@ const WIPE_DELAY := 3.0
 const Combat := preload("res://scripts/combat.gd")
 const Codex := preload("res://scripts/codex.gd")
 const Hints := preload("res://scripts/hints.gd")
+const Lights := preload("res://scripts/lights.gd")
 const RunLog := preload("res://scripts/run_log.gd")
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
 const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
@@ -94,7 +95,7 @@ func _physics_process(delta: float) -> void:
 	# po udanej ekstrakcji (albo końcu serii Nocnego Dyżuru) host zaczyna nową misję
 	if mission.phase == MISSION_SCRIPT.Phase.SUCCESS or mission.phase == MISSION_SCRIPT.Phase.FAILED:
 		if Input.is_action_just_pressed("restart"):
-			_continue_after_result()
+			_continue_after_result.call_deferred()       # jak wyjście z kryjówki: zmiana mapy poza krokiem fizyki
 		return
 	if mission.kind == "hub":
 		_hub_server_tick(delta)
@@ -144,6 +145,7 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 	level.clear_pickups()
 	mission.on_restart(new_run)
 	Scrap.reset_loot()                   # wipe / nowa misja: łup z poprzedniej próby przepada (po sukcesie już trafił do banku)
+	_departing = false
 	hub_ready.clear()
 	hub_mine = false
 	hub_ready_n = 0
@@ -218,7 +220,9 @@ func _hub_server_tick(delta: float) -> void:
 	elif hub_countdown > 0.0:
 		hub_countdown = maxf(0.0, hub_countdown - delta)
 	if all and hub_countdown <= 0.0:
-		_depart_hub()
+		if not _departing:
+			_departing = true
+			_depart_hub.call_deferred()          # poza krokiem fizyki: przebudowa mapy w ticku fizyki psuje rysowanie świata (ciemne kwadraty zamiast postaci)
 		return
 	if n != hub_ready_n or humans.size() != hub_total or (was < 0.0) != (hub_countdown < 0.0):
 		_hub_sync_t = 0.0
@@ -297,6 +301,9 @@ func _handle_cmdline() -> void:
 	var finaletest := false
 	var shot_path := ""
 	var shot_col := -1
+	var shot_delay := 1.5
+	var shot_depart := false
+	var shot_flicker := false
 	var weapon_mode := ""
 	var shots_dir := ""
 	var args := OS.get_cmdline_user_args()
@@ -350,6 +357,12 @@ func _handle_cmdline() -> void:
 			finaletest = true
 		elif a.begins_with("--shot="):
 			shot_path = a.substr("--shot=".length())
+		elif a == "--shotflicker":
+			shot_flicker = true
+		elif a == "--shotdepart":
+			shot_depart = true
+		elif a.begins_with("--shotdelay="):
+			shot_delay = float(a.substr("--shotdelay=".length()))
 		elif a.begins_with("--shotat="):
 			shot_col = int(a.substr("--shotat=".length()))
 		elif a == "--ridetest":
@@ -390,7 +403,7 @@ func _handle_cmdline() -> void:
 	if finaletest:
 		_finale_test()
 	if shot_path != "":
-		_take_shot(shot_path, shot_col)
+		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker)
 	if ridetest:
 		_ride_test()
 	if ridehost:
@@ -531,8 +544,10 @@ func host_game() -> void:
 
 ## Narzędzie deweloperskie (--shot=ŚCIEŻKA [--shotat=KOLUMNA]): po 2,5 s zapisuje obraz z widoku gry (tylko okno gry, bez pulpitu)
 ## do PNG i kończy. --shotat przenosi człowieka na podłogę w danej kolumnie mapy (np. do obejrzenia strefy kryjówki).
-func _take_shot(path: String, col: int) -> void:
+func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false) -> void:
 	await get_tree().create_timer(1.0).timeout
+	if depart:
+		_hub_set_ready(NoiseMgr.local_id(), true)      # jak [Enter] w kryjówce: gotowość → odliczanie → wyjście z kryjówki w ticku serwera
 	if col >= 0:
 		var p: Node2D = _players.get_node_or_null("1")
 		if p != null:
@@ -543,7 +558,9 @@ func _take_shot(path: String, col: int) -> void:
 					break
 			p.global_position = Vector2(float(col) * 16.0 + 8.0, fy - 2.0)
 			p.velocity = Vector2.ZERO
-	await get_tree().create_timer(1.5).timeout
+	if flicker:
+		Lights.flicker_until_ms = Time.get_ticks_msec() + int(delay * 1000.0) + 3000      # podgląd efektu migotania świateł (dread.gd)
+	await get_tree().create_timer(delay).timeout
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(path)
 	print("[SHOT] %s (%dx%d)" % [path, img.get_width(), img.get_height()])
@@ -1108,6 +1125,7 @@ func _shift_test() -> void:
 var _start_map := ""
 ## Mapa, do której wyjdzie drużyna z kryjówki (kampania: następna misja po tej, którą właśnie ukończono).
 var after_hub := ""
+var _departing := false              ## wyjście z kryjówki zaplanowane (odroczone), żeby nie wołać go co tick
 
 ## Wspólny koniec startu hosta (ENet i Steam): UI, ambient, nowa misja, gracz hosta.
 func _begin_hosting(where: String) -> void:
