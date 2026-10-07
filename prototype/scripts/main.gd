@@ -295,6 +295,8 @@ func _handle_cmdline() -> void:
 	var tagtest := false
 	var sneaktest := false
 	var finaletest := false
+	var shot_path := ""
+	var shot_col := -1
 	var weapon_mode := ""
 	var shots_dir := ""
 	var args := OS.get_cmdline_user_args()
@@ -346,6 +348,10 @@ func _handle_cmdline() -> void:
 			sneaktest = true
 		elif a == "--finaletest":
 			finaletest = true
+		elif a.begins_with("--shot="):
+			shot_path = a.substr("--shot=".length())
+		elif a.begins_with("--shotat="):
+			shot_col = int(a.substr("--shotat=".length()))
 		elif a == "--ridetest":
 			ridetest = true
 		elif a == "--ridehost":
@@ -383,6 +389,8 @@ func _handle_cmdline() -> void:
 		_sneak_test()
 	if finaletest:
 		_finale_test()
+	if shot_path != "":
+		_take_shot(shot_path, shot_col)
 	if ridetest:
 		_ride_test()
 	if ridehost:
@@ -520,6 +528,26 @@ func host_game() -> void:
 		return
 	multiplayer.multiplayer_peer = peer
 	_begin_hosting("port %d" % port)
+
+## Narzędzie deweloperskie (--shot=ŚCIEŻKA [--shotat=KOLUMNA]): po 2,5 s zapisuje obraz z widoku gry (tylko okno gry, bez pulpitu)
+## do PNG i kończy. --shotat przenosi człowieka na podłogę w danej kolumnie mapy (np. do obejrzenia strefy kryjówki).
+func _take_shot(path: String, col: int) -> void:
+	await get_tree().create_timer(1.0).timeout
+	if col >= 0:
+		var p: Node2D = _players.get_node_or_null("1")
+		if p != null:
+			var fy := 0.0
+			for r in range(0, level._map.size()):
+				if level._is_solid(col, r) and not level._is_solid(col, r - 1):
+					fy = float(r * 16)
+					break
+			p.global_position = Vector2(float(col) * 16.0 + 8.0, fy - 2.0)
+			p.velocity = Vector2.ZERO
+	await get_tree().create_timer(1.5).timeout
+	var img := get_viewport().get_texture().get_image()
+	img.save_png(path)
+	print("[SHOT] %s (%dx%d)" % [path, img.get_width(), img.get_height()])
+	get_tree().quit()
 
 ## Test misji 1.1 (--host --mission=z1_m1 --tagtest): trzy nieśmiertelniki, ekstrakcja, wipe (nieśmiertelniki wracają),
 ## sukces i złom. Wrogowie są zamrożeni, żeby test był powtarzalny.
