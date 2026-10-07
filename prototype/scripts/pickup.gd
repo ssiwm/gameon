@@ -17,6 +17,7 @@ extends Node2D
 const Sprites := preload("res://scripts/sprites.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const Throwables := preload("res://scripts/throwables.gd")
 
 const HEAL := 1
 const PICK_R := 12.0
@@ -33,6 +34,7 @@ const GLOW := {
 	"tag": Color(0.6, 0.85, 1.0),
 	"stash": Color(0.95, 0.75, 0.35),
 	"flares": Color(1.0, 0.45, 0.22),
+	"supply": Color(0.7, 0.85, 0.6),
 }
 
 var kind := "health"
@@ -154,6 +156,15 @@ func _draw() -> void:
 			draw_rect(Rect2(fx, -11 + bob, 2, 7), Color(0.75, 0.16, 0.12))
 			draw_rect(Rect2(fx, -9 + bob, 2, 1), Color(0.95, 0.85, 0.55))
 			draw_rect(Rect2(fx, -12 + bob, 2, 1), Color(1.0, 0.6, 0.3))
+	elif kind == "supply":
+		# skrzynka zaopatrzenia: oliwkowa skrzynka z kolorowym znacznikiem rodzaju przedmiotu
+		var sk := String(Throwables.ORDER[clampi(arg, 0, Throwables.ORDER.size() - 1)])
+		var sc: Color = Throwables.KINDS[sk]["color"]
+		draw_rect(Rect2(-7, -8 + bob, 14, 8), Color(0.12, 0.15, 0.1))
+		draw_rect(Rect2(-6, -7 + bob, 12, 6), Color(0.28, 0.34, 0.22))
+		draw_rect(Rect2(-6, -7 + bob, 12, 1), Color(0.4, 0.46, 0.32))
+		draw_rect(Rect2(-2, -6 + bob, 4, 4), sc)
+		draw_rect(Rect2(-1, -5 + bob, 2, 2), Color(1, 1, 1, 0.7))
 	elif kind == "stash":
 		# zakopany worek: brązowy, ściągnięty rzemieniem, ze złotym połyskiem (widać go tylko z bliska)
 		var gl2 := 0.5 + 0.5 * sin(_t * 2.6)
@@ -283,6 +294,8 @@ func _try_pickup() -> void:
 			_try_stash()
 		"flares":
 			_try_flares()
+		"supply":
+			_try_supply()
 
 ## Złom zbiera każdy żywy gracz (też bot) — wspólny łup drużyny.
 func _try_scrap() -> void:
@@ -303,6 +316,21 @@ func _try_flares() -> void:
 		if pl.dead or pl.is_bot or not _near(pl):
 			continue
 		NoiseMgr.add_flare(maxi(1, rounds))
+		var lvl := _level()
+		if lvl != null:
+			lvl.take_item(String(name))
+		return
+
+## Skrzynka zaopatrzenia (arg = indeks w Throwables.ORDER): bierze ją człowiek, gdy zapas tego rodzaju nie jest pełny.
+func _try_supply() -> void:
+	var kind_s := String(Throwables.ORDER[clampi(arg, 0, Throwables.ORDER.size() - 1)])
+	if Arsenal.get_throwable(kind_s) >= int(Throwables.KINDS[kind_s]["max"]):
+		return
+	for pl in get_tree().get_nodes_in_group("players"):
+		if pl.dead or pl.is_bot or not _near(pl):
+			continue
+		Arsenal.add_throwable(kind_s, 1)
+		Audio.play("ammo_pickup", Audio.BUS_UI, -8.0)
 		var lvl := _level()
 		if lvl != null:
 			lvl.take_item(String(name))

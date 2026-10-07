@@ -32,7 +32,7 @@ func _ready() -> void:
 	multiplayer.peer_connected.connect(_on_peer_connected)
 
 func _reset_local() -> void:
-	stock = Throwables.start_stock()
+	stock = Throwables.issue_stock()
 	stock_changed.emit()
 	reserve.clear()
 	for d in Weapons.defs():
@@ -44,8 +44,36 @@ func _reset_local() -> void:
 func reset_throwables() -> void:
 	if NoiseMgr.has_network() and not NoiseMgr.is_server():
 		return
-	stock = Throwables.start_stock()
+	stock = Throwables.issue_stock()
+	_snapshot = stock.duplicate()
 	_push_stock()
+
+var _snapshot: Dictionary = {}           ## stan zapasu z początku misji — wipe i ponowna próba do niego wracają
+
+## Początek misji (serwer): nowa misja (`new_run`) zachowuje zapas z poprzedniej, dopełnia go do zestawu `issue` i zapamiętuje;
+## ponowna próba po wipe wraca do zapamiętanego stanu. Nocny Dyżur zawsze dostaje sam zestaw `issue` (bez złomu nie ma zakupów).
+func begin_mission(new_run: bool) -> void:
+	if NoiseMgr.has_network() and not NoiseMgr.is_server():
+		return
+	if NightShift.active:
+		stock = Throwables.issue_stock()
+	elif new_run or _snapshot.is_empty():
+		for k in Throwables.ORDER:
+			stock[k] = maxi(get_throwable(String(k)), int(Throwables.KINDS[k]["issue"]))
+	else:
+		stock = _snapshot.duplicate()
+	_snapshot = stock.duplicate()
+	_push_stock()
+
+## Zapas wczytany z zapisu hosta (scrap.gd) — tylko znane rodzaje, w granicach maksimum.
+func load_gear(saved: Dictionary) -> void:
+	if saved.is_empty():
+		return
+	for k in Throwables.ORDER:
+		if saved.has(k):
+			stock[k] = clampi(int(saved[k]), 0, int(Throwables.KINDS[k]["max"]))
+	_snapshot = stock.duplicate()
+	stock_changed.emit()
 
 ## Serwer: początek misji / nowa próba. Klienci dostają nowy stan przez sync.
 func reset_mission() -> void:
@@ -305,6 +333,11 @@ func request_use(kind: String, target_id: int) -> void:
 func _use_request(kind: String, target_id: int) -> void:
 	if NoiseMgr.is_server():
 		_use_server(kind, target_id, multiplayer.get_remote_sender_id())
+
+## Bot (działa na serwerze) używa narzędzia w imieniu swojej postaci.
+func use_as(kind: String, target_id: int, user_id: int) -> void:
+	if NoiseMgr.is_server():
+		_use_server(kind, target_id, user_id)
 
 func _use_server(kind: String, target_id: int, user_id: int) -> void:
 	if not Throwables.is_valid(kind) or Throwables.mode_of(kind) != "use" or get_throwable(kind) <= 0:

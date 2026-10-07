@@ -320,9 +320,18 @@ func _t_phase1() -> void:
 	await frames(2)
 
 ## Faza A1 ekwipunku: granaty (odłamkowy, fosforowy) — zapas drużyny, rzut, zapalnik, wybuch, pole ognia, ściany.
+func give_gear(frag := 2, phos := 1, smoke := 1, mine := 1, charge := 1, medkit := 1, defib := 1, scanner := 2) -> void:
+	var vals := {"frag": frag, "phos": phos, "smoke": smoke, "mine": mine, "charge": charge, "medkit": medkit, "defib": defib, "scanner": scanner}
+	for k in vals:
+		Arsenal.stock[k] = vals[k]
+	Arsenal._push_stock()
+
 func _t_throwables() -> void:
 	Arsenal.reset_throwables()
-	check("granaty: zapas startowy (frag %d, phos %d), maks. %d / %d" % [Arsenal.get_throwable("frag"), Arsenal.get_throwable("phos"), Throwables.KINDS["frag"]["max"], Throwables.KINDS["phos"]["max"]],
+	check("zestaw wydawany za darmo: frag %d, apteczka %d, defibrylator %d, reszta 0" % [Arsenal.get_throwable("frag"), Arsenal.get_throwable("medkit"), Arsenal.get_throwable("defib")],
+		Arsenal.get_throwable("frag") == 1 and Arsenal.get_throwable("medkit") == 1 and Arsenal.get_throwable("defib") == 1 and Arsenal.get_throwable("phos") == 0 and Arsenal.get_throwable("scanner") == 0)
+	give_gear()
+	check("granaty: zapas (frag %d, phos %d), maks. %d / %d" % [Arsenal.get_throwable("frag"), Arsenal.get_throwable("phos"), Throwables.KINDS["frag"]["max"], Throwables.KINDS["phos"]["max"]],
 		Arsenal.get_throwable("frag") == 2 and Arsenal.get_throwable("phos") == 1)
 	# --- odłamkowy
 	var tgt := await dummy(70.0)
@@ -365,7 +374,7 @@ func _t_throwables() -> void:
 	var added: int = Arsenal.add_throwable("frag", 10)
 	check("zapas ma sufit (dodano %d, jest %d / %d)" % [added, Arsenal.get_throwable("frag"), Throwables.KINDS["frag"]["max"]], Arsenal.get_throwable("frag") == Throwables.KINDS["frag"]["max"])
 	Arsenal.throw_sel = 0
-	Arsenal.reset_throwables()
+	give_gear()
 	Arsenal.cycle_throwable()
 	var sel2: String = Arsenal.selected_throwable()
 	Arsenal.stock["smoke"] = 0
@@ -374,9 +383,11 @@ func _t_throwables() -> void:
 	Arsenal.throw_sel = 0
 	check("X przełącza rodzaj (%s → %s → %s, puste pomijane)" % ["frag", sel2, sel3], sel2 == "phos" and sel3 == "mine")
 	Arsenal.reset_throwables()
-	check("reset misji przywraca zapas startowy", Arsenal.get_throwable("frag") == 2 and Arsenal.get_throwable("phos") == 1 and Arsenal.get_throwable("smoke") == 1 and Arsenal.get_throwable("mine") == 1)
+	check("reset przywraca zestaw wydawany (frag %d, phos %d)" % [Arsenal.get_throwable("frag"), Arsenal.get_throwable("phos")], Arsenal.get_throwable("frag") == 1 and Arsenal.get_throwable("phos") == 0 and Arsenal.get_throwable("medkit") == 1)
 	_t_item_key()
+	give_gear()
 	await _t_gear()
+	await _t_economy()
 
 ## Klawisz użycia przedmiotu: lewy Alt tak, prawy Alt nie (input_setup.gd).
 func _t_item_key() -> void:
@@ -450,14 +461,14 @@ func _t_gear() -> void:
 	free_dummies()
 	await frames(2)
 	# --- apteczka, defibrylator (na graczu i bocie)
-	Arsenal.reset_throwables()
+	give_gear()
 	player.hp = 3
 	Arsenal.request_use("medkit", int(player.player_id))
 	var full_hp_ok: bool = player.hp == 3 and Arsenal.get_throwable("medkit") == 1
 	player.hp = 1
 	Arsenal.request_use("medkit", int(player.player_id))
 	check("apteczka: pełne HP nie zużywa sztuki; ranny dostaje +1 serce (HP %d, zostało %d)" % [player.hp, Arsenal.get_throwable("medkit")], full_hp_ok and player.hp == 2 and Arsenal.get_throwable("medkit") == 0)
-	Arsenal.reset_throwables()
+	give_gear()
 	player.hp = 1
 	Arsenal.throw_sel = Throwables.ORDER.find("medkit")
 	Input.action_press("throw")
@@ -469,7 +480,7 @@ func _t_gear() -> void:
 	await frames(3)
 	check("apteczka: trzymanie T leczy się po 5 s (postęp w połowie %.2f, HP %d, zostało %d)" % [mid_prog, player.hp, Arsenal.get_throwable("medkit")], mid_prog > 0.25 and mid_prog < 0.6 and mid_busy and player.hp == 2 and Arsenal.get_throwable("medkit") == 0)
 	player.hp = 3
-	Arsenal.reset_throwables()
+	give_gear()
 	main._spawn_bot()
 	await wait(1.0)
 	var bot: Node2D = null
@@ -488,13 +499,13 @@ func _t_gear() -> void:
 		await frames(3)
 		check("defibrylator: podnosi leżącego z 7 m (martwy %s, HP %d), zużywa sztukę (%d)" % [str(bot.dead), bot.hp, Arsenal.get_throwable("defib")], not bot.dead and bot.hp > 0 and Arsenal.get_throwable("defib") == 0)
 		bot.hp = 1
-		Arsenal.reset_throwables()
+		give_gear()
 		bot.global_position = player.global_position + Vector2(20.0, 0.0)
 		Arsenal.request_use("medkit", int(bot.player_id))
 		check("apteczka: leczy też kolegę obok (bot HP %d)" % bot.hp, bot.hp == 2)
 		bot.queue_free()
 	# --- skaner
-	Arsenal.reset_throwables()
+	give_gear()
 	Arsenal.throw_sel = Throwables.ORDER.find("scanner")
 	var scan_n0 := Arsenal.get_throwable("scanner")
 	NoiseMgr.level = 0.0
@@ -506,6 +517,87 @@ func _t_gear() -> void:
 	Arsenal.throw_sel = 0
 	Arsenal.reset_throwables()
 
+## Faza A3: ekonomia zaopatrzenia — zakup, sufit, zapas między misjami, wipe, zapis, skrzynki i bot.
+func _t_economy() -> void:
+	# tabela cen
+	var bad: Array = []
+	for k in Throwables.ORDER:
+		var d: Dictionary = Throwables.KINDS[k]
+		var pr: int = Throwables.price_of(k)
+		if int(d["issue"]) > int(d["max"]):
+			bad.append("%s: issue > max" % k)
+		if pr != 0 and (pr < 50 or pr > 300):
+			bad.append("%s: cena %d poza 50–300" % [k, pr])
+		if pr == 0 and int(d["issue"]) == 0:
+			bad.append("%s: nie da się go zdobyć (cena 0 i brak zestawu)" % k)
+	check("ekonomia: ceny 50–300, każdy przedmiot da się zdobyć (kupić albo dostać)", bad.is_empty(), "; ".join(bad))
+	check("ekonomia: ładunek droższy od miny, mina od granatu odłamkowego (%d > %d > %d)" % [Throwables.price_of("charge"), Throwables.price_of("mine"), Throwables.price_of("frag")],
+		Throwables.price_of("charge") > Throwables.price_of("mine") and Throwables.price_of("mine") > Throwables.price_of("frag"))
+	# zakup
+	var saved_bank := Scrap.bank
+	var res: Array = []
+	var cb := func(kind: String, ok: bool, reason: String) -> void: res.append([kind, reason])
+	Scrap.supply_result.connect(cb)
+	Arsenal.reset_throwables()
+	Scrap.bank = 50
+	Scrap.request_buy_supply("mine")                       # za mało
+	Scrap.bank = 500
+	Scrap.request_buy_supply("mine")                       # ok
+	Scrap.request_buy_supply("defib")                      # nie na sprzedaż
+	for i in 4:
+		Scrap.request_buy_supply("frag")                   # 1 w zestawie + 3 kupione = sufit 4, czwarty „full”
+	Scrap.supply_result.disconnect(cb)
+	var reasons := res.map(func(r: Array) -> String: return String(r[1]))
+	var spent := 500 - Scrap.bank
+	check("zakup zaopatrzenia: %s, portfel −%d, zapas mina %d frag %d" % [str(reasons), spent, Arsenal.get_throwable("mine"), Arsenal.get_throwable("frag")],
+		reasons == ["poor", "ok", "invalid", "ok", "ok", "ok", "full"] and spent == Throwables.price_of("mine") + 3 * Throwables.price_of("frag") and Arsenal.get_throwable("mine") == 1 and Arsenal.get_throwable("frag") == 4)
+	Scrap.bank = saved_bank
+	# zapas przechodzi do następnej misji, wipe wraca do stanu z początku misji
+	give_gear(3, 0, 2, 1, 0, 0, 0, 0)
+	Arsenal.begin_mission(true)
+	var carried: bool = Arsenal.get_throwable("frag") == 3 and Arsenal.get_throwable("smoke") == 2 and Arsenal.get_throwable("medkit") == 1 and Arsenal.get_throwable("defib") == 1
+	Arsenal.stock["frag"] = 0
+	Arsenal.stock["smoke"] = 0
+	Arsenal.begin_mission(false)
+	check("zapas: nowa misja zachowuje (3 frag, 2 dym) i dopełnia zestaw (apteczka, defib); wipe wraca do stanu sprzed misji (frag %d, dym %d)" % [Arsenal.get_throwable("frag"), Arsenal.get_throwable("smoke")],
+		carried and Arsenal.get_throwable("frag") == 3 and Arsenal.get_throwable("smoke") == 2)
+	Arsenal.load_gear({"frag": 99, "mine": 2, "bogus": 5})
+	check("wczytanie zapisu: tylko znane rodzaje i w granicach maksimum (frag %d ≤ %d, mina %d)" % [Arsenal.get_throwable("frag"), Throwables.KINDS["frag"]["max"], Arsenal.get_throwable("mine")],
+		Arsenal.get_throwable("frag") == int(Throwables.KINDS["frag"]["max"]) and Arsenal.get_throwable("mine") == 2 and not Arsenal.stock.has("bogus"))
+	# skrzynka zaopatrzenia z wroga: podnoszona, gdy zapas nie jest pełny
+	give_gear(0, 0, 0, 0, 0, 0, 0, 0)
+	level.spawn_item("supply", Throwables.ORDER.find("scanner"), player.global_position + Vector2(0, -4))
+	await wait(1.4)
+	check("skrzynka zaopatrzenia: podniesiona, +1 skaner (zapas %d)" % Arsenal.get_throwable("scanner"), Arsenal.get_throwable("scanner") == 1)
+	Arsenal.stock["scanner"] = int(Throwables.KINDS["scanner"]["max"])
+	level.spawn_item("supply", Throwables.ORDER.find("scanner"), player.global_position + Vector2(0, -4))
+	await wait(1.4)
+	var left := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "supply").size()
+	check("skrzynka zaopatrzenia: przy pełnym zapasie zostaje na ziemi (%d)" % left, left == 1 and Arsenal.get_throwable("scanner") == int(Throwables.KINDS["scanner"]["max"]))
+	for n in get_tree().get_nodes_in_group("pickups"):
+		if n.kind == "supply":
+			n.queue_free()
+	# bot używa zapasu: defibrylator na leżącym człowieku, apteczka na rannym
+	give_gear(0, 0, 0, 0, 0, 2, 1, 0)
+	main._spawn_bot()
+	await wait(1.0)
+	var bot2: Node2D = null
+	for c in main._players.get_children():
+		if c.is_bot and not c.is_queued_for_deletion():
+			bot2 = c
+	if bot2 == null:
+		check("bot z zapasem: bot do testu", false)
+	else:
+		bot2.set_physics_process(false)
+		player.hp = 1
+		bot2.global_position = player.global_position + Vector2(24.0, 0.0)
+		var busy := false
+		for i in 330:
+			busy = bot2._bot_gear(1.0 / 60.0, null) or busy
+			await get_tree().physics_frame
+		check("bot leczy rannego człowieka apteczką po ~5 s (HP %d, zostało %d, był zajęty %s)" % [player.hp, Arsenal.get_throwable("medkit"), str(busy)], player.hp == 2 and Arsenal.get_throwable("medkit") == 1 and busy)
+		player.hp = 3
+		bot2.queue_free()
 ## Dodatki po fazie 3: linka SINEW-6, zamurowane przejście i kilof, ogień jako mur dla tchórzliwych wrogów.
 func _t_phase4() -> void:
 	# --- linka SINEW-6 (poziom 3): trafiony wróg leci ku strzelcowi, bez ulepszenia odlatuje

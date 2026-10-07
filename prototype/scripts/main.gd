@@ -130,7 +130,7 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 	if map_id != "" and map_id != level.map_id:
 		_set_map(map_id)
 	NoiseMgr.reset_mission()
-	Arsenal.reset_throwables()           # granaty: zapas startowy co misję i próbę (też z kryjówki — jak flary)
+	Arsenal.begin_mission(new_run)       # ekwipunek zużywalny: zapas przechodzi między misjami, wipe wraca do stanu z początku misji
 	if not carry:
 		Arsenal.reset_mission()          # ekwipunek i amunicja wracają na start; z carry (kryjówka) zostają
 	Director.reset()
@@ -574,6 +574,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		pm._show_tab(1)
 		var bp: Node = pm._pages[1]
 		bp.select(bp._entries.size() - 1)
+	if "--shotgear" in OS.get_cmdline_user_args():
+		var gpm: Node = $UI.get_node("PauseMenu")           # --shotgear: karta GEAR kodeksu (mina)
+		gpm.open()
+		gpm._show_tab(3)
+		(gpm._pages[3]).select(3)
 	if boss:
 		mission._start_boss()               # podgląd walki z bossem: budzi bossa i rzuca flarę nad jego cień
 		await get_tree().create_timer(0.6).timeout
@@ -620,6 +625,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var wui := get_tree().get_first_node_in_group("workshop_ui")
 		if wui != null:
 			wui.open()
+			if "--shotsup" in OS.get_cmdline_user_args():
+				wui._set_page(1)                     # --shotsup: zakładka SUPPLIES panelu warsztatu
 	if demo:
 		RunLog.add("z1_m1", "1.1  MISSING PATROL", 214.0, 0, 1, -1, 86)         # przykładowe wpisy do podglądu ściany wyników
 		RunLog.add("z1_m2", "1.2  RADIO SILENCE", 402.0, 2, 1, 1, 148)

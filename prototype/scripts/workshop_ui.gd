@@ -9,6 +9,8 @@ const UiTheme := preload("res://scripts/ui_theme.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Codex := preload("res://scripts/codex.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
+const Throwables := preload("res://scripts/throwables.gd")
+const ItemIcon := preload("res://scripts/item_icon.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 
 const GOLD := Color(0.95, 0.8, 0.4)
@@ -62,7 +64,47 @@ class Tile extends Button:
 		toggle_mode = false
 		custom_minimum_size = Vector2(150.0, 46.0)
 
+## Kropki zapasu drużyny: `have` wypełnionych z `maxn` (jak kwadraciki poziomu ulepszeń broni).
+class StockBar extends Control:
+	var have := 0
+	var maxn := 3
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(36, 7)
+	func _draw() -> void:
+		for i in maxn:
+			var r := Rect2(float(i) * 9.0, 0, 7, 7)
+			if i < have:
+				draw_rect(r, Color(0.45, 1.0, 0.55) if have >= maxn else Color(1.0, 0.72, 0.28))
+			else:
+				draw_rect(r, Color(0.5, 0.66, 0.7, 0.8), false, 1.0)
+
+## Kafel zaopatrzenia w siatce: miniatura przedmiotu + nazwa + cena (moneta) + zapas drużyny.
+class SupplyTile extends Button:
+	var kind := ""
+	var icon_node: Control
+	var name_label: Label
+	var coin: Coin
+	var price_label: Label
+	var bar: StockBar
+	func _init() -> void:
+		focus_mode = Control.FOCUS_NONE
+		toggle_mode = false
+		custom_minimum_size = Vector2(150.0, 46.0)
+
 var _open := false
+var _page := 0                        ## 0 = ARMS (bronie i ulepszenia), 1 = SUPPLIES (granaty, miny, narzędzia)
+var _sup_sel := 0
+var _arms_body: HBoxContainer
+var _sup_body: HBoxContainer
+var _sup_tiles: Array = []            ## kafle zaopatrzenia (SupplyTile) — kolejność = _supply_kinds()
+var _s_icon: ItemIcon
+var _s_title: Label
+var _s_tag: Label
+var _s_stats: GridContainer
+var _s_text: Label
+var _s_action: Button
+var _page_btns: Array[Button] = []
 var _sel := 0
 var _prev_mouse := Input.MOUSE_MODE_VISIBLE
 var _card: PanelContainer
@@ -94,6 +136,18 @@ func _ready() -> void:
 	var title := UiTheme.heading("WORKSHOP", 16, UiTheme.ACCENT)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(title)
+	for pi in 2:
+		var pb := Button.new()                                 # zakładki ARMS / SUPPLIES (Tab przełącza)
+		pb.text = "ARMS" if pi == 0 else "SUPPLIES"
+		pb.toggle_mode = true
+		pb.focus_mode = Control.FOCUS_NONE
+		pb.add_theme_font_size_override("font_size", 9)
+		pb.pressed.connect(_set_page.bind(pi))
+		head.add_child(pb)
+		_page_btns.append(pb)
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(10, 0)
+	head.add_child(gap)
 	var coin := Coin.new()
 	coin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(coin)
@@ -106,6 +160,10 @@ func _ready() -> void:
 	var body := HBoxContainer.new()
 	body.add_theme_constant_override("separation", 12)
 	root.add_child(body)
+	_arms_body = body
+	_sup_body = _build_supplies()
+	root.add_child(_sup_body)
+	_sup_body.visible = false
 	var grid := GridContainer.new()
 	grid.columns = COLS
 	grid.add_theme_constant_override("h_separation", 6)
@@ -119,10 +177,114 @@ func _ready() -> void:
 	root.add_child(_rule())
 	_msg = UiTheme.label("", 9, UiTheme.BP_TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	root.add_child(_msg)
-	var hint := UiTheme.label("ARROWS select   ·   ENTER buy / upgrade   ·   ESC close   ·   or click", 8, UiTheme.BP_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	var hint := UiTheme.label("ARROWS select   ·   ENTER buy / upgrade   ·   TAB arms / supplies   ·   ESC close   ·   or click", 8, UiTheme.BP_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	root.add_child(hint)
 	Scrap.changed.connect(_refresh)
 	Scrap.purchase_result.connect(_on_result)
+	Scrap.supply_result.connect(_on_supply_result)
+	Arsenal.stock_changed.connect(_refresh)
+
+## Zakładka SUPPLIES: ten sam układ co ARMS — siatka kafli po lewej (miniatura, nazwa, cena, zapas), szczegóły po prawej.
+func _build_supplies() -> HBoxContainer:
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 12)
+	body.custom_minimum_size = Vector2(0, 6.0 * (TILE_H + 6.0))            # tyle co ARMS — karta nie skacze przy przełączaniu
+	var grid := GridContainer.new()
+	grid.columns = COLS
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	grid.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	body.add_child(grid)
+	var kinds := _supply_kinds()
+	for i in kinds.size():
+		var t := _make_supply_tile(String(kinds[i]), i)
+		grid.add_child(t)
+		_sup_tiles.append(t)
+	body.add_child(_build_supply_detail())
+	return body
+
+func _make_supply_tile(kd: String, idx: int) -> SupplyTile:
+	var data: Dictionary = Throwables.KINDS[kd]
+	var t := SupplyTile.new()
+	t.kind = kd
+	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
+		t.add_theme_stylebox_override(st, UiTheme.tile_box("hover" if st == "hover" else "normal"))
+	var ic := ItemIcon.new()
+	ic.k = 1.0
+	ic.position = Vector2(4, 5)
+	ic.size = Vector2(54, 36)
+	ic.set_item(kd, Color.WHITE)
+	t.add_child(ic)
+	t.icon_node = ic
+	t.name_label = UiTheme.label(String(data["name"]), 10, UiTheme.BP_TEXT)
+	t.name_label.position = Vector2(64, 6)
+	t.add_child(t.name_label)
+	t.coin = Coin.new()
+	t.coin.position = Vector2(64, 26)
+	t.add_child(t.coin)
+	t.price_label = UiTheme.label("%d" % Throwables.price_of(kd), 10, GOLD)
+	t.price_label.position = Vector2(76, 23)
+	t.add_child(t.price_label)
+	t.bar = StockBar.new()
+	t.bar.maxn = int(data["max"])
+	t.bar.position = Vector2(150.0 - 6.0 - float(t.bar.maxn) * 9.0 + 2.0, 27)
+	t.add_child(t.bar)
+	t.pressed.connect(_select_supply.bind(idx))
+	return t
+
+func _build_supply_detail() -> Control:
+	var v := VBoxContainer.new()
+	v.custom_minimum_size = Vector2(DETAIL_W, 0)
+	v.add_theme_constant_override("separation", 4)
+	_s_icon = ItemIcon.new()
+	_s_icon.k = 2.0
+	_s_icon.custom_minimum_size = Vector2(0, 58)
+	v.add_child(_s_icon)
+	_s_title = UiTheme.heading("", 16, UiTheme.ACCENT)
+	v.add_child(_s_title)
+	_s_tag = UiTheme.label("", 8, UiTheme.BP_MUTED)
+	v.add_child(_s_tag)
+	_s_stats = GridContainer.new()
+	_s_stats.columns = 3
+	_s_stats.add_theme_constant_override("h_separation", 10)
+	_s_stats.add_theme_constant_override("v_separation", 1)
+	v.add_child(_s_stats)
+	v.add_child(_rule())
+	_s_text = UiTheme.label("", 8, UiTheme.BP_TEXT)
+	_s_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_s_text.custom_minimum_size = Vector2(DETAIL_W, 0)
+	v.add_child(_s_text)
+	_s_action = Button.new()
+	_s_action.focus_mode = Control.FOCUS_NONE
+	_s_action.add_theme_font_size_override("font_size", 10)
+	_s_action.pressed.connect(_buy_selected_supply)
+	v.add_child(_s_action)
+	return v
+
+func _select_supply(i: int) -> void:
+	if i != _sup_sel:
+		Audio.play("ui_click", Audio.BUS_UI, -14.0)
+	_sup_sel = i
+	_refresh()
+
+func _buy_selected_supply() -> void:
+	Scrap.request_buy_supply(String(_supply_kinds()[_sup_sel]))
+
+## Rodzaje do kupienia (z ceną) w kolejności karuzeli.
+func _supply_kinds() -> Array:
+	var out: Array = []
+	for k in Throwables.ORDER:
+		if Throwables.price_of(String(k)) > 0:
+			out.append(k)
+	return out
+
+func _set_page(p: int) -> void:
+	if p == _page:
+		_page_btns[p].set_pressed_no_signal(true)
+		return
+	_page = p
+	Audio.play("ui_click", Audio.BUS_UI, -12.0, 1.1)
+	_refresh()
 
 func _make_tile(w: int, idx: int) -> Tile:
 	var t := Tile.new()
@@ -201,6 +363,7 @@ func open() -> void:
 	visible = true
 	_msg.text = ""
 	_sel = 0
+	_page = 0
 	Settings.block_game_input(true)
 	_prev_mouse = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE            # w grze celownik zastępuje kursor; panel potrzebuje myszy
@@ -243,6 +406,31 @@ func _input(event: InputEvent) -> void:
 	if not _open or not (event is InputEventKey) or not event.pressed or event.echo:
 		return
 	var k := (event as InputEventKey).keycode
+	if k == KEY_TAB:
+		_set_page(1 - _page)
+		get_viewport().set_input_as_handled()
+		return
+	if _page == 1:
+		var n := _supply_kinds().size()
+		var step := 0
+		if k == KEY_LEFT or k == KEY_A:
+			step = -1
+		elif k == KEY_RIGHT or k == KEY_D:
+			step = 1
+		elif k == KEY_UP or k == KEY_W:
+			step = -COLS
+		elif k == KEY_DOWN or k == KEY_S:
+			step = COLS
+		if step != 0 and _sup_sel + step >= 0 and _sup_sel + step < n:
+			_sup_sel += step
+			Audio.play("ui_click", Audio.BUS_UI, -14.0)
+			_refresh()
+		elif k == KEY_ENTER or k == KEY_KP_ENTER or k == KEY_SPACE:
+			_buy_selected_supply()
+		elif k == KEY_ESCAPE or k == KEY_E or k == KEY_BACKSPACE:
+			close()
+		get_viewport().set_input_as_handled()
+		return
 	if k == KEY_LEFT or k == KEY_A:
 		_move(-1)
 	elif k == KEY_RIGHT or k == KEY_D:
@@ -319,9 +507,82 @@ func _refresh() -> void:
 	if not _open:
 		return
 	_wallet.text = "%d" % Scrap.bank
+	for pi in _page_btns.size():
+		_page_btns[pi].set_pressed_no_signal(pi == _page)
+	_arms_body.visible = _page == 0
+	_sup_body.visible = _page == 1
+	if _page == 1:
+		_refresh_supplies()
+		_card.reset_size()
+		return
 	for i in _tiles.size():
 		_refresh_tile(_tiles[i] as Tile, i == _sel)
 	_refresh_detail(int(LIST[_sel]))
+
+func _refresh_supplies() -> void:
+	var kinds := _supply_kinds()
+	for i in _sup_tiles.size():
+		var t := _sup_tiles[i] as SupplyTile
+		var sel := i == _sup_sel
+		var sbox := UiTheme.tile_box("selected") if sel else UiTheme.tile_box("normal")
+		t.add_theme_stylebox_override("normal", sbox)
+		t.add_theme_stylebox_override("pressed", sbox)
+		t.add_theme_stylebox_override("focus", sbox)
+		var k := String(kinds[i])
+		var have := Arsenal.get_throwable(k)
+		var price := Throwables.price_of(k)
+		(t.icon_node as ItemIcon).set_item(k, Color.WHITE if have > 0 or Scrap.bank >= price else Color(0.6, 0.64, 0.68))
+		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.BP_TEXT)
+		t.price_label.add_theme_color_override("font_color", GOLD if Scrap.bank >= price else UiTheme.DANGER)
+		t.bar.have = have
+		t.bar.queue_redraw()
+	var k2 := String(kinds[_sup_sel])
+	var d: Dictionary = Throwables.KINDS[k2]
+	var have2 := Arsenal.get_throwable(k2)
+	var maxn := int(d["max"])
+	_s_icon.set_item(k2, Color.WHITE)
+	_s_title.text = String(d["name"])
+	var mode: String = {"throw": "Throwable", "place": "Placed", "use": "Tool"}[String(d["mode"])]
+	_s_tag.text = "%s  ·  %s" % [String(d["full"]), mode]
+	for ch in _s_stats.get_children():
+		_s_stats.remove_child(ch)
+		ch.free()
+	var rows: Array = [["Carried", "%d / %d" % [have2, maxn]], ["Issued free", "%d per mission" % int(d["issue"]) if int(d["issue"]) > 0 else "—"]]
+	if d.has("noise"):
+		rows.append(["Noise", "%.0f" % float(d["noise"])])
+	elif k2 in ["frag", "charge"]:
+		rows.append(["Noise", "explosion"])
+	for r in rows:
+		_s_stats.add_child(UiTheme.label(String(r[0]), 9, UiTheme.BP_MUTED))
+		_s_stats.add_child(UiTheme.label(String(r[1]), 9, UiTheme.BP_TEXT))
+		_s_stats.add_child(Control.new())
+	_s_text.text = String(d["note"])
+	var price2 := Throwables.price_of(k2)
+	_s_action.disabled = have2 >= maxn or not Scrap.enabled()
+	if not Scrap.enabled():
+		_s_action.text = "No scrap in this mode"
+	elif have2 >= maxn:
+		_s_action.text = "The squad is carrying the maximum"
+	else:
+		_s_action.text = "Buy +1  ·  %d scrap" % price2
+
+func _on_supply_result(kind: String, ok: bool, reason: String) -> void:
+	if not _open:
+		return
+	var nm := String(Throwables.KINDS[kind]["name"]) if Throwables.is_valid(kind) else kind
+	match reason:
+		"ok":
+			_say("%s bought — the squad now carries %d." % [nm, Arsenal.get_throwable(kind)], UiTheme.OK)
+			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
+		"poor":
+			_say("Not enough scrap (%d needed)." % Throwables.price_of(kind), UiTheme.DANGER)
+		"full":
+			_say("The squad cannot carry more %s." % nm, UiTheme.BP_MUTED)
+		"off":
+			_say("No scrap in this mode.", UiTheme.BP_MUTED)
+		_:
+			_say("Cannot do that.", UiTheme.DANGER)
+	_refresh()
 
 func _refresh_tile(t: Tile, selected: bool) -> void:
 	var w := t.weapon

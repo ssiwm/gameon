@@ -9,11 +9,13 @@ extends Node
 
 signal changed
 ## Wynik zakupu w warsztacie (u kupującego): id broni, powodzenie, kod: "ok" | "poor" | "owned" | "later" | "invalid".
+signal supply_result(kind: String, ok: bool, reason: String)    ## zakup zaopatrzenia: ok / poor / full / invalid / off
 signal purchase_result(weapon: int, ok: bool, reason: String)    ## kody zakupu: ok/poor/owned/later/invalid; ulepszenia z prefiksem up_ (+ locked, max)
 
 const NightShift := preload("res://scripts/night_shift.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
+const Throwables := preload("res://scripts/throwables.gd")
 
 const SAVE_PATH := "user://progress.cfg"
 
@@ -171,6 +173,41 @@ func _buy_server(w: int, peer_id: int) -> void:
 func _result_rpc(w: int, reason: String) -> void:
 	purchase_result.emit(w, reason == "ok", reason)
 
+## Zakup sztuki zaopatrzenia (granat, mina, apteczka…) do wspólnego zapasu drużyny — zakładka SUPPLIES w warsztacie.
+func request_buy_supply(kind: String) -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_buy_supply_server(kind, NoiseMgr.local_id())
+	else:
+		_buy_supply_rpc.rpc_id(1, kind)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _buy_supply_rpc(kind: String) -> void:
+	if NoiseMgr.is_server():
+		_buy_supply_server(kind, multiplayer.get_remote_sender_id())
+
+func _buy_supply_server(kind: String, peer_id: int) -> void:
+	var reason := "ok"
+	var price := Throwables.price_of(kind)
+	if not Throwables.is_valid(kind) or price <= 0:
+		reason = "invalid"
+	elif not enabled():
+		reason = "off"
+	elif Arsenal.get_throwable(kind) >= int(Throwables.KINDS[kind]["max"]):
+		reason = "full"
+	elif not spend(price):
+		reason = "poor"
+	else:
+		Arsenal.add_throwable(kind, 1)
+		save_progress()
+	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
+		supply_result.emit(kind, reason == "ok", reason)
+	else:
+		_supply_result_rpc.rpc_id(peer_id, kind, reason)
+
+@rpc("authority", "call_remote", "reliable")
+func _supply_result_rpc(kind: String, reason: String) -> void:
+	supply_result.emit(kind, reason == "ok", reason)
+
 ## Gracz prosi o kolejny poziom ulepszenia broni. Serwer sprawdza odblokowanie, limit poziomów i portfel.
 func request_upgrade(w: int) -> void:
 	if not NoiseMgr.has_network() or NoiseMgr.is_server():
@@ -235,6 +272,7 @@ func load_progress() -> void:
 			unlocked[int(w)] = true
 		for m in Array(cfg.get_value("workshop", "trophies", [])):
 			trophies[String(m)] = true
+		Arsenal.load_gear(cfg.get_value("gear", "stock", {}) as Dictionary)       # zapas zaopatrzenia z poprzednich sesji
 		_set_levels(cfg.get_value("workshop", "levels", {}) as Dictionary)
 	loot = 0
 	last_gain = 0
@@ -248,5 +286,6 @@ func save_progress() -> void:
 	cfg.set_value("scrap", "bank", bank)
 	cfg.set_value("workshop", "unlocked", unlocked.keys())
 	cfg.set_value("workshop", "trophies", trophies.keys())
+	cfg.set_value("gear", "stock", Arsenal.stock)
 	cfg.set_value("workshop", "levels", levels)
 	cfg.save(SAVE_PATH)
