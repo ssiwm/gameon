@@ -290,6 +290,7 @@ func _handle_cmdline() -> void:
 	var ridehost := false
 	var rideclient := false
 	var gentest := false
+	var tagtest := false
 	var weapon_mode := ""
 	var shots_dir := ""
 	var args := OS.get_cmdline_user_args()
@@ -335,6 +336,8 @@ func _handle_cmdline() -> void:
 			maptest = true
 		elif a == "--gentest":
 			gentest = true
+		elif a == "--tagtest":
+			tagtest = true
 		elif a == "--ridetest":
 			ridetest = true
 		elif a == "--ridehost":
@@ -366,6 +369,8 @@ func _handle_cmdline() -> void:
 		_map_test()
 	if gentest:
 		_gen_test()
+	if tagtest:
+		_tag_test()
 	if ridetest:
 		_ride_test()
 	if ridehost:
@@ -503,6 +508,53 @@ func host_game() -> void:
 		return
 	multiplayer.multiplayer_peer = peer
 	_begin_hosting("port %d" % port)
+
+## Test misji 1.1 (--host --mission=z1_m1 --tagtest): trzy nieśmiertelniki, ekstrakcja, wipe (nieśmiertelniki wracają),
+## sukces i złom. Wrogowie są zamrożeni, żeby test był powtarzalny.
+func _tag_test() -> void:
+	await get_tree().create_timer(1.0).timeout
+	var fails := [0]
+	var check := func(label: String, ok: bool) -> void:
+		print("[TAG-TEST] %s  %s" % ["PASS" if ok else "FAIL", label])
+		if not ok:
+			fails[0] += 1
+	var p: Node2D = _players.get_node_or_null("1")
+	for e in get_tree().get_nodes_in_group("enemies"):
+		e.set_physics_process(false)
+		e.set_process(false)
+	var tags_now := func() -> Array: return get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "tag" and not n.is_queued_for_deletion())
+	var brief: Dictionary = level.briefing("z1_m1")
+	var counts: Dictionary = brief["counts"]
+	check.call("start: mapa 1.1, cel tags, 3 nieśmiertelniki (cel %d, na ziemi %d)" % [mission.goal_total, tags_now.call().size()],
+		level.map_id == "z1_m1" and mission.kind == "tags" and mission.goal_total == 3 and tags_now.call().size() == 3 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
+	check.call("odprawa: tytuł, 3 nieśmiertelniki, Trzoski %d, Wołki %d, bez Stalkera i bossa" % [int(counts.get("trzosek", 0)), int(counts.get("wolek", 0))],
+		String(brief["title"]) != "" and int(brief["tags"]) == 3 and int(counts.get("trzosek", 0)) >= 8 and int(counts.get("wolek", 0)) >= 2 and not bool(brief["stalker"]) and not bool(brief["boss"]))
+	var order: Array = tags_now.call()
+	order.sort_custom(func(a: Node, b: Node) -> bool: return a.global_position.x < b.global_position.x)
+	var positions: Array = order.map(func(n: Node) -> Vector2: return n.global_position)
+	# pierwszy nieśmiertelnik: licznik spada, misja trwa
+	p.global_position = positions[0] + Vector2(0, -4)
+	p.velocity = Vector2.ZERO
+	await get_tree().create_timer(0.8).timeout
+	check.call("nieśmiertelnik 1: zostało %d / %d, faza %d" % [mission.goal_left, mission.goal_total, mission.phase], mission.goal_left == 2 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE and tags_now.call().size() == 2)
+	# wipe: misja wraca na start, nieśmiertelniki wracają
+	_restart_mission(false)
+	await get_tree().create_timer(0.8).timeout
+	check.call("wipe: nieśmiertelniki wróciły (%d na ziemi, cel %d/%d, próba %d)" % [tags_now.call().size(), mission.goal_left, mission.goal_total, mission.attempts],
+		tags_now.call().size() == 3 and mission.goal_left == 3 and mission.attempts == 2 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
+	for i in 3:
+		var near: Array = tags_now.call()
+		near.sort_custom(func(a: Node, b: Node) -> bool: return a.global_position.x < b.global_position.x)
+		p.global_position = (near[0] as Node2D).global_position + Vector2(0, -4)
+		p.velocity = Vector2.ZERO
+		await get_tree().create_timer(0.8).timeout
+	check.call("3 nieśmiertelniki → EXTRACT (zostało %d, faza %d), wyjście na początku mapy (x=%.0f)" % [mission.goal_left, mission.phase, mission.exit_pos.x],
+		mission.goal_left == 0 and mission.phase == MISSION_SCRIPT.Phase.EXTRACT and mission.exit_pos.x < 400.0)
+	p.global_position = mission.exit_pos + Vector2(0, -2)
+	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
+	check.call("ekstrakcja → SUCCESS, złom z bonusu misji (%d)" % Scrap.last_gain, mission.phase == MISSION_SCRIPT.Phase.SUCCESS and Scrap.last_gain >= Scrap.BONUS_CLEAR)
+	check.call("dziennik misji: wpis 1.1", not RunLog.entries.is_empty() and String(RunLog.entries.back()["id"]) == "z1_m1")
+	print("[TAG-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
 
 ## Test misji 1.2 (--host --mission=z1_m2 --gentest): cztery generatory (przytrzymanie E), skok Uwagi po ostatnim, ekstrakcja,
 ## a potem [Enter] → mapa 1.3 i z powrotem. Wrogowie są zamrożeni, żeby test był powtarzalny.
@@ -787,6 +839,8 @@ func _map_test() -> void:
 			points.append([String(g.name), g.global_position])
 		for car in get_tree().get_nodes_in_group("handcar"):
 			points.append(["Drezyna", car.global_position])
+		for i in (level._map_items.get("F", []) as Array).size():
+			points.append(["Nieśmiertelnik %d" % (i + 1), (level._map_items["F"] as Array)[i]])
 		for b in get_tree().get_nodes_in_group("board"):
 			points.append(["Tablica", b.global_position])
 		for n in get_tree().get_nodes_in_group("nests"):
@@ -819,7 +873,7 @@ func _map_test() -> void:
 			# szacunek długości trasy: start → cele (od lewej) → najdalsze wyjście; sam marsz 95 px/s, bez walki i czekania
 			var goals: Array = []
 			for p in points:
-				if String(p[0]).begins_with("Generator") or String(p[0]).begins_with("Nest"):
+				if String(p[0]).begins_with("Generator") or String(p[0]).begins_with("Nest") or String(p[0]).begins_with("Nieśmiertelnik"):
 					goals.append(p[1])
 			if level.boss_home != Vector2.ZERO:
 				goals.append(level.boss_home)
