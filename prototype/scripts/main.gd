@@ -302,6 +302,7 @@ func _handle_cmdline() -> void:
 	var sneaktest := false
 	var finaletest := false
 	var leechtest := false
+	var leechsim := ""
 	var shot_path := ""
 	var shot_col := -1
 	var shot_delay := 1.5
@@ -363,6 +364,8 @@ func _handle_cmdline() -> void:
 			sneaktest = true
 		elif a == "--finaletest":
 			finaletest = true
+		elif a.begins_with("--leechsim"):
+			leechsim = a.substr("--leechsim".length())          # --leechsim=ACC,DPS (domyślnie 0.6,73)
 		elif a == "--leechtest":
 			leechtest = true
 		elif a.begins_with("--shot="):
@@ -424,6 +427,9 @@ func _handle_cmdline() -> void:
 		_finale_test()
 	if leechtest:
 		_leech_test()
+	if leechsim != "" or "--leechsim" in args:
+		var parts := leechsim.trim_prefix("=").split(",")
+		_leech_sim(float(parts[0]) if parts.size() > 0 and parts[0] != "" else 0.6, float(parts[1]) if parts.size() > 1 else 73.0)
 	if shot_path != "":
 		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker, shot_demo, shot_ws, shot_result, shot_boss, shot_codex)
 	if ridetest:
@@ -585,6 +591,9 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var bs := get_tree().get_first_node_in_group("boss")
 		if bs != null:
 			level.spawn_flare(Vector2(bs.global_position.x + 30.0, bs.global_position.y - 20.0), Vector2.ZERO)
+			if "--shottide" in OS.get_cmdline_user_args() and bs.has_method("_tick_surge"):
+				bs.phase = 2                         # --shottide: od razu faza 2 i fala przypływu (zapowiedź ~2 s, potem wysoka woda)
+				bs._surge_cd = 0.05
 			if "--shotup" in OS.get_cmdline_user_args() and bs.has_method("_surface"):
 				bs.call("_surface")         # --shotup: Pijawka od razu wynurzona (podgląd arkusza, z chwytem, jeśli gracz stoi w zasięgu)
 	if "--shotwall" in OS.get_cmdline_user_args():
@@ -651,6 +660,59 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 	print("[SHOT] %s (%dx%d)" % [path, img.get_width(), img.get_height()])
 	get_tree().quit()
 
+## Symulacja długości walki z Pijawką (--host --mission=z1_b1 --leechsim=CELNOŚĆ,DPS --autoquit=N): nieśmiertelny gracz-przynęta stoi w wodzie przy bossie
+## i zadaje DPS × celność tylko wtedy, gdy boss jest wynurzony, oraz w świetle flary (rzucanej co 20 s; liczy się 40%). Czas gry przyspieszony ×4.
+## Zwraca czas do śmierci bossa w sekundach gry — to „sufit” dla gracza, który nie ginie i nie marnuje czasu; typowa gra trwa dłużej.
+func _leech_sim(acc: float, dps: float) -> void:
+	await get_tree().create_timer(1.0).timeout
+	Engine.time_scale = 4.0
+	var p: Node2D = _players.get_node_or_null("1")
+	for pc in _players.get_children():
+		if pc.is_bot:
+			pc.set_physics_process(false)
+			pc.global_position = Vector2(100.0, 400.0)
+	var lc: Node2D = get_tree().get_first_node_in_group("boss")
+	mission._start_boss()
+	await get_tree().create_timer(0.5).timeout
+	var t := 0.0
+	var surfaced_t := 0.0
+	var lit_t := 0.0
+	var ambushes := 0
+	var prev_mode: int = lc.mode
+	var flare_t := 0.0
+	var rate := dps * acc
+	while lc.state != lc.State.DEAD and t < 900.0:
+		await get_tree().physics_frame
+		var dt := get_physics_process_delta_time()
+		t += dt
+		p.hp = 3
+		p.dead = false
+		p._invuln = 1.0
+		if lc.mode == lc.Mode.SUB or lc.mode == lc.Mode.WIND:
+			p.global_position = Vector2(clampf(lc.global_position.x + 20.0, lc.pool_x0 + 40.0, lc.pool_x1 - 40.0), lc.surf_y)
+			p.velocity = Vector2.ZERO
+		flare_t -= dt
+		if flare_t <= 0.0:
+			flare_t = 20.0
+			level.spawn_flare(Vector2(lc.global_position.x + 10.0, lc.surf_y - 30.0), Vector2.ZERO)
+		if lc.mode == lc.Mode.UP or lc.mode == lc.Mode.GRAB:
+			surfaced_t += dt
+			lc.take_hit({"amount": rate * dt, "pos": lc.global_position, "dir": Vector2.RIGHT, "w": 0})
+		elif lc.revealed:
+			lit_t += dt
+			lc.take_hit({"amount": rate * dt, "pos": lc.global_position, "dir": Vector2.RIGHT, "w": 0})
+		if lc.mode == lc.Mode.UP and prev_mode != lc.Mode.UP and prev_mode != lc.Mode.GRAB:
+			ambushes += 1
+		prev_mode = lc.mode
+	Engine.time_scale = 1.0
+	print("[LEECH-SIM] celność %.2f, DPS %.0f (%.0f efektywnie): Pijawka %s po %.0f s gry (%.1f min); okna wynurzenia %.0f s (%d), w świetle %.0f s, faza końcowa %d, HP bossa %.0f" % [
+		acc, dps, rate, "ginie" if lc.state == lc.State.DEAD else "NIE ginie", t, t / 60.0, surfaced_t, ambushes, lit_t, lc.phase, lc.max_hp])
+	get_tree().quit()
+
+## Czas w bieżącym stanie fali przypływu bossa (test).
+func _surge_t_check(b: Node) -> float:
+	return float(b._surge_t)
+
 ## Test bossa B1 (--host --mission=z1_b1 --leechtest): zanurzona Pijawka dostaje 5% obrażeń, w świetle flary 100%, zasadzka rani gracza
 ## stojącego w wodzie, a stojący na kładce jest bezpieczny; fazy HP, śmierć → ekstrakcja → sukces; skrzynka z flarami.
 func _leech_test() -> void:
@@ -675,7 +737,7 @@ func _leech_test() -> void:
 	# stoimy daleko od basenu, więc walka rusza dopiero po czasie / zbliżeniu — wymuszamy start
 	mission._start_boss()
 	await get_tree().create_timer(0.3).timeout
-	check.call("walka: Pijawka obudzona, faza BOSS, HP %.0f (≥ 900)" % lc.hp, lc.state == lc.State.AWAKE and mission.phase == MISSION_SCRIPT.Phase.BOSS and lc.hp >= 900.0)
+	check.call("walka: Pijawka obudzona, faza BOSS, HP %.0f (≥ 5000)" % lc.hp, lc.state == lc.State.AWAKE and mission.phase == MISSION_SCRIPT.Phase.BOSS and lc.hp >= 5000.0)
 	# Trzoski od fazy 1 (1.7.68): po pierwszym odliczeniu pojawiają się z brzegów; potem je usuwamy, żeby nie psuły pomiarów
 	lc._minion_t = 0.05
 	await get_tree().create_timer(0.6).timeout
@@ -697,8 +759,14 @@ func _leech_test() -> void:
 	var h1: float = lc.hp
 	lc.take_hit({"amount": 100.0, "pos": lc.global_position, "dir": Vector2.RIGHT, "w": 0})
 	var dealt_lit: float = h1 - lc.hp
-	check.call("obrażenia: ciemność %.1f (5%%), w świetle flary %.1f (100%%), cień ujawniony=%s" % [dealt_dark, dealt_lit, str(lc.revealed)],
-		is_equal_approx(dealt_dark, 5.0) and is_equal_approx(dealt_lit, 100.0) and lc.revealed)
+	var lit_revealed: bool = lc.revealed
+	lc.mode = lc.Mode.UP                                       # wynurzona: pełne obrażenia
+	var h2: float = lc.hp
+	lc.take_hit({"amount": 100.0, "pos": lc.global_position, "dir": Vector2.RIGHT, "w": 0})
+	var dealt_up: float = h2 - lc.hp
+	lc.mode = lc.Mode.SUB
+	check.call("obrażenia: ciemność %.1f (5%%), cień w świetle flary %.1f (40%%), wynurzona %.1f (100%%), cień ujawniony=%s" % [dealt_dark, dealt_lit, dealt_up, str(lit_revealed)],
+		is_equal_approx(dealt_dark, 5.0) and is_equal_approx(dealt_lit, 40.0) and is_equal_approx(dealt_up, 100.0) and lit_revealed)
 	# zasadzka i chwyt: gracz stoi w wodzie obok Pijawki — zapowiedź, wynurzenie, chwyt
 	var ambush := func() -> Dictionary:
 		lc.hp = lc.max_hp
@@ -726,19 +794,19 @@ func _leech_test() -> void:
 	await get_tree().create_timer(0.5).timeout
 	check.call("zasadzka: zapowiedź=%s, chwyt=%s (ofiara id %d), HP gracza %d, przypięty w miejscu (dx %.1f)" % [str(r["wind"]), str(r["grab"]), lc.grab_victim_id, p.hp, absf(p.global_position.x - pinned_x)],
 		bool(r["wind"]) and bool(r["grab"]) and lc.grab_victim_id == p.player_id and p.grabbed and p.hp < 3 and absf(p.global_position.x - pinned_x) < 2.0)
-	# QTE: drużyna zadaje 18% maks. HP w oknie → Pijawka puszcza, ofiara żyje
+	# QTE: drużyna zadaje 6% maks. HP w oknie → Pijawka puszcza, ofiara żyje
 	var hit_before: float = lc.hp
-	lc.take_hit({"amount": lc.max_hp * 0.19, "pos": lc.global_position, "dir": Vector2.RIGHT, "w": 0})
+	lc.take_hit({"amount": lc.max_hp * 0.07, "pos": lc.global_position, "dir": Vector2.RIGHT, "w": 0})
 	await get_tree().create_timer(0.4).timeout
-	check.call("QTE udane: 19%% HP zadane → Pijawka puściła (tryb %d), gracz wolny=%s i żyje (HP %d)" % [lc.mode, str(not p.grabbed), p.hp], lc.mode == lc.Mode.SUB and not p.grabbed and not p.dead and p.hp > 0 and lc.grab_victim_id == 0)
+	check.call("QTE udane: 7%% HP zadane → Pijawka puściła (tryb %d), gracz wolny=%s i żyje (HP %d)" % [lc.mode, str(not p.grabbed), p.hp], lc.mode == lc.Mode.SUB and not p.grabbed and not p.dead and p.hp > 0 and lc.grab_victim_id == 0)
 	# QTE nieudane: bez obrażeń okno mija i ofiara trafia pod wodę (down)
 	r = await ambush.call()
 	await get_tree().create_timer(lc.GRAB_TIME + 0.8).timeout
 	check.call("QTE nieudane: po %.0f s ofiara wciągnięta pod wodę (down=%s), Pijawka wolna (id %d, tryb %d)" % [lc.GRAB_TIME, str(p.dead), lc.grab_victim_id, lc.mode], bool(r["grab"]) and p.dead and not p.grabbed and lc.grab_victim_id == 0 and lc.mode == lc.Mode.SUB)
-	# cios chwyconego liczy się podwójnie: 10% maks. HP z maczety = 20% → uwolnienie
+	# cios chwyconego liczy się podwójnie: 3,5% maks. HP z maczety = 7% → uwolnienie
 	p.dead = false
 	r = await ambush.call()
-	lc.take_hit({"amount": lc.max_hp * 0.10, "pos": lc.global_position, "dir": Vector2.RIGHT, "w": 0, "type": "melee", "shooter": p.player_id})
+	lc.take_hit({"amount": lc.max_hp * 0.035, "pos": lc.global_position, "dir": Vector2.RIGHT, "w": 0, "type": "melee", "shooter": p.player_id})
 	await get_tree().create_timer(0.4).timeout
 	check.call("QTE: cios chwyconego (maczeta) liczy się podwójnie — uwolniony=%s" % str(not p.grabbed), bool(r["grab"]) and not p.grabbed and lc.mode == lc.Mode.SUB)
 	p.dead = false
@@ -783,6 +851,11 @@ func _leech_test() -> void:
 	p.grabbed = false
 	lc.grab_victim_id = 0
 	lc._grab_victim = null
+	# fala przypływu dopiero od fazy 2: w fazie 1 mimo „gotowego” odliczania stan zostaje idle
+	lc._surge_cd = 0.0
+	await get_tree().create_timer(1.0).timeout
+	check.call("fala przypływu: w fazie 1 jej nie ma (stan %s)" % lc.surge_state, lc.surge_state == "idle" and lc.phase == 1)
+	lc._surge_cd = 99999.0
 	# regeneracja w ciemności: bez flar zanurzona Pijawka leczy ~1,5% maks. HP/s (do progu fazy), w świetle nie
 	for fl in get_tree().get_nodes_in_group("flares"):
 		fl.queue_free()
@@ -831,6 +904,7 @@ func _leech_test() -> void:
 	for mn in spawns_now.call():
 		mn.set_physics_process(false)
 		mn.set_process(false)
+	lc._surge_cd = 99999.0                                  # fala przypływu badana osobno niżej
 	# plucie kwasem (faza 2+): gracz na wysokiej kładce, poza zasięgiem zasadzki, dostaje kwasem
 	p.dead = false
 	p.hp = 3
@@ -886,6 +960,60 @@ func _leech_test() -> void:
 	lc._grab_victim = null
 	lc.grab_victim_id = 0
 	p.grabbed = false
+	# fala przypływu (faza 3): zapowiedź → fala; poniżej 48 px nad dnem basenu trafia i gasi flary, wysoka kładka jest bezpieczna
+	var surge_round := func(pos: Vector2) -> Dictionary:
+		p.dead = false
+		p.hp = 3
+		p._invuln = 0.0
+		p.grabbed = false
+		lc.mode = lc.Mode.SUB
+		lc._cd = 99.0
+		lc.hp = lc.max_hp * 0.30
+		p.global_position = pos
+		p.velocity = Vector2.ZERO
+		level.spawn_flare(pos + Vector2(10.0, -20.0), Vector2.ZERO)
+		lc._surge_cd = 0.05
+		var saw_warn := false
+		var peak := 0.0
+		for i in 90:
+			await get_tree().create_timer(0.1).timeout
+			saw_warn = saw_warn or lc.surge_state == "warn"
+			if lc.surge_state == "on":
+				peak = maxf(peak, lc.surge_level())
+				if _surge_t_check(lc) > 1.0:
+					break
+		var hp_now: int = p.hp
+		var flares_alive := get_tree().get_nodes_in_group("flares").filter(func(f: Node) -> bool: return is_instance_valid(f) and not f.is_queued_for_deletion() and f.life > 0.5).size()
+		for i in 70:                                         # czekamy, aż woda opadnie (stan idle)
+			await get_tree().create_timer(0.1).timeout
+			if lc.surge_state == "idle":
+				break
+		for f in get_tree().get_nodes_in_group("flares"):
+			f.queue_free()
+		return {"warn": saw_warn, "hp": hp_now, "level": peak, "flares": flares_alive}
+	var low_round: Dictionary = await surge_round.call(Vector2(51.0 * 16.0, 29.0 * 16.0 - 1.0))
+	var high_round: Dictionary = await surge_round.call(Vector2(60.0 * 16.0, 27.0 * 16.0 - 1.0))
+	check.call("fala przypływu: zapowiedź=%s, woda %.2f; niska kładka — HP %d, flary %d; wysoka kładka — HP %d, flary %d" % [str(low_round["warn"]), float(low_round["level"]), int(low_round["hp"]), int(low_round["flares"]), int(high_round["hp"]), int(high_round["flares"])],
+		bool(low_round["warn"]) and float(low_round["level"]) > 0.9 and int(low_round["hp"]) < 3 and int(low_round["flares"]) == 0 and int(high_round["hp"]) == 3 and int(high_round["flares"]) == 1)
+	lc._surge_cd = 99999.0
+	p.hp = 3
+	p.dead = false
+	# skalowanie przez Difficulty: EASY < NORMAL < HARD (HP, regeneracja, Trzoski, przerwy, fala)
+	var dstats := {}
+	for lv in [Difficulty.Level.EASY, Difficulty.Level.NORMAL, Difficulty.Level.HARD]:
+		Difficulty.set_level(lv)
+		dstats[lv] = {"hp": lc.hp_for(1), "hp2": lc.hp_for(2), "regen": Difficulty.m("boss_regen"), "adds": lc._minion_cap(2), "tide": Difficulty.m("boss_tide"), "cd": lc._dmul(), "every": lc._minion_every(2)}
+	Difficulty.set_level(Difficulty.Level.NORMAL)
+	var de: Dictionary = dstats[Difficulty.Level.EASY]
+	var dn: Dictionary = dstats[Difficulty.Level.NORMAL]
+	var dh: Dictionary = dstats[Difficulty.Level.HARD]
+	check.call("poziomy trudności: HP %.0f / %.0f / %.0f (EASY/NORMAL/HARD, z 2 ludźmi %.0f / %.0f / %.0f), Trzoski maks. %d / %d / %d, przerwy ×%.2f / ×%.2f / ×%.2f" % [de["hp"], dn["hp"], dh["hp"], de["hp2"], dn["hp2"], dh["hp2"], de["adds"], dn["adds"], dh["adds"], de["cd"], dn["cd"], dh["cd"]],
+		float(de["hp"]) < float(dn["hp"]) and float(dn["hp"]) < float(dh["hp"]) and absf(float(dn["hp"]) - 5000.0) < 0.5 and float(dh["hp"]) >= 6500.0
+		and float(de["regen"]) < float(dn["regen"]) and float(dn["regen"]) < float(dh["regen"])
+		and int(de["adds"]) < int(dn["adds"]) and int(dn["adds"]) < int(dh["adds"])
+		and float(de["tide"]) > float(dn["tide"]) and float(dn["tide"]) > float(dh["tide"])
+		and float(de["cd"]) > float(dn["cd"]) and float(dn["cd"]) > float(dh["cd"])
+		and float(dh["every"]) < float(dn["every"]) and float(dn["every"]) < float(de["every"]))
 	# skrzynka z flarami
 	NoiseMgr.flares = 1
 	var boxes := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "flares")

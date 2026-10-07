@@ -1225,6 +1225,13 @@ func _near_workshop() -> bool:
 	return false
 
 ## Pijawka trzymająca teraz kogoś (chwyt, QTE) albo null.
+## Boss z trwającą falą przypływu (zapowiedź albo wysoka woda) — pasek ostrzeżenia w HUD.
+func _tide_boss() -> Node:
+	var b := get_tree().get_first_node_in_group("boss")
+	if b != null and b.get("surge_state") != null and (String(b.surge_state) == "warn" or String(b.surge_state) == "on"):
+		return b
+	return null
+
 func _grab_boss() -> Node:
 	var b := get_tree().get_first_node_in_group("boss")
 	if b != null and b.get("grab_victim_id") != null and int(b.grab_victim_id) != 0:
@@ -1250,6 +1257,7 @@ func _drive_prompt() -> void:
 	var gen := _near_generator()
 	var car := get_tree().get_first_node_in_group("handcar")
 	var grab_boss := _grab_boss()
+	var tide_boss := _tide_boss()
 	if wipe_left > 0.0:
 		_center.text = "SQUAD DOWN"
 		_center_sub.text = ("Extraction failed — the shift ends in %d" if NightShift.active else "Extraction failed — restarting the mission in %d") % ceili(wipe_left)
@@ -1259,6 +1267,14 @@ func _drive_prompt() -> void:
 		text = ("GRABBED — shoot the leech to break free  ·  %.0fs" if mine else "Teammate grabbed — shoot the leech!  ·  %.0fs") % float(grab_boss.grab_time_left)
 		prog = float(grab_boss.grab_progress)
 		col = UiTheme.DANGER
+	elif tide_boss != null and _player != null and not _player.dead:
+		if String(tide_boss.surge_state) == "warn":
+			text = "THE TIDE IS RISING — climb to the high catwalks!"
+			prog = clampf(float(tide_boss._surge_t) / (float(tide_boss.SURGE_WARN) * Difficulty.m("boss_tide")), 0.0, 1.0)
+			col = UiTheme.ACCENT
+		else:
+			text = "FLOODED — stay on the high catwalks"
+			col = UiTheme.DANGER
 	elif _player != null and _player.dead:
 		if _player.revive_progress > 0.0:
 			text = "Being revived…"
