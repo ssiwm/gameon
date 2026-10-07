@@ -16,6 +16,12 @@ const PAPER_EDGE := Color(0.55, 0.44, 0.24)
 const INK := Color(0.17, 0.13, 0.07)
 const INK_MUTED := Color(0.42, 0.34, 0.2)
 const INK_ACCENT := Color(0.58, 0.22, 0.1)
+## Szkic techniczny (warsztat): ciemny błękitno-zielony arkusz z jasnymi liniami rysunku.
+const BP_BG := Color(0.045, 0.085, 0.10, 0.97)
+const BP_LINE := Color(0.36, 0.62, 0.68)
+const BP_LINE_DIM := Color(0.2, 0.36, 0.40)
+const BP_TEXT := Color(0.80, 0.92, 0.92)
+const BP_MUTED := Color(0.5, 0.66, 0.70)
 const HEADING_FONT := "res://art/fonts/Silkscreen-Regular.ttf"   ## pikselowa czcionka nagłówków (SIL OFL, art/fonts/OFL.txt)
 
 static var _theme: Theme
@@ -89,6 +95,32 @@ static func panel_box() -> StyleBoxFlat:
 	b.content_margin_right = 8
 	b.content_margin_top = 6
 	b.content_margin_bottom = 6
+	return b
+
+## Szkic techniczny: panel warsztatu.
+static func blueprint_box() -> StyleBoxFlat:
+	var b := _box(BP_BG, BP_LINE)
+	b.set_corner_radius_all(0)
+	b.border_width_bottom = 2
+	b.set_content_margin_all(10)
+	return b
+
+## Kafel (pole siatki) na szkicu: stan „normal”, „hover” albo „selected”.
+static func tile_box(state: String) -> StyleBoxFlat:
+	var b := _box(Color(0.07, 0.12, 0.14, 0.95), BP_LINE_DIM)
+	b.set_corner_radius_all(0)
+	match state:
+		"hover":
+			b.border_color = BP_LINE
+			b.bg_color = Color(0.09, 0.15, 0.17, 0.98)
+		"selected":
+			b.border_color = ACCENT
+			b.bg_color = Color(0.12, 0.17, 0.15, 1.0)
+			b.set_border_width_all(2)
+	b.content_margin_left = 0
+	b.content_margin_right = 0
+	b.content_margin_top = 0
+	b.content_margin_bottom = 0
 	return b
 
 ## Papier (karty broni i odprawy przy obiektach): jasna kartka z ciemną dolną krawędzią.

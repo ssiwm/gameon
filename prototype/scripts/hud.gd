@@ -619,7 +619,7 @@ func _build_session() -> void:
 	add_child(_session)
 	_clock = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
 	add_child(_clock)
-	_scrap = UiTheme.heading("", 8, Color(0.95, 0.8, 0.4), HORIZONTAL_ALIGNMENT_RIGHT)
+	_scrap = UiTheme.label("", 9, Color(0.95, 0.8, 0.4), HORIZONTAL_ALIGNMENT_RIGHT)
 	add_child(_scrap)
 	_scrap_coin = Coin.new()
 	add_child(_scrap_coin)
@@ -795,7 +795,7 @@ func _drive_status() -> void:
 	_scrap_coin.visible = _scrap.visible
 	_scrap.text = "%d%s" % [Scrap.bank, ("  +%d" % Scrap.loot) if Scrap.loot > 0 else ""]
 	var sf := _scrap.get_theme_font("font")
-	var tw := sf.get_string_size(_scrap.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 8).x if sf != null else 30.0
+	var tw := sf.get_string_size(_scrap.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 9).x if sf != null else 30.0
 	_scrap_coin.position = Vector2(_scrap.position.x + _scrap.size.x - tw - 12.0, _scrap.position.y + 1.0)
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	if m != null:
