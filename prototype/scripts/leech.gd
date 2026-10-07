@@ -1,6 +1,7 @@
 extends CharacterBody2D
 ## Pijawka — boss misji B1 (GDD §7.1, §9 B1). Żyje pod powierzchnią zalanego basenu areny: ZANURZONA jest prawie niewrażliwa (5%)
-## i niewidoczna — jej cień ujawnia dopiero światło (flara w promieniu LIGHT_REVEAL_R albo snop latarki), wtedy dostaje pełne obrażenia.
+## i niewidoczna — jej cień ujawnia dopiero światło (flara w promieniu LIGHT_REVEAL_R albo snop latarki), wtedy dostaje 40% obrażeń;
+## pełne obrażenia tylko wynurzona (1.7.70).
 ## Płynie pod najbliższym graczem stojącym w wodzie; pod nim robi ZAPOWIEDŹ (kręgi na wodzie), potem WYNURZA się, rani (1 HP) i zostaje
 ## na chwilę odsłonięta — wtedy też dostaje pełne obrażenia. Gracze na kładkach nad basenem są poza zasięgiem.
 ##
@@ -19,9 +20,10 @@ const NightShift := preload("res://scripts/night_shift.gd")
 enum State { DORMANT, AWAKE, DEAD }
 enum Mode { SUB, WIND, UP, GRAB }         ## zanurzona / zapowiedź zasadzki / wynurzona / trzyma ofiarę (QTE drużyny)
 
-const BASE_HP := 900.0                    ## 1.7.68: 600 → 900 (walka trwała ~15 s)
-const HP_PER_EXTRA_HUMAN := 300.0
+const BASE_HP := 5000.0                   ## 1.7.70: 600 → 900 → 5000 (walka z 900 HP trwała ~35 s; symulacja --leechsim: duet 77 efektywnych DPS ≈ 130 s)
+const HP_PER_EXTRA_HUMAN := 1500.0
 const SUB_MULT := 0.05                    ## zanurzona i nieoświetlona
+const LIT_MULT := 0.4                     ## zanurzona, ale cień oświetlony flarą / latarką (1.7.70; wcześniej 100%) — pełne obrażenia dopiero, gdy wynurzona
 const SPEED := [105.0, 140.0, 175.0]      ## px/s w fazach 1–3
 const WINDUP := [0.85, 0.7, 0.55]         ## zapowiedź zasadzki (s)
 const UP_TIME := [1.7, 1.5, 1.3]          ## jak długo wynurzona i odsłonięta
@@ -35,10 +37,20 @@ const SPIT_WINDUP := [0.0, 0.9, 0.7]      ## zapowiedź plucia (s) w fazach 1–
 const SPIT_CD := [0.0, 5.0, 3.5]          ## przerwa po pluciu
 const SPIT_UP := 1.1                      ## ile s jest wynurzona i odsłonięta po plunięciu
 const SPIT_SPEED := 250.0
-const REGEN_FRAC := 0.015                 ## zanurzona i nieoświetlona leczy się tyle maks. HP na sekundę (nigdy ponad próg bieżącej fazy)
+const REGEN_FRAC := 0.005                 ## zanurzona i nieoświetlona leczy się tyle maks. HP na sekundę (nigdy ponad próg bieżącej fazy)
 const FURY_HP_FRAC := 0.15                ## faza 3 poniżej tego HP: furia
 const FURY_SPEED := 1.4
 const FURY_TIMING := 0.7                  ## mnożnik zapowiedzi i przerw w furii
+## Fala przypływu (1.7.69, fazy 2–3): woda zalewa niskie kładki i brzeg (do SURGE_H nad dnem basenu). Zapowiedź SURGE_WARN s (woda faluje),
+## potem fala: wszyscy poniżej SURGE_H w strefie dostają 1 obrażenie i tracą flary zalane wodą; przez SURGE_ON s woda stoi wysoko, a potem opada.
+## Bezpieczne są wysokie kładki (64 px) — gdzie sięga kwas. Odstępy i zapowiedź skaluje Difficulty „boss_tide”.
+const SURGE_EVERY := [0.0, 25.0, 20.0]
+const SURGE_FIRST := 14.0                 ## pierwsza fala po tylu s od wejścia w fazę 2
+const SURGE_WARN := 2.2
+const SURGE_ON := 4.5
+const SURGE_FALL := 0.9
+const SURGE_H := 48.0
+const SURGE_PAD := 56.0                   ## strefa zalewu: basen + tyle px na brzeg z każdej strony
 const LIGHT_REVEAL_R := 150.0             ## flara w tym promieniu ujawnia cień
 const POOL_FLOOR_TOL := 8.0               ## gracz stoi „w wodzie", gdy jego stopy są przy poziomie dna basenu
 const N_AMBUSH := 3.0
@@ -48,7 +60,7 @@ const MINION_EVERY := [22.0, 12.0, 8.0]   ## co ile s dosyła Trzoski w fazach 1
 const MINION_MAX := [2, 4, 5]             ## ile Trzosków naraz (+1 za dodatkowego człowieka)
 const SECOND_STRIKE_MIN_DX := 40.0        ## drugi punkt zasadzki (faza 3) co najmniej tyle px od pierwszego
 const GRAB_TIME := 3.5                    ## tyle trwa wciąganie; potem ofiara trafia pod wodę (down)
-const GRAB_FRAC := 0.18                   ## ułamek maks. HP, który drużyna musi zadać w tym oknie, żeby Pijawka puściła
+const GRAB_FRAC := 0.06                   ## ułamek maks. HP, który drużyna musi zadać w tym oknie, żeby Pijawka puściła
 const GRAB_MELEE_MULT := 2.0              ## cios chwyconego (maczeta) liczy się do uwolnienia podwójnie
 const SPRITE_DROP := 6.0                  ## o tyle w dół przesuwamy klatkę — linia wody arkusza leży 6 px nad dołem klatki
 const RISE_TIME := 0.3                    ## czas animacji „rise" (4 klatki / 14 fps)
@@ -67,7 +79,7 @@ var active: bool:
 		return state == State.AWAKE
 
 var boss_name := "THE LEECH"
-var boss_hint := "It hides under the water. Light reveals its shadow — throw a flare (F) or use the flashlight (L)"
+var boss_hint := "It hides under the water. Light shows its shadow (40% damage) — bait it to surface, then hit it hard"
 var state: int = State.DORMANT
 var mode: int = Mode.SUB
 var hp := BASE_HP
@@ -94,6 +106,9 @@ var _spit_pending := false                ## zapowiedź (WIND) kończy się pluc
 var _fury_on := false
 var _spat := false                        ## ostatnie wynurzenie było pluciem (inna przerwa po nim)
 var _spit_ref: Node2D = null
+var surge_state := "idle"                  ## idle / warn / on / fall — serwer liczy, klienci dostają zdarzenia (surge_*)
+var _surge_t := 0.0
+var _surge_cd := 0.0
 var _target_x := 0.0
 var _reveal_t := 0.0
 var _net_t := 0.0
@@ -122,6 +137,10 @@ func _ready() -> void:
 	home_x = position.x
 	surf_y = position.y
 	_x_srv = position.x
+	var tide: Node2D = (load("res://scripts/tide_water.gd") as GDScript).new()           # woda fali przypływu: stała w świecie, rysuje leech.surge_level()
+	tide.leech = self
+	tide.name = "TideWater"
+	get_parent().add_child.call_deferred(tide)
 	_light = Lights.make_light(Lights.radial(), 2.2, Color(0.4, 0.8, 0.85), 0.0, false)
 	_light.position = Vector2(0, -10)
 	add_child(_light)
@@ -155,16 +174,33 @@ func _humans() -> int:
 			n += 1
 	return n
 
+## HP bossa dla `humans` ludzi w drużynie na bieżącym poziomie trudności (EASY ×0,7, HARD ×1,4) — jedno miejsce, testowalne.
+static func hp_for(humans: int) -> float:
+	return (BASE_HP + HP_PER_EXTRA_HUMAN * float(maxi(0, humans - 1))) * Difficulty.m("boss_hp") * NightShift.hp_mult()
+
+## Mnożnik zapowiedzi i przerw bossa z poziomu trudności (HARD 0,8 = o 20% krócej).
+func _dmul() -> float:
+	return Difficulty.m("boss_cd")
+
+func _minion_every(ph: int) -> float:
+	return float(MINION_EVERY[ph]) / Difficulty.m("boss_adds")
+
+func _minion_cap(ph: int) -> int:
+	return ceili(float(MINION_MAX[ph]) * Difficulty.m("boss_adds"))
+
 func awaken() -> void:
 	if not NoiseMgr.is_server() or state != State.DORMANT:
 		return
-	max_hp = (BASE_HP + HP_PER_EXTRA_HUMAN * maxi(0, _humans() - 1)) * Difficulty.m("boss_hp") * NightShift.hp_mult()
+	max_hp = hp_for(_humans())
 	hp = max_hp
 	state = State.AWAKE
 	phase = 1
 	mode = Mode.SUB
 	_cd = 2.0
-	_minion_t = 10.0                           # pierwsze Trzoski z brzegów już w fazie 1, po 10 s
+	_minion_t = 10.0 / Difficulty.m("boss_adds")    # pierwsze Trzoski z brzegów już w fazie 1, po 10 s
+	surge_state = "idle"
+	_surge_t = 0.0
+	_surge_cd = SURGE_FIRST
 	_fury_on = false
 	NoiseMgr.add_noise(6.0, global_position)
 	print("[BOSS] Pijawka budzi się, HP=%.0f" % max_hp)
@@ -189,6 +225,8 @@ func reset_enemy() -> void:
 	_spit_pending = false
 	_spat = false
 	_fury_on = false
+	surge_state = "idle"
+	_surge_t = 0.0
 	state = State.DORMANT
 	mode = Mode.SUB
 	hp = BASE_HP
@@ -215,9 +253,14 @@ func _physics_process(delta: float) -> void:
 		_tick_regen(delta)
 		_tick_mode(delta)
 		_tick_minions(delta)
+		_tick_surge(delta)
 	_net_t -= delta
 	if _net_t <= 0.0:
 		_send_state(false)
+
+## Wysokość zasięgu zasadzki nad dnem basenu: w czasie wysokiej wody sięga całej zalanej strefy.
+func _strike_y() -> float:
+	return SURGE_H + 6.0 if surge_state == "on" else STRIKE_Y
 
 func _in_pool(p: Node2D) -> bool:
 	return p.global_position.x >= pool_x0 and p.global_position.x <= pool_x1 and absf(p.global_position.y - surf_y) <= POOL_FLOOR_TOL
@@ -229,14 +272,14 @@ func _in_reach(p: Node2D) -> bool:
 	var py := p.global_position.y
 	if px < pool_x0 - SHORE_REACH or px > pool_x1 + SHORE_REACH:
 		return false
-	return py >= surf_y - STRIKE_Y and py <= surf_y + POOL_FLOOR_TOL
+	return py >= surf_y - _strike_y() and py <= surf_y + POOL_FLOOR_TOL
 
 ## Czy gracz leży w zasięgu ugryzienia z punktu `x`: poziomo STRIKE_HALF_X (na brzegu +SHORE_LUNGE), pionowo w STRIKE_Y.
 func _strike_hits(p: Node2D, x: float) -> bool:
 	var reach := STRIKE_HALF_X
 	if p.global_position.x < pool_x0 or p.global_position.x > pool_x1:
 		reach += SHORE_LUNGE
-	return absf(p.global_position.x - x) <= reach and p.global_position.y >= surf_y - STRIKE_Y
+	return absf(p.global_position.x - x) <= reach and p.global_position.y >= surf_y - _strike_y()
 
 func _best_target() -> Node2D:
 	var best: Node2D = null
@@ -263,6 +306,65 @@ func _spit_target() -> Node2D:
 			best = p
 	return best
 
+## Poziom wody 0..1 (do rysowania i obrażeń) z lokalnego zegara stanu — liczą go jednakowo serwer i klienci.
+func surge_level() -> float:
+	match surge_state:
+		"warn":
+			return 0.07 + 0.05 * sin(_surge_t * 5.0)
+		"on":
+			return smoothstep(0.0, 0.8, _surge_t)
+		"fall":
+			return 1.0 - clampf(_surge_t / SURGE_FALL, 0.0, 1.0)
+	return 0.0
+
+func in_surge_zone(pos: Vector2) -> bool:
+	return pos.x >= pool_x0 - SURGE_PAD and pos.x <= pool_x1 + SURGE_PAD
+
+## Serwer: stany fali przypływu. Co SURGE_EVERY s w fazach 2–3 (poza chwytem): zapowiedź → fala → wysoka woda → opadanie.
+func _tick_surge(delta: float) -> void:
+	if phase < 2 or state != State.AWAKE:
+		return
+	var tide := Difficulty.m("boss_tide")
+	match surge_state:
+		"idle":
+			if mode == Mode.GRAB:
+				return
+			_surge_cd -= delta
+			if _surge_cd <= 0.0:
+				surge_state = "warn"
+				_surge_t = 0.0
+				_event.rpc("surge_warn")
+		"warn":
+			_surge_t += delta
+			if _surge_t >= SURGE_WARN * tide:
+				surge_state = "on"
+				_surge_t = 0.0
+				_event.rpc("surge_on")
+				_surge_wave_hit()
+		"on":
+			_surge_t += delta
+			if _surge_t >= SURGE_ON:
+				surge_state = "fall"
+				_surge_t = 0.0
+				_event.rpc("surge_off")
+		"fall":
+			_surge_t += delta
+			if _surge_t >= SURGE_FALL:
+				surge_state = "idle"
+				_surge_t = 0.0
+				_surge_cd = float(SURGE_EVERY[clampi(phase - 1, 0, 2)]) * tide
+
+## Fala uderza: każdy żywy gracz w strefie poniżej SURGE_H traci serce (wysokie kładki są bezpieczne), zalane flary gasną.
+func _surge_wave_hit() -> void:
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.dead or p.is_queued_for_deletion() or p.grabbed:
+			continue
+		if in_surge_zone(p.global_position) and p.global_position.y > surf_y - SURGE_H and p.global_position.y <= surf_y + POOL_FLOOR_TOL:
+			p.deliver_hit(1, Vector2(p.global_position.x, surf_y))
+	for f in get_tree().get_nodes_in_group("flares"):
+		if is_instance_valid(f) and in_surge_zone((f as Node2D).global_position) and (f as Node2D).global_position.y > surf_y - SURGE_H:
+			f.life = minf(f.life, 0.2)
+
 func _fury() -> bool:
 	return phase >= 3 and hp <= max_hp * FURY_HP_FRAC
 
@@ -272,7 +374,7 @@ func _tick_regen(delta: float) -> void:
 		return
 	var cap := max_hp * (1.0 if phase <= 1 else (0.66 if phase == 2 else 0.33))
 	if hp < cap:
-		hp = minf(cap, hp + max_hp * REGEN_FRAC * delta)
+		hp = minf(cap, hp + max_hp * REGEN_FRAC * Difficulty.m("boss_regen") * delta)
 
 ## Cień jest widoczny, gdy pływa w świetle flary / latarki albo gdy jest wynurzona.
 func _tick_reveal(delta: float) -> void:
@@ -320,14 +422,14 @@ func _tick_mode(delta: float) -> void:
 			if tgt != null and absf(dx) < 12.0 and _cd <= 0.0:
 				_spit_pending = false
 				mode = Mode.WIND
-				_t_mode = float(WINDUP[ph]) * timing
+				_t_mode = float(WINDUP[ph]) * timing * _dmul()
 				second_x = _pick_second_x(tgt) if phase >= 3 else -1.0
 				_event.rpc("windup")
 			elif tgt == null and spitter != null and _cd <= 0.0 and absf(spitter.global_position.x - global_position.x) <= SPIT_RANGE * 0.9:
 				_spit_pending = true
 				_spit_ref = spitter
 				mode = Mode.WIND
-				_t_mode = float(SPIT_WINDUP[ph]) * timing
+				_t_mode = float(SPIT_WINDUP[ph]) * timing * _dmul()
 				second_x = -1.0
 				_event.rpc("windup")
 		Mode.WIND:
@@ -353,7 +455,7 @@ func _tick_mode(delta: float) -> void:
 			if _t_mode <= 0.0:
 				mode = Mode.SUB
 				_set_hitbox(false)
-				_cd = (float(SPIT_CD[ph]) if _spat else float(AMBUSH_CD[ph])) * (FURY_TIMING if _fury() else 1.0)
+				_cd = (float(SPIT_CD[ph]) if _spat else float(AMBUSH_CD[ph])) * (FURY_TIMING if _fury() else 1.0) * _dmul()
 				_spat = false
 				_event.rpc("dive")
 
@@ -366,8 +468,8 @@ func _tick_minions(delta: float) -> void:
 	_minion_t -= delta
 	if _minion_t > 0.0:
 		return
-	_minion_t = float(MINION_EVERY[ph])
-	if _minions.size() >= int(MINION_MAX[ph]) + maxi(0, _humans() - 1):
+	_minion_t = _minion_every(ph)
+	if _minions.size() >= _minion_cap(ph) + maxi(0, _humans() - 1):
 		return
 	_spawn_minions(2)
 
@@ -497,38 +599,39 @@ func _release(success: bool) -> void:
 			victim.deliver_hit(99, global_position)        # wciągnięta pod wodę: down (można podnieść)
 	mode = Mode.SUB
 	_set_hitbox(false)
-	_cd = float(GRAB_CD[ph]) * (FURY_TIMING if _fury() else 1.0)
+	_cd = float(GRAB_CD[ph]) * (FURY_TIMING if _fury() else 1.0) * _dmul()
 	if success:
 		global_position.x = clampf(global_position.x + (60.0 if randf() < 0.5 else -60.0), pool_x0, pool_x1)    # cofa się po dostaniu w pysk
 	_event.rpc("released" if success else "dragged")
 
 # ---------------------------------------------------------------- obrażenia
 
-## Pełne obrażenia, gdy odsłonięta (wynurzona albo cień w świetle); zanurzona w ciemności — 5%.
+## Pełne obrażenia tylko wynurzona (zasadzka, chwyt, plucie); zanurzona: w świetle flary 40%, w ciemności 5%.
+## Światło służy więc do przewidzenia zasadzki i podcinania, a prawdziwe okno obrażeń trzeba wywołać (przynęta) i wykorzystać.
 func take_hit(info: Dictionary) -> Dictionary:
 	if not NoiseMgr.is_server():
 		return {}
-	var exposed := mode == Mode.UP or mode == Mode.GRAB or revealed
+	var surfaced := mode == Mode.UP or mode == Mode.GRAB
 	var before := hp
 	if mode == Mode.GRAB and _grab_victim != null and String(info.get("type", "")) == "melee" and int(info.get("shooter", -1)) == int(_grab_victim.player_id):
 		_grab_dmg += float(info["amount"]) * (GRAB_MELEE_MULT - 1.0)       # cios chwyconego liczy się podwójnie (reszta w _hit)
-	_hit(float(info["amount"]), exposed)
+	_hit(float(info["amount"]), surfaced)
 	return {"hit": true, "dealt": before - hp, "killed": state == State.DEAD,
-		"mat": Arsenal.Mat.FLESH if exposed else Arsenal.Mat.WOOD}
+		"mat": Arsenal.Mat.FLESH if (surfaced or revealed) else Arsenal.Mat.WOOD}
 
 func take_bullet_dir(_from_pos: Vector2, dmg: float, _dir: Vector2) -> void:
 	if NoiseMgr.is_server():
-		_hit(dmg, mode == Mode.UP or mode == Mode.GRAB or revealed)
+		_hit(dmg, mode == Mode.UP or mode == Mode.GRAB)
 
 func take_bullet(_from_pos: Vector2, dmg: float = 8.0) -> void:
 	if NoiseMgr.is_server():
-		_hit(dmg, mode == Mode.UP or mode == Mode.GRAB or revealed)
+		_hit(dmg, mode == Mode.UP or mode == Mode.GRAB)
 
-func _hit(dmg: float, exposed: bool) -> void:
+func _hit(dmg: float, surfaced: bool) -> void:
 	if state != State.AWAKE:
 		return
-	if not exposed:
-		dmg *= SUB_MULT
+	if not surfaced:
+		dmg *= LIT_MULT if revealed else SUB_MULT
 	else:
 		_flash = 0.08
 		if mode == Mode.GRAB:
@@ -536,12 +639,13 @@ func _hit(dmg: float, exposed: bool) -> void:
 	hp -= dmg
 	if phase == 1 and hp <= max_hp * 0.66:
 		phase = 2
-		_minion_t = float(MINION_EVERY[1])
+		_minion_t = _minion_every(1)
+		_surge_cd = SURGE_FIRST * Difficulty.m("boss_tide")
 		_spawn_minions(2)
 		_event.rpc("phase2")
 	if phase == 2 and hp <= max_hp * 0.33:
 		phase = 3
-		_minion_t = float(MINION_EVERY[2])
+		_minion_t = _minion_every(2)
 		NoiseMgr.add_noise(NoiseMgr.MAX_LEVEL, global_position)       # krzyk: Uwaga na maksimum
 		_spawn_minions(3)
 		_event.rpc("phase3")
@@ -610,6 +714,7 @@ func _sync(s: int, h: float, mh: float, m: int, rev: bool, ph: int, x: float, gv
 		_shape.set_deferred("disabled", false)
 
 func _client_tick(delta: float) -> void:
+	_surge_t += delta
 	if _have_srv:
 		global_position.x = lerpf(global_position.x, _x_srv, minf(1.0, 14.0 * delta))
 
@@ -654,6 +759,25 @@ func _event(kind: String) -> void:
 			Vfx.splash(get_parent(), pos, 1.0)
 			Audio.play_variant_at("stalker_growl", 2, pos, Audio.BUS_STALKER, -3.0, 1.1)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 1.0, 0.9)
+		"surge_warn":
+			surge_state = "warn"
+			_surge_t = 0.0
+			Audio.play_variant_at("amb_thud", 2, Vector2(pool_x0 + (pool_x1 - pool_x0) * 0.5, surf_y), Audio.BUS_AMB, 2.0, 0.5)
+			Audio.sting(1)
+			_shake_near(1.5)
+		"surge_on":
+			surge_state = "on"
+			_surge_t = 0.0
+			var mid := Vector2(pool_x0 + (pool_x1 - pool_x0) * 0.5, surf_y)
+			Audio.play_variant_at("step_water", 3, mid, Audio.BUS_WORLD, 6.0, 0.4)
+			Audio.play_variant_at("explosion", 2, mid, Audio.BUS_WORLD, -8.0, 0.5)
+			for sx in 4:
+				Vfx.splash(get_parent(), Vector2(lerpf(pool_x0, pool_x1, (float(sx) + 0.5) / 4.0), surf_y), 1.4)
+			_shake_near(4.0)
+		"surge_off":
+			surge_state = "fall"
+			_surge_t = 0.0
+			Audio.play_variant_at("step_water", 3, Vector2(pool_x0 + (pool_x1 - pool_x0) * 0.5, surf_y), Audio.BUS_WORLD, 0.0, 0.7)
 		"fury":
 			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, 1.0, 0.45)
 			Lights.flicker_until_ms = Time.get_ticks_msec() + 1800

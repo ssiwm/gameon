@@ -3,7 +3,9 @@ extends RefCounted
 ## Dane mapy dla level.gd; legenda znaczników w level.gd (K = Pijawka, f = skrzynka z flarami). 140 × 44 kafli.
 ##
 ## Układ (od zachodu): suchy brzeg ze startem → basen (kolumny POOL, kafle „~") z trzema kładkami nad wodą (rząd 27, metal) i kładkami
-## pośrednimi (rząd 29, jednokierunkowe) → suchy brzeg ze strefą ewakuacji. Gracze w wodzie są w zasięgu Pijawki; na kładkach nie.
+## pośrednimi (rząd 29, jednokierunkowe) → suchy brzeg ze strefą ewakuacji. W zasięgu zasadzki Pijawki są gracze w wodzie, na niskich kładkach
+## (rząd 29, 32 px) i na brzegu przy basenie; wysokie kładki (rząd 27, 64 px) chronią przed ugryzieniem i falą przypływu (od fazy 2 sięga tam kwas).
+## 1.7.69: wschodnia wysoka kładka przedłużona do kolumny 110 (tam, gdzie kończy się basen) — droga w górę przed falą przypływu.
 ## Skrzynki z flarami na brzegach i na kładkach B i C. Mapa jest generowana programem pomocniczym — po zmianach uruchom `--maptest`.
 
 const Weapons := preload("res://scripts/weapons.gd")
@@ -14,7 +16,7 @@ const OBJECTIVE := "boss"
 const RADIO := ["...the water moves on its own. Don't wade in the dark.", "Flares show its shadow. Shoot it when it shows."]
 const RACKS := false
 const AMBIENT := Color(0, 0, 0, 0)
-const BRIEF := "Something lives in the flooded hall. Light reveals its shadow under the water — then shoot it. Stay on the catwalks, or keep moving."
+const BRIEF := "Something lives in the flooded hall. Light shows its shadow under the water, but it only takes full damage when it surfaces — bait the ambush, then hit it. Watch the tide."
 const ENEMY_HP := 1.0
 const UNDERGROUND_ROW := 99
 const WEAPONS := []
@@ -49,7 +51,7 @@ const MAP := [
 	"##bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb##",
 	"##bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb##",
 	"##bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbubbbbbbbbbbbbbbbbbbbbbubbbfbbbbbbbbbbbbbbbbbbbbbbbbbfbbubbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb##",
-	"##bbbbbbbbbbbbbbbbbbbbbbbbbbbbb=================bbbbbbbbb===================bbbbbbbbb=================bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb##",
+	"##bbbbbbbbbbbbbbbbbbbbbbbbbbbbb=================bbbbbbbbb===================bbbbbbbbb==========================bbbbbbbbbbbbbbbbbbbbbbbbbbb##",
 	"##bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb##",
 	"##bbbbbbbbbbbbbbbbbbbbbbb-----bbbbbbbbbbbbbbbbbbb-------bbbbbbbbbbbbbbbbbbbbb-------bbbbbbbbbbbbbbbbbbb-----------bbbbbbbbbbbbbbbbbbbbbbbb##",
 	"##bbbbSbbSbbbbfbbbabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbfbabbbEbbbbbbbbbbb##",

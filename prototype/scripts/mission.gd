@@ -557,7 +557,7 @@ func objective_text() -> String:
 			return "Destroy the nests   %d / %d" % [nests_total - nests_left, nests_total]
 		Phase.BOSS:
 			if kind == "boss":
-				return "Kill the leech — shoot its shadow in the light"
+				return "Kill the leech — bait it to surface, then hit it"
 			return "Kill The Vein — shoot her mouth while it's OPEN"
 		Phase.EXTRACT:
 			var me := _local_human()
@@ -599,7 +599,7 @@ func objective_hint() -> String:
 			return "Nests are loud when destroyed — they wake what's nearby"
 		Phase.BOSS:
 			if kind == "boss":
-				return "Stay out of the water or keep moving  ·  a surfaced leech is fully exposed"
+				return "Light shows its shadow, but only a surfaced leech takes full damage"
 			return "Light her mouth mid wind-up to stun  ·  Q lures her away"
 		Phase.EXTRACT:
 			if kind == "generators":
