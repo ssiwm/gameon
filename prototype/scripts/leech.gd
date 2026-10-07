@@ -11,6 +11,7 @@ extends CharacterBody2D
 signal died
 
 const Lights := preload("res://scripts/lights.gd")
+const Sprites := preload("res://scripts/sprites.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const NightShift := preload("res://scripts/night_shift.gd")
@@ -38,6 +39,8 @@ const SECOND_STRIKE_MIN_DX := 40.0        ## drugi punkt zasadzki (faza 3) co na
 const GRAB_TIME := 4.0                    ## tyle trwa wciąganie; potem ofiara trafia pod wodę (down)
 const GRAB_FRAC := 0.12                   ## ułamek maks. HP, który drużyna musi zadać w tym oknie, żeby Pijawka puściła
 const GRAB_MELEE_MULT := 2.0              ## cios chwyconego (maczeta) liczy się do uwolnienia podwójnie
+const SPRITE_DROP := 6.0                  ## o tyle w dół przesuwamy klatkę — linia wody arkusza leży 6 px nad dołem klatki
+const RISE_TIME := 0.3                    ## czas animacji „rise" (4 klatki / 14 fps)
 const GRAB_CD := [3.0, 2.4, 1.8]          ## przerwa po chwycie (puszczonym albo dokończonym)
 
 ## Pola, których oczekują wspólne systemy wrogów (boty, haki, testy) — Pijawka udaje „wroga": zapowiedź, żywy, aktywny.
@@ -87,6 +90,10 @@ var _light: PointLight2D
 var _shape: CollisionShape2D
 var _rect := RectangleShape2D.new()
 var _ripple_t := 0.0
+var _spr: Array = []                       ## [ciało, glow] z arkusza leech; puste = rysunek zastępczy (_draw_body)
+var _prev_mode := -1
+var _rise_t := 0.0                         ## ile jeszcze trwa animacja wynurzenia (potem idle)
+var _face_left := false
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -103,6 +110,12 @@ func _ready() -> void:
 	_light = Lights.make_light(Lights.radial(), 2.2, Color(0.4, 0.8, 0.85), 0.0, false)
 	_light.position = Vector2(0, -10)
 	add_child(_light)
+	if Sprites.has("leech"):
+		_spr = Sprites.attach(self, "leech")
+		for l in _spr:
+			if l != null:
+				l.position = Vector2(0, SPRITE_DROP)
+				l.visible = false
 
 func is_threat() -> bool:
 	return state == State.AWAKE
@@ -114,8 +127,9 @@ func body_center() -> Vector2:
 	return global_position + Vector2(0, -8 if mode == Mode.SUB else -16)
 
 func _set_hitbox(up: bool) -> void:
-	_rect.size = Vector2(44, 34) if up else Vector2(44, 14)
-	_shape.position = Vector2(0, -17) if up else Vector2(0, -3)
+	var h := 48.0 if not _spr.is_empty() else 34.0                  # sprite jest wyższy od rysunku zastępczego
+	_rect.size = Vector2(40, h) if up else Vector2(44, 14)
+	_shape.position = Vector2(0, -h * 0.5) if up else Vector2(0, -3)
 
 # ---------------------------------------------------------------- misja (serwer)
 
@@ -555,6 +569,7 @@ func _process(delta: float) -> void:
 	_show = move_toward(_show, 1.0 if (revealed or mode != Mode.SUB or state == State.DEAD) else 0.0, delta * 3.0)
 	_light.energy = 0.55 if (mode == Mode.UP or mode == Mode.GRAB) else 0.0
 	_ripple_t += delta
+	_animate_sprite(delta)
 	queue_redraw()
 
 func _draw() -> void:
@@ -576,7 +591,58 @@ func _draw() -> void:
 			_draw_shadow(maxf(_show, 0.5))
 			draw_circle(Vector2(0, -2), 5.0 + 3.0 * sin(t * 18.0), Color(0.5, 0.65, 0.62, 0.25))
 		Mode.UP, Mode.GRAB:
-			_draw_body(t)
+			if _spr.is_empty():
+				_draw_body(t)
+			else:
+				_draw_ripples(0.45)                                      # ciało i oczy rysuje arkusz; kręgi na wodzie zostają
+
+## Wynurzona Pijawka z arkusza: rise → idle, grab (głowa nisko, szeroka paszcza), dead; zwrócona twarzą do celu.
+func _animate_sprite(delta: float) -> void:
+	if _spr.is_empty():
+		return
+	var up := mode == Mode.UP or mode == Mode.GRAB
+	var body: AnimatedSprite2D = _spr[0]
+	var glow: AnimatedSprite2D = _spr[1]
+	body.visible = up
+	if glow != null:
+		glow.visible = up
+	if not up:
+		_prev_mode = mode
+		return
+	if _prev_mode != Mode.UP and _prev_mode != Mode.GRAB:
+		_rise_t = RISE_TIME                                              # świeże wynurzenie
+		body.frame = 0
+	_prev_mode = mode
+	_rise_t = maxf(0.0, _rise_t - delta)
+	var face := _face_target()
+	if absf(face - global_position.x) > 6.0:
+		_face_left = face < global_position.x
+	var anim := "idle"
+	if state == State.DEAD:
+		anim = "dead"
+	elif mode == Mode.GRAB:
+		anim = "grab"
+	elif _rise_t > 0.0:
+		anim = "rise"
+	Sprites.play(_spr, anim, _face_left)
+	body.modulate = Color(2.4, 2.2, 2.2) if _flash > 0.0 else Color.WHITE
+	if glow != null:
+		glow.modulate = Color(1.0, 0.85, 0.7).lerp(Color(1.4, 0.7, 0.6), 0.5 * float(phase - 1))
+
+## Gdzie patrzy: chwycona ofiara, inaczej najbliższy żywy gracz.
+func _face_target() -> float:
+	var best := global_position.x
+	var best_d := INF
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.dead:
+			continue
+		if mode == Mode.GRAB and grab_victim_id != 0 and int(p.player_id) == grab_victim_id:
+			return p.global_position.x
+		var d := absf(p.global_position.x - global_position.x)
+		if d < best_d:
+			best_d = d
+			best = p.global_position.x
+	return best
 
 ## Kręgi na powierzchni wody nad Pijawką — jedyna wskazówka w ciemności (ruch zdradza jej położenie).
 func _draw_ripples(strength: float, speed := 1.0) -> void:

@@ -578,6 +578,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var bs := get_tree().get_first_node_in_group("boss")
 		if bs != null:
 			level.spawn_flare(Vector2(bs.global_position.x + 30.0, bs.global_position.y - 20.0), Vector2.ZERO)
+			if "--shotup" in OS.get_cmdline_user_args() and bs.has_method("_surface"):
+				bs.call("_surface")         # --shotup: Pijawka od razu wynurzona (podgląd arkusza, z chwytem, jeśli gracz stoi w zasięgu)
 	if result:
 		mission.elapsed = 214.0
 		mission._success()                 # podgląd karty wyniku
