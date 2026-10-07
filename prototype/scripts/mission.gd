@@ -27,6 +27,8 @@ const EXIT_RADIUS_Y := 40.0
 const SYNC_INTERVAL := 0.2
 
 const STEALTH_CAP := 40.0              ## cel poboczny misji 1.2: Uwaga poniżej tej wartości do końca celu głównego
+const FINALE_DELAY := 2.5             ## s od trzeciego nieśmiertelnika do zawału rampy
+const FINALE_NOISE := 14.0            ## skok Uwagi przy wstrząsie (budzi to, co śpi w sali)
 const BROADCAST_NOISE := 70.0          ## skok Uwagi po uruchomieniu ostatniego generatora
 
 var phase: int = Phase.OBJECTIVE
@@ -62,6 +64,8 @@ var _flare: PointLight2D
 var _was_dead := {}          # nazwa gracza -> bool (liczenie upadków, serwer)
 
 var _boss: Node = null
+var finale := false                    ## misja 1.1: trzeci nieśmiertelnik wziął kopalnię w obroty (zawał + wyjście po drugiej stronie)
+var _finale_t := -1.0                  ## serwer: odliczanie do zawału (s); < 0 = brak
 var _tags_taken := 0                   ## serwer: ile nieśmiertelników już podniesiono (misja 1.1)
 
 func _ready() -> void:
@@ -137,6 +141,7 @@ func _physics_process(delta: float) -> void:
 		peak_noise = maxf(peak_noise, NoiseMgr.level)
 	if phase == Phase.EXTRACT:
 		_tick_extract(delta)
+		_tick_finale(delta)
 
 	_sync_t -= delta
 	if _sync_t <= 0.0:
@@ -151,8 +156,34 @@ func on_tag_taken() -> void:
 	print("[MISSION] dog tag taken, left=%d/%d" % [goal_left, goal_total])
 	_event.rpc("generator")
 	if goal_left == 0:
-		_open_extraction()
+		var lvl := get_tree().get_first_node_in_group("level")
+		if lvl != null and not lvl.collapse_rects.is_empty() and not lvl.exits_alt.is_empty():
+			_start_finale(lvl)
+		else:
+			_open_extraction()
 	_broadcast()
+
+## Finał misji 1.1: kopalnia się budzi. Wstrząs i skok hałasu teraz, zawał rampy po FINALE_DELAY s, a wyjście przenosi się na drugą stronę
+## (znacznik „e"). Zawał nie rani — blokuje drogę, więc nie ma sensu cofać się po pierwszej drodze.
+func _start_finale(lvl: Node) -> void:
+	finale = true
+	_finale_t = FINALE_DELAY
+	_open_extraction()
+	exit_pos = lvl.exits_alt[0]
+	NoiseMgr.script_spike(FINALE_NOISE, _humans_centroid())
+	_event.rpc("rumble")
+	print("[MISSION] finale: collapse in %.1fs, exit -> %s" % [FINALE_DELAY, str(exit_pos)])
+
+func _tick_finale(delta: float) -> void:
+	if _finale_t < 0.0:
+		return
+	_finale_t -= delta
+	if _finale_t <= 0.0:
+		_finale_t = -1.0
+		var lvl := get_tree().get_first_node_in_group("level")
+		if lvl != null:
+			lvl.collapse(lvl.collapse_rects)
+		_event.rpc("collapse")
 
 func _on_nest_destroyed(_nest: Node) -> void:
 	if not NoiseMgr.is_server():
@@ -354,6 +385,8 @@ func on_restart(new_run: bool) -> void:
 		attempts += 1
 	_was_dead.clear()
 	_tags_taken = 0
+	finale = false
+	_finale_t = -1.0
 	# cele wróciły (reset_enemy / reset_generator) — liczymy od nowa
 	peak_noise = 0.0
 	_count_goal()
@@ -364,10 +397,11 @@ func _broadcast() -> void:
 	_sync_t = SYNC_INTERVAL
 	if NoiseMgr.has_network() and multiplayer.is_server():
 		_sync.rpc(phase, nests_left, nests_total, exit_pos, extract_progress, elapsed, downs, attempts,
-			[NightShift.active, NightShift.stage, NightShift.mods, shift_cleared, shift_time, shift_downs, shift_record], peak_noise)
+			[NightShift.active, NightShift.stage, NightShift.mods, shift_cleared, shift_time, shift_downs, shift_record], peak_noise, finale)
 
 @rpc("authority", "call_remote", "reliable")
-func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d: int, att: int, shift: Array, peak: float) -> void:
+func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d: int, att: int, shift: Array, peak: float, fin: bool) -> void:
+	finale = fin
 	peak_noise = peak
 	NightShift.active = bool(shift[0])
 	NightShift.stage = int(shift[1])
@@ -398,6 +432,13 @@ func _event(kind: String) -> void:
 		"success":
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 			Audio.play("tape_stop", Audio.BUS_UI, -10.0)
+		"rumble":
+			Feel.shake(4.0)
+			Audio.play("alarm_bell", Audio.BUS_UI, -10.0)
+		"collapse":
+			Feel.shake(7.0)
+			Feel.hitstop(0.08)
+			Audio.play("tape_stop", Audio.BUS_UI, -3.0)
 		"shift_over":
 			Audio.play("tape_stop", Audio.BUS_UI, -4.0)
 		"generator":
@@ -483,6 +524,8 @@ func objective_hint() -> String:
 				if car2 != null and not car2.arrived:
 					return "Hold E aboard to pump  ·  more hands = faster  ·  he is coming — Q lures him"
 				return "The transmitter is live — he heard it  ·  Q lures him away"
+			if finale:
+				return "The mine is coming down — the way back is gone. Find another way out!"
 			return "The whole squad, standing, at the flare for 3 s"
 	return ""
 

@@ -104,6 +104,12 @@ var stalker_home := Vector2.ZERO
 var boss_home := Vector2.ZERO
 ## Graf A* platformówki (nav.gd) — bot i Stalker.
 var nav: AStar2D
+## Zawał (misja 1.1, finał): obszary [c0, r0, c1, r1] (kafle, włącznie), które po zdarzeniu zamieniają się w skałę.
+## Dane z mapy (const COLLAPSE); drugie wyjście po zawale to znacznik „e" (exits_alt).
+var collapse_rects: Array = []
+var exits_alt: Array[Vector2] = []
+var _orig_map: Array = []
+var _blocks: Array = []          ## już zastosowane obszary (do synchronizacji dołączających i resetu)
 
 var _solid: TileMapLayer
 var _back: TileMapLayer
@@ -168,6 +174,7 @@ func load_map(id: String) -> void:
 	_decal_list.clear()
 	spawns.clear()
 	exits.clear()
+	exits_alt.clear()
 	stalker_home = Vector2.ZERO
 	boss_home = Vector2.ZERO
 	_load(id)
@@ -186,7 +193,10 @@ func _load(id: String) -> void:
 		_dark_node.color = ambient
 	NoiseMgr.safe_zone = objective == "hub"
 	underground_y = float(m.UNDERGROUND_ROW * TILE)
-	_map = m.MAP
+	_orig_map = m.MAP
+	_map = (m.MAP as Array).duplicate()          # kopia: zawał (collapse) zmienia wiersze w trakcie misji
+	collapse_rects = ((m as GDScript).get_script_constant_map().get("COLLAPSE", []) as Array).duplicate()
+	_blocks.clear()
 	_weapons = m.WEAPONS
 	_accents = m.ACCENTS
 	_map_items = {}
@@ -214,22 +224,117 @@ func _build_map() -> void:
 	bounds = Rect2(0, 0, cols * TILE, rows * TILE)
 	for r in rows:
 		for c in cols:
-			var ch := _ch(c, r)
-			if not KINDS.has(ch):
-				# znacznik albo pusto — tło dziedziczymy z lewego sąsiada, żeby
-				# postać w posterunku nie zostawiała dziury w ścianie
-				var left := _ch(c - 1, r)
-				if ch != "." and KINDS.has(left) and KINDS[left][2] == 2:
-					_back.set_cell(Vector2i(c, r), 0, Vector2i(KINDS[left][0], _row(c, r, false)))
-				continue
-			var k: Array = KINDS[ch]
-			# wariant „wierzch" (rząd 0 atlasu), gdy nad kaflem nie ma bryły
-			var top := not _is_solid(c, r - 1)
-			var layer := _back if k[2] == 2 else _solid
-			# bryły: alternatywa kafla z okluderem cofniętym na odsłoniętych bokach
-			var alt := _exposure(c, r) if k[2] == 0 else 0
-			layer.set_cell(Vector2i(c, r), 0, Vector2i(k[0], _row(c, r, top)), alt)
+			_place_cell(c, r)
 	_place_deco()
+
+## Jeden kafel mapy do warstw (tło / bryła) — wspólne dla budowy i odświeżania po zawale.
+func _place_cell(c: int, r: int) -> void:
+	var ch := _ch(c, r)
+	if not KINDS.has(ch):
+		# znacznik albo pusto — tło dziedziczymy z lewego sąsiada, żeby
+		# postać w posterunku nie zostawiała dziury w ścianie
+		var left := _ch(c - 1, r)
+		if ch != "." and KINDS.has(left) and KINDS[left][2] == 2:
+			_back.set_cell(Vector2i(c, r), 0, Vector2i(KINDS[left][0], _row(c, r, false)))
+		return
+	var k: Array = KINDS[ch]
+	# wariant „wierzch" (rząd 0 atlasu), gdy nad kaflem nie ma bryły
+	var top := not _is_solid(c, r - 1)
+	var layer := _back if k[2] == 2 else _solid
+	# bryły: alternatywa kafla z okluderem cofniętym na odsłoniętych bokach
+	var alt := _exposure(c, r) if k[2] == 0 else 0
+	layer.set_cell(Vector2i(c, r), 0, Vector2i(k[0], _row(c, r, top)), alt)
+
+# ---------------------------------------------------------------- zawał (zmiana kafli w trakcie misji)
+
+## Serwer: zamienia powietrze i tło w podanych obszarach w skałę u wszystkich peerów (RPC). Wołane przez mission.gd.
+func collapse(rects: Array) -> void:
+	if not NoiseMgr.is_server():
+		return
+	if NoiseMgr.has_network():
+		_collapse_rpc.rpc(map_id, rects)
+	else:
+		_collapse_rpc(map_id, rects)
+
+@rpc("authority", "call_local", "reliable")
+func _collapse_rpc(id: String, rects: Array) -> void:
+	if id != map_id:
+		return
+	for r in rects:
+		if not _blocks.has(r):
+			_blocks.append(r)
+	_apply_blocks(rects)
+
+## Dołączający gracz dostaje już zastosowane zawały (po tym, jak załadował mapę).
+func send_collapse_to(peer_id: int) -> void:
+	if NoiseMgr.is_server() and NoiseMgr.has_network() and not _blocks.is_empty():
+		_collapse_rpc.rpc_id(peer_id, map_id, _blocks)
+
+func _apply_blocks(rects: Array) -> void:
+	var dirty := Rect2i()
+	var first := true
+	for rc in rects:
+		var c0 := int(rc[0])
+		var r0 := int(rc[1])
+		var c1 := int(rc[2])
+		var r1 := int(rc[3])
+		for r in range(r0, r1 + 1):
+			var row: String = _map[r]
+			for c in range(c0, c1 + 1):
+				var ch := row[c]
+				if not KINDS.has(ch) or KINDS[ch][2] != 0:         # powietrze, znaczniki, tło i kładki → skała
+					row = row.substr(0, c) + "#" + row.substr(c + 1)
+			_map[r] = row
+		var rr := Rect2i(c0, r0, c1 - c0 + 1, r1 - r0 + 1)
+		dirty = rr if first else dirty.merge(rr)
+		first = false
+		_push_players_out(rr)
+	_refresh_region(dirty)
+
+## Gracze (własni na tym peerze) uwięzieni w obszarze, który zaraz stanie się skałą, lądują tuż za nim — po stronie wschodniej.
+func _push_players_out(rc: Rect2i) -> void:
+	var area := Rect2(rc.position * TILE, rc.size * TILE)
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_queued_for_deletion() or not p.is_multiplayer_authority():
+			continue
+		if area.grow(4.0).has_point(p.global_position + Vector2(0, -8)):
+			p.global_position = Vector2(area.end.x + 10.0, p.global_position.y)
+			p.velocity = Vector2.ZERO
+
+## Odświeża kafle (z ramką 1) i graf nawigacji po zmianie `_map`.
+func _refresh_region(rc: Rect2i) -> void:
+	var g := rc.grow(1)
+	var cols: int = (_map[0] as String).length()
+	for r in range(maxi(0, g.position.y), mini(_map.size(), g.end.y)):
+		for c in range(maxi(0, g.position.x), mini(cols, g.end.x)):
+			_back.erase_cell(Vector2i(c, r))
+			_solid.erase_cell(Vector2i(c, r))
+			_place_cell(c, r)
+	nav = Nav.new()
+	nav.build(cols, _map.size(), _is_solid, _is_platform_cell)
+
+## Serwer: restart misji (wipe / nowa misja) — mapa wraca do stanu z danych.
+func reset_collapse() -> void:
+	if not NoiseMgr.is_server():
+		return
+	if NoiseMgr.has_network():
+		_reset_collapse_rpc.rpc(map_id)
+	else:
+		_reset_collapse_rpc(map_id)
+
+@rpc("authority", "call_local", "reliable")
+func _reset_collapse_rpc(id: String) -> void:
+	if id != map_id or _blocks.is_empty():
+		return
+	var dirty := Rect2i()
+	var first := true
+	for rc in _blocks:
+		var rr := Rect2i(int(rc[0]), int(rc[1]), int(rc[2]) - int(rc[0]) + 1, int(rc[3]) - int(rc[1]) + 1)
+		dirty = rr if first else dirty.merge(rr)
+		first = false
+	_blocks.clear()
+	_map = _orig_map.duplicate()
+	_refresh_region(dirty)
 
 ## Rząd atlasu: wierzch/wypełnienie + wariant (deterministyczny z pozycji).
 func _row(c: int, r: int, top: bool) -> int:
@@ -320,6 +425,7 @@ func _spawn_entities() -> void:
 			match ch:
 				"S": spawns.append(p)
 				"E": exits.append(p)
+				"e": exits_alt.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
 				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "v", "r", "t", "u", "h", "F", "l", "k", "o", "a", "g": found[ch].append(p)
