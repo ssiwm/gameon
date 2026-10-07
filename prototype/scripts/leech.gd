@@ -12,6 +12,7 @@ signal died
 
 const Lights := preload("res://scripts/lights.gd")
 const Vfx := preload("res://scripts/vfx.gd")
+const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const NightShift := preload("res://scripts/night_shift.gd")
 
 enum State { DORMANT, AWAKE, DEAD }
@@ -31,6 +32,9 @@ const POOL_FLOOR_TOL := 8.0               ## gracz stoi „w wodzie", gdy jego s
 const N_AMBUSH := 3.0
 const N_DEATH := 18.0
 const NOISE_FOLLOW_R := 260.0
+const MINION_EVERY := [0.0, 16.0, 10.0]  ## co ile s dosyła Trzoski w fazie 2 / 3 (0 = faza 1: bez Trzosków)
+const MINION_MAX := [0, 3, 4]             ## ile Trzosków naraz (+1 za dodatkowego człowieka)
+const SECOND_STRIKE_MIN_DX := 40.0        ## drugi punkt zasadzki (faza 3) co najmniej tyle px od pierwszego
 const GRAB_TIME := 4.0                    ## tyle trwa wciąganie; potem ofiara trafia pod wodę (down)
 const GRAB_FRAC := 0.12                   ## ułamek maks. HP, który drużyna musi zadać w tym oknie, żeby Pijawka puściła
 const GRAB_MELEE_MULT := 2.0              ## cios chwyconego (maczeta) liczy się do uwolnienia podwójnie
@@ -66,6 +70,10 @@ var grab_progress := 0.0                   ## 0..1: ile z wymaganych obrażeń d
 var grab_time_left := 0.0
 var _grab_victim: Node2D = null            ## serwer
 var _grab_dmg := 0.0
+var second_x := -1.0                       ## faza 3: drugi punkt zasadzki (px; < 0 = brak) — zapowiedź na wodzie, ugryzienie bez chwytu
+var _minions: Array[Node] = []             ## serwer: Trzoski z brzegów (żywe)
+var _minion_serial := 0
+var _minion_t := 0.0
 var _t_mode := 0.0
 var _cd := 0.0
 var _target_x := 0.0
@@ -141,6 +149,12 @@ func reset_enemy() -> void:
 	_grab_victim = null
 	grab_victim_id = 0
 	grab_progress = 0.0
+	second_x = -1.0
+	if NoiseMgr.is_server():
+		if NoiseMgr.has_network():
+			_clear_minions.rpc()
+		else:
+			_clear_minions()
 	state = State.DORMANT
 	mode = Mode.SUB
 	hp = BASE_HP
@@ -165,6 +179,7 @@ func _physics_process(delta: float) -> void:
 	if state == State.AWAKE:
 		_tick_reveal(delta)
 		_tick_mode(delta)
+		_tick_minions(delta)
 	_net_t -= delta
 	if _net_t <= 0.0:
 		_send_state(false)
@@ -220,6 +235,7 @@ func _tick_mode(delta: float) -> void:
 			if tgt != null and absf(dx) < 12.0 and _cd <= 0.0:
 				mode = Mode.WIND
 				_t_mode = float(WINDUP[ph])
+				second_x = _pick_second_x(tgt) if phase >= 3 else -1.0
 				_event.rpc("windup")
 		Mode.WIND:
 			_t_mode -= delta
@@ -244,6 +260,70 @@ func _tick_mode(delta: float) -> void:
 				_cd = float(AMBUSH_CD[ph])
 				_event.rpc("dive")
 
+## Trzoski wychodzące z wody na brzegach: co MINION_EVERY[faza] s para, do limitu żywych.
+func _tick_minions(delta: float) -> void:
+	_minions = _minions.filter(func(b: Node) -> bool: return is_instance_valid(b) and b.alive)
+	var ph := clampi(phase - 1, 0, 2)
+	if float(MINION_EVERY[ph]) <= 0.0:
+		return
+	_minion_t -= delta
+	if _minion_t > 0.0:
+		return
+	_minion_t = float(MINION_EVERY[ph])
+	if _minions.size() >= int(MINION_MAX[ph]) + maxi(0, _humans() - 1):
+		return
+	_spawn_minions(2)
+
+func _spawn_minions(n: int) -> void:
+	for i in n:
+		_minion_serial += 1
+		var west := _minion_serial % 2 == 0
+		var x := (pool_x0 - 56.0 - float(i) * 14.0) if west else (pool_x1 + 56.0 + float(i) * 14.0)
+		var mn_name := "LeechSpawn%d" % _minion_serial
+		if NoiseMgr.has_network():
+			_spawn_minion.rpc(mn_name, Vector2(x, surf_y))
+		else:
+			_spawn_minion(mn_name, Vector2(x, surf_y))
+
+@rpc("authority", "call_local", "reliable")
+func _spawn_minion(n: String, pos: Vector2) -> void:
+	var lvl := get_parent()
+	if lvl.has_node(n):
+		return
+	var e := ENEMY_SCENE.instantiate()
+	e.name = n
+	e.kind = "trzosek"
+	e.omniscient = true                         # wie, gdzie są gracze — to wsparcie bossa, nie zwykła wataha
+	e.position = pos
+	lvl.add_child(e)
+	if NoiseMgr.is_server():
+		_minions.append(e)
+		e.wake()
+	Audio.play_variant_at("impact_flesh", 3, pos, Audio.BUS_WORLD, -6.0, 0.6)
+
+@rpc("authority", "call_local", "reliable")
+func _clear_minions() -> void:
+	for n in get_parent().get_children():
+		if String(n.name).begins_with("LeechSpawn"):
+			n.queue_free()
+	_minions.clear()
+
+## Faza 3: drugi punkt zasadzki — inny gracz w wodzie, a gdy go nie ma, punkt kilkadziesiąt px od pierwszego.
+func _pick_second_x(first: Node2D) -> float:
+	var best := -1.0
+	var best_d := INF
+	for p in get_tree().get_nodes_in_group("players"):
+		if p == first or p.dead or p.is_queued_for_deletion() or not _in_pool(p):
+			continue
+		var d := absf(p.global_position.x - global_position.x)
+		if d >= SECOND_STRIKE_MIN_DX and d < best_d:
+			best_d = d
+			best = p.global_position.x
+	if best >= 0.0:
+		return best
+	var side := 1.0 if randf() < 0.5 else -1.0
+	return clampf(global_position.x + side * randf_range(70.0, 130.0), pool_x0, pool_x1)
+
 ## Wynurzenie: ugryzienie wszystkich w zasięgu (gracze w wodzie pod pyskiem), potem odsłonięta przez UP_TIME.
 func _surface() -> void:
 	var ph := clampi(phase - 1, 0, 2)
@@ -263,6 +343,14 @@ func _surface() -> void:
 				best_d = d
 				victim = p
 	_event.rpc("surface")
+	if second_x >= 0.0:                         # drugi punkt: samo ugryzienie, bez chwytu
+		for p in get_tree().get_nodes_in_group("players"):
+			if p.dead or p.is_queued_for_deletion() or p == victim:
+				continue
+			if absf(p.global_position.x - second_x) <= STRIKE_HALF_X and p.global_position.y >= surf_y - STRIKE_Y:
+				p.deliver_hit(1, Vector2(second_x, surf_y))
+		_event.rpc("surface2")
+		second_x = -1.0
 	if victim != null and not victim.dead:
 		_begin_grab(victim)
 
@@ -328,9 +416,14 @@ func _hit(dmg: float, exposed: bool) -> void:
 	hp -= dmg
 	if phase == 1 and hp <= max_hp * 0.66:
 		phase = 2
+		_minion_t = float(MINION_EVERY[1])
+		_spawn_minions(2)
 		_event.rpc("phase2")
 	if phase == 2 and hp <= max_hp * 0.33:
 		phase = 3
+		_minion_t = float(MINION_EVERY[2])
+		NoiseMgr.add_noise(NoiseMgr.MAX_LEVEL, global_position)       # krzyk: Uwaga na maksimum
+		_spawn_minions(3)
 		_event.rpc("phase3")
 	if hp <= 0.0:
 		_die()
@@ -346,6 +439,11 @@ func _die() -> void:
 			v.deliver_grab(false, Vector2.ZERO)
 	state = State.DEAD
 	mode = Mode.UP
+	second_x = -1.0
+	for mn in _minions:
+		if is_instance_valid(mn) and mn.alive:
+			mn.take_bullet(global_position, 999.0)
+	_minions.clear()
 	hp = 0.0
 	NoiseMgr.add_noise(N_DEATH, global_position)
 	print("[BOSS] Pijawka nie żyje")
@@ -367,10 +465,11 @@ func _send_state(now: bool) -> void:
 	if not now and _net_t > 0.0:
 		return
 	_net_t = 0.066
-	_sync.rpc(state, hp, max_hp, mode, revealed, phase, global_position.x, grab_victim_id, grab_progress, grab_time_left)
+	_sync.rpc(state, hp, max_hp, mode, revealed, phase, global_position.x, grab_victim_id, grab_progress, grab_time_left, second_x)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(s: int, h: float, mh: float, m: int, rev: bool, ph: int, x: float, gv: int, gp: float, gt: float) -> void:
+func _sync(s: int, h: float, mh: float, m: int, rev: bool, ph: int, x: float, gv: int, gp: float, gt: float, sx: float) -> void:
+	second_x = sx
 	grab_victim_id = gv
 	grab_progress = gp
 	grab_time_left = gt
@@ -426,7 +525,10 @@ func _event(kind: String) -> void:
 		"phase3":
 			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, 0.0, 0.5)
 			Audio.sting(2)
-			_shake_near(5.0)
+			Lights.flicker_until_ms = Time.get_ticks_msec() + 3000
+			_shake_near(6.0)
+		"surface2":
+			Audio.play_variant_at("step_water", 3, Vector2(second_x if second_x >= 0.0 else pos.x, pos.y), Audio.BUS_WORLD, 2.0, 0.55)
 		"death":
 			Audio.play_variant_at("explosion", 2, pos, Audio.BUS_WORLD, -2.0, 0.6)
 			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, -2.0, 0.45)
@@ -462,6 +564,10 @@ func _draw() -> void:
 			if _show > 0.02:
 				_draw_shadow(_show)
 		Mode.WIND:
+			if second_x >= 0.0:                                        # faza 3: drugi punkt zasadzki — kręgi w innym miejscu basenu
+				draw_set_transform(Vector2(second_x - global_position.x, 0.0), 0.0, Vector2.ONE)
+				_draw_ripples(1.0, 1.7)
+				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			_draw_ripples(1.0, 1.7)                                  # szybsze, większe kręgi — zaraz się wynurzy
 			_draw_shadow(maxf(_show, 0.5))
 			draw_circle(Vector2(0, -2), 5.0 + 3.0 * sin(t * 18.0), Color(0.5, 0.65, 0.62, 0.25))
