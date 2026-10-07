@@ -52,7 +52,7 @@ static func _table() -> Array:
 			"mag": 30, "reserve_start": 150, "reserve_max": 270, "pickup_rounds": 30,
 			"reload_time": 1.35, "reload_empty_extra": 0.45,
 			"shake": 0.7, "cam_kick": 0.5, "recoil": 2.5, "flash_size": 3.5, "flash_light": 1.3,
-			"tracer_len": 12.0, "casing": 1, "gun_len": 18.0, "gun_row": 0,
+			"tracer_len": 12.0, "casing": 1, "gun_len": 12.0, "gun_row": 0,
 			"sfx": "m83_shot", "sfx_count": 6, "sfx_vol": -7.0,
 		},
 		{
@@ -65,7 +65,7 @@ static func _table() -> Array:
 			"mag": 24, "reserve_start": 48, "reserve_max": 96, "pickup_rounds": 12,
 			"reload_time": 2.0, "reload_empty_extra": 0.5,
 			"shake": 2.4, "cam_kick": 2.6, "kick": 55.0, "recoil": 5.0, "flash_size": 6.0, "flash_light": 1.7,
-			"tracer_len": 7.0, "casing": 2, "gun_len": 18.0, "gun_row": 1,
+			"tracer_len": 7.0, "casing": 2, "gun_len": 12.0, "gun_row": 1,
 			"sfx": "spread12_shot", "sfx_count": 3, "sfx_vol": -3.0,
 		},
 		{
@@ -77,7 +77,7 @@ static func _table() -> Array:
 			"n_min": 0.5, "n_max": 0.9, "heat_gain": 0.16, "heat_decay": 0.6,
 			"mag": 12, "infinite": true, "reload_time": 1.1, "reload_empty_extra": 0.3,
 			"shake": 0.5, "cam_kick": 0.4, "recoil": 2.5, "flash_size": 3.0, "flash_light": 1.2,
-			"tracer_len": 9.0, "casing": 1, "gun_len": 14.0, "gun_row": 2,
+			"tracer_len": 9.0, "casing": 1, "gun_len": 7.0, "gun_row": 2,
 			"sfx": "p64_shot", "sfx_count": 4, "sfx_vol": -8.0,
 		},
 		{
@@ -90,7 +90,7 @@ static func _table() -> Array:
 			"mag": 8, "reserve_start": 24, "reserve_max": 48, "pickup_rounds": 8,
 			"reload_time": 0.45, "reload_per_round": true, "reload_sfx": "reload_shell", "reload_sfx_count": 3,
 			"shake": 4.0, "cam_kick": 4.5, "kick": 130.0, "recoil": 7.0, "flash_size": 8.0, "flash_light": 2.0,
-			"tracer_len": 6.0, "casing": 2, "gun_len": 18.0, "gun_row": 3,
+			"tracer_len": 6.0, "casing": 2, "gun_len": 12.0, "gun_row": 3,
 			"sfx": "srut8_shot", "sfx_count": 3, "sfx_vol": -2.0, "sfx_cycle": "srut8_pump", "sfx_cycle_count": 2,
 		},
 		{
@@ -103,7 +103,7 @@ static func _table() -> Array:
 			"reload_time": 2.6, "reload_empty_extra": 0.0, "reload_sfx": "reload_cell", "reload_sfx_count": 2,
 			"shake": 0.25, "recoil": 0.8, "flash_size": 3.0, "flash_light": 1.1,
 			"flash_color": Color(0.55, 0.85, 1.0), "tracer_color": Color(0.55, 0.9, 1.0),
-			"casing": 0, "gun_len": 18.0, "gun_row": 4,
+			"casing": 0, "gun_len": 11.0, "gun_row": 4,
 			"sfx": "lr7_start", "sfx_count": 1, "sfx_vol": -9.0, "sfx_loop": "lr7_beam_loop",
 		},
 		{
@@ -116,7 +116,7 @@ static func _table() -> Array:
 			"reload_time": 2.6, "reload_empty_extra": 0.0, "reload_sfx": "reload_cell", "reload_sfx_count": 2,
 			"shake": 0.3, "recoil": 0.8, "flash_size": 4.0, "flash_light": 1.5,
 			"flash_color": Color(1.0, 0.55, 0.2), "tracer_color": Color(1.0, 0.6, 0.2),
-			"casing": 0, "gun_len": 15.0, "gun_row": 5,
+			"casing": 0, "gun_len": 10.0, "gun_row": 5,
 			"sfx": "hkm9_ignite", "sfx_count": 1, "sfx_vol": -7.0, "sfx_loop": "hkm9_flame_loop",
 		},
 		{
@@ -129,7 +129,7 @@ static func _table() -> Array:
 			"mag": 6, "reserve_start": 12, "reserve_max": 24, "pickup_rounds": 6,
 			"reload_time": 0.7, "reload_per_round": true, "reload_sfx": "reload_launcher", "reload_sfx_count": 1,
 			"shake": 3.0, "cam_kick": 5.0, "kick": 120.0, "recoil": 8.0, "flash_size": 7.0, "flash_light": 1.8,
-			"tracer_color": Color(0.7, 0.75, 0.45), "tracer_len": 8.0, "casing": 0, "gun_len": 14.0, "gun_row": 6,
+			"tracer_color": Color(0.7, 0.75, 0.45), "tracer_len": 8.0, "casing": 0, "gun_len": 10.0, "gun_row": 6,
 			"sfx": "gniew4_shot", "sfx_count": 2, "sfx_vol": -2.0,
 		},
 		{
@@ -143,7 +143,7 @@ static func _table() -> Array:
 			"reload_time": 2.2, "reload_empty_extra": 0.5,
 			"shake": 0.6, "recoil": 2.0, "flash_size": 4.0, "flash_light": 1.3,
 			"flash_color": Color(1.0, 0.7, 0.35), "tracer_color": Color(1.0, 0.8, 0.5), "tracer_len": 14.0,
-			"casing": 0, "gun_len": 16.0, "gun_row": 7,
+			"casing": 0, "gun_len": 10.0, "gun_row": 7,
 			"sfx": "sokol6_shot", "sfx_count": 3, "sfx_vol": -8.0,
 		},
 		{
@@ -156,7 +156,7 @@ static func _table() -> Array:
 			"reload_time": 2.8, "reload_empty_extra": 0.5, "reload_sfx": "reload_rail", "reload_sfx_count": 1,
 			"shake": 6.0, "cam_kick": 7.0, "kick": 170.0, "recoil": 9.0, "flash_size": 10.0, "flash_light": 2.4,
 			"flash_color": Color(0.7, 0.9, 1.0), "tracer_color": Color(0.65, 0.92, 1.0), "tracer_len": 40.0,
-			"casing": 0, "gun_len": 17.0, "gun_row": 8,
+			"casing": 0, "gun_len": 12.0, "gun_row": 8,
 			"sfx": "widmo1_shot", "sfx_count": 2, "sfx_vol": 0.0, "sfx_loop": "widmo1_charge",
 		},
 		{
@@ -168,7 +168,7 @@ static func _table() -> Array:
 			"mag": 1, "reserve_start": 6, "reserve_max": 12, "pickup_rounds": 3,
 			"reload_time": 1.5, "reload_empty_extra": 0.0, "reload_sfx": "reload_bolt", "reload_sfx_count": 1,
 			"shake": 0.6, "recoil": 4.0, "flash_size": 0.0, "flash_light": 0.0,
-			"tracer_color": Color(0.82, 0.78, 0.62), "tracer_len": 14.0, "casing": 0, "gun_len": 17.0, "gun_row": 9,
+			"tracer_color": Color(0.82, 0.78, 0.62), "tracer_len": 14.0, "casing": 0, "gun_len": 11.0, "gun_row": 9,
 			"sfx": "ciegno6_shot", "sfx_count": 2, "sfx_vol": -6.0,
 		},
 		{
@@ -177,7 +177,7 @@ static func _table() -> Array:
 			"damage": 30.0, "knock": 60.0, "reach": 22.0, "arc_deg": 60.0,
 			"n_min": 0.0, "n_max": 0.0, "mag": 0, "infinite": true,
 			"shake": 0.8, "recoil": 0.0, "flash_size": 0.0, "flash_light": 0.0, "casing": 0,
-			"gun_len": 22.0, "gun_row": 10, "sfx": "maczeta", "sfx_count": 2, "sfx_vol": -6.0,
+			"gun_len": 13.0, "gun_row": 10, "sfx": "maczeta", "sfx_count": 2, "sfx_vol": -6.0,
 		},
 		{
 			"key": "kilof", "name": "PICKAXE", "slot": Slot.MELEE, "kind": Kind.MELEE,
@@ -185,7 +185,7 @@ static func _table() -> Array:
 			"damage": 55.0, "knock": 160.0, "stun": 1.2, "reach": 24.0, "arc_deg": 50.0, "breaks_walls": true,
 			"n_min": 0.8, "n_max": 0.8, "mag": 0, "infinite": true,
 			"shake": 2.0, "recoil": 0.0, "flash_size": 0.0, "flash_light": 0.0, "casing": 0,
-			"gun_len": 20.0, "gun_row": 11, "sfx": "kilof_swing", "sfx_count": 2, "sfx_vol": -5.0,
+			"gun_len": 13.0, "gun_row": 11, "sfx": "kilof_swing", "sfx_count": 2, "sfx_vol": -5.0,
 		},
 	]
 

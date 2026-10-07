@@ -23,10 +23,19 @@ GRIP = {
 }
 
 
+## Skala broni w ŚWIECIE względem rysunku ikony (1.7.67): wcześniej karabin był dłuższy niż postać wysoka (26 px przy 23,5 px), pistolet
+## prawie jak karabin. Teraz karabiny ×0,65, ciężkie (WRATH-4, SPECTER-1) ×0,72, pistolet ×0,5, białe ×0,6 / ×0,65 — długość karabinu
+## ≈ 17 px, pistoletu ≈ 10 px. Ikony HUD i kodeksu bez zmian (WORLD_FIT działa tylko na arkusz `guns`).
+WORLD_FIT = {
+    "m83": 0.65, "spread12": 0.65, "p64": 0.5, "srut8": 0.65, "lr7": 0.65, "hkm9": 0.65,
+    "gniew4": 0.72, "sokol6": 0.65, "widmo1": 0.72, "ciegno6": 0.65, "maczeta": 0.6, "kilof": 0.65,
+}
+
+
 def gun_len(name):
     """Odległość dłoń → wylot w świecie [px]; ta liczba idzie do `gun_len` w weapons.gd."""
     gx, _gy, mx, k = GRIP[name]
-    return round((mx - gx) * k)
+    return round((mx - gx) * k * WORLD_FIT[name])
 NAMES = ["m83", "spread12", "p64", "srut8", "lr7", "hkm9", "gniew4", "sokol6", "widmo1", "ciegno6", "maczeta", "kilof"]
 BANDS = (-0.05, 0.25, 0.55, 0.85)
 
@@ -65,7 +74,7 @@ def gun(name, world=False):
     fw, fh = (WFW, WFH) if world else (FW, FH)
     if world:
         gx, gy, mx, k = GRIP[name]
-        k *= WORLD_DENSITY                                  # ten sam rozmiar w świecie, więcej pikseli
+        k *= WORLD_DENSITY * WORLD_FIT[name]                # rozmiar w świecie (WORLD_FIT), więcej pikseli (gęstość)
         hi = Sc(fw, fh, k, HAND[0] - gx * k, HAND[1] - gy * k)
     else:
         hi = Sc(fw, fh)
