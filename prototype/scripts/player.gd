@@ -86,6 +86,8 @@ var aim_dir := Vector2.RIGHT
 var crouching := false
 ## `dead` znaczy „down": gracz leży i wykrwawia się, ale można go podnieść.
 var dead := false
+var grabbed := false            ## chwycony przez Pijawkę (leech.gd): przypięty w miejscu, nie chodzi ani nie skacze, ale może strzelać i bić
+var grab_pos := Vector2.ZERO
 var pumping := false            ## drezyna (handcar.gd): gracz pompuje — nie chodzi, nie skacze i nie strzela
 var bleed_left := 0.0
 var weapon := 0                 ## id broni w ręku (replikowane); ustawia kontroler
@@ -420,6 +422,11 @@ func _physics_process(delta: float) -> void:
 	if dead:
 		_down_physics(delta)
 		return
+	if grabbed:
+		global_position = grab_pos          # trzyma go Pijawka: pozycja jest narzucona (gracz mógłby się uwolnić tylko przez obrażenia bossa)
+		velocity = Vector2.ZERO
+		_run_vx = 0.0
+		_kick = 0.0
 
 	if is_bot:
 		weapons.tick_bot(delta)
@@ -435,7 +442,7 @@ func _local_brain(delta: float) -> void:
 	var busy := reviving or pumping
 	weapons.tick_local(delta, busy)
 
-	var move_x := 0.0 if busy else Input.get_axis("move_left", "move_right")
+	var move_x := 0.0 if (busy or grabbed) else Input.get_axis("move_left", "move_right")
 	var aim_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	crouching = Input.is_action_pressed("crouch") and is_on_floor()
 
@@ -481,7 +488,7 @@ func _local_brain(delta: float) -> void:
 		var g := GRAVITY * (FALL_MULT if velocity.y > 0.0 else 1.0)
 		velocity.y = minf(velocity.y + g * delta, MAX_FALL)
 
-	if _jump_buf > 0.0 and _coyote > 0.0 and not crouching and not busy:
+	if _jump_buf > 0.0 and _coyote > 0.0 and not crouching and not busy and not grabbed:
 		velocity.y = JUMP_VELOCITY * float(surf["jump"])
 		_jump_buf = 0.0
 		_coyote = 0.0
@@ -619,6 +626,7 @@ func _revive_time() -> float:
 	return REVIVE_TIME * Difficulty.m("revive")
 
 func _go_down() -> void:
+	grabbed = false
 	hp = 0
 	dead = true
 	bleed_left = bleed_time()
@@ -1208,6 +1216,22 @@ func apply_hit(amount: int, _from_pos: Vector2) -> void:
 		Audio.on_player_hurt(hp <= 1)
 	if hp <= 0:
 		_go_down()
+
+## Chwyt Pijawki (serwer → właściciel postaci): `on` przypina gracza w `pos`, wyłączenie go uwalnia.
+func deliver_grab(on: bool, pos: Vector2) -> void:
+	if not NoiseMgr.has_network() or is_multiplayer_authority():
+		apply_grab(on, pos)
+	else:
+		apply_grab.rpc_id(get_multiplayer_authority(), on, pos)
+
+@rpc("any_peer", "call_remote", "reliable")
+func apply_grab(on: bool, pos: Vector2) -> void:
+	if not is_multiplayer_authority():
+		return
+	grabbed = on and not dead
+	grab_pos = pos
+	if grabbed:
+		velocity = Vector2.ZERO
 
 ## Odrzut broni popycha postać (px/s, wygasa KICK_DECAY).
 func apply_recoil_kick(v: float) -> void:

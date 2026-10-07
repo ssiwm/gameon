@@ -646,20 +646,50 @@ func _leech_test() -> void:
 	var dealt_lit: float = h1 - lc.hp
 	check.call("obrażenia: ciemność %.1f (5%%), w świetle flary %.1f (100%%), cień ujawniony=%s" % [dealt_dark, dealt_lit, str(lc.revealed)],
 		is_equal_approx(dealt_dark, 5.0) and is_equal_approx(dealt_lit, 100.0) and lc.revealed)
-	# zasadzka: gracz stoi w wodzie obok Pijawki
-	lc.hp = lc.max_hp
-	lc.mode = lc.Mode.SUB
-	lc._cd = 0.0
-	p.global_position = Vector2(lc.global_position.x + 20.0, surf)
-	p.velocity = Vector2.ZERO
-	var hp_before: int = p.hp
-	var saw_wind := false
-	var saw_up := false
-	for i in 40:
-		await get_tree().create_timer(0.1).timeout
-		saw_wind = saw_wind or lc.mode == lc.Mode.WIND
-		saw_up = saw_up or lc.mode == lc.Mode.UP
-	check.call("zasadzka: zapowiedź=%s, wynurzenie=%s, gracz w wodzie stracił HP (%d → %d)" % [str(saw_wind), str(saw_up), hp_before, p.hp], saw_wind and saw_up and p.hp < hp_before)
+	# zasadzka i chwyt: gracz stoi w wodzie obok Pijawki — zapowiedź, wynurzenie, chwyt
+	var ambush := func() -> Dictionary:
+		lc.hp = lc.max_hp
+		lc.mode = lc.Mode.SUB
+		lc._cd = 0.0
+		lc._grab_dmg = 0.0
+		if p.dead:
+			p.dead = false
+		p.hp = 3
+		p._invuln = 0.0
+		lc.position.x = 69.0 * 16.0
+		p.global_position = Vector2(lc.global_position.x + 20.0, surf)
+		p.velocity = Vector2.ZERO
+		var saw_wind := false
+		var grabbed_ok := false
+		for i in 45:
+			await get_tree().create_timer(0.1).timeout
+			saw_wind = saw_wind or lc.mode == lc.Mode.WIND
+			if lc.mode == lc.Mode.GRAB:
+				grabbed_ok = true
+				break
+		return {"wind": saw_wind, "grab": grabbed_ok}
+	var r: Dictionary = await ambush.call()
+	var pinned_x: float = p.global_position.x
+	await get_tree().create_timer(0.5).timeout
+	check.call("zasadzka: zapowiedź=%s, chwyt=%s (ofiara id %d), HP gracza %d, przypięty w miejscu (dx %.1f)" % [str(r["wind"]), str(r["grab"]), lc.grab_victim_id, p.hp, absf(p.global_position.x - pinned_x)],
+		bool(r["wind"]) and bool(r["grab"]) and lc.grab_victim_id == p.player_id and p.grabbed and p.hp < 3 and absf(p.global_position.x - pinned_x) < 2.0)
+	# QTE: drużyna zadaje 12% maks. HP w oknie → Pijawka puszcza, ofiara żyje
+	var hit_before: float = lc.hp
+	lc.take_hit({"amount": lc.max_hp * 0.13, "pos": lc.global_position, "dir": Vector2.RIGHT, "w": 0})
+	await get_tree().create_timer(0.4).timeout
+	check.call("QTE udane: 13%% HP zadane → Pijawka puściła (tryb %d), gracz wolny=%s i żyje (HP %d)" % [lc.mode, str(not p.grabbed), p.hp], lc.mode == lc.Mode.SUB and not p.grabbed and not p.dead and p.hp > 0 and lc.grab_victim_id == 0)
+	# QTE nieudane: bez obrażeń okno mija i ofiara trafia pod wodę (down)
+	r = await ambush.call()
+	await get_tree().create_timer(lc.GRAB_TIME + 0.8).timeout
+	check.call("QTE nieudane: po %.0f s ofiara wciągnięta pod wodę (down=%s), Pijawka wolna (id %d, tryb %d)" % [lc.GRAB_TIME, str(p.dead), lc.grab_victim_id, lc.mode], bool(r["grab"]) and p.dead and not p.grabbed and lc.grab_victim_id == 0 and lc.mode == lc.Mode.SUB)
+	# cios chwyconego liczy się podwójnie: 7% maks. HP z maczety = 14% → uwolnienie
+	p.dead = false
+	r = await ambush.call()
+	lc.take_hit({"amount": lc.max_hp * 0.07, "pos": lc.global_position, "dir": Vector2.RIGHT, "w": 0, "type": "melee", "shooter": p.player_id})
+	await get_tree().create_timer(0.4).timeout
+	check.call("QTE: cios chwyconego (maczeta) liczy się podwójnie — uwolniony=%s" % str(not p.grabbed), bool(r["grab"]) and not p.grabbed and lc.mode == lc.Mode.SUB)
+	p.dead = false
+	p.hp = 3
 	# kładka: gracz nad wodą jest poza zasięgiem
 	await get_tree().create_timer(2.5).timeout
 	p.hp = 3
