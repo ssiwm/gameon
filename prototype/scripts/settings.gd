@@ -24,7 +24,7 @@ const UI_MULT := [0.85, 1.0, 1.25]
 const GAME_ACTIONS := [
 	"move_left", "move_right", "move_up", "move_down", "jump", "fire", "crouch", "overcharge", "scream",
 	"flare", "interact", "weapon_1", "weapon_2", "weapon_3", "weapon_next", "weapon_prev", "restart",
-	"flashlight", "reload", "melee", "help",
+	"flashlight", "reload", "melee", "help", "firemode",
 ]
 
 var volume := {"master": 1.0, "music": 1.0, "sfx": 1.0}

@@ -18,6 +18,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Vfx := preload("res://scripts/vfx.gd")
+const Lights := preload("res://scripts/lights.gd")
 const Projectile := preload("res://scripts/projectile.gd")
 
 enum State { READY, DRAW, RELOAD, CHARGE, MELEE }
@@ -30,11 +31,14 @@ const RATE_CAP := 2.5             ## „zapas” strzałów po lagu sieci (token
 const FX_REPORT_EVERY := 0.2      ## efekt trafienia promieniem/płomieniem nie częściej niż co tyle
 const NOISE_RELOAD := 0.25
 const NOISE_DRY := 0.12
+const FIRE_PATCH_EVERY := 0.5     ## s ciągłego płomienia (HKM-9) między kolejnymi ogniami na podłodze
+const FIRE_DROP_MAX := 40.0       ## px w dół od końca płomienia, w których szukamy podłogi
 
 signal shot(w: int)
 signal reload_started(w: int)
 signal dry_fired(w: int)
 signal weapon_changed(w: int)
+signal fire_mode_changed(w: int, burst: bool)
 signal melee_swung(w: int)
 
 var player: CharacterBody2D
@@ -44,6 +48,7 @@ var loadout: Array[int] = [Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Wea
 var melee_id := Weapons.START_MELEE
 var slot := 0
 var mags: Dictionary = {}
+var burst_on: Dictionary = {}     ## id broni → true: wybrany tryb serii (klawisz B; lokalnie, serwer go nie potrzebuje)
 
 # --- stan
 var state: int = State.READY
@@ -75,10 +80,12 @@ var _cycle_t := -1.0              ## s do dźwięku/łuski po strzale (pompka)
 var _cycle_w := 0
 var _cycle_muzzle := Vector2.ZERO
 var _cycle_dir := Vector2.RIGHT
+var _burst_left := 0              ## ile strzałów trwającej serii jeszcze zostało (seria dobiega bez trzymania spustu)
 var _srv_tokens := 1.5
 var _srv_last_ms := 0
 var _srv_tick := 0.0
 var _srv_fx_t := 0.0
+var _srv_patch_t := 0.0              ## HKM-9: ile płomienia upłynęło od ostatniego ognia na podłodze
 var _prev_w := -1
 
 func _ready() -> void:
@@ -90,6 +97,21 @@ func _ready() -> void:
 
 func cur() -> WeaponDef:
 	return Weapons.def(loadout[slot])
+
+## Czy `d` strzela teraz serią (broń ma tryb serii i gracz go wybrał).
+func is_burst(d: WeaponDef) -> bool:
+	return d.burst_size > 0 and bool(burst_on.get(d.id, false))
+
+## Klawisz B: przełącza ogień ciągły ↔ seria dla trzymanej broni (jeśli ma oba tryby).
+func toggle_fire_mode() -> void:
+	var d := cur()
+	if d.burst_size <= 0 or state == State.RELOAD:
+		return
+	burst_on[d.id] = not bool(burst_on.get(d.id, false))
+	_burst_left = 0
+	if not player.is_bot:
+		Audio.play("ui_click", Audio.BUS_UI, -10.0, 0.8 if burst_on[d.id] else 1.3)
+	fire_mode_changed.emit(d.id, bool(burst_on[d.id]))
 
 func def_of_slot(i: int) -> WeaponDef:
 	return Weapons.def(loadout[i])
@@ -212,6 +234,8 @@ func tick_local(delta: float, reviving: bool) -> void:
 	_handle_switch_input()
 	if Input.is_action_just_pressed("interact"):
 		_try_pickup()
+	if Input.is_action_just_pressed("firemode"):
+		toggle_fire_mode()
 	if Input.is_action_just_pressed("melee"):
 		try_melee()
 	if Input.is_action_just_pressed("reload"):
@@ -256,6 +280,7 @@ func _tick_common(delta: float) -> void:
 			_tick_reload(delta)
 
 func _cancel_actions() -> void:
+	_burst_left = 0
 	if state == State.RELOAD:
 		_cancel_reload()
 	if state == State.CHARGE:
@@ -319,7 +344,10 @@ func _has_ammo(d: WeaponDef) -> bool:
 	return not ammo_enabled or not d.uses_ammo() or mag_of(d.id) >= d.ammo_per_shot
 
 func _handle_shot(d: WeaponDef, held: bool) -> void:
-	var want := held if d.auto else _buf_t > 0.0
+	var bursting := is_burst(d)
+	var want := held if (d.auto and not bursting) else _buf_t > 0.0
+	if bursting and (held or _burst_left > 0):
+		want = true                                      # przytrzymany spust powtarza serie, a rozpoczęta seria dobiega sama po puszczeniu
 	if not want:
 		return
 	# strzelbę/granatnik ładowane po jednym naboju można przerwać strzałem
@@ -328,6 +356,7 @@ func _handle_shot(d: WeaponDef, held: bool) -> void:
 	if state != State.READY or cd > 0.0:
 		return
 	if not _has_ammo(d):
+		_burst_left = 0
 		_dry_fire(d)
 		return
 	_buf_t = 0.0
@@ -400,10 +429,19 @@ func _fire_shot(d: WeaponDef) -> void:
 	if ammo_enabled and d.uses_ammo():
 		mags[d.id] = mag_of(d.id) - d.ammo_per_shot
 	var heat := heat_of(d.id)
-	NoiseMgr.add_noise(d.noise(heat), player.global_position)
-	_heat[d.id] = minf(1.0, heat + d.heat_gain)
-	bloom = minf(bloom + d.bloom_per_shot, d.bloom_max)
-	cd += d.cooldown
+	var bursting := is_burst(d)
+	NoiseMgr.add_noise(d.noise(heat) * (d.burst_quiet if bursting else 1.0), player.global_position)
+	_heat[d.id] = minf(1.0, heat + d.heat_gain * (d.burst_heat if bursting else 1.0))
+	bloom = minf(bloom + d.bloom_per_shot * (d.burst_bloom if bursting else 1.0), d.bloom_max)
+	if bursting:
+		# pierwszy strzał otwiera serię (zostaje burst_size − 1), kolejne ją dokańczają; po ostatnim — dłuższa przerwa
+		if _burst_left > 0:
+			_burst_left -= 1
+		else:
+			_burst_left = d.burst_size - 1
+		cd += d.burst_gap if _burst_left > 0 else d.burst_rest
+	else:
+		cd += d.cooldown
 	if d.kind == WeaponDef.Kind.RAIL:
 		Audio.stop_loop(d.sfx_loop)
 		charge = 0.0
@@ -526,6 +564,7 @@ func _fire_request(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: floa
 func _server_fire(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, shooter: int, own_fx_done: bool, lag := 0.0) -> void:
 	var d := Weapons.def(w)
 	srv_shots += 1
+	Lights.add_flash(muzzle, d.flash_light, player)
 	match d.kind:
 		WeaponDef.Kind.RAIL:
 			_server_rail(d, muzzle, dir, shooter, lag)
@@ -587,6 +626,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if not player.w_firing:
 		_srv_tick = 0.0
+		_srv_patch_t = 0.0
 		return
 	var d := Weapons.def(player.weapon)
 	if not d.is_continuous():
@@ -614,6 +654,24 @@ func _physics_process(delta: float) -> void:
 			var dist := c.distance_to(origin)
 			var info_amount := d.damage * d.falloff(dist)
 			_continuous_hit(d, t, c, dir, "fire", report, info_amount)
+		_srv_patch_t += d.cooldown
+		if _srv_patch_t >= FIRE_PATCH_EVERY:
+			_srv_patch_t = 0.0
+			_drop_fire_patch(d, space, origin, dir)
+
+## Koniec płomienia (albo mur, w który uderza) rzutowany w dół na podłogę — tam zostaje ogień.
+func _drop_fire_patch(d: WeaponDef, space: PhysicsDirectSpaceState2D, origin: Vector2, dir: Vector2) -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null or not lvl.has_method("spawn_fire_patch"):
+		return
+	var tip := origin + dir * d.range_px * 0.9
+	var wall := space.intersect_ray(PhysicsRayQueryParameters2D.create(origin, tip, 1))
+	if not wall.is_empty():
+		tip = (wall["position"] as Vector2) - dir * 4.0
+	var floor_hit := space.intersect_ray(PhysicsRayQueryParameters2D.create(tip, tip + Vector2(0.0, FIRE_DROP_MAX), 1 | 16))
+	if floor_hit.is_empty():
+		return
+	lvl.spawn_fire_patch((floor_hit["position"] as Vector2) + Vector2(0.0, -1.0), d.id, player.player_id)
 
 func _continuous_hit(d: WeaponDef, target: Node, pos: Vector2, dir: Vector2, type: String, report: bool, amount := -1.0) -> void:
 	var info := Combat.make_info(d.id, d.damage if amount < 0.0 else amount, pos, dir, player.player_id, type)
@@ -635,6 +693,7 @@ func try_reload(auto := false) -> bool:
 			Audio.play("dry_fire", Audio.BUS_WEAPONS, -10.0, 0.8)
 		return false
 	firing = false
+	_burst_left = 0
 	state = State.RELOAD
 	_rl_req = false
 	_rl_pending = 0

@@ -580,6 +580,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			level.spawn_flare(Vector2(bs.global_position.x + 30.0, bs.global_position.y - 20.0), Vector2.ZERO)
 			if "--shotup" in OS.get_cmdline_user_args() and bs.has_method("_surface"):
 				bs.call("_surface")         # --shotup: Pijawka od razu wynurzona (podgląd arkusza, z chwytem, jeśli gracz stoi w zasięgu)
+	if "--shotfire" in OS.get_cmdline_user_args():
+		var fp: Node2D = _players.get_node_or_null("1")      # --shotfire: trzy plamy ognia HKM-9 przed graczem (podgląd)
+		if fp != null:
+			for i in 3:
+				level.spawn_fire_patch(fp.global_position + Vector2(44.0 + 22.0 * float(i), -1.0), Weapons.HKM9, 1)
 	if result:
 		mission.elapsed = 214.0
 		mission._success()                 # podgląd karty wyniku

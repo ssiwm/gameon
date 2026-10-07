@@ -15,6 +15,7 @@ const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Projectile := preload("res://scripts/projectile.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
+const Lights := preload("res://scripts/lights.gd")
 const Enemy := preload("res://scripts/enemy.gd")
 const Controller := preload("res://scripts/weapon_controller.gd")
 
@@ -80,6 +81,9 @@ func dealt(e: Node) -> float:
 	return e._max_hp - e.hp
 
 func free_dummies() -> void:
+	Lights.flashes.clear()
+	for fp in get_tree().get_nodes_in_group("fire_patches"):
+		fp.queue_free()
 	for e in level.get_children():
 		if e.name.begins_with("TDummy"):
 			e.queue_free()
@@ -104,6 +108,7 @@ func equip(w: int, full_reserve := true) -> WeaponDef:
 	wc.cd = 0.0
 	wc.state = Controller.State.READY
 	wc.firing = false
+	wc._burst_left = 0
 	wc.charge = 0.0
 	if full_reserve:
 		Arsenal.reserve_changed.emit()
@@ -128,6 +133,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_falloff_crit()
 	await _t_phase1()
 	await _t_upgrades()
+	await _t_phase3()
 	await _t_sweep()
 	await _t_pierce_beam_rail()
 	await _t_flame()
@@ -288,6 +294,114 @@ func _t_phase1() -> void:
 			worst_r = ratio
 			worst = d.name
 	check("hałas / DPS ≤ 0,25 dla broni palnych (najgorsza: %s %.2f)" % [worst, worst_r], worst_r <= 0.25)
+
+## Faza 3 przeglądu broni: tryb serii M-83, ogień na podłodze HKM-9, błysk lufy i światło broni jako sygnał.
+func _t_phase3() -> void:
+	# --- tryb serii
+	var d := equip(Weapons.M83)
+	wc.burst_on.clear()
+	wc._buf_t = 0.0
+	NoiseMgr.last_noise_amount = 0.0
+	wc.cd = 0.0
+	wc._fire_shot(d)
+	var auto_noise: float = NoiseMgr.last_noise_amount
+	var auto_heat: float = wc.heat_of(d.id)
+	wc.toggle_fire_mode()
+	check("B przełącza M-83 na serię (burst_on), P-64 nie ma trybu serii", bool(wc.burst_on.get(d.id, false)) and Weapons.def(Weapons.P64).burst_size == 0)
+	d = equip(Weapons.M83)
+	wc._burst_left = 0
+	wc.cd = 0.0
+	wc._fire_shot(d)
+	var burst_noise: float = NoiseMgr.last_noise_amount
+	var burst_heat: float = wc.heat_of(d.id)
+	check("seria: strzał o %.0f%% cichszy (%.2f vs %.2f) i lufa grzeje się o %.0f%% wolniej" % [100.0 * (1.0 - burst_noise / maxf(auto_noise, 0.001)), burst_noise, auto_noise, 100.0 * (1.0 - burst_heat / maxf(auto_heat, 0.001))],
+		absf(burst_noise - auto_noise * d.burst_quiet) < 0.02 and absf(burst_heat - auto_heat * d.burst_heat) < 0.005)
+	d = equip(Weapons.M83)
+	wc.burst_on[d.id] = true
+	var m0: int = wc.mag_of(d.id)
+	wc.sim_press = true                                   # jedno naciśnięcie spustu
+	await wait(0.9)
+	check("seria: jedno naciśnięcie = dokładnie %d strzały i przerwa (magazynek %d → %d)" % [d.burst_size, m0, wc.mag_of(d.id)], m0 - wc.mag_of(d.id) == d.burst_size)
+	wc.sim_fire = true
+	await wait(0.9)
+	wc.sim_fire = false
+	var held_shots: int = m0 - d.burst_size - wc.mag_of(d.id)
+	check("seria: przytrzymany spust daje serię co %.2f s (strzałów w 0,9 s: %d), wolniej niż ogień ciągły" % [d.burst_gap * (d.burst_size - 1) + d.burst_rest, held_shots], held_shots >= 6 and held_shots <= 9)
+	wc.burst_on[d.id] = false
+	d = equip(Weapons.M83)
+	m0 = wc.mag_of(d.id)
+	wc.sim_fire = true
+	await wait(0.9)
+	wc.sim_fire = false
+	var auto_shots: int = m0 - wc.mag_of(d.id)
+	check("ogień ciągły bez zmian (strzałów w 0,9 s: %d > seria %d)" % [auto_shots, held_shots], auto_shots >= 8 and auto_shots > held_shots)
+	wc.burst_on.clear()
+	# --- ogień na podłodze
+	var tgt := await dummy(60.0, 100000.0, "trzosek")
+	var patch_pos: Vector2 = tgt.global_position
+	level.spawn_fire_patch(patch_pos, Weapons.HKM9, 1)
+	level.spawn_fire_patch(patch_pos + Vector2(6, 0), Weapons.HKM9, 1)
+	await wait(0.7)
+	var patches := get_tree().get_nodes_in_group("fire_patches")
+	check("ogień na podłodze: dwa blisko siebie scalają się w jeden (%d), cel w ogniu płonie i traci HP (%.1f)" % [patches.size(), dealt(tgt)], patches.size() == 1 and dealt(tgt) > 0.4 and tgt._burn > 0.0)
+	var fp: Node = patches[0]
+	fp.life = 0.2
+	await wait(0.5)
+	check("ogień na podłodze wygasa", not is_instance_valid(fp) or fp.is_queued_for_deletion())
+	free_dummies()
+	await frames(2)
+	var far := await dummy(220.0, 100000.0, "trzosek")
+	level.spawn_fire_patch(player.global_position + Vector2(60, 0), Weapons.HKM9, 1)
+	await wait(0.6)
+	check("ogień nie rani celu poza plamą", dealt(far) == 0.0)
+	free_dummies()
+	await frames(2)
+	# płomień HKM-9 zostawia ogień przed graczem
+	equip(Weapons.HKM9)
+	player.aim_dir = Vector2.RIGHT
+	wc.sim_fire = true
+	await wait(1.3)
+	wc.sim_fire = false
+	var dropped := get_tree().get_nodes_in_group("fire_patches").size()
+	check("HKM-9: ciągły płomień zostawia ogień na podłodze (plam: %d)" % dropped, dropped >= 1)
+	free_dummies()
+	await frames(2)
+	# --- ćma: ogień spala, błysk z lufy budzi
+	var moth := await dummy(120.0, 100000.0, "cma")
+	Lights.flashes.clear()
+	player.flashlight = false
+	player.w_firing = false
+	var quiet: bool = moth._nearest_light(420.0).is_empty()
+	level.spawn_fire_patch(moth.global_position + Vector2(40, 0), Weapons.HKM9, 1)
+	await frames(2)
+	var by_fire: Dictionary = moth._nearest_light(420.0)
+	check("ćma leci na ogień na podłodze (jak na flarę)", quiet and not by_fire.is_empty() and by_fire["kind"] == "flare")
+	free_dummies()
+	await frames(2)
+	moth = await dummy(120.0, 100000.0, "cma")
+	var e0 := equip(Weapons.M83)
+	wc.cd = 0.0
+	wc._server_fire(wc.muzzle_pos(Vector2.RIGHT, e0), Vector2.RIGHT, e0.id, 1, 0.0, 1, true)
+	var after_m83: bool = moth._nearest_light(420.0).is_empty()
+	var sp := equip(Weapons.SPREAD12)
+	wc.cd = 0.0
+	wc._server_fire(wc.muzzle_pos(Vector2.RIGHT, sp), Vector2.RIGHT, sp.id, 1, 0.0, 1, true)
+	var after_spread: Dictionary = moth._nearest_light(420.0)
+	check("błysk z lufy: M-83 (%.1f) nie budzi ćmy, SPREAD-12 (%.1f ≥ %.1f) tak" % [e0.flash_light, sp.flash_light, Lights.FLASH_MIN], after_m83 and not after_spread.is_empty() and after_spread["kind"] == "player")
+	free_dummies()
+	await frames(2)
+	# --- Stalker widzi światło broni cichej (wiązka, płomień), nie zwykły strzał
+	var space := player.get_world_2d().direct_space_state
+	var probe: Vector2 = player.global_position + Vector2(80, -20)
+	player.w_firing = true
+	player.weapon = Weapons.LR7
+	var seen_beam := Lights.light_weapon_on(probe, get_tree(), space)
+	player.weapon = Weapons.HKM9
+	var seen_flame := Lights.light_weapon_on(probe, get_tree(), space)
+	player.weapon = Weapons.M83
+	var seen_gun := Lights.light_weapon_on(probe, get_tree(), space)
+	player.w_firing = false
+	check("światło broni: wiązka LR-7 i płomień HKM-9 są widoczne dla Stalkera, strzał z M-83 nie", seen_beam == player and seen_flame == player and seen_gun == null)
 
 ## Faza 2 przeglądu broni: ulepszenia poziomu 3 zmieniają zachowanie broni (kasetowe, salwa, podpalenie, dobicie, przebicie ścian).
 func _t_upgrades() -> void:

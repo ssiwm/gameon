@@ -23,6 +23,7 @@ const TIPS := [
 	["downed", "You are down. Stay still — a teammate can revive you before you bleed out"],
 	["light", "L toggles the flashlight. Light is noise too — turn it off to hide"],
 	["flare", "F throws a flare: bait that draws enemies with light instead of noise"],
+	["firemode", "B switches the M-83 between full auto and a quiet 3-round burst"],
 ]
 
 var current := ""                    ## tekst w tej chwili
@@ -85,6 +86,7 @@ func _collect(p: Node) -> void:
 	var below: bool = lvl_n != null and p.global_position.y > float(lvl_n.underground_y) and float(lvl_n.underground_y) > 0.0
 	_queue("light", _session > 45.0 or (below and not p.flashlight == true), true)
 	_queue("flare", _session > 150.0, true)
+	_queue("firemode", _session > 90.0 and p.weapons != null and p.weapons.cur().burst_size > 0, true)
 	# chwilowe: gdy sytuacja minie, zanim przyjdzie kolej, podpowiedź przepada
 	_queue("uneasy", NoiseMgr.level >= NoiseMgr.UNEASY_THRESHOLD or NoiseMgr.stalker_awake, false)
 	_queue("downed", bool(p.dead), false)

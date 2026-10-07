@@ -88,8 +88,8 @@ static func bestiary() -> Array:
 
 ## Krótki opis i wskazówka; klucz = WeaponDef.key
 const WEAPON_TEXT := {
-	"m83": ["Standard-issue assault rifle. Quiet while the barrel is cold and louder as it heats.",
-		"Fire in short bursts — a long one costs you the night."],
+	"m83": ["Standard-issue assault rifle. Quiet while the barrel is cold and louder as it heats. B switches between full auto and a 3-round burst: slower, tighter and much quieter.",
+		"Burst mode is the sneaking mode: about 20% less damage per second for half the noise, and the barrel heats up much slower. A long full-auto spray costs you the night."],
 	"spread12": ["Close-range shotgun: five pellets, brutal point-blank, nearly useless past a few metres.",
 		"One of the loudest cold shots you own. Use it on a Bullock's back, not across a room."],
 	"p64": ["Sidearm with an endless supply — the magazine refills, the reserve never drops. Accurate and cheap on noise.",
@@ -98,7 +98,7 @@ const WEAPON_TEXT := {
 		"Shells load one at a time and loading can be interrupted by firing. Brace — it shoves you back."],
 	"lr7": ["Energy beam: a continuous ray that pierces one extra enemy (two in a line). Barely audible — but moths fly at the beam.",
 		"The quietest way to hurt a pack. Cell-powered — watch the magazine, not the heat. Fire it near a hanging Moth and it will wake and come for you."],
-	"hkm9": ["Flamethrower: short cone of fire that ignites enemies. Burning pack hunters panic and run.",
+	"hkm9": ["Flamethrower: short cone of fire that ignites enemies and leaves burning patches on the floor for 4 s. Burning pack hunters panic and run.",
 		"Burning enemies take damage over time and run in panic. Keep it for tight corridors."],
 	"gniew4": ["Grenade launcher: lobbed shell that explodes on contact or after a fuse, with a wide blast.",
 		"Counts as a lure (+15 noise) and hurts the squad too. Do not fire at your own feet."],
