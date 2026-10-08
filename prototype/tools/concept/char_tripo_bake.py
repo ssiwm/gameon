@@ -16,7 +16,8 @@ glb, OUT, NAME = sys.argv[sys.argv.index("--") + 1:][:3]
 NORMALS = "--normals" in sys.argv
 ALBEDO = "--albedo" in sys.argv        # kolor bez oświetlenia (do dynamicznego światła 2D z mapą normalnych)
 os.makedirs(OUT, exist_ok=True)
-CHAR_PX = 22.0                       # wysokość postaci w pikselach świata (klatka ma 24)
+CHAR_PX = 22.0                       # wysokość postaci REF_H w pikselach świata (klatka ma 24)
+REF_H = 1.8                          # wysokość odniesienia (m): wspólna skala dla wszystkich postaci, więc niższa postać wychodzi niższa
 RW, RH = 256, 384
 ANIMS = [("idle", 6), ("run", 8), ("jump", 1), ("fall", 1), ("crouch", 1), ("crouch_walk", 6), ("down", 1)]
 P = "mixamorig:"
@@ -199,7 +200,7 @@ def main():
     mesh = [o for o in bpy.data.objects if o.type == "MESH"][0]
     zs = [(mesh.matrix_world @ v.co).z for v in mesh.data.vertices]
     H = max(zs) - min(zs)
-    px = H / CHAR_PX
+    px = REF_H / CHAR_PX
     hips = arm.data.bones[P + "Hips"].head_local
     x0 = hips.x - 0.05                              # oś postaci: nieco z tyłu miednicy (plecak wystaje do tyłu)
     sc = bpy.context.scene
