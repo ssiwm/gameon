@@ -1,7 +1,7 @@
 """Bake animacji postaci z Tripo (GLB z rigiem Mixamo) do klatek gry — te same 7 animacji i ten sam punkt dłoni co char_mpfb_outfit.py --bake.
 
 Uruchomienie:
-    blender -b --factory-startup -P prototype/tools/concept/char_tripo_bake.py -- RIGGED.glb OUT_DIR NAZWA [--normals] [--albedo]
+    blender -b --factory-startup -P prototype/tools/concept/char_tripo_bake.py -- RIGGED.glb OUT_DIR NAZWA [--normals] [--albedo] [--eyes]
 Wynik: OUT_DIR/NAZWA_<anim>_<i>.png (256×384) oraz, z --normals, NAZWA_<anim>_<i>_n.png — mapa normalnych ŚWIATA (n*0,5+0,5, Raw); pack_chars3d.py --hd przelicza ją na przestrzeń ekranu. Potem: python prototype/tools/pack_chars3d.py OUT_DIR --prefix=playerhd3_ --genders=NAZWA
 Model Tripo patrzy w +X, kamera stoi po stronie −Y (bliższa jest prawa strona postaci), stopy w z=0. Skala: postać 22 px świata (klatka 24 px).
 """
@@ -14,7 +14,8 @@ from mathutils import Matrix, Vector
 
 glb, OUT, NAME = sys.argv[sys.argv.index("--") + 1:][:3]
 NORMALS = "--normals" in sys.argv
-ALBEDO = "--albedo" in sys.argv        # kolor bez oświetlenia (do dynamicznego światła 2D z mapą normalnych)
+ALBEDO = "--albedo" in sys.argv
+EYES = "--eyes" in sys.argv            # dodatkowy przebieg NAZWA_<anim>_<i>_g.png: tylko świecące oczy (Mimik); reszta modelu czarna        # kolor bez oświetlenia (do dynamicznego światła 2D z mapą normalnych)
 os.makedirs(OUT, exist_ok=True)
 CHAR_PX = 22.0                       # wysokość postaci REF_H w pikselach świata (klatka ma 24)
 REF_H = 1.8                          # wysokość odniesienia (m): wspólna skala dla wszystkich postaci, więc niższa postać wychodzi niższa
@@ -190,6 +191,49 @@ def make_albedo_material(src):
     return m
 
 
+def add_eyes(arm, mesh):
+    """Dwie emisyjne kulki w miejscu oczu, skinowane w 100% do kości głowy. Zwraca (obiekty, czarny materiał dla modelu)."""
+    bone = arm.data.bones[P + "Head"]
+    hh = bone.head_local
+    objs = []
+    for sy in (-0.12, 0.12):                       # poza głową (zasłania je czarny model), liczy się rzut X i Z
+        me = bpy.data.meshes.new("eye")
+        import bmesh
+        bm = bmesh.new()
+        bmesh.ops.create_uvsphere(bm, u_segments=12, v_segments=8, radius=0.012)
+        bm.to_mesh(me)
+        bm.free()
+        o = bpy.data.objects.new("eye", me)
+        bpy.context.scene.collection.objects.link(o)
+        o.location = (hh.x + 0.132, hh.y + sy, hh.z + 0.146)
+        m = bpy.data.materials.new("eyeglow")
+        m.use_nodes = True
+        nt = m.node_tree
+        nt.nodes.clear()
+        out = nt.nodes.new("ShaderNodeOutputMaterial")
+        em = nt.nodes.new("ShaderNodeEmission")
+        em.inputs["Color"].default_value = (1.0, 0.62, 0.12, 1.0)
+        em.inputs["Strength"].default_value = 1.0
+        nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
+        me.materials.append(m)
+        o.parent = arm
+        mod = o.modifiers.new("Armature", "ARMATURE")
+        mod.object = arm
+        vg = o.vertex_groups.new(name=P + "Head")
+        vg.add(list(range(len(me.vertices))), 1.0, "REPLACE")
+        o.hide_render = True
+        objs.append(o)
+    blk = bpy.data.materials.new("black")
+    blk.use_nodes = True
+    nt = blk.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    em = nt.nodes.new("ShaderNodeEmission")
+    em.inputs["Color"].default_value = (0, 0, 0, 1)
+    nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
+    return objs, blk
+
+
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=glb)
@@ -234,6 +278,7 @@ def main():
     color_mat = make_albedo_material(orig_mat) if ALBEDO else orig_mat
     mesh.data.materials[0] = color_mat
     normal_mat = make_normal_material(orig_mat) if NORMALS else None
+    eye_objs, black_mat = add_eyes(arm, mesh) if EYES else ([], None)
     print("INFO H=%.3f px=%.4f x0=%.3f" % (H, px, x0))
     for anim, n in ANIMS:
         for i in range(n):
@@ -247,6 +292,15 @@ def main():
                 bpy.ops.render.render(write_still=True)
                 sc.view_settings.view_transform = "Standard"
                 mesh.data.materials[0] = color_mat
+            if EYES:
+                for o in eye_objs:
+                    o.hide_render = False
+                mesh.data.materials[0] = black_mat
+                sc.render.filepath = f"{OUT}/{NAME}_{anim}_{i}_g.png"
+                bpy.ops.render.render(write_still=True)
+                mesh.data.materials[0] = color_mat
+                for o in eye_objs:
+                    o.hide_render = True
         print("BAKED", NAME, anim, n)
     print("DONE-BAKE")
 

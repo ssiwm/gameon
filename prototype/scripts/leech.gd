@@ -144,8 +144,8 @@ func _ready() -> void:
 	_light = Lights.make_light(Lights.radial(), 2.2, Color(0.4, 0.8, 0.85), 0.0, false)
 	_light.position = Vector2(0, -10)
 	add_child(_light)
-	if Sprites.has("leech"):
-		_spr = Sprites.attach(self, "leech")
+	if Sprites.has(Sprites.enemy_sheet("leech")):
+		_spr = Sprites.attach(self, Sprites.enemy_sheet("leech"))
 		for l in _spr:
 			if l != null:
 				l.position = Vector2(0, SPRITE_DROP)

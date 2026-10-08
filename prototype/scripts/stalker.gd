@@ -97,8 +97,8 @@ func _ready() -> void:
 		_x_max = lvl.bounds.end.x - 40.0
 	visible = false
 	_last_aud_pos = global_position
-	if Sprites.has("stalker"):
-		_spr = Sprites.attach(self, "stalker")
+	if Sprites.has(Sprites.enemy_sheet("stalker")):
+		_spr = Sprites.attach(self, Sprites.enemy_sheet("stalker"))
 	_overlay = Lights.add_overlay(self)
 
 ## Skaner z perkiem „Scout" pokazuje śpiącego (niewidocznego) Stalkera z bliska.

@@ -8,8 +8,8 @@ from PIL import Image, ImageDraw, ImageFont
 ART = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "art")
 FB = "/usr/share/fonts/noto/NotoSans-Bold.ttf"
 man = json.load(open(os.path.join(ART, "sprites.json")))["sheets"]
-kinds = [k for k in ("wolek", "trzosek", "slepiec") if k + "_hd" in man]
-img = Image.new("RGB", (2300, 1500), (22, 24, 32))
+kinds = [k for k in ("wolek", "trzosek", "slepiec", "skoczek", "podsluchacz", "stalker", "mimik", "cma", "nest", "vein", "leech") if k + "_hd" in man]
+img = Image.new("RGB", (2300, 4200), (22, 24, 32))
 d = ImageDraw.Draw(img)
 d.text((40, 20), "Enemies HD (Tripo -> sprite pipeline, 8 px per world px, albedo + normal map + glow)", font=ImageFont.truetype(FB, 26), fill=(240, 170, 60))
 y = 80

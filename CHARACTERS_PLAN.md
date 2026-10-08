@@ -13,6 +13,7 @@ Generatory wizualizacji: `prototype/tools/concept/char3d_concept.py` (Blender) i
 - **Etap 2 — próbka świata HD (zrobiona):** decyzja, że rozdzielczość bazowa (640×360) zostaje; teren HD z mapą normalnych (generator `tools/world_hd_tiles.py`), płot/kłody/kamień z Tripo (90 kredytów; saldo 305 z 500), flaga `--newworld`. Zrzut: `concepts/stage2_world_compare.png`. Otwarte: kafle `w`/`C`/`m`, tła parallax, drzewa w tle, wrogowie/bossowie, UI, pamięć.
 - **Etap 3, krok 1 (zrobiony):** postać żeńska HD (Tripo, 75 kredytów; saldo 230), modele GLB dodane do gita. Dalej według listy: pozostałe rodzaje terenu i tła, wrogowie/bossowie, UI, kolejne stroje.
 - **Etap 3, wrogowie (w toku):** Wołek, Trzosek i Ślepiec w HD (`--newmon`); zostają Skoczek, Podsłuchacz, Ćma, Stalker, Mimik, gniazdo i bossowie Żyła i Pijawka (ok. 55–75 kredytów na potwora; saldo 55). Zrzut: `concepts/stage3_enemies_hd.png`.
+- **Etap 3, wrogowie i bossowie (zrobione):** wszystkie 11 rodzajów (Wołek, Trzosek, Ślepiec, Skoczek, Podsłuchacz, Stalker, Mimik, Ćma, gniazdo, Żyła, Pijawka) mają arkusze HD. Zostają: kodeks (portrety), pozostałe kafle/tła/UI, kolejne stroje graczy, optymalizacja pamięci, domyślne włączenie zamiast flag.
 - **Do zrobienia przed P1:** szlif v1 (szwy, fałdy, kontrast po zrzucie do pikseli, buty i nogi), poza down (siedząca; leżące ciało nie mieści się w klatce 16 px), animacje rąk przy celowaniu, boty, drugi i trzeci strój.
 
 ## Cel

@@ -126,8 +126,8 @@ func _ready() -> void:
 	_light.position = Vector2(0, -20)
 	add_child(_light)
 	_overlay = Lights.add_overlay(self)
-	if Sprites.has("vein"):
-		_spr = Sprites.attach(self, "vein")
+	if Sprites.has(Sprites.enemy_sheet("vein")):
+		_spr = Sprites.attach(self, Sprites.enemy_sheet("vein"))
 		for l in _spr:
 			if l != null:
 				l.position = Vector2(0, SPRITE_DROP)

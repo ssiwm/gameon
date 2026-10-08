@@ -22,10 +22,13 @@ PPW = 8.0
 SPEC = {
     "wolek": {"frame": (44, 44), "fit": ("height", 32.0), "anims": [("idle", 4), ("walk", 6), ("windup", 1), ("sleep", 4)]},
     "slepiec": {"frame": (26, 32), "fit": ("height", 27.0), "anims": [("idle", 4), ("walk", 6), ("windup", 1), ("sleep", 4)]},
+    "podsluchacz": {"frame": (26, 40), "fit": ("height", 34.0), "anims": [("idle", 4), ("windup", 1), ("sleep", 2)]},
+    "stalker": {"frame": (32, 60), "fit": ("height", 54.0), "anims": [("idle", 6), ("walk", 8), ("windup", 1)]},
+    "skoczek": {"frame": (26, 26), "fit": ("height", 17.0), "anims": [("idle", 4), ("run", 6), ("windup", 1), ("sleep", 1)]},
     "trzosek": {"frame": (24, 22), "fit": ("length", 21.0), "anims": [("idle", 4), ("run", 6), ("windup", 1), ("sleep", 4)]},
 }[kind]
 P = "mixamorig:"
-BIPEDS = ("wolek", "slepiec")           # szkielet Mixamo + własne pozy (wolek_pose); reszta bierze animację z GLB
+BIPEDS = ("wolek", "slepiec", "podsluchacz", "stalker", "skoczek")           # szkielet Mixamo + własne pozy (wolek_pose); reszta bierze animację z GLB
 
 
 def upd():
@@ -86,33 +89,74 @@ def plant_foot(arm, side, ankle, tilt):
     upd()
 
 
-def wolek_pose(arm, anim, i, n, x0):
+PROF = {
+    "wolek": {},
+    "slepiec": {"hy": 0.50, "hz": 0.35},
+    "podsluchacz": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"},
+    "stalker": {"lean": 5.0, "lean_walk": 8.0, "hy": 0.42, "hz": 0.62, "stride": 0.28, "windup": "reach"},
+}
+
+
+def crawler_pose(arm, anim, i, n, x0):
+    """Skoczek: zostaje jego wygenerowana poza spoczynkowa (czworonożny napastnik); animacja = kołysanie kończyn, oddech i skurcz przed skokiem.
+    „sleep" to ta sama poza do góry nogami (wisi pod sufitem) — odwracanie robi pętla główna."""
     for pb in arm.pose.bones:
         pb.matrix_basis = Matrix.Identity(4)
     upd()
     ph = i / max(n, 1) * math.tau
-    lean, bob, drop = 12.0, 0.0, 0.0
+    if anim == "run":
+        move(arm, "Hips", Vector((0, 0, 0.03 * math.cos(2 * ph))))
+        for side, k in (("Right", 0), ("Left", 1)):
+            sw = math.sin(ph + k * math.pi)
+            rot_about(arm, f"{side}Arm", "Y", math.radians(30.0 * sw))
+            rot_about(arm, f"{side}UpLeg", "Y", math.radians(-26.0 * sw))
+    elif anim == "windup":
+        move(arm, "Hips", Vector((0, 0, -0.18)))
+        rot_about(arm, "Hips", "Y", math.radians(22.0))
+        for side in ("Right", "Left"):
+            rot_about(arm, f"{side}Arm", "Y", math.radians(-35.0))
+    elif anim in ("idle", "sleep"):
+        move(arm, "Hips", Vector((0, 0, 0.012 * math.sin(ph))))
+
+
+def wolek_pose(arm, anim, i, n, x0):
+    prof = PROF.get(kind, {})
+    if kind == "skoczek":
+        return crawler_pose(arm, anim, i, n, x0)
+    for pb in arm.pose.bones:
+        pb.matrix_basis = Matrix.Identity(4)
+    upd()
+    ph = i / max(n, 1) * math.tau
+    L0, LW, hy, hz = prof.get("lean", 12.0), prof.get("lean_walk", 14.0), prof.get("hy", 0.62), prof.get("hz", 0.42)
+    SL, stride = prof.get("sleep_lean", 27.0), prof.get("stride", 0.22)
+    lean, bob, drop = L0, 0.0, 0.0
     feet = {"Right": Vector(), "Left": Vector()}
-    hz = 0.42
-    hands = {"Right": Vector((x0 + 0.05, -0.62, hz)), "Left": Vector((x0 + 0.05, 0.62, hz))}
+    hands = {"Right": Vector((x0 + 0.05, -hy, hz)), "Left": Vector((x0 + 0.05, hy, hz))}
     if anim == "idle":
-        lean, bob = 12.0 + 1.6 * math.sin(ph), 0.012 * math.sin(ph)
+        lean, bob = L0 + 1.6 * math.sin(ph), 0.012 * math.sin(ph)
         feet = {"Right": Vector((0.04, 0, 0)), "Left": Vector((-0.04, 0, 0))}
         sw = 0.06 * math.sin(ph)
-        hands = {"Right": Vector((x0 + 0.05 + sw, -0.62, hz)), "Left": Vector((x0 + 0.05 - sw, 0.62, hz))}
+        hands = {"Right": Vector((x0 + 0.05 + sw, -hy, hz)), "Left": Vector((x0 + 0.05 - sw, hy, hz))}
     elif anim == "walk":
-        lean, bob, drop = 14.0, 0.035 * math.cos(2 * ph), 0.03
+        lean, bob, drop = LW, 0.035 * math.cos(2 * ph), 0.03
         for side, k in (("Right", 0), ("Left", 1)):
             phk = ph + k * math.pi
-            feet[side] = Vector((-0.22 * math.cos(phk), 0, 0.14 * max(0.0, math.sin(phk))))
+            feet[side] = Vector((-stride * math.cos(phk), 0, 0.14 * max(0.0, math.sin(phk))))
         sw = 0.30 * math.sin(ph)
-        hands = {"Right": Vector((x0 + 0.05 + sw, -0.62, hz + 0.05 * abs(sw))), "Left": Vector((x0 + 0.05 - sw, 0.62, hz + 0.05 * abs(sw)))}
+        hands = {"Right": Vector((x0 + 0.05 + sw, -hy, hz + 0.05 * abs(sw))), "Left": Vector((x0 + 0.05 - sw, hy, hz + 0.05 * abs(sw)))}
     elif anim == "windup":
         lean, drop = -10.0, 0.04
         feet = {"Right": Vector((0.12, 0, 0)), "Left": Vector((-0.12, 0, 0))}
         hands = {"Right": Vector((x0 + 0.10, -0.40, 1.70)), "Left": Vector((x0 + 0.10, 0.40, 1.70))}
+        wk = prof.get("windup")
+        if wk == "point":                            # Podsłuchacz: ręka wskazuje, głowa do tyłu (krzyk)
+            lean = -6.0
+            hands = {"Right": Vector((x0 + 0.62, -0.30, 1.15)), "Left": Vector((x0 + 0.05, hy, hz))}
+        elif wk == "reach":                          # Stalker: obie ręce wyciągnięte do przodu
+            lean = 2.0
+            hands = {"Right": Vector((x0 + 0.85, -0.22, 1.30)), "Left": Vector((x0 + 0.85, 0.22, 1.30))}
     elif anim == "sleep":
-        lean, drop, bob = 27.0 + 2.0 * math.sin(ph), 0.06, 0.01 * math.sin(ph)
+        lean, drop, bob = SL + 2.0 * math.sin(ph), 0.06, 0.01 * math.sin(ph)
         feet = {"Right": Vector((0.05, 0, 0)), "Left": Vector((-0.05, 0, 0))}
         hands = {"Right": Vector((x0 + 0.26, -0.50, 0.40)), "Left": Vector((x0 + 0.26, 0.50, 0.40))}
     move(arm, "Hips", Vector((0, 0, -drop + bob)))
@@ -183,6 +227,8 @@ def main():
     hc = (lo[horiz] + hi[horiz]) / 2
     if kind in BIPEDS:
         hc = arm.data.bones[P + "Hips"].head_local.x - 0.05
+    if kind == "skoczek":
+        hc = (lo[0] + hi[0]) / 2
     ortho = max(fw, fh) * m_per_wp
     ppm = max(FW, FH) / ortho
     cz = lo[2] + FH * 0.5 / ppm
@@ -211,12 +257,19 @@ def main():
             bpy.ops.render.render(write_still=True)
 
     fr0, fr1 = (sc.frame_start, sc.frame_end)
+    arm.rotation_mode = "XYZ"                  # import glTF daje kwaternion — bez tego rotation_euler jest ignorowane
     base_scale = arm.scale.copy()
     base_loc = arm.location.copy()
     for anim, n in SPEC["anims"]:
         for i in range(n):
             if kind in BIPEDS:
                 wolek_pose(arm, anim, i, n, hc)
+                if kind == "skoczek" and anim == "sleep":
+                    arm.rotation_euler = (math.pi, 0, 0)               # wisi pod sufitem klatki: do góry nogami, chwyty u góry
+                    arm.location = (0, 0, FH / ppm + lo[2])
+                else:
+                    arm.rotation_euler = (0, 0, 0)
+                    arm.location = base_loc.copy()
             else:
                 arm.scale, arm.location = base_scale.copy(), base_loc.copy()
                 ph = i / max(n, 1)

@@ -35,8 +35,8 @@ func _ready() -> void:
 	_glow = Lights.make_light(Lights.radial(), 2.5, Color(1.0, 0.45, 0.2), 0.7, false)
 	_glow.position = Vector2(0, -8)
 	add_child(_glow)
-	if Sprites.has("nest"):
-		_spr = Sprites.attach(self, "nest")
+	if Sprites.has(Sprites.enemy_sheet("nest")):
+		_spr = Sprites.attach(self, Sprites.enemy_sheet("nest"))
 		Sprites.play(_spr, "pulse", position.x > 1000.0)
 	_overlay = Lights.add_overlay(self)
 	# żar unoszący się nad gniazdem — widać je z daleka w mroku
