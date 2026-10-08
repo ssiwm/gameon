@@ -23,6 +23,19 @@ static var _blob: Texture2D
 
 const BLOB_SCALE := 0.2
 
+## Pasek HD (zaokrąglony): tło i wypełnienie `frac` (0..1).
+static func draw_bar(ci: CanvasItem, r: Rect2, frac: float, back: Color, fill: Color) -> void:
+	var cap := r.size.y * 0.5
+	var y := r.position.y + cap
+	ci.draw_line(Vector2(r.position.x + cap, y), Vector2(r.end.x - cap, y), back, r.size.y, true)
+	ci.draw_circle(Vector2(r.position.x + cap, y), cap, back)
+	ci.draw_circle(Vector2(r.end.x - cap, y), cap, back)
+	var fw := (r.size.x - r.size.y) * clampf(frac, 0.0, 1.0)
+	if frac > 0.0:
+		ci.draw_line(Vector2(r.position.x + cap, y), Vector2(r.position.x + cap + fw, y), fill, r.size.y, true)
+		ci.draw_circle(Vector2(r.position.x + cap, y), cap, fill)
+		ci.draw_circle(Vector2(r.position.x + cap + fw, y), cap, fill)
+
 ## Zamienia kwadratowe cząsteczki na miękkie okrągłe (grafika HD); wołać po ustawieniu `scale_amount_*`.
 static func soften(fx: CPUParticles2D) -> void:
 	if not Sprites.newitem or fx.texture != null:

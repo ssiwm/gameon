@@ -7,11 +7,19 @@ extends StaticBody2D
 ## własne obrażenia — widać spadek obrażeń z dystansu. Granaty/wybuchowe pociski detonują na pierwszej.
 ## Autorytet: serwer liczy, wszyscy rysują (RPC _show).
 
+const Sprites := preload("res://scripts/sprites.gd")
+const ItemsHd := preload("res://scripts/items_hd.gd")
+const Vfx := preload("res://scripts/vfx.gd")
+
 const SERIES_GAP := 3.0
 const H := 34.0                     ## wysokość sylwetki
 const HEAD_FRAC := 0.28             ## górna część sylwetki liczona jako głowa (crit)
 
-var distance_m := -1.0              ## odległość od linii strzału w metrach (-1: brak linii)
+var distance_m := -1.0              ## odległość od najbliższego znacznika strzelnicy w metrach (-1: brak) — do testów
+var live_m := -1.0                  ## odległość do najbliższego żywego gracza w metrach (na tabliczce); -1 = nikt w pobliżu
+const LIVE_RANGE_M := 30.0
+var _hd: Sprite2D
+var _ov: Node2D                     ## HD: nakładka (tabliczka, liczby, podsumowanie) nad sprite'em
 
 var _total := 0.0                   ## serwer: seria
 var _hits := 0
@@ -34,6 +42,11 @@ func _ready() -> void:
 	cs.position = Vector2(0, -H * 0.5)
 	add_child(cs)
 	z_index = 1
+	if Sprites.newitem and ItemsHd.has("range_target"):
+		_hd = ItemsHd.make("range_target", self)
+		_ov = Node2D.new()
+		_ov.draw.connect(func() -> void: _draw_over(_ov))
+		add_child(_ov)
 	call_deferred("_find_line")
 
 func _find_line() -> void:
@@ -90,15 +103,33 @@ func _show(dealt: float, crit: bool, total: float, hits: int, dps: float) -> voi
 func _process(delta: float) -> void:
 	_flash = maxf(0.0, _flash - delta)
 	_summary_t = maxf(0.0, _summary_t - delta)
+	_update_live()
+	if _hd != null:
+		_hd.modulate = Color(1, 1, 1).lerp(Color(1.8, 1.7, 1.5), clampf(_flash / 0.12, 0.0, 1.0))
 	for n in _nums:
 		n["age"] = float(n["age"]) + delta
 	while not _nums.is_empty() and float(_nums[0]["age"]) > 1.1:
 		_nums.pop_front()
 	queue_redraw()
+	if _ov != null:
+		_ov.queue_redraw()
+
+## Odległość do najbliższego żywego gracza (poziomo, w metrach) — tabliczka na tarczy pokazuje ją na żywo, więc widać, czy stoisz na znaczniku 5/10/20 m.
+func _update_live() -> void:
+	var best := INF
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.dead or p.is_queued_for_deletion():
+			continue
+		var d := absf(p.global_position.x - global_position.x) / 16.0
+		if d < best and absf(p.global_position.y - global_position.y) < 40.0:
+			best = d
+	live_m = best if best <= LIVE_RANGE_M else -1.0
 
 # ---------------------------------------------------------------- rysowanie
 
 func _draw() -> void:
+	if _hd != null:
+		return
 	var wood := Color(0.5, 0.36, 0.22)
 	var dark := Color(0.14, 0.1, 0.07)
 	var paper := Color(0.86, 0.84, 0.75)
@@ -118,21 +149,27 @@ func _draw() -> void:
 	draw_circle(Vector2(0, -H + 22), 5.0, paper)
 	draw_circle(Vector2(0, -H + 22), 3.0, wood)
 	draw_circle(Vector2(0, -H + 22), 1.2, Color(0.8, 0.15, 0.12))
-	# tabliczka z odległością
-	if distance_m >= 0.0:
+	_draw_over(self)
+
+## Tabliczka z odległością gracza, podsumowanie serii i unoszące się liczby obrażeń (rysowane nad sprite'em tarczy).
+func _draw_over(ci: CanvasItem) -> void:
+	if live_m >= 0.0:
 		var f := ThemeDB.fallback_font
-		draw_rect(Rect2(-12, 3, 24, 8), Color(0.05, 0.05, 0.06, 0.85))
-		draw_string(f, Vector2(-12, 10), "%d m" % int(distance_m), HORIZONTAL_ALIGNMENT_CENTER, 24.0, 7, Color(0.95, 0.75, 0.3))
+		if _hd != null:
+			Vfx.draw_bar(ci, Rect2(-12, 3.5, 24, 8), 1.0, Color(0.05, 0.05, 0.06, 0.85), Color(0.05, 0.05, 0.06, 0.85))
+		else:
+			ci.draw_rect(Rect2(-12, 3, 24, 8), Color(0.05, 0.05, 0.06, 0.85))
+		ci.draw_string(f, Vector2(-12, 10), "%d m" % int(roundf(live_m)), HORIZONTAL_ALIGNMENT_CENTER, 24.0, 7, Color(0.95, 0.75, 0.3))
 	# podsumowanie serii nad tarczą
 	var fnt := ThemeDB.fallback_font
 	if _summary_t > 0.0:
 		var a := minf(1.0, _summary_t)
 		var w := fnt.get_string_size(_summary, HORIZONTAL_ALIGNMENT_LEFT, -1, 7).x
-		draw_rect(Rect2(-w * 0.5 - 3, -H - 18, w + 6, 10), Color(0.04, 0.04, 0.05, 0.8 * a))
-		draw_string(fnt, Vector2(-w * 0.5, -H - 10.5), _summary, HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color(1, 1, 1, a))
+		ci.draw_rect(Rect2(-w * 0.5 - 3, -H - 18, w + 6, 10), Color(0.04, 0.04, 0.05, 0.8 * a))
+		ci.draw_string(fnt, Vector2(-w * 0.5, -H - 10.5), _summary, HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color(1, 1, 1, a))
 	# liczby obrażeń
 	for n in _nums:
 		var age := float(n["age"])
 		var col := Color(1.0, 0.35, 0.25) if bool(n["crit"]) else Color(1.0, 0.92, 0.7)
 		col.a = clampf(1.4 - age, 0.0, 1.0)
-		draw_string(fnt, Vector2(float(n["x"]) - 6.0, -H - 4.0 - age * 16.0), String(n["text"]), HORIZONTAL_ALIGNMENT_CENTER, 12.0, 8 if not bool(n["crit"]) else 10, col)
+		ci.draw_string(fnt, Vector2(float(n["x"]) - 6.0, -H - 4.0 - age * 16.0), String(n["text"]), HORIZONTAL_ALIGNMENT_CENTER, 12.0, 8 if not bool(n["crit"]) else 10, col)

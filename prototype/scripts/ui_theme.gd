@@ -189,3 +189,16 @@ static func heading(text: String, size: int, color: Color = TEXT, align := HORIZ
 		l.add_theme_font_override("font", f)
 		l.add_theme_constant_override("outline_size", 2)
 	return l
+
+## Zaokrąglony segment (HD): wypełniony kolorem albo sam obrys — zamiast kwadratów w pikselowym UI.
+static func pill(ci: CanvasItem, r: Rect2, col: Color, filled: bool) -> void:
+	var sb := StyleBoxFlat.new()
+	sb.set_corner_radius_all(int(r.size.y * 0.5) + 1)
+	sb.anti_aliasing = true
+	if filled:
+		sb.bg_color = col
+	else:
+		sb.bg_color = Color(0, 0, 0, 0)
+		sb.border_color = col
+		sb.set_border_width_all(1)
+	ci.draw_style_box(sb, r)

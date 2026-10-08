@@ -33,6 +33,12 @@ class Coin extends Control:
 	func _draw() -> void:
 		var gold := Color(0.95, 0.78, 0.32)
 		var dark := Color(0.5, 0.36, 0.1)
+		if UiTheme.hd_on():
+			draw_circle(Vector2(4, 4), 4.0, dark)
+			draw_circle(Vector2(4, 4), 3.2, gold)
+			draw_arc(Vector2(4, 4), 2.1, 0.0, TAU, 20, dark, 0.8, true)
+			draw_arc(Vector2(4, 4), 2.9, PI * 1.1, PI * 1.6, 8, Color(1, 0.95, 0.7), 0.9, true)
+			return
 		draw_rect(Rect2(2, 0, 4, 8), dark)
 		draw_rect(Rect2(0, 2, 8, 4), dark)
 		draw_rect(Rect2(2, 1, 4, 6), gold)
@@ -50,7 +56,13 @@ class TierBar extends Control:
 		for i in 3:
 			var r := Rect2(float(i) * 9.0, 0, 7, 7)
 			if i < level:
-				draw_rect(r, Color(0.45, 1.0, 0.55) if maxed else Color(1.0, 0.72, 0.28))
+				var fc := Color(0.45, 1.0, 0.55) if maxed else Color(1.0, 0.72, 0.28)
+				if UiTheme.hd_on():
+					UiTheme.pill(self, r, fc, true)
+				else:
+					draw_rect(r, fc)
+			elif UiTheme.hd_on():
+				UiTheme.pill(self, r, Color(0.5, 0.66, 0.7, 0.8), false)
 			else:
 				draw_rect(r, Color(0.5, 0.66, 0.7, 0.8), false, 1.0)
 
@@ -79,7 +91,13 @@ class StockBar extends Control:
 		for i in maxn:
 			var r := Rect2(float(i) * 9.0, 0, 7, 7)
 			if i < have:
-				draw_rect(r, Color(0.45, 1.0, 0.55) if have >= maxn else Color(1.0, 0.72, 0.28))
+				var fc := Color(0.45, 1.0, 0.55) if have >= maxn else Color(1.0, 0.72, 0.28)
+				if UiTheme.hd_on():
+					UiTheme.pill(self, r, fc, true)
+				else:
+					draw_rect(r, fc)
+			elif UiTheme.hd_on():
+				UiTheme.pill(self, r, Color(0.5, 0.66, 0.7, 0.8), false)
 			else:
 				draw_rect(r, Color(0.5, 0.66, 0.7, 0.8), false, 1.0)
 
@@ -91,6 +109,12 @@ class LevelBar extends Control:
 		custom_minimum_size = Vector2(0, 7)
 		size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	func _draw() -> void:
+		if UiTheme.hd_on():
+			UiTheme.pill(self, Rect2(Vector2.ZERO, size), Color(0.04, 0.05, 0.07, 0.9), true)
+			if frac > 0.0:
+				UiTheme.pill(self, Rect2(1, 1, maxf(size.y - 2.0, (size.x - 2.0) * frac), size.y - 2.0), Color(0.55, 0.8, 1.0), true)
+			UiTheme.pill(self, Rect2(Vector2.ZERO, size), Color(0.5, 0.66, 0.7, 0.8), false)
+			return
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.04, 0.05, 0.07, 0.9))
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.5, 0.66, 0.7, 0.8), false, 1.0)
 		draw_rect(Rect2(1, 1, maxf(0.0, (size.x - 2.0) * frac), size.y - 2.0), Color(0.55, 0.8, 1.0))
