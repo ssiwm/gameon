@@ -736,6 +736,14 @@ def main():
     bake_objects()
     bake_tiles()
     bake_props()
+    # arkusze postaci 3D (tools/pack_chars3d.py) nie powstają tutaj — zachowaj je z poprzedniego manifestu
+    try:
+        with open(os.path.join(ART, "sprites.json")) as f:
+            for k, v in json.load(f).get("sheets", {}).items():
+                if k.startswith("playerhd"):
+                    MANIFEST["sheets"].setdefault(k, v)
+    except (OSError, ValueError):
+        pass
     with open(os.path.join(ART, "sprites.json"), "w") as f:
         json.dump(MANIFEST, f, indent=1)
     n = len(MANIFEST["sheets"])

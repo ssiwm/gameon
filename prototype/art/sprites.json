@@ -564,6 +564,40 @@
    },
    "scale": 0.5
   },
+  "leech": {
+   "frame": [
+    192,
+    160
+   ],
+   "glow": true,
+   "anims": {
+    "rise": {
+     "row": 0,
+     "frames": 4,
+     "fps": 14,
+     "loop": false
+    },
+    "idle": {
+     "row": 1,
+     "frames": 6,
+     "fps": 6,
+     "loop": true
+    },
+    "grab": {
+     "row": 2,
+     "frames": 3,
+     "fps": 7,
+     "loop": true
+    },
+    "dead": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   },
+   "scale": 0.5
+  },
   "guns": {
    "frame": [
     72,
@@ -754,39 +788,215 @@
     }
    }
   },
-  "leech": {
+  "playerhd_male": {
    "frame": [
-    192,
-    160
+    64,
+    96
    ],
-   "glow": true,
+   "glow": false,
    "anims": {
-    "rise": {
+    "idle": {
      "row": 0,
-     "frames": 4,
+     "frames": 6,
+     "fps": 5,
+     "loop": true
+    },
+    "run": {
+     "row": 1,
+     "frames": 8,
      "fps": 14,
+     "loop": true
+    },
+    "jump": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
      "loop": false
     },
-    "idle": {
-     "row": 1,
-     "frames": 6,
-     "fps": 6,
-     "loop": true
-    },
-    "grab": {
-     "row": 2,
-     "frames": 3,
-     "fps": 7,
-     "loop": true
-    },
-    "dead": {
+    "fall": {
      "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch": {
+     "row": 4,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch_walk": {
+     "row": 5,
+     "frames": 6,
+     "fps": 9,
+     "loop": true
+    },
+    "down": {
+     "row": 6,
      "frames": 1,
      "fps": 1,
      "loop": false
     }
    },
-   "scale": 0.5
+   "scale": 0.25
+  },
+  "playerhd_female": {
+   "frame": [
+    64,
+    96
+   ],
+   "glow": false,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 6,
+     "fps": 5,
+     "loop": true
+    },
+    "run": {
+     "row": 1,
+     "frames": 8,
+     "fps": 14,
+     "loop": true
+    },
+    "jump": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "fall": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch": {
+     "row": 4,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch_walk": {
+     "row": 5,
+     "frames": 6,
+     "fps": 9,
+     "loop": true
+    },
+    "down": {
+     "row": 6,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   },
+   "scale": 0.25
+  },
+  "playerhd3_male": {
+   "frame": [
+    64,
+    96
+   ],
+   "glow": false,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 6,
+     "fps": 5,
+     "loop": true
+    },
+    "run": {
+     "row": 1,
+     "frames": 8,
+     "fps": 14,
+     "loop": true
+    },
+    "jump": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "fall": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch": {
+     "row": 4,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch_walk": {
+     "row": 5,
+     "frames": 6,
+     "fps": 9,
+     "loop": true
+    },
+    "down": {
+     "row": 6,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   },
+   "scale": 0.25
+  },
+  "playerhd3h_male": {
+   "frame": [
+    256,
+    384
+   ],
+   "glow": false,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 6,
+     "fps": 5,
+     "loop": true
+    },
+    "run": {
+     "row": 1,
+     "frames": 8,
+     "fps": 14,
+     "loop": true
+    },
+    "jump": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "fall": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch": {
+     "row": 4,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "crouch_walk": {
+     "row": 5,
+     "frames": 6,
+     "fps": 9,
+     "loop": true
+    },
+    "down": {
+     "row": 6,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   },
+   "scale": 0.0625,
+   "hd": true,
+   "normal": true
   }
  },
  "props": [
