@@ -1,0 +1,44 @@
+# Pomiar wydajności renderowania HD (tools/perf_bench.sh 5; RTX 3080, vsync wyłączony, okno domyślne)
+
+## PRZED cullingiem (jedna powierzchnia rysowania na całą mapę)
+classic        z1_m2  col=12   frames=2077 avg=2.41 ms (415 fps) p50=2.08 p95=4.20 max=6.54  draw_calls=132 prims=3828  nodes=1249  vram=72.6 MB  tex_mem=66.2 MB
+world          z1_m2  col=12   frames=1277 avg=3.92 ms (255 fps) p50=3.52 p95=5.76 max=7.87  draw_calls=656 prims=24120  nodes=1251  vram=140.1 MB  tex_mem=127.7 MB
+all-hd         z1_m2  col=12   frames=1289 avg=3.88 ms (258 fps) p50=3.48 p95=5.78 max=7.44  draw_calls=653 prims=24115  nodes=1250  vram=334.2 MB  tex_mem=321.8 MB
+classic        z1_m2  col=120  frames=2108 avg=2.37 ms (422 fps) p50=2.10 p95=3.58 max=6.01  draw_calls=139 prims=4010  nodes=1250  vram=72.6 MB  tex_mem=66.2 MB
+world          z1_m2  col=120  frames=1294 avg=3.86 ms (259 fps) p50=3.47 p95=5.77 max=7.47  draw_calls=663 prims=24302  nodes=1252  vram=140.1 MB  tex_mem=127.7 MB
+all-hd         z1_m2  col=120  frames=1269 avg=3.94 ms (254 fps) p50=3.48 p95=5.87 max=8.06  draw_calls=662 prims=24300  nodes=1251  vram=334.2 MB  tex_mem=321.8 MB
+classic        z1_m2  col=260  frames=2204 avg=2.27 ms (441 fps) p50=1.95 p95=4.27 max=5.69  draw_calls=139 prims=4380  nodes=1250  vram=72.6 MB  tex_mem=66.2 MB
+world          z1_m2  col=260  frames=1341 avg=3.73 ms (268 fps) p50=3.41 p95=5.50 max=6.90  draw_calls=662 prims=24672  nodes=1252  vram=142.2 MB  tex_mem=127.7 MB
+all-hd         z1_m2  col=260  frames=1315 avg=3.80 ms (263 fps) p50=3.47 p95=5.66 max=8.87  draw_calls=661 prims=24672  nodes=1251  vram=334.2 MB  tex_mem=321.8 MB
+classic        z1_m3  col=12   frames=1939 avg=2.58 ms (388 fps) p50=2.34 p95=3.72 max=7.02  draw_calls=190 prims=4951  nodes=1319  vram=81.8 MB  tex_mem=67.2 MB
+world          z1_m3  col=12   frames=1592 avg=3.14 ms (318 fps) p50=2.84 p95=4.87 max=7.77  draw_calls=334 prims=13565  nodes=1327  vram=135.1 MB  tex_mem=128.7 MB
+all-hd         z1_m3  col=12   frames=1604 avg=3.12 ms (321 fps) p50=2.97 p95=4.24 max=7.15  draw_calls=340 prims=14087  nodes=1322  vram=432.5 MB  tex_mem=417.9 MB
+classic        z1_m3  col=90   frames=2103 avg=2.38 ms (421 fps) p50=2.15 p95=3.58 max=5.84  draw_calls=139 prims=3918  nodes=1319  vram=73.7 MB  tex_mem=67.2 MB
+world          z1_m3  col=90   frames=1760 avg=2.84 ms (352 fps) p50=2.56 p95=4.51 max=8.58  draw_calls=296 prims=13250  nodes=1327  vram=141.3 MB  tex_mem=128.7 MB
+all-hd         z1_m3  col=90   frames=1775 avg=2.82 ms (355 fps) p50=2.52 p95=4.43 max=6.11  draw_calls=295 prims=13242  nodes=1338  vram=430.5 MB  tex_mem=417.9 MB
+classic        z1_m3  col=170  frames=2133 avg=2.34 ms (426 fps) p50=2.00 p95=4.25 max=5.87  draw_calls=156 prims=4331  nodes=1340  vram=73.6 MB  tex_mem=67.2 MB
+world          z1_m3  col=170  frames=1730 avg=2.89 ms (346 fps) p50=2.56 p95=4.76 max=6.57  draw_calls=312 prims=13670  nodes=1341  vram=135.1 MB  tex_mem=128.7 MB
+all-hd         z1_m3  col=170  frames=1729 avg=2.89 ms (346 fps) p50=2.67 p95=3.97 max=6.37  draw_calls=311 prims=13651  nodes=1334  vram=424.4 MB  tex_mem=417.9 MB
+
+## PO cullingu (fragmenty 16×16 kafli), bez kompresji tekstur
+classic        z1_m2  col=12   frames=2095 avg=2.39 ms (419 fps) p50=2.08 p95=3.87 max=5.62  draw_calls=132 prims=3827  nodes=1249  vram=72.6 MB  tex_mem=66.2 MB
+world          z1_m2  col=12   frames=2086 avg=2.40 ms (417 fps) p50=2.10 p95=3.93 max=5.17  draw_calls=137 prims=4174  nodes=1369  vram=134.1 MB  tex_mem=127.7 MB
+all-hd         z1_m2  col=12   frames=2070 avg=2.42 ms (414 fps) p50=2.08 p95=4.26 max=7.64  draw_calls=134 prims=4168  nodes=1368  vram=328.1 MB  tex_mem=321.8 MB
+classic        z1_m2  col=120  frames=2122 avg=2.36 ms (424 fps) p50=2.09 p95=3.60 max=5.84  draw_calls=139 prims=4009  nodes=1250  vram=78.7 MB  tex_mem=66.2 MB
+world          z1_m2  col=120  frames=2101 avg=2.38 ms (420 fps) p50=2.09 p95=3.75 max=5.83  draw_calls=154 prims=4543  nodes=1370  vram=140.1 MB  tex_mem=127.7 MB
+all-hd         z1_m2  col=120  frames=2079 avg=2.40 ms (416 fps) p50=2.07 p95=4.04 max=6.74  draw_calls=153 prims=4540  nodes=1369  vram=328.1 MB  tex_mem=321.8 MB
+classic        z1_m2  col=260  frames=2219 avg=2.25 ms (444 fps) p50=2.03 p95=3.31 max=6.08  draw_calls=139 prims=4382  nodes=1250  vram=78.7 MB  tex_mem=66.2 MB
+world          z1_m2  col=260  frames=2167 avg=2.31 ms (433 fps) p50=1.99 p95=4.16 max=5.33  draw_calls=153 prims=4966  nodes=1370  vram=140.1 MB  tex_mem=127.7 MB
+all-hd         z1_m2  col=260  frames=2150 avg=2.33 ms (430 fps) p50=2.10 p95=3.41 max=5.33  draw_calls=152 prims=4966  nodes=1369  vram=334.2 MB  tex_mem=321.8 MB
+classic        z1_m3  col=12   frames=1962 avg=2.55 ms (392 fps) p50=2.25 p95=3.99 max=5.91  draw_calls=182 prims=4557  nodes=1322  vram=79.7 MB  tex_mem=67.2 MB
+world          z1_m3  col=12   frames=1913 avg=2.61 ms (383 fps) p50=2.41 p95=3.63 max=9.16  draw_calls=217 prims=6514  nodes=1385  vram=147.4 MB  tex_mem=128.7 MB
+all-hd         z1_m3  col=12   frames=1948 avg=2.57 ms (390 fps) p50=2.21 p95=4.44 max=5.76  draw_calls=193 prims=5297  nodes=1373  vram=425.4 MB  tex_mem=416.9 MB
+classic        z1_m3  col=90   frames=2203 avg=2.27 ms (441 fps) p50=2.04 p95=3.27 max=5.21  draw_calls=139 prims=3913  nodes=1324  vram=79.7 MB  tex_mem=67.2 MB
+world          z1_m3  col=90   frames=2133 avg=2.34 ms (426 fps) p50=2.09 p95=3.51 max=5.78  draw_calls=154 prims=4533  nodes=1374  vram=141.2 MB  tex_mem=128.7 MB
+all-hd         z1_m3  col=90   frames=2134 avg=2.34 ms (427 fps) p50=2.04 p95=3.83 max=9.00  draw_calls=153 prims=4547  nodes=1377  vram=430.5 MB  tex_mem=417.9 MB
+classic        z1_m3  col=170  frames=2126 avg=2.35 ms (425 fps) p50=2.13 p95=3.40 max=5.79  draw_calls=156 prims=4332  nodes=1320  vram=79.7 MB  tex_mem=67.2 MB
+world          z1_m3  col=170  frames=2075 avg=2.41 ms (415 fps) p50=2.16 p95=3.51 max=8.33  draw_calls=174 prims=5065  nodes=1370  vram=141.3 MB  tex_mem=128.7 MB
+all-hd         z1_m3  col=170  frames=2096 avg=2.39 ms (419 fps) p50=2.08 p95=3.98 max=6.62  draw_calls=173 prims=5068  nodes=1397  vram=426.4 MB  tex_mem=417.9 MB
+
+## Pamięć wideo: kompresja S3TC tekstur HD (--nocompress = bez), all-hd
+z1_m3: 382 MB bez kompresji -> 247 MB z kompresją; z1_m2: 288 -> 192 MB (klasyczna gra: ~80 MB)
