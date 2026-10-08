@@ -597,7 +597,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		pm.open()
 		pm._show_tab(1)
 		var bp: Node = pm._pages[1]
-		bp.select(bp._entries.size() - 1)
+		var ci: int = bp._entries.size() - 1
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--codexentry="):
+				ci = clampi(int(a.substr("--codexentry=".length())), 0, bp._entries.size() - 1)       # dev: wpis bestiariusza do zrzutu
+		bp.select(ci)
 	if "--shotperkcard" in OS.get_cmdline_user_args():
 		Profile.reset_for_test()                      # --shotperkcard: karta PERKS w menu pauzy (L4, Smith w slocie 1)
 		Profile.add_xp(800, "demo")
