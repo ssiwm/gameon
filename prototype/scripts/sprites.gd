@@ -17,6 +17,13 @@ static var _cache: Dictionary = {}
 static var newchar := ""
 ## Dev (--newgun): broń z arkuszy HD `gunhd_<klucz>.png` (+ `_n.png`), jeśli istnieją (na razie m83); reszta broni jak dotąd.
 static var newgun := false
+## Dev (--newmon): wrogowie z arkuszy HD `<rodzaj>_hd` (Tripo → tools/pack_monsters_hd.py), jeśli istnieją; reszta po staremu.
+static var newmon := false
+
+static func enemy_sheet(kind: String) -> String:
+	if newmon and has(kind + "_hd"):
+		return kind + "_hd"
+	return kind
 ## Dev (--newworld): świat HD — teren z art/world/terrain_hd(.png/_n.png), tła HD i rekwizyty HD (art/world/), jeśli istnieją.
 static var newworld := false
 

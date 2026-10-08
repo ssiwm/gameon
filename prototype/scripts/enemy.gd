@@ -213,8 +213,8 @@ func _ready() -> void:
 	cs.position = Vector2(0, -size.y * 0.5)
 	# oczy i pasek HP świecą w ciemności — śpiącego wroga widać jako
 	# przygaszone oczy, a nie wcale (skradanie musi mieć informację)
-	if Sprites.has(kind):
-		_spr = Sprites.attach(self, kind)
+	if Sprites.has(Sprites.enemy_sheet(kind)):
+		_spr = Sprites.attach(self, Sprites.enemy_sheet(kind))
 	_last_x = global_position.x
 	if _def.get("fire_shy", false):
 		set_collision_mask_value(FIRE_BIT, true)         # ogień na podłodze jest dla nich murem
