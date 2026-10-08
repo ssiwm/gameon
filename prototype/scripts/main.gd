@@ -26,6 +26,7 @@ const STEAM_NET := preload("res://scripts/steam_net.gd")
 const PAUSE_MENU := preload("res://scripts/pause_menu.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const HORROR_FX := preload("res://scripts/horror_fx.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 
 ## >0 w trakcie odliczania do restartu po wipe; widoczne na każdym peerze (HUD).
@@ -84,6 +85,12 @@ func _ready() -> void:
 	_lobby.host_requested.connect(func() -> void: Audio.play("ui_confirm", Audio.BUS_UI, -8.0))
 	_lobby.join_requested.connect(func(_ip: String) -> void: Audio.play("ui_click", Audio.BUS_UI, -8.0))
 	_handle_cmdline()
+	# obraz horroru (winieta, ziarno, aberracja, ostrzeżenie o zdrowiu) — tylko w grafice HD; `--nofx` wyłącza
+	if Sprites.newitem and DisplayServer.get_name() != "headless" and not ("--nofx" in OS.get_cmdline_user_args()):
+		var hfx := HORROR_FX.new()
+		hfx.name = "HorrorFx"
+		add_child(hfx)
+		move_child(hfx, $UI.get_index())
 
 # ---------------------------------------------------------------- wipe (GDD §4)
 
@@ -720,6 +727,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			if zp != null:
 				zp._camera.zoom *= float(a.substr("--shotzoom=".length()))
 				zp._camera.offset += Vector2(-20.0, 26.0)
+	if "--shothurt" in OS.get_cmdline_user_args():
+		var hp1: Node2D = _players.get_node_or_null("1")       # --shothurt: gracz 1 z 1 HP (podgląd ran na ciele i ostrzeżenia obrazem)
+		if hp1 != null:
+			hp1.hp = 1
+			NoiseMgr.level = 60.0
 	if "--shotextract" in OS.get_cmdline_user_args():
 		mission._open_extraction(false)                       # --shotextract: od razu faza ewakuacji (flara z płomieniem i słupem światła), gracz 1 obok niej
 		var xp: Node2D = _players.get_node_or_null("1")
