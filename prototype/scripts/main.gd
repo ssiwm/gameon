@@ -12,6 +12,7 @@ const BOT_SCENE_PATH := "res://scenes/bot_companion.tscn"
 ## Wipe (wszyscy down) = nieudana ekstrakcja: restart misji po tylu sekundach (GDD §4).
 const WIPE_DELAY := 3.0
 
+const Sprites := preload("res://scripts/sprites.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Codex := preload("res://scripts/codex.gd")
 const Hints := preload("res://scripts/hints.gd")
@@ -319,6 +320,13 @@ func _handle_cmdline() -> void:
 	if args.has("--nightshift"):
 		NightShift.selected = true               # przed --host: tryb zapada przy starcie sesji
 	for a in args:
+		if a == "--newworld":
+			Sprites.newworld = true                                                                # dev: teren i tła HD (art/world/)
+			level.enable_world_hd()
+		if a == "--newgun":
+			Sprites.newgun = true                                                                  # dev: sprite HD broni (gunhd_*.png)
+		if a == "--newchar" or a.begins_with("--newchar="):
+			Sprites.newchar = "mix" if a == "--newchar" else a.substr("--newchar=".length())     # dev: postacie 3D zamiast player_N
 		if a.begins_with("--port="):
 			port = a.substr("--port=".length()).to_int()
 		elif a.begins_with("--mission="):
@@ -621,6 +629,10 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if gp != null:
 			Arsenal.cycle_throwable()
 			Arsenal.request_throw("phos", gp.global_position + Vector2(50.0, -20.0), Vector2(60.0, -20.0))
+	if "--shotlight" in OS.get_cmdline_user_args():
+		var lp: Node2D = _players.get_node_or_null("1")      # --shotlight: flara tuż przed graczem (podgląd oświetlenia z mapą normalnych)
+		if lp != null:
+			level.spawn_flare(lp.global_position + Vector2(34.0, -28.0), Vector2.ZERO)
 	if "--shotfire" in OS.get_cmdline_user_args():
 		var fp: Node2D = _players.get_node_or_null("1")      # --shotfire: trzy plamy ognia HKM-9 przed graczem (podgląd)
 		if fp != null:

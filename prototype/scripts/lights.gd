@@ -137,8 +137,12 @@ static func add_overlay(host: Node2D) -> Node2D:
 	host.add_child(ov)
 	return ov
 
+## Wysokość świateł (px) nad płaszczyzną sprite'ów — używana tylko przez sprite'y z mapą normalnych (arkusze HD „normal”); płaskie sprite'y i kafle jej nie czują.
+const LIGHT_HEIGHT := 80.0
+
 static func make_light(tex: Texture2D, meters: float, color: Color, energy: float, shadows: bool) -> PointLight2D:
 	var l := PointLight2D.new()
+	l.height = LIGHT_HEIGHT
 	l.texture = tex
 	l.texture_scale = scale_for(meters)
 	l.color = color

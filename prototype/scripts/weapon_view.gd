@@ -209,6 +209,7 @@ func _update_gun(d: WeaponDef) -> void:
 	var wd := Weapons.def(_swing_w) if swinging else d
 	var fs := Sprites.frame_size("guns")
 	_atlas.region = Rect2(0, wd.gun_row * fs.y, fs.x, fs.y)
+	_apply_gun_look(String(wd.key))
 	_gun.visible = not player.dead
 	var aim: Vector2 = player.aim_dir
 	var flip: bool = aim.x < -0.05
@@ -242,7 +243,7 @@ func _update_gun(d: WeaponDef) -> void:
 	_gun.modulate = _tint
 	if _glow != null:
 		_glow_atlas.region = _atlas.region
-		_glow.visible = _gun.visible
+		_glow.visible = _gun.visible and not _hd_on
 		_glow.position = _gun.position
 		_glow.rotation = _gun.rotation
 		_glow.flip_v = flip
@@ -253,6 +254,27 @@ func _update_gun(d: WeaponDef) -> void:
 		elif player.w_state == Controller.State.RELOAD:
 			lum = 0.55
 		_glow.modulate = Color(lum, lum, lum, _tint.a)
+
+## Dev (--newgun): sprite HD z mapą normalnych zamiast wiersza z guns.png (oś obrotu: dłoń, 16 px na piksel świata).
+const HAND_HD := Vector2(104, 112)
+const HD_SCALE := 1.0 / 16.0
+var _hd_on := false
+
+func _apply_gun_look(key: String) -> void:
+	var hd: CanvasTexture = Sprites.gun_hd(key)
+	if hd != null:
+		if not _hd_on:
+			_hd_on = true
+			_gun.texture = hd
+			_gun.offset = -HAND_HD
+			_gun.scale = Vector2.ONE * HD_SCALE
+			_gun.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	elif _hd_on:
+		_hd_on = false
+		_gun.texture = _atlas
+		_gun.offset = -HAND
+		_gun.scale = Vector2.ONE * Sprites.scale_of("guns")
+		_gun.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 
 func _update_flash_light(d: WeaponDef) -> void:
 	var on: bool = _flash_t > 0.0 or (player.w_firing and d.is_continuous())

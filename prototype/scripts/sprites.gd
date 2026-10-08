@@ -12,6 +12,57 @@ const DIR := "res://art/sprites/"
 
 static var _data: Dictionary = {}
 static var _cache: Dictionary = {}
+## Dev (--newchar[=male|female|mix|tripo[-male|-female|-mix]]): zamiast arkuszy player_1..4 rysuj postacie 3D (arkusze playerhd_* z MakeHuman albo
+## playerhd3_* z modeli Tripo; tools/pack_chars3d.py). Pusty = wyłączone.
+static var newchar := ""
+## Dev (--newgun): broń z arkuszy HD `gunhd_<klucz>.png` (+ `_n.png`), jeśli istnieją (na razie m83); reszta broni jak dotąd.
+static var newgun := false
+## Dev (--newworld): świat HD — teren z art/world/terrain_hd(.png/_n.png), tła HD i rekwizyty HD (art/world/), jeśli istnieją.
+static var newworld := false
+
+static var _gunhd: Dictionary = {}
+
+## Tekstura HD broni (diffuse + normal) albo null. Ramka 576×224 px, dłoń w (104, 112), 16 px na piksel świata.
+static func gun_hd(key: String) -> CanvasTexture:
+	if not newgun:
+		return null
+	if _gunhd.has(key):
+		return _gunhd[key]
+	var d := texture(DIR + "gunhd_%s.png" % key)
+	var ct: CanvasTexture = null
+	if d != null:
+		var di: Image = d.get_image()
+		di.generate_mipmaps()
+		ct = CanvasTexture.new()
+		ct.diffuse_texture = ImageTexture.create_from_image(di)
+		var n := texture(DIR + "gunhd_%s_n.png" % key)
+		if n != null:
+			var ni: Image = n.get_image()
+			ni.generate_mipmaps()
+			ct.normal_texture = ImageTexture.create_from_image(ni)
+		ct.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_gunhd[key] = ct
+	return ct
+
+## Arkusz ciała gracza: dev-postać 3D (jeśli włączona i spakowana) albo klasyczny player_N.
+static func player_sheet(display_id: int) -> String:
+	if newchar != "":
+		var prefix := "playerhd_"
+		var mode := newchar
+		if newchar.begins_with("tripo"):
+			prefix = "playerhd3_"
+			mode = newchar.trim_prefix("tripo").trim_prefix("-")
+			if mode.begins_with("hd"):                                   # tripo-hd[-male|-female|-mix]: klatki 256×384 z mapami normalnych
+				prefix = "playerhd3h_"
+				mode = mode.trim_prefix("hd").trim_prefix("-")
+			if mode == "":
+				mode = "male"
+		var g := mode if mode != "mix" else ("male" if display_id % 2 == 1 else "female")
+		if not has(prefix + g):
+			g = "male"
+		if has(prefix + g):
+			return prefix + g
+	return "player_%d" % ((display_id - 1) % 4 + 1)
 
 static func manifest() -> Dictionary:
 	if _data.is_empty() and FileAccess.file_exists(MANIFEST):
@@ -33,6 +84,11 @@ static func frames(sheet: String, glow := false) -> SpriteFrames:
 	var key := sheet + ("_glow" if glow else "")
 	if _cache.has(key):
 		return _cache[key]
+	if not glow and bool(manifest().get("sheets", {}).get(sheet, {}).get("normal", false)):
+		var hd := _frames_hd(sheet)
+		if hd != null:
+			_cache[key] = hd
+			return hd
 	var path := DIR + key + ".png"
 	if not ResourceLoader.exists(path):
 		return null
@@ -56,12 +112,52 @@ static func frames(sheet: String, glow := false) -> SpriteFrames:
 	_cache[key] = sf
 	return sf
 
+## Arkusz HD z mapą normalnych (`NAZWA_n.png`): każda klatka to osobna `CanvasTexture` (diffuse + normal) z mipmapami — AtlasTexture nie niesie mapy normalnych,
+## a mipmapy chronią przed szumem przy zmniejszaniu (np. okno 720p rysuje klatkę 256×384 w ok. 77 px).
+static func _frames_hd(sheet: String) -> SpriteFrames:
+	var dtex := texture(DIR + sheet + ".png")
+	var ntex := texture(DIR + sheet + "_n.png")
+	if dtex == null:
+		return null
+	var info: Dictionary = manifest()["sheets"][sheet]
+	var fw: int = info["frame"][0]
+	var fh: int = info["frame"][1]
+	var dimg: Image = dtex.get_image()
+	var nimg: Image = ntex.get_image() if ntex != null else null
+	if dimg == null:
+		return null
+	dimg.convert(Image.FORMAT_RGBA8)
+	if nimg != null:
+		nimg.convert(Image.FORMAT_RGBA8)
+	var sf := SpriteFrames.new()
+	sf.remove_animation("default")
+	for an in info["anims"]:
+		var a: Dictionary = info["anims"][an]
+		sf.add_animation(an)
+		sf.set_animation_speed(an, float(a["fps"]))
+		sf.set_animation_loop(an, bool(a["loop"]))
+		for i in int(a["frames"]):
+			var r := Rect2i(i * fw, int(a["row"]) * fh, fw, fh)
+			var di := dimg.get_region(r)
+			di.generate_mipmaps()
+			var ct := CanvasTexture.new()
+			ct.diffuse_texture = ImageTexture.create_from_image(di)
+			if nimg != null:
+				var ni := nimg.get_region(r)
+				ni.generate_mipmaps()
+				ct.normal_texture = ImageTexture.create_from_image(ni)
+			ct.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+			sf.add_frame(an, ct)
+	return sf
+
 ## Tworzy warstwy postaci pod `host`: [ciało, glow albo null]. Stopy w (0,0).
 static func attach(host: Node2D, sheet: String) -> Array:
 	var size := frame_size(sheet)
 	var sc := scale_of(sheet)
 	# arkusz o gęstości ≠ 1 (np. boss 2×, skala 0,5) rysujemy filtrem liniowym — gładki obrót i krawędzie, bez nierównych pikseli
 	var filt := CanvasItem.TEXTURE_FILTER_NEAREST if sc == 1.0 else CanvasItem.TEXTURE_FILTER_LINEAR
+	if bool(manifest()["sheets"][sheet].get("hd", false)):
+		filt = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	var body := AnimatedSprite2D.new()
 	body.name = "Body"
 	body.sprite_frames = frames(sheet)
