@@ -10,6 +10,7 @@ const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 
+const SHADOW_FLARES := 2            ## tyle flar naraz rzuca cienie (kolejne świecą bez nich)
 const FLARE_LIFE := 25.0
 const GRAVITY := 520.0
 const LURE_EVERY := 0.5
@@ -33,7 +34,9 @@ func _ready() -> void:
 	add_to_group("flares")
 	z_index = 2
 	material = Lights.unshaded()
-	_light = Lights.make_light(Lights.radial(), 8.0, Color(1.0, 0.42, 0.2), 1.5, true)
+	# cienie tylko od dwóch najnowszych flar naraz: każde światło z cieniami wymusza dodatkowe rysowanie wszystkich sprite'ów w zasięgu
+	# (zmierzone: 5 flar ≈ +0,7 ms przy 40 wrogach), a z daleka różnicy nie widać
+	_light = Lights.make_light(Lights.radial(), 8.0, Color(1.0, 0.42, 0.2), 1.5, get_tree().get_nodes_in_group("flares").size() <= SHADOW_FLARES)
 	add_child(_light)
 	if Sprites.newitem and ItemsHd.has("flare"):
 		_pv = Node2D.new()

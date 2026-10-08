@@ -27,6 +27,8 @@ const PAUSE_MENU := preload("res://scripts/pause_menu.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const HORROR_FX := preload("res://scripts/horror_fx.gd")
+const NavGraph := preload("res://scripts/nav.gd")
+const ENEMY := preload("res://scripts/enemy.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 
 ## >0 w trakcie odliczania do restartu po wipe; widoczne na każdym peerze (HUD).
@@ -475,7 +477,13 @@ func _handle_cmdline() -> void:
 	for a in args:
 		if a.begins_with("--perf="):
 			perf_secs = float(a.substr("--perf=".length()))
-	if perf_secs > 0.0:
+	var sweep := 0
+	for a in args:
+		if a.begins_with("--perfsweep="):
+			sweep = int(a.substr("--perfsweep=".length()))
+	if perf_secs > 0.0 and sweep > 0:
+		_perf_sweep(perf_secs, sweep)
+	elif perf_secs > 0.0:
 		_perf_run(perf_secs, shot_col)
 	if shot_path != "":
 		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker, shot_demo, shot_ws, shot_result, shot_boss, shot_codex)
@@ -621,6 +629,72 @@ func host_game() -> void:
 ## do PNG i kończy. --shotat przenosi człowieka na podłogę w danej kolumnie mapy (np. do obejrzenia strefy kryjówki).
 ## Dev (--perf=SEKUNDY [--shotat=KOLUMNA]): pomiar wydajności po 2 s rozgrzewki — czas klatki bez vsync (średnia, p95, max), wywołania rysowania,
 ## prymitywy, węzły i pamięć wideo z monitorów silnika; drukuje jedną linię [PERF] i kończy. Nie zastępuje profilera GPU (gl_compatibility nie podaje czasu GPU).
+## Dev (--perf=SEK --perfsweep=KROK [--perfwake]): „przejście" mapy — gracz 1 staje co KROK kolumn na każdym piętrze, w każdym miejscu mierzymy SEK sekund
+## klatek (bez vsync) i dopisujemy liczbę wrogów w promieniu 400 px. Wynik: tabela najgorszych miejsc (średnia, p95, max, wywołania rysowania, wrogowie).
+## `--perfwake` budzi wszystkich wrogów mapy na starcie (najgorszy przypadek: cała mapa goni).
+func _perf_sweep(secs: float, step: int) -> void:
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	Engine.max_fps = 0
+	Profile.persist = false
+	await get_tree().create_timer(1.5).timeout
+	var p: Node2D = _players.get_node_or_null("1")
+	for pl in _players.get_children():
+		if pl.get("is_bot") == true:
+			pl.queue_free()
+	if "--perfwake" in OS.get_cmdline_user_args():
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if e.has_method("wake"):
+				e.wake()
+	var cols: int = (level._map[0] as String).length()
+	var rows: int = level._map.size()
+	var stops: Array = []
+	for c in range(2, cols - 2, step):
+		for r in range(2, rows - 1):
+			# podłoga piętra: bryła pod spodem i trzy wolne kafle nad nią (miejsce na gracza)
+			if level._is_solid(c, r) and not level._is_solid(c, r - 1) and not level._is_solid(c, r - 2) and not level._is_solid(c, r - 3):
+				stops.append(Vector2i(c, r))
+	var results: Array = []
+	for st in stops:
+		p.global_position = Vector2(float(st.x) * 16.0 + 8.0, float(st.y) * 16.0 - 2.0)
+		p.velocity = Vector2.ZERO
+		await get_tree().create_timer(0.35).timeout
+		var times: Array[float] = []
+		var calls := 0.0
+		var t_end := Time.get_ticks_msec() + int(secs * 1000.0)
+		var last := Time.get_ticks_usec()
+		while Time.get_ticks_msec() < t_end:
+			await get_tree().process_frame
+			var now := Time.get_ticks_usec()
+			times.append(float(now - last) / 1000.0)
+			last = now
+			calls += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+		times.sort()
+		var n := times.size()
+		if n < 3:
+			continue
+		var sum := 0.0
+		for t in times:
+			sum += t
+		var near := 0
+		var awake := 0
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if not (e is RigidBody2D) and p.global_position.distance_to(e.global_position) < 400.0:
+				near += 1
+				if e.get("active") == true:
+					awake += 1
+		results.append({"col": st.x, "row": st.y, "avg": sum / float(n), "p95": times[int(float(n) * 0.95)], "max": times[n - 1], "calls": calls / float(n), "near": near, "awake": awake})
+	results.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["p95"]) > float(b["p95"]))
+	var tot := 0.0
+	var worst_max := 0.0
+	for r in results:
+		tot += float(r["avg"])
+		worst_max = maxf(worst_max, float(r["max"]))
+	print("[SWEEP] mapa=%s przystanków=%d średnia klatka=%.2f ms, najgorsza pojedyncza klatka=%.1f ms" % [level.map_id, results.size(), tot / float(maxi(results.size(), 1)), worst_max])
+	for i in mini(results.size(), 12):
+		var r: Dictionary = results[i]
+		print("[SWEEP]  kol %3d wiersz %2d  avg %.2f  p95 %.2f  max %.1f ms  calls %.0f  wrogów w 400 px: %d (obudzonych %d)" % [r["col"], r["row"], r["avg"], r["p95"], r["max"], r["calls"], r["near"], r["awake"]])
+	get_tree().quit()
+
 func _perf_run(secs: float, col: int) -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = 0
@@ -636,7 +710,42 @@ func _perf_run(secs: float, col: int) -> void:
 					break
 			p.global_position = Vector2(float(col) * 16.0 + 8.0, fy - 2.0)
 	await get_tree().create_timer(1.0).timeout
+	var mobs := 0
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--perfmobs="):
+			mobs = int(a.substr("--perfmobs=".length()))
+	if mobs > 0:
+		# test obciążenia: N obudzonych wrogów (mieszanka rodzajów) w promieniu ~250 px wokół gracza
+		var pp: Node2D = _players.get_node_or_null("1")
+		var kinds := ["trzosek", "wolek", "slepiec", "trzosek", "skoczek", "trzosek"]
+		var span := 500.0                      # --perfspan=PX: rozstaw wrogów (większy = część poza kadrem)
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--perfspan="):
+				span = float(a.substr("--perfspan=".length()))
+		for i in mobs:
+			var off := Vector2(-span * 0.5 + span * float(i) / float(maxi(mobs - 1, 1)), 0.0)
+			level._add_enemy("PerfMob%d" % i, kinds[i % kinds.size()], pp.global_position + off)
+		await get_tree().create_timer(0.5).timeout
+		for i in mobs:
+			var en: Node = level.get_node_or_null("PerfMob%d" % i)
+			if en != null:
+				en.wake()
+		await get_tree().create_timer(1.5).timeout
+	var flares := 0
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--perfflares="):
+			flares = int(a.substr("--perfflares=".length()))
+	if flares > 0:
+		# test obciążenia: K flar rozrzuconych wśród wrogów (każda to światło z cieniami)
+		var fp: Node2D = _players.get_node_or_null("1")
+		for i in flares:
+			level.spawn_flare(fp.global_position + Vector2(-220.0 + 440.0 * float(i) / float(maxi(flares - 1, 1)), -30.0), Vector2.ZERO)
+		await get_tree().create_timer(1.5).timeout
 	var times: Array[float] = []
+	var proc_t := 0.0
+	var pairs := 0.0
+	var active_o := 0.0
+	var phys_t := 0.0
 	var calls := 0.0
 	var prims := 0.0
 	var t_end := Time.get_ticks_msec() + int(secs * 1000.0)
@@ -646,6 +755,10 @@ func _perf_run(secs: float, col: int) -> void:
 		var now := Time.get_ticks_usec()
 		times.append(float(now - last) / 1000.0)
 		last = now
+		pairs += Performance.get_monitor(Performance.PHYSICS_2D_COLLISION_PAIRS)
+		active_o += Performance.get_monitor(Performance.PHYSICS_2D_ACTIVE_OBJECTS)
+		proc_t += Performance.get_monitor(Performance.TIME_PROCESS)
+		phys_t += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)
 		calls += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
 		prims += Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
 	times.sort()
@@ -653,10 +766,11 @@ func _perf_run(secs: float, col: int) -> void:
 	var sum := 0.0
 	for t in times:
 		sum += t
-	print("[PERF] frames=%d avg=%.2f ms (%.0f fps) p50=%.2f p95=%.2f max=%.2f  draw_calls=%.0f prims=%.0f  nodes=%d  vram=%.1f MB  tex_mem=%.1f MB" % [
+	print("[PERF] frames=%d avg=%.2f ms (%.0f fps) p50=%.2f p95=%.2f max=%.2f  draw_calls=%.0f prims=%.0f  nodes=%d  vram=%.1f MB  tex_mem=%.1f MB  idle=%.2f ms phys=%.2f ms  A*=%.0f/s (%.2f ms/frame) enemy_phys=%.2f ms slide=%.2f ms pairs=%.0f active=%.0f" % [
 		n, sum / float(maxi(n, 1)), 1000.0 / maxf(sum / float(maxi(n, 1)), 0.001), times[n / 2], times[int(float(n) * 0.95)], times[n - 1],
 		calls / float(maxi(n, 1)), prims / float(maxi(n, 1)), int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
-		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0])
+		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0,
+		proc_t / float(maxi(n, 1)) * 1000.0, phys_t / float(maxi(n, 1)) * 1000.0, float(NavGraph.stat_calls) / secs, float(NavGraph.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_slide_usec) / 1000.0 / float(maxi(n, 1)), pairs / float(maxi(n, 1)), active_o / float(maxi(n, 1))])
 	get_tree().quit()
 
 func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false, workshop := false, result := false, boss := false, codex := false) -> void:
