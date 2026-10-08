@@ -9,6 +9,7 @@ extends RefCounted
 
 const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
+const GibArt := preload("res://scripts/gib_art.gd")
 
 const DEBRIS_LAYER := 64
 const DEBRIS_MASK := 1 | 16
@@ -196,104 +197,21 @@ static func _gibs_hd(parent: Node, pos: Vector2, color: Color, count: int, push:
 	blood(parent, pos + Vector2(0, -6), Vector2.UP, 14)
 	splat(parent, pos, 6.0)
 
-static func _blob_poly(r: float, n: int, jitter: float, squash := 1.0) -> PackedVector2Array:
-	var pts := PackedVector2Array()
-	var rot := randf() * TAU
-	for k in n:
-		var a := rot + TAU * float(k) / float(n)
-		var rr := r * randf_range(1.0 - jitter, 1.0 + jitter * 0.6)
-		pts.append(Vector2(cos(a) * rr, sin(a) * rr * squash))
-	return pts
-
-static func _poly(pts: PackedVector2Array, col: Color) -> Polygon2D:
-	var p := Polygon2D.new()
-	p.polygon = pts
-	p.color = col
-	p.antialiased = true
-	return p
-
 static func _gib_visual(kind: int, sz: float, color: Color) -> Node2D:
-	var root := Node2D.new()
 	if kind == 0:
-		var base := color.darkened(randf_range(0.1, 0.4))
-		base = base.lerp(Color(0.5, 0.08, 0.1), 0.35)
-		var pts := _blob_poly(sz * 0.5, 9, 0.3, 0.8)
-		root.add_child(_poly(pts, base.darkened(0.3)))                                       # cień / skórka
-		var inner := PackedVector2Array()
-		for q in pts:
-			inner.append(q * 0.78)
-		root.add_child(_poly(inner, base))
-		var hi := PackedVector2Array()
-		for q in pts:
-			hi.append(q * 0.32 + Vector2(-sz * 0.12, -sz * 0.14))
-		root.add_child(_poly(hi, base.lightened(0.45) * Color(1, 1, 1, 0.8)))                 # wilgotny połysk
-	elif kind == 1:
-		var l := sz * 1.5
-		var bone := Color(0.88, 0.83, 0.7).darkened(randf_range(0.0, 0.18))
-		var shaft := PackedVector2Array([Vector2(-l * 0.5, -0.55), Vector2(l * 0.5, -0.55), Vector2(l * 0.5, 0.55), Vector2(-l * 0.5, 0.55)])
-		root.add_child(_poly(shaft, bone.darkened(0.12)))
-		root.add_child(_poly(PackedVector2Array([Vector2(-l * 0.5, -0.55), Vector2(l * 0.5, -0.55), Vector2(l * 0.5, 0.0), Vector2(-l * 0.5, 0.0)]), bone))
-		for sx in [-1.0, 1.0]:
-			var kn := PackedVector2Array()
-			for k in 10:
-				var a := TAU * float(k) / 10.0
-				kn.append(Vector2(sx * l * 0.5 + cos(a) * 0.95, sin(a) * 0.95 + (0.5 if k % 3 == 0 else 0.0) * sx * 0.0))
-			root.add_child(_poly(kn, bone))
-		root.add_child(_poly(PackedVector2Array([Vector2(-l * 0.5 - 0.3, 0.55), Vector2(-l * 0.5 + 0.3, 0.7), Vector2(-l * 0.5 + 0.1, 0.9)]), Color(0.55, 0.1, 0.12, 0.8)))   # ślad krwi na kości
-	else:
-		var gut := Color(0.74, 0.28, 0.32).lerp(color, 0.2).darkened(randf_range(0.0, 0.2))
-		var pts2 := PackedVector2Array()
-		var l2 := sz * 1.3
-		var ph := randf() * TAU
-		for k in 6:
-			var f := float(k) / 5.0
-			pts2.append(Vector2((f - 0.5) * l2, sin(f * 5.0 + ph) * 1.1))
-		for w in [[1.9, gut.darkened(0.35)], [1.45, gut], [0.5, gut.lightened(0.5) * Color(1, 1, 1, 0.75)]]:
-			var ln := Line2D.new()
-			ln.points = pts2
-			ln.width = w[0]
-			ln.default_color = w[1]
-			ln.begin_cap_mode = Line2D.LINE_CAP_ROUND
-			ln.end_cap_mode = Line2D.LINE_CAP_ROUND
-			ln.joint_mode = Line2D.LINE_JOINT_ROUND
-			ln.antialiased = true
-			root.add_child(ln)
-	return root
+		var base := color.darkened(randf_range(0.1, 0.4)).lerp(Color(0.5, 0.08, 0.1), 0.35)
+		return GibArt.sprite(GibArt.meat(randi() % 4), sz * 1.15, base.lightened(0.15))
+	if kind == 1:
+		return GibArt.sprite(GibArt.bone(), sz * 1.5, Color.WHITE.darkened(randf_range(0.0, 0.15)))
+	return GibArt.sprite(GibArt.gut(randi() % 3), sz * 1.3, Color(1, 1, 1).lerp(color, 0.15))
 
-## Łuska HD: mosiężny walec z jaśniejszym połyskiem, ciemniejszym denkiem i spłonką; śrutowa ma czerwony korpus i mosiężną stopkę.
+## Łuska HD: jedna tekstura (mosiężny walec z połyskiem i denkiem; śrutowa — czerwona).
 static func _casing_visual(big: bool) -> Node2D:
-	var root := Node2D.new()
-	var l := 3.6 if big else 2.8
-	var w := 1.5 if big else 1.0
-	var brass := Color(0.88, 0.7, 0.32)
-	var body := Color(0.62, 0.14, 0.1) if big else brass
-	root.add_child(_poly(PackedVector2Array([Vector2(-l * 0.5, -w * 0.5), Vector2(l * 0.5, -w * 0.5 + 0.1), Vector2(l * 0.5, w * 0.5 - 0.1), Vector2(-l * 0.5, w * 0.5)]), body.darkened(0.25)))
-	root.add_child(_poly(PackedVector2Array([Vector2(-l * 0.5, -w * 0.5), Vector2(l * 0.5, -w * 0.5 + 0.1), Vector2(l * 0.5, 0.0), Vector2(-l * 0.5, 0.0)]), body.lightened(0.15)))
-	root.add_child(_poly(PackedVector2Array([Vector2(-l * 0.5 + 0.2, -w * 0.3), Vector2(l * 0.15, -w * 0.3), Vector2(l * 0.15, -w * 0.12), Vector2(-l * 0.5 + 0.2, -w * 0.12)]), Color(1, 0.95, 0.75, 0.55)))
-	root.add_child(_poly(PackedVector2Array([Vector2(-l * 0.5, -w * 0.55), Vector2(-l * 0.5 + 0.55, -w * 0.55), Vector2(-l * 0.5 + 0.55, w * 0.55), Vector2(-l * 0.5, w * 0.55)]), brass.darkened(0.1)))   # denko
-	return root
+	return GibArt.sprite(GibArt.casing(big), 3.6 if big else 2.8)
 
-## Odłamek HD (drzazga, cegła, kawałek metalu): wypukły wielokąt o rozmiarze ~`size`, ciemniejszy spód i jaśniejsza krawędź górna.
+## Odłamek HD (drzazga, cegła, kawałek metalu): kanciasty wielokąt w kolorze `color`.
 static func _shard_visual(size: Vector2, color: Color) -> Node2D:
-	var root := Node2D.new()
-	var base := color.darkened(randf_range(0.0, 0.2))
-	var pts := PackedVector2Array()
-	var n := 6
-	var rot := randf_range(-0.3, 0.3)
-	for k in n:
-		var a := rot + TAU * float(k) / float(n)
-		var rr := randf_range(0.8, 1.15)
-		pts.append(Vector2(cos(a) * size.x * 0.58 * rr, sin(a) * size.y * 0.58 * rr))
-	root.add_child(_poly(pts, base.darkened(0.3)))
-	var inner := PackedVector2Array()
-	for q in pts:
-		inner.append(q * 0.8 + Vector2(0, -size.y * 0.04))
-	root.add_child(_poly(inner, base))
-	var hi := PackedVector2Array()
-	for q in pts:
-		hi.append(q * 0.4 + Vector2(-size.x * 0.1, -size.y * 0.18))
-	root.add_child(_poly(hi, base.lightened(0.3) * Color(1, 1, 1, 0.7)))
-	return root
+	return GibArt.sprite(GibArt.shard(randi() % 3), maxf(size.x, size.y) * 1.2, color.darkened(randf_range(0.0, 0.2)))
 
 ## Łuska wyrzucona w bok i w górę, przeciwnie do celowania; dźwięczy przy upadku.
 static func casing(parent: Node, pos: Vector2, aim: Vector2, big := false) -> void:
