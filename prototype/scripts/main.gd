@@ -862,6 +862,10 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				vfx.casing(level, gp2.global_position + Vector2(-60.0 + 6.0 * float(i), -14.0), Vector2.RIGHT, i % 3 == 0)
 			for i in 5:
 				vfx.debris(level, gp2.global_position + Vector2(130.0, -20.0), Vector2(randf_range(-60.0, 60.0), randf_range(-120.0, -40.0)), Vector2(3, 3), Color(0.5, 0.3, 0.24))
+	if "--shotsmoke" in OS.get_cmdline_user_args():
+		var sp2: Node2D = _players.get_node_or_null("1")      # --shotsmoke: chmura dymu 80 px przed graczem (podgląd granatu dymnego)
+		if sp2 != null:
+			level.spawn_smoke(sp2.global_position + Vector2(90.0, -10.0), 20.0)
 	if "--shotitems" in OS.get_cmdline_user_args():
 		var ip: Node2D = _players.get_node_or_null("1")      # --shotitems: rząd przedmiotów na ziemi przed graczem (apteczka, amunicja, złom, skrzynie, flary, skrytka, nieśmiertelnik) + granat, mina, ładunek, flara
 		if ip != null:
