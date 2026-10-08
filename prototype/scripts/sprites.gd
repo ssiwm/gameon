@@ -7,6 +7,7 @@ extends RefCounted
 ##   glow   — unshaded (oczy, żyłki) — świeci w ciemności
 
 const Lights := preload("res://scripts/lights.gd")
+const Look := preload("res://scripts/look.gd")
 const MANIFEST := "res://art/sprites.json"
 const DIR := "res://art/sprites/"
 
@@ -103,7 +104,11 @@ static func bot_sheet() -> String:
 	return "bot"
 
 ## Arkusz ciała gracza: dev-postać 3D (jeśli włączona i spakowana) albo klasyczny player_N.
-static func player_sheet(display_id: int) -> String:
+static func player_sheet(display_id: int, look := -1) -> String:
+	if newchar == "tripo-hd-look":                  # wygląd z profilu (Look): płeć i strój wybrane w warsztacie; bez replikacji (look < 0) — domyślnie wg numeru gracza
+		var c := look if Look.is_valid(look) else Look.code(0 if display_id % 2 == 1 else 1, 0)
+		if has(Look.sheet(c)):
+			return Look.sheet(c)
 	if newchar != "":
 		var prefix := "playerhd_"
 		var mode := newchar

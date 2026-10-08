@@ -14,6 +14,8 @@ const ItemIcon := preload("res://scripts/item_icon.gd")
 const PerkIcon := preload("res://scripts/perk_icon.gd")
 const Perks := preload("res://scripts/perks.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
+const Look := preload("res://scripts/look.gd")
+const Sprites := preload("res://scripts/sprites.gd")
 
 const GOLD := Color(0.95, 0.8, 0.4)
 const COLS := 2
@@ -94,6 +96,47 @@ class LevelBar extends Control:
 		draw_rect(Rect2(1, 1, maxf(0.0, (size.x - 2.0) * frac), size.y - 2.0), Color(0.55, 0.8, 1.0))
 
 ## Kafel perku w siatce: miniatura + nazwa + stan (poziom odblokowania / założony / dostępny).
+## Podgląd postaci z arkusza HD (256×384 na klatkę): animowany (bieg/idle) w kafelku i w szczegółach zakładki LOOK. Arkusz ładowany leniwie (z mipmapami).
+class LookView extends Control:
+	var code := 0
+	var anim := "idle"
+	var _t := 0.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+
+	func set_code(c: int) -> void:
+		if c != code:
+			code = c
+			queue_redraw()
+
+	func _process(delta: float) -> void:
+		if is_visible_in_tree():
+			_t += delta
+			queue_redraw()
+
+	func _draw() -> void:
+		var sheet := Look.sheet(code)
+		if not Sprites.has(sheet):
+			return
+		var man: Dictionary = Sprites.manifest()["sheets"][sheet]
+		var an: Dictionary = man["anims"].get(anim, man["anims"]["idle"])
+		var fr: Array = man["frame"]
+		var frame := int(_t * float(an["fps"])) % maxi(1, int(an["frames"]))
+		var tex := Sprites.mip_texture(Sprites.DIR + sheet + ".png")
+		if tex == null:
+			return
+		var s := minf(size.x / float(fr[0]), size.y / float(fr[1]))
+		var w := Vector2(float(fr[0]), float(fr[1])) * s
+		draw_texture_rect_region(tex, Rect2(Vector2((size.x - w.x) * 0.5, size.y - w.y), w), Rect2(frame * fr[0], int(an["row"]) * fr[1], fr[0], fr[1]))
+
+class LookTile extends Button:
+	var code := 0
+	var view: LookView
+	var name_label: Label
+	var state_label: Label
+
 class PerkTile extends Button:
 	var perk := ""
 	var icon_node: Control
@@ -130,6 +173,14 @@ var _s_stats: GridContainer
 var _s_text: Label
 var _s_action: Button
 var _page_btns: Array[Button] = []
+var _look_body: HBoxContainer
+var _look_sel := 0
+var _look_tiles: Array = []
+var _l_view: LookView
+var _l_title: Label
+var _l_tag: Label
+var _l_text: Label
+var _l_action: Button
 var _perk_body: HBoxContainer
 var _perk_sel := 0
 var _perk_slot := 0
@@ -175,9 +226,9 @@ func _ready() -> void:
 	var title := UiTheme.heading("WORKSHOP", 16, UiTheme.ACCENT)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(title)
-	for pi in 3:
-		var pb := Button.new()                                 # zakładki ARMS / SUPPLIES / PERKS (Tab przełącza)
-		pb.text = ["ARMS", "SUPPLIES", "PERKS"][pi]
+	for pi in 4:
+		var pb := Button.new()                                 # zakładki ARMS / SUPPLIES / PERKS / LOOK (Tab przełącza)
+		pb.text = ["ARMS", "SUPPLIES", "PERKS", "LOOK"][pi]
 		pb.toggle_mode = true
 		pb.focus_mode = Control.FOCUS_NONE
 		pb.add_theme_font_size_override("font_size", 9)
@@ -206,6 +257,9 @@ func _ready() -> void:
 	_perk_body = _build_perks()
 	root.add_child(_perk_body)
 	_perk_body.visible = false
+	_look_body = _build_look()
+	root.add_child(_look_body)
+	_look_body.visible = false
 	var grid := GridContainer.new()
 	grid.columns = COLS
 	grid.add_theme_constant_override("h_separation", 6)
@@ -219,7 +273,7 @@ func _ready() -> void:
 	root.add_child(_rule())
 	_msg = UiTheme.label("", 9, UiTheme.BP_TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	root.add_child(_msg)
-	var hint := UiTheme.label("ARROWS select   ·   ENTER buy / upgrade / equip   ·   TAB arms / supplies / perks   ·   ESC close   ·   or click", 8, UiTheme.BP_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	var hint := UiTheme.label("ARROWS select   ·   ENTER buy / upgrade / equip   ·   TAB arms / supplies / perks / look   ·   ESC close   ·   or click", 8, UiTheme.BP_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	root.add_child(hint)
 	Scrap.changed.connect(_refresh)
 	Scrap.purchase_result.connect(_on_result)
@@ -303,6 +357,107 @@ func _build_supply_detail() -> Control:
 	_s_action.pressed.connect(_buy_selected_supply)
 	v.add_child(_s_action)
 	return v
+
+## Zakładka LOOK: siatka 2 × 3 (kolumny: mężczyzna / kobieta, wiersze: stroje) z animowanymi podglądami i szczegóły z przyciskiem Equip.
+## Kod wyglądu kafla i = wiersz (strój) × 2 + kolumna (płeć). Stroje odblokowuje poziom profilu (Look.UNLOCK_LEVEL); wygląd jest tylko kosmetyką.
+func _look_code(i: int) -> int:
+	return Look.code(i % COLS, i / COLS)
+
+func _build_look() -> HBoxContainer:
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 12)
+	body.custom_minimum_size = Vector2(0, 6.0 * (TILE_H + 6.0))
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 6)
+	left.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	body.add_child(left)
+	var grid := GridContainer.new()
+	grid.columns = COLS
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	left.add_child(grid)
+	for i in Look.GENDERS.size() * Look.OUTFITS.size():
+		var t := LookTile.new()
+		t.code = _look_code(i)
+		t.custom_minimum_size = Vector2(TILE_W, TILE_H * 1.5)
+		t.focus_mode = Control.FOCUS_NONE
+		for st in ["normal", "hover", "pressed", "disabled", "focus"]:
+			t.add_theme_stylebox_override(st, UiTheme.tile_box("hover" if st == "hover" else "normal"))
+		t.view = LookView.new()
+		t.view.position = Vector2(4, 3)
+		t.view.size = Vector2(46, TILE_H * 1.5 - 6.0)
+		t.view.set_code(t.code)
+		t.add_child(t.view)
+		t.name_label = UiTheme.label(Look.display_name(t.code), 9, UiTheme.BP_TEXT)
+		t.name_label.position = Vector2(56, 14)
+		t.add_child(t.name_label)
+		t.state_label = UiTheme.label("", 8, UiTheme.BP_MUTED)
+		t.state_label.position = Vector2(56, 34)
+		t.add_child(t.state_label)
+		t.pressed.connect(_select_look.bind(i))
+		grid.add_child(t)
+		_look_tiles.append(t)
+	var v := VBoxContainer.new()
+	v.custom_minimum_size = Vector2(DETAIL_W, 0)
+	v.add_theme_constant_override("separation", 4)
+	_l_view = LookView.new()
+	_l_view.anim = "run"
+	_l_view.custom_minimum_size = Vector2(0, 150)
+	v.add_child(_l_view)
+	_l_title = UiTheme.heading("", 16, UiTheme.ACCENT)
+	v.add_child(_l_title)
+	_l_tag = UiTheme.label("", 8, UiTheme.BP_MUTED)
+	v.add_child(_l_tag)
+	v.add_child(_rule())
+	_l_text = UiTheme.label("", 8, UiTheme.BP_TEXT)
+	_l_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_l_text.custom_minimum_size = Vector2(DETAIL_W, 0)
+	v.add_child(_l_text)
+	_l_action = Button.new()
+	_l_action.focus_mode = Control.FOCUS_NONE
+	_l_action.add_theme_font_size_override("font_size", 10)
+	_l_action.pressed.connect(_act_look)
+	v.add_child(_l_action)
+	body.add_child(v)
+	return body
+
+func _select_look(i: int) -> void:
+	_look_sel = i
+	Audio.play("ui_click", Audio.BUS_UI, -14.0)
+	_refresh()
+
+func _act_look() -> void:
+	var c := _look_code(_look_sel)
+	if Profile.look == c:
+		_say("Already wearing %s." % Look.display_name(c), UiTheme.BP_MUTED)
+	elif Profile.set_look(c):
+		Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
+		_say("%s (%s) equipped." % [Look.display_name(c), Look.gender_id(c)], UiTheme.OK)
+	else:
+		_say("Unlocks at level %d." % Look.unlock_level(c), UiTheme.DANGER)
+
+func _refresh_look() -> void:
+	var lvl := Profile.level()
+	for i in _look_tiles.size():
+		var t := _look_tiles[i] as LookTile
+		var sel := i == _look_sel
+		var sbox := UiTheme.tile_box("selected") if sel else UiTheme.tile_box("normal")
+		t.add_theme_stylebox_override("normal", sbox)
+		t.add_theme_stylebox_override("pressed", sbox)
+		t.add_theme_stylebox_override("focus", sbox)
+		var ok := Look.is_unlocked(t.code, lvl)
+		t.view.modulate = Color.WHITE if ok else Color(0.35, 0.4, 0.45)
+		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.BP_TEXT)
+		t.state_label.text = ("EQUIPPED" if Profile.look == t.code else "AVAILABLE") if ok else "LV %d" % Look.unlock_level(t.code)
+		t.state_label.add_theme_color_override("font_color", UiTheme.OK if Profile.look == t.code else (UiTheme.BP_MUTED if ok else UiTheme.DANGER))
+	var c := _look_code(_look_sel)
+	_l_view.set_code(c)
+	_l_view.modulate = Color.WHITE if Look.is_unlocked(c, lvl) else Color(0.35, 0.4, 0.45)
+	_l_title.text = Look.display_name(c)
+	_l_tag.text = "%s  ·  unlocks at level %d" % [Look.gender_id(c).to_upper(), Look.unlock_level(c)]
+	_l_text.text = String(Look.OUTFIT_TEXT[Look.outfit_id(c)]) + "\n\nCosmetic only — other players see your look too."
+	_l_action.disabled = false
+	_l_action.text = "Wearing" if Profile.look == c else ("Equip" if Look.is_unlocked(c, lvl) else "Locked — level %d" % Look.unlock_level(c))
 
 ## Zakładka PERKS: ten sam układ co ARMS i SUPPLIES — po lewej pasek poziomu, siatka kafli i dwa sloty, po prawej szczegóły wybranego perku.
 func _build_perks() -> HBoxContainer:
@@ -671,7 +826,27 @@ func _input(event: InputEvent) -> void:
 		return
 	var k := (event as InputEventKey).keycode
 	if k == KEY_TAB:
-		_set_page((_page + 1) % 3)
+		_set_page((_page + 1) % 4)
+		get_viewport().set_input_as_handled()
+		return
+	if _page == 3:
+		var lstep := 0
+		if k == KEY_LEFT or k == KEY_A:
+			lstep = -1
+		elif k == KEY_RIGHT or k == KEY_D:
+			lstep = 1
+		elif k == KEY_UP or k == KEY_W:
+			lstep = -COLS
+		elif k == KEY_DOWN or k == KEY_S:
+			lstep = COLS
+		if lstep != 0 and _look_sel + lstep >= 0 and _look_sel + lstep < Look.GENDERS.size() * Look.OUTFITS.size():
+			_look_sel += lstep
+			Audio.play("ui_click", Audio.BUS_UI, -14.0)
+			_refresh()
+		elif k == KEY_ENTER or k == KEY_KP_ENTER or k == KEY_SPACE:
+			_act_look()
+		elif k == KEY_ESCAPE or k == KEY_E or k == KEY_BACKSPACE:
+			close()
 		get_viewport().set_input_as_handled()
 		return
 	if _page == 2:
@@ -801,6 +976,11 @@ func _refresh() -> void:
 	_arms_body.visible = _page == 0
 	_sup_body.visible = _page == 1
 	_perk_body.visible = _page == 2
+	_look_body.visible = _page == 3
+	if _page == 3:
+		_refresh_look()
+		_card.reset_size()
+		return
 	if _page == 2:
 		_refresh_perks()
 		_card.reset_size()

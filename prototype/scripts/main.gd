@@ -16,6 +16,7 @@ const Sprites := preload("res://scripts/sprites.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Codex := preload("res://scripts/codex.gd")
 const Hints := preload("res://scripts/hints.gd")
+const Look := preload("res://scripts/look.gd")
 const Lights := preload("res://scripts/lights.gd")
 const RunLog := preload("res://scripts/run_log.gd")
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
@@ -330,6 +331,9 @@ func _handle_cmdline() -> void:
 		if a == "--newworld":
 			Sprites.newworld = true                                                                # dev: teren i tła HD (art/world/)
 			level.enable_world_hd()
+		if a.begins_with("--look="):
+			Profile.look = int(a.substr("--look=".length()))                                     # dev: wygląd bez odblokowania (nie zapisywany: --shot*/--perf ustawiają persist=false)
+			Profile.persist = false
 		if a == "--nocompress":
 			Sprites.compress_hd = false                                                            # dev: bez kompresji S3TC tekstur HD (porównanie)
 		if a == "--newmon":
@@ -755,6 +759,12 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				Profile.equip(0, "smith")
 				wui._perk_sel = 3
 				wui._set_page(2)
+			if "--shotlook" in OS.get_cmdline_user_args():
+				Profile.reset_for_test()             # --shotlook: zakładka LOOK (poziom 5 — wszystkie stroje odblokowane), wybrana kobieta w stroju Field medic
+				Profile.add_xp(800, "demo")
+				Profile.set_look(Look.code(1, 2))
+				wui._look_sel = 5
+				wui._set_page(3)
 	if demo:
 		RunLog.add("z1_m1", "1.1  MISSING PATROL", 214.0, 0, 1, -1, 86)         # przykładowe wpisy do podglądu ściany wyników
 		RunLog.add("z1_m2", "1.2  RADIO SILENCE", 402.0, 2, 1, 1, 148)
@@ -1482,10 +1492,12 @@ func _gen_test() -> void:
 	tab_ev.keycode = KEY_TAB
 	tab_ev.pressed = true
 	wui._input(tab_ev)
-	var tab_wrapped: bool = wui._page == 0                              # 2 → 0
+	var tab_to_look: bool = wui._page == 3                              # 2 → 3 (LOOK)
+	wui._input(tab_ev)
+	var tab_wrapped: bool = tab_to_look and wui._page == 0              # 3 → 0
 	wui._set_page(0)
 	var pm_node: Node = $UI.get_node("PauseMenu")
-	check.call("zakładka PERKS: %d kafli, załóż → %s, zdejmij → %s, perk L6 przy L4 zablokowany → %s, Tab zawija 2→0 → %s; menu pauzy ma %d kart, kodeks %d perków" % [perk_tiles_n, str(perk_on), str(perk_off), str(perk_locked), str(tab_wrapped), pm_node._pages.size(), Codex.perks().size()],
+	check.call("zakładka PERKS: %d kafli, załóż → %s, zdejmij → %s, perk L6 przy L4 zablokowany → %s, Tab przechodzi PERKS → LOOK → ARMS → %s; menu pauzy ma %d kart, kodeks %d perków" % [perk_tiles_n, str(perk_on), str(perk_off), str(perk_locked), str(tab_wrapped), pm_node._pages.size(), Codex.perks().size()],
 		perk_tiles_n == 8 and perk_on and perk_off and perk_locked and tab_wrapped and pm_node._pages.size() == 6 and Codex.perks().size() == 8)
 	Profile.reset_for_test()
 	wui.close()

@@ -102,6 +102,9 @@ var w_charge := 0.0
 var w_firing := false
 ## Założone perki jako indeksy z `Perks.ORDER` (-1 = pusty slot); replikowane, ustawia je właściciel z lokalnego profilu.
 var perks := Vector2i(-1, -1)
+## Wygląd (Look.code), replikowany; −1 = jeszcze nieznany. Ustawia właściciel z lokalnego profilu; kosmetyka — serwer niczego z niego nie liczy.
+var look := -1
+var _spr_sheet := ""
 var _second_used := false
 var _down_t := 0.0
 var kit := Vector3i(Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Weapons.START_MELEE)
@@ -202,15 +205,32 @@ func _setup_lights() -> void:
 	_overlay = Lights.add_overlay(self)   # ostatnie dziecko: etykiety nad sprite'ami
 
 ## Pixel-art z art/sprites (bake_sprites.py). Bez arkuszy zostaje rysowanie w kodzie.
+func _wanted_sheet() -> String:
+	return Sprites.bot_sheet() if is_bot else Sprites.player_sheet(display_id, look)
+
 func _setup_sprites() -> void:
-	var sheet := Sprites.bot_sheet() if is_bot else Sprites.player_sheet(display_id)
+	var sheet := _wanted_sheet()
 	if not Sprites.has(sheet):
 		return
+	_spr_sheet = sheet
 	_spr = Sprites.attach(self, sheet)
 	_spr_scale = Sprites.scale_of(sheet)
 
+## Zmiana wyglądu w trakcie gry (warsztat albo replikacja): wymiana warstw sprite'a.
+func _refresh_look_sprites() -> void:
+	var sheet := _wanted_sheet()
+	if sheet == _spr_sheet or not Sprites.has(sheet):
+		return
+	for n in _spr:
+		if n != null and is_instance_valid(n):
+			n.queue_free()
+	_spr = []
+	_setup_sprites()
+
 ## Animacja z (replikowanego) stanu — działa też dla zdalnych graczy i bota.
 func _update_sprite() -> void:
+	if _spr_sheet != "" and not is_bot and Sprites.newchar == "tripo-hd-look":
+		_refresh_look_sprites()
 	if _spr.is_empty():
 		return
 	var body: AnimatedSprite2D = _spr[0]
@@ -259,7 +279,7 @@ func _setup_sync() -> void:
 	sync.replication_interval = 0.05
 	sync.delta_interval = 0.05
 	var cfg := SceneReplicationConfig.new()
-	for path in [":position", ":velocity", ":aim_dir", ":hp", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":kit", ":perks"]:
+	for path in [":position", ":velocity", ":aim_dir", ":hp", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":kit", ":perks", ":look"]:
 		cfg.add_property(path)
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
 	for path in [":position", ":velocity", ":hp", ":crouching", ":dead", ":is_bot", ":display_id"]:
@@ -295,6 +315,7 @@ func perk_param(id: String, key: String, fallback: float) -> float:
 
 ## Lokalny człowiek publikuje założone perki (zmieniają się tylko w kryjówce); zmiana perka „Veteran" od razu dolicza/odejmuje serce.
 func _sync_perks() -> void:
+	look = Profile.look
 	var before := max_hp()
 	perks = Perks.to_indexes(Profile.equipped)
 	var after := max_hp()
