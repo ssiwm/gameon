@@ -20,6 +20,17 @@ static var newchar := ""
 static var newgun := false
 ## Dev (--newmon): wrogowie z arkuszy HD `<rodzaj>_hd` (Tripo → tools/pack_monsters_hd.py), jeśli istnieją; reszta po staremu.
 static var newmon := false
+## Dev (--newitem): przedmioty i rekwizyty HD z art/items/ (items_hd.gd): sprzęt, apteczki, skrzynie, flara, złom, beczka, stojak, warsztat.
+static var newitem := false
+
+## Ustawienie „Graphics: HD" (domyślne) włącza wszystkie warianty HD — wołane przed zbudowaniem PIERWSZEJ mapy (level.gd `_ready`),
+## bo przedmioty, lampy i rekwizyty decydują o grafice w `_ready`. Flagi dev w main.gd mogą to nadpisać.
+static func apply_hd_defaults() -> void:
+	if Settings.hd_active():
+		newchar = "tripo-hd-look"
+		newgun = true
+		newmon = true
+		newitem = true
 
 static func enemy_sheet(kind: String) -> String:
 	if newmon and has(kind + "_hd"):

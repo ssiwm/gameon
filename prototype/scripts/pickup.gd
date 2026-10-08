@@ -18,6 +18,7 @@ const Sprites := preload("res://scripts/sprites.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Throwables := preload("res://scripts/throwables.gd")
+const ItemsHd := preload("res://scripts/items_hd.gd")
 
 const HEAL := 1
 const PICK_R := 12.0
@@ -48,6 +49,11 @@ var _landed := false
 var _t := 0.0
 var _spr: Array = []
 var _glow: PointLight2D
+## Grafika HD (Sprites.newitem): korzeń z bujaniem, sprite oświetlany, kopia „unshaded" (widać w ciemności) i nakładka (plakietka, kłódka).
+var _hd: Node2D
+var _hd_over: Node2D
+var _hd_gun := ""
+var _hd_gun_rect := Rect2()
 static var _bbox := {}            ## wiersz arkusza broni → prostokąt nieprzezroczystych pikseli w klatce (do wyśrodkowania na stojaku)
 
 func _ready() -> void:
@@ -59,10 +65,11 @@ func _ready() -> void:
 		# tekstury broni wczytujemy przed pierwszym _draw (wczytanie w trakcie rysowania daje biały prostokąt)
 		Sprites.texture(Sprites.DIR + "guns.png")
 		Sprites.texture(Sprites.DIR + "guns_glow.png")
-	if kind == "health" and Sprites.has("objects"):
+	_setup_hd()
+	if _hd == null and kind == "health" and Sprites.has("objects"):
 		_spr = Sprites.attach(self, "objects")
 		Sprites.play(_spr, "medkit", false)
-	if kind != "health":
+	if kind != "health" and _hd == null:
 		material = Lights.unshaded()          # skrzynkę i broń widać w ciemności
 		modulate = Color(0.88, 0.88, 0.88)
 	# poświata — przedmiot widać w ciemności, ale nie oświetla okolicy
@@ -128,7 +135,9 @@ func _physics_process(delta: float) -> void:
 		else:
 			global_position = next
 	var bob := 0.0 if (not _landed or static_display) else sin(_t * 3.0) * 1.5 - 1.5
-	if not _spr.is_empty():
+	if _hd != null:
+		_hd.position.y = roundf(bob) if static_display else bob
+	elif not _spr.is_empty():
 		(_spr[0] as Node2D).position.y = bob
 		if _spr[1] != null:
 			(_spr[1] as Node2D).position.y = bob
@@ -143,7 +152,7 @@ func _physics_process(delta: float) -> void:
 # ---------------------------------------------------------------- rysowanie (ammo / broń)
 
 func _draw() -> void:
-	if kind == "health":
+	if kind == "health" or _hd != null:
 		return
 	var bob := 0.0 if (not _landed or static_display) else sin(_t * 3.0) * 1.5 - 1.5
 	var c: Color = GLOW.get(kind, Color.WHITE)
@@ -242,17 +251,149 @@ func _draw() -> void:
 		else:
 			draw_rect(Rect2(-6, -7 + bob, 12, 3), c)
 
+# ---------------------------------------------------------------- grafika HD
+
+## Nazwa przedmiotu HD (art/items/) dla rodzaju albo "" (broń ma własny tor: sprite broni HD).
+func _hd_name() -> String:
+	match kind:
+		"health": return "medkit"
+		"flares": return "flare_box"
+		"supply": return "supply"
+		"stash": return "stash"
+		"tag": return "tag"
+		"scrap": return "scrap_pile"
+		"cache": return "cache"
+		"ammo": return "ammo"
+	return ""
+
+## Skala sprite'a względem modelu (rozmiar w świecie dobrany tak, by przedmiot był czytelny, ale nie większy od gracza).
+func _hd_scale() -> float:
+	match kind:
+		"health": return 0.7
+		"flares": return 0.8
+		"supply": return 0.8
+		"stash": return 0.75
+		"cache": return 0.8
+		"ammo": return 0.9
+		"scrap": return 0.8 if rounds >= 6 else 0.55
+	return 1.0
+
+func _setup_hd() -> void:
+	var gun_key := ""
+	if kind == "weapon" and Sprites.newgun:
+		gun_key = String(Weapons.def(arg).key)
+		if Sprites.gun_hd(gun_key) == null:
+			return
+	var nm := _hd_name()
+	if gun_key == "" and (not Sprites.newitem or nm == "" or not ItemsHd.has(nm)):
+		return
+	_hd = Node2D.new()
+	add_child(_hd)
+	if gun_key != "":
+		_hd_gun = gun_key
+		var ct := Sprites.gun_hd(gun_key)
+		_hd_gun_rect = Sprites.gun_hd_rect(gun_key)
+		var gp := Vector2(0.0, _shelf_y() if static_display else -4.0)
+		var sp := Sprite2D.new()
+		sp.texture = ct
+		sp.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		sp.centered = false
+		sp.offset = -Vector2(_hd_gun_rect.get_center().x, _hd_gun_rect.end.y)
+		sp.scale = Vector2.ONE / 16.0
+		sp.position = gp
+		_hd.add_child(sp)
+		var hg := Sprites.gun_hd_glow(gun_key)
+		if hg != null:
+			var gs := Sprite2D.new()
+			gs.texture = hg
+			gs.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+			gs.centered = false
+			gs.offset = sp.offset
+			gs.scale = sp.scale
+			gs.position = gp
+			gs.material = Lights.unshaded()
+			_hd.add_child(gs)
+		if not static_display:
+			var base := ColorRect.new()                                   # ciemna podstawka pod bronią na ziemi (jak w wersji pikselowej)
+			base.color = Color(0.12, 0.13, 0.16)
+			base.position = Vector2(-8, -4)
+			base.size = Vector2(16, 3)
+			base.material = Lights.unshaded()
+			_hd.add_child(base)
+			_hd.move_child(base, 0)
+		_hd_over = Node2D.new()
+		_hd_over.draw.connect(_draw_over)
+		_hd.add_child(_hd_over)
+		if static_display:
+			Scrap.changed.connect(func() -> void:
+				_update_lock_tint(sp)
+				_hd_over.queue_redraw())
+			_update_lock_tint(sp)
+		return
+	var sc := _hd_scale()
+	var main := ItemsHd.make(nm, _hd, sc)
+	_hd_main = main
+	if kind != "health":
+		# kopia „unshaded": przedmiot widać też w ciemności (jak w wersji pikselowej), ale tylko lekko — światło dalej go modeluje
+		var vis := Sprite2D.new()
+		vis.texture = ItemsHd.albedo(nm)
+		vis.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		vis.centered = true
+		vis.offset = main.offset
+		vis.scale = main.scale
+		vis.material = Lights.unshaded()
+		vis.modulate = Color(1, 1, 1, 0.2)
+		_hd.add_child(vis)
+	if kind == "supply" or kind == "ammo":
+		_hd_over = Node2D.new()
+		_hd_over.draw.connect(_draw_over)
+		_hd.add_child(_hd_over)
+
+var _hd_main: Sprite2D
+
+## Wysokość spodu sylwetki broni na stojaku: kołyska HD jest wyższa niż pikselowa.
+func _shelf_y() -> float:
+	return -9.8 if (Sprites.newitem and ItemsHd.has("rack")) else -7.0
+
+func _update_lock_tint(sp: Sprite2D) -> void:
+	var locked := static_display and not Scrap.is_unlocked(arg)
+	sp.modulate = Color(0.32, 0.33, 0.4) if locked else Color.WHITE
+
+## Nakładka HD: kolorowa plakietka na skrzynce zaopatrzenia/amunicji albo kłódka z ceną na zablokowanej broni.
+func _draw_over() -> void:
+	var sc := _hd_scale()
+	if kind == "supply":
+		var sk := String(Throwables.ORDER[clampi(arg, 0, Throwables.ORDER.size() - 1)])
+		var col: Color = Throwables.KINDS[sk]["color"]
+		var r := Rect2(-2.8 * sc, -(4.4 + 1.9) * sc, 5.6 * sc, 3.8 * sc)
+		_hd_over.draw_rect(r, col.darkened(0.15))
+		_hd_over.draw_rect(Rect2(r.position + Vector2(0.5, 0.5) * sc, Vector2(r.size.x - 1.0 * sc, 0.5 * sc)), Color(1, 1, 1, 0.45))
+		_hd_over.draw_rect(Rect2(r.get_center() - Vector2(0.9, 0.9) * sc, Vector2(1.8, 1.8) * sc), Color(1, 1, 1, 0.75))
+	elif kind == "ammo":
+		var col2: Color = Weapons.def(arg).tracer_color.lerp(Color(0.85, 0.68, 0.3), 0.4)
+		var r2 := Rect2(-2.8 * sc, -(3.2 + 1.3) * sc, 5.6 * sc, 2.6 * sc)
+		_hd_over.draw_rect(r2, col2)
+		_hd_over.draw_rect(Rect2(r2.position, Vector2(r2.size.x, 0.4 * sc)), Color(1, 1, 1, 0.35))
+	elif kind == "weapon" and static_display and not Scrap.is_unlocked(arg):
+		var gw := _hd_gun_rect.size.x / 16.0
+		var gh := _hd_gun_rect.size.y / 16.0
+		var dst := Rect2(-gw * 0.5, _shelf_y() - gh, gw, gh)
+		_draw_lock_on(_hd_over, dst, -3.5)
+
 ## Zablokowany stojak: kłódka nad bronią i cena (albo „SOON") na tabliczce stojaka.
 func _draw_lock(dst: Rect2) -> void:
+	_draw_lock_on(self, dst)
+
+func _draw_lock_on(ci: CanvasItem, dst: Rect2, label_y := -2.0) -> void:
 	var cx := roundf(dst.position.x + dst.size.x * 0.5)
 	var cy := roundf(dst.position.y + dst.size.y * 0.5) - 4.0
-	draw_arc(Vector2(cx, cy - 3.0), 2.6, PI, TAU, 8, Color(0.75, 0.75, 0.8), 1.0)
-	draw_rect(Rect2(cx - 3.5, cy - 3.0, 7, 6), Color(0.15, 0.15, 0.18))
-	draw_rect(Rect2(cx - 2.5, cy - 2.0, 5, 4), Color(0.85, 0.7, 0.3))
-	draw_rect(Rect2(cx - 0.5, cy - 0.5, 1, 2), Color(0.15, 0.15, 0.18))
+	ci.draw_arc(Vector2(cx, cy - 3.0), 2.6, PI, TAU, 8, Color(0.75, 0.75, 0.8), 1.0)
+	ci.draw_rect(Rect2(cx - 3.5, cy - 3.0, 7, 6), Color(0.15, 0.15, 0.18))
+	ci.draw_rect(Rect2(cx - 2.5, cy - 2.0, 5, 4), Color(0.85, 0.7, 0.3))
+	ci.draw_rect(Rect2(cx - 0.5, cy - 0.5, 1, 2), Color(0.15, 0.15, 0.18))
 	var price := Scrap.price_of(arg)
 	var label := "%d" % price if price > 0 else "SOON"
-	draw_string(ThemeDB.fallback_font, Vector2(-12, -2), label, HORIZONTAL_ALIGNMENT_CENTER, 24.0, 6, Color(0.12, 0.09, 0.06))
+	ci.draw_string(ThemeDB.fallback_font, Vector2(-12, label_y), label, HORIZONTAL_ALIGNMENT_CENTER, 24.0, 6, Color(0.12, 0.09, 0.06))
 
 ## Prostokąt nieprzezroczystych pikseli broni `row` w jej klatce (px arkusza); liczony raz i zapamiętany.
 static func _content_box(tex: Texture2D, row: int, tfs: Vector2) -> Rect2i:

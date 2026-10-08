@@ -1,7 +1,7 @@
 """Bake rekwizytu świata z Tripo (GLB) do sprite'a HD: albedo (bez oświetlenia) + normalne świata, ortho z wybranej strony, stopy w dolnej krawędzi ramki.
 
 Uruchomienie: blender -b --factory-startup -P prototype/tools/concept/prop_tripo_bake.py -- PROP.glb OUT_PREFIX CAM WIDTH_WP FRAME_W_WP FRAME_H_WP
-    CAM = -Y | +Y | -X | +X (z której strony patrzymy); WIDTH_WP = szerokość obiektu w pikselach świata; ramka w pikselach świata (×16 px).
+    CAM = -Y | +Y | -X | +X (z której strony patrzymy); WIDTH_WP = szerokość obiektu w pikselach świata; ramka w pikselach świata (× PPW px; PPW = 7. argument, domyślnie 16).
 Wynik: OUT_PREFIX.png i OUT_PREFIX_nw.png; potem: python prototype/tools/pack_gun_hd.py OUT_PREFIX NAZWA --cam=CAM --out=world/prop_NAZWA
 """
 import math
@@ -9,9 +9,10 @@ import sys
 
 import bpy
 
-glb, prefix, cam_side, width_wp, fw_wp, fh_wp = sys.argv[sys.argv.index("--") + 1:][:6]
+_a = sys.argv[sys.argv.index("--") + 1:]
+glb, prefix, cam_side, width_wp, fw_wp, fh_wp = _a[:6]
 width_wp, fw_wp, fh_wp = float(width_wp), float(fw_wp), float(fh_wp)
-PPW = 16.0
+PPW = float(_a[6]) if len(_a) > 6 else 16.0      # px ramki na piksel świata (opcjonalnie; domyślnie 16)
 FW, FH = int(fw_wp * PPW), int(fh_wp * PPW)
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=glb)

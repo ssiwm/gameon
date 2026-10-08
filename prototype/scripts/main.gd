@@ -332,6 +332,7 @@ func _handle_cmdline() -> void:
 		Sprites.newchar = "tripo-hd-look"
 		Sprites.newgun = true
 		Sprites.newmon = true
+		Sprites.newitem = true
 		hd_world = true
 	for a in args:
 		if a == "--newworld":
@@ -343,6 +344,8 @@ func _handle_cmdline() -> void:
 			Sprites.compress_hd = false                                                            # dev: bez kompresji S3TC tekstur HD (porównanie)
 		if a == "--newmon":
 			Sprites.newmon = true                                                                  # dev: wrogowie HD (<rodzaj>_hd)
+		if a == "--newitem":
+			Sprites.newitem = true                                                                 # dev: przedmioty i rekwizyty HD (art/items/)
 		if a == "--newgun":
 			Sprites.newgun = true                                                                  # dev: sprite HD broni (gunhd_*.png)
 		if a == "--newchar" or a.begins_with("--newchar="):
@@ -670,6 +673,15 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		ppm.open()
 		ppm._show_tab(4)
 		(ppm._pages[4]).select(3)
+	if _has_arg_prefix("--shotweapons"):
+		var wpm: Node = $UI.get_node("PauseMenu")           # --shotweapons[=N]: karta WEAPONS kodeksu (wpis N, domyślnie P-64)
+		wpm.open()
+		wpm._show_tab(2)
+		var wi := 2
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--shotweapons="):
+				wi = int(a.substr("--shotweapons=".length()))
+		(wpm._pages[2]).select(wi)
 	if "--shotgear" in OS.get_cmdline_user_args():
 		var gpm: Node = $UI.get_node("PauseMenu")           # --shotgear: karta GEAR kodeksu (mina)
 		gpm.open()
@@ -702,6 +714,44 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if gp != null:
 			Arsenal.cycle_throwable()
 			Arsenal.request_throw("phos", gp.global_position + Vector2(50.0, -20.0), Vector2(60.0, -20.0))
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--shotzoom="):                       # dev: powiększenie kamery gracza 1 (zrzuty szczegółów)
+			var zp: Node2D = _players.get_node_or_null("1")
+			if zp != null:
+				zp._camera.zoom *= float(a.substr("--shotzoom=".length()))
+				zp._camera.offset += Vector2(-20.0, 26.0)
+	if "--shotextract" in OS.get_cmdline_user_args():
+		mission._open_extraction(false)                       # --shotextract: od razu faza ewakuacji (flara z płomieniem i słupem światła), gracz 1 obok niej
+		var xp: Node2D = _players.get_node_or_null("1")
+		if xp != null:
+			xp.global_position = mission.exit_pos + Vector2(-46.0, -2.0)
+	if "--shotgibs" in OS.get_cmdline_user_args():
+		var gp2: Node2D = _players.get_node_or_null("1")      # --shotgibs: szczątki trzech rodzajów stworów przed graczem (podgląd grafiki szczątków i krwi)
+		if gp2 != null:
+			var vfx := load("res://scripts/vfx.gd")
+			vfx.gibs(level, gp2.global_position + Vector2(40.0, -24.0), Color(0.8, 0.66, 0.46), 14)
+			vfx.gibs(level, gp2.global_position + Vector2(70.0, -24.0), Color(0.42, 0.14, 0.18), 14)
+			vfx.gibs(level, gp2.global_position + Vector2(100.0, -24.0), Color(0.18, 0.3, 0.26), 14)
+	if "--shotitems" in OS.get_cmdline_user_args():
+		var ip: Node2D = _players.get_node_or_null("1")      # --shotitems: rząd przedmiotów na ziemi przed graczem (apteczka, amunicja, złom, skrzynie, flary, skrytka, nieśmiertelnik) + granat, mina, ładunek, flara
+		if ip != null:
+			var items := [["scrap", 0, 8], ["scrap", 0, 3], ["stash", 0, 20], ["tag", 0, 0], ["cache", 0, 0]] if "--shotitems2" in OS.get_cmdline_user_args() else [["health", 0, 0], ["ammo", Weapons.M83, 30], ["ammo", Weapons.SPREAD12, 8], ["scrap", 0, 3], ["scrap", 0, 8], ["cache", 0, 0], ["flares", 0, 2],
+				["supply", 0, 0], ["supply", 3, 0], ["supply", 5, 0], ["stash", 0, 20], ["tag", 0, 0]]
+			for i in items.size():
+				level.spawn_item(items[i][0], items[i][1], ip.global_position + Vector2(-60.0 + 24.0 * float(i), -8.0), items[i][2])
+			await get_tree().create_timer(1.5).timeout
+			if not "--shotnothrow" in OS.get_cmdline_user_args():
+				Arsenal.request_throw("frag", ip.global_position + Vector2(-30.0, -20.0), Vector2(30.0, -30.0))
+			level.spawn_flare(ip.global_position + Vector2(-70.0, -20.0), Vector2(40.0, -20.0))
+			var pm_: Node2D = load("res://scripts/placed.gd").new()
+			pm_.kind = "mine"
+			pm_.dir = Vector2.RIGHT
+			pm_.position = ip.global_position + Vector2(125.0, 0.0)
+			level.add_child(pm_)
+			var pc_: Node2D = load("res://scripts/placed.gd").new()
+			pc_.kind = "charge"
+			pc_.position = ip.global_position + Vector2(145.0, 0.0)
+			level.add_child(pc_)
 	if _has_arg_prefix("--shotmon"):
 		var mp: Node2D = _players.get_node_or_null("1")      # --shotmon: Wołek i dwa Trzoski przed graczem, AI zamrożone (jeden obudzony, reszta śpi) — podgląd sprite'ów wrogów
 		if mp != null:

@@ -5,6 +5,9 @@ extends Control
 
 const PixelArt := preload("res://scripts/pixel_art.gd")
 const Throwables := preload("res://scripts/throwables.gd")
+const Sprites := preload("res://scripts/sprites.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+const ItemsHd := preload("res://scripts/items_hd.gd")
 
 var kind := "frag"
 var k := 2.0                  ## żądana skala lokalna (piksel rysunku w jednostkach lokalnych)
@@ -13,14 +16,22 @@ var tint := Color.WHITE       ## przygasza niedostępne
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS if UiTheme.hd_on() else CanvasItem.TEXTURE_FILTER_NEAREST
+	_preload_hd()
 
 func set_item(kd: String, t: Color) -> void:
 	if kd == kind and t == tint:
 		return
 	kind = kd
 	tint = t
+	_preload_hd()
 	queue_redraw()
+
+## Tekstury HD wczytujemy poza `_draw` (pierwsze wczytanie w trakcie rysowania daje białe prostokąty).
+func _preload_hd() -> void:
+	if UiTheme.hd_on() and ItemsHd.has(kind):
+		ItemsHd.albedo(kind)
+		ItemsHd.glow_texture(kind)
 
 func _draw() -> void:
 	var dev := PixelArt.device_scale(self)
@@ -33,8 +44,11 @@ func _draw() -> void:
 		for i in 4:
 			var inset := 2.0 + i * 4.0
 			draw_rect(Rect2(inset, inset * 0.5, size.x - 2.0 * inset, size.y - 2.0 - inset), Color(accent.r, accent.g, accent.b, 0.045))
-	var s := PixelArt.snap_scale(self, k)
 	var body_h := size.y - (2.0 if plate else 0.0)
+	if UiTheme.hd_on() and ItemsHd.has(kind):
+		ItemsHd.draw_fit(self, kind, Rect2(4.0, 3.0, size.x - 8.0, body_h - 6.0), tint, Vector2(11.0, 10.0))
+		return
+	var s := PixelArt.snap_scale(self, k)
 	var cx := roundf(size.x * 0.5)
 	var base := roundf((body_h + 14.0 * s) * 0.5)               # bryła ma do ~14 jednostek wysokości: środkujemy w pionie
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

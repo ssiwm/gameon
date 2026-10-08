@@ -7,6 +7,8 @@ const Lights := preload("res://scripts/lights.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Throwables := preload("res://scripts/throwables.gd")
+const Sprites := preload("res://scripts/sprites.gd")
+const ItemsHd := preload("res://scripts/items_hd.gd")
 
 const GRAVITY := 520.0
 const BOUNCE := 0.35
@@ -19,6 +21,7 @@ var _data: Dictionary
 var _t := 0.0
 var _rest := false
 var _light: PointLight2D
+var _hd := false
 
 func _ready() -> void:
 	add_to_group("grenades")
@@ -27,6 +30,9 @@ func _ready() -> void:
 	material = Lights.unshaded()
 	_light = Lights.make_light(Lights.radial(), 1.6, _data["color"], 0.0, false)
 	add_child(_light)
+	if Sprites.newitem and ItemsHd.has(kind):
+		_hd = true
+		ItemsHd.make(kind, self, 1.1 if kind == "frag" else 0.7, 0.3)           # HD: ten sam model co w ekwipunku; światło z _light miga jak zapalnik
 
 func _physics_process(delta: float) -> void:
 	_t += delta
@@ -86,6 +92,8 @@ func _detonate() -> void:
 				lvl.spawn_fire_patch(base + Vector2(off, 0.0), Weapons.HKM9, shooter_id, float(_data["field_life"]))
 
 func _draw() -> void:
+	if _hd:
+		return
 	var c: Color = _data["color"]
 	if kind == "frag":
 		draw_circle(Vector2(0, -3), 3.0, Color(0.22, 0.3, 0.18))

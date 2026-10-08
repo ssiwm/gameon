@@ -61,6 +61,7 @@ const BOARD := preload("res://scripts/board.gd")
 const RESULTS_WALL := preload("res://scripts/results_wall.gd")
 const RANGE_LINE := preload("res://scripts/range_line.gd")
 const WORKSHOP := preload("res://scripts/workshop.gd")
+const ItemsHd := preload("res://scripts/items_hd.gd")
 const LEECH := preload("res://scripts/leech.gd")
 const RANGE_TARGET := preload("res://scripts/range_target.gd")
 
@@ -145,6 +146,7 @@ var _ts: TileSet
 var _stable: Array = []                ## węzły stałe (tło, warstwy) — reszta to encje misji
 
 func _ready() -> void:
+	Sprites.apply_hd_defaults()
 	add_to_group("level")
 	# poziom ciemności w jednym miejscu (lights.gd)
 	_dark_node = get_parent().get_node_or_null("Darkness") as CanvasModulate
@@ -517,6 +519,11 @@ func _load_props_hd() -> void:
 			ct.normal_texture = Sprites.hd_texture(n.get_image(), true)
 		ct.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		_prop_hd[int(spec[0])] = [ct, spec[2]]
+	# kości i trzciny: modele z art/items/ (items_proc_bake.py), skala względem ramki modelu
+	for spec in [[4, "bones", 0.7], [5, "reeds", 0.9]]:
+		var ct2: CanvasTexture = ItemsHd.texture(String(spec[1]))
+		if ct2 != null:
+			_prop_hd[int(spec[0])] = [ct2, ItemsHd.frame_wp(String(spec[1])) * float(spec[2])]
 
 func _build_terrain_hd() -> void:
 	if _terrain_hd == null:
@@ -1273,6 +1280,9 @@ func _draw_decals() -> void:
 		rng.seed = d[2]
 		var p: Vector2 = d[0]
 		var r: float = d[1]
+		if Sprites.newitem:
+			_draw_decal_hd(p, r, rng)
+			continue
 		# płaska plama na podłodze: kilka spłaszczonych kropel
 		for i in 5:
 			var off := Vector2(rng.randf_range(-r, r), rng.randf_range(-0.6, 0.4))
@@ -1281,6 +1291,21 @@ func _draw_decals() -> void:
 			_decals.draw_set_transform(p + off, 0.0, Vector2(1.0, 0.32))
 			_decals.draw_circle(Vector2.ZERO, rr, c)
 	_decals.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+## Plama krwi w grafice HD: miękki brzeg (dwa pierścienie), ciemny środek, wilgotny połysk i drobne krople obok.
+func _draw_decal_hd(p: Vector2, r: float, rng: RandomNumberGenerator) -> void:
+	for i in 6:
+		var off := Vector2(rng.randf_range(-r, r), rng.randf_range(-0.5, 0.3))
+		var rr := rng.randf_range(0.35, 0.8) * r
+		_decals.draw_set_transform(p + off, 0.0, Vector2(1.0, 0.3))
+		_decals.draw_circle(Vector2.ZERO, rr * 1.25, Color(0.28, 0.02, 0.04, 0.22))
+		_decals.draw_circle(Vector2.ZERO, rr, Color(0.3, 0.02, 0.04, rng.randf_range(0.55, 0.8)))
+		_decals.draw_circle(Vector2(0, -rr * 0.12), rr * 0.45, Color(0.16, 0.01, 0.02, 0.5))
+		_decals.draw_circle(Vector2(-rr * 0.25, -rr * 0.3), rr * 0.16, Color(0.8, 0.3, 0.3, 0.28))
+	for i in 4:
+		var dp := Vector2(rng.randf_range(-r * 1.6, r * 1.6), rng.randf_range(-0.9, 0.5))
+		_decals.draw_set_transform(p + dp, 0.0, Vector2(1.0, 0.45))
+		_decals.draw_circle(Vector2.ZERO, rng.randf_range(0.5, 1.1), Color(0.3, 0.02, 0.04, rng.randf_range(0.5, 0.8)))
 
 ## Punkt startowy dla slotu gracza (1..4); kolejne sloty lekko przesunięte.
 func spawn_for(slot: int) -> Vector2:

@@ -11,6 +11,8 @@ const PixelArt := preload("res://scripts/pixel_art.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const ItemIcon := preload("res://scripts/item_icon.gd")
 const PerkIcon := preload("res://scripts/perk_icon.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+const ItemsHd := preload("res://scripts/items_hd.gd")
 
 var spec := {}
 var accent := Color(1.0, 0.72, 0.28)
@@ -45,17 +47,59 @@ func show_spec(s: Dictionary, col: Color) -> void:
 				_load_sheet(_sheet)
 		"gun":
 			_gun_info = GunIcon.sheet_info()
+			if UiTheme.hd_on() and Sprites.newgun:
+				var gk := String(GunIcon.HD_KEYS.get(int(s["row"]), ""))
+				if gk != "" and Sprites.gun_hd(gk) != null:
+					Sprites.gun_hd_glow(gk)
+					texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		"item":
+			var ik := String(s.get("kind", "frag"))
+			if UiTheme.hd_on() and ItemsHd.has(ik):
+				ItemsHd.albedo(ik)
+				ItemsHd.glow_texture(ik)
+				texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	queue_redraw()
 
 var _sheet := ""
+var _thumb_box := Rect2()                     ## miniatura HD: ciasny prostokąt zawartości klatki (HD ma szerokie marginesy — potwór byłby malutki)
+static var _boxes: Dictionary = {}
+
+## Suma prostokątów nieprzezroczystych pikseli ze wszystkich klatek animacji (px klatki) — stały, żeby miniatura nie drgała między klatkami.
+static func _content_box(sheet: String, anim: String) -> Rect2:
+	var key := sheet + "/" + anim
+	if _boxes.has(key):
+		return _boxes[key]
+	var box := Rect2()
+	var tx := Sprites.texture(Sprites.DIR + sheet + ".png")
+	var man: Dictionary = Sprites.manifest()["sheets"].get(sheet, {})
+	if tx != null and not man.is_empty():
+		var img: Image = tx.get_image()
+		if img.is_compressed():
+			img.decompress()
+		var fr: Array = man["frame"]
+		var fw := int(fr[0])
+		var fh := int(fr[1])
+		var an: Dictionary = man["anims"].get(anim, {"row": 0, "frames": 1})
+		var first := true
+		for f in int(an["frames"]):
+			var used := img.get_region(Rect2i(f * fw, int(an["row"]) * fh, fw, fh)).get_used_rect()
+			if used.size.x <= 0:
+				continue
+			box = Rect2(used) if first else box.merge(Rect2(used))
+			first = false
+	_boxes[key] = box
+	return box
 
 ## Tekstury arkusza: HD (`--newmon`) z mipmapami i filtrem liniowym, klasyczne ostro (NEAREST).
 func _load_sheet(sheet: String) -> void:
 	var hd := Sprites.is_hd(sheet)
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS if hd else CanvasItem.TEXTURE_FILTER_NEAREST
+	_thumb_box = Rect2()
 	if hd:
 		_tex = Sprites.mip_texture(Sprites.DIR + sheet + ".png")
 		_tex_glow = Sprites.mip_texture(Sprites.DIR + sheet + "_glow.png")
+		if thumb:
+			_thumb_box = _content_box(sheet, String(spec.get("anim", "idle")))
 	else:
 		_tex = Sprites.texture(Sprites.DIR + sheet + ".png")
 		_tex_glow = Sprites.texture(Sprites.DIR + sheet + "_glow.png")
@@ -146,10 +190,15 @@ func _draw_sprite(floor_y: float) -> void:
 	var s := minf(avail.x / fsz.x, avail.y / fsz.y) if hd else PixelArt.fit(self, fsz, avail, 8 if not thumb else 3)
 	if hd:
 		s = minf(s, float(man.get("scale", 1.0)) * (6.0 if not thumb else 3.0))      # nie większa niż ~6× rozmiar „w świecie"
-	var w := fsz * s
+	var crop := hd and thumb and _thumb_box.size.x > 0.0
+	if crop:
+		s = minf(avail.x / _thumb_box.size.x, avail.y / _thumb_box.size.y)
+	var w := (_thumb_box.size if crop else fsz) * s
 	var pos := PixelArt.snap(self, Vector2((size.x - w.x) * 0.5, floor_y - w.y)) if not hd else Vector2(roundf((size.x - w.x) * 0.5), floor_y - w.y)
 	_shadow(pos.x + w.x * 0.5, floor_y, w.x * 1.1)
 	var src := Rect2(frame * fsz.x, int(an["row"]) * fsz.y, fsz.x, fsz.y)
+	if crop:
+		src = Rect2(src.position + _thumb_box.position, _thumb_box.size)
 	var tex := _tex
 	if tex == null:
 		return
@@ -159,7 +208,34 @@ func _draw_sprite(floor_y: float) -> void:
 		if g != null:
 			draw_texture_rect_region(g, Rect2(pos, w), src)
 
+## Broń HD w kodeksie (karta WEAPONS i miniatury): sylwetka z modelu 3D z obrysem, cieniem i warstwą świecącą — zamiast pikselowej ikony.
+func _draw_gun_hd(key: String) -> bool:
+	var ct := Sprites.gun_hd(key)
+	if ct == null or ct.diffuse_texture == null:
+		return false
+	var rect := Sprites.gun_hd_rect(key)
+	if rect.size.x <= 0.0:
+		return false
+	var margin := Vector2(3.0, 2.0) if thumb else Vector2(14.0, 10.0)
+	var avail := size - margin * 2.0
+	var s := minf(avail.x / rect.size.x, avail.y / rect.size.y)
+	var gs := rect.size * s
+	var dst := Rect2(((size - gs) * 0.5).round(), gs)
+	if not thumb:
+		draw_rect(Rect2(0, size.y - 2.0, size.x, 2.0), Color(accent.r, accent.g, accent.b, 0.8))
+		draw_rect(Rect2(dst.position.x - 10.0, dst.end.y + 6.0, gs.x + 20.0, 1.0), Color(1, 1, 1, 0.08))
+	draw_texture_rect_region(ct.diffuse_texture, Rect2(dst.position + Vector2(0, maxf(1.0, s * 3.0)), dst.size), rect, Color(0, 0, 0, 0.45))
+	draw_texture_rect_region(ct.diffuse_texture, dst, rect)
+	var g := Sprites.gun_hd_glow(key)
+	if g != null:
+		draw_texture_rect_region(g, dst, rect)
+	return true
+
 func _draw_gun() -> void:
+	if UiTheme.hd_on() and Sprites.newgun:
+		var key := String(GunIcon.HD_KEYS.get(int(spec["row"]), ""))
+		if key != "" and _draw_gun_hd(key):
+			return
 	var info := _gun_info
 	if info.is_empty():
 		return
@@ -259,6 +335,11 @@ func _draw_leech_sprite(floor_y: float, up: float, cyc: float) -> void:
 ## Ekwipunek zużywalny (karta GEAR): ta sama bryła co miniatura w warsztacie (item_icon.gd), większa, z cieniem i obrysem.
 func _draw_item(floor_y: float) -> void:
 	var kind := String(spec.get("kind", "frag"))
+	if UiTheme.hd_on() and ItemsHd.has(kind):
+		_shadow(roundf(size.x * 0.5), floor_y, minf(size.x * 0.5, size.y * 0.9))
+		var pad := 4.0 if thumb else 14.0
+		ItemsHd.draw_fit(self, kind, Rect2(pad, pad, size.x - 2.0 * pad, floor_y - pad - (0.0 if thumb else 2.0)), Color.WHITE, Vector2(11.0, 10.0) if thumb else Vector2(14.0, 11.0))
+		return
 	var dev := PixelArt.device_scale(self)
 	var px := 1.0 / dev
 	var s := PixelArt.snap_scale(self, maxf(1.0, floorf(size.y * 0.5 / 14.0)))
