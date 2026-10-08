@@ -327,10 +327,15 @@ func _handle_cmdline() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.has("--nightshift"):
 		NightShift.selected = true               # przed --host: tryb zapada przy starcie sesji
+	var hd_world := false
+	if Settings.hd_active():                          # ustawienie „Graphics: HD" (domyślnie) — flagi poniżej mogą nadpisać; `--classic` wyłącza
+		Sprites.newchar = "tripo-hd-look"
+		Sprites.newgun = true
+		Sprites.newmon = true
+		hd_world = true
 	for a in args:
 		if a == "--newworld":
-			Sprites.newworld = true                                                                # dev: teren i tła HD (art/world/)
-			level.enable_world_hd()
+			hd_world = true                                                                        # teren i tła HD (art/world/); włączane po pętli (jednorazowo)
 		if a.begins_with("--look="):
 			Profile.look = int(a.substr("--look=".length()))                                     # dev: wygląd bez odblokowania (nie zapisywany: --shot*/--perf ustawiają persist=false)
 			Profile.persist = false
@@ -346,6 +351,9 @@ func _handle_cmdline() -> void:
 			port = a.substr("--port=".length()).to_int()
 		elif a.begins_with("--mission="):
 			_start_map = a.substr("--mission=".length())
+	if hd_world:
+		Sprites.newworld = true
+		level.enable_world_hd()
 	# testy headless zakładają mapę 1.3 (gniazda, boss), chyba że flaga --mission wskaże inną
 	if _start_map == "":
 		for a in args:

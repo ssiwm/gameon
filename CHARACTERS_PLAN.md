@@ -20,6 +20,7 @@ Generatory wizualizacji: `prototype/tools/concept/char3d_concept.py` (Blender) i
 - **HUD i UI HD (zrobione, `--newui`):** czysty krój, gładkie serca/paski/moneta, miękkie panele, ikona M-83 z modelu HD; zrzuty `concepts/stage3_hud_hd.png`, `concepts/stage3_menus_hd.png`. Zostają: ikony pozostałych broni i przedmiotów HD (modele 3D), lobby, stroje graczy, pamięć bossów, domyślne włączenie zamiast flag.
 - **Bronie HD (zrobione):** wszystkie 12 w HD z mapami normalnych i świeceniem; zrzut `concepts/stage3_weapons_hd.png`. Saldo Tripo po broniach: 400 kredytów.
 - **Customizacja (zrobiona, `--newchar=tripo-hd-look`):** 3 stroje × 2 płcie, zakładka LOOK w warsztacie, zapis w profilu, replikacja; zrzuty `concepts/stage3_look_tab.png`, `concepts/stage3_look_ingame.png`. Zostają: wybór wyglądu w lobby, test sieciowy wyglądu, kolory i fryzury (osobne modele), domyślne włączenie.
+- **Domyślne HD (zrobione):** ustawienie Graphics: HD / CLASSIC w menu, flagi dev jako nadpisania, `--classic`; zrzut `concepts/stage3_default_hd.png`. Zostają: zmniejszenie pamięci bossów, wybór wyglądu w lobby, test sieciowy wyglądu, pomiar na słabszych GPU i czasu ładowania.
 - **Do zrobienia przed P1:** szlif v1 (szwy, fałdy, kontrast po zrzucie do pikseli, buty i nogi), poza down (siedząca; leżące ciało nie mieści się w klatce 16 px), animacje rąk przy celowaniu, boty, drugi i trzeci strój.
 
 ## Cel
