@@ -15,6 +15,8 @@ from mathutils import Matrix, Vector
 glb, OUT, NAME = sys.argv[sys.argv.index("--") + 1:][:3]
 NORMALS = "--normals" in sys.argv
 ALBEDO = "--albedo" in sys.argv
+NOARMS = "--noarms" in sys.argv        # ciało bez rąk (maska wag kości ręki → przezroczystość) + NAZWA_anchors.json z położeniem barków w każdej klatce
+ARMS = "--arms" in sys.argv            # tylko ręce w pozie wzorcowej (proste, do przodu): NAZWA_arm_r.png / NAZWA_arm_l.png (+ _n) — ich obrót i zgięcie robi gra (IK 2D)
 EYES = "--eyes" in sys.argv            # dodatkowy przebieg NAZWA_<anim>_<i>_g.png: tylko świecące oczy (Mimik); reszta modelu czarna        # kolor bez oświetlenia (do dynamicznego światła 2D z mapą normalnych)
 os.makedirs(OUT, exist_ok=True)
 CHAR_PX = 22.0                       # wysokość postaci REF_H w pikselach świata (klatka ma 24)
@@ -145,6 +147,65 @@ def pose(arm, anim, i, n, env):
             aim(arm, f"{sd}ForeArm", el + Vector((0.4, sg * 0.1, -0.9)).normalized() * 0.28)
 
 
+ARM_GROUPS = {"R": ["RightArm", "RightForeArm", "RightHand"], "L": ["LeftArm", "LeftForeArm", "LeftHand"]}
+ARM_MASK_THRESHOLD = 0.5             ## suma wag kości ręki, od której piksel/wierzchołek należy do ręki
+
+
+def mask_arms(m, keep):
+    """Dodaje do materiału (już sprowadzonego do Emission → Output) przezroczystość według wag kości rąk.
+    keep = None: ciało (znikają obie ręce); keep = "R" / "L": zostaje tylko ta ręka."""
+    nt = m.node_tree
+    out = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL")
+    src_link = next(l for l in nt.links if l.to_node == out)
+    emission = src_link.from_node
+
+    def side_sum(side):
+        acc = None
+        for g in ARM_GROUPS[side]:
+            at = nt.nodes.new("ShaderNodeAttribute")
+            at.attribute_type = "GEOMETRY"
+            at.attribute_name = P + g
+            if acc is None:
+                acc = at.outputs["Fac"]
+            else:
+                ad = nt.nodes.new("ShaderNodeMath")
+                ad.operation = "ADD"
+                nt.links.new(acc, ad.inputs[0])
+                nt.links.new(at.outputs["Fac"], ad.inputs[1])
+                acc = ad.outputs["Value"]
+        return acc
+
+    if keep is None:
+        both = nt.nodes.new("ShaderNodeMath")
+        both.operation = "ADD"
+        nt.links.new(side_sum("R"), both.inputs[0])
+        nt.links.new(side_sum("L"), both.inputs[1])
+        weight = both.outputs["Value"]
+        hide_when_high = True
+    else:
+        weight = side_sum(keep)
+        hide_when_high = False
+    gt = nt.nodes.new("ShaderNodeMath")
+    gt.operation = "GREATER_THAN"
+    gt.inputs[1].default_value = ARM_MASK_THRESHOLD
+    nt.links.new(weight, gt.inputs[0])
+    tr = nt.nodes.new("ShaderNodeBsdfTransparent")
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(gt.outputs["Value"], mix.inputs[0])
+    # Mix: fac 0 → pierwszy, fac 1 → drugi
+    if hide_when_high:
+        nt.links.new(emission.outputs[0], mix.inputs[1])
+        nt.links.new(tr.outputs[0], mix.inputs[2])
+    else:
+        nt.links.new(tr.outputs[0], mix.inputs[1])
+        nt.links.new(emission.outputs[0], mix.inputs[2])
+    for l in list(nt.links):
+        if l.to_node == out:
+            nt.links.remove(l)
+    nt.links.new(mix.outputs[0], out.inputs["Surface"])
+    return m
+
+
 def make_normal_material(src):
     """Kopia materiału, która zamiast koloru emituje normalną ŚWIATA (po mapie normalnych) jako n * 0,5 + 0,5.
     Render w trybie Raw (bez gammy); pack_chars3d.py przelicza ją na przestrzeń ekranu (stała orientacja kamery: R = +X, G = +Z, B = −Y)."""
@@ -260,6 +321,45 @@ def normalize_scale(arm, mesh, expected):
     upd()
 
 
+def project(arm, name, cam_x, cam_z, ppm):
+    """Rzut punktu (głowa kości) na piksele klatki 256×384 kamery bocznej."""
+    h = arm.matrix_world @ arm.pose.bones[P + name].head
+    return [round(RW / 2 + (h.x - cam_x) * ppm, 2), round(RH / 2 - (h.z - cam_z) * ppm, 2)]
+
+
+def bake_arms(arm, mesh, sc, cam, px, color_src, normal_src):
+    """Ręce w pozie wzorcowej: cała ręka prosta, skierowana do przodu (+X). Render 256×128 px (16×8 px świata, 16 px/px), bark w (40, 64).
+    Ramię (bark→łokieć) i przedramię z dłonią (łokieć→dłoń) tnie pack_arms.py w kolumnie łokcia; obrót i zgięcie robi gra."""
+    import json
+    AW, AH, SX = 256, 128, 40
+    mpx = px / 16.0                                  # metrów na piksel renderu
+    sc.render.resolution_x, sc.render.resolution_y = AW, AH
+    cam.data.ortho_scale = AW * mpx
+    info = {"w": AW, "h": AH, "pivot": [SX, AH // 2]}
+    for side, key in (("Right", "R"), ("Left", "L")):
+        reset(arm)
+        sh = arm.pose.bones[f"{P}{side}Arm"].head.copy()
+        for nm in ("Arm", "ForeArm", "Hand"):
+            pb = arm.pose.bones[f"{P}{side}{nm}"]
+            aim(arm, f"{side}{nm}", pb.head.copy() + FWD)
+        el = arm.pose.bones[f"{P}{side}ForeArm"].head.copy()
+        wr = arm.pose.bones[f"{P}{side}Hand"].head.copy()
+        hd = arm.pose.bones[f"{P}{side}Hand"].tail.copy()
+        info[key] = {"upper": round((el - sh).length / mpx, 2), "lower": round((wr - el).length / mpx, 2), "hand": round((hd - wr).length / mpx, 2)}
+        cam.location = (sh.x + (AW / 2 - SX) * mpx, -9.0, sh.z)
+        for mat_src, suffix, vt in ((color_src, "", "Standard"), (normal_src, "_n", "Raw")):
+            if mat_src is None:
+                continue
+            m = mask_arms(mat_src.copy(), key)
+            mesh.data.materials[0] = m
+            sc.view_settings.view_transform = vt
+            sc.render.filepath = f"{OUT}/{NAME}_arm_{key.lower()}{suffix}.png"
+            bpy.ops.render.render(write_still=True)
+    sc.view_settings.view_transform = "Standard"
+    json.dump(info, open(f"{OUT}/{NAME}_arm.json", "w"))
+    print("BAKED arms", info)
+
+
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=glb)
@@ -307,9 +407,22 @@ def main():
     normal_mat = make_normal_material(orig_mat) if NORMALS else None
     eye_objs, black_mat = add_eyes(arm, mesh) if EYES else ([], None)
     print("INFO H=%.3f px=%.4f x0=%.3f" % (H, px, x0))
+    if ARMS:
+        bake_arms(arm, mesh, sc, cam, px, color_mat, normal_mat)
+        print("DONE-BAKE-ARMS")
+        return
+    if NOARMS:
+        color_mat = mask_arms(color_mat.copy(), None)
+        mesh.data.materials[0] = color_mat
+        if normal_mat is not None:
+            normal_mat = mask_arms(normal_mat, None)
+    ppm = RH / cam.data.ortho_scale
+    anchors = {}
     for anim, n in ANIMS:
         for i in range(n):
             pose(arm, anim, i, n, env)
+            if NOARMS:
+                anchors.setdefault(anim, []).append(project(arm, "RightArm", x0, cam.location.z, ppm) + project(arm, "LeftArm", x0, cam.location.z, ppm))
             sc.render.filepath = f"{OUT}/{NAME}_{anim}_{i}.png"
             bpy.ops.render.render(write_still=True)
             if normal_mat is not None:
@@ -329,6 +442,9 @@ def main():
                 for o in eye_objs:
                     o.hide_render = True
         print("BAKED", NAME, anim, n)
+    if NOARMS:
+        import json
+        json.dump(anchors, open(f"{OUT}/{NAME}_anchors.json", "w"))
     print("DONE-BAKE")
 
 
