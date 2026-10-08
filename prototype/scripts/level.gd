@@ -458,6 +458,13 @@ func _load_material(mat: String) -> CanvasTexture:
 
 ## Wołane z main.gd po sparsowaniu `--newworld` (poziom budowany jest wcześniej niż flagi) oraz przy każdej budowie mapy.
 func enable_world_hd() -> void:
+	var bd := get_node_or_null("Backdrop")
+	if bd == null:
+		for c in get_children():
+			if c.has_method("enable_hd"):
+				bd = c
+	if bd != null:
+		bd.enable_hd()                      # tło parallax HD (art/backdrop/hd/)
 	if _terrain_hd == null:
 		_terrain_tex = _load_terrain_hd()
 		if _terrain_tex == null:

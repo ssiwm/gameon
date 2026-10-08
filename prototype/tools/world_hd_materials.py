@@ -250,20 +250,23 @@ def wall():
 
 
 def post():
-    """Słup tła: pionowa belka na środku kafla (x 64..192) na ciemnym tle."""
+    """Pień drzewa / słup tła: pionowa belka na środku kafla (x 64..192) na ciemnym tle; kora z głębokimi pionowymi bruzdami, ciemniejsza ku brzegom (obłość)."""
     yy, xx = np.mgrid[0:S, 0:W]
     bg = np.array([0.045, 0.05, 0.065])
-    rgb = np.ones((S, W, 3)) * bg
     cx = (xx % 256 - 128).astype(float)
     inb = gaussian_filter((np.abs(cx) < 66).astype(float), 1.0)
-    gr = fbm(S, W, 64, 3, 5)
-    t = np.clip(0.25 + 0.75 * gr, 0, 1)
-    wood = ramp(t, [(0, (0.10, 0.06, 0.03)), (0.5, (0.18, 0.11, 0.06)), (1, (0.27, 0.17, 0.09))])
-    round_sh = np.clip(1 - (np.abs(cx) / 66.0) ** 2, 0, 1) ** 0.5
-    wood *= (0.55 + 0.6 * round_sh)[..., None]
-    rgb = bg * (1 - inb[..., None]) + wood * inb[..., None]
-    h = inb * (10 * round_sh + 3 * (gr - 0.5))
-    pack("post", rgb, h, nk=0.8)
+    furrow = 1 - np.abs(2 * fbm(S, W, 2, 28, 4) - 1)                         # grzbiety kory (rozciągnięte w pionie)
+    ridge = np.clip((furrow - 0.55) * 2.2, 0, 1)
+    gr = fbm(S, W, 6, 40, 4)
+    t = np.clip(0.2 + 0.5 * gr + 0.4 * ridge, 0, 1)
+    bark = ramp(t, [(0, (0.07, 0.05, 0.04)), (0.5, (0.15, 0.105, 0.07)), (1, (0.26, 0.19, 0.13))])
+    round_sh = np.clip(1 - (np.abs(cx) / 66.0) ** 2, 0, 1) ** 0.6
+    bark *= (0.45 + 0.7 * round_sh)[..., None]
+    moss = np.clip(fbm(S, W, 3, 14, 3) - 0.62, 0, 1) * 3.0
+    bark = bark * (1 - 0.5 * moss[..., None]) + 0.5 * moss[..., None] * np.array([0.05, 0.09, 0.04])
+    rgb = bg * (1 - inb[..., None]) + bark * inb[..., None]
+    h = inb * (9 * round_sh + 5 * ridge - 2.5 * (1 - ridge) + 2 * (gr - 0.5))
+    pack("post", rgb, h, nk=0.9)
 
 
 def mud():
