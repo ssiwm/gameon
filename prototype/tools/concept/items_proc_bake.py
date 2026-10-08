@@ -824,13 +824,112 @@ def m_handcar_lever(P):
     cyl((0, -1.3, 0), 1.6, 0.5, P["gold"], axis="Y", seg=24)
 
 
+def m_generator(P):
+    # generator radiostacji (misja 1.2): spawalny w ramie rurowej, oliwkowy korpus z kratką wentylatora po lewej i panelem z manometrami po prawej,
+    # czerwony kanister paliwa, tłumik z rurą, linka rozrusznika; lampka stanu (świeci gra) w gnieździe nad panelem
+    for sx in (-1, 1):
+        box((sx * 11.0, 0.2, 1.0), (4.0, 7.0, 2.0), P["steel_d"], 0.3)                     # płozy
+    box((0, 0.2, 2.2), (28.0, 7.4, 1.6), P["steel_d"], 0.25)
+    box((0, 0, 10.0), (25.0, 8.6, 14.0), P["olive"], 0.8)                                   # korpus
+    box((0, -0.2, 17.2), (25.4, 8.8, 1.6), P["olive_l"], 0.4)
+    for z in (6.0, 13.5):
+        box((0, -4.4, z), (24.0, 0.25, 0.5), P["olive_d"], 0.05)                           # przetłoczenia
+    # ramka rurowa wokół
+    for sx in (-1, 1):
+        tube([(sx * 14.2, -1.0, 1.0), (sx * 14.2, -1.0, 19.5)], 0.55, P["steel"], res=8)
+    tube([(-14.2, -1.0, 19.5), (14.2, -1.0, 19.5)], 0.55, P["steel"], res=8)
+    tube([(-14.2, -1.0, 3.0), (14.2, -1.0, 3.0)], 0.5, P["steel"], res=8)
+    # kratka wentylatora (lewa połowa)
+    box((-6.2, -4.45, 9.5), (10.0, 0.3, 9.0), P["black"], 0.1)
+    for i in range(6):
+        box((-10.0 + i * 1.5, -4.75, 9.5), (0.55, 0.3, 8.4), P["steel_d"], 0.05)
+    # panel sterowania (prawa połowa) z manometrami i przyciskami
+    box((7.2, -4.5, 9.5), (9.5, 0.4, 9.0), P["sign_dk"], 0.2)
+    for x in (4.9, 9.5):
+        cyl((x, -4.95, 7.4), 1.45, 0.4, P["steel_l"], axis="Y", seg=28, bevel=0.05)
+        cyl((x, -5.2, 7.4), 1.1, 0.2, P["white"], axis="Y", seg=28, bevel=0.02)
+        box((x - 0.15, -5.35, 7.6), (0.15, 0.1, 0.9), P["red"], 0.02, rot=(0, 25, 0))
+    sph((5.3, -5.1, 4.2), 0.55, P["red_d"], seg=14)
+    sph((7.4, -5.1, 4.2), 0.55, P["steel_d"], seg=14)
+    sph((9.5, -5.1, 4.2), 0.55, P["yellow"], seg=14)
+    cyl((7.2, -5.0, 12.4), 1.15, 0.5, P["steel_d"], axis="Y", seg=24, bevel=0.06)             # gniazdo lampki (blask rysuje gra)
+    cyl((7.2, -5.3, 12.4), 0.7, 0.3, P["black"], axis="Y", seg=20, bevel=0.03)
+    # kanister paliwa na górze (lewa), korek i uchwyt
+    box((-5.5, 0, 21.4), (11.0, 6.0, 6.4), P["red_d"], 0.9)
+    box((-5.5, -3.05, 21.4), (7.0, 0.2, 0.5), P["yellow"], 0.03)
+    cyl((-2.2, 0.0, 25.2), 1.0, 0.9, P["steel"], seg=24, bevel=0.08)
+    tube([(-9.0, 0, 24.4), (-8.4, 0, 26.2), (-3.4, 0, 26.2), (-2.8, 0, 24.4)], 0.4, P["steel_d"], res=6)
+    # tłumik i rura wydechowa (prawa)
+    cyl((9.5, 0.5, 21.0), 1.9, 5.6, P["steel_d"], seg=28, bevel=0.1)
+    cyl((9.5, 0.5, 25.5), 0.9, 7.0, P["steel"], seg=20, bevel=0.06)
+    cyl((9.5, 0.5, 29.2), 1.3, 0.7, P["rusty"], seg=20, bevel=0.05)
+    # linka rozrusznika z rączką (po lewej, bryła symetryczna dla środka sprite'a)
+    tube([(-12.6, -4.0, 14.0), (-15.0, -4.5, 12.0), (-16.5, -4.5, 8.0)], 0.22, P["black"], res=5)
+    box((-16.6, -4.5, 6.6), (1.4, 1.4, 3.0), P["red"], 0.3)
+    # kabel wyjściowy z prawej strony do ziemi
+    tube([(12.6, -3.0, 8.0), (15.8, -4.0, 5.0), (16.6, -4.6, 1.2)], 0.45, P["black"], res=5)
+    box((16.6, -4.6, 0.9), (1.4, 1.0, 1.4), P["steel_d"], 0.15)
+    # tabliczka znamionowa i pasy ostrzegawcze
+    box((-6.2, -4.45, 3.7), (8.0, 0.2, 1.5), P["yellow"], 0.03)
+    for i in range(5):
+        box((-9.6 + i * 1.7, -4.6, 3.7), (0.7, 0.2, 1.4), P["black"], 0.02, rot=(0, 20, 0))
+
+
+def m_generator(P):
+    # generator radiostacji (misja 1.2): agregat spalinowy na płozach — oliwkowa obudowa z nitami, zbiornik paliwa, kratka wentylatora, panel z lampką, rura wydechowa z tłumikiem, linka rozruchowa
+    for x in (-12.5, 12.5):
+        box((x, 0, 1.2), (3.2, 7.0, 2.4), P["steel_d"], 0.25)                           # płozy
+    box((0, 0, 2.6), (30.0, 6.4, 1.6), P["steel"], 0.25)                                # rama
+    box((0, 0, 9.8), (26.0, 8.6, 12.6), P["olive_d"], 0.7)                              # obudowa
+    box((0, -4.35, 15.4), (26.4, 0.4, 1.2), P["olive"], 0.15)                            # górny pas
+    for x in (-13.0, 13.0):
+        box((x, 0, 9.8), (0.5, 8.8, 12.8), P["steel_d"], 0.15)                           # narożniki
+    for x, z in ((-11.5, 4.6), (11.5, 4.6), (-11.5, 14.6), (11.5, 14.6), (0.0, 4.6), (0.0, 14.6)):
+        sph((x, -4.55, z), 0.4, P["steel_l"], seg=10)                                   # nity
+    for k in range(4):
+        box((-9.0 + k * 1.6, 0, 0), (0.0, 0.0, 0.0), P["steel"], 0.0) if False else None
+    # kratka wentylatora (prawa strona frontu): ramka, ciemne wnętrze, żebra i śmigło
+    box((6.0, -4.45, 9.2), (9.6, 0.5, 8.4), P["steel_d"], 0.25)
+    box((6.0, -4.75, 9.2), (8.4, 0.3, 7.2), P["black"], 0.15)
+    for k in range(5):
+        box((2.8 + k * 1.6, -4.95, 9.2), (0.55, 0.3, 7.0), P["steel"], 0.1)
+    for a in (0.0, 60.0, 120.0):
+        box((6.0, -4.6, 9.2), (0.5, 0.3, 6.4), P["steel_d"], 0.05, rot=(0, a, 0))
+    # panel sterowania (lewa strona frontu): ciemna płyta, gałki, wyłącznik, oprawa lampki w prawym górnym rogu panelu
+    box((-7.2, -4.45, 8.8), (9.0, 0.5, 8.6), P["black"], 0.25)
+    for x in (-9.6, -7.2):
+        cyl((x, -4.95, 6.6), 0.9, 0.7, P["steel_l"], axis="Y", seg=20)
+        box((x, -5.35, 6.6), (0.2, 0.2, 1.0), P["red"], 0.02)
+    box((-5.0, -4.9, 6.6), (1.4, 1.0, 2.0), P["red_d"], 0.2)                             # wyłącznik awaryjny
+    tor((-4.0, -4.95, 11.4), 1.7, 0.45, P["steel"], "Y", seg=32)                         # oprawa lampki (świeci gra)
+    cyl((-4.0, -4.85, 11.4), 1.55, 0.4, P["black"], axis="Y", seg=24)
+    # zbiornik paliwa na górze (leży poziomo), korek, wskaźnik
+    cyl((-4.5, 0, 19.6), 3.3, 13.0, P["orange"], axis="X", seg=40, bevel=0.3)
+    cyl((-1.0, 0, 22.8), 1.0, 1.0, P["steel_d"], seg=20)
+    cyl((-1.0, 0, 23.5), 1.25, 0.6, P["black"], seg=20)
+    box((-10.5, -3.45, 19.6), (0.3, 0.3, 2.6), P["yellow"], 0.05)
+    for x in (-9.0, 0.0):
+        box((x, 0, 16.7), (1.4, 5.0, 1.6), P["steel_d"], 0.2)                            # wsporniki zbiornika
+    # wydech: rura, tłumik, daszek
+    cyl((10.0, 1.6, 20.0), 1.3, 10.0, P["rusty"], seg=24, bevel=0.15)
+    cyl((10.0, 1.6, 17.5), 2.3, 5.0, P["steel_d"], seg=28, bevel=0.2)
+    cyl((10.0, 1.6, 25.4), 1.7, 0.8, P["steel"], seg=24, bevel=0.1)
+    # linka rozruchowa i rączka, kabel przy ziemi
+    tube([(-13.0, -3.0, 11.0), (-14.6, -4.5, 8.5), (-14.0, -5.5, 4.5)], 0.25, P["cord"], res=4)
+    box((-14.0, -5.5, 3.8), (1.6, 0.6, 1.2), P["red"], 0.2)
+    tube([(13.0, -2.0, 4.0), (16.0, -5.0, 2.0), (18.5, -6.5, 1.0), (20.0, -4.0, 0.8)], 0.55, P["rubber"], res=6)
+    # pasy ostrzegawcze na ramie
+    for i in range(6):
+        box((-7.5 + i * 3.0, -3.45, 2.6), (1.4, 0.2, 1.4), P["black"] if i % 2 == 0 else P["yellow"], 0.03)
+
+
 # nazwa → (budowniczy, px na piksel świata)
 MODELS = {
     "frag": (m_frag, 32), "phos": (m_phos, 32), "smoke": (m_smoke, 32), "mine": (m_mine, 32), "charge": (m_charge, 32),
     "medkit": (m_medkit, 32), "defib": (m_defib, 32), "scanner": (m_scanner, 32),
     "flare": (m_flare, 32), "flare_stuck": (lambda P: m_flare(P, True), 32), "flare_box": (m_flare_box, 32),
     "supply": (m_supply, 32), "ammo": (m_ammo, 32), "cache": (m_cache, 32), "stash": (m_stash, 32), "tag": (m_tag, 32),
-    "bones": (m_bones, 32), "reeds": (m_reeds, 32), "board": (m_board, 16), "results_board": (m_results_board, 12), "range_target": (m_range_target, 24), "range_sign": (m_range_sign, 24), "handcar": (m_handcar, 12), "handcar_wheel": (m_handcar_wheel, 64), "handcar_lever": (m_handcar_lever, 24), "crate": (m_crate, 24), "barrel": (m_barrel, 24), "rack": (m_rack, 16), "tools_wall": (m_tools_wall, 20), "lamp": (m_lamp, 24),
+    "bones": (m_bones, 32), "reeds": (m_reeds, 32), "board": (m_board, 16), "results_board": (m_results_board, 12), "range_target": (m_range_target, 24), "range_sign": (m_range_sign, 24), "handcar": (m_handcar, 12), "handcar_wheel": (m_handcar_wheel, 64), "handcar_lever": (m_handcar_lever, 24), "generator": (m_generator, 28), "generator": (m_generator, 40), "crate": (m_crate, 24), "barrel": (m_barrel, 24), "rack": (m_rack, 16), "tools_wall": (m_tools_wall, 20), "lamp": (m_lamp, 24),
 }
 
 # ---------------------------------------------------------------- render
@@ -885,7 +984,7 @@ for name, (builder, ppw) in MODELS.items():
         sc.render.filepath = os.path.join(OUT, name + suffix + ".png")
         bpy.ops.render.render(write_still=True)
     # stopy: dolna krawędź bryły (z = lo.z) leży PAD px nad dołem ramki; środek poziomy ramki = cx
-    manifest[name] = {"w": FW, "h": FH, "ppw": ppw, "foot": [FW / 2.0 + (0.0), FH - PAD], "bbox": [round(wpx, 2), round(hpx, 2)]}
+    manifest[name] = {"w": FW, "h": FH, "ppw": ppw, "foot": [FW / 2.0 + (0.0), FH - PAD], "bbox": [round(wpx, 2), round(hpx, 2)], "cx": round(cx, 3)}
     print("OK", name, FW, FH)
 json.dump(manifest, open(os.path.join(OUT, "items.json"), "w"), indent=1)
 print("DONE-ITEMS")

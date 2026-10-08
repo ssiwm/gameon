@@ -33,6 +33,11 @@ static func has(name: String) -> bool:
 static func ppw(name: String) -> float:
 	return float(manifest().get(name, {}).get("ppw", 16.0))
 
+## Poziomy środek bryły w układzie modelu (jednostki = piksele świata): sprite jest wyśrodkowany na bryle, więc punkt (0, 0) modelu leży o `cx` w prawo od stóp sprite'a.
+## Pozwala zachować współrzędne z modelu (np. lampki generatora): `sprite.position.x = cx * skala`.
+static func cx(name: String) -> float:
+	return float(manifest().get(name, {}).get("cx", 0.0))
+
 ## Rozmiar całej ramki (z zapasem) w pikselach świata.
 static func frame_wp(name: String) -> Vector2:
 	var m: Dictionary = manifest().get(name, {})
