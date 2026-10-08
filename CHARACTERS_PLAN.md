@@ -16,6 +16,7 @@ Generatory wizualizacji: `prototype/tools/concept/char3d_concept.py` (Blender) i
 - **Etap 3, wrogowie i bossowie (zrobione):** wszystkie 11 rodzajów (Wołek, Trzosek, Ślepiec, Skoczek, Podsłuchacz, Stalker, Mimik, Ćma, gniazdo, Żyła, Pijawka) mają arkusze HD. Zostają: kodeks (portrety), pozostałe kafle/tła/UI, kolejne stroje graczy, optymalizacja pamięci, domyślne włączenie zamiast flag.
 - **Etap 3, kodeks i tereny (zrobione):** portrety kodeksu w HD oraz materiały HD dla pozostałych kafli (beton, metal, woda, kratownica, deski, ściana, słup, błoto, olej). Zrzuty: `concepts/stage3_materials_hd.png`, `concepts/stage3_codex_hd.png`, `concepts/stage3_world_cmp.png`. Zostają: UI/HUD, tła parallax i drzewa, stroje graczy, pomiar VRAM i wydajności, domyślne włączenie zamiast flag.
 - **Wydajność (zmierzona):** HD po cullingu i kompresji tekstur: ~415 fps (RTX 3080), ~140 wywołań rysowania, 192–247 MB VRAM (klasyczna gra ~80 MB); szczegóły w `concepts/perf_stage3.txt`. Nie zmierzone: słabsze GPU, integrowane karty, czas ładowania misji.
+- **Tła i drzewa HD (zrobione):** tło parallax 2048×960 z trzema liniami świerków, księżycem i gwiazdami + pnie z korą (`--newworld`); zrzut: `concepts/stage3_backdrop_hd.png`. Zostają: HUD/UI, stroje graczy, zmniejszenie pamięci bossów, domyślne włączenie zamiast flag.
 - **Do zrobienia przed P1:** szlif v1 (szwy, fałdy, kontrast po zrzucie do pikseli, buty i nogi), poza down (siedząca; leżące ciało nie mieści się w klatce 16 px), animacje rąk przy celowaniu, boty, drugi i trzeci strój.
 
 ## Cel

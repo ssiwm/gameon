@@ -23,6 +23,27 @@ func _ready() -> void:
 	_layer("ridge_near", Vector2(0.38, 1.0), _ridge(0x77, 0.76, 7, 60, Color(0.020, 0.024, 0.034)), Vector2.ZERO)
 	_layer("fog", Vector2(0.55, 1.0), _fog(), Vector2(-6.0, 0.0))
 
+var _layers: Dictionary = {}           ## nazwa → Sprite2D warstwy (do podmiany na HD)
+var _parallax: Dictionary = {}         ## nazwa → Parallax2D
+
+## Tło HD (--newworld): tekstury 2048×960 z art/backdrop/hd/ (2× gęstość, ta sama paleta i jasność), sprite w skali 0,5 → te same 1024×480 px świata.
+## Dochodzi warstwa średnia (ridge_mid). Wołane z Level.enable_world_hd.
+func enable_hd() -> void:
+	var dir := "res://art/backdrop/hd/"
+	if not ResourceLoader.exists(dir + "sky.png"):
+		return
+	if not _layers.has("ridge_mid"):
+		_layer("ridge_mid", Vector2(0.28, 1.0), _ridge(0x66, 0.71, 8, 45, Color(0.034, 0.040, 0.057)), Vector2.ZERO)
+		move_child(_parallax["ridge_mid"], _parallax["ridge_far"].get_index() + 1)
+	for n in ["sky", "ridge_far", "ridge_mid", "ridge_near", "fog"]:
+		var path: String = dir + n + ".png"
+		if not ResourceLoader.exists(path) or not _layers.has(n):
+			continue
+		var s: Sprite2D = _layers[n]
+		s.texture = load(path)
+		s.scale = Vector2(0.5, 0.5)
+		s.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+
 func _layer(n: String, scroll: Vector2, img: Image, auto: Vector2) -> void:
 	var p := Parallax2D.new()
 	p.name = n
@@ -36,6 +57,8 @@ func _layer(n: String, scroll: Vector2, img: Image, auto: Vector2) -> void:
 	s.material = Lights.unshaded()
 	p.add_child(s)
 	add_child(p)
+	_layers[n] = s
+	_parallax[n] = p
 
 ## Plik artysty, jeśli jest — inaczej tekstura wygenerowana.
 func _art_or(n: String, img: Image) -> Texture2D:
