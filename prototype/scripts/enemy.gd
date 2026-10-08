@@ -342,6 +342,22 @@ func _near(pos: Vector2, radius: float) -> Array:
 				out.append_array(cell)
 	return out
 
+## Budżet wyszukiwań A* na klatkę fizyki dla WSZYSTKICH wrogów (`_steer_to`): gdy cała mapa przelicza trasy naraz (gracz skoczył daleko, wataha się obudziła),
+## nadmiar czeka do następnej klatki i wróg jedzie po starej trasie — zamiast jednej klatki 30 ms.
+const PATH_BUDGET := 6
+static var _path_frame := -1
+static var _path_used := 0
+
+static func _path_slot() -> bool:
+	var f := Engine.get_physics_frames()
+	if f != _path_frame:
+		_path_frame = f
+		_path_used = 0
+	if _path_used >= PATH_BUDGET:
+		return false
+	_path_used += 1
+	return true
+
 ## Liczniki do pomiarów (main.gd `_perf_run`): czas całego `_physics_process` wrogów, w tym `move_and_slide`.
 static var stat_usec := 0
 static var stat_slide_usec := 0
@@ -1070,8 +1086,8 @@ func _steer_to(goal: Vector2, speed: float, delta: float) -> void:
 		velocity.x = signf(d.x) * speed if absf(d.x) > 3.0 else 0.0
 		return
 	_repath -= delta
-	if is_on_floor() and (_repath <= 0.0 or _path_goal.distance_to(goal) > 40.0):
-		_repath = 0.45
+	if is_on_floor() and (_repath <= 0.0 or _path_goal.distance_to(goal) > 40.0) and _path_slot():
+		_repath = 0.45 + randf() * 0.1                  # rozsunięte w czasie, żeby wataha nie liczyła tras w tej samej klatce
 		_path_goal = goal
 		_path = nav.find_path(global_position, goal)
 		_path_i = 1
