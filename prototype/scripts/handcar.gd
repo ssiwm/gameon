@@ -17,6 +17,8 @@ extends AnimatableBody2D
 ## lokalny człowiek, a na serwerze boty), więc jazda nie szarpie. Każdy gracz zgłasza serwerowi tylko „pompuję / nie".
 
 const Lights := preload("res://scripts/lights.gd")
+const Sprites := preload("res://scripts/sprites.gd")
+const ItemsHd := preload("res://scripts/items_hd.gd")
 
 const HALF_W := 44.0                 ## połowa długości pokładu
 const SPEED_MAX := 130.0
@@ -51,6 +53,9 @@ var _phase := 0.0                    ## faza obrotu kół / ramienia pompy
 var _light: PointLight2D
 var _lamp: Node2D
 var _inited := false
+var _hd := false
+var _hd_wheels: Array = []           ## HD: koła (obracane z _phase)
+var _hd_lever: Sprite2D              ## HD: dźwignia pompy (kiwa się)
 
 func _ready() -> void:
 	add_to_group("handcar")
@@ -63,11 +68,35 @@ func _ready() -> void:
 	_lamp.draw.connect(_draw_lamp)
 	add_child(_lamp)
 	_light = Lights.make_light(Lights.radial(), 7.0, Color(1.0, 0.82, 0.5), 0.0, true)
-	_light.position = Vector2(-HALF_W + 1.5, -17)
+	_light.position = Vector2(-HALF_W + 1.5, -17)  # (HD: latarnia stoi 1,5 px dalej, różnica pomijalna)
 	add_child(_light)
 	start_x = position.x
 	end_x = start_x
 	_x_srv = position.x
+	_setup_hd()
+
+## Grafika HD: koła i dźwignia to osobne sprite'y (obracane/kiwane z `_phase`), reszta — jeden sprite korpusu; stare rysowanie wyłącza `_hd`.
+func _setup_hd() -> void:
+	if not (Sprites.newitem and ItemsHd.has("handcar") and ItemsHd.has("handcar_wheel") and ItemsHd.has("handcar_lever")):
+		return
+	_hd = true
+	for wx in [-HALF_W + 13.0, HALF_W - 13.0]:
+		var w := ItemsHd.make("handcar_wheel", self)
+		w.offset = Vector2.ZERO                       # środek tekstury = oś obrotu
+		w.position = Vector2(wx, -2.5)
+		_hd_wheels.append(w)
+	var body := ItemsHd.make("handcar", self)
+	body.position = Vector2(0.0, -2.0)                # spód korpusu = dolna krawędź ramy (2 px nad torem)
+	_hd_lever = ItemsHd.make("handcar_lever", self)
+	_hd_lever.offset = Vector2.ZERO
+	_hd_lever.position = Vector2(0, -13)
+	move_child(_lamp, get_child_count() - 1)          # blask latarni nad korpusem
+
+func _update_hd() -> void:
+	for i in _hd_wheels.size():
+		(_hd_wheels[i] as Sprite2D).rotation = _phase + float(i) * 0.7
+	var moving := speed > 5.0 or power > 0.0
+	_hd_lever.rotation = sin(_phase * 1.6) * (0.38 if moving else 0.05)
 
 func _exit_tree() -> void:
 	Audio.stop_loop(name)
@@ -165,6 +194,8 @@ func _physics_process(delta: float) -> void:
 	_update_local()
 	_lamp.queue_redraw()
 	queue_redraw()
+	if _hd:
+		_update_hd()
 	var x_before := position.x
 	if NoiseMgr.is_server():
 		_server_tick(delta)
@@ -277,6 +308,8 @@ func _update_audio() -> void:
 # Pokład leży płasko na torze (wysokość 3 px) — gracz stoi na y = 0, jak na ziemi.
 
 func _draw() -> void:
+	if _hd:
+		return
 	var plank := Color(0.43, 0.32, 0.20)
 	var plank_hi := Color(0.58, 0.45, 0.29)
 	var plank_lo := Color(0.27, 0.19, 0.12)
@@ -335,6 +368,17 @@ func _draw() -> void:
 func _draw_lamp() -> void:
 	var on := enabled
 	var col := Color(1.0, 0.85, 0.5) if on else Color(0.5, 0.15, 0.12)
+	if _hd:
+		# HD: szkło latarni jako miękki blask (jądro + dwie poświaty) zamiast pełnego dysku; szkło w modelu jest czarne, więc gdy nie ma zasilania, świeci tylko czerwona dioda
+		var lc := Vector2(-HALF_W + 3.0, -17.7)
+		_lamp.draw_circle(lc, 1.0, col)
+		if on:
+			_lamp.draw_circle(lc, 2.4, Color(col, 0.35))
+			_lamp.draw_circle(lc, 4.6, Color(col, 0.12))
+			_lamp.draw_polygon(PackedVector2Array([lc + Vector2(-1, 0), lc + Vector2(-76, -12), lc + Vector2(-76, 13)]), PackedColorArray([Color(1.0, 0.9, 0.6, 0.08), Color(1.0, 0.9, 0.6, 0.0), Color(1.0, 0.9, 0.6, 0.0)]))
+		else:
+			_lamp.draw_circle(lc, 2.2, Color(col, 0.2))
+		return
 	_lamp.draw_circle(Vector2(-HALF_W + 1.5, -17.5), 1.8, col)
 	if on:
 		_lamp.draw_circle(Vector2(-HALF_W + 1.5, -17.5), 4.5, Color(col, 0.18))

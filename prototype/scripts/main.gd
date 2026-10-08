@@ -874,6 +874,15 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if hp1 != null:
 			hp1.hp = 1
 			NoiseMgr.level = 60.0
+	if "--shothandcar" in OS.get_cmdline_user_args():
+		var hc := get_tree().get_first_node_in_group("handcar")       # --shothandcar: drezyna zasilona i oświetlona flarą (podgląd HD; użyj z --shotat/--shotrow)
+		if hc != null:
+			hc.enabled = true
+			level.spawn_flare(hc.global_position + Vector2(-20.0, -40.0), Vector2.ZERO)
+	if "--shotclear" in OS.get_cmdline_user_args():
+		for ce in get_tree().get_nodes_in_group("enemies"):       # --shotclear: bez wrogów (spokojny podgląd obiektów świata)
+			if not (ce is RigidBody2D):
+				ce.queue_free()
 	if "--shotextract" in OS.get_cmdline_user_args():
 		mission._open_extraction(false)                       # --shotextract: od razu faza ewakuacji (flara z płomieniem i słupem światła), gracz 1 obok niej
 		var xp: Node2D = _players.get_node_or_null("1")
@@ -995,7 +1004,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var p: Node2D = _players.get_node_or_null("1")
 		if p != null:
 			var fy := 0.0
-			for r in range(0, level._map.size()):
+			var shot_row0 := 0
+			for sa in OS.get_cmdline_user_args():
+				if sa.begins_with("--shotrow="):
+					shot_row0 = int(sa.substr("--shotrow=".length()))          # piętro zrzutu: pierwsza podłoga od tego wiersza w dół
+			for r in range(shot_row0, level._map.size()):
 				if level._is_solid(col, r) and not level._is_solid(col, r - 1):
 					fy = float(r * 16)
 					break
