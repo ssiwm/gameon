@@ -57,7 +57,37 @@ class Bar extends Control:
 	var back := Color(1, 1, 1, 0.08)
 	var ticks: Array = []          ## [[0..1, Color], ...]
 	var seg := 0.0                 ## > 0: pasek „diodowy" — bloki szerokości seg z 1-pikselową przerwą (pixel art), zamiast gładkiej wypełnionej belki
+	var _sb_back: StyleBoxFlat
+	var _sb_fill: StyleBoxFlat
+
+	## HD (--newui): gładka, zaokrąglona belka z jaśniejszą górną połową i delikatnymi rowkami segmentów zamiast bloków pikseli.
+	func _draw_hd() -> void:
+		if _sb_back == null:
+			_sb_back = StyleBoxFlat.new()
+			_sb_fill = StyleBoxFlat.new()
+		var rad := int(size.y * 0.5)
+		_sb_back.bg_color = back
+		_sb_back.set_corner_radius_all(rad)
+		draw_style_box(_sb_back, Rect2(Vector2.ZERO, size))
+		var fw := size.x * clampf(value, 0.0, 1.0)
+		if fw > 0.5:
+			_sb_fill.bg_color = fill
+			_sb_fill.set_corner_radius_all(mini(rad, int(fw * 0.5)))
+			draw_style_box(_sb_fill, Rect2(Vector2.ZERO, Vector2(fw, size.y)))
+			draw_rect(Rect2(Vector2(rad * 0.4, 0.5), Vector2(maxf(0.0, fw - rad * 0.8), size.y * 0.35)), Color(1, 1, 1, 0.22))
+		if seg > 0.0:
+			var x := seg
+			while x < size.x - 0.5:
+				draw_rect(Rect2(x - 0.5, 0, 1.0, size.y), Color(0, 0, 0, 0.35))
+				x += seg
+		for t in ticks:
+			var tx: float = size.x * float(t[0])
+			draw_rect(Rect2(tx - 0.5, -2.0, 1.0, size.y + 4.0), t[1])
+
 	func _draw() -> void:
+		if UiTheme.hd_on():
+			_draw_hd()
+			return
 		var r := Rect2(Vector2.ZERO, size)
 		if seg > 0.0:
 			var filled_w := size.x * clampf(value, 0.0, 1.0)
@@ -106,6 +136,20 @@ class Pips extends Control:
 					x = x1
 				else:
 					x += 1
+	## HD: serce z krzywej parametrycznej (wygładzone, z obrysem i połyskiem) — mieści się w tym samym polu 9×8 co pikselowe.
+	func _smooth_heart(o: Vector2, c: Color) -> void:
+		var pts := PackedVector2Array()
+		for k in 36:
+			var t := TAU * float(k) / 36.0
+			var hx := 16.0 * pow(sin(t), 3.0)
+			var hy := 13.0 * cos(t) - 5.0 * cos(2.0 * t) - 2.0 * cos(3.0 * t) - cos(4.0 * t)
+			pts.append(o + Vector2(4.5 + hx * 0.31, 3.7 - hy * 0.31))
+		draw_colored_polygon(pts, Color(0.10, 0.04, 0.04, 0.9))
+		var inner := PackedVector2Array()
+		for p in pts:
+			inner.append(o + Vector2(4.5, 3.9) + (p - (o + Vector2(4.5, 3.9))) * 0.84)
+		draw_colored_polygon(inner, c)
+		draw_colored_polygon(PackedVector2Array([o + Vector2(2.0, 1.9), o + Vector2(3.3, 1.2), o + Vector2(4.0, 2.2), o + Vector2(2.8, 3.1)]), c.lightened(0.5) * Color(1, 1, 1, 0.8))
 	func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(u, u))
 		for i in count:
@@ -113,8 +157,17 @@ class Pips extends Control:
 			if i >= bonus_from:
 				c = bonus
 			var o := Vector2(i * 11.0, 0.0)
-			if shape == "heart":
+			if shape == "heart" and UiTheme.hd_on():
+				_smooth_heart(o, c)
+			elif shape == "heart":
 				_pixel_heart(o, c)
+			elif shape == "ready" and UiTheme.hd_on():
+				if i < filled:
+					draw_circle(o + Vector2(4.5, 4.5), 4.5, c.darkened(0.45))
+					draw_circle(o + Vector2(4.5, 4.5), 3.7, c)
+					draw_circle(o + Vector2(3.4, 3.4), 1.2, c.lightened(0.55))
+				else:
+					draw_arc(o + Vector2(4.5, 4.5), 4.0, 0.0, TAU, 24, Color(1, 1, 1, 0.55), 1.0, true)
 			elif shape == "ready":
 				# gotowość w kryjówce: kwadracik pełny (gotowy) albo sam obrys
 				if i < filled:
@@ -122,7 +175,11 @@ class Pips extends Control:
 				else:
 					draw_rect(Rect2(o + Vector2(0.5, 0.5), Vector2(8, 8)), Color(1, 1, 1, 0.55), false, 1.0)
 			else:
-				draw_colored_polygon(PackedVector2Array([o + Vector2(4.5, 0), o + Vector2(9, 4.5), o + Vector2(4.5, 9), o + Vector2(0, 4.5)]), c)
+				var dia := PackedVector2Array([o + Vector2(4.5, 0), o + Vector2(9, 4.5), o + Vector2(4.5, 9), o + Vector2(0, 4.5)])
+				draw_colored_polygon(dia, c)
+				if UiTheme.hd_on():
+					draw_polyline(PackedVector2Array([dia[0], dia[1], dia[2], dia[3], dia[0]]), c.darkened(0.55), 1.0, true)
+					draw_colored_polygon(PackedVector2Array([o + Vector2(4.5, 1.2), o + Vector2(6.4, 3.0), o + Vector2(4.5, 4.0), o + Vector2(2.6, 3.0)]), c.lightened(0.5) * Color(1, 1, 1, 0.7))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 ## Karta zakotwiczona w obiekcie świata: panel z „ogonkiem” (strzałką) pod spodem, wskazującym obiekt.
@@ -151,6 +208,11 @@ class Swatch extends Control:
 	func _draw() -> void:
 		if col.a <= 0.0:
 			return
+		if UiTheme.hd_on():
+			draw_circle(Vector2(4.5, 4.5), 4.0, Color(0.15, 0.1, 0.05))
+			draw_circle(Vector2(4.5, 4.5), 3.2, col)
+			draw_circle(Vector2(3.5, 3.5), 0.9, Color(0.95, 0.9, 0.8, 0.8))
+			return
 		draw_rect(Rect2(1, 1, 7, 8), Color(0.15, 0.1, 0.05))
 		draw_rect(Rect2(2, 2, 5, 6), col)
 		draw_rect(Rect2(3, 3, 1, 1), Color(0.95, 0.9, 0.8))
@@ -163,6 +225,12 @@ class Coin extends Control:
 	func _draw() -> void:
 		var gold := Color(0.95, 0.78, 0.32)
 		var dark := Color(0.5, 0.36, 0.1)
+		if UiTheme.hd_on():
+			draw_circle(Vector2(4, 4), 4.0, dark)
+			draw_circle(Vector2(4, 4), 3.2, gold)
+			draw_arc(Vector2(4, 4), 2.1, 0.0, TAU, 20, dark, 0.8, true)
+			draw_arc(Vector2(4, 4), 2.9, PI * 1.1, PI * 1.6, 8, Color(1, 0.95, 0.7), 0.9, true)
+			return
 		draw_rect(Rect2(2, 0, 4, 8), dark)
 		draw_rect(Rect2(0, 2, 8, 4), dark)
 		draw_rect(Rect2(2, 1, 4, 6), gold)

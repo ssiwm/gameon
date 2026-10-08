@@ -25,6 +25,14 @@ const BP_MUTED := Color(0.5, 0.66, 0.70)
 const HEADING_FONT := "res://art/fonts/Silkscreen-Regular.ttf"   ## pikselowa czcionka nagłówków (SIL OFL, art/fonts/OFL.txt)
 
 static var _theme: Theme
+static var _hd := -1
+
+## Dev (--newui): UI w stylu HD — gładkie wektory zamiast pikseli, czysty krój nagłówków, miękkie rogi i cień paneli. Czytane z argumentów przy
+## pierwszym użyciu (HUD i menu budują się w `_ready` dzieci, zanim zadziała `Main._ready`, więc zwykła zmienna ustawiana w main.gd byłaby za późno).
+static func hd_on() -> bool:
+	if _hd < 0:
+		_hd = 1 if "--newui" in OS.get_cmdline_user_args() else 0
+	return _hd == 1
 
 static func get_theme() -> Theme:
 	if _theme != null:
@@ -88,7 +96,11 @@ static func get_theme() -> Theme:
 
 static func panel_box() -> StyleBoxFlat:
 	var b := _box(PANEL_BG, PANEL_EDGE)
-	b.set_corner_radius_all(0)
+	b.set_corner_radius_all(3 if hd_on() else 0)
+	if hd_on():
+		b.shadow_size = 7
+		b.shadow_color = Color(0, 0, 0, 0.45)
+		b.shadow_offset = Vector2(0, 2)
 	b.border_width_bottom = 2                       # twarda krawędź, jak w pixel arcie świata; bez zaokrągleń i cieni
 	b.border_color = PANEL_EDGE
 	b.content_margin_left = 8
@@ -100,7 +112,7 @@ static func panel_box() -> StyleBoxFlat:
 ## Szkic techniczny: panel warsztatu.
 static func blueprint_box() -> StyleBoxFlat:
 	var b := _box(BP_BG, BP_LINE)
-	b.set_corner_radius_all(0)
+	b.set_corner_radius_all(3 if hd_on() else 0)
 	b.border_width_bottom = 2
 	b.set_content_margin_all(10)
 	return b
@@ -108,7 +120,7 @@ static func blueprint_box() -> StyleBoxFlat:
 ## Kafel (pole siatki) na szkicu: stan „normal”, „hover” albo „selected”.
 static func tile_box(state: String) -> StyleBoxFlat:
 	var b := _box(Color(0.07, 0.12, 0.14, 0.95), BP_LINE_DIM)
-	b.set_corner_radius_all(0)
+	b.set_corner_radius_all(2 if hd_on() else 0)
 	match state:
 		"hover":
 			b.border_color = BP_LINE
@@ -126,7 +138,7 @@ static func tile_box(state: String) -> StyleBoxFlat:
 ## Papier (karty broni i odprawy przy obiektach): jasna kartka z ciemną dolną krawędzią.
 static func paper_box() -> StyleBoxFlat:
 	var b := _box(PAPER, PAPER_EDGE)
-	b.set_corner_radius_all(0)
+	b.set_corner_radius_all(2 if hd_on() else 0)
 	b.border_width_bottom = 3
 	b.content_margin_left = 9
 	b.content_margin_right = 9
@@ -139,7 +151,7 @@ static func _box(bg: Color, edge: Color, width: int = 1) -> StyleBoxFlat:
 	b.bg_color = bg
 	b.border_color = edge
 	b.set_border_width_all(width)
-	b.set_corner_radius_all(0)
+	b.set_corner_radius_all(2 if hd_on() else 0)
 	return b
 
 ## Label helper with size/colour in one call.
@@ -156,6 +168,14 @@ static var _heading_font: Font
 
 ## Pikselowa czcionka nagłówków (null, gdy pliku brak — wtedy zostaje czcionka motywu).
 static func heading_font() -> Font:
+	if hd_on():
+		if _heading_font == null:
+			var fv := FontVariation.new()                     # czysty krój motywu: pogrubiony, z rozstrzeleniem liter (techniczny, wersaliki)
+			fv.base_font = ThemeDB.fallback_font
+			fv.variation_embolden = 0.55
+			fv.spacing_glyph = 1
+			_heading_font = fv
+		return _heading_font
 	if _heading_font == null and ResourceLoader.exists(HEADING_FONT):
 		_heading_font = load(HEADING_FONT) as Font
 	return _heading_font

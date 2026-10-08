@@ -28,6 +28,11 @@ static func enemy_sheet(kind: String) -> String:
 static var newworld := false
 
 static var _gunhd: Dictionary = {}
+static var _gunhd_rect: Dictionary = {}
+
+## Prostokąt sylwetki broni HD w pikselach arkusza (po wywołaniu `gun_hd`).
+static func gun_hd_rect(key: String) -> Rect2:
+	return _gunhd_rect.get(key, Rect2())
 static var _mip: Dictionary = {}
 
 ## Tekstura HD z mipmapami skompresowana w locie do S3TC (DXT5): ~4× mniej pamięci wideo przy kilku ms na arkusz (zmierzone: 2048×2688 → 5 ms).
@@ -70,8 +75,11 @@ static func gun_hd(key: String) -> CanvasTexture:
 	var d := texture(DIR + "gunhd_%s.png" % key)
 	var ct: CanvasTexture = null
 	if d != null:
+		var gimg: Image = d.get_image()
+		gimg.convert(Image.FORMAT_RGBA8)
+		_gunhd_rect[key] = Rect2(gimg.get_used_rect())                     # ciasny prostokąt sylwetki (miniatury w UI)
 		ct = CanvasTexture.new()
-		ct.diffuse_texture = hd_texture(d.get_image(), false)
+		ct.diffuse_texture = hd_texture(gimg, false)
 		var n := texture(DIR + "gunhd_%s_n.png" % key)
 		if n != null:
 			ct.normal_texture = hd_texture(n.get_image(), true)
