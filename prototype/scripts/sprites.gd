@@ -28,6 +28,24 @@ static func enemy_sheet(kind: String) -> String:
 static var newworld := false
 
 static var _gunhd: Dictionary = {}
+static var _mip: Dictionary = {}
+
+## Arkusz z mipmapami (ImageTexture) — dla UI rysującego duże klatki HD w małym rozmiarze (kodeks): bez mipmap zmniejszanie ×4 daje szum.
+static func mip_texture(path: String) -> Texture2D:
+	if _mip.has(path):
+		return _mip[path]
+	var t: Texture2D = null
+	var src := texture(path)
+	if src != null:
+		var img: Image = src.get_image()
+		img.generate_mipmaps()
+		t = ImageTexture.create_from_image(img)
+	_mip[path] = t
+	return t
+
+## Czy arkusz jest HD (manifest `hd`).
+static func is_hd(sheet: String) -> bool:
+	return bool(manifest().get("sheets", {}).get(sheet, {}).get("hd", false))
 
 ## Tekstura HD broni (diffuse + normal) albo null. Ramka 576×224 px, dłoń w (104, 112), 16 px na piksel świata.
 static func gun_hd(key: String) -> CanvasTexture:

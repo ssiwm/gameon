@@ -32,18 +32,33 @@ func show_spec(s: Dictionary, col: Color) -> void:
 	_t = 0.0
 	_tex = null
 	_tex_glow = null
+	_sheet = ""
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	match s.get("type", ""):
 		"sprite":
-			if Sprites.has(s["sheet"]):
-				_tex = Sprites.texture(Sprites.DIR + String(s["sheet"]) + ".png")
-				_tex_glow = Sprites.texture(Sprites.DIR + String(s["sheet"]) + "_glow.png")
+			_sheet = Sprites.enemy_sheet(String(s["sheet"])) if String(s["sheet"]) != "" else ""
+			if Sprites.has(_sheet):
+				_load_sheet(_sheet)
 		"leech":
-			if Sprites.has("leech"):                         # wynurzoną Pijawkę rysuje arkusz; bez niego zostaje rysunek z kodu
-				_tex = Sprites.texture(Sprites.DIR + "leech.png")
-				_tex_glow = Sprites.texture(Sprites.DIR + "leech_glow.png")
+			_sheet = Sprites.enemy_sheet("leech")
+			if Sprites.has(_sheet):                          # wynurzoną Pijawkę rysuje arkusz; bez niego zostaje rysunek z kodu
+				_load_sheet(_sheet)
 		"gun":
 			_gun_info = GunIcon.sheet_info()
 	queue_redraw()
+
+var _sheet := ""
+
+## Tekstury arkusza: HD (`--newmon`) z mipmapami i filtrem liniowym, klasyczne ostro (NEAREST).
+func _load_sheet(sheet: String) -> void:
+	var hd := Sprites.is_hd(sheet)
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS if hd else CanvasItem.TEXTURE_FILTER_NEAREST
+	if hd:
+		_tex = Sprites.mip_texture(Sprites.DIR + sheet + ".png")
+		_tex_glow = Sprites.mip_texture(Sprites.DIR + sheet + "_glow.png")
+	else:
+		_tex = Sprites.texture(Sprites.DIR + sheet + ".png")
+		_tex_glow = Sprites.texture(Sprites.DIR + sheet + "_glow.png")
 
 func _process(delta: float) -> void:
 	if not is_visible_in_tree():
@@ -117,7 +132,7 @@ func _shadow(center_x: float, floor_y: float, width: float) -> void:
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _draw_sprite(floor_y: float) -> void:
-	var sheet: String = spec["sheet"]
+	var sheet: String = _sheet
 	if not Sprites.has(sheet):
 		return
 	var man: Dictionary = Sprites.manifest()["sheets"][sheet]
@@ -126,9 +141,13 @@ func _draw_sprite(floor_y: float) -> void:
 	var frame := int(_t * float(an["fps"])) % maxi(1, int(an["frames"]))
 	var fsz := Vector2(float(fr[0]), float(fr[1]))
 	var avail := Vector2(size.x - 6.0, floor_y - 3.0)
-	var s := PixelArt.fit(self, fsz, avail, 8 if not thumb else 3)
+	var hd := Sprites.is_hd(sheet)
+	# klatka HD ma kilka razy więcej pikseli niż stara — do ramki karty wpisujemy ją płynnie (bez skoków całkowitej skali)
+	var s := minf(avail.x / fsz.x, avail.y / fsz.y) if hd else PixelArt.fit(self, fsz, avail, 8 if not thumb else 3)
+	if hd:
+		s = minf(s, float(man.get("scale", 1.0)) * (6.0 if not thumb else 3.0))      # nie większa niż ~6× rozmiar „w świecie"
 	var w := fsz * s
-	var pos := PixelArt.snap(self, Vector2((size.x - w.x) * 0.5, floor_y - w.y))
+	var pos := PixelArt.snap(self, Vector2((size.x - w.x) * 0.5, floor_y - w.y)) if not hd else Vector2(roundf((size.x - w.x) * 0.5), floor_y - w.y)
 	_shadow(pos.x + w.x * 0.5, floor_y, w.x * 1.1)
 	var src := Rect2(frame * fsz.x, int(an["row"]) * fsz.y, fsz.x, fsz.y)
 	var tex := _tex
@@ -217,18 +236,20 @@ func _draw_leech(floor_y: float) -> void:
 
 ## Wynurzona Pijawka z arkusza: wynurza się od góry (okno przycięte przy linii wody), w środku cyklu otwiera paszczę szeroko („grab").
 func _draw_leech_sprite(floor_y: float, up: float, cyc: float) -> void:
-	var man: Dictionary = Sprites.manifest()["sheets"]["leech"]
+	var man: Dictionary = Sprites.manifest()["sheets"][_sheet]
+	var hd := Sprites.is_hd(_sheet)
 	var fr: Array = man["frame"]
 	var an_name := "grab" if (cyc >= 3.8 and cyc < 4.9) else "idle"
 	var an: Dictionary = man["anims"][an_name]
 	var frame := int(_t * float(an["fps"])) % int(an["frames"])
-	var top := 8.0                                             # pusty margines nad głową: bez niego skala przeskakuje na 1/2
-	var rows := 154.0 - top                                    # wiersze arkusza do dołu piany (linia wody = wiersz 148)
+	var top := 8.0 if not hd else float(fr[1]) * 0.05         # pusty margines nad głową: bez niego skala przeskakuje na 1/2
+	var rows := (154.0 if not hd else float(fr[1])) - top      # wiersze arkusza do dołu piany (stary: linia wody = wiersz 148; HD: podstawa = dół klatki)
 	var fsz := Vector2(float(fr[0]), float(fr[1]))
-	var s := PixelArt.fit(self, Vector2(fsz.x, rows), Vector2(size.x - 6.0, floor_y + 6.0), 8 if not thumb else 3)
+	var s := PixelArt.fit(self, Vector2(fsz.x, rows), Vector2(size.x - 6.0, floor_y + 6.0), 8 if not thumb else 3) if not hd \
+		else minf((size.x - 6.0) / fsz.x, (floor_y + 6.0) / rows)
 	var shown := rows * up
-	var bottom := floor_y + (154.0 - 148.0) * s * up
-	var pos := PixelArt.snap(self, Vector2((size.x - fsz.x * s) * 0.5, bottom - shown * s))
+	var bottom := floor_y + ((154.0 - 148.0) * s * up if not hd else 0.0)
+	var pos := PixelArt.snap(self, Vector2((size.x - fsz.x * s) * 0.5, bottom - shown * s)) if not hd else Vector2(roundf((size.x - fsz.x * s) * 0.5), bottom - shown * s)
 	var src := Rect2(frame * fsz.x, int(an["row"]) * fsz.y + top, fsz.x, shown)
 	var dst := Rect2(pos, Vector2(fsz.x * s, shown * s))
 	draw_texture_rect_region(_tex, dst, src)

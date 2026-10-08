@@ -129,7 +129,10 @@ var _decals: Node2D
 var _deco: Node2D
 var _terrain_hd: Node2D                 ## dev (--newworld): teren HD rysowany nad kaflami
 var _terrain_tex: CanvasTexture
-var _terrain_list: Array = []           ## [kolumna, wiersz, wierzch(1)/wypełnienie(0)]
+var _terrain_list: Array = []           ## [kolumna, wiersz, wierzch(1)/wypełnienie(0), materiał] — kafle solid/platformy (nad _solid)
+var _terrain_back_list: Array = []      ## to samo dla kafli tła (b, w) — rysowane nad _back, pod postaciami
+var _terrain_back: Node2D
+var _mat_tex: Dictionary = {}           ## materiał → CanvasTexture (albedo + normalne)
 var _prop_hd: Dictionary = {}           ## dev: indeks dekoracji (props.png) → [CanvasTexture, rozmiar w pikselach świata] — rekwizyty HD z Tripo
 var _props_tex: Texture2D
 var _deco_list: Array = []             ## [pozycja stóp, indeks dekoracji, flip]
@@ -419,6 +422,12 @@ func _draw_deco() -> void:
 			dst = Rect2(feet.x + 8, feet.y - 16, -16, 16)
 		_deco.draw_texture_rect_region(_props_tex, dst, src)
 
+## Znak mapy → materiał HD (art/world/mat_<nazwa>.png; „terrain" = terrain_hd.png). Kolumny atlasu kafli (KINDS) pokrywane przez HD są
+## w trybie --newworld przezroczyste w oryginalnym atlasie, żeby stary pixel-art nie prześwitywał.
+const MATERIALS := {"#": "terrain", "C": "concrete", "M": "metal", "~": "water", "=": "grate", "-": "plank", "b": "wall", "w": "post", "m": "mud", "O": "oil"}
+## Materiały rysowane tylko w górnym pasie kafla (platformy) — jeden wariant.
+const PLATFORM_MATS := ["grate", "plank"]
+
 ## Dev: HD teren z atlasu art/world/terrain_hd.png (+ _n.png): wiersz 0 = glina 1024×256, wiersz 1 = wierzch 1024×320 (z przewisem trawy 64 px).
 ## Pas ma okres 4 kafli (kolumna % 4), więc sąsiednie kafle łączą się bez szwów.
 const TERRAIN_HD_OVER := 4.0           ## przewis trawy ponad komórką (piksele świata)
@@ -426,19 +435,27 @@ const TERRAIN_HD_OVER := 4.0           ## przewis trawy ponad komórką (piksele
 func _load_terrain_hd() -> CanvasTexture:
 	if not Sprites.newworld:
 		return null
-	var d := Sprites.texture("res://art/world/terrain_hd.png")
-	if d == null:
-		return null
-	var di: Image = d.get_image()
-	di.generate_mipmaps()
-	var ct := CanvasTexture.new()
-	ct.diffuse_texture = ImageTexture.create_from_image(di)
-	var n := Sprites.texture("res://art/world/terrain_hd_n.png")
-	if n != null:
-		var ni: Image = n.get_image()
-		ni.generate_mipmaps()
-		ct.normal_texture = ImageTexture.create_from_image(ni)
-	ct.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	return _load_material("terrain")
+
+## Atlas materiału (albedo + normalne, mipmapy). „terrain" to terrain_hd.png, reszta mat_<nazwa>.png.
+func _load_material(mat: String) -> CanvasTexture:
+	if _mat_tex.has(mat):
+		return _mat_tex[mat]
+	var base := "res://art/world/terrain_hd" if mat == "terrain" else "res://art/world/mat_" + mat
+	var d := Sprites.texture(base + ".png")
+	var ct: CanvasTexture = null
+	if d != null:
+		var di: Image = d.get_image()
+		di.generate_mipmaps()
+		ct = CanvasTexture.new()
+		ct.diffuse_texture = ImageTexture.create_from_image(di)
+		var n := Sprites.texture(base + "_n.png")
+		if n != null:
+			var ni: Image = n.get_image()
+			ni.generate_mipmaps()
+			ct.normal_texture = ImageTexture.create_from_image(ni)
+		ct.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_mat_tex[mat] = ct
 	return ct
 
 ## Wołane z main.gd po sparsowaniu `--newworld` (poziom budowany jest wcześniej niż flagi) oraz przy każdej budowie mapy.
@@ -454,8 +471,17 @@ func enable_world_hd() -> void:
 		add_child(_terrain_hd)
 		move_child(_terrain_hd, _solid.get_index() + 1)               # nad kaflami, pod dekoracjami i postaciami
 		_stable.append(_terrain_hd)
+		_terrain_back = Node2D.new()
+		_terrain_back.name = "TerrainHDBack"
+		_terrain_back.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		_terrain_back.draw.connect(_draw_terrain_back)
+		add_child(_terrain_back)
+		move_child(_terrain_back, _back.get_index() + 1)               # nad tłem-kaflami, pod bryłami i postaciami
+		_stable.append(_terrain_back)
+		_hide_pixel_tiles()
 		_load_props_hd()
 	_terrain_list.clear()
+	_terrain_back_list.clear()
 	_build_terrain_hd()
 	_deco.queue_redraw()
 
@@ -470,6 +496,23 @@ func _draw_props_hd() -> void:
 		if d[2]:
 			dst = Rect2(feet.x + sz.x * 0.5, feet.y - sz.y, -sz.x, sz.y)
 		_terrain_hd.draw_texture_rect(info[0], dst, false)
+
+## Kolumny atlasu kafli pokryte materiałami HD stają się przezroczyste (kolizje i okludery zostają w danych kafli).
+func _hide_pixel_tiles() -> void:
+	var src := _ts.get_source(0) as TileSetAtlasSource
+	var tex: Texture2D = src.texture
+	if tex == null:
+		return
+	var img: Image = tex.get_image()
+	img.convert(Image.FORMAT_RGBA8)
+	for ch in MATERIALS:
+		if not KINDS.has(ch) or _load_material(MATERIALS[ch]) == null:
+			continue
+		var col: int = KINDS[ch][0]
+		for y in img.get_height():
+			for x in range(col * TILE, col * TILE + TILE):
+				img.set_pixel(x, y, Color(0, 0, 0, 0))
+	src.texture = ImageTexture.create_from_image(img)
 
 ## Rekwizyty HD (art/world/prop_<nazwa>.png + _n.png, 16 px na piksel świata) podmieniają dekoracje z props.png: 3 kamień, 6 płot, 7 kłody.
 func _load_props_hd() -> void:
@@ -496,23 +539,52 @@ func _build_terrain_hd() -> void:
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
-			if row[c] != "#":
+			var ch := row[c]
+			if not KINDS.has(ch) and ch != ".":
+				# znacznik (S, f, g…) — tło dziedziczy z lewego sąsiada, tak jak w _place_cell
+				var lc := c - 1
+				while lc >= 0 and c - lc <= 8 and not KINDS.has(_ch(lc, r)) and _ch(lc, r) != ".":
+					lc -= 1
+				var left := _ch(lc, r) if lc >= 0 else "."
+				if KINDS.has(left) and KINDS[left][2] == 2 and MATERIALS.has(left) and _load_material(MATERIALS[left]) != null:
+					_terrain_back_list.append([c, r, 0, MATERIALS[left]])
 				continue
-			_terrain_list.append([c, r, 0 if _is_solid(c, r - 1) else 1])
+			if not MATERIALS.has(ch) or not KINDS.has(ch):
+				continue
+			var mat: String = MATERIALS[ch]
+			if _load_material(mat) == null:
+				continue
+			var kind: int = KINDS[ch][2]
+			var top := 0 if (kind != 0 or _is_solid(c, r - 1)) else 1
+			var entry := [c, r, top, mat]
+			if kind == 2:
+				_terrain_back_list.append(entry)
+			else:
+				_terrain_list.append(entry)
 	_terrain_hd.queue_redraw()
+	if _terrain_back != null:
+		_terrain_back.queue_redraw()
 
 func _draw_terrain_hd() -> void:
-	if _terrain_tex == null:
-		return
 	_draw_props_hd()
-	for t in _terrain_list:
+	_draw_material_list(_terrain_hd, _terrain_list)
+
+func _draw_terrain_back() -> void:
+	_draw_material_list(_terrain_back, _terrain_back_list)
+
+func _draw_material_list(node: Node2D, list: Array) -> void:
+	for t in list:
 		var c: int = t[0]
 		var r: int = t[1]
+		var mat: String = t[3]
+		var tex := _load_material(mat)
+		if tex == null:
+			continue
 		var col := c % 4
-		if int(t[2]) == 1:
-			_terrain_hd.draw_texture_rect_region(_terrain_tex, Rect2(c * TILE, r * TILE - TERRAIN_HD_OVER, TILE, TILE + TERRAIN_HD_OVER), Rect2(col * 256, 256, 256, 320))
+		if int(t[2]) == 1 and not PLATFORM_MATS.has(mat):
+			node.draw_texture_rect_region(tex, Rect2(c * TILE, r * TILE - TERRAIN_HD_OVER, TILE, TILE + TERRAIN_HD_OVER), Rect2(col * 256, 256, 256, 320))
 		else:
-			_terrain_hd.draw_texture_rect_region(_terrain_tex, Rect2(c * TILE, r * TILE, TILE, TILE), Rect2(col * 256, 0, 256, 256))
+			node.draw_texture_rect_region(tex, Rect2(c * TILE, r * TILE, TILE, TILE), Rect2(col * 256, 0, 256, 256))
 
 func _is_solid(c: int, r: int) -> bool:
 	# poza mapą = bryła (krawędzie mapy nie świecą)
