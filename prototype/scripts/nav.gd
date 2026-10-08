@@ -177,8 +177,19 @@ func nearest_id(pos: Vector2) -> int:
 				return _id(c + dc, r - dr)
 	return get_closest_point(pos)
 
+## Liczniki do pomiarów (main.gd `_perf_run`): ile razy i jak długo liczono A* od ostatniego zerowania.
+static var stat_calls := 0
+static var stat_usec := 0
+
 ## Ścieżka jako lista kroków {pos, kind, id}; pierwszy krok = start.
 func find_path(from: Vector2, to: Vector2) -> Array:
+	var t0 := Time.get_ticks_usec()
+	var res := _find_path(from, to)
+	stat_calls += 1
+	stat_usec += Time.get_ticks_usec() - t0
+	return res
+
+func _find_path(from: Vector2, to: Vector2) -> Array:
 	var a := nearest_id(from)
 	var b := nearest_id(to)
 	if a < 0 or b < 0:

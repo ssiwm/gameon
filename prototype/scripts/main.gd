@@ -27,6 +27,8 @@ const PAUSE_MENU := preload("res://scripts/pause_menu.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const HORROR_FX := preload("res://scripts/horror_fx.gd")
+const NavGraph := preload("res://scripts/nav.gd")
+const ENEMY := preload("res://scripts/enemy.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 
 ## >0 w trakcie odliczania do restartu po wipe; widoczne na każdym peerze (HUD).
@@ -636,7 +638,38 @@ func _perf_run(secs: float, col: int) -> void:
 					break
 			p.global_position = Vector2(float(col) * 16.0 + 8.0, fy - 2.0)
 	await get_tree().create_timer(1.0).timeout
+	var mobs := 0
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--perfmobs="):
+			mobs = int(a.substr("--perfmobs=".length()))
+	if mobs > 0:
+		# test obciążenia: N obudzonych wrogów (mieszanka rodzajów) w promieniu ~250 px wokół gracza
+		var pp: Node2D = _players.get_node_or_null("1")
+		var kinds := ["trzosek", "wolek", "slepiec", "trzosek", "skoczek", "trzosek"]
+		for i in mobs:
+			var off := Vector2(-250.0 + 500.0 * float(i) / float(maxi(mobs - 1, 1)), 0.0)
+			level._add_enemy("PerfMob%d" % i, kinds[i % kinds.size()], pp.global_position + off)
+		await get_tree().create_timer(0.5).timeout
+		for i in mobs:
+			var en: Node = level.get_node_or_null("PerfMob%d" % i)
+			if en != null:
+				en.wake()
+		await get_tree().create_timer(1.5).timeout
+	var flares := 0
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--perfflares="):
+			flares = int(a.substr("--perfflares=".length()))
+	if flares > 0:
+		# test obciążenia: K flar rozrzuconych wśród wrogów (każda to światło z cieniami)
+		var fp: Node2D = _players.get_node_or_null("1")
+		for i in flares:
+			level.spawn_flare(fp.global_position + Vector2(-220.0 + 440.0 * float(i) / float(maxi(flares - 1, 1)), -30.0), Vector2.ZERO)
+		await get_tree().create_timer(1.5).timeout
 	var times: Array[float] = []
+	var proc_t := 0.0
+	var pairs := 0.0
+	var active_o := 0.0
+	var phys_t := 0.0
 	var calls := 0.0
 	var prims := 0.0
 	var t_end := Time.get_ticks_msec() + int(secs * 1000.0)
@@ -646,6 +679,10 @@ func _perf_run(secs: float, col: int) -> void:
 		var now := Time.get_ticks_usec()
 		times.append(float(now - last) / 1000.0)
 		last = now
+		pairs += Performance.get_monitor(Performance.PHYSICS_2D_COLLISION_PAIRS)
+		active_o += Performance.get_monitor(Performance.PHYSICS_2D_ACTIVE_OBJECTS)
+		proc_t += Performance.get_monitor(Performance.TIME_PROCESS)
+		phys_t += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)
 		calls += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
 		prims += Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
 	times.sort()
@@ -653,10 +690,11 @@ func _perf_run(secs: float, col: int) -> void:
 	var sum := 0.0
 	for t in times:
 		sum += t
-	print("[PERF] frames=%d avg=%.2f ms (%.0f fps) p50=%.2f p95=%.2f max=%.2f  draw_calls=%.0f prims=%.0f  nodes=%d  vram=%.1f MB  tex_mem=%.1f MB" % [
+	print("[PERF] frames=%d avg=%.2f ms (%.0f fps) p50=%.2f p95=%.2f max=%.2f  draw_calls=%.0f prims=%.0f  nodes=%d  vram=%.1f MB  tex_mem=%.1f MB  idle=%.2f ms phys=%.2f ms  A*=%.0f/s (%.2f ms/frame) enemy_phys=%.2f ms slide=%.2f ms pairs=%.0f active=%.0f" % [
 		n, sum / float(maxi(n, 1)), 1000.0 / maxf(sum / float(maxi(n, 1)), 0.001), times[n / 2], times[int(float(n) * 0.95)], times[n - 1],
 		calls / float(maxi(n, 1)), prims / float(maxi(n, 1)), int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
-		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0])
+		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0,
+		proc_t / float(maxi(n, 1)) * 1000.0, phys_t / float(maxi(n, 1)) * 1000.0, float(NavGraph.stat_calls) / secs, float(NavGraph.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_slide_usec) / 1000.0 / float(maxi(n, 1)), pairs / float(maxi(n, 1)), active_o / float(maxi(n, 1))])
 	get_tree().quit()
 
 func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false, workshop := false, result := false, boss := false, codex := false) -> void:

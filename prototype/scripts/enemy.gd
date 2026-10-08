@@ -311,7 +311,21 @@ func _set_alive(a: bool) -> void:
 	visible = a
 	($CollisionShape2D as CollisionShape2D).set_deferred("disabled", not a)
 
+## Liczniki do pomiarów (main.gd `_perf_run`): czas całego `_physics_process` wrogów, w tym `move_and_slide`.
+static var stat_usec := 0
+static var stat_slide_usec := 0
+
 func _physics_process(delta: float) -> void:
+	var t0 := Time.get_ticks_usec()
+	_phys_tick(delta)
+	stat_usec += Time.get_ticks_usec() - t0
+
+func _slide() -> void:
+	var t0 := Time.get_ticks_usec()
+	move_and_slide()
+	stat_slide_usec += Time.get_ticks_usec() - t0
+
+func _phys_tick(delta: float) -> void:
 	_flash = maxf(0.0, _flash - delta)
 	if not NoiseMgr.is_server():
 		global_position = global_position.lerp(_remote_pos, 0.35)
@@ -350,7 +364,7 @@ func _physics_process(delta: float) -> void:
 		# śpiący wróg stoi i słucha, ale grawitacja działa
 		velocity.x = move_toward(velocity.x, 0.0, 400.0 * delta)
 		_apply_gravity(delta)
-		move_and_slide()
+		_slide()
 		_send_state(delta)
 		return
 
@@ -371,7 +385,7 @@ func _physics_process(delta: float) -> void:
 	# Wołek: szarża i rzut skrzynią przejmują ruch na czas swoich faz
 	if _def.get("bruiser", false) and _bruiser_tick(delta, target):
 		_apply_gravity(delta)
-		move_and_slide()
+		_slide()
 		_after_move_bruiser()
 		_send_state(delta)
 		return
@@ -397,7 +411,7 @@ func _physics_process(delta: float) -> void:
 		_return_home(speed, delta)
 
 	_apply_gravity(delta)
-	move_and_slide()
+	_slide()
 	if _drop_attack and is_on_floor():
 		_land_hit()
 	_send_state(delta)
