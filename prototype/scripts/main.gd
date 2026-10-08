@@ -16,6 +16,7 @@ const Sprites := preload("res://scripts/sprites.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Codex := preload("res://scripts/codex.gd")
 const Hints := preload("res://scripts/hints.gd")
+const Look := preload("res://scripts/look.gd")
 const Lights := preload("res://scripts/lights.gd")
 const RunLog := preload("res://scripts/run_log.gd")
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
@@ -326,10 +327,18 @@ func _handle_cmdline() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.has("--nightshift"):
 		NightShift.selected = true               # przed --host: tryb zapada przy starcie sesji
+	var hd_world := false
+	if Settings.hd_active():                          # ustawienie „Graphics: HD" (domyślnie) — flagi poniżej mogą nadpisać; `--classic` wyłącza
+		Sprites.newchar = "tripo-hd-look"
+		Sprites.newgun = true
+		Sprites.newmon = true
+		hd_world = true
 	for a in args:
 		if a == "--newworld":
-			Sprites.newworld = true                                                                # dev: teren i tła HD (art/world/)
-			level.enable_world_hd()
+			hd_world = true                                                                        # teren i tła HD (art/world/); włączane po pętli (jednorazowo)
+		if a.begins_with("--look="):
+			Profile.look = int(a.substr("--look=".length()))                                     # dev: wygląd bez odblokowania (nie zapisywany: --shot*/--perf ustawiają persist=false)
+			Profile.persist = false
 		if a == "--nocompress":
 			Sprites.compress_hd = false                                                            # dev: bez kompresji S3TC tekstur HD (porównanie)
 		if a == "--newmon":
@@ -342,6 +351,9 @@ func _handle_cmdline() -> void:
 			port = a.substr("--port=".length()).to_int()
 		elif a.begins_with("--mission="):
 			_start_map = a.substr("--mission=".length())
+	if hd_world:
+		Sprites.newworld = true
+		level.enable_world_hd()
 	# testy headless zakładają mapę 1.3 (gniazda, boss), chyba że flaga --mission wskaże inną
 	if _start_map == "":
 		for a in args:
@@ -711,6 +723,16 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					en.set_physics_process(false)
 					if sp[0] != "ShotT2":
 						en.call("wake")
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--shotgunid="):                          # dev: broń o danym id (0–11) w pierwszym slocie gracza 1 — podgląd sprite'ów broni
+			var gp: Node2D = _players.get_node_or_null("1")
+			if gp != null:
+				var gid := int(a.substr("--shotgunid=".length()))
+				gp.weapons.loadout[0] = gid
+				gp.weapons.slot = 0
+				gp.weapons.mags[gid] = 10
+				gp.weapons.state = 0
+				gp.weapons._sync_player()
 	if "--shotlight" in OS.get_cmdline_user_args():
 		var lp: Node2D = _players.get_node_or_null("1")      # --shotlight: flara tuż przed graczem (podgląd oświetlenia z mapą normalnych)
 		if lp != null:
@@ -745,6 +767,12 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				Profile.equip(0, "smith")
 				wui._perk_sel = 3
 				wui._set_page(2)
+			if "--shotlook" in OS.get_cmdline_user_args():
+				Profile.reset_for_test()             # --shotlook: zakładka LOOK (poziom 5 — wszystkie stroje odblokowane), wybrana kobieta w stroju Field medic
+				Profile.add_xp(800, "demo")
+				Profile.set_look(Look.code(1, 2))
+				wui._look_sel = 5
+				wui._set_page(3)
 	if demo:
 		RunLog.add("z1_m1", "1.1  MISSING PATROL", 214.0, 0, 1, -1, 86)         # przykładowe wpisy do podglądu ściany wyników
 		RunLog.add("z1_m2", "1.2  RADIO SILENCE", 402.0, 2, 1, 1, 148)
@@ -1472,10 +1500,12 @@ func _gen_test() -> void:
 	tab_ev.keycode = KEY_TAB
 	tab_ev.pressed = true
 	wui._input(tab_ev)
-	var tab_wrapped: bool = wui._page == 0                              # 2 → 0
+	var tab_to_look: bool = wui._page == 3                              # 2 → 3 (LOOK)
+	wui._input(tab_ev)
+	var tab_wrapped: bool = tab_to_look and wui._page == 0              # 3 → 0
 	wui._set_page(0)
 	var pm_node: Node = $UI.get_node("PauseMenu")
-	check.call("zakładka PERKS: %d kafli, załóż → %s, zdejmij → %s, perk L6 przy L4 zablokowany → %s, Tab zawija 2→0 → %s; menu pauzy ma %d kart, kodeks %d perków" % [perk_tiles_n, str(perk_on), str(perk_off), str(perk_locked), str(tab_wrapped), pm_node._pages.size(), Codex.perks().size()],
+	check.call("zakładka PERKS: %d kafli, załóż → %s, zdejmij → %s, perk L6 przy L4 zablokowany → %s, Tab przechodzi PERKS → LOOK → ARMS → %s; menu pauzy ma %d kart, kodeks %d perków" % [perk_tiles_n, str(perk_on), str(perk_off), str(perk_locked), str(tab_wrapped), pm_node._pages.size(), Codex.perks().size()],
 		perk_tiles_n == 8 and perk_on and perk_off and perk_locked and tab_wrapped and pm_node._pages.size() == 6 and Codex.perks().size() == 8)
 	Profile.reset_for_test()
 	wui.close()

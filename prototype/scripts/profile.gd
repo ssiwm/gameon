@@ -8,6 +8,7 @@ extends Node
 
 const Perks := preload("res://scripts/perks.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
+const Look := preload("res://scripts/look.gd")
 
 signal xp_gained(amount: int, reason: String)
 signal leveled_up(level: int)
@@ -30,6 +31,7 @@ const XP_REVIVE := 15
 
 var xp := 0
 var completed: Dictionary = {}                ## id misji → true (pierwsze ukończenie daje bonus)
+var look := 0                                 ## wygląd (Look.code): płeć × strój; kosmetyka, odblokowywana poziomem
 var equipped: Array = ["", ""]                ## id perków w slotach 0–1 ("" = pusty)
 var last_mission_xp := 0                      ## XP z ostatniej misji (karta wyniku)
 var last_mission_rows: Array = []             ## [[etykieta, XP], …] z ostatniej misji
@@ -158,6 +160,16 @@ func is_unlocked(id: String) -> bool:
 func has_perk(id: String) -> bool:
 	return equipped.has(id)
 
+## Ustawia wygląd (jeśli poprawny i odblokowany). Zwraca powodzenie.
+func set_look(c: int) -> bool:
+	if not Look.is_unlocked(c, level()):
+		return false
+	if c != look:
+		look = c
+		changed.emit()
+		save()
+	return true
+
 ## Zakłada perk w slocie (0–1): wymaga odblokowanego slotu i perka; ten sam perk nie może siedzieć w dwóch slotach. Zwraca powodzenie.
 func equip(slot: int, id: String) -> bool:
 	if slot < 0 or slot >= MAX_SLOTS or slot >= slots() or not is_unlocked(id):
@@ -187,6 +199,7 @@ func save_to(path: String) -> void:
 	cfg.set_value("profile", "xp", xp)
 	cfg.set_value("profile", "completed", completed.keys())
 	cfg.set_value("profile", "equipped", equipped)
+	cfg.set_value("profile", "look", look)
 	cfg.save(path)
 
 func load_from(path: String) -> void:
@@ -203,6 +216,9 @@ func load_from(path: String) -> void:
 		var id := String(eq[i])
 		if Perks.is_valid(id):
 			equipped[i] = id
+	look = int(cfg.get_value("profile", "look", Look.DEFAULT))
+	if not Look.is_unlocked(look, level()):
+		look = Look.DEFAULT
 	_sanitize_equipped()
 	changed.emit()
 
@@ -214,6 +230,7 @@ func _sanitize_equipped() -> void:
 
 ## Testy: czysty profil.
 func reset_for_test() -> void:
+	look = Look.DEFAULT
 	xp = 0
 	completed.clear()
 	equipped = ["", ""]

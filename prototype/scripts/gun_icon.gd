@@ -8,7 +8,7 @@ const PixelArt := preload("res://scripts/pixel_art.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 ## Wiersze guns.png, dla których jest broń HD (gunhd_<klucz>.png): z --newui --newgun miniatura używa jej zamiast pikselowej.
-const HD_KEYS := {0: "m83"}
+const HD_KEYS := {0: "m83", 1: "spread12", 2: "p64", 3: "srut8", 4: "lr7", 5: "hkm9", 6: "gniew4", 7: "sokol6", 8: "widmo1", 9: "ciegno6", 10: "maczeta", 11: "kilof"}
 
 var row := -1
 var k := 0.375

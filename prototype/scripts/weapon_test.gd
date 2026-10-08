@@ -18,6 +18,7 @@ const Upgrades := preload("res://scripts/upgrades.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
+const Sprites := preload("res://scripts/sprites.gd")
 const NightShiftMode := preload("res://scripts/night_shift.gd")
 const SmokeCloud := preload("res://scripts/smoke_cloud.gd")
 const BrickWall := preload("res://scripts/brick_wall.gd")
@@ -396,6 +397,29 @@ func _t_profile() -> void:
 	player.perks = Vector2i(-1, -1)
 	Profile.reset_for_test()
 	check("Druga szansa: po 3 s leży (%s), po 9 s wstaje na %d sercu (%s), drugi raz w misji już nie (%s)" % [str(still_down), up_hp, str(got_up), str(second_time_down)], still_down and got_up and up_hp == 1 and second_time_down)
+	# wygląd gracza (Look): kody, nazwy arkuszy, odblokowania poziomem, zapis w profilu
+	var Look := preload("res://scripts/look.gd")
+	Profile.reset_for_test()
+	var look_codes_ok := true
+	for g in Look.GENDERS.size():
+		for o in Look.OUTFITS.size():
+			var c: int = Look.code(g, o)
+			look_codes_ok = look_codes_ok and Look.is_valid(c) and Look.gender_of(c) == g and Look.outfit_of(c) == o and Sprites.has(Look.sheet(c))
+	check("wygląd: 6 kombinacji płeć × strój ma poprawny kod i istniejący arkusz HD (%s, %s)" % [Look.sheet(Look.code(0, 0)), Look.sheet(Look.code(1, 2))],
+		look_codes_ok and Look.sheet(Look.code(0, 0)) == "playerhd3h_male" and Look.sheet(Look.code(1, 2)) == "playerhd3h_female_medic" and not Look.is_valid(17) and not Look.is_valid(-1))
+	var l1: bool = Profile.set_look(Look.code(0, 1))                  # Hazmat: poziom 3, a mamy 1
+	Profile.add_xp(400, "test")                                       # L3
+	var l3: bool = Profile.set_look(Look.code(1, 1))
+	var l5: bool = Profile.set_look(Look.code(1, 2))                  # Medic: poziom 5
+	Profile.save_to("user://look_test.cfg")
+	var saved_look: int = Profile.look
+	Profile.reset_for_test()
+	Profile.load_from("user://look_test.cfg")
+	var restored: int = Profile.look
+	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://look_test.cfg"))
+	check("wygląd: Hazmat zablokowany na L1 (%s), po L3 odblokowany (%s), Medic wciąż zablokowany (%s), zapis/odczyt profilu zachowuje wygląd (%d → %d)" % [str(not l1), str(l3), str(not l5), saved_look, restored],
+		not l1 and l3 and not l5 and saved_look == Look.code(1, 1) and restored == Look.code(1, 1))
+	Profile.reset_for_test()
 	# XP za misję: bonusy i pierwsze ukończenie, Nocny Dyżur połowa
 	Profile.reset_for_test()
 	var first: int = Profile.apply_mission_result("z1_test", true, true, false)

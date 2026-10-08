@@ -234,6 +234,32 @@ def add_eyes(arm, mesh):
     return objs, blk
 
 
+def normalize_scale(arm, mesh, expected):
+    """Niektóre modele Tripo wychodzą w innej skali (np. 0,35 m zamiast 1,8 m). Skalujemy wierzchołki i kości do wysokości `expected`, żeby pozy w metrach działały."""
+    zs = [(mesh.matrix_world @ v.co).z for v in mesh.data.vertices]
+    h = max(zs) - min(zs)
+    if abs(h / expected - 1.0) < 0.25:
+        return
+    f = expected / h
+    print("INFO normalize %.3f -> %.3f (x%.2f)" % (h, expected, f))
+    world = mesh.matrix_world.copy()
+    mesh.parent = None
+    mesh.matrix_world = world
+    for v in mesh.data.vertices:
+        v.co *= f
+    mesh.data.update()
+    with bpy.context.temp_override(object=arm, active_object=arm, selected_objects=[arm]):
+        bpy.ops.object.mode_set(mode="EDIT")
+        for eb in arm.data.edit_bones:
+            eb.head *= f
+            eb.tail *= f
+        bpy.ops.object.mode_set(mode="OBJECT")
+    arm.scale = (1.0, 1.0, 1.0)
+    mesh.parent = arm
+    mesh.matrix_parent_inverse = arm.matrix_world.inverted()
+    upd()
+
+
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=glb)
@@ -242,6 +268,7 @@ def main():
             bpy.data.objects.remove(o)               # pomocnicza „Icosphere” z importu
     arm = [o for o in bpy.data.objects if o.type == "ARMATURE"][0]
     mesh = [o for o in bpy.data.objects if o.type == "MESH"][0]
+    normalize_scale(arm, mesh, 1.75 if "female" in NAME else 1.8)
     zs = [(mesh.matrix_world @ v.co).z for v in mesh.data.vertices]
     H = max(zs) - min(zs)
     px = REF_H / CHAR_PX

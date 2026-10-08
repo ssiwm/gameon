@@ -31,7 +31,8 @@ static var _hd := -1
 ## pierwszym użyciu (HUD i menu budują się w `_ready` dzieci, zanim zadziała `Main._ready`, więc zwykła zmienna ustawiana w main.gd byłaby za późno).
 static func hd_on() -> bool:
 	if _hd < 0:
-		_hd = 1 if "--newui" in OS.get_cmdline_user_args() else 0
+		var args := OS.get_cmdline_user_args()
+		_hd = 1 if ("--newui" in args or Settings.hd_active()) else 0
 	return _hd == 1
 
 static func get_theme() -> Theme:

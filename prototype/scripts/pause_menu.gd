@@ -138,6 +138,7 @@ func _build_settings() -> void:
 	_settings_page.add_child(_caption("DISPLAY"))
 	_cycler("ui", "HUD size", Settings.cycle_ui)
 	_cycler("full", "Fullscreen  (F11)", Settings.toggle_fullscreen)
+	_cycler("hd", "Graphics (restart)", Settings.toggle_hd)
 
 ## Wiersz: opis po lewej, [−] wartość [+] po prawej.
 func _stepper(kind: String, text: String) -> void:
@@ -245,6 +246,7 @@ func _refresh() -> void:
 	_values["mic"].text = Voice.label().replace("MIC: ", "")
 	_values["ui"].text = Settings.UI_NAMES[Settings.ui_idx]
 	_values["full"].text = "ON" if Settings.fullscreen else "OFF"
+	_values["hd"].text = "HD" if Settings.graphics_hd else "CLASSIC"
 
 func _show_tab(i: int) -> void:
 	_tab = i
