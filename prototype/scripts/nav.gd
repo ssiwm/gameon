@@ -88,8 +88,13 @@ func _connect(a: Vector2i, b: Vector2i, kind: int) -> void:
 func edge_kind(from_id: int, to_id: int) -> int:
 	return _edge.get((from_id << 20) | to_id, Edge.WALK)
 
+var _no_jump := false       ## bieżące wyszukiwanie dla kogoś, kto nie skacze: skoki są bardzo drogie (trasa na piechotę, jeśli istnieje)
+const NO_JUMP_PENALTY := 60.0
+
 func _compute_cost(from_id: int, to_id: int) -> float:
-	return get_point_position(from_id).distance_to(get_point_position(to_id)) * COST[edge_kind(from_id, to_id)]
+	var k := edge_kind(from_id, to_id)
+	var c: float = get_point_position(from_id).distance_to(get_point_position(to_id)) * float(COST[k])
+	return c * NO_JUMP_PENALTY if (_no_jump and k == Edge.JUMP) else c
 
 func _estimate_cost(from_id: int, to_id: int) -> float:
 	return get_point_position(from_id).distance_to(get_point_position(to_id))
@@ -182,9 +187,11 @@ static var stat_calls := 0
 static var stat_usec := 0
 
 ## Ścieżka jako lista kroków {pos, kind, id}; pierwszy krok = start.
-func find_path(from: Vector2, to: Vector2) -> Array:
+func find_path(from: Vector2, to: Vector2, can_jump := true) -> Array:
 	var t0 := Time.get_ticks_usec()
+	_no_jump = not can_jump
 	var res := _find_path(from, to)
+	_no_jump = false
 	stat_calls += 1
 	stat_usec += Time.get_ticks_usec() - t0
 	return res

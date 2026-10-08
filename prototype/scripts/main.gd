@@ -481,6 +481,8 @@ func _handle_cmdline() -> void:
 	for a in args:
 		if a.begins_with("--perfsweep="):
 			sweep = int(a.substr("--perfsweep=".length()))
+	if "--navstat" in args:
+		_nav_stat()
 	if perf_secs > 0.0 and sweep > 0:
 		_perf_sweep(perf_secs, sweep)
 	elif perf_secs > 0.0:
@@ -632,6 +634,46 @@ func host_game() -> void:
 ## Dev (--perf=SEK --perfsweep=KROK [--perfwake]): „przejście" mapy — gracz 1 staje co KROK kolumn na każdym piętrze, w każdym miejscu mierzymy SEK sekund
 ## klatek (bez vsync) i dopisujemy liczbę wrogów w promieniu 400 px. Wynik: tabela najgorszych miejsc (średnia, p95, max, wywołania rysowania, wrogowie).
 ## `--perfwake` budzi wszystkich wrogów mapy na starcie (najgorszy przypadek: cała mapa goni).
+## Dev (--navstat): na bieżącej mapie losuje pary miejsc i liczy trasy dla kogoś, kto nie skacze (Wołek): ile razy zwykła trasa idzie przez skok, a istnieje trasa
+## na piechotę (naprawione preferowaniem chodzenia) i ile par jest nieosiągalnych bez skoku (tam wróg stoi pod ścianą i po BLOCK_GIVEUP rezygnuje).
+func _nav_stat() -> void:
+	await get_tree().create_timer(1.0).timeout
+	var nav = level.nav
+	var ids: Array = nav.get_point_ids()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 87
+	var total := 0
+	var jump_default := 0
+	var fixed := 0
+	var blocked := 0
+	for i in 600:
+		var a: int = ids[rng.randi() % ids.size()]
+		var b: int = ids[rng.randi() % ids.size()]
+		if a == b or nav.get_point_position(a).distance_to(nav.get_point_position(b)) < 80.0:
+			continue
+		var pa: Array = nav.find_path(nav.get_point_position(a), nav.get_point_position(b), true)
+		if pa.size() < 2:
+			continue
+		total += 1
+		var has_j := false
+		for st in pa:
+			if int(st["kind"]) == NavGraph.Edge.JUMP:
+				has_j = true
+		if not has_j:
+			continue
+		jump_default += 1
+		var pw: Array = nav.find_path(nav.get_point_position(a), nav.get_point_position(b), false)
+		var still := false
+		for st in pw:
+			if int(st["kind"]) == NavGraph.Edge.JUMP:
+				still = true
+		if still:
+			blocked += 1
+		else:
+			fixed += 1
+	print("[NAVSTAT] mapa=%s par=%d, zwykła trasa ze skokiem=%d → na piechotę istnieje (naprawione)=%d, nieosiągalne bez skoku=%d" % [level.map_id, total, jump_default, fixed, blocked])
+	get_tree().quit()
+
 func _perf_sweep(secs: float, step: int) -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = 0
@@ -874,6 +916,17 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if hp1 != null:
 			hp1.hp = 1
 			NoiseMgr.level = 60.0
+	if "--shottoast" in OS.get_cmdline_user_args():
+		_toast("Steam overlay unavailable (start the game from Steam / add it as a non-Steam game). Lobby ID 109775240944 copied — send it to friends: paste + STEAM JOIN.", 20.0)      # --shottoast: podgląd komunikatu F2
+	if "--shothandcar" in OS.get_cmdline_user_args():
+		var hc := get_tree().get_first_node_in_group("handcar")       # --shothandcar: drezyna zasilona i oświetlona flarą (podgląd HD; użyj z --shotat/--shotrow)
+		if hc != null:
+			hc.enabled = true
+			level.spawn_flare(hc.global_position + Vector2(-20.0, -40.0), Vector2.ZERO)
+	if "--shotclear" in OS.get_cmdline_user_args():
+		for ce in get_tree().get_nodes_in_group("enemies"):       # --shotclear: bez wrogów (spokojny podgląd obiektów świata)
+			if not (ce is RigidBody2D):
+				ce.queue_free()
 	if "--shotextract" in OS.get_cmdline_user_args():
 		mission._open_extraction(false)                       # --shotextract: od razu faza ewakuacji (flara z płomieniem i słupem światła), gracz 1 obok niej
 		var xp: Node2D = _players.get_node_or_null("1")
@@ -995,7 +1048,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var p: Node2D = _players.get_node_or_null("1")
 		if p != null:
 			var fy := 0.0
-			for r in range(0, level._map.size()):
+			var shot_row0 := 0
+			for sa in OS.get_cmdline_user_args():
+				if sa.begins_with("--shotrow="):
+					shot_row0 = int(sa.substr("--shotrow=".length()))          # piętro zrzutu: pierwsza podłoga od tego wiersza w dół
+			for r in range(shot_row0, level._map.size()):
 				if level._is_solid(col, r) and not level._is_solid(col, r - 1):
 					fy = float(r * 16)
 					break
@@ -2091,7 +2148,32 @@ func join_game(ip: String) -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
 	var k := event as InputEventKey
 	if k != null and k.pressed and not k.echo and k.keycode == KEY_F2 and steam != null:
-		steam.invite()
+		var msg: String = steam.invite()
+		if msg != "":
+			_lobby.set_status(msg)
+			_toast(msg, 7.0)
+
+## Krótki komunikat na górze ekranu (poza lobby, np. w trakcie gry), znika po `secs` s.
+func _toast(text: String, secs := 5.0) -> void:
+	var l := Label.new()
+	l.text = text
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.add_theme_font_size_override("font_size", 7)
+	l.add_theme_color_override("font_color", Color(1.0, 0.9, 0.6))
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	l.add_theme_constant_override("outline_size", 2)
+	l.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	l.offset_left = -170.0
+	l.offset_right = 170.0
+	l.offset_top = 62.0
+	l.offset_bottom = 100.0
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$UI.add_child(l)
+	var tw := create_tween()
+	tw.tween_interval(secs)
+	tw.tween_property(l, "modulate:a", 0.0, 1.0)
+	tw.tween_callback(l.queue_free)
 
 func _on_peer_connected(id: int) -> void:
 	print("[NET] peer connected: %d" % id)

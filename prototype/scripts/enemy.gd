@@ -165,6 +165,10 @@ var _has_lead := false        ## ma ślad do sprawdzenia
 var _last_known := Vector2.ZERO
 var _lose_t := 0.0
 var _search_t := 0.0
+var _blocked_t := 0.0         ## s, od kiedy pościg stoi pod skokiem, którego wróg nie potrafi
+var _ignore_t := 0.0          ## s, przez które wróg ignoruje graczy (porzucił nieosiągalny cel)
+const BLOCK_GIVEUP := 4.0
+const IGNORE_TIME := 8.0
 var _home_t := 0.0
 var _retreat := 0.0           ## Trzosek odskakuje po ciosie (uderz i uciekaj)
 var _path: Array = []
@@ -899,6 +903,10 @@ func _noise_reach(amount: float, mult := 1.0) -> float:
 
 ## Najbliższy WIDOCZNY gracz (zasięg wzroku + brak ściany na linii). Co PERCEIVE_DT, nie co klatkę.
 func _perceive(delta: float) -> void:
+	_ignore_t = maxf(0.0, _ignore_t - delta)
+	if _ignore_t > 0.0:
+		_target = null                    # porzucił nieosiągalny cel (stał pod ścianą, której nie przeskoczy) — nie blokuje korytarza, wraca do siebie
+		return
 	_perceive_t -= delta
 	if _perceive_t > 0.0:
 		if _target != null and (not is_instance_valid(_target) or _target.dead):
@@ -986,7 +994,18 @@ func _chase(target: Node2D, speed: float, delta: float) -> void:
 	_level_t = _level_t + delta if absf(d.y) >= 24.0 else 0.0
 	if _level_t > 0.35 and _has_nav():
 		_steer_to(target.global_position, speed, delta)
+		if _blocked:
+			_blocked_t += delta
+			if _blocked_t > BLOCK_GIVEUP:
+				_blocked_t = 0.0
+				_blocked = false
+				_target = null
+				_has_lead = false
+				_ignore_t = IGNORE_TIME
+		else:
+			_blocked_t = 0.0
 		return
+	_blocked_t = 0.0
 	_blocked = false
 	if _def.get("pack", false) and _pack_hold(target):
 		_hover(d, speed)
@@ -1089,7 +1108,7 @@ func _steer_to(goal: Vector2, speed: float, delta: float) -> void:
 	if is_on_floor() and (_repath <= 0.0 or _path_goal.distance_to(goal) > 40.0) and _path_slot():
 		_repath = 0.45 + randf() * 0.1                  # rozsunięte w czasie, żeby wataha nie liczyła tras w tej samej klatce
 		_path_goal = goal
-		_path = nav.find_path(global_position, goal)
+		_path = nav.find_path(global_position, goal, bool(_def["leap"]))         # ci, co nie skaczą (Wołek), wolą trasę na piechotę, jeśli jest
 		_path_i = 1
 		_blocked = false
 	if _path.size() < 2 or _path_i >= _path.size():

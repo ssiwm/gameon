@@ -777,13 +777,60 @@ def m_range_sign(P):
             sph((x, -0.9, z), 0.4, P["steel_d"], seg=10)
 
 
+def m_handcar(P):
+    # drezyna (misja 1.2): korpus bez kół i bez dźwigni — rama, pokład z desek, zderzaki, słup pompy, latarnia (koła i dźwignia to osobne sprite'y, żeby się ruszały)
+    HW = 44.0
+    box((0, 0.2, 3.0), (HW * 2 - 4, 4.2, 2.0), P["steel_d"], 0.25)
+    for sx in (-1, 1):
+        box((sx * (HW + 0.2), 0, 3.6), (4.0, 4.6, 3.0), P["rusty"], 0.4)
+        box((sx * (HW + 0.2), -2.35, 4.6), (4.0, 0.3, 0.8), P["steel"], 0.1)
+    n = 8
+    pw = HW * 2 / n
+    for i in range(n):
+        box((-HW + pw * (i + 0.5), 0, 4.0), (pw - 0.5, 6.0, 2.6), P["wood_d" if i % 3 == 1 else "wood"], 0.3)
+    for sx in (-1, 1):
+        box((sx * (HW - 1.5), -3.05, 4.0), (1.4, 0.3, 2.8), P["steel"], 0.08)         # okucia na końcach pokładu
+    for x in (-HW + 3, HW - 4, -9, 8):
+        sph((x, -3.15, 5.0), 0.35, P["steel_l"], seg=10)
+    box((0, 0, 9.5), (4.0, 3.2, 9.0), P["steel"], 0.3)                                  # słup pompy
+    box((0, 0, 6.6), (8.0, 4.0, 2.0), P["rusty"], 0.3)
+    cyl((0, -1.7, 13.0), 1.0, 0.6, P["gold"], axis="Y", seg=20)                         # oś dźwigni
+    for i in range(4):
+        box((HW - 9 + i * 2.0 + 0.5, -2.2, 3.0), (1.0, 0.3, 1.8), P["black"] if i % 2 == 0 else P["yellow"], 0.03)   # pasy ostrzegawcze
+    box((-HW + 3.0, 0, 10.5), (2.0, 2.0, 11.0), P["steel"], 0.15)                       # wspornik latarni
+    box((-HW + 3.0, 0, 17.5), (8.0, 4.4, 5.0), P["steel"], 0.5)
+    box((-HW + 3.0, -2.3, 17.5), (5.0, 0.5, 3.4), P["black"], 0.15)                     # szkło latarni (blask rysuje gra)
+    box((-HW + 3.0, -1.0, 20.1), (8.4, 4.6, 0.6), P["steel_l"], 0.1)
+
+
+def m_handcar_wheel(P):
+    # koło drezyny (obraca je gra): żeliwna obręcz z kołnierzem, sześć szprych, mosiężna piasta; środek bryły = środek obrotu
+    tor((0, 0, 0), 2.85, 0.55, P["steel_d"], "Y", seg=48)
+    tor((0, -0.35, 0), 2.95, 0.3, P["steel"], "Y", seg=48)
+    for k in range(6):
+        a = k * 60.0
+        box((0, -0.2, 0), (0.55, 0.5, 5.6), P["rusty"], 0.05, rot=(0, a, 0))
+    cyl((0, -0.5, 0), 0.95, 0.9, P["steel"], axis="Y", seg=24)
+    cyl((0, -1.0, 0), 0.6, 0.5, P["gold"], axis="Y", seg=20)
+
+
+def m_handcar_lever(P):
+    # dźwignia pompy (kiwa się w grze): belka 44 px z uchwytami po bokach i żółtymi opaskami; środek = oś
+    box((0, 0, 0), (44.0, 2.4, 2.4), P["wood"], 0.4)
+    box((0, -1.25, 0), (43.0, 0.4, 0.8), P["wood_l"], 0.1)
+    for sx in (-1, 1):
+        box((sx * 21.0, 0, 2.5), (3.0, 2.4, 5.0), P["steel"], 0.3)
+        box((sx * 21.0, -1.3, 4.6), (4.0, 0.3, 0.9), P["yellow"], 0.05)
+    cyl((0, -1.3, 0), 1.6, 0.5, P["gold"], axis="Y", seg=24)
+
+
 # nazwa → (budowniczy, px na piksel świata)
 MODELS = {
     "frag": (m_frag, 32), "phos": (m_phos, 32), "smoke": (m_smoke, 32), "mine": (m_mine, 32), "charge": (m_charge, 32),
     "medkit": (m_medkit, 32), "defib": (m_defib, 32), "scanner": (m_scanner, 32),
     "flare": (m_flare, 32), "flare_stuck": (lambda P: m_flare(P, True), 32), "flare_box": (m_flare_box, 32),
     "supply": (m_supply, 32), "ammo": (m_ammo, 32), "cache": (m_cache, 32), "stash": (m_stash, 32), "tag": (m_tag, 32),
-    "bones": (m_bones, 32), "reeds": (m_reeds, 32), "board": (m_board, 16), "results_board": (m_results_board, 12), "range_target": (m_range_target, 24), "range_sign": (m_range_sign, 24), "crate": (m_crate, 24), "barrel": (m_barrel, 24), "rack": (m_rack, 16), "tools_wall": (m_tools_wall, 20), "lamp": (m_lamp, 24),
+    "bones": (m_bones, 32), "reeds": (m_reeds, 32), "board": (m_board, 16), "results_board": (m_results_board, 12), "range_target": (m_range_target, 24), "range_sign": (m_range_sign, 24), "handcar": (m_handcar, 12), "handcar_wheel": (m_handcar_wheel, 64), "handcar_lever": (m_handcar_lever, 24), "crate": (m_crate, 24), "barrel": (m_barrel, 24), "rack": (m_rack, 16), "tools_wall": (m_tools_wall, 20), "lamp": (m_lamp, 24),
 }
 
 # ---------------------------------------------------------------- render
