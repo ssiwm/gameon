@@ -4,6 +4,8 @@ extends Node2D
 ## (dane: run_log.gd, każdy peer zapisuje je sam). Gdy lokalny gracz stoi przy tablicy, kreda jaśnieje.
 
 const UiTheme := preload("res://scripts/ui_theme.gd")
+const Sprites := preload("res://scripts/sprites.gd")
+const ItemsHd := preload("res://scripts/items_hd.gd")
 const RunLog := preload("res://scripts/run_log.gd")
 const REACH_X := 70.0
 const REACH_Y := 40.0
@@ -17,10 +19,18 @@ const CHALK_RED := Color(0.9, 0.5, 0.42)
 var local_in_range := false
 var _count := -1
 var _was_near := false
+var _hd := false
+var _ov: Node2D                       ## HD: nakładka z treścią (kreda) nad sprite'em tablicy
 
 func _ready() -> void:
 	add_to_group("results_wall")
 	z_index = 0
+	if Sprites.newitem and ItemsHd.has("results_board"):
+		_hd = true
+		ItemsHd.make("results_board", self)
+		_ov = Node2D.new()
+		_ov.draw.connect(func() -> void: _draw_content(_ov))
+		add_child(_ov)
 
 func _physics_process(_delta: float) -> void:
 	local_in_range = false
@@ -32,14 +42,16 @@ func _physics_process(_delta: float) -> void:
 		_count = RunLog.entries.size()
 		_was_near = local_in_range
 		queue_redraw()
+		if _ov != null:
+			_ov.queue_redraw()
 
 ## Numer misji z tytułu mapy („1.2  RADIO SILENCE" → „1.2").
 func _short_id(title: String) -> String:
 	return title.split(" ", false)[0] if title != "" else "?"
 
 func _draw() -> void:
-	var font := UiTheme.heading_font()
-	var a := 1.0 if local_in_range else 0.8
+	if _hd:
+		return
 	# drewniana rama, zielona tablica i półka na kredę
 	draw_rect(Rect2(-58, -66, 116, 66), Color(0.14, 0.1, 0.07))
 	draw_rect(Rect2(-56, -64, 112, 58), Color(0.1, 0.13, 0.12))
@@ -50,15 +62,21 @@ func _draw() -> void:
 	# ślady po wytartej kredzie
 	draw_rect(Rect2(-46, -22, 30, 1), Color(CHALK, 0.07))
 	draw_rect(Rect2(8, -26, 36, 1), Color(CHALK, 0.06))
+	_draw_content(self)
+
+## Treść tablicy (kreda): tytuł, wiersze ostatnich misji, kreski i łączny czas.
+func _draw_content(ci: CanvasItem) -> void:
+	var font := UiTheme.heading_font()
+	var a := 1.0 if local_in_range else 0.8
 	if font == null:
 		return
 	var es: Array = RunLog.entries
-	draw_string(font, Vector2(-50, -54), "RESULTS", HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, Color(CHALK, a))
-	draw_string(font, Vector2(50 - 30, -54), "%d" % es.size(), HORIZONTAL_ALIGNMENT_RIGHT, 30, FONT, Color(CHALK, 0.6 * a))
-	draw_line(Vector2(-50, -50), Vector2(50, -50), Color(CHALK, 0.4 * a), 1.0)
+	ci.draw_string(font, Vector2(-50, -54), "RESULTS", HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, Color(CHALK, a))
+	ci.draw_string(font, Vector2(50 - 30, -54), "%d" % es.size(), HORIZONTAL_ALIGNMENT_RIGHT, 30, FONT, Color(CHALK, 0.6 * a))
+	ci.draw_line(Vector2(-50, -50), Vector2(50, -50), Color(CHALK, 0.4 * a), 1.0)
 	if es.is_empty():
-		draw_string(font, Vector2(-50, -34), "NO MISSIONS YET", HORIZONTAL_ALIGNMENT_CENTER, 100, FONT, Color(CHALK, 0.35 * a))
-		draw_string(font, Vector2(-50, -24), "FINISH ONE", HORIZONTAL_ALIGNMENT_CENTER, 100, FONT, Color(CHALK, 0.25 * a))
+		ci.draw_string(font, Vector2(-50, -34), "NO MISSIONS YET", HORIZONTAL_ALIGNMENT_CENTER, 100, FONT, Color(CHALK, 0.35 * a))
+		ci.draw_string(font, Vector2(-50, -24), "FINISH ONE", HORIZONTAL_ALIGNMENT_CENTER, 100, FONT, Color(CHALK, 0.25 * a))
 	else:
 		var shown := 0
 		for i in range(es.size() - 1, -1, -1):
@@ -66,11 +84,11 @@ func _draw() -> void:
 				break
 			var e: Dictionary = es[i]
 			var y := -40.0 + float(shown) * 10.0
-			draw_string(font, Vector2(-50, y), _short_id(String(e["title"])), HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, Color(CHALK, a))
-			draw_string(font, Vector2(-26, y), RunLog.fmt_time(float(e["time"])), HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, Color(CHALK, 0.85 * a))
+			ci.draw_string(font, Vector2(-50, y), _short_id(String(e["title"])), HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, Color(CHALK, a))
+			ci.draw_string(font, Vector2(-26, y), RunLog.fmt_time(float(e["time"])), HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, Color(CHALK, 0.85 * a))
 			var downs := int(e["downs"])
-			draw_string(font, Vector2(4, y), "D%d" % downs, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, Color(CHALK_RED if downs > 0 else CHALK, (1.0 if downs > 0 else 0.6) * a))
-			draw_string(font, Vector2(50 - 36, y), "+%d" % int(e.get("scrap", 0)), HORIZONTAL_ALIGNMENT_RIGHT, 36, FONT, Color(CHALK_GOLD, a))
+			ci.draw_string(font, Vector2(4, y), "D%d" % downs, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, Color(CHALK_RED if downs > 0 else CHALK, (1.0 if downs > 0 else 0.6) * a))
+			ci.draw_string(font, Vector2(50 - 36, y), "+%d" % int(e.get("scrap", 0)), HORIZONTAL_ALIGNMENT_RIGHT, 36, FONT, Color(CHALK_GOLD, a))
 			shown += 1
 	# kreski za wszystkie ukończone misje (grupy po pięć: cztery pionowe i przekreślenie) i łączny czas
 	for i in es.size():
@@ -78,8 +96,8 @@ func _draw() -> void:
 		var k := i % 5
 		var x := -50.0 + float(g) * 14.0 + float(k) * 2.5
 		if k < 4:
-			draw_line(Vector2(x, -17), Vector2(x, -9), Color(CHALK, 0.85 * a), 1.0)
+			ci.draw_line(Vector2(x, -17), Vector2(x, -9), Color(CHALK, 0.85 * a), 1.0)
 		else:
-			draw_line(Vector2(x - 11.0, -9), Vector2(x + 1.0, -17), Color(CHALK, 0.85 * a), 1.0)
+			ci.draw_line(Vector2(x - 11.0, -9), Vector2(x + 1.0, -17), Color(CHALK, 0.85 * a), 1.0)
 	if not es.is_empty():
-		draw_string(font, Vector2(50 - 40, -9), RunLog.fmt_time(RunLog.total_time()), HORIZONTAL_ALIGNMENT_RIGHT, 40, FONT, Color(CHALK, 0.6 * a))
+		ci.draw_string(font, Vector2(50 - 40, -9), RunLog.fmt_time(RunLog.total_time()), HORIZONTAL_ALIGNMENT_RIGHT, 40, FONT, Color(CHALK, 0.6 * a))

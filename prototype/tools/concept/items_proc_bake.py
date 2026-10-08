@@ -377,6 +377,14 @@ def palette():
     P["reed"] = mat("reed", (112, 134, 70), "cloth", rough=0.9, grime=0.6, bump=0.3, col2=(70, 90, 40))
     P["reed_dry"] = mat("reed_dry", (170, 150, 84), "cloth", rough=0.9, grime=0.6, bump=0.3, col2=(110, 92, 50))
     P["cattail"] = mat("cattail", (92, 58, 34), "cloth", rough=0.9, grime=0.5, bump=0.8, col2=(54, 32, 18))
+    P["cork"] = mat("cork", (176, 128, 84), "solid", rough=0.95, grime=0.7, bump=0.9, scale=3.0, col2=(112, 76, 44))
+    P["paper"] = mat("paper", (222, 214, 190), "solid", rough=0.9, grime=0.45, bump=0.12, col2=(176, 164, 132))
+    P["ink"] = mat("ink", (52, 52, 58), "solid", grime=0.1, bump=0.05)
+    P["slate"] = mat("slate_b", (28, 38, 34), "solid", rough=0.95, grime=0.9, bump=0.15, scale=0.8, col2=(66, 80, 72))
+    P["felt"] = mat("felt", (70, 52, 40), "cloth", grime=0.4, bump=0.6)
+    P["ply"] = mat("ply", (150, 110, 70), "wood", rough=0.85, grime=0.5, bump=0.4, col2=(96, 66, 40))
+    P["sign_dk"] = mat("sign_dk", (30, 26, 22), "metal", grime=0.5, bump=0.15)
+    P["sign_in"] = mat("sign_in", (30, 36, 33), "metal", grime=0.4, bump=0.1)
     P["gold"] = mat("gold", (224, 174, 54), "metal", rough=0.3, metal=1.0, grime=0.2, bump=0.05)
     P["cyan_e"] = mat("cyan_e", (40, 150, 170), "solid", grime=0.0, bump=0.0, emit=(70, 220, 240))
     P["cyan_h"] = mat("cyan_h", (190, 250, 255), "solid", grime=0.0, bump=0.0, emit=(200, 255, 255))
@@ -710,13 +718,72 @@ def m_reeds(P):
             cyl((x0 + lean * 1.4, 0, h * 0.86), 0.5, 2.6, P["cattail"], bevel=0.1, seg=16)
 
 
+def m_board(P):
+    # tablica z odprawą: korek w drewnianej ramie, przypięte kartki i czerwony sznurek (jak w kryjówce z horroru)
+    box((0, 0, 3.0), (4.0, 1.4, 6.0), P["wood_d"], 0.2)
+    box((0, 0, 23.0), (60.0, 1.8, 34.0), P["wood_d"], 0.5)
+    box((0, -0.95, 23.0), (56.0, 0.8, 30.0), P["cork"], 0.2)
+    box((0, -1.05, 38.0), (56.0, 0.7, 2.0), P["cork"], 0.1)
+    papers = [(-15.5, 24.0, 13.0, 16.0, 2.0), (0.0, 25.0, 12.0, 14.0, -2.5), (15.0, 23.0, 14.0, 17.0, 3.0), (-5.0, 12.5, 18.0, 9.0, -1.5)]
+    pins = []
+    for i, (cx, cz, w, h, rz) in enumerate(papers):
+        box((cx, -1.45 - i * 0.04, cz), (w, 0.12, h), P["paper"], 0.05, rot=(0, rz, 0))
+        for k in range(3):
+            lw = w - 3.0 - (k % 2) * 2.0
+            box((cx - (w - 3.0 - lw) * 0.5 * 0.0, -1.58 - i * 0.04, cz + h * 0.5 - 4.0 - k * 2.6), (lw, 0.1, 0.7), P["ink"], 0.02, rot=(0, rz, 0))
+        px, pz = cx, cz + h * 0.5 - 1.3
+        sph((px, -1.9 - i * 0.04, pz), 0.75, P["red"], seg=20)
+        sph((px - 0.25, -2.5 - i * 0.04, pz + 0.3), 0.2, P["white"], seg=8)
+        pins.append((px, -1.9 - i * 0.04, pz))
+    for a, b in zip(pins, pins[1:] + pins[:1]):
+        tube([(a[0], a[1] - 0.2, a[2]), ((a[0] + b[0]) * 0.5, a[1] - 0.6, (a[2] + b[2]) * 0.5 - 1.2), (b[0], b[1] - 0.2, b[2])], 0.1, P["red_d"], res=3)
+
+
+def m_results_board(P):
+    # tablica wyników: drewniana rama, zielonkawa łupkowa płyta z rozmazami kredy, półka z kredą i gąbką
+    box((0, 0, 33.0), (116.0, 2.4, 66.0), P["wood_d"], 0.7)
+    box((0, -1.35, 35.0), (112.0, 0.9, 58.0), P["slate"], 0.3)
+    box((0, -2.4, 4.0), (116.0, 3.4, 2.0), P["wood"], 0.4)
+    box((0, -1.2, 5.6), (116.0, 1.0, 1.6), P["wood_d"], 0.2)
+    for x, c in ((-6.0, "white"), (-3.0, "white"), (16.0, "yellow")):
+        cyl((x, -2.4, 5.8), 0.5, 4.0 if c == "white" else 2.4, P[c], axis="X", seg=12, bevel=0.05)
+    box((38.0, -2.2, 6.4), (9.0, 2.2, 2.2), P["felt"], 0.5)
+    for x in (-54.0, 54.0):
+        for z in (6.0, 62.0):
+            sph((x, -1.4, z), 0.6, P["steel_d"], seg=12)
+
+
+def m_range_target(P):
+    # manekin strzelnicy: sylwetka z płyty (głowa-krążek, tułów), tarcze malowane pierścieniami, podpórki
+    box((0, 0, 12.0), (14.0, 1.4, 24.0), P["ply"], 0.4)
+    cyl((0, 0.2, 29.0), 6.0, 1.4, P["ply"], axis="Y", seg=40, bevel=0.2)
+    box((0, 0, 24.5), (3.0, 1.2, 3.0), P["ply"], 0.2)
+    for r, m, dy in ((4.6, "paper", -0.8), (3.2, "red_d", -0.9), (2.0, "paper", -1.0), (0.9, "red", -1.1)):
+        cyl((0, dy - 0.3, 29.0), r, 0.12, P[m], axis="Y", seg=36, bevel=0.01)
+    for r, m, dy in ((4.8, "paper", -0.75), (3.4, "red_d", -0.85), (2.1, "paper", -0.95), (0.9, "red", -1.05)):
+        cyl((0, dy - 0.3, 14.0), r, 0.12, P[m], axis="Y", seg=36, bevel=0.01)
+    tube([(-4.0, 1.0, 1.0), (-2.5, 3.5, 9.0)], 0.5, P["wood_d"], res=6)
+    tube([(4.0, 1.0, 1.0), (2.5, 3.5, 9.0)], 0.5, P["wood_d"], res=6)
+    box((0, 0.7, 1.0), (16.0, 3.0, 2.0), P["wood_d"], 0.3)
+
+
+def m_range_sign(P):
+    # tablica strzelnicy na słupku (napis „RANGE" rysuje gra)
+    box((0, 0.3, 11.5), (2.0, 1.2, 23.0), P["wood_d"], 0.25)
+    box((0, 0, 29.0), (34.0, 1.6, 11.0), P["sign_dk"], 0.4)
+    box((0, -0.9, 29.0), (32.0, 0.5, 9.0), P["sign_in"], 0.2)
+    for x in (-15.0, 15.0):
+        for z in (25.0, 33.0):
+            sph((x, -0.9, z), 0.4, P["steel_d"], seg=10)
+
+
 # nazwa → (budowniczy, px na piksel świata)
 MODELS = {
     "frag": (m_frag, 32), "phos": (m_phos, 32), "smoke": (m_smoke, 32), "mine": (m_mine, 32), "charge": (m_charge, 32),
     "medkit": (m_medkit, 32), "defib": (m_defib, 32), "scanner": (m_scanner, 32),
     "flare": (m_flare, 32), "flare_stuck": (lambda P: m_flare(P, True), 32), "flare_box": (m_flare_box, 32),
     "supply": (m_supply, 32), "ammo": (m_ammo, 32), "cache": (m_cache, 32), "stash": (m_stash, 32), "tag": (m_tag, 32),
-    "bones": (m_bones, 32), "reeds": (m_reeds, 32), "crate": (m_crate, 24), "barrel": (m_barrel, 24), "rack": (m_rack, 16), "tools_wall": (m_tools_wall, 20), "lamp": (m_lamp, 24),
+    "bones": (m_bones, 32), "reeds": (m_reeds, 32), "board": (m_board, 16), "results_board": (m_results_board, 12), "range_target": (m_range_target, 24), "range_sign": (m_range_sign, 24), "crate": (m_crate, 24), "barrel": (m_barrel, 24), "rack": (m_rack, 16), "tools_wall": (m_tools_wall, 20), "lamp": (m_lamp, 24),
 }
 
 # ---------------------------------------------------------------- render
