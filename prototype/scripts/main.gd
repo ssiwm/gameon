@@ -704,7 +704,11 @@ func _perf_run(secs: float, col: int) -> void:
 		var p: Node2D = _players.get_node_or_null("1")
 		if p != null:
 			var fy := 0.0
-			for r in range(0, level._map.size()):
+			var row0 := 0
+			for a in OS.get_cmdline_user_args():
+				if a.begins_with("--perfrow="):
+					row0 = int(a.substr("--perfrow=".length()))          # piętro: pierwsza podłoga od tego wiersza w dół (np. 51 = podziemia mapy 1.1)
+			for r in range(row0, level._map.size()):
 				if level._is_solid(col, r) and not level._is_solid(col, r - 1):
 					fy = float(r * 16)
 					break
@@ -750,11 +754,35 @@ func _perf_run(secs: float, col: int) -> void:
 	var prims := 0.0
 	var t_end := Time.get_ticks_msec() + int(secs * 1000.0)
 	var last := Time.get_ticks_usec()
+	var fxs := ""
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--perffx="):
+			fxs = a.substr("--perffx=".length())          # casing,blood,gibs,smoke — sztuczny ruch efektów walki (rzędy wielkości jak przy ogniu ciągłym)
+	var fx_acc := {"casing": 0.0, "blood": 0.0, "gibs": 0.0}
+	var vfx := load("res://scripts/vfx.gd")
+	var pf: Node2D = _players.get_node_or_null("1")
 	while Time.get_ticks_msec() < t_end:
 		await get_tree().process_frame
 		var now := Time.get_ticks_usec()
 		times.append(float(now - last) / 1000.0)
+		var dt_s := float(now - last) / 1e6
 		last = now
+		if fxs != "" and pf != null:
+			fx_acc["casing"] += dt_s * 12.0
+			fx_acc["blood"] += dt_s * 30.0
+			fx_acc["gibs"] += dt_s * 1.5
+			while fx_acc["casing"] >= 1.0:
+				fx_acc["casing"] -= 1.0
+				if "casing" in fxs:
+					vfx.casing(level, pf.global_position + Vector2(0, -9), Vector2.RIGHT, false)
+			while fx_acc["blood"] >= 1.0:
+				fx_acc["blood"] -= 1.0
+				if "blood" in fxs:
+					vfx.hit(level, pf.global_position + Vector2(randf_range(40.0, 160.0), -10.0), Vector2.LEFT, 0, false, false)
+			while fx_acc["gibs"] >= 1.0:
+				fx_acc["gibs"] -= 1.0
+				if "gibs" in fxs:
+					vfx.gibs(level, pf.global_position + Vector2(randf_range(40.0, 160.0), -8.0), Color(0.6, 0.45, 0.35), 9)
 		pairs += Performance.get_monitor(Performance.PHYSICS_2D_COLLISION_PAIRS)
 		active_o += Performance.get_monitor(Performance.PHYSICS_2D_ACTIVE_OBJECTS)
 		proc_t += Performance.get_monitor(Performance.TIME_PROCESS)

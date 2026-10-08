@@ -62,6 +62,7 @@ const RESULTS_WALL := preload("res://scripts/results_wall.gd")
 const RANGE_LINE := preload("res://scripts/range_line.gd")
 const WORKSHOP := preload("res://scripts/workshop.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
+const GibArt := preload("res://scripts/gib_art.gd")
 const LEECH := preload("res://scripts/leech.gd")
 const RANGE_TARGET := preload("res://scripts/range_target.gd")
 
@@ -176,6 +177,8 @@ func _ready() -> void:
 	_decals = Node2D.new()
 	_decals.name = "Decals"
 	_decals.draw.connect(_draw_decals)
+	if Sprites.newitem:
+		_decals.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	add_child(_decals)
 	_stable = [bd, _back, _solid, _deco, _decals]
 	_load(CAMPAIGN[0])
@@ -1292,20 +1295,12 @@ func _draw_decals() -> void:
 			_decals.draw_circle(Vector2.ZERO, rr, c)
 	_decals.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-## Plama krwi w grafice HD: miękki brzeg (dwa pierścienie), ciemny środek, wilgotny połysk i drobne krople obok.
+## Plama krwi w grafice HD: jedna tekstura kałuży (GibArt.blood_pool) na plamę, rysowana przez `draw_texture_rect` — wszystkie plamy sklejają się w jedno wywołanie.
 func _draw_decal_hd(p: Vector2, r: float, rng: RandomNumberGenerator) -> void:
-	for i in 6:
-		var off := Vector2(rng.randf_range(-r, r), rng.randf_range(-0.5, 0.3))
-		var rr := rng.randf_range(0.35, 0.8) * r
-		_decals.draw_set_transform(p + off, 0.0, Vector2(1.0, 0.3))
-		_decals.draw_circle(Vector2.ZERO, rr * 1.25, Color(0.28, 0.02, 0.04, 0.22))
-		_decals.draw_circle(Vector2.ZERO, rr, Color(0.3, 0.02, 0.04, rng.randf_range(0.55, 0.8)))
-		_decals.draw_circle(Vector2(0, -rr * 0.12), rr * 0.45, Color(0.16, 0.01, 0.02, 0.5))
-		_decals.draw_circle(Vector2(-rr * 0.25, -rr * 0.3), rr * 0.16, Color(0.8, 0.3, 0.3, 0.28))
-	for i in 4:
-		var dp := Vector2(rng.randf_range(-r * 1.6, r * 1.6), rng.randf_range(-0.9, 0.5))
-		_decals.draw_set_transform(p + dp, 0.0, Vector2(1.0, 0.45))
-		_decals.draw_circle(Vector2.ZERO, rng.randf_range(0.5, 1.1), Color(0.3, 0.02, 0.04, rng.randf_range(0.5, 0.8)))
+	var tex := GibArt.blood_pool(rng.randi() % 4)
+	var w := r * 3.6
+	var h := w * 20.0 / 64.0
+	_decals.draw_texture_rect(tex, Rect2(p.x - w * 0.5, p.y - h * 0.62, w, h), false, Color(1, 1, 1, rng.randf_range(0.8, 1.0)))
 
 ## Punkt startowy dla slotu gracza (1..4); kolejne sloty lekko przesunięte.
 func spawn_for(slot: int) -> Vector2:
