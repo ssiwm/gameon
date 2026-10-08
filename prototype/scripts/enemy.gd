@@ -251,8 +251,8 @@ func wake() -> void:
 		if p != null:
 			_lead_at(p.global_position)
 	# cała wataha budzi się razem
-	for e in get_tree().get_nodes_in_group("enemies"):
-		if e != self and e.has_method("wake") and e.global_position.distance_to(global_position) < SIBLING_WAKE_RADIUS:
+	for e in _near(global_position, SIBLING_WAKE_RADIUS):
+		if is_instance_valid(e) and e != self and e.has_method("wake") and e.global_position.distance_to(global_position) < SIBLING_WAKE_RADIUS:
 			e.wake()
 
 ## HP z uwzględnieniem poziomu trudności (difficulty.gd).
@@ -310,6 +310,37 @@ func _set_alive(a: bool) -> void:
 	alive = a
 	visible = a
 	($CollisionShape2D as CollisionShape2D).set_deferred("disabled", not a)
+
+## Siatka przestrzenna wrogów (komórka 48 px), budowana raz na klatkę fizyki przy pierwszym zapytaniu: pętle „każdy z każdym" (separacja, budzenie
+## watahy, blokada ataku, śmierć w watasze) przeglądają tylko sąsiednie komórki zamiast całej grupy — koszt rośnie liniowo z liczbą wrogów.
+const GRID_CELL := 48.0
+static var _grid: Dictionary = {}
+static var _grid_frame := -1
+
+## Wszyscy z grupy „enemies" (też rekwizyty, gniazda, bossowie) w komórkach pokrywających koło `radius` wokół `pos`; wywołujący filtruje dokładnie.
+func _near(pos: Vector2, radius: float) -> Array:
+	var frame := Engine.get_physics_frames()
+	if frame != _grid_frame:
+		_grid_frame = frame
+		_grid.clear()
+		for e in get_tree().get_nodes_in_group("enemies"):
+			var n2 := e as Node2D
+			if n2 == null or not is_instance_valid(n2):
+				continue
+			var key := Vector2i(floori(n2.global_position.x / GRID_CELL), floori(n2.global_position.y / GRID_CELL))
+			if _grid.has(key):
+				(_grid[key] as Array).append(n2)
+			else:
+				_grid[key] = [n2]
+	var out: Array = []
+	var c0 := Vector2i(floori((pos.x - radius) / GRID_CELL), floori((pos.y - radius) / GRID_CELL))
+	var c1 := Vector2i(floori((pos.x + radius) / GRID_CELL), floori((pos.y + radius) / GRID_CELL))
+	for cx in range(c0.x, c1.x + 1):
+		for cy in range(c0.y, c1.y + 1):
+			var cell: Variant = _grid.get(Vector2i(cx, cy))
+			if cell != null:
+				out.append_array(cell)
+	return out
 
 ## Liczniki do pomiarów (main.gd `_perf_run`): czas całego `_physics_process` wrogów, w tym `move_and_slide`.
 static var stat_usec := 0
@@ -959,14 +990,16 @@ func _pack_hold(target: Node2D) -> bool:
 	if winding or dx <= float(_def["reach"]) + 6.0:
 		return false
 	var committed := 0
-	for e in get_tree().get_nodes_in_group("enemies"):
-		if e == self or e.get_script() != get_script() or not e.alive or not e.active or e.kind != kind:
+	for e in _near(target.global_position, 120.0):
+		if not is_instance_valid(e) or e == self or e.get_script() != get_script() or not e.alive or not e.active or e.kind != kind:
 			continue
 		if e._target != target:
 			continue
 		if e.winding or (absf(e.global_position.x - target.global_position.x) <= float(e._def["reach"]) + 6.0 \
 				and absf(e.global_position.y - target.global_position.y) < 18.0):
 			committed += 1
+			if committed >= MAX_ATTACKERS:
+				break                                  # wynik i tak „zajęte" — nie liczymy dalej
 	return committed >= MAX_ATTACKERS
 
 func _hover(d: Vector2, speed: float) -> void:
@@ -984,8 +1017,8 @@ func _notify_pack_death() -> void:
 		return
 	var alpha := true
 	var mates: Array = []
-	for e in get_tree().get_nodes_in_group("enemies"):
-		if e == self or e.get_script() != get_script() or not e.alive or not e.active or e.kind != kind:
+	for e in _near(global_position, PACK_R):
+		if not is_instance_valid(e) or e == self or e.get_script() != get_script() or not e.alive or not e.active or e.kind != kind:
 			continue
 		if e.global_position.distance_to(global_position) > PACK_R:
 			continue
@@ -1013,12 +1046,14 @@ func _check_stalker_fear() -> void:
 
 func _separation(speed: float) -> float:
 	var push := 0.0
-	for e in get_tree().get_nodes_in_group("enemies"):
-		if e == self or e.get_script() != get_script() or not e.alive or not e.active:
+	for e in _near(global_position, 12.0):
+		if not is_instance_valid(e) or e == self or e.get_script() != get_script() or not e.alive or not e.active:
 			continue
 		var dx: float = global_position.x - e.global_position.x
 		if absf(dx) < 9.0 and absf(global_position.y - e.global_position.y) < 12.0:
 			push += (signf(dx) if dx != 0.0 else (1.0 if get_instance_id() > e.get_instance_id() else -1.0))
+			if absf(push) >= 1.0:
+				break                                  # wynik jest przycięty do ±1 — dalsi sąsiedzi nic nie zmienią
 	return clampf(push, -1.0, 1.0) * speed * 0.5
 
 func _has_nav() -> bool:

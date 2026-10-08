@@ -646,8 +646,12 @@ func _perf_run(secs: float, col: int) -> void:
 		# test obciążenia: N obudzonych wrogów (mieszanka rodzajów) w promieniu ~250 px wokół gracza
 		var pp: Node2D = _players.get_node_or_null("1")
 		var kinds := ["trzosek", "wolek", "slepiec", "trzosek", "skoczek", "trzosek"]
+		var span := 500.0                      # --perfspan=PX: rozstaw wrogów (większy = część poza kadrem)
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--perfspan="):
+				span = float(a.substr("--perfspan=".length()))
 		for i in mobs:
-			var off := Vector2(-250.0 + 500.0 * float(i) / float(maxi(mobs - 1, 1)), 0.0)
+			var off := Vector2(-span * 0.5 + span * float(i) / float(maxi(mobs - 1, 1)), 0.0)
 			level._add_enemy("PerfMob%d" % i, kinds[i % kinds.size()], pp.global_position + off)
 		await get_tree().create_timer(0.5).timeout
 		for i in mobs:
