@@ -732,6 +732,10 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			vfx.gibs(level, gp2.global_position + Vector2(40.0, -24.0), Color(0.8, 0.66, 0.46), 14)
 			vfx.gibs(level, gp2.global_position + Vector2(70.0, -24.0), Color(0.42, 0.14, 0.18), 14)
 			vfx.gibs(level, gp2.global_position + Vector2(100.0, -24.0), Color(0.18, 0.3, 0.26), 14)
+			for i in 6:
+				vfx.casing(level, gp2.global_position + Vector2(-60.0 + 6.0 * float(i), -14.0), Vector2.RIGHT, i % 3 == 0)
+			for i in 5:
+				vfx.debris(level, gp2.global_position + Vector2(130.0, -20.0), Vector2(randf_range(-60.0, 60.0), randf_range(-120.0, -40.0)), Vector2(3, 3), Color(0.5, 0.3, 0.24))
 	if "--shotitems" in OS.get_cmdline_user_args():
 		var ip: Node2D = _players.get_node_or_null("1")      # --shotitems: rząd przedmiotów na ziemi przed graczem (apteczka, amunicja, złom, skrzynie, flary, skrytka, nieśmiertelnik) + granat, mina, ładunek, flara
 		if ip != null:

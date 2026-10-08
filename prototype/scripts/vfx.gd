@@ -108,6 +108,8 @@ static func debris(parent: Node, pos: Vector2, vel: Vector2, size: Vector2, colo
 	sh.size = size
 	cs.shape = sh
 	b.add_child(cs)
+	if visual == null and Sprites.newitem:
+		visual = _shard_visual(size, color)                  # HD: nieregularny odłamek zamiast prostokąta (drzazgi, cegły, odłamki wybuchu)
 	if visual != null:
 		b.add_child(visual)
 	else:
@@ -237,6 +239,41 @@ static func _gib_visual(kind: int, sz: float, color: Color) -> Node2D:
 			root.add_child(ln)
 	return root
 
+## Łuska HD: mosiężny walec z jaśniejszym połyskiem, ciemniejszym denkiem i spłonką; śrutowa ma czerwony korpus i mosiężną stopkę.
+static func _casing_visual(big: bool) -> Node2D:
+	var root := Node2D.new()
+	var l := 3.6 if big else 2.8
+	var w := 1.5 if big else 1.0
+	var brass := Color(0.88, 0.7, 0.32)
+	var body := Color(0.62, 0.14, 0.1) if big else brass
+	root.add_child(_poly(PackedVector2Array([Vector2(-l * 0.5, -w * 0.5), Vector2(l * 0.5, -w * 0.5 + 0.1), Vector2(l * 0.5, w * 0.5 - 0.1), Vector2(-l * 0.5, w * 0.5)]), body.darkened(0.25)))
+	root.add_child(_poly(PackedVector2Array([Vector2(-l * 0.5, -w * 0.5), Vector2(l * 0.5, -w * 0.5 + 0.1), Vector2(l * 0.5, 0.0), Vector2(-l * 0.5, 0.0)]), body.lightened(0.15)))
+	root.add_child(_poly(PackedVector2Array([Vector2(-l * 0.5 + 0.2, -w * 0.3), Vector2(l * 0.15, -w * 0.3), Vector2(l * 0.15, -w * 0.12), Vector2(-l * 0.5 + 0.2, -w * 0.12)]), Color(1, 0.95, 0.75, 0.55)))
+	root.add_child(_poly(PackedVector2Array([Vector2(-l * 0.5, -w * 0.55), Vector2(-l * 0.5 + 0.55, -w * 0.55), Vector2(-l * 0.5 + 0.55, w * 0.55), Vector2(-l * 0.5, w * 0.55)]), brass.darkened(0.1)))   # denko
+	return root
+
+## Odłamek HD (drzazga, cegła, kawałek metalu): wypukły wielokąt o rozmiarze ~`size`, ciemniejszy spód i jaśniejsza krawędź górna.
+static func _shard_visual(size: Vector2, color: Color) -> Node2D:
+	var root := Node2D.new()
+	var base := color.darkened(randf_range(0.0, 0.2))
+	var pts := PackedVector2Array()
+	var n := 6
+	var rot := randf_range(-0.3, 0.3)
+	for k in n:
+		var a := rot + TAU * float(k) / float(n)
+		var rr := randf_range(0.8, 1.15)
+		pts.append(Vector2(cos(a) * size.x * 0.58 * rr, sin(a) * size.y * 0.58 * rr))
+	root.add_child(_poly(pts, base.darkened(0.3)))
+	var inner := PackedVector2Array()
+	for q in pts:
+		inner.append(q * 0.8 + Vector2(0, -size.y * 0.04))
+	root.add_child(_poly(inner, base))
+	var hi := PackedVector2Array()
+	for q in pts:
+		hi.append(q * 0.4 + Vector2(-size.x * 0.1, -size.y * 0.18))
+	root.add_child(_poly(hi, base.lightened(0.3) * Color(1, 1, 1, 0.7)))
+	return root
+
 ## Łuska wyrzucona w bok i w górę, przeciwnie do celowania; dźwięczy przy upadku.
 static func casing(parent: Node, pos: Vector2, aim: Vector2, big := false) -> void:
 	var side := -signf(aim.x) if absf(aim.x) > 0.2 else (1.0 if randf() < 0.5 else -1.0)
@@ -244,7 +281,8 @@ static func casing(parent: Node, pos: Vector2, aim: Vector2, big := false) -> vo
 	var col := Color(0.55, 0.16, 0.12) if big else Color(0.85, 0.68, 0.3)
 	debris(parent, pos, v, Vector2(3, 2) if big else Vector2(2, 1), col, 0.45, 20.0,
 		func(b: RigidBody2D) -> void:
-			Audio.play_variant_at("shell", 3, b.global_position, Audio.BUS_WORLD, -24.0 if not big else -20.0))
+			Audio.play_variant_at("shell", 3, b.global_position, Audio.BUS_WORLD, -24.0 if not big else -20.0),
+		_casing_visual(big) if Sprites.newitem else null)
 
 # ---------------------------------------------------------------- plamy
 
