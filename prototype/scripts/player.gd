@@ -295,6 +295,9 @@ func _setup_local() -> void:
 	if local_human:
 		_camera.make_current()
 		_camera.add_child(_dust_motes())
+		if Sprites.newitem:
+			for fog in _mist():
+				_camera.add_child(fog)
 		_apply_level_bounds()
 	var lvl_node := get_tree().get_first_node_in_group("level")
 	if lvl_node != null:
@@ -373,6 +376,70 @@ func _process(delta: float) -> void:
 func _fx_root() -> Node:
 	var lvl := get_tree().get_first_node_in_group("level")
 	return lvl if lvl != null else get_tree().current_scene
+
+## Mgła (HD): smugi o postrzępionych brzegach, nie okrągłe plamy. Trzy warstwy: (1) chłodna szaro-zielona mgła tuż nad ziemią i (3) rzadka wyżej — obie CIENIOWANE
+## światłem (w ciemności ich nie widać, snop latarki, lampa i flara wydobywają z nich objętość); (2) ciemna, nieoświetlana „zmora" przy podłożu,
+## która przyciemnia i brudzi widok. Emitowane w świecie, jak pył.
+static var _mist_tex: Texture2D
+
+## Wydłużona (256×96), postrzępiona smuga: szum fraktalny pomnożony przez eliptyczny zanik; jedna tekstura dla wszystkich cząsteczek.
+static func mist_texture() -> Texture2D:
+	if _mist_tex == null:
+		var w := 256
+		var h := 96
+		var nz := FastNoiseLite.new()
+		nz.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		nz.frequency = 0.024
+		nz.fractal_octaves = 4
+		nz.seed = 87
+		var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+		for y in h:
+			for x in w:
+				var dx := (float(x) + 0.5) / float(w) * 2.0 - 1.0
+				var dy := (float(y) + 0.5) / float(h) * 2.0 - 1.0
+				var fall := clampf(1.0 - (dx * dx + dy * dy * 1.3), 0.0, 1.0)
+				var n := nz.get_noise_2d(float(x), float(y) * 1.6) * 0.5 + 0.5
+				var a := clampf(pow(fall, 1.2) * smoothstep(0.28, 0.78, n) * 1.4, 0.0, 1.0)
+				img.set_pixel(x, y, Color(1, 1, 1, a))
+		_mist_tex = ImageTexture.create_from_image(img)
+	return _mist_tex
+
+func _mist() -> Array:
+	var out: Array = []
+	# [połowa wymiarów emisji, pozycja, ilość, kolor, skala min, skala max, nieoświetlana?, życie]
+	var cfgs := [
+		[Vector2(320, 14), Vector2(0, 42), 26, Color(0.46, 0.56, 0.58, 0.16), 0.9, 1.5, false, 20.0],
+		[Vector2(320, 12), Vector2(0, 44), 18, Color(0.0, 0.012, 0.02, 0.22), 1.0, 1.7, true, 24.0],
+		[Vector2(320, 70), Vector2(0, -10), 14, Color(0.5, 0.58, 0.6, 0.06), 1.3, 2.0, false, 22.0],
+	]
+	for cfg in cfgs:
+		var p := CPUParticles2D.new()
+		p.amount = int(cfg[2])
+		p.lifetime = float(cfg[7])
+		p.preprocess = float(cfg[7])
+		p.local_coords = false
+		p.position = cfg[1]
+		p.texture = mist_texture()
+		p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+		p.emission_rect_extents = cfg[0]
+		p.direction = Vector2(1, 0)
+		p.spread = 12.0
+		p.initial_velocity_min = 1.5
+		p.initial_velocity_max = 5.0
+		p.gravity = Vector2.ZERO
+		p.scale_amount_min = cfg[4]
+		p.scale_amount_max = cfg[5]
+		p.angle_min = -4.0
+		p.angle_max = 4.0
+		var g := Gradient.new()
+		var c: Color = cfg[3]
+		g.colors = PackedColorArray([Color(c, 0.0), c, c, Color(c, 0.0)])
+		g.offsets = PackedFloat32Array([0.0, 0.25, 0.75, 1.0])
+		p.color_ramp = g
+		if bool(cfg[6]):
+			p.material = Lights.unshaded()
+		out.append(p)
+	return out
 
 ## Pył w powietrzu wokół kadru — cieniowany, więc widać go tylko w świetle
 ## (snop latarki „ma objętość"). Emitowany w świecie, nie w kadrze.

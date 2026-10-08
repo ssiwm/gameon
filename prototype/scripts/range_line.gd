@@ -1,13 +1,13 @@
 extends Node2D
-## Strzelnica w kryjówce (znacznik „r"): trzy znaczniki na podłodze, z których się strzela do JEDNEJ tarczy (range_target.gd, znacznik „t") —
-## 5, 10 i 20 m od niej (odległość mierzona od tarczy, nie od znacznika „r") — oraz tablica „RANGE" przy najdalszym znaczniku.
+## Strzelnica w kryjówce (znacznik „r"): dwa znaczniki na podłodze, z których się strzela do JEDNEJ tarczy (range_target.gd, znacznik „t") —
+## 5 i 10 m od niej (odległość mierzona od tarczy, nie od znacznika „r") — oraz tablica „RANGE" przy najdalszym znaczniku.
 ## Znacznik, na którym stoi gracz, rozbłyska; odległość na żywo pokazuje też tabliczka pod tarczą. Pozwala sprawdzić spadek obrażeń z dystansu.
 
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 
-const DISTANCES_M := [5, 10, 20]
+const DISTANCES_M := [5, 10]
 const STAND_TOLERANCE := 10.0        ## px: tyle od środka znacznika uznajemy za „stoisz na nim"
 const AMBER := Color(0.9, 0.7, 0.2)
 
