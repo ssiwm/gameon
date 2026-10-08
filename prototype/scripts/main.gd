@@ -481,6 +481,8 @@ func _handle_cmdline() -> void:
 	for a in args:
 		if a.begins_with("--perfsweep="):
 			sweep = int(a.substr("--perfsweep=".length()))
+	if "--navstat" in args:
+		_nav_stat()
 	if perf_secs > 0.0 and sweep > 0:
 		_perf_sweep(perf_secs, sweep)
 	elif perf_secs > 0.0:
@@ -632,6 +634,46 @@ func host_game() -> void:
 ## Dev (--perf=SEK --perfsweep=KROK [--perfwake]): „przejście" mapy — gracz 1 staje co KROK kolumn na każdym piętrze, w każdym miejscu mierzymy SEK sekund
 ## klatek (bez vsync) i dopisujemy liczbę wrogów w promieniu 400 px. Wynik: tabela najgorszych miejsc (średnia, p95, max, wywołania rysowania, wrogowie).
 ## `--perfwake` budzi wszystkich wrogów mapy na starcie (najgorszy przypadek: cała mapa goni).
+## Dev (--navstat): na bieżącej mapie losuje pary miejsc i liczy trasy dla kogoś, kto nie skacze (Wołek): ile razy zwykła trasa idzie przez skok, a istnieje trasa
+## na piechotę (naprawione preferowaniem chodzenia) i ile par jest nieosiągalnych bez skoku (tam wróg stoi pod ścianą i po BLOCK_GIVEUP rezygnuje).
+func _nav_stat() -> void:
+	await get_tree().create_timer(1.0).timeout
+	var nav = level.nav
+	var ids: Array = nav.get_point_ids()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 87
+	var total := 0
+	var jump_default := 0
+	var fixed := 0
+	var blocked := 0
+	for i in 600:
+		var a: int = ids[rng.randi() % ids.size()]
+		var b: int = ids[rng.randi() % ids.size()]
+		if a == b or nav.get_point_position(a).distance_to(nav.get_point_position(b)) < 80.0:
+			continue
+		var pa: Array = nav.find_path(nav.get_point_position(a), nav.get_point_position(b), true)
+		if pa.size() < 2:
+			continue
+		total += 1
+		var has_j := false
+		for st in pa:
+			if int(st["kind"]) == NavGraph.Edge.JUMP:
+				has_j = true
+		if not has_j:
+			continue
+		jump_default += 1
+		var pw: Array = nav.find_path(nav.get_point_position(a), nav.get_point_position(b), false)
+		var still := false
+		for st in pw:
+			if int(st["kind"]) == NavGraph.Edge.JUMP:
+				still = true
+		if still:
+			blocked += 1
+		else:
+			fixed += 1
+	print("[NAVSTAT] mapa=%s par=%d, zwykła trasa ze skokiem=%d → na piechotę istnieje (naprawione)=%d, nieosiągalne bez skoku=%d" % [level.map_id, total, jump_default, fixed, blocked])
+	get_tree().quit()
+
 func _perf_sweep(secs: float, step: int) -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = 0
