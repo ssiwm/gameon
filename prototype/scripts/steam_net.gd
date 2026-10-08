@@ -147,10 +147,22 @@ func join_lobby(id: int) -> void:
 	else:
 		failed.emit("Steam: unsupported GodotSteam version (no lobby API).")
 
-## Okno zaproszeń Steam (overlay) dla bieżącego lobby.
-func invite() -> void:
-	if lobby_id != 0 and _steam != null and _steam.has_method("activateGameOverlayInviteDialog"):
-		_steam.call("activateGameOverlayInviteDialog", lobby_id)
+## Okno zaproszeń Steam (overlay) dla bieżącego lobby. Zwraca komunikat dla gracza (F2 wcześniej nic nie mówiło, gdy overlay był niedostępny).
+## Overlay działa tylko wtedy, gdy Steam „wstrzyknie" się do procesu gry — czyli gra uruchomiona ze Steama (np. dodana jako „gra spoza Steam"); gra odpalona
+## prosto z pliku .exe zwykle go nie ma. Wtedy ID lobby jest w schowku i trzeba je wysłać znajomym (wklejają je i dają STEAM JOIN).
+func invite() -> String:
+	if not _inited or _steam == null:
+		return "Steam is not running — start Steam before the game."
+	if lobby_id == 0:
+		return "No Steam lobby — F2 works after STEAM HOST (IP games have no Steam invites)."
+	DisplayServer.clipboard_set(str(lobby_id))
+	var overlay_ok := true
+	if _steam.has_method("isOverlayEnabled"):
+		overlay_ok = bool(_steam.call("isOverlayEnabled"))
+	if not overlay_ok or not _steam.has_method("activateGameOverlayInviteDialog"):
+		return "Steam overlay unavailable (start the game from Steam / add it as a non-Steam game). Lobby ID %d copied — send it to friends: paste + STEAM JOIN." % lobby_id
+	_steam.call("activateGameOverlayInviteDialog", lobby_id)
+	return "Invite dialog opened. Lobby ID %d copied (backup: friends paste it + STEAM JOIN)." % lobby_id
 
 func leave() -> void:
 	if _inited and lobby_id != 0 and _steam.has_method("leaveLobby"):

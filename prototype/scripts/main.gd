@@ -874,6 +874,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if hp1 != null:
 			hp1.hp = 1
 			NoiseMgr.level = 60.0
+	if "--shottoast" in OS.get_cmdline_user_args():
+		_toast("Steam overlay unavailable (start the game from Steam / add it as a non-Steam game). Lobby ID 109775240944 copied — send it to friends: paste + STEAM JOIN.", 20.0)      # --shottoast: podgląd komunikatu F2
 	if "--shothandcar" in OS.get_cmdline_user_args():
 		var hc := get_tree().get_first_node_in_group("handcar")       # --shothandcar: drezyna zasilona i oświetlona flarą (podgląd HD; użyj z --shotat/--shotrow)
 		if hc != null:
@@ -2104,7 +2106,32 @@ func join_game(ip: String) -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
 	var k := event as InputEventKey
 	if k != null and k.pressed and not k.echo and k.keycode == KEY_F2 and steam != null:
-		steam.invite()
+		var msg: String = steam.invite()
+		if msg != "":
+			_lobby.set_status(msg)
+			_toast(msg, 7.0)
+
+## Krótki komunikat na górze ekranu (poza lobby, np. w trakcie gry), znika po `secs` s.
+func _toast(text: String, secs := 5.0) -> void:
+	var l := Label.new()
+	l.text = text
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.add_theme_font_size_override("font_size", 7)
+	l.add_theme_color_override("font_color", Color(1.0, 0.9, 0.6))
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	l.add_theme_constant_override("outline_size", 2)
+	l.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	l.offset_left = -170.0
+	l.offset_right = 170.0
+	l.offset_top = 62.0
+	l.offset_bottom = 100.0
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$UI.add_child(l)
+	var tw := create_tween()
+	tw.tween_interval(secs)
+	tw.tween_property(l, "modulate:a", 0.0, 1.0)
+	tw.tween_callback(l.queue_free)
 
 func _on_peer_connected(id: int) -> void:
 	print("[NET] peer connected: %d" % id)
