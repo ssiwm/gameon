@@ -44,6 +44,12 @@ static func gun_hd(key: String) -> CanvasTexture:
 	_gunhd[key] = ct
 	return ct
 
+## Arkusz bota: przy postaciach HD z Tripo (`--newchar=tripo-hd…`) bot jest kobietą Scavenger '87 (`playerhd3h_female`), inaczej klasyczny „bot".
+static func bot_sheet() -> String:
+	if newchar.begins_with("tripo-hd") and has("playerhd3h_female"):
+		return "playerhd3h_female"
+	return "bot"
+
 ## Arkusz ciała gracza: dev-postać 3D (jeśli włączona i spakowana) albo klasyczny player_N.
 static func player_sheet(display_id: int) -> String:
 	if newchar != "":
