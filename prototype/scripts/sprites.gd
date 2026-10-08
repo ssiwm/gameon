@@ -30,6 +30,22 @@ static var newworld := false
 static var _gunhd: Dictionary = {}
 static var _mip: Dictionary = {}
 
+## Tekstura HD z mipmapami skompresowana w locie do S3TC (DXT5): ~4× mniej pamięci wideo przy kilku ms na arkusz (zmierzone: 2048×2688 → 5 ms).
+## Mapy normalnych dostają kompresję „normal". Gdy kompresja się nie uda (platforma bez S3TC) zostaje RGBA8 z mipmapami.
+static func hd_texture(img: Image, normal := false) -> ImageTexture:
+	var im := img.duplicate() as Image
+	if im.get_format() != Image.FORMAT_RGBA8:
+		im.convert(Image.FORMAT_RGBA8)
+	im.generate_mipmaps()
+	if compress_hd:
+		var keep := im.duplicate() as Image
+		if im.compress(Image.COMPRESS_S3TC, Image.COMPRESS_SOURCE_NORMAL if normal else Image.COMPRESS_SOURCE_GENERIC) != OK:
+			im = keep
+	return ImageTexture.create_from_image(im)
+
+## Kompresja tekstur HD (dev): `--nocompress` ją wyłącza do porównań jakości i pamięci.
+static var compress_hd := true
+
 ## Arkusz z mipmapami (ImageTexture) — dla UI rysującego duże klatki HD w małym rozmiarze (kodeks): bez mipmap zmniejszanie ×4 daje szum.
 static func mip_texture(path: String) -> Texture2D:
 	if _mip.has(path):
@@ -37,9 +53,7 @@ static func mip_texture(path: String) -> Texture2D:
 	var t: Texture2D = null
 	var src := texture(path)
 	if src != null:
-		var img: Image = src.get_image()
-		img.generate_mipmaps()
-		t = ImageTexture.create_from_image(img)
+		t = hd_texture(src.get_image(), false)
 	_mip[path] = t
 	return t
 
@@ -56,15 +70,11 @@ static func gun_hd(key: String) -> CanvasTexture:
 	var d := texture(DIR + "gunhd_%s.png" % key)
 	var ct: CanvasTexture = null
 	if d != null:
-		var di: Image = d.get_image()
-		di.generate_mipmaps()
 		ct = CanvasTexture.new()
-		ct.diffuse_texture = ImageTexture.create_from_image(di)
+		ct.diffuse_texture = hd_texture(d.get_image(), false)
 		var n := texture(DIR + "gunhd_%s_n.png" % key)
 		if n != null:
-			var ni: Image = n.get_image()
-			ni.generate_mipmaps()
-			ct.normal_texture = ImageTexture.create_from_image(ni)
+			ct.normal_texture = hd_texture(n.get_image(), true)
 		ct.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	_gunhd[key] = ct
 	return ct
@@ -169,14 +179,10 @@ static func _frames_hd(sheet: String) -> SpriteFrames:
 		sf.set_animation_loop(an, bool(a["loop"]))
 		for i in int(a["frames"]):
 			var r := Rect2i(i * fw, int(a["row"]) * fh, fw, fh)
-			var di := dimg.get_region(r)
-			di.generate_mipmaps()
 			var ct := CanvasTexture.new()
-			ct.diffuse_texture = ImageTexture.create_from_image(di)
+			ct.diffuse_texture = hd_texture(dimg.get_region(r), false)
 			if nimg != null:
-				var ni := nimg.get_region(r)
-				ni.generate_mipmaps()
-				ct.normal_texture = ImageTexture.create_from_image(ni)
+				ct.normal_texture = hd_texture(nimg.get_region(r), true)
 			ct.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 			sf.add_frame(an, ct)
 	return sf

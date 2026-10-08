@@ -330,6 +330,8 @@ func _handle_cmdline() -> void:
 		if a == "--newworld":
 			Sprites.newworld = true                                                                # dev: teren i tła HD (art/world/)
 			level.enable_world_hd()
+		if a == "--nocompress":
+			Sprites.compress_hd = false                                                            # dev: bez kompresji S3TC tekstur HD (porównanie)
 		if a == "--newmon":
 			Sprites.newmon = true                                                                  # dev: wrogowie HD (<rodzaj>_hd)
 		if a == "--newgun":
@@ -447,6 +449,12 @@ func _handle_cmdline() -> void:
 	if leechsim != "" or "--leechsim" in args:
 		var parts := leechsim.trim_prefix("=").split(",")
 		_leech_sim(float(parts[0]) if parts.size() > 0 and parts[0] != "" else 0.6, float(parts[1]) if parts.size() > 1 else 73.0)
+	var perf_secs := -1.0
+	for a in args:
+		if a.begins_with("--perf="):
+			perf_secs = float(a.substr("--perf=".length()))
+	if perf_secs > 0.0:
+		_perf_run(perf_secs, shot_col)
 	if shot_path != "":
 		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker, shot_demo, shot_ws, shot_result, shot_boss, shot_codex)
 	if ridetest:
@@ -589,6 +597,46 @@ func host_game() -> void:
 
 ## Narzędzie deweloperskie (--shot=ŚCIEŻKA [--shotat=KOLUMNA]): po 2,5 s zapisuje obraz z widoku gry (tylko okno gry, bez pulpitu)
 ## do PNG i kończy. --shotat przenosi człowieka na podłogę w danej kolumnie mapy (np. do obejrzenia strefy kryjówki).
+## Dev (--perf=SEKUNDY [--shotat=KOLUMNA]): pomiar wydajności po 2 s rozgrzewki — czas klatki bez vsync (średnia, p95, max), wywołania rysowania,
+## prymitywy, węzły i pamięć wideo z monitorów silnika; drukuje jedną linię [PERF] i kończy. Nie zastępuje profilera GPU (gl_compatibility nie podaje czasu GPU).
+func _perf_run(secs: float, col: int) -> void:
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	Engine.max_fps = 0
+	Profile.persist = false
+	await get_tree().create_timer(1.0).timeout
+	if col >= 0:
+		var p: Node2D = _players.get_node_or_null("1")
+		if p != null:
+			var fy := 0.0
+			for r in range(0, level._map.size()):
+				if level._is_solid(col, r) and not level._is_solid(col, r - 1):
+					fy = float(r * 16)
+					break
+			p.global_position = Vector2(float(col) * 16.0 + 8.0, fy - 2.0)
+	await get_tree().create_timer(1.0).timeout
+	var times: Array[float] = []
+	var calls := 0.0
+	var prims := 0.0
+	var t_end := Time.get_ticks_msec() + int(secs * 1000.0)
+	var last := Time.get_ticks_usec()
+	while Time.get_ticks_msec() < t_end:
+		await get_tree().process_frame
+		var now := Time.get_ticks_usec()
+		times.append(float(now - last) / 1000.0)
+		last = now
+		calls += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+		prims += Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
+	times.sort()
+	var n := times.size()
+	var sum := 0.0
+	for t in times:
+		sum += t
+	print("[PERF] frames=%d avg=%.2f ms (%.0f fps) p50=%.2f p95=%.2f max=%.2f  draw_calls=%.0f prims=%.0f  nodes=%d  vram=%.1f MB  tex_mem=%.1f MB" % [
+		n, sum / float(maxi(n, 1)), 1000.0 / maxf(sum / float(maxi(n, 1)), 0.001), times[n / 2], times[int(float(n) * 0.95)], times[n - 1],
+		calls / float(maxi(n, 1)), prims / float(maxi(n, 1)), int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
+		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0])
+	get_tree().quit()
+
 func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false, workshop := false, result := false, boss := false, codex := false) -> void:
 	Profile.persist = false              # zrzuty dev nie zapisują profilu gracza (XP z podglądu karty wyniku itp.)
 	await get_tree().create_timer(1.0).timeout

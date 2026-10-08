@@ -340,6 +340,8 @@ func _refresh_region(rc: Rect2i) -> void:
 			_place_cell(c, r)
 	nav = Nav.new()
 	nav.build(cols, _map.size(), _is_solid, _is_platform_cell)
+	if _terrain_hd != null:
+		_build_terrain_hd()                  # zawał / odbudowa: kafle HD wg aktualnej mapy
 
 ## Serwer: restart misji (wipe / nowa misja) — mapa wraca do stanu z danych.
 func reset_collapse() -> void:
@@ -445,15 +447,11 @@ func _load_material(mat: String) -> CanvasTexture:
 	var d := Sprites.texture(base + ".png")
 	var ct: CanvasTexture = null
 	if d != null:
-		var di: Image = d.get_image()
-		di.generate_mipmaps()
 		ct = CanvasTexture.new()
-		ct.diffuse_texture = ImageTexture.create_from_image(di)
+		ct.diffuse_texture = Sprites.hd_texture(d.get_image(), false)
 		var n := Sprites.texture(base + "_n.png")
 		if n != null:
-			var ni: Image = n.get_image()
-			ni.generate_mipmaps()
-			ct.normal_texture = ImageTexture.create_from_image(ni)
+			ct.normal_texture = Sprites.hd_texture(n.get_image(), true)
 		ct.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	_mat_tex[mat] = ct
 	return ct
@@ -467,35 +465,19 @@ func enable_world_hd() -> void:
 		_terrain_hd = Node2D.new()
 		_terrain_hd.name = "TerrainHD"
 		_terrain_hd.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		_terrain_hd.draw.connect(_draw_terrain_hd)
 		add_child(_terrain_hd)
 		move_child(_terrain_hd, _solid.get_index() + 1)               # nad kaflami, pod dekoracjami i postaciami
 		_stable.append(_terrain_hd)
 		_terrain_back = Node2D.new()
 		_terrain_back.name = "TerrainHDBack"
 		_terrain_back.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		_terrain_back.draw.connect(_draw_terrain_back)
 		add_child(_terrain_back)
 		move_child(_terrain_back, _back.get_index() + 1)               # nad tłem-kaflami, pod bryłami i postaciami
 		_stable.append(_terrain_back)
 		_hide_pixel_tiles()
 		_load_props_hd()
-	_terrain_list.clear()
-	_terrain_back_list.clear()
 	_build_terrain_hd()
 	_deco.queue_redraw()
-
-func _draw_props_hd() -> void:
-	for d in _deco_list:
-		if not _prop_hd.has(int(d[1])):
-			continue
-		var info: Array = _prop_hd[int(d[1])]
-		var sz: Vector2 = info[1]
-		var feet: Vector2 = d[0]
-		var dst := Rect2(feet.x - sz.x * 0.5, feet.y - sz.y, sz.x, sz.y)
-		if d[2]:
-			dst = Rect2(feet.x + sz.x * 0.5, feet.y - sz.y, -sz.x, sz.y)
-		_terrain_hd.draw_texture_rect(info[0], dst, false)
 
 ## Kolumny atlasu kafli pokryte materiałami HD stają się przezroczyste (kolizje i okludery zostają w danych kafli).
 func _hide_pixel_tiles() -> void:
@@ -521,21 +503,19 @@ func _load_props_hd() -> void:
 		var d := Sprites.texture("res://art/world/prop_%s.png" % spec[1])
 		if d == null:
 			continue
-		var di: Image = d.get_image()
-		di.generate_mipmaps()
 		var ct := CanvasTexture.new()
-		ct.diffuse_texture = ImageTexture.create_from_image(di)
+		ct.diffuse_texture = Sprites.hd_texture(d.get_image(), false)
 		var n := Sprites.texture("res://art/world/prop_%s_n.png" % spec[1])
 		if n != null:
-			var ni: Image = n.get_image()
-			ni.generate_mipmaps()
-			ct.normal_texture = ImageTexture.create_from_image(ni)
+			ct.normal_texture = Sprites.hd_texture(n.get_image(), true)
 		ct.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		_prop_hd[int(spec[0])] = [ct, spec[2]]
 
 func _build_terrain_hd() -> void:
 	if _terrain_hd == null:
 		return
+	_terrain_list.clear()
+	_terrain_back_list.clear()
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -561,30 +541,77 @@ func _build_terrain_hd() -> void:
 				_terrain_back_list.append(entry)
 			else:
 				_terrain_list.append(entry)
-	_terrain_hd.queue_redraw()
-	if _terrain_back != null:
-		_terrain_back.queue_redraw()
+	_rebuild_hd_chunks()
 
-func _draw_terrain_hd() -> void:
-	_draw_props_hd()
-	_draw_material_list(_terrain_hd, _terrain_list)
+## Fragment (chunk) świata HD: węzeł rysujący swoją porcję kafli i rekwizytów. Dzięki podziałowi silnik odrzuca (culling) fragmenty poza kadrem
+## zamiast rysować całą mapę jednym elementem; wpisy posortowane wg tekstury sklejają się w mało wywołań rysowania.
+class HdChunk extends Node2D:
+	var items: Array = []              ## [tekstura, Rect2 docelowy, Rect2 źródłowy albo null]
 
-func _draw_terrain_back() -> void:
-	_draw_material_list(_terrain_back, _terrain_back_list)
+	func _draw() -> void:
+		for it in items:
+			if it[2] == null:
+				draw_texture_rect(it[0], it[1], false)
+			else:
+				draw_texture_rect_region(it[0], it[1], it[2])
 
-func _draw_material_list(node: Node2D, list: Array) -> void:
-	for t in list:
-		var c: int = t[0]
-		var r: int = t[1]
-		var mat: String = t[3]
-		var tex := _load_material(mat)
-		if tex == null:
+const HD_CHUNK := 16                    ## kafli na bok fragmentu (16×16 kafli = 256×256 px świata; kadr gry to ok. 400×225 px)
+
+## Buduje fragmenty obu warstw HD (tło nad `_back`, bryły i rekwizyty nad `_solid`) z list `_terrain_list`, `_terrain_back_list` i `_deco_list`.
+func _rebuild_hd_chunks() -> void:
+	for node in [_terrain_hd, _terrain_back]:
+		if node == null:
 			continue
-		var col := c % 4
-		if int(t[2]) == 1 and not PLATFORM_MATS.has(mat):
-			node.draw_texture_rect_region(tex, Rect2(c * TILE, r * TILE - TERRAIN_HD_OVER, TILE, TILE + TERRAIN_HD_OVER), Rect2(col * 256, 256, 256, 320))
-		else:
-			node.draw_texture_rect_region(tex, Rect2(c * TILE, r * TILE, TILE, TILE), Rect2(col * 256, 0, 256, 256))
+		for ch in node.get_children():
+			node.remove_child(ch)
+			ch.queue_free()
+	var layers := [[_terrain_hd, _terrain_list, true], [_terrain_back, _terrain_back_list, false]]
+	for layer in layers:
+		var node: Node2D = layer[0]
+		if node == null:
+			continue
+		var list: Array = (layer[1] as Array).duplicate()
+		list.sort_custom(func(x, y): return String(x[3]) < String(y[3]))            # wg materiału → sklejanie wywołań rysowania
+		var buckets := {}
+		for t in list:
+			var c: int = t[0]
+			var r: int = t[1]
+			var mat: String = t[3]
+			var tex := _load_material(mat)
+			if tex == null:
+				continue
+			var col := c % 4
+			var dst: Rect2
+			var src: Rect2
+			if int(t[2]) == 1 and not PLATFORM_MATS.has(mat):
+				dst = Rect2(c * TILE, r * TILE - TERRAIN_HD_OVER, TILE, TILE + TERRAIN_HD_OVER)
+				src = Rect2(col * 256, 256, 256, 320)
+			else:
+				dst = Rect2(c * TILE, r * TILE, TILE, TILE)
+				src = Rect2(col * 256, 0, 256, 256)
+			var key := Vector2i(c / HD_CHUNK, r / HD_CHUNK)
+			if not buckets.has(key):
+				buckets[key] = []
+			buckets[key].append([tex, dst, src])
+		if bool(layer[2]):
+			for d in _deco_list:                                                      # rekwizyty HD (płot, kłody, kamień) po kaflach w swoim fragmencie
+				if not _prop_hd.has(int(d[1])):
+					continue
+				var info: Array = _prop_hd[int(d[1])]
+				var sz: Vector2 = info[1]
+				var feet: Vector2 = d[0]
+				var pdst := Rect2(feet.x - sz.x * 0.5, feet.y - sz.y, sz.x, sz.y)
+				if d[2]:
+					pdst = Rect2(feet.x + sz.x * 0.5, feet.y - sz.y, -sz.x, sz.y)
+				var pkey := Vector2i(int(feet.x / TILE) / HD_CHUNK, int((feet.y - 1.0) / TILE) / HD_CHUNK)
+				if not buckets.has(pkey):
+					buckets[pkey] = []
+				buckets[pkey].append([info[0], pdst, null])
+		for key in buckets:
+			var chunk := HdChunk.new()
+			chunk.name = "c_%d_%d" % [key.x, key.y]
+			chunk.items = buckets[key]
+			node.add_child(chunk)
 
 func _is_solid(c: int, r: int) -> bool:
 	# poza mapą = bryła (krawędzie mapy nie świecą)
