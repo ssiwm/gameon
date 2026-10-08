@@ -29,9 +29,11 @@ const JOIN_TIMEOUT := 15.0
 const GAME_TAG := "deadair87"
 
 var lobby_id := 0
+var init_error := ""                       ## dlaczego Steam nie działa (pokazywane graczowi i w logu) — pusty, gdy wszystko gra
 var _steam: Object = null
 var _inited := false
 var _embedded := false
+var _init_reason := "no answer from Steam"
 var _peer: MultiplayerPeer = null
 var _mode := ""                            ## "host" | "join" | ""
 var _wait := 0.0                           ## s do uznania, że lobby się nie utworzy
@@ -43,6 +45,8 @@ static func is_available() -> bool:
 func _ready() -> void:
 	if not is_available():
 		set_process(false)
+		init_error = "GodotSteam plugin did not load — libgodotsteam*.dll and steam_api64.dll must sit next to the game .exe (Windows also needs the Visual C++ 2015-2022 x64 runtime)."
+		print("[STEAM] ", init_error)
 		return
 	# Inicjalizacja od razu: dopiero wtedy działają zaproszenia („Dołącz do gry" z listy znajomych).
 	if init_steam():
@@ -58,13 +62,20 @@ func init_steam() -> bool:
 	if _steam.has_method("steamInitEx"):
 		var r: Variant = _call_named("steamInitEx", {"app_id": APP_ID, "embed_callbacks": true, "retrieve_stats": false})
 		ok = r is Dictionary and int(r.get("status", -1)) == 0           # k_ESteamAPIInitResult_OK
+		if r is Dictionary:
+			_init_reason = "%s, code %d" % [str(r.get("verbal", "?")), int(r.get("status", -1))]
 		_embedded = _has_arg("steamInitEx", "embed_callbacks")
 	elif _steam.has_method("steamInit"):
 		var r2: Variant = _call_named("steamInit", {"app_id": APP_ID, "retrieve_stats": false, "embed_callbacks": true})
 		ok = r2 is Dictionary and int(r2.get("status", -1)) == 1         # starsze API: 1 = OK
+		if r2 is Dictionary:
+			_init_reason = "%s, code %d" % [str(r2.get("verbal", "?")), int(r2.get("status", -1))]
 		_embedded = _has_arg("steamInit", "embed_callbacks")
 	if not ok:
+		init_error = "Steam did not start (%s) — is the Steam client running and logged in, and started BEFORE the game (same Windows user, not as administrator)?" % _init_reason
+		print("[STEAM] init failed: ", _init_reason)
 		return false
+	init_error = ""
 	_inited = true
 	_connect_signal("lobby_created", _on_lobby_created)
 	_connect_signal("lobby_joined", _on_lobby_joined)
@@ -152,7 +163,7 @@ func join_lobby(id: int) -> void:
 ## prosto z pliku .exe zwykle go nie ma. Wtedy ID lobby jest w schowku i trzeba je wysłać znajomym (wklejają je i dają STEAM JOIN).
 func invite() -> String:
 	if not _inited or _steam == null:
-		return "Steam is not running — start Steam before the game."
+		return init_error if init_error != "" else "Steam is not initialized — start Steam before the game."
 	if lobby_id == 0:
 		return "No Steam lobby — F2 works after STEAM HOST (IP games have no Steam invites)."
 	DisplayServer.clipboard_set(str(lobby_id))
@@ -269,10 +280,10 @@ func _drop_peer() -> void:
 
 func _ensure_ready() -> bool:
 	if not is_available():
-		failed.emit("Steam is not available — install the GodotSteam addon (see README) and start Steam.")
+		failed.emit(init_error if init_error != "" else "Steam is not available — GodotSteam plugin missing.")
 		return false
 	if not init_steam():
-		failed.emit("Steam could not be initialized — is the Steam client running and logged in?")
+		failed.emit(init_error)
 		return false
 	return true
 
