@@ -30,6 +30,15 @@ static var newworld := false
 static var _gunhd: Dictionary = {}
 static var _gunhd_rect: Dictionary = {}
 
+## Warstwa świecenia broni HD (gunhd_<klucz>_glow.png) albo null.
+static func gun_hd_glow(key: String) -> Texture2D:
+	if not newgun:
+		return null
+	var path := DIR + "gunhd_%s_glow.png" % key
+	if not ResourceLoader.exists(path):
+		return null
+	return mip_texture(path)
+
 ## Prostokąt sylwetki broni HD w pikselach arkusza (po wywołaniu `gun_hd`).
 static func gun_hd_rect(key: String) -> Rect2:
 	return _gunhd_rect.get(key, Rect2())

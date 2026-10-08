@@ -711,6 +711,16 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					en.set_physics_process(false)
 					if sp[0] != "ShotT2":
 						en.call("wake")
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--shotgunid="):                          # dev: broń o danym id (0–11) w pierwszym slocie gracza 1 — podgląd sprite'ów broni
+			var gp: Node2D = _players.get_node_or_null("1")
+			if gp != null:
+				var gid := int(a.substr("--shotgunid=".length()))
+				gp.weapons.loadout[0] = gid
+				gp.weapons.slot = 0
+				gp.weapons.mags[gid] = 10
+				gp.weapons.state = 0
+				gp.weapons._sync_player()
 	if "--shotlight" in OS.get_cmdline_user_args():
 		var lp: Node2D = _players.get_node_or_null("1")      # --shotlight: flara tuż przed graczem (podgląd oświetlenia z mapą normalnych)
 		if lp != null:

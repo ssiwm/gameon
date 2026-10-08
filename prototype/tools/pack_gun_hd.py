@@ -32,6 +32,21 @@ def main():
     rgb = np.where((np.asarray(solid) > 0)[..., None], rgb, np.array([128, 128, 255], np.uint8))
     nimg = Image.fromarray(rgb, "RGB")
     nimg.putalpha(ring)
+    glow_kind = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--glow=")), "")
+    if glow_kind:
+        # świecące elementy (cewki/ogniwo cyjan, zapalnik/diody czerwone): maska z nasyconych jasnych pikseli albedo → warstwa unshaded
+        rgb = np.asarray(color.convert("RGB")).astype(np.float32) / 255.0
+        mx, mn = rgb.max(-1), rgb.min(-1)
+        sat = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1e-4), 0)
+        d = np.maximum(mx - mn, 1e-4)
+        hue = np.where(mx == rgb[..., 0], ((rgb[..., 1] - rgb[..., 2]) / d) % 6, np.where(mx == rgb[..., 1], (rgb[..., 2] - rgb[..., 0]) / d + 2, (rgb[..., 0] - rgb[..., 1]) / d + 4)) * 60.0
+        if glow_kind == "cyan":
+            m = (hue > 165) & (hue < 205) & (sat > 0.45) & (mx > 0.55)
+        else:
+            m = ((hue < 25) | (hue > 340)) & (sat > 0.7) & (mx > 0.6)
+        gm = Image.fromarray((m * 255).astype(np.uint8), "L").filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.GaussianBlur(1.0))
+        Image.merge("RGBA", (*color.convert("RGB").split(), gm)).save(os.path.join(ART, f"gunhd_{name}_glow.png") if not any(a.startswith("--out=") for a in sys.argv) else "/dev/null")
+        print("glow px:", int((np.asarray(gm) > 40).sum()))
     dest = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--out=")), None)
     base = os.path.join(ART, "..", dest) if dest else os.path.join(ART, f"gunhd_{name}")
     out.save(base + ".png")

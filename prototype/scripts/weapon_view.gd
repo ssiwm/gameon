@@ -243,7 +243,7 @@ func _update_gun(d: WeaponDef) -> void:
 	_gun.modulate = _tint
 	if _glow != null:
 		_glow_atlas.region = _atlas.region
-		_glow.visible = _gun.visible and not _hd_on
+		_glow.visible = _gun.visible and (not _hd_on or _hd_glow)
 		_glow.position = _gun.position
 		_glow.rotation = _gun.rotation
 		_glow.flip_v = flip
@@ -259,22 +259,39 @@ func _update_gun(d: WeaponDef) -> void:
 const HAND_HD := Vector2(104, 112)
 const HD_SCALE := 1.0 / 16.0
 var _hd_on := false
+var _hd_key := ""
+var _hd_glow := false
 
 func _apply_gun_look(key: String) -> void:
 	var hd: CanvasTexture = Sprites.gun_hd(key)
 	if hd != null:
-		if not _hd_on:
+		if not _hd_on or _hd_key != key:
 			_hd_on = true
+			_hd_key = key
 			_gun.texture = hd
 			_gun.offset = -HAND_HD
 			_gun.scale = Vector2.ONE * HD_SCALE
 			_gun.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+			var hg := Sprites.gun_hd_glow(key)
+			_hd_glow = hg != null
+			if _glow != null:
+				_glow.texture = hg if hg != null else _glow_atlas
+				_glow.offset = -HAND_HD if hg != null else -HAND
+				_glow.scale = Vector2.ONE * (HD_SCALE if hg != null else Sprites.scale_of("guns"))
+				_glow.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS if hg != null else CanvasItem.TEXTURE_FILTER_LINEAR
 	elif _hd_on:
 		_hd_on = false
+		_hd_key = ""
+		_hd_glow = false
 		_gun.texture = _atlas
 		_gun.offset = -HAND
 		_gun.scale = Vector2.ONE * Sprites.scale_of("guns")
 		_gun.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		if _glow != null:
+			_glow.texture = _glow_atlas
+			_glow.offset = -HAND
+			_glow.scale = _gun.scale
+			_glow.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 
 func _update_flash_light(d: WeaponDef) -> void:
 	var on: bool = _flash_t > 0.0 or (player.w_firing and d.is_continuous())
