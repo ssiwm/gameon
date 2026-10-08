@@ -352,6 +352,7 @@ func _on_map_changed(_id: String) -> void:
 ## Rysowanie odświeżamy na każdym peerze (zdalni gracze też zmieniają celowanie,
 ## kucanie i HP), a kamera dostaje lokalny shake.
 func _process(delta: float) -> void:
+	_wound_t += delta
 	_flash = maxf(0.0, _flash - delta)
 	_scream_ring = maxf(0.0, _scream_ring - delta)
 	if _camera.enabled:
@@ -1615,6 +1616,8 @@ func _draw_overlay(ov: Node2D) -> void:
 	var top := -11.0 if crouching else -17.0
 	if not _spr.is_empty():
 		top = -16.0 if crouching else -22.0
+	if Sprites.newitem and hp < max_hp():
+		_draw_wounds(ov, top)
 	var hearts := maxi(max_hp(), hp)
 	for i in hearts:
 		var c := Color(0.92, 0.25, 0.3) if i < hp else Color(0.22, 0.22, 0.26)
@@ -1629,6 +1632,24 @@ func _draw_overlay(ov: Node2D) -> void:
 		else:
 			ov.draw_rect(Rect2(-8 + i * 6.0 - (hearts - max_hp()) * 3.0, top - 7.0, 4, 3), c)
 	_center_text(ov, font, name_txt, top - 9.0, NAME_SIZE, col)
+
+## Rany na ciele (HD): za każdy brakujący punkt życia ciemna plama krwi na tułowiu, ramieniu i udzie; przy niskim życiu z kapiącą strużką.
+func _draw_wounds(ov: Node2D, top: float) -> void:
+	var missing := clampi(max_hp() - hp, 0, 3)
+	var h := absf(top) * 0.45                          # wysokość klatki piersiowej nad podłogą (top to czubek głowy)
+	var spots := [Vector2(-1.5, -h), Vector2(2.2, -h * 0.55), Vector2(-2.4, -h * 1.25)]
+	var sx := -1.0 if aim_dir.x < -0.05 else 1.0
+	for i in missing:
+		var c: Vector2 = spots[i]
+		c.x *= sx
+		var drip := fposmod(_wound_t + float(i) * 0.37, 1.6)
+		ov.draw_circle(c, 2.1, Color(0.22, 0.01, 0.02, 0.5))
+		ov.draw_circle(c + Vector2(0.4, 0.3), 1.3, Color(0.4, 0.03, 0.05, 0.7))
+		ov.draw_circle(c + Vector2(-0.4, -0.4), 0.5, Color(0.7, 0.2, 0.2, 0.3))
+		if hp <= 1:
+			ov.draw_line(c + Vector2(0.4, 1.0), c + Vector2(0.4, 1.0 + minf(drip * 6.0, 6.0)), Color(0.36, 0.02, 0.04, 0.8 * (1.0 - drip / 1.6)), 0.9, true)
+
+var _wound_t := 0.0
 
 func _center_text(ov: Node2D, font: Font, txt: String, y: float, sz: int, c: Color) -> void:
 	# cień pod tekstem — czytelność na jasnym tle (snop latarki, flara)

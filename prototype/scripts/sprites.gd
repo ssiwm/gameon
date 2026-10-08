@@ -246,7 +246,28 @@ static func attach(host: Node2D, sheet: String) -> Array:
 		glow.offset = body.offset
 		glow.material = Lights.unshaded()
 		host.add_child(glow)
-	return [body, glow]
+	# HD: słaba sylwetka potwora widoczna także w całkowitej ciemności (dodawana, „unshaded"); dopiero światło odsłania szczegóły i kontur
+	var sil: AnimatedSprite2D = null
+	if newmon and sheet.ends_with("_hd"):
+		sil = AnimatedSprite2D.new()
+		sil.name = "Silhouette"
+		sil.sprite_frames = frames(sheet)
+		sil.texture_filter = filt
+		sil.scale = body.scale
+		sil.offset = body.offset
+		sil.material = silhouette_material()
+		sil.modulate = Color(0.55, 0.7, 1.0, 0.22)
+		host.add_child(sil)
+	return [body, glow, sil]
+
+static var _sil_mat: CanvasItemMaterial
+
+static func silhouette_material() -> CanvasItemMaterial:
+	if _sil_mat == null:
+		_sil_mat = CanvasItemMaterial.new()
+		_sil_mat.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		_sil_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	return _sil_mat
 
 ## Ustawia animację na obu warstwach (glow trzyma tę samą klatkę).
 static func play(layers: Array, anim: String, flip: bool) -> void:
@@ -261,6 +282,13 @@ static func play(layers: Array, anim: String, flip: bool) -> void:
 		glow.frame = body.frame
 		glow.flip_h = flip
 		glow.scale = body.scale
+	if layers.size() > 2 and layers[2] != null:
+		var sil: AnimatedSprite2D = layers[2]
+		if sil.animation != anim:
+			sil.play(anim)
+		sil.frame = body.frame
+		sil.flip_h = flip
+		sil.scale = body.scale
 
 ## Gotowe sprite'y gracza / kafle / dekoracje.
 static func texture(path: String) -> Texture2D:
