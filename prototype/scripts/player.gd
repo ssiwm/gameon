@@ -203,7 +203,7 @@ func _setup_lights() -> void:
 
 ## Pixel-art z art/sprites (bake_sprites.py). Bez arkuszy zostaje rysowanie w kodzie.
 func _setup_sprites() -> void:
-	var sheet := "bot" if is_bot else Sprites.player_sheet(display_id)
+	var sheet := Sprites.bot_sheet() if is_bot else Sprites.player_sheet(display_id)
 	if not Sprites.has(sheet):
 		return
 	_spr = Sprites.attach(self, sheet)
