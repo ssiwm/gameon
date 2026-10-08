@@ -150,6 +150,27 @@ class Pips extends Control:
 			inner.append(o + Vector2(4.5, 3.9) + (p - (o + Vector2(4.5, 3.9))) * 0.84)
 		draw_colored_polygon(inner, c)
 		draw_colored_polygon(PackedVector2Array([o + Vector2(2.0, 1.9), o + Vector2(3.3, 1.2), o + Vector2(4.0, 2.2), o + Vector2(2.8, 3.1)]), c.lightened(0.5) * Color(1, 1, 1, 0.8))
+	## HD (horror): kropla krwi zamiast serca — ostry czubek, ciężkie ciemne dno, mokry połysk; pusta to ledwo widoczny kontur. Pole 9×8 jak serce.
+	func _blood_drop(o: Vector2, c: Color, full: bool) -> void:
+		var center := o + Vector2(4.5, 5.0)
+		var r := 3.2
+		var pts := PackedVector2Array([o + Vector2(4.5, -0.4)])
+		var a0 := deg_to_rad(-43.8 + 6.0)
+		var a1 := deg_to_rad(223.8 - 6.0)
+		for k in 21:
+			var a := lerpf(a0, a1, float(k) / 20.0)
+			pts.append(center + Vector2(cos(a), sin(a)) * r)
+		if not full:
+			var closed := pts.duplicate()
+			closed.append(pts[0])
+			draw_polyline(closed, Color(0.7, 0.55, 0.55, 0.38), 0.9, true)
+			return
+		draw_colored_polygon(pts, c.darkened(0.55))
+		var inner := PackedVector2Array()
+		for q in pts:
+			inner.append(center + Vector2(0, -0.6) + (q - (center + Vector2(0, -0.6))) * 0.82)
+		draw_colored_polygon(inner, c)
+		draw_colored_polygon(PackedVector2Array([o + Vector2(2.7, 4.2), o + Vector2(3.4, 3.4), o + Vector2(3.9, 4.2), o + Vector2(3.5, 5.6), o + Vector2(2.8, 5.7)]), Color(1.0, 0.75, 0.75, 0.55))
 	func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(u, u))
 		for i in count:
@@ -158,7 +179,7 @@ class Pips extends Control:
 				c = bonus
 			var o := Vector2(i * 11.0, 0.0)
 			if shape == "heart" and UiTheme.hd_on():
-				_smooth_heart(o, c)
+				_blood_drop(o, c.lerp(Color(0.5, 0.05, 0.07), 0.45) if i < filled and i < bonus_from else c, i < filled)
 			elif shape == "heart":
 				_pixel_heart(o, c)
 			elif shape == "ready" and UiTheme.hd_on():
