@@ -40,6 +40,13 @@ var steam: Node
 @onready var _spawner: MultiplayerSpawner = $PlayerSpawner
 @onready var _lobby: Control = $UI/Lobby   # lobby.gd
 
+## Czy w argumentach dev jest flaga `p` albo `p=wartość`.
+func _has_arg_prefix(p: String) -> bool:
+	for a in OS.get_cmdline_user_args():
+		if a == p or a.begins_with(p + "="):
+			return true
+	return false
+
 func _ready() -> void:
 	# Własna funkcja spawnu: dane startowe (pozycja, display_id) dostaje KAŻDY
 	# peer, także dołączający później. Synchronizator postaci klienta należy do
@@ -631,11 +638,20 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if gp != null:
 			Arsenal.cycle_throwable()
 			Arsenal.request_throw("phos", gp.global_position + Vector2(50.0, -20.0), Vector2(60.0, -20.0))
-	if "--shotmon" in OS.get_cmdline_user_args():
+	if _has_arg_prefix("--shotmon"):
 		var mp: Node2D = _players.get_node_or_null("1")      # --shotmon: Wołek i dwa Trzoski przed graczem, AI zamrożone (jeden obudzony, reszta śpi) — podgląd sprite'ów wrogów
 		if mp != null:
+			var kinds_arg := ""
+			for a in OS.get_cmdline_user_args():
+				if a.begins_with("--shotmon="):
+					kinds_arg = a.substr("--shotmon=".length())
 			var spots := [["ShotS", "slepiec", 110.0], ["ShotW", "wolek", 150.0], ["ShotT", "trzosek", 205.0], ["ShotT2", "trzosek", 240.0]]
+			if kinds_arg == "b":          # --shotmon=b: reszta wrogów (Skoczek, Podsłuchacz, Mimik, Ćma) bez bossów
+				spots = [["ShotK", "skoczek", 120.0], ["ShotP", "podsluchacz", 165.0], ["ShotM", "mimik", 205.0], ["ShotC", "cma", 245.0]]
 			level.spawn_flare(mp.global_position + Vector2(190.0, -26.0), Vector2.ZERO)
+			for pl in _players.get_children():
+				if pl.get("is_bot") == true:
+					pl.queue_free()                 # bez bota — żeby nie rozstrzelał podglądu
 			for sp in spots:
 				level._add_enemy(sp[0], sp[1], mp.global_position + Vector2(float(sp[2]), 0.0))
 				var en: Node = level.get_node_or_null(String(sp[0]))

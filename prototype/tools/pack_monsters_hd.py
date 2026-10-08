@@ -1,6 +1,7 @@
 """Składa arkusze wrogów HD z klatek tools/concept/monster_tripo_bake.py: art/sprites/<kind>_hd.png (albedo + obrys), _hd_n.png (normalne w przestrzeni ekranu),
-_hd_glow.png (świecące oczy: nasycone żółte/pomarańczowe piksele albedo) + wpis w art/sprites.json (gęstość 8 px na piksel świata, skala 0,125).
-Uruchomienie (Pillow + numpy): python prototype/tools/pack_monsters_hd.py FRAMES_DIR KIND CAM
+_hd_glow.png (świecące oczy: nasycone żółte/pomarańczowe piksele albedo) + wpis w art/sprites.json (skala wynika z rozmiaru starej klatki; gęstość: 8 px na piksel świata wrogowie, 5–6 bossowie).
+Uruchomienie (Pillow + numpy): python prototype/tools/pack_monsters_hd.py FRAMES_DIR KIND CAM [--gain=0.55]
+    --gain mnoży albedo (np. 0,55 dla czarnego jak cień Stalkera); maska świecenia liczona z oryginału
     CAM jak w bake (−Y → normalne (Nx, Nz, −Ny); +X → (Ny, Nz, Nx)). Układ i fps animacji bierzemy ze starego arkusza KIND w manifeście.
 """
 import colorsys
@@ -28,6 +29,7 @@ def glow_mask(rgb, alpha):
 
 def main():
     src, kind, cam = sys.argv[1:4]
+    gain = next((float(a.split("=", 1)[1]) for a in sys.argv if a.startswith("--gain=")), 1.0)
     mpath = os.path.join(ART, "sprites.json")
     manifest = json.load(open(mpath))
     old = manifest["sheets"][kind]
@@ -48,7 +50,10 @@ def main():
             ring = solid.filter(ImageFilter.MaxFilter(5))
             col = Image.new("RGBA", c.size, OUTLINE + (0,))
             col.putalpha(ring)
-            col.alpha_composite(Image.merge("RGBA", (*c.convert("RGB").split(), solid)))
+            base_rgb = c.convert("RGB")
+            if gain != 1.0:
+                base_rgb = base_rgb.point(lambda v: int(v * gain))
+            col.alpha_composite(Image.merge("RGBA", (*base_rgb.split(), solid)))
             n = np.asarray(nw.convert("RGB")).astype(np.float32) / 255.0 * 2.0 - 1.0
             maps = {"-Y": (n[..., 0], n[..., 2], -n[..., 1]), "+Y": (-n[..., 0], n[..., 2], n[..., 1]),
                     "+X": (n[..., 1], n[..., 2], n[..., 0]), "-X": (-n[..., 1], n[..., 2], -n[..., 0])}
@@ -58,9 +63,15 @@ def main():
             rgb = np.where((np.asarray(solid) > 0)[..., None], rgb, np.array([128, 128, 255], np.uint8))
             nimg = Image.fromarray(rgb, "RGB")
             nimg.putalpha(ring)
-            gm = glow_mask(np.asarray(c.convert("RGB")), np.asarray(solid).astype(np.float32) / 255.0)
-            gimg = Image.fromarray((gm * 255).astype(np.uint8), "L").filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.GaussianBlur(0.8))
-            glow = Image.merge("RGBA", (*c.convert("RGB").split(), gimg))
+            gpath = os.path.join(src, f"{kind}_{an}_{i}_g.png")
+            if os.path.exists(gpath):                  # jawny przebieg „tylko oczy" (Mimik): kolor emisji, alfa = jasność
+                g = Image.open(gpath).convert("RGB")
+                alpha = np.asarray(g).max(axis=-1)
+                glow = Image.merge("RGBA", (*g.split(), Image.fromarray(alpha, "L").filter(ImageFilter.GaussianBlur(0.8))))
+            else:
+                gm = glow_mask(np.asarray(c.convert("RGB")), np.asarray(solid).astype(np.float32) / 255.0)
+                gimg = Image.fromarray((gm * 255).astype(np.uint8), "L").filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.GaussianBlur(0.8))
+                glow = Image.merge("RGBA", (*c.convert("RGB").split(), gimg))
             sheet.alpha_composite(col, (i * fw, row * fh))
             nsheet.alpha_composite(nimg, (i * fw, row * fh))
             gsheet.alpha_composite(glow, (i * fw, row * fh))
@@ -70,7 +81,8 @@ def main():
     sheet.save(os.path.join(ART, "sprites", name + ".png"))
     nsheet.save(os.path.join(ART, "sprites", name + "_n.png"))
     gsheet.save(os.path.join(ART, "sprites", name + "_glow.png"))
-    manifest["sheets"][name] = {"frame": [fw, fh], "glow": True, "anims": info, "scale": 0.125, "hd": True, "normal": True}
+    scale = round(old["frame"][0] * old["scale"] / fw, 5)          # świat: ta sama szerokość klatki w pikselach świata co stary arkusz
+    manifest["sheets"][name] = {"frame": [fw, fh], "glow": True, "anims": info, "scale": scale, "hd": True, "normal": True}
     json.dump(manifest, open(mpath, "w"), indent=1)
     print("OK", name, sheet.size, "glow px:", int((np.asarray(gsheet)[..., 3] > 40).sum()))
 

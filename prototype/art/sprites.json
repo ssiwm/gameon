@@ -1159,6 +1159,258 @@
    "scale": 0.125,
    "hd": true,
    "normal": true
+  },
+  "skoczek_hd": {
+   "frame": [
+    208,
+    208
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 3,
+     "loop": true
+    },
+    "run": {
+     "row": 1,
+     "frames": 6,
+     "fps": 12,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sleep": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   },
+   "scale": 0.125,
+   "hd": true,
+   "normal": true
+  },
+  "podsluchacz_hd": {
+   "frame": [
+    208,
+    320
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 3,
+     "loop": true
+    },
+    "windup": {
+     "row": 1,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sleep": {
+     "row": 2,
+     "frames": 2,
+     "fps": 1.5,
+     "loop": true
+    }
+   },
+   "scale": 0.125,
+   "hd": true,
+   "normal": true
+  },
+  "stalker_hd": {
+   "frame": [
+    256,
+    480
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 6,
+     "fps": 4,
+     "loop": true
+    },
+    "walk": {
+     "row": 1,
+     "frames": 8,
+     "fps": 9,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   },
+   "scale": 0.125,
+   "hd": true,
+   "normal": true
+  },
+  "nest_hd": {
+   "frame": [
+    320,
+    272
+   ],
+   "glow": true,
+   "anims": {
+    "pulse": {
+     "row": 0,
+     "frames": 3,
+     "fps": 3,
+     "loop": true
+    }
+   },
+   "scale": 0.125,
+   "hd": true,
+   "normal": true
+  },
+  "cma_hd": {
+   "frame": [
+    208,
+    160
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 14,
+     "loop": true
+    },
+    "sleep": {
+     "row": 1,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   },
+   "scale": 0.125,
+   "hd": true,
+   "normal": true
+  },
+  "vein_hd": {
+   "frame": [
+    640,
+    400
+   ],
+   "glow": true,
+   "anims": {
+    "dormant": {
+     "row": 0,
+     "frames": 4,
+     "fps": 1.5,
+     "loop": true
+    },
+    "idle": {
+     "row": 1,
+     "frames": 6,
+     "fps": 5,
+     "loop": true
+    },
+    "open": {
+     "row": 2,
+     "frames": 4,
+     "fps": 6,
+     "loop": true
+    },
+    "windup": {
+     "row": 3,
+     "frames": 3,
+     "fps": 6,
+     "loop": true
+    },
+    "spit": {
+     "row": 4,
+     "frames": 3,
+     "fps": 9,
+     "loop": true
+    }
+   },
+   "scale": 0.2,
+   "hd": true,
+   "normal": true
+  },
+  "leech_hd": {
+   "frame": [
+    576,
+    480
+   ],
+   "glow": true,
+   "anims": {
+    "rise": {
+     "row": 0,
+     "frames": 4,
+     "fps": 14,
+     "loop": false
+    },
+    "idle": {
+     "row": 1,
+     "frames": 6,
+     "fps": 6,
+     "loop": true
+    },
+    "grab": {
+     "row": 2,
+     "frames": 3,
+     "fps": 7,
+     "loop": true
+    },
+    "dead": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   },
+   "scale": 0.16667,
+   "hd": true,
+   "normal": true
+  },
+  "mimik_hd": {
+   "frame": [
+    256,
+    384
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 6,
+     "fps": 5,
+     "loop": true
+    },
+    "walk": {
+     "row": 1,
+     "frames": 8,
+     "fps": 12,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sleep": {
+     "row": 3,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    }
+   },
+   "scale": 0.0625,
+   "hd": true,
+   "normal": true
   }
  },
  "props": [
