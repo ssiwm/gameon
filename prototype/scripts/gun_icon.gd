@@ -6,6 +6,9 @@ extends Control
 
 const PixelArt := preload("res://scripts/pixel_art.gd")
 const Sprites := preload("res://scripts/sprites.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+## Wiersze guns.png, dla których jest broń HD (gunhd_<klucz>.png): z --newui --newgun miniatura używa jej zamiast pikselowej.
+const HD_KEYS := {0: "m83"}
 
 var row := -1
 var k := 0.375
@@ -43,6 +46,18 @@ func set_gun(r: int, col: Color, t: Color) -> void:
 func plate_inset() -> Vector2:
 	return Vector2(size.x, size.y - (2.0 if plate else 0.0))
 
+## Miniatura z broni HD (albedo bez światła) wpisana w pole z zachowaniem proporcji, z miękkim cieniem — tylko dla broni, które mają model HD.
+func _draw_hd(ct: CanvasTexture, rect: Rect2, px: float) -> void:
+	var tex: Texture2D = ct.diffuse_texture
+	if tex == null or rect.size.x <= 0.0:
+		return
+	var body := plate_inset()
+	var avail := body - Vector2(6.0, 6.0)
+	var s := minf(avail.x / rect.size.x, avail.y / rect.size.y)
+	var dst := Rect2((body - rect.size * s) * 0.5, rect.size * s)
+	draw_texture_rect_region(tex, Rect2(dst.position + Vector2(0, 1.2), dst.size), rect, Color(0, 0, 0, 0.5 * tint.a))
+	draw_texture_rect_region(tex, dst, rect, tint)
+
 func _draw() -> void:
 	var dev := PixelArt.device_scale(self)
 	var px := 1.0 / dev                                       # jeden piksel ekranu w jednostkach lokalnych
@@ -54,6 +69,12 @@ func _draw() -> void:
 		for i in 4:
 			var inset := 2.0 + i * 4.0
 			draw_rect(Rect2(inset, inset * 0.5, size.x - 2.0 * inset, size.y - 2.0 - inset), Color(accent.r, accent.g, accent.b, 0.045))
+	if UiTheme.hd_on() and HD_KEYS.has(row) and Sprites.newgun:
+		var key: String = HD_KEYS[row]
+		var ct := Sprites.gun_hd(key)
+		if ct != null:
+			_draw_hd(ct, Sprites.gun_hd_rect(key), px)
+			return
 	var info := _info
 	var tex: Texture2D = info["tex"]
 	if row < 0 or tex == null:
