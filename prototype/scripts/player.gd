@@ -295,6 +295,9 @@ func _setup_local() -> void:
 	if local_human:
 		_camera.make_current()
 		_camera.add_child(_dust_motes())
+		if Sprites.newitem:
+			for fog in _mist():
+				_camera.add_child(fog)
 		_apply_level_bounds()
 	var lvl_node := get_tree().get_first_node_in_group("level")
 	if lvl_node != null:
@@ -373,6 +376,34 @@ func _process(delta: float) -> void:
 func _fx_root() -> Node:
 	var lvl := get_tree().get_first_node_in_group("level")
 	return lvl if lvl != null else get_tree().current_scene
+
+## Mgła przy ziemi i rzadka mgiełka wyżej (HD): duże, miękkie, bardzo słabe plamy, CIENIOWANE światłem — w ciemności ich nie widać,
+## ale snop latarki, lampa i flara wydobywają z nich objętość (smugi światła w powietrzu). Emitowane w świecie, jak pył.
+func _mist() -> Array:
+	var out: Array = []
+	for cfg in [[Vector2(300, 22), Vector2(0, 38), 30, Color(0.78, 0.84, 0.9, 0.11), 0.55, 1.1], [Vector2(300, 80), Vector2(0, -6), 20, Color(0.8, 0.84, 0.9, 0.05), 0.7, 1.4]]:
+		var p := CPUParticles2D.new()
+		p.amount = int(cfg[2])
+		p.lifetime = 18.0
+		p.preprocess = 18.0
+		p.local_coords = false
+		p.position = cfg[1]
+		p.texture = Lights.radial()
+		p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+		p.emission_rect_extents = cfg[0]
+		p.direction = Vector2(1, 0)
+		p.spread = 25.0
+		p.initial_velocity_min = 2.0
+		p.initial_velocity_max = 6.0
+		p.gravity = Vector2.ZERO
+		p.scale_amount_min = cfg[4]
+		p.scale_amount_max = cfg[5]
+		var g := Gradient.new()
+		g.colors = PackedColorArray([Color(cfg[3], 0.0), cfg[3], cfg[3], Color(cfg[3], 0.0)])
+		g.offsets = PackedFloat32Array([0.0, 0.25, 0.75, 1.0])
+		p.color_ramp = g
+		out.append(p)
+	return out
 
 ## Pył w powietrzu wokół kadru — cieniowany, więc widać go tylko w świetle
 ## (snop latarki „ma objętość"). Emitowany w świecie, nie w kadrze.

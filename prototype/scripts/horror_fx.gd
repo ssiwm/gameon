@@ -1,5 +1,5 @@
 extends CanvasLayer
-## Obraz w klimacie horroru (tylko grafika HD): winieta, ziarno filmowe i aberracja chromatyczna na brzegach kadru — rosną z poziomem Uwagi
+## Obraz w klimacie horroru (tylko grafika HD): gradacja kolorów (chłodne cienie, ciepłe światła), winieta, ziarno filmowe i aberracja chromatyczna na brzegach kadru — rosną z poziomem Uwagi
 ## (NoiseMgr.level) — oraz ostrzeżenie o stanie lokalnego gracza: przy niskim życiu obraz traci kolor, rogi czerwienieją i pulsują w rytmie tętna.
 ## Warstwa leży nad światem, pod HUD-em (UI), więc interfejs zostaje ostry. Jedno przejście shadera po całym ekranie; wyłącza je `--nofx`.
 
@@ -29,6 +29,9 @@ void fragment() {
 	col.g = texture(screen_tex, uv).g;
 	col.b = texture(screen_tex, uv - dir * ab).b;
 	float lum = dot(col, vec3(0.299, 0.587, 0.114));
+	// gradacja: cienie chłodne (sine), światła ciepłe — kontrast „bezpieczne światło, wrogi mrok"
+	col *= mix(vec3(0.88, 1.0, 1.16), vec3(1.12, 1.0, 0.86), smoothstep(0.04, 0.42, lum));
+	lum = dot(col, vec3(0.299, 0.587, 0.114));
 	col = mix(col, vec3(lum), desat);
 	float v = smoothstep(0.32, 0.98, d);
 	col *= 1.0 - v * vignette;
