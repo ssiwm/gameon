@@ -12,6 +12,7 @@ Generatory wizualizacji: `prototype/tools/concept/char3d_concept.py` (Blender) i
 - **Etap 1 HD (zrobiony):** postać Tripo w klatkach 256×384 z mapą normalnych i broń HD (m83), oświetlana dynamicznie (flara/latarka); zrzut: `concepts/stage1_lit_compare.png`. Karabin kosztował 30 kredytów; saldo po etapie: 395 z 500. Otwarte: pamięć i czas ładowania przy wielu wyglądach, zmiana rozdzielczości bazowej projektu (dziś 640×360, więc świat nadal pikselowy), HUD/UI i świat w nowej jakości (etap 2).
 - **Etap 2 — próbka świata HD (zrobiona):** decyzja, że rozdzielczość bazowa (640×360) zostaje; teren HD z mapą normalnych (generator `tools/world_hd_tiles.py`), płot/kłody/kamień z Tripo (90 kredytów; saldo 305 z 500), flaga `--newworld`. Zrzut: `concepts/stage2_world_compare.png`. Otwarte: kafle `w`/`C`/`m`, tła parallax, drzewa w tle, wrogowie/bossowie, UI, pamięć.
 - **Etap 3, krok 1 (zrobiony):** postać żeńska HD (Tripo, 75 kredytów; saldo 230), modele GLB dodane do gita. Dalej według listy: pozostałe rodzaje terenu i tła, wrogowie/bossowie, UI, kolejne stroje.
+- **Etap 3, wrogowie (w toku):** Wołek, Trzosek i Ślepiec w HD (`--newmon`); zostają Skoczek, Podsłuchacz, Ćma, Stalker, Mimik, gniazdo i bossowie Żyła i Pijawka (ok. 55–75 kredytów na potwora; saldo 55). Zrzut: `concepts/stage3_enemies_hd.png`.
 - **Do zrobienia przed P1:** szlif v1 (szwy, fałdy, kontrast po zrzucie do pikseli, buty i nogi), poza down (siedząca; leżące ciało nie mieści się w klatce 16 px), animacje rąk przy celowaniu, boty, drugi i trzeci strój.
 
 ## Cel

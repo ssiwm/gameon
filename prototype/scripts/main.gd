@@ -323,6 +323,8 @@ func _handle_cmdline() -> void:
 		if a == "--newworld":
 			Sprites.newworld = true                                                                # dev: teren i tła HD (art/world/)
 			level.enable_world_hd()
+		if a == "--newmon":
+			Sprites.newmon = true                                                                  # dev: wrogowie HD (<rodzaj>_hd)
 		if a == "--newgun":
 			Sprites.newgun = true                                                                  # dev: sprite HD broni (gunhd_*.png)
 		if a == "--newchar" or a.begins_with("--newchar="):
@@ -629,6 +631,18 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if gp != null:
 			Arsenal.cycle_throwable()
 			Arsenal.request_throw("phos", gp.global_position + Vector2(50.0, -20.0), Vector2(60.0, -20.0))
+	if "--shotmon" in OS.get_cmdline_user_args():
+		var mp: Node2D = _players.get_node_or_null("1")      # --shotmon: Wołek i dwa Trzoski przed graczem, AI zamrożone (jeden obudzony, reszta śpi) — podgląd sprite'ów wrogów
+		if mp != null:
+			var spots := [["ShotS", "slepiec", 110.0], ["ShotW", "wolek", 150.0], ["ShotT", "trzosek", 205.0], ["ShotT2", "trzosek", 240.0]]
+			level.spawn_flare(mp.global_position + Vector2(190.0, -26.0), Vector2.ZERO)
+			for sp in spots:
+				level._add_enemy(sp[0], sp[1], mp.global_position + Vector2(float(sp[2]), 0.0))
+				var en: Node = level.get_node_or_null(String(sp[0]))
+				if en != null:
+					en.set_physics_process(false)
+					if sp[0] != "ShotT2":
+						en.call("wake")
 	if "--shotlight" in OS.get_cmdline_user_args():
 		var lp: Node2D = _players.get_node_or_null("1")      # --shotlight: flara tuż przed graczem (podgląd oświetlenia z mapą normalnych)
 		if lp != null:

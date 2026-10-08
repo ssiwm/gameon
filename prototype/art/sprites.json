@@ -1051,6 +1051,114 @@
    "scale": 0.0625,
    "hd": true,
    "normal": true
+  },
+  "wolek_hd": {
+   "frame": [
+    352,
+    352
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 2,
+     "loop": true
+    },
+    "walk": {
+     "row": 1,
+     "frames": 6,
+     "fps": 7,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sleep": {
+     "row": 3,
+     "frames": 4,
+     "fps": 1.2,
+     "loop": true
+    }
+   },
+   "scale": 0.125,
+   "hd": true,
+   "normal": true
+  },
+  "trzosek_hd": {
+   "frame": [
+    192,
+    176
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 3,
+     "loop": true
+    },
+    "run": {
+     "row": 1,
+     "frames": 6,
+     "fps": 12,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sleep": {
+     "row": 3,
+     "frames": 4,
+     "fps": 1.5,
+     "loop": true
+    }
+   },
+   "scale": 0.125,
+   "hd": true,
+   "normal": true
+  },
+  "slepiec_hd": {
+   "frame": [
+    208,
+    256
+   ],
+   "glow": true,
+   "anims": {
+    "idle": {
+     "row": 0,
+     "frames": 4,
+     "fps": 3,
+     "loop": true
+    },
+    "walk": {
+     "row": 1,
+     "frames": 6,
+     "fps": 8,
+     "loop": true
+    },
+    "windup": {
+     "row": 2,
+     "frames": 1,
+     "fps": 1,
+     "loop": false
+    },
+    "sleep": {
+     "row": 3,
+     "frames": 4,
+     "fps": 1.5,
+     "loop": true
+    }
+   },
+   "scale": 0.125,
+   "hd": true,
+   "normal": true
   }
  },
  "props": [

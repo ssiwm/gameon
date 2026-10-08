@@ -7,6 +7,7 @@ Tylko stdlib. Przykłady:
     python3 tools/tripo_gen.py text "opis..." --out art_src/characters/tripo/male_scav --tag male_scav
     python3 tools/tripo_gen.py rigcheck TASK_ID
     python3 tools/tripo_gen.py rig TASK_ID --out art_src/characters/tripo/male_scav_rig
+    python3 tools/tripo_gen.py retarget RIG_TASK_ID preset:biped:idle,preset:biped:walk --out art_src/enemies/tripo/wolek_anims
     python3 tools/tripo_gen.py usage
 Koszty (cennik 2026-10: 1 kredyt = 0,01 USD): tekst→3D 20 (+10 tekstura HD, +20 geometria HD), rig 25, rig-check 0. Zadania nieudane nie są pobierane.
 """
@@ -96,6 +97,13 @@ def main():
     rg.add_argument("task_id")
     rg.add_argument("--out", required=True)
     rg.add_argument("--spec", default="mixamo")
+    rg.add_argument("--rig-type", default="biped", help="biped | quadruped | hexapod | octopod | avian | serpentine | aquatic")
+    rg.add_argument("--model", default=None, help="domyślnie v1.0-20240301 (biped); dla pozostałych v2.5-20260210")
+    rt = sub.add_parser("retarget")
+    rt.add_argument("task_id", help="task_id zrigowanego modelu (wynik polecenia rig)")
+    rt.add_argument("animations", help="lista presetów po przecinku, np. preset:biped:idle,preset:biped:walk")
+    rt.add_argument("--out", required=True)
+    rt.add_argument("--in-place", action="store_true", help="animacja w miejscu (bez przemieszczania)")
     a = ap.parse_args()
 
     if a.cmd == "balance":
@@ -124,8 +132,18 @@ def main():
         d = wait(tid, every=2)
         print("rig-check:", d["output"], "kredyty:", d.get("credits_consumed"))
     elif a.cmd == "rig":
-        body = {"input": a.task_id, "model": "v1.0-20240301", "rig_type": "biped", "spec": a.spec, "out_format": "glb"}
+        model = a.model or ("v1.0-20240301" if a.rig_type == "biped" else "v2.5-20260210")
+        body = {"input": a.task_id, "model": model, "rig_type": a.rig_type, "spec": a.spec, "out_format": "glb"}
         tid = ok(call("POST", "/animations/rig", body), "rig")["task_id"]
+        print("zadanie:", tid)
+        d = wait(tid)
+        n = download(d["output"]["model_url"], a.out + ".glb")
+        print(f"OK {a.out}.glb {n / 1e6:.1f} MB, zużycie: {d.get('credits_consumed')} kredytów, task_id={tid}")
+    elif a.cmd == "retarget":
+        anims = [x.strip() for x in a.animations.split(",") if x.strip()]
+        body = {"input": a.task_id, "out_format": "glb", "bake_animation": True, "animate_in_place": a.in_place}
+        body["animation" if len(anims) == 1 else "animations"] = anims[0] if len(anims) == 1 else anims
+        tid = ok(call("POST", "/animations/retarget", body), "retarget")["task_id"]
         print("zadanie:", tid)
         d = wait(tid)
         n = download(d["output"]["model_url"], a.out + ".glb")
