@@ -136,6 +136,7 @@ func _make_flame() -> CPUParticles2D:
 	f.color_ramp = g
 	f.material = Lights.unshaded()
 	f.z_index = 3
+	Vfx.soften(f)
 	return f
 
 # ---------------------------------------------------------------- zdarzenia

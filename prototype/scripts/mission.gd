@@ -640,6 +640,7 @@ func _draw() -> void:
 	var flick := 0.8 + 0.2 * sin(t * 11.0) * sin(t * 4.3)
 	var col := Color(0.4, 1.0, 0.5)
 	var hot := Color(0.85, 1.0, 0.8)
+	var hd_flare := Sprites.newitem and ItemsHd.has("flare_stuck")           # HD: gładkie wsporniki, linia i słup światła (zamiast pikseli)
 	# poświata na ziemi: eliptyczna kałuża światła w trzech warstwach i pulsujący pierścień
 	for i in 3:
 		var rx := EXIT_RADIUS_X * (1.15 - 0.25 * float(i))
@@ -648,10 +649,22 @@ func _draw() -> void:
 	_draw_ellipse(p + Vector2(0, -1), 6.0 + ring * (EXIT_RADIUS_X + 6.0), 1.0 + ring * 3.0, Color(col, 0.28 * (1.0 - ring)), false)
 	# słup światła: gradient od podstawy w górę (zwęża się i gaśnie), plus szerszy halo
 	var h := 170.0
-	draw_polygon(PackedVector2Array([p + Vector2(-13, 0), p + Vector2(13, 0), p + Vector2(5, -h), p + Vector2(-5, -h)]),
+	if hd_flare:
+		# słup z kilku warstw o malejącej szerokości — miękkie brzegi zamiast jednej ostrej krawędzi
+		for i in 6:
+			var f := float(i) / 5.0
+			var wb := lerpf(16.0, 4.0, f)
+			var wt := lerpf(7.0, 1.2, f)
+			var a := lerpf(0.05, 0.1, f) * flick
+			var ht := lerpf(h, h * 0.7, f)
+			draw_polygon(PackedVector2Array([p + Vector2(-wb, 0), p + Vector2(wb, 0), p + Vector2(wt, -ht), p + Vector2(-wt, -ht)]),
+				PackedColorArray([Color(col.lerp(hot, f * 0.6), a), Color(col.lerp(hot, f * 0.6), a), Color(col, 0.0), Color(col, 0.0)]))
+	else:
+		draw_polygon(PackedVector2Array([p + Vector2(-13, 0), p + Vector2(13, 0), p + Vector2(5, -h), p + Vector2(-5, -h)]),
 		PackedColorArray([Color(col, 0.16 * flick), Color(col, 0.16 * flick), Color(col, 0.0), Color(col, 0.0)]))
-	draw_polygon(PackedVector2Array([p + Vector2(-5, 0), p + Vector2(5, 0), p + Vector2(2, -h * 0.8), p + Vector2(-2, -h * 0.8)]),
-		PackedColorArray([Color(hot, 0.28 * flick), Color(hot, 0.28 * flick), Color(hot, 0.0), Color(hot, 0.0)]))
+	if not hd_flare:
+		draw_polygon(PackedVector2Array([p + Vector2(-5, 0), p + Vector2(5, 0), p + Vector2(2, -h * 0.8), p + Vector2(-2, -h * 0.8)]),
+			PackedColorArray([Color(hot, 0.28 * flick), Color(hot, 0.28 * flick), Color(hot, 0.0), Color(hot, 0.0)]))
 	# strefa ewakuacji: przerywana linia na ziemi i wsporniki na krawędziach
 	var dash := 6.0
 	var x := -EXIT_RADIUS_X
@@ -660,15 +673,26 @@ func _draw() -> void:
 		var x0 := maxf(-EXIT_RADIUS_X, x + phase_off - dash * 2.0)
 		var x1 := minf(EXIT_RADIUS_X, x0 + dash)
 		if x1 > x0:
-			draw_rect(Rect2(p.x + x0, p.y - 1.0, x1 - x0, 2.0), Color(col, 0.6))
+			if hd_flare:
+				draw_line(Vector2(p.x + x0 + 0.8, p.y - 0.6), Vector2(p.x + x1 - 0.8, p.y - 0.6), Color(col, 0.18), 3.6, true)
+				draw_line(Vector2(p.x + x0 + 0.8, p.y - 0.6), Vector2(p.x + x1 - 0.8, p.y - 0.6), Color(col, 0.7), 1.6, true)
+				draw_circle(Vector2(p.x + x0 + 0.8, p.y - 0.6), 0.8, Color(col, 0.7))
+				draw_circle(Vector2(p.x + x1 - 0.8, p.y - 0.6), 0.8, Color(col, 0.7))
+			else:
+				draw_rect(Rect2(p.x + x0, p.y - 1.0, x1 - x0, 2.0), Color(col, 0.6))
 		x += dash * 2.0
 	for sx in [-1.0, 1.0]:
 		var ex: float = p.x + sx * EXIT_RADIUS_X
+		if hd_flare:
+			var post := PackedVector2Array([Vector2(ex - sx * 4.0, p.y - 12.0), Vector2(ex, p.y - 12.0), Vector2(ex, p.y)])
+			draw_polyline(post, Color(col, 0.14), 6.0, true)
+			draw_polyline(post, Color(col, 0.75), 2.0, true)
+			draw_circle(Vector2(ex, p.y - 12.0), 1.6, Color(hot, 0.95))
+			continue
 		draw_rect(Rect2(ex - 1.0, p.y - 12.0, 2.0, 12.0), Color(col, 0.7))
 		draw_rect(Rect2(ex - (4.0 if sx < 0.0 else 0.0), p.y - 12.0, 4.0, 2.0), Color(col, 0.7))
 		draw_rect(Rect2(ex - 1.0, p.y - 12.0, 2.0, 2.0), Color(hot, 0.9))
 	# flara: wbita w ziemię tuba (czerwona, z jasnym paskiem), kamyki u podstawy
-	var hd_flare := Sprites.newitem and ItemsHd.has("flare_stuck")
 	if hd_flare:
 		ItemsHd.draw(self, "flare_stuck", p, 0.85)
 	else:

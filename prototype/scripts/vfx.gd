@@ -23,6 +23,14 @@ static var _blob: Texture2D
 
 const BLOB_SCALE := 0.2
 
+## Zamienia kwadratowe cząsteczki na miękkie okrągłe (grafika HD); wołać po ustawieniu `scale_amount_*`.
+static func soften(fx: CPUParticles2D) -> void:
+	if not Sprites.newitem or fx.texture != null:
+		return
+	fx.texture = blob_texture()
+	fx.scale_amount_min *= BLOB_SCALE
+	fx.scale_amount_max *= BLOB_SCALE
+
 ## Miękka okrągła cząsteczka 8×8 (krew, kurz, dym, iskry w grafice HD).
 static func blob_texture() -> Texture2D:
 	if _blob == null:

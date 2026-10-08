@@ -53,6 +53,7 @@ func _ready() -> void:
 	_embers.gravity = Vector2(0, -4)
 	_embers.color = Color(1.0, 0.55, 0.2, 0.8)
 	_embers.material = Lights.unshaded()
+	Vfx.soften(_embers)
 	add_child(_embers)
 
 func is_threat() -> bool:
@@ -115,6 +116,7 @@ func _destroy_fx() -> void:
 	fx.scale_amount_min = 1.0
 	fx.scale_amount_max = 2.5
 	fx.color = Color(1.0, 0.55, 0.2)
+	Vfx.soften(fx)
 	get_tree().current_scene.add_child(fx)
 	fx.global_position = global_position + Vector2(0, -8)
 	get_tree().create_timer(1.5).timeout.connect(fx.queue_free)
