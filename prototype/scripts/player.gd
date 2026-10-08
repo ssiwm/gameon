@@ -1606,8 +1606,11 @@ func _draw_overlay(ov: Node2D) -> void:
 		_center_text(ov, font, name_txt, -26.0, NAME_SIZE, col)
 		_center_text(ov, font, "%ds" % ceili(bleed_left), -18.0, NAME_SIZE, Color(0.95, 0.4, 0.4))
 		if revive_progress > 0.0:
-			ov.draw_rect(Rect2(-12, -12, 24, 3), Color(0.1, 0.1, 0.12))
-			ov.draw_rect(Rect2(-12, -12, 24.0 * revive_progress, 3), Color(0.4, 0.95, 0.5))
+			if Sprites.newitem:
+				Vfx.draw_bar(ov, Rect2(-12, -12, 24, 3), revive_progress, Color(0.1, 0.1, 0.12, 0.9), Color(0.4, 0.95, 0.5))
+			else:
+				ov.draw_rect(Rect2(-12, -12, 24, 3), Color(0.1, 0.1, 0.12))
+				ov.draw_rect(Rect2(-12, -12, 24.0 * revive_progress, 3), Color(0.4, 0.95, 0.5))
 		return
 	var top := -11.0 if crouching else -17.0
 	if not _spr.is_empty():
@@ -1617,7 +1620,10 @@ func _draw_overlay(ov: Node2D) -> void:
 		var c := Color(0.92, 0.25, 0.3) if i < hp else Color(0.22, 0.22, 0.26)
 		if i >= max_hp():
 			c = BONUS_HEART      # serca ponad podstawowe — złote
-		ov.draw_rect(Rect2(-8 + i * 6.0 - (hearts - max_hp()) * 3.0, top - 7.0, 4, 3), c)
+		if Sprites.newitem:
+			Vfx.draw_heart(ov, Vector2(-6.0 + i * 6.0 - (hearts - max_hp()) * 3.0, top - 5.6), 5.6, c)
+		else:
+			ov.draw_rect(Rect2(-8 + i * 6.0 - (hearts - max_hp()) * 3.0, top - 7.0, 4, 3), c)
 	_center_text(ov, font, name_txt, top - 9.0, NAME_SIZE, col)
 
 func _center_text(ov: Node2D, font: Font, txt: String, y: float, sz: int, c: Color) -> void:

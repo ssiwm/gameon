@@ -1415,5 +1415,8 @@ func _draw_overlay(ov: Node2D) -> void:
 	# pasek HP po pierwszym trafieniu
 	if hp < _max_hp:
 		var w := size.x + 4.0
-		ov.draw_rect(Rect2(-w * 0.5, -size.y - 7.0, w, 2.0), Color(0.15, 0.05, 0.05))
-		ov.draw_rect(Rect2(-w * 0.5, -size.y - 7.0, w * clampf(hp / _max_hp, 0.0, 1.0), 2.0), Color(0.9, 0.25, 0.2))
+		if Sprites.newitem:
+			Vfx.draw_bar(ov, Rect2(-w * 0.5, -size.y - 7.0, w, 2.0), hp / _max_hp, Color(0.15, 0.05, 0.05, 0.9), Color(0.9, 0.25, 0.2))
+		else:
+			ov.draw_rect(Rect2(-w * 0.5, -size.y - 7.0, w, 2.0), Color(0.15, 0.05, 0.05))
+			ov.draw_rect(Rect2(-w * 0.5, -size.y - 7.0, w * clampf(hp / _max_hp, 0.0, 1.0), 2.0), Color(0.9, 0.25, 0.2))

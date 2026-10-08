@@ -23,6 +23,38 @@ static var _blob: Texture2D
 
 const BLOB_SCALE := 0.2
 
+static var _heart_pts: PackedVector2Array
+
+## Serce HD nad głową (gładki wielokąt z obrysem i połyskiem), środek w `c`, szerokość ~`w`; `c_fill` kolor, pełne = jasne, puste = ciemne.
+static func draw_heart(ci: CanvasItem, c: Vector2, w: float, fill: Color) -> void:
+	if _heart_pts.is_empty():
+		for k in 28:
+			var t := TAU * float(k) / 28.0
+			_heart_pts.append(Vector2(16.0 * pow(sin(t), 3.0), -(13.0 * cos(t) - 5.0 * cos(2.0 * t) - 2.0 * cos(3.0 * t) - cos(4.0 * t))) / 34.0)
+	var pts := PackedVector2Array()
+	for q in _heart_pts:
+		pts.append(c + q * w * 1.0 + Vector2(0, w * 0.04))
+	var outline := fill.darkened(0.6)
+	outline.a = fill.a
+	ci.draw_colored_polygon(pts, fill)
+	var closed := pts.duplicate()
+	closed.append(pts[0])
+	ci.draw_polyline(closed, outline, 0.7, true)
+	ci.draw_circle(c + Vector2(-w * 0.2, -w * 0.12), w * 0.1, Color(1, 1, 1, 0.35 * fill.a))
+
+## Pasek HD (zaokrąglony): tło i wypełnienie `frac` (0..1).
+static func draw_bar(ci: CanvasItem, r: Rect2, frac: float, back: Color, fill: Color) -> void:
+	var cap := r.size.y * 0.5
+	var y := r.position.y + cap
+	ci.draw_line(Vector2(r.position.x + cap, y), Vector2(r.end.x - cap, y), back, r.size.y, true)
+	ci.draw_circle(Vector2(r.position.x + cap, y), cap, back)
+	ci.draw_circle(Vector2(r.end.x - cap, y), cap, back)
+	var fw := (r.size.x - r.size.y) * clampf(frac, 0.0, 1.0)
+	if frac > 0.0:
+		ci.draw_line(Vector2(r.position.x + cap, y), Vector2(r.position.x + cap + fw, y), fill, r.size.y, true)
+		ci.draw_circle(Vector2(r.position.x + cap, y), cap, fill)
+		ci.draw_circle(Vector2(r.position.x + cap + fw, y), cap, fill)
+
 ## Zamienia kwadratowe cząsteczki na miękkie okrągłe (grafika HD); wołać po ustawieniu `scale_amount_*`.
 static func soften(fx: CPUParticles2D) -> void:
 	if not Sprites.newitem or fx.texture != null:
