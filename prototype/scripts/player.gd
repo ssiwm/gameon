@@ -1621,7 +1621,11 @@ func _draw_overlay(ov: Node2D) -> void:
 		if i >= max_hp():
 			c = BONUS_HEART      # serca ponad podstawowe — złote
 		if Sprites.newitem:
-			Vfx.draw_heart(ov, Vector2(-6.0 + i * 6.0 - (hearts - max_hp()) * 3.0, top - 5.6), 5.6, c)
+			# HD (horror): cienkie, przygaszone „kreski życia" zamiast kreskówkowych serc — krwista czerwień, puste ledwo widoczne, bonus przyćmione złoto
+			var hc := Color(0.62, 0.12, 0.14, 0.92) if i < hp else Color(0.2, 0.2, 0.24, 0.5)
+			if i >= max_hp():
+				hc = Color(0.74, 0.58, 0.26, 0.92)
+			Vfx.draw_bar(ov, Rect2(-7.6 + i * 6.0 - (hearts - max_hp()) * 3.0, top - 6.4, 4.6, 1.5), 1.0, Color(0.02, 0.01, 0.01, 0.65), hc)
 		else:
 			ov.draw_rect(Rect2(-8 + i * 6.0 - (hearts - max_hp()) * 3.0, top - 7.0, 4, 3), c)
 	_center_text(ov, font, name_txt, top - 9.0, NAME_SIZE, col)
