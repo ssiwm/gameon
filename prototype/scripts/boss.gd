@@ -556,6 +556,7 @@ func _burst(pos: Vector2, col: Color, n: int) -> void:
 	fx.gravity = Vector2(0, 300)
 	fx.color = col
 	fx.material = Lights.unshaded()
+	Vfx.soften(fx)
 	get_parent().add_child(fx)
 	fx.global_position = pos
 	get_tree().create_timer(0.8).timeout.connect(fx.queue_free)
@@ -672,6 +673,7 @@ func _death_fx() -> void:
 	fx.scale_amount_max = 3.5
 	fx.color = Color(0.55, 0.12, 0.16)
 	fx.material = Lights.unshaded()
+	Vfx.soften(fx)
 	get_parent().add_child(fx)
 	fx.global_position = global_position + Vector2(0, -20)
 	get_tree().create_timer(2.0).timeout.connect(fx.queue_free)

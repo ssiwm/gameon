@@ -391,6 +391,7 @@ func _dust_motes() -> CPUParticles2D:
 	p.scale_amount_min = 0.6
 	p.scale_amount_max = 1.3
 	p.color = Color(0.8, 0.78, 0.7, 0.55)
+	Vfx.soften(p)
 	return p
 
 ## Popychanie skrzyń/beczek: CharacterBody2D sam nie pcha ciał fizycznych.
