@@ -13,6 +13,7 @@ extends RigidBody2D
 const Sprites := preload("res://scripts/sprites.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Vfx := preload("res://scripts/vfx.gd")
+const ItemsHd := preload("res://scripts/items_hd.gd")
 
 const LAYER := 32
 const IMPACT_SPEED := 150.0       ## px/s — szybciej = łoskot (hałas)
@@ -63,7 +64,9 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	_home = global_position
 	_remote_pos = global_position
-	if Sprites.has("objects"):
+	if Sprites.newitem and ItemsHd.has(kind):
+		ItemsHd.make(kind, self)                                  # HD: skrzynia/beczka z mapą normalnych; stopy w (0, 0) jak w kształcie kolizji
+	elif Sprites.has("objects"):
 		_spr = Sprites.attach(self, "objects")
 		Sprites.play(_spr, kind, false)
 	_apply_authority()

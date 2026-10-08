@@ -8,6 +8,7 @@ extends RefCounted
 ## znikają pierwsze.
 
 const Lights := preload("res://scripts/lights.gd")
+const Sprites := preload("res://scripts/sprites.gd")
 
 const DEBRIS_LAYER := 64
 const DEBRIS_MASK := 1 | 16
@@ -16,8 +17,23 @@ const DEBRIS_LIFE := 9.0
 const MAX_DECALS := 260
 
 static var _debris: Array = []
+static var _blob: Texture2D
 
 # ---------------------------------------------------------------- cząsteczki
+
+const BLOB_SCALE := 0.2
+
+## Miękka okrągła cząsteczka 8×8 (krew, kurz, dym, iskry w grafice HD).
+static func blob_texture() -> Texture2D:
+	if _blob == null:
+		var n := 8
+		var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+		for y in n:
+			for x in n:
+				var d := Vector2(x + 0.5 - n * 0.5, y + 0.5 - n * 0.5).length() / (n * 0.5)
+				img.set_pixel(x, y, Color(1, 1, 1, clampf(1.6 * (1.0 - d), 0.0, 1.0)))
+		_blob = ImageTexture.create_from_image(img)
+	return _blob
 
 static func burst(parent: Node, pos: Vector2, color: Color, amount: int, vmin: float, vmax: float,
 		dir := Vector2.UP, spread := 60.0, gravity := 500.0, life := 0.5, size := Vector2(1.0, 2.0),
@@ -37,6 +53,10 @@ static func burst(parent: Node, pos: Vector2, color: Color, amount: int, vmin: f
 	fx.gravity = Vector2(0, gravity)
 	fx.scale_amount_min = size.x
 	fx.scale_amount_max = size.y
+	if Sprites.newitem:
+		fx.texture = blob_texture()                       # HD: miękkie okrągłe cząsteczki zamiast kwadratów
+		fx.scale_amount_min = size.x * BLOB_SCALE
+		fx.scale_amount_max = size.y * BLOB_SCALE
 	fx.color = color
 	if unshaded:
 		fx.material = Lights.unshaded()
@@ -70,7 +90,7 @@ static func smoke(parent: Node, pos: Vector2, dir: Vector2) -> void:
 
 ## Kawałek ciała / łuska: małe RigidBody2D z kolorowym wielokątem.
 static func debris(parent: Node, pos: Vector2, vel: Vector2, size: Vector2, color: Color,
-		bounce := 0.25, spin := 8.0, on_hit := Callable()) -> RigidBody2D:
+		bounce := 0.25, spin := 8.0, on_hit := Callable(), visual: Node2D = null) -> RigidBody2D:
 	if parent == null or not parent.is_inside_tree():
 		return null
 	var b := RigidBody2D.new()
@@ -88,11 +108,14 @@ static func debris(parent: Node, pos: Vector2, vel: Vector2, size: Vector2, colo
 	sh.size = size
 	cs.shape = sh
 	b.add_child(cs)
-	var poly := Polygon2D.new()
-	var h := size * 0.5
-	poly.polygon = PackedVector2Array([Vector2(-h.x, -h.y), Vector2(h.x, -h.y), Vector2(h.x, h.y), Vector2(-h.x, h.y)])
-	poly.color = color
-	b.add_child(poly)
+	if visual != null:
+		b.add_child(visual)
+	else:
+		var poly := Polygon2D.new()
+		var h := size * 0.5
+		poly.polygon = PackedVector2Array([Vector2(-h.x, -h.y), Vector2(h.x, -h.y), Vector2(h.x, h.y), Vector2(-h.x, h.y)])
+		poly.color = color
+		b.add_child(poly)
 	if on_hit.is_valid():
 		b.contact_monitor = true
 		b.max_contacts_reported = 1
@@ -123,6 +146,9 @@ static func _track(b: Node) -> void:
 
 ## Szczątki wroga: kilka kawałków rozrzuconych od trafienia + krew na podłożu.
 static func gibs(parent: Node, pos: Vector2, color: Color, count: int, push := Vector2.ZERO) -> void:
+	if Sprites.newitem:
+		_gibs_hd(parent, pos, color, count, push)
+		return
 	for i in count:
 		var v := Vector2(randf_range(-90.0, 90.0), randf_range(-220.0, -80.0)) + push * 0.6
 		var s := Vector2(randf_range(2.0, 4.0), randf_range(2.0, 3.5))
@@ -131,6 +157,85 @@ static func gibs(parent: Node, pos: Vector2, color: Color, count: int, push := V
 			func(b: RigidBody2D) -> void: splat(b.get_parent(), b.global_position, 2.5))
 	blood(parent, pos + Vector2(0, -6), Vector2.UP, 14)
 	splat(parent, pos, 6.0)
+
+## Grafika HD szczątków: kawałki mięsa (nieregularne, z połyskiem), kości (z zgrubieniami na końcach) i wnętrzności (falujące, wilgotne).
+## Kolor mięsa wynika z koloru stwora; kości są zawsze kościane, flaki różowo-czerwone (zmieszane z kolorem stwora).
+static func _gibs_hd(parent: Node, pos: Vector2, color: Color, count: int, push: Vector2) -> void:
+	for i in count:
+		var v := Vector2(randf_range(-90.0, 90.0), randf_range(-220.0, -80.0)) + push * 0.6
+		var roll := randf()
+		var kind := 0 if roll < 0.5 else (1 if roll < 0.78 else 2)
+		var sz := randf_range(3.0, 5.5)
+		var vis := _gib_visual(kind, sz, color)
+		var cs := Vector2(sz, sz * 0.8) if kind == 0 else (Vector2(sz * 1.5, 1.6) if kind == 1 else Vector2(sz * 1.2, 1.8))
+		debris(parent, pos + Vector2(randf_range(-4, 4), randf_range(-8, 0)), v, cs, color, 0.15, 10.0,
+			func(b: RigidBody2D) -> void: splat(b.get_parent(), b.global_position, 2.5), vis)
+	blood(parent, pos + Vector2(0, -6), Vector2.UP, 14)
+	splat(parent, pos, 6.0)
+
+static func _blob_poly(r: float, n: int, jitter: float, squash := 1.0) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var rot := randf() * TAU
+	for k in n:
+		var a := rot + TAU * float(k) / float(n)
+		var rr := r * randf_range(1.0 - jitter, 1.0 + jitter * 0.6)
+		pts.append(Vector2(cos(a) * rr, sin(a) * rr * squash))
+	return pts
+
+static func _poly(pts: PackedVector2Array, col: Color) -> Polygon2D:
+	var p := Polygon2D.new()
+	p.polygon = pts
+	p.color = col
+	p.antialiased = true
+	return p
+
+static func _gib_visual(kind: int, sz: float, color: Color) -> Node2D:
+	var root := Node2D.new()
+	if kind == 0:
+		var base := color.darkened(randf_range(0.1, 0.4))
+		base = base.lerp(Color(0.5, 0.08, 0.1), 0.35)
+		var pts := _blob_poly(sz * 0.5, 9, 0.3, 0.8)
+		root.add_child(_poly(pts, base.darkened(0.3)))                                       # cień / skórka
+		var inner := PackedVector2Array()
+		for q in pts:
+			inner.append(q * 0.78)
+		root.add_child(_poly(inner, base))
+		var hi := PackedVector2Array()
+		for q in pts:
+			hi.append(q * 0.32 + Vector2(-sz * 0.12, -sz * 0.14))
+		root.add_child(_poly(hi, base.lightened(0.45) * Color(1, 1, 1, 0.8)))                 # wilgotny połysk
+	elif kind == 1:
+		var l := sz * 1.5
+		var bone := Color(0.88, 0.83, 0.7).darkened(randf_range(0.0, 0.18))
+		var shaft := PackedVector2Array([Vector2(-l * 0.5, -0.55), Vector2(l * 0.5, -0.55), Vector2(l * 0.5, 0.55), Vector2(-l * 0.5, 0.55)])
+		root.add_child(_poly(shaft, bone.darkened(0.12)))
+		root.add_child(_poly(PackedVector2Array([Vector2(-l * 0.5, -0.55), Vector2(l * 0.5, -0.55), Vector2(l * 0.5, 0.0), Vector2(-l * 0.5, 0.0)]), bone))
+		for sx in [-1.0, 1.0]:
+			var kn := PackedVector2Array()
+			for k in 10:
+				var a := TAU * float(k) / 10.0
+				kn.append(Vector2(sx * l * 0.5 + cos(a) * 0.95, sin(a) * 0.95 + (0.5 if k % 3 == 0 else 0.0) * sx * 0.0))
+			root.add_child(_poly(kn, bone))
+		root.add_child(_poly(PackedVector2Array([Vector2(-l * 0.5 - 0.3, 0.55), Vector2(-l * 0.5 + 0.3, 0.7), Vector2(-l * 0.5 + 0.1, 0.9)]), Color(0.55, 0.1, 0.12, 0.8)))   # ślad krwi na kości
+	else:
+		var gut := Color(0.74, 0.28, 0.32).lerp(color, 0.2).darkened(randf_range(0.0, 0.2))
+		var pts2 := PackedVector2Array()
+		var l2 := sz * 1.3
+		var ph := randf() * TAU
+		for k in 6:
+			var f := float(k) / 5.0
+			pts2.append(Vector2((f - 0.5) * l2, sin(f * 5.0 + ph) * 1.1))
+		for w in [[1.9, gut.darkened(0.35)], [1.45, gut], [0.5, gut.lightened(0.5) * Color(1, 1, 1, 0.75)]]:
+			var ln := Line2D.new()
+			ln.points = pts2
+			ln.width = w[0]
+			ln.default_color = w[1]
+			ln.begin_cap_mode = Line2D.LINE_CAP_ROUND
+			ln.end_cap_mode = Line2D.LINE_CAP_ROUND
+			ln.joint_mode = Line2D.LINE_JOINT_ROUND
+			ln.antialiased = true
+			root.add_child(ln)
+	return root
 
 ## Łuska wyrzucona w bok i w górę, przeciwnie do celowania; dźwięczy przy upadku.
 static func casing(parent: Node, pos: Vector2, aim: Vector2, big := false) -> void:

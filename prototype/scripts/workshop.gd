@@ -2,14 +2,25 @@ extends Node2D
 ## Warsztat w kryjówce (znacznik „h"): ława z imadłem, kowadłem i skrzynką na złom. Gdy lokalny gracz stoi przy niej,
 ## HUD podpowiada [E]; naciśnięcie otwiera panel zakupów (workshop_ui.gd) — odblokowanie broni ze stojaków za złom.
 
+const Sprites := preload("res://scripts/sprites.gd")
+const ItemsHd := preload("res://scripts/items_hd.gd")
+
 const REACH_X := 44.0
 const REACH_Y := 40.0
 
 var local_in_range := false
+var _hd := false
 
 func _ready() -> void:
 	add_to_group("workshop")
 	z_index = 0
+	if Sprites.newitem and ItemsHd.has("workshop"):
+		# HD: ława z imadłem, kowadłem i skrzynką na złom (Tripo) oraz narzędzia na ścianie nad nią (młotek, klucz, piła, lampka)
+		_hd = true
+		if ItemsHd.has("tools_wall"):
+			var tw := ItemsHd.make("tools_wall", self, 0.8)
+			tw.position = Vector2(4.4 * 0.8, -26.0)
+		ItemsHd.make("workshop", self)
 
 func _physics_process(_delta: float) -> void:
 	local_in_range = false
@@ -27,6 +38,8 @@ func _physics_process(_delta: float) -> void:
 			ui.open()
 
 func _draw() -> void:
+	if _hd:
+		return
 	var wood := Color(0.34, 0.24, 0.15)
 	var wood_hi := Color(0.5, 0.37, 0.23)
 	var dark := Color(0.13, 0.1, 0.07)

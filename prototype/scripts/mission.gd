@@ -20,6 +20,8 @@ enum Phase { OBJECTIVE, BOSS, EXTRACT, SUCCESS, FAILED }      # FAILED: tylko No
 const Lights := preload("res://scripts/lights.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const RunLog := preload("res://scripts/run_log.gd")
+const Sprites := preload("res://scripts/sprites.gd")
+const ItemsHd := preload("res://scripts/items_hd.gd")
 
 const EXTRACT_TIME := 3.0
 const EXIT_RADIUS_X := 34.0
@@ -666,27 +668,37 @@ func _draw() -> void:
 		draw_rect(Rect2(ex - (4.0 if sx < 0.0 else 0.0), p.y - 12.0, 4.0, 2.0), Color(col, 0.7))
 		draw_rect(Rect2(ex - 1.0, p.y - 12.0, 2.0, 2.0), Color(hot, 0.9))
 	# flara: wbita w ziemię tuba (czerwona, z jasnym paskiem), kamyki u podstawy
-	draw_rect(Rect2(p.x - 6.0, p.y - 2.0, 3.0, 2.0), Color(0.18, 0.2, 0.17))
-	draw_rect(Rect2(p.x + 3.0, p.y - 3.0, 4.0, 3.0), Color(0.16, 0.18, 0.15))
-	draw_rect(Rect2(p.x - 2.0, p.y - 11.0, 4.0, 11.0), Color(0.55, 0.12, 0.1))
-	draw_rect(Rect2(p.x - 2.0, p.y - 11.0, 1.0, 11.0), Color(0.8, 0.22, 0.16))
-	draw_rect(Rect2(p.x - 2.0, p.y - 7.0, 4.0, 1.0), Color(0.9, 0.85, 0.6))
-	draw_rect(Rect2(p.x - 2.0, p.y - 12.0, 4.0, 1.0), Color(0.25, 0.25, 0.22))
+	var hd_flare := Sprites.newitem and ItemsHd.has("flare_stuck")
+	if hd_flare:
+		ItemsHd.draw(self, "flare_stuck", p, 0.85)
+	else:
+		draw_rect(Rect2(p.x - 6.0, p.y - 2.0, 3.0, 2.0), Color(0.18, 0.2, 0.17))
+		draw_rect(Rect2(p.x + 3.0, p.y - 3.0, 4.0, 3.0), Color(0.16, 0.18, 0.15))
+		draw_rect(Rect2(p.x - 2.0, p.y - 11.0, 4.0, 11.0), Color(0.55, 0.12, 0.1))
+		draw_rect(Rect2(p.x - 2.0, p.y - 11.0, 1.0, 11.0), Color(0.8, 0.22, 0.16))
+		draw_rect(Rect2(p.x - 2.0, p.y - 7.0, 4.0, 1.0), Color(0.9, 0.85, 0.6))
+		draw_rect(Rect2(p.x - 2.0, p.y - 12.0, 4.0, 1.0), Color(0.25, 0.25, 0.22))
 	# płomień: trzy warstwy (zewnętrzna zieleń, jasny środek, biały rdzeń) migoczą niezależnie
 	var fh := 8.0 + 3.0 * sin(t * 17.0) + 2.0 * sin(t * 9.1)
 	var fw := 5.0 + 1.0 * sin(t * 13.0)
-	var fy := p.y - 12.0
+	var fy := p.y - (13.0 if hd_flare else 12.0)
 	draw_circle(Vector2(p.x, fy - 5.0), 11.0, Color(col, 0.10 * flick))
 	draw_circle(Vector2(p.x, fy - 4.0), 6.5, Color(col, 0.16 * flick))
-	draw_colored_polygon(PackedVector2Array([Vector2(p.x - fw, fy), Vector2(p.x + fw, fy), Vector2(p.x + 1.0 + sin(t * 7.0), fy - fh - 3.0), Vector2(p.x - 1.0, fy - fh - 3.0)]), Color(0.3, 0.95, 0.45, 0.85))
-	draw_colored_polygon(PackedVector2Array([Vector2(p.x - fw * 0.55, fy), Vector2(p.x + fw * 0.55, fy), Vector2(p.x, fy - fh)]), Color(0.7, 1.0, 0.7, 0.95))
-	draw_colored_polygon(PackedVector2Array([Vector2(p.x - 1.5, fy), Vector2(p.x + 1.5, fy), Vector2(p.x, fy - fh * 0.55)]), Color(1.0, 1.0, 0.9, 1.0))
+	if hd_flare:
+		_draw_flame_hd(Vector2(p.x, fy), fh + 3.0, fw, t, col)
+	else:
+		draw_colored_polygon(PackedVector2Array([Vector2(p.x - fw, fy), Vector2(p.x + fw, fy), Vector2(p.x + 1.0 + sin(t * 7.0), fy - fh - 3.0), Vector2(p.x - 1.0, fy - fh - 3.0)]), Color(0.3, 0.95, 0.45, 0.85))
+		draw_colored_polygon(PackedVector2Array([Vector2(p.x - fw * 0.55, fy), Vector2(p.x + fw * 0.55, fy), Vector2(p.x, fy - fh)]), Color(0.7, 1.0, 0.7, 0.95))
+		draw_colored_polygon(PackedVector2Array([Vector2(p.x - 1.5, fy), Vector2(p.x + 1.5, fy), Vector2(p.x, fy - fh * 0.55)]), Color(1.0, 1.0, 0.9, 1.0))
 	# iskry: małe piksele unoszą się i gasną (stałe fazy — bez losowania co klatkę)
 	for i in 9:
 		var life := fmod(t * (0.55 + 0.07 * float(i)) + float(i) * 0.37, 1.0)
 		var sx := sin(float(i) * 12.9 + life * 5.0) * (4.0 + 18.0 * life)
 		var sy := fy - 4.0 - life * (46.0 + 10.0 * float(i % 3))
-		draw_rect(Rect2(roundf(p.x + sx), roundf(sy), 1.0 if i % 2 == 0 else 2.0, 1.0 if i % 2 == 0 else 2.0), Color(hot, (1.0 - life) * 0.9))
+		if hd_flare:
+			draw_circle(Vector2(p.x + sx, sy), (0.7 if i % 2 == 0 else 1.1) * (1.0 - life * 0.5), Color(hot, (1.0 - life) * 0.9))
+		else:
+			draw_rect(Rect2(roundf(p.x + sx), roundf(sy), 1.0 if i % 2 == 0 else 2.0, 1.0 if i % 2 == 0 else 2.0), Color(hot, (1.0 - life) * 0.9))
 	# dym: trzy przezroczyste kłęby dryfują w górę i rozpływają się
 	for i in 3:
 		var l2 := fmod(t * 0.28 + float(i) * 0.33, 1.0)
@@ -702,6 +714,25 @@ func _draw() -> void:
 		draw_rect(Rect2(bx, by, bw * extract_progress, 1.0), hot)
 		for k in range(1, 4):
 			draw_rect(Rect2(bx + bw * float(k) * 0.25 - 0.5, by, 1.0, 5.0), Color(0.04, 0.05, 0.05, 0.8))
+
+## Płomień flary w grafice HD: gładka kropla z falującym konturem i kołyszącym się czubkiem, trzy warstwy (zieleń, jasny środek, biały rdzeń).
+func _draw_flame_hd(base: Vector2, h: float, w: float, t: float, col: Color) -> void:
+	var layers := [[1.0, 1.0, Color(0.3, 0.95, 0.45, 0.8)], [0.6, 0.72, Color(0.7, 1.0, 0.7, 0.95)], [0.28, 0.45, Color(1.0, 1.0, 0.92, 1.0)]]
+	for lay in layers:
+		var ws: float = lay[0]
+		var hs: float = lay[1]
+		var pts := PackedVector2Array()
+		var n := 12
+		for side in [-1.0, 1.0]:
+			for i in n + 1:
+				if side > 0.0 and i == 0:
+					continue                                    # czubek już jest (bez dubla — triangulacja nie lubi zdegenerowanych wielokątów)
+				var f := float(i) / float(n)
+				var y: float = f if side < 0.0 else 1.0 - f
+				var width := w * ws * pow(maxf(0.0, 1.0 - y), 0.75) * (0.55 + 0.45 * sin(y * PI * 0.9 + 0.25)) * (1.0 + 0.12 * sin(t * 13.0 + y * 7.0))
+				var sway := sin(t * 7.0 + y * 2.5) * 1.6 * y * y
+				pts.append(base + Vector2(side * width + sway, -y * h * hs))
+		draw_colored_polygon(pts, lay[2])
 
 ## Elipsa (wypełniona albo sam obrys) z N punktów — płaska plama światła na podłodze.
 func _draw_ellipse(c: Vector2, rx: float, ry: float, color: Color, filled := true) -> void:
