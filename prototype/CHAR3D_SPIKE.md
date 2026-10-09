@@ -9,7 +9,9 @@ Ręce naprawdę trzymają broń przy każdym kącie celowania, animacji, broni i
 godot --path prototype -- --char3d                                                      # gra z postaciami 3D (gracze i bot)
 godot --path prototype --script tools/shot_char3d.gd -- --set=poses|weapons|looks|states --part=0 --zoom=9 --out=/tmp/c3d.png
 godot --path prototype --script tools/shot_guns3d.gd -- --out=/tmp/guns3d.png          # modele broni z punktami chwytu
-godot --path prototype --script tools/bench_char3d.gd -- --n=1,5,10                    # koszt renderu
+godot --path prototype --script tools/bench_char3d.gd -- --n=1,5,10 [--lq]             # koszt renderu (--lq = niska jakość)
+godot --path prototype -- --char3d-lq                                                   # gra z postaciami 3D w niskiej jakości (SS 2, bez MSAA)
+# test sieciowy (dwa okna): host `--script tools/shot_net3d.gd -- --host --port=8980 --act`, klient `... -- --join=127.0.0.1 --port=8980 --watch`
 python prototype/tools/prep_char3d_all.py [--chars|--guns] [--only=m83,male_scav]       # ponowny wypiek modeli (Blender)
 ```
 
@@ -41,10 +43,13 @@ Flaga działa tylko z oknem (w trybie headless gra używa sprite'ów, więc `--m
 | 10 | 1,6 ms | 1,9 ms | 0,8 ms |
 
 Typowa sesja (4 graczy + bot) ≈ 2,5 ms z 16,7 ms. Nie mierzono na słabszym GPU (zintegrowane) — do sprawdzenia przed włączeniem domyślnym.
-Pokrętła kosztu: `SS` (rozdzielczość renderu), MSAA, `FRAME_WP` (rozmiar ramki).
+Pokrętła kosztu: `Char3D.ss` (rozdzielczość renderu, 4), `Char3D.msaa`, `FRAME_WP` (rozmiar ramki); tryb niskiej jakości `--char3d-lq` = SS 2 + bez MSAA.
+Test sieciowy (host + klient, oba z 3D): zdalni gracze i bot mają model, broń i wygląd; przeładowanie hosta widoczne u klienta.
 
 ## Ograniczenia / dalsze kroki
 
+- Rzut flary i przedmiotów ma pozę (prawa ręka zamachem nad głową), ale tylko lokalnie — rzut jest zdarzeniem lokalnego gracza, inni widzą dopiero rzucony przedmiot.
+- Celowanie w dół wysuwa broń ku kamerze (inaczej chowa się za tułowiem); celowanie prosto w górę zasłania głowę ramieniem.
 - Oświetlenie: sprite jest oświetlony płasko przez światła 2D (bez mapy normalnych), cieniowanie bryły pochodzi z 3D. Dwa przebiegi (kolor + normalne) byłyby droższe.
 - Pozy to proste funkcje sin/cos, nie animacje artysty; brak przejść (blend) między animacjami; dłonie nie obejmują palcami chwytu (tylko orientacja).
 - SPECTER-1 (`widmo1`) nie ma własnego modelu — używa LR-7. Broń biała ma jedną, uproszczoną pozę zamachu.
