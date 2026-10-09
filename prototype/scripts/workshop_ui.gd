@@ -1136,8 +1136,8 @@ func _refresh_detail(w: int) -> void:
 			var t := Upgrades.tier(String(base.key), i)
 			var state := 0 if (unlocked and i <= lv) else (1 if (unlocked and i == lv + 1) else 2)
 			var col: Color = UiTheme.OK if state == 0 else (GOLD if state == 1 else UiTheme.BP_MUTED)
-			var tail := "installed" if state == 0 else "%d" % Scrap.tier_cost(String(base.key), i)
-			var l := UiTheme.label("T%d  %s — %s  [%s]" % [i, t["name"], t["desc"], tail], 8, col)
+			var tail := tr("installed") if state == 0 else "%d" % Scrap.tier_cost(String(base.key), i)
+			var l := UiTheme.label("T%d  %s — %s  [%s]" % [i, tr(t["name"]), tr(t["desc"]), tail], 8, col)
 			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			l.custom_minimum_size = Vector2(DETAIL_W, 0)
 			_d_tiers.add_child(l)

@@ -123,7 +123,7 @@ func select(i: int) -> void:
 		_stats.add_child(UiTheme.label(st[0], 8, UiTheme.MUTED))
 		_stats.add_child(UiTheme.label(st[1], 8, UiTheme.TEXT))
 	_text.text = e["text"]
-	_tip.text = "TIP  " + e["tip"]
+	_tip.text = tr("TIP  ") + tr(e["tip"])
 	_access.text = String(e.get("access", ""))
 	_access.visible = _access.text != ""
 	for c in _tiers.get_children():
@@ -135,7 +135,7 @@ func select(i: int) -> void:
 		for t in tiers:
 			var st := int(t["state"])
 			var col: Color = UiTheme.OK if st == 0 else (Color(0.95, 0.8, 0.4) if st == 1 else UiTheme.MUTED)
-			var tail := "installed" if st == 0 else "%d scrap" % int(t["cost"])
+			var tail := tr("installed") if st == 0 else tr("%d scrap") % int(t["cost"])
 			var l := UiTheme.label("%s  —  %s   [%s]" % [t["head"], t["desc"], tail], 8, col)
 			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			l.custom_minimum_size = Vector2(DETAIL_W, 0)
