@@ -11,6 +11,9 @@ Co-op horror run-and-gun (retro Contra), Godot **4.7.2**, GDScript, 2D, GL Compa
 - Grafikę i audio generują skrypty Pythona w `prototype/tools/` — edytuj generatory, nie wynikowe pliki.
 - Gameplay w sieci rozstrzyga serwer (pociski, obrażenia); klient robi predykcję i rysuje. Nie dodawaj logiki bez walidacji serwera.
 - Zmieniasz mechanikę → zaktualizuj `README.md` / `GDD.md` / `WEAPONS.md`, jeśli ją opisują.
+- Klawisze i przyciski pada żyją w rejestrze `prototype/scripts/actions.gd`: nową akcję dopisz tam, a nazwę klawisza w tekstach podawaj
+  przez `Actions.key("id")` / `{id}` w `Actions.fmt(...)`, nie literałem. Tekst UI po angielsku + wiersz w `prototype/translations/ui.csv`
+  (kolumna `pl`); sformatowane teksty przez `tr()`.
 
 ## Testy (headless)
 
