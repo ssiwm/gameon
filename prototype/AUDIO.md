@@ -62,6 +62,7 @@ bez crossfade'u i bez dziury w energii.
   Głos gracza: wysiłek, ból (2 różne samogłoski/kontury), upadek.
 * **Kroki** — pięta + palce, 5 wariantów × 4 powierzchnie (beton/metal modalny/ziemia z chrzęstem/woda z bąblami).
 * **Ambient** — stereo z niezależnych realizacji, okresowe; nowe emitery jednorazowe (podmuch, skrzyp, huk, zew).
+* **Pogoda** (`weather_fx.gd`, faza C): `amb_rain` (deszcz na gruncie i listowiu: szum pasmowy 2–9 kHz + trzask kropel + plinki w kałużach), `amb_rain_roof` (deszcz na dachu / blasze: tupot kropel na rezonującej płycie), `thunder_1..3` (blisko: trzask + ostry rumor, daleko: sam turlający się pomruk); wiatr burzy i mgły to istniejący `amb_wind`, mokre kroki to istniejący `step_water`. 157 assetów, audyt 0 uwag.
 * **Muzyka** — 4 **stemy addytywne** (96 BPM = 30 000 próbek/beat, 8 taktów, d-moll, Dm–B♭–Gm–A ×2):
   pad+sub+szklane akcenty / ostinato basowe + melodia / perkusja z gated snare + bas 16-tkowy / arpeggio, toomy, crash, riser.
   Plus dwa stingery. Wszystkie stemy mają identyczną siatkę.

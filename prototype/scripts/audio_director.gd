@@ -38,6 +38,7 @@ extends Node
 signal caption(text: String, pos: Vector2, priority: int)
 
 const Surfaces := preload("res://scripts/surfaces.gd")
+const Weather := preload("res://scripts/weather.gd")
 const Manifest := preload("res://scripts/audio_manifest.gd")
 
 const BUS_MUSIC := "Music"
@@ -464,8 +465,15 @@ func play_footstep(pos: Vector2, crouching: bool, vol_db := -8.0) -> void:
 		play_variant_at("impact_flesh", 3, pos, BUS_PLAYER, v - 7.0, 0.55, 0.1)
 	elif layer == "ring" and not crouching:
 		play_variant_at("ricochet", 2, pos, BUS_PLAYER, v - 13.0, 0.5, 0.08)
+	# deszcz (RAIN / STORM) pod otwartym niebem: mokre kroki — plusk w kałużach pod stopą (powierzchnia z własnym „water" ma go już)
+	if layer != "water" and Weather.active_id() in ["rain", "storm"] and lvl_sky_open(pos):
+		play_variant_at("step_water", 5, pos, BUS_PLAYER, v - 7.0, pitch * 1.25, 0.1)
 	if not crouching and randf() < 0.3:
 		play_variant_at("foley_gear", 3, pos, BUS_PLAYER, v + 4.0, 1.0, 0.1)
+
+func lvl_sky_open(pos: Vector2) -> bool:
+	var lvl := get_tree().get_first_node_in_group("level")
+	return lvl != null and lvl.sky_open_at(pos)
 
 
 # ---------------------------------------------------------------- pętle

@@ -111,6 +111,60 @@ def _air(n: int, rng: Rng, shared: np.ndarray) -> np.ndarray:
     return d.mix([(sub, 0.5), (h2, 0.35), (h3, 0.3), (breath, 1.1)], n)
 
 
+def _drops(n: int, rng: Rng, per_sec: float, shared: np.ndarray, decay: float = 0.0035) -> np.ndarray:
+    """Gęsty tekstualny trzask kropel: losowe impulsy (położenie i siła), każdy krótki, pasmowy; liczba kropel faluje z `shared` (siła deszczu)."""
+    cnt = int(per_sec * n / SR)
+    x = np.zeros(n + sec(0.2))
+    for _ in range(cnt):
+        k = int(rng.uniform(0, n))
+        if rng.uniform(0, 1.2) > float(shared[k % n]):         # mocniejszy deszcz = więcej kropel
+            continue
+        m = ms(rng.uniform(4, 9))
+        seg = d.filt(d.white(m, rng), "bp", rng.uniform(3200, 8200), 0.7) * d.env_perc(m, 0.00005, decay)
+        x[k:k + m] += seg * rng.uniform(0.25, 1.0) * 6.0
+    return d.fold_loop(x, n)
+
+
+def _rain(n: int, rng: Rng, shared: np.ndarray) -> np.ndarray:
+    """Deszcz na gruncie i listowiu (pętla): szum pasmowy 2–9 kHz + trzask kropel + większe plinki w kałużach."""
+    t = np.arange(n) / SR
+    T = n / SR
+    own = 0.12 * np.sin(TAU * 4 * t / T + rng.uniform(0, TAU))
+    force = np.clip(0.75 + 0.35 * (shared - 0.55) + own, 0.35, 1.2)
+    hiss = d.circ_filter(d.colored(n, rng, 0.15), lambda z: d.bp(d.hp(z, 1800.0), 5200.0, 0.32)) * force
+    body = d.circ_filter(d.colored(n, rng, 1.2), lambda z: d.lp(d.hp(z, 120.0), 520.0, order=2)) * 0.45 * force
+    drops = _drops(n, rng, 520.0, force)
+    plinks = np.zeros(n + sec(0.4))
+    for _ in range(int(9 * T)):
+        k = int(rng.uniform(0, n))
+        f = rng.uniform(700, 2100)
+        dn = ms(rng.uniform(30, 60))
+        p = d.osc("sine", d.glide(f, f * 1.7, dn), dn) * d.env_perc(dn, 0.0008, dn / SR * 0.3)
+        plinks[k:k + dn] += p * rng.uniform(0.12, 0.4)
+    plinks = d.fold_loop(plinks, n)
+    return d.mix([(hiss, 1.0), (body, 0.55), (drops, 0.5), (plinks, 0.35)], n)
+
+
+def _rain_roof(n: int, rng: Rng, shared: np.ndarray) -> np.ndarray:
+    """Deszcz na dachu / blasze nad głową (pętla): tupot kropel na rezonującej płycie + stłumiony szum."""
+    t = np.arange(n) / SR
+    T = n / SR
+    force = np.clip(0.75 + 0.3 * (shared - 0.55), 0.35, 1.15)
+    muffled = d.circ_filter(d.colored(n, rng, 0.6), lambda z: d.bp(z, 2400.0, 0.4)) * 0.8 * force
+    thump = d.circ_filter(d.colored(n, rng, 1.6), lambda z: d.lp(z, 260.0, order=2)) * 0.5 * force
+    patter = np.zeros(n + sec(0.6))
+    cnt = int(95 * T)
+    for _ in range(cnt):
+        k = int(rng.uniform(0, n))
+        if rng.uniform(0, 1.2) > float(force[k % n]):
+            continue
+        f0 = rng.uniform(380, 780)
+        hit = ring(rng, [f0, f0 * 2.31, f0 * 4.1], [0.12, 0.08, 0.05], [1.0, 0.55, 0.3], dur=0.14, jitter=0.01)
+        patter[k:k + len(hit)] += hit * rng.uniform(0.2, 0.9)
+    patter = d.fold_loop(patter, n)
+    return d.mix([(muffled, 0.8), (thump, 0.6), (patter, 0.55)], n)
+
+
 def build_ambience() -> None:
     group("amb")
     specs = [
@@ -118,6 +172,8 @@ def build_ambience() -> None:
         ("amb_forest", 12.0, _forest, -14.0, 0xA200),
         ("amb_machine", 8.0, _machine, -15.0, 0xA300),
         ("amb_air", 10.0, _air, -18.0, 0xA500),
+        ("amb_rain", 12.0, _rain, -16.0, 0xA600),
+        ("amb_rain_roof", 10.0, _rain_roof, -17.0, 0xA700),
     ]
     for key, dur, fn, target, seed in specs:
         asset(key, "amb/" + key, loop=True)

@@ -51,6 +51,14 @@
   "amb/amb_machine",
   1
  ],
+ "amb_rain": [
+  "amb/amb_rain",
+  1
+ ],
+ "amb_rain_roof": [
+  "amb/amb_rain_roof",
+  1
+ ],
  "amb_thud_1": [
   "sfx/world/amb_thud_1",
   0
@@ -561,6 +569,18 @@
  ],
  "tape_stop": [
   "sfx/world/tape_stop",
+  0
+ ],
+ "thunder_1": [
+  "sfx/world/thunder_1",
+  0
+ ],
+ "thunder_2": [
+  "sfx/world/thunder_2",
+  0
+ ],
+ "thunder_3": [
+  "sfx/world/thunder_3",
   0
  ],
  "ui_click": [

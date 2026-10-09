@@ -71,6 +71,16 @@ const NEAR_AMOUNT := 46
 const NEAR_VEL := Vector2(440.0, 520.0)
 const FAR_VEL := Vector2(270.0, 320.0)
 
+## Dźwięk (faza C): bazowa głośność pętli [dB] przy pełnej pogodzie. `rain` = deszcz pod otwartym niebem (amb_rain), `roof` = deszcz nad głową
+## (amb_rain_roof, pod dachem), `wind` = wiatr (amb_wind). Efektywna głośność = baza + 20·log10(siła pogody × udział nieba).
+const AUDIO := {
+	"rain": {"rain": -12.0, "roof": -15.0, "wind": -99.0},
+	"storm": {"rain": -8.0, "roof": -11.0, "wind": -15.0},
+	"fog": {"rain": -99.0, "roof": -99.0, "wind": -24.0},
+}
+const UNDERGROUND_DB := -14.0               ## deszcz słychać w podziemiach jak przez grubą warstwę ziemi
+const SILENT_DB := -55.0                    ## poniżej: pętla zatrzymana
+
 ## Dev (--shotflash): błysk na stałe (zrzuty).
 static var dev_flash := false
 
@@ -81,6 +91,9 @@ var _fog: ColorRect
 var _fog_mat: ShaderMaterial
 var _bd_id := ""
 var _bd_k := -1.0
+var _thunder_done := {}                     ## indeksy błysków, których grzmot już zagrał (dla bieżącego ziarna)
+var _thunder_seed := -1
+var _loops_on := {}                         ## klucze pętli dźwięku uruchomionych przez pogodę
 var _k := 0.0                               ## wygładzona siła pogody 0..1
 var _sky := 0.0                             ## wygładzona „otwartość nieba" nad lokalnym graczem 0..1
 var _id := ""                               ## pogoda, dla której ustawiono parametry cząsteczek
@@ -158,6 +171,7 @@ func _make_splash() -> CPUParticles2D:
 	return p
 
 func _exit_tree() -> void:
+	_stop_audio()
 	_apply_level(Color.WHITE, 0.0)
 	_set_backdrop("", 0.0)
 
@@ -180,6 +194,7 @@ func _process(delta: float) -> void:
 	if raining:
 		_wind(vs)
 		_place_splash(lp, vs)
+	_audio(mode, lp)
 	# mgła: welon ekranowy; pod ziemią słabszy (0,45), pod otwartym niebem pełny
 	var fog_d := _k * (0.45 + 0.55 * _sky) if _id == "fog" else 0.0
 	_fog.visible = fog_d > 0.01
@@ -287,6 +302,64 @@ func _refresh_flashes(now: float) -> void:
 		while t < now + 90.0:
 			_flashes.append(t)
 			t += rng.randf_range(9.0, 24.0)
+
+# ---------------------------------------------------------------- dźwięk (faza C)
+
+## Pętle deszczu (na zewnątrz / pod dachem) i wiatru wg pogody i otwartości nieba nad lokalnym graczem; grzmot burzy z harmonogramu błyskawic.
+func _audio(mode: int, lp: Node2D) -> void:
+	var cfg: Dictionary = AUDIO.get(_id, {})
+	var on := mode != Settings.WEATHER_FX_OFF and not cfg.is_empty() and _k > 0.02
+	var under := lp != null and _level != null and lp.global_position.y >= float(_level.underground_y)
+	var targets := {}
+	if on:
+		var k := _k
+		targets["amb_rain"] = float(cfg["rain"]) + _db(k * _sky)
+		targets["amb_rain_roof"] = float(cfg["roof"]) + _db(k * (1.0 - _sky)) + (UNDERGROUND_DB if under else 0.0)
+		targets["amb_wind"] = float(cfg["wind"]) + _db(k)
+	for key in ["amb_rain", "amb_rain_roof", "amb_wind"]:
+		var v: float = targets.get(key, -99.0)
+		if v > SILENT_DB:
+			Audio.start_loop(key, Audio.BUS_AMB, v)                 # istniejąca pętla tylko zmienia głośność
+			_loops_on[key] = true
+		elif _loops_on.has(key):
+			Audio.stop_loop(key)
+			_loops_on.erase(key)
+	if on and _id == "storm":
+		_thunder()
+
+static func _db(x: float) -> float:
+	return 20.0 * log(maxf(x, 0.001)) / log(10.0)
+
+func _stop_audio() -> void:
+	for key in _loops_on.keys():
+		Audio.stop_loop(key)
+	_loops_on.clear()
+
+## Grzmot po każdym błysku: opóźnienie 0,5–4 s z ziarna (tak samo u wszystkich graczy); im dłuższe, tym dalszy i cichszy grzmot (3 warianty: blisko → daleko).
+func _thunder() -> void:
+	_main = _main if is_instance_valid(_main) else get_tree().current_scene
+	var m = _main.get("mission") if _main != null else null
+	if m == null:
+		return
+	if _thunder_seed != Weather.seed:
+		_thunder_seed = Weather.seed
+		_thunder_done.clear()
+	var now := float(m.elapsed)
+	_refresh_flashes(now)
+	for i in _flashes.size():
+		if _thunder_done.has(i):
+			continue
+		var r := RandomNumberGenerator.new()
+		r.seed = Weather.seed * 31 + i
+		var delay := r.randf_range(0.5, 4.0)
+		var due := float(_flashes[i]) + delay
+		if now < due:
+			break
+		_thunder_done[i] = true
+		if now - due > 1.0:
+			continue                                                  # zaległy (np. dołączenie w trakcie misji) — nie odtwarzamy po fakcie
+		var variant := 1 if delay < 1.4 else (2 if delay < 2.6 else 3)
+		Audio.play("thunder_%d" % variant, Audio.BUS_AMB, -3.0 - 2.2 * delay, r.randf_range(0.93, 1.07))
 
 func _set_backdrop(id: String, k: float) -> void:
 	_level = _level if is_instance_valid(_level) else get_tree().get_first_node_in_group("level")
