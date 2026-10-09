@@ -16,6 +16,8 @@ func _initialize() -> void:
 			_counts = []
 			for s in a.substr(4).split(","):
 				_counts.append(int(s))
+		elif a == "--lq":
+			Char3D.set_low_quality(true)
 		elif a.begins_with("--frames="):
 			_frames = int(a.substr(9))
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)

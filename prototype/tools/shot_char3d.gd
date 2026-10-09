@@ -11,8 +11,8 @@ var _wait := 40
 var _chars: Array = []
 var _cfg: Array = []
 
-func _row(anim := "idle", aim := 0, dir := 1, speed := 0, gun := "m83", ch := "male_scav", extra := 0.0, kick := 0.0, reload := -1.0, swing := -1.0) -> Dictionary:
-	return {"anim": anim, "aim": aim, "dir": dir, "speed": speed, "gun": gun, "char": ch, "extra": extra, "kick": kick, "reload": reload, "swing": swing}
+func _row(anim := "idle", aim := 0, dir := 1, speed := 0, gun := "m83", ch := "male_scav", extra := 0.0, kick := 0.0, reload := -1.0, swing := -1.0, thr := -1.0) -> Dictionary:
+	return {"throw": thr, "anim": anim, "aim": aim, "dir": dir, "speed": speed, "gun": gun, "char": ch, "extra": extra, "kick": kick, "reload": reload, "swing": swing}
 
 func _initialize() -> void:
 	var zoom := 6.0
@@ -40,6 +40,11 @@ func _initialize() -> void:
 		"poses":
 			all = [_row("idle", 0), _row("run", 0, 1, 95), _row("idle", 45), _row("idle", -45), _row("idle", 80), _row("crouch", 0), _row("jump", 20), _row("run", -30, 1, 95),
 					_row("idle", 0, -1), _row("run", 0, -1, 95), _row("idle", 45, -1), _row("idle", -45, -1), _row("idle", 80, -1), _row("crouch", 0, -1), _row("fall", 10, -1), _row("crouch_walk", 0, -1, 60)]
+		"aims":
+			for a in [-80, -50, -20, 20, 50, 70, 80, 90]:
+				all.append(_row("idle", a, 1))
+		"misc":
+			all = [_row("down"), _row("idle", 0, 1, 0, "m83", "male_scav", 0.0, 0.0, -1.0, -1.0, 0.1), _row("idle", 20, 1, 0, "m83", "male_scav", 0.0, 0.0, -1.0, -1.0, 0.5), _row("idle", 20, 1, 0, "m83", "male_scav", 0.0, 0.0, -1.0, -1.0, 0.85), _row("down", 0, -1, 0, "m83", "female_scav")]
 		"weapons":
 			for w in WEAPONS:
 				all.append(_row("idle", 0, 1, 0, w))
@@ -79,6 +84,7 @@ func _process(_d: float) -> bool:
 		c.gun_kick_px = float(cfg["kick"])
 		c.reload_t = float(cfg["reload"])
 		c.swing_t = float(cfg["swing"])
+		c.throw_t = float(cfg["throw"])
 		c.update(1.0 / 60.0, cfg["anim"], float(cfg["dir"]), aim, float(cfg["speed"]))
 	if _frames == _wait:
 		root.get_texture().get_image().save_png(_out)

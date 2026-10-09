@@ -14,7 +14,10 @@ extends Node2D
 const CHAR_H_M := 1.8                       ## wysokość postaci odniesienia (m)
 const CHAR_H_WP := 22.0                     ## ... w pikselach świata
 const WP_PER_M := CHAR_H_WP / CHAR_H_M
-const SS := 4                               ## pikseli renderu na piksel świata (jak arkusze HD postaci)
+## Jakość renderu (pokrętła kosztu na słabszym GPU): pikseli renderu na piksel świata (4 = jak arkusze HD postaci) i MSAA.
+## Niska jakość: --char3d-lq (SS 2, bez MSAA) — ok. 3× mniej pikseli do wyrenderowania.
+static var ss := 4
+static var msaa := true
 const FRAME_WP := Vector2(44.0, 44.0)       ## ramka w pikselach świata (zapas na broń podniesioną i wyciągniętą)
 const CAM_Y := 1.25                         ## wysokość środka ramki (m)
 const PRE := "mixamorig_"
@@ -68,9 +71,11 @@ var gun_extra := 0.0                         ## rad — dodatkowy obrót lufy w 
 var gun_kick_px := 0.0                       ## px — cofnięcie broni wzdłuż lufy (odrzut)
 var reload_t := -1.0                         ## 0..1 trwającego przeładowania, <0 = brak (lewa dłoń sięga do magazynka)
 var swing_t := -1.0                          ## 0..1 trwającego ciosu, <0 = brak
+var throw_t := -1.0                          ## 0..1 trwającego rzutu (flara, granat), <0 = brak: prawa ręka zamachem nad głową, broń schowana
 
 ## Wyniki ostatniej klatki, w pikselach świata względem stóp (z uwzględnieniem odbicia) — dla efektów.
 var muzzle_px := Vector2.ZERO
+var px_flip := 1.0                           ## +1 postać patrzy w prawo, −1 w lewo (znak, z jakim policzono muzzle_px / grip_px)
 var grip_px := Vector2.ZERO
 var ready_ok := false
 
@@ -78,16 +83,21 @@ var ready_ok := false
 static func char_name_for(gender: String, outfit: String) -> String:
 	return "%s_%s" % [gender, "scav" if outfit == "scavenger" else outfit]
 
+## Niska jakość (--char3d-lq lub słaby sprzęt): mniejsza rozdzielczość renderu, bez MSAA.
+static func set_low_quality(on: bool) -> void:
+	ss = 2 if on else 4
+	msaa = not on
+
 static func available() -> bool:
 	return DisplayServer.get_name() != "headless" and ResourceLoader.exists(DIR + DEFAULT_CHAR + ".glb")
 
 func setup(char_name := DEFAULT_CHAR, gun_key := DEFAULT_GUN) -> bool:
 	_vp = SubViewport.new()
 	_vp.name = "Vp"
-	_vp.size = Vector2i(int(FRAME_WP.x) * SS, int(FRAME_WP.y) * SS)
+	_vp.size = Vector2i(int(FRAME_WP.x) * ss, int(FRAME_WP.y) * ss)
 	_vp.transparent_bg = true
 	_vp.own_world_3d = true
-	_vp.msaa_3d = Viewport.MSAA_2X
+	_vp.msaa_3d = Viewport.MSAA_2X if msaa else Viewport.MSAA_DISABLED
 	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(_vp)
 	_root3d = Node3D.new()
@@ -119,14 +129,14 @@ func setup(char_name := DEFAULT_CHAR, gun_key := DEFAULT_GUN) -> bool:
 	_sprite = Sprite2D.new()
 	_sprite.name = "Body3D"
 	_sprite.texture = _vp.get_texture()
-	_sprite.scale = Vector2.ONE / float(SS)
+	_sprite.scale = Vector2.ONE / float(ss)
 	_sprite.position = Vector2(0.0, -CAM_Y * WP_PER_M)
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	var sh := Shader.new()
 	sh.code = OUTLINE_SHADER
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
-	mat.set_shader_parameter("width", 2.0)
+	mat.set_shader_parameter("width", 0.5 * ss)           # obrys 0,5 piksela świata niezależnie od ss
 	_sprite.material = mat
 	add_child(_sprite)
 	# poza ekranem nie renderujemy viewportu (koszt rośnie z liczbą postaci, a zdalni gracze bywają daleko)
@@ -252,6 +262,7 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		return
 	_time += delta
 	_sprite.flip_h = facing < 0.0
+	px_flip = -1.0 if _sprite.flip_h else 1.0
 	_sprite.modulate = tint
 	if not _on_screen:
 		return                                                    # poza ekranem nic nie rysujemy (viewport wyłączony), pozę nadrobi pierwsza klatka po wejściu
@@ -262,8 +273,10 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		theta = PI * 0.5 * signf(-aim.y)
 	theta = clampf(theta, deg_to_rad(-80.0), deg_to_rad(85.0))
 	_pose_body(delta, anim, speed, theta)
-	var holding := armed and anim != "down"
-	if holding:
+	var holding := armed and anim != "down" and throw_t < 0.0
+	if throw_t >= 0.0 and armed and anim != "down":
+		_pose_throw(theta)
+	elif holding:
 		_pose_arms(theta)
 	else:
 		_pose_arms_relaxed(true)
@@ -299,7 +312,7 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		lunge = sin(clampf(swing_t * 2.0, 0.0, 1.0) * PI) * 0.09
 		lean += lunge * 60.0
 	if anim == "down":
-		_sk.set_bone_pose_position(hips, rest_h + Vector3(0.0, -0.62, 0.0))
+		_sk.set_bone_pose_position(hips, rest_h + Vector3(0.0, -0.74, 0.0))
 		_rot_world(hips, Vector3.BACK, -PI * 0.5)
 		return
 	_sk.set_bone_pose_position(hips, rest_h + Vector3(lunge, -drop + bob, 0.0))
@@ -352,8 +365,9 @@ func _pose_arms(theta: float) -> void:
 	var fore := Vector3.ZERO
 	var reach_l: float = _arm_len["Left"][0] + _arm_len["Left"][1]
 	var kick_m := gun_kick_px / WP_PER_M * 0.6
+	# celowanie w dół: broń wysuwa się ku kamerze, żeby nie chować się za tułowiem (z=+ to bliższa strona)
 	for k in 8:
-		rear = sr + Vector3(cos(theta), sin(theta), 0.0) * radial - Vector3(-sin(theta), cos(theta), 0.0) * 0.11 + Vector3(0.0, 0.0, -0.13)
+		rear = sr + Vector3(cos(theta), sin(theta), 0.0) * radial - Vector3(-sin(theta), cos(theta), 0.0) * 0.11 + Vector3(0.0, 0.0, -0.13 + 0.28 * maxf(0.0, -sin(theta)))
 		rear -= dirv * kick_m
 		fore = rear + gun_b * (_gun_info["fore"] as Vector3)
 		if _hands == 1 or fore.distance_to(sl) <= reach_l * 0.97:
@@ -376,6 +390,18 @@ func _pose_arms(theta: float) -> void:
 	_set_global_basis(_b["RightHand"], gx.basis * Basis(Vector3.FORWARD, deg_to_rad(8.0)))
 	muzzle_px = _to_px(gx * (_gun_info["muzzle"] as Vector3))
 	grip_px = _to_px(rear)
+
+## Rzut: prawa ręka zamach z tyłu nad głową → wyprost w przód i w dół (zwolnienie ok. 60% czasu), lewa ręka swobodnie.
+func _pose_throw(theta: float) -> void:
+	var t := clampf(throw_t, 0.0, 1.0)
+	var ang := lerpf(deg_to_rad(160.0), deg_to_rad(-15.0) + theta * 0.6, ease(t, 0.7))
+	var sr := _gp(_b["RightArm"]).origin
+	var reach: float = (_arm_len["Right"][0] + _arm_len["Right"][1]) * 0.92
+	var target := sr + Vector3(cos(ang), sin(ang), 0.0) * reach + Vector3(0.0, 0.0, 0.06)
+	_two_bone(_b["RightArm"], _b["RightForeArm"], _b["RightHand"], _arm_len["Right"][0], _arm_len["Right"][1], target, Vector3(-0.3, -0.6, 0.6))
+	_pose_left_relaxed()
+	muzzle_px = _to_px(target)
+	grip_px = muzzle_px
 
 func _pose_left_relaxed() -> void:
 	var sl := _gp(_b["LeftArm"]).origin

@@ -266,6 +266,11 @@ func _update_sprite() -> void:
 	Sprites.play(_spr, anim, _facing < 0.0)
 	body.modulate = _tint_color()
 
+## Poza rzutu postaci 3D (tylko lokalnie — rzut jest zdarzeniem lokalnego gracza; efekt rzucanego przedmiotu widzą wszyscy).
+func _start_throw_pose() -> void:
+	if c3d != null:
+		c3d.throw_t = 0.0
+
 ## Model 3D wg wyglądu: bot to kobieta Scavenger '87 (jak w grafice HD), gracz — płeć i strój z profilu (Look), domyślnie wg numeru gracza.
 func _char3d_name() -> String:
 	if is_bot:
@@ -291,6 +296,10 @@ func _update_char3d() -> void:
 		anim = "run"
 	if not is_bot:
 		c3d.set_look(_char3d_name())                   # wymiana modelu przy zmianie wyglądu (replikowane `look`); porównanie nazw jest tanie
+	if c3d.throw_t >= 0.0:
+		c3d.throw_t += get_process_delta_time() / 0.38
+		if c3d.throw_t >= 1.0:
+			c3d.throw_t = -1.0
 	c3d.scale = squash
 	c3d.update(get_process_delta_time(), anim, _facing, aim_dir, absf(velocity.x), true, _tint_color())
 
@@ -737,6 +746,7 @@ func _tick_drop(delta: float) -> bool:
 func _throw_flare() -> void:
 	if dead or is_bot:
 		return
+	_start_throw_pose()
 	var origin := global_position + Vector2(aim_dir.x * 6.0, -12.0)
 	var vel := aim_dir.normalized() * 190.0 + Vector2(velocity.x * 0.5, -70.0)
 	NoiseMgr.request_flare(origin, vel)
@@ -807,6 +817,7 @@ func _throw_item(kind: String) -> void:
 	if Arsenal.get_throwable(kind) <= 0:
 		Audio.play("dry_fire", Audio.BUS_WEAPONS, -10.0, 1.2)
 		return
+	_start_throw_pose()
 	var origin := global_position + Vector2(aim_dir.x * 6.0, -12.0)
 	var vel := (aim_dir.normalized() * 230.0 + Vector2(velocity.x * 0.5, -90.0)) * perk_param("wide_arm", "throw_mult", 1.0)
 	if Throwables.mode_of(kind) == "place":

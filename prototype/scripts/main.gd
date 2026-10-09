@@ -356,6 +356,9 @@ func _handle_cmdline() -> void:
 			Sprites.newmon = true                                                                  # dev: wrogowie HD (<rodzaj>_hd)
 		if a == "--newitem":
 			Sprites.newitem = true                                                                 # dev: przedmioty i rekwizyty HD (art/items/)
+		if a == "--char3d-lq":
+			Sprites.char3d = true                                                                  # dev: postać 3D w niskiej jakości (SS 2, bez MSAA) — test kosztu na słabszym GPU
+			load("res://scripts/char3d.gd").set_low_quality(true)
 		if a == "--char3d":
 			Sprites.char3d = true                                                                  # dev (spike): postać 3D w czasie rzeczywistym zamiast arkuszy
 		if a == "--newgun":
