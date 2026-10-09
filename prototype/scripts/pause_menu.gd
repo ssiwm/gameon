@@ -173,6 +173,7 @@ func _build_settings() -> void:
 	_cycler("c3d", "Characters (restart)", Settings.toggle_char3d)
 	_settings_box.add_child(_caption("ACCESSIBILITY"))
 	_cycler("reduce", "Reduce effects", Settings.toggle_reduce_fx)
+	_cycler("caps", "Sound captions", Settings.toggle_captions)
 	_cycler("cb", "Color vision", Settings.cycle_colorblind)
 
 ## Wiersz: opis po lewej, suwak i wartość po prawej (strzałki / D-pad / mysz).
@@ -377,6 +378,7 @@ func _refresh() -> void:
 	_values["fps"].text = "UNLIMITED" if Settings.FPS_LIST[Settings.fps_idx] == 0 else "%d" % Settings.FPS_LIST[Settings.fps_idx]
 	_values["quality"].text = Settings.QUALITY_NAMES[Settings.quality_idx]
 	_values["reduce"].text = "ON" if Settings.reduce_fx else "OFF"
+	_values["caps"].text = "ON" if Settings.captions else "OFF"
 	_values["cb"].text = Settings.COLORBLIND_NAMES[Settings.colorblind_idx]
 	_values["wfx"].text = Settings.WEATHER_FX_NAMES[Settings.weather_fx_idx]
 	_values["hints"].text = "ON" if Settings.hints_on else "OFF"

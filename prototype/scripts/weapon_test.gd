@@ -530,6 +530,7 @@ func _t_throwables() -> void:
 	await _t_pad_aim()
 	_t_rebind()
 	await _t_display_settings()
+	_t_captions()
 	give_gear()
 	await _t_gear()
 	await _t_economy()
@@ -690,6 +691,25 @@ func _t_display_settings() -> void:
 	Settings.reduce_fx = r0
 	Settings.weather_fx_idx = w0
 	Settings.crouch_toggle = t0
+
+## Napisy dla dźwięków (captions.gd): kierunek do źródła, odległość, pomijanie szumu (priorytet 0), odświeżanie i wygasanie.
+func _t_captions() -> void:
+	const Captions := preload("res://scripts/captions.gd")
+	var c := Captions.new()
+	c.push("[Gunfire]", Vector2(200, 0), 1, Vector2(0, 0))
+	c.push("[Footsteps]", Vector2(0, 0), 0, Vector2(0, 0))                 # priorytet 0 — pomijany
+	c.push("[Explosion]", Vector2(-600, 0), 3, Vector2(0, 0))
+	var l: Array = c.lines()
+	var dir_ok: bool = l.size() == 2 and String(l[0]["text"]) == "→  [Gunfire]" and String(l[1]["text"]) == "←  [Explosion]  (far)"
+	c.push("[Gunfire]", Vector2(10, 0), 1, Vector2(0, 0))                  # to samo źródło bliżej: odświeża linię, bez strzałki
+	var refreshed: bool = c.lines().size() == 2 and String(c.lines()[0]["text"]) == "[Gunfire]"
+	for i in 6:
+		c.push("[Door %d]" % i, Vector2.ZERO, 1, Vector2.ZERO)
+	var capped: bool = c.lines().size() == Captions.MAX_LINES
+	c.tick(Captions.LIFE_S + 0.1)
+	var expired: bool = c.lines().is_empty()
+	check("napisy dźwięków: kierunek i „far” (%s), odświeżenie (%s), limit %d linii (%s), wygasanie (%s)" % [str(dir_ok), str(refreshed), Captions.MAX_LINES, str(capped), str(expired)],
+		dir_ok and refreshed and capped and expired)
 
 ## Faza A2: dym, mina, ładunek wyburzeniowy, apteczka, defibrylator, skaner.
 func _t_gear() -> void:
