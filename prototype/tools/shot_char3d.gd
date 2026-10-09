@@ -52,6 +52,10 @@ func _initialize() -> void:
 				all.append(_row("idle", a, 1))
 		"misc":
 			all = [_row("down"), _row("idle", 0, 1, 0, "m83", "male_scav", 0.0, 0.0, -1.0, -1.0, 0.1), _row("idle", 20, 1, 0, "m83", "male_scav", 0.0, 0.0, -1.0, -1.0, 0.5), _row("idle", 20, 1, 0, "m83", "male_scav", 0.0, 0.0, -1.0, -1.0, 0.85), _row("down", 0, -1, 0, "m83", "female_scav")]
+		"crouch":
+			all = [_row("crouch", 0), _row("crouch", 40), _row("crouch", -35), _row("crouch_walk", 0, 1, 60), _row("crouch", 0, -1), _row("crouch_walk", 0, -1, 60), _row("crouch", 0, 1, 0, "p64"), _row("crouch", 0, 1, 0, "maczeta")]
+		"cmp":
+			all = [_row("idle", 0), _row("crouch", 0)]
 		"weapons":
 			for w in WEAPONS:
 				all.append(_row("idle", 0, 1, 0, w))
