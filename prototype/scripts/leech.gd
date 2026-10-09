@@ -63,7 +63,11 @@ const GRAB_TIME := 3.5                    ## tyle trwa wciąganie; potem ofiara 
 const GRAB_FRAC := 0.06                   ## ułamek maks. HP, który drużyna musi zadać w tym oknie, żeby Pijawka puściła
 const GRAB_MELEE_MULT := 2.0              ## cios chwyconego (maczeta) liczy się do uwolnienia podwójnie
 const SPRITE_DROP := 6.0                  ## o tyle w dół przesuwamy klatkę — linia wody arkusza leży 6 px nad dołem klatki
-const RISE_TIME := 0.3                    ## czas animacji „rise" (4 klatki / 14 fps)
+const DEATH_HIDE := 1.4                   ## HD: tyle s po śmierci sprite jeszcze gra animację „death" (opada i tonie), potem znika
+const SPIT_RELEASE := 0.25                ## HD: klatka 3 animacji „spit" (12 fps) — wtedy kwas wylatuje z paszczy
+const ONESHOT := ["strike", "spit", "hurt", "dive"]      ## animacje jednorazowe (po nich wraca stan ciągły: idle / grab / peek)
+## Klasyczny arkusz ma tylko rise / idle / grab / dead — brakujące animacje HD zastępują: "" = nie pokazuj sprite'a
+const FALLBACK := {"strike": "rise", "spit": "idle", "hurt": "idle", "death": "dead", "peek": "", "dive": ""}
 const GRAB_CD := [3.0, 2.2, 1.2]          ## przerwa po chwycie (puszczonym albo dokończonym)
 
 ## Pola, których oczekują wspólne systemy wrogów (boty, haki, testy) — Pijawka udaje „wroga": zapowiedź, żywy, aktywny.
@@ -121,9 +125,15 @@ var _shape: CollisionShape2D
 var _rect := RectangleShape2D.new()
 var _ripple_t := 0.0
 var _spr: Array = []                       ## [ciało, glow] z arkusza leech; puste = rysunek zastępczy (_draw_body)
-var _prev_mode := -1
-var _rise_t := 0.0                         ## ile jeszcze trwa animacja wynurzenia (potem idle)
 var _face_left := false
+var _anim := ""                            ## ostatnio zażądana animacja jednorazowa (zdarzenia: strike / spit / hurt / dive / death) i jej czas
+var _anim_t := 0.0
+var _anim_start := 0                       ## od której klatki ją zacząć (skracanie rozbiegu, żeby trafienie wypadło na klatce uderzenia)
+var _anim_dirty := false
+var _applied := ""                         ## co faktycznie gra sprite
+var _hurt_cd := 0.0
+var _hide_t := -1.0                        ## > 0: po śmierci sprite jeszcze chwilę gra „death"
+var _shift := 0.0                          ## px: kompensacja skoku pozycji po puszczeniu ofiary — sprite dopływa zamiast się teleportować
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -237,6 +247,10 @@ func reset_enemy() -> void:
 	_x_srv = home_x
 	_set_hitbox(false)
 	visible = true
+	_hide_t = -1.0
+	_anim = ""
+	_applied = ""
+	_shift = 0.0
 	_shape.set_deferred("disabled", false)
 	if NoiseMgr.is_server():
 		_send_state(true)
@@ -566,10 +580,15 @@ func _spit() -> void:
 	_event.rpc("spit")
 	if st == null:
 		return
+	var hd := not _spr.is_empty() and _has_anim("spit")
+	if hd:
+		await get_tree().create_timer(SPIT_RELEASE).timeout          # kwas wylatuje z paszczy dopiero na klatce wyrzutu animacji
+		if not is_inside_tree() or state != State.AWAKE or not is_instance_valid(st) or st.dead:
+			return
 	var lvl := get_tree().get_first_node_in_group("level")
 	if lvl == null:
 		return
-	var from := global_position + Vector2(0.0, -34.0)
+	var from := global_position + (Vector2((-24.0 if _face_left else 24.0), -40.0) if hd else Vector2(0.0, -34.0))
 	var aim: Vector2 = st.global_position + Vector2(0.0, -9.0) + st.velocity * 0.35         # z wyprzedzeniem
 	var dist := from.distance_to(aim)
 	var flight := clampf(dist / SPIT_SPEED, 0.35, 1.2)
@@ -589,6 +608,7 @@ func _begin_grab(victim: Node2D) -> void:
 func _release(success: bool) -> void:
 	var ph := clampi(phase - 1, 0, 2)
 	var victim := _grab_victim
+	var old_x := global_position.x
 	_grab_victim = null
 	grab_victim_id = 0
 	grab_progress = 0.0
@@ -602,6 +622,7 @@ func _release(success: bool) -> void:
 	_cd = float(GRAB_CD[ph]) * (FURY_TIMING if _fury() else 1.0) * _dmul()
 	if success:
 		global_position.x = clampf(global_position.x + (60.0 if randf() < 0.5 else -60.0), pool_x0, pool_x1)    # cofa się po dostaniu w pysk
+		_shift = old_x - global_position.x
 	_event.rpc("released" if success else "dragged")
 
 # ---------------------------------------------------------------- obrażenia
@@ -633,7 +654,7 @@ func _hit(dmg: float, surfaced: bool) -> void:
 	if not surfaced:
 		dmg *= LIT_MULT if revealed else SUB_MULT
 	else:
-		_flash = 0.08
+		_on_hit_flash()
 		if mode == Mode.GRAB:
 			_grab_dmg += dmg
 	hp -= dmg
@@ -698,7 +719,7 @@ func _sync(s: int, h: float, mh: float, m: int, rev: bool, ph: int, x: float, gv
 	grab_progress = gp
 	grab_time_left = gt
 	if h < hp - 0.01 and (m == Mode.UP or rev):
-		_flash = 0.08
+		_on_hit_flash()
 	state = s
 	hp = h
 	max_hp = mh
@@ -726,8 +747,10 @@ func _event(kind: String) -> void:
 			Audio.play_variant_at("stalker_growl", 2, pos, Audio.BUS_STALKER, -4.0, 0.5)
 			Audio.sting(1)
 		"windup":
+			_set_anim("peek")
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 0.0, 0.55)
 		"surface":
+			_set_anim("strike", 1)                                       # wyrzut od klatki 1: uderzenie (klatka 2) pada ~55 ms po zadaniu obrażeń
 			Vfx.splash(get_parent(), pos, 1.6)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 3.0, 0.5)
 			Audio.play_variant_at("stalker_growl", 2, pos, Audio.BUS_STALKER, -2.0, 0.8)
@@ -737,14 +760,17 @@ func _event(kind: String) -> void:
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 2.0, 0.45)
 			_shake_near(4.0)
 		"released":
+			_set_anim("dive")
 			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, -6.0, 1.15)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 0.0, 0.8)
 		"dragged":
+			_set_anim("dive")
 			Vfx.splash(get_parent(), pos, 2.0)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 4.0, 0.4)
 			Audio.play_variant_at("stalker_growl", 2, pos, Audio.BUS_STALKER, 0.0, 0.55)
 			_shake_near(5.0)
 		"dive":
+			_set_anim("dive")
 			Vfx.splash(get_parent(), pos, 0.9)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, -2.0, 0.7)
 		"phase2":
@@ -756,6 +782,7 @@ func _event(kind: String) -> void:
 			Lights.flicker_until_ms = Time.get_ticks_msec() + 3000
 			_shake_near(6.0)
 		"spit":
+			_set_anim("spit")
 			Vfx.splash(get_parent(), pos, 1.0)
 			Audio.play_variant_at("stalker_growl", 2, pos, Audio.BUS_STALKER, -3.0, 1.1)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 1.0, 0.9)
@@ -791,7 +818,11 @@ func _event(kind: String) -> void:
 			_shake_near(6.0)
 			Feel.hitstop(0.1)
 			Vfx.gibs(get_parent(), pos + Vector2(0, -20), Color(0.18, 0.3, 0.26), 22)
-			visible = false
+			_set_anim("death")
+			if _spr.is_empty():
+				visible = false
+			else:
+				_hide_t = DEATH_HIDE                                         # sprite jeszcze gra animację śmierci (drgawki, upadek, zanurzenie)
 			_shape.set_deferred("disabled", true)
 
 func _shake_near(amount: float) -> void:
@@ -804,6 +835,11 @@ func _shake_near(amount: float) -> void:
 func _process(delta: float) -> void:
 	if not visible:
 		return
+	if _hide_t >= 0.0:
+		_hide_t -= delta
+		if _hide_t < 0.0:
+			visible = false
+			return
 	_show = move_toward(_show, 1.0 if (revealed or mode != Mode.SUB or state == State.DEAD) else 0.0, delta * 3.0)
 	_light.energy = 0.55 if (mode == Mode.UP or mode == Mode.GRAB) else 0.0
 	_ripple_t += delta
@@ -834,36 +870,92 @@ func _draw() -> void:
 			else:
 				_draw_ripples(0.45)                                      # ciało i oczy rysuje arkusz; kręgi na wodzie zostają
 
-## Wynurzona Pijawka z arkusza: rise → idle, grab (głowa nisko, szeroka paszcza), dead; zwrócona twarzą do celu.
+## Animacje z arkusza (HD: peek / strike / idle / grab / spit / hurt / dive / death; klasyczny: rise / idle / grab / dead) — patrz FALLBACK.
+## Stan ciągły wynika z trybu (WIND → peek, UP → idle, GRAB → grab), jednorazowe (strike, spit, hurt, dive, death) wyzwalają zdarzenia _event.
+func _has_anim(a: String) -> bool:
+	if _spr.is_empty():
+		return false
+	var sf: SpriteFrames = (_spr[0] as AnimatedSprite2D).sprite_frames
+	return sf != null and sf.has_animation(a)
+
+## Nazwa animacji faktycznie istniejącej w arkuszu ("" = nie pokazuj).
+func _res(a: String) -> String:
+	if _has_anim(a):
+		return a
+	return String(FALLBACK.get(a, "")) if _has_anim(String(FALLBACK.get(a, ""))) else ""
+
+func _anim_len(a: String) -> float:
+	var sf: SpriteFrames = (_spr[0] as AnimatedSprite2D).sprite_frames
+	return float(sf.get_frame_count(a)) / maxf(0.1, sf.get_animation_speed(a))
+
+func _set_anim(a: String, start := 0) -> void:
+	if _spr.is_empty():
+		return
+	_anim = a
+	_anim_t = 0.0
+	_anim_start = start
+	_anim_dirty = true
+
+## Czy gra jednorazowa animacja (jeszcze się nie skończyła).
+func _oneshot_on() -> bool:
+	if not ONESHOT.has(_anim) or _res(_anim) == "":
+		return false
+	return _anim_t < _anim_len(_res(_anim)) - float(_anim_start) / maxf(0.1, (_spr[0] as AnimatedSprite2D).sprite_frames.get_animation_speed(_res(_anim)))
+
+## Trafienie wynurzonej Pijawki: biały błysk, a gdy stoi spokojnie — krótka reakcja „hurt" (ściśnięcie), nie częściej niż co 0,7 s.
+func _on_hit_flash() -> void:
+	_flash = 0.08
+	if _hurt_cd <= 0.0 and mode == Mode.UP and state == State.AWAKE and _has_anim("hurt") and not _oneshot_on():
+		_hurt_cd = 0.7
+		_set_anim("hurt")
+
 func _animate_sprite(delta: float) -> void:
 	if _spr.is_empty():
 		return
-	var up := mode == Mode.UP or mode == Mode.GRAB
+	_anim_t += delta
+	_hurt_cd = maxf(0.0, _hurt_cd - delta)
+	_shift = move_toward(_shift, 0.0, 160.0 * delta)
 	var body: AnimatedSprite2D = _spr[0]
 	var glow: AnimatedSprite2D = _spr[1]
-	body.visible = up
-	if glow != null:
-		glow.visible = up
-	if not up:
-		_prev_mode = mode
-		return
-	if _prev_mode != Mode.UP and _prev_mode != Mode.GRAB:
-		_rise_t = RISE_TIME                                              # świeże wynurzenie
-		body.frame = 0
-	_prev_mode = mode
-	_rise_t = maxf(0.0, _rise_t - delta)
-	var face := _face_target()
-	if absf(face - global_position.x) > 6.0:
-		_face_left = face < global_position.x
-	var anim := "idle"
+	var up := mode == Mode.UP or mode == Mode.GRAB
+	var one := _oneshot_on()
+	var want := ""
 	if state == State.DEAD:
-		anim = "dead"
+		want = _res("death")
+	elif one and (up or _anim == "dive"):
+		want = _res(_anim)
 	elif mode == Mode.GRAB:
-		anim = "grab"
-	elif _rise_t > 0.0:
-		anim = "rise"
-	Sprites.play(_spr, anim, _face_left)
-	body.modulate = Color(2.4, 2.2, 2.2) if _flash > 0.0 else Color.WHITE
+		want = "grab"
+	elif mode == Mode.UP:
+		want = "idle"
+	elif mode == Mode.WIND:
+		want = _res("peek")
+	body.visible = want != ""
+	if glow != null:
+		glow.visible = want != ""
+	if want == "":
+		_applied = ""
+		return
+	var locked := state == State.DEAD or (one and _anim != "hurt")           # w skoku / pluciu / nurkowaniu nie obracamy się za graczem
+	if not locked:
+		var face := _face_target()
+		if absf(face - global_position.x) > 6.0:
+			_face_left = face < global_position.x
+	if _anim_dirty or want != _applied:
+		var start := _anim_start if (one or state == State.DEAD) and want == _res(_anim) else 0
+		body.stop()
+		body.play(want)
+		body.set_frame_and_progress(start, 0.0)
+		_applied = want
+		_anim_dirty = false
+	Sprites.play(_spr, want, _face_left)
+	for l in _spr:
+		if l != null:
+			l.position = Vector2(_shift, SPRITE_DROP)
+	var tint := Color.WHITE if phase <= 1 else (Color(1.0, 0.93, 0.9) if phase == 2 else Color(1.1, 0.86, 0.82))
+	if _fury():
+		tint = tint.lerp(Color(1.4, 0.7, 0.65), 0.5 + 0.5 * sin(Time.get_ticks_msec() / 90.0))
+	body.modulate = Color(2.4, 2.2, 2.2) if _flash > 0.0 else tint
 	if glow != null:
 		glow.modulate = Color(1.0, 0.85, 0.7).lerp(Color(1.4, 0.7, 0.6), 0.5 * float(phase - 1))
 

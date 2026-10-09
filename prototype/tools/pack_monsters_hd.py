@@ -1,6 +1,7 @@
 """Składa arkusze wrogów HD z klatek tools/concept/monster_tripo_bake.py: art/sprites/<kind>_hd.png (albedo + obrys), _hd_n.png (normalne w przestrzeni ekranu),
 _hd_glow.png (świecące oczy: nasycone żółte/pomarańczowe piksele albedo) + wpis w art/sprites.json (skala wynika z rozmiaru starej klatki; gęstość: 8 px na piksel świata wrogowie, 5–6 bossowie).
 Uruchomienie (Pillow + numpy): python prototype/tools/pack_monsters_hd.py FRAMES_DIR KIND CAM [--gain=0.55]
+    --anims=nazwa:klatki:fps:pętla,… zastępuje układ animacji ze starego arkusza (HD ma więcej klatek niż klasyczny)
     --gain mnoży albedo (np. 0,55 dla czarnego jak cień Stalkera); maska świecenia liczona z oryginału
     CAM jak w bake (−Y → normalne (Nx, Nz, −Ny); +X → (Ny, Nz, Nx)). Układ i fps animacji bierzemy ze starego arkusza KIND w manifeście.
 """
@@ -34,6 +35,12 @@ def main():
     manifest = json.load(open(mpath))
     old = manifest["sheets"][kind]
     anims = old["anims"]
+    ov = next((x.split("=", 1)[1] for x in sys.argv if x.startswith("--anims=")), "")
+    if ov:                                                      # własny zestaw animacji HD (np. Pijawka): nazwa:klatki:fps:pętla,…
+        anims = {}
+        for row, spec in enumerate(ov.split(",")):
+            nm, fr, fps, lp = spec.split(":")
+            anims[nm] = {"row": row, "frames": int(fr), "fps": int(fps), "loop": lp in ("1", "true", "loop")}
     first = next(iter(anims))
     probe = Image.open(os.path.join(src, f"{kind}_{first}_0.png"))
     fw, fh = probe.size

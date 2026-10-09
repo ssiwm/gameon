@@ -16,6 +16,7 @@ args = sys.argv[sys.argv.index("--") + 1:]
 kind, glb, OUT = args[:3]
 ROT_Z = float(args[3]) if len(args) > 3 else 0.0
 CAM = args[4] if len(args) > 4 else "-Y"
+ONLY = args[5].split(",") if len(args) > 5 else None          # tylko wskazane animacje (podgląd)
 os.makedirs(OUT, exist_ok=True)
 
 # frame = rozmiar klatki w pikselach świata (jak w starym arkuszu), fit = (oś, rozmiar potwora w pikselach świata), ppw = pikseli na piksel świata
@@ -23,13 +24,103 @@ SPEC = {
     "cma": {"frame": (26, 20), "fit": ("width", 18.0), "ppw": 8.0, "anims": [("idle", 4), ("sleep", 1)]},
     "nest": {"frame": (40, 34), "fit": ("height", 30.0), "ppw": 8.0, "anims": [("pulse", 3)]},
     "vein": {"frame": (128, 80), "fit": ("height", 66.0), "ppw": 5.0, "anims": [("dormant", 4), ("idle", 6), ("open", 4), ("windup", 3), ("spit", 3)]},
-    "leech": {"frame": (96, 80), "fit": ("height", 66.0), "ppw": 6.0, "anims": [("rise", 4), ("idle", 6), ("grab", 3), ("dead", 1)]},
+    "leech": {"frame": (96, 80), "fit": ("height", 66.0), "ppw": 4.0, "anims": [("idle", 8), ("peek", 4), ("strike", 6), ("grab", 6), ("spit", 6), ("hurt", 2), ("dive", 5), ("death", 8)]},
 }[kind]
 
 
 def smooth(a, b, x):
     t = min(max((x - a) / (b - a), 0.0), 1.0)
     return t * t * (3 - 2 * t)
+
+
+# ---------------------------------------------------------------- Pijawka (leech): deformacja w układzie modelu (X = przód, w stronę paszczy; Y = bok; Z = góra)
+LEECH_SPINE = [0.059, 0.031, 0.030, 0.014, -0.021, -0.027, -0.041, -0.066, -0.058, -0.049, -0.043, -0.027, -0.014, 0.000, 0.006, 0.017, 0.008, 0.022, 0.032, 0.046, 0.053]
+LEECH_MOUTH = (0.085, 0.0, 0.78)     # środek paszczy: x (m), y (m), z (ułamek wysokości)
+LEECH_MOUTH_R = 0.058                # promień paszczy (m)
+
+
+def _lerp(a, b, t):
+    return a + (b - a) * t
+
+
+def spine_x(t):
+    """Środek przekroju ciała (x) na wysokości t = z/H (0..1) — linia, wokół której działa fala skurczu."""
+    f = min(max(t, 0.0), 1.0) * (len(LEECH_SPINE) - 1)
+    k = min(int(f), len(LEECH_SPINE) - 2)
+    return _lerp(LEECH_SPINE[k], LEECH_SPINE[k + 1], f - k)
+
+
+def leech_pose(anim, i):
+    """Parametry klatki: yaw (° obrotu wokół pionu; −90 = paszcza w kamerę), bend (rad, + = do przodu), dz (ułamek H), sz (rozciągnięcie w pionie),
+    close/wide (zamknięcie / otwarcie paszczy 0..1), amp/ph (fala skurczu), shake (m, drgania boku), headtilt (rad, dodatkowe zgięcie samej głowy), ox (m, przesunięcie w kadrze — skok w bok nie może wyjść poza klatkę)."""
+    P = dict(yaw=-50.0, bend=0.0, dz=0.0, sz=1.0, close=0.0, wide=0.0, amp=0.0, ph=0.0, shake=0.0, headtilt=0.0, ox=0.0)
+    if anim == "idle":                       # 8 kl., pętla: oddech, fala skurczu od ogona do głowy, paszcza pulsuje
+        a = i / 8.0 * math.tau
+        P.update(bend=0.07 * math.sin(a), sz=1.0 + 0.018 * math.sin(a + 1.0), amp=0.07, ph=a, wide=0.10 + 0.10 * (0.5 + 0.5 * math.sin(a * 2.0)), yaw=-50.0 + 4.0 * math.sin(a))
+    elif anim == "peek":                     # 4 kl., pętla: zapowiedź zasadzki — nad wodą tylko czubek głowy, paszcza zamknięta, zerka
+        P.update(yaw=-75.0 + 6.0 * math.sin(i / 4.0 * math.tau), dz=-0.70 + 0.012 * math.sin(i / 4.0 * math.tau), close=0.75, bend=-0.15, amp=0.05, ph=i * 1.5)
+    elif anim == "strike":                   # 6 kl.: skulona → wyrzut w przód z paszczą szeroko → odbicie. Trafienie na klatce 2.
+        P.update(yaw=[-70.0, -55.0, -22.0, -20.0, -30.0, -42.0][i], dz=[-0.45, -0.20, 0.02, 0.0, -0.02, 0.0][i], bend=[-0.55, -0.25, 0.60, 0.65, 0.40, 0.22][i], ox=[0.0, 0.0, -0.06, -0.06, -0.03, 0.0][i],
+                 sz=[0.94, 1.08, 1.10, 1.05, 1.0, 1.0][i], close=[0.7, 0.4, 0.0, 0.0, 0.0, 0.0][i], wide=[0.0, 0.15, 0.7, 0.75, 0.45, 0.25][i], amp=0.07, ph=i * 1.3)
+    elif anim == "grab":                     # 6 kl., pętla: głowa nisko, szarpie ofiarą i żuje (paszcza na przemian otwarta i zaciśnięta)
+        a = i / 6.0 * math.tau
+        P.update(yaw=-30.0, bend=0.42 + 0.07 * math.sin(a * 2.0), headtilt=0.12 + 0.08 * math.sin(a * 2.0 + 1.0), ox=-0.05, shake=0.012 * math.sin(a * 2.0), amp=0.09, ph=a * 2.0,
+                 wide=0.6 if i % 2 == 0 else 0.0, close=0.0 if i % 2 == 0 else 0.5, sz=1.0 + 0.03 * math.sin(a * 2.0))
+    elif anim == "spit":                     # 6 kl.: wychodzi z wody odchylona w tył, gardło nabrzmiewa, wyrzut (klatka 3), odrzut
+        P.update(yaw=[-60.0, -60.0, -48.0, -25.0, -30.0, -45.0][i], dz=[-0.45, -0.18, 0.0, 0.0, 0.0, 0.0][i], bend=[-0.3, -0.45, -0.55, 0.35, 0.2, 0.05][i], ox=[0.0, 0.0, 0.0, -0.03, -0.02, 0.0][i],
+                 close=[0.6, 0.25, 0.0, 0.0, 0.0, 0.0][i], wide=[0.0, 0.2, 0.6, 0.85, 0.5, 0.2][i], amp=[0.06, 0.12, 0.16, 0.05, 0.05, 0.05][i], ph=[0.0, 1.5, 3.0, 4.5, 5.0, 5.5][i],
+                 sz=[1.06, 1.05, 1.05, 0.96, 1.0, 1.0][i])
+    elif anim == "hurt":                     # 2 kl.: ściska się i odskakuje
+        P.update(yaw=-50.0, bend=[-0.14, -0.05][i], sz=[0.92, 0.97][i], wide=[0.45, 0.25][i], amp=0.05, ph=i * 2.0, shake=[0.010, -0.005][i])
+    elif anim == "dive":                     # 5 kl.: zwija się i opada pod wodę
+        P.update(yaw=[-50.0, -55.0, -60.0, -65.0, -70.0][i], bend=[0.12, -0.10, -0.25, -0.35, -0.35][i], dz=[-0.05, -0.30, -0.58, -0.80, -0.97][i], close=[0.2, 0.5, 0.7, 0.75, 0.75][i],
+                 sz=[1.04, 1.05, 1.03, 1.0, 1.0][i], amp=0.06, ph=i * 1.2)
+    elif anim == "death":                    # 8 kl.: drgawki, szeroko otwarta paszcza, upada do przodu i tonie
+        P.update(yaw=[-50.0, -45.0, -40.0, -35.0, -30.0, -30.0, -30.0, -30.0][i], bend=[-0.35, 0.20, -0.55, 0.40, 0.80, 1.00, 1.10, 1.15][i], ox=[0.0, 0.0, 0.0, -0.02, -0.04, -0.05, -0.05, -0.05][i], dz=[0.0, 0.0, 0.0, -0.05, -0.15, -0.35, -0.60, -0.85][i],
+                 wide=[0.5, 0.7, 0.85, 0.85, 0.75, 0.6, 0.4, 0.2][i], shake=[0.014, -0.012, 0.016, -0.010, 0.006, 0.0, 0.0, 0.0][i], amp=[0.10, 0.10, 0.12, 0.08, 0.05, 0.03, 0.0, 0.0][i], ph=i * 2.2,
+                 sz=[1.0, 1.04, 0.96, 1.05, 1.0, 1.0, 1.0, 1.0][i])
+    return P
+
+
+def leech_deform(anim, i, rest, H):
+    P = leech_pose(anim, i)
+    mx, my, mzf = LEECH_MOUTH
+    mz = mzf * H
+    R = LEECH_MOUTH_R
+    px, pz = spine_x(0.1), 0.10 * H                       # zawias zgięcia: dolna część ciała
+    yaw = math.radians(P["yaw"])
+    cy_, sy_ = math.cos(yaw), math.sin(yaw)
+    out = []
+    for x, y, z in rest:
+        t = min(max(z / H, 0.0), 1.0)
+        # 1) paszcza: ściągnięcie (close) / rozwarcie (wide) wokół środka otworu, tylko z przodu głowy
+        d = math.hypot(y - my, z - mz)
+        w = (1.0 - smooth(0.8 * R, 1.7 * R, d)) * smooth(0.0, 0.05, x)
+        f = 1.0 - 0.85 * P["close"] * w + 0.55 * P["wide"] * w
+        y = my + (y - my) * f
+        z = mz + (z - mz) * f
+        # 2) fala skurczu: przekrój pulsuje wokół osi ciała, fala biegnie od ogona do głowy
+        c = spine_x(t)
+        s = 1.0 + P["amp"] * math.sin(math.tau * 2.2 * t - P["ph"])
+        x = c + (x - c) * s
+        y *= s
+        # 3) rozciągnięcie w pionie (squash & stretch: objętość z grubsza zachowana)
+        z *= P["sz"]
+        k = 1.0 / math.sqrt(P["sz"])
+        x = c + (x - c) * k
+        y *= k
+        # 4) zgięcie wokół zawiasu (kąt rośnie z wysokością), dodatkowe pochylenie samej głowy
+        tt = min(max((z / H - 0.1) / 0.9, 0.0), 1.0)
+        a = P["bend"] * tt ** 1.3 + P["headtilt"] * smooth(0.55, 0.95, t)
+        dx, dz = x - px, z - pz
+        x = px + dx * math.cos(a) + dz * math.sin(a)
+        z = pz - dx * math.sin(a) + dz * math.cos(a)
+        # 5) drgania boku (szarpanie ofiary / agonia) rosnące z wysokością
+        y += P["shake"] * t * t
+        # 6) przesunięcie w pionie (wynurzanie / zanurzanie) i obrót wokół pionu (kierunek, w którym patrzy paszcza)
+        z += P["dz"] * H
+        out.append((x * cy_ - y * sy_ + P["ox"], x * sy_ + y * cy_, z))
+    return out
 
 
 def deform(kind, anim, i, n, rest, bb):
@@ -80,22 +171,7 @@ def deform(kind, anim, i, n, rest, bb):
                     dz = 0.052 * wl * -jaw - 0.022 * wu * -jaw
             out.append((x * sx, y * sy + oy, (z + dz) * sz))
     elif kind == "leech":
-        for x, y, z in rest:
-            t = z / H
-            ox, oz, sc = 0.0, 0.0, 1.0
-            if anim == "rise":                    # wynurza się: rośnie od 40% do 100% wysokości
-                f = [0.45, 0.65, 0.85, 1.0][i]
-                sc = f
-            elif anim == "idle":
-                ox = 0.045 * H * math.sin(ph * math.tau + 2.0 * t) * t
-            elif anim == "grab":                  # rzut do przodu
-                f = [0.2, 0.55, 0.9][i]
-                ox = 0.40 * H * f * t * t
-                oz = -0.10 * H * f * t * t
-            elif anim == "dead":                  # opada bezwładnie
-                ox = 0.55 * H * t * t
-                oz = -0.40 * H * t * t
-            out.append((x * sc + ox, y * sc, z * sc + oz))
+        out = leech_deform(anim, i, rest, H)
     return out
 
 
@@ -173,6 +249,8 @@ def main():
     mats = {False: pass_material(orig, False), True: pass_material(orig, True)}
     print("INFO %s w=%.3f h=%.3f m_per_wp=%.4f frame=%dx%d" % (kind, bb["w"], bb["h"], m_per_wp, FW, FH))
     for anim, n in SPEC["anims"]:
+        if ONLY is not None and anim not in ONLY:
+            continue
         for i in range(n):
             new = deform(kind, anim, i, n, rest, bb)
             if kind == "cma" and anim == "sleep":                       # wisi do góry nogami pod sufitem kadru
