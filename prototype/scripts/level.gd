@@ -58,6 +58,7 @@ const HANDCAR := preload("res://scripts/handcar.gd")
 const RACK := preload("res://scripts/rack.gd")
 const LAMP := preload("res://scripts/lamp.gd")
 const BOARD := preload("res://scripts/board.gd")
+const RADIO_SET := preload("res://scripts/radio_set.gd")
 const RESULTS_WALL := preload("res://scripts/results_wall.gd")
 const RANGE_LINE := preload("res://scripts/range_line.gd")
 const WORKSHOP := preload("res://scripts/workshop.gd")
@@ -656,7 +657,7 @@ func _exposure(c: int, r: int) -> int:
 ## na każdym peerze.
 func _spawn_entities() -> void:
 	_spawn_walls()
-	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": []}
+	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -669,7 +670,7 @@ func _spawn_entities() -> void:
 				"e": exits_alt.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q": found[ch].append(p)
+				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -706,6 +707,11 @@ func _spawn_entities() -> void:
 		bd.name = "Board%d" % (i + 1)
 		bd.position = found["n"][i]
 		add_child(bd)
+	for i in found["R"].size():
+		var rs: Node2D = RADIO_SET.new()
+		rs.name = "RadioSet%d" % (i + 1)
+		rs.position = found["R"][i]
+		add_child(rs)
 	for i in found["v"].size():
 		var rw: Node2D = RESULTS_WALL.new()
 		rw.name = "ResultsWall%d" % (i + 1)

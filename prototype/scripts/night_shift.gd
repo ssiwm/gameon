@@ -5,6 +5,8 @@ extends RefCounted
 ## Stan jest statyczny, bo czytają go systemy symulowane na serwerze (hałas, amunicja, Stalker, wrogowie) i HUD
 ## na każdym peerze. Serwer ustawia go w mission.gd, klienci dostają go przez mission._sync.
 
+const Weather := preload("res://scripts/weather.gd")
+
 const MISSIONS := 5
 const HP_STEP := 0.12                 ## +12% HP wrogów i bossa za każdą misję po pierwszej
 ## Liczba modyfikatorów na misję (indeks = numer misji − 1).
@@ -42,21 +44,22 @@ static func reset_state() -> void:
 static func hp_mult() -> float:
 	return 1.0 + HP_STEP * float(stage - 1) if active else 1.0
 
+## Wszystkie cztery mnożniki łączą modyfikatory Nocnego Dyżuru z pogodą misji kampanii (weather.gd) — systemy gry czytają tylko tutaj.
 static func noise_mult() -> float:
-	return 1.5 if has_mod("thin") else 1.0
+	return (1.5 if has_mod("thin") else 1.0) * Weather.noise_mult()
 
 static func ammo_mult() -> float:
-	return 0.5 if has_mod("famine") else 1.0
+	return (0.5 if has_mod("famine") else 1.0) * Weather.ammo_mult()
 
 static func start_noise(base: float) -> float:
-	return maxf(base, 50.0) if has_mod("overload") else base
+	return Weather.start_noise(maxf(base, 50.0) if has_mod("overload") else base)
 
-## Progi Stalkera/Uwagi (domyślnie 60 / 30; LEAK obniża je do 45 / 15).
+## Progi Stalkera/Uwagi (domyślnie 60 / 30; LEAK obniża je do 45 / 15, mgła do 50 / 20).
 static func awake_threshold(base: float) -> float:
-	return 45.0 if has_mod("leak") else base
+	return Weather.awake_threshold(45.0 if has_mod("leak") else base)
 
 static func sleep_threshold(base: float) -> float:
-	return 15.0 if has_mod("leak") else base
+	return Weather.sleep_threshold(15.0 if has_mod("leak") else base)
 
 # ---------------------------------------------------------------- teksty
 

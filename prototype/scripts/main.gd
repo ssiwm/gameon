@@ -25,6 +25,7 @@ const DREAD := preload("res://scripts/dread.gd")
 const STEAM_NET := preload("res://scripts/steam_net.gd")
 const PAUSE_MENU := preload("res://scripts/pause_menu.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
+const Weather := preload("res://scripts/weather.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const HORROR_FX := preload("res://scripts/horror_fx.gd")
 const NavGraph := preload("res://scripts/nav.gd")
@@ -170,6 +171,7 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 	hub_mine = false
 	hub_ready_n = 0
 	hub_countdown = -1.0
+	_update_weather(new_run, carry)
 	if level.objective == "hub":
 		NoiseMgr.calm()                  # w kryjówce jest cicho
 
@@ -261,6 +263,19 @@ func _hub_state(ready_ids: Array, total: int, countdown: float) -> void:
 	hub_countdown = countdown
 	hub_mine = ready_ids.has(str(multiplayer.get_unique_id()))
 
+## Pogoda (weather.gd, serwer; klienci dostają ją z mission._sync): w kryjówce losujemy prognozę na następną misję i pogody nie ma,
+## po wyjściu z kryjówki (carry) prognoza staje się pogodą misji, wipe (new_run == false) zostawia ją bez zmian, a Nocny Dyżur i misja
+## uruchomiona poza kryjówką jej nie mają.
+func _update_weather(new_run: bool, carry: bool) -> void:
+	if level.objective == "hub":
+		Weather.current = ""
+		if new_run:
+			Weather.forecast = Weather.roll()
+	elif new_run:
+		Weather.current = Weather.forecast if (carry and not NightShift.active) else ""
+		if not carry:
+			Weather.forecast = "clear"
+
 ## Wyjście z kryjówki (wszyscy ludzie gotowi): wyjście do kolejnej misji kampanii z zachowanym ekwipunkiem.
 func _depart_hub() -> void:
 	var target := after_hub if after_hub != "" else String(level.CAMPAIGN[0])
@@ -294,6 +309,9 @@ func _set_map(id: String) -> void:
 func _load_map_rpc(id: String) -> void:
 	level.load_map(id)
 	mission.rebind()
+	if level.objective == "hub" and NoiseMgr.is_server():
+		Weather.forecast = Weather.roll()            # start w kryjówce (lobby / nowa kampania): prognoza od razu; klienci dostają ją z mission._sync
+		Weather.current = ""
 	print("[MISSION] map: %s (%s)" % [level.map_id, level.title])
 
 func _next_campaign_map() -> String:
@@ -1705,6 +1723,21 @@ func _gen_test() -> void:
 	var brief: Dictionary = level.briefing(after_hub)
 	check.call("kryjówka: 8 stojaków, 9 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
 		racks == 8 and lamps == 9 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
+	# radiostacja (R, weather.gd): jedna w kryjówce, w kryjówce pogody misji nie ma, prognoza jest znanym rodzajem; mnożniki pogody łączą się z NightShift
+	check.call("radiostacja: jedna w kryjówce, prognoza '%s', bez pogody misji" % Weather.forecast,
+		get_tree().get_nodes_in_group("radio_set").size() == 1 and Weather.KINDS.has(Weather.forecast) and Weather.current == "")
+	var w_saved: String = Weather.current
+	Weather.current = "storm"
+	var w_ok := is_equal_approx(NightShift.noise_mult(), 0.6) and is_equal_approx(NightShift.ammo_mult(), 0.75)
+	Weather.current = "fog"
+	w_ok = w_ok and is_equal_approx(NightShift.noise_mult(), 0.85) and is_equal_approx(NightShift.awake_threshold(60.0), 50.0) and is_equal_approx(NightShift.sleep_threshold(30.0), 20.0)
+	Weather.current = "rain"
+	w_ok = w_ok and is_equal_approx(NightShift.noise_mult(), 0.75) and is_equal_approx(NightShift.start_noise(10.0), 20.0) and is_equal_approx(NightShift.start_noise(35.0), 35.0)
+	Weather.current = "clear"
+	w_ok = w_ok and is_equal_approx(NightShift.noise_mult(), 1.0) and is_equal_approx(NightShift.ammo_mult(), 1.0) and is_equal_approx(NightShift.awake_threshold(60.0), 60.0)
+	Weather.current = w_saved
+	w_ok = w_ok and is_equal_approx(NightShift.noise_mult(), 1.0) and is_equal_approx(NightShift.start_noise(20.0), 20.0)
+	check.call("pogoda: burza / mgła / deszcz / pogodnie dają swoje mnożniki hałasu, amunicji i progów Stalkera, brak pogody = bez zmian", w_ok)
 	check.call("odprawa następnej misji (%s): tytuł, cel, %d rodzajów wrogów, %d gniazd, boss=%s" % [after_hub, (brief["counts"] as Dictionary).size(), int(brief["nests"]), str(brief["boss"])],
 		String(brief["title"]) != "" and String(brief["brief"]) != "" and (brief["counts"] as Dictionary).has("trzosek") and int(brief["nests"]) == 4 and bool(brief["boss"]))
 	# kryjówka jest bezpieczna: wymuszamy warunki, w których Dyrektor grozy dosypałby wędrowców, i sprawdzamy, że nikt się nie pojawia
@@ -1826,6 +1859,7 @@ func _gen_test() -> void:
 	_hub_set_ready(NoiseMgr.local_id(), false)
 	await get_tree().create_timer(0.5).timeout
 	check.call("kryjówka: odznaczenie przerywa odliczanie", level.map_id == "z1_hub" and hub_countdown < 0.0)
+	var forecast_before: String = Weather.forecast
 	_hub_set_ready(NoiseMgr.local_id(), true)
 	await get_tree().create_timer(HUB_COUNTDOWN + 1.0).timeout
 	await get_tree().create_timer(0.5).timeout
@@ -1833,11 +1867,13 @@ func _gen_test() -> void:
 	check.call("[Enter] w kryjówce → mapa 1.3 (gniazda), ekwipunek zachowany",
 		level.map_id == "z1_m3" and mission.kind == "nests" and mission.goal_total == 4 and p.weapons.loadout == loadout_before
 		and Arsenal.get_reserve(Weapons.def(loadout_before[0]).id) == ammo_before and get_tree().get_nodes_in_group("generators").is_empty())
+	check.call("pogoda misji po wyjściu z kryjówki = prognoza z radiostacji (%s)" % forecast_before, Weather.current == forecast_before)
 	mission.elapsed = 5.0
 	mission._success()
 	_continue_after_result()
 	await get_tree().create_timer(0.5).timeout
 	check.call("po 1.3 kryjówka, następna: B1 Pijawka (boss zamyka Strefę I)", level.map_id == "z1_hub" and after_hub == "z1_b1")
+	check.call("powrót do kryjówki: pogoda misji znika, nowa prognoza (%s)" % Weather.forecast, Weather.current == "" and Weather.KINDS.has(Weather.forecast))
 	var brief_b1: Dictionary = level.briefing("z1_b1")
 	check.call("odprawa B1: tytuł '%s', boss '%s', bez Trzosków w odprawie" % [brief_b1["title"], brief_b1.get("boss_name", "")], String(brief_b1["title"]).contains("LEECH") and bool(brief_b1["boss"]) and String(brief_b1.get("boss_name", "")) == "THE LEECH")
 	_depart_hub()

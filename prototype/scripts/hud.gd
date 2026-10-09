@@ -24,6 +24,7 @@ const Throwables := preload("res://scripts/throwables.gd")
 const Hints := preload("res://scripts/hints.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
+const Weather := preload("res://scripts/weather.gd")
 const Codex := preload("res://scripts/codex.gd")
 const RunLog := preload("res://scripts/run_log.gd")
 const WorkshopUi := preload("res://scripts/workshop_ui.gd")
@@ -336,6 +337,8 @@ var _safe_chip: PanelContainer
 var _ready_pips: Pips              ## kwadraciki gotowości w pasku misji kryjówki
 var _scrap_coin: Coin
 var _brief: Dictionary = {}               ## karta odprawy przy tablicy w kryjówce
+var _radio: Dictionary = {}               ## karta prognozy pogody przy radiostacji w kryjówce
+var _radio_key := ""
 var _item_id := -2
 var _brief_id := ""
 var _demo_footer: Control = null     ## stopka dema na ekranie wyniku — tylko na końcu kampanii / serii
@@ -362,6 +365,8 @@ func _ready() -> void:
 	_item = _make_info_card(250.0, 2, true)
 	_brief = _make_info_card(310.0, 4, true)
 	(_brief["card"] as TailPanel).pin = true
+	_radio = _make_info_card(300.0, 2, true)
+	(_radio["card"] as TailPanel).pin = true
 	var wsp := WorkshopUi.new()
 	add_child(wsp)
 	get_viewport().size_changed.connect(_fit)
@@ -1322,6 +1327,33 @@ func _drive_cards() -> void:
 		# nad tablicą (jak karta broni), więc nie zasłania stojącego przy niej gracza
 		var btop: Vector2 = get_viewport().get_canvas_transform() * (board.global_position + Vector2(0, -46))
 		bc.position = Vector2(clampf(btop.x / scale.x - bc.size.x * 0.5, 6.0, maxf(6.0, size.x - bc.size.x - 6.0)), maxf(6.0, btop.y / scale.y - bc.size.y - 12.0))
+	_drive_radio()
+
+## Prognoza z radiostacji (weather.gd): nazwa pogody, jej plusy i minusy, tytuł następnej misji.
+func _drive_radio() -> void:
+	var near := false
+	var rset: Node2D = null
+	for rs in get_tree().get_nodes_in_group("radio_set"):
+		if rs.local_in_range:
+			near = true
+			rset = rs
+			break
+	var rc: Control = _radio["card"]
+	rc.visible = near
+	if not near:
+		return
+	var main := get_tree().current_scene
+	var target := String(main.get("after_hub")) if main != null else ""
+	var key := "%s|%s" % [Weather.forecast, target]
+	if key != _radio_key:
+		_radio_key = key
+		var lvl := get_tree().get_first_node_in_group("level")
+		var info: Dictionary = lvl.briefing(target) if lvl != null and target != "" else {}
+		var tag := ("Next: " + String(info["title"])) if not info.is_empty() else "Next mission"
+		var id: String = Weather.forecast
+		_fill_info(_radio, "WEATHER FORECAST", tag, [[Weather.color_of(id), Weather.name_of(id)]], Weather.text_of(id), UiTheme.ACCENT)
+	var rtop: Vector2 = get_viewport().get_canvas_transform() * (rset.global_position + Vector2(0, -40))
+	rc.position = Vector2(clampf(rtop.x / scale.x - rc.size.x * 0.5, 6.0, maxf(6.0, size.x - rc.size.x - 6.0)), maxf(6.0, rtop.y / scale.y - rc.size.y - 12.0))
 
 func _fill_brief(info: Dictionary) -> void:
 	if info.is_empty():
@@ -1473,7 +1505,7 @@ func _drive_prompt() -> void:
 			else:
 				text = "Hold here — the whole squad must reach the flare"
 				col = UiTheme.ACCENT
-	if wipe_left <= 0.0 and m != null and m.banner_visible() and not (bool(_item["card"].visible) or bool(_brief["card"].visible)):
+	if wipe_left <= 0.0 and m != null and m.banner_visible() and not (bool(_item["card"].visible) or bool(_brief["card"].visible) or bool(_radio["card"].visible)):
 		# tytuł misji w pierwszych sekundach; w Nocnym Dyżurze także zasady serii
 		var lvl := get_tree().get_first_node_in_group("level")
 		var lines: Array = []
@@ -1493,6 +1525,8 @@ func _drive_prompt() -> void:
 		else:
 			_center.text = String(lvl.title) if lvl != null else ""
 			lines.append(m.objective_text())
+		if not NightShift.active and Weather.active_id() != "":
+			lines.append("WEATHER — %s: %s" % [Weather.name_of(Weather.active_id()), Weather.text_of(Weather.active_id())])
 		_center_sub.text = "\n".join(lines)
 	# ostatnia transmisja patrolu w finale misji 1.1 (zamiast baneru tytułu)
 	if wipe_left <= 0.0 and m != null and m.finale_radio_line() != "":
