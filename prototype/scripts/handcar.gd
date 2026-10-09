@@ -21,6 +21,8 @@ const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 
 const HALF_W := 44.0                 ## połowa długości pokładu
+const DECK_TOP := 5.35               ## wysokość górnej krawędzi pokładu nad torem [px świata] — do tej wysokości drezyna zasłania nogi graczy
+const FRONT_Z := 10                  ## z względem drezyny: osłona pokładu i koła leżą przed graczami
 const SPEED_MAX := 130.0
 const SPEED_BASE := 55.0             ## prędkość docelowa przy jednym pompującym = BASE + PER_PUMPER
 const SPEED_PER_PUMPER := 40.0
@@ -84,13 +86,40 @@ func _setup_hd() -> void:
 		var w := ItemsHd.make("handcar_wheel", self)
 		w.offset = Vector2.ZERO                       # środek tekstury = oś obrotu
 		w.position = Vector2(wx, -2.5)
+		w.z_index = FRONT_Z + 1                       # koła przed graczami i przed belką podwozia (niżej)
 		_hd_wheels.append(w)
 	var body := ItemsHd.make("handcar", self)
 	body.position = Vector2(0.0, -2.0)                # spód korpusu = dolna krawędź ramy (2 px nad torem)
+	# Osłona pokładu: pokład jest równo z torem (stopy graczy na y = 0 drezyny), a rama i deski sięgają ok. 5,3 px nad tor — bez osłony stopy i łydki
+	# wystawały pod pokładem. Dolny pas korpusu (rama + deski do górnej krawędzi) rysujemy drugi raz, TĘ SAMĄ teksturą, ale przed graczami.
+	var skirt := ItemsHd.make("handcar", self)
+	var f := ItemsHd.frame_px("handcar")
+	var top_px := f.y - ItemsHd.PAD - DECK_TOP * ItemsHd.ppw("handcar")          # wiersz tekstury z górną krawędzią pokładu
+	skirt.region_enabled = true
+	skirt.region_rect = Rect2(0.0, top_px, f.x, f.y - top_px)
+	skirt.position = body.position
+	skirt.offset = body.offset + Vector2(0.0, top_px * 0.5)                          # region wycentrowany tak, by pokrył się z korpusem
+	skirt.z_index = FRONT_Z
+	# Pod ramą (2 px nad torem) jest szczelina, w której było widać buty graczy stojących na torze — zasłania ją belka podwozia, też przed graczami.
+	var apron := Node2D.new()
+	apron.name = "Apron"
+	apron.z_index = FRONT_Z
+	apron.draw.connect(_draw_apron.bind(apron))
+	add_child(apron)
 	_hd_lever = ItemsHd.make("handcar_lever", self)
 	_hd_lever.offset = Vector2.ZERO
 	_hd_lever.position = Vector2(0, -13)
 	move_child(_lamp, get_child_count() - 1)          # blask latarni nad korpusem
+
+## Belka podwozia między ramą a torem (HD): ciemna stal z jasną krawędzią i nitami; wysokość = szczelina pod ramą + zapas na buty.
+func _draw_apron(ci: Node2D) -> void:
+	var x0 := -HALF_W + 1.0
+	var w := HALF_W * 2.0 - 2.0
+	ci.draw_rect(Rect2(x0, -2.4, w, 3.4), Color(0.17, 0.18, 0.21))
+	ci.draw_rect(Rect2(x0, -2.4, w, 0.8), Color(0.32, 0.34, 0.39))
+	ci.draw_rect(Rect2(x0, 0.4, w, 0.6), Color(0.1, 0.1, 0.12))
+	for i in 9:
+		ci.draw_circle(Vector2(x0 + 5.0 + float(i) * (w - 10.0) / 8.0, -0.7), 0.45, Color(0.5, 0.52, 0.58))
 
 func _update_hd() -> void:
 	for i in _hd_wheels.size():
