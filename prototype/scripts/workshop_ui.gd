@@ -851,13 +851,13 @@ func _exit_tree() -> void:
 
 ## Linia sterowania pod panelem: klawisze z rejestru akcji, a gdy jest pad — jego przyciski.
 func _controls_hint() -> String:
-	var pad := Actions.pad_connected()
+	var pad := Actions.pad_mode
 	var nav := "D-PAD" if pad else Actions.cluster(["menu_up", "menu_left", "menu_down", "menu_right"]).to_upper()
 	return "%s select   ·   %s buy / upgrade / equip   ·   %s arms / supplies / perks / look   ·   %s close   ·   or click" % [
 		nav, _menu_key("menu_accept", pad), _menu_key("menu_tab", pad), _menu_key("menu_back", pad)]
 
 func _menu_key(id: String, pad: bool) -> String:
-	return Actions.text(id, true, pad).to_upper()
+	return Actions.text(id, true, Actions.DEV_PAD if pad else Actions.DEV_KEY).to_upper()
 
 ## Krok zaznaczenia z akcji menu (strzałki / WASD / D-pad): ±1 w poziomie, ±COLS w pionie, 0 = to nie nawigacja.
 func _nav_step(event: InputEvent) -> int:

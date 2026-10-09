@@ -117,27 +117,31 @@ Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP =
 
 ## Sterowanie
 
-| Akcja | Klawisz |
-|---|---|
-| Ruch / celowanie 8 kier. | WASD lub strzałki |
-| Skok | SPACJA |
-| Strzał | J lub LPM |
-| Skradanie (cisza) | SHIFT |
-| **Przesterowanie** | **Q** |
-| Podnieś kolegę (przytrzymaj) | E |
-| Broń (2 główne + sidearm) | 1 / 2 / 3, kółko myszy |
-| Przeładowanie | R |
-| Cios (maczeta / kilof) | V lub PPM |
-| Podnieś broń z ziemi | E |
-| Latarka | L |
-| Pokaż / ukryj sterowanie | F1 |
-| Zaproszenie przez Steam (host) | F2 |
-| Flara (rzut łukiem w stronę celowania) | F |
-| **Krzyk** (także mikrofon, jeśli włączony w lobby) | G |
-| Zeskok z kładki | dół + SPACJA |
-| Nowa misja (host, po ekstrakcji) | Enter |
-| Menu pauzy / ustawienia | Esc lub P |
-| Pełny ekran | F11 |
+| Akcja | Klawisz | Pad |
+|---|---|---|
+| Ruch | WASD lub strzałki | lewy drążek |
+| Celowanie | 8 kierunków wg ruchu / mysz | prawy drążek (swobodnie 360°) |
+| Skok | SPACJA | A |
+| Strzał | J lub LPM | RT |
+| Skradanie (cisza) | SHIFT | L3 |
+| **Przesterowanie** | **Q** | LB |
+| Podnieś kolegę (przytrzymaj) / podnieś broń | E | B |
+| Broń (2 główne + sidearm) | 1 / 2 / 3, kółko myszy | Y (następna) |
+| Przeładowanie | R | R3 |
+| Cios (maczeta / kilof) | V lub PPM | X |
+| Użycie przedmiotu / zmiana przedmiotu | lewy Alt (macOS: lewy Cmd) / X | RB / D-pad ↑ |
+| Tryb ognia | B | D-pad ↓ |
+| Latarka | L | D-pad ← |
+| Flara (rzut łukiem w stronę celowania) | F | D-pad → |
+| **Krzyk** (także mikrofon, jeśli włączony w lobby) | G | LT |
+| Zeskok z kładki | dół + SPACJA | lewy drążek ↓ + A |
+| Pokaż / ukryj sterowanie | F1 | – |
+| Zaproszenie przez Steam (host) | F2 | – |
+| Nowa misja (host, po ekstrakcji) / gotowość w kryjówce | Enter | Back |
+| Menu pauzy / ustawienia | Esc lub P | Start |
+| Pełny ekran | F11 | – |
+
+Podpowiedzi w grze i ściąga sterowania pokazują klawisze albo przyciski pada — zależnie od tego, czego gracz użył ostatnio. W menu pauzy: D-pad / drążek i A nawigują, B zamyka, LB / RB przełączają zakładki. Wszystkie akcje i ich wiązania są w `scripts/actions.gd`.
 
 ## Testy broni
 

@@ -1,5 +1,7 @@
 extends SceneTree
-## Zrzut menu pauzy (zakładka z argumentu --tab=N) do pliku. Uruchamiać pod xvfb z renderer'em GL.
+## Zrzut menu pauzy (zakładka z argumentu --tab=N, opcjonalnie --pad = przyciski pada) do pliku. Uruchamiać pod xvfb z renderer'em GL.
+const Actions := preload("res://scripts/actions.gd")
+
 var _frames := 0
 var _menu: Control
 var _tab := 2
@@ -11,6 +13,8 @@ func _initialize() -> void:
 			_tab = int(a.substr(6))
 		if a.begins_with("--out="):
 			_out = a.substr(6)
+		if a == "--pad":
+			Actions.pad_mode = true            # podpowiedzi z przyciskami pada
 	var ui := CanvasLayer.new()
 	root.add_child(ui)
 	var bg := ColorRect.new()
