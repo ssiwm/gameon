@@ -165,7 +165,7 @@ func _build_settings() -> void:
 	_cycler("mic", "Microphone scream", Voice.cycle)
 	_settings_box.add_child(_caption("DISPLAY"))
 	_cycler("ui", "HUD size", Settings.cycle_ui)
-	_cycler("full", "Fullscreen  (%s)" % Actions.text("fullscreen"), Settings.toggle_fullscreen)
+	_cycler("full", tr("Fullscreen  (%s)") % Actions.text("fullscreen"), Settings.toggle_fullscreen)
 	_cycler("res", "Window size", Settings.cycle_res)
 	_cycler("vsync", "V-Sync", Settings.cycle_vsync)
 	_cycler("fps", "Frame rate limit", Settings.cycle_fps)
@@ -177,6 +177,7 @@ func _build_settings() -> void:
 	_cycler("reduce", "Reduce effects", Settings.toggle_reduce_fx)
 	_cycler("caps", "Sound captions", Settings.toggle_captions)
 	_cycler("cb", "Color vision", Settings.cycle_colorblind)
+	_cycler("lang", "Language", Settings.cycle_locale)
 
 ## Wiersz: opis po lewej, suwak i wartość po prawej (strzałki / D-pad / mysz).
 func _stepper(kind: String, text: String) -> void:
@@ -293,7 +294,7 @@ func _rebind_button(id: String, dev: int, w: float) -> Button:
 		b.disabled = true                        # drążki ruchu i celowania mają stałe osie
 		b.tooltip_text = "Fixed"
 	else:
-		b.tooltip_text = "Click, then press the new %s" % ("key" if dev == Actions.DEV_KEY else "pad button")
+		b.tooltip_text = tr("Click, then press the new %s") % (tr("key") if dev == Actions.DEV_KEY else tr("pad button"))
 		b.pressed.connect(_start_capture.bind(id, dev, b))
 	return b
 
@@ -301,7 +302,7 @@ func _start_capture(id: String, dev: int, b: Button) -> void:
 	_cancel_capture()
 	_cap = {"id": id, "dev": dev, "btn": b, "text": b.text}
 	b.text = "press a key…" if dev == Actions.DEV_KEY else "press a button…"
-	_rebind_msg.text = "%s: press the new %s  (Esc cancels)" % [Actions.label_of(id), "key" if dev == Actions.DEV_KEY else "pad button"]
+	_rebind_msg.text = tr("%s: press the new %s  (Esc cancels)") % [Actions.label_of(id), tr("key") if dev == Actions.DEV_KEY else tr("pad button")]
 	Audio.play("ui_click", Audio.BUS_UI, -10.0)
 
 func _cancel_capture() -> void:
@@ -338,7 +339,7 @@ func _finish_capture(event: InputEvent) -> bool:
 	var res := Actions.set_binding(id, dev, event)
 	if bool(res["ok"]):
 		var sw := String(res["swapped"])
-		_rebind_msg.text = "%s → %s" % [Actions.label_of(id), Actions.text(id, true, dev)] + ("   (swapped with %s)" % Actions.label_of(sw) if sw != "" else "")
+		_rebind_msg.text = "%s → %s" % [Actions.label_of(id), Actions.text(id, true, dev)] + (tr("   (swapped with %s)") % Actions.label_of(sw) if sw != "" else "")
 		Audio.play("ui_confirm", Audio.BUS_UI, -8.0)
 	else:
 		_cancel_capture()
@@ -382,6 +383,7 @@ func _refresh() -> void:
 	_values["reduce"].text = "ON" if Settings.reduce_fx else "OFF"
 	_values["caps"].text = "ON" if Settings.captions else "OFF"
 	_values["cb"].text = Settings.COLORBLIND_NAMES[Settings.colorblind_idx]
+	_values["lang"].text = Settings.LOCALE_NAMES[Settings.locale_idx]
 	_values["wfx"].text = Settings.WEATHER_FX_NAMES[Settings.weather_fx_idx]
 	_values["hints"].text = "ON" if Settings.hints_on else "OFF"
 	_values["mic"].text = Voice.label().replace("MIC: ", "")

@@ -531,6 +531,7 @@ func _t_throwables() -> void:
 	_t_rebind()
 	await _t_display_settings()
 	_t_captions()
+	_t_locale()
 	give_gear()
 	await _t_gear()
 	await _t_economy()
@@ -710,6 +711,17 @@ func _t_captions() -> void:
 	var expired: bool = c.lines().is_empty()
 	check("napisy dźwięków: kierunek i „far” (%s), odświeżenie (%s), limit %d linii (%s), wygasanie (%s)" % [str(dir_ok), str(refreshed), Captions.MAX_LINES, str(capped), str(expired)],
 		dir_ok and refreshed and capped and expired)
+
+## Lokalizacja (translations/ui.csv): klucz = angielski tekst, polski po zmianie locale; formatowane teksty przez tr().
+func _t_locale() -> void:
+	var prev := TranslationServer.get_locale()
+	TranslationServer.set_locale("pl")
+	var pl_ok: bool = tr("RESUME") == "WZNÓW" and tr("Master volume") == "Głośność ogólna" and tr("[Gunfire]") == "[Strzały]" 		and tr("MODE: < %s >") % tr("CAMPAIGN") == "TRYB: < KAMPANIA >"
+	var fmt_ok: bool = (tr("%d / %d ready") % [1, 2]) == "1 / 2 gotowych"
+	TranslationServer.set_locale("en")
+	var en_ok: bool = tr("RESUME") == "RESUME"
+	TranslationServer.set_locale(prev)
+	check("lokalizacja: PL (%s, %s), EN zostaje źródłem (%s)" % [str(pl_ok), str(fmt_ok), str(en_ok)], pl_ok and fmt_ok and en_ok)
 
 ## Faza A2: dym, mina, ładunek wyburzeniowy, apteczka, defibrylator, skaner.
 func _t_gear() -> void:

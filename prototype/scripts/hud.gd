@@ -106,6 +106,63 @@ class Bar extends Control:
 			var x: float = size.x * float(t[0])
 			draw_rect(Rect2(x - 0.5, -2.0, 1.0, size.y + 4.0), t[1])
 
+## Wskaźnik hałasu jako analogowy VU-metr (UI_PLAN.md): półokrągła skala z trzema strefami CALM / UNEASY / HUNTED (progi z
+## NoiseMgr, więc zgodne z Nocnym Dyżurem) i wskazówką z opóźnieniem. W strefie HUNTED wskazówka drży (nie przy „Reduce effects”).
+class VuMeter extends Control:
+	const A0 := PI * 1.10                 ## początek skali (lewo, nad poziomem)
+	const A1 := PI * 1.90                 ## koniec skali (prawo)
+	var value := 0.0                      ## 0..1 (poziom Uwagi)
+	var fill := Color.WHITE               ## kolor wskazówki
+	var ticks: Array = []                 ## [[próg ciszy, kolor], [próg niepokoju, kolor], [próg pościgu, kolor]]
+	var _shown := 0.0
+	var _t := 0.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _process(delta: float) -> void:
+		_t += delta
+		_shown = lerpf(_shown, value, minf(1.0, delta * 9.0))
+		queue_redraw()
+
+	func _ang(f: float) -> float:
+		return lerpf(A0, A1, clampf(f, 0.0, 1.0))
+
+	func _draw() -> void:
+		var c := Vector2(size.x * 0.5, size.y - 5.0)
+		var r := minf(size.x * 0.5 - 4.0, size.y - 9.0)
+		var uneasy := 0.4
+		var awake := 0.6
+		var sleep := 0.3
+		if ticks.size() >= 3:
+			sleep = float(ticks[0][0])
+			uneasy = float(ticks[1][0])
+			awake = float(ticks[2][0])
+		# tło skali i strefy
+		draw_arc(c, r, A0, A1, 28, Color(0, 0, 0, 0.55), 7.0, true)
+		draw_arc(c, r, _ang(0.0), _ang(uneasy), 16, UiTheme.CALM.darkened(0.15), 4.0, true)
+		draw_arc(c, r, _ang(uneasy), _ang(awake), 10, UiTheme.ACCENT, 4.0, true)
+		draw_arc(c, r, _ang(awake), _ang(1.0), 12, UiTheme.DANGER, 4.0, true)
+		# kreski: co 10%, próg ciszy dłuższą
+		for i in range(0, 11):
+			var f := float(i) / 10.0
+			var a := _ang(f)
+			var d := Vector2(cos(a), sin(a))
+			draw_line(c + d * (r - 5.0), c + d * (r - (8.0 if i % 5 == 0 else 6.5)), Color(UiTheme.TEXT, 0.55), 1.0)
+		var sa := _ang(sleep)
+		draw_line(c + Vector2(cos(sa), sin(sa)) * (r - 5.0), c + Vector2(cos(sa), sin(sa)) * (r - 11.0), Color(UiTheme.TEXT, 0.9), 1.0)
+		# wskazówka
+		var f2 := clampf(_shown, 0.0, 1.0)
+		var shake := 0.0
+		if f2 >= awake and Settings.fx_mult() > 0.0:
+			shake = sin(_t * 47.0) * 0.035 + sin(_t * 23.0) * 0.02
+		var na := _ang(f2) + shake
+		var tip := c + Vector2(cos(na), sin(na)) * (r - 1.0)
+		draw_line(c, tip, Color(0, 0, 0, 0.7), 3.0, true)
+		draw_line(c, tip, fill, 1.6, true)
+		draw_circle(c, 3.0, Color(0.1, 0.1, 0.1))
+		draw_circle(c, 1.6, fill)
+
 ## Row of icons (hearts or diamonds), `filled` of `count` lit.
 class Pips extends Control:
 	func _init() -> void:
@@ -270,6 +327,7 @@ var _session_t := 0.0
 ## Pasek sterowania: -1 = auto (pierwsze CONTROLS_SHOW_S s), 0 = ukryty, 1 = pokazany (F1).
 var _controls_mode := -1
 var _hit_flash := 0.0
+var _dev_noise := -1.0
 var _dim: ColorRect                   ## ściemnienie HUD-u pod modalami (karta wyniku, warsztat)
 var _calm_t := 0.0                    ## sekundy spokoju (poziomy HUD: T2 / T3 wygaszane po 4 s)
 var _tier_k := 1.0                    ## 1 = pełny HUD, ~0.5 = wyciszony w spokoju
@@ -280,7 +338,7 @@ var _cap_card: PanelContainer
 var _cap_box: VBoxContainer
 var _last_hp := -1
 
-var _noise_bar: Bar
+var _noise_bar: VuMeter
 var _noise_val: Label
 var _noise_state: Label
 var _weather_row: Label                   ## pogoda misji i jej skutki pod miernikiem hałasu (tylko gdy jest pogoda)
@@ -375,6 +433,9 @@ func _ready() -> void:
 	_build_captions()
 	_build_result()
 	_build_dim()
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--shotnoise="):
+			_dev_noise = float(a.substr("--shotnoise=".length()))
 	_item = _make_info_card(250.0, 2, true)
 	_brief = _make_info_card(310.0, 4, true)
 	(_brief["card"] as TailPanel).pin = true
@@ -450,30 +511,26 @@ func _row(parent: Container, caption: String) -> HBoxContainer:
 func _build_noise_card() -> void:
 	var card := _card(Vector2(MARGIN, MARGIN))
 	_noise_card = card
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 3)
-	card.add_child(box)
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 5)
-	head.add_child(UiTheme.heading("NOISE", 8, UiTheme.MUTED))
-	_noise_state = UiTheme.label("", 7, UiTheme.MUTED)
-	head.add_child(_noise_state)
-	var spring := Control.new()
-	spring.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(spring)
-	_noise_val = UiTheme.mono(UiTheme.label("0%", 9, UiTheme.TEXT))
-	head.add_child(_noise_val)
-	box.add_child(head)
-	_noise_bar = Bar.new()
-	_noise_bar.custom_minimum_size = Vector2(170, 6)
-	_noise_bar.seg = 3.0
-	# progi z NoiseMgr: 30 = zasypia, 40 = niepokój (szept), 60 = budzi się ON
+	var outer := HBoxContainer.new()
+	outer.add_theme_constant_override("separation", 8)
+	card.add_child(outer)
+	_noise_bar = VuMeter.new()                 # analogowy VU-metr; progi z NoiseMgr: 30 = zasypia, 40 = niepokój, 60 = budzi się ON
+	_noise_bar.custom_minimum_size = Vector2(72, 40)
 	_noise_bar.ticks = [
 		[NoiseMgr.SLEEP_THRESHOLD / 100.0, Color(1, 1, 1, 0.35)],
-		[NoiseMgr.UNEASY_THRESHOLD / 100.0, Color(1.0, 0.72, 0.28, 0.8)],
-		[NoiseMgr.AWAKE_THRESHOLD / 100.0, Color(1.0, 0.28, 0.22, 0.95)],
+		[NoiseMgr.UNEASY_THRESHOLD / 100.0, UiTheme.ACCENT],
+		[NoiseMgr.AWAKE_THRESHOLD / 100.0, UiTheme.DANGER],
 	]
-	box.add_child(_noise_bar)
+	outer.add_child(_noise_bar)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 1)
+	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	outer.add_child(box)
+	box.add_child(UiTheme.heading("NOISE", 8, UiTheme.MUTED))
+	_noise_state = UiTheme.label("", 7, UiTheme.MUTED)
+	box.add_child(_noise_state)
+	_noise_val = UiTheme.mono(UiTheme.label("0%", 12, UiTheme.TEXT))
+	box.add_child(_noise_val)
 	_weather_row = UiTheme.label("", 7, UiTheme.MUTED)
 	_weather_row.visible = false
 	box.add_child(_weather_row)
@@ -824,10 +881,10 @@ func _build_prompt() -> void:
 func _build_controls() -> void:
 	_controls = UiTheme.label(Actions.hud_line(), 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_controls)
-	_f1 = UiTheme.label("%s  controls" % Actions.key("help"), 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
+	_f1 = UiTheme.label(tr("%s  controls") % Actions.key("help"), 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
 	var refresh_keys := func() -> void:        # klawiatura ↔ pad albo zmiana przypisań: podpowiedzi pokazują właściwe klawisze
 		_controls.text = Actions.hud_line()
-		_f1.text = "%s  controls" % Actions.key("help")
+		_f1.text = tr("%s  controls") % Actions.key("help")
 	InputSetup.device_changed.connect(func(_pad: bool) -> void: refresh_keys.call())
 	Settings.bindings_changed.connect(refresh_keys)
 	add_child(_f1)
@@ -876,7 +933,7 @@ func _build_captions() -> void:
 			return
 		var lp: Node = _player if _player != null and is_instance_valid(_player) else null
 		var listener: Vector2 = (lp as Node2D).global_position if lp != null else pos
-		if _captions.push(text, pos, priority, listener):
+		if _captions.push(tr(text), pos, priority, listener, tr("  (far)")):
 			_rebuild_captions())
 	if "--shotcaps" in OS.get_cmdline_user_args():
 		# dev: napisy włączone na stałe i kilka przykładowych linii do zrzutu
@@ -982,7 +1039,7 @@ func _build_result() -> void:
 		foot.add_child(UiTheme.heading("THANKS FOR PLAYING THE DEMO", 8, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 		foot.add_child(UiTheme.label("Wishlist DEAD AIR '87 on Steam — more zones, weapons and monsters are coming.", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 		if Settings.STORE_URL != "":
-			foot.add_child(UiTheme.label("[%s]  Open the Steam page" % Actions.key("open_store"), 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
+			foot.add_child(UiTheme.label(tr("[%s]  Open the Steam page") % Actions.key("open_store"), 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
 		box.add_child(foot)
 		_demo_footer = foot
 	_result.visible = false
@@ -1034,10 +1091,10 @@ func _drive_noise() -> void:
 	if _note_t > 0.0:
 		_note_t -= get_process_delta_time()
 		_note.modulate.a = clampf(_note_t / 0.6, 0.0, 1.0)
-	var lvl := NoiseMgr.level
+	var lvl := _dev_noise if _dev_noise >= 0.0 else NoiseMgr.level          # dev: --shotnoise=N pokazuje wskaźnik przy zadanym poziomie
 	_noise_val.text = "%d%%" % int(lvl)
 	_noise_bar.value = lvl / 100.0
-	var col := NOISE_COL_CALM
+	var col := UiTheme.CALM
 	if lvl >= NoiseMgr.AWAKE_THRESHOLD:
 		col = UiTheme.DANGER.lerp(Color.WHITE, 0.25 * (0.5 + 0.5 * sin(_blink * 8.0)) * Settings.fx_mult())
 	elif lvl >= NoiseMgr.UNEASY_THRESHOLD:
@@ -1045,6 +1102,8 @@ func _drive_noise() -> void:
 	_noise_bar.fill = col
 	var awake: bool = NoiseMgr.stalker_awake
 	_noise_state.text = "HUNTED" if awake else ("UNEASY" if lvl >= NoiseMgr.UNEASY_THRESHOLD else "CALM")
+	# ostrzeżenie pulsuje tylko w pościgu (HUNTED); „Reduce effects" zostawia stałą jasność
+	_noise_state.modulate.a = lerpf(1.0, 0.55 + 0.45 * sin(_blink * 6.0), Settings.fx_mult()) if awake else 1.0
 	_noise_state.add_theme_color_override("font_color", UiTheme.DANGER if awake else (UiTheme.ACCENT if lvl >= NoiseMgr.UNEASY_THRESHOLD else UiTheme.MUTED))
 	_noise_val.add_theme_color_override("font_color", col if lvl >= NoiseMgr.UNEASY_THRESHOLD else UiTheme.TEXT)
 	_noise_bar.queue_redraw()
@@ -1052,7 +1111,7 @@ func _drive_noise() -> void:
 	var wid := Weather.active_id()
 	_weather_row.visible = wid != "" and not NightShift.active
 	if _weather_row.visible:
-		_weather_row.text = "%s  ·  %s" % [Weather.name_of(wid), Weather.short_of(wid)]
+		_weather_row.text = "%s  ·  %s" % [tr(Weather.name_of(wid)), tr(Weather.short_of(wid))]
 		_weather_row.add_theme_color_override("font_color", Weather.color_of(wid))
 	_charges.filled = NoiseMgr.overcharge_charges
 	_charges.queue_redraw()
@@ -1155,11 +1214,11 @@ func _drive_weapons() -> void:
 		elif mag <= maxi(1, int(cur.mag * 0.25)):
 			col = UiTheme.ACCENT if mag > 0 else UiTheme.DANGER
 	if wc.state == wc.State.RELOAD:
-		note = "RELOADING %d%%" % int(wc.reload_progress() * 100.0)
+		note = tr("RELOADING %d%%") % int(wc.reload_progress() * 100.0)
 	elif wc.state == wc.State.CHARGE:
-		note = "CHARGING %d%%" % int(wc.charge * 100.0)
+		note = tr("CHARGING %d%%") % int(wc.charge * 100.0)
 	elif note == "" and cur.uses_ammo() and mag <= 0 and wc.ammo_enabled:
-		note = "[%s] RELOAD" % Actions.key("reload")
+		note = tr("[%s] RELOAD") % Actions.key("reload")
 	_ammo_mag.add_theme_color_override("font_color", col)
 	_ammo_note.text = note
 	# pasek przeładowania / ładowania szyny pod liczbami
@@ -1292,7 +1351,7 @@ func _fill_result(m: Node) -> void:
 	_result_stats.add_child(UiTheme.label("XP", 9, UiTheme.MUTED))
 	_result_xp_val = UiTheme.label("", 9, Color(0.55, 0.8, 1.0), HORIZONTAL_ALIGNMENT_RIGHT)      # uzupełniany co klatkę — XP przychodzi od serwera chwilę po zmianie fazy
 	_result_stats.add_child(_result_xp_val)
-	_result_prompt.text = "[%s]  %s" % [Actions.key("restart"), prompt] if multiplayer.is_server() else "Waiting for the host to continue…"
+	_result_prompt.text = "[%s]  %s" % [Actions.key("restart"), tr(prompt)] if multiplayer.is_server() else "Waiting for the host to continue…"
 	if _demo_footer != null:
 		# stopka dema: koniec kampanii (ostatnia misja Strefy I) albo koniec serii Nocnego Dyżuru
 		var lvl := get_tree().get_first_node_in_group("level")
@@ -1621,10 +1680,10 @@ func _drive_prompt() -> void:
 				text = "Step onto the handcar"
 				col = UiTheme.ACCENT
 			"aboard":
-				text = Actions.fmt("Hold [{interact}]  Pump  (you can't shoot while pumping)")
+				text = Actions.fmt(tr("Hold [{interact}]  Pump  (you can't shoot while pumping)"))
 				col = UiTheme.ACCENT
 			"pumping":
-				text = Actions.fmt("Pumping…  release [{interact}] to shoot")
+				text = Actions.fmt(tr("Pumping…  release [{interact}] to shoot"))
 				col = UiTheme.OK
 	elif gen != null and _player != null and _player.weapons.nearby_weapon_item() == null:
 		if gen.progress > 0.0:
@@ -1632,23 +1691,23 @@ func _drive_prompt() -> void:
 			prog = gen.progress
 			col = UiTheme.OK
 		else:
-			text = Actions.fmt("Hold [{interact}]  Start the generator  (loud)")
+			text = Actions.fmt(tr("Hold [{interact}]  Start the generator  (loud)"))
 			col = UiTheme.ACCENT
 	elif _near_workshop():
-		text = "[%s]  Workshop  ·  SCRAP %d" % [Actions.key("interact"), Scrap.bank]
+		text = tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank]
 		col = UiTheme.ACCENT
 	elif _player != null and _player.weapons.nearby_weapon_item() != null:
 		var it: Node2D = _player.weapons.nearby_weapon_item()
 		var nd: RefCounted = Weapons.def(it.arg)
 		var lvl_p := get_tree().get_first_node_in_group("level")
 		if lvl_p != null and lvl_p.is_locked_item(it):
-			text = "LOCKED  ·  %s" % Scrap.lock_text(it.arg)
+			text = tr("LOCKED  ·  %s") % Scrap.lock_text(it.arg)
 			col = UiTheme.MUTED
 		else:
 			var wc2: Node = _player.weapons
 			var swap_out: String = Weapons.def(wc2.loadout[wc2.slot if wc2.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc2.melee_id).name
 			var take_key := Actions.key("interact")
-			text = "[%s]  Take %s  (drops %s)" % [take_key, nd.name, swap_out] if not wc2.carries(it.arg) else "[%s]  Take ammo for %s" % [take_key, nd.name]
+			text = tr("[%s]  Take %s  (drops %s)") % [take_key, nd.name, swap_out] if not wc2.carries(it.arg) else tr("[%s]  Take ammo for %s") % [take_key, nd.name]
 			col = UiTheme.ACCENT
 	elif m != null and m.phase == Mission.Phase.EXTRACT:
 		var st: Dictionary = m.local_extract_state()

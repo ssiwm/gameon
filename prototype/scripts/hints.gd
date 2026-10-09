@@ -78,7 +78,7 @@ func _start_next() -> void:
 		var id: String = tip[0]
 		if _queued.has(id) and not Settings.tip_seen(id):
 			_id = id
-			current = Actions.fmt(tip[1])
+			current = Actions.fmt(tr(tip[1]))
 			_t = 0.0
 			alpha = 0.0
 			_queued.erase(id)

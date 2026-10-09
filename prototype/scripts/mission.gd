@@ -578,7 +578,7 @@ func objective_caption() -> String:
 		Phase.EXTRACT:
 			base = "EXTRACT"
 	if base != "" and NightShift.active:
-		return "NIGHT SHIFT %d/%d  ·  %s" % [NightShift.stage, NightShift.MISSIONS, base]
+		return tr("NIGHT SHIFT %d/%d  ·  %s") % [NightShift.stage, NightShift.MISSIONS, base]
 	return base
 
 ## Tytuł następnej misji (kryjówka): z danych mapy wskazanej przez main.after_hub.
@@ -596,10 +596,10 @@ func objective_text() -> String:
 			if kind == "boss":
 				return "Kill the %s" % (String(_boss.get("boss_name")).to_lower().replace("the ", "") if _boss != null else "boss")
 			if kind == "tags":
-				return "Find the patrol's dog tags   %d / %d" % [goal_total - goal_left, goal_total]
+				return tr("Find the patrol's dog tags   %d / %d") % [goal_total - goal_left, goal_total]
 			if kind == "generators":
-				return "Start the radio generators   %d / %d" % [goal_total - goal_left, goal_total]
-			return "Destroy the nests   %d / %d" % [nests_total - nests_left, nests_total]
+				return tr("Start the radio generators   %d / %d") % [goal_total - goal_left, goal_total]
+			return tr("Destroy the nests   %d / %d") % [nests_total - nests_left, nests_total]
 		Phase.BOSS:
 			if kind == "boss":
 				return "Kill the leech — bait it to surface, then hit it"
@@ -610,14 +610,14 @@ func objective_text() -> String:
 			if car != null and me != null and not car.arrived:
 				var cdx: float = car.global_position.x - me.global_position.x
 				if car.speed > 5.0 or car.power > 0.0:
-					return "Keep pumping — the exit is %d m ahead" % int(absf(car.global_position.x - exit_pos.x) / 16.0)
-				return "Get to the handcar   %s %d m" % ["←" if cdx < 0.0 else "→", int(absf(cdx) / 16.0)]
+					return tr("Keep pumping — the exit is %d m ahead") % int(absf(car.global_position.x - exit_pos.x) / 16.0)
+				return tr("Get to the handcar   %s %d m") % ["←" if cdx < 0.0 else "→", int(absf(cdx) / 16.0)]
 			if me == null:
 				return "Reach the green flare"
 			var dx := exit_pos.x - me.global_position.x
 			if _in_exit(me.global_position):
 				return "At the flare"
-			return "Reach the green flare   %s %d m" % ["←" if dx < 0.0 else "→", int(absf(dx) / 16.0)]
+			return tr("Reach the green flare   %s %d m") % ["←" if dx < 0.0 else "→", int(absf(dx) / 16.0)]
 	return ""
 
 func objective_hint() -> String:
@@ -626,32 +626,32 @@ func objective_hint() -> String:
 		if main == null:
 			return ""
 		if main.hub_countdown >= 0.0:
-			return Actions.fmt("Departing in %d…   [{restart}] cancel") % int(ceil(main.hub_countdown))
-		var status := "%d / %d ready" % [main.hub_ready_n, main.hub_total]
+			return Actions.fmt(tr("Departing in %d…   [{restart}] cancel")) % int(ceil(main.hub_countdown))
+		var status := tr("%d / %d ready") % [main.hub_ready_n, main.hub_total]
 		if main.hub_mine:
-			return Actions.fmt("READY  ·  %s  ·  [{restart}] cancel") % status
-		return Actions.fmt("[{restart}]  Ready up  ·  %s") % status
+			return Actions.fmt(tr("READY  ·  %s  ·  [{restart}] cancel")) % status
+		return Actions.fmt(tr("[{restart}]  Ready up  ·  %s")) % status
 	match phase:
 		Phase.OBJECTIVE:
 			if kind == "boss":
 				return String(_boss.get("boss_hint")) if _boss != null else ""
 			if kind == "tags":
-				return "Walk over a dog tag to take it  ·  side goal: %d hidden stashes (%d / %d)" % [stash_total, stashes_found, stash_total] if stash_total > 0 else "Walk over a dog tag to take it  ·  shooting is loud — sneak (SHIFT) to stay quiet"
+				return tr("Walk over a dog tag to take it  ·  side goal: %d hidden stashes (%d / %d)") % [stash_total, stashes_found, stash_total] if stash_total > 0 else "Walk over a dog tag to take it  ·  shooting is loud — sneak (SHIFT) to stay quiet"
 			if kind == "generators":
 				if not stealth_ok():
-					return Actions.fmt("Hold {interact} at a generator  ·  a running one keeps humming  ·  stealth bonus lost")
-				return Actions.fmt("Hold {interact} at a generator  ·  it is loud  ·  bonus: stay under %d%% Attention") % int(STEALTH_CAP)
+					return Actions.fmt(tr("Hold {interact} at a generator  ·  a running one keeps humming  ·  stealth bonus lost"))
+				return Actions.fmt(tr("Hold {interact} at a generator  ·  it is loud  ·  bonus: stay under %d%% Attention")) % int(STEALTH_CAP)
 			return "Nests are loud when destroyed — they wake what's nearby"
 		Phase.BOSS:
 			if kind == "boss":
 				return "Light shows its shadow, but only a surfaced leech takes full damage"
-			return Actions.fmt("Light her mouth mid wind-up to stun  ·  {overcharge} lures her away")
+			return Actions.fmt(tr("Light her mouth mid wind-up to stun  ·  {overcharge} lures her away"))
 		Phase.EXTRACT:
 			if kind == "generators":
 				var car2 := get_tree().get_first_node_in_group("handcar")
 				if car2 != null and not car2.arrived:
-					return Actions.fmt("Hold {interact} aboard to pump  ·  more hands = faster  ·  he is coming — {overcharge} lures him")
-				return Actions.fmt("The transmitter is live — he heard it  ·  {overcharge} lures him away")
+					return Actions.fmt(tr("Hold {interact} aboard to pump  ·  more hands = faster  ·  he is coming — {overcharge} lures him"))
+				return Actions.fmt(tr("The transmitter is live — he heard it  ·  {overcharge} lures him away"))
 			if finale:
 				return "The mine is coming down — the way back is gone. Climb the shaft to the flare!"
 			return "The whole squad, standing, at the flare for 3 s"
