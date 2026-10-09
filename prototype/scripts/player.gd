@@ -7,6 +7,7 @@ extends CharacterBody2D
 ## (spawn i kolizje rozstrzyga serwer, klienci tylko rysują).
 
 const Weapons := preload("res://scripts/weapons.gd")
+const Actions := preload("res://scripts/actions.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
 const WeaponController := preload("res://scripts/weapon_controller.gd")
@@ -1065,7 +1066,7 @@ func revive_hint() -> String:
 	var t := _revive_target()
 	if t == null:
 		return ""
-	return "Hold [E] to revive %s" % ("the bot" if t.is_bot else "P%d" % t.display_id)
+	return "Hold [%s] to revive %s" % [Actions.key("interact"), "the bot" if t.is_bot else "P%d" % t.display_id]
 
 ## Prośba o podniesienie — rozstrzyga właściciel leżącej postaci.
 func request_revive() -> void:

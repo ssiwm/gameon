@@ -14,30 +14,10 @@ signal steam_join_requested(lobby_id: String)
 
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 const CARD_W := 470.0
 const BTN_W := 108.0                ## stała szerokość przycisków bocznych — kolumny wierszy się pokrywają
-
-## [klawisz, opis]; wyświetlane parami w dwóch kolumnach
-const CONTROLS := [
-	["WASD / Arrows", "Move & aim"],
-	["Space", "Jump (hold = higher)"],
-	["Down + Space", "Drop through a catwalk"],
-	["Shift", "Sneak — silent"],
-	["J / LMB", "Fire — makes NOISE"],
-	["R", "Reload"],
-	["B", "Fire mode (auto / burst)"],
-	["V / RMB", "Melee"],
-	["1 2 3 / Wheel", "Switch weapon"],
-	["Q", "Overcharge — lure HIM away"],
-	["G", "Scream — lures enemies"],
-	["F", "Flare — light bait, no noise"],
-	["L-Alt / X", "Use item / switch item"],
-	["L", "Flashlight — light is noise"],
-	["Hold E", "Take weapon / revive"],
-	["F1", "Controls on / off"],
-	["F2", "Steam invite (host)"],
-]
 
 enum Mode { CAMPAIGN, SAFE_ROOM, NIGHT_SHIFT }
 const MODE_NAMES := ["CAMPAIGN", "SAFE ROOM", "NIGHT SHIFT"]
@@ -177,7 +157,7 @@ func _build_status(box: VBoxContainer) -> void:
 	_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	box.add_child(_status)
 
-## Dwie kolumny par [klawisz | opis].
+## Dwie kolumny par [klawisz | opis]; klawisze z rejestru akcji (`actions.gd`).
 func _build_controls(box: VBoxContainer) -> void:
 	box.add_child(_rule(Color(1, 1, 1), 0.10))
 	box.add_child(_caption("CONTROLS"))
@@ -185,11 +165,12 @@ func _build_controls(box: VBoxContainer) -> void:
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 2)
-	var half := (CONTROLS.size() + 1) / 2
+	var rows: Array = Actions.sheet()
+	var half := (rows.size() + 1) / 2
 	for i in half:
-		_add_control(grid, CONTROLS[i])
-		if i + half < CONTROLS.size():
-			_add_control(grid, CONTROLS[i + half])
+		_add_control(grid, rows[i])
+		if i + half < rows.size():
+			_add_control(grid, rows[i + half])
 		else:
 			grid.add_child(Control.new())
 			grid.add_child(Control.new())

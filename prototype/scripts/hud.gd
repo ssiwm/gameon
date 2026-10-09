@@ -28,6 +28,7 @@ const Weather := preload("res://scripts/weather.gd")
 const Codex := preload("res://scripts/codex.gd")
 const RunLog := preload("res://scripts/run_log.gd")
 const WorkshopUi := preload("res://scripts/workshop_ui.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 ## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.7
@@ -809,11 +810,9 @@ func _build_prompt() -> void:
 	box.add_child(_prompt_bar)
 
 func _build_controls() -> void:
-	_controls = UiTheme.label(
-		"WASD move · SPACE jump · ↓+SPACE drop · SHIFT sneak · J/LMB fire · R reload · B fire mode · L-Alt item (X switch) · V/RMB melee · 1-3 gun · E take/revive · Q lure · F flare · G scream · L light",
-		7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	_controls = UiTheme.label(Actions.hud_line(), 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_controls)
-	_f1 = UiTheme.label("F1  controls", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
+	_f1 = UiTheme.label("%s  controls" % Actions.key("help"), 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
 	add_child(_f1)
 
 ## Podpowiedź dla nowego gracza: wąska karta nad paskiem kontekstowym (hints.gd decyduje, co i kiedy).
@@ -877,7 +876,7 @@ func _build_result() -> void:
 		foot.add_child(UiTheme.heading("THANKS FOR PLAYING THE DEMO", 8, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 		foot.add_child(UiTheme.label("Wishlist DEAD AIR '87 on Steam — more zones, weapons and monsters are coming.", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 		if Settings.STORE_URL != "":
-			foot.add_child(UiTheme.label("[O]  Open the Steam page", 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
+			foot.add_child(UiTheme.label("[%s]  Open the Steam page" % Actions.key("open_store"), 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
 		box.add_child(foot)
 		_demo_footer = foot
 	_result.visible = false
@@ -912,8 +911,7 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("help"):
 		_controls_mode = 0 if _controls.visible else 1
-	elif Settings.STORE_URL != "" and _result.visible and _demo_footer != null and _demo_footer.visible and event is InputEventKey and event.pressed \
-			and not event.echo and event.physical_keycode == KEY_O:
+	elif Settings.STORE_URL != "" and _result.visible and _demo_footer != null and _demo_footer.visible and event.is_action_pressed("open_store"):
 		OS.shell_open(Settings.STORE_URL)
 
 ## Krótki komunikat środkowy (znika po `secs`).
@@ -957,7 +955,7 @@ func _drive_noise() -> void:
 	_gren.count = int(Throwables.KINDS[gk]["max"])
 	_gren.filled = Arsenal.get_throwable(gk)
 	_gren.queue_redraw()
-	_gren_name.text = "%s  [X]" % Throwables.KINDS[gk]["name"]
+	_gren_name.text = "%s  [%s]" % [Throwables.KINDS[gk]["name"], Actions.key("throw_next")]
 	_gren_name.add_theme_color_override("font_color", UiTheme.TEXT if Arsenal.get_throwable(gk) > 0 else UiTheme.MUTED)
 
 func _on_xp_gained(amount: int, _reason: String) -> void:
@@ -1053,7 +1051,7 @@ func _drive_weapons() -> void:
 	elif wc.state == wc.State.CHARGE:
 		note = "CHARGING %d%%" % int(wc.charge * 100.0)
 	elif note == "" and cur.uses_ammo() and mag <= 0 and wc.ammo_enabled:
-		note = "[R] RELOAD"
+		note = "[%s] RELOAD" % Actions.key("reload")
 	_ammo_mag.add_theme_color_override("font_color", col)
 	_ammo_note.text = note
 	# pasek przeładowania / ładowania szyny pod liczbami
@@ -1174,7 +1172,7 @@ func _fill_result(m: Node) -> void:
 	_result_stats.add_child(UiTheme.label("XP", 9, UiTheme.MUTED))
 	_result_xp_val = UiTheme.label("", 9, Color(0.55, 0.8, 1.0), HORIZONTAL_ALIGNMENT_RIGHT)      # uzupełniany co klatkę — XP przychodzi od serwera chwilę po zmianie fazy
 	_result_stats.add_child(_result_xp_val)
-	_result_prompt.text = "[ENTER]  " + prompt if multiplayer.is_server() else "Waiting for the host to continue…"
+	_result_prompt.text = "[%s]  %s" % [Actions.key("restart"), prompt] if multiplayer.is_server() else "Waiting for the host to continue…"
 	if _demo_footer != null:
 		# stopka dema: koniec kampanii (ostatnia misja Strefy I) albo koniec serii Nocnego Dyżuru
 		var lvl := get_tree().get_first_node_in_group("level")
@@ -1477,10 +1475,10 @@ func _drive_prompt() -> void:
 				text = "Step onto the handcar"
 				col = UiTheme.ACCENT
 			"aboard":
-				text = "Hold [E]  Pump  (you can't shoot while pumping)"
+				text = Actions.fmt("Hold [{interact}]  Pump  (you can't shoot while pumping)")
 				col = UiTheme.ACCENT
 			"pumping":
-				text = "Pumping…  release [E] to shoot"
+				text = Actions.fmt("Pumping…  release [{interact}] to shoot")
 				col = UiTheme.OK
 	elif gen != null and _player != null and _player.weapons.nearby_weapon_item() == null:
 		if gen.progress > 0.0:
@@ -1488,10 +1486,10 @@ func _drive_prompt() -> void:
 			prog = gen.progress
 			col = UiTheme.OK
 		else:
-			text = "Hold [E]  Start the generator  (loud)"
+			text = Actions.fmt("Hold [{interact}]  Start the generator  (loud)")
 			col = UiTheme.ACCENT
 	elif _near_workshop():
-		text = "[E]  Workshop  ·  SCRAP %d" % Scrap.bank
+		text = "[%s]  Workshop  ·  SCRAP %d" % [Actions.key("interact"), Scrap.bank]
 		col = UiTheme.ACCENT
 	elif _player != null and _player.weapons.nearby_weapon_item() != null:
 		var it: Node2D = _player.weapons.nearby_weapon_item()
@@ -1503,7 +1501,8 @@ func _drive_prompt() -> void:
 		else:
 			var wc2: Node = _player.weapons
 			var swap_out: String = Weapons.def(wc2.loadout[wc2.slot if wc2.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc2.melee_id).name
-			text = "[E]  Take %s  (drops %s)" % [nd.name, swap_out] if not wc2.carries(it.arg) else "[E]  Take ammo for %s" % nd.name
+			var take_key := Actions.key("interact")
+			text = "[%s]  Take %s  (drops %s)" % [take_key, nd.name, swap_out] if not wc2.carries(it.arg) else "[%s]  Take ammo for %s" % [take_key, nd.name]
 			col = UiTheme.ACCENT
 	elif m != null and m.phase == Mission.Phase.EXTRACT:
 		var st: Dictionary = m.local_extract_state()

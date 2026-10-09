@@ -6,6 +6,7 @@ extends RefCounted
 ## `update()` jest wołane co klatkę przez hud.gd i zwraca bieżący tekst ("" = brak) — hud tylko go rysuje.
 
 const Weapons := preload("res://scripts/weapons.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 const SHOW_S := 7.0                  ## ile sekund wisi podpowiedź
 const GAP_S := 2.5                   ## przerwa między podpowiedziami
@@ -13,21 +14,21 @@ const FADE_S := 0.5
 
 ## [id, tekst]; kolejność = priorytet, gdy kilka warunków spełnia się naraz
 const TIPS := [
-	["move", "WASD to move  ·  SPACE to jump  ·  hold SHIFT to sneak — sneaking is silent"],
+	["move", "{move} to move  ·  {jump} to jump  ·  hold {crouch} to sneak — sneaking is silent"],
 	["noise", "Every shot makes NOISE. Watch the meter in the top-left corner"],
-	["sneak", "Something is asleep close by — hold SHIFT and walk: a crouching step is silent and wakes it from half the distance"],
-	["quiet", "Attention is up. Stop shooting — in silence the meter drains fast. Sneaking (SHIFT) is silent too"],
-	["broadcast", "The transmitter is live and HE heard it. Press Q to throw a lure and pull him away — then run for the exit"],
-	["handcar", "Stand on the handcar and HOLD E to pump — more hands, more speed. You cannot shoot while pumping"],
-	["generator", "Hold E at a generator to start it. The work is loud, and a running generator keeps humming"],
-	["uneasy", "Something is listening. Stop shooting, sneak (SHIFT) — or press Q to lure it away"],
-	["revive", "A friend is down — stand next to them and HOLD E to revive"],
+	["sneak", "Something is asleep close by — hold {crouch} and walk: a crouching step is silent and wakes it from half the distance"],
+	["quiet", "Attention is up. Stop shooting — in silence the meter drains fast. Sneaking ({crouch}) is silent too"],
+	["broadcast", "The transmitter is live and HE heard it. Press {overcharge} to throw a lure and pull him away — then run for the exit"],
+	["handcar", "Stand on the handcar and HOLD {interact} to pump — more hands, more speed. You cannot shoot while pumping"],
+	["generator", "Hold {interact} at a generator to start it. The work is loud, and a running generator keeps humming"],
+	["uneasy", "Something is listening. Stop shooting, sneak ({crouch}) — or press {overcharge} to lure it away"],
+	["revive", "A friend is down — stand next to them and HOLD {interact} to revive"],
 	["downed", "You are down. Stay still — a teammate can revive you before you bleed out"],
-	["light", "L toggles the flashlight. Light is noise too — turn it off to hide"],
-	["flare", "F throws a flare: bait that draws enemies with light instead of noise"],
-	["grenade", "Left Alt (Cmd on Mac) uses the selected item (grenades, mine, charge, medkit, defibrillator, scanner), X switches. A frag or a charge hurts the squad too"],
-	["pickaxe", "Swing the pickaxe (V) at the cracked brick wall to break through — it is loud"],
-	["firemode", "B switches the M-83 between full auto and a quiet 3-round burst"],
+	["light", "{flashlight} toggles the flashlight. Light is noise too — turn it off to hide"],
+	["flare", "{flare} throws a flare: bait that draws enemies with light instead of noise"],
+	["grenade", "{throw} uses the selected item (grenades, mine, charge, medkit, defibrillator, scanner), {throw_next} switches. A frag or a charge hurts the squad too"],
+	["pickaxe", "Swing the pickaxe ({melee}) at the cracked brick wall to break through — it is loud"],
+	["firemode", "{firemode} switches the M-83 between full auto and a quiet 3-round burst"],
 ]
 
 var current := ""                    ## tekst w tej chwili
@@ -76,7 +77,7 @@ func _start_next() -> void:
 		var id: String = tip[0]
 		if _queued.has(id) and not Settings.tip_seen(id):
 			_id = id
-			current = tip[1]
+			current = Actions.fmt(tip[1])
 			_t = 0.0
 			alpha = 0.0
 			_queued.erase(id)

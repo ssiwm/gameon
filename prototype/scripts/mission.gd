@@ -23,6 +23,7 @@ const Weather := preload("res://scripts/weather.gd")
 const RunLog := preload("res://scripts/run_log.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 const EXTRACT_TIME := 3.0
 const EXIT_RADIUS_X := 34.0
@@ -592,11 +593,11 @@ func objective_hint() -> String:
 		if main == null:
 			return ""
 		if main.hub_countdown >= 0.0:
-			return "Departing in %d…   [ENTER] cancel" % int(ceil(main.hub_countdown))
+			return Actions.fmt("Departing in %d…   [{restart}] cancel") % int(ceil(main.hub_countdown))
 		var status := "%d / %d ready" % [main.hub_ready_n, main.hub_total]
 		if main.hub_mine:
-			return "READY  ·  %s  ·  [ENTER] cancel" % status
-		return "[ENTER]  Ready up  ·  %s" % status
+			return Actions.fmt("READY  ·  %s  ·  [{restart}] cancel") % status
+		return Actions.fmt("[{restart}]  Ready up  ·  %s") % status
 	match phase:
 		Phase.OBJECTIVE:
 			if kind == "boss":
@@ -605,19 +606,19 @@ func objective_hint() -> String:
 				return "Walk over a dog tag to take it  ·  side goal: %d hidden stashes (%d / %d)" % [stash_total, stashes_found, stash_total] if stash_total > 0 else "Walk over a dog tag to take it  ·  shooting is loud — sneak (SHIFT) to stay quiet"
 			if kind == "generators":
 				if not stealth_ok():
-					return "Hold E at a generator  ·  a running one keeps humming  ·  stealth bonus lost"
-				return "Hold E at a generator  ·  it is loud  ·  bonus: stay under %d%% Attention" % int(STEALTH_CAP)
+					return Actions.fmt("Hold {interact} at a generator  ·  a running one keeps humming  ·  stealth bonus lost")
+				return Actions.fmt("Hold {interact} at a generator  ·  it is loud  ·  bonus: stay under %d%% Attention") % int(STEALTH_CAP)
 			return "Nests are loud when destroyed — they wake what's nearby"
 		Phase.BOSS:
 			if kind == "boss":
 				return "Light shows its shadow, but only a surfaced leech takes full damage"
-			return "Light her mouth mid wind-up to stun  ·  Q lures her away"
+			return Actions.fmt("Light her mouth mid wind-up to stun  ·  {overcharge} lures her away")
 		Phase.EXTRACT:
 			if kind == "generators":
 				var car2 := get_tree().get_first_node_in_group("handcar")
 				if car2 != null and not car2.arrived:
-					return "Hold E aboard to pump  ·  more hands = faster  ·  he is coming — Q lures him"
-				return "The transmitter is live — he heard it  ·  Q lures him away"
+					return Actions.fmt("Hold {interact} aboard to pump  ·  more hands = faster  ·  he is coming — {overcharge} lures him")
+				return Actions.fmt("The transmitter is live — he heard it  ·  {overcharge} lures him away")
 			if finale:
 				return "The mine is coming down — the way back is gone. Climb the shaft to the flare!"
 			return "The whole squad, standing, at the flare for 3 s"

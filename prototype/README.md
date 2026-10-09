@@ -245,7 +245,8 @@ Artysta może podmienić PNG w `art/` zachowując układ z `art/sprites.json` (r
 
 ```
 scripts/
-  input_setup.gd    # akcje wejściowe w kodzie
+  input_setup.gd    # autoload: rejestruje akcje wejściowe (woła Actions.register)
+  actions.gd        # rejestr akcji: id → klawisze/mysz, które akcje wycina menu pauzy, ściąga sterowania i `{id}` w podpowiedziach — nazwy klawiszy nie wpisujemy ręcznie
   noise_manager.gd  # autoload: autorytatywny hałas + ładunek Przesterowania
   feel.gd           # autoload: screen shake + hitstop
   audio_director.gd # autoload: odtwarzanie, busy, muzyka warstwowa

@@ -6,7 +6,7 @@ extends Control
 ## są wycięte z InputMap (Settings.block_game_input), więc klik w przycisk nie strzela.
 
 const UiTheme := preload("res://scripts/ui_theme.gd")
-const Lobby := preload("res://scripts/lobby.gd")
+const Actions := preload("res://scripts/actions.gd")
 const Codex := preload("res://scripts/codex.gd")
 const CodexPage := preload("res://scripts/codex_page.gd")
 
@@ -138,7 +138,7 @@ func _build_settings() -> void:
 	_cycler("mic", "Microphone scream", Voice.cycle)
 	_settings_page.add_child(_caption("DISPLAY"))
 	_cycler("ui", "HUD size", Settings.cycle_ui)
-	_cycler("full", "Fullscreen  (F11)", Settings.toggle_fullscreen)
+	_cycler("full", "Fullscreen  (%s)" % Actions.text("fullscreen"), Settings.toggle_fullscreen)
 	_cycler("hd", "Graphics (restart)", Settings.toggle_hd)
 	_cycler("c3d", "Characters (restart)", Settings.toggle_char3d)
 
@@ -189,7 +189,7 @@ func _build_controls() -> void:
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 2)
-	var rows: Array = Lobby.CONTROLS
+	var rows: Array = Actions.sheet()
 	var half := (rows.size() + 1) / 2
 	for i in half:
 		_control(grid, rows[i])
