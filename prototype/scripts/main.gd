@@ -28,6 +28,7 @@ const NightShift := preload("res://scripts/night_shift.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const HORROR_FX := preload("res://scripts/horror_fx.gd")
+const WEATHER_FX := preload("res://scripts/weather_fx.gd")
 const NavGraph := preload("res://scripts/nav.gd")
 const ENEMY := preload("res://scripts/enemy.gd")
 const Throwables := preload("res://scripts/throwables.gd")
@@ -88,6 +89,13 @@ func _ready() -> void:
 	_lobby.host_requested.connect(func() -> void: Audio.play("ui_confirm", Audio.BUS_UI, -8.0))
 	_lobby.join_requested.connect(func(_ip: String) -> void: Audio.play("ui_click", Audio.BUS_UI, -8.0))
 	_handle_cmdline()
+	# efekty pogody (deszcz, burza, tint ciemności): w każdej grafice, tuż przed obrazem horroru (jego winieta i ziarno kładą się na wierzch); `--nofx` wyłącza
+	var wfx: CanvasLayer = null
+	if DisplayServer.get_name() != "headless" and not ("--nofx" in OS.get_cmdline_user_args()):
+		wfx = WEATHER_FX.new()
+		wfx.name = "WeatherFx"
+		add_child(wfx)
+		move_child(wfx, $UI.get_index())
 	# obraz horroru (winieta, ziarno, aberracja, ostrzeżenie o zdrowiu) — tylko w grafice HD; `--nofx` wyłącza
 	if Sprites.newitem and DisplayServer.get_name() != "headless" and not ("--nofx" in OS.get_cmdline_user_args()):
 		var hfx := HORROR_FX.new()
@@ -273,6 +281,7 @@ func _update_weather(new_run: bool, carry: bool) -> void:
 			Weather.forecast = Weather.roll()
 	elif new_run:
 		Weather.current = Weather.forecast if (carry and not NightShift.active) else ""
+		Weather.seed = randi()           # ziarno harmonogramu błyskawic tej misji (replikowane z pogodą)
 		if not carry:
 			Weather.forecast = "clear"
 
@@ -374,6 +383,10 @@ func _handle_cmdline() -> void:
 			Sprites.newmon = true                                                                  # dev: wrogowie HD (<rodzaj>_hd)
 		if a == "--newitem":
 			Sprites.newitem = true                                                                 # dev: przedmioty i rekwizyty HD (art/items/)
+		if a.begins_with("--shotweather="):
+			Weather.dev_id = a.substr("--shotweather=".length())                                  # dev: wymuś pogodę (clear|rain|storm|fog) do zrzutów
+		if a == "--shotflash":
+			WEATHER_FX.dev_flash = true                                                            # dev: błysk błyskawicy na stałe
 		if a == "--char3d-lq":
 			Sprites.char3d = true                                                                  # dev: postać 3D w niskiej jakości (SS 2, bez MSAA) — test kosztu na słabszym GPU
 			load("res://scripts/char3d.gd").set_low_quality(true)
@@ -1724,6 +1737,8 @@ func _gen_test() -> void:
 	check.call("kryjówka: 8 stojaków, 9 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
 		racks == 8 and lamps == 9 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
 	# radiostacja (R, weather.gd): jedna w kryjówce, w kryjówce pogody misji nie ma, prognoza jest znanym rodzajem; mnożniki pogody łączą się z NightShift
+	check.call("niebo (deszcz): w kryjówce zamknięte (sufit), ustawienie efektów pogody domyślnie REDUCED (%s)" % Settings.WEATHER_FX_NAMES[Settings.weather_fx_idx],
+		not level.sky_open_at(p.global_position) and Settings.WEATHER_FX_NAMES.size() == 3)
 	check.call("radiostacja: jedna w kryjówce, prognoza '%s', bez pogody misji" % Weather.forecast,
 		get_tree().get_nodes_in_group("radio_set").size() == 1 and Weather.KINDS.has(Weather.forecast) and Weather.current == "")
 	var w_saved: String = Weather.current
@@ -1867,6 +1882,7 @@ func _gen_test() -> void:
 	check.call("[Enter] w kryjówce → mapa 1.3 (gniazda), ekwipunek zachowany",
 		level.map_id == "z1_m3" and mission.kind == "nests" and mission.goal_total == 4 and p.weapons.loadout == loadout_before
 		and Arsenal.get_reserve(Weapons.def(loadout_before[0]).id) == ammo_before and get_tree().get_nodes_in_group("generators").is_empty())
+	check.call("niebo (deszcz): na starcie 1.3 otwarte, nad głową gracza w podziemiach zamknięte", level.sky_open_at(level.spawn_for(1)) and not level.sky_open_at(Vector2(level.spawn_for(1).x, level.underground_y + 40.0)))
 	check.call("pogoda misji po wyjściu z kryjówki = prognoza z radiostacji (%s)" % forecast_before, Weather.current == forecast_before)
 	mission.elapsed = 5.0
 	mission._success()

@@ -28,6 +28,7 @@ var _eyes := Node2D.new()
 var _eyes_life := 0.0
 var _eyes_age := 0.0
 var _dark: CanvasModulate
+var _depth_mult := 1.0              ## wygładzony mnożnik ambientu od głębi (1 na powierzchni, DEEP_DARK na dnie)
 var _busy := false              ## trwa sekwencja (kroki) — nie nakładamy kolejnej
 
 func _ready() -> void:
@@ -84,9 +85,9 @@ func _update_darkness(delta: float, pl: Node2D, lvl: Node) -> void:
 	if _dark == null:
 		return
 	var depth := clampf((pl.global_position.y - (lvl.underground_y - DEEP_FADE_PX)) / DEEP_FADE_PX, 0.0, 1.0)
-	var a: Color = lvl.ambient
-	var target := Color(a.r, a.g, a.b).lerp(Color(a.r * DEEP_DARK, a.g * DEEP_DARK, a.b * DEEP_DARK), depth)
-	_dark.color = _dark.color.lerp(target, clampf(delta * 1.5, 0.0, 1.0))
+	# jedynym właścicielem koloru ciemności jest poziom (ambient × głębia × tint i błysk pogody — weather_fx.gd); tu tylko wygładzamy mnożnik głębi
+	_depth_mult = lerpf(_depth_mult, lerpf(1.0, DEEP_DARK, depth), clampf(delta * 1.5, 0.0, 1.0))
+	lvl.apply_depth_darkness(_depth_mult)
 
 # ---------------------------------------------------------------- odgłosy
 

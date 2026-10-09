@@ -133,6 +133,7 @@ func _build_settings() -> void:
 	_stepper("sfx", "Effects")
 	_settings_page.add_child(_caption("GAMEPLAY"))
 	_cycler("shake", "Screen shake", Settings.cycle_shake)
+	_cycler("wfx", "Weather effects", Settings.cycle_weather_fx)
 	_cycler("hints", "Tips for new players", Settings.toggle_hints)
 	_cycler("mic", "Microphone scream", Voice.cycle)
 	_settings_page.add_child(_caption("DISPLAY"))
@@ -243,6 +244,7 @@ func _refresh() -> void:
 	for kind in Settings.volume:
 		_values[kind].text = "%d%%" % int(round(float(Settings.volume[kind]) * 100.0))
 	_values["shake"].text = Settings.SHAKE_NAMES[Settings.shake_idx]
+	_values["wfx"].text = Settings.WEATHER_FX_NAMES[Settings.weather_fx_idx]
 	_values["hints"].text = "ON" if Settings.hints_on else "OFF"
 	_values["mic"].text = Voice.label().replace("MIC: ", "")
 	_values["ui"].text = Settings.UI_NAMES[Settings.ui_idx]

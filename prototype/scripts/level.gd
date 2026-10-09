@@ -109,6 +109,11 @@ var ambient := Color(0.0245, 0.0266, 0.0406)   ## kolor ciemności (CanvasModula
 var _racks := false
 var _dark_node: CanvasModulate
 var hp_mult := 1.0               ## mnożnik HP wrogów tej mapy (ENEMY_HP w danych mapy)
+## Pogoda (weather_fx.gd): tint i błysk ciemności nałożone na `ambient` (CanvasModulate „Darkness").
+const WEATHER_FLASH := Color(0.34, 0.38, 0.52)           ## kolor ciemności w szczycie błysku (zimne światło burzy)
+var weather_tint := Color.WHITE
+var weather_flash := 0.0
+var depth_mult := 1.0                                    ## mnożnik ambientu od głębi podziemi (dread.gd)
 var underground_y := 0.0         ## od tej wysokości (px) postać jest w podziemiach
 var bounds := Rect2()
 var spawns: Array[Vector2] = []
@@ -215,8 +220,7 @@ func _load(id: String) -> void:
 	radio = m.RADIO
 	_racks = m.RACKS
 	ambient = m.AMBIENT if m.AMBIENT.a > 0.0 else Lights.AMBIENT      # alfa 0 = domyślna ciemność gry
-	if _dark_node != null:
-		_dark_node.color = ambient
+	_apply_darkness()
 	NoiseMgr.safe_zone = objective == "hub"
 	underground_y = float(m.UNDERGROUND_ROW * TILE)
 	_orig_map = m.MAP
@@ -256,6 +260,36 @@ func _build_map() -> void:
 			_place_cell(c, r)
 	_place_deco()
 	_build_terrain_hd()
+
+## Kolor ciemności = ambient mapy × tint pogody, przy błysku ciągnięty ku jasnemu kolorowi burzy.
+func _apply_darkness() -> void:
+	if _dark_node == null:
+		return
+	var c := Color(ambient.r * weather_tint.r * depth_mult, ambient.g * weather_tint.g * depth_mult, ambient.b * weather_tint.b * depth_mult, 1.0)
+	_dark_node.color = c.lerp(WEATHER_FLASH, clampf(weather_flash, 0.0, 1.0))
+
+func apply_depth_darkness(m: float) -> void:
+	if is_equal_approx(m, depth_mult):
+		return
+	depth_mult = m
+	_apply_darkness()
+
+func apply_weather_darkness(tint: Color, flash: float) -> void:
+	if tint == weather_tint and is_equal_approx(flash, weather_flash):
+		return
+	weather_tint = tint
+	weather_flash = flash
+	_apply_darkness()
+
+## Czy w punkcie `p` (świat) jest otwarte niebo: nad ziemią i bez bryły (dachu, skały) aż do górnej krawędzi mapy.
+func sky_open_at(p: Vector2) -> bool:
+	if p.y >= underground_y:
+		return false
+	var c := int(floor(p.x / TILE))
+	for r in range(int(floor((p.y - 1.0) / TILE)), -1, -1):
+		if _is_solid(c, r):
+			return false
+	return true
 
 ## Jeden kafel mapy do warstw (tło / bryła) — wspólne dla budowy i odświeżania po zawale.
 func _place_cell(c: int, r: int) -> void:
