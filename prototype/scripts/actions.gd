@@ -9,6 +9,10 @@ extends RefCounted
 ## Wiązanie to słownik: {"type": "key", "code": Key, "left": bool} (left = tylko lewa strona klawiatury, np. lewy Alt),
 ## {"type": "mouse", "button": MouseButton}, {"type": "joy", "button": JoyButton} albo
 ## {"type": "axis", "axis": JoyAxis, "value": ±1.0} (drążek lub spust). Klawisze to `physical_keycode` (układ-niezależne).
+##
+## Gracz może przypisać klawisz / przycisk pada do każdej akcji z `LABELS` (menu pauzy → CONTROLS): `set_binding()` podmienia
+## pierwsze wiązanie danego urządzenia, a gdy ten klawisz miała inna akcja — zamienia je miejscami. Zmiany idą do
+## `user://settings.cfg` (sekcja „keys”, tylko akcje różne od domyślnych), `reset_defaults()` przywraca wszystko.
 
 ## id → ["keys": [Key | {"key": Key, "left": true}], "keys_macos": (zamiast keys na macOS), "mouse": [MouseButton],
 ##        "pad": [JoyButton], "axis": [[JoyAxis, ±1.0]], "deadzone": float (domyślnie 0.5),
@@ -63,6 +67,17 @@ const DEFS := {
 	"menu_slot_2": {"keys": [KEY_2], "pad": [JOY_BUTTON_Y], "menu": true},
 }
 
+## Akcje, które gracz może przypisywać, w kolejności ekranu CONTROLS: id → etykieta. (Celowanie prawym drążkiem i akcje
+## `menu_*` mają stałe wiązania.)
+const LABELS := {
+	"move_left": "Move left", "move_right": "Move right", "move_up": "Aim / move up", "move_down": "Aim down / drop",
+	"jump": "Jump", "fire": "Fire", "reload": "Reload", "firemode": "Fire mode", "melee": "Melee",
+	"weapon_1": "Weapon 1", "weapon_2": "Weapon 2", "weapon_3": "Weapon 3", "weapon_next": "Next weapon", "weapon_prev": "Previous weapon",
+	"crouch": "Sneak", "overcharge": "Overcharge (lure)", "scream": "Scream", "flare": "Flare", "flashlight": "Flashlight",
+	"interact": "Interact / revive", "throw": "Use item", "throw_next": "Switch item", "restart": "Confirm / ready up",
+	"help": "Controls overlay", "pause": "Pause menu", "steam_invite": "Steam invite", "fullscreen": "Fullscreen",
+}
+
 ## Nazwy klawiszy tam, gdzie `OS.get_keycode_string` daje inną niż ta, którą widzi gracz.
 const KEY_NAMES := {KEY_ESCAPE: "Esc", KEY_KP_ENTER: "Enter", KEY_META: "Cmd"}
 const MOUSE_NAMES := {
@@ -93,29 +108,55 @@ static var pad_mode := false
 ## Rejestruje wszystkie akcje w InputMap (woła `input_setup.gd`). Powtórne wywołanie niczego nie dubluje.
 static func register() -> void:
 	_binds.clear()
-	var mac := OS.get_name() == "macOS"
 	for id in DEFS:
-		var d: Dictionary = DEFS[id]
-		var list: Array = []
-		var keys: Array = d["keys_macos"] if (mac and d.has("keys_macos")) else d.get("keys", [])
-		for k in keys:
-			if k is Dictionary:
-				list.append({"type": "key", "code": int(k["key"]), "left": bool(k.get("left", false))})
-			else:
-				list.append({"type": "key", "code": int(k), "left": false})
-		for b in d.get("mouse", []):
-			list.append({"type": "mouse", "button": int(b)})
-		for b in d.get("pad", []):
-			list.append({"type": "joy", "button": int(b)})
-		for a in d.get("axis", []):
-			list.append({"type": "axis", "axis": int(a[0]), "value": float(a[1])})
-		_binds[id] = list
+		_binds[id] = _default_list(id)
 		if not InputMap.has_action(id):
 			InputMap.add_action(id)
-		InputMap.action_erase_events(id)
-		for b in list:
-			InputMap.action_add_event(id, _event_of(b))
-		InputMap.action_set_deadzone(id, float(d.get("deadzone", 0.5)))
+		_write_input_map(id)
+		InputMap.action_set_deadzone(id, float(DEFS[id].get("deadzone", 0.5)))
+
+## Autoload Settings (null, zanim powstanie: `register()` woła InputSetup przed nim).
+static func _settings() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	return tree.root.get_node_or_null("Settings") if tree != null else null
+
+static func _save_settings() -> void:
+	var st := _settings()
+	if st != null:
+		st.save_bindings()
+
+## Domyślne wiązania akcji z `DEFS` (na macOS `keys_macos` zamiast `keys`).
+static func _default_list(id: String) -> Array:
+	var d: Dictionary = DEFS[id]
+	var list: Array = []
+	var mac := OS.get_name() == "macOS"
+	var keys: Array = d["keys_macos"] if (mac and d.has("keys_macos")) else d.get("keys", [])
+	for k in keys:
+		if k is Dictionary:
+			list.append({"type": "key", "code": int(k["key"]), "left": bool(k.get("left", false))})
+		else:
+			list.append({"type": "key", "code": int(k), "left": false})
+	for b in d.get("mouse", []):
+		list.append({"type": "mouse", "button": int(b)})
+	for b in d.get("pad", []):
+		list.append({"type": "joy", "button": int(b)})
+	for a in d.get("axis", []):
+		list.append({"type": "axis", "axis": int(a[0]), "value": float(a[1])})
+	return list
+
+## Wpisuje wiązania akcji do InputMap. Gdy menu pauzy trzyma zdarzenia akcji gry w schowku (Settings.block_game_input),
+## zmiana trafia do schowka — wróci do InputMap razem z resztą po zamknięciu menu.
+static func _write_input_map(id: String) -> void:
+	var evs: Array = []
+	for b in _binds.get(id, []):
+		evs.append(_event_of(b))
+	var st := _settings()
+	if st != null and st.blocked and blockable().has(id):
+		st._stash[id] = evs
+		return
+	InputMap.action_erase_events(id)
+	for e in evs:
+		InputMap.action_add_event(id, e)
 
 static func _event_of(b: Dictionary) -> InputEvent:
 	match String(b["type"]):
@@ -320,3 +361,137 @@ static func hud_line() -> String:
 		"%s light" % key("flashlight"),
 	]
 	return " · ".join(items)
+
+# ---------------------------------------------------------------- przypisywanie klawiszy
+
+## Akcje do przypisania w kolejności ekranu CONTROLS.
+static func rebindable() -> Array:
+	return LABELS.keys()
+
+static func label_of(id: String) -> String:
+	return String(LABELS.get(id, id))
+
+## Czy akcja ma przycisk pada, który da się zmienić (drążki ruchu i celowania mają stałe osie).
+static func pad_rebindable(id: String) -> bool:
+	for b in _list(id, true):
+		if String(b["type"]) == "joy" or _is_trigger(b):
+			return true
+	return false
+
+static func _is_trigger(b: Dictionary) -> bool:
+	return String(b["type"]) == "axis" and (int(b["axis"]) == JOY_AXIS_TRIGGER_LEFT or int(b["axis"]) == JOY_AXIS_TRIGGER_RIGHT)
+
+## Wiązanie z jednego zdarzenia ({} gdy zdarzenie nie nadaje się dla urządzenia).
+static func binding_from_event(event: InputEvent, device: int) -> Dictionary:
+	if device == DEV_KEY and event is InputEventKey:
+		var k := event as InputEventKey
+		var code := int(k.physical_keycode) if int(k.physical_keycode) != 0 else int(k.keycode)
+		if code == 0 or code == KEY_UNKNOWN:
+			return {}
+		var left := false
+		if code == KEY_ALT or code == KEY_META or code == KEY_SHIFT or code == KEY_CTRL:
+			left = k.location == KEY_LOCATION_LEFT
+		return {"type": "key", "code": code, "left": left}
+	if device == DEV_PAD and event is InputEventJoypadButton:
+		return {"type": "joy", "button": int((event as InputEventJoypadButton).button_index)}
+	if device == DEV_PAD and event is InputEventJoypadMotion:
+		var m := event as InputEventJoypadMotion
+		if (m.axis == JOY_AXIS_TRIGGER_LEFT or m.axis == JOY_AXIS_TRIGGER_RIGHT) and m.axis_value >= 0.7:
+			return {"type": "axis", "axis": int(m.axis), "value": 1.0}
+	return {}
+
+static func _same(a: Dictionary, b: Dictionary) -> bool:
+	if String(a["type"]) != String(b["type"]):
+		return false
+	match String(a["type"]):
+		"key":
+			return int(a["code"]) == int(b["code"]) and bool(a.get("left", false)) == bool(b.get("left", false))
+		"axis":
+			return int(a["axis"]) == int(b["axis"]) and float(a["value"]) == float(b["value"])
+	return int(a["button"]) == int(b["button"])
+
+## Przypisuje zdarzenie do akcji: podmienia pierwsze wiązanie tego urządzenia. Jeśli inna przypisywalna akcja miała to
+## samo wiązanie, dostaje w zamian poprzednie wiązanie tej (zamiana miejscami). Zwraca {"ok": bool, "swapped": id | ""}.
+static func set_binding(id: String, device: int, event: InputEvent, persist := true) -> Dictionary:
+	var nb := binding_from_event(event, device)
+	if nb.is_empty() or not LABELS.has(id):
+		return {"ok": false, "swapped": ""}
+	var list: Array = _binds[id]
+	var idx := -1
+	for i in list.size():
+		var b: Dictionary = list[i]
+		if device == DEV_KEY and String(b["type"]) == "key":
+			idx = i
+			break
+		if device == DEV_PAD and (String(b["type"]) == "joy" or _is_trigger(b)):
+			idx = i
+			break
+	var old: Dictionary = list[idx] if idx >= 0 else {}
+	var swapped := ""
+	for other in LABELS:
+		if other == id:
+			continue
+		var ol: Array = _binds[other]
+		for i in ol.size():
+			if _same(ol[i], nb):
+				swapped = String(other)
+				if old.is_empty():
+					ol.remove_at(i)
+				else:
+					ol[i] = old
+				_write_input_map(String(other))
+				break
+	if idx >= 0:
+		list[idx] = nb
+	else:
+		list.append(nb)
+	_write_input_map(id)
+	if persist:
+		_save_settings()
+	return {"ok": true, "swapped": swapped}
+
+## Przywraca domyślne wiązania wszystkich akcji.
+static func reset_defaults(persist := true) -> void:
+	for id in DEFS:
+		_binds[id] = _default_list(id)
+		_write_input_map(id)
+	if persist:
+		_save_settings()
+
+static func is_default(id: String) -> bool:
+	return _binds.get(id, []) == _default_list(id)
+
+## Zapis do pliku ustawień: tylko akcje różne od domyślnych (sekcja „keys”).
+static func save_to(cf: ConfigFile) -> void:
+	if cf.has_section("keys"):
+		cf.erase_section("keys")
+	for id in LABELS:
+		if not is_default(id):
+			cf.set_value("keys", id, _binds[id])
+
+## Wczytanie z pliku ustawień; wpisy niepoprawne lub dla nieznanych akcji są pomijane.
+static func load_from(cf: ConfigFile) -> void:
+	if not cf.has_section("keys"):
+		return
+	for id in cf.get_section_keys("keys"):
+		if not LABELS.has(id):
+			continue
+		var arr: Variant = cf.get_value("keys", id)
+		if not (arr is Array) or (arr as Array).is_empty():
+			continue
+		var clean: Array = []
+		for b in arr:
+			if b is Dictionary and b.has("type"):
+				match String(b["type"]):
+					"key":
+						if b.has("code"):
+							clean.append({"type": "key", "code": int(b["code"]), "left": bool(b.get("left", false))})
+					"mouse", "joy":
+						if b.has("button"):
+							clean.append({"type": String(b["type"]), "button": int(b["button"])})
+					"axis":
+						if b.has("axis") and b.has("value"):
+							clean.append({"type": "axis", "axis": int(b["axis"]), "value": float(b["value"])})
+		if not clean.is_empty():
+			_binds[id] = clean
+			_write_input_map(id)

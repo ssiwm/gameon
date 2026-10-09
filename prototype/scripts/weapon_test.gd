@@ -528,6 +528,7 @@ func _t_throwables() -> void:
 	_t_item_key()
 	_t_actions()
 	await _t_pad_aim()
+	_t_rebind()
 	give_gear()
 	await _t_gear()
 	await _t_economy()
@@ -606,6 +607,47 @@ func _t_pad_aim() -> void:
 	Actions.pad_mode = false
 	check("pad: tryb pada pokazuje przyciski w ściądze i podpowiedziach (%s | %s | %s | %s)" % [pad_rows.get("Move & aim"), pad_rows.get("Jump (hold = higher)"), pad_fire, pad_move],
 		pad_rows.get("Move & aim") == "L-Stick / R-Stick" and pad_rows.get("Jump (hold = higher)") == "A" and pad_fire == "RT" and pad_move == "L-STICK")
+
+## Przypisywanie klawiszy (actions.gd): podmiana, zamiana przy konflikcie, zapis / odczyt, reset, zmiana przy otwartym menu.
+func _t_rebind() -> void:
+	const Actions := preload("res://scripts/actions.gd")
+	var k_h := InputEventKey.new()
+	k_h.physical_keycode = KEY_H
+	var k_f := InputEventKey.new()
+	k_f.physical_keycode = KEY_F
+	var k_e := InputEventKey.new()
+	k_e.physical_keycode = KEY_E
+	var k_r := InputEventKey.new()
+	k_r.physical_keycode = KEY_R
+	var r1: Dictionary = Actions.set_binding("flare", Actions.DEV_KEY, k_h, false)
+	check("przypisywanie: flara na H — H działa, F już nie",
+		bool(r1["ok"]) and InputMap.event_is_action(k_h, "flare") and not InputMap.event_is_action(k_f, "flare") and Actions.key("flare") == "H")
+	var r2: Dictionary = Actions.set_binding("reload", Actions.DEV_KEY, k_e, false)
+	check("przypisywanie: konflikt = zamiana (przeładowanie dostaje E, interakcja R; zamieniono z %s)" % String(r2["swapped"]),
+		String(r2["swapped"]) == "interact" and InputMap.event_is_action(k_e, "reload") and InputMap.event_is_action(k_r, "interact") \
+		and not InputMap.event_is_action(k_e, "interact") and not InputMap.event_is_action(k_r, "reload"))
+	var cf := ConfigFile.new()
+	Actions.save_to(cf)
+	var saved: PackedStringArray = cf.get_section_keys("keys")
+	Actions.reset_defaults(false)
+	var back_ok: bool = InputMap.event_is_action(k_f, "flare") and InputMap.event_is_action(k_e, "interact") and InputMap.event_is_action(k_r, "reload") and Actions.is_default("flare")
+	Actions.load_from(cf)
+	var reload_ok: bool = InputMap.event_is_action(k_h, "flare") and InputMap.event_is_action(k_e, "reload") and InputMap.event_is_action(k_r, "interact")
+	check("zapis: tylko zmienione akcje (%s), reset przywraca domyślne, wczytanie odtwarza przypisania" % ", ".join(saved),
+		saved.size() == 3 and back_ok and reload_ok)
+	Actions.reset_defaults(false)
+	var k_k := InputEventKey.new()
+	k_k.physical_keycode = KEY_K
+	Settings.block_game_input(true)
+	var during_blocked: bool = not InputMap.event_is_action(k_f, "flare")        # menu wycięło akcje gry
+	Actions.set_binding("fire", Actions.DEV_KEY, k_k, false)
+	var leaked: bool = InputMap.event_is_action(k_k, "fire")                     # w trakcie menu zmiana siedzi w schowku
+	Settings.block_game_input(false)
+	check("przypisywanie przy otwartym menu: zmiana wraca do InputMap po jego zamknięciu (w menu wycięta %s, po zamknięciu działa %s)" % [str(not leaked), str(InputMap.event_is_action(k_k, "fire"))],
+		during_blocked and not leaked and InputMap.event_is_action(k_k, "fire"))
+	Actions.reset_defaults(false)
+	var bad := InputEventKey.new()
+	check("przypisywanie: puste zdarzenie jest odrzucane", not bool(Actions.set_binding("jump", Actions.DEV_KEY, bad, false)["ok"]))
 
 ## Faza A2: dym, mina, ładunek wyburzeniowy, apteczka, defibrylator, skaner.
 func _t_gear() -> void:

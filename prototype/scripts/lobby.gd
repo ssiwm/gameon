@@ -168,6 +168,7 @@ func _build_controls(box: VBoxContainer) -> void:
 	box.add_child(grid)
 	_fill_controls(grid)
 	InputSetup.device_changed.connect(func(_pad: bool) -> void: _fill_controls(grid))
+	Settings.bindings_changed.connect(func() -> void: _fill_controls(grid))
 
 func _fill_controls(grid: GridContainer) -> void:
 	for c in grid.get_children():
