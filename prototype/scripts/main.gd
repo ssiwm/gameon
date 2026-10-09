@@ -679,9 +679,11 @@ func _setup_main_menu(pause_menu: Control) -> void:
 	$UI.move_child(menu, _lobby.get_index() + 1)
 	_lobby.visible = false
 	_lobby.set_back_enabled(true)
+	menu.set_steam_available(STEAM_NET.is_available())
 	menu.play_requested.connect(func() -> void:
 		menu.visible = false
-		_lobby.visible = true)
+		_lobby.visible = true
+		_lobby.enter(menu.entry))
 	menu.settings_requested.connect(pause_menu.open_settings)
 	_lobby.back_requested.connect(func() -> void:
 		_lobby.visible = false
