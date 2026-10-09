@@ -593,6 +593,7 @@ func _t_pad_aim() -> void:
 	bt_a.button_index = JOY_BUTTON_A
 	check("pad: lewy drążek ← = ruch w lewo, RT = ogień, A = skok",
 		InputMap.event_is_action(stick_l, "move_left") and InputMap.event_is_action(trig, "fire") and InputMap.event_is_action(bt_a, "jump"))
+	var before: Vector2 = player.aim_dir
 	Input.action_press("aim_up", 1.0)
 	Input.action_press("aim_right", 0.6)
 	await wait(0.3)
