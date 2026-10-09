@@ -333,6 +333,10 @@ var _calm_t := 0.0                    ## sekundy spokoju (poziomy HUD: T2 / T3 w
 var _tier_k := 1.0                    ## 1 = pełny HUD, ~0.5 = wyciszony w spokoju
 var _stats_sig := -1                  ## podpis statystyk graczy w karcie wyniku
 var _result_players: GridContainer
+var _xp_bar: Bar                      ## pasek poziomu na karcie wyniku (animowany: XP z misji „wlewa się” w poziom)
+var _xp_note: Label
+var _xp_anim := 0.0                   ## 0..1 postęp animacji
+var _xp_key := Vector2i(-1, -1)       ## (XP przed, XP po) — zmiana zaczyna animację od nowa
 var _captions := Captions.new()       ## napisy dla dźwięków (ustawienie „Sound captions”)
 var _cap_card: PanelContainer
 var _cap_box: VBoxContainer
@@ -1026,6 +1030,12 @@ func _build_result() -> void:
 	_result_players.add_theme_constant_override("h_separation", 14)
 	_result_players.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	box.add_child(_result_players)
+	_xp_bar = Bar.new()
+	_xp_bar.custom_minimum_size = Vector2(0, 5)
+	_xp_bar.fill = UiTheme.CALM
+	box.add_child(_xp_bar)
+	_xp_note = UiTheme.label("", 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
+	box.add_child(_xp_note)
 	_result_prompt = UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(_result_prompt)
 	if Settings.DEMO:
@@ -1313,10 +1323,7 @@ func _drive_mission() -> void:
 	if show_result:
 		_fill_players(m)
 	if show_result and _result_xp_val != null and is_instance_valid(_result_xp_val):
-		var xt := "+%d  ·  LV %d" % [Profile.last_mission_xp, Profile.level()]
-		if _result_xp_val.text != xt:
-			_result_xp_val.text = xt
-			_result.reset_size()
+		_drive_xp(get_process_delta_time())
 
 func _fill_result(m: Node) -> void:
 	for c in _result_stats.get_children():
@@ -1359,6 +1366,33 @@ func _fill_result(m: Node) -> void:
 		_demo_footer.visible = (m.phase == Mission.Phase.FAILED or m.shift_complete()) if NightShift.active else last
 	_result.reset_size()
 	_result.position = (size - _result.size) * 0.5
+
+## XP z misji „wlewa się” w pasek poziomu (1,6 s; przy „Reduce effects” od razu): licznik rośnie, a przy awansie pasek się
+## przelewa i pojawia się „LEVEL UP”. XP przychodzi od serwera chwilę po zmianie fazy — zmiana wartości zaczyna animację od nowa.
+func _drive_xp(delta: float) -> void:
+	var end_xp: int = Profile.xp
+	var start_xp: int = maxi(0, end_xp - Profile.last_mission_xp)
+	var key := Vector2i(start_xp, end_xp)
+	if key != _xp_key:
+		_xp_key = key
+		_xp_anim = 0.0 if Settings.fx_mult() > 0.0 else 1.0
+	_xp_anim = minf(1.0, _xp_anim + delta / 1.6)
+	var e: float = 1.0 - pow(1.0 - _xp_anim, 3.0)
+	var shown: int = start_xp + int(round(float(end_xp - start_xp) * e))
+	var lv: int = Profile.level_of(shown)
+	var lo: int = Profile.xp_for_level(lv)
+	var hi: int = Profile.xp_for_level(lv + 1)
+	_xp_bar.value = float(shown - lo) / float(maxi(1, hi - lo))
+	_xp_bar.queue_redraw()
+	var gained: int = int(round(float(Profile.last_mission_xp) * e))
+	var xt := "+%d  ·  LV %d" % [gained, lv]
+	if _result_xp_val.text != xt:
+		_result_xp_val.text = xt
+		_result.reset_size()
+	var leveled: bool = Profile.level_of(end_xp) > Profile.level_of(start_xp)
+	var note: String = (tr("LEVEL UP — LV %d") % Profile.level_of(end_xp)) if (leveled and _xp_anim >= 1.0) else ""
+	if _xp_note.text != note:
+		_xp_note.text = note
 
 ## Tabela graczy na karcie wyniku (odświeżana, gdy statystyki od serwera się zmienią).
 func _fill_players(m: Node) -> void:
