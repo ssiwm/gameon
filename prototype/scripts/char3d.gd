@@ -306,6 +306,13 @@ func _set_global_basis(i: int, gb: Basis) -> void:
 	var pb := _gp(p).basis if p >= 0 else Basis.IDENTITY
 	_sk.set_bone_pose_rotation(i, (pb.inverse() * gb).orthonormalized().get_rotation_quaternion())
 
+## Przesuwa kość o wektor w przestrzeni szkieletu (świata modelu). Osie lokalne kości Mixamo są obrócone (w biodrach „góra" to lokalne Z),
+## więc przesunięcie w pozie trzeba przeliczyć przez bazę rodzica — samo dodanie wektora do lokalnej pozycji ruszało biodra w bok.
+func _move_global(i: int, delta: Vector3) -> void:
+	var p := _sk.get_bone_parent(i)
+	var pb := _gp(p).basis if p >= 0 else Basis.IDENTITY
+	_sk.set_bone_pose_position(i, _sk.get_bone_rest(i).origin + pb.inverse() * delta)
+
 ## Obraca kość (i całe jej poddrzewo) wokół jej własnego początku o kąt wokół osi świata.
 func _rot_world(i: int, axis: Vector3, ang: float) -> void:
 	_set_global_basis(i, Basis(axis, ang) * _gp(i).basis)
@@ -368,7 +375,6 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 
 func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	var hips := _b["Hips"] as int
-	var rest_h := _sk.get_bone_rest(hips).origin
 	var run := anim == "run" or anim == "crouch_walk"
 	var crouch := anim == "crouch" or anim == "crouch_walk"
 	if run:
@@ -388,17 +394,17 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	elif anim == "fall":
 		lean = 2.0
 	elif crouch:
-		lean = 20.0
-		drop = 0.30
+		lean = 6.0                                                    # przysiad: tułów prawie pionowo (nie pochylony), kolana do przodu
+		drop = 0.48                                                   # głęboki przysiad: sylwetka ok. 0,65 wysokości stojącej, jak hitbox kucania (11 / 17 px)
 		bob = (0.012 * sin(_phase * 2.0)) if run else 0.0
 	if swing_t >= 0.0:                                            # cios: wypad do przodu w chwili cięcia
 		lunge = sin(clampf(swing_t * 2.0, 0.0, 1.0) * PI) * 0.09
 		lean += lunge * 60.0
 	if anim == "down":
-		_sk.set_bone_pose_position(hips, rest_h + Vector3(0.0, -0.74, 0.0))
+		_move_global(hips, Vector3(0.0, -0.62, 0.0))
 		_rot_world(hips, Vector3.BACK, -PI * 0.5)
 		return
-	_sk.set_bone_pose_position(hips, rest_h + Vector3(lunge, -drop + bob, 0.0))
+	_move_global(hips, Vector3(lunge, -drop + bob, 0.0))                           # kucając biodra cofnięte za stopy
 	_rot_world(hips, Vector3.BACK, -deg_to_rad(lean))
 	# tułów zwraca się ku kamerze (broń po bliższej stronie) i pochyla się za celem
 	_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(-22.0))
@@ -425,9 +431,9 @@ func _pose_legs(anim: String) -> void:
 		elif anim == "fall":
 			off = Vector3(0.10 if sgn > 0 else -0.08, 0.14 if sgn > 0 else 0.22, 0.0)
 		elif anim == "crouch":
-			off = Vector3(0.18 if sgn > 0 else -0.14, 0.0, 0.0)
+			off = Vector3(0.10 if sgn > 0 else -0.10, 0.0, 0.0)
 		elif anim == "crouch_walk":
-			off = Vector3(0.18 * sin(ph) + (0.1 if sgn > 0 else -0.1), 0.07 * maxf(0.0, cos(ph)), 0.0)
+			off = Vector3(0.13 * sin(ph) + (0.06 if sgn > 0 else -0.06), 0.07 * maxf(0.0, cos(ph)), 0.0)
 		var target := Vector3(_origin_x + off.x, _ankle_y + off.y, rest_foot.z)
 		_two_bone(_b[side + "UpLeg"], _b[side + "Leg"], _b[side + "Foot"], _leg_len[side][0], _leg_len[side][1], target, Vector3(1.0, 0.0, 0.0))
 		# stopa płasko (z lekkim obrotem czubka)
