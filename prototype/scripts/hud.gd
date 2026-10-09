@@ -477,9 +477,9 @@ func _fit() -> void:
 	_place(_lv_label, Vector2(w - MARGIN - SESSION_W, MARGIN + 50.0), Vector2(SESSION_W, 11))
 	_place(_xp_feed, Vector2(w - MARGIN - SESSION_W, MARGIN + 61.0), Vector2(SESSION_W, 12))
 	var cw := 400.0
-	_place(_warn, Vector2((w - cw) * 0.5, h * WARN_Y), Vector2(cw, 20))
-	_place(_warn_sub, Vector2((w - cw) * 0.5, h * WARN_Y + 20.0), Vector2(cw, 12))
-	_place(_note, Vector2((w - cw) * 0.5, h * WARN_Y + 36.0), Vector2(cw, 14))
+	_place(_warn, Vector2((w - cw) * 0.5, h * WARN_Y), Vector2(cw, 28))
+	_place(_warn_sub, Vector2((w - cw) * 0.5, h * WARN_Y + 28.0), Vector2(cw, 14))
+	_place(_note, Vector2((w - cw) * 0.5, h * WARN_Y + 46.0), Vector2(cw, 14))
 	_place(_center, Vector2((w - cw) * 0.5, h * CENTER_Y), Vector2(cw, 28))
 	_place(_center_sub, Vector2((w - cw) * 0.5, h * CENTER_Y + 28.0), Vector2(cw, 16))
 	_place(_controls, Vector2(MARGIN, h - 16.0), Vector2(w - 2.0 * MARGIN, 12))
@@ -880,9 +880,10 @@ func _build_session() -> void:
 	Profile.leveled_up.connect(_on_level_up)
 
 func _build_center() -> void:
-	_warn = UiTheme.heading("", 16, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
+	_warn = UiTheme.whisper(UiTheme.label("", 21, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER))   # szept maszynowy 34 px z makiety
+	_warn.add_theme_constant_override("outline_size", 0)
 	add_child(_warn)
-	_warn_sub = UiTheme.whisper(UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	_warn_sub = UiTheme.whisper(UiTheme.label("", 9, Color("bdb8a6"), HORIZONTAL_ALIGNMENT_CENTER))
 	add_child(_warn_sub)
 	# krótkie komunikaty (np. „wabik już nie działa tutaj")
 	_note = UiTheme.whisper(UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
@@ -1361,13 +1362,13 @@ func _drive_warning() -> void:
 	var awake: bool = NoiseMgr.stalker_awake
 	var uneasy: bool = (not awake) and NoiseMgr.level >= NoiseMgr.UNEASY_THRESHOLD
 	if awake:
-		_warn.text = "HE HEARS YOU"
+		_warn.text = "He hears you…"
 		_warn.add_theme_color_override("font_color", UiTheme.DANGER)
 		_warn.modulate.a = lerpf(1.0, 0.6 + 0.4 * sin(_blink * 6.0), Settings.fx_mult())
 		_warn_sub.text = "Go quiet until the noise drops below 30% — or use Q to lure him off"
 	elif uneasy:
-		_warn.text = "SOMETHING IS LISTENING…"
-		_warn.add_theme_color_override("font_color", UiTheme.ACCENT)
+		_warn.text = "Something is listening…"
+		_warn.add_theme_color_override("font_color", Color("e8e2c4"))
 		_warn.modulate.a = lerpf(0.85, 0.55 + 0.3 * sin(_blink * 3.0), Settings.fx_mult())
 		_warn_sub.text = "Above 60% noise he wakes up"
 	else:
@@ -1412,7 +1413,7 @@ func _drive_mission() -> void:
 	# ostrzeżenie zawsze pod kartą celu (karta bossa jest wyższa)
 	var wy := maxf(size.y * WARN_Y, _obj_card.position.y + _obj_card.size.y + 10.0)
 	_warn.position.y = wy
-	_warn_sub.position.y = wy + 20.0
+	_warn_sub.position.y = wy + 28.0
 
 	var show_result: bool = m.phase == Mission.Phase.SUCCESS or m.phase == Mission.Phase.FAILED
 	var just_shown: bool = show_result and not _result.visible
