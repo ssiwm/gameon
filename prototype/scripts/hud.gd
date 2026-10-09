@@ -29,6 +29,7 @@ const Codex := preload("res://scripts/codex.gd")
 const RunLog := preload("res://scripts/run_log.gd")
 const WorkshopUi := preload("res://scripts/workshop_ui.gd")
 const Actions := preload("res://scripts/actions.gd")
+const Captions := preload("res://scripts/captions.gd")
 
 ## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.7
@@ -269,6 +270,9 @@ var _session_t := 0.0
 ## Pasek sterowania: -1 = auto (pierwsze CONTROLS_SHOW_S s), 0 = ukryty, 1 = pokazany (F1).
 var _controls_mode := -1
 var _hit_flash := 0.0
+var _captions := Captions.new()       ## napisy dla dźwięków (ustawienie „Sound captions”)
+var _cap_card: PanelContainer
+var _cap_box: VBoxContainer
 var _last_hp := -1
 
 var _noise_bar: Bar
@@ -363,6 +367,7 @@ func _ready() -> void:
 	_build_prompt()
 	_build_controls()
 	_build_hint()
+	_build_captions()
 	_build_result()
 	_item = _make_info_card(250.0, 2, true)
 	_brief = _make_info_card(310.0, 4, true)
@@ -820,6 +825,60 @@ func _build_controls() -> void:
 	Settings.bindings_changed.connect(refresh_keys)
 	add_child(_f1)
 
+## Napisy dla dźwięków: wąska karta przy prawej krawędzi, linie z kierunkiem do źródła (captions.gd).
+func _build_captions() -> void:
+	_cap_card = _card(Vector2(MARGIN, MARGIN))
+	_cap_card.visible = false
+	var cb := UiTheme.panel_box()
+	cb.bg_color.a = 0.8
+	cb.set_content_margin_all(5)
+	_cap_card.add_theme_stylebox_override("panel", cb)
+	_cap_box = VBoxContainer.new()
+	_cap_box.add_theme_constant_override("separation", 1)
+	_cap_card.add_child(_cap_box)
+	Audio.caption.connect(func(text: String, pos: Vector2, priority: int) -> void:
+		if not Settings.captions:
+			return
+		var lp: Node = _player if _player != null and is_instance_valid(_player) else null
+		var listener: Vector2 = (lp as Node2D).global_position if lp != null else pos
+		if _captions.push(text, pos, priority, listener):
+			_rebuild_captions())
+	if "--shotcaps" in OS.get_cmdline_user_args():
+		# dev: napisy włączone na stałe i kilka przykładowych linii do zrzutu
+		Settings.captions = true
+		var tm := Timer.new()
+		tm.wait_time = 1.0
+		tm.autostart = true
+		tm.timeout.connect(func() -> void:
+			var at: Vector2 = (_player as Node2D).global_position if _player != null else Vector2.ZERO
+			Audio.caption.emit("[Gunfire]", at + Vector2(140, 0), 1)
+			Audio.caption.emit("[Low growl]", at + Vector2(-520, 0), 3)
+			Audio.caption.emit("[Glass breaks]", at + Vector2(90, 0), 2))
+		add_child(tm)
+
+func _rebuild_captions() -> void:
+	for c in _cap_box.get_children():
+		_cap_box.remove_child(c)
+		c.queue_free()
+	for l in _captions.lines():
+		var lab := UiTheme.label(String(l["text"]), 8, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+		lab.modulate.a = float(l["alpha"])
+		_cap_box.add_child(lab)
+
+func _drive_captions(delta: float) -> void:
+	if not Settings.captions:
+		if _cap_card.visible:
+			_captions.clear()
+			_cap_card.visible = false
+		return
+	if _captions.tick(delta) or _cap_card.visible:
+		_rebuild_captions()
+	var any := _cap_box.get_child_count() > 0
+	_cap_card.visible = any and not _result.visible
+	if _cap_card.visible:
+		_cap_card.reset_size()
+		_cap_card.position = Vector2(size.x - _cap_card.size.x - MARGIN, size.y * 0.30)
+
 ## Podpowiedź dla nowego gracza: wąska karta nad paskiem kontekstowym (hints.gd decyduje, co i kiedy).
 func _build_hint() -> void:
 	_hint_card = _card(Vector2(MARGIN, MARGIN))
@@ -910,6 +969,7 @@ func _process(delta: float) -> void:
 	_drive_prompt()
 	_drive_cards()
 	_drive_hint(delta)
+	_drive_captions(delta)
 	_drive_controls()
 	queue_redraw()
 

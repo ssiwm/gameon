@@ -47,6 +47,7 @@ var res_idx := 0                       ## rozmiar okna z RES_LIST (tylko tryb ok
 var vsync_idx := 0
 var fps_idx := 0
 var quality_idx := 2                   ## LOW / MEDIUM / HIGH — cząsteczki, ziarno i aberracja, efekty pogody
+var captions := false                  ## napisy dla dźwięków (HUD, captions.gd)
 var reduce_fx := false                 ## „Reduce Effects": bez wstrząsów, ziarna, aberracji, pulsu zdrowia, błysku burzy i migotania
 var crouch_toggle := false             ## skradanie przełączane klawiszem zamiast trzymania
 var colorblind_idx := 0
@@ -139,6 +140,10 @@ func cycle_fps() -> void:
 
 func cycle_quality() -> void:
 	quality_idx = (quality_idx + 1) % QUALITY_NAMES.size()
+	_commit()
+
+func toggle_captions() -> void:
+	captions = not captions
 	_commit()
 
 func toggle_reduce_fx() -> void:
@@ -271,6 +276,7 @@ func _load() -> void:
 	fps_idx = clampi(int(cf.get_value("game", "fps", 0)), 0, FPS_LIST.size() - 1)
 	quality_idx = clampi(int(cf.get_value("game", "quality", 2)), 0, QUALITY_NAMES.size() - 1)
 	reduce_fx = bool(cf.get_value("game", "reduce_fx", false))
+	captions = bool(cf.get_value("game", "captions", false))
 	crouch_toggle = bool(cf.get_value("game", "crouch_toggle", false))
 	colorblind_idx = clampi(int(cf.get_value("game", "colorblind", 0)), 0, COLORBLIND_NAMES.size() - 1)
 	graphics_hd = bool(cf.get_value("game", "graphics_hd", true))
@@ -296,6 +302,7 @@ func _save() -> void:
 	cf.set_value("game", "fps", fps_idx)
 	cf.set_value("game", "quality", quality_idx)
 	cf.set_value("game", "reduce_fx", reduce_fx)
+	cf.set_value("game", "captions", captions)
 	cf.set_value("game", "crouch_toggle", crouch_toggle)
 	cf.set_value("game", "colorblind", colorblind_idx)
 	cf.set_value("game", "graphics_hd", graphics_hd)
