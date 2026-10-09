@@ -27,7 +27,7 @@ GUNS = {
     "hkm9":     ("hkm9",     1.15, 0.37, 0.53, 0.66, 0.45, 2, False),
     "gniew4":   ("gniew4",   1.18, 0.36, 0.45, 0.64, 0.50, 2, False),
     "sokol6":   ("sokol6",   1.15, 0.37, 0.53, 0.66, 0.45, 2, False),
-    "widmo1":   ("lr7",      1.30, 0.33, 0.47, 0.64, 0.45, 2, False),      # brak własnego modelu — zastępczo LR-7
+    "widmo1":   ("widmo1",   1.30, 0.24, 0.58, 0.62, 0.47, 2, False),
     "ciegno6":  ("ciegno6",  1.18, 0.36, 0.60, 0.62, 0.55, 2, False),
     "maczeta":  ("maczeta",  1.10, 0.18, 0.50, None, None, 1, False),
     "kilof":    ("kilof",    0.80, 0.23, 0.50, None, None, 1, True),
