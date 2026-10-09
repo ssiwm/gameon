@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bmx1joqcpg5ku"
-path="res://.godot/imported/gun_widmo1_Color_6d3501c1-fa96-4c41-9152-8c5babd8db07.jpg-f737b31cdc6fb369d98d96ed27998b4f.ctex"
+uid="uid://bmsvipc4m1y8p"
+path="res://.godot/imported/gun_widmo1_Color_48e682b6-abdd-4c31-be24-c60bff9d03e7.jpg-a2fc8ad15c76162af1af3ebc39c08029.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "9c20763462a38eca9ab1628f65d06544"
+"md5": "0d19d3a45356bfda41264b48e68aa08d"
 }
 
 [deps]
 
-source_file="res://art/char3d/gun_widmo1_Color_6d3501c1-fa96-4c41-9152-8c5babd8db07.jpg"
-dest_files=["res://.godot/imported/gun_widmo1_Color_6d3501c1-fa96-4c41-9152-8c5babd8db07.jpg-f737b31cdc6fb369d98d96ed27998b4f.ctex"]
+source_file="res://art/char3d/gun_widmo1_Color_48e682b6-abdd-4c31-be24-c60bff9d03e7.jpg"
+dest_files=["res://.godot/imported/gun_widmo1_Color_48e682b6-abdd-4c31-be24-c60bff9d03e7.jpg-a2fc8ad15c76162af1af3ebc39c08029.ctex"]
 
 [params]
 

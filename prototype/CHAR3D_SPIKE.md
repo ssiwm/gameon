@@ -52,6 +52,6 @@ Test sieciowy (host + klient, oba z 3D): zdalni gracze i bot mają model, broń 
 - Celowanie w dół wysuwa broń ku kamerze (inaczej chowa się za tułowiem); celowanie prosto w górę zasłania głowę ramieniem.
 - Oświetlenie: drugi przebieg renderu (kopie siatek na warstwie 2, shader wypisuje normalne widokowe) daje mapę normalnych, więc latarka i flara dają relief jak na sprite'ach HD (odbicie `flip_h` odwraca X normalnych w shaderze). Kosztuje ok. +50% renderu postaci; `--char3d-lq` go wyłącza.
 - Pozy to proste funkcje sin/cos, nie animacje artysty; brak przejść (blend) między animacjami; dłonie nie obejmują palcami chwytu (tylko orientacja).
-- Broń biała ma jedną, uproszczoną pozę zamachu. SPECTER-1 ma własny model z Tripo (`art_src/weapons/tripo/widmo1_01.glb`, tekst→3D, 30 kredytów).
+- Broń biała ma jedną, uproszczoną pozę zamachu. SPECTER-1 używa swojego modelu `widmo1_01` (cewka, ten sam co w sprite'ach HD); `widmo1_02` (szyny + cewki, olive) to nieużywana alternatywa.
 - Wrogowie nadal sprite'y HD — styl postaci gracza (3D) i wrogów trzeba będzie zestroić.
 - Włączane ustawieniem **Characters: 3D (BETA)** (`Settings.char3d`, domyślnie wyłączone) lub flagą `--char3d`; domyślnie włączymy po pomiarze na słabszym sprzęcie.
