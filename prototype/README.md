@@ -53,6 +53,9 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
 - **Czcionki** (`art/fonts/`, licencje w `art/fonts/licenses/`): Big Shoulders Stencil Display (nagłówki), IBM Plex Sans Condensed
   (opisy i ustawienia), IBM Plex Mono (liczby i przyrządy) — SIL OFL; Special Elite („szept”: ostrzeżenia, podpowiedzi) — Apache-2.0;
   Silkscreen tylko w klasycznej grafice. Wczytuje je `ui_theme.gd`; bez plików wraca do czcionek systemowych.
+- **Czat drużyny** (`chat.gd`, klawisz **T**): Enter wysyła, Esc anuluje; wiadomość idzie do serwera, który sprawdza ją (długość 120, znaki
+  sterujące, odstęp 0,6 s na gracza) i rozsyła z etykietą nadawcy (P1, P2…). Linie widać nad kartą drużyny przez 9 s. **Mono audio**
+  (Ustawienia → Accessibility) wyłącza panoramę w dźwięku pozycyjnym.
 - **Napisy dźwięków** (`captions.gd`, ustawienie „Sound captions”): linie `← [Gunfire]` z kierunkiem do źródła i `(far)`, z tabeli
   `CAPTIONS` w `audio_manifest.gd` (priorytet 0 — kroki, łuski — pomijany).
 - **Lokalizacja** (`translations/ui.csv`, kolumny `keys` = tekst angielski i `pl`): statyczne napisy `Label` / `Button` tłumaczy silnik,
@@ -154,6 +157,7 @@ Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP =
 | **Krzyk** (także mikrofon, jeśli włączony w lobby) | G | LT |
 | Zeskok z kładki | dół + SPACJA | lewy drążek ↓ + A |
 | Pokaż / ukryj sterowanie | F1 | – |
+| Czat drużyny | T | – |
 | Zaproszenie przez Steam (host) | F2 | – |
 | Nowa misja (host, po ekstrakcji) / gotowość w kryjówce | Enter | Back |
 | Menu pauzy / ustawienia | Esc lub P | Start |

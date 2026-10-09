@@ -50,6 +50,7 @@ var res_idx := 0                       ## rozmiar okna z RES_LIST (tylko tryb ok
 var vsync_idx := 0
 var fps_idx := 0
 var quality_idx := 2                   ## LOW / MEDIUM / HIGH — cząsteczki, ziarno i aberracja, efekty pogody
+var mono_audio := false                ## bez panoramy w dźwięku pozycyjnym (osoby z jednostronnym słuchem)
 var captions := false                  ## napisy dla dźwięków (HUD, captions.gd)
 var reduce_fx := false                 ## „Reduce Effects": bez wstrząsów, ziarna, aberracji, pulsu zdrowia, błysku burzy i migotania
 var crouch_toggle := false             ## skradanie przełączane klawiszem zamiast trzymania
@@ -144,6 +145,10 @@ func cycle_fps() -> void:
 
 func cycle_quality() -> void:
 	quality_idx = (quality_idx + 1) % QUALITY_NAMES.size()
+	_commit()
+
+func toggle_mono_audio() -> void:
+	mono_audio = not mono_audio
 	_commit()
 
 func toggle_captions() -> void:
@@ -291,6 +296,7 @@ func _load() -> void:
 	quality_idx = clampi(int(cf.get_value("game", "quality", 2)), 0, QUALITY_NAMES.size() - 1)
 	reduce_fx = bool(cf.get_value("game", "reduce_fx", false))
 	captions = bool(cf.get_value("game", "captions", false))
+	mono_audio = bool(cf.get_value("game", "mono_audio", false))
 	crouch_toggle = bool(cf.get_value("game", "crouch_toggle", false))
 	colorblind_idx = clampi(int(cf.get_value("game", "colorblind", 0)), 0, COLORBLIND_NAMES.size() - 1)
 	locale_idx = clampi(int(cf.get_value("game", "locale", 0)), 0, LOCALES.size() - 1)
@@ -318,6 +324,7 @@ func _save() -> void:
 	cf.set_value("game", "quality", quality_idx)
 	cf.set_value("game", "reduce_fx", reduce_fx)
 	cf.set_value("game", "captions", captions)
+	cf.set_value("game", "mono_audio", mono_audio)
 	cf.set_value("game", "crouch_toggle", crouch_toggle)
 	cf.set_value("game", "colorblind", colorblind_idx)
 	cf.set_value("game", "locale", locale_idx)

@@ -412,6 +412,7 @@ func play_at(key: String, pos: Vector2, bus: String = BUS_WORLD,
 	p.position = pos
 	p.max_distance = MAX_DISTANCE
 	p.attenuation = 1.1
+	p.panning_strength = 0.0 if Settings.mono_audio else 1.0       # ustawienie „Mono audio": dźwięk pozycyjny bez panoramy
 	p.bus = _tier_bus(bus, occlusion_tier(pos))
 	p.volume_db = vol_db
 	p.pitch_scale = pitch
@@ -510,6 +511,7 @@ func start_loop_at(key: String, node: Node2D, bus: String = BUS_WORLD, vol_db :=
 	if s == null or node == null:
 		return
 	var p := AudioStreamPlayer2D.new()
+	p.panning_strength = 0.0 if Settings.mono_audio else 1.0
 	p.max_distance = 4000.0 if not spatial else MAX_DISTANCE
 	p.attenuation = 0.0 if not spatial else 1.1
 	p.volume_db = vol_db
