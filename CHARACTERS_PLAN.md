@@ -1,6 +1,6 @@
 # Plan: przeprojektowanie postaci — 2.5D, 3D-owa customizacja, płeć i strój
 
-Status: **plan + wizualizacja koncepcyjna v0** (2026-10-08). Nic w grze nie zostało zmienione.
+Status: **plan z 2026-10-08, w dużej części wdrożony** — etapy HD (postać Tripo, bronie, wrogowie, świat) są w grze i domyślnie włączone, a postać 3D w czasie rzeczywistym działa jako beta (`Characters: 3D`, patrz [`prototype/CHAR3D_SPIKE.md`](prototype/CHAR3D_SPIKE.md)). Sekcja „Status (aktualizacja)” niżej opisuje stan prac; reszta dokumentu to pierwotny plan i wizualizacja v0.
 Wizualizacja: [`concepts/characters_3d_v0.png`](concepts/characters_3d_v0.png) — 2 płcie × 3 stroje, obrót, podgląd „w grze".
 Generatory wizualizacji: `prototype/tools/concept/char3d_concept.py` (Blender) i `char3d_sheet.py` (Pillow).
 

@@ -333,7 +333,7 @@ Las, posterunek, tartak. Kolory: mgła, brąz, zieleń. Wprowadza: strzelanie, s
 | 1.3 | **Gniazdo** | Spal 3 gniazda | Uratuj zwiadowcę (NPC) + **zabij stalkera w ciszy**: obniż Uwagę <30, gdy celuje w NPC | **Pierwsze pejne starcie ze stalkerem** (bez skryptu). AI towarzysz ćwiczy dźwiganie | Trzoski, Żyła, Stalker | 12 min |
 | **B1** | **PIJAWKA** | Zabij bossa | — | Flary ujawniają cień pod wodą | Pijawka, Trzoski | 6 min |
 
-**Stan w prototypie (1.7.24):** zaimplementowane są **1.2 „Przerwa w Nadawaniu"** (w v2 — 1.7.25 — **4 generatory** na mapie 288×44, skok Uwagi po ostatnim, lekcja Q na Stalkerze, cel poboczny „Uwaga < 40") i **1.3 „Gniazdo"** (gniazda + Żyła zamiast Pijawki). Kampania gra je po kolei (1.2 → kryjówka → 1.3 → kryjówka → od początku); w 1.2 powrót to **ucieczka drezyną** (1.7.26); brakuje 1.1 „Zaginiony Patrol" i bossa Pijawki.
+**Stan w prototypie (1.7.24):** zaimplementowane są **1.2 „Przerwa w Nadawaniu"** (w v2 — 1.7.25 — **4 generatory** na mapie 288×44, skok Uwagi po ostatnim, lekcja Q na Stalkerze, cel poboczny „Uwaga < 40") i **1.3 „Gniazdo"** (gniazda + Żyła zamiast Pijawki). Kampania gra je po kolei (1.2 → kryjówka → 1.3 → kryjówka → od początku); w 1.2 powrót to **ucieczka drezyną** (1.7.26); brakuje 1.1 „Zaginiony Patrol" i bossa Pijawki. **(Aktualizacja od 1.7.54:** kampania `z1_m1 → z1_m2 → z1_m3 → z1_b1` ma wszystkie trzy misje i bossa Pijawkę, więc Strefa I jest kompletna; ten akapit opisuje stan z 1.7.24.)
 
 **Nagroda strefy:** odblokowanie sklepu broni (SPREAD-12, PELLET-8), postać Igła.
 
@@ -519,11 +519,11 @@ Budżet z §16.4 (10–16 mies. do EA) jest ryzykiem, dopóki nie wiemy, że rdz
 
 ### 16.1 MVP — co musi działać w premierze EA
 - [ ] Online 1–4 (Steam P2P) + **AI towarzysz wypełniający puste sloty** (nie opcjonalne — patrz 16.3)
-- [ ] Strefa I kompletna (3 misje + boss) jako „vertical slice" nośny — **2 z 3 misji w prototypie (1.2, 1.3; 1.7.24)**, brak 1.1 i bossa Pijawki
-- [ ] 3 bronie główne, sidearm, maczeta, Wabik (funkcjonalny od EA — to infrastruktura Przesterowania)
-- [ ] 4 typy wrogów + Stalker w wersji z §8.1/§8.5 (mniej, ale poprawnie zbalansowanych)
-- [ ] System Uwagi, Przesterowanie (Q), ładunek i regeneracja, system światła
-- [ ] Serwerowe pociski z lag compensation (nie per-peer symulacja — patrz 18.2)
+- [x] Strefa I kompletna (3 misje + boss) jako „vertical slice" nośny — **w prototypie: 1.1, 1.2, 1.3 i boss B1 Pijawka (od 1.7.54)**
+- [x] 3 bronie główne, sidearm, maczeta, Wabik (funkcjonalny od EA — to infrastruktura Przesterowania)
+- [x] 4 typy wrogów + Stalker w wersji z §8.1/§8.5 (mniej, ale poprawnie zbalansowanych)
+- [x] System Uwagi, Przesterowanie (Q), ładunek i regeneracja, system światła
+- [x] Serwerowe pociski z lag compensation (nie per-peer symulacja — patrz 18.2)
 - [x] Tryb Nocny Dyżur v1 (1.7.23; bez rankingu online)
 - [ ] Demo
 
