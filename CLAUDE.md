@@ -6,6 +6,7 @@ Co-op horror run-and-gun (retro Contra), Godot **4.7.2**, GDScript, 2D, GL Compa
 
 - Komentarze i teksty projektowe po polsku; identyfikatory po angielsku; doc-komentarze `##`.
 - Wiedza o Godocie 4.7 i konwencje kodu: skill `godot`. Blender (headless, sprite'y): skill `blender`.
+- Sesje w chmurze: hook `.claude/hooks/session-start.sh` instaluje Godota 4.7.2, zależności Pythona narzędzi i Blendera (moduł `bpy` 5.2.x z PyPI + wrapper `blender` z `blender-shim.py`, bo download.blender.org jest tam blokowany). Wrapper nie ma GUI ani wtyczek z dysku (np. MPFB).
 - Hook `.claude/hooks/gd-check.sh` po edycji `.gd` uruchamia projekt headless i ostrzega o błędach skryptów — traktuj ostrzeżenie poważnie.
 - Nowy `.gd` tworzy `.gd.uid` — commituj oba. `.godot/` i `build/` są w `.gitignore`.
 - Grafikę i audio generują skrypty Pythona w `prototype/tools/` — edytuj generatory, nie wynikowe pliki.
