@@ -2218,8 +2218,7 @@ func join_game(ip: String) -> void:
 
 ## F2: okno zaproszeń Steam dla bieżącego lobby (host).
 func _unhandled_key_input(event: InputEvent) -> void:
-	var k := event as InputEventKey
-	if k != null and k.pressed and not k.echo and k.keycode == KEY_F2 and steam != null:
+	if event.is_action_pressed("steam_invite") and steam != null:
 		var msg: String = steam.invite()
 		if msg != "":
 			_lobby.set_status(msg)

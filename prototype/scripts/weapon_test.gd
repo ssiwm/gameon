@@ -526,6 +526,7 @@ func _t_throwables() -> void:
 	Arsenal.reset_throwables()
 	check("reset przywraca zestaw wydawany (frag %d, phos %d)" % [Arsenal.get_throwable("frag"), Arsenal.get_throwable("phos")], Arsenal.get_throwable("frag") == 1 and Arsenal.get_throwable("phos") == 0 and Arsenal.get_throwable("medkit") == 1)
 	_t_item_key()
+	_t_actions()
 	give_gear()
 	await _t_gear()
 	await _t_economy()
@@ -545,6 +546,26 @@ func _t_item_key() -> void:
 	tk.physical_keycode = KEY_T
 	t_bad = InputMap.event_is_action(tk, "throw")
 	check("klawisz użycia przedmiotu: lewy Alt tak (%s), prawy Alt nie (%s), T nie (%s)" % [str(left_ok), str(right_bad), str(t_bad)], left_ok and not right_bad and not t_bad)
+
+## Rejestr akcji (actions.gd): każda akcja jest w InputMap, menu wycina wszystko poza oznaczonymi, a ściąga i podpowiedzi
+## pokazują klawisze z wiązań (domyślnie te same napisy co dawniej wpisane ręcznie).
+func _t_actions() -> void:
+	const Actions := preload("res://scripts/actions.gd")
+	var all_registered := true
+	for id in Actions.ids():
+		all_registered = all_registered and InputMap.has_action(id) and not InputMap.action_get_events(id).is_empty()
+	check("rejestr akcji: wszystkie %d akcje są w InputMap z wiązaniami" % Actions.ids().size(), all_registered)
+	var blockable: Array = Actions.blockable()
+	check("menu wycina akcje gry, ale nie pause / F2 / F11 (%d z %d)" % [blockable.size(), Actions.ids().size()],
+		not blockable.has("pause") and not blockable.has("fullscreen") and not blockable.has("steam_invite") and blockable.has("fire") and blockable.has("weapon_next"))
+	var sheet: Array = Actions.sheet()
+	var rows := {}
+	for r in sheet:
+		rows[String(r[1])] = String(r[0])
+	check("ściąga: ruch „WASD / Arrows”, ogień „J / LMB”, przedmiot „L-Alt / X”, broń „1 2 3 / Wheel” (%s | %s | %s | %s)" % [rows.get("Move & aim"), rows.get("Fire — makes NOISE"), rows.get("Use item / switch item"), rows.get("Switch weapon")],
+		rows.get("Move & aim") == "WASD / Arrows" and rows.get("Fire — makes NOISE") == "J / LMB" 		and rows.get("Use item / switch item") == ("L-Cmd / X" if OS.get_name() == "macOS" else "L-Alt / X") and rows.get("Switch weapon") == "1 2 3 / Wheel")
+	check("podpowiedzi: {interact} → E, {restart} → ENTER, {move} → WASD (%s %s %s)" % [Actions.key("interact"), Actions.key("restart"), Actions.fmt("{move}")],
+		Actions.key("interact") == "E" and Actions.key("restart") == "ENTER" and Actions.fmt("{move}") == "WASD" and not Actions.fmt("{overcharge}{throw_next}").contains("{"))
 
 ## Faza A2: dym, mina, ładunek wyburzeniowy, apteczka, defibrylator, skaner.
 func _t_gear() -> void:

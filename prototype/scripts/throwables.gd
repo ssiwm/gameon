@@ -8,6 +8,8 @@ extends RefCounted
 ##   use   — narzędzie (przytrzymaj klawisz użycia przy celu / naciśnij): apteczka, defibrylator, skaner „Sowa” (player.gd `_gear_tick`)
 ## Nowy rodzaj = wpis w KINDS i ORDER plus obsługa w grenade.gd / placed.gd / arsenal.gd (`_use_server`).
 
+const Actions := preload("res://scripts/actions.gd")
+
 const ORDER := ["frag", "phos", "smoke", "mine", "charge", "medkit", "defib", "scanner"]
 
 const KINDS := {
@@ -58,9 +60,9 @@ const KINDS := {
 	},
 }
 
-## Nazwa klawisza użycia przedmiotu do podpowiedzi i HUD (input_setup.gd: lewy Alt, na macOS lewy Cmd).
+## Nazwa klawisza użycia przedmiotu do podpowiedzi i HUD (rejestr akcji: lewy Alt, na macOS lewy Cmd).
 static func key_name() -> String:
-	return "L-CMD" if OS.get_name() == "macOS" else "L-ALT"
+	return Actions.key("throw")
 
 static func is_valid(kind: String) -> bool:
 	return KINDS.has(kind)

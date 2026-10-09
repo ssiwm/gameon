@@ -63,7 +63,7 @@ Projekt: `prototype/` (Godot **4.7.2**, GL Compatibility, GDScript, 2D, 640×360
 
 ## Input
 
-- Akcje w kodzie rejestruje `input_setup.gd` (autoload). `Input.is_action_pressed/just_pressed`, `get_vector("left","right","up","down")`. Zdarzenia: `_unhandled_input(event)` dla gameplayu, `_input` tylko gdy musisz przechwycić; `get_viewport().set_input_as_handled()`.
+- Akcje i ich klawisze są w rejestrze `actions.gd` (`DEFS`), rejestruje je `input_setup.gd` (autoload); nową akcję dopisz tam, a nazwę klawisza w tekstach podawaj przez `Actions.key("id")` / `Actions.fmt("Hold [{interact}]")`, nie literałem. `Input.is_action_pressed/just_pressed`, `get_vector("left","right","up","down")`. Zdarzenia: `_unhandled_input(event)` dla gameplayu, `_input` tylko gdy musisz przechwycić; `get_viewport().set_input_as_handled()`.
 - 4.7: device id myszy/klawiatury to `InputEvent.DEVICE_ID_MOUSE` / `DEVICE_ID_KEYBOARD` (nie `0`).
 - Mikrofon: `AudioStreamMicrophone` + `AudioEffectCapture` na szynie, `driver/enable_input=true` (jest w project.godot). Przetwarzanie lokalne, nic nie wysyłać.
 

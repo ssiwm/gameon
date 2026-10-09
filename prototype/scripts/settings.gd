@@ -3,8 +3,8 @@ extends Node
 ## pełny ekran. Zapis w user://settings.cfg (sekcja „game"; sekcję „voice" prowadzi voice.gd —
 ## oba moduły wczytują plik przed zapisem, więc sobie nie przeszkadzają).
 ##
-## Dodatkowo `block_game_input()` wycina akcje gry z InputMap na czas menu pauzy: wszystkie skrypty
-## czytają je przez Input.is_action_*, więc jedno miejsce wystarcza (żeby klik w menu nie strzelał).
+## Dodatkowo `block_game_input()` wycina akcje gry z InputMap na czas menu pauzy (lista: `Actions.blockable()`):
+## wszystkie skrypty czytają je przez Input.is_action_*, więc jedno miejsce wystarcza (żeby klik w menu nie strzelał).
 
 signal changed
 
@@ -25,12 +25,7 @@ const WEATHER_FX_OFF := 2
 const SHAKE_MULT := [1.0, 0.5, 0.0]
 const UI_NAMES := ["SMALL", "NORMAL", "LARGE"]
 const UI_MULT := [0.85, 1.0, 1.25]
-## Akcje wyłączane przy otwartym menu (wszystkie poza „pause").
-const GAME_ACTIONS := [
-	"move_left", "move_right", "move_up", "move_down", "jump", "fire", "crouch", "overcharge", "scream",
-	"flare", "interact", "weapon_1", "weapon_2", "weapon_3", "weapon_next", "weapon_prev", "restart",
-	"flashlight", "reload", "melee", "help", "firemode", "throw", "throw_next",
-]
+const Actions := preload("res://scripts/actions.gd")
 
 var volume := {"master": 1.0, "music": 1.0, "sfx": 1.0}
 var shake_idx := 0
@@ -116,7 +111,7 @@ func mark_tip(id: String) -> void:
 		_save()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F11:
+	if event.is_action_pressed("fullscreen"):
 		toggle_fullscreen()
 
 # ---------------------------------------------------------------- zastosowanie
@@ -151,7 +146,7 @@ func block_game_input(on: bool) -> void:
 		return
 	blocked = on
 	if on:
-		for a in GAME_ACTIONS:
+		for a in Actions.blockable():           # wszystkie akcje poza oznaczonymi „menu" (pause, F2, F11)
 			if InputMap.has_action(a):
 				_stash[a] = InputMap.action_get_events(a)
 				InputMap.action_erase_events(a)
