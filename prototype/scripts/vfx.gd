@@ -385,19 +385,23 @@ static func burning(host: Node2D, seconds: float) -> void:
 	tm.one_shot = true
 	tm.wait_time = seconds
 	host.add_child(tm)
-	tm.timeout.connect(_end_burning.bind(fx, lt))
-	tm.start()
 	var flick := Timer.new()
 	flick.wait_time = 0.08
 	host.add_child(flick)
 	flick.timeout.connect(_flicker.bind(lt))
 	flick.start()
+	tm.timeout.connect(_end_burning.bind(fx, lt, flick))
+	tm.start()
 
-static func _flicker(lt: PointLight2D) -> void:
+## `lt` bez typu: po zwolnieniu światła (koniec płomienia / śmierć wroga) typowany argument zwolnionego obiektu daje błąd
+## „Cannot convert argument 1 from Object to Object" przy każdym tiku timera.
+static func _flicker(lt) -> void:
 	if is_instance_valid(lt):
 		lt.energy = randf_range(0.6, 1.1)
 
-static func _end_burning(fx: CPUParticles2D, lt: PointLight2D) -> void:
+static func _end_burning(fx, lt, flick) -> void:
+	if is_instance_valid(flick):
+		flick.queue_free()
 	if is_instance_valid(fx):
 		fx.emitting = false
 		fx.get_tree().create_timer(0.6).timeout.connect(fx.queue_free)
