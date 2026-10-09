@@ -1,13 +1,11 @@
 # Plan: interfejs użytkownika na poziomie pełnoprawnej gry
 
-Status: **plan zaimplementowany poza trzema pozycjami** (stan z 2026-10-10, PR #121–#134). Gotowe: rejestr akcji (`actions.gd`), pad w grze
+Status: **plan zaimplementowany; jedna pozycja odrzucona, dwie niezrobione** (stan z 2026-10-10, PR #121–#134). Gotowe: rejestr akcji (`actions.gd`), pad w grze
 i w menu, przypisywanie klawiszy, menu główne osobno od lobby, ustawienia i wyjście przed grą, potwierdzenie wyjścia, suwaki, LEAVE SESSION,
 ustawienia obrazu bez restartu, „Reduce effects”, filtr widzenia barw, napisy dźwięków, paleta, **dołączone czcionki** (Big Shoulders,
 IBM Plex ×3 — OFL; Special Elite — Apache-2.0, nie OFL jak zakładał plan), VU-metr hałasu, poziomy HUD, jeden komunikat naraz, ściemnienie
 pod modalami, tabela graczy i animowany pasek XP na karcie wyniku, podpowiedź w kryjówce, dźwięk najechania i krótkie przejścia,
-lokalizacja EN/PL **razem z kodeksem, ulepszeniami, perkami i przedmiotami**. **Nie zrobione:** jedna siatka ikon (to decyzja graficzna:
-dzisiejsze miniatury perków / broni / przedmiotów są ręcznie rysowane lub z modeli Tripo, a zastąpienie ich kodem „dwukolorowych
-linii” wymaga zatwierdzenia kierunku), lobby z listą graczy i czatem (lobby działa przed połączeniem — gotowość graczy pokazuje
+lokalizacja EN/PL **razem z kodeksem, ulepszeniami, perkami i przedmiotami**. **Zrezygnowano:** jedna siatka ikon (dwukolorowe linie wektorowe) — po obejrzeniu wizualizacji decyzja z 2026-10-10: zostają obecne miniatury. **Nie zrobione:** lobby z listą graczy i czatem (lobby działa przed połączeniem — gotowość graczy pokazuje
 kryjówka), mono audio i kształty zamiast samych kolorów (GDD §14).
 
 Źródła: przegląd kodu UI (`lobby.gd`, `pause_menu.gd`, `settings.gd`, `input_setup.gd`, `ui_theme.gd`, `hud.gd`, `workshop_ui.gd`, `horror_fx.gd`) i zrzutów ekranu (lobby, HUD w misji 1.3, menu pauzy, kryjówka, warsztat, karta wyniku); makieta kierunku wizualnego (patrz „Makieta”).
