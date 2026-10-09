@@ -532,6 +532,7 @@ func _t_throwables() -> void:
 	await _t_display_settings()
 	_t_captions()
 	_t_locale()
+	await _t_chat()
 	give_gear()
 	await _t_gear()
 	await _t_economy()
@@ -724,6 +725,34 @@ func _t_locale() -> void:
 	var en_ok: bool = tr("RESUME") == "RESUME"
 	TranslationServer.set_locale(prev)
 	check("lokalizacja: PL (%s, %s), EN zostaje źródłem (%s)" % [str(pl_ok), str(fmt_ok), str(en_ok)], pl_ok and fmt_ok and en_ok)
+
+## Czat drużyny (chat.gd): sanityzacja, nadawca, limit tempa po stronie serwera; Mono audio wyłącza panoramę pozycyjną.
+func _t_chat() -> void:
+	const ChatScript := preload("res://scripts/chat.gd")
+	var clean: bool = ChatScript.sanitize("  hello
+ world  ") == "hello world" and ChatScript.sanitize("x".repeat(500)).length() == ChatScript.MAX_LEN 		and ChatScript.sanitize("") == ""
+	var chat: Node = get_tree().current_scene.get_node("Chat")
+	var got: Array = []
+	var cb := func(who: String, text: String) -> void: got.append([who, text])
+	chat.line_added.connect(cb)
+	chat.send("hello squad")
+	chat.send("spam")                                   # w oknie limitu tempa — serwer odrzuca
+	await wait(0.7)
+	chat.send("again")
+	await frames(2)
+	chat.line_added.disconnect(cb)
+	var flow: bool = got.size() == 2 and String(got[0][0]) == "P1" and String(got[0][1]) == "hello squad" and String(got[1][1]) == "again"
+	check("czat: sanityzacja (%s), nadawca i limit tempa (%d linie: %s)" % [str(clean), got.size(), str(got)], clean and flow)
+	for q in Audio._pos_pool:
+		q.panning_strength = 1.0
+	Settings.mono_audio = true
+	Audio.play_at("m83_shot_1", player.global_position + Vector2(100, 0), Audio.BUS_WORLD)
+	var mono_ok: bool = not Audio._enabled                # bez urządzenia audio (headless) play_at nic nie robi — nie ma co sprawdzać
+	for q in Audio._pos_pool:
+		if is_zero_approx(q.panning_strength):
+			mono_ok = true
+	Settings.mono_audio = false
+	check("mono audio: dźwięk pozycyjny bez panoramy (panning_strength 0)", mono_ok)
 
 ## Faza A2: dym, mina, ładunek wyburzeniowy, apteczka, defibrylator, skaner.
 func _t_gear() -> void:
@@ -1682,6 +1711,10 @@ func run_net_host(m: Node2D) -> void:
 	check("sieć: host widzi perki klienta (%s)" % str(Perks.ids_of(cp.perks)), Perks.ids_of(cp.perks) == ["veteran", "smith"])
 	check("sieć: serce Weterana klienta liczy serwer (max %d), a cena Kowala dla peera klienta %d zamiast %d" % [cp.max_hp(), Scrap.tier_cost("m83", 2, cid), Upgrades.cost("m83", 2)],
 		cp.max_hp() == cp.MAX_HP + 1 and Scrap.tier_cost("m83", 2, cid) == Upgrades.cost("m83", 2, 0.8) and Scrap.tier_cost("m83", 2) == Upgrades.cost("m83", 2))
+	# czat: host zbiera linie rozesłane przez serwer (klient wysyła jedną wiadomość i serię 10 „flood")
+	var chat_lines: Array = []
+	var chat_node: Node = m.get_node("Chat")
+	chat_node.line_added.connect(func(who: String, text: String) -> void: chat_lines.append([who, text]))
 	# podglądamy serwerowy licznik przyjętych strzałów i obrażenia, dopóki klient jest połączony
 	var legit_dmg := -1.0
 	var accepted := 0
@@ -1703,6 +1736,10 @@ func run_net_host(m: Node2D) -> void:
 	check("zdalny strzelec: 10 legalnych strzałów M-83 klienta zadaje obrażenia na serwerze", legit_dmg >= 0.6 * 80.0 and legit_dmg <= 80.1, "%.1f / 80" % legit_dmg)
 	check("limiter tempa: 20 sfałszowanych żądań naraz przyjęte ≤ 4× (zapas 2,5 + lag)", accepted <= 10 + 4, "przyjęto łącznie %d (10 legalnych + ≤4)" % accepted)
 	check("serwer odrzucił większość ataku (≥ 14 z 20)", accepted <= 10 + 6, "przyjęto %d" % accepted)
+	var hi := chat_lines.filter(func(l: Array) -> bool: return String(l[1]) == "hi from client")
+	var flood := chat_lines.filter(func(l: Array) -> bool: return String(l[1]).begins_with("flood"))
+	check("czat sieciowy: wiadomość klienta dociera z etykietą nadawcy (%s), seria 10 „flood” przepuszczona ≤ 2× (%d)" % [str(hi), flood.size()],
+		hi.size() == 1 and String(hi[0][0]).begins_with("P") and String(hi[0][0]) != "P?" and flood.size() <= 2)
 	print("[WTEST] ==== sieć: %d/%d OK ====" % [total - failed, total])
 	get_tree().quit(1 if failed > 0 else 0)
 
@@ -1729,6 +1766,11 @@ func run_net_client(m: Node2D) -> void:
 	player = me
 	wc = me.weapons
 	me.aim_dir = Vector2.RIGHT
+	var chat_client: Node = main.get_node("Chat")
+	chat_client.send("hi from client")
+	await wait(0.8)
+	for i in 10:
+		chat_client.send("flood %d" % i)                     # klient nie ogranicza — tempo pilnuje serwer
 	var d := Weapons.def(Weapons.M83)
 	var predicted_before := get_tree().current_scene.get_child_count()
 	for i in 10:

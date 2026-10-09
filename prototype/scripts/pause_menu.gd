@@ -188,6 +188,7 @@ func _build_settings() -> void:
 	_settings_box.add_child(_caption("ACCESSIBILITY"))
 	_cycler("reduce", "Reduce effects", Settings.toggle_reduce_fx)
 	_cycler("caps", "Sound captions", Settings.toggle_captions)
+	_cycler("mono", "Mono audio", Settings.toggle_mono_audio)
 	_cycler("cb", "Color vision", Settings.cycle_colorblind)
 	_cycler("lang", "Language", Settings.cycle_locale)
 
@@ -394,6 +395,7 @@ func _refresh() -> void:
 	_values["quality"].text = Settings.QUALITY_NAMES[Settings.quality_idx]
 	_values["reduce"].text = "ON" if Settings.reduce_fx else "OFF"
 	_values["caps"].text = "ON" if Settings.captions else "OFF"
+	_values["mono"].text = "ON" if Settings.mono_audio else "OFF"
 	_values["cb"].text = Settings.COLORBLIND_NAMES[Settings.colorblind_idx]
 	_values["lang"].text = Settings.LOCALE_NAMES[Settings.locale_idx]
 	_values["wfx"].text = Settings.WEATHER_FX_NAMES[Settings.weather_fx_idx]
@@ -497,6 +499,9 @@ func _input(event: InputEvent) -> void:
 			return
 	if not event.is_action_pressed("pause"):
 		return
+	var fo := get_viewport().gui_get_focus_owner()
+	if fo != null and fo.name == "ChatEdit":
+		return                                      # Esc zamyka pole czatu (hud.gd), nie otwiera pauzy
 	var ws := get_tree().get_first_node_in_group("workshop_ui")
 	if ws != null and ws.is_open():
 		return                                  # Esc zamyka panel warsztatu (workshop_ui.gd), nie otwiera pauzy

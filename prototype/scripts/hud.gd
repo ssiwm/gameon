@@ -339,6 +339,10 @@ var _xp_anim := 0.0                   ## 0..1 postęp animacji
 var _xp_key := Vector2i(-1, -1)       ## (XP przed, XP po) — zmiana zaczyna animację od nowa
 var _captions := Captions.new()       ## napisy dla dźwięków (ustawienie „Sound captions”)
 var _cap_card: PanelContainer
+var _chat: Node                       ## węzeł Chat (main.gd; tworzony po HUD-zie, więc wiązany leniwie)
+var _chat_log: VBoxContainer          ## ostatnie linie czatu (blakną po 9 s)
+var _chat_lines: Array = []           ## {label, t}
+var _chat_edit: LineEdit
 var _cap_box: VBoxContainer
 var _last_hp := -1
 
@@ -435,6 +439,7 @@ func _ready() -> void:
 	_build_controls()
 	_build_hint()
 	_build_captions()
+	_build_chat()
 	_build_result()
 	_build_dim()
 	for a in OS.get_cmdline_user_args():
@@ -903,6 +908,76 @@ func _build_dim() -> void:
 	add_child(_dim)
 	_result.z_index = 11
 
+## Czat drużyny (chat.gd): log nad kartą drużyny i pole wpisywania pod klawiszem T (Enter wysyła, Esc anuluje). Na czas pisania
+## akcje gry są wycięte (Settings.block_game_input), więc klawisze nie ruszają postaci.
+func _build_chat() -> void:
+	_chat_log = VBoxContainer.new()
+	_chat_log.add_theme_constant_override("separation", 1)
+	_chat_log.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_chat_log)
+	_chat_edit = LineEdit.new()
+	_chat_edit.name = "ChatEdit"
+	_chat_edit.max_length = 120
+	_chat_edit.placeholder_text = tr("Message to the squad…  (Enter sends, Esc cancels)")
+	_chat_edit.custom_minimum_size = Vector2(300, 0)
+	_chat_edit.visible = false
+	_chat_edit.text_submitted.connect(func(t: String) -> void:
+		if _chat != null:
+			_chat.send(t)
+		_close_chat())
+	_chat_edit.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventKey and ev.pressed and ev.physical_keycode == KEY_ESCAPE:
+			_close_chat()
+			get_viewport().set_input_as_handled())
+	add_child(_chat_edit)
+	if "--shotchat" in OS.get_cmdline_user_args():
+		# dev: przykładowe linie i otwarte pole do zrzutu
+		get_tree().create_timer(1.0).timeout.connect(func() -> void:
+			_on_chat_line("P1", "Flare at the east door, go quiet")
+			_on_chat_line("P2", "On my way")
+			_on_chat_line("P1", "Don't shoot the nest yet")
+			_open_chat()
+			_chat_edit.text = "Reloading, cover me")
+
+func _open_chat() -> void:
+	_chat_edit.text = ""
+	_chat_edit.visible = true
+	Settings.block_game_input(true)
+	_chat_edit.grab_focus()
+
+func _close_chat() -> void:
+	_chat_edit.release_focus()
+	_chat_edit.visible = false
+	_chat_edit.text = ""
+	Settings.block_game_input(false)
+
+func _on_chat_line(who: String, text: String) -> void:
+	var l := UiTheme.label("%s: %s" % [who, text], 9, UiTheme.TEXT)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_chat_log.add_child(l)
+	_chat_lines.append({"label": l, "t": 9.0})
+	while _chat_lines.size() > 5:
+		var old: Dictionary = _chat_lines.pop_front()
+		(old["label"] as Node).queue_free()
+
+func _drive_chat(delta: float) -> void:
+	if _chat == null:
+		_chat = get_tree().current_scene.get_node_or_null("Chat") if get_tree().current_scene != null else null
+		if _chat != null:
+			_chat.line_added.connect(_on_chat_line)
+	for i in range(_chat_lines.size() - 1, -1, -1):
+		var e: Dictionary = _chat_lines[i]
+		e["t"] = float(e["t"]) - delta
+		(e["label"] as Control).modulate.a = clampf(float(e["t"]) / 1.5, 0.0, 1.0) if not _chat_edit.visible else 1.0
+		if float(e["t"]) <= 0.0 and not _chat_edit.visible:
+			(e["label"] as Node).queue_free()
+			_chat_lines.remove_at(i)
+	var base_y := _squad_card.position.y - 6.0
+	_chat_edit.position = Vector2(MARGIN, base_y - 20.0)
+	_chat_log.reset_size()
+	_chat_log.position = Vector2(MARGIN, base_y - _chat_log.size.y - (22.0 if _chat_edit.visible else 0.0))
+	_chat_log.visible = not _result.visible
+
 ## Poziomy HUD: T1 (zdrowie, amunicja, wskaźnik hałasu) zawsze w pełni; T2 (karta celu) i T3 (zegar, XP, sesja, sterowanie)
 ## przygasają po 4 s spokoju — bez wystrzałów i bez Uwagi ponad próg niepokoju — i wracają przy pierwszym hałasie.
 func _drive_tiers(delta: float) -> void:
@@ -1079,12 +1154,16 @@ func _process(delta: float) -> void:
 	_drive_cards()
 	_drive_hint(delta)
 	_drive_captions(delta)
+	_drive_chat(delta)
 	_drive_tiers(delta)
 	_drive_controls()
 	queue_redraw()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("help"):
+	if event.is_action_pressed("chat") and not _chat_edit.visible and NoiseMgr.has_network() and _chat != null:
+		_open_chat()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("help"):
 		_controls_mode = 0 if _controls.visible else 1
 	elif Settings.STORE_URL != "" and _result.visible and _demo_footer != null and _demo_footer.visible and event.is_action_pressed("open_store"):
 		OS.shell_open(Settings.STORE_URL)

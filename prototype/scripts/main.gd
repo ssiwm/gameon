@@ -29,6 +29,7 @@ const Weather := preload("res://scripts/weather.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const HORROR_FX := preload("res://scripts/horror_fx.gd")
 const MAIN_MENU := preload("res://scripts/main_menu.gd")
+const CHAT := preload("res://scripts/chat.gd")
 const COLORBLIND_FX := preload("res://scripts/colorblind_fx.gd")
 const WEATHER_FX := preload("res://scripts/weather_fx.gd")
 const NavGraph := preload("res://scripts/nav.gd")
@@ -91,6 +92,9 @@ func _ready() -> void:
 	_lobby.host_requested.connect(func() -> void: Audio.play("ui_confirm", Audio.BUS_UI, -8.0))
 	_lobby.join_requested.connect(func(_ip: String) -> void: Audio.play("ui_click", Audio.BUS_UI, -8.0))
 	_handle_cmdline()
+	var chat := CHAT.new()                                    # czat drużyny: ta sama ścieżka na każdym peerze (RPC)
+	chat.name = "Chat"
+	add_child(chat)
 	pause_menu.leave_requested.connect(leave_session)
 	_setup_main_menu(pause_menu)
 	if "--leavetest" in OS.get_cmdline_user_args():

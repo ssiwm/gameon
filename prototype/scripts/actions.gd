@@ -46,6 +46,7 @@ const DEFS := {
 	"throw_next": {"keys": [KEY_X], "pad": [JOY_BUTTON_DPAD_UP]},
 	"melee": {"keys": [KEY_V], "mouse": [MOUSE_BUTTON_RIGHT], "pad": [JOY_BUTTON_X]},
 	"help": {"keys": [KEY_F1]},
+	"chat": {"keys": [KEY_T]},
 	"pause": {"keys": [KEY_ESCAPE, KEY_P], "pad": [JOY_BUTTON_START], "menu": true},
 	"weapon_next": {"mouse": [MOUSE_BUTTON_WHEEL_DOWN], "pad": [JOY_BUTTON_Y]},
 	"weapon_prev": {"mouse": [MOUSE_BUTTON_WHEEL_UP]},
@@ -75,7 +76,7 @@ const LABELS := {
 	"weapon_1": "Weapon 1", "weapon_2": "Weapon 2", "weapon_3": "Weapon 3", "weapon_next": "Next weapon", "weapon_prev": "Previous weapon",
 	"crouch": "Sneak", "overcharge": "Overcharge (lure)", "scream": "Scream", "flare": "Flare", "flashlight": "Flashlight",
 	"interact": "Interact / revive", "throw": "Use item", "throw_next": "Switch item", "restart": "Confirm / ready up",
-	"help": "Controls overlay", "pause": "Pause menu", "steam_invite": "Steam invite", "fullscreen": "Fullscreen",
+	"help": "Controls overlay", "chat": "Team chat", "pause": "Pause menu", "steam_invite": "Steam invite", "fullscreen": "Fullscreen",
 }
 
 ## Nazwy klawiszy tam, gdzie `OS.get_keycode_string` daje inną niż ta, którą widzi gracz.
@@ -338,6 +339,7 @@ static func sheet() -> Array:
 		[text("flashlight"), "Flashlight — light is noise"],
 		["Hold %s" % text("interact"), "Take weapon / revive"],
 		[text("help"), "Controls on / off"],
+		[text("chat"), "Team chat"],
 		[text("steam_invite"), "Steam invite (host)"],
 	]
 
@@ -359,6 +361,7 @@ static func hud_line() -> String:
 		"%s flare" % key("flare"),
 		"%s scream" % key("scream"),
 		"%s light" % key("flashlight"),
+		"%s chat" % key("chat"),
 	]
 	return " · ".join(items)
 

@@ -641,3 +641,6 @@
 "COPY LOBBY ID","KOPIUJ ID LOBBY"
 "Lobby ID copied: %s","Skopiowano ID lobby: %s"
 "Copies the Steam lobby ID to the clipboard — send it to friends (they paste it and press STEAM JOIN)","Kopiuje ID lobby Steam do schowka — wyślij je znajomym (wklejają i dają DOŁĄCZ (STEAM))"
+"Team chat","Czat drużyny"
+"Mono audio","Dźwięk mono"
+"Message to the squad…  (Enter sends, Esc cancels)","Wiadomość do drużyny…  (Enter wysyła, Esc anuluje)"
