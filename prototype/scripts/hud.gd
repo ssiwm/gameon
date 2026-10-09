@@ -273,6 +273,7 @@ var _last_hp := -1
 var _noise_bar: Bar
 var _noise_val: Label
 var _noise_state: Label
+var _weather_row: Label                   ## pogoda misji i jej skutki pod miernikiem hałasu (tylko gdy jest pogoda)
 var _squad_card: PanelContainer
 var _squad_box: VBoxContainer
 var _squad_rows := {}            ## instance_id gracza -> słownik wiersza
@@ -460,6 +461,9 @@ func _build_noise_card() -> void:
 		[NoiseMgr.AWAKE_THRESHOLD / 100.0, Color(1.0, 0.28, 0.22, 0.95)],
 	]
 	box.add_child(_noise_bar)
+	_weather_row = UiTheme.label("", 7, UiTheme.MUTED)
+	_weather_row.visible = false
+	box.add_child(_weather_row)
 	# w kryjówce miernik hałasu nic nie mówi (zawsze 0%) — zastępuje go mały znacznik SAFE
 	_safe_chip = _card(Vector2(MARGIN, MARGIN))
 	_safe_chip.add_child(UiTheme.heading("SAFE", 8, UiTheme.OK))
@@ -938,6 +942,12 @@ func _drive_noise() -> void:
 	_noise_state.add_theme_color_override("font_color", UiTheme.DANGER if awake else (UiTheme.ACCENT if lvl >= NoiseMgr.UNEASY_THRESHOLD else UiTheme.MUTED))
 	_noise_val.add_theme_color_override("font_color", col if lvl >= NoiseMgr.UNEASY_THRESHOLD else UiTheme.TEXT)
 	_noise_bar.queue_redraw()
+	# pogoda misji (weather.gd): nazwa w kolorze pogody + skutki, żeby gracz widział, dlaczego hałas działa inaczej
+	var wid := Weather.active_id()
+	_weather_row.visible = wid != "" and not NightShift.active
+	if _weather_row.visible:
+		_weather_row.text = "%s  ·  %s" % [Weather.name_of(wid), Weather.short_of(wid)]
+		_weather_row.add_theme_color_override("font_color", Weather.color_of(wid))
 	_charges.filled = NoiseMgr.overcharge_charges
 	_charges.queue_redraw()
 	_flares.filled = NoiseMgr.flares

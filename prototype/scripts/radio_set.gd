@@ -3,6 +3,8 @@ extends Node2D
 ## Gdy lokalny gracz stoi przy niej, HUD pokazuje kartę prognozy (jak odprawa przy tablicy). Sama radiostacja tylko się rysuje
 ## (skrzynka z głośnikiem, tarczą i anteną; zielona dioda i tarcza świecą w ciemności) i mówi HUD, czy ktoś stoi blisko.
 
+const Weather := preload("res://scripts/weather.gd")
+
 const REACH_X := 48.0
 const REACH_Y := 40.0
 
@@ -35,15 +37,16 @@ func _draw() -> void:
 	for i in 4:
 		draw_rect(Rect2(-10, -13 + i * 2.5, 8, 1), Color(0.26, 0.28, 0.22))
 	# tarcza strojenia — zielone podświetlenie, wskazówka kołysze się jak szukająca częstotliwości
-	draw_rect(Rect2(1, -14, 11, 6), Color(0.05, 0.12, 0.07))
-	draw_rect(Rect2(2, -13, 9, 4), Color(0.18, 0.5, 0.28, 0.85))
+	var fc := Weather.color_of(Weather.forecast)                             # tarcza i dioda w kolorze prognozy (pogodny wieczór, deszcz, burza, mgła)
+	draw_rect(Rect2(1, -14, 11, 6), Color(fc.r * 0.12, fc.g * 0.12, fc.b * 0.12))
+	draw_rect(Rect2(2, -13, 9, 4), Color(fc.r * 0.55, fc.g * 0.55, fc.b * 0.55, 0.85))
 	var nx := 2.0 + 4.5 + sin(_t * 0.9) * 3.4
 	draw_rect(Rect2(nx, -13, 1, 4), Color(0.85, 1.0, 0.7))
 	# gałki i dioda (miga jak sygnał)
 	draw_circle(Vector2(4, -5), 2.0, Color(0.1, 0.1, 0.08))
 	draw_circle(Vector2(9, -5), 2.0, Color(0.1, 0.1, 0.08))
 	var blink := 0.5 + 0.5 * sin(_t * 3.0)
-	draw_circle(Vector2(-11, -6), 1.2, Color(0.35 + 0.6 * blink, 0.1, 0.08))
+	draw_circle(Vector2(-11, -6), 1.2, Color(fc.r * (0.35 + 0.65 * blink), fc.g * (0.35 + 0.65 * blink), fc.b * (0.35 + 0.65 * blink)))
 	# antena
 	draw_line(Vector2(9, -18), Vector2(15, -34), Color(0.55, 0.57, 0.52), 1.0)
 	draw_circle(Vector2(15, -34), 1.0, Color(0.7, 0.2, 0.15))

@@ -1752,6 +1752,10 @@ func _gen_test() -> void:
 	w_ok = w_ok and is_equal_approx(NightShift.noise_mult(), 1.0) and is_equal_approx(NightShift.ammo_mult(), 1.0) and is_equal_approx(NightShift.awake_threshold(60.0), 60.0)
 	Weather.current = w_saved
 	w_ok = w_ok and is_equal_approx(NightShift.noise_mult(), 1.0) and is_equal_approx(NightShift.start_noise(20.0), 20.0)
+	var w_hud_ok := true
+	for wid in Weather.KINDS:
+		w_hud_ok = w_hud_ok and Weather.short_of(String(wid)) != "" and Weather.name_of(String(wid)) != "" and Weather.color_of(String(wid)) != Color.WHITE
+	check.call("pogoda (HUD, radiostacja): każda pogoda ma nazwę, kolor i krótki opis skutków", w_hud_ok)
 	check.call("pogoda (dźwięk): są pętle deszczu i grzmoty (amb_rain, amb_rain_roof, thunder_1..3)",
 		Audio.stream("amb_rain") != null and Audio.stream("amb_rain_roof") != null and Audio.variant("thunder", 3) >= 0)
 	check.call("pogoda: burza / mgła / deszcz / pogodnie dają swoje mnożniki hałasu, amunicji i progów Stalkera, brak pogody = bez zmian", w_ok)
