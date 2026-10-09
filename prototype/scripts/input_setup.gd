@@ -11,6 +11,15 @@ const MOUSE_MOVE := 4.0              ## ruch myszy (piksele na zdarzenie) uznawa
 
 func _enter_tree() -> void:
 	Actions.register()
+	get_tree().node_added.connect(_on_node_added)         # dźwięk najechania na każdy przycisk (bez zmian w kodzie ekranów)
+
+func _on_node_added(n: Node) -> void:
+	if n is BaseButton and DisplayServer.get_name() != "headless":
+		(n as BaseButton).mouse_entered.connect(_hover.bind(n))
+
+func _hover(b: BaseButton) -> void:
+	if is_instance_valid(b) and not b.disabled and b.is_visible_in_tree():
+		Audio.play("ui_click", Audio.BUS_UI, -24.0, 1.6)
 
 func _input(event: InputEvent) -> void:
 	var pad := Actions.pad_mode

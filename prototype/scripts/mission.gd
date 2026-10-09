@@ -66,6 +66,9 @@ var extract_progress := 0.0
 var elapsed := 0.0
 var downs := 0
 var attempts := 1
+## Statystyki graczy do ekranu wyniku: peer id → {name, kills, downs, revived}. Liczy serwer, klienci dostają wynik raz na końcu
+## misji (`_recv_stats`). Boty nie są liczone (nie dają XP).
+var player_stats := {}
 ## Nocny Dyżur (night_shift.gd): suma z ukończonych misji serii
 var shift_cleared := 0
 var shift_time := 0.0
@@ -371,6 +374,7 @@ func _success() -> void:
 		if not e.is_in_group("nests") and not e.is_in_group("boss") and e.has_method("reset_enemy"):
 			e.reset_enemy()
 	NoiseMgr.calm()
+	_send_stats()
 	_event.rpc("success")
 	_broadcast()
 
@@ -386,13 +390,40 @@ func _record_result() -> void:
 	var stealth := (1 if side_done() else 0) if (kind == "generators" or kind == "tags") else -1
 	RunLog.add(id, title, elapsed, downs, attempts, stealth, Scrap.last_gain)
 
-## Upadki ludzi (statystyka). Liczone na serwerze z replikowanego `dead`.
+## Upadki ludzi (statystyka). Liczone na serwerze z replikowanego `dead`; „revived” = wstał po upadku.
 func _track_downs() -> void:
 	for p in get_tree().get_nodes_in_group("players"):
 		var was: bool = _was_dead.get(p.name, false)
-		if p.dead and not was and not p.is_bot and phase != Phase.SUCCESS and phase != Phase.FAILED:
+		var live := phase != Phase.SUCCESS and phase != Phase.FAILED
+		if p.dead and not was and not p.is_bot and live:
 			downs += 1
+			_stat(p)["downs"] += 1
+		elif was and not p.dead and not p.is_bot and live:
+			_stat(p)["revived"] += 1
 		_was_dead[p.name] = p.dead
+
+func _stat(p: Node) -> Dictionary:
+	var id := int(p.player_id)
+	if not player_stats.has(id):
+		player_stats[id] = {"name": "P%d" % int(p.display_id), "kills": 0, "downs": 0, "revived": 0}
+	return player_stats[id]
+
+## Serwer: zabójstwo przez człowieka (woła Profile.server_award_kill).
+func note_kill(shooter_id: int) -> void:
+	if not NoiseMgr.is_server():
+		return
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and int(p.player_id) == shooter_id:
+			_stat(p)["kills"] += 1
+			return
+
+func _send_stats() -> void:
+	if NoiseMgr.has_network():
+		_recv_stats.rpc(player_stats)
+
+@rpc("authority", "call_local", "reliable")
+func _recv_stats(stats: Dictionary) -> void:
+	player_stats = stats
 
 func _humans_centroid() -> Vector2:
 	var sum := Vector2.ZERO
@@ -433,6 +464,7 @@ func fail_shift() -> void:
 	shift_downs += downs
 	shift_record = Settings.record_shift(shift_cleared, shift_time, false)
 	print("[SHIFT] series over: %d/%d cleared, time %.1fs, record=%s" % [shift_cleared, NightShift.MISSIONS, shift_time, str(shift_record)])
+	_send_stats()
 	_event.rpc("shift_over")
 	_broadcast()
 
@@ -455,6 +487,7 @@ func on_restart(new_run: bool) -> void:
 	if new_run:
 		downs = 0
 		attempts = 1
+		player_stats = {}
 	else:
 		attempts += 1
 	_was_dead.clear()

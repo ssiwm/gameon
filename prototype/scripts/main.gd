@@ -1116,6 +1116,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				level.spawn_fire_patch(fp.global_position + Vector2(44.0 + 22.0 * float(i), -1.0), Weapons.HKM9, 1)
 	if result:
 		mission.elapsed = 214.0
+		mission.player_stats = {NoiseMgr.local_id(): {"name": "P1", "kills": 14, "downs": 1, "revived": 0},
+			2: {"name": "P2", "kills": 9, "downs": 0, "revived": 1}}          # przykładowa tabela graczy
 		mission._success()                 # podgląd karty wyniku
 	if workshop:
 		# podgląd panelu warsztatu: portfel, jedna kupiona broń i ulepszenia (tylko w pamięci; zapis wyłączony w trybie podglądu)

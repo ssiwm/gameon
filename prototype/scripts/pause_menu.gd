@@ -29,6 +29,7 @@ var _values := {}                    ## klucz → Label z bieżącą wartością
 var _prev_mouse := Input.MOUSE_MODE_VISIBLE
 var _open := false
 var _resume: Button
+var _card: PanelContainer
 var _title: Label
 var _leave: Button
 var _quit: Button
@@ -55,6 +56,7 @@ func _ready() -> void:
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 	var card := PanelContainer.new()
+	_card = card
 	card.custom_minimum_size = Vector2(CARD_W, 0)
 	var card_bg := UiTheme.panel_box()
 	card_bg.bg_color.a = 1.0                       # pełne krycie: napisy świata (tablice, ściana wyników) nie prześwitują przez opisy
@@ -432,6 +434,7 @@ func open() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_show_tab(_tab)
 	_resume.grab_focus()                            # pad / klawiatura: nawigacja fokusem od przycisku RESUME
+	UiTheme.fade_in(_card)
 	Audio.play("ui_click", Audio.BUS_UI, -10.0)
 
 func close() -> void:

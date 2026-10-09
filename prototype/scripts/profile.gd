@@ -123,6 +123,9 @@ func _is_local(player_id: int) -> bool:
 func server_award_kill(shooter_id: int, kind: String) -> void:
 	if not NoiseMgr.is_server() or not KILL_XP.has(kind) or _human_by_id(shooter_id) == null:
 		return
+	var ms: Variant = get_tree().current_scene.get("mission") if get_tree().current_scene != null else null
+	if ms != null and ms.has_method("note_kill"):
+		ms.note_kill(shooter_id)                                   # statystyka do ekranu wyniku (liczba zabójstw per gracz)
 	var amount := int(KILL_XP[kind])
 	if NightShift.active:
 		amount = maxi(1, amount / 2)
