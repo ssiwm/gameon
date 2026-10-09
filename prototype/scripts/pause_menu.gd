@@ -25,7 +25,9 @@ var _values := {}                    ## klucz → Label z bieżącą wartością
 var _prev_mouse := Input.MOUSE_MODE_VISIBLE
 var _open := false
 var _resume: Button
-var _controls_grid: GridContainer
+var _rebind_list: VBoxContainer
+var _rebind_msg: Label
+var _cap := {}                       ## trwające przypisywanie: id, dev, btn, text
 
 func _ready() -> void:
 	theme = UiTheme.get_theme()
@@ -186,47 +188,122 @@ func _small_button(text: String, action: Callable) -> Button:
 		Audio.play("ui_click", Audio.BUS_UI, -10.0))
 	return b
 
+## Zakładka CONTROLS: lista akcji z przyciskami klawisza i pada. Klik → „press a key…" → następny klawisz (Esc anuluje) trafia do
+## akcji; ten sam klawisz miała inna akcja? — zamieniają się miejscami. Zapis w settings.cfg, RESET przywraca domyślne.
 func _build_controls() -> void:
-	_controls_grid = GridContainer.new()
-	_controls_grid.columns = 4
-	_controls_grid.add_theme_constant_override("h_separation", 8)
-	_controls_grid.add_theme_constant_override("v_separation", 2)
-	_controls_page.add_child(_controls_grid)
-	_fill_controls()
-	InputSetup.device_changed.connect(func(_pad: bool) -> void: _fill_controls())
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, PAGE_H - 44.0)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_controls_page.add_child(scroll)
+	_rebind_list = VBoxContainer.new()
+	_rebind_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_rebind_list.add_theme_constant_override("separation", 2)
+	scroll.add_child(_rebind_list)
+	var foot := HBoxContainer.new()
+	_rebind_msg = UiTheme.label("Click a key, then press the new one  (Esc cancels)", 8, UiTheme.MUTED)
+	_rebind_msg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	foot.add_child(_rebind_msg)
+	var reset := Button.new()
+	_compact(reset)
+	reset.text = "RESET TO DEFAULTS"
+	reset.pressed.connect(func() -> void:
+		_cancel_capture()
+		Actions.reset_defaults()
+		_rebind_msg.text = "All controls reset to defaults."
+		Audio.play("ui_click", Audio.BUS_UI, -10.0))
+	foot.add_child(reset)
+	_controls_page.add_child(foot)
+	_fill_rebind()
+	Settings.bindings_changed.connect(_fill_rebind)
+	InputSetup.device_changed.connect(func(_pad: bool) -> void: _fill_rebind())
 
-func _fill_controls() -> void:
-	for c in _controls_grid.get_children():
-		_controls_grid.remove_child(c)
+func _fill_rebind() -> void:
+	_cap = {}
+	for c in _rebind_list.get_children():
+		_rebind_list.remove_child(c)
 		c.queue_free()
-	var rows: Array = Actions.sheet()
-	var half := (rows.size() + 1) / 2
-	for i in half:
-		_control(_controls_grid, rows[i])
-		if i + half < rows.size():
-			_control(_controls_grid, rows[i + half])
-		else:
-			_controls_grid.add_child(Control.new())
-			_controls_grid.add_child(Control.new())
+	var head := HBoxContainer.new()
+	var h0 := UiTheme.label("ACTION", 7, UiTheme.ACCENT.darkened(0.15))
+	h0.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(h0)
+	var h1 := UiTheme.label("KEYBOARD / MOUSE", 7, UiTheme.ACCENT.darkened(0.15), HORIZONTAL_ALIGNMENT_CENTER)
+	h1.custom_minimum_size = Vector2(118, 0)
+	head.add_child(h1)
+	var h2 := UiTheme.label("PAD", 7, UiTheme.ACCENT.darkened(0.15), HORIZONTAL_ALIGNMENT_CENTER)
+	h2.custom_minimum_size = Vector2(92, 0)
+	head.add_child(h2)
+	_rebind_list.add_child(head)
+	for id in Actions.rebindable():
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 3)
+		var l := UiTheme.label(Actions.label_of(id), 8, UiTheme.TEXT)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		row.add_child(_rebind_button(id, Actions.DEV_KEY, 118.0))
+		row.add_child(_rebind_button(id, Actions.DEV_PAD, 92.0))
+		_rebind_list.add_child(row)
 
-func _control(grid: GridContainer, row: Array) -> void:
-	var cap := StyleBoxFlat.new()
-	cap.bg_color = Color(0.13, 0.14, 0.18, 0.95)
-	cap.border_color = Color(1, 1, 1, 0.16)
-	cap.set_border_width_all(1)
-	cap.border_width_bottom = 2
-	cap.set_corner_radius_all(2)
-	cap.content_margin_left = 4
-	cap.content_margin_right = 4
-	cap.content_margin_top = 0
-	cap.content_margin_bottom = 1
-	var key := UiTheme.label(row[0], 7, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
-	key.add_theme_stylebox_override("normal", cap)
-	key.custom_minimum_size = Vector2(62, 0)
-	grid.add_child(key)
-	var desc := UiTheme.label(row[1], 8, UiTheme.MUTED)
-	desc.custom_minimum_size = Vector2(88, 0)
-	grid.add_child(desc)
+func _rebind_button(id: String, dev: int, w: float) -> Button:
+	var b := Button.new()
+	_compact(b)
+	b.custom_minimum_size = Vector2(w, 0)
+	b.clip_text = true
+	b.text = Actions.text(id, false, dev)
+	if dev == Actions.DEV_PAD and not Actions.pad_rebindable(id):
+		b.disabled = true                        # drążki ruchu i celowania mają stałe osie
+		b.tooltip_text = "Fixed"
+	else:
+		b.tooltip_text = "Click, then press the new %s" % ("key" if dev == Actions.DEV_KEY else "pad button")
+		b.pressed.connect(_start_capture.bind(id, dev, b))
+	return b
+
+func _start_capture(id: String, dev: int, b: Button) -> void:
+	_cancel_capture()
+	_cap = {"id": id, "dev": dev, "btn": b, "text": b.text}
+	b.text = "press a key…" if dev == Actions.DEV_KEY else "press a button…"
+	_rebind_msg.text = "%s: press the new %s  (Esc cancels)" % [Actions.label_of(id), "key" if dev == Actions.DEV_KEY else "pad button"]
+	Audio.play("ui_click", Audio.BUS_UI, -10.0)
+
+func _cancel_capture() -> void:
+	if not _cap.is_empty() and is_instance_valid(_cap["btn"]):
+		(_cap["btn"] as Button).text = String(_cap["text"])
+	_cap = {}
+
+## Zdarzenie dla trwającego przypisywania; true = zużyte.
+func _capture_event(event: InputEvent) -> bool:
+	if _cap.is_empty():
+		return false
+	var dev: int = _cap["dev"]
+	var is_key: bool = event is InputEventKey and event.pressed and not event.echo
+	if dev == Actions.DEV_KEY and is_key:
+		if (event as InputEventKey).physical_keycode == KEY_ESCAPE:
+			_cancel_capture()
+			_rebind_msg.text = "Cancelled."
+			return true
+		return _finish_capture(event)
+	if dev == Actions.DEV_PAD and (event is InputEventJoypadButton and event.pressed or event is InputEventJoypadMotion):
+		var res := Actions.binding_from_event(event, dev)
+		if not res.is_empty():
+			return _finish_capture(event)
+		return event is InputEventJoypadButton
+	if is_key and (event as InputEventKey).physical_keycode == KEY_ESCAPE:
+		_cancel_capture()                        # Esc anuluje też przypisywanie pada
+		_rebind_msg.text = "Cancelled."
+		return true
+	return false
+
+func _finish_capture(event: InputEvent) -> bool:
+	var id: String = _cap["id"]
+	var dev: int = _cap["dev"]
+	var res := Actions.set_binding(id, dev, event)
+	if bool(res["ok"]):
+		var sw := String(res["swapped"])
+		_rebind_msg.text = "%s → %s" % [Actions.label_of(id), Actions.text(id, true, dev)] + ("   (swapped with %s)" % Actions.label_of(sw) if sw != "" else "")
+		Audio.play("ui_confirm", Audio.BUS_UI, -8.0)
+	else:
+		_cancel_capture()
+		_rebind_msg.text = "That key cannot be used here."
+	return true
 
 ## Niższy przycisk (mniejsze marginesy pionowe) — wiersze ustawień nie rozpychają karty.
 func _compact(b: Button) -> void:
@@ -292,6 +369,7 @@ func close() -> void:
 	if not _open:
 		return
 	_open = false
+	_cancel_capture()
 	visible = false
 	get_tree().paused = false
 	Settings.block_game_input(false)
@@ -305,6 +383,9 @@ func _process(_delta: float) -> void:
 		_sub.text = "The game keeps running — your squad is still out there."
 
 func _input(event: InputEvent) -> void:
+	if _open and _capture_event(event):
+		get_viewport().set_input_as_handled()
+		return
 	if _open and event is InputEventJoypadButton:
 		# pad: B zamyka, LB / RB przełączają zakładki (D-pad / drążek i A działają przez fokus kontrolek)
 		if event.is_action_pressed("ui_cancel"):

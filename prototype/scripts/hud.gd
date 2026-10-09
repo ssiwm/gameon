@@ -813,9 +813,11 @@ func _build_controls() -> void:
 	_controls = UiTheme.label(Actions.hud_line(), 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_controls)
 	_f1 = UiTheme.label("%s  controls" % Actions.key("help"), 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
-	InputSetup.device_changed.connect(func(_pad: bool) -> void:        # klawiatura ↔ pad: podpowiedzi pokazują właściwe przyciski
+	var refresh_keys := func() -> void:        # klawiatura ↔ pad albo zmiana przypisań: podpowiedzi pokazują właściwe klawisze
 		_controls.text = Actions.hud_line()
-		_f1.text = "%s  controls" % Actions.key("help"))
+		_f1.text = "%s  controls" % Actions.key("help")
+	InputSetup.device_changed.connect(func(_pad: bool) -> void: refresh_keys.call())
+	Settings.bindings_changed.connect(refresh_keys)
 	add_child(_f1)
 
 ## Podpowiedź dla nowego gracza: wąska karta nad paskiem kontekstowym (hints.gd decyduje, co i kiedy).

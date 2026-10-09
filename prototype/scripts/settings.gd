@@ -7,6 +7,7 @@ extends Node
 ## wszystkie skrypty czytają je przez Input.is_action_*, więc jedno miejsce wystarcza (żeby klik w menu nie strzelał).
 
 signal changed
+signal bindings_changed             ## gracz przypisał / zresetował klawisze (ściągi i podpowiedzi się odświeżają)
 
 const SAVE_PATH := "user://settings.cfg"
 const STEP := 0.1
@@ -79,6 +80,11 @@ func cycle_weather_fx() -> void:
 func cycle_ui() -> void:
 	ui_idx = (ui_idx + 1) % UI_NAMES.size()
 	_commit()
+
+## Zapis po zmianie przypisań klawiszy (woła `Actions.set_binding` / `reset_defaults`).
+func save_bindings() -> void:
+	_save()
+	bindings_changed.emit()
 
 func toggle_hints() -> void:
 	hints_on = not hints_on
@@ -188,6 +194,7 @@ func _load() -> void:
 	graphics_hd = bool(cf.get_value("game", "graphics_hd", true))
 	char3d = bool(cf.get_value("game", "char3d", false))
 	seen_tips = Array(cf.get_value("game", "seen_tips", []))
+	Actions.load_from(cf)
 	shift_best_cleared = int(cf.get_value("shift", "best_cleared", 0))
 	shift_best_time = float(cf.get_value("shift", "best_time", 0.0))
 
@@ -204,6 +211,7 @@ func _save() -> void:
 	cf.set_value("game", "graphics_hd", graphics_hd)
 	cf.set_value("game", "char3d", char3d)
 	cf.set_value("game", "seen_tips", seen_tips)
+	Actions.save_to(cf)
 	cf.set_value("shift", "best_cleared", shift_best_cleared)
 	cf.set_value("shift", "best_time", shift_best_time)
 	cf.save(SAVE_PATH)
