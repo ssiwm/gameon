@@ -74,6 +74,8 @@ const N_DEATH := 20.0
 ## Sprite vein (tools/char_boss.py, klatka 128x80): wiersz 74 arkusza = y 0 w swiecie, paszcza w (64, 60).
 const SPRITE_DROP := 6.0              ## o tyle w dol przesuwamy klatke (korzenie leza tuz pod y 0)
 const MAW_POS := Vector2(0, -14)      ## srodek paszczy w swiecie (sprite); stary rysunek z kolek: (0, -8)
+## Sprite HD (vein_hd, widok z przodu, klatka 640×400 przy 5 px na px świata): paszcza w (64, 43–46) klatki, czyli ok. 36 px nad jej dołem → −36 + SPRITE_DROP.
+const MAW_POS_HD := Vector2(0, -30)
 ## Zyly na korpusie (jak VEINS w char_boss.py, po odjeciu (64, 74)): nakladka rysuje w nich zar.
 const VEINS := [
 	[Vector2(-6, -18), Vector2(-11, -24), Vector2(-17, -26), Vector2(-22, -31)],
@@ -131,6 +133,16 @@ func _ready() -> void:
 		for l in _spr:
 			if l != null:
 				l.position = Vector2(0, SPRITE_DROP)
+
+## Czy rysuje arkusz HD (widok z przodu, szczęki: zamknięte w uśpieniu / bezczynności / zapowiedzi, otwarte w oknie podatności i przy pluciu).
+func _is_hd() -> bool:
+	return not _spr.is_empty() and Sprites.enemy_sheet("vein").ends_with("_hd")
+
+## Punkt, w który celuje latarka / który podświetla nakładka: paszcza sprite'a (HD wyżej niż w klasycznym arkuszu).
+func _maw_point() -> Vector2:
+	if _spr.is_empty():
+		return Vector2(0, -8)
+	return MAW_POS_HD if _is_hd() else MAW_POS
 
 func is_threat() -> bool:
 	return state == State.AWAKE
@@ -243,7 +255,7 @@ func _tick_flashlight(delta: float) -> void:
 	if _light_check > 0.0 or _stun_cd > 0.0 or stunned or atk == Atk.NONE:
 		return
 	_light_check = 0.1
-	var lighter := Lights.flashlight_on(global_position + Vector2(0, -8), get_tree(), get_world_2d().direct_space_state)
+	var lighter := Lights.flashlight_on(global_position + (MAW_POS_HD if _is_hd() else Vector2(0, -8)), get_tree(), get_world_2d().direct_space_state)
 	if lighter == null:
 		return
 	_stun_cd = STUN_CD
@@ -768,14 +780,14 @@ func _draw_overlay(ov: Node2D) -> void:
 	# trzy żyły na sylwetce niezależnie od liczby gniazd: gasną proporcjonalnie
 	var veins := 3 if awake else ceili(3.0 * nests_left / _nest_count())
 	var vcol := Color(1.0, 0.35, 0.2, (0.45 + 0.5 * pulse) if awake else (0.25 + 0.25 * pulse))
-	var mp := MAW_POS if not _spr.is_empty() else Vector2(0, -8)
+	var mp := _maw_point()
 	if _spr.is_empty():
 		var pts := [Vector2(-14, -22), Vector2(4, -30), Vector2(18, -16)]
 		for i in 3:
 			var c := vcol if i < veins else Color(0.3, 0.1, 0.1, 0.3)
 			ov.draw_line(Vector2(0, -12), pts[i], c, 2.0)
 			ov.draw_circle(pts[i], 2.2, c)
-	else:
+	elif not _is_hd():                        # żyły z klasycznego arkusza; HD ma własną teksturę (żyły nie leżą w tych samych miejscach)
 		# zar plynie wzdluz wypuklych zyl korpusu; gasna proporcjonalnie do liczby zywych gniazd
 		for i in VEINS.size():
 			var c := vcol if i < veins else Color(0.3, 0.1, 0.1, 0.3)
