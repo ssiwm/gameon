@@ -7,6 +7,11 @@ extends Node2D
 ## zgłasza serwerowi tylko „trzymam / puściłem" (_work_rpc), a serwer sam sprawdza zasięg i życie.
 
 const Lights := preload("res://scripts/lights.gd")
+const Sprites := preload("res://scripts/sprites.gd")
+const ItemsHd := preload("res://scripts/items_hd.gd")
+const SmokeCloud := preload("res://scripts/smoke_cloud.gd")
+const Vfx := preload("res://scripts/vfx.gd")
+const HD_SCALE := 0.85               ## model generatora (35 px szeroki) pomniejszony do dawnych ~30 px
 
 signal started(gen: Node)
 
@@ -34,6 +39,7 @@ var _sent_progress := -1.0
 var _light: PointLight2D
 var _lamp: Node2D
 var _t := 0.0
+var _hd: Sprite2D                    ## grafika HD (Sprites.newitem): model generatora, drga, gdy pracuje
 
 func _ready() -> void:
 	add_to_group("generators")
@@ -42,6 +48,10 @@ func _ready() -> void:
 	_lamp.material = Lights.unshaded()
 	_lamp.draw.connect(_draw_lamp)
 	add_child(_lamp)
+	if Sprites.newitem and ItemsHd.has("generator"):
+		_hd = ItemsHd.make("generator", self, HD_SCALE)
+		_hd.position = Vector2(ItemsHd.cx("generator") * HD_SCALE, 0.0)
+		move_child(_lamp, get_child_count() - 1)              # lampka, dym i pasek postępu nad korpusem
 	_light = Lights.make_light(Lights.radial(), 6.0, Color(1.0, 0.78, 0.4), 0.0, false)
 	_light.position = Vector2(0, -12)
 	add_child(_light)
@@ -95,6 +105,12 @@ func _physics_process(delta: float) -> void:
 	_update_local()
 	_lamp.queue_redraw()
 	queue_redraw()
+	if _hd != null:
+		var base_x := ItemsHd.cx("generator") * HD_SCALE
+		if running:
+			_hd.position = Vector2(base_x + sin(_t * 53.0) * 0.22, sin(_t * 61.0) * 0.16)      # drgania pracującego silnika
+		else:
+			_hd.position = Vector2(base_x, 0.0)
 	if not NoiseMgr.is_server():
 		return
 	_validate_workers()
@@ -184,6 +200,8 @@ func _set_running(on: bool) -> void:
 # ---------------------------------------------------------------- rysowanie (stopy w (0, 0))
 
 func _draw() -> void:
+	if _hd != null:
+		return
 	var body := Color(0.24, 0.27, 0.25)
 	var dark := Color(0.12, 0.14, 0.13)
 	var rust := Color(0.42, 0.26, 0.16)
@@ -204,6 +222,9 @@ func _draw() -> void:
 
 ## Lampka i opary nad rurą — unshaded, widoczne w ciemności.
 func _draw_lamp() -> void:
+	if _hd != null:
+		_draw_lamp_hd()
+		return
 	var blink := 0.5 + 0.5 * sin(_t * (14.0 if progress > 0.0 and not running else 3.0))
 	var col := Color(0.35, 1.0, 0.45) if running else (Color(1.0, 0.7, 0.2, 0.5 + 0.5 * blink) if progress > 0.0 else Color(0.95, 0.22, 0.18, 0.55 + 0.45 * blink))
 	_lamp.draw_circle(Vector2(8, -14), 1.6, col)
@@ -212,3 +233,22 @@ func _draw_lamp() -> void:
 		for i in 3:
 			var f := fmod(_t * 0.9 + float(i) * 0.33, 1.0)
 			_lamp.draw_circle(Vector2(9.5 + sin(_t * 3.0 + i) * 1.5, -28 - f * 22.0), 1.4 + f * 2.2, Color(0.8, 0.85, 0.8, 0.18 * (1.0 - f)))
+
+## HD: lampka w oprawie na panelu (jądro + poświata), pasek postępu uruchamiania (zaokrąglony) i miękkie kłęby spalin z tłumika (tekstura dymu).
+func _draw_lamp_hd() -> void:
+	var blink := 0.5 + 0.5 * sin(_t * (14.0 if progress > 0.0 and not running else 3.0))
+	var col := Color(0.35, 1.0, 0.45) if running else (Color(1.0, 0.7, 0.2, 0.5 + 0.5 * blink) if progress > 0.0 else Color(0.95, 0.22, 0.18, 0.55 + 0.45 * blink))
+	var lp := Vector2(-4.0, -11.4) * HD_SCALE + Vector2(0.0, 0.0)
+	_lamp.draw_circle(lp, 1.0, col)
+	_lamp.draw_circle(lp, 2.3, Color(col, 0.28))
+	_lamp.draw_circle(lp, 4.4, Color(col, 0.1))
+	if progress > 0.0 and not running:
+		Vfx.draw_bar(_lamp, Rect2(-14.0, -34.0, 28.0, 3.0), progress, Color(0.05, 0.05, 0.07, 0.85), Color(1.0, 0.75, 0.3))
+	if running:
+		var tex := SmokeCloud.puff_texture()
+		var tip := Vector2(10.0, -26.5) * HD_SCALE
+		for i in 5:
+			var f := fposmod(_t * 0.7 + float(i) * 0.2, 1.0)
+			var sz := 2.2 + f * 6.0
+			var pos := tip + Vector2(sin(_t * 2.4 + float(i) * 1.7) * (1.0 + f * 3.0) + f * 3.0, -f * 22.0)
+			_lamp.draw_texture_rect(tex, Rect2(pos.x - sz, pos.y - sz, sz * 2.0, sz * 2.0), false, Color(0.55, 0.58, 0.58, 0.32 * (1.0 - f)))

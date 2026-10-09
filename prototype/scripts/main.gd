@@ -955,6 +955,14 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			NoiseMgr.level = 60.0
 	if "--shottoast" in OS.get_cmdline_user_args():
 		_toast("Steam overlay unavailable (start the game from Steam / add it as a non-Steam game). Lobby ID 109775240944 copied — send it to friends: paste + STEAM JOIN.", 20.0)      # --shottoast: podgląd komunikatu F2
+	if "--shotgen" in OS.get_cmdline_user_args():
+		var g0 := get_tree().get_first_node_in_group("generators")       # --shotgen[=1]: generator w połowie rozruchu (z =run: pracujący) — użyj z --shotat/--shotrow
+		if g0 != null:
+			if "--shotgenrun" in OS.get_cmdline_user_args():
+				g0.running = true
+			else:
+				g0.progress = 0.55
+			level.spawn_flare(g0.global_position + Vector2(-30.0, -50.0), Vector2.ZERO)
 	if "--shothandcar" in OS.get_cmdline_user_args():
 		var hc := get_tree().get_first_node_in_group("handcar")       # --shothandcar: drezyna zasilona i oświetlona flarą (podgląd HD; użyj z --shotat/--shotrow)
 		if hc != null:
