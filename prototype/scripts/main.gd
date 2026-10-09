@@ -355,6 +355,8 @@ func _handle_cmdline() -> void:
 			Sprites.newmon = true                                                                  # dev: wrogowie HD (<rodzaj>_hd)
 		if a == "--newitem":
 			Sprites.newitem = true                                                                 # dev: przedmioty i rekwizyty HD (art/items/)
+		if a == "--char3d":
+			Sprites.char3d = true                                                                  # dev (spike): postać 3D w czasie rzeczywistym zamiast arkuszy
 		if a == "--newgun":
 			Sprites.newgun = true                                                                  # dev: sprite HD broni (gunhd_*.png)
 		if a == "--newchar" or a.begins_with("--newchar="):

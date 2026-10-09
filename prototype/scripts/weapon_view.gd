@@ -197,6 +197,8 @@ func update(delta: float, tint: Color, facing: float, squash_y: float) -> void:
 	_fx.queue_redraw()
 
 func muzzle_local(d: WeaponDef) -> Vector2:
+	if player.c3d != null:
+		return player.c3d.muzzle_px           # broń 3D (spike): wylot z modelu, nie z przesunięcia sprite'a
 	var pos := _gun_pos()
 	return pos + player.aim_dir * d.gun_len
 
@@ -204,6 +206,12 @@ func _gun_pos() -> Vector2:
 	return Vector2(_facing * 1.0, -8.0 if player.crouching else -12.0) * Vector2(1, _sq)
 
 func _update_gun(d: WeaponDef) -> void:
+	if player.c3d != null:
+		if _gun != null:
+			_gun.visible = false
+		if _glow != null:
+			_glow.visible = false
+		return
 	if not _sheet_ok or _gun == null:
 		return
 	var swinging := _swing_t >= 0.0
