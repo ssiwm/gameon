@@ -50,6 +50,9 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
 - **HUD** (`hud.gd`): wskaźnik hałasu to analogowy VU-metr (strefy CALM / UNEASY / HUNTED z progów `NoiseMgr`); jeden komunikat naraz
   (ostrzeżenie o hałasie > nota > podpowiedź); karta celu i dane sesji przygasają po 4 s spokoju; ściemnienie HUD-u pod kartą wyniku
   i warsztatem; karta wyniku ma tabelę graczy (zabójstwa / upadki / podniesienia).
+- **Czcionki** (`art/fonts/`, licencje w `art/fonts/licenses/`): Big Shoulders Stencil Display (nagłówki), IBM Plex Sans Condensed
+  (opisy i ustawienia), IBM Plex Mono (liczby i przyrządy) — SIL OFL; Special Elite („szept”: ostrzeżenia, podpowiedzi) — Apache-2.0;
+  Silkscreen tylko w klasycznej grafice. Wczytuje je `ui_theme.gd`; bez plików wraca do czcionek systemowych.
 - **Napisy dźwięków** (`captions.gd`, ustawienie „Sound captions”): linie `← [Gunfire]` z kierunkiem do źródła i `(far)`, z tabeli
   `CAPTIONS` w `audio_manifest.gd` (priorytet 0 — kroki, łuski — pomijany).
 - **Lokalizacja** (`translations/ui.csv`, kolumny `keys` = tekst angielski i `pl`): statyczne napisy `Label` / `Button` tłumaczy silnik,

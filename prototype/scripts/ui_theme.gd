@@ -43,6 +43,10 @@ static func get_theme() -> Theme:
 		return _theme
 	var t := Theme.new()
 	t.default_font_size = 10
+	if hd_on():
+		var body := _file_font(FONT_BODY)                        # opisy i ustawienia: wąski, czytelny krój (polskie znaki w komplecie)
+		if body != null:
+			t.default_font = body
 
 	t.set_color("font_color", "Label", TEXT)
 	t.set_color("font_outline_color", "Label", Color(0, 0, 0, 0.9))
@@ -201,9 +205,25 @@ static var _heading_font: Font
 static var _mono_font: Font
 static var _whisper_font: Font
 
-## Role czcionek (UI_PLAN.md): nagłówki — wąski techniczny krój, liczby i etykiety przyrządów — monospace, „szept” (ostrzeżenia,
-## podpowiedzi, notatki) — maszyna do pisania. Czcionki systemowe z listą zastępczą (SystemFont wraca do domyślnej, gdy nic
-## nie znajdzie); dołączone kroje OFL (Big Shoulders, IBM Plex, Special Elite) można wstawić w art/fonts/ bez zmian w kodzie ekranów.
+## Role czcionek (UI_PLAN.md): nagłówki — Big Shoulders Stencil Display (OFL), opisy i ustawienia — IBM Plex Sans Condensed (OFL),
+## liczby i etykiety przyrządów — IBM Plex Mono (OFL), „szept” (ostrzeżenia, podpowiedzi, notatki) — Special Elite (Apache-2.0).
+## Pliki w art/fonts/ (licencje w art/fonts/licenses/). Gdy pliku brak, zostaje SystemFont z listą zastępczą (potem domyślna).
+const FONT_HEADING := "res://art/fonts/BigShouldersStencilDisplay-VF.ttf"
+const FONT_BODY := "res://art/fonts/IBMPlexSansCondensed-Regular.ttf"
+const FONT_BODY_BOLD := "res://art/fonts/IBMPlexSansCondensed-SemiBold.ttf"
+const FONT_MONO := "res://art/fonts/IBMPlexMono-Medium.ttf"
+const FONT_WHISPER := "res://art/fonts/SpecialElite-Regular.ttf"
+
+static func _file_font(path: String) -> FontFile:
+	if not ResourceLoader.exists(path):
+		return null
+	var ff := load(path) as FontFile
+	if ff != null:
+		ff.hinting = TextServer.HINTING_NONE                         # obraz jest skalowany (canvas_items) — hinting psuł odstępy liter
+		ff.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_ONE_HALF
+		ff.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
+	return ff
+
 static func _system(names: Array, weight := 400, spacing := 0) -> Font:
 	var sf := SystemFont.new()
 	sf.font_names = PackedStringArray(names)
@@ -220,10 +240,14 @@ static func _system(names: Array, weight := 400, spacing := 0) -> Font:
 
 static func mono_font() -> Font:
 	if _mono_font == null:
+		_mono_font = _file_font(FONT_MONO)
+	if _mono_font == null:
 		_mono_font = _system(["IBM Plex Mono", "Consolas", "Cascadia Mono", "Menlo", "DejaVu Sans Mono", "Courier New"], 500)
 	return _mono_font
 
 static func whisper_font() -> Font:
+	if _whisper_font == null:
+		_whisper_font = _file_font(FONT_WHISPER)
 	if _whisper_font == null:
 		_whisper_font = _system(["Special Elite", "American Typewriter", "Courier New", "Courier Prime", "DejaVu Sans Mono"], 400)
 	return _whisper_font
@@ -244,6 +268,14 @@ static func whisper(l: Label) -> Label:
 ## pikselowa Silkscreen (null, gdy pliku brak — wtedy zostaje czcionka motywu).
 static func heading_font() -> Font:
 	if hd_on():
+		if _heading_font == null:
+			var vf := _file_font(FONT_HEADING)               # zmienna czcionka: oś wagi ustawiona na 700
+			if vf != null:
+				var fv := FontVariation.new()
+				fv.base_font = vf
+				fv.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("weight"): 700}
+				fv.spacing_glyph = 1
+				_heading_font = fv
 		if _heading_font == null:
 			_heading_font = _system(["Big Shoulders Stencil Display", "Big Shoulders Display", "Bahnschrift SemiBold Condensed", "Bahnschrift Condensed", "Impact", "Arial Narrow"], 700, 1)
 		return _heading_font

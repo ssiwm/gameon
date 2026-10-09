@@ -4,7 +4,7 @@ Status: **większość planu zaimplementowana** (stan z 2026-10-10, PR #121–#1
 i w menu, przypisywanie klawiszy, menu główne osobno od lobby, ustawienia i wyjście przed grą, potwierdzenie wyjścia, suwaki, LEAVE SESSION,
 ustawienia obrazu bez restartu, „Reduce effects”, filtr widzenia barw, napisy dźwięków, paleta i role czcionek, VU-metr hałasu, poziomy
 HUD, jeden komunikat naraz, ściemnienie pod modalami, tabela graczy na karcie wyniku, podpowiedź w kryjówce, dźwięk najechania i krótkie
-przejścia, lokalizacja EN/PL. **Nie zrobione:** dołączone kroje OFL (wymaga pobrania plików; działają czcionki systemowe), jedna siatka
+przejścia, lokalizacja EN/PL. Dołączone kroje (Big Shoulders, IBM Plex ×3 — OFL; Special Elite — Apache-2.0, nie OFL jak zakładał plan) są w `art/fonts/`. **Nie zrobione:** jedna siatka
 ikon (praca graficzna), tłumaczenie opisów kodeksu / ulepszeń / perków, krótki samouczek jako osobna sekwencja (zastąpiony
 podpowiedziami), lobby z listą graczy i czatem, mono audio i kształty zamiast samych kolorów (GDD §14).
 
