@@ -230,8 +230,16 @@ func deposit(w: int, n: int) -> void:
 
 @rpc("any_peer", "call_remote", "reliable")
 func _deposit_rpc(w: int, n: int) -> void:
-	if NoiseMgr.is_server() and Weapons.is_valid(w):
-		add_reserve(w, clampi(n, 0, Weapons.def(w).mag))
+	if not NoiseMgr.is_server() or not Weapons.is_valid(w) or not _is_human_peer(multiplayer.get_remote_sender_id()):
+		return
+	add_reserve(w, clampi(n, 0, Weapons.def(w).mag))
+
+## Czy `peer_id` to żywy człowiek w tej sesji (serwer nie przyjmuje zwrotów naboi od obcych).
+func _is_human_peer(peer_id: int) -> bool:
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.player_id == peer_id and not p.is_bot and not p.dead:
+			return true
+	return false
 
 @rpc("any_peer", "call_remote", "reliable")
 func _req_rounds(w: int, want: int) -> void:

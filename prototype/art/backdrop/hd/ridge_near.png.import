@@ -3,19 +3,20 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bh63fuy5xj0qw"
-path="res://.godot/imported/ridge_near.png-8b5b2cdc9ba50e7de5805274a37fe479.ctex"
+path.s3tc="res://.godot/imported/ridge_near.png-8b5b2cdc9ba50e7de5805274a37fe479.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://art/backdrop/hd/ridge_near.png"
-dest_files=["res://.godot/imported/ridge_near.png-8b5b2cdc9ba50e7de5805274a37fe479.ctex"]
+dest_files=["res://.godot/imported/ridge_near.png-8b5b2cdc9ba50e7de5805274a37fe479.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

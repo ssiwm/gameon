@@ -2,6 +2,7 @@
 _hd_glow.png (świecące oczy: nasycone żółte/pomarańczowe piksele albedo) + wpis w art/sprites.json (skala wynika z rozmiaru starej klatki; gęstość: 8 px na piksel świata wrogowie, 5–6 bossowie).
 Uruchomienie (Pillow + numpy): python prototype/tools/pack_monsters_hd.py FRAMES_DIR KIND CAM [--gain=0.55]
     --anims=nazwa:klatki:fps:pętla,… zastępuje układ animacji ze starego arkusza (HD ma więcej klatek niż klasyczny)
+    Warstwa _glow.png powstaje tylko, gdy ma co najmniej GLOW_MIN_PX świecących pikseli (inaczej plik jest usuwany, a manifest ma glow=false).
     --gain mnoży albedo (np. 0,55 dla czarnego jak cień Stalkera); maska świecenia liczona z oryginału
     CAM jak w bake (−Y → normalne (Nx, Nz, −Ny); +X → (Ny, Nz, Nx)). Układ i fps animacji bierzemy ze starego arkusza KIND w manifeście.
 """
@@ -15,6 +16,7 @@ from PIL import Image, ImageFilter
 
 ART = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "art")
 OUTLINE = (18, 12, 20)
+GLOW_MIN_PX = 100          # poniżej tylu świecących pikseli arkusz nie dostaje warstwy glow (zob. manifest: glow=false)
 
 
 def glow_mask(rgb, alpha):
@@ -87,11 +89,19 @@ def main():
     name = kind + "_hd"
     sheet.save(os.path.join(ART, "sprites", name + ".png"))
     nsheet.save(os.path.join(ART, "sprites", name + "_n.png"))
-    gsheet.save(os.path.join(ART, "sprites", name + "_glow.png"))
+    lit = int((np.asarray(gsheet)[..., 3] > 40).sum())
+    gpath_out = os.path.join(ART, "sprites", name + "_glow.png")
+    has_glow = lit >= GLOW_MIN_PX
+    if has_glow:
+        gsheet.save(gpath_out)
+    elif os.path.exists(gpath_out):                    # pusta warstwa świecenia to ~10–30 MB nieskompresowanej tekstury i dodatkowy sprite na każdego wroga
+        os.remove(gpath_out)
+        if os.path.exists(gpath_out + ".import"):
+            os.remove(gpath_out + ".import")
     scale = round(old["frame"][0] * old["scale"] / fw, 5)          # świat: ta sama szerokość klatki w pikselach świata co stary arkusz
-    manifest["sheets"][name] = {"frame": [fw, fh], "glow": True, "anims": info, "scale": scale, "hd": True, "normal": True}
+    manifest["sheets"][name] = {"frame": [fw, fh], "glow": has_glow, "anims": info, "scale": scale, "hd": True, "normal": True}
     json.dump(manifest, open(mpath, "w"), indent=1)
-    print("OK", name, sheet.size, "glow px:", int((np.asarray(gsheet)[..., 3] > 40).sum()))
+    print("OK", name, sheet.size, "glow px:", lit, "" if has_glow else "(< %d: bez warstwy glow)" % GLOW_MIN_PX)
 
 
 main()
