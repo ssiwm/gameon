@@ -527,6 +527,7 @@ func _t_throwables() -> void:
 	check("reset przywraca zestaw wydawany (frag %d, phos %d)" % [Arsenal.get_throwable("frag"), Arsenal.get_throwable("phos")], Arsenal.get_throwable("frag") == 1 and Arsenal.get_throwable("phos") == 0 and Arsenal.get_throwable("medkit") == 1)
 	_t_item_key()
 	_t_actions()
+	await _t_pad_aim()
 	give_gear()
 	await _t_gear()
 	await _t_economy()
@@ -570,10 +571,41 @@ func _t_actions() -> void:
 	ev_e.physical_keycode = KEY_E
 	var ev_pad := InputEventJoypadButton.new()
 	ev_pad.button_index = JOY_BUTTON_A
-	check("akcje menu (warsztat): A → lewo, E → wróć, przycisk A pada → zatwierdź, nie są wycinane przy menu (%s / %s)" % [Actions.text("menu_accept", true), Actions.text("menu_accept", true, true)],
-		InputMap.event_is_action(ev_a, "menu_left") and InputMap.event_is_action(ev_e, "menu_back") and InputMap.event_is_action(ev_pad, "menu_accept") 		and not blockable.has("menu_accept") and Actions.text("menu_accept", true) == "Enter" and Actions.text("menu_accept", true, true) == "A")
+	check("akcje menu (warsztat): A → lewo, E → wróć, przycisk A pada → zatwierdź, nie są wycinane przy menu (%s / %s)" % [Actions.text("menu_accept", true), Actions.text("menu_accept", true, Actions.DEV_PAD)],
+		InputMap.event_is_action(ev_a, "menu_left") and InputMap.event_is_action(ev_e, "menu_back") and InputMap.event_is_action(ev_pad, "menu_accept") 		and not blockable.has("menu_accept") and Actions.text("menu_accept", true) == "Enter" and Actions.text("menu_accept", true, Actions.DEV_PAD) == "A")
 	check("podpowiedzi: {interact} → E, {restart} → ENTER, {move} → WASD (%s %s %s)" % [Actions.key("interact"), Actions.key("restart"), Actions.fmt("{move}")],
 		Actions.key("interact") == "E" and Actions.key("restart") == "ENTER" and Actions.fmt("{move}") == "WASD" and not Actions.fmt("{overcharge}{throw_next}").contains("{"))
+
+## Pad: drążki i spust to wiązania akcji, a prawa gałka daje swobodne (nie 8-kierunkowe) celowanie; podpowiedzi przełączają się na pad.
+func _t_pad_aim() -> void:
+	const Actions := preload("res://scripts/actions.gd")
+	var stick_l := InputEventJoypadMotion.new()
+	stick_l.axis = JOY_AXIS_LEFT_X
+	stick_l.axis_value = -1.0
+	var trig := InputEventJoypadMotion.new()
+	trig.axis = JOY_AXIS_TRIGGER_RIGHT
+	trig.axis_value = 1.0
+	var bt_a := InputEventJoypadButton.new()
+	bt_a.button_index = JOY_BUTTON_A
+	check("pad: lewy drążek ← = ruch w lewo, RT = ogień, A = skok",
+		InputMap.event_is_action(stick_l, "move_left") and InputMap.event_is_action(trig, "fire") and InputMap.event_is_action(bt_a, "jump"))
+	Input.action_press("aim_up", 1.0)
+	Input.action_press("aim_right", 0.6)
+	await wait(0.3)
+	var d: Vector2 = player.aim_dir
+	Input.action_release("aim_up")
+	Input.action_release("aim_right")
+	check("pad: prawa gałka celuje swobodnie, nie po 8 kierunkach (%s)" % str(d.snapped(Vector2(0.01, 0.01))),
+		absf(d.length() - 1.0) < 0.05 and absf(d.x - 0.51) < 0.08 and absf(d.y + 0.86) < 0.08)
+	Actions.pad_mode = true
+	var pad_rows := {}
+	for r in Actions.sheet():
+		pad_rows[String(r[1])] = String(r[0])
+	var pad_fire: String = Actions.key("fire")
+	var pad_move: String = Actions.fmt("{move}")
+	Actions.pad_mode = false
+	check("pad: tryb pada pokazuje przyciski w ściądze i podpowiedziach (%s | %s | %s | %s)" % [pad_rows.get("Move & aim"), pad_rows.get("Jump (hold = higher)"), pad_fire, pad_move],
+		pad_rows.get("Move & aim") == "L-Stick / R-Stick" and pad_rows.get("Jump (hold = higher)") == "A" and pad_fire == "RT" and pad_move == "L-STICK")
 
 ## Faza A2: dym, mina, ładunek wyburzeniowy, apteczka, defibrylator, skaner.
 func _t_gear() -> void:

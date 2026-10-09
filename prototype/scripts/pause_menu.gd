@@ -24,6 +24,8 @@ var _sub: Label
 var _values := {}                    ## klucz → Label z bieżącą wartością
 var _prev_mouse := Input.MOUSE_MODE_VISIBLE
 var _open := false
+var _resume: Button
+var _controls_grid: GridContainer
 
 func _ready() -> void:
 	theme = UiTheme.get_theme()
@@ -64,7 +66,6 @@ func _ready() -> void:
 		_compact(tb)
 		tb.text = TABS[i]
 		tb.toggle_mode = true
-		tb.focus_mode = Control.FOCUS_NONE
 		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tb.pressed.connect(_show_tab.bind(i))
 		tabs.add_child(tb)
@@ -97,6 +98,7 @@ func _ready() -> void:
 	box.add_child(_rule())
 	var btns := HBoxContainer.new()
 	var resume := Button.new()
+	_resume = resume
 	resume.text = "RESUME"
 	resume.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	resume.pressed.connect(close)
@@ -185,20 +187,27 @@ func _small_button(text: String, action: Callable) -> Button:
 	return b
 
 func _build_controls() -> void:
-	var grid := GridContainer.new()
-	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", 8)
-	grid.add_theme_constant_override("v_separation", 2)
+	_controls_grid = GridContainer.new()
+	_controls_grid.columns = 4
+	_controls_grid.add_theme_constant_override("h_separation", 8)
+	_controls_grid.add_theme_constant_override("v_separation", 2)
+	_controls_page.add_child(_controls_grid)
+	_fill_controls()
+	InputSetup.device_changed.connect(func(_pad: bool) -> void: _fill_controls())
+
+func _fill_controls() -> void:
+	for c in _controls_grid.get_children():
+		_controls_grid.remove_child(c)
+		c.queue_free()
 	var rows: Array = Actions.sheet()
 	var half := (rows.size() + 1) / 2
 	for i in half:
-		_control(grid, rows[i])
+		_control(_controls_grid, rows[i])
 		if i + half < rows.size():
-			_control(grid, rows[i + half])
+			_control(_controls_grid, rows[i + half])
 		else:
-			grid.add_child(Control.new())
-			grid.add_child(Control.new())
-	_controls_page.add_child(grid)
+			_controls_grid.add_child(Control.new())
+			_controls_grid.add_child(Control.new())
 
 func _control(grid: GridContainer, row: Array) -> void:
 	var cap := StyleBoxFlat.new()
@@ -276,6 +285,7 @@ func open() -> void:
 	_prev_mouse = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_show_tab(_tab)
+	_resume.grab_focus()                            # pad / klawiatura: nawigacja fokusem od przycisku RESUME
 	Audio.play("ui_click", Audio.BUS_UI, -10.0)
 
 func close() -> void:
@@ -295,6 +305,18 @@ func _process(_delta: float) -> void:
 		_sub.text = "The game keeps running — your squad is still out there."
 
 func _input(event: InputEvent) -> void:
+	if _open and event is InputEventJoypadButton:
+		# pad: B zamyka, LB / RB przełączają zakładki (D-pad / drążek i A działają przez fokus kontrolek)
+		if event.is_action_pressed("ui_cancel"):
+			close()
+			get_viewport().set_input_as_handled()
+			return
+		var dir := 1 if event.is_action_pressed("menu_tab") else (-1 if event.is_action_pressed("menu_tab_prev") else 0)
+		if dir != 0:
+			_show_tab((_tab + dir + TABS.size()) % TABS.size())
+			Audio.play("ui_click", Audio.BUS_UI, -10.0)
+			get_viewport().set_input_as_handled()
+			return
 	if not event.is_action_pressed("pause"):
 		return
 	var ws := get_tree().get_first_node_in_group("workshop_ui")

@@ -626,8 +626,13 @@ func _local_brain(delta: float) -> void:
 	var aim_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	crouching = Input.is_action_pressed("crouch") and is_on_floor()
 
-	if aim_input != Vector2.ZERO:
-		# klawiatura/pad: 8 kierunków (klasyka Contry)
+	var stick := Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
+	if stick != Vector2.ZERO:
+		# prawa gałka pada: swobodne celowanie 360° (celownik na kierunku, nie na kursorze)
+		aim_dir = stick.normalized()
+		aim_by_mouse = false
+	elif aim_input != Vector2.ZERO:
+		# klawiatura / lewa gałka: 8 kierunków (klasyka Contry)
 		aim_dir = _snap8(aim_input)
 		aim_by_mouse = false
 	elif Input.get_last_mouse_velocity().length() > 20.0:

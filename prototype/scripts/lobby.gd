@@ -165,6 +165,14 @@ func _build_controls(box: VBoxContainer) -> void:
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 2)
+	box.add_child(grid)
+	_fill_controls(grid)
+	InputSetup.device_changed.connect(func(_pad: bool) -> void: _fill_controls(grid))
+
+func _fill_controls(grid: GridContainer) -> void:
+	for c in grid.get_children():
+		grid.remove_child(c)
+		c.queue_free()
 	var rows: Array = Actions.sheet()
 	var half := (rows.size() + 1) / 2
 	for i in half:
@@ -174,7 +182,6 @@ func _build_controls(box: VBoxContainer) -> void:
 		else:
 			grid.add_child(Control.new())
 			grid.add_child(Control.new())
-	box.add_child(grid)
 
 ## Tytuł lekko „migocze" — rzadkie, krótkie zaniki jak przy słabym kontakcie (klimat, nie szum).
 func _process(delta: float) -> void:

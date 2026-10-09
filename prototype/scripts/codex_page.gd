@@ -42,7 +42,7 @@ func setup(entries: Array) -> void:
 		b.text = entries[i]["title"]
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.toggle_mode = true
-		b.focus_mode = Control.FOCUS_NONE
+		b.focus_entered.connect(select.bind(i))      # nawigacja fokusem (pad / klawiatura) od razu pokazuje wpis
 		b.add_theme_font_size_override("font_size", 8)
 		b.custom_minimum_size = Vector2(0, THUMB_H + 2.0)
 		for state in ["normal", "hover", "pressed", "disabled"]:
