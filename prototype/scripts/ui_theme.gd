@@ -10,6 +10,16 @@ const OK := Color(0.541, 0.659, 0.475)         ## #8AA879 mech
 const CALM := Color(0.435, 0.639, 0.608)       ## #6FA39B mgła (spokój)
 const TEXT := Color(0.851, 0.831, 0.765)       ## #D9D4C3 kość
 const MUTED := Color(0.553, 0.541, 0.486)      ## #8D8A7C przygaszony
+## Deck (System.dc.html): tło sceny, panel, linie, kość przygaszona, ciepła biel tytułów, ramki krwi i lampy.
+const GROUND := Color("050605")
+const DECK_BG := Color("0b0c0b")
+const HAIR := Color("23221d")
+const LINE := Color("2b2a25")
+const LINE2 := Color("3d3a30")
+const BONE_DIM := Color("9c9988")
+const WARM := Color("e8e2c4")
+const BLOOD_LINE := Color("6e1410")
+const LAMP_LINE := Color("4a3414")
 const PANEL_BG := Color(0.043, 0.047, 0.043, 0.9)        ## #0B0C0B „deck” — panele należą do świata, nie do arkusza kalkulacyjnego
 const PANEL_EDGE := Color(0.33, 0.31, 0.25, 0.9)         ## przygaszona kość (dawniej mosiądz)
 const PANEL_EDGE_LOW := Color(0.22, 0.20, 0.16, 1.0)     ## dolna, grubsza krawędź (fałd materiału)
@@ -98,17 +108,17 @@ static func get_theme() -> Theme:
 	t.set_font_size("font_size", "LineEdit", 11)
 
 	# suwak (głośność): ciemny tor, bursztynowe wypełnienie i prostokątny uchwyt
-	var track := _box(Color(0.03, 0.035, 0.05, 0.95), Color(1, 1, 1, 0.14))
+	var track := _box(Color("1f1e19"), Color("1f1e19"))
 	track.content_margin_top = 3
 	track.content_margin_bottom = 3
-	var fill := _box(Color(ACCENT, 0.55), ACCENT.darkened(0.25))
+	var fill := _box(TEXT, TEXT)
 	fill.content_margin_top = 3
 	fill.content_margin_bottom = 3
 	t.set_stylebox("slider", "HSlider", track)
 	t.set_stylebox("grabber_area", "HSlider", fill)
 	t.set_stylebox("grabber_area_highlight", "HSlider", fill)
 	t.set_icon("grabber", "HSlider", _grabber_icon(TEXT))
-	t.set_icon("grabber_highlight", "HSlider", _grabber_icon(ACCENT))
+	t.set_icon("grabber_highlight", "HSlider", _grabber_icon(Color("f1ecdc")))
 	t.set_icon("grabber_disabled", "HSlider", _grabber_icon(MUTED.darkened(0.4)))
 
 	t.set_constant("separation", "VBoxContainer", 6)
@@ -131,15 +141,13 @@ static func _grabber_icon(col: Color) -> ImageTexture:
 	img.fill_rect(Rect2i(1, 1, 4, 10), col)
 	return ImageTexture.create_from_image(img)
 
+## Panel „deck": niemal czarny, 1 px linia #2B2A25, kwadratowe rogi, bez cienia i bez grubszej krawędzi (makieta HUD).
 static func panel_box() -> StyleBoxFlat:
-	var b := _box(PANEL_BG, PANEL_EDGE)
-	b.set_corner_radius_all(3 if hd_on() else 0)
-	if hd_on():
-		b.shadow_size = 7
-		b.shadow_color = Color(0, 0, 0, 0.45)
-		b.shadow_offset = Vector2(0, 2)
-	b.border_width_bottom = 2                       # twarda krawędź, jak w pixel arcie świata; bez zaokrągleń i cieni
-	b.border_color = PANEL_EDGE
+	var b := StyleBoxFlat.new()
+	b.bg_color = Color(6.0 / 255.0, 7.0 / 255.0, 6.0 / 255.0, 0.78)
+	b.border_color = LINE
+	b.set_border_width_all(1)
+	b.set_corner_radius_all(0)
 	b.content_margin_left = 8
 	b.content_margin_right = 8
 	b.content_margin_top = 6
@@ -263,6 +271,26 @@ static func whisper(l: Label) -> Label:
 	if hd_on():
 		l.add_theme_font_override("font", whisper_font())
 	return l
+
+static var _display_cache := {}
+
+## Stencil (Big Shoulders Stencil Display) o podanej wadze 700..900 — tytuły, pozycje menu, przyciski. Bez pliku: SystemFont.
+static func display_font(weight := 700, spacing := 0) -> Font:
+	var key := weight * 100 + spacing
+	if _display_cache.has(key):
+		return _display_cache[key]
+	var f: Font = null
+	var vf := _file_font(FONT_HEADING)
+	if vf != null:
+		var fv := FontVariation.new()
+		fv.base_font = vf
+		fv.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("weight"): weight}
+		fv.spacing_glyph = spacing            # rozstrzelenie w tym samym FontVariation — zagnieżdżone gubi oś wagi
+		f = fv
+	else:
+		f = _system(["Big Shoulders Stencil Display", "Bahnschrift SemiBold Condensed", "Bahnschrift Condensed", "Impact", "Arial Narrow"], weight, spacing)
+	_display_cache[key] = f
+	return f
 
 ## Czcionka nagłówków: HD — wąski techniczny krój (Big Shoulders / Bahnschrift Condensed / Impact…), klasyczna grafika —
 ## pikselowa Silkscreen (null, gdy pliku brak — wtedy zostaje czcionka motywu).
