@@ -21,6 +21,7 @@ var _t := 0.0
 ## Tekstury wczytujemy w show_spec (poza `_draw`) — pierwsze wczytanie w trakcie rysowania daje białe prostokąty.
 var _tex: Texture2D
 var _tex_glow: Texture2D
+var _pending_sheet := false                   ## arkusz czeka na wczytanie do chwili, gdy portret jest widoczny (menu zbudowane przy starcie nie trzyma kopii wszystkich potworów w pamięci wideo)
 var _gun_info := {}
 
 func _init() -> void:
@@ -35,16 +36,15 @@ func show_spec(s: Dictionary, col: Color) -> void:
 	_tex = null
 	_tex_glow = null
 	_sheet = ""
+	_pending_sheet = false
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	match s.get("type", ""):
 		"sprite":
 			_sheet = Sprites.enemy_sheet(String(s["sheet"])) if String(s["sheet"]) != "" else ""
-			if Sprites.has(_sheet):
-				_load_sheet(_sheet)
+			_pending_sheet = Sprites.has(_sheet)
 		"leech":
 			_sheet = Sprites.enemy_sheet("leech")
-			if Sprites.has(_sheet):                          # wynurzoną Pijawkę rysuje arkusz; bez niego zostaje rysunek z kodu
-				_load_sheet(_sheet)
+			_pending_sheet = Sprites.has(_sheet)             # wynurzoną Pijawkę rysuje arkusz; bez niego zostaje rysunek z kodu
 		"gun":
 			_gun_info = GunIcon.sheet_info()
 			if UiTheme.hd_on() and Sprites.newgun:
@@ -107,6 +107,10 @@ func _load_sheet(sheet: String) -> void:
 func _process(delta: float) -> void:
 	if not is_visible_in_tree():
 		return
+	if _pending_sheet:                              # wczytanie poza _draw (pierwsze wczytanie w trakcie rysowania daje białe prostokąty)
+		_pending_sheet = false
+		_load_sheet(_sheet)
+		queue_redraw()
 	var t: String = spec.get("type", "")
 	if t == "sprite" or t == "vein" or t == "leech" or t == "item" or t == "perk":
 		_t += delta

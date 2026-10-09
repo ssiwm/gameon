@@ -1312,10 +1312,20 @@ func request_drop(w: int, pos: Vector2) -> void:
 	else:
 		spawn_item("weapon", w, pos)
 
+const DROP_MAX_DIST := 64.0          ## broń porzucona przez klienta musi wylądować tuż przy jego postaci
+
 @rpc("any_peer", "call_remote", "reliable")
 func _drop_rpc(w: int, pos: Vector2) -> void:
-	if NoiseMgr.is_server() and Weapons.is_valid(w):
-		spawn_item("weapon", w, pos)
+	if not NoiseMgr.is_server() or not Weapons.is_valid(w):
+		return
+	var pl: Node2D = null
+	var sender := multiplayer.get_remote_sender_id()
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.player_id == sender and not p.is_bot:
+			pl = p
+	if pl == null or pl.dead or pos.distance_to(pl.global_position) > DROP_MAX_DIST:
+		return                                                    # nie wstawimy broni w dowolne miejsce mapy (czy gracz ją miał, serwer nie wie — zostaje tylko ta luka)
+	spawn_item("weapon", w, pos)
 
 ## Plama krwi na powierzchni (vfx.splat). Lokalna, kosmetyczna.
 func add_decal(pos: Vector2, radius: float) -> void:

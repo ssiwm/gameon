@@ -1585,10 +1585,14 @@ func deliver_ff(from_pos: Vector2) -> void:
 	else:
 		apply_ff.rpc_id(get_multiplayer_authority(), from_pos)
 
+## Wywołanie RPC przyszło od serwera albo lokalnie (nadawca 0)? Obrażenia, odrzut i chwyt zleca tylko serwer — klient nie może ich wysłać cudzej postaci.
+func _from_server() -> bool:
+	return not NoiseMgr.has_network() or multiplayer.get_remote_sender_id() in [0, 1]
+
 ## Trafienie przez kolegę: odrzut, błysk i krzyk = HAŁAS (Uwaga), zero HP.
 @rpc("any_peer", "call_remote", "reliable")
 func apply_ff(from_pos: Vector2) -> void:
-	if not is_multiplayer_authority() or dead:
+	if not is_multiplayer_authority() or dead or not _from_server():
 		return
 	_kick = signf(global_position.x - from_pos.x) * FF_KICK
 	_flash = maxf(_flash, 0.12)
@@ -1627,7 +1631,7 @@ func deliver_hit(amount: int, from_pos: Vector2) -> void:
 
 @rpc("any_peer", "call_remote", "reliable")
 func apply_hit(amount: int, _from_pos: Vector2) -> void:
-	if not is_multiplayer_authority() or dead or _invuln > 0.0:
+	if not is_multiplayer_authority() or dead or _invuln > 0.0 or not _from_server() or amount <= 0:
 		return
 	hp -= amount
 	_invuln = INVULN_AFTER_HIT
@@ -1652,7 +1656,7 @@ func deliver_grab(on: bool, pos: Vector2) -> void:
 
 @rpc("any_peer", "call_remote", "reliable")
 func apply_grab(on: bool, pos: Vector2) -> void:
-	if not is_multiplayer_authority():
+	if not is_multiplayer_authority() or not _from_server():
 		return
 	grabbed = on and not dead
 	grab_pos = pos

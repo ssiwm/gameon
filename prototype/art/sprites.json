@@ -1057,7 +1057,7 @@
     352,
     352
    ],
-   "glow": true,
+   "glow": false,
    "anims": {
     "idle": {
      "row": 0,
@@ -1129,7 +1129,7 @@
     208,
     256
    ],
-   "glow": true,
+   "glow": false,
    "anims": {
     "idle": {
      "row": 0,
@@ -1165,7 +1165,7 @@
     208,
     208
    ],
-   "glow": true,
+   "glow": false,
    "anims": {
     "idle": {
      "row": 0,
@@ -1201,7 +1201,7 @@
     208,
     320
    ],
-   "glow": true,
+   "glow": false,
    "anims": {
     "idle": {
      "row": 0,
@@ -1231,7 +1231,7 @@
     256,
     480
    ],
-   "glow": true,
+   "glow": false,
    "anims": {
     "idle": {
      "row": 0,
@@ -1261,7 +1261,7 @@
     320,
     272
    ],
-   "glow": true,
+   "glow": false,
    "anims": {
     "pulse": {
      "row": 0,
@@ -1279,7 +1279,7 @@
     208,
     160
    ],
-   "glow": true,
+   "glow": false,
    "anims": {
     "idle": {
      "row": 0,
@@ -1303,7 +1303,7 @@
     640,
     400
    ],
-   "glow": true,
+   "glow": false,
    "anims": {
     "dormant": {
      "row": 0,
@@ -1345,7 +1345,7 @@
     384,
     320
    ],
-   "glow": true,
+   "glow": false,
    "anims": {
     "idle": {
      "row": 0,
