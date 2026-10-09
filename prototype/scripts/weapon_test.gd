@@ -1212,7 +1212,19 @@ func _t_sweep() -> void:
 	free_dummies()
 	await frames(2)
 
+## Czeka, aż gracz stoi (na podłodze, bez prędkości i odrzutu) — poprzednie testy (broń z odrzutem) mogą go jeszcze przesuwać,
+## a testy liczone względem pozycji gracza (manekiny co 40 px) są wtedy zależne od tempa klatek maszyny.
+func _settle_player() -> void:
+	for i in 120:
+		if player.is_on_floor() and player.velocity.length() < 2.0 and absf(float(player.get("_kick"))) < 1.0:
+			break
+		await frames(1)
+	player.velocity = Vector2.ZERO
+	player.aim_dir = Vector2.RIGHT
+	await frames(2)
+
 func _t_pierce_beam_rail() -> void:
+	await _settle_player()
 	var targets: Array = []
 	for i in 4:
 		targets.append(await dummy(40.0 + 40.0 * i, 100000.0, "trzosek", 0.0))
@@ -1226,7 +1238,11 @@ func _t_pierce_beam_rail() -> void:
 	for t in targets:
 		if dealt(t) > 0.0:
 			hit_count += 1
-	check("LR-7: promień przebija 2 cele (pierce 1), trzeci nietknięty", hit_count == 2 and dealt(targets[2]) == 0.0, "trafionych %d" % hit_count)
+	var detail: Array = []
+	for t in targets:
+		detail.append("x%.0f:%.0f" % [t.global_position.x, dealt(t)])
+	check("LR-7: promień przebija 2 cele (pierce 1), trzeci nietknięty", hit_count == 2 and dealt(targets[2]) == 0.0,
+		"trafionych %d; gracz x=%.0f aim=%s; cele (x:obrażenia) %s" % [hit_count, player.global_position.x, str(player.aim_dir.snapped(Vector2(0.01, 0.01))), ", ".join(detail)])
 	check("LR-7: bateria spada o tyknięcia", wc.mag_of(d.id) < mag0 and mag0 - wc.mag_of(d.id) <= 8, "zużyto %d" % (mag0 - wc.mag_of(d.id)))
 	check("LR-7: zimna wiązka cicha (szum/tyk ≤ 0,3), rozgrzana głośniejsza (%.2f → %.2f)" % [d.noise(0.0), d.n_max], d.noise(0.0) <= 0.3 and d.n_max >= 0.7)
 	for t in targets:

@@ -32,6 +32,7 @@ var _resume: Button
 var _card: PanelContainer
 var _title: Label
 var _leave: Button
+var _copy_id: Button
 var _quit: Button
 var _quit_t := 0.0                   ## >0: QUIT czeka na potwierdzenie
 var _sliders := {}                   ## rodzaj głośności → HSlider
@@ -122,6 +123,17 @@ func _ready() -> void:
 	resume.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	resume.pressed.connect(close)
 	btns.add_child(resume)
+	_copy_id = Button.new()
+	_copy_id.text = "COPY LOBBY ID"
+	_copy_id.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_copy_id.tooltip_text = "Copies the Steam lobby ID to the clipboard — send it to friends (they paste it and press STEAM JOIN)"
+	_copy_id.pressed.connect(func() -> void:
+		var sn := _steam_net()
+		if sn != null and int(sn.get("lobby_id")) != 0:
+			DisplayServer.clipboard_set(str(int(sn.get("lobby_id"))))
+			_sub.text = tr("Lobby ID copied: %s") % str(int(sn.get("lobby_id")))
+			Audio.play("ui_confirm", Audio.BUS_UI, -8.0))
+	btns.add_child(_copy_id)
 	_leave = Button.new()
 	_leave.text = "LEAVE SESSION"
 	_leave.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -398,6 +410,11 @@ func _show_tab(i: int) -> void:
 		_pages[j].visible = j == i
 		_tab_buttons[j].set_pressed_no_signal(j == i)
 
+## Węzeł Steam (main.gd tworzy go jako „SteamNet”) — null, gdy brak sceny gry.
+func _steam_net() -> Node:
+	var cs := get_tree().current_scene
+	return cs.get_node_or_null("SteamNet") if cs != null else null
+
 ## Menu główne / lobby: otwiera menu w trybie ustawień (bez sesji).
 func open_settings() -> void:
 	_tab = 0
@@ -428,6 +445,8 @@ func open() -> void:
 		_sub.text = "Changes are saved automatically."
 	_resume.text = "RESUME" if online else "BACK"
 	_leave.visible = online
+	var sn := _steam_net()
+	_copy_id.visible = online and sn != null and int(sn.get("lobby_id")) != 0       # tylko w sesji ze Steamowym lobby
 	_quit_t = 0.0
 	_quit.text = "QUIT GAME"
 	get_tree().paused = online and _solo()
