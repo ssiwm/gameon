@@ -56,7 +56,7 @@ static func bestiary() -> Array:
 		if bool(d.get("fly", false)):
 			stats.append(["Movement", "flies"])
 		if float(d.get("armor", 0.0)) > 0.0:
-			stats.append(["Armor", "−%d per bullet" % int(d["armor"])])
+			stats.append(["Armor", TranslationServer.translate("−%d per bullet") % int(d["armor"])])
 		if float(d.get("head", 0.0)) > 0.0:
 			stats.append(["Weak spot", "head"])
 		var col: Color = (d["color"] as Color).lerp(Color(1.0, 0.85, 0.7), 0.35)
@@ -146,8 +146,9 @@ static func perks() -> Array:
 static func perk_entry(id: String) -> Dictionary:
 	var d: Dictionary = Perks.PERKS[id]
 	var at: int = Profile.equipped.find(id)
-	var status := "Equipped — slot %d" % (at + 1) if at >= 0 else ("Available" if Profile.is_unlocked(id) else "Locked — level %d" % int(d["level"]))
-	return {"title": String(d["name"]).to_upper(), "tag": "Perk  ·  unlocks at level %d" % int(d["level"]), "accent": d["color"],
+	var tl := func(s: String) -> String: return TranslationServer.translate(s)
+	var status: String = tl.call("Equipped — slot %d") % (at + 1) if at >= 0 else (tl.call("Available") if Profile.is_unlocked(id) else tl.call("Locked — level %d") % int(d["level"]))
+	return {"title": String(tl.call(String(d["name"]))).to_upper(), "tag": String(tl.call("Perk  ·  unlocks at level %d")) % int(d["level"]), "accent": d["color"],
 		"portrait": {"type": "perk", "id": id}, "perk_id": id,
 		"stats": [["Status", status], ["Your level", "%d" % Profile.level()], ["Slots open", "%d of 2" % Profile.slots()]],
 		"text": String(d["desc"]),
@@ -161,7 +162,7 @@ static func gear() -> Array:
 		var mode: String = {"throw": "Throwable", "place": "Placed", "use": "Tool"}[String(d["mode"])]
 		var price := Throwables.price_of(k)
 		var stats: Array = [["Type", mode], ["Carry", "%d (issued %d)" % [int(d["max"]), int(d["issue"])]],
-			["Price", "%d scrap" % price if price > 0 else "issued only"]]
+			["Price", TranslationServer.translate("%d scrap") % price if price > 0 else "issued only"]]
 		match k:
 			"frag":
 				stats.append_array([["Fuse", "%.1f s" % float(d["fuse"])], ["Blast", "%d m · %d dmg" % [int(float(d["radius"]) / PX_PER_M), int(d["damage"])]]])
@@ -180,7 +181,7 @@ static func gear() -> Array:
 			"scanner":
 				stats.append_array([["Duration", "%d s" % int(d["time"])], ["Range", "%d m" % int(float(d["range"]) / PX_PER_M)]])
 		stats.append(["Noise", "%.0f" % float(d["noise"]) if d.has("noise") else ("explosion" if k in ["frag", "charge"] else "—")])
-		out.append({"title": String(d["name"]), "tag": String(d["full"]) + "  ·  " + mode, "accent": d["color"],
+		out.append({"title": String(d["name"]), "tag": TranslationServer.translate(String(d["full"])) + "  ·  " + TranslationServer.translate(mode), "accent": d["color"],
 			"portrait": {"type": "item", "kind": k}, "stats": stats, "text": text[0], "tip": text[1]})
 	return out
 
@@ -195,18 +196,18 @@ static func weapon_entry(id: int) -> Dictionary:
 	var base: WeaponDef = Weapons.base_def(id)
 	var d: WeaponDef = Weapons.def(id)
 	var notes: Array = WEAPON_TEXT.get(d.key, ["", ""])
-	var tag := _slot_name(d)
+	var tag := TranslationServer.translate(_slot_name(d))
 	var tiers: Array = []
 	var access := ""
 	if not Scrap.is_unlocked(id):
-		access = "Locked — " + Scrap.lock_text(id)
+		access = TranslationServer.translate("Locked — ") + Scrap.lock_text(id)
 	if Upgrades.has_tiers(String(d.key)):
 		var lv := Scrap.level_of(id)
-		tag += "  ·  TIER %d / %d" % [lv, Upgrades.MAX_LEVEL] if Scrap.is_unlocked(id) else ""
+		tag += TranslationServer.translate("  ·  TIER %d / %d") % [lv, Upgrades.MAX_LEVEL] if Scrap.is_unlocked(id) else ""
 		for i in range(1, Upgrades.MAX_LEVEL + 1):
 			var t := Upgrades.tier(String(d.key), i)
 			var state := 0 if i <= lv else (1 if i == lv + 1 else 2)      # 0 zainstalowany, 1 następny, 2 dalszy
-			tiers.append({"head": "T%d  %s" % [i, t["name"]], "desc": t["desc"], "cost": Scrap.tier_cost(String(d.key), i), "state": state})
+			tiers.append({"head": "T%d  %s" % [i, TranslationServer.translate(t["name"])], "desc": TranslationServer.translate(t["desc"]), "cost": Scrap.tier_cost(String(d.key), i), "state": state})
 	return {"title": base.name, "tag": tag, "accent": base.tracer_color, "portrait": {"type": "gun", "row": base.gun_row, "color": base.tracer_color},
 		"stats": _weapon_stats(d), "text": notes[0], "tip": notes[1], "weapon_id": id, "tiers": tiers, "access": access}
 
