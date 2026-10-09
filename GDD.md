@@ -489,6 +489,7 @@ Cisza radiowa (brak minimapy), Przeciążenie (Uwaga 50 start), Głód amunicji 
 - Brak minimapy — tylko kompas ekstrakcji po wykonaniu celu.
 - Ping system (jak w Apex): oznaczaj wroga/przedmiot/drogę.
 - **Ustawienia dostępności:** VAD ON/OFF, „Krzyk" na przycisk, napisy z opisem dźwięków ([kroki za tobą]), mono audio, redukcja screen shake, tryb dla daltonistów (3 presety + kształty), skalowanie czcionek, pełne remapowanie klawiszy, tryb streamera (cenzura, brak muzyki licencjonowanej).
+- **Stan prototypu (2026-10):** zrobione — pełne remapowanie klawiszy i przycisków pada, pad w grze (celowanie prawym drążkiem), „Reduce effects”, napisy dźwięków z kierunkiem, filtr widzenia barw (3 tryby), skradanie przełączane, rozmiar HUD, język EN/PL. Brak jeszcze: mono audio, kształty zamiast samych kolorów, tryb streamera, ping drużyny. Plan i weryfikacja z kodem: `UI_PLAN.md`.
 
 ---
 

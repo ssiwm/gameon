@@ -593,12 +593,14 @@ func _t_pad_aim() -> void:
 	bt_a.button_index = JOY_BUTTON_A
 	check("pad: lewy drążek ← = ruch w lewo, RT = ogień, A = skok",
 		InputMap.event_is_action(stick_l, "move_left") and InputMap.event_is_action(trig, "fire") and InputMap.event_is_action(bt_a, "jump"))
+	var before: Vector2 = player.aim_dir
 	Input.action_press("aim_up", 1.0)
 	Input.action_press("aim_right", 0.6)
 	await wait(0.3)
 	var d: Vector2 = player.aim_dir
 	Input.action_release("aim_up")
 	Input.action_release("aim_right")
+	player.aim_dir = before                                      # test nie zostawia celu przechylonego dla kolejnych
 	check("pad: prawa gałka celuje swobodnie, nie po 8 kierunkach (%s)" % str(d.snapped(Vector2(0.01, 0.01))),
 		absf(d.length() - 1.0) < 0.05 and absf(d.x - 0.51) < 0.08 and absf(d.y + 0.86) < 0.08)
 	Actions.pad_mode = true

@@ -28,18 +28,33 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7. Zakres:
 - **pętla misji** (GDD §4): zniszcz **4 gniazda** — dwa na powierzchni (posterunek, szczyt tartaku) i dwa **w podziemiach** (trzeba zejść szybem) — są głośne i budzą okolicę → budzi się **Żyła, matka gniazd** (boss w tartaku: paszcza otwiera się tylko na chwilę po ataku — wtedy strzelaj; ataki z zapowiedzią: macka, fala ogona po podłodze — przeskocz, plucie zarodnikami; latarka w paszczę podczas zapowiedzi ją ogłusza, Q w pobliżu ją odciąga; przy 33% HP krzyk budzi Stalkera; +1 ładunek Q) → po jej śmierci wyjście otwiera się w punkcie najdalszym od drużyny → cała stojąca drużyna 3 s przy flarze → ekran wyniku, host [Enter] = nowa misja
 - **nawigacja A*** (`nav.gd`): bot chodzi za drużyną po całej mapie (skoki, zeskoki przez kładki), Stalker chodzi po powierzchniach zamiast przez ściany
 
-## Menu pauzy, ustawienia, podpowiedzi (demo)
+## Menu główne, ustawienia, podpowiedzi (demo)
 
-- **Esc / P** — menu pauzy: głośność (ogólna, muzyka + ambient, efekty), wstrząsy kamery (FULL / HALF / OFF), rozmiar HUD
-  (SMALL / NORMAL / LARGE), podpowiedzi, mikrofon (krzyk), pełny ekran (też F11) i ściąga sterowania. Ustawienia zapisują się
-  w `user://settings.cfg`. W trybie solo gra jest zatrzymana; w kooperacji świat idzie dalej (menu to mówi) i klawisze gry są
-  wyłączone na czas menu.
+- **Ekran startowy** (`main_menu.gd`): GRAJ → lobby (host / dołączanie / tryb / trudność, `lobby.gd`, przycisk WSTECZ), USTAWIENIA, WYJŚCIE
+  (drugi klik w 3 s). Pomijany w headless i przy starcie z `--host` / `--join` / `--steam-*`. **Esc / Start** otwiera menu ustawień także
+  przed grą; w sesji **LEAVE SESSION** wraca do ekranu startowego (`Main.leave_session`).
+- **Esc / P / Start** — menu pauzy: głośność (suwaki: ogólna, muzyka + ambient, efekty), wstrząsy kamery (FULL / HALF / OFF), klawisz
+  skradania (HOLD / TOGGLE), podpowiedzi, mikrofon (krzyk), **obraz bez restartu** (rozmiar okna, V-Sync, limit klatek, jakość efektów
+  LOW / MEDIUM / HIGH, efekty pogody), pełny ekran (też F11), **dostępność** („Reduce effects” — bez wstrząsów, ziarna, aberracji, pulsu
+  tętna i migotania; napisy dźwięków; filtr widzenia barw: protanopia / deuteranopia / tritanopia) i **język** (ENGLISH / POLSKI).
+  Ustawienia zapisują się w `user://settings.cfg`. W trybie solo gra jest zatrzymana; w kooperacji świat idzie dalej (menu to mówi)
+  i klawisze gry są wyłączone na czas menu. Nawigacja: mysz, strzałki / D-pad + A, B zamyka, LB / RB przełączają zakładki.
 - **Zakładki menu:** SETTINGS · **BESTIARY** (Trzosek, Wołek, Skoczek, Ślepiec, Podsłuchacz, Mimik, Cma, Stalker „ON", gniazdo,
   boss Żyła — animowany portret z arkusza, statystyki liczone z `Enemy.KINDS`, opis i wskazówka) · **WEAPONS** (wszystkie 12 pozycji:
   miniatura, obrażenia, tempo, zasięg, magazynek/zapas, przeładowanie, hałas, opis i wskazówka — statystyki liczone z `WeaponDef`,
-  więc nie rozjeżdżają się z grą) · CONTROLS. Dane i teksty: `codex.gd`, widok: `codex_page.gd`.
+  więc nie rozjeżdżają się z grą) · GEAR · PERKS · **CONTROLS** (edytor przypisań: klik w klawisz lub przycisk pada, potem nowy;
+  konflikt = zamiana miejscami; RESET TO DEFAULTS; zapis w sekcji `keys` pliku ustawień). Dane i teksty: `codex.gd`, widok: `codex_page.gd`.
 - **Podpowiedzi** (`hints.gd`): krótkie, jednorazowe wskazówki w chwili, gdy mechanika się przydaje (pierwszy ruch, pierwszy
-  hałas, „SOMETHING IS LISTENING", leżący kolega, latarka, flara). Zapamiętane — weteran ich nie zobaczy; wyłącznik w menu.
+  hałas, „SOMETHING IS LISTENING", leżący kolega, latarka, flara, kryjówka). Zapamiętane — weteran ich nie zobaczy; wyłącznik w menu.
+  Teksty używają znaczników `{id}` (np. `{interact}`) — klawisz bierze się z rejestru akcji, więc zmiana przypisania zmienia podpowiedź.
+- **HUD** (`hud.gd`): wskaźnik hałasu to analogowy VU-metr (strefy CALM / UNEASY / HUNTED z progów `NoiseMgr`); jeden komunikat naraz
+  (ostrzeżenie o hałasie > nota > podpowiedź); karta celu i dane sesji przygasają po 4 s spokoju; ściemnienie HUD-u pod kartą wyniku
+  i warsztatem; karta wyniku ma tabelę graczy (zabójstwa / upadki / podniesienia).
+- **Napisy dźwięków** (`captions.gd`, ustawienie „Sound captions”): linie `← [Gunfire]` z kierunkiem do źródła i `(far)`, z tabeli
+  `CAPTIONS` w `audio_manifest.gd` (priorytet 0 — kroki, łuski — pomijany).
+- **Lokalizacja** (`translations/ui.csv`, kolumny `keys` = tekst angielski i `pl`): statyczne napisy `Label` / `Button` tłumaczy silnik,
+  sformatowane teksty przechodzą przez `tr()`. Nowy tekst UI: dopisz wiersz do CSV (po `godot --headless --path prototype --import`
+  powstaje `ui.pl.translation`). Poza tabelą są opisy bestiariusza / broni / sprzętu, ulepszenia, perki i wygląd.
 - **Wersja demo**: `Settings.DEMO` (domyślnie `true`) dodaje na ekranie końcowym misji zachętę do listy życzeń; po wpisaniu
   `Settings.STORE_URL` pojawia się klawisz [O] otwierający stronę sklepu. Lista kontrolna playtestu i publikacji: `PLAYTEST.md`.
 
@@ -250,6 +265,8 @@ Artysta może podmienić PNG w `art/` zachowując układ z `art/sprites.json` (r
 ```
 scripts/
   input_setup.gd    # autoload: rejestruje akcje wejściowe (woła Actions.register)
+  main_menu.gd      # ekran startowy: GRAJ / USTAWIENIA / WYJŚCIE (tło: maszt radiowy)
+  colorblind_fx.gd  # filtr widzenia barw nad całym obrazem; captions.gd — napisy dźwięków
   actions.gd        # rejestr akcji: id → klawisze/mysz, które akcje wycina menu pauzy, ściąga sterowania i `{id}` w podpowiedziach — nazwy klawiszy nie wpisujemy ręcznie
   noise_manager.gd  # autoload: autorytatywny hałas + ładunek Przesterowania
   feel.gd           # autoload: screen shake + hitstop
