@@ -599,6 +599,7 @@ func _t_pad_aim() -> void:
 	var d: Vector2 = player.aim_dir
 	Input.action_release("aim_up")
 	Input.action_release("aim_right")
+	player.aim_dir = before                                      # test nie zostawia celu przechylonego dla kolejnych
 	check("pad: prawa gałka celuje swobodnie, nie po 8 kierunkach (%s)" % str(d.snapped(Vector2(0.01, 0.01))),
 		absf(d.length() - 1.0) < 0.05 and absf(d.x - 0.51) < 0.08 and absf(d.y + 0.86) < 0.08)
 	Actions.pad_mode = true
