@@ -20,6 +20,52 @@ const TINTS := {
 }
 ## Parametry deszczu wg pogody: [kąt od pionu (°), mnożnik gęstości, mnożnik prędkości].
 const RAIN := {"rain": [12.0, 1.0, 1.0], "storm": [26.0, 2.3, 1.25]}
+## Mgła (FOG): welon w przestrzeni ekranu czytający obraz świata — spłaszcza kontrast i rozmywa jasne miejsca (halo wokół latarki, flar i lamp),
+## a ciemność zostaje ciemnością (welon nie świeci sam). Gęstsza przy ziemi, z poziomymi pasmami płynącymi wolno w dwie strony.
+const FOG_SHADER := """
+shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture, repeat_disable, filter_linear;
+uniform float density = 0.0;
+uniform float t = 0.0;
+uniform float aspect = 1.78;
+uniform vec3 fog_tint = vec3(0.62, 0.7, 0.68);
+float hash(vec2 p) {
+	p = fract(p * vec2(123.34, 456.21));
+	p += dot(p, p + 45.32);
+	return fract(p.x * p.y);
+}
+float vnoise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fbm(vec2 p) {
+	return vnoise(p) * 0.55 + vnoise(p * 2.1 + 3.7) * 0.3 + vnoise(p * 4.3 + 9.1) * 0.15;
+}
+void fragment() {
+	vec2 uv = SCREEN_UV;
+	vec3 col = texture(screen_tex, uv).rgb;
+	vec2 px = vec2(1.0 / aspect, 1.0);
+	vec3 blur = vec3(0.0);
+	for (int i = 0; i < 8; i++) {
+		float a = float(i) * 0.785398;
+		blur += texture(screen_tex, uv + vec2(cos(a), sin(a)) * px * 0.012).rgb;
+		blur += texture(screen_tex, uv + vec2(cos(a), sin(a)) * px * 0.03).rgb * 0.6;
+	}
+	blur /= 12.8;
+	float n1 = fbm(vec2(uv.x * aspect * 2.4 - t * 0.035, uv.y * 3.2 + t * 0.01));
+	float n2 = fbm(vec2(uv.x * aspect * 1.5 + t * 0.022, uv.y * 2.1 - t * 0.008) + 7.3);
+	float bands = 0.35 + 0.65 * (n1 * 0.6 + n2 * 0.4) * 1.4;
+	float ground = smoothstep(0.15, 0.95, uv.y);
+	float d = clamp(density * bands * (0.4 + 0.6 * ground), 0.0, 0.9);
+	float lum = dot(col, vec3(0.299, 0.587, 0.114));
+	vec3 veil = vec3(lum) * fog_tint * 1.5 + blur * 0.8;
+	col = mix(col, veil, d * 0.8) + blur * density * 0.3;
+	COLOR = vec4(col, 1.0);
+}
+"""
+
 const FAR_AMOUNT := 120
 const NEAR_AMOUNT := 46
 const NEAR_VEL := Vector2(440.0, 520.0)
@@ -31,6 +77,10 @@ static var dev_flash := false
 var _near: CPUParticles2D
 var _far: CPUParticles2D
 var _splash: CPUParticles2D
+var _fog: ColorRect
+var _fog_mat: ShaderMaterial
+var _bd_id := ""
+var _bd_k := -1.0
 var _k := 0.0                               ## wygładzona siła pogody 0..1
 var _sky := 0.0                             ## wygładzona „otwartość nieba" nad lokalnym graczem 0..1
 var _id := ""                               ## pogoda, dla której ustawiono parametry cząsteczek
@@ -45,6 +95,16 @@ func _ready() -> void:
 	_near = _make_rain(true)
 	_far = _make_rain(false)
 	_splash = _make_splash()
+	_fog = ColorRect.new()
+	_fog.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fog.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var fsh := Shader.new()
+	fsh.code = FOG_SHADER
+	_fog_mat = ShaderMaterial.new()
+	_fog_mat.shader = fsh
+	_fog.material = _fog_mat
+	_fog.visible = false
+	add_child(_fog)
 	add_child(_far)
 	add_child(_near)
 	add_child(_splash)
@@ -99,6 +159,7 @@ func _make_splash() -> CPUParticles2D:
 
 func _exit_tree() -> void:
 	_apply_level(Color.WHITE, 0.0)
+	_set_backdrop("", 0.0)
 
 func _process(delta: float) -> void:
 	_t += delta
@@ -119,6 +180,18 @@ func _process(delta: float) -> void:
 	if raining:
 		_wind(vs)
 		_place_splash(lp, vs)
+	# mgła: welon ekranowy; pod ziemią słabszy (0,45), pod otwartym niebem pełny
+	var fog_d := _k * (0.45 + 0.55 * _sky) if _id == "fog" else 0.0
+	_fog.visible = fog_d > 0.01
+	if _fog.visible:
+		_fog_mat.set_shader_parameter("density", fog_d)
+		_fog_mat.set_shader_parameter("t", _t)
+		_fog_mat.set_shader_parameter("aspect", vs.x / maxf(vs.y, 1.0))
+	# tło parallax: noc pogodna wzmacnia księżyc i gwiazdy, deszcz przyciemnia niebo, mgła rozjaśnia grzbiety (tylko gdy się zmieniło)
+	if _id != _bd_id or absf(_k - _bd_k) > 0.004:
+		_bd_id = _id
+		_bd_k = _k
+		_set_backdrop(_id, _k)
 	# tint ciemności + błysk (tylko burza)
 	var tint := Color.WHITE
 	if TINTS.has(_id):
@@ -214,6 +287,11 @@ func _refresh_flashes(now: float) -> void:
 		while t < now + 90.0:
 			_flashes.append(t)
 			t += rng.randf_range(9.0, 24.0)
+
+func _set_backdrop(id: String, k: float) -> void:
+	_level = _level if is_instance_valid(_level) else get_tree().get_first_node_in_group("level")
+	if _level != null:
+		_level.set_backdrop_weather(id, k)
 
 func _apply_level(tint: Color, flash: float) -> void:
 	_level = _level if is_instance_valid(_level) else get_tree().get_first_node_in_group("level")
