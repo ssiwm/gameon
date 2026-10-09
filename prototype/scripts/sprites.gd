@@ -271,9 +271,21 @@ static func silhouette_material() -> CanvasItemMaterial:
 		_sil_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 	return _sil_mat
 
+## Animacja, która istnieje w arkuszu: brakującą „walk"/„run" zastępuje druga (np. Skoczek ma tylko „run"), resztę „idle" — zamiast błędu
+## „There is no animation with name" co klatkę.
+static func _resolve_anim(body: AnimatedSprite2D, anim: String) -> String:
+	var sf := body.sprite_frames
+	if sf == null or sf.has_animation(anim):
+		return anim
+	var alt := "run" if anim == "walk" else ("walk" if anim == "run" else "idle")
+	if sf.has_animation(alt):
+		return alt
+	return "idle" if sf.has_animation("idle") else anim
+
 ## Ustawia animację na obu warstwach (glow trzyma tę samą klatkę).
 static func play(layers: Array, anim: String, flip: bool) -> void:
 	var body: AnimatedSprite2D = layers[0]
+	anim = _resolve_anim(body, anim)
 	if body.animation != anim:
 		body.play(anim)
 	body.flip_h = flip
