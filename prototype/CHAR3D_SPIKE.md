@@ -1,4 +1,4 @@
-# Postać 3D w czasie rzeczywistym (`--char3d`, spike → prototyp)
+# Postać 3D w czasie rzeczywistym (beta; `--char3d` lub ustawienie w menu)
 
 Gracze i bot jako modele 3D (rig Mixamo z Tripo) renderowane do tekstury w grze 2D, zamiast wypiekanych arkuszy.
 Ręce naprawdę trzymają broń przy każdym kącie celowania, animacji, broni i wyglądzie (dwukostkowe IK obu rąk).
@@ -49,4 +49,4 @@ Pokrętła kosztu: `SS` (rozdzielczość renderu), MSAA, `FRAME_WP` (rozmiar ram
 - Pozy to proste funkcje sin/cos, nie animacje artysty; brak przejść (blend) między animacjami; dłonie nie obejmują palcami chwytu (tylko orientacja).
 - SPECTER-1 (`widmo1`) nie ma własnego modelu — używa LR-7. Broń biała ma jedną, uproszczoną pozę zamachu.
 - Wrogowie nadal sprite'y HD — styl postaci gracza (3D) i wrogów trzeba będzie zestroić.
-- Flaga dev; włączenie domyślne (ustawienie w menu) po pomiarze na słabszym sprzęcie.
+- Włączane ustawieniem **Characters: 3D (BETA)** (`Settings.char3d`, domyślnie wyłączone) lub flagą `--char3d`; domyślnie włączymy po pomiarze na słabszym sprzęcie.

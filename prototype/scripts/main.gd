@@ -342,6 +342,7 @@ func _handle_cmdline() -> void:
 		Sprites.newgun = true
 		Sprites.newmon = true
 		Sprites.newitem = true
+		Sprites.char3d = Settings.char3d              # ustawienie „Characters: 3D (BETA)" (domyślnie wyłączone); flaga --char3d poniżej też włącza
 		hd_world = true
 	for a in args:
 		if a == "--newworld":

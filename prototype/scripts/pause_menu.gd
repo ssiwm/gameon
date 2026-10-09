@@ -139,6 +139,7 @@ func _build_settings() -> void:
 	_cycler("ui", "HUD size", Settings.cycle_ui)
 	_cycler("full", "Fullscreen  (F11)", Settings.toggle_fullscreen)
 	_cycler("hd", "Graphics (restart)", Settings.toggle_hd)
+	_cycler("c3d", "Characters (restart)", Settings.toggle_char3d)
 
 ## Wiersz: opis po lewej, [−] wartość [+] po prawej.
 func _stepper(kind: String, text: String) -> void:
@@ -247,6 +248,7 @@ func _refresh() -> void:
 	_values["ui"].text = Settings.UI_NAMES[Settings.ui_idx]
 	_values["full"].text = "ON" if Settings.fullscreen else "OFF"
 	_values["hd"].text = "HD" if Settings.graphics_hd else "CLASSIC"
+	_values["c3d"].text = "3D (BETA)" if Settings.char3d else "SPRITES"
 
 func _show_tab(i: int) -> void:
 	_tab = i
