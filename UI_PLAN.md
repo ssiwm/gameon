@@ -1,6 +1,6 @@
 # Plan: interfejs użytkownika na poziomie pełnoprawnej gry
 
-Status: **plan i makieta, nic jeszcze nie zaimplementowano** (stan z 2026-10-09, po PR #119). Plan zweryfikowano z kodem tego samego dnia — wyniki w §6; poprawki są naniesione w tekście oznaczone „**[kod]**”.
+Status: **plan i makieta; zaczęto krok 0 z §4** (stan z 2026-10-09). Gotowe: rejestr akcji `actions.gd` (PR #121) i warsztat na akcjach menu z obsługą pada w panelu warsztatu (ten PR). Reszta planu — pad w grze (akcje `aim_*`, wiązania ruchu), nawigacja fokusem w pauzie i lobby, przypisywanie klawiszy, menu główne — czeka. Plan zweryfikowano z kodem tego samego dnia — wyniki w §6; poprawki są naniesione w tekście oznaczone „**[kod]**”.
 Źródła: przegląd kodu UI (`lobby.gd`, `pause_menu.gd`, `settings.gd`, `input_setup.gd`, `ui_theme.gd`, `hud.gd`, `workshop_ui.gd`, `horror_fx.gd`) i zrzutów ekranu (lobby, HUD w misji 1.3, menu pauzy, kryjówka, warsztat, karta wyniku); makieta kierunku wizualnego (patrz „Makieta”).
 
 **Czego nie sprawdzono:** zakładek kodeksu, perków i sterowania w grze, rozdzielczości innych niż 4K/1080p na moim komputerze, układu na prawdziwym 1280×720 (w zrzucie lobby lista sterowania była ucięta u dołu; komentarz w `lobby.gd` mówi, że to naprawiono, ale bez renderu nie potwierdzono), kontrastów i wyglądu efektów (obliczenia, nie pomiar). Weryfikacja z kodem nie uruchamiała gry.

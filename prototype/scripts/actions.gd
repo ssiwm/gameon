@@ -5,11 +5,13 @@ extends RefCounted
 ## ściąga sterowania w lobby i menu pauzy (`sheet()`), pasek sterowania w HUD (`hud_line()`) oraz teksty podpowiedzi
 ## (`fmt()`, `key()`), więc nazwa klawisza nie jest już wpisana ręcznie w kilkunastu miejscach.
 ##
-## Wiązanie to słownik: {"type": "key", "code": Key, "left": bool} (left = tylko lewa strona klawiatury, np. lewy Alt)
-## albo {"type": "mouse", "button": MouseButton}. Klawisze to `physical_keycode` (układ-niezależne, jak dotąd).
+## Wiązanie to słownik: {"type": "key", "code": Key, "left": bool} (left = tylko lewa strona klawiatury, np. lewy Alt),
+## {"type": "mouse", "button": MouseButton} albo {"type": "joy", "button": JoyButton}. Klawisze to `physical_keycode`
+## (układ-niezależne, jak dotąd).
 
 ## id → ["keys": [Key | {"key": Key, "left": true}], "keys_macos": (zamiast keys na macOS), "mouse": [MouseButton],
-##        "menu": true = akcja zostaje aktywna przy otwartym menu pauzy (reszta jest wycinana, żeby klik w menu nie strzelał)]
+##        "pad": [JoyButton], "menu": true = akcja zostaje aktywna przy otwartym menu pauzy (reszta jest wycinana,
+##        żeby klik w menu nie strzelał)]
 const DEFS := {
 	"move_left": {"keys": [KEY_A, KEY_LEFT]},
 	"move_right": {"keys": [KEY_D, KEY_RIGHT]},
@@ -41,6 +43,17 @@ const DEFS := {
 	"steam_invite": {"keys": [KEY_F2], "menu": true},
 	"fullscreen": {"keys": [KEY_F11], "menu": true},
 	"open_store": {"keys": [KEY_O]},
+	# nawigacja po panelach z własnym zaznaczeniem (warsztat): strzałki / WASD / D-pad, zatwierdź, wróć, następna zakładka, sloty.
+	# Osobne od wbudowanych ui_* Godota: te sterują fokusem kontrolek, a tu panel sam trzyma zaznaczenie.
+	"menu_left": {"keys": [KEY_A, KEY_LEFT], "pad": [JOY_BUTTON_DPAD_LEFT], "menu": true},
+	"menu_right": {"keys": [KEY_D, KEY_RIGHT], "pad": [JOY_BUTTON_DPAD_RIGHT], "menu": true},
+	"menu_up": {"keys": [KEY_W, KEY_UP], "pad": [JOY_BUTTON_DPAD_UP], "menu": true},
+	"menu_down": {"keys": [KEY_S, KEY_DOWN], "pad": [JOY_BUTTON_DPAD_DOWN], "menu": true},
+	"menu_accept": {"keys": [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE], "pad": [JOY_BUTTON_A], "menu": true},
+	"menu_back": {"keys": [KEY_ESCAPE, KEY_E, KEY_BACKSPACE], "pad": [JOY_BUTTON_B], "menu": true},
+	"menu_tab": {"keys": [KEY_TAB], "pad": [JOY_BUTTON_RIGHT_SHOULDER], "menu": true},
+	"menu_slot_1": {"keys": [KEY_1], "pad": [JOY_BUTTON_X], "menu": true},
+	"menu_slot_2": {"keys": [KEY_2], "pad": [JOY_BUTTON_Y], "menu": true},
 }
 
 ## Nazwy klawiszy tam, gdzie `OS.get_keycode_string` daje inną niż ta, którą widzi gracz.
@@ -48,6 +61,11 @@ const KEY_NAMES := {KEY_ESCAPE: "Esc", KEY_KP_ENTER: "Enter", KEY_META: "Cmd"}
 const MOUSE_NAMES := {
 	MOUSE_BUTTON_LEFT: "LMB", MOUSE_BUTTON_RIGHT: "RMB", MOUSE_BUTTON_MIDDLE: "MMB",
 	MOUSE_BUTTON_WHEEL_UP: "Wheel", MOUSE_BUTTON_WHEEL_DOWN: "Wheel",
+}
+const JOY_NAMES := {
+	JOY_BUTTON_A: "A", JOY_BUTTON_B: "B", JOY_BUTTON_X: "X", JOY_BUTTON_Y: "Y",
+	JOY_BUTTON_LEFT_SHOULDER: "LB", JOY_BUTTON_RIGHT_SHOULDER: "RB",
+	JOY_BUTTON_DPAD_UP: "D-Pad ↑", JOY_BUTTON_DPAD_DOWN: "D-Pad ↓", JOY_BUTTON_DPAD_LEFT: "D-Pad ←", JOY_BUTTON_DPAD_RIGHT: "D-Pad →",
 }
 const ARROWS := [KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN]
 
@@ -69,6 +87,8 @@ static func register() -> void:
 				list.append({"type": "key", "code": int(k), "left": false})
 		for b in d.get("mouse", []):
 			list.append({"type": "mouse", "button": int(b)})
+		for b in d.get("pad", []):
+			list.append({"type": "joy", "button": int(b)})
 		_binds[id] = list
 		if not InputMap.has_action(id):
 			InputMap.add_action(id)
@@ -77,6 +97,10 @@ static func register() -> void:
 			InputMap.action_add_event(id, _event_of(b))
 
 static func _event_of(b: Dictionary) -> InputEvent:
+	if String(b["type"]) == "joy":
+		var j := InputEventJoypadButton.new()
+		j.button_index = int(b["button"])
+		return j
 	if String(b["type"]) == "mouse":
 		var m := InputEventMouseButton.new()
 		m.button_index = int(b["button"])
@@ -106,16 +130,27 @@ static func bindings(id: String) -> Array:
 	return (_binds.get(id, []) as Array).duplicate(true)
 
 static func _name_of(b: Dictionary) -> String:
+	if String(b["type"]) == "joy":
+		return String(JOY_NAMES.get(int(b["button"]), "Pad %d" % int(b["button"])))
 	if String(b["type"]) == "mouse":
 		return String(MOUSE_NAMES.get(int(b["button"]), "Mouse %d" % int(b["button"])))
 	var code := int(b["code"])
 	var n: String = String(KEY_NAMES.get(code, OS.get_keycode_string(code)))
 	return ("L-" + n) if bool(b.get("left", false)) else n
 
-## Nazwa(y) klawiszy akcji: "J / LMB". `first_only` — tylko pierwsze wiązanie (do podpowiedzi w nawiasach).
-static func text(id: String, first_only := false) -> String:
-	var names: Array = []
+## Wiązania akcji z klawiatury i myszy (domyślnie) albo tylko z pada (`pad_only`).
+static func _list(id: String, pad_only := false) -> Array:
+	var out: Array = []
 	for b in _binds.get(id, []):
+		if (String(b["type"]) == "joy") == pad_only:
+			out.append(b)
+	return out
+
+## Nazwa(y) klawiszy akcji: "J / LMB". `first_only` — tylko pierwsze wiązanie (do podpowiedzi w nawiasach);
+## `pad_only` — nazwy przycisków pada zamiast klawiatury i myszy.
+static func text(id: String, first_only := false, pad_only := false) -> String:
+	var names: Array = []
+	for b in _list(id, pad_only):
 		var n := _name_of(b)
 		if not names.has(n):
 			names.append(n)
@@ -132,7 +167,7 @@ static func key(id: String) -> String:
 static func cluster(action_ids: Array, sep := "", first_slot_only := false) -> String:
 	var slots := 0
 	for id in action_ids:
-		slots = maxi(slots, (_binds.get(id, []) as Array).size())
+		slots = maxi(slots, _list(id).size())
 	if first_slot_only:
 		slots = mini(slots, 1)
 	var parts: Array = []
@@ -140,7 +175,7 @@ static func cluster(action_ids: Array, sep := "", first_slot_only := false) -> S
 		var names: Array = []
 		var all_arrows := true
 		for id in action_ids:
-			var arr: Array = _binds.get(id, [])
+			var arr: Array = _list(id)
 			if s >= arr.size():
 				continue
 			var b: Dictionary = arr[s]
@@ -163,6 +198,10 @@ static func fmt(template: String) -> String:
 		if out.contains(token):
 			out = out.replace(token, key(id))
 	return out
+
+## Czy podłączony jest pad (podpowiedzi w panelach pokazują wtedy przyciski pada zamiast klawiszy).
+static func pad_connected() -> bool:
+	return not Input.get_connected_joypads().is_empty()
 
 # ---------------------------------------------------------------- ściągi
 
