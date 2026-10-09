@@ -1342,37 +1342,61 @@
   },
   "leech_hd": {
    "frame": [
-    576,
-    480
+    384,
+    320
    ],
    "glow": true,
    "anims": {
-    "rise": {
+    "idle": {
      "row": 0,
+     "frames": 8,
+     "fps": 8,
+     "loop": true
+    },
+    "peek": {
+     "row": 1,
      "frames": 4,
+     "fps": 8,
+     "loop": true
+    },
+    "strike": {
+     "row": 2,
+     "frames": 6,
+     "fps": 18,
+     "loop": false
+    },
+    "grab": {
+     "row": 3,
+     "frames": 6,
+     "fps": 10,
+     "loop": true
+    },
+    "spit": {
+     "row": 4,
+     "frames": 6,
+     "fps": 12,
+     "loop": false
+    },
+    "hurt": {
+     "row": 5,
+     "frames": 2,
      "fps": 14,
      "loop": false
     },
-    "idle": {
-     "row": 1,
-     "frames": 6,
-     "fps": 6,
-     "loop": true
+    "dive": {
+     "row": 6,
+     "frames": 5,
+     "fps": 14,
+     "loop": false
     },
-    "grab": {
-     "row": 2,
-     "frames": 3,
-     "fps": 7,
-     "loop": true
-    },
-    "dead": {
-     "row": 3,
-     "frames": 1,
-     "fps": 1,
+    "death": {
+     "row": 7,
+     "frames": 8,
+     "fps": 8,
      "loop": false
     }
    },
-   "scale": 0.16667,
+   "scale": 0.25,
    "hd": true,
    "normal": true
   },
