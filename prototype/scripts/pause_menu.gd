@@ -16,7 +16,7 @@ const QUIT_CONFIRM_S := 3.0
 const CARD_W := 450.0
 const PAGE_H := 270.0                ## stała wysokość zakładek — karta nie skacze przy przełączaniu
 const TABS := ["SETTINGS", "BESTIARY", "WEAPONS", "GEAR", "PERKS", "CONTROLS"]
-const BASE_SCALE := 0.7              ## jak HUD (hud.gd UI_SCALE): menu rysowane w 70%, razem z ustawieniem HUD SIZE
+const BASE_SCALE := 0.8              ## jak HUD (hud.gd UI_SCALE): menu rysowane w 80%, razem z ustawieniem HUD SIZE
 
 var _settings_page: ScrollContainer
 var _settings_box: VBoxContainer
