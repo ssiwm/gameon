@@ -34,6 +34,9 @@ const VFX_MULT := [0.4, 0.7, 1.0]                                  ## ile cząst
 const POST_MULT := [0.0, 0.6, 1.0]                                 ## siła ziarna i aberracji (horror_fx.gd)
 ## Tryb dla osób z zaburzeniami widzenia barw: filtr całego obrazu (colorblind_fx.gd).
 const COLORBLIND_NAMES := ["OFF", "PROTANOPIA", "DEUTERANOPIA", "TRITANOPIA"]
+## Język interfejsu: tabela tłumaczeń w translations/ui.csv (klucz = tekst angielski). Nazwy języków nie są tłumaczone.
+const LOCALES := ["en", "pl"]
+const LOCALE_NAMES := ["ENGLISH", "POLSKI"]
 const UI_NAMES := ["SMALL", "NORMAL", "LARGE"]
 const UI_MULT := [0.85, 1.0, 1.25]
 const Actions := preload("res://scripts/actions.gd")
@@ -51,6 +54,7 @@ var captions := false                  ## napisy dla dźwięków (HUD, captions.
 var reduce_fx := false                 ## „Reduce Effects": bez wstrząsów, ziarna, aberracji, pulsu zdrowia, błysku burzy i migotania
 var crouch_toggle := false             ## skradanie przełączane klawiszem zamiast trzymania
 var colorblind_idx := 0
+var locale_idx := 0
 var _res_dirty := false                ## gracz zmienił rozmiar okna (inaczej zostaje domyślny z projektu)
 var fullscreen := false
 var char3d := false                    ## (beta) postacie graczy jako modele 3D w czasie rzeczywistym (char3d.gd) zamiast sprite'ów; tylko z grafiką HD, zmiana wymaga restartu
@@ -154,6 +158,11 @@ func toggle_crouch_mode() -> void:
 	crouch_toggle = not crouch_toggle
 	_commit()
 
+func cycle_locale() -> void:
+	locale_idx = (locale_idx + 1) % LOCALES.size()
+	TranslationServer.set_locale(LOCALES[locale_idx])
+	_commit()
+
 func cycle_colorblind() -> void:
 	colorblind_idx = (colorblind_idx + 1) % COLORBLIND_NAMES.size()
 	_commit()
@@ -195,6 +204,11 @@ func _unhandled_input(event: InputEvent) -> void:
 # ---------------------------------------------------------------- zastosowanie
 
 func _apply_all() -> void:
+	var loc: String = LOCALES[locale_idx]
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--lang="):
+			loc = a.substr("--lang=".length())             # dev: język bez zapisu (zrzuty, testy)
+	TranslationServer.set_locale(loc)
 	for kind in VOLUME_BUSES:
 		_apply_volume(kind)
 	_apply_window()
@@ -279,6 +293,7 @@ func _load() -> void:
 	captions = bool(cf.get_value("game", "captions", false))
 	crouch_toggle = bool(cf.get_value("game", "crouch_toggle", false))
 	colorblind_idx = clampi(int(cf.get_value("game", "colorblind", 0)), 0, COLORBLIND_NAMES.size() - 1)
+	locale_idx = clampi(int(cf.get_value("game", "locale", 0)), 0, LOCALES.size() - 1)
 	graphics_hd = bool(cf.get_value("game", "graphics_hd", true))
 	char3d = bool(cf.get_value("game", "char3d", false))
 	seen_tips = Array(cf.get_value("game", "seen_tips", []))
@@ -305,6 +320,7 @@ func _save() -> void:
 	cf.set_value("game", "captions", captions)
 	cf.set_value("game", "crouch_toggle", crouch_toggle)
 	cf.set_value("game", "colorblind", colorblind_idx)
+	cf.set_value("game", "locale", locale_idx)
 	cf.set_value("game", "graphics_hd", graphics_hd)
 	cf.set_value("game", "char3d", char3d)
 	cf.set_value("game", "seen_tips", seen_tips)

@@ -282,7 +282,7 @@ func _add_control(grid: GridContainer, row: Array) -> void:
 	grid.add_child(desc)
 
 func _refresh_mode() -> void:
-	_mode.text = "MODE: < %s >" % MODE_NAMES[mode]
+	_mode.text = tr("MODE: < %s >") % tr(MODE_NAMES[mode])
 	var col: Color = [UiTheme.TEXT, UiTheme.OK, UiTheme.DANGER][mode]
 	for k in ["font_color", "font_hover_color", "font_disabled_color"]:
 		_mode.add_theme_color_override(k, col)
@@ -290,7 +290,7 @@ func _refresh_mode() -> void:
 		set_status(MODE_HINTS[mode])
 
 func _refresh_difficulty() -> void:
-	_diff.text = "DIFFICULTY:  < %s >" % Difficulty.level_name()
+	_diff.text = tr("DIFFICULTY:  < %s >") % tr(Difficulty.level_name())
 	var col: Color = [UiTheme.OK, UiTheme.TEXT, UiTheme.DANGER][Difficulty.level]
 	for k in ["font_color", "font_hover_color", "font_disabled_color"]:
 		_diff.add_theme_color_override(k, col)

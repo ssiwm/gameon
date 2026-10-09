@@ -813,7 +813,7 @@ func _gear_tick(delta: float) -> bool:
 					if Input.is_action_just_pressed("throw"):
 						_start_scan()
 					elif scan_left <= 0.0 and Arsenal.get_throwable("scanner") > 0:
-						gear_text = "[%s]  Owl scanner — %d s, shows enemies through walls (emits noise)" % [Throwables.key_name(), int(Throwables.KINDS["scanner"]["time"])]
+						gear_text = tr("[%s]  Owl scanner — %d s, shows enemies through walls (emits noise)") % [Throwables.key_name(), int(Throwables.KINDS["scanner"]["time"])]
 	return false
 
 func _gear_cancel() -> void:
@@ -866,7 +866,7 @@ func _tick_medkit(delta: float, held: bool) -> bool:
 	var who := "yourself" if t == self else ("the bot" if t.is_bot else "P%d" % t.display_id)
 	if not held:
 		_med_hold = 0.0
-		gear_text = "Hold [%s]  Use the medkit on %s  (%d s)" % [Throwables.key_name(), who, int(data["time"])]
+		gear_text = tr("Hold [%s]  Use the medkit on %s  (%d s)") % [Throwables.key_name(), who, int(data["time"])]
 		return false
 	if _med_hold <= 0.0:
 		_med_hp = hp
@@ -909,7 +909,7 @@ func _tick_defib(delta: float, held: bool) -> bool:
 	var who := "the bot" if t.is_bot else "P%d" % t.display_id
 	if not held:
 		_gear_cancel()
-		gear_text = "Hold [%s]  Defibrillate %s  (%d m away)" % [Throwables.key_name(), who, int(t.global_position.distance_to(global_position) / 16.0)]
+		gear_text = tr("Hold [%s]  Defibrillate %s  (%d m away)") % [Throwables.key_name(), who, int(t.global_position.distance_to(global_position) / 16.0)]
 		return false
 	if t != _defib_ref:
 		if _defib_ref != null and is_instance_valid(_defib_ref):
@@ -917,7 +917,7 @@ func _tick_defib(delta: float, held: bool) -> bool:
 		_defib_ref = t
 		_defib_hold = 0.0
 	_defib_hold += delta
-	gear_text = "Defibrillating %s…" % who
+	gear_text = tr("Defibrillating %s…") % who
 	gear_progress = clampf(_defib_hold / float(data["time"]), 0.0, 1.0)
 	t.set_revive_progress(gear_progress)
 	if _defib_hold >= float(data["time"]):
@@ -1078,7 +1078,7 @@ func revive_hint() -> String:
 	var t := _revive_target()
 	if t == null:
 		return ""
-	return "Hold [%s] to revive %s" % [Actions.key("interact"), "the bot" if t.is_bot else "P%d" % t.display_id]
+	return tr("Hold [%s] to revive %s") % [Actions.key("interact"), "the bot" if t.is_bot else "P%d" % t.display_id]
 
 ## Prośba o podniesienie — rozstrzyga właściciel leżącej postaci.
 func request_revive() -> void:

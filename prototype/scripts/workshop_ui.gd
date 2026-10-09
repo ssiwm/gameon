@@ -456,12 +456,12 @@ func _select_look(i: int) -> void:
 func _act_look() -> void:
 	var c := _look_code(_look_sel)
 	if Profile.look == c:
-		_say("Already wearing %s." % Look.display_name(c), UiTheme.BP_MUTED)
+		_say(tr("Already wearing %s.") % Look.display_name(c), UiTheme.BP_MUTED)
 	elif Profile.set_look(c):
 		Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
-		_say("%s (%s) equipped." % [Look.display_name(c), Look.gender_id(c)], UiTheme.OK)
+		_say(tr("%s (%s) equipped.") % [Look.display_name(c), Look.gender_id(c)], UiTheme.OK)
 	else:
-		_say("Unlocks at level %d." % Look.unlock_level(c), UiTheme.DANGER)
+		_say(tr("Unlocks at level %d.") % Look.unlock_level(c), UiTheme.DANGER)
 
 func _refresh_look() -> void:
 	var lvl := Profile.level()
@@ -481,7 +481,7 @@ func _refresh_look() -> void:
 	_l_view.set_code(c)
 	_l_view.modulate = Color.WHITE if Look.is_unlocked(c, lvl) else Color(0.35, 0.4, 0.45)
 	_l_title.text = Look.display_name(c)
-	_l_tag.text = "%s  ·  unlocks at level %d" % [Look.gender_id(c).to_upper(), Look.unlock_level(c)]
+	_l_tag.text = tr("%s  ·  unlocks at level %d") % [Look.gender_id(c).to_upper(), Look.unlock_level(c)]
 	_l_text.text = String(Look.OUTFIT_TEXT[Look.outfit_id(c)]) + "\n\nCosmetic only — other players see your look too."
 	_l_action.disabled = false
 	_l_action.text = "Wearing" if Profile.look == c else ("Equip" if Look.is_unlocked(c, lvl) else "Locked — level %d" % Look.unlock_level(c))
@@ -618,17 +618,17 @@ func _act_perk() -> void:
 	var have := _perk_slot_of(id)
 	if have >= 0:
 		Profile.unequip(have)
-		_say("%s removed." % Perks.display_name(id), UiTheme.BP_MUTED)
+		_say(tr("%s removed.") % Perks.display_name(id), UiTheme.BP_MUTED)
 		Audio.play("ui_click", Audio.BUS_UI, -10.0)
 		return
 	if not Profile.is_unlocked(id):
-		_say("Reach level %d to unlock %s." % [Perks.unlock_level(id), Perks.display_name(id)], UiTheme.BP_MUTED)
+		_say(tr("Reach level %d to unlock %s.") % [Perks.unlock_level(id), Perks.display_name(id)], UiTheme.BP_MUTED)
 		return
 	if _perk_slot >= Profile.slots():
-		_say("Slot %d unlocks at level %d." % [_perk_slot + 1, int(Profile.SLOT_LEVELS[_perk_slot])], UiTheme.BP_MUTED)
+		_say(tr("Slot %d unlocks at level %d.") % [_perk_slot + 1, int(Profile.SLOT_LEVELS[_perk_slot])], UiTheme.BP_MUTED)
 		return
 	if Profile.equip(_perk_slot, id):
-		_say("%s equipped in slot %d." % [Perks.display_name(id), _perk_slot + 1], UiTheme.OK)
+		_say(tr("%s equipped in slot %d.") % [Perks.display_name(id), _perk_slot + 1], UiTheme.OK)
 		Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 
 func _refresh_perks() -> void:
@@ -652,7 +652,7 @@ func _refresh_perks() -> void:
 		(t.icon_node as PerkIcon).set_perk(id, Color.WHITE if unlocked else Color(0.45, 0.5, 0.55))
 		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else (UiTheme.BP_TEXT if unlocked else UiTheme.BP_MUTED))
 		if at >= 0:
-			t.state_label.text = "EQUIPPED  ·  SLOT %d" % (at + 1)
+			t.state_label.text = tr("EQUIPPED  ·  SLOT %d") % (at + 1)
 			t.state_label.add_theme_color_override("font_color", UiTheme.OK)
 		elif unlocked:
 			t.state_label.text = "AVAILABLE"
@@ -684,7 +684,7 @@ func _refresh_perks() -> void:
 	var at2 := _perk_slot_of(id2)
 	_p_icon.set_perk(id2, Color.WHITE if unlocked2 else Color(0.55, 0.6, 0.65))
 	_p_title.text = String(d["name"]).to_upper()
-	_p_tag.text = "Perk  ·  unlocks at level %d" % int(d["level"])
+	_p_tag.text = tr("Perk  ·  unlocks at level %d") % int(d["level"])
 	for ch in _p_stats.get_children():
 		_p_stats.remove_child(ch)
 		ch.free()
@@ -695,16 +695,16 @@ func _refresh_perks() -> void:
 		_p_stats.add_child(Control.new())
 	_p_text.text = String(d["desc"])
 	if at2 >= 0:
-		_p_action.text = "Remove from slot %d" % (at2 + 1)
+		_p_action.text = tr("Remove from slot %d") % (at2 + 1)
 		_p_action.disabled = false
 	elif not unlocked2:
-		_p_action.text = "Locked  ·  reach level %d" % int(d["level"])
+		_p_action.text = tr("Locked  ·  reach level %d") % int(d["level"])
 		_p_action.disabled = true
 	elif _perk_slot >= Profile.slots():
-		_p_action.text = "Slot %d unlocks at level %d" % [_perk_slot + 1, int(Profile.SLOT_LEVELS[_perk_slot])]
+		_p_action.text = tr("Slot %d unlocks at level %d") % [_perk_slot + 1, int(Profile.SLOT_LEVELS[_perk_slot])]
 		_p_action.disabled = true
 	else:
-		_p_action.text = "Equip in slot %d" % (_perk_slot + 1)
+		_p_action.text = tr("Equip in slot %d") % (_perk_slot + 1)
 		_p_action.disabled = false
 
 func _select_supply(i: int) -> void:
@@ -853,7 +853,7 @@ func _exit_tree() -> void:
 func _controls_hint() -> String:
 	var pad := Actions.pad_mode
 	var nav := "D-PAD" if pad else Actions.cluster(["menu_up", "menu_left", "menu_down", "menu_right"]).to_upper()
-	return "%s select   ·   %s buy / upgrade / equip   ·   %s arms / supplies / perks / look   ·   %s close   ·   or click" % [
+	return tr("%s select   ·   %s buy / upgrade / equip   ·   %s arms / supplies / perks / look   ·   %s close   ·   or click") % [
 		nav, _menu_key("menu_accept", pad), _menu_key("menu_tab", pad), _menu_key("menu_back", pad)]
 
 func _menu_key(id: String, pad: bool) -> String:
@@ -948,25 +948,25 @@ func _on_result(w: int, ok: bool, reason: String) -> void:
 	var name := String(Weapons.def(w).name)
 	match reason:
 		"ok":
-			_say("%s unlocked — take it from the rack." % name, UiTheme.OK)
+			_say(tr("%s unlocked — take it from the rack.") % name, UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 		"poor":
-			_say("Not enough scrap (%d needed)." % Scrap.price_of(w), UiTheme.DANGER)
+			_say(tr("Not enough scrap (%d needed).") % Scrap.price_of(w), UiTheme.DANGER)
 		"owned":
-			_say("%s is already unlocked." % name, UiTheme.BP_MUTED)
+			_say(tr("%s is already unlocked.") % name, UiTheme.BP_MUTED)
 		"later":
 			_say("Not available yet — a later zone.", UiTheme.BP_MUTED)
 		"reward":
 			_say("Defeat the Leech to unlock it.", UiTheme.BP_MUTED)
 		"up_ok":
-			_say("%s upgraded to tier %d." % [name, Scrap.level_of(w)], UiTheme.OK)
+			_say(tr("%s upgraded to tier %d.") % [name, Scrap.level_of(w)], UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 		"up_poor":
-			_say("Not enough scrap (%d needed)." % Scrap.tier_cost(String(Weapons.base_def(w).key), Scrap.level_of(w) + 1), UiTheme.DANGER)
+			_say(tr("Not enough scrap (%d needed).") % Scrap.tier_cost(String(Weapons.base_def(w).key), Scrap.level_of(w) + 1), UiTheme.DANGER)
 		"up_max":
-			_say("%s is fully upgraded." % name, UiTheme.BP_MUTED)
+			_say(tr("%s is fully upgraded.") % name, UiTheme.BP_MUTED)
 		"up_locked":
-			_say("Unlock %s first." % name, UiTheme.BP_MUTED)
+			_say(tr("Unlock %s first.") % name, UiTheme.BP_MUTED)
 		_:
 			_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
@@ -1049,7 +1049,7 @@ func _refresh_supplies() -> void:
 	elif have2 >= maxn:
 		_s_action.text = "The squad is carrying the maximum"
 	else:
-		_s_action.text = "Buy +1  ·  %d scrap" % price2
+		_s_action.text = tr("Buy +1  ·  %d scrap") % price2
 
 func _on_supply_result(kind: String, ok: bool, reason: String) -> void:
 	if not _open:
@@ -1057,12 +1057,12 @@ func _on_supply_result(kind: String, ok: bool, reason: String) -> void:
 	var nm := String(Throwables.KINDS[kind]["name"]) if Throwables.is_valid(kind) else kind
 	match reason:
 		"ok":
-			_say("%s bought — the squad now carries %d." % [nm, Arsenal.get_throwable(kind)], UiTheme.OK)
+			_say(tr("%s bought — the squad now carries %d.") % [nm, Arsenal.get_throwable(kind)], UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 		"poor":
-			_say("Not enough scrap (%d needed)." % Throwables.price_of(kind), UiTheme.DANGER)
+			_say(tr("Not enough scrap (%d needed).") % Throwables.price_of(kind), UiTheme.DANGER)
 		"full":
-			_say("The squad cannot carry more %s." % nm, UiTheme.BP_MUTED)
+			_say(tr("The squad cannot carry more %s.") % nm, UiTheme.BP_MUTED)
 		"off":
 			_say("No scrap in this mode.", UiTheme.BP_MUTED)
 		_:
@@ -1147,9 +1147,9 @@ func _refresh_detail(w: int) -> void:
 	if not unlocked and Scrap.is_later(w):
 		_action.text = "Reward for the Leech" if Scrap.is_gated(w) else "Available in a later zone"
 	elif not unlocked:
-		_action.text = "Buy  ·  %d scrap" % Scrap.price_of(w)
+		_action.text = tr("Buy  ·  %d scrap") % Scrap.price_of(w)
 	elif can_next:
-		_action.text = "Upgrade to tier %d  ·  %d scrap" % [next_lv, Scrap.tier_cost(String(base.key), next_lv)]
+		_action.text = tr("Upgrade to tier %d  ·  %d scrap") % [next_lv, Scrap.tier_cost(String(base.key), next_lv)]
 	else:
 		_action.text = "Fully upgraded"
 	_card.reset_size()

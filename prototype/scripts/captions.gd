@@ -12,7 +12,7 @@ const FAR_PX := 420.0                ## dalej: dopisek „far”
 var _lines: Array = []               ## {base, text, t}
 
 ## Dodaje napis (albo odświeża ten sam) z kierunkiem względem słuchacza. Zwraca, czy coś się zmieniło.
-func push(text: String, pos: Vector2, priority: int, listener: Vector2) -> bool:
+func push(text: String, pos: Vector2, priority: int, listener: Vector2, far_text := "  (far)") -> bool:
 	if priority < MIN_PRIORITY:
 		return false
 	var shown := text
@@ -22,7 +22,7 @@ func push(text: String, pos: Vector2, priority: int, listener: Vector2) -> bool:
 	elif dx >= NEAR_PX:
 		shown = "→  " + shown
 	if pos.distance_to(listener) > FAR_PX:
-		shown += "  (far)"
+		shown += far_text
 	for l in _lines:
 		if String(l["base"]) == text:
 			l["text"] = shown

@@ -124,7 +124,7 @@ func lock_text(w: int) -> String:
 	if is_gated(w):
 		return "reward for the Leech"
 	var price := price_of(w)
-	return ("%d scrap at the workshop" % price) if price > 0 else "available in a later zone"
+	return (tr("%d scrap at the workshop") % price) if price > 0 else "available in a later zone"
 
 ## Czy broń z kryjówki jest dostępna (stojak odblokowany).
 func is_unlocked(w: int) -> bool:
