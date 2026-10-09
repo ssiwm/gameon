@@ -233,7 +233,7 @@ godot --headless --path . --import
 
 **Pijawka HD (animacje):** wypiek `blender -b --factory-startup -P prototype/tools/concept/static_tripo_bake.py -- leech art_src/enemies/tripo/leech_01.glb OUT 0 [-Y] [ANIM,…]` (45 klatek; opcjonalna lista animacji do podglądu), pakowanie `python prototype/tools/pack_monsters_hd.py OUT leech -Y --anims=idle:8:8:1,peek:4:8:1,strike:6:18:0,grab:6:10:1,spit:6:12:0,hurt:2:14:0,dive:5:14:0,death:8:8:0`. Pozy klatek to tabela `leech_pose()` w `static_tripo_bake.py`.
 
-**Etap 3 — wrogowie HD (dev, `--newmon`):** `tools/concept/monster_tripo_bake.py KIND GLB OUT CAM` renderuje klatki wrogów (albedo + normalne, 8 px na piksel świata): Wołek i Ślepiec (szkielet Mixamo z własnymi pozami: chód, zamach rękami nad głową, zgarbiony sen) oraz Trzosek (animacja `preset:quadruped:walk` z Tripo + pozy pochodne); `tools/pack_monsters_hd.py FRAMES KIND CAM` składa `<rodzaj>_hd.png`, `_hd_n.png` i `_hd_glow.png` (świecące oczy z nasyconych żółtych pikseli) i dopisuje do manifestu (te same nazwy i liczby klatek animacji co stary arkusz). `Sprites.enemy_sheet(kind)` wybiera arkusz HD; podgląd w grze: `--newmon --shotmon`. Tripo: dla postaci biped retarget animacji z presetów zwracał błąd 1004 (rig v1.0, spec mixamo), dlatego pozy są własne; dla czworonogów preset chodu działa.
+**Etap 3 — wrogowie HD (dev, `--newmon`):** `tools/concept/monster_tripo_bake.py KIND GLB OUT CAM` renderuje klatki wrogów (albedo + normalne, 8 px na piksel świata): Wołek i Ślepiec (szkielet Mixamo z własnymi pozami: chód, zamach rękami nad głową, zgarbiony sen) oraz Trzosek (animacja `preset:quadruped:walk` z Tripo + pozy pochodne); `tools/pack_monsters_hd.py FRAMES KIND CAM` składa `<rodzaj>_hd.png`, `_hd_n.png` i `_hd_glow.png` (świecące oczy z nasyconych żółtych pikseli; warstwa glow powstaje tylko przy co najmniej 100 świecących pikselach, inaczej plik jest pomijany, a manifest ma `glow:false` — pusta warstwa to kilkanaście MB pamięci wideo) i dopisuje do manifestu (te same nazwy i liczby klatek animacji co stary arkusz). `Sprites.enemy_sheet(kind)` wybiera arkusz HD; podgląd w grze: `--newmon --shotmon`. Tripo: dla postaci biped retarget animacji z presetów zwracał błąd 1004 (rig v1.0, spec mixamo), dlatego pozy są własne; dla czworonogów preset chodu działa.
 
 **Etap 3 — postacie HD:** drugi wygląd gracza to kobieta Scavenger '87 (`art_src/characters/tripo/female_scav_01_rig.glb`, arkusz `playerhd3h_female`); wspólna skala obu płci (`REF_H` = 1,8 m w `char_tripo_bake.py`), więc jest odrobinę niższa. `--newchar=tripo-hd-female` / `tripo-hd-mix` (nieparzyste `display_id` = mężczyzna, parzyste = kobieta). Modele GLB z Tripo (postacie, broń, rekwizyty) leżą w `art_src/` (≈ 560 MB) i są w Git LFS (`.gitattributes`: `*.glb`); lekkie wersje do gry w `prototype/art/char3d/` też.
 
@@ -285,6 +285,15 @@ scripts/
   pickup.gd         # apteczka, amunicja, skrzynia z mapy, broń na ziemi
   sprites.gd        # SpriteFrames z arkusza + manifestu (warstwy ciało / glow)
   backdrop.gd       # tło parallax
+  # misje i kryjówka:
+  generator.gd      # generator radiostacji (misja 1.2), handcar.gd — drezyna ucieczki po generatorach
+  brick_wall.gd     # zamurowane przejście (marker q) ze skrytką; board.gd, results_wall.gd, run_log.gd — tablica odprawy i ściana wyników w kryjówce
+  workshop_ui.gd    # panel warsztatu (złom), upgrades.gd — ulepszenia broni, range_target.gd — tarcza strzelnicy
+  profile.gd        # autoload Profile: lokalny profil (XP, poziom, perki), perk_icon.gd — miniatury perków
+  throwables.gd     # granaty, miny, ładunki; smoke_cloud.gd — dym, fire_patch.gd — ogień HKM-9
+  # Pijawka (boss B1): leech.gd (symulacja i animacje), acid_spit.gd — kwas, tide_water.gd — fala przypływu
+  # grafika i postacie: char3d.gd (postać 3D w czasie rzeczywistym, patrz CHAR3D_SPIKE.md), gib_art.gd — szczątki HD, horror_fx.gd — gradacja, winieta, ziarno
+  maps/             # dane map (siatka ASCII): z1_hub (kryjówka), z1_m1 „Zaginiony Patrol”, z1_m2 „Przerwa w Nadawaniu”, z1_m3 „Gniazdo”, z1_b1 „Pijawka”
 scenes/
   main.tscn  player.tscn  bot_companion.tscn  stalker.tscn  enemy.tscn  nest.tscn  boss.tscn
 tools/
@@ -293,7 +302,8 @@ tools/
 
 ## Znane ograniczenia (świadome, prototyp)
 
-- zwykli wrogowie (Trzosek, Wołek) bez A* — gonią prosto i doskakują
-- jedna mapa (choć duża); wrogowie podziemi budzą się od hałasu tylko w promieniu słyszenia, a goniąc „prosto” mogą utknąć pod sufitem, gdy gracz jest na powierzchni; grafika kafli i postaci to placeholder rysowany w kodzie
+- serwer nie sprawdza, czy gracz miał daną broń i ile ma naboi (`_fire_request` waliduje nadawcę, tempo i wylot, ale nie magazynek); upuszczenie broni (`_drop_rpc`) sprawdza tylko nadawcę i odległość
+- wydajność mierzona wyłącznie na RTX 3080 (HD: ok. 260 MB pamięci wideo na misję); brak pomiaru na słabszym GPU, a grzbiety i mgła tła HD są importowane jako S3TC (PC, Steam Deck; bez S3TC trzeba je przełączyć z powrotem na bezstratne)
+- hitbox wynurzonej Pijawki nie podąża za wychyleniem głowy w ataku; arkusze HD potworów mają warstwę glow tylko u Mimika i Trzoska
 - pozycje zdalnych graczy ufane (OK dla kooperacji, blokuje host migration)
 - relay tylko przez Steam (wymaga wtyczki GodotSteam, patrz wyżej); bez niej tylko ENet P2P/LAN
