@@ -2,14 +2,17 @@ extends RefCounted
 ## Shared UI theme: readable in the dark (outlined text), consistent panels,
 ## buttons and inputs. Built in code so the look lives in one place.
 
-const ACCENT := Color(1.0, 0.72, 0.28)        ## amber — objectives, highlights
-const DANGER := Color(1.0, 0.28, 0.22)
-const OK := Color(0.45, 1.0, 0.55)
-const TEXT := Color(0.92, 0.92, 0.94)
-const MUTED := Color(0.62, 0.64, 0.68)
-const PANEL_BG := Color(0.07, 0.058, 0.046, 0.88)       ## ciepła, ciemna „deska” — panele należą do świata kryjówki, nie do arkusza kalkulacyjnego
-const PANEL_EDGE := Color(0.46, 0.36, 0.22, 0.9)         ## mosiężna krawędź
-const PANEL_EDGE_LOW := Color(0.30, 0.23, 0.13, 1.0)     ## dolna, grubsza krawędź (fałd materiału)
+## Paleta (UI_PLAN.md §3): prawie wszystko to kość słoniowa na niemal czarnym tle. Krew (DANGER) jest racjonowana —
+## niebezpieczeństwo, aktywny punkt, tytuł; przygasająca lampa (ACCENT) to jedyne ciepłe światło: bezpieczne miejsca i nagrody.
+const ACCENT := Color(0.851, 0.573, 0.18)      ## #D9922E lampa — cel, wyróżnienia
+const DANGER := Color(0.898, 0.282, 0.227)     ## #E5483A krew
+const OK := Color(0.541, 0.659, 0.475)         ## #8AA879 mech
+const CALM := Color(0.435, 0.639, 0.608)       ## #6FA39B mgła (spokój)
+const TEXT := Color(0.851, 0.831, 0.765)       ## #D9D4C3 kość
+const MUTED := Color(0.553, 0.541, 0.486)      ## #8D8A7C przygaszony
+const PANEL_BG := Color(0.043, 0.047, 0.043, 0.9)        ## #0B0C0B „deck” — panele należą do świata, nie do arkusza kalkulacyjnego
+const PANEL_EDGE := Color(0.33, 0.31, 0.25, 0.9)         ## przygaszona kość (dawniej mosiądz)
+const PANEL_EDGE_LOW := Color(0.22, 0.20, 0.16, 1.0)     ## dolna, grubsza krawędź (fałd materiału)
 ## Materiały obiektów świata (karty zakotwiczone w kryjówce): papier z tekstem tuszem.
 const PAPER := Color(0.85, 0.78, 0.59)
 const PAPER_EDGE := Color(0.55, 0.44, 0.24)
@@ -48,9 +51,9 @@ static func get_theme() -> Theme:
 	t.set_stylebox("panel", "Panel", panel_box())
 	t.set_stylebox("panel", "PanelContainer", panel_box())
 
-	var normal := _box(Color(0.10, 0.11, 0.14, 0.95), Color(1, 1, 1, 0.10))
-	var hover := _box(Color(0.16, 0.15, 0.13, 0.98), ACCENT.darkened(0.2))
-	var pressed := _box(Color(0.22, 0.17, 0.08, 1.0), ACCENT)
+	var normal := _box(Color(0.082, 0.085, 0.078, 0.96), Color(1, 1, 1, 0.10))
+	var hover := _box(Color(0.13, 0.125, 0.105, 0.98), ACCENT.darkened(0.2))
+	var pressed := _box(Color(0.19, 0.14, 0.07, 1.0), ACCENT)
 	var focus := _box(Color(0, 0, 0, 0), ACCENT, 1)
 	# wyłączony przycisk (np. Steam bez wtyczki): wyraźnie przygaszony, bez reakcji na hover
 	var disabled := _box(Color(0.07, 0.075, 0.09, 0.8), Color(1, 1, 1, 0.05))
@@ -195,16 +198,54 @@ static func label(text: String, size: int, color: Color = TEXT, align := HORIZON
 	return l
 
 static var _heading_font: Font
+static var _mono_font: Font
+static var _whisper_font: Font
 
-## Pikselowa czcionka nagłówków (null, gdy pliku brak — wtedy zostaje czcionka motywu).
+## Role czcionek (UI_PLAN.md): nagłówki — wąski techniczny krój, liczby i etykiety przyrządów — monospace, „szept” (ostrzeżenia,
+## podpowiedzi, notatki) — maszyna do pisania. Czcionki systemowe z listą zastępczą (SystemFont wraca do domyślnej, gdy nic
+## nie znajdzie); dołączone kroje OFL (Big Shoulders, IBM Plex, Special Elite) można wstawić w art/fonts/ bez zmian w kodzie ekranów.
+static func _system(names: Array, weight := 400, spacing := 0) -> Font:
+	var sf := SystemFont.new()
+	sf.font_names = PackedStringArray(names)
+	sf.font_weight = weight
+	sf.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
+	sf.hinting = TextServer.HINTING_NONE                            # obraz jest skalowany (canvas_items) — hinting psuł odstępy liter
+	sf.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_ONE_HALF
+	if spacing == 0:
+		return sf
+	var fv := FontVariation.new()
+	fv.base_font = sf
+	fv.spacing_glyph = spacing
+	return fv
+
+static func mono_font() -> Font:
+	if _mono_font == null:
+		_mono_font = _system(["IBM Plex Mono", "Consolas", "Cascadia Mono", "Menlo", "DejaVu Sans Mono", "Courier New"], 500)
+	return _mono_font
+
+static func whisper_font() -> Font:
+	if _whisper_font == null:
+		_whisper_font = _system(["Special Elite", "American Typewriter", "Courier New", "Courier Prime", "DejaVu Sans Mono"], 400)
+	return _whisper_font
+
+## Etykieta liczbowa / przyrządowa (HD: monospace; klasyczna grafika zostaje przy czcionce motywu).
+static func mono(l: Label) -> Label:
+	if hd_on():
+		l.add_theme_font_override("font", mono_font())
+	return l
+
+## Etykieta „szeptu” — maszynowa (HD).
+static func whisper(l: Label) -> Label:
+	if hd_on():
+		l.add_theme_font_override("font", whisper_font())
+	return l
+
+## Czcionka nagłówków: HD — wąski techniczny krój (Big Shoulders / Bahnschrift Condensed / Impact…), klasyczna grafika —
+## pikselowa Silkscreen (null, gdy pliku brak — wtedy zostaje czcionka motywu).
 static func heading_font() -> Font:
 	if hd_on():
 		if _heading_font == null:
-			var fv := FontVariation.new()                     # czysty krój motywu: pogrubiony, z rozstrzeleniem liter (techniczny, wersaliki)
-			fv.base_font = ThemeDB.fallback_font
-			fv.variation_embolden = 0.55
-			fv.spacing_glyph = 1
-			_heading_font = fv
+			_heading_font = _system(["Big Shoulders Stencil Display", "Big Shoulders Display", "Bahnschrift SemiBold Condensed", "Bahnschrift Condensed", "Impact", "Arial Narrow"], 700, 1)
 		return _heading_font
 	if _heading_font == null and ResourceLoader.exists(HEADING_FONT):
 		_heading_font = load(HEADING_FONT) as Font

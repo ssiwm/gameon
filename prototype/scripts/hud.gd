@@ -32,7 +32,7 @@ const Actions := preload("res://scripts/actions.gd")
 const Captions := preload("res://scripts/captions.gd")
 
 ## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
-const UI_SCALE := 0.7
+const UI_SCALE := 0.8
 const MARGIN := 8.0              ## odstęp kart od krawędzi (jednostki logiczne HUD)
 const CONTROLS_SHOW_S := 20.0
 const NOISE_COL_CALM := Color(0.62, 0.72, 0.78)
@@ -461,7 +461,7 @@ func _build_noise_card() -> void:
 	var spring := Control.new()
 	spring.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(spring)
-	_noise_val = UiTheme.label("0%", 9, UiTheme.TEXT)
+	_noise_val = UiTheme.mono(UiTheme.label("0%", 9, UiTheme.TEXT))
 	head.add_child(_noise_val)
 	box.add_child(head)
 	_noise_bar = Bar.new()
@@ -781,9 +781,9 @@ func _build_objective_card() -> void:
 func _build_session() -> void:
 	_session = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
 	add_child(_session)
-	_clock = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	_clock = UiTheme.mono(UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
 	add_child(_clock)
-	_scrap = UiTheme.label("", 9, Color(0.95, 0.8, 0.4), HORIZONTAL_ALIGNMENT_RIGHT)
+	_scrap = UiTheme.mono(UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_RIGHT))
 	add_child(_scrap)
 	_scrap_coin = Coin.new()
 	add_child(_scrap_coin)
@@ -798,10 +798,10 @@ func _build_session() -> void:
 func _build_center() -> void:
 	_warn = UiTheme.heading("", 16, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_warn)
-	_warn_sub = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	_warn_sub = UiTheme.whisper(UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 	add_child(_warn_sub)
 	# krótkie komunikaty (np. „wabik już nie działa tutaj")
-	_note = UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
+	_note = UiTheme.whisper(UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
 	_note.modulate.a = 0.0
 	add_child(_note)
 	NoiseMgr.overcharge_stale.connect(func() -> void: show_note("They know this trick — move before you lure again"))
@@ -926,7 +926,7 @@ func _build_hint() -> void:
 	row.add_theme_constant_override("separation", 7)
 	_hint_card.add_child(row)
 	row.add_child(UiTheme.heading("TIP", 8, UiTheme.ACCENT))
-	_hint_label = UiTheme.label("", 9, UiTheme.TEXT)
+	_hint_label = UiTheme.whisper(UiTheme.label("", 9, UiTheme.TEXT))
 	_hint_label.custom_minimum_size = Vector2(330, 0)
 	_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	row.add_child(_hint_label)
@@ -1177,7 +1177,15 @@ func _drive_weapons() -> void:
 	else:
 		_heat_note.text = "%.1f" % cur.noise(0.0)
 	_gear_card.reset_size()
-	_gear_card.position = Vector2((size.x - _gear_card.size.x) * 0.5, size.y - BOTTOM_PAD - _gear_card.size.y)
+	# pasek broni: środek ekranu, ale nie na karcie drużyny; gdy się nie mieści (duży HUD) — nad kartą drużyny
+	var gw := _gear_card.size.x
+	var gh := _gear_card.size.y
+	var gx := maxf((size.x - gw) * 0.5, _squad_card.position.x + _squad_card.size.x + MARGIN)
+	var gy := size.y - BOTTOM_PAD - gh
+	if gx + gw > size.x - MARGIN:
+		gx = maxf((size.x - gw) * 0.5, MARGIN)
+		gy = _squad_card.position.y - gh - 4.0
+	_gear_card.position = Vector2(gx, gy)
 
 ## Ostrzeżenie przed karą (GDD §8.1): niepokój ZANIM ON się obudzi.
 func _drive_warning() -> void:
