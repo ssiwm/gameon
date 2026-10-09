@@ -32,6 +32,7 @@ var shake_idx := 0
 var ui_idx := 1
 var hints_on := true
 var fullscreen := false
+var char3d := false                    ## (beta) postacie graczy jako modele 3D w czasie rzeczywistym (char3d.gd) zamiast sprite'ów; tylko z grafiką HD, zmiana wymaga restartu
 var graphics_hd := true                ## grafika HD (postacie, bronie, wrogowie, świat, UI z modeli 3D) zamiast klasycznego pixel-artu; zmiana wymaga restartu gry
 var seen_tips: Array = []              ## identyfikatory podpowiedzi, które gracz już widział
 var shift_best_cleared := 0            ## Nocny Dyżur: najwięcej ukończonych misji w jednej serii (rekord lokalny)
@@ -85,6 +86,10 @@ func hd_active() -> bool:
 
 func toggle_hd() -> void:
 	graphics_hd = not graphics_hd
+	_commit()
+
+func toggle_char3d() -> void:
+	char3d = not char3d
 	_commit()
 
 func toggle_fullscreen() -> void:
@@ -175,6 +180,7 @@ func _load() -> void:
 	hints_on = bool(cf.get_value("game", "hints", true))
 	fullscreen = bool(cf.get_value("game", "fullscreen", false))
 	graphics_hd = bool(cf.get_value("game", "graphics_hd", true))
+	char3d = bool(cf.get_value("game", "char3d", false))
 	seen_tips = Array(cf.get_value("game", "seen_tips", []))
 	shift_best_cleared = int(cf.get_value("shift", "best_cleared", 0))
 	shift_best_time = float(cf.get_value("shift", "best_time", 0.0))
@@ -189,6 +195,7 @@ func _save() -> void:
 	cf.set_value("game", "hints", hints_on)
 	cf.set_value("game", "fullscreen", fullscreen)
 	cf.set_value("game", "graphics_hd", graphics_hd)
+	cf.set_value("game", "char3d", char3d)
 	cf.set_value("game", "seen_tips", seen_tips)
 	cf.set_value("shift", "best_cleared", shift_best_cleared)
 	cf.set_value("shift", "best_time", shift_best_time)

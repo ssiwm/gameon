@@ -11,6 +11,8 @@ const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
 const WeaponController := preload("res://scripts/weapon_controller.gd")
 const WeaponView := preload("res://scripts/weapon_view.gd")
+const Char3D := preload("res://scripts/char3d.gd")
+const Look := preload("res://scripts/look.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Nav := preload("res://scripts/nav.gd")
 const Vfx := preload("res://scripts/vfx.gd")
@@ -134,6 +136,7 @@ var _prev_vy := 0.0
 var _prev_floor_y := 0.0
 var _splash_t := 0.0
 var _spr: Array = []            ## [ciało, glow] — AnimatedSprite2D (sprites.gd)
+var c3d: Node2D                 ## postać 3D (char3d.gd) zamiast _spr, gdy Sprites.char3d (dev)
 var _spr_scale := 1.0           ## skala rysowania arkusza (2× gęstość pikseli → 0,5); mnoży ściśnięcie (squash)
 var _facing := 1.0
 var _light_noise_t := 0.0
@@ -209,6 +212,14 @@ func _wanted_sheet() -> String:
 	return Sprites.bot_sheet() if is_bot else Sprites.player_sheet(display_id, look)
 
 func _setup_sprites() -> void:
+	if Sprites.char3d and Char3D.available():
+		c3d = Char3D.new()
+		c3d.name = "Char3D"
+		add_child(c3d)
+		if c3d.setup(_char3d_name()):
+			return
+		c3d.queue_free()
+		c3d = null
 	var sheet := _wanted_sheet()
 	if not Sprites.has(sheet):
 		return
@@ -229,6 +240,9 @@ func _refresh_look_sprites() -> void:
 
 ## Animacja z (replikowanego) stanu — działa też dla zdalnych graczy i bota.
 func _update_sprite() -> void:
+	if c3d != null:
+		_update_char3d()
+		return
 	if _spr_sheet != "" and not is_bot and Sprites.newchar == "tripo-hd-look":
 		_refresh_look_sprites()
 	if _spr.is_empty():
@@ -251,6 +265,34 @@ func _update_sprite() -> void:
 	body.scale = squash * _spr_scale
 	Sprites.play(_spr, anim, _facing < 0.0)
 	body.modulate = _tint_color()
+
+## Model 3D wg wyglądu: bot to kobieta Scavenger '87 (jak w grafice HD), gracz — płeć i strój z profilu (Look), domyślnie wg numeru gracza.
+func _char3d_name() -> String:
+	if is_bot:
+		return Char3D.char_name_for("female", "scavenger")
+	var c := look if Look.is_valid(look) else Look.code(0 if display_id % 2 == 1 else 1, 0)
+	return Char3D.char_name_for(Look.gender_id(c), Look.outfit_id(c))
+
+## Postać 3D (dev): animacja z tego samego stanu co sprite'y, celowanie z aim_dir; broń trzymana IK-iem w obu dłoniach.
+func _update_char3d() -> void:
+	if absf(aim_dir.x) > 0.1:
+		_facing = signf(aim_dir.x)
+	elif absf(velocity.x) > 10.0:
+		_facing = signf(velocity.x)
+	var grounded := is_on_floor() if not _is_remote else absf(velocity.y) < 5.0
+	var anim := "idle"
+	if dead:
+		anim = "down"
+	elif not grounded:
+		anim = "jump" if velocity.y < 0.0 else "fall"
+	elif crouching:
+		anim = "crouch_walk" if absf(velocity.x) > 8.0 else "crouch"
+	elif absf(velocity.x) > 10.0:
+		anim = "run"
+	if not is_bot:
+		c3d.set_look(_char3d_name())                   # wymiana modelu przy zmianie wyglądu (replikowane `look`); porównanie nazw jest tanie
+	c3d.scale = squash
+	c3d.update(get_process_delta_time(), anim, _facing, aim_dir, absf(velocity.x), true, _tint_color())
 
 ## Kolor ciała: błysk po trafieniu i migotanie nietykalności (broń dostaje ten sam).
 func _tint_color() -> Color:
@@ -1630,7 +1672,7 @@ func _body_color() -> Color:
 # ---------------------------------------------------------------- draw
 
 func _draw() -> void:
-	if not _spr.is_empty():
+	if not _spr.is_empty() or c3d != null:
 		if not dead:
 			draw_rect(Rect2(-6, -1, 12, 2), Color(0, 0, 0, 0.35))
 		return
@@ -1681,7 +1723,7 @@ func _draw_overlay(ov: Node2D) -> void:
 				ov.draw_rect(Rect2(-12, -12, 24.0 * revive_progress, 3), Color(0.4, 0.95, 0.5))
 		return
 	var top := -11.0 if crouching else -17.0
-	if not _spr.is_empty():
+	if not _spr.is_empty() or c3d != null:
 		top = -16.0 if crouching else -22.0
 	if Sprites.newitem and hp < max_hp():
 		_draw_wounds(ov, top)

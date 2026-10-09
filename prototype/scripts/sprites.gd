@@ -16,6 +16,8 @@ static var _cache: Dictionary = {}
 ## Dev (--newchar[=male|female|mix|tripo[-male|-female|-mix]]): zamiast arkuszy player_1..4 rysuj postacie 3D (arkusze playerhd_* z MakeHuman albo
 ## playerhd3_* z modeli Tripo; tools/pack_chars3d.py). Pusty = wyłączone.
 static var newchar := ""
+## Dev (--char3d): postacie graczy jako modele 3D renderowane w czasie rzeczywistym (char3d.gd) — ręce z IK trzymają broń 3D. Spike; wyłącza sprite'owe ciało i broń 2D.
+static var char3d := false
 ## Dev (--newgun): broń z arkuszy HD `gunhd_<klucz>.png` (+ `_n.png`), jeśli istnieją (na razie m83); reszta broni jak dotąd.
 static var newgun := false
 ## Dev (--newmon): wrogowie z arkuszy HD `<rodzaj>_hd` (Tripo → tools/pack_monsters_hd.py), jeśli istnieją; reszta po staremu.
