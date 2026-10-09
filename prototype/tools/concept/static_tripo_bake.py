@@ -1,7 +1,7 @@
 """Bake modeli statycznych (bez rigu) z Tripo do klatek HD: Ćma (machanie skrzydłami), gniazdo (pulsowanie), bossowie Żyła i Pijawka (procedura: oddech, wychylenia, pochylenia).
 Animacja = deformacja wierzchołków w Pythonie (bez szkieletu), render albedo + normalne świata jak w monster_tripo_bake.py.
 
-Uruchomienie: blender -b --factory-startup -P prototype/tools/concept/static_tripo_bake.py -- KIND GLB OUT [ROT_Z_DEG] [CAM]
+Uruchomienie: blender -b --factory-startup -P prototype/tools/concept/static_tripo_bake.py -- KIND GLB OUT [ROT_Z_DEG] [CAM]   (Żyła: vein art_src/enemies/tripo/vein_01.glb OUT -90)
     KIND = cma | nest | vein | leech; ROT_Z = obrót modelu wokół pionu (czoło modelu w prawo kadru); CAM = −Y (domyślnie) | +Y | −X | +X
 Wynik: OUT/KIND_<anim>_<i>.png (+ _n.png). Pakuje: tools/pack_monsters_hd.py (ppw wynika z rozmiaru klatki starego arkusza).
 """
@@ -51,24 +51,34 @@ def deform(kind, anim, i, n, rest, bb):
             xr, yr = x * c - y * s, x * s + y * c
             out.append((xr, yr, z))
     elif kind == "vein":
+        # Widok z przodu (ROT_Z −90: twarz do kamery, jak symetryczna sylwetka starego arkusza). Szczęka: ZAMKNIĘTA (jaw < 0: dolna szczęka unosi się do górnej,
+        # kły się zazębiają) w uśpieniu, bezczynności i zapowiedzi ataku; OTWARTA (jaw > 0: dolna szczęka opada, wielka jama) w oknie podatności (`open`)
+        # i przy pluciu. Paszcza = słaby punkt bossa (boss.gd: maw_open) — jej stan musi być czytelny na pierwszy rzut oka.
         k = math.sin(ph * math.tau)
+        jaw = {"dormant": [-1.0] * 4, "idle": [-1.0] * 6, "open": [0.75, 1.0, 1.1, 0.95], "windup": [-0.9, -0.75, -0.55], "spit": [0.45, 0.9, 0.65]}[anim][i]
         for x, y, z in rest:
-            t = z / H
             sx = sy = sz = 1.0
-            ox = oz = 0.0
             if anim == "dormant":                 # przycupnięta: niższa, szersza
                 sz, sx, sy = 0.80 + 0.012 * k, 1.04, 1.04
             elif anim == "idle":
                 sz, sx = 1.0 + 0.020 * k, 1.0 - 0.006 * k
-            elif anim == "open":                  # unosi się, rozdyma
+            elif anim == "open":                  # unosi się i rozdyma
                 sz, sx = 1.0 + 0.045 * (0.5 + 0.5 * math.sin(ph * math.pi)), 1.0 + 0.02 * ph
-            elif anim == "windup":                # unosi czub do tyłu przed plunięciem
-                sz = 1.05 + 0.02 * ph
-                ox = -0.10 * ph * t
-            elif anim == "spit":                  # wyrzut do przodu
-                ox = 0.14 * math.sin(ph * math.pi) * t
-                sz = 1.03
-            out.append((x * sx + ox, y * sy, z * sz + oz))
+            elif anim == "windup":                # unosi się i kurczy przed plunięciem
+                sz, sx = 1.05 + 0.02 * ph, 1.0 - 0.015 * ph
+            elif anim == "spit":                  # wyrzut ku widzowi: większy w kadrze
+                sz = sx = 1.03 + 0.03 * math.sin(ph * math.pi)
+            oy = 0.0
+            dz = 0.0
+            if y < 0.05:                          # przednia strona (twarz; kamera po stronie −Y)
+                wl = math.exp(-((x / 0.14) ** 2 + ((z - 0.585) / 0.075) ** 2))        # dolna szczęka (kły dolne, podbródek)
+                wu = math.exp(-((x / 0.14) ** 2 + ((z - 0.70) / 0.05) ** 2))          # górna warga
+                if jaw >= 0.0:
+                    dz = -0.085 * wl * jaw + 0.020 * wu * jaw
+                    oy = -0.03 * wl * jaw
+                else:
+                    dz = 0.052 * wl * -jaw - 0.022 * wu * -jaw
+            out.append((x * sx, y * sy + oy, (z + dz) * sz))
     elif kind == "leech":
         for x, y, z in rest:
             t = z / H
