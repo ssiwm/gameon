@@ -11,12 +11,14 @@ signal host_requested
 signal join_requested(ip: String)
 signal steam_host_requested
 signal steam_join_requested(lobby_id: String)
+signal back_requested                ## wróć do menu głównego
+signal settings_requested            ## ustawienia (menu pauzy w trybie ustawień)
 
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Actions := preload("res://scripts/actions.gd")
 
-const CARD_W := 470.0
+const CARD_W := 600.0               ## szeroka karta: sterowanie w trzech kolumnach mieści się w 360 px wysokości (viewport 640×360)
 const BTN_W := 108.0                ## stała szerokość przycisków bocznych — kolumny wierszy się pokrywają
 
 enum Mode { CAMPAIGN, SAFE_ROOM, NIGHT_SHIFT }
@@ -43,6 +45,7 @@ var _steam_host: Button
 var _steam_join: Button
 var _steam_id: LineEdit
 var _mic: Button
+var _back: Button
 var _title: Label
 var _t := 0.0
 
@@ -68,6 +71,7 @@ func _ready() -> void:
 	_build_options(box)
 	_build_status(box)
 	_build_controls(box)
+	_build_footer(box)
 
 	visibility_changed.connect(func() -> void:
 		if visible and is_inside_tree():
@@ -162,9 +166,9 @@ func _build_controls(box: VBoxContainer) -> void:
 	box.add_child(_rule(Color(1, 1, 1), 0.10))
 	box.add_child(_caption("CONTROLS"))
 	var grid := GridContainer.new()
-	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", 8)
-	grid.add_theme_constant_override("v_separation", 2)
+	grid.columns = 6
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 1)
 	box.add_child(grid)
 	_fill_controls(grid)
 	InputSetup.device_changed.connect(func(_pad: bool) -> void: _fill_controls(grid))
@@ -175,14 +179,38 @@ func _fill_controls(grid: GridContainer) -> void:
 		grid.remove_child(c)
 		c.queue_free()
 	var rows: Array = Actions.sheet()
-	var half := (rows.size() + 1) / 2
-	for i in half:
-		_add_control(grid, rows[i])
-		if i + half < rows.size():
-			_add_control(grid, rows[i + half])
-		else:
-			grid.add_child(Control.new())
-			grid.add_child(Control.new())
+	var per_col := (rows.size() + 2) / 3
+	for i in per_col:
+		for c in 3:
+			var idx := i + c * per_col
+			if idx < rows.size():
+				_add_control(grid, rows[idx])
+			else:
+				grid.add_child(Control.new())
+				grid.add_child(Control.new())
+
+## Dolny rząd: BACK (do menu głównego; tylko gdy main.gd je pokazuje) i SETTINGS.
+func _build_footer(box: VBoxContainer) -> void:
+	var row := HBoxContainer.new()
+	_back = _side_button("BACK")
+	_back.visible = false
+	_back.pressed.connect(func() -> void:
+		Audio.play("ui_click", Audio.BUS_UI, -10.0)
+		back_requested.emit())
+	row.add_child(_back)
+	var sp := Control.new()
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(sp)
+	var st := _side_button("SETTINGS")
+	st.pressed.connect(func() -> void:
+		Audio.play("ui_click", Audio.BUS_UI, -10.0)
+		settings_requested.emit())
+	row.add_child(st)
+	box.add_child(row)
+
+## BACK ma sens tylko, gdy istnieje menu główne.
+func set_back_enabled(on: bool) -> void:
+	_back.visible = on
 
 ## Tytuł lekko „migocze" — rzadkie, krótkie zaniki jak przy słabym kontakcie (klimat, nie szum).
 func _process(delta: float) -> void:
@@ -247,10 +275,10 @@ func _add_control(grid: GridContainer, row: Array) -> void:
 	cap.content_margin_top = 0
 	cap.content_margin_bottom = 1
 	key.add_theme_stylebox_override("normal", cap)
-	key.custom_minimum_size = Vector2(66, 0)
+	key.custom_minimum_size = Vector2(60, 0)
 	grid.add_child(key)
 	var desc := UiTheme.label(row[1], 8, UiTheme.MUTED)
-	desc.custom_minimum_size = Vector2(120, 0)
+	desc.custom_minimum_size = Vector2(100, 0)
 	grid.add_child(desc)
 
 func _refresh_mode() -> void:

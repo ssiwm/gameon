@@ -10,6 +10,9 @@ const Actions := preload("res://scripts/actions.gd")
 const Codex := preload("res://scripts/codex.gd")
 const CodexPage := preload("res://scripts/codex_page.gd")
 
+signal leave_requested               ## „LEAVE SESSION": main.gd kończy sesję i wraca do ekranu startowego
+
+const QUIT_CONFIRM_S := 3.0
 const CARD_W := 450.0
 const PAGE_H := 270.0                ## stała wysokość zakładek — karta nie skacze przy przełączaniu
 const TABS := ["SETTINGS", "BESTIARY", "WEAPONS", "GEAR", "PERKS", "CONTROLS"]
@@ -25,6 +28,11 @@ var _values := {}                    ## klucz → Label z bieżącą wartością
 var _prev_mouse := Input.MOUSE_MODE_VISIBLE
 var _open := false
 var _resume: Button
+var _title: Label
+var _leave: Button
+var _quit: Button
+var _quit_t := 0.0                   ## >0: QUIT czeka na potwierdzenie
+var _sliders := {}                   ## rodzaj głośności → HSlider
 var _rebind_list: VBoxContainer
 var _rebind_msg: Label
 var _cap := {}                       ## trwające przypisywanie: id, dev, btn, text
@@ -55,7 +63,8 @@ func _ready() -> void:
 	box.add_theme_constant_override("separation", 3)
 	card.add_child(box)
 
-	box.add_child(UiTheme.heading("PAUSED", 24, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
+	_title = UiTheme.heading("PAUSED", 24, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
+	box.add_child(_title)
 	_sub = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(_sub)
 	box.add_child(_rule())
@@ -105,14 +114,20 @@ func _ready() -> void:
 	resume.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	resume.pressed.connect(close)
 	btns.add_child(resume)
-	var quit := Button.new()
-	quit.text = "QUIT GAME"
-	quit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	quit.tooltip_text = "Closes the game (your squad keeps playing if you are the client)"
-	quit.pressed.connect(func() -> void:
+	_leave = Button.new()
+	_leave.text = "LEAVE SESSION"
+	_leave.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_leave.tooltip_text = "Back to the start screen (the host's squad keeps playing if you are a client)"
+	_leave.pressed.connect(func() -> void:
 		close()
-		get_tree().quit())
-	btns.add_child(quit)
+		leave_requested.emit())
+	btns.add_child(_leave)
+	_quit = Button.new()
+	_quit.text = "QUIT GAME"
+	_quit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_quit.tooltip_text = "Closes the game (your squad keeps playing if you are the client)"
+	_quit.pressed.connect(_on_quit)
+	btns.add_child(_quit)
 	box.add_child(btns)
 	Settings.changed.connect(_refresh)
 	Voice.changed.connect(_refresh)
@@ -146,20 +161,28 @@ func _build_settings() -> void:
 	_cycler("hd", "Graphics (restart)", Settings.toggle_hd)
 	_cycler("c3d", "Characters (restart)", Settings.toggle_char3d)
 
-## Wiersz: opis po lewej, [−] wartość [+] po prawej.
+## Wiersz: opis po lewej, suwak i wartość po prawej (strzałki / D-pad / mysz).
 func _stepper(kind: String, text: String) -> void:
 	var row := HBoxContainer.new()
 	var l := UiTheme.label(text, 9, UiTheme.TEXT)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(l)
-	row.add_child(_small_button("−", func() -> void:
-		Settings.set_volume(kind, float(Settings.volume[kind]) - Settings.STEP)))
+	var sl := HSlider.new()
+	sl.min_value = 0.0
+	sl.max_value = 1.0
+	sl.step = Settings.STEP
+	sl.value = float(Settings.volume[kind])
+	sl.custom_minimum_size = Vector2(150, 16)
+	sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	sl.value_changed.connect(func(v: float) -> void:
+		Settings.set_volume(kind, v)
+		Audio.play("ui_click", Audio.BUS_UI, -14.0))
+	_sliders[kind] = sl
+	row.add_child(sl)
 	var v := UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
 	v.custom_minimum_size = Vector2(38, 0)
 	_values[kind] = v
 	row.add_child(v)
-	row.add_child(_small_button("+", func() -> void:
-		Settings.set_volume(kind, float(Settings.volume[kind]) + Settings.STEP)))
 	_settings_page.add_child(row)
 
 ## Wiersz: opis po lewej, przycisk przełączający po prawej.
@@ -329,6 +352,8 @@ func _rule() -> ColorRect:
 func _refresh() -> void:
 	for kind in Settings.volume:
 		_values[kind].text = "%d%%" % int(round(float(Settings.volume[kind]) * 100.0))
+		if _sliders.has(kind):
+			(_sliders[kind] as HSlider).set_value_no_signal(float(Settings.volume[kind]))
 	_values["shake"].text = Settings.SHAKE_NAMES[Settings.shake_idx]
 	_values["wfx"].text = Settings.WEATHER_FX_NAMES[Settings.weather_fx_idx]
 	_values["hints"].text = "ON" if Settings.hints_on else "OFF"
@@ -344,9 +369,19 @@ func _show_tab(i: int) -> void:
 		_pages[j].visible = j == i
 		_tab_buttons[j].set_pressed_no_signal(j == i)
 
-func _lobby_visible() -> bool:
-	var lobby := get_node_or_null("../Lobby") as Control
-	return lobby != null and lobby.visible
+## Menu główne / lobby: otwiera menu w trybie ustawień (bez sesji).
+func open_settings() -> void:
+	_tab = 0
+	open()
+
+func _on_quit() -> void:
+	if _quit_t > 0.0:
+		close()
+		get_tree().quit()
+		return
+	_quit_t = QUIT_CONFIRM_S
+	_quit.text = "CLICK AGAIN TO QUIT"
+	Audio.play("ui_click", Audio.BUS_UI, -10.0)
 
 func _solo() -> bool:
 	return multiplayer.get_peers().is_empty()
@@ -356,8 +391,17 @@ func open() -> void:
 		return
 	_open = true
 	visible = true
-	_sub.text = "The game is paused." if _solo() else "The game keeps running — your squad is still out there."
-	get_tree().paused = _solo()
+	var online := NoiseMgr.has_network()
+	_title.text = "PAUSED" if online else "SETTINGS"
+	if online:
+		_sub.text = "The game is paused." if _solo() else "The game keeps running — your squad is still out there."
+	else:
+		_sub.text = "Changes are saved automatically."
+	_resume.text = "RESUME" if online else "BACK"
+	_leave.visible = online
+	_quit_t = 0.0
+	_quit.text = "QUIT GAME"
+	get_tree().paused = online and _solo()
 	Settings.block_game_input(true)
 	_prev_mouse = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -376,7 +420,11 @@ func close() -> void:
 	Input.mouse_mode = _prev_mouse
 	Audio.play("ui_click", Audio.BUS_UI, -10.0)
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _quit_t > 0.0:
+		_quit_t -= delta
+		if _quit_t <= 0.0:
+			_quit.text = "QUIT GAME"
 	# ktoś dołączył do zatrzymanej gry solo — świat musi ruszyć
 	if _open and get_tree().paused and not _solo():
 		get_tree().paused = false
@@ -405,8 +453,6 @@ func _input(event: InputEvent) -> void:
 		return                                  # Esc zamyka panel warsztatu (workshop_ui.gd), nie otwiera pauzy
 	if _open:
 		close()
-	elif NoiseMgr.has_network() and not _lobby_visible():     # w lobby Esc nic nie robi
-		open()
 	else:
-		return
+		open()                                                # przed grą (menu główne / lobby) otwiera same ustawienia
 	get_viewport().set_input_as_handled()
