@@ -24,6 +24,32 @@ func _ready() -> void:
 	_layer("fog", Vector2(0.55, 1.0), _fog(), Vector2(-6.0, 0.0))
 
 var _layers: Dictionary = {}           ## nazwa → Sprite2D warstwy (do podmiany na HD)
+
+## Pogoda (weather_fx.gd): tło jest „unshaded", ale mnoży je CanvasModulate ciemności (~0,02), więc przy CLEAR NIGHT księżyc i grzbiety
+## wzmacniamy modulate (>1) — noc „pogodna" ma widoczny księżyc i niebo; deszcz i burza przyciemniają niebo, mgła rozjaśnia grzbiety i własną warstwę mgły.
+func set_weather(id: String, k: float) -> void:
+	var sky := 1.0
+	var ridge := 1.0
+	var mist := 1.0
+	match id:
+		"clear":
+			sky = 1.0 + 6.0 * k
+			ridge = 1.0 + 3.0 * k
+		"rain":
+			sky = 1.0 - 0.5 * k
+		"storm":
+			sky = 1.0 - 0.6 * k
+		"fog":
+			ridge = 1.0 + 2.0 * k
+			mist = 1.0 + 3.0 * k
+	_mod("sky", Color(sky, sky, sky * 1.05))
+	for n in ["ridge_far", "ridge_mid", "ridge_near"]:
+		_mod(n, Color(ridge, ridge, ridge))
+	_mod("fog", Color(mist, mist, mist))
+
+func _mod(n: String, c: Color) -> void:
+	if _layers.has(n):
+		(_layers[n] as Sprite2D).modulate = c
 var _parallax: Dictionary = {}         ## nazwa → Parallax2D
 
 ## Tło HD (--newworld): tekstury 2048×960 z art/backdrop/hd/ (2× gęstość, ta sama paleta i jasność), sprite w skali 0,5 → te same 1024×480 px świata.

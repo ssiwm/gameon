@@ -268,6 +268,13 @@ func _apply_darkness() -> void:
 	var c := Color(ambient.r * weather_tint.r * depth_mult, ambient.g * weather_tint.g * depth_mult, ambient.b * weather_tint.b * depth_mult, 1.0)
 	_dark_node.color = c.lerp(WEATHER_FLASH, clampf(weather_flash, 0.0, 1.0))
 
+## Tło parallax (backdrop.gd) wzmacnia / przyciemnia niebo i grzbiety wg pogody.
+func set_backdrop_weather(id: String, k: float) -> void:
+	for c in get_children():
+		if c.has_method("set_weather"):
+			c.set_weather(id, k)
+			return
+
 func apply_depth_darkness(m: float) -> void:
 	if is_equal_approx(m, depth_mult):
 		return
