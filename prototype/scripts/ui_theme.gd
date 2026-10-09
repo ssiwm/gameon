@@ -90,10 +90,31 @@ static func get_theme() -> Theme:
 	t.set_color("caret_color", "LineEdit", ACCENT)
 	t.set_font_size("font_size", "LineEdit", 11)
 
+	# suwak (głośność): ciemny tor, bursztynowe wypełnienie i prostokątny uchwyt
+	var track := _box(Color(0.03, 0.035, 0.05, 0.95), Color(1, 1, 1, 0.14))
+	track.content_margin_top = 3
+	track.content_margin_bottom = 3
+	var fill := _box(Color(ACCENT, 0.55), ACCENT.darkened(0.25))
+	fill.content_margin_top = 3
+	fill.content_margin_bottom = 3
+	t.set_stylebox("slider", "HSlider", track)
+	t.set_stylebox("grabber_area", "HSlider", fill)
+	t.set_stylebox("grabber_area_highlight", "HSlider", fill)
+	t.set_icon("grabber", "HSlider", _grabber_icon(TEXT))
+	t.set_icon("grabber_highlight", "HSlider", _grabber_icon(ACCENT))
+	t.set_icon("grabber_disabled", "HSlider", _grabber_icon(MUTED.darkened(0.4)))
+
 	t.set_constant("separation", "VBoxContainer", 6)
 	t.set_constant("separation", "HBoxContainer", 6)
 	_theme = t
 	return t
+
+## Uchwyt suwaka: prostokąt 6×12 z ciemnym obrysem (generowany, bez pliku).
+static func _grabber_icon(col: Color) -> ImageTexture:
+	var img := Image.create(6, 12, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.02, 0.02, 0.03, 1.0))
+	img.fill_rect(Rect2i(1, 1, 4, 10), col)
+	return ImageTexture.create_from_image(img)
 
 static func panel_box() -> StyleBoxFlat:
 	var b := _box(PANEL_BG, PANEL_EDGE)

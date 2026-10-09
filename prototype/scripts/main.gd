@@ -28,6 +28,7 @@ const NightShift := preload("res://scripts/night_shift.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const HORROR_FX := preload("res://scripts/horror_fx.gd")
+const MAIN_MENU := preload("res://scripts/main_menu.gd")
 const WEATHER_FX := preload("res://scripts/weather_fx.gd")
 const NavGraph := preload("res://scripts/nav.gd")
 const ENEMY := preload("res://scripts/enemy.gd")
@@ -89,6 +90,10 @@ func _ready() -> void:
 	_lobby.host_requested.connect(func() -> void: Audio.play("ui_confirm", Audio.BUS_UI, -8.0))
 	_lobby.join_requested.connect(func(_ip: String) -> void: Audio.play("ui_click", Audio.BUS_UI, -8.0))
 	_handle_cmdline()
+	pause_menu.leave_requested.connect(leave_session)
+	_setup_main_menu(pause_menu)
+	if "--leavetest" in OS.get_cmdline_user_args():
+		_leave_test.call_deferred()
 	# efekty pogody (deszcz, burza, tint ciemności): w każdej grafice, tuż przed obrazem horroru (jego winieta i ziarno kładą się na wierzch); `--nofx` wyłącza
 	var wfx: CanvasLayer = null
 	if DisplayServer.get_name() != "headless" and not ("--nofx" in OS.get_cmdline_user_args()):
@@ -652,6 +657,58 @@ func _mission_test() -> void:
 	var left_brood := level.get_children().filter(func(n: Node) -> bool: return n.name.begins_with("Brood") and not n.is_queued_for_deletion()).size()
 	print("[TEST] mission restart: faza=%s nests_alive=%d attempts=%d Żyła=%s hp=%.0f potomstwo=%d" % [
 		PH[mission.phase], alive, mission.attempts, ["śpi", "czuwa", "martwa"][boss.state] if boss else "-", boss.hp if boss else 0.0, left_brood])
+
+## Menu główne przed lobby (PLAY → lobby z BACK, SETTINGS → ustawienia z menu pauzy). Pomijane przy starcie z linii poleceń
+## (--host / --join / --steam-*) i w trybie headless — wtedy lobby jest pierwszym ekranem jak dotąd.
+func _setup_main_menu(pause_menu: Control) -> void:
+	_lobby.settings_requested.connect(pause_menu.open_settings)
+	if DisplayServer.get_name() == "headless" or not _lobby.visible or NoiseMgr.has_network():
+		return
+	var menu: Control = MAIN_MENU.new()
+	menu.name = "MainMenu"
+	$UI.add_child(menu)
+	$UI.move_child(menu, _lobby.get_index() + 1)
+	_lobby.visible = false
+	_lobby.set_back_enabled(true)
+	menu.play_requested.connect(func() -> void:
+		menu.visible = false
+		_lobby.visible = true)
+	menu.settings_requested.connect(pause_menu.open_settings)
+	_lobby.back_requested.connect(func() -> void:
+		_lobby.visible = false
+		menu.visible = true)
+
+## Wyjście z sesji (host i klient) do ekranu startowego: wyłącza dźwięk, zamyka połączenie i lobby Steam i ładuje scenę od nowa,
+## więc misja, wrogowie i gracze zaczynają od czystego stanu (profil i zapis złomu zostają).
+func leave_session() -> void:
+	if not NoiseMgr.has_network():
+		return
+	Audio.stop_all()
+	if steam != null:
+		steam.leave()
+	multiplayer.multiplayer_peer = null
+	NightShift.reset_state()
+	Weather.current = ""
+	get_tree().paused = false
+	get_tree().reload_current_scene.call_deferred()
+
+## Test (--host --leavetest): host → leave_session() → scena ładuje się od nowa i hostuje ponownie (flaga --host zostaje):
+## sprawdza, że port jest wolny, a stan jest czysty (jeden gracz, brak starych botów). Stan między instancjami trzyma static.
+static var _leave_stage := 0
+
+func _leave_test() -> void:
+	await get_tree().create_timer(1.0).timeout
+	if _leave_stage == 0:
+		_leave_stage = 1
+		print("[LEAVE-TEST] sesja: sieć=%s graczy=%d — wychodzę" % [str(NoiseMgr.has_network()), _players.get_child_count()])
+		leave_session()
+		return
+	var humans := 0
+	for p in _players.get_children():
+		humans += 0 if p.is_bot else 1
+	var ok := NoiseMgr.has_network() and multiplayer.is_server() and humans == 1 and not NightShift.active
+	print("[LEAVE-TEST] %s po ponownym starcie: sieć=%s serwer=%s ludzi=%d (graczy %d)" % ["PASS" if ok else "FAIL", str(NoiseMgr.has_network()), str(multiplayer.is_server()), humans, _players.get_child_count()])
+	get_tree().quit()
 
 func host_game() -> void:
 	if NoiseMgr.has_network():
