@@ -1,0 +1,35 @@
+name: tests
+
+# Testy headless z CLAUDE.md: mapy (--maptest) oraz bronie + sieć (tools/test_weapons.sh). Odpalane na każdym PR i na pushu do main.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  GODOT_VERSION: 4.7.2
+
+jobs:
+  godot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false                       # art_src/ (~560 MB modeli .glb) nie jest potrzebny; limit transferu LFS jest mały
+      - name: Pliki LFS gry (prototype/)
+        run: git lfs pull --include="prototype/**"
+      - name: Godot ${{ env.GODOT_VERSION }}
+        run: |
+          curl -fsSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          sudo mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
+          godot --version
+      - name: Import zasobów
+        run: godot --headless --path prototype --import
+      - name: Mapy (--maptest)
+        run: |
+          godot --headless --path prototype -- --maptest --autoquit=4 2>&1 | tee maptest.log
+          grep -a "\[MAPTEST\] PASS" maptest.log
+      - name: Bronie i sieć (test_weapons.sh)
+        run: bash prototype/tools/test_weapons.sh
