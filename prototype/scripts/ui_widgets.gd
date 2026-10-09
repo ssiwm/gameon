@@ -150,6 +150,27 @@ static func style_button(b: Button, kind: String, font_size := 22) -> void:
 	b.add_theme_constant_override("outline_size", 0)
 	b.custom_minimum_size.y = 46
 
+## Pole tekstowe w stylu deski: ciemne tło, ramka, mono; fokus podświetla ramkę.
+static func style_edit(e: LineEdit, font_size := 16) -> void:
+	var n := _box(Color("0d0e0c"), UiTheme.LINE2)
+	var f := _box(Color("0d0e0c"), UiTheme.TEXT)
+	var d := _box(Color("0a0b0a"), UiTheme.HAIR)
+	for s in [n, f, d]:
+		s.content_margin_left = 12
+		s.content_margin_right = 12
+		s.content_margin_top = 8
+		s.content_margin_bottom = 8
+	e.add_theme_stylebox_override("normal", n)
+	e.add_theme_stylebox_override("focus", f)
+	e.add_theme_stylebox_override("read_only", d)
+	e.add_theme_font_override("font", UiTheme.mono_font())
+	e.add_theme_font_size_override("font_size", font_size)
+	e.add_theme_color_override("font_color", UiTheme.TEXT)
+	e.add_theme_color_override("font_placeholder_color", Color("5d5b50"))
+	e.add_theme_color_override("font_uneditable_color", Color("5d5b50"))
+	e.add_theme_color_override("caret_color", UiTheme.TEXT)
+	e.custom_minimum_size.y = 44
+
 static func _box(bg: Color, edge: Color, width := 1) -> StyleBoxFlat:
 	var b := StyleBoxFlat.new()
 	b.bg_color = bg
@@ -225,6 +246,9 @@ class Segmented extends PanelContainer:
 			h.add_child(b)
 			_buttons.append(b)
 		set_index(0)
+	func set_locked(on: bool) -> void:
+		for b in _buttons:
+			b.disabled = on
 	func set_index(i: int) -> void:
 		var UT := preload("res://scripts/ui_theme.gd")
 		index = i
