@@ -1,9 +1,9 @@
 """Przygotowuje broń 3D (Tripo) do renderu w czasie rzeczywistym (spike 3D): lufa w +X, góra w +Z, początek układu = dłoń tylna (chwyt).
 
 Uruchomienie (z korzenia repo):
-    blender -b --factory-startup -P prototype/tools/prep_gun3d.py -- art_src/weapons/tripo/m83_01.glb prototype/art/char3d/gun_m83.glb LENGTH_M REAR_FX REAR_FZ FORE_FX FORE_FZ [--flip] [--faces=2500] [--tex=512]
+    blender -b --factory-startup -P prototype/tools/prep_gun3d.py -- art_src/weapons/tripo/m83_01.glb prototype/art/char3d/gun_m83.glb LENGTH_M REAR_FX REAR_FZ FORE_FX FORE_FZ [--flip] [--hands=2] [--faces=2500] [--tex=512]
     LENGTH_M = długość broni w metrach (postać ma ~1,8 m); *_FX = położenie dłoni wzdłuż lufy od tyłu (0..1); *_FZ = od góry broni (0..1).
-Obok GLB powstaje <nazwa>.json: {"rear": [x,y,z], "fore": [x,y,z], "muzzle": [x,y,z]} w układzie wynikowego modelu (metry).
+Obok GLB powstaje <nazwa>.json: {"hands": 1|2, "length": m, "rear": [x,y,z], "fore": [x,y,z], "muzzle": [x,y,z]} w układzie wynikowego modelu (metry).
 --flip odwraca kierunek lufy, gdyby heurystyka (tył = grubszy koniec) się pomyliła.
 """
 import json
@@ -15,6 +15,7 @@ argv = sys.argv[sys.argv.index("--") + 1:]
 src, dst = argv[0], argv[1]
 length_m, rfx, rfz, ffx, ffz = (float(a) for a in argv[2:7])
 FLIP = "--flip" in argv
+HANDS = int(next((a.split("=")[1] for a in argv if a.startswith("--hands=")), 2))     # 2 = broń dwuręczna, 1 = pistolet / broń biała
 FACES = int(next((a.split("=")[1] for a in argv if a.startswith("--faces=")), 2500))
 TEX = int(next((a.split("=")[1] for a in argv if a.startswith("--tex=")), 512))
 
@@ -74,7 +75,7 @@ def pt(fx, fz):
 
 rear, fore = pt(rfx, rfz), pt(ffx, ffz)
 mesh.data.transform(Matrix.Translation(-rear))        # początek = dłoń tylna
-out = {"rear": [0.0, 0.0, 0.0], "fore": list(fore - rear), "muzzle": [ext[0][1] - rear.x, 0.0, (ext[2][1] - rear.z) - hz * 0.25]}
+out = {"hands": HANDS, "length": length_m, "rear": [0.0, 0.0, 0.0], "fore": list(fore - rear), "muzzle": [ext[0][1] - rear.x, 0.0, (ext[2][1] - rear.z) - hz * 0.25]}
 mesh.data.update()
 
 mod = mesh.modifiers.new("dec", "DECIMATE")

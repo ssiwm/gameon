@@ -207,10 +207,7 @@ func _gun_pos() -> Vector2:
 
 func _update_gun(d: WeaponDef) -> void:
 	if player.c3d != null:
-		if _gun != null:
-			_gun.visible = false
-		if _glow != null:
-			_glow.visible = false
+		_update_gun3d(d)
 		return
 	if not _sheet_ok or _gun == null:
 		return
@@ -263,6 +260,41 @@ func _update_gun(d: WeaponDef) -> void:
 		elif player.w_state == Controller.State.RELOAD:
 			lum = 0.55
 		_glow.modulate = Color(lum, lum, lum, _tint.a)
+
+## Postać 3D (--char3d): broń jest modelem 3D w dłoniach postaci (char3d.gd). Ten sam ruch broni co w 2D (odrzut, dobycie,
+## przeładowanie, zamach), tylko zamiast przesuwać sprite — przekazujemy go postaci, a ręce idą za bronią przez IK.
+func _update_gun3d(d: WeaponDef) -> void:
+	if _gun != null:
+		_gun.visible = false
+	if _glow != null:
+		_glow.visible = false
+	var c3d: Node2D = player.c3d
+	var swinging := _swing_t >= 0.0
+	var wd := Weapons.def(_swing_w) if swinging else d
+	c3d.set_gun(String(wd.key))
+	var v := 0.0                                  # rad, dodatnie = lufa w dół (względem kierunku patrzenia)
+	var kick := 0.0
+	var rl := -1.0
+	if swinging:
+		var t := _swing_t
+		var arc := 1.9
+		v = lerpf(-arc * 0.55, arc * 0.45, ease(clampf(t * 1.6, 0.0, 1.0), 0.45)) * (1.0 - clampf((t - 0.7) / 0.3, 0.0, 1.0))
+		kick = sin(clampf(t * 2.0, 0.0, 1.0) * PI) * 3.0
+	else:
+		kick = ctrl.recoil * d.recoil
+		match player.w_state:
+			Controller.State.RELOAD:
+				var prog: float = ctrl.reload_progress() if ctrl.is_owner() else 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
+				v = 0.85 * sin(prog * PI) * 0.9
+				rl = prog
+			Controller.State.CHARGE:
+				kick = -player.w_charge * 1.2
+		if _draw_anim > 0.0:
+			v = 1.1 * ease(_draw_anim, 2.2)
+	c3d.gun_extra = v
+	c3d.gun_kick_px = kick
+	c3d.reload_t = rl
+	c3d.swing_t = _swing_t
 
 ## Dev (--newgun): sprite HD z mapą normalnych zamiast wiersza z guns.png (oś obrotu: dłoń, 16 px na piksel świata).
 const HAND_HD := Vector2(104, 112)

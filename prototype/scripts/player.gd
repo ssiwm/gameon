@@ -12,6 +12,7 @@ const Perks := preload("res://scripts/perks.gd")
 const WeaponController := preload("res://scripts/weapon_controller.gd")
 const WeaponView := preload("res://scripts/weapon_view.gd")
 const Char3D := preload("res://scripts/char3d.gd")
+const Look := preload("res://scripts/look.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Nav := preload("res://scripts/nav.gd")
 const Vfx := preload("res://scripts/vfx.gd")
@@ -211,12 +212,14 @@ func _wanted_sheet() -> String:
 	return Sprites.bot_sheet() if is_bot else Sprites.player_sheet(display_id, look)
 
 func _setup_sprites() -> void:
-	if Sprites.char3d:
+	if Sprites.char3d and Char3D.available():
 		c3d = Char3D.new()
 		c3d.name = "Char3D"
 		add_child(c3d)
-		c3d.setup("res://art/char3d/male_scav.glb", "res://art/char3d/gun_m83.glb")
-		return
+		if c3d.setup(_char3d_name()):
+			return
+		c3d.queue_free()
+		c3d = null
 	var sheet := _wanted_sheet()
 	if not Sprites.has(sheet):
 		return
@@ -263,6 +266,13 @@ func _update_sprite() -> void:
 	Sprites.play(_spr, anim, _facing < 0.0)
 	body.modulate = _tint_color()
 
+## Model 3D wg wyglądu: bot to kobieta Scavenger '87 (jak w grafice HD), gracz — płeć i strój z profilu (Look), domyślnie wg numeru gracza.
+func _char3d_name() -> String:
+	if is_bot:
+		return Char3D.char_name_for("female", "scavenger")
+	var c := look if Look.is_valid(look) else Look.code(0 if display_id % 2 == 1 else 1, 0)
+	return Char3D.char_name_for(Look.gender_id(c), Look.outfit_id(c))
+
 ## Postać 3D (dev): animacja z tego samego stanu co sprite'y, celowanie z aim_dir; broń trzymana IK-iem w obu dłoniach.
 func _update_char3d() -> void:
 	if absf(aim_dir.x) > 0.1:
@@ -279,8 +289,10 @@ func _update_char3d() -> void:
 		anim = "crouch_walk" if absf(velocity.x) > 8.0 else "crouch"
 	elif absf(velocity.x) > 10.0:
 		anim = "run"
+	if not is_bot:
+		c3d.set_look(_char3d_name())                   # wymiana modelu przy zmianie wyglądu (replikowane `look`); porównanie nazw jest tanie
 	c3d.scale = squash
-	c3d.update(get_process_delta_time(), anim, _facing, aim_dir, absf(velocity.x), weapons.recoil, true, _tint_color())
+	c3d.update(get_process_delta_time(), anim, _facing, aim_dir, absf(velocity.x), true, _tint_color())
 
 ## Kolor ciała: błysk po trafieniu i migotanie nietykalności (broń dostaje ten sam).
 func _tint_color() -> Color:

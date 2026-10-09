@@ -23,7 +23,22 @@ for o in list(bpy.data.objects):
         bpy.data.objects.remove(o, do_unlink=True)
 
 body = next(o for o in bpy.data.objects if o.type == "MESH")
+arm = next(o for o in bpy.data.objects if o.type == "ARMATURE")
 bpy.context.view_layer.objects.active = body
+
+# skala: modele Tripo bywają w innej jednostce — sprowadź wysokość do 1,8 m (pozy IK liczone są w metrach)
+zs = [(body.matrix_world @ v.co).z for v in body.data.vertices]
+h = max(zs) - min(zs)
+if abs(h / 1.8 - 1.0) > 0.25:
+    f = 1.8 / h
+    print("INFO normalize %.3f -> 1.8 (x%.2f)" % (h, f))
+    arm.scale = (f, f, f)
+    bpy.ops.object.select_all(action="DESELECT")
+    arm.select_set(True)
+    body.select_set(True)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    bpy.context.view_layer.objects.active = body
 
 # Decimate przed modyfikatorem Armature (najpierw geometria spoczynkowa)
 mod = body.modifiers.new("dec", "DECIMATE")

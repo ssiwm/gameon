@@ -37,7 +37,7 @@ func _next() -> void:
 		c.position = Vector2(80 + (i % 10) * 110, 200 + (i / 10) * 150)
 		c.scale = Vector2(3, 3)
 		root.add_child(c)
-		c.setup("res://art/char3d/male_scav.glb", "res://art/char3d/gun_m83.glb")
+		c.setup("male_scav", "m83")
 		_nodes.append(c)
 		RenderingServer.viewport_set_measure_render_time(c._vp.get_viewport_rid(), true)
 	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), true)
