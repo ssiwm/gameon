@@ -10,7 +10,6 @@ const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const SmokeCloud := preload("res://scripts/smoke_cloud.gd")
-const Vfx := preload("res://scripts/vfx.gd")
 const HD_SCALE := 0.85               ## model generatora (35 px szeroki) pomniejszony do dawnych ~30 px
 
 signal started(gen: Node)
@@ -215,10 +214,7 @@ func _draw() -> void:
 	for i in 4:
 		draw_rect(Rect2(2 + i * 3, -14, 2, 8), dark)
 	draw_rect(Rect2(8, -26, 3, 9), dark)
-	# postęp uruchamiania
-	if progress > 0.0 and not running:
-		draw_rect(Rect2(-14, -34, 28, 4), Color(0.05, 0.05, 0.07, 0.85))
-		draw_rect(Rect2(-13, -33, 26.0 * progress, 2), Color(1.0, 0.75, 0.3))
+	# postęp uruchamiania pokazuje pasek w HUD („Starting the generator…”) — drugiego, nad generatorem, nie rysujemy (był podwójny status)
 
 ## Lampka i opary nad rurą — unshaded, widoczne w ciemności.
 func _draw_lamp() -> void:
@@ -234,7 +230,7 @@ func _draw_lamp() -> void:
 			var f := fmod(_t * 0.9 + float(i) * 0.33, 1.0)
 			_lamp.draw_circle(Vector2(9.5 + sin(_t * 3.0 + i) * 1.5, -28 - f * 22.0), 1.4 + f * 2.2, Color(0.8, 0.85, 0.8, 0.18 * (1.0 - f)))
 
-## HD: lampka w oprawie na panelu (jądro + poświata), pasek postępu uruchamiania (zaokrąglony) i miękkie kłęby spalin z tłumika (tekstura dymu).
+## HD: lampka w oprawie na panelu (jądro + poświata), miękkie kłęby spalin z tłumika (tekstura dymu).
 func _draw_lamp_hd() -> void:
 	var blink := 0.5 + 0.5 * sin(_t * (14.0 if progress > 0.0 and not running else 3.0))
 	var col := Color(0.35, 1.0, 0.45) if running else (Color(1.0, 0.7, 0.2, 0.5 + 0.5 * blink) if progress > 0.0 else Color(0.95, 0.22, 0.18, 0.55 + 0.45 * blink))
@@ -242,8 +238,6 @@ func _draw_lamp_hd() -> void:
 	_lamp.draw_circle(lp, 1.0, col)
 	_lamp.draw_circle(lp, 2.3, Color(col, 0.28))
 	_lamp.draw_circle(lp, 4.4, Color(col, 0.1))
-	if progress > 0.0 and not running:
-		Vfx.draw_bar(_lamp, Rect2(-14.0, -34.0, 28.0, 3.0), progress, Color(0.05, 0.05, 0.07, 0.85), Color(1.0, 0.75, 0.3))
 	if running:
 		var tex := SmokeCloud.puff_texture()
 		var tip := Vector2(10.0, -26.5) * HD_SCALE
