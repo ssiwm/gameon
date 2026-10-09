@@ -65,7 +65,7 @@ static func burst(parent: Node, pos: Vector2, color: Color, amount: int, vmin: f
 	var fx := CPUParticles2D.new()
 	fx.one_shot = true
 	fx.emitting = true
-	fx.amount = amount
+	fx.amount = maxi(1, int(round(float(amount) * Settings.vfx_mult())))      # ustawienie jakości: LOW / MEDIUM / HIGH
 	fx.lifetime = life
 	fx.explosiveness = 0.95
 	fx.direction = dir
@@ -170,6 +170,7 @@ static func _track(b: Node) -> void:
 
 ## Szczątki wroga: kilka kawałków rozrzuconych od trafienia + krew na podłożu.
 static func gibs(parent: Node, pos: Vector2, color: Color, count: int, push := Vector2.ZERO) -> void:
+	count = maxi(1, int(round(float(count) * Settings.vfx_mult())))
 	if Sprites.newitem:
 		_gibs_hd(parent, pos, color, count, push)
 		return

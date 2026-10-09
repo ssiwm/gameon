@@ -217,7 +217,7 @@ func _process(delta: float) -> void:
 	if not visible:
 		return
 	_t += delta
-	var dip := 0.55 if (fmod(_t, 7.3) < 0.09 or (fmod(_t, 11.9) > 11.7 and fmod(_t, 0.07) < 0.035)) else 1.0
+	var dip := 0.55 if (Settings.fx_mult() > 0.0 and (fmod(_t, 7.3) < 0.09 or (fmod(_t, 11.9) > 11.7 and fmod(_t, 0.07) < 0.035))) else 1.0
 	_title.modulate.a = dip
 
 func set_status(text: String, is_error: bool = false) -> void:

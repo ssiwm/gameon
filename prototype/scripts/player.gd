@@ -113,6 +113,7 @@ var _down_t := 0.0
 var kit := Vector3i(Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Weapons.START_MELEE)
 ## Celowanie myszą (swobodne) a klawiaturą (8 kierunków) — celownik rysuje się odpowiednio.
 var aim_by_mouse := false
+var _crouch_latched := false          ## ustawienie „Crouch: TOGGLE": skradanie włączone do kolejnego naciśnięcia
 var weapons: WeaponController
 var view: WeaponView
 ## Postęp podnoszenia widoczny TYLKO lokalnie u podnoszącego (rysowany nad leżącym).
@@ -624,7 +625,13 @@ func _local_brain(delta: float) -> void:
 
 	var move_x := 0.0 if (busy or grabbed) else Input.get_axis("move_left", "move_right")
 	var aim_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	crouching = Input.is_action_pressed("crouch") and is_on_floor()
+	if Settings.crouch_toggle:
+		if Input.is_action_just_pressed("crouch"):
+			_crouch_latched = not _crouch_latched
+		crouching = _crouch_latched and is_on_floor()
+	else:
+		_crouch_latched = false
+		crouching = Input.is_action_pressed("crouch") and is_on_floor()
 
 	var stick := Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
 	if stick != Vector2.ZERO:

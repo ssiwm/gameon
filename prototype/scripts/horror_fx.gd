@@ -90,10 +90,13 @@ func _process(delta: float) -> void:
 	var ph := fposmod(_t * 1.15, 1.0)
 	var beat := pow(maxf(0.0, sin(ph * PI * 2.0 * 1.0)), 6.0) * 0.8 + pow(maxf(0.0, sin((ph - 0.18) * PI * 2.0)), 8.0) * 0.5
 	var size := get_viewport().get_visible_rect().size
+	# jakość (ziarno / aberracja) i „Reduce Effects" (bez ziarna, aberracji i pulsu tętna) — ustawienia gracza
+	var post: float = Settings.post_mult()
+	var calm: float = Settings.fx_mult()
 	_mat.set_shader_parameter("vignette", BASE_VIGNETTE + _attn * 0.28 + _hurt * 0.2)
-	_mat.set_shader_parameter("grain", BASE_GRAIN + _attn * 0.03 + _hurt * 0.02)
-	_mat.set_shader_parameter("aberration", BASE_ABERRATION + _attn * 0.0025 + _hurt * 0.0022)
+	_mat.set_shader_parameter("grain", (BASE_GRAIN + _attn * 0.03 + _hurt * 0.02) * post)
+	_mat.set_shader_parameter("aberration", (BASE_ABERRATION + _attn * 0.0025 + _hurt * 0.0022) * post)
 	_mat.set_shader_parameter("desat", _hurt * 0.55)
-	_mat.set_shader_parameter("hurt_pulse", _hurt * (0.18 + 0.38 * beat))
+	_mat.set_shader_parameter("hurt_pulse", _hurt * (0.18 + 0.38 * beat * calm))
 	_mat.set_shader_parameter("t", _t)
 	_mat.set_shader_parameter("aspect", size.x / maxf(size.y, 1.0))

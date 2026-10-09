@@ -29,6 +29,7 @@ const Weather := preload("res://scripts/weather.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const HORROR_FX := preload("res://scripts/horror_fx.gd")
 const MAIN_MENU := preload("res://scripts/main_menu.gd")
+const COLORBLIND_FX := preload("res://scripts/colorblind_fx.gd")
 const WEATHER_FX := preload("res://scripts/weather_fx.gd")
 const NavGraph := preload("res://scripts/nav.gd")
 const ENEMY := preload("res://scripts/enemy.gd")
@@ -94,6 +95,10 @@ func _ready() -> void:
 	_setup_main_menu(pause_menu)
 	if "--leavetest" in OS.get_cmdline_user_args():
 		_leave_test.call_deferred()
+	if DisplayServer.get_name() != "headless":
+		var cbfx := COLORBLIND_FX.new()                       # filtr dla osób z zaburzeniami widzenia barw (ustawienie „Color vision”), nad całym obrazem
+		cbfx.name = "ColorblindFx"
+		add_child(cbfx)
 	# efekty pogody (deszcz, burza, tint ciemności): w każdej grafice, tuż przed obrazem horroru (jego winieta i ziarno kładą się na wierzch); `--nofx` wyłącza
 	var wfx: CanvasLayer = null
 	if DisplayServer.get_name() != "headless" and not ("--nofx" in OS.get_cmdline_user_args()):
