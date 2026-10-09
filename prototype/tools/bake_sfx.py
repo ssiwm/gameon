@@ -285,6 +285,32 @@ def build_world() -> None:
         finalize("amb_gust_%d" % (i + 1), x, lufs=-28.0, fade_out_ms=500)
 
 
+    # Grzmot (pogoda STORM): [0] blisko — trzask i krótki, ostry rumor; [1] średnio; [2] daleko — sam turlający się pomruk
+    for i in range(3):
+        r = Rng(0xDC00 + i * 911)
+        dur = (4.5, 5.8, 7.2)[i]
+        n = sec(dur)
+        t = np.arange(n) / SR
+        # turlający się rumor: kilka garbów o losowych czasach, zanik wykładniczy
+        env = np.zeros(n)
+        for j in range(5 + 2 * i):
+            c = 0.02 if j == 0 else r.uniform(0.1, dur * 0.7)         # pierwszy garb zaraz na starcie (bez ciszy na początku pliku)
+            w = r.uniform(0.25, 0.8)
+            env += r.uniform(0.3, 1.0) * np.exp(-np.maximum(t - c, 0.0) / w) * (t >= c)
+        env = env / (np.max(env) + 1e-9) * np.exp(-t / (dur * 0.55))
+        cut = (300.0, 220.0, 150.0)[i]
+        rumble = d.lp(d.colored(n, r, 1.9), cut, order=3) * env
+        sub = np.sin(TAU * (38.0 + 9 * i) * t * (1.0 - 0.1 * t / dur)) * env * (0.9 - 0.2 * i)
+        parts = [(rumble, 1.0), (sub, 0.45)]
+        if i < 2:               # trzask: ostry szum szerokopasmowy z szybkim zanikiem (bliżej = mocniejszy)
+            cm = ms(240)
+            crack = d.filt(d.white(cm, r), "bp", 1400.0 + 600 * i, 0.5) * d.env_perc(cm, 0.0002, 0.05 + 0.03 * i)
+            crack = np.concatenate([crack, np.zeros(n - cm)])
+            parts.append((crack, 1.4 - 0.5 * i))
+        x = d.mix(parts, n)
+        finalize("thunder_%d" % (i + 1), d.reverb(x, ir("hall"), wet=0.35), lufs=-17.0, fade_out_ms=900)
+
+
 # ============================================================ GRACZ
 
 def _step_concrete(r: Rng) -> np.ndarray:

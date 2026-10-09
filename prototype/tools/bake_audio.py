@@ -57,7 +57,7 @@ CAPTIONS = {
     "widmo1_shot": ["[Railgun blast]", 3], "sokol6_shot": ["[Rocket launch]", 2], "ciegno6_shot": ["[Crossbow]", 0],
     "lr7_beam": ["[Beam hum]", 1], "hkm9_flame": ["[Flamethrower]", 2], "kilof_swing": ["[Swing]", 0],
     "maczeta_": ["[Swing]", 0], "reload_": ["[Reloading]", 0], "dry_fire": ["[Click]", 1], "p64_shot": ["[Pistol shot]", 1], "spread12_shot": ["[Shotgun blast]", 2],
-    "explosion": ["[Explosion]", 3], "stalker_growl": ["[Low growl]", 3], "stalker_shriek": ["[Shriek]", 3],
+    "thunder": ["[Thunder]", 1], "explosion": ["[Explosion]", 3], "stalker_growl": ["[Low growl]", 3], "stalker_shriek": ["[Shriek]", 3],
     "stalker_step": ["[Heavy footsteps]", 3], "stalker_whisper": ["[Whispering]", 2],
     "stalker_appear": ["[Something appears]", 3], "amb_far_cry": ["[Distant cry]", 2],
     "amb_creak": ["[Creaking]", 1], "amb_thud": ["[Distant thud]", 1], "amb_gust": ["[Wind gust]", 0],
