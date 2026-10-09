@@ -7,7 +7,7 @@ Ręce naprawdę trzymają broń przy każdym kącie celowania, animacji, broni i
 
 ```bash
 godot --path prototype -- --char3d                                                      # gra z postaciami 3D (gracze i bot)
-godot --path prototype --script tools/shot_char3d.gd -- --set=poses|weapons|looks|states --part=0 --zoom=9 --out=/tmp/c3d.png
+godot --path prototype --script tools/shot_char3d.gd -- --set=poses|weapons|looks|states|aims|misc --part=0 --zoom=9 [--light] --out=/tmp/c3d.png
 godot --path prototype --script tools/shot_guns3d.gd -- --out=/tmp/guns3d.png          # modele broni z punktami chwytu
 godot --path prototype --script tools/bench_char3d.gd -- --n=1,5,10 [--lq]             # koszt renderu (--lq = niska jakość)
 godot --path prototype -- --char3d-lq                                                   # gra z postaciami 3D w niskiej jakości (SS 2, bez MSAA)
@@ -50,7 +50,7 @@ Test sieciowy (host + klient, oba z 3D): zdalni gracze i bot mają model, broń 
 
 - Rzut flary i przedmiotów ma pozę (prawa ręka zamachem nad głową), ale tylko lokalnie — rzut jest zdarzeniem lokalnego gracza, inni widzą dopiero rzucony przedmiot.
 - Celowanie w dół wysuwa broń ku kamerze (inaczej chowa się za tułowiem); celowanie prosto w górę zasłania głowę ramieniem.
-- Oświetlenie: sprite jest oświetlony płasko przez światła 2D (bez mapy normalnych), cieniowanie bryły pochodzi z 3D. Dwa przebiegi (kolor + normalne) byłyby droższe.
+- Oświetlenie: drugi przebieg renderu (kopie siatek na warstwie 2, shader wypisuje normalne widokowe) daje mapę normalnych, więc latarka i flara dają relief jak na sprite'ach HD (odbicie `flip_h` odwraca X normalnych w shaderze). Kosztuje ok. +50% renderu postaci; `--char3d-lq` go wyłącza.
 - Pozy to proste funkcje sin/cos, nie animacje artysty; brak przejść (blend) między animacjami; dłonie nie obejmują palcami chwytu (tylko orientacja).
 - SPECTER-1 (`widmo1`) nie ma własnego modelu — używa LR-7. Broń biała ma jedną, uproszczoną pozę zamachu.
 - Wrogowie nadal sprite'y HD — styl postaci gracza (3D) i wrogów trzeba będzie zestroić.

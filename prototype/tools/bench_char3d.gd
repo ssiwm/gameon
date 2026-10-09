@@ -16,6 +16,8 @@ func _initialize() -> void:
 			_counts = []
 			for s in a.substr(4).split(","):
 				_counts.append(int(s))
+		elif a == "--nonormals":
+			Char3D.normals = false
 		elif a == "--lq":
 			Char3D.set_low_quality(true)
 		elif a.begins_with("--frames="):
@@ -42,6 +44,8 @@ func _next() -> void:
 		c.setup("male_scav", "m83")
 		_nodes.append(c)
 		RenderingServer.viewport_set_measure_render_time(c._vp.get_viewport_rid(), true)
+		if c._vpn != null:
+			RenderingServer.viewport_set_measure_render_time(c._vpn.get_viewport_rid(), true)
 	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), true)
 	_gpu = 0.0
 	_cpu = 0.0
@@ -60,6 +64,10 @@ func _process(delta: float) -> bool:
 			var r: RID = c._vp.get_viewport_rid()
 			_gpu += RenderingServer.viewport_get_measured_render_time_gpu(r)
 			_cpu += RenderingServer.viewport_get_measured_render_time_cpu(r)
+			if c._vpn != null:
+				var rn: RID = c._vpn.get_viewport_rid()
+				_gpu += RenderingServer.viewport_get_measured_render_time_gpu(rn)
+				_cpu += RenderingServer.viewport_get_measured_render_time_cpu(rn)
 		_gpu += RenderingServer.viewport_get_measured_render_time_gpu(root.get_viewport_rid())
 		_cpu += RenderingServer.viewport_get_measured_render_time_cpu(root.get_viewport_rid())
 	if _f == 0:
