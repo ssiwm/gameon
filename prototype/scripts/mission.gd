@@ -19,6 +19,7 @@ enum Phase { OBJECTIVE, BOSS, EXTRACT, SUCCESS, FAILED }      # FAILED: tylko No
 
 const Lights := preload("res://scripts/lights.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
+const Weather := preload("res://scripts/weather.gd")
 const RunLog := preload("res://scripts/run_log.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
@@ -471,7 +472,7 @@ func _broadcast() -> void:
 	_sync_t = SYNC_INTERVAL
 	if NoiseMgr.has_network() and multiplayer.is_server():
 		_sync.rpc(phase, nests_left, nests_total, exit_pos, extract_progress, elapsed, downs, attempts,
-			[NightShift.active, NightShift.stage, NightShift.mods, shift_cleared, shift_time, shift_downs, shift_record], peak_noise, finale, stashes_found, stash_total)
+			[NightShift.active, NightShift.stage, NightShift.mods, shift_cleared, shift_time, shift_downs, shift_record, Weather.forecast, Weather.current], peak_noise, finale, stashes_found, stash_total)
 
 @rpc("authority", "call_remote", "reliable")
 func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d: int, att: int, shift: Array, peak: float, fin: bool, st_found: int, st_total: int) -> void:
@@ -486,6 +487,9 @@ func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d
 	shift_time = float(shift[4])
 	shift_downs = int(shift[5])
 	shift_record = bool(shift[6])
+	if shift.size() > 8:
+		Weather.forecast = String(shift[7])
+		Weather.current = String(shift[8])
 	var was_success := phase == Phase.SUCCESS
 	phase = p
 	nests_left = left

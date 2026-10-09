@@ -1,7 +1,7 @@
 extends RefCounted
 ## Kryjówka między misjami kampanii (GDD §10.3): bez wrogów (NoiseMgr.safe_zone), ciepłe światło lamp. 128 × 44 kafli.
 ## Układ w strefach od lewej, w kolejności „co robi drużyna po powrocie": wejście (dwa punkty startu) → ściana wyników (v) →
-## warsztat (h: [E] panel zakupów i ulepszeń za złom) → zbrojownia (osiem stojaków g od startowych po zablokowane: SPREAD-12,
+## radiostacja (R: prognoza pogody na następną misję, weather.gd) → warsztat (h: [E] panel zakupów i ulepszeń za złom) → zbrojownia (osiem stojaków g od startowych po zablokowane: SPREAD-12,
 ## PELLET-8, LR-7, HKM-9, WRATH-4, SPECTER-1, FALCON-6, SINEW-6; skrzynki z amunicją a na obu końcach) → tablica z odprawą następnej misji (n) →
 ## strzelnica (linia r i tarcza t 10 m). Bez rekwizytów-skrzyń — pusta podłoga to droga. Ekwipunek i amunicja przechodzą
 ## z poprzedniej misji i do następnej (main._restart_mission z carry); wyjście na misję po gotowości wszystkich ([Enter]).
@@ -63,7 +63,7 @@ const MAP := [
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
 	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
-	"########CbbbSbSbbbbbvbbbbbbbbbbhbbbbbabbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbabbbbbnbbbbbrbbbbbbbbbtbbbbbbC#######",
+	"########CbbbSbSbbbbbvbbbbbRbbbbhbbbbbabbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbgbbbbbabbbbbnbbbbbrbbbbbbbbbtbbbbbbC#######",
 	"########CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC#######",
 	"################################################################################################################################",
 	"################################################################################################################################",
