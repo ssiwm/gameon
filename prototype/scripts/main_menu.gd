@@ -78,6 +78,8 @@ func focus_first() -> void:
 
 ## Tytuł lekko „migocze" (jak w lobby) — rzadkie, krótkie zaniki; „Reduce Effects" wyłączy to razem z resztą.
 func _process(delta: float) -> void:
+	if visible and NoiseMgr.has_network():
+		visible = false                  # sesja ruszyła inną drogą niż PLAY (zaproszenie Steam, dołączenie) — menu nie może zostać na wierzchu
 	if not visible:
 		return
 	if _quit_t > 0.0:
@@ -85,5 +87,5 @@ func _process(delta: float) -> void:
 		if _quit_t <= 0.0:
 			_quit.text = "QUIT"
 	_t += delta
-	var dip := 0.55 if (fmod(_t, 7.3) < 0.09 or (fmod(_t, 11.9) > 11.7 and fmod(_t, 0.07) < 0.035)) else 1.0
+	var dip := 0.55 if (Settings.fx_mult() > 0.0 and (fmod(_t, 7.3) < 0.09 or (fmod(_t, 11.9) > 11.7 and fmod(_t, 0.07) < 0.035))) else 1.0
 	_title.modulate.a = dip

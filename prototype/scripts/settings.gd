@@ -24,6 +24,16 @@ const WEATHER_FX_FULL := 0
 const WEATHER_FX_REDUCED := 1
 const WEATHER_FX_OFF := 2
 const SHAKE_MULT := [1.0, 0.5, 0.0]
+## Okno i obraz (bez restartu): rozmiar okna w trybie okienkowym, synchronizacja pionowa, limit klatek, jakość efektów.
+const RES_LIST := [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440)]
+const VSYNC_NAMES := ["ON", "OFF", "ADAPTIVE"]
+const VSYNC_MODES := [DisplayServer.VSYNC_ENABLED, DisplayServer.VSYNC_DISABLED, DisplayServer.VSYNC_ADAPTIVE]
+const FPS_LIST := [0, 30, 60, 120, 144, 240]                       ## 0 = bez limitu
+const QUALITY_NAMES := ["LOW", "MEDIUM", "HIGH"]
+const VFX_MULT := [0.4, 0.7, 1.0]                                  ## ile cząsteczek i szczątków (Vfx.burst / gibs)
+const POST_MULT := [0.0, 0.6, 1.0]                                 ## siła ziarna i aberracji (horror_fx.gd)
+## Tryb dla osób z zaburzeniami widzenia barw: filtr całego obrazu (colorblind_fx.gd).
+const COLORBLIND_NAMES := ["OFF", "PROTANOPIA", "DEUTERANOPIA", "TRITANOPIA"]
 const UI_NAMES := ["SMALL", "NORMAL", "LARGE"]
 const UI_MULT := [0.85, 1.0, 1.25]
 const Actions := preload("res://scripts/actions.gd")
@@ -33,6 +43,14 @@ var shake_idx := 0
 var weather_fx_idx := WEATHER_FX_REDUCED
 var ui_idx := 1
 var hints_on := true
+var res_idx := 0                       ## rozmiar okna z RES_LIST (tylko tryb okienkowy)
+var vsync_idx := 0
+var fps_idx := 0
+var quality_idx := 2                   ## LOW / MEDIUM / HIGH — cząsteczki, ziarno i aberracja, efekty pogody
+var reduce_fx := false                 ## „Reduce Effects": bez wstrząsów, ziarna, aberracji, pulsu zdrowia, błysku burzy i migotania
+var crouch_toggle := false             ## skradanie przełączane klawiszem zamiast trzymania
+var colorblind_idx := 0
+var _res_dirty := false                ## gracz zmienił rozmiar okna (inaczej zostaje domyślny z projektu)
 var fullscreen := false
 var char3d := false                    ## (beta) postacie graczy jako modele 3D w czasie rzeczywistym (char3d.gd) zamiast sprite'ów; tylko z grafiką HD, zmiana wymaga restartu
 var graphics_hd := true                ## grafika HD (postacie, bronie, wrogowie, świat, UI z modeli 3D) zamiast klasycznego pixel-artu; zmiana wymaga restartu gry
@@ -59,7 +77,24 @@ func _exit_tree() -> void:
 # ---------------------------------------------------------------- wartości
 
 func shake_mult() -> float:
-	return SHAKE_MULT[shake_idx]
+	return SHAKE_MULT[shake_idx] * fx_mult()
+
+## 0 przy „Reduce Effects", inaczej 1: mnożnik wszystkiego, co drży, błyska albo pulsuje.
+func fx_mult() -> float:
+	return 0.0 if reduce_fx else 1.0
+
+func vfx_mult() -> float:
+	return VFX_MULT[quality_idx]
+
+## Siła obrazu horroru (ziarno, aberracja): zależy od jakości, a „Reduce Effects" wyłącza ją całkiem.
+func post_mult() -> float:
+	return POST_MULT[quality_idx] * fx_mult()
+
+## Efekty pogody po uwzględnieniu jakości i „Reduce Effects": pełny błysk zamienia się w miękką poświatę.
+func weather_fx_effective() -> int:
+	if weather_fx_idx == WEATHER_FX_FULL and (reduce_fx or quality_idx == 0):
+		return WEATHER_FX_REDUCED
+	return weather_fx_idx
 
 func ui_mult() -> float:
 	return UI_MULT[ui_idx]
@@ -85,6 +120,38 @@ func cycle_ui() -> void:
 func save_bindings() -> void:
 	_save()
 	bindings_changed.emit()
+
+func cycle_res() -> void:
+	res_idx = (res_idx + 1) % RES_LIST.size()
+	_res_dirty = true
+	_apply_window()
+	_commit()
+
+func cycle_vsync() -> void:
+	vsync_idx = (vsync_idx + 1) % VSYNC_NAMES.size()
+	_apply_window()
+	_commit()
+
+func cycle_fps() -> void:
+	fps_idx = (fps_idx + 1) % FPS_LIST.size()
+	_apply_window()
+	_commit()
+
+func cycle_quality() -> void:
+	quality_idx = (quality_idx + 1) % QUALITY_NAMES.size()
+	_commit()
+
+func toggle_reduce_fx() -> void:
+	reduce_fx = not reduce_fx
+	_commit()
+
+func toggle_crouch_mode() -> void:
+	crouch_toggle = not crouch_toggle
+	_commit()
+
+func cycle_colorblind() -> void:
+	colorblind_idx = (colorblind_idx + 1) % COLORBLIND_NAMES.size()
+	_commit()
 
 func toggle_hints() -> void:
 	hints_on = not hints_on
@@ -140,6 +207,13 @@ func _apply_window() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED)
+	if not fullscreen and _res_dirty:
+		var sz: Vector2i = RES_LIST[res_idx]
+		DisplayServer.window_set_size(sz)
+		var screen := DisplayServer.screen_get_usable_rect(DisplayServer.window_get_current_screen())
+		DisplayServer.window_set_position(screen.position + (screen.size - sz) / 2)
+	DisplayServer.window_set_vsync_mode(VSYNC_MODES[vsync_idx])
+	Engine.max_fps = FPS_LIST[fps_idx]
 
 func _commit() -> void:
 	_save()
@@ -191,6 +265,14 @@ func _load() -> void:
 	ui_idx = clampi(int(cf.get_value("game", "ui", 1)), 0, UI_NAMES.size() - 1)
 	hints_on = bool(cf.get_value("game", "hints", true))
 	fullscreen = bool(cf.get_value("game", "fullscreen", false))
+	res_idx = clampi(int(cf.get_value("game", "res", 0)), 0, RES_LIST.size() - 1)
+	_res_dirty = cf.has_section_key("game", "res")
+	vsync_idx = clampi(int(cf.get_value("game", "vsync", 0)), 0, VSYNC_NAMES.size() - 1)
+	fps_idx = clampi(int(cf.get_value("game", "fps", 0)), 0, FPS_LIST.size() - 1)
+	quality_idx = clampi(int(cf.get_value("game", "quality", 2)), 0, QUALITY_NAMES.size() - 1)
+	reduce_fx = bool(cf.get_value("game", "reduce_fx", false))
+	crouch_toggle = bool(cf.get_value("game", "crouch_toggle", false))
+	colorblind_idx = clampi(int(cf.get_value("game", "colorblind", 0)), 0, COLORBLIND_NAMES.size() - 1)
 	graphics_hd = bool(cf.get_value("game", "graphics_hd", true))
 	char3d = bool(cf.get_value("game", "char3d", false))
 	seen_tips = Array(cf.get_value("game", "seen_tips", []))
@@ -208,6 +290,14 @@ func _save() -> void:
 	cf.set_value("game", "ui", ui_idx)
 	cf.set_value("game", "hints", hints_on)
 	cf.set_value("game", "fullscreen", fullscreen)
+	if _res_dirty:
+		cf.set_value("game", "res", res_idx)
+	cf.set_value("game", "vsync", vsync_idx)
+	cf.set_value("game", "fps", fps_idx)
+	cf.set_value("game", "quality", quality_idx)
+	cf.set_value("game", "reduce_fx", reduce_fx)
+	cf.set_value("game", "crouch_toggle", crouch_toggle)
+	cf.set_value("game", "colorblind", colorblind_idx)
 	cf.set_value("game", "graphics_hd", graphics_hd)
 	cf.set_value("game", "char3d", char3d)
 	cf.set_value("game", "seen_tips", seen_tips)

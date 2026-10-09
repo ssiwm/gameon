@@ -529,6 +529,7 @@ func _t_throwables() -> void:
 	_t_actions()
 	await _t_pad_aim()
 	_t_rebind()
+	await _t_display_settings()
 	give_gear()
 	await _t_gear()
 	await _t_economy()
@@ -648,6 +649,47 @@ func _t_rebind() -> void:
 	Actions.reset_defaults(false)
 	var bad := InputEventKey.new()
 	check("przypisywanie: puste zdarzenie jest odrzucane", not bool(Actions.set_binding("jump", Actions.DEV_KEY, bad, false)["ok"]))
+
+## Ustawienia obrazu i dostępności: jakość efektów, „Reduce Effects", skradanie przełączane. Zmieniamy pola wprost (bez zapisu pliku).
+func _t_display_settings() -> void:
+	var q0: int = Settings.quality_idx
+	var r0: bool = Settings.reduce_fx
+	var w0: int = Settings.weather_fx_idx
+	var t0: bool = Settings.crouch_toggle
+	Settings.quality_idx = 0
+	Settings.reduce_fx = false
+	Settings.weather_fx_idx = Settings.WEATHER_FX_FULL
+	var low_ok: bool = is_equal_approx(Settings.vfx_mult(), 0.4) and is_equal_approx(Settings.post_mult(), 0.0) and Settings.weather_fx_effective() == Settings.WEATHER_FX_REDUCED
+	Settings.quality_idx = 2
+	var high_ok: bool = is_equal_approx(Settings.vfx_mult(), 1.0) and is_equal_approx(Settings.post_mult(), 1.0) and Settings.weather_fx_effective() == Settings.WEATHER_FX_FULL
+	Settings.reduce_fx = true
+	var shake_idx0: int = Settings.shake_idx
+	Settings.shake_idx = 0
+	var calm_ok: bool = is_zero_approx(Settings.shake_mult()) and is_zero_approx(Settings.post_mult()) and Settings.weather_fx_effective() == Settings.WEATHER_FX_REDUCED
+	Settings.shake_idx = shake_idx0
+	check("jakość i „Reduce Effects”: LOW tnie cząsteczki i ziarno (%s), HIGH daje pełne (%s), Reduce wyłącza wstrząs, ziarno i błysk (%s)" % [str(low_ok), str(high_ok), str(calm_ok)],
+		low_ok and high_ok and calm_ok)
+	# skradanie: trzymanie (domyślnie) i przełączanie
+	Settings.reduce_fx = false
+	Settings.crouch_toggle = true
+	player.global_position = player.global_position
+	await wait(0.3)
+	Input.action_press("crouch")
+	await wait(0.15)
+	Input.action_release("crouch")
+	await wait(0.15)
+	var latched: bool = player.crouching
+	Input.action_press("crouch")
+	await wait(0.15)
+	Input.action_release("crouch")
+	await wait(0.15)
+	var released: bool = not player.crouching
+	check("skradanie przełączane: jedno naciśnięcie włącza (%s), drugie wyłącza (%s)" % [str(latched), str(released)], latched and released)
+	Settings.crouch_toggle = false
+	Settings.quality_idx = q0
+	Settings.reduce_fx = r0
+	Settings.weather_fx_idx = w0
+	Settings.crouch_toggle = t0
 
 ## Faza A2: dym, mina, ładunek wyburzeniowy, apteczka, defibrylator, skaner.
 func _t_gear() -> void:

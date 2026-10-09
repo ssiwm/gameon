@@ -936,7 +936,7 @@ func _drive_noise() -> void:
 	_noise_bar.value = lvl / 100.0
 	var col := NOISE_COL_CALM
 	if lvl >= NoiseMgr.AWAKE_THRESHOLD:
-		col = UiTheme.DANGER.lerp(Color.WHITE, 0.25 * (0.5 + 0.5 * sin(_blink * 8.0)))
+		col = UiTheme.DANGER.lerp(Color.WHITE, 0.25 * (0.5 + 0.5 * sin(_blink * 8.0)) * Settings.fx_mult())
 	elif lvl >= NoiseMgr.UNEASY_THRESHOLD:
 		col = UiTheme.ACCENT
 	_noise_bar.fill = col
@@ -1083,12 +1083,12 @@ func _drive_warning() -> void:
 	if awake:
 		_warn.text = "HE HEARS YOU"
 		_warn.add_theme_color_override("font_color", UiTheme.DANGER)
-		_warn.modulate.a = 0.6 + 0.4 * sin(_blink * 6.0)
+		_warn.modulate.a = lerpf(1.0, 0.6 + 0.4 * sin(_blink * 6.0), Settings.fx_mult())
 		_warn_sub.text = "Go quiet until the noise drops below 30% — or use Q to lure him off"
 	elif uneasy:
 		_warn.text = "SOMETHING IS LISTENING…"
 		_warn.add_theme_color_override("font_color", UiTheme.ACCENT)
-		_warn.modulate.a = 0.55 + 0.3 * sin(_blink * 3.0)
+		_warn.modulate.a = lerpf(0.85, 0.55 + 0.3 * sin(_blink * 3.0), Settings.fx_mult())
 		_warn_sub.text = "Above 60% noise he wakes up"
 	else:
 		_warn.text = ""
@@ -1578,7 +1578,7 @@ func _drive_music() -> void:
 
 ## Winieta: błysk po trafieniu, puls przy 1 HP, mrok przy leżeniu.
 func _draw() -> void:
-	var a := _hit_flash * 0.55
+	var a := _hit_flash * 0.55 * lerpf(0.4, 1.0, Settings.fx_mult())
 	if _player != null:
 		if _player.dead:
 			a = maxf(a, 0.45)

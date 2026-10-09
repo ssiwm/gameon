@@ -178,7 +178,7 @@ func _exit_tree() -> void:
 func _process(delta: float) -> void:
 	_t += delta
 	var vs := get_viewport().get_visible_rect().size
-	var mode: int = int(Settings.weather_fx_idx)
+	var mode: int = Settings.weather_fx_effective()
 	var id := Weather.active_id() if mode != Settings.WEATHER_FX_OFF else ""
 	_k = move_toward(_k, 1.0 if id != "" else 0.0, (FADE_IN if id != "" else FADE_OUT) * delta)
 	if id != "":

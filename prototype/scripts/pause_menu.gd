@@ -18,7 +18,8 @@ const PAGE_H := 270.0                ## stała wysokość zakładek — karta ni
 const TABS := ["SETTINGS", "BESTIARY", "WEAPONS", "GEAR", "PERKS", "CONTROLS"]
 const BASE_SCALE := 0.7              ## jak HUD (hud.gd UI_SCALE): menu rysowane w 70%, razem z ustawieniem HUD SIZE
 
-var _settings_page: VBoxContainer
+var _settings_page: ScrollContainer
+var _settings_box: VBoxContainer
 var _controls_page: VBoxContainer
 var _pages: Array[Control] = []
 var _tab_buttons: Array[Button] = []
@@ -83,8 +84,13 @@ func _ready() -> void:
 		_tab_buttons.append(tb)
 	box.add_child(tabs)
 
-	_settings_page = VBoxContainer.new()
-	_settings_page.add_theme_constant_override("separation", 3)
+	_settings_box = VBoxContainer.new()
+	_settings_box.add_theme_constant_override("separation", 3)
+	_settings_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_settings_page = ScrollContainer.new()                  # ustawień jest więcej niż mieści strona — przewijane (fokus też przewija)
+	_settings_page.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_settings_page.follow_focus = true
+	_settings_page.add_child(_settings_box)
 	_build_settings()
 	_controls_page = VBoxContainer.new()
 	_build_controls()
@@ -146,20 +152,28 @@ func _fit() -> void:
 # ---------------------------------------------------------------- budowa
 
 func _build_settings() -> void:
-	_settings_page.add_child(_caption("AUDIO"))
+	_settings_box.add_child(_caption("AUDIO"))
 	_stepper("master", "Master volume")
 	_stepper("music", "Music & ambience")
 	_stepper("sfx", "Effects")
-	_settings_page.add_child(_caption("GAMEPLAY"))
+	_settings_box.add_child(_caption("GAMEPLAY"))
 	_cycler("shake", "Screen shake", Settings.cycle_shake)
-	_cycler("wfx", "Weather effects", Settings.cycle_weather_fx)
+	_cycler("crouch", "Sneak key", Settings.toggle_crouch_mode)
 	_cycler("hints", "Tips for new players", Settings.toggle_hints)
 	_cycler("mic", "Microphone scream", Voice.cycle)
-	_settings_page.add_child(_caption("DISPLAY"))
+	_settings_box.add_child(_caption("DISPLAY"))
 	_cycler("ui", "HUD size", Settings.cycle_ui)
 	_cycler("full", "Fullscreen  (%s)" % Actions.text("fullscreen"), Settings.toggle_fullscreen)
+	_cycler("res", "Window size", Settings.cycle_res)
+	_cycler("vsync", "V-Sync", Settings.cycle_vsync)
+	_cycler("fps", "Frame rate limit", Settings.cycle_fps)
+	_cycler("quality", "Effects quality", Settings.cycle_quality)
+	_cycler("wfx", "Weather effects", Settings.cycle_weather_fx)
 	_cycler("hd", "Graphics (restart)", Settings.toggle_hd)
 	_cycler("c3d", "Characters (restart)", Settings.toggle_char3d)
+	_settings_box.add_child(_caption("ACCESSIBILITY"))
+	_cycler("reduce", "Reduce effects", Settings.toggle_reduce_fx)
+	_cycler("cb", "Color vision", Settings.cycle_colorblind)
 
 ## Wiersz: opis po lewej, suwak i wartość po prawej (strzałki / D-pad / mysz).
 func _stepper(kind: String, text: String) -> void:
@@ -183,7 +197,7 @@ func _stepper(kind: String, text: String) -> void:
 	v.custom_minimum_size = Vector2(38, 0)
 	_values[kind] = v
 	row.add_child(v)
-	_settings_page.add_child(row)
+	_settings_box.add_child(row)
 
 ## Wiersz: opis po lewej, przycisk przełączający po prawej.
 func _cycler(key: String, text: String, action: Callable) -> void:
@@ -199,7 +213,7 @@ func _cycler(key: String, text: String, action: Callable) -> void:
 		Audio.play("ui_click", Audio.BUS_UI, -10.0))
 	_values[key] = b
 	row.add_child(b)
-	_settings_page.add_child(row)
+	_settings_box.add_child(row)
 
 func _small_button(text: String, action: Callable) -> Button:
 	var b := Button.new()
@@ -355,6 +369,15 @@ func _refresh() -> void:
 		if _sliders.has(kind):
 			(_sliders[kind] as HSlider).set_value_no_signal(float(Settings.volume[kind]))
 	_values["shake"].text = Settings.SHAKE_NAMES[Settings.shake_idx]
+	_values["crouch"].text = "TOGGLE" if Settings.crouch_toggle else "HOLD"
+	var res: Vector2i = Settings.RES_LIST[Settings.res_idx]
+	_values["res"].text = "%d×%d" % [res.x, res.y] if not Settings.fullscreen else "FULLSCREEN"
+	(_values["res"] as Button).disabled = Settings.fullscreen
+	_values["vsync"].text = Settings.VSYNC_NAMES[Settings.vsync_idx]
+	_values["fps"].text = "UNLIMITED" if Settings.FPS_LIST[Settings.fps_idx] == 0 else "%d" % Settings.FPS_LIST[Settings.fps_idx]
+	_values["quality"].text = Settings.QUALITY_NAMES[Settings.quality_idx]
+	_values["reduce"].text = "ON" if Settings.reduce_fx else "OFF"
+	_values["cb"].text = Settings.COLORBLIND_NAMES[Settings.colorblind_idx]
 	_values["wfx"].text = Settings.WEATHER_FX_NAMES[Settings.weather_fx_idx]
 	_values["hints"].text = "ON" if Settings.hints_on else "OFF"
 	_values["mic"].text = Voice.label().replace("MIC: ", "")
