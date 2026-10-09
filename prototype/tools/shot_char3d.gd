@@ -10,6 +10,7 @@ var _out := "/tmp/char3d.png"
 var _wait := 40
 var _chars: Array = []
 var _cfg: Array = []
+var _light := false
 
 func _row(anim := "idle", aim := 0, dir := 1, speed := 0, gun := "m83", ch := "male_scav", extra := 0.0, kick := 0.0, reload := -1.0, swing := -1.0, thr := -1.0) -> Dictionary:
 	return {"throw": thr, "anim": anim, "aim": aim, "dir": dir, "speed": speed, "gun": gun, "char": ch, "extra": extra, "kick": kick, "reload": reload, "swing": swing}
@@ -27,6 +28,8 @@ func _initialize() -> void:
 			zoom = float(a.substr(7))
 		elif a.begins_with("--part="):
 			part = int(a.substr(7))
+		elif a == "--light":
+			_light = true
 		elif a.begins_with("--set="):
 			set_name = a.substr(6)
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
@@ -35,6 +38,10 @@ func _initialize() -> void:
 	bg.color = Color(0.17, 0.2, 0.19)
 	bg.size = Vector2(1280, 720)
 	root.add_child(bg)
+	if _light:
+		var cm := CanvasModulate.new()
+		cm.color = Color(0.12, 0.12, 0.15)
+		root.add_child(cm)
 	var all: Array = []
 	match set_name:
 		"poses":
@@ -72,6 +79,23 @@ func _initialize() -> void:
 		if not c.setup(cfg["char"], cfg["gun"]):
 			push_error("setup nie powiodło się: %s" % cfg)
 		_chars.append(c)
+		if _light:                                           # światło z prawej-góry każdej postaci (sprawdza relief z mapy normalnych i odbicie flip_h)
+			var l := PointLight2D.new()
+			var gt := GradientTexture2D.new()
+			gt.fill = GradientTexture2D.FILL_RADIAL
+			gt.fill_from = Vector2(0.5, 0.5)
+			gt.fill_to = Vector2(1.0, 0.5)
+			gt.width = 256
+			gt.height = 256
+			var g := Gradient.new()
+			g.colors = PackedColorArray([Color.WHITE, Color(1, 1, 1, 0)])
+			gt.gradient = g
+			l.texture = gt
+			l.texture_scale = zoom * 1.2
+			l.height = 80.0
+			l.energy = 1.3
+			l.position = c.position + Vector2(90.0 * zoom / 6.0, -110.0 * zoom / 6.0)
+			root.add_child(l)
 
 func _process(_d: float) -> bool:
 	_frames += 1

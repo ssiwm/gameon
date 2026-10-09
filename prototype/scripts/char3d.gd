@@ -18,6 +18,8 @@ const WP_PER_M := CHAR_H_WP / CHAR_H_M
 ## Niska jakość: --char3d-lq (SS 2, bez MSAA) — ok. 3× mniej pikseli do wyrenderowania.
 static var ss := 4
 static var msaa := true
+## Mapa normalnych (drugi przebieg renderu): światła 2D (latarka, flara) dają relief jak na sprite'ach HD. Kosztuje drugi render siatki; wyłączane w niskiej jakości.
+static var normals := true
 const FRAME_WP := Vector2(44.0, 44.0)       ## ramka w pikselach świata (zapas na broń podniesioną i wyciągniętą)
 const CAM_Y := 1.25                         ## wysokość środka ramki (m)
 const PRE := "mixamorig_"
@@ -29,6 +31,7 @@ const OUTLINE_SHADER := """
 shader_type canvas_item;
 uniform vec4 outline_color : source_color = vec4(0.078, 0.055, 0.094, 1.0);
 uniform float width = 2.0;
+uniform bool flip_n = false;          // sprite odbity poziomo (flip_h): składowa X normalnych odwrócona, żeby światło padało z właściwej strony
 void fragment() {
 	vec4 c = texture(TEXTURE, UV);
 	vec2 px = TEXTURE_PIXEL_SIZE * width;
@@ -41,10 +44,19 @@ void fragment() {
 	}
 	a = smoothstep(0.1, 0.7, a);
 	COLOR = vec4(mix(outline_color.rgb, c.rgb / max(c.a, 0.001), c.a), max(a, c.a));
+	vec3 n = texture(NORMAL_TEXTURE, UV).rgb;
+	if (flip_n) {
+		n.x = 1.0 - n.x;
+	}
+	NORMAL_MAP = mix(vec3(0.5, 0.5, 1.0), n, c.a);
 }
 """
 
 var _vp: SubViewport
+var _vpn: SubViewport                        ## drugi przebieg: normalne widokowe (R=+X, G=+Y w górę, B=do kamery, ×0,5+0,5) tego samego świata 3D
+var _camn: Camera3D
+var _gun_n: Node3D
+var _normal_mat: ShaderMaterial
 var _cam: Camera3D
 var _sprite: Sprite2D
 var _notifier: VisibleOnScreenNotifier2D
@@ -87,6 +99,7 @@ static func char_name_for(gender: String, outfit: String) -> String:
 static func set_low_quality(on: bool) -> void:
 	ss = 2 if on else 4
 	msaa = not on
+	normals = not on
 
 static func available() -> bool:
 	return DisplayServer.get_name() != "headless" and ResourceLoader.exists(DIR + DEFAULT_CHAR + ".glb")
@@ -108,6 +121,7 @@ func setup(char_name := DEFAULT_CHAR, gun_key := DEFAULT_GUN) -> bool:
 	_cam.size = FRAME_WP.y / WP_PER_M
 	_cam.near = 0.5
 	_cam.far = 20.0
+	_cam.cull_mask = 1
 	var env := Environment.new()
 	env.background_mode = Environment.BG_CLEAR_COLOR
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -128,7 +142,14 @@ func setup(char_name := DEFAULT_CHAR, gun_key := DEFAULT_GUN) -> bool:
 
 	_sprite = Sprite2D.new()
 	_sprite.name = "Body3D"
-	_sprite.texture = _vp.get_texture()
+	if normals:
+		_build_normal_pass()
+		var ct := CanvasTexture.new()
+		ct.diffuse_texture = _vp.get_texture()
+		ct.normal_texture = _vpn.get_texture()
+		_sprite.texture = ct
+	else:
+		_sprite.texture = _vp.get_texture()
 	_sprite.scale = Vector2.ONE / float(ss)
 	_sprite.position = Vector2(0.0, -CAM_Y * WP_PER_M)
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
@@ -154,7 +175,54 @@ func setup(char_name := DEFAULT_CHAR, gun_key := DEFAULT_GUN) -> bool:
 
 func _set_on_screen(v: bool) -> void:
 	_on_screen = v
-	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS if v else SubViewport.UPDATE_DISABLED
+	var mode := SubViewport.UPDATE_ALWAYS if v else SubViewport.UPDATE_DISABLED
+	_vp.render_target_update_mode = mode
+	if _vpn != null:
+		_vpn.render_target_update_mode = mode
+
+## Drugi SubViewport z tym samym światem 3D i kamerą na warstwie 2: widzi tylko kopie siatek z materiałem wypisującym normalne.
+## Kopie współdzielą szkielet z oryginałem, więc poza liczymy raz.
+func _build_normal_pass() -> void:
+	_vpn = SubViewport.new()
+	_vpn.name = "VpN"
+	_vpn.size = _vp.size
+	_vpn.transparent_bg = true
+	_vpn.msaa_3d = _vp.msaa_3d
+	_vpn.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(_vpn)
+	_vpn.world_3d = _vp.find_world_3d()
+	_camn = Camera3D.new()
+	_camn.projection = Camera3D.PROJECTION_ORTHOGONAL
+	_camn.keep_aspect = Camera3D.KEEP_HEIGHT
+	_camn.size = _cam.size
+	_camn.near = _cam.near
+	_camn.far = _cam.far
+	_camn.cull_mask = 2
+	_vpn.add_child(_camn)
+	var sh := Shader.new()
+	sh.code = "shader_type spatial;
+render_mode unshaded, cull_back;
+void fragment() {
+	ALBEDO = NORMAL * 0.5 + vec3(0.5);
+}
+"
+	_normal_mat = ShaderMaterial.new()
+	_normal_mat.shader = sh
+
+## Kopie siatek sceny na warstwie 2 z materiałem normalnych. skinned: kopie dzielą szkielet z oryginałem (są jego dziećmi).
+func _normal_clones(root: Node, skinned: bool) -> void:
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		var c := MeshInstance3D.new()
+		c.mesh = mi.mesh
+		c.layers = 2
+		c.material_override = _normal_mat
+		c.transform = mi.transform
+		mi.add_sibling(c)
+		if skinned and mi.skin != null:
+			c.skin = mi.skin
+			c.skeleton = c.get_path_to(mi.get_parent())
+
 
 ## Wymiana modelu postaci (wygląd z warsztatu, replikowany `player.look`). Zwraca false, gdy brak pliku.
 func set_look(char_name: String) -> bool:
@@ -184,6 +252,9 @@ func set_look(char_name: String) -> bool:
 	_origin_x = _sk.get_bone_global_rest(_b["Hips"]).origin.x
 	_ankle_y = _sk.get_bone_global_rest(_b["RightFoot"]).origin.y
 	_cam.position = Vector3(_origin_x, CAM_Y, 6.0)
+	if _camn != null:
+		_camn.position = _cam.position
+		_normal_clones(scene, true)
 	return true
 
 ## Wymiana broni (klucz z weapon_def: m83, p64, maczeta…). Brak modelu → karabin M-83.
@@ -198,8 +269,17 @@ func set_gun(key: String) -> void:
 			return
 	if _gun != null:
 		_gun.queue_free()
+	if _gun_n != null:
+		_gun_n.queue_free()
+		_gun_n = null
 	_gun = (load(path) as PackedScene).instantiate()
 	_root3d.add_child(_gun)
+	if _camn != null:                                        # kopia broni na warstwie 2 (osobny egzemplarz sceny, ta sama transformacja)
+		_gun_n = (load(path) as PackedScene).instantiate()
+		_root3d.add_child(_gun_n)
+		for mi in _gun_n.find_children("*", "MeshInstance3D", true, false):
+			(mi as MeshInstance3D).layers = 2
+			(mi as MeshInstance3D).material_override = _normal_mat
 	_gun_key = key
 	_load_gun_info(path.get_basename() + ".json")
 
@@ -263,6 +343,7 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 	_time += delta
 	_sprite.flip_h = facing < 0.0
 	px_flip = -1.0 if _sprite.flip_h else 1.0
+	(_sprite.material as ShaderMaterial).set_shader_parameter("flip_n", _sprite.flip_h)
 	_sprite.modulate = tint
 	if not _on_screen:
 		return                                                    # poza ekranem nic nie rysujemy (viewport wyłączony), pozę nadrobi pierwsza klatka po wejściu
@@ -282,6 +363,8 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		_pose_arms_relaxed(true)
 	if _gun != null:
 		_gun.visible = holding
+		if _gun_n != null:
+			_gun_n.visible = holding
 
 func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	var hips := _b["Hips"] as int
@@ -376,6 +459,8 @@ func _pose_arms(theta: float) -> void:
 	var gx := Transform3D(gun_b, rear)
 	if _gun != null:
 		_gun.transform = gx
+		if _gun_n != null:
+			_gun_n.transform = gx
 	_two_bone(_b["RightArm"], _b["RightForeArm"], _b["RightHand"], _arm_len["Right"][0], _arm_len["Right"][1], rear, Vector3(-0.35, -1.0, 0.55))
 	if _hands == 2:
 		var lt := fore
