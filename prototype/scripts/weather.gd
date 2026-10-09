@@ -22,6 +22,10 @@ const KINDS := {
 ## Prognoza na następną misję (ustawia serwer przy wejściu do kryjówki) i pogoda trwającej misji ("" = brak).
 static var forecast := "clear"
 static var current := ""
+## Ziarno pogody misji (losuje je serwer razem z `current`, replikowane w mission._sync): z niego liczy się harmonogram błyskawic (weather_fx.gd).
+static var seed := 0
+## Dev (--shotweather=ID): wymusza pogodę na zrzuty (także mnożniki).
+static var dev_id := ""
 
 ## Losuje pogodę wg wag. `rng` opcjonalny (testy).
 static func roll(rng: RandomNumberGenerator = null) -> String:
@@ -37,6 +41,8 @@ static func roll(rng: RandomNumberGenerator = null) -> String:
 
 ## Pogoda wpływająca na rozgrywkę: pusta w kryjówce / poza kampanią (current == "") i w Nocnym Dyżurze.
 static func active_id() -> String:
+	if KINDS.has(dev_id):
+		return dev_id
 	return current if KINDS.has(current) else ""
 
 static func reset_state() -> void:

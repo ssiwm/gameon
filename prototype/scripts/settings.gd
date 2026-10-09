@@ -17,6 +17,11 @@ const STORE_URL := ""
 ## Rodzaj głośności → szyny z default_bus_layout.tres. „Mic" (voice.gd) celowo poza listą.
 const VOLUME_BUSES := {"master": ["Master"], "music": ["Music", "Ambience"], "sfx": ["SFX", "UI"]}
 const SHAKE_NAMES := ["FULL", "HALF", "OFF"]
+## Efekty pogody (weather_fx.gd): FULL — pełny błysk błyskawic; REDUCED — miękka poświata zamiast błysku i mniej cząsteczek (fotowrażliwość); OFF — bez efektów.
+const WEATHER_FX_NAMES := ["FULL", "REDUCED", "OFF"]
+const WEATHER_FX_FULL := 0
+const WEATHER_FX_REDUCED := 1
+const WEATHER_FX_OFF := 2
 const SHAKE_MULT := [1.0, 0.5, 0.0]
 const UI_NAMES := ["SMALL", "NORMAL", "LARGE"]
 const UI_MULT := [0.85, 1.0, 1.25]
@@ -29,6 +34,7 @@ const GAME_ACTIONS := [
 
 var volume := {"master": 1.0, "music": 1.0, "sfx": 1.0}
 var shake_idx := 0
+var weather_fx_idx := WEATHER_FX_REDUCED
 var ui_idx := 1
 var hints_on := true
 var fullscreen := false
@@ -69,6 +75,10 @@ func set_volume(kind: String, v: float) -> void:
 
 func cycle_shake() -> void:
 	shake_idx = (shake_idx + 1) % SHAKE_NAMES.size()
+	_commit()
+
+func cycle_weather_fx() -> void:
+	weather_fx_idx = (weather_fx_idx + 1) % WEATHER_FX_NAMES.size()
 	_commit()
 
 func cycle_ui() -> void:
@@ -176,6 +186,7 @@ func _load() -> void:
 	for kind in volume:
 		volume[kind] = clampf(float(cf.get_value("game", "vol_" + kind, 1.0)), 0.0, 1.0)
 	shake_idx = clampi(int(cf.get_value("game", "shake", 0)), 0, SHAKE_NAMES.size() - 1)
+	weather_fx_idx = clampi(int(cf.get_value("game", "weather_fx", WEATHER_FX_REDUCED)), 0, WEATHER_FX_NAMES.size() - 1)
 	ui_idx = clampi(int(cf.get_value("game", "ui", 1)), 0, UI_NAMES.size() - 1)
 	hints_on = bool(cf.get_value("game", "hints", true))
 	fullscreen = bool(cf.get_value("game", "fullscreen", false))
@@ -191,6 +202,7 @@ func _save() -> void:
 	for kind in volume:
 		cf.set_value("game", "vol_" + kind, volume[kind])
 	cf.set_value("game", "shake", shake_idx)
+	cf.set_value("game", "weather_fx", weather_fx_idx)
 	cf.set_value("game", "ui", ui_idx)
 	cf.set_value("game", "hints", hints_on)
 	cf.set_value("game", "fullscreen", fullscreen)

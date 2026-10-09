@@ -67,6 +67,8 @@ Kampania gra misje po kolei: **1.2 „Przerwa w Nadawaniu"** (uruchom 4 generato
 
 **Radiostacja w kryjówce (prognoza pogody, GDD §10.3):** obiekt `R` (`radio_set.gd`) — przy nim HUD pokazuje prognozę na następną misję kampanii (`weather.gd`: CLEAR NIGHT / RAIN / STORM / FOG, każda z plusami i minusami: hałas, amunicja, Uwaga na starcie, progi Stalkera). Prognozę losuje serwer przy wejściu do kryjówki, po wyjściu staje się pogodą misji (wipe ją zachowuje, Nocny Dyżur i powrót do kryjówki kasują); wartości idą do klientów przez `mission._sync`, a efekty przez te same mnożniki co modyfikatory Nocnego Dyżuru (`NightShift.*`). Baner startu misji pokazuje linię „WEATHER”.
 
+**Efekty pogody (faza A, `weather_fx.gd`):** deszcz (RAIN, STORM), tint ciemności i błyskawice burzy — warstwa kosmetyczna, lokalna, pod HUD-em. Deszcz pada tylko pod otwartym niebem (`Level.sky_open_at`), harmonogram błyskawic wynika z ziarna misji (`Weather.seed`) i zegara misji, więc jest wspólny dla graczy bez RPC. Ustawienie **Weather effects** (menu pauzy): FULL / REDUCED (domyślne: miękka poświata zamiast błysku) / OFF. Dev: `--shotweather=clear|rain|storm|fog`, `--shotflash`.
+
 Testy jazdy: `godot --headless --path . -- --host --mission=z1_m2 --ridetest --autoquit=100`; sieciowy: host `-- --host --mission=z1_m2 --ridehost --autoquit=45` i klient `-- --join=127.0.0.1 --rideclient --autoquit=40`.
 
 Testy: `godot --headless --path . -- --maptest --autoquit=4` (kształt siatki + osiągalność z grafu nawigacji: start → cele/wrogowie/przedmioty/wyjścia i z powrotem), `godot --headless --path . -- --host --mission=z1_m2 --gentest --autoquit=35` (cała misja 1.2 i przejście 1.3 ↔ 1.2). `--mission=ID` wybiera mapę startową (testy 1.3 wymuszają `z1_m3` same).
