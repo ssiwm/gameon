@@ -15,6 +15,7 @@ const FADE_S := 0.5
 ## [id, tekst]; kolejność = priorytet, gdy kilka warunków spełnia się naraz
 const TIPS := [
 	["move", "{move} to move  ·  {jump} to jump  ·  hold {crouch} to sneak — sneaking is silent"],
+	["hub", "Safe room — nothing hunts you here. Read the board, spend scrap at the workshop bench ({interact}), then press {restart} to ready up"],
 	["noise", "Every shot makes NOISE. Watch the meter in the top-left corner"],
 	["sneak", "Something is asleep close by — hold {crouch} and walk: a crouching step is silent and wakes it from half the distance"],
 	["quiet", "Attention is up. Stop shooting — in silence the meter drains fast. Sneaking ({crouch}) is silent too"],
@@ -86,6 +87,8 @@ func _start_next() -> void:
 func _collect(p: Node) -> void:
 	# trwałe: warunek raz spełniony, podpowiedź czeka na swoją kolej
 	_queue("move", _session > 2.0, true)
+	var mn = p.get_tree().current_scene.get("mission") if p.get_tree().current_scene != null else null
+	_queue("hub", mn != null and mn.kind == "hub" and _session > 4.0, true)
 	_queue("noise", NoiseMgr.level >= 8.0, true)
 	var lvl_n = p.get_tree().get_first_node_in_group("level")
 	var below: bool = lvl_n != null and p.global_position.y > float(lvl_n.underground_y) and float(lvl_n.underground_y) > 0.0

@@ -270,6 +270,11 @@ var _session_t := 0.0
 ## Pasek sterowania: -1 = auto (pierwsze CONTROLS_SHOW_S s), 0 = ukryty, 1 = pokazany (F1).
 var _controls_mode := -1
 var _hit_flash := 0.0
+var _dim: ColorRect                   ## ściemnienie HUD-u pod modalami (karta wyniku, warsztat)
+var _calm_t := 0.0                    ## sekundy spokoju (poziomy HUD: T2 / T3 wygaszane po 4 s)
+var _tier_k := 1.0                    ## 1 = pełny HUD, ~0.5 = wyciszony w spokoju
+var _stats_sig := -1                  ## podpis statystyk graczy w karcie wyniku
+var _result_players: GridContainer
 var _captions := Captions.new()       ## napisy dla dźwięków (ustawienie „Sound captions”)
 var _cap_card: PanelContainer
 var _cap_box: VBoxContainer
@@ -369,12 +374,14 @@ func _ready() -> void:
 	_build_hint()
 	_build_captions()
 	_build_result()
+	_build_dim()
 	_item = _make_info_card(250.0, 2, true)
 	_brief = _make_info_card(310.0, 4, true)
 	(_brief["card"] as TailPanel).pin = true
 	_radio = _make_info_card(300.0, 2, true)
 	(_radio["card"] as TailPanel).pin = true
 	var wsp := WorkshopUi.new()
+	wsp.z_index = 11                                           # nad ściemnieniem (_dim, z_index 10)
 	add_child(wsp)
 	get_viewport().size_changed.connect(_fit)
 	Settings.changed.connect(_apply_scale)
@@ -825,6 +832,34 @@ func _build_controls() -> void:
 	Settings.bindings_changed.connect(refresh_keys)
 	add_child(_f1)
 
+## Ściemnienie pod modalami: nad kartami HUD (z_index), pod kartą wyniku i warsztatem.
+func _build_dim() -> void:
+	_dim = ColorRect.new()
+	_dim.color = Color(0.0, 0.0, 0.0, 0.5)
+	_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_dim.z_index = 10
+	_dim.visible = false
+	add_child(_dim)
+	_result.z_index = 11
+
+## Poziomy HUD: T1 (zdrowie, amunicja, wskaźnik hałasu) zawsze w pełni; T2 (karta celu) i T3 (zegar, XP, sesja, sterowanie)
+## przygasają po 4 s spokoju — bez wystrzałów i bez Uwagi ponad próg niepokoju — i wracają przy pierwszym hałasie.
+func _drive_tiers(delta: float) -> void:
+	var calm: bool = NoiseMgr.level < NoiseMgr.UNEASY_THRESHOLD and not NoiseMgr.stalker_awake \
+			and not Input.is_action_pressed("fire") and _hit_flash <= 0.01
+	_calm_t = _calm_t + delta if calm else 0.0
+	var target := 0.5 if _calm_t > 4.0 else 1.0
+	_tier_k = lerpf(_tier_k, target, minf(1.0, delta * (1.5 if target < 1.0 else 6.0)))
+	_obj_card.modulate.a = lerpf(1.0, 0.6, (1.0 - _tier_k) * 2.0)
+	for c in [_session, _clock, _scrap, _lv_label, _f1, _controls]:
+		(c as Control).self_modulate.a = lerpf(1.0, 0.45, (1.0 - _tier_k) * 2.0)
+	# ściemnienie pod karta wyniku i warsztatem
+	var ws := get_tree().get_first_node_in_group("workshop_ui")
+	var modal: bool = _result.visible or (ws != null and ws.is_open())
+	_dim.visible = modal
+	if modal:
+		_dim.size = size
+
 ## Napisy dla dźwięków: wąska karta przy prawej krawędzi, linie z kierunkiem do źródła (captions.gd).
 func _build_captions() -> void:
 	_cap_card = _card(Vector2(MARGIN, MARGIN))
@@ -897,8 +932,10 @@ func _build_hint() -> void:
 	row.add_child(_hint_label)
 
 func _drive_hint(delta: float) -> void:
-	var text := _hints.update(delta, _player)
-	_hint_card.visible = text != "" and not _result.visible
+	# jeden komunikat naraz: ostrzeżenie o hałasie i krótkie noty mają pierwszeństwo — podpowiedź czeka (jej czas stoi)
+	var busy := _warn.text != "" or _note_t > 0.0
+	var text := _hints.update(0.0 if busy else delta, _player)
+	_hint_card.visible = text != "" and not _result.visible and not busy
 	if not _hint_card.visible:
 		return
 	_hint_label.text = text
@@ -927,6 +964,11 @@ func _build_result() -> void:
 	_result_stats.add_theme_constant_override("h_separation", 16)
 	_result_stats.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	box.add_child(_result_stats)
+	_result_players = GridContainer.new()                 # tabela graczy: zabójstwa / upadki / podniesienia (mission.player_stats)
+	_result_players.columns = 4
+	_result_players.add_theme_constant_override("h_separation", 14)
+	_result_players.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(_result_players)
 	_result_prompt = UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(_result_prompt)
 	if Settings.DEMO:
@@ -970,6 +1012,7 @@ func _process(delta: float) -> void:
 	_drive_cards()
 	_drive_hint(delta)
 	_drive_captions(delta)
+	_drive_tiers(delta)
 	_drive_controls()
 	queue_redraw()
 
@@ -1195,9 +1238,13 @@ func _drive_mission() -> void:
 	_warn_sub.position.y = wy + 20.0
 
 	var show_result: bool = m.phase == Mission.Phase.SUCCESS or m.phase == Mission.Phase.FAILED
-	if show_result and not _result.visible:
+	var just_shown: bool = show_result and not _result.visible
+	if just_shown:
 		_fill_result(m)
+		UiTheme.fade_in(_result)
 	_result.visible = show_result
+	if show_result:
+		_fill_players(m)
 	if show_result and _result_xp_val != null and is_instance_valid(_result_xp_val):
 		var xt := "+%d  ·  LV %d" % [Profile.last_mission_xp, Profile.level()]
 		if _result_xp_val.text != xt:
@@ -1243,6 +1290,32 @@ func _fill_result(m: Node) -> void:
 		var lvl := get_tree().get_first_node_in_group("level")
 		var last: bool = lvl != null and lvl.map_id == String(lvl.CAMPAIGN[lvl.CAMPAIGN.size() - 1])
 		_demo_footer.visible = (m.phase == Mission.Phase.FAILED or m.shift_complete()) if NightShift.active else last
+	_result.reset_size()
+	_result.position = (size - _result.size) * 0.5
+
+## Tabela graczy na karcie wyniku (odświeżana, gdy statystyki od serwera się zmienią).
+func _fill_players(m: Node) -> void:
+	var sig: int = hash(str(m.player_stats))
+	if sig == _stats_sig:
+		return
+	_stats_sig = sig
+	for c in _result_players.get_children():
+		_result_players.remove_child(c)
+		c.free()
+	var ids: Array = m.player_stats.keys()
+	ids.sort()
+	_result_players.visible = not ids.is_empty()
+	if ids.is_empty():
+		return
+	for h in ["", "KILLS", "DOWNS", "REVIVED"]:
+		_result_players.add_child(UiTheme.label(h, 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT if h != "" else HORIZONTAL_ALIGNMENT_LEFT))
+	for id in ids:
+		var st: Dictionary = m.player_stats[id]
+		var mine: bool = int(id) == NoiseMgr.local_id()
+		var col: Color = UiTheme.ACCENT if mine else UiTheme.TEXT
+		_result_players.add_child(UiTheme.label(("%s  (you)" % st["name"]) if mine else String(st["name"]), 9, col))
+		for k in ["kills", "downs", "revived"]:
+			_result_players.add_child(UiTheme.label(str(int(st[k])), 9, col, HORIZONTAL_ALIGNMENT_RIGHT))
 	_result.reset_size()
 	_result.position = (size - _result.size) * 0.5
 

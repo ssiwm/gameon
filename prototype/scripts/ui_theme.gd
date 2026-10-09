@@ -109,6 +109,14 @@ static func get_theme() -> Theme:
 	_theme = t
 	return t
 
+## Panel pojawia się w 160 ms (przy „Reduce effects" od razu). Tylko alfa — kontenery i tak nadpisują pozycję.
+static func fade_in(c: CanvasItem) -> void:
+	if Settings.fx_mult() <= 0.0 or not c.is_inside_tree():
+		c.modulate.a = 1.0
+		return
+	c.modulate.a = 0.0
+	c.create_tween().tween_property(c, "modulate:a", 1.0, 0.16)
+
 ## Uchwyt suwaka: prostokąt 6×12 z ciemnym obrysem (generowany, bez pliku).
 static func _grabber_icon(col: Color) -> ImageTexture:
 	var img := Image.create(6, 12, false, Image.FORMAT_RGBA8)
