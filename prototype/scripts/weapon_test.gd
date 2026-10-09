@@ -564,6 +564,14 @@ func _t_actions() -> void:
 		rows[String(r[1])] = String(r[0])
 	check("ściąga: ruch „WASD / Arrows”, ogień „J / LMB”, przedmiot „L-Alt / X”, broń „1 2 3 / Wheel” (%s | %s | %s | %s)" % [rows.get("Move & aim"), rows.get("Fire — makes NOISE"), rows.get("Use item / switch item"), rows.get("Switch weapon")],
 		rows.get("Move & aim") == "WASD / Arrows" and rows.get("Fire — makes NOISE") == "J / LMB" 		and rows.get("Use item / switch item") == ("L-Cmd / X" if OS.get_name() == "macOS" else "L-Alt / X") and rows.get("Switch weapon") == "1 2 3 / Wheel")
+	var ev_a := InputEventKey.new()
+	ev_a.physical_keycode = KEY_A
+	var ev_e := InputEventKey.new()
+	ev_e.physical_keycode = KEY_E
+	var ev_pad := InputEventJoypadButton.new()
+	ev_pad.button_index = JOY_BUTTON_A
+	check("akcje menu (warsztat): A → lewo, E → wróć, przycisk A pada → zatwierdź, nie są wycinane przy menu (%s / %s)" % [Actions.text("menu_accept", true), Actions.text("menu_accept", true, true)],
+		InputMap.event_is_action(ev_a, "menu_left") and InputMap.event_is_action(ev_e, "menu_back") and InputMap.event_is_action(ev_pad, "menu_accept") 		and not blockable.has("menu_accept") and Actions.text("menu_accept", true) == "Enter" and Actions.text("menu_accept", true, true) == "A")
 	check("podpowiedzi: {interact} → E, {restart} → ENTER, {move} → WASD (%s %s %s)" % [Actions.key("interact"), Actions.key("restart"), Actions.fmt("{move}")],
 		Actions.key("interact") == "E" and Actions.key("restart") == "ENTER" and Actions.fmt("{move}") == "WASD" and not Actions.fmt("{overcharge}{throw_next}").contains("{"))
 

@@ -2,8 +2,9 @@ extends Control
 ## Panel warsztatu (złom, fazy B i C; wygląd — UI faza 3): szkic techniczny z siatką broni po lewej (miniatura, nazwa, poziom
 ## ulepszeń albo cena) i szczegółami po prawej: duża miniatura, statystyki „teraz → po zakupie”, lista trzech poziomów
 ## i przycisk akcji (kup / ulepsz). Wspólny złom drużyny; zakup rozstrzyga serwer (scrap.gd).
-## Otwiera go workshop.gd ([E] przy ławie). Na czas panelu akcje gry są wycięte z InputMap (Settings.block_game_input), więc klawisze
-## czytamy surowo: strzałki / WASD wybór, Enter lub Spacja akcja, Esc / E / Backspace zamyka. Mysz: kafel wybiera, przycisk kupuje.
+## Otwiera go workshop.gd ([E] przy ławie). Na czas panelu akcje gry są wycięte z InputMap (Settings.block_game_input), więc panel
+## czyta własne akcje menu z rejestru (actions.gd: menu_left/right/up/down, menu_accept, menu_back, menu_tab, menu_slot_1/2 —
+## klawiatura i D-pad / A / B / RB). Mysz: kafel wybiera, przycisk kupuje.
 
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Weapons := preload("res://scripts/weapons.gd")
@@ -16,6 +17,7 @@ const Perks := preload("res://scripts/perks.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const Look := preload("res://scripts/look.gd")
 const Sprites := preload("res://scripts/sprites.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 const GOLD := Color(0.95, 0.8, 0.4)
 const COLS := 2
@@ -232,6 +234,7 @@ var _d_tiers: VBoxContainer
 var _d_text: Label
 var _action: Button
 var _msg: Label
+var _hint: Label
 var _msg_t := 0.0
 
 func _ready() -> void:
@@ -297,8 +300,8 @@ func _ready() -> void:
 	root.add_child(_rule())
 	_msg = UiTheme.label("", 9, UiTheme.BP_TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	root.add_child(_msg)
-	var hint := UiTheme.label("ARROWS select   ·   ENTER buy / upgrade / equip   ·   TAB arms / supplies / perks / look   ·   ESC close   ·   or click", 8, UiTheme.BP_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
-	root.add_child(hint)
+	_hint = UiTheme.label(_controls_hint(), 8, UiTheme.BP_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	root.add_child(_hint)
 	Scrap.changed.connect(_refresh)
 	Scrap.purchase_result.connect(_on_result)
 	Scrap.supply_result.connect(_on_supply_result)
@@ -805,6 +808,7 @@ func open() -> void:
 	_open = true
 	visible = true
 	_msg.text = ""
+	_hint.text = _controls_hint()
 	_sel = 0
 	_page = 0
 	Settings.block_game_input(true)
@@ -845,91 +849,74 @@ func _exit_tree() -> void:
 
 # ---------------------------------------------------------------- sterowanie
 
+## Linia sterowania pod panelem: klawisze z rejestru akcji, a gdy jest pad — jego przyciski.
+func _controls_hint() -> String:
+	var pad := Actions.pad_connected()
+	var nav := "D-PAD" if pad else Actions.cluster(["menu_up", "menu_left", "menu_down", "menu_right"]).to_upper()
+	return "%s select   ·   %s buy / upgrade / equip   ·   %s arms / supplies / perks / look   ·   %s close   ·   or click" % [
+		nav, _menu_key("menu_accept", pad), _menu_key("menu_tab", pad), _menu_key("menu_back", pad)]
+
+func _menu_key(id: String, pad: bool) -> String:
+	return Actions.text(id, true, pad).to_upper()
+
+## Krok zaznaczenia z akcji menu (strzałki / WASD / D-pad): ±1 w poziomie, ±COLS w pionie, 0 = to nie nawigacja.
+func _nav_step(event: InputEvent) -> int:
+	if event.is_action_pressed("menu_left"):
+		return -1
+	if event.is_action_pressed("menu_right"):
+		return 1
+	if event.is_action_pressed("menu_up"):
+		return -COLS
+	if event.is_action_pressed("menu_down"):
+		return COLS
+	return 0
+
 func _input(event: InputEvent) -> void:
-	if not _open or not (event is InputEventKey) or not event.pressed or event.echo:
+	if not _open or not (event is InputEventKey or event is InputEventJoypadButton) or not event.is_pressed() or event.is_echo():
 		return
-	var k := (event as InputEventKey).keycode
-	if k == KEY_TAB:
+	if event.is_action_pressed("menu_tab"):
 		_set_page((_page + 1) % 4)
 		get_viewport().set_input_as_handled()
 		return
+	var step := _nav_step(event)
+	var accept := event.is_action_pressed("menu_accept")
+	var back := event.is_action_pressed("menu_back")
 	if _page == 3:
-		var lstep := 0
-		if k == KEY_LEFT or k == KEY_A:
-			lstep = -1
-		elif k == KEY_RIGHT or k == KEY_D:
-			lstep = 1
-		elif k == KEY_UP or k == KEY_W:
-			lstep = -COLS
-		elif k == KEY_DOWN or k == KEY_S:
-			lstep = COLS
-		if lstep != 0 and _look_sel + lstep >= 0 and _look_sel + lstep < Look.GENDERS.size() * Look.OUTFITS.size():
-			_look_sel += lstep
+		if step != 0 and _look_sel + step >= 0 and _look_sel + step < Look.GENDERS.size() * Look.OUTFITS.size():
+			_look_sel += step
 			Audio.play("ui_click", Audio.BUS_UI, -14.0)
 			_refresh()
-		elif k == KEY_ENTER or k == KEY_KP_ENTER or k == KEY_SPACE:
+		elif accept:
 			_act_look()
-		elif k == KEY_ESCAPE or k == KEY_E or k == KEY_BACKSPACE:
+		elif back:
 			close()
-		get_viewport().set_input_as_handled()
-		return
-	if _page == 2:
-		var pn := Perks.ORDER.size()
-		var pstep := 0
-		if k == KEY_LEFT or k == KEY_A:
-			pstep = -1
-		elif k == KEY_RIGHT or k == KEY_D:
-			pstep = 1
-		elif k == KEY_UP or k == KEY_W:
-			pstep = -COLS
-		elif k == KEY_DOWN or k == KEY_S:
-			pstep = COLS
-		if pstep != 0 and _perk_sel + pstep >= 0 and _perk_sel + pstep < pn:
-			_perk_sel += pstep
+	elif _page == 2:
+		if step != 0 and _perk_sel + step >= 0 and _perk_sel + step < Perks.ORDER.size():
+			_perk_sel += step
 			Audio.play("ui_click", Audio.BUS_UI, -14.0)
 			_refresh()
-		elif k == KEY_1 or k == KEY_2:
-			_perk_slot = 0 if k == KEY_1 else 1
+		elif event.is_action_pressed("menu_slot_1") or event.is_action_pressed("menu_slot_2"):
+			_perk_slot = 0 if event.is_action_pressed("menu_slot_1") else 1
 			Audio.play("ui_click", Audio.BUS_UI, -14.0)
 			_refresh()
-		elif k == KEY_ENTER or k == KEY_KP_ENTER or k == KEY_SPACE:
+		elif accept:
 			_act_perk()
-		elif k == KEY_ESCAPE or k == KEY_E or k == KEY_BACKSPACE:
+		elif back:
 			close()
-		get_viewport().set_input_as_handled()
-		return
-	if _page == 1:
-		var n := _supply_kinds().size()
-		var step := 0
-		if k == KEY_LEFT or k == KEY_A:
-			step = -1
-		elif k == KEY_RIGHT or k == KEY_D:
-			step = 1
-		elif k == KEY_UP or k == KEY_W:
-			step = -COLS
-		elif k == KEY_DOWN or k == KEY_S:
-			step = COLS
-		if step != 0 and _sup_sel + step >= 0 and _sup_sel + step < n:
+	elif _page == 1:
+		if step != 0 and _sup_sel + step >= 0 and _sup_sel + step < _supply_kinds().size():
 			_sup_sel += step
 			Audio.play("ui_click", Audio.BUS_UI, -14.0)
 			_refresh()
-		elif k == KEY_ENTER or k == KEY_KP_ENTER or k == KEY_SPACE:
+		elif accept:
 			_buy_selected_supply()
-		elif k == KEY_ESCAPE or k == KEY_E or k == KEY_BACKSPACE:
+		elif back:
 			close()
-		get_viewport().set_input_as_handled()
-		return
-	if k == KEY_LEFT or k == KEY_A:
-		_move(-1)
-	elif k == KEY_RIGHT or k == KEY_D:
-		_move(1)
-	elif k == KEY_UP or k == KEY_W:
-		_move(-COLS)
-	elif k == KEY_DOWN or k == KEY_S:
-		_move(COLS)
-	elif k == KEY_ENTER or k == KEY_KP_ENTER or k == KEY_SPACE:
+	elif step != 0:
+		_move(step)
+	elif accept:
 		_act()
-	elif k == KEY_ESCAPE or k == KEY_E or k == KEY_BACKSPACE:
+	elif back:
 		close()
 	get_viewport().set_input_as_handled()
 

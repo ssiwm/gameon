@@ -1834,7 +1834,7 @@ func _gen_test() -> void:
 	wui._act_perk()
 	var perk_locked: bool = not Profile.equipped.has("veteran")
 	var tab_ev := InputEventKey.new()
-	tab_ev.keycode = KEY_TAB
+	tab_ev.physical_keycode = KEY_TAB
 	tab_ev.pressed = true
 	wui._input(tab_ev)
 	var tab_to_look: bool = wui._page == 3                              # 2 → 3 (LOOK)
