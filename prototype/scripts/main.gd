@@ -997,6 +997,18 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				bs.call("_begin", 3, 0.9, Vector2.ZERO)        # --shotsweep: Żyła od razu zamachuje się falą (--shotdelay=0.4 zapowiedź, =1.0 fala)
 			if "--shotup" in OS.get_cmdline_user_args() and bs.has_method("_surface"):
 				bs.call("_surface")         # --shotup: Pijawka od razu wynurzona (podgląd arkusza, z chwytem, jeśli gracz stoi w zasięgu)
+	for sa in OS.get_cmdline_user_args():
+		if sa.begins_with("--shotextract="):                  # dev: punkt ewakuacji — 0 = tuż obok, 1 = w strefie z postępem, 2 = jak 1 + finał kopalni, 3 = daleko (wskaźnik na krawędzi)
+			var mode := int(sa.substr("--shotextract=".length()))
+			mission._open_extraction(false)
+			var xp: Node2D = _players.get_node_or_null("1")
+			if xp != null:
+				xp.global_position = mission.exit_pos + Vector2(-420.0 if mode == 3 else (-70.0 if mode == 0 else -8.0), -2.0)
+				xp.velocity = Vector2.ZERO
+			if mode >= 1:
+				mission.extract_progress = 0.15
+			if mode >= 2:
+				mission.finale = true
 	if "--shotwall" in OS.get_cmdline_user_args():
 		var sw := get_tree().get_first_node_in_group("breakables")      # --shotwall: gracz tuż przed zamurowanym przejściem (mapa 1.2)
 		var sp: Node2D = _players.get_node_or_null("1")

@@ -532,6 +532,14 @@ def m_flare(P, stuck=False):
             sph((x, y, z), r, P["slate"], (1, 1, 0.75), seg=16)
 
 
+def m_stake(P):
+    """Znacznik strefy ewakuacji (EXTRACT_PLAN.md X4): krótki kołek z zielonym łuczywem chemicznym na czubku."""
+    cyl((0, 0, 3.2), 0.6, 6.4, P["steel_d"], bevel=0.05, seg=16)
+    cyl((0, 0, 0.3), 1.3, 0.6, P["slate"], bevel=0.1, seg=20)
+    cyl((0, 0, 7.6), 0.95, 2.6, P["green_e"], bevel=0.12, seg=20)
+    cyl((0, 0, 6.2), 1.05, 0.5, P["black"], bevel=0.05, seg=20)
+
+
 def m_flare_box(P):
     box((0, 0, 3.0), (14.0, 6.0, 6.0), P["wood"], 0.3)
     box((0, -3.02, 3.0), (14.2, 0.1, 1.2), P["red"], 0.04)
@@ -999,7 +1007,7 @@ def m_cot(P):
 MODELS = {
     "frag": (m_frag, 32), "phos": (m_phos, 32), "smoke": (m_smoke, 32), "mine": (m_mine, 32), "charge": (m_charge, 32),
     "medkit": (m_medkit, 32), "defib": (m_defib, 32), "scanner": (m_scanner, 32),
-    "flare": (m_flare, 32), "flare_stuck": (lambda P: m_flare(P, True), 32), "flare_box": (m_flare_box, 32),
+    "flare": (m_flare, 32), "flare_stuck": (lambda P: m_flare(P, True), 32), "flare_box": (m_flare_box, 32), "stake": (m_stake, 48),
     "supply": (m_supply, 32), "ammo": (m_ammo, 32), "cache": (m_cache, 32), "stash": (m_stash, 32), "tag": (m_tag, 32),
     "bones": (m_bones, 32), "reeds": (m_reeds, 32), "board": (m_board, 16), "results_board": (m_results_board, 12), "range_target": (m_range_target, 24), "range_sign": (m_range_sign, 24), "handcar": (m_handcar, 12), "handcar_wheel": (m_handcar_wheel, 64), "handcar_lever": (m_handcar_lever, 24), "generator": (m_generator, 28), "generator": (m_generator, 40), "crate": (m_crate, 24), "barrel": (m_barrel, 24), "rack": (m_rack, 16), "tools_wall": (m_tools_wall, 20), "lamp": (m_lamp, 24),
     "table": (m_table, 24), "chair": (m_chair, 32), "stool": (m_stool, 32), "shelf": (m_shelf, 20), "locker": (m_locker, 24), "cot": (m_cot, 24),
