@@ -92,3 +92,46 @@ Generatory wizualizacji: `prototype/tools/concept/char3d_concept.py` (Blender) i
 - **Brak GPU w CI:** testy wizualne tylko lokalnie (zrzuty); CI sprawdza dane, manifest arkuszy i sieć.
 - **Zakres zmian w `player.gd`/HUD** (kolor P1–P4 jako identyfikacja) — wymaga ostrożnej migracji, żeby nie zepsuć czytelności drużyny.
 - **Licencje** zewnętrznych modeli (CC0 lub inne) — sprawdzamy przed jakimkolwiek importem; w repo trafia tylko to, do czego mamy prawa.
+
+## Etap 4 — prezentacja postaci 3D: więcej detali (plan z 2026-10-10)
+
+**Cel:** postać gracza w czasie rzeczywistym (`char3d.gd`) ma na 1080p wyglądać wyraźnie lepiej niż dziś: czytelne kieszenie, pasy, szwy, materiały, twarz i plecak; wszystko pod kątem przyszłej customizacji (części i kolory zmieniane bez nowego renderu). Zoom kamery (WIDE 1,6 / NORMAL 2,0 / CLOSE 2,4) i adaptacyjne `Char3D.ss` są już w grze, więc **ograniczeniem detalu są dziś dane i oświetlenie, nie rozdzielczość renderu.**
+
+### Stan wyjściowy (z kodu i skryptów)
+- Modele: Tripo → auto-rig Mixamo (`art_src/characters/tripo/*_rig.glb`, źródła z teksturami 4K) → `tools/prep_char3d.py`: decymacja do **~6000 ścian**, **tylko mapa koloru 1024²** (normalne i ORM świadomie pomijane „bo postać ma ~100 px”) → `art/char3d/*.glb`. Założenie 100 px jest nieaktualne: przy zoomie 2,0–2,4 na 1080p to 132–158 px, na 4K ok. 265–316 px.
+- Render: SubViewport na postać, kamera ortogonalna z boku, ramka 44×44 j. (postać 22 j. = 1,8 m), dwa przebiegi (kolor + normalne siatki), `ss` 3–8, MSAA 2×, obrys 0,5 j. w shaderze, oświetlenie 2D gry przez mapę normalnych.
+- Światła 3D: jedno słońce + jedno wypełnienie, **bez cieni, AO, odbić i rim light**; brak mapy normalnych z detalu (relief tylko z geometrii 6k ścian).
+- Poza i animacja: IK dwukostkowy (nogi, ręce, broń 3D), brak mikroruchu (oddech, przesunięcie ciężaru, śledzenie głowy).
+- Customizacja: `Look.code` = płeć × strój (3 stroje); strój to osobny GLB + tekstura; brak punktów mocowania (głowa, plecy, pas) i masek kolorów.
+
+### Co ogranicza detal (w kolejności wpływu)
+1. **Dane:** tekstura 1024² tylko koloru + 6 k ścian gubią to, co w źródle 4K jest najlepsze (kieszenie, klamry, szwy, fałdy).
+2. **Oświetlenie:** płaskie światła bez cieni/AO → fałdy i kieszenie nie tworzą cieni, postać wygląda „plastikowo” mimo ostrego renderu.
+3. **Kadr:** widok czysto z boku ukrywa połowę stroju (pierś, twarz, ekwipunek); lekki obrót (3/4) pokaże więcej bez zmiany sylwetki.
+4. **Mikroanimacja:** brak oddechu i śledzenia głowy sprawia, że w bezruchu postać wygląda jak sprite.
+5. **Obrys:** jednolity ciemny obrys 0,5 j. spłaszcza detale na krawędzi (do rozważenia: cieńszy lub kolorowany).
+
+### Fazy (każda osobny PR, zrzuty A/B przed/po, bez zmian w sieci)
+| Faza | Zakres | Kryterium | Szac. |
+|---|---|---|---|
+| **4.0 Baseline** | Zrzuty obecnego wyglądu (zoom 2,0 i 2,4, 1080p i 4K, 6 strojów) + pomiar kosztu (`bench_char3d.gd`, `perf_bench.sh`) | punkt odniesienia w `concepts/` i `perf_*.txt` | 0,5 d |
+| **4.1 Dane** | `prep_char3d.py`: tekstura **2048²**, **12 k ścian**, wypiek **normalnych** i **AO** z modelu źródłowego (Blender); import z kompresją; GLB w repo (≈1–1,5 MB/model) | widoczne kieszenie, pasy, szwy na zrzucie CLOSE; ≤ 2× koszt renderu | 1–1,5 d |
+| **4.2 Światło** | Klucz + rim + wypełnienie dopasowane do kierunku świateł 2D; cienie kierunkowe w małej ramce; AO z 4.1; opcjonalny delikatny speculars na metalu/gumie | postać „siedzi” w scenie; flara/latarka wciąż dają relief | 1 d |
+| **4.3 Kadr i ruch** | Obrót 3/4 (15–25°) z zachowaniem IK broni i flip_h; oddech, przesunięcie ciężaru, głowa śledzi celowanie; plecak/pas z lekkim lagiem | więcej strojów widać z boku, bez „pływania” broni | 1–1,5 d |
+| **4.4 Customizacja** | Rozbicie `Look.code` na pola (płeć, strój, głowa, plecy, odcień) + punkty mocowania (`BoneAttachment3D`) + maski kolorów (RGB: tkanina/pancerz/akcent) i paleta jako parametr shadera | zmiana części/koloru bez przebudowy sprite'ów; replikacja bez zmian formatu (jedna liczba) | 1,5–2 d |
+| **4.5 Podgląd** | Obrotowy podgląd w warsztacie i lobby: osobny SubViewport (512×768, `ss` 8–10, cienie i AO włączone, myszą obrót) | detal widoczny z bliska; bez wpływu na rozgrywkę | 1 d |
+
+Łącznie ok. 6–8 dni roboczych; fazy 4.0–4.2 dają największą różnicę przy najmniejszym ryzyku (bez zmian w kodzie rozgrywki).
+
+### Ryzyka i zasady
+- **Rozmiar repo/VRAM:** GLB 6 modeli × ~1,5 MB; tekstury w VRAM kompresowane (BPTC/S3TC), ramka renderu 44×44 j. × `ss` — pomijalne wobec sprite'ów wrogów.
+- **Koszt GPU:** dwa przebiegi + cienie + MSAA × do 4 postaci; mitygacja: poziomy jakości (LOW bez cieni i normalnych, MEDIUM bez MSAA), culling poza ekranem już jest.
+- **Wrogowie nie nadążą:** sprite'y 2D wrogów mają gęstość 2 px/j. (`DENSITY = 2`), więc na 1080p będą wyraźnie mniej ostre niż gracz; osobna decyzja (patrz niżej).
+- **Spójność stylu:** postać gracza i wróg w jednej scenie muszą wyglądać jak z jednego świata (kontrast ostrości jest ryzykiem artystycznym, nie technicznym).
+- **Kredyty Tripo:** nowe części/stroje generowane tylko po zatwierdzeniu budżetu; źródła 4K już są.
+
+### Decyzje do podjęcia
+1. **Zakres 4.1:** 2048² + 12 k ścian (rekomendacja) czy ostrożniej 1536² + 9 k.
+2. **Kadr 4.3:** obrót 3/4 domyślnie, czy tylko w kryjówce i w podglądzie (rekomendacja: domyślnie 15°, w podglądzie pełny obrót).
+3. **Wrogowie:** podnieść `DENSITY` do 3 (arkusze ~2,25×, ok. 65 mln px) już teraz, czy dopiero po fazie 4.2, gdy będzie wiadomo, jak postać wypada w scenie.
+4. **Poziomy jakości postaci:** czy dodać osobne ustawienie „Character quality” (LOW/MEDIUM/HIGH), czy wiązać z istniejącym `Effects quality`.

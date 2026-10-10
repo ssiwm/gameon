@@ -1,7 +1,7 @@
 extends CanvasLayer
 ## Efekty wizualne pogody (weather.gd, GDD §10.3 „Radiostacja"): deszcz i burza z błyskawicami, tint ciemności (faza A; mgła, dźwięk i HUD to kolejne fazy).
 ##
-## Czysta kosmetyka, lokalna: nic tu nie rozstrzyga gameplayu. Warstwa leży tuż przed `horror_fx` (winieta i ziarno kładą się na wierzch) i pod HUD-em.
+## Czysta kosmetyka, lokalna: nic tu nie rozstrzyga gameplayu. Warstwa leży tuż przed `horror_fx` (winieta kładzie się na wierzch) i pod HUD-em.
 ## Deszcz pada tylko pod otwartym niebem (nad lokalnym graczem nie ma bryły aż do górnej krawędzi mapy), a pod dachem i w podziemiach
 ## płynnie zanika. Burza ma błyskawice: harmonogram wynika z ziarna misji (`Weather.seed`, replikowane razem z pogodą) i zegara misji
 ## (`mission.elapsed`), więc u wszystkich graczy błyska mniej więcej w tej samej chwili bez żadnego RPC.

@@ -31,12 +31,14 @@ const VSYNC_MODES := [DisplayServer.VSYNC_ENABLED, DisplayServer.VSYNC_DISABLED,
 const FPS_LIST := [0, 30, 60, 120, 144, 240]                       ## 0 = bez limitu
 const QUALITY_NAMES := ["LOW", "MEDIUM", "HIGH"]
 const VFX_MULT := [0.4, 0.7, 1.0]                                  ## ile cząsteczek i szczątków (Vfx.burst / gibs)
-const POST_MULT := [0.0, 0.6, 1.0]                                 ## siła ziarna i aberracji (horror_fx.gd)
+const POST_MULT := [0.0, 0.6, 1.0]                                 ## siła aberracji (horror_fx.gd)
 ## Tryb dla osób z zaburzeniami widzenia barw: filtr całego obrazu (colorblind_fx.gd).
 const COLORBLIND_NAMES := ["OFF", "PROTANOPIA", "DEUTERANOPIA", "TRITANOPIA"]
 ## Język interfejsu: tabela tłumaczeń w translations/ui.csv (klucz = tekst angielski). Nazwy języków nie są tłumaczone.
 const LOCALES := ["en", "pl"]
 const LOCALE_NAMES := ["ENGLISH", "POLSKI"]
+const CAM_NAMES := ["WIDE", "NORMAL", "CLOSE"]
+const CAM_ZOOM := [1.6, 2.0, 2.4]      ## zoom kamery gracza; baza 640×360 → widać 400×225 / 320×180 / 267×150 j. świata
 const UI_NAMES := ["SMALL", "NORMAL", "LARGE"]
 ## Rozmiar HUD-u: SMALL / NORMAL / LARGE. NORMAL = dawne SMALL (0,85), LARGE = dawne NORMAL (1,0); nowy SMALL jest o tyle samo mniejszy (×0,85).
 const UI_MULT := [0.72, 0.85, 1.0]
@@ -46,14 +48,15 @@ var volume := {"master": 1.0, "music": 1.0, "sfx": 1.0}
 var shake_idx := 0
 var weather_fx_idx := WEATHER_FX_REDUCED
 var ui_idx := 1
+var cam_idx := 1                       ## zbliżenie kamery: WIDE / NORMAL / CLOSE (CAM_ZOOM) — większe postacie kosztem pola widzenia
 var hints_on := true
 var res_idx := 0                       ## rozmiar okna z RES_LIST (tylko tryb okienkowy)
 var vsync_idx := 0
 var fps_idx := 0
-var quality_idx := 2                   ## LOW / MEDIUM / HIGH — cząsteczki, ziarno i aberracja, efekty pogody
+var quality_idx := 2                   ## LOW / MEDIUM / HIGH — cząsteczki, aberracja, efekty pogody
 var mono_audio := false                ## bez panoramy w dźwięku pozycyjnym (osoby z jednostronnym słuchem)
 var captions := false                  ## napisy dla dźwięków (HUD, captions.gd)
-var reduce_fx := false                 ## „Reduce Effects": bez wstrząsów, ziarna, aberracji, pulsu zdrowia, błysku burzy i migotania
+var reduce_fx := false                 ## „Reduce Effects": bez wstrząsów, aberracji, pulsu zdrowia, błysku burzy i migotania
 var crouch_toggle := false             ## skradanie przełączane klawiszem zamiast trzymania
 var colorblind_idx := 0
 var locale_idx := 0
@@ -93,7 +96,7 @@ func fx_mult() -> float:
 func vfx_mult() -> float:
 	return VFX_MULT[quality_idx]
 
-## Siła obrazu horroru (ziarno, aberracja): zależy od jakości, a „Reduce Effects" wyłącza ją całkiem.
+## Siła obrazu horroru (aberracja): zależy od jakości, a „Reduce Effects" wyłącza ją całkiem.
 func post_mult() -> float:
 	return POST_MULT[quality_idx] * fx_mult()
 
@@ -121,6 +124,13 @@ func cycle_shake() -> void:
 
 func cycle_weather_fx() -> void:
 	weather_fx_idx = (weather_fx_idx + 1) % WEATHER_FX_NAMES.size()
+	_commit()
+
+func cam_zoom() -> float:
+	return CAM_ZOOM[cam_idx]
+
+func cycle_cam() -> void:
+	cam_idx = (cam_idx + 1) % CAM_NAMES.size()
 	_commit()
 
 func cycle_ui() -> void:
@@ -292,6 +302,7 @@ func _load() -> void:
 	shake_idx = clampi(int(cf.get_value("game", "shake", 0)), 0, SHAKE_NAMES.size() - 1)
 	weather_fx_idx = clampi(int(cf.get_value("game", "weather_fx", WEATHER_FX_REDUCED)), 0, WEATHER_FX_NAMES.size() - 1)
 	ui_idx = clampi(int(cf.get_value("game", "ui", 1)), 0, UI_NAMES.size() - 1)
+	cam_idx = clampi(int(cf.get_value("game", "cam", 1)), 0, CAM_NAMES.size() - 1)
 	hints_on = bool(cf.get_value("game", "hints", true))
 	fullscreen = bool(cf.get_value("game", "fullscreen", false))
 	res_idx = clampi(int(cf.get_value("game", "res", 0)), 0, RES_LIST.size() - 1)
@@ -320,6 +331,7 @@ func _save() -> void:
 	cf.set_value("game", "shake", shake_idx)
 	cf.set_value("game", "weather_fx", weather_fx_idx)
 	cf.set_value("game", "ui", ui_idx)
+	cf.set_value("game", "cam", cam_idx)
 	cf.set_value("game", "hints", hints_on)
 	cf.set_value("game", "fullscreen", fullscreen)
 	if _res_dirty:

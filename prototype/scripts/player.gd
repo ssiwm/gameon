@@ -209,6 +209,18 @@ func _setup_lights() -> void:
 	add_child(view)
 	_overlay = Lights.add_overlay(self)   # ostatnie dziecko: etykiety nad sprite'ami
 
+## Zoom kamery z ustawienia „Camera” (WIDE / NORMAL / CLOSE) — im bliżej, tym więcej detalu postaci, a mniej świata.
+func _apply_cam_zoom() -> void:
+	if _camera != null:
+		var z := Settings.cam_zoom()
+		_camera.zoom = Vector2(z, z)
+	_apply_view_quality()
+
+## Ostrość postaci 3D: rozdzielczość renderu wg zoomu i rozmiaru okna (patrz Char3D.ss_for_view).
+func _apply_view_quality() -> void:
+	if c3d != null and is_instance_valid(c3d):
+		c3d.apply_view(Settings.cam_zoom(), float(get_window().size.y))
+
 ## Pixel-art z art/sprites (bake_sprites.py). Bez arkuszy zostaje rysowanie w kodzie.
 func _wanted_sheet() -> String:
 	return Sprites.bot_sheet() if is_bot else Sprites.player_sheet(display_id, look)
@@ -219,6 +231,9 @@ func _setup_sprites() -> void:
 		c3d.name = "Char3D"
 		add_child(c3d)
 		if c3d.setup(_char3d_name()):
+			_apply_view_quality()
+			Settings.changed.connect(_apply_view_quality)
+			get_window().size_changed.connect(_apply_view_quality)
 			return
 		c3d.queue_free()
 		c3d = null
@@ -347,6 +362,8 @@ func _setup_local() -> void:
 	_camera.enabled = local_human
 	if local_human:
 		_camera.make_current()
+		_apply_cam_zoom()
+		Settings.changed.connect(_apply_cam_zoom)
 		_camera.add_child(_dust_motes())
 		if Sprites.newitem:
 			for fog in _mist():
@@ -1701,8 +1718,6 @@ func _body_color() -> Color:
 
 func _draw() -> void:
 	if not _spr.is_empty() or c3d != null:
-		if not dead:
-			draw_rect(Rect2(-6, -1, 12, 2), Color(0, 0, 0, 0.35))
 		return
 	var col := _body_color()
 	if _flash > 0.0:
@@ -1718,7 +1733,6 @@ func _draw() -> void:
 
 	var h := 11.0 if crouching else 17.0
 	var top := -h
-	draw_rect(Rect2(-7, -1, 14, 3), Color(0, 0, 0, 0.35))
 	draw_set_transform(Vector2.ZERO, 0.0, squash)
 	draw_rect(Rect2(-5, top + 7, 10, h - 7), col)
 	draw_rect(Rect2(-4, top, 8, 8), col.lightened(0.3))
