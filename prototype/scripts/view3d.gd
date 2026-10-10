@@ -24,6 +24,8 @@ const MIRROR_GROUPS := ["enemies", "boss", "nests", "roamers"]
 const HIDE_NAMES := ["Back", "Solid", "Deco", "TerrainHD", "TerrainHDBack", "Backdrop"]
 const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wrogów
 const LAYER_ACTORS := 2                    ## warstwa wizualna graczy (modele 3D)
+const ACTOR_AMBIENT := 0.55                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
+const ACTOR_LIGHT := 1.0                   ## mnożnik świateł pomocniczych graczy (kontra, wypełnienie, obrys)
 const Z_BG := -60
 const Z_FG := 1
 
@@ -46,6 +48,7 @@ var _frames_cache := {}
 var _scan_t := 0.0
 var _hidden: Array = []                  ## ukryte statyczne węzły 2D (przywracane przy wyłączeniu)
 var _life := 0.0
+var _saved := false
 
 func setup(level: Node2D, players: Node2D) -> void:
 	_level = level
@@ -85,11 +88,11 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_geo.name = "Geometry"
 	_world.add_child(_geo)
 	# światło tylko dla graczy (warstwa 2): miękka kontra, wypełnienie i obrys jak w podglądzie postaci — sylwetka czytelna także w ciemności
-	for spec in [[Vector3(-0.35, -0.6, -0.7), Color(0.9, 0.88, 0.8), 0.9], [Vector3(0.2, -0.3, 0.9), Color(0.7, 0.8, 1.0), 0.7], [Vector3(0.7, -0.2, -0.4), Color(0.6, 0.7, 1.0), 0.35]]:
+	for spec in [[Vector3(-0.35, -0.6, -0.7), Color(0.9, 0.88, 0.8), 1.3], [Vector3(0.2, -0.3, 0.9), Color(0.7, 0.8, 1.0), 1.0], [Vector3(0.7, -0.2, -0.4), Color(0.6, 0.7, 1.0), 0.5]]:
 		var dl := DirectionalLight3D.new()
 		dl.basis = Basis.looking_at(spec[0], Vector3.UP)
 		dl.light_color = spec[1]
-		dl.light_energy = spec[2]
+		dl.light_energy = float(spec[2]) * ACTOR_LIGHT
 		dl.light_cull_mask = LAYER_ACTORS
 		_world.add_child(dl)
 	_spr_bg = Sprite2D.new()
@@ -129,6 +132,11 @@ func _process(delta: float) -> void:
 	if _life > 3.0 and "--view3dtoggle" in OS.get_cmdline_user_args():
 		release()                                       # dev: sprawdzenie, że wyłączenie przywraca obraz 2D
 		return
+	if _life > 2.5 and not _saved:
+		for ar in OS.get_cmdline_user_args():
+			if ar.begins_with("--view3dsave="):                 # dev: zapis obrazu warstwy graczy (PNG z alfą) do oceny jasności modeli
+				_saved = true
+				_vp_fg.get_texture().get_image().save_png(ar.substr(13))
 	_sync_camera()
 	_hide_static()
 	_geo_t -= delta
@@ -211,6 +219,10 @@ func _sync_geometry() -> void:
 	env_b.background_mode = Environment.BG_CLEAR_COLOR
 	env_b.sky = null
 	env_b.glow_enabled = false
+	# jasność postaci: osobne, łagodne światło otoczenia i słabsza mgła tylko dla warstwy graczy (modele leżą w płaszczyźnie gry, kilkanaście metrów od kamery)
+	env_b.ambient_light_color = Color(0.55, 0.60, 0.78)
+	env_b.ambient_light_energy = ACTOR_AMBIENT
+	env_b.fog_density = env_a.fog_density * 0.35
 	_cam_b.environment = env_b
 	Level3D.build_level(_geo, rows)
 	if not hub:
