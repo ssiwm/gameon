@@ -1,6 +1,6 @@
 # Plan: atmosfera „2.5D” bez przepisywania gry (ścieżka pośrednia)
 
-Status: **plan z 2026-10-10, do zatwierdzenia.** Cel: zbliżyć obraz (najpierw kryjówki) do klimatu referencji — ciemne wnętrze, widoczne smugi światła
+Status: **plan z 2026-10-10; F0–F3 wdrożone** (smugi światła w kryjówce, bloom z mip ekranu w `horror_fx.gd`, okludery postaci + miękki cień kontaktowy zależny od lampy, wszystko pod „Effects quality”). **Pomiar** (`tools/bench_fx.gd`, kryjówka, okno 4K, RTX 3080, czas klatki CPU+GPU z odczytem): HIGH ≈ +1,2 ms, MEDIUM ≈ +0,7 ms względem LOW — przy 1080p ok. ¼ tego, więc budżet +1,5 ms jest zachowany z dużym zapasem; słabsze GPU nie mierzone. Cel: zbliżyć obraz (najpierw kryjówki) do klimatu referencji — ciemne wnętrze, widoczne smugi światła
 w mgle i pyle, gorące źródła światła z poświatą, postacie lekko oświetlone i rzucające cienie, miękka głębia, ciężki grading — **metodami 2D**,
 w obecnej architekturze (Godot 4.7, `gl_compatibility`, światła 2D, HD sprite'y i postacie 3D renderowane do tekstur). Po bramce A (zob. niżej)
 zapada decyzja: dociągamy 2D, czy robimy mały eksperyment 3D na jednej misji.
