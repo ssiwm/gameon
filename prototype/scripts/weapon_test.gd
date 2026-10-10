@@ -737,7 +737,7 @@ func _t_chat() -> void:
 	chat.line_added.connect(cb)
 	chat.send("hello squad")
 	chat.send("spam")                                   # w oknie limitu tempa — serwer odrzuca
-	await wait(0.7)
+	await wait(1.2)                                      # > MIN_GAP_MS z zapasem: serwer liczy odstęp od przyjęcia pierwszej linii, które na wolnym CI bywa spóźnione
 	chat.send("again")
 	var waited := 0                                     # linia wraca przez RPC serwera: na wolnym CI potrzeba więcej niż 2 klatek
 	while got.size() < 2 and waited < 120:
