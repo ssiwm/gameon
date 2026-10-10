@@ -923,6 +923,78 @@ def m_generator(P):
         box((-7.5 + i * 3.0, -3.45, 2.6), (1.4, 0.2, 1.4), P["black"] if i % 2 == 0 else P["yellow"], 0.03)
 
 
+
+# ---------------------------------------------------------------- meble kryjówki (ATMOSPHERE_PLAN.md F7): tło sceny, bez interakcji
+
+def m_table(P):
+    box((0, 0, 12.4), (40.0, 14.0, 2.4), P["wood"], 0.3)                       # blat
+    for x in (-17.5, 17.5):
+        for y in (-5.0, 5.0):
+            box((x, y, 5.6), (2.4, 2.4, 11.2), P["wood_d"], 0.25)               # nogi
+    box((0, 5.0, 3.4), (33.0, 1.4, 1.6), P["wood_d"], 0.2)                      # poprzeczka
+    box((-9.0, -1.0, 15.4), (5.0, 3.5, 3.6), P["steel_d"], 0.3)                 # puszka / skrzynka
+    cyl((8.0, -1.5, 14.9), 1.6, 3.0, P["olive"], bevel=0.1, seg=20)             # puszka
+    box((14.0, 1.5, 13.9), (6.0, 4.0, 0.6), P["paper"], 0.1)                    # papiery
+
+
+def m_chair(P):
+    box((0, 0, 8.6), (9.0, 9.0, 1.6), P["wood"], 0.25)                         # siedzisko
+    for x in (-3.6, 3.6):
+        for y in (-3.6, 3.6):
+            box((x, y, 4.0), (1.3, 1.3, 8.0), P["wood_d"], 0.2)                 # nogi
+    for x in (-3.6, 3.6):
+        box((x, 3.6, 13.0), (1.3, 1.3, 9.0), P["wood_d"], 0.2)                  # słupki oparcia
+    for z in (12.2, 15.0, 17.2):
+        box((0, 3.6, z), (9.0, 1.1, 1.6), P["wood"], 0.15)                      # szczeble oparcia
+
+
+def m_stool(P):
+    cyl((0, 0, 9.6), 4.6, 1.8, P["wood"], bevel=0.2, seg=32)                    # siedzisko
+    for i in range(3):
+        a = math.radians(90 + i * 120)
+        box((math.cos(a) * 3.0, math.sin(a) * 3.0, 4.4), (1.2, 1.2, 8.8), P["wood_d"], 0.15)
+    tor((0, 0, 4.2), 3.3, 0.4, P["steel_d"], "Z", seg=28)                       # pierścień
+
+
+def m_shelf(P):
+    for x in (-15.0, 15.0):
+        box((x, 0, 17.0), (1.8, 6.0, 34.0), P["wood_d"], 0.25)                  # boki
+    box((0, 2.2, 17.0), (30.0, 0.8, 34.0), P["wood_d"], 0.12)                   # tył
+    for z in (0.8, 9.0, 17.4, 25.8, 33.6):
+        box((0, 0, z), (30.0, 6.0, 1.6), P["wood"], 0.2)                        # półki
+    box((-8.0, -0.5, 11.8), (7.0, 4.0, 4.0), P["khaki"], 0.2)                   # skrzynki
+    box((-1.0, -0.5, 11.8), (5.0, 4.0, 4.0), P["tan"], 0.2)
+    cyl((8.5, -0.5, 11.9), 2.2, 4.2, P["olive"], bevel=0.1, seg=20)
+    box((7.0, -0.5, 20.2), (9.0, 4.0, 4.0), P["steel_d"], 0.25)
+    box((-8.0, -0.5, 20.2), (8.0, 4.0, 4.4), P["burlap"], 0.3)
+    cyl((-1.5, -0.5, 20.2), 1.8, 4.2, P["barrel"], bevel=0.1, seg=20)
+    box((-5.0, -0.5, 29.0), (14.0, 4.0, 4.4), P["wood_l"], 0.2)
+    box((8.0, -0.5, 28.8), (6.0, 4.0, 4.0), P["red_d"], 0.2)
+
+
+def m_locker(P):
+    box((0, 0, 15.5), (13.0, 7.0, 31.0), P["slate"], 0.3)                        # korpus
+    box((0, -3.6, 15.5), (12.0, 0.4, 29.5), P["steel_d"], 0.12)                  # drzwi
+    box((0, -3.9, 15.5), (0.35, 0.3, 29.5), P["black"], 0.03)                    # szczelina
+    for z in (25.5, 24.0, 22.5):
+        box((-3.0, -3.9, z), (4.6, 0.25, 0.5), P["black"], 0.03)                 # kratka wentylacyjna
+        box((3.0, -3.9, z), (4.6, 0.25, 0.5), P["black"], 0.03)
+    box((-1.4, -4.1, 14.5), (0.9, 0.7, 3.2), P["steel_l"], 0.1)                  # uchwyty
+    box((1.4, -4.1, 14.5), (0.9, 0.7, 3.2), P["steel_l"], 0.1)
+    box((0, -3.9, 29.5), (11.0, 0.2, 1.4), P["paper"], 0.05)                     # tabliczka
+
+
+def m_cot(P):
+    for x in (-17.0, 17.0):
+        for y in (-5.5, 5.5):
+            box((x, y, 3.6), (1.6, 1.6, 7.2), P["steel_d"], 0.15)                # nogi
+    box((0, -5.5, 6.8), (36.0, 1.2, 1.2), P["steel"], 0.12)                      # ramy podłużne
+    box((0, 5.5, 6.8), (36.0, 1.2, 1.2), P["steel"], 0.12)
+    box((0, 0, 7.6), (35.0, 12.0, 1.0), P["olive_d"], 0.25)                      # płótno
+    box((-13.0, 0, 9.2), (8.5, 10.0, 2.4), P["khaki"], 0.6)                      # poduszka / zwinięty koc
+    cyl((14.0, 0, 9.0), 2.4, 11.0, P["burlap"], axis="Y", bevel=0.2, seg=24)     # zwinięty koc
+
+
 # nazwa → (budowniczy, px na piksel świata)
 MODELS = {
     "frag": (m_frag, 32), "phos": (m_phos, 32), "smoke": (m_smoke, 32), "mine": (m_mine, 32), "charge": (m_charge, 32),
@@ -930,6 +1002,7 @@ MODELS = {
     "flare": (m_flare, 32), "flare_stuck": (lambda P: m_flare(P, True), 32), "flare_box": (m_flare_box, 32),
     "supply": (m_supply, 32), "ammo": (m_ammo, 32), "cache": (m_cache, 32), "stash": (m_stash, 32), "tag": (m_tag, 32),
     "bones": (m_bones, 32), "reeds": (m_reeds, 32), "board": (m_board, 16), "results_board": (m_results_board, 12), "range_target": (m_range_target, 24), "range_sign": (m_range_sign, 24), "handcar": (m_handcar, 12), "handcar_wheel": (m_handcar_wheel, 64), "handcar_lever": (m_handcar_lever, 24), "generator": (m_generator, 28), "generator": (m_generator, 40), "crate": (m_crate, 24), "barrel": (m_barrel, 24), "rack": (m_rack, 16), "tools_wall": (m_tools_wall, 20), "lamp": (m_lamp, 24),
+    "table": (m_table, 24), "chair": (m_chair, 32), "stool": (m_stool, 32), "shelf": (m_shelf, 20), "locker": (m_locker, 24), "cot": (m_cot, 24),
 }
 
 # ---------------------------------------------------------------- render

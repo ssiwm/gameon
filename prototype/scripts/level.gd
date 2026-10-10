@@ -66,6 +66,8 @@ const ItemsHd := preload("res://scripts/items_hd.gd")
 const GibArt := preload("res://scripts/gib_art.gd")
 const LEECH := preload("res://scripts/leech.gd")
 const RANGE_TARGET := preload("res://scripts/range_target.gd")
+const HUB_DECOR := preload("res://scripts/hub_decor.gd")
+const FLOOR_REFLECTION := preload("res://scripts/floor_reflection.gd")
 
 ## Mapy misji (scripts/maps/): każda niesie MAP, ID, TITLE, OBJECTIVE, UNDERGROUND_ROW, WEAPONS, ACCENTS.
 const MAPS := {
@@ -778,6 +780,42 @@ func _spawn_entities() -> void:
 		lp.name = "Lamp%d" % (i + 1)
 		lp.position = _hang_pos(found["l"][i], 0.0)
 		add_child(lp)
+	if found["l"].size() > 0:
+		# kryjówka: podłoga pod pierwszą lampą → meble w tle (hub_decor.gd) i odbicie podłogi (floor_reflection.gd)
+		var lc := int(float((found["l"][0] as Vector2).x) / float(TILE))
+		var fr := int(float((found["l"][0] as Vector2).y) / float(TILE))
+		for rr in range(fr, _map.size()):
+			if _is_solid(lc, rr):
+				fr = rr
+				break
+		var ncols := (_map[0] as String).length()
+		var occ: Array = []
+		var quiet: Array = []
+		var wide := {}                                       # tablice (wyniki, odprawa) są szersze niż reszta znaczników
+		for k in found:
+			if k == "l":
+				continue                                     # lampy wiszą wysoko — nie blokują podłogi
+			for pos in found[k]:
+				var pc := int(float((pos as Vector2).x) / float(TILE))
+				occ.append(pc)
+				if k == "v" or k == "n":
+					wide[pc] = 4.6
+				if k == "g":
+					quiet.append(pc)                         # między stojakami zostaje goła ściana — tam patrzy się na broń
+		var x0 := 0
+		while x0 < ncols - 1 and (_is_solid(x0, fr - 1) or not _is_solid(x0, fr)):
+			x0 += 1
+		var x1 := ncols - 1
+		while x1 > x0 and (_is_solid(x1, fr - 1) or not _is_solid(x1, fr)):
+			x1 -= 1
+		var dc: Node2D = HUB_DECOR.new()
+		dc.name = "HubDecor"
+		add_child(dc)
+		dc.setup(occ, wide, quiet, x0, x1, float(fr * TILE), float(TILE))
+		var rf: Node2D = FLOOR_REFLECTION.new()
+		rf.name = "FloorReflection"
+		add_child(rf)
+		rf.setup(float(ncols * TILE), float(fr * TILE))
 	if _racks:
 		for i in found["g"].size():
 			var rk: Node2D = RACK.new()
