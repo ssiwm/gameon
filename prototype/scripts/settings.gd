@@ -31,7 +31,7 @@ const VSYNC_MODES := [DisplayServer.VSYNC_ENABLED, DisplayServer.VSYNC_DISABLED,
 const FPS_LIST := [0, 30, 60, 120, 144, 240]                       ## 0 = bez limitu
 const QUALITY_NAMES := ["LOW", "MEDIUM", "HIGH"]
 const VFX_MULT := [0.4, 0.7, 1.0]                                  ## ile cząsteczek i szczątków (Vfx.burst / gibs)
-const POST_MULT := [0.0, 0.6, 1.0]                                 ## siła ziarna i aberracji (horror_fx.gd)
+const POST_MULT := [0.0, 0.6, 1.0]                                 ## siła aberracji (horror_fx.gd)
 ## Tryb dla osób z zaburzeniami widzenia barw: filtr całego obrazu (colorblind_fx.gd).
 const COLORBLIND_NAMES := ["OFF", "PROTANOPIA", "DEUTERANOPIA", "TRITANOPIA"]
 ## Język interfejsu: tabela tłumaczeń w translations/ui.csv (klucz = tekst angielski). Nazwy języków nie są tłumaczone.
@@ -53,10 +53,10 @@ var hints_on := true
 var res_idx := 0                       ## rozmiar okna z RES_LIST (tylko tryb okienkowy)
 var vsync_idx := 0
 var fps_idx := 0
-var quality_idx := 2                   ## LOW / MEDIUM / HIGH — cząsteczki, ziarno i aberracja, efekty pogody
+var quality_idx := 2                   ## LOW / MEDIUM / HIGH — cząsteczki, aberracja, efekty pogody
 var mono_audio := false                ## bez panoramy w dźwięku pozycyjnym (osoby z jednostronnym słuchem)
 var captions := false                  ## napisy dla dźwięków (HUD, captions.gd)
-var reduce_fx := false                 ## „Reduce Effects": bez wstrząsów, ziarna, aberracji, pulsu zdrowia, błysku burzy i migotania
+var reduce_fx := false                 ## „Reduce Effects": bez wstrząsów, aberracji, pulsu zdrowia, błysku burzy i migotania
 var crouch_toggle := false             ## skradanie przełączane klawiszem zamiast trzymania
 var colorblind_idx := 0
 var locale_idx := 0
@@ -96,7 +96,7 @@ func fx_mult() -> float:
 func vfx_mult() -> float:
 	return VFX_MULT[quality_idx]
 
-## Siła obrazu horroru (ziarno, aberracja): zależy od jakości, a „Reduce Effects" wyłącza ją całkiem.
+## Siła obrazu horroru (aberracja): zależy od jakości, a „Reduce Effects" wyłącza ją całkiem.
 func post_mult() -> float:
 	return POST_MULT[quality_idx] * fx_mult()
 

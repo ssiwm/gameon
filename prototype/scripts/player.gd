@@ -1718,8 +1718,6 @@ func _body_color() -> Color:
 
 func _draw() -> void:
 	if not _spr.is_empty() or c3d != null:
-		if not dead:
-			draw_rect(Rect2(-6, -1, 12, 2), Color(0, 0, 0, 0.35))
 		return
 	var col := _body_color()
 	if _flash > 0.0:
@@ -1735,7 +1733,6 @@ func _draw() -> void:
 
 	var h := 11.0 if crouching else 17.0
 	var top := -h
-	draw_rect(Rect2(-7, -1, 14, 3), Color(0, 0, 0, 0.35))
 	draw_set_transform(Vector2.ZERO, 0.0, squash)
 	draw_rect(Rect2(-5, top + 7, 10, h - 7), col)
 	draw_rect(Rect2(-4, top, 8, 8), col.lightened(0.3))

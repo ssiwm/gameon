@@ -1,5 +1,5 @@
 extends CanvasLayer
-## Obraz w klimacie horroru (tylko grafika HD): gradacja kolorów (chłodne cienie, ciepłe światła), winieta, ziarno filmowe i aberracja chromatyczna na brzegach kadru — rosną z poziomem Uwagi
+## Obraz w klimacie horroru (tylko grafika HD): gradacja kolorów (chłodne cienie, ciepłe światła), winieta i aberracja chromatyczna na brzegach kadru — rosną z poziomem Uwagi
 ## (NoiseMgr.level) — oraz ostrzeżenie o stanie lokalnego gracza: przy niskim życiu obraz traci kolor, rogi czerwienieją i pulsują w rytmie tętna.
 ## Warstwa leży nad światem, pod HUD-em (UI), więc interfejs zostaje ostry. Jedno przejście shadera po całym ekranie; wyłącza je `--nofx`.
 
@@ -8,16 +8,9 @@ shader_type canvas_item;
 uniform sampler2D screen_tex : hint_screen_texture, repeat_disable, filter_linear;
 uniform float vignette = 0.4;
 uniform float aberration = 0.001;
-uniform float grain = 0.04;
 uniform float desat = 0.0;
 uniform float hurt_pulse = 0.0;
-uniform float t = 0.0;
 uniform float aspect = 1.78;
-float hash(vec2 p) {
-	p = fract(p * vec2(443.897, 441.423));
-	p += dot(p, p + 19.19);
-	return fract((p.x + p.y) * p.x);
-}
 void fragment() {
 	vec2 uv = SCREEN_UV;
 	vec2 c = uv - 0.5;
@@ -36,14 +29,11 @@ void fragment() {
 	float v = smoothstep(0.32, 0.98, d);
 	col *= 1.0 - v * vignette;
 	col += vec3(0.55, 0.02, 0.03) * hurt_pulse * v;
-	float g = hash(uv * vec2(1920.0, 1080.0) + fract(t) * 137.0) - 0.5;
-	col += g * grain * (1.0 - clamp(lum * 1.5, 0.0, 0.8));
 	COLOR = vec4(col, 1.0);
 }
 """
 
 const BASE_VIGNETTE := 0.42
-const BASE_GRAIN := 0.035
 const BASE_ABERRATION := 0.0007
 
 var _mat: ShaderMaterial
@@ -95,13 +85,11 @@ func _process(delta: float) -> void:
 	var ph := fposmod(_t * 1.15, 1.0)
 	var beat := pow(maxf(0.0, sin(ph * PI * 2.0 * 1.0)), 6.0) * 0.8 + pow(maxf(0.0, sin((ph - 0.18) * PI * 2.0)), 8.0) * 0.5
 	var size := get_viewport().get_visible_rect().size
-	# jakość (ziarno / aberracja) i „Reduce Effects" (bez ziarna, aberracji i pulsu tętna) — ustawienia gracza
+	# jakość (aberracja) i „Reduce Effects" (bez aberracji i pulsu tętna) — ustawienia gracza
 	var post: float = Settings.post_mult()
 	var calm: float = Settings.fx_mult()
 	_mat.set_shader_parameter("vignette", BASE_VIGNETTE + _attn * 0.28 + _hurt * 0.2)
-	_mat.set_shader_parameter("grain", (BASE_GRAIN + _attn * 0.03 + _hurt * 0.02) * post)
 	_mat.set_shader_parameter("aberration", (BASE_ABERRATION + _attn * 0.0025 + _hurt * 0.0022) * post)
 	_mat.set_shader_parameter("desat", _hurt * 0.55)
 	_mat.set_shader_parameter("hurt_pulse", _hurt * (0.18 + 0.38 * beat * calm))
-	_mat.set_shader_parameter("t", _t)
 	_mat.set_shader_parameter("aspect", size.x / maxf(size.y, 1.0))

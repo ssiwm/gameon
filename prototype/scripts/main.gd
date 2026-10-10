@@ -103,14 +103,14 @@ func _ready() -> void:
 		var cbfx := COLORBLIND_FX.new()                       # filtr dla osób z zaburzeniami widzenia barw (ustawienie „Color vision”), nad całym obrazem
 		cbfx.name = "ColorblindFx"
 		add_child(cbfx)
-	# efekty pogody (deszcz, burza, tint ciemności): w każdej grafice, tuż przed obrazem horroru (jego winieta i ziarno kładą się na wierzch); `--nofx` wyłącza
+	# efekty pogody (deszcz, burza, tint ciemności): w każdej grafice, tuż przed obrazem horroru (jego winieta kładzie się na wierzch); `--nofx` wyłącza
 	var wfx: CanvasLayer = null
 	if DisplayServer.get_name() != "headless" and not ("--nofx" in OS.get_cmdline_user_args()):
 		wfx = WEATHER_FX.new()
 		wfx.name = "WeatherFx"
 		add_child(wfx)
 		move_child(wfx, $UI.get_index())
-	# obraz horroru (winieta, ziarno, aberracja, ostrzeżenie o zdrowiu) — tylko w grafice HD; `--nofx` wyłącza
+	# obraz horroru (winieta, aberracja, ostrzeżenie o zdrowiu) — tylko w grafice HD; `--nofx` wyłącza
 	if Sprites.newitem and DisplayServer.get_name() != "headless" and not ("--nofx" in OS.get_cmdline_user_args()):
 		var hfx := HORROR_FX.new()
 		hfx.name = "HorrorFx"
