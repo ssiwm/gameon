@@ -30,6 +30,7 @@ const RunLog := preload("res://scripts/run_log.gd")
 const WorkshopUi := preload("res://scripts/workshop_ui.gd")
 const Actions := preload("res://scripts/actions.gd")
 const Captions := preload("res://scripts/captions.gd")
+const W := preload("res://scripts/ui_widgets.gd")
 
 ## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.8
@@ -355,6 +356,7 @@ var _squad_card: PanelContainer
 var _squad_box: VBoxContainer
 var _squad_rows := {}            ## instance_id gracza -> słownik wiersza
 var _gear_card: PanelContainer
+var _equip_card: PanelContainer      ## zasoby (Q / F / ALT / L) — osobna karta w prawym dolnym rogu
 var _reload_bar: Bar
 var _charges: Pips
 var _flares: Pips
@@ -662,56 +664,68 @@ func _build_gear_card() -> void:
 		_slot_labels.append(l)
 	row.add_child(wr)
 
-	# 5) zasoby: wabik (Q) i flary (F) w jednym wierszu, pod nimi latarka (L)
+	# 5) zasoby w osobnej karcie po prawej (makieta: siatka 2×2 — wabik Q, flary F, przedmiot ALT, latarka L)
+	_equip_card = _card(Vector2(MARGIN, MARGIN))
 	var res := VBoxContainer.new()
-	res.add_theme_constant_override("separation", 2)
-	res.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	res.add_theme_constant_override("separation", 4)
+	_equip_card.add_child(res)
 	var qf := HBoxContainer.new()
-	qf.add_theme_constant_override("separation", 3)
-	qf.add_child(UiTheme.label("Q", 7, UiTheme.MUTED))
+	qf.add_theme_constant_override("separation", 10)
+	res.add_child(qf)
+	var q := HBoxContainer.new()
+	q.add_theme_constant_override("separation", 4)
+	q.add_child(_key("Q"))
 	_charges = Pips.new()
 	_charges.shape = "diamond"
 	_charges.count = NoiseMgr.OVERCHARGE_MAX
 	_charges.on = UiTheme.ACCENT
 	_charges.u = 0.8
 	_charges.custom_minimum_size = Vector2(NoiseMgr.OVERCHARGE_MAX * 11.0 * 0.8 - 2.0, 7.2)
-	qf.add_child(_charges)
-	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(4, 0)
-	qf.add_child(gap)
-	qf.add_child(UiTheme.label("F", 7, UiTheme.MUTED))
+	_charges.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	q.add_child(_charges)
+	qf.add_child(q)
+	var f := HBoxContainer.new()
+	f.add_theme_constant_override("separation", 4)
+	f.add_child(_key("F"))
 	_flares = Pips.new()
 	_flares.shape = "diamond"
 	_flares.count = NoiseMgr.FLARE_MAX
 	_flares.on = Color(1.0, 0.5, 0.25)
 	_flares.u = 0.8
 	_flares.custom_minimum_size = Vector2(NoiseMgr.FLARE_MAX * 11.0 * 0.8 - 2.0, 7.2)
-	qf.add_child(_flares)
-	res.add_child(qf)
+	_flares.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	f.add_child(_flares)
+	qf.add_child(f)
 	var tg := HBoxContainer.new()                  # przedmioty (lewy Alt użyj, X zmiana rodzaju): rodzaj i zapas drużyny
-	tg.add_theme_constant_override("separation", 3)
-	tg.add_child(UiTheme.label("ALT" if OS.get_name() != "macOS" else "CMD", 7, UiTheme.MUTED))
+	tg.add_theme_constant_override("separation", 4)
+	tg.add_child(_key("ALT" if OS.get_name() != "macOS" else "CMD"))
 	_gren = Pips.new()
 	_gren.shape = "diamond"
 	_gren.count = 4
 	_gren.on = Color(0.5, 0.72, 0.4)
 	_gren.u = 0.8
 	_gren.custom_minimum_size = Vector2(4 * 11.0 * 0.8 - 2.0, 7.2)
+	_gren.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	tg.add_child(_gren)
-	_gren_name = UiTheme.label("FRAG", 7, UiTheme.MUTED)
+	_gren_name = UiTheme.mono(UiTheme.label("FRAG", 7, UiTheme.MUTED))
 	tg.add_child(_gren_name)
 	res.add_child(tg)
 	var lr := HBoxContainer.new()
 	lr.add_theme_constant_override("separation", 4)
-	lr.add_child(UiTheme.label("L", 7, UiTheme.MUTED))
+	lr.add_child(_key("L"))
 	_battery = Bar.new()
 	_battery.custom_minimum_size = Vector2(34, 3)
 	_battery.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	lr.add_child(_battery)
-	_battery_note = UiTheme.label("OFF", 7, UiTheme.MUTED)
+	_battery_note = UiTheme.mono(UiTheme.label("OFF", 7, UiTheme.MUTED))
 	lr.add_child(_battery_note)
 	res.add_child(lr)
-	row.add_child(res)
+
+## Kapsel klawisza w kartach HUD-u (jak w makiecie): ciemne tło, ramka z grubszym dołem.
+func _key(s: String) -> Control:
+	var k := W.keycap(s, 7)
+	k.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return k
 
 # ---------------------------------------------------------------- karta drużyny
 
@@ -1230,7 +1244,7 @@ func _drive_noise() -> void:
 	_gren.count = int(Throwables.KINDS[gk]["max"])
 	_gren.filled = Arsenal.get_throwable(gk)
 	_gren.queue_redraw()
-	_gren_name.text = "%s  [%s]" % [Throwables.KINDS[gk]["name"], Actions.key("throw_next")]
+	_gren_name.text = "%s [%s]" % [Throwables.KINDS[gk]["name"], Actions.key("throw_next")]
 	_gren_name.add_theme_color_override("font_color", UiTheme.TEXT if Arsenal.get_throwable(gk) > 0 else UiTheme.MUTED)
 
 func _on_xp_gained(amount: int, _reason: String) -> void:
@@ -1270,6 +1284,7 @@ func _drive_status() -> void:
 		var secs := int(m.elapsed)
 		_clock.text = "%02d:%02d" % [secs / 60, secs % 60]
 	_gear_card.visible = _player != null
+	_equip_card.visible = _player != null
 	if _player == null:
 		return
 	var hp: int = maxi(_player.hp, 0)
@@ -1356,6 +1371,14 @@ func _drive_weapons() -> void:
 		gx = maxf((size.x - gw) * 0.5, MARGIN)
 		gy = _squad_card.position.y - gh - 4.0
 	_gear_card.position = Vector2(gx, gy)
+	# zasoby: prawy dolny róg; gdy zachodzą na pasek broni (wąski ekran / duży HUD) — nad nim
+	_equip_card.reset_size()
+	var ex := size.x - MARGIN - _equip_card.size.x
+	var ey := size.y - BOTTOM_PAD - _equip_card.size.y
+	if ex < gx + gw + 4.0:
+		ex = size.x - MARGIN - _equip_card.size.x
+		ey = gy - _equip_card.size.y - 4.0
+	_equip_card.position = Vector2(ex, ey)
 
 ## Ostrzeżenie przed karą (GDD §8.1): niepokój ZANIM ON się obudzi.
 func _drive_warning() -> void:
