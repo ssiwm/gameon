@@ -17,6 +17,7 @@ const Perks := preload("res://scripts/perks.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const Look := preload("res://scripts/look.gd")
 const Sprites := preload("res://scripts/sprites.gd")
+const Char3D := preload("res://scripts/char3d.gd")
 const Actions := preload("res://scripts/actions.gd")
 
 const GOLD := Color(0.95, 0.8, 0.4)
@@ -157,6 +158,63 @@ class LookView extends Control:
 		var w := Vector2(float(fr[0]), float(fr[1])) * s
 		draw_texture_rect_region(tex, Rect2(Vector2((size.x - w.x) * 0.5, size.y - w.y), w), Rect2(frame * fr[0], int(an["row"]) * fr[1], fr[0], fr[1]))
 
+## Podgląd postaci 3D na żywo (gdy gra używa modeli 3D): ten sam render co w misji, ale w pełnej jakości (MSAA, cienie, rim, `ss` do 16)
+## i na stole obrotowym — widać plecak, kieszenie, szwy i twarz. Z zakładką LOOK w warsztacie i (później) z lobby.
+class Look3DView extends Control:
+	var code := 0
+	var _c3d: Node2D
+	var _holder: Node2D
+	var _t := 0.0
+	var _name := ""
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		clip_contents = true
+		custom_minimum_size = Vector2(0, 190)
+
+	func _ready() -> void:
+		_holder = Node2D.new()
+		add_child(_holder)
+		resized.connect(_layout)
+		_layout()
+
+	## Postać (22 j. świata) zajmuje ~92% wysokości kontrolki; `ss` renderu dobrany do rozmiaru na ekranie (tekstura ≥ 1 px na piksel).
+	func _layout() -> void:
+		if _holder == null:
+			return
+		var k := size.y * 0.92 / 22.0
+		_holder.scale = Vector2(k, k)
+		_holder.position = Vector2(size.x * 0.5, size.y * 0.97)
+
+	func _want_ss() -> int:
+		var px_per_unit := get_global_transform().get_scale().x * float(get_window().size.y) / 360.0
+		var k := size.y * 0.92 / 22.0
+		return clampi(int(ceil(k * px_per_unit)), 6, 16)
+
+	func set_code(c: int) -> void:
+		code = c
+		var nm := Char3D.char_name_for(Look.gender_id(c), Look.outfit_id(c))
+		if _c3d == null:
+			_c3d = Char3D.new()
+			_c3d.preview = true
+			_c3d.preview_ss = _want_ss()
+			_holder.add_child(_c3d)
+			if not _c3d.setup(nm):
+				_c3d.queue_free()
+				_c3d = null
+				return
+			_name = nm
+		elif nm != _name:
+			_c3d.set_look(nm)
+			_name = nm
+
+	func _process(delta: float) -> void:
+		if _c3d == null or not is_visible_in_tree():
+			return
+		_t += delta
+		_c3d.set_view_yaw(fmod(_t * 28.0, 360.0))
+		_c3d.update(delta, "idle", 1.0, Vector2(1.0, 0.0), 0.0, true, Color.WHITE)
+
 class LookTile extends Button:
 	var code := 0
 	var view: LookView
@@ -202,7 +260,7 @@ var _page_btns: Array[Button] = []
 var _look_body: HBoxContainer
 var _look_sel := 0
 var _look_tiles: Array = []
-var _l_view: LookView
+var _l_view: Control                  ## LookView (arkusz 2D) albo Look3DView (model 3D na żywo)
 var _l_title: Label
 var _l_tag: Label
 var _l_text: Label
@@ -427,9 +485,13 @@ func _build_look() -> HBoxContainer:
 	var v := VBoxContainer.new()
 	v.custom_minimum_size = Vector2(DETAIL_W, 0)
 	v.add_theme_constant_override("separation", 4)
-	_l_view = LookView.new()
-	_l_view.anim = "run"
-	_l_view.custom_minimum_size = Vector2(0, 150)
+	if Sprites.char3d and Char3D.available():
+		_l_view = Look3DView.new()
+	else:
+		var lv := LookView.new()
+		lv.anim = "run"
+		lv.custom_minimum_size = Vector2(0, 150)
+		_l_view = lv
 	v.add_child(_l_view)
 	_l_title = UiTheme.heading("", 16, UiTheme.ACCENT)
 	v.add_child(_l_title)
