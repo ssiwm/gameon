@@ -11,6 +11,10 @@ uniform float aberration = 0.001;
 uniform float desat = 0.0;
 uniform float hurt_pulse = 0.0;
 uniform float bloom = 0.0;
+uniform vec3 shadow_tint = vec3(0.88, 1.0, 1.16);     // gradacja per lokacja (ATMOSPHERE_PLAN.md F5): barwa cieni i świateł,
+uniform vec3 light_tint = vec3(1.12, 1.0, 0.86);      // nasycenie i kontrast względem ciemnego środka (0,2)
+uniform float sat = 1.0;
+uniform float contrast = 1.0;
 uniform float aspect = 1.78;
 void fragment() {
 	vec2 uv = SCREEN_UV;
@@ -24,8 +28,10 @@ void fragment() {
 	col.b = texture(screen_tex, uv - dir * ab).b;
 	float lum = dot(col, vec3(0.299, 0.587, 0.114));
 	// gradacja: cienie chłodne (sine), światła ciepłe — kontrast „bezpieczne światło, wrogi mrok"
-	col *= mix(vec3(0.88, 1.0, 1.16), vec3(1.12, 1.0, 0.86), smoothstep(0.04, 0.42, lum));
+	col *= mix(shadow_tint, light_tint, smoothstep(0.04, 0.42, lum));
 	lum = dot(col, vec3(0.299, 0.587, 0.114));
+	col = mix(vec3(lum), col, sat);
+	col = max((col - vec3(0.2)) * contrast + vec3(0.2), vec3(0.0));
 	col = mix(col, vec3(lum), desat);
 	if (bloom > 0.0) {
 		// poświata jasnych źródeł (lampy, flary, latarka): rozmyte poziomy mip ekranu ponad progiem, ciepły odcień
@@ -39,6 +45,13 @@ void fragment() {
 }
 """
 
+## Presety gradacji per mapa: [cienie, światła, nasycenie, kontrast]. Domyślny = dotychczasowa gradacja (chłodne cienie, ciepłe światła).
+const GRADE_DEFAULT := [Vector3(0.88, 1.0, 1.16), Vector3(1.12, 1.0, 0.86), 1.0, 1.0]
+const GRADES := {
+	"z1_hub": [Vector3(0.92, 1.0, 1.08), Vector3(1.18, 1.0, 0.78), 1.06, 1.08],   # kryjówka: ciepły bursztyn lamp, mocniejszy kontrast
+	"z1_m3": [Vector3(1.0, 0.92, 1.05), Vector3(1.10, 0.98, 0.88), 1.12, 1.04],     # gniazda: organiczne, cieplej i bardziej nasycone
+	"z1_b1": [Vector3(0.82, 1.0, 1.12), Vector3(0.98, 1.02, 1.0), 0.88, 1.0],        # Pijawka: zimniej, mniej nasycone
+}
 const BASE_VIGNETTE := 0.42
 const BLOOM := 0.9                   ## siła poświaty jasnych źródeł (× mnożnik jakości z Settings.post_mult)
 const BASE_ABERRATION := 0.0007
@@ -48,6 +61,9 @@ var _rect: ColorRect
 var _attn := 0.0                     ## wygładzona Uwaga 0..1
 var _hurt := 0.0                     ## wygładzony stan zdrowia lokalnego gracza 0..1
 var _t := 0.0
+var _grade := [Vector3(0.88, 1.0, 1.16), Vector3(1.12, 1.0, 0.86), 1.0, 1.0]   ## bieżąca gradacja (płynnie dąży do presetu mapy)
+var _grade_map := ""
+var _grade_check := 0.0
 var _dev_noise := -1.0               ## dev: --shotnoise=N (jak w hud.gd) — zrzuty przy zadanym poziomie hałasu
 
 func _ready() -> void:
@@ -99,5 +115,24 @@ func _process(delta: float) -> void:
 	_mat.set_shader_parameter("aberration", (BASE_ABERRATION + _attn * 0.0025 + _hurt * 0.0022) * post)
 	_mat.set_shader_parameter("desat", _hurt * 0.55)
 	_mat.set_shader_parameter("bloom", BLOOM * post)
+	_update_grade(delta)
 	_mat.set_shader_parameter("hurt_pulse", _hurt * (0.18 + 0.38 * beat * calm))
 	_mat.set_shader_parameter("aspect", size.x / maxf(size.y, 1.0))
+
+## Gradacja per mapa: preset z GRADES (po `map_id` poziomu), płynne przejście przy zmianie mapy.
+func _update_grade(delta: float) -> void:
+	_grade_check -= delta
+	if _grade_check <= 0.0:
+		_grade_check = 0.5
+		var lvl := get_tree().get_first_node_in_group("level")
+		_grade_map = String(lvl.get("map_id")) if lvl != null and lvl.get("map_id") != null else ""
+	var tgt: Array = GRADES.get(_grade_map, GRADE_DEFAULT)
+	var k := minf(1.0, delta * 2.0)
+	_grade[0] = (_grade[0] as Vector3).lerp(tgt[0], k)
+	_grade[1] = (_grade[1] as Vector3).lerp(tgt[1], k)
+	_grade[2] = lerpf(float(_grade[2]), float(tgt[2]), k)
+	_grade[3] = lerpf(float(_grade[3]), float(tgt[3]), k)
+	_mat.set_shader_parameter("shadow_tint", _grade[0])
+	_mat.set_shader_parameter("light_tint", _grade[1])
+	_mat.set_shader_parameter("sat", _grade[2])
+	_mat.set_shader_parameter("contrast", _grade[3])
