@@ -213,6 +213,9 @@ var _qsamp := {}                           ## próbki animacji czworonoga: nazwa
 var _qw := 0.0                             ## waga biegu czworonoga 0..1
 var _spine: Array = []                     ## kości kręgosłupa czworonoga
 var _last_p := {}                          ## ostatnia poza bazowa biped (po wagach)
+var _air_w := 0.0                          ## 0..1 waga pozy skoku / spadania (prędkość pionowa wroga z view3d.gd)
+var _air_vy := 0.0                         ## px/s (+ = w dół)
+var _airborne := false
 var _model_h := 1.0                        ## wysokość modelu w spoczynku (m, natywna skala)
 
 static func has_model(k: String) -> bool:
@@ -371,9 +374,12 @@ func _two_bone(a: int, m: int, e: int, la: float, lb: float, target: Vector3, po
 ## anim: nazwa animacji sprite'a 2D (sleep / idle / walk / run / windup, bossowie: dormant / open / spit / peek / strike / grab / dive / ...).
 ## flip: sprite odbity (patrzy w lewo). mod: modulate sprite'a. fr: numer klatki + postęp w klatce, nfr: liczba klatek animacji, loop: czy pętla
 ## (modele statyczne dostają pozę z numeru klatki, żeby animacja szła w tempie gry — np. trafienie Pijawki na klatce 2).
-func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 1, loop := true) -> void:
+func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 1, loop := true, air_vy := 0.0) -> void:
 	_t += delta
 	scale.x = -1.0 if flip else 1.0
+	_air_vy = air_vy
+	_airborne = absf(air_vy) > 55.0 and not _spec.has("deform") and not _dead
+	_air_w = move_toward(_air_w, 1.0 if _airborne else 0.0, delta * 12.0)
 	if _dead:
 		_dead_t += delta
 		var total: float = _death_dur() + CORPSE_HOLD + CORPSE_SINK
@@ -700,6 +706,8 @@ func _pose_quad(anim: String, delta: float) -> void:
 		# idle i bieg próbkujemy osobno i mieszamy kość po kości (płynne wejście i wyjście z biegu, bez przeskoku nóg)
 		if not _qsamp.has("idle"):
 			_qsamp["idle"] = _sample_quad(idle_t)
+		if not _qsamp.has("air"):
+			_qsamp["air"] = _sample_quad(float(_spec.get("air_t", 0.25)) * len)       # faza „wyciągnięta” chodu = skok
 		var ri: Array = _qsamp["idle"][0]
 		var pi_: Array = _qsamp["idle"][1]
 		if _qw > 0.001:
@@ -713,6 +721,13 @@ func _pose_quad(anim: String, delta: float) -> void:
 			for bi in ri.size():
 				_sk.set_bone_pose_rotation(bi, ri[bi])
 				_sk.set_bone_pose_position(bi, pi_[bi])
+	if _air_w > 0.002 and _qsamp.has("air"):
+		# lot: mieszamy z próbką „wyciągnięta” kość po kości (po bazowej pozie idle / bieg)
+		var ra: Array = _qsamp["air"][0]
+		var pa: Array = _qsamp["air"][1]
+		for bi in ra.size():
+			_sk.set_bone_pose_rotation(bi, _sk.get_bone_pose_rotation(bi).slerp(ra[bi], _air_w))
+			_sk.set_bone_pose_position(bi, _sk.get_bone_pose_position(bi).lerp(pa[bi], _air_w))
 	# nakładki: oddech, trafienie, atak, śmierć
 	var pitch := 0.0                              # + = nos w górę
 	var roll := 0.0
@@ -720,6 +735,9 @@ func _pose_quad(anim: String, delta: float) -> void:
 	var lift := 0.0
 	var arch := 0.0                               # rad: wygięcie kręgosłupa (+ = grzbiet w dół, głowa w górę)
 	arch += deg_to_rad(1.6) * sin(_t * 2.6)
+	if _air_w > 0.002:                            # wznosząc się: nos w górę, spadając: w dół
+		pitch += deg_to_rad(22.0) * clampf(-_air_vy / 275.0, -1.0, 1.0) * _air_w
+		arch += deg_to_rad(6.0) * clampf(-_air_vy / 275.0, -1.0, 1.0) * _air_w
 	if _dead:
 		var dd := _death_dur()
 		var u := clampf(_dead_t / dd, 0.0, 1.0)
@@ -778,7 +796,7 @@ func _pose_crawler(anim: String) -> void:
 	_sk.reset_bone_poses()
 	var hips: int = _b["Hips"]
 	var ph := _t * TAU / 2.4
-	var inverted := anim == "sleep" and not _dead
+	var inverted := anim == "sleep" and not _dead and not _airborne
 	var tilt := 0.0
 	var lift := 0.0
 	var curl := 0.0                                # rad: zwijanie kończyn (śmierć)
@@ -822,6 +840,11 @@ func _pose_crawler(anim: String) -> void:
 		back = -0.10 * load + 0.16 * spring
 		lean_x = 14.0 * load + 24.0 * spring
 		arms_x = -50.0 * spring + 20.0 * load
+	if _air_w > 0.002:                              # skok: ręce wyrzucone do przodu, nogi odrzucone w tył, tułów pochylony — jak w ataku z sufitu
+		var rise_c := clampf(-_air_vy / 275.0, 0.0, 1.0)
+		lean_x += (16.0 * rise_c + 6.0) * _air_w
+		arms_x += -48.0 * _air_w
+		curl += deg_to_rad(-26.0) * _air_w * (1.0 - clampf(_air_vy / 380.0, 0.0, 1.0) * 0.7)
 	_move_global(hips, hd + Vector3(back, 0.0, 0.0))
 	if lean_x != 0.0:
 		_rot_world(hips, Vector3.BACK, -deg_to_rad(lean_x))
@@ -892,6 +915,16 @@ func _biped_params(anim: String) -> Dictionary:
 				p["lean"] = 2.0
 				p["hR"] = Vector3(_x0 + 0.85, 1.30, 0.22)
 				p["hL"] = Vector3(_x0 + 0.85, 1.30, -0.22)
+		"air":
+			# skok / spadanie: tułów lekko do przodu, kolana podciągnięte przy wznoszeniu i sięgające w dół przy spadaniu, ręce unoszone
+			var rise := clampf(-_air_vy / 275.0, 0.0, 1.0)
+			var fl := clampf(_air_vy / 380.0, 0.0, 1.0)
+			p["lean"] = 8.0 - 4.0 * fl
+			p["drop"] = -0.03 * rise
+			p["fR"] = Vector3(0.20 - 0.08 * fl, 0.30 * (1.0 - fl) + 0.05, 0.0)
+			p["fL"] = Vector3(-0.10, 0.20 * (1.0 - fl) + 0.05, 0.0)
+			p["hR"] = Vector3(_x0 + 0.34, hz + 0.28, hy)
+			p["hL"] = Vector3(_x0 + 0.20, hz + 0.36, -hy)
 		"sleep":
 			p["lean"] = sl + 2.0 * sin(ph)
 			p["drop"] = 0.06
@@ -912,20 +945,22 @@ func _mix_p(a: Dictionary, b: Dictionary, k: float) -> Dictionary:
 func _pose_biped(anim: String, delta: float) -> void:
 	_sk.reset_bone_poses()
 	var key := "walk" if anim == "run" else anim
-	if not ["idle", "walk", "windup", "sleep"].has(key):
+	if not ["idle", "walk", "windup", "sleep", "air"].has(key):
 		key = "idle"                                  # nazwa spoza zestawu (np. sprite bossa) — stoi
+	if _airborne and not _dead:
+		key = "air"                                   # skok / spadanie: poza lotu
 	if _w.is_empty():
 		_w[key] = 1.0
 	# wagi póz bazowych dążą do 1 dla bieżącej animacji (płynne przejścia idle ↔ chód ↔ zapowiedź ↔ sen)
 	var kk := 1.0 - exp(-BLEND_RATE * delta)
 	var sum := 0.0
-	for n in ["idle", "walk", "windup", "sleep"]:
+	for n in ["idle", "walk", "windup", "sleep", "air"]:
 		var cur := float(_w.get(n, 0.0))
 		_w[n] = lerpf(cur, 1.0 if n == key else 0.0, kk)
 		sum += float(_w[n])
 	var p := {}
 	var acc := 0.0
-	for n in ["idle", "walk", "windup", "sleep"]:
+	for n in ["idle", "walk", "windup", "sleep", "air"]:
 		var w := float(_w[n]) / maxf(sum, 0.0001)
 		if w < 0.004:
 			continue
