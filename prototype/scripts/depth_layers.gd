@@ -6,7 +6,7 @@ extends Node2D
 const Lights := preload("res://scripts/lights.gd")
 
 const PARALLAX := 1.35
-const SCALE := 2.0
+const SCALE := 1.7
 const SPACING := 150.0                ## odstęp sylwetek wzdłuż osi parallaxu (px)
 const FADE_FROM := 0.27               ## połowa szerokości kadru (ułamek), do której sylwetka jest w pełni widoczna po stronie krawędzi
 const FADE_TO := 0.38
@@ -61,7 +61,6 @@ func _make_textures() -> Array:
 		[Vector2i(64, 48), "crate"],
 		[Vector2i(40, 56), "stool"],
 		[Vector2i(36, 52), "barrel"],
-		[Vector2i(96, 56), "table"],
 	]
 	for sp in specs:
 		var sz: Vector2i = sp[0]
@@ -70,10 +69,10 @@ func _make_textures() -> Array:
 			for x in sz.x:
 				var pp := Vector2(float(x) + 0.5, float(y) + 0.5)
 				var d := _sdf(String(sp[1]), pp, Vector2(sz))
-				var a := 1.0 - smoothstep(-1.0, 3.2, d)           # szeroka krawędź = rozmycie planu pierwszego
+				var a := (1.0 - smoothstep(-3.0, 7.5, d)) * 0.8   # bardzo szeroka krawędź = plan pierwszy poza ostrością; bryła lekko przezroczysta
 				# ciepły odblask lampy na górnych krawędziach (bez niego czarna sylwetka ginie w ciemnym kadrze)
 				var above := _sdf(String(sp[1]), pp - Vector2(0.0, 3.0), Vector2(sz))
-				var rim := clampf(above * 0.35, 0.0, 1.0) * clampf(-d * 0.6 + 0.4, 0.0, 1.0)
+				var rim := clampf(above * 0.22, 0.0, 1.0) * clampf(-d * 0.35 + 0.35, 0.0, 1.0) * 0.7
 				var base := Color(0.012, 0.014, 0.018).lerp(Color(0.34, 0.22, 0.10), rim)
 				img.set_pixel(x, y, Color(base.r, base.g, base.b, clampf(a, 0.0, 1.0)))
 		_textures.append(ImageTexture.create_from_image(img))
