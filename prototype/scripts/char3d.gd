@@ -28,6 +28,64 @@ const DIR := "res://art/char3d/"
 const DEFAULT_CHAR := "male_scav"
 const DEFAULT_GUN := "m83"
 
+const Look := preload("res://scripts/look.gd")
+
+## Materiał modelu z paletą kolorów (look.gd, PALETTES): kolor + normalne + ORM z modelu, metaliczność 0 (bez sondy odbić czarna).
+const PALETTE_SHADER := """
+shader_type spatial;
+uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
+uniform sampler2D orm_tex : hint_default_white, filter_linear_mipmap, repeat_enable;
+uniform bool has_normal = false;
+uniform bool has_orm = false;
+uniform float hue_target = -1.0;          // < 0: bez zmiany barwy
+uniform float sat_mul = 1.0;
+uniform float val_mul = 1.0;
+vec3 rgb2hsv(vec3 c) {
+	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+	vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+	vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+	float d = q.x - min(q.w, q.y);
+	float e = 1.0e-10;
+	return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+vec3 hsv2rgb(vec3 c) {
+	vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+	vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+	return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+void fragment() {
+	vec3 c = texture(albedo_tex, UV).rgb;
+	if (hue_target >= 0.0 || sat_mul != 1.0 || val_mul != 1.0) {
+		vec3 h = rgb2hsv(c);
+		// skóra (pomarańcz, średnie nasycenie) zostaje; szarości, czerń i biel nie dostają obrotu barwy
+		float skin = smoothstep(0.01, 0.03, h.x) * (1.0 - smoothstep(0.085, 0.115, h.x)) * smoothstep(0.15, 0.25, h.y) * (1.0 - smoothstep(0.65, 0.8, h.y)) * smoothstep(0.25, 0.4, h.z);
+		float colored = smoothstep(0.12, 0.28, h.y);
+		float k = colored * (1.0 - skin);
+		float nh = h.x;
+		if (hue_target >= 0.0) {
+			float dh = fract(h.x - 0.17 + 0.5) - 0.5;      // odległość od barwy oliwkowej: część różnic odcieni zostaje
+			nh = fract(hue_target + dh * 0.35);
+		}
+		vec3 t = vec3(nh, clamp(h.y * sat_mul, 0.0, 1.0), clamp(h.z * val_mul, 0.0, 1.0));
+		c = mix(c, hsv2rgb(t), k);
+		c *= mix(1.0, val_mul, (1.0 - skin) * (1.0 - colored));
+	}
+	ALBEDO = c;
+	if (has_normal) {
+		NORMAL_MAP = texture(normal_tex, UV).xyz;
+	}
+	if (has_orm) {
+		vec4 o = texture(orm_tex, UV);
+		AO = o.r;
+		ROUGHNESS = o.g;
+	} else {
+		ROUGHNESS = 0.85;
+	}
+	METALLIC = 0.0;
+}
+"""
+
 const OUTLINE_SHADER := """
 shader_type canvas_item;
 uniform vec4 outline_color : source_color = vec4(0.078, 0.055, 0.094, 1.0);
@@ -59,6 +117,12 @@ var _camn: Camera3D
 var _sun: DirectionalLight3D
 var _rim: DirectionalLight3D
 var _canvas_tex: CanvasTexture
+## Podgląd postaci w menu (warsztat, lobby): zawsze pełna jakość, bez mapy normalnych (brak świateł 2D), własny `ss`, obrót kamery.
+var preview := false
+var preview_ss := 12
+var view_yaw := VIEW_YAW_DEG                 ## stopnie; w podglądzie kręci się „na stole obrotowym”
+var _pal_mats: Array = []                    ## ShaderMaterial postaci (paleta kolorów) — uniformy ustawia _apply_palette
+var _palette := 0
 var _rev := 0
 var _last_zoom := 2.0
 var _last_h := 1080.0
@@ -151,6 +215,8 @@ var _ss_now := 0
 func apply_view(zoom: float, win_h: float) -> void:
 	_last_zoom = zoom
 	_last_h = win_h
+	if preview:
+		return
 	if _vp != null and _rev != quality_rev:
 		_rev = quality_rev
 		apply_quality()                                        # woła apply_view ponownie z nowym limitem ss
@@ -169,13 +235,13 @@ func apply_view(zoom: float, win_h: float) -> void:
 	(_sprite.material as ShaderMaterial).set_shader_parameter("width", 0.5 * n)
 
 func setup(char_name := DEFAULT_CHAR, gun_key := DEFAULT_GUN) -> bool:
-	_ss_now = ss
+	_ss_now = _q_ss()
 	_vp = SubViewport.new()
 	_vp.name = "Vp"
-	_vp.size = Vector2i(int(FRAME_WP.x) * ss, int(FRAME_WP.y) * ss)
+	_vp.size = Vector2i(int(FRAME_WP.x) * _ss_now, int(FRAME_WP.y) * _ss_now)
 	_vp.transparent_bg = true
 	_vp.own_world_3d = true
-	_vp.msaa_3d = Viewport.MSAA_2X if msaa else Viewport.MSAA_DISABLED
+	_vp.msaa_3d = Viewport.MSAA_2X if _q_msaa() else Viewport.MSAA_DISABLED
 	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(_vp)
 	_root3d = Node3D.new()
@@ -198,7 +264,7 @@ func setup(char_name := DEFAULT_CHAR, gun_key := DEFAULT_GUN) -> bool:
 	_sun.basis = Basis.looking_at(Vector3(-0.35, -0.75, -0.55), Vector3.UP)
 	_sun.light_energy = 1.05
 	_sun.light_color = Color(1.0, 0.96, 0.9)
-	_sun.shadow_enabled = shadows
+	_sun.shadow_enabled = _q_shadows()
 	_sun.shadow_bias = 0.03
 	_sun.shadow_normal_bias = 1.0
 	_sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
@@ -208,7 +274,7 @@ func setup(char_name := DEFAULT_CHAR, gun_key := DEFAULT_GUN) -> bool:
 	_rim.basis = Basis.looking_at(Vector3(0.15, -0.35, 0.93), Vector3.UP)
 	_rim.light_energy = 0.55
 	_rim.light_color = Color(0.75, 0.85, 1.0)
-	_rim.visible = rim
+	_rim.visible = _q_rim()
 	_root3d.add_child(_rim)
 	var fill := DirectionalLight3D.new()
 	fill.basis = Basis.looking_at(Vector3(0.7, -0.2, -0.4), Vector3.UP)
@@ -221,17 +287,17 @@ func setup(char_name := DEFAULT_CHAR, gun_key := DEFAULT_GUN) -> bool:
 	_build_normal_pass()                                     # zawsze zbudowany; poziom jakości tylko go włącza / wyłącza (apply_quality)
 	_canvas_tex = CanvasTexture.new()
 	_canvas_tex.diffuse_texture = _vp.get_texture()
-	_canvas_tex.normal_texture = _vpn.get_texture() if normals else null
+	_canvas_tex.normal_texture = _vpn.get_texture() if _q_normals() else null
 	_sprite.texture = _canvas_tex
-	_vpn.render_target_update_mode = SubViewport.UPDATE_ALWAYS if normals else SubViewport.UPDATE_DISABLED
-	_sprite.scale = Vector2.ONE / float(ss)
+	_vpn.render_target_update_mode = SubViewport.UPDATE_ALWAYS if _q_normals() else SubViewport.UPDATE_DISABLED
+	_sprite.scale = Vector2.ONE / float(_ss_now)
 	_sprite.position = Vector2(0.0, -CAM_Y * WP_PER_M)
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	var sh := Shader.new()
 	sh.code = OUTLINE_SHADER
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
-	mat.set_shader_parameter("width", 0.5 * ss)           # obrys 0,5 piksela świata niezależnie od ss
+	mat.set_shader_parameter("width", 0.5 * _ss_now)      # obrys 0,5 piksela świata niezależnie od ss
 	_sprite.material = mat
 	add_child(_sprite)
 	# poza ekranem nie renderujemy viewportu (koszt rośnie z liczbą postaci, a zdalni gracze bywają daleko)
@@ -247,18 +313,41 @@ func setup(char_name := DEFAULT_CHAR, gun_key := DEFAULT_GUN) -> bool:
 	ready_ok = true
 	return true
 
+func _q_msaa() -> bool:
+	return true if preview else msaa
+
+func _q_normals() -> bool:
+	return false if preview else normals
+
+func _q_shadows() -> bool:
+	return true if preview else shadows
+
+func _q_rim() -> bool:
+	return true if preview else rim
+
+func _q_ss() -> int:
+	return preview_ss if preview else ss
+
+## Obrót kamery wokół postaci (stopnie); w grze stały VIEW_YAW_DEG, w podglądzie ciągły.
+func set_view_yaw(deg: float) -> void:
+	view_yaw = deg
+	if _cam != null:
+		_place_cameras()
+
 func _set_on_screen(v: bool) -> void:
 	_on_screen = v
 	var mode := SubViewport.UPDATE_ALWAYS if v else SubViewport.UPDATE_DISABLED
 	_vp.render_target_update_mode = mode
 	if _vpn != null:
-		_vpn.render_target_update_mode = mode if normals else SubViewport.UPDATE_DISABLED
+		_vpn.render_target_update_mode = mode if _q_normals() else SubViewport.UPDATE_DISABLED
 
 ## Przełącza elementy zależne od poziomu jakości na działającej postaci (MSAA, mapa normalnych dla świateł 2D, cienie, rim) i
 ## przelicza rozdzielczość renderu z nowym limitem `ss`.
 func apply_quality() -> void:
 	if _vp == null:
 		return
+	if preview:
+		return                                                 # podgląd ma stałą, pełną jakość
 	var m := Viewport.MSAA_2X if msaa else Viewport.MSAA_DISABLED
 	_vp.msaa_3d = m
 	if _vpn != null:
@@ -319,8 +408,12 @@ func _normal_material_for(mi: MeshInstance3D) -> Material:
 		return m
 	return _normal_mat
 
-## Materiały modelu pod światła gry: bez metaliczności (bez sondy odbić metal byłby czarny), reszta (kolor, normalne, roughness, AO) z modelu.
+## Materiały modelu pod światła gry i paletę kolorów: shader z kolorem, normalnymi, roughness i AO z modelu, bez metaliczności
+## (bez sondy odbić metal byłby czarny). Obiekty bez StandardMaterial3D zostają, jak były.
 func _prepare_materials(root: Node) -> void:
+	_pal_mats.clear()
+	var sh := Shader.new()
+	sh.code = PALETTE_SHADER
 	for n in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		if mi.mesh == null:
@@ -328,10 +421,35 @@ func _prepare_materials(root: Node) -> void:
 		for i in mi.mesh.get_surface_count():
 			var m := mi.mesh.surface_get_material(i)
 			if m is StandardMaterial3D:
-				var d := m.duplicate() as StandardMaterial3D
-				d.metallic = 0.0
-				d.metallic_texture = null
-				mi.set_surface_override_material(i, d)
+				var src := m as StandardMaterial3D
+				var sm := ShaderMaterial.new()
+				sm.shader = sh
+				sm.set_shader_parameter("albedo_tex", src.albedo_texture)
+				if src.normal_texture != null:
+					sm.set_shader_parameter("normal_tex", src.normal_texture)
+					sm.set_shader_parameter("has_normal", true)
+				var orm: Texture2D = src.roughness_texture if src.roughness_texture != null else src.ao_texture
+				if orm != null:
+					sm.set_shader_parameter("orm_tex", orm)
+					sm.set_shader_parameter("has_orm", true)
+				mi.set_surface_override_material(i, sm)
+				_pal_mats.append(sm)
+	_apply_palette()
+
+## Paleta kolorów stroju (Look.palette_of): obrót barwy / nasycenie / jasność dla nasyconych pikseli nie-skórnych.
+func set_palette(p: int) -> void:
+	if p == _palette:
+		return
+	_palette = p
+	_apply_palette()
+
+func _apply_palette() -> void:
+	var d: Dictionary = Look.PALETTES[clampi(_palette, 0, Look.PALETTES.size() - 1)]
+	for m in _pal_mats:
+		var sm := m as ShaderMaterial
+		sm.set_shader_parameter("hue_target", float(d["hue"]))
+		sm.set_shader_parameter("sat_mul", float(d["sat"]))
+		sm.set_shader_parameter("val_mul", float(d["val"]))
 
 ## Kopie siatek sceny na warstwie 2 z materiałem normalnych. skinned: kopie dzielą szkielet z oryginałem (są jego dziećmi).
 func _normal_clones(root: Node, skinned: bool) -> void:
@@ -383,7 +501,7 @@ func set_look(char_name: String) -> bool:
 
 ## Kamery (kolor i normalne) krążą wokół postaci o VIEW_YAW_DEG: widok 3/4 bez zmian w pozach IK i w broni.
 func _place_cameras() -> void:
-	var y := deg_to_rad(VIEW_YAW_DEG)
+	var y := deg_to_rad(view_yaw)
 	var centre := Vector3(_origin_x, CAM_Y, 0.0)
 	var pos := centre + Vector3(sin(y), 0.0, cos(y)) * 6.0
 	var xf := Transform3D(Basis(Vector3.UP, y), pos)
@@ -649,6 +767,6 @@ func _pose_arms_relaxed(both: bool) -> void:
 ## Punkt 3D (m) → piksele świata względem stóp, z odbiciem.
 func _to_px(p: Vector3) -> Vector2:
 	var fl := -1.0 if _sprite.flip_h else 1.0
-	var y := deg_to_rad(VIEW_YAW_DEG)
+	var y := deg_to_rad(view_yaw)
 	var sx := (p.x - _origin_x) * cos(y) - p.z * sin(y)       # współrzędna wzdłuż prawej osi kamery obróconej o yaw
 	return Vector2(sx * WP_PER_M * fl, -p.y * WP_PER_M)

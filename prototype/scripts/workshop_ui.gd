@@ -17,6 +17,7 @@ const Perks := preload("res://scripts/perks.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const Look := preload("res://scripts/look.gd")
 const Sprites := preload("res://scripts/sprites.gd")
+const Char3D := preload("res://scripts/char3d.gd")
 const Actions := preload("res://scripts/actions.gd")
 
 const GOLD := Color(0.95, 0.8, 0.4)
@@ -157,6 +158,64 @@ class LookView extends Control:
 		var w := Vector2(float(fr[0]), float(fr[1])) * s
 		draw_texture_rect_region(tex, Rect2(Vector2((size.x - w.x) * 0.5, size.y - w.y), w), Rect2(frame * fr[0], int(an["row"]) * fr[1], fr[0], fr[1]))
 
+## Podgląd postaci 3D na żywo (gdy gra używa modeli 3D): ten sam render co w misji, ale w pełnej jakości (MSAA, cienie, rim, `ss` do 16)
+## i na stole obrotowym — widać plecak, kieszenie, szwy i twarz. Z zakładką LOOK w warsztacie i (później) z lobby.
+class Look3DView extends Control:
+	var code := 0
+	var _c3d: Node2D
+	var _holder: Node2D
+	var _t := 0.0
+	var _name := ""
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		clip_contents = true
+		custom_minimum_size = Vector2(0, 190)
+
+	func _ready() -> void:
+		_holder = Node2D.new()
+		add_child(_holder)
+		resized.connect(_layout)
+		_layout()
+
+	## Postać (22 j. świata) zajmuje ~92% wysokości kontrolki; `ss` renderu dobrany do rozmiaru na ekranie (tekstura ≥ 1 px na piksel).
+	func _layout() -> void:
+		if _holder == null:
+			return
+		var k := size.y * 0.92 / 22.0
+		_holder.scale = Vector2(k, k)
+		_holder.position = Vector2(size.x * 0.5, size.y * 0.97)
+
+	func _want_ss() -> int:
+		var px_per_unit := get_global_transform().get_scale().x * float(get_window().size.y) / 360.0
+		var k := size.y * 0.92 / 22.0
+		return clampi(int(ceil(k * px_per_unit)), 6, 16)
+
+	func set_code(c: int) -> void:
+		code = c
+		var nm := Char3D.char_name_for(Look.gender_id(c), Look.outfit_id(c))
+		if _c3d == null:
+			_c3d = Char3D.new()
+			_c3d.preview = true
+			_c3d.preview_ss = _want_ss()
+			_holder.add_child(_c3d)
+			if not _c3d.setup(nm):
+				_c3d.queue_free()
+				_c3d = null
+				return
+			_name = nm
+		elif nm != _name:
+			_c3d.set_look(nm)
+			_name = nm
+		_c3d.set_palette(Look.palette_of(c))
+
+	func _process(delta: float) -> void:
+		if _c3d == null or not is_visible_in_tree():
+			return
+		_t += delta
+		_c3d.set_view_yaw(fmod(_t * 28.0, 360.0))
+		_c3d.update(delta, "idle", 1.0, Vector2(1.0, 0.0), 0.0, true, Color.WHITE)
+
 class LookTile extends Button:
 	var code := 0
 	var view: LookView
@@ -201,8 +260,13 @@ var _s_action: Button
 var _page_btns: Array[Button] = []
 var _look_body: HBoxContainer
 var _look_sel := 0
+var _look_pal := 0                          ## wybrana paleta kolorów (Look.PALETTES) w zakładce LOOK
+var _pal_row: HBoxContainer
+var _pal_btns: Array = []
 var _look_tiles: Array = []
-var _l_view: LookView
+var _l_view: Control                  ## LookView (arkusz 2D)
+var _l_view3: Control                 ## Look3DView (model 3D na żywo) — tworzony przy pierwszym użyciu
+var _l_box: VBoxContainer
 var _l_title: Label
 var _l_tag: Label
 var _l_text: Label
@@ -427,14 +491,29 @@ func _build_look() -> HBoxContainer:
 	var v := VBoxContainer.new()
 	v.custom_minimum_size = Vector2(DETAIL_W, 0)
 	v.add_theme_constant_override("separation", 4)
-	_l_view = LookView.new()
-	_l_view.anim = "run"
-	_l_view.custom_minimum_size = Vector2(0, 150)
+	var lv := LookView.new()                              # podgląd 2D z arkusza; model 3D na żywo dochodzi w _refresh_look (Sprites.char3d bywa ustawione później)
+	lv.anim = "run"
+	lv.custom_minimum_size = Vector2(0, 150)
+	_l_view = lv
+	_l_box = v
 	v.add_child(_l_view)
 	_l_title = UiTheme.heading("", 16, UiTheme.ACCENT)
 	v.add_child(_l_title)
 	_l_tag = UiTheme.label("", 8, UiTheme.BP_MUTED)
 	v.add_child(_l_tag)
+	_pal_row = HBoxContainer.new()                       # paleta kolorów stroju: tylko dla modeli 3D
+	_pal_row.add_theme_constant_override("separation", 5)
+	_pal_row.add_child(UiTheme.label("COLOR", 8, UiTheme.BP_MUTED))
+	for pi in Look.PALETTES.size():
+		var pb := Button.new()
+		pb.focus_mode = Control.FOCUS_NONE
+		pb.custom_minimum_size = Vector2(20, 14)
+		pb.tooltip_text = Look.palette_name(pi)
+		pb.pressed.connect(_select_palette.bind(pi))
+		_pal_row.add_child(pb)
+		_pal_btns.append(pb)
+	_pal_row.visible = false
+	v.add_child(_pal_row)
 	v.add_child(_rule())
 	_l_text = UiTheme.label("", 8, UiTheme.BP_TEXT)
 	_l_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -448,13 +527,18 @@ func _build_look() -> HBoxContainer:
 	body.add_child(v)
 	return body
 
+func _select_palette(pi: int) -> void:
+	_look_pal = pi
+	Audio.play("ui_click", Audio.BUS_UI, -14.0)
+	_refresh()
+
 func _select_look(i: int) -> void:
 	_look_sel = i
 	Audio.play("ui_click", Audio.BUS_UI, -14.0)
 	_refresh()
 
 func _act_look() -> void:
-	var c := _look_code(_look_sel)
+	var c := Look.with_palette(_look_code(_look_sel), _look_pal)
 	if Profile.look == c:
 		_say(tr("Already wearing %s.") % Look.display_name(c), UiTheme.BP_MUTED)
 	elif Profile.set_look(c):
@@ -465,6 +549,16 @@ func _act_look() -> void:
 
 func _refresh_look() -> void:
 	var lvl := Profile.level()
+	var use3d := Sprites.char3d and Char3D.available()
+	if use3d and _l_view3 == null:
+		_l_view3 = Look3DView.new()
+		_l_box.add_child(_l_view3)
+		_l_box.move_child(_l_view3, _l_view.get_index())
+	_l_view.visible = not use3d
+	if _l_view3 != null:
+		_l_view3.visible = use3d
+	_pal_row.visible = use3d
+	var vw: Control = _l_view3 if use3d else _l_view
 	for i in _look_tiles.size():
 		var t := _look_tiles[i] as LookTile
 		var sel := i == _look_sel
@@ -475,11 +569,21 @@ func _refresh_look() -> void:
 		var ok := Look.is_unlocked(t.code, lvl)
 		t.view.modulate = Color.WHITE if ok else Color(0.35, 0.4, 0.45)
 		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.BP_TEXT)
-		t.state_label.text = ("EQUIPPED" if Profile.look == t.code else "AVAILABLE") if ok else "LV %d" % Look.unlock_level(t.code)
-		t.state_label.add_theme_color_override("font_color", UiTheme.OK if Profile.look == t.code else (UiTheme.BP_MUTED if ok else UiTheme.DANGER))
-	var c := _look_code(_look_sel)
-	_l_view.set_code(c)
-	_l_view.modulate = Color.WHITE if Look.is_unlocked(c, lvl) else Color(0.35, 0.4, 0.45)
+		var worn := Look.base(Profile.look) == t.code
+		t.state_label.text = ("EQUIPPED" if worn else "AVAILABLE") if ok else "LV %d" % Look.unlock_level(t.code)
+		t.state_label.add_theme_color_override("font_color", UiTheme.OK if worn else (UiTheme.BP_MUTED if ok else UiTheme.DANGER))
+	for pi in _pal_btns.size():
+		var pb := _pal_btns[pi] as Button
+		var d: Dictionary = Look.PALETTES[pi]
+		var pbox := StyleBoxFlat.new()
+		pbox.bg_color = (d["swatch"] as Color) if lvl >= int(d["level"]) else (d["swatch"] as Color).darkened(0.65)
+		pbox.border_color = UiTheme.ACCENT if pi == _look_pal else Color(1, 1, 1, 0.18)
+		pbox.set_border_width_all(2 if pi == _look_pal else 1)
+		for st in ["normal", "hover", "pressed", "focus", "disabled"]:
+			pb.add_theme_stylebox_override(st, pbox)
+	var c := Look.with_palette(_look_code(_look_sel), _look_pal)
+	vw.call("set_code", c)
+	vw.modulate = Color.WHITE if Look.is_unlocked(c, lvl) else Color(0.35, 0.4, 0.45)
 	_l_title.text = Look.display_name(c)
 	_l_tag.text = tr("%s  ·  unlocks at level %d") % [Look.gender_id(c).to_upper(), Look.unlock_level(c)]
 	_l_text.text = String(Look.OUTFIT_TEXT[Look.outfit_id(c)]) + "\n\nCosmetic only — other players see your look too."
