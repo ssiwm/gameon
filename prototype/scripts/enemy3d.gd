@@ -14,7 +14,7 @@ const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Lev
 ## fit: [„height" | „length", rozmiar w pikselach świata] — jak w wypieku; frame_h: wysokość ramki sprite'a (Skoczek wisi u jej góry);
 ## cycle: okres cyklu kroku (s); prof: profil pozy (jak PROF w wypieku); yaw: obrót modelu (stopnie), by przód patrzył w +X.
 const SPEC := {
-	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 1.0, "prof": {}, "clips": true, "clip_amp": 0.6},
+	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 1.0, "prof": {}, "clips": true, "clip_amp": 0.6, "stun": true},
 	"slepiec": {"fit": ["height", 27.0], "frame_h": 32.0, "cycle": 1.0, "prof": {"hy": 0.50, "hz": 0.35}, "clips": true, "attack_kind": "claw",
 		"death": {"dir": 1.0, "lean": -8.0, "dur": 0.95, "tilt": 86.0}},
 	"podsluchacz": {"fit": ["height", 34.0], "frame_h": 40.0, "cycle": 1.0,
@@ -216,6 +216,8 @@ var _last_p := {}                          ## ostatnia poza bazowa biped (po wag
 var _air_w := 0.0                          ## 0..1 waga pozy skoku / spadania (prędkość pionowa wroga z view3d.gd)
 var _air_vy := 0.0                         ## px/s (+ = w dół)
 var _airborne := false
+var _sp := 0                               ## stan specjalny wroga z gry (Wołek: 1 zapowiedź szarży, 2 szarża, 3 zapowiedź rzutu, 4 oszołomiony)
+var _inv_w := 0.0                          ## 0..1 odwrócenia do góry nogami (wiszący Skoczek / śpiąca Ćma): płynny obrót przy budzeniu
 var _model_h := 1.0                        ## wysokość modelu w spoczynku (m, natywna skala)
 
 static func has_model(k: String) -> bool:
@@ -374,9 +376,12 @@ func _two_bone(a: int, m: int, e: int, la: float, lb: float, target: Vector3, po
 ## anim: nazwa animacji sprite'a 2D (sleep / idle / walk / run / windup, bossowie: dormant / open / spit / peek / strike / grab / dive / ...).
 ## flip: sprite odbity (patrzy w lewo). mod: modulate sprite'a. fr: numer klatki + postęp w klatce, nfr: liczba klatek animacji, loop: czy pętla
 ## (modele statyczne dostają pozę z numeru klatki, żeby animacja szła w tempie gry — np. trafienie Pijawki na klatce 2).
-func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 1, loop := true, air_vy := 0.0) -> void:
+func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 1, loop := true, air_vy := 0.0, sp := 0) -> void:
 	_t += delta
 	scale.x = -1.0 if flip else 1.0
+	_sp = sp
+	var hang: bool = anim == "sleep" and not _dead and (bool(_spec.get("crawler", false)) or String(_spec.get("deform", "")) == "cma")
+	_inv_w = move_toward(_inv_w, 1.0 if hang else 0.0, delta / 0.30)
 	_air_vy = air_vy
 	_airborne = absf(air_vy) > 55.0 and not _spec.has("deform") and not _dead
 	_air_w = move_toward(_air_w, 1.0 if _airborne else 0.0, delta * 12.0)
@@ -398,7 +403,7 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		sm.set_shader_parameter("eye_glow", eye)
 	var moving := anim == "walk" or anim == "run"
 	if moving:
-		_phase += delta * TAU / float(_spec.get("cycle", 1.0))
+		_phase += delta * TAU / float(_spec.get("cycle", 1.0)) * (2.4 if _sp == 2 else 1.0)       # szarża: kroki szybciej
 	if _spec.has("deform"):
 		_pose_deform(anim, fr, nfr, loop)
 	elif _spec.get("quad", false):
@@ -469,11 +474,10 @@ func _pose_deform(anim: String, fr: float, nfr: int, loop: bool) -> void:
 	match d:
 		"cma":
 			prm["wing"] = _tab([38.0, 8.0, -26.0, 8.0], fr, true) if anim == "idle" else 70.0
-			if anim == "sleep":                    # wisi do góry nogami pod górną krawędzią ramki
-				_pivot.rotation = Vector3(PI, 0.0, 0.0)
-				_pivot.position.y = fh
-			else:                                  # leci: wyśrodkowana w pionie w ramce
-				_pivot.position.y = fh * 0.5 - _model_h * _scale * 0.5
+			# wisi do góry nogami pod górną krawędzią ramki (sleep) albo leci wyśrodkowana w pionie; przy budzeniu płynny obrót wokół osi ciała
+			var iw := smoothstep(0.0, 1.0, _inv_w)
+			_pivot.rotation = Vector3(PI * iw, 0.0, 0.0)
+			_pivot.position.y = lerpf(fh * 0.5 - _model_h * _scale * 0.5, fh, iw)
 		"nest":
 			prm["pulse"] = sin(ph * TAU)
 		"vein":
@@ -796,7 +800,6 @@ func _pose_crawler(anim: String) -> void:
 	_sk.reset_bone_poses()
 	var hips: int = _b["Hips"]
 	var ph := _t * TAU / 2.4
-	var inverted := anim == "sleep" and not _dead and not _airborne
 	var tilt := 0.0
 	var lift := 0.0
 	var curl := 0.0                                # rad: zwijanie kończyn (śmierć)
@@ -859,18 +862,15 @@ func _pose_crawler(anim: String) -> void:
 		_sink_y = 0.0
 	_tilt.basis = Basis(Vector3.BACK, tilt)
 	_tilt.position = Vector3(0.0, lift + _sink_y, 0.0)
-	# „sleep": wisi pod sufitem do góry nogami — chwyty u górnej krawędzi ramki sprite'a
-	if inverted:
-		_pivot.rotation = Vector3(PI, 0.0, 0.0)
-		_pivot.position.y = float(_spec["frame_h"]) * PX
-	else:
-		_pivot.rotation = Vector3.ZERO
-		_pivot.position.y = 0.0
+	# „sleep": wisi pod sufitem do góry nogami (chwyty u górnej krawędzi ramki sprite'a); przy budzeniu i spadaniu płynny obrót wokół osi ciała
+	var iw := smoothstep(0.0, 1.0, _inv_w)
+	_pivot.rotation = Vector3(PI * iw, 0.0, 0.0)
+	_pivot.position.y = float(_spec["frame_h"]) * PX * iw
 
 ## Parametry pozy bazowej dla animacji 2D (jak w wypieku `monster_tripo_bake.py`).
 func _biped_params(anim: String) -> Dictionary:
 	var prof: Dictionary = _spec.get("prof", {})
-	var ph := _phase if (anim == "walk" or anim == "run") else _t * TAU / 2.4
+	var ph := _phase if (anim == "walk" or anim == "run" or anim == "charge") else _t * TAU / 2.4
 	var l0: float = prof.get("lean", 12.0)
 	var lw: float = prof.get("lean_walk", 14.0)
 	var hy: float = prof.get("hy", 0.62)
@@ -915,6 +915,27 @@ func _biped_params(anim: String) -> Dictionary:
 				p["lean"] = 2.0
 				p["hR"] = Vector3(_x0 + 0.85, 1.30, 0.22)
 				p["hL"] = Vector3(_x0 + 0.85, 1.30, -0.22)
+		"stun":
+			# oszołomiony: tułów zgarbiony, głowa zwisa i kołysze się, kolana ugięte, ręce bezwładne; ciało zatacza się na boki
+			var dz := sin(_t * 3.4)
+			p["lean"] = 20.0 + 6.0 * dz
+			p["drop"] = 0.22
+			p["bob"] = 0.03 * sin(_t * 6.8)
+			p["hk"] = 1.7
+			p["fR"] = Vector3(0.20 + 0.05 * dz, 0.0, 0.0)
+			p["fL"] = Vector3(-0.24 - 0.05 * dz, 0.0, 0.0)
+			p["hR"] = Vector3(_x0 + 0.02 + 0.10 * dz, 0.36, hy * 1.1)
+			p["hL"] = Vector3(_x0 - 0.02 - 0.10 * dz, 0.36, -hy * 1.1)
+		"charge":
+			# szarża: tułów mocno do przodu, ręce odrzucone do tyłu, głowa nisko, krok wydłużony
+			p["lean"] = 28.0
+			p["drop"] = 0.10
+			p["bob"] = 0.04 * cos(2.0 * ph)
+			p["hk"] = 0.3
+			p["fR"] = Vector3(-stride * 1.5 * cos(ph), 0.17 * maxf(0.0, sin(ph)), 0.0)
+			p["fL"] = Vector3(-stride * 1.5 * cos(ph + PI), 0.17 * maxf(0.0, sin(ph + PI)), 0.0)
+			p["hR"] = Vector3(_x0 - 0.25, hz + 0.15, hy)
+			p["hL"] = Vector3(_x0 - 0.25, hz + 0.15, -hy)
 		"air":
 			# skok / spadanie: tułów lekko do przodu, kolana podciągnięte przy wznoszeniu i sięgające w dół przy spadaniu, ręce unoszone
 			var rise := clampf(-_air_vy / 275.0, 0.0, 1.0)
@@ -945,22 +966,26 @@ func _mix_p(a: Dictionary, b: Dictionary, k: float) -> Dictionary:
 func _pose_biped(anim: String, delta: float) -> void:
 	_sk.reset_bone_poses()
 	var key := "walk" if anim == "run" else anim
-	if not ["idle", "walk", "windup", "sleep", "air"].has(key):
+	if not ["idle", "walk", "windup", "sleep", "air", "stun", "charge"].has(key):
 		key = "idle"                                  # nazwa spoza zestawu (np. sprite bossa) — stoi
 	if _airborne and not _dead:
 		key = "air"                                   # skok / spadanie: poza lotu
+	elif _sp == 4 and not _dead and _spec.get("stun", false):
+		key = "stun"                                  # oszołomiony po uderzeniu szarżą
+	elif _sp == 2 and not _dead and _spec.get("stun", false):
+		key = "charge"                                # szarża: tułów nisko, ręce odrzucone, długie kroki
 	if _w.is_empty():
 		_w[key] = 1.0
 	# wagi póz bazowych dążą do 1 dla bieżącej animacji (płynne przejścia idle ↔ chód ↔ zapowiedź ↔ sen)
 	var kk := 1.0 - exp(-BLEND_RATE * delta)
 	var sum := 0.0
-	for n in ["idle", "walk", "windup", "sleep", "air"]:
+	for n in ["idle", "walk", "windup", "sleep", "air", "stun", "charge"]:
 		var cur := float(_w.get(n, 0.0))
 		_w[n] = lerpf(cur, 1.0 if n == key else 0.0, kk)
 		sum += float(_w[n])
 	var p := {}
 	var acc := 0.0
-	for n in ["idle", "walk", "windup", "sleep", "air"]:
+	for n in ["idle", "walk", "windup", "sleep", "air", "stun", "charge"]:
 		var w := float(_w[n]) / maxf(sum, 0.0001)
 		if w < 0.004:
 			continue
