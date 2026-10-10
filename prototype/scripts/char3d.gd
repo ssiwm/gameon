@@ -607,6 +607,7 @@ func set_gun(key: String) -> void:
 	_gun = (load(path) as PackedScene).instantiate()
 	_gun.visible = false                                     # do pierwszej pozy (update ustawia transformację i widoczność) — bez błysku w zerze świata
 	_root3d.add_child(_gun)
+	_tune_gun_materials(_gun)
 	if _camn != null:                                        # kopia broni na warstwie 2 (osobny egzemplarz sceny, ta sama transformacja)
 		_gun_n = (load(path) as PackedScene).instantiate()
 		_gun_n.visible = false
@@ -616,6 +617,22 @@ func set_gun(key: String) -> void:
 			(mi as MeshInstance3D).material_override = _normal_mat
 	_gun_key = key
 	_load_gun_info(path.get_basename() + ".json")
+
+## Materiały broni z GLB (albedo + normalne + ORM + opcjonalnie emisja): metaliczność przycięta, bo bez sondy odbić pełny metal byłby czarny
+## (tryb zgodności; reszta modeli ma ją wyzerowaną w shaderach); emisja (cewki energetyczne, kontrolki) wzmocniona dla bloomu.
+func _tune_gun_materials(root: Node) -> void:
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		for i in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(i)
+			if m is StandardMaterial3D:
+				var sm := m as StandardMaterial3D
+				sm.metallic = 0.45
+				sm.metallic_specular = 0.6
+				if sm.emission_enabled:
+					sm.emission_energy_multiplier = 1.8
 
 func _load_gun_info(path: String) -> void:
 	if not FileAccess.file_exists(path):

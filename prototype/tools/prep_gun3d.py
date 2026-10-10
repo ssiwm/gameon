@@ -3,6 +3,8 @@
 Uruchomienie (z korzenia repo):
     blender -b --factory-startup -P prototype/tools/prep_gun3d.py -- art_src/weapons/tripo/m83_01.glb prototype/art/char3d/gun_m83.glb LENGTH_M REAR_FX REAR_FZ FORE_FX FORE_FZ [--flip] [--hands=2] [--faces=2500] [--tex=512]
     LENGTH_M = długość broni w metrach (postać ma ~1,8 m); *_FX = położenie dłoni wzdłuż lufy od tyłu (0..1); *_FZ = od góry broni (0..1).
+Mapy PBR z Tripo (kolor + normalne + ORM) zostają i są sprowadzane do --tex px (domyślnie 1024); --emit=cyan|red wypieka mapę emisji z jasnych,
+nasyconych pikseli koloru (broń energetyczna: cewki LR-7 / SPECTER-1, kontrolki HKM-9).
 Obok GLB powstaje <nazwa>.json: {"hands": 1|2, "length": m, "rear": [x,y,z], "fore": [x,y,z], "muzzle": [x,y,z]} w układzie wynikowego modelu (metry).
 --flip odwraca kierunek lufy, gdyby heurystyka (tył = grubszy koniec) się pomyliła.
 """
@@ -17,7 +19,8 @@ length_m, rfx, rfz, ffx, ffz = (float(a) for a in argv[2:7])
 FLIP = "--flip" in argv
 HANDS = int(next((a.split("=")[1] for a in argv if a.startswith("--hands=")), 2))     # 2 = broń dwuręczna, 1 = pistolet / broń biała
 FACES = int(next((a.split("=")[1] for a in argv if a.startswith("--faces=")), 2500))
-TEX = int(next((a.split("=")[1] for a in argv if a.startswith("--tex=")), 512))
+TEX = int(next((a.split("=")[1] for a in argv if a.startswith("--tex=")), 1024))
+EMIT = next((a.split("=")[1] for a in argv if a.startswith("--emit=")), "")
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=src)
@@ -90,20 +93,44 @@ color_img = None
 for n in nt.nodes:
     if n.type == "TEX_IMAGE" and n.image and n.image.name.startswith("Color"):
         color_img = n
-for l in list(nt.links):
-    if l.to_node == bsdf and l.to_socket.name != "Base Color":
-        nt.links.remove(l)
-for n in list(nt.nodes):
-    if n.type in ("NORMAL_MAP", "SEPARATE_COLOR") or (n.type == "TEX_IMAGE" and n != color_img):
-        nt.nodes.remove(n)
-bsdf.inputs["Roughness"].default_value = 0.7
-bsdf.inputs["Metallic"].default_value = 0.0
-color_img.image.scale(TEX, TEX)
+# komplet PBR zostaje (kolor + normalne + ORM jak w modelach postaci); obrazy tylko zmniejszamy do --tex
 for i in list(bpy.data.images):
-    if i != color_img.image:
-        bpy.data.images.remove(i)
+    if i.size[0] > TEX or i.size[1] > TEX:
+        i.scale(TEX, TEX)
+    print("IMG", i.name, tuple(i.size))
 
-bpy.ops.export_scene.gltf(filepath=dst, export_format="GLB", export_image_format="JPEG", export_jpeg_quality=90, export_animations=False)
+if EMIT:
+    # mapa emisji: jasne, nasycone piksele o zadanym odcieniu (kolor × maska) → emissiveTexture w GLB
+    import numpy as np
+    img = color_img.image
+    w, h = img.size
+    px = np.empty(w * h * 4, dtype=np.float32)
+    img.pixels.foreach_get(px)
+    px = px.reshape(-1, 4)
+    rgb = px[:, :3]
+    mx = rgb.max(axis=1)
+    mn = rgb.min(axis=1)
+    d = np.maximum(mx - mn, 1e-4)
+    sat = (mx - mn) / np.maximum(mx, 1e-4)
+    r, g, b = rgb[:, 0], rgb[:, 1], rgb[:, 2]
+    hue = np.where(mx == r, ((g - b) / d) % 6.0, np.where(mx == g, (b - r) / d + 2.0, (r - g) / d + 4.0)) * 60.0
+    if EMIT == "cyan":
+        mask = (hue > 165.0) & (hue < 205.0) & (sat > 0.45) & (mx > 0.55)
+    else:                                              # red / orange
+        mask = ((hue < 35.0) | (hue > 340.0)) & (sat > 0.6) & (mx > 0.6)
+    print("EMIT", EMIT, "pikseli", int(mask.sum()), "z", w * h)
+    em = np.zeros_like(px)
+    em[:, :3] = rgb * mask[:, None]
+    em[:, 3] = 1.0
+    eimg = bpy.data.images.new("Emissive", w, h, alpha=False)
+    eimg.pixels.foreach_set(em.reshape(-1))
+    eimg.pack()
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = eimg
+    nt.links.new(tex.outputs["Color"], bsdf.inputs["Emission Color"])
+    bsdf.inputs["Emission Strength"].default_value = 1.0
+
+bpy.ops.export_scene.gltf(filepath=dst, export_format="GLB", export_image_format="JPEG", export_jpeg_quality=95, export_animations=False)
 with open(dst.rsplit(".", 1)[0] + ".json", "w") as f:
     json.dump(out, f, indent=1)
 print("OK", dst, out)
