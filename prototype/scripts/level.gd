@@ -66,7 +66,6 @@ const ItemsHd := preload("res://scripts/items_hd.gd")
 const GibArt := preload("res://scripts/gib_art.gd")
 const LEECH := preload("res://scripts/leech.gd")
 const RANGE_TARGET := preload("res://scripts/range_target.gd")
-const DEPTH_LAYERS := preload("res://scripts/depth_layers.gd")
 
 ## Mapy misji (scripts/maps/): każda niesie MAP, ID, TITLE, OBJECTIVE, UNDERGROUND_ROW, WEAPONS, ACCENTS.
 const MAPS := {
@@ -779,18 +778,6 @@ func _spawn_entities() -> void:
 		lp.name = "Lamp%d" % (i + 1)
 		lp.position = _hang_pos(found["l"][i], 0.0)
 		add_child(lp)
-	if found["l"].size() > 0:
-		# plan pierwszy kryjówki: sylwetki mebli przed kamerą (depth_layers.gd), podłoga pod pierwszą lampą
-		var lc := int(float((found["l"][0] as Vector2).x) / float(TILE))
-		var fr := int(float((found["l"][0] as Vector2).y) / float(TILE))
-		for rr in range(fr, _map.size()):
-			if _is_solid(lc, rr):
-				fr = rr
-				break
-		var dl: Node2D = DEPTH_LAYERS.new()
-		dl.name = "DepthLayers"
-		add_child(dl)
-		dl.setup(float((_map[0] as String).length() * TILE), float(fr * TILE))
 	if _racks:
 		for i in found["g"].size():
 			var rk: Node2D = RACK.new()
