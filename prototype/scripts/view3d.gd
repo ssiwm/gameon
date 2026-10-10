@@ -237,6 +237,7 @@ func _sync_geometry() -> void:
 	Level3D.build_level(_geo, rows)
 	if not hub:
 		Level3D.build_forest(_geo, rows)
+		Level3D.build_ground_fog(_geo, rows)
 
 # ---------------------------------------------------------------- gracze (modele 3D)
 
@@ -371,6 +372,7 @@ func _mirror_node(n: Node, z: float) -> void:
 		d.render_priority = idx
 		d.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
 		d.layers = LAYER_WORLD
+		d.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF      # billboard nie rzuca prostokątnego cienia
 		s.set_meta("v3d_z", z + 0.01 * float(idx))
 		s.self_modulate = Color(1, 1, 1, 0)
 		_world.add_child(d)
@@ -562,14 +564,27 @@ func _scan_lights() -> void:
 			else:
 				l3 = OmniLight3D.new()
 			l3.light_color = li.color
-			l3.shadow_enabled = is_cone and n <= SHADOW_LIGHTS      # cienie tylko dla reflektorów: cienie świateł omni gubiły modele graczy w warstwie z maską kamery (Compatibility)
+			var l3a: Light3D = null
+			if is_cone:
+				l3.shadow_enabled = n <= SHADOW_LIGHTS            # reflektor oświetla i teren, i graczy
+			else:
+				# światło omni jest rozdzielone na dwie warstwy: świat (z cieniami dla kilku najbliższych) i gracze (bez cieni, osobne światło) —
+				# cień światła omni w tej samej warstwie co modele graczy gubił je w warstwie z maską kamery (Compatibility)
+				l3.light_cull_mask = LAYER_WORLD
+				l3.shadow_enabled = n <= SHADOW_LIGHTS
+				l3a = OmniLight3D.new()
+				l3a.light_color = li.color
+				l3a.light_cull_mask = LAYER_ACTORS
+				l3a.shadow_enabled = false
+				_world.add_child(l3a)
 			_world.add_child(l3)
-			_lights[id] = [li, l3]
+			_lights[id] = [li, l3, l3a]
 	for id in _lights.keys():
 		if not keep.has(id):
 			var pair: Array = _lights[id]
-			if is_instance_valid(pair[1]):
-				(pair[1] as Node).queue_free()
+			for k in [1, 2]:
+				if pair[k] != null and is_instance_valid(pair[k]):
+					(pair[k] as Node).queue_free()
 			_lights.erase(id)
 
 func _collect_lights(n: Node, out: Array) -> void:
@@ -584,15 +599,25 @@ func _sync_lights() -> void:
 		var pair: Array = _lights[id]
 		var li_v = pair[0]
 		var l3: Light3D = pair[1]
+		var l3a = pair[2]
 		if not is_instance_valid(li_v) or not (li_v as PointLight2D).enabled:
 			if is_instance_valid(l3):
 				l3.visible = false
+			if l3a != null and is_instance_valid(l3a):
+				(l3a as Light3D).visible = false
 			continue
 		var li: PointLight2D = li_v
 		l3.visible = true
 		var rng_px := float(li.texture.get_width()) * absf(li.texture_scale) * 0.5
 		var gp := li.global_position
 		l3.light_color = li.color
+		if l3a != null and is_instance_valid(l3a):
+			var la := l3a as OmniLight3D
+			la.visible = true
+			la.light_color = li.color
+			la.position = Level3D.px_to_m(gp) + Vector3(0.0, 0.0, 1.0)
+			la.light_energy = li.energy * 4.0
+			la.omni_range = clampf(rng_px * PX, 3.0, 24.0)
 		if l3 is SpotLight3D:
 			var a := li.global_rotation
 			var d := Vector3(cos(a), -sin(a), 0.0)

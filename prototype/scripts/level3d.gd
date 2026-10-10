@@ -178,6 +178,108 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 		cm.radial_segments = 9
 		_multimesh(parent, cm, spec[0], gm, false)
 
+const FOG_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_never, cull_disabled, shadows_disabled, specular_disabled;
+uniform vec3 tint : source_color = vec3(0.30, 0.38, 0.52);
+uniform float density = 0.6;
+uniform float seed = 0.0;
+uniform float speed = 0.05;
+varying vec3 wp;
+float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vn(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fbm(vec2 p) {
+	float a = 0.5; float s = 0.0;
+	for (int i = 0; i < 4; i++) { s += a * vn(p); p = p * 2.03 + vec2(17.1, 9.7); a *= 0.5; }
+	return s;
+}
+void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void fragment() {
+	float h = clamp(UV.y, 0.0, 1.0);
+	vec2 q = vec2(wp.x * 0.11 + TIME * speed + seed * 7.0, wp.y * 0.30 + seed * 3.0);
+	float n = fbm(q);
+	float n2 = fbm(q * vec2(0.45, 1.2) + vec2(-TIME * speed * 0.6, 4.0));
+	float cloud = smoothstep(0.28, 0.80, n * 0.6 + n2 * 0.6);
+	float fall = smoothstep(1.0, 0.12, h);
+	ALBEDO = tint;
+	EMISSION = tint * 0.05;
+	ALPHA = clamp(cloud * fall * density, 0.0, 0.85) * COLOR.a;
+}
+void light() {
+	DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * ALBEDO * 0.9;
+}
+"""
+## Mgła przy ziemi: kilka warstw wstęg za płaszczyzną gry (z = -3 … -20 m), tylko nad kolumnami z otwartym niebem (jak las).
+## Dryfujący szum fbm, gęsta przy gruncie i rzednąca do góry; oświetlana światłami 3D (flara, ognisko, latarka podbarwiają mgłę).
+static func build_ground_fog(parent: Node3D, rows: Array) -> void:
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	var ground: Array = []                                   # y gruntu kolumny (m) albo NAN gdy kolumna nie jest otwarta
+	for c in cols:
+		var r0 := 0
+		while r0 < nrows and not is_solid_ch(_ch(rows, c, r0)):
+			r0 += 1
+		ground.append(-float(r0) * T if r0 >= 28 and r0 < nrows else NAN)
+	var sh := Shader.new()
+	sh.code = FOG_SHADER
+	var layers := [[-3.2, 0.55, 3.4], [-6.5, 0.5, 4.2], [-12.0, 0.45, 5.4], [-20.0, 0.4, 6.8]]       # z, gęstość, wysokość
+	for li in layers.size():
+		var spec: Array = layers[li]
+		var mat := ShaderMaterial.new()
+		mat.shader = sh
+		mat.set_shader_parameter("seed", float(li) * 1.7)
+		mat.set_shader_parameter("density", float(spec[1]))
+		mat.set_shader_parameter("speed", 0.035 + 0.012 * float(li))
+		var hgt := float(spec[2])
+		var verts := PackedVector3Array()
+		var uvs := PackedVector2Array()
+		var cols_c := PackedColorArray()
+		var idx := PackedInt32Array()
+		var c := 0
+		while c < cols:
+			if is_nan(ground[c]):
+				c += 1
+				continue
+			var c1 := c
+			while c1 < cols and not is_nan(ground[c1]):
+				c1 += 1
+			if c1 - c >= 2:
+				var base := verts.size()
+				for k in range(c, c1 + 1):
+					var g: float = ground[mini(k, c1 - 1)]
+					var edge := 0.0 if (k == c or k == c1) else 1.0
+					var x := float(k) * T
+					verts.append(Vector3(x, g - 0.4, 0.0))
+					verts.append(Vector3(x, g + hgt, 0.0))
+					uvs.append(Vector2(x, 0.0))
+					uvs.append(Vector2(x, 1.0))
+					cols_c.append(Color(1, 1, 1, edge))
+					cols_c.append(Color(1, 1, 1, edge))
+				for k in range(c1 - c):
+					var a := base + k * 2
+					idx.append_array(PackedInt32Array([a, a + 1, a + 2, a + 1, a + 3, a + 2]))
+			c = c1
+		if verts.is_empty():
+			continue
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = verts
+		arr[Mesh.ARRAY_TEX_UV] = uvs
+		arr[Mesh.ARRAY_COLOR] = cols_c
+		arr[Mesh.ARRAY_INDEX] = idx
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		var mi := MeshInstance3D.new()
+		mi.name = "GroundFog%d" % li
+		mi.mesh = mesh
+		mi.material_override = mat
+		mi.position = Vector3(0.0, 0.0, float(spec[0]))
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(mi)
+
 ## Środowisko nocy (niebo, mgła głębi, glow, filmic) i księżyc z cieniami. `ambient` — kolor ciemności poziomu (jak w 2D) służy do ocieplenia
 ## światła otoczenia (kryjówka); `moon` = false dla wnętrz.
 static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0.0406), moon := true) -> Environment:
