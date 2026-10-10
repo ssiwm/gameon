@@ -194,6 +194,9 @@ var land_t := -1.0                           ## 0..1 amortyzacji lądowania (ugi
 var land_str := 0.6                          ## siła lądowania 0..1 (z prędkości spadania)
 var back_run := false                        ## biegnie tyłem względem kierunku celowania: krok w przeciwną stronę, tułów odchylony
 var dying := 0.0                             ## 0..1 ostatnie sekundy wykrwawiania: drgawki i zapadanie się w ziemię (player.gd)
+var air_vy := 0.0                            ## px/s prędkość pionowa w locie (− w górę): steruje pozą skoku (wyprost, podciągnięte kolana, sięganie do ziemi)
+var climb_t := -1.0                          ## 0..1 podciągnięcia przy wskakiwaniu na platformę (player.gd), <0 = brak
+var _air_t := 0.0                            ## s w powietrzu (od odbicia)
 var sink_m := 0.0                            ## m: o tyle opuszczamy model pod podłoże (czyta view3d.gd)
 var _mc := {}                                ## bieżący cios bronią białą (krzywe ruchu), puste = brak ciosu
 const AW_STATES := ["idle", "run", "jump", "fall", "crouch", "crouch_walk"]
@@ -677,9 +680,14 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		if hit_t >= 1.0:
 			hit_t = -1.0
 	if land_t >= 0.0:
-		land_t += delta / 0.30
+		land_t += delta / 0.34
 		if land_t >= 1.0:
 			land_t = -1.0
+	if climb_t >= 0.0:
+		climb_t += delta / 0.40
+		if climb_t >= 1.0:
+			climb_t = -1.0
+	_air_t = _air_t + delta if (anim == "jump" or anim == "fall") else 0.0
 	_down = move_toward(_down, 1.0 if anim == "down" else 0.0, delta / (0.75 if anim == "down" else 0.95))
 	_mc = {}
 	if swing_t >= 0.0 and _down < 0.2:
@@ -710,10 +718,10 @@ func _body_state(a: String) -> Dictionary:
 		"run":
 			lean = 13.0
 			bob = -0.035 * absf(sin(_phase))
-		"jump":
-			lean = 8.0
-		"fall":
-			lean = 2.0
+		"jump", "fall":
+			var ap := _air_params()
+			lean = lerpf(8.0, 2.0, float(ap["fl"])) + 6.0 * float(ap["tk"])       # odbicie: wyprost z lekkim pochyleniem, spadanie: tułów pionowo
+			drop = -0.05 * float(ap["tk"]) + 0.05 * float(ap["tuck"])             # wyprost przy odbiciu, w apeksie biodra niżej względem podciągniętych nóg
 		"crouch":
 			lean = 6.0                                                # przysiad: tułów prawie pionowo, kolana do przodu
 			drop = 0.48                                               # głęboki przysiad: sylwetka ok. 0,65 wysokości stojącej, jak hitbox kucania
@@ -765,10 +773,14 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		lean -= 16.0 * k
 		drop += 0.035 * k
 		head_hit = 22.0 * k
-	if land_t >= 0.0:                                             # lądowanie: amortyzacja kolanami
-		var kl := sin(PI * land_t) * land_str
-		drop += 0.17 * kl
-		lean += 7.0 * kl
+	if land_t >= 0.0:                                             # lądowanie: amortyzacja kolanami ze sprężynowym odbiciem
+		var kl := (sin(PI * land_t) - 0.22 * sin(TAU * land_t) * land_t) * land_str
+		drop += 0.24 * kl
+		lean += 10.0 * kl
+	if climb_t >= 0.0:                                            # podciągnięcie na platformę: pochylenie i ugięcie nad krawędzią
+		var cw := sin(PI * climb_t)
+		lean += 15.0 * cw
+		drop += 0.07 * cw
 	# upadek (po zdjęciu zdrowia) i wstawanie po reanimacji: ten sam ruch w drugą stronę
 	var e := smoothstep(0.0, 1.0, _down)
 	if e > 0.001:
@@ -796,6 +808,16 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	_rot_world(_b["Head"], Vector3.BACK, (theta * 0.2 - deg_to_rad(lean) * 0.5) * stand + deg_to_rad(head_hit))
 	_pose_legs(e)
 
+## Pomocnicze parametry lotu z prędkości pionowej i czasu w powietrzu: tk — wyprost tuż po odbiciu, tuck — podciągnięte kolana (najmocniej w apeksie),
+## ext — nogi sięgają w dół przed lądowaniem, fl — jak szybko spada (0..1).
+func _air_params() -> Dictionary:
+	var rise := clampf(-air_vy / 275.0, 0.0, 1.0)
+	var fl := clampf(air_vy / 380.0, 0.0, 1.0)
+	var tk := 1.0 - smoothstep(0.0, 0.16, _air_t)
+	var tuck := smoothstep(0.08, 0.40, _air_t) * clampf(1.0 - fl * 1.6, 0.0, 1.0) * (0.55 + 0.45 * (1.0 - rise))
+	var ext := smoothstep(0.25, 0.85, fl)
+	return {"tk": tk, "tuck": tuck, "ext": ext, "fl": fl}
+
 ## Stan nogi (offset kostki względem pozycji spoczynkowej, odchylenie stopy) dla jednej pozy bazowej.
 func _leg_state(a: String, side: String) -> Array:
 	var sgn := 1.0 if side == "Right" else -1.0
@@ -809,11 +831,16 @@ func _leg_state(a: String, side: String) -> Array:
 			var stride := 0.34 * (0.8 if back_run else 1.0)
 			off = Vector3(stride * sin(ph), 0.17 * maxf(0.0, cos(ph)), 0.0)
 			tilt = deg_to_rad(-14.0) * maxf(0.0, cos(ph))
-		"jump":
-			off = Vector3(0.28 if sgn > 0 else -0.12, 0.30 if sgn > 0 else 0.16, 0.0)
-			tilt = deg_to_rad(-14.0)
-		"fall":
-			off = Vector3(0.10 if sgn > 0 else -0.08, 0.14 if sgn > 0 else 0.22, 0.0)
+		"jump", "fall":
+			# ciągła poza lotu z prędkości: wyprost przy odbiciu → kolana podciągnięte w apeksie → nogi sięgają w dół przed lądowaniem
+			var ap := _air_params()
+			var front := sgn > 0.0
+			var base := Vector3(0.14 if front else -0.08, 0.14 if front else 0.20, 0.0)
+			var tucked := Vector3(0.30 if front else -0.14, 0.34 if front else 0.22, 0.0)
+			var reach := Vector3(0.12 if front else -0.10, 0.05, 0.0)
+			var launch := Vector3(-0.04 if front else -0.14, 0.0, 0.0)
+			off = base.lerp(tucked, float(ap["tuck"])).lerp(reach, float(ap["ext"])).lerp(launch, float(ap["tk"]))
+			tilt = deg_to_rad(-14.0) * (1.0 - float(ap["ext"])) + deg_to_rad(12.0) * float(ap["tk"])
 		"crouch":
 			off = Vector3(0.10 if sgn > 0 else -0.10, 0.0, 0.0)
 		"crouch_walk":
@@ -834,6 +861,10 @@ func _pose_legs(e: float) -> void:
 			var ls := _leg_state(n, side)
 			off += w * (ls[0] as Vector3)
 			tilt += w * float(ls[1])
+		if climb_t >= 0.0:                                        # podciągnięcie: oba kolana wysoko, noga bliższa kamery z przodu
+			var cw2 := sin(PI * climb_t)
+			off.y += 0.22 * cw2
+			off.x += (0.10 if side == "Right" else -0.04) * cw2
 		if not _mc.is_empty():                                    # cios: stopa bliższa kamery wysuwa się do przodu, druga zostaje i dociąża
 			var st := float(_mc["step"])
 			off.x += st if side == "Right" else -0.4 * st
@@ -884,7 +915,9 @@ func _pose_arms(theta: float) -> void:
 	_two_bone(_b["RightArm"], _b["RightForeArm"], _b["RightHand"], _arm_len["Right"][0], _arm_len["Right"][1], rear, Vector3(-0.35, -1.0, 0.55))
 	if _hands == 2:
 		var lt := fore
-		if reload_t >= 0.0:                                       # lewa dłoń zostawia łoże, sięga po magazynek i wraca
+		if climb_t >= 0.0:                                        # podciągnięcie: wolna ręka podpiera się o krawędź platformy
+			lt = fore.lerp(sl + Vector3(0.20, -reach_l * 0.97, 0.08), sin(PI * climb_t))
+		elif reload_t >= 0.0:                                       # lewa dłoń zostawia łoże, sięga po magazynek i wraca
 			var mag := rear + gun_b * Vector3(_gun_len * 0.1, -0.24, 0.0)
 			var k := sin(clampf(reload_t, 0.0, 1.0) * PI)
 			lt = fore.lerp(mag, ease(k, 0.5))
@@ -969,7 +1002,10 @@ func _pose_left_melee(gx: Transform3D, rear: Vector3) -> void:
 func _pose_left_relaxed() -> void:
 	var sl := _gp(_b["LeftArm"]).origin
 	var reach: float = _arm_len["Left"][0] + _arm_len["Left"][1]
-	_two_bone(_b["LeftArm"], _b["LeftForeArm"], _b["LeftHand"], _arm_len["Left"][0], _arm_len["Left"][1], sl + Vector3(0.12, -reach * 0.9, 0.05), Vector3(-0.3, -1.0, -0.5))
+	var tgt := sl + Vector3(0.12, -reach * 0.9, 0.05)
+	if climb_t >= 0.0:                                                # podciągnięcie: ręka wyciągnięta w dół i w przód, na krawędź
+		tgt = tgt.lerp(sl + Vector3(0.22, -reach * 0.98, 0.08), sin(PI * climb_t))
+	_two_bone(_b["LeftArm"], _b["LeftForeArm"], _b["LeftHand"], _arm_len["Left"][0], _arm_len["Left"][1], tgt, Vector3(-0.3, -1.0, -0.5))
 
 func _pose_arms_relaxed(both: bool) -> void:
 	muzzle_px = Vector2(0.0, -10.0)

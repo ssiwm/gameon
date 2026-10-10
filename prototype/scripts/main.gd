@@ -1254,7 +1254,7 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 	print("[SHOT] %s (%dx%d)" % [path, img.get_width(), img.get_height()])
 	get_tree().quit()
 
-## Dev (--shotplayer): zdarzenia gracza 1 — hit, down, revive, melee / chop (cios maczetą / kilofem), dying (końcówka wykrwawiania).
+## Dev (--shotplayer): zdarzenia gracza 1 — hit, down, revive, melee / chop (cios maczetą / kilofem), dying (końcówka wykrwawiania), jump (skok).
 func _dev_player(what: String) -> void:
 	var pl: Node2D = _players.get_node_or_null("1")
 	if pl == null:
@@ -1265,6 +1265,8 @@ func _dev_player(what: String) -> void:
 			pl.set("_flash", 0.25)
 		"down":
 			pl.call("_go_down")
+		"jump":                                            # skok w miejscu (apeks i lądowanie widać na sekwencji)
+			pl.velocity.y = -275.0
 		"melee", "chop":                                   # cios maczetą / kilofem, powtarzany co 1,4 s
 			for i in 3:
 				if not is_instance_valid(pl):
