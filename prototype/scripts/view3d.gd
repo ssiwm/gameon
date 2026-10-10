@@ -464,7 +464,8 @@ func _sync_enemies(delta: float) -> void:
 		st["py"] = ypx
 		st["vy"] = lerpf(float(st["vy"]), vy_now, 0.45)
 		_estate[id] = st
-		e.call("pose", delta, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]))
+		var sp_v = src.get("_sp")                          # stan specjalny wroga (Wołek: szarża, oszołomienie)
+		e.call("pose", delta, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), 0 if sp_v == null else int(sp_v))
 
 func _set_layer(root: Node, layer: int) -> void:
 	for mi in root.find_children("*", "VisualInstance3D", true, false):

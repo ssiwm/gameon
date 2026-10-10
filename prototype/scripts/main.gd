@@ -1226,6 +1226,10 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			if hp_p != null:
 				hp_p.hp = int(sa.substr("--shothp=".length()))
 	for sa in OS.get_cmdline_user_args():
+		if sa.begins_with("--shotwake="):                 # dev: --shotwake=skoczek — budzi wszystkich wrogów danego rodzaju po 1 s (podgląd zejścia z sufitu)
+			for wn in get_tree().get_nodes_in_group("enemies"):
+				if String(wn.get("kind")) == sa.substr("--shotwake=".length()):
+					get_tree().create_timer(1.0).timeout.connect(func(): if is_instance_valid(wn): wn.call("wake"))
 		if sa.begins_with("--shotnest="):                 # dev: --shotnest=death|hit — zdarzenie wszystkich gniazd 1 s po starcie (podgląd klipów)
 			for nn in get_tree().get_nodes_in_group("nests"):
 				get_tree().create_timer(1.0).timeout.connect(_dev_clip.bind(nn, sa.substr("--shotnest=".length())))
@@ -1307,6 +1311,10 @@ func _dev_clip(en: Node, what: String) -> void:
 			await get_tree().create_timer(0.1).timeout
 			if is_instance_valid(en):
 				en.set("_flash", 0.0)
+		"stun":                                            # oszołomienie Wołka po uderzeniu szarżą (stan `_sp` = 4)
+			en.set("_sp", 4)
+		"charge":                                          # szarża Wołka (stan `_sp` = 2; AI zamrożone, więc stoi w miejscu)
+			en.set("_sp", 2)
 		"jump":                                            # skok wroga (poza lotu): wznosi się z prędkością 260 px/s
 			en.set_physics_process(true)
 			en.velocity.y = -260.0
