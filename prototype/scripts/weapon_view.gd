@@ -38,6 +38,7 @@ var _flame: CPUParticles2D
 var _flash_t := 0.0
 var _flash_seed := 0.0
 var _swing_t := -1.0                   ## 0..1 trwającego ciosu, <0 = brak
+var _cyc_t := -1.0                     ## 0..1 cyklu po strzale (pompka / zamek w postaci 3D), <0 = brak
 var _swing_w := Weapons.MACZETA
 var _hit_t := 0.0
 var _hit_kind := 0
@@ -143,6 +144,7 @@ func _make_flame() -> CPUParticles2D:
 
 func _on_shot(w: int) -> void:
 	var d := Weapons.def(w)
+	_cyc_t = 0.0
 	if d.flash_size > 0.0:
 		_flash_t = FLASH_TIME * (1.0 + d.flash_size / 12.0)
 		_flash_seed = randf() * TAU
@@ -291,8 +293,15 @@ func _update_gun3d(d: WeaponDef) -> void:
 				kick = -player.w_charge * 1.2
 		if _draw_anim > 0.0:
 			v = 1.1 * ease(_draw_anim, 2.2)
+	if _cyc_t >= 0.0:
+		_cyc_t += get_process_delta_time() / maxf(d.cooldown, 0.1)
+		if _cyc_t >= 1.0:
+			_cyc_t = -1.0
 	c3d.gun_extra = v
 	c3d.gun_kick_px = kick
+	c3d.recoil_px = kick if not swinging else 0.0
+	c3d.charge_t = clampf(player.w_charge, 0.0, 1.0) if player.w_state == Controller.State.CHARGE else 0.0
+	c3d.cycle_t = _cyc_t if (not swinging and rl < 0.0) else -1.0
 	c3d.reload_t = rl
 	c3d.swing_t = _swing_t
 
