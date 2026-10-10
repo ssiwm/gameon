@@ -1,6 +1,6 @@
 # Spike: misja 1.1 w prawdziwym 3D (Bramka B)
 
-Status: **spike wykonany 2026-10-10** — osobna scena, bez ruszania gry. Cel Bramki B z `ATMOSPHERE_PLAN.md`: sprawdzić, czy „prawdziwe 3D”
+Status: **spike wykonany 2026-10-10** — osobna scena, bez ruszania gry. **Następny krok (rekomendacja §5) wdrożony jako opcja graficzna „3D view” (`view3d.gd`, GDD 1.7.128).** Cel Bramki B z `ATMOSPHERE_PLAN.md`: sprawdzić, czy „prawdziwe 3D”
 (perspektywa, światła i cienie 3D, mgła głębi, modele postaci bez sprite'ów) daje na tyle lepszy obraz, żeby uzasadnić koszt, i **ile
 naprawdę kosztuje port**. To nie jest port rozgrywki: nie ma wrogów, celu misji, sieci, dźwięku ani HUD-u gry.
 
