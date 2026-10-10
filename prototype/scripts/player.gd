@@ -11,6 +11,7 @@ const Actions := preload("res://scripts/actions.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
 const WeaponController := preload("res://scripts/weapon_controller.gd")
+const BloodDecals := preload("res://scripts/blood_decals.gd")
 const WeaponView := preload("res://scripts/weapon_view.gd")
 const Char3D := preload("res://scripts/char3d.gd")
 const Look := preload("res://scripts/look.gd")
@@ -130,6 +131,9 @@ var _flash := 0.0
 var _plate_t := 0.0                ## ile jeszcze sekund plakietka życia zostaje widoczna po zmianie zdrowia
 var _plate_a := 0.0                ## płynna widoczność plakietki (0 = tylko imię, 1 = pełna)
 var _pip_flash := 0.0              ## błysk tarczy utraconej przed chwilą (rysujemy ją jako obrys)
+var _dmg := 0.0                    ## wygładzone obrażenia 0..1 (krew na modelu, pochylenie, kapanie)
+var _dmg_sent := -1.0
+var _drip_t := 1.0
 var _hp_seen := MAX_HP             ## ostatnio widziane zdrowie — do wykrycia trafienia / leczenia także u zdalnych graczy
 var _invuln := 0.0
 var _kick := 0.0
@@ -404,7 +408,7 @@ func _update_char3d() -> void:
 func _tint_color() -> Color:
 	var m := Color.WHITE
 	if _flash > 0.0:
-		m = Color(2.4, 2.4, 2.4)
+		m = Color(2.3, 0.6, 0.55)                          # trafiony: krótki czerwony błysk zamiast białego
 	elif _invuln > 0.0 and int(Time.get_ticks_msec() / 60) % 2 == 0:
 		m.a = 0.45
 	return m
@@ -509,6 +513,7 @@ func _process(delta: float) -> void:
 	_wound_t += delta
 	_flash = maxf(0.0, _flash - delta)
 	_update_plate(delta)
+	_update_damage(delta)
 	_scream_ring = maxf(0.0, _scream_ring - delta)
 	if _camera.enabled:
 		_camera.offset = Feel.shake_offset()
@@ -1838,6 +1843,31 @@ func _draw() -> void:
 func _gun_len() -> float:
 	return weapons.cur().gun_len
 
+## Obrażenia na postaci: krew w materiale modelu 3D (char3d.gd), kapanie i plamy na podłodze (blood_decals.gd). Wszystko z replikowanego `hp`,
+## więc widać u wszystkich graczy; kosmetyka, lokalna. Jakość: LOW — same plamy na modelu, MEDIUM — kapanie, HIGH — plamy na podłodze;
+## „Reduce effects” wyłącza kapanie i plamy na podłodze (plamy na modelu zostają).
+func _update_damage(delta: float) -> void:
+	var tgt := 0.0
+	if dead:
+		tgt = 1.0
+	elif hp < max_hp():
+		tgt = clampf(1.0 - float(hp) / float(maxi(max_hp(), 1)), 0.0, 1.0)
+	_dmg = move_toward(_dmg, tgt, delta * 0.9)
+	if c3d != null and absf(_dmg - _dmg_sent) > 0.002:
+		_dmg_sent = _dmg
+		c3d.set_damage(_dmg, float(display_id) * 3.7)
+	if dead or hp >= max_hp() or Settings.quality_idx < 1 or Settings.fx_mult() <= 0.0:
+		return
+	_drip_t -= delta
+	if _drip_t > 0.0:
+		return
+	_drip_t = lerpf(1.8, 0.45, _dmg) * randf_range(0.7, 1.3)
+	var from := global_position + Vector2(randf_range(-3.0, 3.0), randf_range(-14.0, -5.0))
+	var fx := _fx_root()
+	Vfx.burst(fx, from, Color(0.32, 0.02, 0.035), 1, 0.0, 8.0, Vector2.DOWN, 12.0, 560.0, 0.45, Vector2(1.0, 1.7))
+	if Settings.quality_idx >= 2 and is_on_floor():
+		BloodDecals.add(fx, Vector2(from.x, global_position.y - 0.5), randf_range(1.2, 2.4) * (0.7 + _dmg))
+
 ## Plakietka życia (opcja C): przy pełnym zdrowiu zostaje samo przygaszone imię; po trafieniu / leczeniu, a także gdy brakuje życia
 ## (albo jest bonus), pojawia się pełna plakietka z tarczami. Działa u wszystkich graczy — `hp` jest replikowane.
 func _update_plate(delta: float) -> void:
@@ -1874,8 +1904,8 @@ func _draw_overlay(ov: Node2D) -> void:
 	var top := -11.0 if crouching else -17.0
 	if not _spr.is_empty() or c3d != null:
 		top = -16.0 if crouching else -22.0
-	if Sprites.newitem and hp < max_hp():
-		_draw_wounds(ov, top)
+	if Sprites.newitem and hp < max_hp() and c3d == null:
+		_draw_wounds(ov, top)                  # postać 3D ma krew w materiale (char3d.gd)
 	_draw_plate(ov, font, name_txt, col, top)
 
 ## Plakietka życia nad głową: ciemna płytka z imieniem (kolor slotu) i tarczami jak na karcie drużyny — pełna krwista, pusta tylko obrysem,
@@ -1939,9 +1969,8 @@ func _draw_wounds(ov: Node2D, top: float) -> void:
 		var c: Vector2 = spots[i]
 		c.x *= sx
 		var drip := fposmod(_wound_t + float(i) * 0.37, 1.6)
-		ov.draw_circle(c, 2.1, Color(0.22, 0.01, 0.02, 0.5))
-		ov.draw_circle(c + Vector2(0.4, 0.3), 1.3, Color(0.4, 0.03, 0.05, 0.7))
-		ov.draw_circle(c + Vector2(-0.4, -0.4), 0.5, Color(0.7, 0.2, 0.2, 0.3))
+		ov.draw_circle(c, 2.1, Color(0.12, 0.008, 0.012, 0.55))
+		ov.draw_circle(c + Vector2(0.4, 0.3), 1.3, Color(0.2, 0.012, 0.02, 0.7))
 		if hp <= 1:
 			ov.draw_line(c + Vector2(0.4, 1.0), c + Vector2(0.4, 1.0 + minf(drip * 6.0, 6.0)), Color(0.36, 0.02, 0.04, 0.8 * (1.0 - drip / 1.6)), 0.9, true)
 

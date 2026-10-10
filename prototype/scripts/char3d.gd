@@ -41,6 +41,20 @@ uniform bool has_orm = false;
 uniform float hue_target = -1.0;          // < 0: bez zmiany barwy
 uniform float sat_mul = 1.0;
 uniform float val_mul = 1.0;
+uniform float damage = 0.0;               // 0..1: ilość krwi na stroju (player.gd, z zdrowia); maska w przestrzeni UV — przyklejona do ciała przy animacji
+uniform float blood_seed = 0.0;
+varying float wy;                         // wysokość w świecie (m): krew gęstsza na tułowiu i ramionach niż na łydkach
+float bh(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+float bn(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(bh(i), bh(i + vec2(1.0, 0.0)), f.x), mix(bh(i + vec2(0.0, 1.0)), bh(i + vec2(1.0, 1.0)), f.x), f.y);
+}
 vec3 rgb2hsv(vec3 c) {
 	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
 	vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
@@ -53,6 +67,9 @@ vec3 hsv2rgb(vec3 c) {
 	vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
 	vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
 	return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+void vertex() {
+	wy = (MODEL_MATRIX * vec4(VERTEX, 1.0)).y;
 }
 void fragment() {
 	vec3 c = texture(albedo_tex, UV).rgb;
@@ -71,6 +88,20 @@ void fragment() {
 		c = mix(c, hsv2rgb(t), k);
 		c *= mix(1.0, val_mul, (1.0 - skin) * (1.0 - colored));
 	}
+	float wet = 0.0;
+	if (damage > 0.001) {
+		// plamy krwi: szum w UV (stały na ciele), próg spada z obrażeniami; rdzeń ciemniejszy, brzeg „zaschnięty”, mokry połysk w świetle
+		vec2 bp = UV * 9.0 + vec2(blood_seed, blood_seed * 0.63);
+		float n = bn(bp) * 0.55 + bn(bp * 2.3 + 5.0) * 0.3 + bn(bp * 5.1 + 11.0) * 0.15;
+		float zone = smoothstep(0.15, 1.1, wy);
+		float thr = 1.0 - damage * 0.62 - 0.1 * zone;
+		float blood = smoothstep(thr, thr + 0.07, n);
+		float core = smoothstep(thr + 0.07, thr + 0.2, n);
+		vec3 crust = vec3(0.10, 0.012, 0.016);
+		vec3 wetc = vec3(0.15, 0.012, 0.018);
+		c = mix(c, mix(crust, wetc, core), blood * 0.92);
+		wet = blood * core;
+	}
 	ALBEDO = c;
 	if (has_normal) {
 		NORMAL_MAP = texture(normal_tex, UV).xyz;
@@ -82,6 +113,7 @@ void fragment() {
 	} else {
 		ROUGHNESS = 0.85;
 	}
+	ROUGHNESS = mix(ROUGHNESS, 0.34, wet);
 	METALLIC = 0.0;
 }
 """
@@ -121,6 +153,8 @@ var _canvas_tex: CanvasTexture
 var preview := false
 var preview_ss := 12
 var view_yaw := VIEW_YAW_DEG                 ## stopnie; w podglądzie kręci się „na stole obrotowym”
+var _damage := 0.0                           ## 0..1 obrażenia (krew w materiale i pochylenie tułowia)
+var _blood_seed := 0.0
 var _pal_mats: Array = []                    ## ShaderMaterial postaci (paleta kolorów) — uniformy ustawia _apply_palette
 var _palette := 0
 var _rev := 0
@@ -435,6 +469,7 @@ func _prepare_materials(root: Node) -> void:
 				mi.set_surface_override_material(i, sm)
 				_pal_mats.append(sm)
 	_apply_palette()
+	_apply_damage()
 
 ## Paleta kolorów stroju (Look.palette_of): obrót barwy / nasycenie / jasność dla nasyconych pikseli nie-skórnych.
 func set_palette(p: int) -> void:
@@ -442,6 +477,18 @@ func set_palette(p: int) -> void:
 		return
 	_palette = p
 	_apply_palette()
+
+## Krew na stroju (player.gd): d 0..1 — od lekkich plam do przesiąknięcia; seed rozmieszcza plamy inaczej u każdego gracza.
+func set_damage(d: float, seed: float) -> void:
+	_damage = clampf(d, 0.0, 1.0)
+	_blood_seed = seed
+	_apply_damage()
+
+func _apply_damage() -> void:
+	for m in _pal_mats:
+		var sm := m as ShaderMaterial
+		sm.set_shader_parameter("damage", _damage)
+		sm.set_shader_parameter("blood_seed", _blood_seed)
 
 func _apply_palette() -> void:
 	var d: Dictionary = Look.PALETTES[clampi(_palette, 0, Look.PALETTES.size() - 1)]
@@ -656,6 +703,7 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	if swing_t >= 0.0:                                            # cios: wypad do przodu w chwili cięcia
 		lunge = sin(clampf(swing_t * 2.0, 0.0, 1.0) * PI) * 0.09
 		lean += lunge * 60.0
+	lean += 7.0 * clampf((_damage - 0.55) / 0.45, 0.0, 1.0)         # ciężko ranny: tułów zgarbiony do przodu
 	if anim == "down":
 		_move_global(hips, Vector3(0.0, -0.62, 0.0))
 		_rot_world(hips, Vector3.BACK, -PI * 0.5)
