@@ -14,14 +14,14 @@ const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Lev
 ## fit: [„height" | „length", rozmiar w pikselach świata] — jak w wypieku; frame_h: wysokość ramki sprite'a (Skoczek wisi u jej góry);
 ## cycle: okres cyklu kroku (s); prof: profil pozy (jak PROF w wypieku); yaw: obrót modelu (stopnie), by przód patrzył w +X.
 const SPEC := {
-	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 1.0, "prof": {}},
+	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 1.0, "prof": {}, "clips": true, "clip_amp": 0.6},
 	"slepiec": {"fit": ["height", 27.0], "frame_h": 32.0, "cycle": 1.0, "prof": {"hy": 0.50, "hz": 0.35}},
 	"podsluchacz": {"fit": ["height", 34.0], "frame_h": 40.0, "cycle": 1.0,
 		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}},
 	"stalker": {"fit": ["height", 54.0], "frame_h": 60.0, "cycle": 1.1,
 		"prof": {"lean": 5.0, "lean_walk": 8.0, "hy": 0.42, "hz": 0.62, "stride": 0.28, "windup": "reach"}},
 	"skoczek": {"fit": ["height", 17.0], "frame_h": 26.0, "cycle": 0.5, "crawler": true},
-	"trzosek": {"fit": ["length", 21.0], "frame_h": 22.0, "cycle": 0.55, "quad": true, "yaw": -90.0},
+	"trzosek": {"fit": ["length", 21.0], "frame_h": 22.0, "cycle": 0.55, "quad": true, "yaw": -90.0, "clips": true, "idle_t": 0.0},
 	# Mimik to model gracza z kolorem „kolegi” i świecącymi oczami; pozostałe poniżej to modele statyczne animowane deformacją wierzchołków w shaderze
 	# (`DEFORM`), tak jak wypiek `concept/static_tripo_bake.py` — poza z numeru klatki sprite'a 2D (animacja idzie w tempie gry).
 	"mimik": {"model": "res://art/char3d/male_scav.glb", "fit": ["height", 22.0], "frame_h": 28.0, "cycle": 0.8, "eyes": true,
@@ -58,7 +58,7 @@ void fragment() {
 	vec3 h = rgb2hsv(c);
 	float eye = smoothstep(0.05, 0.075, h.x) * (1.0 - smoothstep(0.17, 0.2, h.x)) * smoothstep(0.55, 0.68, h.y) * smoothstep(0.5, 0.65, h.z);
 	ALBEDO = c * clamp(mod.rgb, 0.0, 1.0);
-	EMISSION = c * eye * eye_glow + max(mod.rgb - vec3(1.0), vec3(0.0)) * 0.45;
+	EMISSION = c * eye * eye_glow + max(mod.rgb - vec3(1.0), vec3(0.0)) * 0.28;
 	//ALPHA
 	if (has_normal) {
 		NORMAL_MAP = texture(normal_tex, UV).xyz;
@@ -188,6 +188,26 @@ var _t := 0.0
 var _phase := 0.0
 var _prev_anim := ""
 var _eyes: Array = []
+
+## Klipy jednorazowe i śmierć (modele z `"clips": true` w SPEC): trafienie, atak, śmierć; poza bazowa przechodzi płynnie (wagi), klip leży na wierzchu.
+const CLIP_DUR := {"hit": 0.32, "attack": 0.42}
+const DEATH_DUR := {"biped": 1.15, "quad": 0.85}
+const CORPSE_HOLD := 0.35                  ## s leżenia po upadku
+const CORPSE_SINK := 0.45                  ## s zapadania się w ziemię, potem model znika
+const BLEND_RATE := 9.0                    ## 1/s: tempo przechodzenia między pozami bazowymi
+
+var _tilt: Node3D                          ## przechył całego ciała (upadek) wokół stóp
+var _w := {}                               ## wagi póz bazowych (idle / walk / windup / sleep)
+var _clip := ""
+var _clip_t := 0.0
+var _dead := false
+var _dead_t := 0.0
+var _dead_from := {}                       ## poza w chwili śmierci (płynne wejście w upadek)
+var finished := false                      ## martwy i po animacji — można ukryć
+var _qsamp := {}                           ## próbki animacji czworonoga: nazwa → [rotacje, pozycje]
+var _qw := 0.0                             ## waga biegu czworonoga 0..1
+var _spine: Array = []                     ## kości kręgosłupa czworonoga
+var _last_p := {}                          ## ostatnia poza bazowa biped (po wagach)
 var _model_h := 1.0                        ## wysokość modelu w spoczynku (m, natywna skala)
 
 static func has_model(k: String) -> bool:
@@ -202,8 +222,10 @@ func setup(k: String, translucent := false) -> bool:
 	var ps := load(String(_spec.get("model", DIR + k + ".glb"))) as PackedScene
 	if ps == null:
 		return false
+	_tilt = Node3D.new()
+	add_child(_tilt)
 	_pivot = Node3D.new()
-	add_child(_pivot)
+	_tilt.add_child(_pivot)
 	_model = ps.instantiate() as Node3D
 	_pivot.add_child(_model)
 	var sks := _model.find_children("*", "Skeleton3D", true, false)
@@ -248,6 +270,11 @@ func setup(k: String, translucent := false) -> bool:
 		if _spec.get("crawler", false):
 			_x0 = c.x
 		_pivot.position.x = -_x0 * _scale
+	if _spec.get("quad", false):
+		for n in ["tripo__Spine_0", "tripo__Spine_1", "tripo__Spine_2", "tripo__Spine_3"]:
+			var bi := _sk.find_bone(n)
+			if bi >= 0:
+				_spine.append(bi)
 	_prepare_materials(translucent)
 	if _spec.get("eyes", false):
 		for sd in [-1.0, 1.0]:
@@ -342,22 +369,65 @@ func _two_bone(a: int, m: int, e: int, la: float, lb: float, target: Vector3, po
 func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 1, loop := true) -> void:
 	_t += delta
 	scale.x = -1.0 if flip else 1.0
+	if _dead:
+		_dead_t += delta
+		var total: float = float(DEATH_DUR["quad" if _spec.get("quad", false) else "biped"]) + CORPSE_HOLD + CORPSE_SINK
+		if _dead_t >= total:
+			finished = true
+	if _clip != "":
+		_clip_t += delta
+		if _clip_t >= float(CLIP_DUR[_clip]):
+			_clip = ""
+	var eye := 1.4
+	if _dead:
+		eye = 1.4 * (1.0 - smoothstep(0.0, 0.35, _dead_t))        # oczy gasną po śmierci
 	for m in _mats:
-		(m as ShaderMaterial).set_shader_parameter("mod", Vector4(mod.r, mod.g, mod.b, mod.a))
+		var sm := m as ShaderMaterial
+		sm.set_shader_parameter("mod", Vector4(mod.r, mod.g, mod.b, mod.a))
+		sm.set_shader_parameter("eye_glow", eye)
 	var moving := anim == "walk" or anim == "run"
 	if moving:
 		_phase += delta * TAU / float(_spec.get("cycle", 1.0))
 	if _spec.has("deform"):
 		_pose_deform(anim, fr, nfr, loop)
 	elif _spec.get("quad", false):
-		_pose_quad(anim)
+		_pose_quad(anim, delta)
 	elif _spec.get("crawler", false):
 		_pose_crawler(anim)
 	else:
-		_pose_biped(anim)
+		_pose_biped(anim, delta)
 		if not _eyes.is_empty():
 			_place_eyes()
 	_prev_anim = anim
+
+## Zdarzenia z gry (view3d.gd): "hit" — trafienie, "attack" — cios po zapowiedzi. Tylko modele z klipami.
+func trigger(clip: String) -> void:
+	if _dead or not _spec.get("clips", false) or not CLIP_DUR.has(clip):
+		return
+	if clip == "hit" and _clip == "attack" and _clip_t < 0.8 * float(CLIP_DUR["attack"]):
+		return                                    # trafienie nie przerywa trwającego ciosu
+	_clip = clip
+	_clip_t = 0.0
+
+## Śmierć: odtwarza upadek, potem leży, zapada się i `finished` = true. Modele bez klipów kończą od razu.
+func die() -> void:
+	if _dead:
+		return
+	_dead = true
+	_dead_t = 0.0
+	_clip = ""
+	_dead_from = _last_p.duplicate()
+	if not _spec.get("clips", false):
+		finished = true
+
+## Powrót do życia (respawn / reset wroga).
+func revive() -> void:
+	_dead = false
+	_dead_t = 0.0
+	_clip = ""
+	finished = false
+	_tilt.basis = Basis.IDENTITY
+	_tilt.position = Vector3.ZERO
 
 ## Oczy Mimika: dwie świecące kulki przy głowie (model gracza nie ma świecących pikseli w teksturze).
 func _place_eyes() -> void:
@@ -537,32 +607,101 @@ func _leech_pose(anim: String, i: int, n: int) -> Array:
 			sz = [1.0, 1.04, 0.96, 1.05, 1.0, 1.0, 1.0, 1.0][j]
 	return [yaw, bend, dz, sz, close, wide, amp, ph, shake, ht, ox]
 
-func _pose_quad(anim: String) -> void:
-	var sy := 1.0
-	var sz := 1.0
-	var pitch := 0.0                           # zapowiedź ataku (windup) nie ma osobnej pozy: Trzosek stoi w pozie idle, sygnał daje czerwony błysk
-	var t := 0.0
-	if _ap != null:
-		var names := _ap.get_animation_list()
-		if _ap_name == "" and not names.is_empty():
-			_ap_name = names[0]
-			var a := _ap.get_animation(_ap_name)
-			a.loop_mode = Animation.LOOP_LINEAR
+## Próbka animacji chodu z pliku (rotacje i pozycje kości lokalne) w chwili t.
+func _sample_quad(t: float) -> Array:
+	_ap.assigned_animation = _ap_name
+	_ap.seek(t, true)
+	var rots := []
+	var poss := []
+	for bi in _sk.get_bone_count():
+		rots.append(_sk.get_bone_pose_rotation(bi))
+		poss.append(_sk.get_bone_pose_position(bi))
+	return [rots, poss]
+
+func _pose_quad(anim: String, delta: float) -> void:
 	var len := 1.0
+	if _ap != null and _ap_name == "":
+		var names := _ap.get_animation_list()
+		if not names.is_empty():
+			_ap_name = names[0]
+			_ap.get_animation(_ap_name).loop_mode = Animation.LOOP_LINEAR
 	if _ap != null and _ap_name != "":
 		len = _ap.get_animation(_ap_name).length
-	match anim:
-		"run", "walk":
-			t = fposmod(_phase / TAU, 1.0) * len
-		"sleep":                                   # zwinięty: spłaszczony, powoli oddycha
-			sy = 0.60 + 0.02 * sin(_t * 2.6)
-		_:
-			sy = 1.0 + 0.018 * sin(_t * 2.6)
+	var idle_t := float(_spec.get("idle_t", 0.0)) * len
+	var running := anim == "run" or anim == "walk"
+	_qw = move_toward(_qw, 1.0 if running else 0.0, delta * BLEND_RATE * 0.5)
+	var sy := 1.0
+	if anim == "sleep":                           # zwinięty: spłaszczony, powoli oddycha
+		sy = 0.60 + 0.02 * sin(_t * 2.6)
+	else:
+		sy = 1.0 + 0.018 * sin(_t * 2.6)
 	if _ap != null and _ap_name != "":
-		_ap.assigned_animation = _ap_name
-		_ap.seek(t, true)
+		# idle i bieg próbkujemy osobno i mieszamy kość po kości (płynne wejście i wyjście z biegu, bez przeskoku nóg)
+		if not _qsamp.has("idle"):
+			_qsamp["idle"] = _sample_quad(idle_t)
+		var ri: Array = _qsamp["idle"][0]
+		var pi_: Array = _qsamp["idle"][1]
+		if _qw > 0.001:
+			var run := _sample_quad(fposmod(_phase / TAU, 1.0) * len)
+			var rr: Array = run[0]
+			var pr: Array = run[1]
+			for bi in ri.size():
+				_sk.set_bone_pose_rotation(bi, (ri[bi] as Quaternion).slerp(rr[bi], _qw))
+				_sk.set_bone_pose_position(bi, (pi_[bi] as Vector3).lerp(pr[bi], _qw))
+		else:
+			for bi in ri.size():
+				_sk.set_bone_pose_rotation(bi, ri[bi])
+				_sk.set_bone_pose_position(bi, pi_[bi])
+	# nakładki: oddech, trafienie, atak, śmierć
+	var pitch := 0.0                              # + = nos w górę
+	var roll := 0.0
+	var shift := 0.0
+	var lift := 0.0
+	var arch := 0.0                               # rad: wygięcie kręgosłupa (+ = grzbiet w dół, głowa w górę)
+	arch += deg_to_rad(1.6) * sin(_t * 2.6)
+	if _dead:
+		var dd := float(DEATH_DUR["quad"])
+		var u := clampf(_dead_t / dd, 0.0, 1.0)
+		var yelp := sin(clampf(u / 0.25, 0.0, 1.0) * PI * 0.5)         # 0..1: szarpnięcie głowy w górę
+		var fall := smoothstep(0.18, 1.0, u)
+		pitch = deg_to_rad(26.0) * yelp * (1.0 - fall) + deg_to_rad(6.0) * fall
+		roll = deg_to_rad(-82.0) * fall * fall * (3.0 - 2.0 * fall)
+		arch = deg_to_rad(20.0) * yelp * (1.0 - fall) - deg_to_rad(8.0) * fall
+		shift = -0.20 * fall
+		lift = 0.34 * absf(sin(roll))
+		sy = lerpf(1.0, 0.9, fall)
+		_sink(_dead_t - dd)
+	elif _clip == "hit":
+		var u := _clip_t / float(CLIP_DUR["hit"])
+		var k := sin(PI * minf(u * 1.35, 1.0)) * (1.0 - u)
+		pitch = deg_to_rad(15.0) * k
+		arch = deg_to_rad(14.0) * k
+		shift = -0.14 * k
+	elif _clip == "attack":
+		var u := _clip_t / float(CLIP_DUR["attack"])
+		var up := smoothstep(0.0, 0.34, u)                               # zamach: nos w górę, zad się zapada
+		var snap := smoothstep(0.34, 0.5, u)                             # kłapnięcie: nos gwałtownie w dół
+		var back := smoothstep(0.5, 1.0, u)
+		pitch = deg_to_rad(20.0) * up * (1.0 - snap) - deg_to_rad(20.0) * snap * (1.0 - back)
+		arch = deg_to_rad(10.0) * up * (1.0 - snap) - deg_to_rad(12.0) * snap * (1.0 - back)
+		shift = 0.18 * snap * (1.0 - back) - 0.06 * up * (1.0 - snap)
+		sy = lerpf(sy, 0.93, up * (1.0 - snap))
+	if not _spine.is_empty():
+		for bi in _spine:
+			_rot_world(bi, Vector3.BACK, arch / float(_spine.size()))
 	var yaw := deg_to_rad(float(_spec.get("yaw", 0.0)))
-	_pivot.basis = Basis(Vector3.BACK, pitch) * Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(_scale, _scale * sy, _scale * sz))
+	_tilt.basis = Basis.IDENTITY
+	_pivot.basis = Basis(Vector3.BACK, pitch) * Basis(Vector3.RIGHT, roll) * Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(_scale, _scale * sy, _scale))
+	if not _dead:
+		_sink_y = 0.0
+	_tilt.position = Vector3(shift, lift + _sink_y, 0.0)
+
+var _sink_y := 0.0
+
+## Zapadanie się ciała w ziemię po upadku (t = czas od końca animacji upadku).
+func _sink(t: float) -> void:
+	var k := clampf((t - CORPSE_HOLD) / CORPSE_SINK, 0.0, 1.0)
+	_sink_y = -0.6 * k * k
 
 func _pose_crawler(anim: String) -> void:
 	_sk.reset_bone_poses()
@@ -590,8 +729,8 @@ func _pose_crawler(anim: String) -> void:
 		_pivot.rotation = Vector3.ZERO
 		_pivot.position.y = 0.0
 
-func _pose_biped(anim: String) -> void:
-	_sk.reset_bone_poses()
+## Parametry pozy bazowej dla animacji 2D (jak w wypieku `monster_tripo_bake.py`).
+func _biped_params(anim: String) -> Dictionary:
 	var prof: Dictionary = _spec.get("prof", {})
 	var ph := _phase if (anim == "walk" or anim == "run") else _t * TAU / 2.4
 	var l0: float = prof.get("lean", 12.0)
@@ -600,59 +739,152 @@ func _pose_biped(anim: String) -> void:
 	var hz: float = prof.get("hz", 0.42)
 	var sl: float = prof.get("sleep_lean", 27.0)
 	var stride: float = prof.get("stride", 0.22)
-	var lean := l0
-	var bob := 0.0
-	var drop := 0.0
-	# współrzędne celów w układzie Godota: x przód, y wysokość, z do kamery (prawa strona = +z)
-	var feet := {"Right": Vector3.ZERO, "Left": Vector3.ZERO}
-	var hands := {"Right": Vector3(_x0 + 0.05, hz, hy), "Left": Vector3(_x0 + 0.05, hz, -hy)}
+	var p := {"lean": l0, "bob": 0.0, "drop": 0.0, "hk": 0.8,
+		"fR": Vector3.ZERO, "fL": Vector3.ZERO,
+		"hR": Vector3(_x0 + 0.05, hz, hy), "hL": Vector3(_x0 + 0.05, hz, -hy)}
 	match anim:
 		"idle":
-			lean = l0 + 1.6 * sin(ph)
-			bob = 0.012 * sin(ph)
-			feet = {"Right": Vector3(0.04, 0, 0), "Left": Vector3(-0.04, 0, 0)}
+			p["lean"] = l0 + 1.6 * sin(ph)
+			p["bob"] = 0.012 * sin(ph)
+			p["fR"] = Vector3(0.04, 0, 0)
+			p["fL"] = Vector3(-0.04, 0, 0)
 			var sw := 0.06 * sin(ph)
-			hands = {"Right": Vector3(_x0 + 0.05 + sw, hz, hy), "Left": Vector3(_x0 + 0.05 - sw, hz, -hy)}
+			p["hR"] = Vector3(_x0 + 0.05 + sw, hz, hy)
+			p["hL"] = Vector3(_x0 + 0.05 - sw, hz, -hy)
 		"walk", "run":
-			lean = lw
-			bob = 0.035 * cos(2.0 * ph)
-			drop = 0.03
-			for side in ["Right", "Left"]:
-				var phk := ph + (0.0 if side == "Right" else PI)
-				feet[side] = Vector3(-stride * cos(phk), 0.14 * maxf(0.0, sin(phk)), 0.0)
+			p["lean"] = lw
+			p["bob"] = 0.035 * cos(2.0 * ph)
+			p["drop"] = 0.03
+			p["fR"] = Vector3(-stride * cos(ph), 0.14 * maxf(0.0, sin(ph)), 0.0)
+			p["fL"] = Vector3(-stride * cos(ph + PI), 0.14 * maxf(0.0, sin(ph + PI)), 0.0)
 			var sw2 := 0.30 * sin(ph)
 			var lift := 0.05 * absf(sw2)
-			hands = {"Right": Vector3(_x0 + 0.05 + sw2, hz + lift, hy), "Left": Vector3(_x0 + 0.05 - sw2, hz + lift, -hy)}
+			p["hR"] = Vector3(_x0 + 0.05 + sw2, hz + lift, hy)
+			p["hL"] = Vector3(_x0 + 0.05 - sw2, hz + lift, -hy)
 		"windup":
-			lean = -10.0
-			drop = 0.04
-			feet = {"Right": Vector3(0.12, 0, 0), "Left": Vector3(-0.12, 0, 0)}
-			hands = {"Right": Vector3(_x0 + 0.10, 1.70, 0.40), "Left": Vector3(_x0 + 0.10, 1.70, -0.40)}
+			p["lean"] = -10.0
+			p["drop"] = 0.04
+			p["fR"] = Vector3(0.12, 0, 0)
+			p["fL"] = Vector3(-0.12, 0, 0)
+			p["hR"] = Vector3(_x0 + 0.10, 1.70, 0.40)
+			p["hL"] = Vector3(_x0 + 0.10, 1.70, -0.40)
 			var wk := String(prof.get("windup", ""))
 			if wk == "point":                          # Podsłuchacz: ręka wskazuje, głowa do tyłu (krzyk)
-				lean = -6.0
-				hands = {"Right": Vector3(_x0 + 0.62, 1.15, 0.30), "Left": Vector3(_x0 + 0.05, hz, -hy)}
+				p["lean"] = -6.0
+				p["hR"] = Vector3(_x0 + 0.62, 1.15, 0.30)
+				p["hL"] = Vector3(_x0 + 0.05, hz, -hy)
 			elif wk == "reach":                        # Stalker: obie ręce wyciągnięte do przodu
-				lean = 2.0
-				hands = {"Right": Vector3(_x0 + 0.85, 1.30, 0.22), "Left": Vector3(_x0 + 0.85, 1.30, -0.22)}
+				p["lean"] = 2.0
+				p["hR"] = Vector3(_x0 + 0.85, 1.30, 0.22)
+				p["hL"] = Vector3(_x0 + 0.85, 1.30, -0.22)
 		"sleep":
-			lean = sl + 2.0 * sin(ph)
-			drop = 0.06
-			bob = 0.01 * sin(ph)
-			feet = {"Right": Vector3(0.05, 0, 0), "Left": Vector3(-0.05, 0, 0)}
-			hands = {"Right": Vector3(_x0 + 0.26, 0.40, 0.50), "Left": Vector3(_x0 + 0.26, 0.40, -0.50)}
+			p["lean"] = sl + 2.0 * sin(ph)
+			p["drop"] = 0.06
+			p["bob"] = 0.01 * sin(ph)
+			p["hk"] = 0.3
+			p["fR"] = Vector3(0.05, 0, 0)
+			p["fL"] = Vector3(-0.05, 0, 0)
+			p["hR"] = Vector3(_x0 + 0.26, 0.40, 0.50)
+			p["hL"] = Vector3(_x0 + 0.26, 0.40, -0.50)
+	return p
+
+func _mix_p(a: Dictionary, b: Dictionary, k: float) -> Dictionary:
+	var o := {}
+	for key in a:
+		o[key] = lerp(a[key], b[key], k)
+	return o
+
+func _pose_biped(anim: String, delta: float) -> void:
+	_sk.reset_bone_poses()
+	var key := "walk" if anim == "run" else anim
+	if not ["idle", "walk", "windup", "sleep"].has(key):
+		key = "idle"                                  # nazwa spoza zestawu (np. sprite bossa) — stoi
+	if _w.is_empty():
+		_w[key] = 1.0
+	# wagi póz bazowych dążą do 1 dla bieżącej animacji (płynne przejścia idle ↔ chód ↔ zapowiedź ↔ sen)
+	var kk := 1.0 - exp(-BLEND_RATE * delta)
+	var sum := 0.0
+	for n in ["idle", "walk", "windup", "sleep"]:
+		var cur := float(_w.get(n, 0.0))
+		_w[n] = lerpf(cur, 1.0 if n == key else 0.0, kk)
+		sum += float(_w[n])
+	var p := {}
+	var acc := 0.0
+	for n in ["idle", "walk", "windup", "sleep"]:
+		var w := float(_w[n]) / maxf(sum, 0.0001)
+		if w < 0.004:
+			continue
+		var bp := _biped_params(n)
+		if p.is_empty():
+			p = bp
+			acc = w
+		else:
+			acc += w
+			p = _mix_p(p, bp, w / acc)
+	if p.is_empty():
+		p = _biped_params("idle")
+	_last_p = p.duplicate()
+	var tilt := 0.0
+	var lift := 0.0
+	var amp := float(_spec.get("clip_amp", 1.0))
+	var hx := _x0
+	if _dead:
+		var dd := float(DEATH_DUR["biped"])
+		var u := clampf(_dead_t / dd, 0.0, 1.0)
+		if not _dead_from.is_empty():
+			p = _dead_from.duplicate()
+		var jerk := smoothstep(0.0, 0.14, u) * (1.0 - smoothstep(0.14, 0.34, u))     # szarpnięcie w tył od trafienia
+		var buckle := smoothstep(0.16, 0.6, u)                                         # kolana się uginają, ciało wiotczeje
+		var topple := smoothstep(0.52, 1.0, u)                                         # przewraca się na plecy
+		p["lean"] = lerp(p["lean"], -16.0, jerk) + 32.0 * buckle
+		p["drop"] = lerp(p["drop"], 0.0, jerk) + 0.40 * buckle
+		p["bob"] = 0.0
+		var limp := 0.3 + 0.7 * buckle
+		p["hR"] = (p["hR"] as Vector3).lerp(Vector3(hx + 0.34 * limp, 0.95 - 0.55 * buckle, 0.55), buckle * 0.9 + jerk * 0.3)
+		p["hL"] = (p["hL"] as Vector3).lerp(Vector3(hx + 0.34 * limp, 0.95 - 0.55 * buckle, -0.55), buckle * 0.9 + jerk * 0.3)
+		p["fR"] = (p["fR"] as Vector3).lerp(Vector3(0.16, 0.0, 0.0), buckle)
+		p["fL"] = (p["fL"] as Vector3).lerp(Vector3(-0.20, 0.0, 0.0), buckle)
+		tilt = -deg_to_rad(84.0) * topple * topple                                     # wokół stóp, twarzą w przód (przyspiesza jak w grawitacji)
+		lift = 0.22 * absf(sin(tilt))
+		_sink(_dead_t - dd)
+	elif _clip == "hit":
+		var u := _clip_t / float(CLIP_DUR["hit"])
+		var k := sin(PI * minf(u * 1.35, 1.0)) * (1.0 - u) * amp
+		p["lean"] = float(p["lean"]) - 14.0 * k
+		p["drop"] = float(p["drop"]) + 0.05 * k
+		p["hk"] = 0.8 - 0.9 * k
+		p["hR"] = (p["hR"] as Vector3) + Vector3(-0.16 * k, 0.10 * k, 0.0)
+		p["hL"] = (p["hL"] as Vector3) + Vector3(-0.16 * k, 0.10 * k, 0.0)
+	elif _clip == "attack":
+		var u := _clip_t / float(CLIP_DUR["attack"])
+		var s_in := smoothstep(0.0, 0.26, u)
+		var w := s_in * (1.0 - smoothstep(0.34, 1.0, u))                               # uderzenie szybko, powrót miękko
+		var hy2 := float((_spec.get("prof", {}) as Dictionary).get("hy", 0.62))
+		p["lean"] = lerp(float(p["lean"]), 26.0, w)
+		p["drop"] = lerp(float(p["drop"]), 0.16, w)
+		p["hR"] = (p["hR"] as Vector3).lerp(Vector3(_x0 + 0.80, 0.45, hy2 * 0.45), w)
+		p["hL"] = (p["hL"] as Vector3).lerp(Vector3(_x0 + 0.80, 0.45, -hy2 * 0.45), w)
+		p["fR"] = (p["fR"] as Vector3).lerp(Vector3(0.20, 0.0, 0.0), w * 0.8)
+		p["fL"] = (p["fL"] as Vector3).lerp(Vector3(-0.14, 0.0, 0.0), w * 0.8)
+	if not _dead:
+		_sink_y = 0.0
+	_tilt.basis = Basis(Vector3.BACK, tilt)
+	_tilt.position = Vector3(0.0, lift + _sink_y, 0.0)
+	_apply_biped(p)
+
+func _apply_biped(p: Dictionary) -> void:
 	var hips: int = _b["Hips"]
-	_move_global(hips, Vector3(0.0, -drop + bob, 0.0))
-	_rot_world(hips, Vector3.BACK, -deg_to_rad(lean))
-	_rot_world(_b["Head"], Vector3.BACK, deg_to_rad(lean) * (0.8 if anim != "sleep" else 0.3))
+	_move_global(hips, Vector3(0.0, -float(p["drop"]) + float(p["bob"]), 0.0))
+	_rot_world(hips, Vector3.BACK, -deg_to_rad(float(p["lean"])))
+	_rot_world(_b["Head"], Vector3.BACK, deg_to_rad(float(p["lean"])) * float(p["hk"]))
 	for side in ["Right", "Left"]:
 		var foot: int = _b[side + "Foot"]
 		var rest := _sk.get_bone_global_rest(foot)
-		var off: Vector3 = feet[side]
-		var ankle := rest.origin + off
-		_two_bone(_b[side + "UpLeg"], _b[side + "Leg"], foot, _leg_len[side][0], _leg_len[side][1], ankle, Vector3(1.0, 0.1, 0.0))
-		var tilt := 0.2 * maxf(0.0, off.y / 0.14)
-		_set_global_basis(foot, Basis(Vector3.BACK, -tilt) * rest.basis)
+		var off: Vector3 = p["fR"] if side == "Right" else p["fL"]
+		_two_bone(_b[side + "UpLeg"], _b[side + "Leg"], foot, _leg_len[side][0], _leg_len[side][1], rest.origin + off, Vector3(1.0, 0.1, 0.0))
+		var tilt_f := 0.2 * maxf(0.0, off.y / 0.14)
+		_set_global_basis(foot, Basis(Vector3.BACK, -tilt_f) * rest.basis)
 	for side in ["Right", "Left"]:
 		var sg := 1.0 if side == "Right" else -1.0                # prawa ręka po stronie kamery (+z)
-		_two_bone(_b[side + "Arm"], _b[side + "ForeArm"], _b[side + "Hand"], _arm_len[side][0], _arm_len[side][1], hands[side], Vector3(-0.4, -0.5, sg * 0.8))
+		var target: Vector3 = p["hR"] if side == "Right" else p["hL"]
+		_two_bone(_b[side + "Arm"], _b[side + "ForeArm"], _b[side + "Hand"], _arm_len[side][0], _arm_len[side][1], target, Vector3(-0.4, -0.5, sg * 0.8))

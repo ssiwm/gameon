@@ -46,6 +46,7 @@ var _spr_fg: Sprite2D
 var _rigs := {}                          ## Node gracza → {actor, model, gun, root}
 var _mirrors := {}                       ## id źródłowego AnimatedSprite2D → [źródło, AnimatedSprite3D]
 var _enemies := {}                       ## id węzła wroga 2D → [węzeł, Enemy3D] (modele 3D wrogów; null w drugim polu = brak modelu)
+var _estate := {}                        ## id węzła wroga 2D → stan do wykrywania zdarzeń (żyje, błysk trafienia, zapowiedź ataku)
 var _lights := {}                        ## id PointLight2D → [PointLight2D, Light3D]
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
@@ -143,6 +144,7 @@ func release() -> void:
 		if pr[1] != null and is_instance_valid(pr[1]):
 			(pr[1] as Node).queue_free()
 	_enemies.clear()
+	_estate.clear()
 	queue_free()
 
 func _process(delta: float) -> void:
@@ -400,15 +402,40 @@ func _sync_enemies(delta: float) -> void:
 			if e_v != null and is_instance_valid(e_v):
 				(e_v as Node).queue_free()
 			_enemies.erase(id)
+			_estate.erase(id)
 			continue
 		if e_v == null:
 			continue
 		var e: Node3D = e_v
 		var src: Node2D = src_v
 		var body := src.get_node_or_null("Body") as AnimatedSprite2D
-		var show: bool = src.is_visible_in_tree() and body != null
 		var pos := Level3D.px_to_m(body.global_position if body != null else src.global_position)
-		e.visible = show and absf(pos.x - cam_x) < 90.0
+		# zdarzenia z symulacji 2D → klipy modelu: śmierć (alive = false; węzeł jest tylko chowany), trafienie (błysk), atak (koniec zapowiedzi)
+		var st: Dictionary = _estate.get(id, {"alive": true, "flash": false, "wind": false})
+		var alive_v = src.get("alive")
+		var alive: bool = true if alive_v == null else bool(alive_v)
+		var wind_v = src.get("winding")
+		var winding: bool = false if wind_v == null else bool(wind_v)
+		if bool(st["alive"]) and not alive:
+			e.call("die")
+		elif not bool(st["alive"]) and alive:
+			e.call("revive")
+		var dying: bool = not alive and not bool(e.get("finished"))
+		var flash: bool = body != null and body.modulate.r > 1.9 and body.modulate.g > 1.9
+		if alive and body != null:
+			if flash and not bool(st["flash"]):
+				e.call("trigger", "hit")
+			elif bool(st["wind"]) and not winding:
+				e.call("trigger", "attack")
+		st["alive"] = alive
+		st["flash"] = flash
+		st["wind"] = winding
+		_estate[id] = st
+		var show: bool = (src.is_visible_in_tree() or dying) and body != null
+		var near: bool = absf(pos.x - cam_x) < 90.0
+		if dying and not near:
+			e.set("finished", true)
+		e.visible = show and near and not (not alive and bool(e.get("finished")))
 		if not e.visible:
 			continue
 		e.position = pos + Vector3(0.0, 0.0, 0.3)
@@ -416,7 +443,8 @@ func _sync_enemies(delta: float) -> void:
 		var anim := body.animation
 		var nfr := sf.get_frame_count(anim) if sf != null and sf.has_animation(anim) else 1
 		var lp := sf.get_animation_loop(anim) if sf != null and sf.has_animation(anim) else true
-		e.call("pose", delta, anim, body.flip_h, body.modulate, float(body.frame) + body.frame_progress, nfr, lp)
+		var md: Color = body.modulate if alive else Color.WHITE
+		e.call("pose", delta, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp)
 
 func _set_layer(root: Node, layer: int) -> void:
 	for mi in root.find_children("*", "VisualInstance3D", true, false):
