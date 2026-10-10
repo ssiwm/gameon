@@ -219,6 +219,7 @@ func _apply_cam_zoom() -> void:
 ## Ostrość postaci 3D: rozdzielczość renderu wg zoomu i rozmiaru okna (patrz Char3D.ss_for_view).
 func _apply_view_quality() -> void:
 	if c3d != null and is_instance_valid(c3d):
+		Char3D.set_quality(Settings.quality_idx)           # „Effects quality” zmienione w menu: statyki jakości, postacie dopasują się w apply_view
 		c3d.apply_view(Settings.cam_zoom(), float(get_window().size.y))
 
 ## Pixel-art z art/sprites (bake_sprites.py). Bez arkuszy zostaje rysowanie w kodzie.
@@ -227,6 +228,7 @@ func _wanted_sheet() -> String:
 
 func _setup_sprites() -> void:
 	if Sprites.char3d and Char3D.available():
+		Char3D.set_quality(Settings.quality_idx)           # jakość postaci 3D = „Effects quality”
 		c3d = Char3D.new()
 		c3d.name = "Char3D"
 		add_child(c3d)

@@ -20,6 +20,7 @@ static var ss := 4
 static var msaa := true
 ## Mapa normalnych (drugi przebieg renderu): światła 2D (latarka, flara) dają relief jak na sprite'ach HD. Kosztuje drugi render siatki; wyłączane w niskiej jakości.
 static var normals := true
+const VIEW_YAW_DEG := 15.0                  ## obrót kamery wokół postaci (widok 3/4): widać pierś, twarz i ekwipunek; 0 = czysty profil
 const FRAME_WP := Vector2(44.0, 44.0)       ## ramka w pikselach świata (zapas na broń podniesioną i wyciągniętą)
 const CAM_Y := 1.25                         ## wysokość środka ramki (m)
 const PRE := "mixamorig_"
@@ -55,6 +56,12 @@ void fragment() {
 var _vp: SubViewport
 var _vpn: SubViewport                        ## drugi przebieg: normalne widokowe (R=+X, G=+Y w górę, B=do kamery, ×0,5+0,5) tego samego świata 3D
 var _camn: Camera3D
+var _sun: DirectionalLight3D
+var _rim: DirectionalLight3D
+var _canvas_tex: CanvasTexture
+var _rev := 0
+var _last_zoom := 2.0
+var _last_h := 1080.0
 var _gun_n: Node3D
 var _normal_mat: ShaderMaterial
 var _cam: Camera3D
@@ -95,19 +102,45 @@ var ready_ok := false
 static func char_name_for(gender: String, outfit: String) -> String:
 	return "%s_%s" % [gender, "scav" if outfit == "scavenger" else outfit]
 
-## Niska jakość (--char3d-lq lub słaby sprzęt): mniejsza rozdzielczość renderu, bez MSAA.
+## Niska jakość (--char3d-lq lub słaby sprzęt): mniejsza rozdzielczość renderu, bez MSAA, normalnych, cieni i rim light.
 static func set_low_quality(on: bool) -> void:
 	ss = 2 if on else 4
 	msaa = not on
 	normals = not on
+	shadows = not on
+	rim = not on
 	ss_auto = not on
+	forced_low = on
+
+## Cienie własne postaci (kierunkowe, mała ramka) i światło kontrujące (rim) — wg poziomu jakości.
+static var shadows := true
+static var rim := true
+static var ss_cap := 8                       ## górna granica `ss` z poziomu jakości
+static var forced_low := false               ## --char3d-lq: poziom jakości z ustawień jest ignorowany
+static var quality_now := 2
+static var quality_rev := 0
+## Poziom z ustawienia „Effects quality” (Settings.quality_idx): 0 LOW (ss ≤ 4, bez MSAA / normalnych / cieni / rim),
+## 1 MEDIUM (ss ≤ 6, MSAA, normalne, rim), 2 HIGH (ss ≤ 8, + cienie własne).
+static func set_quality(q: int) -> void:
+	if forced_low:
+		return
+	q = clampi(q, 0, 2)
+	if q == quality_now:
+		return
+	quality_now = q
+	quality_rev += 1                         # żywe postacie dopasują się przy najbliższym apply_view
+	ss_cap = [4, 6, 8][q]
+	msaa = q >= 1
+	normals = q >= 1
+	rim = q >= 1
+	shadows = q >= 2
 
 ## Czy `ss` ma nadążać za zoomem kamery i rozmiarem okna (wyłącza je tryb niskiej jakości).
 static var ss_auto := true
 
 ## Ile pikseli renderu na piksel świata daje ostry obraz przy danym zoomie kamery i wysokości okna (baza 640×360).
 static func ss_for_view(zoom: float, win_h: float) -> int:
-	return clampi(int(ceil(zoom * win_h / 360.0)), 3, 8)
+	return clampi(int(ceil(zoom * win_h / 360.0)), 3, ss_cap)
 
 static func available() -> bool:
 	return DisplayServer.get_name() != "headless" and ResourceLoader.exists(DIR + DEFAULT_CHAR + ".glb")
@@ -116,6 +149,12 @@ var _ss_now := 0
 
 ## Dopasowuje rozdzielczość renderu do widoku: zoom kamery × rozmiar okna. Woła gracz przy starcie, zmianie zoomu i rozmiaru okna.
 func apply_view(zoom: float, win_h: float) -> void:
+	_last_zoom = zoom
+	_last_h = win_h
+	if _vp != null and _rev != quality_rev:
+		_rev = quality_rev
+		apply_quality()                                        # woła apply_view ponownie z nowym limitem ss
+		return
 	if not ss_auto or _vp == null:
 		return
 	var n := ss_for_view(zoom, win_h)
@@ -155,11 +194,22 @@ func setup(char_name := DEFAULT_CHAR, gun_key := DEFAULT_GUN) -> bool:
 	env.ambient_light_energy = 0.7
 	_cam.environment = env
 	_root3d.add_child(_cam)
-	var sun := DirectionalLight3D.new()
-	sun.basis = Basis.looking_at(Vector3(-0.35, -0.75, -0.55), Vector3.UP)
-	sun.light_energy = 1.05
-	sun.light_color = Color(1.0, 0.96, 0.9)
-	_root3d.add_child(sun)
+	_sun = DirectionalLight3D.new()
+	_sun.basis = Basis.looking_at(Vector3(-0.35, -0.75, -0.55), Vector3.UP)
+	_sun.light_energy = 1.05
+	_sun.light_color = Color(1.0, 0.96, 0.9)
+	_sun.shadow_enabled = shadows
+	_sun.shadow_bias = 0.03
+	_sun.shadow_normal_bias = 1.0
+	_sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	_sun.directional_shadow_max_distance = 10.0
+	_root3d.add_child(_sun)
+	_rim = DirectionalLight3D.new()                           # kontra zza postaci i z góry: chłodny obrys sylwetki odcina ją od tła
+	_rim.basis = Basis.looking_at(Vector3(0.15, -0.35, 0.93), Vector3.UP)
+	_rim.light_energy = 0.55
+	_rim.light_color = Color(0.75, 0.85, 1.0)
+	_rim.visible = rim
+	_root3d.add_child(_rim)
 	var fill := DirectionalLight3D.new()
 	fill.basis = Basis.looking_at(Vector3(0.7, -0.2, -0.4), Vector3.UP)
 	fill.light_energy = 0.28
@@ -168,14 +218,12 @@ func setup(char_name := DEFAULT_CHAR, gun_key := DEFAULT_GUN) -> bool:
 
 	_sprite = Sprite2D.new()
 	_sprite.name = "Body3D"
-	if normals:
-		_build_normal_pass()
-		var ct := CanvasTexture.new()
-		ct.diffuse_texture = _vp.get_texture()
-		ct.normal_texture = _vpn.get_texture()
-		_sprite.texture = ct
-	else:
-		_sprite.texture = _vp.get_texture()
+	_build_normal_pass()                                     # zawsze zbudowany; poziom jakości tylko go włącza / wyłącza (apply_quality)
+	_canvas_tex = CanvasTexture.new()
+	_canvas_tex.diffuse_texture = _vp.get_texture()
+	_canvas_tex.normal_texture = _vpn.get_texture() if normals else null
+	_sprite.texture = _canvas_tex
+	_vpn.render_target_update_mode = SubViewport.UPDATE_ALWAYS if normals else SubViewport.UPDATE_DISABLED
 	_sprite.scale = Vector2.ONE / float(ss)
 	_sprite.position = Vector2(0.0, -CAM_Y * WP_PER_M)
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
@@ -204,7 +252,23 @@ func _set_on_screen(v: bool) -> void:
 	var mode := SubViewport.UPDATE_ALWAYS if v else SubViewport.UPDATE_DISABLED
 	_vp.render_target_update_mode = mode
 	if _vpn != null:
-		_vpn.render_target_update_mode = mode
+		_vpn.render_target_update_mode = mode if normals else SubViewport.UPDATE_DISABLED
+
+## Przełącza elementy zależne od poziomu jakości na działającej postaci (MSAA, mapa normalnych dla świateł 2D, cienie, rim) i
+## przelicza rozdzielczość renderu z nowym limitem `ss`.
+func apply_quality() -> void:
+	if _vp == null:
+		return
+	var m := Viewport.MSAA_2X if msaa else Viewport.MSAA_DISABLED
+	_vp.msaa_3d = m
+	if _vpn != null:
+		_vpn.msaa_3d = m
+		_vpn.render_target_update_mode = SubViewport.UPDATE_ALWAYS if (normals and _on_screen) else SubViewport.UPDATE_DISABLED
+	_canvas_tex.normal_texture = _vpn.get_texture() if (normals and _vpn != null) else null
+	_sun.shadow_enabled = shadows
+	_rim.visible = rim
+	_ss_now = 0
+	apply_view(_last_zoom, _last_h)
 
 ## Drugi SubViewport z tym samym światem 3D i kamerą na warstwie 2: widzi tylko kopie siatek z materiałem wypisującym normalne.
 ## Kopie współdzielą szkielet z oryginałem, więc poza liczymy raz.
@@ -312,11 +376,20 @@ func set_look(char_name: String) -> bool:
 		_arm_len[side] = [_rest_dist(side + "Arm", side + "ForeArm"), _rest_dist(side + "ForeArm", side + "Hand")]
 	_origin_x = _sk.get_bone_global_rest(_b["Hips"]).origin.x
 	_ankle_y = _sk.get_bone_global_rest(_b["RightFoot"]).origin.y
-	_cam.position = Vector3(_origin_x, CAM_Y, 6.0)
+	_place_cameras()
 	if _camn != null:
-		_camn.position = _cam.position
 		_normal_clones(scene, true)
 	return true
+
+## Kamery (kolor i normalne) krążą wokół postaci o VIEW_YAW_DEG: widok 3/4 bez zmian w pozach IK i w broni.
+func _place_cameras() -> void:
+	var y := deg_to_rad(VIEW_YAW_DEG)
+	var centre := Vector3(_origin_x, CAM_Y, 0.0)
+	var pos := centre + Vector3(sin(y), 0.0, cos(y)) * 6.0
+	var xf := Transform3D(Basis(Vector3.UP, y), pos)
+	_cam.transform = xf
+	if _camn != null:
+		_camn.transform = xf
 
 ## Wymiana broni (klucz z weapon_def: m83, p64, maczeta…). Brak modelu → karabin M-83.
 func set_gun(key: String) -> void:
@@ -447,6 +520,10 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	if anim == "idle":
 		bob = -0.006 * sin(_time * 2.4)
 		lean = 4.0 + 0.8 * sin(_time * 2.4)
+		# mikroruch: oddech klatki piersiowej, powolne przeniesienie ciężaru, głowa lekko "szuka" (bez wpływu na broń: tylko kręgosłup i głowa)
+		_rot_world(_b["Spine2"], Vector3.BACK, deg_to_rad(0.9 * sin(_time * 1.9)))
+		_move_global(hips, Vector3(0.008 * sin(_time * 0.65), 0.0, 0.0))
+		_rot_world(_b["Head"], Vector3.UP, deg_to_rad(2.5 * sin(_time * 0.43) + 1.2 * sin(_time * 1.1)))
 	elif anim == "run":
 		lean = 13.0
 		bob = -0.035 * absf(sin(_phase))
@@ -572,4 +649,6 @@ func _pose_arms_relaxed(both: bool) -> void:
 ## Punkt 3D (m) → piksele świata względem stóp, z odbiciem.
 func _to_px(p: Vector3) -> Vector2:
 	var fl := -1.0 if _sprite.flip_h else 1.0
-	return Vector2((p.x - _origin_x) * WP_PER_M * fl, -p.y * WP_PER_M)
+	var y := deg_to_rad(VIEW_YAW_DEG)
+	var sx := (p.x - _origin_x) * cos(y) - p.z * sin(y)       # współrzędna wzdłuż prawej osi kamery obróconej o yaw
+	return Vector2(sx * WP_PER_M * fl, -p.y * WP_PER_M)

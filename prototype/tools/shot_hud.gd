@@ -11,6 +11,7 @@ var _humans := 1
 var _ui := 1
 var _down := false
 var _cam := -1
+var _quality := -1
 var _size := Vector2i(1280, 720)
 
 func _initialize() -> void:
@@ -25,6 +26,8 @@ func _initialize() -> void:
 			_ui = clampi(int(a.substr(5)), 0, 2)
 		elif a.begins_with("--cam="):
 			_cam = clampi(int(a.substr(6)), 0, 2)             # zoom kamery: 0 WIDE, 1 NORMAL, 2 CLOSE (bez zapisu)
+		elif a.begins_with("--quality="):
+			_quality = clampi(int(a.substr(10)), 0, 2)          # „Effects quality”: 0 LOW, 1 MEDIUM, 2 HIGH (bez zapisu)
 		elif a == "--down":
 			_down = true
 		elif a.begins_with("--size="):
@@ -47,6 +50,8 @@ func _process(_d: float) -> bool:
 		st.ui_idx = _ui
 		if _cam >= 0:
 			st.cam_idx = _cam
+		if _quality >= 0:
+			st.quality_idx = _quality
 		st.changed.emit()
 	if _frames == 60 and _down and _humans > 1:
 		for p in get_nodes_in_group("players"):
