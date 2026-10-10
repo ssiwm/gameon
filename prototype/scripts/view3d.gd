@@ -269,6 +269,16 @@ func _sync_rigs() -> void:
 			_make_rig(p, c3)
 		var rig: Dictionary = _rigs[p]
 		var actor: Node3D = rig["actor"]
+		var model_now = c3._char_node                      # zmiana wyglądu (warsztat): Char3D buduje nowy model w swoim świecie — przepinamy go do aktora
+		if model_now != null and is_instance_valid(model_now) and (model_now as Node).get_parent() != actor:
+			(model_now as Node).reparent(actor, false)
+			for mi in (model_now as Node).find_children("*", "MeshInstance3D", true, false):
+				var m := mi as MeshInstance3D
+				if m.layers == 2:
+					m.visible = false                          # kopie z przebiegu normalnych sprite'a 2D
+				else:
+					m.layers = LAYER_ACTORS
+			rig["model"] = model_now
 		var gun_now = c3._gun                              # zmiana broni: Char3D tworzy nowy model w swoim świecie — przepinamy go do aktora
 		if gun_now != null and is_instance_valid(gun_now) and (gun_now as Node).get_parent() != actor:
 			(gun_now as Node).reparent(actor, false)
