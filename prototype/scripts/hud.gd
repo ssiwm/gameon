@@ -388,7 +388,11 @@ var _boss_name: Label
 var _session: Label
 var _clock: Label
 var _scrap: Label                    ## portfel złomu (bank) i łup z bieżącej misji
-var _lv_label: Label                 ## poziom profilu i postęp XP (profile.gd)
+var _lv_label: Label                 ## plakietka „LV n” w karcie RUN (profile.gd)
+var _run_card: PanelContainer        ## karta RUN (prawy górny róg): trudność, zegar, złom, poziom i pasek XP
+var _run_xp_bar: Bar                  ## pasek XP w karcie RUN
+var _xp_txt: Label
+var _squad_info: Label               ## „HOST · 1/4 +1 AI” w nagłówku karty drużyny
 var _xp_feed: Label                  ## „+12 XP” — sumuje XP z ostatnich sekund i blaknie
 var _xp_acc := 0
 var _xp_t := 0.0
@@ -473,11 +477,9 @@ func _fit() -> void:
 	size = get_viewport_rect().size / _scale_now()
 	var w := size.x
 	var h := size.y
-	_place(_session, Vector2(w - MARGIN - SESSION_W, MARGIN), Vector2(SESSION_W, 12))
-	_place(_clock, Vector2(w - MARGIN - SESSION_W, MARGIN + 11.0), Vector2(SESSION_W, 14))
-	_place(_scrap, Vector2(w - MARGIN - SESSION_W, MARGIN + 37.0), Vector2(SESSION_W, 12))
-	_place(_lv_label, Vector2(w - MARGIN - SESSION_W, MARGIN + 50.0), Vector2(SESSION_W, 11))
-	_place(_xp_feed, Vector2(w - MARGIN - SESSION_W, MARGIN + 61.0), Vector2(SESSION_W, 12))
+	_run_card.reset_size()
+	_run_card.position = Vector2(w - MARGIN - _run_card.size.x, MARGIN)
+	_place(_xp_feed, Vector2(w - MARGIN - SESSION_W, MARGIN + _run_card.size.y + 3.0), Vector2(SESSION_W, 12))
 	var cw := 400.0
 	_place(_warn, Vector2((w - cw) * 0.5, h * WARN_Y), Vector2(cw, 28))
 	_place(_warn_sub, Vector2((w - cw) * 0.5, h * WARN_Y + 28.0), Vector2(cw, 14))
@@ -485,7 +487,7 @@ func _fit() -> void:
 	_place(_center, Vector2((w - cw) * 0.5, h * CENTER_Y), Vector2(cw, 28))
 	_place(_center_sub, Vector2((w - cw) * 0.5, h * CENTER_Y + 28.0), Vector2(cw, 16))
 	_place(_controls, Vector2(MARGIN, h - 16.0), Vector2(w - 2.0 * MARGIN, 12))
-	_place(_f1, Vector2(w - MARGIN - SESSION_W, MARGIN + 25.0), Vector2(SESSION_W, 12))
+	_place(_f1, Vector2(w - MARGIN - SESSION_W, h - 16.0), Vector2(SESSION_W, 12))   # dół, prawy koniec paska podpowiedzi
 
 # ---------------------------------------------------------------- budowa
 
@@ -575,7 +577,13 @@ func _build_squad_card() -> void:
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 3)
 	_squad_card.add_child(outer)
-	outer.add_child(_cap("SQUAD", UiTheme.MUTED, 0.22))
+	var sh := HBoxContainer.new()
+	var sc := _cap("SQUAD", UiTheme.MUTED, 0.22)
+	sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sh.add_child(sc)
+	_squad_info = _cap("", UiTheme.MUTED, 0.06)
+	sh.add_child(_squad_info)
+	outer.add_child(sh)
 	_squad_box = VBoxContainer.new()
 	_squad_box.add_theme_constant_override("separation", 5)
 	outer.add_child(_squad_box)
@@ -877,17 +885,54 @@ func _build_objective_card() -> void:
 	box.add_child(_boss_row)
 
 func _build_session() -> void:
-	_session = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
-	add_child(_session)
-	_clock = UiTheme.mono(UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
-	add_child(_clock)
-	_scrap = UiTheme.mono(UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_RIGHT))
-	add_child(_scrap)
+	# karta RUN w prawym górnym rogu: [RUN … trudność] / [zegar … złom] / [LV ▮ pasek XP n/m]; +XP pod kartą
+	_run_card = _card(Vector2(MARGIN, MARGIN))
+	_run_card.custom_minimum_size = Vector2(SESSION_W, 0)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	_run_card.add_child(box)
+	var head := HBoxContainer.new()
+	var cap := _cap("RUN", UiTheme.MUTED, 0.22)
+	cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(cap)
+	_session = _cap("", UiTheme.MUTED, 0.14)                 # trudność; kolor wg poziomu (_drive_status)
+	head.add_child(_session)
+	box.add_child(head)
+	var main := HBoxContainer.new()
+	main.add_theme_constant_override("separation", 6)
+	_clock = UiTheme.mono(UiTheme.label("", 16, UiTheme.TEXT))
+	_clock.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	main.add_child(_clock)
 	_scrap_coin = Coin.new()
-	add_child(_scrap_coin)
-	_lv_label = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
-	add_child(_lv_label)
-	_xp_feed = UiTheme.label("", 9, Color(0.55, 0.8, 1.0), HORIZONTAL_ALIGNMENT_RIGHT)
+	_scrap_coin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	main.add_child(_scrap_coin)
+	_scrap = UiTheme.mono(UiTheme.label("", 11, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_RIGHT))
+	main.add_child(_scrap)
+	box.add_child(main)
+	_hr(box)
+	var xp := HBoxContainer.new()
+	xp.add_theme_constant_override("separation", 5)
+	_lv_label = UiTheme.mono(UiTheme.label("LV 1", 7, Color("0b0c0b")))
+	var badge := StyleBoxFlat.new()
+	badge.bg_color = UiTheme.TEXT
+	badge.content_margin_left = 3
+	badge.content_margin_right = 3
+	badge.content_margin_top = 1
+	badge.content_margin_bottom = 1
+	_lv_label.add_theme_stylebox_override("normal", badge)
+	_lv_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	xp.add_child(_lv_label)
+	_run_xp_bar = Bar.new()
+	_run_xp_bar.custom_minimum_size = Vector2(0, 2)
+	_run_xp_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_run_xp_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_run_xp_bar.fill = UiTheme.MUTED
+	_run_xp_bar.back = Color("1f1e19")
+	xp.add_child(_run_xp_bar)
+	_xp_txt = UiTheme.mono(UiTheme.label("", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT))
+	xp.add_child(_xp_txt)
+	box.add_child(xp)
+	_xp_feed = UiTheme.mono(UiTheme.label("", 8, UiTheme.OK, HORIZONTAL_ALIGNMENT_RIGHT))
 	_xp_feed.modulate.a = 0.0
 	add_child(_xp_feed)
 	Profile.xp_gained.connect(_on_xp_gained)
@@ -1020,7 +1065,8 @@ func _drive_tiers(delta: float) -> void:
 	var target := 0.5 if _calm_t > 4.0 else 1.0
 	_tier_k = lerpf(_tier_k, target, minf(1.0, delta * (1.5 if target < 1.0 else 6.0)))
 	_obj_card.modulate.a = lerpf(1.0, 0.6, (1.0 - _tier_k) * 2.0)
-	for c in [_session, _clock, _scrap, _lv_label, _f1, _controls]:
+	_run_card.modulate.a = lerpf(1.0, 0.65, (1.0 - _tier_k) * 2.0)
+	for c in [_f1, _controls]:
 		(c as Control).self_modulate.a = lerpf(1.0, 0.45, (1.0 - _tier_k) * 2.0)
 	# ściemnienie pod karta wyniku i warsztatem
 	var ws := get_tree().get_first_node_in_group("workshop_ui")
@@ -1265,24 +1311,29 @@ func _on_level_up(lv: int) -> void:
 
 func _drive_status() -> void:
 	var lp := Profile.level_progress()
-	_lv_label.text = "LV %d  ·  %d / %d XP" % [Profile.level(), int(lp[0]), int(lp[1])]
+	_lv_label.text = "LV %d" % Profile.level()
+	_xp_txt.text = "%d/%d" % [int(lp[0]), int(lp[1])]
+	_run_xp_bar.value = float(lp[0]) / float(maxi(1, int(lp[1])))
+	_run_xp_bar.queue_redraw()
 	if _xp_t > 0.0:
 		_xp_t -= get_process_delta_time()
 		_xp_feed.text = "+%d XP" % _xp_acc
 		_xp_feed.modulate.a = clampf(_xp_t / 0.6, 0.0, 1.0)
 		if _xp_t <= 0.0:
 			_xp_acc = 0
-	_session.text = _net_status()
+	_session.text = tr(Difficulty.level_name())
+	_session.add_theme_color_override("font_color", [UiTheme.OK, UiTheme.TEXT, UiTheme.DANGER][clampi(Difficulty.level, 0, 2)])
+	_squad_info.text = _net_status()
 	_scrap.visible = Scrap.enabled()
 	_scrap_coin.visible = _scrap.visible
 	_scrap.text = "%d%s" % [Scrap.bank, ("  +%d" % Scrap.loot) if Scrap.loot > 0 else ""]
-	var sf := _scrap.get_theme_font("font")
-	var tw := sf.get_string_size(_scrap.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 9).x if sf != null else 30.0
-	_scrap_coin.position = Vector2(_scrap.position.x + _scrap.size.x - tw - 12.0, _scrap.position.y + 1.0)
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	if m != null:
 		var secs := int(m.elapsed)
 		_clock.text = "%02d:%02d" % [secs / 60, secs % 60]
+	_run_card.reset_size()
+	_run_card.position = Vector2(size.x - MARGIN - _run_card.size.x, MARGIN)
+	_xp_feed.position.y = MARGIN + _run_card.size.y + 3.0
 	_gear_card.visible = _player != null
 	_equip_card.visible = _player != null
 	if _player == null:
@@ -1962,10 +2013,10 @@ func _find_local_player() -> Node:
 			return p
 	return null
 
+## Skład sesji do nagłówka karty drużyny: „HOST · 1/4 +1 AI” (solo: „SOLO”).
 func _net_status() -> String:
-	var diff: String = Difficulty.level_name()
 	if not NoiseMgr.has_network():
-		return "SOLO  ·  %s" % diff
+		return "SOLO"
 	var humans := 0
 	var bots := 0
 	for p in get_tree().get_nodes_in_group("players"):
@@ -1974,4 +2025,4 @@ func _net_status() -> String:
 		else:
 			humans += 1
 	var who := "HOST" if multiplayer.is_server() else "CLIENT"
-	return "%s  ·  %d/4 players%s  ·  %s" % [who, humans, ("  +%d AI" % bots) if bots > 0 else "", diff]
+	return "%s · %d/4%s" % [who, humans, (" +%d AI" % bots) if bots > 0 else ""]
