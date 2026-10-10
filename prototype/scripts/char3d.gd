@@ -194,6 +194,9 @@ var land_t := -1.0                           ## 0..1 amortyzacji lądowania (ugi
 var land_str := 0.6                          ## siła lądowania 0..1 (z prędkości spadania)
 var back_run := false                        ## biegnie tyłem względem kierunku celowania: krok w przeciwną stronę, tułów odchylony
 var dying := 0.0                             ## 0..1 ostatnie sekundy wykrwawiania: drgawki i zapadanie się w ziemię (player.gd)
+var charge_t := 0.0                          ## 0..1 ładowania szyny (widmo1): drżenie, odchylenie tułowia
+var cycle_t := -1.0                          ## 0..1 cyklu po strzale (pompka, zamek), <0 = brak (weapon_view.gd)
+var recoil_px := 0.0                         ## px odrzutu broni (to samo co gun_kick_px, ale także po strzale poza przeładowaniem): wznos lufy i cofnięcie ciała
 var grabbed := false                         ## chwycony przez Pijawkę (player.gd): szamocze się, nogi dyndają nad ziemią
 var _grab_w := 0.0                           ## 0..1 waga pozy chwycenia (płynne wejście i wyjście)
 var air_vy := 0.0                            ## px/s prędkość pionowa w locie (− w górę): steruje pozą skoku (wyprost, podciągnięte kolana, sięganie do ziemi)
@@ -202,6 +205,20 @@ var _air_t := 0.0                            ## s w powietrzu (od odbicia)
 var sink_m := 0.0                            ## m: o tyle opuszczamy model pod podłoże (czyta view3d.gd)
 var _mc := {}                                ## bieżący cios bronią białą (krzywe ruchu), puste = brak ciosu
 const AW_STATES := ["idle", "run", "jump", "fall", "crouch", "crouch_walk"]
+## Pozy specyficzne dla broni: promień dłoni od barku (m) i opuszczenie względem linii celowania (− = wyżej, na ramieniu), rodzaj przeładowania
+## (mag / shell / cell / rail / bolt / pistol), cykl po strzale (pump / bolt), mnożniki wznosu lufy (climb) i cofnięcia ciała (body), odchylenie tułowia (lean, °).
+const WEAPON_POSE := {
+	"m83": {"reload": "mag", "radial": 0.30, "perp": 0.11, "climb": 1.0, "body": 1.0},
+	"sokol6": {"reload": "mag", "radial": 0.31, "perp": 0.11, "climb": 1.0, "body": 1.0},
+	"p64": {"reload": "pistol", "radial": 0.34, "perp": 0.07, "climb": 1.6, "body": 0.6},
+	"spread12": {"reload": "mag", "cycle": "pump", "radial": 0.29, "perp": 0.11, "climb": 1.2, "body": 1.3},
+	"srut8": {"reload": "shell", "cycle": "pump", "radial": 0.28, "perp": 0.10, "climb": 1.4, "body": 1.7, "lean": -2.0},
+	"lr7": {"reload": "cell", "radial": 0.30, "perp": 0.11, "climb": 0.5, "body": 0.5},
+	"hkm9": {"reload": "cell", "radial": 0.24, "perp": 0.20, "climb": 0.3, "body": 0.5, "lean": 3.0},
+	"gniew4": {"reload": "shell", "radial": 0.20, "perp": -0.03, "climb": 1.2, "body": 2.2, "lean": -6.0},
+	"widmo1": {"reload": "rail", "radial": 0.27, "perp": 0.10, "climb": 1.0, "body": 2.4, "lean": -6.0},
+	"ciegno6": {"reload": "bolt", "cycle": "bolt", "radial": 0.31, "perp": 0.10, "climb": 0.8, "body": 1.2},
+}
 const AW_RATE := 13.0                        ## 1/s: tempo mieszania póz bazowych (przejścia ~80 ms)
 var _aw := {}                                ## wagi póz bazowych — płynne przejścia zamiast przeskoków
 var _down := 0.0                             ## 0..1 postęp upadku (rośnie przy „down”, maleje przy wstawaniu po reanimacji)
@@ -769,6 +786,13 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		lunge = float(_mc["step"]) * 0.45
 		lean += float(_mc["lean"])
 		drop += float(_mc["drop"])
+	elif swing_t < 0.0 and _gun_key != "maczeta" and _gun_key != "kilof":
+		var wpb: Dictionary = WEAPON_POSE.get(_gun_key, {})
+		lean += float(wpb.get("lean", 0.0))                       # postawa zależna od broni (wyrzutnia na ramieniu, szyna z odchyleniem)
+		var bk := float(wpb.get("body", 1.0))
+		lunge -= minf(recoil_px * 0.004 * bk, 0.14)               # strzał: biodra cofają się, tułów odchyla się
+		lean -= minf(recoil_px * 0.30 * bk, 9.0)
+		lean -= 5.0 * charge_t                                    # ładowanie szyny: zaparcie się
 	lean += 7.0 * clampf((_damage - 0.55) / 0.45, 0.0, 1.0)         # ciężko ranny: tułów zgarbiony do przodu
 	var head_hit := 0.0
 	if hit_t >= 0.0:                                              # trafienie: rekoil tułowia i szarpnięcie głowy
@@ -908,7 +932,19 @@ func _pose_arms(theta: float) -> void:
 	var dirv := Vector3(cos(aim_t), sin(aim_t), 0.0)
 	var up := Vector3(-sin(aim_t), cos(aim_t), 0.0)
 	var gun_b := Basis(Vector3.BACK, aim_t)
-	var radial := float(_mc["rad"]) if swinging else 0.30
+	var wpa: Dictionary = {} if swinging else WEAPON_POSE.get(_gun_key, {})
+	if not swinging and reload_t >= 0.0 and wpa.has("reload"):
+		aim_t = theta - _reload_tilt(String(wpa["reload"]), clampf(reload_t, 0.0, 1.0))   # pochylenie broni wg rodzaju przeładowania (zamiast jednej sinusoidy)
+		dirv = Vector3(cos(aim_t), sin(aim_t), 0.0)
+		up = Vector3(-sin(aim_t), cos(aim_t), 0.0)
+		gun_b = Basis(Vector3.BACK, aim_t)
+	var radial := float(_mc["rad"]) if swinging else float(wpa.get("radial", 0.30))
+	var perp := 0.11 if swinging else float(wpa.get("perp", 0.11))
+	if not swinging:
+		aim_t += clampf(recoil_px * 0.012 * float(wpa.get("climb", 1.0)), 0.0, 0.18)       # wznos lufy po strzale
+		dirv = Vector3(cos(aim_t), sin(aim_t), 0.0)
+		up = Vector3(-sin(aim_t), cos(aim_t), 0.0)
+		gun_b = Basis(Vector3.BACK, aim_t)
 	var rear := Vector3.ZERO
 	var fore := Vector3.ZERO
 	var reach_l: float = _arm_len["Left"][0] + _arm_len["Left"][1]
@@ -916,8 +952,10 @@ func _pose_arms(theta: float) -> void:
 	# celowanie w dół: broń wysuwa się ku kamerze, żeby nie chować się za tułowiem (z=+ to bliższa strona)
 	for k in 8:
 		var hd := aim_t if swinging else theta                    # przy ciosie dłoń wędruje po łuku wokół barku (razem z ostrzem)
-		rear = sr + Vector3(cos(hd), sin(hd), 0.0) * radial - Vector3(-sin(hd), cos(hd), 0.0) * 0.11 + Vector3(0.0, 0.0, -0.13 + 0.28 * maxf(0.0, -sin(hd)))
+		rear = sr + Vector3(cos(hd), sin(hd), 0.0) * radial - Vector3(-sin(hd), cos(hd), 0.0) * perp + Vector3(0.0, 0.0, -0.13 + 0.28 * maxf(0.0, -sin(hd)))
 		rear -= dirv * kick_m
+		if charge_t > 0.0:                                        # ładowanie szyny: drżenie trzymanej broni
+			rear += Vector3(randf() - 0.5, randf() - 0.5, 0.0) * 0.018 * charge_t
 		fore = rear + gun_b * (_gun_info["fore"] as Vector3)
 		if _hands == 1 or fore.distance_to(sl) <= reach_l * 0.97:
 			break
@@ -932,14 +970,33 @@ func _pose_arms(theta: float) -> void:
 		var lt := fore
 		if climb_t >= 0.0:                                        # podciągnięcie: wolna ręka podpiera się o krawędź platformy
 			lt = fore.lerp(sl + Vector3(0.20, -reach_l * 0.97, 0.08), sin(PI * climb_t))
-		elif reload_t >= 0.0:                                       # lewa dłoń zostawia łoże, sięga po magazynek i wraca
-			var mag := rear + gun_b * Vector3(_gun_len * 0.1, -0.24, 0.0)
-			var k := sin(clampf(reload_t, 0.0, 1.0) * PI)
-			lt = fore.lerp(mag, ease(k, 0.5))
+		elif reload_t >= 0.0:                                       # przeładowanie wg rodzaju broni: lewa dłoń po torze (magazynek, naboje, ogniwo, zamek)
+			lt = rear + gun_b * _left_path(String(wpa.get("reload", "mag")), clampf(reload_t, 0.0, 1.0), _gun_info["fore"] as Vector3)
+		elif cycle_t >= 0.0 and String(wpa.get("cycle", "")) != "":  # cykl po strzale: pompka (dłoń po łożu tam i z powrotem) / zamek
+			var fl: Vector3 = _gun_info["fore"]
+			if String(wpa["cycle"]) == "pump":
+				var bump := sin(clampf((cycle_t - 0.12) / 0.6, 0.0, 1.0) * PI)
+				lt = rear + gun_b * (fl + Vector3(-0.17 * bump, 0.0, 0.0))
+			else:
+				lt = rear + gun_b * _left_path("bolt", clampf(cycle_t / 0.9, 0.0, 1.0), fl)
 		_two_bone(_b["LeftArm"], _b["LeftForeArm"], _b["LeftHand"], _arm_len["Left"][0], _arm_len["Left"][1], lt, Vector3(-0.25, -1.0, -0.4))
 		_set_global_basis(_b["LeftHand"], gx.basis)
 	elif swinging:
 		_pose_left_melee(gx, rear)
+	elif reload_t >= 0.0 and String(wpa.get("reload", "")) == "pistol":
+		# pistolet: lewa ręka podchodzi po magazynek z pasa (w dół i w tył), wsuwa go w chwyt i wraca
+		var rl2 := clampf(reload_t, 0.0, 1.0)
+		var reach2: float = _arm_len["Left"][0] + _arm_len["Left"][1]
+		var belt := sl + Vector3(-0.06, -reach2 * 0.95, 0.04)
+		var well := rear + gun_b * Vector3(0.05, -0.15, 0.0)
+		var tgt: Vector3
+		if rl2 < 0.35:
+			tgt = sl.lerp(belt, smoothstep(0.0, 0.35, rl2)) + Vector3(0.12, 0.0, 0.0) * (1.0 - smoothstep(0.0, 0.35, rl2))
+		elif rl2 < 0.75:
+			tgt = belt.lerp(well, smoothstep(0.35, 0.75, rl2))
+		else:
+			tgt = well.lerp(sl + Vector3(0.12, -reach2 * 0.9, 0.05), smoothstep(0.75, 1.0, rl2))
+		_two_bone(_b["LeftArm"], _b["LeftForeArm"], _b["LeftHand"], _arm_len["Left"][0], _arm_len["Left"][1], tgt, Vector3(-0.3, -1.0, -0.5))
 	else:
 		_pose_left_relaxed()
 	_set_global_basis(_b["RightHand"], gx.basis * Basis(Vector3.FORWARD, deg_to_rad(8.0)))
@@ -957,6 +1014,58 @@ func _pose_throw(theta: float) -> void:
 	_pose_left_relaxed()
 	muzzle_px = _to_px(target)
 	grip_px = muzzle_px
+
+## Pochylenie broni (rad, + = lufa w dół względem celowania) w trakcie przeładowania: lewa ręka bywa zasłonięta tułowiem, więc rodzaj przeładowania
+## widać głównie po ruchu samej broni. mag — opuszcza się, szarpnięcie przy wsunięciu magazynka i klepnięcie zamka; shell — nachylona, kołysze się
+## przy każdym naboju; cell / rail — lufa w górę (ogniwo od góry); bolt — lekko w dół, odciągnięcie zamka; pistol — przechylony ku drugiej ręce.
+func _reload_tilt(kind: String, u: float) -> float:
+	var env := smoothstep(0.0, 0.18, u) * (1.0 - smoothstep(0.82, 1.0, u))
+	match kind:
+		"shell":
+			return 0.40 * env + 0.11 * sin(TAU * 3.0 * u) * env
+		"cell":
+			return -0.30 * env + 0.05 * sin(TAU * 2.0 * u) * env
+		"rail":
+			return -0.42 * env + 0.04 * sin(TAU * 7.0 * u) * env
+		"bolt":
+			return 0.22 * env - 0.10 * sin(PI * clampf((u - 0.45) / 0.3, 0.0, 1.0)) * env
+		"pistol":
+			return 0.55 * sin(PI * u)
+		_:
+			var jolt := 0.10 * sin(PI * clampf((u - 0.64) / 0.12, 0.0, 1.0))
+			var slap := -0.09 * sin(PI * clampf((u - 0.84) / 0.08, 0.0, 1.0))
+			return 0.55 * env + jolt + slap
+
+## Tor lewej dłoni przy przeładowaniu w układzie broni (względem chwytu tylnego); u ∈ 0..1 to postęp przeładowania.
+## mag — wysuń magazynek, weź nowy z pasa, wsuń, przeładuj zamek; shell — kilka razy: nabój z pasa do gniazda; cell — ogniwo z góry; rail — jak cell, wolniej;
+## bolt — odciągnięcie i dosunięcie zamka. Pozycje zależne od długości broni.
+func _left_path(kind: String, u: float, fore_l: Vector3) -> Vector3:
+	var L := _gun_len
+	var P: Array = []
+	match kind:
+		"shell":
+			var v := fposmod(u * 3.0, 1.0)                            # trzy ładowania
+			P = [[0.0, fore_l], [0.25, Vector3(-0.04, -0.60, 0.0)], [0.55, Vector3(L * 0.16, -0.12, 0.0)], [0.72, Vector3(L * 0.16, -0.12, 0.0)], [1.0, fore_l]]
+			return _path_eval(P, v)
+		"cell", "rail":
+			P = [[0.0, fore_l], [0.18, Vector3(L * 0.08, 0.14, 0.0)], [0.38, Vector3(L * 0.08, 0.36, 0.0)], [0.55, Vector3(-0.10, -0.55, 0.0)],
+				[0.72, Vector3(L * 0.08, 0.32, 0.0)], [0.86, Vector3(L * 0.08, 0.10, 0.0)], [1.0, fore_l]]
+		"bolt":
+			P = [[0.0, fore_l], [0.25, Vector3(L * 0.16, 0.07, 0.0)], [0.45, Vector3(L * 0.16, 0.07, 0.0)], [0.6, Vector3(L * 0.04, 0.07, 0.0)],
+				[0.8, Vector3(L * 0.16, 0.07, 0.0)], [1.0, fore_l]]
+		_:
+			P = [[0.0, fore_l], [0.18, Vector3(L * 0.10, -0.22, 0.0)], [0.34, Vector3(L * 0.10, -0.46, 0.0)], [0.48, Vector3(-0.08, -0.60, 0.0)],
+				[0.64, Vector3(L * 0.10, -0.30, 0.0)], [0.74, Vector3(L * 0.10, -0.12, 0.0)], [0.84, Vector3(L * 0.14, 0.05, 0.0)], [1.0, fore_l]]
+	return _path_eval(P, u)
+
+func _path_eval(P: Array, u: float) -> Vector3:
+	for i in range(P.size() - 1):
+		var a: Array = P[i]
+		var b: Array = P[i + 1]
+		if u <= float(b[0]):
+			var t := (u - float(a[0])) / maxf(float(b[0]) - float(a[0]), 0.0001)
+			return (a[1] as Vector3).lerp(b[1], t * t * (3.0 - 2.0 * t))
+	return P[P.size() - 1][1]
 
 ## Cios bronią białą: krzywe ruchu (kąt zamachu względem celowania w rad, + = ostrze w dół; promień ręki od barku w m; pochylenie tułowia w °,
 ## zapadnięcie bioder w m; krok w m). Trafienie liczy gra w 45% czasu ciosu (`MELEE_HIT_AT`), więc uderzenie jest w u = 0,45.
