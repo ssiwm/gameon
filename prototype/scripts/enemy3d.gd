@@ -21,7 +21,7 @@ const SPEC := {
 	"stalker": {"fit": ["height", 54.0], "frame_h": 60.0, "cycle": 1.1,
 		"prof": {"lean": 5.0, "lean_walk": 8.0, "hy": 0.42, "hz": 0.62, "stride": 0.28, "windup": "reach"}},
 	"skoczek": {"fit": ["height", 17.0], "frame_h": 26.0, "cycle": 0.5, "crawler": true},
-	"trzosek": {"fit": ["length", 21.0], "frame_h": 22.0, "cycle": 0.55, "quad": true, "yaw": 90.0},
+	"trzosek": {"fit": ["length", 21.0], "frame_h": 22.0, "cycle": 0.55, "quad": true, "yaw": -90.0},
 }
 
 ## Materiał: kolor + normalne + ORM z modelu, bez metaliczności; oczy świecą (maska jak `pack_monsters_hd.py::glow_mask`);
