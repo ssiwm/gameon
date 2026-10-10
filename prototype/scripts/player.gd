@@ -53,7 +53,8 @@ const FF_COOLDOWN := 0.6       ## krzyk/hałas od FF najwyżej raz na tyle sekun
 # Down / revive (GDD §4)
 const NAME_SIZE := 4            ## etykieta nad głową (px świata) — mała, żeby nie dominowała nad sylwetką
 const PLATE_SHOW := 2.0        ## sekundy widoczności plakietki życia po trafieniu / leczeniu
-const PLATE_PIP := Vector2(3.4, 4.0)   ## tarcza życia na plakietce (px świata)
+const PLATE_PIP := Vector2(3.4, 4.0)   ## tarcza życia na plakietce (px, przed skalą)
+const PLATE_SCALE := 0.5               ## skala całej plakietki i imienia względem projektu (miarę podaje PLATE_PIP, font NAME_SIZE)
 const BLEED_TIME := 10.0
 const REVIVE_TIME := 4.0
 const REVIVE_RANGE := 26.0
@@ -1884,9 +1885,12 @@ func _draw_plate(ov: Node2D, font: Font, name_txt: String, col: Color, top: floa
 	var base := max_hp()
 	var name_a := lerpf(0.45, 1.0, _plate_a)
 	var label_col := Color(col.r, col.g, col.b, name_a)
-	var y := top - 14.0
+	# rysujemy w układzie plakietki: początek tuż nad głową (dół płytki), skala PLATE_SCALE — rozmiar, imię i ramka maleją razem
+	ov.draw_set_transform(Vector2(0.0, top - 4.5), 0.0, Vector2.ONE * PLATE_SCALE)
+	var y := -7.0
 	if _plate_a < 0.02:
-		_center_text(ov, font, name_txt, top - 9.0, NAME_SIZE, label_col)
+		_center_text(ov, font, name_txt, -2.0, NAME_SIZE, label_col)
+		ov.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		return
 	var a := _plate_a
 	var label_w := font.get_string_size(name_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_SIZE).x
@@ -1901,7 +1905,7 @@ func _draw_plate(ov: Node2D, font: Font, name_txt: String, col: Color, top: floa
 		pulse = 0.65 + 0.35 * sin(_wound_t * 5.0)
 	var edge := Color(0.62, 0.13, 0.13, a * (pulse if low else 1.0)) if low else Color(0.30, 0.26, 0.22, 0.9 * a)
 	ov.draw_rect(r, Color(0.035, 0.03, 0.026, 0.84 * a))
-	ov.draw_rect(r, edge, false, 0.6)
+	ov.draw_rect(r, edge, false, 0.5)
 	ov.draw_string(font, Vector2(x0 + pad + 0.4, y + 5.0), name_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_SIZE, Color(0, 0, 0, 0.8 * a))
 	ov.draw_string(font, Vector2(x0 + pad, y + 4.6), name_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_SIZE, label_col)
 	var px := x0 + pad + label_w + 2.2
@@ -1922,7 +1926,8 @@ func _draw_plate(ov: Node2D, font: Font, name_txt: String, col: Color, top: floa
 			if _pip_flash > 0.0 and i >= lost_from and i < base:
 				ring = Color(0.95, 0.62, 0.62, minf(1.0, _pip_flash * 2.0) * a)
 			pts.append(pts[0])
-			ov.draw_polyline(pts, ring, 0.6)
+			ov.draw_polyline(pts, ring, 0.5)
+	ov.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 ## Rany na ciele (HD): za każdy brakujący punkt życia ciemna plama krwi na tułowiu, ramieniu i udzie; przy niskim życiu z kapiącą strużką.
 func _draw_wounds(ov: Node2D, top: float) -> void:
