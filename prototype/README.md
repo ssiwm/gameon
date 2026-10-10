@@ -207,6 +207,10 @@ godot --headless --path . -- --host --missiontest --autoquit=9
 
 Flagi: `--mission=ID` (mapa startowa), `--maptest`, `--gentest`, `--ridetest`, `--ridehost`, `--rideclient`, `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--nightshift` (tryb Nocny Dyżur), `--shifttest`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--shot=PLIK.png [--shotat=KOLUMNA]` (zapis obrazu z gry), `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
 
+**Widok 3D („3D view”, `view3d.gd`):** ustawienie w pauzie (kolumna grafiki) albo `--view3d` / `--noview3d`. Ta sama symulacja 2D renderowana w 3D: geometria z mapy ASCII (`level3d.gd`), perspektywa, księżyc i światła z cieniami, mgła głębi, las w głębi; wrogowie jako billboardy z arkuszy HD, gracze jako modele `char3d.gd`; warstwy: tło 3D → rekwizyty i efekty 2D → gracze 3D → HUD. Celowanie, fizyka i sieć bez zmian (kamera 3D odwzorowuje Camera2D). Skala renderu wg „Effects quality”. Dev: `--view3dtoggle` (po 3 s wyłącza widok — test przywracania 2D).
+
+**Spike 3D (Bramka B):** `godot --path prototype res://scenes/spike_mission3d.tscn` — misja 1.1 jako scena 3D (geometria z mapy ASCII, perspektywa, światła i cienie 3D, postać z `char3d.gd`), bez wrogów, celu i sieci; opis, sterowanie, wyniki i szacunek portu w `MISSION_3D_SPIKE.md`.
+
 ## Zrzuty ekranu bez GPU (xvfb)
 
 Silnik z renderem programowym (Mesa llvmpipe) pozwala sprawdzić wygląd w CI / na serwerze bez ekranu — w ten sposób znaleziono
