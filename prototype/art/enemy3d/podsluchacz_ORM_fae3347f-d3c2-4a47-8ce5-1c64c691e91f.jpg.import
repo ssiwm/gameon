@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c7exhkj0vjhfc"
-path="res://.godot/imported/podsluchacz_ORM_fae3347f-d3c2-4a47-8ce5-1c64c691e91f.jpg-db4d8f0ebc70961599b56bbfa2182f65.ctex"
+path.s3tc="res://.godot/imported/podsluchacz_ORM_fae3347f-d3c2-4a47-8ce5-1c64c691e91f.jpg-db4d8f0ebc70961599b56bbfa2182f65.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "e473f8d90d6dbfa39eee506f6c191ecd"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/enemy3d/podsluchacz_ORM_fae3347f-d3c2-4a47-8ce5-1c64c691e91f.jpg"
-dest_files=["res://.godot/imported/podsluchacz_ORM_fae3347f-d3c2-4a47-8ce5-1c64c691e91f.jpg-db4d8f0ebc70961599b56bbfa2182f65.ctex"]
+dest_files=["res://.godot/imported/podsluchacz_ORM_fae3347f-d3c2-4a47-8ce5-1c64c691e91f.jpg-db4d8f0ebc70961599b56bbfa2182f65.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

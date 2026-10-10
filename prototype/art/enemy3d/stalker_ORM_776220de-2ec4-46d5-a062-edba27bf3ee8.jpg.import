@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dqykvmerwmnig"
-path="res://.godot/imported/stalker_ORM_776220de-2ec4-46d5-a062-edba27bf3ee8.jpg-ea5a59731166b24d5cbcb85792dba742.ctex"
+path.s3tc="res://.godot/imported/stalker_ORM_776220de-2ec4-46d5-a062-edba27bf3ee8.jpg-ea5a59731166b24d5cbcb85792dba742.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "6834067287f7be7dac388dcf325a6e55"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/enemy3d/stalker_ORM_776220de-2ec4-46d5-a062-edba27bf3ee8.jpg"
-dest_files=["res://.godot/imported/stalker_ORM_776220de-2ec4-46d5-a062-edba27bf3ee8.jpg-ea5a59731166b24d5cbcb85792dba742.ctex"]
+dest_files=["res://.godot/imported/stalker_ORM_776220de-2ec4-46d5-a062-edba27bf3ee8.jpg-ea5a59731166b24d5cbcb85792dba742.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

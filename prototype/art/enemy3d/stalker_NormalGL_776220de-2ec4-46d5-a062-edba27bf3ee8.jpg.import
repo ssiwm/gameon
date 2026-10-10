@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cim87kjxexnp0"
-path="res://.godot/imported/stalker_NormalGL_776220de-2ec4-46d5-a062-edba27bf3ee8.jpg-b93ae9c5b57813513ed45c16c5ab75c8.ctex"
+path.s3tc="res://.godot/imported/stalker_NormalGL_776220de-2ec4-46d5-a062-edba27bf3ee8.jpg-b93ae9c5b57813513ed45c16c5ab75c8.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "a36f32be23a3618fe1030367f90ce8cf"
@@ -14,22 +15,22 @@ generator_parameters={
 [deps]
 
 source_file="res://art/enemy3d/stalker_NormalGL_776220de-2ec4-46d5-a062-edba27bf3ee8.jpg"
-dest_files=["res://.godot/imported/stalker_NormalGL_776220de-2ec4-46d5-a062-edba27bf3ee8.jpg-b93ae9c5b57813513ed45c16c5ab75c8.ctex"]
+dest_files=["res://.godot/imported/stalker_NormalGL_776220de-2ec4-46d5-a062-edba27bf3ee8.jpg-b93ae9c5b57813513ed45c16c5ab75c8.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
-roughness/mode=0
-roughness/src_normal=""
+roughness/mode=1
+roughness/src_normal="res://art/enemy3d/stalker_NormalGL_776220de-2ec4-46d5-a062-edba27bf3ee8.jpg"
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0
