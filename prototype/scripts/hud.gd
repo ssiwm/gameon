@@ -48,7 +48,8 @@ const PROMPT_Y := 0.76           ## pasek kontekstowy — nad paskiem broni (dó
 ## rogu (własna karta największa, koledzy nad nią), broń i zasoby w płaskim pasku na środku dołu, a w lewym górnym tylko miernik hałasu.
 const BOTTOM_PAD := 20.0         ## odstęp kart dolnych od krawędzi (nad paskiem sterowania)
 const SQUAD_W := 150.0
-const ROW_H := 68.0              ## wspólna wysokość kart w górnym i dolnym rzędzie (jednostki logiczne) — dolne i górne krawędzie się pokrywają
+const ROW_H := 68.0              ## dolny rząd: karty drużyny i ekwipunku (jednostki logiczne); pasek broni jest niższy (własna wysokość)
+const TOP_H := 55.0              ## górny rząd: hałas, cel i RUN mają wspólną wysokość (dolne krawędzie się pokrywają)
 ## Kolory slotów = kolory kurtek sprite'ów graczy (bake_sprites.PLAYER_VARIANTS).
 const SLOT_COLORS := [Color(0.91, 0.62, 0.22), Color(0.25, 0.72, 0.85), Color(0.86, 0.28, 0.36), Color(0.45, 0.80, 0.30)]
 const BOT_COLOR := Color(0.58, 0.60, 0.66)
@@ -591,38 +592,31 @@ func _row(parent: Container, caption: String) -> HBoxContainer:
 func _build_noise_card() -> void:
 	var card := _card(Vector2(MARGIN, MARGIN))
 	_noise_card = card
-	card.custom_minimum_size = Vector2(0, ROW_H)
-	var outer := VBoxContainer.new()
-	outer.add_theme_constant_override("separation", 1)
+	card.custom_minimum_size = Vector2(0, TOP_H)
+	var outer := HBoxContainer.new()
+	outer.add_theme_constant_override("separation", 8)
 	card.add_child(outer)
-	var top := HBoxContainer.new()
-	var cap := _cap("NOISE", UiTheme.MUTED, 0.22)
-	cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(cap)
-	_noise_state = _cap("", UiTheme.MUTED, 0.14)
-	top.add_child(_noise_state)
-	outer.add_child(top)
-	var dial := HBoxContainer.new()
-	dial.add_theme_constant_override("separation", 4)
-	dial.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	outer.add_child(dial)
 	_noise_bar = VuMeter.new()                 # analogowy VU-metr; progi z NoiseMgr: 30 = zasypia, 40 = niepokój, 60 = budzi się ON
-	_noise_bar.custom_minimum_size = Vector2(96, 36)
-	_noise_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_noise_bar.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_noise_bar.custom_minimum_size = Vector2(70, 41)
+	_noise_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_noise_bar.ticks = [
 		[NoiseMgr.SLEEP_THRESHOLD / 100.0, Color(1, 1, 1, 0.35)],
 		[NoiseMgr.UNEASY_THRESHOLD / 100.0, UiTheme.ACCENT],
 		[NoiseMgr.AWAKE_THRESHOLD / 100.0, UiTheme.DANGER],
 	]
-	dial.add_child(_noise_bar)
-	_noise_val = UiTheme.mono(UiTheme.label("0%", 16, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
-	_noise_val.size_flags_vertical = Control.SIZE_SHRINK_END
-	_noise_val.custom_minimum_size = Vector2(40, 0)
-	dial.add_child(_noise_val)
+	outer.add_child(_noise_bar)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 1)
+	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	outer.add_child(box)
+	box.add_child(_cap("NOISE", UiTheme.MUTED, 0.22))
+	_noise_state = _cap("", UiTheme.MUTED, 0.14)
+	box.add_child(_noise_state)
+	_noise_val = UiTheme.mono(UiTheme.label("0%", 12, UiTheme.TEXT))
+	box.add_child(_noise_val)
 	_weather_row = UiTheme.label("", 7, UiTheme.MUTED)
 	_weather_row.visible = false
-	outer.add_child(_weather_row)
+	box.add_child(_weather_row)
 	# w kryjówce miernik hałasu nic nie mówi (zawsze 0%) — zastępuje go mały znacznik SAFE
 	_safe_chip = _card(Vector2(MARGIN, MARGIN))
 	_safe_chip.add_child(UiTheme.heading("SAFE", 8, UiTheme.OK))
@@ -650,7 +644,6 @@ func _build_squad_card() -> void:
 ## [nazwa + koszt strzału] [magazynek / zapas] [stan + przeładowanie + ciepło lufy] [sloty] [wabik, flary, latarka].
 func _build_gear_card() -> void:
 	_gear_card = _card(Vector2(MARGIN, MARGIN))
-	_gear_card.custom_minimum_size = Vector2(0, ROW_H)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 7)
 	row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -916,7 +909,7 @@ func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 
 func _build_objective_card() -> void:
 	_obj_card = _card(Vector2(MARGIN, MARGIN))
-	_obj_card.custom_minimum_size = Vector2(0, ROW_H)
+	_obj_card.custom_minimum_size = Vector2(0, TOP_H)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -956,9 +949,9 @@ func _build_objective_card() -> void:
 func _build_session() -> void:
 	# karta RUN w prawym górnym rogu: [RUN … trudność] / [zegar … złom] / [LV ▮ pasek XP n/m]; +XP pod kartą
 	_run_card = _card(Vector2(MARGIN, MARGIN))
-	_run_card.custom_minimum_size = Vector2(SESSION_W, ROW_H)
+	_run_card.custom_minimum_size = Vector2(SESSION_W, TOP_H)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 4)
+	box.add_theme_constant_override("separation", 2)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	_run_card.add_child(box)
 	var head := HBoxContainer.new()
@@ -970,16 +963,15 @@ func _build_session() -> void:
 	box.add_child(head)
 	var main := HBoxContainer.new()
 	main.add_theme_constant_override("separation", 6)
-	_clock = UiTheme.mono(UiTheme.label("", 16, UiTheme.TEXT))
+	_clock = UiTheme.mono(UiTheme.label("", 13, UiTheme.TEXT))
 	_clock.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	main.add_child(_clock)
 	_scrap_coin = Coin.new()
 	_scrap_coin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	main.add_child(_scrap_coin)
-	_scrap = UiTheme.mono(UiTheme.label("", 11, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_RIGHT))
+	_scrap = UiTheme.mono(UiTheme.label("", 10, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_RIGHT))
 	main.add_child(_scrap)
 	box.add_child(main)
-	_hr(box)
 	var xp := HBoxContainer.new()
 	xp.add_theme_constant_override("separation", 5)
 	_lv_label = UiTheme.mono(UiTheme.label("LV 1", 7, UiTheme.TEXT))
