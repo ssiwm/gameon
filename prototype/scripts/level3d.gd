@@ -209,7 +209,7 @@ void fragment() {
 	ALPHA = clamp(cloud * fall * density, 0.0, 0.85) * COLOR.a;
 }
 void light() {
-	DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * ALBEDO * 0.9;
+	DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * ALBEDO * (LIGHT_IS_DIRECTIONAL ? 0.12 : 0.65);       // księżyc ledwie muska mgłę, flary i latarki ją barwią
 }
 """
 ## Mgła przy ziemi: kilka warstw wstęg za płaszczyzną gry (z = -3 … -20 m), tylko nad kolumnami z otwartym niebem (jak las).
