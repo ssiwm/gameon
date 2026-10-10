@@ -9,6 +9,7 @@ extends Node2D
 
 const Lights := preload("res://scripts/lights.gd")
 
+const CLEAR_DIM := 0.66             ## mnożnik podbicia nieba i grzbietów przy CLEAR NIGHT (0,66 → ok. 30% ciemniej kadru niż pierwotne ×7 / ×4)
 const W := 1024
 const H := 480
 const ART_DIR := "res://art/backdrop/"
@@ -33,8 +34,8 @@ func set_weather(id: String, k: float) -> void:
 	var mist := 1.0
 	match id:
 		"clear":
-			sky = 1.0 + 6.0 * k
-			ridge = 1.0 + 3.0 * k
+			sky = 1.0 + (7.0 * CLEAR_DIM - 1.0) * k       # noc pogodna: podbicie nieba ×7 i grzbietów ×4, przyciemnione o 30% (CLEAR_DIM)
+			ridge = 1.0 + (4.0 * CLEAR_DIM - 1.0) * k
 		"rain":
 			sky = 1.0 - 0.5 * k
 		"storm":
