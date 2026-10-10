@@ -11,7 +11,6 @@ uniform float aberration = 0.001;
 uniform float grain = 0.04;
 uniform float desat = 0.0;
 uniform float hurt_pulse = 0.0;
-uniform float hunted = 0.0;
 uniform float t = 0.0;
 uniform float aspect = 1.78;
 float hash(vec2 p) {
@@ -37,7 +36,6 @@ void fragment() {
 	float v = smoothstep(0.32, 0.98, d);
 	col *= 1.0 - v * vignette;
 	col += vec3(0.55, 0.02, 0.03) * hurt_pulse * v;
-	col += vec3(0.20, 0.025, 0.018) * hunted * v * v;             // pościg (HUNTED): brzegi kadru ciemnoczerwone (makieta Hud.dc.html)
 	float g = hash(uv * vec2(1920.0, 1080.0) + fract(t) * 137.0) - 0.5;
 	col += g * grain * (1.0 - clamp(lum * 1.5, 0.0, 0.8));
 	COLOR = vec4(col, 1.0);
@@ -104,7 +102,6 @@ func _process(delta: float) -> void:
 	_mat.set_shader_parameter("grain", (BASE_GRAIN + _attn * 0.03 + _hurt * 0.02) * post)
 	_mat.set_shader_parameter("aberration", (BASE_ABERRATION + _attn * 0.0025 + _hurt * 0.0022) * post)
 	_mat.set_shader_parameter("desat", _hurt * 0.55)
-	_mat.set_shader_parameter("hunted", smoothstep(0.55, 0.75, _attn) * calm)
 	_mat.set_shader_parameter("hurt_pulse", _hurt * (0.18 + 0.38 * beat * calm))
 	_mat.set_shader_parameter("t", _t)
 	_mat.set_shader_parameter("aspect", size.x / maxf(size.y, 1.0))
