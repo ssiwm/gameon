@@ -299,19 +299,32 @@ func sky_open_at(p: Vector2) -> bool:
 			return false
 	return true
 
+## Znak tła w komórce ze znacznikiem (S, W, Y, g…) albo „.” gdy brak. Słup (pień `w`) przechodzi przez komórkę, jeśli jest nad nią albo pod nią —
+## inaczej pień kończył się kafel nad ziemią, gdy u podstawy stał znacznik, i wyglądał jak wiszący w powietrzu. W pozostałych przypadkach tło
+## dziedziczymy z lewego sąsiada (szukamy w lewo ponad sąsiednimi znacznikami — kilka znaczników obok siebie nie zostawia czarnych dziur w ścianie),
+## ale pień nie „wyrasta” z boku znacznika (powstawały samotne kawałki pnia przy ziemi).
+func _marker_back_char(c: int, r: int) -> String:
+	var ch := _ch(c, r)
+	if ch == ".":
+		return "."
+	if _ch(c, r - 1) == "w" or _ch(c, r + 1) == "w":
+		return "w"
+	var lc := c - 1
+	while lc >= 0 and c - lc <= 8 and not KINDS.has(_ch(lc, r)) and _ch(lc, r) != ".":
+		lc -= 1
+	var left := _ch(lc, r) if lc >= 0 else "."
+	if left == "w" or not (KINDS.has(left) and KINDS[left][2] == 2):
+		return "."
+	return left
+
 ## Jeden kafel mapy do warstw (tło / bryła) — wspólne dla budowy i odświeżania po zawale.
 func _place_cell(c: int, r: int) -> void:
 	var ch := _ch(c, r)
 	if not KINDS.has(ch):
-		# znacznik albo pusto — tło dziedziczymy z lewego sąsiada, żeby
-		# postać w posterunku nie zostawiała dziury w ścianie
-		# (szukamy w lewo ponad sąsiednimi znacznikami — kilka znaczników obok siebie nie zostawia czarnych dziur w tle)
-		var lc := c - 1
-		while lc >= 0 and c - lc <= 8 and ch != "." and not KINDS.has(_ch(lc, r)) and _ch(lc, r) != ".":
-			lc -= 1
-		var left := _ch(lc, r) if lc >= 0 else "."
-		if ch != "." and KINDS.has(left) and KINDS[left][2] == 2:
-			_back.set_cell(Vector2i(c, r), 0, Vector2i(KINDS[left][0], _row(c, r, false)))
+		# znacznik albo pusto — tło dziedziczymy (patrz _marker_back_char), żeby postać w posterunku nie zostawiała dziury w ścianie
+		var bc := _marker_back_char(c, r)
+		if bc != "." and KINDS.has(bc) and KINDS[bc][2] == 2:
+			_back.set_cell(Vector2i(c, r), 0, Vector2i(KINDS[bc][0], _row(c, r, false)))
 		return
 	var k: Array = KINDS[ch]
 	# wariant „wierzch" (rząd 0 atlasu), gdy nad kaflem nie ma bryły
@@ -581,13 +594,10 @@ func _build_terrain_hd() -> void:
 		for c in row.length():
 			var ch := row[c]
 			if not KINDS.has(ch) and ch != ".":
-				# znacznik (S, f, g…) — tło dziedziczy z lewego sąsiada, tak jak w _place_cell
-				var lc := c - 1
-				while lc >= 0 and c - lc <= 8 and not KINDS.has(_ch(lc, r)) and _ch(lc, r) != ".":
-					lc -= 1
-				var left := _ch(lc, r) if lc >= 0 else "."
-				if KINDS.has(left) and KINDS[left][2] == 2 and MATERIALS.has(left) and _load_material(MATERIALS[left]) != null:
-					_terrain_back_list.append([c, r, 0, MATERIALS[left]])
+				# znacznik (S, f, g…) — tło jak w _place_cell (słup nad / pod komórką, inaczej lewy sąsiad)
+				var bc := _marker_back_char(c, r)
+				if bc != "." and KINDS.has(bc) and KINDS[bc][2] == 2 and MATERIALS.has(bc) and _load_material(MATERIALS[bc]) != null:
+					_terrain_back_list.append([c, r, 0, MATERIALS[bc]])
 				continue
 			if not MATERIALS.has(ch) or not KINDS.has(ch):
 				continue
