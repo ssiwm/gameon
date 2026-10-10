@@ -18,11 +18,10 @@ extends Node2D
 enum Phase { OBJECTIVE, BOSS, EXTRACT, SUCCESS, FAILED }      # FAILED: tylko Nocny Dyżur (wipe kończy serię)
 
 const Lights := preload("res://scripts/lights.gd")
+const EXIT_FLARE := preload("res://scripts/exit_flare.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Weather := preload("res://scripts/weather.gd")
 const RunLog := preload("res://scripts/run_log.gd")
-const Sprites := preload("res://scripts/sprites.gd")
-const ItemsHd := preload("res://scripts/items_hd.gd")
 const Actions := preload("res://scripts/actions.gd")
 
 const EXTRACT_TIME := 3.0
@@ -76,7 +75,7 @@ var shift_downs := 0
 var shift_record := false     ## seria właśnie pobiła lokalny rekord
 
 var _sync_t := 0.0
-var _flare: PointLight2D
+var _exit_fx: Node2D
 var _was_dead := {}          # nazwa gracza -> bool (liczenie upadków, serwer)
 
 var _boss: Node = null
@@ -94,9 +93,11 @@ func _ready() -> void:
 	# znacznik (słup, strefa, paski) czytelny w ciemności; sama flara to
 	# prawdziwe światło 12 m (GDD §8.3) — widać ją z daleka i oświetla wyjście
 	material = Lights.unshaded()
-	_flare = Lights.make_light(Lights.radial(), Lights.FLARE_M, Color(0.45, 1.0, 0.55), 1.1, true)
-	_flare.enabled = false
-	add_child(_flare)
+	# punkt ewakuacji (flara, strefa, postęp, wskaźnik) rysuje i oświetla osobny węzeł (exit_flare.gd, EXTRACT_PLAN.md)
+	_exit_fx = EXIT_FLARE.new()
+	_exit_fx.name = "ExitFlare"
+	add_child(_exit_fx)
+	_exit_fx.setup(self)
 	rebind()
 
 ## Podpina cel do bieżącego poziomu: gniazda i boss (misja 1.3) albo generatory (misja 1.2). Wołane na starcie i po
@@ -143,13 +144,7 @@ func is_active() -> bool:
 # ---------------------------------------------------------------- serwer
 
 func _physics_process(delta: float) -> void:
-	queue_redraw()
 	finale_clock = finale_clock + delta if finale else 0.0
-	_flare.enabled = phase == Phase.EXTRACT or phase == Phase.SUCCESS
-	if _flare.enabled:
-		_flare.position = exit_pos + Vector2(0, -6)
-		var t := Time.get_ticks_msec() / 1000.0
-		_flare.energy = 1.0 + 0.2 * sin(t * 11.0) * sin(t * 4.3)
 	if not NoiseMgr.has_network():
 		return
 	if not multiplayer.is_server():
@@ -669,143 +664,3 @@ func _local_human() -> Node2D:
 		if not p.is_bot and p.is_multiplayer_authority():
 			return p
 	return null
-
-# ---------------------------------------------------------------- znacznik wyjścia
-
-func _draw() -> void:
-	if phase != Phase.EXTRACT and phase != Phase.SUCCESS:
-		return
-	var t := Time.get_ticks_msec() / 1000.0
-	var p := Vector2(roundf(exit_pos.x), roundf(exit_pos.y))
-	var flick := 0.8 + 0.2 * sin(t * 11.0) * sin(t * 4.3)
-	var col := Color(0.4, 1.0, 0.5)
-	var hot := Color(0.85, 1.0, 0.8)
-	var hd_flare := Sprites.newitem and ItemsHd.has("flare_stuck")           # HD: gładkie wsporniki, linia i słup światła (zamiast pikseli)
-	# poświata na ziemi: eliptyczna kałuża światła w trzech warstwach i pulsujący pierścień
-	for i in 3:
-		var rx := EXIT_RADIUS_X * (1.15 - 0.25 * float(i))
-		_draw_ellipse(p + Vector2(0, -1), rx, 5.0 - float(i), Color(col, (0.07 + 0.05 * float(i)) * flick))
-	var ring := fmod(t, 1.8) / 1.8
-	_draw_ellipse(p + Vector2(0, -1), 6.0 + ring * (EXIT_RADIUS_X + 6.0), 1.0 + ring * 3.0, Color(col, 0.28 * (1.0 - ring)), false)
-	# słup światła: gradient od podstawy w górę (zwęża się i gaśnie), plus szerszy halo
-	var h := 170.0
-	if hd_flare:
-		# słup z kilku warstw o malejącej szerokości — miękkie brzegi zamiast jednej ostrej krawędzi
-		for i in 6:
-			var f := float(i) / 5.0
-			var wb := lerpf(16.0, 4.0, f)
-			var wt := lerpf(7.0, 1.2, f)
-			var a := lerpf(0.05, 0.1, f) * flick
-			var ht := lerpf(h, h * 0.7, f)
-			draw_polygon(PackedVector2Array([p + Vector2(-wb, 0), p + Vector2(wb, 0), p + Vector2(wt, -ht), p + Vector2(-wt, -ht)]),
-				PackedColorArray([Color(col.lerp(hot, f * 0.6), a), Color(col.lerp(hot, f * 0.6), a), Color(col, 0.0), Color(col, 0.0)]))
-	else:
-		draw_polygon(PackedVector2Array([p + Vector2(-13, 0), p + Vector2(13, 0), p + Vector2(5, -h), p + Vector2(-5, -h)]),
-		PackedColorArray([Color(col, 0.16 * flick), Color(col, 0.16 * flick), Color(col, 0.0), Color(col, 0.0)]))
-	if not hd_flare:
-		draw_polygon(PackedVector2Array([p + Vector2(-5, 0), p + Vector2(5, 0), p + Vector2(2, -h * 0.8), p + Vector2(-2, -h * 0.8)]),
-			PackedColorArray([Color(hot, 0.28 * flick), Color(hot, 0.28 * flick), Color(hot, 0.0), Color(hot, 0.0)]))
-	# strefa ewakuacji: przerywana linia na ziemi i wsporniki na krawędziach
-	var dash := 6.0
-	var x := -EXIT_RADIUS_X
-	var phase_off := fmod(t * 14.0, dash * 2.0)
-	while x < EXIT_RADIUS_X:
-		var x0 := maxf(-EXIT_RADIUS_X, x + phase_off - dash * 2.0)
-		var x1 := minf(EXIT_RADIUS_X, x0 + dash)
-		if x1 > x0:
-			if hd_flare:
-				draw_line(Vector2(p.x + x0 + 0.8, p.y - 0.6), Vector2(p.x + x1 - 0.8, p.y - 0.6), Color(col, 0.18), 3.6, true)
-				draw_line(Vector2(p.x + x0 + 0.8, p.y - 0.6), Vector2(p.x + x1 - 0.8, p.y - 0.6), Color(col, 0.7), 1.6, true)
-				draw_circle(Vector2(p.x + x0 + 0.8, p.y - 0.6), 0.8, Color(col, 0.7))
-				draw_circle(Vector2(p.x + x1 - 0.8, p.y - 0.6), 0.8, Color(col, 0.7))
-			else:
-				draw_rect(Rect2(p.x + x0, p.y - 1.0, x1 - x0, 2.0), Color(col, 0.6))
-		x += dash * 2.0
-	for sx in [-1.0, 1.0]:
-		var ex: float = p.x + sx * EXIT_RADIUS_X
-		if hd_flare:
-			var post := PackedVector2Array([Vector2(ex - sx * 4.0, p.y - 12.0), Vector2(ex, p.y - 12.0), Vector2(ex, p.y)])
-			draw_polyline(post, Color(col, 0.14), 6.0, true)
-			draw_polyline(post, Color(col, 0.75), 2.0, true)
-			draw_circle(Vector2(ex, p.y - 12.0), 1.6, Color(hot, 0.95))
-			continue
-		draw_rect(Rect2(ex - 1.0, p.y - 12.0, 2.0, 12.0), Color(col, 0.7))
-		draw_rect(Rect2(ex - (4.0 if sx < 0.0 else 0.0), p.y - 12.0, 4.0, 2.0), Color(col, 0.7))
-		draw_rect(Rect2(ex - 1.0, p.y - 12.0, 2.0, 2.0), Color(hot, 0.9))
-	# flara: wbita w ziemię tuba (czerwona, z jasnym paskiem), kamyki u podstawy
-	if hd_flare:
-		ItemsHd.draw(self, "flare_stuck", p, 0.85)
-	else:
-		draw_rect(Rect2(p.x - 6.0, p.y - 2.0, 3.0, 2.0), Color(0.18, 0.2, 0.17))
-		draw_rect(Rect2(p.x + 3.0, p.y - 3.0, 4.0, 3.0), Color(0.16, 0.18, 0.15))
-		draw_rect(Rect2(p.x - 2.0, p.y - 11.0, 4.0, 11.0), Color(0.55, 0.12, 0.1))
-		draw_rect(Rect2(p.x - 2.0, p.y - 11.0, 1.0, 11.0), Color(0.8, 0.22, 0.16))
-		draw_rect(Rect2(p.x - 2.0, p.y - 7.0, 4.0, 1.0), Color(0.9, 0.85, 0.6))
-		draw_rect(Rect2(p.x - 2.0, p.y - 12.0, 4.0, 1.0), Color(0.25, 0.25, 0.22))
-	# płomień: trzy warstwy (zewnętrzna zieleń, jasny środek, biały rdzeń) migoczą niezależnie
-	var fh := 8.0 + 3.0 * sin(t * 17.0) + 2.0 * sin(t * 9.1)
-	var fw := 5.0 + 1.0 * sin(t * 13.0)
-	var fy := p.y - (13.0 if hd_flare else 12.0)
-	draw_circle(Vector2(p.x, fy - 5.0), 11.0, Color(col, 0.10 * flick))
-	draw_circle(Vector2(p.x, fy - 4.0), 6.5, Color(col, 0.16 * flick))
-	if hd_flare:
-		_draw_flame_hd(Vector2(p.x, fy), fh + 3.0, fw, t, col)
-	else:
-		draw_colored_polygon(PackedVector2Array([Vector2(p.x - fw, fy), Vector2(p.x + fw, fy), Vector2(p.x + 1.0 + sin(t * 7.0), fy - fh - 3.0), Vector2(p.x - 1.0, fy - fh - 3.0)]), Color(0.3, 0.95, 0.45, 0.85))
-		draw_colored_polygon(PackedVector2Array([Vector2(p.x - fw * 0.55, fy), Vector2(p.x + fw * 0.55, fy), Vector2(p.x, fy - fh)]), Color(0.7, 1.0, 0.7, 0.95))
-		draw_colored_polygon(PackedVector2Array([Vector2(p.x - 1.5, fy), Vector2(p.x + 1.5, fy), Vector2(p.x, fy - fh * 0.55)]), Color(1.0, 1.0, 0.9, 1.0))
-	# iskry: małe piksele unoszą się i gasną (stałe fazy — bez losowania co klatkę)
-	for i in 9:
-		var life := fmod(t * (0.55 + 0.07 * float(i)) + float(i) * 0.37, 1.0)
-		var sx := sin(float(i) * 12.9 + life * 5.0) * (4.0 + 18.0 * life)
-		var sy := fy - 4.0 - life * (46.0 + 10.0 * float(i % 3))
-		if hd_flare:
-			draw_circle(Vector2(p.x + sx, sy), (0.7 if i % 2 == 0 else 1.1) * (1.0 - life * 0.5), Color(hot, (1.0 - life) * 0.9))
-		else:
-			draw_rect(Rect2(roundf(p.x + sx), roundf(sy), 1.0 if i % 2 == 0 else 2.0, 1.0 if i % 2 == 0 else 2.0), Color(hot, (1.0 - life) * 0.9))
-	# dym: trzy przezroczyste kłęby dryfują w górę i rozpływają się
-	for i in 3:
-		var l2 := fmod(t * 0.28 + float(i) * 0.33, 1.0)
-		draw_circle(Vector2(p.x + sin(t * 0.8 + float(i)) * 6.0 * l2 + 3.0 * l2, fy - 8.0 - l2 * 70.0), 3.0 + l2 * 9.0, Color(0.5, 0.62, 0.5, 0.13 * (1.0 - l2)))
-	# postęp ewakuacji: ramka z osobnymi segmentami, nad etykietą gracza (P1 ~ -30 px)
-	if extract_progress > 0.0:
-		var bw := 44.0
-		var bx := p.x - bw * 0.5
-		var by := p.y - 66.0
-		draw_rect(Rect2(bx - 1.0, by - 1.0, bw + 2.0, 7.0), Color(0.04, 0.05, 0.05, 0.9))
-		draw_rect(Rect2(bx, by, bw, 5.0), Color(0.12, 0.16, 0.12))
-		draw_rect(Rect2(bx, by, bw * extract_progress, 5.0), col)
-		draw_rect(Rect2(bx, by, bw * extract_progress, 1.0), hot)
-		for k in range(1, 4):
-			draw_rect(Rect2(bx + bw * float(k) * 0.25 - 0.5, by, 1.0, 5.0), Color(0.04, 0.05, 0.05, 0.8))
-
-## Płomień flary w grafice HD: gładka kropla z falującym konturem i kołyszącym się czubkiem, trzy warstwy (zieleń, jasny środek, biały rdzeń).
-func _draw_flame_hd(base: Vector2, h: float, w: float, t: float, col: Color) -> void:
-	var layers := [[1.0, 1.0, Color(0.3, 0.95, 0.45, 0.8)], [0.6, 0.72, Color(0.7, 1.0, 0.7, 0.95)], [0.28, 0.45, Color(1.0, 1.0, 0.92, 1.0)]]
-	for lay in layers:
-		var ws: float = lay[0]
-		var hs: float = lay[1]
-		var pts := PackedVector2Array()
-		var n := 12
-		for side in [-1.0, 1.0]:
-			for i in n + 1:
-				if side > 0.0 and i == 0:
-					continue                                    # czubek już jest (bez dubla — triangulacja nie lubi zdegenerowanych wielokątów)
-				var f := float(i) / float(n)
-				var y: float = f if side < 0.0 else 1.0 - f
-				var width := w * ws * pow(maxf(0.0, 1.0 - y), 0.75) * (0.55 + 0.45 * sin(y * PI * 0.9 + 0.25)) * (1.0 + 0.12 * sin(t * 13.0 + y * 7.0))
-				var sway := sin(t * 7.0 + y * 2.5) * 1.6 * y * y
-				pts.append(base + Vector2(side * width + sway, -y * h * hs))
-		draw_colored_polygon(pts, lay[2])
-
-## Elipsa (wypełniona albo sam obrys) z N punktów — płaska plama światła na podłodze.
-func _draw_ellipse(c: Vector2, rx: float, ry: float, color: Color, filled := true) -> void:
-	var pts := PackedVector2Array()
-	for i in 28:
-		var a := TAU * float(i) / 28.0
-		pts.append(c + Vector2(cos(a) * rx, sin(a) * ry))
-	if filled:
-		draw_colored_polygon(pts, color)
-	else:
-		pts.append(pts[0])
-		draw_polyline(pts, color, 1.0)

@@ -1,6 +1,6 @@
 # Plan: redesign punktu ewakuacji z flarą („zielona flara”)
 
-Status: **plan z 2026-10-10, nic jeszcze nie wdrożone.** Zakres: wyłącznie warstwa wizualna, dźwiękowa i komunikacja punktu wyjścia
+Status: **plan z 2026-10-10; wdrożone E0–E5 w jednym PR** (odstępstwa: dźwięk korzysta z istniejącej pętli `flare_loop` — bez nowych próbek, narastanie tylko głośnością, bez „whoosh” i dudnienia w finale; kołki mają światełka rysowane w kodzie, nie osobne `PointLight2D`; wskaźnik poza kadrem liczy dystans poziomy jak tekst w HUD). Zakres: wyłącznie warstwa wizualna, dźwiękowa i komunikacja punktu wyjścia
 (`mission.gd` — `_draw`, HUD, audio). Reguły ekstrakcji (cała drużyna na nogach w strefie przez 3 s, `EXTRACT_TIME`, `EXIT_RADIUS_X/Y`)
 **zostają bez zmian**, żeby nie ruszać balansu ani sieci; ewentualne zmiany rozgrywki są w §9 jako osobne decyzje.
 

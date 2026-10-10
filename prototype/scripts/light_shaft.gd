@@ -46,6 +46,8 @@ var _dust: CPUParticles2D
 var _t := 0.0
 var _len := 120.0
 var _quality := -1
+var _base := BASE_STRENGTH
+var fixed_len := 0.0                  ## > 0: stała długość (bez sondowania podłogi) — np. słup ponad flarą (exit_flare.gd)
 
 func _ready() -> void:
 	z_index = 3
@@ -82,6 +84,9 @@ func _ready() -> void:
 func _probe_floor() -> void:
 	if not is_inside_tree():
 		return
+	if fixed_len > 0.0:
+		_set_length(fixed_len)
+		return
 	await get_tree().physics_frame
 	var space := get_world_2d().direct_space_state
 	var from := global_position
@@ -99,7 +104,14 @@ func _set_length(l: float) -> void:
 
 ## Poziom migotania lampy (≈ 0,86–1,0): smuga drga razem ze światłem.
 func set_level(f: float) -> void:
-	_mat.set_shader_parameter("strength", BASE_STRENGTH * f)
+	_mat.set_shader_parameter("strength", _base * f)
+
+## Kolor i bazowa siła smugi (inne niż ciepłe światło lampy — np. zielona flara ewakuacji, exit_flare.gd).
+func set_tint(c: Color, strength: float) -> void:
+	_mat.set_shader_parameter("tint", c)
+	_base = strength
+	if _dust != null:
+		_dust.color = Color(c.r, c.g, c.b, 0.55)
 
 func _apply_quality() -> void:
 	var q: int = Settings.quality_idx
