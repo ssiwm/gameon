@@ -1,9 +1,10 @@
 """Przygotowuje postać 3D (rig Mixamo z Tripo) do renderu w czasie rzeczywistym w grze (spike 3D).
 
 Uruchomienie (z korzenia repo):
-    blender -b --factory-startup -P prototype/tools/prep_char3d.py -- art_src/characters/tripo/male_scav_01_rig.glb prototype/art/char3d/male_scav.glb [--faces=6000] [--tex=1024]
-Co robi: usuwa śmieciową ikosferę, upraszcza siatkę (Decimate, wagi kości zostają), zostawia tylko mapę koloru
-zmniejszoną do --tex px (normalne i ORM pomijamy — postać ma ~100 px wysokości na ekranie), eksportuje GLB (JPEG).
+    blender -b --factory-startup -P prototype/tools/prep_char3d.py -- art_src/characters/tripo/male_scav_01_rig.glb prototype/art/char3d/male_scav.glb [--faces=12000] [--tex=2048]
+Co robi: usuwa śmieciową ikosferę, upraszcza siatkę (Decimate, wagi kości zostają), zmniejsza mapę koloru, normalnych i ORM
+(roughness / AO z Tripo) do --tex px i eksportuje GLB. Detal ma znaczenie: przy zoomie kamery 2,0–2,4 postać ma 130–160 px
+na 1080p (265–316 px na 4K), więc normalne i AO (kieszenie, pasy, szwy) zostają; metaliczność gra zeruje po wczytaniu.
 """
 import sys
 
@@ -11,8 +12,8 @@ import bpy
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 src, dst = argv[0], argv[1]
-FACES = int(next((a.split("=")[1] for a in argv if a.startswith("--faces=")), 6000))
-TEX = int(next((a.split("=")[1] for a in argv if a.startswith("--tex=")), 1024))
+FACES = int(next((a.split("=")[1] for a in argv if a.startswith("--faces=")), 12000))
+TEX = int(next((a.split("=")[1] for a in argv if a.startswith("--tex=")), 2048))
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=src)
@@ -48,27 +49,16 @@ while body.modifiers[0] != mod:
 bpy.ops.object.modifier_apply(modifier=mod.name)
 print("FACES", len(body.data.polygons))
 
-# materiał: sama mapa koloru
+# materiał: kolor + normalne + ORM zostają (połączenia z Tripo), wszystkie obrazy sprowadzone do --tex px
 mat = body.data.materials[0]
 nt = mat.node_tree
 bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
-color_img = None
-for n in nt.nodes:
-    if n.type == "TEX_IMAGE" and n.image and n.image.name.startswith("Color"):
-        color_img = n
-for l in list(nt.links):
-    if l.to_node == bsdf and l.to_socket.name != "Base Color":
-        nt.links.remove(l)
-for n in list(nt.nodes):
-    if n.type in ("NORMAL_MAP", "SEPARATE_COLOR") or (n.type == "TEX_IMAGE" and n != color_img):
-        nt.nodes.remove(n)
-bsdf.inputs["Roughness"].default_value = 0.85
 bsdf.inputs["Metallic"].default_value = 0.0
-color_img.image.scale(TEX, TEX)
 for i in list(bpy.data.images):
-    if i != color_img.image:
-        bpy.data.images.remove(i)
+    if i.size[0] > TEX or i.size[1] > TEX:
+        i.scale(TEX, TEX)
+    print("IMG", i.name, tuple(i.size))
 
-bpy.ops.export_scene.gltf(filepath=dst, export_format="GLB", export_image_format="JPEG", export_jpeg_quality=88,
+bpy.ops.export_scene.gltf(filepath=dst, export_format="GLB", export_image_format="JPEG", export_jpeg_quality=90,
                           export_animations=False, export_apply=False)
 print("OK", dst)
