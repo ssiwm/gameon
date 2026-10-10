@@ -421,6 +421,7 @@ func _update_char3d() -> void:
 		_c3_air_vy = 0.0
 	_c3_was_air = not grounded
 	c3d.back_run = absf(velocity.x) > 10.0 and signf(velocity.x) != _facing and grounded
+	c3d.dying = clampf(1.0 - bleed_left / 1.0, 0.0, 1.0) if dead else 0.0     # ostatnia sekunda wykrwawiania: drgawki i zapadanie się
 	if not is_bot:
 		c3d.set_look(_char3d_name())                   # wymiana modelu przy zmianie wyglądu (replikowane `look`); porównanie nazw jest tanie
 		c3d.set_palette(Look.palette_of(_look_code()))

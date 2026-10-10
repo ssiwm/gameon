@@ -1254,7 +1254,7 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 	print("[SHOT] %s (%dx%d)" % [path, img.get_width(), img.get_height()])
 	get_tree().quit()
 
-## Dev (--shotplayer): zdarzenia gracza 1 — hit (utrata zdrowia), down (powalenie), revive (powalenie, po 1,4 s wstanie).
+## Dev (--shotplayer): zdarzenia gracza 1 — hit, down, revive, melee / chop (cios maczetą / kilofem), dying (końcówka wykrwawiania).
 func _dev_player(what: String) -> void:
 	var pl: Node2D = _players.get_node_or_null("1")
 	if pl == null:
@@ -1265,6 +1265,16 @@ func _dev_player(what: String) -> void:
 			pl.set("_flash", 0.25)
 		"down":
 			pl.call("_go_down")
+		"melee", "chop":                                   # cios maczetą / kilofem, powtarzany co 1,4 s
+			for i in 3:
+				if not is_instance_valid(pl):
+					return
+				pl.weapons.melee_id = 11 if what == "chop" else 10
+				pl.weapons.try_melee()
+				await get_tree().create_timer(1.4).timeout
+		"dying":                                           # powalenie z końcówką wykrwawiania (podgląd drgawek i zapadania)
+			pl.call("_go_down")
+			pl.set("bleed_left", 1.2)
 		"revive":
 			pl.call("_go_down")
 			await get_tree().create_timer(1.4).timeout
