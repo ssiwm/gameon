@@ -294,8 +294,12 @@ func _start_throw_pose() -> void:
 func _char3d_name() -> String:
 	if is_bot:
 		return Char3D.char_name_for("female", "scavenger")
-	var c := look if Look.is_valid(look) else Look.code(0 if display_id % 2 == 1 else 1, 0)
+	var c := _look_code()
 	return Char3D.char_name_for(Look.gender_id(c), Look.outfit_id(c))
+
+## Kod wyglądu tego gracza (z replikowanego `look`; nieznany → domyślny wg numeru gracza).
+func _look_code() -> int:
+	return look if Look.is_valid(look) else Look.code(0 if display_id % 2 == 1 else 1, 0)
 
 ## Postać 3D (dev): animacja z tego samego stanu co sprite'y, celowanie z aim_dir; broń trzymana IK-iem w obu dłoniach.
 func _update_char3d() -> void:
@@ -315,6 +319,7 @@ func _update_char3d() -> void:
 		anim = "run"
 	if not is_bot:
 		c3d.set_look(_char3d_name())                   # wymiana modelu przy zmianie wyglądu (replikowane `look`); porównanie nazw jest tanie
+		c3d.set_palette(Look.palette_of(_look_code()))
 	if c3d.throw_t >= 0.0:
 		c3d.throw_t += get_process_delta_time() / 0.38
 		if c3d.throw_t >= 1.0:

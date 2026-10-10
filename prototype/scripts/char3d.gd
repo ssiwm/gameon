@@ -28,6 +28,64 @@ const DIR := "res://art/char3d/"
 const DEFAULT_CHAR := "male_scav"
 const DEFAULT_GUN := "m83"
 
+const Look := preload("res://scripts/look.gd")
+
+## Materiał modelu z paletą kolorów (look.gd, PALETTES): kolor + normalne + ORM z modelu, metaliczność 0 (bez sondy odbić czarna).
+const PALETTE_SHADER := """
+shader_type spatial;
+uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
+uniform sampler2D orm_tex : hint_default_white, filter_linear_mipmap, repeat_enable;
+uniform bool has_normal = false;
+uniform bool has_orm = false;
+uniform float hue_target = -1.0;          // < 0: bez zmiany barwy
+uniform float sat_mul = 1.0;
+uniform float val_mul = 1.0;
+vec3 rgb2hsv(vec3 c) {
+	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+	vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+	vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+	float d = q.x - min(q.w, q.y);
+	float e = 1.0e-10;
+	return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+vec3 hsv2rgb(vec3 c) {
+	vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+	vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+	return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+void fragment() {
+	vec3 c = texture(albedo_tex, UV).rgb;
+	if (hue_target >= 0.0 || sat_mul != 1.0 || val_mul != 1.0) {
+		vec3 h = rgb2hsv(c);
+		// skóra (pomarańcz, średnie nasycenie) zostaje; szarości, czerń i biel nie dostają obrotu barwy
+		float skin = smoothstep(0.01, 0.03, h.x) * (1.0 - smoothstep(0.085, 0.115, h.x)) * smoothstep(0.15, 0.25, h.y) * (1.0 - smoothstep(0.65, 0.8, h.y)) * smoothstep(0.25, 0.4, h.z);
+		float colored = smoothstep(0.12, 0.28, h.y);
+		float k = colored * (1.0 - skin);
+		float nh = h.x;
+		if (hue_target >= 0.0) {
+			float dh = fract(h.x - 0.17 + 0.5) - 0.5;      // odległość od barwy oliwkowej: część różnic odcieni zostaje
+			nh = fract(hue_target + dh * 0.35);
+		}
+		vec3 t = vec3(nh, clamp(h.y * sat_mul, 0.0, 1.0), clamp(h.z * val_mul, 0.0, 1.0));
+		c = mix(c, hsv2rgb(t), k);
+		c *= mix(1.0, val_mul, (1.0 - skin) * (1.0 - colored));
+	}
+	ALBEDO = c;
+	if (has_normal) {
+		NORMAL_MAP = texture(normal_tex, UV).xyz;
+	}
+	if (has_orm) {
+		vec4 o = texture(orm_tex, UV);
+		AO = o.r;
+		ROUGHNESS = o.g;
+	} else {
+		ROUGHNESS = 0.85;
+	}
+	METALLIC = 0.0;
+}
+"""
+
 const OUTLINE_SHADER := """
 shader_type canvas_item;
 uniform vec4 outline_color : source_color = vec4(0.078, 0.055, 0.094, 1.0);
@@ -63,6 +121,8 @@ var _canvas_tex: CanvasTexture
 var preview := false
 var preview_ss := 12
 var view_yaw := VIEW_YAW_DEG                 ## stopnie; w podglądzie kręci się „na stole obrotowym”
+var _pal_mats: Array = []                    ## ShaderMaterial postaci (paleta kolorów) — uniformy ustawia _apply_palette
+var _palette := 0
 var _rev := 0
 var _last_zoom := 2.0
 var _last_h := 1080.0
@@ -348,8 +408,12 @@ func _normal_material_for(mi: MeshInstance3D) -> Material:
 		return m
 	return _normal_mat
 
-## Materiały modelu pod światła gry: bez metaliczności (bez sondy odbić metal byłby czarny), reszta (kolor, normalne, roughness, AO) z modelu.
+## Materiały modelu pod światła gry i paletę kolorów: shader z kolorem, normalnymi, roughness i AO z modelu, bez metaliczności
+## (bez sondy odbić metal byłby czarny). Obiekty bez StandardMaterial3D zostają, jak były.
 func _prepare_materials(root: Node) -> void:
+	_pal_mats.clear()
+	var sh := Shader.new()
+	sh.code = PALETTE_SHADER
 	for n in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		if mi.mesh == null:
@@ -357,10 +421,35 @@ func _prepare_materials(root: Node) -> void:
 		for i in mi.mesh.get_surface_count():
 			var m := mi.mesh.surface_get_material(i)
 			if m is StandardMaterial3D:
-				var d := m.duplicate() as StandardMaterial3D
-				d.metallic = 0.0
-				d.metallic_texture = null
-				mi.set_surface_override_material(i, d)
+				var src := m as StandardMaterial3D
+				var sm := ShaderMaterial.new()
+				sm.shader = sh
+				sm.set_shader_parameter("albedo_tex", src.albedo_texture)
+				if src.normal_texture != null:
+					sm.set_shader_parameter("normal_tex", src.normal_texture)
+					sm.set_shader_parameter("has_normal", true)
+				var orm: Texture2D = src.roughness_texture if src.roughness_texture != null else src.ao_texture
+				if orm != null:
+					sm.set_shader_parameter("orm_tex", orm)
+					sm.set_shader_parameter("has_orm", true)
+				mi.set_surface_override_material(i, sm)
+				_pal_mats.append(sm)
+	_apply_palette()
+
+## Paleta kolorów stroju (Look.palette_of): obrót barwy / nasycenie / jasność dla nasyconych pikseli nie-skórnych.
+func set_palette(p: int) -> void:
+	if p == _palette:
+		return
+	_palette = p
+	_apply_palette()
+
+func _apply_palette() -> void:
+	var d: Dictionary = Look.PALETTES[clampi(_palette, 0, Look.PALETTES.size() - 1)]
+	for m in _pal_mats:
+		var sm := m as ShaderMaterial
+		sm.set_shader_parameter("hue_target", float(d["hue"]))
+		sm.set_shader_parameter("sat_mul", float(d["sat"]))
+		sm.set_shader_parameter("val_mul", float(d["val"]))
 
 ## Kopie siatek sceny na warstwie 2 z materiałem normalnych. skinned: kopie dzielą szkielet z oryginałem (są jego dziećmi).
 func _normal_clones(root: Node, skinned: bool) -> void:

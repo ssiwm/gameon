@@ -1,6 +1,6 @@
 extends SceneTree
 ## Zrzut kontrolny postaci 3D: zestawy póz / broni / wyglądów / stanów broni (przeładowanie, cios, odrzut).
-## godot --path prototype --script tools/shot_char3d.gd -- --set=poses|weapons|looks|states [--part=N] [--zoom=6] [--out=/tmp/char3d.png] [--wait=40]
+## godot --path prototype --script tools/shot_char3d.gd -- --set=poses|weapons|looks|states|palettes [--part=N] [--zoom=6] [--out=/tmp/char3d.png] [--wait=40]
 ## Wiersz konfiguracji: {anim, aim (°), dir (+1 prawo / −1 lewo), speed, gun, char, extra (rad), kick (px), reload (0..1), swing (0..1)}
 const Char3D := preload("res://scripts/char3d.gd")
 const WEAPONS := ["m83", "spread12", "p64", "srut8", "lr7", "hkm9", "gniew4", "sokol6", "widmo1", "ciegno6", "maczeta", "kilof"]
@@ -59,6 +59,12 @@ func _initialize() -> void:
 		"weapons":
 			for w in WEAPONS:
 				all.append(_row("idle", 0, 1, 0, w))
+		"palettes":
+			for ch in ["male_scav", "male_hazmat", "male_medic"]:
+				for pi in 6:
+					var row := _row("idle", 0, 1, 0, "m83", ch)
+					row["pal"] = pi
+					all.append(row)
 		"looks":
 			for c in LOOKS:
 				all.append(_row("idle", 0, 1, 0, "m83", c))
@@ -71,17 +77,20 @@ func _initialize() -> void:
 		if part < 0 or i / 4 == part:
 			_cfg.append(all[i])
 	var cols := 4 if part >= 0 else maxi(1, mini(8, _cfg.size()))
+	if set_name == "palettes":
+		cols = 6
 	for i in _cfg.size():
 		var cfg: Dictionary = _cfg[i]
 		var c := Char3D.new()
 		var col := i % cols
 		var row := i / cols
 		var sp := 1280.0 / cols
-		c.position = Vector2(sp * (col + 0.5), (600.0 if part >= 0 else 330.0 + row * 330.0))
+		c.position = Vector2(sp * (col + 0.5), (600.0 if part >= 0 else (330.0 + row * 330.0 if set_name != "palettes" else 215.0 + row * 235.0)))
 		c.scale = Vector2(zoom, zoom)
 		root.add_child(c)
 		if not c.setup(cfg["char"], cfg["gun"]):
 			push_error("setup nie powiodło się: %s" % cfg)
+		c.set_palette(int(cfg.get("pal", 0)))
 		_chars.append(c)
 		if _light:                                           # światło z prawej-góry każdej postaci (sprawdza relief z mapy normalnych i odbicie flip_h)
 			var l := PointLight2D.new()
