@@ -5,9 +5,9 @@ extends Node2D
 ##
 ## Elementy: flara (model HD + płomień z nieregularnym migotaniem, iskry, dym), światło z cieniami, słup światła (light_shaft.gd),
 ## granica strefy z sześciu kołków z łuczywami, łuk postępu wokół podstawy i kropki nad głowami graczy, których brakuje w strefie,
-## wskaźnik na krawędzi ekranu, gdy flara jest poza kadrem, kurz i odłamki w finale oraz pozycyjny syk flary.
-## Jakość (Settings.quality_idx): LOW — flara, łuk, wskaźnik, światło bez smugi i dymu; MEDIUM — + słup, dym, iskry; HIGH — + kurz i odłamki
-## w finale i animowana smuga. „Reduce effects” wyłącza wstrząsy światła i odłamki; czytelność (łuk, kołki, wskaźnik) zostaje.
+## kurz i odłamki w finale oraz pozycyjny syk flary. (Wskaźnik na krawędzi ekranu był w planie, ale okazał się zbędny — kierunek podaje HUD.)
+## Jakość (Settings.quality_idx): LOW — flara, łuk, światło bez smugi i dymu; MEDIUM — + słup, dym, iskry; HIGH — + kurz i odłamki
+## w finale i animowana smuga. „Reduce effects” wyłącza wstrząsy światła i odłamki; czytelność (łuk, kołki) zostaje.
 
 const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
@@ -18,7 +18,6 @@ const Vfx := preload("res://scripts/vfx.gd")
 const STAKE_X := [-34.0, -24.0, -13.0, 13.0, 24.0, 34.0]      ## położenia kołków na granicy strefy (px od flary; EXIT_RADIUS_X = 34)
 const SHAFT_H := 112.0
 const LOOP_ID := "exit_flare"
-const POINTER_MARGIN := Vector4(26.0, 52.0, 26.0, 74.0)     ## lewy, górny, prawy, dolny margines wskaźnika (px logiczne) — omija HUD
 
 var _m: Node2D                       ## misja
 var _light: PointLight2D
@@ -33,8 +32,6 @@ var _active := false
 var _loop_on := false
 var _debris_t := 2.0
 var _flick := 1.0                    ## wygładzony, nieregularny mnożnik jasności płomienia (0,7–1,2)
-var _pointer: Control                ## wskaźnik poza kadrem (w osobnej warstwie ekranowej)
-var _pointer_layer: CanvasLayer
 
 func setup(mission: Node2D) -> void:
 	_m = mission
@@ -45,14 +42,6 @@ func setup(mission: Node2D) -> void:
 	_light.position = Vector2(0.0, -6.0)
 	_light.enabled = false
 	add_child(_light)
-	_pointer_layer = CanvasLayer.new()
-	_pointer_layer.layer = 0
-	add_child(_pointer_layer)
-	_pointer = Control.new()
-	_pointer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_pointer.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_pointer.draw.connect(_draw_pointer)
-	_pointer_layer.add_child(_pointer)
 
 # ---------------------------------------------------------------- stan
 
@@ -78,7 +67,6 @@ func _process(delta: float) -> void:
 		_active = on
 		_set_active(on)
 	if not on:
-		_pointer.queue_redraw()
 		return
 	position = _m.exit_pos
 	if _quality != Settings.quality_idx:
@@ -108,7 +96,6 @@ func _process(delta: float) -> void:
 	_tick_finale(delta)
 	_tick_audio(prog)
 	queue_redraw()
-	_pointer.queue_redraw()
 
 func _set_active(on: bool) -> void:
 	# po wyjściu z fazy ekstrakcji (restart misji, nowa mapa) węzeł przestaje się odświeżać — bez ukrycia i przerysowania zostawał
@@ -376,42 +363,3 @@ func _draw_classic() -> void:
 		var sx2 := sin(float(i) * 12.9 + life * 5.0) * (4.0 + 18.0 * life)
 		var sy := fy - 4.0 - life * (46.0 + 10.0 * float(i % 3))
 		draw_rect(Rect2(roundf(sx2), roundf(sy), 1.0 if i % 2 == 0 else 2.0, 1.0 if i % 2 == 0 else 2.0), Color(hot, (1.0 - life) * 0.9))
-
-# ---------------------------------------------------------------- wskaźnik poza kadrem
-
-## Strzałka na krawędzi ekranu z odległością w metrach, gdy flara jest poza kadrem (marginesy omijają HUD).
-func _draw_pointer() -> void:
-	if not _active or _m == null or _m.phase != _m.Phase.EXTRACT:
-		return
-	var me: Node2D = null
-	for p in _humans():
-		if p.is_multiplayer_authority():
-			me = p
-			break
-	if me == null:
-		return
-	var vp := get_viewport()
-	var size := vp.get_visible_rect().size
-	var sp: Vector2 = vp.get_canvas_transform() * (_m.exit_pos + Vector2(0.0, -12.0))
-	var m := POINTER_MARGIN
-	var rect := Rect2(Vector2(m.x, m.y), size - Vector2(m.x + m.z, m.y + m.w))
-	if rect.has_point(sp):
-		return
-	var c := size * 0.5
-	var d := sp - c
-	var k := minf((rect.size.x * 0.5) / maxf(absf(d.x), 0.001), (rect.size.y * 0.5) / maxf(absf(d.y), 0.001))
-	var pos := c + d * k
-	var dir := d.normalized()
-	var col := _flare_col()
-	var meters := int(absf(_m.exit_pos.x - me.global_position.x) / 16.0)
-	var pulse := 0.65 + 0.35 * sin(_t * clampf(8.0 - float(meters) * 0.05, 2.0, 8.0))
-	var a := Color(col, 0.95 * pulse)
-	var side := Vector2(-dir.y, dir.x)
-	var tri := PackedVector2Array([pos + dir * 9.0, pos - dir * 5.0 + side * 6.0, pos - dir * 5.0 - side * 6.0])
-	_pointer.draw_colored_polygon(tri, Color(0.02, 0.04, 0.03, 0.75))
-	_pointer.draw_polyline(PackedVector2Array([tri[0], tri[1], tri[2], tri[0]]), a, 1.6, true)
-	var font := ThemeDB.fallback_font
-	var txt := "%d m" % meters
-	var tp := pos - dir * 18.0 - Vector2(float(txt.length()) * 2.6, -3.0)
-	_pointer.draw_string(font, tp + Vector2(0.6, 0.6), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0, 0, 0, 0.8))
-	_pointer.draw_string(font, tp, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, a)
