@@ -38,7 +38,6 @@ const MAX_HP := 3
 const STACK_HP := 6
 ## Sekundy leżenia, po których perk „Second chance" stawia gracza na nogi (nie więcej niż 80% czasu wykrwawienia).
 const SECOND_CHANCE_FRAC := 0.8
-const BONUS_HEART := Color(1.0, 0.8, 0.25)
 
 # Czucie gry (GDD §23)
 const COYOTE_TIME := 0.10       ## skok jeszcze chwilę po zejściu z krawędzi
@@ -53,6 +52,8 @@ const FF_COOLDOWN := 0.6       ## krzyk/hałas od FF najwyżej raz na tyle sekun
 
 # Down / revive (GDD §4)
 const NAME_SIZE := 4            ## etykieta nad głową (px świata) — mała, żeby nie dominowała nad sylwetką
+const PLATE_SHOW := 2.0        ## sekundy widoczności plakietki życia po trafieniu / leczeniu
+const PLATE_PIP := Vector2(3.4, 4.0)   ## tarcza życia na plakietce (px świata)
 const BLEED_TIME := 10.0
 const REVIVE_TIME := 4.0
 const REVIVE_RANGE := 26.0
@@ -125,6 +126,10 @@ var battery := BATTERY_MAX
 
 var _run_noise_tick := 0.0
 var _flash := 0.0
+var _plate_t := 0.0                ## ile jeszcze sekund plakietka życia zostaje widoczna po zmianie zdrowia
+var _plate_a := 0.0                ## płynna widoczność plakietki (0 = tylko imię, 1 = pełna)
+var _pip_flash := 0.0              ## błysk tarczy utraconej przed chwilą (rysujemy ją jako obrys)
+var _hp_seen := MAX_HP             ## ostatnio widziane zdrowie — do wykrycia trafienia / leczenia także u zdalnych graczy
 var _invuln := 0.0
 var _kick := 0.0
 var _ff_cd := 0.0
@@ -502,6 +507,7 @@ func _process(delta: float) -> void:
 	_update_occluder()
 	_wound_t += delta
 	_flash = maxf(0.0, _flash - delta)
+	_update_plate(delta)
 	_scream_ring = maxf(0.0, _scream_ring - delta)
 	if _camera.enabled:
 		_camera.offset = Feel.shake_offset()
@@ -1831,6 +1837,20 @@ func _draw() -> void:
 func _gun_len() -> float:
 	return weapons.cur().gun_len
 
+## Plakietka życia (opcja C): przy pełnym zdrowiu zostaje samo przygaszone imię; po trafieniu / leczeniu, a także gdy brakuje życia
+## (albo jest bonus), pojawia się pełna plakietka z tarczami. Działa u wszystkich graczy — `hp` jest replikowane.
+func _update_plate(delta: float) -> void:
+	if hp < _hp_seen:
+		_plate_t = PLATE_SHOW
+		_pip_flash = 0.7
+	elif hp > _hp_seen:
+		_plate_t = PLATE_SHOW * 0.75
+	_hp_seen = hp
+	_plate_t = maxf(0.0, _plate_t - delta)
+	_pip_flash = maxf(0.0, _pip_flash - delta)
+	var want := _plate_t > 0.0 or hp != max_hp() or dead
+	_plate_a = move_toward(_plate_a, 1.0 if want else 0.0, delta * 4.0)
+
 ## Rzeczy czytelne w ciemności (materiał unshaded): etykieta, HP, rozbłysk,
 ## stan „DOWN" i pasek podnoszenia. Teksty wyśrodkowane nad postacią.
 func _draw_overlay(ov: Node2D) -> void:
@@ -1855,20 +1875,54 @@ func _draw_overlay(ov: Node2D) -> void:
 		top = -16.0 if crouching else -22.0
 	if Sprites.newitem and hp < max_hp():
 		_draw_wounds(ov, top)
+	_draw_plate(ov, font, name_txt, col, top)
+
+## Plakietka życia nad głową: ciemna płytka z imieniem (kolor slotu) i tarczami jak na karcie drużyny — pełna krwista, pusta tylko obrysem,
+## bonusowa złota; przy 1 życiu ramka czerwieni się i pulsuje (puls wyłącza „Reduce effects”). Przy pełnym życiu rysujemy samo imię.
+func _draw_plate(ov: Node2D, font: Font, name_txt: String, col: Color, top: float) -> void:
 	var hearts := maxi(max_hp(), hp)
+	var base := max_hp()
+	var name_a := lerpf(0.45, 1.0, _plate_a)
+	var label_col := Color(col.r, col.g, col.b, name_a)
+	var y := top - 14.0
+	if _plate_a < 0.02:
+		_center_text(ov, font, name_txt, top - 9.0, NAME_SIZE, label_col)
+		return
+	var a := _plate_a
+	var label_w := font.get_string_size(name_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_SIZE).x
+	var pips_w := float(hearts) * PLATE_PIP.x + float(hearts - 1) * 1.2
+	var pad := 2.0
+	var w := pad + label_w + 2.2 + pips_w + pad
+	var x0 := -w * 0.5
+	var r := Rect2(x0, y, w, 7.0)
+	var low := hp <= 1 and base > 1
+	var pulse := 1.0
+	if low and Settings.fx_mult() > 0.0:
+		pulse = 0.65 + 0.35 * sin(_wound_t * 5.0)
+	var edge := Color(0.62, 0.13, 0.13, a * (pulse if low else 1.0)) if low else Color(0.30, 0.26, 0.22, 0.9 * a)
+	ov.draw_rect(r, Color(0.035, 0.03, 0.026, 0.84 * a))
+	ov.draw_rect(r, edge, false, 0.6)
+	ov.draw_string(font, Vector2(x0 + pad + 0.4, y + 5.0), name_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_SIZE, Color(0, 0, 0, 0.8 * a))
+	ov.draw_string(font, Vector2(x0 + pad, y + 4.6), name_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_SIZE, label_col)
+	var px := x0 + pad + label_w + 2.2
+	var py := y + (7.0 - PLATE_PIP.y) * 0.5
+	var lost_from := hp                          # tarcze od `hp` w górę (do poprzedniej wartości) błyskają jako obrys
 	for i in hearts:
-		var c := Color(0.92, 0.25, 0.3) if i < hp else Color(0.22, 0.22, 0.26)
-		if i >= max_hp():
-			c = BONUS_HEART      # serca ponad podstawowe — złote
-		if Sprites.newitem:
-			# HD (horror): cienkie, przygaszone „kreski życia" zamiast kreskówkowych serc — krwista czerwień, puste ledwo widoczne, bonus przyćmione złoto
-			var hc := Color(0.62, 0.12, 0.14, 0.92) if i < hp else Color(0.2, 0.2, 0.24, 0.5)
-			if i >= max_hp():
-				hc = Color(0.74, 0.58, 0.26, 0.92)
-			Vfx.draw_bar(ov, Rect2(-7.6 + i * 6.0 - (hearts - max_hp()) * 3.0, top - 6.4, 4.6, 1.5), 1.0, Color(0.02, 0.01, 0.01, 0.65), hc)
+		var ix := px + float(i) * (PLATE_PIP.x + 1.2)
+		var pts := PackedVector2Array([
+			Vector2(ix, py), Vector2(ix + PLATE_PIP.x, py), Vector2(ix + PLATE_PIP.x, py + PLATE_PIP.y * 0.6),
+			Vector2(ix + PLATE_PIP.x * 0.5, py + PLATE_PIP.y), Vector2(ix, py + PLATE_PIP.y * 0.6)])
+		if i < hp:
+			var fill := Color(0.6, 0.1, 0.12, a)
+			if i >= base:
+				fill = Color(0.84, 0.66, 0.23, a)       # serca ponad podstawowe — złote
+			ov.draw_colored_polygon(pts, fill)
 		else:
-			ov.draw_rect(Rect2(-8 + i * 6.0 - (hearts - max_hp()) * 3.0, top - 7.0, 4, 3), c)
-	_center_text(ov, font, name_txt, top - 9.0, NAME_SIZE, col)
+			var ring := Color(0.42, 0.36, 0.31, 0.85 * a)
+			if _pip_flash > 0.0 and i >= lost_from and i < base:
+				ring = Color(0.95, 0.62, 0.62, minf(1.0, _pip_flash * 2.0) * a)
+			pts.append(pts[0])
+			ov.draw_polyline(pts, ring, 0.6)
 
 ## Rany na ciele (HD): za każdy brakujący punkt życia ciemna plama krwi na tułowiu, ramieniu i udzie; przy niskim życiu z kapiącą strużką.
 func _draw_wounds(ov: Node2D, top: float) -> void:
