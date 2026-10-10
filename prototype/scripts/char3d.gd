@@ -100,11 +100,37 @@ static func set_low_quality(on: bool) -> void:
 	ss = 2 if on else 4
 	msaa = not on
 	normals = not on
+	ss_auto = not on
+
+## Czy `ss` ma nadążać za zoomem kamery i rozmiarem okna (wyłącza je tryb niskiej jakości).
+static var ss_auto := true
+
+## Ile pikseli renderu na piksel świata daje ostry obraz przy danym zoomie kamery i wysokości okna (baza 640×360).
+static func ss_for_view(zoom: float, win_h: float) -> int:
+	return clampi(int(ceil(zoom * win_h / 360.0)), 3, 8)
 
 static func available() -> bool:
 	return DisplayServer.get_name() != "headless" and ResourceLoader.exists(DIR + DEFAULT_CHAR + ".glb")
 
+var _ss_now := 0
+
+## Dopasowuje rozdzielczość renderu do widoku: zoom kamery × rozmiar okna. Woła gracz przy starcie, zmianie zoomu i rozmiaru okna.
+func apply_view(zoom: float, win_h: float) -> void:
+	if not ss_auto or _vp == null:
+		return
+	var n := ss_for_view(zoom, win_h)
+	if n == _ss_now:
+		return
+	_ss_now = n
+	ss = n                                                # nowe postacie startują od razu w dobrej jakości
+	_vp.size = Vector2i(int(FRAME_WP.x) * n, int(FRAME_WP.y) * n)
+	if _vpn != null:
+		_vpn.size = _vp.size
+	_sprite.scale = Vector2.ONE / float(n)
+	(_sprite.material as ShaderMaterial).set_shader_parameter("width", 0.5 * n)
+
 func setup(char_name := DEFAULT_CHAR, gun_key := DEFAULT_GUN) -> bool:
+	_ss_now = ss
 	_vp = SubViewport.new()
 	_vp.name = "Vp"
 	_vp.size = Vector2i(int(FRAME_WP.x) * ss, int(FRAME_WP.y) * ss)

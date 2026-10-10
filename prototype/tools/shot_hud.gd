@@ -1,7 +1,7 @@
 extends SceneTree
 ## Zrzut HUD-u przy zadanej rozdzielczości okna, rozmiarze HUD-u i liczbie graczy (test układu kart):
 ##   godot --path prototype --rendering-driver opengl3 --script tools/shot_hud.gd -- --size=1280x720 --ui=2 --humans=4 --out=hud.png
-## --ui: 0 SMALL, 1 NORMAL, 2 LARGE (nie zapisuje się do settings.cfg); --humans: ile osób w drużynie (1–4, pozostałe sloty zajmują boty
+## --ui: 0 SMALL, 1 NORMAL, 2 LARGE, --cam: 0 WIDE, 1 NORMAL, 2 CLOSE (nie zapisują się do settings.cfg); --humans: ile osób w drużynie (1–4, pozostałe sloty zajmują boty
 ## wg zasad sesji); --down: ostatnia osoba jest powalona (wiersz DOWN); --noise=N: poziom hałasu na mierniku; --wait=N: klatki.
 var _frames := 0
 var _main: Node
@@ -10,6 +10,7 @@ var _wait := 200
 var _humans := 1
 var _ui := 1
 var _down := false
+var _cam := -1
 var _size := Vector2i(1280, 720)
 
 func _initialize() -> void:
@@ -22,6 +23,8 @@ func _initialize() -> void:
 			_humans = clampi(int(a.substr(9)), 1, 4)
 		elif a.begins_with("--ui="):
 			_ui = clampi(int(a.substr(5)), 0, 2)
+		elif a.begins_with("--cam="):
+			_cam = clampi(int(a.substr(6)), 0, 2)             # zoom kamery: 0 WIDE, 1 NORMAL, 2 CLOSE (bez zapisu)
 		elif a == "--down":
 			_down = true
 		elif a.begins_with("--size="):
@@ -42,6 +45,8 @@ func _process(_d: float) -> bool:
 			_main._spawn_player(1000 + i)
 		var st := root.get_node("Settings")
 		st.ui_idx = _ui
+		if _cam >= 0:
+			st.cam_idx = _cam
 		st.changed.emit()
 	if _frames == 60 and _down and _humans > 1:
 		for p in get_nodes_in_group("players"):
