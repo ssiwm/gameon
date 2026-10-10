@@ -71,9 +71,9 @@ func enable_hd() -> void:
 ## jedna krawędź księżyca (jaśniejszy wierzchołek korony). Warstwy są powtarzane co W px, hill i drzewa zawijają się w poziomie.
 ## [nazwa, przesuw parallax, podstawa (ułamek H), rozstaw drzew (px), wysokość min, max, kolor, kolor krawędzi, kolor mgły, siła mgły, ziarno]
 const FOREST := [
-	["ridge_far", 0.18, 0.66, 7.4, 19.0, 36.0, Color(0.050, 0.058, 0.080), Color(0.062, 0.073, 0.103), Color(0.085, 0.096, 0.126), 0.42, 0x51],
-	["ridge_mid", 0.28, 0.71, 11.5, 29.0, 52.0, Color(0.034, 0.040, 0.057), Color(0.043, 0.051, 0.075), Color(0.068, 0.078, 0.104), 0.34, 0x66],
-	["ridge_near", 0.38, 0.76, 18.0, 40.0, 75.0, Color(0.020, 0.024, 0.034), Color(0.026, 0.032, 0.046), Color(0.050, 0.058, 0.080), 0.28, 0x77],
+	["ridge_far", 0.18, 0.66, 7.4, 19.0, 36.0, Color(0.038, 0.049, 0.062), Color(0.046, 0.058, 0.074), Color(0.066, 0.078, 0.094), 0.36, 0x51],
+	["ridge_mid", 0.28, 0.71, 11.5, 29.0, 52.0, Color(0.026, 0.034, 0.044), Color(0.032, 0.041, 0.053), Color(0.052, 0.062, 0.077), 0.30, 0x66],
+	["ridge_near", 0.38, 0.76, 18.0, 40.0, 75.0, Color(0.015, 0.020, 0.027), Color(0.019, 0.025, 0.033), Color(0.038, 0.046, 0.058), 0.24, 0x77],
 ]
 const FOREST_BOTTOM := 1500.0          ## wypełnienie podnóża sięga daleko w dół (mapy są wyższe niż 480 px tła)
 

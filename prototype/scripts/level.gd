@@ -673,39 +673,6 @@ func _rebuild_hd_chunks() -> void:
 			chunk.items = buckets[key]
 			node.add_child(chunk)
 
-## Słupy `w` (pnie / belki, 8 px) w ciemności wychodzą jako czarne prostokąty. Cienka krawędź „księżyca” po lewej stronie (unshaded, jak tło)
-## oddziela je od lasu i daje bryłę. Kosmetyka: ColorRect 1 px na każdy ciągły odcinek słupa.
-func _add_post_rims() -> void:
-	var old := get_node_or_null("PostRims")
-	if old != null:
-		old.queue_free()
-	var root := Node2D.new()
-	root.name = "PostRims"
-	root.z_index = 1
-	var cols := (_map[0] as String).length() if _map.size() > 0 else 0
-	var any := false
-	for c in cols:
-		var r := 0
-		while r < _map.size():
-			if _ch(c, r) != "w":
-				r += 1
-				continue
-			var r0 := r
-			while r < _map.size() and _ch(c, r) == "w":
-				r += 1
-			var rim := ColorRect.new()
-			rim.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			rim.color = Color(0.12, 0.15, 0.24, 0.75)
-			rim.position = Vector2(float(c * TILE + 4), float(r0 * TILE))
-			rim.size = Vector2(1.0, float((r - r0) * TILE))
-			rim.material = Lights.unshaded()
-			root.add_child(rim)
-			any = true
-	if any:
-		add_child(root)
-	else:
-		root.free()
-
 func _is_solid(c: int, r: int) -> bool:
 	# poza mapą = bryła (krawędzie mapy nie świecą)
 	if r < 0 or r >= _map.size() or c < 0 or c >= (_map[0] as String).length():
@@ -807,7 +774,6 @@ func _spawn_entities() -> void:
 		rt.name = "RangeTarget%d" % (i + 1)
 		rt.position = found["t"][i]
 		add_child(rt)
-	_add_post_rims()
 	for i in found["l"].size():
 		var lp: Node2D = LAMP.new()
 		lp.name = "Lamp%d" % (i + 1)
