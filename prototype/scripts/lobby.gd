@@ -103,7 +103,7 @@ func _fit() -> void:
 	var vp := get_viewport_rect().size
 	_card.reset_size()
 	var card := Vector2(CARD_W, _card.get_combined_minimum_size().y)
-	var k := minf(REF_SCALE * Settings.ui_mult(), minf(vp.x / (card.x + 40.0), vp.y / (card.y + 24.0)))
+	var k := minf(REF_SCALE * Settings.ui_rel(), minf(vp.x / (card.x + 40.0), vp.y / (card.y + 24.0)))
 	_root.scale = Vector2(k, k)
 	_root.size = vp / k
 	size = vp

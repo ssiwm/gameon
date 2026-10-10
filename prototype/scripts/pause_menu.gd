@@ -104,7 +104,7 @@ func _exit_tree() -> void:
 ## Korzeń skalujemy tak, żeby przy standardowym rozmiarze HUD 1 jednostka = 1 piksel makiety 1280×720.
 func _fit() -> void:
 	var vp := get_viewport_rect().size
-	var k := minf(REF_SCALE * Settings.ui_mult(), vp.y / (CARD_SIZE.y + 24.0))     # duży HUD nie wypycha karty poza ekran
+	var k := minf(REF_SCALE * Settings.ui_rel(), vp.y / (CARD_SIZE.y + 24.0))     # duży HUD nie wypycha karty poza ekran
 	scale = Vector2(k, k)
 	size = vp / k
 

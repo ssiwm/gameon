@@ -30,6 +30,7 @@ const RunLog := preload("res://scripts/run_log.gd")
 const WorkshopUi := preload("res://scripts/workshop_ui.gd")
 const Actions := preload("res://scripts/actions.gd")
 const Captions := preload("res://scripts/captions.gd")
+const W := preload("res://scripts/ui_widgets.gd")
 
 ## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.8
@@ -47,6 +48,8 @@ const PROMPT_Y := 0.76           ## pasek kontekstowy — nad paskiem broni (dó
 ## rogu (własna karta największa, koledzy nad nią), broń i zasoby w płaskim pasku na środku dołu, a w lewym górnym tylko miernik hałasu.
 const BOTTOM_PAD := 20.0         ## odstęp kart dolnych od krawędzi (nad paskiem sterowania)
 const SQUAD_W := 150.0
+const ROW_H := 68.0              ## dolny rząd: karty drużyny i ekwipunku (jednostki logiczne); pasek broni jest niższy (własna wysokość)
+const TOP_H := 55.0              ## górny rząd: hałas, cel i RUN mają wspólną wysokość (dolne krawędzie się pokrywają)
 ## Kolory slotów = kolory kurtek sprite'ów graczy (bake_sprites.PLAYER_VARIANTS).
 const SLOT_COLORS := [Color(0.91, 0.62, 0.22), Color(0.25, 0.72, 0.85), Color(0.86, 0.28, 0.36), Color(0.45, 0.80, 0.30)]
 const BOT_COLOR := Color(0.58, 0.60, 0.66)
@@ -176,6 +179,13 @@ class Pips extends Control:
 	var bonus_from := 99          ## ikony od tego indeksu to serca „ponad stan" (złote)
 	var bonus := Color(1.0, 0.8, 0.25)
 	var u := 1.0                  ## skala ikon (własne serca w karcie drużyny są większe)
+	var edge_off := Color(0.29, 0.12, 0.10)   ## "drop": kontur pustej kropli
+	var _sb := StyleBoxFlat.new()
+	## Minimalny rozmiar wg kształtu: "drop" (makieta karty drużyny) 9×11 co 12 j.; reszta jak dotąd.
+	func min_size() -> Vector2:
+		if shape == "drop":
+			return Vector2(count * 12.0 - 3.0, 11.0)
+		return Vector2(count * 11.0 * u - 2.0, 9.0 * u)
 	## Serce 9×8 pikseli: ciemny obrys (przesunięcia o 1 px) pod wypełnieniem i jasny piksel odblasku — jak sprite'y świata.
 	const HEART := ["011000110", "111101111", "111111111", "111111111", "011111110", "001111100", "000111000", "000010000"]
 	func _pixel_heart(o: Vector2, c: Color) -> void:
@@ -239,7 +249,22 @@ class Pips extends Control:
 			if i >= bonus_from:
 				c = bonus
 			var o := Vector2(i * 11.0, 0.0)
-			if shape == "heart" and UiTheme.hd_on():
+			if shape == "drop":
+				# makieta Hud.dc.html: kropla 14×18 px (9×11 j.), pełna = kolor, pusta = sam kontur; dół zaokrąglony mocniej niż góra
+				_sb.set_corner_radius_all(1)
+				_sb.corner_radius_bottom_left = 4
+				_sb.corner_radius_bottom_right = 4
+				_sb.anti_aliasing = true
+				var dr := Rect2(Vector2(i * 12.0, 0.0), Vector2(9.0, 11.0))
+				if i < filled or i >= bonus_from:
+					_sb.bg_color = c
+					_sb.set_border_width_all(0)
+				else:
+					_sb.bg_color = Color(0, 0, 0, 0)
+					_sb.border_color = edge_off
+					_sb.set_border_width_all(1)
+				draw_style_box(_sb, dr)
+			elif shape == "heart" and UiTheme.hd_on():
 				_blood_drop(o, c.lerp(Color(0.5, 0.05, 0.07), 0.45) if i < filled and i < bonus_from else c, i < filled)
 			elif shape == "heart":
 				_pixel_heart(o, c)
@@ -257,12 +282,45 @@ class Pips extends Control:
 				else:
 					draw_rect(Rect2(o + Vector2(0.5, 0.5), Vector2(8, 8)), Color(1, 1, 1, 0.55), false, 1.0)
 			else:
+				# ◆ pełny / ◇ pusty (makieta): płaski romb w kolorze zasobu, pusty to cienki kontur
 				var dia := PackedVector2Array([o + Vector2(4.5, 0), o + Vector2(9, 4.5), o + Vector2(4.5, 9), o + Vector2(0, 4.5)])
-				draw_colored_polygon(dia, c)
-				if UiTheme.hd_on():
-					draw_polyline(PackedVector2Array([dia[0], dia[1], dia[2], dia[3], dia[0]]), c.darkened(0.55), 1.0, true)
-					draw_colored_polygon(PackedVector2Array([o + Vector2(4.5, 1.2), o + Vector2(6.4, 3.0), o + Vector2(4.5, 4.0), o + Vector2(2.6, 3.0)]), c.lightened(0.5) * Color(1, 1, 1, 0.7))
+				if i < filled or i >= bonus_from:
+					draw_colored_polygon(dia, c)
+				else:
+					draw_polyline(PackedVector2Array([dia[0], dia[1], dia[2], dia[3], dia[0]]), Color(1, 1, 1, 0.3), 1.0, true)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+## Mały przebieg EKG obok serc własnego gracza (makieta): linia "biegnie" co 1,2 s; przy "Reduce effects" stała.
+class Ecg extends Control:
+	const PTS := [Vector2(0, 8), Vector2(10, 8), Vector2(13, 2), Vector2(17, 14), Vector2(21, 8), Vector2(40, 8)]
+	var color := Color(0.9, 0.28, 0.23)
+	var _t := 0.0
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(25, 10)
+	func _process(delta: float) -> void:
+		_t += delta
+		queue_redraw()
+	func _draw() -> void:
+		var kx := size.x / 40.0
+		var ky := size.y / 16.0
+		var head := 40.0 if Settings.fx_mult() <= 0.0 else fposmod(_t / 1.2, 1.0) * 52.0
+		var pts := PackedVector2Array()
+		for p in PTS:
+			pts.append(Vector2(p.x * kx, p.y * ky))
+		draw_polyline(pts, Color(color, 0.28), 1.0, true)
+		var lit := PackedVector2Array()
+		for i in PTS.size():
+			var p: Vector2 = PTS[i]
+			if p.x <= head:
+				lit.append(pts[i])
+			else:
+				var q: Vector2 = PTS[i - 1]
+				var f := clampf((head - q.x) / maxf(0.001, p.x - q.x), 0.0, 1.0)
+				lit.append(pts[i - 1].lerp(pts[i], f))
+				break
+		if lit.size() >= 2:
+			draw_polyline(lit, color, 1.0, true)
 
 ## Karta zakotwiczona w obiekcie świata: panel z „ogonkiem” (strzałką) pod spodem, wskazującym obiekt.
 class TailPanel extends PanelContainer:
@@ -355,10 +413,10 @@ var _squad_card: PanelContainer
 var _squad_box: VBoxContainer
 var _squad_rows := {}            ## instance_id gracza -> słownik wiersza
 var _gear_card: PanelContainer
+var _equip_card: PanelContainer      ## zasoby (Q / F / ALT / L) — osobna karta w prawym dolnym rogu
 var _reload_bar: Bar
 var _charges: Pips
 var _flares: Pips
-var _gren: Pips
 var _gren_name: Label
 var _note: Label
 var _note_t := 0.0
@@ -386,7 +444,11 @@ var _boss_name: Label
 var _session: Label
 var _clock: Label
 var _scrap: Label                    ## portfel złomu (bank) i łup z bieżącej misji
-var _lv_label: Label                 ## poziom profilu i postęp XP (profile.gd)
+var _lv_label: Label                 ## plakietka „LV n” w karcie RUN (profile.gd)
+var _run_card: PanelContainer        ## karta RUN (prawy górny róg): trudność, zegar, złom, poziom i pasek XP
+var _run_xp_bar: Bar                  ## pasek XP w karcie RUN
+var _xp_txt: Label
+var _squad_info: Label               ## „HOST · 1/4 +1 AI” w nagłówku karty drużyny
 var _xp_feed: Label                  ## „+12 XP” — sumuje XP z ostatnich sekund i blaknie
 var _xp_acc := 0
 var _xp_t := 0.0
@@ -471,11 +533,9 @@ func _fit() -> void:
 	size = get_viewport_rect().size / _scale_now()
 	var w := size.x
 	var h := size.y
-	_place(_session, Vector2(w - MARGIN - SESSION_W, MARGIN), Vector2(SESSION_W, 12))
-	_place(_clock, Vector2(w - MARGIN - SESSION_W, MARGIN + 11.0), Vector2(SESSION_W, 14))
-	_place(_scrap, Vector2(w - MARGIN - SESSION_W, MARGIN + 37.0), Vector2(SESSION_W, 12))
-	_place(_lv_label, Vector2(w - MARGIN - SESSION_W, MARGIN + 50.0), Vector2(SESSION_W, 11))
-	_place(_xp_feed, Vector2(w - MARGIN - SESSION_W, MARGIN + 61.0), Vector2(SESSION_W, 12))
+	_run_card.reset_size()
+	_run_card.position = Vector2(w - MARGIN - _run_card.size.x, MARGIN)
+	_place(_xp_feed, Vector2(w - MARGIN - SESSION_W, MARGIN + _run_card.size.y + 3.0), Vector2(SESSION_W, 12))
 	var cw := 400.0
 	_place(_warn, Vector2((w - cw) * 0.5, h * WARN_Y), Vector2(cw, 28))
 	_place(_warn_sub, Vector2((w - cw) * 0.5, h * WARN_Y + 28.0), Vector2(cw, 14))
@@ -483,7 +543,7 @@ func _fit() -> void:
 	_place(_center, Vector2((w - cw) * 0.5, h * CENTER_Y), Vector2(cw, 28))
 	_place(_center_sub, Vector2((w - cw) * 0.5, h * CENTER_Y + 28.0), Vector2(cw, 16))
 	_place(_controls, Vector2(MARGIN, h - 16.0), Vector2(w - 2.0 * MARGIN, 12))
-	_place(_f1, Vector2(w - MARGIN - SESSION_W, MARGIN + 25.0), Vector2(SESSION_W, 12))
+	_place(_f1, Vector2(w - MARGIN - SESSION_W, h - 16.0), Vector2(SESSION_W, 12))   # dół, prawy koniec paska podpowiedzi
 
 # ---------------------------------------------------------------- budowa
 
@@ -532,35 +592,31 @@ func _row(parent: Container, caption: String) -> HBoxContainer:
 func _build_noise_card() -> void:
 	var card := _card(Vector2(MARGIN, MARGIN))
 	_noise_card = card
-	var outer := VBoxContainer.new()
-	outer.add_theme_constant_override("separation", 1)
+	card.custom_minimum_size = Vector2(0, TOP_H)
+	var outer := HBoxContainer.new()
+	outer.add_theme_constant_override("separation", 8)
 	card.add_child(outer)
-	var top := HBoxContainer.new()
-	var cap := _cap("NOISE", UiTheme.MUTED, 0.22)
-	cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(cap)
-	_noise_state = _cap("", UiTheme.MUTED, 0.14)
-	top.add_child(_noise_state)
-	outer.add_child(top)
-	var dial := HBoxContainer.new()
-	dial.add_theme_constant_override("separation", 4)
-	outer.add_child(dial)
 	_noise_bar = VuMeter.new()                 # analogowy VU-metr; progi z NoiseMgr: 30 = zasypia, 40 = niepokój, 60 = budzi się ON
-	_noise_bar.custom_minimum_size = Vector2(112, 58)
-	_noise_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_noise_bar.custom_minimum_size = Vector2(70, 41)
+	_noise_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_noise_bar.ticks = [
 		[NoiseMgr.SLEEP_THRESHOLD / 100.0, Color(1, 1, 1, 0.35)],
 		[NoiseMgr.UNEASY_THRESHOLD / 100.0, UiTheme.ACCENT],
 		[NoiseMgr.AWAKE_THRESHOLD / 100.0, UiTheme.DANGER],
 	]
-	dial.add_child(_noise_bar)
-	_noise_val = UiTheme.mono(UiTheme.label("0%", 16, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
-	_noise_val.size_flags_vertical = Control.SIZE_SHRINK_END
-	_noise_val.custom_minimum_size = Vector2(40, 0)
-	dial.add_child(_noise_val)
+	outer.add_child(_noise_bar)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 1)
+	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	outer.add_child(box)
+	box.add_child(_cap("NOISE", UiTheme.MUTED, 0.22))
+	_noise_state = _cap("", UiTheme.MUTED, 0.14)
+	box.add_child(_noise_state)
+	_noise_val = UiTheme.mono(UiTheme.label("0%", 12, UiTheme.TEXT))
+	box.add_child(_noise_val)
 	_weather_row = UiTheme.label("", 7, UiTheme.MUTED)
 	_weather_row.visible = false
-	outer.add_child(_weather_row)
+	box.add_child(_weather_row)
 	# w kryjówce miernik hałasu nic nie mówi (zawsze 0%) — zastępuje go mały znacznik SAFE
 	_safe_chip = _card(Vector2(MARGIN, MARGIN))
 	_safe_chip.add_child(UiTheme.heading("SAFE", 8, UiTheme.OK))
@@ -569,11 +625,17 @@ func _build_noise_card() -> void:
 ## Lewy dolny róg: karta drużyny (L4D / DRG). Wiersze powstają dynamicznie — _drive_squad().
 func _build_squad_card() -> void:
 	_squad_card = _card(Vector2(MARGIN, MARGIN))
-	_squad_card.custom_minimum_size = Vector2(SQUAD_W, 0)
+	_squad_card.custom_minimum_size = Vector2(SQUAD_W, ROW_H)
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 3)
 	_squad_card.add_child(outer)
-	outer.add_child(_cap("SQUAD", UiTheme.MUTED, 0.22))
+	var sh := HBoxContainer.new()
+	var sc := _cap("SQUAD", UiTheme.MUTED, 0.22)
+	sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sh.add_child(sc)
+	_squad_info = _cap("", UiTheme.MUTED, 0.06)
+	sh.add_child(_squad_info)
+	outer.add_child(sh)
 	_squad_box = VBoxContainer.new()
 	_squad_box.add_theme_constant_override("separation", 5)
 	outer.add_child(_squad_box)
@@ -584,6 +646,7 @@ func _build_gear_card() -> void:
 	_gear_card = _card(Vector2(MARGIN, MARGIN))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 7)
+	row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_gear_card.add_child(row)
 
 	_slot_on = UiTheme.panel_box()
@@ -662,56 +725,68 @@ func _build_gear_card() -> void:
 		_slot_labels.append(l)
 	row.add_child(wr)
 
-	# 5) zasoby: wabik (Q) i flary (F) w jednym wierszu, pod nimi latarka (L)
-	var res := VBoxContainer.new()
-	res.add_theme_constant_override("separation", 2)
+	# 5) zasoby w osobnej karcie po prawej (makieta: siatka 2×2 — wabik Q, flary F, przedmiot ALT, latarka L)
+	_equip_card = _card(Vector2(MARGIN, MARGIN))
+	_equip_card.custom_minimum_size = Vector2(0, ROW_H)
+	var eq := UiTheme.panel_box()
+	eq.bg_color = Color(6.0 / 255.0, 7.0 / 255.0, 6.0 / 255.0, 0.7)
+	eq.border_color = Color("23221d")
+	_equip_card.add_theme_stylebox_override("panel", eq)
+	var res := GridContainer.new()
+	res.columns = 2
+	res.add_theme_constant_override("h_separation", 9)
+	res.add_theme_constant_override("v_separation", 5)
 	res.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var qf := HBoxContainer.new()
-	qf.add_theme_constant_override("separation", 3)
-	qf.add_child(UiTheme.label("Q", 7, UiTheme.MUTED))
+	_equip_card.add_child(res)
+	var q := HBoxContainer.new()
+	q.add_theme_constant_override("separation", 5)
+	q.add_child(_key("Q"))
 	_charges = Pips.new()
 	_charges.shape = "diamond"
 	_charges.count = NoiseMgr.OVERCHARGE_MAX
 	_charges.on = UiTheme.ACCENT
 	_charges.u = 0.8
 	_charges.custom_minimum_size = Vector2(NoiseMgr.OVERCHARGE_MAX * 11.0 * 0.8 - 2.0, 7.2)
-	qf.add_child(_charges)
-	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(4, 0)
-	qf.add_child(gap)
-	qf.add_child(UiTheme.label("F", 7, UiTheme.MUTED))
+	_charges.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	q.add_child(_charges)
+	res.add_child(q)
+	var f := HBoxContainer.new()
+	f.add_theme_constant_override("separation", 5)
+	f.add_child(_key("F"))
 	_flares = Pips.new()
 	_flares.shape = "diamond"
 	_flares.count = NoiseMgr.FLARE_MAX
-	_flares.on = Color(1.0, 0.5, 0.25)
+	_flares.on = UiTheme.ACCENT
 	_flares.u = 0.8
 	_flares.custom_minimum_size = Vector2(NoiseMgr.FLARE_MAX * 11.0 * 0.8 - 2.0, 7.2)
-	qf.add_child(_flares)
-	res.add_child(qf)
-	var tg := HBoxContainer.new()                  # przedmioty (lewy Alt użyj, X zmiana rodzaju): rodzaj i zapas drużyny
-	tg.add_theme_constant_override("separation", 3)
-	tg.add_child(UiTheme.label("ALT" if OS.get_name() != "macOS" else "CMD", 7, UiTheme.MUTED))
-	_gren = Pips.new()
-	_gren.shape = "diamond"
-	_gren.count = 4
-	_gren.on = Color(0.5, 0.72, 0.4)
-	_gren.u = 0.8
-	_gren.custom_minimum_size = Vector2(4 * 11.0 * 0.8 - 2.0, 7.2)
-	tg.add_child(_gren)
-	_gren_name = UiTheme.label("FRAG", 7, UiTheme.MUTED)
+	_flares.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	f.add_child(_flares)
+	res.add_child(f)
+	var tg := HBoxContainer.new()                  # przedmiot (lewy Alt użyj, X zmiana rodzaju): "FRAG ×2"
+	tg.add_theme_constant_override("separation", 5)
+	tg.add_child(_key("ALT" if OS.get_name() != "macOS" else "CMD"))
+	_gren_name = UiTheme.mono(UiTheme.label("FRAG ×0", 7, UiTheme.TEXT))
+	_gren_name.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	tg.add_child(_gren_name)
 	res.add_child(tg)
 	var lr := HBoxContainer.new()
-	lr.add_theme_constant_override("separation", 4)
-	lr.add_child(UiTheme.label("L", 7, UiTheme.MUTED))
+	lr.add_theme_constant_override("separation", 5)
+	lr.add_child(_key("L"))
 	_battery = Bar.new()
-	_battery.custom_minimum_size = Vector2(34, 3)
+	_battery.custom_minimum_size = Vector2(39, 2.5)
+	_battery.back = Color("1f1e19")
 	_battery.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	lr.add_child(_battery)
-	_battery_note = UiTheme.label("OFF", 7, UiTheme.MUTED)
-	lr.add_child(_battery_note)
 	res.add_child(lr)
-	row.add_child(res)
+	_battery_note = Label.new()                     # stan latarki niesie kolor paska; etykieta zostaje tylko jako pole tekstu
+	_battery_note.visible = false
+	lr.add_child(_battery_note)
+
+## Kapsel klawisza w kartach HUD-u (jak w makiecie): ciemne tło, ramka z grubszym dołem.
+func _key(s: String) -> Control:
+	var k := W.keycap(s, 7)
+	k.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return k
 
 # ---------------------------------------------------------------- karta drużyny
 
@@ -719,27 +794,35 @@ func _build_gear_card() -> void:
 ## i pasek pod spodem, gdy ktoś leży (czerwony = wykrwawianie, zielony = podnoszenie).
 func _make_squad_row(p: Node, is_self: bool) -> Dictionary:
 	var slot := ((int(p.display_id) - 1) % 4) + 1
-	var col: Color = BOT_COLOR if p.is_bot else SLOT_COLORS[slot - 1]
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 2)
 	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 5)
-	var badge := UiTheme.label("AI" if p.is_bot else "P%d" % slot, 9 if is_self else 7, Color(0.04, 0.04, 0.06), HORIZONTAL_ALIGNMENT_CENTER)
+	top.add_theme_constant_override("separation", 6)
+	# plakietka 30×30 px z makiety: lokalny gracz = kość z ciemnym tekstem, inni ludzie i boty = ciemna z tekstem w kolorze slotu / szarym
+	var badge := UiTheme.mono(UiTheme.label("AI" if p.is_bot else "P%d" % int(p.display_id), 8, Color(0.04, 0.045, 0.04), HORIZONTAL_ALIGNMENT_CENTER))
 	var bg := StyleBoxFlat.new()
-	bg.bg_color = col
-	bg.set_corner_radius_all(2)
-	bg.content_margin_left = 4
-	bg.content_margin_right = 4
-	bg.content_margin_top = 1
-	bg.content_margin_bottom = 1
+	bg.bg_color = UiTheme.TEXT if is_self else Color("1f1e19")
+	bg.set_content_margin_all(2)
 	badge.add_theme_stylebox_override("normal", bg)
 	badge.add_theme_constant_override("outline_size", 0)
-	badge.custom_minimum_size = Vector2(26 if is_self else 20, 0)
+	if not is_self:
+		badge.add_theme_color_override("font_color", Color("bdb8a6") if p.is_bot else SLOT_COLORS[slot - 1])
+	badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	badge.custom_minimum_size = Vector2(19, 19)
+	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(badge)
 	var pips := Pips.new()
-	pips.u = 1.4 if is_self else 1.0
+	pips.shape = "drop"
+	pips.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pips.on = Color("bdb8a6") if p.is_bot else UiTheme.DANGER
+	pips.edge_off = Color("3d3a30") if p.is_bot else Color("4a1e1a")
 	top.add_child(pips)
-	var status := UiTheme.label("", 7, UiTheme.MUTED)
+	if is_self:
+		var ecg := Ecg.new()
+		ecg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		top.add_child(ecg)
+	var status := _cap("", UiTheme.MUTED, 0.1)
+	status.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(status)
 	root.add_child(top)
 	var bar := Bar.new()
@@ -754,10 +837,10 @@ func _drive_squad(delta: float) -> void:
 	for p in get_tree().get_nodes_in_group("players"):
 		if is_instance_valid(p) and not p.is_queued_for_deletion():
 			list.append(p)
-	# koledzy rosnąco po slocie, własna karta na dole (najbliżej rogu)
+	# własny wiersz u góry (makieta), potem koledzy rosnąco po slocie
 	list.sort_custom(func(a: Node, b: Node) -> bool:
 		if (a == _player) != (b == _player):
-			return b == _player
+			return a == _player
 		return a.display_id < b.display_id)
 	var present := {}
 	for idx in list.size():
@@ -786,8 +869,11 @@ func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 	pips.count = maxi(p.max_hp(), hp)
 	pips.bonus_from = p.max_hp()
 	pips.filled = hp
-	pips.on = Color(0.5, 0.2, 0.22) if p.dead else Color(0.95, 0.28, 0.32)
-	pips.custom_minimum_size = Vector2(pips.count * 11.0 * pips.u - 2.0, 9.0 * pips.u)
+	if p.dead:
+		pips.on = Color(0.45, 0.17, 0.15)
+	else:
+		pips.on = Color("bdb8a6") if p.is_bot else UiTheme.DANGER
+	pips.custom_minimum_size = pips.min_size()
 	pips.queue_redraw()
 	# błysk wiersza po utracie zdrowia
 	if hp < int(row["hp"]):
@@ -818,17 +904,15 @@ func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 	elif hp == 1:
 		txt = "CRITICAL"
 		col = UiTheme.DANGER.lerp(Color.WHITE, 0.3 * (0.5 + 0.5 * sin(_blink * 7.0)))
-	elif bool(row["self"]):
-		txt = "YOU"
-	elif p.is_bot:
-		txt = "AI"
 	status.text = txt
 	status.add_theme_color_override("font_color", col)
 
 func _build_objective_card() -> void:
 	_obj_card = _card(Vector2(MARGIN, MARGIN))
+	_obj_card.custom_minimum_size = Vector2(0, TOP_H)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	_obj_card.add_child(box)
 	_obj_caption = _cap("OBJECTIVE", UiTheme.ACCENT, 0.3)
 	_obj_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -863,17 +947,56 @@ func _build_objective_card() -> void:
 	box.add_child(_boss_row)
 
 func _build_session() -> void:
-	_session = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
-	add_child(_session)
-	_clock = UiTheme.mono(UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
-	add_child(_clock)
-	_scrap = UiTheme.mono(UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_RIGHT))
-	add_child(_scrap)
+	# karta RUN w prawym górnym rogu: [RUN … trudność] / [zegar … złom] / [LV ▮ pasek XP n/m]; +XP pod kartą
+	_run_card = _card(Vector2(MARGIN, MARGIN))
+	_run_card.custom_minimum_size = Vector2(SESSION_W, TOP_H)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	_run_card.add_child(box)
+	var head := HBoxContainer.new()
+	var cap := _cap("RUN", UiTheme.MUTED, 0.22)
+	cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(cap)
+	_session = _cap("", UiTheme.MUTED, 0.14)                 # trudność; kolor wg poziomu (_drive_status)
+	head.add_child(_session)
+	box.add_child(head)
+	var main := HBoxContainer.new()
+	main.add_theme_constant_override("separation", 6)
+	_clock = UiTheme.mono(UiTheme.label("", 13, UiTheme.TEXT))
+	_clock.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	main.add_child(_clock)
 	_scrap_coin = Coin.new()
-	add_child(_scrap_coin)
-	_lv_label = UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
-	add_child(_lv_label)
-	_xp_feed = UiTheme.label("", 9, Color(0.55, 0.8, 1.0), HORIZONTAL_ALIGNMENT_RIGHT)
+	_scrap_coin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	main.add_child(_scrap_coin)
+	_scrap = UiTheme.mono(UiTheme.label("", 10, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_RIGHT))
+	main.add_child(_scrap)
+	box.add_child(main)
+	var xp := HBoxContainer.new()
+	xp.add_theme_constant_override("separation", 5)
+	_lv_label = UiTheme.mono(UiTheme.label("LV 1", 7, UiTheme.TEXT))
+	var badge := StyleBoxFlat.new()
+	badge.bg_color = Color(0, 0, 0, 0)                  # sam obrys: ciemny tekst na jasnym tle wychodził zbyt gruby
+	badge.border_color = Color("3d3a30")
+	badge.set_border_width_all(1)
+	badge.content_margin_left = 3
+	badge.content_margin_right = 3
+	badge.content_margin_top = 1
+	badge.content_margin_bottom = 1
+	_lv_label.add_theme_stylebox_override("normal", badge)
+	_lv_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	xp.add_child(_lv_label)
+	_run_xp_bar = Bar.new()
+	_run_xp_bar.custom_minimum_size = Vector2(0, 2)
+	_run_xp_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_run_xp_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_run_xp_bar.fill = UiTheme.MUTED
+	_run_xp_bar.back = Color("1f1e19")
+	xp.add_child(_run_xp_bar)
+	_xp_txt = UiTheme.mono(UiTheme.label("", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT))
+	xp.add_child(_xp_txt)
+	box.add_child(xp)
+	_xp_feed = UiTheme.mono(UiTheme.label("", 8, UiTheme.OK, HORIZONTAL_ALIGNMENT_RIGHT))
 	_xp_feed.modulate.a = 0.0
 	add_child(_xp_feed)
 	Profile.xp_gained.connect(_on_xp_gained)
@@ -1006,7 +1129,8 @@ func _drive_tiers(delta: float) -> void:
 	var target := 0.5 if _calm_t > 4.0 else 1.0
 	_tier_k = lerpf(_tier_k, target, minf(1.0, delta * (1.5 if target < 1.0 else 6.0)))
 	_obj_card.modulate.a = lerpf(1.0, 0.6, (1.0 - _tier_k) * 2.0)
-	for c in [_session, _clock, _scrap, _lv_label, _f1, _controls]:
+	_run_card.modulate.a = lerpf(1.0, 0.65, (1.0 - _tier_k) * 2.0)
+	for c in [_f1, _controls]:
 		(c as Control).self_modulate.a = lerpf(1.0, 0.45, (1.0 - _tier_k) * 2.0)
 	# ściemnienie pod karta wyniku i warsztatem
 	var ws := get_tree().get_first_node_in_group("workshop_ui")
@@ -1226,12 +1350,10 @@ func _drive_noise() -> void:
 	_flares.filled = NoiseMgr.flares
 	_flares.queue_redraw()
 	var gk := Arsenal.selected_throwable()
-	_gren.on = Throwables.KINDS[gk]["color"]
-	_gren.count = int(Throwables.KINDS[gk]["max"])
-	_gren.filled = Arsenal.get_throwable(gk)
-	_gren.queue_redraw()
-	_gren_name.text = "%s  [%s]" % [Throwables.KINDS[gk]["name"], Actions.key("throw_next")]
-	_gren_name.add_theme_color_override("font_color", UiTheme.TEXT if Arsenal.get_throwable(gk) > 0 else UiTheme.MUTED)
+	var gn := Arsenal.get_throwable(gk)
+	_gren_name.text = "%s ×%d" % [Throwables.KINDS[gk]["name"], gn]
+	_gren_name.tooltip_text = tr("%s switches item") % Actions.key("throw_next")
+	_gren_name.add_theme_color_override("font_color", UiTheme.TEXT if gn > 0 else UiTheme.MUTED)
 
 func _on_xp_gained(amount: int, _reason: String) -> void:
 	_xp_acc += amount
@@ -1251,25 +1373,31 @@ func _on_level_up(lv: int) -> void:
 
 func _drive_status() -> void:
 	var lp := Profile.level_progress()
-	_lv_label.text = "LV %d  ·  %d / %d XP" % [Profile.level(), int(lp[0]), int(lp[1])]
+	_lv_label.text = "LV %d" % Profile.level()
+	_xp_txt.text = "%d/%d" % [int(lp[0]), int(lp[1])]
+	_run_xp_bar.value = float(lp[0]) / float(maxi(1, int(lp[1])))
+	_run_xp_bar.queue_redraw()
 	if _xp_t > 0.0:
 		_xp_t -= get_process_delta_time()
 		_xp_feed.text = "+%d XP" % _xp_acc
 		_xp_feed.modulate.a = clampf(_xp_t / 0.6, 0.0, 1.0)
 		if _xp_t <= 0.0:
 			_xp_acc = 0
-	_session.text = _net_status()
+	_session.text = tr(Difficulty.level_name())
+	_session.add_theme_color_override("font_color", [UiTheme.OK, UiTheme.TEXT, UiTheme.DANGER][clampi(Difficulty.level, 0, 2)])
+	_squad_info.text = _net_status()
 	_scrap.visible = Scrap.enabled()
 	_scrap_coin.visible = _scrap.visible
 	_scrap.text = "%d%s" % [Scrap.bank, ("  +%d" % Scrap.loot) if Scrap.loot > 0 else ""]
-	var sf := _scrap.get_theme_font("font")
-	var tw := sf.get_string_size(_scrap.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 9).x if sf != null else 30.0
-	_scrap_coin.position = Vector2(_scrap.position.x + _scrap.size.x - tw - 12.0, _scrap.position.y + 1.0)
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	if m != null:
 		var secs := int(m.elapsed)
 		_clock.text = "%02d:%02d" % [secs / 60, secs % 60]
+	_run_card.reset_size()
+	_run_card.position = Vector2(size.x - MARGIN - _run_card.size.x, MARGIN)
+	_xp_feed.position.y = MARGIN + _run_card.size.y + 3.0
 	_gear_card.visible = _player != null
+	_equip_card.visible = _player != null
 	if _player == null:
 		return
 	var hp: int = maxi(_player.hp, 0)
@@ -1279,10 +1407,9 @@ func _drive_status() -> void:
 	_drive_weapons()
 	var pct: float = _player.battery / _player.BATTERY_MAX
 	_battery.value = pct
-	_battery.fill = Color(1.0, 0.95, 0.72) if _player.flashlight else (UiTheme.DANGER if pct < 0.2 else UiTheme.MUTED)
+	_battery.fill = UiTheme.DANGER if pct < 0.2 else (Color("e8e2c4") if _player.flashlight else UiTheme.CALM)
 	_battery.queue_redraw()
 	_battery_note.text = ("ON %d%%" if _player.flashlight else "OFF %d%%") % int(pct * 100.0)
-	_battery_note.add_theme_color_override("font_color", Color(1.0, 0.95, 0.72) if _player.flashlight else UiTheme.MUTED)
 
 ## Karta broni: sloty z aktualnego zestawu, magazynek / zapas, ciepło lufy i koszt hałasu.
 func _drive_weapons() -> void:
@@ -1356,6 +1483,17 @@ func _drive_weapons() -> void:
 		gx = maxf((size.x - gw) * 0.5, MARGIN)
 		gy = _squad_card.position.y - gh - 4.0
 	_gear_card.position = Vector2(gx, gy)
+	# zasoby: prawy dolny róg w jednym rzędzie z paskiem broni; gdy rząd się nie mieści (duży HUD, wąski ekran) — nad paskiem,
+	# z naturalną wysokością (bez wspólnej wysokości rzędu, żeby nie była pusta)
+	var ew := _equip_card.get_combined_minimum_size().x
+	var in_row := gx + gw + MARGIN <= size.x - MARGIN - ew
+	_equip_card.custom_minimum_size.y = ROW_H if in_row else 0.0
+	_equip_card.reset_size()
+	var ex := size.x - MARGIN - _equip_card.size.x
+	var ey := size.y - BOTTOM_PAD - _equip_card.size.y
+	if not in_row:
+		ey = gy - _equip_card.size.y - 4.0
+	_equip_card.position = Vector2(ex, ey)
 
 ## Ostrzeżenie przed karą (GDD §8.1): niepokój ZANIM ON się obudzi.
 func _drive_warning() -> void:
@@ -1939,10 +2077,10 @@ func _find_local_player() -> Node:
 			return p
 	return null
 
+## Skład sesji do nagłówka karty drużyny: „HOST · 1/4 +1 AI” (solo: „SOLO”).
 func _net_status() -> String:
-	var diff: String = Difficulty.level_name()
 	if not NoiseMgr.has_network():
-		return "SOLO  ·  %s" % diff
+		return "SOLO"
 	var humans := 0
 	var bots := 0
 	for p in get_tree().get_nodes_in_group("players"):
@@ -1951,4 +2089,4 @@ func _net_status() -> String:
 		else:
 			humans += 1
 	var who := "HOST" if multiplayer.is_server() else "CLIENT"
-	return "%s  ·  %d/4 players%s  ·  %s" % [who, humans, ("  +%d AI" % bots) if bots > 0 else "", diff]
+	return "%s · %d/4%s" % [who, humans, (" +%d AI" % bots) if bots > 0 else ""]

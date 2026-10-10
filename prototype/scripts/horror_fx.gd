@@ -51,6 +51,7 @@ var _rect: ColorRect
 var _attn := 0.0                     ## wygładzona Uwaga 0..1
 var _hurt := 0.0                     ## wygładzony stan zdrowia lokalnego gracza 0..1
 var _t := 0.0
+var _dev_noise := -1.0               ## dev: --shotnoise=N (jak w hud.gd) — zrzuty przy zadanym poziomie hałasu
 
 func _ready() -> void:
 	layer = 1
@@ -63,6 +64,9 @@ func _ready() -> void:
 	_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_rect.material = _mat
 	add_child(_rect)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--shotnoise="):
+			_dev_noise = float(a.substr("--shotnoise=".length()))
 
 ## Lokalny człowiek (autorytet tego peera) — jego stan steruje ostrzeżeniem o zdrowiu.
 func _local_player() -> Node:
@@ -73,7 +77,8 @@ func _local_player() -> Node:
 
 func _process(delta: float) -> void:
 	_t += delta
-	var attn_target := clampf(NoiseMgr.level / 100.0, 0.0, 1.0) if not NoiseMgr.safe_zone else 0.0
+	var lvl := _dev_noise if _dev_noise >= 0.0 else NoiseMgr.level
+	var attn_target := clampf(lvl / 100.0, 0.0, 1.0) if not NoiseMgr.safe_zone else 0.0
 	_attn = lerpf(_attn, attn_target, minf(1.0, delta * 1.5))
 	var hurt_target := 0.0
 	var p := _local_player()

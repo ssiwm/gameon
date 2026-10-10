@@ -38,7 +38,8 @@ const COLORBLIND_NAMES := ["OFF", "PROTANOPIA", "DEUTERANOPIA", "TRITANOPIA"]
 const LOCALES := ["en", "pl"]
 const LOCALE_NAMES := ["ENGLISH", "POLSKI"]
 const UI_NAMES := ["SMALL", "NORMAL", "LARGE"]
-const UI_MULT := [0.85, 1.0, 1.25]
+## Rozmiar HUD-u: SMALL / NORMAL / LARGE. NORMAL = dawne SMALL (0,85), LARGE = dawne NORMAL (1,0); nowy SMALL jest o tyle samo mniejszy (×0,85).
+const UI_MULT := [0.72, 0.85, 1.0]
 const Actions := preload("res://scripts/actions.gd")
 
 var volume := {"master": 1.0, "music": 1.0, "sfx": 1.0}
@@ -104,6 +105,10 @@ func weather_fx_effective() -> int:
 
 func ui_mult() -> float:
 	return UI_MULT[ui_idx]
+
+## Rozmiar względem NORMAL (1,0 = domyślny): menu (pauza, lobby) skalują się tym, żeby domyślny wygląd się nie zmniejszył.
+func ui_rel() -> float:
+	return UI_MULT[ui_idx] / UI_MULT[1]
 
 func set_volume(kind: String, v: float) -> void:
 	volume[kind] = snappedf(clampf(v, 0.0, 1.0), STEP)

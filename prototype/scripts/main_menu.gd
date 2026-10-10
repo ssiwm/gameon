@@ -14,7 +14,6 @@ const W := preload("res://scripts/ui_widgets.gd")
 const Scene := preload("res://scripts/menu_scene.gd")
 const Actions := preload("res://scripts/actions.gd")
 const QUIT_CONFIRM_S := 3.0
-const REF_SCALE := 0.5
 
 ## Który wpis otworzył lobby: "host", "join" albo "night" (""/inne = domyślnie host). Czyta go main.gd.
 var entry := ""
@@ -99,7 +98,7 @@ func _ready() -> void:
 
 func _fit() -> void:
 	var vp := get_viewport_rect().size
-	var k := REF_SCALE * Settings.ui_mult()
+	var k := minf(vp.x / 1280.0, vp.y / 720.0)       # układ ma sztywną siatkę 1280×720 — rozmiar HUD-u go nie powiększa (lista wychodziła poza ekran)
 	_root.scale = Vector2(k, k)
 	_root.size = vp / k
 	size = vp
