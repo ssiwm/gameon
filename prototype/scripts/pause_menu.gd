@@ -254,6 +254,7 @@ func _build_settings(scroll: ScrollContainer) -> void:
 		func(i: int) -> void: _to_idx(func() -> int: return Settings.ui_idx, Settings.cycle_ui, i, 3))
 	_seg(right, tr("Camera zoom"), Settings.CAM_NAMES, func() -> int: return Settings.cam_idx,
 		func(i: int) -> void: _to_idx(func() -> int: return Settings.cam_idx, Settings.cycle_cam, i, 3))
+	_toggle(right, tr("3D view"), func() -> bool: return Settings.view3d, Settings.toggle_view3d)
 	right.add_child(_gap())
 	right.add_child(W.section(tr("ACCESSIBILITY")))
 	_toggle(right, tr("Reduce effects"), func() -> bool: return Settings.reduce_fx, Settings.toggle_reduce_fx)

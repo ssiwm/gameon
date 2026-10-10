@@ -32,6 +32,7 @@ const MAIN_MENU := preload("res://scripts/main_menu.gd")
 const CHAT := preload("res://scripts/chat.gd")
 const COLORBLIND_FX := preload("res://scripts/colorblind_fx.gd")
 const WEATHER_FX := preload("res://scripts/weather_fx.gd")
+const VIEW3D := preload("res://scripts/view3d.gd")
 const NavGraph := preload("res://scripts/nav.gd")
 const ENEMY := preload("res://scripts/enemy.gd")
 const Throwables := preload("res://scripts/throwables.gd")
@@ -110,12 +111,26 @@ func _ready() -> void:
 		wfx.name = "WeatherFx"
 		add_child(wfx)
 		move_child(wfx, $UI.get_index())
+	# widok 3D (ustawienie „3D view” / `--view3d`): ten sam świat 2D renderowany w 3D, przełączany w trakcie gry
+	Settings.changed.connect(_apply_view3d)
+	_apply_view3d.call_deferred()
 	# obraz horroru (winieta, aberracja, ostrzeżenie o zdrowiu) — tylko w grafice HD; `--nofx` wyłącza
 	if Sprites.newitem and DisplayServer.get_name() != "headless" and not ("--nofx" in OS.get_cmdline_user_args()):
 		var hfx := HORROR_FX.new()
 		hfx.name = "HorrorFx"
 		add_child(hfx)
 		move_child(hfx, $UI.get_index())
+
+## Włącza / wyłącza widok 3D (view3d.gd) zgodnie z ustawieniem; węzeł dostaje poziom i kontener graczy, zwalnia się z przywróceniem 2D.
+func _apply_view3d() -> void:
+	var want := Settings.view3d_active()
+	var cur := get_node_or_null("View3D")
+	if want and cur == null:
+		var v: Node2D = VIEW3D.new()
+		add_child(v)
+		v.setup(level, _players)
+	elif not want and cur != null:
+		cur.release()
 
 # ---------------------------------------------------------------- wipe (GDD §4)
 
