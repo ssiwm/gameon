@@ -67,7 +67,6 @@ const GibArt := preload("res://scripts/gib_art.gd")
 const LEECH := preload("res://scripts/leech.gd")
 const RANGE_TARGET := preload("res://scripts/range_target.gd")
 const HUB_DECOR := preload("res://scripts/hub_decor.gd")
-const FLOOR_REFLECTION := preload("res://scripts/floor_reflection.gd")
 
 ## Mapy misji (scripts/maps/): każda niesie MAP, ID, TITLE, OBJECTIVE, UNDERGROUND_ROW, WEAPONS, ACCENTS.
 const MAPS := {
@@ -781,7 +780,7 @@ func _spawn_entities() -> void:
 		lp.position = _hang_pos(found["l"][i], 0.0)
 		add_child(lp)
 	if found["l"].size() > 0:
-		# kryjówka: podłoga pod pierwszą lampą → meble w tle (hub_decor.gd) i odbicie podłogi (floor_reflection.gd)
+		# kryjówka: podłoga pod pierwszą lampą → meble w tle (hub_decor.gd)
 		var lc := int(float((found["l"][0] as Vector2).x) / float(TILE))
 		var fr := int(float((found["l"][0] as Vector2).y) / float(TILE))
 		for rr in range(fr, _map.size()):
@@ -812,10 +811,6 @@ func _spawn_entities() -> void:
 		dc.name = "HubDecor"
 		add_child(dc)
 		dc.setup(occ, wide, quiet, x0, x1, float(fr * TILE), float(TILE))
-		var rf: Node2D = FLOOR_REFLECTION.new()
-		rf.name = "FloorReflection"
-		add_child(rf)
-		rf.setup(float(ncols * TILE), float(fr * TILE))
 	if _racks:
 		for i in found["g"].size():
 			var rk: Node2D = RACK.new()
