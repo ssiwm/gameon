@@ -35,6 +35,7 @@ var _flick := 1.0                    ## wygładzony, nieregularny mnożnik jasno
 
 func setup(mission: Node2D) -> void:
 	_m = mission
+	visible = false
 	z_index = 5
 	material = Lights.unshaded()
 	_light = Lights.make_light(Lights.radial(), Lights.FLARE_M, Color(0.45, 1.0, 0.55), 1.0, true)
@@ -97,6 +98,10 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _set_active(on: bool) -> void:
+	# po wyjściu z fazy ekstrakcji (restart misji, nowa mapa) węzeł przestaje się odświeżać — bez ukrycia i przerysowania zostawał
+	# ostatni rysunek flary w starym miejscu; kołki, słup i dym są jego dziećmi, więc `visible` chowa też je
+	visible = on
+	queue_redraw()
 	_light.enabled = on
 	if not on:
 		_light.energy = 0.0
