@@ -414,6 +414,10 @@ func _sync_enemies(delta: float) -> void:
 		var st: Dictionary = _estate.get(id, {"alive": true, "flash": false, "wind": false})
 		var alive_v = src.get("alive")
 		var alive: bool = true if alive_v == null else bool(alive_v)
+		if alive_v == null and String(e.get("kind")) == "vein":                 # boss nie ma `alive`: martwy = stan DEAD (2)
+			var stv = src.get("state")
+			if stv != null and int(stv) == 2:
+				alive = false
 		var wind_v = src.get("winding")
 		var winding: bool = false if wind_v == null else bool(wind_v)
 		if bool(st["alive"]) and not alive:
