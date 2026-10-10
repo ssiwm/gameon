@@ -11,6 +11,7 @@ uniform float aberration = 0.001;
 uniform float grain = 0.04;
 uniform float desat = 0.0;
 uniform float hurt_pulse = 0.0;
+uniform float hunted = 0.0;
 uniform float t = 0.0;
 uniform float aspect = 1.78;
 float hash(vec2 p) {
@@ -36,6 +37,7 @@ void fragment() {
 	float v = smoothstep(0.32, 0.98, d);
 	col *= 1.0 - v * vignette;
 	col += vec3(0.55, 0.02, 0.03) * hurt_pulse * v;
+	col += vec3(0.20, 0.025, 0.018) * hunted * v * v;             // pościg (HUNTED): brzegi kadru ciemnoczerwone (makieta Hud.dc.html)
 	float g = hash(uv * vec2(1920.0, 1080.0) + fract(t) * 137.0) - 0.5;
 	col += g * grain * (1.0 - clamp(lum * 1.5, 0.0, 0.8));
 	COLOR = vec4(col, 1.0);
@@ -51,6 +53,7 @@ var _rect: ColorRect
 var _attn := 0.0                     ## wygładzona Uwaga 0..1
 var _hurt := 0.0                     ## wygładzony stan zdrowia lokalnego gracza 0..1
 var _t := 0.0
+var _dev_noise := -1.0               ## dev: --shotnoise=N (jak w hud.gd) — zrzuty przy zadanym poziomie hałasu
 
 func _ready() -> void:
 	layer = 1
@@ -63,6 +66,9 @@ func _ready() -> void:
 	_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_rect.material = _mat
 	add_child(_rect)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--shotnoise="):
+			_dev_noise = float(a.substr("--shotnoise=".length()))
 
 ## Lokalny człowiek (autorytet tego peera) — jego stan steruje ostrzeżeniem o zdrowiu.
 func _local_player() -> Node:
@@ -73,7 +79,8 @@ func _local_player() -> Node:
 
 func _process(delta: float) -> void:
 	_t += delta
-	var attn_target := clampf(NoiseMgr.level / 100.0, 0.0, 1.0) if not NoiseMgr.safe_zone else 0.0
+	var lvl := _dev_noise if _dev_noise >= 0.0 else NoiseMgr.level
+	var attn_target := clampf(lvl / 100.0, 0.0, 1.0) if not NoiseMgr.safe_zone else 0.0
 	_attn = lerpf(_attn, attn_target, minf(1.0, delta * 1.5))
 	var hurt_target := 0.0
 	var p := _local_player()
@@ -97,6 +104,7 @@ func _process(delta: float) -> void:
 	_mat.set_shader_parameter("grain", (BASE_GRAIN + _attn * 0.03 + _hurt * 0.02) * post)
 	_mat.set_shader_parameter("aberration", (BASE_ABERRATION + _attn * 0.0025 + _hurt * 0.0022) * post)
 	_mat.set_shader_parameter("desat", _hurt * 0.55)
+	_mat.set_shader_parameter("hunted", smoothstep(0.55, 0.75, _attn) * calm)
 	_mat.set_shader_parameter("hurt_pulse", _hurt * (0.18 + 0.38 * beat * calm))
 	_mat.set_shader_parameter("t", _t)
 	_mat.set_shader_parameter("aspect", size.x / maxf(size.y, 1.0))
