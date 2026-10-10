@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c28ej6147bxdn"
-path="res://.godot/imported/wolek_Color_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg-035decc77cba917535e2cf1d3565ea8b.ctex"
+path.s3tc="res://.godot/imported/wolek_Color_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg-035decc77cba917535e2cf1d3565ea8b.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "77daedf2d3b9879da33012e447c9c92a"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/enemy3d/wolek_Color_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg"
-dest_files=["res://.godot/imported/wolek_Color_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg-035decc77cba917535e2cf1d3565ea8b.ctex"]
+dest_files=["res://.godot/imported/wolek_Color_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg-035decc77cba917535e2cf1d3565ea8b.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

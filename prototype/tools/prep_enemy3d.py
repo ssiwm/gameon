@@ -7,6 +7,7 @@ Skala zostaje natywna (pozy w `enemy3d.gd` używają stałych z tego samego mode
 dopasowuje gra w czasie działania. --anim: zachowuje animację z pliku (Trzosek — „preset:quadruped:walk").
 """
 import glob
+import math
 import os
 import shutil
 import subprocess
@@ -17,14 +18,20 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 SRC = os.path.join(ROOT, "art_src", "enemies", "tripo")
 OUT = os.path.join(ROOT, "prototype", "art", "enemy3d")
 
-# rodzaj: (plik źródłowy, animacja z pliku)
+# rodzaj: (plik źródłowy, animacja z pliku, obrót wokół pionu dla modeli statycznych bez rigu lub None, liczba trójkątów, tekstura px)
+# Modele statyczne (Ćma, gniazdo, Żyła, Pijawka) są animowane deformacją wierzchołków w shaderze (`enemy3d.gd`), więc dostają układ jak w wypieku
+# `concept/static_tripo_bake.py`: obrót ROT_Z, postawienie na podłodze (z = 0) i wyśrodkowanie w x, y.
 KINDS = {
-    "wolek": ("wolek_01_rig.glb", False),
-    "slepiec": ("slepiec_01_rig.glb", False),
-    "podsluchacz": ("podsluchacz_01_rig.glb", False),
-    "stalker": ("stalker_01_rig.glb", False),
-    "skoczek": ("skoczek_01_rig.glb", False),
-    "trzosek": ("trzosek_01_anims.glb", True),
+    "wolek": ("wolek_01_rig.glb", False, None, 6000, 1024),
+    "slepiec": ("slepiec_01_rig.glb", False, None, 6000, 1024),
+    "podsluchacz": ("podsluchacz_01_rig.glb", False, None, 6000, 1024),
+    "stalker": ("stalker_01_rig.glb", False, None, 6000, 1024),
+    "skoczek": ("skoczek_01_rig.glb", False, None, 6000, 1024),
+    "trzosek": ("trzosek_01_anims.glb", True, None, 6000, 1024),
+    "cma": ("cma_01.glb", False, -90.0, 6000, 1024),
+    "nest": ("nest_01.glb", False, 0.0, 6000, 1024),
+    "vein": ("vein_01.glb", False, -90.0, 14000, 2048),
+    "leech": ("leech_01.glb", False, 0.0, 14000, 2048),
 }
 
 
@@ -36,13 +43,21 @@ def run_in_blender():
     faces = int(next((a.split("=")[1] for a in argv if a.startswith("--faces=")), 6000))
     tex = int(next((a.split("=")[1] for a in argv if a.startswith("--tex=")), 1024))
     anim = "--anim" in argv
+    rot = next((float(a.split("=")[1]) for a in argv if a.startswith("--rot=")), None)      # model statyczny: obrót wokół pionu (°)
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=src)
-    for o in list(bpy.data.objects):
-        if o.type == "MESH" and len(o.vertex_groups) == 0:
-            bpy.data.objects.remove(o, do_unlink=True)
-    body = next(o for o in bpy.data.objects if o.type == "MESH")
+    if rot is None:
+        for o in list(bpy.data.objects):
+            if o.type == "MESH" and len(o.vertex_groups) == 0:
+                bpy.data.objects.remove(o, do_unlink=True)
+        body = next(o for o in bpy.data.objects if o.type == "MESH")
+    else:
+        meshes = [o for o in bpy.data.objects if o.type == "MESH"]
+        body = max(meshes, key=lambda o: len(o.data.vertices))
+        for o in meshes:
+            if o is not body:
+                bpy.data.objects.remove(o, do_unlink=True)
     bpy.context.view_layer.objects.active = body
 
     mod = body.modifiers.new("dec", "DECIMATE")
@@ -51,6 +66,20 @@ def run_in_blender():
         bpy.ops.object.modifier_move_up(modifier=mod.name)
     bpy.ops.object.modifier_apply(modifier=mod.name)
     print("FACES", len(body.data.polygons))
+
+    if rot is not None:
+        from mathutils import Matrix
+        r = Matrix.Rotation(math.radians(rot), 3, "Z")
+        pts = [r @ (body.matrix_world @ v.co) for v in body.data.vertices]
+        body.parent = None
+        body.matrix_world = Matrix.Identity(4)
+        zmin = min(p.z for p in pts)
+        cx = (min(p.x for p in pts) + max(p.x for p in pts)) / 2
+        cy = (min(p.y for p in pts) + max(p.y for p in pts)) / 2
+        for v, p in zip(body.data.vertices, pts):
+            v.co = (p.x - cx, p.y - cy, p.z - zmin)
+        body.data.update()
+        print("SIZE", max(p.x for p in pts) - min(p.x for p in pts), max(p.y for p in pts) - min(p.y for p in pts), max(p.z for p in pts) - zmin)
 
     mat = body.data.materials[0]
     bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
@@ -76,10 +105,13 @@ def main():
         raise SystemExit("Nie znaleziono Blendera (ustaw BLENDER=ścieżka)")
     os.makedirs(OUT, exist_ok=True)
     for k in only:
-        f, anim = KINDS[k]
-        cmd = [exe, "-b", "--factory-startup", "-P", os.path.abspath(__file__), "--", os.path.join(SRC, f), os.path.join(OUT, k + ".glb")]
+        f, anim, rot, faces, tex = KINDS[k]
+        cmd = [exe, "-b", "--factory-startup", "-P", os.path.abspath(__file__), "--", os.path.join(SRC, f), os.path.join(OUT, k + ".glb"),
+               "--faces=%d" % faces, "--tex=%d" % tex]
         if anim:
             cmd.append("--anim")
+        if rot is not None:
+            cmd.append("--rot=%s" % rot)
         print(">>", k)
         subprocess.run(cmd, check=True)
 

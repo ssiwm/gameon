@@ -9,7 +9,7 @@ extends Node2D
 ## warstwę 1, kamera graczy warstwę 2.
 ##
 ## Co jest w 3D: geometria z mapy ASCII (`level3d.gd`), niebo, mgła głębi, księżyc; gracze jako modele z `char3d.gd` (model i broń wyjęte ze świata
-## podglądu — poza liczy dalej `Char3D.update()`); wrogowie, bossowie i gniazda jako `AnimatedSprite3D` z arkuszy HD; wszystkie `PointLight2D` świata
+## podglądu — poza liczy dalej `Char3D.update()`); wrogowie, bossowie i gniazda jako modele 3D z `enemy3d.gd` (billboardy `AnimatedSprite3D` z arkuszy HD tylko przy braku modelu); wszystkie `PointLight2D` świata
 ## jako światła 3D (do kilkunastu najbliższych). Pozostałe warstwy dynamiczne 2D (pociski, cząsteczki, rekwizyty, pickupy, HUD) zostają bez zmian.
 ## Kamera 3D jest dopasowana do Camera2D: płaszczyzna z = 0 pokrywa się z kadrem 2D (zoom, wstrząsy, „Camera zoom”).
 
@@ -362,13 +362,15 @@ func _enemy_kind(n: Node) -> String:
 	var k = n.get("kind")
 	if k == null:
 		var scr: Script = n.get_script()
-		if scr != null and String(scr.resource_path).ends_with("stalker.gd"):
-			k = "stalker"
+		var path := String(scr.resource_path) if scr != null else ""
+		for pair in [["stalker.gd", "stalker"], ["boss.gd", "vein"], ["leech.gd", "leech"], ["nest.gd", "nest"]]:
+			if path.ends_with(pair[0]):
+				k = pair[1]
 	return String(k) if k != null and Enemy3D.has_model(String(k)) else ""
 
 ## Wrogowie z modelem 3D: model stoi na pozycji węzła 2D, poza z nazwy animacji sprite'a (`Body`), sprite'y 2D są przezroczyste.
 func _sync_enemies(delta: float) -> void:
-	for g in ["enemies", "roamers"]:
+	for g in ["enemies", "roamers", "boss", "nests"]:
 		for n in get_tree().get_nodes_in_group(g):
 			if not (n is Node2D) or n.is_queued_for_deletion():
 				continue
@@ -405,12 +407,16 @@ func _sync_enemies(delta: float) -> void:
 		var src: Node2D = src_v
 		var body := src.get_node_or_null("Body") as AnimatedSprite2D
 		var show: bool = src.is_visible_in_tree() and body != null
-		var pos := Level3D.px_to_m(src.global_position)
+		var pos := Level3D.px_to_m(body.global_position if body != null else src.global_position)
 		e.visible = show and absf(pos.x - cam_x) < 90.0
 		if not e.visible:
 			continue
 		e.position = pos + Vector3(0.0, 0.0, 0.3)
-		e.call("pose", delta, body.animation, body.flip_h, body.modulate)
+		var sf := body.sprite_frames
+		var anim := body.animation
+		var nfr := sf.get_frame_count(anim) if sf != null and sf.has_animation(anim) else 1
+		var lp := sf.get_animation_loop(anim) if sf != null and sf.has_animation(anim) else true
+		e.call("pose", delta, anim, body.flip_h, body.modulate, float(body.frame) + body.frame_progress, nfr, lp)
 
 func _set_layer(root: Node, layer: int) -> void:
 	for mi in root.find_children("*", "VisualInstance3D", true, false):

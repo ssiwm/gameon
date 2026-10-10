@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://to6init703s8"
-path="res://.godot/imported/wolek_ORM_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg-458c53caad042040b51370906438938c.ctex"
+path.s3tc="res://.godot/imported/wolek_ORM_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg-458c53caad042040b51370906438938c.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "9d1cd303be099627726987e30fb4295c"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/enemy3d/wolek_ORM_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg"
-dest_files=["res://.godot/imported/wolek_ORM_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg-458c53caad042040b51370906438938c.ctex"]
+dest_files=["res://.godot/imported/wolek_ORM_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg-458c53caad042040b51370906438938c.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0
