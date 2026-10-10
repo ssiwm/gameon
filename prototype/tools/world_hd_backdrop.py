@@ -6,6 +6,7 @@ sylwetki ledwo odcięte od horyzontu); zmienia się jakość, nie nastrój. Drze
 Gradienty ciemnych kolorów mają dithering (inaczej 8 bitów daje widoczne pasy).
 """
 import os
+import sys
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -164,10 +165,13 @@ def fog():
 def main():
     os.makedirs(OUT, exist_ok=True)
     sky()
-    ridge("ridge_far", 1, 0.66, 14, (38, 72), (0.050, 0.058, 0.080), (0.056, 0.065, 0.089), 0.0, ground=(0.026, 0.031, 0.043))
-    ridge("ridge_mid", 2, 0.72, 22, (58, 105), (0.034, 0.040, 0.057), (0.039, 0.046, 0.064), 0.0, ground=(0.022, 0.026, 0.037))
-    ridge("ridge_near", 3, 0.76, 34, (80, 150), (0.020, 0.024, 0.034), (0.024, 0.029, 0.040), 0.0)
-    fog()
+    # grzbiety drzew i mgła nie są już rastrami: las jest geometrią w backdrop.gd (FOREST), mgła to gradient przy podstawie warstwy.
+    # ridge() i fog() zostają w pliku do porównań: python world_hd_backdrop.py --legacy
+    if "--legacy" in sys.argv:
+        ridge("ridge_far", 1, 0.66, 14, (38, 72), (0.050, 0.058, 0.080), (0.056, 0.065, 0.089), 0.0, ground=(0.026, 0.031, 0.043))
+        ridge("ridge_mid", 2, 0.72, 22, (58, 105), (0.034, 0.040, 0.057), (0.039, 0.046, 0.064), 0.0, ground=(0.022, 0.026, 0.037))
+        ridge("ridge_near", 3, 0.76, 34, (80, 150), (0.020, 0.024, 0.034), (0.024, 0.029, 0.040), 0.0)
+        fog()
     print("OK", OUT)
 
 
