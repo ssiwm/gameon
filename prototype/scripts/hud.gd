@@ -799,7 +799,7 @@ func _make_squad_row(p: Node, is_self: bool) -> Dictionary:
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 6)
 	# plakietka 30×30 px z makiety: lokalny gracz = kość z ciemnym tekstem, inni ludzie i boty = ciemna z tekstem w kolorze slotu / szarym
-	var badge := UiTheme.mono(UiTheme.label("AI" if p.is_bot else "P%d" % slot, 8, Color(0.04, 0.045, 0.04), HORIZONTAL_ALIGNMENT_CENTER))
+	var badge := UiTheme.mono(UiTheme.label("AI" if p.is_bot else "P%d" % int(p.display_id), 8, Color(0.04, 0.045, 0.04), HORIZONTAL_ALIGNMENT_CENTER))
 	var bg := StyleBoxFlat.new()
 	bg.bg_color = UiTheme.TEXT if is_self else Color("1f1e19")
 	bg.set_content_margin_all(2)
@@ -1483,12 +1483,15 @@ func _drive_weapons() -> void:
 		gx = maxf((size.x - gw) * 0.5, MARGIN)
 		gy = _squad_card.position.y - gh - 4.0
 	_gear_card.position = Vector2(gx, gy)
-	# zasoby: prawy dolny róg; gdy zachodzą na pasek broni (wąski ekran / duży HUD) — nad nim
+	# zasoby: prawy dolny róg w jednym rzędzie z paskiem broni; gdy rząd się nie mieści (duży HUD, wąski ekran) — nad paskiem,
+	# z naturalną wysokością (bez wspólnej wysokości rzędu, żeby nie była pusta)
+	var ew := _equip_card.get_combined_minimum_size().x
+	var in_row := gx + gw + MARGIN <= size.x - MARGIN - ew
+	_equip_card.custom_minimum_size.y = ROW_H if in_row else 0.0
 	_equip_card.reset_size()
 	var ex := size.x - MARGIN - _equip_card.size.x
 	var ey := size.y - BOTTOM_PAD - _equip_card.size.y
-	if ex < gx + gw + 4.0:
-		ex = size.x - MARGIN - _equip_card.size.x
+	if not in_row:
 		ey = gy - _equip_card.size.y - 4.0
 	_equip_card.position = Vector2(ex, ey)
 
