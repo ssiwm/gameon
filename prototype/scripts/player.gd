@@ -736,7 +736,7 @@ func _local_brain(delta: float) -> void:
 		aim_by_mouse = false
 	elif Input.get_last_mouse_velocity().length() > 20.0:
 		# mysz: celowanie swobodne — snap do 8 kierunków czuje się dziwnie
-		var to_mouse := get_global_mouse_position() - (global_position + Vector2(0, -9))
+		var to_mouse := get_global_mouse_position() - _aim_origin()
 		if to_mouse.length() > 6.0:
 			aim_dir = to_mouse.normalized()
 			aim_by_mouse = true
@@ -1778,6 +1778,17 @@ func carries(w: int) -> bool:
 
 func kit_primaries() -> Array:
 	return [kit.x, kit.y]
+
+## Punkt, z którego liczymy celowanie myszą: dłoń trzymająca broń (postać 3D: chwyt z modelu). Wylot leży na linii dłoń → kursor,
+## więc pocisk trafia w celownik; przy celowaniu z korpusu (0, −9) pociski szły równolegle, ale kilka pikseli nad kursorem.
+func _aim_origin() -> Vector2:
+	var side := signf(aim_dir.x) if absf(aim_dir.x) > 0.1 else 1.0
+	if c3d != null and c3d.ready_ok and not dead:
+		var g: Vector2 = c3d.grip_px
+		if side * c3d.px_flip < 0.0:                       # obrót w tej samej klatce: model jeszcze nie zdążył się odwrócić (jak w muzzle_pos)
+			g.x = -g.x
+		return global_position + g
+	return global_position + Vector2(side, -8.0 if crouching else -12.0)
 
 func _snap8(v: Vector2) -> Vector2:
 	if v == Vector2.ZERO:
