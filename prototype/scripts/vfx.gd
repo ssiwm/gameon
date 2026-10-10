@@ -19,6 +19,9 @@ const MAX_DECALS := 260
 
 static var _debris: Array = []
 static var _blob: Texture2D
+## Widok 3D (view3d.gd) ustawia tu siebie: wybuchy cząsteczek (krew, iskry, kurz, dym) są wtedy odzwierciedlane jako cząsteczki 3D z głębią,
+## a 2D-owa wersja jest ukrywana.
+static var view3d: Node = null
 
 # ---------------------------------------------------------------- cząsteczki
 
@@ -84,6 +87,8 @@ static func burst(parent: Node, pos: Vector2, color: Color, amount: int, vmin: f
 		fx.material = Lights.unshaded()
 	parent.add_child(fx)
 	fx.global_position = pos
+	if view3d != null and is_instance_valid(view3d):
+		view3d.call("mirror_burst", fx, pos)
 	parent.get_tree().create_timer(life + 0.3).timeout.connect(fx.queue_free)
 
 ## Kurz przy lądowaniu / zeskoku.

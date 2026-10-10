@@ -57,6 +57,7 @@ func launch(w: int, from: Vector2, dir: Vector2, shooter: int, auth: bool, lag_s
 	_pierce_left = int(_def.pierce)
 
 func _ready() -> void:
+	add_to_group("projectiles")            # widok 3D (view3d.gd) odzwierciedla pociski jako smugi 3D
 	# smuga widoczna w ciemności
 	material = Lights.unshaded()
 	z_index = 3
