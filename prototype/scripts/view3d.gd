@@ -159,6 +159,9 @@ func _process(delta: float) -> void:
 			if ar.begins_with("--view3dsave="):                 # dev: zapis obrazu warstwy graczy (PNG z alfą) do oceny jasności modeli
 				_saved = true
 				_vp_fg.get_texture().get_image().save_png(ar.substr(13))
+			elif ar.begins_with("--view3dsavebg="):                 # dev: zapis obrazu świata 3D (bez interfejsu i warstw 2D) — ocena materiałów w nocnym oświetleniu
+				_saved = true
+				_vp_bg.get_texture().get_image().save_png(ar.substr("--view3dsavebg=".length()))
 	_sync_camera()
 	_hide_static()
 	_geo_t -= delta
@@ -249,6 +252,7 @@ func _sync_geometry() -> void:
 	env_b.fog_density = env_a.fog_density * 0.35
 	_cam_b.environment = env_b
 	Level3D.build_level(_geo, rows)
+	Level3D.build_decals(_geo, rows)
 	if not hub:
 		Level3D.build_forest(_geo, rows)
 		Level3D.build_ground_fog(_geo, rows)
