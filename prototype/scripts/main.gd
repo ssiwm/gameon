@@ -734,6 +734,7 @@ func host_game() -> void:
 
 ## Narzędzie deweloperskie (--shot=ŚCIEŻKA [--shotat=KOLUMNA]): po 2,5 s zapisuje obraz z widoku gry (tylko okno gry, bez pulpitu)
 ## do PNG i kończy. --shotat przenosi człowieka na podłogę w danej kolumnie mapy (np. do obejrzenia strefy kryjówki).
+## Dev (--shothp=N): zdrowie gracza 1 na zrzucie (plakietka życia).
 ## Dev (--perf=SEKUNDY [--shotat=KOLUMNA]): pomiar wydajności po 2 s rozgrzewki — czas klatki bez vsync (średnia, p95, max), wywołania rysowania,
 ## prymitywy, węzły i pamięć wideo z monitorów silnika; drukuje jedną linię [PERF] i kończy. Nie zastępuje profilera GPU (gl_compatibility nie podaje czasu GPU).
 ## Dev (--perf=SEK --perfsweep=KROK [--perfwake]): „przejście" mapy — gracz 1 staje co KROK kolumn na każdym piętrze, w każdym miejscu mierzymy SEK sekund
@@ -1173,6 +1174,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					break
 			p.global_position = Vector2(float(col) * 16.0 + 8.0, fy - 2.0)
 			p.velocity = Vector2.ZERO
+	for sa in OS.get_cmdline_user_args():
+		if sa.begins_with("--shothp="):                  # dev: zdrowie gracza 1 na zrzucie (podgląd plakietki życia)
+			var hp_p: Node2D = _players.get_node_or_null("1")
+			if hp_p != null:
+				hp_p.hp = int(sa.substr("--shothp=".length()))
 	if flicker:
 		Lights.flicker_until_ms = Time.get_ticks_msec() + int(delay * 1000.0) + 3000      # podgląd efektu migotania świateł (dread.gd)
 	await get_tree().create_timer(delay).timeout
