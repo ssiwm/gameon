@@ -252,6 +252,7 @@ func _sync_geometry() -> void:
 	env_b.fog_density = env_a.fog_density * 0.35
 	_cam_b.environment = env_b
 	Level3D.build_level(_geo, rows)
+	Level3D.build_liquids(_geo, rows)
 	Level3D.build_decals(_geo, rows)
 	if not hub:
 		Level3D.build_forest(_geo, rows)
