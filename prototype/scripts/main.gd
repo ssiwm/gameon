@@ -1254,7 +1254,7 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 	print("[SHOT] %s (%dx%d)" % [path, img.get_width(), img.get_height()])
 	get_tree().quit()
 
-## Dev (--shotplayer): zdarzenia gracza 1 — hit, down, revive, melee / chop (cios maczetą / kilofem), dying (końcówka wykrwawiania), jump (skok).
+## Dev (--shotplayer): zdarzenia gracza 1 — hit, down, revive, melee / chop (cios maczetą / kilofem), dying (końcówka wykrwawiania), jump (skok), grab (chwycenie przez Pijawkę).
 func _dev_player(what: String) -> void:
 	var pl: Node2D = _players.get_node_or_null("1")
 	if pl == null:
@@ -1274,6 +1274,11 @@ func _dev_player(what: String) -> void:
 				pl.weapons.melee_id = 11 if what == "chop" else 10
 				pl.weapons.try_melee()
 				await get_tree().create_timer(1.4).timeout
+		"grab":                                            # chwycenie przez Pijawkę (stan `grabbed` na 3 s)
+			pl.set("grab_pos", pl.global_position)
+			pl.set("grabbed", true)
+			await get_tree().create_timer(3.0).timeout
+			pl.set("grabbed", false)
 		"dying":                                           # powalenie z końcówką wykrwawiania (podgląd drgawek i zapadania)
 			pl.call("_go_down")
 			pl.set("bleed_left", 1.2)
@@ -1297,6 +1302,9 @@ func _dev_clip(en: Node, what: String) -> void:
 			await get_tree().create_timer(0.1).timeout
 			if is_instance_valid(en):
 				en.set("_flash", 0.0)
+		"jump":                                            # skok wroga (poza lotu): wznosi się z prędkością 260 px/s
+			en.set_physics_process(true)
+			en.velocity.y = -260.0
 		"attack":
 			en.set("winding", true)
 			await get_tree().create_timer(0.5).timeout

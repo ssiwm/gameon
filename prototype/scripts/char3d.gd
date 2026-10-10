@@ -194,6 +194,8 @@ var land_t := -1.0                           ## 0..1 amortyzacji lądowania (ugi
 var land_str := 0.6                          ## siła lądowania 0..1 (z prędkości spadania)
 var back_run := false                        ## biegnie tyłem względem kierunku celowania: krok w przeciwną stronę, tułów odchylony
 var dying := 0.0                             ## 0..1 ostatnie sekundy wykrwawiania: drgawki i zapadanie się w ziemię (player.gd)
+var grabbed := false                         ## chwycony przez Pijawkę (player.gd): szamocze się, nogi dyndają nad ziemią
+var _grab_w := 0.0                           ## 0..1 waga pozy chwycenia (płynne wejście i wyjście)
 var air_vy := 0.0                            ## px/s prędkość pionowa w locie (− w górę): steruje pozą skoku (wyprost, podciągnięte kolana, sięganie do ziemi)
 var climb_t := -1.0                          ## 0..1 podciągnięcia przy wskakiwaniu na platformę (player.gd), <0 = brak
 var _air_t := 0.0                            ## s w powietrzu (od odbicia)
@@ -683,6 +685,7 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		land_t += delta / 0.34
 		if land_t >= 1.0:
 			land_t = -1.0
+	_grab_w = move_toward(_grab_w, 1.0 if (grabbed and _down < 0.2) else 0.0, delta / 0.18)
 	if climb_t >= 0.0:
 		climb_t += delta / 0.40
 		if climb_t >= 1.0:
@@ -777,6 +780,12 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		var kl := (sin(PI * land_t) - 0.22 * sin(TAU * land_t) * land_t) * land_str
 		drop += 0.24 * kl
 		lean += 10.0 * kl
+	var jit := Vector3.ZERO
+	if _grab_w > 0.001:                                           # chwycony: tułów zgięty, szarpie się na boki, biodra uniesione (nogi dyndają)
+		lean += 14.0 * _grab_w
+		drop -= 0.10 * _grab_w
+		jit = Vector3(0.035 * sin(_time * 17.0) * _grab_w, 0.0, 0.0)
+		head_hit += 12.0 * sin(_time * 14.0) * _grab_w
 	if climb_t >= 0.0:                                            # podciągnięcie na platformę: pochylenie i ugięcie nad krawędzią
 		var cw := sin(PI * climb_t)
 		lean += 15.0 * cw
@@ -792,8 +801,10 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		_rot_world(_b["Spine2"], Vector3.BACK, deg_to_rad(0.9 * sin(_time * 1.9)) * w_idle * stand)
 		_rot_world(_b["Head"], Vector3.UP, deg_to_rad(2.5 * sin(_time * 0.43) + 1.2 * sin(_time * 1.1)) * w_idle * stand)
 	var fall_rot := -PI * 0.5 * pow(e, 1.3)                       # ciało przewraca się wokół bioder (opóźnione względem opadania bioder)
-	_move_global(hips, Vector3(lunge, -drop + bob, 0.0))                           # kucając biodra cofnięte za stopy
+	_move_global(hips, Vector3(lunge, -drop + bob, 0.0) + jit)                     # kucając biodra cofnięte za stopy
 	_rot_world(hips, Vector3.BACK, -deg_to_rad(lean) + fall_rot)
+	if _grab_w > 0.001:
+		_rot_world(hips, Vector3.UP, deg_to_rad(7.0) * sin(_time * 11.0) * _grab_w)
 	if dying > 0.0:                                               # ostatnie sekundy: drgawki całego ciała, coraz słabsze przy zapadaniu
 		var tw := sin(_time * 47.0) * sin(_time * 13.0) * (1.0 - dying * 0.6)
 		_rot_world(hips, Vector3.UP, deg_to_rad(5.0) * tw)
@@ -861,6 +872,10 @@ func _pose_legs(e: float) -> void:
 			var ls := _leg_state(n, side)
 			off += w * (ls[0] as Vector3)
 			tilt += w * float(ls[1])
+		if _grab_w > 0.001:                                       # chwycony: nogi nad ziemią, kopią naprzemiennie
+			var kp := _time * 9.0 + (0.0 if side == "Right" else PI)
+			off.y += (0.12 + 0.22 * maxf(0.0, sin(kp))) * _grab_w
+			off.x += 0.12 * sin(kp) * _grab_w
 		if climb_t >= 0.0:                                        # podciągnięcie: oba kolana wysoko, noga bliższa kamery z przodu
 			var cw2 := sin(PI * climb_t)
 			off.y += 0.22 * cw2

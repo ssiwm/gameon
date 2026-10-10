@@ -419,7 +419,7 @@ func _sync_enemies(delta: float) -> void:
 		var body := src.get_node_or_null("Body") as AnimatedSprite2D
 		var pos := Level3D.px_to_m(body.global_position if body != null else src.global_position)
 		# zdarzenia z symulacji 2D → klipy modelu: śmierć (alive = false; węzeł jest tylko chowany), trafienie (błysk), atak (koniec zapowiedzi)
-		var st: Dictionary = _estate.get(id, {"alive": true, "flash": false, "wind": false})
+		var st: Dictionary = _estate.get(id, {"alive": true, "flash": false, "wind": false, "py": NAN, "vy": 0.0})
 		var alive_v = src.get("alive")
 		var alive: bool = true if alive_v == null else bool(alive_v)
 		if alive_v == null and String(e.get("kind")) == "vein":                 # boss nie ma `alive`: martwy = stan DEAD (2)
@@ -456,7 +456,15 @@ func _sync_enemies(delta: float) -> void:
 		var nfr := sf.get_frame_count(anim) if sf != null and sf.has_animation(anim) else 1
 		var lp := sf.get_animation_loop(anim) if sf != null and sf.has_animation(anim) else true
 		var md: Color = body.modulate if alive else Color.WHITE
-		e.call("pose", delta, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp)
+		# prędkość pionowa z przesunięcia (u klientów węzeł wroga ma tylko pozycję): skok / spadanie → poza lotu w modelu 3D
+		var ypx := body.global_position.y if body != null else src.global_position.y
+		var vy_now := 0.0
+		if not is_nan(float(st["py"])) and delta > 0.0 and delta < 0.1:
+			vy_now = (ypx - float(st["py"])) / delta
+		st["py"] = ypx
+		st["vy"] = lerpf(float(st["vy"]), vy_now, 0.45)
+		_estate[id] = st
+		e.call("pose", delta, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]))
 
 func _set_layer(root: Node, layer: int) -> void:
 	for mi in root.find_children("*", "VisualInstance3D", true, false):
