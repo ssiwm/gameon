@@ -1133,6 +1133,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 						en.set_physics_process(false)
 					if sp[0] != "ShotT2" or live:
 						en.call("wake")
+					if "--shotwind" in OS.get_cmdline_user_args():          # --shotwind: wszyscy w zapowiedzi ataku (podgląd pozy windup)
+						en.set("winding", true)
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shotgunid="):                          # dev: broń o danym id (0–11) w pierwszym slocie gracza 1 — podgląd sprite'ów broni
 			var gp: Node2D = _players.get_node_or_null("1")

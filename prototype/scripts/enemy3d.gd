@@ -226,6 +226,7 @@ func pose(delta: float, anim: String, flip: bool, mod: Color) -> void:
 func _pose_quad(anim: String) -> void:
 	var sy := 1.0
 	var sz := 1.0
+	var pitch := 0.0
 	var t := 0.0
 	if _ap != null:
 		var names := _ap.get_animation_list()
@@ -239,9 +240,11 @@ func _pose_quad(anim: String) -> void:
 	match anim:
 		"run", "walk":
 			t = fposmod(_phase / TAU, 1.0) * len
-		"windup":                                  # skok: wyciągnięta faza kroku, ściśnięty przed odbiciem
+		"windup":                                  # skok: wyciągnięta faza kroku, nos w dół i drżące ściśnięcie przed odbiciem (bez spłaszczania)
 			t = 0.25 * len
-			sy = 0.86
+			sy = 0.94 + 0.012 * sin(_t * 42.0)
+			sz = 1.04
+			pitch = deg_to_rad(-5.0)
 		"sleep":                                   # zwinięty: spłaszczony, powoli oddycha
 			sy = 0.60 + 0.02 * sin(_t * 2.6)
 		_:
@@ -249,7 +252,8 @@ func _pose_quad(anim: String) -> void:
 	if _ap != null and _ap_name != "":
 		_ap.assigned_animation = _ap_name
 		_ap.seek(t, true)
-	_pivot.scale = Vector3(_scale, _scale * sy, _scale * sz)
+	var yaw := deg_to_rad(float(_spec.get("yaw", 0.0)))
+	_pivot.basis = Basis(Vector3.BACK, pitch) * Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(_scale, _scale * sy, _scale * sz))
 
 func _pose_crawler(anim: String) -> void:
 	_sk.reset_bone_poses()
