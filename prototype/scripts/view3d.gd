@@ -269,7 +269,15 @@ func _sync_rigs() -> void:
 			_make_rig(p, c3)
 		var rig: Dictionary = _rigs[p]
 		var actor: Node3D = rig["actor"]
-		actor.position = Level3D.px_to_m(p.global_position)
+		var gun_now = c3._gun                              # zmiana broni: Char3D tworzy nowy model w swoim świecie — przepinamy go do aktora
+		if gun_now != null and is_instance_valid(gun_now) and (gun_now as Node).get_parent() != actor:
+			(gun_now as Node).reparent(actor, false)
+			for mi in (gun_now as Node).find_children("*", "MeshInstance3D", true, false):
+				(mi as MeshInstance3D).layers = LAYER_ACTORS
+			rig["gun"] = gun_now
+			if c3._gun_n != null:
+				c3._gun_n.visible = false
+		actor.position = Level3D.px_to_m(p.global_position) - Vector3(0.0, float(c3.sink_m), 0.0)
 		actor.scale = Vector3(c3.px_flip, 1.0, 1.0)
 		c3._on_screen = true                       # poza liczymy zawsze (bez powiadomień o ekranie 2D)
 	for p in _rigs.keys():

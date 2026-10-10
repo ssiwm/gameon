@@ -193,6 +193,9 @@ var hit_t := -1.0                            ## 0..1 reakcji na trafienie (rekoi
 var land_t := -1.0                           ## 0..1 amortyzacji lądowania (ugięcie kolan), <0 = brak (player.gd)
 var land_str := 0.6                          ## siła lądowania 0..1 (z prędkości spadania)
 var back_run := false                        ## biegnie tyłem względem kierunku celowania: krok w przeciwną stronę, tułów odchylony
+var dying := 0.0                             ## 0..1 ostatnie sekundy wykrwawiania: drgawki i zapadanie się w ziemię (player.gd)
+var sink_m := 0.0                            ## m: o tyle opuszczamy model pod podłoże (czyta view3d.gd)
+var _mc := {}                                ## bieżący cios bronią białą (krzywe ruchu), puste = brak ciosu
 const AW_STATES := ["idle", "run", "jump", "fall", "crouch", "crouch_walk"]
 const AW_RATE := 13.0                        ## 1/s: tempo mieszania póz bazowych (przejścia ~80 ms)
 var _aw := {}                                ## wagi póz bazowych — płynne przejścia zamiast przeskoków
@@ -580,9 +583,11 @@ func set_gun(key: String) -> void:
 		_gun_n.queue_free()
 		_gun_n = null
 	_gun = (load(path) as PackedScene).instantiate()
+	_gun.visible = false                                     # do pierwszej pozy (update ustawia transformację i widoczność) — bez błysku w zerze świata
 	_root3d.add_child(_gun)
 	if _camn != null:                                        # kopia broni na warstwie 2 (osobny egzemplarz sceny, ta sama transformacja)
 		_gun_n = (load(path) as PackedScene).instantiate()
+		_gun_n.visible = false
 		_root3d.add_child(_gun_n)
 		for mi in _gun_n.find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).layers = 2
@@ -676,6 +681,10 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		if land_t >= 1.0:
 			land_t = -1.0
 	_down = move_toward(_down, 1.0 if anim == "down" else 0.0, delta / (0.75 if anim == "down" else 0.95))
+	_mc = {}
+	if swing_t >= 0.0 and _down < 0.2:
+		_mc = _melee_curve(swing_t, "chop" if _gun_key == "kilof" else "slash")
+	sink_m = 0.45 * smoothstep(0.0, 1.0, dying)
 	_pose_body(delta, anim, speed, theta)
 	var holding := armed and _down < 0.2 and throw_t < 0.0
 	if throw_t >= 0.0 and armed and _down < 0.2:
@@ -745,9 +754,10 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	if back_run:
 		lean -= 9.0 * w_run                                           # bieg tyłem: tułów odchylony do tyłu
 	var lunge := 0.0
-	if swing_t >= 0.0:                                            # cios: wypad do przodu w chwili cięcia
-		lunge = sin(clampf(swing_t * 2.0, 0.0, 1.0) * PI) * 0.09
-		lean += lunge * 60.0
+	if not _mc.is_empty():                                        # cios: wypad bioder, pochylenie i ugięcie wg krzywej ruchu
+		lunge = float(_mc["step"]) * 0.45
+		lean += float(_mc["lean"])
+		drop += float(_mc["drop"])
 	lean += 7.0 * clampf((_damage - 0.55) / 0.45, 0.0, 1.0)         # ciężko ranny: tułów zgarbiony do przodu
 	var head_hit := 0.0
 	if hit_t >= 0.0:                                              # trafienie: rekoil tułowia i szarpnięcie głowy
@@ -772,6 +782,13 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	var fall_rot := -PI * 0.5 * pow(e, 1.3)                       # ciało przewraca się wokół bioder (opóźnione względem opadania bioder)
 	_move_global(hips, Vector3(lunge, -drop + bob, 0.0))                           # kucając biodra cofnięte za stopy
 	_rot_world(hips, Vector3.BACK, -deg_to_rad(lean) + fall_rot)
+	if dying > 0.0:                                               # ostatnie sekundy: drgawki całego ciała, coraz słabsze przy zapadaniu
+		var tw := sin(_time * 47.0) * sin(_time * 13.0) * (1.0 - dying * 0.6)
+		_rot_world(hips, Vector3.UP, deg_to_rad(5.0) * tw)
+		_rot_world(_b["Head"], Vector3.BACK, deg_to_rad(9.0) * sin(_time * 31.0) * (1.0 - dying * 0.5))
+		for side in ["Left", "Right"]:
+			_rot_world(_b[side + "Arm"], Vector3.BACK, deg_to_rad(14.0) * sin(_time * 38.0 + (0.0 if side == "Left" else 1.7)))
+			_rot_world(_b[side + "UpLeg"], Vector3.BACK, deg_to_rad(10.0) * sin(_time * 29.0 + (0.0 if side == "Left" else 2.3)))
 	# tułów zwraca się ku kamerze (broń po bliższej stronie) i pochyla się za celem
 	_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(-22.0) * stand)
 	for n in ["Spine", "Spine1", "Spine2"]:
@@ -817,6 +834,9 @@ func _pose_legs(e: float) -> void:
 			var ls := _leg_state(n, side)
 			off += w * (ls[0] as Vector3)
 			tilt += w * float(ls[1])
+		if not _mc.is_empty():                                    # cios: stopa bliższa kamery wysuwa się do przodu, druga zostaje i dociąża
+			var st := float(_mc["step"])
+			off.x += st if side == "Right" else -0.4 * st
 		var foot: int = _b[side + "Foot"]
 		var rest_foot := _sk.get_bone_global_rest(foot).origin
 		var target := Vector3(_origin_x + off.x, _ankle_y + off.y, rest_foot.z)
@@ -837,18 +857,20 @@ func _pose_legs(e: float) -> void:
 func _pose_arms(theta: float) -> void:
 	var sr := _gp(_b["RightArm"]).origin
 	var sl := _gp(_b["LeftArm"]).origin
-	var aim_t := theta - gun_extra
+	var swinging := not _mc.is_empty()
+	var aim_t := theta - (float(_mc["ang"]) if swinging else gun_extra)
 	var dirv := Vector3(cos(aim_t), sin(aim_t), 0.0)
 	var up := Vector3(-sin(aim_t), cos(aim_t), 0.0)
 	var gun_b := Basis(Vector3.BACK, aim_t)
-	var radial := 0.30
+	var radial := float(_mc["rad"]) if swinging else 0.30
 	var rear := Vector3.ZERO
 	var fore := Vector3.ZERO
 	var reach_l: float = _arm_len["Left"][0] + _arm_len["Left"][1]
 	var kick_m := gun_kick_px / WP_PER_M * 0.6
 	# celowanie w dół: broń wysuwa się ku kamerze, żeby nie chować się za tułowiem (z=+ to bliższa strona)
 	for k in 8:
-		rear = sr + Vector3(cos(theta), sin(theta), 0.0) * radial - Vector3(-sin(theta), cos(theta), 0.0) * 0.11 + Vector3(0.0, 0.0, -0.13 + 0.28 * maxf(0.0, -sin(theta)))
+		var hd := aim_t if swinging else theta                    # przy ciosie dłoń wędruje po łuku wokół barku (razem z ostrzem)
+		rear = sr + Vector3(cos(hd), sin(hd), 0.0) * radial - Vector3(-sin(hd), cos(hd), 0.0) * 0.11 + Vector3(0.0, 0.0, -0.13 + 0.28 * maxf(0.0, -sin(hd)))
 		rear -= dirv * kick_m
 		fore = rear + gun_b * (_gun_info["fore"] as Vector3)
 		if _hands == 1 or fore.distance_to(sl) <= reach_l * 0.97:
@@ -868,6 +890,8 @@ func _pose_arms(theta: float) -> void:
 			lt = fore.lerp(mag, ease(k, 0.5))
 		_two_bone(_b["LeftArm"], _b["LeftForeArm"], _b["LeftHand"], _arm_len["Left"][0], _arm_len["Left"][1], lt, Vector3(-0.25, -1.0, -0.4))
 		_set_global_basis(_b["LeftHand"], gx.basis)
+	elif swinging:
+		_pose_left_melee(gx, rear)
 	else:
 		_pose_left_relaxed()
 	_set_global_basis(_b["RightHand"], gx.basis * Basis(Vector3.FORWARD, deg_to_rad(8.0)))
@@ -885,6 +909,62 @@ func _pose_throw(theta: float) -> void:
 	_pose_left_relaxed()
 	muzzle_px = _to_px(target)
 	grip_px = muzzle_px
+
+## Cios bronią białą: krzywe ruchu (kąt zamachu względem celowania w rad, + = ostrze w dół; promień ręki od barku w m; pochylenie tułowia w °,
+## zapadnięcie bioder w m; krok w m). Trafienie liczy gra w 45% czasu ciosu (`MELEE_HIT_AT`), więc uderzenie jest w u = 0,45.
+## slash (maczeta): zamach do tyłu i w górę, cięcie przez łuk z wyprostem ręki, wybieg; chop (kilof): wzniesienie nad głowę, rąbnięcie, przytrzymanie, powrót.
+func _melee_curve(u: float, style: String) -> Dictionary:
+	var K: Dictionary
+	if style == "chop":
+		K = {
+			"ang": [[0.0, 0.0], [0.28, -2.05], [0.45, 1.05], [0.62, 1.25], [1.0, 0.0]],
+			"rad": [[0.0, 0.30], [0.28, 0.15], [0.45, 0.40], [1.0, 0.30]],
+			"lean": [[0.0, 0.0], [0.28, -12.0], [0.45, 30.0], [0.65, 24.0], [1.0, 0.0]],
+			"drop": [[0.0, 0.0], [0.28, -0.04], [0.45, 0.16], [0.7, 0.10], [1.0, 0.0]],
+			"step": [[0.0, 0.0], [0.28, 0.04], [0.45, 0.28], [0.75, 0.20], [1.0, 0.0]],
+		}
+	else:
+		K = {
+			"ang": [[0.0, 0.0], [0.18, -1.15], [0.45, 0.50], [0.62, 0.95], [1.0, 0.0]],
+			"rad": [[0.0, 0.30], [0.18, 0.18], [0.45, 0.42], [0.7, 0.34], [1.0, 0.30]],
+			"lean": [[0.0, 0.0], [0.18, -6.0], [0.45, 20.0], [0.65, 13.0], [1.0, 0.0]],
+			"drop": [[0.0, 0.0], [0.18, -0.01], [0.45, 0.07], [0.7, 0.04], [1.0, 0.0]],
+			"step": [[0.0, 0.0], [0.18, 0.0], [0.45, 0.22], [0.75, 0.14], [1.0, 0.0]],
+		}
+	var o := {"style": style}
+	for k in K:
+		o[k] = _keyframes(K[k], u)
+	return o
+
+## Interpolacja między kluczami [[u, v], …]: przyspieszenie do klatki trafienia (u = 0,45), po niej wyhamowanie — cios „uderza", a nie płynie.
+func _keyframes(keys: Array, u: float) -> float:
+	if u <= float(keys[0][0]):
+		return float(keys[0][1])
+	for i in range(keys.size() - 1):
+		var a: Array = keys[i]
+		var b: Array = keys[i + 1]
+		if u <= float(b[0]):
+			var t := (u - float(a[0])) / maxf(float(b[0]) - float(a[0]), 0.0001)
+			if is_equal_approx(float(b[0]), 0.45):
+				t = t * t                                      # rozpęd do uderzenia
+			elif is_equal_approx(float(a[0]), 0.45):
+				t = 1.0 - (1.0 - t) * (1.0 - t)                # wybieg po uderzeniu
+			else:
+				t = t * t * (3.0 - 2.0 * t)
+			return lerpf(float(a[1]), float(b[1]), t)
+	return float(keys[keys.size() - 1][1])
+
+## Druga ręka przy ciosie: kilof — na trzonku (chwyt oburącz), maczeta — przeciwwaga: zamach w przeciwną stronę.
+func _pose_left_melee(gx: Transform3D, rear: Vector3) -> void:
+	var sl := _gp(_b["LeftArm"]).origin
+	var reach: float = _arm_len["Left"][0] + _arm_len["Left"][1]
+	var target := Vector3.ZERO
+	if String(_mc["style"]) == "chop":
+		target = rear + gx.basis * Vector3(0.26, 0.0, 0.0)
+	else:
+		var counter := float(_mc["ang"])                       # ostrze w dół → lewa ręka odchodzi w tył i w górę
+		target = sl + Vector3(-0.10 - 0.16 * clampf(counter, 0.0, 1.0), -reach * 0.78 + 0.20 * clampf(counter, 0.0, 1.0), 0.05)
+	_two_bone(_b["LeftArm"], _b["LeftForeArm"], _b["LeftHand"], _arm_len["Left"][0], _arm_len["Left"][1], target, Vector3(-0.25, -1.0, -0.4))
 
 func _pose_left_relaxed() -> void:
 	var sl := _gp(_b["LeftArm"]).origin
