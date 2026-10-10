@@ -33,6 +33,7 @@ GUNS = {
     "kilof":    ("kilof",    0.80, 0.23, 0.50, None, None, 1, True),
 }
 CHARS = [f"{g}_{o}" for g in ("male", "female") for o in ("scav", "hazmat", "medic")]
+EMIT = {"lr7": "cyan", "widmo1": "cyan", "hkm9": "red"}      # mapy emisji broni energetycznej (z nasyconych pikseli koloru)
 
 
 def blender_exe():
@@ -73,6 +74,8 @@ def main():
                     str(ln), str(rfx), str(rfz), str(ffx if ffx is not None else rfx), str(ffz if ffz is not None else rfz), f"--hands={hands}"]
             if flip:
                 args.append("--flip")
+            if k in EMIT:
+                args.append("--emit=" + EMIT[k])
             run(args)
             print("OK", k)
 
