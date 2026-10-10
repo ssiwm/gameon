@@ -1229,6 +1229,9 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if sa.begins_with("--shotnest="):                 # dev: --shotnest=death|hit — zdarzenie wszystkich gniazd 1 s po starcie (podgląd klipów)
 			for nn in get_tree().get_nodes_in_group("nests"):
 				get_tree().create_timer(1.0).timeout.connect(_dev_clip.bind(nn, sa.substr("--shotnest=".length())))
+	for sa in OS.get_cmdline_user_args():
+		if sa.begins_with("--shotplayer="):               # dev: --shotplayer=hit|down|revive — zdarzenie gracza 1 po 1 s (podgląd animacji postaci 3D)
+			get_tree().create_timer(1.0).timeout.connect(_dev_player.bind(sa.substr("--shotplayer=".length())))
 	if flicker:
 		Lights.flicker_until_ms = Time.get_ticks_msec() + int(delay * 1000.0) + 3000      # podgląd efektu migotania świateł (dread.gd)
 	await get_tree().create_timer(delay).timeout
@@ -1250,6 +1253,22 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 	img.save_png(path)
 	print("[SHOT] %s (%dx%d)" % [path, img.get_width(), img.get_height()])
 	get_tree().quit()
+
+## Dev (--shotplayer): zdarzenia gracza 1 — hit (utrata zdrowia), down (powalenie), revive (powalenie, po 1,4 s wstanie).
+func _dev_player(what: String) -> void:
+	var pl: Node2D = _players.get_node_or_null("1")
+	if pl == null:
+		return
+	match what:
+		"hit":
+			pl.hp -= 1
+			pl.set("_flash", 0.25)
+		"down":
+			pl.call("_go_down")
+		"revive":
+			pl.call("_go_down")
+			await get_tree().create_timer(1.4).timeout
+			pl.call("_do_revive")
 
 ## Dev (--shotclip): wywołuje zdarzenie wroga, żeby obejrzeć klip modelu 3D: death (śmierć), hit (trafienie), attack (koniec zapowiedzi).
 func _dev_clip(en: Node, what: String) -> void:

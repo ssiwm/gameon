@@ -189,6 +189,14 @@ var gun_kick_px := 0.0                       ## px — cofnięcie broni wzdłuż
 var reload_t := -1.0                         ## 0..1 trwającego przeładowania, <0 = brak (lewa dłoń sięga do magazynka)
 var swing_t := -1.0                          ## 0..1 trwającego ciosu, <0 = brak
 var throw_t := -1.0                          ## 0..1 trwającego rzutu (flara, granat), <0 = brak: prawa ręka zamachem nad głową, broń schowana
+var hit_t := -1.0                            ## 0..1 reakcji na trafienie (rekoil tułowia i głowy), <0 = brak (player.gd)
+var land_t := -1.0                           ## 0..1 amortyzacji lądowania (ugięcie kolan), <0 = brak (player.gd)
+var land_str := 0.6                          ## siła lądowania 0..1 (z prędkości spadania)
+var back_run := false                        ## biegnie tyłem względem kierunku celowania: krok w przeciwną stronę, tułów odchylony
+const AW_STATES := ["idle", "run", "jump", "fall", "crouch", "crouch_walk"]
+const AW_RATE := 13.0                        ## 1/s: tempo mieszania póz bazowych (przejścia ~80 ms)
+var _aw := {}                                ## wagi póz bazowych — płynne przejścia zamiast przeskoków
+var _down := 0.0                             ## 0..1 postęp upadku (rośnie przy „down”, maleje przy wstawaniu po reanimacji)
 
 ## Wyniki ostatniej klatki, w pikselach świata względem stóp (z uwzględnieniem odbicia) — dla efektów.
 var muzzle_px := Vector2.ZERO
@@ -659,9 +667,18 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 	if ax < 0.05:
 		theta = PI * 0.5 * signf(-aim.y)
 	theta = clampf(theta, deg_to_rad(-80.0), deg_to_rad(85.0))
+	if hit_t >= 0.0:
+		hit_t += delta / 0.30
+		if hit_t >= 1.0:
+			hit_t = -1.0
+	if land_t >= 0.0:
+		land_t += delta / 0.30
+		if land_t >= 1.0:
+			land_t = -1.0
+	_down = move_toward(_down, 1.0 if anim == "down" else 0.0, delta / (0.75 if anim == "down" else 0.95))
 	_pose_body(delta, anim, speed, theta)
-	var holding := armed and anim != "down" and throw_t < 0.0
-	if throw_t >= 0.0 and armed and anim != "down":
+	var holding := armed and _down < 0.2 and throw_t < 0.0
+	if throw_t >= 0.0 and armed and _down < 0.2:
 		_pose_throw(theta)
 	elif holding:
 		_pose_arms(theta)
@@ -672,77 +689,148 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		if _gun_n != null:
 			_gun_n.visible = holding
 
-func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
-	var hips := _b["Hips"] as int
-	var run := anim == "run" or anim == "crouch_walk"
-	var crouch := anim == "crouch" or anim == "crouch_walk"
-	if run:
-		_phase += delta * clampf(speed / 95.0, 0.4, 1.4) * TAU * 2.0
+## Parametry pozy bazowej (przed mieszaniem wagami): pochylenie tułowia (°), zapadnięcie bioder (m), kołysanie (m).
+func _body_state(a: String) -> Dictionary:
 	var lean := 4.0
 	var drop := 0.0
 	var bob := 0.0
+	match a:
+		"idle":
+			lean = 4.0 + 0.8 * sin(_time * 2.4)
+			bob = -0.006 * sin(_time * 2.4)
+		"run":
+			lean = 13.0
+			bob = -0.035 * absf(sin(_phase))
+		"jump":
+			lean = 8.0
+		"fall":
+			lean = 2.0
+		"crouch":
+			lean = 6.0                                                # przysiad: tułów prawie pionowo, kolana do przodu
+			drop = 0.48                                               # głęboki przysiad: sylwetka ok. 0,65 wysokości stojącej, jak hitbox kucania
+		"crouch_walk":
+			lean = 6.0
+			drop = 0.48
+			bob = 0.012 * sin(_phase * 2.0)
+	return {"lean": lean, "drop": drop, "bob": bob}
+
+func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
+	var hips := _b["Hips"] as int
+	var key := "idle" if anim == "down" else anim
+	if not AW_STATES.has(key):
+		key = "idle"
+	if _aw.is_empty():
+		_aw[key] = 1.0
+	var kk := 1.0 - exp(-AW_RATE * delta)
+	var sum := 0.0
+	for n in AW_STATES:
+		_aw[n] = lerpf(float(_aw.get(n, 0.0)), 1.0 if n == key else 0.0, kk)
+		sum += float(_aw[n])
+	if anim == "run" or anim == "crouch_walk":
+		_phase += (-1.0 if back_run else 1.0) * delta * clampf(speed / 95.0, 0.4, 1.4) * TAU * 2.0
+	# poza bazowa = mieszanka stanów wg wag (faza kroku ciągła, więc bez przeskoków przy zmianie stanu)
+	var lean := 0.0
+	var drop := 0.0
+	var bob := 0.0
+	for n in AW_STATES:
+		var w := float(_aw[n]) / maxf(sum, 0.0001)
+		if w < 0.002:
+			continue
+		var st := _body_state(n)
+		lean += w * float(st["lean"])
+		drop += w * float(st["drop"])
+		bob += w * float(st["bob"])
+	var w_idle := float(_aw["idle"]) / maxf(sum, 0.0001)
+	var w_run := (float(_aw["run"]) + float(_aw["crouch_walk"])) / maxf(sum, 0.0001)
+	if back_run:
+		lean -= 9.0 * w_run                                           # bieg tyłem: tułów odchylony do tyłu
 	var lunge := 0.0
-	if anim == "idle":
-		bob = -0.006 * sin(_time * 2.4)
-		lean = 4.0 + 0.8 * sin(_time * 2.4)
-		# mikroruch: oddech klatki piersiowej, powolne przeniesienie ciężaru, głowa lekko "szuka" (bez wpływu na broń: tylko kręgosłup i głowa)
-		_rot_world(_b["Spine2"], Vector3.BACK, deg_to_rad(0.9 * sin(_time * 1.9)))
-		_move_global(hips, Vector3(0.008 * sin(_time * 0.65), 0.0, 0.0))
-		_rot_world(_b["Head"], Vector3.UP, deg_to_rad(2.5 * sin(_time * 0.43) + 1.2 * sin(_time * 1.1)))
-	elif anim == "run":
-		lean = 13.0
-		bob = -0.035 * absf(sin(_phase))
-	elif anim == "jump":
-		lean = 8.0
-	elif anim == "fall":
-		lean = 2.0
-	elif crouch:
-		lean = 6.0                                                    # przysiad: tułów prawie pionowo (nie pochylony), kolana do przodu
-		drop = 0.48                                                   # głęboki przysiad: sylwetka ok. 0,65 wysokości stojącej, jak hitbox kucania (11 / 17 px)
-		bob = (0.012 * sin(_phase * 2.0)) if run else 0.0
 	if swing_t >= 0.0:                                            # cios: wypad do przodu w chwili cięcia
 		lunge = sin(clampf(swing_t * 2.0, 0.0, 1.0) * PI) * 0.09
 		lean += lunge * 60.0
 	lean += 7.0 * clampf((_damage - 0.55) / 0.45, 0.0, 1.0)         # ciężko ranny: tułów zgarbiony do przodu
-	if anim == "down":
-		_move_global(hips, Vector3(0.0, -0.62, 0.0))
-		_rot_world(hips, Vector3.BACK, -PI * 0.5)
-		return
+	var head_hit := 0.0
+	if hit_t >= 0.0:                                              # trafienie: rekoil tułowia i szarpnięcie głowy
+		var k := sin(PI * minf(hit_t * 1.4, 1.0)) * (1.0 - hit_t)
+		lean -= 16.0 * k
+		drop += 0.035 * k
+		head_hit = 22.0 * k
+	if land_t >= 0.0:                                             # lądowanie: amortyzacja kolanami
+		var kl := sin(PI * land_t) * land_str
+		drop += 0.17 * kl
+		lean += 7.0 * kl
+	# upadek (po zdjęciu zdrowia) i wstawanie po reanimacji: ten sam ruch w drugą stronę
+	var e := smoothstep(0.0, 1.0, _down)
+	if e > 0.001:
+		drop = lerpf(drop, 0.62, e)
+		lean = lerpf(lean, 0.0, e)
+	var stand := 1.0 - e
+	if w_idle > 0.01 and e < 0.5:
+		# mikroruch: oddech klatki piersiowej, głowa „szuka” (bez wpływu na broń: tylko kręgosłup i głowa)
+		_rot_world(_b["Spine2"], Vector3.BACK, deg_to_rad(0.9 * sin(_time * 1.9)) * w_idle * stand)
+		_rot_world(_b["Head"], Vector3.UP, deg_to_rad(2.5 * sin(_time * 0.43) + 1.2 * sin(_time * 1.1)) * w_idle * stand)
+	var fall_rot := -PI * 0.5 * pow(e, 1.3)                       # ciało przewraca się wokół bioder (opóźnione względem opadania bioder)
 	_move_global(hips, Vector3(lunge, -drop + bob, 0.0))                           # kucając biodra cofnięte za stopy
-	_rot_world(hips, Vector3.BACK, -deg_to_rad(lean))
+	_rot_world(hips, Vector3.BACK, -deg_to_rad(lean) + fall_rot)
 	# tułów zwraca się ku kamerze (broń po bliższej stronie) i pochyla się za celem
-	_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(-22.0))
+	_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(-22.0) * stand)
 	for n in ["Spine", "Spine1", "Spine2"]:
-		_rot_world(_b[n], Vector3.BACK, theta * 0.13 + deg_to_rad(lean) * 0.12 - gun_extra * 0.06)
-	_rot_world(_b["Head"], Vector3.BACK, theta * 0.2 - deg_to_rad(lean) * 0.5)
-	_pose_legs(anim)
+		_rot_world(_b[n], Vector3.BACK, (theta * 0.13 + deg_to_rad(lean) * 0.12 - gun_extra * 0.06) * stand)
+	_rot_world(_b["Head"], Vector3.BACK, (theta * 0.2 - deg_to_rad(lean) * 0.5) * stand + deg_to_rad(head_hit))
+	_pose_legs(e)
 
-func _pose_legs(anim: String) -> void:
-	for side in ["Left", "Right"]:
-		var sgn := 1.0 if side == "Right" else -1.0
-		var rest_foot := _sk.get_bone_global_rest(_b[side + "Foot"]).origin
-		var off := Vector3.ZERO
-		var tilt := 0.0
-		var ph := _phase + (0.0 if side == "Right" else PI)
-		if anim == "idle":
+## Stan nogi (offset kostki względem pozycji spoczynkowej, odchylenie stopy) dla jednej pozy bazowej.
+func _leg_state(a: String, side: String) -> Array:
+	var sgn := 1.0 if side == "Right" else -1.0
+	var off := Vector3.ZERO
+	var tilt := 0.0
+	var ph := _phase + (0.0 if side == "Right" else PI)
+	match a:
+		"idle":
 			off = Vector3(0.12 * sgn * 0.8, 0.0, 0.0)
-		elif anim == "run":
-			off = Vector3(0.34 * sin(ph), 0.17 * maxf(0.0, cos(ph)), 0.0)
+		"run":
+			var stride := 0.34 * (0.8 if back_run else 1.0)
+			off = Vector3(stride * sin(ph), 0.17 * maxf(0.0, cos(ph)), 0.0)
 			tilt = deg_to_rad(-14.0) * maxf(0.0, cos(ph))
-		elif anim == "jump":
+		"jump":
 			off = Vector3(0.28 if sgn > 0 else -0.12, 0.30 if sgn > 0 else 0.16, 0.0)
 			tilt = deg_to_rad(-14.0)
-		elif anim == "fall":
+		"fall":
 			off = Vector3(0.10 if sgn > 0 else -0.08, 0.14 if sgn > 0 else 0.22, 0.0)
-		elif anim == "crouch":
+		"crouch":
 			off = Vector3(0.10 if sgn > 0 else -0.10, 0.0, 0.0)
-		elif anim == "crouch_walk":
+		"crouch_walk":
 			off = Vector3(0.13 * sin(ph) + (0.06 if sgn > 0 else -0.06), 0.07 * maxf(0.0, cos(ph)), 0.0)
+	return [off, tilt]
+
+func _pose_legs(e: float) -> void:
+	var sum := 0.0
+	for n in AW_STATES:
+		sum += float(_aw.get(n, 0.0))
+	for side in ["Left", "Right"]:
+		var off := Vector3.ZERO
+		var tilt := 0.0
+		for n in AW_STATES:
+			var w := float(_aw.get(n, 0.0)) / maxf(sum, 0.0001)
+			if w < 0.002:
+				continue
+			var ls := _leg_state(n, side)
+			off += w * (ls[0] as Vector3)
+			tilt += w * float(ls[1])
+		var foot: int = _b[side + "Foot"]
+		var rest_foot := _sk.get_bone_global_rest(foot).origin
 		var target := Vector3(_origin_x + off.x, _ankle_y + off.y, rest_foot.z)
-		_two_bone(_b[side + "UpLeg"], _b[side + "Leg"], _b[side + "Foot"], _leg_len[side][0], _leg_len[side][1], target, Vector3(1.0, 0.0, 0.0))
-		# stopa płasko (z lekkim obrotem czubka)
-		var rest_gb := _sk.get_bone_global_rest(_b[side + "Foot"]).basis
-		_set_global_basis(_b[side + "Foot"], Basis(Vector3.BACK, tilt) * rest_gb)
+		if e > 0.001:
+			# upadek: stopy zostają na ziemi, dopóki biodra opadają (kolana się uginają), potem nogi podążają sztywno za ciałem
+			var rigid := _gp(foot).origin
+			target = target.lerp(rigid, smoothstep(0.5, 0.9, e))
+		_two_bone(_b[side + "UpLeg"], _b[side + "Leg"], foot, _leg_len[side][0], _leg_len[side][1], target, Vector3(1.0, 0.0, 0.0))
+		# stopa płasko (z lekkim obrotem czubka); przy upadku obraca się razem z ciałem
+		var rest_gb := _sk.get_bone_global_rest(foot).basis
+		var flat := Basis(Vector3.BACK, tilt) * rest_gb
+		if e > 0.001:
+			flat = _gp(foot).basis.slerp(flat, 1.0 - smoothstep(0.3, 0.8, e))
+		_set_global_basis(foot, flat)
 
 ## Broń wokół barku: prawa dłoń na chwycie pistoletowym; lewa na łożu (broń dwuręczna), sięga po magazynek przy przeładowaniu,
 ## albo zwisa (pistolet, broń biała). Gdy łoże za daleko, broń jest wsuwana ku ciału.

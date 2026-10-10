@@ -362,9 +362,17 @@ func _update_sprite() -> void:
 	Sprites.play(_spr, anim, _facing < 0.0)
 	body.modulate = _tint_color()
 
-## Poza rzutu postaci 3D (tylko lokalnie — rzut jest zdarzeniem lokalnego gracza; efekt rzucanego przedmiotu widzą wszyscy).
+## Poza rzutu postaci 3D: lokalnie od razu, u zdalnych graczy przez `_throw_pose_rpc` (efekt rzucanego przedmiotu widzą wszyscy).
 func _start_throw_pose() -> void:
 	if c3d != null:
+		c3d.throw_t = 0.0
+	if NoiseMgr.has_network() and is_multiplayer_authority():
+		_throw_pose_rpc.rpc()
+
+## Poza rzutu u zdalnych graczy (ich model 3D robi zamach razem z lokalnym właścicielem).
+@rpc("authority", "call_remote", "unreliable")
+func _throw_pose_rpc() -> void:
+	if c3d != null and not dead:
 		c3d.throw_t = 0.0
 
 ## Model 3D wg wyglądu: bot to kobieta Scavenger '87 (jak w grafice HD), gracz — płeć i strój z profilu (Look), domyślnie wg numeru gracza.
@@ -377,6 +385,10 @@ func _char3d_name() -> String:
 ## Kod wyglądu tego gracza (z replikowanego `look`; nieznany → domyślny wg numeru gracza).
 func _look_code() -> int:
 	return look if Look.is_valid(look) else Look.code(0 if display_id % 2 == 1 else 1, 0)
+
+var _c3_hp := -1                       ## ostatnie zdrowie widziane przez animację 3D (wykrycie trafienia)
+var _c3_was_air := false
+var _c3_air_vy := 0.0                  ## największa prędkość spadania w ostatnim locie (siła lądowania)
 
 ## Postać 3D (dev): animacja z tego samego stanu co sprite'y, celowanie z aim_dir; broń trzymana IK-iem w obu dłoniach.
 func _update_char3d() -> void:
@@ -392,8 +404,23 @@ func _update_char3d() -> void:
 		anim = "jump" if velocity.y < 0.0 else "fall"
 	elif crouching:
 		anim = "crouch_walk" if absf(velocity.x) > 8.0 else "crouch"
+	elif _revive_hold > 0.0 and not _is_remote:
+		anim = "crouch"                                    # reanimuje: klęka przy rannym
 	elif absf(velocity.x) > 10.0:
 		anim = "run"
+	# zdarzenia dla animacji 3D: rekoil po utracie zdrowia, amortyzacja lądowania, bieg tyłem (z replikowanego stanu — także zdalni gracze)
+	if hp < _c3_hp and not dead:
+		c3d.hit_t = 0.0
+	_c3_hp = hp
+	if not grounded:
+		_c3_air_vy = maxf(_c3_air_vy, velocity.y)
+	elif _c3_was_air:
+		if _c3_air_vy > 140.0 and not dead:
+			c3d.land_t = 0.0
+			c3d.land_str = clampf(_c3_air_vy / 420.0, 0.35, 1.0)
+		_c3_air_vy = 0.0
+	_c3_was_air = not grounded
+	c3d.back_run = absf(velocity.x) > 10.0 and signf(velocity.x) != _facing and grounded
 	if not is_bot:
 		c3d.set_look(_char3d_name())                   # wymiana modelu przy zmianie wyglądu (replikowane `look`); porównanie nazw jest tanie
 		c3d.set_palette(Look.palette_of(_look_code()))
