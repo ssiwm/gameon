@@ -228,12 +228,46 @@ func _build_normal_pass() -> void:
 	var sh := Shader.new()
 	sh.code = "shader_type spatial;
 render_mode unshaded, cull_back;
+uniform sampler2D nm : hint_normal, filter_linear_mipmap, repeat_enable;
+uniform bool has_nm = false;
 void fragment() {
-	ALBEDO = NORMAL * 0.5 + vec3(0.5);
+	vec3 n = NORMAL;
+	if (has_nm) {
+		// mapa normalnych z modelu (tangent space) → normalne widokowe: relief widzą światła 2D (latarka, flara)
+		vec3 t = texture(nm, UV).xyz * 2.0 - 1.0;
+		n = normalize(TANGENT * t.x + BINORMAL * t.y + NORMAL * t.z);
+	}
+	ALBEDO = n * 0.5 + vec3(0.5);
 }
 "
 	_normal_mat = ShaderMaterial.new()
 	_normal_mat.shader = sh
+
+## Materiał normalnych dla siatki: wspólny, a gdy model ma mapę normalnych — kopia ze wskazaną teksturą.
+func _normal_material_for(mi: MeshInstance3D) -> Material:
+	if mi.mesh == null or mi.mesh.get_surface_count() == 0:
+		return _normal_mat
+	var src := mi.mesh.surface_get_material(0)
+	if src is BaseMaterial3D and (src as BaseMaterial3D).normal_texture != null:
+		var m := _normal_mat.duplicate() as ShaderMaterial
+		m.set_shader_parameter("nm", (src as BaseMaterial3D).normal_texture)
+		m.set_shader_parameter("has_nm", true)
+		return m
+	return _normal_mat
+
+## Materiały modelu pod światła gry: bez metaliczności (bez sondy odbić metal byłby czarny), reszta (kolor, normalne, roughness, AO) z modelu.
+func _prepare_materials(root: Node) -> void:
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		for i in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(i)
+			if m is StandardMaterial3D:
+				var d := m.duplicate() as StandardMaterial3D
+				d.metallic = 0.0
+				d.metallic_texture = null
+				mi.set_surface_override_material(i, d)
 
 ## Kopie siatek sceny na warstwie 2 z materiałem normalnych. skinned: kopie dzielą szkielet z oryginałem (są jego dziećmi).
 func _normal_clones(root: Node, skinned: bool) -> void:
@@ -242,7 +276,7 @@ func _normal_clones(root: Node, skinned: bool) -> void:
 		var c := MeshInstance3D.new()
 		c.mesh = mi.mesh
 		c.layers = 2
-		c.material_override = _normal_mat
+		c.material_override = _normal_material_for(mi)
 		c.transform = mi.transform
 		mi.add_sibling(c)
 		if skinned and mi.skin != null:
@@ -267,6 +301,7 @@ func set_look(char_name: String) -> bool:
 	_char_node = scene
 	_char_name = char_name
 	_sk = sk
+	_prepare_materials(scene)
 	_root3d.add_child(scene)
 	_b.clear()
 	for n in ["Hips", "Spine", "Spine1", "Spine2", "Neck", "Head", "LeftUpLeg", "LeftLeg", "LeftFoot", "RightUpLeg", "RightLeg", "RightFoot",

@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://23cx00un2lku"
-path="res://.godot/imported/male_medic_Color_f2ae49c9-ea87-4be0-89d4-adca6b2bf50a.jpg-a8179447334c3abed0c63bd617afbe66.ctex"
+uid="uid://bha5qn2wuqilj"
+path="res://.godot/imported/male_scav_ORM_52c883a5-3c14-4a9a-82b1-674063f9265f.jpg-9176f5bdbb8fb662d2de5aafd0f4a099.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "84d998d93db0dd5f40971cb710b31552"
+"md5": "afacdc38a9cd4a9a0a4ab078e9039e2a"
 }
 
 [deps]
 
-source_file="res://art/char3d/male_medic_Color_f2ae49c9-ea87-4be0-89d4-adca6b2bf50a.jpg"
-dest_files=["res://.godot/imported/male_medic_Color_f2ae49c9-ea87-4be0-89d4-adca6b2bf50a.jpg-a8179447334c3abed0c63bd617afbe66.ctex"]
+source_file="res://art/char3d/male_scav_ORM_52c883a5-3c14-4a9a-82b1-674063f9265f.jpg"
+dest_files=["res://.godot/imported/male_scav_ORM_52c883a5-3c14-4a9a-82b1-674063f9265f.jpg-9176f5bdbb8fb662d2de5aafd0f4a099.ctex"]
 
 [params]
 

@@ -111,6 +111,8 @@ Generatory wizualizacji: `prototype/tools/concept/char3d_concept.py` (Blender) i
 4. **Mikroanimacja:** brak oddechu i śledzenia głowy sprawia, że w bezruchu postać wygląda jak sprite.
 5. **Obrys:** jednolity ciemny obrys 0,5 j. spłaszcza detale na krawędzi (do rozważenia: cieńszy lub kolorowany).
 
+**Status (2026-10-10):** decyzje: 2048² + 12 k ścian; obrót 3/4 domyślnie 15°; `DENSITY` sprite'ów 2D 2 → 3; jakość postaci powiązana z „Effects quality”. **Faza 4.1 zrobiona:** `prep_char3d.py` zachowuje mapy normalnych i ORM z Tripo (2048², JPEG q90), 12 k ścian; gra zeruje metaliczność po wczytaniu, a przebieg normalnych dla świateł 2D czyta mapę normalnych modelu.
+
 ### Fazy (każda osobny PR, zrzuty A/B przed/po, bez zmian w sieci)
 | Faza | Zakres | Kryterium | Szac. |
 |---|---|---|---|
