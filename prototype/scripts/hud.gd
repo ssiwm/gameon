@@ -48,6 +48,7 @@ const PROMPT_Y := 0.76           ## pasek kontekstowy — nad paskiem broni (dó
 ## rogu (własna karta największa, koledzy nad nią), broń i zasoby w płaskim pasku na środku dołu, a w lewym górnym tylko miernik hałasu.
 const BOTTOM_PAD := 20.0         ## odstęp kart dolnych od krawędzi (nad paskiem sterowania)
 const SQUAD_W := 150.0
+const ROW_H := 68.0              ## wspólna wysokość kart w górnym i dolnym rzędzie (jednostki logiczne) — dolne i górne krawędzie się pokrywają
 ## Kolory slotów = kolory kurtek sprite'ów graczy (bake_sprites.PLAYER_VARIANTS).
 const SLOT_COLORS := [Color(0.91, 0.62, 0.22), Color(0.25, 0.72, 0.85), Color(0.86, 0.28, 0.36), Color(0.45, 0.80, 0.30)]
 const BOT_COLOR := Color(0.58, 0.60, 0.66)
@@ -590,6 +591,7 @@ func _row(parent: Container, caption: String) -> HBoxContainer:
 func _build_noise_card() -> void:
 	var card := _card(Vector2(MARGIN, MARGIN))
 	_noise_card = card
+	card.custom_minimum_size = Vector2(0, ROW_H)
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 1)
 	card.add_child(outer)
@@ -602,10 +604,12 @@ func _build_noise_card() -> void:
 	outer.add_child(top)
 	var dial := HBoxContainer.new()
 	dial.add_theme_constant_override("separation", 4)
+	dial.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outer.add_child(dial)
 	_noise_bar = VuMeter.new()                 # analogowy VU-metr; progi z NoiseMgr: 30 = zasypia, 40 = niepokój, 60 = budzi się ON
-	_noise_bar.custom_minimum_size = Vector2(112, 58)
+	_noise_bar.custom_minimum_size = Vector2(96, 36)
 	_noise_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_noise_bar.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_noise_bar.ticks = [
 		[NoiseMgr.SLEEP_THRESHOLD / 100.0, Color(1, 1, 1, 0.35)],
 		[NoiseMgr.UNEASY_THRESHOLD / 100.0, UiTheme.ACCENT],
@@ -627,7 +631,7 @@ func _build_noise_card() -> void:
 ## Lewy dolny róg: karta drużyny (L4D / DRG). Wiersze powstają dynamicznie — _drive_squad().
 func _build_squad_card() -> void:
 	_squad_card = _card(Vector2(MARGIN, MARGIN))
-	_squad_card.custom_minimum_size = Vector2(SQUAD_W, 0)
+	_squad_card.custom_minimum_size = Vector2(SQUAD_W, ROW_H)
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 3)
 	_squad_card.add_child(outer)
@@ -646,8 +650,10 @@ func _build_squad_card() -> void:
 ## [nazwa + koszt strzału] [magazynek / zapas] [stan + przeładowanie + ciepło lufy] [sloty] [wabik, flary, latarka].
 func _build_gear_card() -> void:
 	_gear_card = _card(Vector2(MARGIN, MARGIN))
+	_gear_card.custom_minimum_size = Vector2(0, ROW_H)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 7)
+	row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_gear_card.add_child(row)
 
 	_slot_on = UiTheme.panel_box()
@@ -728,6 +734,7 @@ func _build_gear_card() -> void:
 
 	# 5) zasoby w osobnej karcie po prawej (makieta: siatka 2×2 — wabik Q, flary F, przedmiot ALT, latarka L)
 	_equip_card = _card(Vector2(MARGIN, MARGIN))
+	_equip_card.custom_minimum_size = Vector2(0, ROW_H)
 	var eq := UiTheme.panel_box()
 	eq.bg_color = Color(6.0 / 255.0, 7.0 / 255.0, 6.0 / 255.0, 0.7)
 	eq.border_color = Color("23221d")
@@ -736,6 +743,7 @@ func _build_gear_card() -> void:
 	res.columns = 2
 	res.add_theme_constant_override("h_separation", 9)
 	res.add_theme_constant_override("v_separation", 5)
+	res.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_equip_card.add_child(res)
 	var q := HBoxContainer.new()
 	q.add_theme_constant_override("separation", 5)
@@ -908,8 +916,10 @@ func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 
 func _build_objective_card() -> void:
 	_obj_card = _card(Vector2(MARGIN, MARGIN))
+	_obj_card.custom_minimum_size = Vector2(0, ROW_H)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	_obj_card.add_child(box)
 	_obj_caption = _cap("OBJECTIVE", UiTheme.ACCENT, 0.3)
 	_obj_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -946,9 +956,10 @@ func _build_objective_card() -> void:
 func _build_session() -> void:
 	# karta RUN w prawym górnym rogu: [RUN … trudność] / [zegar … złom] / [LV ▮ pasek XP n/m]; +XP pod kartą
 	_run_card = _card(Vector2(MARGIN, MARGIN))
-	_run_card.custom_minimum_size = Vector2(SESSION_W, 0)
+	_run_card.custom_minimum_size = Vector2(SESSION_W, ROW_H)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	_run_card.add_child(box)
 	var head := HBoxContainer.new()
 	var cap := _cap("RUN", UiTheme.MUTED, 0.22)
