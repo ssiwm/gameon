@@ -739,7 +739,10 @@ func _t_chat() -> void:
 	chat.send("spam")                                   # w oknie limitu tempa — serwer odrzuca
 	await wait(0.7)
 	chat.send("again")
-	await frames(2)
+	var waited := 0                                     # linia wraca przez RPC serwera: na wolnym CI potrzeba więcej niż 2 klatek
+	while got.size() < 2 and waited < 120:
+		await frames(1)
+		waited += 1
 	chat.line_added.disconnect(cb)
 	var flow: bool = got.size() == 2 and String(got[0][0]) == "P1" and String(got[0][1]) == "hello squad" and String(got[1][1]) == "again"
 	check("czat: sanityzacja (%s), nadawca i limit tempa (%d linie: %s)" % [str(clean), got.size(), str(got)], clean and flow)
