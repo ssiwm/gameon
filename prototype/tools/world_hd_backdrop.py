@@ -81,10 +81,11 @@ def sky():
     save_rgb(os.path.join(OUT, "sky.png"), np.clip(img, 0, 1))
 
 
-def pine(draw, x, base_y, h, col, rimcol, lean):
-    """Jeden świerk: pień + piętra opadających, postrzępionych gałęzi (współrzędne w pikselach supersamplingu)."""
+def pine(draw, x, base_y, h, col, rimcol, lean, trunk=None):
+    """Jeden świerk: pień + piętra opadających, postrzępionych gałęzi (współrzędne w pikselach supersamplingu).
+    Pień ma kolor podnóża (`trunk`), nie korony — jasne pnie na ciemnym podnóżu układały się w widoczną „przerywaną linię”."""
     tw = max(2.0, h * 0.035)
-    draw.rectangle([x - tw, base_y - h * 0.22, x + tw, base_y + 4], fill=col)
+    draw.rectangle([x - tw, base_y - h * 0.22, x + tw, base_y + 4], fill=trunk if trunk is not None else col)
     tiers = int(rng.integers(8, 13))
     for k in range(tiers):
         t = k / (tiers - 1)
@@ -109,6 +110,7 @@ def b8(c):
 
 def ridge(name, seed_off, base_frac, spacing, h_rng, col, rim, haze, ground=None):
     ground = b8(ground) if ground is not None else b8(col)       # wypełnienie pod linią drzew ciemniejsze niż korony — luki między pniami nie świecą
+    trunk = ground if ground != b8(col) else None
     col, rim = b8(col), b8(rim)
     big = Image.new("RGBA", (W * SS, H * SS), (0, 0, 0, 0))
     dr = ImageDraw.Draw(big)
@@ -116,8 +118,11 @@ def ridge(name, seed_off, base_frac, spacing, h_rng, col, rim, haze, ground=None
     r = np.random.default_rng(87 + seed_off)
     # podnóże: falująca masa
     xs = np.arange(W * SS)
-    hill = base - 6 * SS * np.sin(xs * 0.003 / SS * 2 + seed_off) - 4 * SS * np.sin(xs * 0.008 / SS * 2 + 1.3 * seed_off)
-    dr.polygon([(0, H * SS)] + [(int(x), int(hill[x])) for x in range(0, W * SS, 4)] + [(W * SS - 1, H * SS)], fill=ground)
+    # linia podnóża musi być okresowa (całkowita liczba fal na szerokość) — inaczej na łączeniu powtórzeń robi się schodek
+    ph = 2 * np.pi * xs / (W * SS)
+    hill = base - 6 * SS * np.sin(2 * ph + seed_off) - 4 * SS * np.sin(5 * ph + 1.3 * seed_off)
+    # wypełnienie do x = W·SS włącznie (poza obrazem), inaczej ostatnia kolumna tekstury wychodzi półprzezroczysta → pionowa kreska
+    dr.polygon([(0, H * SS)] + [(int(x), int(hill[min(x, W * SS - 1)])) for x in range(0, W * SS + 4, 4)] + [(W * SS + 4, H * SS)], fill=ground)
     x = float(r.integers(0, spacing))
     while x < W * SS:
         h = r.uniform(*h_rng) * SS
@@ -125,7 +130,7 @@ def ridge(name, seed_off, base_frac, spacing, h_rng, col, rim, haze, ground=None
         for ox in (-W * SS, 0, W * SS):                                      # zawijanie w poziomie
             if -h < x + ox < W * SS + h:
                 # lokalny RNG drzewa używa globalnego `rng` w pine(); ziarno ustala kolejność
-                pine(dr, x + ox, hill[int(np.clip(x, 0, W * SS - 1))] + 3 * SS, h, col, rim, lean)
+                pine(dr, x + ox, hill[int(np.clip(x, 0, W * SS - 1))] + 3 * SS, h, col, rim, lean, trunk)
         x += spacing * SS * r.uniform(0.6, 1.5)
     img = big.resize((W, H), Image.LANCZOS)
     a = np.asarray(img).astype(np.float32) / 255.0
