@@ -1128,8 +1128,10 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				level._add_enemy(sp[0], sp[1], mp.global_position + Vector2(float(sp[2]), 0.0))
 				var en: Node = level.get_node_or_null(String(sp[0]))
 				if en != null:
-					en.set_physics_process(false)
-					if sp[0] != "ShotT2":
+					var live := "--shotlive" in OS.get_cmdline_user_args()      # --shotlive: AI nie jest zamrożone (podgląd póz ruchu)
+					if not live:
+						en.set_physics_process(false)
+					if sp[0] != "ShotT2" or live:
 						en.call("wake")
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shotgunid="):                          # dev: broń o danym id (0–11) w pierwszym slocie gracza 1 — podgląd sprite'ów broni

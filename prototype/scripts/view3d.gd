@@ -16,6 +16,7 @@ extends Node2D
 const Level3D := preload("res://scripts/level3d.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Vfx := preload("res://scripts/vfx.gd")
+const Enemy3D := preload("res://scripts/enemy3d.gd")
 
 const PX := Level3D.PX
 const FOV := 40.0
@@ -44,6 +45,7 @@ var _spr_bg: Sprite2D
 var _spr_fg: Sprite2D
 var _rigs := {}                          ## Node gracza → {actor, model, gun, root}
 var _mirrors := {}                       ## id źródłowego AnimatedSprite2D → [źródło, AnimatedSprite3D]
+var _enemies := {}                       ## id węzła wroga 2D → [węzeł, Enemy3D] (modele 3D wrogów; null w drugim polu = brak modelu)
 var _lights := {}                        ## id PointLight2D → [PointLight2D, Light3D]
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
@@ -132,6 +134,15 @@ func release() -> void:
 	for id in _mirrors.keys():
 		_unmirror(id)
 	_mirrors.clear()
+	for id in _enemies.keys():
+		var pr: Array = _enemies[id]
+		if is_instance_valid(pr[0]):
+			for c in (pr[0] as Node).get_children():
+				if c is AnimatedSprite2D:
+					(c as AnimatedSprite2D).self_modulate = Color.WHITE
+		if pr[1] != null and is_instance_valid(pr[1]):
+			(pr[1] as Node).queue_free()
+	_enemies.clear()
 	queue_free()
 
 func _process(delta: float) -> void:
@@ -153,6 +164,7 @@ func _process(delta: float) -> void:
 		_geo_t = 0.25
 		_sync_geometry()
 	_sync_rigs()
+	_sync_enemies(delta)
 	_sync_sprites()
 	_sync_projectiles()
 	_scan_t -= delta
@@ -287,7 +299,7 @@ func _make_rig(p: Node, c3: Node) -> void:
 	c3._sprite.visible = false
 	_rigs[p] = {"actor": actor, "model": model, "gun": gun, "root": root}
 
-func _release_rig(p: Node) -> void:
+func _release_rig(p) -> void:
 	if not _rigs.has(p):
 		return
 	var rig: Dictionary = _rigs[p]
@@ -318,7 +330,7 @@ func _release_rig(p: Node) -> void:
 func _sync_sprites() -> void:
 	for g in MIRROR_GROUPS:
 		for n in get_tree().get_nodes_in_group(g):
-			if n is Node2D and not n.is_queued_for_deletion():
+			if n is Node2D and not n.is_queued_for_deletion() and not (_enemies.has(n.get_instance_id()) and _enemies[n.get_instance_id()][1] != null):
 				_mirror_node(n, 0.25)
 	for id in _mirrors.keys():
 		var pair: Array = _mirrors[id]
@@ -344,6 +356,65 @@ func _sync_sprites() -> void:
 		var z: float = float(src.get_meta("v3d_z", 0.25))
 		dst.position = Level3D.px_to_m(src.global_position) + Vector3(0.0, 0.0, z)
 		dst.rotation = Vector3(0.0, 0.0, -src.global_rotation)
+
+## Rodzaj wroga, jeśli ma model 3D (`enemy3d.gd`), inaczej "".
+func _enemy_kind(n: Node) -> String:
+	var k = n.get("kind")
+	if k == null:
+		var scr: Script = n.get_script()
+		if scr != null and String(scr.resource_path).ends_with("stalker.gd"):
+			k = "stalker"
+	return String(k) if k != null and Enemy3D.has_model(String(k)) else ""
+
+## Wrogowie z modelem 3D: model stoi na pozycji węzła 2D, poza z nazwy animacji sprite'a (`Body`), sprite'y 2D są przezroczyste.
+func _sync_enemies(delta: float) -> void:
+	for g in ["enemies", "roamers"]:
+		for n in get_tree().get_nodes_in_group(g):
+			if not (n is Node2D) or n.is_queued_for_deletion():
+				continue
+			var id: int = n.get_instance_id()
+			if _enemies.has(id):
+				continue
+			var k := _enemy_kind(n)
+			if k == "":
+				continue
+			var e := Enemy3D.new()
+			if not e.setup(k, k == "stalker"):
+				e.free()
+				_enemies[id] = [n, null]                  # bez modelu: zostają billboardy
+				continue
+			for c in n.get_children():
+				if c is AnimatedSprite2D:
+					(c as AnimatedSprite2D).self_modulate = Color(1, 1, 1, 0)
+			_set_layer(e, LAYER_WORLD)
+			_world.add_child(e)
+			_enemies[id] = [n, e]
+	var cam_x := _cam_a.global_position.x
+	for id in _enemies.keys():
+		var pair: Array = _enemies[id]
+		var src_v = pair[0]
+		var e_v = pair[1]
+		if not is_instance_valid(src_v) or (src_v as Node).is_queued_for_deletion():
+			if e_v != null and is_instance_valid(e_v):
+				(e_v as Node).queue_free()
+			_enemies.erase(id)
+			continue
+		if e_v == null:
+			continue
+		var e: Node3D = e_v
+		var src: Node2D = src_v
+		var body := src.get_node_or_null("Body") as AnimatedSprite2D
+		var show: bool = src.is_visible_in_tree() and body != null
+		var pos := Level3D.px_to_m(src.global_position)
+		e.visible = show and absf(pos.x - cam_x) < 90.0
+		if not e.visible:
+			continue
+		e.position = pos + Vector3(0.0, 0.0, 0.3)
+		e.call("pose", delta, body.animation, body.flip_h, body.modulate)
+
+func _set_layer(root: Node, layer: int) -> void:
+	for mi in root.find_children("*", "VisualInstance3D", true, false):
+		(mi as VisualInstance3D).layers = layer
 
 ## Tworzy (raz) proxy 3D dla każdego AnimatedSprite2D będącego dzieckiem węzła; oryginał robi się przezroczysty (`modulate` dalej czytamy z niego).
 func _mirror_node(n: Node, z: float) -> void:
