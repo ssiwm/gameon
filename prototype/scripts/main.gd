@@ -1135,6 +1135,12 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 						en.call("wake")
 					if "--shotwind" in OS.get_cmdline_user_args():          # --shotwind: wszyscy w zapowiedzi ataku (podgląd pozy windup)
 						en.set("winding", true)
+					var clip_arg := ""
+					for ca in OS.get_cmdline_user_args():
+						if ca.begins_with("--shotclip="):                 # --shotclip=death|hit|attack: zdarzenie 1 s po starcie (podgląd klipów modeli 3D)
+							clip_arg = ca.substr("--shotclip=".length())
+					if clip_arg != "":
+						get_tree().create_timer(1.0).timeout.connect(_dev_clip.bind(en, clip_arg))
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shotgunid="):                          # dev: broń o danym id (0–11) w pierwszym slocie gracza 1 — podgląd sprite'ów broni
 			var gp: Node2D = _players.get_node_or_null("1")
@@ -1219,10 +1225,42 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 	if flicker:
 		Lights.flicker_until_ms = Time.get_ticks_msec() + int(delay * 1000.0) + 3000      # podgląd efektu migotania świateł (dread.gd)
 	await get_tree().create_timer(delay).timeout
+	var seq_n := 0
+	var seq_dt := 0.1
+	for sa in OS.get_cmdline_user_args():
+		if sa.begins_with("--shotseq="):                 # dev: --shotseq=N:DT zapisuje N klatek co DT s (PLIK_0.png …) zamiast jednej
+			var parts := sa.substr("--shotseq=".length()).split(":")
+			seq_n = int(parts[0])
+			seq_dt = float(parts[1]) if parts.size() > 1 else 0.1
+	if seq_n > 0:
+		for i in seq_n:
+			get_viewport().get_texture().get_image().save_png(path.replace(".png", "_%d.png" % i))
+			await get_tree().create_timer(seq_dt).timeout
+		print("[SHOT] sekwencja %d klatek: %s" % [seq_n, path])
+		get_tree().quit()
+		return
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(path)
 	print("[SHOT] %s (%dx%d)" % [path, img.get_width(), img.get_height()])
 	get_tree().quit()
+
+## Dev (--shotclip): wywołuje zdarzenie wroga, żeby obejrzeć klip modelu 3D: death (śmierć), hit (trafienie), attack (koniec zapowiedzi).
+func _dev_clip(en: Node, what: String) -> void:
+	if not is_instance_valid(en):
+		return
+	match what:
+		"death":
+			en.call("_die")
+		"hit":
+			en.set("_flash", 0.1)
+			await get_tree().create_timer(0.1).timeout
+			if is_instance_valid(en):
+				en.set("_flash", 0.0)
+		"attack":
+			en.set("winding", true)
+			await get_tree().create_timer(0.5).timeout
+			if is_instance_valid(en):
+				en.set("winding", false)
 
 ## Dev (--shotshoot): seria strzałów gracza w prawo co 0,12 s przez `secs` sekund.
 func _dev_shoot(p: Node2D, secs: float) -> void:
