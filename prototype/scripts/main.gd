@@ -993,6 +993,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			if "--shottide" in OS.get_cmdline_user_args() and bs.has_method("_tick_surge"):
 				bs.phase = 2                         # --shottide: od razu faza 2 i fala przypływu (zapowiedź ~2 s, potem wysoka woda)
 				bs._surge_cd = 0.05
+			if "--shotsweep" in OS.get_cmdline_user_args() and bs.has_method("_tick_wave"):
+				bs.call("_begin", 3, 0.9, Vector2.ZERO)        # --shotsweep: Żyła od razu zamachuje się falą (--shotdelay=0.4 zapowiedź, =1.0 fala)
 			if "--shotup" in OS.get_cmdline_user_args() and bs.has_method("_surface"):
 				bs.call("_surface")         # --shotup: Pijawka od razu wynurzona (podgląd arkusza, z chwytem, jeśli gracz stoi w zasięgu)
 	if "--shotwall" in OS.get_cmdline_user_args():

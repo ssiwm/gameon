@@ -692,9 +692,10 @@ func _death_fx() -> void:
 
 # ---------------------------------------------------------------- rysowanie
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if not visible:
 		return
+	_tick_wave_spray(delta)
 	var t := Time.get_ticks_msec() / 1000.0
 	var awake := state == State.AWAKE
 	_light.energy = (0.9 if awake else 0.35) + 0.25 * sin(t * (5.0 if enraged else 2.0))
@@ -703,6 +704,24 @@ func _process(_delta: float) -> void:
 	_animate_sprite(t, awake)
 	queue_redraw()
 	_overlay.queue_redraw()
+
+var _spray_t := 0.0
+
+## Bryzg z grzbietów fali (lokalna kosmetyka): kilka miękkich kropel co ułamek sekundy z czoła fali po obu stronach.
+func _tick_wave_spray(delta: float) -> void:
+	if _wave_start_ms < 0 or Settings.quality_idx < 1:
+		_spray_t = 0.0
+		return
+	_spray_t -= delta
+	if _spray_t > 0.0:
+		return
+	_spray_t = 0.06
+	var wr := 24.0 + (Time.get_ticks_msec() - _wave_start_ms) / 1000.0 * SWEEP_SPEED
+	if wr > SWEEP_RANGE:
+		return
+	for sd in [-1.0, 1.0]:
+		Vfx.burst(get_parent(), global_position + Vector2(sd * wr, -3.0), Color(0.75, 0.93, 1.0, 0.8), 3, 20.0, 70.0,
+			Vector2(sd * 0.35, -1.0).normalized(), 40.0, 320.0, 0.4, Vector2(0.8, 1.5), true)
 
 ## Animacja z arkusza: uspiona / bezczynna (paszcza zamknieta) / otwarta / zapowiedz macek / plucie.
 func _animate_sprite(t: float, awake: bool) -> void:
@@ -773,6 +792,60 @@ func _draw() -> void:
 		draw_circle(Vector2(-5, -8) + sh, 7.0, plate.darkened(0.1))
 		draw_circle(Vector2(5, -8) + sh, 7.0, plate.darkened(0.15))
 
+## Zapowiedź zamachu: cienkie, falujące pasmo wody nad podłogą na całym zasięgu fali (najsilniejsze przy Żyle, słabnące ku brzegom)
+## i kilka spłaszczonych kręgów na wodzie — zamiast poprzedniego rzędu prostokątnych słupków.
+func _draw_sweep_warning(ov: Node2D, t: float, pulse: float) -> void:
+	var n := 64
+	var line := PackedVector2Array()
+	for i in n + 1:
+		var x := -SWEEP_RANGE + 2.0 * SWEEP_RANGE * float(i) / float(n)
+		var near := 1.0 - absf(x) / SWEEP_RANGE
+		line.append(Vector2(x, -0.8 - (0.7 + 1.9 * near) * (0.5 + 0.5 * sin(t * 14.0 + x * 0.11))))
+	ov.draw_polyline(line, Color(0.60, 0.90, 1.0, 0.30 + 0.35 * pulse), 1.3, true)
+	ov.draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.28))
+	for i in range(-5, 6):
+		var x := float(i) * SWEEP_RANGE / 5.5
+		var ph := fposmod(t * 1.6 + float(i) * 0.37, 1.0)
+		var fade := (1.0 - ph) * (1.0 - absf(x) / SWEEP_RANGE)
+		ov.draw_arc(Vector2(x, 0.0), 2.0 + 7.0 * ph, 0.0, TAU, 16, Color(0.7, 0.93, 1.0, 0.55 * fade), 1.0, true)
+	ov.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+## Jeden grzbiet fali: zaokrąglony garb o stromszym czole i łagodniejszym ogonie (asymetryczny dzwon), jaśniejszy rdzeń i piana na grzbiecie.
+## `sd` = kierunek (−1 / +1), `wr` = odległość czoła od Żyły.
+func _draw_wave_crest(ov: Node2D, sd: float, wr: float) -> void:
+	const HEIGHT := 11.0
+	const W_FRONT := 4.5
+	const W_BACK := 15.0
+	const AHEAD := 9.0                                    # ile px przed `wr` sięga zbocze
+	const BEHIND := 42.0
+	const N := 26
+	var top := PackedVector2Array()
+	for i in N + 1:
+		var u := -AHEAD + (AHEAD + BEHIND) * float(i) / float(N)      # u < 0: przed czołem, u > 0: za nim
+		var w := W_FRONT if u < 0.0 else W_BACK
+		var hgt := HEIGHT * exp(-pow(u / w, 2.0))
+		top.append(Vector2(sd * (wr - u), -hgt))
+	var body := PackedVector2Array()
+	body.append(Vector2(top[0].x, 0.0))
+	body.append_array(top)
+	body.append(Vector2(top[N].x, 0.0))
+	ov.draw_colored_polygon(body, Color(0.40, 0.72, 0.88, 0.42))
+	var core := PackedVector2Array()
+	core.append(Vector2(top[0].x, 0.0))
+	for p in top:
+		core.append(Vector2(p.x, p.y * 0.62))
+	core.append(Vector2(top[N].x, 0.0))
+	ov.draw_colored_polygon(core, Color(0.70, 0.92, 1.0, 0.45))
+	var foam := PackedVector2Array()
+	for i in range(1, int(N * 0.5)):
+		foam.append(top[i] + Vector2(0.0, -0.5))
+	if foam.size() >= 2:
+		ov.draw_polyline(foam, Color(0.96, 1.0, 1.0, 0.75), 1.1, true)
+	var tt := float(Time.get_ticks_msec()) / 1000.0
+	for k in 4:
+		var q: Vector2 = top[3 + k * 2]
+		ov.draw_circle(q + Vector2(0.0, -1.0 - 0.8 * sin(tt * 20.0 + float(k) * 1.7)), 0.9, Color(1.0, 1.0, 1.0, 0.8))
+
 func _draw_overlay(ov: Node2D) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	var awake := state == State.AWAKE
@@ -810,18 +883,14 @@ func _draw_overlay(ov: Node2D) -> void:
 	ov.draw_circle(mp, r * (1.25 if not _spr.is_empty() else 1.0), maw)
 	if winding:
 		ov.draw_arc(Vector2(0, -10), LASH_RANGE_X, PI * 1.05, PI * 1.95, 24, Color(1.0, 0.15, 0.1, 0.4 + 0.5 * pulse), 2.0)
-	# zapowiedź zamachu: drżąca woda na całym zasięgu fali
+	# zapowiedź zamachu: drżąca woda na całym zasięgu fali — faliste pasmo przy podłodze zamiast rzędu słupków
 	if atk == Atk.SWEEP:
-		for i in range(-10, 11):
-			var x := i * SWEEP_RANGE / 10.0
-			var h := 1.5 + 2.5 * absf(sin(t * 25.0 + i))
-			ov.draw_rect(Rect2(x - 3.0, -h, 6.0, h), Color(0.5, 0.85, 1.0, 0.35 + 0.4 * pulse))
+		_draw_sweep_warning(ov, t, pulse)
 	# fala: dwa grzbiety biegnące od Żyły
 	if _wave_start_ms >= 0:
 		var wr := 24.0 + (Time.get_ticks_msec() - _wave_start_ms) / 1000.0 * SWEEP_SPEED
 		if wr > SWEEP_RANGE:
 			_wave_start_ms = -1
 		else:
-			for s in [-1.0, 1.0]:
-				ov.draw_rect(Rect2(s * wr - 4.0, -14.0, 8.0, 14.0), Color(0.75, 0.95, 1.0, 0.85))
-				ov.draw_rect(Rect2(s * wr - 9.0, -6.0, 18.0, 6.0), Color(0.5, 0.85, 1.0, 0.5))
+			for sd in [-1.0, 1.0]:
+				_draw_wave_crest(ov, sd, wr)
