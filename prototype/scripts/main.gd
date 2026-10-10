@@ -1005,6 +1005,9 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var bs := get_tree().get_first_node_in_group("boss")
 		if bs != null:
 			level.spawn_flare(Vector2(bs.global_position.x + 30.0, bs.global_position.y - 20.0), Vector2.ZERO)
+			for ca in OS.get_cmdline_user_args():
+				if ca.begins_with("--shotclip="):                 # --shotboss --shotclip=death|hit: zdarzenie bossa 1 s po starcie (podgląd klipów modelu 3D)
+					get_tree().create_timer(1.0).timeout.connect(_dev_clip.bind(bs, ca.substr("--shotclip=".length())))
 			if "--shottide" in OS.get_cmdline_user_args() and bs.has_method("_tick_surge"):
 				bs.phase = 2                         # --shottide: od razu faza 2 i fala przypływu (zapowiedź ~2 s, potem wysoka woda)
 				bs._surge_cd = 0.05
@@ -1222,6 +1225,10 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			var hp_p: Node2D = _players.get_node_or_null("1")
 			if hp_p != null:
 				hp_p.hp = int(sa.substr("--shothp=".length()))
+	for sa in OS.get_cmdline_user_args():
+		if sa.begins_with("--shotnest="):                 # dev: --shotnest=death|hit — zdarzenie wszystkich gniazd 1 s po starcie (podgląd klipów)
+			for nn in get_tree().get_nodes_in_group("nests"):
+				get_tree().create_timer(1.0).timeout.connect(_dev_clip.bind(nn, sa.substr("--shotnest=".length())))
 	if flicker:
 		Lights.flicker_until_ms = Time.get_ticks_msec() + int(delay * 1000.0) + 3000      # podgląd efektu migotania świateł (dread.gd)
 	await get_tree().create_timer(delay).timeout
@@ -1250,7 +1257,10 @@ func _dev_clip(en: Node, what: String) -> void:
 		return
 	match what:
 		"death":
-			en.call("_die")
+			if en.has_method("_die"):
+				en.call("_die")
+			elif en.has_method("_destroy"):
+				en.call("_destroy")        # gniazdo
 		"hit":
 			en.set("_flash", 0.1)
 			await get_tree().create_timer(0.1).timeout
