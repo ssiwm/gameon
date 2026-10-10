@@ -15,6 +15,7 @@ extends Node2D
 
 const Level3D := preload("res://scripts/level3d.gd")
 const Lights := preload("res://scripts/lights.gd")
+const Vfx := preload("res://scripts/vfx.gd")
 
 const PX := Level3D.PX
 const FOV := 40.0
@@ -45,6 +46,7 @@ var _rigs := {}                          ## Node gracza → {actor, model, gun, 
 var _mirrors := {}                       ## id źródłowego AnimatedSprite2D → [źródło, AnimatedSprite3D]
 var _lights := {}                        ## id PointLight2D → [PointLight2D, Light3D]
 var _frames_cache := {}
+var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
 var _scan_t := 0.0
 var _hidden: Array = []                  ## ukryte statyczne węzły 2D (przywracane przy wyłączeniu)
 var _life := 0.0
@@ -104,6 +106,7 @@ func setup(level: Node2D, players: Node2D) -> void:
 	add_child(_spr_bg)
 	_spr_fg = Sprite2D.new()
 	_spr_fg.name = "ActorsImage"
+	Vfx.view3d = self
 	_spr_fg.z_index = Z_FG
 	_spr_fg.texture = _vp_fg.get_texture()
 	_spr_fg.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
@@ -113,6 +116,12 @@ func setup(level: Node2D, players: Node2D) -> void:
 # ---------------------------------------------------------------- cykl życia
 
 func release() -> void:
+	Vfx.view3d = null
+	for id in _proj.keys():
+		var pr: Array = _proj[id]
+		if is_instance_valid(pr[0]):
+			(pr[0] as CanvasItem).self_modulate = Color.WHITE
+	_proj.clear()
 	for n in _hidden:
 		if is_instance_valid(n):
 			n.visible = true
@@ -145,6 +154,7 @@ func _process(delta: float) -> void:
 		_sync_geometry()
 	_sync_rigs()
 	_sync_sprites()
+	_sync_projectiles()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -405,6 +415,120 @@ func _unmirror(id: int) -> void:
 		src.self_modulate = Color.WHITE
 	if is_instance_valid(pair[1]):
 		(pair[1] as Node).queue_free()
+
+# ---------------------------------------------------------------- pociski i cząsteczki (efekty w 3D)
+
+func _emissive(col: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = col
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if col.a < 0.99 else BaseMaterial3D.TRANSPARENCY_DISABLED
+	return m
+
+func _box(parent: Node3D, size: Vector3, at: Vector3, col: Color) -> void:
+	var mi := MeshInstance3D.new()
+	var b := BoxMesh.new()
+	b.size = size
+	mi.mesh = b
+	mi.material_override = _emissive(col)
+	mi.position = at
+	mi.layers = LAYER_ACTORS
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+
+func _sphere(parent: Node3D, r: float, at: Vector3, col: Color) -> void:
+	var mi := MeshInstance3D.new()
+	var s := SphereMesh.new()
+	s.radius = r
+	s.height = r * 2.0
+	s.radial_segments = 12
+	s.rings = 6
+	mi.mesh = s
+	mi.material_override = _emissive(col)
+	mi.position = at
+	mi.layers = LAYER_ACTORS
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+
+## Pocisk 2D → smuga 3D (ten sam kształt co `projectile.gd::_draw`: ogon, głowa; granat, rakieta i bełt osobno); rysunek 2D chowamy.
+func _make_proj(n: Node2D) -> void:
+	var d = n.get("_def")
+	if d == null:
+		return
+	var root := Node3D.new()
+	root.name = "Proj_%d" % n.get_instance_id()
+	var col: Color = d.tracer_color
+	var tail := float(d.tracer_len) * PX
+	if float(d.gravity) > 0.0:
+		_sphere(root, 0.2, Vector3.ZERO, Color(0.3, 0.32, 0.2))
+		_sphere(root, 0.09, Vector3(-0.12, 0.0, 0.0), Color(1.0, 0.7, 0.3))
+	elif n.has_method("sticks_on_hit") and n.sticks_on_hit():
+		_box(root, Vector3(maxf(tail, 0.5), 0.035, 0.035), Vector3(-maxf(tail, 0.5) * 0.5, 0.0, 0.0), Color(0.62, 0.5, 0.34))
+		_box(root, Vector3(0.3, 0.06, 0.06), Vector3(0.22, 0.0, 0.0), Color(0.85, 0.85, 0.9))
+	elif float(d.homing) > 0.0:
+		_box(root, Vector3(tail, 0.12, 0.12), Vector3(-tail * 0.5, 0.0, 0.0), Color(col.r, col.g, col.b, 0.25))
+		_box(root, Vector3(tail * 0.6, 0.06, 0.06), Vector3(-tail * 0.3, 0.0, 0.0), Color(col.r, col.g, col.b, 0.7))
+		_box(root, Vector3(0.32, 0.16, 0.16), Vector3.ZERO, Color(0.9, 0.9, 0.92))
+	else:
+		_box(root, Vector3(maxf(tail, 0.1), 0.05, 0.05), Vector3(-tail * 0.5, 0.0, 0.0), Color(col.r, col.g, col.b, 0.22))
+		_box(root, Vector3(maxf(tail * 0.5, 0.05), 0.07, 0.07), Vector3(-tail * 0.25, 0.0, 0.0), Color(col.r, col.g, col.b, 0.7))
+		_box(root, Vector3(0.2, 0.06, 0.06), Vector3(0.04, 0.0, 0.0), Color(1.0, 0.97, 0.85))
+	_world.add_child(root)
+	n.self_modulate = Color(1, 1, 1, 0)
+	_proj[n.get_instance_id()] = [n, root]
+
+func _sync_projectiles() -> void:
+	for n in get_tree().get_nodes_in_group("projectiles"):
+		if n is Node2D and not n.is_queued_for_deletion() and not _proj.has(n.get_instance_id()):
+			_make_proj(n)
+	for id in _proj.keys():
+		var pr: Array = _proj[id]
+		var src = pr[0]
+		var px: Node3D = pr[1]
+		if not is_instance_valid(src) or (src as Node).is_queued_for_deletion():
+			if is_instance_valid(px):
+				px.queue_free()
+			_proj.erase(id)
+			continue
+		var s2 := src as Node2D
+		px.position = Level3D.px_to_m(s2.global_position) + Vector3(0.0, 0.0, 0.3)
+		px.rotation = Vector3(0.0, 0.0, -s2.global_rotation)
+
+## Wołane z `Vfx.burst`: przenosi wybuch cząsteczek 2D do 3D (głębia: rozrzut także w z, cząsteczki jako billboardy); wersja 2D jest ukrywana.
+func mirror_burst(fx: CPUParticles2D, pos: Vector2) -> void:
+	var p := CPUParticles3D.new()
+	p.one_shot = true
+	p.explosiveness = fx.explosiveness
+	p.amount = fx.amount
+	p.lifetime = fx.lifetime
+	p.direction = Vector3(fx.direction.x, -fx.direction.y, 0.0)
+	p.spread = fx.spread
+	p.initial_velocity_min = fx.initial_velocity_min * PX
+	p.initial_velocity_max = fx.initial_velocity_max * PX
+	p.gravity = Vector3(fx.gravity.x * PX, -fx.gravity.y * PX, 0.0)
+	p.scale_amount_min = fx.scale_amount_min
+	p.scale_amount_max = fx.scale_amount_max
+	p.color = fx.color
+	p.layers = LAYER_ACTORS
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var q := QuadMesh.new()
+	q.size = Vector2(8.0, 8.0) * PX
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.vertex_color_use_as_albedo = true
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	m.billboard_keep_scale = true
+	if fx.texture != null:
+		m.albedo_texture = fx.texture
+	q.material = m
+	p.mesh = q
+	p.position = Level3D.px_to_m(pos) + Vector3(0.0, 0.0, 0.2)
+	_world.add_child(p)
+	p.emitting = true
+	get_tree().create_timer(fx.lifetime + 0.6).timeout.connect(p.queue_free)
+	fx.emitting = false
+	fx.visible = false
 
 # ---------------------------------------------------------------- światła
 

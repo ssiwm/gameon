@@ -1145,6 +1145,10 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var lp: Node2D = _players.get_node_or_null("1")      # --shotlight: flara tuż przed graczem (podgląd oświetlenia z mapą normalnych)
 		if lp != null:
 			level.spawn_flare(lp.global_position + Vector2(34.0, -28.0), Vector2.ZERO)
+	if "--shotshoot" in OS.get_cmdline_user_args():                 # dev: gracz 1 strzela serią w prawo przez cały czas zrzutu (podgląd pocisków i efektów)
+		var sp1: Node2D = _players.get_node_or_null("1")
+		if sp1 != null:
+			_dev_shoot(sp1, delay)
 	if "--shotfire" in OS.get_cmdline_user_args():
 		var fp: Node2D = _players.get_node_or_null("1")      # --shotfire: trzy plamy ognia HKM-9 przed graczem (podgląd)
 		if fp != null:
@@ -1215,6 +1219,15 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 	img.save_png(path)
 	print("[SHOT] %s (%dx%d)" % [path, img.get_width(), img.get_height()])
 	get_tree().quit()
+
+## Dev (--shotshoot): seria strzałów gracza w prawo co 0,12 s przez `secs` sekund.
+func _dev_shoot(p: Node2D, secs: float) -> void:
+	var t := 0.0
+	while t < secs and is_instance_valid(p):
+		if p.weapons != null:
+			p.weapons.bot_fire(Vector2(1.0, -0.04).normalized())
+		await get_tree().create_timer(0.12).timeout
+		t += 0.12
 
 ## Symulacja długości walki z Pijawką (--host --mission=z1_b1 --leechsim=CELNOŚĆ,DPS --autoquit=N): nieśmiertelny gracz-przynęta stoi w wodzie przy bossie
 ## i zadaje DPS × celność tylko wtedy, gdy boss jest wynurzony, oraz w świetle flary (rzucanej co 20 s; liczy się 40%). Czas gry przyspieszony ×4.
