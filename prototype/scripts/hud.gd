@@ -46,7 +46,7 @@ const PROMPT_Y := 0.76           ## pasek kontekstowy — nad paskiem broni (dó
 ## Układ wzorowany na koop-strzelankach (Left 4 Dead, Deep Rock Galactic, Helldivers): drużyna i zdrowie w lewym dolnym
 ## rogu (własna karta największa, koledzy nad nią), broń i zasoby w płaskim pasku na środku dołu, a w lewym górnym tylko miernik hałasu.
 const BOTTOM_PAD := 20.0         ## odstęp kart dolnych od krawędzi (nad paskiem sterowania)
-const SQUAD_W := 176.0
+const SQUAD_W := 150.0
 ## Kolory slotów = kolory kurtek sprite'ów graczy (bake_sprites.PLAYER_VARIANTS).
 const SLOT_COLORS := [Color(0.91, 0.62, 0.22), Color(0.25, 0.72, 0.85), Color(0.86, 0.28, 0.36), Color(0.45, 0.80, 0.30)]
 const BOT_COLOR := Color(0.58, 0.60, 0.66)
@@ -139,10 +139,11 @@ class VuMeter extends Control:
 			uneasy = float(ticks[1][0])
 			awake = float(ticks[2][0])
 		# tło skali i strefy
-		draw_arc(c, r, A0, A1, 28, Color(0, 0, 0, 0.55), 7.0, true)
-		draw_arc(c, r, _ang(0.0), _ang(uneasy), 16, UiTheme.CALM.darkened(0.15), 4.0, true)
-		draw_arc(c, r, _ang(uneasy), _ang(awake), 10, UiTheme.ACCENT, 4.0, true)
-		draw_arc(c, r, _ang(awake), _ang(1.0), 12, UiTheme.DANGER, 4.0, true)
+		var sw := clampf(size.y * 0.085, 4.0, 6.0)         # grubość pasa skali rośnie z rozmiarem miernika
+		draw_arc(c, r, A0, A1, 28, Color(0, 0, 0, 0.55), sw + 3.0, true)
+		draw_arc(c, r, _ang(0.0), _ang(uneasy), 16, UiTheme.CALM.darkened(0.15), sw, true)
+		draw_arc(c, r, _ang(uneasy), _ang(awake), 10, UiTheme.ACCENT, sw, true)
+		draw_arc(c, r, _ang(awake), _ang(1.0), 12, UiTheme.DANGER, sw, true)
 		# kreski: co 10%, próg ciszy dłuższą
 		for i in range(0, 11):
 			var f := float(i) / 10.0
@@ -476,9 +477,9 @@ func _fit() -> void:
 	_place(_lv_label, Vector2(w - MARGIN - SESSION_W, MARGIN + 50.0), Vector2(SESSION_W, 11))
 	_place(_xp_feed, Vector2(w - MARGIN - SESSION_W, MARGIN + 61.0), Vector2(SESSION_W, 12))
 	var cw := 400.0
-	_place(_warn, Vector2((w - cw) * 0.5, h * WARN_Y), Vector2(cw, 20))
-	_place(_warn_sub, Vector2((w - cw) * 0.5, h * WARN_Y + 20.0), Vector2(cw, 12))
-	_place(_note, Vector2((w - cw) * 0.5, h * WARN_Y + 36.0), Vector2(cw, 14))
+	_place(_warn, Vector2((w - cw) * 0.5, h * WARN_Y), Vector2(cw, 28))
+	_place(_warn_sub, Vector2((w - cw) * 0.5, h * WARN_Y + 28.0), Vector2(cw, 14))
+	_place(_note, Vector2((w - cw) * 0.5, h * WARN_Y + 46.0), Vector2(cw, 14))
 	_place(_center, Vector2((w - cw) * 0.5, h * CENTER_Y), Vector2(cw, 28))
 	_place(_center_sub, Vector2((w - cw) * 0.5, h * CENTER_Y + 28.0), Vector2(cw, 16))
 	_place(_controls, Vector2(MARGIN, h - 16.0), Vector2(w - 2.0 * MARGIN, 12))
@@ -498,6 +499,17 @@ func _card(pos: Vector2) -> PanelContainer:
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(c)
 	return c
+
+## Nagłówek karty w stylu makiety: mały mono, rozstrzelony (em = ułamek rozmiaru).
+func _cap(text: String, color: Color, spacing := 0.2, size := 7) -> Label:
+	var l := UiTheme.label(text, size, color)
+	if UiTheme.hd_on():
+		var fv := FontVariation.new()
+		fv.base_font = UiTheme.mono_font()
+		fv.spacing_glyph = int(round(float(size) * spacing))
+		l.add_theme_font_override("font", fv)
+		l.add_theme_constant_override("outline_size", 0)
+	return l
 
 ## Cienka linia oddzielająca grupy w karcie (czytelniejsza hierarchia niż same odstępy).
 func _hr(parent: Container) -> void:
@@ -520,29 +532,35 @@ func _row(parent: Container, caption: String) -> HBoxContainer:
 func _build_noise_card() -> void:
 	var card := _card(Vector2(MARGIN, MARGIN))
 	_noise_card = card
-	var outer := HBoxContainer.new()
-	outer.add_theme_constant_override("separation", 8)
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 1)
 	card.add_child(outer)
+	var top := HBoxContainer.new()
+	var cap := _cap("NOISE", UiTheme.MUTED, 0.22)
+	cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(cap)
+	_noise_state = _cap("", UiTheme.MUTED, 0.14)
+	top.add_child(_noise_state)
+	outer.add_child(top)
+	var dial := HBoxContainer.new()
+	dial.add_theme_constant_override("separation", 4)
+	outer.add_child(dial)
 	_noise_bar = VuMeter.new()                 # analogowy VU-metr; progi z NoiseMgr: 30 = zasypia, 40 = niepokój, 60 = budzi się ON
-	_noise_bar.custom_minimum_size = Vector2(72, 40)
+	_noise_bar.custom_minimum_size = Vector2(112, 58)
+	_noise_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_noise_bar.ticks = [
 		[NoiseMgr.SLEEP_THRESHOLD / 100.0, Color(1, 1, 1, 0.35)],
 		[NoiseMgr.UNEASY_THRESHOLD / 100.0, UiTheme.ACCENT],
 		[NoiseMgr.AWAKE_THRESHOLD / 100.0, UiTheme.DANGER],
 	]
-	outer.add_child(_noise_bar)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 1)
-	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	outer.add_child(box)
-	box.add_child(UiTheme.heading("NOISE", 8, UiTheme.MUTED))
-	_noise_state = UiTheme.label("", 7, UiTheme.MUTED)
-	box.add_child(_noise_state)
-	_noise_val = UiTheme.mono(UiTheme.label("0%", 12, UiTheme.TEXT))
-	box.add_child(_noise_val)
+	dial.add_child(_noise_bar)
+	_noise_val = UiTheme.mono(UiTheme.label("0%", 16, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
+	_noise_val.size_flags_vertical = Control.SIZE_SHRINK_END
+	_noise_val.custom_minimum_size = Vector2(40, 0)
+	dial.add_child(_noise_val)
 	_weather_row = UiTheme.label("", 7, UiTheme.MUTED)
 	_weather_row.visible = false
-	box.add_child(_weather_row)
+	outer.add_child(_weather_row)
 	# w kryjówce miernik hałasu nic nie mówi (zawsze 0%) — zastępuje go mały znacznik SAFE
 	_safe_chip = _card(Vector2(MARGIN, MARGIN))
 	_safe_chip.add_child(UiTheme.heading("SAFE", 8, UiTheme.OK))
@@ -555,7 +573,7 @@ func _build_squad_card() -> void:
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 3)
 	_squad_card.add_child(outer)
-	outer.add_child(UiTheme.heading("SQUAD", 8, UiTheme.MUTED))
+	outer.add_child(_cap("SQUAD", UiTheme.MUTED, 0.22))
 	_squad_box = VBoxContainer.new()
 	_squad_box.add_theme_constant_override("separation", 5)
 	outer.add_child(_squad_box)
@@ -589,19 +607,19 @@ func _build_gear_card() -> void:
 	# 1) nazwa broni nad kosztem następnego strzału (ile Uwagi — GDD §8.1)
 	var name_col := VBoxContainer.new()
 	name_col.add_theme_constant_override("separation", 0)
-	name_col.custom_minimum_size = Vector2(54, 0)
+	name_col.custom_minimum_size = Vector2(72, 0)
 	name_col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_ammo_name = UiTheme.label("", 9, UiTheme.TEXT)
+	_ammo_name = UiTheme.heading("", 14, UiTheme.TEXT)
 	name_col.add_child(_ammo_name)
-	_heat_note = UiTheme.label("", 7, UiTheme.MUTED)
+	_heat_note = _cap("", UiTheme.MUTED, 0.08)
 	name_col.add_child(_heat_note)
 	row.add_child(name_col)
 
 	# 2) magazynek (duży) i zapas drużyny
 	var nums := HBoxContainer.new()
 	nums.add_theme_constant_override("separation", 3)
-	_ammo_mag = UiTheme.heading("", 24, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
-	_ammo_mag.custom_minimum_size = Vector2(38, 0)
+	_ammo_mag = UiTheme.heading("", 34, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	_ammo_mag.custom_minimum_size = Vector2(50, 0)
 	nums.add_child(_ammo_mag)
 	_ammo_res = UiTheme.label("", 9, UiTheme.MUTED)
 	_ammo_res.size_flags_vertical = Control.SIZE_SHRINK_END
@@ -812,14 +830,14 @@ func _build_objective_card() -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 	_obj_card.add_child(box)
-	_obj_caption = UiTheme.heading("OBJECTIVE", 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
+	_obj_caption = _cap("OBJECTIVE", UiTheme.ACCENT, 0.3)
+	_obj_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_obj_caption)
-	_hr(box)
-	_obj_text = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	_obj_text = UiTheme.heading("", 14, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	_obj_text.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_obj_text)
-	_obj_hint = UiTheme.label("", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	_obj_hint = UiTheme.whisper(UiTheme.label("", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 	_obj_hint.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_obj_hint)
@@ -862,9 +880,10 @@ func _build_session() -> void:
 	Profile.leveled_up.connect(_on_level_up)
 
 func _build_center() -> void:
-	_warn = UiTheme.heading("", 16, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
+	_warn = UiTheme.whisper(UiTheme.label("", 21, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER))   # szept maszynowy 34 px z makiety
+	_warn.add_theme_constant_override("outline_size", 0)
 	add_child(_warn)
-	_warn_sub = UiTheme.whisper(UiTheme.label("", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	_warn_sub = UiTheme.whisper(UiTheme.label("", 9, Color("bdb8a6"), HORIZONTAL_ALIGNMENT_CENTER))
 	add_child(_warn_sub)
 	# krótkie komunikaty (np. „wabik już nie działa tutaj")
 	_note = UiTheme.whisper(UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
@@ -1282,7 +1301,8 @@ func _drive_weapons() -> void:
 		_slots[i].tooltip_text = names[i]
 		_slots[i].add_theme_stylebox_override("panel", _slot_on if sel else _slot_off)
 		_slot_labels[i].add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.MUTED)
-	_ammo_name.text = cur.name + ("  ·  BURST" if wc.is_burst(cur) else ("  ·  AUTO" if cur.burst_size > 0 else ""))
+	_ammo_name.text = cur.name
+	var mode_tag := "BURST" if wc.is_burst(cur) else ("AUTO" if cur.burst_size > 0 else "")
 	_gun_main.set_gun(int(cur.gun_row), cur.tracer_color, Color.WHITE)
 	var mag: int = wc.mag_of(cur.id)
 	var note := ""
@@ -1318,12 +1338,14 @@ func _drive_weapons() -> void:
 	_heat_bar.value = heat if cur.n_max > cur.n_min else 0.0
 	_heat_bar.fill = Color(0.62, 0.72, 0.78).lerp(Color(1.0, 0.3, 0.2), clampf(heat * 1.15, 0.0, 1.0))
 	_heat_bar.queue_redraw()
+	var noise_txt := ""
 	if cur.is_melee():
-		_heat_note.text = ""
+		noise_txt = ""
 	elif cur.n_max > cur.n_min:
-		_heat_note.text = "%.1f→%.1f" % [cur.noise(heat), cur.n_max]
+		noise_txt = "%.1f→%.1f" % [cur.noise(heat), cur.n_max]
 	else:
-		_heat_note.text = "%.1f" % cur.noise(0.0)
+		noise_txt = "%.1f" % cur.noise(0.0)
+	_heat_note.text = mode_tag + (" · " if mode_tag != "" and noise_txt != "" else "") + noise_txt
 	_gear_card.reset_size()
 	# pasek broni: środek ekranu, ale nie na karcie drużyny; gdy się nie mieści (duży HUD) — nad kartą drużyny
 	var gw := _gear_card.size.x
@@ -1340,13 +1362,13 @@ func _drive_warning() -> void:
 	var awake: bool = NoiseMgr.stalker_awake
 	var uneasy: bool = (not awake) and NoiseMgr.level >= NoiseMgr.UNEASY_THRESHOLD
 	if awake:
-		_warn.text = "HE HEARS YOU"
+		_warn.text = "He hears you…"
 		_warn.add_theme_color_override("font_color", UiTheme.DANGER)
 		_warn.modulate.a = lerpf(1.0, 0.6 + 0.4 * sin(_blink * 6.0), Settings.fx_mult())
 		_warn_sub.text = "Go quiet until the noise drops below 30% — or use Q to lure him off"
 	elif uneasy:
-		_warn.text = "SOMETHING IS LISTENING…"
-		_warn.add_theme_color_override("font_color", UiTheme.ACCENT)
+		_warn.text = "Something is listening…"
+		_warn.add_theme_color_override("font_color", Color("e8e2c4"))
 		_warn.modulate.a = lerpf(0.85, 0.55 + 0.3 * sin(_blink * 3.0), Settings.fx_mult())
 		_warn_sub.text = "Above 60% noise he wakes up"
 	else:
@@ -1391,7 +1413,7 @@ func _drive_mission() -> void:
 	# ostrzeżenie zawsze pod kartą celu (karta bossa jest wyższa)
 	var wy := maxf(size.y * WARN_Y, _obj_card.position.y + _obj_card.size.y + 10.0)
 	_warn.position.y = wy
-	_warn_sub.position.y = wy + 20.0
+	_warn_sub.position.y = wy + 28.0
 
 	var show_result: bool = m.phase == Mission.Phase.SUCCESS or m.phase == Mission.Phase.FAILED
 	var just_shown: bool = show_result and not _result.visible
