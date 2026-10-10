@@ -5,11 +5,12 @@ extends CanvasLayer
 
 const SHADER := """
 shader_type canvas_item;
-uniform sampler2D screen_tex : hint_screen_texture, repeat_disable, filter_linear;
+uniform sampler2D screen_tex : hint_screen_texture, repeat_disable, filter_linear_mipmap;
 uniform float vignette = 0.4;
 uniform float aberration = 0.001;
 uniform float desat = 0.0;
 uniform float hurt_pulse = 0.0;
+uniform float bloom = 0.0;
 uniform float aspect = 1.78;
 void fragment() {
 	vec2 uv = SCREEN_UV;
@@ -26,6 +27,11 @@ void fragment() {
 	col *= mix(vec3(0.88, 1.0, 1.16), vec3(1.12, 1.0, 0.86), smoothstep(0.04, 0.42, lum));
 	lum = dot(col, vec3(0.299, 0.587, 0.114));
 	col = mix(col, vec3(lum), desat);
+	if (bloom > 0.0) {
+		// poświata jasnych źródeł (lampy, flary, latarka): rozmyte poziomy mip ekranu ponad progiem, ciepły odcień
+		vec3 bl = textureLod(screen_tex, uv, 3.0).rgb * 0.40 + textureLod(screen_tex, uv, 4.5).rgb * 0.35 + textureLod(screen_tex, uv, 6.0).rgb * 0.25;
+		col += max(bl - vec3(0.16), vec3(0.0)) * bloom * vec3(1.0, 0.86, 0.66);
+	}
 	float v = smoothstep(0.32, 0.98, d);
 	col *= 1.0 - v * vignette;
 	col += vec3(0.55, 0.02, 0.03) * hurt_pulse * v;
@@ -34,6 +40,7 @@ void fragment() {
 """
 
 const BASE_VIGNETTE := 0.42
+const BLOOM := 0.9                   ## siła poświaty jasnych źródeł (× mnożnik jakości z Settings.post_mult)
 const BASE_ABERRATION := 0.0007
 
 var _mat: ShaderMaterial
@@ -91,5 +98,6 @@ func _process(delta: float) -> void:
 	_mat.set_shader_parameter("vignette", BASE_VIGNETTE + _attn * 0.28 + _hurt * 0.2)
 	_mat.set_shader_parameter("aberration", (BASE_ABERRATION + _attn * 0.0025 + _hurt * 0.0022) * post)
 	_mat.set_shader_parameter("desat", _hurt * 0.55)
+	_mat.set_shader_parameter("bloom", BLOOM * post)
 	_mat.set_shader_parameter("hurt_pulse", _hurt * (0.18 + 0.38 * beat * calm))
 	_mat.set_shader_parameter("aspect", size.x / maxf(size.y, 1.0))

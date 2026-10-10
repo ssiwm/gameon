@@ -204,10 +204,77 @@ func _setup_lights() -> void:
 	_beam.enabled = false
 	add_child(_beam)
 	_setup_sprites()
+	_setup_occluder()
 	view = WeaponView.new()
 	view.setup(self, weapons)
 	add_child(view)
 	_overlay = Lights.add_overlay(self)   # ostatnie dziecko: etykiety nad sprite'ami
+
+## Okluder postaci dla świateł lamp (cienie na podłodze i ścianach): sylwetka stojąca / kucająca; nie cieniuje świateł własnych (maska 2).
+var _occ: LightOccluder2D
+var _occ_stand: OccluderPolygon2D
+var _occ_crouch: OccluderPolygon2D
+
+func _setup_occluder() -> void:
+	_occ_stand = OccluderPolygon2D.new()
+	_occ_stand.polygon = PackedVector2Array([Vector2(-3.0, -20.0), Vector2(3.0, -20.0), Vector2(4.0, -1.0), Vector2(-4.0, -1.0)])
+	_occ_crouch = OccluderPolygon2D.new()
+	_occ_crouch.polygon = PackedVector2Array([Vector2(-3.5, -13.0), Vector2(3.5, -13.0), Vector2(4.5, -1.0), Vector2(-4.5, -1.0)])
+	_occ = LightOccluder2D.new()
+	_occ.occluder = _occ_stand
+	_occ.occluder_light_mask = 2
+	add_child(_occ)
+
+func _update_occluder() -> void:
+	if _occ == null:
+		return
+	_occ.occluder = _occ_crouch if crouching else _occ_stand
+	_occ.visible = not dead
+	_update_contact_shadow()
+
+## Miękki cień kontaktowy pod stopami zależny od najbliższej lampy (kryjówka): elipsa przesunięta od lampy, słabnąca z odległością.
+## Poza zasięgiem lamp (misje) nie widać go wcale; LOW bez cienia.
+var _shadow_spr: Sprite2D
+var _shadow_t := 0.0
+static var _shadow_tex: Texture2D
+
+func _update_contact_shadow() -> void:
+	if _shadow_spr == null:
+		if _shadow_tex == null:
+			var img := Image.create(32, 10, false, Image.FORMAT_RGBA8)
+			for y in 10:
+				for x in 32:
+					var d := Vector2((x + 0.5 - 16.0) / 16.0, (y + 0.5 - 5.0) / 5.0).length()
+					img.set_pixel(x, y, Color(0, 0, 0, clampf(1.0 - d, 0.0, 1.0) * clampf((1.0 - d) * 1.6, 0.0, 1.0)))
+			_shadow_tex = ImageTexture.create_from_image(img)
+		_shadow_spr = Sprite2D.new()
+		_shadow_spr.texture = _shadow_tex
+		_shadow_spr.show_behind_parent = true
+		_shadow_spr.z_index = -1
+		_shadow_spr.position = Vector2(0, -0.5)
+		_shadow_spr.modulate.a = 0.0
+		add_child(_shadow_spr)
+		move_child(_shadow_spr, 0)
+	_shadow_t -= get_process_delta_time()
+	if _shadow_t > 0.0:
+		return
+	_shadow_t = 0.1
+	var best: Node2D = null
+	var best_d := 260.0
+	for l in get_tree().get_nodes_in_group("lamps"):
+		var d := (l as Node2D).global_position.distance_to(global_position)
+		if d < best_d:
+			best_d = d
+			best = l
+	if best == null or dead or Settings.quality_idx < 1:
+		_shadow_spr.modulate.a = 0.0
+		return
+	var k := 1.0 - best_d / 260.0
+	_shadow_spr.modulate.a = 0.55 * k
+	var dx := global_position.x - best.global_position.x
+	_shadow_spr.position.x = clampf(dx * 0.05, -7.0, 7.0)
+	var w := 0.55 if crouching else 0.5
+	_shadow_spr.scale = Vector2(w + 0.25 * k, 0.55)
 
 ## Zoom kamery z ustawienia „Camera” (WIDE / NORMAL / CLOSE) — im bliżej, tym więcej detalu postaci, a mniej świata.
 func _apply_cam_zoom() -> void:
@@ -432,6 +499,7 @@ func _on_map_changed(_id: String) -> void:
 ## Rysowanie odświeżamy na każdym peerze (zdalni gracze też zmieniają celowanie,
 ## kucanie i HP), a kamera dostaje lokalny shake.
 func _process(delta: float) -> void:
+	_update_occluder()
 	_wound_t += delta
 	_flash = maxf(0.0, _flash - delta)
 	_scream_ring = maxf(0.0, _scream_ring - delta)
