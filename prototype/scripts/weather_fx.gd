@@ -24,45 +24,56 @@ const RAIN := {"rain": [12.0, 1.0, 1.0], "storm": [26.0, 2.3, 1.25]}
 ## a ciemność zostaje ciemnością (welon nie świeci sam). Gęstsza przy ziemi, z poziomymi pasmami płynącymi wolno w dwie strony.
 const FOG_SHADER := """
 shader_type canvas_item;
-uniform sampler2D screen_tex : hint_screen_texture, repeat_disable, filter_linear;
+uniform sampler2D screen_tex : hint_screen_texture, repeat_disable, filter_linear_mipmap;
 uniform float density = 0.0;
 uniform float t = 0.0;
 uniform float aspect = 1.78;
-uniform vec3 fog_tint = vec3(0.62, 0.7, 0.68);
+uniform vec3 fog_tint = vec3(0.092, 0.115, 0.140);      // barwa samej mgły: blada, chłodna poświata (jak mgła w świetle księżyca)
 float hash(vec2 p) {
-	p = fract(p * vec2(123.34, 456.21));
-	p += dot(p, p + 45.32);
-	return fract(p.x * p.y);
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
 }
+// szum wartościowy z interpolacją piątego stopnia (bez widocznej siatki)
 float vnoise(vec2 p) {
 	vec2 i = floor(p);
 	vec2 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
+	f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
 	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
 }
+// kolejne oktawy są obrócone i przesunięte, żeby osie siatki nie zlewały się w pasy
 float fbm(vec2 p) {
-	return vnoise(p) * 0.55 + vnoise(p * 2.1 + 3.7) * 0.3 + vnoise(p * 4.3 + 9.1) * 0.15;
+	mat2 r = mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8));
+	float v = 0.0;
+	float a = 0.5;
+	for (int k = 0; k < 4; k++) {
+		v += vnoise(p) * a;
+		p = r * p * 2.03 + 17.1;
+		a *= 0.5;
+	}
+	return v / 0.9375;
 }
 void fragment() {
 	vec2 uv = SCREEN_UV;
 	vec3 col = texture(screen_tex, uv).rgb;
-	vec2 px = vec2(1.0 / aspect, 1.0);
-	vec3 blur = vec3(0.0);
-	for (int i = 0; i < 8; i++) {
-		float a = float(i) * 0.785398;
-		blur += texture(screen_tex, uv + vec2(cos(a), sin(a)) * px * 0.012).rgb;
-		blur += texture(screen_tex, uv + vec2(cos(a), sin(a)) * px * 0.03).rgb * 0.6;
-	}
-	blur /= 12.8;
-	float n1 = fbm(vec2(uv.x * aspect * 2.4 - t * 0.035, uv.y * 3.2 + t * 0.01));
-	float n2 = fbm(vec2(uv.x * aspect * 1.5 + t * 0.022, uv.y * 2.1 - t * 0.008) + 7.3);
-	float bands = 0.35 + 0.65 * (n1 * 0.6 + n2 * 0.4) * 1.4;
-	float ground = smoothstep(0.15, 0.95, uv.y);
-	float d = clamp(density * bands * (0.4 + 0.6 * ground), 0.0, 0.9);
+	// miękka poświata z mip-ów ekranu: jedno rozmycie bez „duchów” kopii jasnych drobiazgów (gwiazdy, celownik, cząsteczki)
+	vec3 glow = textureLod(screen_tex, uv, 3.5).rgb * 0.5 + textureLod(screen_tex, uv, 5.5).rgb * 0.5;
+	vec2 q = vec2(uv.x * aspect, uv.y);
+	// pasma mgły rozciągnięte poziomo, w dwóch warstwach płynących w przeciwne strony
+	float n1 = fbm(vec2(q.x * 1.1 - t * 0.030, q.y * 4.6 + t * 0.004));
+	float n2 = fbm(vec2(q.x * 0.7 + t * 0.017, q.y * 2.8 - t * 0.003) + 11.0);
+	float banks = smoothstep(0.28, 0.82, n1 * 0.6 + n2 * 0.4);
+	float ground = smoothstep(0.10, 0.92, uv.y);
+	float d = clamp(density * (0.25 + 0.75 * banks) * (0.35 + 0.65 * ground), 0.0, 0.85);
 	float lum = dot(col, vec3(0.299, 0.587, 0.114));
-	vec3 veil = vec3(lum) * fog_tint * 1.5 + blur * 0.8;
-	col = mix(col, veil, d * 0.8) + blur * density * 0.3;
-	COLOR = vec4(col, 1.0);
+	// welon zachowuje barwę obiektów: tylko częściowo chłodzi i zmiękcza, nie jaśnieje ponad oryginał
+	vec3 veil = mix(col, vec3(lum) * vec3(0.92, 1.0, 1.05), 0.4) + glow * 0.35;
+	col = mix(col, veil, d);
+	// sama mgła: blada poświata rozjaśniająca ciemność, gęstsza przy ziemi (czytelna także tam, gdzie nic nie świeci)
+	col += fog_tint * d * (0.45 + 0.9 * n2) * (0.5 + 0.5 * ground);
+	// dithering: w ciemnych gradientach 8 bitów daje widoczne pasy
+	col += (hash(FRAGCOORD.xy + fract(t)) - 0.5) / 255.0;
+	COLOR = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
 """
 
