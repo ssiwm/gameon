@@ -389,6 +389,7 @@ func _look_code() -> int:
 var _c3_hp := -1                       ## ostatnie zdrowie widziane przez animację 3D (wykrycie trafienia)
 var _c3_was_air := false
 var _c3_air_vy := 0.0                  ## największa prędkość spadania w ostatnim locie (siła lądowania)
+var _c3_climbed := false               ## podciągnięcie już odegrane w tym locie
 
 ## Postać 3D (dev): animacja z tego samego stanu co sprite'y, celowanie z aim_dir; broń trzymana IK-iem w obu dłoniach.
 func _update_char3d() -> void:
@@ -420,6 +421,18 @@ func _update_char3d() -> void:
 			c3d.land_str = clampf(_c3_air_vy / 420.0, 0.35, 1.0)
 		_c3_air_vy = 0.0
 	_c3_was_air = not grounded
+	c3d.air_vy = velocity.y if not grounded else 0.0
+	# podciągnięcie: wskakując od dołu przez kładkę (kafel kładki na wysokości stóp), wolna ręka podpiera się o krawędź
+	if not grounded and velocity.y < -40.0 and not dead and not _c3_climbed and c3d.climb_t < 0.0:
+		var lvl: Node = get_tree().get_first_node_in_group("level")
+		if lvl != null and lvl.has_method("_is_platform_cell"):
+			var cc := int(floor(global_position.x / 16.0))
+			var rr := int(floor((global_position.y - 2.0) / 16.0))
+			if lvl.call("_is_platform_cell", cc, rr):
+				c3d.climb_t = 0.0
+				_c3_climbed = true
+	if grounded:
+		_c3_climbed = false
 	c3d.back_run = absf(velocity.x) > 10.0 and signf(velocity.x) != _facing and grounded
 	c3d.dying = clampf(1.0 - bleed_left / 1.0, 0.0, 1.0) if dead else 0.0     # ostatnia sekunda wykrwawiania: drgawki i zapadanie się
 	if not is_bot:
