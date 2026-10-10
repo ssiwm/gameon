@@ -111,7 +111,7 @@ Generatory wizualizacji: `prototype/tools/concept/char3d_concept.py` (Blender) i
 4. **Mikroanimacja:** brak oddechu i śledzenia głowy sprawia, że w bezruchu postać wygląda jak sprite.
 5. **Obrys:** jednolity ciemny obrys 0,5 j. spłaszcza detale na krawędzi (do rozważenia: cieńszy lub kolorowany).
 
-**Status (2026-10-10):** decyzje: 2048² + 12 k ścian; obrót 3/4 domyślnie 15°; `DENSITY` sprite'ów 2D 2 → 3; jakość postaci powiązana z „Effects quality”. **Fazy 4.2 i 4.3 zrobione:** światło kontrujące (rim) i cienie własne postaci (kierunkowe, ortogonalne), poziom jakości postaci z „Effects quality” (LOW: ss ≤ 4, bez MSAA / normalnych / cieni; MEDIUM: ss ≤ 6, MSAA, normalne, rim; HIGH: ss ≤ 8 + cienie), kamera obrócona o 15° (widok 3/4) i mikroruch w bezruchu (oddech, przeniesienie ciężaru, głowa). **Faza 4.1 zrobiona:** `prep_char3d.py` zachowuje mapy normalnych i ORM z Tripo (2048², JPEG q90), 12 k ścian; gra zeruje metaliczność po wczytaniu, a przebieg normalnych dla świateł 2D czyta mapę normalnych modelu.
+**Status (2026-10-10):** decyzje: 2048² + 12 k ścian; obrót 3/4 domyślnie 15°; jakość postaci powiązana z „Effects quality”; podniesienie `DENSITY` wycofane (błędne założenie, patrz Ryzyka). **Fazy 4.2 i 4.3 zrobione:** światło kontrujące (rim) i cienie własne postaci (kierunkowe, ortogonalne), poziom jakości postaci z „Effects quality” (LOW: ss ≤ 4, bez MSAA / normalnych / cieni; MEDIUM: ss ≤ 6, MSAA, normalne, rim; HIGH: ss ≤ 8 + cienie), kamera obrócona o 15° (widok 3/4) i mikroruch w bezruchu (oddech, przeniesienie ciężaru, głowa). **Faza 4.1 zrobiona:** `prep_char3d.py` zachowuje mapy normalnych i ORM z Tripo (2048², JPEG q90), 12 k ścian; gra zeruje metaliczność po wczytaniu, a przebieg normalnych dla świateł 2D czyta mapę normalnych modelu.
 
 ### Fazy (każda osobny PR, zrzuty A/B przed/po, bez zmian w sieci)
 | Faza | Zakres | Kryterium | Szac. |
@@ -128,12 +128,12 @@ Generatory wizualizacji: `prototype/tools/concept/char3d_concept.py` (Blender) i
 ### Ryzyka i zasady
 - **Rozmiar repo/VRAM:** GLB 6 modeli × ~1,5 MB; tekstury w VRAM kompresowane (BPTC/S3TC), ramka renderu 44×44 j. × `ss` — pomijalne wobec sprite'ów wrogów.
 - **Koszt GPU:** dwa przebiegi + cienie + MSAA × do 4 postaci; mitygacja: poziomy jakości (LOW bez cieni i normalnych, MEDIUM bez MSAA), culling poza ekranem już jest.
-- **Wrogowie nie nadążą:** sprite'y 2D wrogów mają gęstość 2 px/j. (`DENSITY = 2`), więc na 1080p będą wyraźnie mniej ostre niż gracz; osobna decyzja (patrz niżej).
+- **Ostrość wrogów (sprostowanie z 2026-10-10):** domyślne arkusze HD wrogów (`<rodzaj>_hd`) powstają z modeli Tripo w **8 px/j.** (Mimik i gracz 2D 16 px/j.), więc przy zoomie 2,0 na 1080p (6 px/j.) są ostre; na 4K (12 px/j.) powiększone ok. 1,5×. Słabsze są tylko bossowie: **Pijawka 4 px/j.** (×1,5 na 1080p, ×3 na 4K) i **Żyła 5 px/j.** (×1,2 / ×2,4). Stała `DENSITY = 2` w `tools/char_*.py` dotyczy wyłącznie klasycznych arkuszy pixel-art (tryb CLASSIC) i **nie** wpływa na grafikę HD, dlatego jej podnoszenie nie ma sensu (psułoby też spójność z kaflami 16 px).
 - **Spójność stylu:** postać gracza i wróg w jednej scenie muszą wyglądać jak z jednego świata (kontrast ostrości jest ryzykiem artystycznym, nie technicznym).
 - **Kredyty Tripo:** nowe części/stroje generowane tylko po zatwierdzeniu budżetu; źródła 4K już są.
 
 ### Decyzje do podjęcia
 1. **Zakres 4.1:** 2048² + 12 k ścian (rekomendacja) czy ostrożniej 1536² + 9 k.
 2. **Kadr 4.3:** obrót 3/4 domyślnie, czy tylko w kryjówce i w podglądzie (rekomendacja: domyślnie 15°, w podglądzie pełny obrót).
-3. **Wrogowie:** podnieść `DENSITY` do 3 (arkusze ~2,25×, ok. 65 mln px) już teraz, czy dopiero po fazie 4.2, gdy będzie wiadomo, jak postać wypada w scenie.
+3. **Wrogowie:** ~~podnieść `DENSITY` do 3~~ — decyzja oparta na błędnym założeniu (patrz sprostowanie w Ryzykach); zamiast tego opcjonalnie przepiec **tylko Pijawkę i Żyłę** do 6 px/j. (arkusze ~2,25× większe, ok. 17 mln px każdy, z kompresją `compress_hd`).
 4. **Poziomy jakości postaci:** czy dodać osobne ustawienie „Character quality” (LOW/MEDIUM/HIGH), czy wiązać z istniejącym `Effects quality`.
