@@ -151,27 +151,9 @@ func _draw() -> void:
 		(_spr[0] as AnimatedSprite2D).modulate = Color(2.4, 2.4, 2.4) if _flash > 0.0 else Color.WHITE
 		if _spr[1] != null:
 			(_spr[1] as AnimatedSprite2D).frame = (_spr[0] as AnimatedSprite2D).frame
-		return
-	var t := Time.get_ticks_msec() / 1000.0
-	var pulse := 0.5 + 0.5 * sin(t * 2.2 + position.x * 0.01)
-	var base := Color(0.32, 0.12, 0.16).lerp(Color(0.45, 0.16, 0.2), pulse)
-	if _flash > 0.0:
-		base = Color.WHITE
-	# organiczny kopiec: kilka nakładających się kół
-	draw_circle(Vector2(0, -7), 9.0, base)
-	draw_circle(Vector2(-6, -4), 6.0, base.darkened(0.15))
-	draw_circle(Vector2(6, -4), 6.0, base.darkened(0.1))
-	draw_circle(Vector2(0, -14), 5.5, base.lightened(0.05))
 
 ## Żyłki i HP — unshaded, pulsują w ciemności.
 func _draw_overlay(ov: Node2D) -> void:
-	var t := Time.get_ticks_msec() / 1000.0
-	var pulse := 0.5 + 0.5 * sin(t * 2.2 + position.x * 0.01)
-	if _spr.is_empty():
-		var glow := Color(1.0, 0.45, 0.25, 0.35 + 0.45 * pulse)
-		ov.draw_circle(Vector2(-3, -9), 1.6, glow)
-		ov.draw_circle(Vector2(3, -6), 1.3, glow)
-		ov.draw_circle(Vector2(0, -15), 1.2, glow)
 	if hp < MAX_HP:
 		var bar_y := -38.0 if not _spr.is_empty() else -24.0       # sprite gniazda 40x34 jest wyższy niż stary rysunek
 		ov.draw_rect(Rect2(-14, bar_y, 28, 2), Color(0.15, 0.05, 0.05))

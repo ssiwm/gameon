@@ -413,21 +413,8 @@ func _sync(pos: Vector2, is_awake: bool, is_winding: bool) -> void:
 ## w snopie latarki albo przy rozbłysku strzału wychodzi z mroku. Kolor jest
 ## jaśniejszy niż w wersji bez oświetlenia, inaczej nawet oświetlona byłaby czarna.
 func _draw() -> void:
-	var t := Time.get_ticks_msec() / 1000.0
-	var hunting := NoiseMgr.level >= HUNT_NOISE
-	var reveal := _reveal()
 	if not _spr.is_empty():
-		_sprite_frame(reveal, hunting, t)
-		return
-	var body_base := Color(0.20, 0.16, 0.24) if hunting else Color(0.24, 0.21, 0.27)
-	var body := Color(body_base.r, body_base.g, body_base.b, reveal)
-	if reveal > 0.02:
-		draw_rect(Rect2(-8, -28, 16, 28), body)
-		draw_rect(Rect2(-6, -36, 12, 10), body.lightened(0.05))
-		for i in 6:
-			var x := -7.5 + i * 3.0
-			var sway := sin(t * 3.0 + i) * 2.5
-			draw_line(Vector2(x, -1), Vector2(x + sway, 5), Color(0.14, 0.12, 0.16, reveal), 1.5)
+		_sprite_frame(_reveal(), NoiseMgr.level >= HUNT_NOISE, Time.get_ticks_msec() / 1000.0)
 
 ## Sprite: ciało z przezroczystością „reveal", oczy (glow) z jasnością jak
 ## w rysowanej wersji — słabo z daleka, mocno z bliska i w zapowiedzi.
@@ -463,24 +450,9 @@ func _reveal() -> float:
 		reveal = 1.0
 	return reveal
 
-## Oczy — unshaded: świecą w ciemności (słabo z daleka, mocno z bliska
-## i w zapowiedzi ataku).
-func _draw_overlay(ov: Node2D) -> void:
-	if not _spr.is_empty():
-		return
-	var t := Time.get_ticks_msec() / 1000.0
-	var hunting := NoiseMgr.level >= HUNT_NOISE
-	var d := global_position.distance_to(_local_player_pos())
-	var reveal := clampf(1.0 - (d - SEE_FULL) / (SEE_NONE - SEE_FULL), 0.0, 1.0)
-	var pulse := 0.55 + 0.45 * sin(t * (6.0 if hunting else 2.0))
-	var eye_base := 1.0 if hunting else 0.45
-	var eye_far := 0.18 if d < 260.0 else 0.06
-	var eye_a := maxf(reveal, eye_far) * eye_base
-	if winding:
-		eye_a = 1.0
-		pulse = 1.0
-	ov.draw_circle(Vector2(-3, -32), 1.8, Color(1.0, 0.18 * pulse * eye_a, 0.12 * pulse * eye_a, eye_a))
-	ov.draw_circle(Vector2(3, -32), 1.8, Color(1.0, 0.18 * pulse * eye_a, 0.12 * pulse * eye_a, eye_a))
+## Oczy świecą w modelu 3D (enemy3d.gd); nakładka 2D nic nie rysuje.
+func _draw_overlay(_ov: Node2D) -> void:
+	pass
 
 func _redraw() -> void:
 	queue_redraw()

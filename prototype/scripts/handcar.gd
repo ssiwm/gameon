@@ -95,25 +95,9 @@ func _setup_hd() -> void:
 	skirt.position = body.position
 	skirt.offset = body.offset + Vector2(0.0, top_px * 0.5)                          # region wycentrowany tak, by pokrył się z korpusem
 	skirt.z_index = FRONT_Z
-	# Pod ramą (2 px nad torem) jest szczelina, w której było widać buty graczy stojących na torze — zasłania ją belka podwozia, też przed graczami.
-	var apron := Node2D.new()
-	apron.name = "Apron"
-	apron.z_index = FRONT_Z
-	apron.draw.connect(_draw_apron.bind(apron))
-	add_child(apron)
 	_hd_lever = ItemsHd.make("handcar_lever", self)
 	_hd_lever.offset = Vector2.ZERO
 	_hd_lever.position = Vector2(0, -13)
-
-## Belka podwozia między ramą a torem (HD): ciemna stal z jasną krawędzią i nitami; wysokość = szczelina pod ramą + zapas na buty.
-func _draw_apron(ci: Node2D) -> void:
-	var x0 := -HALF_W + 1.0
-	var w := HALF_W * 2.0 - 2.0
-	ci.draw_rect(Rect2(x0, -2.4, w, 3.4), Color(0.17, 0.18, 0.21))
-	ci.draw_rect(Rect2(x0, -2.4, w, 0.8), Color(0.32, 0.34, 0.39))
-	ci.draw_rect(Rect2(x0, 0.4, w, 0.6), Color(0.1, 0.1, 0.12))
-	for i in 9:
-		ci.draw_circle(Vector2(x0 + 5.0 + float(i) * (w - 10.0) / 8.0, -0.7), 0.45, Color(0.5, 0.52, 0.58))
 
 func _update_hd() -> void:
 	for i in _hd_wheels.size():
