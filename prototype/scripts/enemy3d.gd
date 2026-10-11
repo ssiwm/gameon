@@ -210,6 +210,7 @@ var _dead_t := 0.0
 var _dead_from := {}                       ## poza w chwili śmierci (płynne wejście w upadek)
 var finished := false                      ## martwy i po animacji — można ukryć
 var _qsamp := {}                           ## próbki animacji czworonoga: nazwa → [rotacje, pozycje]
+var _qs := 0.0                             ## waga siadu czworonoga 0..1 (idle = siedzi i czeka)
 var _qw := 0.0                             ## waga biegu czworonoga 0..1
 var _spine: Array = []                     ## kości kręgosłupa czworonoga
 var _last_p := {}                          ## ostatnia poza bazowa biped (po wagach)
@@ -725,6 +726,27 @@ func _pose_quad(anim: String, delta: float) -> void:
 			for bi in ri.size():
 				_sk.set_bone_pose_rotation(bi, ri[bi])
 				_sk.set_bone_pose_position(bi, pi_[bi])
+	# siad: Trzosek obudzony i czekający (idle) siedzi; wstaje do biegu, zapowiedzi ataku (windup), ciosu, trafienia i w locie
+	if _qsamp.has("idle"):
+		var want_sit := anim == "idle" and not _dead and _clip == "" and _air_w < 0.01 and not "--nosit" in OS.get_cmdline_user_args()
+		_qs = move_toward(_qs, 1.0 if want_sit else 0.0, delta * (3.0 if want_sit else 7.0))
+		if _qs > 0.001:
+			if not _qsamp.has("sit"):
+				var keep_r := []
+				var keep_p := []
+				for bi in _sk.get_bone_count():
+					keep_r.append(_sk.get_bone_pose_rotation(bi))
+					keep_p.append(_sk.get_bone_pose_position(bi))
+				_qsamp["sit"] = _build_sit(_qsamp["idle"])
+				for bi in keep_r.size():
+					_sk.set_bone_pose_rotation(bi, keep_r[bi])
+					_sk.set_bone_pose_position(bi, keep_p[bi])
+			var k := _qs * _qs * (3.0 - 2.0 * _qs)
+			var rs: Array = _qsamp["sit"][0]
+			var ps: Array = _qsamp["sit"][1]
+			for bi in rs.size():
+				_sk.set_bone_pose_rotation(bi, _sk.get_bone_pose_rotation(bi).slerp(rs[bi], k))
+				_sk.set_bone_pose_position(bi, _sk.get_bone_pose_position(bi).lerp(ps[bi], k))
 	if _air_w > 0.002 and _qsamp.has("air"):
 		# lot: mieszamy z próbką „wyciągnięta” kość po kości (po bazowej pozie idle / bieg)
 		var ra: Array = _qsamp["air"][0]
@@ -778,6 +800,75 @@ func _pose_quad(anim: String, delta: float) -> void:
 	if not _dead:
 		_sink_y = 0.0
 	_tilt.position = Vector3(shift, lift + _sink_y, 0.0)
+
+## Próbka „siad” czworonoga (Trzosek czeka na atak): budowana raz z pozy idle i zapamiętana jak próbki z animacji, więc `_pose_quad` miesza ją
+## kość po kości z postawą stojącą i biegiem. Przestrzeń szkieletu: Y w górę, głowa w −Z, ogon w +Z.
+##  - tułów obrócony o SIT_ANGLE wokół osi poprzecznej przez barki (barki zostają na wysokości, zad schodzi do ziemi),
+##  - przednie nogi proste, obie łapy równo na ziemi pod barkami (IK; próbka idle to klatka chodu z jedną łapą w górze),
+##  - tylne nogi złożone: kolano w przód przy brzuchu, staw skokowy na ziemi pod zadem, śródstopie płasko w przód,
+##  - szyja i głowa odgięte z powrotem (pysk poziomo, czujnie), ogon położony na ziemi za psem.
+const SIT_ANGLE := 56.0
+func _build_sit(idle: Array) -> Array:
+	var ri: Array = idle[0]
+	var pi_: Array = idle[1]
+	for bi in ri.size():
+		_sk.set_bone_pose_rotation(bi, ri[bi])
+		_sk.set_bone_pose_position(bi, pi_[bi])
+	var fl := [_sk.find_bone("tripo__0_Left_Limb_0"), _sk.find_bone("tripo__0_Right_Limb_0")]
+	if fl[0] < 0 or fl[1] < 0:
+		return idle
+	var ground := 1e9                                     # poziom ziemi = najniższy palec w pozie stojącej
+	for pre in ["tripo__0_Left", "tripo__0_Right", "tripo__1_Left", "tripo__1_Right"]:
+		var t4 := _sk.find_bone(pre + "_Limb_4")
+		if t4 >= 0:
+			ground = minf(ground, _gp(t4).origin.y)
+	var lens := {}                                        # długości odcinków nóg w pozie stojącej
+	for pre in ["tripo__0_Left", "tripo__0_Right", "tripo__1_Left", "tripo__1_Right"]:
+		var b0 := _sk.find_bone(pre + "_Limb_0")
+		var b1 := _sk.find_bone(pre + "_Limb_1")
+		var b2 := _sk.find_bone(pre + "_Limb_2")
+		lens[pre] = [_gp(b0).origin.distance_to(_gp(b1).origin), _gp(b1).origin.distance_to(_gp(b2).origin)]
+	var sh0 := (_gp(fl[0]).origin + _gp(fl[1]).origin) * 0.5
+	# tułów: obrót korzenia i powrót barków na miejsce (lekko niżej — pies siedząc opuszcza przód)
+	_rot_world(0, Vector3.RIGHT, deg_to_rad(SIT_ANGLE))
+	var sh1 := (_gp(fl[0]).origin + _gp(fl[1]).origin) * 0.5
+	_sk.set_bone_pose_position(0, _sk.get_bone_pose_position(0) + (sh0 - sh1) + Vector3(0.0, 0.035, -0.05))
+	# szyja i głowa: pysk z powrotem do poziomu
+	for spec in [["tripo__Spine_4", -0.22], ["tripo__Head_0", -0.50]]:
+		var hb := _sk.find_bone(String(spec[0]))
+		if hb >= 0:
+			_rot_world(hb, Vector3.RIGHT, deg_to_rad(SIT_ANGLE) * float(spec[1]))
+	# ogon: po ziemi do tyłu
+	var tb := _sk.find_bone("bone_31")
+	if tb >= 0:
+		_rot_world(tb, Vector3.RIGHT, deg_to_rad(-SIT_ANGLE - 18.0))
+	# przednie nogi: proste, łapy równo pod barkami
+	for pre in ["tripo__0_Left", "tripo__0_Right"]:
+		var a := _sk.find_bone(pre + "_Limb_0")
+		var m := _sk.find_bone(pre + "_Limb_1")
+		var e := _sk.find_bone(pre + "_Limb_2")
+		var f := _sk.find_bone(pre + "_Limb_3")
+		var sh := _gp(a).origin
+		var wrist := Vector3(sh.x * 1.05, ground + 0.17, sh.z - 0.09)
+		_two_bone(a, m, e, float(lens[pre][0]), float(lens[pre][1]), wrist, sh + Vector3(0.0, -0.2, 0.6))
+		_point_bone(e, f, _gp(e).origin + Vector3(0.0, -0.12, -0.035))
+	# tylne nogi: złożone pod zadem
+	for pre in ["tripo__1_Left", "tripo__1_Right"]:
+		var a2 := _sk.find_bone(pre + "_Limb_0")
+		var m2 := _sk.find_bone(pre + "_Limb_1")
+		var e2 := _sk.find_bone(pre + "_Limb_2")
+		var f2 := _sk.find_bone(pre + "_Limb_3")
+		var hip := _gp(a2).origin
+		var side := signf(hip.x)
+		var hock := Vector3(hip.x + side * 0.06, ground + 0.07, hip.z + 0.10)
+		_two_bone(a2, m2, e2, float(lens[pre][0]), float(lens[pre][1]), hock, hip + Vector3(side * 0.12, 0.05, -0.6))
+		_point_bone(e2, f2, _gp(e2).origin + Vector3(side * 0.05, -0.015, -0.25))
+	var rots := []
+	var poss := []
+	for bi in _sk.get_bone_count():
+		rots.append(_sk.get_bone_pose_rotation(bi))
+		poss.append(_sk.get_bone_pose_position(bi))
+	return [rots, poss]
 
 var _sink_y := 0.0
 
