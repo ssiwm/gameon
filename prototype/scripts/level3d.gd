@@ -130,7 +130,11 @@ static func _multimesh(parent: Node3D, mesh: Mesh, xforms: Array, mat: Material,
 
 ## Bryły, trawa, ściany tła, pnie i kładki z mapy (`rows`: tablica Stringów). Zwraca słownik pozycji znaczników do świateł / rekwizytów:
 ## {"F": [Vector3…], "E": […], "l": […], "k": […]} (środek kafla, y = podłoga komórki).
-static func build_level(parent: Node3D, rows: Array) -> Dictionary:
+## `trench` = {"row", "c0", "c1"}: torowisko drezyny — kafle podłogi w tym pasie mają z przodu (z od TRENCH_Z0 do krawędzi bryły) obniżone koryto
+## o głębokości TRENCH_D, otwarte ku kamerze; z tyłu zostaje peron na pełnej wysokości, po którym chodzą postacie.
+const TRENCH_D := 5.35 * PX                ## m: góra pokładu drezyny wypada równo z peronem
+const TRENCH_Z0 := 0.22                    ## m: krawędź peronu (tuż przed płaszczyzną gry)
+static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary:
 	var nrows := rows.size()
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
 	var box := BoxMesh.new()
@@ -152,6 +156,13 @@ static func build_level(parent: Node3D, rows: Array) -> Dictionary:
 				var p := cell_pos(c, r)
 				if (ch == "O" or ch == "~" or ch == "m") and _liquid_surface_col(rows, c, r, ch) and not "--noliquids" in OS.get_cmdline_user_args():
 					continue                                    # ciecz / błoto: siatkę niecki i taflę rysuje `build_liquids`
+				if not trench.is_empty() and r == int(trench["row"]) and c >= int(trench["c0"]) and c <= int(trench["c1"]):
+					var full := DEPTH_FRONT + DEPTH_BACK
+					var back_d := TRENCH_Z0 + DEPTH_BACK
+					var bed_d := DEPTH_FRONT - TRENCH_Z0
+					groups[ch].append(Transform3D(Basis().scaled(Vector3(1.0, 1.0, back_d / full)), p + Vector3(0.0, 0.0, TRENCH_Z0 - back_d * 0.5)))
+					groups[ch].append(Transform3D(Basis().scaled(Vector3(1.0, (T - TRENCH_D) / T, bed_d / full)), p + Vector3(0.0, -TRENCH_D * 0.5, TRENCH_Z0 + bed_d * 0.5)))
+					continue
 				groups[ch].append(Transform3D(Basis.IDENTITY, p + Vector3(0.0, 0.0, zc)))
 			elif ch == "b":
 				walls.append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
