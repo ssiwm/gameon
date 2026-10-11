@@ -1139,6 +1139,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 						en.set_physics_process(false)
 					if sp[0] != "ShotT2" or live:
 						en.call("wake")
+					if "--shotidle" in OS.get_cmdline_user_args():          # --shotidle: wszyscy obudzeni i stoją w miejscu (poza oczekiwania; Trzosek siedzi)
+						en.set("active", true)
 					if "--shotwind" in OS.get_cmdline_user_args():          # --shotwind: wszyscy w zapowiedzi ataku (podgląd pozy windup)
 						en.set("winding", true)
 					var clip_arg := ""
