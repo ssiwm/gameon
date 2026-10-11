@@ -1158,6 +1158,10 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var lp: Node2D = _players.get_node_or_null("1")      # --shotlight: flara tuż przed graczem (podgląd oświetlenia z mapą normalnych)
 		if lp != null:
 			level.spawn_flare(lp.global_position + Vector2(34.0, -28.0), Vector2.ZERO)
+	if "--shottorch" in OS.get_cmdline_user_args():                 # dev: gracz 1 z włączoną latarką (podgląd snopu światła)
+		var tp: Node2D = _players.get_node_or_null("1")
+		if tp != null:
+			tp.set("flashlight", true)
 	if "--shotshoot" in OS.get_cmdline_user_args():                 # dev: gracz 1 strzela serią w prawo przez cały czas zrzutu (podgląd pocisków i efektów)
 		var sp1: Node2D = _players.get_node_or_null("1")
 		if sp1 != null:

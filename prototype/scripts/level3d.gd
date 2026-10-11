@@ -1467,9 +1467,28 @@ void sky() {
 	COLOR = mix(c, vec3(0.45, 0.5, 0.58), lit);
 }
 """
+## Mgła wolumetryczna (Forward+): jedna bryła na całą mapę od 1,5 m przed płaszczyzną gry do 11 m w głąb. Światła sceny rozpraszają się w niej —
+## snop latarki, poświata flary i lampy, smugi księżyca między drzewami.
+static func build_fog_volumes(parent: Node3D, rows: Array, density := 0.035) -> void:
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	if cols == 0:
+		return
+	var fv := FogVolume.new()
+	fv.name = "FogVolume"
+	fv.shape = RenderingServer.FOG_VOLUME_SHAPE_BOX
+	fv.size = Vector3(float(cols) * T + 40.0, float(nrows) * T + 30.0, 12.5)
+	fv.position = Vector3(float(cols) * T * 0.5, -float(nrows) * T * 0.5, -4.75)
+	var fm := FogMaterial.new()
+	fm.density = density
+	fm.albedo = Color(0.80, 0.86, 1.0)
+	fm.edge_fade = 0.3
+	fv.material = fm
+	parent.add_child(fv)
+
 ## Środowisko nocy (niebo, mgła głębi, glow, filmic) i księżyc z cieniami. `ambient` — kolor ciemności poziomu (jak w 2D) służy do ocieplenia
 ## światła otoczenia (kryjówka); `moon` = false dla wnętrz.
-static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0.0406), moon := true) -> Environment:
+static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0.0406), moon := true, quality := 2) -> Environment:
 	var env := Environment.new()
 	var sky := Sky.new()
 	var sm := ShaderMaterial.new()
@@ -1498,6 +1517,26 @@ static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0
 	env.fog_depth_curve = 0.7
 	env.fog_depth_begin = 20.0
 	env.fog_depth_end = 80.0
+	# Forward+ (w Compatibility te pola są ignorowane): zaciemnienie styków brył, odbite światło z ekranu i mgła wolumetryczna.
+	# Mgła globalna ma gęstość 0 — zamglenie dają bryły `FogVolume` z `build_fog_volumes` (tylko przy płaszczyźnie gry i za nią),
+	# inaczej 40 m powietrza między kamerą a graczami przygaszałoby cały kadr.
+	env.ssao_enabled = true
+	env.ssao_radius = 1.1
+	env.ssao_intensity = 2.4
+	env.ssao_power = 1.6
+	env.ssao_light_affect = 0.35
+	env.ssil_enabled = quality >= 2
+	env.ssil_radius = 4.0
+	env.ssil_intensity = 1.2
+	env.volumetric_fog_enabled = quality >= 1
+	env.volumetric_fog_density = 0.0
+	env.volumetric_fog_albedo = Color(0.82, 0.88, 1.0)
+	env.volumetric_fog_anisotropy = 0.35
+	env.volumetric_fog_length = 64.0
+	env.volumetric_fog_detail_spread = 0.5
+	env.volumetric_fog_ambient_inject = 0.0
+	env.volumetric_fog_sky_affect = 0.0
+	env.volumetric_fog_gi_inject = 0.0
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.10
 	env.adjustment_saturation = 1.0
@@ -1519,5 +1558,7 @@ static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0
 		l.shadow_enabled = true
 		l.directional_shadow_max_distance = 60.0
 		l.shadow_bias = 0.04
+		l.light_volumetric_fog_energy = 0.3                    # smugi księżyca między pniami
+		l.layers = 3                                           # widoczne dla kamery świata i kamery graczy (Forward+ odcina światła maską warstw kamery)
 		parent.add_child(l)
 	return env

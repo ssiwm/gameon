@@ -77,7 +77,7 @@ i 2,4 m w głąb.
 
 ## 6. Ryzyka i nieznane
 
-- **Zgodność trybu renderowania**: spike działa w `gl_compatibility` (jak gra). Limity świateł na obiekt i brak części efektów (SSAO, SSR, volumetric fog)
+- **Zgodność trybu renderowania** (rozstrzygnięte 2026-10-11: projekt przeszedł na Forward+, GDD 1.7.154): spike działał w `gl_compatibility` (jak wtedy gra). Limity świateł na obiekt i brak części efektów (SSAO, SSR, volumetric fog)
   oznaczają, że „AAA” wygląd 3D wymagałby przejścia na Forward+/Mobile — to osobna decyzja o platformach.
 - **Spójność z potokiem postaci**: spike wyjmuje model z `Char3D` i omija jego SubViewport; docelowo trzeba wydzielić w `char3d.gd` czyste „nadawanie pozy”
   (bez sprite'a i kamer), żeby nie trzymać dwóch ścieżek.
