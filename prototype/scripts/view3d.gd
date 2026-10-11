@@ -67,6 +67,9 @@ var _guns := {}                          ## id pickupu z bronią → [pickup, No
 var _beam_masks := {}                    ## id światła 2D latarki → [światło, maska obiektów, cienie] do przywrócenia przy wyłączeniu widoku
 var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D, MeshInstance3D, losowe odchylenie]
 var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
+var _ws_lamps := {}                      ## id warsztatu → lampa nad nim (Node3D w geometrii mapy)
+var _mine_dust: Array = []               ## pył finału kopalni: [drobny pył, strużki] (CPUParticles3D)
+var _mine_dust_key := Vector2i(-999, -999)   ## kafel kamery, dla którego wyznaczono punkty stropu
 var _rain_splash: CPUParticles3D         ## plusk kropel na gruncie
 var _blood: Array = []                   ## kałuże krwi: [MeshInstance3D, promień docelowy, promień bieżący, wiek]
 var _blood_shader: Shader
@@ -174,6 +177,11 @@ func release() -> void:
 	var wxr := get_tree().root.find_child("WeatherFx", true, false)
 	if wxr != null:
 		wxr.set("fx3d", false)
+	for dp in _mine_dust:
+		if is_instance_valid(dp):
+			(dp as Node).queue_free()
+	_mine_dust.clear()
+	_mine_dust_key = Vector2i(-999, -999)
 	for id in _burn.keys():
 		if is_instance_valid(_burn[id][0]) and String(_burn[id][2]) != "host":
 			(_burn[id][0] as CanvasItem).self_modulate = Color.WHITE
@@ -267,6 +275,7 @@ func _process(delta: float) -> void:
 	_sync_burning()
 	_sync_blood(delta)
 	_sync_weather(delta)
+	_sync_mine_dust()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -959,6 +968,13 @@ func _sync_drawn() -> void:
 		_world.add_child(m)
 		(n as CanvasItem).modulate = Color(1, 1, 1, 0)
 		_drawn[n.get_instance_id()] = [n, m]
+	# warsztat w kryjówce: lampa wisząca nad ławą i ścianą z narzędziami (jak nad stojakami; odtwarzana po przebudowie geometrii mapy)
+	for n in get_tree().get_nodes_in_group("workshop"):
+		if not (n is Node2D) or _geo_key == "":
+			continue
+		var wl = _ws_lamps.get(n.get_instance_id())
+		if wl == null or not is_instance_valid(wl):
+			_ws_lamps[n.get_instance_id()] = _add_rack_lamp(n as Node2D, WS_LAMP_PX, WS_LAMP_Z, 9.0, 46.0)
 	for n in get_tree().get_nodes_in_group("exit_flares"):     # flara wyjścia: tuba wbita w ziemię jako model, płomień i iskry zostają w 2D
 		if _drawn.has(n.get_instance_id()) or not (n is Node2D):
 			continue
@@ -1017,7 +1033,7 @@ const RACK_LAMP_PX := 41.0                  ## spód lampy nad podłogą [px św
 
 ## Lampa wisząca nad stojakiem z bronią (kryjówka): emaliowany klosz z modelu `lamp`, przewód do stropu i ciepły reflektor w dół — stojak i broń
 ## oświetla widoczne źródło, a nie poświata „znikąd” (poświata pickupu na stojaku jest w 3D pomijana, zob. `_scan_lights`).
-func _add_rack_lamp(rack_item: Node2D) -> Node3D:
+func _add_rack_lamp(rack_item: Node2D, up_px := RACK_LAMP_PX, z := RACK_GUN_Z + 0.42, energy := 7.0, angle := 40.0) -> Node3D:
 	var lamp := _item_model("lamp")
 	if lamp == null:
 		return null
@@ -1025,7 +1041,7 @@ func _add_rack_lamp(rack_item: Node2D) -> Node3D:
 	var root := Node3D.new()
 	root.name = "RackLamp"
 	_geo.add_child(root)                                       # razem z geometrią mapy (znika przy zmianie mapy)
-	root.position = Level3D.px_to_m(foot) + Vector3(0.0, RACK_LAMP_PX * PX, RACK_GUN_Z + 0.42)
+	root.position = Level3D.px_to_m(foot) + Vector3(0.0, up_px * PX, z)
 	lamp.scale = Vector3(PX, PX, PX) * 1.25
 	root.add_child(lamp)
 	# przewód do stropu: pierwszy lity kafel nad lampą
@@ -1053,9 +1069,9 @@ func _add_rack_lamp(rack_item: Node2D) -> Node3D:
 		root.add_child(cmi)
 	var sp := SpotLight3D.new()
 	sp.light_color = Color(1.0, 0.76, 0.46)
-	sp.light_energy = 7.0
-	sp.spot_range = 5.5
-	sp.spot_angle = 40.0
+	sp.light_energy = energy
+	sp.spot_range = maxf(5.5, up_px * PX * 1.6)
+	sp.spot_angle = angle
 	sp.spot_attenuation = 0.9
 	sp.spot_angle_attenuation = 0.6
 	sp.shadow_enabled = true
@@ -2036,6 +2052,102 @@ func mirror_gib(body: RigidBody2D, kind: int, sz: float) -> void:
 	if _casings.has(id) and is_instance_valid(_casings[id][1]):
 		(_casings[id][1] as Node).queue_free()
 	_casings[id] = [body, pivot, randf_range(-0.6, 0.6), randf() * TAU]
+
+# ---------------------------------------------------------------- pył finału kopalni
+
+const WS_LAMP_PX := 56.0                 ## wysokość lampy warsztatu nad podłogą [px świata]
+const WS_LAMP_Z := -0.85                 ## głębia lampy warsztatu: nad ławą pod ścianą z narzędziami
+## Pył jako drobiny w powietrzu: zawsze przodem do kamery, a światło bierze niezależnie od kierunku (jak zawiesina) — rozbłyska w snopie latarki
+## i przy flarach, a poza światłem zostaje ledwie widoczny (`glow`).
+const DUST_SHADER := "shader_type spatial;
+render_mode blend_mix, depth_draw_never, cull_disabled, specular_disabled, shadows_disabled;
+uniform sampler2D tex : source_color;
+uniform float glow = 0.012;
+void vertex() {
+	mat4 w = mat4(normalize(INV_VIEW_MATRIX[0]), normalize(INV_VIEW_MATRIX[1]), normalize(INV_VIEW_MATRIX[2]), MODEL_MATRIX[3]);
+	MODELVIEW_MATRIX = VIEW_MATRIX * w * mat4(vec4(length(MODEL_MATRIX[0].xyz), 0.0, 0.0, 0.0), vec4(0.0, length(MODEL_MATRIX[1].xyz), 0.0, 0.0), vec4(0.0, 0.0, length(MODEL_MATRIX[2].xyz), 0.0), vec4(0.0, 0.0, 0.0, 1.0));
+	MODELVIEW_NORMAL_MATRIX = mat3(MODELVIEW_MATRIX);
+}
+void fragment() {
+	ALBEDO = COLOR.rgb;
+	ALPHA = COLOR.a * texture(tex, UV).a;
+	EMISSION = COLOR.rgb * glow;
+}
+void light() {
+	DIFFUSE_LIGHT += ATTENUATION * LIGHT_COLOR * 0.9;
+}
+"
+const DUST_COLS := 13                    ## pół szerokości pasa stropu wokół kamery, z którego sypie się pył [kafle]
+const DUST_ROWS := 8                     ## pół wysokości tego pasa [kafle]
+
+## Finał kopalni (`mission.finale`: trzeci nieśmiertelnik, zawał rampy, wyjście szybem): pył sypie się ze stropów wokół kamery.
+## Źródłem jest spód litych kafli nad wolną przestrzenią (z mapy), więc pył leci tylko pod ziemią — na powierzchni, pod gołym niebem, go nie ma.
+## Dwie warstwy: drobny pył z całego stropu i gęstsze strużki z kilku pęknięć (stałych dla miejsca). Cząsteczki są oświetlane — widać je w latarce i flarach.
+func _sync_mine_dust() -> void:
+	var m := get_tree().get_first_node_in_group("mission")
+	var on: bool = m != null and m.get("finale") == true and Settings.quality_idx >= 1 and Settings.fx_mult() > 0.0 and not _rows.is_empty()
+	if _mine_dust.is_empty():
+		if not on:
+			return
+		var sh := Shader.new()
+		sh.code = DUST_SHADER
+		var mat := ShaderMaterial.new()
+		mat.shader = sh
+		mat.set_shader_parameter("tex", _soft())
+		for i in 2:
+			var p := CPUParticles3D.new()
+			p.name = "MineDust" if i == 0 else "MineDustStreams"
+			p.emitting = false
+			p.local_coords = false
+			p.amount = 520 if i == 0 else 150
+			p.lifetime = 1.7 if i == 0 else 1.5                 # krótko: pył rozwiewa się w połowie wysokości chodnika, nie przelatuje przez podłogi
+			var q := QuadMesh.new()
+			q.size = Vector2(0.06, 0.06) if i == 0 else Vector2(0.42, 0.42)
+			q.material = mat
+			p.mesh = q
+			p.emission_shape = CPUParticles3D.EMISSION_SHAPE_POINTS
+			p.direction = Vector3.DOWN
+			p.spread = 12.0 if i == 0 else 4.0
+			p.initial_velocity_min = 0.25 if i == 0 else 0.7
+			p.initial_velocity_max = 0.9 if i == 0 else 1.5
+			p.gravity = Vector3(0.0, -1.3 if i == 0 else -2.4, 0.0)
+			p.scale_amount_min = 0.5
+			p.scale_amount_max = 1.5
+			var gr := Gradient.new()
+			gr.set_color(0, Color(0.7, 0.68, 0.6, 0.0))
+			gr.add_point(0.12, Color(0.7, 0.68, 0.6, 0.8 if i == 0 else 0.22))
+			gr.set_color(gr.get_point_count() - 1, Color(0.6, 0.58, 0.52, 0.0))
+			p.color_ramp = gr
+			p.layers = LAYER_WORLD
+			p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			_world.add_child(p)
+			_mine_dust.append(p)
+	var cam := _cam_a.global_position
+	var key := Vector2i(int(floor(cam.x / Level3D.T / 4.0)), int(floor(-cam.y / Level3D.T / 4.0)))
+	if on and key != _mine_dust_key:
+		_mine_dust_key = key
+		var cc := int(floor(cam.x / Level3D.T))
+		var cr := int(floor(-(cam.y - EYE_UP_M) / Level3D.T))
+		var fine := PackedVector3Array()
+		var streams := PackedVector3Array()
+		for r in range(maxi(1, cr - DUST_ROWS), mini(_rows.size(), cr + DUST_ROWS)):
+			for c in range(cc - DUST_COLS, cc + DUST_COLS):
+				if c < 0 or c >= (_rows[r] as String).length():
+					continue
+				if Level3D.is_solid_ch(Level3D._ch(_rows, c, r)) or not Level3D.is_solid_ch(Level3D._ch(_rows, c, r - 1)):
+					continue
+				var h := hash(Vector2i(c, r))                   # stałe dla kafla: pęknięcia nie skaczą, gdy kamera się przesuwa
+				var x := (float(c) + 0.5) * Level3D.T
+				var y := -float(r) * Level3D.T - 0.02
+				for j in 2:
+					fine.append(Vector3(x + (float((h >> (j * 5)) & 31) / 31.0 - 0.5) * Level3D.T, y, -1.5 + 1.9 * float((h >> (10 + j * 6)) & 63) / 63.0))
+				if h % 5 == 0:
+					streams.append(Vector3(x, y, -1.2 + 1.4 * float((h >> 8) & 63) / 63.0))
+		(_mine_dust[0] as CPUParticles3D).emission_points = fine
+		(_mine_dust[1] as CPUParticles3D).emission_points = streams
+	for i in _mine_dust.size():
+		var dp := _mine_dust[i] as CPUParticles3D
+		dp.emitting = on and dp.emission_points.size() > 0
 
 # ---------------------------------------------------------------- pogoda
 
