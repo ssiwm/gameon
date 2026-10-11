@@ -704,7 +704,7 @@ func _pose_quad(anim: String, delta: float) -> void:
 	_qw = move_toward(_qw, 1.0 if running else 0.0, delta * BLEND_RATE * 0.5)
 	var sy := 1.0
 	if anim == "sleep":                           # zwinięty: spłaszczony, powoli oddycha
-		sy = 0.60 + 0.02 * sin(_t * 2.6)
+		sy = (0.60 if "--nosit" in OS.get_cmdline_user_args() else 1.0) + 0.012 * sin(_t * 1.7)      # siedzi (siad niżej), oddycha wolniej niż obudzony
 	else:
 		sy = 1.0 + 0.018 * sin(_t * 2.6)
 	if _ap != null and _ap_name != "":
@@ -726,9 +726,9 @@ func _pose_quad(anim: String, delta: float) -> void:
 			for bi in ri.size():
 				_sk.set_bone_pose_rotation(bi, ri[bi])
 				_sk.set_bone_pose_position(bi, pi_[bi])
-	# siad: Trzosek obudzony i czekający (idle) siedzi; wstaje do biegu, zapowiedzi ataku (windup), ciosu, trafienia i w locie
+	# siad: Trzosek nieobudzony (sleep — pozycja startowa na mapie) i obudzony czekający (idle) siedzi; wstaje do biegu, zapowiedzi ataku (windup), ciosu, trafienia i w locie
 	if _qsamp.has("idle"):
-		var want_sit := anim == "idle" and not _dead and _clip == "" and _air_w < 0.01 and not "--nosit" in OS.get_cmdline_user_args()
+		var want_sit := (anim == "idle" or anim == "sleep") and not _dead and _clip == "" and _air_w < 0.01 and not "--nosit" in OS.get_cmdline_user_args()
 		_qs = move_toward(_qs, 1.0 if want_sit else 0.0, delta * (3.0 if want_sit else 7.0))
 		if _qs > 0.001:
 			if not _qsamp.has("sit"):
