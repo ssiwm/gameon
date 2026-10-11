@@ -319,7 +319,6 @@ scripts/
   prop.gd           # skrzynie i beczki (fizyka na serwerze, sync, wybuch)
   pickup.gd         # apteczka, amunicja, skrzynia z mapy, broń na ziemi
   sprites.gd        # SpriteFrames z arkusza + manifestu (warstwy ciało / glow)
-  backdrop.gd       # tło parallax
   # misje i kryjówka:
   generator.gd      # generator radiostacji (misja 1.2), handcar.gd — drezyna ucieczki po generatorach
   brick_wall.gd     # zamurowane przejście (marker q) ze skrytką; board.gd, results_wall.gd, run_log.gd — tablica odprawy i ściana wyników w kryjówce
