@@ -69,6 +69,8 @@ var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D
 var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
 var _ws_lamps := {}                      ## id warsztatu → lampa nad nim (Node3D w geometrii mapy)
 var _globs := {}                         ## id plwociny / kwasu → [węzeł 2D, kula 3D]
+var _leechfx := {}                       ## id Pijawki → [węzeł 2D, korzeń 3D efektów na wodzie]
+var _lampfx := {}                        ## id lampy → [węzeł 2D, poświata żarówki]
 var _bossfx := {}                        ## id Żyły → [węzeł 2D, korzeń 3D efektów]
 var _mine_dust: Array = []               ## pył finału kopalni: [drobny pył, strużki] (CPUParticles3D)
 var _mine_dust_key := Vector2i(-999, -999)   ## kafel kamery, dla którego wyznaczono punkty stropu
@@ -179,7 +181,9 @@ func release() -> void:
 	var wxr := get_tree().root.find_child("WeatherFx", true, false)
 	if wxr != null:
 		wxr.set("fx3d", false)
-	for tab in [_globs, _bossfx]:
+	for tw in get_tree().get_nodes_in_group("tide_water"):
+		tw.set("fx3d", false)
+	for tab in [_globs, _bossfx, _leechfx, _lampfx]:
 		for id in tab.keys():
 			if is_instance_valid(tab[id][0]):
 				(tab[id][0] as CanvasItem).self_modulate = Color.WHITE
@@ -289,6 +293,8 @@ func _process(delta: float) -> void:
 	_sync_mine_dust()
 	_sync_globs()
 	_sync_boss_fx()
+	_sync_leech_fx()
+	_sync_lamps()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -2297,6 +2303,213 @@ func _sync_boss_fx() -> void:
 								wave.surface_set_color(col)
 								wave.surface_add_vertex(Vector3(pt.x, pt.y, zz))
 						wave.surface_end()
+
+# ---------------------------------------------------------------- Pijawka: kręgi, cień, woda przypływu; lampy
+
+const POOL_Y := 0.12                     ## wysokość kręgów i cienia nad dnem basenu: tuż nad taflą [m]
+const TIDE_Z0 := -1.6                    ## woda przypływu: od ściany w głębi…
+const TIDE_Z1 := 0.95                    ## …do krawędzi przed graczami [m]
+
+## Okrąg leżący na wodzie (pierścień w płaszczyźnie XZ, spłaszczony w głąb) dopisany do siatki `im`.
+func _water_ring(im: ImmediateMesh, c: Vector3, r: float, w: float, col: Color) -> void:
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+	for i in 33:
+		var a := TAU * float(i) / 32.0
+		var d := Vector3(cos(a), 0.0, sin(a) * 0.55)
+		im.surface_set_color(col)
+		im.surface_add_vertex(c + d * (r - w))
+		im.surface_set_color(col)
+		im.surface_add_vertex(c + d * (r + w))
+	im.surface_end()
+
+## Efekty Pijawki w scenie 3D (stan z `leech.gd: fx_state`, rysunek 2D wyłączony flagą `fx3d`):
+##  - kręgi na wodzie nad zanurzoną Pijawką — jedyna wskazówka w ciemności; szybsze i mocniejsze tuż przed zasadzką (także w drugim punkcie, faza 3);
+##  - cień pod wodą: ciemna podłużna plama z dwojgiem bladych oczu, widoczna tylko tam, gdzie pada światło;
+##  - woda przypływu (fazy 2–3): bryła wody nad basenem i brzegami, rosnąca do `SURGE_H`, z falującą powierzchnią i jasną krawędzią piany.
+##    Leży na warstwie graczy, więc zakrywa postaci stojące w wodzie.
+func _sync_leech_fx() -> void:
+	for n in get_tree().get_nodes_in_group("boss"):
+		if not (n is Node2D) or n.is_queued_for_deletion() or _leechfx.has(n.get_instance_id()) or not n.has_method("fx_state"):
+			continue
+		var root := Node3D.new()
+		root.name = "LeechFx"
+		_world.add_child(root)
+		_imm(root, _add_mat()).name = "Rings"
+		var sm := StandardMaterial3D.new()                     # cień: czarna miękka plama — na ciemnej wodzie niewidoczna, w świetle wyraźna
+		sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		sm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		sm.albedo_texture = _soft()
+		sm.albedo_color = Color(0.01, 0.03, 0.03, 0.0)
+		for part in [["Shadow", Vector2(54.0, 15.0), -6.0], ["Head", Vector2(22.0, 12.0), 15.0]]:
+			var sh := MeshInstance3D.new()
+			sh.name = part[0]
+			var pl := PlaneMesh.new()
+			pl.size = (part[1] as Vector2) * PX
+			sh.mesh = pl
+			sh.material_override = sm
+			sh.position = Vector3(float(part[2]) * PX, POOL_Y - 0.03, 0.2)
+			sh.layers = LAYER_WORLD
+			sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			root.add_child(sh)
+		var em := StandardMaterial3D.new()                     # oczy: blade, bez własnego światła — błyszczą dopiero w latarce albo flarze
+		em.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		em.albedo_color = Color(0.8, 0.95, 0.9, 0.0)
+		em.roughness = 0.15
+		for ex in [16.0, 20.0]:
+			var eye := MeshInstance3D.new()
+			eye.name = "Eye%d" % int(ex)
+			var sp := SphereMesh.new()
+			sp.radius = 1.1 * PX
+			sp.height = 2.2 * PX
+			sp.radial_segments = 10
+			sp.rings = 5
+			eye.mesh = sp
+			eye.material_override = em
+			eye.position = Vector3(ex * PX, POOL_Y, 0.2 + (0.12 if ex < 18.0 else -0.12))
+			eye.layers = LAYER_WORLD
+			eye.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			root.add_child(eye)
+		var tm := StandardMaterial3D.new()                     # woda przypływu: widoczna także w mroku (jak w 2D), kolor z wierzchołków
+		tm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		tm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		tm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		tm.vertex_color_use_as_albedo = true
+		var tide := MeshInstance3D.new()
+		tide.name = "Tide"
+		tide.mesh = ImmediateMesh.new()
+		tide.material_override = tm
+		tide.layers = LAYER_WORLD
+		tide.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_world.add_child(tide)                                 # w świecie, nie przy Pijawce: woda stoi w miejscu
+		var veil := tide.duplicate() as MeshInstance3D         # cienka zasłona wody przed graczami (warstwa postaci): stojący w wodzie są nią przykryci
+		veil.name = "TideVeil"
+		veil.mesh = ImmediateMesh.new()
+		veil.layers = LAYER_ACTORS
+		_world.add_child(veil)
+		_leechfx[n.get_instance_id()] = [n, root, tide, veil]
+	var t := Time.get_ticks_msec() / 1000.0
+	for id in _leechfx.keys():
+		var b = _leechfx[id][0]
+		var root: Node3D = _leechfx[id][1]
+		var tide_mi = _leechfx[id][2]
+		if not is_instance_valid(b) or (b as Node).is_queued_for_deletion():
+			if is_instance_valid(root):
+				root.queue_free()
+			for k in [2, 3]:
+				if is_instance_valid(_leechfx[id][k]):
+					(_leechfx[id][k] as Node).queue_free()
+			_leechfx.erase(id)
+			continue
+		b.set("fx3d", true)
+		for tw in get_tree().get_nodes_in_group("tide_water"):
+			tw.set("fx3d", true)
+		var fs: Array = b.call("fx_state")
+		var base := Level3D.px_to_m((b as Node2D).global_position)
+		root.position = base
+		root.visible = (b as Node2D).is_visible_in_tree()
+		var rings := (root.get_node("Rings") as MeshInstance3D).mesh as ImmediateMesh
+		rings.clear_surfaces()
+		var strength := float(fs[0])
+		var centers: Array = [Vector3(0.0, POOL_Y, 0.2)]
+		if bool(fs[3]):
+			if float(b.second_x) >= 0.0:
+				centers.append(Vector3((float(b.second_x) - (b as Node2D).global_position.x) * PX, POOL_Y, 0.2))
+			var pr := (5.0 + 3.0 * sin(t * 18.0)) * PX          # zapowiedź: pulsujący krąg w miejscu wynurzenia
+			_water_ring(rings, centers[0], pr * 0.5, pr * 0.5, Color(0.5, 0.65, 0.62, 0.25))
+		for cpos in centers:
+			for i in 3:
+				var ph := fposmod(float(b._ripple_t) * float(fs[1]) * 0.9 + float(i) * 0.33, 1.0)
+				_water_ring(rings, cpos, (6.0 + ph * 26.0) * PX, 0.035, Color(0.55, 0.75, 0.72, (1.0 - ph) * 0.55 * strength))
+				_water_ring(rings, cpos, (6.0 + ph * 26.0) * PX * 0.8, 0.025, Color(0.4, 0.6, 0.58, (1.0 - ph) * 0.3 * strength))
+		var sa := float(fs[2])
+		for nm in ["Shadow", "Head"]:
+			(root.get_node(nm) as MeshInstance3D).visible = sa > 0.0
+		((root.get_node("Shadow") as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.a = 0.9 * sa
+		for nm in ["Eye16", "Eye20"]:
+			(root.get_node(nm) as MeshInstance3D).visible = sa > 0.0
+		((root.get_node("Eye16") as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.a = sa
+		# woda przypływu
+		var tide := (tide_mi as MeshInstance3D).mesh as ImmediateMesh
+		tide.clear_surfaces()
+		var veil := (_leechfx[id][3] as MeshInstance3D).mesh as ImmediateMesh
+		veil.clear_surfaces()
+		var lvl: float = b.call("surge_level")
+		if String(b.surge_state) != "idle" and lvl > 0.01:
+			var h: float = lvl * float(b.SURGE_H)
+			var x0: float = float(b.pool_x0) - float(b.SURGE_PAD)
+			var x1: float = float(b.pool_x1) + float(b.SURGE_PAD)
+			var y0 := -float(b.surf_y) * PX
+			var warn: bool = String(b.surge_state) == "warn"
+			var top_c := Color(0.20, 0.50, 0.58, 0.12 if warn else 0.30)
+			var bot_c := Color(0.07, 0.28, 0.36, 0.07 if warn else 0.20)
+			var foam_c := Color(0.75, 0.96, 1.0, 0.25 if warn else 0.6)
+			var prof: Array = []
+			var x := x0
+			while x <= x1 + 0.1:
+				var edge := clampf(minf(x - x0, x1 - x) / 40.0, 0.0, 1.0)
+				var wv := sin(x * 0.07 + t * 3.2) * 1.6 + sin(x * 0.13 - t * 2.1) * 1.0
+				prof.append(Vector2(x * PX, y0 + maxf(h * edge - wv, 0.5) * PX))
+				x += 16.0
+			for pass_i in 3:                                     # 0: tafla, 1: ściana od kamery (jaśniej u góry), 2: pas piany na krawędzi
+				tide.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+				for pt in prof:
+					var q: Vector2 = pt
+					if pass_i == 0:
+						tide.surface_set_color(Color(top_c.r, top_c.g, top_c.b, top_c.a * 0.55))
+						tide.surface_add_vertex(Vector3(q.x, q.y, TIDE_Z0))
+						tide.surface_set_color(top_c)
+						tide.surface_add_vertex(Vector3(q.x, q.y, TIDE_Z1))
+					elif pass_i == 1:
+						tide.surface_set_color(bot_c)
+						tide.surface_add_vertex(Vector3(q.x, y0, TIDE_Z1))
+						tide.surface_set_color(top_c)
+						tide.surface_add_vertex(Vector3(q.x, q.y, TIDE_Z1))
+					else:
+						tide.surface_set_color(foam_c)
+						tide.surface_add_vertex(Vector3(q.x, q.y - 0.035, TIDE_Z1 + 0.01))
+						tide.surface_set_color(foam_c)
+						tide.surface_add_vertex(Vector3(q.x, q.y + 0.02, TIDE_Z1 + 0.01))
+				tide.surface_end()
+			veil.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+			for pt in prof:
+				var q2: Vector2 = pt
+				veil.surface_set_color(Color(bot_c.r, bot_c.g, bot_c.b, 0.06))
+				veil.surface_add_vertex(Vector3(q2.x, y0, TIDE_Z1))
+				veil.surface_set_color(Color(top_c.r, top_c.g, top_c.b, 0.09))
+				veil.surface_add_vertex(Vector3(q2.x, q2.y, TIDE_Z1))
+			veil.surface_end()
+
+## Lampy na mapach (`lamp.gd`): model stawia `_sync_items`, światło — `_scan_lights` (smugę w powietrzu daje mgła wolumetryczna).
+## Tu dochodzi poświata żarówki w scenie; płaska poświata i smuga 2D są w lampie wyłączane (`fx3d`).
+func _sync_lamps() -> void:
+	for n in get_tree().get_nodes_in_group("lamps"):
+		if not (n is Node2D) or n.is_queued_for_deletion() or _lampfx.has(n.get_instance_id()):
+			continue
+		var g := _glow_quad(Color(1.0, 0.8, 0.5, 0.0))
+		g.name = "LampGlow"
+		g.layers = LAYER_WORLD
+		_world.add_child(g)
+		_lampfx[n.get_instance_id()] = [n, g]
+	for id in _lampfx.keys():
+		var src = _lampfx[id][0]
+		var g: MeshInstance3D = _lampfx[id][1]
+		if not is_instance_valid(src) or (src as Node).is_queued_for_deletion():
+			if is_instance_valid(g):
+				g.queue_free()
+			_lampfx.erase(id)
+			continue
+		src.set("fx3d", true)
+		var z := 0.0
+		for ch in (src as Node).get_children():                # głębia modelu lampy (ta sama, w której stawia go _sync_items)
+			if ch is Sprite2D and _items.has(ch.get_instance_id()):
+				z = float(_items[ch.get_instance_id()][3])
+		var tt := float(src.get("_t"))
+		var f := 0.8 + 0.2 * sin(tt * 9.0) * sin(tt * 3.7)
+		g.visible = (src as Node2D).is_visible_in_tree()
+		g.position = Level3D.px_to_m((src as Node2D).global_position + Vector2(0.0, 11.0)) + Vector3(0.0, 0.0, z + 0.12)
+		g.scale = Vector3.ONE * (0.75 + 0.1 * f)
+		(g.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.82, 0.55, 0.55 * f)
 
 # ---------------------------------------------------------------- pył finału kopalni
 

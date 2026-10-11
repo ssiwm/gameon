@@ -6,16 +6,18 @@ const Lights := preload("res://scripts/lights.gd")
 
 var leech: Node2D
 var _t := 0.0
+var fx3d := false                     ## widok 3D rysuje wodę jako bryłę (view3d.gd: _sync_leech_fx)
 
 func _ready() -> void:
 	z_index = 4
+	add_to_group("tide_water")
 	material = Lights.unshaded()
 
 func _process(delta: float) -> void:
 	_t += delta
 	if leech == null or not is_instance_valid(leech):
 		return
-	visible = leech.surge_state != "idle"
+	visible = leech.surge_state != "idle" and not fx3d
 	if visible:
 		queue_redraw()
 

@@ -19,6 +19,7 @@ var _glow: Node2D
 var _shadow_check := 0.0
 var _t := 0.0
 var _hd := false
+var fx3d := false                     ## widok 3D: poświata żarówki i smuga są w scenie 3D (światło z mgłą wolumetryczną)
 
 func _ready() -> void:
 	add_to_group("lamps")                                 # cień kontaktowy postaci (player.gd) szuka najbliższej lampy
@@ -47,6 +48,8 @@ func _process(delta: float) -> void:
 	var f := 0.93 + 0.07 * sin(_t * 9.0) * sin(_t * 3.7)
 	_light.energy = ENERGY * f
 	_shaft.set_level(f)
+	_shaft.visible = not fx3d
+	_glow.visible = not fx3d
 	_glow.queue_redraw()
 	_shadow_check -= delta
 	if _shadow_check <= 0.0:

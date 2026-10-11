@@ -119,6 +119,7 @@ var _net_t := 0.0
 var _flash := 0.0
 var _x_srv := 0.0
 var _have_srv := false
+var fx3d := false                          ## widok 3D przejął kręgi na wodzie, cień i zapowiedź wynurzenia — `_draw` nic nie rysuje
 var _show := 0.0                           ## wygładzone ujawnienie 0..1 (rysowanie)
 var _light: PointLight2D
 var _shape: CollisionShape2D
@@ -846,7 +847,20 @@ func _process(delta: float) -> void:
 	_animate_sprite(delta)
 	queue_redraw()
 
+## Stan efektów na wodzie dla widoku 3D (to samo, co rysuje `_draw`): [siła kręgów, tempo kręgów, widoczność cienia 0..1, zapowiedź wynurzenia].
+func fx_state() -> Array:
+	if state == State.DORMANT and not revealed:
+		return [0.35, 1.0, 0.0, false]
+	match mode:
+		Mode.SUB:
+			return [0.6 if state == State.AWAKE else 0.3, 1.0, _show if _show > 0.02 else 0.0, false]
+		Mode.WIND:
+			return [1.0, 1.7, maxf(_show, 0.5), true]
+	return [0.45, 1.0, 0.0, false]
+
 func _draw() -> void:
+	if fx3d:
+		return
 	if state == State.DORMANT and not revealed:
 		_draw_ripples(0.35)
 		return
