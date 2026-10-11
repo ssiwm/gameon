@@ -119,6 +119,8 @@ func _destroy_fx() -> void:
 	Vfx.soften(fx)
 	get_tree().current_scene.add_child(fx)
 	fx.global_position = global_position + Vector2(0, -8)
+	if Vfx.view3d != null and is_instance_valid(Vfx.view3d):
+		Vfx.view3d.call("mirror_burst", fx, fx.global_position)       # płonące strzępy jako cząsteczki 3D
 	get_tree().create_timer(1.5).timeout.connect(fx.queue_free)
 
 func _local_dist() -> float:
