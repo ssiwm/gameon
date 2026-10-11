@@ -52,7 +52,7 @@ var _sync_t := 0.0
 var _noise_t := NOISE_EVERY
 var _t := 0.0
 var _phase := 0.0                    ## faza obrotu kół / ramienia pompy
-var _light: PointLight2D
+var _light: Lights.GameLight
 var _inited := false
 var _hd := false
 var _hd_wheels: Array = []           ## HD: koła (obracane z _phase)

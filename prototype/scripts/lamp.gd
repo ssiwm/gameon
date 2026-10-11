@@ -7,12 +7,11 @@ const ItemsHd := preload("res://scripts/items_hd.gd")
 
 ## Cienie postaci od lampy (plan ATMOSPHERE_PLAN.md, F3): włączane tylko, gdy w pobliżu ktoś stoi — MEDIUM bliżej, HIGH dalej, LOW wcale.
 const SHADOW_RANGE_PX := [0.0, 190.0, 300.0]
-const SHADOW_CULL_MASK := 2           ## okludery postaci leżą na warstwie 2, więc nie cieniują ich światła własne (aura, latarka)
 
 const RADIUS_M := 9.0
 const ENERGY := 0.85
 
-var _light: PointLight2D
+var _light: Lights.GameLight
 var _shadow_check := 0.0
 var _t := 0.0
 
@@ -22,8 +21,6 @@ func _ready() -> void:
 	_t = randf() * 20.0
 	_light = Lights.make_light(Lights.radial(), RADIUS_M, Color(1.0, 0.78, 0.5), ENERGY, false)
 	_light.position = Vector2(0, 11)
-	_light.shadow_item_cull_mask = SHADOW_CULL_MASK
-	_light.shadow_color = Color(0, 0, 0, 0.8)
 	add_child(_light)
 	if Sprites.newitem and ItemsHd.has("lamp"):
 		# HD: sprite lampy — „stopy" sprite'a to dół klatki, więc dół ustawiamy tak, by szczyt (uchwyt kabla) wypadł w punkcie kotwicy pod sufitem

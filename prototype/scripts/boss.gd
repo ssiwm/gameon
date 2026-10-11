@@ -116,7 +116,7 @@ var _flash := 0.0
 var _flinch := 0.0
 var _net_t := 0.0
 var _armor_snd_ms := 0
-var _light: PointLight2D
+var _light: Lights.GameLight
 var _overlay: Node2D
 var _spr: Array = []                  ## [cialo, glow] z arkusza vein; puste = rysunek zastepczy z kolek
 

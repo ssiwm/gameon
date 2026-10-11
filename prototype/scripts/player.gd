@@ -152,8 +152,8 @@ var c3d: Node2D                 ## postać 3D (char3d.gd) zamiast _spr, gdy Spri
 var _spr_scale := 1.0           ## skala rysowania arkusza (2× gęstość pikseli → 0,5); mnoży ściśnięcie (squash)
 var _facing := 1.0
 var _light_noise_t := 0.0
-var _aura: PointLight2D
-var _beam: PointLight2D
+var _aura: Lights.GameLight
+var _beam: Lights.GameLight
 var _overlay: Node2D
 var _jump_buf := 0.0
 var _was_on_floor := true

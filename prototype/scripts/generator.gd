@@ -35,7 +35,7 @@ var _sync_t := 0.0
 var _hum_t := HUM_INTERVAL
 var _noise_acc := 0.0
 var _sent_progress := -1.0
-var _light: PointLight2D
+var _light: Lights.GameLight
 var _t := 0.0
 var _hd: Sprite2D                    ## grafika HD (Sprites.newitem): model generatora, drga, gdy pracuje
 

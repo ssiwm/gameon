@@ -48,7 +48,7 @@ var _floor_y := 0.0
 var _landed := false
 var _t := 0.0
 var _spr: Array = []
-var _glow: PointLight2D
+var _glow: Lights.GameLight
 ## Grafika HD (Sprites.newitem): korzeń z bujaniem, sprite oświetlany, kopia „unshaded" (widać w ciemności) i nakładka (plakietka, kłódka).
 var _hd: Node2D
 var _hd_over: Node2D

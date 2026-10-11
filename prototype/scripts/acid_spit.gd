@@ -12,7 +12,7 @@ const LIFE := 3.0
 
 var vel := Vector2.ZERO
 var _t := 0.0
-var _light: PointLight2D
+var _light: Lights.GameLight
 
 func _ready() -> void:
 	add_to_group("acid")
