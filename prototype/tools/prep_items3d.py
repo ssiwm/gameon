@@ -7,7 +7,8 @@ albo bezpośrednio: blender -b --factory-startup -P prototype/tools/prep_items3d
 Dwa źródła:
   * proceduralne bryły z `concept/items_proc_bake.py` (te same, z których powstają sprite'y HD): siatki są łączone, rozwijane (Smart UV),
     a materiały węzłowe wypalane w Cycles do tekstur — kolor, mapa normalnych w przestrzeni stycznej, ORM (okluzja, chropowatość, metal), emisja;
-  * modele z Tripo (`art_src/world/tripo/*.glb`: warsztat, złom, kamień, kłody, płot): obrót czołem do kamery gry, uproszczenie siatki,
+  * modele z Tripo (`art_src/world/tripo/*.glb`: warsztat, złom, kamień, kłody, płot, skrzynia, beczka, regał, szafka, stół, prycza, generator,
+    skrytka, stojak, krzesło, worek): obrót czołem do kamery gry, uproszczenie siatki,
     zmniejszenie tekstur.
 Wynik: prototype/art/items3d/<nazwa>.glb. Jednostka modelu = 1 piksel świata gry, początek układu w stopach (środek szerokości, z = 0),
 front bryły w stronę −Y Blendera (= +Z w Godocie, ku kamerze gry) — dokładnie tak, jak sprite z `ItemsHd.make` leży względem swojego węzła.
@@ -27,9 +28,21 @@ TRIPO = os.path.join(ROOT, "art_src", "world", "tripo")
 TRIPO_MODELS = {
     "workshop": ("workshop.glb", "+X", 30.0, 14000),
     "scrap_pile": ("scrap_pile.glb", "+X", 14.0, 6000),
-    "rock": ("rock.glb", "-Y", 14.0, 3000),
+    "rock": ("rock.glb", "-Y", 14.0, 3000, 9.0),
     "logs": ("logs.glb", "-Y", 18.0, 6000),
     "fence": ("fence.glb", "-Y", 20.0, 6000),
+    # meble i sprzęt (Tripo, 2026-10-11): szerokość i wysokość jak bryła sprite'a w art/items/items.json — model mieści się w tej ramce
+    "crate": ("crate.glb", "+X", 14.0, 8000, 14.0, True),      # True: wypełnia ramkę dokładnie (kształt kolizji 14×14 — na skrzyni się stoi)
+    "barrel": ("barrel.glb", "+X", 10.0, 6000, 15.0, True),
+    "shelf": ("shelf.glb", "+X", 31.8, 12000, 34.4),
+    "locker": ("locker.glb", "+X", 13.0, 6000, 31.0),
+    "table": ("table.glb", "-Y", 40.0, 10000, 19.0),
+    "cot": ("cot.glb", "-Y", 36.0, 8000, 13.0),
+    "generator": ("generator.glb", "-Y", 35.5, 14000, 25.8),
+    "cache": ("cache.glb", "+X", 19.6, 8000, 12.5),
+    "rack": ("rack.glb", "+X", 48.0, 8000, 36.2),
+    "chair": ("chair.glb", "+X", 9.5, 6000, 18.0),
+    "stash": ("stash.glb", "+X", 10.8, 6000, 11.7),
 }
 # przedmioty proceduralne o większej teksturze (duże bryły blisko kamery)
 BIG = {"generator", "handcar", "shelf", "locker", "table", "cot", "results_board", "board", "rack", "tools_wall"}
@@ -251,7 +264,7 @@ def build_proc(ns, name, builder):
 
 # ------------------------------------------------------------------ modele z Tripo
 
-def build_tripo(name, fname, cam, width_wp, faces):
+def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False):
     src = os.path.join(TRIPO, fname)
     if not os.path.exists(src):
         print("SKIP", name, "(brak", fname + ")")
@@ -275,8 +288,14 @@ def build_tripo(name, fname, cam, width_wp, faces):
     vs = np.array([v.co[:] for v in me.vertices])
     lo, hi = vs.min(axis=0), vs.max(axis=0)
     k = width_wp / max(hi[0] - lo[0], 1e-6)
+    if height_wp is not None:                                    # mieści się w ramce: ogranicza też wysokość
+        k = min(k, height_wp / max(hi[2] - lo[2], 1e-6))
     me.transform(Matrix.Translation((-(lo[0] + hi[0]) * 0.5, -(lo[1] + hi[1]) * 0.5, -lo[2])))
-    me.transform(Matrix.Scale(k, 4))
+    if stretch and height_wp is not None:
+        kx = width_wp / max(hi[0] - lo[0], 1e-6)
+        me.transform(Matrix.Diagonal((kx, kx, height_wp / max(hi[2] - lo[2], 1e-6), 1.0)))
+    else:
+        me.transform(Matrix.Scale(k, 4))
     if len(me.polygons) > faces:
         dec = obj.modifiers.new("dec", "DECIMATE")
         dec.ratio = faces / float(len(me.polygons))
@@ -289,9 +308,9 @@ def build_tripo(name, fname, cam, width_wp, faces):
 
 def main():
     procs = None
-    for name, (fname, cam, width, faces) in TRIPO_MODELS.items():
+    for name, spec in TRIPO_MODELS.items():
         if want(name):
-            build_tripo(name, fname, cam, width, faces)
+            build_tripo(name, *spec)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
