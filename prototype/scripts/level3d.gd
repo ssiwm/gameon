@@ -178,8 +178,8 @@ static func build_level(parent: Node3D, rows: Array) -> Dictionary:
 	wbox.size = Vector3(T, T, 0.3)
 	_multimesh(parent, wbox, walls, make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"), false)
 	var pc := CylinderMesh.new()
-	pc.top_radius = 0.45
-	pc.bottom_radius = 0.55
+	pc.top_radius = 0.5                                     # równy promień: słup z kafli ma gładki zarys, a nie „stos kubków”
+	pc.bottom_radius = 0.5
 	pc.height = T
 	pc.radial_segments = 10
 	_multimesh(parent, pc, posts, make_pbr("post", 0.9, Color(0.20, 0.14, 0.09), 1.0, 1.0, 1.0, false, "organic"))
@@ -1464,7 +1464,7 @@ void sky() {
 	float band = smoothstep(0.04, 0.24, e) * (1.0 - 0.6 * smoothstep(0.5, 0.95, e));
 	float cloud = smoothstep(0.30, 0.75, n);
 	vec3 c = base + glow * band * (0.35 + 0.95 * cloud);
-	COLOR = mix(c, vec3(0.45, 0.5, 0.58), lit);
+	COLOR = mix(c, vec3(0.16, 0.19, 0.24), lit);
 }
 """
 ## Mgła wolumetryczna (Forward+): jedna bryła na całą mapę od 1,5 m przed płaszczyzną gry do 11 m w głąb. Światła sceny rozpraszają się w niej —
@@ -1542,8 +1542,10 @@ static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0
 	env.adjustment_saturation = 1.0
 	if "--view3dlit" in OS.get_cmdline_user_args():                # dev: pełne, białe światło otoczenia — podgląd geometrii i materiałów bez nocy
 		env.ambient_light_color = Color.WHITE
-		env.ambient_light_energy = 1.0
+		env.ambient_light_energy = 0.55
 		env.fog_enabled = false
+		env.volumetric_fog_enabled = false
+		env.glow_enabled = false
 		sm.set_shader_parameter("lit", 1.0)
 	var we := WorldEnvironment.new()
 	we.name = "Env"

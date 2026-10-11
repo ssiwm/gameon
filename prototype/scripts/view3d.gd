@@ -32,6 +32,7 @@ const AURA_WORLD := 3.2                    ## mnożnik energii aury gracza dla t
 const AURA_ACTOR := 0.8                    ## mnożnik energii aury gracza dla modeli graczy
 const FOG_BEGIN_M := 2.0                    ## mgła głębi: początek za płaszczyzną gry [m]
 const FOG_END_M := 62.0                     ## mgła głębi: pełna gęstość [m za płaszczyzną gry]
+const EYE_UP_M := 2.2                       ## wysokość oka kamery ponad środkiem kadru [m] (punkt zbiegu nad głowami postaci)
 const Z_BG := -60
 const Z_FG := 1
 
@@ -225,7 +226,14 @@ func _sync_camera() -> void:
 	var h_px := win.y / (maxf(scale, 0.01) * maxf(c2.zoom.y, 0.01))        # wysokość kadru 2D na płaszczyźnie gry [px świata]
 	var dist := (h_px * PX * 0.5) / tan(deg_to_rad(FOV * 0.5))
 	var ctr := c2.get_screen_center_position()
-	var xf := Transform3D(Basis.IDENTITY, Vector3(ctr.x * PX, -ctr.y * PX, dist))
+	# oko kamery stoi EYE_UP_M ponad środkiem kadru, a bryła widzenia jest przesunięta w dół o tyle samo (obiektyw „shift”): płaszczyzna gry
+	# pokrywa się z kadrem 2D jak dotąd (celowanie bez zmian), ale punkt zbiegu leży nad głowami — widać wierzch gruntu i kładek zamiast ich spodów
+	var xf := Transform3D(Basis.IDENTITY, Vector3(ctr.x * PX, -ctr.y * PX + EYE_UP_M, dist))
+	var near := 0.3
+	var fsize := 2.0 * near * tan(deg_to_rad(FOV * 0.5))
+	var foff := Vector2(0.0, -EYE_UP_M * near / dist)
+	_cam_a.set_frustum(fsize, foff, near, 160.0)
+	_cam_b.set_frustum(fsize, foff, near, 160.0)
 	_cam_a.global_transform = xf
 	if _cam_a.environment != null:                          # mgła głębi zaczyna się tuż za płaszczyzną gry
 		_cam_a.environment.fog_depth_begin = dist + FOG_BEGIN_M
