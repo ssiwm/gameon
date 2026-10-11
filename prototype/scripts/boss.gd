@@ -118,6 +118,7 @@ var _net_t := 0.0
 var _armor_snd_ms := 0
 var _light: PointLight2D
 var _overlay: Node2D
+var fx3d := false                     ## widok 3D przejął efekty (żar paszczy, łuk zapowiedzi, drżenie wody, fala) — nakładka 2D nic nie rysuje
 var _spr: Array = []                  ## [cialo, glow] z arkusza vein; puste = rysunek zastepczy z kolek
 
 func _ready() -> void:
@@ -433,6 +434,8 @@ class SpitGlob extends Node2D:
 	var gravity := 520.0
 	var level: Node
 	var life := 2.5
+	func _ready() -> void:
+		add_to_group("spit_globs")                        # widok 3D: kula plwociny (view3d.gd: _sync_globs)
 	func _physics_process(delta: float) -> void:
 		vel.y += gravity * delta
 		position += vel * delta
@@ -571,6 +574,8 @@ func _burst(pos: Vector2, col: Color, n: int) -> void:
 	Vfx.soften(fx)
 	get_parent().add_child(fx)
 	fx.global_position = pos
+	if Vfx.view3d != null and is_instance_valid(Vfx.view3d):
+		Vfx.view3d.call("mirror_burst", fx, pos)              # cząsteczki 3D zamiast płaskich
 	get_tree().create_timer(0.8).timeout.connect(fx.queue_free)
 
 func _die() -> void:
@@ -688,6 +693,8 @@ func _death_fx() -> void:
 	Vfx.soften(fx)
 	get_parent().add_child(fx)
 	fx.global_position = global_position + Vector2(0, -20)
+	if Vfx.view3d != null and is_instance_valid(Vfx.view3d):
+		Vfx.view3d.call("mirror_burst", fx, fx.global_position)
 	get_tree().create_timer(2.0).timeout.connect(fx.queue_free)
 
 # ---------------------------------------------------------------- rysowanie
@@ -847,6 +854,10 @@ func _draw_wave_crest(ov: Node2D, sd: float, wr: float) -> void:
 		ov.draw_circle(q + Vector2(0.0, -1.0 - 0.8 * sin(tt * 20.0 + float(k) * 1.7)), 0.9, Color(1.0, 1.0, 1.0, 0.8))
 
 func _draw_overlay(ov: Node2D) -> void:
+	if fx3d:                                              # widok 3D rysuje to samo w scenie (view3d.gd: _sync_boss_fx); tu tylko koniec fali
+		if _wave_start_ms >= 0 and 24.0 + (Time.get_ticks_msec() - _wave_start_ms) / 1000.0 * SWEEP_SPEED > SWEEP_RANGE:
+			_wave_start_ms = -1
+		return
 	var t := Time.get_ticks_msec() / 1000.0
 	var awake := state == State.AWAKE
 	var pulse := 0.5 + 0.5 * sin(t * (6.0 if enraged else (3.0 if awake else 1.5)))

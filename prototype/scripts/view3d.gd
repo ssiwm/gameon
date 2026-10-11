@@ -68,6 +68,8 @@ var _beam_masks := {}                    ## id światła 2D latarki → [świat�
 var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D, MeshInstance3D, losowe odchylenie]
 var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
 var _ws_lamps := {}                      ## id warsztatu → lampa nad nim (Node3D w geometrii mapy)
+var _globs := {}                         ## id plwociny / kwasu → [węzeł 2D, kula 3D]
+var _bossfx := {}                        ## id Żyły → [węzeł 2D, korzeń 3D efektów]
 var _mine_dust: Array = []               ## pył finału kopalni: [drobny pył, strużki] (CPUParticles3D)
 var _mine_dust_key := Vector2i(-999, -999)   ## kafel kamery, dla którego wyznaczono punkty stropu
 var _rain_splash: CPUParticles3D         ## plusk kropel na gruncie
@@ -177,6 +179,15 @@ func release() -> void:
 	var wxr := get_tree().root.find_child("WeatherFx", true, false)
 	if wxr != null:
 		wxr.set("fx3d", false)
+	for tab in [_globs, _bossfx]:
+		for id in tab.keys():
+			if is_instance_valid(tab[id][0]):
+				(tab[id][0] as CanvasItem).self_modulate = Color.WHITE
+				if tab[id][0].get("fx3d") != null:
+					tab[id][0].set("fx3d", false)
+			if is_instance_valid(tab[id][1]):
+				(tab[id][1] as Node).queue_free()
+		tab.clear()
 	for dp in _mine_dust:
 		if is_instance_valid(dp):
 			(dp as Node).queue_free()
@@ -276,6 +287,8 @@ func _process(delta: float) -> void:
 	_sync_blood(delta)
 	_sync_weather(delta)
 	_sync_mine_dust()
+	_sync_globs()
+	_sync_boss_fx()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -2052,6 +2065,238 @@ func mirror_gib(body: RigidBody2D, kind: int, sz: float) -> void:
 	if _casings.has(id) and is_instance_valid(_casings[id][1]):
 		(_casings[id][1] as Node).queue_free()
 	_casings[id] = [body, pivot, randf_range(-0.6, 0.6), randf() * TAU]
+
+# ---------------------------------------------------------------- plwocina, kwas i efekty Żyły
+
+const MAW_Z := 1.25                      ## głębia żaru paszczy Żyły: tuż przed pyskiem modelu
+const WAVE_Z := 0.9                      ## pół szerokości fali i pasma zapowiedzi w głąb sceny [m]
+
+## Materiał addytywny dla siatek rysowanych co klatkę (łuki, pasma): kolor i przezroczystość z wierzchołków.
+func _add_mat() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.vertex_color_use_as_albedo = true
+	return m
+
+func _imm(parent: Node3D, mat: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = ImmediateMesh.new()
+	mi.material_override = mat
+	mi.layers = LAYER_WORLD
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+	return mi
+
+## Plwocina Żyły (`boss.gd: SpitGlob`, grupa „spit_globs") i kwas Pijawki (`acid_spit.gd`, grupa „acid"): świecąca kula 3D ze smugą kropel
+## i własnym zielonym światłem; rysunek 2D jest chowany. Lot liczy nadal węzeł 2D.
+func _sync_globs() -> void:
+	for g in ["spit_globs", "acid"]:
+		for n in get_tree().get_nodes_in_group(g):
+			if not (n is Node2D) or n.is_queued_for_deletion() or _globs.has(n.get_instance_id()):
+				continue
+			var root := Node3D.new()
+			root.name = "Glob"
+			_sphere(root, 3.4 * PX, Vector3.ZERO, Color(0.45, 0.95, 0.25))
+			_sphere(root, 1.5 * PX, Vector3(-1.0 * PX, 1.0 * PX, 2.6 * PX), Color(0.85, 1.0, 0.6))
+			var drips := CPUParticles3D.new()
+			drips.name = "Drips"
+			drips.local_coords = false
+			drips.amount = 18
+			drips.lifetime = 0.4
+			var q := QuadMesh.new()
+			q.size = Vector2(0.13, 0.13)
+			var qm := StandardMaterial3D.new()
+			qm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			qm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			qm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+			qm.billboard_keep_scale = true
+			qm.vertex_color_use_as_albedo = true
+			qm.albedo_texture = _soft()
+			q.material = qm
+			drips.mesh = q
+			drips.spread = 180.0
+			drips.initial_velocity_min = 0.1
+			drips.initial_velocity_max = 0.5
+			drips.gravity = Vector3(0.0, -5.0, 0.0)
+			var sc := Curve.new()
+			sc.add_point(Vector2(0.0, 1.0))
+			sc.add_point(Vector2(1.0, 0.2))
+			drips.scale_amount_curve = sc
+			var gr := Gradient.new()
+			gr.set_color(0, Color(0.5, 0.95, 0.3, 0.8))
+			gr.set_color(1, Color(0.3, 0.7, 0.2, 0.0))
+			drips.color_ramp = gr
+			drips.layers = LAYER_ACTORS
+			drips.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			root.add_child(drips)
+			var gl := OmniLight3D.new()
+			gl.light_color = Color(0.55, 1.0, 0.35)
+			gl.light_energy = 1.4
+			gl.omni_range = 2.6
+			gl.light_volumetric_fog_energy = 0.6
+			gl.layers = LAYER_WORLD | LAYER_ACTORS
+			root.add_child(gl)
+			_world.add_child(root)
+			(n as CanvasItem).self_modulate = Color(1, 1, 1, 0)
+			_globs[n.get_instance_id()] = [n, root]
+	for id in _globs.keys():
+		var src = _globs[id][0]
+		var g3: Node3D = _globs[id][1]
+		if not is_instance_valid(src) or (src as Node).is_queued_for_deletion():
+			if is_instance_valid(g3):
+				g3.queue_free()
+			_globs.erase(id)
+			continue
+		g3.position = Level3D.px_to_m((src as Node2D).global_position) + Vector3(0.0, 0.0, 0.3)
+
+## Efekty Żyły w scenie 3D (stan z `boss.gd`; nakładka 2D jest tam wyłączana flagą `fx3d`):
+##  - żar paszczy (słaby punkt): poświata i światło przed pyskiem — tli się, gdy zamknięta; płonie, gdy otwarta; zielona przy pluciu; biała, gdy oślepiona;
+##  - zapowiedź ciosu macką: czerwony łuk zasięgu;
+##  - zapowiedź zamachu: drżące pasmo na wodzie na całym zasięgu fali, najsilniejsze przy Żyle;
+##  - fala: dwa grzbiety wody biegnące od Żyły — bryły o stromym czole i łagodnym ogonie, z pianą na grzbiecie.
+func _sync_boss_fx() -> void:
+	for n in get_tree().get_nodes_in_group("boss"):
+		if not (n is Node2D) or n.is_queued_for_deletion() or _bossfx.has(n.get_instance_id()) or not n.has_method("_draw_wave_crest"):
+			continue
+		var root := Node3D.new()
+		root.name = "BossFx"
+		_world.add_child(root)
+		var glow := _glow_quad(Color(1, 1, 1, 0))
+		glow.name = "Maw"
+		glow.layers = LAYER_WORLD
+		root.add_child(glow)
+		var ml := OmniLight3D.new()
+		ml.name = "MawLight"
+		ml.omni_range = 5.0
+		ml.light_volumetric_fog_energy = 0.8
+		ml.layers = LAYER_WORLD | LAYER_ACTORS
+		root.add_child(ml)
+		_imm(root, _add_mat()).name = "Arc"
+		var bm := _add_mat()
+		bm.no_depth_test = true                                 # zapowiedź ma być czytelna na każdym podłożu (śnieg, lód, woda mają różną wysokość)
+		_imm(root, bm).name = "Band"
+		var wm := StandardMaterial3D.new()                     # woda fali: półprzezroczysta, gładka, z lekką własną jasnością (czytelna w mroku)
+		wm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		wm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		wm.vertex_color_use_as_albedo = true
+		wm.roughness = 0.12
+		wm.emission_enabled = true
+		wm.emission = Color(0.10, 0.20, 0.26)
+		_imm(root, wm).name = "Wave"
+		_bossfx[n.get_instance_id()] = [n, root]
+	var t := Time.get_ticks_msec() / 1000.0
+	for id in _bossfx.keys():
+		var b = _bossfx[id][0]
+		var root: Node3D = _bossfx[id][1]
+		if not is_instance_valid(b) or (b as Node).is_queued_for_deletion():
+			if is_instance_valid(root):
+				root.queue_free()
+			_bossfx.erase(id)
+			continue
+		b.set("fx3d", true)
+		var alive: bool = b.call("is_alive") and (b as Node2D).is_visible_in_tree()
+		root.visible = alive
+		if not alive:
+			continue
+		var base := Level3D.px_to_m((b as Node2D).global_position)
+		root.position = base
+		var awake: bool = b.call("is_threat")
+		var pulse := 0.5 + 0.5 * sin(t * (6.0 if b.enraged else (3.0 if awake else 1.5)))
+		# żar paszczy
+		var maw := Color(1.0, 0.35, 0.2, 0.18)
+		var r := 3.0
+		if b.spitting:
+			maw = Color(0.55, 1.0, 0.3, 0.6 + 0.4 * pulse)
+			r = 6.5
+		elif b.stunned:
+			maw = Color(1.0, 1.0, 0.9, 0.5 + 0.5 * absf(sin(t * 18.0)))
+			r = 9.0
+		elif b.maw_open:
+			maw = Color(1.0, 0.6, 0.25, 0.75 + 0.25 * pulse)
+			r = 8.5
+		var mp: Vector2 = b.call("_maw_point")
+		var mpos := Vector3(mp.x * PX, -mp.y * PX, MAW_Z)
+		var glow := root.get_node("Maw") as MeshInstance3D
+		glow.position = mpos
+		glow.scale = Vector3.ONE * (r * 3.6 * PX)
+		(glow.material_override as StandardMaterial3D).albedo_color = maw
+		var ml := root.get_node("MawLight") as OmniLight3D
+		ml.position = mpos + Vector3(0.0, 0.0, 0.35)
+		ml.light_color = Color(maw.r, maw.g, maw.b)
+		ml.light_energy = 4.0 * maw.a * r / 9.0
+		# łuk zasięgu macki
+		var arc := (root.get_node("Arc") as MeshInstance3D).mesh as ImmediateMesh
+		arc.clear_surfaces()
+		if b.winding:
+			var rad: float = float(b.LASH_RANGE_X) * PX
+			var ac := Color(1.0, 0.15, 0.1, 0.4 + 0.5 * pulse)
+			arc.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+			for i in 33:
+				var a := PI * (0.05 + 0.9 * float(i) / 32.0)
+				var d := Vector3(cos(a), sin(a), 0.0)
+				arc.surface_set_color(ac)
+				arc.surface_add_vertex(Vector3(0.0, 10.0 * PX, 0.3) + d * (rad - 0.05))
+				arc.surface_set_color(ac)
+				arc.surface_add_vertex(Vector3(0.0, 10.0 * PX, 0.3) + d * (rad + 0.05))
+			arc.surface_end()
+		# zapowiedź zamachu: drżące pasmo na wodzie
+		var band := (root.get_node("Band") as MeshInstance3D).mesh as ImmediateMesh
+		band.clear_surfaces()
+		var range_m: float = float(b.SWEEP_RANGE) * PX
+		if int(b.atk) == 3:                                    # Atk.SWEEP
+			for row in 2:
+				var z0 := -WAVE_Z + WAVE_Z * float(row)
+				band.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+				for i in 65:
+					var x := -range_m + 2.0 * range_m * float(i) / 64.0
+					var near := 1.0 - absf(x) / range_m
+					for k in 2:
+						var z := z0 + WAVE_Z * float(k)
+						var edge := 1.0 - absf(z) / WAVE_Z         # jaśniej pośrodku pasma, gaśnie ku brzegom
+						var rip := 0.5 + 0.5 * sin(t * 14.0 + x * 1.35 + z * 3.0)      # biegnące zmarszczki: jasne grzbiety, ciemne doliny
+						var y := 0.30 + (0.7 + 1.9 * near) * rip * PX            # nad pokrywą śniegu i lodu (do ok. 0,25 m nad kaflem)
+						band.surface_set_color(Color(0.60, 0.90, 1.0, (0.35 + 0.55 * pulse) * (0.25 + 0.75 * near) * edge * (0.12 + 0.88 * rip * rip * rip)))
+						band.surface_add_vertex(Vector3(x, y, z))
+				band.surface_end()
+		# fala: dwa grzbiety
+		var wave := (root.get_node("Wave") as MeshInstance3D).mesh as ImmediateMesh
+		wave.clear_surfaces()
+		var ws: int = int(b._wave_start_ms)
+		if ws >= 0:
+			var wr := 24.0 + float(Time.get_ticks_msec() - ws) / 1000.0 * float(b.SWEEP_SPEED)
+			if wr <= float(b.SWEEP_RANGE):
+				var body_c := Color(0.42, 0.72, 0.88, 0.72)
+				var foam_c := Color(0.95, 1.0, 1.0, 0.95)
+				for sd in [-1.0, 1.0]:
+					var prof: Array = []                          # [x, wysokość] w metrach; u < 0 przed czołem, u > 0 za nim
+					for i in 27:
+						var u := -9.0 + 51.0 * float(i) / 26.0
+						var hgt := 11.0 * exp(-pow(u / (4.5 if u < 0.0 else 15.0), 2.0))
+						prof.append(Vector2(sd * (wr - u) * PX, hgt * PX))
+					for pass_i in 3:                              # 0: grzbiet (góra), 1: ściana od kamery, 2: ściana od tyłu
+						wave.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+						for i in prof.size():
+							var pt: Vector2 = prof[i]
+							var col := body_c.lerp(foam_c, clampf(pt.y / (11.0 * PX), 0.0, 1.0) * (1.0 if i < 13 else 0.35))
+							if pass_i == 0:
+								wave.surface_set_normal(Vector3(0, 1, 0))
+								wave.surface_set_color(col)
+								wave.surface_add_vertex(Vector3(pt.x, pt.y, -WAVE_Z))
+								wave.surface_set_normal(Vector3(0, 1, 0))
+								wave.surface_set_color(col)
+								wave.surface_add_vertex(Vector3(pt.x, pt.y, WAVE_Z))
+							else:
+								var zz := WAVE_Z if pass_i == 1 else -WAVE_Z
+								wave.surface_set_normal(Vector3(0, 0, signf(zz)))
+								wave.surface_set_color(body_c)
+								wave.surface_add_vertex(Vector3(pt.x, 0.0, zz))
+								wave.surface_set_normal(Vector3(0, 0, signf(zz)))
+								wave.surface_set_color(col)
+								wave.surface_add_vertex(Vector3(pt.x, pt.y, zz))
+						wave.surface_end()
 
 # ---------------------------------------------------------------- pył finału kopalni
 
