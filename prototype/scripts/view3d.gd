@@ -1017,10 +1017,10 @@ const RACK_LAMP_PX := 41.0                  ## spód lampy nad podłogą [px św
 
 ## Lampa wisząca nad stojakiem z bronią (kryjówka): emaliowany klosz z modelu `lamp`, przewód do stropu i ciepły reflektor w dół — stojak i broń
 ## oświetla widoczne źródło, a nie poświata „znikąd” (poświata pickupu na stojaku jest w 3D pomijana, zob. `_scan_lights`).
-func _add_rack_lamp(rack_item: Node2D) -> void:
+func _add_rack_lamp(rack_item: Node2D) -> Node3D:
 	var lamp := _item_model("lamp")
 	if lamp == null:
-		return
+		return null
 	var foot := rack_item.global_position
 	var root := Node3D.new()
 	root.name = "RackLamp"
@@ -1072,6 +1072,7 @@ func _add_rack_lamp(rack_item: Node2D) -> void:
 	bulb.layers = LAYER_WORLD | LAYER_ACTORS
 	bulb.position = Vector3(0.0, 0.05, 0.0)
 	root.add_child(bulb)
+	return root
 
 ## Kopie materiałów modelu z mnożnikiem koloru (materiały siatek są współdzielone między egzemplarzami — nadpisujemy je na węzłach).
 func _tint_model(root: Node, tint: Color) -> void:
@@ -1185,9 +1186,7 @@ func _sync_guns() -> void:
 			label.position = Vector3(0.0, 0.0, 0.013)
 			plate.add_child(label)
 			plate.position = Vector3(0.0, -(RACK_SHELF_PX - 4.1) * RACK_SCALE * PX - 1.6 * PX, RACK_PLATE_Z - RACK_GUN_Z)
-		if on_rack:
-			_add_rack_lamp(n as Node2D)
-		_guns[id] = [n, pivot, spr, RACK_GUN_Z if on_rack else -0.25, on_rack, model, lock, plate, label, -1]
+		_guns[id] = [n, pivot, spr, RACK_GUN_Z if on_rack else -0.25, on_rack, model, lock, plate, label, -1, null]
 	for id in _guns.keys():
 		var g: Array = _guns[id]
 		if not is_instance_valid(g[0]) or (g[0] as Node).is_queued_for_deletion() or not is_instance_valid(g[2]):
@@ -1201,6 +1200,10 @@ func _sync_guns() -> void:
 		if not bool(g[4]):
 			pv.position = Level3D.px_to_m(sp.global_position) + Vector3(0.0, 0.0, float(g[3]))
 			continue
+		# lampa nad stojakiem należy do geometrii mapy, a ta bywa budowana od nowa (wejście do kryjówki po misji, zmiana mapy) —
+		# gdy lampy nie ma, stawiamy ją ponownie (wcześniej powstawała raz i znikała przy przebudowie)
+		if _geo_key != "" and (g[10] == null or not is_instance_valid(g[10])):
+			g[10] = _add_rack_lamp(g[0] as Node2D)
 		# stojak: broń na półce (podłoga = początek pickupu), stan blokady z warsztatu
 		var floor_px := (g[0] as Node2D).global_position
 		pv.position = Level3D.px_to_m(floor_px) + Vector3(0.0, (RACK_UP_PX + RACK_SHELF_PX * RACK_SCALE - 2.6) * PX, float(g[3]))
