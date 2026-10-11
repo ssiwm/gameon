@@ -59,6 +59,7 @@ var _lights := {}                        ## id PointLight2D → [PointLight2D, L
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
 var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
+var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
 var _drawn := {}                         ## id węzła rysowanego kodem (radiostacja, mur) → [węzeł 2D, Node3D]
 var _span: Array = []                    ## trasa drezyny (_rail_span)
 var _span_map := ""
@@ -152,6 +153,13 @@ func release() -> void:
 		if is_instance_valid(_drawn[id][0]):
 			(_drawn[id][0] as CanvasItem).modulate = Color.WHITE
 	_drawn.clear()
+	for id in _guns.keys():
+		var gv: Array = _guns[id]
+		if is_instance_valid(gv[0]) and gv[0].get("_hd") != null and is_instance_valid(gv[0].get("_hd")):
+			for c in (gv[0].get("_hd") as Node).get_children():
+				if c is Sprite2D or c is ColorRect:
+					(c as CanvasItem).self_modulate = Color.WHITE
+	_guns.clear()
 	for id in _items.keys():
 		var itv: Array = _items[id]
 		var hid: Array = itv[4]
@@ -212,6 +220,7 @@ func _process(delta: float) -> void:
 	_sync_items()
 	_build_rails()
 	_sync_drawn()
+	_sync_guns()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -914,6 +923,64 @@ func _sync_drawn() -> void:
 			_drawn.erase(id)
 		elif is_instance_valid(pr[1]):
 			(pr[1] as Node3D).visible = (pr[0] as CanvasItem).is_visible_in_tree()
+
+# ---------------------------------------------------------------- broń na ziemi i na stojakach
+
+const GUN_DIR := "res://art/char3d/"
+
+## Broń jako łup i na stojakach kryjówki (`pickup.gd`, sprite broni HD poza potokiem przedmiotów) dostaje ten sam model 3D, który trzymają postacie
+## (art/char3d/gun_<klucz>.glb), w rozmiarze sprite'a 2D. Sprite i ciemna podstawka 2D są chowane; nakładki informacyjne (kłódka, cena) zostają.
+func _sync_guns() -> void:
+	for n in get_tree().get_nodes_in_group("pickups"):
+		var id := n.get_instance_id()
+		if _guns.has(id) or not (n is Node2D):
+			continue
+		var key := String(n.get("_hd_gun")) if n.get("_hd_gun") != null else ""
+		var hd = n.get("_hd")
+		var path := GUN_DIR + "gun_%s.glb" % key
+		if key == "" or hd == null or not is_instance_valid(hd) or not ResourceLoader.exists(path):
+			continue
+		var spr: Sprite2D = null
+		for c in (hd as Node).get_children():
+			if c is Sprite2D and spr == null:
+				spr = c
+			if c is Sprite2D or c is ColorRect:
+				(c as CanvasItem).self_modulate = Color(1, 1, 1, 0)
+		if spr == null:
+			continue
+		var model := (load(path) as PackedScene).instantiate() as Node3D
+		var box := AABB()
+		var first := true
+		for mn in model.find_children("*", "MeshInstance3D", true, false):
+			var mi := mn as MeshInstance3D
+			mi.layers = LAYER_WORLD
+			var bb := _local_xf(mi, model) * mi.get_aabb()
+			box = bb if first else box.merge(bb)
+			first = false
+			if mi.mesh != null:
+				for si in mi.mesh.get_surface_count():
+					var sm := mi.mesh.surface_get_material(si) as StandardMaterial3D
+					if sm != null:
+						sm.metallic = 0.45
+						sm.metallic_specular = 0.6
+		var rect: Rect2 = n.get("_hd_gun_rect")
+		var k := (rect.size.x / 16.0 * PX) / maxf(box.size.x, 0.001)
+		var pivot := Node3D.new()
+		_world.add_child(pivot)
+		pivot.add_child(model)
+		model.scale = Vector3(k, k, k)
+		model.position = Vector3(-box.get_center().x * k, -box.position.y * k, -box.get_center().z * k)
+		_guns[id] = [n, pivot, spr, -1.2 if bool(n.get("static_display")) else -0.25]
+	for id in _guns.keys():
+		var g: Array = _guns[id]
+		if not is_instance_valid(g[0]) or (g[0] as Node).is_queued_for_deletion() or not is_instance_valid(g[2]):
+			if is_instance_valid(g[1]):
+				(g[1] as Node).queue_free()
+			_guns.erase(id)
+			continue
+		var sp := g[2] as Sprite2D
+		(g[1] as Node3D).visible = sp.is_visible_in_tree()
+		(g[1] as Node3D).position = Level3D.px_to_m(sp.global_position) + Vector3(0.0, 0.0, float(g[3]))
 
 # ---------------------------------------------------------------- tor drezyny
 
