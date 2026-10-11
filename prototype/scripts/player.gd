@@ -1859,32 +1859,6 @@ func _body_color() -> Color:
 
 # ---------------------------------------------------------------- draw
 
-func _draw() -> void:
-	if not _spr.is_empty() or c3d != null:
-		return
-	var col := _body_color()
-	if _flash > 0.0:
-		col = Color.WHITE
-
-	if dead:
-		draw_rect(Rect2(-7, -3, 14, 4), Color(0.35, 0.05, 0.08))
-		return
-
-	# migotanie podczas niewrażliwości po trafieniu
-	if _invuln > 0.0 and int(Time.get_ticks_msec() / 60) % 2 == 0:
-		col.a = 0.45
-
-	var h := 11.0 if crouching else 17.0
-	var top := -h
-	draw_set_transform(Vector2.ZERO, 0.0, squash)
-	draw_rect(Rect2(-5, top + 7, 10, h - 7), col)
-	draw_rect(Rect2(-4, top, 8, 8), col.lightened(0.3))
-	var eye_off := Vector2(aim_dir.x * 2.5, clampf(aim_dir.y, -1.0, 0.35) * 2.0)
-	draw_rect(Rect2(eye_off.x - 1.0, top + 3.0 + eye_off.y, 2, 2), Color(0.06, 0.06, 0.08))
-	var arm_start := Vector2(0, top + 9)
-	draw_line(arm_start, arm_start + aim_dir * _gun_len(), Color(0.78, 0.78, 0.85), 3.0 if weapons.cur().pellets > 1 else 2.0)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
 func _gun_len() -> float:
 	return weapons.cur().gun_len
 

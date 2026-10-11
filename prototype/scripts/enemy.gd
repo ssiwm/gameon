@@ -1459,34 +1459,9 @@ func _update_sprite() -> void:
 		m = Color(0.8, 0.8, 0.8)
 	body.modulate = m
 
-func _draw() -> void:
-	if not _spr.is_empty():
-		return
-	var size: Vector2 = _def["size"]
-	var col: Color = _def["color"]
-	if _flash > 0.0:
-		col = Color.WHITE
-	# śpiący: przygaszony i przygarbiony; zapowiedź ataku: czerwony kontur
-	var crouch := 0.0 if active else 3.0
-	var body := Rect2(-size.x * 0.5, -size.y + crouch, size.x, size.y - crouch)
-	if not active:
-		col = col.darkened(0.4)
-	draw_rect(body, col)
-
 ## Oczy, kontur zapowiedzi ataku i HP — unshaded, widoczne w ciemności.
 func _draw_overlay(ov: Node2D) -> void:
 	var size: Vector2 = _def["size"]
-	var t := Time.get_ticks_msec() / 1000.0
-	var crouch := 0.0 if active else 3.0
-	if winding and _spr.is_empty():
-		var body := Rect2(-size.x * 0.5, -size.y + crouch, size.x, size.y - crouch)
-		ov.draw_rect(body.grow(1.5), Color(1.0, 0.15, 0.1, 0.8), false, 1.5)
-	if _spr.is_empty():
-		var eye_y := -size.y + 4.0 + crouch
-		var eye_a := 1.0 if active else 0.25
-		var pulse := 0.6 + 0.4 * sin(t * 8.0)
-		ov.draw_circle(Vector2(-size.x * 0.22, eye_y), 1.4, Color(1.0, 0.7 * pulse, 0.2, eye_a))
-		ov.draw_circle(Vector2(size.x * 0.22, eye_y), 1.4, Color(1.0, 0.7 * pulse, 0.2, eye_a))
 	if kind == "mimik" and not active:
 		# etykieta jak u gracza, ale bez serduszek (zdradza go) i z numerem, którego nie ma w drużynie
 		var f := ThemeDB.fallback_font

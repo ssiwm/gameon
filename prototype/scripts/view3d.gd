@@ -25,7 +25,7 @@ const FOV := 40.0
 const MAX_LIGHTS := 14
 const SHADOW_LIGHTS := 5
 const MIRROR_GROUPS := ["enemies", "boss", "nests", "roamers"]
-const HIDE_NAMES := ["Back", "Solid", "Deco", "Decals", "TerrainHD", "TerrainHDBack", "Backdrop"]
+const HIDE_NAMES := ["Back", "Solid", "Deco", "Decals", "TerrainHD", "TerrainHDBack"]
 const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wrogów
 const LAYER_ACTORS := 2                    ## warstwa wizualna graczy (modele 3D)
 const ACTOR_AMBIENT := 0.09                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
@@ -405,9 +405,7 @@ func _sync_camera() -> void:
 ## Statyczne warstwy 2D (kafle, tło, teren HD) są zastąpione geometrią 3D — chowamy je co klatkę (węzły HD powstają leniwie).
 func _hide_static() -> void:
 	for c in _level.get_children():
-		var scr: Script = c.get_script()
-		var is_backdrop: bool = scr != null and String(scr.resource_path).ends_with("backdrop.gd")     # tło parallax: węzeł bez nazwy
-		if c is TileMapLayer or is_backdrop or HIDE_NAMES.has(String(c.name)):
+		if c is TileMapLayer or HIDE_NAMES.has(String(c.name)):
 			if c.visible:
 				c.visible = false
 				if not _hidden.has(c):

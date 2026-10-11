@@ -159,8 +159,6 @@ func _ready() -> void:
 	if _dark_node != null:
 		_dark_node.color = Lights.AMBIENT
 	RenderingServer.set_default_clear_color(Lights.SKY)
-	var bd := preload("res://scripts/backdrop.gd").new()
-	add_child(bd)
 	_ts = _build_tileset()
 	_back = TileMapLayer.new()
 	_back.name = "Back"
@@ -176,16 +174,14 @@ func _ready() -> void:
 	_deco = Node2D.new()
 	_deco.name = "Deco"
 	_deco.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_deco.draw.connect(_draw_deco)
 	add_child(_deco)
 	# plamy krwi — nad kaflami, pod postaciami; cieniowane (widać je w świetle)
 	_decals = Node2D.new()
 	_decals.name = "Decals"
-	_decals.draw.connect(_draw_decals)
 	if Sprites.newitem:
 		_decals.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	add_child(_decals)
-	_stable = [bd, _back, _solid, _deco, _decals]
+	_stable = [_back, _solid, _deco, _decals]
 	_load(CAMPAIGN[0])
 
 ## Przebudowuje poziom na mapę `id` (wołane na każdym peerze z tym samym id). Encje starej mapy znikają od razu
@@ -267,12 +263,9 @@ func _apply_darkness() -> void:
 	var c := Color(ambient.r * weather_tint.r * depth_mult, ambient.g * weather_tint.g * depth_mult, ambient.b * weather_tint.b * depth_mult, 1.0)
 	_dark_node.color = c.lerp(WEATHER_FLASH, clampf(weather_flash, 0.0, 1.0))
 
-## Tło parallax (backdrop.gd) wzmacnia / przyciemnia niebo i grzbiety wg pogody.
-func set_backdrop_weather(id: String, k: float) -> void:
-	for c in get_children():
-		if c.has_method("set_weather"):
-			c.set_weather(id, k)
-			return
+## Niebo i las są w scenie 3D (level3d.gd; pogodę stosuje view3d.gd: _sync_weather) — tła 2D już nie ma.
+func set_backdrop_weather(_id: String, _k: float) -> void:
+	pass
 
 func apply_depth_darkness(m: float) -> void:
 	if is_equal_approx(m, depth_mult):
@@ -470,19 +463,6 @@ func _place_deco() -> void:
 		_deco_list.append([p[0], p[1], false])
 	_deco.queue_redraw()
 
-func _draw_deco() -> void:
-	if _props_tex == null:
-		return
-	for d in _deco_list:
-		if _terrain_hd != null and (int(d[1]) <= 2 or _prop_hd.has(int(d[1]))):
-			continue                         # HD trawa i paprocie zastępuje trawa terenu, a płot/kłody/kamień — rekwizyty HD (_draw_terrain_hd)
-		var feet: Vector2 = d[0]
-		var src := Rect2(int(d[1]) * 16, 0, 16, 16)
-		var dst := Rect2(feet.x - 8, feet.y - 16, 16, 16)
-		if d[2]:
-			dst = Rect2(feet.x + 8, feet.y - 16, -16, 16)
-		_deco.draw_texture_rect_region(_props_tex, dst, src)
-
 ## Znak mapy → materiał HD (art/world/mat_<nazwa>.png; „terrain" = terrain_hd.png). Kolumny atlasu kafli (KINDS) pokrywane przez HD są
 ## w trybie --newworld przezroczyste w oryginalnym atlasie, żeby stary pixel-art nie prześwitywał.
 const MATERIALS := {"#": "terrain", "C": "concrete", "M": "metal", "~": "water", "=": "grate", "-": "plank", "b": "wall", "w": "post", "m": "mud", "O": "oil"}
@@ -517,13 +497,6 @@ func _load_material(mat: String) -> CanvasTexture:
 
 ## Wołane z main.gd po sparsowaniu `--newworld` (poziom budowany jest wcześniej niż flagi) oraz przy każdej budowie mapy.
 func enable_world_hd() -> void:
-	var bd := get_node_or_null("Backdrop")
-	if bd == null:
-		for c in get_children():
-			if c.has_method("enable_hd"):
-				bd = c
-	if bd != null:
-		bd.enable_hd()                      # tło parallax HD (art/backdrop/hd/)
 	if _terrain_hd == null:
 		_terrain_tex = _load_terrain_hd()
 		if _terrain_tex == null:
@@ -1364,31 +1337,6 @@ func add_decal(pos: Vector2, radius: float) -> void:
 	if _decal_list.size() > 260:
 		_decal_list.pop_front()
 	_decals.queue_redraw()
-
-func _draw_decals() -> void:
-	var rng := RandomNumberGenerator.new()
-	for d in _decal_list:
-		rng.seed = d[2]
-		var p: Vector2 = d[0]
-		var r: float = d[1]
-		if Sprites.newitem:
-			_draw_decal_hd(p, r, rng)
-			continue
-		# płaska plama na podłodze: kilka spłaszczonych kropel
-		for i in 5:
-			var off := Vector2(rng.randf_range(-r, r), rng.randf_range(-0.6, 0.4))
-			var rr := rng.randf_range(0.35, 0.8) * r
-			var c := Color(0.32, 0.02, 0.04, rng.randf_range(0.55, 0.85))
-			_decals.draw_set_transform(p + off, 0.0, Vector2(1.0, 0.32))
-			_decals.draw_circle(Vector2.ZERO, rr, c)
-	_decals.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-## Plama krwi w grafice HD: jedna tekstura kałuży (GibArt.blood_pool) na plamę, rysowana przez `draw_texture_rect` — wszystkie plamy sklejają się w jedno wywołanie.
-func _draw_decal_hd(p: Vector2, r: float, rng: RandomNumberGenerator) -> void:
-	var tex := GibArt.blood_pool(rng.randi() % 4)
-	var w := r * 3.6
-	var h := w * 20.0 / 64.0
-	_decals.draw_texture_rect(tex, Rect2(p.x - w * 0.5, p.y - h * 0.62, w, h), false, Color(1, 1, 1, rng.randf_range(0.8, 1.0)))
 
 ## Punkt startowy dla slotu gracza (1..4); kolejne sloty lekko przesunięte.
 func spawn_for(slot: int) -> Vector2:
