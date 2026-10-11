@@ -93,10 +93,3 @@ func _physics_process(delta: float) -> void:
 				if e.has_method("see_light"):
 					e.see_light(global_position)
 	queue_redraw()
-
-func _draw() -> void:
-	if _pv != null:
-		return
-	var a := minf(1.0, life / 3.0)
-	draw_circle(Vector2(0, -1), 2.2, Color(1.0, 0.55, 0.25, 0.35 * a))
-	draw_circle(Vector2(0, -1), 1.3, Color(1.0, 0.92, 0.65, a))

@@ -341,27 +341,3 @@ func _steer(delta: float) -> void:
 	direction = _vel.normalized()
 
 # ---------------------------------------------------------------- rysowanie
-
-func _draw() -> void:
-	var col: Color = _def.tracer_color
-	var tail := float(_def.tracer_len)
-	if float(_def.gravity) > 0.0:
-		# granat: ciemny korpus z żarzącym się zapalnikiem
-		draw_circle(Vector2.ZERO, 2.4, Color(0.3, 0.32, 0.2))
-		draw_circle(Vector2(-1.5, 0), 1.1, Color(1.0, 0.7, 0.3))
-		return
-	if sticks_on_hit():
-		# bełt: cienki drzewiec z grotem
-		draw_line(Vector2(-tail * 0.5, 0), Vector2(1, 0), Color(0.62, 0.5, 0.34), 1.0)
-		draw_line(Vector2(1, 0), Vector2(4, 0), Color(0.85, 0.85, 0.9), 1.4)
-		return
-	if float(_def.homing) > 0.0:
-		# rakieta: korpus + gasnący ogon dymu/żaru
-		draw_line(Vector2(-tail, 0), Vector2(-2, 0), Color(col.r, col.g, col.b, 0.25), 3.0)
-		draw_line(Vector2(-tail * 0.6, 0), Vector2(-1, 0), Color(col.r, col.g, col.b, 0.7), 1.6)
-		draw_rect(Rect2(-2, -1, 4, 2), Color(0.9, 0.9, 0.92))
-		return
-	# kula / śrut: jasna głowa i zanikający ogon wzdłuż toru
-	draw_line(Vector2(-tail, 0), Vector2(0, 0), Color(col.r, col.g, col.b, 0.22), 1.2)
-	draw_line(Vector2(-tail * 0.5, 0), Vector2(0, 0), Color(col.r, col.g, col.b, 0.7), 1.4)
-	draw_rect(Rect2(-1, -0.5, 3, 1), Color(1.0, 0.97, 0.85))

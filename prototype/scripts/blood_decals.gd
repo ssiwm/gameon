@@ -40,13 +40,3 @@ func _process(delta: float) -> void:
 		changed = true
 	if changed:
 		queue_redraw()
-
-func _draw() -> void:
-	for it in _items:
-		var a := 1.0 - clampf((float(it[2]) - (MAX_AGE - FADE)) / FADE, 0.0, 1.0)
-		var r: float = it[1]
-		var tint := float(it[3]) * 0.04
-		draw_set_transform(it[0], 0.0, Vector2(1.0, 0.28))
-		draw_circle(Vector2.ZERO, r, Color(0.16 + tint, 0.012, 0.018, 0.78 * a))
-		draw_circle(Vector2(0.0, 0.0), r * 0.55, Color(0.11, 0.008, 0.012, 0.85 * a))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

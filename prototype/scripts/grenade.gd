@@ -90,20 +90,3 @@ func _detonate() -> void:
 			for i in cnt:
 				var off := (float(i) - float(cnt - 1) * 0.5) * 24.0
 				lvl.spawn_fire_patch(base + Vector2(off, 0.0), Weapons.HKM9, shooter_id, float(_data["field_life"]))
-
-func _draw() -> void:
-	if _hd:
-		return
-	var c: Color = _data["color"]
-	if kind == "frag":
-		draw_circle(Vector2(0, -3), 3.0, Color(0.22, 0.3, 0.18))
-		draw_rect(Rect2(-1, -7, 2, 2), Color(0.5, 0.5, 0.45))
-		draw_circle(Vector2(-1, -4), 1.0, c)
-	elif kind == "smoke":
-		draw_rect(Rect2(-2, -7, 4, 6), Color(0.38, 0.4, 0.42))
-		draw_rect(Rect2(-2, -4, 4, 2), c)
-		draw_rect(Rect2(-1, -8, 2, 1), Color(0.6, 0.6, 0.6))
-	else:
-		draw_rect(Rect2(-2, -7, 4, 6), Color(0.55, 0.55, 0.5))
-		draw_rect(Rect2(-2, -5, 4, 2), c)
-		draw_rect(Rect2(-1, -8, 2, 1), Color(0.7, 0.7, 0.65))

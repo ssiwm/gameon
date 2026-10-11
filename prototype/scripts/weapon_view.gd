@@ -35,6 +35,7 @@ var _fx: Node2D                        ## nakładka bez cieniowania: rozbłysk, 
 var _flash_light: PointLight2D
 var _beam_light: PointLight2D
 var _flame: CPUParticles2D
+var _flash_seed := 0.0                ## losowy obrót rozbłysku wylotowego (czyta go widok 3D: view3d.gd _sync_weapon_fx)
 var _flash_t := 0.0
 var _swing_t := -1.0                   ## 0..1 trwającego ciosu, <0 = brak
 var _cyc_t := -1.0                     ## 0..1 cyklu po strzale (pompka / zamek w postaci 3D), <0 = brak
@@ -146,6 +147,7 @@ func _on_shot(w: int) -> void:
 	_cyc_t = 0.0
 	if d.flash_size > 0.0:
 		_flash_t = FLASH_TIME * (1.0 + d.flash_size / 12.0)
+		_flash_seed = randf() * TAU
 		_flash_light.color = d.flash_color
 		_flash_light.energy = d.flash_light
 

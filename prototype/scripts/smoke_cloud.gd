@@ -70,35 +70,3 @@ static func puff_texture() -> Texture2D:
 				img.set_pixel(x, y, Color(1, 1, 1, a))
 		_puff_tex = ImageTexture.create_from_image(img)
 	return _puff_tex
-
-## Chmura HD: ~26 kłębów (tekstura szumowa) krążących powoli wokół środka, unoszących się i obracających; ciemniejsze jądro i jaśniejsze, rzadsze brzegi.
-func _draw_hd() -> void:
-	var fade := clampf(life / FADE_TIME, 0.0, 1.0)
-	var r := maxf(radius, 1.0)
-	var tex := puff_texture()
-	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	for i in 26:
-		var u := float(i) / 25.0
-		var ang := _seed + float(i) * 2.399963 + _age * (0.10 + 0.05 * sin(float(i)))
-		var rr := r * 0.66 * sqrt(float(i + 1) / 26.0)
-		var pos := Vector2(cos(ang), sin(ang) * 0.82) * rr + Vector2(sin(_age * 0.6 + float(i)) * 3.0, -_age * 1.2 * (0.4 + u) + fposmod(_age * 1.2 * (0.4 + u), 9.0) * 0.0)
-		var sz := r * (0.62 + 0.38 * sin(float(i) * 1.9 + 1.0) * 0.5 + 0.2)
-		var shade := 0.17 + 0.16 * u + 0.04 * sin(float(i) * 2.3)
-		var a := (0.40 - 0.16 * u) * fade
-		draw_set_transform(pos, ang * 0.7 + _age * 0.08, Vector2(1.0, 0.9))
-		draw_texture_rect(tex, Rect2(-sz, -sz, sz * 2.0, sz * 2.0), false, Color(shade, shade + 0.02, shade + 0.05, a))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-func _draw() -> void:
-	if Sprites.newitem:
-		_draw_hd()
-		return
-	var fade := clampf(life / FADE_TIME, 0.0, 1.0)
-	var r := maxf(radius, 1.0)
-	for i in 16:
-		var ang := _seed + float(i) * 2.399963
-		var rr := r * 0.62 * sqrt(float(i + 1) / 16.0)
-		var wob := sin(_age * 0.9 + float(i) * 1.7) * 3.0
-		var pos := Vector2(cos(ang), sin(ang) * 0.85) * (rr + wob)
-		var shade := 0.22 + 0.06 * sin(float(i) * 2.1)
-		draw_circle(pos, r * 0.42, Color(shade, shade + 0.015, shade + 0.03, 0.42 * fade))

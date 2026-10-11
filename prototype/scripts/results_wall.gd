@@ -49,21 +49,6 @@ func _physics_process(_delta: float) -> void:
 func _short_id(title: String) -> String:
 	return title.split(" ", false)[0] if title != "" else "?"
 
-func _draw() -> void:
-	if _hd:
-		return
-	# drewniana rama, zielona tablica i półka na kredę
-	draw_rect(Rect2(-58, -66, 116, 66), Color(0.14, 0.1, 0.07))
-	draw_rect(Rect2(-56, -64, 112, 58), Color(0.1, 0.13, 0.12))
-	draw_rect(Rect2(-56, -64, 112, 1), Color(0.2, 0.25, 0.22))
-	draw_rect(Rect2(-58, -6, 116, 3), Color(0.3, 0.22, 0.14))
-	draw_rect(Rect2(-6, -8, 8, 2), Color(CHALK, 0.9))                         # kawałek kredy na półce
-	draw_rect(Rect2(14, -8, 4, 2), Color(CHALK_GOLD, 0.7))
-	# ślady po wytartej kredzie
-	draw_rect(Rect2(-46, -22, 30, 1), Color(CHALK, 0.07))
-	draw_rect(Rect2(8, -26, 36, 1), Color(CHALK, 0.06))
-	_draw_content(self)
-
 ## Treść tablicy (kreda): tytuł, wiersze ostatnich misji, kreski i łączny czas.
 func _draw_content(ci: CanvasItem) -> void:
 	var font := UiTheme.heading_font()

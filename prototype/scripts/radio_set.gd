@@ -25,31 +25,3 @@ func _physics_process(_delta: float) -> void:
 func _process(delta: float) -> void:
 	_t += delta
 	queue_redraw()
-
-func _draw() -> void:
-	var casing := Color(0.2, 0.22, 0.17)
-	var edge := Color(0.1, 0.11, 0.08)
-	draw_rect(Rect2(-14, -18, 28, 18), edge)                                 # obudowa
-	draw_rect(Rect2(-13, -17, 26, 16), casing)
-	draw_rect(Rect2(-13, -17, 26, 2), Color(0.3, 0.33, 0.25))                # światło z góry
-	# głośnik (kratka)
-	draw_rect(Rect2(-11, -14, 10, 10), Color(0.12, 0.13, 0.1))
-	for i in 4:
-		draw_rect(Rect2(-10, -13 + i * 2.5, 8, 1), Color(0.26, 0.28, 0.22))
-	# tarcza strojenia — zielone podświetlenie, wskazówka kołysze się jak szukająca częstotliwości
-	var fc := Weather.color_of(Weather.forecast)                             # tarcza i dioda w kolorze prognozy (pogodny wieczór, deszcz, burza, mgła)
-	draw_rect(Rect2(1, -14, 11, 6), Color(fc.r * 0.12, fc.g * 0.12, fc.b * 0.12))
-	draw_rect(Rect2(2, -13, 9, 4), Color(fc.r * 0.55, fc.g * 0.55, fc.b * 0.55, 0.85))
-	var nx := 2.0 + 4.5 + sin(_t * 0.9) * 3.4
-	draw_rect(Rect2(nx, -13, 1, 4), Color(0.85, 1.0, 0.7))
-	# gałki i dioda (miga jak sygnał)
-	draw_circle(Vector2(4, -5), 2.0, Color(0.1, 0.1, 0.08))
-	draw_circle(Vector2(9, -5), 2.0, Color(0.1, 0.1, 0.08))
-	var blink := 0.5 + 0.5 * sin(_t * 3.0)
-	draw_circle(Vector2(-11, -6), 1.2, Color(fc.r * (0.35 + 0.65 * blink), fc.g * (0.35 + 0.65 * blink), fc.b * (0.35 + 0.65 * blink)))
-	# antena
-	draw_line(Vector2(9, -18), Vector2(15, -34), Color(0.55, 0.57, 0.52), 1.0)
-	draw_circle(Vector2(15, -34), 1.0, Color(0.7, 0.2, 0.15))
-	# nóżki
-	draw_rect(Rect2(-12, -1, 3, 1), edge)
-	draw_rect(Rect2(9, -1, 3, 1), edge)
