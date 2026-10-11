@@ -48,7 +48,7 @@ uniform bool has_normal = false;
 uniform bool has_orm = false;
 uniform vec4 mod = vec4(1.0);
 uniform float eye_glow = 1.4;
-uniform float sil = 0.20;              // słaba, chłodna sylwetka widoczna w całkowitej ciemności (jak warstwa `Silhouette` arkuszy HD w 2D)
+uniform float sil = 0.06;              // słaba, chłodna sylwetka widoczna w całkowitej ciemności (jak warstwa `Silhouette` arkuszy HD w 2D)
 //VERTEX
 vec3 rgb2hsv(vec3 c) {
 	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);

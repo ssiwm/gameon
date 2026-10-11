@@ -135,7 +135,6 @@ static func build_level(parent: Node3D, rows: Array) -> Dictionary:
 	var box := BoxMesh.new()
 	box.size = Vector3(T, T, DEPTH_FRONT + DEPTH_BACK)
 	var groups := {"#": [], "C": [], "M": [], "m": [], "O": [], "~": []}
-	var grass: Array = []
 	var walls: Array = []
 	var posts: Array = []
 	var planks: Array = []
@@ -153,8 +152,6 @@ static func build_level(parent: Node3D, rows: Array) -> Dictionary:
 				if (ch == "O" or ch == "~" or ch == "m") and _liquid_surface_col(rows, c, r, ch) and not "--noliquids" in OS.get_cmdline_user_args():
 					continue                                    # ciecz / błoto: siatkę niecki i taflę rysuje `build_liquids`
 				groups[ch].append(Transform3D(Basis.IDENTITY, p + Vector3(0.0, 0.0, zc)))
-				if ch == "#" and not is_solid_ch(_ch(rows, c, r - 1)):
-					grass.append(Transform3D(Basis.IDENTITY, p + Vector3(0.0, T * 0.5, zc + 0.05)))
 			elif ch == "b":
 				walls.append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
 			elif ch == "w":
@@ -177,9 +174,6 @@ static func build_level(parent: Node3D, rows: Array) -> Dictionary:
 		mats[k] = wet                                           # kafle poniżej powierzchni cieczy: mokry grunt (nad nimi leży bryła)
 	for k in groups:
 		_multimesh(parent, box, groups[k], mats[k])
-	var gbox := BoxMesh.new()
-	gbox.size = Vector3(T, 0.18, DEPTH_FRONT + DEPTH_BACK + 0.1)
-	_multimesh(parent, gbox, grass, make_mat(Color(0.07, 0.13, 0.06), 1.0, 0.2, 0.9))
 	var wbox := BoxMesh.new()
 	wbox.size = Vector3(T, T, 0.3)
 	_multimesh(parent, wbox, walls, make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"), false)
@@ -190,7 +184,7 @@ static func build_level(parent: Node3D, rows: Array) -> Dictionary:
 	pc.radial_segments = 10
 	_multimesh(parent, pc, posts, make_pbr("post", 0.9, Color(0.20, 0.14, 0.09), 1.0, 1.0, 1.0, false, "organic"))
 	var plb := BoxMesh.new()
-	plb.size = Vector3(T, 0.22, 2.0)
+	plb.size = Vector3(T, 0.22, 1.3)
 	_multimesh(parent, plb, planks, make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic"))
 	_multimesh(parent, plb, grates, make_pbr("grate", 0.5, Color(0.28, 0.30, 0.34), 0.5, 1.0, 0.7, true))
 	return marks
@@ -1184,48 +1178,165 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 			bp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			parent.add_child(bp)
 
-## Las w głębi: świerki z `MultiMesh` w płaszczyznach z = −3,5 … −46 m tam, gdzie pod otwartym niebem jest polana (pierwszy kafel bryły nisko).
+## Las w głębi: świerki i martwe pnie jako skrzyżowane karty z teksturą (art/world3d/forest, `tools/world_forest_gen.py`) w `MultiMesh`,
+## w płaszczyznach z = −3,5 … −60 m nad kolumnami z otwartym niebem. Bliskie rzędy są rzadsze i wyższe (pnie w kadrze), dalekie gęste —
+## razem z mgłą głębi i wstęgami mgły dają warstwy sylwetek zamiast pustego nieba.
+const FOREST_DIR := "res://art/world3d/forest/"
+const FOREST_KINDS := ["spruce_a", "spruce_b", "spruce_c", "snag_a", "snag_b"]
 static func build_forest(parent: Node3D, rows: Array) -> void:
 	var nrows := rows.size()
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 0x1ACE
-	var trunks: Array = []
-	var low: Array = []
-	var mid: Array = []
-	var top: Array = []
+	var xf := {}
+	for k in FOREST_KINDS:
+		xf[k] = []
 	for c in range(0, cols, 2):
 		var r0 := 0
 		while r0 < nrows and not is_solid_ch(_ch(rows, c, r0)):
 			r0 += 1
-		if r0 < 28:
+		if r0 < 6 or r0 >= nrows:
 			continue
-		var n := rng.randi_range(2, 4)
-		for i in n:
-			var z := -rng.randf_range(DEPTH_BACK + 1.0, 46.0)
-			var h := rng.randf_range(7.0, 15.0)
-			var x := (float(c) + rng.randf()) * T + rng.randf_range(-2.0, 2.0)
-			var y := -float(r0) * T
-			var s := h / 10.0
-			trunks.append(Transform3D(Basis().scaled(Vector3(s, s, s)), Vector3(x, y + h * 0.08, z)))
-			low.append(Transform3D(Basis().scaled(Vector3(s, s, s)), Vector3(x, y + h * 0.28, z)))
-			mid.append(Transform3D(Basis().scaled(Vector3(s * 0.8, s, s * 0.8)), Vector3(x, y + h * 0.52, z)))
-			top.append(Transform3D(Basis().scaled(Vector3(s * 0.6, s, s * 0.6)), Vector3(x, y + h * 0.76, z)))
-	var tm := make_mat(Color(0.05, 0.035, 0.025), 1.0, 0.3, 0.8)
-	var gm := make_mat(Color(0.03, 0.07, 0.07), 1.0, 0.2, 0.6)
-	var tr := CylinderMesh.new()
-	tr.top_radius = 0.18
-	tr.bottom_radius = 0.28
-	tr.height = 2.0
-	tr.radial_segments = 7
-	_multimesh(parent, tr, trunks, tm, false)
-	for spec in [[low, 2.4, 3.8], [mid, 2.0, 3.0], [top, 1.6, 2.2]]:
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.02
-		cm.bottom_radius = float(spec[1])
-		cm.height = float(spec[2]) + 1.4
-		cm.radial_segments = 9
-		_multimesh(parent, cm, spec[0], gm, false)
+		var y := -float(r0) * T
+		# trzy pasy głębi: bliski (pojedyncze wysokie drzewa), środkowy, daleki (gęsta ściana lasu)
+		for band in [[DEPTH_BACK + 1.2, 9.0, 0.28, 13.0, 21.0], [9.0, 24.0, 1.4, 11.0, 19.0], [24.0, 60.0, 2.6, 12.0, 24.0]]:
+			var n := int(float(band[2])) + (1 if rng.randf() < fmod(float(band[2]), 1.0) else 0)
+			for i in n:
+				var z := -rng.randf_range(float(band[0]), float(band[1]))
+				var h := rng.randf_range(float(band[3]), float(band[4]))
+				var x := (float(c) + rng.randf() * 2.0) * T + rng.randf_range(-1.5, 1.5)
+				var roll := rng.randf()
+				var kind: String = "snag_a" if roll < 0.06 else ("snag_b" if roll < 0.12 else ("spruce_a" if roll < 0.45 else ("spruce_b" if roll < 0.72 else "spruce_c")))
+				var w := h * 0.5 * rng.randf_range(0.85, 1.15)
+				var b := Basis(Vector3.UP, rng.randf_range(-0.5, 0.5)).scaled(Vector3(w, h, w))
+				(xf[kind] as Array).append(Transform3D(b, Vector3(x, y - 0.3, z)))
+	# siatka: dwie skrzyżowane karty 1×1 m (podstawa w y = 0), normalne w górę i ku kamerze — karta nie gaśnie przy bocznym świetle
+	var v := PackedVector3Array()
+	var uv := PackedVector2Array()
+	var nrm := PackedVector3Array()
+	var idx := PackedInt32Array()
+	for a in [0.0, PI * 0.5]:
+		var dx := Vector3(cos(a), 0.0, sin(a)) * 0.5
+		var base := v.size()
+		v.append_array(PackedVector3Array([-dx, dx, dx + Vector3.UP, -dx + Vector3.UP]))
+		uv.append_array(PackedVector2Array([Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]))
+		for q in 4:
+			nrm.append(Vector3(0.0, 0.55, 0.83))
+		idx.append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = v
+	arr[Mesh.ARRAY_TEX_UV] = uv
+	arr[Mesh.ARRAY_NORMAL] = nrm
+	arr[Mesh.ARRAY_INDEX] = idx
+	var card := ArrayMesh.new()
+	card.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	for k in FOREST_KINDS:
+		if (xf[k] as Array).is_empty() or not ResourceLoader.exists(FOREST_DIR + k + ".png"):
+			continue
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = load(FOREST_DIR + k + ".png")
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		m.alpha_scissor_threshold = 0.5
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.roughness = 1.0
+		m.metallic_specular = 0.0
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		_multimesh(parent, card, xf[k], m, false)
+
+## Runo: kępy trawy i paprocie na odsłoniętym wierzchu gruntu (`#`) — karty z teksturą (art/world3d/forest) kołysane wiatrem w shaderze.
+## Gęste i wysokie w głębi bryły, niskie i rzadkie w pasie, po którym chodzą postacie (ścieżka zostaje czytelna).
+const UNDERGROWTH_SHADER := """
+shader_type spatial;
+render_mode cull_disabled, depth_draw_opaque, specular_disabled;
+uniform sampler2D tex : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
+void vertex() {
+	float k = 1.0 - UV.y;
+	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	float sway = sin(TIME * 1.1 + w.x * 0.8 + w.z * 1.9) * 0.6 + sin(TIME * 2.7 + w.x * 2.3) * 0.4;
+	VERTEX.x += sway * 0.07 * k * k;
+	NORMAL = normalize(vec3(0.0, 1.0, 0.45));
+	COLOR = INSTANCE_CUSTOM;
+}
+void fragment() {
+	vec4 c = texture(tex, UV);
+	ALBEDO = c.rgb * mix(0.6, 1.5, 1.0 - UV.y) * (0.8 + 0.5 * COLOR.r);
+	ALPHA = c.a;
+	ALPHA_SCISSOR_THRESHOLD = 0.45;
+	ROUGHNESS = 1.0;
+}
+"""
+static func build_undergrowth(parent: Node3D, rows: Array) -> void:
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 0x6A55
+	var xf := {"grass_a": [], "grass_b": [], "fern_a": []}
+	for r in nrows:
+		for c in cols:
+			if _ch(rows, c, r) != "#" or is_solid_ch(_ch(rows, c, r - 1)) or is_platform_ch(_ch(rows, c, r - 1)):
+				continue
+			var roofed := false                                        # wnętrza (ściana tła albo strop nad kaflem) zostają bez runa
+			for rr in range(r - 1, -1, -1):
+				var up := _ch(rows, c, rr)
+				if up == "b" or is_solid_ch(up):
+					roofed = true
+					break
+			if roofed:
+				continue
+			var top := cell_pos(c, r) + Vector3(0.0, T * 0.5, 0.0)
+			for i in 9:
+				var z := rng.randf_range(-DEPTH_BACK + 0.15, DEPTH_FRONT - 0.08)
+				var lane := absf(z) < 0.45                                   # pas chodu
+				if lane and rng.randf() < 0.55:
+					continue
+				var deep := clampf(-z / DEPTH_BACK, 0.0, 1.0)
+				var fern := not lane and z < -0.7 and rng.randf() < 0.16
+				var h := rng.randf_range(0.55, 0.95) if fern else (rng.randf_range(0.14, 0.26) if lane else rng.randf_range(0.26, 0.5) + 0.35 * deep)
+				var wd := h * (1.5 if fern else rng.randf_range(0.9, 1.3))
+				var b := Basis(Vector3.UP, rng.randf_range(-0.6, 0.6)).scaled(Vector3(wd, h, wd))
+				var kind := "fern_a" if fern else ("grass_a" if rng.randf() < 0.6 else "grass_b")
+				var at := top + Vector3(rng.randf_range(-0.5, 0.5) * T, -h * (0.42 if fern else 0.04), z)
+				(xf[kind] as Array).append(Transform3D(b, at))
+	var v := PackedVector3Array()
+	var uv := PackedVector2Array()
+	var idx := PackedInt32Array()
+	for a in [0.0, PI * 0.5]:
+		var dx := Vector3(cos(a), 0.0, sin(a)) * 0.5
+		var base := v.size()
+		v.append_array(PackedVector3Array([-dx, dx, dx + Vector3.UP, -dx + Vector3.UP]))
+		uv.append_array(PackedVector2Array([Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]))
+		idx.append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = v
+	arr[Mesh.ARRAY_TEX_UV] = uv
+	arr[Mesh.ARRAY_INDEX] = idx
+	var card := ArrayMesh.new()
+	card.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var sh := Shader.new()
+	sh.code = UNDERGROWTH_SHADER
+	for k in xf:
+		var list: Array = xf[k]
+		if list.is_empty() or not ResourceLoader.exists(FOREST_DIR + k + ".png"):
+			continue
+		var mat := ShaderMaterial.new()
+		mat.shader = sh
+		mat.set_shader_parameter("tex", load(FOREST_DIR + k + ".png"))
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = true
+		mm.mesh = card
+		mm.instance_count = list.size()
+		for i in list.size():
+			mm.set_instance_transform(i, list[i])
+			mm.set_instance_custom_data(i, Color(rng.randf(), 0.0, 0.0, 1.0))
+		var mi := MultiMeshInstance3D.new()
+		mi.name = "Undergrowth_" + k
+		mi.multimesh = mm
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(mi)
 
 const FOG_SHADER := """
 shader_type spatial;
@@ -1329,34 +1440,72 @@ static func build_ground_fog(parent: Node3D, rows: Array) -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		parent.add_child(mi)
 
+## Niebo nocy: czarne przy horyzoncie (na wysokości graczy tło zostaje ciemne — wróg nie rysuje się sylwetką na poświacie),
+## wyżej poświata księżyca za chmurami — czubki świerków odcinają się od niej postrzępioną linią.
+const SKY_SHADER := """
+shader_type sky;
+uniform vec3 glow : source_color = vec3(0.036, 0.052, 0.090);
+uniform vec3 base : source_color = vec3(0.003, 0.004, 0.008);
+uniform float lit = 0.0;
+float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vn(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fbm(vec2 p) {
+	float a = 0.5; float s = 0.0;
+	for (int i = 0; i < 5; i++) { s += a * vn(p); p = p * 2.07 + vec2(11.3, 5.9); a *= 0.5; }
+	return s;
+}
+void sky() {
+	float e = EYEDIR.y;
+	vec2 q = EYEDIR.xz / (abs(e) + 0.35);
+	float n = fbm(q * 2.2 + vec2(TIME * 0.004, 0.0));
+	float band = smoothstep(0.04, 0.24, e) * (1.0 - 0.6 * smoothstep(0.5, 0.95, e));
+	float cloud = smoothstep(0.30, 0.75, n);
+	vec3 c = base + glow * band * (0.35 + 0.95 * cloud);
+	COLOR = mix(c, vec3(0.45, 0.5, 0.58), lit);
+}
+"""
 ## Środowisko nocy (niebo, mgła głębi, glow, filmic) i księżyc z cieniami. `ambient` — kolor ciemności poziomu (jak w 2D) służy do ocieplenia
 ## światła otoczenia (kryjówka); `moon` = false dla wnętrz.
 static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0.0406), moon := true) -> Environment:
 	var env := Environment.new()
 	var sky := Sky.new()
-	var sm := ProceduralSkyMaterial.new()
-	sm.sky_top_color = Color(0.015, 0.025, 0.06)
-	sm.sky_horizon_color = Color(0.06, 0.09, 0.16)
-	sm.ground_bottom_color = Color(0.01, 0.015, 0.03)
-	sm.ground_horizon_color = Color(0.04, 0.06, 0.1)
-	sm.sun_angle_max = 0.0
+	var sm := ShaderMaterial.new()
+	var ssh := Shader.new()
+	ssh.code = SKY_SHADER
+	sm.shader = ssh
 	sky.sky_material = sm
 	env.sky = sky
 	env.background_mode = Environment.BG_SKY
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	var warm := clampf((ambient.r - ambient.b) * 6.0, 0.0, 1.0)          # kryjówka: bursztynowe otoczenie
-	env.ambient_light_color = Color(0.20, 0.26, 0.42).lerp(Color(0.42, 0.30, 0.20), warm)
-	env.ambient_light_energy = 0.28 + 0.12 * warm
+	# noc ma być czarna jak w 2D (GDD §8.3: ciemność jest mechaniką) — otoczenie tylko odcina bryły od nieba, widoczność dają światła (aura, latarka, flara, ognisko)
+	env.ambient_light_color = Color(0.15, 0.18, 0.25).lerp(Color(0.42, 0.30, 0.20), warm)
+	env.ambient_light_energy = 0.09 + 0.31 * warm
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.glow_enabled = true
 	env.glow_intensity = 0.7
 	env.glow_bloom = 0.05
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.04, 0.06, 0.10)
-	env.fog_density = 0.018
+	env.fog_sky_affect = 0.0
+	# mgła głębi liczona od płaszczyzny gry w głąb (view3d.gd ustawia początek tuż za graczami): plan gry zostaje czysty i czarny,
+	# a kolejne rzędy lasu toną w chłodnej poświacie — bliskie pnie rysują się na niej czarną sylwetką
+	env.fog_mode = Environment.FOG_MODE_DEPTH
+	env.fog_light_color = Color(0.046, 0.066, 0.105)
+	env.fog_density = 1.0
+	env.fog_depth_curve = 0.7
+	env.fog_depth_begin = 20.0
+	env.fog_depth_end = 80.0
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.08
-	env.adjustment_saturation = 0.9
+	env.adjustment_contrast = 1.10
+	env.adjustment_saturation = 1.0
+	if "--view3dlit" in OS.get_cmdline_user_args():                # dev: pełne, białe światło otoczenia — podgląd geometrii i materiałów bez nocy
+		env.ambient_light_color = Color.WHITE
+		env.ambient_light_energy = 1.0
+		env.fog_enabled = false
+		sm.set_shader_parameter("lit", 1.0)
 	var we := WorldEnvironment.new()
 	we.name = "Env"
 	we.environment = env
@@ -1365,8 +1514,8 @@ static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0
 		var l := DirectionalLight3D.new()
 		l.name = "Moon"
 		l.basis = Basis.looking_at(Vector3(0.55, -0.7, -0.45), Vector3.UP)
-		l.light_color = Color(0.55, 0.68, 1.0)
-		l.light_energy = 0.55
+		l.light_color = Color(0.62, 0.72, 0.95)
+		l.light_energy = 0.20
 		l.shadow_enabled = true
 		l.directional_shadow_max_distance = 60.0
 		l.shadow_bias = 0.04

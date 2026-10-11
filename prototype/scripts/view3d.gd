@@ -26,8 +26,12 @@ const MIRROR_GROUPS := ["enemies", "boss", "nests", "roamers"]
 const HIDE_NAMES := ["Back", "Solid", "Deco", "TerrainHD", "TerrainHDBack", "Backdrop"]
 const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wrogów
 const LAYER_ACTORS := 2                    ## warstwa wizualna graczy (modele 3D)
-const ACTOR_AMBIENT := 0.55                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
+const ACTOR_AMBIENT := 0.16                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
 const ACTOR_LIGHT := 1.0                   ## mnożnik świateł pomocniczych graczy (kontra, wypełnienie, obrys)
+const AURA_WORLD := 3.2                    ## mnożnik energii aury gracza dla terenu (zwykłe światło omni: 4)
+const AURA_ACTOR := 0.8                    ## mnożnik energii aury gracza dla modeli graczy
+const FOG_BEGIN_M := 2.0                    ## mgła głębi: początek za płaszczyzną gry [m]
+const FOG_END_M := 62.0                     ## mgła głębi: pełna gęstość [m za płaszczyzną gry]
 const Z_BG := -60
 const Z_FG := 1
 
@@ -52,6 +56,7 @@ var _estate := {}                        ## id węzła wroga 2D → stan do wykr
 var _lights := {}                        ## id PointLight2D → [PointLight2D, Light3D]
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
+var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
 var _scan_t := 0.0
 var _hidden: Array = []                  ## ukryte statyczne węzły 2D (przywracane przy wyłączeniu)
 var _life := 0.0
@@ -94,8 +99,9 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_geo = Node3D.new()
 	_geo.name = "Geometry"
 	_world.add_child(_geo)
-	# światło tylko dla graczy (warstwa 2): miękka kontra, wypełnienie i obrys jak w podglądzie postaci — sylwetka czytelna także w ciemności
-	for spec in [[Vector3(-0.35, -0.6, -0.7), Color(0.9, 0.88, 0.8), 1.3], [Vector3(0.2, -0.3, 0.9), Color(0.7, 0.8, 1.0), 1.0], [Vector3(0.7, -0.2, -0.4), Color(0.6, 0.7, 1.0), 0.5]]:
+	# światło tylko dla graczy (warstwa 2): prawie sama kontra (dwa światła zza postaci) — obrys czytelny w ciemności, a bryłę modeluje światło sceny
+	# (aura, latarka, flara, ognisko), więc postać nie świeci własnym światłem
+	for spec in [[Vector3(-0.35, -0.6, -0.7), Color(0.9, 0.88, 0.8), 0.14], [Vector3(0.25, -0.35, 0.9), Color(0.72, 0.82, 1.0), 0.85], [Vector3(-0.6, -0.15, 0.75), Color(0.6, 0.7, 1.0), 0.35]]:
 		var dl := DirectionalLight3D.new()
 		dl.basis = Basis.looking_at(spec[0], Vector3.UP)
 		dl.light_color = spec[1]
@@ -127,6 +133,11 @@ func release() -> void:
 		if is_instance_valid(pr[0]):
 			(pr[0] as CanvasItem).self_modulate = Color.WHITE
 	_proj.clear()
+	for id in _props.keys():
+		var pp: Array = _props[id]
+		if is_instance_valid(pp[0]):
+			(pp[0] as CanvasItem).modulate = Color.WHITE
+	_props.clear()
 	for n in _hidden:
 		if is_instance_valid(n):
 			n.visible = true
@@ -174,6 +185,7 @@ func _process(delta: float) -> void:
 	_sync_enemies(delta)
 	_sync_sprites()
 	_sync_projectiles()
+	_sync_props()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -202,6 +214,9 @@ func _sync_camera() -> void:
 	var ctr := c2.get_screen_center_position()
 	var xf := Transform3D(Basis.IDENTITY, Vector3(ctr.x * PX, -ctr.y * PX, dist))
 	_cam_a.global_transform = xf
+	if _cam_a.environment != null:                          # mgła głębi zaczyna się tuż za płaszczyzną gry
+		_cam_a.environment.fog_depth_begin = dist + FOG_BEGIN_M
+		_cam_a.environment.fog_depth_end = dist + FOG_END_M
 	_cam_b.global_transform = xf
 	# rozmiar renderu (skala wg „Effects quality”) i dopasowanie sprite'ów do kadru: środek na środku kamery, wysokość = wysokość kadru
 	var rs := _res_scale()
@@ -249,15 +264,16 @@ func _sync_geometry() -> void:
 	env_b.sky = null
 	env_b.glow_enabled = false
 	# jasność postaci: osobne, łagodne światło otoczenia i słabsza mgła tylko dla warstwy graczy (modele leżą w płaszczyźnie gry, kilkanaście metrów od kamery)
-	env_b.ambient_light_color = Color(0.55, 0.60, 0.78)
+	env_b.ambient_light_color = Color(0.50, 0.56, 0.70)
 	env_b.ambient_light_energy = ACTOR_AMBIENT
-	env_b.fog_density = env_a.fog_density * 0.35
+	env_b.fog_enabled = false
 	_cam_b.environment = env_b
 	Level3D.build_level(_geo, rows)
 	Level3D.build_liquids(_geo, rows)
 	Level3D.build_liquid_props(_geo, rows)
 	_rows = rows
 	Level3D.build_decals(_geo, rows)
+	Level3D.build_undergrowth(_geo, rows)
 	if not hub:
 		Level3D.build_forest(_geo, rows)
 		Level3D.build_ground_fog(_geo, rows)
@@ -748,6 +764,102 @@ func mirror_burst(fx: CPUParticles2D, pos: Vector2) -> void:
 	fx.emitting = false
 	fx.visible = false
 
+# ---------------------------------------------------------------- obiekty fizyczne (skrzynie, beczki)
+
+## Skrzynie i beczki (`prop.gd`, grupa „props”) jako bryły 3D: rzucają cień, łapią światło flary i latarki, obracają się jak ciało 2D.
+## Wersja 2D zostaje (fizyka, trafienia), tylko jest przezroczysta.
+func _sync_props() -> void:
+	for n in get_tree().get_nodes_in_group("props"):
+		if n is Node2D and not n.is_queued_for_deletion() and not _props.has(n.get_instance_id()):
+			var kind := String(n.get("kind"))
+			var px: Node3D = _make_barrel() if kind == "barrel" else _make_crate()
+			_world.add_child(px)
+			(n as CanvasItem).modulate = Color(1, 1, 1, 0)
+			_props[n.get_instance_id()] = [n, px]
+	for id in _props.keys():
+		var pr: Array = _props[id]
+		var src = pr[0]
+		var px: Node3D = pr[1]
+		if not is_instance_valid(src) or (src as Node).is_queued_for_deletion():
+			if is_instance_valid(px):
+				px.queue_free()
+			_props.erase(id)
+			continue
+		var s2 := src as Node2D
+		px.visible = s2.visible
+		px.position = Level3D.px_to_m(s2.global_position) + Vector3(0.0, 0.0, -0.05)
+		px.rotation = Vector3(0.0, 0.0, -s2.global_rotation)
+
+## Materiał PBR świata dla ruchomej bryły: kopia z triplanarem w przestrzeni obiektu (światowy „pływałby” po przesuwanej skrzyni).
+func _prop_mat(name: String, per_m: float, tint := Color.WHITE) -> StandardMaterial3D:
+	var m := Level3D.make_pbr(name, per_m, Color(0.4, 0.33, 0.26)).duplicate() as StandardMaterial3D
+	m.uv1_world_triplanar = false
+	m.albedo_color = m.albedo_color * tint
+	return m
+
+func _prop_part(parent: Node3D, mesh: Mesh, at: Vector3, mat: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.position = at
+	mi.material_override = mat
+	mi.layers = LAYER_WORLD
+	parent.add_child(mi)
+	return mi
+
+## Skrzynia 14×14 px (stopy w początku układu, jak kształt kolizji): deski + rama z kantówek i dwie poprzeczki na froncie.
+func _make_crate() -> Node3D:
+	var root := Node3D.new()
+	var s := 14.0 * PX
+	var d := 0.95
+	var planks := _prop_mat("plank", 0.9, Color(0.78, 0.66, 0.5))
+	var frame := _prop_mat("post", 1.4, Color(0.55, 0.46, 0.36))
+	var body := BoxMesh.new()
+	body.size = Vector3(s * 0.94, s * 0.94, d * 0.94)
+	_prop_part(root, body, Vector3(0.0, s * 0.5, 0.0), planks)
+	var t := s * 0.11
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			var post := BoxMesh.new()
+			post.size = Vector3(t, s, t)
+			_prop_part(root, post, Vector3(sx * (s - t) * 0.5, s * 0.5, sz * (d - t) * 0.5), frame)
+	for sy in [0.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			var rail := BoxMesh.new()
+			rail.size = Vector3(s - t * 2.0, t, t)
+			_prop_part(root, rail, Vector3(0.0, t * 0.5 + sy * (s - t), sz * (d - t) * 0.5), frame)
+		for sx in [-1.0, 1.0]:
+			var side := BoxMesh.new()
+			side.size = Vector3(t, t, d - t * 2.0)
+			_prop_part(root, side, Vector3(sx * (s - t) * 0.5, t * 0.5 + sy * (s - t), 0.0), frame)
+	var brace := BoxMesh.new()
+	brace.size = Vector3(s * 1.22, t * 0.8, t * 0.5)
+	var b := _prop_part(root, brace, Vector3(0.0, s * 0.5, d * 0.5 - t * 0.2), frame)
+	b.rotation.z = PI * 0.25
+	return root
+
+## Beczka 10×15 px: stalowy płaszcz w wyblakłej czerwieni, trzy obręcze, wieko z kołnierzem.
+func _make_barrel() -> Node3D:
+	var root := Node3D.new()
+	var r := 5.0 * PX
+	var h := 15.0 * PX
+	var shell := _prop_mat("metal", 1.2, Color(0.62, 0.16, 0.12))
+	shell.metallic = 0.35
+	var steel := _prop_mat("metal", 1.2, Color(0.42, 0.40, 0.38))
+	var body := CylinderMesh.new()
+	body.top_radius = r * 0.96
+	body.bottom_radius = r * 0.96
+	body.height = h
+	body.radial_segments = 20
+	_prop_part(root, body, Vector3(0.0, h * 0.5, 0.0), shell)
+	for f in [0.04, 0.36, 0.66, 0.96]:
+		var hoop := CylinderMesh.new()
+		hoop.top_radius = r * 1.03
+		hoop.bottom_radius = r * 1.03
+		hoop.height = h * 0.045
+		hoop.radial_segments = 20
+		_prop_part(root, hoop, Vector3(0.0, h * f, 0.0), steel)
+	return root
+
 # ---------------------------------------------------------------- światła
 
 func _scan_lights() -> void:
@@ -764,8 +876,8 @@ func _scan_lights() -> void:
 		var li := l as PointLight2D
 		if not li.enabled or li.energy <= 0.02 or li.texture == null or not li.is_visible_in_tree():
 			continue
-		if li.get_parent() is CharacterBody2D and li.texture != Lights.cone() and (li.get_parent() as Node).is_in_group("players"):
-			continue                                      # aura gracza: światło 2D pod sprite'a; w 3D przepalałaby model
+		# aura gracza (ciepła poświata 6 m): w 3D słabsza niż zwykłe światło omni i bez cieni — ta sama plama widoczności wokół gracza co w 2D
+		var is_aura: bool = li.get_parent() is CharacterBody2D and li.texture != Lights.cone() and (li.get_parent() as Node).is_in_group("players")
 		var id := li.get_instance_id()
 		keep[id] = true
 		n += 1
@@ -787,14 +899,14 @@ func _scan_lights() -> void:
 				# światło omni jest rozdzielone na dwie warstwy: świat (z cieniami dla kilku najbliższych) i gracze (bez cieni, osobne światło) —
 				# cień światła omni w tej samej warstwie co modele graczy gubił je w warstwie z maską kamery (Compatibility)
 				l3.light_cull_mask = LAYER_WORLD
-				l3.shadow_enabled = n <= SHADOW_LIGHTS
+				l3.shadow_enabled = n <= SHADOW_LIGHTS and not is_aura
 				l3a = OmniLight3D.new()
 				l3a.light_color = li.color
 				l3a.light_cull_mask = LAYER_ACTORS
 				l3a.shadow_enabled = false
 				_world.add_child(l3a)
 			_world.add_child(l3)
-			_lights[id] = [li, l3, l3a]
+			_lights[id] = [li, l3, l3a, is_aura]
 	for id in _lights.keys():
 		if not keep.has(id):
 			var pair: Array = _lights[id]
@@ -832,7 +944,7 @@ func _sync_lights() -> void:
 			la.visible = true
 			la.light_color = li.color
 			la.position = Level3D.px_to_m(gp) + Vector3(0.0, 0.0, 1.0)
-			la.light_energy = li.energy * 4.0
+			la.light_energy = li.energy * (AURA_ACTOR if pair[3] else 4.0)
 			la.omni_range = clampf(rng_px * PX, 3.0, 24.0)
 		if l3 is SpotLight3D:
 			var a := li.global_rotation
@@ -843,5 +955,5 @@ func _sync_lights() -> void:
 			(l3 as SpotLight3D).spot_range = clampf(rng_px * PX, 6.0, 26.0)
 		else:
 			l3.position = Level3D.px_to_m(gp) + Vector3(0.0, 0.0, 1.0)
-			l3.light_energy = li.energy * 4.0
+			l3.light_energy = li.energy * (AURA_WORLD if pair[3] else 4.0)
 			(l3 as OmniLight3D).omni_range = clampf(rng_px * PX, 3.0, 24.0)
