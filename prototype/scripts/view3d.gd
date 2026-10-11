@@ -107,6 +107,8 @@ func setup(level: Node2D, players: Node2D) -> void:
 		dl.light_color = spec[1]
 		dl.light_energy = float(spec[2]) * ACTOR_LIGHT
 		dl.light_cull_mask = LAYER_ACTORS
+		dl.light_volumetric_fog_energy = 0.0               # mgła wolumetryczna nie zna masek warstw — kontra postaci nie może jej rozświetlać
+		dl.layers = LAYER_WORLD | LAYER_ACTORS             # Forward+: kamera odcina też same światła maską warstw — światło musi być widoczne dla obu kamer
 		_world.add_child(dl)
 	_spr_bg = Sprite2D.new()
 	_spr_bg.name = "WorldImage"
@@ -217,6 +219,7 @@ func _sync_camera() -> void:
 	if _cam_a.environment != null:                          # mgła głębi zaczyna się tuż za płaszczyzną gry
 		_cam_a.environment.fog_depth_begin = dist + FOG_BEGIN_M
 		_cam_a.environment.fog_depth_end = dist + FOG_END_M
+		_cam_a.environment.volumetric_fog_length = dist + 14.0
 	_cam_b.global_transform = xf
 	# rozmiar renderu (skala wg „Effects quality”) i dopasowanie sprite'ów do kadru: środek na środku kamery, wysokość = wysokość kadru
 	var rs := _res_scale()
@@ -254,7 +257,7 @@ func _sync_geometry() -> void:
 		ch.queue_free()
 	var amb: Color = _level.get("ambient") if _level.get("ambient") != null else Color(0.0245, 0.0266, 0.0406)
 	var hub := String(_level.get("objective")) == "hub"
-	Level3D.build_environment(_geo, amb, not hub)
+	Level3D.build_environment(_geo, amb, not hub, Settings.quality_idx)
 	var we := _geo.get_node("Env") as WorldEnvironment
 	var env_a := we.environment
 	we.queue_free()                                       # środowisko przypisujemy kamerom (osobno dla tła i graczy)
@@ -263,6 +266,9 @@ func _sync_geometry() -> void:
 	env_b.background_mode = Environment.BG_CLEAR_COLOR
 	env_b.sky = null
 	env_b.glow_enabled = false
+	env_b.ssao_enabled = false
+	env_b.ssil_enabled = false
+	env_b.volumetric_fog_enabled = false
 	# jasność postaci: osobne, łagodne światło otoczenia i słabsza mgła tylko dla warstwy graczy (modele leżą w płaszczyźnie gry, kilkanaście metrów od kamery)
 	env_b.ambient_light_color = Color(0.50, 0.56, 0.70)
 	env_b.ambient_light_energy = ACTOR_AMBIENT
@@ -274,6 +280,7 @@ func _sync_geometry() -> void:
 	_rows = rows
 	Level3D.build_decals(_geo, rows)
 	Level3D.build_undergrowth(_geo, rows)
+	Level3D.build_fog_volumes(_geo, rows, 0.02 if hub else 0.035)
 	if not hub:
 		Level3D.build_forest(_geo, rows)
 		Level3D.build_ground_fog(_geo, rows)
@@ -886,12 +893,15 @@ func _scan_lights() -> void:
 			var l3: Light3D
 			if is_cone:
 				var sp := SpotLight3D.new()
+				sp.light_volumetric_fog_energy = 6.0               # snop latarki widoczny we mgle
 				sp.spot_angle = 26.0
 				sp.spot_attenuation = 0.7
 				l3 = sp
 			else:
 				l3 = OmniLight3D.new()
+				l3.light_volumetric_fog_energy = 0.12 if is_aura else 0.7
 			l3.light_color = li.color
+			l3.layers = LAYER_WORLD | LAYER_ACTORS
 			var l3a: Light3D = null
 			if is_cone:
 				l3.shadow_enabled = n <= SHADOW_LIGHTS            # reflektor oświetla i teren, i graczy
@@ -904,6 +914,8 @@ func _scan_lights() -> void:
 				l3a.light_color = li.color
 				l3a.light_cull_mask = LAYER_ACTORS
 				l3a.shadow_enabled = false
+				l3a.light_volumetric_fog_energy = 0.0
+				l3a.layers = LAYER_WORLD | LAYER_ACTORS
 				_world.add_child(l3a)
 			_world.add_child(l3)
 			_lights[id] = [li, l3, l3a, is_aura]

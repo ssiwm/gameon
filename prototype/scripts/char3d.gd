@@ -450,6 +450,7 @@ func _build_normal_pass() -> void:
 render_mode unshaded, cull_back;
 uniform sampler2D nm : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform bool has_nm = false;
+uniform bool to_linear = false;         // Forward+: obraz 3D jest kodowany do sRGB na wyjściu — kodujemy odwrotnie, żeby w teksturze zostały surowe normalne
 void fragment() {
 	vec3 n = NORMAL;
 	if (has_nm) {
@@ -457,11 +458,13 @@ void fragment() {
 		vec3 t = texture(nm, UV).xyz * 2.0 - 1.0;
 		n = normalize(TANGENT * t.x + BINORMAL * t.y + NORMAL * t.z);
 	}
-	ALBEDO = n * 0.5 + vec3(0.5);
+	vec3 e = n * 0.5 + vec3(0.5);
+	ALBEDO = to_linear ? mix(e / 12.92, pow((e + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), e)) : e;
 }
 "
 	_normal_mat = ShaderMaterial.new()
 	_normal_mat.shader = sh
+	_normal_mat.set_shader_parameter("to_linear", RenderingServer.get_current_rendering_method() != "gl_compatibility")
 
 ## Materiał normalnych dla siatki: wspólny, a gdy model ma mapę normalnych — kopia ze wskazaną teksturą.
 func _normal_material_for(mi: MeshInstance3D) -> Material:

@@ -1,6 +1,6 @@
 # Dead Air '87
 
-Co-op horror run-and-gun (retro Contra), Godot **4.7.2**, GDScript, 2D, GL Compatibility. Cały projekt w `prototype/` (`godot --path prototype`). Opis gry: `GDD.md`, opis prototypu i flag CLI: `prototype/README.md`.
+Co-op horror run-and-gun (retro Contra), Godot **4.7.2**, GDScript, symulacja 2D (opcjonalny widok 3D), renderer Forward+ (Vulkan / D3D12; `--rendering-driver opengl3` wymusza tryb zgodności, np. pod xvfb). Cały projekt w `prototype/` (`godot --path prototype`). Opis gry: `GDD.md`, opis prototypu i flag CLI: `prototype/README.md`.
 
 ## Zasady
 
