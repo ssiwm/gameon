@@ -59,6 +59,8 @@ var _lights := {}                        ## id PointLight2D → [PointLight2D, L
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
 var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
+var _span: Array = []                    ## trasa drezyny (_rail_span)
+var _span_map := ""
 var _item_tuned := {}                    ## nazwy modeli z już dostrojonymi materiałami
 var _item_scenes := {}                   ## nazwa przedmiotu → PackedScene modelu 3D albo null
 var _items := {}                         ## id sprite'a przedmiotu HD → [Sprite2D, MeshInstance3D, materiał, z, ukryte węzły 2D]
@@ -272,10 +274,11 @@ func _sync_geometry() -> void:
 	var rows: Array = _level.get("_map")
 	if rows == null or rows.is_empty():
 		return
-	var key := "%s:%d" % [String(_level.get("map_id")), str(rows).hash()]
+	var key := "%s:%d:%s" % [String(_level.get("map_id")), str(rows).hash(), str(get_tree().get_first_node_in_group("handcar") != null)]
 	if key == _geo_key:
 		return
 	_geo_key = key
+	_span_map = ""
 	for ch in _geo.get_children():
 		ch.queue_free()
 	var amb: Color = _level.get("ambient") if _level.get("ambient") != null else Color(0.0245, 0.0266, 0.0406)
@@ -297,7 +300,11 @@ func _sync_geometry() -> void:
 	env_b.ambient_light_energy = ACTOR_AMBIENT
 	env_b.fog_enabled = false
 	_cam_b.environment = env_b
-	Level3D.build_level(_geo, rows)
+	var span := _rail_span()
+	var trench := {}
+	if not span.is_empty():
+		trench = {"row": int(float(span[2]) / 16.0), "c0": int(float(span[0]) / 16.0), "c1": int(float(span[1]) / 16.0)}
+	Level3D.build_level(_geo, rows, trench)
 	Level3D.build_liquids(_geo, rows)
 	Level3D.build_liquid_props(_geo, rows)
 	_rows = rows
@@ -343,7 +350,13 @@ func _sync_rigs() -> void:
 			rig["gun"] = gun_now
 			if c3._gun_n != null:
 				c3._gun_n.visible = false
-		actor.position = Level3D.px_to_m(p.global_position) - Vector3(0.0, float(c3.sink_m), 0.0)
+		# na drezynie: tor leży w korycie przed peronem, a pokład jest równo z peronem — pasażer przesuwa się tylko na oś toru (ku kamerze)
+		var want_lift := 0.0
+		for hc in get_tree().get_nodes_in_group("handcar"):
+			if hc.aboard(p):
+				want_lift = TRACK_ZC
+		rig["lift"] = lerpf(float(rig.get("lift", 0.0)), want_lift, 0.25)
+		actor.position = Level3D.px_to_m(p.global_position) + Vector3(0.0, -float(c3.sink_m), float(rig["lift"]))
 		_splash_update(actor, p.global_position, absf(float(p.get("velocity").x)) if p.get("velocity") != null else 0.0, LAYER_ACTORS)
 		actor.scale = Vector3(c3.px_flip, 1.0, 1.0)
 		c3._on_screen = true                       # poza liczymy zawsze (bez powiadomień o ekranie 2D)
@@ -859,24 +872,40 @@ func _local_xf(n: Node3D, root: Node) -> Transform3D:
 
 # ---------------------------------------------------------------- tor drezyny
 
-const RAIL_H := 0.5 * PX                    ## wysokość szyny [m] — koło drezyny (oś 2,5 px nad posadzką) stoi na jej główce
-const RAIL_Z := [0.28, -0.68]               ## szyna bliższa (pod kołami) i dalsza
+const RAIL_H := 0.5 * PX                    ## wysokość szyny [m] — koło drezyny (oś 2,5 px nad torem) stoi na jej główce
+const RAIL_Z := [0.98, 0.38]                ## szyna bliższa kamerze (pod kołami) i dalsza — obie w korycie przed peronem
+const TRACK_ZC := 0.68                      ## oś toru: tu stoi korpus drezyny i pasażerowie
 const WHEEL_D := 4.0                        ## średnica koła drezyny w widoku 3D [px świata] (sprite 2D: 6,8 px — sięgał poniżej posadzki)
+
+## Trasa drezyny [x0, x1, y] w pikselach świata (od stacji do końca toru przy wyjściu, w dowolnym kierunku) albo pusta tablica.
+## Liczona raz na mapę — potem drezyna jeździ, a tor i koryto zostają.
+func _rail_span() -> Array:
+	var mid := String(_level.get("map_id"))
+	if _span_map == mid:
+		return _span
+	var hc := get_tree().get_first_node_in_group("handcar") as Node2D
+	if hc == null:
+		return []
+	var exits = _level.get("exits")
+	var xa := hc.global_position.x
+	var xb := xa
+	if exits != null and not (exits as Array).is_empty():
+		xb = ((exits as Array)[0] as Vector2).x + 70.0
+	_span = [minf(xa, xb) - 60.0, maxf(xa, xb) + 60.0, hc.global_position.y]
+	_span_map = mid
+	return _span
 
 ## Tor pod drezyną: dwie szyny i podkłady od stacji startowej do końca trasy (wyjście poziomu). Budowany raz na geometrię mapy.
 func _build_rails() -> void:
-	var hc := get_tree().get_first_node_in_group("handcar") as Node2D
-	if hc == null or _geo.has_node("Rails"):
+	var span := _rail_span()
+	if span.is_empty() or _geo.has_node("Rails"):
 		return
-	var exits = _level.get("exits")
-	var x0 := hc.global_position.x - 60.0
-	var x1 := x0 + 200.0
-	if exits != null and not (exits as Array).is_empty():
-		x1 = maxf(x1, ((exits as Array)[0] as Vector2).x + 70.0)
+	var x0: float = span[0]
+	var x1: float = span[1]
 	var root := Node3D.new()
 	root.name = "Rails"
 	_geo.add_child(root)
-	var base := Level3D.px_to_m(Vector2(x0, hc.global_position.y))
+	var base := Level3D.px_to_m(Vector2(x0, float(span[2]))) - Vector3(0.0, Level3D.TRENCH_D, 0.0)      # dno koryta
 	var len_m := (x1 - x0) * PX
 	var steel := Level3D.make_pbr("metal", 0.6, Color(0.3, 0.3, 0.32), 0.45, 1.0, 1.0)
 	for z in RAIL_Z:
@@ -890,7 +919,7 @@ func _build_rails() -> void:
 			ri.layers = LAYER_WORLD
 			root.add_child(ri)
 	var tie := BoxMesh.new()
-	tie.size = Vector3(0.2, 0.03, absf(RAIL_Z[0] - RAIL_Z[1]) + 0.45)
+	tie.size = Vector3(0.2, 0.03, absf(RAIL_Z[0] - RAIL_Z[1]) + 0.22)
 	var n := int(len_m / 0.62)
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -949,8 +978,10 @@ func _sync_items() -> void:
 			var nm3 := String(sp.get_meta("hd_name", ""))
 			var feet := xf.origin if (it.size() > 6 and bool(it[6])) else xf * (sp.offset + Vector2(0.0, ItemsHd.frame_px(nm3).y * 0.5 - ItemsHd.PAD))
 			(it[1] as Node3D).position = Level3D.px_to_m(feet) + Vector3(0.0, 0.0, float(it[3]))
+			if nm3.begins_with("handcar"):                         # drezyna stoi w korycie: pokład równo z peronem
+				(it[1] as Node3D).position.y -= Level3D.TRENCH_D
 			(it[1] as Node3D).rotation = Vector3(0.0, 0.0, -xf.get_rotation())
-			(it[1] as Node3D).scale = Vector3(k * fl, k, k)
+			(it[1] as Node3D).scale = Vector3(k * fl, k, k * (0.7 if nm3 == "handcar" else 1.0))      # korpus drezyny węższy — mieści się w korycie
 			continue
 		var ts := sp.texture.get_size()
 		var centre := xf * sp.offset
@@ -1025,7 +1056,7 @@ func _make_item(sp: Sprite2D) -> void:
 			if apron != null:
 				apron.visible = false
 				hid.append(apron)
-		var zoff := -1.45 if ITEM_BACK.has(name) else -0.2
+		var zoff := -1.45 if ITEM_BACK.has(name) else (TRACK_ZC if name.begins_with("handcar") else -0.2)
 		if sp.offset == Vector2.ZERO:
 			# sprite obracany wokół środka (koło, dźwignia drezyny): model wisi na przegubie w swoim środku, żeby obrót szedł wokół osi
 			var box := AABB()
