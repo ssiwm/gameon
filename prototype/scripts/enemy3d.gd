@@ -210,6 +210,7 @@ var _dead_t := 0.0
 var _dead_from := {}                       ## poza w chwili śmierci (płynne wejście w upadek)
 var finished := false                      ## martwy i po animacji — można ukryć
 var _qsamp := {}                           ## próbki animacji czworonoga: nazwa → [rotacje, pozycje]
+var _eye_w := 0.0                          ## waga rozżarzenia oczu przy zapowiedzi ciosu 0..1
 var _qs := 0.0                             ## waga siadu czworonoga 0..1 (idle = siedzi i czeka)
 var _qw := 0.0                             ## waga biegu czworonoga 0..1
 var _spine: Array = []                     ## kości kręgosłupa czworonoga
@@ -396,6 +397,9 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		if _clip_t >= float(CLIP_DUR[_clip]):
 			_clip = ""
 	var eye := 1.4
+	# zapowiedź ciosu: oczy rozżarzają się i pulsują (zamiast czerwienienia całego modelu); po ciosie gasną do zwykłej jasności
+	_eye_w = move_toward(_eye_w, 1.0 if (anim == "windup" and not _dead) else 0.0, delta * (9.0 if anim == "windup" else 4.0))
+	eye += _eye_w * (4.2 + 1.4 * sin(_t * 24.0))
 	if _dead:
 		eye = 1.4 * (1.0 - smoothstep(0.0, 0.35, _dead_t))        # oczy gasną po śmierci
 	for m in _mats:

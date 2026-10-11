@@ -559,6 +559,10 @@ func _sync_enemies(delta: float) -> void:
 		var nfr := sf.get_frame_count(anim) if sf != null and sf.has_animation(anim) else 1
 		var lp := sf.get_animation_loop(anim) if sf != null and sf.has_animation(anim) else true
 		var md: Color = body.modulate if alive else Color.WHITE
+		# sygnały z 2D przekazywane kolorem (biały błysk trafienia, czerwone pulsowanie zapowiedzi ciosu) w 3D pokazuje animacja modelu:
+		# klip trafienia i krew, poza zapowiedzi / wstanie z siadu i rozżarzone oczy — model nie zmienia koloru
+		if flash or winding:
+			md = Color(1.0, 1.0, 1.0, md.a)
 		# prędkość pionowa z przesunięcia (u klientów węzeł wroga ma tylko pozycję): skok / spadanie → poza lotu w modelu 3D
 		var ypx := body.global_position.y if body != null else src.global_position.y
 		var vy_now := 0.0
