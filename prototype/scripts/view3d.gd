@@ -18,6 +18,7 @@ const Lights := preload("res://scripts/lights.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Enemy3D := preload("res://scripts/enemy3d.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
 
 const PX := Level3D.PX
 const FOV := 40.0
@@ -59,6 +60,7 @@ var _lights := {}                        ## id PointLight2D → [PointLight2D, L
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
 var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
+var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
 var _drawn := {}                         ## id węzła rysowanego kodem (radiostacja, mur) → [węzeł 2D, Node3D]
 var _span: Array = []                    ## trasa drezyny (_rail_span)
 var _span_map := ""
@@ -152,6 +154,16 @@ func release() -> void:
 		if is_instance_valid(_drawn[id][0]):
 			(_drawn[id][0] as CanvasItem).modulate = Color.WHITE
 	_drawn.clear()
+	for id in _guns.keys():
+		var gv: Array = _guns[id]
+		if is_instance_valid(gv[0]) and gv[0].get("_hd") != null and is_instance_valid(gv[0].get("_hd")):
+			for c in (gv[0].get("_hd") as Node).get_children():
+				if c is Sprite2D or c is ColorRect:
+					(c as CanvasItem).self_modulate = Color.WHITE
+			var ov = gv[0].get("_hd_over")
+			if ov != null and is_instance_valid(ov):
+				(ov as CanvasItem).visible = true
+	_guns.clear()
 	for id in _items.keys():
 		var itv: Array = _items[id]
 		var hid: Array = itv[4]
@@ -212,6 +224,7 @@ func _process(delta: float) -> void:
 	_sync_items()
 	_build_rails()
 	_sync_drawn()
+	_sync_guns()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -915,6 +928,159 @@ func _sync_drawn() -> void:
 		elif is_instance_valid(pr[1]):
 			(pr[1] as Node3D).visible = (pr[0] as CanvasItem).is_visible_in_tree()
 
+# ---------------------------------------------------------------- broń na ziemi i na stojakach
+
+const GUN_DIR := "res://art/char3d/"
+
+const RACK_SCALE := 0.66                    ## stojak w 3D względem sprite'a 2D (48 × 36 px to prawie 4 m szerokości)
+const RACK_UP_PX := 9.0                     ## dół stojaka nad podłogą [px świata]
+const RACK_Z := -1.80                       ## oś stojaka: plecy deski przy ścianie tła
+const RACK_SHELF_PX := 5.3                  ## góra półki w jednostkach modelu stojaka
+const RACK_GUN_SCALE := 1.3                 ## broń na stojaku względem sprite'a 2D
+const RACK_GUN_Z := -1.70                   ## broń leży na półce, tuż przed deską
+const RACK_PLATE_Z := -1.50                 ## front półki: tabliczka z ceną
+
+## Kopie materiałów modelu z mnożnikiem koloru (materiały siatek są współdzielone między egzemplarzami — nadpisujemy je na węzłach).
+func _tint_model(root: Node, tint: Color) -> void:
+	for mn in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := mn as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		for si in mi.mesh.get_surface_count():
+			var bm := mi.mesh.surface_get_material(si) as BaseMaterial3D
+			if bm == null:
+				continue
+			if tint == Color.WHITE:
+				mi.set_surface_override_material(si, null)
+				continue
+			var dm := bm.duplicate() as BaseMaterial3D
+			dm.albedo_color = Color(bm.albedo_color.r * tint.r, bm.albedo_color.g * tint.g, bm.albedo_color.b * tint.b, bm.albedo_color.a)
+			if dm.emission_enabled:
+				dm.emission_energy_multiplier *= tint.v
+			mi.set_surface_override_material(si, dm)
+
+## Broń jako łup i na stojakach kryjówki (`pickup.gd`, sprite broni HD poza potokiem przedmiotów) dostaje ten sam model 3D, który trzymają postacie
+## (art/char3d/gun_<klucz>.glb). Łup na ziemi ma rozmiar sprite'a 2D. Na stojaku broń jest większa i leży na półce; zablokowana jest przyciemniona,
+## wisi na niej kłódka (model), a na froncie półki mosiężna tabliczka z wytłoczoną ceną — nakładka 2D (kłódka i cena) jest wtedy chowana.
+func _sync_guns() -> void:
+	for n in get_tree().get_nodes_in_group("pickups"):
+		var id := n.get_instance_id()
+		if _guns.has(id) or not (n is Node2D):
+			continue
+		var key := String(n.get("_hd_gun")) if n.get("_hd_gun") != null else ""
+		var hd = n.get("_hd")
+		var path := GUN_DIR + "gun_%s.glb" % key
+		if key == "" or hd == null or not is_instance_valid(hd) or not ResourceLoader.exists(path):
+			continue
+		var on_rack := bool(n.get("static_display"))
+		var spr: Sprite2D = null
+		for c in (hd as Node).get_children():
+			if c is Sprite2D and spr == null:
+				spr = c
+			if c is Sprite2D or c is ColorRect:
+				(c as CanvasItem).self_modulate = Color(1, 1, 1, 0)
+		if spr == null:
+			continue
+		var model := (load(path) as PackedScene).instantiate() as Node3D
+		var box := AABB()
+		var first := true
+		for mn in model.find_children("*", "MeshInstance3D", true, false):
+			var mi := mn as MeshInstance3D
+			mi.layers = LAYER_WORLD
+			var bb := _local_xf(mi, model) * mi.get_aabb()
+			box = bb if first else box.merge(bb)
+			first = false
+			if mi.mesh != null:
+				for si in mi.mesh.get_surface_count():
+					var sm := mi.mesh.surface_get_material(si) as StandardMaterial3D
+					if sm != null:
+						sm.metallic = 0.45
+						sm.metallic_specular = 0.6
+		var rect: Rect2 = n.get("_hd_gun_rect")
+		var k := (rect.size.x / 16.0 * PX) / maxf(box.size.x, 0.001) * (RACK_GUN_SCALE if on_rack else 1.0)
+		var pivot := Node3D.new()
+		_world.add_child(pivot)
+		pivot.add_child(model)
+		model.scale = Vector3(k, k, k)
+		model.position = Vector3(-box.get_center().x * k, -box.position.y * k, -box.get_center().z * k)
+		var lock: Node3D = null
+		var plate: Node3D = null
+		var label: Label3D = null
+		if on_rack:
+			model.rotation.x = deg_to_rad(-7.0)                   # oparta o deskę
+			var over = n.get("_hd_over")
+			if over != null and is_instance_valid(over):
+				(over as CanvasItem).visible = false
+			lock = _item_model("padlock")
+			if lock != null:
+				lock.scale = Vector3(PX, PX, PX) * 0.75
+				lock.position = Vector3(0.0, box.size.y * k * 0.5 - 3.4 * PX, 0.10)
+				lock.rotation.z = deg_to_rad(6.0)
+				pivot.add_child(lock)
+			plate = Node3D.new()
+			pivot.add_child(plate)
+			var pm := BoxMesh.new()
+			pm.size = Vector3(9.0 * PX, 3.0 * PX, 0.02)
+			var pmi := MeshInstance3D.new()
+			pmi.mesh = pm
+			var brass := StandardMaterial3D.new()
+			brass.albedo_color = Color(0.55, 0.42, 0.2)
+			brass.metallic = 0.4
+			brass.roughness = 0.6
+			pmi.material_override = brass
+			pmi.layers = LAYER_WORLD
+			plate.add_child(pmi)
+			for sx in [-1.0, 1.0]:                                   # nity
+				var rv := SphereMesh.new()
+				rv.radius = 0.016
+				rv.height = 0.032
+				var rmi := MeshInstance3D.new()
+				rmi.mesh = rv
+				rmi.material_override = brass
+				rmi.layers = LAYER_WORLD
+				rmi.position = Vector3(sx * 3.9 * PX, 0.0, 0.012)
+				plate.add_child(rmi)
+			label = Label3D.new()
+			label.font = UiTheme.display_font(700)
+			label.font_size = 64
+			label.pixel_size = 2.1 * PX / 64.0
+			label.modulate = Color(0.13, 0.09, 0.05)
+			label.outline_size = 0
+			label.shaded = true
+			label.double_sided = false
+			label.layers = LAYER_WORLD
+			label.position = Vector3(0.0, 0.0, 0.013)
+			plate.add_child(label)
+			plate.position = Vector3(0.0, -(RACK_SHELF_PX - 4.1) * RACK_SCALE * PX - 1.6 * PX, RACK_PLATE_Z - RACK_GUN_Z)
+		_guns[id] = [n, pivot, spr, RACK_GUN_Z if on_rack else -0.25, on_rack, model, lock, plate, label, -1]
+	for id in _guns.keys():
+		var g: Array = _guns[id]
+		if not is_instance_valid(g[0]) or (g[0] as Node).is_queued_for_deletion() or not is_instance_valid(g[2]):
+			if is_instance_valid(g[1]):
+				(g[1] as Node).queue_free()
+			_guns.erase(id)
+			continue
+		var sp := g[2] as Sprite2D
+		var pv := g[1] as Node3D
+		pv.visible = sp.is_visible_in_tree()
+		if not bool(g[4]):
+			pv.position = Level3D.px_to_m(sp.global_position) + Vector3(0.0, 0.0, float(g[3]))
+			continue
+		# stojak: broń na półce (podłoga = początek pickupu), stan blokady z warsztatu
+		var floor_px := (g[0] as Node2D).global_position
+		pv.position = Level3D.px_to_m(floor_px) + Vector3(0.0, (RACK_UP_PX + RACK_SHELF_PX * RACK_SCALE - 2.6) * PX, float(g[3]))
+		var arg = (g[0] as Node).get("arg")
+		var locked := not Scrap.is_unlocked(arg)
+		var price := int(Scrap.price_of(arg))
+		var state := (price if locked else -2)
+		if state != int(g[9]):
+			g[9] = state
+			_tint_model(g[5], Color(0.34, 0.36, 0.42) if locked else Color.WHITE)
+			if g[6] != null:
+				(g[6] as Node3D).visible = locked
+			(g[7] as Node3D).visible = locked
+			(g[8] as Label3D).text = ("%d" % price) if price > 0 else "SOON"
+
 # ---------------------------------------------------------------- tor drezyny
 
 const RAIL_H := 0.5 * PX                    ## wysokość szyny [m] — koło drezyny (oś 2,5 px nad torem) stoi na jej główce
@@ -1027,6 +1193,9 @@ func _sync_items() -> void:
 				(it[1] as Node3D).position.y -= Level3D.TRENCH_D
 			(it[1] as Node3D).rotation = Vector3(0.0, 0.0, -xf.get_rotation())
 			(it[1] as Node3D).scale = Vector3(k * fl, k, k * (0.7 if nm3 == "handcar" else 1.0))      # korpus drezyny węższy — mieści się w korycie
+			if nm3 == "rack":                                      # stojak: mniejszy niż sprite 2D, zawieszony na ścianie, plecami do muru
+				(it[1] as Node3D).scale = Vector3(k * fl, k, k) * RACK_SCALE
+				(it[1] as Node3D).position = Level3D.px_to_m(feet) + Vector3(0.0, RACK_UP_PX * PX, RACK_Z)
 			continue
 		var ts := sp.texture.get_size()
 		var centre := xf * sp.offset
@@ -1102,6 +1271,8 @@ func _make_item(sp: Sprite2D) -> void:
 				apron.visible = false
 				hid.append(apron)
 		var zoff := -1.45 if ITEM_BACK.has(name) else (TRACK_ZC if name.begins_with("handcar") else -0.2)
+		if name == "rack":                                     # drewno z generatora jest jaskrawopomarańczowe w ciepłym świetle lamp — tonujemy
+			_tint_model(model, Color(0.56, 0.5, 0.46))
 		if sp.offset == Vector2.ZERO:
 			# sprite obracany wokół środka (koło, dźwignia drezyny): model wisi na przegubie w swoim środku, żeby obrót szedł wokół osi
 			var box := AABB()
