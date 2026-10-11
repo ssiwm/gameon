@@ -1039,6 +1039,17 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					ac.set("vel", Vector2(-70.0, -210.0))
 					level.add_child(ac)
 					ac.global_position = ap.global_position + Vector2(90.0, -14.0))
+	for ia in OS.get_cmdline_user_args():
+		if ia.begins_with("--shotinspect"):                   # dev: --shotinspect[=N] — gracz przy N-tym stojaku (od lewej) z otwartymi oględzinami broni
+			var ip: Node2D = _players.get_node_or_null("1")
+			var racks := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "weapon" and n.static_display)
+			racks.sort_custom(func(a: Node, b: Node) -> bool: return a.global_position.x < b.global_position.x)
+			var ri := int(ia.substr("--shotinspect=".length())) if ia.contains("=") else 0
+			if ip != null and ri < racks.size():
+				ip.global_position.x = (racks[ri] as Node2D).global_position.x
+				ip.velocity = Vector2.ZERO
+				get_tree().create_timer(0.4).timeout.connect(func() -> void:
+					ip.weapons.inspect_item = ip.weapons.nearby_weapon_item())
 	if "--shotfinale" in OS.get_cmdline_user_args():
 		mission.finale = true                                 # --shotfinale: finał kopalni bez przenoszenia gracza (pył ze stropu; użyj z --shotat/--shotrow)
 	if "--shotwall" in OS.get_cmdline_user_args():

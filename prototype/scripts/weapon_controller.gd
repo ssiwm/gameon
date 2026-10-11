@@ -47,6 +47,10 @@ var player: CharacterBody2D
 var loadout: Array[int] = [Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Weapons.START_SIDEARM]
 var melee_id := Weapons.START_MELEE
 var slot := 0
+const TAKE_HOLD := 0.6                  ## s trzymania [E], żeby wziąć broń (krótsze naciśnięcie = oględziny)
+var take_hold := 0.0                   ## lokalnie: ile już trzymane
+var inspect_item: Node2D               ## lokalnie: broń w oględzinach (panel HUD)
+var _take_armed := false
 var mags: Dictionary = {}
 var burst_on: Dictionary = {}     ## id broni → true: wybrany tryb serii (klawisz B; lokalnie, serwer go nie potrzebuje)
 
@@ -240,10 +244,12 @@ func tick_local(delta: float, reviving: bool) -> void:
 	if reviving:
 		_cancel_actions()
 		_sync_player()
+		_take_armed = false
+		take_hold = 0.0
+		inspect_item = null
 		return
 	_handle_switch_input()
-	if Input.is_action_just_pressed("interact"):
-		_try_pickup()
+	_tick_take(delta)
 	if Input.is_action_just_pressed("firemode"):
 		toggle_fire_mode()
 	if Input.is_action_just_pressed("melee"):
@@ -879,6 +885,38 @@ func nearby_weapon_item() -> Node2D:
 	if lvl == null or player == null:
 		return null
 	return lvl.weapon_item_near(player.global_position + Vector2(0, -8))
+
+## [E] przy broni: krótkie naciśnięcie otwiera / zamyka oględziny (panel z modelem 3D i statystykami — weapon_inspect.gd, lokalnie),
+## przytrzymanie przez TAKE_HOLD s bierze broń (zamianę rozstrzyga serwer, jak dotąd). Odejście od broni zamyka oględziny.
+func _tick_take(delta: float) -> void:
+	var it := nearby_weapon_item()
+	if inspect_item != null and (not is_instance_valid(inspect_item) or it != inspect_item):
+		inspect_item = null
+	if it == null:
+		_take_armed = false
+		take_hold = 0.0
+		return
+	if Input.is_action_just_pressed("interact"):
+		_take_armed = true
+		take_hold = 0.0
+	if not _take_armed:
+		return
+	if Input.is_action_pressed("interact"):
+		take_hold += delta
+		if take_hold >= TAKE_HOLD:
+			_take_armed = false
+			take_hold = 0.0
+			inspect_item = null
+			_try_pickup()
+	else:                                                 # puszczone przed czasem: oględziny
+		_take_armed = false
+		take_hold = 0.0
+		inspect_item = null if inspect_item == it else it
+		Audio.play("ui_click", Audio.BUS_UI, -16.0)
+
+## Postęp przytrzymania [E] 0..1 (pasek pod podpowiedzią w HUD).
+func take_progress() -> float:
+	return clampf(take_hold / TAKE_HOLD, 0.0, 1.0) if _take_armed else 0.0
 
 func _try_pickup() -> void:
 	var it := nearby_weapon_item()

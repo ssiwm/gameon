@@ -17,6 +17,7 @@ extends Control
 ##   full screen damage vignette; result card after extraction
 ## Adaptive music and the warning sting are driven from here (GDD §13).
 
+const WeaponInspect := preload("res://scripts/weapon_inspect.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Mission := preload("res://scripts/mission.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
@@ -471,7 +472,7 @@ var _result_prompt: Label
 var _result_title: Label
 var _result_sub: Label
 var _result_box: StyleBoxFlat
-var _item: Dictionary = {}                ## karta statystyk broni leżącej w zasięgu [E] (stojak w kryjówce, łup z mapy)
+var _inspect: PanelContainer            ## oględziny broni (krótkie [E]): model 3D i statystyki — weapon_inspect.gd
 var _noise_card: PanelContainer      ## karta hałasu (w kryjówce zastępuje ją znacznik SAFE)
 var _safe_chip: PanelContainer
 var _ready_pips: Pips              ## kwadraciki gotowości w pasku misji kryjówki
@@ -479,7 +480,6 @@ var _scrap_coin: Coin
 var _brief: Dictionary = {}               ## karta odprawy przy tablicy w kryjówce
 var _radio: Dictionary = {}               ## karta prognozy pogody przy radiostacji w kryjówce
 var _radio_key := ""
-var _item_id := -2
 var _brief_id := ""
 var _demo_footer: Control = null     ## stopka dema na ekranie wyniku — tylko na końcu kampanii / serii
 
@@ -508,7 +508,8 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shotnoise="):
 			_dev_noise = float(a.substr("--shotnoise=".length()))
-	_item = _make_info_card(250.0, 2, true)
+	_inspect = WeaponInspect.new()
+	add_child(_inspect)
 	_brief = _make_info_card(310.0, 4, true)
 	(_brief["card"] as TailPanel).pin = true
 	_radio = _make_info_card(300.0, 2, true)
@@ -1769,31 +1770,24 @@ func _fill_info(c: Dictionary, title: String, tag: String, rows: Array, text: St
 
 ## Karty: statystyki broni w zasięgu [E] (nad paskiem kontekstowym) i odprawa przy tablicy (u góry, pod kartą celu).
 func _drive_cards() -> void:
-	# --- broń na stojaku w zasięgu [E]: karta tylko w kryjówce (w misjach zasłaniałaby grę; tam wystarcza pasek „[E] Take…")
+	# --- oględziny broni (krótkie [E] przy stojaku albo broni na ziemi): panel nad paskiem kontekstowym; gra się nie zatrzymuje
 	var it: Node2D = null
-	if NoiseMgr.safe_zone and _player != null and not _player.dead:
-		it = _player.weapons.nearby_weapon_item()
-	var wid: int = int(it.arg) if it != null else -1
-	var lvl_i := get_tree().get_first_node_in_group("level")
-	var locked: bool = it != null and lvl_i != null and lvl_i.is_locked_item(it)
-	var key := wid + (1000 if locked else 0)
-	if key != _item_id:
-		_item_id = key
-		if wid >= 0:
-			var d: RefCounted = Weapons.def(wid)
-			var notes: Array = Codex.WEAPON_TEXT.get(String(d.key), ["", ""])
-			var tag: String = Codex._slot_name(d)
-			if locked:
-				tag += "  ·  LOCKED — " + Scrap.lock_text(wid)
-			_fill_info(_item, String(d.name), tag, Codex._weapon_stats(d), String(notes[0]), d.tracer_color)
-	var ic: Control = _item["card"]
-	ic.visible = it != null
-	if ic.visible:
-		# nad stojakiem: punkt tuż nad deską w świecie → ekran (macierz kamery, z zoomem) → jednostki HUD; karta nie zasłania gracza ani broni
-		var top: Vector2 = get_viewport().get_canvas_transform() * (it.global_position + Vector2(0, -42))
-		var hx := top.x / scale.x
-		var hy := top.y / scale.y
-		ic.position = Vector2(clampf(hx - ic.size.x * 0.5, 6.0, maxf(6.0, size.x - ic.size.x - 6.0)), maxf(6.0, hy - ic.size.y - 12.0))
+	if _player != null and not _player.dead and _player.weapons.inspect_item != null and is_instance_valid(_player.weapons.inspect_item):
+		it = _player.weapons.inspect_item
+	if it != null:
+		var wid := int(it.arg)
+		var wc: Node = _player.weapons
+		var nd: RefCounted = Weapons.def(wid)
+		var lvl_i := get_tree().get_first_node_in_group("level")
+		var locked: bool = lvl_i != null and lvl_i.is_locked_item(it)
+		var hand: int = wc.melee_id if nd.slot == Weapons.Slot.MELEE else wc.loadout[wc.slot if wc.slot < 2 else 0]
+		var gk = it.get("_hd_gun")
+		var foot := Actions.fmt(tr("[{interact}]  Close")) if locked else Actions.fmt(tr("[{interact}]  Close   ·   hold [{interact}]  Take"))
+		_inspect.show_weapon(wid, String(gk) if gk != null and String(gk) != "" else String(nd.key), hand, Scrap.lock_text(wid) if locked else "", foot)
+		_inspect.reset_size()
+		_inspect.position = Vector2((size.x - _inspect.size.x) * 0.5, maxf(6.0, size.y * 0.5 - _inspect.size.y - 10.0))
+	else:
+		_inspect.close()
 	# --- odprawa przy tablicy
 	var near_board := false
 	var board: Node2D = null
@@ -1975,14 +1969,19 @@ func _drive_prompt() -> void:
 		var nd: RefCounted = Weapons.def(it.arg)
 		var lvl_p := get_tree().get_first_node_in_group("level")
 		if lvl_p != null and lvl_p.is_locked_item(it):
-			text = tr("LOCKED  ·  %s") % Scrap.lock_text(it.arg)
+			text = tr("[%s]  Inspect   ·   LOCKED  ·  %s") % [Actions.key("interact"), Scrap.lock_text(it.arg)]
 			col = UiTheme.MUTED
 		else:
 			var wc2: Node = _player.weapons
 			var swap_out: String = Weapons.def(wc2.loadout[wc2.slot if wc2.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc2.melee_id).name
 			var take_key := Actions.key("interact")
-			text = tr("[%s]  Take %s  (drops %s)") % [take_key, nd.name, swap_out] if not wc2.carries(it.arg) else tr("[%s]  Take ammo for %s") % [take_key, nd.name]
-			col = UiTheme.ACCENT
+			if wc2.take_progress() > 0.3:                    # po oknie krótkiego naciśnięcia: pasek przytrzymania
+				text = tr("Taking %s…") % nd.name
+				prog = wc2.take_progress()
+				col = UiTheme.OK
+			else:
+				text = tr("[%s]  Inspect   ·   hold [%s]  Take %s  (drops %s)") % [take_key, take_key, nd.name, swap_out] if not wc2.carries(it.arg) else tr("[%s]  Inspect   ·   hold [%s]  Take ammo for %s") % [take_key, take_key, nd.name]
+				col = UiTheme.ACCENT
 	elif m != null and m.phase == Mission.Phase.EXTRACT:
 		var st: Dictionary = m.local_extract_state()
 		if st.get("inside", false):
@@ -1993,7 +1992,7 @@ func _drive_prompt() -> void:
 			else:
 				text = "Hold here — the whole squad must reach the flare"
 				col = UiTheme.ACCENT
-	if wipe_left <= 0.0 and m != null and m.banner_visible() and not (bool(_item["card"].visible) or bool(_brief["card"].visible) or bool(_radio["card"].visible)):
+	if wipe_left <= 0.0 and m != null and m.banner_visible() and not (_inspect.visible or bool(_brief["card"].visible) or bool(_radio["card"].visible)):
 		# tytuł misji w pierwszych sekundach; w Nocnym Dyżurze także zasady serii
 		var lvl := get_tree().get_first_node_in_group("level")
 		var lines: Array = []
