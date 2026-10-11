@@ -16,6 +16,7 @@ const H := 34.0                     ## wysokość sylwetki
 const HEAD_FRAC := 0.28             ## górna część sylwetki liczona jako głowa (crit)
 
 var distance_m := -1.0              ## odległość od najbliższego znacznika strzelnicy w metrach (-1: brak) — do testów
+var plate3d := false                ## widok 3D: tabliczka z odległością stoi w scenie (view3d.gd), tu jej nie rysujemy
 var live_m := -1.0                  ## odległość do najbliższego żywego gracza w metrach (na tabliczce); -1 = nikt w pobliżu
 const LIVE_RANGE_M := 30.0
 var _hd: Sprite2D
@@ -153,7 +154,7 @@ func _draw() -> void:
 
 ## Tabliczka z odległością gracza, podsumowanie serii i unoszące się liczby obrażeń (rysowane nad sprite'em tarczy).
 func _draw_over(ci: CanvasItem) -> void:
-	if live_m >= 0.0:
+	if live_m >= 0.0 and not plate3d:
 		var f := ThemeDB.fallback_font
 		if _hd != null:
 			Vfx.draw_bar(ci, Rect2(-12, 3.5, 24, 8), 1.0, Color(0.05, 0.05, 0.06, 0.85), Color(0.05, 0.05, 0.06, 0.85))

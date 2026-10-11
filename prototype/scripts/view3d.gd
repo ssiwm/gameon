@@ -193,6 +193,9 @@ func release() -> void:
 		if is_instance_valid(h2):
 			(h2 as CanvasItem).self_modulate = Color.WHITE
 	_hid2d.clear()
+	for rtg in get_tree().get_nodes_in_group("range_targets"):
+		if rtg.get("plate3d") != null:
+			rtg.set("plate3d", false)
 	for id in _worldfx.keys():
 		for wn in _worldfx[id]["nodes"]:
 			if is_instance_valid(wn):
@@ -2791,6 +2794,38 @@ func _sync_world_fx(delta: float) -> void:
 			ttl.position = base + Vector3(float(marks[(marks as Array).size() - 1]["x"]) * PX, 28.5 * PX, 0.0)
 			ttl.position.z = float(rf["z"]) + 0.012
 	im.surface_end()
+	# --- tarcza strzelnicy: tabliczka z odległością gracza przy podstawie tarczy (liczby obrażeń i podsumowanie serii zostają etykietami interfejsu)
+	for rt in get_tree().get_nodes_in_group("range_targets"):
+		if not (rt is Node2D) or rt.get("plate3d") == null or _geo_key == "":
+			continue
+		rt.set("plate3d", true)
+		var id: int = rt.get_instance_id()
+		if _worldfx.has(id) and not is_instance_valid(_worldfx[id]["nodes"][0]):
+			_worldfx.erase(id)
+		if not _worldfx.has(id):
+			var plate := MeshInstance3D.new()
+			plate.name = "TargetPlate"
+			var bm := BoxMesh.new()
+			bm.size = Vector3(22.0 * PX, 8.0 * PX, 0.04)
+			plate.mesh = bm
+			var pm := StandardMaterial3D.new()
+			pm.albedo_color = Color(0.05, 0.05, 0.06)
+			pm.roughness = 0.8
+			plate.material_override = pm
+			plate.rotation = Vector3(-0.5, 0.0, 0.0)            # oparta o podstawę tarczy, odchylona ku kamerze
+			plate.layers = LAYER_WORLD
+			_geo.add_child(plate)
+			var lb := _label3d("", 5.2, Color(0.95, 0.75, 0.3))
+			lb.name = "Text"
+			lb.position = Vector3(0.0, 0.0, 0.025)
+			plate.add_child(lb)
+			_worldfx[id] = {"src": rt, "nodes": [plate]}
+		var tp := _worldfx[id]["nodes"][0] as MeshInstance3D
+		var lm := float(rt.get("live_m"))
+		tp.visible = lm >= 0.0 and (rt as Node2D).is_visible_in_tree()
+		if tp.visible:
+			tp.position = Level3D.px_to_m((rt as Node2D).global_position) + Vector3(0.0, 4.0 * PX, 0.75)
+			(tp.get_node("Text") as Label3D).text = "%d m" % int(roundf(lm))
 	# --- tablica wyników: kreda z `results_wall.gd` w teksturze na powierzchni tablicy
 	_surf_t -= delta
 	var refresh := _surf_t <= 0.0
