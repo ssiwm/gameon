@@ -68,6 +68,15 @@ TRIPO_MODELS = {
     "range_target": ("range_target.glb", "+X", 16.0, 5000, 35.0),
     "range_sign": ("range_sign.glb", "+X", 34.0, 4000, 34.5),
     "tag": ("tag.glb", "+X", 6.8, 3000, 8.7),
+    # czwarta partia: reszta przedmiotów + radiostacja; drzewa, kłoda i słup mają wysokość / długość 100 jednostek (skalę nadaje gra)
+    "tools_wall": ("tools_wall.glb", "+X", 30.0, 9000, 26.0),
+    "stake": ("stake.glb", "+X", 4.0, 2500, 8.9),
+    "radio_set": ("radio_set.glb", "+X", 30.0, 6000, 24.0),
+    "tree_snag": ("tree_snag.glb", "+X", 1000.0, 2500, 100.0),
+    # wersja szczegółowa dla najbliższego rzędu lasu
+    "tree_snag_hi": ("tree_snag.glb", "+X", 1000.0, 7000, 100.0),
+    "tree_log": ("tree_log.glb", "-Y", 100.0, 2500, 1000.0),
+    "post": ("post.glb", "-Y", 1000.0, 1500, 100.0),
 }
 # modele z Tripo ze świecącymi elementami (diody, ekrany, żarówka): emisja = jasne, nasycone piksele koloru (żarówka: jasne, blade)
 EMISSIVE = {"mine": "led", "charge": "led", "defib": "led", "scanner": "led", "lamp": "bulb"}

@@ -59,6 +59,7 @@ var _lights := {}                        ## id PointLight2D → [PointLight2D, L
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
 var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
+var _drawn := {}                         ## id węzła rysowanego kodem (radiostacja, mur) → [węzeł 2D, Node3D]
 var _span: Array = []                    ## trasa drezyny (_rail_span)
 var _span_map := ""
 var _item_tuned := {}                    ## nazwy modeli z już dostrojonymi materiałami
@@ -147,6 +148,10 @@ func release() -> void:
 		if is_instance_valid(pp[0]):
 			(pp[0] as CanvasItem).modulate = Color.WHITE
 	_props.clear()
+	for id in _drawn.keys():
+		if is_instance_valid(_drawn[id][0]):
+			(_drawn[id][0] as CanvasItem).modulate = Color.WHITE
+	_drawn.clear()
 	for id in _items.keys():
 		var itv: Array = _items[id]
 		var hid: Array = itv[4]
@@ -206,6 +211,7 @@ func _process(delta: float) -> void:
 	_sync_props()
 	_sync_items()
 	_build_rails()
+	_sync_drawn()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -869,6 +875,45 @@ func _local_xf(n: Node3D, root: Node) -> Transform3D:
 	if p == root and root is Node3D:
 		xf = (root as Node3D).transform * xf
 	return xf
+
+# ---------------------------------------------------------------- radiostacja i zamurowane przejścia
+
+## Obiekty rysowane w 2D kodem (`_draw`), bez sprite'a przedmiotu: radiostacja kryjówki dostaje model, a zamurowane przejście — bryłę z cegły
+## (materiał PBR ściany). Wersje 2D zostają dla logiki, są przezroczyste; rozbita ściana znika razem ze swoim węzłem.
+func _sync_drawn() -> void:
+	for n in get_tree().get_nodes_in_group("radio_set"):
+		if _drawn.has(n.get_instance_id()) or not (n is Node2D):
+			continue
+		var m := _item_model("radio_set")
+		if m == null:
+			continue
+		m.scale = Vector3(PX, PX, PX)
+		m.position = Level3D.px_to_m((n as Node2D).global_position) + Vector3(0.0, 0.0, -1.2)
+		_world.add_child(m)
+		(n as CanvasItem).modulate = Color(1, 1, 1, 0)
+		_drawn[n.get_instance_id()] = [n, m]
+	for n in get_tree().get_nodes_in_group("breakables"):
+		if _drawn.has(n.get_instance_id()) or not (n is Node2D) or n.get("rows") == null:
+			continue
+		var h := float(n.get("rows")) * Level3D.T
+		var bm := BoxMesh.new()
+		bm.size = Vector3(Level3D.T, h, Level3D.DEPTH_BACK + 0.5)
+		var mi := MeshInstance3D.new()
+		mi.mesh = bm
+		mi.material_override = Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone")
+		mi.layers = LAYER_WORLD
+		mi.position = Level3D.px_to_m((n as Node2D).global_position) + Vector3(0.0, h * 0.5, (0.5 - Level3D.DEPTH_BACK) * 0.5)
+		_world.add_child(mi)
+		(n as CanvasItem).modulate = Color(1, 1, 1, 0)
+		_drawn[n.get_instance_id()] = [n, mi]
+	for id in _drawn.keys():
+		var pr: Array = _drawn[id]
+		if not is_instance_valid(pr[0]) or (pr[0] as Node).is_queued_for_deletion():
+			if is_instance_valid(pr[1]):
+				(pr[1] as Node).queue_free()
+			_drawn.erase(id)
+		elif is_instance_valid(pr[1]):
+			(pr[1] as Node3D).visible = (pr[0] as CanvasItem).is_visible_in_tree()
 
 # ---------------------------------------------------------------- tor drezyny
 
