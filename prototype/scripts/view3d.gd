@@ -17,6 +17,7 @@ const Level3D := preload("res://scripts/level3d.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Enemy3D := preload("res://scripts/enemy3d.gd")
+const ItemsHd := preload("res://scripts/items_hd.gd")
 
 const PX := Level3D.PX
 const FOV := 40.0
@@ -58,6 +59,7 @@ var _lights := {}                        ## id PointLight2D → [PointLight2D, L
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
 var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
+var _item_scenes := {}                   ## nazwa przedmiotu → PackedScene modelu 3D albo null
 var _items := {}                         ## id sprite'a przedmiotu HD → [Sprite2D, MeshInstance3D, materiał, z, ukryte węzły 2D]
 var _scan_t := 0.0
 var _hidden: Array = []                  ## ukryte statyczne węzły 2D (przywracane przy wyłączeniu)
@@ -299,6 +301,7 @@ func _sync_geometry() -> void:
 	_rows = rows
 	Level3D.build_decals(_geo, rows)
 	Level3D.build_undergrowth(_geo, rows)
+	_build_deco()
 	Level3D.build_fog_volumes(_geo, rows, 0.02 if hub else 0.035)
 	if not hub:
 		Level3D.build_forest(_geo, rows)
@@ -790,9 +793,72 @@ func mirror_burst(fx: CPUParticles2D, pos: Vector2) -> void:
 	fx.emitting = false
 	fx.visible = false
 
+# ---------------------------------------------------------------- dekoracje mapy (kamienie, kłody, płoty, kości)
+
+const DECO_MODELS := {3: ["rock", 1.0], 4: ["bones", 0.7], 6: ["fence", 1.0], 7: ["logs", 1.0]}
+
+## Dekoracje z listy poziomu (`level.gd: _deco_list` — te same miejsca co w 2D) jako modele 3D w `MultiMesh`: kamienie i kości rozrzucone w głąb
+## bryły gruntu, płoty i kłody tuż za płaszczyzną gry. Trzciny (5) mają własne bryły przy cieczach (`Level3D.build_liquid_props`).
+func _build_deco() -> void:
+	var list = _level.get("_deco_list")
+	if list == null:
+		return
+	var groups := {}
+	for d in list:
+		var id := int(d[1])
+		if not DECO_MODELS.has(id):
+			continue
+		var feet: Vector2 = d[0]
+		var h := int(feet.x) * 73856093 ^ int(feet.y) * 19349663
+		var r1 := float(absi(h) % 1000) / 1000.0
+		var r2 := float(absi(h >> 7) % 1000) / 1000.0
+		var k := PX * float(DECO_MODELS[id][1]) * (0.85 + 0.4 * r2 if id == 3 else 1.0)
+		var z := -0.9 if (id == 6 or id == 7) else lerpf(-1.9, -0.45, r1)
+		var yaw := (PI if bool(d[2]) else 0.0) + (lerpf(-0.6, 0.6, r2) if id == 3 or id == 4 else lerpf(-0.08, 0.08, r2))
+		var b := Basis(Vector3.UP, yaw).scaled(Vector3(k, k, k))
+		if not groups.has(id):
+			groups[id] = []
+		(groups[id] as Array).append(Transform3D(b, Level3D.px_to_m(feet) + Vector3(0.0, 0.0, z)))
+	for id in groups:
+		var ps := _item_scene(String(DECO_MODELS[id][0]))
+		if ps == null:
+			continue
+		var inst := ps.instantiate()
+		var src := inst.find_children("*", "MeshInstance3D", true, false)
+		if src.is_empty():
+			inst.free()
+			continue
+		var smi := src[0] as MeshInstance3D
+		var base := smi.global_transform if smi.is_inside_tree() else _local_xf(smi, inst)
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = smi.mesh
+		var xfs: Array = groups[id]
+		mm.instance_count = xfs.size()
+		for i in xfs.size():
+			mm.set_instance_transform(i, (xfs[i] as Transform3D) * base)
+		var mmi := MultiMeshInstance3D.new()
+		mmi.name = "Deco_" + String(DECO_MODELS[id][0])
+		mmi.multimesh = mm
+		mmi.layers = LAYER_WORLD
+		_geo.add_child(mmi)
+		inst.free()
+
+## Przekształcenie węzła względem korzenia sceny, która nie jest jeszcze w drzewie.
+func _local_xf(n: Node3D, root: Node) -> Transform3D:
+	var xf := n.transform
+	var p := n.get_parent()
+	while p != null and p != root and p is Node3D:
+		xf = (p as Node3D).transform * xf
+		p = p.get_parent()
+	if p == root and root is Node3D:
+		xf = (root as Node3D).transform * xf
+	return xf
+
 # ---------------------------------------------------------------- przedmioty HD (meble, skrytki, pickupy, generator, drezyna)
 
 const ITEM_TONE := 0.7                      ## przyciemnienie albedo kart: przedmiot z własnym światłem (skrytka, pickup) stoi tuż przy nim
+const ITEM3D_DIR := "res://art/items3d/"
 const ITEM_BACK := ["shelf", "table", "chair", "locker", "cot", "stool", "board", "results_board", "workshop", "tools_wall", "rack", "range_sign", "range_target"]
 
 ## Każdy sprite z `ItemsHd.make` (grupa „items_hd”) dostaje w scenie 3D kartę z tym samym albedo i mapą normalnych: oświetlają ją światła 3D,
@@ -810,7 +876,7 @@ func _sync_items() -> void:
 	for id in _items.keys():
 		var it: Array = _items[id]
 		var src_v = it[0]
-		var mi: MeshInstance3D = it[1]
+		var mi: Node3D = it[1]
 		if not is_instance_valid(src_v) or (src_v as Node).is_queued_for_deletion():
 			if is_instance_valid(mi):
 				mi.queue_free()
@@ -822,6 +888,13 @@ func _sync_items() -> void:
 			continue
 		var xf := sp.global_transform
 		var sc := xf.get_scale()
+		if bool(it[5]):                                        # model 3D: początek w stopach sprite'a, jednostka modelu = piksel świata
+			var k := absf(sc.x) * ItemsHd.ppw(String(sp.get_meta("hd_name", ""))) * PX
+			var fl := -1.0 if (sp.flip_h != (xf.determinant() < 0.0)) else 1.0
+			(it[1] as Node3D).position = Level3D.px_to_m(xf.origin) + Vector3(0.0, 0.0, float(it[3]))
+			(it[1] as Node3D).rotation = Vector3(0.0, 0.0, -xf.get_rotation())
+			(it[1] as Node3D).scale = Vector3(k * fl, k, k)
+			continue
 		var ts := sp.texture.get_size()
 		var centre := xf * sp.offset
 		mi.position = Level3D.px_to_m(centre) + Vector3(0.0, 0.0, float(it[3]))
@@ -836,10 +909,49 @@ func _sync_items() -> void:
 			up = up.get_parent()
 		m.albedo_color = Color(md.r * ITEM_TONE, md.g * ITEM_TONE, md.b * ITEM_TONE, md.a)
 
+## Model 3D przedmiotu (art/items3d/<nazwa>.glb z `tools/prep_items3d.py`) albo null, gdy go nie ma; sceny są trzymane w pamięci podręcznej.
+func _item_scene(name: String) -> PackedScene:
+	if not _item_scenes.has(name):
+		var path := ITEM3D_DIR + name + ".glb"
+		_item_scenes[name] = load(path) as PackedScene if (ResourceLoader.exists(path) and not "--noitems3d" in OS.get_cmdline_user_args()) else null
+	return _item_scenes[name]
+
+## Egzemplarz modelu przedmiotu na warstwie świata; `glow` > 0 dodaje słabą emisję z koloru (przedmioty widoczne w ciemności).
+func _item_model(name: String, glow := 0.0) -> Node3D:
+	var ps := _item_scene(name)
+	if ps == null:
+		return null
+	var root := ps.instantiate() as Node3D
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		mi.layers = LAYER_WORLD
+		if glow > 0.0 and mi.mesh != null:
+			for s in mi.mesh.get_surface_count():
+				var bm := mi.mesh.surface_get_material(s) as BaseMaterial3D
+				if bm == null or bm.emission_enabled:
+					continue
+				var dm := bm.duplicate() as BaseMaterial3D
+				dm.emission_enabled = true
+				dm.emission_texture = dm.albedo_texture
+				dm.emission_energy_multiplier = glow
+				mi.set_surface_override_material(s, dm)
+	return root
+
 func _make_item(sp: Sprite2D) -> void:
 	var name := String(sp.get_meta("hd_name", ""))
 	var ct := sp.texture as CanvasTexture
 	var alb: Texture2D = ct.diffuse_texture if ct != null else sp.texture
+	var model := _item_model(name, float(sp.get_meta("hd_dark", 0.0)) * 0.35)
+	if model != null:                                          # prawdziwa bryła zamiast karty
+		_world.add_child(model)
+		var hid: Array = [sp]
+		sp.self_modulate = Color(1, 1, 1, 0)
+		for c in sp.get_children():
+			if c is Sprite2D and (c as Sprite2D).texture == alb:
+				(c as Sprite2D).visible = false
+				hid.append(c)
+		_items[sp.get_instance_id()] = [sp, model, null, -1.45 if ITEM_BACK.has(name) else -0.2, hid, true]
+		return
 	var m := StandardMaterial3D.new()
 	m.albedo_texture = alb
 	if ct != null and ct.normal_texture != null:
@@ -870,7 +982,7 @@ func _make_item(sp: Sprite2D) -> void:
 		if c is Sprite2D and (c as Sprite2D).texture == alb:      # kopia „widoczna w ciemności” (dark_vis) — zastępuje ją emisja karty
 			(c as Sprite2D).visible = false
 			hidden.append(c)
-	_items[sp.get_instance_id()] = [sp, mi, m, -1.25 if ITEM_BACK.has(name) else -0.12, hidden]
+	_items[sp.get_instance_id()] = [sp, mi, m, -1.25 if ITEM_BACK.has(name) else -0.12, hidden, false]
 
 # ---------------------------------------------------------------- obiekty fizyczne (skrzynie, beczki)
 
@@ -880,7 +992,11 @@ func _sync_props() -> void:
 	for n in get_tree().get_nodes_in_group("props"):
 		if n is Node2D and not n.is_queued_for_deletion() and not _props.has(n.get_instance_id()):
 			var kind := String(n.get("kind"))
-			var px: Node3D = _make_barrel() if kind == "barrel" else _make_crate()
+			var px: Node3D = _item_model(kind)                 # bryła z potoku przedmiotów (ta sama co sprite 2D); bez pliku — bryła zastępcza
+			if px != null:
+				px.scale = Vector3(PX, PX, PX)
+			else:
+				px = _make_barrel() if kind == "barrel" else _make_crate()
 			_world.add_child(px)
 			(n as CanvasItem).modulate = Color(1, 1, 1, 0)
 			_props[n.get_instance_id()] = [n, px]
