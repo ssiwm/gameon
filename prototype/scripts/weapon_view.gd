@@ -35,6 +35,7 @@ var _fx: Node2D                        ## nakładka bez cieniowania: rozbłysk, 
 var _flash_light: PointLight2D
 var _beam_light: PointLight2D
 var _flame: CPUParticles2D
+var fx3d := false                     ## widok 3D: efekty strzału (rozbłysk, ładowanie, promień, płomień) są w scenie 3D
 var _flash_t := 0.0
 var _flash_seed := 0.0
 var _swing_t := -1.0                   ## 0..1 trwającego ciosu, <0 = brak
@@ -404,12 +405,13 @@ func _draw_fx() -> void:
 		return
 	var d := Weapons.def(player.weapon)
 	var m := muzzle_local(d)
-	if _flash_t > 0.0 and d.flash_size > 0.0:
-		_draw_flash(d, m)
-	if player.w_state == Controller.State.CHARGE:
-		_draw_charge(d, m)
-	if player.w_firing and d.kind == WeaponDef.Kind.BEAM:
-		_draw_beam(d, m)
+	if not fx3d:                                      # widok 3D rysuje rozbłysk, ładowanie i promień w scenie 3D (view3d.gd: _sync_weapon_fx)
+		if _flash_t > 0.0 and d.flash_size > 0.0:
+			_draw_flash(d, m)
+		if player.w_state == Controller.State.CHARGE:
+			_draw_charge(d, m)
+		if player.w_firing and d.kind == WeaponDef.Kind.BEAM:
+			_draw_beam(d, m)
 	if _local:
 		_draw_crosshair(d)
 
