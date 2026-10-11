@@ -30,6 +30,7 @@ const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wro
 const LAYER_ACTORS := 2                    ## warstwa wizualna graczy (modele 3D)
 const ACTOR_AMBIENT := 0.16                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
 const ACTOR_LIGHT := 1.0                   ## mnożnik świateł pomocniczych graczy (kontra, wypełnienie, obrys)
+const PROP_Z := 0.0                         ## oś skrzyń i beczek: płaszczyzna gry (postacie stoją na nich i przez nie skaczą)
 const FLASH_UP_PX := 15.5                   ## wysokość źródła latarki nad stopami gracza w widoku 3D [px świata] (bark / broń)
 const AURA_WORLD := 3.2                    ## mnożnik energii aury gracza dla terenu (zwykłe światło omni: 4)
 const AURA_ACTOR := 0.8                    ## mnożnik energii aury gracza dla modeli graczy
@@ -1356,7 +1357,7 @@ func _sync_props() -> void:
 			continue
 		var s2 := src as Node2D
 		px.visible = s2.visible
-		px.position = Level3D.px_to_m(s2.global_position) + Vector3(0.0, 0.0, -0.7)      # front bryły za płaszczyzną gry: latarka (z = +0,6) nie świeci po nim pod kątem ślizgowym
+		px.position = Level3D.px_to_m(s2.global_position) + Vector3(0.0, 0.0, PROP_Z)      # na drodze gracza: przeszkoda, przez którą się skacze i na której się stoi
 		px.rotation = Vector3(0.0, 0.0, -s2.global_rotation)
 
 ## Materiał PBR świata dla ruchomej bryły: kopia z triplanarem w przestrzeni obiektu (światowy „pływałby” po przesuwanej skrzyni).
