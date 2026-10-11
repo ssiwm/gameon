@@ -1184,48 +1184,71 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 			bp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			parent.add_child(bp)
 
-## Las w głębi: świerki z `MultiMesh` w płaszczyznach z = −3,5 … −46 m tam, gdzie pod otwartym niebem jest polana (pierwszy kafel bryły nisko).
+## Las w głębi: świerki i martwe pnie jako skrzyżowane karty z teksturą (art/world3d/forest, `tools/world_forest_gen.py`) w `MultiMesh`,
+## w płaszczyznach z = −3,5 … −60 m nad kolumnami z otwartym niebem. Bliskie rzędy są rzadsze i wyższe (pnie w kadrze), dalekie gęste —
+## razem z mgłą głębi i wstęgami mgły dają warstwy sylwetek zamiast pustego nieba.
+const FOREST_DIR := "res://art/world3d/forest/"
+const FOREST_KINDS := ["spruce_a", "spruce_b", "spruce_c", "snag_a", "snag_b"]
 static func build_forest(parent: Node3D, rows: Array) -> void:
 	var nrows := rows.size()
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 0x1ACE
-	var trunks: Array = []
-	var low: Array = []
-	var mid: Array = []
-	var top: Array = []
+	var xf := {}
+	for k in FOREST_KINDS:
+		xf[k] = []
 	for c in range(0, cols, 2):
 		var r0 := 0
 		while r0 < nrows and not is_solid_ch(_ch(rows, c, r0)):
 			r0 += 1
-		if r0 < 28:
+		if r0 < 6 or r0 >= nrows:
 			continue
-		var n := rng.randi_range(2, 4)
-		for i in n:
-			var z := -rng.randf_range(DEPTH_BACK + 1.0, 46.0)
-			var h := rng.randf_range(7.0, 15.0)
-			var x := (float(c) + rng.randf()) * T + rng.randf_range(-2.0, 2.0)
-			var y := -float(r0) * T
-			var s := h / 10.0
-			trunks.append(Transform3D(Basis().scaled(Vector3(s, s, s)), Vector3(x, y + h * 0.08, z)))
-			low.append(Transform3D(Basis().scaled(Vector3(s, s, s)), Vector3(x, y + h * 0.28, z)))
-			mid.append(Transform3D(Basis().scaled(Vector3(s * 0.8, s, s * 0.8)), Vector3(x, y + h * 0.52, z)))
-			top.append(Transform3D(Basis().scaled(Vector3(s * 0.6, s, s * 0.6)), Vector3(x, y + h * 0.76, z)))
-	var tm := make_mat(Color(0.05, 0.035, 0.025), 1.0, 0.3, 0.8)
-	var gm := make_mat(Color(0.03, 0.07, 0.07), 1.0, 0.2, 0.6)
-	var tr := CylinderMesh.new()
-	tr.top_radius = 0.18
-	tr.bottom_radius = 0.28
-	tr.height = 2.0
-	tr.radial_segments = 7
-	_multimesh(parent, tr, trunks, tm, false)
-	for spec in [[low, 2.4, 3.8], [mid, 2.0, 3.0], [top, 1.6, 2.2]]:
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.02
-		cm.bottom_radius = float(spec[1])
-		cm.height = float(spec[2]) + 1.4
-		cm.radial_segments = 9
-		_multimesh(parent, cm, spec[0], gm, false)
+		var y := -float(r0) * T
+		# trzy pasy głębi: bliski (pojedyncze wysokie drzewa), środkowy, daleki (gęsta ściana lasu)
+		for band in [[DEPTH_BACK + 1.2, 9.0, 0.28, 13.0, 21.0], [9.0, 24.0, 1.4, 11.0, 19.0], [24.0, 60.0, 2.6, 12.0, 24.0]]:
+			var n := int(float(band[2])) + (1 if rng.randf() < fmod(float(band[2]), 1.0) else 0)
+			for i in n:
+				var z := -rng.randf_range(float(band[0]), float(band[1]))
+				var h := rng.randf_range(float(band[3]), float(band[4]))
+				var x := (float(c) + rng.randf() * 2.0) * T + rng.randf_range(-1.5, 1.5)
+				var roll := rng.randf()
+				var kind: String = "snag_a" if roll < 0.06 else ("snag_b" if roll < 0.12 else ("spruce_a" if roll < 0.45 else ("spruce_b" if roll < 0.72 else "spruce_c")))
+				var w := h * 0.5 * rng.randf_range(0.85, 1.15)
+				var b := Basis(Vector3.UP, rng.randf_range(-0.5, 0.5)).scaled(Vector3(w, h, w))
+				(xf[kind] as Array).append(Transform3D(b, Vector3(x, y - 0.3, z)))
+	# siatka: dwie skrzyżowane karty 1×1 m (podstawa w y = 0), normalne w górę i ku kamerze — karta nie gaśnie przy bocznym świetle
+	var v := PackedVector3Array()
+	var uv := PackedVector2Array()
+	var nrm := PackedVector3Array()
+	var idx := PackedInt32Array()
+	for a in [0.0, PI * 0.5]:
+		var dx := Vector3(cos(a), 0.0, sin(a)) * 0.5
+		var base := v.size()
+		v.append_array(PackedVector3Array([-dx, dx, dx + Vector3.UP, -dx + Vector3.UP]))
+		uv.append_array(PackedVector2Array([Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]))
+		for q in 4:
+			nrm.append(Vector3(0.0, 0.55, 0.83))
+		idx.append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = v
+	arr[Mesh.ARRAY_TEX_UV] = uv
+	arr[Mesh.ARRAY_NORMAL] = nrm
+	arr[Mesh.ARRAY_INDEX] = idx
+	var card := ArrayMesh.new()
+	card.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	for k in FOREST_KINDS:
+		if (xf[k] as Array).is_empty() or not ResourceLoader.exists(FOREST_DIR + k + ".png"):
+			continue
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = load(FOREST_DIR + k + ".png")
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		m.alpha_scissor_threshold = 0.5
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.roughness = 1.0
+		m.metallic_specular = 0.0
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		_multimesh(parent, card, xf[k], m, false)
 
 const FOG_SHADER := """
 shader_type spatial;
@@ -1329,17 +1352,42 @@ static func build_ground_fog(parent: Node3D, rows: Array) -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		parent.add_child(mi)
 
+## Niebo nocy: czarne przy horyzoncie (na wysokości graczy tło zostaje ciemne — wróg nie rysuje się sylwetką na poświacie),
+## wyżej poświata księżyca za chmurami — czubki świerków odcinają się od niej postrzępioną linią.
+const SKY_SHADER := """
+shader_type sky;
+uniform vec3 glow : source_color = vec3(0.036, 0.052, 0.090);
+uniform vec3 base : source_color = vec3(0.003, 0.004, 0.008);
+uniform float lit = 0.0;
+float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vn(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fbm(vec2 p) {
+	float a = 0.5; float s = 0.0;
+	for (int i = 0; i < 5; i++) { s += a * vn(p); p = p * 2.07 + vec2(11.3, 5.9); a *= 0.5; }
+	return s;
+}
+void sky() {
+	float e = EYEDIR.y;
+	vec2 q = EYEDIR.xz / (abs(e) + 0.35);
+	float n = fbm(q * 2.2 + vec2(TIME * 0.004, 0.0));
+	float band = smoothstep(0.04, 0.24, e) * (1.0 - 0.6 * smoothstep(0.5, 0.95, e));
+	float cloud = smoothstep(0.30, 0.75, n);
+	vec3 c = base + glow * band * (0.35 + 0.95 * cloud);
+	COLOR = mix(c, vec3(0.45, 0.5, 0.58), lit);
+}
+"""
 ## Środowisko nocy (niebo, mgła głębi, glow, filmic) i księżyc z cieniami. `ambient` — kolor ciemności poziomu (jak w 2D) służy do ocieplenia
 ## światła otoczenia (kryjówka); `moon` = false dla wnętrz.
 static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0.0406), moon := true) -> Environment:
 	var env := Environment.new()
 	var sky := Sky.new()
-	var sm := ProceduralSkyMaterial.new()
-	sm.sky_top_color = Color(0.004, 0.006, 0.013)
-	sm.sky_horizon_color = Color(0.030, 0.042, 0.070)
-	sm.ground_bottom_color = Color(0.003, 0.004, 0.008)
-	sm.ground_horizon_color = Color(0.014, 0.020, 0.032)
-	sm.sun_angle_max = 0.0
+	var sm := ShaderMaterial.new()
+	var ssh := Shader.new()
+	ssh.code = SKY_SHADER
+	sm.shader = ssh
 	sky.sky_material = sm
 	env.sky = sky
 	env.background_mode = Environment.BG_SKY
@@ -1353,11 +1401,23 @@ static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0
 	env.glow_intensity = 0.7
 	env.glow_bloom = 0.05
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.020, 0.028, 0.046)
-	env.fog_density = 0.018
+	env.fog_sky_affect = 0.0
+	# mgła głębi liczona od płaszczyzny gry w głąb (view3d.gd ustawia początek tuż za graczami): plan gry zostaje czysty i czarny,
+	# a kolejne rzędy lasu toną w chłodnej poświacie — bliskie pnie rysują się na niej czarną sylwetką
+	env.fog_mode = Environment.FOG_MODE_DEPTH
+	env.fog_light_color = Color(0.046, 0.066, 0.105)
+	env.fog_density = 1.0
+	env.fog_depth_curve = 0.7
+	env.fog_depth_begin = 20.0
+	env.fog_depth_end = 80.0
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.10
 	env.adjustment_saturation = 1.0
+	if "--view3dlit" in OS.get_cmdline_user_args():                # dev: pełne, białe światło otoczenia — podgląd geometrii i materiałów bez nocy
+		env.ambient_light_color = Color.WHITE
+		env.ambient_light_energy = 1.0
+		env.fog_enabled = false
+		sm.set_shader_parameter("lit", 1.0)
 	var we := WorldEnvironment.new()
 	we.name = "Env"
 	we.environment = env

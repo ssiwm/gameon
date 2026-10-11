@@ -30,6 +30,8 @@ const ACTOR_AMBIENT := 0.16                ## światło otoczenia dla modeli gra
 const ACTOR_LIGHT := 1.0                   ## mnożnik świateł pomocniczych graczy (kontra, wypełnienie, obrys)
 const AURA_WORLD := 3.2                    ## mnożnik energii aury gracza dla terenu (zwykłe światło omni: 4)
 const AURA_ACTOR := 0.8                    ## mnożnik energii aury gracza dla modeli graczy
+const FOG_BEGIN_M := 2.0                    ## mgła głębi: początek za płaszczyzną gry [m]
+const FOG_END_M := 62.0                     ## mgła głębi: pełna gęstość [m za płaszczyzną gry]
 const Z_BG := -60
 const Z_FG := 1
 
@@ -205,6 +207,9 @@ func _sync_camera() -> void:
 	var ctr := c2.get_screen_center_position()
 	var xf := Transform3D(Basis.IDENTITY, Vector3(ctr.x * PX, -ctr.y * PX, dist))
 	_cam_a.global_transform = xf
+	if _cam_a.environment != null:                          # mgła głębi zaczyna się tuż za płaszczyzną gry
+		_cam_a.environment.fog_depth_begin = dist + FOG_BEGIN_M
+		_cam_a.environment.fog_depth_end = dist + FOG_END_M
 	_cam_b.global_transform = xf
 	# rozmiar renderu (skala wg „Effects quality”) i dopasowanie sprite'ów do kadru: środek na środku kamery, wysokość = wysokość kadru
 	var rs := _res_scale()
@@ -254,7 +259,7 @@ func _sync_geometry() -> void:
 	# jasność postaci: osobne, łagodne światło otoczenia i słabsza mgła tylko dla warstwy graczy (modele leżą w płaszczyźnie gry, kilkanaście metrów od kamery)
 	env_b.ambient_light_color = Color(0.50, 0.56, 0.70)
 	env_b.ambient_light_energy = ACTOR_AMBIENT
-	env_b.fog_density = env_a.fog_density * 0.35
+	env_b.fog_enabled = false
 	_cam_b.environment = env_b
 	Level3D.build_level(_geo, rows)
 	Level3D.build_liquids(_geo, rows)
