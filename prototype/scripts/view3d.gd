@@ -64,6 +64,7 @@ var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
 var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
 var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
+var _beam_masks := {}                    ## id światła 2D latarki → [światło, maska obiektów, cienie] do przywrócenia przy wyłączeniu widoku
 var _drawn := {}                         ## id węzła rysowanego kodem (radiostacja, mur) → [węzeł 2D, Node3D]
 var _span: Array = []                    ## trasa drezyny (_rail_span)
 var _span_map := ""
@@ -157,6 +158,12 @@ func release() -> void:
 		if is_instance_valid(_drawn[id][0]):
 			(_drawn[id][0] as CanvasItem).modulate = Color.WHITE
 	_drawn.clear()
+	for id in _beam_masks.keys():
+		var bm: Array = _beam_masks[id]
+		if is_instance_valid(bm[0]):
+			(bm[0] as PointLight2D).range_item_cull_mask = int(bm[1])
+			(bm[0] as PointLight2D).shadow_enabled = bool(bm[2])
+	_beam_masks.clear()
 	for id in _guns.keys():
 		var gv: Array = _guns[id]
 		if is_instance_valid(gv[0]) and gv[0].get("_hd") != null and is_instance_valid(gv[0].get("_hd")):
@@ -1521,6 +1528,11 @@ func _scan_lights() -> void:
 			var l3: Light3D
 			if is_cone:
 				var sp := SpotLight3D.new()
+				# latarka w widoku 3D to tylko ten reflektor: stożek 2D (inny kąt, zasięg i płaskie cienie) przestaje oświetlać warstwy 2D —
+				# zostaje włączony jako źródło stanu (kierunek, energia, migotanie), ale z pustą maską obiektów
+				_beam_masks[id] = [li, li.range_item_cull_mask, li.shadow_enabled]
+				li.range_item_cull_mask = 0
+				li.shadow_enabled = false
 				sp.light_volumetric_fog_energy = 6.0               # snop latarki widoczny we mgle
 				sp.spot_angle = 24.0
 				sp.spot_attenuation = 0.55
