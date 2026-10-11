@@ -119,7 +119,6 @@ var _net_t := 0.0
 var _flash := 0.0
 var _x_srv := 0.0
 var _have_srv := false
-var fx3d := false                          ## widok 3D przejął kręgi na wodzie, cień i zapowiedź wynurzenia — `_draw` nic nie rysuje
 var _show := 0.0                           ## wygładzone ujawnienie 0..1 (rysowanie)
 var _light: PointLight2D
 var _shape: CollisionShape2D
@@ -148,10 +147,6 @@ func _ready() -> void:
 	home_x = position.x
 	surf_y = position.y
 	_x_srv = position.x
-	var tide: Node2D = (load("res://scripts/tide_water.gd") as GDScript).new()           # woda fali przypływu: stała w świecie, rysuje leech.surge_level()
-	tide.leech = self
-	tide.name = "TideWater"
-	get_parent().add_child.call_deferred(tide)
 	_light = Lights.make_light(Lights.radial(), 2.2, Color(0.4, 0.8, 0.85), 0.0, false)
 	_light.position = Vector2(0, -10)
 	add_child(_light)
@@ -847,7 +842,7 @@ func _process(delta: float) -> void:
 	_animate_sprite(delta)
 	queue_redraw()
 
-## Stan efektów na wodzie dla widoku 3D (to samo, co rysuje `_draw`): [siła kręgów, tempo kręgów, widoczność cienia 0..1, zapowiedź wynurzenia].
+## Stan efektów na wodzie dla widoku 3D (view3d.gd: _sync_leech_fx): [siła kręgów, tempo kręgów, widoczność cienia 0..1, zapowiedź wynurzenia].
 func fx_state() -> Array:
 	if state == State.DORMANT and not revealed:
 		return [0.35, 1.0, 0.0, false]
@@ -857,32 +852,6 @@ func fx_state() -> Array:
 		Mode.WIND:
 			return [1.0, 1.7, maxf(_show, 0.5), true]
 	return [0.45, 1.0, 0.0, false]
-
-func _draw() -> void:
-	if fx3d:
-		return
-	if state == State.DORMANT and not revealed:
-		_draw_ripples(0.35)
-		return
-	var t := Time.get_ticks_msec() / 1000.0
-	match mode:
-		Mode.SUB:
-			_draw_ripples(0.6 if state == State.AWAKE else 0.3)
-			if _show > 0.02:
-				_draw_shadow(_show)
-		Mode.WIND:
-			if second_x >= 0.0:                                        # faza 3: drugi punkt zasadzki — kręgi w innym miejscu basenu
-				draw_set_transform(Vector2(second_x - global_position.x, 0.0), 0.0, Vector2.ONE)
-				_draw_ripples(1.0, 1.7)
-				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-			_draw_ripples(1.0, 1.7)                                  # szybsze, większe kręgi — zaraz się wynurzy
-			_draw_shadow(maxf(_show, 0.5))
-			draw_circle(Vector2(0, -2), 5.0 + 3.0 * sin(t * 18.0), Color(0.5, 0.65, 0.62, 0.25))
-		Mode.UP, Mode.GRAB:
-			if _spr.is_empty():
-				_draw_body(t)
-			else:
-				_draw_ripples(0.45)                                      # ciało i oczy rysuje arkusz; kręgi na wodzie zostają
 
 ## Animacje z arkusza (HD: peek / strike / idle / grab / spit / hurt / dive / death; klasyczny: rise / idle / grab / dead) — patrz FALLBACK.
 ## Stan ciągły wynika z trybu (WIND → peek, UP → idle, GRAB → grab), jednorazowe (strike, spit, hurt, dive, death) wyzwalają zdarzenia _event.
@@ -987,54 +956,3 @@ func _face_target() -> float:
 			best_d = d
 			best = p.global_position.x
 	return best
-
-## Kręgi na powierzchni wody nad Pijawką — jedyna wskazówka w ciemności (ruch zdradza jej położenie).
-func _draw_ripples(strength: float, speed := 1.0) -> void:
-	for i in 3:
-		var ph := fposmod(_ripple_t * speed * 0.9 + float(i) * 0.33, 1.0)
-		var rx := 6.0 + ph * 26.0
-		draw_arc(Vector2(0, 0), rx, PI, TAU, 14, Color(0.55, 0.75, 0.72, (1.0 - ph) * 0.55 * strength), 1.0)
-		draw_arc(Vector2(0, 1), rx * 0.8, 0.0, PI, 12, Color(0.4, 0.6, 0.58, (1.0 - ph) * 0.3 * strength), 1.0)
-
-## Cień pod wodą: ciemna podłużna sylwetka z dwoma bladymi oczami — widoczna tylko w świetle.
-func _draw_shadow(a: float) -> void:
-	var col := Color(0.03, 0.08, 0.08, 0.85 * a)
-	for i in 5:
-		var rx := 24.0 - float(i) * 3.5
-		var ox := -float(i) * 5.0
-		draw_rect(Rect2(ox - rx * 0.5, 2.0 + float(i % 2), rx, 5.0 - float(i) * 0.4), col)
-	draw_rect(Rect2(8, 3, 14, 4), col)
-	draw_rect(Rect2(15, 3, 2, 2), Color(0.8, 0.95, 0.9, a))
-	draw_rect(Rect2(19, 3, 2, 2), Color(0.8, 0.95, 0.9, a))
-
-## Wynurzona: segmentowy tułów wyrastający z wody, głowa z otwartą paszczą pełną zębów.
-func _draw_body(t: float) -> void:
-	var dead := state == State.DEAD
-	var sway := sin(t * 3.0) * (0.5 if dead else 2.5)
-	var skin := Color(0.2, 0.3, 0.26)
-	var skin_hi := Color(0.34, 0.46, 0.38)
-	var belly := Color(0.5, 0.38, 0.32)
-	if _flash > 0.0:
-		skin = skin.lerp(Color(1, 1, 1), 0.7)
-	var segs := 6
-	for i in segs:
-		var f := float(i) / float(segs - 1)
-		var y := -4.0 - f * 26.0
-		var x := sway * f
-		var r := 11.0 - f * 3.5
-		draw_circle(Vector2(x, y), r, skin)
-		draw_arc(Vector2(x, y), r - 1.0, PI * 1.1, PI * 1.9, 8, skin_hi, 1.0)
-		draw_rect(Rect2(x - r + 2.0, y + r * 0.35, r * 2.0 - 4.0, 1.0), belly)           # pierścienie brzucha
-	var hx := sway
-	var hy := -34.0
-	draw_circle(Vector2(hx, hy), 9.0, skin)
-	# paszcza: otwarta, ząbkowana (zamknięta przy śmierci)
-	if not dead:
-		draw_circle(Vector2(hx + 5.0, hy + 2.0), 6.0, Color(0.55, 0.1, 0.12))
-		for k in 5:
-			var ang := -0.5 + float(k) * 0.5
-			var tip := Vector2(hx + 5.0, hy + 2.0) + Vector2(cos(ang), sin(ang)) * 7.5
-			draw_line(Vector2(hx + 5.0, hy + 2.0) + Vector2(cos(ang), sin(ang)) * 4.0, tip, Color(0.92, 0.9, 0.8), 1.0)
-		draw_rect(Rect2(hx - 4.0, hy - 4.0, 2.0, 2.0), Color(0.95, 0.9, 0.5))
-	# woda tryska wokół
-	draw_arc(Vector2(0, 0), 14.0, PI, TAU, 14, Color(0.6, 0.8, 0.78, 0.55), 1.0)

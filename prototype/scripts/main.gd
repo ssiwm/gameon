@@ -393,12 +393,12 @@ func _handle_cmdline() -> void:
 	if args.has("--nightshift"):
 		NightShift.selected = true               # przed --host: tryb zapada przy starcie sesji
 	var hd_world := false
-	if Settings.hd_active():                          # ustawienie „Graphics: HD" (domyślnie) — flagi poniżej mogą nadpisać; `--classic` wyłącza
+	if Settings.hd_active():                          # zasoby HD zawsze poza trybem headless (testy) — flagi poniżej mogą nadpisać
 		Sprites.newchar = "tripo-hd-look"
 		Sprites.newgun = true
 		Sprites.newmon = true
 		Sprites.newitem = true
-		Sprites.char3d = Settings.char3d or Settings.view3d_active()      # widok 3D zawsze używa modeli; w widoku 2D decyduje ustawienie „Characters in 2D view”
+		Sprites.char3d = true                                 # postacie to zawsze modele 3D
 		hd_world = true
 	for a in args:
 		if a == "--newworld":

@@ -53,7 +53,6 @@ var _noise_t := NOISE_EVERY
 var _t := 0.0
 var _phase := 0.0                    ## faza obrotu kół / ramienia pompy
 var _light: PointLight2D
-var _lamp: Node2D
 var _inited := false
 var _hd := false
 var _hd_wheels: Array = []           ## HD: koła (obracane z _phase)
@@ -65,10 +64,6 @@ func _ready() -> void:
 	collision_layer = 0              # bez kolizji: pokład jest równo z torem, pasażerów wozi _carry_riders
 	collision_mask = 0
 	sync_to_physics = false          # bez tego position czytane w tej samej klatce jest nieaktualne (dx = 0) i nikogo nie wozimy
-	_lamp = Node2D.new()
-	_lamp.material = Lights.unshaded()
-	_lamp.draw.connect(_draw_lamp)
-	add_child(_lamp)
 	_light = Lights.make_light(Lights.radial(), 7.0, Color(1.0, 0.82, 0.5), 0.0, true)
 	_light.position = Vector2(-HALF_W + 1.5, -17)  # (HD: latarnia stoi 1,5 px dalej, różnica pomijalna)
 	add_child(_light)
@@ -109,7 +104,6 @@ func _setup_hd() -> void:
 	_hd_lever = ItemsHd.make("handcar_lever", self)
 	_hd_lever.offset = Vector2.ZERO
 	_hd_lever.position = Vector2(0, -13)
-	move_child(_lamp, get_child_count() - 1)          # blask latarni nad korpusem
 
 ## Belka podwozia między ramą a torem (HD): ciemna stal z jasną krawędzią i nitami; wysokość = szczelina pod ramą + zapas na buty.
 func _draw_apron(ci: Node2D) -> void:
@@ -221,7 +215,6 @@ func _physics_process(delta: float) -> void:
 	if not _inited:
 		_init_track()
 	_update_local()
-	_lamp.queue_redraw()
 	queue_redraw()
 	if _hd:
 		_update_hd()
@@ -393,22 +386,3 @@ func _draw() -> void:
 	draw_rect(Rect2(-HALF_W - 1, -20, 8, 5), steel)
 	draw_rect(Rect2(-HALF_W - 1, -20, 8, 1), steel_hi)
 	draw_rect(Rect2(-HALF_W, -19, 3, 3), Color(0.05, 0.05, 0.05))
-
-func _draw_lamp() -> void:
-	var on := enabled
-	var col := Color(1.0, 0.85, 0.5) if on else Color(0.5, 0.15, 0.12)
-	if _hd:
-		# HD: szkło latarni jako miękki blask (jądro + dwie poświaty) zamiast pełnego dysku; szkło w modelu jest czarne, więc gdy nie ma zasilania, świeci tylko czerwona dioda
-		var lc := Vector2(-HALF_W + 3.0, -17.7)
-		_lamp.draw_circle(lc, 1.0, col)
-		if on:
-			_lamp.draw_circle(lc, 2.4, Color(col, 0.35))
-			_lamp.draw_circle(lc, 4.6, Color(col, 0.12))
-			_lamp.draw_polygon(PackedVector2Array([lc + Vector2(-1, 0), lc + Vector2(-76, -12), lc + Vector2(-76, 13)]), PackedColorArray([Color(1.0, 0.9, 0.6, 0.08), Color(1.0, 0.9, 0.6, 0.0), Color(1.0, 0.9, 0.6, 0.0)]))
-		else:
-			_lamp.draw_circle(lc, 2.2, Color(col, 0.2))
-		return
-	_lamp.draw_circle(Vector2(-HALF_W + 1.5, -17.5), 1.8, col)
-	if on:
-		_lamp.draw_circle(Vector2(-HALF_W + 1.5, -17.5), 4.5, Color(col, 0.18))
-		_lamp.draw_polygon(PackedVector2Array([Vector2(-HALF_W - 1, -17.5), Vector2(-HALF_W - 75, -30), Vector2(-HALF_W - 75, -5)]), PackedColorArray([Color(1.0, 0.9, 0.6, 0.07), Color(1.0, 0.9, 0.6, 0.0), Color(1.0, 0.9, 0.6, 0.0)]))

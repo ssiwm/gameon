@@ -1,6 +1,6 @@
 # Dead Air '87
 
-Co-op horror run-and-gun (retro Contra), Godot **4.7.2**, GDScript, symulacja 2D z obrazem domyślnie w 3D (`view3d.gd`; `--noview3d` albo „View: 2D” wraca do obrazu 2D), widok 2D nie jest dalej rozwijany — nowe rzeczy robimy tylko dla 3D; renderer Forward+ (Vulkan / D3D12; `--rendering-driver opengl3` wymusza tryb zgodności, np. pod xvfb). Cały projekt w `prototype/` (`godot --path prototype`). Opis gry: `GDD.md`, opis prototypu i flag CLI: `prototype/README.md`.
+Co-op horror run-and-gun (retro Contra), Godot **4.7.2**, GDScript, symulacja 2D z obrazem wyłącznie w 3D (`view3d.gd`; widoku 2D i grafiki klasycznej już nie ma — tylko tryb headless nic nie rysuje); renderer Forward+ (Vulkan / D3D12; `--rendering-driver opengl3` wymusza tryb zgodności, np. pod xvfb). Cały projekt w `prototype/` (`godot --path prototype`). Opis gry: `GDD.md`, opis prototypu i flag CLI: `prototype/README.md`.
 
 ## Zasady
 

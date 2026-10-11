@@ -35,9 +35,7 @@ var _fx: Node2D                        ## nakładka bez cieniowania: rozbłysk, 
 var _flash_light: PointLight2D
 var _beam_light: PointLight2D
 var _flame: CPUParticles2D
-var fx3d := false                     ## widok 3D: efekty strzału (rozbłysk, ładowanie, promień, płomień) są w scenie 3D
 var _flash_t := 0.0
-var _flash_seed := 0.0
 var _swing_t := -1.0                   ## 0..1 trwającego ciosu, <0 = brak
 var _cyc_t := -1.0                     ## 0..1 cyklu po strzale (pompka / zamek w postaci 3D), <0 = brak
 var _swing_w := Weapons.MACZETA
@@ -148,7 +146,6 @@ func _on_shot(w: int) -> void:
 	_cyc_t = 0.0
 	if d.flash_size > 0.0:
 		_flash_t = FLASH_TIME * (1.0 + d.flash_size / 12.0)
-		_flash_seed = randf() * TAU
 		_flash_light.color = d.flash_color
 		_flash_light.energy = d.flash_light
 
@@ -398,59 +395,14 @@ func _stop_loop() -> void:
 		Audio.stop_loop(_loop_id)
 	_loop_on = false
 
-# ---------------------------------------------------------------- rysowanie (bez cieniowania)
+# ---------------------------------------------------------------- rysowanie: tylko celownik (rozbłysk, ładowanie i promień są w scenie 3D — view3d.gd: _sync_weapon_fx)
 
 func _draw_fx() -> void:
 	if player == null or player.dead:
 		return
 	var d := Weapons.def(player.weapon)
-	var m := muzzle_local(d)
-	if not fx3d:                                      # widok 3D rysuje rozbłysk, ładowanie i promień w scenie 3D (view3d.gd: _sync_weapon_fx)
-		if _flash_t > 0.0 and d.flash_size > 0.0:
-			_draw_flash(d, m)
-		if player.w_state == Controller.State.CHARGE:
-			_draw_charge(d, m)
-		if player.w_firing and d.kind == WeaponDef.Kind.BEAM:
-			_draw_beam(d, m)
 	if _local:
 		_draw_crosshair(d)
-
-func _draw_flash(d: WeaponDef, m: Vector2) -> void:
-	var k := _flash_t / (FLASH_TIME * (1.0 + d.flash_size / 12.0))
-	var r := d.flash_size * (0.55 + 0.45 * k)
-	var col := d.flash_color
-	var spikes := 5
-	var pts := PackedVector2Array()
-	for i in spikes * 2:
-		var a := _flash_seed + float(i) * PI / float(spikes)
-		var rr := r * (1.0 if i % 2 == 0 else 0.38) * (0.8 + 0.4 * sin(_flash_seed * 7.0 + float(i)))
-		pts.append(m + Vector2.from_angle(a) * rr)
-	_fx.draw_colored_polygon(pts, Color(col.r, col.g, col.b, 0.85 * k))
-	# wydłużony język ognia wzdłuż lufy + jasne jądro
-	_fx.draw_line(m, m + player.aim_dir * r * 1.6, Color(1.0, 0.95, 0.8, 0.9 * k), maxf(r * 0.28, 1.0))
-	_fx.draw_circle(m, r * 0.38, Color(1.0, 1.0, 0.92, k))
-
-func _draw_charge(d: WeaponDef, m: Vector2) -> void:
-	var c := clampf(player.w_charge, 0.0, 1.0)
-	var col := d.tracer_color
-	_fx.draw_circle(m, 1.5 + 4.5 * c, Color(col.r, col.g, col.b, 0.25 + 0.4 * c))
-	_fx.draw_circle(m, 0.8 + 2.0 * c, Color(1, 1, 1, 0.6 + 0.4 * c))
-	# iskry zbiegające się do lufy
-	for i in 6:
-		var a := float(i) * TAU / 6.0 + float(Time.get_ticks_msec()) * 0.004
-		var r := (1.0 - fmod(float(Time.get_ticks_msec()) * 0.003 + float(i) * 0.17, 1.0)) * 12.0 * c
-		_fx.draw_circle(m + Vector2.from_angle(a) * r, 0.7, Color(col.r, col.g, col.b, 0.8))
-	if c >= 1.0:
-		_fx.draw_arc(m, 7.0, 0.0, TAU, 20, Color(1, 1, 1, 0.5 + 0.3 * sin(Time.get_ticks_msec() * 0.03)), 1.0)
-
-func _draw_beam(d: WeaponDef, m: Vector2) -> void:
-	var col := d.tracer_color
-	var fl := randf_range(0.85, 1.0)
-	_fx.draw_line(m, _beam_end, Color(col.r, col.g, col.b, 0.22 * fl), 5.0)
-	_fx.draw_line(m, _beam_end, Color(col.r, col.g, col.b, 0.6 * fl), 2.4)
-	_fx.draw_line(m, _beam_end, Color(1, 1, 1, 0.95 * fl), 1.0)
-	_fx.draw_circle(_beam_end, 2.2 * fl, Color(col.r, col.g, col.b, 0.8))
-	_fx.draw_circle(m, 2.0, Color(1, 1, 1, 0.8))
 
 # ---------------------------------------------------------------- celownik (tylko lokalny człowiek)
 

@@ -4,7 +4,6 @@ extends Node2D
 const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
-const LightShaft := preload("res://scripts/light_shaft.gd")
 
 ## Cienie postaci od lampy (plan ATMOSPHERE_PLAN.md, F3): włączane tylko, gdy w pobliżu ktoś stoi — MEDIUM bliżej, HIGH dalej, LOW wcale.
 const SHADOW_RANGE_PX := [0.0, 190.0, 300.0]
@@ -14,12 +13,8 @@ const RADIUS_M := 9.0
 const ENERGY := 0.85
 
 var _light: PointLight2D
-var _shaft: Node2D
-var _glow: Node2D
 var _shadow_check := 0.0
 var _t := 0.0
-var _hd := false
-var fx3d := false                     ## widok 3D: poświata żarówki i smuga są w scenie 3D (światło z mgłą wolumetryczną)
 
 func _ready() -> void:
 	add_to_group("lamps")                                 # cień kontaktowy postaci (player.gd) szuka najbliższej lampy
@@ -30,27 +25,15 @@ func _ready() -> void:
 	_light.shadow_item_cull_mask = SHADOW_CULL_MASK
 	_light.shadow_color = Color(0, 0, 0, 0.8)
 	add_child(_light)
-	_shaft = LightShaft.new()                             # smuga światła w powietrzu
-	_shaft.position = Vector2(0, 11)
-	add_child(_shaft)
 	if Sprites.newitem and ItemsHd.has("lamp"):
 		# HD: sprite lampy — „stopy" sprite'a to dół klatki, więc dół ustawiamy tak, by szczyt (uchwyt kabla) wypadł w punkcie kotwicy pod sufitem
-		_hd = true
 		var sp := ItemsHd.make("lamp", self, 0.9)
 		sp.position = Vector2(0, ItemsHd.body_wp("lamp").y * 0.9)
-	_glow = Node2D.new()
-	_glow.material = Lights.unshaded()
-	_glow.draw.connect(_draw_glow)
-	add_child(_glow)
 
 func _process(delta: float) -> void:
 	_t += delta
 	var f := 0.93 + 0.07 * sin(_t * 9.0) * sin(_t * 3.7)
 	_light.energy = ENERGY * f
-	_shaft.set_level(f)
-	_shaft.visible = not fx3d
-	_glow.visible = not fx3d
-	_glow.queue_redraw()
 	_shadow_check -= delta
 	if _shadow_check <= 0.0:
 		_shadow_check = 0.25
@@ -66,17 +49,3 @@ func _update_shadows() -> void:
 				on = true
 				break
 	_light.shadow_enabled = on
-
-func _draw() -> void:
-	if _hd:
-		return
-	draw_line(Vector2(0, 0), Vector2(0, 5), Color(0.1, 0.1, 0.11), 1.0)
-	draw_colored_polygon(PackedVector2Array([Vector2(-2, 5), Vector2(2, 5), Vector2(5, 10), Vector2(-5, 10)]), Color(0.2, 0.21, 0.2))
-
-func _draw_glow() -> void:
-	var f := 0.8 + 0.2 * sin(_t * 9.0) * sin(_t * 3.7)
-	if _hd:
-		_glow.draw_circle(Vector2(0, 11), 6.5, Color(1.0, 0.8, 0.5, 0.12 * f))
-		return
-	_glow.draw_circle(Vector2(0, 11), 1.8, Color(1.0, 0.92, 0.65, f))
-	_glow.draw_circle(Vector2(0, 11), 5.5, Color(1.0, 0.8, 0.5, 0.14 * f))

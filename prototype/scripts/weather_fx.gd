@@ -18,70 +18,6 @@ const TINTS := {
 	"storm": Color(0.7, 0.78, 0.95),
 	"fog": Color(1.1, 1.15, 1.1),
 }
-## Parametry deszczu wg pogody: [kąt od pionu (°), mnożnik gęstości, mnożnik prędkości].
-const RAIN := {"rain": [12.0, 1.0, 1.0], "storm": [26.0, 2.3, 1.25]}
-## Mgła (FOG): welon w przestrzeni ekranu czytający obraz świata — spłaszcza kontrast i rozmywa jasne miejsca (halo wokół latarki, flar i lamp),
-## a ciemność zostaje ciemnością (welon nie świeci sam). Gęstsza przy ziemi, z poziomymi pasmami płynącymi wolno w dwie strony.
-const FOG_SHADER := """
-shader_type canvas_item;
-uniform sampler2D screen_tex : hint_screen_texture, repeat_disable, filter_linear_mipmap;
-uniform float density = 0.0;
-uniform float t = 0.0;
-uniform float aspect = 1.78;
-uniform vec3 fog_tint = vec3(0.092, 0.115, 0.140);      // barwa samej mgły: blada, chłodna poświata (jak mgła w świetle księżyca)
-float hash(vec2 p) {
-	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-	p3 += dot(p3, p3.yzx + 33.33);
-	return fract((p3.x + p3.y) * p3.z);
-}
-// szum wartościowy z interpolacją piątego stopnia (bez widocznej siatki)
-float vnoise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
-}
-// kolejne oktawy są obrócone i przesunięte, żeby osie siatki nie zlewały się w pasy
-float fbm(vec2 p) {
-	mat2 r = mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8));
-	float v = 0.0;
-	float a = 0.5;
-	for (int k = 0; k < 4; k++) {
-		v += vnoise(p) * a;
-		p = r * p * 2.03 + 17.1;
-		a *= 0.5;
-	}
-	return v / 0.9375;
-}
-void fragment() {
-	vec2 uv = SCREEN_UV;
-	vec3 col = texture(screen_tex, uv).rgb;
-	// miękka poświata z mip-ów ekranu: jedno rozmycie bez „duchów” kopii jasnych drobiazgów (gwiazdy, celownik, cząsteczki)
-	vec3 glow = textureLod(screen_tex, uv, 3.5).rgb * 0.5 + textureLod(screen_tex, uv, 5.5).rgb * 0.5;
-	vec2 q = vec2(uv.x * aspect, uv.y);
-	// pasma mgły rozciągnięte poziomo, w dwóch warstwach płynących w przeciwne strony
-	float n1 = fbm(vec2(q.x * 1.1 - t * 0.030, q.y * 4.6 + t * 0.004));
-	float n2 = fbm(vec2(q.x * 0.7 + t * 0.017, q.y * 2.8 - t * 0.003) + 11.0);
-	float banks = smoothstep(0.28, 0.82, n1 * 0.6 + n2 * 0.4);
-	float ground = smoothstep(0.10, 0.92, uv.y);
-	float d = clamp(density * (0.25 + 0.75 * banks) * (0.35 + 0.65 * ground), 0.0, 0.85);
-	float lum = dot(col, vec3(0.299, 0.587, 0.114));
-	// welon zachowuje barwę obiektów: tylko częściowo chłodzi i zmiękcza, nie jaśnieje ponad oryginał
-	vec3 veil = mix(col, vec3(lum) * vec3(0.92, 1.0, 1.05), 0.4) + glow * 0.35;
-	col = mix(col, veil, d);
-	// sama mgła: blada poświata rozjaśniająca ciemność, gęstsza przy ziemi (czytelna także tam, gdzie nic nie świeci)
-	col += fog_tint * d * (0.45 + 0.9 * n2) * (0.5 + 0.5 * ground);
-	// dithering: w ciemnych gradientach 8 bitów daje widoczne pasy
-	col += (hash(FRAGCOORD.xy + fract(t)) - 0.5) / 255.0;
-	COLOR = vec4(clamp(col, 0.0, 1.0), 1.0);
-}
-"""
-
-const FAR_AMOUNT := 120
-const NEAR_AMOUNT := 46
-const NEAR_VEL := Vector2(440.0, 520.0)
-const FAR_VEL := Vector2(270.0, 320.0)
-
 ## Dźwięk (faza C): bazowa głośność pętli [dB] przy pełnej pogodzie. `rain` = deszcz pod otwartym niebem (amb_rain), `roof` = deszcz nad głową
 ## (amb_rain_roof, pod dachem), `wind` = wiatr (amb_wind). Efektywna głośność = baza + 20·log10(siła pogody × udział nieba).
 const AUDIO := {
@@ -95,12 +31,6 @@ const SILENT_DB := -55.0                    ## poniżej: pętla zatrzymana
 ## Dev (--shotflash): błysk na stałe (zrzuty).
 static var dev_flash := false
 
-var fx3d := false                           ## widok 3D przejął obraz pogody (deszcz, plusk, mgła, błysk); dźwięk zostaje tutaj
-var _near: CPUParticles2D
-var _far: CPUParticles2D
-var _splash: CPUParticles2D
-var _fog: ColorRect
-var _fog_mat: ShaderMaterial
 var _bd_id := ""
 var _bd_k := -1.0
 var _thunder_done := {}                     ## indeksy błysków, których grzmot już zagrał (dla bieżącego ziarna)
@@ -117,70 +47,6 @@ var _main: Node
 
 func _ready() -> void:
 	layer = 1
-	_near = _make_rain(true)
-	_far = _make_rain(false)
-	_splash = _make_splash()
-	_fog = ColorRect.new()
-	_fog.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_fog.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var fsh := Shader.new()
-	fsh.code = FOG_SHADER
-	_fog_mat = ShaderMaterial.new()
-	_fog_mat.shader = fsh
-	_fog.material = _fog_mat
-	_fog.visible = false
-	add_child(_fog)
-	add_child(_far)
-	add_child(_near)
-	add_child(_splash)
-
-func _rain_texture() -> ImageTexture:
-	var img := Image.create(2, 12, false, Image.FORMAT_RGBA8)
-	for y in 12:
-		var a := float(y) / 11.0                      # ogon przezroczysty, czoło kropli jasne
-		img.set_pixel(0, y, Color(1, 1, 1, a * a))
-		img.set_pixel(1, y, Color(1, 1, 1, a * a * 0.6))
-	return ImageTexture.create_from_image(img)
-
-func _make_rain(near: bool) -> CPUParticles2D:
-	var p := CPUParticles2D.new()
-	p.texture = _rain_texture()
-	p.amount = NEAR_AMOUNT if near else FAR_AMOUNT
-	p.lifetime = 0.9 if near else 1.2
-	p.preprocess = 1.0
-	p.local_coords = true
-	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
-	p.emission_rect_extents = Vector2(340.0, 2.0)
-	p.position = Vector2(320.0, -8.0)
-	p.direction = Vector2(-0.2, 1.0)
-	p.spread = 1.5
-	p.gravity = Vector2.ZERO
-	p.particle_flag_align_y = true
-	p.initial_velocity_min = (NEAR_VEL if near else FAR_VEL).x
-	p.initial_velocity_max = (NEAR_VEL if near else FAR_VEL).y
-	p.scale_amount_min = 1.0 if near else 0.6
-	p.scale_amount_max = 1.5 if near else 0.9
-	p.color = Color(0.75, 0.82, 0.95, 0.5 if near else 0.28)
-	p.emitting = false
-	return p
-
-func _make_splash() -> CPUParticles2D:
-	var p := CPUParticles2D.new()
-	p.amount = 22
-	p.lifetime = 0.28
-	p.local_coords = true
-	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
-	p.emission_rect_extents = Vector2(320.0, 1.5)
-	p.direction = Vector2.UP
-	p.spread = 80.0
-	p.gravity = Vector2(0, 260)
-	p.initial_velocity_min = 25.0
-	p.initial_velocity_max = 55.0
-	p.scale_amount_min = 0.8
-	p.scale_amount_max = 1.2
-	p.color = Color(0.8, 0.88, 1.0, 0.45)
-	p.emitting = false
-	return p
 
 func _exit_tree() -> void:
 	_stop_audio()
@@ -189,7 +55,6 @@ func _exit_tree() -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
-	var vs := get_viewport().get_visible_rect().size
 	var mode: int = Settings.weather_fx_effective()
 	var id := Weather.active_id() if mode != Settings.WEATHER_FX_OFF else ""
 	_k = move_toward(_k, 1.0 if id != "" else 0.0, (FADE_IN if id != "" else FADE_OUT) * delta)
@@ -198,23 +63,7 @@ func _process(delta: float) -> void:
 	var lp := _local_player()
 	var open := 1.0 if (lp != null and _sky_open(lp)) else 0.0
 	_sky = move_toward(_sky, open, 2.0 * delta)
-	var raining := RAIN.has(_id)
-	var strength := _k * _sky if raining else 0.0
-	for p in [_near, _far, _splash]:
-		(p as CPUParticles2D).visible = not fx3d              # widok 3D: deszcz i plusk są cząsteczkami w scenie 3D (view3d.gd: _sync_weather)
-		(p as CPUParticles2D).emitting = strength > 0.02 and not fx3d
-		(p as CPUParticles2D).modulate.a = clampf(strength, 0.0, 1.0)
-	if raining:
-		_wind(vs)
-		_place_splash(lp, vs)
 	_audio(mode, lp)
-	# mgła: welon ekranowy; pod ziemią słabszy (0,45), pod otwartym niebem pełny
-	var fog_d := _k * (0.45 + 0.55 * _sky) if _id == "fog" else 0.0
-	_fog.visible = fog_d > 0.01 and not fx3d                  # widok 3D: mgła to gęstsza mgła wolumetryczna i mgła głębi, nie welon ekranowy
-	if _fog.visible:
-		_fog_mat.set_shader_parameter("density", fog_d)
-		_fog_mat.set_shader_parameter("t", _t)
-		_fog_mat.set_shader_parameter("aspect", vs.x / maxf(vs.y, 1.0))
 	# tło parallax: noc pogodna wzmacnia księżyc i gwiazdy, deszcz przyciemnia niebo, mgła rozjaśnia grzbiety (tylko gdy się zmieniło)
 	if _id != _bd_id or absf(_k - _bd_k) > 0.004:
 		_bd_id = _id
@@ -226,45 +75,10 @@ func _process(delta: float) -> void:
 		tint = Color.WHITE.lerp(TINTS[_id], _k)
 	_apply_level(tint, _flash(mode) * _k if _id == "storm" else 0.0)
 
-## Wybór parametrów cząsteczek dla pogody (zmiana pogody = nowe parametry).
-func _use_weather(id: String, mode: int) -> void:
-	if id == _id:
-		return
+## Zapamiętuje bieżącą pogodę (czyta ją widok 3D: deszcz, plusk, mgła i błysk są w scenie — view3d.gd: _sync_weather).
+func _use_weather(id: String, _mode: int) -> void:
 	_id = id
-	if not RAIN.has(id):
-		return
-	var cfg: Array = RAIN[id]
-	var mult := 0.6 if mode == Settings.WEATHER_FX_REDUCED else 1.0
-	for pair in [[_near, NEAR_AMOUNT, NEAR_VEL], [_far, FAR_AMOUNT, FAR_VEL]]:
-		var p: CPUParticles2D = pair[0]
-		var vel: Vector2 = pair[2]
-		p.amount = maxi(8, int(float(pair[1]) * float(cfg[1]) * mult))
-		p.initial_velocity_min = vel.x * float(cfg[2])
-		p.initial_velocity_max = vel.y * float(cfg[2])
-		p.restart()
 
-## Kierunek deszczu (kąt od pionu) i podmuchy burzy; emitery wzdłuż górnej krawędzi, szersze o wychylenie.
-func _wind(vs: Vector2) -> void:
-	var cfg: Array = RAIN[_id]
-	var gust := 1.0 + (0.5 * sin(_t * 0.7) * sin(_t * 0.31) if _id == "storm" else 0.0)
-	var a := deg_to_rad(float(cfg[0]) * gust)
-	var dir := Vector2(-sin(a), cos(a))          # wiatr z prawej: krople lecą w lewo w dół
-	var pad := vs.y * tan(a) * 1.1
-	for p in [_near, _far]:
-		var pp: CPUParticles2D = p
-		pp.direction = dir
-		pp.emission_rect_extents = Vector2(vs.x * 0.5 + pad, 2.0)
-		pp.position = Vector2(vs.x * 0.5 + pad * 0.5, -8.0)
-
-## Plusk: wąski pas przy stopach lokalnego gracza (współrzędna warstwy = współrzędna viewportu, więc wystarcza macierz kamery).
-func _place_splash(lp: Node2D, vs: Vector2) -> void:
-	if lp == null:
-		return
-	var foot: Vector2 = get_viewport().get_canvas_transform() * (lp.global_position + Vector2(0, 1))
-	_splash.position = Vector2(vs.x * 0.5, foot.y)
-	_splash.emission_rect_extents = Vector2(vs.x * 0.5, 1.5)
-
-## Czy nad lokalnym graczem jest otwarte niebo (poziom decyduje: brak bryły do górnej krawędzi mapy, nad ziemią).
 func _sky_open(p: Node2D) -> bool:
 	_level = _level if is_instance_valid(_level) else get_tree().get_first_node_in_group("level")
 	return _level != null and _level.sky_open_at(p.global_position)

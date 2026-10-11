@@ -37,10 +37,7 @@ func _ready() -> void:
 		return
 	_dark = get_parent().get_node_or_null("Darkness") as CanvasModulate
 	_eyes.name = "Eyes"
-	_eyes.material = Lights.unshaded()
 	_eyes.visible = false
-	_eyes.z_index = 3
-	_eyes.draw.connect(_draw_eyes)
 	add_child(_eyes)
 
 func _local_player() -> Node2D:
@@ -167,12 +164,3 @@ func _update_eyes(delta: float, pl: Node2D) -> void:
 		_eyes.visible = false
 		return
 	_eyes.queue_redraw()
-
-func _draw_eyes() -> void:
-	# pojawiają się powoli, na końcu mrugają; nigdy nie świecą pełnią
-	var a := minf(_eyes_age / 0.6, 1.0) * 0.55
-	if _eyes_life < 0.5 and int(_eyes_life * 14.0) % 2 == 0:
-		a = 0.0
-	var c := Color(1.0, 0.92, 0.6, a)
-	_eyes.draw_circle(Vector2(-3.0, 0.0), 1.4, c)
-	_eyes.draw_circle(Vector2(3.0, 0.0), 1.4, c)
