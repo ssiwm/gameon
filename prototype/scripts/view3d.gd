@@ -59,12 +59,11 @@ var _rigs := {}                          ## Node gracza → {actor, model, gun, 
 var _mirrors := {}                       ## id źródłowego AnimatedSprite2D → [źródło, AnimatedSprite3D]
 var _enemies := {}                       ## id węzła wroga 2D → [węzeł, Enemy3D] (modele 3D wrogów; null w drugim polu = brak modelu)
 var _estate := {}                        ## id węzła wroga 2D → stan do wykrywania zdarzeń (żyje, błysk trafienia, zapowiedź ataku)
-var _lights := {}                        ## id PointLight2D → [PointLight2D, Light3D]
+var _lights := {}                        ## id światła gry (Lights.GameLight) → [światło, Light3D]
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
 var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
 var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
-var _beam_masks := {}                    ## id światła 2D latarki → [światło, maska obiektów, cienie] do przywrócenia przy wyłączeniu widoku
 var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D, MeshInstance3D, losowe odchylenie]
 var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
 var _ws_lamps := {}                      ## id warsztatu → lampa nad nim (Node3D w geometrii mapy)
@@ -224,12 +223,6 @@ func release() -> void:
 		if is_instance_valid(_casings[id][1]):
 			(_casings[id][1] as Node).queue_free()
 	_casings.clear()
-	for id in _beam_masks.keys():
-		var bm: Array = _beam_masks[id]
-		if is_instance_valid(bm[0]):
-			(bm[0] as PointLight2D).range_item_cull_mask = int(bm[1])
-			(bm[0] as PointLight2D).shadow_enabled = bool(bm[2])
-	_beam_masks.clear()
 	for id in _guns.keys():
 		var gv: Array = _guns[id]
 		if is_instance_valid(gv[0]) and gv[0].get("_hd") != null and is_instance_valid(gv[0].get("_hd")):
@@ -1352,7 +1345,7 @@ func _fire_mat() -> StandardMaterial3D:
 	return m
 
 ## Ogień flary w 3D: język płomienia z cząsteczek (addytywne, rosną ku górze i gasną), iskry unoszone ciepłem i żarzący się rdzeń.
-## `col` — barwa flary, `size` — szerokość płomienia [m]. Światło daje osobno światło 3D odwzorowane z `PointLight2D` flary.
+## `col` — barwa flary, `size` — szerokość płomienia [m]. Światło daje osobno światło 3D z opisu światła flary.
 func _make_fire(col: Color, size: float) -> Node3D:
 	var root := Node3D.new()
 	var hot := col.lerp(Color(1.0, 1.0, 0.9), 0.75)
@@ -3553,8 +3546,9 @@ func _make_barrel() -> Node3D:
 
 func _scan_lights() -> void:
 	var found: Array = []
-	_collect_lights(_level, found)
-	_collect_lights(_players, found)
+	for gl in get_tree().get_nodes_in_group("game_lights"):
+		if is_instance_valid(gl) and not (gl as Node).is_queued_for_deletion():
+			found.append(gl)
 	var cam_x := _cam_a.global_position.x / PX
 	found.sort_custom(func(a, b): return absf(a.global_position.x - cam_x) < absf(b.global_position.x - cam_x))
 	var keep := {}
@@ -3562,26 +3556,21 @@ func _scan_lights() -> void:
 	for l in found:
 		if n >= MAX_LIGHTS:
 			break
-		var li := l as PointLight2D
-		if not li.enabled or li.energy <= 0.02 or li.texture == null or not li.is_visible_in_tree():
+		var li := l as Lights.GameLight
+		if not li.enabled or li.energy <= 0.02 or not li.is_visible_in_tree():
 			continue
 		# aura gracza (ciepła poświata 6 m): w 3D słabsza niż zwykłe światło omni i bez cieni — ta sama plama widoczności wokół gracza co w 2D
 		if li.get_parent() != null and li.get_parent().get("static_display") == true and _item_scene("lamp") != null:
 			continue                                      # broń na stojaku: oświetla ją lampa nad stojakiem, nie kolorowa poświata pickupu
-		var is_aura: bool = li.get_parent() is CharacterBody2D and li.texture != Lights.cone() and (li.get_parent() as Node).is_in_group("players")
+		var is_aura: bool = li.get_parent() is CharacterBody2D and not li.is_cone and (li.get_parent() as Node).is_in_group("players")
 		var id := li.get_instance_id()
 		keep[id] = true
 		n += 1
 		if not _lights.has(id):
-			var is_cone := li.texture == Lights.cone()
+			var is_cone := li.is_cone
 			var l3: Light3D
 			if is_cone:
 				var sp := SpotLight3D.new()
-				# latarka w widoku 3D to tylko ten reflektor: stożek 2D (inny kąt, zasięg i płaskie cienie) przestaje oświetlać warstwy 2D —
-				# zostaje włączony jako źródło stanu (kierunek, energia, migotanie), ale z pustą maską obiektów
-				_beam_masks[id] = [li, li.range_item_cull_mask, li.shadow_enabled]
-				li.range_item_cull_mask = 0
-				li.shadow_enabled = false
 				sp.light_volumetric_fog_energy = 6.0               # snop latarki widoczny we mgle
 				sp.spot_angle = 24.0
 				sp.spot_attenuation = 0.55
@@ -3616,28 +3605,21 @@ func _scan_lights() -> void:
 					(pair[k] as Node).queue_free()
 			_lights.erase(id)
 
-func _collect_lights(n: Node, out: Array) -> void:
-	for c in n.get_children():
-		if c is PointLight2D:
-			out.append(c)
-		if c.get_child_count() > 0 and not (c is TileMapLayer):
-			_collect_lights(c, out)
-
 func _sync_lights() -> void:
 	for id in _lights.keys():
 		var pair: Array = _lights[id]
 		var li_v = pair[0]
 		var l3: Light3D = pair[1]
 		var l3a = pair[2]
-		if not is_instance_valid(li_v) or not (li_v as PointLight2D).enabled:
+		if not is_instance_valid(li_v) or not (li_v as Lights.GameLight).enabled:
 			if is_instance_valid(l3):
 				l3.visible = false
 			if l3a != null and is_instance_valid(l3a):
 				(l3a as Light3D).visible = false
 			continue
-		var li: PointLight2D = li_v
+		var li: Lights.GameLight = li_v
 		l3.visible = true
-		var rng_px := float(li.texture.get_width()) * absf(li.texture_scale) * 0.5
+		var rng_px := li.range_px
 		var gp := li.global_position
 		l3.light_color = li.color
 		if l3a != null and is_instance_valid(l3a):

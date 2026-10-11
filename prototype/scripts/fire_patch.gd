@@ -24,7 +24,7 @@ var life := FIRE_LIFE
 
 var _t := 0.0
 var _tick_t := 0.0
-var _light: PointLight2D
+var _light: Lights.GameLight
 var _seed := 0.0
 
 func _ready() -> void:

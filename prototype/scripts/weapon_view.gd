@@ -32,8 +32,8 @@ var _atlas: AtlasTexture
 var _glow: Sprite2D                    ## warstwa świecąca broni (taśma LR-7, cewki SPECTER-1…), unshaded
 var _glow_atlas: AtlasTexture
 var _fx: Node2D                        ## nakładka bez cieniowania: rozbłysk, promień, celownik
-var _flash_light: PointLight2D
-var _beam_light: PointLight2D
+var _flash_light: Lights.GameLight
+var _beam_light: Lights.GameLight
 var flame_on := false                 ## miotacz pluje ogniem (płomień to cząsteczki 3D — view3d.gd: _sync_weapon_fx)
 var flame_vmax := 150.0               ## …prędkość czoła płomienia [px/s] i rozrzut [°] z definicji broni
 var flame_spread := 14.0

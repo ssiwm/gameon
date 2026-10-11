@@ -19,7 +19,7 @@ const SHAFT_H := 112.0
 const LOOP_ID := "exit_flare"
 
 var _m: Node2D                       ## misja
-var _light: PointLight2D
+var _light: Lights.GameLight
 var _stakes: Array = []              ## Node2D kołków (z dzieckiem-sprite'em), z metadanymi "phase"
 var _built_hd := false
 var _t := 0.0

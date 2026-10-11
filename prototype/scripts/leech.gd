@@ -120,7 +120,7 @@ var _flash := 0.0
 var _x_srv := 0.0
 var _have_srv := false
 var _show := 0.0                           ## wygładzone ujawnienie 0..1 (rysowanie)
-var _light: PointLight2D
+var _light: Lights.GameLight
 var _shape: CollisionShape2D
 var _rect := RectangleShape2D.new()
 var _ripple_t := 0.0

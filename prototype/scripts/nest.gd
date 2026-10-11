@@ -22,7 +22,7 @@ var alive := true
 
 var _flash := 0.0
 var _net_timer := 0.0
-var _glow: PointLight2D
+var _glow: Lights.GameLight
 var _spr: Array = []
 var _overlay: Node2D
 

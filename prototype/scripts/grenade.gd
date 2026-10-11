@@ -20,7 +20,7 @@ var shooter_id := 0
 var _data: Dictionary
 var _t := 0.0
 var _rest := false
-var _light: PointLight2D
+var _light: Lights.GameLight
 var _hd := false
 
 func _ready() -> void:

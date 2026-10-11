@@ -20,7 +20,7 @@ var vel := Vector2.ZERO
 var life := FLARE_LIFE
 
 var _landed := false
-var _light: PointLight2D
+var _light: Lights.GameLight
 var _t := 0.0
 var _lure_t := 0.0
 ## HD (Sprites.newitem): tuba flary (obraca się w locie, leży po lądowaniu) i nakładka z płomieniem na czubku.

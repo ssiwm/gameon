@@ -39,7 +39,7 @@ var _age := 0.0
 var _pierce_left := 0
 var _skip: Array[RID] = []
 var _target: Node2D = null
-var _light: PointLight2D
+var _light: Lights.GameLight
 var _done := false
 var lag := 0.0                      ## s kompensacji opóźnienia (serwer, strzał klienta) — patrz lag_comp.gd
 var _comp_rids: Array[RID] = []     ## wrogowie z historią: w trakcie dogonienia pomijamy ich ciała fizyczne
