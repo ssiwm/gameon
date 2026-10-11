@@ -37,7 +37,7 @@ var _noise_acc := 0.0
 var _sent_progress := -1.0
 var _light: Lights.GameLight
 var _t := 0.0
-var _hd: Sprite2D                    ## grafika HD (Sprites.newitem): model generatora, drga, gdy pracuje
+var _hd: ItemsHd.ItemMark                    ## grafika HD (Sprites.newitem): model generatora, drga, gdy pracuje
 
 func _ready() -> void:
 	add_to_group("generators")

@@ -56,7 +56,7 @@ var _light: Lights.GameLight
 var _inited := false
 var _hd := false
 var _hd_wheels: Array = []           ## HD: koła (obracane z _phase)
-var _hd_lever: Sprite2D              ## HD: dźwignia pompy (kiwa się)
+var _hd_lever: ItemsHd.ItemMark              ## HD: dźwignia pompy (kiwa się)
 
 func _ready() -> void:
 	add_to_group("handcar")
@@ -87,21 +87,13 @@ func _setup_hd() -> void:
 	body.position = Vector2(0.0, -2.0)                # spód korpusu = dolna krawędź ramy (2 px nad torem)
 	# Osłona pokładu: pokład jest równo z torem (stopy graczy na y = 0 drezyny), a rama i deski sięgają ok. 5,3 px nad tor — bez osłony stopy i łydki
 	# wystawały pod pokładem. Dolny pas korpusu (rama + deski do górnej krawędzi) rysujemy drugi raz, TĘ SAMĄ teksturą, ale przed graczami.
-	var skirt := ItemsHd.make("handcar", self)
-	var f := ItemsHd.frame_px("handcar")
-	var top_px := f.y - ItemsHd.PAD - DECK_TOP * ItemsHd.ppw("handcar")          # wiersz tekstury z górną krawędzią pokładu
-	skirt.region_enabled = true
-	skirt.region_rect = Rect2(0.0, top_px, f.x, f.y - top_px)
-	skirt.position = body.position
-	skirt.offset = body.offset + Vector2(0.0, top_px * 0.5)                          # region wycentrowany tak, by pokrył się z korpusem
-	skirt.z_index = FRONT_Z
 	_hd_lever = ItemsHd.make("handcar_lever", self)
 	_hd_lever.offset = Vector2.ZERO
 	_hd_lever.position = Vector2(0, -13)
 
 func _update_hd() -> void:
 	for i in _hd_wheels.size():
-		(_hd_wheels[i] as Sprite2D).rotation = _phase + float(i) * 0.7
+		(_hd_wheels[i] as Node2D).rotation = _phase + float(i) * 0.7
 	var moving := speed > 5.0 or power > 0.0
 	_hd_lever.rotation = sin(_phase * 1.6) * (0.38 if moving else 0.05)
 

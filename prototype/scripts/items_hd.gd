@@ -85,39 +85,25 @@ static func glow_texture(name: String) -> Texture2D:
 	_glow[name] = t
 	return t
 
-## Sprite oświetlany (z normalnymi), stopy w (0, 0) węzła-rodzica; `scale` mnoży rozmiar. Dodaje też warstwę świecącą (unshaded), jeśli jest.
-## `dark_vis` > 0 dodaje kopię „unshaded" o tej przezroczystości — przedmiot widać też w ciemności (jak w wersji pikselowej).
-## Zwraca główny Sprite2D (warstwa świecąca i kopia są jego dziećmi).
-static func make(name: String, parent: Node2D, scale := 1.0, dark_vis := 0.0) -> Sprite2D:
-	var sp := Sprite2D.new()
-	sp.texture = texture(name)
-	sp.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	sp.centered = true
+## Znacznik przedmiotu w symulacji: sama nazwa modelu i ułożenie (pozycja, skala i obrót z węzła, `offset` do stóp, odbicie). Niczego
+## nie rysuje — model w scenie stawia widok 3D (view3d.gd: _sync_items, grupa „items_hd"), a właściciel rusza znacznikiem jak dawniej sprite'em.
+class ItemMark extends Node2D:
+	var hd_name := ""
+	var offset := Vector2.ZERO            ## środek ramki przedmiotu względem węzła [px ramki] — jak `Sprite2D.offset`
+	var flip_h := false
+
+## Stawia znacznik przedmiotu ze stopami w (0, 0) węzła-rodzica; `scale` mnoży rozmiar, `dark_vis` > 0 = lekka własna jasność modelu
+## (przedmiot widać też w ciemności).
+static func make(name: String, parent: Node2D, scale := 1.0, dark_vis := 0.0) -> ItemMark:
+	var sp := ItemMark.new()
+	sp.hd_name = name
 	var f := frame_px(name)
 	sp.offset = Vector2(0.0, PAD - f.y * 0.5)
 	sp.scale = Vector2.ONE * scale / ppw(name)
-	sp.add_to_group("items_hd")                    # widok 3D (view3d.gd) przenosi każdy przedmiot HD do sceny 3D jako kartę z mapą normalnych
+	sp.add_to_group("items_hd")
 	sp.set_meta("hd_name", name)
 	sp.set_meta("hd_dark", dark_vis)
 	parent.add_child(sp)
-	var g := glow_texture(name)
-	if g != null:
-		var gs := Sprite2D.new()
-		gs.texture = g
-		gs.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		gs.centered = true
-		gs.offset = sp.offset
-		gs.material = Lights.unshaded()
-		sp.add_child(gs)
-	if dark_vis > 0.0:
-		var vs := Sprite2D.new()
-		vs.texture = albedo(name)
-		vs.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		vs.centered = true
-		vs.offset = sp.offset
-		vs.material = Lights.unshaded()
-		vs.modulate = Color(1, 1, 1, dark_vis)
-		sp.add_child(vs)
 	return sp
 
 ## Rysuje przedmiot w UI wpisany w prostokąt `area` (środek, z miękkim cieniem). Skala jest wspólna dla wszystkich przedmiotów — mierzona względem

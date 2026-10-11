@@ -21,7 +21,7 @@ var _data: Dictionary
 var _t := 0.0
 var _scan_t := 0.0
 var _done := false
-var _hd: Sprite2D
+var _hd: ItemsHd.ItemMark
 var _hd_on := false
 
 func _ready() -> void:
