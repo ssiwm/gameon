@@ -30,6 +30,7 @@ const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wro
 const LAYER_ACTORS := 2                    ## warstwa wizualna graczy (modele 3D)
 const ACTOR_AMBIENT := 0.16                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
 const ACTOR_LIGHT := 1.0                   ## mnożnik świateł pomocniczych graczy (kontra, wypełnienie, obrys)
+const FLASH_UP_PX := 15.5                   ## wysokość źródła latarki nad stopami gracza w widoku 3D [px świata] (bark / broń)
 const AURA_WORLD := 3.2                    ## mnożnik energii aury gracza dla terenu (zwykłe światło omni: 4)
 const AURA_ACTOR := 0.8                    ## mnożnik energii aury gracza dla modeli graczy
 const FOG_BEGIN_M := 2.0                    ## mgła głębi: początek za płaszczyzną gry [m]
@@ -1518,7 +1519,14 @@ func _sync_lights() -> void:
 		if l3 is SpotLight3D:
 			var a := li.global_rotation
 			var d := Vector3(cos(a), -sin(a), 0.0)
-			l3.position = Level3D.px_to_m(gp) + Vector3(0.0, 0.0, 0.6)
+			# światło 2D latarki wisi 9 px nad stopami (środek sprite'a) — na modelu 1,8 m to wysokość kolan. W 3D snop wychodzi z wysokości broni
+			# przy barku (FLASH_UP_PX nad stopami), lekko wysunięty wzdłuż celowania, żeby nie świecił po własnym tułowiu.
+			var owner_p := li.get_parent() as Node2D
+			var src := Level3D.px_to_m(gp)
+			if owner_p != null and owner_p.is_in_group("players"):
+				var up_px := FLASH_UP_PX * (0.62 if bool(owner_p.get("crouching")) else 1.0)
+				src = Level3D.px_to_m(owner_p.global_position + Vector2(0.0, -up_px)) + d * 0.35
+			l3.position = src + Vector3(0.0, 0.0, 0.6)
 			l3.basis = Basis.looking_at(d + Vector3(0.0, 0.0, -0.04), Vector3.UP)
 			l3.light_energy = li.energy * 8.0
 			(l3 as SpotLight3D).spot_range = clampf(rng_px * PX, 6.0, 26.0)
