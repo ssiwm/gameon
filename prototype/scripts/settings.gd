@@ -62,8 +62,9 @@ var colorblind_idx := 0
 var locale_idx := 0
 var _res_dirty := false                ## gracz zmienił rozmiar okna (inaczej zostaje domyślny z projektu)
 var fullscreen := false
-var char3d := false                    ## (beta) postacie graczy jako modele 3D w czasie rzeczywistym (char3d.gd) zamiast sprite'ów; tylko z grafiką HD, zmiana wymaga restartu
-var view3d := false                    ## widok 3D świata (view3d.gd): ta sama symulacja 2D, obraz renderowany w 3D (kamera perspektywiczna, światła i cienie 3D); tylko z oknem
+var char3d := true                     ## postacie graczy jako modele 3D w czasie rzeczywistym (char3d.gd) zamiast sprite'ów — dotyczy widoku 2D (widok 3D zawsze używa modeli); tylko z grafiką HD, zmiana wymaga restartu
+const GFX_VER := 2                      ## wersja domyślnych ustawień grafiki w pliku ustawień (2 = widok 3D domyślny)
+var view3d := true                     ## widok 3D świata (domyślny; „View: 2D” w ustawieniach wraca do obrazu 2D) (view3d.gd): ta sama symulacja 2D, obraz renderowany w 3D (kamera perspektywiczna, światła i cienie 3D); tylko z oknem
 var graphics_hd := true                ## grafika HD (postacie, bronie, wrogowie, świat, UI z modeli 3D) zamiast klasycznego pixel-artu; zmiana wymaga restartu gry
 var seen_tips: Array = []              ## identyfikatory podpowiedzi, które gracz już widział
 var shift_best_cleared := 0            ## Nocny Dyżur: najwięcej ukończonych misji w jednej serii (rekord lokalny)
@@ -175,11 +176,14 @@ func toggle_view3d() -> void:
 	view3d = not view3d
 	_commit()
 
-## Czy włączyć widok 3D w tej sesji: ustawienie gracza albo `--view3d`, nigdy w trybie headless (testy) i nie z `--noview3d`.
+## Czy włączyć widok 3D w tej sesji: ustawienie gracza (domyślnie włączone) albo `--view3d`, nigdy w trybie headless (testy), nie z `--noview3d`
+## i nie z grafiką klasyczną.
 func view3d_active() -> bool:
 	if DisplayServer.get_name() == "headless" or ("--noview3d" in OS.get_cmdline_user_args()):
 		return false
-	return view3d or ("--view3d" in OS.get_cmdline_user_args())
+	if "--view3d" in OS.get_cmdline_user_args():
+		return true
+	return view3d and hd_active()                      # widok 3D korzysta z zasobów HD — z grafiką klasyczną zostaje obraz 2D
 
 func toggle_reduce_fx() -> void:
 	reduce_fx = not reduce_fx
@@ -322,14 +326,18 @@ func _load() -> void:
 	fps_idx = clampi(int(cf.get_value("game", "fps", 0)), 0, FPS_LIST.size() - 1)
 	quality_idx = clampi(int(cf.get_value("game", "quality", 2)), 0, QUALITY_NAMES.size() - 1)
 	reduce_fx = bool(cf.get_value("game", "reduce_fx", false))
-	view3d = bool(cf.get_value("game", "view3d", false))
+	view3d = bool(cf.get_value("game", "view3d", true))
 	captions = bool(cf.get_value("game", "captions", false))
 	mono_audio = bool(cf.get_value("game", "mono_audio", false))
 	crouch_toggle = bool(cf.get_value("game", "crouch_toggle", false))
 	colorblind_idx = clampi(int(cf.get_value("game", "colorblind", 0)), 0, COLORBLIND_NAMES.size() - 1)
 	locale_idx = clampi(int(cf.get_value("game", "locale", 0)), 0, LOCALES.size() - 1)
 	graphics_hd = bool(cf.get_value("game", "graphics_hd", true))
-	char3d = bool(cf.get_value("game", "char3d", false))
+	char3d = bool(cf.get_value("game", "char3d", true))
+	# 1.7.156: widok 3D i postacie 3D są domyślne — zapisane wcześniej „wyłączone” (stara wartość domyślna) przestawiamy jeden raz
+	if int(cf.get_value("game", "gfx_ver", 1)) < GFX_VER:
+		view3d = true
+		char3d = true
 	seen_tips = Array(cf.get_value("game", "seen_tips", []))
 	Actions.load_from(cf)
 	shift_best_cleared = int(cf.get_value("shift", "best_cleared", 0))
@@ -353,6 +361,7 @@ func _save() -> void:
 	cf.set_value("game", "quality", quality_idx)
 	cf.set_value("game", "reduce_fx", reduce_fx)
 	cf.set_value("game", "view3d", view3d)
+	cf.set_value("game", "gfx_ver", GFX_VER)
 	cf.set_value("game", "captions", captions)
 	cf.set_value("game", "mono_audio", mono_audio)
 	cf.set_value("game", "crouch_toggle", crouch_toggle)

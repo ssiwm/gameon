@@ -230,7 +230,7 @@ func _build_settings(scroll: ScrollContainer) -> void:
 		func(i: int) -> void:
 			if (i == 0) != Settings.graphics_hd:
 				Settings.toggle_hd())
-	_seg(left, tr("Characters (restart)"), ["SPRITES", "3D (BETA)"], func() -> int: return 1 if Settings.char3d else 0,
+	_seg(left, tr("Characters in 2D view (restart)"), ["SPRITES", "3D"], func() -> int: return 1 if Settings.char3d else 0,
 		func(i: int) -> void:
 			if (i == 1) != Settings.char3d:
 				Settings.toggle_char3d())
@@ -254,7 +254,10 @@ func _build_settings(scroll: ScrollContainer) -> void:
 		func(i: int) -> void: _to_idx(func() -> int: return Settings.ui_idx, Settings.cycle_ui, i, 3))
 	_seg(right, tr("Camera zoom"), Settings.CAM_NAMES, func() -> int: return Settings.cam_idx,
 		func(i: int) -> void: _to_idx(func() -> int: return Settings.cam_idx, Settings.cycle_cam, i, 3))
-	_toggle(right, tr("3D view"), func() -> bool: return Settings.view3d, Settings.toggle_view3d)
+	_seg(right, tr("View"), ["3D", "2D"], func() -> int: return 0 if Settings.view3d else 1,
+		func(i: int) -> void:
+			if (i == 0) != Settings.view3d:
+				Settings.toggle_view3d())
 	right.add_child(_gap())
 	right.add_child(W.section(tr("ACCESSIBILITY")))
 	_toggle(right, tr("Reduce effects"), func() -> bool: return Settings.reduce_fx, Settings.toggle_reduce_fx)

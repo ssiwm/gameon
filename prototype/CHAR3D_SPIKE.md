@@ -1,4 +1,4 @@
-# Postać 3D w czasie rzeczywistym (beta; `--char3d` lub ustawienie w menu)
+# Postać 3D w czasie rzeczywistym (domyślna od 1.7.156; `--char3d` lub ustawienie w menu)
 
 Gracze i bot jako modele 3D (rig Mixamo z Tripo) renderowane do tekstury w grze 2D, zamiast wypiekanych arkuszy.
 Ręce naprawdę trzymają broń przy każdym kącie celowania, animacji, broni i wyglądzie (dwukostkowe IK obu rąk).
@@ -55,4 +55,4 @@ Test sieciowy (host + klient, oba z 3D): zdalni gracze i bot mają model, broń 
 - Pozy to proste funkcje sin/cos, nie animacje artysty; brak przejść (blend) między animacjami; dłonie nie obejmują palcami chwytu (tylko orientacja).
 - Broń biała ma jedną, uproszczoną pozę zamachu. SPECTER-1 używa swojego modelu `widmo1_01` (cewka, ten sam co w sprite'ach HD); `widmo1_02` (szyny + cewki, olive) to nieużywana alternatywa.
 - Wrogowie nadal sprite'y HD — styl postaci gracza (3D) i wrogów trzeba będzie zestroić.
-- Włączane ustawieniem **Characters: 3D (BETA)** (`Settings.char3d`, domyślnie wyłączone) lub flagą `--char3d`; domyślnie włączymy po pomiarze na słabszym sprzęcie.
+- Od 1.7.156 domyślne: widok 3D zawsze używa modeli, a w widoku 2D decyduje ustawienie **Characters in 2D view** (`Settings.char3d`, domyślnie 3D) lub flaga `--char3d`. Pomiar na słabszym sprzęcie nadal nie jest zrobiony.
