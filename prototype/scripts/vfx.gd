@@ -224,10 +224,12 @@ static func casing(parent: Node, pos: Vector2, aim: Vector2, big := false) -> vo
 	var side := -signf(aim.x) if absf(aim.x) > 0.2 else (1.0 if randf() < 0.5 else -1.0)
 	var v := Vector2(side * randf_range(40.0, 80.0), randf_range(-140.0, -90.0))
 	var col := Color(0.55, 0.16, 0.12) if big else Color(0.85, 0.68, 0.3)
-	debris(parent, pos, v, Vector2(3, 2) if big else Vector2(2, 1), col, 0.45, 20.0,
+	var body := debris(parent, pos, v, Vector2(3, 2) if big else Vector2(2, 1), col, 0.45, 20.0,
 		func(b: RigidBody2D) -> void:
 			Audio.play_variant_at("shell", 3, b.global_position, Audio.BUS_WORLD, -24.0 if not big else -20.0),
 		_casing_visual(big) if Sprites.newitem else null)
+	if body != null and view3d != null and is_instance_valid(view3d):
+		view3d.call("mirror_casing", body, big)           # łuska jako walec 3D podążający za ciałem fizycznym
 
 # ---------------------------------------------------------------- plamy
 
@@ -320,6 +322,9 @@ static func streak(parent: Node, a: Vector2, b: Vector2, color: Color, width := 
 	s.material = Lights.unshaded()
 	s.z_index = 3
 	parent.add_child(s)
+	if view3d != null and is_instance_valid(view3d):
+		s.visible = false                                 # smuga w scenie 3D
+		view3d.call("mirror_streak", a, b, color, width, life)
 
 ## Fala uderzeniowa wybuchu.
 static func shock(parent: Node, pos: Vector2, radius: float) -> void:

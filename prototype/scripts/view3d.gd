@@ -65,6 +65,7 @@ var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D pr
 var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
 var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
 var _beam_masks := {}                    ## id światła 2D latarki → [światło, maska obiektów, cienie] do przywrócenia przy wyłączeniu widoku
+var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D, MeshInstance3D, losowe odchylenie]
 var _fires := {}                         ## id flary 2D → [węzeł, Node3D ognia, rodzaj, pierścień strefy albo null]
 var _drawn := {}                         ## id węzła rysowanego kodem (radiostacja, mur) → [węzeł 2D, Node3D]
 var _span: Array = []                    ## trasa drezyny (_rail_span)
@@ -165,6 +166,12 @@ func release() -> void:
 		if is_instance_valid(_fires[id][0]):
 			_fires[id][0].set("fx3d", false)
 	_fires.clear()
+	for id in _casings.keys():
+		if is_instance_valid(_casings[id][0]):
+			(_casings[id][0] as CanvasItem).modulate = Color.WHITE
+		if is_instance_valid(_casings[id][1]):
+			(_casings[id][1] as Node).queue_free()
+	_casings.clear()
 	for id in _beam_masks.keys():
 		var bm: Array = _beam_masks[id]
 		if is_instance_valid(bm[0]):
@@ -243,6 +250,8 @@ func _process(delta: float) -> void:
 	_sync_drawn()
 	_sync_guns()
 	_sync_fires()
+	_sync_weapon_fx()
+	_sync_casings()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -430,6 +439,14 @@ func _release_rig(p) -> void:
 	if not _rigs.has(p):
 		return
 	var rig: Dictionary = _rigs[p]
+	if rig.has("wfx"):                                         # efekty strzału 3D: zwolnij i przywróć rysunek 2D
+		if is_instance_valid(rig["wfx"]["root"]):
+			(rig["wfx"]["root"] as Node).queue_free()
+		if is_instance_valid(p) and p.get("view") != null and is_instance_valid(p.get("view")):
+			p.get("view").set("fx3d", false)
+			var f2 = p.get("view").get("_flame")
+			if f2 != null and is_instance_valid(f2):
+				(f2 as CanvasItem).visible = true
 	var c3 = p.get("c3d") if is_instance_valid(p) else null
 	if c3 != null and is_instance_valid(c3):
 		var root: Node = rig["root"]
@@ -1392,6 +1409,199 @@ func _sync_fires() -> void:
 				ring.position = Level3D.px_to_m(src.global_position) + Vector3(0.0, 0.03, 0.0)
 				ring.scale = Vector3(r, 1.0, r * 0.55)
 				(ring.material_override as StandardMaterial3D).albedo_color.a = 0.5 * (1.0 - ph)
+
+# ---------------------------------------------------------------- efekty strzału
+
+## Addytywna płaszczyzna z miękką plamką (nie billboard): do języków ognia, smug i promieni rozciąganych wzdłuż kierunku.
+func _glow_quad(col: Color) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE
+	mi.mesh = q
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.albedo_texture = _soft()
+	m.albedo_color = col
+	mi.material_override = m
+	mi.layers = LAYER_ACTORS
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return mi
+
+## Ustawia płaszczyznę `mi` jako pas od `a` do `b` (świat 3D) o szerokości `w`, zwróconą do kamery (kamera patrzy wzdłuż −Z).
+func _span_quad(mi: MeshInstance3D, a: Vector3, b: Vector3, w: float) -> void:
+	var d := b - a
+	var len := maxf(d.length(), 0.001)
+	mi.position = (a + b) * 0.5
+	mi.basis = Basis(d / len * len, Vector3(-d.y, d.x, 0.0).normalized() * w, Vector3(0, 0, 1))
+
+## Rozbłysk wylotowy, ładowanie broni energetycznej, promień LR-7 i płomień miotacza w scenie 3D — przy wylocie lufy modelu broni.
+## Stan czytany z `weapon_view.gd` gracza (`_flash_t`, `w_state`, `w_firing`, `_beam_end`, `_flame`); rysunek 2D jest tam wyłączany (`fx3d`).
+func _sync_weapon_fx() -> void:
+	for p in _rigs.keys():
+		if not is_instance_valid(p):
+			continue
+		var rig: Dictionary = _rigs[p]
+		var wv = p.get("view")
+		var c3 = p.get("c3d")
+		if wv == null or not is_instance_valid(wv) or c3 == null or rig["gun"] == null or not is_instance_valid(rig["gun"]):
+			continue
+		if not rig.has("wfx"):
+			wv.set("fx3d", true)
+			var root := Node3D.new()
+			_world.add_child(root)
+			var star := _glow_quad(Color.WHITE)                 # jądro rozbłysku (billboard)
+			(star.material_override as StandardMaterial3D).billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+			var tongue := _glow_quad(Color.WHITE)               # język ognia wzdłuż lufy
+			var cross := _glow_quad(Color.WHITE)                # poprzeczny błysk (gwiazda)
+			var charge := _glow_quad(Color.WHITE)
+			(charge.material_override as StandardMaterial3D).billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+			var beam_a := _glow_quad(Color.WHITE)               # poświata promienia
+			var beam_b := _glow_quad(Color.WHITE)               # rdzeń promienia
+			var beam_hit := _glow_quad(Color.WHITE)
+			(beam_hit.material_override as StandardMaterial3D).billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+			for n in [star, tongue, cross, charge, beam_a, beam_b, beam_hit]:
+				root.add_child(n)
+			var flame := CPUParticles3D.new()                    # miotacz: strumień ognia
+			flame.emitting = false
+			flame.amount = 70
+			flame.lifetime = 0.5
+			flame.local_coords = false
+			var fq := QuadMesh.new()
+			fq.size = Vector2(0.34, 0.34)
+			fq.material = _fire_mat()
+			flame.mesh = fq
+			flame.gravity = Vector3(0.0, 0.5, 0.0)
+			var fsc := Curve.new()
+			fsc.add_point(Vector2(0.0, 0.35))
+			fsc.add_point(Vector2(0.6, 1.3))
+			fsc.add_point(Vector2(1.0, 1.6))
+			flame.scale_amount_curve = fsc
+			var fg := Gradient.new()
+			fg.set_color(0, Color(1.0, 0.95, 0.65, 0.8))
+			fg.add_point(0.4, Color(1.0, 0.5, 0.12, 0.6))
+			fg.set_color(fg.get_point_count() - 1, Color(0.25, 0.1, 0.06, 0.0))
+			flame.color_ramp = fg
+			flame.layers = LAYER_ACTORS
+			flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			root.add_child(flame)
+			rig["wfx"] = {"root": root, "star": star, "tongue": tongue, "cross": cross, "charge": charge, "beam_a": beam_a, "beam_b": beam_b, "beam_hit": beam_hit, "flame": flame}
+		var fx: Dictionary = rig["wfx"]
+		var gun := rig["gun"] as Node3D
+		var dead := bool(p.get("dead"))
+		var muzzle: Vector3 = gun.global_transform * (c3._gun_info["muzzle"] as Vector3)
+		var aim2: Vector2 = p.get("aim_dir")
+		var aim := Vector3(aim2.x, -aim2.y, 0.0).normalized()
+		var d = wv.Weapons.def(p.get("weapon"))
+		# rozbłysk
+		var ft := float(wv.get("_flash_t"))
+		var on_flash := ft > 0.0 and float(d.flash_size) > 0.0 and not dead and gun.visible
+		for k in ["star", "tongue", "cross"]:
+			(fx[k] as Node3D).visible = on_flash
+		if on_flash:
+			var k := clampf(ft / (float(wv.FLASH_TIME) * (1.0 + float(d.flash_size) / 12.0)), 0.0, 1.0)
+			var r := float(d.flash_size) * PX * (0.55 + 0.45 * k)
+			var col: Color = d.flash_color
+			var seed := float(wv.get("_flash_seed"))
+			(fx["star"] as Node3D).position = muzzle + aim * r * 0.25
+			(fx["star"] as Node3D).scale = Vector3.ONE * r * 1.7
+			((fx["star"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.97, 0.85, k)
+			_span_quad(fx["tongue"], muzzle, muzzle + aim * r * 2.6, r * 0.9)
+			((fx["tongue"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color = Color(col.r, col.g, col.b, 0.9 * k)
+			var side := Vector3(-aim.y, aim.x, 0.0).rotated(Vector3(0, 0, 1), sin(seed * 7.0) * 0.35)
+			_span_quad(fx["cross"], muzzle + aim * r * 0.3 - side * r * 1.1, muzzle + aim * r * 0.3 + side * r * 1.1, r * 0.5)
+			((fx["cross"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color = Color(col.r, col.g, col.b, 0.7 * k)
+		# ładowanie
+		var charging := int(p.get("w_state")) == int(wv.Controller.State.CHARGE) and not dead
+		(fx["charge"] as Node3D).visible = charging
+		if charging:
+			var ch := clampf(float(p.get("w_charge")), 0.0, 1.0)
+			var tc: Color = d.tracer_color
+			(fx["charge"] as Node3D).position = muzzle
+			(fx["charge"] as Node3D).scale = Vector3.ONE * (3.0 + 9.0 * ch) * PX * (1.0 + 0.12 * sin(_life * 40.0) * ch)
+			((fx["charge"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color = Color(lerpf(tc.r, 1.0, ch * 0.6), lerpf(tc.g, 1.0, ch * 0.6), lerpf(tc.b, 1.0, ch * 0.6), 0.4 + 0.6 * ch)
+		# promień
+		var beaming := bool(p.get("w_firing")) and int(d.kind) == int(wv.WeaponDef.Kind.BEAM) and not dead
+		for k in ["beam_a", "beam_b", "beam_hit"]:
+			(fx[k] as Node3D).visible = beaming
+		if beaming:
+			var bc: Color = d.tracer_color
+			var end2: Vector2 = wv.get("_beam_end")
+			var end3 := Level3D.px_to_m((wv as Node2D).to_global(end2)) + Vector3(0.0, 0.0, muzzle.z)
+			var fl := randf_range(0.85, 1.0)
+			_span_quad(fx["beam_a"], muzzle, end3, 9.0 * PX)
+			((fx["beam_a"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color = Color(bc.r, bc.g, bc.b, 0.55 * fl)
+			_span_quad(fx["beam_b"], muzzle, end3, 2.6 * PX)
+			((fx["beam_b"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color = Color(1, 1, 1, 0.95 * fl)
+			(fx["beam_hit"] as Node3D).position = end3
+			(fx["beam_hit"] as Node3D).scale = Vector3.ONE * 8.0 * PX * fl
+			((fx["beam_hit"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color = Color(bc.r, bc.g, bc.b, 0.9)
+		# płomień miotacza
+		var fl2d = wv.get("_flame")
+		var flame3 := fx["flame"] as CPUParticles3D
+		var burning: bool = fl2d != null and is_instance_valid(fl2d) and (fl2d as CPUParticles2D).emitting and not dead
+		flame3.emitting = burning
+		if fl2d != null and is_instance_valid(fl2d):
+			(fl2d as CanvasItem).visible = false
+		if burning:
+			flame3.position = muzzle
+			flame3.direction = aim
+			flame3.spread = (fl2d as CPUParticles2D).spread
+			flame3.initial_velocity_min = (fl2d as CPUParticles2D).initial_velocity_min * PX
+			flame3.initial_velocity_max = (fl2d as CPUParticles2D).initial_velocity_max * PX
+			flame3.lifetime = (fl2d as CPUParticles2D).lifetime
+
+## Wołane z `Vfx.streak`: smuga pocisku / szyny jako dwa addytywne pasy (poświata i rdzeń), gasnące przez `life` s.
+func mirror_streak(a: Vector2, b: Vector2, color: Color, width: float, life: float) -> void:
+	var a3 := Level3D.px_to_m(a) + Vector3(0.0, 0.0, 0.3)
+	var b3 := Level3D.px_to_m(b) + Vector3(0.0, 0.0, 0.3)
+	var halo := _glow_quad(Color(color.r, color.g, color.b, 0.6))
+	var core := _glow_quad(Color(1, 1, 1, 0.95))
+	_world.add_child(halo)
+	_world.add_child(core)
+	_span_quad(halo, a3, b3, width * 3.4 * PX)
+	_span_quad(core, a3, b3, maxf(width * 0.9, 1.0) * PX)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(halo.material_override, "albedo_color:a", 0.0, life)
+	tw.tween_property(core.material_override, "albedo_color:a", 0.0, life)
+	tw.chain().tween_callback(halo.queue_free)
+	tw.tween_callback(core.queue_free)
+
+## Wołane z `Vfx.casing`: łuska jako mosiężny (śrutowa: czerwony) walec 3D podążający za ciałem fizycznym 2D; rysunek 2D jest chowany.
+func mirror_casing(body: RigidBody2D, big: bool) -> void:
+	var mi := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = (0.55 if big else 0.32) * PX
+	cm.bottom_radius = cm.top_radius
+	cm.height = (3.0 if big else 2.0) * PX
+	cm.radial_segments = 8
+	cm.rings = 0
+	mi.mesh = cm
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.5, 0.12, 0.1) if big else Color(0.8, 0.6, 0.25)
+	m.metallic = 0.2 if big else 0.85
+	m.roughness = 0.6 if big else 0.32
+	mi.material_override = m
+	mi.layers = LAYER_ACTORS
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_world.add_child(mi)
+	body.modulate = Color(1, 1, 1, 0)
+	_casings[body.get_instance_id()] = [body, mi, randf_range(-0.5, 0.5)]
+
+func _sync_casings() -> void:
+	for id in _casings.keys():
+		var cs: Array = _casings[id]
+		if not is_instance_valid(cs[0]) or (cs[0] as Node).is_queued_for_deletion():
+			if is_instance_valid(cs[1]):
+				(cs[1] as Node).queue_free()
+			_casings.erase(id)
+			continue
+		var b := cs[0] as RigidBody2D
+		var mi := cs[1] as MeshInstance3D
+		mi.position = Level3D.px_to_m(b.global_position) + Vector3(0.0, 0.0, 0.35 + float(cs[2]) * 0.3)
+		mi.rotation = Vector3(float(cs[2]), 0.0, -b.global_rotation + PI * 0.5)       # walec leży wzdłuż osi łuski 2D
 
 # ---------------------------------------------------------------- tor drezyny
 
