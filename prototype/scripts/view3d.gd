@@ -1623,7 +1623,7 @@ func _sync_casings() -> void:
 			_casings.erase(id)
 			continue
 		var b := cs[0] as RigidBody2D
-		var mi := cs[1] as MeshInstance3D
+		var mi := cs[1] as Node3D
 		mi.position = Level3D.px_to_m(b.global_position) + Vector3(0.0, 0.0, 0.35 + float(cs[2]) * 0.3)
 		mi.rotation = Vector3(float(cs[2]), 0.0, -b.global_rotation + (float(cs[3]) if cs.size() > 3 else PI * 0.5))       # łuska: walec wzdłuż osi łuski 2D; szczątek: płasko
 
@@ -1893,6 +1893,46 @@ func mirror_debris(body: RigidBody2D, size: Vector2, color: Color) -> void:
 	_world.add_child(mi)
 	body.modulate = Color(1, 1, 1, 0)
 	_casings[body.get_instance_id()] = [body, mi, randf_range(-0.5, 0.5), 0.0]
+
+const GIB_MODELS := [["gib_meat_b", "gib_meat_c"], ["gib_bone_a", "gib_bone_b"], ["gib_gut_a"]]      # rodzaj z `Vfx._gibs_hd`: 0 mięso, 1 kość, 2 wnętrzności
+
+## Wołane z `Vfx._gibs_hd`: szczątek jako model 3D (art/items3d/gib_*.glb, generowane lokalnie — `tools/comfy_gen.py`), podążający za
+## ciałem fizycznym; zastępuje ogólną bryłkę z `mirror_debris`. `sz` — rozmiar szczątka w pikselach świata.
+func mirror_gib(body: RigidBody2D, kind: int, sz: float) -> void:
+	var names: Array = GIB_MODELS[clampi(kind, 0, GIB_MODELS.size() - 1)]
+	var mm := Level3D.model_mesh(String(names[randi() % names.size()]))
+	if mm.is_empty():
+		return                                                # brak modelu: zostaje bryłka
+	var gname := String((mm[0] as Mesh).resource_path)
+	if not _item_tuned.has(gname):                             # jednorazowo: mapy metalu i normalnych z generatora dawały połysk „zmiętej folii”
+		_item_tuned[gname] = true
+		for si in (mm[0] as Mesh).get_surface_count():
+			var gm := (mm[0] as Mesh).surface_get_material(si) as BaseMaterial3D
+			if gm != null:
+				gm.metallic = 0.0
+				gm.metallic_texture = null
+				gm.roughness_texture = null
+				gm.roughness = 0.42                               # mokre, ale nie lustrzane
+				gm.metallic_specular = 0.35
+				gm.normal_scale = 0.45
+				gm.albedo_color = Color(0.62, 0.55, 0.55)
+	var pivot := Node3D.new()
+	var mi := MeshInstance3D.new()
+	mi.mesh = mm[0]
+	var xf: Transform3D = mm[1]
+	var box: AABB = xf * (mm[0] as Mesh).get_aabb()
+	mi.transform = Transform3D(xf.basis, xf.origin - box.get_center())       # obrót wokół środka bryły
+	mi.layers = LAYER_ACTORS
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	pivot.add_child(mi)
+	var k := sz * PX * (1.25 if kind == 1 else 0.95) / maxf(box.get_longest_axis_size(), 0.001)
+	pivot.scale = Vector3(k, k, k)
+	_world.add_child(pivot)
+	body.modulate = Color(1, 1, 1, 0)
+	var id := body.get_instance_id()
+	if _casings.has(id) and is_instance_valid(_casings[id][1]):
+		(_casings[id][1] as Node).queue_free()
+	_casings[id] = [body, pivot, randf_range(-0.6, 0.6), randf() * TAU]
 
 # ---------------------------------------------------------------- krew
 
