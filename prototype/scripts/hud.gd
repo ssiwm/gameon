@@ -778,8 +778,8 @@ func _build_gear_card() -> void:
 	_battery.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	lr.add_child(_battery)
 	res.add_child(lr)
-	_battery_note = Label.new()                     # stan latarki niesie kolor paska; etykieta zostaje tylko jako pole tekstu
-	_battery_note.visible = false
+	_battery_note = UiTheme.mono(UiTheme.label("100%", 7, UiTheme.MUTED))      # procent baterii obok paska (pasek 39 px sam nie pokazuje zużycia: 180 s pracy)
+	_battery_note.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	lr.add_child(_battery_note)
 
 ## Kapsel klawisza w kartach HUD-u (jak w makiecie): ciemne tło, ramka z grubszym dołem.
@@ -1409,7 +1409,8 @@ func _drive_status() -> void:
 	_battery.value = pct
 	_battery.fill = UiTheme.DANGER if pct < 0.2 else (Color("e8e2c4") if _player.flashlight else UiTheme.CALM)
 	_battery.queue_redraw()
-	_battery_note.text = ("ON %d%%" if _player.flashlight else "OFF %d%%") % int(pct * 100.0)
+	_battery_note.text = "%d%%" % int(ceil(pct * 100.0))
+	_battery_note.add_theme_color_override("font_color", UiTheme.DANGER if pct < 0.2 else (UiTheme.TEXT if _player.flashlight else UiTheme.MUTED))
 
 ## Karta broni: sloty z aktualnego zestawu, magazynek / zapas, ciepło lufy i koszt hałasu.
 func _drive_weapons() -> void:
