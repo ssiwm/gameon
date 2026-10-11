@@ -80,7 +80,6 @@ var _surf_t := 0.0                       ## do następnego odświeżenia tekstur
 var _nestfx := {}                        ## id gniazda → [węzeł 2D, żar 3D]
 var _ring_mi: MeshInstance3D             ## pierścienie alarmu wrogów (jedna siatka na wszystkie)
 var _motes: CPUParticles3D               ## pył w powietrzu wokół kamery
-var _amb_hidden: Array = []              ## schowane cząsteczki 2D kamery (mgiełka, pył) — do przywrócenia w widoku 2D
 var _leechfx := {}                       ## id Pijawki → [węzeł 2D, korzeń 3D efektów na wodzie]
 var _lampfx := {}                        ## id lampy → [węzeł 2D, poświata żarówki]
 var _bossfx := {}                        ## id Żyły → [węzeł 2D, korzeń 3D efektów]
@@ -199,10 +198,6 @@ func release() -> void:
 			if is_instance_valid(wn):
 				(wn as Node).queue_free()
 	_worldfx.clear()
-	for am in _amb_hidden:
-		if is_instance_valid(am):
-			(am as CanvasItem).visible = true
-	_amb_hidden.clear()
 	for id in _nestfx.keys():
 		if is_instance_valid(_nestfx[id][1]):
 			(_nestfx[id][1] as Node).queue_free()
@@ -537,10 +532,6 @@ func _release_rig(p) -> void:
 	if rig.has("wfx"):                                         # efekty strzału 3D: zwolnij i przywróć rysunek 2D
 		if is_instance_valid(rig["wfx"]["root"]):
 			(rig["wfx"]["root"] as Node).queue_free()
-		if is_instance_valid(p) and p.get("view") != null and is_instance_valid(p.get("view")):
-			var f2 = p.get("view").get("_flame")
-			if f2 != null and is_instance_valid(f2):
-				(f2 as CanvasItem).visible = true
 	var c3 = p.get("c3d") if is_instance_valid(p) else null
 	if c3 != null and is_instance_valid(c3):
 		var root: Node = rig["root"]
@@ -924,21 +915,24 @@ func _sync_projectiles() -> void:
 		px.position = Level3D.px_to_m(s2.global_position) + Vector3(0.0, 0.0, 0.3)
 		px.rotation = Vector3(0.0, 0.0, -s2.global_rotation)
 
-## Wołane z `Vfx.burst`: przenosi wybuch cząsteczek 2D do 3D (głębia: rozrzut także w z, cząsteczki jako billboardy); wersja 2D jest ukrywana.
-func mirror_burst(fx: CPUParticles2D, pos: Vector2) -> void:
+## Wołane z `Vfx.burst_fx`: jednorazowy wybuch cząsteczek w scenie (billboardy, rozrzut w płaszczyźnie gry); opis w `cfg` — patrz vfx.gd.
+func spawn_burst(pos: Vector2, cfg: Dictionary) -> void:
+	var life := float(cfg.get("life", 0.5))
+	var dir: Vector2 = cfg.get("dir", Vector2.UP)
+	var grav: Vector2 = cfg.get("gravity", Vector2(0.0, 500.0))
 	var p := CPUParticles3D.new()
 	p.one_shot = true
-	p.explosiveness = fx.explosiveness
-	p.amount = fx.amount
-	p.lifetime = fx.lifetime
-	p.direction = Vector3(fx.direction.x, -fx.direction.y, 0.0)
-	p.spread = fx.spread
-	p.initial_velocity_min = fx.initial_velocity_min * PX
-	p.initial_velocity_max = fx.initial_velocity_max * PX
-	p.gravity = Vector3(fx.gravity.x * PX, -fx.gravity.y * PX, 0.0)
-	p.scale_amount_min = fx.scale_amount_min
-	p.scale_amount_max = fx.scale_amount_max
-	p.color = fx.color
+	p.explosiveness = float(cfg.get("explosiveness", 0.95))
+	p.amount = maxi(1, int(cfg.get("amount", 8)))
+	p.lifetime = life
+	p.direction = Vector3(dir.x, -dir.y, 0.0)
+	p.spread = float(cfg.get("spread", 60.0))
+	p.initial_velocity_min = float(cfg.get("vmin", 20.0)) * PX
+	p.initial_velocity_max = float(cfg.get("vmax", 60.0)) * PX
+	p.gravity = Vector3(grav.x * PX, -grav.y * PX, 0.0)
+	p.scale_amount_min = float(cfg.get("smin", 1.0)) * Vfx.BLOB_SCALE
+	p.scale_amount_max = float(cfg.get("smax", 1.0)) * Vfx.BLOB_SCALE
+	p.color = cfg.get("color", Color.WHITE)
 	p.layers = LAYER_ACTORS
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var q := QuadMesh.new()
@@ -949,16 +943,13 @@ func mirror_burst(fx: CPUParticles2D, pos: Vector2) -> void:
 	m.vertex_color_use_as_albedo = true
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	m.billboard_keep_scale = true
-	if fx.texture != null:
-		m.albedo_texture = fx.texture
+	m.albedo_texture = Vfx.blob_texture()
 	q.material = m
 	p.mesh = q
 	p.position = Level3D.px_to_m(pos) + Vector3(0.0, 0.0, 0.2)
 	_world.add_child(p)
 	p.emitting = true
-	get_tree().create_timer(fx.lifetime + 0.6).timeout.connect(p.queue_free)
-	fx.emitting = false
-	fx.visible = false
+	get_tree().create_timer(life + 0.6).timeout.connect(p.queue_free)
 
 # ---------------------------------------------------------------- dekoracje mapy (kamienie, kłody, płoty, kości)
 
@@ -1642,7 +1633,7 @@ func _span_quad(mi: MeshInstance3D, a: Vector3, b: Vector3, w: float) -> void:
 	mi.basis = Basis(d / len * len, Vector3(-d.y, d.x, 0.0).normalized() * w, Vector3(0, 0, 1))
 
 ## Rozbłysk wylotowy, ładowanie broni energetycznej, promień LR-7 i płomień miotacza w scenie 3D — przy wylocie lufy modelu broni.
-## Stan czytany z `weapon_view.gd` gracza (`_flash_t`, `w_state`, `w_firing`, `_beam_end`, `_flame`).
+## Stan czytany z `weapon_view.gd` gracza (`_flash_t`, `w_state`, `w_firing`, `_beam_end`, `flame_on`).
 func _sync_weapon_fx() -> void:
 	for p in _rigs.keys():
 		if not is_instance_valid(p):
@@ -1742,19 +1733,16 @@ func _sync_weapon_fx() -> void:
 			(fx["beam_hit"] as Node3D).scale = Vector3.ONE * 8.0 * PX * fl
 			((fx["beam_hit"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color = Color(bc.r, bc.g, bc.b, 0.9)
 		# płomień miotacza
-		var fl2d = wv.get("_flame")
 		var flame3 := fx["flame"] as CPUParticles3D
-		var burning: bool = fl2d != null and is_instance_valid(fl2d) and (fl2d as CPUParticles2D).emitting and not dead
+		var burning: bool = wv.get("flame_on") == true and not dead
 		flame3.emitting = burning
-		if fl2d != null and is_instance_valid(fl2d):
-			(fl2d as CanvasItem).visible = false
 		if burning:
 			flame3.position = muzzle
 			flame3.direction = aim
-			flame3.spread = (fl2d as CPUParticles2D).spread
-			flame3.initial_velocity_min = (fl2d as CPUParticles2D).initial_velocity_min * PX
-			flame3.initial_velocity_max = (fl2d as CPUParticles2D).initial_velocity_max * PX
-			flame3.lifetime = (fl2d as CPUParticles2D).lifetime
+			flame3.spread = float(wv.get("flame_spread"))
+			flame3.initial_velocity_min = 80.0 * PX
+			flame3.initial_velocity_max = float(wv.get("flame_vmax")) * PX
+			flame3.lifetime = 0.5
 
 ## Wołane z `Vfx.streak`: smuga pocisku / szyny jako dwa addytywne pasy (poświata i rdzeń), gasnące przez `life` s.
 func mirror_streak(a: Vector2, b: Vector2, color: Color, width: float, life: float) -> void:
@@ -2853,14 +2841,8 @@ func _sync_enemy_rings() -> void:
 		im.surface_end()
 
 ## Pył w powietrzu wokół kadru: drobiny 3D w całej głębi sceny, widoczne tylko w świetle — snop latarki „ma objętość".
-## Płaskie cząsteczki kamery z `player.gd` (pył i mgiełka przy ziemi) są chowane; mgłę w widoku 3D daje mgła wolumetryczna.
+## Mgłę przy ziemi daje mgła wolumetryczna.
 func _sync_ambient() -> void:
-	var cam2 := get_viewport().get_camera_2d()
-	if cam2 != null:
-		for ch in cam2.get_children():
-			if ch is CPUParticles2D and (ch as CanvasItem).visible:
-				(ch as CanvasItem).visible = false
-				_amb_hidden.append(ch)
 	if _motes == null:
 		_motes = CPUParticles3D.new()
 		_motes.name = "DustMotes"

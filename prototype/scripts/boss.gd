@@ -554,24 +554,8 @@ func _armor_fx(pos: Vector2) -> void:
 	_burst(pos, Color(1.0, 0.85, 0.4), 6)
 
 func _burst(pos: Vector2, col: Color, n: int) -> void:
-	var fx := CPUParticles2D.new()
-	fx.one_shot = true
-	fx.emitting = true
-	fx.amount = n
-	fx.lifetime = 0.35
-	fx.explosiveness = 1.0
-	fx.spread = 180.0
-	fx.initial_velocity_min = 30.0
-	fx.initial_velocity_max = 90.0
-	fx.gravity = Vector2(0, 300)
-	fx.color = col
-	fx.material = Lights.unshaded()
-	Vfx.soften(fx)
-	get_parent().add_child(fx)
-	fx.global_position = pos
-	if Vfx.view3d != null and is_instance_valid(Vfx.view3d):
-		Vfx.view3d.call("mirror_burst", fx, pos)              # cząsteczki 3D zamiast płaskich
-	get_tree().create_timer(0.8).timeout.connect(fx.queue_free)
+	Vfx.burst_fx(pos, {"color": col, "amount": n, "life": 0.35, "explosiveness": 1.0, "dir": Vector2.RIGHT, "spread": 180.0,
+		"vmin": 30.0, "vmax": 90.0, "gravity": Vector2(0, 300)})
 
 func _die() -> void:
 	state = State.DEAD
@@ -670,27 +654,8 @@ func _shake_near(amount: float) -> void:
 			Feel.shake(amount)
 
 func _death_fx() -> void:
-	var fx := CPUParticles2D.new()
-	fx.one_shot = true
-	fx.emitting = true
-	fx.amount = 90
-	fx.lifetime = 1.4
-	fx.explosiveness = 0.95
-	fx.direction = Vector2(0, -1)
-	fx.spread = 80.0
-	fx.initial_velocity_min = 60.0
-	fx.initial_velocity_max = 220.0
-	fx.gravity = Vector2(0, 380)
-	fx.scale_amount_min = 1.5
-	fx.scale_amount_max = 3.5
-	fx.color = Color(0.55, 0.12, 0.16)
-	fx.material = Lights.unshaded()
-	Vfx.soften(fx)
-	get_parent().add_child(fx)
-	fx.global_position = global_position + Vector2(0, -20)
-	if Vfx.view3d != null and is_instance_valid(Vfx.view3d):
-		Vfx.view3d.call("mirror_burst", fx, fx.global_position)
-	get_tree().create_timer(2.0).timeout.connect(fx.queue_free)
+	Vfx.burst_fx(global_position + Vector2(0, -20), {"color": Color(0.55, 0.12, 0.16), "amount": 90, "life": 1.4, "dir": Vector2(0, -1), "spread": 80.0,
+		"vmin": 60.0, "vmax": 220.0, "gravity": Vector2(0, 380), "smin": 1.5, "smax": 3.5})
 
 # ---------------------------------------------------------------- rysowanie
 
