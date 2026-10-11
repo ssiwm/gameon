@@ -1087,6 +1087,16 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if blp != null:
 			for k in 3:
 				load("res://scripts/vfx.gd").gibs(level, blp.global_position + Vector2(50.0 + 30.0 * float(k), -10.0), Color(0.5, 0.1, 0.1), 8)
+	if "--shothubreturn" in OS.get_cmdline_user_args():             # dev: po 1 s przejście z misji do kryjówki (jak po wygranej) — test przebudowy sceny
+		get_tree().create_timer(1.0).timeout.connect(_restart_mission.bind(true, "z1_hub", true))
+		get_tree().create_timer(3.0).timeout.connect(func() -> void:
+			var hp2: Node2D = _players.get_node_or_null("1")
+			var rk := get_tree().get_first_node_in_group("pickups") as Node2D
+			for pk in get_tree().get_nodes_in_group("pickups"):
+				if pk.get("static_display") == true:
+					rk = pk
+			if hp2 != null and rk != null:
+				hp2.global_position = rk.global_position + Vector2(-40.0, -4.0))
 	if "--shotclear" in OS.get_cmdline_user_args():
 		for ce in get_tree().get_nodes_in_group("enemies"):       # --shotclear: bez wrogów (spokojny podgląd obiektów świata)
 			if not (ce is RigidBody2D):
