@@ -70,6 +70,7 @@ var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
 var _ws_lamps := {}                      ## id warsztatu → lampa nad nim (Node3D w geometrii mapy)
 var _globs := {}                         ## id plwociny / kwasu → [węzeł 2D, kula 3D]
 var _fp := 0.0                           ## 0..1: przejście kamery do widoku z oczu gracza (oględziny broni)
+var _fp_hidden: Node3D                   ## model gracza schowany na czas oględzin (do przywrócenia)
 var _fp_last: Node2D                     ## ostatni gracz w oględzinach (kamera wraca od jego oczu)
 var _fp_player: Node2D                   ## lokalny gracz w oględzinach (jego model jest wtedy schowany)
 var _dots_mi: MeshInstance3D             ## świecące punkty (lampki, diody, oczy w mroku) i znaczniki na podłodze — jedna siatka
@@ -169,6 +170,8 @@ func setup(level: Node2D, players: Node2D) -> void:
 
 func release() -> void:
 	Vfx.view3d = null
+	if _fp_hidden != null and is_instance_valid(_fp_hidden):
+		_fp_hidden.visible = true
 	for ci in [_level, _players]:
 		if ci is CanvasItem:
 			(ci as CanvasItem).modulate.a = 1.0
@@ -318,11 +321,15 @@ func _process(delta: float) -> void:
 	_sync_enemy_rings()
 	_sync_ambient()
 	_sync_world_fx(delta)
-	# widok z oczu gracza: jego własny model znika z kadru (stałby tuż przed kamerą)
+	# widok z oczu gracza: jego własny model znika z kadru (stałby tuż przed kamerą) i wraca, gdy kamera odjeżdża
+	var hide_me: Node3D = null
 	if _fp > 0.35 and _fp_last != null and is_instance_valid(_fp_last) and _rigs.has(_fp_last):
-		var fr = _rigs[_fp_last].get("actor")
-		if fr != null and is_instance_valid(fr):
-			(fr as Node3D).visible = false
+		hide_me = _rigs[_fp_last].get("actor") as Node3D
+	if _fp_hidden != null and is_instance_valid(_fp_hidden) and _fp_hidden != hide_me:
+		_fp_hidden.visible = true
+	_fp_hidden = hide_me
+	if _fp_hidden != null and is_instance_valid(_fp_hidden):
+		_fp_hidden.visible = false
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5

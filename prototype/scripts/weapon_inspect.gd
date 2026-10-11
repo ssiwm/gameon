@@ -238,7 +238,7 @@ func _process(delta: float) -> void:
 	_blur.position = Vector2.ZERO
 	_blur.size = size
 	_panel.position = Vector2(size.x - _panel.size.x - 14.0 + 12.0 * (1.0 - e), (size.y - _panel.size.y) * 0.42)
-	_view.position = Vector2(0.0, size.y * 0.06)
+	_view.position = Vector2(0.0, size.y * 0.2)             # środek broni nieco poniżej środka ekranu — na wysokości rąk, nie nad głową
 	_view.size = Vector2(_panel.position.x - 6.0, size.y * 0.74)
 	# lampa: nieregularne migotanie i rzadkie przygaśnięcia
 	var f := 0.9 + 0.1 * sin(_t * 9.0) * sin(_t * 3.7)
