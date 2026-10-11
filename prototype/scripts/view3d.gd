@@ -343,7 +343,13 @@ func _sync_rigs() -> void:
 			rig["gun"] = gun_now
 			if c3._gun_n != null:
 				c3._gun_n.visible = false
-		actor.position = Level3D.px_to_m(p.global_position) - Vector3(0.0, float(c3.sink_m), 0.0)
+		# na drezynie: w symulacji stopy są na poziomie toru (w 2D łydki zasłania wycinek sprite'a pokładu), w 3D model staje na pokładzie
+		var want_lift := 0.0
+		for hc in get_tree().get_nodes_in_group("handcar"):
+			if hc.aboard(p):
+				want_lift = DECK_LIFT_PX * PX
+		rig["lift"] = lerpf(float(rig.get("lift", 0.0)), want_lift, 0.25)
+		actor.position = Level3D.px_to_m(p.global_position) - Vector3(0.0, float(c3.sink_m) - float(rig["lift"]), 0.0)
 		_splash_update(actor, p.global_position, absf(float(p.get("velocity").x)) if p.get("velocity") != null else 0.0, LAYER_ACTORS)
 		actor.scale = Vector3(c3.px_flip, 1.0, 1.0)
 		c3._on_screen = true                       # poza liczymy zawsze (bez powiadomień o ekranie 2D)
@@ -859,6 +865,7 @@ func _local_xf(n: Node3D, root: Node) -> Transform3D:
 
 # ---------------------------------------------------------------- tor drezyny
 
+const DECK_LIFT_PX := 5.35                  ## góra pokładu drezyny nad torem [px świata] (handcar.gd: DECK_TOP)
 const RAIL_H := 0.5 * PX                    ## wysokość szyny [m] — koło drezyny (oś 2,5 px nad posadzką) stoi na jej główce
 const RAIL_Z := [0.28, -0.68]               ## szyna bliższa (pod kołami) i dalsza
 const WHEEL_D := 4.0                        ## średnica koła drezyny w widoku 3D [px świata] (sprite 2D: 6,8 px — sięgał poniżej posadzki)
@@ -869,10 +876,13 @@ func _build_rails() -> void:
 	if hc == null or _geo.has_node("Rails"):
 		return
 	var exits = _level.get("exits")
-	var x0 := hc.global_position.x - 60.0
-	var x1 := x0 + 200.0
+	# trasa: od stacji (bieżące miejsce drezyny przy budowie) do końca toru przy wyjściu — po dowolnej stronie stacji; zapas na długość pokładu
+	var xa := hc.global_position.x
+	var xb := xa
 	if exits != null and not (exits as Array).is_empty():
-		x1 = maxf(x1, ((exits as Array)[0] as Vector2).x + 70.0)
+		xb = ((exits as Array)[0] as Vector2).x + 70.0
+	var x0 := minf(xa, xb) - 60.0
+	var x1 := maxf(xa, xb) + 60.0
 	var root := Node3D.new()
 	root.name = "Rails"
 	_geo.add_child(root)
