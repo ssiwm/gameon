@@ -179,6 +179,28 @@ static func _multimesh(parent: Node3D, mesh: Mesh, xforms: Array, mat: Material,
 ## o głębokości TRENCH_D, otwarte ku kamerze; z tyłu zostaje peron na pełnej wysokości, po którym chodzą postacie.
 const TRENCH_D := 5.35 * PX                ## m: góra pokładu drezyny wypada równo z peronem
 const TRENCH_Z0 := 0.22                    ## m: krawędź peronu (tuż przed płaszczyzną gry)
+## Czy za komórką ze znacznikiem, kładką albo słupem ma stać ściana tła: znaki mapy inne niż `b` zajmują komórkę ściany (wróg, przedmiot, kładka,
+## słup w hali), a w 3D zostawiały w murze prostokątne dziury. Ściana jest, gdy w wierszu — idąc przez takie same komórki — po lewej albo po prawej
+## trafiamy na `b`, albo `b` jest bezpośrednio nad lub pod komórką.
+static func _wall_behind(rows: Array, c: int, r: int) -> bool:
+	var ch := _ch(rows, c, r)
+	if ch == "." or ch == "b" or ch == "" or is_solid_ch(ch):
+		return false
+	if _ch(rows, c, r - 1) == "b" or _ch(rows, c, r + 1) == "b":
+		return true
+	for dir in [-1, 1]:
+		var k: int = c + dir
+		var steps := 0
+		while steps < 24:
+			var n := _ch(rows, k, r)
+			if n == "b":
+				return true
+			if n == "." or n == "" or is_solid_ch(n):
+				break
+			k += dir
+			steps += 1
+	return false
+
 static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary:
 	var nrows := rows.size()
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
@@ -209,8 +231,10 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 					groups[ch].append(Transform3D(Basis().scaled(Vector3(1.0, (T - TRENCH_D) / T, bed_d / full)), p + Vector3(0.0, -TRENCH_D * 0.5, TRENCH_Z0 + bed_d * 0.5)))
 					continue
 				groups[ch].append(Transform3D(Basis.IDENTITY, p + Vector3(0.0, 0.0, zc)))
-			elif ch == "b":
+			if ch == "b" or _wall_behind(rows, c, r):
 				walls.append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
+			if ch == "b":
+				pass
 			elif ch == "w":
 				posts.append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, POST_Z)))
 			elif is_platform_ch(ch):
