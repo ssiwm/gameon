@@ -1,6 +1,6 @@
 # Plan: refaktor dźwięku — źródła hybrydowe i propagacja po mapie
 
-Status: **plan z 2026-10-12; F0 i F1 zrobione, F2 (pilotaż) czeka na odsłuch — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
+Status: **plan z 2026-10-12; F0–F2 zrobione, bramka A przeszła (wszystkie trzy rodziny: wersja z nagrań) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
 `default_bus_layout.tres`, `AUDIO.md`), nie na próbnej implementacji — rozmiary faz są szacunkowe. Kontynuacja `prototype/AUDIO.md`
 (overhaul v2), który sam stwierdza w §5: „to nie jest jeszcze AAA w sensie brzmienia” i „brzmienia nie oceniałem uchem”.
 
@@ -91,8 +91,10 @@ Razem ok. 15–23 dni roboczych. Muzyka (stemy) jest poza tym planem — osobna 
 ## 6. Decyzje do podjęcia
 
 1. ~~Pobrania do pilotażu~~ — zgoda z 2026-10-12; co faktycznie pobrano: §7.
-2. **Bramka A:** odsłuch `build/audio_ab.html` i wybór wersji dla trzech pilotażowych rodzin.
-3. **Assety z nagrań a publiczne repo** (nowe, blokuje F3–F5 dla wszystkiego, co powstaje z nagrań): repo `ssiwm/gameon` jest publiczne,
+2. ~~Bramka A~~ — odsłuch 2026-10-12: `m83_shot`, `step_concrete` i `stalker_growl` w wersji z nagrań. Plan idzie dalej (F3–F5),
+   a nagrania są źródłem pierwszego wyboru także dla głosów; generowanie zostaje dla tego, czego w bibliotekach nie ma.
+3. **Assety z nagrań a publiczne repo** — decyzja 2026-10-12: **repo ma być prywatne.** Dopóki jest publiczne, WAV-y z nagrań nie są
+   wypychane (zostają na lokalnej gałęzi). Tło decyzji: repo `ssiwm/gameon` jest publiczne,
    a licencja Sonniss 2.0 zabrania udostępniania dźwięków innym „jako efektów dźwiękowych”, także przerobionych. Zmiksowany WAV w publicznym
    repo jest plikiem, który każdy może pobrać. Licencja nie mówi wprost o repozytoriach kodu, więc to ryzyko, a nie pewne naruszenie.
    Możliwości: (a) repo prywatne; (b) assety z nagrań w osobnym, prywatnym repo albo tylko w buildach, a publiczne repo zostaje z syntezą
@@ -110,7 +112,7 @@ SHA-256, `hybrid()` (asset gry ze źródeł; brak źródła = pominięcie), `alt
 `tools/audio_lib_fetch.py`: spis i pobieranie pojedynczych plików z archiwów Sonniss. `comfy_gen.py audio`: Stable Audio 3.
 Kryterium spełnione: pełny bake bez źródeł i ze źródłami nie zmienia żadnego pliku w `audio/`; testy DSP + 16 nowych testów źródeł przechodzą.
 
-**F2 — upieczone, czeka na odsłuch.** `tools/bake_hybrid.py` → `build/audio_alt/` → `build/audio_ab.html`:
+**F2 — zrobione, wybrane wersje z nagrań (bramka A).** `tools/bake_hybrid.py` → `build/audio_alt/` → `build/audio_ab.html`:
 
 | Rodzina | Wersje | Źródła |
 |---|---|---|
