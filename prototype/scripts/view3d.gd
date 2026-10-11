@@ -1946,6 +1946,8 @@ func mirror_gib(body: RigidBody2D, kind: int, sz: float) -> void:
 # ---------------------------------------------------------------- pogoda
 
 const RAIN_3D := {"rain": [12.0, 700, 10.5], "storm": [26.0, 1500, 13.0]}      # kąt od pionu [°], liczba kropel, prędkość [m/s]
+const HAZE_K := {"clear": 0.12, "rain": 0.8, "storm": 0.8, "fog": 1.0}          # zamglenie powietrza wg pogody (mnożnik gęstości bazowej)
+const GROUND_FOG_K := {"clear": 0.0, "rain": 0.5, "storm": 0.4, "fog": 1.6}    # wstęgi mgły przy ziemi wg pogody
 const MOON_K := {"clear": 1.35, "rain": 0.75, "storm": 0.55, "fog": 1.0}       # jasność księżyca wg pogody
 
 ## Pogoda w scenie 3D (stan z `weather_fx.gd`: siła `_k`, otwartość nieba `_sky`, rodzaj `_id`, błysk `_flash`; dźwięk zostaje tam):
@@ -2043,7 +2045,16 @@ func _sync_weather(_delta: float) -> void:
 		var fm := fv.material as FogMaterial
 		if not fv.has_meta("base_density"):
 			fv.set_meta("base_density", fm.density)
-		fm.density = float(fv.get_meta("base_density")) * (1.0 + 9.0 * fogk)
+		# zamglenie bazowe (snopy świateł w powietrzu) zależy od pogody: w noc pogodną powietrze jest czyste, w deszczu lekko zamglone
+		var haze := lerpf(1.0, float(HAZE_K.get(id, 1.0)), k)
+		fm.density = float(fv.get_meta("base_density")) * (haze + 9.0 * fogk)
+		for gf in _geo.get_children():                             # wstęgi mgły przy ziemi (`Level3D.build_ground_fog`)
+			if String(gf.name).begins_with("GroundFog") and gf is MeshInstance3D:
+				var gm := (gf as MeshInstance3D).material_override as ShaderMaterial
+				if gm != null:
+					if not gf.has_meta("base_density"):
+						gf.set_meta("base_density", gm.get_shader_parameter("density"))
+					gm.set_shader_parameter("density", float(gf.get_meta("base_density")) * lerpf(1.0, float(GROUND_FOG_K.get(id, 1.0)), k))
 		fm.emission = Color(0.092, 0.115, 0.140) * (1.1 * fogk)       # blada własna poświata mgły — czytelna także tam, gdzie nic nie świeci
 	var env := _cam_a.environment
 	if env != null:
