@@ -472,7 +472,7 @@ var _result_prompt: Label
 var _result_title: Label
 var _result_sub: Label
 var _result_box: StyleBoxFlat
-var _inspect: PanelContainer            ## oględziny broni (krótkie [E]): model 3D i statystyki — weapon_inspect.gd
+var _inspect: Control                   ## oględziny broni ([F]): rozmyte tło, model 3D i statystyki — weapon_inspect.gd
 var _noise_card: PanelContainer      ## karta hałasu (w kryjówce zastępuje ją znacznik SAFE)
 var _safe_chip: PanelContainer
 var _ready_pips: Pips              ## kwadraciki gotowości w pasku misji kryjówki
@@ -1770,10 +1770,12 @@ func _fill_info(c: Dictionary, title: String, tag: String, rows: Array, text: St
 
 ## Karty: statystyki broni w zasięgu [E] (nad paskiem kontekstowym) i odprawa przy tablicy (u góry, pod kartą celu).
 func _drive_cards() -> void:
-	# --- oględziny broni (krótkie [E] przy stojaku albo broni na ziemi): panel nad paskiem kontekstowym; gra się nie zatrzymuje
+	# --- oględziny broni ([F] przy stojaku albo broni na ziemi): ekran z rozmytym tłem, bronią i panelem statystyk; gra się nie zatrzymuje
 	var it: Node2D = null
 	if _player != null and not _player.dead and _player.weapons.inspect_item != null and is_instance_valid(_player.weapons.inspect_item):
 		it = _player.weapons.inspect_item
+	_inspect.position = Vector2.ZERO
+	_inspect.size = size
 	if it != null:
 		var wid := int(it.arg)
 		var wc: Node = _player.weapons
@@ -1782,10 +1784,8 @@ func _drive_cards() -> void:
 		var locked: bool = lvl_i != null and lvl_i.is_locked_item(it)
 		var hand: int = wc.melee_id if nd.slot == Weapons.Slot.MELEE else wc.loadout[wc.slot if wc.slot < 2 else 0]
 		var gk = it.get("_hd_gun")
-		var foot := Actions.fmt(tr("[{interact}]  Close")) if locked else Actions.fmt(tr("[{interact}]  Close   ·   hold [{interact}]  Take"))
+		var foot := Actions.fmt(tr("[{flare}]  Close")) if locked else Actions.fmt(tr("[{interact}]  Take   ·   [{flare}]  Close"))
 		_inspect.show_weapon(wid, String(gk) if gk != null and String(gk) != "" else String(nd.key), hand, Scrap.lock_text(wid) if locked else "", foot)
-		_inspect.reset_size()
-		_inspect.position = Vector2((size.x - _inspect.size.x) * 0.5, maxf(6.0, size.y * 0.5 - _inspect.size.y - 10.0))
 	else:
 		_inspect.close()
 	# --- odprawa przy tablicy
@@ -1964,24 +1964,22 @@ func _drive_prompt() -> void:
 	elif _near_workshop():
 		text = tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank]
 		col = UiTheme.ACCENT
+	elif _player != null and _player.weapons.inspect_item != null:
+		text = ""                                             # klawisze są w panelu oględzin
 	elif _player != null and _player.weapons.nearby_weapon_item() != null:
 		var it: Node2D = _player.weapons.nearby_weapon_item()
 		var nd: RefCounted = Weapons.def(it.arg)
 		var lvl_p := get_tree().get_first_node_in_group("level")
 		if lvl_p != null and lvl_p.is_locked_item(it):
-			text = tr("[%s]  Inspect   ·   LOCKED  ·  %s") % [Actions.key("interact"), Scrap.lock_text(it.arg)]
+			text = tr("LOCKED  ·  %s   ·   [%s]  Inspect") % [Scrap.lock_text(it.arg), Actions.key("flare")]
 			col = UiTheme.MUTED
 		else:
 			var wc2: Node = _player.weapons
 			var swap_out: String = Weapons.def(wc2.loadout[wc2.slot if wc2.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc2.melee_id).name
 			var take_key := Actions.key("interact")
-			if wc2.take_progress() > 0.3:                    # po oknie krótkiego naciśnięcia: pasek przytrzymania
-				text = tr("Taking %s…") % nd.name
-				prog = wc2.take_progress()
-				col = UiTheme.OK
-			else:
-				text = tr("[%s]  Inspect   ·   hold [%s]  Take %s  (drops %s)") % [take_key, take_key, nd.name, swap_out] if not wc2.carries(it.arg) else tr("[%s]  Inspect   ·   hold [%s]  Take ammo for %s") % [take_key, take_key, nd.name]
-				col = UiTheme.ACCENT
+			var look_key := Actions.key("flare")
+			text = tr("[%s]  Take %s  (drops %s)   ·   [%s]  Inspect") % [take_key, nd.name, swap_out, look_key] if not wc2.carries(it.arg) else tr("[%s]  Take ammo for %s   ·   [%s]  Inspect") % [take_key, nd.name, look_key]
+			col = UiTheme.ACCENT
 	elif m != null and m.phase == Mission.Phase.EXTRACT:
 		var st: Dictionary = m.local_extract_state()
 		if st.get("inside", false):

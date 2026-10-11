@@ -1,23 +1,38 @@
-extends PanelContainer
-## Oględziny broni (krótkie [E] przy broni na stojaku albo na ziemi): ciemny panel z modelem 3D broni obracającym się pod jedną ciepłą lampą
-## i statystykami obok — kolumna tej broni i kolumna broni trzymanej w ręku. Gra się nie zatrzymuje (co-op): odejście od broni albo drugie [E]
-## zamyka panel, przytrzymanie [E] bierze broń (weapon_controller.gd: _tick_take). Model obraca się sam, a ruch celownika w poziomie go dokręca.
-## Zablokowana broń (kryjówka, nie kupiona w warsztacie) stoi w półmroku, z czerwoną poświatą i ceną.
+extends Control
+## Oględziny broni ([F] przy broni na stojaku albo na ziemi; weapon_controller.gd: _tick_inspect). Widok 3D przechodzi w tym czasie do widoku
+## z oczu gracza (view3d.gd: _sync_camera), a ten ekran kładzie na niego trzy warstwy: rozmycie i przyciemnienie tła, broń unoszącą się przed
+## oczami (model 3D pod jedną ciepłą, migoczącą lampą — obracasz ją myszą z wciśniętym przyciskiem albo prawym drążkiem) oraz po prawej panel
+## ze statystykami: ta broń i broń trzymana w ręku. Gra się nie zatrzymuje (co-op): [F] zamyka, [E] bierze broń, odejście albo trafienie
+## też zamyka. Zablokowana broń (kryjówka, nie kupiona w warsztacie) zostaje w półmroku z czerwoną kontrą i warunkiem odblokowania.
 
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Codex := preload("res://scripts/codex.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 
 const GUN_DIR := "res://art/char3d/"
-const VIEW_PX := Vector2i(560, 380)           ## rozdzielczość podglądu 3D
-const VIEW_SIZE := Vector2(150.0, 102.0)      ## rozmiar podglądu w jednostkach HUD
+const VIEW_PX := Vector2i(1280, 800)          ## rozdzielczość warstwy z bronią
 const LAMP := Color(1.0, 0.78, 0.5)
+const BLUR_SHADER := "shader_type canvas_item;
+uniform sampler2D screen : hint_screen_texture, filter_linear_mipmap;
+uniform float amount = 0.0;
+void fragment() {
+	vec3 c = textureLod(screen, SCREEN_UV, amount * 3.6).rgb;
+	float vig = smoothstep(0.25, 0.95, distance(SCREEN_UV, vec2(0.5)));
+	COLOR = vec4(c * mix(1.0, 0.42, amount) * (1.0 - 0.55 * vig * amount), 1.0);
+}
+"
 
+var level := 0.0                              ## 0..1: wygładzone otwarcie (rozmycie tła, przezroczystość broni i panelu)
+var _open := false
+var _blur: ColorRect
+var _blur_mat: ShaderMaterial
 var _vp: SubViewport
+var _view: TextureRect
 var _pivot: Node3D
 var _model: Node3D
 var _lamp: SpotLight3D
 var _rim: OmniLight3D
+var _panel: PanelContainer
 var _title: Label
 var _tag: Label
 var _lock: Label
@@ -26,85 +41,79 @@ var _note: Label
 var _foot: Label
 var _key := ""                                ## co jest pokazane: id broni, blokada i broń w ręku (zmiana = przebudowa treści)
 var _t := 0.0
-var _spin := 0.0
+var _yaw := 0.0
+var _pitch := 0.0
+var _idle := 0.0                              ## s od ostatniego ręcznego obrotu (potem broń obraca się sama)
 var _locked := false
 
 func _ready() -> void:
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var box := StyleBoxFlat.new()
-	box.bg_color = Color(0.022, 0.024, 0.024, 0.96)
-	box.border_color = UiTheme.LAMP_LINE
-	box.set_border_width_all(1)
-	box.border_width_bottom = 2
-	box.set_content_margin_all(7)
-	add_theme_stylebox_override("panel", box)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 9)
-	add_child(row)
-	# --- podgląd 3D: własny świat, jedna lampa z góry, ciemność dookoła
+	# --- tło: rozmycie i przyciemnienie wszystkiego, co pod spodem (świat i HUD)
+	_blur = ColorRect.new()
+	_blur.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sh := Shader.new()
+	sh.code = BLUR_SHADER
+	_blur_mat = ShaderMaterial.new()
+	_blur_mat.shader = sh
+	_blur.material = _blur_mat
+	add_child(_blur)
+	# --- broń: własny świat 3D na przezroczystym tle, jedna lampa z góry i chłodna kontra
 	_vp = SubViewport.new()
 	_vp.size = VIEW_PX
 	_vp.own_world_3d = true
-	_vp.transparent_bg = false
+	_vp.transparent_bg = true
 	_vp.msaa_3d = Viewport.MSAA_4X
 	_vp.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 	add_child(_vp)
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.012, 0.013, 0.014)
+	env.background_mode = Environment.BG_CLEAR_COLOR
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.5, 0.6, 0.8)
-	env.ambient_light_energy = 0.02
+	env.ambient_light_energy = 0.03
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var we := WorldEnvironment.new()
 	we.environment = env
 	_vp.add_child(we)
 	var cam := Camera3D.new()
-	cam.cull_mask = 3
 	cam.fov = 30.0
-	cam.position = Vector3(0.0, 0.18, 3.4)
-	cam.rotation = Vector3(-0.05, 0.0, 0.0)
+	cam.position = Vector3(0.0, 0.0, 4.6)
 	_vp.add_child(cam)
 	_lamp = SpotLight3D.new()
 	_lamp.light_color = LAMP
-	_lamp.spot_range = 6.0
-	_lamp.spot_angle = 34.0
-	_lamp.shadow_enabled = true
-	_lamp.position = Vector3(0.35, 2.0, 2.2)
+	_lamp.spot_range = 8.0
+	_lamp.spot_angle = 36.0
+	_lamp.position = Vector3(0.5, 2.2, 2.6)
 	_vp.add_child(_lamp)
 	_lamp.look_at(Vector3.ZERO)
-	_rim = OmniLight3D.new()                              # chłodna kontra zza broni: obrys w mroku
-	_rim.omni_range = 4.0
-	_rim.light_cull_mask = 1                               # tylko broń — blat zostaje w świetle lampy
-	_rim.position = Vector3(-1.2, 0.5, -1.6)
+	_rim = OmniLight3D.new()
+	_rim.omni_range = 5.0
+	_rim.position = Vector3(-1.4, 0.6, -1.8)
 	_vp.add_child(_rim)
-	var floor_mi := MeshInstance3D.new()                    # ciemny blat pod bronią: plama światła i cień broni
-	var pl := PlaneMesh.new()
-	pl.size = Vector2(6.0, 6.0)
-	floor_mi.mesh = pl
-	var fm := StandardMaterial3D.new()
-	fm.albedo_color = Color(0.05, 0.043, 0.038)
-	fm.roughness = 0.95
-	floor_mi.material_override = fm
-	floor_mi.position = Vector3(0.0, -0.62, 0.0)
-	floor_mi.layers = 2
-	_vp.add_child(floor_mi)
 	_pivot = Node3D.new()
 	_vp.add_child(_pivot)
-	var view := TextureRect.new()
-	view.texture = _vp.get_texture()
-	view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	view.stretch_mode = TextureRect.STRETCH_SCALE
-	view.custom_minimum_size = VIEW_SIZE
-	view.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(view)
-	# --- treść: nazwa, rodzaj, blokada, statystyki (ta broń | w ręku), opis, podpowiedź klawiszy
+	_view = TextureRect.new()
+	_view.texture = _vp.get_texture()
+	_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_view)
+	# --- panel po prawej: nazwa, rodzaj, blokada, statystyki (ta broń | w ręku), opis, klawisze
+	_panel = PanelContainer.new()
+	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(0.022, 0.024, 0.024, 0.9)
+	box.border_color = UiTheme.LAMP_LINE
+	box.set_border_width_all(1)
+	box.border_width_bottom = 2
+	box.set_content_margin_all(8)
+	_panel.add_theme_stylebox_override("panel", box)
+	add_child(_panel)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 2)
-	col.custom_minimum_size = Vector2(176.0, 0.0)
-	row.add_child(col)
-	_title = UiTheme.label("", 15, UiTheme.WARM)
+	col.custom_minimum_size = Vector2(178.0, 0.0)
+	_panel.add_child(col)
+	_title = UiTheme.label("", 16, UiTheme.WARM)
 	if UiTheme.heading_font() != null:
 		_title.add_theme_font_override("font", UiTheme.heading_font())
 	col.add_child(_title)
@@ -123,7 +132,7 @@ func _ready() -> void:
 	col.add_child(_grid)
 	_note = UiTheme.label("", 7, UiTheme.BONE_DIM)
 	_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_note.custom_minimum_size = Vector2(176.0, 0.0)
+	_note.custom_minimum_size = Vector2(178.0, 0.0)
 	col.add_child(_note)
 	_foot = UiTheme.label("", 7, UiTheme.ACCENT)
 	col.add_child(_foot)
@@ -135,14 +144,15 @@ func show_weapon(wid: int, gun_key: String, hand: int, lock_text: String, foot: 
 		_key = key
 		_fill(wid, gun_key, hand, lock_text)
 	_foot.text = foot
-	if not visible:
-		visible = true
-		_spin = -0.45
-		modulate.a = 0.0
-		create_tween().tween_property(self, "modulate:a", 1.0, 0.18)
+	if not _open:
+		_open = true
+		_yaw = -0.5
+		_pitch = 0.08
+		_idle = 9.0
+	visible = true
 
 func close() -> void:
-	visible = false
+	_open = false
 
 func _fill(wid: int, gun_key: String, hand: int, lock_text: String) -> void:
 	var d: RefCounted = Weapons.def(wid)
@@ -188,25 +198,52 @@ func _fill(wid: int, gun_key: String, hand: int, lock_text: String) -> void:
 			first = false
 		var longest := maxf(maxf(box.size.x, box.size.y), box.size.z)
 		if longest > 0.0001:
-			var k := 2.7 / longest                             # modele mają zapas w ramce (uchwyty) — skala dobrana do kadru
+			var k := 3.0 / longest                             # modele mają zapas w ramce (uchwyty) — skala dobrana do kadru
 			_model.scale = Vector3(k, k, k)
 			_model.position = -box.get_center() * k
-	reset_size()
+	_panel.reset_size()
+
+## Obrót myszą z wciśniętym przyciskiem (strzał jest w oględzinach wyłączony — weapon_controller.gd).
+func _input(event: InputEvent) -> void:
+	if not _open:
+		return
+	if event is InputEventMouseMotion and (event as InputEventMouseMotion).button_mask != 0:
+		var rel := (event as InputEventMouseMotion).relative
+		_yaw += rel.x * 0.008
+		_pitch = clampf(_pitch + rel.y * 0.006, -1.1, 1.1)
+		_idle = 0.0
 
 func _process(delta: float) -> void:
-	if not visible:
+	level = move_toward(level, 1.0 if _open else 0.0, delta * 4.0)
+	if level <= 0.0 and not _open:
+		visible = false
 		return
 	_t += delta
-	_spin += delta * 0.4
-	var mx := 0.0
-	var vs := get_viewport().get_visible_rect().size
-	if vs.x > 0.0:
-		mx = clampf(get_viewport().get_mouse_position().x / vs.x - 0.5, -0.5, 0.5)
-	_pivot.rotation = Vector3(0.12 * sin(_t * 0.7), _spin + mx * 2.4, 0.0)
-	# lampa: nieregularne migotanie i rzadkie przygaśnięcia; zablokowana broń zostaje w półmroku z czerwoną kontrą
+	_idle += delta
+	var stick := Vector2(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
+	if stick.length() > 0.25:
+		_yaw += stick.x * delta * 2.6
+		_pitch = clampf(_pitch + stick.y * delta * 1.8, -1.1, 1.1)
+		_idle = 0.0
+	if _idle > 1.5:
+		_yaw += delta * 0.4                                    # nikt nie obraca: broń kręci się sama
+	var e := smoothstep(0.0, 1.0, level)
+	_blur_mat.set_shader_parameter("amount", e)
+	# broń wypływa z dołu i lekko się kołysze, jakby wisiała w powietrzu przed oczami
+	_pivot.rotation = Vector3(_pitch + 0.03 * sin(_t * 0.9), _yaw, 0.02 * sin(_t * 0.6))
+	_pivot.position = Vector3(0.0, 0.05 * sin(_t * 1.1) - 0.5 * (1.0 - e), 0.0)
+	_view.modulate.a = e
+	_panel.modulate.a = e
+	# układ: tło na cały ekran, broń zajmuje lewą i środkową część, panel stoi przy prawej krawędzi
+	_blur.position = Vector2.ZERO
+	_blur.size = size
+	_panel.position = Vector2(size.x - _panel.size.x - 14.0 + 12.0 * (1.0 - e), (size.y - _panel.size.y) * 0.42)
+	_view.position = Vector2(0.0, size.y * 0.06)
+	_view.size = Vector2(_panel.position.x - 6.0, size.y * 0.74)
+	# lampa: nieregularne migotanie i rzadkie przygaśnięcia
 	var f := 0.9 + 0.1 * sin(_t * 9.0) * sin(_t * 3.7)
 	if fposmod(_t, 5.3) < 0.09 and Settings.fx_mult() > 0.0:
 		f *= 0.45
-	_lamp.light_energy = (1.5 if _locked else 11.0) * f
+	_lamp.light_energy = (1.6 if _locked else 12.0) * f
 	_rim.light_color = Color(0.9, 0.12, 0.08) if _locked else Color(0.45, 0.6, 0.9)
-	_rim.light_energy = 1.6 if _locked else 0.7
+	_rim.light_energy = 1.8 if _locked else 0.9

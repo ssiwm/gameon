@@ -69,6 +69,9 @@ var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D
 var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
 var _ws_lamps := {}                      ## id warsztatu → lampa nad nim (Node3D w geometrii mapy)
 var _globs := {}                         ## id plwociny / kwasu → [węzeł 2D, kula 3D]
+var _fp := 0.0                           ## 0..1: przejście kamery do widoku z oczu gracza (oględziny broni)
+var _fp_last: Node2D                     ## ostatni gracz w oględzinach (kamera wraca od jego oczu)
+var _fp_player: Node2D                   ## lokalny gracz w oględzinach (jego model jest wtedy schowany)
 var _dots_mi: MeshInstance3D             ## świecące punkty (lampki, diody, oczy w mroku) i znaczniki na podłodze — jedna siatka
 var _hid2d: Array = []                   ## węzły 2D schowane przez `self_modulate` (do przywrócenia w widoku 2D)
 var _worldfx := {}                       ## id obiektu → {"src", "nodes": [węzły 3D], …} (dym generatora, tablica wyników)
@@ -166,6 +169,9 @@ func setup(level: Node2D, players: Node2D) -> void:
 
 func release() -> void:
 	Vfx.view3d = null
+	for ci in [_level, _players]:
+		if ci is CanvasItem:
+			(ci as CanvasItem).modulate.a = 1.0
 	for id in _proj.keys():
 		var pr: Array = _proj[id]
 		if is_instance_valid(pr[0]):
@@ -312,6 +318,11 @@ func _process(delta: float) -> void:
 	_sync_enemy_rings()
 	_sync_ambient()
 	_sync_world_fx(delta)
+	# widok z oczu gracza: jego własny model znika z kadru (stałby tuż przed kamerą)
+	if _fp > 0.35 and _fp_last != null and is_instance_valid(_fp_last) and _rigs.has(_fp_last):
+		var fr = _rigs[_fp_last].get("actor")
+		if fr != null and is_instance_valid(fr):
+			(fr as Node3D).visible = false
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -344,6 +355,25 @@ func _sync_camera() -> void:
 	var near := 0.3
 	var fsize := 2.0 * near * tan(deg_to_rad(FOV * 0.5))
 	var foff := Vector2(0.0, -EYE_UP_M * near / dist)
+	# oględziny broni ([F], weapon_controller.gd): kamera dojeżdża do oczu lokalnego gracza i patrzy w głąb sceny (stojak, ściana, las);
+	# bryła widzenia przechodzi z przesuniętej na zwykłą perspektywę o szerszym kącie. Tło rozmywa ekran oględzin (weapon_inspect.gd).
+	_fp_player = null
+	for p in _rigs.keys():
+		if is_instance_valid(p) and p.get("is_bot") == false and (p as Node).is_multiplayer_authority() and p.get("weapons") != null and p.weapons.inspect_item != null:
+			_fp_player = p
+	_fp = move_toward(_fp, 1.0 if _fp_player != null else 0.0, get_process_delta_time() * 3.2)
+	var fe := smoothstep(0.0, 1.0, _fp)
+	if _fp_player != null:
+		_fp_last = _fp_player
+	if fe > 0.0 and _fp_last != null and is_instance_valid(_fp_last):
+		var eye := Level3D.px_to_m(_fp_last.global_position) + Vector3(0.0, FP_EYE_M, FP_Z)
+		xf.origin = xf.origin.lerp(eye, fe)
+		dist = lerpf(dist, FP_Z + 0.5, fe)
+		fsize = 2.0 * near * tan(deg_to_rad(lerpf(FOV, FP_FOV, fe) * 0.5))
+		foff *= 1.0 - fe
+	for ci in [_level, _players]:                              # etykiety i paski 2D nad postaciami nie pasują do widoku z oczu — gasną
+		if ci is CanvasItem and absf((ci as CanvasItem).modulate.a - (1.0 - fe)) > 0.001:
+			(ci as CanvasItem).modulate.a = 1.0 - fe
 	_cam_a.set_frustum(fsize, foff, near, 160.0)
 	_cam_b.set_frustum(fsize, foff, near, 160.0)
 	_cam_a.global_transform = xf
@@ -2516,6 +2546,9 @@ func _sync_lamps() -> void:
 
 # ---------------------------------------------------------------- lampki, diody, oczy w mroku, tablica wyników
 
+const FP_EYE_M := 1.5                    ## oględziny: wysokość oczu gracza nad stopami [m]
+const FP_Z := 0.75                       ## …i głębia kamery (tuż przed płaszczyzną gry, twarzą do ściany)
+const FP_FOV := 62.0                     ## kąt widzenia z oczu gracza [°]
 const DREAD_Z := -1.3                    ## oczy w mroku: w głębi sceny, za płaszczyzną gry
 
 ## Chowa rysunek 2D węzła (tylko jego własny `_draw`, dzieci zostają) i zapamiętuje go do przywrócenia.
