@@ -4,6 +4,7 @@ Co-op horror run-and-gun (retro Contra), Godot **4.7.2**, GDScript, symulacja 2D
 
 ## Zasady
 
+- **Tylko 3D.** Wszystko, co widać w świecie gry, robimy w 3D: modele, światła, cząsteczki, ogień, dym, krew, pociski, efekty. Nie dodawaj nowych elementów rysowanych w 2D (`_draw`, `Sprite2D`, `CPUParticles2D`, `PointLight2D`) nałożonych na scenę 3D; istniejące zastępuj odpowiednikami 3D, gdy ich dotykasz. Wyjątek: interfejs (HUD, menu, celownik, etykiety i paski nad postaciami). Symulacja (fizyka, AI, sieć) zostaje 2D.
 - Komentarze i teksty projektowe po polsku; identyfikatory po angielsku; doc-komentarze `##`.
 - Wiedza o Godocie 4.7 i konwencje kodu: skill `godot`. Blender (headless, sprite'y): skill `blender`.
 - Hook `.claude/hooks/gd-check.sh` po edycji `.gd` uruchamia projekt headless i ostrzega o błędach skryptów — traktuj ostrzeżenie poważnie.
