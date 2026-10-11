@@ -192,8 +192,9 @@ func _fill(wid: int, gun_key: String, hand: int, lock_text: String) -> void:
 		_pivot.add_child(_model)
 		var box := AABB()
 		var first := true
+		var inv := _model.global_transform.affine_inverse()        # ramka w układzie modelu — oś obrotu po poprzednich oględzinach nie stoi w zerze
 		for mi in _model.find_children("*", "MeshInstance3D", true, false):
-			var ab: AABB = (mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()
+			var ab: AABB = (inv * (mi as MeshInstance3D).global_transform) * (mi as MeshInstance3D).get_aabb()
 			box = ab if first else box.merge(ab)
 			first = false
 		var longest := maxf(maxf(box.size.x, box.size.y), box.size.z)

@@ -1039,6 +1039,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					ac.set("vel", Vector2(-70.0, -210.0))
 					level.add_child(ac)
 					ac.global_position = ap.global_position + Vector2(90.0, -14.0))
+	if "--shotcrouch" in OS.get_cmdline_user_args():
+		Input.action_press("crouch")                          # --shotcrouch: gracz 1 skrada się przez cały podgląd
 	for ia in OS.get_cmdline_user_args():
 		if ia.begins_with("--shotinspect"):                   # dev: --shotinspect[=N] — gracz przy N-tym stojaku (od lewej) z otwartymi oględzinami broni
 			var ip: Node2D = _players.get_node_or_null("1")
@@ -1050,9 +1052,23 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				ip.velocity = Vector2.ZERO
 				get_tree().create_timer(0.4).timeout.connect(func() -> void:
 					ip.weapons.inspect_item = ip.weapons.nearby_weapon_item())
+				if "--shotswap" in OS.get_cmdline_user_args():             # …oględziny, potem [E]: zamiana broni po 1,6 s (podgląd postaci po zamianie)
+					get_tree().create_timer(1.6).timeout.connect(func() -> void:
+						ip.weapons.inspect_item = null
+						ip.weapons._try_pickup())
 				if "--shotinspectclose" in OS.get_cmdline_user_args():     # …i zamknięcie po 1,6 s (podgląd powrotu do zwykłego widoku)
 					get_tree().create_timer(1.6).timeout.connect(func() -> void:
 						ip.weapons.inspect_item = null)
+				if "--shotinspecttwice" in OS.get_cmdline_user_args() and ri + 1 < racks.size():     # …zamknięcie, potem oględziny następnego stojaka od 2,6 s (z --shotinspectclose: zamknięte po 4,4 s)
+					get_tree().create_timer(1.6).timeout.connect(func() -> void:
+						ip.weapons.inspect_item = null)
+					get_tree().create_timer(2.2).timeout.connect(func() -> void:
+						ip.global_position.x = (racks[ri + 1] as Node2D).global_position.x)
+					get_tree().create_timer(2.6).timeout.connect(func() -> void:
+						ip.weapons.inspect_item = ip.weapons.nearby_weapon_item())
+					if "--shotinspectclose" in OS.get_cmdline_user_args():
+						get_tree().create_timer(4.4).timeout.connect(func() -> void:
+							ip.weapons.inspect_item = null)
 	if "--shotfinale" in OS.get_cmdline_user_args():
 		mission.finale = true                                 # --shotfinale: finał kopalni bez przenoszenia gracza (pył ze stropu; użyj z --shotat/--shotrow)
 	if "--shotwall" in OS.get_cmdline_user_args():
