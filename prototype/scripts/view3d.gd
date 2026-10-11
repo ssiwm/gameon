@@ -157,6 +157,8 @@ func release() -> void:
 	for id in _drawn.keys():
 		if is_instance_valid(_drawn[id][0]):
 			(_drawn[id][0] as CanvasItem).modulate = Color.WHITE
+			if _drawn[id][0].get("hide_stuck") != null:
+				_drawn[id][0].set("hide_stuck", false)
 	_drawn.clear()
 	for id in _beam_masks.keys():
 		var bm: Array = _beam_masks[id]
@@ -919,6 +921,17 @@ func _sync_drawn() -> void:
 		_world.add_child(m)
 		(n as CanvasItem).modulate = Color(1, 1, 1, 0)
 		_drawn[n.get_instance_id()] = [n, m]
+	for n in get_tree().get_nodes_in_group("exit_flares"):     # flara wyjścia: tuba wbita w ziemię jako model, płomień i iskry zostają w 2D
+		if _drawn.has(n.get_instance_id()) or not (n is Node2D):
+			continue
+		var fm := _item_model("flare_stuck")
+		if fm == null:
+			continue
+		fm.scale = Vector3(PX, PX, PX) * 0.85
+		fm.position = Level3D.px_to_m((n as Node2D).global_position) + Vector3(0.0, -0.03, 0.05)
+		_world.add_child(fm)
+		n.set("hide_stuck", true)
+		_drawn[n.get_instance_id()] = [n, fm, "flare"]
 	for n in get_tree().get_nodes_in_group("breakables"):
 		if _drawn.has(n.get_instance_id()) or not (n is Node2D) or n.get("rows") == null:
 			continue
@@ -932,15 +945,23 @@ func _sync_drawn() -> void:
 		mi.position = Level3D.px_to_m((n as Node2D).global_position) + Vector3(0.0, h * 0.5, (0.5 - Level3D.DEPTH_BACK) * 0.5)
 		_world.add_child(mi)
 		(n as CanvasItem).modulate = Color(1, 1, 1, 0)
-		_drawn[n.get_instance_id()] = [n, mi]
+		for old in _geo.get_children():                           # ściana odbudowana po restarcie misji: gruz po poprzedniej znika
+			if String(old.name).begins_with("Rubble") and absf((old as Node3D).position.x - mi.position.x) < 0.6 and absf((old as Node3D).position.y - (mi.position.y - h * 0.5)) < 0.6:
+				old.queue_free()
+		_drawn[n.get_instance_id()] = [n, mi, "wall", String(_level.get("map_id")), h]
 	for id in _drawn.keys():
 		var pr: Array = _drawn[id]
 		if not is_instance_valid(pr[0]) or (pr[0] as Node).is_queued_for_deletion():
 			if is_instance_valid(pr[1]):
+				# rozbite zamurowane przejście (ta sama mapa): na podłodze zostaje gruz, a przy stropie wyszczerbione resztki muru
+				if pr.size() > 3 and String(pr[2]) == "wall" and String(pr[3]) == String(_level.get("map_id")):
+					_spawn_rubble((pr[1] as Node3D).position - Vector3(0.0, float(pr[4]) * 0.5, 0.0), float(pr[4]))
 				(pr[1] as Node).queue_free()
 			_drawn.erase(id)
 		elif is_instance_valid(pr[1]):
-			(pr[1] as Node3D).visible = (pr[0] as CanvasItem).is_visible_in_tree()
+			(pr[1] as Node3D).visible = (pr[0] as CanvasItem).is_visible_in_tree() and (pr.size() < 3 or String(pr[2]) != "flare" or pr[0].get("_active") == true)
+			if pr.size() > 2 and String(pr[2]) == "flare":        # flara jest przenoszona na miejsce wyjścia dopiero przy otwarciu ewakuacji
+				(pr[1] as Node3D).position = Level3D.px_to_m((pr[0] as Node2D).global_position) + Vector3(0.0, -0.03, 0.05)
 
 # ---------------------------------------------------------------- broń na ziemi i na stojakach
 
@@ -1156,6 +1177,29 @@ func _sync_guns() -> void:
 				(g[6] as Node3D).visible = locked
 			(g[7] as Node3D).visible = locked
 			(g[8] as Label3D).text = ("%d" % price) if price > 0 else "SOON"
+
+## Gruz po rozbitej ścianie: model `rubble` na podłodze przejścia (w głębi, żeby nie zasłaniał drogi) i dwa wyszczerbione fragmenty muru
+## przy stropie — wyrwa zamiast gładkiego otworu. Żyje z geometrią mapy.
+func _spawn_rubble(floor_pos: Vector3, wall_h: float) -> void:
+	var rb := _item_model("rubble")
+	if rb != null:
+		rb.name = "Rubble"
+		rb.scale = Vector3(PX, PX, PX)
+		rb.position = Vector3(floor_pos.x, floor_pos.y - 0.02, -0.95)
+		rb.rotation.y = 0.3
+		_geo.add_child(rb)
+	var brick := Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone")
+	for spec in [[-0.42, 0.34, 0.36, 0.12], [0.36, 0.26, 0.5, -0.1], [-0.1, 0.16, 0.3, 0.05]]:      # x, wysokość, szerokość, obrót
+		var bm := BoxMesh.new()
+		bm.size = Vector3(float(spec[2]), float(spec[1]), Level3D.DEPTH_BACK * 0.8)
+		var mi := MeshInstance3D.new()
+		mi.name = "RubbleStub"
+		mi.mesh = bm
+		mi.material_override = brick
+		mi.layers = LAYER_WORLD
+		mi.position = Vector3(floor_pos.x + float(spec[0]), floor_pos.y + wall_h - float(spec[1]) * 0.5, -Level3D.DEPTH_BACK * 0.5)
+		mi.rotation.z = float(spec[3])
+		_geo.add_child(mi)
 
 # ---------------------------------------------------------------- tor drezyny
 

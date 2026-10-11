@@ -70,7 +70,9 @@ TRIPO_MODELS = {
     "tag": ("tag.glb", "+X", 6.8, 3000, 8.7),
     # czwarta partia: reszta przedmiotów + radiostacja; drzewa, kłoda i słup mają wysokość / długość 100 jednostek (skalę nadaje gra)
     "tools_wall": ("tools_wall.glb", "+X", 30.0, 9000, 26.0),
-    "padlock": ("padlock.glb", "+X", 4.4, 3000, 6.2),            # kłódka zablokowanej broni na stojaku
+    "padlock": ("padlock.glb", "+X", 4.4, 3000, 6.2),
+    "flare_stuck": ("flare_stuck.glb", "-Y", 9.1, 3000, 16.0),   # flara wyjścia wbita w ziemię
+    "rubble": ("rubble.glb", "-Y", 26.0, 4000, 8.0),             # gruz po rozbitym zamurowanym przejściu            # kłódka zablokowanej broni na stojaku
     "stake": ("stake.glb", "+X", 4.0, 2500, 8.9),
     "radio_set": ("radio_set.glb", "+X", 30.0, 6000, 24.0),
     "tree_snag": ("tree_snag.glb", "+X", 1000.0, 2500, 100.0),

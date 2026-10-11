@@ -1072,6 +1072,16 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			var hp1: Node2D = _players.get_node_or_null("1")
 			if hp1 != null and not _has_arg_prefix("--shotat"):            # bez --shotat: gracz 1 staje obok drezyny
 				hp1.global_position = hc.global_position + Vector2(-64.0, -4.0)
+	if _has_arg_prefix("--shotbreak"):                 # dev: gracz 1 przy pierwszym zamurowanym przejściu; `--shotbreak=1` rozbija je po 1,5 s
+		var bw := get_tree().get_first_node_in_group("breakables") as Node2D
+		var bp: Node2D = _players.get_node_or_null("1")
+		if bw != null and bp != null:
+			bp.global_position = bw.global_position + Vector2(-56.0, -4.0)
+			bp.velocity = Vector2.ZERO
+	if "--shotbreak=1" in OS.get_cmdline_user_args():
+		var bw1 := get_tree().get_first_node_in_group("breakables")
+		if bw1 != null:
+			get_tree().create_timer(1.5).timeout.connect(level.break_wall.bind(String(bw1.name)))
 	if "--shotclear" in OS.get_cmdline_user_args():
 		for ce in get_tree().get_nodes_in_group("enemies"):       # --shotclear: bez wrogów (spokojny podgląd obiektów świata)
 			if not (ce is RigidBody2D):
