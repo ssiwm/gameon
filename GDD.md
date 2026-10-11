@@ -3,7 +3,8 @@
 **Wersja:** 1.6.0 (po analizie "wciągająca, przyjemna gra" — game feel, Stalker, down/revive, zakres; patrz §22–§23)
 **Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
 **Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
-**Silnik:** Godot 4.x + GodotSteam
+**Silnik:** Godot 4.7 (renderer Forward+) + GodotSteam
+**Grafika:** 2.5D — symulacja 2D, obraz domyślnie w 3D; opcje: widok 2D i grafika klasyczna (pixel art) — patrz §13
 **Platformy:** Steam (PC) → GOG → Epic (decyzja odroczona do ≥25k sprzedaży, patrz §15)
 **Model:** premium, bez MTX
 **Cena:** **$9.99** (EA i 1.0) — patrz §17.3, dlaczego nisko
@@ -469,10 +470,13 @@ Cisza radiowa (brak minimapy), Przeciążenie (Uwaga 50 start), Głód amunicji 
 ## 13. Kierunek artystyczny i audio
 
 ### Grafika
-- Pixel art 16-bit, render 320×180 skalowany ×4–6 (opcja pixel-perfect).
-- Paleta: 48 kolorów bazowych + warstwa świateł (Godot 2D Lights), CRT/scanline opcjonalnie.
-- Animacje 12 fps feel, reakcje trafień (hitstop 50–90 ms przy zabójstwie, wartości w §23), duży gore (pixel, stylizowany, bez foto-realizmu).
-- Tła: 3 warstwy parallax; strefy mają własne palety (Bór: brąz/zieleń; Obiekt 86: stal/cyjan; Marwa Cisza: czerń/magenta).
+- **2.5D:** rozgrywka jest symulacją 2D (fizyka kafli, AI, sieć, celowanie), a obraz domyślnie powstaje w 3D — kamera perspektywiczna patrzy z boku na płaszczyznę gry (`view3d.gd`, `level3d.gd`). Geometria świata powstaje z tej samej mapy ASCII co kolizje.
+- **Renderer:** Godot Forward+ (Vulkan / D3D12): światła i cienie 3D, SSAO, SSIL, mgła wolumetryczna, mgła głębi, glow, tonemapping filmic. Bez Vulkana silnik wraca do OpenGL (tryb zgodności, bez SSAO / SSIL / mgły wolumetrycznej).
+- **Ciemność jest mechaniką, nie tylko nastrojem** (§8.3): noc jest czarna, a widoczność dają światła sceny — aura gracza, latarka, flary, ogniska, lampy, błysk lufy. Tło i mgła nie mogą rozjaśniać poziomu, na którym stoją postacie; daleki wróg ma być tak samo słabo widoczny w 3D i w 2D.
+- **Materiały i zasoby:** świat w PBR (skany CC0 + proceduralne, `art/world3d/`), dekale zniszczeń, ciecze z przekrojem, las ze świerków i martwych pni, runo; postacie graczy i wrogowie jako modele 3D (rig + IK, `char3d.gd`, `enemy3d.gd`); przedmioty HD jako karty z mapą normalnych oświetlane światłem 3D. Grafikę generują skrypty w `prototype/tools/`.
+- **Palety stref:** kolor niosą materiały i światła, nie filtr na całym kadrze (Bór: brąz ściółki i zieleń runa w ciepłym świetle ognia; Obiekt 86: stal i cyjan; Martwa Cisza: czerń i magenta).
+- **Opcje:** „View: 3D / 2D” (2D = ten sam świat w grafice HD ze światłami 2D), „Graphics: HD / CLASSIC” (CLASSIC = pierwotny pixel art 16-bit, tylko w widoku 2D), „Effects quality” (LOW bez mgły wolumetrycznej i SSIL), „Reduce effects”.
+- Animacje z wyraźnymi reakcjami trafień (hitstop 50–90 ms przy zabójstwie, wartości w §23), duży, stylizowany gore.
 
 ### Audio (filar!)
 - Muzyka adaptacyjna: warstwy (cisza / napięcie / walka / pościg) przełączane płynnie.
@@ -505,6 +509,7 @@ Cisza radiowa (brak minimapy), Przeciążenie (Uwaga 50 start), Głód amunicji 
 - Model: premium, **zero MTX**.
 - DLC po 1.0: kosmetyki (skiny oddziału, retro filtry), soundtrack, artbook. Nigdy nie dzielimy map ani broni.
 - Demo: Strefa I (bez zapisu postępu) — konwersja na wishlistę.
+- Wymagania: karta z Vulkanem albo D3D12 dla pełnego obrazu 3D; na słabszym sprzęcie „View: 2D” i „Effects quality: LOW”. Minimalna konfiguracja nie jest jeszcze zmierzona (pomiar tylko na RTX 3080).
 
 ---
 
@@ -886,6 +891,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 1.7.153 | 2026-10-11 | **Widok 3D: runo, skrzynie i beczki.** Płaski ciemny pas na wierzchu gruntu zastąpiony runem (`Level3D.build_undergrowth`): kępy trawy i paprocie kołysane wiatrem w shaderze, niskie i rzadkie w pasie chodu, tylko pod otwartym niebem. Skrzynie i beczki (`prop.gd`) są w 3D bryłami z materiałów PBR świata (`view3d.gd: _sync_props`) — rzucają cień i łapią światło; fizyka i trafienia zostają w 2D. Kładki z desek płytsze (2,0 → 1,3 m), więc od spodu nie zasłaniają kadru czarną płytą. |
 | 1.7.154 | 2026-10-11 | **Renderer Forward+.** Projekt przełączony z `gl_compatibility` na `forward_plus` (Vulkan / D3D12; bez sterownika silnik sam wraca do OpenGL, `--rendering-driver opengl3` wymusza tryb zgodności). Widok 3D dostaje to, czego w trybie zgodności nie było: **SSAO** (zaciemnienie styków brył i cień kontaktowy pod postaciami), **SSIL** (odbite światło z ekranu, tylko HIGH), **mgła wolumetryczna** w bryle `FogVolume` wzdłuż płaszczyzny gry (`Level3D.build_fog_volumes`; MEDIUM i HIGH) — snop latarki, poświata flar i lamp oraz smugi księżyca są widoczne w powietrzu — i miękkie cienie z atlasu 4096. Poprawki pod nowy renderer: światła 3D są na warstwach obu kamer (Forward+ odcina maską kamery także same światła — postacie były nieoświetlone), kontra postaci nie rozświetla mgły, mapa normalnych postaci 3D w grze 2D jest kodowana odwrotnie do sRGB (inaczej relief świateł 2D był przygaszony). Znane: przy zamykaniu gry w trybie 2D silnik wypisuje dwa razy „Attempted to free invalid ID” (kosmetyczne), a postać 3D w grze 2D jest ok. 13% ciemniejsza niż w trybie zgodności. Pomiar (RTX 3080, 4K, widok 3D): średnio 16,6 ms. Dev: `--shottorch` (gracz 1 z włączoną latarką na zrzucie). |
 | 1.7.155 | 2026-10-11 | **Widok 3D: przedmioty HD w scenie 3D.** Każdy sprite z `ItemsHd.make` (meble kryjówki, tablice, stojaki, skrytki, pickupy, granaty i miny, generator, drezyna, lampa; grupa `items_hd`) dostaje w scenie 3D kartę z tym samym albedo i mapą normalnych (`view3d.gd: _sync_items`): oświetlają ją światła 3D, rzuca cień na ścianę, łapie SSAO i mgłę — zamiast płaskiego rysunku 2D z osobnym oświetleniem na obrazie 3D. Meble stoją w głębi przy ścianie tła, reszta tuż za płaszczyzną gry; przedmioty widoczne w ciemności (granat, mina, flara) mają słabą emisję. Sprite 2D zostaje (logika), jest tylko przezroczysty; wyłączenie widoku 3D przywraca go. |
+| 1.7.156 | 2026-10-11 | **Widok 3D domyślny.** `Settings.view3d` i `Settings.char3d` są domyślnie włączone; w ustawieniach przełącznik **View: 3D / 2D** (zamiast „3D view”) i „Characters in 2D view (restart): SPRITES / 3D” (zamiast „Characters: 3D (BETA)”). Widok 3D zawsze używa modeli postaci i wymaga grafiki HD (z CLASSIC zostaje obraz 2D). Zapisane wcześniej ustawienia są jednorazowo przestawiane na 3D (`gfx_ver` w pliku ustawień). Testy headless bez zmian (bez okna widok 3D jest wyłączony). Dokumentacja: §13 opisuje kierunek 2.5D zamiast pixel artu 320×180. |
 
 ---
 

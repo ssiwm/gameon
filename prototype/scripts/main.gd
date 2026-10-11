@@ -398,7 +398,7 @@ func _handle_cmdline() -> void:
 		Sprites.newgun = true
 		Sprites.newmon = true
 		Sprites.newitem = true
-		Sprites.char3d = Settings.char3d              # ustawienie „Characters: 3D (BETA)" (domyślnie wyłączone); flaga --char3d poniżej też włącza
+		Sprites.char3d = Settings.char3d or Settings.view3d_active()      # widok 3D zawsze używa modeli; w widoku 2D decyduje ustawienie „Characters in 2D view”
 		hd_world = true
 	for a in args:
 		if a == "--newworld":
