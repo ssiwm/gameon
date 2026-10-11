@@ -26,8 +26,10 @@ const MIRROR_GROUPS := ["enemies", "boss", "nests", "roamers"]
 const HIDE_NAMES := ["Back", "Solid", "Deco", "TerrainHD", "TerrainHDBack", "Backdrop"]
 const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wrogów
 const LAYER_ACTORS := 2                    ## warstwa wizualna graczy (modele 3D)
-const ACTOR_AMBIENT := 0.55                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
+const ACTOR_AMBIENT := 0.16                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
 const ACTOR_LIGHT := 1.0                   ## mnożnik świateł pomocniczych graczy (kontra, wypełnienie, obrys)
+const AURA_WORLD := 3.2                    ## mnożnik energii aury gracza dla terenu (zwykłe światło omni: 4)
+const AURA_ACTOR := 0.8                    ## mnożnik energii aury gracza dla modeli graczy
 const Z_BG := -60
 const Z_FG := 1
 
@@ -94,8 +96,9 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_geo = Node3D.new()
 	_geo.name = "Geometry"
 	_world.add_child(_geo)
-	# światło tylko dla graczy (warstwa 2): miękka kontra, wypełnienie i obrys jak w podglądzie postaci — sylwetka czytelna także w ciemności
-	for spec in [[Vector3(-0.35, -0.6, -0.7), Color(0.9, 0.88, 0.8), 1.3], [Vector3(0.2, -0.3, 0.9), Color(0.7, 0.8, 1.0), 1.0], [Vector3(0.7, -0.2, -0.4), Color(0.6, 0.7, 1.0), 0.5]]:
+	# światło tylko dla graczy (warstwa 2): prawie sama kontra (dwa światła zza postaci) — obrys czytelny w ciemności, a bryłę modeluje światło sceny
+	# (aura, latarka, flara, ognisko), więc postać nie świeci własnym światłem
+	for spec in [[Vector3(-0.35, -0.6, -0.7), Color(0.9, 0.88, 0.8), 0.14], [Vector3(0.25, -0.35, 0.9), Color(0.72, 0.82, 1.0), 0.85], [Vector3(-0.6, -0.15, 0.75), Color(0.6, 0.7, 1.0), 0.35]]:
 		var dl := DirectionalLight3D.new()
 		dl.basis = Basis.looking_at(spec[0], Vector3.UP)
 		dl.light_color = spec[1]
@@ -249,7 +252,7 @@ func _sync_geometry() -> void:
 	env_b.sky = null
 	env_b.glow_enabled = false
 	# jasność postaci: osobne, łagodne światło otoczenia i słabsza mgła tylko dla warstwy graczy (modele leżą w płaszczyźnie gry, kilkanaście metrów od kamery)
-	env_b.ambient_light_color = Color(0.55, 0.60, 0.78)
+	env_b.ambient_light_color = Color(0.50, 0.56, 0.70)
 	env_b.ambient_light_energy = ACTOR_AMBIENT
 	env_b.fog_density = env_a.fog_density * 0.35
 	_cam_b.environment = env_b
@@ -764,8 +767,8 @@ func _scan_lights() -> void:
 		var li := l as PointLight2D
 		if not li.enabled or li.energy <= 0.02 or li.texture == null or not li.is_visible_in_tree():
 			continue
-		if li.get_parent() is CharacterBody2D and li.texture != Lights.cone() and (li.get_parent() as Node).is_in_group("players"):
-			continue                                      # aura gracza: światło 2D pod sprite'a; w 3D przepalałaby model
+		# aura gracza (ciepła poświata 6 m): w 3D słabsza niż zwykłe światło omni i bez cieni — ta sama plama widoczności wokół gracza co w 2D
+		var is_aura: bool = li.get_parent() is CharacterBody2D and li.texture != Lights.cone() and (li.get_parent() as Node).is_in_group("players")
 		var id := li.get_instance_id()
 		keep[id] = true
 		n += 1
@@ -787,14 +790,14 @@ func _scan_lights() -> void:
 				# światło omni jest rozdzielone na dwie warstwy: świat (z cieniami dla kilku najbliższych) i gracze (bez cieni, osobne światło) —
 				# cień światła omni w tej samej warstwie co modele graczy gubił je w warstwie z maską kamery (Compatibility)
 				l3.light_cull_mask = LAYER_WORLD
-				l3.shadow_enabled = n <= SHADOW_LIGHTS
+				l3.shadow_enabled = n <= SHADOW_LIGHTS and not is_aura
 				l3a = OmniLight3D.new()
 				l3a.light_color = li.color
 				l3a.light_cull_mask = LAYER_ACTORS
 				l3a.shadow_enabled = false
 				_world.add_child(l3a)
 			_world.add_child(l3)
-			_lights[id] = [li, l3, l3a]
+			_lights[id] = [li, l3, l3a, is_aura]
 	for id in _lights.keys():
 		if not keep.has(id):
 			var pair: Array = _lights[id]
@@ -832,7 +835,7 @@ func _sync_lights() -> void:
 			la.visible = true
 			la.light_color = li.color
 			la.position = Level3D.px_to_m(gp) + Vector3(0.0, 0.0, 1.0)
-			la.light_energy = li.energy * 4.0
+			la.light_energy = li.energy * (AURA_ACTOR if pair[3] else 4.0)
 			la.omni_range = clampf(rng_px * PX, 3.0, 24.0)
 		if l3 is SpotLight3D:
 			var a := li.global_rotation
@@ -843,5 +846,5 @@ func _sync_lights() -> void:
 			(l3 as SpotLight3D).spot_range = clampf(rng_px * PX, 6.0, 26.0)
 		else:
 			l3.position = Level3D.px_to_m(gp) + Vector3(0.0, 0.0, 1.0)
-			l3.light_energy = li.energy * 4.0
+			l3.light_energy = li.energy * (AURA_WORLD if pair[3] else 4.0)
 			(l3 as OmniLight3D).omni_range = clampf(rng_px * PX, 3.0, 24.0)
