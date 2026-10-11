@@ -62,10 +62,6 @@ var colorblind_idx := 0
 var locale_idx := 0
 var _res_dirty := false                ## gracz zmienił rozmiar okna (inaczej zostaje domyślny z projektu)
 var fullscreen := false
-var char3d := true                     ## postacie graczy jako modele 3D w czasie rzeczywistym (char3d.gd) zamiast sprite'ów — dotyczy widoku 2D (widok 3D zawsze używa modeli); tylko z grafiką HD, zmiana wymaga restartu
-const GFX_VER := 2                      ## wersja domyślnych ustawień grafiki w pliku ustawień (2 = widok 3D domyślny)
-var view3d := true                     ## widok 3D świata (domyślny; „View: 2D” w ustawieniach wraca do obrazu 2D) (view3d.gd): ta sama symulacja 2D, obraz renderowany w 3D (kamera perspektywiczna, światła i cienie 3D); tylko z oknem
-var graphics_hd := true                ## grafika HD (postacie, bronie, wrogowie, świat, UI z modeli 3D) zamiast klasycznego pixel-artu; zmiana wymaga restartu gry
 var seen_tips: Array = []              ## identyfikatory podpowiedzi, które gracz już widział
 var shift_best_cleared := 0            ## Nocny Dyżur: najwięcej ukończonych misji w jednej serii (rekord lokalny)
 var shift_best_time := 0.0             ## Nocny Dyżur: najkrótszy czas pełnej serii w s (0 = jeszcze nikt nie ukończył)
@@ -172,18 +168,9 @@ func toggle_captions() -> void:
 	captions = not captions
 	_commit()
 
-func toggle_view3d() -> void:
-	view3d = not view3d
-	_commit()
-
-## Czy włączyć widok 3D w tej sesji: ustawienie gracza (domyślnie włączone) albo `--view3d`, nigdy w trybie headless (testy), nie z `--noview3d`
-## i nie z grafiką klasyczną.
+## Obraz gry jest zawsze w 3D (view3d.gd); wyjątkiem jest tryb headless (testy), który nic nie rysuje.
 func view3d_active() -> bool:
-	if DisplayServer.get_name() == "headless" or ("--noview3d" in OS.get_cmdline_user_args()):
-		return false
-	if "--view3d" in OS.get_cmdline_user_args():
-		return true
-	return view3d and hd_active()                      # widok 3D korzysta z zasobów HD — z grafiką klasyczną zostaje obraz 2D
+	return DisplayServer.get_name() != "headless"
 
 func toggle_reduce_fx() -> void:
 	reduce_fx = not reduce_fx
@@ -206,18 +193,9 @@ func toggle_hints() -> void:
 	hints_on = not hints_on
 	_commit()
 
-## Czy używać grafiki HD w tej sesji: ustawienie gracza, ale nigdy w trybie headless (testy liczą klasyczny wariant) i nie z `--classic`.
-## Aktywne ustawienie jest czytane przy starcie — zmiana w menu działa po restarcie.
+## Zasoby HD (modele, tekstury) są używane zawsze poza trybem headless — testy liczą wariant bez grafiki.
 func hd_active() -> bool:
-	return graphics_hd and DisplayServer.get_name() != "headless" and not ("--classic" in OS.get_cmdline_user_args())
-
-func toggle_hd() -> void:
-	graphics_hd = not graphics_hd
-	_commit()
-
-func toggle_char3d() -> void:
-	char3d = not char3d
-	_commit()
+	return DisplayServer.get_name() != "headless"
 
 func toggle_fullscreen() -> void:
 	fullscreen = not fullscreen
@@ -326,18 +304,11 @@ func _load() -> void:
 	fps_idx = clampi(int(cf.get_value("game", "fps", 0)), 0, FPS_LIST.size() - 1)
 	quality_idx = clampi(int(cf.get_value("game", "quality", 2)), 0, QUALITY_NAMES.size() - 1)
 	reduce_fx = bool(cf.get_value("game", "reduce_fx", false))
-	view3d = bool(cf.get_value("game", "view3d", true))
 	captions = bool(cf.get_value("game", "captions", false))
 	mono_audio = bool(cf.get_value("game", "mono_audio", false))
 	crouch_toggle = bool(cf.get_value("game", "crouch_toggle", false))
 	colorblind_idx = clampi(int(cf.get_value("game", "colorblind", 0)), 0, COLORBLIND_NAMES.size() - 1)
 	locale_idx = clampi(int(cf.get_value("game", "locale", 0)), 0, LOCALES.size() - 1)
-	graphics_hd = bool(cf.get_value("game", "graphics_hd", true))
-	char3d = bool(cf.get_value("game", "char3d", true))
-	# 1.7.156: widok 3D i postacie 3D są domyślne — zapisane wcześniej „wyłączone” (stara wartość domyślna) przestawiamy jeden raz
-	if int(cf.get_value("game", "gfx_ver", 1)) < GFX_VER:
-		view3d = true
-		char3d = true
 	seen_tips = Array(cf.get_value("game", "seen_tips", []))
 	Actions.load_from(cf)
 	shift_best_cleared = int(cf.get_value("shift", "best_cleared", 0))
@@ -360,15 +331,11 @@ func _save() -> void:
 	cf.set_value("game", "fps", fps_idx)
 	cf.set_value("game", "quality", quality_idx)
 	cf.set_value("game", "reduce_fx", reduce_fx)
-	cf.set_value("game", "view3d", view3d)
-	cf.set_value("game", "gfx_ver", GFX_VER)
 	cf.set_value("game", "captions", captions)
 	cf.set_value("game", "mono_audio", mono_audio)
 	cf.set_value("game", "crouch_toggle", crouch_toggle)
 	cf.set_value("game", "colorblind", colorblind_idx)
 	cf.set_value("game", "locale", locale_idx)
-	cf.set_value("game", "graphics_hd", graphics_hd)
-	cf.set_value("game", "char3d", char3d)
 	cf.set_value("game", "seen_tips", seen_tips)
 	Actions.save_to(cf)
 	cf.set_value("shift", "best_cleared", shift_best_cleared)

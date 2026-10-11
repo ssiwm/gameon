@@ -179,20 +179,15 @@ func release() -> void:
 	for id in _drawn.keys():
 		if is_instance_valid(_drawn[id][0]):
 			(_drawn[id][0] as CanvasItem).modulate = Color.WHITE
-			if _drawn[id][0].get("hide_stuck") != null:
-				_drawn[id][0].set("hide_stuck", false)
 	_drawn.clear()
-	for id in _fires.keys():
-		if is_instance_valid(_fires[id][0]):
-			_fires[id][0].set("fx3d", false)
 	_fires.clear()
-	var wxr := get_tree().root.find_child("WeatherFx", true, false)
-	if wxr != null:
-		wxr.set("fx3d", false)
 	for h2 in _hid2d:
 		if is_instance_valid(h2):
 			(h2 as CanvasItem).self_modulate = Color.WHITE
 	_hid2d.clear()
+	for rtg in get_tree().get_nodes_in_group("range_targets"):
+		if rtg.get("plate3d") != null:
+			rtg.set("plate3d", false)
 	for id in _worldfx.keys():
 		for wn in _worldfx[id]["nodes"]:
 			if is_instance_valid(wn):
@@ -203,22 +198,13 @@ func release() -> void:
 			(am as CanvasItem).visible = true
 	_amb_hidden.clear()
 	for id in _nestfx.keys():
-		if is_instance_valid(_nestfx[id][0]) and _nestfx[id][0].get("_embers") != null:
-			(_nestfx[id][0].get("_embers") as CanvasItem).visible = true
 		if is_instance_valid(_nestfx[id][1]):
 			(_nestfx[id][1] as Node).queue_free()
 	_nestfx.clear()
-	for en in get_tree().get_nodes_in_group("enemies"):
-		if en.get("fx3d") != null and en.get("_ring") != null:
-			en.set("fx3d", false)
-	for tw in get_tree().get_nodes_in_group("tide_water"):
-		tw.set("fx3d", false)
 	for tab in [_globs, _bossfx, _leechfx, _lampfx]:
 		for id in tab.keys():
 			if is_instance_valid(tab[id][0]):
 				(tab[id][0] as CanvasItem).self_modulate = Color.WHITE
-				if tab[id][0].get("fx3d") != null:
-					tab[id][0].set("fx3d", false)
 			if is_instance_valid(tab[id][1]):
 				(tab[id][1] as Node).queue_free()
 		tab.clear()
@@ -520,7 +506,6 @@ func _release_rig(p) -> void:
 		if is_instance_valid(rig["wfx"]["root"]):
 			(rig["wfx"]["root"] as Node).queue_free()
 		if is_instance_valid(p) and p.get("view") != null and is_instance_valid(p.get("view")):
-			p.get("view").set("fx3d", false)
 			var f2 = p.get("view").get("_flame")
 			if f2 != null and is_instance_valid(f2):
 				(f2 as CanvasItem).visible = true
@@ -1037,7 +1022,6 @@ func _sync_drawn() -> void:
 		fm.scale = Vector3(PX, PX, PX) * 0.85
 		fm.position = Level3D.px_to_m((n as Node2D).global_position) + Vector3(0.0, -0.03, 0.05)
 		_world.add_child(fm)
-		n.set("hide_stuck", true)
 		_drawn[n.get_instance_id()] = [n, fm, "flare"]
 	for n in get_tree().get_nodes_in_group("breakables"):
 		if _drawn.has(n.get_instance_id()) or not (n is Node2D) or n.get("rows") == null:
@@ -1426,7 +1410,6 @@ func _sync_fires() -> void:
 			continue
 		var f := _make_fire(Color(1.0, 0.45, 0.18), 0.42)
 		_world.add_child(f)
-		n.set("fx3d", true)
 		_fires[n.get_instance_id()] = [n, f, "flare", null]
 	for n in get_tree().get_nodes_in_group("exit_flares"):
 		if _fires.has(n.get_instance_id()) or not (n is Node2D):
@@ -1562,11 +1545,6 @@ func _sync_fires() -> void:
 				ring.position = Level3D.px_to_m(src.global_position) + Vector3(0.0, 0.03, 0.0)
 				ring.scale = Vector3(r, 1.0, r * 0.55)
 				(ring.material_override as StandardMaterial3D).albedo_color.a = 0.5 * (1.0 - ph)
-			# elementy 2D flary (słup światła, dym, pył) są chowane co klatkę — `exit_flare.gd` włącza je przy zmianie jakości
-			for nm in ["_shaft", "_smoke", "_dust"]:
-				var old = src.get(nm)
-				if old != null and is_instance_valid(old):
-					(old as CanvasItem).visible = false
 			var fcol: Color = src.call("_flare_col")
 			var shaft := fire.get_node("Shaft") as MeshInstance3D
 			var sh_h := 9.0 * fl
@@ -1632,7 +1610,7 @@ func _span_quad(mi: MeshInstance3D, a: Vector3, b: Vector3, w: float) -> void:
 	mi.basis = Basis(d / len * len, Vector3(-d.y, d.x, 0.0).normalized() * w, Vector3(0, 0, 1))
 
 ## Rozbłysk wylotowy, ładowanie broni energetycznej, promień LR-7 i płomień miotacza w scenie 3D — przy wylocie lufy modelu broni.
-## Stan czytany z `weapon_view.gd` gracza (`_flash_t`, `w_state`, `w_firing`, `_beam_end`, `_flame`); rysunek 2D jest tam wyłączany (`fx3d`).
+## Stan czytany z `weapon_view.gd` gracza (`_flash_t`, `w_state`, `w_firing`, `_beam_end`, `_flame`).
 func _sync_weapon_fx() -> void:
 	for p in _rigs.keys():
 		if not is_instance_valid(p):
@@ -1643,7 +1621,6 @@ func _sync_weapon_fx() -> void:
 		if wv == null or not is_instance_valid(wv) or c3 == null or rig["gun"] == null or not is_instance_valid(rig["gun"]):
 			continue
 		if not rig.has("wfx"):
-			wv.set("fx3d", true)
 			var root := Node3D.new()
 			_world.add_child(root)
 			var star := _glow_quad(Color.WHITE)                 # jądro rozbłysku (billboard)
@@ -2192,14 +2169,14 @@ func _sync_globs() -> void:
 			continue
 		g3.position = Level3D.px_to_m((src as Node2D).global_position) + Vector3(0.0, 0.0, 0.3)
 
-## Efekty Żyły w scenie 3D (stan z `boss.gd`; nakładka 2D jest tam wyłączana flagą `fx3d`):
+## Efekty Żyły w scenie 3D (stan z `boss.gd`):
 ##  - żar paszczy (słaby punkt): poświata i światło przed pyskiem — tli się, gdy zamknięta; płonie, gdy otwarta; zielona przy pluciu; biała, gdy oślepiona;
 ##  - zapowiedź ciosu macką: czerwony łuk zasięgu;
 ##  - zapowiedź zamachu: drżące pasmo na wodzie na całym zasięgu fali, najsilniejsze przy Żyle;
 ##  - fala: dwa grzbiety wody biegnące od Żyły — bryły o stromym czole i łagodnym ogonie, z pianą na grzbiecie.
 func _sync_boss_fx() -> void:
 	for n in get_tree().get_nodes_in_group("boss"):
-		if not (n is Node2D) or n.is_queued_for_deletion() or _bossfx.has(n.get_instance_id()) or not n.has_method("_draw_wave_crest"):
+		if not (n is Node2D) or n.is_queued_for_deletion() or _bossfx.has(n.get_instance_id()) or not n.has_method("_tick_wave_spray"):
 			continue
 		var root := Node3D.new()
 		root.name = "BossFx"
@@ -2236,7 +2213,6 @@ func _sync_boss_fx() -> void:
 				root.queue_free()
 			_bossfx.erase(id)
 			continue
-		b.set("fx3d", true)
 		var alive: bool = b.call("is_alive") and (b as Node2D).is_visible_in_tree()
 		root.visible = alive
 		if not alive:
@@ -2356,7 +2332,7 @@ func _water_ring(im: ImmediateMesh, c: Vector3, r: float, w: float, col: Color) 
 		im.surface_add_vertex(c + d * (r + w))
 	im.surface_end()
 
-## Efekty Pijawki w scenie 3D (stan z `leech.gd: fx_state`, rysunek 2D wyłączony flagą `fx3d`):
+## Efekty Pijawki w scenie 3D (stan z `leech.gd: fx_state`):
 ##  - kręgi na wodzie nad zanurzoną Pijawką — jedyna wskazówka w ciemności; szybsze i mocniejsze tuż przed zasadzką (także w drugim punkcie, faza 3);
 ##  - cień pod wodą: ciemna podłużna plama z dwojgiem bladych oczu, widoczna tylko tam, gdzie pada światło;
 ##  - woda przypływu (fazy 2–3): bryła wody nad basenem i brzegami, rosnąca do `SURGE_H`, z falującą powierzchnią i jasną krawędzią piany.
@@ -2435,9 +2411,6 @@ func _sync_leech_fx() -> void:
 					(_leechfx[id][k] as Node).queue_free()
 			_leechfx.erase(id)
 			continue
-		b.set("fx3d", true)
-		for tw in get_tree().get_nodes_in_group("tide_water"):
-			tw.set("fx3d", true)
 		var fs: Array = b.call("fx_state")
 		var base := Level3D.px_to_m((b as Node2D).global_position)
 		root.position = base
@@ -2515,7 +2488,7 @@ func _sync_leech_fx() -> void:
 			veil.surface_end()
 
 ## Lampy na mapach (`lamp.gd`): model stawia `_sync_items`, światło — `_scan_lights` (smugę w powietrzu daje mgła wolumetryczna).
-## Tu dochodzi poświata żarówki w scenie; płaska poświata i smuga 2D są w lampie wyłączane (`fx3d`).
+## Tu dochodzi poświata żarówki w scenie.
 func _sync_lamps() -> void:
 	for n in get_tree().get_nodes_in_group("lamps"):
 		if not (n is Node2D) or n.is_queued_for_deletion() or _lampfx.has(n.get_instance_id()):
@@ -2533,7 +2506,6 @@ func _sync_lamps() -> void:
 				g.queue_free()
 			_lampfx.erase(id)
 			continue
-		src.set("fx3d", true)
 		var z := 0.0
 		for ch in (src as Node).get_children():                # głębia modelu lampy (ta sama, w której stawia go _sync_items)
 			if ch is Sprite2D and _items.has(ch.get_instance_id()):
@@ -2618,7 +2590,6 @@ func _sync_world_fx(delta: float) -> void:
 	for g in get_tree().get_nodes_in_group("generators"):
 		if not (g is Node2D) or g.get("_hd") == null:
 			continue
-		_hide2d(g.get("_lamp"))
 		var id: int = g.get_instance_id()
 		if not _worldfx.has(id):
 			var sm := CPUParticles3D.new()                     # spaliny z tłumika pracującego generatora
@@ -2677,7 +2648,6 @@ func _sync_world_fx(delta: float) -> void:
 	for hc in get_tree().get_nodes_in_group("handcar"):
 		if not (hc is Node2D) or hc.get("_hd") != true:
 			continue
-		_hide2d(hc.get("_lamp"))
 		if not (hc as Node2D).is_visible_in_tree():
 			continue
 		var on: bool = hc.get("enabled") == true
@@ -2687,10 +2657,8 @@ func _sync_world_fx(delta: float) -> void:
 		_dot(im, hpos + Vector3(0.0, 0.0, 0.01), 1.3 * PX, hcol)
 	# --- miny i ładunki: dioda
 	for pl in get_tree().get_nodes_in_group("placed"):
-		var led = pl.get("_hd_led")
-		if led == null or not (pl is Node2D):
+		if pl.get("_hd") == null or not (pl is Node2D):
 			continue
-		_hide2d(led)
 		if not (pl as Node2D).is_visible_in_tree():
 			continue
 		var data: Dictionary = pl.get("_data")
@@ -2712,7 +2680,6 @@ func _sync_world_fx(delta: float) -> void:
 	var dread := get_tree().root.find_child("Dread", true, false)
 	var eyes = dread.get("_eyes") if dread != null else null
 	if eyes != null and is_instance_valid(eyes):
-		_hide2d(eyes)
 		if (eyes as Node2D).visible and float(dread.get("_eyes_life")) > 0.0:
 			var el := float(dread.get("_eyes_life"))
 			var ea := minf(float(dread.get("_eyes_age")) / 0.6, 1.0) * 0.55
@@ -2791,6 +2758,38 @@ func _sync_world_fx(delta: float) -> void:
 			ttl.position = base + Vector3(float(marks[(marks as Array).size() - 1]["x"]) * PX, 28.5 * PX, 0.0)
 			ttl.position.z = float(rf["z"]) + 0.012
 	im.surface_end()
+	# --- tarcza strzelnicy: tabliczka z odległością gracza przy podstawie tarczy (liczby obrażeń i podsumowanie serii zostają etykietami interfejsu)
+	for rt in get_tree().get_nodes_in_group("range_targets"):
+		if not (rt is Node2D) or rt.get("plate3d") == null or _geo_key == "":
+			continue
+		rt.set("plate3d", true)
+		var id: int = rt.get_instance_id()
+		if _worldfx.has(id) and not is_instance_valid(_worldfx[id]["nodes"][0]):
+			_worldfx.erase(id)
+		if not _worldfx.has(id):
+			var plate := MeshInstance3D.new()
+			plate.name = "TargetPlate"
+			var bm := BoxMesh.new()
+			bm.size = Vector3(22.0 * PX, 8.0 * PX, 0.04)
+			plate.mesh = bm
+			var pm := StandardMaterial3D.new()
+			pm.albedo_color = Color(0.05, 0.05, 0.06)
+			pm.roughness = 0.8
+			plate.material_override = pm
+			plate.rotation = Vector3(-0.5, 0.0, 0.0)            # oparta o podstawę tarczy, odchylona ku kamerze
+			plate.layers = LAYER_WORLD
+			_geo.add_child(plate)
+			var lb := _label3d("", 5.2, Color(0.95, 0.75, 0.3))
+			lb.name = "Text"
+			lb.position = Vector3(0.0, 0.0, 0.025)
+			plate.add_child(lb)
+			_worldfx[id] = {"src": rt, "nodes": [plate]}
+		var tp := _worldfx[id]["nodes"][0] as MeshInstance3D
+		var lm := float(rt.get("live_m"))
+		tp.visible = lm >= 0.0 and (rt as Node2D).is_visible_in_tree()
+		if tp.visible:
+			tp.position = Level3D.px_to_m((rt as Node2D).global_position) + Vector3(0.0, 4.0 * PX, 0.75)
+			(tp.get_node("Text") as Label3D).text = "%d m" % int(roundf(lm))
 	# --- tablica wyników: kreda z `results_wall.gd` w teksturze na powierzchni tablicy
 	_surf_t -= delta
 	var refresh := _surf_t <= 0.0
@@ -2864,7 +2863,7 @@ func _sync_world_fx(delta: float) -> void:
 ## Żar unoszący się nad gniazdem (widać je z daleka w mroku): iskry 3D zamiast cząsteczek 2D z `nest.gd` (te są chowane).
 func _sync_nests() -> void:
 	for n in get_tree().get_nodes_in_group("nests"):
-		if not (n is Node2D) or n.is_queued_for_deletion() or _nestfx.has(n.get_instance_id()) or n.get("_embers") == null:
+		if not (n is Node2D) or n.is_queued_for_deletion() or _nestfx.has(n.get_instance_id()):
 			continue
 		var p := CPUParticles3D.new()
 		p.name = "NestEmbers"
@@ -2909,9 +2908,7 @@ func _sync_nests() -> void:
 				p.queue_free()
 			_nestfx.erase(id)
 			continue
-		var em := src.get("_embers") as CPUParticles2D
-		em.visible = false
-		p.emitting = em.emitting and (src as Node2D).is_visible_in_tree() and (src.get("alive") == null or src.get("alive") == true)
+		p.emitting = (src as Node2D).is_visible_in_tree() and (src.get("alive") == null or src.get("alive") == true)
 		p.position = Level3D.px_to_m((src as Node2D).global_position + Vector2(0.0, -16.0)) + Vector3(0.0, 0.0, 0.3)
 
 ## Pierścień alarmu wroga (`enemy.gd: _ring` — rozchodzi się od stwora, gdy podnosi alarm): okrąg w płaszczyźnie gry wokół jego tułowia.
@@ -2923,9 +2920,8 @@ func _sync_enemy_rings() -> void:
 	im.clear_surfaces()
 	for n in get_tree().get_nodes_in_group("enemies"):
 		var rv = n.get("_ring")
-		if rv == null or n.get("fx3d") == null or not (n is Node2D):
+		if rv == null or not (n is Node2D):
 			continue
-		n.set("fx3d", true)
 		if float(rv) <= 0.0 or not (n as Node2D).is_visible_in_tree():
 			continue
 		var k := 1.0 - float(rv) / 0.7
@@ -3102,7 +3098,6 @@ func _sync_weather(_delta: float) -> void:
 	var wx := get_tree().root.find_child("WeatherFx", true, false)
 	if wx == null:
 		return
-	wx.set("fx3d", true)
 	var id := String(wx.get("_id"))
 	var k := float(wx.get("_k"))
 	var sky := float(wx.get("_sky"))

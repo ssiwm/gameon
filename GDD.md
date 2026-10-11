@@ -477,7 +477,7 @@ Cisza radiowa (brak minimapy), Przeciążenie (Uwaga 50 start), Głód amunicji 
 - **Palety stref:** kolor niosą materiały i światła, nie filtr na całym kadrze (Bór: brąz ściółki i zieleń runa w ciepłym świetle ognia; Obiekt 86: stal i cyjan; Martwa Cisza: czerń i magenta).
 - **Tylko 3D** (decyzja 2026-10-11): wszystko, co widać w świecie gry — modele, światła, cząsteczki, ogień, dym, krew, pociski, efekty — ma być w 3D. Elementy nadal rysowane w 2D na scenie 3D (m.in. płomień i poświata flar, iskry, plamy krwi, część cząsteczek i efektów pogody) są długiem do zastąpienia; wyjątkiem jest interfejs.
 - **Widok 2D nie jest dalej rozwijany** (decyzja 2026-10-11): zostaje w grze jako tryb zastępczy dla słabszego sprzętu i do testów headless, ale nowe rzeczy — oświetlenie, modele, efekty, strojenie widoczności — powstają tylko dla widoku 3D i nie muszą mieć odpowiednika w 2D.
-- **Opcje:** „View: 3D / 2D” (2D = ten sam świat w grafice HD ze światłami 2D, stan zamrożony), „Graphics: HD / CLASSIC” (CLASSIC = pierwotny pixel art 16-bit, tylko w widoku 2D), „Effects quality” (LOW bez mgły wolumetrycznej i SSIL), „Reduce effects”.
+- **Opcje:** brak przełącznika widoku — obraz jest wyłącznie w 3D (widok 2D i grafika klasyczna usunięte w 1.7.194).
 - Animacje z wyraźnymi reakcjami trafień (hitstop 50–90 ms przy zabójstwie, wartości w §23), duży, stylizowany gore.
 
 ### Audio (filar!)
@@ -511,7 +511,7 @@ Cisza radiowa (brak minimapy), Przeciążenie (Uwaga 50 start), Głód amunicji 
 - Model: premium, **zero MTX**.
 - DLC po 1.0: kosmetyki (skiny oddziału, retro filtry), soundtrack, artbook. Nigdy nie dzielimy map ani broni.
 - Demo: Strefa I (bez zapisu postępu) — konwersja na wishlistę.
-- Wymagania: karta z Vulkanem albo D3D12 dla pełnego obrazu 3D; na słabszym sprzęcie „View: 2D” i „Effects quality: LOW”. Minimalna konfiguracja nie jest jeszcze zmierzona (pomiar tylko na RTX 3080).
+- Wymagania: karta z Vulkanem albo D3D12 dla pełnego obrazu 3D; na słabszym sprzęcie „Effects quality: LOW” (widoku 2D już nie ma). Minimalna konfiguracja nie jest jeszcze zmierzona (pomiar tylko na RTX 3080).
 
 ---
 
@@ -931,6 +931,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | 1.7.191 | 2026-10-11 | **Widok 3D: efekty Pijawki, woda przypływu i poświata lamp.** Kręgi na wodzie nad Pijawką, cień pod wodą z bladymi oczami i pulsująca zapowiedź wynurzenia (także w drugim punkcie zasadzki) leżą teraz na tafli w scenie 3D (`view3d.gd: _sync_leech_fx`, stan z `leech.gd: fx_state`). Woda przypływu to bryła wody nad basenem i brzegami z falującą powierzchnią i krawędzią piany, z cienką zasłoną na warstwie postaci (przykrywa stojących w wodzie). Lampy na mapach mają poświatę żarówki w scenie; płaska poświata i smuga 2D są wyłączane (`_sync_lamps`). Meble kryjówki stoją tylko w kryjówce (wcześniej także w B1). Mechanika bez zmian. |
 | 1.7.192 | 2026-10-11 | **Widok 3D: żar gniazd, pierścień alarmu i pył w powietrzu.** Żar nad gniazdami to iskry 3D, a wybuch zniszczonego gniazda idzie przez cząsteczki 3D (`view3d.gd: _sync_nests`). Pierścień krzyku wroga rozchodzi się w scenie wokół jego tułowia (`_sync_enemy_rings`, w `enemy.gd` flaga `fx3d`). Pył w powietrzu wokół kadru to drobiny 3D w całej głębi sceny, widoczne tylko w świetle — snop latarki ma objętość (`_sync_ambient`); płaskie cząsteczki kamery (pył i mgiełka przy ziemi) są w widoku 3D chowane, mgłę daje mgła wolumetryczna. |
 | 1.7.193 | 2026-10-11 | **Widok 3D: lampki, diody, strzelnica i tablica wyników.** Z płaskiej nakładki do sceny przeszły (`view3d.gd: _sync_world_fx`): lampka generatora i spaliny z tłumika (cząsteczki 3D), latarnia drezyny, diody min i ładunków oraz oczy w mroku — jako świecące punkty w scenie; strzelnica — pola do stania wymalowane na podłodze, tabliczki z odległością na słupkach i napis RANGE jako tekst 3D na tablicy; tablica wyników — kreda rysowana do tekstury i położona na powierzchni tablicy, więc bierze światło lamp i nie świeci w mroku. Napisy i tablice są odtwarzane po przebudowie geometrii mapy. |
+| 1.7.194 | 2026-10-11 | **Tylko 3D: usunięty widok 2D, grafika klasyczna i zbędny kod efektów 2D.** Z ustawień zniknęły „View: 3D / 2D”, „Graphics: HD / CLASSIC” i „Characters in 2D view” oraz flagi `--noview3d`, `--view3d`, `--classic`; obraz jest zawsze w 3D (tryb headless nic nie rysuje). Usunięty kod rysowania 2D, który widok 3D dotąd tylko chował: deszcz, plusk i welon mgły (`weather_fx.gd` — zostają dźwięk, błyskawice i stan pogody), flara wyjścia (płomień, słup światła, dym, pył, pierścień postępu), smugi światła (`light_shaft.gd` usunięty), woda przypływu (`tide_water.gd` usunięty), poświaty lamp, kręgi i cień Pijawki, nakładka Żyły, żar gniazd, lampka generatora, latarnia drezyny, diody min, oczy w mroku, rozbłysk / ładowanie / promień broni, płomień rzucanej flary, pierścień alarmu wroga. Tabliczka z odległością pod tarczą strzelnicy stoi w scenie 3D. W 2D zostaje interfejs (HUD, celownik, etykiety i paski nad postaciami, kropki nad graczami blokującymi wyjście, skaner). |
 
 ---
 

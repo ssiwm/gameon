@@ -118,7 +118,6 @@ var _net_t := 0.0
 var _armor_snd_ms := 0
 var _light: PointLight2D
 var _overlay: Node2D
-var fx3d := false                     ## widok 3D przejął efekty (żar paszczy, łuk zapowiedzi, drżenie wody, fala) — nakładka 2D nic nie rysuje
 var _spr: Array = []                  ## [cialo, glow] z arkusza vein; puste = rysunek zastepczy z kolek
 
 func _ready() -> void:
@@ -799,109 +798,7 @@ func _draw() -> void:
 		draw_circle(Vector2(-5, -8) + sh, 7.0, plate.darkened(0.1))
 		draw_circle(Vector2(5, -8) + sh, 7.0, plate.darkened(0.15))
 
-## Zapowiedź zamachu: cienkie, falujące pasmo wody nad podłogą na całym zasięgu fali (najsilniejsze przy Żyle, słabnące ku brzegom)
-## i kilka spłaszczonych kręgów na wodzie — zamiast poprzedniego rzędu prostokątnych słupków.
-func _draw_sweep_warning(ov: Node2D, t: float, pulse: float) -> void:
-	var n := 64
-	var line := PackedVector2Array()
-	for i in n + 1:
-		var x := -SWEEP_RANGE + 2.0 * SWEEP_RANGE * float(i) / float(n)
-		var near := 1.0 - absf(x) / SWEEP_RANGE
-		line.append(Vector2(x, -0.8 - (0.7 + 1.9 * near) * (0.5 + 0.5 * sin(t * 14.0 + x * 0.11))))
-	ov.draw_polyline(line, Color(0.60, 0.90, 1.0, 0.30 + 0.35 * pulse), 1.3, true)
-	ov.draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.28))
-	for i in range(-5, 6):
-		var x := float(i) * SWEEP_RANGE / 5.5
-		var ph := fposmod(t * 1.6 + float(i) * 0.37, 1.0)
-		var fade := (1.0 - ph) * (1.0 - absf(x) / SWEEP_RANGE)
-		ov.draw_arc(Vector2(x, 0.0), 2.0 + 7.0 * ph, 0.0, TAU, 16, Color(0.7, 0.93, 1.0, 0.55 * fade), 1.0, true)
-	ov.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-## Jeden grzbiet fali: zaokrąglony garb o stromszym czole i łagodniejszym ogonie (asymetryczny dzwon), jaśniejszy rdzeń i piana na grzbiecie.
-## `sd` = kierunek (−1 / +1), `wr` = odległość czoła od Żyły.
-func _draw_wave_crest(ov: Node2D, sd: float, wr: float) -> void:
-	const HEIGHT := 11.0
-	const W_FRONT := 4.5
-	const W_BACK := 15.0
-	const AHEAD := 9.0                                    # ile px przed `wr` sięga zbocze
-	const BEHIND := 42.0
-	const N := 26
-	var top := PackedVector2Array()
-	for i in N + 1:
-		var u := -AHEAD + (AHEAD + BEHIND) * float(i) / float(N)      # u < 0: przed czołem, u > 0: za nim
-		var w := W_FRONT if u < 0.0 else W_BACK
-		var hgt := HEIGHT * exp(-pow(u / w, 2.0))
-		top.append(Vector2(sd * (wr - u), -hgt))
-	var body := PackedVector2Array()
-	body.append(Vector2(top[0].x, 0.0))
-	body.append_array(top)
-	body.append(Vector2(top[N].x, 0.0))
-	ov.draw_colored_polygon(body, Color(0.40, 0.72, 0.88, 0.42))
-	var core := PackedVector2Array()
-	core.append(Vector2(top[0].x, 0.0))
-	for p in top:
-		core.append(Vector2(p.x, p.y * 0.62))
-	core.append(Vector2(top[N].x, 0.0))
-	ov.draw_colored_polygon(core, Color(0.70, 0.92, 1.0, 0.45))
-	var foam := PackedVector2Array()
-	for i in range(1, int(N * 0.5)):
-		foam.append(top[i] + Vector2(0.0, -0.5))
-	if foam.size() >= 2:
-		ov.draw_polyline(foam, Color(0.96, 1.0, 1.0, 0.75), 1.1, true)
-	var tt := float(Time.get_ticks_msec()) / 1000.0
-	for k in 4:
-		var q: Vector2 = top[3 + k * 2]
-		ov.draw_circle(q + Vector2(0.0, -1.0 - 0.8 * sin(tt * 20.0 + float(k) * 1.7)), 0.9, Color(1.0, 1.0, 1.0, 0.8))
-
-func _draw_overlay(ov: Node2D) -> void:
-	if fx3d:                                              # widok 3D rysuje to samo w scenie (view3d.gd: _sync_boss_fx); tu tylko koniec fali
-		if _wave_start_ms >= 0 and 24.0 + (Time.get_ticks_msec() - _wave_start_ms) / 1000.0 * SWEEP_SPEED > SWEEP_RANGE:
-			_wave_start_ms = -1
-		return
-	var t := Time.get_ticks_msec() / 1000.0
-	var awake := state == State.AWAKE
-	var pulse := 0.5 + 0.5 * sin(t * (6.0 if enraged else (3.0 if awake else 1.5)))
-	# trzy żyły na sylwetce niezależnie od liczby gniazd: gasną proporcjonalnie
-	var veins := 3 if awake else ceili(3.0 * nests_left / _nest_count())
-	var vcol := Color(1.0, 0.35, 0.2, (0.45 + 0.5 * pulse) if awake else (0.25 + 0.25 * pulse))
-	var mp := _maw_point()
-	if _spr.is_empty():
-		var pts := [Vector2(-14, -22), Vector2(4, -30), Vector2(18, -16)]
-		for i in 3:
-			var c := vcol if i < veins else Color(0.3, 0.1, 0.1, 0.3)
-			ov.draw_line(Vector2(0, -12), pts[i], c, 2.0)
-			ov.draw_circle(pts[i], 2.2, c)
-	elif not _is_hd():                        # żyły z klasycznego arkusza; HD ma własną teksturę (żyły nie leżą w tych samych miejscach)
-		# zar plynie wzdluz wypuklych zyl korpusu; gasna proporcjonalnie do liczby zywych gniazd
-		for i in VEINS.size():
-			var c := vcol if i < veins else Color(0.3, 0.1, 0.1, 0.3)
-			var v: Array = VEINS[i]
-			for k in v.size() - 1:
-				ov.draw_line(v[k], v[k + 1], c, 1.4)
-			ov.draw_circle(v[v.size() - 1], 1.8, c)
-	# paszcza — słaby punkt: zamknięta tli się, otwarta płonie, oślepiona miga na biało
-	var maw := Color(1.0, 0.35, 0.2, 0.18)
-	var r := 3.0
-	if spitting:
-		maw = Color(0.55, 1.0, 0.3, 0.6 + 0.4 * pulse)
-		r = 6.5
-	elif stunned:
-		maw = Color(1.0, 1.0, 0.9, 0.5 + 0.5 * absf(sin(t * 18.0)))
-		r = 9.0
-	elif maw_open:
-		maw = Color(1.0, 0.6, 0.25, 0.75 + 0.25 * pulse)
-		r = 8.5
-	ov.draw_circle(mp, r * (1.25 if not _spr.is_empty() else 1.0), maw)
-	if winding:
-		ov.draw_arc(Vector2(0, -10), LASH_RANGE_X, PI * 1.05, PI * 1.95, 24, Color(1.0, 0.15, 0.1, 0.4 + 0.5 * pulse), 2.0)
-	# zapowiedź zamachu: drżąca woda na całym zasięgu fali — faliste pasmo przy podłodze zamiast rzędu słupków
-	if atk == Atk.SWEEP:
-		_draw_sweep_warning(ov, t, pulse)
-	# fala: dwa grzbiety biegnące od Żyły
-	if _wave_start_ms >= 0:
-		var wr := 24.0 + (Time.get_ticks_msec() - _wave_start_ms) / 1000.0 * SWEEP_SPEED
-		if wr > SWEEP_RANGE:
-			_wave_start_ms = -1
-		else:
-			for sd in [-1.0, 1.0]:
-				_draw_wave_crest(ov, sd, wr)
+## Żar paszczy, łuk zasięgu macki, zapowiedź zamachu i falę rysuje widok 3D (view3d.gd: _sync_boss_fx); tu tylko koniec biegu fali.
+func _draw_overlay(_ov: Node2D) -> void:
+	if _wave_start_ms >= 0 and 24.0 + (Time.get_ticks_msec() - _wave_start_ms) / 1000.0 * SWEEP_SPEED > SWEEP_RANGE:
+		_wave_start_ms = -1

@@ -23,7 +23,6 @@ var _scan_t := 0.0
 var _done := false
 var _hd: Sprite2D
 var _hd_on := false
-var _hd_led: Node2D
 
 func _ready() -> void:
 	add_to_group("placed")
@@ -36,10 +35,6 @@ func _ready() -> void:
 		_hd = ItemsHd.make(kind, self, 0.8 if kind == "mine" else 0.75, 0.3)
 		if kind == "mine" and dir.x < 0.0:
 			_hd.scale.x = -_hd.scale.x
-		_hd_led = Node2D.new()
-		_hd_led.material = Lights.unshaded()
-		_hd_led.draw.connect(_draw_hd_led)
-		add_child(_hd_led)
 
 func is_armed() -> bool:
 	return kind == "mine" and _t >= float(_data["arm"])
@@ -47,8 +42,6 @@ func is_armed() -> bool:
 func _physics_process(delta: float) -> void:
 	_t += delta
 	queue_redraw()
-	if _hd_led != null:
-		_hd_led.queue_redraw()
 	if _done or not NoiseMgr.is_server():
 		return
 	if kind == "charge":
@@ -110,22 +103,6 @@ func _finish() -> void:
 @rpc("authority", "call_local", "reliable")
 func _boom() -> void:
 	queue_free()
-
-## Migająca dioda HD: mina — czerwona, gdy uzbrojona (przed uzbrojeniem miga); ładunek — zapalnik przyspiesza do wybuchu.
-func _draw_hd_led() -> void:
-	var c: Color = _data["color"]
-	var on: bool
-	var pos: Vector2
-	if kind == "mine":
-		on = is_armed() or fmod(_t * 6.0, 1.0) < 0.5
-		pos = Vector2(-5.4 * (-1.0 if dir.x < 0.0 else 1.0) * 0.8, -5.1 * 0.8)
-	else:
-		var rate := 2.0 + 10.0 * (_t / float(_data["fuse"]))
-		on = fmod(_t * rate, 1.0) < 0.5
-		pos = Vector2(0.6, -4.5)
-	if on:
-		_hd_led.draw_circle(pos, 1.6, Color(c.r, c.g, c.b, 0.25))
-		_hd_led.draw_circle(pos, 0.7, Color(1.0, 0.85, 0.7, 0.95))
 
 func _draw() -> void:
 	if _hd_on:

@@ -26,7 +26,6 @@ var _lure_t := 0.0
 ## HD (Sprites.newitem): tuba flary (obraca się w locie, leży po lądowaniu) i nakładka z płomieniem na czubku.
 const HD_SCALE := 0.5
 var _pv: Node2D
-var _fx: Node2D
 var _spin := 0.0
 var _lie := 0.0
 
@@ -43,10 +42,6 @@ func _ready() -> void:
 		add_child(_pv)
 		var sp := ItemsHd.make("flare", _pv, HD_SCALE, 0.3)
 		sp.position = Vector2(0, ItemsHd.body_wp("flare").y * HD_SCALE * 0.5)          # środek tuby w punkcie obrotu
-		_fx = Node2D.new()
-		_fx.material = Lights.unshaded()
-		_fx.draw.connect(_draw_fx)
-		add_child(_fx)
 		_spin = randf_range(-9.0, 9.0)
 		_lie = (1.0 if randf() < 0.5 else -1.0) * randf_range(1.35, 1.75)
 	Audio.play_at("flare_ignite", global_position, Audio.BUS_WORLD, -4.0)
@@ -88,7 +83,6 @@ func _physics_process(delta: float) -> void:
 		else:
 			_pv.rotation += _spin * delta
 			_pv.position.y = 0.0
-		_fx.queue_redraw()
 	# dogasanie na końcu i migotanie płomienia
 	_light.energy = (1.35 + 0.35 * sin(_t * 17.0) * sin(_t * 5.1)) * minf(1.0, life / 3.0)
 	if NoiseMgr.is_server():
@@ -99,23 +93,6 @@ func _physics_process(delta: float) -> void:
 				if e.has_method("see_light"):
 					e.see_light(global_position)
 	queue_redraw()
-
-## Płomień na czubku flary: jasny rdzeń, pomarańczowa poświata i iskry unoszące się w górę.
-var fx3d := false                 ## widok 3D: płomień i iskry są cząsteczkami 3D (view3d.gd: _sync_fires)
-
-func _draw_fx() -> void:
-	if fx3d:
-		return
-	var a := minf(1.0, life / 3.0)
-	var tip := _pv.position + Vector2(0, -ItemsHd.body_wp("flare").y * HD_SCALE * 0.5).rotated(_pv.rotation)
-	var fl := 0.85 + 0.15 * sin(_t * 23.0) * sin(_t * 7.3)
-	_fx.draw_circle(tip, 4.6 * fl, Color(1.0, 0.45, 0.2, 0.16 * a))
-	_fx.draw_circle(tip, 2.6 * fl, Color(1.0, 0.6, 0.25, 0.4 * a))
-	_fx.draw_circle(tip, 1.3 * fl, Color(1.0, 0.95, 0.75, a))
-	for i in 4:
-		var ph := fposmod(_t * 1.6 + float(i) * 0.25, 1.0)
-		var sp := tip + Vector2(sin(_t * 9.0 + float(i) * 2.1) * 1.8, -ph * 9.0)
-		_fx.draw_circle(sp, 0.55 * (1.0 - ph), Color(1.0, 0.75, 0.4, 0.9 * (1.0 - ph) * a))
 
 func _draw() -> void:
 	if _pv != null:
