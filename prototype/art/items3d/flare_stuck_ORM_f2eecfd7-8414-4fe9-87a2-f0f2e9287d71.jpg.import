@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://fwl22rqnsx3l"
-path="res://.godot/imported/flare_stuck_flare_stuck_alb.jpg-a7aeecac18870a24adb1096e9015d615.ctex"
+uid="uid://ctptyrdxn22nk"
+path="res://.godot/imported/flare_stuck_ORM_f2eecfd7-8414-4fe9-87a2-f0f2e9287d71.jpg-0ed6f0b3eec0119d88d4c8b516280c39.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "bdbda62bd5d02ad3c2a0513d4f8540b8"
+"md5": "bae7e219fe91aaf54d8bf9a7b65b5705"
 }
 
 [deps]
 
-source_file="res://art/items3d/flare_stuck_flare_stuck_alb.jpg"
-dest_files=["res://.godot/imported/flare_stuck_flare_stuck_alb.jpg-a7aeecac18870a24adb1096e9015d615.ctex"]
+source_file="res://art/items3d/flare_stuck_ORM_f2eecfd7-8414-4fe9-87a2-f0f2e9287d71.jpg"
+dest_files=["res://.godot/imported/flare_stuck_ORM_f2eecfd7-8414-4fe9-87a2-f0f2e9287d71.jpg-0ed6f0b3eec0119d88d4c8b516280c39.ctex"]
 
 [params]
 
