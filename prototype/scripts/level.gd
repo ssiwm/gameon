@@ -789,8 +789,8 @@ func _spawn_entities() -> void:
 		lp.name = "Lamp%d" % (i + 1)
 		lp.position = _hang_pos(found["l"][i], 0.0)
 		add_child(lp)
-	if found["l"].size() > 0:
-		# kryjówka: podłoga pod pierwszą lampą → meble w tle (hub_decor.gd)
+	if found["l"].size() > 0 and found["h"].size() > 0:
+		# kryjówka (mapa z warsztatem): podłoga pod pierwszą lampą → meble w tle (hub_decor.gd); lampy na innych mapach (B1) mebli nie stawiają
 		var lc := int(float((found["l"][0] as Vector2).x) / float(TILE))
 		var fr := int(float((found["l"][0] as Vector2).y) / float(TILE))
 		for rr in range(fr, _map.size()):
