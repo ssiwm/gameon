@@ -200,8 +200,10 @@ static func _gibs_hd(parent: Node, pos: Vector2, color: Color, count: int, push:
 		var sz := randf_range(3.0, 5.5)
 		var vis := _gib_visual(kind, sz, color)
 		var cs := Vector2(sz, sz * 0.8) if kind == 0 else (Vector2(sz * 1.5, 1.6) if kind == 1 else Vector2(sz * 1.2, 1.8))
-		debris(parent, pos + Vector2(randf_range(-4, 4), randf_range(-8, 0)), v, cs, color, 0.15, 10.0,
+		var gb := debris(parent, pos + Vector2(randf_range(-4, 4), randf_range(-8, 0)), v, cs, color, 0.15, 10.0,
 			func(b: RigidBody2D) -> void: splat(b.get_parent(), b.global_position, 2.5), vis)
+		if gb != null and view3d != null and is_instance_valid(view3d):
+			view3d.call("mirror_gib", gb, kind, sz)           # model szczątka (mięso / kość / wnętrzności) zamiast ogólnej bryłki
 	blood(parent, pos + Vector2(0, -6), Vector2.UP, 14)
 	splat(parent, pos, 6.0)
 

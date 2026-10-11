@@ -72,7 +72,14 @@ TRIPO_MODELS = {
     "tools_wall": ("tools_wall.glb", "+X", 30.0, 9000, 26.0),
     "padlock": ("padlock.glb", "+X", 4.4, 3000, 6.2),
     "flare_stuck": ("flare_stuck.glb", "-Y", 9.1, 3000, 16.0),   # flara wyjścia wbita w ziemię
-    "rubble": ("rubble.glb", "-Y", 26.0, 4000, 8.0),             # gruz po rozbitym zamurowanym przejściu            # kłódka zablokowanej broni na stojaku
+    "rubble": ("rubble.glb", "-Y", 26.0, 4000, 8.0),             # gruz po rozbitym zamurowanym przejściu
+    # szczątki (lokalnie: SDXL → TRELLIS 2 przez tools/comfy_gen.py, źródła w art_src/gibs/): największy wymiar poziomy = 100 jednostek,
+    # skalę nadaje gra (`view3d.gd: mirror_gib`)
+    "gib_meat_b": ("../../gibs/meat_b.glb", "-Y", 100.0, 1200, 1000.0),
+    "gib_meat_c": ("../../gibs/meat_c.glb", "-Y", 100.0, 1200, 1000.0),
+    "gib_gut_a": ("../../gibs/gut_a.glb", "-Y", 100.0, 1500, 1000.0),
+    "gib_bone_a": ("../../gibs/bone_a.glb", "-Y", 100.0, 1000, 1000.0),
+    "gib_bone_b": ("../../gibs/bone_b.glb", "-Y", 100.0, 1000, 1000.0),            # kłódka zablokowanej broni na stojaku
     "stake": ("stake.glb", "+X", 4.0, 2500, 8.9),
     "radio_set": ("radio_set.glb", "+X", 30.0, 6000, 24.0),
     "tree_snag": ("tree_snag.glb", "+X", 1000.0, 2500, 100.0),
