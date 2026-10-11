@@ -301,12 +301,21 @@ def reshape_handcar(obj):
     lo, hi = vs.min(axis=0), vs.max(axis=0)
     H = hi[2] - lo[2]
     px = 92.4 / (hi[0] - lo[0])                               # pikseli świata na jednostkę modelu (szerokość pokładu jak sprite)
-    z_cut = lo[2] + 0.083 * H                                 # poniżej: koła, osie, belka ramy i wsporniki resorów (nadkola)
+    z_cut = lo[2] + 0.111 * H                                 # poniżej: koła, osie, belka ramy i wsporniki resorów (nadkola)
     z_deck = lo[2] + 0.167 * H                                # góra pokładu
     z_p0, z_p1 = lo[2] + 0.333 * H, lo[2] + 0.733 * H         # usuwany odcinek pręta latarni
     bm = bmesh.new()
     bm.from_mesh(me)
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z < z_cut], context="VERTS")
+    z_bot = lo[2] + 0.1155 * H                                # spód desek pokładu: strzępy ramy tuż pod nim spłaszczamy do tej płaszczyzny
+    xc, xh = (lo[0] + hi[0]) * 0.5, (hi[0] - lo[0]) * 0.5
+    top = [v.co.x for v in bm.verts if z_deck - 0.012 * H < v.co.z <= z_deck]          # zasięg desek pokładu w x
+    x_a, x_b = min(top) - 0.004 * xh, max(top) + 0.004 * xh
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z < z_deck and not (x_a <= v.co.x <= x_b)], context="VERTS")      # zderzaki za końcami pokładu
+    for v in bm.verts:
+        if v.co.z < z_bot:
+            v.co.z = z_bot
+    z_cut = z_bot
     deck_k = 3.35 / ((z_deck - z_cut) * px)
     for v in bm.verts:
         z = v.co.z
