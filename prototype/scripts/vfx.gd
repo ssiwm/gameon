@@ -40,14 +40,6 @@ static func draw_bar(ci: CanvasItem, r: Rect2, frac: float, back: Color, fill: C
 		ci.draw_circle(Vector2(r.position.x + cap, y), cap, fill)
 		ci.draw_circle(Vector2(r.position.x + cap + fw, y), cap, fill)
 
-## Zamienia kwadratowe cząsteczki na miękkie okrągłe (grafika HD); wołać po ustawieniu `scale_amount_*`.
-static func soften(fx: CPUParticles2D) -> void:
-	if not Sprites.newitem or fx.texture != null:
-		return
-	fx.texture = blob_texture()
-	fx.scale_amount_min *= BLOB_SCALE
-	fx.scale_amount_max *= BLOB_SCALE
-
 ## Miękka okrągła cząsteczka 8×8 (krew, kurz, dym, iskry w grafice HD).
 static func blob_texture() -> Texture2D:
 	if _blob == null:
@@ -60,36 +52,20 @@ static func blob_texture() -> Texture2D:
 		_blob = ImageTexture.create_from_image(img)
 	return _blob
 
+## Jednorazowy wybuch cząsteczek (krew, iskry, kurz, dym): parametry idą wprost do sceny 3D (view3d.gd: spawn_burst) — żadnego węzła 2D.
+## Prędkości i grawitacja w px świata / s; `amount` skaluje ustawienie jakości efektów. Bez widoku 3D (tryb headless) nic się nie dzieje.
 static func burst(parent: Node, pos: Vector2, color: Color, amount: int, vmin: float, vmax: float,
 		dir := Vector2.UP, spread := 60.0, gravity := 500.0, life := 0.5, size := Vector2(1.0, 2.0),
-		unshaded := false) -> void:
+		_unshaded := false) -> void:
 	if parent == null or not parent.is_inside_tree():
 		return
-	var fx := CPUParticles2D.new()
-	fx.one_shot = true
-	fx.emitting = true
-	fx.amount = maxi(1, int(round(float(amount) * Settings.vfx_mult())))      # ustawienie jakości: LOW / MEDIUM / HIGH
-	fx.lifetime = life
-	fx.explosiveness = 0.95
-	fx.direction = dir
-	fx.spread = spread
-	fx.initial_velocity_min = vmin
-	fx.initial_velocity_max = vmax
-	fx.gravity = Vector2(0, gravity)
-	fx.scale_amount_min = size.x
-	fx.scale_amount_max = size.y
-	if Sprites.newitem:
-		fx.texture = blob_texture()                       # HD: miękkie okrągłe cząsteczki zamiast kwadratów
-		fx.scale_amount_min = size.x * BLOB_SCALE
-		fx.scale_amount_max = size.y * BLOB_SCALE
-	fx.color = color
-	if unshaded:
-		fx.material = Lights.unshaded()
-	parent.add_child(fx)
-	fx.global_position = pos
+	burst_fx(pos, {"color": color, "amount": maxi(1, int(round(float(amount) * Settings.vfx_mult()))), "life": life, "dir": dir, "spread": spread,
+		"vmin": vmin, "vmax": vmax, "gravity": Vector2(0.0, gravity), "smin": size.x, "smax": size.y})
+
+## Wybuch cząsteczek z gotowego opisu: color, amount, life, explosiveness (domyślnie 0,95), dir, spread, vmin, vmax, gravity (Vector2), smin, smax.
+static func burst_fx(pos: Vector2, cfg: Dictionary) -> void:
 	if view3d != null and is_instance_valid(view3d):
-		view3d.call("mirror_burst", fx, pos)
-	parent.get_tree().create_timer(life + 0.3).timeout.connect(fx.queue_free)
+		view3d.call("spawn_burst", pos, cfg)
 
 ## Kurz przy lądowaniu / zeskoku.
 static func dust(parent: Node, pos: Vector2, strength := 1.0) -> void:
@@ -379,29 +355,8 @@ static func explosion(parent: Node, pos: Vector2, radius: float) -> void:
 static func burning(host: Node2D, seconds: float) -> void:
 	if host == null or not host.is_inside_tree():
 		return
-	var fx := CPUParticles2D.new()
-	fx.amount = 16
-	fx.lifetime = 0.5
-	fx.local_coords = false
-	fx.direction = Vector2.UP
-	fx.spread = 30.0
-	fx.initial_velocity_min = 14.0
-	fx.initial_velocity_max = 34.0
-	fx.gravity = Vector2(0, -50)
-	fx.scale_amount_min = 1.2
-	fx.scale_amount_max = 2.6
-	fx.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
-	fx.emission_rect_extents = Vector2(4, 5)
-	var g := Gradient.new()
-	g.colors = PackedColorArray([Color(1.0, 0.9, 0.5, 0.95), Color(1.0, 0.45, 0.12, 0.8), Color(0.3, 0.1, 0.05, 0.0)])
-	g.offsets = PackedFloat32Array([0.0, 0.45, 1.0])
-	fx.color_ramp = g
-	fx.material = Lights.unshaded()
-	fx.position = Vector2(0, -8)
-	host.add_child(fx)
 	if view3d != null and is_instance_valid(view3d):
-		fx.visible = false                                # płomienie na ciele w scenie 3D
-		view3d.call("mirror_burning", host, seconds)
+		view3d.call("mirror_burning", host, seconds)      # płomienie na ciele to cząsteczki 3D
 	var lt := Lights.make_light(Lights.radial(), 2.6, Color(1.0, 0.55, 0.22), 0.9, false)
 	lt.position = Vector2(0, -8)
 	host.add_child(lt)
@@ -415,7 +370,7 @@ static func burning(host: Node2D, seconds: float) -> void:
 	host.add_child(flick)
 	flick.timeout.connect(_flicker.bind(lt))
 	flick.start()
-	tm.timeout.connect(_end_burning.bind(fx, lt, flick))
+	tm.timeout.connect(_end_burning.bind(lt, flick))
 	tm.start()
 
 ## `lt` bez typu: po zwolnieniu światła (koniec płomienia / śmierć wroga) typowany argument zwolnionego obiektu daje błąd
@@ -424,12 +379,9 @@ static func _flicker(lt) -> void:
 	if is_instance_valid(lt):
 		lt.energy = randf_range(0.6, 1.1)
 
-static func _end_burning(fx, lt, flick) -> void:
+static func _end_burning(lt, flick) -> void:
 	if is_instance_valid(flick):
 		flick.queue_free()
-	if is_instance_valid(fx):
-		fx.emitting = false
-		fx.get_tree().create_timer(0.6).timeout.connect(fx.queue_free)
 	if is_instance_valid(lt):
 		lt.queue_free()
 

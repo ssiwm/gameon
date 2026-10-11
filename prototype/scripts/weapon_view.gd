@@ -34,7 +34,9 @@ var _glow_atlas: AtlasTexture
 var _fx: Node2D                        ## nakładka bez cieniowania: rozbłysk, promień, celownik
 var _flash_light: PointLight2D
 var _beam_light: PointLight2D
-var _flame: CPUParticles2D
+var flame_on := false                 ## miotacz pluje ogniem (płomień to cząsteczki 3D — view3d.gd: _sync_weapon_fx)
+var flame_vmax := 150.0               ## …prędkość czoła płomienia [px/s] i rozrzut [°] z definicji broni
+var flame_spread := 14.0
 var _flash_seed := 0.0                ## losowy obrót rozbłysku wylotowego (czyta go widok 3D: view3d.gd _sync_weapon_fx)
 var _flash_t := 0.0
 var _swing_t := -1.0                   ## 0..1 trwającego ciosu, <0 = brak
@@ -103,8 +105,6 @@ func setup(p: CharacterBody2D, c: Node) -> void:
 	_beam_light = Lights.make_light(Lights.radial(), 2.2, Color(0.55, 0.9, 1.0), 0.9, false)
 	_beam_light.enabled = false
 	add_child(_beam_light)
-	_flame = _make_flame()
-	add_child(_flame)
 	ctrl.shot.connect(_on_shot)
 	ctrl.melee_swung.connect(_on_swing)
 	# lokalny człowiek: celownik zamiast kursora, hitmarkery z serwera
@@ -117,28 +117,6 @@ func _exit_tree() -> void:
 	_stop_loop()
 	if _local:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-
-func _make_flame() -> CPUParticles2D:
-	var f := CPUParticles2D.new()
-	f.emitting = false
-	f.amount = 46
-	f.lifetime = 0.5
-	f.local_coords = false
-	f.direction = Vector2.RIGHT
-	f.spread = 14.0
-	f.initial_velocity_min = 90.0
-	f.initial_velocity_max = 150.0
-	f.gravity = Vector2(0, -35)
-	f.scale_amount_min = 1.4
-	f.scale_amount_max = 3.4
-	var g := Gradient.new()
-	g.colors = PackedColorArray([Color(1.0, 0.95, 0.65, 0.95), Color(1.0, 0.5, 0.12, 0.85), Color(0.25, 0.1, 0.06, 0.0)])
-	g.offsets = PackedFloat32Array([0.0, 0.4, 1.0])
-	f.color_ramp = g
-	f.material = Lights.unshaded()
-	f.z_index = 3
-	Vfx.soften(f)
-	return f
 
 # ---------------------------------------------------------------- zdarzenia
 
@@ -364,15 +342,10 @@ func _update_continuous(d: WeaponDef, delta: float) -> void:
 			Audio.start_loop_at(d.sfx_loop, player, Audio.BUS_WEAPONS, d.sfx_vol, true, _loop_id)
 		else:
 			_stop_loop()
-	_flame.emitting = firing and d.kind == WeaponDef.Kind.FLAME
-	if d.kind == WeaponDef.Kind.FLAME:
-		var m := player.global_position + muzzle_local(d)
-		_flame.global_position = m
-		_flame.direction = player.aim_dir
-		_flame.initial_velocity_min = 80.0
-		_flame.initial_velocity_max = d.range_px * 2.1
-		_flame.lifetime = 0.5
-		_flame.spread = d.arc_deg * 0.75
+	flame_on = firing and d.kind == WeaponDef.Kind.FLAME
+	if flame_on:
+		flame_vmax = d.range_px * 2.1
+		flame_spread = d.arc_deg * 0.75
 	if firing and d.kind == WeaponDef.Kind.BEAM:
 		var origin := player.global_position + muzzle_local(d)
 		var tr := Combat.trace(player.get_world_2d().direct_space_state, origin, player.aim_dir, d.range_px, int(d.pierce), 0.0, [player.get_rid()])

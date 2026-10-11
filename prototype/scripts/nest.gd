@@ -86,26 +86,8 @@ func _destroy_fx() -> void:
 	if _local_dist() < 240.0:
 		Feel.shake(2.5)
 	Vfx.gibs(get_parent(), global_position + Vector2(0, -8), Color(0.42, 0.14, 0.18), 9)
-	var fx := CPUParticles2D.new()
-	fx.one_shot = true
-	fx.emitting = true
-	fx.amount = 40
-	fx.lifetime = 0.9
-	fx.explosiveness = 0.9
-	fx.direction = Vector2(0, -1)
-	fx.spread = 60.0
-	fx.initial_velocity_min = 40.0
-	fx.initial_velocity_max = 130.0
-	fx.gravity = Vector2(0, -60)   # płonące strzępy unoszą się
-	fx.scale_amount_min = 1.0
-	fx.scale_amount_max = 2.5
-	fx.color = Color(1.0, 0.55, 0.2)
-	Vfx.soften(fx)
-	get_tree().current_scene.add_child(fx)
-	fx.global_position = global_position + Vector2(0, -8)
-	if Vfx.view3d != null and is_instance_valid(Vfx.view3d):
-		Vfx.view3d.call("mirror_burst", fx, fx.global_position)       # płonące strzępy jako cząsteczki 3D
-	get_tree().create_timer(1.5).timeout.connect(fx.queue_free)
+	Vfx.burst_fx(global_position + Vector2(0, -8), {"color": Color(1.0, 0.55, 0.2), "amount": 40, "life": 0.9, "explosiveness": 0.9, "dir": Vector2(0, -1),
+		"spread": 60.0, "vmin": 40.0, "vmax": 130.0, "gravity": Vector2(0, -60), "smin": 1.0, "smax": 2.5})      # płonące strzępy unoszą się
 
 func _local_dist() -> float:
 	for p in get_tree().get_nodes_in_group("players"):
