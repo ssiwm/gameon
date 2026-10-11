@@ -13,3 +13,6 @@ build/
 art_src/world_pbr/
 art_src/world_pbr_cc0/
 art_src/world_decals/
+
+# nagrania z bibliotek dźwięku (tools/audio_lib_fetch.py): licencja zabrania udostępniania plików dalej — w repo jest tylko rejestr z sumami (prototype/tools/audio_sources.json)
+art_src/audio_lib/

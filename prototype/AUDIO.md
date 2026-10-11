@@ -99,6 +99,21 @@ python3 tools/audio_view.py out.png m83_shot_1 stalker_growl_1 mus_combat   # pr
 godot --headless --path . --import               # po bake'u — inaczej grają stare sample'e
 ```
 
+Źródła hybrydowe (`AUDIO_PLAN.md`; rejestr: `tools/audio_sources.json`, lista i licencje: `audio/CREDITS.md`):
+
+```bash
+python3 tools/audio_lib_fetch.py index 2018                 # spis plików rocznika paczek Sonniss GDC (czyta sam spis treści archiwów)
+python3 tools/audio_lib_fetch.py find "footstep.*concrete"  # szukanie w spisach
+python3 tools/audio_lib_fetch.py get 2018 "BOOT_CONC"       # pobranie pojedynczych nagrań do art_src/audio_lib/ (poza repo)
+python3 tools/comfy_gen.py audio "opis" --out ../art_src/audio_gen/x.flac --count 4   # Stable Audio 3 w lokalnym ComfyUI
+python3 tools/bake_audio.py --only alts --alts ../build/audio_alt   # wersje alternatywne (tools/bake_hybrid.py) obok assetów gry
+python3 tools/audio_ab.py --alts ../build/audio_alt         # strona do odsłuchu A/B „na ślepo": build/audio_ab.html
+python3 tools/audio_ab.py --ref origin/main                 # to samo dla assetów zmienionych względem gałęzi
+```
+
+Nagrania z bibliotek leżą poza repo (`art_src/audio_lib/` albo katalog z `DA87_AUDIO_LIB`): licencja Sonniss pozwala używać ich
+w grze, ale nie udostępniać dalej jako plików dźwiękowych. Bez nich bake pomija assety zależne od źródeł i zostawia WAV-y z repo.
+
 ## 5. Ograniczenia i uczciwa ocena
 
 * **To nie jest jeszcze „AAA" w sensie brzmienia.** AAA = nagrany materiał (foley, głosy, broń), miksowany w

@@ -1,0 +1,73 @@
+{
+ "_": "Rejestr źródeł dźwięku spoza syntezy (AUDIO_PLAN.md). kind=lib: nagranie z biblioteki, plik względem art_src/audio_lib/ (poza repo, pobiera tools/audio_lib_fetch.py). kind=gen: plik wygenerowany, względem art_src/audio_gen/ (w repo, LFS). sha256 pilnuje, żeby ten sam przepis dawał ten sam dźwięk.",
+ "licenses": {
+  "sonniss-gdc-2.0": {
+   "name": "Sonniss GDC Bundle License 2.0 (od 2026-08-27)",
+   "url": "https://sonniss.com/gdc-bundle-license/",
+   "checked": "2026-10-12",
+   "summary": "Wolno używać i przerabiać w dowolnej liczbie projektów własnych, także komercyjnych, bez podawania autora. Nie wolno udostępniać dźwięków innym jako efektów dźwiękowych (także przerobionych; osobno ani w paczce, szablonie czy SDK) ani trenować na nich modeli AI."
+  },
+  "stable-audio-community": {
+   "name": "Stability AI Community License (karta modelu: stable-audio-community)",
+   "url": "https://stability.ai/community-license-agreement",
+   "checked": "2026-10-12",
+   "summary": "Wyniki należą do użytkownika i mogą być używane komercyjnie przy rocznym przychodzie do 1 mln USD; użycie komercyjne wymaga rejestracji w Stability AI. Sprawdzony tekst umowy ogólnej z 2024-07-05 — to, że obejmuje modele Stable Audio 3, wynika z nazwy licencji na karcie modelu i wymaga potwierdzenia przed wydaniem."
+  }
+ },
+ "sources": {
+  "akm_close_1m": {
+   "kind": "lib",
+   "file": "sonniss/2016/Pole Position Production - AKM 7.62x39mm/AKM_7.62x39mm_1m_left_on_ground_DPA4062_clean_Triple_shots_x_1.wav",
+   "sha256": "bd536671307629ac18b6f219d85b1365af4b8275d020cf0639ab23cac81c81d5",
+   "pack": "Sonniss GDC 2016 — AKM 7.62x39mm",
+   "supplier": "Pole Position Production",
+   "license": "sonniss-gdc-2.0"
+  },
+  "ak47_open_2m": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Pole Position - The Outdoor Gun Acoustics Library/AK47_big_open_area_2m_above_behind_gun_RSM191_M.wav",
+   "sha256": "69d69b30080e1409560d4c6f1ea4f17776f383f803f15bbc62192279d94a921b",
+   "pack": "Sonniss GDC 2018 — The Outdoor Gun Acoustics Library",
+   "supplier": "Pole Position Production",
+   "license": "sonniss-gdc-2.0"
+  },
+  "boot_concrete_walk": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Joshua Reinhardt - Ultimate Bare Feet Expansion/BOOT_CONC CLEAN_WALK.R.wav",
+   "sha256": "af5804543cc032187ecaa06ece964aaf26a1757fe3d8d9d375f297d88daf1c2f",
+   "pack": "Sonniss GDC 2018 — Ultimate Bare Feet Expansion",
+   "supplier": "Joshua Reinhardt",
+   "license": "sonniss-gdc-2.0"
+  },
+  "monster_growls_4": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Olivier Girardot - Monsters/Monster Growls 4.wav",
+   "sha256": "94e47f779de1e11ce1252c4aaaf1491de5d927f8ca164d3ffc8741f116d5cff7",
+   "pack": "Sonniss GDC 2018 — Monsters",
+   "supplier": "Olivier Girardot",
+   "license": "sonniss-gdc-2.0"
+  },
+  "stalker_growl_gen_a": {
+   "kind": "gen",
+   "file": "stalker/growl_sa3m_8701_2.flac",
+   "sha256": "dd86141101fb48ebc4ba8bccef278f8e498e9ae5d35a9e2512d8169643f4dd63",
+   "pack": "Stable Audio 3 Medium (ComfyUI, lokalnie)",
+   "supplier": "wygenerowany w projekcie",
+   "license": "stable-audio-community",
+   "prompt": "Deep guttural creature growl, low throaty vocal fry rumble with wet rasp, slow menacing exhale of a large unseen monster, close microphone, dry recording, horror sound effect",
+   "seed": 8701,
+   "note": "comfy_gen.py audio --seconds 5 --seed 8701 --count 4 --model medium; próbka 2 z 4"
+  },
+  "stalker_growl_gen_b": {
+   "kind": "gen",
+   "file": "stalker/growl_sa3m_8701_4.flac",
+   "sha256": "17487b6c13d79230c237669cc0f4af4a54cdf70bd5e7f7b7104b10d10a8a1779",
+   "pack": "Stable Audio 3 Medium (ComfyUI, lokalnie)",
+   "supplier": "wygenerowany w projekcie",
+   "license": "stable-audio-community",
+   "prompt": "Deep guttural creature growl, low throaty vocal fry rumble with wet rasp, slow menacing exhale of a large unseen monster, close microphone, dry recording, horror sound effect",
+   "seed": 8701,
+   "note": "comfy_gen.py audio --seconds 5 --seed 8701 --count 4 --model medium; próbka 4 z 4"
+  }
+ }
+}

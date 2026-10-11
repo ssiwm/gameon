@@ -7,6 +7,8 @@ Uruchomienie (z katalogu prototype/):
     python3 tools/bake_audio.py --only weapons,music  # wybrane grupy
     python3 tools/bake_audio.py --list                # lista assetów
     python3 tools/bake_audio.py --reset               # zignoruj stary indeks _bank.json
+    python3 tools/bake_audio.py --strict              # brak pliku źródłowego = błąd (domyślnie: asset pominięty)
+    python3 tools/bake_audio.py --only alts --alts ../build/audio_alt   # wersje alternatywne do odsłuchu (tools/audio_ab.py)
     python3 tools/test_audio_dsp.py                   # testy rdzenia DSP
     python3 tools/audio_audit.py                      # pomiar jakości po bake'u
 
@@ -15,9 +17,13 @@ Wynik:
     audio/_bank.json           indeks key -> [ścieżka, pętla?]
     scripts/audio_manifest.gd  wygenerowany manifest dla runtime (PATHS, LOOPS, muzyka, napisy)
 
-Moduły: audio_dsp (rdzeń), bake_common (rejestr + finalize), bake_weapons, bake_sfx
+Moduły: audio_dsp (rdzeń), bake_common (rejestr + finalize + źródła), bake_weapons, bake_sfx
 (stalker/świat/gracz/UI), bake_amb (ambient), bake_music (stemy + stingery).
-Docelowy materiał nagrany zastępuje te pliki 1:1 — runtime nie widzi różnicy.
+
+Źródła hybrydowe (AUDIO_PLAN.md): część assetów składa się z nagrań z bibliotek (art_src/audio_lib/,
+poza repo — pobiera je tools/audio_lib_fetch.py) i plików wygenerowanych (art_src/audio_gen/). Rejestr
+z sumami kontrolnymi to tools/audio_sources.json, a lista źródeł i licencji — audio/CREDITS.md (generowana tutaj).
+Bez plików źródłowych na dysku takie assety są pomijane i zostają WAV-y z repo.
 """
 
 from __future__ import annotations
@@ -31,6 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bake_amb  # noqa: E402
 import bake_common as bc  # noqa: E402
+import bake_hybrid  # noqa: E402
 import bake_music  # noqa: E402
 import bake_sfx  # noqa: E402
 import bake_weapons  # noqa: E402
@@ -48,6 +55,7 @@ BUILDERS = [
     ("ui", bake_sfx.build_ui),
     ("ambience", bake_amb.build_ambience),
     ("music", bake_music.build_music),
+    ("alts", bake_hybrid.build_alts),          # wersje alternatywne do odsłuchu — działa tylko z --alts KATALOG
 ]
 
 # Napisy dla niesłyszących / „napisy z opisem dźwięków" (GDD §14): prefiks klucza -> [tekst, ważność 0–3].
@@ -123,7 +131,44 @@ def write_manifest() -> None:
         f.write("\n".join(lines))
 
 
+def write_credits() -> None:
+    """audio/CREDITS.md — źródła zewnętrzne z rejestru (wzór: art/world3d/CREDITS.md)."""
+    srcs = bc.sources()
+    if not srcs:
+        return
+    with open(bc.SOURCES_JSON, encoding="utf-8") as f:
+        licenses = json.load(f).get("licenses", {})
+    lines = [
+        "# Dźwięk — źródła i licencje",
+        "",
+        "GENEROWANE przez `tools/bake_audio.py` z `tools/audio_sources.json` — nie edytuj ręcznie.",
+        "",
+        "Biblioteka jest hybrydowa (`AUDIO_PLAN.md`): synteza z `tools/bake_*.py`, nagrania z bibliotek i pliki wygenerowane lokalnie.",
+        "Nagrań z bibliotek nie ma w repo w postaci źródłowej (pobiera je `tools/audio_lib_fetch.py`).",
+        "Rejestr obejmuje też źródła wersji alternatywnych z `tools/bake_hybrid.py`, których gra jeszcze nie używa.",
+        "",
+        "## Licencje",
+        "",
+    ]
+    for lid, lic in sorted(licenses.items()):
+        lines.append("- **%s** — %s. %s" % (lid, lic.get("name", ""), lic.get("summary", "")))
+        if lic.get("url"):
+            lines.append("  Tekst: <%s> (sprawdzony %s)." % (lic["url"], lic.get("checked", "?")))
+    lines += ["", "## Źródła", "", "| Id | Rodzaj | Paczka albo model | Dostawca | Licencja | Plik albo opis |", "|---|---|---|---|---|---|"]
+    for sid, e in sorted(srcs.items()):
+        what = e.get("prompt") or os.path.basename(e["file"])
+        lines.append("| %s | %s | %s | %s | %s | %s |" % (
+            sid, {"lib": "nagranie", "gen": "wygenerowany"}.get(e.get("kind", "lib"), e.get("kind", "")),
+            e.get("pack", ""), e.get("supplier", ""), e.get("license", ""), what.replace("|", "/")))
+    lines.append("")
+    with open(os.path.join(AUDIO, "CREDITS.md"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines))
+
+
 def main() -> int:
+    bc.STRICT[0] = "--strict" in sys.argv
+    if "--alts" in sys.argv:
+        bc.ALT_ROOT[0] = os.path.abspath(sys.argv[sys.argv.index("--alts") + 1])
     only = None
     if "--only" in sys.argv:
         only = sys.argv[sys.argv.index("--only") + 1].split(",")
@@ -138,6 +183,7 @@ def main() -> int:
         print("[%-8s] %3d assetów  %5.1fs" % (name, len(bc.REG) - before, time.time() - t0))
     write_bank()
     write_manifest()
+    write_credits()
     missing = [k for k, (p, _) in bc.REG.items() if not os.path.exists(os.path.join(AUDIO, p + ".wav"))]
     print("-" * 56)
     print("manifest: %s" % MANIFEST)
@@ -145,6 +191,8 @@ def main() -> int:
         len(bc.REG), sum(1 for v in bc.REG.values() if v[1]), len(missing), time.time() - t_all))
     for k in missing[:10]:
         print("   ! brak pliku: %s" % k)
+    for keys, why in bc.SKIPPED:
+        print("   ~ pominięto %s (%d szt.) — %s; zostają WAV-y z repo" % (keys[0], len(keys), why))
     if "--list" in sys.argv:
         for k in sorted(bc.REG):
             print("   %-28s %s%s" % (k, bc.REG[k][0], "  [loop]" if bc.REG[k][1] else ""))
