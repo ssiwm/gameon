@@ -161,7 +161,7 @@ def write_credits() -> None:
             sid, {"lib": "nagranie", "gen": "wygenerowany"}.get(e.get("kind", "lib"), e.get("kind", "")),
             e.get("pack", ""), e.get("supplier", ""), e.get("license", ""), what.replace("|", "/")))
     lines.append("")
-    with open(os.path.join(AUDIO, "CREDITS.md"), "w", encoding="utf-8", newline="\n") as f:
+    with open(os.path.join(AUDIO, "CREDITS.md"), "w", encoding="utf-8") as f:      # końce wierszy jak w manifeście: natywne
         f.write("\n".join(lines))
 
 
