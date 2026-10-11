@@ -66,7 +66,7 @@ func _physics_process(delta: float) -> void:
 		var n := e as Node2D
 		if n == null or not is_instance_valid(n) or n.is_queued_for_deletion():
 			continue
-		if n.is_in_group("boss") or n.is_in_group("nests") or n.is_in_group("range_targets"):
+		if n.is_in_group("boss") or n.is_in_group("nests"):
 			continue
 		var c := Combat.center_of(n)
 		if absf(c.x - global_position.x) > HALF_W + 4.0 or c.y > global_position.y + 4.0 or c.y < global_position.y - HEIGHT:
@@ -74,15 +74,3 @@ func _physics_process(delta: float) -> void:
 		var info := Combat.make_info(weapon, TICK_DAMAGE, c, Vector2.UP, shooter_id, "fire")
 		info["ignite"] = IGNITE
 		Combat.apply(n, info)
-
-func _draw() -> void:
-	var fade := clampf(life / 0.8, 0.0, 1.0)
-	for i in 6:
-		var fx := -HALF_W + (float(i) + 0.5) * (HALF_W * 2.0 / 6.0)
-		var h := (7.0 + 5.0 * sin(_t * (9.0 + float(i) * 1.7) + _seed + float(i))) * fade
-		var w := 3.2
-		var pts := PackedVector2Array([Vector2(fx - w, 0.0), Vector2(fx + w, 0.0), Vector2(fx + 0.6 * sin(_t * 7.0 + float(i)), -h)])
-		draw_colored_polygon(pts, Color(1.0, 0.45, 0.12, 0.85 * fade))
-		var pi := PackedVector2Array([Vector2(fx - w * 0.5, 0.0), Vector2(fx + w * 0.5, 0.0), Vector2(fx, -h * 0.55)])
-		draw_colored_polygon(pi, Color(1.0, 0.85, 0.4, 0.9 * fade))
-	draw_rect(Rect2(-HALF_W, -1.0, HALF_W * 2.0, 2.0), Color(1.0, 0.3, 0.1, 0.5 * fade))

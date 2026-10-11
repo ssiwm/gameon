@@ -96,35 +96,3 @@ func crumble() -> void:
 	Vfx.dust(parent, rc.get_center(), 2.5)
 	Audio.play_variant_at("amb_thud", 2, global_position, Audio.BUS_WORLD, 0.0, 0.7)
 	queue_free()
-
-func _draw() -> void:
-	var w := TILE
-	var h := TILE * float(rows)
-	var dmg := 1.0 - clampf(hp / WALL_HP, 0.0, 1.0)
-	var brick := Color(0.42, 0.24, 0.2).lerp(Color(1, 1, 1), 0.5 if _flash > 0.0 else 0.0)
-	var mortar := Color(0.16, 0.12, 0.11)
-	draw_rect(Rect2(-w * 0.5, -h, w, h), mortar)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = _seed
-	var y := 0.0
-	var row := 0
-	while y < h:
-		var bh := 5.0
-		var off := 0.0 if row % 2 == 0 else 4.0
-		var x := -w * 0.5 - off
-		while x < w * 0.5:
-			var bw := 8.0
-			var shade := rng.randf_range(-0.05, 0.05)
-			var r := Rect2(maxf(x, -w * 0.5) + 0.5, -y - bh + 0.5, minf(x + bw, w * 0.5) - maxf(x, -w * 0.5) - 1.0, bh - 1.0)
-			if r.size.x > 0.0:
-				draw_rect(r, Color(brick.r + shade, brick.g + shade * 0.6, brick.b + shade * 0.5))
-			x += bw
-		y += bh
-		row += 1
-	# pęknięcia rosną z obrażeniami; nawet nietknięta ściana ma jedno — to podpowiedź „da się to rozbić"
-	var cracks := 1 + int(dmg * 5.0)
-	for i in cracks:
-		var cx := rng.randf_range(-w * 0.35, w * 0.35)
-		var cy := -rng.randf_range(4.0, h - 4.0)
-		var seg := PackedVector2Array([Vector2(cx, cy), Vector2(cx + rng.randf_range(-3.0, 3.0), cy - 4.0), Vector2(cx + rng.randf_range(-3.0, 3.0), cy - 8.0)])
-		draw_polyline(seg, Color(0.08, 0.06, 0.05), 1.0)

@@ -103,24 +103,3 @@ func _finish() -> void:
 @rpc("authority", "call_local", "reliable")
 func _boom() -> void:
 	queue_free()
-
-func _draw() -> void:
-	if _hd_on:
-		return
-	var c: Color = _data["color"]
-	if kind == "mine":
-		draw_rect(Rect2(-5, -3, 10, 3), Color(0.2, 0.22, 0.2))
-		draw_rect(Rect2(-4, -4, 8, 1), Color(0.34, 0.36, 0.32))
-		var tip := dir.normalized() * 5.0
-		draw_line(Vector2(0, -2), Vector2(tip.x, -2.0 + tip.y * 0.6), Color(0.5, 0.5, 0.45), 1.0)
-		var armed := is_armed()
-		var on := armed or fmod(_t * 6.0, 1.0) < 0.5
-		draw_rect(Rect2(-1, -6, 2, 2), c if on else Color(0.2, 0.1, 0.1))
-	else:
-		draw_rect(Rect2(-5, -6, 10, 6), Color(0.34, 0.3, 0.2))
-		draw_rect(Rect2(-5, -6, 10, 1), Color(0.5, 0.45, 0.3))
-		draw_rect(Rect2(-3, -4, 6, 2), Color(0.12, 0.12, 0.1))
-		var fuse := float(_data["fuse"])
-		var rate := 2.0 + 10.0 * (_t / fuse)
-		var on2 := fmod(_t * rate, 1.0) < 0.5
-		draw_rect(Rect2(-1, -9, 2, 2), c if on2 else Color(0.25, 0.1, 0.05))

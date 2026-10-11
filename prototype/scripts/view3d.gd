@@ -71,7 +71,7 @@ var _ws_lamps := {}                      ## id warsztatu → lampa nad nim (Node
 var _globs := {}                         ## id plwociny / kwasu → [węzeł 2D, kula 3D]
 var _dots_mi: MeshInstance3D             ## świecące punkty (lampki, diody, oczy w mroku) i znaczniki na podłodze — jedna siatka
 var _hid2d: Array = []                   ## węzły 2D schowane przez `self_modulate` (do przywrócenia w widoku 2D)
-var _worldfx := {}                       ## id obiektu → {"src", "nodes": [węzły 3D], …} (dym generatora, napisy strzelnicy, tablica wyników)
+var _worldfx := {}                       ## id obiektu → {"src", "nodes": [węzły 3D], …} (dym generatora, tablica wyników)
 var _surf_t := 0.0                       ## do następnego odświeżenia tekstur z rysunkiem 2D [s]
 var _nestfx := {}                        ## id gniazda → [węzeł 2D, żar 3D]
 var _ring_mi: MeshInstance3D             ## pierścienie alarmu wrogów (jedna siatka na wszystkie)
@@ -185,9 +185,6 @@ func release() -> void:
 		if is_instance_valid(h2):
 			(h2 as CanvasItem).self_modulate = Color.WHITE
 	_hid2d.clear()
-	for rtg in get_tree().get_nodes_in_group("range_targets"):
-		if rtg.get("plate3d") != null:
-			rtg.set("plate3d", false)
 	for id in _worldfx.keys():
 		for wn in _worldfx[id]["nodes"]:
 			if is_instance_valid(wn):
@@ -2517,7 +2514,7 @@ func _sync_lamps() -> void:
 		g.scale = Vector3.ONE * (0.75 + 0.1 * f)
 		(g.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.82, 0.55, 0.55 * f)
 
-# ---------------------------------------------------------------- lampki, diody, oczy w mroku, strzelnica, tablica wyników
+# ---------------------------------------------------------------- lampki, diody, oczy w mroku, tablica wyników
 
 const DREAD_Z := -1.3                    ## oczy w mroku: w głębi sceny, za płaszczyzną gry
 
@@ -2550,31 +2547,9 @@ func _dot(im: ImmediateMesh, c: Vector3, r: float, col: Color) -> void:
 		im.surface_set_color(col)
 		im.surface_add_vertex(c + Vector3((u * 2.0 - 1.0) * r, (v * 2.0 - 1.0) * r, 0.0))
 
-## Pasek leżący na podłodze (prostokąt w płaszczyźnie XZ) dopisany do siatki punktów — pełny kolor (środek tekstury).
-func _floor_strip(im: ImmediateMesh, a: Vector3, b: Vector3, w: float, col: Color) -> void:
-	var d := (b - a).normalized()
-	var n := Vector3(-d.z, 0.0, d.x) * w * 0.5
-	for p in [a - n, a + n, b - n, b - n, a + n, b + n]:
-		im.surface_set_uv(Vector2(0.5, 0.5))
-		im.surface_set_color(col)
-		im.surface_add_vertex(p)
-
-func _label3d(text: String, px_h: float, col: Color) -> Label3D:
-	var l := Label3D.new()
-	l.text = text
-	l.font = ThemeDB.fallback_font
-	l.font_size = 64
-	l.pixel_size = px_h * PX / 64.0
-	l.outline_size = 0
-	l.modulate = col
-	l.layers = LAYER_WORLD
-	l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	return l
-
 ## Drobne elementy świata rysowane dotąd na płaskiej nakładce — teraz w scenie 3D (stan czytany z ich skryptów, rysunek 2D chowany):
 ##  - lampka generatora (czerwona / bursztynowa przy rozruchu / zielona, gdy pracuje) i spaliny z tłumika,
 ##  - latarnia drezyny, diody min i ładunków, oczy w mroku (`dread.gd`) — świecące punkty,
-##  - strzelnica: pola do stania wymalowane na podłodze, tabliczki z odległością i napis na tablicy jako tekst 3D,
 ##  - tablica wyników: kreda rysowana przez `results_wall.gd` do tekstury i położona na powierzchni tablicy (bierze światło lamp).
 func _sync_world_fx(delta: float) -> void:
 	if _dots_mi == null:
@@ -2689,107 +2664,7 @@ func _sync_world_fx(delta: float) -> void:
 			for ex in [-3.0, 3.0]:
 				_dot(im, epos + Vector3(ex * PX, 0.0, 0.0), 2.6 * PX, Color(1.0, 0.92, 0.6, ea * 0.5))
 				_dot(im, epos + Vector3(ex * PX, 0.0, 0.01), 1.2 * PX, Color(1.0, 0.92, 0.6, ea))
-	# --- strzelnica: pola na podłodze, tabliczki z odległością, napis na tablicy
-	for rl in get_tree().get_nodes_in_group("range_line"):
-		var marks = rl.get("_marks")
-		if not (rl is Node2D) or marks == null or (marks as Array).is_empty() or _geo_key == "":
-			continue
-		_hide2d(rl)
-		_hide2d(rl.get("_ov"))
-		var id: int = rl.get_instance_id()
-		var base := Level3D.px_to_m((rl as Node2D).global_position)
-		if _worldfx.has(id) and not is_instance_valid(_worldfx[id]["nodes"][0]):
-			_worldfx.erase(id)                                 # geometria mapy przebudowana — napisy trzeba postawić od nowa
-		if not _worldfx.has(id):
-			var nodes: Array = []
-			for mk in marks:
-				var plate := MeshInstance3D.new()              # tabliczka na słupku przy polu
-				var bm := BoxMesh.new()
-				bm.size = Vector3(20.0 * PX, 8.0 * PX, 0.04)
-				plate.mesh = bm
-				var pm := StandardMaterial3D.new()
-				pm.albedo_color = Color(0.05, 0.05, 0.06)
-				pm.roughness = 0.8
-				plate.material_override = pm
-				plate.position = base + Vector3(float(mk["x"]) * PX, 9.0 * PX, -0.55)
-				plate.layers = LAYER_WORLD
-				_geo.add_child(plate)
-				var post := MeshInstance3D.new()
-				var pb := BoxMesh.new()
-				pb.size = Vector3(1.2 * PX, 5.0 * PX, 0.03)
-				post.mesh = pb
-				post.material_override = pm
-				post.position = Vector3(0.0, -6.5 * PX, 0.0)
-				post.layers = LAYER_WORLD
-				plate.add_child(post)
-				var lb := _label3d("%d m" % int(mk["m"]), 5.2, Color(0.8, 0.62, 0.26))
-				lb.name = "Text"
-				lb.position = Vector3(0.0, 0.0, 0.025)
-				plate.add_child(lb)
-				nodes.append(plate)
-			var title := _label3d("RANGE", 6.0, Color(0.95, 0.75, 0.3))
-			title.name = "RangeTitle"
-			_geo.add_child(title)
-			nodes.append(title)
-			_worldfx[id] = {"src": rl, "nodes": nodes, "z": NAN}
-		var rf: Dictionary = _worldfx[id]
-		if is_nan(float(rf["z"])):
-			rf["z"] = _model_front(rl, "range_sign")
-		var active: Dictionary = rl.get("_active")
-		for i in (marks as Array).size():
-			var mk: Dictionary = marks[i]
-			var on: bool = active.get(mk["m"], false) == true
-			var mx := base.x + float(mk["x"]) * PX
-			var mc := Color(0.9, 0.7, 0.2, 0.9 if on else 0.45)
-			var hw := 9.0 * PX
-			var z0 := -0.35
-			var z1 := 0.5
-			var fy := base.y + 0.03
-			_floor_strip(im, Vector3(mx - hw, fy, z1), Vector3(mx + hw, fy, z1), 0.06, mc)
-			_floor_strip(im, Vector3(mx - hw, fy, z0), Vector3(mx - hw, fy, z1), 0.05, mc)
-			_floor_strip(im, Vector3(mx + hw, fy, z0), Vector3(mx + hw, fy, z1), 0.05, mc)
-			if on:
-				_floor_strip(im, Vector3(mx - hw, fy, (z0 + z1) * 0.5), Vector3(mx + hw, fy, (z0 + z1) * 0.5), z1 - z0, Color(0.9, 0.7, 0.2, 0.12))
-			var txt := (rf["nodes"][i] as Node).get_node("Text") as Label3D
-			txt.modulate = Color(1.0, 0.85, 0.4) if on else Color(0.8, 0.62, 0.26)
-		var ttl := rf["nodes"][(marks as Array).size()] as Label3D
-		ttl.visible = not is_nan(float(rf["z"]))
-		if ttl.visible:
-			ttl.position = base + Vector3(float(marks[(marks as Array).size() - 1]["x"]) * PX, 28.5 * PX, 0.0)
-			ttl.position.z = float(rf["z"]) + 0.012
 	im.surface_end()
-	# --- tarcza strzelnicy: tabliczka z odległością gracza przy podstawie tarczy (liczby obrażeń i podsumowanie serii zostają etykietami interfejsu)
-	for rt in get_tree().get_nodes_in_group("range_targets"):
-		if not (rt is Node2D) or rt.get("plate3d") == null or _geo_key == "":
-			continue
-		rt.set("plate3d", true)
-		var id: int = rt.get_instance_id()
-		if _worldfx.has(id) and not is_instance_valid(_worldfx[id]["nodes"][0]):
-			_worldfx.erase(id)
-		if not _worldfx.has(id):
-			var plate := MeshInstance3D.new()
-			plate.name = "TargetPlate"
-			var bm := BoxMesh.new()
-			bm.size = Vector3(22.0 * PX, 8.0 * PX, 0.04)
-			plate.mesh = bm
-			var pm := StandardMaterial3D.new()
-			pm.albedo_color = Color(0.05, 0.05, 0.06)
-			pm.roughness = 0.8
-			plate.material_override = pm
-			plate.rotation = Vector3(-0.5, 0.0, 0.0)            # oparta o podstawę tarczy, odchylona ku kamerze
-			plate.layers = LAYER_WORLD
-			_geo.add_child(plate)
-			var lb := _label3d("", 5.2, Color(0.95, 0.75, 0.3))
-			lb.name = "Text"
-			lb.position = Vector3(0.0, 0.0, 0.025)
-			plate.add_child(lb)
-			_worldfx[id] = {"src": rt, "nodes": [plate]}
-		var tp := _worldfx[id]["nodes"][0] as MeshInstance3D
-		var lm := float(rt.get("live_m"))
-		tp.visible = lm >= 0.0 and (rt as Node2D).is_visible_in_tree()
-		if tp.visible:
-			tp.position = Level3D.px_to_m((rt as Node2D).global_position) + Vector3(0.0, 4.0 * PX, 0.75)
-			(tp.get_node("Text") as Label3D).text = "%d m" % int(roundf(lm))
 	# --- tablica wyników: kreda z `results_wall.gd` w teksturze na powierzchni tablicy
 	_surf_t -= delta
 	var refresh := _surf_t <= 0.0
@@ -3363,7 +3238,7 @@ func _build_rails() -> void:
 
 const ITEM_TONE := 0.7                      ## przyciemnienie albedo kart: przedmiot z własnym światłem (skrytka, pickup) stoi tuż przy nim
 const ITEM3D_DIR := "res://art/items3d/"
-const ITEM_BACK := ["shelf", "table", "chair", "locker", "cot", "stool", "board", "results_board", "workshop", "tools_wall", "rack", "range_sign", "range_target"]
+const ITEM_BACK := ["shelf", "table", "chair", "locker", "cot", "stool", "board", "results_board", "workshop", "tools_wall", "rack"]
 
 ## Każdy sprite z `ItemsHd.make` (grupa „items_hd”) dostaje w scenie 3D kartę z tym samym albedo i mapą normalnych: oświetlają ją światła 3D,
 ## rzuca cień na ścianę za sobą, łapie SSAO i mgłę — zamiast płaskiego rysunku 2D z osobnym oświetleniem nałożonego na obraz 3D.

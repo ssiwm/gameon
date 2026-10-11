@@ -190,21 +190,3 @@ func _set_running(on: bool) -> void:
 		Audio.stop_loop(name)
 
 # ---------------------------------------------------------------- rysowanie (stopy w (0, 0))
-
-func _draw() -> void:
-	if _hd != null:
-		return
-	var body := Color(0.24, 0.27, 0.25)
-	var dark := Color(0.12, 0.14, 0.13)
-	var rust := Color(0.42, 0.26, 0.16)
-	# podstawa i korpus
-	draw_rect(Rect2(-14, -3, 28, 3), dark)
-	draw_rect(Rect2(-13, -17, 26, 14), body)
-	draw_rect(Rect2(-13, -17, 26, 2), Color(0.34, 0.38, 0.35))
-	# zbiornik z paliwem, kratka wentylatora, rura
-	draw_rect(Rect2(-12, -23, 12, 7), rust)
-	draw_rect(Rect2(-12, -23, 12, 1), Color(0.55, 0.36, 0.22))
-	for i in 4:
-		draw_rect(Rect2(2 + i * 3, -14, 2, 8), dark)
-	draw_rect(Rect2(8, -26, 3, 9), dark)
-	# postęp uruchamiania pokazuje pasek w HUD („Starting the generator…”) — drugiego, nad generatorem, nie rysujemy (był podwójny status)

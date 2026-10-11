@@ -443,10 +443,6 @@ class SpitGlob extends Node2D:
 		if life <= 0.0 or level._is_solid(c.x, c.y):
 			queue_free()
 		queue_redraw()
-	func _draw() -> void:
-		draw_circle(Vector2.ZERO, 3.5, Color(0.65, 1.0, 0.3))
-		draw_circle(-vel.normalized() * 4.0, 2.2, Color(0.5, 0.85, 0.25, 0.6))
-
 # ---------------------------------------------------------------- potomstwo
 
 func _tick_brood(delta: float) -> void:
@@ -757,46 +753,6 @@ func _animate_sprite(t: float, awake: bool) -> void:
 	var glow: AnimatedSprite2D = _spr[1]
 	if glow != null:
 		glow.modulate = Color(1.0, 0.8, 0.7).lerp(Color(1.4, 0.7, 0.6), 0.5 * (phase - 1)) if awake else Color(0.7, 0.7, 0.7)
-
-func _draw() -> void:
-	if not _spr.is_empty():
-		return                            # cialo i oczy rysuje arkusz; zar i fale - nakladka
-	var t := Time.get_ticks_msec() / 1000.0
-	var awake := state == State.AWAKE
-	var base := Color(0.30, 0.10, 0.14) if awake else Color(0.22, 0.10, 0.14)
-	if _flash > 0.0:
-		base = Color.WHITE
-	var sh := Vector2(sin(t * 40.0), 0) * (2.0 if _flinch > 0.0 or stunned else 0.0)
-	var breathe := 1.0 + 0.04 * sin(t * (3.0 if awake else 1.2))
-	if spitting:
-		breathe = 1.08 + 0.05 * sin(t * 30.0)
-	draw_circle(Vector2(0, -18) + sh, 26.0 * breathe, base)
-	draw_circle(Vector2(-26, -10) + sh, 16.0 * breathe, base.darkened(0.15))
-	draw_circle(Vector2(26, -10) + sh, 16.0 * breathe, base.darkened(0.1))
-	draw_circle(Vector2(-12, -38) + sh, 12.0 * breathe, base.lightened(0.05))
-	draw_circle(Vector2(14, -36) + sh, 11.0 * breathe, base.lightened(0.03))
-	var n := 6
-	for i in n:
-		var a := -PI + PI * (i + 0.5) / n
-		var ln := 30.0 + (14.0 if awake else 4.0) + 6.0 * sin(t * 2.0 + i)
-		if atk == Atk.SWEEP:
-			ln *= 0.6     # macki chowają się pod wodę przed zamachem
-		var p0 := Vector2(cos(a) * 20.0, -14.0 + sin(a) * 14.0)
-		var p1 := p0 + Vector2(cos(a), sin(a) * 0.6) * ln + Vector2(sin(t * 3.0 + i) * 4.0, 0)
-		draw_line(p0 + sh, p1 + sh, base.darkened(0.2), 4.0)
-	# pancerny grzbiet
-	var plate := Color(0.30, 0.27, 0.25) if _flash <= 0.0 else Color.WHITE
-	for i in 5:
-		var a := PI * (1.15 + 0.175 * i)
-		var c := Vector2(cos(a) * 24.0, -18.0 + sin(a) * 24.0) * breathe + sh
-		draw_circle(c, 7.0, plate)
-		draw_circle(c + Vector2(0, -1.5), 4.5, plate.lightened(0.12))
-	# paszcza: zamknięta = płyty na krzyż, otwarta = wielka, ciemna jama
-	if maw_open:
-		draw_circle(Vector2(0, -8) + sh, 12.0 * breathe, Color(0.10, 0.01, 0.03))
-	else:
-		draw_circle(Vector2(-5, -8) + sh, 7.0, plate.darkened(0.1))
-		draw_circle(Vector2(5, -8) + sh, 7.0, plate.darkened(0.15))
 
 ## Żar paszczy, łuk zasięgu macki, zapowiedź zamachu i falę rysuje widok 3D (view3d.gd: _sync_boss_fx); tu tylko koniec biegu fali.
 func _draw_overlay(_ov: Node2D) -> void:

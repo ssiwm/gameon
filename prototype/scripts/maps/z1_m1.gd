@@ -1,5 +1,5 @@
 extends RefCounted
-## Misja 1.1 „Zaginiony Patrol" (GDD §9, Strefa I): znajdź 3 nieśmiertelniki zaginionego patrolu → ekstrakcja na początku mapy.
+## Misja 1.1 „Zaginiony Patrol" (GDD §9, Strefa I): znajdź 4 nieśmiertelniki zaginionego patrolu → ekstrakcja na początku mapy.
 ## Misja wprowadzająca: ruch i strzał, cisza (kucanie), latarka. Dane mapy dla level.gd; legenda znaczników w level.gd. 200 × 56 kafli.
 ##
 ## Cel poboczny: dwie ukryte skrytki (znacznik H): A — półka nad polaną (schodki z podestów co 2 kafle), B — wnęka w stropie jaskini nad półką z Wołkiem.
@@ -17,12 +17,13 @@ const OBJECTIVE := "tags"
 const RADIO := ["Patrol Seven, do you read? ...we went into the trees. Something is listening.", "Find our tags. Shoot only when you must — noise carries. Crouch and the dark can’t hear you."]
 const RACKS := false                      ## true: każde „g" dostaje stojak (zbrojownia)
 const AMBIENT := Color(0, 0, 0, 0)         ## kolor ciemności mapy; alfa 0 = domyślny z lights.gd
-const BRIEF := "Find the three dog tags of the missing patrol and get out through the mine. Side goal: two hidden stashes off the main route."
+const BRIEF := "Find the four dog tags of the missing patrol and get out through the mine. Side goal: two hidden stashes off the main route."
 const ENEMY_HP := 1.0                     ## mnożnik HP wrogów tej mapy
 const UNDERGROUND_ROW := 33
 const WEAPONS := []
 const ACCENTS := []
-## Finał (mission._start_finale): po trzecim nieśmiertelniku rampa do sali zawala się (obszary [c0, r0, c1, r1]), a wyjściem jest flara „e"
+## Czwarty nieśmiertelnik leży na zachodnim końcu dolnej galerii (za dwoma Trzoskami, obok skrzynki i skrytki) — powód, żeby zejść szybem serwisowym.
+## Finał (mission._start_finale): po ostatnim nieśmiertelniku rampa do sali zawala się (obszary [c0, r0, c1, r1]), a wyjściem jest flara „e"
 ## przy szybie wentylacyjnym na wschodnim końcu sali (wspinaczka po podestach, Ćmy i Skoczki pod sufitem sali).
 const COLLAPSE := [[150, 33, 157, 41]]
 
@@ -77,7 +78,7 @@ const MAP := [
 	"############################################################################################################################################bbbbbbbbbbbbbbbbbbbbbbbbbbbbb---bbbbbbbbbbbbbbbb############",
 	"############################################################################################################################################bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb############",
 	"############################################################################################################################################bbbbbbbbbbbbbbbbbbbbbbbbbbbb---bbbbbbbbbbbbbbbbb############",
-	"############################################################################################################################################bbubbabbbbbbbbbTbbbbbbTbbbbbbbbbbbbbTbbbbbWbbbub############",
+	"############################################################################################################################################bbubbabbFbbbbbbTbbbbbbTbbbbbbbbbbbbbTbbbbbWbbbub############",
 	"########################################################################################################################################################################################################",
 	"########################################################################################################################################################################################################",
 	"########################################################################################################################################################################################################",

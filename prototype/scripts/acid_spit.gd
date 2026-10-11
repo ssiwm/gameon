@@ -49,9 +49,3 @@ func _splash() -> void:
 	Vfx.splash(get_parent(), global_position, 0.8)
 	Audio.play_variant_at("step_water", 3, global_position, Audio.BUS_WORLD, -4.0, 1.6)
 	queue_free()
-
-func _draw() -> void:
-	draw_circle(Vector2.ZERO, 3.2, Color(0.35, 0.85, 0.25, 0.95))
-	draw_circle(Vector2(-1.0, -1.0), 1.4, Color(0.8, 1.0, 0.6))
-	var tail := -vel.normalized() * 6.0
-	draw_line(Vector2.ZERO, tail, Color(0.35, 0.85, 0.25, 0.5), 2.0)
