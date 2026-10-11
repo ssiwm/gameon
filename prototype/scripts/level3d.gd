@@ -8,6 +8,7 @@ const PX := 1.8 / 22.0
 const TILE := 16.0
 const T := TILE * PX
 const DEPTH_FRONT := 1.1                   ## m: wysunięcie bryły przed płaszczyznę gry
+const POST_Z := -1.6                       ## m: słupy i pnie (`w`) stoją w głębi, za drogą postaci i drezyny, tuż przed ścianą tła
 const DEPTH_BACK := 2.4                    ## m: w głąb
 
 static func is_solid_ch(ch: String) -> bool:
@@ -155,7 +156,7 @@ static func build_level(parent: Node3D, rows: Array) -> Dictionary:
 			elif ch == "b":
 				walls.append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
 			elif ch == "w":
-				posts.append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -0.4)))
+				posts.append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, POST_Z)))
 			elif is_platform_ch(ch):
 				(grates if ch == "=" else planks).append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, T * 0.5 - 0.1, 0.0)))
 			elif ch == "F" or ch == "l" or ch == "k":
