@@ -1529,7 +1529,7 @@ func _sync_fires() -> void:
 			# model tuby (z `_sync_items`) ma inne proporcje niż sprite — płomień siedzi na czubku modelu, nie w punkcie wyliczonym ze sprite'a
 			if pv != null and is_instance_valid(pv):
 				for ch in (pv as Node).get_children():
-					if ch is Sprite2D and _items.has(ch.get_instance_id()) and bool(_items[ch.get_instance_id()][5]):
+					if ch is ItemsHd.ItemMark and _items.has(ch.get_instance_id()) and bool(_items[ch.get_instance_id()][5]):
 						var tube := _items[ch.get_instance_id()][1] as Node3D
 						if fr[3] == null:
 							var top := 0.0
@@ -2521,7 +2521,7 @@ func _sync_lamps() -> void:
 			continue
 		var z := 0.0
 		for ch in (src as Node).get_children():                # głębia modelu lampy (ta sama, w której stawia go _sync_items)
-			if ch is Sprite2D and _items.has(ch.get_instance_id()):
+			if ch is ItemsHd.ItemMark and _items.has(ch.get_instance_id()):
 				z = float(_items[ch.get_instance_id()][3])
 		var tt := float(src.get("_t"))
 		var f := 0.8 + 0.2 * sin(tt * 9.0) * sin(tt * 3.7)
@@ -2546,7 +2546,7 @@ func _hide2d(n) -> void:
 ## Przód (największe Z) modelu 3D postawionego przez `_sync_items` dla sprite'a `hd_name` będącego dzieckiem `owner`; NAN, gdy modelu jeszcze nie ma.
 func _model_front(owner: Node, hd_name: String) -> float:
 	for ch in owner.get_children():
-		if not (ch is Sprite2D) or String(ch.get_meta("hd_name", "")) != hd_name or not _items.has(ch.get_instance_id()):
+		if not (ch is ItemsHd.ItemMark) or String(ch.get_meta("hd_name", "")) != hd_name or not _items.has(ch.get_instance_id()):
 			continue
 		var root := _items[ch.get_instance_id()][1] as Node3D
 		var zmax := -INF
@@ -3258,17 +3258,12 @@ const ITEM_BACK := ["shelf", "table", "chair", "locker", "cot", "stool", "board"
 ## Meble stoją w głębi (przy ścianie tła), reszta tuż za płaszczyzną gry. Sprite 2D zostaje (logika, światła 2D), tylko jest przezroczysty.
 func _sync_items() -> void:
 	for n in get_tree().get_nodes_in_group("items_hd"):
-		var sp := n as Sprite2D
-		if sp == null or sp.is_queued_for_deletion() or _items.has(sp.get_instance_id()) or sp.texture == null:
+		var sp := n as ItemsHd.ItemMark
+		if sp == null or sp.is_queued_for_deletion() or _items.has(sp.get_instance_id()):
 			continue
 		var par := sp.get_parent()
 		if par != null and par.is_in_group("props"):
 			continue                                  # skrzynie i beczki mają własne bryły (_sync_props)
-		if sp.region_enabled:                         # wycinek sprite'a rysowany przed graczami (osłona pokładu drezyny) — sztuczka 2D, w 3D zbędna
-			sp.self_modulate = Color(1, 1, 1, 0)
-			_items[sp.get_instance_id()] = [sp, Node3D.new(), null, 0.0, [sp], true]
-			_world.add_child(_items[sp.get_instance_id()][1])
-			continue
 		_make_item(sp)
 	for id in _items.keys():
 		var it: Array = _items[id]
@@ -3279,7 +3274,7 @@ func _sync_items() -> void:
 				mi.queue_free()
 			_items.erase(id)
 			continue
-		var sp := src_v as Sprite2D
+		var sp := src_v as ItemsHd.ItemMark
 		mi.visible = sp.is_visible_in_tree()
 		if not mi.visible:
 			continue
@@ -3300,7 +3295,7 @@ func _sync_items() -> void:
 				(it[1] as Node3D).scale = Vector3(k * fl, k, k) * RACK_SCALE
 				(it[1] as Node3D).position = Level3D.px_to_m(feet) + Vector3(0.0, RACK_UP_PX * PX, RACK_Z)
 			continue
-		var ts := sp.texture.get_size()
+		var ts := ItemsHd.frame_px(String(sp.hd_name))
 		var centre := xf * sp.offset
 		mi.position = Level3D.px_to_m(centre) + Vector3(0.0, 0.0, float(it[3]))
 		mi.rotation = Vector3(0.0, 0.0, -xf.get_rotation())
@@ -3349,10 +3344,9 @@ func _item_model(name: String, glow := 0.0) -> Node3D:
 	_item_tuned[name] = true
 	return root
 
-func _make_item(sp: Sprite2D) -> void:
+func _make_item(sp: ItemsHd.ItemMark) -> void:
 	var name := String(sp.get_meta("hd_name", ""))
-	var ct := sp.texture as CanvasTexture
-	var alb: Texture2D = ct.diffuse_texture if ct != null else sp.texture
+	var alb: Texture2D = ItemsHd.albedo(name) if _item_scene(name) == null else null      # karta zastępcza tylko dla przedmiotu bez modelu
 	var model := _item_model(name, float(sp.get_meta("hd_dark", 0.0)) * 0.35)
 	if model != null:                                          # prawdziwa bryła zamiast karty
 		_world.add_child(model)
@@ -3412,6 +3406,7 @@ func _make_item(sp: Sprite2D) -> void:
 		return
 	var m := StandardMaterial3D.new()
 	m.albedo_texture = alb
+	var ct := ItemsHd.texture(name)
 	if ct != null and ct.normal_texture != null:
 		m.normal_enabled = true
 		m.normal_texture = ct.normal_texture

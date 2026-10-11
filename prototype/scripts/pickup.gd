@@ -233,23 +233,12 @@ func _setup_hd() -> void:
 	var sc := _hd_scale()
 	var main := ItemsHd.make(nm, _hd, sc)
 	_hd_main = main
-	if kind != "health":
-		# kopia „unshaded": przedmiot widać też w ciemności (jak w wersji pikselowej), ale tylko lekko — światło dalej go modeluje
-		var vis := Sprite2D.new()
-		vis.texture = ItemsHd.albedo(nm)
-		vis.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		vis.centered = true
-		vis.offset = main.offset
-		vis.scale = main.scale
-		vis.material = Lights.unshaded()
-		vis.modulate = Color(1, 1, 1, 0.2)
-		_hd.add_child(vis)
 	if kind == "supply" or kind == "ammo":
 		_hd_over = Node2D.new()
 		_hd_over.draw.connect(_draw_over)
 		_hd.add_child(_hd_over)
 
-var _hd_main: Sprite2D
+var _hd_main: ItemsHd.ItemMark
 
 ## Wysokość spodu sylwetki broni na stojaku: kołyska HD jest wyższa niż pikselowa.
 func _shelf_y() -> float:
