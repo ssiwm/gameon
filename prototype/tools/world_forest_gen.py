@@ -186,6 +186,59 @@ def fern(seed, size=256):
     return im.resize((size, size), Image.LANCZOS)
 
 
+def _needles(d, rng, x, y, ang, ln, col_d, col_l, n=7, spread=1.1):
+    """Pęczek igieł wokół punktu gałązki: cienkie kreski pod kątem do osi (ang), po obu stronach."""
+    for _ in range(n):
+        a = ang + rng.choice((-1, 1)) * rng.uniform(0.35, spread)
+        l = ln * rng.uniform(0.6, 1.0)
+        c = _mix(col_d, col_l, rng.random() ** 1.6)
+        d.line([x, y, x + math.cos(a) * l, y + math.sin(a) * l], fill=c + (255,), width=max(1, SS))
+
+
+def _twig(d, rng, x0, y0, ang, length, depth, col_d, col_l, wood, sag=0.0):
+    """Gałązka z igłami i rozgałęzieniami (rekurencyjnie); `sag` dogina ją w dół (+y) wraz z długością."""
+    steps = max(4, int(length / (5 * SS)))
+    x, y = x0, y0
+    for i in range(steps):
+        t = i / steps
+        a = ang + sag * t + rng.uniform(-0.06, 0.06)
+        nx, ny = x + math.cos(a) * length / steps, y + math.sin(a) * length / steps
+        d.line([x, y, nx, ny], fill=wood + (255,), width=max(1, int((1.0 - t) * (2 + depth) * SS)))
+        _needles(d, rng, nx, ny, a, (5.5 + 1.5 * depth) * SS, col_d, col_l, 6 + 2 * depth)
+        if depth > 0 and i > 0 and rng.random() < 0.62:
+            _twig(d, rng, nx, ny, a + rng.choice((-1, 1)) * rng.uniform(0.45, 0.85), length * (1.0 - t) * rng.uniform(0.35, 0.6), depth - 1, col_d, col_l, wood, sag * 0.5)
+        x, y = nx, ny
+
+
+def bough(seed, side_view, w=512, h=256):
+    """Gałąź świerka z igliwiem dla modelu 3D drzewa (`tools/prep_items3d.py: build_spruce`). Nasada na lewej krawędzi.
+    side_view: profil z boku — gałąź opada, gałązki zwisają pod nią (nasada u góry po lewej); inaczej widok z góry — wachlarz (nasada w połowie wysokości)."""
+    rng = random.Random(seed)
+    im = Image.new("RGBA", (w * SS, h * SS), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    col_d, col_l, wood = (10, 24, 20), (44, 74, 54), (30, 22, 16)
+    W, Hh = w * SS, h * SS
+    if side_view:
+        x, y = 0.0, Hh * 0.16
+        steps = 26
+        for i in range(steps):
+            t = i / steps
+            a = 0.10 + 0.42 * t
+            nx, ny = x + math.cos(a) * W * 0.95 / steps, y + math.sin(a) * W * 0.95 / steps
+            d.line([x, y, nx, ny], fill=wood + (255,), width=max(1, int((1.0 - t) * 5 * SS) + SS))
+            _needles(d, rng, nx, ny, a, 8 * SS, col_d, col_l, 10)
+            if True:                                           # zwisające gałązki
+                _twig(d, rng, nx, ny, a + rng.uniform(0.9, 1.4), Hh * rng.uniform(0.25, 0.55) * (1.0 - 0.5 * t), 1, col_d, col_l, wood, 0.25)
+            if i % 5 == 2:
+                _twig(d, rng, nx, ny, a - rng.uniform(0.3, 0.6), Hh * 0.16, 0, col_d, col_l, wood)
+            x, y = nx, ny
+    else:
+        _twig(d, rng, 0.0, Hh * 0.5, 0.0, W * 0.97, 2, col_d, col_l, wood)
+        for sgn in (-1, 1):                                    # dwa boczne konary od nasady — pełny wachlarz
+            _twig(d, rng, W * 0.06, Hh * 0.5, sgn * 0.33, W * 0.72, 2, col_d, col_l, wood)
+    return im.resize((w, h), Image.LANCZOS)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     jobs = {
@@ -197,6 +250,8 @@ def main():
         "grass_a": grass(3, 0.25),
         "grass_b": grass(8, 0.6),
         "fern_a": fern(4),
+        "bough_side": bough(21, True),
+        "bough_top": bough(22, False),
     }
     for name, im in jobs.items():
         # lekkie zmiękczenie koloru bez rozmywania alfy (krawędź zostaje ostra dla alpha scissor)

@@ -133,6 +133,15 @@ static func model_mesh(name: String) -> Array:
 				xf = (up as Node3D).transform * xf
 				up = up.get_parent()
 			out = [(found[0] as MeshInstance3D).mesh, xf]
+			var msh := (found[0] as MeshInstance3D).mesh
+			for si in msh.get_surface_count():                    # karty igliwia / liści: wycinanie alfą (cienie i głębia działają), widoczne z obu stron
+				var bm := msh.surface_get_material(si) as BaseMaterial3D
+				if bm != null and bm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+					bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+					bm.alpha_scissor_threshold = 0.4
+					bm.cull_mode = BaseMaterial3D.CULL_DISABLED
+					bm.metallic_specular = 0.0
+					bm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 		inst.free()
 	_model_cache[name] = out
 	return out
@@ -252,8 +261,32 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 		_multimesh(parent, pc, posts, make_pbr("post", 0.9, Color(0.20, 0.14, 0.09), 1.0, 1.0, 1.0, false, "organic"))
 	var plb := BoxMesh.new()
 	plb.size = Vector3(T, 0.22, 1.3)
-	_multimesh(parent, plb, planks, make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic"))
-	_multimesh(parent, plb, grates, make_pbr("grate", 0.5, Color(0.28, 0.30, 0.34), 0.5, 1.0, 0.7, true))
+	# kładki z modeli: poziome ciągi kafli dzielone na równe odcinki (deski: 1 kafel, krata: ok. 3 kafle), co drugi obrócony o 180° dla odmiany;
+	# góra pokładu na wysokości góry dawnej płyty (kolizja bez zmian). Bez modelu — płyty z teksturą.
+	var decks := {"-": [], "=": []}
+	for r in nrows:
+		var c := 0
+		while c < cols:
+			var ch := _ch(rows, c, r)
+			if not decks.has(ch):
+				c += 1
+				continue
+			var c1 := c
+			while c1 < cols and _ch(rows, c1, r) == ch:
+				c1 += 1
+			var per := 1.0 if ch == "-" else 3.0
+			var n := maxi(1, int(round(float(c1 - c) / per)))
+			var seg := float(c1 - c) * T / float(n)
+			var hgt := (17.6 if ch == "-" else 8.0) / 100.0 * per * T
+			for i in n:
+				var x := float(c) * T + seg * (float(i) + 0.5)
+				var b := Basis(Vector3.UP, PI if (i + c + r) % 2 == 1 else 0.0).scaled(Vector3(seg / 100.0, per * T / 100.0, per * T / 100.0))
+				(decks[ch] as Array).append(Transform3D(b, Vector3(x, -float(r) * T + 0.01 - hgt, 0.0)))
+			c = c1
+	if not _multimodel(parent, "walkway_plank", decks["-"]):
+		_multimesh(parent, plb, planks, make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic"))
+	if not _multimodel(parent, "walkway_grate", decks["="]):
+		_multimesh(parent, plb, grates, make_pbr("grate", 0.5, Color(0.28, 0.30, 0.34), 0.5, 1.0, 0.7, true))
 	return marks
 
 ## Ciecze i błoto jako zagłębienia o profilu przekroju, a nie prostokątne kafle o innym kolorze. Dla ciągu kafli powstaje:
@@ -1258,10 +1291,11 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 	var xf := {}
 	for k in FOREST_KINDS:
 		xf[k] = []
-	# modele 3D: martwe pnie w bliskim i środkowym pasie oraz powalone kłody. Świerki zostają kartami — modele z generatora miały z bliska szerokie
-	# liście zamiast igliwia i zasłaniały warstwy sylwetek we mgle (źródła zostają w art_src/world/tripo/tree_spruce_*.glb)
-	var trees := {"tree_snag": [], "tree_log": [], "tree_snag_hi": []}
+	# modele 3D w bliskim i środkowym pasie: świerki (pień z Tripo + gałęzie z igliwiem jako karty, `prep_items3d.py: build_spruce`), martwe pnie
+	# i powalone kłody; daleki pas zostaje płaskimi kartami (ginie we mgle)
+	var trees := {"tree_snag": [], "tree_log": [], "tree_snag_hi": [], "tree_spruce_a": [], "tree_spruce_b": [], "tree_spruce_c": []}
 	var have_models := not model_mesh("tree_snag").is_empty()
+	var have_spruce := not model_mesh("tree_spruce_a").is_empty() and not model_mesh("tree_spruce_b").is_empty() and not model_mesh("tree_spruce_c").is_empty()
 	for c in range(0, cols, 2):
 		var r0 := 0
 		while r0 < nrows and not is_solid_ch(_ch(rows, c, r0)):
@@ -1285,6 +1319,11 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 				var roll := rng.randf()
 				var kind: String = "snag_a" if roll < 0.06 else ("snag_b" if roll < 0.12 else ("spruce_a" if roll < 0.45 else ("spruce_b" if roll < 0.72 else "spruce_c")))
 				var w := h * 0.5 * rng.randf_range(0.85, 1.15)
+				if have_spruce and bi < 2 and kind.begins_with("spruce"):
+					var sw := h / 100.0 * rng.randf_range(0.9, 1.15)
+					var sb := Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3(sw, h / 100.0, sw))
+					(trees["tree_" + kind] as Array).append(Transform3D(sb, Vector3(x, y - 0.3, z)))
+					continue
 				if have_models and bi < 2 and kind.begins_with("snag"):
 					var tk := "tree_snag"
 					var th := h * 0.8
