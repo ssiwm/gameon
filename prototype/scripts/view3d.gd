@@ -59,6 +59,7 @@ var _lights := {}                        ## id PointLight2D → [PointLight2D, L
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
 var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
+var _item_tuned := {}                    ## nazwy modeli z już dostrojonymi materiałami
 var _item_scenes := {}                   ## nazwa przedmiotu → PackedScene modelu 3D albo null
 var _items := {}                         ## id sprite'a przedmiotu HD → [Sprite2D, MeshInstance3D, materiał, z, ukryte węzły 2D]
 var _scan_t := 0.0
@@ -925,6 +926,12 @@ func _item_model(name: String, glow := 0.0) -> Node3D:
 	for n in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		mi.layers = LAYER_WORLD
+		if mi.mesh != null and not _item_tuned.has(name):         # jednorazowo na model: słabszy połysk — w bliskim świetle latarki mapa chropowatości
+			for s in mi.mesh.get_surface_count():                  # z generatora dawała „pogniecione” odbłyski na drewnie i płótnie
+				var sm := mi.mesh.surface_get_material(s) as BaseMaterial3D
+				if sm != null:
+					sm.metallic_specular = 0.12
+					sm.metallic = minf(sm.metallic, 0.6)
 		if glow > 0.0 and mi.mesh != null:
 			for s in mi.mesh.get_surface_count():
 				var bm := mi.mesh.surface_get_material(s) as BaseMaterial3D
@@ -935,6 +942,7 @@ func _item_model(name: String, glow := 0.0) -> Node3D:
 				dm.emission_texture = dm.albedo_texture
 				dm.emission_energy_multiplier = glow
 				mi.set_surface_override_material(s, dm)
+	_item_tuned[name] = true
 	return root
 
 func _make_item(sp: Sprite2D) -> void:
@@ -1011,7 +1019,7 @@ func _sync_props() -> void:
 			continue
 		var s2 := src as Node2D
 		px.visible = s2.visible
-		px.position = Level3D.px_to_m(s2.global_position) + Vector3(0.0, 0.0, -0.05)
+		px.position = Level3D.px_to_m(s2.global_position) + Vector3(0.0, 0.0, -0.7)      # front bryły za płaszczyzną gry: latarka (z = +0,6) nie świeci po nim pod kątem ślizgowym
 		px.rotation = Vector3(0.0, 0.0, -s2.global_rotation)
 
 ## Materiał PBR świata dla ruchomej bryły: kopia z triplanarem w przestrzeni obiektu (światowy „pływałby” po przesuwanej skrzyni).

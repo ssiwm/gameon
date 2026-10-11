@@ -8,7 +8,7 @@ Dwa źródła:
   * proceduralne bryły z `concept/items_proc_bake.py` (te same, z których powstają sprite'y HD): siatki są łączone, rozwijane (Smart UV),
     a materiały węzłowe wypalane w Cycles do tekstur — kolor, mapa normalnych w przestrzeni stycznej, ORM (okluzja, chropowatość, metal), emisja;
   * modele z Tripo (`art_src/world/tripo/*.glb`: warsztat, złom, kamień, kłody, płot, skrzynia, beczka, regał, szafka, stół, prycza, generator,
-    skrytka, stojak, krzesło, worek): obrót czołem do kamery gry, uproszczenie siatki,
+    skrytka, stojak, krzesło, worek, apteczka, amunicja, torba, flary, granaty, stołek, kości): obrót czołem do kamery gry, uproszczenie siatki,
     zmniejszenie tekstur.
 Wynik: prototype/art/items3d/<nazwa>.glb. Jednostka modelu = 1 piksel świata gry, początek układu w stopach (środek szerokości, z = 0),
 front bryły w stronę −Y Blendera (= +Z w Godocie, ku kamerze gry) — dokładnie tak, jak sprite z `ItemsHd.make` leży względem swojego węzła.
@@ -43,6 +43,17 @@ TRIPO_MODELS = {
     "rack": ("rack.glb", "+X", 48.0, 8000, 36.2),
     "chair": ("chair.glb", "+X", 9.5, 6000, 18.0),
     "stash": ("stash.glb", "+X", 10.8, 6000, 11.7),
+    # pickupy i drobne rekwizyty (Tripo, druga partia)
+    "medkit": ("medkit.glb", "+X", 16.7, 4000, 10.4),
+    "ammo": ("ammo.glb", "+X", 10.4, 4000, 8.6),
+    "supply": ("supply.glb", "+X", 16.8, 5000, 10.5),
+    "flare_box": ("flare_box.glb", "+X", 14.4, 5000, 12.8),
+    "frag": ("frag.glb", "+X", 5.8, 3000, 7.2),
+    "phos": ("phos.glb", "+X", 5.6, 3000, 11.6),
+    "smoke": ("smoke.glb", "+X", 5.6, 3000, 11.6),
+    "stool": ("stool.glb", "-Y", 9.6, 5000, 10.5),
+    "bones": ("bones.glb", "-Y", 17.7, 5000, 8.0),
+    "flare": ("flare.glb", "-Y", 3.4, 2000, 15.8),
 }
 # przedmioty proceduralne o większej teksturze (duże bryły blisko kamery)
 BIG = {"generator", "handcar", "shelf", "locker", "table", "cot", "results_board", "board", "rack", "tools_wall"}
@@ -300,6 +311,11 @@ def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False
         dec = obj.modifiers.new("dec", "DECIMATE")
         dec.ratio = faces / float(len(me.polygons))
         bpy.ops.object.modifier_apply(modifier="dec")
+    for m in bpy.data.materials:                                 # mapy normalnych z Tripo są ostre — w bliskim świetle latarki dawały „pogniecioną” powierzchnię
+        if m.node_tree:
+            for nd in m.node_tree.nodes:
+                if nd.type == "NORMAL_MAP":
+                    nd.inputs["Strength"].default_value = 0.55
     for img in bpy.data.images:
         if img.size[0] > TEX:
             img.scale(TEX, TEX)
