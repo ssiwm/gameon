@@ -222,45 +222,37 @@ static func _frames_hd(sheet: String) -> SpriteFrames:
 			sf.add_frame(an, ct)
 	return sf
 
-## Tworzy warstwy postaci pod `host`: [ciało, glow albo null]. Stopy w (0,0).
+## Sam takt animacji arkusza — nazwy, liczba klatek, tempo i pętla z manifestu — bez żadnej tekstury. To zegar pozy: model 3D postaci
+## (enemy3d.gd, przez view3d.gd) czyta z niego nazwę animacji i postęp klatki; arkusz PNG nie jest w ogóle ładowany.
+static func pose_frames(sheet: String) -> SpriteFrames:
+	var key := sheet + "#pose"
+	if _cache.has(key):
+		return _cache[key]
+	var info: Dictionary = manifest()["sheets"][sheet]
+	var sf := SpriteFrames.new()
+	sf.remove_animation("default")
+	for an in info["anims"]:
+		var a: Dictionary = info["anims"][an]
+		sf.add_animation(an)
+		sf.set_animation_speed(an, float(a["fps"]))
+		sf.set_animation_loop(an, bool(a["loop"]))
+		for i in int(a["frames"]):
+			sf.add_frame(an, null)
+	_cache[key] = sf
+	return sf
+
+## Tworzy pod `host` zegar pozy „Body" (AnimatedSprite2D bez tekstur): [ciało, null, null] — układ tablicy jak dawniej (ciało, glow, sylwetka),
+## żeby wołający nie musieli się zmieniać. Niczego nie rysuje; postać w scenie to model 3D. Stopy w (0,0).
 static func attach(host: Node2D, sheet: String) -> Array:
 	var size := frame_size(sheet)
 	var sc := scale_of(sheet)
-	# arkusz o gęstości ≠ 1 (np. boss 2×, skala 0,5) rysujemy filtrem liniowym — gładki obrót i krawędzie, bez nierównych pikseli
-	var filt := CanvasItem.TEXTURE_FILTER_NEAREST if sc == 1.0 else CanvasItem.TEXTURE_FILTER_LINEAR
-	if bool(manifest()["sheets"][sheet].get("hd", false)):
-		filt = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	var body := AnimatedSprite2D.new()
 	body.name = "Body"
-	body.sprite_frames = frames(sheet)
-	body.texture_filter = filt
+	body.sprite_frames = pose_frames(sheet)
 	body.scale = Vector2(sc, sc)
 	body.offset = Vector2(0, -size.y * 0.5)
 	host.add_child(body)
-	var glow: AnimatedSprite2D = null
-	var gf := frames(sheet, true)
-	if gf != null:
-		glow = AnimatedSprite2D.new()
-		glow.name = "Glow"
-		glow.sprite_frames = gf
-		glow.texture_filter = filt
-		glow.scale = body.scale
-		glow.offset = body.offset
-		glow.material = Lights.unshaded()
-		host.add_child(glow)
-	# HD: słaba sylwetka potwora widoczna także w całkowitej ciemności (dodawana, „unshaded"); dopiero światło odsłania szczegóły i kontur
-	var sil: AnimatedSprite2D = null
-	if newmon and sheet.ends_with("_hd"):
-		sil = AnimatedSprite2D.new()
-		sil.name = "Silhouette"
-		sil.sprite_frames = frames(sheet)
-		sil.texture_filter = filt
-		sil.scale = body.scale
-		sil.offset = body.offset
-		sil.material = silhouette_material()
-		sil.modulate = Color(0.55, 0.7, 1.0, 0.22)
-		host.add_child(sil)
-	return [body, glow, sil]
+	return [body, null, null]
 
 static var _sil_mat: CanvasItemMaterial
 
