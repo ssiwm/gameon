@@ -47,6 +47,8 @@ var player: CharacterBody2D
 var loadout: Array[int] = [Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Weapons.START_SIDEARM]
 var melee_id := Weapons.START_MELEE
 var slot := 0
+var inspect_item: Node2D               ## lokalnie: broń w oględzinach ([F]; widok z oczu gracza i panel HUD)
+var _inspect_hp := 0.0                 ## zdrowie w chwili otwarcia oględzin (spadek je zamyka)
 var mags: Dictionary = {}
 var burst_on: Dictionary = {}     ## id broni → true: wybrany tryb serii (klawisz B; lokalnie, serwer go nie potrzebuje)
 
@@ -240,10 +242,14 @@ func tick_local(delta: float, reviving: bool) -> void:
 	if reviving:
 		_cancel_actions()
 		_sync_player()
+		inspect_item = null
+		return
+	_tick_inspect()
+	if inspect_item != null:                              # oględziny: ręce zajęte — bez strzału, przeładowania i zmiany broni
+		_cancel_actions()
+		_sync_player()
 		return
 	_handle_switch_input()
-	if Input.is_action_just_pressed("interact"):
-		_try_pickup()
 	if Input.is_action_just_pressed("firemode"):
 		toggle_fire_mode()
 	if Input.is_action_just_pressed("melee"):
@@ -879,6 +885,25 @@ func nearby_weapon_item() -> Node2D:
 	if lvl == null or player == null:
 		return null
 	return lvl.weapon_item_near(player.global_position + Vector2(0, -8))
+
+## Przy broni (stojak albo łup na ziemi): [F] otwiera / zamyka oględziny (widok z oczu gracza, broń unosi się przed nim, statystyki obok —
+## weapon_inspect.gd i view3d.gd, lokalnie), [E] bierze broń (zamianę rozstrzyga serwer). Klawisz flary przy broni służy do oględzin,
+## więc flara w tym miejscu nie leci (player.gd). Odejście od broni albo utrata zdrowia zamyka oględziny.
+func _tick_inspect() -> void:
+	var it := nearby_weapon_item()
+	var hp_v = player.get("hp")
+	var hp_now := float(hp_v) if hp_v != null else 0.0
+	if inspect_item != null and (not is_instance_valid(inspect_item) or it != inspect_item or hp_now < _inspect_hp):
+		inspect_item = null
+	if it == null:
+		return
+	if Input.is_action_just_pressed("flare"):
+		inspect_item = null if inspect_item == it else it
+		_inspect_hp = hp_now
+		Audio.play("ui_click", Audio.BUS_UI, -16.0)
+	elif Input.is_action_just_pressed("interact"):
+		inspect_item = null
+		_try_pickup()
 
 func _try_pickup() -> void:
 	var it := nearby_weapon_item()

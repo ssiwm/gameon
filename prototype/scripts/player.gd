@@ -777,7 +777,7 @@ func _local_brain(delta: float) -> void:
 	var busy := reviving or pumping or gear_busy
 	weapons.tick_local(delta, busy)
 
-	var move_x := 0.0 if (busy or grabbed) else Input.get_axis("move_left", "move_right")
+	var move_x := 0.0 if (busy or grabbed or weapons.inspect_item != null) else Input.get_axis("move_left", "move_right")
 	var aim_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	if Settings.crouch_toggle:
 		if Input.is_action_just_pressed("crouch"):
@@ -874,7 +874,7 @@ func _local_brain(delta: float) -> void:
 		_try_overcharge()
 	if Input.is_action_just_pressed("scream"):
 		Voice.try_scream(self)
-	if Input.is_action_just_pressed("flare"):
+	if Input.is_action_just_pressed("flare") and weapons.nearby_weapon_item() == null:      # przy broni ten klawisz otwiera oględziny
 		_throw_flare()
 
 	if Input.is_action_just_pressed("flashlight"):
