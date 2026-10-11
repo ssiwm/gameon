@@ -38,6 +38,8 @@ var _vp_fg: SubViewport
 var _world: Node3D
 var _geo: Node3D
 var _geo_key := ""
+var _rows: Array = []                    ## wiersze bieżącej mapy (rozbryzgi od kroków: rodzaj cieczy pod stopami)
+var _splash := {}                        ## id węzła (gracz / wróg) → CPUParticles3D rozbryzgu
 var _geo_t := 0.0
 var _cam_a: Camera3D
 var _cam_b: Camera3D
@@ -253,6 +255,8 @@ func _sync_geometry() -> void:
 	_cam_b.environment = env_b
 	Level3D.build_level(_geo, rows)
 	Level3D.build_liquids(_geo, rows)
+	Level3D.build_liquid_props(_geo, rows)
+	_rows = rows
 	Level3D.build_decals(_geo, rows)
 	if not hub:
 		Level3D.build_forest(_geo, rows)
@@ -293,6 +297,7 @@ func _sync_rigs() -> void:
 			if c3._gun_n != null:
 				c3._gun_n.visible = false
 		actor.position = Level3D.px_to_m(p.global_position) - Vector3(0.0, float(c3.sink_m), 0.0)
+		_splash_update(actor, p.global_position, absf(float(p.get("velocity").x)) if p.get("velocity") != null else 0.0, LAYER_ACTORS)
 		actor.scale = Vector3(c3.px_flip, 1.0, 1.0)
 		c3._on_screen = true                       # poza liczymy zawsze (bez powiadomień o ekranie 2D)
 	for p in _rigs.keys():
@@ -466,6 +471,9 @@ func _sync_enemies(delta: float) -> void:
 		if not e.visible:
 			continue
 		e.position = pos + Vector3(0.0, 0.0, 0.3)
+		var sp_v2 = float(st.get("vx", 0.0))
+		if not ["cma", "nest", "vein", "leech"].has(String(e.get("kind"))):
+			_splash_update(e, src.global_position, sp_v2, LAYER_WORLD)
 		var sf := body.sprite_frames
 		var anim := body.animation
 		var nfr := sf.get_frame_count(anim) if sf != null and sf.has_animation(anim) else 1
@@ -477,10 +485,77 @@ func _sync_enemies(delta: float) -> void:
 		if not is_nan(float(st["py"])) and delta > 0.0 and delta < 0.1:
 			vy_now = (ypx - float(st["py"])) / delta
 		st["py"] = ypx
+		var xpx := body.global_position.x if body != null else src.global_position.x
+		var vx_now := 0.0
+		if not is_nan(float(st.get("px", NAN))) and delta > 0.0 and delta < 0.1:
+			vx_now = absf(xpx - float(st["px"])) / delta
+		st["px"] = xpx
+		st["vx"] = lerpf(float(st.get("vx", 0.0)), vx_now, 0.5)
 		st["vy"] = lerpf(float(st["vy"]), vy_now, 0.45)
 		_estate[id] = st
 		var sp_v = src.get("_sp")                          # stan specjalny wroga (Wołek: szarża, oszołomienie)
 		e.call("pose", delta, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), 0 if sp_v == null else int(sp_v))
+
+## Rodzaj cieczy pod stopami (0 błoto, 1 olej, 2 woda), −1 gdy stoi na zwykłym gruncie.
+func _liquid_kind(px: Vector2) -> int:
+	if _rows.is_empty():
+		return -1
+	var c := int(floor(px.x / 16.0))
+	var r := int(floor((px.y + 1.0) / 16.0))
+	var ch := Level3D._ch(_rows, c, r)
+	if ch == "m" or ch == "O" or ch == "~":
+		if not Level3D.is_solid_ch(Level3D._ch(_rows, c, r - 1)):
+			return {"m": 0, "O": 1, "~": 2}[ch]
+	return -1
+
+## Rozbryzg od kroków w błocie / oleju / wodzie: strumień kropel z poziomu stóp (węzeł `host` to model postaci lub wroga).
+func _splash_update(host: Node3D, feet_px: Vector2, speed_px: float, layer: int) -> void:
+	var id := host.get_instance_id()
+	var kind := _liquid_kind(feet_px)
+	var sp: CPUParticles3D = _splash.get(id)
+	if sp != null and not is_instance_valid(sp):
+		sp = null
+		_splash.erase(id)
+	if kind < 0:
+		if sp != null:
+			sp.emitting = false
+		return
+	if sp == null:
+		sp = CPUParticles3D.new()
+		sp.name = "LiquidSplash"
+		sp.amount = 22
+		sp.lifetime = 0.65
+		sp.local_coords = false
+		sp.direction = Vector3.UP
+		sp.spread = 42.0
+		sp.initial_velocity_min = 1.2
+		sp.initial_velocity_max = 2.9
+		sp.gravity = Vector3(0.0, -8.0, 0.0)
+		sp.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+		sp.emission_box_extents = Vector3(0.25, 0.02, 0.18)
+		var dm := SphereMesh.new()
+		dm.radius = 0.5
+		dm.height = 1.0
+		dm.radial_segments = 6
+		dm.rings = 3
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		dm.material = mat
+		sp.mesh = dm
+		sp.scale_amount_min = 0.025
+		sp.scale_amount_max = 0.075
+		sp.position = Vector3(0.0, -0.05, 0.2)
+		sp.layers = layer
+		sp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		sp.set_meta("kind", -1)
+		host.add_child(sp)
+		_splash[id] = sp
+	if int(sp.get_meta("kind")) != kind:
+		sp.set_meta("kind", kind)
+		var m := (sp.mesh as SphereMesh).material as StandardMaterial3D
+		m.albedo_color = [Color(0.20, 0.14, 0.09, 0.9), Color(0.09, 0.09, 0.12, 0.95), Color(0.35, 0.55, 0.60, 0.85)][kind]
+	sp.emitting = speed_px > 22.0
 
 func _set_layer(root: Node, layer: int) -> void:
 	for mi in root.find_children("*", "VisualInstance3D", true, false):

@@ -728,6 +728,462 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 				parent.add_child(di)
 			c = c1
 
+## Rekwizyty cieczy (po `build_liquids`): kałuże odbijające światło, rozchlapane krople, trzcina i patyki przy brzegu, bąble gazu w oleju i błocie.
+## Wszystko deterministyczne z ziarna mapy; `--noliquidprops` wyłącza. Dynamiczne rozbryzgi od kroków: `view3d.gd` (`_splash_update`).
+const PROP_COMMON := """
+float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vn(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fbm(vec2 p) {
+	float a = 0.5; float s = 0.0;
+	for (int i = 0; i < 4; i++) { s += a * vn(p); p = p * 2.03 + vec2(17.1, 9.7); a *= 0.5; }
+	return s;
+}
+"""
+## Kałuża: nieregularny owal z niskim roughness — światła sceny (flary, latarka, lampy) dają w niej prawdziwe błyski, dodatkowo fresnel odbijający niebo.
+const PUDDLE_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
+varying vec2 v_uv;
+varying float v_seed;
+//COMMON
+void vertex() {
+	v_uv = UV;
+	v_seed = INSTANCE_CUSTOM.x;
+}
+void fragment() {
+	vec2 p = (v_uv - 0.5) * 2.0;
+	float r = length(p);
+	float ang = atan(p.y, p.x);
+	float edge = 0.78 + 0.20 * (fbm(vec2(ang * 1.3 + v_seed * 3.0, v_seed)) - 0.5) * 2.0 + 0.10 * (vn(vec2(cos(ang), sin(ang)) * 4.0 + v_seed) - 0.5);
+	float a = 1.0 - smoothstep(edge - 0.16, edge, r);
+	if (a < 0.01) { discard; }
+	float t = TIME * 0.4;
+	vec2 q = p * 3.5 + vec2(v_seed);
+	vec3 n = normalize(vec3((vn(q + vec2(t, 0.0)) - 0.5) * 0.10, 1.0, (vn(q * 1.7 - vec2(0.0, t)) - 0.5) * 0.10));
+	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
+	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
+	vec3 sky = mix(vec3(0.018, 0.030, 0.058), vec3(0.060, 0.090, 0.165), clamp(0.5 + n.x * 3.0, 0.0, 1.0));
+	ALBEDO = vec3(0.012, 0.014, 0.018);
+	ROUGHNESS = 0.035;
+	SPECULAR = 1.0;
+	EMISSION = sky * (0.55 + 2.6 * fres) * smoothstep(0.0, 0.5, a);
+	ALPHA = a * 0.90;
+}
+"""
+## Rozchlapane krople: kropki o zmiennej wielkości, gęstsze przy brzegu (uv.x = 0 przy brzegu), z wydłużeniem w dół na froncie.
+const SPLAT_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
+uniform int kind = 0;                  // 0 błoto, 1 olej, 2 woda
+uniform float seed = 0.0;
+uniform float side = 1.0;
+uniform float vert = 1.0;              // 1: front (krople ściekają w dół), 0: wierzch (okrągłe)
+uniform vec2 qsize = vec2(1.5, 1.2);
+varying vec2 v_l;
+//COMMON
+void vertex() { v_l = UV; }
+void fragment() {
+	float mx = abs(v_l.x - ((side > 0.0) ? 0.0 : 1.0)) * qsize.x;
+	float my = v_l.y * qsize.y;
+	float dens = exp(-mx * 1.7);
+	float cell = 0.085;
+	vec2 g = vec2(mx, my) / cell;
+	vec2 id = floor(g);
+	vec2 f = fract(g) - 0.5;
+	float h = h21(id + vec2(seed, seed * 1.3));
+	float h2 = h21(id * 1.7 + vec2(seed + 5.0, 2.0));
+	float on = step(1.0 - 0.55 * dens - 0.04, h);                                   // gęstość maleje od brzegu
+	vec2 jit = vec2(h2 - 0.5, fract(h * 7.0) - 0.5) * 0.45;
+	float rad = (0.10 + 0.22 * h2) * (0.5 + 0.9 * dens);
+	vec2 d = f - jit;
+	d.y /= mix(1.0, 1.9, vert * h2);                                                // krople wydłużone w dół
+	float dot_ = 1.0 - smoothstep(rad * 0.6, rad, length(d));
+	float a = dot_ * on;
+	if (a < 0.02) { discard; }
+	vec3 base = (kind == 0) ? vec3(0.052, 0.036, 0.025) : ((kind == 1) ? vec3(0.014, 0.014, 0.018) : vec3(0.030, 0.058, 0.064));
+	ALBEDO = base;
+	ALPHA = a * ((kind == 2) ? 0.65 : 0.95);
+	ROUGHNESS = 0.08;
+	SPECULAR = 0.9;
+	EMISSION = vec3(0.015, 0.022, 0.040) * a;
+}
+"""
+## Trzcina, patyki: cienkie wstęgi i pryzmy z kolorem wierzchołkowym; alfa koloru = waga kołysania (u podstawy 0, na końcu 1).
+const REED_SHADER := """
+shader_type spatial;
+render_mode cull_disabled, specular_schlick_ggx;
+uniform float sway = 0.045;
+void vertex() {
+	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	float k = COLOR.a;
+	VERTEX.x += (sin(TIME * 1.25 + wp.x * 2.3 + wp.z * 1.7) * 0.7 + sin(TIME * 2.9 + wp.x * 5.0) * 0.3) * sway * k * k;
+}
+void fragment() {
+	ALBEDO = COLOR.rgb;
+	ROUGHNESS = 0.88;
+	SPECULAR = 0.25;
+	EMISSION = vec3(0.012, 0.018, 0.034) * (0.4 + COLOR.a);                  // chłodny blask księżyca na wstęgach
+}
+"""
+
+## Ciągi cieczy / błota w mapie (jak w `build_liquids`): [{ch, kd, c, c1, r, x0, w, y_top, seed, stack}].
+static func _liquid_runs(rows: Array) -> Array:
+	var out: Array = []
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	var kinds := {"m": 0, "O": 1, "~": 2}
+	for r in nrows:
+		var c := 0
+		while c < cols:
+			var ch := _ch(rows, c, r)
+			if not kinds.has(ch) or is_solid_ch(_ch(rows, c, r - 1)):
+				c += 1
+				continue
+			var c1 := c
+			while c1 < cols and _ch(rows, c1, r) == ch and not is_solid_ch(_ch(rows, c1, r - 1)):
+				c1 += 1
+			var stack: Array = []
+			for cc in range(c, c1):
+				var dpt := 1
+				while _ch(rows, cc, r + dpt) == ch:
+					dpt += 1
+				stack.append(dpt)
+			out.append({"ch": ch, "kd": kinds[ch], "c": c, "c1": c1, "r": r, "x0": float(c) * T, "w": float(c1 - c) * T,
+				"y_top": -float(r) * T, "seed": float((c * 31 + r * 17) % 97), "stack": stack})
+			c = c1
+	return out
+
+## Profil niecki ciągu (jak w `build_liquids`): `[próbki co 0,131 m od początku ciągu]`.
+static func _run_profile(run: Dictionary) -> PackedFloat32Array:
+	var n: int = int(run["c1"]) - int(run["c"])
+	var w: float = run["w"]
+	var kd: int = run["kd"]
+	var per_tile := 10
+	var ns := n * per_tile
+	var cap := PackedFloat32Array()
+	cap.resize(ns + 1)
+	for i in ns + 1:
+		cap[i] = float((run["stack"] as Array)[mini(i / per_tile, n - 1)]) * T * 0.85
+	var d0 := clampf(0.50 + 0.065 * w, 0.70, 1.20) if kd > 0 else clampf(0.26 + 0.030 * w, 0.34, 0.60)
+	var bank := 0.75 if kd > 0 else 0.55
+	return _liquid_profile(w, ns, d0, bank, float(run["seed"]), cap)
+
+static func _blade(v: PackedVector3Array, nrm: PackedVector3Array, col: PackedColorArray, idx: PackedInt32Array, base: Vector3, h: float, wid: float,
+		yaw: float, lean: Vector3, c_base: Color, c_tip: Color, cattail: bool) -> void:
+	var right := Vector3(cos(yaw), 0.0, sin(yaw))
+	var face := Vector3(-sin(yaw), 0.0, cos(yaw))
+	var ts: Array = [0.0, 0.3, 0.6, 0.82, 1.0]
+	var ws: Array = [1.0, 0.85, 0.62, 0.38, 0.0]
+	if cattail:
+		ts = [0.0, 0.3, 0.6, 0.70, 0.73, 0.82, 0.94, 1.0]
+		ws = [1.0, 0.80, 0.55, 0.40, 2.7, 3.0, 2.2, 0.0]
+	var b0 := v.size()
+	for i in ts.size():
+		var t: float = ts[i]
+		var p := base + Vector3(0.0, h * t, 0.0) + lean * (t * t)
+		var wv := wid * float(ws[i])
+		var is_head := cattail and t >= 0.72
+		var c := c_base.lerp(c_tip, t)
+		if is_head:
+			c = Color(0.050, 0.030, 0.020)
+		c.a = t
+		v.append(p - right * wv)
+		v.append(p + right * wv)
+		nrm.append(face)
+		nrm.append(face)
+		col.append(c)
+		col.append(c)
+	for i in ts.size() - 1:
+		var a := b0 + i * 2
+		idx.append_array(PackedInt32Array([a, a + 1, a + 3, a, a + 3, a + 2]))
+
+static func _stick(v: PackedVector3Array, nrm: PackedVector3Array, col: PackedColorArray, idx: PackedInt32Array, p0: Vector3, p1: Vector3, rad: float, c: Color) -> void:
+	var d := (p1 - p0)
+	if d.length() < 0.01:
+		return
+	var u := d.normalized()
+	var a := u.cross(Vector3.UP)
+	if a.length() < 0.1:
+		a = u.cross(Vector3.RIGHT)
+	a = a.normalized()
+	var b := u.cross(a).normalized()
+	var b0 := v.size()
+	for k in 4:
+		var ang := float(k) * PI * 0.5
+		var off := (a * cos(ang) + b * sin(ang)) * rad
+		var nn := (a * cos(ang) + b * sin(ang)).normalized()
+		var cc := c
+		cc.a = 0.0
+		v.append(p0 + off)
+		v.append(p1 + off * 0.65)
+		nrm.append(nn)
+		nrm.append(nn)
+		col.append(cc)
+		col.append(cc)
+	for k in 4:
+		var k2 := (k + 1) % 4
+		var a0 := b0 + k * 2
+		var a1 := b0 + k2 * 2
+		idx.append_array(PackedInt32Array([a0, a1, a1 + 1, a0, a1 + 1, a0 + 1]))
+
+static func build_liquid_props(parent: Node3D, rows: Array) -> void:
+	if "--noliquidprops" in OS.get_cmdline_user_args():
+		return
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(rows)) + 77
+	var runs := _liquid_runs(rows)
+	var zf := DEPTH_FRONT
+	var zb := -DEPTH_BACK
+	var puddle_shader := Shader.new()
+	puddle_shader.code = PUDDLE_SHADER.replace("//COMMON", PROP_COMMON)
+	var splat_shader := Shader.new()
+	splat_shader.code = SPLAT_SHADER.replace("//COMMON", PROP_COMMON)
+	var reed_shader := Shader.new()
+	reed_shader.code = REED_SHADER
+
+	# ---------------- kałuże: na odsłoniętym wierzchu gruntu i betonu, częściej blisko cieczy
+	var near: Dictionary = {}
+	for run in runs:
+		for cc in range(int(run["c"]) - 7, int(run["c1"]) + 7):
+			near[Vector2i(cc, int(run["r"]))] = true
+	var pud: Array = []
+	var pud_n := 0
+	for r in nrows:
+		for c in cols:
+			var ch := _ch(rows, c, r)
+			if (ch != "#" and ch != "C") or is_solid_ch(_ch(rows, c, r - 1)):
+				continue
+			var p := 0.07 + (0.28 if near.has(Vector2i(c, r)) else 0.0)
+			if rng.randf() > p or pud_n >= 110:
+				continue
+			var wd := rng.randf_range(0.8, 2.1)
+			var dp := rng.randf_range(0.5, 1.5)
+			var x := (float(c) + rng.randf()) * T
+			var y := -float(r) * T + (0.105 if ch == "#" else 0.012)
+			var z := rng.randf_range(zb + 0.9, zf - 0.35)
+			var b := Basis(Vector3.RIGHT, -PI * 0.5) * Basis.from_scale(Vector3(wd, dp, 1.0))
+			pud.append([Transform3D(b, Vector3(x, y, z)), rng.randf() * 50.0])
+			pud_n += 1
+	if not pud.is_empty():
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = true
+		var q := QuadMesh.new()
+		q.size = Vector2.ONE
+		mm.mesh = q
+		mm.instance_count = pud.size()
+		for i in pud.size():
+			mm.set_instance_transform(i, pud[i][0])
+			mm.set_instance_custom_data(i, Color(float(pud[i][1]), 0.0, 0.0, 0.0))
+		var pm := ShaderMaterial.new()
+		pm.shader = puddle_shader
+		var pi := MultiMeshInstance3D.new()
+		pi.name = "Puddles"
+		pi.multimesh = mm
+		pi.material_override = pm
+		pi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(pi)
+
+	if runs.is_empty():
+		return
+	# ---------------- trzcina i patyki (jedna siatka na całą mapę)
+	var v := PackedVector3Array()
+	var nr := PackedVector3Array()
+	var col := PackedColorArray()
+	var idx := PackedInt32Array()
+	for run in runs:
+		var kd: int = run["kd"]
+		var x0: float = run["x0"]
+		var w: float = run["w"]
+		var y_top: float = run["y_top"]
+		var c: int = run["c"]
+		var c1: int = run["c1"]
+		var r: int = run["r"]
+		var sink := LIQUID_SINK_MUD if kd == 0 else LIQUID_SINK
+		var y_s := y_top - sink
+		var prof := _run_profile(run)
+		var ns := prof.size() - 1
+		var greens := kd == 2
+		var cb := Color(0.050, 0.095, 0.045) if greens else Color(0.085, 0.070, 0.038)
+		var ct := Color(0.150, 0.165, 0.080) if greens else Color(0.185, 0.155, 0.080)
+		var stick_c := Color(0.055, 0.040, 0.027)
+		for sd in [-1, 1]:
+			var nc := (c - 1) if sd < 0 else c1
+			if not is_solid_ch(_ch(rows, nc, r)):
+				continue
+			var edge := x0 if sd < 0 else x0 + w
+			var ground_y := y_top + (0.095 if _ch(rows, nc, r) == "#" else 0.0)
+			# kępy na brzegu
+			var clumps := rng.randi_range(2, 4)
+			for k in clumps:
+				var cx := edge + float(sd) * rng.randf_range(0.12, 1.1)
+				var cz := rng.randf_range(zb + 0.9, zf - 0.25)
+				var nb := rng.randi_range(5, 12)
+				for b in nb:
+					var base := Vector3(cx + rng.randf_range(-0.22, 0.22), ground_y - 0.02, cz + rng.randf_range(-0.18, 0.18))
+					var hh := rng.randf_range(0.55, 1.55)
+					var lean := Vector3(rng.randf_range(-0.30, 0.30) * hh, 0.0, rng.randf_range(-0.12, 0.12) * hh)
+					_blade(v, nr, col, idx, base, hh, rng.randf_range(0.020, 0.036), rng.randf() * TAU, lean, cb, ct, rng.randf() < 0.32)
+			# kępy w płytkiej wodzie przy brzegu (tam, gdzie głębokość < 0,35 m)
+			if kd > 0:
+				for k in rng.randi_range(1, 3):
+					var fx := rng.randf_range(0.15, 0.9)
+					var xi := int(clampf((fx if sd < 0 else (w - fx)) / w * float(ns), 0.0, float(ns)))
+					if prof[xi] > 0.40:
+						continue
+					var bx := x0 + (float(xi) / float(ns)) * w
+					var by := y_top - prof[xi] + 0.02
+					for b in rng.randi_range(4, 9):
+						var base := Vector3(bx + rng.randf_range(-0.16, 0.16), by, rng.randf_range(zb + 1.0, zf - 0.45))
+						var hh := rng.randf_range(0.6, 1.4) + prof[xi]
+						var lean := Vector3(rng.randf_range(-0.25, 0.25) * hh, 0.0, rng.randf_range(-0.10, 0.10) * hh)
+						_blade(v, nr, col, idx, base, hh, rng.randf_range(0.020, 0.034), rng.randf() * TAU, lean, cb, ct, rng.randf() < 0.28)
+			# patyki na gruncie przy brzegu: leżące i oparte
+			for k in rng.randi_range(2, 5):
+				var sx := edge + float(sd) * rng.randf_range(0.15, 1.6)
+				var sz := rng.randf_range(zb + 0.8, zf - 0.3)
+				var yaw := rng.randf() * TAU
+				var ln := rng.randf_range(0.35, 1.5)
+				var tilt := rng.randf_range(0.0, 0.55) if rng.randf() < 0.35 else rng.randf_range(0.0, 0.08)
+				var d := Vector3(cos(yaw) * cos(tilt), sin(tilt), sin(yaw) * cos(tilt))
+				var p0 := Vector3(sx, ground_y + 0.015, sz)
+				_stick(v, nr, col, idx, p0, p0 + d * ln, rng.randf_range(0.012, 0.028), stick_c.lerp(Color(0.09, 0.07, 0.05), rng.randf()))
+		# patyki i kępy pływające / wystające z cieczy
+		if kd > 0 and w >= 2.0:
+			for k in rng.randi_range(1, 3):
+				var fx := rng.randf_range(0.3, w - 0.3)
+				var xi := int(clampf(fx / w * float(ns), 0.0, float(ns)))
+				if prof[xi] - sink < 0.12:
+					continue
+				var yaw := rng.randf_range(-0.5, 0.5) + (PI * 0.5 if rng.randf() < 0.2 else 0.0)
+				var ln := rng.randf_range(0.35, 1.0)
+				var p0 := Vector3(x0 + fx, y_s + 0.012, rng.randf_range(zb + 1.0, zf - 0.5))
+				var d := Vector3(cos(yaw), 0.0, sin(yaw))
+				_stick(v, nr, col, idx, p0, p0 + d * ln, rng.randf_range(0.012, 0.024), stick_c)
+	if v.size() > 0:
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = v
+		arr[Mesh.ARRAY_NORMAL] = nr
+		arr[Mesh.ARRAY_COLOR] = col
+		arr[Mesh.ARRAY_INDEX] = idx
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		var rm := ShaderMaterial.new()
+		rm.shader = reed_shader
+		var ri := MeshInstance3D.new()
+		ri.name = "ShoreReeds"
+		ri.mesh = am
+		ri.material_override = rm
+		ri.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(ri)
+
+	# ---------------- rozchlapane krople na froncie i wierzchu gruntu przy brzegach
+	for run in runs:
+		var kd: int = run["kd"]
+		var x0: float = run["x0"]
+		var w: float = run["w"]
+		var y_top: float = run["y_top"]
+		var c: int = run["c"]
+		var c1: int = run["c1"]
+		var r: int = run["r"]
+		for sd in [-1, 1]:
+			var nc := (c - 1) if sd < 0 else c1
+			if not is_solid_ch(_ch(rows, nc, r)):
+				continue
+			var edge := x0 if sd < 0 else x0 + w
+			var ground_y := y_top + (0.095 if _ch(rows, nc, r) == "#" else 0.0)
+			for face in [0, 1]:
+				var qsz := Vector2(1.5, 1.25) if face == 0 else Vector2(1.7, 2.6)
+				var qm := QuadMesh.new()
+				qm.size = qsz
+				var dm := ShaderMaterial.new()
+				dm.shader = splat_shader
+				dm.set_shader_parameter("kind", kd)
+				dm.set_shader_parameter("seed", float(run["seed"]) + float(face) * 4.0 + (2.0 if sd < 0 else 0.0))
+				dm.set_shader_parameter("side", float(-sd))
+				dm.set_shader_parameter("vert", 1.0 if face == 0 else 0.0)
+				dm.set_shader_parameter("qsize", qsz)
+				var mi := MeshInstance3D.new()
+				mi.name = "LiquidSplat_%d_%d_%d_%d" % [c, r, sd, face]
+				mi.mesh = qm
+				mi.material_override = dm
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				if face == 0:
+					mi.position = Vector3(edge + float(sd) * qsz.x * 0.5, y_top - qsz.y * 0.5 - 0.1, zf + 0.02)
+				else:
+					mi.rotation = Vector3(-PI * 0.5, 0.0, 0.0)
+					mi.position = Vector3(edge + float(sd) * qsz.x * 0.5, ground_y + 0.004, (zf + zb) * 0.5 + 0.2)
+				parent.add_child(mi)
+
+	# ---------------- bąble gazu: olej (z dna niecki) i błoto (pęcherze przy powierzchni)
+	var bmesh := SphereMesh.new()
+	bmesh.radius = 0.5
+	bmesh.height = 1.0
+	bmesh.radial_segments = 8
+	bmesh.rings = 4
+	var bmat := StandardMaterial3D.new()
+	bmat.albedo_color = Color(0.20, 0.30, 0.46, 0.70)
+	bmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bmat.roughness = 0.04
+	bmat.metallic_specular = 1.0
+	bmat.emission_enabled = true
+	bmat.emission = Color(0.09, 0.15, 0.27)
+	bmat.rim_enabled = true
+	bmat.rim = 0.8
+	var bcurve := Curve.new()
+	bcurve.add_point(Vector2(0.0, 0.5))
+	bcurve.add_point(Vector2(0.15, 1.0))
+	bcurve.add_point(Vector2(0.88, 1.0))
+	bcurve.add_point(Vector2(1.0, 0.0))
+	for run in runs:
+		var kd: int = run["kd"]
+		if kd == 2:
+			continue
+		var x0: float = run["x0"]
+		var w: float = run["w"]
+		var y_top: float = run["y_top"]
+		var sink := LIQUID_SINK_MUD if kd == 0 else LIQUID_SINK
+		var y_s := y_top - sink
+		var prof := _run_profile(run)
+		var ns := prof.size() - 1
+		var emitters := clampi(int(w / 1.5), 1, 8)
+		for k in emitters:
+			var xi := int((float(k) + rng.randf_range(0.25, 0.75)) / float(emitters) * float(ns))
+			xi = clampi(xi, 0, ns)
+			var d := prof[xi] - sink
+			if d < 0.18:
+				continue
+			var y_start := y_s - d * (0.85 if kd == 1 else 0.20)
+			var rise := y_s - y_start
+			var speed := rng.randf_range(0.22, 0.38) if kd == 1 else 0.10
+			var bp := CPUParticles3D.new()
+			bp.name = "Bubbles_%d_%d" % [int(run["c"]), k]
+			bp.mesh = bmesh
+			bp.material_override = bmat
+			bp.amount = 7 if kd == 1 else 4
+			bp.lifetime = rise / speed + 0.25
+			bp.preprocess = bp.lifetime
+			bp.local_coords = false
+			bp.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+			bp.emission_box_extents = Vector3(0.12, 0.01, 0.01)
+			bp.direction = Vector3.UP
+			bp.spread = 6.0
+			bp.initial_velocity_min = speed * 0.85
+			bp.initial_velocity_max = speed * 1.2
+			bp.gravity = Vector3.ZERO
+			bp.scale_amount_min = 0.07 if kd == 1 else 0.04
+			bp.scale_amount_max = 0.20 if kd == 1 else 0.10
+			bp.scale_amount_curve = bcurve
+			bp.position = Vector3(x0 + w * float(xi) / float(ns), y_start, DEPTH_FRONT + 0.03)
+			bp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			parent.add_child(bp)
+
 ## Las w głębi: świerki z `MultiMesh` w płaszczyznach z = −3,5 … −46 m tam, gdzie pod otwartym niebem jest polana (pierwszy kafel bryły nisko).
 static func build_forest(parent: Node3D, rows: Array) -> void:
 	var nrows := rows.size()
