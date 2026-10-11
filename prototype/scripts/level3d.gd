@@ -1595,7 +1595,7 @@ static func build_ground_fog(parent: Node3D, rows: Array) -> void:
 ## wyżej poświata księżyca za chmurami — czubki świerków odcinają się od niej postrzępioną linią.
 const SKY_SHADER := """
 shader_type sky;
-uniform vec3 glow : source_color = vec3(0.036, 0.052, 0.090);
+uniform vec3 glow : source_color = vec3(0.016, 0.024, 0.044);
 uniform vec3 base : source_color = vec3(0.003, 0.004, 0.008);
 uniform float lit = 0.0;
 float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -1653,7 +1653,7 @@ static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0
 	var warm := clampf((ambient.r - ambient.b) * 6.0, 0.0, 1.0)          # kryjówka: bursztynowe otoczenie
 	# noc ma być czarna jak w 2D (GDD §8.3: ciemność jest mechaniką) — otoczenie tylko odcina bryły od nieba, widoczność dają światła (aura, latarka, flara, ognisko)
 	env.ambient_light_color = Color(0.15, 0.18, 0.25).lerp(Color(0.42, 0.30, 0.20), warm)
-	env.ambient_light_energy = 0.09 + 0.31 * warm
+	env.ambient_light_energy = 0.03 + 0.37 * warm            # prawie zero poza kryjówką: bez własnego światła nie widać terenu
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.glow_enabled = true
 	env.glow_intensity = 0.7
@@ -1663,7 +1663,7 @@ static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0
 	# mgła głębi liczona od płaszczyzny gry w głąb (view3d.gd ustawia początek tuż za graczami): plan gry zostaje czysty i czarny,
 	# a kolejne rzędy lasu toną w chłodnej poświacie — bliskie pnie rysują się na niej czarną sylwetką
 	env.fog_mode = Environment.FOG_MODE_DEPTH
-	env.fog_light_color = Color(0.046, 0.066, 0.105)
+	env.fog_light_color = Color(0.020, 0.030, 0.050)
 	env.fog_density = 1.0
 	env.fog_depth_curve = 0.7
 	env.fog_depth_begin = 20.0
@@ -1707,7 +1707,7 @@ static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0
 		l.name = "Moon"
 		l.basis = Basis.looking_at(Vector3(0.55, -0.7, -0.45), Vector3.UP)
 		l.light_color = Color(0.62, 0.72, 0.95)
-		l.light_energy = 0.20
+		l.light_energy = 0.06                                  # księżyc tylko muska krawędzie — nie oświetla drogi
 		l.shadow_enabled = true
 		l.directional_shadow_max_distance = 60.0
 		l.shadow_bias = 0.04

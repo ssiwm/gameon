@@ -28,12 +28,13 @@ const MIRROR_GROUPS := ["enemies", "boss", "nests", "roamers"]
 const HIDE_NAMES := ["Back", "Solid", "Deco", "TerrainHD", "TerrainHDBack", "Backdrop"]
 const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wrogów
 const LAYER_ACTORS := 2                    ## warstwa wizualna graczy (modele 3D)
-const ACTOR_AMBIENT := 0.16                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
+const ACTOR_AMBIENT := 0.09                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
 const ACTOR_LIGHT := 1.0                   ## mnożnik świateł pomocniczych graczy (kontra, wypełnienie, obrys)
+const AURA_RANGE_M := 2.6                   ## zasięg aury gracza na terenie w widoku 3D [m] (w 2D: 6 m)
 const PROP_Z := 0.0                         ## oś skrzyń i beczek: płaszczyzna gry (postacie stoją na nich i przez nie skaczą)
 const FLASH_UP_PX := 15.5                   ## wysokość źródła latarki nad stopami gracza w widoku 3D [px świata] (bark / broń)
-const AURA_WORLD := 3.2                    ## mnożnik energii aury gracza dla terenu (zwykłe światło omni: 4)
-const AURA_ACTOR := 0.8                    ## mnożnik energii aury gracza dla modeli graczy
+const AURA_WORLD := 1.0                    ## mnożnik energii aury gracza dla terenu (zwykłe światło omni: 4)
+const AURA_ACTOR := 0.55                    ## mnożnik energii aury gracza dla modeli graczy
 const FOG_BEGIN_M := 2.0                    ## mgła głębi: początek za płaszczyzną gry [m]
 const FOG_END_M := 62.0                     ## mgła głębi: pełna gęstość [m za płaszczyzną gry]
 const EYE_UP_M := 2.2                       ## wysokość oka kamery ponad środkiem kadru [m] (punkt zbiegu nad głowami postaci)
@@ -1457,8 +1458,8 @@ func _scan_lights() -> void:
 			if is_cone:
 				var sp := SpotLight3D.new()
 				sp.light_volumetric_fog_energy = 6.0               # snop latarki widoczny we mgle
-				sp.spot_angle = 26.0
-				sp.spot_attenuation = 0.7
+				sp.spot_angle = 24.0
+				sp.spot_attenuation = 0.55
 				l3 = sp
 			else:
 				l3 = OmniLight3D.new()
@@ -1534,12 +1535,13 @@ func _sync_lights() -> void:
 				var rig = _rigs.get(owner_p)
 				var c3 = owner_p.get("c3d")
 				if rig != null and c3 != null and is_instance_valid(c3) and rig["gun"] != null and is_instance_valid(rig["gun"]) and (rig["gun"] as Node3D).visible:
-					src = (rig["gun"] as Node3D).global_transform * (c3._gun_info["muzzle"] as Vector3) + d * 0.05
+					src = (rig["gun"] as Node3D).global_transform * (c3._gun_info["muzzle"] as Vector3) + d * 0.05 + Vector3(0.0, 0.0, 0.5)      # lekko ku kamerze: snop oświetla też fronty przeszkód na drodze
 			l3.position = src
 			l3.basis = Basis.looking_at(d + Vector3(0.0, 0.0, -0.04), Vector3.UP)
-			l3.light_energy = li.energy * 8.0
-			(l3 as SpotLight3D).spot_range = clampf(rng_px * PX, 6.0, 26.0)
+			l3.light_energy = li.energy * 13.0
+			(l3 as SpotLight3D).spot_range = clampf(rng_px * PX * 1.35, 8.0, 30.0)
 		else:
 			l3.position = Level3D.px_to_m(gp) + Vector3(0.0, 0.0, 1.0)
 			l3.light_energy = li.energy * (AURA_WORLD if pair[3] else 4.0)
-			(l3 as OmniLight3D).omni_range = clampf(rng_px * PX, 3.0, 24.0)
+			# aura gracza: mała plama pod nogami (AURA_RANGE_M), żeby nie potknąć się o własne stopy — drogę i wrogów pokazuje latarka
+			(l3 as OmniLight3D).omni_range = AURA_RANGE_M if pair[3] else clampf(rng_px * PX, 3.0, 24.0)
