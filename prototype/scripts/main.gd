@@ -1167,6 +1167,9 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var tp: Node2D = _players.get_node_or_null("1")
 		if tp != null:
 			tp.set("flashlight", true)
+			tp.set("battery", 999.0)
+			if tp.get("aim_dir") != null and "--shotaimup" in OS.get_cmdline_user_args():
+				tp.set("aim_dir", Vector2(0.8, -0.6))
 	if "--shotshoot" in OS.get_cmdline_user_args():                 # dev: gracz 1 strzela serią w prawo przez cały czas zrzutu (podgląd pocisków i efektów)
 		var sp1: Node2D = _players.get_node_or_null("1")
 		if sp1 != null:
