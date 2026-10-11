@@ -93,7 +93,7 @@ TRIPO_MODELS = {
     "walkway_grate": ("walkway_grate.glb", "-Y", 100.0, 6000, 8.0, True, 33.0),
 }
 # modele z Tripo ze świecącymi elementami (diody, ekrany, żarówka): emisja = jasne, nasycone piksele koloru (żarówka: jasne, blade)
-EMISSIVE = {"mine": "led", "charge": "led", "defib": "led", "scanner": "led", "lamp": "bulb"}
+EMISSIVE = {"mine": "led", "charge": "led", "defib": "led", "scanner": "led", "lamp": "bulb", "stake": "led"}
 # przedmioty proceduralne o większej teksturze (duże bryły blisko kamery)
 BIG = {"generator", "handcar", "shelf", "locker", "table", "cot", "results_board", "board", "rack", "tools_wall"}
 

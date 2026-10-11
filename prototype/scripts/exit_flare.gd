@@ -275,7 +275,7 @@ func _draw_progress() -> void:
 	for p in humans:
 		if not p.dead and _inside(p):
 			inside += 1
-	if prog > 0.001 or inside > 0:
+	if (prog > 0.001 or inside > 0) and not hide_stuck:          # widok 3D: pierścień postępu leży na ziemi w scenie 3D
 		draw_set_transform(Vector2(0.0, -1.0), 0.0, Vector2(1.0, 0.3))
 		draw_arc(Vector2.ZERO, 14.0, 0.0, TAU, 48, Color(col, 0.16), 2.4, true)
 		if prog > 0.001:
