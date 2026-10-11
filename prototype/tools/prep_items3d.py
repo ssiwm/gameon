@@ -301,7 +301,7 @@ def reshape_handcar(obj):
     lo, hi = vs.min(axis=0), vs.max(axis=0)
     H = hi[2] - lo[2]
     px = 92.4 / (hi[0] - lo[0])                               # pikseli świata na jednostkę modelu (szerokość pokładu jak sprite)
-    z_cut = lo[2] + 0.063 * H                                 # poniżej: koła i osie
+    z_cut = lo[2] + 0.083 * H                                 # poniżej: koła, osie, belka ramy i wsporniki resorów (nadkola)
     z_deck = lo[2] + 0.167 * H                                # góra pokładu
     z_p0, z_p1 = lo[2] + 0.333 * H, lo[2] + 0.733 * H         # usuwany odcinek pręta latarni
     bm = bmesh.new()
