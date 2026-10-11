@@ -1381,7 +1381,58 @@ func _sync_fires() -> void:
 		ring.layers = LAYER_WORLD
 		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_world.add_child(ring)
-		_fires[n.get_instance_id()] = [n, f2, "exit", ring]
+		# słup światła nad flarą (znak wyjścia widoczny z daleka), dym i pierścień postępu ewakuacji — odpowiedniki 3D rysunków z exit_flare.gd
+		var shaft := _glow_quad(Color(col.r, col.g, col.b, 0.0))
+		shaft.name = "Shaft"
+		shaft.layers = LAYER_WORLD
+		f2.add_child(shaft)
+		var smoke := CPUParticles3D.new()
+		smoke.name = "Smoke"
+		smoke.amount = 14
+		smoke.lifetime = 3.0
+		smoke.local_coords = false
+		var smq := QuadMesh.new()
+		smq.size = Vector2(0.5, 0.5)
+		var smm := StandardMaterial3D.new()
+		smm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		smm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		smm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		smm.billboard_keep_scale = true
+		smm.vertex_color_use_as_albedo = true
+		smm.albedo_texture = _soft()
+		smq.material = smm
+		smoke.mesh = smq
+		smoke.direction = Vector3(0.15, 1.0, 0.0)
+		smoke.spread = 16.0
+		smoke.initial_velocity_min = 0.5
+		smoke.initial_velocity_max = 1.1
+		smoke.gravity = Vector3(0.1, 0.15, 0.0)
+		var ssc := Curve.new()
+		ssc.add_point(Vector2(0.0, 0.4))
+		ssc.add_point(Vector2(1.0, 1.8))
+		smoke.scale_amount_curve = ssc
+		var sgr := Gradient.new()
+		sgr.set_color(0, Color(0.45, 0.58, 0.46, 0.0))
+		sgr.add_point(0.2, Color(0.45, 0.58, 0.46, 0.10))
+		sgr.set_color(sgr.get_point_count() - 1, Color(0.4, 0.45, 0.42, 0.0))
+		smoke.color_ramp = sgr
+		smoke.layers = LAYER_WORLD
+		smoke.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		f2.add_child(smoke)
+		var prog := MeshInstance3D.new()
+		prog.name = "Progress"
+		prog.mesh = ImmediateMesh.new()
+		var pm := StandardMaterial3D.new()
+		pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		pm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		pm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		pm.vertex_color_use_as_albedo = true
+		prog.material_override = pm
+		prog.layers = LAYER_WORLD
+		prog.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_world.add_child(prog)
+		_fires[n.get_instance_id()] = [n, f2, "exit", ring, prog]
 	for id in _fires.keys():
 		var fr: Array = _fires[id]
 		var src_v = fr[0]
@@ -1394,8 +1445,10 @@ func _sync_fires() -> void:
 				else:
 					(ch as Node3D).visible = false
 			get_tree().create_timer(1.5).timeout.connect(fire.queue_free)
-			if fr[3] != null and is_instance_valid(fr[3]):
+			if fr[3] is Node and is_instance_valid(fr[3]):
 				(fr[3] as Node).queue_free()
+			if fr.size() > 4 and is_instance_valid(fr[4]):
+				(fr[4] as Node).queue_free()
 			_fires.erase(id)
 			continue
 		var src := src_v as Node2D
@@ -1440,6 +1493,47 @@ func _sync_fires() -> void:
 				ring.position = Level3D.px_to_m(src.global_position) + Vector3(0.0, 0.03, 0.0)
 				ring.scale = Vector3(r, 1.0, r * 0.55)
 				(ring.material_override as StandardMaterial3D).albedo_color.a = 0.5 * (1.0 - ph)
+			# elementy 2D flary (słup światła, dym, pył) są chowane co klatkę — `exit_flare.gd` włącza je przy zmianie jakości
+			for nm in ["_shaft", "_smoke", "_dust"]:
+				var old = src.get(nm)
+				if old != null and is_instance_valid(old):
+					(old as CanvasItem).visible = false
+			var fcol: Color = src.call("_flare_col")
+			var shaft := fire.get_node("Shaft") as MeshInstance3D
+			var sh_h := 9.0 * fl
+			_span_quad(shaft, Vector3(0.0, 0.2, -0.1), Vector3(0.0, sh_h, -0.1), 1.5)
+			(shaft.material_override as StandardMaterial3D).albedo_color = Color(fcol.r, fcol.g, fcol.b, 0.10 * fl if Settings.quality_idx >= 1 else 0.0)
+			(fire.get_node("Smoke") as CPUParticles3D).emitting = on and Settings.quality_idx >= 1
+			# pierścień postępu ewakuacji na ziemi wokół flary (0 → 360°)
+			var pmesh := (fr[4] as MeshInstance3D).mesh as ImmediateMesh
+			(fr[4] as MeshInstance3D).visible = on
+			(fr[4] as MeshInstance3D).position = Level3D.px_to_m(src.global_position) + Vector3(0.0, 0.04, 0.0)
+			pmesh.clear_surfaces()
+			var m_p = src.get("_m")
+			var pr := clampf(float(m_p.extract_progress), 0.0, 1.0) if m_p != null else 0.0
+			var inside_n := 0
+			for hp in src.call("_humans"):
+				if not hp.dead and bool(src.call("_inside", hp)):
+					inside_n += 1
+			if on and (pr > 0.001 or inside_n > 0):
+				var r0 := 14.0 * PX
+				var hot := fcol.lerp(Color(1, 1, 0.9), 0.55)
+				for pass_i in 2:                                   # 0: blady pełny okrąg, 1: jasny łuk postępu
+					var frac := 1.0 if pass_i == 0 else pr
+					if frac <= 0.001:
+						continue
+					var cc := Color(fcol.r, fcol.g, fcol.b, 0.16) if pass_i == 0 else Color(hot.r, hot.g, hot.b, 0.95)
+					var w := 0.09 if pass_i == 0 else 0.10
+					pmesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+					var segs := maxi(3, int(64.0 * frac))
+					for si in segs + 1:
+						var ang := -PI * 0.5 + TAU * frac * float(si) / float(segs)
+						var dirv := Vector3(cos(ang), 0.0, sin(ang) * 0.55)
+						pmesh.surface_set_color(cc)
+						pmesh.surface_add_vertex(dirv * (r0 - w))
+						pmesh.surface_set_color(cc)
+						pmesh.surface_add_vertex(dirv * (r0 + w))
+					pmesh.surface_end()
 
 # ---------------------------------------------------------------- efekty strzału
 
@@ -2329,6 +2423,21 @@ func _make_item(sp: Sprite2D) -> void:
 	var model := _item_model(name, float(sp.get_meta("hd_dark", 0.0)) * 0.35)
 	if model != null:                                          # prawdziwa bryła zamiast karty
 		_world.add_child(model)
+		if name == "stake":                                    # kołek strefy wyjścia: świecąca głowica w kolorze flary (zamiast nakładki 2D)
+			var tip := MeshInstance3D.new()
+			var ts := SphereMesh.new()
+			ts.radius = 0.55
+			ts.height = 1.1
+			tip.mesh = ts
+			var tm := StandardMaterial3D.new()
+			tm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			var fc := Color(0.55, 0.92, 1.0) if Settings.colorblind_idx != 0 else Color(0.4, 1.0, 0.5)
+			tm.albedo_color = Color(fc.r * 1.8, fc.g * 1.8, fc.b * 1.8)
+			tip.material_override = tm
+			tip.position = Vector3(0.0, 8.4, 0.0)
+			tip.layers = LAYER_WORLD
+			tip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			model.add_child(tip)
 		var hid: Array = [sp]
 		sp.self_modulate = Color(1, 1, 1, 0)
 		var emits := false
@@ -2338,7 +2447,7 @@ func _make_item(sp: Sprite2D) -> void:
 				emits = true
 		for c in sp.get_children():
 			# kopia „widoczna w ciemności” oraz nakładka diod / ekranu ze sprite'a: model ma własną emisję w swoich miejscach
-			if c is Sprite2D and ((c as Sprite2D).texture == alb or emits):
+			if c is Sprite2D:                                  # żadnych nakładek 2D na modelu (świecenie daje emisja modelu)
 				(c as Sprite2D).visible = false
 				hid.append(c)
 		if name == "handcar":                                  # belka podwozia rysowana w 2D przed graczami zasłaniałaby koła 3D
