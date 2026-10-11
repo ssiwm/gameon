@@ -78,6 +78,10 @@ TRIPO_MODELS = {
     "tree_snag_hi": ("tree_snag.glb", "+X", 1000.0, 7000, 100.0),
     "tree_log": ("tree_log.glb", "-Y", 100.0, 2500, 1000.0),
     "post": ("post.glb", "-Y", 1000.0, 1500, 100.0),
+    # kładki: odcinek o długości 100 jednostek (x), góra pokładu = góra bryły; gra układa odcinki jeden za drugim (`Level3D.build_level`).
+    # Deski leżą w poprzek kładki, więc łączenia odcinków wypadają w szczelinach między deskami; krata ma ramę — łączenie to styk paneli.
+    "walkway_plank": ("walkway_plank.glb", "+X", 100.0, 5000, 17.6, True, 99.0),
+    "walkway_grate": ("walkway_grate.glb", "-Y", 100.0, 6000, 8.0, True, 33.0),
 }
 # modele z Tripo ze świecącymi elementami (diody, ekrany, żarówka): emisja = jasne, nasycone piksele koloru (żarówka: jasne, blade)
 EMISSIVE = {"mine": "led", "charge": "led", "defib": "led", "scanner": "led", "lamp": "bulb"}
@@ -118,7 +122,7 @@ def export_glb(obj, name):
     bpy.context.view_layer.objects.active = obj
     path = os.path.join(OUT, name + ".glb")
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
-                              export_image_format="JPEG", export_jpeg_quality=88, export_animations=False)
+                              export_image_format="AUTO" if name.startswith("tree_spruce") else "JPEG", export_jpeg_quality=88, export_animations=False)
     print("SAVED", name, os.path.getsize(path) // 1024, "kB", len(obj.data.polygons), "faces")
 
 
@@ -341,6 +345,116 @@ def reshape_handcar(obj):
     me.update()
 
 
+# świerki: pień z modelu Tripo (martwy pień — kora) + gałęzie z igliwiem jako karty z teksturą (art/world3d/forest/bough_*.png z
+# tools/world_forest_gen.py) rozłożone piętrami wokół pnia. Sam generator 3D robi z igliwia szerokie liście; igły muszą być teksturą.
+SPRUCES = {"tree_spruce_a": (11, 1.0, 0.16), "tree_spruce_b": (23, 0.72, 0.34), "tree_spruce_c": (37, 0.9, 0.06)}      # ziarno, pełność, goły dół pnia
+
+
+def build_spruce(name, seed, fullness, bare):
+    import bmesh
+    import random
+    src = os.path.join(TRIPO, "tree_snag.glb")
+    if not os.path.exists(src):
+        print("SKIP", name)
+        return
+    rng = random.Random(seed)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.import_scene.gltf(filepath=src)
+    trunk = next(o for o in bpy.data.objects if o.type == "MESH")
+    bpy.ops.object.select_all(action="DESELECT")
+    trunk.select_set(True)
+    bpy.context.view_layer.objects.active = trunk
+    bpy.ops.object.parent_clear(type="CLEAR_KEEP_TRANSFORM")
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    me = trunk.data
+    me.transform(Matrix.Rotation(rng.uniform(0, math.tau), 4, "Z"))
+    vs = np.array([v.co[:] for v in me.vertices])
+    lo, hi = vs.min(axis=0), vs.max(axis=0)
+    me.transform(Matrix.Translation((-(lo[0] + hi[0]) * 0.5, -(lo[1] + hi[1]) * 0.5, -lo[2])))
+    kz = 100.0 / (hi[2] - lo[2])
+    kxy = 9.0 / max(hi[0] - lo[0], hi[1] - lo[1])                # smukły pień (konary martwego pnia zostają jako suche gałęzie w koronie)
+    me.transform(Matrix.Diagonal((kxy, kxy, kz, 1.0)))
+    for v in me.vertices:                                      # zbieżność ku wierzchołkowi
+        f = 1.0 - 0.8 * (v.co.z / 100.0)
+        v.co.x *= f
+        v.co.y *= f
+    dec = trunk.modifiers.new("dec", "DECIMATE")
+    dec.ratio = 1800.0 / max(len(me.polygons), 1)
+    bpy.ops.object.modifier_apply(modifier="dec")
+    for img in bpy.data.images:
+        if img.size[0] > 512:
+            img.scale(512, 512)
+    for m in bpy.data.materials:
+        if m.node_tree:
+            bs = next((nd for nd in m.node_tree.nodes if nd.type == "BSDF_PRINCIPLED"), None)
+            if bs is not None:
+                bs.inputs["Metallic"].default_value = 0.0
+    # materiały igliwia
+    mats = []
+    for key in ("bough_side", "bough_top"):
+        m = bpy.data.materials.new(key)
+        m.use_nodes = True
+        nt = m.node_tree
+        bs = next(nd for nd in nt.nodes if nd.type == "BSDF_PRINCIPLED")
+        t = nt.nodes.new("ShaderNodeTexImage")
+        t.image = bpy.data.images.load(os.path.join(ROOT, "prototype", "art", "world3d", "forest", key + ".png"))
+        nt.links.new(t.outputs["Color"], bs.inputs["Base Color"])
+        nt.links.new(t.outputs["Alpha"], bs.inputs["Alpha"])
+        bs.inputs["Roughness"].default_value = 1.0
+        m.blend_method = "CLIP"
+        m.use_backface_culling = False
+        me.materials.append(m)
+        mats.append(len(me.materials) - 1)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    uv = bm.loops.layers.uv.verify()
+
+    def quad(p0, du, dv, mat, v0=0.0, v1=1.0):
+        """Czworokąt: p0 = nasada (u = 0, v = v0), du = wektor wzdłuż gałęzi, dv = wektor wysokości / szerokości tekstury."""
+        vv = [bm.verts.new(p0), bm.verts.new(p0 + du), bm.verts.new(p0 + du + dv), bm.verts.new(p0 + dv)]
+        f = bm.faces.new(vv)
+        f.material_index = mat
+        for lp, (a, b) in zip(f.loops, ((0, v0), (1, v0), (1, v1), (0, v1))):
+            lp[uv].uv = (a, b)
+
+    from mathutils import Vector as V
+    tiers = 30
+    z0 = 100.0 * bare
+    for k in range(tiers):
+        t = k / (tiers - 1)
+        z = z0 + (98.0 - z0) * t
+        L = (2.0 + 16.0 * (1.0 - t) ** 0.85) * fullness + 2.0
+        n = 7 if t < 0.8 else 5
+        base_phi = rng.uniform(0, math.tau)
+        for i in range(n):
+            if rng.random() < 0.07:
+                continue                                           # przerwa po złamanej gałęzi
+            phi = base_phi + math.tau * i / n + rng.uniform(-0.25, 0.25)
+            ln = L * rng.uniform(0.75, 1.1)
+            droop = math.radians(rng.uniform(8, 22) * (1.0 - 0.6 * t))
+            r = V((math.cos(phi), math.sin(phi), 0.0))
+            tan = V((-r.y, r.x, 0.0))
+            up = V((0, 0, 1))
+            root = r * (1.2 * (1.0 - t) + 0.2) + up * (z + rng.uniform(-1.2, 1.2))
+            d = (r * math.cos(droop) - up * math.sin(droop)) * ln
+            # profil z boku: tekstura 2:1, nasada na 0,84 wysokości
+            hq = ln * 0.5
+            vdir = (up * math.cos(droop) + r * math.sin(droop)) * hq
+            quad(root - vdir * 0.84, d, vdir, mats[0])
+            # wachlarz z góry (lekko skręcony), szerokość = połowa długości
+            wv = (tan * math.cos(0.25) + up * math.sin(0.25) * rng.choice((-1, 1))) * (ln * 0.5)
+            quad(root - wv * 0.5 - up * 0.3, d, wv, mats[1])
+    for i in range(5):                                         # czubek: krótkie gałązki ku górze
+        phi = math.tau * i / 5
+        r = V((math.cos(phi), math.sin(phi), 0.0))
+        d = (r * 0.45 + V((0, 0, 1)) * 0.9) * 6.0
+        quad(V((0, 0, 96.0)) - r.cross(V((0, 0, 1))) * 1.5, d, r.cross(V((0, 0, 1))) * 3.0, mats[1])
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    export_glb(trunk, name)
+
+
 def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False, depth_wp=None):
     src = os.path.join(TRIPO, fname)
     if not os.path.exists(src):
@@ -364,6 +478,16 @@ def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False
     me.transform(Matrix.Rotation(math.radians(rot), 4, "Z"))
     if name == "handcar":
         reshape_handcar(obj)
+    if name == "walkway_plank":                                  # bez nóg: zostają deski i belki nośne (kładka wisi na słupach mapy)
+        import bmesh
+        vz = np.array([v.co.z for v in me.vertices])
+        zc = vz.min() + 0.45 * (vz.max() - vz.min())
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z < zc], context="VERTS")
+        bm.to_mesh(me)
+        bm.free()
+        me.update()
     vs = np.array([v.co[:] for v in me.vertices])
     lo, hi = vs.min(axis=0), vs.max(axis=0)
     k = width_wp / max(hi[0] - lo[0], 1e-6)
@@ -427,6 +551,9 @@ def main():
     for name, spec in TRIPO_MODELS.items():
         if want(name):
             build_tripo(name, *spec)
+    for name, spec in SPRUCES.items():
+        if want(name):
+            build_spruce(name, *spec)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
