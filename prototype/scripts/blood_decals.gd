@@ -18,6 +18,10 @@ static func add(parent: Node, pos: Vector2, radius: float) -> void:
 		d.name = "BloodDecals"
 		parent.add_child(d)
 	d.call("_push", pos, radius)
+	var v3 := parent.get_tree().current_scene.get_node_or_null("View3D") if parent.get_tree().current_scene != null else null
+	if v3 != null:
+		d.visible = false                                 # widok 3D: kapiąca krew zbiera się w kałuże 3D
+		v3.call("mirror_blood", pos, radius * 0.6)
 
 func _push(pos: Vector2, radius: float) -> void:
 	_items.append([pos, radius, 0.0, randf()])

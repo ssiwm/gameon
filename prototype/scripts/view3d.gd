@@ -25,7 +25,7 @@ const FOV := 40.0
 const MAX_LIGHTS := 14
 const SHADOW_LIGHTS := 5
 const MIRROR_GROUPS := ["enemies", "boss", "nests", "roamers"]
-const HIDE_NAMES := ["Back", "Solid", "Deco", "TerrainHD", "TerrainHDBack", "Backdrop"]
+const HIDE_NAMES := ["Back", "Solid", "Deco", "Decals", "TerrainHD", "TerrainHDBack", "Backdrop"]
 const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wrogów
 const LAYER_ACTORS := 2                    ## warstwa wizualna graczy (modele 3D)
 const ACTOR_AMBIENT := 0.09                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
@@ -66,6 +66,8 @@ var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) �
 var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
 var _beam_masks := {}                    ## id światła 2D latarki → [światło, maska obiektów, cienie] do przywrócenia przy wyłączeniu widoku
 var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D, MeshInstance3D, losowe odchylenie]
+var _blood: Array = []                   ## kałuże krwi: [MeshInstance3D, promień docelowy, promień bieżący, wiek]
+var _blood_shader: Shader
 var _burn := {}                          ## id węzła 2D (plama ognia, płonące ciało, chmura dymu) → [węzeł, Node3D, rodzaj, koniec]
 var _fires := {}                         ## id flary 2D → [węzeł, Node3D ognia, rodzaj, pierścień strefy albo null]
 var _drawn := {}                         ## id węzła rysowanego kodem (radiostacja, mur) → [węzeł 2D, Node3D]
@@ -258,6 +260,7 @@ func _process(delta: float) -> void:
 	_sync_weapon_fx()
 	_sync_casings()
 	_sync_burning()
+	_sync_blood(delta)
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -1622,7 +1625,7 @@ func _sync_casings() -> void:
 		var b := cs[0] as RigidBody2D
 		var mi := cs[1] as MeshInstance3D
 		mi.position = Level3D.px_to_m(b.global_position) + Vector3(0.0, 0.0, 0.35 + float(cs[2]) * 0.3)
-		mi.rotation = Vector3(float(cs[2]), 0.0, -b.global_rotation + PI * 0.5)       # walec leży wzdłuż osi łuski 2D
+		mi.rotation = Vector3(float(cs[2]), 0.0, -b.global_rotation + (float(cs[3]) if cs.size() > 3 else PI * 0.5))       # łuska: walec wzdłuż osi łuski 2D; szczątek: płasko
 
 # ---------------------------------------------------------------- ogień, wybuchy, dym
 
@@ -1880,15 +1883,99 @@ func mirror_debris(body: RigidBody2D, size: Vector2, color: Color) -> void:
 	sm.height = 1.0
 	mi.mesh = sm
 	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(color.r, color.g, color.b)
-	m.roughness = 0.75
+	m.albedo_color = Color(color.r, color.g, color.b).darkened(0.45)
+	m.roughness = 0.32                                         # mokre
+	m.metallic_specular = 0.7
 	mi.material_override = m
-	mi.scale = Vector3(maxf(size.x, 1.0) * randf_range(0.8, 1.2), maxf(size.y, 1.0) * randf_range(0.8, 1.2), maxf(size.y, 1.0) * randf_range(0.7, 1.3)) * PX
+	mi.scale = Vector3(maxf(size.x, 1.0) * randf_range(0.5, 0.8), maxf(size.y, 1.0) * randf_range(0.3, 0.5), maxf(size.y, 1.0) * randf_range(0.45, 0.8)) * PX
 	mi.layers = LAYER_ACTORS
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_world.add_child(mi)
 	body.modulate = Color(1, 1, 1, 0)
-	_casings[body.get_instance_id()] = [body, mi, randf_range(-0.5, 0.5)]
+	_casings[body.get_instance_id()] = [body, mi, randf_range(-0.5, 0.5), 0.0]
+
+# ---------------------------------------------------------------- krew
+
+const BLOOD_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
+uniform float seed = 0.0;
+uniform float wet = 1.0;             // 1 = świeża (lśni), 0 = zaschnięta (matowa, ciemniejsza)
+uniform float fade = 1.0;
+//COMMON
+void fragment() {
+	vec2 p = (UV - 0.5) * 2.0;
+	float r = length(p);
+	float ang = atan(p.y, p.x);
+	// nieregularny brzeg z językami: kałuża rozlewa się nierówno
+	float edge = 0.70 + 0.26 * (fbm(vec2(ang * 1.6 + seed * 3.0, seed)) - 0.5) * 2.0 + 0.12 * (vn(vec2(cos(ang), sin(ang)) * 5.0 + seed) - 0.5);
+	float a = 1.0 - smoothstep(edge - 0.10, edge, r);
+	if (a < 0.02) { discard; }
+	float thick = smoothstep(edge, edge * 0.35, r);                 // środek głębszy i ciemniejszy
+	ALBEDO = mix(vec3(0.11, 0.006, 0.008), vec3(0.035, 0.002, 0.004), thick) * mix(0.55, 1.0, wet);
+	ROUGHNESS = mix(0.8, 0.16, wet);
+	SPECULAR = mix(0.2, 0.6, wet);
+	ALPHA = a * mix(0.90, 0.98, thick) * fade;
+}
+"""
+const BLOOD_MAX := 70                       ## limit kałuż (najstarsze znikają)
+const BLOOD_MERGE_M := 0.45                 ## bliższe plamy zlewają się w jedną, większą kałużę
+const BLOOD_MAX_R := 0.75                   ## największy promień kałuży [m]
+
+## Wołane z `Vfx.splat` (szczątki, śmierć wroga) i `BloodDecals.add` (kapanie rannych): krew zbiera się w lśniące kałuże na gruncie.
+## Plama blisko istniejącej ją powiększa (kałuża rośnie), nowa rozlewa się przez ok. 1,5 s; z czasem krew zasycha (matowieje) i znika.
+func mirror_blood(pos: Vector2, radius: float) -> void:
+	var at := Level3D.px_to_m(pos)
+	var want := clampf(radius * PX * 1.7, 0.10, BLOOD_MAX_R)
+	for b in _blood:
+		var mi_v = b[0]
+		if is_instance_valid(mi_v) and absf((mi_v as Node3D).position.x - at.x) < BLOOD_MERGE_M and absf((mi_v as Node3D).position.y - at.y) < 0.25:
+			b[1] = minf(sqrt(float(b[1]) * float(b[1]) + want * want * 0.6), BLOOD_MAX_R)      # sumowanie powierzchni
+			b[3] = 0.0                                                                         # znów świeża
+			return
+	var mi := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(2.0, 2.0)
+	mi.mesh = pm
+	var sm := ShaderMaterial.new()
+	if _blood_shader == null:
+		_blood_shader = Shader.new()
+		_blood_shader.code = BLOOD_SHADER.replace("//COMMON", Level3D.PROP_COMMON)
+	sm.shader = _blood_shader
+	sm.set_shader_parameter("seed", randf() * 40.0)
+	mi.material_override = sm
+	mi.layers = LAYER_WORLD
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.position = Vector3(at.x, at.y + 0.015 + 0.0004 * float(_blood.size()), randf_range(-0.35, 0.55))
+	mi.rotation.y = randf() * TAU
+	mi.scale = Vector3(0.03, 1.0, 0.03)
+	_geo.add_child(mi)                                         # znika z geometrią mapy
+	_blood.append([mi, want, 0.03, 0.0])
+	if _blood.size() > BLOOD_MAX:
+		var old: Array = _blood.pop_front()
+		if is_instance_valid(old[0]):
+			(old[0] as Node).queue_free()
+
+func _sync_blood(delta: float) -> void:
+	var i := 0
+	while i < _blood.size():
+		var b: Array = _blood[i]
+		if not is_instance_valid(b[0]):
+			_blood.remove_at(i)
+			continue
+		var mi := b[0] as MeshInstance3D
+		b[2] = move_toward(float(b[2]), float(b[1]), delta * maxf(0.06, (float(b[1]) - float(b[2])) * 1.4))      # rozlewanie: szybko, potem coraz wolniej
+		b[3] = float(b[3]) + delta
+		mi.scale = Vector3(float(b[2]), 1.0, float(b[2]) * 0.8)
+		var sm := mi.material_override as ShaderMaterial
+		sm.set_shader_parameter("wet", 1.0 - smoothstep(25.0, 70.0, float(b[3])))
+		var fade := 1.0 - smoothstep(110.0, 130.0, float(b[3]))
+		sm.set_shader_parameter("fade", fade)
+		if fade <= 0.0:
+			mi.queue_free()
+			_blood.remove_at(i)
+			continue
+		i += 1
 
 # ---------------------------------------------------------------- tor drezyny
 
