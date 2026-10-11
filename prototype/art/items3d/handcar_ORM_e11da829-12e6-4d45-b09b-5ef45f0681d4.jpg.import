@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ugwt7l46ynxv"
-path="res://.godot/imported/handcar_handcar_nrm.jpg-f4b0641cbacac8ff670ef578097ccaa7.ctex"
+uid="uid://btsq7y8e2lhba"
+path="res://.godot/imported/handcar_ORM_e11da829-12e6-4d45-b09b-5ef45f0681d4.jpg-129cdd6cfa6e838a37dd0c8169cf0431.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "82b1b9783537cde6435567f6ec987bb8"
+"md5": "5e0111aeb5135a6046679a02007d50d1"
 }
 
 [deps]
 
-source_file="res://art/items3d/handcar_handcar_nrm.jpg"
-dest_files=["res://.godot/imported/handcar_handcar_nrm.jpg-f4b0641cbacac8ff670ef578097ccaa7.ctex"]
+source_file="res://art/items3d/handcar_ORM_e11da829-12e6-4d45-b09b-5ef45f0681d4.jpg"
+dest_files=["res://.godot/imported/handcar_ORM_e11da829-12e6-4d45-b09b-5ef45f0681d4.jpg-129cdd6cfa6e838a37dd0c8169cf0431.ctex"]
 
 [params]
 

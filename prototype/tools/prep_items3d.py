@@ -54,8 +54,8 @@ TRIPO_MODELS = {
     "stool": ("stool.glb", "-Y", 9.6, 5000, 10.5),
     "bones": ("bones.glb", "-Y", 17.7, 5000, 8.0),
     "flare": ("flare.glb", "-Y", 3.4, 2000, 15.8),
-    # trzecia partia: tablice, lampa, sprzęt z diodami, strzelnica, części drezyny (korpus drezyny zostaje proceduralny — pokład musi
-    # leżeć dokładnie na wysokości stóp graczy, a model z generatora ma własne koła i wysoki słup latarni)
+    # trzecia partia: tablice, lampa, sprzęt z diodami, strzelnica, drezyna (korpus + osobno koło i dźwignia)
+    "handcar": ("handcar.glb", "-Y", 92.4, 12000),             # kształt dopasowuje reshape_handcar (bez kół, pokład na wysokości stóp)
     "handcar_wheel": ("handcar_wheel.glb", "+X", 6.8, 4000, 6.8, True),
     "handcar_lever": ("handcar_lever.glb", "+X", 46.0, 4000, 8.0),
     "board": ("board.glb", "+X", 60.0, 5000, 40.0),
@@ -291,6 +291,37 @@ def build_proc(ns, name, builder):
 
 # ------------------------------------------------------------------ modele z Tripo
 
+def reshape_handcar(obj):
+    """Korpus drezyny z Tripo → kształt, którego wymaga gra (`handcar.gd`): bez własnych kół (koła i dźwignia to osobne, animowane modele),
+    pokład o grubości 3,35 px (góra pokładu = stopy graczy, 5,35 px nad torem przy korpusie 2 px nad torem), słup latarni skrócony przez
+    usunięcie środkowego odcinka pręta (latarnia zostaje nieściśnięta). Liczby to ułamki wysokości modelu źródłowego (pomiar przekrojów)."""
+    import bmesh
+    me = obj.data
+    vs = np.array([v.co[:] for v in me.vertices])
+    lo, hi = vs.min(axis=0), vs.max(axis=0)
+    H = hi[2] - lo[2]
+    px = 92.4 / (hi[0] - lo[0])                               # pikseli świata na jednostkę modelu (szerokość pokładu jak sprite)
+    z_cut = lo[2] + 0.063 * H                                 # poniżej: koła i osie
+    z_deck = lo[2] + 0.167 * H                                # góra pokładu
+    z_p0, z_p1 = lo[2] + 0.333 * H, lo[2] + 0.733 * H         # usuwany odcinek pręta latarni
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z < z_cut], context="VERTS")
+    deck_k = 3.35 / ((z_deck - z_cut) * px)
+    for v in bm.verts:
+        z = v.co.z
+        if z <= z_deck:
+            nz = (z - z_cut) * deck_k
+        else:
+            zz = min(z, z_p0) + max(z - z_p1, 0.0)             # pręt między z_p0 a z_p1 zapada się do z_p0
+            nz = (z_deck - z_cut) * deck_k + (zz - z_deck)
+        v.co.z = nz
+        v.co.y *= 0.62                                         # płytszy pokład (ok. 14 px)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+
 def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False, depth_wp=None):
     src = os.path.join(TRIPO, fname)
     if not os.path.exists(src):
@@ -312,6 +343,8 @@ def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False
     rot = {"-Y": 0.0, "+Y": 180.0, "+X": -90.0, "-X": 90.0}[cam]
     me = obj.data
     me.transform(Matrix.Rotation(math.radians(rot), 4, "Z"))
+    if name == "handcar":
+        reshape_handcar(obj)
     vs = np.array([v.co[:] for v in me.vertices])
     lo, hi = vs.min(axis=0), vs.max(axis=0)
     k = width_wp / max(hi[0] - lo[0], 1e-6)
