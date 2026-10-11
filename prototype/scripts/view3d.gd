@@ -873,6 +873,11 @@ func _sync_items() -> void:
 		var par := sp.get_parent()
 		if par != null and par.is_in_group("props"):
 			continue                                  # skrzynie i beczki mają własne bryły (_sync_props)
+		if sp.region_enabled:                         # wycinek sprite'a rysowany przed graczami (osłona pokładu drezyny) — sztuczka 2D, w 3D zbędna
+			sp.self_modulate = Color(1, 1, 1, 0)
+			_items[sp.get_instance_id()] = [sp, Node3D.new(), null, 0.0, [sp], true]
+			_world.add_child(_items[sp.get_instance_id()][1])
+			continue
 		_make_item(sp)
 	for id in _items.keys():
 		var it: Array = _items[id]
@@ -892,7 +897,10 @@ func _sync_items() -> void:
 		if bool(it[5]):                                        # model 3D: początek w stopach sprite'a, jednostka modelu = piksel świata
 			var k := absf(sc.x) * ItemsHd.ppw(String(sp.get_meta("hd_name", ""))) * PX
 			var fl := -1.0 if (sp.flip_h != (xf.determinant() < 0.0)) else 1.0
-			(it[1] as Node3D).position = Level3D.px_to_m(xf.origin) + Vector3(0.0, 0.0, float(it[3]))
+			# stopy modelu = dolna krawędź bryły w ramce sprite'a (dla sprite'ów obracanych wokół środka — koła, dźwignia — to nie jest początek węzła)
+			var nm3 := String(sp.get_meta("hd_name", ""))
+			var feet := xf * (sp.offset + Vector2(0.0, ItemsHd.frame_px(nm3).y * 0.5 - ItemsHd.PAD))
+			(it[1] as Node3D).position = Level3D.px_to_m(feet) + Vector3(0.0, 0.0, float(it[3]))
 			(it[1] as Node3D).rotation = Vector3(0.0, 0.0, -xf.get_rotation())
 			(it[1] as Node3D).scale = Vector3(k * fl, k, k)
 			continue
@@ -954,10 +962,21 @@ func _make_item(sp: Sprite2D) -> void:
 		_world.add_child(model)
 		var hid: Array = [sp]
 		sp.self_modulate = Color(1, 1, 1, 0)
+		var emits := false
+		for n in model.find_children("*", "MeshInstance3D", true, false):
+			var mm := (n as MeshInstance3D).mesh
+			if mm != null and mm.get_surface_count() > 0 and mm.surface_get_material(0) is BaseMaterial3D and (mm.surface_get_material(0) as BaseMaterial3D).emission_enabled:
+				emits = true
 		for c in sp.get_children():
-			if c is Sprite2D and (c as Sprite2D).texture == alb:
+			# kopia „widoczna w ciemności” oraz nakładka diod / ekranu ze sprite'a: model ma własną emisję w swoich miejscach
+			if c is Sprite2D and ((c as Sprite2D).texture == alb or emits):
 				(c as Sprite2D).visible = false
 				hid.append(c)
+		if name == "handcar":                                  # belka podwozia rysowana w 2D przed graczami zasłaniałaby koła 3D
+			var apron := sp.get_parent().get_node_or_null("Apron") as CanvasItem
+			if apron != null:
+				apron.visible = false
+				hid.append(apron)
 		_items[sp.get_instance_id()] = [sp, model, null, -1.45 if ITEM_BACK.has(name) else -0.2, hid, true]
 		return
 	var m := StandardMaterial3D.new()
