@@ -66,6 +66,7 @@ var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) �
 var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
 var _beam_masks := {}                    ## id światła 2D latarki → [światło, maska obiektów, cienie] do przywrócenia przy wyłączeniu widoku
 var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D, MeshInstance3D, losowe odchylenie]
+var _burn := {}                          ## id węzła 2D (plama ognia, płonące ciało, chmura dymu) → [węzeł, Node3D, rodzaj, koniec]
 var _fires := {}                         ## id flary 2D → [węzeł, Node3D ognia, rodzaj, pierścień strefy albo null]
 var _drawn := {}                         ## id węzła rysowanego kodem (radiostacja, mur) → [węzeł 2D, Node3D]
 var _span: Array = []                    ## trasa drezyny (_rail_span)
@@ -166,6 +167,10 @@ func release() -> void:
 		if is_instance_valid(_fires[id][0]):
 			_fires[id][0].set("fx3d", false)
 	_fires.clear()
+	for id in _burn.keys():
+		if is_instance_valid(_burn[id][0]) and String(_burn[id][2]) != "host":
+			(_burn[id][0] as CanvasItem).self_modulate = Color.WHITE
+	_burn.clear()
 	for id in _casings.keys():
 		if is_instance_valid(_casings[id][0]):
 			(_casings[id][0] as CanvasItem).modulate = Color.WHITE
@@ -252,6 +257,7 @@ func _process(delta: float) -> void:
 	_sync_fires()
 	_sync_weapon_fx()
 	_sync_casings()
+	_sync_burning()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -1387,6 +1393,19 @@ func _sync_fires() -> void:
 			if pv != null and is_instance_valid(pv):
 				tip = src.global_transform * ((pv as Node2D).position + Vector2(0.0, -ItemsHd.body_wp("flare").y * 0.25).rotated((pv as Node2D).rotation))
 			fire.position = Level3D.px_to_m(tip) + Vector3(0.0, 0.0, -0.2)
+			# model tuby (z `_sync_items`) ma inne proporcje niż sprite — płomień siedzi na czubku modelu, nie w punkcie wyliczonym ze sprite'a
+			if pv != null and is_instance_valid(pv):
+				for ch in (pv as Node).get_children():
+					if ch is Sprite2D and _items.has(ch.get_instance_id()) and bool(_items[ch.get_instance_id()][5]):
+						var tube := _items[ch.get_instance_id()][1] as Node3D
+						if fr[3] == null:
+							var top := 0.0
+							for mn in tube.find_children("*", "MeshInstance3D", true, false):
+								var bb := _local_xf(mn as Node3D, tube) * (mn as MeshInstance3D).get_aabb()
+								top = maxf(top, bb.position.y + bb.size.y)
+							fr[3] = top
+						fire.position = tube.global_transform * Vector3(0.0, float(fr[3]), 0.0)
+						break
 			var a := clampf(float(src.get("life")) / 3.0, 0.0, 1.0)             # ostatnie 3 s: płomień przygasa
 			fire.scale = Vector3.ONE * lerpf(0.35, 1.0, a)
 			fire.visible = src.is_visible_in_tree()
@@ -1588,6 +1607,8 @@ func mirror_casing(body: RigidBody2D, big: bool) -> void:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_world.add_child(mi)
 	body.modulate = Color(1, 1, 1, 0)
+	if _casings.has(body.get_instance_id()) and is_instance_valid(_casings[body.get_instance_id()][1]):
+		(_casings[body.get_instance_id()][1] as Node).queue_free()       # ogólna bryłka z `mirror_debris`
 	_casings[body.get_instance_id()] = [body, mi, randf_range(-0.5, 0.5)]
 
 func _sync_casings() -> void:
@@ -1602,6 +1623,272 @@ func _sync_casings() -> void:
 		var mi := cs[1] as MeshInstance3D
 		mi.position = Level3D.px_to_m(b.global_position) + Vector3(0.0, 0.0, 0.35 + float(cs[2]) * 0.3)
 		mi.rotation = Vector3(float(cs[2]), 0.0, -b.global_rotation + PI * 0.5)       # walec leży wzdłuż osi łuski 2D
+
+# ---------------------------------------------------------------- ogień, wybuchy, dym
+
+## Pas ognia o szerokości `width` [m]: języki płomieni z całej długości, iskry i żar przy ziemi (plamy ognia miotacza, płonące ciała).
+func _make_fire_line(width: float, height: float, col := Color(1.0, 0.5, 0.15)) -> Node3D:
+	var root := Node3D.new()
+	var hot := col.lerp(Color(1.0, 0.95, 0.7), 0.7)
+	var flame := CPUParticles3D.new()
+	flame.name = "Flame"
+	flame.amount = int(clampf(width * 20.0, 12.0, 80.0))
+	flame.lifetime = 0.7
+	flame.local_coords = false
+	var q := QuadMesh.new()
+	q.size = Vector2(height * 0.42, height * 0.42)
+	q.material = _fire_mat()
+	flame.mesh = q
+	flame.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	flame.emission_box_extents = Vector3(width * 0.5, 0.02, 0.18)
+	flame.direction = Vector3.UP
+	flame.spread = 14.0
+	flame.gravity = Vector3(0.0, height * 3.4, 0.0)
+	flame.initial_velocity_min = height * 0.9
+	flame.initial_velocity_max = height * 2.0
+	var sc := Curve.new()
+	sc.add_point(Vector2(0.0, 0.6))
+	sc.add_point(Vector2(0.2, 1.0))
+	sc.add_point(Vector2(1.0, 0.1))
+	flame.scale_amount_curve = sc
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(hot.r, hot.g, hot.b, 0.0))
+	ramp.add_point(0.08, Color(hot.r, hot.g, hot.b, 0.36))
+	ramp.add_point(0.35, Color(col.r, col.g, col.b, 0.36))
+	ramp.set_color(ramp.get_point_count() - 1, Color(0.5, 0.1, 0.03, 0.0))
+	flame.color_ramp = ramp
+	flame.layers = LAYER_WORLD
+	flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(flame)
+	var sparks := CPUParticles3D.new()
+	sparks.name = "Sparks"
+	sparks.amount = int(clampf(width * 8.0, 5.0, 24.0))
+	sparks.lifetime = 1.2
+	sparks.local_coords = false
+	var sq := QuadMesh.new()
+	sq.size = Vector2(0.045, 0.045)
+	sq.material = _fire_mat()
+	sparks.mesh = sq
+	sparks.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	sparks.emission_box_extents = Vector3(width * 0.5, 0.05, 0.18)
+	sparks.direction = Vector3.UP
+	sparks.spread = 28.0
+	sparks.gravity = Vector3(0.0, 0.6, 0.0)
+	sparks.initial_velocity_min = height * 1.5
+	sparks.initial_velocity_max = height * 3.2
+	var sr := Gradient.new()
+	sr.set_color(0, Color(1.0, 0.9, 0.6, 1.0))
+	sr.set_color(1, Color(1.0, 0.4, 0.1, 0.0))
+	sparks.color_ramp = sr
+	sparks.layers = LAYER_WORLD
+	sparks.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(sparks)
+	return root
+
+func _stop_fire(root: Node3D, after := 1.4) -> void:
+	for ch in root.get_children():
+		if ch is CPUParticles3D:
+			(ch as CPUParticles3D).emitting = false
+		else:
+			(ch as Node3D).visible = false
+	get_tree().create_timer(after).timeout.connect(root.queue_free)
+
+## Plamy ognia miotacza, płonące ciała i chmury dymu w scenie 3D (rysunek 2D chowany przez `self_modulate`).
+func _sync_burning() -> void:
+	for n in get_tree().get_nodes_in_group("fire_patches"):
+		if _burn.has(n.get_instance_id()) or not (n is Node2D) or n.is_queued_for_deletion():
+			continue
+		var f := _make_fire_line(float(n.HALF_W) * 2.0 * PX, 0.9)
+		_world.add_child(f)
+		(n as CanvasItem).self_modulate = Color(1, 1, 1, 0)
+		_burn[n.get_instance_id()] = [n, f, "patch", 0.0]
+	for n in get_tree().get_nodes_in_group("smoke_clouds"):
+		if _burn.has(n.get_instance_id()) or not (n is Node2D) or n.is_queued_for_deletion():
+			continue
+		var root := Node3D.new()
+		_world.add_child(root)
+		var fv := FogVolume.new()                               # prawdziwy dym: bryła mgły oświetlana latarką i ogniem (jakość MEDIUM / HIGH)
+		fv.shape = RenderingServer.FOG_VOLUME_SHAPE_ELLIPSOID
+		var fm := FogMaterial.new()
+		fm.density = 2.2
+		fm.albedo = Color(0.42, 0.44, 0.47)
+		fm.edge_fade = 0.5
+		fv.material = fm
+		root.add_child(fv)
+		var puffs := CPUParticles3D.new()                       # kłęby: widoczne także bez mgły wolumetrycznej
+		puffs.amount = 22
+		puffs.lifetime = 3.2
+		puffs.local_coords = false
+		var pq := QuadMesh.new()
+		pq.size = Vector2(1.6, 1.6)
+		var pm := StandardMaterial3D.new()
+		pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		pm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		pm.billboard_keep_scale = true
+		pm.vertex_color_use_as_albedo = true
+		pm.albedo_texture = n.puff_texture()
+		pq.material = pm
+		puffs.mesh = pq
+		puffs.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+		puffs.gravity = Vector3(0.0, 0.12, 0.0)
+		puffs.initial_velocity_min = 0.05
+		puffs.initial_velocity_max = 0.25
+		puffs.spread = 180.0
+		puffs.angle_min = 0.0
+		puffs.angle_max = 360.0
+		var pr := Gradient.new()
+		pr.set_color(0, Color(0.16, 0.17, 0.19, 0.0))
+		pr.add_point(0.25, Color(0.20, 0.21, 0.24, 0.34))
+		pr.set_color(pr.get_point_count() - 1, Color(0.26, 0.27, 0.3, 0.0))
+		puffs.color_ramp = pr
+		puffs.layers = LAYER_ACTORS
+		puffs.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(puffs)
+		(n as CanvasItem).self_modulate = Color(1, 1, 1, 0)
+		_burn[n.get_instance_id()] = [n, root, "smoke", 0.0]
+	for id in _burn.keys():
+		var br: Array = _burn[id]
+		var src_v = br[0]
+		var node := br[1] as Node3D
+		var kind := String(br[2])
+		var gone: bool = not is_instance_valid(src_v) or (src_v as Node).is_queued_for_deletion()
+		if kind == "host" and not gone and _life > float(br[3]):
+			gone = true
+		if kind == "host" and not gone and (src_v.get("alive") == false or not (src_v as CanvasItem).is_visible_in_tree()):
+			gone = true
+		if gone:
+			if is_instance_valid(node):
+				if kind == "smoke":
+					node.queue_free()
+				else:
+					_stop_fire(node)
+			_burn.erase(id)
+			continue
+		var src := src_v as Node2D
+		if kind == "patch":
+			node.position = Level3D.px_to_m(src.global_position) + Vector3(0.0, 0.02, 0.25)
+			var fade := clampf(float(src.get("life")) / 0.8, 0.0, 1.0)
+			node.scale = Vector3(1.0, lerpf(0.3, 1.0, fade), 1.0)
+		elif kind == "host":
+			node.position = Level3D.px_to_m(src.global_position + Vector2(0.0, -4.0)) + Vector3(0.0, 0.0, 0.35)
+		else:
+			var r := maxf(float(src.get("radius")), 1.0) * PX
+			var fade2 := clampf(float(src.get("life")) / 2.0, 0.0, 1.0)
+			node.position = Level3D.px_to_m(src.global_position) + Vector3(0.0, 0.0, 0.2)
+			var fv2 := node.get_child(0) as FogVolume
+			fv2.size = Vector3(r * 2.0, r * 1.7, 3.0)
+			(fv2.material as FogMaterial).density = 2.2 * fade2
+			var pf := node.get_child(1) as CPUParticles3D
+			pf.emission_sphere_radius = r * 0.7
+			pf.scale_amount_min = r * 0.5
+			pf.scale_amount_max = r * 0.9
+			pf.emitting = fade2 > 0.35
+
+## Wołane z `Vfx.burning`: płomienie na ciele (wróg, beczka) przez `seconds` s.
+func mirror_burning(host: Node2D, seconds: float) -> void:
+	var id := host.get_instance_id()
+	if _burn.has(id):
+		_burn[id][3] = _life + seconds
+		return
+	var f := _make_fire_line(0.6, 0.75)
+	_world.add_child(f)
+	_burn[id] = [host, f, "host", _life + seconds]
+
+## Wołane z `Vfx.shock`: fala uderzeniowa jako rozszerzający się pierścień zwrócony do kamery.
+func mirror_shock(pos: Vector2, radius: float) -> void:
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.93
+	tm.outer_radius = 1.0
+	tm.rings = 40
+	tm.ring_segments = 6
+	ring.mesh = tm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.albedo_color = Color(1.0, 0.85, 0.55, 0.7)
+	ring.material_override = m
+	ring.layers = LAYER_ACTORS
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ring.position = Level3D.px_to_m(pos) + Vector3(0.0, 0.0, 0.3)
+	ring.rotation.x = PI * 0.5
+	var r0 := radius * PX * 0.25
+	var r1 := radius * PX * 1.1
+	ring.scale = Vector3(r0, r0, r0)
+	_world.add_child(ring)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(ring, "scale", Vector3(r1, r1, r1), 0.3).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	tw.tween_property(m, "albedo_color:a", 0.0, 0.3)
+	tw.chain().tween_callback(ring.queue_free)
+
+## Wołane z `Vfx.explosion`: kula ognia (błysk rosnący i gasnący), języki ognia rozrzucone wybuchem i unoszący się kłąb dymu.
+func mirror_explosion(pos: Vector2, radius: float) -> void:
+	var at := Level3D.px_to_m(pos) + Vector3(0.0, 0.0, 0.3)
+	var r := radius * PX
+	var ball := _glow_quad(Color(1.0, 0.8, 0.5, 0.55))
+	(ball.material_override as StandardMaterial3D).billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	ball.position = at
+	ball.scale = Vector3.ONE * r * 0.5
+	_world.add_child(ball)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(ball, "scale", Vector3.ONE * r * 1.5, 0.22).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ball.material_override, "albedo_color", Color(1.0, 0.4, 0.1, 0.0), 0.3)
+	tw.chain().tween_callback(ball.queue_free)
+	var fire := CPUParticles3D.new()
+	fire.one_shot = true
+	fire.explosiveness = 0.95
+	fire.amount = int(clampf(r * 9.0, 14.0, 50.0))
+	fire.lifetime = 0.55
+	var q := QuadMesh.new()
+	q.size = Vector2(r * 0.4, r * 0.4)
+	q.material = _fire_mat()
+	fire.mesh = q
+	fire.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	fire.emission_sphere_radius = r * 0.2
+	fire.spread = 180.0
+	fire.initial_velocity_min = r * 0.8
+	fire.initial_velocity_max = r * 3.2
+	fire.damping_min = 3.0
+	fire.damping_max = 6.0
+	fire.gravity = Vector3(0.0, 1.5, 0.0)
+	var sc := Curve.new()
+	sc.add_point(Vector2(0.0, 0.5))
+	sc.add_point(Vector2(0.25, 1.0))
+	sc.add_point(Vector2(1.0, 0.2))
+	fire.scale_amount_curve = sc
+	var g := Gradient.new()
+	g.set_color(0, Color(1.0, 0.9, 0.65, 0.3))
+	g.add_point(0.35, Color(1.0, 0.45, 0.1, 0.24))
+	g.set_color(g.get_point_count() - 1, Color(0.25, 0.08, 0.04, 0.0))
+	fire.color_ramp = g
+	fire.layers = LAYER_WORLD
+	fire.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	fire.position = at
+	_world.add_child(fire)
+	fire.emitting = true
+	get_tree().create_timer(1.4).timeout.connect(fire.queue_free)
+
+## Wołane z `Vfx.debris`: odłamek / szczątek jako nieregularna bryłka 3D w kolorze 2D, podążająca za ciałem fizycznym.
+func mirror_debris(body: RigidBody2D, size: Vector2, color: Color) -> void:
+	var mi := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radial_segments = 6
+	sm.rings = 3
+	sm.radius = 0.5
+	sm.height = 1.0
+	mi.mesh = sm
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(color.r, color.g, color.b)
+	m.roughness = 0.75
+	mi.material_override = m
+	mi.scale = Vector3(maxf(size.x, 1.0) * randf_range(0.8, 1.2), maxf(size.y, 1.0) * randf_range(0.8, 1.2), maxf(size.y, 1.0) * randf_range(0.7, 1.3)) * PX
+	mi.layers = LAYER_ACTORS
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_world.add_child(mi)
+	body.modulate = Color(1, 1, 1, 0)
+	_casings[body.get_instance_id()] = [body, mi, randf_range(-0.5, 0.5)]
 
 # ---------------------------------------------------------------- tor drezyny
 

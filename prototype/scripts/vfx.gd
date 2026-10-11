@@ -159,6 +159,8 @@ static func debris(parent: Node, pos: Vector2, vel: Vector2, size: Vector2, colo
 	b.position = pos
 	b.tree_entered.connect(_track.bind(b), CONNECT_ONE_SHOT)
 	parent.add_child.call_deferred(b)
+	if view3d != null and is_instance_valid(view3d):
+		view3d.call("mirror_debris", b, size, color)      # odłamek / szczątek jako bryłka 3D (łuska dostaje własny kształt w `casing`)
 	return b
 
 static func _track(b: Node) -> void:
@@ -336,6 +338,9 @@ static func shock(parent: Node, pos: Vector2, radius: float) -> void:
 	r.z_index = 3
 	parent.add_child(r)
 	r.global_position = pos
+	if view3d != null and is_instance_valid(view3d):
+		r.visible = false                                 # fala uderzeniowa w scenie 3D
+		view3d.call("mirror_shock", pos, radius)
 
 ## Pełny wybuch (granat, rakieta, beczka): ogień, dym, odłamki, błysk światła i fala.
 ## `radius` w px; wszystko w skali do promienia, więc jeden efekt obsługuje każdy rozmiar.
@@ -350,6 +355,8 @@ static func explosion(parent: Node, pos: Vector2, radius: float) -> void:
 		debris(parent, pos, Vector2(randf_range(-160, 160), randf_range(-260, -90)) * k, Vector2(3, 2),
 			Color(0.55, 0.14, 0.1).darkened(randf() * 0.4), 0.3, 14.0)
 	shock(parent, pos, radius)
+	if view3d != null and is_instance_valid(view3d):
+		view3d.call("mirror_explosion", pos, radius)      # kula ognia i kłęby dymu w scenie 3D
 	var flash := Lights.make_light(Lights.radial(), 7.0 * k, Color(1.0, 0.65, 0.3), 2.2, true)
 	parent.add_child(flash)
 	flash.global_position = pos
@@ -388,6 +395,9 @@ static func burning(host: Node2D, seconds: float) -> void:
 	fx.material = Lights.unshaded()
 	fx.position = Vector2(0, -8)
 	host.add_child(fx)
+	if view3d != null and is_instance_valid(view3d):
+		fx.visible = false                                # płomienie na ciele w scenie 3D
+		view3d.call("mirror_burning", host, seconds)
 	var lt := Lights.make_light(Lights.radial(), 2.6, Color(1.0, 0.55, 0.22), 0.9, false)
 	lt.position = Vector2(0, -8)
 	host.add_child(lt)
