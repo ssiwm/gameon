@@ -69,6 +69,10 @@ var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D
 var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
 var _ws_lamps := {}                      ## id warsztatu → lampa nad nim (Node3D w geometrii mapy)
 var _globs := {}                         ## id plwociny / kwasu → [węzeł 2D, kula 3D]
+var _dots_mi: MeshInstance3D             ## świecące punkty (lampki, diody, oczy w mroku) i znaczniki na podłodze — jedna siatka
+var _hid2d: Array = []                   ## węzły 2D schowane przez `self_modulate` (do przywrócenia w widoku 2D)
+var _worldfx := {}                       ## id obiektu → {"src", "nodes": [węzły 3D], …} (dym generatora, napisy strzelnicy, tablica wyników)
+var _surf_t := 0.0                       ## do następnego odświeżenia tekstur z rysunkiem 2D [s]
 var _nestfx := {}                        ## id gniazda → [węzeł 2D, żar 3D]
 var _ring_mi: MeshInstance3D             ## pierścienie alarmu wrogów (jedna siatka na wszystkie)
 var _motes: CPUParticles3D               ## pył w powietrzu wokół kamery
@@ -185,6 +189,15 @@ func release() -> void:
 	var wxr := get_tree().root.find_child("WeatherFx", true, false)
 	if wxr != null:
 		wxr.set("fx3d", false)
+	for h2 in _hid2d:
+		if is_instance_valid(h2):
+			(h2 as CanvasItem).self_modulate = Color.WHITE
+	_hid2d.clear()
+	for id in _worldfx.keys():
+		for wn in _worldfx[id]["nodes"]:
+			if is_instance_valid(wn):
+				(wn as Node).queue_free()
+	_worldfx.clear()
 	for am in _amb_hidden:
 		if is_instance_valid(am):
 			(am as CanvasItem).visible = true
@@ -315,6 +328,7 @@ func _process(delta: float) -> void:
 	_sync_nests()
 	_sync_enemy_rings()
 	_sync_ambient()
+	_sync_world_fx(delta)
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -2530,6 +2544,320 @@ func _sync_lamps() -> void:
 		g.position = Level3D.px_to_m((src as Node2D).global_position + Vector2(0.0, 11.0)) + Vector3(0.0, 0.0, z + 0.12)
 		g.scale = Vector3.ONE * (0.75 + 0.1 * f)
 		(g.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.82, 0.55, 0.55 * f)
+
+# ---------------------------------------------------------------- lampki, diody, oczy w mroku, strzelnica, tablica wyników
+
+const DREAD_Z := -1.3                    ## oczy w mroku: w głębi sceny, za płaszczyzną gry
+
+## Chowa rysunek 2D węzła (tylko jego własny `_draw`, dzieci zostają) i zapamiętuje go do przywrócenia.
+func _hide2d(n) -> void:
+	if n != null and is_instance_valid(n) and (n as CanvasItem).self_modulate.a > 0.0:
+		(n as CanvasItem).self_modulate = Color(1, 1, 1, 0)
+		_hid2d.append(n)
+
+## Przód (największe Z) modelu 3D postawionego przez `_sync_items` dla sprite'a `hd_name` będącego dzieckiem `owner`; NAN, gdy modelu jeszcze nie ma.
+func _model_front(owner: Node, hd_name: String) -> float:
+	for ch in owner.get_children():
+		if not (ch is Sprite2D) or String(ch.get_meta("hd_name", "")) != hd_name or not _items.has(ch.get_instance_id()):
+			continue
+		var root := _items[ch.get_instance_id()][1] as Node3D
+		var zmax := -INF
+		for mi in root.find_children("*", "MeshInstance3D", true, false):
+			var ab: AABB = (mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()
+			zmax = maxf(zmax, ab.end.z)
+		if zmax > -INF:
+			return zmax
+	return NAN
+
+## Świecący punkt (miękki krążek zwrócony do kamery) dopisany do siatki punktów.
+func _dot(im: ImmediateMesh, c: Vector3, r: float, col: Color) -> void:
+	for k in [0, 1, 2, 2, 1, 3]:
+		var u := float(k % 2)
+		var v := float(k / 2)
+		im.surface_set_uv(Vector2(u, v))
+		im.surface_set_color(col)
+		im.surface_add_vertex(c + Vector3((u * 2.0 - 1.0) * r, (v * 2.0 - 1.0) * r, 0.0))
+
+## Pasek leżący na podłodze (prostokąt w płaszczyźnie XZ) dopisany do siatki punktów — pełny kolor (środek tekstury).
+func _floor_strip(im: ImmediateMesh, a: Vector3, b: Vector3, w: float, col: Color) -> void:
+	var d := (b - a).normalized()
+	var n := Vector3(-d.z, 0.0, d.x) * w * 0.5
+	for p in [a - n, a + n, b - n, b - n, a + n, b + n]:
+		im.surface_set_uv(Vector2(0.5, 0.5))
+		im.surface_set_color(col)
+		im.surface_add_vertex(p)
+
+func _label3d(text: String, px_h: float, col: Color) -> Label3D:
+	var l := Label3D.new()
+	l.text = text
+	l.font = ThemeDB.fallback_font
+	l.font_size = 64
+	l.pixel_size = px_h * PX / 64.0
+	l.outline_size = 0
+	l.modulate = col
+	l.layers = LAYER_WORLD
+	l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return l
+
+## Drobne elementy świata rysowane dotąd na płaskiej nakładce — teraz w scenie 3D (stan czytany z ich skryptów, rysunek 2D chowany):
+##  - lampka generatora (czerwona / bursztynowa przy rozruchu / zielona, gdy pracuje) i spaliny z tłumika,
+##  - latarnia drezyny, diody min i ładunków, oczy w mroku (`dread.gd`) — świecące punkty,
+##  - strzelnica: pola do stania wymalowane na podłodze, tabliczki z odległością i napis na tablicy jako tekst 3D,
+##  - tablica wyników: kreda rysowana przez `results_wall.gd` do tekstury i położona na powierzchni tablicy (bierze światło lamp).
+func _sync_world_fx(delta: float) -> void:
+	if _dots_mi == null:
+		var dm := _add_mat()
+		dm.albedo_texture = _soft()
+		_dots_mi = _imm(_world, dm)
+		_dots_mi.name = "Dots"
+	var im := _dots_mi.mesh as ImmediateMesh
+	im.clear_surfaces()
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	_dot(im, Vector3(0.0, -1000.0, 0.0), 0.001, Color(0, 0, 0, 0))      # siatka nie może być pusta
+	# --- generatory
+	for g in get_tree().get_nodes_in_group("generators"):
+		if not (g is Node2D) or g.get("_hd") == null:
+			continue
+		_hide2d(g.get("_lamp"))
+		var id: int = g.get_instance_id()
+		if not _worldfx.has(id):
+			var sm := CPUParticles3D.new()                     # spaliny z tłumika pracującego generatora
+			sm.name = "GenSmoke"
+			sm.emitting = false
+			sm.amount = 12
+			sm.lifetime = 1.5
+			sm.local_coords = false
+			var q := QuadMesh.new()
+			q.size = Vector2(0.5, 0.5)
+			var qm := StandardMaterial3D.new()
+			qm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			qm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+			qm.billboard_keep_scale = true
+			qm.vertex_color_use_as_albedo = true
+			qm.albedo_texture = _soft()
+			qm.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+			q.material = qm
+			sm.mesh = q
+			sm.direction = Vector3(0.15, 1.0, 0.0)
+			sm.spread = 12.0
+			sm.initial_velocity_min = 0.8
+			sm.initial_velocity_max = 1.4
+			sm.gravity = Vector3(0.1, 0.3, 0.0)
+			var sc := Curve.new()
+			sc.add_point(Vector2(0.0, 0.35))
+			sc.add_point(Vector2(1.0, 1.6))
+			sm.scale_amount_curve = sc
+			var gr := Gradient.new()
+			gr.set_color(0, Color(0.55, 0.58, 0.58, 0.0))
+			gr.add_point(0.15, Color(0.55, 0.58, 0.58, 0.32))
+			gr.set_color(gr.get_point_count() - 1, Color(0.5, 0.52, 0.52, 0.0))
+			sm.color_ramp = gr
+			sm.layers = LAYER_WORLD
+			sm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			_world.add_child(sm)
+			_worldfx[id] = {"src": g, "nodes": [sm], "z": NAN}
+		var gf: Dictionary = _worldfx[id]
+		if is_nan(float(gf["z"])):
+			gf["z"] = _model_front(g, "generator")
+		var gz := 0.4 if is_nan(float(gf["z"])) else float(gf["z"]) + 0.03
+		var gt := float(g.get("_t"))
+		var prog := float(g.get("progress"))
+		var run: bool = g.get("running") == true
+		var blink := 0.5 + 0.5 * sin(gt * (14.0 if prog > 0.0 and not run else 3.0))
+		var gcol := Color(0.35, 1.0, 0.45) if run else (Color(1.0, 0.7, 0.2, 0.5 + 0.5 * blink) if prog > 0.0 else Color(0.95, 0.22, 0.18, 0.55 + 0.45 * blink))
+		var hs := float(g.HD_SCALE)
+		var gpos := Level3D.px_to_m((g as Node2D).global_position + Vector2(-4.0, -11.4) * hs)
+		if (g as Node2D).is_visible_in_tree():
+			_dot(im, gpos + Vector3(0.0, 0.0, gz), 3.2 * PX, Color(gcol.r, gcol.g, gcol.b, gcol.a * 0.35))
+			_dot(im, gpos + Vector3(0.0, 0.0, gz + 0.01), 1.1 * PX, gcol)
+		var gsm := gf["nodes"][0] as CPUParticles3D
+		gsm.emitting = run and (g as Node2D).is_visible_in_tree()
+		gsm.position = Level3D.px_to_m((g as Node2D).global_position + Vector2(10.0, -26.5) * hs) + Vector3(0.0, 0.0, gz - 0.25)
+	# --- drezyna: latarnia
+	for hc in get_tree().get_nodes_in_group("handcar"):
+		if not (hc is Node2D) or hc.get("_hd") != true:
+			continue
+		_hide2d(hc.get("_lamp"))
+		if not (hc as Node2D).is_visible_in_tree():
+			continue
+		var on: bool = hc.get("enabled") == true
+		var hcol := Color(1.0, 0.85, 0.5) if on else Color(0.5, 0.15, 0.12)
+		var hpos := Level3D.px_to_m((hc as Node2D).global_position + Vector2(-float(hc.HALF_W) + 3.0, -17.7)) + Vector3(0.0, -Level3D.TRENCH_D, 0.45)
+		_dot(im, hpos, (5.5 if on else 2.4) * PX, Color(hcol.r, hcol.g, hcol.b, 0.4 if on else 0.25))
+		_dot(im, hpos + Vector3(0.0, 0.0, 0.01), 1.3 * PX, hcol)
+	# --- miny i ładunki: dioda
+	for pl in get_tree().get_nodes_in_group("placed"):
+		var led = pl.get("_hd_led")
+		if led == null or not (pl is Node2D):
+			continue
+		_hide2d(led)
+		if not (pl as Node2D).is_visible_in_tree():
+			continue
+		var data: Dictionary = pl.get("_data")
+		var pc: Color = data["color"]
+		var pt := float(pl.get("_t"))
+		var lit: bool
+		var lp: Vector2
+		if String(pl.get("kind")) == "mine":
+			lit = pl.call("is_armed") or fmod(pt * 6.0, 1.0) < 0.5
+			lp = Vector2(-5.4 * (-1.0 if (pl.get("dir") as Vector2).x < 0.0 else 1.0) * 0.8, -5.1 * 0.8)
+		else:
+			lit = fmod(pt * (2.0 + 10.0 * (pt / float(data["fuse"]))), 1.0) < 0.5
+			lp = Vector2(0.6, -4.5)
+		if lit:
+			var ppos := Level3D.px_to_m((pl as Node2D).global_position + lp) + Vector3(0.0, 0.0, 0.55)
+			_dot(im, ppos, 1.9 * PX, Color(pc.r, pc.g, pc.b, 0.45))
+			_dot(im, ppos + Vector3(0.0, 0.0, 0.01), 0.7 * PX, Color(1.0, 0.85, 0.7, 0.95))
+	# --- oczy w mroku
+	var dread := get_tree().root.find_child("Dread", true, false)
+	var eyes = dread.get("_eyes") if dread != null else null
+	if eyes != null and is_instance_valid(eyes):
+		_hide2d(eyes)
+		if (eyes as Node2D).visible and float(dread.get("_eyes_life")) > 0.0:
+			var el := float(dread.get("_eyes_life"))
+			var ea := minf(float(dread.get("_eyes_age")) / 0.6, 1.0) * 0.55
+			if el < 0.5 and int(el * 14.0) % 2 == 0:
+				ea = 0.0
+			var epos := Level3D.px_to_m((eyes as Node2D).global_position) + Vector3(0.0, 0.0, DREAD_Z)
+			for ex in [-3.0, 3.0]:
+				_dot(im, epos + Vector3(ex * PX, 0.0, 0.0), 2.6 * PX, Color(1.0, 0.92, 0.6, ea * 0.5))
+				_dot(im, epos + Vector3(ex * PX, 0.0, 0.01), 1.2 * PX, Color(1.0, 0.92, 0.6, ea))
+	# --- strzelnica: pola na podłodze, tabliczki z odległością, napis na tablicy
+	for rl in get_tree().get_nodes_in_group("range_line"):
+		var marks = rl.get("_marks")
+		if not (rl is Node2D) or marks == null or (marks as Array).is_empty() or _geo_key == "":
+			continue
+		_hide2d(rl)
+		_hide2d(rl.get("_ov"))
+		var id: int = rl.get_instance_id()
+		var base := Level3D.px_to_m((rl as Node2D).global_position)
+		if _worldfx.has(id) and not is_instance_valid(_worldfx[id]["nodes"][0]):
+			_worldfx.erase(id)                                 # geometria mapy przebudowana — napisy trzeba postawić od nowa
+		if not _worldfx.has(id):
+			var nodes: Array = []
+			for mk in marks:
+				var plate := MeshInstance3D.new()              # tabliczka na słupku przy polu
+				var bm := BoxMesh.new()
+				bm.size = Vector3(20.0 * PX, 8.0 * PX, 0.04)
+				plate.mesh = bm
+				var pm := StandardMaterial3D.new()
+				pm.albedo_color = Color(0.05, 0.05, 0.06)
+				pm.roughness = 0.8
+				plate.material_override = pm
+				plate.position = base + Vector3(float(mk["x"]) * PX, 9.0 * PX, -0.55)
+				plate.layers = LAYER_WORLD
+				_geo.add_child(plate)
+				var post := MeshInstance3D.new()
+				var pb := BoxMesh.new()
+				pb.size = Vector3(1.2 * PX, 5.0 * PX, 0.03)
+				post.mesh = pb
+				post.material_override = pm
+				post.position = Vector3(0.0, -6.5 * PX, 0.0)
+				post.layers = LAYER_WORLD
+				plate.add_child(post)
+				var lb := _label3d("%d m" % int(mk["m"]), 5.2, Color(0.8, 0.62, 0.26))
+				lb.name = "Text"
+				lb.position = Vector3(0.0, 0.0, 0.025)
+				plate.add_child(lb)
+				nodes.append(plate)
+			var title := _label3d("RANGE", 6.0, Color(0.95, 0.75, 0.3))
+			title.name = "RangeTitle"
+			_geo.add_child(title)
+			nodes.append(title)
+			_worldfx[id] = {"src": rl, "nodes": nodes, "z": NAN}
+		var rf: Dictionary = _worldfx[id]
+		if is_nan(float(rf["z"])):
+			rf["z"] = _model_front(rl, "range_sign")
+		var active: Dictionary = rl.get("_active")
+		for i in (marks as Array).size():
+			var mk: Dictionary = marks[i]
+			var on: bool = active.get(mk["m"], false) == true
+			var mx := base.x + float(mk["x"]) * PX
+			var mc := Color(0.9, 0.7, 0.2, 0.9 if on else 0.45)
+			var hw := 9.0 * PX
+			var z0 := -0.35
+			var z1 := 0.5
+			var fy := base.y + 0.03
+			_floor_strip(im, Vector3(mx - hw, fy, z1), Vector3(mx + hw, fy, z1), 0.06, mc)
+			_floor_strip(im, Vector3(mx - hw, fy, z0), Vector3(mx - hw, fy, z1), 0.05, mc)
+			_floor_strip(im, Vector3(mx + hw, fy, z0), Vector3(mx + hw, fy, z1), 0.05, mc)
+			if on:
+				_floor_strip(im, Vector3(mx - hw, fy, (z0 + z1) * 0.5), Vector3(mx + hw, fy, (z0 + z1) * 0.5), z1 - z0, Color(0.9, 0.7, 0.2, 0.12))
+			var txt := (rf["nodes"][i] as Node).get_node("Text") as Label3D
+			txt.modulate = Color(1.0, 0.85, 0.4) if on else Color(0.8, 0.62, 0.26)
+		var ttl := rf["nodes"][(marks as Array).size()] as Label3D
+		ttl.visible = not is_nan(float(rf["z"]))
+		if ttl.visible:
+			ttl.position = base + Vector3(float(marks[(marks as Array).size() - 1]["x"]) * PX, 28.5 * PX, 0.0)
+			ttl.position.z = float(rf["z"]) + 0.012
+	im.surface_end()
+	# --- tablica wyników: kreda z `results_wall.gd` w teksturze na powierzchni tablicy
+	_surf_t -= delta
+	var refresh := _surf_t <= 0.0
+	if refresh:
+		_surf_t = 0.4
+	for rw in get_tree().get_nodes_in_group("results_wall"):
+		var ov = rw.get("_ov")
+		if not (rw is Node2D) or ov == null or _geo_key == "":
+			continue
+		_hide2d(ov)
+		var id: int = rw.get_instance_id()
+		if _worldfx.has(id) and not is_instance_valid(_worldfx[id]["nodes"][1]):
+			for wn in _worldfx[id]["nodes"]:
+				if is_instance_valid(wn):
+					(wn as Node).queue_free()
+			_worldfx.erase(id)
+		if not _worldfx.has(id):
+			var rect := Rect2(-56.0, -64.0, 112.0, 58.0)       # pole tablicy w px świata (jak w `_draw_content`)
+			var k := 8.0
+			var vp := SubViewport.new()
+			vp.name = "ResultsChalk"
+			vp.size = Vector2i(int(rect.size.x * k), int(rect.size.y * k))
+			vp.transparent_bg = true
+			vp.disable_3d = true
+			vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+			if "oversampling_override" in vp:
+				vp.set("oversampling_override", k)             # ostre litery przy powiększeniu
+			var ci := Node2D.new()
+			ci.name = "Chalk"
+			ci.position = -rect.position * k
+			ci.scale = Vector2(k, k)
+			ci.draw.connect(func() -> void:
+				if is_instance_valid(rw):
+					rw.call("_draw_content", ci))
+			vp.add_child(ci)
+			add_child(vp)
+			var board := MeshInstance3D.new()
+			board.name = "ResultsText"
+			var bq := QuadMesh.new()
+			bq.size = rect.size * PX
+			board.mesh = bq
+			var bmat := StandardMaterial3D.new()
+			bmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			bmat.albedo_texture = vp.get_texture()
+			bmat.roughness = 1.0
+			bmat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+			bmat.emission_enabled = true                       # kreda lekko czytelna także poza światłem lampy
+			bmat.emission_texture = vp.get_texture()
+			bmat.emission_energy_multiplier = 0.05
+			board.material_override = bmat
+			board.layers = LAYER_WORLD
+			board.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			_geo.add_child(board)
+			_worldfx[id] = {"src": rw, "nodes": [vp, board], "z": NAN, "rect": rect}
+		var wf: Dictionary = _worldfx[id]
+		if is_nan(float(wf["z"])):
+			wf["z"] = _model_front(rw, "results_board")
+		var bd := wf["nodes"][1] as MeshInstance3D
+		bd.visible = not is_nan(float(wf["z"]))
+		if bd.visible:
+			var rc: Rect2 = wf["rect"]
+			bd.position = Level3D.px_to_m((rw as Node2D).global_position + rc.get_center())
+			bd.position.z = float(wf["z"]) + 0.012
+		if refresh:
+			var vp2 := wf["nodes"][0] as SubViewport
+			(vp2.get_child(0) as Node2D).queue_redraw()
+			vp2.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 # ---------------------------------------------------------------- gniazda, pierścień alarmu, pył w powietrzu
 
