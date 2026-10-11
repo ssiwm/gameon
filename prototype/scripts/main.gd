@@ -1050,6 +1050,9 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				ip.velocity = Vector2.ZERO
 				get_tree().create_timer(0.4).timeout.connect(func() -> void:
 					ip.weapons.inspect_item = ip.weapons.nearby_weapon_item())
+				if "--shotinspectclose" in OS.get_cmdline_user_args():     # …i zamknięcie po 1,6 s (podgląd powrotu do zwykłego widoku)
+					get_tree().create_timer(1.6).timeout.connect(func() -> void:
+						ip.weapons.inspect_item = null)
 	if "--shotfinale" in OS.get_cmdline_user_args():
 		mission.finale = true                                 # --shotfinale: finał kopalni bez przenoszenia gracza (pył ze stropu; użyj z --shotat/--shotrow)
 	if "--shotwall" in OS.get_cmdline_user_args():
