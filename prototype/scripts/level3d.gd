@@ -113,6 +113,41 @@ static func make_pbr(name: String, per_m: float, fallback: Color, rough := 0.95,
 	_pbr_cache[key] = m
 	return m
 
+## Siatka modelu z art/items3d/<nazwa>.glb (`tools/prep_items3d.py`) i jej przekształcenie w scenie modelu: [Mesh, Transform3D] albo [] bez pliku.
+## Drzewa, kłoda i słup mają 100 jednostek wysokości / długości — skalę nadaje wywołujący.
+const MODEL_DIR := "res://art/items3d/"
+static var _model_cache := {}
+static func model_mesh(name: String) -> Array:
+	if _model_cache.has(name):
+		return _model_cache[name]
+	var out: Array = []
+	var path := MODEL_DIR + name + ".glb"
+	if ResourceLoader.exists(path) and not "--nomodels3d" in OS.get_cmdline_user_args():
+		var inst := (load(path) as PackedScene).instantiate()
+		var found := inst.find_children("*", "MeshInstance3D", true, false)
+		if not found.is_empty():
+			var n := found[0] as Node3D
+			var xf := n.transform
+			var up := n.get_parent()
+			while up != null and up is Node3D:
+				xf = (up as Node3D).transform * xf
+				up = up.get_parent()
+			out = [(found[0] as MeshInstance3D).mesh, xf]
+		inst.free()
+	_model_cache[name] = out
+	return out
+
+## `MultiMesh` z modelu `name`; przekształcenia egzemplarzy są w jednostkach modelu (mnożone przez przekształcenie siatki w jej scenie).
+static func _multimodel(parent: Node3D, name: String, xforms: Array, shadows := true) -> bool:
+	var mm := model_mesh(name)
+	if mm.is_empty():
+		return false
+	var out: Array = []
+	for x in xforms:
+		out.append((x as Transform3D) * (mm[1] as Transform3D))
+	_multimesh(parent, mm[0], out, null, shadows)
+	return true
+
 static func _multimesh(parent: Node3D, mesh: Mesh, xforms: Array, mat: Material, shadows := true) -> void:
 	if xforms.is_empty():
 		return
@@ -124,7 +159,8 @@ static func _multimesh(parent: Node3D, mesh: Mesh, xforms: Array, mat: Material,
 		mm.set_instance_transform(i, xforms[i])
 	var mi := MultiMeshInstance3D.new()
 	mi.multimesh = mm
-	mi.material_override = mat
+	if mat != null:
+		mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
 
@@ -194,7 +230,26 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	pc.bottom_radius = 0.5
 	pc.height = T
 	pc.radial_segments = 10
-	_multimesh(parent, pc, posts, make_pbr("post", 0.9, Color(0.20, 0.14, 0.09), 1.0, 1.0, 1.0, false, "organic"))
+	# słupy: pionowe ciągi kafli `w` jako belki z modelu (odcinki do 4 kafli, okucia na końcach kryją łączenia); bez modelu — walce z kafli
+	var beams: Array = []
+	for c in cols:
+		var r := 0
+		while r < nrows:
+			if _ch(rows, c, r) != "w":
+				r += 1
+				continue
+			var r1 := r
+			while r1 < nrows and _ch(rows, c, r1) == "w":
+				r1 += 1
+			var run := r1 - r
+			var n := int(ceil(float(run) / 4.0))
+			var seg := float(run) * T / float(n)
+			for i in n:
+				var bottom := cell_pos(c, r1 - 1) + Vector3(0.0, -T * 0.5 + seg * float(i), POST_Z)
+				beams.append(Transform3D(Basis().scaled(Vector3(0.036, seg / 100.0, 0.036)), bottom))
+			r = r1
+	if not _multimodel(parent, "post", beams):
+		_multimesh(parent, pc, posts, make_pbr("post", 0.9, Color(0.20, 0.14, 0.09), 1.0, 1.0, 1.0, false, "organic"))
 	var plb := BoxMesh.new()
 	plb.size = Vector3(T, 0.22, 1.3)
 	_multimesh(parent, plb, planks, make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic"))
@@ -1203,6 +1258,10 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 	var xf := {}
 	for k in FOREST_KINDS:
 		xf[k] = []
+	# modele 3D: martwe pnie w bliskim i środkowym pasie oraz powalone kłody. Świerki zostają kartami — modele z generatora miały z bliska szerokie
+	# liście zamiast igliwia i zasłaniały warstwy sylwetek we mgle (źródła zostają w art_src/world/tripo/tree_spruce_*.glb)
+	var trees := {"tree_snag": [], "tree_log": [], "tree_snag_hi": []}
+	var have_models := not model_mesh("tree_snag").is_empty()
 	for c in range(0, cols, 2):
 		var r0 := 0
 		while r0 < nrows and not is_solid_ch(_ch(rows, c, r0)):
@@ -1211,7 +1270,13 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 			continue
 		var y := -float(r0) * T
 		# trzy pasy głębi: bliski (pojedyncze wysokie drzewa), środkowy, daleki (gęsta ściana lasu)
-		for band in [[DEPTH_BACK + 1.2, 9.0, 0.28, 13.0, 21.0], [9.0, 24.0, 1.4, 11.0, 19.0], [24.0, 60.0, 2.6, 12.0, 24.0]]:
+		if rng.randf() < 0.07 and _ch(rows, c, r0) == "#" and not model_mesh("tree_log").is_empty():       # powalony pień na ściółce, w głębi bryły gruntu
+			var ll := rng.randf_range(2.2, 3.6)
+			var lb := Basis(Vector3.UP, rng.randf_range(-0.5, 0.5)).scaled(Vector3(ll / 100.0, ll / 100.0, ll / 100.0))
+			(trees["tree_log"] as Array).append(Transform3D(lb, Vector3((float(c) + rng.randf()) * T, y - 0.06, rng.randf_range(-DEPTH_BACK + 0.5, -1.2))))
+		var bands := [[DEPTH_BACK + 1.2, 9.0, 0.28, 13.0, 21.0], [9.0, 24.0, 1.4, 11.0, 19.0], [24.0, 60.0, 2.6, 12.0, 24.0]]
+		for bi in bands.size():
+			var band: Array = bands[bi]
 			var n := int(float(band[2])) + (1 if rng.randf() < fmod(float(band[2]), 1.0) else 0)
 			for i in n:
 				var z := -rng.randf_range(float(band[0]), float(band[1]))
@@ -1220,8 +1285,19 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 				var roll := rng.randf()
 				var kind: String = "snag_a" if roll < 0.06 else ("snag_b" if roll < 0.12 else ("spruce_a" if roll < 0.45 else ("spruce_b" if roll < 0.72 else "spruce_c")))
 				var w := h * 0.5 * rng.randf_range(0.85, 1.15)
+				if have_models and bi < 2 and kind.begins_with("snag"):
+					var tk := "tree_snag"
+					var th := h * 0.8
+					var tw := th / 100.0 * rng.randf_range(0.9, 1.2)
+					var tb := Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3(tw, th / 100.0, tw))
+					if bi == 0 and not model_mesh(tk + "_hi").is_empty():       # najbliższy rząd: wersja szczegółowa
+						tk += "_hi"
+					(trees[tk] as Array).append(Transform3D(tb, Vector3(x, y - 0.3, z)))
+					continue
 				var b := Basis(Vector3.UP, rng.randf_range(-0.5, 0.5)).scaled(Vector3(w, h, w))
 				(xf[kind] as Array).append(Transform3D(b, Vector3(x, y - 0.3, z)))
+	for tk in trees:
+		_multimodel(parent, tk, trees[tk], tk == "tree_log")
 	# siatka: dwie skrzyżowane karty 1×1 m (podstawa w y = 0), normalne w górę i ku kamerze — karta nie gaśnie przy bocznym świetle
 	var v := PackedVector3Array()
 	var uv := PackedVector2Array()
