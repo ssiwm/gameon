@@ -1082,6 +1082,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var bw1 := get_tree().get_first_node_in_group("breakables")
 		if bw1 != null:
 			get_tree().create_timer(1.5).timeout.connect(level.break_wall.bind(String(bw1.name)))
+	if "--shotblood" in OS.get_cmdline_user_args():                 # dev: szczątki i krew 60 px przed graczem 1 (podgląd kałuż krwi), bez wrogów
+		var blp: Node2D = _players.get_node_or_null("1")
+		if blp != null:
+			for k in 3:
+				load("res://scripts/vfx.gd").gibs(level, blp.global_position + Vector2(50.0 + 30.0 * float(k), -10.0), Color(0.5, 0.1, 0.1), 8)
 	if "--shotclear" in OS.get_cmdline_user_args():
 		for ce in get_tree().get_nodes_in_group("enemies"):       # --shotclear: bez wrogów (spokojny podgląd obiektów świata)
 			if not (ce is RigidBody2D):

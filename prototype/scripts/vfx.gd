@@ -248,6 +248,8 @@ static func splat(parent: Node, pos: Vector2, radius: float) -> void:
 	if hit.is_empty():
 		return
 	lvl.add_decal(hit["position"], radius)
+	if view3d != null and is_instance_valid(view3d):
+		view3d.call("mirror_blood", hit["position"], radius)       # kałuża krwi w scenie 3D
 
 # ---------------------------------------------------------------- walka (1.6 — overhaul broni)
 
