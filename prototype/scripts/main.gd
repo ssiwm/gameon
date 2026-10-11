@@ -1069,6 +1069,9 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if hc != null:
 			hc.enabled = true
 			level.spawn_flare(hc.global_position + Vector2(-20.0, -40.0), Vector2.ZERO)
+			var hp1: Node2D = _players.get_node_or_null("1")
+			if hp1 != null and not _has_arg_prefix("--shotat"):            # bez --shotat: gracz 1 staje obok drezyny
+				hp1.global_position = hc.global_position + Vector2(-64.0, -4.0)
 	if "--shotclear" in OS.get_cmdline_user_args():
 		for ce in get_tree().get_nodes_in_group("enemies"):       # --shotclear: bez wrogów (spokojny podgląd obiektów świata)
 			if not (ce is RigidBody2D):

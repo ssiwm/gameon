@@ -54,7 +54,23 @@ TRIPO_MODELS = {
     "stool": ("stool.glb", "-Y", 9.6, 5000, 10.5),
     "bones": ("bones.glb", "-Y", 17.7, 5000, 8.0),
     "flare": ("flare.glb", "-Y", 3.4, 2000, 15.8),
+    # trzecia partia: tablice, lampa, sprzęt z diodami, strzelnica, drezyna (korpus + osobno koło i dźwignia)
+    "handcar": ("handcar.glb", "-Y", 92.4, 12000),             # kształt dopasowuje reshape_handcar (bez kół, pokład na wysokości stóp)
+    "handcar_wheel": ("handcar_wheel.glb", "+X", 6.8, 4000, 6.8, True),
+    "handcar_lever": ("handcar_lever.glb", "+X", 46.0, 4000, 8.0),
+    "board": ("board.glb", "+X", 60.0, 5000, 40.0),
+    "results_board": ("results_board.glb", "+X", 116.0, 5000, 66.0, True, 5.0),
+    "lamp": ("lamp.glb", "-Y", 9.5, 4000, 11.7),
+    "mine": ("mine.glb", "+X", 15.7, 4000, 9.4),
+    "charge": ("charge.glb", "+X", 13.0, 4000, 8.5),
+    "defib": ("defib.glb", "+X", 17.3, 5000, 10.3),
+    "scanner": ("scanner.glb", "+X", 9.6, 4000, 14.9),
+    "range_target": ("range_target.glb", "+X", 16.0, 5000, 35.0),
+    "range_sign": ("range_sign.glb", "+X", 34.0, 4000, 34.5),
+    "tag": ("tag.glb", "+X", 6.8, 3000, 8.7),
 }
+# modele z Tripo ze świecącymi elementami (diody, ekrany, żarówka): emisja = jasne, nasycone piksele koloru (żarówka: jasne, blade)
+EMISSIVE = {"mine": "led", "charge": "led", "defib": "led", "scanner": "led", "lamp": "bulb"}
 # przedmioty proceduralne o większej teksturze (duże bryły blisko kamery)
 BIG = {"generator", "handcar", "shelf", "locker", "table", "cot", "results_board", "board", "rack", "tools_wall"}
 
@@ -275,7 +291,38 @@ def build_proc(ns, name, builder):
 
 # ------------------------------------------------------------------ modele z Tripo
 
-def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False):
+def reshape_handcar(obj):
+    """Korpus drezyny z Tripo → kształt, którego wymaga gra (`handcar.gd`): bez własnych kół (koła i dźwignia to osobne, animowane modele),
+    pokład o grubości 3,35 px (góra pokładu = stopy graczy, 5,35 px nad torem przy korpusie 2 px nad torem), słup latarni skrócony przez
+    usunięcie środkowego odcinka pręta (latarnia zostaje nieściśnięta). Liczby to ułamki wysokości modelu źródłowego (pomiar przekrojów)."""
+    import bmesh
+    me = obj.data
+    vs = np.array([v.co[:] for v in me.vertices])
+    lo, hi = vs.min(axis=0), vs.max(axis=0)
+    H = hi[2] - lo[2]
+    px = 92.4 / (hi[0] - lo[0])                               # pikseli świata na jednostkę modelu (szerokość pokładu jak sprite)
+    z_cut = lo[2] + 0.063 * H                                 # poniżej: koła i osie
+    z_deck = lo[2] + 0.167 * H                                # góra pokładu
+    z_p0, z_p1 = lo[2] + 0.333 * H, lo[2] + 0.733 * H         # usuwany odcinek pręta latarni
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z < z_cut], context="VERTS")
+    deck_k = 3.35 / ((z_deck - z_cut) * px)
+    for v in bm.verts:
+        z = v.co.z
+        if z <= z_deck:
+            nz = (z - z_cut) * deck_k
+        else:
+            zz = min(z, z_p0) + max(z - z_p1, 0.0)             # pręt między z_p0 a z_p1 zapada się do z_p0
+            nz = (z_deck - z_cut) * deck_k + (zz - z_deck)
+        v.co.z = nz
+        v.co.y *= 0.62                                         # płytszy pokład (ok. 14 px)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+
+def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False, depth_wp=None):
     src = os.path.join(TRIPO, fname)
     if not os.path.exists(src):
         print("SKIP", name, "(brak", fname + ")")
@@ -296,6 +343,8 @@ def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False
     rot = {"-Y": 0.0, "+Y": 180.0, "+X": -90.0, "-X": 90.0}[cam]
     me = obj.data
     me.transform(Matrix.Rotation(math.radians(rot), 4, "Z"))
+    if name == "handcar":
+        reshape_handcar(obj)
     vs = np.array([v.co[:] for v in me.vertices])
     lo, hi = vs.min(axis=0), vs.max(axis=0)
     k = width_wp / max(hi[0] - lo[0], 1e-6)
@@ -304,7 +353,11 @@ def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False
     me.transform(Matrix.Translation((-(lo[0] + hi[0]) * 0.5, -(lo[1] + hi[1]) * 0.5, -lo[2])))
     if stretch and height_wp is not None:
         kx = width_wp / max(hi[0] - lo[0], 1e-6)
-        me.transform(Matrix.Diagonal((kx, kx, height_wp / max(hi[2] - lo[2], 1e-6), 1.0)))
+        kz = height_wp / max(hi[2] - lo[2], 1e-6)
+        ky = min(kx, kz)
+        if depth_wp is not None:                                 # płaskie bryły (tablice): ograniczona głębokość
+            ky = min(ky, depth_wp / max(hi[1] - lo[1], 1e-6))
+        me.transform(Matrix.Diagonal((kx, ky, kz, 1.0)))
     else:
         me.transform(Matrix.Scale(k, 4))
     if len(me.polygons) > faces:
@@ -319,6 +372,34 @@ def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False
     for img in bpy.data.images:
         if img.size[0] > TEX:
             img.scale(TEX, TEX)
+    if name in EMISSIVE:
+        for m in bpy.data.materials:
+            if not m.node_tree:
+                continue
+            bsdf = next((nd for nd in m.node_tree.nodes if nd.type == "BSDF_PRINCIPLED"), None)
+            if bsdf is None or not bsdf.inputs["Base Color"].links:
+                continue
+            src_img = bsdf.inputs["Base Color"].links[0].from_node.image
+            w, h = src_img.size
+            px = np.array(src_img.pixels[:]).reshape(h * w, 4)
+            rgb = px[:, :3]
+            v = rgb.max(axis=1)
+            sat = (v - rgb.min(axis=1)) / np.maximum(v, 1e-6)
+            if EMISSIVE[name] == "bulb":
+                mask = (v > 0.72) & (sat < 0.3)
+            else:
+                mask = (v > 0.55) & (sat > 0.62) & ~((rgb[:, 1] > rgb[:, 2] * 1.1) & (rgb[:, 0] > rgb[:, 2] * 1.1) & (sat < 0.8))     # bez żółci i oliwki
+            out = np.zeros_like(px)
+            out[:, 3] = 1.0
+            out[mask, :3] = rgb[mask]
+            emi = bpy.data.images.new(name + "_emi", w, h, alpha=False)
+            emi.pixels[:] = out.reshape(-1).tolist()
+            emi.pack()
+            t = m.node_tree.nodes.new("ShaderNodeTexImage")
+            t.image = emi
+            m.node_tree.links.new(t.outputs["Color"], bsdf.inputs["Emission Color"])
+            bsdf.inputs["Emission Strength"].default_value = 1.0
+            print("EMI", name, int(mask.sum()), "px")
     export_glb(obj, name)
 
 

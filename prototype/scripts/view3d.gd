@@ -203,6 +203,7 @@ func _process(delta: float) -> void:
 	_sync_projectiles()
 	_sync_props()
 	_sync_items()
+	_build_rails()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -856,6 +857,53 @@ func _local_xf(n: Node3D, root: Node) -> Transform3D:
 		xf = (root as Node3D).transform * xf
 	return xf
 
+# ---------------------------------------------------------------- tor drezyny
+
+const RAIL_H := 0.5 * PX                    ## wysokość szyny [m] — koło drezyny (oś 2,5 px nad posadzką) stoi na jej główce
+const RAIL_Z := [0.28, -0.68]               ## szyna bliższa (pod kołami) i dalsza
+const WHEEL_D := 4.0                        ## średnica koła drezyny w widoku 3D [px świata] (sprite 2D: 6,8 px — sięgał poniżej posadzki)
+
+## Tor pod drezyną: dwie szyny i podkłady od stacji startowej do końca trasy (wyjście poziomu). Budowany raz na geometrię mapy.
+func _build_rails() -> void:
+	var hc := get_tree().get_first_node_in_group("handcar") as Node2D
+	if hc == null or _geo.has_node("Rails"):
+		return
+	var exits = _level.get("exits")
+	var x0 := hc.global_position.x - 60.0
+	var x1 := x0 + 200.0
+	if exits != null and not (exits as Array).is_empty():
+		x1 = maxf(x1, ((exits as Array)[0] as Vector2).x + 70.0)
+	var root := Node3D.new()
+	root.name = "Rails"
+	_geo.add_child(root)
+	var base := Level3D.px_to_m(Vector2(x0, hc.global_position.y))
+	var len_m := (x1 - x0) * PX
+	var steel := Level3D.make_pbr("metal", 0.6, Color(0.3, 0.3, 0.32), 0.45, 1.0, 1.0)
+	for z in RAIL_Z:
+		for part in [[0.045, RAIL_H * 0.75, RAIL_H * 0.625], [0.085, RAIL_H * 0.25, RAIL_H * 0.125]]:      # główka + stopka
+			var rb := BoxMesh.new()
+			rb.size = Vector3(len_m, float(part[1]), float(part[0]))
+			var ri := MeshInstance3D.new()
+			ri.mesh = rb
+			ri.material_override = steel
+			ri.position = base + Vector3(len_m * 0.5, float(part[2]) if part[0] == 0.045 else float(part[2]), float(z))
+			ri.layers = LAYER_WORLD
+			root.add_child(ri)
+	var tie := BoxMesh.new()
+	tie.size = Vector3(0.2, 0.03, absf(RAIL_Z[0] - RAIL_Z[1]) + 0.45)
+	var n := int(len_m / 0.62)
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = tie
+	mm.instance_count = n
+	for i in n:
+		mm.set_instance_transform(i, Transform3D(Basis(Vector3.UP, sin(float(i) * 12.9898) * 0.04), base + Vector3(0.3 + float(i) * 0.62, 0.012, (RAIL_Z[0] + RAIL_Z[1]) * 0.5)))
+	var ti := MultiMeshInstance3D.new()
+	ti.multimesh = mm
+	ti.material_override = Level3D.make_pbr("post", 1.2, Color(0.2, 0.15, 0.1), 1.0, 1.0, 1.0, false, "organic")
+	ti.layers = LAYER_WORLD
+	root.add_child(ti)
+
 # ---------------------------------------------------------------- przedmioty HD (meble, skrytki, pickupy, generator, drezyna)
 
 const ITEM_TONE := 0.7                      ## przyciemnienie albedo kart: przedmiot z własnym światłem (skrytka, pickup) stoi tuż przy nim
@@ -873,6 +921,11 @@ func _sync_items() -> void:
 		var par := sp.get_parent()
 		if par != null and par.is_in_group("props"):
 			continue                                  # skrzynie i beczki mają własne bryły (_sync_props)
+		if sp.region_enabled:                         # wycinek sprite'a rysowany przed graczami (osłona pokładu drezyny) — sztuczka 2D, w 3D zbędna
+			sp.self_modulate = Color(1, 1, 1, 0)
+			_items[sp.get_instance_id()] = [sp, Node3D.new(), null, 0.0, [sp], true]
+			_world.add_child(_items[sp.get_instance_id()][1])
+			continue
 		_make_item(sp)
 	for id in _items.keys():
 		var it: Array = _items[id]
@@ -892,7 +945,10 @@ func _sync_items() -> void:
 		if bool(it[5]):                                        # model 3D: początek w stopach sprite'a, jednostka modelu = piksel świata
 			var k := absf(sc.x) * ItemsHd.ppw(String(sp.get_meta("hd_name", ""))) * PX
 			var fl := -1.0 if (sp.flip_h != (xf.determinant() < 0.0)) else 1.0
-			(it[1] as Node3D).position = Level3D.px_to_m(xf.origin) + Vector3(0.0, 0.0, float(it[3]))
+			# stopy modelu = dolna krawędź bryły w ramce sprite'a (dla sprite'ów obracanych wokół środka — koła, dźwignia — to nie jest początek węzła)
+			var nm3 := String(sp.get_meta("hd_name", ""))
+			var feet := xf.origin if (it.size() > 6 and bool(it[6])) else xf * (sp.offset + Vector2(0.0, ItemsHd.frame_px(nm3).y * 0.5 - ItemsHd.PAD))
+			(it[1] as Node3D).position = Level3D.px_to_m(feet) + Vector3(0.0, 0.0, float(it[3]))
 			(it[1] as Node3D).rotation = Vector3(0.0, 0.0, -xf.get_rotation())
 			(it[1] as Node3D).scale = Vector3(k * fl, k, k)
 			continue
@@ -954,11 +1010,40 @@ func _make_item(sp: Sprite2D) -> void:
 		_world.add_child(model)
 		var hid: Array = [sp]
 		sp.self_modulate = Color(1, 1, 1, 0)
+		var emits := false
+		for n in model.find_children("*", "MeshInstance3D", true, false):
+			var mm := (n as MeshInstance3D).mesh
+			if mm != null and mm.get_surface_count() > 0 and mm.surface_get_material(0) is BaseMaterial3D and (mm.surface_get_material(0) as BaseMaterial3D).emission_enabled:
+				emits = true
 		for c in sp.get_children():
-			if c is Sprite2D and (c as Sprite2D).texture == alb:
+			# kopia „widoczna w ciemności” oraz nakładka diod / ekranu ze sprite'a: model ma własną emisję w swoich miejscach
+			if c is Sprite2D and ((c as Sprite2D).texture == alb or emits):
 				(c as Sprite2D).visible = false
 				hid.append(c)
-		_items[sp.get_instance_id()] = [sp, model, null, -1.45 if ITEM_BACK.has(name) else -0.2, hid, true]
+		if name == "handcar":                                  # belka podwozia rysowana w 2D przed graczami zasłaniałaby koła 3D
+			var apron := sp.get_parent().get_node_or_null("Apron") as CanvasItem
+			if apron != null:
+				apron.visible = false
+				hid.append(apron)
+		var zoff := -1.45 if ITEM_BACK.has(name) else -0.2
+		if sp.offset == Vector2.ZERO:
+			# sprite obracany wokół środka (koło, dźwignia drezyny): model wisi na przegubie w swoim środku, żeby obrót szedł wokół osi
+			var box := AABB()
+			var first := true
+			for n in model.find_children("*", "MeshInstance3D", true, false):
+				var bb := _local_xf(n as Node3D, model) * (n as MeshInstance3D).get_aabb()
+				box = bb if first else box.merge(bb)
+				first = false
+			var k0 := WHEEL_D / maxf(box.size.y, 0.001) if name == "handcar_wheel" else 1.0
+			_world.remove_child(model)
+			var pivot := Node3D.new()
+			_world.add_child(pivot)
+			pivot.add_child(model)
+			model.scale = Vector3(k0, k0, k0)
+			model.position = Vector3(-box.get_center().x * k0, -box.get_center().y * k0, 0.0)
+			_items[sp.get_instance_id()] = [sp, pivot, null, RAIL_Z[0] if name == "handcar_wheel" else zoff, hid, true, true]
+			return
+		_items[sp.get_instance_id()] = [sp, model, null, zoff, hid, true, false]
 		return
 	var m := StandardMaterial3D.new()
 	m.albedo_texture = alb
