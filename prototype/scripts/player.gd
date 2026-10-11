@@ -201,6 +201,8 @@ func _ready() -> void:
 	_spawn_point = position
 	_setup_lights()
 	call_deferred("_setup_local")
+	if "--torch" in OS.get_cmdline_user_args() and not is_bot:        # dev: start z włączoną latarką
+		flashlight = true
 
 ## Światła postaci (każdy peer): aura 6 m, snop latarki 8 m, rozbłysk lufy.
 ## Etykiety i paski idą na nakładkę „unshaded" — w ciemności mają być czytelne.
@@ -710,6 +712,12 @@ func _update_lights() -> void:
 	_beam.enabled = flashlight and not dead
 	if _beam.enabled:
 		_beam.rotation = aim_dir.angle()
+		# latarka jest na broni: snop wychodzi z wylotu lufy modelu (postać 3D), inaczej z wysokości barku. Sam środek ciała (9 px nad stopami)
+		# dawał stożek z wysokości kolan — widać to we mgle i w widoku 3D. Tylko obraz: budzenie oświetlonych wrogów liczy się osobno.
+		if c3d != null and is_instance_valid(c3d) and c3d.ready_ok:
+			_beam.position = c3d.muzzle_px
+		else:
+			_beam.position = Vector2(0.0, -9.0 if crouching else -14.0) + aim_dir * 4.0
 		# lekkie drżenie snopu — latarka w ręku, nie reflektor
 		_beam.energy = (0.85 + 0.04 * sin(Time.get_ticks_msec() * 0.023)) * fl
 

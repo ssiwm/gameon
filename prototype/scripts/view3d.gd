@@ -1519,14 +1519,18 @@ func _sync_lights() -> void:
 		if l3 is SpotLight3D:
 			var a := li.global_rotation
 			var d := Vector3(cos(a), -sin(a), 0.0)
-			# światło 2D latarki wisi 9 px nad stopami (środek sprite'a) — na modelu 1,8 m to wysokość kolan. W 3D snop wychodzi z wysokości broni
-			# przy barku (FLASH_UP_PX nad stopami), lekko wysunięty wzdłuż celowania, żeby nie świecił po własnym tułowiu.
+			# światło 2D latarki wisi 9 px nad stopami (środek sprite'a) — na modelu 1,8 m to wysokość kolan. W 3D latarka jest na broni:
+			# snop wychodzi z wylotu lufy modelu (punkt `muzzle` z pliku broni, w świecie 3D). Bez modelu broni — z wysokości barku.
 			var owner_p := li.get_parent() as Node2D
-			var src := Level3D.px_to_m(gp)
+			var src := Level3D.px_to_m(gp) + Vector3(0.0, 0.0, 0.6)
 			if owner_p != null and owner_p.is_in_group("players"):
 				var up_px := FLASH_UP_PX * (0.62 if bool(owner_p.get("crouching")) else 1.0)
-				src = Level3D.px_to_m(owner_p.global_position + Vector2(0.0, -up_px)) + d * 0.35
-			l3.position = src + Vector3(0.0, 0.0, 0.6)
+				src = Level3D.px_to_m(owner_p.global_position + Vector2(0.0, -up_px)) + d * 0.35 + Vector3(0.0, 0.0, 0.3)
+				var rig = _rigs.get(owner_p)
+				var c3 = owner_p.get("c3d")
+				if rig != null and c3 != null and is_instance_valid(c3) and rig["gun"] != null and is_instance_valid(rig["gun"]) and (rig["gun"] as Node3D).visible:
+					src = (rig["gun"] as Node3D).global_transform * (c3._gun_info["muzzle"] as Vector3) + d * 0.05
+			l3.position = src
 			l3.basis = Basis.looking_at(d + Vector3(0.0, 0.0, -0.04), Vector3.UP)
 			l3.light_energy = li.energy * 8.0
 			(l3 as SpotLight3D).spot_range = clampf(rng_px * PX, 6.0, 26.0)
