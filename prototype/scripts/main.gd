@@ -1013,6 +1013,9 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				bs._surge_cd = 0.05
 			if "--shotsweep" in OS.get_cmdline_user_args() and bs.has_method("_tick_wave"):
 				bs.call("_begin", 3, 0.9, Vector2.ZERO)        # --shotsweep: Żyła od razu zamachuje się falą (--shotdelay=0.4 zapowiedź, =1.0 fala)
+			if "--shotspit" in OS.get_cmdline_user_args() and bs.has_method("_tick_wave"):
+				var sp1: Node2D = _players.get_node_or_null("1")       # --shotspit: Żyła od razu pluje w gracza 1 (--shotdelay=1.0 zapowiedź, =1.6 plwocina w locie)
+				bs.call("_begin", 2, 0.9, (sp1.global_position if sp1 != null else bs.global_position) + Vector2(0, -8))
 			if "--shotup" in OS.get_cmdline_user_args() and bs.has_method("_surface"):
 				bs.call("_surface")         # --shotup: Pijawka od razu wynurzona (podgląd arkusza, z chwytem, jeśli gracz stoi w zasięgu)
 	for sa in OS.get_cmdline_user_args():
@@ -1027,6 +1030,15 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				mission.extract_progress = 0.15
 			if mode >= 2:
 				mission.finale = true
+	if "--shotacid" in OS.get_cmdline_user_args():
+		var ap: Node2D = _players.get_node_or_null("1")       # --shotacid: seria kul kwasu Pijawki lecących łukiem przed graczem (podgląd grafiki pocisku)
+		if ap != null:
+			for ai in 24:
+				get_tree().create_timer(0.3 + 0.12 * float(ai)).timeout.connect(func() -> void:
+					var ac: Node2D = load("res://scripts/acid_spit.gd").new()
+					ac.set("vel", Vector2(-70.0, -210.0))
+					level.add_child(ac)
+					ac.global_position = ap.global_position + Vector2(90.0, -14.0))
 	if "--shotfinale" in OS.get_cmdline_user_args():
 		mission.finale = true                                 # --shotfinale: finał kopalni bez przenoszenia gracza (pył ze stropu; użyj z --shotat/--shotrow)
 	if "--shotwall" in OS.get_cmdline_user_args():
