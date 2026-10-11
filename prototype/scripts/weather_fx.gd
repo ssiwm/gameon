@@ -95,6 +95,7 @@ const SILENT_DB := -55.0                    ## poniżej: pętla zatrzymana
 ## Dev (--shotflash): błysk na stałe (zrzuty).
 static var dev_flash := false
 
+var fx3d := false                           ## widok 3D przejął obraz pogody (deszcz, plusk, mgła, błysk); dźwięk zostaje tutaj
 var _near: CPUParticles2D
 var _far: CPUParticles2D
 var _splash: CPUParticles2D
@@ -200,7 +201,8 @@ func _process(delta: float) -> void:
 	var raining := RAIN.has(_id)
 	var strength := _k * _sky if raining else 0.0
 	for p in [_near, _far, _splash]:
-		(p as CPUParticles2D).emitting = strength > 0.02
+		(p as CPUParticles2D).visible = not fx3d              # widok 3D: deszcz i plusk są cząsteczkami w scenie 3D (view3d.gd: _sync_weather)
+		(p as CPUParticles2D).emitting = strength > 0.02 and not fx3d
 		(p as CPUParticles2D).modulate.a = clampf(strength, 0.0, 1.0)
 	if raining:
 		_wind(vs)
@@ -208,7 +210,7 @@ func _process(delta: float) -> void:
 	_audio(mode, lp)
 	# mgła: welon ekranowy; pod ziemią słabszy (0,45), pod otwartym niebem pełny
 	var fog_d := _k * (0.45 + 0.55 * _sky) if _id == "fog" else 0.0
-	_fog.visible = fog_d > 0.01
+	_fog.visible = fog_d > 0.01 and not fx3d                  # widok 3D: mgła to gęstsza mgła wolumetryczna i mgła głębi, nie welon ekranowy
 	if _fog.visible:
 		_fog_mat.set_shader_parameter("density", fog_d)
 		_fog_mat.set_shader_parameter("t", _t)
