@@ -218,7 +218,7 @@ func _exit_tree() -> void:
 
 # ---------------------------------------------------------------- rysowanie
 
-var hide_stuck := false          ## widok 3D: tuba flary jest modelem, 2D rysuje tylko płomień, iskry i postęp
+var hide_stuck := false          ## widok 3D: flara (tuba, płomień, iskry, pierścień) jest w scenie 3D, 2D rysuje tylko postęp ewakuacji
 
 func _draw() -> void:
 	if not _active or _m == null:
@@ -231,6 +231,8 @@ func _draw() -> void:
 	_draw_progress()
 
 func _draw_hd() -> void:
+	if hide_stuck:                                    # widok 3D: tuba, płomień, iskry, poświata i pierścień strefy są w scenie 3D (view3d.gd: _sync_fires)
+		return
 	var t := _t
 	var col := _flare_col()
 	var hot := col.lerp(Color(1, 1, 0.92), 0.7)
@@ -250,8 +252,7 @@ func _draw_hd() -> void:
 		draw_circle(tip, 2.3, Color(col, 0.07 * a))
 		draw_circle(tip, 0.9, Color(hot, 0.45 * a))
 	# flara: wbita tuba i płomień
-	if not hide_stuck:                                # widok 3D stawia w tym miejscu model flary (view3d.gd)
-		ItemsHd.draw(self, "flare_stuck", Vector2.ZERO, 0.85)
+	ItemsHd.draw(self, "flare_stuck", Vector2.ZERO, 0.85)
 	var fh := (9.0 + 2.6 * sin(t * 17.0) + 1.8 * sin(t * 9.1) + 1.2 * sin(t * 4.3)) * f
 	var fw := (5.0 + 1.0 * sin(t * 13.0)) * lerpf(0.85, 1.0, clampf(f, 0.7, 1.2) - 0.7)
 	var fy := -13.0
