@@ -1027,6 +1027,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				mission.extract_progress = 0.15
 			if mode >= 2:
 				mission.finale = true
+	if "--shotfinale" in OS.get_cmdline_user_args():
+		mission.finale = true                                 # --shotfinale: finał kopalni bez przenoszenia gracza (pył ze stropu; użyj z --shotat/--shotrow)
 	if "--shotwall" in OS.get_cmdline_user_args():
 		var sw := get_tree().get_first_node_in_group("breakables")      # --shotwall: gracz tuż przed zamurowanym przejściem (mapa 1.2)
 		var sp: Node2D = _players.get_node_or_null("1")
