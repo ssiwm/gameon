@@ -154,6 +154,7 @@ var _net_timer := 0.0
 var _remote_pos := Vector2.ZERO
 var _max_hp := 30.0
 var _overlay: Node2D
+var fx3d := false                     ## widok 3D rysuje pierścień alarmu w scenie (view3d.gd: _sync_enemy_rings)
 var _spr: Array = []
 var _facing := 1.0
 var _last_x := 0.0
@@ -1493,7 +1494,7 @@ func _draw_overlay(ov: Node2D) -> void:
 		var txt := "P%d" % (2 + int(get_instance_id() % 3))
 		ov.draw_string(f, Vector2(-30 + 0.5, -31 + 0.5), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, 4, Color(0, 0, 0, 0.8))
 		ov.draw_string(f, Vector2(-30, -31), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, 4, Color(0.72, 0.8, 0.72))
-	if _ring > 0.0:
+	if _ring > 0.0 and not fx3d:
 		var k := 1.0 - _ring / 0.7
 		ov.draw_arc(Vector2(0, -size.y * 0.7), 8.0 + k * 70.0, 0.0, TAU, 28, Color(1.0, 0.55, 0.35, (1.0 - k) * 0.8), 1.5)
 	# pasek HP po pierwszym trafieniu

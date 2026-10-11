@@ -69,6 +69,10 @@ var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D
 var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
 var _ws_lamps := {}                      ## id warsztatu → lampa nad nim (Node3D w geometrii mapy)
 var _globs := {}                         ## id plwociny / kwasu → [węzeł 2D, kula 3D]
+var _nestfx := {}                        ## id gniazda → [węzeł 2D, żar 3D]
+var _ring_mi: MeshInstance3D             ## pierścienie alarmu wrogów (jedna siatka na wszystkie)
+var _motes: CPUParticles3D               ## pył w powietrzu wokół kamery
+var _amb_hidden: Array = []              ## schowane cząsteczki 2D kamery (mgiełka, pył) — do przywrócenia w widoku 2D
 var _leechfx := {}                       ## id Pijawki → [węzeł 2D, korzeń 3D efektów na wodzie]
 var _lampfx := {}                        ## id lampy → [węzeł 2D, poświata żarówki]
 var _bossfx := {}                        ## id Żyły → [węzeł 2D, korzeń 3D efektów]
@@ -181,6 +185,19 @@ func release() -> void:
 	var wxr := get_tree().root.find_child("WeatherFx", true, false)
 	if wxr != null:
 		wxr.set("fx3d", false)
+	for am in _amb_hidden:
+		if is_instance_valid(am):
+			(am as CanvasItem).visible = true
+	_amb_hidden.clear()
+	for id in _nestfx.keys():
+		if is_instance_valid(_nestfx[id][0]) and _nestfx[id][0].get("_embers") != null:
+			(_nestfx[id][0].get("_embers") as CanvasItem).visible = true
+		if is_instance_valid(_nestfx[id][1]):
+			(_nestfx[id][1] as Node).queue_free()
+	_nestfx.clear()
+	for en in get_tree().get_nodes_in_group("enemies"):
+		if en.get("fx3d") != null and en.get("_ring") != null:
+			en.set("fx3d", false)
 	for tw in get_tree().get_nodes_in_group("tide_water"):
 		tw.set("fx3d", false)
 	for tab in [_globs, _bossfx, _leechfx, _lampfx]:
@@ -295,6 +312,9 @@ func _process(delta: float) -> void:
 	_sync_boss_fx()
 	_sync_leech_fx()
 	_sync_lamps()
+	_sync_nests()
+	_sync_enemy_rings()
+	_sync_ambient()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -2510,6 +2530,138 @@ func _sync_lamps() -> void:
 		g.position = Level3D.px_to_m((src as Node2D).global_position + Vector2(0.0, 11.0)) + Vector3(0.0, 0.0, z + 0.12)
 		g.scale = Vector3.ONE * (0.75 + 0.1 * f)
 		(g.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.82, 0.55, 0.55 * f)
+
+# ---------------------------------------------------------------- gniazda, pierścień alarmu, pył w powietrzu
+
+## Żar unoszący się nad gniazdem (widać je z daleka w mroku): iskry 3D zamiast cząsteczek 2D z `nest.gd` (te są chowane).
+func _sync_nests() -> void:
+	for n in get_tree().get_nodes_in_group("nests"):
+		if not (n is Node2D) or n.is_queued_for_deletion() or _nestfx.has(n.get_instance_id()) or n.get("_embers") == null:
+			continue
+		var p := CPUParticles3D.new()
+		p.name = "NestEmbers"
+		p.amount = 20
+		p.lifetime = 1.8
+		p.local_coords = false
+		var q := QuadMesh.new()
+		q.size = Vector2(0.11, 0.11)
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		m.billboard_keep_scale = true
+		m.vertex_color_use_as_albedo = true
+		m.albedo_texture = _soft()
+		q.material = m
+		p.mesh = q
+		p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+		p.emission_box_extents = Vector3(12.0 * PX, 3.0 * PX, 0.35)
+		p.direction = Vector3.UP
+		p.spread = 25.0
+		p.initial_velocity_min = 6.0 * PX
+		p.initial_velocity_max = 16.0 * PX
+		p.gravity = Vector3(0.0, 4.0 * PX, 0.0)
+		p.scale_amount_min = 0.6
+		p.scale_amount_max = 1.5
+		var gr := Gradient.new()
+		gr.set_color(0, Color(1.0, 0.6, 0.22, 0.0))
+		gr.add_point(0.15, Color(1.0, 0.55, 0.2, 0.9))
+		gr.set_color(gr.get_point_count() - 1, Color(0.9, 0.25, 0.08, 0.0))
+		p.color_ramp = gr
+		p.layers = LAYER_WORLD
+		p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_world.add_child(p)
+		_nestfx[n.get_instance_id()] = [n, p]
+	for id in _nestfx.keys():
+		var src = _nestfx[id][0]
+		var p: CPUParticles3D = _nestfx[id][1]
+		if not is_instance_valid(src) or (src as Node).is_queued_for_deletion():
+			if is_instance_valid(p):
+				p.queue_free()
+			_nestfx.erase(id)
+			continue
+		var em := src.get("_embers") as CPUParticles2D
+		em.visible = false
+		p.emitting = em.emitting and (src as Node2D).is_visible_in_tree() and (src.get("alive") == null or src.get("alive") == true)
+		p.position = Level3D.px_to_m((src as Node2D).global_position + Vector2(0.0, -16.0)) + Vector3(0.0, 0.0, 0.3)
+
+## Pierścień alarmu wroga (`enemy.gd: _ring` — rozchodzi się od stwora, gdy podnosi alarm): okrąg w płaszczyźnie gry wokół jego tułowia.
+func _sync_enemy_rings() -> void:
+	if _ring_mi == null:
+		_ring_mi = _imm(_world, _add_mat())
+		_ring_mi.name = "EnemyRings"
+	var im := _ring_mi.mesh as ImmediateMesh
+	im.clear_surfaces()
+	for n in get_tree().get_nodes_in_group("enemies"):
+		var rv = n.get("_ring")
+		if rv == null or n.get("fx3d") == null or not (n is Node2D):
+			continue
+		n.set("fx3d", true)
+		if float(rv) <= 0.0 or not (n as Node2D).is_visible_in_tree():
+			continue
+		var k := 1.0 - float(rv) / 0.7
+		var size: Vector2 = n.get("_def")["size"]
+		var c := Level3D.px_to_m((n as Node2D).global_position + Vector2(0.0, -size.y * 0.7)) + Vector3(0.0, 0.0, 0.35)
+		var r := (8.0 + k * 70.0) * PX
+		var col := Color(1.0, 0.55, 0.35, (1.0 - k) * 0.8)
+		im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+		for i in 49:
+			var a := TAU * float(i) / 48.0
+			var d := Vector3(cos(a), sin(a), 0.0)
+			im.surface_set_color(col)
+			im.surface_add_vertex(c + d * (r - 0.05))
+			im.surface_set_color(col)
+			im.surface_add_vertex(c + d * (r + 0.05))
+		im.surface_end()
+
+## Pył w powietrzu wokół kadru: drobiny 3D w całej głębi sceny, widoczne tylko w świetle — snop latarki „ma objętość".
+## Płaskie cząsteczki kamery z `player.gd` (pył i mgiełka przy ziemi) są chowane; mgłę w widoku 3D daje mgła wolumetryczna.
+func _sync_ambient() -> void:
+	var cam2 := get_viewport().get_camera_2d()
+	if cam2 != null:
+		for ch in cam2.get_children():
+			if ch is CPUParticles2D and (ch as CanvasItem).visible:
+				(ch as CanvasItem).visible = false
+				_amb_hidden.append(ch)
+	if _motes == null:
+		_motes = CPUParticles3D.new()
+		_motes.name = "DustMotes"
+		_motes.amount = 160
+		_motes.lifetime = 9.0
+		_motes.preprocess = 9.0
+		_motes.local_coords = false
+		var q := QuadMesh.new()
+		q.size = Vector2(0.04, 0.04)
+		var sh := Shader.new()
+		sh.code = DUST_SHADER
+		var mat := ShaderMaterial.new()
+		mat.shader = sh
+		mat.set_shader_parameter("tex", _soft())
+		mat.set_shader_parameter("glow", 0.0)
+		q.material = mat
+		_motes.mesh = q
+		_motes.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+		_motes.emission_box_extents = Vector3(230.0 * PX, 140.0 * PX, 1.5)
+		_motes.direction = Vector3(1.0, 0.2, 0.0)
+		_motes.spread = 180.0
+		_motes.initial_velocity_min = 2.0 * PX
+		_motes.initial_velocity_max = 7.0 * PX
+		_motes.gravity = Vector3(0.6 * PX, -1.2 * PX, 0.0)
+		_motes.scale_amount_min = 0.6
+		_motes.scale_amount_max = 1.3
+		var gr := Gradient.new()
+		gr.set_color(0, Color(0.8, 0.78, 0.7, 0.0))
+		gr.add_point(0.15, Color(0.8, 0.78, 0.7, 0.7))
+		gr.add_point(0.85, Color(0.8, 0.78, 0.7, 0.7))
+		gr.set_color(gr.get_point_count() - 1, Color(0.8, 0.78, 0.7, 0.0))
+		_motes.color_ramp = gr
+		_motes.layers = LAYER_WORLD
+		_motes.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_world.add_child(_motes)
+	var cam := _cam_a.global_position
+	_motes.emitting = Settings.quality_idx >= 1 and Settings.fx_mult() > 0.0
+	_motes.position = Vector3(cam.x, cam.y - EYE_UP_M + 1.0, -0.3)
 
 # ---------------------------------------------------------------- pył finału kopalni
 
