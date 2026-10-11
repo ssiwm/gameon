@@ -1,7 +1,7 @@
 extends Node2D
 ## Meble w tle kryjówki (ATMOSPHERE_PLAN.md, F7): regały, stoły z krzesłami i stołkiem, szafki, prycze — sprite'y HD z potoku przedmiotów
 ## (art/items/, tools/concept/items_proc_bake.py) rozmieszczone w odstępach między znacznikami funkcji (stojaki, warsztat,
-## tablica, radio, strzelnica; przy tablicach szerszy margines, w zbrojowni zostają same stojaki). Kosmetyka: bez kolizji i interakcji; reagują na światła 2D (mapa normalnych). Tylko przy grafice HD przedmiotów.
+## tablica, radio; przy tablicach szerszy margines, w zbrojowni zostają same stojaki). Kosmetyka: bez kolizji i interakcji; reagują na światła 2D (mapa normalnych). Tylko przy grafice HD przedmiotów.
 
 const ItemsHd := preload("res://scripts/items_hd.gd")
 

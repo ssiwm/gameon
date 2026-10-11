@@ -2005,7 +2005,7 @@ func _gen_test() -> void:
 	var loadout_before: Array = (p.weapons.loadout as Array).duplicate()
 	_continue_after_result()
 	await get_tree().create_timer(0.5).timeout
-	var foes: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return not (e is RigidBody2D) and not e.is_in_group("range_targets"))      # rekwizyty (skrzynie) też są w tej grupie
+	var foes: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return not (e is RigidBody2D))      # rekwizyty (skrzynie) też są w tej grupie
 	check.call("[Enter] po 1.2 → kryjówka (następna: %s, wrogów %d)" % [after_hub, foes.size()],
 		level.map_id == "z1_hub" and mission.kind == "hub" and after_hub == "z1_m3" and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE
 		and foes.is_empty() and p.global_position.distance_to(level.spawn_for(1)) < 40.0)
@@ -2051,16 +2051,7 @@ func _gen_test() -> void:
 	Director.stress = 0.0
 	await get_tree().create_timer(2.0).timeout
 	var roamers: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return String(e.name).begins_with("Roamer"))
-	var live_foes: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return not (e is RigidBody2D) and not e.is_in_group("range_targets"))
-	var rts := get_tree().get_nodes_in_group("range_targets")
-	var rt_ok := rts.size() == 1 and get_tree().get_nodes_in_group("range_line").size() == 1
-	if rt_ok:
-		var tgt: Node2D = rts[0]
-		var wid: int = p.weapons.loadout[0]
-		var body := Combat.apply(tgt, Combat.make_info(wid, 10.0, tgt.global_position + Vector2(0, -10), Vector2.RIGHT, 1, "bullet"))
-		var head := Combat.apply(tgt, Combat.make_info(wid, 10.0, Vector2(tgt.global_position.x, tgt.head_y() - 2.0), Vector2.RIGHT, 1, "bullet"))
-		rt_ok = bool(body["hit"]) and not bool(body["killed"]) and bool(head["hit"]) and (bool(head["crit"]) or Weapons.def(wid).crit_mult <= 1.0) and tgt.distance_m > 0.0
-	check.call("strzelnica: linia + tarcza (%s), tarcza przyjmuje trafienia, nie ginie, głowa = crit, ma odległość" % ", ".join(rts.map(func(t: Node) -> String: return "%dm" % int(t.distance_m))), rt_ok)
+	var live_foes: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return not (e is RigidBody2D))
 
 	# warsztat (faza B złomu): ława, panel, zablokowane stojaki, zakup
 	var racks_w := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "weapon" and n.static_display)

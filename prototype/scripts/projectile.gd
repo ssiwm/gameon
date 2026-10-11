@@ -173,7 +173,7 @@ func _sweep(from: Vector2, to: Vector2, rewind := -1.0) -> bool:
 			var res := _hit_target(node, p, at_dist)
 			if bool(res.get("hit", false)):
 				if bool(res.get("pass", false)) and _def.blast_radius <= 0.0:
-					_skip.append(hit["rid"])         # tarcza strzelnicy: pocisk leci dalej (każda tarcza w linii liczy swoje obrażenia)
+					_skip.append(hit["rid"])         # cel przepuszczający pociski (wynik `pass`): pocisk leci dalej
 					cur = p
 					continue
 				if sticks_on_hit():

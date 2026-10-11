@@ -60,12 +60,10 @@ const LAMP := preload("res://scripts/lamp.gd")
 const BOARD := preload("res://scripts/board.gd")
 const RADIO_SET := preload("res://scripts/radio_set.gd")
 const RESULTS_WALL := preload("res://scripts/results_wall.gd")
-const RANGE_LINE := preload("res://scripts/range_line.gd")
 const WORKSHOP := preload("res://scripts/workshop.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const GibArt := preload("res://scripts/gib_art.gd")
 const LEECH := preload("res://scripts/leech.gd")
-const RANGE_TARGET := preload("res://scripts/range_target.gd")
 const HUB_DECOR := preload("res://scripts/hub_decor.gd")
 
 ## Mapy misji (scripts/maps/): każda niesie MAP, ID, TITLE, OBJECTIVE, UNDERGROUND_ROW, WEAPONS, ACCENTS.
@@ -774,16 +772,6 @@ func _spawn_entities() -> void:
 		ws.name = "Workshop%d" % (i + 1)
 		ws.position = found["h"][i]
 		add_child(ws)
-	for i in found["r"].size():
-		var rl: Node2D = RANGE_LINE.new()
-		rl.name = "RangeLine%d" % (i + 1)
-		rl.position = found["r"][i]
-		add_child(rl)
-	for i in found["t"].size():
-		var rt: StaticBody2D = RANGE_TARGET.new()
-		rt.name = "RangeTarget%d" % (i + 1)
-		rt.position = found["t"][i]
-		add_child(rt)
 	for i in found["l"].size():
 		var lp: Node2D = LAMP.new()
 		lp.name = "Lamp%d" % (i + 1)
