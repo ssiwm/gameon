@@ -31,7 +31,7 @@ const SYNC_INTERVAL := 0.2
 
 const STEALTH_CAP := 40.0              ## cel poboczny misji 1.2: Uwaga poniżej tej wartości do końca celu głównego
 const BOSS_WAIT := 40.0               ## s, po których budzi się boss misji „boss", nawet jeśli nikt nie podszedł
-const FINALE_DELAY := 2.5             ## s od trzeciego nieśmiertelnika do zawału rampy
+const FINALE_DELAY := 2.5             ## s od ostatniego nieśmiertelnika do zawału rampy
 const FINALE_NOISE := 14.0            ## skok Uwagi przy wstrząsie (budzi to, co śpi w sali)
 ## Ostatnia transmisja patrolu w finale: [sekunda od startu finału, linia]; ostatnia wisi do FINALE_RADIO_END.
 const FINALE_RADIO := [
@@ -79,7 +79,7 @@ var _exit_fx: Node2D
 var _was_dead := {}          # nazwa gracza -> bool (liczenie upadków, serwer)
 
 var _boss: Node = null
-var finale := false                    ## misja 1.1: trzeci nieśmiertelnik wziął kopalnię w obroty (zawał + wyjście po drugiej stronie)
+var finale := false                    ## misja 1.1: ostatni nieśmiertelnik wziął kopalnię w obroty (zawał + wyjście po drugiej stronie)
 var finale_clock := 0.0               ## s od startu finału (wszystkie peery liczą lokalnie — radio na HUD)
 var _finale_t := -1.0                  ## serwer: odliczanie do zawału (s); < 0 = brak
 var _boss_wait := 0.0                 ## serwer, misja „boss": odliczanie do przebudzenia bossa, jeśli nikt nie podejdzie do basenu

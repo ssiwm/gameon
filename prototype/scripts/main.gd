@@ -1761,7 +1761,7 @@ func _leech_test() -> void:
 	check.call("ekstrakcja → SUCCESS", mission.phase == MISSION_SCRIPT.Phase.SUCCESS)
 	print("[LEECH-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
 
-## Test misji 1.1 (--host --mission=z1_m1 --tagtest): trzy nieśmiertelniki, ekstrakcja, wipe (nieśmiertelniki wracają),
+## Test misji 1.1 (--host --mission=z1_m1 --tagtest): cztery nieśmiertelniki, ekstrakcja, wipe (nieśmiertelniki wracają),
 ## sukces i złom. Wrogowie są zamrożeni, żeby test był powtarzalny.
 func _tag_test() -> void:
 	await get_tree().create_timer(1.0).timeout
@@ -1777,10 +1777,10 @@ func _tag_test() -> void:
 	var tags_now := func() -> Array: return get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "tag" and not n.is_queued_for_deletion())
 	var brief: Dictionary = level.briefing("z1_m1")
 	var counts: Dictionary = brief["counts"]
-	check.call("start: mapa 1.1, cel tags, 3 nieśmiertelniki (cel %d, na ziemi %d)" % [mission.goal_total, tags_now.call().size()],
-		level.map_id == "z1_m1" and mission.kind == "tags" and mission.goal_total == 3 and tags_now.call().size() == 3 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
-	check.call("odprawa: tytuł, 3 nieśmiertelniki, Trzoski %d, Wołki %d, bez Stalkera i bossa" % [int(counts.get("trzosek", 0)), int(counts.get("wolek", 0))],
-		String(brief["title"]) != "" and int(brief["tags"]) == 3 and int(counts.get("trzosek", 0)) >= 8 and int(counts.get("wolek", 0)) >= 2 and not bool(brief["stalker"]) and not bool(brief["boss"]))
+	check.call("start: mapa 1.1, cel tags, 4 nieśmiertelniki (cel %d, na ziemi %d)" % [mission.goal_total, tags_now.call().size()],
+		level.map_id == "z1_m1" and mission.kind == "tags" and mission.goal_total == 4 and tags_now.call().size() == 4 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
+	check.call("odprawa: tytuł, 4 nieśmiertelniki, Trzoski %d, Wołki %d, bez Stalkera i bossa" % [int(counts.get("trzosek", 0)), int(counts.get("wolek", 0))],
+		String(brief["title"]) != "" and int(brief["tags"]) == 4 and int(counts.get("trzosek", 0)) >= 8 and int(counts.get("wolek", 0)) >= 2 and not bool(brief["stalker"]) and not bool(brief["boss"]))
 	var gallery: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return e is CharacterBody2D and e.global_position.y > 45.0 * 16.0)
 	var scrap_caches := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "scrap")
 	var gallery_nav: Array = level.nav.find_path(Vector2(166.0 * 16.0 + 8.0, 42.0 * 16.0), Vector2(145.0 * 16.0 + 8.0, 51.0 * 16.0))
@@ -1803,12 +1803,12 @@ func _tag_test() -> void:
 	p.global_position = positions[0] + Vector2(0, -4)
 	p.velocity = Vector2.ZERO
 	await get_tree().create_timer(0.8).timeout
-	check.call("nieśmiertelnik 1: zostało %d / %d, faza %d" % [mission.goal_left, mission.goal_total, mission.phase], mission.goal_left == 2 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE and tags_now.call().size() == 2)
+	check.call("nieśmiertelnik 1: zostało %d / %d, faza %d" % [mission.goal_left, mission.goal_total, mission.phase], mission.goal_left == 3 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE and tags_now.call().size() == 3)
 	# wipe: misja wraca na start, nieśmiertelniki wracają
 	_restart_mission(false)
 	await get_tree().create_timer(0.8).timeout
 	check.call("wipe: nieśmiertelniki wróciły (%d na ziemi, cel %d/%d, próba %d)" % [tags_now.call().size(), mission.goal_left, mission.goal_total, mission.attempts],
-		tags_now.call().size() == 3 and mission.goal_left == 3 and mission.attempts == 2 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
+		tags_now.call().size() == 4 and mission.goal_left == 4 and mission.attempts == 2 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
 	# cel poboczny: dwie ukryte skrytki (na półkach poza główną trasą), każda wpada do łupu i zalicza licznik
 	var stash_nodes := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "stash")
 	check.call("skrytki: %d na mapie, cel poboczny 0 / %d, odprawa liczy %d" % [stash_nodes.size(), mission.stash_total, int(brief.get("stashes", 0))], stash_nodes.size() == 2 and mission.stash_total == 2 and int(brief.get("stashes", 0)) == 2 and mission.stashes_found == 0)
@@ -1819,13 +1819,13 @@ func _tag_test() -> void:
 		await get_tree().create_timer(0.8).timeout
 	check.call("skrytki zebrane: %d / %d, łup +%d, cel poboczny zaliczony=%s" % [mission.stashes_found, mission.stash_total, Scrap.loot - loot_before, str(mission.side_done())],
 		mission.stashes_found == 2 and Scrap.loot - loot_before == 2 * Scrap.STASH_VALUE and mission.side_done())
-	for i in 3:
+	for i in 4:
 		var near: Array = tags_now.call()
 		near.sort_custom(func(a: Node, b: Node) -> bool: return a.global_position.x < b.global_position.x)
 		p.global_position = (near[0] as Node2D).global_position + Vector2(0, -4)
 		p.velocity = Vector2.ZERO
 		await get_tree().create_timer(0.8).timeout
-	check.call("3 nieśmiertelniki → EXTRACT (zostało %d, faza %d), wyjście po zawale przy szybie (x=%.0f)" % [mission.goal_left, mission.phase, mission.exit_pos.x],
+	check.call("4 nieśmiertelniki → EXTRACT (zostało %d, faza %d), wyjście po zawale przy szybie (x=%.0f)" % [mission.goal_left, mission.phase, mission.exit_pos.x],
 		mission.goal_left == 0 and mission.phase == MISSION_SCRIPT.Phase.EXTRACT and mission.exit_pos.x > 2900.0)
 	p.global_position = mission.exit_pos + Vector2(0, -2)
 	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
@@ -1886,7 +1886,7 @@ func _sneak_test() -> void:
 	check.call("podpowiedź light: gracz w podziemiach bez latarki", hh._queued.has("light"))
 	print("[SNEAK-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
 
-## Test finału misji 1.1 (--host --mission=z1_m1 --finaletest): po trzecim nieśmiertelniku wstrząs, zawał rampy (kafle zamieniają się
+## Test finału misji 1.1 (--host --mission=z1_m1 --finaletest): po ostatnim nieśmiertelniku wstrząs, zawał rampy (kafle zamieniają się
 ## w skałę, graf nawigacji traci drogę powrotną, uwięziony gracz ląduje za skałą), wyjście po drugiej stronie, sukces, reset po restarcie.
 func _finale_test() -> void:
 	await get_tree().create_timer(1.0).timeout
@@ -1913,7 +1913,7 @@ func _finale_test() -> void:
 	check.call("przed zawałem: rampa wolna (%s), droga z sali w górę rampy biegnie przez nią" % level._ch(152, 38),
 		not level._is_solid(152, 38) and through.call(level.nav.find_path(hall, ramp_pre)))
 	var tags_now := func() -> Array: return get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "tag" and not n.is_queued_for_deletion())
-	for i in 3:
+	for i in 4:
 		var near: Array = tags_now.call()
 		near.sort_custom(func(a: Node, b: Node) -> bool: return a.global_position.x < b.global_position.x)
 		p.global_position = (near[0] as Node2D).global_position + Vector2(0, -4)
@@ -2192,8 +2192,8 @@ func _gen_test() -> void:
 	check.call("po B1 kryjówka, następna: 1.1 (kampania w kółko od początku)", level.map_id == "z1_hub" and after_hub == "z1_m1")
 	_depart_hub()
 	await get_tree().create_timer(0.5).timeout
-	check.call("wyjście z kryjówki → 1.1 (3 nieśmiertelniki, bez generatorów)",
-		level.map_id == "z1_m1" and mission.kind == "tags" and mission.goal_left == 3 and mission.goal_total == 3 and get_tree().get_nodes_in_group("generators").is_empty())
+	check.call("wyjście z kryjówki → 1.1 (4 nieśmiertelniki, bez generatorów)",
+		level.map_id == "z1_m1" and mission.kind == "tags" and mission.goal_left == 4 and mission.goal_total == 4 and get_tree().get_nodes_in_group("generators").is_empty())
 	check.call("kolejność kampanii 1.1 → 1.2 → 1.3 → B1, Nocny Dyżur losuje tylko z 1.2 i 1.3 (pula %s)" % str(level.SHIFT_POOL),
 		level.CAMPAIGN == ["z1_m1", "z1_m2", "z1_m3", "z1_b1"] and level.SHIFT_POOL == ["z1_m2", "z1_m3"])
 	print("[GEN-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
