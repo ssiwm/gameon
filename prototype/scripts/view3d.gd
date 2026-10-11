@@ -947,6 +947,66 @@ const RACK_GUN_SCALE := 1.3                 ## broń na stojaku względem sprite
 const RACK_GUN_Z := -1.70                   ## broń leży na półce, tuż przed deską
 const RACK_PLATE_Z := -1.50                 ## front półki: tabliczka z ceną
 
+const RACK_LAMP_PX := 41.0                  ## spód lampy nad podłogą [px świata] (stojak kończy się ok. 31 px nad podłogą)
+
+## Lampa wisząca nad stojakiem z bronią (kryjówka): emaliowany klosz z modelu `lamp`, przewód do stropu i ciepły reflektor w dół — stojak i broń
+## oświetla widoczne źródło, a nie poświata „znikąd” (poświata pickupu na stojaku jest w 3D pomijana, zob. `_scan_lights`).
+func _add_rack_lamp(rack_item: Node2D) -> void:
+	var lamp := _item_model("lamp")
+	if lamp == null:
+		return
+	var foot := rack_item.global_position
+	var root := Node3D.new()
+	root.name = "RackLamp"
+	_geo.add_child(root)                                       # razem z geometrią mapy (znika przy zmianie mapy)
+	root.position = Level3D.px_to_m(foot) + Vector3(0.0, RACK_LAMP_PX * PX, RACK_GUN_Z + 0.42)
+	lamp.scale = Vector3(PX, PX, PX) * 1.25
+	root.add_child(lamp)
+	# przewód do stropu: pierwszy lity kafel nad lampą
+	var c := int(foot.x / 16.0)
+	var r := int(foot.y / 16.0) - 1
+	var guard := 0
+	while r > 0 and guard < 40 and not Level3D.is_solid_ch(Level3D._ch(_rows, c, r)):
+		r -= 1
+		guard += 1
+	var top_m := -float(r + 1) * Level3D.T
+	var lamp_top := root.position.y + 11.7 * PX * 1.25
+	if top_m > lamp_top + 0.05:
+		var cord := CylinderMesh.new()
+		cord.top_radius = 0.012
+		cord.bottom_radius = 0.012
+		cord.height = top_m - lamp_top
+		var cmi := MeshInstance3D.new()
+		cmi.mesh = cord
+		var cm := StandardMaterial3D.new()
+		cm.albedo_color = Color(0.03, 0.03, 0.03)
+		cm.roughness = 0.8
+		cmi.material_override = cm
+		cmi.layers = LAYER_WORLD
+		cmi.position = Vector3(0.0, 11.7 * PX * 1.25 + cord.height * 0.5, 0.0)
+		root.add_child(cmi)
+	var sp := SpotLight3D.new()
+	sp.light_color = Color(1.0, 0.76, 0.46)
+	sp.light_energy = 7.0
+	sp.spot_range = 5.5
+	sp.spot_angle = 40.0
+	sp.spot_attenuation = 0.9
+	sp.spot_angle_attenuation = 0.6
+	sp.shadow_enabled = true
+	sp.light_volumetric_fog_energy = 1.4
+	sp.layers = LAYER_WORLD | LAYER_ACTORS
+	sp.position = Vector3(0.0, 0.1, 0.0)
+	sp.basis = Basis.looking_at(Vector3(0.0, -1.0, -0.22), Vector3.FORWARD)
+	root.add_child(sp)
+	var bulb := OmniLight3D.new()                              # żarówka: słaba poświata wokół klosza
+	bulb.light_color = Color(1.0, 0.8, 0.5)
+	bulb.light_energy = 0.5
+	bulb.omni_range = 1.4
+	bulb.light_volumetric_fog_energy = 0.4
+	bulb.layers = LAYER_WORLD | LAYER_ACTORS
+	bulb.position = Vector3(0.0, 0.05, 0.0)
+	root.add_child(bulb)
+
 ## Kopie materiałów modelu z mnożnikiem koloru (materiały siatek są współdzielone między egzemplarzami — nadpisujemy je na węzłach).
 func _tint_model(root: Node, tint: Color) -> void:
 	for mn in root.find_children("*", "MeshInstance3D", true, false):
@@ -1059,6 +1119,8 @@ func _sync_guns() -> void:
 			label.position = Vector3(0.0, 0.0, 0.013)
 			plate.add_child(label)
 			plate.position = Vector3(0.0, -(RACK_SHELF_PX - 4.1) * RACK_SCALE * PX - 1.6 * PX, RACK_PLATE_Z - RACK_GUN_Z)
+		if on_rack:
+			_add_rack_lamp(n as Node2D)
 		_guns[id] = [n, pivot, spr, RACK_GUN_Z if on_rack else -0.25, on_rack, model, lock, plate, label, -1]
 	for id in _guns.keys():
 		var g: Array = _guns[id]
@@ -1448,6 +1510,8 @@ func _scan_lights() -> void:
 		if not li.enabled or li.energy <= 0.02 or li.texture == null or not li.is_visible_in_tree():
 			continue
 		# aura gracza (ciepła poświata 6 m): w 3D słabsza niż zwykłe światło omni i bez cieni — ta sama plama widoczności wokół gracza co w 2D
+		if li.get_parent() != null and li.get_parent().get("static_display") == true and _item_scene("lamp") != null:
+			continue                                      # broń na stojaku: oświetla ją lampa nad stojakiem, nie kolorowa poświata pickupu
 		var is_aura: bool = li.get_parent() is CharacterBody2D and li.texture != Lights.cone() and (li.get_parent() as Node).is_in_group("players")
 		var id := li.get_instance_id()
 		keep[id] = true
