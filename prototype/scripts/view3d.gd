@@ -66,6 +66,8 @@ var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) �
 var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
 var _beam_masks := {}                    ## id światła 2D latarki → [światło, maska obiektów, cienie] do przywrócenia przy wyłączeniu widoku
 var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D, MeshInstance3D, losowe odchylenie]
+var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
+var _rain_splash: CPUParticles3D         ## plusk kropel na gruncie
 var _blood: Array = []                   ## kałuże krwi: [MeshInstance3D, promień docelowy, promień bieżący, wiek]
 var _blood_shader: Shader
 var _burn := {}                          ## id węzła 2D (plama ognia, płonące ciało, chmura dymu) → [węzeł, Node3D, rodzaj, koniec]
@@ -169,6 +171,9 @@ func release() -> void:
 		if is_instance_valid(_fires[id][0]):
 			_fires[id][0].set("fx3d", false)
 	_fires.clear()
+	var wxr := get_tree().root.find_child("WeatherFx", true, false)
+	if wxr != null:
+		wxr.set("fx3d", false)
 	for id in _burn.keys():
 		if is_instance_valid(_burn[id][0]) and String(_burn[id][2]) != "host":
 			(_burn[id][0] as CanvasItem).self_modulate = Color.WHITE
@@ -261,6 +266,7 @@ func _process(delta: float) -> void:
 	_sync_casings()
 	_sync_burning()
 	_sync_blood(delta)
+	_sync_weather(delta)
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -1933,6 +1939,126 @@ func mirror_gib(body: RigidBody2D, kind: int, sz: float) -> void:
 	if _casings.has(id) and is_instance_valid(_casings[id][1]):
 		(_casings[id][1] as Node).queue_free()
 	_casings[id] = [body, pivot, randf_range(-0.6, 0.6), randf() * TAU]
+
+# ---------------------------------------------------------------- pogoda
+
+const RAIN_3D := {"rain": [12.0, 700, 10.5], "storm": [26.0, 1500, 13.0]}      # kąt od pionu [°], liczba kropel, prędkość [m/s]
+const MOON_K := {"clear": 1.35, "rain": 0.75, "storm": 0.55, "fog": 1.0}       # jasność księżyca wg pogody
+
+## Pogoda w scenie 3D (stan z `weather_fx.gd`: siła `_k`, otwartość nieba `_sky`, rodzaj `_id`, błysk `_flash`; dźwięk zostaje tam):
+##  - deszcz: smugi kropel w całej głębi sceny (od planu przed graczami po las), pochylone wiatrem, z podmuchami burzy, plus plusk na gruncie;
+##  - mgła: gęstsza bryła mgły wolumetrycznej z własną bladą poświatą (światła latarki i flar rysują w niej snopy) i bliższa mgła głębi;
+##  - burza: błyskawica to chwilowo jasny księżyc, niebo i światło otoczenia — cienie drzew i postaci na ułamek sekundy.
+func _sync_weather(_delta: float) -> void:
+	var wx := get_tree().root.find_child("WeatherFx", true, false)
+	if wx == null:
+		return
+	wx.set("fx3d", true)
+	var id := String(wx.get("_id"))
+	var k := float(wx.get("_k"))
+	var sky := float(wx.get("_sky"))
+	var mode: int = Settings.weather_fx_effective()
+	if _rain == null:
+		_rain = CPUParticles3D.new()
+		_rain.name = "Rain"
+		_rain.local_coords = false
+		_rain.emitting = false
+		var q := QuadMesh.new()
+		q.size = Vector2(0.014, 0.55)
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.vertex_color_use_as_albedo = true
+		q.material = m
+		_rain.mesh = q
+		_rain.particle_flag_align_y = true                      # smuga wzdłuż toru lotu
+		_rain.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+		_rain.spread = 2.5
+		_rain.gravity = Vector3.ZERO
+		_rain.layers = LAYER_WORLD
+		_rain.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_world.add_child(_rain)
+		_rain_splash = CPUParticles3D.new()
+		_rain_splash.name = "RainSplash"
+		_rain_splash.local_coords = false
+		_rain_splash.emitting = false
+		_rain_splash.amount = 90
+		_rain_splash.lifetime = 0.28
+		var sq := QuadMesh.new()
+		sq.size = Vector2(0.035, 0.035)
+		var smt := m.duplicate() as StandardMaterial3D
+		smt.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		sq.material = smt
+		_rain_splash.mesh = sq
+		_rain_splash.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+		_rain_splash.direction = Vector3.UP
+		_rain_splash.spread = 55.0
+		_rain_splash.initial_velocity_min = 0.6
+		_rain_splash.initial_velocity_max = 1.7
+		_rain_splash.gravity = Vector3(0.0, -9.0, 0.0)
+		_rain_splash.layers = LAYER_WORLD
+		_rain_splash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_world.add_child(_rain_splash)
+	var flash := float(wx.call("_flash", mode)) * k if id == "storm" else 0.0
+	# deszcz
+	var raining := RAIN_3D.has(id)
+	var strength := k * sky if raining else 0.0
+	_rain.emitting = strength > 0.02
+	_rain_splash.emitting = strength > 0.02
+	if raining:
+		var cfg: Array = RAIN_3D[id]
+		var want := maxi(60, int(float(cfg[1]) * (0.6 if mode == Settings.WEATHER_FX_REDUCED else 1.0) * (0.5 if Settings.quality_idx == 0 else 1.0)))
+		if _rain.amount != want:
+			_rain.amount = want
+		var gust := 1.0 + (0.5 * sin(_life * 0.7) * sin(_life * 0.31) if id == "storm" else 0.0)
+		var a := deg_to_rad(float(cfg[0]) * gust)
+		var dir := Vector3(-sin(a), -cos(a), 0.0)             # wiatr z prawej: krople lecą w lewo w dół
+		var cam := _cam_a.global_position
+		var half_h := tan(deg_to_rad(FOV * 0.5)) * cam.z * 1.8      # zapas na głębię (dalsze plany widać szerzej)
+		var half_w := half_h * 1.9
+		var speed := float(cfg[2])
+		_rain.direction = dir
+		_rain.initial_velocity_min = speed * 0.85
+		_rain.initial_velocity_max = speed * 1.15
+		_rain.lifetime = (half_h * 2.0 + 2.0) / speed
+		_rain.emission_box_extents = Vector3(half_w + half_h * tan(a), 0.4, 8.0)
+		_rain.position = Vector3(cam.x + half_h * tan(a), cam.y - EYE_UP_M + half_h + 1.0, -7.1)       # z od −15 do +0,9: krople przed frontem gruntu nie spadają „pod ziemię”
+		_rain.color = Color(0.55, 0.62, 0.74, (0.16 + 0.5 * flash) * clampf(strength, 0.0, 1.0))
+		var lp = wx.call("_local_player")
+		if lp != null:
+			# krople kończą lot na wysokości gruntu pod graczem (wnętrza brył nie mają geometrii, więc leciałyby „pod ziemią”)
+			var drop := _rain.position.y - (Level3D.px_to_m((lp as Node2D).global_position).y - 0.3)
+			_rain.lifetime = clampf(drop / (speed * 0.9 * cos(a)), 0.4, 6.0)
+			_rain_splash.position = Level3D.px_to_m((lp as Node2D).global_position) + Vector3(0.0, 0.03, -1.0)
+			_rain_splash.emission_box_extents = Vector3(half_w, 0.01, 1.8)
+			_rain_splash.color = Color(0.6, 0.68, 0.8, 0.3 * clampf(strength, 0.0, 1.0))
+	# mgła i księżyc
+	var fogk := k * (0.45 + 0.55 * sky) if id == "fog" else (k * 0.25 * sky if raining else 0.0)
+	var fv := _geo.get_node_or_null("FogVolume") as FogVolume
+	if fv != null:
+		var fm := fv.material as FogMaterial
+		if not fv.has_meta("base_density"):
+			fv.set_meta("base_density", fm.density)
+		fm.density = float(fv.get_meta("base_density")) * (1.0 + 9.0 * fogk)
+		fm.emission = Color(0.092, 0.115, 0.140) * (1.1 * fogk)       # blada własna poświata mgły — czytelna także tam, gdzie nic nie świeci
+	var env := _cam_a.environment
+	if env != null:
+		if not env.has_meta("base_amb"):
+			env.set_meta("base_amb", env.ambient_light_energy)
+			env.set_meta("base_fog", env.fog_light_color)
+		env.ambient_light_energy = float(env.get_meta("base_amb")) + 0.55 * flash
+		env.fog_light_color = (env.get_meta("base_fog") as Color) * (1.0 + 1.6 * fogk + 9.0 * flash)
+		if id == "fog":
+			env.fog_depth_begin -= 1.5 * k                        # mgła głębi podchodzi pod sam plan gry (początek ustawia co klatkę _sync_camera)
+		if env.sky != null and env.sky.sky_material is ShaderMaterial:
+			(env.sky.sky_material as ShaderMaterial).set_shader_parameter("glow", Vector3(0.016, 0.024, 0.044) * (1.0 + 14.0 * flash) * float(MOON_K.get(id, 1.0)))
+	var moon := _geo.get_node_or_null("Moon") as DirectionalLight3D
+	if moon != null:
+		if not moon.has_meta("base_e"):
+			moon.set_meta("base_e", moon.light_energy)
+		moon.light_energy = float(moon.get_meta("base_e")) * lerpf(1.0, float(MOON_K.get(id, 1.0)), k) + 2.6 * flash
+		moon.light_color = Color(0.62, 0.72, 0.95).lerp(Color(0.9, 0.93, 1.0), clampf(flash, 0.0, 1.0))
 
 # ---------------------------------------------------------------- krew
 
