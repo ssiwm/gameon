@@ -1,6 +1,7 @@
 """Tekstury drzew tła widoku 3D (`Level3D.build_forest`): świerki i martwe pnie jako karty z kanałem alfa.
 
-Wynik: prototype/art/world3d/forest/spruce_{a,b,c}.png, snag_{a,b}.png (512×1024 RGBA, pień u dołu na środku).
+Wynik: prototype/art/world3d/forest/spruce_{a,b,c}.png, snag_{a,b}.png (512×1024 RGBA, pień u dołu na środku) oraz runo:
+grass_{a,b}.png i fern_a.png (256×256, kępa od dolnej krawędzi) dla `Level3D.build_undergrowth`.
 Kształt: pień + piętra opadających, postrzępionych gałęzi rysowanych igła po igle; jaśniejsze grzbiety gałęzi dają bryłę w świetle flary.
 
     python prototype/tools/world_forest_gen.py
@@ -127,6 +128,64 @@ def snag(seed):
     return im.resize((W, H), Image.LANCZOS)
 
 
+def grass(seed, dry=0.3, size=256):
+    """Kępa trawy: wachlarz wygiętych źdźbeł z podstawy na środku dołu; część sucha (żółtawa)."""
+    rng = random.Random(seed)
+    S = size * SS
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    green_d, green_l, straw = (28, 44, 24), (74, 104, 52), (128, 112, 66)
+    for _ in range(46):
+        x0 = S * 0.5 + rng.gauss(0, S * 0.13)
+        lean = rng.gauss(0, 0.45)
+        ln = S * rng.uniform(0.35, 0.95)
+        wid = rng.uniform(2.2, 4.5) * SS
+        col = _mix(green_d, green_l, rng.random())
+        if rng.random() < dry:
+            col = _mix(col, straw, rng.uniform(0.5, 1.0))
+        pts_l, pts_r = [], []
+        n = 9
+        for i in range(n + 1):
+            t = i / n
+            x = x0 + lean * ln * 0.55 * t * t
+            y = S - 2 * SS - ln * t * (1.0 - 0.18 * abs(lean) * t)
+            w = wid * (1.0 - t) ** 0.7
+            pts_l.append((x - w, y))
+            pts_r.append((x + w, y))
+        d.polygon(pts_l + pts_r[::-1], fill=col + (255,))
+        d.line(pts_l, fill=_mix(col, (0, 0, 0), 0.35) + (255,), width=SS)
+    return im.resize((size, size), Image.LANCZOS)
+
+
+def fern(seed, size=256):
+    """Paproć: kilka łukowatych liści z listkami po obu stronach osi."""
+    rng = random.Random(seed)
+    S = size * SS
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    col_d, col_l = (20, 46, 26), (58, 98, 50)
+    for k in range(9):
+        ang = math.radians(-90 + (k - 4) * 19 + rng.uniform(-6, 6))
+        ln = S * rng.uniform(0.55, 0.92)
+        px, py = S * 0.5, S * 0.62
+        n = 22
+        for i in range(1, n + 1):
+            t = i / n
+            a = ang + (k - 4) * 0.16 * t * t
+            x = S * 0.5 + math.cos(a) * ln * t
+            y = S * 0.62 + math.sin(a) * ln * t + ln * 0.22 * t * t
+            d.line([px, py, x, y], fill=col_d + (255,), width=max(1, int(2 * SS * (1 - t)) + 1))
+            leaf = ln * 0.16 * math.sin(min(1.0, t * 1.25) * math.pi) + 2 * SS
+            nx, ny = -(y - py), (x - px)
+            nl = math.hypot(nx, ny) or 1.0
+            nx, ny = nx / nl, ny / nl
+            c = _mix(col_d, col_l, rng.random() * (0.4 + 0.6 * t))
+            for sgn in (-1, 1):
+                d.polygon([(px, py), (x, y), (x + nx * leaf * sgn + (x - px) * 0.6, y + ny * leaf * sgn + (y - py) * 0.6)], fill=c + (255,))
+            px, py = x, y
+    return im.resize((size, size), Image.LANCZOS)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     jobs = {
@@ -135,6 +194,9 @@ def main():
         "spruce_c": spruce(37, 0.92, 0.08),
         "snag_a": snag(5),
         "snag_b": snag(9),
+        "grass_a": grass(3, 0.25),
+        "grass_b": grass(8, 0.6),
+        "fern_a": fern(4),
     }
     for name, im in jobs.items():
         # lekkie zmiękczenie koloru bez rozmywania alfy (krawędź zostaje ostra dla alpha scissor)
