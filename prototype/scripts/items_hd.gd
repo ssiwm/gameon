@@ -96,6 +96,9 @@ static func make(name: String, parent: Node2D, scale := 1.0, dark_vis := 0.0) ->
 	var f := frame_px(name)
 	sp.offset = Vector2(0.0, PAD - f.y * 0.5)
 	sp.scale = Vector2.ONE * scale / ppw(name)
+	sp.add_to_group("items_hd")                    # widok 3D (view3d.gd) przenosi każdy przedmiot HD do sceny 3D jako kartę z mapą normalnych
+	sp.set_meta("hd_name", name)
+	sp.set_meta("hd_dark", dark_vis)
 	parent.add_child(sp)
 	var g := glow_texture(name)
 	if g != null:

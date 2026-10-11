@@ -57,6 +57,7 @@ var _lights := {}                        ## id PointLight2D → [PointLight2D, L
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
 var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
+var _items := {}                         ## id sprite'a przedmiotu HD → [Sprite2D, MeshInstance3D, materiał, z, ukryte węzły 2D]
 var _scan_t := 0.0
 var _hidden: Array = []                  ## ukryte statyczne węzły 2D (przywracane przy wyłączeniu)
 var _life := 0.0
@@ -140,6 +141,15 @@ func release() -> void:
 		if is_instance_valid(pp[0]):
 			(pp[0] as CanvasItem).modulate = Color.WHITE
 	_props.clear()
+	for id in _items.keys():
+		var itv: Array = _items[id]
+		var hid: Array = itv[4]
+		if not hid.is_empty() and is_instance_valid(hid[0]):
+			(hid[0] as CanvasItem).self_modulate = Color.WHITE
+		for k in range(1, hid.size()):
+			if is_instance_valid(hid[k]):
+				(hid[k] as CanvasItem).visible = true
+	_items.clear()
 	for n in _hidden:
 		if is_instance_valid(n):
 			n.visible = true
@@ -188,6 +198,7 @@ func _process(delta: float) -> void:
 	_sync_sprites()
 	_sync_projectiles()
 	_sync_props()
+	_sync_items()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -770,6 +781,88 @@ func mirror_burst(fx: CPUParticles2D, pos: Vector2) -> void:
 	get_tree().create_timer(fx.lifetime + 0.6).timeout.connect(p.queue_free)
 	fx.emitting = false
 	fx.visible = false
+
+# ---------------------------------------------------------------- przedmioty HD (meble, skrytki, pickupy, generator, drezyna)
+
+const ITEM_TONE := 0.7                      ## przyciemnienie albedo kart: przedmiot z własnym światłem (skrytka, pickup) stoi tuż przy nim
+const ITEM_BACK := ["shelf", "table", "chair", "locker", "cot", "stool", "board", "results_board", "workshop", "tools_wall", "rack", "range_sign", "range_target"]
+
+## Każdy sprite z `ItemsHd.make` (grupa „items_hd”) dostaje w scenie 3D kartę z tym samym albedo i mapą normalnych: oświetlają ją światła 3D,
+## rzuca cień na ścianę za sobą, łapie SSAO i mgłę — zamiast płaskiego rysunku 2D z osobnym oświetleniem nałożonego na obraz 3D.
+## Meble stoją w głębi (przy ścianie tła), reszta tuż za płaszczyzną gry. Sprite 2D zostaje (logika, światła 2D), tylko jest przezroczysty.
+func _sync_items() -> void:
+	for n in get_tree().get_nodes_in_group("items_hd"):
+		var sp := n as Sprite2D
+		if sp == null or sp.is_queued_for_deletion() or _items.has(sp.get_instance_id()) or sp.texture == null:
+			continue
+		var par := sp.get_parent()
+		if par != null and par.is_in_group("props"):
+			continue                                  # skrzynie i beczki mają własne bryły (_sync_props)
+		_make_item(sp)
+	for id in _items.keys():
+		var it: Array = _items[id]
+		var src_v = it[0]
+		var mi: MeshInstance3D = it[1]
+		if not is_instance_valid(src_v) or (src_v as Node).is_queued_for_deletion():
+			if is_instance_valid(mi):
+				mi.queue_free()
+			_items.erase(id)
+			continue
+		var sp := src_v as Sprite2D
+		mi.visible = sp.is_visible_in_tree()
+		if not mi.visible:
+			continue
+		var xf := sp.global_transform
+		var sc := xf.get_scale()
+		var ts := sp.texture.get_size()
+		var centre := xf * sp.offset
+		mi.position = Level3D.px_to_m(centre) + Vector3(0.0, 0.0, float(it[3]))
+		mi.rotation = Vector3(0.0, 0.0, -xf.get_rotation())
+		var flip := -1.0 if (sp.flip_h != (xf.determinant() < 0.0)) else 1.0
+		mi.scale = Vector3(ts.x * absf(sc.x) * PX * flip, ts.y * absf(sc.y) * PX, 1.0)
+		var m := it[2] as StandardMaterial3D
+		var md := sp.modulate
+		var up := sp.get_parent()
+		while up is CanvasItem and up != _level:               # mnożniki koloru rodziców (błysk trafienia, zanikanie)
+			md *= (up as CanvasItem).modulate
+			up = up.get_parent()
+		m.albedo_color = Color(md.r * ITEM_TONE, md.g * ITEM_TONE, md.b * ITEM_TONE, md.a)
+
+func _make_item(sp: Sprite2D) -> void:
+	var name := String(sp.get_meta("hd_name", ""))
+	var ct := sp.texture as CanvasTexture
+	var alb: Texture2D = ct.diffuse_texture if ct != null else sp.texture
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = alb
+	if ct != null and ct.normal_texture != null:
+		m.normal_enabled = true
+		m.normal_texture = ct.normal_texture
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.alpha_scissor_threshold = 0.5
+	m.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.roughness = 0.82
+	m.metallic_specular = 0.3
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	var dark := float(sp.get_meta("hd_dark", 0.0))
+	if dark > 0.0:                                             # przedmioty, które w 2D prześwitują w ciemności (granat, mina, flara) — słaba emisja
+		m.emission_enabled = true
+		m.emission_texture = alb
+		m.emission_energy_multiplier = dark * 0.35
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE
+	var mi := MeshInstance3D.new()
+	mi.mesh = q
+	mi.material_override = m
+	mi.layers = LAYER_WORLD
+	_world.add_child(mi)
+	var hidden: Array = [sp]
+	sp.self_modulate = Color(1, 1, 1, 0)
+	for c in sp.get_children():
+		if c is Sprite2D and (c as Sprite2D).texture == alb:      # kopia „widoczna w ciemności” (dark_vis) — zastępuje ją emisja karty
+			(c as Sprite2D).visible = false
+			hidden.append(c)
+	_items[sp.get_instance_id()] = [sp, mi, m, -1.25 if ITEM_BACK.has(name) else -0.12, hidden]
 
 # ---------------------------------------------------------------- obiekty fizyczne (skrzynie, beczki)
 
