@@ -65,6 +65,7 @@ var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D pr
 var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
 var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
 var _beam_masks := {}                    ## id światła 2D latarki → [światło, maska obiektów, cienie] do przywrócenia przy wyłączeniu widoku
+var _fires := {}                         ## id flary 2D → [węzeł, Node3D ognia, rodzaj, pierścień strefy albo null]
 var _drawn := {}                         ## id węzła rysowanego kodem (radiostacja, mur) → [węzeł 2D, Node3D]
 var _span: Array = []                    ## trasa drezyny (_rail_span)
 var _span_map := ""
@@ -160,6 +161,10 @@ func release() -> void:
 			if _drawn[id][0].get("hide_stuck") != null:
 				_drawn[id][0].set("hide_stuck", false)
 	_drawn.clear()
+	for id in _fires.keys():
+		if is_instance_valid(_fires[id][0]):
+			_fires[id][0].set("fx3d", false)
+	_fires.clear()
 	for id in _beam_masks.keys():
 		var bm: Array = _beam_masks[id]
 		if is_instance_valid(bm[0]):
@@ -237,6 +242,7 @@ func _process(delta: float) -> void:
 	_build_rails()
 	_sync_drawn()
 	_sync_guns()
+	_sync_fires()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
@@ -1200,6 +1206,192 @@ func _spawn_rubble(floor_pos: Vector3, wall_h: float) -> void:
 		mi.position = Vector3(floor_pos.x + float(spec[0]), floor_pos.y + wall_h - float(spec[1]) * 0.5, -Level3D.DEPTH_BACK * 0.5)
 		mi.rotation.z = float(spec[3])
 		_geo.add_child(mi)
+
+# ---------------------------------------------------------------- ogień flar
+
+static var _soft_tex: GradientTexture2D
+
+## Miękka, okrągła plamka do cząsteczek ognia (biały środek → przezroczysty brzeg).
+static func _soft() -> Texture2D:
+	if _soft_tex == null:
+		var g := Gradient.new()
+		g.set_color(0, Color(1, 1, 1, 1))
+		g.set_color(1, Color(1, 1, 1, 0))
+		g.add_point(0.45, Color(1, 1, 1, 0.55))
+		_soft_tex = GradientTexture2D.new()
+		_soft_tex.gradient = g
+		_soft_tex.fill = GradientTexture2D.FILL_RADIAL
+		_soft_tex.fill_from = Vector2(0.5, 0.5)
+		_soft_tex.fill_to = Vector2(0.5, 0.0)
+		_soft_tex.width = 64
+		_soft_tex.height = 64
+	return _soft_tex
+
+func _fire_mat() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.billboard_keep_scale = true
+	m.vertex_color_use_as_albedo = true
+	m.albedo_texture = _soft()
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.no_depth_test = false
+	return m
+
+## Ogień flary w 3D: język płomienia z cząsteczek (addytywne, rosną ku górze i gasną), iskry unoszone ciepłem i żarzący się rdzeń.
+## `col` — barwa flary, `size` — szerokość płomienia [m]. Światło daje osobno światło 3D odwzorowane z `PointLight2D` flary.
+func _make_fire(col: Color, size: float) -> Node3D:
+	var root := Node3D.new()
+	var hot := col.lerp(Color(1.0, 1.0, 0.9), 0.75)
+	var flame := CPUParticles3D.new()
+	flame.name = "Flame"
+	flame.amount = 34
+	flame.lifetime = 0.5
+	flame.local_coords = false
+	var q := QuadMesh.new()
+	q.size = Vector2(size * 0.5, size * 0.5)
+	q.material = _fire_mat()
+	flame.mesh = q
+	flame.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	flame.emission_sphere_radius = size * 0.07
+	flame.direction = Vector3.UP
+	flame.spread = 9.0
+	flame.gravity = Vector3(0.0, size * 4.5, 0.0)
+	flame.initial_velocity_min = size * 0.9
+	flame.initial_velocity_max = size * 2.0
+	flame.scale_amount_min = 0.7
+	flame.scale_amount_max = 1.15
+	var sc := Curve.new()
+	sc.add_point(Vector2(0.0, 0.7))
+	sc.add_point(Vector2(0.15, 1.0))
+	sc.add_point(Vector2(1.0, 0.08))
+	flame.scale_amount_curve = sc
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(hot.r, hot.g, hot.b, 0.0))
+	ramp.add_point(0.1, Color(hot.r, hot.g, hot.b, 0.5))
+	ramp.add_point(0.45, Color(col.r, col.g, col.b, 0.38))
+	ramp.set_color(ramp.get_point_count() - 1, Color(col.r * 0.6, col.g * 0.6, col.b * 0.6, 0.0))
+	flame.color_ramp = ramp
+	flame.layers = LAYER_WORLD
+	flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(flame)
+	var sparks := CPUParticles3D.new()
+	sparks.name = "Sparks"
+	sparks.amount = 16
+	sparks.lifetime = 1.3
+	sparks.local_coords = false
+	var sq := QuadMesh.new()
+	sq.size = Vector2(size * 0.14, size * 0.14)
+	sq.material = _fire_mat()
+	sparks.mesh = sq
+	sparks.direction = Vector3.UP
+	sparks.spread = 26.0
+	sparks.gravity = Vector3(0.0, 0.5, 0.0)
+	sparks.initial_velocity_min = size * 2.2
+	sparks.initial_velocity_max = size * 4.4
+	sparks.damping_min = 0.6
+	sparks.damping_max = 1.4
+	var sramp := Gradient.new()
+	sramp.set_color(0, Color(hot.r, hot.g, hot.b, 1.0))
+	sramp.set_color(1, Color(col.r, col.g, col.b, 0.0))
+	sparks.color_ramp = sramp
+	sparks.layers = LAYER_WORLD
+	sparks.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(sparks)
+	var core := MeshInstance3D.new()
+	core.name = "Core"
+	var sm := SphereMesh.new()
+	sm.radius = size * 0.06
+	sm.height = size * 0.12
+	core.mesh = sm
+	var cm := StandardMaterial3D.new()
+	cm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	cm.albedo_color = Color(hot.r * 1.6, hot.g * 1.6, hot.b * 1.6)
+	core.material_override = cm
+	core.layers = LAYER_WORLD
+	core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(core)
+	return root
+
+## Płomień i iskry flar (rzucanych i flary wyjścia) w scenie 3D zamiast rysunku 2D; flara wyjścia ma też pulsujący pierścień strefy na ziemi.
+func _sync_fires() -> void:
+	for n in get_tree().get_nodes_in_group("flares"):
+		if _fires.has(n.get_instance_id()) or not (n is Node2D) or n.is_queued_for_deletion():
+			continue
+		var f := _make_fire(Color(1.0, 0.45, 0.18), 0.42)
+		_world.add_child(f)
+		n.set("fx3d", true)
+		_fires[n.get_instance_id()] = [n, f, "flare", null]
+	for n in get_tree().get_nodes_in_group("exit_flares"):
+		if _fires.has(n.get_instance_id()) or not (n is Node2D):
+			continue
+		var col: Color = n.call("_flare_col")
+		var f2 := _make_fire(col, 0.85)
+		_world.add_child(f2)
+		var ring := MeshInstance3D.new()
+		var tm := TorusMesh.new()
+		tm.inner_radius = 0.97
+		tm.outer_radius = 1.0
+		tm.rings = 48
+		tm.ring_segments = 6
+		ring.mesh = tm
+		var rm := StandardMaterial3D.new()
+		rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		rm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		rm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		rm.albedo_color = col
+		ring.material_override = rm
+		ring.layers = LAYER_WORLD
+		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_world.add_child(ring)
+		_fires[n.get_instance_id()] = [n, f2, "exit", ring]
+	for id in _fires.keys():
+		var fr: Array = _fires[id]
+		var src_v = fr[0]
+		var fire: Node3D = fr[1]
+		if not is_instance_valid(src_v) or (src_v as Node).is_queued_for_deletion():
+			# źródło zgasło: cząsteczki dopalają się same, potem węzeł znika
+			for ch in fire.get_children():
+				if ch is CPUParticles3D:
+					(ch as CPUParticles3D).emitting = false
+				else:
+					(ch as Node3D).visible = false
+			get_tree().create_timer(1.5).timeout.connect(fire.queue_free)
+			if fr[3] != null and is_instance_valid(fr[3]):
+				(fr[3] as Node).queue_free()
+			_fires.erase(id)
+			continue
+		var src := src_v as Node2D
+		if String(fr[2]) == "flare":
+			var tip := src.global_position + Vector2(0.0, -1.0)
+			var pv = src.get("_pv")
+			if pv != null and is_instance_valid(pv):
+				tip = src.global_transform * ((pv as Node2D).position + Vector2(0.0, -ItemsHd.body_wp("flare").y * 0.25).rotated((pv as Node2D).rotation))
+			fire.position = Level3D.px_to_m(tip) + Vector3(0.0, 0.0, -0.2)
+			var a := clampf(float(src.get("life")) / 3.0, 0.0, 1.0)             # ostatnie 3 s: płomień przygasa
+			fire.scale = Vector3.ONE * lerpf(0.35, 1.0, a)
+			fire.visible = src.is_visible_in_tree()
+		else:
+			var on: bool = src.get("_active") == true
+			fire.visible = on
+			for ch in fire.get_children():
+				if ch is CPUParticles3D:
+					(ch as CPUParticles3D).emitting = on
+			var fl := float(src.get("_flick")) if src.get("_flick") != null else 1.0
+			fire.position = Level3D.px_to_m(src.global_position + Vector2(0.0, -13.0)) + Vector3(0.0, 0.0, 0.05)
+			fire.scale = Vector3.ONE * lerpf(0.8, 1.15, clampf(fl, 0.7, 1.2) - 0.2)
+			var ring := fr[3] as MeshInstance3D
+			ring.visible = on
+			if on:
+				var m_v = src.get("_m")
+				var rx := (float(m_v.EXIT_RADIUS_X) if m_v != null else 40.0) * PX
+				var ph := fmod(_life, 2.2) / 2.2
+				var r := lerpf(0.4, rx + 0.3, ph)
+				ring.position = Level3D.px_to_m(src.global_position) + Vector3(0.0, 0.03, 0.0)
+				ring.scale = Vector3(r, 1.0, r * 0.55)
+				(ring.material_override as StandardMaterial3D).albedo_color.a = 0.5 * (1.0 - ph)
 
 # ---------------------------------------------------------------- tor drezyny
 

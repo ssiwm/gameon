@@ -101,7 +101,11 @@ func _physics_process(delta: float) -> void:
 	queue_redraw()
 
 ## Płomień na czubku flary: jasny rdzeń, pomarańczowa poświata i iskry unoszące się w górę.
+var fx3d := false                 ## widok 3D: płomień i iskry są cząsteczkami 3D (view3d.gd: _sync_fires)
+
 func _draw_fx() -> void:
+	if fx3d:
+		return
 	var a := minf(1.0, life / 3.0)
 	var tip := _pv.position + Vector2(0, -ItemsHd.body_wp("flare").y * HD_SCALE * 0.5).rotated(_pv.rotation)
 	var fl := 0.85 + 0.15 * sin(_t * 23.0) * sin(_t * 7.3)
