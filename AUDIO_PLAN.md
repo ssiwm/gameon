@@ -1,6 +1,6 @@
 # Plan: refaktor dźwięku — źródła hybrydowe i propagacja po mapie
 
-Status: **plan z 2026-10-12; F0–F2 zrobione, F3 w toku (część 1 po odsłuchu), wersje z nagrań żyją poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
+Status: **plan z 2026-10-12; F0–F3 zrobione, F4 i F5 w toku, F6 (droga dźwięku po mapie) wdrożona; 68 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
 `default_bus_layout.tres`, `AUDIO.md`), nie na próbnej implementacji — rozmiary faz są szacunkowe. Kontynuacja `prototype/AUDIO.md`
 (overhaul v2), który sam stwierdza w §5: „to nie jest jeszcze AAA w sensie brzmienia” i „brzmienia nie oceniałem uchem”.
 
@@ -141,7 +141,7 @@ Pomiar (nie odsłuch): strzał z nagrań ma środek ciężkości widma ok. 1,4 k
 ok. 380 ms zamiast 255 ms, głośność zrównana z obecnym do 0,5 LU. Kroki z nagrań są ciemniejsze powyżej 4 kHz niż syntetyczne. Alternatywy
 pieką się deterministycznie (dwa przebiegi = te same sumy).
 
-**F3, części 1 i 2 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem 36 plików z nagrań):**
+**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 68 plików z nagrań):**
 
 | Rodzina | Werdykt | Źródła wersji z nagrań |
 |---|---|---|
@@ -159,14 +159,29 @@ pieką się deterministycznie (dwa przebiegi = te same sumy).
 | `foley_gear` ×3 | **synteza** | odrzucone: ruchy oporządzenia wycięte z nagranego marszu |
 | `dry_fire` | **synteza** | odrzucone: kurek M1911 z dołożonym niskim stukiem |
 | `ricochet` ×2 | synteza (bez kandydata) | w archiwach nie ma czystego, pojedynczego rykoszetu |
+| `reload` ×3 | z nagrań | magazynek G36C i zamek Saigi na osi czasu syntezy + jej niskie stuki |
+| `reload_shell` ×3 | z nagrań | wsunięcie naboju i wyrzut łuski strzelby + niski stuk |
+| `maczeta` ×2 | z nagrań | zamach długą klingą + krótki świst noża |
+| `hkm9_flame_loop` | z nagrań | ryk ognia + syk palnika gazowego, pętla 2 s ze szwem przenikanym |
+| `hkm9_ignite` | **synteza** | odrzucone: początek nagrania dużego zapłonu |
+| `kilof_swing` ×2 | **synteza** | odrzucone: zamach długim trzonkiem, obniżony o 3 półtony |
+| `reload_bolt`, `reload_launcher`, `reload_cell` ×2, `reload_rail` | synteza (bez kandydata) | brak nagrań mechanizmu naciągu kuszy i granatnika; ogniwa i działo szynowe nie mają odpowiednika |
+| `stalker_shriek` ×2 | z nagrań | skrzek + ryk + pisk suchego lodu + sub, hala; ten sam autor nagrań co warkot |
+| `amb_far_cry` ×2 | z nagrań | ten sam krzyk przefiltrowany, w długim pogłosie |
+| `stalker_step` ×3 | z nagrań | ciężkie, mokre kroki stwora + sub-uderzenie |
+| `stalker_whisper_loop` | **synteza** | odrzucone: nagrany ludzki szept z upiornym głosem w hali |
+| `step_metal` ×5, `step_dirt` ×5, `step_water` ×5 | z nagrań | pojedyncze kroki z nagranych marszów (blacha, ziemia, kałuża), jak beton z bramki A |
+| `land_hard` | z nagrań | upadek na beton + sub-uderzenie |
 
 Głośność każdej rodziny zrównana ze ZMIERZONĄ głośnością syntezy (nominalne cele z `bake_weapons.py` synteza osiąga tylko częściowo, bo
 ogranicza ją szczyt). Zostają syntetyczne także: `widmo1` (działo szynowe), `lr7` (promień), znaczniki trafień — to dźwięki bez odpowiednika w
-nagraniach. Zostało z F3: przeładowania, broń biała, miotacz ognia — następny odsłuch.
+nagraniach. F3 (bronie) jest zamknięta. Zostało: F4 — drzwi, szkło, głos gracza, ambienty; F5 — własne głosy wrogów;
+F6 (a) — mieszanie wersji bliskiej i dalekiej.
 
-Wzór z dotychczasowych werdyktów (9 rodzin z nagrań, 5 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
-trafienia, łuski, kroki, głos), a przegrywają dla dźwięków krótkich, jasnych i „bliskich gracza” (pistolet, przelot, szelest, kurek), gdzie
-synteza jest pełniejsza w dole pasma. Przy kolejnych kandydatach z tej drugiej grupy dokładać korpus albo nie proponować ich wcale.
+Wzór z werdyktów (23 rodziny z nagrań, 8 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
+trafienia, łuski, kroki, głos stwora, ogień), a przegrywały dla dźwięków krótkich, jasnych i „bliskich gracza” z samego nagrania (pistolet,
+przelot, szelest, kurek) — synteza jest tam pełniejsza w dole pasma. Po dołożeniu pod nagranie niskich stuków syntezy mechanika broni
+(przeładowania) wygrała. Szept Stalkera pokazuje granicę: rozpoznawalnie ludzkie nagranie przegrało z abstrakcyjną syntezą.
 
 Uwagi z pomiaru:
 - **Różnorodność wariantów** z nagrań jest niska w mierze audytu (`m83_shot` 0,25, `p64_shot` 0,22, `spread12_shot` 0,11 wobec 0,45–0,47

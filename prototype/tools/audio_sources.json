@@ -81,14 +81,6 @@
    "supplier": "Eiravaein Works",
    "license": "sonniss-gdc-2.0"
   },
-  "broom_stick_swings": {
-   "kind": "lib",
-   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 6of8/Soundholder - Swipes And Whooshes/swipes and whooshes broom long stick slow and long swings stereo ORTF 8040.wav",
-   "sha256": "c6385f99792aade45c2ba78d5a80c0b6cfc7552e4a0e5f94ad8bf32ce3436ee1",
-   "pack": "Sonniss GDC 2019 — Swipes And Whooshes",
-   "supplier": "Soundholder",
-   "license": "sonniss-gdc-2.0"
-  },
   "bullet_drop_wood_04": {
    "kind": "lib",
    "file": "sonniss/2016/Stuart Duffield - Bullet SFX/Bullet_Drop_Wood_04.wav",
@@ -191,14 +183,6 @@
    "sha256": "b10aafb69895e7ba172f93a16f1a25c0cc1d7943c76b69a9c1095af76d85faa1",
    "pack": "Sonniss GDC 2017 — Driving Forces",
    "supplier": "Digital Rain Lab",
-   "license": "sonniss-gdc-2.0"
-  },
-  "ghostly_voice_male": {
-   "kind": "lib",
-   "file": "sonniss/2020/344 Audio - Supernatural Ghosts/Male Ghostly Voice, Hide, Creepy, Air, Spirit, Ethereal, Wet.wav",
-   "sha256": "fdeba435073a3f1bbbe8d7aaa4a37903f0d9a42f428935ceb4a5f4712e2cf6f0",
-   "pack": "Sonniss GDC 2020 — Supernatural Ghosts",
-   "supplier": "344 Audio",
    "license": "sonniss-gdc-2.0"
   },
   "grenade_launcher_smoke": {
@@ -351,14 +335,6 @@
    "sha256": "272a7e0034a85a802f665050b8a860b3498a0f10c11955f4cf4d443fd35c6e9d",
    "pack": "Sonniss GDC 2020 — Hand Guns Sound Effects Pack",
    "supplier": "Olivier Girardot",
-   "license": "sonniss-gdc-2.0"
-  },
-  "whisper_4c": {
-   "kind": "lib",
-   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Chris Logsdon - Text & Dialogue SFX Pack/whisper_4c.wav",
-   "sha256": "24bea2d28d654df3bd21860543bc2da1d116b3d3cc314b372b59ade00d2da8ce",
-   "pack": "Sonniss GDC 2019 — Text & Dialogue SFX Pack",
-   "supplier": "Chris Logsdon",
    "license": "sonniss-gdc-2.0"
   }
  }

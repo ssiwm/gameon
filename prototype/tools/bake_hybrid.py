@@ -2,10 +2,11 @@
 bake_hybrid.py — wersje assetów Z NAGRAŃ z bibliotek (AUDIO_PLAN.md).
 
 Dwa rodzaje przepisów:
-  * wersje z nagrań dla GRY — funkcje wołane z builderów (bake_weapons.py, bake_sfx.py) zaraz po syntezie tego samego
-    klucza, przez bc.hybrid(): plik trafia do audio_licensed/ (poza repo), a gra woli go od syntetycznego z audio/.
-    Bez plików źródłowych na dysku nic się nie dzieje — zostaje sama synteza;
-  * WERSJE ALTERNATYWNE do odsłuchu przed decyzją — build_alts() przez bc.alt(): katalog z --alts, gry nie dotykają.
+  * wersje z nagrań dla GRY — weapons(), stalker(), player(): wołane na końcu builderów (bake_weapons.py, bake_sfx.py),
+    po syntezie tych samych kluczy, przez bc.hybrid(). Plik trafia do audio_licensed/ (poza repo), a gra woli go
+    od syntetycznego z audio/. Bez plików źródłowych na dysku nic się nie dzieje — zostaje sama synteza;
+  * WERSJE ALTERNATYWNE do odsłuchu przed decyzją — CANDIDATES → build_alts() przez bc.alt(): katalog z --alts,
+    gry nie dotykają. Po odsłuchu wybrana rodzina przechodzi do funkcji swojego buildera, odrzucona znika.
 
     python tools/audio_lib_fetch.py sync                    # pobierz nagrania z rejestru
     python tools/bake_audio.py                              # synteza → audio/, wersje z nagrań → audio_licensed/
@@ -14,15 +15,20 @@ Dwa rodzaje przepisów:
 Zasady składania (wnioski z pomiaru źródeł; brzmienie ocenia się uchem na stronie A/B):
   * Strzał = nagranie bliskie (trzask, góra pasma) + nagranie z otwartego terenu (środek, naturalny ogon)
     + syntetyczny sub (kopnięcie, którego mikrofony przy lufie nie łapią). Ataki warstw równane co do próbki.
-  * Krok = pojedynczy krok wycięty z nagranego marszu; bez dokładanego basu (but na betonie go nie ma).
+  * Krok = pojedynczy krok wycięty z nagranego marszu; bez dokładanego basu (but go nie ma).
   * Głos = nagranie obniżone jak taśma (wolniej = niżej i dłużej), z oktawą w dół pod spodem.
+  * Mechanika broni = nagranie + te same niskie stuki, których używa synteza (samo nagranie jest cienkie).
   * Pogłosu hali nie pieczemy poza głosem Stalkera (tak samo jak w wersji syntetycznej) — dokłada go silnik.
-  * Głośność (LUFS) i szczyt jak w wersji syntetycznej tego samego klucza: miks gry nie zależy od tego, którą wersję gra.
+  * Głośność docelowa = ZMIERZONA głośność wersji syntetycznej tego samego klucza (średnia rodziny, LUFS po finalize);
+    nominalne cele z bake_weapons.py / bake_sfx.py synteza osiąga tylko w części, bo ogranicza ją szczyt.
+    Dzięki temu miks gry nie zależy od tego, która wersja gra.
 
-Wybrane w odsłuchu A/B 2026-10-12: m83_shot, step_concrete, stalker_growl (bramka A); spread12_shot, srut8_shot,
-srut8_pump, gniew4_shot, explosion (F3, część 1); ciegno6_shot w wersji 2, impact_hard, impact_flesh, shell (F3, część 2).
-Odrzucone na rzecz syntezy — przepisy usunięte, zostają w historii repo: p64_shot (SIG P229 z 1 m), sokol6_shot (start
-fajerwerku), whizz (przeloty pocisków), foley_gear (oporządzenie z marszu), dry_fire (kurek M1911).
+Werdykty odsłuchów A/B (2026-10-12), szczegóły w AUDIO_PLAN.md §7.
+Z nagrań: m83_shot, spread12_shot, srut8_shot, srut8_pump, gniew4_shot, ciegno6_shot (wersja 2), explosion, impact_hard,
+impact_flesh, shell, reload, reload_shell, maczeta, hkm9_flame_loop; stalker_growl, stalker_shriek, stalker_step,
+amb_far_cry; step_concrete, step_metal, step_dirt, step_water, land_hard.
+Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz, foley_gear,
+dry_fire, hkm9_ignite, kilof_swing, stalker_whisper_loop.
 """
 
 from __future__ import annotations
@@ -39,7 +45,31 @@ def _keys(base: str, n: int) -> list[str]:
     return ["%s_%d" % (base, i + 1) for i in range(n)]
 
 
-# --- M-83: źródła — AKM z 1 m (trzy strzały co ok. 200 ms) i AK-47 w otwartym terenie (pięć pojedynczych).
+def _unit(x: np.ndarray) -> np.ndarray:
+    return x / (d.peak(x) + 1e-9)
+
+
+def _fade(x: np.ndarray, hold: float, end: float) -> np.ndarray:
+    """Pełny poziom do `hold` [s], potem liniowo do zera w `end` [s] (bufor przycięty do `end`)."""
+    n = min(x.shape[-1], d.sec(end))
+    return x[..., :n] * d.env_pts(n, [(0, 1), (hold, 1), (end, 0)])
+
+
+def _decay(x: np.ndarray, hold: float, tau: float) -> np.ndarray:
+    """Zaciśnięcie ogona: pełny poziom przez `hold` [s], potem wykładniczo ze stałą `tau` [s]. Nagrania ze strzelnicy
+    niosą długi, głośny pogłos miejsca — w grze pogłos dokłada silnik, a strzał ma być krótki."""
+    t = np.arange(x.shape[-1]) / d.SR
+    return x * np.where(t < hold, 1.0, np.exp(-(t - hold) / tau))
+
+
+def _glue(x: np.ndarray, drive: float, ceil: float) -> np.ndarray:
+    """Sklejenie warstw strzału: odcięcie infradźwięków, nasycenie, ścięcie samego czubka (głośność przy tym samym szczycie)."""
+    return d.limiter(d.saturate(_unit(d.filt(x, "hp", 38.0, order=4)), drive), ceil)
+
+
+# ============================================================ BRONIE (bake_weapons.build_weapons)
+
+# --- M-83: AKM z 1 m (trzy strzały co ok. 200 ms) i AK-47 w otwartym terenie (pięć pojedynczych).
 M83_NEEDS = ["akm_close_1m", "ak47_open_2m"]
 _AKM_SHOTS = (0.141, 0.369, 0.570)                  # początki strzałów w akm_close_1m [s]
 _AK47_SHOTS = (0.83, 5.55, 9.54, 13.85, 17.97)      # pojedyncze strzały w ak47_open_2m [s]
@@ -64,84 +94,9 @@ def _m83_shot(i: int) -> np.ndarray:
     return d.limiter(x, M83_CEIL)                              # ścięcie samego czubka: ta sama głośność przy tym samym szczycie co w syntezie
 
 
-def m83() -> None:
-    def bake() -> None:
-        for i in range(6):
-            finalize("m83_shot_%d" % (i + 1), _m83_shot(i), lufs=-14.0)
-    bc.hybrid(_keys("m83_shot", 6), bake, M83_NEEDS)
-
-
-# --- Krok po betonie: but, czysty beton. Pięć kroków o zbliżonym poziomie i wyraźnym stuknięciu obcasa.
-STEP_NEEDS = ["boot_concrete_walk"]
-_STEPS = (1.10, 3.11, 4.10, 7.58, 11.58)
-
-
-def step_concrete() -> None:
-    def bake() -> None:
-        for i, t in enumerate(_STEPS):
-            x = d.from_onset(bc.src("boot_concrete_walk", t - 0.04, 0.36), 2.0, thr_db=-20.0)
-            n = min(len(x), ms(280))
-            x = d.filt(x[:n] * d.env_pts(n, [(0, 1), (.16, 1), (.28, 0)]), "hp", 60.0, order=2)
-            x = d.filt(x, "highshelf", 3500.0, gain_db=3.0)         # nagranie jest ciemne powyżej 4 kHz — odrobina szurnięcia podeszwy
-            finalize("step_concrete_%d" % (i + 1), x, lufs=-21.5)
-    bc.hybrid(_keys("step_concrete", len(_STEPS)), bake, STEP_NEEDS)
-
-
-# --- Warkot Stalkera: dwa najniższe warknięcia z nagrania, obniżone o 4 półtony.
-GROWL_NEEDS = ["monster_growls_4"]
-_GROWLS = ((0.12, 1.98), (12.42, 2.10))                              # (start, długość) w monster_growls_4 [s]
-
-
-def _growl(x: np.ndarray, semis: float, i: int) -> np.ndarray:
-    x = d.repitch(x, semis)
-    n = len(x)
-    low = d.lp(d.repitch(x, -12.0)[:n], 180.0)                      # oktawa niżej pod spodem: ciężar bez zamulania środka
-    y = d.mix([(x / (d.peak(x) + 1e-9), 1.0), (d.pad_to(low, n) / (d.peak(low) + 1e-9), 0.35)], n)
-    y = d.saturate(d.filt(y, "hp", 28.0, order=2), 1.6)
-    return d.reverb(y, ir("hall"), wet=0.30 - 0.04 * i, keep_len=False)
-
-
-def stalker_growl() -> None:
-    def bake() -> None:
-        for i, (t, ln) in enumerate(_GROWLS):
-            x = bc.src("monster_growls_4", t, ln)
-            x = x * d.env_pts(len(x), [(0, 0), (.02, 1), (ln - .12, 1), (ln, 0)])
-            finalize("stalker_growl_%d" % (i + 1), _growl(x, -4.0, i), lufs=-14.0, fade_out_ms=250)
-    bc.hybrid(_keys("stalker_growl", len(_GROWLS)), bake, GROWL_NEEDS)
-
-
-# ============================================================ F3: bronie
-# Te same klucze co w syntezie z bake_weapons.py. Głośność docelowa = ZMIERZONA głośność wersji syntetycznej (średnia rodziny,
-# LUFS po finalize) — nominalne cele z bake_weapons.py synteza osiąga tylko w części, bo ogranicza ją szczyt. Dzięki temu
-# miks gry nie zależy od tego, która wersja gra. Nowe rodziny zaczynają jako kandydaci (CANDIDATES → build_alts);
-# po odsłuchu wybrane przechodzą do weapons() i grają w grze.
-
-def _unit(x: np.ndarray) -> np.ndarray:
-    return x / (d.peak(x) + 1e-9)
-
-
-def _fade(x: np.ndarray, hold: float, end: float) -> np.ndarray:
-    """Pełny poziom do `hold` [s], potem liniowo do zera w `end` [s] (bufor przycięty do `end`)."""
-    n = min(x.shape[-1], d.sec(end))
-    return x[..., :n] * d.env_pts(n, [(0, 1), (hold, 1), (end, 0)])
-
-
-def _decay(x: np.ndarray, hold: float, tau: float) -> np.ndarray:
-    """Zaciśnięcie ogona: pełny poziom przez `hold` [s], potem wykładniczo ze stałą `tau` [s]. Nagrania ze strzelnicy
-    niosą długi, głośny pogłos miejsca — w grze pogłos dokłada silnik, a strzał ma być krótki."""
-    t = np.arange(x.shape[-1]) / d.SR
-    return x * np.where(t < hold, 1.0, np.exp(-(t - hold) / tau))
-
-
-def _calm_point(x: np.ndarray, start: int, span: int) -> int:
-    """Indeks w [start, start+span) o najmniejszym skoku między sąsiednimi próbkami. Pętla zszyta przez seam_xfade jest
-    ciągła co do próbki, ale w jasnym, głośnym materiale sam skok międzypróbkowy bywa duży — wybieramy spokojne miejsce."""
-    return start + int(np.argmin(np.abs(np.diff(x[start - 1:start + span]))))
-
-
-def _glue(x: np.ndarray, drive: float, ceil: float) -> np.ndarray:
-    """Sklejenie warstw strzału: odcięcie infradźwięków, nasycenie, ścięcie samego czubka (głośność przy tym samym szczycie)."""
-    return d.limiter(d.saturate(_unit(d.filt(x, "hp", 38.0, order=4)), drive), ceil)
+def _m83_bake() -> None:
+    for i in range(6):
+        finalize("m83_shot_%d" % (i + 1), _m83_shot(i), lufs=-14.0)
 
 
 # --- Strzelby: Saiga-12 z 1 m (pięć pojedynczych strzałów z długim ogonem).
@@ -266,24 +221,6 @@ def _shell_bake() -> None:
         finalize("shell_%d" % (i + 1), d.reverb(x, ir("dead"), wet=.15), lufs=-19.4)
 
 
-def weapons() -> None:
-    """Wersje z nagrań dla broni — wołane na końcu bake_weapons.build_weapons(), po syntezie tych samych kluczy."""
-    m83()
-    bc.hybrid(_keys("spread12_shot", 3), _spread12_bake, SPREAD12_NEEDS)
-    bc.hybrid(_keys("srut8_shot", 3), _srut8_bake, SRUT8_NEEDS)
-    bc.hybrid(_keys("srut8_pump", 2), _pump_bake, PUMP_NEEDS)
-    bc.hybrid(_keys("gniew4_shot", 2), _gniew4_bake, GNIEW4_NEEDS)
-    bc.hybrid(_keys("ciegno6_shot", 2), _ciegno6_bake, CIEGNO6_NEEDS)
-    bc.hybrid(_keys("explosion", 2), _explosion_bake, list(EXPLOSION_SRC))
-    bc.hybrid(_keys("impact_hard", 3), _impact_hard_bake, list(IMPACT_HARD_SRC))
-    bc.hybrid(_keys("impact_flesh", 3), _impact_flesh_bake, [sid for sid, _ in IMPACT_FLESH_SRC])
-    bc.hybrid(_keys("shell", 3), _shell_bake, [sid for sid, _ in SHELL_SRC])
-
-
-# ============================================================ F3, część 3 — kandydaci do odsłuchu
-# Wniosek z poprzednich odsłuchów: krótkie, jasne dźwięki „przy graczu" z samych nagrań przegrywały z syntezą, która ma
-# pełniejszy dół. Dlatego mechanika broni dostaje pod nagranie te same niskie stuki, których używa synteza.
-
 # --- Przeładowanie magazynka na osi czasu syntezy: wyjęcie (0 s) → wsunięcie i zatrzask (0,30 s) → przeładowanie zamka (0,62 s).
 RELOAD_NEEDS = ["g36c_mag_foley", "saiga12_cocking"]
 _MAG_OUT = (6.607, 14.363, 28.696)                                  # pojedyncze stuknięcia: magazynek wychodzi
@@ -328,25 +265,11 @@ def _maczeta_bake() -> None:
         finalize("maczeta_%d" % (i + 1), d.reverb(x, ir("close"), wet=.12), lufs=-19.9)
 
 
-# --- Kilof: wolny zamach długim trzonkiem, o 3 półtony niżej (ciężkie narzędzie).
-KILOF_NEEDS = ["broom_stick_swings"]
-_STICK = (6.12, 8.13)
-
-
-def _kilof_bake() -> None:
-    for i, t in enumerate(_STICK):
-        sw = d.repitch(bc.src("broom_stick_swings", t - 0.04, 0.54), -3.0)
-        sw = _fade(sw * d.env_pts(sw.shape[-1], [(0, 0), (.03, 1), (10, 1)]), 0.42, 0.56)
-        finalize("kilof_swing_%d" % (i + 1), d.reverb(d.filt(sw, "hp", 90.0, order=4), ir("close"), wet=.12), lufs=-18.4)
-
-
-# --- HKM-9: zapłon (początek nagrania dużego zapłonu) i pętla płomienia (ryk ognia + syk palnika gazowego).
+# --- HKM-9: pętla płomienia (ryk ognia + syk palnika gazowego); zapłon został syntetyczny.
 FLAME_NEEDS = ["fire_ignition_03", "gas_burner_4"]
 
 
-def _flame_bake() -> None:
-    ignite = _fade(d.from_onset(bc.src("fire_ignition_03", 0.0, 0.9), 1.0), 0.40, 0.66)
-    finalize("hkm9_ignite", d.reverb(d.saturate(_unit(ignite), 1.6), ir("close"), wet=.16), lufs=-17.0)
+def _flame_loop_bake() -> None:
     xf = ms(300)                                                     # zakładka szwu pętli
     roar = bc.src("fire_ignition_03", 4.0, 2.0 + 0.3)
     hiss = bc.src("gas_burner_4", 10.0, 2.0 + 0.3)
@@ -355,10 +278,50 @@ def _flame_bake() -> None:
     finalize("hkm9_flame_loop", d.seam_xfade(d.filt(x, "hp", 40.0), xf), loop=True, lufs=-19.0)
 
 
-# ============================================================ F5: Stalker — kandydaci do odsłuchu
-# Jeden stwór w całej rodzinie: warkot (z bramki A) i krzyk pochodzą od tego samego autora nagrań, a „nieludzki" rys
-# daje wspólna warstwa pisku suchego lodu na metalu. Odległy zew to ten sam krzyk słyszany z głębi kompleksu.
+def weapons() -> None:
+    """Wersje z nagrań dla broni — wołane na końcu bake_weapons.build_weapons()."""
+    bc.hybrid(_keys("m83_shot", 6), _m83_bake, M83_NEEDS)
+    bc.hybrid(_keys("spread12_shot", 3), _spread12_bake, SPREAD12_NEEDS)
+    bc.hybrid(_keys("srut8_shot", 3), _srut8_bake, SRUT8_NEEDS)
+    bc.hybrid(_keys("srut8_pump", 2), _pump_bake, PUMP_NEEDS)
+    bc.hybrid(_keys("gniew4_shot", 2), _gniew4_bake, GNIEW4_NEEDS)
+    bc.hybrid(_keys("ciegno6_shot", 2), _ciegno6_bake, CIEGNO6_NEEDS)
+    bc.hybrid(_keys("explosion", 2), _explosion_bake, list(EXPLOSION_SRC))
+    bc.hybrid(_keys("impact_hard", 3), _impact_hard_bake, list(IMPACT_HARD_SRC))
+    bc.hybrid(_keys("impact_flesh", 3), _impact_flesh_bake, [sid for sid, _ in IMPACT_FLESH_SRC])
+    bc.hybrid(_keys("shell", 3), _shell_bake, [sid for sid, _ in SHELL_SRC])
+    bc.hybrid(_keys("reload", 3), _reload_bake, RELOAD_NEEDS)
+    bc.hybrid(_keys("reload_shell", 3), _reload_shell_bake, RELOAD_SHELL_NEEDS)
+    bc.hybrid(_keys("maczeta", 2), _maczeta_bake, MACZETA_NEEDS)
+    bc.hybrid(["hkm9_flame_loop"], _flame_loop_bake, FLAME_NEEDS)
 
+
+# ============================================================ STALKER (bake_sfx.build_stalker)
+# Jeden stwór w całej rodzinie: warkot i krzyk pochodzą od tego samego autora nagrań, a „nieludzki" rys daje warstwa
+# pisku suchego lodu na metalu. Odległy zew to ten sam krzyk słyszany z głębi kompleksu. Szept został syntetyczny.
+
+# --- Warkot: dwa najniższe warknięcia z nagrania, obniżone o 4 półtony.
+GROWL_NEEDS = ["monster_growls_4"]
+_GROWLS = ((0.12, 1.98), (12.42, 2.10))                              # (start, długość) w monster_growls_4 [s]
+
+
+def _growl(x: np.ndarray, semis: float, i: int) -> np.ndarray:
+    x = d.repitch(x, semis)
+    n = len(x)
+    low = d.lp(d.repitch(x, -12.0)[:n], 180.0)                      # oktawa niżej pod spodem: ciężar bez zamulania środka
+    y = d.mix([(x / (d.peak(x) + 1e-9), 1.0), (d.pad_to(low, n) / (d.peak(low) + 1e-9), 0.35)], n)
+    y = d.saturate(d.filt(y, "hp", 28.0, order=2), 1.6)
+    return d.reverb(y, ir("hall"), wet=0.30 - 0.04 * i, keep_len=False)
+
+
+def _growl_bake() -> None:
+    for i, (t, ln) in enumerate(_GROWLS):
+        x = bc.src("monster_growls_4", t, ln)
+        x = x * d.env_pts(len(x), [(0, 0), (.02, 1), (ln - .12, 1), (ln, 0)])
+        finalize("stalker_growl_%d" % (i + 1), _growl(x, -4.0, i), lufs=-14.0, fade_out_ms=250)
+
+
+# --- Krzyk i odległy zew.
 SHRIEK_NEEDS = ["screeching_monster_2", "blackboss_scream_04", "dry_ice_shriek_3"]
 SHRIEK_CEIL = -6.0
 
@@ -388,7 +351,7 @@ def _far_cry_bake() -> None:
         finalize("amb_far_cry_%d" % (i + 1), x, lufs=-26.0, fade_out_ms=400)
 
 
-# --- Krok Stalkera: ciężkie, mokre kroki stwora (trzy różne podłoża) + sub-uderzenie.
+# --- Krok: ciężkie, mokre kroki stwora (trzy różne podłoża) + sub-uderzenie.
 STALKER_STEP_SRC = (("creature_step_damp", 0.09), ("creature_step_wood", 0.0), ("creature_step_mud", 0.02))
 
 
@@ -399,23 +362,31 @@ def _stalker_step_bake() -> None:
         finalize("stalker_step_%d" % (i + 1), d.filt(x, "hp", 28.0, order=2), lufs=-19.0)
 
 
-# --- Szept Stalkera (pętla 4,2 s): nagrany szept + cichy upiorny głos pod spodem, w hali; szew przenikany.
-WHISPER_NEEDS = ["whisper_4c", "ghostly_voice_male"]
+def stalker() -> None:
+    """Wersje z nagrań dla Stalkera — wołane na końcu bake_sfx.build_stalker()."""
+    bc.hybrid(_keys("stalker_growl", len(_GROWLS)), _growl_bake, GROWL_NEEDS)
+    bc.hybrid(_keys("stalker_shriek", 2), _shriek_bake, SHRIEK_NEEDS)
+    bc.hybrid(_keys("amb_far_cry", 2), _far_cry_bake, SHRIEK_NEEDS)
+    bc.hybrid(_keys("stalker_step", 3), _stalker_step_bake, [sid for sid, _ in STALKER_STEP_SRC])
 
 
-def _whisper_bake() -> None:
-    n, xf, lead = d.sec(4.2), ms(400), ms(600)                      # `lead`: rozbieg pogłosu, którego pętla nie zawiera
-    a = bc.src("whisper_4c", 1.5, 6.0)
-    b = _fade(bc.src("ghostly_voice_male", 1.15, 3.3), 2.6, 3.3)
-    x = d.mix([(_unit(a), 1.0), (_unit(b), 0.35, 1.2)], lead + n + xf + ms(20))
-    x = d.reverb(d.filt(x, "hp", 250.0), ir("hall"), wet=.25, keep_len=True)
-    lead = _calm_point(x, lead + xf, ms(20)) - xf                    # szew w spokojnym miejscu przebiegu
-    finalize("stalker_whisper_loop", d.seam_xfade(x[lead:lead + n + xf], xf), loop=True, lufs=-18.5)
+# ============================================================ GRACZ (bake_sfx.build_player)
+
+# --- Krok po betonie (bramka A): but, czysty beton. Pięć kroków o zbliżonym poziomie i wyraźnym stuknięciu obcasa.
+STEP_CONCRETE_NEEDS = ["boot_concrete_walk"]
+_STEPS_CONCRETE = (1.10, 3.11, 4.10, 7.58, 11.58)
 
 
-# ============================================================ F4: gracz — kandydaci do odsłuchu
-# Kroki jak beton z bramki A: pojedyncze kroki wycięte z nagranego marszu, bez dokładanego basu, głośność jak w syntezie.
+def _step_concrete_bake() -> None:
+    for i, t in enumerate(_STEPS_CONCRETE):
+        x = d.from_onset(bc.src("boot_concrete_walk", t - 0.04, 0.36), 2.0, thr_db=-20.0)
+        n = min(len(x), ms(280))
+        x = d.filt(x[:n] * d.env_pts(n, [(0, 1), (.16, 1), (.28, 0)]), "hp", 60.0, order=2)
+        x = d.filt(x, "highshelf", 3500.0, gain_db=3.0)             # nagranie jest ciemne powyżej 4 kHz — odrobina szurnięcia podeszwy
+        finalize("step_concrete_%d" % (i + 1), x, lufs=-21.5)
 
+
+# --- Kroki po metalu, ziemi i wodzie: pojedyncze kroki wycięte z nagranych marszów, bez dokładanego basu.
 def _steps(base: str, sid: str, times: tuple, length: float, lufs: float, hp: float = 60.0,
            onset_db: float = -20.0, ceil: float = 0.0) -> None:
     """`ceil` < 0: ścięcie samego czubka (chlupnięcia i stuknięcia mają ostry szczyt, przez który krok wychodzi za cichy)."""
@@ -458,22 +429,19 @@ def _land_hard_bake() -> None:
     finalize("land_hard", d.reverb(x, ir("close"), wet=.15), lufs=-17.5)
 
 
-# (nazwa wersji, funkcja piekąca, potrzebne źródła) — kandydaci do następnego odsłuchu
-CANDIDATES: tuple = (
-    ("hybrid", _step_metal_bake, STEP_METAL_NEEDS),
-    ("hybrid", _step_dirt_bake, STEP_DIRT_NEEDS),
-    ("hybrid", _step_water_bake, STEP_WATER_NEEDS),
-    ("hybrid", _land_hard_bake, LAND_NEEDS),
-    ("hybrid", _shriek_bake, SHRIEK_NEEDS),
-    ("hybrid", _far_cry_bake, SHRIEK_NEEDS),
-    ("hybrid", _stalker_step_bake, [sid for sid, _ in STALKER_STEP_SRC]),
-    ("hybrid", _whisper_bake, WHISPER_NEEDS),
-    ("hybrid", _reload_bake, RELOAD_NEEDS),
-    ("hybrid", _reload_shell_bake, RELOAD_SHELL_NEEDS),
-    ("hybrid", _maczeta_bake, MACZETA_NEEDS),
-    ("hybrid", _kilof_bake, KILOF_NEEDS),
-    ("hybrid", _flame_bake, FLAME_NEEDS),
-)
+def player() -> None:
+    """Wersje z nagrań dla gracza — wołane na końcu bake_sfx.build_player()."""
+    bc.hybrid(_keys("step_concrete", 5), _step_concrete_bake, STEP_CONCRETE_NEEDS)
+    bc.hybrid(_keys("step_metal", 5), _step_metal_bake, STEP_METAL_NEEDS)
+    bc.hybrid(_keys("step_dirt", 5), _step_dirt_bake, STEP_DIRT_NEEDS)
+    bc.hybrid(_keys("step_water", 5), _step_water_bake, STEP_WATER_NEEDS)
+    bc.hybrid(["land_hard"], _land_hard_bake, LAND_NEEDS)
+
+
+# ============================================================ KANDYDACI DO ODSŁUCHU
+
+# (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts
+CANDIDATES: tuple = ()
 
 
 def build_alts() -> None:

@@ -58,7 +58,6 @@ def build_stalker() -> None:
         x = d.saturate(x, 2.0)
         x = d.reverb(x, ir("hall"), wet=0.30, keep_len=True)
         finalize("stalker_growl_%d" % (i + 1), x, lufs=-14.0, fade_out_ms=250)
-    bake_hybrid.stalker_growl()                             # wersja z nagrań → audio_licensed/
 
     # Szept — pętla (okresowa): bezdźwięczny szum o płynnie zmieniających się formantach
     # („sss-ooo-eee" bez słów) + rytm sylab. Nie jest szumem statycznym: obwiednia ma 7 sylab/pętlę.
@@ -127,6 +126,7 @@ def build_stalker() -> None:
         x = d.lp(x, 1800.0, order=4)
         x = d.reverb(x, ir("cave"), wet=.7, keep_len=False)
         finalize("amb_far_cry_%d" % (i + 1), x, lufs=-26.0, fade_out_ms=400)
+    bake_hybrid.stalker()                                   # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
 
 
 # ============================================================ ŚWIAT
@@ -369,7 +369,6 @@ def build_player() -> None:
         for i in range(5):
             r = Rng(seed + i * 7717)
             finalize("step_%s_%d" % (name, i + 1), fn(r), lufs=target)
-    bake_hybrid.step_concrete()                             # wersja z nagrań → audio_licensed/
 
     # Lądowanie z wysokości: uderzenie ciała + ekwipunek
     r = Rng(0xE500)
@@ -458,6 +457,7 @@ def build_player() -> None:
         env[s:s + cyc] = (inh + exh)[:cyc]
     env = d.circ_filter(env, lambda z: d.lp(z, 60.0))
     finalize("breath_loop", ex * (0.05 + env), loop=True, lufs=-14.0)
+    bake_hybrid.player()                                    # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
 
 
 # ============================================================ UI
