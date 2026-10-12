@@ -9,19 +9,19 @@
   }
  },
  "sources": {
-  "akm_close_1m": {
-   "kind": "lib",
-   "file": "sonniss/2016/Pole Position Production - AKM 7.62x39mm/AKM_7.62x39mm_1m_left_on_ground_DPA4062_clean_Triple_shots_x_1.wav",
-   "sha256": "bd536671307629ac18b6f219d85b1365af4b8275d020cf0639ab23cac81c81d5",
-   "pack": "Sonniss GDC 2016 — AKM 7.62x39mm",
-   "supplier": "Pole Position Production",
-   "license": "sonniss-gdc-2.0"
-  },
   "ak47_open_2m": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Pole Position - The Outdoor Gun Acoustics Library/AK47_big_open_area_2m_above_behind_gun_RSM191_M.wav",
    "sha256": "69d69b30080e1409560d4c6f1ea4f17776f383f803f15bbc62192279d94a921b",
    "pack": "Sonniss GDC 2018 — The Outdoor Gun Acoustics Library",
+   "supplier": "Pole Position Production",
+   "license": "sonniss-gdc-2.0"
+  },
+  "akm_close_1m": {
+   "kind": "lib",
+   "file": "sonniss/2016/Pole Position Production - AKM 7.62x39mm/AKM_7.62x39mm_1m_left_on_ground_DPA4062_clean_Triple_shots_x_1.wav",
+   "sha256": "bd536671307629ac18b6f219d85b1365af4b8275d020cf0639ab23cac81c81d5",
+   "pack": "Sonniss GDC 2016 — AKM 7.62x39mm",
    "supplier": "Pole Position Production",
    "license": "sonniss-gdc-2.0"
   },
@@ -33,12 +33,68 @@
    "supplier": "Joshua Reinhardt",
    "license": "sonniss-gdc-2.0"
   },
+  "crossbow_loose": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Eiravaein Works - Nocked/Nocked,archery,firing,loose,crossbow1,carbonbolt,atbow,snap,buzz,airy,bright,alt.wav",
+   "sha256": "9389f55b51ae482b8df75f2411a55163d13bdffa3fc22f98a0a58a29f03a00da",
+   "pack": "Sonniss GDC 2019 — Nocked",
+   "supplier": "Eiravaein Works",
+   "license": "sonniss-gdc-2.0"
+  },
+  "explosion_deep_02": {
+   "kind": "lib",
+   "file": "sonniss/2020/Stefano Cremona - Explosions/DeepExplosion02.wav",
+   "sha256": "871cd92855deb1e21540b139a8b85ae17cbc36492fea5509015ffe719bbfff9f",
+   "pack": "Sonniss GDC 2020 — Explosions",
+   "supplier": "Stefano Cremona",
+   "license": "sonniss-gdc-2.0"
+  },
+  "explosion_large_08": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Gamemaster Audio -  Explosion Sound Pack/explosion_large_08.wav",
+   "sha256": "aa26f39d6e9fe6e6942e15fd4260f8da62f201451784995b718b9abfd2af712c",
+   "pack": "Sonniss GDC 2017 — Explosion Sound Pack",
+   "supplier": "Gamemaster Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "grenade_launcher_smoke": {
+   "kind": "lib",
+   "file": "sonniss/2023/BluezoneCorp - Detonation - Explosion/Bluezone_BC0277_weapon_smoke_grenade_launcher_003.wav",
+   "sha256": "7f1c5b104603c876b3356d232b1d3daaca898e9ad766d55be004e1ce5be77a6f",
+   "pack": "Sonniss GDC 2023 — Detonation - Explosion",
+   "supplier": "BluezoneCorp",
+   "license": "sonniss-gdc-2.0"
+  },
   "monster_growls_4": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Olivier Girardot - Monsters/Monster Growls 4.wav",
    "sha256": "94e47f779de1e11ce1252c4aaaf1491de5d927f8ca164d3ffc8741f116d5cff7",
    "pack": "Sonniss GDC 2018 — Monsters",
    "supplier": "Olivier Girardot",
+   "license": "sonniss-gdc-2.0"
+  },
+  "saiga12_close_1m": {
+   "kind": "lib",
+   "file": "sonniss/2016/Pole Position Production - Saiga-12 12g solid slug/SAIGA-12_12g_solid_slug_1m_left_off_axis_MKH416_clean_Single_shots_x_5.wav",
+   "sha256": "2796c03f4516eb6ba5fd3a188e1e26375508815143958bf0eaf34419673d2d7d",
+   "pack": "Sonniss GDC 2016 — Saiga-12 12g solid slug",
+   "supplier": "Pole Position Production",
+   "license": "sonniss-gdc-2.0"
+  },
+  "shotgun_quick_pump": {
+   "kind": "lib",
+   "file": "sonniss/2016/TS Sound - 12 Gauge Shotgun/Shotgun_Quick Pump_01.wav",
+   "sha256": "53d5baeab11651b17b01e0580b5ad57b894df58eae5538a31d75e9e8632c42cd",
+   "pack": "Sonniss GDC 2016 — 12 Gauge Shotgun",
+   "supplier": "TS Sound",
+   "license": "sonniss-gdc-2.0"
+  },
+  "usas12_close_1m": {
+   "kind": "lib",
+   "file": "sonniss/2016/Pole Position Production - USAS-12 12g solid slug/USAS-12_12g_solid_slug_1m_right_CS3_clean_Double_shots_x_1.wav",
+   "sha256": "60ca84cbc00b987af35cd49b24bfe2af8dfda59fdee98fb9fa20f68ef514206b",
+   "pack": "Sonniss GDC 2016 — USAS-12 12g solid slug",
+   "supplier": "Pole Position Production",
    "license": "sonniss-gdc-2.0"
   }
  }

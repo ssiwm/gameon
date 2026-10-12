@@ -1,6 +1,6 @@
 # Plan: refaktor dźwięku — źródła hybrydowe i propagacja po mapie
 
-Status: **plan z 2026-10-12; F0–F2 zrobione, bramka A przeszła, wersje z nagrań żyją poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
+Status: **plan z 2026-10-12; F0–F2 zrobione, F3 w toku (część 1 po odsłuchu), wersje z nagrań żyją poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
 `default_bus_layout.tres`, `AUDIO.md`), nie na próbnej implementacji — rozmiary faz są szacunkowe. Kontynuacja `prototype/AUDIO.md`
 (overhaul v2), który sam stwierdza w §5: „to nie jest jeszcze AAA w sensie brzmienia” i „brzmienia nie oceniałem uchem”.
 
@@ -140,6 +140,31 @@ Wersje w odsłuchu:
 Pomiar (nie odsłuch): strzał z nagrań ma środek ciężkości widma ok. 1,4 kHz zamiast 250 Hz (obecny to głównie sub-bas), ogon do −40 dB
 ok. 380 ms zamiast 255 ms, głośność zrównana z obecnym do 0,5 LU. Kroki z nagrań są ciemniejsze powyżej 4 kHz niż syntetyczne. Alternatywy
 pieką się deterministycznie (dwa przebiegi = te same sumy).
+
+**F3, część 1 (strzały i wybuchy) — odsłuch 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem 27 plików z nagrań):**
+
+| Rodzina | Werdykt | Źródła wersji z nagrań |
+|---|---|---|
+| `spread12_shot` ×3 | z nagrań | Saiga-12 z 1 m (pojedyncze strzały), zaciśnięty ogon, syntetyczny sub |
+| `srut8_shot` ×3, `srut8_pump` ×2 | z nagrań | ta sama Saiga 3 półtony niżej + front USAS-12 + większy sub; pompka z nagrania 12 Gauge |
+| `gniew4_shot` ×2 | z nagrań | odpalenie granatnika dymnego + niski korpus + hala |
+| `explosion` ×2 (stereo) | z nagrań | dwa nagrania dużych eksplozji + syntetyczny sub i ostry front |
+| `ciegno6_shot` ×2 | z nagrań, **do poprawy** | zwolnienie cięciwy kuszy + syntetyczny brzęk. Uwaga z odsłuchu: „zbyt krótki i jednostajny, to kusza — powinno być więcej dynamiki”. Wersja 2 (zamek, strzał cięciwy, drganie ramion, świst bełtu) idzie do następnego odsłuchu |
+| `p64_shot` ×4 | **synteza** | odrzucone: SIG P229 9 mm z 1 m (jasny i krótki wobec syntezy) |
+| `sokol6_shot` ×3 | **synteza** | odrzucone: start fajerwerku z bliska |
+
+Głośność każdej rodziny zrównana ze ZMIERZONĄ głośnością syntezy (nominalne cele z `bake_weapons.py` synteza osiąga tylko częściowo, bo
+ogranicza ją szczyt). Zostają syntetyczne także: `widmo1` (działo szynowe), `lr7` (promień), znaczniki trafień — to dźwięki bez odpowiednika w
+nagraniach. Część 2 (trafienia, rykoszety, przeloty, łuski, ekwipunek, potem przeładowania, broń biała, miotacz) — kolejne odsłuchy.
+
+Uwagi z pomiaru:
+- **Różnorodność wariantów** z nagrań jest niska w mierze audytu (`m83_shot` 0,25, `p64_shot` 0,22, `spread12_shot` 0,11 wobec 0,45–0,47
+  w syntezie). Miara porównuje rozkład energii w pasmach, a kolejne strzały z jednej broni mają go niemal ten sam — to różne ujęcia, nie ta sama
+  próbka. Próba zwiększenia rozrzutu obróbką (wysokość, korekcja, balans warstw) podniosła `m83_shot` tylko do 0,27, więc została porzucona.
+  Rozstrzyga przycisk „seria” na stronie A/B; jeśli seria brzmi powtarzalnie, następny krok to domieszanie ujęć drugiej broni.
+- **Warkot Stalkera z nagrań jest o ok. 3,5 LU głośniejszy** od syntetycznego (−14,8 wobec −18,3 LUFS): synteza to prawie sam sub-bas, który
+  miara głośności (i ucho) tłumi. Wersja została wybrana w odsłuchu, więc zostaje; jeśli w grze dominuje, ściszyć w `stalker.gd`.
+- `get` / `sync` z archiwów działają dla wszystkich roczników (wcześniejsze błędy zakresów były przejściowe).
 
 **Ustalenia, które zmieniają plan:**
 
