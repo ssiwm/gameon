@@ -1,6 +1,6 @@
 # Plan: zmiany po przeglądzie designu (droga do pierwszego playtestu)
 
-Status: **plan z 2026-10-12, sprawdzony ponownie 2026-10-13 względem `origin/main` (621cf2a, PR #266); R1 wdrożony, wyniki w §6.**
+Status: **plan z 2026-10-12, sprawdzony ponownie 2026-10-13 względem `origin/main` (621cf2a, PR #266); R1 i R2 wdrożone, wyniki w §6.**
 Podstawa: przegląd designu spisany przy 1.7.150, sprawdzony względem kodu, oraz log jednej sesji (EASY, człowiek + bot, misje 1.1–1.3,
 jeszcze na starym dźwięku). Liczby w §2 pochodzą z kodu; zachowania oznaczone „z lektury kodu” nie były jeszcze uruchomione w grze
 i potwierdza je dopiero etap R1.
@@ -65,7 +65,7 @@ Na tym etapie test tylko raportuje; progi PASS/FAIL dochodzą w R2. Rozmiar: ma�
 | „6 m” w GDD | poprawić GDD §8.5 na stan faktyczny (0,4 m, pauza 0,8 s, cooldown 1,5 s) | zmiana kodu na 6 m to teleport o 96 px, także przez ściany — decyzja D2 |
 
 Bez zmian do playtestu: zasięg 14 px, zapowiedź 0,55 s, 1 obrażenie, prędkości 88 / 55. To są pytania do sesji (R6), nie błędy.
-Po zmianach: `--stealthtest=25` musi nadal przechodzić. Rozmiar: mały.
+Po zmianach: `--stealthtest=25` musi nadal przechodzić. Rozmiar: mały. **Zrobione** — wyniki w §6; „6 m” poprawione w GDD (decyzja D2).
 
 ### R3. Dziennik sesji (`session_log.gd`)
 
@@ -166,3 +166,15 @@ Wszystkie trzy zachowania z §2 są potwierdzone. Ostatni wiersz to nowe ustalen
 nie zrobi nowego hałasu albo sam nie podejdzie. To zgodne z regułą „reaguje tylko na hałas” i zostaje bez zmian do sesji (pytanie
 „czy Stalker straszy?” w R6), ale tłumaczy, czemu w zwykłej grze drugi cios prawie nie pada.
 
+### R2 (2026-10-13)
+
+| Pomiar | Przed | Po |
+|---|---|---|
+| Trafienie co 0,6 s przez 12 s | 1 px z 200, zero zamachów | 194 px z 200, 3 zamachy, gracz traci 2 HP |
+| Woda | gracz 68, Stalker 88 | gracz 68, Stalker 63 |
+| Błoto | gracz 55, Stalker 88 | gracz 55, Stalker 51 |
+
+Zmiany w `stalker.gd`: zatrzymanie po trafieniu najwyżej raz na 3 s (`STAGGER_COOLDOWN`), spowolnienie zostaje; prędkość mnożona
+przez mnożnik powierzchni pod nogami. Test ma teraz progi: przy ostrzale Stalker musi dojść do strzelca i się zamachnąć, a na każdym
+terenie biegnący gracz musi być szybszy. `--stealthtest=25` bez zmian (zasypia po 20,5 s, 0 HP straty), `--maptest` PASS.
+Wartości 3 s i 40% są punktem wyjścia do strojenia po sesji.

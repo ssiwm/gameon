@@ -3,16 +3,16 @@ extends Node
 ##
 ##   godot --headless --path . -- --host --stalkertest --autoquit=60
 ##
-## 1. Ostrzał: czy trafienia zatrzymują Stalkera w miejscu (droga i zamachy przy trafieniu co 0,6 s).
-## 2. Teren: prędkość gracza i Stalkera na zwykłym gruncie, w wodzie i w błocie.
-## 3. Po ciosie: o ile się cofa i po jakim czasie zamachuje się znowu.
+## 1. Ostrzał: trafienia go spowalniają, ale nie zatrzymują — przy trafieniu co 0,6 s dochodzi do strzelca i zamachuje się.
+## 2. Teren: na zwykłym gruncie, w wodzie i w błocie biegnący gracz jest szybszy od Stalkera.
+## 3. Po ciosie: o ile się cofa i po jakim czasie zamachuje się znowu (pomiar, bez progu — pytanie do playtestu).
 ##
 ## Mapa 1.3 (ma Stalkera, długi pas wody i błoto). Zwykli wrogowie i gniazda są usuwani, bot i Dyrektor grozy stoją —
 ## każdy obcy hałas zmieniłby cel Stalkera. Wynik: linie [STALKER-TEST] i kod wyjścia (0 = OK) — nadaje się do CI.
 
 const HIT_EVERY := 0.6                ## s między trafieniami w pomiarze ostrzału (rytm spokojnego ognia z P-64)
 const HIT_NOISE := 0.5                ## Uwaga jednego takiego strzału (zimna lufa P-64)
-const FIRE_TIME := 10.0
+const FIRE_TIME := 12.0
 const FIRE_DIST := 200.0              ## px między Stalkerem a strzelcem na starcie
 const CONTROL_TIME := 2.0
 
@@ -111,6 +111,7 @@ func _place_stalker(pos: Vector2) -> void:
 	stalker._attack_timer = 0.0
 	stalker._hesitate = 0.0
 	stalker._slow = 0.0
+	stalker._stagger_cd = 0.0
 	stalker._retreat_timer = 0.0
 	stalker._listen = 0.0
 	stalker._windup = 0.0
@@ -168,8 +169,9 @@ func _measure_fire(ground: Dictionary) -> void:
 			st["windups"] = int(st["windups"]) + 1
 		st["was"] = stalker.winding)
 	var fire_px := stalker.global_position.distance_to(s0)
-	info("ostrzał co %.1f s przez %.0f s: Stalker przeszedł %.0f px z %.0f, zamachów %d, gracz stracił %d HP, Uwaga %.0f -> %.0f" % [
-		HIT_EVERY, FIRE_TIME, fire_px, FIRE_DIST, int(st["windups"]), hp0 - int(player.hp), noise0, NoiseMgr.level])
+	check("ostrzał co %.1f s przez %.0f s nie zatrzymuje Stalkera: przeszedł %.0f px z %.0f, zamachów %d, gracz stracił %d HP, Uwaga %.0f -> %.0f" % [
+		HIT_EVERY, FIRE_TIME, fire_px, FIRE_DIST, int(st["windups"]), hp0 - int(player.hp), noise0, NoiseMgr.level],
+		fire_px >= FIRE_DIST * 0.75 and int(st["windups"]) >= 1)
 	_sleep()
 	await _frames(0.2)
 
@@ -209,7 +211,7 @@ func _measure_terrain(ground: Dictionary) -> void:
 			if player.global_position.x < b.x:
 				peak[0] = maxf(float(peak[0]), absf(player.velocity.x)))
 		Input.action_release("move_right")
-		info("teren %s: gracz %.0f px/s, Stalker %.0f px/s (pas %.0f px)" % [name, float(peak[0]), vs, span])
+		check("teren %s: gracz %.0f px/s szybszy od Stalkera %.0f px/s (pas %.0f px)" % [name, float(peak[0]), vs, span], float(peak[0]) > vs + 1.0)
 		_sleep()
 		await _frames(0.2)
 

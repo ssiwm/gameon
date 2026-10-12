@@ -9,11 +9,14 @@ extends CharacterBody2D
 ##   Kucający gracz jest zauważany dopiero z REACH_CROUCH
 ##   Atak ma zapowiedź (WINDUP_TIME): gracz może uciec, cios może chybić
 ##   Atak NIE generuje hałasu, po ciosie Stalker się cofa
+##   Trafienie go spowalnia, ale zatrzymuje najwyżej raz na STAGGER_COOLDOWN — ostrzałem nie da się go unieruchomić
+##   Teren spowalnia go tak samo jak gracza (woda, błoto) — na każdej powierzchni zostaje wolniejszy od biegnącego
 ##   Ciało widać tylko z bliska; z daleka są same oczy
 
 const Lights := preload("res://scripts/lights.gd")
 const Nav := preload("res://scripts/nav.gd")
 const Sprites := preload("res://scripts/sprites.gd")
+const Surfaces := preload("res://scripts/surfaces.gd")
 
 const AWAKE_THRESHOLD := 60.0
 const SLEEP_THRESHOLD := 30.0
@@ -31,6 +34,12 @@ const REACH_STAND := 14.0
 const REACH_CROUCH := 8.0
 const REACH_SLACK := 6.0       ## o tyle gracz może się wycofać w trakcie zapowiedzi i nadal oberwać
 const MISS_COOLDOWN := 0.8
+## Trafienie: spowolnienie na HIT_SLOW_TIME s zawsze, zatrzymanie na HIT_STAGGER s najwyżej raz na STAGGER_COOLDOWN s.
+## Bez tego limitu strzał co 0,6 s trzymał go w miejscu bez końca (test `--stalkertest`: 1 px z 200 w 10 s).
+const HIT_SLOW_TIME := 1.2
+const HIT_SLOW := 0.4
+const HIT_STAGGER := 0.7
+const STAGGER_COOLDOWN := 3.0
 
 ## Granice ruchu w poziomie — z mapy (level.gd), z marginesem na ściany.
 var _x_min := -270.0
@@ -54,6 +63,7 @@ var winding := false
 var _attack_timer := 0.0
 var _hesitate := 0.0
 var _slow := 0.0
+var _stagger_cd := 0.0
 var _retreat_timer := 0.0
 var _net_timer := 0.0
 var _remote_pos := Vector2.ZERO
@@ -120,6 +130,7 @@ func reset_enemy() -> void:
 	target_pos = _home
 	_remote_pos = _home
 	_attack_timer = 0.0
+	_stagger_cd = 0.0
 	_windup = 0.0
 	_windup_target = null
 	_listen = 0.0
@@ -139,6 +150,7 @@ func _physics_process(delta: float) -> void:
 	_attack_timer = maxf(0.0, _attack_timer - delta)
 	_hesitate = maxf(0.0, _hesitate - delta)
 	_slow = maxf(0.0, _slow - delta)
+	_stagger_cd = maxf(0.0, _stagger_cd - delta)
 	_retreat_timer = maxf(0.0, _retreat_timer - delta)
 	_listen = maxf(0.0, _listen - delta)
 
@@ -200,8 +212,10 @@ func _physics_process(delta: float) -> void:
 func _move_toward_target(delta: float, noise: float) -> void:
 	var speed := (HUNT_SPEED if noise >= HUNT_NOISE else LURK_SPEED) * Difficulty.m("stalker_speed")
 	if _slow > 0.0:
-		speed *= 0.4
+		speed *= HIT_SLOW
 	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl != null:
+		speed *= float(Surfaces.of(lvl.surface_at(global_position))["speed"])      # woda i błoto hamują go jak gracza (GDD §8.5)
 	if lvl != null and lvl.nav != null:
 		_follow_path(delta, speed, lvl.nav)
 		return
@@ -399,8 +413,10 @@ func take_hit(info: Dictionary) -> Dictionary:
 func take_bullet(_from_pos: Vector2, _dmg: float = 0.0) -> void:
 	if not NoiseMgr.is_server():
 		return
-	_slow = 1.2
-	_hesitate = 0.7
+	_slow = HIT_SLOW_TIME
+	if _stagger_cd <= 0.0:
+		_hesitate = HIT_STAGGER
+		_stagger_cd = STAGGER_COOLDOWN
 
 func _send_state(delta: float) -> void:
 	if not NoiseMgr.has_network() or not NoiseMgr.is_server():

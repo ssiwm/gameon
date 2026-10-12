@@ -224,7 +224,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 
 ### 7.3 Stalker — „ON" (On/To)
 
-- **Nie da się go zabić.** HP ∞.
+- **Nie da się go zabić.** HP ∞. Trafienie spowalnia go na 1,2 s (do 40% prędkości) i zatrzymuje na 0,7 s, ale zatrzymanie działa najwyżej raz na 3 s — ostrzałem kupuje się czas, nie unieruchamia go.
 - Aktywuje się, gdy Poziom Uwagi misji przekroczy próg (start: 60/100).
 - Porusza się poza kadrem (dźwięk z głośników 3D), atakuje znienacka.
 - **Mechanika tropu:** idzie do ostatniego głośnego punktu. Wabik odciąga go na 20–30 s.
@@ -311,13 +311,13 @@ Sedno poprawki. Problem: pierwotna wersja traktowała hałas jako coś, czego si
 **Napięcie gatunków rozstrzygnięte w ten sposób:** w trybie **szumu** (walka) hałas jest nieunikniony i Stalker ciśnie — tu grasz jak w Contra. W trybie **napięcia** (cele, skradanie) cisza jest możliwa i oszczędzasz ładunek Q. Misje przełączają te tryby jawnie, żeby gracz wiedział, w którym jest. Bez tego GDD opisywał dwa różne produkty.
 
 ### 8.5 Stalker — pozycje i celowość (reguła dla AI, nie tylko opis)
-- **Stalker NIE biega szybciej od gracza.** 88 px/s vs gracz 95 px/s — gracze da się wyprzedzić, ale trzeba biec w linii prostej, co rzadko możliwe w labiryncie. To zostawia szansę na ucieczkę.
+- **Stalker NIE biega szybciej od gracza.** 88 px/s vs gracz 95 px/s — gracze da się wyprzedzić, ale trzeba biec w linii prostej, co rzadko możliwe w labiryncie. To zostawia szansę na ucieczkę. **Teren hamuje go tak samo jak gracza** (woda ×0,72, błoto ×0,58), więc reguła obowiązuje na każdej powierzchni: w wodzie 63 vs 68, w błocie 51 vs 55. Pilnuje tego `--stalkertest`.
 - **Stalker kieruje się źródłem hałasu, nie pozycją gracza.** Nie ma „trybu szukania"; idzie tam, gdzie ostatnio było głośno.
 - **W fazie napięcia (niski hałas) jest powolny (55 px/s)** i omija graczy — groźba bez ataku. W fazie szumu jest szybki i agresywny.
 - **Nasłuchiwanie (v2):** po dotarciu do źródła hałasu Stalker **zatrzymuje się i nasłuchuje 4 s**. Idzie dalej tylko do *nowego* hałasu. Nigdy nie przełącza się na pozycję gracza — to oddaje ciszy realną wartość (wcześniej kod po dotarciu do punktu celował w najbliższego gracza, co robiło z niego zwykłego goniącego wroga).
 - **Kucający gracz jest niemal niewidoczny:** Stalker zauważa go dopiero z **8 px** (stojącego z 14 px). Kucanie obok przechodzącego Stalkera to świadoma, nagradzana decyzja.
 - **Widoczność — „słyszysz, nigdy nie widzisz":** ciało pojawia się dopiero w promieniu ~60 px od lokalnego gracza (płynnie do 160 px), poza tym widać tylko słabo błyszczące oczy. Gdy dojdzie oświetlenie 2D, widoczny jest w świetle latarki/flary.
-- **Atak z zapowiedzią (v2):** zamach 1 HP, cooldown 1,5 s, **bez generowania hałasu**. Przed ciosem jest **0,55 s zapowiedzi** (szept milknie, oczy rozbłyskują, ryk) — gracz może uciec; jeśli odejdzie poza zasięg, cios chybia. Po ciosie Stalker cofa się 6 m — okno na decyzję, nie natychmiastowy kolejny cios. Zasada: **śmierć od Stalkera jest zawsze „fair" i zapowiedziana.**
+- **Atak z zapowiedzią (v2):** zamach 1 HP, cooldown 1,5 s, **bez generowania hałasu**. Przed ciosem jest **0,55 s zapowiedzi** (szept milknie, oczy rozbłyskują, ryk) — gracz może uciec; jeśli odejdzie poza zasięg, cios chybia. Po ciosie Stalker odsuwa się o 6 px (ok. 0,4 m), stoi 0,8 s i może zamachnąć się ponownie najwcześniej po 1,5 s — okno na decyzję, nie natychmiastowy kolejny cios. W praktyce trafiony gracz ląduje tuż poza zasięgiem 14 px i Stalker nasłuchuje, dopóki nie padnie nowy hałas albo gracz sam nie podejdzie (pomiar: `--stalkertest`). Zasada: **śmierć od Stalkera jest zawsze „fair" i zapowiedziana.**
 - **Poruszanie się:** idzie po powierzchniach poziomu ścieżką A* (`nav.gd`, 1.3.7) — chodzi, wspina się na wyższe poziomy i zeskakuje, nie przenika przez ściany. Ten sam graf prowadzi bota.
 
 ---
