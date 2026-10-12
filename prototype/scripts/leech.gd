@@ -740,7 +740,7 @@ func _event(kind: String) -> void:
 	var pos := global_position
 	match kind:
 		"awaken":
-			Audio.play_variant_at("stalker_growl", 2, pos, Audio.BUS_STALKER, -4.0, 0.5)
+			Audio.play_variant_at("leech_growl", 2, pos, Audio.BUS_STALKER, -4.0, 0.8)
 			Audio.sting(1)
 		"windup":
 			_set_anim("peek")
@@ -749,38 +749,38 @@ func _event(kind: String) -> void:
 			_set_anim("strike", 1)                                       # wyrzut od klatki 1: uderzenie (klatka 2) pada ~55 ms po zadaniu obrażeń
 			Vfx.splash(get_parent(), pos, 1.6)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 3.0, 0.5)
-			Audio.play_variant_at("stalker_growl", 2, pos, Audio.BUS_STALKER, -2.0, 0.8)
+			Audio.play_variant_at("leech_growl", 2, pos, Audio.BUS_STALKER, -2.0, 1.0)
 			_shake_near(3.0)
 		"grab":
-			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, -4.0, 0.9)
+			Audio.play_variant_at("leech_shriek", 2, pos, Audio.BUS_STALKER, -4.0, 1.0)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 2.0, 0.45)
 			_shake_near(4.0)
 		"released":
 			_set_anim("dive")
-			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, -6.0, 1.15)
+			Audio.play_variant_at("leech_shriek", 2, pos, Audio.BUS_STALKER, -6.0, 1.15)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 0.0, 0.8)
 		"dragged":
 			_set_anim("dive")
 			Vfx.splash(get_parent(), pos, 2.0)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 4.0, 0.4)
-			Audio.play_variant_at("stalker_growl", 2, pos, Audio.BUS_STALKER, 0.0, 0.55)
+			Audio.play_variant_at("leech_growl", 2, pos, Audio.BUS_STALKER, 0.0, 0.85)
 			_shake_near(5.0)
 		"dive":
 			_set_anim("dive")
 			Vfx.splash(get_parent(), pos, 0.9)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, -2.0, 0.7)
 		"phase2":
-			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, -3.0, 0.7)
+			Audio.play_variant_at("leech_shriek", 2, pos, Audio.BUS_STALKER, -3.0, 0.9)
 			_shake_near(3.0)
 		"phase3":
-			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, 0.0, 0.5)
+			Audio.play_variant_at("leech_shriek", 2, pos, Audio.BUS_STALKER, 0.0, 0.8)
 			Audio.sting(2)
 			Lights.flicker_until_ms = Time.get_ticks_msec() + 3000
 			_shake_near(6.0)
 		"spit":
 			_set_anim("spit")
 			Vfx.splash(get_parent(), pos, 1.0)
-			Audio.play_variant_at("stalker_growl", 2, pos, Audio.BUS_STALKER, -3.0, 1.1)
+			Audio.play_variant_at("leech_growl", 2, pos, Audio.BUS_STALKER, -3.0, 1.2)
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 1.0, 0.9)
 		"surge_warn":
 			surge_state = "warn"
@@ -802,7 +802,7 @@ func _event(kind: String) -> void:
 			_surge_t = 0.0
 			Audio.play_variant_at("step_water", 3, Vector2(pool_x0 + (pool_x1 - pool_x0) * 0.5, surf_y), Audio.BUS_WORLD, 0.0, 0.7)
 		"fury":
-			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, 1.0, 0.45)
+			Audio.play_variant_at("leech_shriek", 2, pos, Audio.BUS_STALKER, 1.0, 0.75)
 			Lights.flicker_until_ms = Time.get_ticks_msec() + 1800
 			_shake_near(5.0)
 		"surface2":
@@ -810,7 +810,7 @@ func _event(kind: String) -> void:
 			Audio.play_variant_at("step_water", 3, Vector2(second_x if second_x >= 0.0 else pos.x, pos.y), Audio.BUS_WORLD, 2.0, 0.55)
 		"death":
 			Audio.play_variant_at("explosion", 2, pos, Audio.BUS_WORLD, -2.0, 0.6)
-			Audio.play_variant_at("stalker_shriek", 2, pos, Audio.BUS_STALKER, -2.0, 0.45)
+			Audio.play_variant_at("leech_shriek", 2, pos, Audio.BUS_STALKER, -2.0, 0.7)
 			_shake_near(6.0)
 			Feel.hitstop(0.1)
 			Vfx.gibs(get_parent(), pos + Vector2(0, -20), Color(0.18, 0.3, 0.26), 22)

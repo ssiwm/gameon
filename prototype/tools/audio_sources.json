@@ -25,12 +25,68 @@
    "supplier": "Pole Position Production",
    "license": "sonniss-gdc-2.0"
   },
+  "alien_beast_deep_5": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Gage Freeman - Alien Voices/Alien Beast Deep - Medium 5.wav",
+   "sha256": "4f2ea080c3f01803d15e7424adecb4d59c4ea83b7830fb561c9f317d52b43eac",
+   "pack": "Sonniss GDC 2019 — Alien Voices",
+   "supplier": "Gage Freeman",
+   "license": "sonniss-gdc-2.0"
+  },
+  "alien_death_01": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 5of9/MatiasMacSD - CREATURES ZONE/Creature_Alien_Death_01.wav",
+   "sha256": "35d81033310daf8bb3d960510f18793618f5061e120a8df953784e0e4717d83f",
+   "pack": "Sonniss GDC 2017 — CREATURES ZONE",
+   "supplier": "MatiasMacSD",
+   "license": "sonniss-gdc-2.0"
+  },
+  "aquatic_gurgling_2": {
+   "kind": "lib",
+   "file": "sonniss/2026/SoundBits - Vox Bestiae - Source Elements/CREAAqua_Aquatic Creature Gurgling 2_SNDBTS_VB-SE.wav",
+   "sha256": "f29dbd7e3e6896daadb3ab589198cd0d833de33047d9040efc4181b5e8a16882",
+   "pack": "Sonniss GDC 2026 — Vox Bestiae - Source Elements",
+   "supplier": "SoundBits",
+   "license": "sonniss-gdc-2.0"
+  },
   "arrow_whoosh": {
    "kind": "lib",
    "file": "sonniss/2020/SoundFxwizard - PARTICLES An Organic & Granular Journey/PARTICLES_WHOOSH_Arrow 01.wav",
    "sha256": "260549f43752421376ec7ab23c902bc941b4c79959013d8fe8ca17825fd0ae50",
    "pack": "Sonniss GDC 2020 — PARTICLES An Organic & Granular Journey",
    "supplier": "SoundFxwizard",
+   "license": "sonniss-gdc-2.0"
+  },
+  "banshee_damage_07": {
+   "kind": "lib",
+   "file": "sonniss/2020/Phase 4 Libraries - Monster Roars/MR - Banshee Damage VO 07.wav",
+   "sha256": "23e6c0cb86d67d2c5b44a579c2d903a5404ed85c923a72d1c38efa004e14ac65",
+   "pack": "Sonniss GDC 2020 — Monster Roars",
+   "supplier": "Phase 4 Libraries",
+   "license": "sonniss-gdc-2.0"
+  },
+  "beast01_attack_08": {
+   "kind": "lib",
+   "file": "sonniss/2020/SmartSoundFX - Monsters/BEAST 01 Attack 08.wav",
+   "sha256": "57348286dc0c711b969c028e4208fd0c3c2bca7ae4b46435184f4a6c0bf7a942",
+   "pack": "Sonniss GDC 2020 — Monsters",
+   "supplier": "SmartSoundFX",
+   "license": "sonniss-gdc-2.0"
+  },
+  "beast01_threaten_06": {
+   "kind": "lib",
+   "file": "sonniss/2020/SmartSoundFX - Monsters/BEAST 01 Threaten Short 06.wav",
+   "sha256": "ad35298a07efb4358b82d521dba8c7c4e36e0be4c5e3f4d04369ece1e8caf0cc",
+   "pack": "Sonniss GDC 2020 — Monsters",
+   "supplier": "SmartSoundFX",
+   "license": "sonniss-gdc-2.0"
+  },
+  "behemoth_talk_04": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Lukas Tvrdon - 6Monsters/6Monsters_Behemoth_Talk_04.wav",
+   "sha256": "facec8cd1ebc21606081cf12980a31c29da945c93cf1ddd2e1923f3457c2d259",
+   "pack": "Sonniss GDC 2018 — 6Monsters",
+   "supplier": "Lukas Tvrdon",
    "license": "sonniss-gdc-2.0"
   },
   "blackboss_scream_04": {
@@ -79,6 +135,14 @@
    "sha256": "1a506d63619175b8d8bb137ad37364268d7d3c8b6d5afdb4f09ef34d994d8801",
    "pack": "Sonniss GDC 2019 — Nocked",
    "supplier": "Eiravaein Works",
+   "license": "sonniss-gdc-2.0"
+  },
+  "breath_inhale_squeal_05": {
+   "kind": "lib",
+   "file": "sonniss/2026/Epic Stock Media - Humanoid Creatures Vol 4 - Monstrous and Undead Creature Vocalization Sound Sets/HMNBrth_Construction Kit Male Screeching Breath Inhale Weak Squeal 05_ESM_HC4.wav",
+   "sha256": "f85227648434c27d41932a88029be05f809c8d825dbe93de86f3d40260c0d09c",
+   "pack": "Sonniss GDC 2026 — Humanoid Creatures Vol 4 - Monstrous and Undead Creature Vocalization Sound Sets",
+   "supplier": "Epic Stock Media",
    "license": "sonniss-gdc-2.0"
   },
   "bullet_drop_wood_04": {
@@ -153,12 +217,28 @@
    "supplier": "RZ Post",
    "license": "sonniss-gdc-2.0"
   },
+  "dragon_roar_01": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 5of9/MatiasMacSD - CREATURES ZONE/Creature_Dragon_Roar_01.wav",
+   "sha256": "563dfc1594d9f226dd2eefefd35f843e38eddaf4424d373c2ca4a5a38313bd66",
+   "pack": "Sonniss GDC 2017 — CREATURES ZONE",
+   "supplier": "MatiasMacSD",
+   "license": "sonniss-gdc-2.0"
+  },
   "dry_ice_shriek_3": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 1of8/Alexander Kopeikin - The Dry Ice Library/dry ice shriek - very hot knife pressed against block of dry ice 003.wav",
    "sha256": "3a83d3fd8aafeccfbe7fae01b703577eee97fb506eb0f15b3f33ddda06da5bba",
    "pack": "Sonniss GDC 2018 — The Dry Ice Library",
    "supplier": "Alexander Kopeikin",
+   "license": "sonniss-gdc-2.0"
+  },
+  "ethereal_pain_4": {
+   "kind": "lib",
+   "file": "sonniss/2026/SoundBits - Vox Bestiae - Source Elements/CREAEthr_Ethereal Entity Grim Pain Long 4_SNDBTS_VB-SE.wav",
+   "sha256": "e966d82597284abb798b01e9d4965d226d19d5beb7d68cda36be0ad6ef414488",
+   "pack": "Sonniss GDC 2026 — Vox Bestiae - Source Elements",
+   "supplier": "SoundBits",
    "license": "sonniss-gdc-2.0"
   },
   "explosion_deep_02": {
@@ -183,6 +263,14 @@
    "sha256": "1d0632a644f86c655d1203a5c45478637e1b0b8732ba7e312c1eab585c8a341a",
    "pack": "Sonniss GDC 2018 — Designed Fire",
    "supplier": "Gregor Quendel",
+   "license": "sonniss-gdc-2.0"
+  },
+  "flutter_death_05": {
+   "kind": "lib",
+   "file": "sonniss/2026/Epic Stock Media - Humanoid Creatures Vol 4 - Monstrous and Undead Creature Vocalization Sound Sets/VOXReac_Construction Kit Male Flutter Death Vocal Stuttered Long 05_ESM_HC4.wav",
+   "sha256": "609cb0672b154a41a97f6122858d64bbd922879b0ed1c3e475b22c2d34f13d14",
+   "pack": "Sonniss GDC 2026 — Humanoid Creatures Vol 4 - Monstrous and Undead Creature Vocalization Sound Sets",
+   "supplier": "Epic Stock Media",
    "license": "sonniss-gdc-2.0"
   },
   "forest_winter_night": {
@@ -281,6 +369,14 @@
    "supplier": "Olivier Girardot",
    "license": "sonniss-gdc-2.0"
   },
+  "insect_attack_02": {
+   "kind": "lib",
+   "file": "sonniss/2020/Phase 4 Libraries - Monster Roars/MR - Insect Creature Attack VO 02.wav",
+   "sha256": "231cfae7f8af1c5f2003474f68a4f98858d4fe180a541a7feed4f694da7a542d",
+   "pack": "Sonniss GDC 2020 — Monster Roars",
+   "supplier": "Phase 4 Libraries",
+   "license": "sonniss-gdc-2.0"
+  },
   "knife_swing_04": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 3of8/Gamemaster Audio - Punch and Combat Sounds/whoosh_weapon_knife_swing_04.wav",
@@ -289,12 +385,76 @@
    "supplier": "Gamemaster Audio",
    "license": "sonniss-gdc-2.0"
   },
+  "large_beast_taunt_03": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/SoundMorph - Monster Within/Monster Within - Large Beast - Taunt2Stun03.wav",
+   "sha256": "bbe0aac37a62a244d597bfa26c14939e4bee1388d0e6c56144fbd815612a50cf",
+   "pack": "Sonniss GDC 2018 — Monster Within",
+   "supplier": "SoundMorph",
+   "license": "sonniss-gdc-2.0"
+  },
+  "large_monster11_roar03": {
+   "kind": "lib",
+   "file": "sonniss/2023/David Dumais Audio - Monster Sound FX Pack 2/MonsterPack2_LargeMonster11_Roar03.wav",
+   "sha256": "4bfe1aba3f0332a2fe8c02792d4f0d44d4df7fb10f109dbecd561ba39422def8",
+   "pack": "Sonniss GDC 2023 — Monster Sound FX Pack 2",
+   "supplier": "David Dumais Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "monster11_mouth2": {
+   "kind": "lib",
+   "file": "sonniss/2020/David Dumais Audio - Monster Sound FX Pack 1/Monster11_Mouth2.wav",
+   "sha256": "7265ca9afe267c21358c9471b1a00c3c0b5a9147ecf3cad0fa494b13087edccf",
+   "pack": "Sonniss GDC 2020 — Monster Sound FX Pack 1",
+   "supplier": "David Dumais Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "monster4_call2": {
+   "kind": "lib",
+   "file": "sonniss/2020/David Dumais Audio - Monster Sound FX Pack 1/Monster4_Call2.wav",
+   "sha256": "eb4acabe2c919bb9407a828691e3484ea2f869ebf02feb1e62f3c10703f781b9",
+   "pack": "Sonniss GDC 2020 — Monster Sound FX Pack 1",
+   "supplier": "David Dumais Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "monster9_death10": {
+   "kind": "lib",
+   "file": "sonniss/2020/David Dumais Audio - Monster Sound FX Pack 1/Monster9_Death10.wav",
+   "sha256": "dc825f4aa24d62cc32475fc36630bc932bec8839ad2286ec199d60098d6ffa8d",
+   "pack": "Sonniss GDC 2020 — Monster Sound FX Pack 1",
+   "supplier": "David Dumais Audio",
+   "license": "sonniss-gdc-2.0"
+  },
   "monster_growls_4": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Olivier Girardot - Monsters/Monster Growls 4.wav",
    "sha256": "94e47f779de1e11ce1252c4aaaf1491de5d927f8ca164d3ffc8741f116d5cff7",
    "pack": "Sonniss GDC 2018 — Monsters",
    "supplier": "Olivier Girardot",
+   "license": "sonniss-gdc-2.0"
+  },
+  "monster_pain_01": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 5of9/MatiasMacSD - CREATURES ZONE/Creature_Monster_Pain_01.wav",
+   "sha256": "9cbcc67e943b55c9a388911594880dc5bb173257350f04e816117cad19ac982f",
+   "pack": "Sonniss GDC 2017 — CREATURES ZONE",
+   "supplier": "MatiasMacSD",
+   "license": "sonniss-gdc-2.0"
+  },
+  "orc_grunt_003": {
+   "kind": "lib",
+   "file": "sonniss/2020/Bluezone - Mountain Dweller - Orc Sound Effects/Bluezone_BC0261_mountain_dweller_creature_orc_grunt_003.wav",
+   "sha256": "430bc1ee9cb9bb74d9133390f26c6203e4abcfa5a348245e0306c37004155d73",
+   "pack": "Sonniss GDC 2020 — Mountain Dweller - Orc Sound Effects",
+   "supplier": "Bluezone",
+   "license": "sonniss-gdc-2.0"
+  },
+  "organic_texture_041": {
+   "kind": "lib",
+   "file": "sonniss/2023/BluezoneCorp - Biohazard - Organic Textures and Ambiences/Bluezone_BC0280_biohazard_creature_organic_texture_041.wav",
+   "sha256": "7a51ed47696d122e47e9b082ac24e0d852e535027f0555db5a79652d9fd4c795",
+   "pack": "Sonniss GDC 2023 — Biohazard - Organic Textures and Ambiences",
+   "supplier": "BluezoneCorp",
    "license": "sonniss-gdc-2.0"
   },
   "puddle_splashes": {
@@ -345,6 +505,14 @@
    "supplier": "Olivier Girardot",
    "license": "sonniss-gdc-2.0"
   },
+  "sea_beast_yell_04": {
+   "kind": "lib",
+   "file": "sonniss/2026/Epic Stock Media - Humanoid Creatures Vol 4 - Monstrous and Undead Creature Vocalization Sound Sets/CREAMnstr_Designed Sea Beast Creature Pain Intense Yell Long 04_ESM_HC4.wav",
+   "sha256": "63e6c8de4ba3b7231197158bc4b9e0f96cf9e50cb019f7bb6d05debea6281841",
+   "pack": "Sonniss GDC 2026 — Humanoid Creatures Vol 4 - Monstrous and Undead Creature Vocalization Sound Sets",
+   "supplier": "Epic Stock Media",
+   "license": "sonniss-gdc-2.0"
+  },
   "shell_bounce_wood_05": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 3of8/Gamemaster Audio - Silenced Gun Sounds/bullet_shell_bounce_wood2_05.wav",
@@ -385,6 +553,14 @@
    "supplier": "SoundBits",
    "license": "sonniss-gdc-2.0"
   },
+  "swamp_fish_damage_08": {
+   "kind": "lib",
+   "file": "sonniss/2020/Phase 4 Libraries - Monster Roars/MR - Swamp Fish Creature Damage VO 08.wav",
+   "sha256": "2c44fa18c0388be28d6bc4904a3df8d75de07752609681b22f9f345106025cb7",
+   "pack": "Sonniss GDC 2020 — Monster Roars",
+   "supplier": "Phase 4 Libraries",
+   "license": "sonniss-gdc-2.0"
+  },
   "thunder_clap_04": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Soundrangers – Thunder/thunder_clap_04.wav",
@@ -409,6 +585,22 @@
    "supplier": "Soundrangers",
    "license": "sonniss-gdc-2.0"
   },
+  "troll_death_01": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Gamemaster Audio - Troll Monster Vocalizations/troll_monster_death_01.wav",
+   "sha256": "006ecff64903151dc1859185612b70335999f10daa9400abbdd441051fcf0895",
+   "pack": "Sonniss GDC 2017 — Troll Monster Vocalizations",
+   "supplier": "Gamemaster Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "troll_growl_long_05": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Gamemaster Audio - Troll Monster Vocalizations/troll_monster_growl_long_05.wav",
+   "sha256": "917a95969b4e939be23d8c6733291a6323f7d0de7086614e3622507369aace4d",
+   "pack": "Sonniss GDC 2017 — Troll Monster Vocalizations",
+   "supplier": "Gamemaster Audio",
+   "license": "sonniss-gdc-2.0"
+  },
   "usas12_close_1m": {
    "kind": "lib",
    "file": "sonniss/2016/Pole Position Production - USAS-12 12g solid slug/USAS-12_12g_solid_slug_1m_right_CS3_clean_Double_shots_x_1.wav",
@@ -417,12 +609,44 @@
    "supplier": "Pole Position Production",
    "license": "sonniss-gdc-2.0"
   },
+  "water_movement_large_009": {
+   "kind": "lib",
+   "file": "sonniss/2020/Bluezone - Cave Creature Sound Effects/Bluezone_BC0272_creature_texture_water_movement_large_animal_009.wav",
+   "sha256": "7e9fdc002cb69c76aef2cfc7e4eccd07d24770b8231b922b5d0e328de24f81a8",
+   "pack": "Sonniss GDC 2020 — Cave Creature Sound Effects",
+   "supplier": "Bluezone",
+   "license": "sonniss-gdc-2.0"
+  },
   "whip_21": {
    "kind": "lib",
    "file": "sonniss/2020/Olivier Girardot - Hand Guns Sound Effects Pack/Whip sound 21.wav",
    "sha256": "272a7e0034a85a802f665050b8a860b3498a0f10c11955f4cf4d443fd35c6e9d",
    "pack": "Sonniss GDC 2020 — Hand Guns Sound Effects Pack",
    "supplier": "Olivier Girardot",
+   "license": "sonniss-gdc-2.0"
+  },
+  "yeti_grumble_02": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 1of8/Articulated Sounds - Yeti Monster/MONSTER Yeti grumble 02.wav",
+   "sha256": "e5bf5e2989901ab6e54f0ea6f3373ab71d49f840220ef186c536c25fdd53e10f",
+   "pack": "Sonniss GDC 2018 — Yeti Monster",
+   "supplier": "Articulated Sounds",
+   "license": "sonniss-gdc-2.0"
+  },
+  "zombie_brat_groan_9": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Glitchedtones - Zombie/Zombie Subject C Zombie Brat Groan (9).wav",
+   "sha256": "5f6a513da7a97f5058ac213740ddafa082ab2dcb0d698662bef1783d861521cb",
+   "pack": "Sonniss GDC 2019 — Zombie",
+   "supplier": "Glitchedtones",
+   "license": "sonniss-gdc-2.0"
+  },
+  "zombie_hiss_1": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Glitchedtones - Zombie/Zombie Subject B Hiss (1).wav",
+   "sha256": "14d282072c76428b6cd5c6998b69c9f251ab9f61f8bf125ccc6247d338813305",
+   "pack": "Sonniss GDC 2019 — Zombie",
+   "supplier": "Glitchedtones",
    "license": "sonniss-gdc-2.0"
   }
  }

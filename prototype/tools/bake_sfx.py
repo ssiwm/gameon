@@ -128,6 +128,204 @@ def build_stalker() -> None:
         finalize("amb_far_cry_%d" % (i + 1), x, lufs=-26.0, fade_out_ms=400)
     bake_hybrid.stalker()                                   # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
 
+# ============================================================ WROGOWIE
+
+def _voice(n: int, f0, r: Rng, vowels, *, jitter: float = .03, shimmer: float = .3, breath: float = .15,
+           rough_hz: float = 0.0, rough: float = 0.0, bw: float = 7.0) -> np.ndarray:
+    """Głos stwora: źródło głosowe → formanty [(samogłoska, waga)]; rough_hz/rough = szorstkość (modulacja amplitudy)."""
+    src = glottal(n, f0, r, jitter=jitter, shimmer=shimmer, breath=breath)
+    if rough_hz:
+        wob = _norm_std(d.lp(d.white(n, r), 6.0))
+        src = src * ((1.0 - rough) + rough * (0.5 + 0.5 * np.sin(TAU * np.cumsum(rough_hz * (1.0 + 0.15 * wob)) / SR)))
+    out = np.zeros(n)
+    for v, g in vowels:
+        out += vowel(src, v, bw=bw) * g
+    return out
+
+
+def _put(buf: np.ndarray, x: np.ndarray, t: float, gain: float = 1.0) -> None:
+    st = sec(t)
+    ln = min(len(x), len(buf) - st)
+    if ln > 0:
+        buf[st:st + ln] += x[:ln] * gain
+
+
+def _clicks(n: int, r: Rng, t0: float, t1: float, gap0: float, ratio: float, f: float, fade: float = 0.0) -> np.ndarray:
+    """Seria suchych kliknięć (echolokacja Ślepca): odstęp gap0 mnożony co kliknięcie przez ratio (<1 przyspiesza)."""
+    out = np.zeros(n)
+    t, gap, k = t0, gap0, 0
+    while t < t1:
+        c = tick(r, vary(r, f, .08), 3.0, 14, .003) + .5 * tick(r, vary(r, f * .43, .1), 2.0, 14, .004)
+        _put(out, c, t, max(0.15, 1.0 - fade * k))
+        t += gap * (1.0 + r.bipolar(.12))
+        gap = min(.14, max(.02, gap * ratio))
+        k += 1
+    return out
+
+
+def _bubbles(n: int, r: Rng, count: int, t0: float, t1: float) -> np.ndarray:
+    """Bąble: krótkie sinusy o rosnącej wysokości (pęcherz powietrza w wodzie)."""
+    out = np.zeros(n)
+    for _ in range(count):
+        m = ms(r.uniform(35.0, 75.0))
+        f = r.uniform(170.0, 320.0)
+        b = d.osc("sine", d.glide(f, f * r.uniform(1.8, 2.6), m), m) * d.env_perc(m, .004, .018)
+        _put(out, b, r.uniform(t0, t1), r.uniform(.4, 1.0))
+    return out
+
+
+def build_enemies() -> None:
+    """Własne głosy gatunków (AUDIO_PLAN.md F5): każdy ma inne źródło i inny gest, żeby dało się je rozróżnić na ślepo.
+    Trzosek — wysoki, terkoczący warkot; Wołek — niski ryk byka z parsknięciem; Ślepiec — suche klikanie i świst oddechu;
+    Podsłuchacz — dwugłosowy, drżący wrzask alarmu; Pijawka — mokry bulgot i syk; Żyła — tętniący pomruk i wielogłosowy ryk."""
+    group("sfx/enemies")
+
+    # --- Trzosek: zapowiedź skoku (krótki, wysoki, ze szczękaniem) i śmierć (opadający pisk urwany charkotem)
+    for i in range(3):
+        r = Rng(0xE100 + i * 3331)
+        n = ms(380 + 30 * i)
+        T = n / SR
+        f0 = d.env_pts(n, [(0, 300 + 30 * i), (.08, 520 + 40 * i), (.2, 430), (T, 300 - 20 * i)])
+        v = _voice(n, f0, r, (("e", 1.0), ("i", .6)), jitter=.05, shimmer=.4, breath=.3, rough_hz=62 + 6 * i, rough=.7, bw=8.0)
+        env = d.env_pts(n, [(0, 0), (.01, 1), (.12, .8), (.26, .55), (T, 0)])
+        jaws = np.zeros(n)
+        for j in range(4 + i % 2):
+            _put(jaws, tick(r, vary(r, 3400, .12), 2.0, 10, .002), .018 + j * (.052 - .004 * i) + r.uniform(0.0, .008), 1.0 - .12 * j)
+        hiss = d.filt(d.white(n, r), "bp", 4200.0, 0.8) * d.env_perc(n, .004, .12)
+        x = d.saturate(d.mix([(v * env, 1.0), (jaws, .5), (hiss, .5)], n) * 1.3, 2.4)
+        finalize("trzosek_attack_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), lufs=-16.0, fade_out_ms=30)
+    for i in range(2):
+        r = Rng(0xE200 + i * 2221)
+        n = ms(540 + 60 * i)
+        T = n / SR
+        f0 = d.env_pts(n, [(0, 640 - 60 * i), (.05, 720 - 40 * i), (.3, 380), (T, 170)])
+        v = _voice(n, f0, r, (("e", 1.0), ("a", .7)), jitter=.06, shimmer=.5, breath=.35, rough_hz=48.0, rough=.6)
+        env = d.env_pts(n, [(0, 0), (.008, 1), (.2, .7), (.38, .3), (T, 0)])
+        gurgle = burst(ms(220), r, 1800, 300, .06, color=.6)
+        x = d.saturate(d.mix([(v * env, 1.0), (gurgle, .5, .22 + .04 * i)], n) * 1.3, 2.2)
+        finalize("trzosek_death_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), lufs=-16.0, fade_out_ms=40)
+
+    # --- Wołek: zapowiedź szarży / ciosu (parsknięcie + ryk) i śmierć (długi, opadający jęk + upadek cielska)
+    for i in range(2):
+        r = Rng(0xE300 + i * 4447)
+        n = ms(900 + 80 * i)
+        T = n / SR
+        f0 = d.env_pts(n, [(0, 62 + 6 * i), (.15, 96 + 8 * i), (.5, 108 + 6 * i), (T, 70)])
+        v = _voice(n, f0, r, (("o", 1.0), ("gutt", .8)), jitter=.04, shimmer=.45, breath=.15, rough_hz=24 + 3 * i, rough=.6, bw=6.0)
+        env = d.env_pts(n, [(0, 0), (.05, .6), (.2, 1), (.6, .8), (T, 0)])
+        snort = d.filt(d.colored(ms(260), r, .6), "bp", 650.0, 1.2) * d.env_perc(ms(260), .01, .09)
+        sub = d.osc("sine", f0 * .5, n) * .4
+        x = d.saturate(d.mix([(v * env, 1.0), (sub * env, .5), (snort, .7)], n) * 1.5, 2.6)
+        finalize("wolek_attack_%d" % (i + 1), d.reverb(x, ir("room"), wet=.2, keep_len=True), lufs=-14.0, fade_out_ms=60)
+    for i in range(2):
+        r = Rng(0xE400 + i * 1777)
+        n = ms(1300 + 100 * i)
+        T = n / SR
+        f0 = d.env_pts(n, [(0, 104 + 8 * i), (.2, 112 + 6 * i), (.8, 66), (T, 46)])
+        v = _voice(n, f0, r, (("o", 1.0), ("u", .7)), jitter=.05, shimmer=.5, breath=.2, rough_hz=19.0, rough=.55, bw=6.0)
+        env = d.env_pts(n, [(0, 0), (.04, 1), (.5, .8), (1.0, .35), (T, 0)])
+        fall = thump(.3, 95, 38, .05, .09)
+        x = d.saturate(d.mix([(v * env, 1.0), (fall, .6, .72 + .06 * i)], n) * 1.6, 2.8)
+        finalize("wolek_death_%d" % (i + 1), d.reverb(x, ir("room"), wet=.2, keep_len=True), lufs=-14.0, fade_out_ms=80)
+
+    # --- Ślepiec: zapowiedź ciosu (klikanie coraz szybsze + świst wdechu) i śmierć (wydech, klikanie zwalnia i gaśnie)
+    for i in range(2):
+        r = Rng(0xE500 + i * 5119)
+        n = ms(650 + 50 * i)
+        T = n / SR
+        clicks = _clicks(n, r, .02, T - .08, .075 - .008 * i, .86, 2100.0 + 300 * i)
+        wheeze = _voice(n, d.env_pts(n, [(0, 170), (T, 240 + 20 * i)]), r, (("i", 1.0), ("e", .5)),
+                        jitter=.08, shimmer=.5, breath=.9, bw=6.0) * d.env_pts(n, [(0, 0), (.25, .5), (.5, 1), (T, 0)])
+        x = d.mix([(clicks, 1.0), (wheeze, .45)], n)
+        finalize("slepiec_attack_%d" % (i + 1), d.reverb(x, ir("close"), wet=.2), lufs=-17.0, fade_out_ms=30)
+    for i in range(2):
+        r = Rng(0xE600 + i * 6007)
+        n = ms(950 + 80 * i)
+        T = n / SR
+        clicks = _clicks(n, r, .03, T - .2, .03, 1.22, 1900.0 + 250 * i, fade=.09)
+        wheeze = _voice(n, d.env_pts(n, [(0, 230 - 20 * i), (T, 110)]), r, (("e", 1.0), ("a", .5)),
+                        jitter=.1, shimmer=.6, breath=.9, bw=6.0) * d.env_pts(n, [(0, 0), (.03, 1), (.4, .6), (T, 0)])
+        x = d.mix([(clicks, .8), (wheeze, .6)], n)
+        finalize("slepiec_death_%d" % (i + 1), d.reverb(x, ir("close"), wet=.2), lufs=-17.0, fade_out_ms=60)
+
+    # --- Podsłuchacz: wrzask alarmu — dwa głosy o pół tonu od siebie (dudnienie), szybkie drżenie; ściąga hordę
+    for i in range(2):
+        r = Rng(0xE700 + i * 7307)
+        n = sec(1.3)
+        T = n / SR
+        t = np.arange(n) / SR
+        f0 = d.env_pts(n, [(0, 480), (.07, 860 + 60 * i), (.6, 900 + 40 * i), (1.0, 820), (T, 600)])
+        trem = np.sin(TAU * (11.0 + 2 * i) * t)
+        a = glottal(n, f0 * (1.0 + .05 * trem), r, jitter=.015, shimmer=.2, breath=.15)
+        b = glottal(n, f0 * (1.0 + .05 * trem) * 1.059, r, jitter=.02, shimmer=.2, breath=.1)
+        sc = vowel(a + .7 * b, "i", bw=7.0) + .6 * vowel(a + .7 * b, "e", bw=8.0)
+        env = d.env_pts(n, [(0, 0), (.02, 1), (.9, .9), (T, 0)]) * (.75 + .25 * trem)
+        x = d.saturate(sc * env * 1.4, 3.0)
+        finalize("podsluchacz_scream_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.25, keep_len=True), lufs=-10.0, fade_out_ms=120)
+
+    # --- Pijawka (boss w wodzie): mokry, bulgoczący warkot i syczący skrzek
+    for i in range(2):
+        r = Rng(0xE800 + i * 8111)
+        n = sec(2.4)
+        T = n / SR
+        drift = _norm_std(d.lp(d.white(n, r), 1.2))
+        f0 = (40.0 + 5.0 * i) * (1.0 + .1 * drift)
+        v = _voice(n, f0, r, (("gutt", 1.0), ("u", .7)), jitter=.06, shimmer=.5, breath=.15, rough_hz=18.0 + 3 * i, rough=.7, bw=6.0)
+        env = d.env_pts(n, [(0, 0), (.15, .8), (.7, 1), (1.2, .6), (1.6, .9), (T, 0)])
+        wet = d.filt(d.colored(n, r, .8), "bp", 900.0, .8) * env * (.5 + .5 * drift ** 2)
+        x = d.mix([(v * env, 1.0), (d.osc("sine", f0, n) * env, .15), (_bubbles(n, r, 16 + 4 * i, .05, T - .3), .7), (wet, .5)], n)
+        x = d.saturate(x * 1.3, 2.0)
+        finalize("leech_growl_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.25, keep_len=True), lufs=-14.0, fade_out_ms=250)
+    for i in range(2):
+        r = Rng(0xE900 + i * 9173)
+        n = sec(1.3)
+        T = n / SR
+        f0 = d.env_pts(n, [(0, 280), (.08, 520 + 40 * i), (.5, 460 - 30 * i), (T, 240)])
+        v = _voice(n, f0, r, (("e", 1.0), ("a", .6)), jitter=.05, shimmer=.4, breath=.7, rough_hz=34.0 + 4 * i, rough=.7, bw=7.0)
+        env = d.env_pts(n, [(0, 0), (.015, 1), (.5, .85), (.9, .45), (T, 0)])
+        hiss = d.filt(d.white(n, r), "bp", 3600.0, .6) * env
+        x = d.mix([(v * env, 1.0), (hiss, .6), (_bubbles(n, r, 6, .0, .5), .3), (thump(.4, 85, 36, .1, .14), .7)], n)
+        x = d.saturate(x * 1.4, 3.0)
+        finalize("leech_shriek_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.28, keep_len=True), lufs=-9.5, fade_out_ms=120)
+
+    # --- Żyła (matka gniazd): pomruk tętniący jak serce i ryk z trzech głosów naraz
+    for i in range(2):
+        r = Rng(0xEA00 + i * 2843)
+        n = sec(2.8)
+        T = n / SR
+        drift = _norm_std(d.lp(d.white(n, r), 1.0))
+        f0 = (34.0 + 4.0 * i) * (1.0 + .08 * drift)
+        v = _voice(n, f0, r, (("o", 1.0), ("gutt", 1.0)), jitter=.05, shimmer=.4, breath=.12, rough_hz=14.0, rough=.5, bw=5.0)
+        env = np.zeros(n)
+        beat = .78 - .08 * i
+        for j in range(int(T / beat) + 1):                         # „łup-łup": dwa uderzenia na takt, drugie słabsze
+            for off, g in ((0.0, 1.0), (.22, .65)):
+                st = sec(j * beat + off)
+                if st < n:
+                    ln = n - st
+                    env[st:] += np.minimum(1.0, np.arange(ln) / ms(40)) * d.env_exp(ln, .22) * g
+        env = .25 + .75 * env / env.max()
+        env *= d.env_pts(n, [(0, 0), (.2, 1), (T - .6, 1), (T, 0)])
+        creak = d.sweep(d.colored(n, r, .6), "bp", 500.0 + 200.0 * drift, 4.0) * env
+        x = d.mix([(v * env, 1.0), (d.osc("sine", f0, n) * env, .12), (d.osc("sine", f0 * 2.0, n) * env, .15), (creak, .3)], n)
+        x = d.saturate(d.filt(x, "hp", 45.0, order=2) * 1.6, 3.0)
+        finalize("zyla_growl_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.3, keep_len=True), lufs=-14.0, fade_out_ms=250)
+    for i in range(2):
+        r = Rng(0xEB00 + i * 3571)
+        n = sec(1.9)
+        T = n / SR
+        f0 = d.env_pts(n, [(0, 55), (.15, 92 + 6 * i), (.8, 84 - 4 * i), (T, 48)])
+        src = np.zeros(n)
+        for ratio, g in ((1.0, 1.0), (1.5, .7), (2.02, .5)):
+            src += glottal(n, f0 * ratio, r, jitter=.04, shimmer=.4, breath=.2) * g
+        src *= .55 + .45 * np.sin(TAU * (30.0 + 4 * i) * np.arange(n) / SR)
+        v = vowel(src, "a", bw=7.0) + .8 * vowel(src, "o", bw=7.0) + .5 * vowel(src, "gutt", bw=6.0)
+        env = d.env_pts(n, [(0, 0), (.04, 1), (.7, .95), (1.3, .5), (T, 0)])
+        roar = d.filt(d.colored(n, r, .4), "bp", 1400.0, .7) * env
+        x = d.mix([(v * env, 1.0), (roar, .5), (thump(.6, 80, 30, .12, .2), 1.0)], n)
+        x = d.saturate(x * 1.5, 3.4)
+        finalize("zyla_roar_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.3, keep_len=True), lufs=-9.5, fade_out_ms=150)
+
 
 # ============================================================ ŚWIAT
 

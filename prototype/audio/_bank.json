@@ -231,6 +231,22 @@
   "sfx/player/land_hard",
   0
  ],
+ "leech_growl_1": [
+  "sfx/enemies/leech_growl_1",
+  0
+ ],
+ "leech_growl_2": [
+  "sfx/enemies/leech_growl_2",
+  0
+ ],
+ "leech_shriek_1": [
+  "sfx/enemies/leech_shriek_1",
+  0
+ ],
+ "leech_shriek_2": [
+  "sfx/enemies/leech_shriek_2",
+  0
+ ],
  "lr7_beam_loop": [
   "sfx/weapons/lr7_beam_loop",
   1
@@ -323,6 +339,14 @@
   "sfx/player/player_hurt_2",
   0
  ],
+ "podsluchacz_scream_1": [
+  "sfx/enemies/podsluchacz_scream_1",
+  0
+ ],
+ "podsluchacz_scream_2": [
+  "sfx/enemies/podsluchacz_scream_2",
+  0
+ ],
  "radio_beep": [
   "sfx/world/radio_beep",
   0
@@ -397,6 +421,22 @@
  ],
  "shell_3": [
   "sfx/weapons/shell_3",
+  0
+ ],
+ "slepiec_attack_1": [
+  "sfx/enemies/slepiec_attack_1",
+  0
+ ],
+ "slepiec_attack_2": [
+  "sfx/enemies/slepiec_attack_2",
+  0
+ ],
+ "slepiec_death_1": [
+  "sfx/enemies/slepiec_death_1",
+  0
+ ],
+ "slepiec_death_2": [
+  "sfx/enemies/slepiec_death_2",
   0
  ],
  "sokol6_shot_1": [
@@ -583,6 +623,26 @@
   "sfx/world/thunder_3",
   0
  ],
+ "trzosek_attack_1": [
+  "sfx/enemies/trzosek_attack_1",
+  0
+ ],
+ "trzosek_attack_2": [
+  "sfx/enemies/trzosek_attack_2",
+  0
+ ],
+ "trzosek_attack_3": [
+  "sfx/enemies/trzosek_attack_3",
+  0
+ ],
+ "trzosek_death_1": [
+  "sfx/enemies/trzosek_death_1",
+  0
+ ],
+ "trzosek_death_2": [
+  "sfx/enemies/trzosek_death_2",
+  0
+ ],
  "ui_click": [
   "sfx/ui/ui_click",
   0
@@ -625,6 +685,38 @@
  ],
  "widmo1_shot_2": [
   "sfx/weapons/widmo1_shot_2",
+  0
+ ],
+ "wolek_attack_1": [
+  "sfx/enemies/wolek_attack_1",
+  0
+ ],
+ "wolek_attack_2": [
+  "sfx/enemies/wolek_attack_2",
+  0
+ ],
+ "wolek_death_1": [
+  "sfx/enemies/wolek_death_1",
+  0
+ ],
+ "wolek_death_2": [
+  "sfx/enemies/wolek_death_2",
+  0
+ ],
+ "zyla_growl_1": [
+  "sfx/enemies/zyla_growl_1",
+  0
+ ],
+ "zyla_growl_2": [
+  "sfx/enemies/zyla_growl_2",
+  0
+ ],
+ "zyla_roar_1": [
+  "sfx/enemies/zyla_roar_1",
+  0
+ ],
+ "zyla_roar_2": [
+  "sfx/enemies/zyla_roar_2",
   0
  ]
 }

@@ -501,6 +501,190 @@ def _thunder_bake() -> None:
         finalize("thunder_%d" % (i + 1), d.filt(x, "hp", 25.0, order=2), lufs=-19.4, fade_out_ms=400)
 
 
+# ============================================================ WROGOWIE — kandydaci do odsłuchu (F5, część 2)
+# Każdy gatunek ma własne źródła (inne niż Stalker) i zachowuje gest wersji syntetycznej: Trzosek — owadzi terkot na
+# wysokim głosie, Wołek — ryk bestii z ciężarem w dole, Ślepiec — klikanie (syntetyczne, jak w wersji publicznej) na
+# nagranym oddechu, Podsłuchacz — drżący wrzask, Pijawka — bulgot i skrzek morskiego stwora, Żyła — tętniący pomruk
+# i ryk złożony z kilku głosów naraz. Głośność = zmierzona głośność syntezy tej samej rodziny.
+
+def _clip(sid: str, t0: float, dur: float, semis: float, end: float, tail: float = 0.12, onset: bool = True) -> np.ndarray:
+    """Wycinek nagrania (od ataku albo od t0), przestrojony o `semis` półtonów, wygaszony do `end` [s]; szczyt = 1."""
+    x = bc.src(sid, t0, dur)
+    x = d.repitch(d.from_onset(x, 2.0) if onset else x, semis)
+    n = min(len(x), d.sec(end))
+    end = n / d.SR
+    return _unit(x[:n] * d.env_pts(n, [(0, 0), (.004 if onset else .03, 1), (max(.04, end - tail), 1), (end, 0)]))
+
+
+def _throb(n: int, beat: float) -> np.ndarray:
+    """Obwiednia tętna („łup-łup": dwa uderzenia na takt, drugie słabsze), 0–1 — jak w syntetycznym pomruku Żyły."""
+    env = np.zeros(n)
+    for j in range(int(n / d.SR / beat) + 1):
+        for off, g in ((0.0, 1.0), (.22, .65)):
+            st = d.sec(j * beat + off)
+            if st < n:
+                ln = n - st
+                env[st:] += np.minimum(1.0, np.arange(ln) / ms(40)) * d.env_exp(ln, .22) * g
+    return env / env.max()
+
+
+TRZOSEK_ATTACK_NEEDS = ["insect_attack_02", "monster11_mouth2", "monster_pain_01", "monster4_call2"]
+_TRZOSEK_BODY = (("monster11_mouth2", 0.0, 3.0), ("monster_pain_01", 0.0, 4.0), ("monster4_call2", 0.05, 5.0))
+
+
+def _trzosek_attack_bake() -> None:
+    for i, (sid, t0, semis) in enumerate(_TRZOSEK_BODY):
+        chit = _clip("insect_attack_02", 0.0, 0.6, (0.0, -2.0, 2.0)[i], 0.5)
+        x = d.mix([(chit, 0.8), (_clip(sid, t0, 0.8, semis, 0.5), 1.0)], ms(520))
+        x = d.saturate(_unit(d.filt(x, "hp", 120.0, order=2)), 1.8)
+        finalize("trzosek_attack_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), lufs=-16.0, fade_out_ms=30)
+
+
+TRZOSEK_DEATH_NEEDS = ["zombie_brat_groan_9", "monster9_death10", "insect_attack_02"]
+
+
+def _trzosek_death_bake() -> None:
+    a = _clip("zombie_brat_groan_9", 0.0, 1.1, 3.0, 0.72, tail=.25)
+    b = d.mix([(_clip("monster9_death10", 0.0, 1.2, 7.0, 0.70, tail=.25), 1.0),
+               (_clip("insect_attack_02", 0.3, 0.5, -5.0, 0.5, tail=.3, onset=False), 0.35, 0.2)], ms(740))
+    for i, x in enumerate((a, b)):
+        x = d.saturate(_unit(d.filt(x, "hp", 100.0, order=2)), 1.6)
+        finalize("trzosek_death_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), lufs=-16.0, fade_out_ms=40)
+
+
+WOLEK_ATTACK_NEEDS = ["beast01_attack_08", "beast01_threaten_06", "orc_grunt_003"]
+
+
+def _wolek_attack_bake() -> None:
+    a = _clip("beast01_attack_08", 0.05, 1.1, -3.0, 0.95, tail=.2)
+    b = d.mix([(_clip("beast01_threaten_06", 0.05, 0.9, -2.0, 0.9, tail=.2), 1.0),
+               (_clip("orc_grunt_003", 0.0, 1.1, -4.0, 0.9, tail=.25), 0.5)], ms(950))
+    for i, x in enumerate((a, b)):
+        x = d.mix([(x, 1.0), (thump(.3, 85, 40, .06, .1), 0.5)], ms(980))
+        x = d.saturate(_unit(d.filt(x, "hp", 35.0, order=2)), 2.0)
+        finalize("wolek_attack_%d" % (i + 1), d.reverb(x, ir("room"), wet=.2, keep_len=True), lufs=-14.15, fade_out_ms=60)
+
+
+WOLEK_DEATH_NEEDS = ["troll_death_01", "yeti_grumble_02"]
+
+
+def _wolek_death_bake() -> None:
+    a = _clip("troll_death_01", 0.0, 1.8, -2.0, 1.4, tail=.4)
+    b = _clip("yeti_grumble_02", 0.0, 1.3, -4.0, 1.35, tail=.4)
+    for i, x in enumerate((a, b)):
+        x = d.mix([(x, 1.0), (thump(.3, 95, 38, .05, .09), 0.6, .75 + .06 * i)], ms(1400))      # upadek cielska
+        x = d.limiter(d.saturate(_unit(d.filt(x, "hp", 35.0, order=2)), 1.8), -4.0)
+        finalize("wolek_death_%d" % (i + 1), d.reverb(x, ir("room"), wet=.2, keep_len=True), lufs=-14.3, fade_out_ms=80)
+
+
+SLEPIEC_ATTACK_NEEDS = ["breath_inhale_squeal_05", "zombie_hiss_1"]
+
+
+def _slepiec_attack_bake() -> None:
+    import bake_sfx                                                  # klikanie to ta sama synteza co w wersji publicznej
+    for i, (sid, t0, semis) in enumerate((("breath_inhale_squeal_05", 0.0, -2.0), ("zombie_hiss_1", 0.5, 0.0))):
+        r = Rng(0x5E00 + i * 977)
+        n = ms(650 + 50 * i)
+        T = n / d.SR
+        clicks = bake_sfx._clicks(n, r, .02, T - .08, .075 - .008 * i, .86, 2100.0 + 300 * i)
+        breath = _clip(sid, t0, 0.8, semis, T, tail=.15, onset=(i == 0))
+        breath = breath * d.env_pts(len(breath), [(0, .3), (.3, 1), (10, 1)])
+        x = d.mix([(_unit(clicks), 1.0), (breath, 0.6)], n)
+        finalize("slepiec_attack_%d" % (i + 1), d.reverb(x, ir("close"), wet=.2), lufs=-17.8, fade_out_ms=30)
+
+
+SLEPIEC_DEATH_NEEDS = ["flutter_death_05"]
+
+
+def _slepiec_death_bake() -> None:
+    import bake_sfx
+    for i, t0 in enumerate((1.0, 2.8)):                              # dwa głośne odcinki trzepoczącego, urywanego wydechu
+        r = Rng(0x5F00 + i * 1361)
+        n = ms(950 + 80 * i)
+        T = n / d.SR
+        voice = _clip("flutter_death_05", t0, 1.1, -1.0 - i, T, tail=.45, onset=False)
+        clicks = bake_sfx._clicks(n, r, .03, T - .2, .03, 1.22, 1900.0 + 250 * i, fade=.09)
+        x = d.mix([(voice, 1.0), (_unit(clicks), 0.4)], n)
+        finalize("slepiec_death_%d" % (i + 1), d.reverb(x, ir("close"), wet=.2), lufs=-17.9, fade_out_ms=60)
+
+
+SCREAM_NEEDS = ["banshee_damage_07", "alien_death_01", "ethereal_pain_4"]
+SCREAM_CEIL = -6.0
+
+
+def _scream_bake() -> None:
+    a = d.mix([(_clip("banshee_damage_07", 0.0, 0.85, 2.0, 0.7, tail=.2), 1.0),
+               (_clip("banshee_damage_07", 0.0, 0.85, -1.0, 0.9, tail=.3), 0.8, .4),
+               (_clip("ethereal_pain_4", 0.0, 1.7, 10.0, 0.9, tail=.3), 0.5)], d.sec(1.3))
+    b = d.mix([(_clip("alien_death_01", 0.0, 1.4, 4.0, 1.0, tail=.3), 1.0),
+               (_clip("banshee_damage_07", 0.0, 0.85, 3.0, 0.65, tail=.2), 0.7, .25),
+               (_clip("ethereal_pain_4", 0.0, 1.7, 12.0, 0.8, tail=.3), 0.4)], d.sec(1.2))
+    for i, x in enumerate((a, b)):
+        t = np.arange(len(x)) / d.SR
+        x = x * (.75 + .25 * np.sin(d.TAU * (11.0 + 2 * i) * t))     # drżenie alarmu — jak w syntezie
+        x = d.saturate(_unit(d.filt(x, "hp", 400.0, order=2)), 2.5)
+        x = d.limiter(_unit(_fade(d.reverb(x, ir("hall"), wet=.25), 1.3, 1.7)), SCREAM_CEIL - 2.0)
+        finalize("podsluchacz_scream_%d" % (i + 1), x, lufs=-10.1, fade_out_ms=120)
+
+
+LEECH_GROWL_NEEDS = ["aquatic_gurgling_2", "organic_texture_041", "water_movement_large_009"]
+
+
+def _leech_growl_bake() -> None:
+    rows = ((1.0, 1.7, -7.0, "organic_texture_041", 0.0, -2.0), (2.4, 1.5, -9.0, "water_movement_large_009", 0.05, -3.0))
+    for i, (t0, ln, semis, low_sid, low_t0, low_semis) in enumerate(rows):
+        gurg = _clip("aquatic_gurgling_2", t0, ln, semis, 2.4, tail=.5, onset=False)
+        low = _clip(low_sid, low_t0, 2.3, low_semis, 2.4, tail=.5)
+        sub = d.lp(d.repitch(gurg, -12.0)[:len(gurg)], 200.0)
+        x = d.mix([(gurg, 1.0), (low, 0.8), (_unit(sub), 0.4)], d.sec(2.4))
+        x = d.saturate(_unit(d.filt(x, "hp", 30.0, order=2)), 1.8)
+        finalize("leech_growl_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.25, keep_len=True), lufs=-14.1, fade_out_ms=250)
+
+
+LEECH_SHRIEK_NEEDS = ["sea_beast_yell_04", "swamp_fish_damage_08"]
+
+
+def _leech_shriek_bake() -> None:
+    for i, (t0, semis) in enumerate(((0.2, -2.0), (1.6, -4.0))):
+        yell = _clip("sea_beast_yell_04", t0, 1.3, semis, 1.3, tail=.35, onset=False)
+        fish = _clip("swamp_fish_damage_08", 0.0, 0.8, (0.0, -2.0)[i], 0.7, tail=.2)
+        x = d.mix([(yell, 1.0), (fish, 0.6), (thump(.4, 85, 36, .1, .14), 0.5)], d.sec(1.3))
+        x = d.saturate(_unit(d.filt(x, "hp", 35.0, order=2)), 2.6)
+        x = d.limiter(_unit(_fade(d.reverb(x, ir("hall"), wet=.28), 1.25, 1.7)), SCREAM_CEIL)
+        finalize("leech_shriek_%d" % (i + 1), x, lufs=-10.55, fade_out_ms=120)
+
+
+ZYLA_GROWL_NEEDS = ["alien_beast_deep_5", "troll_growl_long_05"]
+
+
+def _zyla_growl_bake() -> None:
+    a = _clip("alien_beast_deep_5", 1.2, 2.4, -3.0, 2.8, tail=.6, onset=False)
+    b = d.mix([(_clip("alien_beast_deep_5", 2.9, 2.2, -5.0, 2.8, tail=.6, onset=False), 1.0),
+               (d.lp(_clip("troll_growl_long_05", 0.2, 2.4, -7.0, 2.6, tail=.6, onset=False), 900.0), 0.5, .1)], d.sec(2.8))
+    for i, x in enumerate((a, b)):
+        n = len(x)
+        sub = d.lp(d.repitch(x, -12.0)[:n], 160.0)
+        x = d.mix([(x, 1.0), (_unit(sub), 0.35)], n) * (.55 + .45 * _throb(n, .78 - .08 * i))
+        x = d.saturate(_unit(d.filt(x, "hp", 40.0, order=2)), 1.8)
+        finalize("zyla_growl_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.3, keep_len=True), lufs=-14.3, fade_out_ms=250)
+
+
+ZYLA_ROAR_NEEDS = ["dragon_roar_01", "large_beast_taunt_03", "behemoth_talk_04", "large_monster11_roar03"]
+
+
+def _zyla_roar_bake() -> None:
+    a = d.mix([(_clip("dragon_roar_01", 0.0, 2.0, -2.0, 1.9, tail=.5), 1.0),
+               (_clip("large_beast_taunt_03", 0.0, 2.0, -1.0, 1.9, tail=.5), 0.8)], d.sec(1.9))
+    b = d.mix([(_clip("behemoth_talk_04", 0.0, 1.8, -3.0, 1.9, tail=.5), 1.0),
+               (_clip("dragon_roar_01", 0.0, 1.6, -5.0, 1.9, tail=.5), 0.7),
+               (_clip("large_monster11_roar03", 0.0, 0.7, -6.0, 1.0, tail=.3), 0.6)], d.sec(1.9))
+    for i, x in enumerate((a, b)):
+        x = d.mix([(x, 1.0), (thump(.6, 80, 30, .12, .2), 0.6)], d.sec(1.9))
+        x = d.saturate(_unit(d.filt(x, "hp", 30.0, order=2)), 2.8)
+        x = d.limiter(_unit(_fade(d.reverb(x, ir("hall"), wet=.3), 1.9, 2.4)), SCREAM_CEIL)
+        finalize("zyla_roar_%d" % (i + 1), x, lufs=-11.25, fade_out_ms=150)
+
+
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts
@@ -508,6 +692,17 @@ CANDIDATES: tuple = (
     ("hybrid", _door_bake, DOOR_NEEDS),
     ("hybrid", _glass_bake, GLASS_NEEDS),
     ("hybrid", _thunder_bake, list(THUNDER_SRC)),
+    ("hybrid", _trzosek_attack_bake, TRZOSEK_ATTACK_NEEDS),
+    ("hybrid", _trzosek_death_bake, TRZOSEK_DEATH_NEEDS),
+    ("hybrid", _wolek_attack_bake, WOLEK_ATTACK_NEEDS),
+    ("hybrid", _wolek_death_bake, WOLEK_DEATH_NEEDS),
+    ("hybrid", _slepiec_attack_bake, SLEPIEC_ATTACK_NEEDS),
+    ("hybrid", _slepiec_death_bake, SLEPIEC_DEATH_NEEDS),
+    ("hybrid", _scream_bake, SCREAM_NEEDS),
+    ("hybrid", _leech_growl_bake, LEECH_GROWL_NEEDS),
+    ("hybrid", _leech_shriek_bake, LEECH_SHRIEK_NEEDS),
+    ("hybrid", _zyla_growl_bake, ZYLA_GROWL_NEEDS),
+    ("hybrid", _zyla_roar_bake, ZYLA_ROAR_NEEDS),
 )
 
 

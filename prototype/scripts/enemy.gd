@@ -79,6 +79,16 @@ const HEALTH_DROP := {"wolek": 0.75}   ## szansa na apteczkę (1.5) — tylko mo
 const SIBLING_WAKE_RADIUS := 140.0
 const DEATH_FX_COLOR_VAR := 0.15
 const BURN_DPS := 8.0
+## Głos gatunku: zdarzenie -> [rodzina, liczba wariantów, głośność dB, wysokość]. „attack" gra przy zapowiedzi ciosu,
+## „death" przy śmierci. Skoczek mówi głosem Trzoska (niżej), zdemaskowany Mimik głosem Ślepca (wyżej); Ćma jest niema.
+const VOICES := {
+	"trzosek": {"attack": ["trzosek_attack", 3, -6.0, 1.0], "death": ["trzosek_death", 2, -4.0, 1.0]},
+	"skoczek": {"attack": ["trzosek_attack", 3, -5.0, 0.8], "death": ["trzosek_death", 2, -4.0, 0.8]},
+	"wolek": {"attack": ["wolek_attack", 2, -3.0, 1.0], "death": ["wolek_death", 2, -2.0, 1.0]},
+	"slepiec": {"attack": ["slepiec_attack", 2, -4.0, 1.0], "death": ["slepiec_death", 2, -3.0, 1.0]},
+	"mimik": {"attack": ["slepiec_attack", 2, -4.0, 1.2], "death": ["slepiec_death", 2, -3.0, 1.2]},
+	"podsluchacz": {"death": ["slepiec_death", 2, -4.0, 1.35]},
+}
 const ARMOR_MIN_FRAC := 0.4           ## pancerz nigdy nie zbija trafienia poniżej tego ułamka
 ## Percepcja (1.7): wróg goni tylko to, co widzi (promień wzroku + linia bez ściany), albo idzie
 ## na ostatni znany ślad (hałas, ostatnia pozycja gracza), rozgląda się, a po dłuższym braku
@@ -137,6 +147,7 @@ var hp := 30.0
 var active := false
 var alive := true
 var winding := false
+var _voiced_winding := false  ## czy zapowiedź ciosu już się odezwała (zbocze `winding`, lokalnie na każdym peerze)
 var burning := false          ## replikowane wizualnie przez RPC (_ignite_fx); logika tylko na serwerze
 
 var _def: Dictionary
@@ -849,7 +860,7 @@ func _scream() -> void:
 @rpc("authority", "call_local", "reliable")
 func _scream_fx() -> void:
 	_ring = 0.7
-	Audio.play_variant_at("stalker_shriek", 2, global_position, Audio.BUS_WORLD, -3.0, 1.35)
+	Audio.play_variant_at("podsluchacz_scream", 2, global_position, Audio.BUS_WORLD, -3.0, 0.85 if kind == "mimik" else 1.0)
 	if _local_player_pos().distance_to(global_position) < 300.0:
 		Feel.shake(2.2)
 
@@ -1372,6 +1383,7 @@ func _die() -> void:
 ## Efekty śmierci na KAŻDYM peerze (serwer wywołuje wprost, klient po zmianie alive).
 func _death_fx() -> void:
 	Audio.play_variant_at("impact_flesh", 3, global_position, Audio.BUS_WORLD, -4.0, 0.8)
+	_voice("death")
 	var local := _local_player_pos()
 	if local.distance_to(global_position) < 220.0:
 		Feel.shake(1.8 if kind == "trzosek" else 3.0)
@@ -1412,7 +1424,17 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 		_set_alive(true)
 		global_position = pos
 
+## Głos gatunku dla zdarzenia (VOICES); gatunek bez wpisu milczy.
+func _voice(event: String) -> void:
+	var v: Array = (VOICES.get(kind, {}) as Dictionary).get(event, [])
+	if not v.is_empty():
+		Audio.play_variant_at(String(v[0]), int(v[1]), global_position, Audio.BUS_WORLD, float(v[2]), float(v[3]))
+
 func _process(delta: float) -> void:
+	if winding != _voiced_winding:
+		_voiced_winding = winding
+		if winding and alive and _ring <= 0.0:                  # krzyk demaskacji / alarmu (_scream_fx) zastępuje zapowiedź
+			_voice("attack")
 	_ring = maxf(0.0, _ring - delta)
 	if visible:
 		_update_sprite()

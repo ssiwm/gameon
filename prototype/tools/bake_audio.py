@@ -51,6 +51,7 @@ BANK_JSON = os.path.join(AUDIO, "_bank.json")
 BUILDERS = [
     ("weapons", bake_weapons.build_weapons),
     ("stalker", bake_sfx.build_stalker),
+    ("enemies", bake_sfx.build_enemies),
     ("world", bake_sfx.build_world),
     ("player", bake_sfx.build_player),
     ("ui", bake_sfx.build_ui),
@@ -69,6 +70,10 @@ CAPTIONS = {
     "thunder": ["[Thunder]", 1], "explosion": ["[Explosion]", 3], "stalker_growl": ["[Low growl]", 3], "stalker_shriek": ["[Shriek]", 3],
     "stalker_step": ["[Heavy footsteps]", 3], "stalker_whisper": ["[Whispering]", 2],
     "stalker_appear": ["[Something appears]", 3], "amb_far_cry": ["[Distant cry]", 2],
+    "trzosek_attack": ["[Snarl]", 2], "trzosek_death": ["[Dying squeal]", 1], "wolek_attack": ["[Bellow]", 2],
+    "wolek_death": ["[Dying groan]", 1], "slepiec_attack": ["[Rapid clicking]", 2], "slepiec_death": ["[Dying wheeze]", 1],
+    "podsluchacz_scream": ["[Alarm scream]", 3], "leech_growl": ["[Wet growl]", 3], "leech_shriek": ["[Screech]", 3],
+    "zyla_growl": ["[Deep throbbing rumble]", 3], "zyla_roar": ["[Roar]", 3],
     "amb_creak": ["[Creaking]", 1], "amb_thud": ["[Distant thud]", 1], "amb_gust": ["[Wind gust]", 0],
     "step_": ["[Footsteps]", 0], "player_hurt": ["[Cry of pain]", 2], "player_down": ["[Teammate down]", 3],
     "revive": ["[Revived]", 2], "glass_break": ["[Glass breaks]", 2], "alarm_bell": ["[Alarm bell]", 2],
