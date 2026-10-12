@@ -1,6 +1,6 @@
 # Plan: refaktor dźwięku — źródła hybrydowe i propagacja po mapie
 
-Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) i F8 (format wydania) wdrożone, zostaje eksperyment F7; 134 pliki z nagrań żyją poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
+Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) i F8 (format wydania) wdrożone, zostaje eksperyment F7; 135 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
 `default_bus_layout.tres`, `AUDIO.md`), nie na próbnej implementacji — rozmiary faz są szacunkowe. Kontynuacja `prototype/AUDIO.md`
 (overhaul v2), który sam stwierdza w §5: „to nie jest jeszcze AAA w sensie brzmienia” i „brzmienia nie oceniałem uchem”.
 
@@ -141,7 +141,7 @@ Pomiar (nie odsłuch): strzał z nagrań ma środek ciężkości widma ok. 1,4 k
 ok. 380 ms zamiast 255 ms, głośność zrównana z obecnym do 0,5 LU. Kroki z nagrań są ciemniejsze powyżej 4 kHz niż syntetyczne. Alternatywy
 pieką się deterministycznie (dwa przebiegi = te same sumy).
 
-**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 124 pliki z nagrań, do tego 10 wyprowadzonych z nich dalekich wersji z F6):**
+**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 125 plików z nagrań, do tego 10 wyprowadzonych z nich dalekich wersji z F6):**
 
 | Rodzina | Werdykt | Źródła wersji z nagrań |
 |---|---|---|
@@ -211,7 +211,7 @@ ma już `impact_flesh`, a wataha pod ostrzałem robiłaby ścianę dźwięku. U 
 bo jeden krzyk Stalkera udawał wszystko). Limity jednoczesnych głosów: `audio_director.gd: VOICE`. Napisy: `bake_audio.py: CAPTIONS`
 + `translations/ui.csv`. Werdykt odsłuchu: 9 z 11 rodzin z nagrań, zapowiedź ciosu Ślepca i pomruk Żyły syntetyczne (tabela wyżej).
 
-Wzór z werdyktów (57 rodzin z nagrań, 8 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
+Wzór z werdyktów (58 rodzin z nagrań, 8 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
 trafienia, łuski, kroki, głos stwora, ogień), a przegrywały dla dźwięków krótkich, jasnych i „bliskich gracza” z samego nagrania (pistolet,
 przelot, szelest, kurek) — synteza jest tam pełniejsza w dole pasma. Po dołożeniu pod nagranie niskich stuków syntezy mechanika broni
 (przeładowania) wygrała. Szept Stalkera pokazuje granicę: rozpoznawalnie ludzkie nagranie przegrało z abstrakcyjną syntezą.
@@ -299,7 +299,8 @@ i przycisk hosta. Synteza `ui_confirm` w repo też jest teraz mechaniczna.
 Szósty: finał misji 1.1 — wstrząs i zawał dostały własne klucze `quake` i `collapse` (wcześniej dzwon alarmowy
 i zatrzymanie taśmy), oba z nagrań; sygnał radia `radio_beep` to klik nadawania i sam szum zamiast pisku 880 Hz z fali
 prostokątnej (także w syntezie w repo). Bank ma 201 assetów. Wersja z nagrań sygnału radia jest ok. 5 dB cichsza od
-dawnego pisku — szumu nie da się tak ścisnąć.
+dawnego pisku — szumu nie da się tak ścisnąć. `tape_stop` (sukces misji, zapowiedź porażki, koniec Nocnego Dyżuru)
+z nagrań: przycisk STOP magnetofonu kasetowego i prawdziwy silnik elektryczny zwalniający do zera.
 Ustawienia: muzyka i otoczenie mają osobne suwaki głośności (`settings.gd: VOLUME_BUSES`); zapis sprzed zmiany daje
 otoczeniu tę samą wartość co muzyce.
 
