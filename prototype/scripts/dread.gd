@@ -8,7 +8,7 @@ extends Node2D
 ##   • migotanie świateł (Lights.flicker_until_ms) z uderzeniem tuż przed
 ##   • oczy w mroku — para blada na skraju ciemności, znika, gdy podejdziesz
 ##     albo poświecisz; w odróżnieniu od Stalkera nigdy nie atakuje
-##   • w podziemiach świat jest ciemniejszy (CanvasModulate) i straszaki częstsze
+##   • w podziemiach świat jest ciemniejszy (światło otoczenia sceny 3D) i straszaki częstsze
 ##
 ## Tempo skaluje Difficulty „dread" i Uwaga gracza. W trybie headless (testy) wyłączone.
 
@@ -27,7 +27,6 @@ var _t_eyes := randf_range(40.0, 70.0)
 var _eyes := Node2D.new()
 var _eyes_life := 0.0
 var _eyes_age := 0.0
-var _dark: CanvasModulate
 var _depth_mult := 1.0              ## wygładzony mnożnik ambientu od głębi (1 na powierzchni, DEEP_DARK na dnie)
 var _busy := false              ## trwa sekwencja (kroki) — nie nakładamy kolejnej
 
@@ -35,7 +34,6 @@ func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
 		set_process(false)
 		return
-	_dark = get_parent().get_node_or_null("Darkness") as CanvasModulate
 	_eyes.name = "Eyes"
 	_eyes.visible = false
 	add_child(_eyes)
@@ -79,8 +77,6 @@ func _process(delta: float) -> void:
 
 ## Głębiej = ciemniej: bez latarki w podziemiach widać tylko aurę gracza.
 func _update_darkness(delta: float, pl: Node2D, lvl: Node) -> void:
-	if _dark == null:
-		return
 	var depth := clampf((pl.global_position.y - (lvl.underground_y - DEEP_FADE_PX)) / DEEP_FADE_PX, 0.0, 1.0)
 	# jedynym właścicielem koloru ciemności jest poziom (ambient × głębia × tint i błysk pogody — weather_fx.gd); tu tylko wygładzamy mnożnik głębi
 	_depth_mult = lerpf(_depth_mult, lerpf(1.0, DEEP_DARK, depth), clampf(delta * 1.5, 0.0, 1.0))

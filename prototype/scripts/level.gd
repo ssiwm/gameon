@@ -103,11 +103,10 @@ var map_id := ""
 var title := ""
 var objective := "nests"
 var radio: Array = []             ## linie radia z danych mapy (kryjówka)
-var ambient := Color(0.0245, 0.0266, 0.0406)   ## kolor ciemności (CanvasModulate): domyślny z lights.gd albo z AMBIENT mapy
+var ambient := Color(0.0245, 0.0266, 0.0406)   ## kolor ciemności mapy (stan; obraz daje scena 3D): domyślny z lights.gd albo z AMBIENT mapy
 var _racks := false
-var _dark_node: CanvasModulate
 var hp_mult := 1.0               ## mnożnik HP wrogów tej mapy (ENEMY_HP w danych mapy)
-## Pogoda (weather_fx.gd): tint i błysk ciemności nałożone na `ambient` (CanvasModulate „Darkness").
+## Pogoda (weather_fx.gd): tint i błysk ciemności nałożone na `ambient` — sam stan, czyta go widok 3D.
 const WEATHER_FLASH := Color(0.34, 0.38, 0.52)           ## kolor ciemności w szczycie błysku (zimne światło burzy)
 var weather_tint := Color.WHITE
 var weather_flash := 0.0
@@ -144,10 +143,6 @@ var _stable: Array = []                ## węzły stałe (tło, warstwy) — res
 func _ready() -> void:
 	Sprites.apply_hd_defaults()
 	add_to_group("level")
-	# poziom ciemności w jednym miejscu (lights.gd)
-	_dark_node = get_parent().get_node_or_null("Darkness") as CanvasModulate
-	if _dark_node != null:
-		_dark_node.color = Lights.AMBIENT
 	RenderingServer.set_default_clear_color(Lights.SKY)
 	_ts = _build_tileset()
 	_back = TileMapLayer.new()
@@ -234,12 +229,10 @@ func _build_map() -> void:
 			_place_cell(c, r)
 	_place_deco()
 
-## Kolor ciemności = ambient mapy × tint pogody, przy błysku ciągnięty ku jasnemu kolorowi burzy.
+## Ciemność to sam stan (`depth_mult` z głębi podziemi, `weather_tint` i `weather_flash` z pogody): czyta go widok 3D
+## (view3d.gd: _sync_weather — światło otoczenia sceny). Węzła CanvasModulate już nie ma.
 func _apply_darkness() -> void:
-	if _dark_node == null:
-		return
-	var c := Color(ambient.r * weather_tint.r * depth_mult, ambient.g * weather_tint.g * depth_mult, ambient.b * weather_tint.b * depth_mult, 1.0)
-	_dark_node.color = c.lerp(WEATHER_FLASH, clampf(weather_flash, 0.0, 1.0))
+	pass
 
 ## Niebo i las są w scenie 3D (level3d.gd; pogodę stosuje view3d.gd: _sync_weather) — tła 2D już nie ma.
 func set_backdrop_weather(_id: String, _k: float) -> void:
