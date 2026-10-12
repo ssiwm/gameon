@@ -49,12 +49,28 @@
    "supplier": "David Dumais Audio",
    "license": "sonniss-gdc-2.0"
   },
+  "bodyfall_concrete": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 5of8/Red Libraries - Bodyfall/RL_bodyfall_Concrete_Generic_Feet_Mid_Mono_Med_Impact_02.wav",
+   "sha256": "ad010fc36d1522daad9e18a99c9dfc5119c0370f3df64dc1d5c5c3e59804b8ce",
+   "pack": "Sonniss GDC 2019 — Bodyfall",
+   "supplier": "Red Libraries",
+   "license": "sonniss-gdc-2.0"
+  },
   "boot_concrete_walk": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Joshua Reinhardt - Ultimate Bare Feet Expansion/BOOT_CONC CLEAN_WALK.R.wav",
    "sha256": "af5804543cc032187ecaa06ece964aaf26a1757fe3d8d9d375f297d88daf1c2f",
    "pack": "Sonniss GDC 2018 — Ultimate Bare Feet Expansion",
    "supplier": "Joshua Reinhardt",
+   "license": "sonniss-gdc-2.0"
+  },
+  "boot_metal_walk": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 8of9/Tovusound - Edward – Foleyart Collection Add-On Extended Footsteps/237_Foley_Footsteps_Metal_Boot_Walk_Normal_Close.wav",
+   "sha256": "89fd66f77e4aa079b2ce0207fdcd39bd4dd91d332bfc54799f4433f7cd88694f",
+   "pack": "Sonniss GDC 2017 — Edward – Foleyart Collection Add-On Extended Footsteps",
+   "supplier": "Tovusound",
    "license": "sonniss-gdc-2.0"
   },
   "bow_midflight": {
@@ -119,6 +135,14 @@
    "sha256": "9389f55b51ae482b8df75f2411a55163d13bdffa3fc22f98a0a58a29f03a00da",
    "pack": "Sonniss GDC 2019 — Nocked",
    "supplier": "Eiravaein Works",
+   "license": "sonniss-gdc-2.0"
+  },
+  "dirt_walk_loop": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 3of8/PMSFX - STEPS Dirt & Gravel/PM_SDNG_Stereo_Walk_Seamless_Loop_1.wav",
+   "sha256": "dd86a640f1a91a433b1d874f31145466b5c99f4f928c0131a3b816d718fb909c",
+   "pack": "Sonniss GDC 2019 — STEPS Dirt & Gravel",
+   "supplier": "PMSFX",
    "license": "sonniss-gdc-2.0"
   },
   "dry_ice_shriek_3": {
@@ -239,6 +263,14 @@
    "sha256": "94e47f779de1e11ce1252c4aaaf1491de5d927f8ca164d3ffc8741f116d5cff7",
    "pack": "Sonniss GDC 2018 — Monsters",
    "supplier": "Olivier Girardot",
+   "license": "sonniss-gdc-2.0"
+  },
+  "puddle_splashes": {
+   "kind": "lib",
+   "file": "sonniss/2020/Wav Junction Sound Effects - Footsteps/0014_Footsteps_water_puddle_single_splashes.wav",
+   "sha256": "bb3198e015e83a48a158f4bb21c97c572aee2f1eed0647eb6db7c58db87e9ecf",
+   "pack": "Sonniss GDC 2020 — Footsteps",
+   "supplier": "Wav Junction Sound Effects",
    "license": "sonniss-gdc-2.0"
   },
   "saiga12_close_1m": {

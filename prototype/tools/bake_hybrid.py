@@ -413,8 +413,57 @@ def _whisper_bake() -> None:
     finalize("stalker_whisper_loop", d.seam_xfade(x[lead:lead + n + xf], xf), loop=True, lufs=-18.5)
 
 
+# ============================================================ F4: gracz — kandydaci do odsłuchu
+# Kroki jak beton z bramki A: pojedyncze kroki wycięte z nagranego marszu, bez dokładanego basu, głośność jak w syntezie.
+
+def _steps(base: str, sid: str, times: tuple, length: float, lufs: float, hp: float = 60.0,
+           onset_db: float = -20.0, ceil: float = 0.0) -> None:
+    """`ceil` < 0: ścięcie samego czubka (chlupnięcia i stuknięcia mają ostry szczyt, przez który krok wychodzi za cichy)."""
+    for i, t in enumerate(times):
+        x = d.from_onset(bc.src(sid, t - 0.04, length + 0.12), 3.0, thr_db=onset_db)
+        x = d.filt(_fade(x, length * 0.55, length), "hp", hp, order=2)
+        if ceil < 0.0:
+            x = d.limiter(_unit(x), ceil)
+        finalize("%s_%d" % (base, i + 1), x, lufs=lufs)
+
+
+STEP_METAL_NEEDS = ["boot_metal_walk"]
+STEP_DIRT_NEEDS = ["dirt_walk_loop"]
+STEP_WATER_NEEDS = ["puddle_splashes"]
+_STEPS_METAL = (1.42, 3.01, 4.51, 6.86, 9.91)                      # głośniejsza stopa nagranego marszu po blasze
+_STEPS_DIRT = (2.47, 3.66, 4.25, 5.38, 7.08)                       # kroki „ziemne" (bez chrzęstu żwiru)
+_STEPS_WATER = (0.24, 1.60, 2.35, 5.31, 13.88)                     # pojedyncze chlupnięcia w kałuży
+
+
+def _step_metal_bake() -> None:
+    _steps("step_metal", "boot_metal_walk", _STEPS_METAL, 0.30, -21.5)
+
+
+def _step_dirt_bake() -> None:
+    _steps("step_dirt", "dirt_walk_loop", _STEPS_DIRT, 0.28, -23.0, onset_db=-12.0)
+
+
+def _step_water_bake() -> None:
+    _steps("step_water", "puddle_splashes", _STEPS_WATER, 0.34, -20.0, hp=90.0, onset_db=-14.0, ceil=-9.0)
+
+
+# --- Twarde lądowanie: upadek ciała na beton (stopy) + sub-uderzenie.
+LAND_NEEDS = ["bodyfall_concrete"]
+
+
+def _land_hard_bake() -> None:
+    fall = _fade(d.from_onset(bc.src("bodyfall_concrete", 0.10, 0.6), 1.0, thr_db=-12.0), 0.25, 0.42)
+    x = d.mix([(_unit(fall), 1.0), (thump(.2, 120, 50, .03, .06), 0.9)], ms(420))
+    x = d.limiter(_unit(d.filt(x, "hp", 30.0, order=2)), -5.0)
+    finalize("land_hard", d.reverb(x, ir("close"), wet=.15), lufs=-17.5)
+
+
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — kandydaci do następnego odsłuchu
 CANDIDATES: tuple = (
+    ("hybrid", _step_metal_bake, STEP_METAL_NEEDS),
+    ("hybrid", _step_dirt_bake, STEP_DIRT_NEEDS),
+    ("hybrid", _step_water_bake, STEP_WATER_NEEDS),
+    ("hybrid", _land_hard_bake, LAND_NEEDS),
     ("hybrid", _shriek_bake, SHRIEK_NEEDS),
     ("hybrid", _far_cry_bake, SHRIEK_NEEDS),
     ("hybrid", _stalker_step_bake, [sid for sid, _ in STALKER_STEP_SRC]),
