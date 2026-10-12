@@ -438,10 +438,73 @@ def player() -> None:
     bc.hybrid(["land_hard"], _land_hard_bake, LAND_NEEDS)
 
 
+# ============================================================ ŚWIAT I AMBIENT — kandydaci do odsłuchu (F4, część 2)
+
+# --- Drzwi (metal): skrzyp zawiasu, potem uderzenie skrzydła o futrynę; pogłos blaszanego korytarza jak w syntezie.
+DOOR_NEEDS = ["door_creak_metal", "door_impact_metal"]
+
+
+def _door_bake() -> None:
+    for i in range(2):
+        creak = bc.src("door_creak_metal", (0.30, 2.20)[i], 0.95)
+        creak = _fade(creak * d.env_pts(len(creak), [(0, 0), (.05, 1), (10, 1)]), 0.75, 0.92)
+        slam = _fade(d.from_onset(bc.src("door_impact_metal", (0.10, 3.44)[i], 1.2), 1.0, thr_db=-14.0), 0.60, 1.00)
+        x = d.mix([(_unit(creak), 0.5, 0.0), (_unit(slam), 1.0, 0.72)], ms(1750))
+        finalize("door_%d" % (i + 1), d.reverb(d.filt(x, "hp", 40.0, order=2), ir("metal"), wet=.22), lufs=-22.1)
+
+
+# --- Szyba: okno wybite z dużą ilością odłamków; drugi wariant — uderzenie w szkło + rozsypanie dużych odłamków.
+GLASS_NEEDS = ["glass_window_break", "glass_shards_smash", "glass_impact_break"]
+
+
+def _glass_bake() -> None:
+    a = _fade(d.from_onset(bc.src("glass_window_break", 0.0, 1.39), 1.0, thr_db=-14.0), 0.95, 1.30)
+    hit = _fade(d.from_onset(bc.src("glass_impact_break", 0.0, 1.0), 1.0, thr_db=-14.0), 0.60, 0.95)
+    shards = _fade(d.from_onset(bc.src("glass_shards_smash", 0.0, 0.92), 1.0, thr_db=-14.0), 0.60, 0.90)
+    b = d.mix([(_unit(hit), 1.0, 0.0), (_unit(shards), 0.7, 0.06)], ms(1250))
+    for i, x in enumerate((a, b)):
+        finalize("glass_break_%d" % (i + 1), d.reverb(d.filt(x, "hp", 120.0), ir("room"), wet=.25), lufs=-21.0)
+
+
+# --- Grzmot: trzy nagrane uderzenia pioruna, przycięte do ok. 6 s (ogon dalej niesie pogłos silnika).
+THUNDER_SRC = ("thunder_crack_02", "thunder_clap_04", "thunder_strike_03")
+
+
+def _thunder_bake() -> None:
+    for i, sid in enumerate(THUNDER_SRC):
+        x = _fade(d.from_onset(bc.src(sid, 0.0, 7.0), 5.0, thr_db=-26.0), 3.6, 6.0)
+        finalize("thunder_%d" % (i + 1), d.filt(x, "hp", 25.0, order=2), lufs=-19.4, fade_out_ms=400)
+
+
+# --- Pętle ambientu (stereo): 16 s z najrówniejszego fragmentu nagrania (audio_probe.py --steady), szew przenikany 1,5 s.
+AMB_LOOPS = (                       # klucz, źródło, start [s], głośność docelowa = zmierzona głośność syntezy, ścięcie szczytów [dB]
+    ("amb_forest", "forest_winter_night", 0.5, -14.6, 0.0),
+    ("amb_rain", "rain_hard_loop", 1.0, -16.0, 0.0),
+    ("amb_rain_roof", "rain_on_plastic", 0.5, -17.0, -12.0),      # pojedyncze głośne krople: bez ścięcia pętla wychodzi za cicha
+    ("amb_wind", "wind_mountain_loop", 10.25, -19.6, 0.0),
+)
+
+
+def _amb_loop_bake(key: str, sid: str, t0: float, lufs: float, ceil: float) -> None:
+    xf = d.sec(1.5)
+    x = d.filt(bc.src(sid, t0, 16.0 + 1.5, mono=False), "hp", 40.0, order=2)
+    if ceil < 0.0:
+        x = d.limiter(_unit(x), ceil)
+    finalize(key, d.seam_xfade(x, xf), loop=True, lufs=lufs)
+
+
+def _amb_candidate(row: tuple):
+    return lambda: _amb_loop_bake(*row)
+
+
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts
-CANDIDATES: tuple = ()
+CANDIDATES: tuple = (
+    ("hybrid", _door_bake, DOOR_NEEDS),
+    ("hybrid", _glass_bake, GLASS_NEEDS),
+    ("hybrid", _thunder_bake, list(THUNDER_SRC)),
+) + tuple(("hybrid", _amb_candidate(row), [row[1]]) for row in AMB_LOOPS)
 
 
 def build_alts() -> None:

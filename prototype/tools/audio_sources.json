@@ -137,6 +137,22 @@
    "supplier": "PMSFX",
    "license": "sonniss-gdc-2.0"
   },
+  "door_creak_metal": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/RZ Post - The Creepy Door/Creepy Door, Fast Metal Creak_02.wav",
+   "sha256": "1cc1193efd7325f2d82904e8e8c0e6a6e5fae548c08781ae44c829a4d7f52306",
+   "pack": "Sonniss GDC 2018 — The Creepy Door",
+   "supplier": "RZ Post",
+   "license": "sonniss-gdc-2.0"
+  },
+  "door_impact_metal": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/RZ Post - The Creepy Door/Creepy Door, Metal,Door,Medium,Impact_01.wav",
+   "sha256": "9237857e3753c558c114ef45e5716594c4d96090bcea1425222b784a09a41bdd",
+   "pack": "Sonniss GDC 2018 — The Creepy Door",
+   "supplier": "RZ Post",
+   "license": "sonniss-gdc-2.0"
+  },
   "dry_ice_shriek_3": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 1of8/Alexander Kopeikin - The Dry Ice Library/dry ice shriek - very hot knife pressed against block of dry ice 003.wav",
@@ -169,6 +185,14 @@
    "supplier": "Gregor Quendel",
    "license": "sonniss-gdc-2.0"
   },
+  "forest_winter_night": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 1of8/Articulated Sounds - Winter Forest Ambience/WINTER Forest night dark moon with distant wolves howls, North Laurentian Woods, Canada_LOOP.LR.wav",
+   "sha256": "66005f583460e63d05699fc7f955c4f77c845c80d87425be9f2e096468da66d5",
+   "pack": "Sonniss GDC 2018 — Winter Forest Ambience",
+   "supplier": "Articulated Sounds",
+   "license": "sonniss-gdc-2.0"
+  },
   "g36c_mag_foley": {
    "kind": "lib",
    "file": "sonniss/2016/Pole Position Production - Various Gun Foley & Handling/Heckler_&_Koch_G36C_5.56mm_foley_close_up_MKH60_mag_in_&_out.wav",
@@ -183,6 +207,30 @@
    "sha256": "b10aafb69895e7ba172f93a16f1a25c0cc1d7943c76b69a9c1095af76d85faa1",
    "pack": "Sonniss GDC 2017 — Driving Forces",
    "supplier": "Digital Rain Lab",
+   "license": "sonniss-gdc-2.0"
+  },
+  "glass_impact_break": {
+   "kind": "lib",
+   "file": "sonniss/2023/BluezoneCorp - Broken Glass/Bluezone_BC0274_glass_impact_break_002.wav",
+   "sha256": "351012e7797578c1dc31568e087ddb9a28f2616a959d19db0995af5e18f363c8",
+   "pack": "Sonniss GDC 2023 — Broken Glass",
+   "supplier": "BluezoneCorp",
+   "license": "sonniss-gdc-2.0"
+  },
+  "glass_shards_smash": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 2of9/Chris Skyes - Shards Broken Glass/Glass,Shards,Smash,Medium Impact,Lots of Large Shards.wav",
+   "sha256": "c15412d5039070ff73a6127377ab27dd4dd17c92c0d905c73598d5f34040d292",
+   "pack": "Sonniss GDC 2017 — Shards Broken Glass",
+   "supplier": "Chris Skyes",
+   "license": "sonniss-gdc-2.0"
+  },
+  "glass_window_break": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 2of9/Chris Skyes - Shards Broken Glass/Window,Small,Break,Medium Impact,Large Amount of Clinking Pieces.wav",
+   "sha256": "c2552ae7d0988bc1e8ac8cc9ce5d2081ec43a371cb1242f2788aadde95700909",
+   "pack": "Sonniss GDC 2017 — Shards Broken Glass",
+   "supplier": "Chris Skyes",
    "license": "sonniss-gdc-2.0"
   },
   "grenade_launcher_smoke": {
@@ -257,6 +305,22 @@
    "supplier": "Wav Junction Sound Effects",
    "license": "sonniss-gdc-2.0"
   },
+  "rain_hard_loop": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 3of9/Double Trouble Audio - Rain and Thunder/RATH - Rain Hard Loop 08.wav",
+   "sha256": "83acca2c1bed28f97d23ee95bd0bb112bfa1f98e7f8464069ed16c7d04bf545e",
+   "pack": "Sonniss GDC 2017 — Rain and Thunder",
+   "supplier": "Double Trouble Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rain_on_plastic": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 3of9/Double Trouble Audio - Rain and Thunder/RATH - Rain on Plastic Outside Loop.wav",
+   "sha256": "09215ed515ebf00d1520fcb28a2d5754b76d7e09bddf27c06bf44d41f4705dbd",
+   "pack": "Sonniss GDC 2017 — Rain and Thunder",
+   "supplier": "Double Trouble Audio",
+   "license": "sonniss-gdc-2.0"
+  },
   "saiga12_close_1m": {
    "kind": "lib",
    "file": "sonniss/2016/Pole Position Production - Saiga-12 12g solid slug/SAIGA-12_12g_solid_slug_1m_left_off_axis_MKH416_clean_Single_shots_x_5.wav",
@@ -321,6 +385,30 @@
    "supplier": "SoundBits",
    "license": "sonniss-gdc-2.0"
   },
+  "thunder_clap_04": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Soundrangers – Thunder/thunder_clap_04.wav",
+   "sha256": "968767e05079fccb5c28d1a7e8647742c0a74a0d9c0a88aae3cc70e7d82b4a26",
+   "pack": "Sonniss GDC 2018 — Thunder",
+   "supplier": "Soundrangers",
+   "license": "sonniss-gdc-2.0"
+  },
+  "thunder_crack_02": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Soundrangers – Thunder/thunder_mountainous_big_crack_02.wav",
+   "sha256": "a0724e5de1a41df680cb805c9a8bd3cced7886b0adbf293386bf62f7401260c3",
+   "pack": "Sonniss GDC 2018 — Thunder",
+   "supplier": "Soundrangers",
+   "license": "sonniss-gdc-2.0"
+  },
+  "thunder_strike_03": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Soundrangers – Thunder/thunder_strike_03.wav",
+   "sha256": "4e339f274349e1aa216f4dd520688bb572e5b1c58d7085449d9b7905d21ab436",
+   "pack": "Sonniss GDC 2018 — Thunder",
+   "supplier": "Soundrangers",
+   "license": "sonniss-gdc-2.0"
+  },
   "usas12_close_1m": {
    "kind": "lib",
    "file": "sonniss/2016/Pole Position Production - USAS-12 12g solid slug/USAS-12_12g_solid_slug_1m_right_CS3_clean_Double_shots_x_1.wav",
@@ -335,6 +423,14 @@
    "sha256": "272a7e0034a85a802f665050b8a860b3498a0f10c11955f4cf4d443fd35c6e9d",
    "pack": "Sonniss GDC 2020 — Hand Guns Sound Effects Pack",
    "supplier": "Olivier Girardot",
+   "license": "sonniss-gdc-2.0"
+  },
+  "wind_mountain_loop": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Soundrangers - Wind/wind_harsh_mountain_02_30_loop.wav",
+   "sha256": "df2c0f7af4e6158f93b31fb1d9eb432c043d4d7a223ca9be95c786fff647afdb",
+   "pack": "Sonniss GDC 2018 — Wind",
+   "supplier": "Soundrangers",
    "license": "sonniss-gdc-2.0"
   }
  }
