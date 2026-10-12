@@ -33,6 +33,14 @@
    "supplier": "SoundFxwizard",
    "license": "sonniss-gdc-2.0"
   },
+  "blackboss_scream_04": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Lukas Tvrdon - 6Monsters/6Monsters_BlackBoss_Scream_04.wav",
+   "sha256": "a4e49ef17308a124b519b12eb397470412f0070f1037801b589fe86c5c982716",
+   "pack": "Sonniss GDC 2018 — 6Monsters",
+   "supplier": "Lukas Tvrdon",
+   "license": "sonniss-gdc-2.0"
+  },
   "blade_swing_scrape_14": {
    "kind": "lib",
    "file": "sonniss/2026/David Dumais Audio - Melee Weapons Sound Effects Pack 2/METLFric_SWING SCRAPE Swift Melee Weapon Swing With A Long Blade 14_DDUMAIS_MWP2.wav",
@@ -73,6 +81,30 @@
    "supplier": "Stuart Duffield",
    "license": "sonniss-gdc-2.0"
   },
+  "creature_step_damp": {
+   "kind": "lib",
+   "file": "sonniss/2020/Bluezone - Cave Creature Sound Effects/Bluezone_BC0272_creature_footstep_damp_015.wav",
+   "sha256": "f01f1d688b5c7201ce6e28389b583fa3b2fb03e743635fad4f798e6af524bcfa",
+   "pack": "Sonniss GDC 2020 — Cave Creature Sound Effects",
+   "supplier": "Bluezone",
+   "license": "sonniss-gdc-2.0"
+  },
+  "creature_step_mud": {
+   "kind": "lib",
+   "file": "sonniss/2020/Bluezone - Mountain Dweller - Orc Sound Effects/Bluezone_BC0261_mountain_dweller_creature_orc_footstep_mud_texture_003.wav",
+   "sha256": "21eeb3cd63b33febfee11758d099dece55d405130492791df8f5c63ee4053345",
+   "pack": "Sonniss GDC 2020 — Mountain Dweller - Orc Sound Effects",
+   "supplier": "Bluezone",
+   "license": "sonniss-gdc-2.0"
+  },
+  "creature_step_wood": {
+   "kind": "lib",
+   "file": "sonniss/2020/Bluezone - Forest Creature Sound Effects/Bluezone_BC0269_creature_wood_footstep_medium_004.wav",
+   "sha256": "8c84b9a06137d581f94b4f2bfd0b8929813c352ded2561d6ddc192a29197e85a",
+   "pack": "Sonniss GDC 2020 — Forest Creature Sound Effects",
+   "supplier": "Bluezone",
+   "license": "sonniss-gdc-2.0"
+  },
   "crossbow_functions": {
    "kind": "lib",
    "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Eiravaein Works - Nocked/Nocked,archery,crossbow1,composite,string,functions,bolt,slideintorest,set,drag,nock,remove,clatter,alt.wav",
@@ -87,6 +119,14 @@
    "sha256": "9389f55b51ae482b8df75f2411a55163d13bdffa3fc22f98a0a58a29f03a00da",
    "pack": "Sonniss GDC 2019 — Nocked",
    "supplier": "Eiravaein Works",
+   "license": "sonniss-gdc-2.0"
+  },
+  "dry_ice_shriek_3": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 1of8/Alexander Kopeikin - The Dry Ice Library/dry ice shriek - very hot knife pressed against block of dry ice 003.wav",
+   "sha256": "3a83d3fd8aafeccfbe7fae01b703577eee97fb506eb0f15b3f33ddda06da5bba",
+   "pack": "Sonniss GDC 2018 — The Dry Ice Library",
+   "supplier": "Alexander Kopeikin",
    "license": "sonniss-gdc-2.0"
   },
   "explosion_deep_02": {
@@ -127,6 +167,14 @@
    "sha256": "b10aafb69895e7ba172f93a16f1a25c0cc1d7943c76b69a9c1095af76d85faa1",
    "pack": "Sonniss GDC 2017 — Driving Forces",
    "supplier": "Digital Rain Lab",
+   "license": "sonniss-gdc-2.0"
+  },
+  "ghostly_voice_male": {
+   "kind": "lib",
+   "file": "sonniss/2020/344 Audio - Supernatural Ghosts/Male Ghostly Voice, Hide, Creepy, Air, Spirit, Ethereal, Wet.wav",
+   "sha256": "fdeba435073a3f1bbbe8d7aaa4a37903f0d9a42f428935ceb4a5f4712e2cf6f0",
+   "pack": "Sonniss GDC 2020 — Supernatural Ghosts",
+   "supplier": "344 Audio",
    "license": "sonniss-gdc-2.0"
   },
   "grenade_launcher_smoke": {
@@ -209,6 +257,14 @@
    "supplier": "Pole Position Production",
    "license": "sonniss-gdc-2.0"
   },
+  "screeching_monster_2": {
+   "kind": "lib",
+   "file": "sonniss/2020/Olivier Girardot - Monster Sounds & Atmospheres/Screeching Monster 2-1.wav",
+   "sha256": "4bfadb3930e20de3dd96fc5e0d9d0137a0b47fef39838617fe7fe59996b60816",
+   "pack": "Sonniss GDC 2020 — Monster Sounds & Atmospheres",
+   "supplier": "Olivier Girardot",
+   "license": "sonniss-gdc-2.0"
+  },
   "shell_bounce_wood_05": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 3of8/Gamemaster Audio - Silenced Gun Sounds/bullet_shell_bounce_wood2_05.wav",
@@ -263,6 +319,14 @@
    "sha256": "272a7e0034a85a802f665050b8a860b3498a0f10c11955f4cf4d443fd35c6e9d",
    "pack": "Sonniss GDC 2020 — Hand Guns Sound Effects Pack",
    "supplier": "Olivier Girardot",
+   "license": "sonniss-gdc-2.0"
+  },
+  "whisper_4c": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Chris Logsdon - Text & Dialogue SFX Pack/whisper_4c.wav",
+   "sha256": "24bea2d28d654df3bd21860543bc2da1d116b3d3cc314b372b59ade00d2da8ce",
+   "pack": "Sonniss GDC 2019 — Text & Dialogue SFX Pack",
+   "supplier": "Chris Logsdon",
    "license": "sonniss-gdc-2.0"
   }
  }

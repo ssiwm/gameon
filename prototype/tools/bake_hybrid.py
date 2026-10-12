@@ -133,6 +133,12 @@ def _decay(x: np.ndarray, hold: float, tau: float) -> np.ndarray:
     return x * np.where(t < hold, 1.0, np.exp(-(t - hold) / tau))
 
 
+def _calm_point(x: np.ndarray, start: int, span: int) -> int:
+    """Indeks w [start, start+span) o najmniejszym skoku między sąsiednimi próbkami. Pętla zszyta przez seam_xfade jest
+    ciągła co do próbki, ale w jasnym, głośnym materiale sam skok międzypróbkowy bywa duży — wybieramy spokojne miejsce."""
+    return start + int(np.argmin(np.abs(np.diff(x[start - 1:start + span]))))
+
+
 def _glue(x: np.ndarray, drive: float, ceil: float) -> np.ndarray:
     """Sklejenie warstw strzału: odcięcie infradźwięków, nasycenie, ścięcie samego czubka (głośność przy tym samym szczycie)."""
     return d.limiter(d.saturate(_unit(d.filt(x, "hp", 38.0, order=4)), drive), ceil)
@@ -349,8 +355,70 @@ def _flame_bake() -> None:
     finalize("hkm9_flame_loop", d.seam_xfade(d.filt(x, "hp", 40.0), xf), loop=True, lufs=-19.0)
 
 
+# ============================================================ F5: Stalker — kandydaci do odsłuchu
+# Jeden stwór w całej rodzinie: warkot (z bramki A) i krzyk pochodzą od tego samego autora nagrań, a „nieludzki" rys
+# daje wspólna warstwa pisku suchego lodu na metalu. Odległy zew to ten sam krzyk słyszany z głębi kompleksu.
+
+SHRIEK_NEEDS = ["screeching_monster_2", "blackboss_scream_04", "dry_ice_shriek_3"]
+SHRIEK_CEIL = -6.0
+
+
+def _shriek_voice(i: int) -> np.ndarray:
+    """Krzyk Stalkera bez pogłosu: skrzek (góra) + ryk (korpus) + pisk suchego lodu + uderzenie w dole."""
+    screech = _fade(d.repitch(d.from_onset(bc.src("screeching_monster_2", 0.0, 1.0), 1.0), (-3.0, -5.0)[i]), 0.75, 1.05)
+    roar = _fade(d.repitch(d.from_onset(bc.src("blackboss_scream_04", 0.0, 1.3), 1.0), (2.0, 0.0)[i]), 0.70, 1.05)
+    ice = bc.src("dry_ice_shriek_3", (0.6, 1.5)[i], 1.1)
+    ice = _fade(ice * d.env_pts(len(ice), [(0, 0), (.04, 1), (10, 1)]), 0.60, 1.00)
+    sub = thump(0.25, 90, 38, .05, .09)
+    x = d.mix([(_unit(screech), 1.0), (_unit(roar), 0.55), (_unit(ice), 0.22), (sub, 0.5)], ms(1050))
+    return d.saturate(_unit(d.filt(x, "hp", 30.0, order=2)), 3.0)
+
+
+def _shriek_bake() -> None:
+    for i in range(2):
+        x = _fade(d.reverb(_shriek_voice(i), ir("hall"), wet=.28), 1.10, 1.60)
+        x = d.limiter(_unit(x), SHRIEK_CEIL)                         # gęsto jak w syntezie: krzyk ma dominować nad miksem
+        finalize("stalker_shriek_%d" % (i + 1), x, lufs=-10.4, fade_out_ms=120)
+
+
+def _far_cry_bake() -> None:
+    for i in range(2):
+        x = d.filt(d.filt(_shriek_voice(i), "bp", 620.0 - 60.0 * i, 0.9), "lp", 1400.0)
+        x = _fade(d.reverb(x, ir("cave"), wet=0.9, dry=0.25), 3.6, 5.0)
+        finalize("amb_far_cry_%d" % (i + 1), x, lufs=-26.0, fade_out_ms=400)
+
+
+# --- Krok Stalkera: ciężkie, mokre kroki stwora (trzy różne podłoża) + sub-uderzenie.
+STALKER_STEP_SRC = (("creature_step_damp", 0.09), ("creature_step_wood", 0.0), ("creature_step_mud", 0.02))
+
+
+def _stalker_step_bake() -> None:
+    for i, (sid, t0) in enumerate(STALKER_STEP_SRC):
+        step = _fade(d.from_onset(bc.src(sid, t0, 0.5), 1.0, thr_db=-12.0), 0.22, 0.36)
+        x = d.mix([(_unit(step), 1.0), (thump(0.16, 70, 34, .04, .07), 0.9)], ms(360))
+        finalize("stalker_step_%d" % (i + 1), d.filt(x, "hp", 28.0, order=2), lufs=-19.0)
+
+
+# --- Szept Stalkera (pętla 4,2 s): nagrany szept + cichy upiorny głos pod spodem, w hali; szew przenikany.
+WHISPER_NEEDS = ["whisper_4c", "ghostly_voice_male"]
+
+
+def _whisper_bake() -> None:
+    n, xf, lead = d.sec(4.2), ms(400), ms(600)                      # `lead`: rozbieg pogłosu, którego pętla nie zawiera
+    a = bc.src("whisper_4c", 1.5, 6.0)
+    b = _fade(bc.src("ghostly_voice_male", 1.15, 3.3), 2.6, 3.3)
+    x = d.mix([(_unit(a), 1.0), (_unit(b), 0.35, 1.2)], lead + n + xf + ms(20))
+    x = d.reverb(d.filt(x, "hp", 250.0), ir("hall"), wet=.25, keep_len=True)
+    lead = _calm_point(x, lead + xf, ms(20)) - xf                    # szew w spokojnym miejscu przebiegu
+    finalize("stalker_whisper_loop", d.seam_xfade(x[lead:lead + n + xf], xf), loop=True, lufs=-18.5)
+
+
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — kandydaci do następnego odsłuchu
 CANDIDATES: tuple = (
+    ("hybrid", _shriek_bake, SHRIEK_NEEDS),
+    ("hybrid", _far_cry_bake, SHRIEK_NEEDS),
+    ("hybrid", _stalker_step_bake, [sid for sid, _ in STALKER_STEP_SRC]),
+    ("hybrid", _whisper_bake, WHISPER_NEEDS),
     ("hybrid", _reload_bake, RELOAD_NEEDS),
     ("hybrid", _reload_shell_bake, RELOAD_SHELL_NEEDS),
     ("hybrid", _maczeta_bake, MACZETA_NEEDS),
