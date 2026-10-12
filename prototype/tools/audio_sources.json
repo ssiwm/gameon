@@ -89,14 +89,6 @@
    "supplier": "Lukas Tvrdon",
    "license": "sonniss-gdc-2.0"
   },
-  "betamax_eject": {
-   "kind": "lib",
-   "file": "sonniss/2020/Sonic Bat - The VHS & Betamax Sessions/SBtvbs_Betamax Tape Eject 004.wav",
-   "sha256": "97f073dbebce70f2651ff1e2d15fb86e5be292cfdff5aafcbce0267eb31972c0",
-   "pack": "Sonniss GDC 2020 — The VHS & Betamax Sessions",
-   "supplier": "Sonic Bat",
-   "license": "sonniss-gdc-2.0"
-  },
   "blackboss_scream_04": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Lukas Tvrdon - 6Monsters/6Monsters_BlackBoss_Scream_04.wav",

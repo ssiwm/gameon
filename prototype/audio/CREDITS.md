@@ -26,7 +26,6 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | beast01_attack_08 | nagranie | Sonniss GDC 2020 — Monsters | SmartSoundFX | sonniss-gdc-2.0 | BEAST 01 Attack 08.wav |
 | beast01_threaten_06 | nagranie | Sonniss GDC 2020 — Monsters | SmartSoundFX | sonniss-gdc-2.0 | BEAST 01 Threaten Short 06.wav |
 | behemoth_talk_04 | nagranie | Sonniss GDC 2018 — 6Monsters | Lukas Tvrdon | sonniss-gdc-2.0 | 6Monsters_Behemoth_Talk_04.wav |
-| betamax_eject | nagranie | Sonniss GDC 2020 — The VHS & Betamax Sessions | Sonic Bat | sonniss-gdc-2.0 | SBtvbs_Betamax Tape Eject 004.wav |
 | blackboss_scream_04 | nagranie | Sonniss GDC 2018 — 6Monsters | Lukas Tvrdon | sonniss-gdc-2.0 | 6Monsters_BlackBoss_Scream_04.wav |
 | blade_swing_scrape_14 | nagranie | Sonniss GDC 2026 — Melee Weapons Sound Effects Pack 2 | David Dumais Audio | sonniss-gdc-2.0 | METLFric_SWING SCRAPE Swift Melee Weapon Swing With A Long Blade 14_DDUMAIS_MWP2.wav |
 | blocked_door_creaks_09 | nagranie | Sonniss GDC 2017 — Unsettling Creaks and Squeaks – Extension I | SoundBits | sonniss-gdc-2.0 | UCnS_BlockedDoor_01_Creaks_09.wav |

@@ -30,7 +30,7 @@ impact_flesh, shell, reload, reload_shell, maczeta, hkm9_flame_loop, foley_gear,
 item_pickup, medkit_pickup, scrap_pickup, tag_pickup;
 stalker_growl, stalker_shriek, stalker_step,
 stalker_whisper_loop (niski oddech),
-amb_far_cry; quake, collapse, radio_beep (sam szum); trzosek_attack, trzosek_death (wilkołak), wolek_attack, wolek_death, slepiec_death, podsluchacz_scream, leech_growl,
+amb_far_cry; quake, collapse, radio_beep (sam szum), tape_stop (magnetofon); trzosek_attack, trzosek_death (wilkołak), wolek_attack, wolek_death, slepiec_death, podsluchacz_scream, leech_growl,
 leech_shriek, zyla_roar; door, glass_break, thunder, amb_creak, amb_gust, amb_thud; step_concrete, step_metal, step_dirt,
 step_water, land_hard (buty), player_hurt, player_down; ui_confirm, mission_start; amb_forest, amb_rain, amb_rain_roof, amb_wind.
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz,
@@ -868,8 +868,33 @@ def _radio_beep_bake() -> None:
     finalize("radio_beep", d.reverb(x, ir("dead"), wet=.1), lufs=RADIO_BEEP_LUFS)
 
 
+# --- „Zatrzymanie taśmy” (sukces misji, zapowiedź porażki drużyny, koniec Nocnego Dyżuru): przycisk STOP magnetofonu
+# kasetowego i prawdziwy silnik elektryczny zwalniający do zera — gest opadania jak w syntezie, ale na nagraniu.
+TAPE_NEEDS = ["cassette_buttons", "mower_motor"]
+TAPE_LUFS = -15.0                                                    # zmierzona głośność syntezy
+
+
+def _slow_to_stop(x: np.ndarray, dur: float, tau: float) -> np.ndarray:
+    """Odtwarza `x` ze zwalniającą prędkością exp(-t/tau) — jak taśma albo silnik po odcięciu zasilania."""
+    n = d.sec(dur)
+    t = np.arange(n) / d.SR
+    speed = np.exp(-t / tau)
+    pos = np.cumsum(speed)
+    return np.interp(pos, np.arange(len(x)), x) * speed ** 0.5
+
+
+def _tape_stop_bake() -> None:
+    clunk = _clip("cassette_buttons", 34.90, 0.35, -3.0, 0.30, tail=.12)
+    motor = d.lp(d.filt(bc.src("mower_motor", 2.0, 1.5), "hp", 60.0, order=2), 3500.0)
+    down = _unit(_slow_to_stop(motor, 1.05, 0.30) * d.env_pts(d.sec(1.05), [(0, 0), (.03, 1), (.6, .8), (1.05, 0)]))
+    x = d.mix([(clunk, 1.0), (down, 0.7, .03), (thump(.1, 120, 50, .03, .05), 0.5)], ms(1150))
+    x = d.limiter(_unit(d.saturate(x, 1.3)), -7.0)
+    finalize("tape_stop", d.reverb(x, ir("dead"), wet=.1), lufs=TAPE_LUFS)
+
+
 def world() -> None:
     """Wersje z nagrań dla dźwięków świata — wołane na końcu bake_sfx.build_world()."""
+    bc.hybrid(["tape_stop"], _tape_stop_bake, TAPE_NEEDS)
     bc.hybrid(["quake"], _quake_bake, QUAKE_NEEDS)
     bc.hybrid(["collapse"], _collapse_bake, COLLAPSE_NEEDS)
     bc.hybrid(["radio_beep"], _radio_beep_bake, RADIO_BEEP_NEEDS)
@@ -914,49 +939,11 @@ def ui() -> None:
     bc.hybrid(["mission_start"], _mission_start_bake, START_NEEDS)
 
 
-# ============================================================ „ZATRZYMANIE TAŚMY” — kandydaci
-# `tape_stop` gra przy sukcesie misji, zapowiedzi porażki drużyny i końcu Nocnego Dyżuru. Synteza to opadający ton
-# z generatora. Propozycje z nagrań: „magnetofon” (przycisk STOP i prawdziwy silnik elektryczny zwalniający do zera —
-# ten sam gest co w syntezie, ale na nagraniu) albo „wysuw” (mechanizm wysuwający kasetę, bez opadającego tonu).
-TAPE_LUFS = -15.0                                                    # zmierzona głośność syntezy
-TAPE_MOTOR_NEEDS = ["cassette_buttons", "mower_motor"]
-TAPE_EJECT_NEEDS = ["betamax_eject", "cassette_buttons"]
-
-
-def _slow_to_stop(x: np.ndarray, dur: float, tau: float) -> np.ndarray:
-    """Odtwarza `x` ze zwalniającą prędkością exp(-t/tau) — jak taśma albo silnik po odcięciu zasilania."""
-    n = d.sec(dur)
-    t = np.arange(n) / d.SR
-    speed = np.exp(-t / tau)
-    pos = np.cumsum(speed)
-    return np.interp(pos, np.arange(len(x)), x) * speed ** 0.5
-
-
-def _tape_motor_bake() -> None:
-    clunk = _clip("cassette_buttons", 34.90, 0.35, -3.0, 0.30, tail=.12)
-    motor = d.lp(d.filt(bc.src("mower_motor", 2.0, 1.5), "hp", 60.0, order=2), 3500.0)
-    down = _unit(_slow_to_stop(motor, 1.05, 0.30) * d.env_pts(d.sec(1.05), [(0, 0), (.03, 1), (.6, .8), (1.05, 0)]))
-    x = d.mix([(clunk, 1.0), (down, 0.7, .03), (thump(.1, 120, 50, .03, .05), 0.5)], ms(1150))
-    x = d.limiter(_unit(d.saturate(x, 1.3)), -7.0)
-    finalize("tape_stop", d.reverb(x, ir("dead"), wet=.1), lufs=TAPE_LUFS)
-
-
-def _tape_eject_bake() -> None:
-    mech = bc.src("betamax_eject", 3.10, 0.95)
-    mech = _unit(d.lp(d.filt(mech, "hp", 70.0, order=2), 5000.0) * d.env_pts(len(mech), [(0, 0), (.01, 1), (.75, 1), (.95, 0)]))
-    clunk = _clip("cassette_buttons", 34.90, 0.35, -5.0, 0.32, tail=.14)
-    x = d.mix([(mech, 1.0), (clunk, 0.8, .78), (thump(.1, 110, 50, .03, .05), 0.5, .78)], ms(1150))
-    x = d.limiter(_unit(x), -8.0)
-    finalize("tape_stop", d.reverb(x, ir("dead"), wet=.1), lufs=TAPE_LUFS)
-
-
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts.
-CANDIDATES: tuple = (
-    ("magnetofon", _tape_motor_bake, TAPE_MOTOR_NEEDS),
-    ("wysuw", _tape_eject_bake, TAPE_EJECT_NEEDS),
-)
+# Pusto: wszystkie dotychczasowe rodziny mają werdykt.
+CANDIDATES: tuple = ()
 
 
 def build_alts() -> None:
