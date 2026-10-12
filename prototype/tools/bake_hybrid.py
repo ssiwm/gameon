@@ -782,11 +782,51 @@ def world() -> None:
     bc.hybrid(_keys("amb_thud", 2), _thud_bake, THUD_NEEDS)
 
 
+# ============================================================ PODNOSZENIE PRZEDMIOTÓW — kandydaci
+# Synteza: `ammo_pickup` to tyknięcia z dzwonkiem 3,6–5,2 kHz (gra dla amunicji, złomu, zaopatrzenia, flar…),
+# `weapon_pickup` to stuknięcie z tyknięciami. Propozycje z nagrań: prawdziwy chwyt zamiast sygnału.
+PICKUP_AMMO_LUFS = -18.2                                             # zmierzona głośność syntezy
+PICKUP_WEAPON_LUFS = -21.2
+PICKUP_GRAB_NEEDS = ["bag_grab_04"]
+PICKUP_AMMO_NEEDS = ["cartridge_handling_018", "bag_grab_04"]
+PICKUP_RIFLE_NEEDS = ["rifle_pickup_004"]
+PICKUP_RIFLE_HEAVY_NEEDS = ["rifle_pickup_004", "object_grab_04"]
+
+
+def _pickup_grab_bake() -> None:
+    x = d.lp(d.filt(_clip("bag_grab_04", 0.0, 0.3, -1.0, 0.24, tail=.10), "hp", 70.0, order=2), 4000.0)
+    finalize("ammo_pickup", d.reverb(x, ir("dead"), wet=.12), lufs=PICKUP_AMMO_LUFS)
+
+
+def _pickup_ammo_bake() -> None:
+    rattle = d.lp(_clip("cartridge_handling_018", 0.08, 0.5, -3.0, 0.36, tail=.16), 5000.0)
+    grab = d.lp(_clip("bag_grab_04", 0.0, 0.3, -1.0, 0.24, tail=.10), 3000.0)
+    x = d.limiter(_unit(d.filt(d.mix([(rattle, 1.0, .02), (grab, 0.6)], ms(390)), "hp", 90.0, order=2)), -5.0)
+    finalize("ammo_pickup", d.reverb(x, ir("dead"), wet=.12), lufs=PICKUP_AMMO_LUFS)
+
+
+def _pickup_rifle_bake() -> None:
+    x = d.mix([(_clip("rifle_pickup_004", 0.0, 0.5, -2.0, 0.42, tail=.14), 1.0), (thump(.12, 150, 60, .03, .05), 0.5)], ms(440))
+    x = d.limiter(_unit(d.filt(x, "hp", 50.0, order=2)), -5.0)
+    finalize("weapon_pickup", d.reverb(x, ir("close"), wet=.14), lufs=PICKUP_WEAPON_LUFS)
+
+
+def _pickup_rifle_heavy_bake() -> None:
+    x = d.mix([(d.lp(_clip("rifle_pickup_004", 0.0, 0.5, -5.0, 0.48, tail=.16), 4500.0), 1.0),
+               (d.lp(_clip("object_grab_04", 0.0, 0.5, -4.0, 0.44, tail=.16), 2500.0), 0.6), (thump(.14, 130, 55, .03, .06), 0.8)], ms(500))
+    x = d.limiter(_unit(d.filt(x, "hp", 45.0, order=2)), -5.0)
+    finalize("weapon_pickup", d.reverb(x, ir("close"), wet=.14), lufs=PICKUP_WEAPON_LUFS)
+
+
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts.
-# Pusto: wszystkie dotychczasowe rodziny mają werdykt.
-CANDIDATES: tuple = ()
+CANDIDATES: tuple = (
+    ("chwyt", _pickup_grab_bake, PICKUP_GRAB_NEEDS),
+    ("naboje", _pickup_ammo_bake, PICKUP_AMMO_NEEDS),
+    ("karabin", _pickup_rifle_bake, PICKUP_RIFLE_NEEDS),
+    ("karabin_ciezko", _pickup_rifle_heavy_bake, PICKUP_RIFLE_HEAVY_NEEDS),
+)
 
 
 def build_alts() -> None:

@@ -49,6 +49,14 @@
    "supplier": "SoundFxwizard",
    "license": "sonniss-gdc-2.0"
   },
+  "bag_grab_04": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 3of8/Gamemaster Audio - Footstep and Foley Sounds/foley_sports_bag_grab_pickup_catch_04.wav",
+   "sha256": "11a5fc2e25e2f0b1cef7c1b179cfcf8169fbbbcb344fe10155f194d78030cea5",
+   "pack": "Sonniss GDC 2018 — Footstep and Foley Sounds",
+   "supplier": "Gamemaster Audio",
+   "license": "sonniss-gdc-2.0"
+  },
   "banshee_damage_07": {
    "kind": "lib",
    "file": "sonniss/2020/Phase 4 Libraries - Monster Roars/MR - Banshee Damage VO 07.wav",
@@ -143,6 +151,14 @@
    "sha256": "8f532064c4cd9318e8514c7363e63d6dcd0afe1b397ea24521ffe796c98046f2",
    "pack": "Sonniss GDC 2023 — Naval Warfare",
    "supplier": "Gladestock Studios",
+   "license": "sonniss-gdc-2.0"
+  },
+  "cartridge_handling_018": {
+   "kind": "lib",
+   "file": "sonniss/2023/BluezoneCorp - Detonation - Explosion/Bluezone_BC0277_cartridge_case_handling_018.wav",
+   "sha256": "12d6280e808af9bc73b9e2bac85721a36bdcc245ddd9c339a32f77c67761dc25",
+   "pack": "Sonniss GDC 2023 — Detonation - Explosion",
+   "supplier": "BluezoneCorp",
    "license": "sonniss-gdc-2.0"
   },
   "creature_step_damp": {
@@ -481,6 +497,14 @@
    "supplier": "Olivier Girardot",
    "license": "sonniss-gdc-2.0"
   },
+  "object_grab_04": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 3of8/Gamemaster Audio - Punch and Combat Sounds/foley_object_grab_pickup_04.wav",
+   "sha256": "f3143682525e9bfa39b4209174a02baa844be3a2495085e78dc5243c5634a206",
+   "pack": "Sonniss GDC 2018 — Punch and Combat Sounds",
+   "supplier": "Gamemaster Audio",
+   "license": "sonniss-gdc-2.0"
+  },
   "orc_grunt_003": {
    "kind": "lib",
    "file": "sonniss/2020/Bluezone - Mountain Dweller - Orc Sound Effects/Bluezone_BC0261_mountain_dweller_creature_orc_grunt_003.wav",
@@ -519,6 +543,14 @@
    "sha256": "09215ed515ebf00d1520fcb28a2d5754b76d7e09bddf27c06bf44d41f4705dbd",
    "pack": "Sonniss GDC 2017 — Rain and Thunder",
    "supplier": "Double Trouble Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rifle_pickup_004": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 8of9/SoundMorph - MECHANISM/Mechanism - AssaultRifle_PickUp_004.wav",
+   "sha256": "6e0eaa0926db0aff47bd29f5a1028d9fc33b1349bc474bcfe57a1349ebe7e2c7",
+   "pack": "Sonniss GDC 2017 — MECHANISM",
+   "supplier": "SoundMorph",
    "license": "sonniss-gdc-2.0"
   },
   "saiga12_close_1m": {
