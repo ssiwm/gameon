@@ -118,7 +118,8 @@ python3 tools/audio_ab.py --ref origin/main                 # to samo dla asset�
 
 Katalog nagrań: `DA87_AUDIO_LIB`, `art_src/audio_lib/` albo `audio_lib/` obok repo (wspólny dla kilku kopii roboczych). Bez nagrań
 bake piecze samą syntezę. Z nagrań są (każda rodzina po odsłuchu A/B, lista i werdykty w `AUDIO_PLAN.md` §7): `m83_shot`, `spread12_shot`,
-`srut8_shot`, `srut8_pump`, `gniew4_shot`, `ciegno6_shot`, `explosion`, `step_concrete`, `stalker_growl` — razem 27 plików.
+`srut8_shot`, `srut8_pump`, `gniew4_shot`, `ciegno6_shot`, `explosion`, `impact_hard`, `impact_flesh`, `shell`, `step_concrete`,
+`stalker_growl` — razem 36 plików.
 Wybieranie wycinków z nagrań: `python3 tools/audio_probe.py "fragment nazwy" [--hits]`; wpis do rejestru: `audio_lib_fetch.py add <id> <regex>`.
 
 ## 5. Ograniczenia i uczciwa ocena

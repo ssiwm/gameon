@@ -25,12 +25,44 @@
    "supplier": "Pole Position Production",
    "license": "sonniss-gdc-2.0"
   },
+  "arrow_whoosh": {
+   "kind": "lib",
+   "file": "sonniss/2020/SoundFxwizard - PARTICLES An Organic & Granular Journey/PARTICLES_WHOOSH_Arrow 01.wav",
+   "sha256": "260549f43752421376ec7ab23c902bc941b4c79959013d8fe8ca17825fd0ae50",
+   "pack": "Sonniss GDC 2020 — PARTICLES An Organic & Granular Journey",
+   "supplier": "SoundFxwizard",
+   "license": "sonniss-gdc-2.0"
+  },
   "boot_concrete_walk": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Joshua Reinhardt - Ultimate Bare Feet Expansion/BOOT_CONC CLEAN_WALK.R.wav",
    "sha256": "af5804543cc032187ecaa06ece964aaf26a1757fe3d8d9d375f297d88daf1c2f",
    "pack": "Sonniss GDC 2018 — Ultimate Bare Feet Expansion",
    "supplier": "Joshua Reinhardt",
+   "license": "sonniss-gdc-2.0"
+  },
+  "bow_midflight": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Eiravaein Works - Nocked/Nocked,archery,firing,loose,Vaeyanbow,midflight,wide,mythic,sleek,swirl,rattle,alt14.wav",
+   "sha256": "1a506d63619175b8d8bb137ad37364268d7d3c8b6d5afdb4f09ef34d994d8801",
+   "pack": "Sonniss GDC 2019 — Nocked",
+   "supplier": "Eiravaein Works",
+   "license": "sonniss-gdc-2.0"
+  },
+  "bullet_drop_wood_04": {
+   "kind": "lib",
+   "file": "sonniss/2016/Stuart Duffield - Bullet SFX/Bullet_Drop_Wood_04.wav",
+   "sha256": "5e586500cb16b5ead802bf89a11743364dcc0ddd2f82d349918a5c4f59f0d952",
+   "pack": "Sonniss GDC 2016 — Bullet SFX",
+   "supplier": "Stuart Duffield",
+   "license": "sonniss-gdc-2.0"
+  },
+  "crossbow_functions": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Eiravaein Works - Nocked/Nocked,archery,crossbow1,composite,string,functions,bolt,slideintorest,set,drag,nock,remove,clatter,alt.wav",
+   "sha256": "1ff2a4cb42504b0a7284a3e344eb86ef5082985ec1ce453b932967b80c0235a2",
+   "pack": "Sonniss GDC 2019 — Nocked",
+   "supplier": "Eiravaein Works",
    "license": "sonniss-gdc-2.0"
   },
   "crossbow_loose": {
@@ -65,6 +97,46 @@
    "supplier": "BluezoneCorp",
    "license": "sonniss-gdc-2.0"
   },
+  "impact_22": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Olivier Girardot - Guns & Explosions/Bullet Impact 22.wav",
+   "sha256": "326c9d52ea97d4f1142b14ab3598acd7574106a0d858e7e22134c0a39a3064dc",
+   "pack": "Sonniss GDC 2018 — Guns & Explosions",
+   "supplier": "Olivier Girardot",
+   "license": "sonniss-gdc-2.0"
+  },
+  "impact_body_flesh_25": {
+   "kind": "lib",
+   "file": "sonniss/2020/PMSFX - Bullet Bys &Impacts/PM_BBI_Bullet_Impact_Hit_Body_Flesh_25.wav",
+   "sha256": "0a7c2e4be3a087c05d04f8ce7e14b9bdccb4b3e79c5acd5cf34147692a70ee73",
+   "pack": "Sonniss GDC 2020 — Bullet Bys &Impacts",
+   "supplier": "PMSFX",
+   "license": "sonniss-gdc-2.0"
+  },
+  "impact_body_thump": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Gamemaster Audio -  Bullet Impact Sounds/bullet_impact_body_thump_02.wav",
+   "sha256": "cb84da810687e966e7ed0ae3da269c65b42231bed22dd52696e4619c413e16ab",
+   "pack": "Sonniss GDC 2017 — Bullet Impact Sounds",
+   "supplier": "Gamemaster Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "impact_concrete_brick": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Gamemaster Audio -  Bullet Impact Sounds/bullet_impact_concrete_brick_01.wav",
+   "sha256": "fbc7e89171251ae1595cc5aaf9389fa02e3af1c54b93cfc9e341221ee2b35169",
+   "pack": "Sonniss GDC 2017 — Bullet Impact Sounds",
+   "supplier": "Gamemaster Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "impact_rock_4": {
+   "kind": "lib",
+   "file": "sonniss/2020/Olivier Girardot - Hand Guns Sound Effects Pack/Bullet rock Impact 4.wav",
+   "sha256": "a2b81f2eb222d20c51525d875b0f8764e644d0e4c2df9e9a6af7f9dde9cc8eaa",
+   "pack": "Sonniss GDC 2020 — Hand Guns Sound Effects Pack",
+   "supplier": "Olivier Girardot",
+   "license": "sonniss-gdc-2.0"
+  },
   "monster_growls_4": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Olivier Girardot - Monsters/Monster Growls 4.wav",
@@ -81,6 +153,22 @@
    "supplier": "Pole Position Production",
    "license": "sonniss-gdc-2.0"
   },
+  "shell_bounce_wood_05": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 3of8/Gamemaster Audio - Silenced Gun Sounds/bullet_shell_bounce_wood2_05.wav",
+   "sha256": "c243fefc857f6d4c19d4e7e8f20587ad1524d311960f95c21676745cff3d3baa",
+   "pack": "Sonniss GDC 2018 — Silenced Gun Sounds",
+   "supplier": "Gamemaster Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "shell_land_concrete_02": {
+   "kind": "lib",
+   "file": "sonniss/2016/Stuart Duffield - Bullet SFX/ShotgunShell_Land_Concrete_02.wav",
+   "sha256": "e2c0e5210c59e8b4b871bf99a43dcf4c4c52e27c2efa00288ac95f4779ee1e38",
+   "pack": "Sonniss GDC 2016 — Bullet SFX",
+   "supplier": "Stuart Duffield",
+   "license": "sonniss-gdc-2.0"
+  },
   "shotgun_quick_pump": {
    "kind": "lib",
    "file": "sonniss/2016/TS Sound - 12 Gauge Shotgun/Shotgun_Quick Pump_01.wav",
@@ -89,12 +177,28 @@
    "supplier": "TS Sound",
    "license": "sonniss-gdc-2.0"
   },
+  "stab_punch_hit": {
+   "kind": "lib",
+   "file": "sonniss/2016/SoundBits -  Just Gore _ Add On/Stab_Punch_Hit_136.wav",
+   "sha256": "2af3adc1aabb1730b66724fe4ddb09023b620af40fc2094d4243b802e7c26a0d",
+   "pack": "Sonniss GDC 2016 — Just Gore _ Add On",
+   "supplier": "SoundBits",
+   "license": "sonniss-gdc-2.0"
+  },
   "usas12_close_1m": {
    "kind": "lib",
    "file": "sonniss/2016/Pole Position Production - USAS-12 12g solid slug/USAS-12_12g_solid_slug_1m_right_CS3_clean_Double_shots_x_1.wav",
    "sha256": "60ca84cbc00b987af35cd49b24bfe2af8dfda59fdee98fb9fa20f68ef514206b",
    "pack": "Sonniss GDC 2016 — USAS-12 12g solid slug",
    "supplier": "Pole Position Production",
+   "license": "sonniss-gdc-2.0"
+  },
+  "whip_21": {
+   "kind": "lib",
+   "file": "sonniss/2020/Olivier Girardot - Hand Guns Sound Effects Pack/Whip sound 21.wav",
+   "sha256": "272a7e0034a85a802f665050b8a860b3498a0f10c11955f4cf4d443fd35c6e9d",
+   "pack": "Sonniss GDC 2020 — Hand Guns Sound Effects Pack",
+   "supplier": "Olivier Girardot",
    "license": "sonniss-gdc-2.0"
   }
  }

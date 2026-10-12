@@ -141,7 +141,7 @@ Pomiar (nie odsłuch): strzał z nagrań ma środek ciężkości widma ok. 1,4 k
 ok. 380 ms zamiast 255 ms, głośność zrównana z obecnym do 0,5 LU. Kroki z nagrań są ciemniejsze powyżej 4 kHz niż syntetyczne. Alternatywy
 pieką się deterministycznie (dwa przebiegi = te same sumy).
 
-**F3, część 1 (strzały i wybuchy) — odsłuch 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem 27 plików z nagrań):**
+**F3, części 1 i 2 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem 36 plików z nagrań):**
 
 | Rodzina | Werdykt | Źródła wersji z nagrań |
 |---|---|---|
@@ -149,13 +149,24 @@ pieką się deterministycznie (dwa przebiegi = te same sumy).
 | `srut8_shot` ×3, `srut8_pump` ×2 | z nagrań | ta sama Saiga 3 półtony niżej + front USAS-12 + większy sub; pompka z nagrania 12 Gauge |
 | `gniew4_shot` ×2 | z nagrań | odpalenie granatnika dymnego + niski korpus + hala |
 | `explosion` ×2 (stereo) | z nagrań | dwa nagrania dużych eksplozji + syntetyczny sub i ostry front |
-| `ciegno6_shot` ×2 | z nagrań, **do poprawy** | zwolnienie cięciwy kuszy + syntetyczny brzęk. Uwaga z odsłuchu: „zbyt krótki i jednostajny, to kusza — powinno być więcej dynamiki”. Wersja 2 (zamek, strzał cięciwy, drganie ramion, świst bełtu) idzie do następnego odsłuchu |
+| `ciegno6_shot` ×2 | z nagrań, **wersja 2** | wersja 1 (samo zwolnienie cięciwy + brzęk) była „zbyt krótka i jednostajna”; wybrana wersja 2: zamek → strzał cięciwy z trzaskiem bicza → uderzenie ramion → gasnące drganie → świst bełtu (ok. 0,5 s) |
+| `impact_hard` ×3 | z nagrań | trafienia pocisku w cegłę/beton, skałę i ścianę, zaciśnięte do ok. 0,3 s |
+| `impact_flesh` ×3 | z nagrań | uderzenie pocisku w ciało, mokre trafienie, tępy cios |
+| `shell` ×3 | z nagrań | mosiężna łuska na drewnie, pocisk na drewnie, łuska strzelby na betonie; ścięty czubek, żeby dzwonienie było słyszalne |
 | `p64_shot` ×4 | **synteza** | odrzucone: SIG P229 9 mm z 1 m (jasny i krótki wobec syntezy) |
 | `sokol6_shot` ×3 | **synteza** | odrzucone: start fajerwerku z bliska |
+| `whizz` ×3 | **synteza** | odrzucone: nagrane przeloty pocisków |
+| `foley_gear` ×3 | **synteza** | odrzucone: ruchy oporządzenia wycięte z nagranego marszu |
+| `dry_fire` | **synteza** | odrzucone: kurek M1911 z dołożonym niskim stukiem |
+| `ricochet` ×2 | synteza (bez kandydata) | w archiwach nie ma czystego, pojedynczego rykoszetu |
 
 Głośność każdej rodziny zrównana ze ZMIERZONĄ głośnością syntezy (nominalne cele z `bake_weapons.py` synteza osiąga tylko częściowo, bo
 ogranicza ją szczyt). Zostają syntetyczne także: `widmo1` (działo szynowe), `lr7` (promień), znaczniki trafień — to dźwięki bez odpowiednika w
-nagraniach. Część 2 (trafienia, rykoszety, przeloty, łuski, ekwipunek, potem przeładowania, broń biała, miotacz) — kolejne odsłuchy.
+nagraniach. Zostało z F3: przeładowania, broń biała, miotacz ognia — następny odsłuch.
+
+Wzór z dotychczasowych werdyktów (9 rodzin z nagrań, 5 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
+trafienia, łuski, kroki, głos), a przegrywają dla dźwięków krótkich, jasnych i „bliskich gracza” (pistolet, przelot, szelest, kurek), gdzie
+synteza jest pełniejsza w dole pasma. Przy kolejnych kandydatach z tej drugiej grupy dokładać korpus albo nie proponować ich wcale.
 
 Uwagi z pomiaru:
 - **Różnorodność wariantów** z nagrań jest niska w mierze audytu (`m83_shot` 0,25, `p64_shot` 0,22, `spread12_shot` 0,11 wobec 0,45–0,47
