@@ -2464,7 +2464,7 @@ var _departing := false              ## wyjście z kryjówki zaplanowane (odrocz
 ## Wspólny koniec startu hosta (ENet i Steam): UI, ambient, nowa misja, gracz hosta.
 func _begin_hosting(where: String) -> void:
 	_lobby.visible = false
-	Audio.play("oc_load", Audio.BUS_UI, -8.0)
+	Audio.play("mission_start", Audio.BUS_UI, -8.0)
 	print("[NET] difficulty: %s" % Difficulty.level_name())
 	if NightShift.selected:
 		mission.begin_shift()

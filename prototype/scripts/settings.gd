@@ -16,7 +16,7 @@ const STEP := 0.1
 const DEMO := true
 const STORE_URL := ""
 ## Rodzaj głośności → szyny z default_bus_layout.tres. „Mic" (voice.gd) celowo poza listą.
-const VOLUME_BUSES := {"master": ["Master"], "music": ["Music", "Ambience"], "sfx": ["SFX", "UI"]}
+const VOLUME_BUSES := {"master": ["Master"], "music": ["Music"], "ambience": ["Ambience"], "sfx": ["SFX", "UI"]}
 const SHAKE_NAMES := ["FULL", "HALF", "OFF"]
 ## Efekty pogody (weather_fx.gd): FULL — pełny błysk błyskawic; REDUCED — miękka poświata zamiast błysku i mniej cząsteczek (fotowrażliwość); OFF — bez efektów.
 const WEATHER_FX_NAMES := ["FULL", "REDUCED", "OFF"]
@@ -44,7 +44,7 @@ const UI_NAMES := ["SMALL", "NORMAL", "LARGE"]
 const UI_MULT := [0.72, 0.85, 1.0]
 const Actions := preload("res://scripts/actions.gd")
 
-var volume := {"master": 1.0, "music": 1.0, "sfx": 1.0}
+var volume := {"master": 1.0, "music": 1.0, "ambience": 1.0, "sfx": 1.0}
 var shake_idx := 0
 var weather_fx_idx := WEATHER_FX_REDUCED
 var ui_idx := 1
@@ -291,7 +291,9 @@ func _load() -> void:
 	if cf.load(SAVE_PATH) != OK:
 		return
 	for kind in volume:
-		volume[kind] = clampf(float(cf.get_value("game", "vol_" + kind, 1.0)), 0.0, 1.0)
+		# otoczenie miało kiedyś wspólny suwak z muzyką: zapis sprzed rozdzielenia daje mu tę samą wartość
+		var fallback: float = float(cf.get_value("game", "vol_music", 1.0)) if kind == "ambience" else 1.0
+		volume[kind] = clampf(float(cf.get_value("game", "vol_" + kind, fallback)), 0.0, 1.0)
 	shake_idx = clampi(int(cf.get_value("game", "shake", 0)), 0, SHAKE_NAMES.size() - 1)
 	weather_fx_idx = clampi(int(cf.get_value("game", "weather_fx", WEATHER_FX_REDUCED)), 0, WEATHER_FX_NAMES.size() - 1)
 	ui_idx = clampi(int(cf.get_value("game", "ui", 1)), 0, UI_NAMES.size() - 1)

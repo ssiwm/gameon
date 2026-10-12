@@ -82,6 +82,7 @@ const PATHS := {
 	"maczeta_2": "res://audio/sfx/weapons/maczeta_2.wav",
 	"medkit_pickup": "res://audio/sfx/weapons/medkit_pickup.wav",
 	"mine_beep_loop": "res://audio/sfx/world/mine_beep_loop.wav",
+	"mission_start": "res://audio/sfx/ui/mission_start.wav",
 	"mus_chase": "res://audio/music/mus_chase.ogg",
 	"mus_combat": "res://audio/music/mus_combat.ogg",
 	"mus_silence": "res://audio/music/mus_silence.ogg",

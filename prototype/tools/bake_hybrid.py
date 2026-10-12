@@ -848,11 +848,49 @@ def world() -> None:
     bc.hybrid(_keys("amb_thud", 2), _thud_bake, THUD_NEEDS)
 
 
+# ============================================================ SYGNAŁY ZADAŃ I STARTU — kandydaci
+# `ui_confirm` (zebrany przedmiot z zadania, uruchomiony generator, awans, sukces misji, przycisk hosta): synteza to dwa
+# wznoszące się syntezatorowe bliki — nie z tego świata. Propozycje: „radio” (klik nadawania i szum zamykanej blokady)
+# albo „przelacznik” (mechaniczny stuk wyłącznika i szpuli). `mission_start` to nowy klucz na start gry.
+CONFIRM_LUFS = -14.2                                                 # zmierzona głośność syntezy ui_confirm
+CONFIRM_RADIO_NEEDS = ["walkie_kenwood"]
+CONFIRM_SWITCH_NEEDS = ["breaker_on", "tape_play_stop"]
+START_NEEDS = ["breaker_on", "radio_tuning_static", "walkie_kenwood"]
+
+
+def _confirm_radio_bake() -> None:
+    key = _clip("walkie_kenwood", 8.33, 0.1, -2.0, 0.08, tail=.04)
+    tail = _clip("walkie_kenwood", 5.18, 0.42, -2.0, 0.38, tail=.14)          # szum zamykanej blokady, nie ton „roger”
+    x = d.limiter(_unit(d.filt(d.mix([(key, 0.35), (tail, 1.0, .05)], ms(470)), "hp", 150.0, order=2)), -9.0)
+    finalize("ui_confirm", d.reverb(x, ir("dead"), wet=.08), lufs=CONFIRM_LUFS)
+
+
+def _confirm_switch_bake() -> None:
+    a = _clip("breaker_on", 0.03, 0.2, -3.0, 0.20, tail=.10)
+    b = _clip("tape_play_stop", 1.69, 0.3, -2.0, 0.30, tail=.14)
+    x = d.mix([(a, 1.0), (b, 0.8, .09), (thump(.08, 150, 70, .02, .035), 0.5)], ms(420))
+    x = d.limiter(_unit(d.filt(x, "hp", 60.0, order=2)), -10.0)
+    finalize("ui_confirm", d.reverb(x, ir("dead"), wet=.08), lufs=CONFIRM_LUFS)
+
+
+def _mission_start_bake() -> None:
+    clunk = _clip("breaker_on", 0.03, 0.2, -4.0, 0.22, tail=.10)
+    static = bc.src("radio_tuning_static", 6.4, 1.0)
+    static = _unit(d.lp(static, 4000.0) * d.env_pts(len(static), [(0, 0), (.06, 1), (.5, .6), (.95, .15), (1.0, 0)]))
+    end = _clip("walkie_kenwood", 5.18, 0.42, -3.0, 0.30, tail=.14)
+    x = d.mix([(clunk, 1.0), (thump(.12, 140, 55, .03, .05), 0.6), (static, 0.4, .10), (end, 0.25, 1.0)], ms(1350))
+    x = d.limiter(_unit(d.filt(x, "hp", 50.0, order=2)), -9.0)
+    finalize("mission_start", d.reverb(x, ir("room"), wet=.15), lufs=-15.0, fade_out_ms=120)
+
+
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts.
-# Pusto: wszystkie dotychczasowe rodziny mają werdykt.
-CANDIDATES: tuple = ()
+CANDIDATES: tuple = (
+    ("radio", _confirm_radio_bake, CONFIRM_RADIO_NEEDS),
+    ("przelacznik", _confirm_switch_bake, CONFIRM_SWITCH_NEEDS),
+    ("hybrid", _mission_start_bake, START_NEEDS),
+)
 
 
 def build_alts() -> None:

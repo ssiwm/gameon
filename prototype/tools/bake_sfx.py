@@ -689,3 +689,15 @@ def build_ui() -> None:
     nz = d.sweep(d.white(n, r), "bp", d.env_pts(n, [(0, 800), (.5, 5000)]), 1.5) * .35
     x = (s + nz) * d.env_pts(n, [(0, 0), (.03, 1), (.4, .8), (.52, 0)])
     finalize("oc_load", d.saturate(x, 1.6), peak=-1.5)
+
+    # Start gry (host zaczyna sesję): włączenie radiostacji — stuk przełącznika, fala szumu eteru, cisza.
+    # Wcześniej grał tu świst Przesterowania (oc_load), syntezatorowy i nie z tego świata.
+    r = Rng(0xDF00)
+    n = ms(1200)
+    t = np.arange(n) / SR
+    static = d.sweep(d.colored(n, r, .4), "bp", d.env_pts(n, [(0, 700), (.5, 1500), (1.2, 900)]), 1.2)
+    static *= d.env_pts(n, [(0, 0), (.06, 0), (.12, 1), (.6, .6), (1.05, .15), (1.2, 0)]) * (0.75 + 0.25 * np.sin(TAU * 7.0 * t))
+    clunk = d.mix([(thump(.12, 140, 55, .03, .05), 1.0), (tick(r, 900, 1.6, 14, .004), .6), (tick(r, 1400, 1.4, 10, .003), .4, .045)])
+    x = d.mix([(clunk, 1.0), (static / (d.peak(static) + 1e-9), .45), (tick(r, 1100, 1.5, 10, .003), .5, 1.06)], n)
+    x = d.limiter(d.lp(x, 4500.0) / (d.peak(x) + 1e-9), -6.0)
+    finalize("mission_start", d.reverb(x, ir("room"), wet=.15), lufs=-15.0, fade_out_ms=120)

@@ -53,7 +53,7 @@ bez crossfade'u i bez dziury w energii.
 > Poprzedni komentarz „stdlib, brak numpy w środowisku" przestał być prawdą; `matplotlib` jest tylko do podglądu.
 > Gra (Godot) nie potrzebuje Pythona — pliki WAV są w repozytorium.
 
-### 3.2 Assety (198, `tools/bake_*.py`)
+### 3.2 Assety (199, `tools/bake_*.py`)
 * **Broń** — strzał warstwowy: crack (1,5 ms) / blast (swept LP) / body (sinus z opadającą wysokością) /
   punch / mechanika modalna / krótki ogon źródła. Własna **strzelba** (5 cracków śrutu + sub), przeładowanie
   w 5 zdarzeniach, **łuska** `shell_1..3` (mosiądz z odbiciami; gra ją `Vfx.casing()` przy lądowaniu fizycznej łuski), **foley ekwipunku**, **szum w uszach**.
