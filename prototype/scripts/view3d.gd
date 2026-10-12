@@ -25,7 +25,6 @@ const FOV := 40.0
 const MAX_LIGHTS := 14
 const SHADOW_LIGHTS := 5
 const MIRROR_GROUPS := ["enemies", "boss", "nests", "roamers"]
-const HIDE_NAMES := ["Back", "Solid", "Deco", "Decals", "TerrainHD", "TerrainHDBack"]
 const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wrogów
 const LAYER_ACTORS := 2                    ## warstwa wizualna graczy (modele 3D)
 const ACTOR_AMBIENT := 0.09                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
@@ -96,7 +95,6 @@ var _item_tuned := {}                    ## nazwy modeli z już dostrojonymi mat
 var _item_scenes := {}                   ## nazwa przedmiotu → PackedScene modelu 3D albo null
 var _items := {}                         ## id sprite'a przedmiotu HD → [Sprite2D, MeshInstance3D, materiał, z, ukryte węzły 2D]
 var _scan_t := 0.0
-var _hidden: Array = []                  ## ukryte statyczne węzły 2D (przywracane przy wyłączeniu)
 var _life := 0.0
 var _saved := false
 
@@ -223,15 +221,6 @@ func release() -> void:
 		if is_instance_valid(_casings[id][1]):
 			(_casings[id][1] as Node).queue_free()
 	_casings.clear()
-	for id in _guns.keys():
-		var gv: Array = _guns[id]
-		if is_instance_valid(gv[0]) and gv[0].get("_hd") != null and is_instance_valid(gv[0].get("_hd")):
-			for c in (gv[0].get("_hd") as Node).get_children():
-				if c is Sprite2D or c is ColorRect:
-					(c as CanvasItem).self_modulate = Color.WHITE
-			var ov = gv[0].get("_hd_over")
-			if ov != null and is_instance_valid(ov):
-				(ov as CanvasItem).visible = true
 	_guns.clear()
 	for id in _items.keys():
 		var itv: Array = _items[id]
@@ -242,10 +231,6 @@ func release() -> void:
 			if is_instance_valid(hid[k]):
 				(hid[k] as CanvasItem).visible = true
 	_items.clear()
-	for n in _hidden:
-		if is_instance_valid(n):
-			n.visible = true
-	_hidden.clear()
 	for p in _rigs.keys():
 		_release_rig(p)
 	_rigs.clear()
@@ -280,7 +265,6 @@ func _process(delta: float) -> void:
 				_saved = true
 				_vp_bg.get_texture().get_image().save_png(ar.substr("--view3dsavebg=".length()))
 	_sync_camera()
-	_hide_static()
 	_geo_t -= delta
 	if _geo_t <= 0.0:
 		_geo_t = 0.25
@@ -389,15 +373,6 @@ func _sync_camera() -> void:
 		(s as Sprite2D).scale = Vector2(k, k)
 
 # ---------------------------------------------------------------- świat statyczny
-
-## Statyczne warstwy 2D (kafle, tło, teren HD) są zastąpione geometrią 3D — chowamy je co klatkę (węzły HD powstają leniwie).
-func _hide_static() -> void:
-	for c in _level.get_children():
-		if c is TileMapLayer or HIDE_NAMES.has(String(c.name)):
-			if c.visible:
-				c.visible = false
-				if not _hidden.has(c):
-					_hidden.append(c)
 
 func _sync_geometry() -> void:
 	var rows: Array = _level.get("_map")
@@ -1176,12 +1151,7 @@ func _sync_guns() -> void:
 		if key == "" or hd == null or not is_instance_valid(hd) or not ResourceLoader.exists(path):
 			continue
 		var on_rack := bool(n.get("static_display"))
-		var spr: Sprite2D = null
-		for c in (hd as Node).get_children():
-			if c is Sprite2D and spr == null:
-				spr = c
-			if c is Sprite2D or c is ColorRect:
-				(c as CanvasItem).self_modulate = Color(1, 1, 1, 0)
+		var spr := (hd as Node).get_node_or_null("GunMark") as Node2D
 		if spr == null:
 			continue
 		var model := (load(path) as PackedScene).instantiate() as Node3D
@@ -1211,9 +1181,6 @@ func _sync_guns() -> void:
 		var label: Label3D = null
 		if on_rack:
 			model.rotation.x = deg_to_rad(-7.0)                   # oparta o deskę
-			var over = n.get("_hd_over")
-			if over != null and is_instance_valid(over):
-				(over as CanvasItem).visible = false
 			lock = _item_model("padlock")
 			if lock != null:
 				lock.scale = Vector3(PX, PX, PX) * 0.75
@@ -1263,7 +1230,7 @@ func _sync_guns() -> void:
 				(g[1] as Node).queue_free()
 			_guns.erase(id)
 			continue
-		var sp := g[2] as Sprite2D
+		var sp := g[2] as Node2D
 		var pv := g[1] as Node3D
 		pv.visible = sp.is_visible_in_tree()
 		if not bool(g[4]):

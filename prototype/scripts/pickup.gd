@@ -191,44 +191,12 @@ func _setup_hd() -> void:
 	add_child(_hd)
 	if gun_key != "":
 		_hd_gun = gun_key
-		var ct := Sprites.gun_hd(gun_key)
 		_hd_gun_rect = Sprites.gun_hd_rect(gun_key)
-		var gp := Vector2(0.0, _shelf_y() if static_display else -4.0)
-		var sp := Sprite2D.new()
-		sp.texture = ct
-		sp.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		sp.centered = false
-		sp.offset = -Vector2(_hd_gun_rect.get_center().x, _hd_gun_rect.end.y)
-		sp.scale = Vector2.ONE / 16.0
-		sp.position = gp
+		# znacznik położenia broni: model na stojaku / na ziemi, kłódkę i tabliczkę z ceną stawia widok 3D (view3d.gd: _sync_guns)
+		var sp := Node2D.new()
+		sp.name = "GunMark"
+		sp.position = Vector2(0.0, _shelf_y() if static_display else -4.0)
 		_hd.add_child(sp)
-		var hg := Sprites.gun_hd_glow(gun_key)
-		if hg != null:
-			var gs := Sprite2D.new()
-			gs.texture = hg
-			gs.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-			gs.centered = false
-			gs.offset = sp.offset
-			gs.scale = sp.scale
-			gs.position = gp
-			gs.material = Lights.unshaded()
-			_hd.add_child(gs)
-		if not static_display:
-			var base := ColorRect.new()                                   # ciemna podstawka pod bronią na ziemi (jak w wersji pikselowej)
-			base.color = Color(0.12, 0.13, 0.16)
-			base.position = Vector2(-8, -4)
-			base.size = Vector2(16, 3)
-			base.material = Lights.unshaded()
-			_hd.add_child(base)
-			_hd.move_child(base, 0)
-		_hd_over = Node2D.new()
-		_hd_over.draw.connect(_draw_over)
-		_hd.add_child(_hd_over)
-		if static_display:
-			Scrap.changed.connect(func() -> void:
-				_update_lock_tint(sp)
-				_hd_over.queue_redraw())
-			_update_lock_tint(sp)
 		return
 	var sc := _hd_scale()
 	var main := ItemsHd.make(nm, _hd, sc)
@@ -244,11 +212,7 @@ var _hd_main: ItemsHd.ItemMark
 func _shelf_y() -> float:
 	return -9.8 if (Sprites.newitem and ItemsHd.has("rack")) else -7.0
 
-func _update_lock_tint(sp: Sprite2D) -> void:
-	var locked := static_display and not Scrap.is_unlocked(arg)
-	sp.modulate = Color(0.32, 0.33, 0.4) if locked else Color.WHITE
-
-## Nakładka HD: kolorowa plakietka na skrzynce zaopatrzenia/amunicji albo kłódka z ceną na zablokowanej broni.
+## Nakładka: kolorowa plakietka na skrzynce zaopatrzenia / amunicji (rodzaj zawartości).
 func _draw_over() -> void:
 	var sc := _hd_scale()
 	if kind == "supply":
@@ -263,26 +227,6 @@ func _draw_over() -> void:
 		var r2 := Rect2(-2.8 * sc, -(3.2 + 1.3) * sc, 5.6 * sc, 2.6 * sc)
 		_hd_over.draw_rect(r2, col2)
 		_hd_over.draw_rect(Rect2(r2.position, Vector2(r2.size.x, 0.4 * sc)), Color(1, 1, 1, 0.35))
-	elif kind == "weapon" and static_display and not Scrap.is_unlocked(arg):
-		var gw := _hd_gun_rect.size.x / 16.0
-		var gh := _hd_gun_rect.size.y / 16.0
-		var dst := Rect2(-gw * 0.5, _shelf_y() - gh, gw, gh)
-		_draw_lock_on(_hd_over, dst, -3.5)
-
-## Zablokowany stojak: kłódka nad bronią i cena (albo „SOON") na tabliczce stojaka.
-func _draw_lock(dst: Rect2) -> void:
-	_draw_lock_on(self, dst)
-
-func _draw_lock_on(ci: CanvasItem, dst: Rect2, label_y := -2.0) -> void:
-	var cx := roundf(dst.position.x + dst.size.x * 0.5)
-	var cy := roundf(dst.position.y + dst.size.y * 0.5) - 4.0
-	ci.draw_arc(Vector2(cx, cy - 3.0), 2.6, PI, TAU, 8, Color(0.75, 0.75, 0.8), 1.0)
-	ci.draw_rect(Rect2(cx - 3.5, cy - 3.0, 7, 6), Color(0.15, 0.15, 0.18))
-	ci.draw_rect(Rect2(cx - 2.5, cy - 2.0, 5, 4), Color(0.85, 0.7, 0.3))
-	ci.draw_rect(Rect2(cx - 0.5, cy - 0.5, 1, 2), Color(0.15, 0.15, 0.18))
-	var price := Scrap.price_of(arg)
-	var label := "%d" % price if price > 0 else "SOON"
-	ci.draw_string(ThemeDB.fallback_font, Vector2(-12, label_y), label, HORIZONTAL_ALIGNMENT_CENTER, 24.0, 6, Color(0.12, 0.09, 0.06))
 
 ## Prostokąt nieprzezroczystych pikseli broni `row` w jej klatce (px arkusza); liczony raz i zapamiętany.
 static func _content_box(tex: Texture2D, row: int, tfs: Vector2) -> Rect2i:

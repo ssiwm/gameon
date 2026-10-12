@@ -431,7 +431,6 @@ func _handle_cmdline() -> void:
 			_start_map = a.substr("--mission=".length())
 	if hd_world:
 		Sprites.newworld = true
-		level.enable_world_hd()
 	# testy headless zakładają mapę 1.3 (gniazda, boss), chyba że flaga --mission wskaże inną
 	if _start_map == "":
 		for a in args:
