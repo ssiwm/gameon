@@ -33,12 +33,44 @@
    "supplier": "SoundFxwizard",
    "license": "sonniss-gdc-2.0"
   },
+  "blackboss_scream_04": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Lukas Tvrdon - 6Monsters/6Monsters_BlackBoss_Scream_04.wav",
+   "sha256": "a4e49ef17308a124b519b12eb397470412f0070f1037801b589fe86c5c982716",
+   "pack": "Sonniss GDC 2018 — 6Monsters",
+   "supplier": "Lukas Tvrdon",
+   "license": "sonniss-gdc-2.0"
+  },
+  "blade_swing_scrape_14": {
+   "kind": "lib",
+   "file": "sonniss/2026/David Dumais Audio - Melee Weapons Sound Effects Pack 2/METLFric_SWING SCRAPE Swift Melee Weapon Swing With A Long Blade 14_DDUMAIS_MWP2.wav",
+   "sha256": "5af061af596532feef49c83274c98f26e4994aa2f4f47f573e59e075065df70b",
+   "pack": "Sonniss GDC 2026 — Melee Weapons Sound Effects Pack 2",
+   "supplier": "David Dumais Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "bodyfall_concrete": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 5of8/Red Libraries - Bodyfall/RL_bodyfall_Concrete_Generic_Feet_Mid_Mono_Med_Impact_02.wav",
+   "sha256": "ad010fc36d1522daad9e18a99c9dfc5119c0370f3df64dc1d5c5c3e59804b8ce",
+   "pack": "Sonniss GDC 2019 — Bodyfall",
+   "supplier": "Red Libraries",
+   "license": "sonniss-gdc-2.0"
+  },
   "boot_concrete_walk": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Joshua Reinhardt - Ultimate Bare Feet Expansion/BOOT_CONC CLEAN_WALK.R.wav",
    "sha256": "af5804543cc032187ecaa06ece964aaf26a1757fe3d8d9d375f297d88daf1c2f",
    "pack": "Sonniss GDC 2018 — Ultimate Bare Feet Expansion",
    "supplier": "Joshua Reinhardt",
+   "license": "sonniss-gdc-2.0"
+  },
+  "boot_metal_walk": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 8of9/Tovusound - Edward – Foleyart Collection Add-On Extended Footsteps/237_Foley_Footsteps_Metal_Boot_Walk_Normal_Close.wav",
+   "sha256": "89fd66f77e4aa079b2ce0207fdcd39bd4dd91d332bfc54799f4433f7cd88694f",
+   "pack": "Sonniss GDC 2017 — Edward – Foleyart Collection Add-On Extended Footsteps",
+   "supplier": "Tovusound",
    "license": "sonniss-gdc-2.0"
   },
   "bow_midflight": {
@@ -57,6 +89,30 @@
    "supplier": "Stuart Duffield",
    "license": "sonniss-gdc-2.0"
   },
+  "creature_step_damp": {
+   "kind": "lib",
+   "file": "sonniss/2020/Bluezone - Cave Creature Sound Effects/Bluezone_BC0272_creature_footstep_damp_015.wav",
+   "sha256": "f01f1d688b5c7201ce6e28389b583fa3b2fb03e743635fad4f798e6af524bcfa",
+   "pack": "Sonniss GDC 2020 — Cave Creature Sound Effects",
+   "supplier": "Bluezone",
+   "license": "sonniss-gdc-2.0"
+  },
+  "creature_step_mud": {
+   "kind": "lib",
+   "file": "sonniss/2020/Bluezone - Mountain Dweller - Orc Sound Effects/Bluezone_BC0261_mountain_dweller_creature_orc_footstep_mud_texture_003.wav",
+   "sha256": "21eeb3cd63b33febfee11758d099dece55d405130492791df8f5c63ee4053345",
+   "pack": "Sonniss GDC 2020 — Mountain Dweller - Orc Sound Effects",
+   "supplier": "Bluezone",
+   "license": "sonniss-gdc-2.0"
+  },
+  "creature_step_wood": {
+   "kind": "lib",
+   "file": "sonniss/2020/Bluezone - Forest Creature Sound Effects/Bluezone_BC0269_creature_wood_footstep_medium_004.wav",
+   "sha256": "8c84b9a06137d581f94b4f2bfd0b8929813c352ded2561d6ddc192a29197e85a",
+   "pack": "Sonniss GDC 2020 — Forest Creature Sound Effects",
+   "supplier": "Bluezone",
+   "license": "sonniss-gdc-2.0"
+  },
   "crossbow_functions": {
    "kind": "lib",
    "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Eiravaein Works - Nocked/Nocked,archery,crossbow1,composite,string,functions,bolt,slideintorest,set,drag,nock,remove,clatter,alt.wav",
@@ -73,6 +129,22 @@
    "supplier": "Eiravaein Works",
    "license": "sonniss-gdc-2.0"
   },
+  "dirt_walk_loop": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 3of8/PMSFX - STEPS Dirt & Gravel/PM_SDNG_Stereo_Walk_Seamless_Loop_1.wav",
+   "sha256": "dd86a640f1a91a433b1d874f31145466b5c99f4f928c0131a3b816d718fb909c",
+   "pack": "Sonniss GDC 2019 — STEPS Dirt & Gravel",
+   "supplier": "PMSFX",
+   "license": "sonniss-gdc-2.0"
+  },
+  "dry_ice_shriek_3": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 1of8/Alexander Kopeikin - The Dry Ice Library/dry ice shriek - very hot knife pressed against block of dry ice 003.wav",
+   "sha256": "3a83d3fd8aafeccfbe7fae01b703577eee97fb506eb0f15b3f33ddda06da5bba",
+   "pack": "Sonniss GDC 2018 — The Dry Ice Library",
+   "supplier": "Alexander Kopeikin",
+   "license": "sonniss-gdc-2.0"
+  },
   "explosion_deep_02": {
    "kind": "lib",
    "file": "sonniss/2020/Stefano Cremona - Explosions/DeepExplosion02.wav",
@@ -87,6 +159,30 @@
    "sha256": "aa26f39d6e9fe6e6942e15fd4260f8da62f201451784995b718b9abfd2af712c",
    "pack": "Sonniss GDC 2017 — Explosion Sound Pack",
    "supplier": "Gamemaster Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "fire_ignition_03": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 3of8/Gregor Quendel – Designed Fire/Designed Fire - Impacts - Large, ignition 03.wav",
+   "sha256": "1d0632a644f86c655d1203a5c45478637e1b0b8732ba7e312c1eab585c8a341a",
+   "pack": "Sonniss GDC 2018 — Designed Fire",
+   "supplier": "Gregor Quendel",
+   "license": "sonniss-gdc-2.0"
+  },
+  "g36c_mag_foley": {
+   "kind": "lib",
+   "file": "sonniss/2016/Pole Position Production - Various Gun Foley & Handling/Heckler_&_Koch_G36C_5.56mm_foley_close_up_MKH60_mag_in_&_out.wav",
+   "sha256": "ec95eba324d5194673005f5a02888537b457ede5a20b3894c2421daa24689191",
+   "pack": "Sonniss GDC 2016 — Various Gun Foley & Handling",
+   "supplier": "Pole Position Production",
+   "license": "sonniss-gdc-2.0"
+  },
+  "gas_burner_4": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 3of9/Digital Rain Lab - Driving Forces/Gas Burner Stereo 4.wav",
+   "sha256": "b10aafb69895e7ba172f93a16f1a25c0cc1d7943c76b69a9c1095af76d85faa1",
+   "pack": "Sonniss GDC 2017 — Driving Forces",
+   "supplier": "Digital Rain Lab",
    "license": "sonniss-gdc-2.0"
   },
   "grenade_launcher_smoke": {
@@ -137,6 +233,14 @@
    "supplier": "Olivier Girardot",
    "license": "sonniss-gdc-2.0"
   },
+  "knife_swing_04": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 3of8/Gamemaster Audio - Punch and Combat Sounds/whoosh_weapon_knife_swing_04.wav",
+   "sha256": "9a0ae0f81ed8d36f7131bfc24e224f9b8d65648c0b94261dbd00dc132d2a229a",
+   "pack": "Sonniss GDC 2018 — Punch and Combat Sounds",
+   "supplier": "Gamemaster Audio",
+   "license": "sonniss-gdc-2.0"
+  },
   "monster_growls_4": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Olivier Girardot - Monsters/Monster Growls 4.wav",
@@ -145,12 +249,36 @@
    "supplier": "Olivier Girardot",
    "license": "sonniss-gdc-2.0"
   },
+  "puddle_splashes": {
+   "kind": "lib",
+   "file": "sonniss/2020/Wav Junction Sound Effects - Footsteps/0014_Footsteps_water_puddle_single_splashes.wav",
+   "sha256": "bb3198e015e83a48a158f4bb21c97c572aee2f1eed0647eb6db7c58db87e9ecf",
+   "pack": "Sonniss GDC 2020 — Footsteps",
+   "supplier": "Wav Junction Sound Effects",
+   "license": "sonniss-gdc-2.0"
+  },
   "saiga12_close_1m": {
    "kind": "lib",
    "file": "sonniss/2016/Pole Position Production - Saiga-12 12g solid slug/SAIGA-12_12g_solid_slug_1m_left_off_axis_MKH416_clean_Single_shots_x_5.wav",
    "sha256": "2796c03f4516eb6ba5fd3a188e1e26375508815143958bf0eaf34419673d2d7d",
    "pack": "Sonniss GDC 2016 — Saiga-12 12g solid slug",
    "supplier": "Pole Position Production",
+   "license": "sonniss-gdc-2.0"
+  },
+  "saiga12_cocking": {
+   "kind": "lib",
+   "file": "sonniss/2016/Pole Position Production - Various Gun Foley & Handling/SAIGA-12_12g_solid_slug_foley_close_up_RSM191_R_cocking.wav",
+   "sha256": "3c7a37f76b156688c75a20ecf10e6c24aae835baa5724ee1ae6121ff3f5e9fb4",
+   "pack": "Sonniss GDC 2016 — Various Gun Foley & Handling",
+   "supplier": "Pole Position Production",
+   "license": "sonniss-gdc-2.0"
+  },
+  "screeching_monster_2": {
+   "kind": "lib",
+   "file": "sonniss/2020/Olivier Girardot - Monster Sounds & Atmospheres/Screeching Monster 2-1.wav",
+   "sha256": "4bfadb3930e20de3dd96fc5e0d9d0137a0b47fef39838617fe7fe59996b60816",
+   "pack": "Sonniss GDC 2020 — Monster Sounds & Atmospheres",
+   "supplier": "Olivier Girardot",
    "license": "sonniss-gdc-2.0"
   },
   "shell_bounce_wood_05": {
@@ -167,6 +295,14 @@
    "sha256": "e2c0e5210c59e8b4b871bf99a43dcf4c4c52e27c2efa00288ac95f4779ee1e38",
    "pack": "Sonniss GDC 2016 — Bullet SFX",
    "supplier": "Stuart Duffield",
+   "license": "sonniss-gdc-2.0"
+  },
+  "shell_load_eject": {
+   "kind": "lib",
+   "file": "sonniss/2016/TS Sound - 12 Gauge Shotgun/Shell Load_Round Eject.wav",
+   "sha256": "08060b75babefa9e12518c5591bbbb71eaf0acafc1f95fd162252fa0fa4c5f80",
+   "pack": "Sonniss GDC 2016 — 12 Gauge Shotgun",
+   "supplier": "TS Sound",
    "license": "sonniss-gdc-2.0"
   },
   "shotgun_quick_pump": {

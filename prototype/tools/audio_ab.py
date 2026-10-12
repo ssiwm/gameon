@@ -121,7 +121,7 @@ button:hover { border-color:var(--acc); } button.on { background:var(--acc); col
 textarea { width:100%; min-height:130px; font:13px/1.5 ui-monospace, Consolas, monospace; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px; }
 </style></head><body><main>
 <h1>Odsłuch A/B</h1>
-<p class="lead">__PART__Słuchaj na słuchawkach. Wersje są wymieszane i podpisane literami; nazwy odkryjesz dopiero po wyborze. „Seria" gra wszystkie warianty po kolei, tak jak w grze przy ogniu ciągłym albo w marszu.</p>
+<p class="lead">__PART__Słuchaj na słuchawkach. Wersje są wymieszane i podpisane literami; nazwy odkryjesz dopiero po wyborze. „Seria" gra wszystkie warianty po kolei, tak jak w grze przy ogniu ciągłym albo w marszu. Pętle grają w kółko aż do „Zatrzymaj" — słuchaj, czy nie słychać szwu.</p>
 <div class="bar"><label><input type="checkbox" id="reveal"> Pokaż nazwy wersji</label><button id="stop">Zatrzymaj</button></div>
 <div id="fams"></div>
 <div class="card"><div class="head"><h2>Werdykt</h2><button id="copy">Kopiuj</button></div><textarea id="out" readonly></textarea></div>
@@ -130,9 +130,16 @@ textarea { width:100%; min-height:130px; font:13px/1.5 ui-monospace, Consolas, m
 const DATA = __DATA__;
 const LABELS = __LABELS__;
 const playing = new Set();
-function stopAll() { for (const a of playing) { a.pause(); } playing.clear(); for (const t of timers) clearTimeout(t); timers.length = 0; }
+function stopAll() { for (const a of playing) { a.pause ? a.pause() : a.stop(); } playing.clear(); for (const t of timers) clearTimeout(t); timers.length = 0; }
 const timers = [];
-function play(uri) { const a = new Audio(uri); playing.add(a); a.onended = () => playing.delete(a); a.play(); return a; }
+let actx = null;
+// Pętle przez Web Audio: znacznik <audio loop> zostawia przerwę na zawinięciu, a w grze pętla jest bezszwowa.
+async function playLoop(uri) {
+  actx = actx || new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });   // bez przepróbkowania: szew co do próbki
+  const buf = await actx.decodeAudioData(await (await fetch(uri)).arrayBuffer());
+  const src = actx.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(actx.destination); src.start(); playing.add(src);
+}
+function play(uri, loop) { if (loop) { playLoop(uri); return null; } const a = new Audio(uri); playing.add(a); a.onended = () => playing.delete(a); a.play(); return a; }
 function shuffle(n) { const o = [...Array(n).keys()]; for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [o[i], o[j]] = [o[j], o[i]]; } return o; }
 const state = DATA.map(f => ({ order: shuffle(f.versions.length), pick: null, note: "" }));
 const letter = i => String.fromCharCode(65 + i);
@@ -153,7 +160,7 @@ function render() {
       const l = document.createElement("div"); l.className = "v"; l.textContent = row; grid.appendChild(l);
       for (let s = 0; s < nv; s++) {
         const uri = f.versions[st.order[s]].files[row], cell = document.createElement("div"); cell.style.textAlign = "center";
-        if (uri) { const b = document.createElement("button"); b.textContent = "▶"; b.onclick = () => { stopAll(); play(uri); }; cell.appendChild(b); } else { cell.textContent = "—"; }
+        if (uri) { const b = document.createElement("button"); b.textContent = f.loop ? "▶ pętla" : "▶"; b.onclick = () => { stopAll(); play(uri, f.loop); }; cell.appendChild(b); } else { cell.textContent = "—"; }
         grid.appendChild(cell);
       }
     });
@@ -200,7 +207,7 @@ def build(fams, out, max_mb=3.5):
         rels = sorted({r for v in versions.values() for r in v})
         series = next((ms for key, ms in SERIES_MS if key in fam and len(rels) > 1), 0)
         data.append({
-            "name": fam, "dir": os.path.dirname(rels[0]), "series": series,
+            "name": fam, "dir": os.path.dirname(rels[0]), "series": series, "loop": fam.endswith("_loop"),
             "rows": [os.path.splitext(os.path.basename(r))[0] for r in rels],
             "versions": [{"name": n, "files": {os.path.splitext(os.path.basename(r))[0]: _uri(b) for r, b in v.items()}} for n, v in versions.items()],
         })
