@@ -30,7 +30,7 @@ impact_flesh, shell, reload, reload_shell, maczeta, hkm9_flame_loop, foley_gear,
 item_pickup, medkit_pickup, scrap_pickup, tag_pickup;
 stalker_growl, stalker_shriek, stalker_step,
 stalker_whisper_loop (niski oddech),
-amb_far_cry; trzosek_attack, trzosek_death (wilkołak), wolek_attack, wolek_death, slepiec_death, podsluchacz_scream, leech_growl,
+amb_far_cry; quake, collapse, radio_beep (sam szum); trzosek_attack, trzosek_death (wilkołak), wolek_attack, wolek_death, slepiec_death, podsluchacz_scream, leech_growl,
 leech_shriek, zyla_roar; door, glass_break, thunder, amb_creak, amb_gust, amb_thud; step_concrete, step_metal, step_dirt,
 step_water, land_hard (buty), player_hurt, player_down; ui_confirm, mission_start; amb_forest, amb_rain, amb_rain_roof, amb_wind.
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz,
@@ -838,8 +838,41 @@ def enemies() -> None:
     bc.hybrid(_keys("zyla_roar", 2), _zyla_roar_bake, ZYLA_ROAR_NEEDS)
 
 
+# --- Finał misji: wstrząs górotworu, zawał stropu i sygnał radia „cel wykonany” (dawniej: dzwon alarmowy, zatrzymanie
+# taśmy i pisk z fali prostokątnej). Sygnał radia to klik nadawania i sam szum zamykanej blokady — bez tonu.
+QUAKE_NEEDS = ["quake_rumble"]
+COLLAPSE_NEEDS = ["building_collapse", "rockslide_02"]
+RADIO_BEEP_NEEDS = ["walkie_kenwood"]
+RADIO_BEEP_LUFS = -9.4                                               # zmierzona głośność dawnej syntezy (szum jej nie osiąga)
+
+
+def _quake_bake() -> None:
+    x = d.lp(d.filt(bc.src("quake_rumble", 0.2, 3.9), "hp", 28.0, order=2), 3000.0)
+    x = x * d.env_pts(len(x), [(0, 0), (.3, 1), (2.4, .9), (3.9, 0)])
+    finalize("quake", d.limiter(_unit(x), -5.0), lufs=-16.0, fade_out_ms=500)
+
+
+def _collapse_bake() -> None:
+    main = bc.src("building_collapse", 0.0, 3.6)
+    main = _unit(main * d.env_pts(len(main), [(0, 1), (2.3, 1), (3.6, 0)]))
+    rocks = bc.src("rockslide_02", 0.8, 2.8)
+    rocks = _unit(d.lp(rocks, 5000.0) * d.env_pts(len(rocks), [(0, 0), (.3, 1), (1.6, .7), (2.8, 0)]))
+    x = d.mix([(main, 1.0), (rocks, 0.35, .5), (thump(.5, 80, 30, .12, .2), 0.6)], d.sec(3.6))
+    finalize("collapse", d.limiter(_unit(d.filt(x, "hp", 28.0, order=2)), -5.0), lufs=-13.0, fade_out_ms=500)
+
+
+def _radio_beep_bake() -> None:
+    key = _clip("walkie_kenwood", 8.33, 0.1, -2.0, 0.08, tail=.04)
+    tail = _clip("walkie_kenwood", 5.18, 0.42, -2.0, 0.38, tail=.14)
+    x = d.limiter(_unit(d.filt(d.mix([(key, 0.35), (tail, 1.0, .05)], ms(470)), "hp", 150.0, order=2)), -9.0)
+    finalize("radio_beep", d.reverb(x, ir("dead"), wet=.1), lufs=RADIO_BEEP_LUFS)
+
+
 def world() -> None:
     """Wersje z nagrań dla dźwięków świata — wołane na końcu bake_sfx.build_world()."""
+    bc.hybrid(["quake"], _quake_bake, QUAKE_NEEDS)
+    bc.hybrid(["collapse"], _collapse_bake, COLLAPSE_NEEDS)
+    bc.hybrid(["radio_beep"], _radio_beep_bake, RADIO_BEEP_NEEDS)
     bc.hybrid(_keys("door", 2), _door_bake, DOOR_NEEDS)
     bc.hybrid(_keys("glass_break", 2), _glass_bake, GLASS_NEEDS)
     bc.hybrid(_keys("thunder", 3), _thunder_bake, list(THUNDER_SRC))

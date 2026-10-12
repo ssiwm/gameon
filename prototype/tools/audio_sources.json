@@ -145,6 +145,14 @@
    "supplier": "UberDuo",
    "license": "sonniss-gdc-2.0"
   },
+  "building_collapse": {
+   "kind": "lib",
+   "file": "sonniss/2023/BluezoneCorp - Building Collapse/Bluezone_BC0275_building_collapse_debris_falling_rock_rubble_008.wav",
+   "sha256": "e3a14f492863eeb1304cb795de394af496473c1438383cf8165afb974c29b7ee",
+   "pack": "Sonniss GDC 2023 — Building Collapse",
+   "supplier": "BluezoneCorp",
+   "license": "sonniss-gdc-2.0"
+  },
   "bullet_drop_wood_04": {
    "kind": "lib",
    "file": "sonniss/2016/Stuart Duffield - Bullet SFX/Bullet_Drop_Wood_04.wav",
@@ -545,6 +553,14 @@
    "supplier": "Wav Junction Sound Effects",
    "license": "sonniss-gdc-2.0"
   },
+  "quake_rumble": {
+   "kind": "lib",
+   "file": "sonniss/2024/BluezoneCorp - Alien Tripod/Bluezone_BC0292_alien_tripod_debris_rock_collapse_earthquake_rumble_large_005.wav",
+   "sha256": "78a08c9aafd139c50b887e2b81d40006498019b270bf776a28f578625376cc19",
+   "pack": "Sonniss GDC 2024 — Alien Tripod",
+   "supplier": "BluezoneCorp",
+   "license": "sonniss-gdc-2.0"
+  },
   "radio_tuning_static": {
    "kind": "lib",
    "file": "sonniss/2016/MatiasMacSD - NOISE/OldRadioTuningStaticNoise_001.wav",
@@ -575,6 +591,14 @@
    "sha256": "6e0eaa0926db0aff47bd29f5a1028d9fc33b1349bc474bcfe57a1349ebe7e2c7",
    "pack": "Sonniss GDC 2017 — MECHANISM",
    "supplier": "SoundMorph",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rockslide_02": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Soundrangers - Foley Elements Rocks, Dirt And Stone/rockslide_02.wav",
+   "sha256": "31b1560355a80574c437f12a2fdb4a17c5f7c53233a7e2a3c169e9d380b79b78",
+   "pack": "Sonniss GDC 2018 — Foley Elements Rocks, Dirt And Stone",
+   "supplier": "Soundrangers",
    "license": "sonniss-gdc-2.0"
   },
   "saiga12_close_1m": {

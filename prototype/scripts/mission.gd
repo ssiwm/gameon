@@ -545,11 +545,11 @@ func _event(kind: String) -> void:
 			Audio.play("tape_stop", Audio.BUS_UI, -10.0)
 		"rumble":
 			Feel.shake(4.0)
-			Audio.play("alarm_bell", Audio.BUS_UI, -10.0)
+			Audio.play("quake", Audio.BUS_UI, -6.0)
 		"collapse":
 			Feel.shake(7.0)
 			Feel.hitstop(0.08)
-			Audio.play("tape_stop", Audio.BUS_UI, -3.0)
+			Audio.play("collapse", Audio.BUS_UI, -3.0)
 		"shift_over":
 			Audio.play("tape_stop", Audio.BUS_UI, -4.0)
 		"generator":

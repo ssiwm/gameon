@@ -53,7 +53,7 @@ bez crossfade'u i bez dziury w energii.
 > Poprzedni komentarz „stdlib, brak numpy w środowisku" przestał być prawdą; `matplotlib` jest tylko do podglądu.
 > Gra (Godot) nie potrzebuje Pythona — pliki WAV są w repozytorium.
 
-### 3.2 Assety (199, `tools/bake_*.py`)
+### 3.2 Assety (201, `tools/bake_*.py`)
 * **Broń** — strzał warstwowy: crack (1,5 ms) / blast (swept LP) / body (sinus z opadającą wysokością) /
   punch / mechanika modalna / krótki ogon źródła. Własna **strzelba** (5 cracków śrutu + sub), przeładowanie
   w 5 zdarzeniach, **łuska** `shell_1..3` (mosiądz z odbiciami; gra ją `Vfx.casing()` przy lądowaniu fizycznej łuski), **foley ekwipunku**, **szum w uszach**.
@@ -173,7 +173,7 @@ python3 tools/audio_ab.py --ref origin/main                 # to samo dla asset�
 ```
 
 Katalog nagrań: `DA87_AUDIO_LIB`, `art_src/audio_lib/` albo `audio_lib/` obok repo (wspólny dla kilku kopii roboczych). Bez nagrań
-bake piecze samą syntezę. Z nagrań są 54 rodziny, 121 plików — plus 10 dalekich wersji wyprowadzonych z nich w 3.5 (każda po
+bake piecze samą syntezę. Z nagrań jest 57 rodzin, 124 pliki — plus 10 dalekich wersji wyprowadzonych z nich w 3.5 (każda po
 odsłuchu A/B; lista, werdykty i odrzucone — `AUDIO_PLAN.md` §7): większość broni (strzały M-83 i strzelb, granatnik, kusza, wybuchy,
 trafienia, łuski, przeładowania, maczeta, pętla miotacza), cały Stalker poza „pojawieniem się”, głosy wrogów poza zapowiedzią ciosu Ślepca
 i pomrukiem Żyły, kroki, lądowanie, ból i upadek gracza, drzwi, szkło, grzmoty, emitery ambientu (skrzypienia, podmuchy, odległe

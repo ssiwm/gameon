@@ -419,10 +419,13 @@ def build_world() -> None:
 
     r = Rng(0xD700)
     n = ms(220)
-    b = d.osc("square", 880.0, n) * d.env_adsr(n, .003, .02, .75, .05)
-    b = d.filt(b, "lp", 3200.0)
-    x = d.mix([(b, 1.0), (tick(r, 3000, 1.2, 14, .003), .4)], n)
-    finalize("radio_beep", d.reverb(x, ir("dead"), wet=.1), peak=-1.5)
+    # sygnał radia bez tonu (pisk 880 Hz z fali prostokątnej nie pasował do świata gry): klik nadawania i krótki szum
+    # pasmowy zamykanej blokady szumów
+    n = ms(380)
+    hiss = d.filt(d.filt(d.white(n, r), "bp", 1500.0, 0.7), "hp", 400.0, order=2) * d.env_pts(n, [(0, 0), (.02, 1), (.24, .8), (.38, 0)])
+    x = d.mix([(hiss / (d.peak(hiss) + 1e-9), 1.0), (tick(r, 1300, 1.4, 12, .003), .5), (tick(r, 1000, 1.4, 10, .003), .35, .33)], n)
+    x = d.limiter(x / (d.peak(x) + 1e-9), -9.0)
+    finalize("radio_beep", d.reverb(x, ir("dead"), wet=.1), lufs=-14.3)
 
     # Mina kierunkowa: sygnał 1760 Hz, 0,2 s co 0,5 s — pętla dokładnie 4 impulsów
     asset("mine_beep_loop", "sfx/world/mine_beep_loop", loop=True)
@@ -445,6 +448,37 @@ def build_world() -> None:
     x = (src2 + np.sin(TAU * 110.0 * ph) * .6 + nz) * d.env_pts(n, [(0, 1), (.5, .7), (1.1, 0)]) * speed ** .5
     x = d.saturate(x, 1.5)
     finalize("tape_stop", d.reverb(x, ir("dead"), wet=.1), lufs=-15.0)
+
+    # Wstrząs (finał misji 1.1: „kopalnia się budzi”): narastające dudnienie górotworu, bez dzwonka i bez tonu.
+    r = Rng(0xD810)
+    n = sec(3.6)
+    t = np.arange(n) / SR
+    env = d.env_pts(n, [(0, 0), (.35, 1), (1.6, .8), (3.6, 0)])
+    rum = d.filt(d.sweep(d.colored(n, r, 1.4), "lp", d.env_pts(n, [(0, 180), (.5, 480), (3.6, 140)]), .8), "hp", 60.0, order=2) * env
+    ph = np.cumsum(52.0 + 7.0 * np.sin(TAU * .7 * t)) / SR
+    sub = (np.sin(TAU * ph) + 0.5 * np.sin(TAU * 2.0 * ph)) * env * (0.7 + 0.3 * np.sin(TAU * 9.0 * t))
+    grit = np.zeros(n)
+    for _ in range(26):
+        k = int(r.integers(ms(200), n - ms(60)))
+        seg = burst(ms(50), r, r.uniform(900, 2400), 300, .012, color=.5)
+        grit[k:k + len(seg)] += seg * r.uniform(.2, .7) * env[k]
+    x = d.mix([(rum / (d.peak(rum) + 1e-9), 1.0), (sub, .35), (grit, .4)], n)
+    finalize("quake", d.reverb(d.saturate(x, 1.6), ir("cave"), wet=.25), lufs=-16.0, fade_out_ms=500)
+
+    # Zawał: łoskot walącego się stropu — uderzenie, lawina głazów (coraz rzadsze, coraz niższe), opadający pył.
+    r = Rng(0xD820)
+    n = sec(3.4)
+    x = np.zeros(n)
+    tt = 0.0
+    while tt < 2.6:
+        k = sec(tt)
+        w = np.exp(-tt / 1.1)
+        seg = d.mix([(thump(.16, r.uniform(70, 150), 38, .04, .07), 1.0), (burst(ms(120), r, r.uniform(1200, 3200), 250, .03, color=.6), .7)])
+        x[k:k + len(seg)] += seg[:n - k] * (0.35 + 0.65 * w) * r.uniform(.6, 1.0)
+        tt += r.uniform(.03, .11) / (0.25 + 0.75 * w)
+    dust = d.sweep(d.colored(n, r, 1.0), "lp", d.env_pts(n, [(0, 5000), (1.0, 1800), (3.4, 400)]), .8) * d.env_pts(n, [(0, 0), (.08, 1), (1.2, .5), (3.4, 0)])
+    x = d.mix([(x / (d.peak(x) + 1e-9), 1.0), (dust / (d.peak(dust) + 1e-9), .35), (thump(.5, 80, 30, .12, .2), 1.0)], n)
+    finalize("collapse", d.reverb(d.saturate(x, 2.0), ir("cave"), wet=.25), lufs=-13.0, fade_out_ms=500)
 
     # Drgania ziemi / odległy huk (ambient emiter)
     for i in range(2):

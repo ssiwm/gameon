@@ -70,7 +70,7 @@ CAPTIONS = {
     "widmo1_shot": ["[Railgun blast]", 3], "sokol6_shot": ["[Rocket launch]", 2], "ciegno6_shot": ["[Crossbow]", 0],
     "lr7_beam": ["[Beam hum]", 1], "hkm9_flame": ["[Flamethrower]", 2], "kilof_swing": ["[Swing]", 0],
     "maczeta_": ["[Swing]", 0], "reload_": ["[Reloading]", 0], "dry_fire": ["[Click]", 1], "p64_shot": ["[Pistol shot]", 1], "spread12_shot": ["[Shotgun blast]", 2],
-    "thunder": ["[Thunder]", 1], "explosion": ["[Explosion]", 3], "stalker_growl": ["[Low growl]", 3], "stalker_shriek": ["[Shriek]", 3],
+    "thunder": ["[Thunder]", 1], "quake": ["[Tremor]", 3], "collapse": ["[Cave-in]", 3], "explosion": ["[Explosion]", 3], "stalker_growl": ["[Low growl]", 3], "stalker_shriek": ["[Shriek]", 3],
     "stalker_step": ["[Heavy footsteps]", 3], "stalker_whisper": ["[Low breathing]", 2],
     "stalker_appear": ["[Something appears]", 3], "amb_far_cry": ["[Distant cry]", 2],
     "trzosek_attack": ["[Snarl]", 2], "trzosek_death": ["[Dying yelp]", 1], "wolek_attack": ["[Bellow]", 2],
@@ -81,7 +81,7 @@ CAPTIONS = {
     "step_": ["[Footsteps]", 0], "player_hurt": ["[Cry of pain]", 2], "player_down": ["[Teammate down]", 3],
     "revive": ["[Revived]", 2], "glass_break": ["[Glass breaks]", 2], "alarm_bell": ["[Alarm bell]", 2],
     "door_": ["[Door]", 1], "impact_flesh": ["[Impact]", 0], "ricochet": ["[Ricochet]", 1],
-    "radio_beep": ["[Radio beep]", 1], "shell_": ["[Casing drops]", 0], "ear_ring": ["[Ringing]", 1],
+    "radio_beep": ["[Radio static]", 1], "shell_": ["[Casing drops]", 0], "ear_ring": ["[Ringing]", 1],
 }
 
 
