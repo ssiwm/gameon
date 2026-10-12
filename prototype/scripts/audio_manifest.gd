@@ -255,7 +255,7 @@ const CAPTIONS := {
 	"stalker_growl": ["[Low growl]", 3],
 	"stalker_shriek": ["[Shriek]", 3],
 	"stalker_step": ["[Heavy footsteps]", 3],
-	"stalker_whisper": ["[Whispering]", 2],
+	"stalker_whisper": ["[Low breathing]", 2],
 	"stalker_appear": ["[Something appears]", 3],
 	"amb_far_cry": ["[Distant cry]", 2],
 	"trzosek_attack": ["[Snarl]", 2],

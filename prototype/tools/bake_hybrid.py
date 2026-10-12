@@ -27,11 +27,12 @@ Zasady składania (wnioski z pomiaru źródeł; brzmienie ocenia się uchem na s
 Werdykty odsłuchów A/B (2026-10-12), szczegóły w AUDIO_PLAN.md §7.
 Z nagrań: m83_shot, spread12_shot, srut8_shot, srut8_pump, gniew4_shot, ciegno6_shot (wersja 2), explosion, impact_hard,
 impact_flesh, shell, reload, reload_shell, maczeta, hkm9_flame_loop; stalker_growl, stalker_shriek, stalker_step,
+stalker_whisper_loop (niski oddech),
 amb_far_cry; trzosek_attack, trzosek_death (wilkołak), wolek_attack, wolek_death, slepiec_death, podsluchacz_scream, leech_growl,
 leech_shriek, zyla_roar; door, glass_break, thunder, amb_creak, amb_gust, amb_thud; step_concrete, step_metal, step_dirt,
 step_water, land_hard (buty), player_hurt, player_down; amb_forest, amb_rain, amb_rain_roof, amb_wind.
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz, foley_gear,
-dry_fire, hkm9_ignite, kilof_swing, stalker_whisper_loop, slepiec_attack, zyla_growl. Po odsłuchu w grze
+dry_fire, hkm9_ignite, kilof_swing, slepiec_attack, zyla_growl. Po odsłuchu w grze
 wymienione: Trzosek (owadzi terkot był za wysoki → pies z warkotem ogara), lądowanie (upadek ciała → buty na obie stopy).
 """
 
@@ -310,7 +311,7 @@ def weapons() -> None:
 
 # ============================================================ STALKER (bake_sfx.build_stalker)
 # Jeden stwór w całej rodzinie: warkot i krzyk pochodzą od tego samego autora nagrań, a „nieludzki" rys daje warstwa
-# pisku suchego lodu na metalu. Odległy zew to ten sam krzyk słyszany z głębi kompleksu. Szept został syntetyczny.
+# pisku suchego lodu na metalu. Odległy zew to ten sam krzyk słyszany z głębi kompleksu. „Szept” to niski oddech.
 
 # --- Warkot: dwa najniższe warknięcia z nagrania, obniżone o 4 półtony.
 GROWL_NEEDS = ["monster_growls_4"]
@@ -374,8 +375,34 @@ def _stalker_step_bake() -> None:
         finalize("stalker_step_%d" % (i + 1), d.filt(x, "hp", 28.0, order=2), lufs=-19.0)
 
 
+# --- „Szept” (klucz stalker_whisper_loop): powolny, niski oddech — wdech i wydech złej istoty. Nagrany wydech obniżony
+# o oktawę; wdech to ten sam wydech odwrócony; pod spodem cichy, falujący niski ton. Cykl 7 s. Pierwsza wersja z nagrań
+# (ludzki szept) przegrała z syntezą, a jasny syk syntezy okazał się w grze za mało mroczny.
+WHISPER_NEEDS = ["evil_exhale"]
+WHISPER_LUFS = -18.5                                                 # zmierzona głośność pętli syntetycznej
+
+
+def _sub_drone(n: int, hz: float, wobble: int = 1) -> np.ndarray:
+    """Niski ton o całkowitej liczbie okresów w pętli (bez szwu), powoli falujący."""
+    t = np.arange(n) / d.SR
+    T = n / d.SR
+    f = round(hz * T) / T
+    return (np.sin(d.TAU * f * t) + 0.4 * np.sin(d.TAU * 2 * f * t)) * (0.6 + 0.4 * np.sin(d.TAU * wobble * t / T))
+
+
+def _whisper_bake() -> None:
+    ex = d.lp(d.filt(d.repitch(bc.src("evil_exhale", 0.10, 3.2), -12.0), "hp", 50.0, order=2), 1800.0)   # oktawa niżej: ok. 6,4 s
+    n = d.sec(7.0)
+    out_n, in_n = d.sec(4.1), d.sec(2.5)
+    exhale = _unit(ex[:out_n] * d.env_pts(out_n, [(0, 0), (.08, 1), (2.9, 1), (4.1, 0)]))
+    inhale = _unit(ex[:in_n][::-1] * d.env_pts(in_n, [(0, 0), (.9, 1), (2.3, 1), (2.5, 0)]))                # odwrócony wydech = wdech
+    x = d.mix([(inhale, 0.55, 0.1), (exhale, 1.0, 2.75), (_sub_drone(n, 44.0), 0.22)], n)
+    finalize("stalker_whisper_loop", d.saturate(x, 1.4), loop=True, lufs=WHISPER_LUFS)
+
+
 def stalker() -> None:
     """Wersje z nagrań dla Stalkera — wołane na końcu bake_sfx.build_stalker()."""
+    bc.hybrid(["stalker_whisper_loop"], _whisper_bake, WHISPER_NEEDS)
     bc.hybrid(_keys("stalker_growl", len(_GROWLS)), _growl_bake, GROWL_NEEDS)
     bc.hybrid(_keys("stalker_shriek", 2), _shriek_bake, SHRIEK_NEEDS)
     bc.hybrid(_keys("amb_far_cry", 2), _far_cry_bake, SHRIEK_NEEDS)

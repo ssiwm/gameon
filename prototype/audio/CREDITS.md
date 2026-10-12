@@ -47,6 +47,7 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | dragon_roar_01 | nagranie | Sonniss GDC 2017 — CREATURES ZONE | MatiasMacSD | sonniss-gdc-2.0 | Creature_Dragon_Roar_01.wav |
 | dry_ice_shriek_3 | nagranie | Sonniss GDC 2018 — The Dry Ice Library | Alexander Kopeikin | sonniss-gdc-2.0 | dry ice shriek - very hot knife pressed against block of dry ice 003.wav |
 | ethereal_pain_4 | nagranie | Sonniss GDC 2026 — Vox Bestiae - Source Elements | SoundBits | sonniss-gdc-2.0 | CREAEthr_Ethereal Entity Grim Pain Long 4_SNDBTS_VB-SE.wav |
+| evil_exhale | nagranie | Sonniss GDC 2018 — Variety 1 Sound Effects | Airborne Sound | sonniss-gdc-2.0 | Breaths,Male,Exhale,Ghost,Evil,Hostile,Snarl,1.wav |
 | explosion_deep_02 | nagranie | Sonniss GDC 2020 — Explosions | Stefano Cremona | sonniss-gdc-2.0 | DeepExplosion02.wav |
 | explosion_large_08 | nagranie | Sonniss GDC 2017 — Explosion Sound Pack | Gamemaster Audio | sonniss-gdc-2.0 | explosion_large_08.wav |
 | fire_ignition_03 | nagranie | Sonniss GDC 2018 — Designed Fire | Gregor Quendel | sonniss-gdc-2.0 | Designed Fire - Impacts - Large, ignition 03.wav |

@@ -59,24 +59,24 @@ def build_stalker() -> None:
         x = d.reverb(x, ir("hall"), wet=0.30, keep_len=True)
         finalize("stalker_growl_%d" % (i + 1), x, lufs=-14.0, fade_out_ms=250)
 
-    # Szept — pętla (okresowa): bezdźwięczny szum o płynnie zmieniających się formantach
-    # („sss-ooo-eee" bez słów) + rytm sylab. Nie jest szumem statycznym: obwiednia ma 7 sylab/pętlę.
+    # „Szept” — pętla (okresowa), mroczna i niska: bezdźwięczny szum o płynnie zmieniających się formantach, o oktawę
+    # niżej niż dawny jasny syk, 4 powolne „sylaby” na pętlę i niski, falujący ton pod spodem (całkowita liczba okresów).
     asset("stalker_whisper_loop", "sfx/stalker/stalker_whisper_loop", loop=True)
-    n = sec(4.2)
-    r = Rng(0xC400)
+    n = sec(6.0)
+    r = Rng(0xC410)
     t = np.arange(n) / SR
     T = n / SR
-    base = d.colored(n, r, 0.4)
-    f1 = 520 + 260 * np.sin(TAU * 2 * t / T) + 90 * np.sin(TAU * 5 * t / T + 1.0)
-    f2 = 1900 + 650 * np.sin(TAU * 3 * t / T + 0.7)
+    base = d.colored(n, r, 1.2)
+    f1 = 260 + 110 * np.sin(TAU * 2 * t / T) + 40 * np.sin(TAU * 5 * t / T + 1.0)
+    f2 = 900 + 260 * np.sin(TAU * 3 * t / T + 0.7)
     tile3 = lambda a: np.tile(a, 3)
-    v1 = d.circ_filter(base, lambda z: d.sweep(z, "bp", tile3(f1), 7.0))
-    v2 = d.circ_filter(base, lambda z: d.sweep(z, "bp", tile3(f2), 9.0))
-    hi = d.circ_filter(base, lambda z: d.hp(z, 3800.0)) * 0.35
-    syl = np.abs(np.sin(np.pi * 7 * t / T)) ** 1.5 * (0.55 + 0.45 * np.sin(TAU * 3 * t / T + 2.1))
-    syl = 0.18 + 0.82 * syl
-    x = (v1 * 1.0 + v2 * 0.7 + hi * 0.5) * syl
-    finalize("stalker_whisper_loop", x, loop=True, lufs=-14.0)
+    v1 = d.circ_filter(base, lambda z: d.sweep(z, "bp", tile3(f1), 6.0))
+    v2 = d.circ_filter(base, lambda z: d.sweep(z, "bp", tile3(f2), 7.0))
+    syl = np.abs(np.sin(np.pi * 4 * t / T)) ** 1.5 * (0.55 + 0.45 * np.sin(TAU * 2 * t / T + 2.1))
+    f_sub = round(46.0 * T) / T
+    drone = (np.sin(TAU * f_sub * t) + 0.4 * np.sin(TAU * 2 * f_sub * t)) * (0.6 + 0.4 * np.sin(TAU * t / T))
+    x = (v1 / d.peak(v1) + 0.6 * v2 / d.peak(v2)) * (0.25 + 0.75 * syl) + drone * 0.3
+    finalize("stalker_whisper_loop", x, loop=True, lufs=-18.5)
 
     # Krzyk — atak: źródło o wysokiej energii, glide w górę, wibrato, formanty krzyku, saturacja,
     # sub-uderzenie i pogłos hali. Nieprzewidywalny: dwa warianty z różnym konturem wysokości.
