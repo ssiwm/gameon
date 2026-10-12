@@ -199,11 +199,13 @@ func _t_bullets() -> void:
 	check("trafienie budzi manekina (hałas po strzale)", NoiseMgr.level > 0.0, "uwaga %.1f" % NoiseMgr.level)
 	free_dummies()
 	await frames(2)
-	var s := await dummy(30.0)
+	# 22 px: cały wachlarz mieści się w sylwetce manekina (z 30 px górne śruciny losowo przechodziły nad nim i wynik 91–112 / 140
+	# leżał na progu — test padał zależnie od rozrzutu)
+	var s := await dummy(22.0)
 	await shoot(Weapons.SPREAD12, 4, 0.5)
 	await wait(0.4)
 	var sg := dealt(s)
-	check("SPREAD-12: 4 strzały z 30 px ≈ 5×7×4", sg >= 0.7 * 140.0 and sg <= 140.1, "%.1f / 140" % sg)
+	check("SPREAD-12: 4 strzały z 22 px = 5×7×4", sg >= 0.9 * 140.0 and sg <= 140.1, "%.1f / 140" % sg)
 	free_dummies()
 	await frames(2)
 
