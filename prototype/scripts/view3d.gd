@@ -26,7 +26,6 @@ const PX := Level3D.PX
 const FOV := 40.0
 const MAX_LIGHTS := 14
 const SHADOW_LIGHTS := 5
-const MIRROR_GROUPS := ["enemies", "boss", "nests", "roamers"]
 const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wrogów
 const LAYER_ACTORS := 2                    ## warstwa wizualna graczy (modele 3D)
 const ACTOR_AMBIENT := 0.09                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
@@ -57,7 +56,6 @@ var _cam_b: Camera3D
 var _spr_bg: Sprite2D
 var _spr_fg: Sprite2D
 var _rigs := {}                          ## Node gracza → {actor, model, gun, root}
-var _mirrors := {}                       ## id źródłowego AnimatedSprite2D → [źródło, AnimatedSprite3D]
 var _enemies := {}                       ## id węzła wroga 2D → [węzeł, Enemy3D] (modele 3D wrogów; null w drugim polu = brak modelu)
 var _estate := {}                        ## id węzła wroga 2D → stan do wykrywania zdarzeń (żyje, błysk trafienia, zapowiedź ataku)
 var _lights := {}                        ## id światła gry (Lights.GameLight) → [światło, Light3D]
@@ -85,6 +83,8 @@ var _lampfx := {}                        ## id lampy → [węzeł 2D, poświata 
 var _bossfx := {}                        ## id Żyły → [węzeł 2D, korzeń 3D efektów]
 var _mine_dust: Array = []               ## pył finału kopalni: [drobny pył, strużki] (CPUParticles3D)
 var _mine_dust_key := Vector2i(-999, -999)   ## kafel kamery, dla którego wyznaczono punkty stropu
+var _rain_open := 0.0                    ## 0..1: gracz jest nad poziomem podziemi (deszcz widać)
+var _roof_key := "?"                     ## mapa, dla której policzono wysokości dachów
 var _rain_splash: CPUParticles3D         ## plusk kropel na gruncie
 var _blood: Array = []                   ## kałuże krwi: [MeshInstance3D, promień docelowy, promień bieżący, wiek]
 var _blood_shader: Shader
@@ -236,9 +236,6 @@ func release() -> void:
 	for p in _rigs.keys():
 		_release_rig(p)
 	_rigs.clear()
-	for id in _mirrors.keys():
-		_unmirror(id)
-	_mirrors.clear()
 	for id in _enemies.keys():
 		var pr: Array = _enemies[id]
 		if is_instance_valid(pr[0]):
@@ -273,7 +270,6 @@ func _process(delta: float) -> void:
 		_sync_geometry()
 	_sync_rigs()
 	_sync_enemies(delta)
-	_sync_sprites()
 	_sync_projectiles()
 	_sync_props()
 	_sync_items()
@@ -432,8 +428,7 @@ func _sync_rigs() -> void:
 		alive[p] = true
 		var c3 = p.get("c3d")
 		if c3 == null or not is_instance_valid(c3) or not c3.ready_ok:
-			_mirror_node(p, 0.1)                     # klasyczne sprite'y gracza (bez modelu 3D) jako billboardy
-			continue
+			continue                                 # model jeszcze niegotowy
 		if not _rigs.has(p):
 			_make_rig(p, c3)
 		var rig: Dictionary = _rigs[p]
@@ -526,36 +521,6 @@ func _release_rig(p) -> void:
 
 # ---------------------------------------------------------------- billboardy (wrogowie i reszta animowanych sprite'ów)
 
-func _sync_sprites() -> void:
-	for g in MIRROR_GROUPS:
-		for n in get_tree().get_nodes_in_group(g):
-			if n is Node2D and not n.is_queued_for_deletion() and not (_enemies.has(n.get_instance_id()) and _enemies[n.get_instance_id()][1] != null):
-				_mirror_node(n, 0.25)
-	for id in _mirrors.keys():
-		var pair: Array = _mirrors[id]
-		var src_v = pair[0]
-		var dst: AnimatedSprite3D = pair[1]
-		if not is_instance_valid(src_v) or (src_v as Node).is_queued_for_deletion():
-			if is_instance_valid(dst):
-				dst.queue_free()
-			_mirrors.erase(id)
-			continue
-		var src: AnimatedSprite2D = src_v
-		var show: bool = src.is_visible_in_tree()
-		dst.visible = show
-		if not show:
-			continue
-		if dst.animation != src.animation and src.sprite_frames != null and src.sprite_frames.has_animation(src.animation):
-			dst.animation = src.animation
-		dst.frame = src.frame
-		dst.flip_h = src.flip_h
-		dst.flip_v = src.flip_v
-		dst.offset = Vector2(src.offset.x, -src.offset.y)
-		dst.modulate = src.modulate
-		var z: float = float(src.get_meta("v3d_z", 0.25))
-		dst.position = Level3D.px_to_m(src.global_position) + Vector3(0.0, 0.0, z)
-		dst.rotation = Vector3(0.0, 0.0, -src.global_rotation)
-
 ## Rodzaj wroga, jeśli ma model 3D (`enemy3d.gd`), inaczej "".
 func _enemy_kind(n: Node) -> String:
 	var k = n.get("kind")
@@ -582,7 +547,7 @@ func _sync_enemies(delta: float) -> void:
 			var e := Enemy3D.new()
 			if not e.setup(k, k == "stalker"):
 				e.free()
-				_enemies[id] = [n, null]                  # bez modelu: zostają billboardy
+				_enemies[id] = [n, null]                  # bez modelu nic nie widać (wszystkie rodzaje mają modele)
 				continue
 			for c in n.get_children():
 				if c is AnimatedSprite2D:
@@ -733,79 +698,6 @@ func _splash_update(host: Node3D, feet_px: Vector2, speed_px: float, layer: int)
 func _set_layer(root: Node, layer: int) -> void:
 	for mi in root.find_children("*", "VisualInstance3D", true, false):
 		(mi as VisualInstance3D).layers = layer
-
-## Tworzy (raz) proxy 3D dla każdego AnimatedSprite2D będącego dzieckiem węzła; oryginał robi się przezroczysty (`modulate` dalej czytamy z niego).
-func _mirror_node(n: Node, z: float) -> void:
-	var idx := 0
-	for c in n.get_children():
-		if not (c is AnimatedSprite2D):
-			continue
-		var s := c as AnimatedSprite2D
-		var id := s.get_instance_id()
-		idx += 1
-		if _mirrors.has(id):
-			continue
-		if s.sprite_frames == null:
-			continue
-		if s.material != null and s.name == "Silhouette":
-			s.self_modulate = Color(1, 1, 1, 0)           # słaba sylwetka addytywna nie ma odpowiednika w Sprite3D
-			continue
-		var d := AnimatedSprite3D.new()
-		d.sprite_frames = _frames3d(s.sprite_frames)
-		d.pixel_size = PX * absf(s.global_scale.x)
-		d.centered = s.centered
-		d.double_sided = true
-		d.transparent = true
-		d.shaded = s.material == null                      # materiał unshaded (warstwa świecąca) zostaje niezależny od świateł
-		d.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS if s.texture_filter != CanvasItem.TEXTURE_FILTER_NEAREST else BaseMaterial3D.TEXTURE_FILTER_NEAREST
-		d.render_priority = idx
-		d.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
-		d.layers = LAYER_WORLD
-		d.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF      # billboard nie rzuca prostokątnego cienia
-		s.set_meta("v3d_z", z + 0.01 * float(idx))
-		s.self_modulate = Color(1, 1, 1, 0)
-		_world.add_child(d)
-		_mirrors[id] = [s, d]
-
-## Arkusze HD są w 2D `CanvasTexture` (albedo + mapa normalnych dla świateł 2D), a materiały 3D traktują je jak białą teksturę — dla 3D bierzemy
-## sam albedo (`diffuse_texture`) i budujemy równoległe SpriteFrames (z cache).
-func _frames3d(sf: SpriteFrames) -> SpriteFrames:
-	var key := sf.get_instance_id()
-	if _frames_cache.has(key):
-		return _frames_cache[key]
-	var out := SpriteFrames.new()
-	for a in out.get_animation_names():
-		out.remove_animation(a)
-	for an in sf.get_animation_names():
-		out.add_animation(an)
-		out.set_animation_loop(an, sf.get_animation_loop(an))
-		out.set_animation_speed(an, sf.get_animation_speed(an))
-		for i in sf.get_frame_count(an):
-			out.add_frame(an, _tex3d(sf.get_frame_texture(an, i)), sf.get_frame_duration(an, i))
-	_frames_cache[key] = out
-	return out
-
-func _tex3d(t: Texture2D) -> Texture2D:
-	if t is CanvasTexture:
-		return (t as CanvasTexture).diffuse_texture
-	if t is AtlasTexture:
-		var a := t as AtlasTexture
-		if a.atlas is CanvasTexture:
-			var n := AtlasTexture.new()
-			n.atlas = (a.atlas as CanvasTexture).diffuse_texture
-			n.region = a.region
-			n.margin = a.margin
-			n.filter_clip = a.filter_clip
-			return n
-	return t
-
-func _unmirror(id: int) -> void:
-	var pair: Array = _mirrors[id]
-	var src = pair[0]
-	if is_instance_valid(src):
-		src.self_modulate = Color.WHITE
-	if is_instance_valid(pair[1]):
-		(pair[1] as Node).queue_free()
 
 # ---------------------------------------------------------------- pociski i cząsteczki (efekty w 3D)
 
@@ -2043,9 +1935,9 @@ func mirror_gib(body: RigidBody2D, kind: int, sz: float) -> void:
 				gm.metallic = 0.0
 				gm.metallic_texture = null
 				gm.roughness_texture = null
-				gm.roughness = 0.42                               # mokre, ale nie lustrzane
-				gm.metallic_specular = 0.35
-				gm.normal_scale = 0.45
+				gm.roughness = 0.82                               # matowe: w snopie latarki (bardzo jasny reflektor) gładsza powierzchnia skrzyła się jak folia
+				gm.metallic_specular = 0.12
+				gm.normal_scale = 0.3
 				gm.albedo_color = Color(0.62, 0.55, 0.55)
 	var pivot := Node3D.new()
 	var mi := MeshInstance3D.new()
@@ -2942,6 +2834,57 @@ func _sync_mine_dust() -> void:
 
 # ---------------------------------------------------------------- pogoda
 
+## Deszcz i plusk przycinane do dachów: każda kolumna mapy ma wysokość pierwszej litej bryły od góry (`roof`, tekstura 1×kolumny, metry).
+## Kropla poniżej tej wysokości jest odrzucana — pod stropem, w budynku i w jaskini nie pada, a na otwartym terenie krople kończą się na gruncie.
+## Za bryłą poziomu (las w głębi, `z_back`) dachów nie ma: tam krople lecą do `floor_y`. //BILLBOARD → wariant dla plusku (środek cząsteczki).
+const RAIN_SHADER := "shader_type spatial;
+render_mode unshaded, cull_disabled, blend_mix, depth_draw_never;
+uniform sampler2D roof : filter_nearest, repeat_disable;
+uniform float cols = 1.0;
+uniform float tile = 1.0;
+uniform float z_back = -2.7;
+uniform float floor_y = -1000.0;
+uniform float splash_band = 0.0;
+varying vec3 wp;
+void vertex() {
+	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	//BILLBOARD
+}
+void fragment() {
+	float c = wp.x / tile;
+	float lim = floor_y;
+	if (wp.z > z_back && c >= 0.0 && c < cols) {
+		lim = texture(roof, vec2((floor(c) + 0.5) / cols, 0.5)).r;
+		if (splash_band > 0.0 && wp.y > lim + splash_band) {
+			discard;
+		}
+	}
+	if (wp.y < lim) {
+		discard;
+	}
+	ALBEDO = COLOR.rgb;
+	ALPHA = COLOR.a;
+}
+"
+const RAIN_BILLBOARD := "wp = MODEL_MATRIX[3].xyz;
+	mat4 bw = mat4(normalize(INV_VIEW_MATRIX[0]), normalize(INV_VIEW_MATRIX[1]), normalize(INV_VIEW_MATRIX[2]), MODEL_MATRIX[3]);
+	MODELVIEW_MATRIX = VIEW_MATRIX * bw * mat4(vec4(length(MODEL_MATRIX[0].xyz), 0.0, 0.0, 0.0), vec4(0.0, length(MODEL_MATRIX[1].xyz), 0.0, 0.0), vec4(0.0, 0.0, length(MODEL_MATRIX[2].xyz), 0.0), vec4(0.0, 0.0, 0.0, 1.0));"
+
+## Wysokość dachu / gruntu dla każdej kolumny mapy [m] jako tekstura dla `RAIN_SHADER`.
+func _roof_texture() -> ImageTexture:
+	var cols := 1
+	for r in _rows:
+		cols = maxi(cols, (r as String).length())
+	var img := Image.create(cols, 1, false, Image.FORMAT_RF)
+	for c in cols:
+		var y := -10000.0
+		for r in _rows.size():
+			if Level3D.is_solid_ch(Level3D._ch(_rows, c, r)):
+				y = -float(r) * Level3D.T
+				break
+		img.set_pixel(c, 0, Color(y, 0.0, 0.0))
+	return ImageTexture.create_from_image(img)
+
 const RAIN_3D := {"rain": [12.0, 700, 10.5], "storm": [26.0, 1500, 13.0]}      # kąt od pionu [°], liczba kropel, prędkość [m/s]
 const HAZE_K := {"clear": 0.12, "rain": 0.8, "storm": 0.8, "fog": 1.0}          # zamglenie powietrza wg pogody (mnożnik gęstości bazowej)
 const GROUND_FOG_K := {"clear": 0.0, "rain": 0.5, "storm": 0.4, "fog": 1.6}    # wstęgi mgły przy ziemi wg pogody
@@ -2966,11 +2909,10 @@ func _sync_weather(_delta: float) -> void:
 		_rain.emitting = false
 		var q := QuadMesh.new()
 		q.size = Vector2(0.014, 0.55)
-		var m := StandardMaterial3D.new()
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		m.cull_mode = BaseMaterial3D.CULL_DISABLED
-		m.vertex_color_use_as_albedo = true
+		var rsh := Shader.new()
+		rsh.code = RAIN_SHADER
+		var m := ShaderMaterial.new()
+		m.shader = rsh
 		q.material = m
 		_rain.mesh = q
 		_rain.particle_flag_align_y = true                      # smuga wzdłuż toru lotu
@@ -2988,8 +2930,11 @@ func _sync_weather(_delta: float) -> void:
 		_rain_splash.lifetime = 0.28
 		var sq := QuadMesh.new()
 		sq.size = Vector2(0.035, 0.035)
-		var smt := m.duplicate() as StandardMaterial3D
-		smt.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		var ssh := Shader.new()
+		ssh.code = RAIN_SHADER.replace("//BILLBOARD", RAIN_BILLBOARD)
+		var smt := ShaderMaterial.new()
+		smt.shader = ssh
+		smt.set_shader_parameter("splash_band", 0.5)          # plusk tylko tuż nad gruntem swojej kolumny
 		sq.material = smt
 		_rain_splash.mesh = sq
 		_rain_splash.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
@@ -3004,7 +2949,21 @@ func _sync_weather(_delta: float) -> void:
 	var flash := float(wx.call("_flash", mode)) * k if id == "storm" else 0.0
 	# deszcz
 	var raining := RAIN_3D.has(id)
-	var strength := k * sky if raining else 0.0
+	# obraz deszczu nie zależy już od tego, czy sam gracz stoi pod dachem (to steruje tylko dźwiękiem): pada wszędzie pod gołym niebem,
+	# a dachy przycina shader; pod ziemią (poniżej poziomu podziemi) emitery stoją
+	var lp0 = wx.call("_local_player")
+	var above: bool = lp0 != null and (lp0 as Node2D).global_position.y < float(_level.get("underground_y"))
+	_rain_open = move_toward(_rain_open, 1.0 if above else 0.0, get_process_delta_time() * 1.5)
+	var strength := k * _rain_open if raining else 0.0
+	if raining and _roof_key != _geo_key and not _rows.is_empty():
+		_roof_key = _geo_key
+		var rt := _roof_texture()
+		for pm in [_rain.mesh.surface_get_material(0), _rain_splash.mesh.surface_get_material(0)]:
+			(pm as ShaderMaterial).set_shader_parameter("roof", rt)
+			(pm as ShaderMaterial).set_shader_parameter("cols", float(rt.get_width()))
+			(pm as ShaderMaterial).set_shader_parameter("tile", Level3D.T)
+			(pm as ShaderMaterial).set_shader_parameter("z_back", -(Level3D.DEPTH_BACK + 0.3))
+			(pm as ShaderMaterial).set_shader_parameter("floor_y", -float(_level.get("underground_y")) * PX)
 	_rain.emitting = strength > 0.02
 	_rain_splash.emitting = strength > 0.02
 	if raining:
@@ -3028,9 +2987,6 @@ func _sync_weather(_delta: float) -> void:
 		_rain.color = Color(0.55, 0.62, 0.74, (0.16 + 0.5 * flash) * clampf(strength, 0.0, 1.0))
 		var lp = wx.call("_local_player")
 		if lp != null:
-			# krople kończą lot na wysokości gruntu pod graczem (wnętrza brył nie mają geometrii, więc leciałyby „pod ziemią”)
-			var drop := _rain.position.y - (Level3D.px_to_m((lp as Node2D).global_position).y - 0.3)
-			_rain.lifetime = clampf(drop / (speed * 0.9 * cos(a)), 0.4, 6.0)
 			_rain_splash.position = Level3D.px_to_m((lp as Node2D).global_position) + Vector3(0.0, 0.03, -1.0)
 			_rain_splash.emission_box_extents = Vector3(half_w, 0.01, 1.8)
 			_rain_splash.color = Color(0.6, 0.68, 0.8, 0.3 * clampf(strength, 0.0, 1.0))

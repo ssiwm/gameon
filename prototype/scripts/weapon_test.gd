@@ -75,10 +75,15 @@ func _setup(m: Node2D) -> void:
 func dummy(x_off: float, hp := 100000.0, kind := "trzosek", y_off := 0.0) -> Node:
 	_dummy_serial += 1
 	var n := "TDummy%d" % _dummy_serial
-	level._add_enemy(n, kind, player.global_position + Vector2(x_off, y_off))
+	var at: Vector2 = player.global_position + Vector2(x_off, y_off)
+	level._add_enemy(n, kind, at)
 	var e: Node = level.get_node(n)
 	await frames(2)
 	e.set_physics_process(false)
+	# przez te dwie klatki żywy stwór zdążył ruszyć (krok w bok, a skaczący — odbić się od podłogi); zamrożony w powietrzu wychodził z linii
+	# promienia i test przebicia LR-7 losowo liczył nie te cele. Manekin wraca dokładnie na swoje miejsce.
+	e.global_position = at
+	e.set("_last_x", at.x)                 # zwrot stwora liczy się z przesunięcia — sam powrót na miejsce nie może go odwrócić
 	e.hp = hp
 	e._max_hp = maxf(hp, 1.0)
 	e.velocity = Vector2.ZERO
@@ -194,11 +199,13 @@ func _t_bullets() -> void:
 	check("trafienie budzi manekina (hałas po strzale)", NoiseMgr.level > 0.0, "uwaga %.1f" % NoiseMgr.level)
 	free_dummies()
 	await frames(2)
-	var s := await dummy(30.0)
+	# 22 px: cały wachlarz mieści się w sylwetce manekina (z 30 px górne śruciny losowo przechodziły nad nim i wynik 91–112 / 140
+	# leżał na progu — test padał zależnie od rozrzutu)
+	var s := await dummy(22.0)
 	await shoot(Weapons.SPREAD12, 4, 0.5)
 	await wait(0.4)
 	var sg := dealt(s)
-	check("SPREAD-12: 4 strzały z 30 px ≈ 5×7×4", sg >= 0.7 * 140.0 and sg <= 140.1, "%.1f / 140" % sg)
+	check("SPREAD-12: 4 strzały z 22 px = 5×7×4", sg >= 0.9 * 140.0 and sg <= 140.1, "%.1f / 140" % sg)
 	free_dummies()
 	await frames(2)
 
