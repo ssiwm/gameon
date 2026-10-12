@@ -742,11 +742,71 @@ def world() -> None:
     bc.hybrid(_keys("amb_thud", 2), _thud_bake, THUD_NEEDS)
 
 
+# ============================================================ SZEPT STALKERA — kandydaci (mroczniej i niżej)
+# Syntetyczny szept jest jasnym sykiem (środek ciężkości widma ok. 6,7 kHz). Trzy propozycje w dół pasma:
+# „oddech” — powolny wdech i wydech złej istoty, „pomruk” — gardłowy warkot falujący jak oddech,
+# „synteza_nisko” — ten sam szept z formantami o oktawę niżej i dronem pod spodem (kandydat na wersję publiczną).
+WHISPER_LUFS = -18.5                                                 # zmierzona głośność obecnej pętli
+
+
+def _sub_drone(n: int, hz: float, wobble: int = 1) -> np.ndarray:
+    """Niski ton o całkowitej liczbie okresów w pętli (bez szwu), powoli falujący."""
+    t = np.arange(n) / d.SR
+    T = n / d.SR
+    f = round(hz * T) / T
+    return (np.sin(d.TAU * f * t) + 0.4 * np.sin(d.TAU * 2 * f * t)) * (0.6 + 0.4 * np.sin(d.TAU * wobble * t / T))
+
+
+WHISPER_BREATH_NEEDS = ["evil_exhale"]
+
+
+def _whisper_breath_bake() -> None:
+    ex = d.lp(d.filt(d.repitch(bc.src("evil_exhale", 0.10, 3.2), -12.0), "hp", 50.0, order=2), 1800.0)   # oktawa niżej: ok. 6,4 s
+    n = d.sec(7.0)
+    out_n, in_n = d.sec(4.1), d.sec(2.5)
+    exhale = _unit(ex[:out_n] * d.env_pts(out_n, [(0, 0), (.08, 1), (2.9, 1), (4.1, 0)]))
+    inhale = _unit(ex[:in_n][::-1] * d.env_pts(in_n, [(0, 0), (.9, 1), (2.3, 1), (2.5, 0)]))                # odwrócony wydech = wdech
+    x = d.mix([(inhale, 0.55, 0.1), (exhale, 1.0, 2.75), (_sub_drone(n, 44.0), 0.22)], n)
+    finalize("stalker_whisper_loop", d.saturate(x, 1.4), loop=True, lufs=WHISPER_LUFS)
+
+
+WHISPER_GROWL_NEEDS = ["hellhound_idle", "evil_exhale"]
+
+
+def _whisper_growl_bake() -> None:
+    n, xf = d.sec(3.2), d.sec(1.0)
+    g = d.repitch(bc.src("hellhound_idle", 1.8, 3.25), -5.0)[:n + xf]        # narastający i opadający warkot, niżej
+    air = d.lp(d.repitch(bc.src("evil_exhale", 0.10, 2.0), -14.0), 1200.0)[:n + xf]
+    low = d.lp(d.repitch(g, -12.0)[:n + xf], 150.0)
+    x = d.mix([(_unit(d.seam_xfade(g, xf)), 1.0), (_unit(d.seam_xfade(d.pad_to(air, n + xf), xf)), 0.3),
+               (_unit(d.seam_xfade(d.pad_to(low, n + xf), xf)), 0.4), (_sub_drone(n, 40.0), 0.15)], n)
+    finalize("stalker_whisper_loop", d.saturate(d.filt(x, "hp", 30.0, order=2), 1.6), loop=True, lufs=WHISPER_LUFS)
+
+
+def _whisper_low_synth_bake() -> None:
+    n = d.sec(6.0)
+    r = Rng(0xC410)
+    t = np.arange(n) / d.SR
+    T = n / d.SR
+    base = d.colored(n, r, 1.2)
+    f1 = 260 + 110 * np.sin(d.TAU * 2 * t / T) + 40 * np.sin(d.TAU * 5 * t / T + 1.0)
+    f2 = 900 + 260 * np.sin(d.TAU * 3 * t / T + 0.7)
+    tile3 = lambda a: np.tile(a, 3)
+    v1 = d.circ_filter(base, lambda z: d.sweep(z, "bp", tile3(f1), 6.0))
+    v2 = d.circ_filter(base, lambda z: d.sweep(z, "bp", tile3(f2), 7.0))
+    syl = np.abs(np.sin(np.pi * 4 * t / T)) ** 1.5 * (0.55 + 0.45 * np.sin(d.TAU * 2 * t / T + 2.1))
+    x = (_unit(v1) + 0.6 * _unit(v2)) * (0.25 + 0.75 * syl) + _sub_drone(n, 46.0) * 0.3
+    finalize("stalker_whisper_loop", x, loop=True, lufs=WHISPER_LUFS)
+
+
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts.
-# Pusto: wszystkie dotychczasowe rodziny mają werdykt.
-CANDIDATES: tuple = ()
+CANDIDATES: tuple = (
+    ("oddech", _whisper_breath_bake, WHISPER_BREATH_NEEDS),
+    ("pomruk", _whisper_growl_bake, WHISPER_GROWL_NEEDS),
+    ("synteza_nisko", _whisper_low_synth_bake, []),
+)
 
 
 def build_alts() -> None:

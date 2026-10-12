@@ -257,6 +257,14 @@
    "supplier": "SoundBits",
    "license": "sonniss-gdc-2.0"
   },
+  "evil_exhale": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 1of8/Airborne Sound - Variety 1 Sound Effects/Breaths,Male,Exhale,Ghost,Evil,Hostile,Snarl,1.wav",
+   "sha256": "6049c0f403ce5b8dd8765323bcbbc0fc64c0e05f92ae13e9ffc66fab7830fa55",
+   "pack": "Sonniss GDC 2018 — Variety 1 Sound Effects",
+   "supplier": "Airborne Sound",
+   "license": "sonniss-gdc-2.0"
+  },
   "explosion_deep_02": {
    "kind": "lib",
    "file": "sonniss/2020/Stefano Cremona - Explosions/DeepExplosion02.wav",
