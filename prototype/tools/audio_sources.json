@@ -105,14 +105,6 @@
    "supplier": "SoundBits",
    "license": "sonniss-gdc-2.0"
   },
-  "bodyfall_concrete": {
-   "kind": "lib",
-   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 5of8/Red Libraries - Bodyfall/RL_bodyfall_Concrete_Generic_Feet_Mid_Mono_Med_Impact_02.wav",
-   "sha256": "ad010fc36d1522daad9e18a99c9dfc5119c0370f3df64dc1d5c5c3e59804b8ce",
-   "pack": "Sonniss GDC 2019 — Bodyfall",
-   "supplier": "Red Libraries",
-   "license": "sonniss-gdc-2.0"
-  },
   "boot_concrete_walk": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Joshua Reinhardt - Ultimate Bare Feet Expansion/BOOT_CONC CLEAN_WALK.R.wav",
@@ -135,14 +127,6 @@
    "sha256": "1a506d63619175b8d8bb137ad37364268d7d3c8b6d5afdb4f09ef34d994d8801",
    "pack": "Sonniss GDC 2019 — Nocked",
    "supplier": "Eiravaein Works",
-   "license": "sonniss-gdc-2.0"
-  },
-  "breath_gasping": {
-   "kind": "lib",
-   "file": "sonniss/2023/Pole Position Production - The Grunts Library/Male 1 - Breathing - Gasping - Ehrlund M1.wav",
-   "sha256": "51fbace3a3d549af8e5a6e7bca7a8e9ff42eff773e1c5e3da2fc3e4444b43cfb",
-   "pack": "Sonniss GDC 2023 — The Grunts Library",
-   "supplier": "Pole Position Production",
    "license": "sonniss-gdc-2.0"
   },
   "bullet_drop_wood_04": {
@@ -409,14 +393,6 @@
    "supplier": "Olivier Girardot",
    "license": "sonniss-gdc-2.0"
   },
-  "insect_attack_02": {
-   "kind": "lib",
-   "file": "sonniss/2020/Phase 4 Libraries - Monster Roars/MR - Insect Creature Attack VO 02.wav",
-   "sha256": "231cfae7f8af1c5f2003474f68a4f98858d4fe180a541a7feed4f694da7a542d",
-   "pack": "Sonniss GDC 2020 — Monster Roars",
-   "supplier": "Phase 4 Libraries",
-   "license": "sonniss-gdc-2.0"
-  },
   "jump_land_two_feet": {
    "kind": "lib",
    "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 8of9/Tovusound - Edward – Foleyart Collection Add-On Extended Footsteps/289_Foley_Footsteps_Rocks_Sneaker_Jump_Land_On_Two_Feet_Close.wav",
@@ -481,44 +457,12 @@
    "supplier": "SoundBits",
    "license": "sonniss-gdc-2.0"
   },
-  "monster11_mouth2": {
-   "kind": "lib",
-   "file": "sonniss/2020/David Dumais Audio - Monster Sound FX Pack 1/Monster11_Mouth2.wav",
-   "sha256": "7265ca9afe267c21358c9471b1a00c3c0b5a9147ecf3cad0fa494b13087edccf",
-   "pack": "Sonniss GDC 2020 — Monster Sound FX Pack 1",
-   "supplier": "David Dumais Audio",
-   "license": "sonniss-gdc-2.0"
-  },
-  "monster4_call2": {
-   "kind": "lib",
-   "file": "sonniss/2020/David Dumais Audio - Monster Sound FX Pack 1/Monster4_Call2.wav",
-   "sha256": "eb4acabe2c919bb9407a828691e3484ea2f869ebf02feb1e62f3c10703f781b9",
-   "pack": "Sonniss GDC 2020 — Monster Sound FX Pack 1",
-   "supplier": "David Dumais Audio",
-   "license": "sonniss-gdc-2.0"
-  },
-  "monster9_death10": {
-   "kind": "lib",
-   "file": "sonniss/2020/David Dumais Audio - Monster Sound FX Pack 1/Monster9_Death10.wav",
-   "sha256": "dc825f4aa24d62cc32475fc36630bc932bec8839ad2286ec199d60098d6ffa8d",
-   "pack": "Sonniss GDC 2020 — Monster Sound FX Pack 1",
-   "supplier": "David Dumais Audio",
-   "license": "sonniss-gdc-2.0"
-  },
   "monster_growls_4": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Olivier Girardot - Monsters/Monster Growls 4.wav",
    "sha256": "94e47f779de1e11ce1252c4aaaf1491de5d927f8ca164d3ffc8741f116d5cff7",
    "pack": "Sonniss GDC 2018 — Monsters",
    "supplier": "Olivier Girardot",
-   "license": "sonniss-gdc-2.0"
-  },
-  "monster_pain_01": {
-   "kind": "lib",
-   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 5of9/MatiasMacSD - CREATURES ZONE/Creature_Monster_Pain_01.wav",
-   "sha256": "9cbcc67e943b55c9a388911594880dc5bb173257350f04e816117cad19ac982f",
-   "pack": "Sonniss GDC 2017 — CREATURES ZONE",
-   "supplier": "MatiasMacSD",
    "license": "sonniss-gdc-2.0"
   },
   "orc_grunt_003": {
@@ -735,14 +679,6 @@
    "sha256": "e5bf5e2989901ab6e54f0ea6f3373ab71d49f840220ef186c536c25fdd53e10f",
    "pack": "Sonniss GDC 2018 — Yeti Monster",
    "supplier": "Articulated Sounds",
-   "license": "sonniss-gdc-2.0"
-  },
-  "zombie_brat_groan_9": {
-   "kind": "lib",
-   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Glitchedtones - Zombie/Zombie Subject C Zombie Brat Groan (9).wav",
-   "sha256": "5f6a513da7a97f5058ac213740ddafa082ab2dcb0d698662bef1783d861521cb",
-   "pack": "Sonniss GDC 2019 — Zombie",
-   "supplier": "Glitchedtones",
    "license": "sonniss-gdc-2.0"
   }
  }

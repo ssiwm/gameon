@@ -261,7 +261,7 @@ const CAPTIONS := {
 	"stalker_appear": ["[Something appears]", 3],
 	"amb_far_cry": ["[Distant cry]", 2],
 	"trzosek_attack": ["[Snarl]", 2],
-	"trzosek_death": ["[Dying squeal]", 1],
+	"trzosek_death": ["[Dying yelp]", 1],
 	"wolek_attack": ["[Bellow]", 2],
 	"wolek_death": ["[Dying groan]", 1],
 	"slepiec_attack": ["[Rapid clicking]", 2],

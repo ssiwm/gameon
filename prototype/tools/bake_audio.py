@@ -73,7 +73,7 @@ CAPTIONS = {
     "thunder": ["[Thunder]", 1], "explosion": ["[Explosion]", 3], "stalker_growl": ["[Low growl]", 3], "stalker_shriek": ["[Shriek]", 3],
     "stalker_step": ["[Heavy footsteps]", 3], "stalker_whisper": ["[Whispering]", 2],
     "stalker_appear": ["[Something appears]", 3], "amb_far_cry": ["[Distant cry]", 2],
-    "trzosek_attack": ["[Snarl]", 2], "trzosek_death": ["[Dying squeal]", 1], "wolek_attack": ["[Bellow]", 2],
+    "trzosek_attack": ["[Snarl]", 2], "trzosek_death": ["[Dying yelp]", 1], "wolek_attack": ["[Bellow]", 2],
     "wolek_death": ["[Dying groan]", 1], "slepiec_attack": ["[Rapid clicking]", 2], "slepiec_death": ["[Dying wheeze]", 1],
     "podsluchacz_scream": ["[Alarm scream]", 3], "leech_growl": ["[Wet growl]", 3], "leech_shriek": ["[Screech]", 3],
     "zyla_growl": ["[Deep throbbing rumble]", 3], "zyla_roar": ["[Roar]", 3],

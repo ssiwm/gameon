@@ -61,7 +61,7 @@ bez crossfade'u i bez dziury w energii.
   krzyk z konturem wysokości, szept z płynnie wędrującymi formantami (pętla okresowa, 7 sylab), odległy zew.
   Głos gracza: wysiłek, ból (2 różne samogłoski/kontury), upadek.
 * **Głosy wrogów** (`sfx/enemies/`, `bake_sfx.build_enemies()`, 23 pliki) — każdy gatunek ma własny gest, żeby dało się go
-  rozpoznać na ślepo i nie pomylić ze Stalkerem: Trzosek — wysoki terkot ze szczękaniem (`trzosek_attack`, `trzosek_death`),
+  rozpoznać na ślepo i nie pomylić ze Stalkerem: Trzosek — niskie, psie warknięcie i skowyt (`trzosek_attack`, `trzosek_death`),
   Wołek — parsknięcie i ryk byka (`wolek_*`), Ślepiec — przyspieszające klikanie i świst oddechu (`slepiec_*`), Podsłuchacz —
   dwugłosowy, drżący wrzask alarmu (`podsluchacz_scream`), Pijawka — bulgot i syk (`leech_growl`, `leech_shriek`), Żyła — tętniący
   pomruk i wielogłosowy ryk (`zyla_growl`, `zyla_roar`). `attack` gra przy zapowiedzi ciosu (zbocze `winding` w `enemy.gd`), `death`
@@ -170,7 +170,7 @@ python3 tools/audio_ab.py --ref origin/main                 # to samo dla asset�
 ```
 
 Katalog nagrań: `DA87_AUDIO_LIB`, `art_src/audio_lib/` albo `audio_lib/` obok repo (wspólny dla kilku kopii roboczych). Bez nagrań
-bake piecze samą syntezę. Z nagrań są 44 rodziny, 109 plików — plus 10 dalekich wersji wyprowadzonych z nich w 3.5 (każda po
+bake piecze samą syntezę. Z nagrań jest 45 rodzin, 111 plików — plus 10 dalekich wersji wyprowadzonych z nich w 3.5 (każda po
 odsłuchu A/B; lista, werdykty i odrzucone — `AUDIO_PLAN.md` §7): większość broni (strzały M-83 i strzelb, granatnik, kusza, wybuchy,
 trafienia, łuski, przeładowania, maczeta, pętla miotacza), Stalker poza szeptem, głosy wrogów poza zapowiedzią ciosu Ślepca
 i pomrukiem Żyły, kroki, lądowanie, ból i upadek gracza, drzwi, szkło, grzmoty, emitery ambientu (skrzypienia, podmuchy, odległe
