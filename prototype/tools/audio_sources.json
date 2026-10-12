@@ -145,6 +145,14 @@
    "supplier": "Gladestock Studios",
    "license": "sonniss-gdc-2.0"
   },
+  "clothing_move_08": {
+   "kind": "lib",
+   "file": "sonniss/2020/Shapeforms - Hit & Punch/CLOTHING_MATERIAL_MOVEMENT_08.wav",
+   "sha256": "5a56869eac0293130f0a5cda1238186195bff57df69790243c8f3491219a1186",
+   "pack": "Sonniss GDC 2020 — Hit & Punch",
+   "supplier": "Shapeforms",
+   "license": "sonniss-gdc-2.0"
+  },
   "creature_step_damp": {
    "kind": "lib",
    "file": "sonniss/2020/Bluezone - Cave Creature Sound Effects/Bluezone_BC0272_creature_footstep_damp_015.wav",
@@ -321,6 +329,14 @@
    "supplier": "Digital Rain Lab",
    "license": "sonniss-gdc-2.0"
   },
+  "gear_running_10": {
+   "kind": "lib",
+   "file": "sonniss/2016/SoundMorph - INTERVENTION/Gear - movements_running_10.wav",
+   "sha256": "70601e0859b4f32dc5e018ba2f71f9ee99373113dcc13635f316fd8959bb7c44",
+   "pack": "Sonniss GDC 2016 — INTERVENTION",
+   "supplier": "SoundMorph",
+   "license": "sonniss-gdc-2.0"
+  },
   "glass_impact_break": {
    "kind": "lib",
    "file": "sonniss/2023/BluezoneCorp - Broken Glass/Bluezone_BC0274_glass_impact_break_002.wav",
@@ -431,6 +447,14 @@
    "sha256": "4bfe1aba3f0332a2fe8c02792d4f0d44d4df7fb10f109dbecd561ba39422def8",
    "pack": "Sonniss GDC 2023 — Monster Sound FX Pack 2",
    "supplier": "David Dumais Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "leather_rustle_03": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 3of9/Double Trouble Audio - Medieval Armor and Impacts/LeatherArmor_Rustle_03.wav",
+   "sha256": "ba8ddcf091d7fdc3aec6e2c68a69a0fdb430bc9c85506ac6461f08bda59c1ce3",
+   "pack": "Sonniss GDC 2017 — Medieval Armor and Impacts",
+   "supplier": "Double Trouble Audio",
    "license": "sonniss-gdc-2.0"
   },
   "male_death_low_09": {

@@ -33,6 +33,7 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | bow_midflight | nagranie | Sonniss GDC 2019 — Nocked | Eiravaein Works | sonniss-gdc-2.0 | Nocked,archery,firing,loose,Vaeyanbow,midflight,wide,mythic,sleek,swirl,rattle,alt14.wav |
 | bullet_drop_wood_04 | nagranie | Sonniss GDC 2016 — Bullet SFX | Stuart Duffield | sonniss-gdc-2.0 | Bullet_Drop_Wood_04.wav |
 | cannonball_impact_005 | nagranie | Sonniss GDC 2023 — Naval Warfare | Gladestock Studios | sonniss-gdc-2.0 | GS cannonball impact 005.wav |
+| clothing_move_08 | nagranie | Sonniss GDC 2020 — Hit & Punch | Shapeforms | sonniss-gdc-2.0 | CLOTHING_MATERIAL_MOVEMENT_08.wav |
 | creature_step_damp | nagranie | Sonniss GDC 2020 — Cave Creature Sound Effects | Bluezone | sonniss-gdc-2.0 | Bluezone_BC0272_creature_footstep_damp_015.wav |
 | creature_step_mud | nagranie | Sonniss GDC 2020 — Mountain Dweller - Orc Sound Effects | Bluezone | sonniss-gdc-2.0 | Bluezone_BC0261_mountain_dweller_creature_orc_footstep_mud_texture_003.wav |
 | creature_step_wood | nagranie | Sonniss GDC 2020 — Forest Creature Sound Effects | Bluezone | sonniss-gdc-2.0 | Bluezone_BC0269_creature_wood_footstep_medium_004.wav |
@@ -55,6 +56,7 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | forest_winter_night | nagranie | Sonniss GDC 2018 — Winter Forest Ambience | Articulated Sounds | sonniss-gdc-2.0 | WINTER Forest night dark moon with distant wolves howls, North Laurentian Woods, Canada_LOOP.LR.wav |
 | g36c_mag_foley | nagranie | Sonniss GDC 2016 — Various Gun Foley & Handling | Pole Position Production | sonniss-gdc-2.0 | Heckler_&_Koch_G36C_5.56mm_foley_close_up_MKH60_mag_in_&_out.wav |
 | gas_burner_4 | nagranie | Sonniss GDC 2017 — Driving Forces | Digital Rain Lab | sonniss-gdc-2.0 | Gas Burner Stereo 4.wav |
+| gear_running_10 | nagranie | Sonniss GDC 2016 — INTERVENTION | SoundMorph | sonniss-gdc-2.0 | Gear - movements_running_10.wav |
 | glass_impact_break | nagranie | Sonniss GDC 2023 — Broken Glass | BluezoneCorp | sonniss-gdc-2.0 | Bluezone_BC0274_glass_impact_break_002.wav |
 | glass_shards_smash | nagranie | Sonniss GDC 2017 — Shards Broken Glass | Chris Skyes | sonniss-gdc-2.0 | Glass,Shards,Smash,Medium Impact,Lots of Large Shards.wav |
 | glass_window_break | nagranie | Sonniss GDC 2017 — Shards Broken Glass | Chris Skyes | sonniss-gdc-2.0 | Window,Small,Break,Medium Impact,Large Amount of Clinking Pieces.wav |
@@ -69,6 +71,7 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | knife_swing_04 | nagranie | Sonniss GDC 2018 — Punch and Combat Sounds | Gamemaster Audio | sonniss-gdc-2.0 | whoosh_weapon_knife_swing_04.wav |
 | large_beast_taunt_03 | nagranie | Sonniss GDC 2018 — Monster Within | SoundMorph | sonniss-gdc-2.0 | Monster Within - Large Beast - Taunt2Stun03.wav |
 | large_monster11_roar03 | nagranie | Sonniss GDC 2023 — Monster Sound FX Pack 2 | David Dumais Audio | sonniss-gdc-2.0 | MonsterPack2_LargeMonster11_Roar03.wav |
+| leather_rustle_03 | nagranie | Sonniss GDC 2017 — Medieval Armor and Impacts | Double Trouble Audio | sonniss-gdc-2.0 | LeatherArmor_Rustle_03.wav |
 | male_death_low_09 | nagranie | Sonniss GDC 2017 — Human Vocalizations | Gamemaster Audio | sonniss-gdc-2.0 | voice_male_b_death_low_09.wav |
 | male_grunt_shout_317 | nagranie | Sonniss GDC 2016 — Screams & Shouts 2 - Humans | SoundBits | sonniss-gdc-2.0 | Male_Grunt-Shout_317.wav |
 | male_shout_pain_132 | nagranie | Sonniss GDC 2016 — Screams & Shouts 2 - Humans | SoundBits | sonniss-gdc-2.0 | Male_Shout-of-Pain_132.wav |

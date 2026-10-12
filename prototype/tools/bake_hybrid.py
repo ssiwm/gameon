@@ -769,11 +769,35 @@ def world() -> None:
     bc.hybrid(_keys("amb_thud", 2), _thud_bake, THUD_NEEDS)
 
 
+# ============================================================ SZELEST EKWIPUNKU PRZY CHODZENIU — kandydaci
+# Syntetyczny `foley_gear` to szum + metaliczne stuknięcia 1,8–5 kHz, grany przy co trzecim kroku — w grze wysoki
+# i sztuczny. Dwie propozycje bez brzęku: „miekko” (skóra i ubranie) i „wojskowo” (oporządzenie w biegu, przyciemnione).
+GEAR_LUFS = -28.8                                                    # zmierzona głośność syntezy (średnia rodziny)
+GEAR_SOFT_NEEDS = ["leather_rustle_03", "clothing_move_08"]
+GEAR_ARMY_NEEDS = ["gear_running_10"]
+
+
+def _gear_soft_bake() -> None:
+    xs = (_clip("leather_rustle_03", 0.12, 0.34, 0.0, 0.30, tail=.12),
+          _clip("clothing_move_08", 0.02, 0.28, -1.0, 0.26, tail=.10),
+          _clip("leather_rustle_03", 0.36, 0.34, 2.0, 0.28, tail=.12, onset=False))
+    for i, x in enumerate(xs):
+        finalize("foley_gear_%d" % (i + 1), d.lp(d.filt(x, "hp", 80.0, order=2), 3000.0), lufs=GEAR_LUFS)
+
+
+def _gear_army_bake() -> None:
+    for i, t0 in enumerate((13.181, 8.980, 4.183)):                  # pojedyncze ruchy oporządzenia w nagraniu biegu
+        x = _clip("gear_running_10", t0 - 0.01, 0.32, -2.0, 0.30, tail=.12)
+        finalize("foley_gear_%d" % (i + 1), d.lp(d.filt(x, "hp", 120.0, order=2), 3500.0), lufs=GEAR_LUFS)
+
+
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts.
-# Pusto: wszystkie dotychczasowe rodziny mają werdykt.
-CANDIDATES: tuple = ()
+CANDIDATES: tuple = (
+    ("miekko", _gear_soft_bake, GEAR_SOFT_NEEDS),
+    ("wojskowo", _gear_army_bake, GEAR_ARMY_NEEDS),
+)
 
 
 def build_alts() -> None:
