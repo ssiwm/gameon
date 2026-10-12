@@ -1,6 +1,6 @@
 # Plan: refaktor dźwięku — źródła hybrydowe i propagacja po mapie
 
-Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) i F8 (format wydania) wdrożone, zostaje eksperyment F7; 119 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
+Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) i F8 (format wydania) wdrożone, zostaje eksperyment F7; 120 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
 `default_bus_layout.tres`, `AUDIO.md`), nie na próbnej implementacji — rozmiary faz są szacunkowe. Kontynuacja `prototype/AUDIO.md`
 (overhaul v2), który sam stwierdza w §5: „to nie jest jeszcze AAA w sensie brzmienia” i „brzmienia nie oceniałem uchem”.
 
@@ -141,7 +141,7 @@ Pomiar (nie odsłuch): strzał z nagrań ma środek ciężkości widma ok. 1,4 k
 ok. 380 ms zamiast 255 ms, głośność zrównana z obecnym do 0,5 LU. Kroki z nagrań są ciemniejsze powyżej 4 kHz niż syntetyczne. Alternatywy
 pieką się deterministycznie (dwa przebiegi = te same sumy).
 
-**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 109 plików z nagrań, do tego 10 wyprowadzonych z nich dalekich wersji z F6):**
+**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 110 plików z nagrań, do tego 10 wyprowadzonych z nich dalekich wersji z F6):**
 
 | Rodzina | Werdykt | Źródła wersji z nagrań |
 |---|---|---|
@@ -169,7 +169,7 @@ pieką się deterministycznie (dwa przebiegi = te same sumy).
 | `stalker_shriek` ×2 | z nagrań | skrzek + ryk + pisk suchego lodu + sub, hala; ten sam autor nagrań co warkot |
 | `amb_far_cry` ×2 | z nagrań | ten sam krzyk przefiltrowany, w długim pogłosie |
 | `stalker_step` ×3 | z nagrań | ciężkie, mokre kroki stwora + sub-uderzenie |
-| `stalker_whisper_loop` | **synteza** | odrzucone: nagrany ludzki szept z upiornym głosem w hali |
+| `stalker_whisper_loop` | z nagrań | niski, powolny oddech: nagrany wydech obniżony o oktawę, wdech to ten sam wydech odwrócony, pod spodem falujący niski ton; cykl 7 s. Wcześniej: nagrany ludzki szept odrzucony na rzecz syntezy, a jasny syk syntezy okazał się w grze za mało mroczny. Synteza w repo też jest teraz o oktawę niżej, z dronem |
 | `step_metal` ×5, `step_dirt` ×5, `step_water` ×5 | z nagrań | pojedyncze kroki z nagranych marszów (blacha, ziemia, kałuża), jak beton z bramki A |
 | `land_hard` | z nagrań | lądowanie w butach na obie stopy, obniżone, z uderzeniem w dole pasma (pierwsza wersja — nagrany upadek ciała — w grze brzmiała jak przewrócenie się po każdym podskoku) |
 | `amb_forest`, `amb_rain`, `amb_rain_roof` | z nagrań | pętle stereo 16 s z najrówniejszego fragmentu nagrania (zimowy las nocą, ulewa, deszcz o daszek), szew przenikany 1,5 s |
@@ -211,7 +211,7 @@ ma już `impact_flesh`, a wataha pod ostrzałem robiłaby ścianę dźwięku. U 
 bo jeden krzyk Stalkera udawał wszystko). Limity jednoczesnych głosów: `audio_director.gd: VOICE`. Napisy: `bake_audio.py: CAPTIONS`
 + `translations/ui.csv`. Werdykt odsłuchu: 9 z 11 rodzin z nagrań, zapowiedź ciosu Ślepca i pomruk Żyły syntetyczne (tabela wyżej).
 
-Wzór z werdyktów (44 rodziny z nagrań, 10 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
+Wzór z werdyktów (45 rodzin z nagrań, 9 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
 trafienia, łuski, kroki, głos stwora, ogień), a przegrywały dla dźwięków krótkich, jasnych i „bliskich gracza” z samego nagrania (pistolet,
 przelot, szelest, kurek) — synteza jest tam pełniejsza w dole pasma. Po dołożeniu pod nagranie niskich stuków syntezy mechanika broni
 (przeładowania) wygrała. Szept Stalkera pokazuje granicę: rozpoznawalnie ludzkie nagranie przegrało z abstrakcyjną syntezą.

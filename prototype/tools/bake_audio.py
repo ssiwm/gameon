@@ -71,7 +71,7 @@ CAPTIONS = {
     "lr7_beam": ["[Beam hum]", 1], "hkm9_flame": ["[Flamethrower]", 2], "kilof_swing": ["[Swing]", 0],
     "maczeta_": ["[Swing]", 0], "reload_": ["[Reloading]", 0], "dry_fire": ["[Click]", 1], "p64_shot": ["[Pistol shot]", 1], "spread12_shot": ["[Shotgun blast]", 2],
     "thunder": ["[Thunder]", 1], "explosion": ["[Explosion]", 3], "stalker_growl": ["[Low growl]", 3], "stalker_shriek": ["[Shriek]", 3],
-    "stalker_step": ["[Heavy footsteps]", 3], "stalker_whisper": ["[Whispering]", 2],
+    "stalker_step": ["[Heavy footsteps]", 3], "stalker_whisper": ["[Low breathing]", 2],
     "stalker_appear": ["[Something appears]", 3], "amb_far_cry": ["[Distant cry]", 2],
     "trzosek_attack": ["[Snarl]", 2], "trzosek_death": ["[Dying yelp]", 1], "wolek_attack": ["[Bellow]", 2],
     "wolek_death": ["[Dying groan]", 1], "slepiec_attack": ["[Rapid clicking]", 2], "slepiec_death": ["[Dying wheeze]", 1],
