@@ -14,6 +14,7 @@ Uruchomienie (z katalogu prototype/):
 
 Wynik:
     audio/**/*.wav             assety (deterministyczne: ten sam seed = ten sam bajt)
+    audio/{music,amb}/*.ogg    to samo w Ogg Vorbis — te pliki ładuje gra (format wydania, patrz OGG_GROUPS); wymaga ffmpeg
     audio/_bank.json           indeks key -> [ścieżka, pętla?]
     scripts/audio_manifest.gd  wygenerowany manifest dla runtime (PATHS, LOOPS, muzyka, napisy)
 
@@ -31,8 +32,10 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import time
+import wave
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -82,6 +85,63 @@ CAPTIONS = {
 }
 
 
+# Format wydania (AUDIO_PLAN.md F8). Efekty zostają WAV-ami importowanymi z kompresją QOA (ustawienie w *.wav.import;
+# odsłuch A/B bez słyszalnej różnicy). Muzyka i ambient idą do gry jako Ogg Vorbis: w stemach i długich, cichych pętlach
+# szum QOA leży tylko ok. 22 dB pod sygnałem w paśmie 2–8 kHz. WAV pozostaje plikiem wzorcowym (audyt, odsłuch, dalekie
+# wersje); dla grup z OGG_GROUPS Godot go pomija (importer „skip”: nie importuje i nie eksportuje), a gra ładuje bliźniaczy
+# .ogg. Pętla Ogg w Godocie jest ciągła co do próbki (sprawdzone zrzutem dekodera przez szew).
+OGG_GROUPS = ("music/", "amb/")
+OGG_QUALITY = 6                                # ok. 190 kb/s stereo
+SKIP_IMPORT = b'[remap]\n\nimporter="skip"\n'
+
+
+def is_ogg(rel: str) -> bool:
+    return rel.startswith(OGG_GROUPS)
+
+
+def _ogg_encode(wav: str, ogg: str) -> None:
+    """WAV → Ogg Vorbis, deterministycznie (bez znaczników czasu i losowego numeru strumienia); długość co do próbki."""
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", wav, "-c:a", "libvorbis", "-q:a", str(OGG_QUALITY), "-map_metadata", "-1",
+                    "-fflags", "+bitexact", "-flags:a", "+bitexact", ogg], check=True)
+    with wave.open(wav) as w:
+        frames, ch = w.getnframes(), w.getnchannels()
+    pcm = subprocess.run(["ffmpeg", "-v", "error", "-i", ogg, "-f", "s16le", "-"], check=True, capture_output=True).stdout
+    assert len(pcm) == frames * ch * 2, "%s: po zdekodowaniu %d klatek zamiast %d" % (ogg, len(pcm) // (ch * 2), frames)
+
+
+def write_ogg() -> int:
+    """Bliźniacze .ogg dla grup z OGG_GROUPS — w audio/ i (jeśli są) w audio_licensed/. Koduje tylko pliki, których WAV
+    zmienił się od ostatniego razu (sumy w <katalog>/_ogg.json), więc inna wersja ffmpeg nie brudzi repo bez powodu.
+    Przy okazji ustawia WAV-om tych grup import „skip”. Zwraca liczbę zakodowanych plików."""
+    done = 0
+    for root in (AUDIO, bc.LICENSED):
+        idx_path = os.path.join(root, "_ogg.json")
+        try:
+            with open(idx_path, encoding="utf-8") as f:
+                idx = json.load(f)
+        except (OSError, ValueError):
+            idx = {}
+        new = {}
+        for key, (rel, _) in sorted(bc.REG.items()):
+            wav = os.path.join(root, rel + ".wav")
+            if not is_ogg(rel) or not os.path.exists(wav):
+                continue
+            sha, ogg = bc.file_sha256(wav), os.path.join(root, rel + ".ogg")
+            if idx.get(rel) != sha or not os.path.exists(ogg):
+                _ogg_encode(wav, ogg)
+                done += 1
+            new[rel] = sha
+            imp = wav + ".import"
+            if not os.path.exists(imp) or open(imp, "rb").read().replace(b"\r\n", b"\n") != SKIP_IMPORT:
+                with open(imp, "wb") as f:
+                    f.write(SKIP_IMPORT)
+        if new and new != idx:
+            with open(idx_path, "w", encoding="utf-8") as f:
+                json.dump(new, f, indent=1, sort_keys=True)
+                f.write("\n")
+    return done
+
+
 def write_bank() -> None:
     os.makedirs(AUDIO, exist_ok=True)
     with open(BANK_JSON, "w", encoding="utf-8") as f:
@@ -110,7 +170,7 @@ def write_manifest() -> None:
         "const PATHS := {",
     ]
     for key in sorted(bc.REG):
-        lines.append('\t"%s": "res://audio/%s.wav",' % (key, bc.REG[key][0]))
+        lines.append('\t"%s": "res://audio/%s.%s",' % (key, bc.REG[key][0], "ogg" if is_ogg(bc.REG[key][0]) else "wav"))
     lines += ["}", "", "# Klucze, które muszą się zapętlać (nie mogą mieć fade-outu).", "const LOOPS := ["]
     for key in sorted(bc.REG):
         if bc.REG[key][1]:
@@ -191,6 +251,11 @@ def main() -> int:
     write_bank()
     write_manifest()
     write_credits()
+    try:
+        n_ogg = write_ogg()
+    except (OSError, subprocess.CalledProcessError) as e:
+        print("  ! Ogg Vorbis dla muzyki i ambientu nie powstał (potrzebny ffmpeg w PATH): %s" % e)
+        return 1
     missing = [k for k, (p, _) in bc.REG.items() if not os.path.exists(os.path.join(AUDIO, p + ".wav"))]
     print("-" * 56)
     print("manifest: %s" % MANIFEST)
@@ -207,6 +272,8 @@ def main() -> int:
             print("   %-28s %s%s" % (k, bc.REG[k][0], "  [loop]" if bc.REG[k][1] else ""))
     total = sum(os.path.getsize(os.path.join(dp, f)) for dp, _, fs in os.walk(AUDIO) for f in fs if f.endswith(".wav"))
     print("pamięć audio: %.1f MB WAV" % (total / 1048576.0))
+    ogg_total = sum(os.path.getsize(os.path.join(dp, f)) for dp, _, fs in os.walk(AUDIO) for f in fs if f.endswith(".ogg"))
+    print("muzyka i ambient w Ogg Vorbis: %.1f MB (zakodowano teraz: %d)" % (ogg_total / 1048576.0, n_ogg))
     print("NASTĘPNY KROK: godot --headless --path . --import  (inaczej grają stare sample'e)")
     return 1 if missing else 0
 

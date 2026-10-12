@@ -1,0 +1,15 @@
+{
+ "amb/amb_air": "24f5774c7512739ea481f3cdd06e49d356a2ef8cf7006567706428a2de87f202",
+ "amb/amb_drips": "592cd65e68278ce1686ad4f822ae95ddb41d66b5370c1ce6263e4332514ab93c",
+ "amb/amb_forest": "04bbfcd00e299186cb3a6e1511655732cf2f7921de253b48fd1c2042665c3d5c",
+ "amb/amb_machine": "9bf9dcbeeca2f29956a0b84bcb7e1c859949b23fe38d0c13d2ec10bd4875f756",
+ "amb/amb_rain": "272b7285e462dd359c844466a962f644a117844c0a63c8083ae37450b8323d9e",
+ "amb/amb_rain_roof": "ad0ada39cffc0f3da5954fd7cb4b8fef1d552da4638075c37a227eddf68f6bf0",
+ "amb/amb_wind": "fc0d8400cbd2c50247c0cd44d8e9786fb290c1b17b6ff5159359785eb66c339d",
+ "music/mus_chase": "e00808fca73998c5b10234ab3e6965c54d10c31fdfff08a04b3e09de6dacd878",
+ "music/mus_combat": "52dc7533025d2edb1be7b62d1b3ff33751ed0ff9c7759914b20ba3cc6aec9493",
+ "music/mus_silence": "332eb50400aa9f99e4a1c28de627cb48dafc58aec833c54c81f7ec08bfeedb2c",
+ "music/mus_tension": "2738735a2df04aa9d1fa856525f6120c5451e6e8a974375aefd0d3e9b7aeaccb",
+ "music/sting_chase": "b757502dd06145474f02e2d0db50b20f59e494718ad550f53b3a61c0aec422cc",
+ "music/sting_tension": "f7001be3e2b175f7756eecafc0ec848e5049dee21d519adc480864e6f447ed7d"
+}

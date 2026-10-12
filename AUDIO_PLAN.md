@@ -1,6 +1,6 @@
 # Plan: refaktor dźwięku — źródła hybrydowe i propagacja po mapie
 
-Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) wdrożona, zostają F7 i F8; 119 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
+Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) i F8 (format wydania) wdrożone, zostaje eksperyment F7; 119 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
 `default_bus_layout.tres`, `AUDIO.md`), nie na próbnej implementacji — rozmiary faz są szacunkowe. Kontynuacja `prototype/AUDIO.md`
 (overhaul v2), który sam stwierdza w §5: „to nie jest jeszcze AAA w sensie brzmienia” i „brzmienia nie oceniałem uchem”.
 
@@ -253,6 +253,20 @@ ok. 1/5 długości. Naprawione, pilnuje tego `tools/test_audio_loops.gd` (w CI).
 dekodowanie ffmpeg): 53,1 MB → 10,7 MB, długości co do próbki; szum kodeka 14–20 dB pod sygnałem dla strzałów i szkła (szum na szumie),
 40–65 dB dla dźwięków niskich i tonalnych, ale dla stemów muzyki tylko ok. 22 dB w paśmie 2–8 kHz — to potwierdza podział z planu:
 QOA dla efektów, Ogg Vorbis dla muzyki i długich pętli ambientu.
+
+**F8 — format wydania wdrożony (2026-10-12).** Odsłuch kontrolny PCM / QOA dla dziesięciu rodzin efektów (w tym najgorsze w pomiarze:
+szkło, strzały, szept): „bez różnicy” we wszystkich. Stan:
+
+- **Efekty** (`audio/sfx/**`, 183 pliki): WAV importowany z kompresją QOA (`compress/mode=2` w `*.wav.import`; nowe pliki dostają ją
+  w Godocie 4.7 domyślnie).
+- **Muzyka i ambient** (`audio/music/`, `audio/amb/`, 13 plików): gra ładuje bliźniaczy plik Ogg Vorbis (jakość 6, ok. 190 kb/s),
+  który `bake_audio.py` koduje z WAV-u przez ffmpeg — deterministycznie, tylko gdy WAV się zmienił (`audio/_ogg.json`). WAV zostaje
+  plikiem wzorcowym (audyt, odsłuch), ale ma import „skip”, więc Godot go nie importuje i nie eksportuje. To samo dzieje się lokalnie
+  dla pętli ambientu z nagrań w `audio_licensed/`. Pętla Ogg w Godocie jest ciągła co do próbki (zrzut dekodera przez szew: błąd na
+  szwie taki sam jak w środku pliku), długości stemów równe 960 000 klatek.
+- **Rozmiar** zaimportowanego audio: 53 MB → ok. 8 MB (efekty 4,6 MB, muzyka i ambient 3,5 MB).
+
+Zostało z F8: podpięcie pięciu nieużywanych rodzin (decyzja: podpiąć).
 
 **Ustalenia, które zmieniają plan:**
 
