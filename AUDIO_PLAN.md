@@ -1,6 +1,6 @@
 # Plan: refaktor dźwięku — źródła hybrydowe i propagacja po mapie
 
-Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) i F8 (format wydania) wdrożone, zostaje eksperyment F7; 125 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
+Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) i F8 (format wydania) wdrożone, zostaje eksperyment F7; 129 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
 `default_bus_layout.tres`, `AUDIO.md`), nie na próbnej implementacji — rozmiary faz są szacunkowe. Kontynuacja `prototype/AUDIO.md`
 (overhaul v2), który sam stwierdza w §5: „to nie jest jeszcze AAA w sensie brzmienia” i „brzmienia nie oceniałem uchem”.
 
@@ -141,7 +141,7 @@ Pomiar (nie odsłuch): strzał z nagrań ma środek ciężkości widma ok. 1,4 k
 ok. 380 ms zamiast 255 ms, głośność zrównana z obecnym do 0,5 LU. Kroki z nagrań są ciemniejsze powyżej 4 kHz niż syntetyczne. Alternatywy
 pieką się deterministycznie (dwa przebiegi = te same sumy).
 
-**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 115 plików z nagrań, do tego 10 wyprowadzonych z nich dalekich wersji z F6):**
+**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 119 plików z nagrań, do tego 10 wyprowadzonych z nich dalekich wersji z F6):**
 
 | Rodzina | Werdykt | Źródła wersji z nagrań |
 |---|---|---|
@@ -211,7 +211,7 @@ ma już `impact_flesh`, a wataha pod ostrzałem robiłaby ścianę dźwięku. U 
 bo jeden krzyk Stalkera udawał wszystko). Limity jednoczesnych głosów: `audio_director.gd: VOICE`. Napisy: `bake_audio.py: CAPTIONS`
 + `translations/ui.csv`. Werdykt odsłuchu: 9 z 11 rodzin z nagrań, zapowiedź ciosu Ślepca i pomruk Żyły syntetyczne (tabela wyżej).
 
-Wzór z werdyktów (48 rodzin z nagrań, 8 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
+Wzór z werdyktów (52 rodziny z nagrań, 8 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
 trafienia, łuski, kroki, głos stwora, ogień), a przegrywały dla dźwięków krótkich, jasnych i „bliskich gracza” z samego nagrania (pistolet,
 przelot, szelest, kurek) — synteza jest tam pełniejsza w dole pasma. Po dołożeniu pod nagranie niskich stuków syntezy mechanika broni
 (przeładowania) wygrała. Szept Stalkera pokazuje granicę: rozpoznawalnie ludzkie nagranie przegrało z abstrakcyjną syntezą.
@@ -286,7 +286,11 @@ Drugi odsłuch w grze: Trzosek i lądowanie zostają, a dźwięk podskoku zosta�
 Trzeci: chodzenie — szelest ekwipunku z nagrań zamiast syntetycznego brzęku, a krok po metalu stracił syntetyczną warstwę
 (obniżony `ricochet`), bo nagrany krok po blasze sam niesie charakter podłoża.
 Czwarty: podnoszenie — `ammo_pickup` (naboje w dłoni + chwyt torby) i `weapon_pickup` (chwyt karabinu, niżej i ciężej) z nagrań
-zamiast syntetycznych sygnałów; synteza `ammo_pickup` w repo straciła wysoki dzwonek.
+zamiast syntetycznych sygnałów; synteza `ammo_pickup` w repo straciła wysoki dzwonek. Do tego cztery nowe klucze, żeby
+każdy rodzaj przedmiotu brzmiał jak to, czym jest (`level.gd: PICKUP_SOUND`; bank ma 198 assetów), wszystkie z nagrań:
+`tag_pickup` (nieśmiertelnik — brzęk blaszek na łańcuszku), `scrap_pickup` (złom i skrytki — garść żelastwa),
+`medkit_pickup` (apteczka — chwyt i suwak; wcześniej pożyczała dźwięk podnoszenia rannego), `item_pickup` (flary,
+zaopatrzenie — miękki chwyt torby). Zaopatrzenie nie gra już dźwięku podwójnie.
 
 **Ustalenia, które zmieniają plan:**
 
