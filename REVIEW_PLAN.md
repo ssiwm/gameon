@@ -1,6 +1,6 @@
 # Plan: zmiany po przeglądzie designu (droga do pierwszego playtestu)
 
-Status: **plan z 2026-10-12, sprawdzony ponownie 2026-10-13 względem `origin/main` (621cf2a, PR #266); R1 i R2 wdrożone, wyniki w §6.**
+Status: **plan z 2026-10-12, sprawdzony ponownie 2026-10-13 względem `origin/main` (621cf2a, PR #266); R1–R3 wdrożone, wyniki w §6.**
 Podstawa: przegląd designu spisany przy 1.7.150, sprawdzony względem kodu, oraz log jednej sesji (EASY, człowiek + bot, misje 1.1–1.3,
 jeszcze na starym dźwięku). Liczby w §2 pochodzą z kodu; zachowania oznaczone „z lektury kodu” nie były jeszcze uruchomione w grze
 i potwierdza je dopiero etap R1.
@@ -89,6 +89,7 @@ do pliku przy eksporcie; ta sama wartość trafia na ekran menu, żeby dało si�
 Opcja R3b (decyzja D5): `add_noise(amount, pos, tag := "")` i suma Uwagi wg źródła (strzały, bieg, krzyk, ból, Q) w `mission_end` —
 bez tego nie da się odpowiedzieć liczbą na pytanie „M-83 czy P-64”.
 Test: `--missiontest` z włączonym zapisem do katalogu tymczasowego sprawdza, że plik ma `mission_start` i `mission_end`. Rozmiar: średni.
+**Zrobione** razem z R3b i D6 — opis w §6.
 
 ### R4. Sesja
 
@@ -178,3 +179,30 @@ Zmiany w `stalker.gd`: zatrzymanie po trafieniu najwyżej raz na 3 s (`STAGGER_C
 przez mnożnik powierzchni pod nogami. Test ma teraz progi: przy ostrzale Stalker musi dojść do strzelca i się zamachnąć, a na każdym
 terenie biegnący gracz musi być szybszy. `--stealthtest=25` bez zmian (zasypia po 20,5 s, 0 HP straty), `--maptest` PASS.
 Wartości 3 s i 40% są punktem wyjścia do strojenia po sesji.
+
+### R3 (2026-10-13)
+
+`scripts/session_log.gd` pisze `user://sessions/<data>_<godzina>.jsonl` (tylko serwer, poza headless). Przykład z `--wipetest`:
+
+```
+{"ev":"mission_start","t":0.0,"build":"1.7.207+0a73338","audio":"synth","map":"z1_m3","difficulty":"NORMAL","humans":1,"bots":1,…}
+{"ev":"down","t":1.8,"who":"P1","bot":false,"source":"test","noise":93,"weapon":"m83","pos":[72,416],"phase":"OBJECTIVE"}
+{"ev":"mission_end","t":1.8,"result":"wipe","downs":1,"peak_noise":93,"weapons":{…},"noise":{"hurt":{"n":2,"sum":12.0},…}}
+```
+
+Odstępstwa od tabeli z etapu R3:
+
+- Wipe nie ma własnego zdarzenia: kończy próbę wierszem `mission_end` z `result: "wipe"`, po którym idzie nowy `mission_start`
+  z kolejnym numerem próby. Dzięki temu liczniki nieudanej próby nie przepadają.
+- „Kto podniósł” nie jest zapisywane (serwer widzi tylko, że gracz wstał); jest czas leżenia.
+- Strzały, Uwaga, obrażenia i zabójstwa wg broni są sumą drużyny; na gracza zapisują się obrażenia wg broni, zabójstwa i upadki.
+- Źródło ciosu przy upadku: rodzaj wroga, `stalker`, `vein`, `leech`, `acid`, `blast`, `prop`.
+
+Wersja buildu (D6): `config/version` w `project.godot` (teraz 1.7.207) + skrót commita. Gra ze źródeł pyta gita, eksport czyta
+`build_stamp.txt`, który zapisuje `tools/export_build.sh`; skrypt odmawia też eksportu bez `audio_licensed/`. Wersja jest w stopce menu.
+**Samego eksportu nie sprawdziłem** — na tej maszynie nie ma szablonów eksportu 4.7.2; sprawdzone jest czytanie pliku ze skrótem
+i odmowa przy braku nagrań.
+
+Testy po zmianach: `--missiontest` z `--sessionlog` (nowy krok CI), `--wipetest`, `--stalkertest` 8/8, `--stealthtest`, `--maptest`,
+`test_weapons.sh` 191/191 + sieć 7/7 (zmieniła się sygnatura RPC `_report` w `noise_manager.gd` — doszedł znacznik źródła).
+

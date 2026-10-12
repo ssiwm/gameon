@@ -383,7 +383,7 @@ func _dry_fire(d: WeaponDef) -> void:
 		return
 	_dry_latch = true
 	Audio.play("dry_fire", Audio.BUS_WEAPONS, -8.0, 1.0)
-	NoiseMgr.add_noise(NOISE_DRY, player.global_position)
+	NoiseMgr.add_noise(NOISE_DRY, player.global_position, "dry")
 	dry_fired.emit(d.id)
 	_buf_t = 0.0
 	try_reload(true)
@@ -405,7 +405,7 @@ func _handle_continuous(d: WeaponDef, held: bool) -> void:
 		if ammo_enabled:
 			mags[d.id] = mag_of(d.id) - d.ammo_per_shot
 		var heat := heat_of(d.id)
-		NoiseMgr.add_noise(d.noise(heat), player.global_position)       # wiązka się grzeje: hałas rośnie z czasem ciągłego ognia (LR-7)
+		NoiseMgr.add_noise(d.noise(heat), player.global_position, "shot:" + d.key)       # wiązka się grzeje: hałas rośnie z czasem ciągłego ognia (LR-7)
 		_heat[d.id] = minf(1.0, heat + d.heat_gain)
 		recoil = maxf(recoil, 0.25)
 		Feel.shake(d.shake)
@@ -448,7 +448,7 @@ func _fire_shot(d: WeaponDef) -> void:
 		mags[d.id] = mag_of(d.id) - d.ammo_per_shot
 	var heat := heat_of(d.id)
 	var bursting := is_burst(d)
-	NoiseMgr.add_noise(d.noise(heat) * (d.burst_quiet if bursting else 1.0), player.global_position)
+	NoiseMgr.add_noise(d.noise(heat) * (d.burst_quiet if bursting else 1.0), player.global_position, "shot:" + d.key)
 	_heat[d.id] = minf(1.0, heat + d.heat_gain * (d.burst_heat if bursting else 1.0))
 	bloom = minf(bloom + d.bloom_per_shot * (d.burst_bloom if bursting else 1.0), d.bloom_max)
 	if bursting:
@@ -482,7 +482,7 @@ func bot_fire(dir: Vector2) -> bool:
 	var muzzle := muzzle_pos(dir, d)
 	var seed := randi()
 	var heat := heat_of(d.id)
-	NoiseMgr.add_noise(d.noise(heat), player.global_position)
+	NoiseMgr.add_noise(d.noise(heat), player.global_position, "shot:" + d.key)
 	_heat[d.id] = minf(1.0, heat + d.heat_gain)
 	cd += d.cooldown * 1.8
 	recoil = maxf(recoil, 0.6)
@@ -722,7 +722,7 @@ func try_reload(auto := false) -> bool:
 		_rl_total = d.reload_time + (d.reload_empty_extra if mag_of(d.id) <= 0 else 0.0)
 		_rl_left = _rl_total
 		_reload_sfx(d)
-	NoiseMgr.add_noise(NOISE_RELOAD, player.global_position)
+	NoiseMgr.add_noise(NOISE_RELOAD, player.global_position, "reload")
 	reload_started.emit(d.id)
 	return true
 
@@ -820,7 +820,7 @@ func try_melee() -> void:
 	state_t = md.cooldown
 	_melee_pending = true
 	cd = maxf(cd, 0.2)
-	NoiseMgr.add_noise(md.noise(0.0), player.global_position)
+	NoiseMgr.add_noise(md.noise(0.0), player.global_position, "shot:" + md.key)
 	Audio.play_variant(md.sfx, md.sfx_count, Audio.BUS_WEAPONS, md.sfx_vol, 1.0)
 	Feel.shake(md.shake * 0.5)
 	melee_swung.emit(melee_id)

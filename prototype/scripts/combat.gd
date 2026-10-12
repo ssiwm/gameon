@@ -17,6 +17,7 @@ extends RefCounted
 ##   execute  ułamek HP, poniżej którego cios białą bronią zabija na miejscu (ulepszenie maczety)
 
 const Weapons := preload("res://scripts/weapons.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 
 const LAYER_WORLD := 1
 const LAYER_PLAYER := 2
@@ -61,6 +62,9 @@ static func apply(target: Node, info: Dictionary) -> Dictionary:
 	res["crit"] = bool(info.get("crit", false)) and bool(res["hit"])
 	if float(info.get("pull", 0.0)) > 0.0 and bool(res["hit"]):
 		_tether_fx(target, info)
+	if bool(res["hit"]):
+		var w := int(info.get("w", -1))
+		SessionLog.note_damage(int(info.get("shooter", -1)), String(Weapons.base_def(w).key) if Weapons.is_valid(w) else "other", float(res["dealt"]), bool(res["killed"]))
 	return res
 
 ## Linka SINEW-6: kreska od trafionego wroga do strzelca (u wszystkich peerów) przez chwilę.
@@ -223,7 +227,7 @@ static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float,
 	if not NoiseMgr.is_server():
 		return
 	if not silent_for_noise:
-		NoiseMgr.add_noise(NoiseMgr.N_GRENADE, pos)
+		NoiseMgr.add_noise(NoiseMgr.N_GRENADE, pos, "explosive")
 	Arsenal.broadcast_explosion(pos, radius)
 	var d: RefCounted = Weapons.def(w)
 	for e in tree.get_nodes_in_group("enemies"):
@@ -256,4 +260,4 @@ static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float,
 		if p.dead:
 			continue
 		if (p.global_position + Vector2(0, -8)).distance_to(pos) <= radius * 0.9:
-			p.deliver_hit(1, pos)
+			p.deliver_hit(1, pos, "blast")

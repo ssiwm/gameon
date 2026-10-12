@@ -13,6 +13,7 @@ const UiTheme := preload("res://scripts/ui_theme.gd")
 const W := preload("res://scripts/ui_widgets.gd")
 const Scene := preload("res://scripts/menu_scene.gd")
 const Actions := preload("res://scripts/actions.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 const QUIT_CONFIRM_S := 3.0
 
 ## Który wpis otworzył lobby: "host", "join" albo "night" (""/inne = domyślnie host). Czyta go main.gd.
@@ -240,7 +241,7 @@ func _build_footer() -> void:
 	f.add_theme_constant_override("separation", 18)
 	_root.add_child(f)
 	_foot = f
-	var ver := W.mono(tr("v0.1 PROTOTYPE · EARLY ACCESS BUILD"), 12, Color("7d7a6d"), 0.06)
+	var ver := W.mono(tr("v%s PROTOTYPE · EARLY ACCESS BUILD") % SessionLog.build(), 12, Color("7d7a6d"), 0.06)
 	ver.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	f.add_child(ver)
 	for pair in [["↑↓", "SELECT"], ["ENTER", "CONFIRM"], ["ESC", "SETTINGS"]]:

@@ -484,7 +484,7 @@ func _land_hit() -> void:
 	winding = false
 	for p in get_tree().get_nodes_in_group("players"):
 		if not p.dead and absf(p.global_position.x - global_position.x) < 16.0 and absf(p.global_position.y - global_position.y) < 22.0:
-			p.deliver_hit(2, global_position)
+			p.deliver_hit(2, global_position, kind)
 	NoiseMgr.add_noise(5.0, global_position)
 	if NoiseMgr.has_network():
 		_crash_fx.rpc()
@@ -627,7 +627,7 @@ func _moth_tick(delta: float) -> void:
 				return
 		elif lt["kind"] == "player" and dist < 12.0 and _cd <= 0.0:
 			var pl: Node = lt["node"]
-			pl.deliver_hit(1, global_position)
+			pl.deliver_hit(1, global_position, kind)
 			_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
 	else:
 		_lose_t += delta
@@ -759,7 +759,7 @@ func _after_move_bruiser() -> void:
 	if not _charge_hit:
 		for p in get_tree().get_nodes_in_group("players"):
 			if not p.dead and absf(p.global_position.x - global_position.x) < 16.0 and absf(p.global_position.y - global_position.y) < 18.0:
-				p.deliver_hit(2, global_position)
+				p.deliver_hit(2, global_position, kind)
 				_charge_hit = true
 	if crashed:
 		_crash()
@@ -1236,7 +1236,7 @@ func _resolve_attack() -> void:
 	if kind == "trzosek":
 		_retreat = 0.32
 	if pp != null and is_instance_valid(pp) and not pp.dead and _in_reach(pp, 6.0):
-		pp.deliver_hit(maxi(1, roundi(float(_def["damage"]) * Difficulty.m("enemy_damage"))), global_position)
+		pp.deliver_hit(maxi(1, roundi(float(_def["damage"]) * Difficulty.m("enemy_damage"))), global_position, kind)
 
 ## --- API walki (combat.gd) -------------------------------------------------
 

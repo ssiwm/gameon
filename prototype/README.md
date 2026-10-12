@@ -124,6 +124,12 @@ cp prototype/steam_appid.txt build/linux/ ; cp prototype/steam_appid.txt build/w
 
 Presety są w `export_presets.cfg` (szablony eksportu 4.7.2 muszą być zainstalowane). Testerom wyślij zipem cały folder (`.pck`, biblioteki i `steam_appid.txt`). Każdy tester: Steam uruchomiony i zalogowany, wszyscy muszą być **znajomymi na Steamie** z hostem. Host: STEAM HOST, potem F2 albo wysłanie ID lobby; reszta: „Dołącz do gry” albo ID + STEAM JOIN. W Steamie tester widnieje jako grający w „Spacewar”.
 
+## Dziennik sesji (playtesty)
+
+Host zapisuje przebieg każdej misji do `user://sessions/<data>_<godzina>.jsonl` (Windows: `%APPDATA%\Godot\app_userdata\Dead Air '87 Prototype\sessions\`), jeden wiersz JSON na zdarzenie: start misji (wersja buildu, zestaw dźwięku, mapa, trudność, skład), zmiany fazy, **upadki ze źródłem ciosu, Uwagą i bronią w ręku**, podniesienia i wykrwawienia, przebudzenia i zamachy Stalkera (trafione / chybione, w człowieka czy bota), użycia Q oraz wynik: czas, upadki, szczyt Uwagi, **strzały / Uwaga / obrażenia / zabójstwa wg broni** i Uwaga wg źródła (strzały, bieg, ból, krzyk, Q, świat). Plik zostaje na dysku hosta i nigdzie nie jest wysyłany; klient go nie pisze. Opis pól: `scripts/session_log.gd`. Tryb headless nie pisze, chyba że podasz `--sessionlog=KATALOG` (tak robi CI).
+
+**Wersja buildu** (`config/version` w `project.godot` + skrót commita) jest w stopce menu głównego i w każdym `mission_start`. Eksport dla graczy rób przez `tools/export_build.sh [Windows|Linux]`: zapisuje skrót commita do builda i odmawia eksportu bez dźwięku z nagrań (`audio_licensed/`; `--allow-synth` wymusza).
+
 ## Uruchomienie
 
 ```bash
@@ -209,7 +215,7 @@ godot --headless --path . -- --host --wipetest --autoquit=8
 godot --headless --path . -- --host --missiontest --autoquit=9
 ```
 
-Flagi: `--mission=ID` (mapa startowa), `--maptest`, `--gentest`, `--ridetest`, `--ridehost`, `--rideclient`, `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--nightshift` (tryb Nocny Dyżur), `--shifttest`, `--stalkertest`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--shot=PLIK.png [--shotat=KOLUMNA]` (zapis obrazu z gry), `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
+Flagi: `--mission=ID` (mapa startowa), `--maptest`, `--gentest`, `--ridetest`, `--ridehost`, `--rideclient`, `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--nightshift` (tryb Nocny Dyżur), `--shifttest`, `--stalkertest`, `--sessionlog=KATALOG`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--shot=PLIK.png [--shotat=KOLUMNA]` (zapis obrazu z gry), `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
 
 **Renderer:** Forward+ (`project.godot`); bez Vulkana / D3D12 silnik wraca do OpenGL, a `--rendering-driver opengl3` wymusza tryb zgodności (zrzuty pod xvfb). W trybie zgodności widok 3D działa bez SSAO, SSIL i mgły wolumetrycznej.
 

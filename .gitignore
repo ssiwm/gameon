@@ -8,6 +8,8 @@ __pycache__/
 
 # Eksporty (godot --export-release, patrz prototype/README.md)
 build/
+# skrót commita dla builda (tools/export_build.sh) — pakowany do eksportu, nie do repo
+prototype/build_stamp.txt
 
 # źródła materiałów świata 3D: skany CC0 pobierane z ambientCG (tools/world_pbr_import.py) i wyniki generatorów — wynik trafia do prototype/art/world3d
 art_src/world_pbr/

@@ -370,7 +370,7 @@ func _surge_wave_hit() -> void:
 		if p.dead or p.is_queued_for_deletion() or p.grabbed:
 			continue
 		if in_surge_zone(p.global_position) and p.global_position.y > surf_y - SURGE_H and p.global_position.y <= surf_y + POOL_FLOOR_TOL:
-			p.deliver_hit(1, Vector2(p.global_position.x, surf_y))
+			p.deliver_hit(1, Vector2(p.global_position.x, surf_y), "leech")
 	for f in get_tree().get_nodes_in_group("flares"):
 		if is_instance_valid(f) and in_surge_zone((f as Node2D).global_position) and (f as Node2D).global_position.y > surf_y - SURGE_H:
 			f.life = minf(f.life, 0.2)
@@ -546,7 +546,7 @@ func _surface() -> void:
 		if p.dead or p.is_queued_for_deletion():
 			continue
 		if _strike_hits(p, global_position.x):
-			p.deliver_hit(1, global_position)
+			p.deliver_hit(1, global_position, "leech")
 			var d := absf(p.global_position.x - global_position.x) + (0.0 if not p.is_bot else 6.0)     # człowiek ma pierwszeństwo przy remisie
 			if p.hp > 0 and d < best_d:
 				best_d = d
@@ -557,7 +557,7 @@ func _surface() -> void:
 			if p.dead or p.is_queued_for_deletion() or p == victim:
 				continue
 			if _strike_hits(p, second_x):
-				p.deliver_hit(1, Vector2(second_x, surf_y))
+				p.deliver_hit(1, Vector2(second_x, surf_y), "leech")
 		_event.rpc("surface2")
 		second_x = -1.0
 	if victim != null and not victim.dead:
@@ -612,7 +612,7 @@ func _release(success: bool) -> void:
 	if victim != null and is_instance_valid(victim):
 		victim.deliver_grab(false, Vector2.ZERO)
 		if not success:
-			victim.deliver_hit(99, global_position)        # wciągnięta pod wodę: down (można podnieść)
+			victim.deliver_hit(99, global_position, "leech")        # wciągnięta pod wodę: down (można podnieść)
 	mode = Mode.SUB
 	_set_hitbox(false)
 	_cd = float(GRAB_CD[ph]) * (FURY_TIMING if _fury() else 1.0) * _dmul()

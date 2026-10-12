@@ -19,6 +19,7 @@ const Hints := preload("res://scripts/hints.gd")
 const Look := preload("res://scripts/look.gd")
 const Lights := preload("res://scripts/lights.gd")
 const RunLog := preload("res://scripts/run_log.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
 const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
 const STALKER_TEST := preload("res://scripts/stalker_test.gd")
@@ -160,6 +161,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if _all_down():
 		print("[WIPE] all players down -> mission restart in %.0fs" % WIPE_DELAY)
+		mission.log_end("wipe")
 		_announce_wipe.rpc(WIPE_DELAY)
 
 ## Wipe = WSZYSCY (ludzie i boty) leżą jednocześnie.
@@ -427,6 +429,9 @@ func _handle_cmdline() -> void:
 			Sprites.newgun = true                                                                  # dev: sprite HD broni (gunhd_*.png)
 		if a == "--newchar" or a.begins_with("--newchar="):
 			Sprites.newchar = "mix" if a == "--newchar" else a.substr("--newchar=".length())     # dev: postacie 3D zamiast player_N
+		if a.begins_with("--sessionlog="):               # dziennik sesji także w headless, do wskazanego katalogu (testy)
+			SessionLog.enabled = true
+			SessionLog.dir = a.substr("--sessionlog=".length())
 		if a.begins_with("--port="):
 			port = a.substr("--port=".length()).to_int()
 		elif a.begins_with("--mission="):
@@ -636,7 +641,7 @@ func _wipe_test(delay: float) -> void:
 		victim.take_bullet(victim.global_position + Vector2(-10, 0), 999.0)
 	NoiseMgr.add_noise(50.0, Vector2(400, 200))
 	for c in _players.get_children():
-		c.deliver_hit(99, c.global_position)
+		c.deliver_hit(99, c.global_position, "test")
 	await get_tree().create_timer(0.5).timeout
 	print("[TEST] wipe: all_down=%s wipe_left=%.1f trzosek1_alive=%s noise=%.0f" % [
 		str(_all_down()), wipe_left, str(victim.alive if victim else null), NoiseMgr.level])
@@ -2488,6 +2493,7 @@ func _begin_hosting(where: String) -> void:
 	NoiseMgr.reset_mission()
 	_spawn_player(1)
 	print("[NET] hosting on %s" % where)
+	mission.log_start.call_deferred()      # pierwsza misja nie przechodzi przez _restart_mission; odroczone, żeby bot już stał
 
 ## Steam: peer podpinamy od razu (inaczej się nie odpytuje), a sesję startujemy, gdy lobby
 ## naprawdę działa (CONNECTION_CONNECTED) — wcześniej NoiseMgr.is_server() jest fałszem.

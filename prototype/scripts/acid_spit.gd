@@ -41,7 +41,7 @@ func _physics_process(delta: float) -> void:
 			if p.dead or p.is_queued_for_deletion():
 				continue
 			if (p.global_position + Vector2(0, -9)).distance_to(global_position) <= HIT_R + 3.0:
-				p.deliver_hit(1, global_position)
+				p.deliver_hit(1, global_position, "acid")
 				_splash()
 				return
 
