@@ -295,6 +295,14 @@ def weapons() -> None:
     bc.hybrid(_keys("reload_shell", 3), _reload_shell_bake, RELOAD_SHELL_NEEDS)
     bc.hybrid(_keys("maczeta", 2), _maczeta_bake, MACZETA_NEEDS)
     bc.hybrid(["hkm9_flame_loop"], _flame_loop_bake, FLAME_NEEDS)
+    # Dalekie wersje (F6 a) rodzin, których bliska wersja jest z nagrań: ta sama funkcja co dla syntezy, na plikach z nagrań.
+    import bake_weapons
+    for near, needs in (("m83_shot", M83_NEEDS), ("spread12_shot", SPREAD12_NEEDS), ("srut8_shot", SRUT8_NEEDS),
+                        ("gniew4_shot", GNIEW4_NEEDS), ("explosion", list(EXPLOSION_SRC))):
+        far = dict(bake_weapons.FAR_FAMILIES)[near]
+        if "%s_1" % near in bc.HYBRID:
+            bc.hybrid(_keys(far, bake_weapons.FAR_VARIANTS),
+                      lambda near=near, far=far: bake_weapons.bake_far_family(bc.LICENSED, near, far), needs)
 
 
 # ============================================================ STALKER (bake_sfx.build_stalker)
@@ -685,6 +693,64 @@ def _zyla_roar_bake() -> None:
         finalize("zyla_roar_%d" % (i + 1), x, lufs=-11.25, fade_out_ms=150)
 
 
+# ============================================================ GRACZ I ŚWIAT — kandydaci do odsłuchu (F4, część 3)
+# Głos gracza: ból z dwóch okrzyków tego samego zestawu nagrań, upadek z jęku + to samo uderzenie ciała co w syntezie.
+# `effort` (wydech przy skoku) zostaje syntetyczny — w archiwach są tylko okrzyki bólu i walki, za mocne na każdy skok.
+
+PLAYER_HURT_NEEDS = ["male_shout_pain_132", "male_grunt_shout_317"]
+
+
+def _player_hurt_bake() -> None:
+    for i, (sid, end) in enumerate((("male_shout_pain_132", 0.76), ("male_grunt_shout_317", 0.62))):
+        x = d.saturate(_unit(d.filt(_clip(sid, 0.0, 0.95, 0.0, end, tail=.18), "hp", 90.0, order=2)), 1.4)
+        x = d.limiter(_unit(x), -5.0)                                # gęsto jak synteza: okrzyk ma się przebić przez strzały
+        finalize("player_hurt_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), lufs=-12.05)
+
+
+PLAYER_DOWN_NEEDS = ["male_death_low_09"]
+
+
+def _player_down_bake() -> None:
+    voice = _clip("male_death_low_09", 0.0, 1.7, 0.0, 1.5, tail=.4)
+    x = d.mix([(voice, 1.0), (thump(.22, 110, 45, .04, .07), 0.9, .7)], d.sec(1.6))
+    x = d.limiter(d.saturate(_unit(d.filt(x, "hp", 40.0, order=2)), 1.3), -4.0)
+    finalize("player_down", d.reverb(x, ir("room"), wet=.2), lufs=-14.5, fade_out_ms=200)
+
+
+# --- Emitery ambientu: skrzypienie konstrukcji, poryw wiatru, odległe uderzenie (grane cicho, z daleka).
+CREAK_NEEDS = ["metal_creak_13", "blocked_door_creaks_09"]
+_CREAKS = (("metal_creak_13", 0.05, 1.55, -5.0), ("metal_creak_13", 2.65, 2.4, -3.0), ("blocked_door_creaks_09", 2.3, 1.6, -4.0))
+
+
+def _creak_bake() -> None:
+    for i, (sid, t0, ln, semis) in enumerate(_CREAKS):
+        x = d.lp(d.filt(_clip(sid, t0, ln, semis, 3.2, tail=.5, onset=False), "hp", 60.0, order=2), 5000.0)
+        finalize("amb_creak_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.3), lufs=-26.0, fade_out_ms=300)
+
+
+GUST_NEEDS = ["whoosh_wind_gust_11", "wind_howl_gust"]
+_GUSTS = (("whoosh_wind_gust_11", 0.25, 3.7), ("wind_howl_gust", 1.6, 4.0), ("wind_howl_gust", 4.4, 4.6))
+
+
+def _gust_bake() -> None:
+    for i, (sid, t0, ln) in enumerate(_GUSTS):
+        x = d.filt(bc.src(sid, t0, ln), "hp", 80.0, order=2)
+        T = len(x) / d.SR
+        x = x * d.env_pts(len(x), [(0, 0), (.5, 1), (T - 1.0, 1), (T, 0)])
+        finalize("amb_gust_%d" % (i + 1), x, lufs=-28.0, fade_out_ms=500)
+
+
+THUD_NEEDS = ["deep_thud_10", "cannonball_impact_005"]
+
+
+def _thud_bake() -> None:
+    a = _clip("deep_thud_10", 0.0, 3.2, -2.0, 3.0, tail=1.2)
+    b = _clip("cannonball_impact_005", 0.0, 1.3, -4.0, 1.5, tail=.6)
+    for i, x in enumerate((a, b)):
+        x = d.reverb(d.filt(x, "hp", 25.0, order=2), ir("cave"), wet=.35)
+        finalize("amb_thud_%d" % (i + 1), x, lufs=-24.0, fade_out_ms=500)
+
+
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts
@@ -703,6 +769,11 @@ CANDIDATES: tuple = (
     ("hybrid", _leech_shriek_bake, LEECH_SHRIEK_NEEDS),
     ("hybrid", _zyla_growl_bake, ZYLA_GROWL_NEEDS),
     ("hybrid", _zyla_roar_bake, ZYLA_ROAR_NEEDS),
+    ("hybrid", _player_hurt_bake, PLAYER_HURT_NEEDS),
+    ("hybrid", _player_down_bake, PLAYER_DOWN_NEEDS),
+    ("hybrid", _creak_bake, CREAK_NEEDS),
+    ("hybrid", _gust_bake, GUST_NEEDS),
+    ("hybrid", _thud_bake, THUD_NEEDS),
 )
 
 

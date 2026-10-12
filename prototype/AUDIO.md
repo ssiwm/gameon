@@ -114,6 +114,16 @@ Testy: `godot --headless --path . -s tools/test_sound_grid.gd` (siatka na małej
 dokąd dochodzi postać). Dev: `--nosoundpath` wyłącza drogę — do porównania w grze. **Strojone liczbami, nie uchem**: wagi
 `ROUTE_LOSS_DB` / `WALL_LOSS_DB` wymagają odsłuchu w grze na słuchawkach.
 
+### 3.5 Wersja bliska i daleka (`audio_director.gd: play_at()`, `tools/bake_weapons.py: far_version()`)
+
+Strzał i wybuch z daleka to nie cichszy strzał z bliska: trzask ginie, powietrze zjada górę pasma, zostaje korpus z echem.
+Rodziny `<broń>_shot` i `explosion` mają dalekie odpowiedniki `<broń>_far_1..2` / `explosion_far_1..2` (8 rodzin), pieczone
+z gotowych plików bliskich — z syntezy do `audio/`, a dla rodzin granych z nagrań także do `audio_licensed/`. `play_at()` liczy
+odległość pozornego źródła (po drodze z 3.4) i przenika wersje ze stałą mocą: do `FAR_START` (300 px, mniej więcej krawędź
+ekranu) sama bliska, od `FAR_FULL` (900 px) sama daleka. Rodzinę daleką rozpoznaje po nazwie w manifeście — nowa broń dostaje
+ją przez dopisanie do `FAR_FAMILIES` w `bake_weapons.py`, bez zmian w grze. Własny strzał gracza jest niepozycyjny i zawsze bliski.
+Dev: `--nofar` wyłącza dalekie wersje — do porównania w grze. Progi i charakter ogona dobrane liczbami, nie uchem.
+
 ## 4. Narzędzia
 
 ```bash
@@ -145,7 +155,7 @@ python3 tools/audio_ab.py --ref origin/main                 # to samo dla asset�
 ```
 
 Katalog nagrań: `DA87_AUDIO_LIB`, `art_src/audio_lib/` albo `audio_lib/` obok repo (wspólny dla kilku kopii roboczych). Bez nagrań
-bake piecze samą syntezę. Z nagrań jest 26 rodzin, 71 plików (każda po odsłuchu A/B; lista, werdykty i odrzucone — `AUDIO_PLAN.md` §7):
+bake piecze samą syntezę. Z nagrań jest 26 rodzin, 71 plików — plus 10 dalekich wersji wyprowadzonych z nich w 3.5 (każda po odsłuchu A/B; lista, werdykty i odrzucone — `AUDIO_PLAN.md` §7):
 większość broni (strzały M-83 i strzelb, granatnik, kusza, wybuchy, trafienia, łuski, przeładowania, maczeta, pętla miotacza),
 Stalker poza szeptem (warkot, krzyk, kroki, odległy zew), kroki gracza po wszystkich powierzchniach i twarde lądowanie oraz
 trzy pętle ambientu (las, deszcz, deszcz o dach; wiatr został syntetyczny).

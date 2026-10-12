@@ -81,6 +81,10 @@ const ROUTE_SMOOTH := 8.0             ## 1/s: jak szybko pętla pozycyjna przesu
 const ONESHOT_POOL := 32
 const POSITIONAL_POOL := 28
 const MAX_DISTANCE := 1600.0
+## Bliska i daleka wersja tej samej rodziny (`<broń>_shot` → `<broń>_far`, `explosion` → `explosion_far`) przenikają się
+## wg odległości od słuchacza: do FAR_START gra sama bliska, od FAR_FULL sama daleka (stała moc pomiędzy).
+const FAR_START := 300.0
+const FAR_FULL := 900.0
 
 # Serce: próg, od którego bije szybciej (GDD: Uwaga napędza strach).
 const HEART_FAST_AT := 0.45
@@ -130,6 +134,8 @@ var _heart_key := ""
 var _enabled := true
 var _use_licensed := not ("--synthaudio" in OS.get_cmdline_user_args())
 var _use_routes := not ("--nosoundpath" in OS.get_cmdline_user_args())   ## dev: bez drogi po mapie (porównanie w grze)
+var _use_far := not ("--nofar" in OS.get_cmdline_user_args())             ## dev: bez dalekich wersji strzałów (porównanie w grze)
+var _far_cache: Dictionary = {}   # rodzina bliska -> [baza dalekiej, liczba wariantów] albo []
 var _routes: Dictionary = {}         # Vector2i (komórka źródła) -> [pozorne położenie: Vector2, długość drogi: float] albo []
 var _routes_ear := Vector2i(-9999, -9999)    # komórka słuchacza, dla której policzono _routes
 var _routes_ver := -1                # wersja siatki poziomu, dla której policzono _routes
@@ -440,13 +446,50 @@ func play_at(key: String, pos: Vector2, bus: String = BUS_WORLD,
 	# poza zasięgiem słyszalności nie zajmujemy głosu
 	if pos.distance_to(_listener_pos) > MAX_DISTANCE * 0.98:
 		return
+	var place := _placement(pos)
+	var far := _far(key)
+	if not far.is_empty():
+		var t := clampf(((place[0] as Vector2).distance_to(_listener_pos) - FAR_START) / (FAR_FULL - FAR_START), 0.0, 1.0)
+		if t > 0.0:
+			_emit_at(pick(far[0], far[1]), place, bus, vol_db + linear_to_db(sin(t * PI * 0.5)), pitch)
+			if t > 0.98:
+				_caption(key, pos)
+				return
+			vol_db += linear_to_db(cos(t * PI * 0.5))
+	_emit_at(key, place, bus, vol_db, pitch)
+	_caption(key, pos)
+	if key.begins_with("explosion"):
+		_on_explosion(pos)
+
+
+## Daleka rodzina dla klucza bliskiego: [baza, liczba wariantów] albo [] — z manifestu, bez osobnej tabeli.
+func _far(key: String) -> Array:
+	if not _use_far:
+		return []
+	var fam := _family(key)
+	if _far_cache.has(fam):
+		return _far_cache[fam]
+	var base := ""
+	if fam == "explosion":
+		base = "explosion_far"
+	elif fam.ends_with("_shot"):
+		base = fam.trim_suffix("_shot") + "_far"
+	var n := 0
+	while base != "" and Manifest.PATHS.has("%s_%d" % [base, n + 1]):
+		n += 1
+	var out: Array = [base, n] if n > 0 else []
+	_far_cache[fam] = out
+	return out
+
+
+## Jeden głos pozycyjny w miejscu wyznaczonym przez _placement(): [pozycja, stopień zasłonięcia].
+func _emit_at(key: String, place: Array, bus: String, vol_db: float, pitch: float) -> void:
 	var s := stream(key)
 	if s == null:
 		return
 	var p := _acquire(_pos_pool, key) as AudioStreamPlayer2D
 	if p == null:
 		return
-	var place := _placement(pos)
 	p.stream = s
 	p.position = place[0]
 	p.max_distance = MAX_DISTANCE
@@ -456,9 +499,6 @@ func play_at(key: String, pos: Vector2, bus: String = BUS_WORLD,
 	p.volume_db = vol_db
 	p.pitch_scale = pitch
 	p.play()
-	_caption(key, pos)
-	if key.begins_with("explosion"):
-		_on_explosion(pos)
 
 
 func play_variant_at(base: String, count: int, pos: Vector2, bus: String = BUS_WORLD,

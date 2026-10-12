@@ -105,6 +105,14 @@
    "supplier": "David Dumais Audio",
    "license": "sonniss-gdc-2.0"
   },
+  "blocked_door_creaks_09": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 8of9/SoundBits - Unsettling Creaks and Squeaks – Extension I/UCnS_BlockedDoor_01_Creaks_09.wav",
+   "sha256": "874458e299f9f96fb2d8af98e71a07c3b73fbac3aaf3be70c23065379409baf2",
+   "pack": "Sonniss GDC 2017 — Unsettling Creaks and Squeaks – Extension I",
+   "supplier": "SoundBits",
+   "license": "sonniss-gdc-2.0"
+  },
   "bodyfall_concrete": {
    "kind": "lib",
    "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 5of8/Red Libraries - Bodyfall/RL_bodyfall_Concrete_Generic_Feet_Mid_Mono_Med_Impact_02.wav",
@@ -153,6 +161,14 @@
    "supplier": "Stuart Duffield",
    "license": "sonniss-gdc-2.0"
   },
+  "cannonball_impact_005": {
+   "kind": "lib",
+   "file": "sonniss/2023/Gladestock Studios - Naval Warfare/GS cannonball impact 005.wav",
+   "sha256": "8f532064c4cd9318e8514c7363e63d6dcd0afe1b397ea24521ffe796c98046f2",
+   "pack": "Sonniss GDC 2023 — Naval Warfare",
+   "supplier": "Gladestock Studios",
+   "license": "sonniss-gdc-2.0"
+  },
   "creature_step_damp": {
    "kind": "lib",
    "file": "sonniss/2020/Bluezone - Cave Creature Sound Effects/Bluezone_BC0272_creature_footstep_damp_015.wav",
@@ -191,6 +207,14 @@
    "sha256": "9389f55b51ae482b8df75f2411a55163d13bdffa3fc22f98a0a58a29f03a00da",
    "pack": "Sonniss GDC 2019 — Nocked",
    "supplier": "Eiravaein Works",
+   "license": "sonniss-gdc-2.0"
+  },
+  "deep_thud_10": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 1of8/Baxter Audio - IMPACT/10 Hit Deep Thud.wav",
+   "sha256": "5eefb98e5ac19d76ccb7c7fb89eff6564bf334627568a651118a75c21b2adf29",
+   "pack": "Sonniss GDC 2019 — IMPACT",
+   "supplier": "Baxter Audio",
    "license": "sonniss-gdc-2.0"
   },
   "dirt_walk_loop": {
@@ -399,6 +423,38 @@
    "sha256": "4bfe1aba3f0332a2fe8c02792d4f0d44d4df7fb10f109dbecd561ba39422def8",
    "pack": "Sonniss GDC 2023 — Monster Sound FX Pack 2",
    "supplier": "David Dumais Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "male_death_low_09": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Gamemaster Audio -  Human Vocalizations/voice_male_b_death_low_09.wav",
+   "sha256": "20656ad4cd14df4c4e2ffcd51e56d83a53aa5ff639dcaff3f11e23bb39596a49",
+   "pack": "Sonniss GDC 2017 — Human Vocalizations",
+   "supplier": "Gamemaster Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "male_grunt_shout_317": {
+   "kind": "lib",
+   "file": "sonniss/2016/SoundBits -  Screams & Shouts 2 - Humans/Male_Grunt-Shout_317.wav",
+   "sha256": "ea9339d5fb237db997854c7bbb64a5433757c4c57159d0ee9b0260d29b494be5",
+   "pack": "Sonniss GDC 2016 — Screams & Shouts 2 - Humans",
+   "supplier": "SoundBits",
+   "license": "sonniss-gdc-2.0"
+  },
+  "male_shout_pain_132": {
+   "kind": "lib",
+   "file": "sonniss/2016/SoundBits -  Screams & Shouts 2 - Humans/Male_Shout-of-Pain_132.wav",
+   "sha256": "61fffaee040539dce95046423b140401dfb2f780a8c851782279bdcd93aaa8fc",
+   "pack": "Sonniss GDC 2016 — Screams & Shouts 2 - Humans",
+   "supplier": "SoundBits",
+   "license": "sonniss-gdc-2.0"
+  },
+  "metal_creak_13": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 8of9/SoundBits - Unsettling Creaks and Squeaks/Metal_Creak_13.wav",
+   "sha256": "9b1af93cdfbd46852916b18cb3d0addc8f1246ba2427d8cd500e24f7e468a715",
+   "pack": "Sonniss GDC 2017 — Unsettling Creaks and Squeaks",
+   "supplier": "SoundBits",
    "license": "sonniss-gdc-2.0"
   },
   "monster11_mouth2": {
@@ -623,6 +679,22 @@
    "sha256": "272a7e0034a85a802f665050b8a860b3498a0f10c11955f4cf4d443fd35c6e9d",
    "pack": "Sonniss GDC 2020 — Hand Guns Sound Effects Pack",
    "supplier": "Olivier Girardot",
+   "license": "sonniss-gdc-2.0"
+  },
+  "whoosh_wind_gust_11": {
+   "kind": "lib",
+   "file": "sonniss/2024/Rescopic Sound - Distinct Whooshes/WHSH_Airy-Whoosh Wind Gust 11_RSCPC_DW.wav",
+   "sha256": "f9962cafc521ee7a7c745eb2ca9175a66f2db08384381eac2f84aa4218b20298",
+   "pack": "Sonniss GDC 2024 — Distinct Whooshes",
+   "supplier": "Rescopic Sound",
+   "license": "sonniss-gdc-2.0"
+  },
+  "wind_howl_gust": {
+   "kind": "lib",
+   "file": "sonniss/2016/Hzandbits - Howling Winds - Interior/Wind,Int,Howl,Forceful,Tonal,Vocal,Gust.wav",
+   "sha256": "9486561415e15a37f145676149511a16e5981e599da405ce91ccbbda2e03ee71",
+   "pack": "Sonniss GDC 2016 — Howling Winds - Interior",
+   "supplier": "Hzandbits",
    "license": "sonniss-gdc-2.0"
   },
   "yeti_grumble_02": {

@@ -1,6 +1,6 @@
 # Plan: refaktor dźwięku — źródła hybrydowe i propagacja po mapie
 
-Status: **plan z 2026-10-12; F0–F3 zrobione, F4 i F5 w toku, F6 (droga dźwięku po mapie) wdrożona; 71 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
+Status: **plan z 2026-10-12; F0–F3 zrobione, F4 i F5 w toku, F6 (droga dźwięku po mapie, wersje bliska / daleka) wdrożona; 81 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
 `default_bus_layout.tres`, `AUDIO.md`), nie na próbnej implementacji — rozmiary faz są szacunkowe. Kontynuacja `prototype/AUDIO.md`
 (overhaul v2), który sam stwierdza w §5: „to nie jest jeszcze AAA w sensie brzmienia” i „brzmienia nie oceniałem uchem”.
 
@@ -141,7 +141,7 @@ Pomiar (nie odsłuch): strzał z nagrań ma środek ciężkości widma ok. 1,4 k
 ok. 380 ms zamiast 255 ms, głośność zrównana z obecnym do 0,5 LU. Kroki z nagrań są ciemniejsze powyżej 4 kHz niż syntetyczne. Alternatywy
 pieką się deterministycznie (dwa przebiegi = te same sumy).
 
-**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 71 plików z nagrań):**
+**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 71 plików z nagrań, do tego 10 wyprowadzonych z nich dalekich wersji z F6):**
 
 | Rodzina | Werdykt | Źródła wersji z nagrań |
 |---|---|---|
@@ -178,7 +178,7 @@ pieką się deterministycznie (dwa przebiegi = te same sumy).
 Głośność każdej rodziny zrównana ze ZMIERZONĄ głośnością syntezy (nominalne cele z `bake_weapons.py` synteza osiąga tylko częściowo, bo
 ogranicza ją szczyt). Zostają syntetyczne także: `widmo1` (działo szynowe), `lr7` (promień), znaczniki trafień — to dźwięki bez odpowiednika w
 nagraniach. F3 (bronie) jest zamknięta. Zostało: F4 — drzwi, szkło i grzmoty (kandydaci czekają na odsłuch), głos gracza, pozostałe
-ambienty; F5 — werdykt dla głosów wrogów (niżej); F6 (a) — mieszanie wersji bliskiej i dalekiej.
+ambienty (kandydaci czekają na odsłuch); F5 — werdykt dla głosów wrogów (niżej).
 
 **F5, część 2 — własne głosy wrogów (2026-10-12).** Wrogowie przestali pożyczać głos Stalkera. 11 nowych rodzin, 23 pliki
 (`audio/sfx/enemies/`, builder `bake_sfx.build_enemies()`; razem 180 assetów), każda z wersją syntetyczną w repo:
@@ -217,7 +217,17 @@ własność poziomu) + `audio_director.gd: _placement()`: źródło mocno zasło
 jej długości, jeśli tak wychodzi głośniej niż przez ścianę; pętle pozycyjne dojeżdżają do pozornego położenia płynnie. Zamiast zalewania
 siatki z planu jest wyszukiwanie drogi na żądanie z pamięcią podręczną — prościej i bez pracy co klatkę. Testy: `tools/test_sound_grid.gd`
 (w CI), `--maptest` sprawdza drogę dźwięku do każdego punktu mapy. Wagi (`ROUTE_LOSS_DB`, `WALL_LOSS_DB`) dobrane z rachunku, nie z odsłuchu;
-do porównania w grze służy `--nosoundpath`. Część (a) — mieszanie wersji bliskiej i dalekiej — czeka na klucze `_far`.
+do porównania w grze służy `--nosoundpath`.
+
+**F6 (a) wersja bliska i daleka — wdrożona, czeka na strojenie w grze.** 8 rodzin dalekich po 2 warianty (`m83_far`, `p64_far`,
+`spread12_far`, `srut8_far`, `gniew4_far`, `sokol6_far`, `widmo1_far`, `explosion_far`; razem 196 assetów). Daleka wersja powstaje
+z gotowej bliskiej jedną funkcją (`bake_weapons.far_version()`: stłumiony atak, pochłonięta góra pasma, dwa echa, pogłos dużej
+przestrzeni) — osobno z syntezy (do repo) i z wersji z nagrań (do `audio_licensed/`, tylko dla rodzin, których bliska wersja jest
+z nagrań), więc daleka zawsze pochodzi od tej bliskiej, którą gra gra. `audio_director.gd: play_at()` przenika obie wg odległości
+(`FAR_START` 300 px → `FAR_FULL` 900 px, stała moc); rodziny dalekie rozpoznaje po nazwie w manifeście, bez tabeli. Dotyczy strzałów
+innych graczy i botów oraz wybuchów; własny strzał jest niepozycyjny i zostaje bliski. Dev: `--nofar`. Progi i charakter ogona
+dobrane z rachunku — do oceny w grze. Inaczej niż w planie F3, dalekie wersje nie są osobnymi przepisami z nagrań z dystansu:
+wyprowadzenie z bliskiej gwarantuje, że to „ten sam strzał”, i nie wymaga osobnego odsłuchu każdej broni.
 
 **Ustalenia, które zmieniają plan:**
 
