@@ -199,7 +199,7 @@ func _build_options(box: VBoxContainer) -> void:
 	box.add_child(W.section(tr("OPTIONS")))
 	_diff = _seg_row(box, tr("Difficulty"), Difficulty.NAMES, tr("Chosen by the host. Applies to enemies, the stalker, the boss, noise and drops."))
 	_diff.selected.connect(func(i: int) -> void:
-		Difficulty.set_level(i)
+		Difficulty.choose(i)
 		Audio.play("ui_click", Audio.BUS_UI, -10.0))
 	Difficulty.changed.connect(func(_l: int) -> void: _diff.set_index(Difficulty.level))
 	_diff.set_index(Difficulty.level)

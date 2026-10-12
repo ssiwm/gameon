@@ -1,6 +1,6 @@
 # Dead Air '87
 
-Co-op horror run-and-gun (retro Contra), Godot **4.7.2**, GDScript, symulacja 2D z obrazem wyłącznie w 3D (`view3d.gd`; widoku 2D i grafiki klasycznej już nie ma — tylko tryb headless nic nie rysuje); renderer Forward+ (Vulkan / D3D12; `--rendering-driver opengl3` wymusza tryb zgodności, np. pod xvfb). Cały projekt w `prototype/` (`godot --path prototype`). Opis gry: `GDD.md`, opis prototypu i flag CLI: `prototype/README.md`.
+Co-op horror run-and-gun (retro Contra), Godot **4.7.2**, GDScript, symulacja 2D z obrazem wyłącznie w 3D (`view3d.gd`; widoku 2D i grafiki klasycznej już nie ma — tylko tryb headless nic nie rysuje); renderer Forward+ (Vulkan / D3D12; `--rendering-driver opengl3` wymusza tryb zgodności, np. pod xvfb). Cały projekt w `prototype/` (`godot --path prototype`). Opis gry: `GDD.md`, historia zmian: `CHANGELOG.md`, opis prototypu i flag CLI: `prototype/README.md`.
 
 ## Zasady
 
@@ -11,7 +11,8 @@ Co-op horror run-and-gun (retro Contra), Godot **4.7.2**, GDScript, symulacja 2D
 - Nowy `.gd` tworzy `.gd.uid` — commituj oba. `.godot/` i `build/` są w `.gitignore`.
 - Grafikę i audio generują skrypty Pythona w `prototype/tools/` — edytuj generatory, nie wynikowe pliki.
 - Gameplay w sieci rozstrzyga serwer (pociski, obrażenia); klient robi predykcję i rysuje. Nie dodawaj logiki bez walidacji serwera.
-- Zmieniasz mechanikę → zaktualizuj `README.md` / `GDD.md` / `WEAPONS.md`, jeśli ją opisują.
+- Zmieniasz mechanikę → zaktualizuj `README.md` / `GDD.md` / `WEAPONS.md`, jeśli ją opisują. PR, który zmienia grę, podbija `config/version`
+  w `prototype/project.godot` i dopisuje wiersz do `CHANGELOG.md` (tytuł = tytuł PR-a).
 - Klawisze i przyciski pada żyją w rejestrze `prototype/scripts/actions.gd`: nową akcję dopisz tam, a nazwę klawisza w tekstach podawaj
   przez `Actions.key("id")` / `{id}` w `Actions.fmt(...)`, nie literałem. Tekst UI po angielsku + wiersz w `prototype/translations/ui.csv`
   (kolumna `pl`); sformatowane teksty przez `tr()`.

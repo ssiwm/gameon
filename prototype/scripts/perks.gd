@@ -8,7 +8,7 @@ const ORDER := ["quiet_steps", "blood_flow", "wide_arm", "smith", "cold_blood", 
 const PERKS := {
 	"quiet_steps": {
 		"color": Color(0.6, 0.8, 1.0), "name": "Quiet steps", "level": 2, "params": {"run_noise_mult": 0.5},
-		"desc": "Running makes half the noise (0.25 instead of 0.5 per second).",
+		"desc": "Running makes half the noise (0.25 instead of 0.5 per second). Blind Ones no longer hear you run.",
 	},
 	"blood_flow": {
 		"color": Color(0.9, 0.3, 0.3), "name": "Bloodflow", "level": 2, "params": {"revive_time": 2.5},
