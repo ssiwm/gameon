@@ -2,7 +2,7 @@
 bake_hybrid.py — wersje assetów Z NAGRAŃ z bibliotek (AUDIO_PLAN.md).
 
 Dwa rodzaje przepisów:
-  * wersje z nagrań dla GRY — weapons(), stalker(), enemies(), world(), player(), ambience(): wołane na końcu
+  * wersje z nagrań dla GRY — weapons(), stalker(), enemies(), world(), player(), ui(), ambience(): wołane na końcu
     builderów (bake_weapons.py, bake_sfx.py, bake_amb.py),
     po syntezie tych samych kluczy, przez bc.hybrid(). Plik trafia do audio_licensed/ (poza repo), a gra woli go
     od syntetycznego z audio/. Bez plików źródłowych na dysku nic się nie dzieje — zostaje sama synteza;
@@ -32,7 +32,7 @@ stalker_growl, stalker_shriek, stalker_step,
 stalker_whisper_loop (niski oddech),
 amb_far_cry; trzosek_attack, trzosek_death (wilkołak), wolek_attack, wolek_death, slepiec_death, podsluchacz_scream, leech_growl,
 leech_shriek, zyla_roar; door, glass_break, thunder, amb_creak, amb_gust, amb_thud; step_concrete, step_metal, step_dirt,
-step_water, land_hard (buty), player_hurt, player_down; amb_forest, amb_rain, amb_rain_roof, amb_wind.
+step_water, land_hard (buty), player_hurt, player_down; ui_confirm, mission_start; amb_forest, amb_rain, amb_rain_roof, amb_wind.
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz,
 dry_fire, hkm9_ignite, kilof_swing, slepiec_attack, zyla_growl. Po odsłuchu w grze
 wymienione: Trzosek (owadzi terkot był za wysoki → pies z warkotem ogara), lądowanie (upadek ciała → buty na obie stopy).
@@ -848,24 +848,16 @@ def world() -> None:
     bc.hybrid(_keys("amb_thud", 2), _thud_bake, THUD_NEEDS)
 
 
-# ============================================================ SYGNAŁY ZADAŃ I STARTU — kandydaci
-# `ui_confirm` (zebrany przedmiot z zadania, uruchomiony generator, awans, sukces misji, przycisk hosta): synteza to dwa
-# wznoszące się syntezatorowe bliki — nie z tego świata. Propozycje: „radio” (klik nadawania i szum zamykanej blokady)
-# albo „przelacznik” (mechaniczny stuk wyłącznika i szpuli). `mission_start` to nowy klucz na start gry.
-CONFIRM_LUFS = -14.2                                                 # zmierzona głośność syntezy ui_confirm
-CONFIRM_RADIO_NEEDS = ["walkie_kenwood"]
-CONFIRM_SWITCH_NEEDS = ["breaker_on", "tape_play_stop"]
+# ============================================================ SYGNAŁY (bake_sfx.build_ui)
+# `ui_confirm` (zebrany przedmiot z zadania, uruchomiony generator, awans, sukces misji, przycisk hosta): mechaniczny stuk
+# wyłącznika i zaskok napędu magnetofonu zamiast dwóch syntezatorowych blików. `mission_start`: włączenie radiostacji —
+# stuk wyłącznika, fala szumu strojonego radia, krótki szum zamykanej blokady krótkofalówki.
+CONFIRM_LUFS = -14.2                                                 # zmierzona głośność dawnej syntezy ui_confirm
+CONFIRM_NEEDS = ["breaker_on", "tape_play_stop"]
 START_NEEDS = ["breaker_on", "radio_tuning_static", "walkie_kenwood"]
 
 
-def _confirm_radio_bake() -> None:
-    key = _clip("walkie_kenwood", 8.33, 0.1, -2.0, 0.08, tail=.04)
-    tail = _clip("walkie_kenwood", 5.18, 0.42, -2.0, 0.38, tail=.14)          # szum zamykanej blokady, nie ton „roger”
-    x = d.limiter(_unit(d.filt(d.mix([(key, 0.35), (tail, 1.0, .05)], ms(470)), "hp", 150.0, order=2)), -9.0)
-    finalize("ui_confirm", d.reverb(x, ir("dead"), wet=.08), lufs=CONFIRM_LUFS)
-
-
-def _confirm_switch_bake() -> None:
+def _confirm_bake() -> None:
     a = _clip("breaker_on", 0.03, 0.2, -3.0, 0.20, tail=.10)
     b = _clip("tape_play_stop", 1.69, 0.3, -2.0, 0.30, tail=.14)
     x = d.mix([(a, 1.0), (b, 0.8, .09), (thump(.08, 150, 70, .02, .035), 0.5)], ms(420))
@@ -883,14 +875,17 @@ def _mission_start_bake() -> None:
     finalize("mission_start", d.reverb(x, ir("room"), wet=.15), lufs=-15.0, fade_out_ms=120)
 
 
+def ui() -> None:
+    """Wersje z nagrań dla sygnałów — wołane na końcu bake_sfx.build_ui()."""
+    bc.hybrid(["ui_confirm"], _confirm_bake, CONFIRM_NEEDS)
+    bc.hybrid(["mission_start"], _mission_start_bake, START_NEEDS)
+
+
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts.
-CANDIDATES: tuple = (
-    ("radio", _confirm_radio_bake, CONFIRM_RADIO_NEEDS),
-    ("przelacznik", _confirm_switch_bake, CONFIRM_SWITCH_NEEDS),
-    ("hybrid", _mission_start_bake, START_NEEDS),
-)
+# Pusto: wszystkie dotychczasowe rodziny mają werdykt.
+CANDIDATES: tuple = ()
 
 
 def build_alts() -> None:

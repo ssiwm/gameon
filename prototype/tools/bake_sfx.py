@@ -657,15 +657,13 @@ def build_ui() -> None:
     x = d.mix([(tick(r, 3200, 1.6, 12, .003), 1.0), (d.osc("sine", 1250.0, ms(40)) * d.env_perc(ms(40), .0005, .008), .4)], ms(70))
     finalize("ui_click", d.reverb(x, ir("dead"), wet=.08), peak=-1.5)
 
-    # Potwierdzenie: dwa wznoszące syntezatorowe bliki (kwarta) z krótkim echem
-    def blip(f, dur, lpf):
-        n = ms(dur)
-        s = d.osc("saw", f, n) * .5 + d.osc("square", f * 1.003, n, pw=.35) * .5
-        s = d.sweep(s, "lp", d.glide_exp(lpf, lpf * .3, n, dur / 1000 * .4), 1.8)
-        return s * d.env_adsr(n, .003, .03, .6, .05)
-    x = d.mix([(blip(587.0, 110, 5200.0), 1.0, 0.0), (blip(784.0, 150, 6500.0), 1.0, .085)], ms(320))
-    x = d.echo_tail(x, [140, 280], [.25, .1], 3500.0)
-    finalize("ui_confirm", x, peak=-1.5)
+    # Potwierdzenie: mechaniczny przełącznik — stuk dźwigni i zaskok zapadki (dawne dwa syntezatorowe bliki nie pasowały
+    # do świata gry; gra tym m.in. zebranie przedmiotu z zadania)
+    rc = Rng(0xDE10)                                         # własne ziarno: wspólne `r` zostaje nietknięte dla oc_load
+    x = d.mix([(thump(.09, 150, 65, .02, .04), .45), (tick(rc, 1100, 1.6, 16, .004), 1.0), (tick(rc, 1900, 1.4, 10, .003), .6, .004),
+               (thump(.07, 190, 90, .02, .03), .3, .095), (tick(rc, 1500, 1.5, 14, .004), 1.0, .095),
+               (ring(rc, [820, 1350], [.05, .035], dur=.1), .35, .1)], ms(300))
+    finalize("ui_confirm", d.reverb(d.lp(x, 5000.0), ir("dead"), wet=.08), lufs=-15.0)
 
     # Odmowa: niski, matowy podwójny buczek
     def buzz(f, dur):
@@ -701,3 +699,4 @@ def build_ui() -> None:
     x = d.mix([(clunk, 1.0), (static / (d.peak(static) + 1e-9), .45), (tick(r, 1100, 1.5, 10, .003), .5, 1.06)], n)
     x = d.limiter(d.lp(x, 4500.0) / (d.peak(x) + 1e-9), -6.0)
     finalize("mission_start", d.reverb(x, ir("room"), wet=.15), lufs=-15.0, fade_out_ms=120)
+    bake_hybrid.ui()                                        # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
