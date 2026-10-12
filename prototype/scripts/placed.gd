@@ -23,6 +23,7 @@ var _scan_t := 0.0
 var _done := false
 var _hd: ItemsHd.ItemMark
 var _hd_on := false
+var _beeping := false        ## uzbrojona mina piszczy (pętla pozycyjna, lokalnie na każdym peerze)
 
 func _ready() -> void:
 	add_to_group("placed")
@@ -39,9 +40,20 @@ func _ready() -> void:
 func is_armed() -> bool:
 	return kind == "mine" and _t >= float(_data["arm"])
 
+func _exit_tree() -> void:
+	if _beeping:
+		Audio.stop_loop(_beep_id())
+
+func _beep_id() -> String:
+	return "mine_%d" % get_instance_id()
+
 func _physics_process(delta: float) -> void:
 	_t += delta
 	queue_redraw()
+	if not _beeping and is_armed():
+		# cichy sygnał uzbrojenia: słychać z kilku metrów, wrogów nie budzi (to nie hałas w NoiseMgr)
+		_beeping = true
+		Audio.start_loop_at("mine_beep_loop", self, Audio.BUS_WORLD, -16.0, true, _beep_id())
 	if _done or not NoiseMgr.is_server():
 		return
 	if kind == "charge":
