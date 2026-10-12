@@ -26,7 +26,9 @@ LICENSED = os.path.join(ROOT, "audio_licensed")
 # nazwa wersji → opis na stronie (po odkryciu nazw)
 LABELS = {"obecna": "obecna (synteza)", "przed": "przed zmianą", "po": "po zmianie", "hybrid": "z nagrań", "gen": "wygenerowana"}
 # odstęp serii [ms] dla rodzin, w których liczy się powtarzalność; reszta gra warianty jeden po drugim
-SERIES_MS = (("_shot", 100), ("step_", 330), ("impact_", 160), ("shell", 140))
+# (pierwsze dopasowanie wygrywa; strzały wg `cooldown` z scripts/weapons.gd — seria ma brzmieć jak ogień w grze)
+SERIES_MS = (("m83_shot", 110), ("p64_shot", 200), ("spread12_shot", 260), ("srut8_shot", 800), ("sokol6_shot", 200),
+             ("gniew4_shot", 1200), ("ciegno6_shot", 800), ("_shot", 150), ("step_", 330), ("impact_", 160), ("shell", 140))
 
 
 def _uri(data: bytes) -> str:

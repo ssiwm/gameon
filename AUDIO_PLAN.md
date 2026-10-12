@@ -141,6 +141,32 @@ Pomiar (nie odsłuch): strzał z nagrań ma środek ciężkości widma ok. 1,4 k
 ok. 380 ms zamiast 255 ms, głośność zrównana z obecnym do 0,5 LU. Kroki z nagrań są ciemniejsze powyżej 4 kHz niż syntetyczne. Alternatywy
 pieką się deterministycznie (dwa przebiegi = te same sumy).
 
+**F3, część 1 (strzały i wybuchy) — kandydaci upieczeni, czekają na odsłuch (bramka dla F3).** `bake_hybrid.CANDIDATES` →
+`bake_audio.py --only alts --alts ../build/audio_alt` → `audio_ab.py --alts ../build/audio_alt`:
+
+| Rodzina | Źródła wersji z nagrań |
+|---|---|
+| `p64_shot` ×4 | SIG P229 9 mm z 1 m + krótki syntetyczny korpus |
+| `spread12_shot` ×3 | Saiga-12 z 1 m (pojedyncze strzały), zaciśnięty ogon, syntetyczny sub |
+| `srut8_shot` ×3, `srut8_pump` ×2 | ta sama Saiga 3 półtony niżej + front USAS-12 + większy sub; pompka z nagrania 12 Gauge |
+| `gniew4_shot` ×2 | odpalenie granatnika dymnego + niski korpus + hala |
+| `sokol6_shot` ×3 | start fajerwerku z bliska w trzech wysokościach + syntetyczne „pyknięcie” |
+| `ciegno6_shot` ×2 | zwolnienie cięciwy kuszy + syntetyczny brzęk |
+| `explosion` ×2 (stereo) | dwa nagrania dużych eksplozji + syntetyczny sub i ostry front |
+
+Głośność każdej rodziny zrównana ze ZMIERZONĄ głośnością syntezy (nominalne cele z `bake_weapons.py` synteza osiąga tylko częściowo, bo
+ogranicza ją szczyt). Zostają syntetyczne: `widmo1` (działo szynowe), `lr7` (promień), znaczniki trafień — to dźwięki bez odpowiednika w
+nagraniach. Część 2 (przeładowania, trafienia, rykoszety, łuski, broń biała, miotacz) po odsłuchu części 1.
+
+Uwagi z pomiaru:
+- **Różnorodność wariantów** z nagrań jest niska w mierze audytu (`m83_shot` 0,25, `p64_shot` 0,22, `spread12_shot` 0,11 wobec 0,45–0,47
+  w syntezie). Miara porównuje rozkład energii w pasmach, a kolejne strzały z jednej broni mają go niemal ten sam — to różne ujęcia, nie ta sama
+  próbka. Próba zwiększenia rozrzutu obróbką (wysokość, korekcja, balans warstw) podniosła `m83_shot` tylko do 0,27, więc została porzucona.
+  Rozstrzyga przycisk „seria” na stronie A/B; jeśli seria brzmi powtarzalnie, następny krok to domieszanie ujęć drugiej broni.
+- **Warkot Stalkera z nagrań jest o ok. 3,5 LU głośniejszy** od syntetycznego (−14,8 wobec −18,3 LUFS): synteza to prawie sam sub-bas, który
+  miara głośności (i ucho) tłumi. Wersja została wybrana w odsłuchu, więc zostaje; jeśli w grze dominuje, ściszyć w `stalker.gd`.
+- `get` / `sync` z archiwów działają dla wszystkich roczników (wcześniejsze błędy zakresów były przejściowe).
+
 **Ustalenia, które zmieniają plan:**
 
 - **Paczka Sonniss 2026 nie zawiera strzałów, kroków ani przeładowań** (347 plików; są głosy stworów, gore, drzwi, wiatr). Broń i kroki są

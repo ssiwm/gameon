@@ -8,6 +8,7 @@ wczytać spis treści z końca archiwum i dociągnąć wybrane pliki. Tylko stdl
     python prototype/tools/audio_lib_fetch.py find "gun|rifle"      # szukaj w pobranych spisach (regex, bez rozróżniania wielkości liter)
     python prototype/tools/audio_lib_fetch.py get 2020 "AK47.*Close"  # pobierz pasujące pliki → <lib>/sonniss/2020/<paczka>/<plik>
     python prototype/tools/audio_lib_fetch.py sha <ścieżka względem lib>   # SHA-256 do wpisania w tools/audio_sources.json
+    python prototype/tools/audio_lib_fetch.py add saiga12_close "SAIGA-12.*1m_left"   # wpisz pobrany plik do tools/audio_sources.json (id, regex)
     python prototype/tools/audio_lib_fetch.py sync                  # pobierz wszystkie nagrania z tools/audio_sources.json i sprawdź sumy
 
 <lib> = zmienna DA87_AUDIO_LIB, art_src/audio_lib/ (w .gitignore) albo audio_lib/ obok repo — jak w bake_common.py.
@@ -202,6 +203,34 @@ def cmd_sha(rel):
     print(_sha(os.path.join(LIB, *rel.replace("\\", "/").split("/"))))
 
 
+def cmd_add(sid, pattern):
+    """Dopisuje pobrane nagranie do rejestru: ścieżka względna, SHA-256, paczka i dostawca z nazwy katalogu w archiwum."""
+    rx = re.compile(pattern, re.I)
+    hits = []
+    for dp, _, fs in os.walk(os.path.join(LIB, "sonniss")):
+        for f in fs:
+            full = os.path.join(dp, f)
+            if f.lower().endswith((".wav", ".flac", ".aif", ".aiff")) and rx.search(full.replace("\\", "/")):
+                hits.append(full)
+    if len(hits) != 1:
+        sys.exit("wzorzec pasuje do %d plików (potrzebny dokładnie 1):\n  %s" % (len(hits), "\n  ".join(hits[:8])))
+    rel = os.path.relpath(hits[0], LIB).replace("\\", "/")
+    parts = rel.split("/")
+    lib = parts[-2].strip()                                   # „Dostawca - Paczka" (katalog w archiwum)
+    two = re.split(r"\s+[-–]\s+", lib, 1)
+    supplier, pack = (two[0].strip(), two[1].strip()) if len(two) == 2 else (lib, lib)
+    with open(SOURCES_JSON, encoding="utf-8") as f:
+        reg = json.load(f)
+    if sid in reg["sources"] and reg["sources"][sid]["file"] != rel:
+        sys.exit("id %r jest już zajęte przez %s" % (sid, reg["sources"][sid]["file"]))
+    reg["sources"][sid] = {"kind": "lib", "file": rel, "sha256": _sha(hits[0]),
+                           "pack": "Sonniss GDC %s — %s" % (parts[1], pack or lib), "supplier": supplier, "license": "sonniss-gdc-2.0"}
+    reg["sources"] = dict(sorted(reg["sources"].items()))
+    with open(SOURCES_JSON, "w", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(reg, indent=1, ensure_ascii=False) + "\n")
+    print("OK %s → %s" % (sid, rel))
+
+
 def cmd_sync():
     """Pobiera brakujące nagrania z rejestru (kind=lib, ścieżka sonniss/<rocznik>/<nazwa w archiwum>) i sprawdza SHA-256 wszystkich."""
     with open(SOURCES_JSON, encoding="utf-8") as f:
@@ -261,6 +290,9 @@ def main():
     s = sub.add_parser("sha")
     s.add_argument("rel")
     sub.add_parser("sync")
+    ad = sub.add_parser("add")
+    ad.add_argument("id")
+    ad.add_argument("pattern")
     a = ap.parse_args()
     if a.cmd == "index":
         cmd_index(a.year)
@@ -270,6 +302,8 @@ def main():
         cmd_get(a.year, a.patterns, a.max_mb)
     elif a.cmd == "sync":
         sys.exit(cmd_sync())
+    elif a.cmd == "add":
+        cmd_add(a.id, a.pattern)
     else:
         cmd_sha(a.rel)
 
