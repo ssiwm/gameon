@@ -86,6 +86,28 @@ bez crossfade'u i bez dziury w energii.
   (napisy dla niesłyszących, GDD §14 — jeszcze bez UI).
 * `project.godot`: `audio/driver/mix_rate = 48000` (assety są 48 kHz; wcześniej resampling do 44,1 kHz).
 
+### 3.4 Droga dźwięku po mapie (`scripts/sound_grid.gd`, `audio_director.gd: _placement()`)
+
+Okluzja z 3.3 tylko tłumi dźwięk zza ściany — dalej dochodzi on „na wprost”. Od `AUDIO_PLAN.md` F6 źródło mocno zasłonięte
+(próg okluzji ≥ 2) dostaje **drogę po wolnych kaflach mapy** (natywny `AStarGrid2D`; bryły blokują, kładki nie):
+
+* długość drogi `L` i **ostatni róg** — najdalszy punkt drogi, który słuchacz jeszcze widzi;
+* pozorne źródło stoi w kierunku tego rogu, w odległości `L` (panorama od strony przejścia, głośność jak z odległości `L`),
+  na szynie najlżejszego filtra;
+* gra głośniejsza z dwóch dróg: „dookoła” (tłumienie odległościowe dla `L`, −2 dB na ugięciu) albo „przez ścianę”
+  (tłumienie dla odległości na wprost, −9 / −16 dB dla progów 2 / 3). Stałe: `ROUTE_*`, `WALL_LOSS_DB`;
+* pętle pozycyjne (szept Stalkera, generator, flara) przeliczają drogę co 0,2 s i dojeżdżają do pozornego położenia płynnie;
+* napisy dźwięków i ogłuszenie po wybuchu liczą się z prawdziwego położenia źródła;
+* siatkę utrzymuje poziom (`level.sound_grid`, odświeżana po zawale i rozbiciu ściany); drogi są pamiętane per kafel źródła,
+  dopóki słuchacz nie zmieni kafla. Wszystko lokalne i kosmetyczne — serwer o tym nie wie.
+
+Koszt (pomiar orientacyjny na mapach strefy I, 2000 losowych par punktów): budowa siatki 22–37 ms przy wczytaniu mapy,
+droga średnio ok. 0,1 ms, najgorsza ok. 1,5 ms; wynik — także „brak drogi” — jest pamiętany.
+
+Testy: `godot --headless --path . -s tools/test_sound_grid.gd` (siatka na małej mapie), `--maptest` (dźwięk ma drogę wszędzie,
+dokąd dochodzi postać). Dev: `--nosoundpath` wyłącza drogę — do porównania w grze. **Strojone liczbami, nie uchem**: wagi
+`ROUTE_LOSS_DB` / `WALL_LOSS_DB` wymagają odsłuchu w grze na słuchawkach.
+
 ## 4. Narzędzia
 
 ```bash
