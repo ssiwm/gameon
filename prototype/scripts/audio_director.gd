@@ -63,6 +63,10 @@ const OCCL_CELL := 24.0
 ## Rozstaw bocznych promieni okluzji (px) — „szerokość" ściany, którą dźwięk omija.
 const OCCL_FLANK := 18.0
 
+## Assety z nagrań (poza repo) i syntetyczne (w repo) — patrz _path().
+const PUBLIC_ROOT := "res://audio/"
+const LICENSED_ROOT := "res://audio_licensed/"
+
 const ONESHOT_POOL := 32
 const POSITIONAL_POOL := 28
 const MAX_DISTANCE := 1600.0
@@ -110,6 +114,7 @@ var _listener_pos := Vector2.ZERO
 var _occl: Dictionary = {}           # Vector2i -> int (próg okluzji)
 var _heart_key := ""
 var _enabled := true
+var _use_licensed := not ("--synthaudio" in OS.get_cmdline_user_args())
 var _clock := 0.0
 
 # --- muzyka
@@ -231,7 +236,7 @@ func stream(key: String) -> AudioStream:
 	if not Manifest.PATHS.has(key):
 		_report_missing(key, "brak wpisu w PATHS")
 		return null
-	var res: Resource = load(Manifest.PATHS[key])
+	var res: Resource = load(_path(key))
 	var s := res as AudioStream
 	if s == null:
 		_report_missing(key, "nie załadował się jako AudioStream")
@@ -240,6 +245,18 @@ func stream(key: String) -> AudioStream:
 		_enable_loop(s)
 	_cache[key] = s
 	return s
+
+
+## Plik, który faktycznie gra pod kluczem. Wersje z nagrań z bibliotek nie mogą leżeć w publicznym repo (licencja,
+## AUDIO_PLAN.md §6), więc lokalny bake zapisuje je do res://audio_licensed/ pod tą samą ścieżką względną: jeśli plik
+## tam jest, wygrywa z syntetycznym z res://audio/. Dev: `--synthaudio` wymusza samą syntezę (porównanie w grze).
+func _path(key: String) -> String:
+	var p: String = Manifest.PATHS[key]
+	if _use_licensed:
+		var alt := LICENSED_ROOT + p.trim_prefix(PUBLIC_ROOT)
+		if ResourceLoader.exists(alt):
+			return alt
+	return p
 
 
 func _enable_loop(s: AudioStreamWAV) -> void:
@@ -283,11 +300,14 @@ func pick(base: String, count: int) -> String:
 ## po to, żeby brakujący asset był widoczny w logu, a nie objawiał się ciszą.
 func _verify_manifest() -> void:
 	var missing: Array[String] = []
+	var licensed := 0
 	for key in Manifest.PATHS:
 		if not ResourceLoader.exists(Manifest.PATHS[key]):
 			missing.append(key)
+		elif _path(key) != Manifest.PATHS[key]:
+			licensed += 1
 	if missing.is_empty():
-		print("[AUDIO] manifest OK: %d ścieżek" % Manifest.PATHS.size())
+		print("[AUDIO] manifest OK: %d ścieżek%s" % [Manifest.PATHS.size(), (", z nagrań: %d" % licensed) if licensed > 0 else ""])
 		return
 	missing.sort()
 	push_warning("[AUDIO] BRAK %d plików z manifestu: %s" % [

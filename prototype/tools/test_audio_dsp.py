@@ -210,7 +210,7 @@ def test_sources():
         check("cut w sekundach", len(d.cut(tone, 0.25, 0.5)) == SR // 2)
 
         # rejestr: suma kontrolna, brak pliku, wskaźnik LFS, wersje alternatywne
-        keep = (bc.LIB_DIR, bc.GEN_DIR, bc.AUDIO, dict(bc._SOURCES), dict(bc.REG), list(bc.SKIPPED))
+        keep = (bc.LIB_DIR, bc.GEN_DIR, bc.AUDIO, dict(bc._SOURCES), dict(bc.REG), list(bc.SKIPPED), bc.LICENSED, list(bc.HYBRID))
         bc.LIB_DIR, bc.GEN_DIR, bc.AUDIO = tmp, tmp, os.path.join(tmp, "audio")
         bc._SOURCES.clear()
         bc._SOURCES.update({
@@ -231,12 +231,21 @@ def test_sources():
         check("brak pliku i wskaźnik LFS liczą się jako brak źródła", not bc.have_source("none") and not bc.have_source("lfs"))
         bc.REG.clear()
         bc.SKIPPED.clear()
-        ran = bc.hybrid(["x_1"], lambda: bc.finalize("x_1", bc.src("none"), peak=-3.0), needs=["none"])
-        check("hybrid: brak źródła → pominięte, nic nie zapisane, klucz zostaje w rejestrze",
-              not ran and len(bc.SKIPPED) == 1 and "x_1" in bc.REG and not os.path.exists(os.path.join(bc.AUDIO, "sfx", "misc", "x_1.wav")))
-        ran = bc.hybrid(["x_1"], lambda: bc.finalize("x_1", bc.src("ok"), peak=-3.0), needs=["ok"])
+        bc.LICENSED = os.path.join(tmp, "audio_licensed")
+        try:
+            bc.hybrid(["x_1"], lambda: None, needs=["ok"])
+            check("hybrid: klucz bez wersji syntetycznej jest błędem", False)
+        except AssertionError:
+            check("hybrid: klucz bez wersji syntetycznej jest błędem", True)
+        bc.finalize("x_1", tone, peak=-3.0)                              # wersja syntetyczna (publiczna)
         main_wav = os.path.join(bc.AUDIO, "sfx", "misc", "x_1.wav")
-        check("hybrid: komplet źródeł → asset zapisany", ran and os.path.exists(main_wav))
+        lic_wav = os.path.join(bc.LICENSED, "sfx", "misc", "x_1.wav")
+        synth = open(main_wav, "rb").read()
+        ran = bc.hybrid(["x_1"], lambda: bc.finalize("x_1", bc.src("none"), peak=-3.0), needs=["none"])
+        check("hybrid: brak źródła → pominięte, nic nie zapisane", not ran and len(bc.SKIPPED) == 1 and not os.path.exists(lic_wav))
+        ran = bc.hybrid(["x_1"], lambda: bc.finalize("x_1", bc.src("ok") * 0.5, peak=-9.0), needs=["ok"])
+        check("hybrid: wersja z nagrań w audio_licensed/, synteza w audio/ nietknięta",
+              ran and os.path.exists(lic_wav) and open(main_wav, "rb").read() == synth and open(lic_wav, "rb").read() != synth)
         before = open(main_wav, "rb").read()
         check("alt bez --alts nic nie robi", not bc.alt("v2", lambda: bc.finalize("x_1", bc.src("ok") * 0.5, peak=-9.0), ["ok"]))
         bc.ALT_ROOT[0] = os.path.join(tmp, "alts")
@@ -248,6 +257,8 @@ def test_sources():
         bc._SOURCES.clear(); bc._SOURCES.update(keep[3])
         bc.REG.clear(); bc.REG.update(keep[4])
         bc.SKIPPED[:] = keep[5]
+        bc.LICENSED = keep[6]
+        bc.HYBRID[:] = keep[7]
         bc._SRC_CACHE.clear()
         with open(bc.SOURCES_JSON, encoding="utf-8") as f:
             reg = json.load(f)

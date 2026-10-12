@@ -1,17 +1,11 @@
 {
- "_": "Rejestr źródeł dźwięku spoza syntezy (AUDIO_PLAN.md). kind=lib: nagranie z biblioteki, plik względem art_src/audio_lib/ (poza repo, pobiera tools/audio_lib_fetch.py). kind=gen: plik wygenerowany, względem art_src/audio_gen/ (w repo, LFS). sha256 pilnuje, żeby ten sam przepis dawał ten sam dźwięk.",
+ "_": "Rejestr źródeł dźwięku spoza syntezy (AUDIO_PLAN.md). kind=lib: nagranie z biblioteki, plik względem katalogu nagrań (art_src/audio_lib/, audio_lib/ obok repo albo DA87_AUDIO_LIB; poza repo, pobiera tools/audio_lib_fetch.py sync). kind=gen: plik wygenerowany, względem art_src/audio_gen/ (w repo, LFS). sha256 pilnuje, żeby ten sam przepis dawał ten sam dźwięk.",
  "licenses": {
   "sonniss-gdc-2.0": {
    "name": "Sonniss GDC Bundle License 2.0 (od 2026-08-27)",
    "url": "https://sonniss.com/gdc-bundle-license/",
    "checked": "2026-10-12",
    "summary": "Wolno używać i przerabiać w dowolnej liczbie projektów własnych, także komercyjnych, bez podawania autora. Nie wolno udostępniać dźwięków innym jako efektów dźwiękowych (także przerobionych; osobno ani w paczce, szablonie czy SDK) ani trenować na nich modeli AI."
-  },
-  "stable-audio-community": {
-   "name": "Stability AI Community License (karta modelu: stable-audio-community)",
-   "url": "https://stability.ai/community-license-agreement",
-   "checked": "2026-10-12",
-   "summary": "Wyniki należą do użytkownika i mogą być używane komercyjnie przy rocznym przychodzie do 1 mln USD; użycie komercyjne wymaga rejestracji w Stability AI. Sprawdzony tekst umowy ogólnej z 2024-07-05 — to, że obejmuje modele Stable Audio 3, wynika z nazwy licencji na karcie modelu i wymaga potwierdzenia przed wydaniem."
   }
  },
  "sources": {
@@ -46,28 +40,6 @@
    "pack": "Sonniss GDC 2018 — Monsters",
    "supplier": "Olivier Girardot",
    "license": "sonniss-gdc-2.0"
-  },
-  "stalker_growl_gen_a": {
-   "kind": "gen",
-   "file": "stalker/growl_sa3m_8701_2.flac",
-   "sha256": "dd86141101fb48ebc4ba8bccef278f8e498e9ae5d35a9e2512d8169643f4dd63",
-   "pack": "Stable Audio 3 Medium (ComfyUI, lokalnie)",
-   "supplier": "wygenerowany w projekcie",
-   "license": "stable-audio-community",
-   "prompt": "Deep guttural creature growl, low throaty vocal fry rumble with wet rasp, slow menacing exhale of a large unseen monster, close microphone, dry recording, horror sound effect",
-   "seed": 8701,
-   "note": "comfy_gen.py audio --seconds 5 --seed 8701 --count 4 --model medium; próbka 2 z 4"
-  },
-  "stalker_growl_gen_b": {
-   "kind": "gen",
-   "file": "stalker/growl_sa3m_8701_4.flac",
-   "sha256": "17487b6c13d79230c237669cc0f4af4a54cdf70bd5e7f7b7104b10d10a8a1779",
-   "pack": "Stable Audio 3 Medium (ComfyUI, lokalnie)",
-   "supplier": "wygenerowany w projekcie",
-   "license": "stable-audio-community",
-   "prompt": "Deep guttural creature growl, low throaty vocal fry rumble with wet rasp, slow menacing exhale of a large unseen monster, close microphone, dry recording, horror sound effect",
-   "seed": 8701,
-   "note": "comfy_gen.py audio --seconds 5 --seed 8701 --count 4 --model medium; próbka 4 z 4"
   }
  }
 }

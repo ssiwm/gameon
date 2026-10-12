@@ -4,6 +4,8 @@
 Porównuje wersje tego samego assetu obok siebie, domyślnie „na ślepo" (wersje jako A/B/C w losowej kolejności),
 i zbiera werdykt do skopiowania. Pomiar (tools/audio_audit.py) pilnuje techniki — o brzmieniu decyduje ucho.
 
+    python tools/audio_ab.py --licensed                             # synteza (audio/) obok wersji z nagrań (audio_licensed/)
+    python tools/audio_ab.py --licensed --only shot,explosion       # tylko rodziny zawierające podane fragmenty nazwy
     python tools/audio_ab.py --alts ../build/audio_alt              # obecne assety obok wersji alternatywnych z bake_audio.py --alts
     python tools/audio_ab.py --ref origin/main                      # assety zmienione względem gałęzi (przed / po)
     python tools/audio_ab.py --alts ../build/audio_alt --out ../build/audio_ab.html
@@ -20,6 +22,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AUDIO = os.path.join(ROOT, "audio")
+LICENSED = os.path.join(ROOT, "audio_licensed")
 # nazwa wersji → opis na stronie (po odkryciu nazw)
 LABELS = {"obecna": "obecna (synteza)", "przed": "przed zmianą", "po": "po zmianie", "hybrid": "z nagrań", "gen": "wygenerowana"}
 # odstęp serii [ms] dla rodzin, w których liczy się powtarzalność; reszta gra warianty jeden po drugim
@@ -34,21 +37,24 @@ def _family(rel: str) -> str:
     return re.sub(r"_\d+$", "", os.path.splitext(os.path.basename(rel))[0])
 
 
+def _collect_dir(name, base, fams):
+    """Wersja `name` z katalogu `base` (ten sam układ co audio/) obok obecnego assetu z audio/."""
+    for dp, _, fs in os.walk(base):
+        for f in sorted(fs):
+            if not f.endswith(".wav"):
+                continue
+            rel = os.path.relpath(os.path.join(dp, f), base).replace("\\", "/")
+            cur = os.path.join(AUDIO, *rel.split("/"))
+            fam = fams.setdefault(_family(rel), {})
+            if os.path.exists(cur):
+                fam.setdefault("obecna", {})[rel] = open(cur, "rb").read()
+            fam.setdefault(name, {})[rel] = open(os.path.join(dp, f), "rb").read()
+
+
 def _collect_alts(alts_dir, fams):
     for name in sorted(os.listdir(alts_dir)):
-        base = os.path.join(alts_dir, name)
-        if not os.path.isdir(base):
-            continue
-        for dp, _, fs in os.walk(base):
-            for f in sorted(fs):
-                if not f.endswith(".wav"):
-                    continue
-                rel = os.path.relpath(os.path.join(dp, f), base).replace("\\", "/")
-                cur = os.path.join(AUDIO, *rel.split("/"))
-                fam = fams.setdefault(_family(rel), {})
-                if os.path.exists(cur):
-                    fam.setdefault("obecna", {})[rel] = open(cur, "rb").read()
-                fam.setdefault(name, {})[rel] = open(os.path.join(dp, f), "rb").read()
+        if os.path.isdir(os.path.join(alts_dir, name)):
+            _collect_dir(name, os.path.join(alts_dir, name), fams)
 
 
 def _collect_ref(ref, fams):
@@ -188,17 +194,26 @@ def build(fams, out):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--licensed", action="store_true", help="wersje z nagrań z audio_licensed/ obok syntezy z audio/")
+    ap.add_argument("--only", help="fragmenty nazw rodzin po przecinku (np. shot,step)")
     ap.add_argument("--alts", help="katalog z bake_audio.py --alts")
     ap.add_argument("--ref", help="gałąź albo commit do porównania (np. origin/main)")
     ap.add_argument("--out", default=os.path.join(ROOT, "..", "build", "audio_ab.html"))
     a = ap.parse_args()
-    if not a.alts and not a.ref:
-        ap.error("podaj --alts KATALOG albo --ref GAŁĄŹ")
+    if not a.alts and not a.ref and not a.licensed:
+        ap.error("podaj --licensed, --alts KATALOG albo --ref GAŁĄŹ")
     fams = {}
+    if a.licensed:
+        if not os.path.isdir(LICENSED):
+            sys.exit("brak %s — najpierw: audio_lib_fetch.py sync i bake_audio.py" % LICENSED)
+        _collect_dir("hybrid", LICENSED, fams)
     if a.alts:
         _collect_alts(a.alts, fams)
     if a.ref:
         _collect_ref(a.ref, fams)
+    if a.only:
+        want = [w for w in a.only.split(",") if w]
+        fams = {k: v for k, v in fams.items() if any(w in k for w in want)}
     build(fams, a.out)
 
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 import numpy as np
 
 import audio_dsp as d
+import bake_hybrid
 from audio_dsp import SR, Rng, ms, sec
 from bake_common import (asset, burst, finalize, glottal, group, ir, ring, thump, tick, vary, vowel)
 
@@ -57,6 +58,7 @@ def build_stalker() -> None:
         x = d.saturate(x, 2.0)
         x = d.reverb(x, ir("hall"), wet=0.30, keep_len=True)
         finalize("stalker_growl_%d" % (i + 1), x, lufs=-14.0, fade_out_ms=250)
+    bake_hybrid.stalker_growl()                             # wersja z nagrań → audio_licensed/
 
     # Szept — pętla (okresowa): bezdźwięczny szum o płynnie zmieniających się formantach
     # („sss-ooo-eee" bez słów) + rytm sylab. Nie jest szumem statycznym: obwiednia ma 7 sylab/pętlę.
@@ -367,6 +369,7 @@ def build_player() -> None:
         for i in range(5):
             r = Rng(seed + i * 7717)
             finalize("step_%s_%d" % (name, i + 1), fn(r), lufs=target)
+    bake_hybrid.step_concrete()                             # wersja z nagrań → audio_licensed/
 
     # Lądowanie z wysokości: uderzenie ciała + ekwipunek
     r = Rng(0xE500)

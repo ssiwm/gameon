@@ -99,20 +99,25 @@ python3 tools/audio_view.py out.png m83_shot_1 stalker_growl_1 mus_combat   # pr
 godot --headless --path . --import               # po bake'u — inaczej grają stare sample'e
 ```
 
-Źródła hybrydowe (`AUDIO_PLAN.md`; rejestr: `tools/audio_sources.json`, lista i licencje: `audio/CREDITS.md`):
+Wersje z nagrań (`AUDIO_PLAN.md`; rejestr: `tools/audio_sources.json`, lista i licencje: `audio/CREDITS.md`). Repo jest publiczne,
+a licencja bibliotek zabrania udostępniania dźwięków dalej, więc w `audio/` leży synteza, a wersja z nagrań tego samego klucza powstaje
+lokalnie w `audio_licensed/` (poza repo); gra bierze ją, jeśli jest (`audio_director.gd: _path()`, flaga `--synthaudio` wyłącza):
 
 ```bash
+python3 tools/audio_lib_fetch.py sync                       # pobierz nagrania z rejestru i sprawdź sumy — potem zwykły bake_audio.py
+python3 tools/audio_ab.py --licensed [--only shot,step]     # odsłuch A/B „na ślepo": synteza obok wersji z nagrań → build/audio_ab.html
+python3 tools/audio_audit.py --licensed                     # audyt tego, co faktycznie gra na tej maszynie
 python3 tools/audio_lib_fetch.py index 2018                 # spis plików rocznika paczek Sonniss GDC (czyta sam spis treści archiwów)
 python3 tools/audio_lib_fetch.py find "footstep.*concrete"  # szukanie w spisach
-python3 tools/audio_lib_fetch.py get 2018 "BOOT_CONC"       # pobranie pojedynczych nagrań do art_src/audio_lib/ (poza repo)
+python3 tools/audio_lib_fetch.py get 2018 "BOOT_CONC"       # pobranie pojedynczych nagrań do katalogu nagrań (poza repo)
 python3 tools/comfy_gen.py audio "opis" --out ../art_src/audio_gen/x.flac --count 4   # Stable Audio 3 w lokalnym ComfyUI
-python3 tools/bake_audio.py --only alts --alts ../build/audio_alt   # wersje alternatywne (tools/bake_hybrid.py) obok assetów gry
-python3 tools/audio_ab.py --alts ../build/audio_alt         # strona do odsłuchu A/B „na ślepo": build/audio_ab.html
+python3 tools/bake_audio.py --only alts --alts ../build/audio_alt   # wersje alternatywne przed decyzją (bake_hybrid.build_alts)
+python3 tools/audio_ab.py --alts ../build/audio_alt         # ich odsłuch
 python3 tools/audio_ab.py --ref origin/main                 # to samo dla assetów zmienionych względem gałęzi
 ```
 
-Nagrania z bibliotek leżą poza repo (`art_src/audio_lib/` albo katalog z `DA87_AUDIO_LIB`): licencja Sonniss pozwala używać ich
-w grze, ale nie udostępniać dalej jako plików dźwiękowych. Bez nich bake pomija assety zależne od źródeł i zostawia WAV-y z repo.
+Katalog nagrań: `DA87_AUDIO_LIB`, `art_src/audio_lib/` albo `audio_lib/` obok repo (wspólny dla kilku kopii roboczych). Bez nagrań
+bake piecze samą syntezę. Z nagrań są na razie: `m83_shot` ×6, `step_concrete` ×5, `stalker_growl` ×2 (odsłuch A/B 2026-10-12).
 
 ## 5. Ograniczenia i uczciwa ocena
 

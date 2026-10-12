@@ -16,3 +16,5 @@ art_src/world_decals/
 
 # nagrania z bibliotek dźwięku (tools/audio_lib_fetch.py): licencja zabrania udostępniania plików dalej — w repo jest tylko rejestr z sumami (prototype/tools/audio_sources.json)
 art_src/audio_lib/
+# assety zmiksowane z tych nagrań (bake_common.hybrid): tylko lokalnie i w buildach, gra woli je od prototype/audio/
+prototype/audio_licensed/

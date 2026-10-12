@@ -20,10 +20,11 @@ Wynik:
 Moduły: audio_dsp (rdzeń), bake_common (rejestr + finalize + źródła), bake_weapons, bake_sfx
 (stalker/świat/gracz/UI), bake_amb (ambient), bake_music (stemy + stingery).
 
-Źródła hybrydowe (AUDIO_PLAN.md): część assetów składa się z nagrań z bibliotek (art_src/audio_lib/,
-poza repo — pobiera je tools/audio_lib_fetch.py) i plików wygenerowanych (art_src/audio_gen/). Rejestr
-z sumami kontrolnymi to tools/audio_sources.json, a lista źródeł i licencji — audio/CREDITS.md (generowana tutaj).
-Bez plików źródłowych na dysku takie assety są pomijane i zostają WAV-y z repo.
+Źródła hybrydowe (AUDIO_PLAN.md): część assetów ma drugą wersję — z nagrań z bibliotek (pobiera je
+tools/audio_lib_fetch.py sync). Repo jest publiczne, a licencja zabrania udostępniania tych dźwięków dalej,
+więc wersje z nagrań trafiają do audio_licensed/ (poza repo), a w audio/ zostaje synteza tego samego klucza.
+Gra wybiera plik z audio_licensed/, jeśli tam jest. Rejestr źródeł z sumami kontrolnymi: tools/audio_sources.json,
+lista i licencje: audio/CREDITS.md (generowana tutaj). Bez plików źródłowych bake piecze samą syntezę.
 """
 
 from __future__ import annotations
@@ -144,8 +145,9 @@ def write_credits() -> None:
         "GENEROWANE przez `tools/bake_audio.py` z `tools/audio_sources.json` — nie edytuj ręcznie.",
         "",
         "Biblioteka jest hybrydowa (`AUDIO_PLAN.md`): synteza z `tools/bake_*.py`, nagrania z bibliotek i pliki wygenerowane lokalnie.",
-        "Nagrań z bibliotek nie ma w repo w postaci źródłowej (pobiera je `tools/audio_lib_fetch.py`).",
-        "Rejestr obejmuje też źródła wersji alternatywnych z `tools/bake_hybrid.py`, których gra jeszcze nie używa.",
+        "Repo jest publiczne, a licencja bibliotek zabrania udostępniania dźwięków dalej, więc w repo nie ma ani nagrań,",
+        "ani assetów z nich zrobionych: lokalny bake zapisuje je do `prototype/audio_licensed/` (poza repo), a gra używa ich",
+        "zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync`.",
         "",
         "## Licencje",
         "",
@@ -191,8 +193,10 @@ def main() -> int:
         len(bc.REG), sum(1 for v in bc.REG.values() if v[1]), len(missing), time.time() - t_all))
     for k in missing[:10]:
         print("   ! brak pliku: %s" % k)
+    if bc.HYBRID:
+        print("z nagrań: %d assetów w %s (poza repo; gra woli je od syntezy)" % (len(bc.HYBRID), bc.LICENSED))
     for keys, why in bc.SKIPPED:
-        print("   ~ pominięto %s (%d szt.) — %s; zostają WAV-y z repo" % (keys[0], len(keys), why))
+        print("   ~ bez wersji z nagrań: %s (%d szt.) — %s" % (keys[0], len(keys), why))
     if "--list" in sys.argv:
         for k in sorted(bc.REG):
             print("   %-28s %s%s" % (k, bc.REG[k][0], "  [loop]" if bc.REG[k][1] else ""))
