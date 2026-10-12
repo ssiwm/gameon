@@ -315,6 +315,10 @@
   "sfx/world/mine_beep_loop",
   1
  ],
+ "mission_start": [
+  "sfx/ui/mission_start",
+  0
+ ],
  "mus_chase": [
   "music/mus_chase",
   1

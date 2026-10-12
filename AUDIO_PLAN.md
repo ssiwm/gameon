@@ -291,6 +291,11 @@ każdy rodzaj przedmiotu brzmiał jak to, czym jest (`level.gd: PICKUP_SOUND`; b
 `tag_pickup` (nieśmiertelnik — brzęk blaszek na łańcuszku), `scrap_pickup` (złom i skrytki — garść żelastwa),
 `medkit_pickup` (apteczka — chwyt i suwak; wcześniej pożyczała dźwięk podnoszenia rannego), `item_pickup` (flary,
 zaopatrzenie — miękki chwyt torby). Zaopatrzenie nie gra już dźwięku podwójnie.
+Piąty: sygnały — start gry dostał własny klucz `mission_start` (włączenie radiostacji: stuk przełącznika i fala szumu eteru)
+zamiast świstu Przesterowania `oc_load`; bank ma 199 assetów. Kandydaci z nagrań na `mission_start` i na `ui_confirm`
+(zebrany przedmiot z zadania, generator, awans, sukces, przycisk hosta — dziś dwa syntezatorowe bliki) czekają na odsłuch.
+Ustawienia: muzyka i otoczenie mają osobne suwaki głośności (`settings.gd: VOLUME_BUSES`); zapis sprzed zmiany daje
+otoczeniu tę samą wartość co muzyce.
 
 **Ustalenia, które zmieniają plan:**
 
