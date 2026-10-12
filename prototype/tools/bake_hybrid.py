@@ -19,7 +19,9 @@ Zasady składania (wnioski z pomiaru źródeł; brzmienie ocenia się uchem na s
   * Pogłosu hali nie pieczemy poza głosem Stalkera (tak samo jak w wersji syntetycznej) — dokłada go silnik.
   * Głośność (LUFS) i szczyt jak w wersji syntetycznej tego samego klucza: miks gry nie zależy od tego, którą wersję gra.
 
-Wybrane w odsłuchu A/B 2026-10-12 (bramka A): m83_shot, step_concrete, stalker_growl.
+Wybrane w odsłuchu A/B 2026-10-12: m83_shot, step_concrete, stalker_growl (bramka A); spread12_shot, srut8_shot,
+srut8_pump, gniew4_shot, ciegno6_shot, explosion (F3, część 1). Odrzucone na rzecz syntezy: p64_shot (SIG P229 z 1 m)
+i sokol6_shot (start fajerwerku) — przepisy usunięte, zostają w historii repo.
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ import numpy as np
 import audio_dsp as d
 from audio_dsp import Rng, ms
 import bake_common as bc
-from bake_common import finalize, ir, ring, thump, tick, vary
+from bake_common import finalize, ir, ring, thump, vary
 
 
 def _keys(base: str, n: int) -> list[str]:
@@ -107,11 +109,11 @@ def stalker_growl() -> None:
     bc.hybrid(_keys("stalker_growl", len(_GROWLS)), bake, GROWL_NEEDS)
 
 
-# ============================================================ F3: bronie — kandydaci do odsłuchu (build_alts)
+# ============================================================ F3: bronie
 # Te same klucze co w syntezie z bake_weapons.py. Głośność docelowa = ZMIERZONA głośność wersji syntetycznej (średnia rodziny,
 # LUFS po finalize) — nominalne cele z bake_weapons.py synteza osiąga tylko w części, bo ogranicza ją szczyt. Dzięki temu
-# miks gry nie zależy od tego, która wersja gra. Po odsłuchu wybrane rodziny dostają funkcję publiczną z bc.hybrid()
-# (jak m83()), wołaną z buildera.
+# miks gry nie zależy od tego, która wersja gra. Nowe rodziny zaczynają jako kandydaci (CANDIDATES → build_alts);
+# po odsłuchu wybrane przechodzą do weapons() i grają w grze.
 
 def _unit(x: np.ndarray) -> np.ndarray:
     return x / (d.peak(x) + 1e-9)
@@ -133,20 +135,6 @@ def _decay(x: np.ndarray, hold: float, tau: float) -> np.ndarray:
 def _glue(x: np.ndarray, drive: float, ceil: float) -> np.ndarray:
     """Sklejenie warstw strzału: odcięcie infradźwięków, nasycenie, ścięcie samego czubka (głośność przy tym samym szczycie)."""
     return d.limiter(d.saturate(_unit(d.filt(x, "hp", 38.0, order=4)), drive), ceil)
-
-
-# --- P-64 „Igła": SIG P229 9 mm z 1 m (dwie trójki strzałów co ok. 330 ms) + krótki syntetyczny korpus.
-P64_NEEDS = ["sig_p229_close_1m"]
-_SIG_SHOTS = (0.184, 0.533, 3.116, 3.466)
-
-
-def _p64_bake() -> None:
-    for i, t in enumerate(_SIG_SHOTS):
-        r = Rng(0x6400 + i * 7919)
-        shot = _fade(d.from_onset(bc.src("sig_p229_close_1m", t - 0.02, 0.32), 0.5), 0.12, 0.29)
-        body = thump(0.12, vary(r, 235, .06), vary(r, 72, .06), 0.022, 0.033)
-        x = _glue(d.mix([(_unit(shot), 1.0), (body, 0.38)], ms(300)), 1.8, -4.0)
-        finalize("p64_shot_%d" % (i + 1), d.reverb(x, ir("close"), wet=0.22), lufs=-17.0)
 
 
 # --- Strzelby: Saiga-12 z 1 m (pięć pojedynczych strzałów z długim ogonem).
@@ -201,20 +189,6 @@ def _gniew4_bake() -> None:
         finalize("gniew4_shot_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.3), peak=-2.0)
 
 
-# --- FALCON-6: odpalenie mikrorakiety — start fajerwerku z bliska (od głównego wyrzutu, bez syku lontu) w trzech wysokościach.
-SOKOL6_NEEDS = ["fireworks_launch_close"]
-
-
-def _sokol6_bake() -> None:
-    for i in range(3):
-        r = Rng(0x3200 + i * 3989)
-        hiss = d.repitch(d.from_onset(bc.src("fireworks_launch_close", 0.36, 0.90), 0.5), (-2.0, 0.0, 2.5)[i])
-        hiss = _fade(hiss, 0.36, 0.60)
-        pop = d.mix([(thump(.06, 260, 120, .015, .03), 1.0), (tick(r, 2600, 1.4, 12, .003), .8)], ms(80))
-        x = d.mix([(_unit(hiss), 1.0), (pop, 0.5)], hiss.shape[-1])
-        finalize("sokol6_shot_%d" % (i + 1), d.reverb(x, ir("close"), wet=.16), lufs=-19.0)
-
-
 # --- SINEW-6: zwolnienie cięciwy kuszy (nagranie) + syntetyczny brzęk cięciwy pod spodem.
 CIEGNO6_NEEDS = ["crossbow_loose"]
 
@@ -243,16 +217,19 @@ def _explosion_bake() -> None:
         finalize("explosion_%d" % (i + 1), x, lufs=-16.7, fade_out_ms=120)
 
 
-CANDIDATES = (
-    ("hybrid", _p64_bake, P64_NEEDS),
-    ("hybrid", _spread12_bake, SPREAD12_NEEDS),
-    ("hybrid", _srut8_bake, SRUT8_NEEDS),
-    ("hybrid", _pump_bake, PUMP_NEEDS),
-    ("hybrid", _gniew4_bake, GNIEW4_NEEDS),
-    ("hybrid", _sokol6_bake, SOKOL6_NEEDS),
-    ("hybrid", _ciegno6_bake, CIEGNO6_NEEDS),
-    ("hybrid", _explosion_bake, list(EXPLOSION_SRC)),
-)
+def weapons() -> None:
+    """Wersje z nagrań dla broni — wołane na końcu bake_weapons.build_weapons(), po syntezie tych samych kluczy."""
+    m83()
+    bc.hybrid(_keys("spread12_shot", 3), _spread12_bake, SPREAD12_NEEDS)
+    bc.hybrid(_keys("srut8_shot", 3), _srut8_bake, SRUT8_NEEDS)
+    bc.hybrid(_keys("srut8_pump", 2), _pump_bake, PUMP_NEEDS)
+    bc.hybrid(_keys("gniew4_shot", 2), _gniew4_bake, GNIEW4_NEEDS)
+    bc.hybrid(_keys("ciegno6_shot", 2), _ciegno6_bake, CIEGNO6_NEEDS)
+    bc.hybrid(_keys("explosion", 2), _explosion_bake, list(EXPLOSION_SRC))
+
+
+# (nazwa wersji, funkcja piekąca, potrzebne źródła) — kandydaci do następnego odsłuchu
+CANDIDATES: tuple = ()
 
 
 def build_alts() -> None:

@@ -57,14 +57,6 @@
    "supplier": "Gamemaster Audio",
    "license": "sonniss-gdc-2.0"
   },
-  "fireworks_launch_close": {
-   "kind": "lib",
-   "file": "sonniss/2023/InspectorJ - Essentials 03 Fireworks/FRWKComr_InsJ_Fireworks_Launch_Close_01-03.wav",
-   "sha256": "2b7f07c4e19dc0cca2901041ce786bb0e8a16a43208602e284d68c7a95fdb533",
-   "pack": "Sonniss GDC 2023 — Essentials 03 Fireworks",
-   "supplier": "InspectorJ",
-   "license": "sonniss-gdc-2.0"
-  },
   "grenade_launcher_smoke": {
    "kind": "lib",
    "file": "sonniss/2023/BluezoneCorp - Detonation - Explosion/Bluezone_BC0277_weapon_smoke_grenade_launcher_003.wav",
@@ -95,14 +87,6 @@
    "sha256": "53d5baeab11651b17b01e0580b5ad57b894df58eae5538a31d75e9e8632c42cd",
    "pack": "Sonniss GDC 2016 — 12 Gauge Shotgun",
    "supplier": "TS Sound",
-   "license": "sonniss-gdc-2.0"
-  },
-  "sig_p229_close_1m": {
-   "kind": "lib",
-   "file": "sonniss/2016/Pole Position Production - Sig P229 9mm/SIG_P229_9mm_1m_left_on_ground_DPA4062_clean_Triple_shots_x_2.wav",
-   "sha256": "73c2c2fc1097f05dbf6b71ac26b5103c1976bebb73c832a9a27b923f97dd77b1",
-   "pack": "Sonniss GDC 2016 — Sig P229 9mm",
-   "supplier": "Pole Position Production",
    "license": "sonniss-gdc-2.0"
   },
   "usas12_close_1m": {

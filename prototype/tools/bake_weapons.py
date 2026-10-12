@@ -71,6 +71,7 @@ def build_weapons() -> None:
     group("sfx/weapons")
     _build_core_weapons()
     build_weapons_ext()
+    bake_hybrid.weapons()                                   # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
 
 
 def _build_core_weapons() -> None:
@@ -84,7 +85,6 @@ def _build_core_weapons() -> None:
                 mech=vary(r, .55, .2), mech_f=vary(r, 3300, .12), tail_rt=vary(r, .32, .2),
                 tail_wet=vary(r, .24, .15), dur=0.30)
         finalize("m83_shot_%d" % (i + 1), x, lufs=-14.0)
-    bake_hybrid.m83()                                       # wersja z nagrań → audio_licensed/ (gra woli ją, jeśli jest)
 
     # P-64 „Igła" — sidearm: ostrzejszy crack, wyższy korpus, wyraźniejszy ogon
     for i in range(4):
