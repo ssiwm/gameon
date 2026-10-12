@@ -10,19 +10,22 @@ i zbiera werdykt do skopiowania. Pomiar (tools/audio_audit.py) pilnuje techniki 
     python tools/audio_ab.py --ref origin/main                      # assety zmienione względem gałęzi (przed / po)
     python tools/audio_ab.py --alts ../build/audio_alt --out ../build/audio_ab.html
 
-Duże zestawy są dzielone na kilka stron (--max-mb, domyślnie 3,5 MB na stronę): podgląd plików w aplikacjach
+Dźwięki dłuższe niż 8 s (pętle ambientu) są zaszyte stratnie — Ogg Vorbis ok. 190 kb/s, z zachowaną długością co do próbki,
+więc szew pętli słychać tak jak w grze; --lossless wyłącza. Duże zestawy są dzielone na kilka stron (--max-mb, domyślnie 3,5 MB na stronę): podgląd plików w aplikacjach
 często nie otwiera większych. Stronę zawsze da się otworzyć zwykłą przeglądarką (dwuklik na pliku).
 
 Uruchamiać z katalogu prototype/. Tylko stdlib (+ ffmpeg do FLAC, git przy --ref).
 """
 import argparse
 import base64
+import io
 import json
 import os
 import re
 import subprocess
 import sys
 import tempfile
+import wave
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AUDIO = os.path.join(ROOT, "audio")
@@ -36,24 +39,51 @@ SERIES_MS = (("m83_shot", 110), ("p64_shot", 200), ("spread12_shot", 260), ("sru
 
 
 WAV_ONLY = [False]
+LOSSLESS = [False]
+LOSSY_OVER_S = 8.0                    # dłuższe pliki (szumowe pętle ambientu) nie kompresują się bezstratnie — strona byłaby za duża
 
 
-def _uri(data: bytes) -> str:
-    """WAV → data URI. Domyślnie przez FLAC (bezstratnie, zwykle 50–70% rozmiaru); bez ffmpeg albo z --wav zostaje WAV."""
+def _seconds(data: bytes) -> float:
+    try:
+        with wave.open(io.BytesIO(data)) as w:
+            return w.getnframes() / float(w.getframerate())
+    except (wave.Error, EOFError):
+        return 0.0
+
+
+def _encode(data: bytes, suffix: str, args: list) -> bytes:
+    fd, tmp = tempfile.mkstemp(suffix=suffix)             # do pliku, nie do potoku: nagłówek dostaje wtedy długość
+    os.close(fd)
+    try:
+        r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", "pipe:0"] + args + [tmp], input=data, capture_output=True)
+        return open(tmp, "rb").read() if r.returncode == 0 else b""
+    except OSError:
+        return b""
+    finally:
+        os.remove(tmp)
+
+
+def _uri(data: bytes) -> tuple:
+    """WAV → (data URI, czy stratnie). Domyślnie FLAC (bezstratnie); pliki dłuższe niż LOSSY_OVER_S — Ogg Vorbis;
+    bez ffmpeg albo z --wav zostaje WAV."""
     if not WAV_ONLY[0]:
-        fd, tmp = tempfile.mkstemp(suffix=".flac")         # do pliku, nie do potoku: nagłówek FLAC dostaje wtedy długość
-        os.close(fd)
-        try:
-            r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", "pipe:0", "-c:a", "flac", "-compression_level", "8", tmp],
-                               input=data, capture_output=True)
-            flac = open(tmp, "rb").read() if r.returncode == 0 else b""
-            if 0 < len(flac) < len(data):
-                return "data:audio/flac;base64," + base64.b64encode(flac).decode("ascii")
-        except OSError:
-            pass
-        finally:
-            os.remove(tmp)
-    return "data:audio/wav;base64," + base64.b64encode(data).decode("ascii")
+        if not LOSSLESS[0] and _seconds(data) > LOSSY_OVER_S:
+            ogg = _encode(data, ".ogg", ["-c:a", "libvorbis", "-q:a", "6"])
+            if ogg:
+                return "data:audio/ogg;base64," + base64.b64encode(ogg).decode("ascii"), True
+        flac = _encode(data, ".flac", ["-c:a", "flac", "-compression_level", "8"])
+        if 0 < len(flac) < len(data):
+            return "data:audio/flac;base64," + base64.b64encode(flac).decode("ascii"), False
+    return "data:audio/wav;base64," + base64.b64encode(data).decode("ascii"), False
+
+
+def _loop_keys() -> set:
+    """Klucze pętli z banku (audio/_bank.json) — na stronie grają w kółko."""
+    try:
+        with open(os.path.join(AUDIO, "_bank.json"), encoding="utf-8") as f:
+            return {k for k, v in json.load(f).items() if v[1]}
+    except OSError:
+        return set()
 
 
 def _family(rel: str) -> str:
@@ -151,7 +181,7 @@ function render() {
     const st = state[fi], nv = f.versions.length, card = document.createElement("div");
     card.className = "card";
     const head = document.createElement("div"); head.className = "head";
-    head.innerHTML = "<h2></h2><small></small>"; head.children[0].textContent = f.name; head.children[1].textContent = f.dir + " · wariantów: " + f.rows.length;
+    head.innerHTML = "<h2></h2><small></small>"; head.children[0].textContent = f.name; head.children[1].textContent = f.dir + " · wariantów: " + f.rows.length + (f.lossy ? " · do odsłuchu zakodowane stratnie (Ogg Vorbis)" : "");
     card.appendChild(head);
     const grid = document.createElement("div"); grid.className = "grid"; grid.style.gridTemplateColumns = "minmax(120px, auto) repeat(" + nv + ", minmax(84px, 1fr))";
     grid.appendChild(document.createElement("div"));
@@ -200,17 +230,24 @@ render();
 
 def build(fams, out, max_mb=3.5):
     data = []
+    loops = _loop_keys()
     for fam in sorted(fams):
         versions = fams[fam]
         if len(versions) < 2:
             continue
         rels = sorted({r for v in versions.values() for r in v})
         series = next((ms for key, ms in SERIES_MS if key in fam and len(rels) > 1), 0)
-        data.append({
-            "name": fam, "dir": os.path.dirname(rels[0]), "series": series, "loop": fam.endswith("_loop"),
-            "rows": [os.path.splitext(os.path.basename(r))[0] for r in rels],
-            "versions": [{"name": n, "files": {os.path.splitext(os.path.basename(r))[0]: _uri(b) for r, b in v.items()}} for n, v in versions.items()],
-        })
+        lossy = False
+        vers = []
+        for n, v in versions.items():
+            files = {}
+            for r, b in v.items():
+                files[os.path.splitext(os.path.basename(r))[0]], was_lossy = _uri(b)
+                lossy = lossy or was_lossy
+            vers.append({"name": n, "files": files})
+        rows = [os.path.splitext(os.path.basename(r))[0] for r in rels]
+        data.append({"name": fam, "dir": os.path.dirname(rels[0]), "series": series, "rows": rows, "versions": vers,
+                     "loop": any(r in loops for r in rows), "lossy": lossy})
     if not data:
         sys.exit("nie ma czego porównywać (brak wersji alternatywnych i zmienionych plików)")
     # podział na strony: rodziny po kolei, nowa strona, gdy bieżąca przekroczyłaby limit
@@ -248,6 +285,7 @@ def main():
     ap.add_argument("--out", default=os.path.join(ROOT, "..", "build", "audio_ab.html"))
     ap.add_argument("--max-mb", type=float, default=3.5, help="limit rozmiaru jednej strony; większy zestaw jest dzielony na strony _1, _2…")
     ap.add_argument("--wav", action="store_true", help="zaszyj WAV zamiast FLAC")
+    ap.add_argument("--lossless", action="store_true", help="długie pliki też bezstratnie (większa strona)")
     a = ap.parse_args()
     if not a.alts and not a.ref and not a.licensed:
         ap.error("podaj --licensed, --alts KATALOG albo --ref GAŁĄŹ")
@@ -264,6 +302,7 @@ def main():
         want = [w for w in a.only.split(",") if w]
         fams = {k: v for k, v in fams.items() if any(w in k for w in want)}
     WAV_ONLY[0] = a.wav
+    LOSSLESS[0] = a.lossless
     build(fams, a.out, a.max_mb)
 
 
