@@ -27,11 +27,12 @@ Zasady składania (wnioski z pomiaru źródeł; brzmienie ocenia się uchem na s
 Werdykty odsłuchów A/B (2026-10-12), szczegóły w AUDIO_PLAN.md §7.
 Z nagrań: m83_shot, spread12_shot, srut8_shot, srut8_pump, gniew4_shot, ciegno6_shot (wersja 2), explosion, impact_hard,
 impact_flesh, shell, reload, reload_shell, maczeta, hkm9_flame_loop; stalker_growl, stalker_shriek, stalker_step,
-amb_far_cry; trzosek_attack, trzosek_death, wolek_attack, wolek_death, slepiec_death, podsluchacz_scream, leech_growl,
+amb_far_cry; trzosek_attack, trzosek_death (wilkołak), wolek_attack, wolek_death, slepiec_death, podsluchacz_scream, leech_growl,
 leech_shriek, zyla_roar; door, glass_break, thunder, amb_creak, amb_gust, amb_thud; step_concrete, step_metal, step_dirt,
-step_water, land_hard, player_hurt, player_down; amb_forest, amb_rain, amb_rain_roof, amb_wind.
+step_water, land_hard (buty), effort (odbicie bez głosu), player_hurt, player_down; amb_forest, amb_rain, amb_rain_roof, amb_wind.
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz, foley_gear,
-dry_fire, hkm9_ignite, kilof_swing, stalker_whisper_loop, slepiec_attack, zyla_growl.
+dry_fire, hkm9_ignite, kilof_swing, stalker_whisper_loop, slepiec_attack, zyla_growl. Po odsłuchu w grze
+wymienione: Trzosek (owadzi terkot był za wysoki → pies z warkotem ogara), lądowanie (upadek ciała → buty na obie stopy).
 """
 
 from __future__ import annotations
@@ -430,12 +431,26 @@ def _step_water_bake() -> None:
 
 
 # --- Twarde lądowanie: upadek ciała na beton (stopy) + sub-uderzenie.
-LAND_NEEDS = ["bodyfall_concrete"]
+# Skok i lądowanie z jednego nagrania skoków na obie stopy. Skok (klucz `effort`) to samo odbicie butów z szelestem
+# ubrania — bez głosu: stęknięcie przy każdym skoku męczyło. Lądowanie to dwa stąpnięcia tuż po sobie, obniżone,
+# z uderzeniem w dole pasma (nagranie upadku ciała grało jak przewrócenie się po każdym podskoku).
+JUMP_NEEDS = ["jump_land_two_feet"]
+
+
+def _jump_bake() -> None:
+    for i, t0 in enumerate((1.00, 4.04)):                            # pojedyncze, miękkie stąpnięcia = odbicie
+        r = Rng(0x4A00 + i * 613)
+        n = ms(300)
+        push = _clip("jump_land_two_feet", t0 - 0.02, 0.2, 2.0, 0.16, tail=.08)
+        cloth = d.lp(d.filt(d.colored(n, r, 1.0), "bp", 800.0 + 150.0 * i, 0.9), 2500.0) * d.env_pts(n, [(0, 0), (.05, 1), (.14, .5), (.3, 0)])
+        x = d.limiter(_unit(d.mix([(push, 1.0), (_unit(cloth), 0.12, .02)], n)), -6.0)
+        finalize("effort_%d" % (i + 1), d.filt(x, "hp", 70.0, order=2), lufs=-16.4)
 
 
 def _land_hard_bake() -> None:
-    fall = _fade(d.from_onset(bc.src("bodyfall_concrete", 0.10, 0.6), 1.0, thr_db=-12.0), 0.25, 0.42)
-    x = d.mix([(_unit(fall), 1.0), (thump(.2, 120, 50, .03, .06), 0.9)], ms(420))
+    a = _clip("jump_land_two_feet", 3.04, 0.3, -4.0, 0.30, tail=.14)
+    b = _clip("jump_land_two_feet", 5.04, 0.3, -4.0, 0.30, tail=.14)
+    x = d.mix([(a, 1.0), (b, 0.9, .03), (thump(.2, 110, 45, .04, .07), 0.9)], ms(400))
     x = d.limiter(_unit(d.filt(x, "hp", 30.0, order=2)), -5.0)
     finalize("land_hard", d.reverb(x, ir("close"), wet=.15), lufs=-17.5)
 
@@ -446,7 +461,8 @@ def player() -> None:
     bc.hybrid(_keys("step_metal", 5), _step_metal_bake, STEP_METAL_NEEDS)
     bc.hybrid(_keys("step_dirt", 5), _step_dirt_bake, STEP_DIRT_NEEDS)
     bc.hybrid(_keys("step_water", 5), _step_water_bake, STEP_WATER_NEEDS)
-    bc.hybrid(["land_hard"], _land_hard_bake, LAND_NEEDS)
+    bc.hybrid(["land_hard"], _land_hard_bake, JUMP_NEEDS)
+    bc.hybrid(_keys("effort", 2), _jump_bake, JUMP_NEEDS)
     bc.hybrid(_keys("player_hurt", 2), _player_hurt_bake, PLAYER_HURT_NEEDS)
     bc.hybrid(["player_down"], _player_down_bake, PLAYER_DOWN_NEEDS)
 
@@ -515,8 +531,8 @@ def _thunder_bake() -> None:
 
 
 # ============================================================ WROGOWIE (bake_sfx.build_enemies)
-# Każdy gatunek ma własne źródła (inne niż Stalker) i zachowuje gest wersji syntetycznej: Trzosek — owadzi terkot na
-# wysokim głosie, Wołek — ryk bestii z ciężarem w dole, Ślepiec — trzepoczący wydech z klikaniem (śmierć), Podsłuchacz —
+# Każdy gatunek ma własne źródła (inne niż Stalker) i zachowuje gest wersji syntetycznej: Trzosek — psie warknięcie
+# z warkotem ogara, Wołek — ryk bestii z ciężarem w dole, Ślepiec — trzepoczący wydech z klikaniem (śmierć), Podsłuchacz —
 # drżący wrzask, Pijawka — bulgot i skrzek morskiego stwora, Żyła — ryk złożony z kilku głosów naraz.
 # Zapowiedź ciosu Ślepca i pomruk Żyły zostały syntetyczne (werdykt odsłuchu). Głośność = zmierzona głośność syntezy.
 
@@ -529,27 +545,30 @@ def _clip(sid: str, t0: float, dur: float, semis: float, end: float, tail: float
     return _unit(x[:n] * d.env_pts(n, [(0, 0), (.004 if onset else .03, 1), (max(.04, end - tail), 1), (end, 0)]))
 
 
-TRZOSEK_ATTACK_NEEDS = ["insect_attack_02", "monster11_mouth2", "monster_pain_01", "monster4_call2"]
-_TRZOSEK_BODY = (("monster11_mouth2", 0.0, 3.0), ("monster_pain_01", 0.0, 4.0), ("monster4_call2", 0.05, 5.0))
+# Trzosek: duży pies obniżony o 6 półtonów, z warkotem ogara i oktawą w dół pod spodem („wilkołak” z odsłuchu;
+# pierwsza wersja — owadzi terkot — była w grze za wysoka). Śmierć: szczeknięcie przechodzące w skowyt.
+TRZOSEK_NEEDS = ["dog_bark_growl", "dog_whimper", "shepherd_barks", "hellhound_idle"]
+TRZOSEK_SEMIS = -6.0
+_DOG_ATTACKS = (1.51, 4.16, 17.91)                                   # warknięcia-szczeknięcia dużego psa w dog_bark_growl [s]
+_DOG_WHIMPERS = (7.56, 9.80)                                         # długie skowyty w dog_whimper [s]
+_DOG_YELPS = (10.77, 11.52)                                          # pojedyncze szczeknięcia owczarka [s]
 
 
 def _trzosek_attack_bake() -> None:
-    for i, (sid, t0, semis) in enumerate(_TRZOSEK_BODY):
-        chit = _clip("insect_attack_02", 0.0, 0.6, (0.0, -2.0, 2.0)[i], 0.5)
-        x = d.mix([(chit, 0.8), (_clip(sid, t0, 0.8, semis, 0.5), 1.0)], ms(520))
-        x = d.saturate(_unit(d.filt(x, "hp", 120.0, order=2)), 1.8)
+    for i, t0 in enumerate(_DOG_ATTACKS):
+        x = _clip("dog_bark_growl", t0 - 0.03, 0.75, TRZOSEK_SEMIS, 0.60, tail=.2)
+        parts = [(x, 1.0), (_clip("hellhound_idle", 3.6 + 0.5 * i, 0.6, -3.0, 0.60, tail=.25, onset=False), 0.5),
+                 (_unit(d.lp(d.repitch(x, -12.0)[:len(x)], 180.0)), 0.3)]
+        x = d.saturate(_unit(d.filt(d.mix(parts, ms(620)), "hp", 70.0, order=2)), 2.0)
         finalize("trzosek_attack_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), lufs=-16.0, fade_out_ms=30)
 
 
-TRZOSEK_DEATH_NEEDS = ["zombie_brat_groan_9", "monster9_death10", "insect_attack_02"]
-
-
 def _trzosek_death_bake() -> None:
-    a = _clip("zombie_brat_groan_9", 0.0, 1.1, 3.0, 0.72, tail=.25)
-    b = d.mix([(_clip("monster9_death10", 0.0, 1.2, 7.0, 0.70, tail=.25), 1.0),
-               (_clip("insect_attack_02", 0.3, 0.5, -5.0, 0.5, tail=.3, onset=False), 0.35, 0.2)], ms(740))
-    for i, x in enumerate((a, b)):
-        x = d.saturate(_unit(d.filt(x, "hp", 100.0, order=2)), 1.6)
+    for i, t0 in enumerate(_DOG_WHIMPERS):
+        yelp = _clip("shepherd_barks", _DOG_YELPS[i] - 0.02, 0.22, TRZOSEK_SEMIS, 0.20, tail=.07)
+        whine = _clip("dog_whimper", t0, 0.9, TRZOSEK_SEMIS, 0.72, tail=.35, onset=False)
+        parts = [(yelp, 0.8), (whine, 1.0, 0.09), (_clip("hellhound_idle", 4.2, 0.7, -3.0, 0.70, tail=.4, onset=False), 0.4)]
+        x = d.saturate(_unit(d.filt(d.mix(parts, ms(820)), "hp", 70.0, order=2)), 1.6)
         finalize("trzosek_death_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), lufs=-16.0, fade_out_ms=40)
 
 
@@ -715,8 +734,8 @@ def _thud_bake() -> None:
 
 def enemies() -> None:
     """Wersje z nagrań dla głosów wrogów — wołane na końcu bake_sfx.build_enemies()."""
-    bc.hybrid(_keys("trzosek_attack", 3), _trzosek_attack_bake, TRZOSEK_ATTACK_NEEDS)
-    bc.hybrid(_keys("trzosek_death", 2), _trzosek_death_bake, TRZOSEK_DEATH_NEEDS)
+    bc.hybrid(_keys("trzosek_attack", 3), _trzosek_attack_bake, TRZOSEK_NEEDS)
+    bc.hybrid(_keys("trzosek_death", 2), _trzosek_death_bake, TRZOSEK_NEEDS)
     bc.hybrid(_keys("wolek_attack", 2), _wolek_attack_bake, WOLEK_ATTACK_NEEDS)
     bc.hybrid(_keys("wolek_death", 2), _wolek_death_bake, WOLEK_DEATH_NEEDS)
     bc.hybrid(_keys("slepiec_death", 2), _slepiec_death_bake, SLEPIEC_DEATH_NEEDS)
