@@ -278,6 +278,23 @@ Pięć rodzin, których gra dotąd nie odtwarzała, jest podpiętych (decyzja: p
 
 Głośności dobrane z rachunku — do oceny w grze. F8 jest zamknięte.
 
+**F7 — eksperyment HRTF, stan na gałęzi `audio/f7-hrtf-spike` (2026-10-12; bez scalania przed decyzją).** Wtyczka Nexus Resonance
+1.1.0 (Steam Audio 4.8.1, MIT) ładuje się w Godocie 4.7.2 jako rozszerzenie natywne; leży lokalnie w `prototype/addons/nexus_resonance/`
+(poza repo, ok. 60 MB samych plików dla Windows). Narzędzie: `tools/hrtf_test.gd` — ślepy test kierunku (lewo / prawo / góra / dół),
+głos Stalkera, dwa tryby losowo: obecna panorama `AudioStreamPlayer2D` i HRTF na samym dźwięku bezpośrednim (bez odbić, zasłaniania
+i tłumienia odległością). Pomiar wyjścia (`--measure`, krzyk Stalkera, tryby wyrównane głośnością):
+
+| Tryb | Lewo / prawo: różnica L−P | Góra / dół |
+|---|---|---|
+| stereo (jak w grze) | ±3,0 dB, tak samo w całym paśmie | identyczne — żadnej wskazówki |
+| HRTF | ±9,5 dB, w górze pasma ±15 dB (cień głowy) | ten sam poziom, barwa różni się o ok. 1,2 dB |
+
+Czyli HRTF mocno wzmacnia lewo / prawo, a dla góry i dołu daje tylko słabą wskazówkę barwową — czy ucho ją łapie, pokaże test.
+Pułapki wtyczki znalezione po drodze: (1) bez żadnej geometrii sceny symulacja nie rusza i źródła milczą — test dodaje jedną bryłę
+z `ResonanceGeometry`; (2) `set_stream` / `play` trzeba wołać na `ResonancePlayer` (wywołanie typowane na `AudioStreamPlayer3D`
+omija przetwarzanie); (3) `volume_db` liczy się podwójnie. Koszt wdrożenia w grze, gdyby test wypadł dobrze: źródła 3D obok
+symulacji 2D, 60 MB bibliotek na platformę, CI na Linuksie z własnym plikiem `.so`.
+
 **Ustalenia, które zmieniają plan:**
 
 - **Paczka Sonniss 2026 nie zawiera strzałów, kroków ani przeładowań** (347 plików; są głosy stworów, gore, drzwi, wiatr). Broń i kroki są
