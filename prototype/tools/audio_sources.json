@@ -25,14 +25,6 @@
    "supplier": "Pole Position Production",
    "license": "sonniss-gdc-2.0"
   },
-  "army_gear_walk": {
-   "kind": "lib",
-   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 5of9/Joshua Reinhardt - Ultimate Cloth and Prop Collection/PR ARMY GEAR ROOM_WALK_C414.wav",
-   "sha256": "3954dff36780732dbc44895aadc8e382b0ea75fb5cf89e214af0c461ddc42496",
-   "pack": "Sonniss GDC 2017 — Ultimate Cloth and Prop Collection",
-   "supplier": "Joshua Reinhardt",
-   "license": "sonniss-gdc-2.0"
-  },
   "arrow_whoosh": {
    "kind": "lib",
    "file": "sonniss/2020/SoundFxwizard - PARTICLES An Organic & Granular Journey/PARTICLES_WHOOSH_Arrow 01.wav",
@@ -63,22 +55,6 @@
    "sha256": "5e586500cb16b5ead802bf89a11743364dcc0ddd2f82d349918a5c4f59f0d952",
    "pack": "Sonniss GDC 2016 — Bullet SFX",
    "supplier": "Stuart Duffield",
-   "license": "sonniss-gdc-2.0"
-  },
-  "bullet_flyby_05": {
-   "kind": "lib",
-   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Gamemaster Audio -  Bullet Impact Sounds/bullet_flyby_fast_05.wav",
-   "sha256": "aaed15696f96ab7e9f6e844eb7b063156720c43abe1fdf88abf3bb50cf0ce7f7",
-   "pack": "Sonniss GDC 2017 — Bullet Impact Sounds",
-   "supplier": "Gamemaster Audio",
-   "license": "sonniss-gdc-2.0"
-  },
-  "bullet_flyby_06": {
-   "kind": "lib",
-   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 3of8/Gamemaster Audio - Guns, Bullets and Explosions/bullet_flyby_fast_06.wav",
-   "sha256": "087f78478afc957bc18077e079ef587a94cacbe0b7e174644ba374cfab5e99c6",
-   "pack": "Sonniss GDC 2018 — Guns, Bullets and Explosions",
-   "supplier": "Gamemaster Audio",
    "license": "sonniss-gdc-2.0"
   },
   "crossbow_functions": {
@@ -159,14 +135,6 @@
    "sha256": "a2b81f2eb222d20c51525d875b0f8764e644d0e4c2df9e9a6af7f9dde9cc8eaa",
    "pack": "Sonniss GDC 2020 — Hand Guns Sound Effects Pack",
    "supplier": "Olivier Girardot",
-   "license": "sonniss-gdc-2.0"
-  },
-  "m1911_dry_fire": {
-   "kind": "lib",
-   "file": "sonniss/2020/Pole Position - Colt M1911A1 semi-automatic pistol/M1911A1, Handling, Dry Fire, MKH416.wav",
-   "sha256": "acef9a15b7985973fb97625f0f08f8c57e04cac508cb15a9a28c2c874da60b4d",
-   "pack": "Sonniss GDC 2020 — Colt M1911A1 semi-automatic pistol",
-   "supplier": "Pole Position",
    "license": "sonniss-gdc-2.0"
   },
   "monster_growls_4": {

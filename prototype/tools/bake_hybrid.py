@@ -20,8 +20,9 @@ Zasady składania (wnioski z pomiaru źródeł; brzmienie ocenia się uchem na s
   * Głośność (LUFS) i szczyt jak w wersji syntetycznej tego samego klucza: miks gry nie zależy od tego, którą wersję gra.
 
 Wybrane w odsłuchu A/B 2026-10-12: m83_shot, step_concrete, stalker_growl (bramka A); spread12_shot, srut8_shot,
-srut8_pump, gniew4_shot, ciegno6_shot, explosion (F3, część 1). Odrzucone na rzecz syntezy: p64_shot (SIG P229 z 1 m)
-i sokol6_shot (start fajerwerku) — przepisy usunięte, zostają w historii repo.
+srut8_pump, gniew4_shot, explosion (F3, część 1); ciegno6_shot w wersji 2, impact_hard, impact_flesh, shell (F3, część 2).
+Odrzucone na rzecz syntezy — przepisy usunięte, zostają w historii repo: p64_shot (SIG P229 z 1 m), sokol6_shot (start
+fajerwerku), whizz (przeloty pocisków), foley_gear (oporządzenie z marszu), dry_fire (kurek M1911).
 """
 
 from __future__ import annotations
@@ -189,19 +190,6 @@ def _gniew4_bake() -> None:
         finalize("gniew4_shot_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.3), peak=-2.0)
 
 
-# --- SINEW-6: zwolnienie cięciwy kuszy (nagranie) + syntetyczny brzęk cięciwy pod spodem.
-CIEGNO6_NEEDS = ["crossbow_loose"]
-
-
-def _ciegno6_bake() -> None:
-    for i in range(2):
-        r = Rng(0x3400 + i * 2113)
-        snap = d.repitch(d.from_onset(bc.src("crossbow_loose", 0.06, 0.34), 0.5), (0.0, -1.5)[i])
-        twang = ring(r, [vary(r, 168, .06), vary(r, 336, .06), vary(r, 505, .06)], [.35, .22, .12], dur=.4)
-        x = d.mix([(_unit(snap), 1.0), (twang, 0.35)], ms(420))
-        finalize("ciegno6_shot_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), peak=-5.0)
-
-
 # --- Wybuch: dwa nagrania dużych eksplozji (stereo) + syntetyczny sub.
 EXPLOSION_SRC = ("explosion_large_08", "explosion_deep_02")
 
@@ -217,26 +205,13 @@ def _explosion_bake() -> None:
         finalize("explosion_%d" % (i + 1), x, lufs=-16.7, fade_out_ms=120)
 
 
-def weapons() -> None:
-    """Wersje z nagrań dla broni — wołane na końcu bake_weapons.build_weapons(), po syntezie tych samych kluczy."""
-    m83()
-    bc.hybrid(_keys("spread12_shot", 3), _spread12_bake, SPREAD12_NEEDS)
-    bc.hybrid(_keys("srut8_shot", 3), _srut8_bake, SRUT8_NEEDS)
-    bc.hybrid(_keys("srut8_pump", 2), _pump_bake, PUMP_NEEDS)
-    bc.hybrid(_keys("gniew4_shot", 2), _gniew4_bake, GNIEW4_NEEDS)
-    bc.hybrid(_keys("ciegno6_shot", 2), _ciegno6_bake, CIEGNO6_NEEDS)
-    bc.hybrid(_keys("explosion", 2), _explosion_bake, list(EXPLOSION_SRC))
-
-
-# ============================================================ F3, część 2 — kandydaci do odsłuchu
-
-# --- SINEW-6, wersja 2 (uwaga z odsłuchu: wersja 1 „zbyt krótka i jednostajna, to kusza — więcej dynamiki").
+# --- SINEW-6 (wersja 2; pierwsza — samo zwolnienie cięciwy z brzękiem — była w odsłuchu „zbyt krótka i jednostajna").
 # Strzał z kuszy to ciąg zdarzeń, nie jedno pyknięcie: zamek → strzał cięciwy i uderzenie ramion o ogranicznik →
 # gasnące drganie ramion → świst odlatującego bełtu. Głośny, ostry początek, potem dwa cichsze plany.
-CIEGNO6_V2_NEEDS = ["crossbow_loose", "crossbow_functions", "whip_21", "arrow_whoosh", "bow_midflight"]
+CIEGNO6_NEEDS = ["crossbow_loose", "crossbow_functions", "whip_21", "arrow_whoosh", "bow_midflight"]
 
 
-def _ciegno6_v2_bake() -> None:
+def _ciegno6_bake() -> None:
     for i in range(2):
         r = Rng(0x3480 + i * 2113)
         latch = _fade(d.from_onset(bc.src("crossbow_functions", 1.00, 0.08), 0.3, thr_db=-18.0), 0.02, 0.05)
@@ -274,16 +249,6 @@ def _impact_flesh_bake() -> None:
         finalize("impact_flesh_%d" % (i + 1), d.saturate(d.reverb(x, ir("close"), wet=.15), 1.6), lufs=-15.0)
 
 
-# --- Przelot pocisku obok słuchacza (stereo jak w syntezie): dwa nagrania, trzeci wariant o 3 półtony wyżej.
-WHIZZ_NEEDS = ["bullet_flyby_05", "bullet_flyby_06"]
-
-
-def _whizz_bake() -> None:
-    for i, (sid, semis) in enumerate((("bullet_flyby_05", 0.0), ("bullet_flyby_06", 0.0), ("bullet_flyby_05", 3.0))):
-        x = d.from_onset(d.repitch(bc.src(sid, 0.0, 0.5, mono=False), semis), 8.0, thr_db=-30.0)
-        finalize("whizz_%d" % (i + 1), _fade(x, 0.16, 0.26), lufs=-12.7)
-
-
 # --- Łuska na ziemi: mosiężna łuska odbijająca się od drewna, pocisk na drewnie, łuska strzelby na betonie.
 SHELL_SRC = (("shell_bounce_wood_05", 0.0), ("bullet_drop_wood_04", 0.0), ("shell_land_concrete_02", 0.0))
 
@@ -295,39 +260,22 @@ def _shell_bake() -> None:
         finalize("shell_%d" % (i + 1), d.reverb(x, ir("dead"), wet=.15), lufs=-19.4)
 
 
-# --- Szelest ekwipunku: trzy ruchy oporządzenia z nagranego marszu (bez kroków — odcięte poniżej 250 Hz).
-GEAR_NEEDS = ["army_gear_walk"]
-_GEAR = (1.64, 2.78, 4.72)
-
-
-def _foley_gear_bake() -> None:
-    for i, t in enumerate(_GEAR):
-        x = d.filt(bc.src("army_gear_walk", t - 0.03, 0.34), "hp", 250.0, order=4)
-        x = _fade(x * d.env_pts(x.shape[-1], [(0, 0), (.008, 1), (10, 1)]), 0.20, 0.30)
-        finalize("foley_gear_%d" % (i + 1), x, lufs=-28.8)
-
-
-# --- Suchy strzał: kurek pistoletu bez naboju + niski stuk bijaka (samo nagranie to cienkie tyknięcie powyżej 5 kHz).
-DRY_FIRE_NEEDS = ["m1911_dry_fire"]
-
-
-def _dry_fire_bake() -> None:
-    click = _fade(d.from_onset(bc.src("m1911_dry_fire", 1.05, 0.25), 0.5, thr_db=-10.0), 0.08, 0.14)
-    knock = thump(0.05, 260, 120, 0.012, 0.018)
-    x = d.mix([(_unit(click), 1.0), (knock, 0.6)], ms(140))
-    finalize("dry_fire", d.reverb(x, ir("dead"), wet=.1), lufs=-21.3)
+def weapons() -> None:
+    """Wersje z nagrań dla broni — wołane na końcu bake_weapons.build_weapons(), po syntezie tych samych kluczy."""
+    m83()
+    bc.hybrid(_keys("spread12_shot", 3), _spread12_bake, SPREAD12_NEEDS)
+    bc.hybrid(_keys("srut8_shot", 3), _srut8_bake, SRUT8_NEEDS)
+    bc.hybrid(_keys("srut8_pump", 2), _pump_bake, PUMP_NEEDS)
+    bc.hybrid(_keys("gniew4_shot", 2), _gniew4_bake, GNIEW4_NEEDS)
+    bc.hybrid(_keys("ciegno6_shot", 2), _ciegno6_bake, CIEGNO6_NEEDS)
+    bc.hybrid(_keys("explosion", 2), _explosion_bake, list(EXPLOSION_SRC))
+    bc.hybrid(_keys("impact_hard", 3), _impact_hard_bake, list(IMPACT_HARD_SRC))
+    bc.hybrid(_keys("impact_flesh", 3), _impact_flesh_bake, [sid for sid, _ in IMPACT_FLESH_SRC])
+    bc.hybrid(_keys("shell", 3), _shell_bake, [sid for sid, _ in SHELL_SRC])
 
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — kandydaci do następnego odsłuchu
-CANDIDATES: tuple = (
-    ("hybrid2", _ciegno6_v2_bake, CIEGNO6_V2_NEEDS),
-    ("hybrid", _impact_hard_bake, list(IMPACT_HARD_SRC)),
-    ("hybrid", _impact_flesh_bake, [s for s, _ in IMPACT_FLESH_SRC]),
-    ("hybrid", _whizz_bake, WHIZZ_NEEDS),
-    ("hybrid", _shell_bake, [s for s, _ in SHELL_SRC]),
-    ("hybrid", _foley_gear_bake, GEAR_NEEDS),
-    ("hybrid", _dry_fire_bake, DRY_FIRE_NEEDS),
-)
+CANDIDATES: tuple = ()
 
 
 def build_alts() -> None:
