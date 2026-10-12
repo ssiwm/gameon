@@ -690,8 +690,7 @@ func _local_brain(delta: float) -> void:
 		velocity.y = JUMP_VELOCITY * float(surf["jump"])
 		_jump_buf = 0.0
 		_coyote = 0.0
-		# odbicie butów (bez głosu): trochę ciszej niż krok (-8 dB), żeby skok było słychać, ale nie dominował
-		Audio.play_variant("effort", 2, Audio.BUS_PLAYER, -10.0)
+		# skok jest niemy (decyzja po odsłuchu w grze): słychać dopiero lądowanie (land_hard niżej)
 
 	# puszczenie skoku w górze lotu skraca go
 	if Input.is_action_just_released("jump") and velocity.y < JUMP_VELOCITY * JUMP_CUT:

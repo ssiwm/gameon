@@ -574,15 +574,6 @@ def build_player() -> None:
                (tick(r, 2200, 1.0, 20, .005), .5), (ring(r, [2900, 4400, 6100], [.06, .04, .03], dur=.2), .18, .012)], ms(450))
     finalize("land_hard", d.reverb(x, ir("close"), wet=.15), lufs=-17.5)
 
-    # Skok (klucz `effort`): odbicie butów od podłoża + szelest ubrania, bez głosu — stęknięcie przy każdym skoku męczyło
-    for i in range(2):
-        r = Rng(0xE600 + i * 2749)
-        n = ms(300)
-        scuff = d.filt(d.colored(ms(120), r, .6), "bp", 900.0 + 200.0 * i, 1.0) * d.env_perc(ms(120), .004, .035)
-        cloth = d.lp(d.filt(d.colored(n, r, 1.0), "bp", 800.0 + 150.0 * i, 0.9), 2500.0) * d.env_pts(n, [(0, 0), (.05, 1), (.14, .5), (.3, 0)])
-        x = d.mix([(thump(.09, 150 + 20 * i, 70, .02, .03), .7), (scuff / (d.peak(scuff) + 1e-9), 1.0), (cloth / (d.peak(cloth) + 1e-9), .15, .02)], n)
-        finalize("effort_%d" % (i + 1), d.reverb(x, ir("dead"), wet=.1), lufs=-16.0)
-
     # Krzyk bólu: źródło głosowe + wibrato, formanty „a→o", lekka saturacja
     for i in range(2):
         r = Rng(0xE700 + i * 1871)

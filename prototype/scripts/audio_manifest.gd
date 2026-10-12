@@ -30,8 +30,6 @@ const PATHS := {
 	"door_2": "res://audio/sfx/world/door_2.wav",
 	"dry_fire": "res://audio/sfx/weapons/dry_fire.wav",
 	"ear_ring": "res://audio/sfx/weapons/ear_ring.wav",
-	"effort_1": "res://audio/sfx/player/effort_1.wav",
-	"effort_2": "res://audio/sfx/player/effort_2.wav",
 	"explosion_1": "res://audio/sfx/weapons/explosion_1.wav",
 	"explosion_2": "res://audio/sfx/weapons/explosion_2.wav",
 	"explosion_far_1": "res://audio/sfx/weapons/explosion_far_1.wav",
