@@ -198,6 +198,10 @@ godot --headless --path . -- --join=127.0.0.1 --autoquit=6
 # (zwykli wrogowie są w tym teście usuwani; PASS = zasnął, 0 HP straty, ~20,5 s)
 godot --headless --path . -- --host --stealthtest=25 --autoquit=27
 
+# test Stalkera: ostrzał, prędkość na gruncie / w wodzie / w błocie, zachowanie po ciosie
+# (mapa 1.3 bez zwykłych wrogów; linie [STALKER-TEST], kod wyjścia 0 = OK, ~45 s)
+godot --headless --path . -- --host --stalkertest --autoquit=70
+
 # test wipe: wszyscy padają → restart misji po 3 s (działa też z klientem)
 godot --headless --path . -- --host --wipetest --autoquit=8
 
@@ -205,7 +209,7 @@ godot --headless --path . -- --host --wipetest --autoquit=8
 godot --headless --path . -- --host --missiontest --autoquit=9
 ```
 
-Flagi: `--mission=ID` (mapa startowa), `--maptest`, `--gentest`, `--ridetest`, `--ridehost`, `--rideclient`, `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--nightshift` (tryb Nocny Dyżur), `--shifttest`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--shot=PLIK.png [--shotat=KOLUMNA]` (zapis obrazu z gry), `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
+Flagi: `--mission=ID` (mapa startowa), `--maptest`, `--gentest`, `--ridetest`, `--ridehost`, `--rideclient`, `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--nightshift` (tryb Nocny Dyżur), `--shifttest`, `--stalkertest`, `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--shot=PLIK.png [--shotat=KOLUMNA]` (zapis obrazu z gry), `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
 
 **Renderer:** Forward+ (`project.godot`); bez Vulkana / D3D12 silnik wraca do OpenGL, a `--rendering-driver opengl3` wymusza tryb zgodności (zrzuty pod xvfb). W trybie zgodności widok 3D działa bez SSAO, SSIL i mgły wolumetrycznej.
 

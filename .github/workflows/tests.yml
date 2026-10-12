@@ -31,6 +31,10 @@ jobs:
         run: |
           godot --headless --path prototype -- --maptest --autoquit=4 2>&1 | tee maptest.log
           grep -a "\[MAPTEST\] PASS" maptest.log
+      - name: Stalker (--stalkertest)
+        run: |
+          godot --headless --path prototype -- --host --stalkertest --autoquit=70 2>&1 | tee stalkertest.log
+          grep -a "\[STALKER-TEST\] ==== PASS" stalkertest.log
       - name: Droga dźwięku po mapie (test_sound_grid.gd)
         run: |
           godot --headless --path prototype -s tools/test_sound_grid.gd 2>&1 | tee soundgrid.log

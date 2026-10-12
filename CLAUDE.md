@@ -21,6 +21,7 @@ Co-op horror run-and-gun (retro Contra), Godot **4.7.2**, GDScript, symulacja 2D
 ```bash
 godot --headless --path prototype --import                      # po zmianach zasobów
 godot --headless --path prototype -- --maptest --autoquit=4     # mapy (~6 s), ma wypisać PASS
+godot --headless --path prototype -- --host --stalkertest --autoquit=70   # Stalker: ostrzał, teren, po ciosie (~45 s), ma wypisać PASS
 godot --headless --path prototype -s tools/test_sound_grid.gd   # droga dźwięku po mapie, ma wypisać PASS
 godot --headless --path prototype -s tools/test_audio_loops.gd  # pętle dźwięku na całej długości, ma wypisać PASS
 prototype/tools/test_weapons.sh                                 # bronie + sieć (~3 min)
