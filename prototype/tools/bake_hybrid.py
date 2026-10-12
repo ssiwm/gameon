@@ -881,11 +881,54 @@ def ui() -> None:
     bc.hybrid(["mission_start"], _mission_start_bake, START_NEEDS)
 
 
+# ============================================================ KOŃCÓWKA MISJI — kandydaci
+# Cel wykonany grał syntetyczny pisk (`radio_beep`: prostokąt 880 Hz), wstrząs — dzwon alarmowy, zawał — zatrzymanie taśmy.
+# `quake` i `collapse` to nowe klucze (synteza w bake_sfx.py); tu ich wersje z nagrań i dwie propozycje sygnału radia.
+QUAKE_NEEDS = ["quake_rumble"]
+COLLAPSE_NEEDS = ["building_collapse", "rockslide_02"]
+RADIO_BEEP_LUFS = -9.4                                               # zmierzona głośność syntezy radio_beep
+RADIO_ROGER_NEEDS = ["walkie_beep", "walkie_kenwood"]
+RADIO_SQUELCH_NEEDS = ["walkie_kenwood"]
+
+
+def _quake_bake() -> None:
+    x = d.lp(d.filt(bc.src("quake_rumble", 0.2, 3.9), "hp", 28.0, order=2), 3000.0)
+    x = x * d.env_pts(len(x), [(0, 0), (.3, 1), (2.4, .9), (3.9, 0)])
+    finalize("quake", d.limiter(_unit(x), -5.0), lufs=-16.0, fade_out_ms=500)
+
+
+def _collapse_bake() -> None:
+    main = bc.src("building_collapse", 0.0, 3.6)
+    main = _unit(main * d.env_pts(len(main), [(0, 1), (2.3, 1), (3.6, 0)]))
+    rocks = bc.src("rockslide_02", 0.8, 2.8)
+    rocks = _unit(d.lp(rocks, 5000.0) * d.env_pts(len(rocks), [(0, 0), (.3, 1), (1.6, .7), (2.8, 0)]))
+    x = d.mix([(main, 1.0), (rocks, 0.35, .5), (thump(.5, 80, 30, .12, .2), 0.6)], d.sec(3.6))
+    finalize("collapse", d.limiter(_unit(d.filt(x, "hp", 28.0, order=2)), -5.0), lufs=-13.0, fade_out_ms=500)
+
+
+def _radio_roger_bake() -> None:                                     # krótki ton krótkofalówki + szum zamykanej blokady
+    beep = _clip("walkie_beep", 0.0, 0.13, 0.0, 0.11, tail=.03)
+    tail = _clip("walkie_kenwood", 5.18, 0.42, -2.0, 0.34, tail=.14)
+    x = d.limiter(_unit(d.filt(d.mix([(beep, 0.8), (tail, 1.0, .09)], ms(460)), "hp", 150.0, order=2)), -9.0)
+    finalize("radio_beep", d.reverb(x, ir("dead"), wet=.1), lufs=RADIO_BEEP_LUFS)
+
+
+def _radio_squelch_bake() -> None:                                   # bez tonu: klik nadawania i sam szum
+    key = _clip("walkie_kenwood", 8.33, 0.1, -2.0, 0.08, tail=.04)
+    tail = _clip("walkie_kenwood", 5.18, 0.42, -2.0, 0.38, tail=.14)
+    x = d.limiter(_unit(d.filt(d.mix([(key, 0.35), (tail, 1.0, .05)], ms(470)), "hp", 150.0, order=2)), -9.0)
+    finalize("radio_beep", d.reverb(x, ir("dead"), wet=.1), lufs=RADIO_BEEP_LUFS)
+
+
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts.
-# Pusto: wszystkie dotychczasowe rodziny mają werdykt.
-CANDIDATES: tuple = ()
+CANDIDATES: tuple = (
+    ("hybrid", _quake_bake, QUAKE_NEEDS),
+    ("hybrid", _collapse_bake, COLLAPSE_NEEDS),
+    ("krotkofalowka", _radio_roger_bake, RADIO_ROGER_NEEDS),
+    ("sam_szum", _radio_squelch_bake, RADIO_SQUELCH_NEEDS),
+)
 
 
 def build_alts() -> None:

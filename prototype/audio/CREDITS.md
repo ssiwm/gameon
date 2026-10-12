@@ -33,6 +33,7 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | boot_metal_walk | nagranie | Sonniss GDC 2017 — Edward – Foleyart Collection Add-On Extended Footsteps | Tovusound | sonniss-gdc-2.0 | 237_Foley_Footsteps_Metal_Boot_Walk_Normal_Close.wav |
 | bow_midflight | nagranie | Sonniss GDC 2019 — Nocked | Eiravaein Works | sonniss-gdc-2.0 | Nocked,archery,firing,loose,Vaeyanbow,midflight,wide,mythic,sleek,swirl,rattle,alt14.wav |
 | breaker_on | nagranie | Sonniss GDC 2018 — The Cabin Audio Playset | UberDuo | sonniss-gdc-2.0 | Switch,ElectricalPanelBreaker,On.wav |
+| building_collapse | nagranie | Sonniss GDC 2023 — Building Collapse | BluezoneCorp | sonniss-gdc-2.0 | Bluezone_BC0275_building_collapse_debris_falling_rock_rubble_008.wav |
 | bullet_drop_wood_04 | nagranie | Sonniss GDC 2016 — Bullet SFX | Stuart Duffield | sonniss-gdc-2.0 | Bullet_Drop_Wood_04.wav |
 | cannonball_impact_005 | nagranie | Sonniss GDC 2023 — Naval Warfare | Gladestock Studios | sonniss-gdc-2.0 | GS cannonball impact 005.wav |
 | cartridge_handling_018 | nagranie | Sonniss GDC 2023 — Detonation - Explosion | BluezoneCorp | sonniss-gdc-2.0 | Bluezone_BC0277_cartridge_case_handling_018.wav |
@@ -83,10 +84,12 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | orc_grunt_003 | nagranie | Sonniss GDC 2020 — Mountain Dweller - Orc Sound Effects | Bluezone | sonniss-gdc-2.0 | Bluezone_BC0261_mountain_dweller_creature_orc_grunt_003.wav |
 | organic_texture_041 | nagranie | Sonniss GDC 2023 — Biohazard - Organic Textures and Ambiences | BluezoneCorp | sonniss-gdc-2.0 | Bluezone_BC0280_biohazard_creature_organic_texture_041.wav |
 | puddle_splashes | nagranie | Sonniss GDC 2020 — Footsteps | Wav Junction Sound Effects | sonniss-gdc-2.0 | 0014_Footsteps_water_puddle_single_splashes.wav |
+| quake_rumble | nagranie | Sonniss GDC 2024 — Alien Tripod | BluezoneCorp | sonniss-gdc-2.0 | Bluezone_BC0292_alien_tripod_debris_rock_collapse_earthquake_rumble_large_005.wav |
 | radio_tuning_static | nagranie | Sonniss GDC 2016 — NOISE | MatiasMacSD | sonniss-gdc-2.0 | OldRadioTuningStaticNoise_001.wav |
 | rain_hard_loop | nagranie | Sonniss GDC 2017 — Rain and Thunder | Double Trouble Audio | sonniss-gdc-2.0 | RATH - Rain Hard Loop 08.wav |
 | rain_on_plastic | nagranie | Sonniss GDC 2017 — Rain and Thunder | Double Trouble Audio | sonniss-gdc-2.0 | RATH - Rain on Plastic Outside Loop.wav |
 | rifle_pickup_004 | nagranie | Sonniss GDC 2017 — MECHANISM | SoundMorph | sonniss-gdc-2.0 | Mechanism - AssaultRifle_PickUp_004.wav |
+| rockslide_02 | nagranie | Sonniss GDC 2018 — Foley Elements Rocks, Dirt And Stone | Soundrangers | sonniss-gdc-2.0 | rockslide_02.wav |
 | saiga12_close_1m | nagranie | Sonniss GDC 2016 — Saiga-12 12g solid slug | Pole Position Production | sonniss-gdc-2.0 | SAIGA-12_12g_solid_slug_1m_left_off_axis_MKH416_clean_Single_shots_x_5.wav |
 | saiga12_cocking | nagranie | Sonniss GDC 2016 — Various Gun Foley & Handling | Pole Position Production | sonniss-gdc-2.0 | SAIGA-12_12g_solid_slug_foley_close_up_RSM191_R_cocking.wav |
 | scrap_pile_03 | nagranie | Sonniss GDC 2017 — Junk and Debris | Double Trouble Audio | sonniss-gdc-2.0 | Pile of Scrap Metal - Metal Scrap Pile, Rustle, Drop, Long Tail 03.wav |
@@ -105,6 +108,7 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | thunder_strike_03 | nagranie | Sonniss GDC 2018 — Thunder | Soundrangers | sonniss-gdc-2.0 | thunder_strike_03.wav |
 | troll_death_01 | nagranie | Sonniss GDC 2017 — Troll Monster Vocalizations | Gamemaster Audio | sonniss-gdc-2.0 | troll_monster_death_01.wav |
 | usas12_close_1m | nagranie | Sonniss GDC 2016 — USAS-12 12g solid slug | Pole Position Production | sonniss-gdc-2.0 | USAS-12_12g_solid_slug_1m_right_CS3_clean_Double_shots_x_1.wav |
+| walkie_beep | nagranie | Sonniss GDC 2020 — Interception - Radio Transmission | Bluezone | sonniss-gdc-2.0 | Bluezone_BC0266_radio_beep_walkie_talkie_002.wav |
 | walkie_kenwood | nagranie | Sonniss GDC 2016 — Handheld Tranceivers | Sergey Eybog | sonniss-gdc-2.0 | Walkie Talkie,Kenwood TK-3107 FM,Radio Communication,No Speech,Static,Feedback Squelch,Manipulations.wav |
 | water_movement_large_009 | nagranie | Sonniss GDC 2020 — Cave Creature Sound Effects | Bluezone | sonniss-gdc-2.0 | Bluezone_BC0272_creature_texture_water_movement_large_animal_009.wav |
 | whip_21 | nagranie | Sonniss GDC 2020 — Hand Guns Sound Effects Pack | Olivier Girardot | sonniss-gdc-2.0 | Whip sound 21.wav |

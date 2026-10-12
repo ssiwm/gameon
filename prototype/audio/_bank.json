@@ -91,6 +91,10 @@
   "sfx/weapons/ciegno6_shot_2",
   0
  ],
+ "collapse": [
+  "sfx/world/collapse",
+  0
+ ],
  "door_1": [
   "sfx/world/door_1",
   0
@@ -381,6 +385,10 @@
  ],
  "podsluchacz_scream_2": [
   "sfx/enemies/podsluchacz_scream_2",
+  0
+ ],
+ "quake": [
+  "sfx/world/quake",
   0
  ],
  "radio_beep": [
