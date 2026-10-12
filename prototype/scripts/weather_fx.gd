@@ -27,6 +27,11 @@ const AUDIO := {
 }
 const UNDERGROUND_DB := -14.0               ## deszcz słychać w podziemiach jak przez grubą warstwę ziemi
 const SILENT_DB := -55.0                    ## poniżej: pętla zatrzymana
+## Tło wg miejsca (_beds): las na otwartej przestrzeni / pod dachem, powietrze budynku pod dachem, kapanie w podziemiach.
+const BED_FOREST_OPEN_DB := -13.0
+const BED_FOREST_ROOF_DB := -19.0
+const BED_AIR_DB := -20.0
+const BED_DRIPS_DB := -22.0
 
 ## Dev (--shotflash): błysk na stałe (zrzuty).
 static var dev_flash := false
@@ -38,6 +43,8 @@ var _thunder_seed := -1
 var _loops_on := {}                         ## klucze pętli dźwięku uruchomionych przez pogodę
 var _k := 0.0                               ## wygładzona siła pogody 0..1
 var _sky := 0.0                             ## wygładzona „otwartość nieba" nad lokalnym graczem 0..1
+var _deep := 0.0                            ## wygładzone „jestem w podziemiach" 0..1
+var _beds_on := {}                          ## pętle tła wg miejsca, które teraz grają
 var _id := ""                               ## pogoda, dla której ustawiono parametry cząsteczek
 var _t := 0.0
 var _flash_seed := -1
@@ -63,7 +70,9 @@ func _process(delta: float) -> void:
 	var lp := _local_player()
 	var open := 1.0 if (lp != null and _sky_open(lp)) else 0.0
 	_sky = move_toward(_sky, open, 2.0 * delta)
+	_deep = move_toward(_deep, 1.0 if (lp != null and _level != null and lp.global_position.y >= float(_level.underground_y)) else 0.0, 1.0 * delta)
 	_audio(mode, lp)
+	_beds()
 	# tło parallax: noc pogodna wzmacnia księżyc i gwiazdy, deszcz przyciemnia niebo, mgła rozjaśnia grzbiety (tylko gdy się zmieniło)
 	if _id != _bd_id or absf(_k - _bd_k) > 0.004:
 		_bd_id = _id
@@ -154,6 +163,25 @@ func _audio(mode: int, lp: Node2D) -> void:
 	if on and _id == "storm":
 		_thunder()
 
+## Tło wg miejsca (niezależnie od pogody): pod dachem słychać „powietrze" budynku (amb_air), w podziemiach kapanie
+## (amb_drips), a las z powierzchni cichnie pod dachem. Działa tylko, gdy gra tło misji (pętla amb_forest z main.gd).
+func _beds() -> void:
+	var on := Audio.loop_playing("amb_forest")
+	if on:
+		Audio.set_loop_volume("amb_forest", lerpf(BED_FOREST_ROOF_DB, BED_FOREST_OPEN_DB, _sky))
+	var targets := {
+		"amb_air": BED_AIR_DB + _db(1.0 - _sky) if on else -99.0,
+		"amb_drips": BED_DRIPS_DB + _db(_deep) if on else -99.0,
+	}
+	for key in targets:
+		var v: float = targets[key]
+		if v > SILENT_DB:
+			Audio.start_loop(key, Audio.BUS_AMB, v)                 # istniejąca pętla tylko zmienia głośność
+			_beds_on[key] = true
+		elif _beds_on.has(key):
+			Audio.stop_loop(key)
+			_beds_on.erase(key)
+
 static func _db(x: float) -> float:
 	return 20.0 * log(maxf(x, 0.001)) / log(10.0)
 
@@ -161,6 +189,9 @@ func _stop_audio() -> void:
 	for key in _loops_on.keys():
 		Audio.stop_loop(key)
 	_loops_on.clear()
+	for key in _beds_on.keys():
+		Audio.stop_loop(key)
+	_beds_on.clear()
 
 ## Grzmot po każdym błysku: opóźnienie 0,5–4 s z ziarna (tak samo u wszystkich graczy); im dłuższe, tym dalszy i cichszy grzmot (3 warianty: blisko → daleko).
 func _thunder() -> void:

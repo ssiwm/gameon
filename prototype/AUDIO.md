@@ -127,6 +127,10 @@ ekranu) sama bliska, od `FAR_FULL` (900 px) sama daleka. Rodzinę daleką rozpoz
 ją przez dopisanie do `FAR_FAMILIES` w `bake_weapons.py`, bez zmian w grze. Własny strzał gracza jest niepozycyjny i zawsze bliski.
 Dev: `--nofar` wyłącza dalekie wersje — do porównania w grze. Progi i charakter ogona dobrane liczbami, nie uchem.
 
+Tło wg miejsca (`weather_fx.gd: _beds()`, niezależnie od pogody): pod dachem gra `amb_air`, w podziemiach `amb_drips`, a `amb_forest`
+cichnie pod dachem (−13 → −19 dB). Pętle pozycyjne przedmiotów: uzbrojona mina (`mine_beep_loop`), radiostacja w kryjówce
+(`radio_static_loop`). `stalker_appear` gra, gdy przebudzony Stalker wychodzi z mroku dla lokalnego gracza.
+
 ### 3.6 Format wydania
 
 Efekty (`audio/sfx/**`) to WAV-y importowane z kompresją QOA. Muzyka i ambient (`audio/music/`, `audio/amb/`) grają z plików

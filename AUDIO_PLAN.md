@@ -266,7 +266,17 @@ szkło, strzały, szept): „bez różnicy” we wszystkich. Stan:
   szwie taki sam jak w środku pliku), długości stemów równe 960 000 klatek.
 - **Rozmiar** zaimportowanego audio: 53 MB → ok. 8 MB (efekty 4,6 MB, muzyka i ambient 3,5 MB).
 
-Zostało z F8: podpięcie pięciu nieużywanych rodzin (decyzja: podpiąć).
+Pięć rodzin, których gra dotąd nie odtwarzała, jest podpiętych (decyzja: podpiąć, nie usuwać):
+
+| Rodzina | Gdzie gra |
+|---|---|
+| `stalker_appear` | chwila, gdy przebudzony Stalker wychodzi z mroku dla lokalnego gracza (z bliska albo w snopie latarki); nie częściej niż co 20 s (`stalker.gd`) |
+| `mine_beep_loop` | cichy sygnał uzbrojonej miny kierunkowej, pozycyjny; wrogów nie budzi (`placed.gd`) |
+| `radio_static_loop` | szum eteru z radiostacji w kryjówce, pozycyjny (`radio_set.gd`) |
+| `amb_air` | tło pod dachem — „powietrze” budynku; razem z tym las z powierzchni cichnie pod dachem o 6 dB (`weather_fx.gd: _beds()`) |
+| `amb_drips` | kapanie w podziemiach (`weather_fx.gd: _beds()`) |
+
+Głośności dobrane z rachunku — do oceny w grze. F8 jest zamknięte.
 
 **Ustalenia, które zmieniają plan:**
 

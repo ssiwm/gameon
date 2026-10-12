@@ -14,6 +14,14 @@ var _t := 0.0
 func _ready() -> void:
 	add_to_group("radio_set")
 	z_index = 0
+	# szum eteru z głośnika: cicha pętla pozycyjna, słyszalna dopiero przy radiostacji
+	Audio.start_loop_at("radio_static_loop", self, Audio.BUS_WORLD, -22.0, true, _static_id())
+
+func _exit_tree() -> void:
+	Audio.stop_loop(_static_id())
+
+func _static_id() -> String:
+	return "radio_%d" % get_instance_id()
 
 func _physics_process(_delta: float) -> void:
 	local_in_range = false

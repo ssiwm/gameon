@@ -38,6 +38,7 @@ var _x_max := 1470.0
 
 # widoczność ciała względem lokalnego gracza
 const SEE_FULL := 60.0
+const APPEAR_COOLDOWN := 20.0   ## s między kolejnymi „pojawieniami się" (dźwięk stalker_appear)
 const SEE_NONE := 160.0
 
 # nad tym progiem hałasu stalker poluje (szybko), poniżej — czatuje (wolno)
@@ -72,6 +73,8 @@ var _step_accum := 0.0
 var _last_aud_pos := Vector2.ZERO
 var _hunting_cached := false
 var _winding_cached := false
+var _shown := false          ## czy lokalny gracz właśnie go widzi (zbocze gra „stalker_appear")
+var _appear_cd := 0.0        ## s do następnego możliwego „pojawienia się"
 var _overlay: Node2D
 var _lit_cd := 0.0
 var _spr: Array = []
@@ -312,6 +315,7 @@ func _update_audio(delta: float, is_awake: bool, noise: float) -> void:
 		# przebudzenie — krzyk + krótki stinger, potem szept
 		Audio.play_variant_at("stalker_shriek", 2, global_position, Audio.BUS_STALKER, -6.0)
 		Audio.sting(1)
+		_appear_cd = maxf(_appear_cd, 2.0)                  # krzyk przebudzenia nie zlewa się z „pojawieniem"
 	elif hunting and not _hunting_cached:
 		Audio.play_variant_at("stalker_growl", 2, global_position, Audio.BUS_STALKER, -9.0)
 	_hunting_cached = hunting
@@ -321,6 +325,15 @@ func _update_audio(delta: float, is_awake: bool, noise: float) -> void:
 	if winding and not _winding_cached:
 		Audio.play_variant_at("stalker_growl", 2, global_position, Audio.BUS_STALKER, -3.0, 1.15)
 	_winding_cached = winding
+
+	# „Coś się pojawia": chwila, gdy przebudzony Stalker wychodzi z mroku dla lokalnego gracza (z bliska albo w snopie
+	# latarki). Znowu dopiero po APPEAR_COOLDOWN — żeby nie grało przy każdym mignięciu latarką. Lokalne i kosmetyczne.
+	_appear_cd = maxf(0.0, _appear_cd - delta)
+	var shown := is_awake and not winding and _reveal() >= 0.6
+	if shown and not _shown and _appear_cd <= 0.0:
+		Audio.play_at("stalker_appear", global_position, Audio.BUS_STALKER, -6.0)
+		_appear_cd = APPEAR_COOLDOWN
+	_shown = shown
 
 	if not is_awake:
 		# Faza niepokoju (GDD §8.1): Stalker śpi, ale gracz już słyszy szept —
