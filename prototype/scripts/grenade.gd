@@ -70,14 +70,14 @@ func _physics_process(delta: float) -> void:
 func _detonate() -> void:
 	match kind:
 		"smoke":
-			NoiseMgr.add_noise(float(_data["noise"]), global_position)
+			NoiseMgr.add_noise(float(_data["noise"]), global_position, "explosive")
 			var slvl := get_tree().get_first_node_in_group("level")
 			if slvl != null:
 				slvl.spawn_smoke(global_position + Vector2(0, -6), float(_data["cloud_life"]))
 		"frag":
 			Combat.explode(get_tree(), global_position + Vector2(0, -4), float(_data["radius"]), float(_data["damage"]), shooter_id, Weapons.GNIEW4)
 		"phos":
-			NoiseMgr.add_noise(float(_data["noise"]), global_position)
+			NoiseMgr.add_noise(float(_data["noise"]), global_position, "explosive")
 			var lvl := get_tree().get_first_node_in_group("level")
 			if lvl == null:
 				return

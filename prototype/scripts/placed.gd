@@ -84,7 +84,7 @@ func _victims(trigger_only: bool) -> Array:
 func _detonate_mine() -> void:
 	_done = true
 	var origin := _origin()
-	NoiseMgr.add_noise(float(_data["noise"]), global_position)
+	NoiseMgr.add_noise(float(_data["noise"]), global_position, "explosive")
 	var d: RefCounted = Weapons.def(Weapons.GNIEW4)
 	for n in _victims(false):
 		var c := Combat.center_of(n)
@@ -102,7 +102,7 @@ func _detonate_mine() -> void:
 
 func _detonate_charge() -> void:
 	_done = true
-	NoiseMgr.add_noise(float(_data["noise"]), global_position)
+	NoiseMgr.add_noise(float(_data["noise"]), global_position, "explosive")
 	Combat.explode(get_tree(), _origin() + Vector2(0, -2), float(_data["radius"]), float(_data["damage"]), shooter_id, Weapons.GNIEW4, true)
 	_finish()
 

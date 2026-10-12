@@ -277,6 +277,15 @@ func stream(key: String) -> AudioStream:
 ## Plik, który faktycznie gra pod kluczem. Wersje z nagrań z bibliotek nie mogą leżeć w publicznym repo (licencja,
 ## AUDIO_PLAN.md §6), więc lokalny bake zapisuje je do res://audio_licensed/ pod tą samą ścieżką względną: jeśli plik
 ## tam jest, wygrywa z syntetycznym z res://audio/. Dev: `--synthaudio` wymusza samą syntezę (porównanie w grze).
+## Który zestaw dźwięku gra na tej maszynie: "recordings" (jest choć jeden plik z nagrań) albo "synth". Dla dziennika sesji —
+## build bez `audio_licensed/` brzmi inaczej i wyników playtestu nie wolno wtedy porównywać.
+func source_set() -> String:
+	if _use_licensed:
+		for key in Manifest.PATHS:
+			if _path(String(key)).begins_with(LICENSED_ROOT):
+				return "recordings"
+	return "synth"
+
 func _path(key: String) -> String:
 	var p: String = Manifest.PATHS[key]
 	if _use_licensed:

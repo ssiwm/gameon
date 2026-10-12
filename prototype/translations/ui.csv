@@ -677,7 +677,7 @@
 "Difficulty","Trudność"
 "Operator","Operator"
 "LAST BROADCAST","OSTATNI KOMUNIKAT"
-"v0.1 PROTOTYPE · EARLY ACCESS BUILD","v0.1 PROTOTYP · WCZESNY DOSTĘP"
+"v%s PROTOTYPE · EARLY ACCESS BUILD","v%s PROTOTYP · WCZESNY DOSTĘP"
 "SELECT","WYBIERZ"
 "CONFIRM","POTWIERDŹ"
 "Extraction complete. Nobody went down. It heard us anyway.","Ewakuacja zakończona. Nikt nie padł. I tak nas usłyszało."

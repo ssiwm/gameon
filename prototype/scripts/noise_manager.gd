@@ -37,6 +37,7 @@ const UNEASY_THRESHOLD := 40.0
 const AWAKE_THRESHOLD := 60.0
 const SLEEP_THRESHOLD := 30.0
 const NightShift := preload("res://scripts/night_shift.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 
 var level: float = 0.0
 ## Strefa bezpieczna (kryjówka, level.gd ustawia ją z mapy): hałas się nie liczy, Dyrektor grozy i straszaki milczą, nikt się nie pojawia.
@@ -101,13 +102,14 @@ func mark_local_activity() -> void:
 		return
 	_server_last_active = Time.get_ticks_msec() / 1000.0
 
-func add_noise(amount: float, pos: Vector2) -> void:
+## `tag`: źródło hałasu dla dziennika sesji ("run", "hurt", "shot:<klucz broni>"…; puste = świat gry). Nie wpływa na rozgrywkę.
+func add_noise(amount: float, pos: Vector2, tag := "") -> void:
 	if is_server():
-		_apply(amount, pos)
+		_apply(amount, pos, true, tag)
 		if has_network():
 			_push.rpc(level, last_noise_pos, stalker_awake, overcharge_charges)
 	else:
-		_report.rpc_id(1, amount, pos)
+		_report.rpc_id(1, amount, pos, tag)
 
 ## Przesterowanie: celowy +12 Uwagi i przekierowanie stalkera na to źródło.
 ## Zwraca true, jeśli ładunek był dostępny.
@@ -134,12 +136,13 @@ func use_overcharge(pos: Vector2) -> bool:
 	if _q_log.size() > 6:
 		_q_log.pop_front()
 	if stale:
-		_apply(N_OVERCHARGE_STALE, pos, false)
+		_apply(N_OVERCHARGE_STALE, pos, false, "q")
 		overcharge_stale.emit()
 		if has_network():
 			_stale_fx.rpc()
 	else:
-		_apply(N_OVERCHARGE, pos)
+		_apply(N_OVERCHARGE, pos, true, "q")
+	SessionLog.event("overcharge", {"pos": SessionLog.xy(pos), "noise": roundi(level), "stale": stale, "charges": overcharge_charges})
 	# przekieruj: last_noise_pos już = pos, stalker pójdzie tutaj (GDD §8.4)
 	if has_network():
 		_push.rpc(level, last_noise_pos, stalker_awake, overcharge_charges)
@@ -163,6 +166,7 @@ func objective_bonus() -> void:
 func script_spike(min_level: float, pos: Vector2) -> void:
 	if not is_server() or safe_zone:
 		return
+	SessionLog.note_noise("script", maxf(0.0, min_level - level))
 	level = clampf(maxf(level, min_level), 0.0, MAX_LEVEL)
 	last_noise_pos = pos
 	last_noise_amount = 30.0
@@ -218,7 +222,7 @@ func _report_scream(amount: float, pos: Vector2) -> void:
 		_apply_scream(amount, pos)
 
 func _apply_scream(amount: float, pos: Vector2) -> void:
-	_apply(clampf(amount, 0.0, 30.0), pos)
+	_apply(clampf(amount, 0.0, 30.0), pos, true, "scream")
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e.has_method("hear_scream"):
 			e.hear_scream(pos)
@@ -226,9 +230,9 @@ func _apply_scream(amount: float, pos: Vector2) -> void:
 		_push.rpc(level, last_noise_pos, stalker_awake, overcharge_charges)
 
 @rpc("any_peer", "call_remote", "reliable")
-func _report(amount: float, pos: Vector2) -> void:
+func _report(amount: float, pos: Vector2, tag := "") -> void:
 	if multiplayer.is_server():
-		_apply(amount, pos)
+		_apply(amount, pos, true, tag)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _push(new_level: float, noise_pos: Vector2, awake: bool, charges: int) -> void:
@@ -239,7 +243,7 @@ func _push(new_level: float, noise_pos: Vector2, awake: bool, charges: int) -> v
 	level_changed.emit(level, awake)
 	overcharge_used.emit(charges)
 
-func _apply(amount: float, pos: Vector2, track := true) -> void:
+func _apply(amount: float, pos: Vector2, track := true, tag := "") -> void:
 	if safe_zone:
 		return
 	if amount > 0.0:
@@ -250,7 +254,10 @@ func _apply(amount: float, pos: Vector2, track := true) -> void:
 		noise_serial += 1
 		if amount >= HOT_SPOT_MIN:
 			_note_hot_spot(pos)
-	level = clampf(level + (amount * Difficulty.m("noise") * NightShift.noise_mult() if amount > 0.0 else amount), 0.0, MAX_LEVEL)
+	var add := amount * Difficulty.m("noise") * NightShift.noise_mult() if amount > 0.0 else amount
+	level = clampf(level + add, 0.0, MAX_LEVEL)
+	if amount > 0.0:
+		SessionLog.note_noise(tag, add)
 	if level >= NightShift.awake_threshold(AWAKE_THRESHOLD):
 		stalker_awake = true
 	level_changed.emit(level, stalker_awake)

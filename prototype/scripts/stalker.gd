@@ -17,6 +17,7 @@ const Lights := preload("res://scripts/lights.gd")
 const Nav := preload("res://scripts/nav.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const Surfaces := preload("res://scripts/surfaces.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 
 const AWAKE_THRESHOLD := 60.0
 const SLEEP_THRESHOLD := 30.0
@@ -162,11 +163,13 @@ func _physics_process(delta: float) -> void:
 		_seen_serial = NoiseMgr.noise_serial
 		_arrived = false
 		print("[STALKER] awake at noise %.0f" % noise)
+		SessionLog.event("stalker", {"what": "awake", "noise": roundi(noise)})
 	if awake and noise <= NightShift.sleep_threshold(SLEEP_THRESHOLD):
 		awake = false
 		winding = false
 		_windup = 0.0
 		print("[STALKER] asleep")
+		SessionLog.event("stalker", {"what": "asleep", "noise": roundi(noise)})
 
 	_lit_cd = maxf(0.0, _lit_cd - delta)
 	if awake and _lit_cd <= 0.0:
@@ -308,8 +311,9 @@ func _tick_windup(delta: float) -> void:
 	if pp != null and is_instance_valid(pp) and not pp.dead \
 			and global_position.distance_to(pp.global_position) <= _reach_for(pp) + REACH_SLACK:
 		print("[STALKER] attack player %d (noise NOT raised)" % pp.display_id)
+		SessionLog.event("stalker", {"what": "swing_hit", "noise": roundi(NoiseMgr.level), "target": "P%d" % int(pp.display_id), "bot": bool(pp.is_bot)})
 		# Atak nie podnosi hałasu (GDD §8.5). Obrażenia idą do właściciela postaci.
-		pp.deliver_hit(1, global_position)
+		pp.deliver_hit(1, global_position, "stalker")
 		# cofnij się, dając graczowi okno na decyzję
 		_retreat_timer = 0.8
 		var away := (global_position - pp.global_position).normalized()
@@ -317,6 +321,11 @@ func _tick_windup(delta: float) -> void:
 		_attack_timer = ATTACK_COOLDOWN * Difficulty.m("stalker_cd")
 	else:
 		print("[STALKER] swing missed")
+		var miss := {"what": "swing_miss", "noise": roundi(NoiseMgr.level)}
+		if pp != null and is_instance_valid(pp):
+			miss["target"] = "P%d" % int(pp.display_id)
+			miss["bot"] = bool(pp.is_bot)
+		SessionLog.event("stalker", miss)
 		_attack_timer = MISS_COOLDOWN * Difficulty.m("stalker_cd")
 
 ## Dźwięk stalkera: szept gdy czatuje (też w fazie niepokoju, zanim się obudzi),

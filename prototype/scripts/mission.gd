@@ -22,6 +22,8 @@ const EXIT_FLARE := preload("res://scripts/exit_flare.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Weather := preload("res://scripts/weather.gd")
 const RunLog := preload("res://scripts/run_log.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
+const Weapons := preload("res://scripts/weapons.gd")
 const Actions := preload("res://scripts/actions.gd")
 
 const EXTRACT_TIME := 3.0
@@ -77,6 +79,9 @@ var shift_record := false     ## seria właśnie pobiła lokalny rekord
 var _sync_t := 0.0
 var _exit_fx: Node2D
 var _was_dead := {}          # nazwa gracza -> bool (liczenie upadków, serwer)
+var _down_at := {}           # nazwa gracza -> [czas misji, pozycja] w chwili upadku (dziennik sesji)
+var _logged_phase := -1      # ostatnia faza zapisana w dzienniku sesji
+var _peak_all := 0.0         # najwyższa Uwaga w całej misji (peak_noise liczy tylko do końca celu głównego)
 
 var _boss: Node = null
 var finale := false                    ## misja 1.1: ostatni nieśmiertelnik wziął kopalnię w obroty (zawał + wyjście po drugiej stronie)
@@ -155,6 +160,10 @@ func _physics_process(delta: float) -> void:
 	if phase != Phase.SUCCESS and phase != Phase.FAILED:
 		elapsed += delta
 	_track_downs()
+	_peak_all = maxf(_peak_all, NoiseMgr.level)
+	if phase != _logged_phase:
+		_logged_phase = phase
+		SessionLog.event("phase", {"phase": SessionLog.PHASES[phase]})
 	if phase == Phase.OBJECTIVE:
 		peak_noise = maxf(peak_noise, NoiseMgr.level)
 		_tick_boss_start(delta)
@@ -344,6 +353,7 @@ func _success() -> void:
 	phase = Phase.SUCCESS
 	extract_progress = 1.0
 	print("[MISSION] SUCCESS time=%.1fs downs=%d attempts=%d" % [elapsed, downs, attempts])
+	log_end("success")
 	if kind != "hub" and Scrap.enabled():
 		var side_ok := side_done()
 		var bonus := Scrap.BONUS_CLEAR + (Scrap.BONUS_SIDE if side_ok else 0) + (Scrap.BONUS_NO_DOWNS if downs == 0 else 0)
@@ -390,12 +400,73 @@ func _track_downs() -> void:
 	for p in get_tree().get_nodes_in_group("players"):
 		var was: bool = _was_dead.get(p.name, false)
 		var live := phase != Phase.SUCCESS and phase != Phase.FAILED
+		if p.dead and not was and live:
+			_log_down(p)
+		elif was and not p.dead and live:
+			_log_up(p)
 		if p.dead and not was and not p.is_bot and live:
 			downs += 1
 			_stat(p)["downs"] += 1
 		elif was and not p.dead and not p.is_bot and live:
 			_stat(p)["revived"] += 1
 		_was_dead[p.name] = p.dead
+
+# ---------------------------------------------------------------- dziennik sesji (session_log.gd, tylko serwer)
+
+func _log_down(p: Node2D) -> void:
+	_down_at[p.name] = [elapsed, p.global_position]
+	var w := int(p.weapon)
+	SessionLog.event("down", {"who": "P%d" % int(p.display_id), "bot": bool(p.is_bot),
+		"source": String(p.last_hit_source) if String(p.last_hit_source) != "" else "unknown", "noise": roundi(NoiseMgr.level),
+		"weapon": String(Weapons.base_def(w).key) if Weapons.is_valid(w) else "", "pos": SessionLog.xy(p.global_position),
+		"phase": SessionLog.PHASES[phase]})
+
+## Gracz znów stoi: podniesiony na miejscu albo — po wykrwawieniu — odrodzony na starcie misji z jednym sercem.
+func _log_up(p: Node2D) -> void:
+	var d: Array = _down_at.get(p.name, [elapsed, p.global_position])
+	var who := {"who": "P%d" % int(p.display_id), "bot": bool(p.is_bot)}
+	if int(p.hp) <= 1 and p.global_position.distance_to(d[1]) > 32.0:
+		SessionLog.event("bleed_out", who)
+	else:
+		who["after"] = snappedf(elapsed - float(d[0]), 0.1)
+		SessionLog.event("revive", who)
+
+## Start próby misji: wołane przy restarcie (on_restart) i raz przez main.gd, gdy host zaczyna pierwszą misję.
+func log_start() -> void:
+	_logged_phase = phase
+	_peak_all = 0.0
+	_down_at.clear()
+	if kind == "hub":
+		SessionLog.leave_mission()
+		return
+	var humans := 0
+	var bots := 0
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_queued_for_deletion():
+			continue
+		if p.is_bot:
+			bots += 1
+		else:
+			humans += 1
+	var lvl := get_tree().get_first_node_in_group("level")
+	var row := {"audio": Audio.source_set(), "map": String(lvl.map_id) if lvl != null else "", "kind": kind,
+		"difficulty": Difficulty.level_name(), "mode": "night_shift" if NightShift.active else "campaign", "attempt": attempts,
+		"humans": humans, "bots": bots, "weather": String(Weather.current)}
+	if NightShift.active:
+		row["stage"] = NightShift.stage
+		row["mods"] = NightShift.mods
+	SessionLog.mission_start(row)
+
+## Koniec próby: "success", "failed" (Nocny Dyżur) albo "wipe" (kampania: zaraz po nim nowa próba tej samej misji).
+func log_end(result: String) -> void:
+	if result != "success":
+		_track_downs()                  # wipe wykrywa main.gd, zanim ta klatka policzy ostatnie upadki
+	_peak_all = maxf(_peak_all, NoiseMgr.level)
+	var players := {}
+	for id in player_stats:
+		players[id] = (player_stats[id] as Dictionary).duplicate()
+	SessionLog.mission_end({"result": result, "time": snappedf(elapsed, 0.1), "downs": downs, "attempts": attempts,
+		"peak_noise": roundi(_peak_all), "peak_noise_objective": roundi(peak_noise), "side": side_done(), "players": players})
 
 func _stat(p: Node) -> Dictionary:
 	var id := int(p.player_id)
@@ -455,6 +526,7 @@ func shift_advance() -> void:
 ## Wipe w Nocnym Dyżurze: koniec serii (zamiast powtórki misji).
 func fail_shift() -> void:
 	phase = Phase.FAILED
+	log_end("failed")
 	shift_time += elapsed
 	shift_downs += downs
 	shift_record = Settings.record_shift(shift_cleared, shift_time, false)
@@ -495,6 +567,7 @@ func on_restart(new_run: bool) -> void:
 	peak_noise = 0.0
 	_count_goal()
 	goal_left = goal_total
+	log_start()
 	_broadcast()
 
 func _broadcast() -> void:

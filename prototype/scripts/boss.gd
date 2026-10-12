@@ -311,7 +311,7 @@ func _resolve_attack() -> void:
 	match a:
 		Atk.LASH:
 			for p in _players_in_reach(6.0):
-				p.deliver_hit(1, global_position)
+				p.deliver_hit(1, global_position, "vein")
 			Audio.play_variant_at("impact_flesh", 3, global_position, Audio.BUS_WORLD, -4.0, 0.5)
 			_lash_cd = _cd(LASH_CD)
 		Atk.SPIT:
@@ -375,7 +375,7 @@ func _tick_wave(delta: float) -> void:
 		var d: Vector2 = p.global_position - global_position
 		if absf(d.y) < 3.0 and absf(absf(d.x) - _wave_r) <= SWEEP_HALF:
 			_wave_hit[p.name] = true
-			p.deliver_hit(1, global_position)
+			p.deliver_hit(1, global_position, "vein")
 	if _wave_r > SWEEP_RANGE:
 		_wave_r = -1.0
 
@@ -400,7 +400,7 @@ func _tick_spits(delta: float) -> void:
 		var hit := false
 		for p in get_tree().get_nodes_in_group("players"):
 			if not p.dead and (p.global_position + Vector2(0, -8)).distance_to(sp.pos) <= SPIT_HIT_R:
-				p.deliver_hit(1, sp.pos)
+				p.deliver_hit(1, sp.pos, "vein")
 				hit = true
 				break
 		var cell := Vector2i(int(floor(sp.pos.x / 16.0)), int(floor(sp.pos.y / 16.0)))

@@ -101,6 +101,7 @@ var grab_pos := Vector2.ZERO
 var pumping := false            ## drezyna (handcar.gd): gracz pompuje — nie chodzi, nie skacze i nie strzela
 var bleed_left := 0.0
 var weapon := 0                 ## id broni w ręku (replikowane); ustawia kontroler
+var last_hit_source := ""       ## serwer: źródło ostatniego ciosu (deliver_hit) — dziennik sesji zapisuje je przy upadku
 ## Stan broni dla widoku u pozostałych peerów (replikowane): faza, ładowanie szyny, ogień ciągły,
 ## zestaw (główna A, główna B, biała) — serwer z niego dobiera, do jakiej broni upuszczać amunicję.
 var w_state := 0
@@ -580,7 +581,7 @@ func _update_flashlight(delta: float) -> void:
 		_light_noise_t += delta
 		if _light_noise_t >= LIGHT_NOISE_EVERY:
 			_light_noise_t = 0.0
-			NoiseMgr.add_noise(1.0, global_position)
+			NoiseMgr.add_noise(1.0, global_position, "light")
 		if battery <= 0.0:
 			flashlight = false
 			if not is_bot:
@@ -720,7 +721,7 @@ func _local_brain(delta: float) -> void:
 		_run_noise_tick += delta
 		if _run_noise_tick >= 0.5:
 			_run_noise_tick = 0.0
-			NoiseMgr.add_noise(NoiseMgr.N_RUN_PER_SEC * 0.5 * float(surf["noise"]) * perk_param("quiet_steps", "run_noise_mult", 1.0), global_position)
+			NoiseMgr.add_noise(NoiseMgr.N_RUN_PER_SEC * 0.5 * float(surf["noise"]) * perk_param("quiet_steps", "run_noise_mult", 1.0), global_position, "run")
 
 	if Input.is_action_just_pressed("overcharge"):
 		_try_overcharge()
@@ -794,7 +795,7 @@ func _gear_tick(delta: float) -> bool:
 		_scan_noise_t += delta
 		if _scan_noise_t >= 1.0:
 			_scan_noise_t = 0.0
-			NoiseMgr.add_noise(float(Throwables.KINDS["scanner"]["noise"]), global_position)     # skaner emituje hałas 1/s
+			NoiseMgr.add_noise(float(Throwables.KINDS["scanner"]["noise"]), global_position, "scanner")     # skaner emituje hałas 1/s
 	if dead or is_bot:
 		_gear_cancel()
 		return false
@@ -1614,7 +1615,7 @@ func apply_ff(from_pos: Vector2) -> void:
 		return
 	_ff_cd = FF_COOLDOWN
 	Audio.play_variant_at("player_hurt", 2, global_position, Audio.BUS_PLAYER, -12.0, 1.15)
-	NoiseMgr.add_noise(NoiseMgr.N_FF, global_position)
+	NoiseMgr.add_noise(NoiseMgr.N_FF, global_position, "ff")
 	if not is_bot:
 		Feel.shake(1.5)
 
@@ -1637,7 +1638,9 @@ func apply_heal(amount: int) -> void:
 	if not is_bot:
 		Audio.play("revive", Audio.BUS_PLAYER, -6.0, 1.4)
 
-func deliver_hit(amount: int, from_pos: Vector2) -> void:
+## `source`: kto zadaje cios (rodzaj wroga, "stalker", "blast"…) — serwer zapamiętuje go dla dziennika sesji.
+func deliver_hit(amount: int, from_pos: Vector2, source := "") -> void:
+	last_hit_source = source
 	if not NoiseMgr.has_network() or is_multiplayer_authority():
 		apply_hit(amount, from_pos)
 	else:
@@ -1653,7 +1656,7 @@ func apply_hit(amount: int, _from_pos: Vector2) -> void:
 	Vfx.blood(_fx_root(), global_position + Vector2(0, -9), (global_position - _from_pos).normalized(), 8)
 	Audio.play_variant("player_hurt", 2, Audio.BUS_PLAYER, -8.0)
 	# krzyk bólu zawsze, w każdym trybie (wcześniej tylko solo)
-	NoiseMgr.add_noise(NoiseMgr.N_HURT, global_position)
+	NoiseMgr.add_noise(NoiseMgr.N_HURT, global_position, "hurt")
 	if not is_bot:
 		Feel.shake(4.0)
 		Feel.hitstop(0.07)

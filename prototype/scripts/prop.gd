@@ -137,7 +137,7 @@ func _physics_process(delta: float) -> void:
 		thrown_t = maxf(0.0, thrown_t - delta)
 		for p in get_tree().get_nodes_in_group("players"):
 			if not p.dead and (p.global_position + Vector2(0, -8)).distance_to(global_position) < 11.0:
-				p.deliver_hit(1, global_position)
+				p.deliver_hit(1, global_position, "prop")
 				thrown_t = 0.0
 				break
 	_net_t -= delta
@@ -242,7 +242,7 @@ func explode() -> void:
 			e.take_bullet(pos, BLAST_DMG * (1.0 - 0.5 * d / BLAST_R))
 	for p in get_tree().get_nodes_in_group("players"):
 		if not p.dead and (p.global_position + Vector2(0, -8)).distance_to(pos) <= BLAST_R:
-			p.deliver_hit(1, pos)
+			p.deliver_hit(1, pos, "prop")
 	_explode_fx.rpc(pos)
 
 @rpc("authority", "call_local", "reliable")
