@@ -89,6 +89,14 @@
    "supplier": "Lukas Tvrdon",
    "license": "sonniss-gdc-2.0"
   },
+  "betamax_eject": {
+   "kind": "lib",
+   "file": "sonniss/2020/Sonic Bat - The VHS & Betamax Sessions/SBtvbs_Betamax Tape Eject 004.wav",
+   "sha256": "97f073dbebce70f2651ff1e2d15fb86e5be292cfdff5aafcbce0267eb31972c0",
+   "pack": "Sonniss GDC 2020 — The VHS & Betamax Sessions",
+   "supplier": "Sonic Bat",
+   "license": "sonniss-gdc-2.0"
+  },
   "blackboss_scream_04": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Lukas Tvrdon - 6Monsters/6Monsters_BlackBoss_Scream_04.wav",
@@ -175,6 +183,14 @@
    "sha256": "12d6280e808af9bc73b9e2bac85721a36bdcc245ddd9c339a32f77c67761dc25",
    "pack": "Sonniss GDC 2023 — Detonation - Explosion",
    "supplier": "BluezoneCorp",
+   "license": "sonniss-gdc-2.0"
+  },
+  "cassette_buttons": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 8of9/Tone Manufacture - Cassette Tone/TM_CASSETTE TONE_Buttons, play, motor on, long, interior perspective.wav",
+   "sha256": "4a78f521ec10ad64d74da21d7168ec9afe993f4dbd180b698a1b1a69d5194262",
+   "pack": "Sonniss GDC 2017 — Cassette Tone",
+   "supplier": "Tone Manufacture",
    "license": "sonniss-gdc-2.0"
   },
   "chain_clinking_04": {
@@ -519,6 +535,14 @@
    "sha256": "94e47f779de1e11ce1252c4aaaf1491de5d927f8ca164d3ffc8741f116d5cff7",
    "pack": "Sonniss GDC 2018 — Monsters",
    "supplier": "Olivier Girardot",
+   "license": "sonniss-gdc-2.0"
+  },
+  "mower_motor": {
+   "kind": "lib",
+   "file": "sonniss/2020/Matt Script - Electric Lawn Mower/Electric_Mower_Engine_Isolated_running_turn_on_off_blade_spinning_machine_hum_03.wav",
+   "sha256": "cd36795639abbd58d9e496d97147f2e2c5f6213f0b5277a5d8c9da9998947a6a",
+   "pack": "Sonniss GDC 2020 — Electric Lawn Mower",
+   "supplier": "Matt Script",
    "license": "sonniss-gdc-2.0"
   },
   "object_grab_04": {

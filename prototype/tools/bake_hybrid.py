@@ -914,11 +914,49 @@ def ui() -> None:
     bc.hybrid(["mission_start"], _mission_start_bake, START_NEEDS)
 
 
+# ============================================================ „ZATRZYMANIE TAŚMY” — kandydaci
+# `tape_stop` gra przy sukcesie misji, zapowiedzi porażki drużyny i końcu Nocnego Dyżuru. Synteza to opadający ton
+# z generatora. Propozycje z nagrań: „magnetofon” (przycisk STOP i prawdziwy silnik elektryczny zwalniający do zera —
+# ten sam gest co w syntezie, ale na nagraniu) albo „wysuw” (mechanizm wysuwający kasetę, bez opadającego tonu).
+TAPE_LUFS = -15.0                                                    # zmierzona głośność syntezy
+TAPE_MOTOR_NEEDS = ["cassette_buttons", "mower_motor"]
+TAPE_EJECT_NEEDS = ["betamax_eject", "cassette_buttons"]
+
+
+def _slow_to_stop(x: np.ndarray, dur: float, tau: float) -> np.ndarray:
+    """Odtwarza `x` ze zwalniającą prędkością exp(-t/tau) — jak taśma albo silnik po odcięciu zasilania."""
+    n = d.sec(dur)
+    t = np.arange(n) / d.SR
+    speed = np.exp(-t / tau)
+    pos = np.cumsum(speed)
+    return np.interp(pos, np.arange(len(x)), x) * speed ** 0.5
+
+
+def _tape_motor_bake() -> None:
+    clunk = _clip("cassette_buttons", 34.90, 0.35, -3.0, 0.30, tail=.12)
+    motor = d.lp(d.filt(bc.src("mower_motor", 2.0, 1.5), "hp", 60.0, order=2), 3500.0)
+    down = _unit(_slow_to_stop(motor, 1.05, 0.30) * d.env_pts(d.sec(1.05), [(0, 0), (.03, 1), (.6, .8), (1.05, 0)]))
+    x = d.mix([(clunk, 1.0), (down, 0.7, .03), (thump(.1, 120, 50, .03, .05), 0.5)], ms(1150))
+    x = d.limiter(_unit(d.saturate(x, 1.3)), -7.0)
+    finalize("tape_stop", d.reverb(x, ir("dead"), wet=.1), lufs=TAPE_LUFS)
+
+
+def _tape_eject_bake() -> None:
+    mech = bc.src("betamax_eject", 3.10, 0.95)
+    mech = _unit(d.lp(d.filt(mech, "hp", 70.0, order=2), 5000.0) * d.env_pts(len(mech), [(0, 0), (.01, 1), (.75, 1), (.95, 0)]))
+    clunk = _clip("cassette_buttons", 34.90, 0.35, -5.0, 0.32, tail=.14)
+    x = d.mix([(mech, 1.0), (clunk, 0.8, .78), (thump(.1, 110, 50, .03, .05), 0.5, .78)], ms(1150))
+    x = d.limiter(_unit(x), -8.0)
+    finalize("tape_stop", d.reverb(x, ir("dead"), wet=.1), lufs=TAPE_LUFS)
+
+
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts.
-# Pusto: wszystkie dotychczasowe rodziny mają werdykt.
-CANDIDATES: tuple = ()
+CANDIDATES: tuple = (
+    ("magnetofon", _tape_motor_bake, TAPE_MOTOR_NEEDS),
+    ("wysuw", _tape_eject_bake, TAPE_EJECT_NEEDS),
+)
 
 
 def build_alts() -> None:
