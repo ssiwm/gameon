@@ -8,9 +8,11 @@ finalize() jest JEDYNYM miejscem, które zapisuje WAV-y. Polityka (AAA-owy „lo
   * one-shot: wycięcie ciszy z ogona, fade-in 1 ms, fade-out dopasowany do ogona (koniec = 0)
   * pętla: bez fade'ów (szew jest zamknięty konstrukcyjnie: circ_filter/fold_loop)
 
-Źródła nagrane i wygenerowane (AUDIO_PLAN.md, F1): src(id) wczytuje plik opisany w
-tools/audio_sources.json i sprawdza jego SHA-256; hybrid(klucze, fn, needs=[...]) piecze assety
-zależne od źródeł, a gdy któregoś brakuje na dysku — zostawia poprzednie WAV-y (--strict: błąd).
+Źródła nagrane i wygenerowane (AUDIO_PLAN.md): src(id) wczytuje plik opisany w tools/audio_sources.json
+i sprawdza jego SHA-256. Repo jest publiczne, a licencja bibliotek zabrania udostępniania dźwięków dalej, więc
+assety z nagrań NIE trafiają do audio/: hybrid(klucze, fn, needs=[...]) piecze je do audio_licensed/ (poza repo,
+ta sama ścieżka względna), a gra bierze stamtąd plik, jeśli jest (audio_director.gd). W audio/ zostaje wersja
+syntetyczna tego samego klucza — każdy klucz musi ją mieć. Bez źródeł na dysku hybrid() nic nie robi (--strict: błąd).
 """
 
 from __future__ import annotations
@@ -27,14 +29,27 @@ from audio_dsp import SR, Rng, ms
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AUDIO = os.path.join(ROOT, "audio")
+LICENSED = os.path.join(ROOT, "audio_licensed")      # assety z nagrań z bibliotek: poza repo (.gitignore), gra woli je od audio/
 
 TP_CEIL = -1.5
 
 REPO = os.path.dirname(ROOT)
 SOURCES_JSON = os.path.join(ROOT, "tools", "audio_sources.json")
-# Nagrania z bibliotek leżą poza repo (licencja zabrania udostępniania plików dalej): art_src/audio_lib/ jest w .gitignore,
-# a DA87_AUDIO_LIB wskazuje wspólny katalog, gdy pracuje się w kilku kopiach repo. Pliki wygenerowane: art_src/audio_gen/ (w repo).
-LIB_DIR = os.environ.get("DA87_AUDIO_LIB") or os.path.join(REPO, "art_src", "audio_lib")
+# Nagrania z bibliotek leżą poza repo (licencja zabrania udostępniania plików dalej). Kolejność szukania: zmienna DA87_AUDIO_LIB,
+# art_src/audio_lib/ (w .gitignore), katalog audio_lib/ obok repo (wspólny dla kilku kopii roboczych).
+# Pliki wygenerowane: art_src/audio_gen/ (w repo).
+
+
+def _lib_dir() -> str:
+    env = os.environ.get("DA87_AUDIO_LIB")
+    if env:
+        return env
+    inside = os.path.join(REPO, "art_src", "audio_lib")
+    beside = os.path.join(os.path.dirname(REPO), "audio_lib")
+    return beside if (not os.path.isdir(inside) and os.path.isdir(beside)) else inside
+
+
+LIB_DIR = _lib_dir()
 GEN_DIR = os.path.join(REPO, "art_src", "audio_gen")
 
 # key -> (ścieżka względna, pętla?)
@@ -46,7 +61,8 @@ _CUR = ["sfx/misc"]
 
 # --- źródła nagrane i wygenerowane
 STRICT = [False]                             # --strict: brak źródła przerywa bake
-SKIPPED: list[tuple[list[str], str]] = []    # (klucze, powód) — assety pominięte z braku źródeł
+SKIPPED: list[tuple[list[str], str]] = []    # (klucze, powód) — wersje z nagrań pominięte z braku źródeł
+HYBRID: list[str] = []                       # klucze, których wersję z nagrań upieczono w tym przebiegu
 _SOURCES: dict = {}
 _SRC_CACHE: dict = {}
 _NEEDS: list = [None]                        # źródła zadeklarowane przez bieżące hybrid() / alt()
@@ -109,30 +125,34 @@ def src(sid: str, start: float = 0.0, dur: float | None = None, mono: bool = Tru
     return d.cut(_SRC_CACHE[key], start, dur)
 
 
-def hybrid(keys: list[str], fn, needs: list[str], loop: bool = False) -> bool:
-    """Piecze assety zależne od plików źródłowych: fn() ma wywołać finalize() dla każdego z `keys`.
-    Brak któregokolwiek źródła z `needs` → nic nie jest zapisywane, zostają poprzednie WAV-y, a klucze
-    trafiają do SKIPPED (całe rodziny naraz, żeby nie mieszać starych wariantów z nowymi)."""
+def hybrid(keys: list[str], fn, needs: list[str]) -> bool:
+    """Wersja Z NAGRAŃ dla istniejących kluczy: fn() woła finalize() dla każdego z `keys`, a pliki trafiają do
+    audio_licensed/<ta sama ścieżka> (poza repo). Wersja syntetyczna w audio/ zostaje nietknięta — to ją dostaje każdy,
+    kto nie ma plików źródłowych. Brak któregokolwiek źródła z `needs` → nic nie jest zapisywane (całe rodziny naraz,
+    żeby nie mieszać wariantów), a klucze trafiają do SKIPPED."""
     for k in keys:
-        REG.setdefault(k, (_CUR[0] + "/" + k, loop))
+        assert k in REG, "%s: wersja z nagrań wymaga wersji syntetycznej tego klucza w audio/ (publiczny odpowiednik)" % k
     missing = [sid for sid in needs if not have_source(sid)]
     if missing:
         if STRICT[0]:
             raise MissingSource(", ".join(missing))
         SKIPPED.append((list(keys), "brak źródeł: " + ", ".join(missing)))
         return False
+    _ALT[0] = LICENSED
     _NEEDS[0] = list(needs)
     try:
         fn()
     finally:
+        _ALT[0] = None
         _NEEDS[0] = None
+    HYBRID.extend(keys)
     return True
 
 
 def alt(name: str, fn, needs: list[str] = ()) -> bool:
     """Wersja alternatywna ISTNIEJĄCYCH assetów do odsłuchu A/B (bake_audio.py --alts KATALOG, potem tools/audio_ab.py):
     fn() woła finalize() dla kluczy z banku, a pliki trafiają do KATALOG/<name>/<ta sama ścieżka> zamiast do audio/.
-    Bez --alts nic nie robi, więc zwykły bake zostaje bit w bit taki sam."""
+    Bez --alts nic nie robi. Służy do odsłuchu przed decyzją; wybrana wersja przechodzi potem do hybrid()."""
     if not ALT_ROOT[0]:
         return False
     missing = [sid for sid in needs if not have_source(sid)]

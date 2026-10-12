@@ -5,7 +5,8 @@ Uruchomienie:
     python3 tools/audio_audit.py                  # tabela + werdykty, zapis audit_report.json
     python3 tools/audio_audit.py --json out.json  # inny plik wynikowy
     python3 tools/audio_audit.py --compare a.json b.json   # różnice przed/po
-    python3 tools/audio_audit.py --only music amb          # tylko wybrane katalogi
+    python3 tools/audio_audit.py --only music amb          # tylko wybrane katalogi (musi być ostatnie)
+    python3 tools/audio_audit.py --licensed                # to, co faktycznie gra: wersja z audio_licensed/, jeśli jest
 
 Co mierzy (na każdym WAV):
     LUFS (EBU R128 przez ffmpeg), true peak, RMS, crest factor, DC offset,
@@ -32,6 +33,7 @@ import wave
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AUDIO = os.path.join(ROOT, "audio")
+LICENSED = os.path.join(ROOT, "audio_licensed")      # wersje z nagrań (poza repo) — patrz bake_common.hybrid
 BANK = os.path.join(AUDIO, "_bank.json")
 
 BANDS = (("sub", 20, 80), ("low", 80, 250), ("lmid", 250, 1000),
@@ -260,7 +262,7 @@ def load_bank() -> dict:
         return json.load(f)
 
 
-def run(only: list | None) -> dict:
+def run(only: list | None, licensed: bool = False) -> dict:
     bank = load_bank()
     rows = {}
     for key in sorted(bank):
@@ -268,6 +270,8 @@ def run(only: list | None) -> dict:
         if only and path.split("/")[0] not in only and path.split("/")[1] not in only:
             continue
         full = os.path.join(AUDIO, path + ".wav")
+        if licensed and os.path.exists(os.path.join(LICENSED, path + ".wav")):
+            full = os.path.join(LICENSED, path + ".wav")
         if not os.path.exists(full):
             continue
         rows[key] = analyze(full, bool(loop))
@@ -311,8 +315,8 @@ def main() -> int:
         out = sys.argv[sys.argv.index("--json") + 1]
     only = None
     if "--only" in sys.argv:
-        only = sys.argv[sys.argv.index("--only") + 1:]
-    rows = run(only)
+        only = [a for a in sys.argv[sys.argv.index("--only") + 1:] if not a.startswith("--")]
+    rows = run(only, "--licensed" in sys.argv)
     show(rows)
     div = diversity(rows)
     print("\nRÓŻNORODNOŚĆ WARIANTÓW (spectral_dist <0.25 = brzmią prawie identycznie)")

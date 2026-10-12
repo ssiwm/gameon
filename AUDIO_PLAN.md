@@ -1,6 +1,6 @@
 # Plan: refaktor dźwięku — źródła hybrydowe i propagacja po mapie
 
-Status: **plan z 2026-10-12; F0–F2 zrobione, bramka A przeszła (wszystkie trzy rodziny: wersja z nagrań) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
+Status: **plan z 2026-10-12; F0–F2 zrobione, bramka A przeszła, wersje z nagrań żyją poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
 `default_bus_layout.tres`, `AUDIO.md`), nie na próbnej implementacji — rozmiary faz są szacunkowe. Kontynuacja `prototype/AUDIO.md`
 (overhaul v2), który sam stwierdza w §5: „to nie jest jeszcze AAA w sensie brzmienia” i „brzmienia nie oceniałem uchem”.
 
@@ -36,13 +36,18 @@ runtime'u i bez zmian w sieci.
 
    | Źródło | Do czego | Gdzie leży |
    |---|---|---|
-   | Nagrania z bibliotek royalty-free (archiwum Sonniss GDC; pojedyncze pliki pobiera `tools/audio_lib_fetch.py`) | strzały, eksplozje, trafienia, kroki, szkło, drzwi, przeładowania | `art_src/audio_lib/` albo katalog z `DA87_AUDIO_LIB` — poza repo (`.gitignore`), jak `art_src/world_pbr_cc0/` |
+   | Nagrania z bibliotek royalty-free (archiwum Sonniss GDC; pojedyncze pliki pobiera `tools/audio_lib_fetch.py`) | strzały, eksplozje, trafienia, kroki, szkło, drzwi, przeładowania, głosy stworów | `art_src/audio_lib/`, `audio_lib/` obok repo albo katalog z `DA87_AUDIO_LIB` — poza repo, jak `art_src/world_pbr_cc0/` |
    | Pliki wygenerowane lokalnie (Stable Audio 3 Medium w ComfyUI) | głosy Stalkera i wrogów, ambienty, tekstury bez odpowiednika w bibliotekach | `art_src/audio_gen/` — w repo (LFS), z opisem i ziarnem |
    | Synteza (obecna) | UI, radio, pisk w uszach, sub-bas i ogony pod nagraniami, muzyka | kod w `tools/` |
 
-4. **Determinizm względem źródeł.** `tools/audio_sources.json` (w repo) trzyma dla każdego źródła: plik, paczkę, licencję, SHA-256 i wycinek.
-   Ten sam zestaw źródeł = ten sam bajt wyniku. Brak źródła na dysku: asset jest pomijany z ostrzeżeniem i zostaje poprzedni WAV
-   (CI nie piecze dźwięku, więc go to nie dotyczy); `--strict` zamienia ostrzeżenie w błąd.
+4. **Determinizm względem źródeł.** `tools/audio_sources.json` (w repo) trzyma dla każdego źródła: plik, paczkę, licencję i SHA-256.
+   Ten sam zestaw źródeł = ten sam bajt wyniku; `audio_lib_fetch.py sync` pobiera komplet z rejestru i sprawdza sumy.
+   Brak źródła na dysku: wersja z nagrań jest pomijana z ostrzeżeniem (`--strict` zamienia je w błąd).
+7. **Dwie wersje jednego klucza (decyzja 2026-10-12, §6 pkt 3).** Repo jest publiczne, a licencja bibliotek zabrania udostępniania
+   dźwięków dalej. Dlatego: w `prototype/audio/` (repo) leży wersja **publiczna** każdego klucza — synteza albo plik wygenerowany;
+   wersja **z nagrań** powstaje lokalnie w `prototype/audio_licensed/` (poza repo, ta sama ścieżka) przez `bc.hybrid()`.
+   Gra bierze plik z `audio_licensed/`, jeśli tam jest (`audio_director.gd: _path()`), więc trafia też do buildów robionych na maszynie
+   z nagraniami. Obie wersje mają tę samą głośność docelową — miks nie zależy od tego, która gra. Każdy nowy klucz musi mieć wersję publiczną.
 5. **Akceptacja uchem, nie tylko pomiarem.** Każda faza z assetami kończy się odsłuchem A/B na słuchawkach (strona z F0) i raportem
    `audio_audit.py --compare`. Pomiar pilnuje techniki, o brzmieniu decyduje odsłuch.
 6. **Mały rebake.** Pieczemy tylko zmieniane grupy (`--only`), żeby niezmienione pliki zostały bit w bit takie same — każdy podmieniony
@@ -93,26 +98,38 @@ Razem ok. 15–23 dni roboczych. Muzyka (stemy) jest poza tym planem — osobna 
 1. ~~Pobrania do pilotażu~~ — zgoda z 2026-10-12; co faktycznie pobrano: §7.
 2. ~~Bramka A~~ — odsłuch 2026-10-12: `m83_shot`, `step_concrete` i `stalker_growl` w wersji z nagrań. Plan idzie dalej (F3–F5),
    a nagrania są źródłem pierwszego wyboru także dla głosów; generowanie zostaje dla tego, czego w bibliotekach nie ma.
-3. **Assety z nagrań a publiczne repo** — decyzja 2026-10-12: **repo ma być prywatne.** Dopóki jest publiczne, WAV-y z nagrań nie są
-   wypychane (zostają na lokalnej gałęzi). Tło decyzji: repo `ssiwm/gameon` jest publiczne,
-   a licencja Sonniss 2.0 zabrania udostępniania dźwięków innym „jako efektów dźwiękowych”, także przerobionych. Zmiksowany WAV w publicznym
-   repo jest plikiem, który każdy może pobrać. Licencja nie mówi wprost o repozytoriach kodu, więc to ryzyko, a nie pewne naruszenie.
-   Możliwości: (a) repo prywatne; (b) assety z nagrań w osobnym, prywatnym repo albo tylko w buildach, a publiczne repo zostaje z syntezą
-   (bake już to obsługuje: bez źródeł zostawia WAV-y z repo); (c) pisemna zgoda Sonniss. Do decyzji nagrania żyją tylko jako wersje alternatywne.
+3. ~~Assety z nagrań a publiczne repo~~ — decyzja 2026-10-12: **repo zostaje publiczne, assety z nagrań tylko lokalnie i w buildach**
+   (zasada 7). Tło: licencja Sonniss 2.0 zabrania udostępniania dźwięków innym „jako efektów dźwiękowych”, także przerobionych, a zmiksowany
+   WAV w publicznym repo każdy może pobrać. Rozważane i odrzucone: repo prywatne, pisemna zgoda Sonniss. Osobne prywatne repo na
+   `audio_licensed/` jest możliwe później (to zwykły katalog), ale niepotrzebne: komplet odtwarza się z rejestru (`sync` + bake, ok. 1 min).
 4. **Rejestracja w Stability AI** przed komercyjnym użyciem plików wygenerowanych (wymóg licencji; robi to właściciel projektu).
 5. **Głosy wrogów w F5:** osobne dla każdego gatunku (plan zakłada tak) czy na początek tylko odróżnienie Stalkera od reszty.
 
 ## 7. Stan po F0–F2 (2026-10-12)
 
+**Jak mieć wersje z nagrań u siebie** (każda kopia repo osobno, bo `audio_licensed/` leży w projekcie Godota):
+
+```bash
+python prototype/tools/audio_lib_fetch.py sync      # nagrania z rejestru → katalog nagrań (sprawdza sumy)
+cd prototype && python tools/bake_audio.py          # synteza → audio/ (bez zmian), wersje z nagrań → audio_licensed/
+godot --headless --path . --import                  # log gry: „[AUDIO] manifest OK: 157 ścieżek, z nagrań: N”
+```
+
+Porównanie w grze: flaga `--synthaudio` wymusza samą syntezę. Odsłuch obok siebie: `python tools/audio_ab.py --licensed`.
+
 **F0 — zrobione.** `tools/baseline/audit_refactor_before.json` (157 plików), `tools/audio_ab.py` (strona A/B „na ślepo”, WAV-y zaszyte w jednym
 pliku HTML; tryby `--alts` i `--ref`), licencje przeczytane u źródła i zapisane w `tools/audio_sources.json` → `audio/CREDITS.md`.
 
 **F1 — zrobione.** `audio_dsp.py`: `read_audio`, `resample`, `cut`, `onset`, `from_onset`, `repitch`. `bake_common.py`: `src()` ze sprawdzaniem
-SHA-256, `hybrid()` (asset gry ze źródeł; brak źródła = pominięcie), `alt()` (wersja alternatywna do odsłuchu), `--strict`, `--alts`.
-`tools/audio_lib_fetch.py`: spis i pobieranie pojedynczych plików z archiwów Sonniss. `comfy_gen.py audio`: Stable Audio 3.
-Kryterium spełnione: pełny bake bez źródeł i ze źródłami nie zmienia żadnego pliku w `audio/`; testy DSP + 16 nowych testów źródeł przechodzą.
+SHA-256, `hybrid()` (wersja z nagrań → `audio_licensed/`; brak źródła = pominięcie), `alt()` (wersja alternatywna do odsłuchu), `--strict`, `--alts`.
+`tools/audio_lib_fetch.py`: spis, pobieranie pojedynczych plików z archiwów Sonniss i `sync` z rejestru. `comfy_gen.py audio`: Stable Audio 3.
+Kryterium spełnione: pełny bake bez źródeł i ze źródłami nie zmienia żadnego pliku w `audio/`; testy DSP i testy źródeł przechodzą.
 
-**F2 — zrobione, wybrane wersje z nagrań (bramka A).** `tools/bake_hybrid.py` → `build/audio_alt/` → `build/audio_ab.html`:
+**F2 — zrobione, wybrane wersje z nagrań (bramka A).** Po odsłuchu trzy rodziny są wersjami z nagrań w `audio_licensed/` (13 plików,
+zgodnych co do bajta z odsłuchanymi); przepisy w `tools/bake_hybrid.py` wołane z builderów zaraz po syntezie tego samego klucza.
+Przegrana wersja wygenerowana warkotu usunięta razem ze źródłami. Do poprawy w F3: różnorodność wariantów `m83_shot` z nagrań to 0,25
+wobec 0,45 w syntezie (próg audytu „prawie identyczne” to 0,25) — sześć wariantów powstaje z pięciu strzałów jednej broni.
+Wersje w odsłuchu:
 
 | Rodzina | Wersje | Źródła |
 |---|---|---|
@@ -128,9 +145,9 @@ pieką się deterministycznie (dwa przebiegi = te same sumy).
 
 - **Paczka Sonniss 2026 nie zawiera strzałów, kroków ani przeładowań** (347 plików; są głosy stworów, gore, drzwi, wiatr). Broń i kroki są
   w rocznikach 2016–2019. Serwer Sonniss obsługuje żądania zakresu, więc zamiast całych archiwów (2016–2019 i 2026 to razem ok. 103 GB)
-  pobieramy pojedyncze pliki: pilotaż potrzebował 52 MB. Części roczników 2020, 2023 i 2024 nie obsługują zakresów — z nich trzeba by
-  pobrać całe archiwa.
-- **Repo jest publiczne** — patrz decyzja 3.
+  pobieramy pojedyncze pliki: pilotaż potrzebował 52 MB. Serwer bywa kapryśny przy wielu żądaniach z rzędu (odpowiedź bez zakresu) —
+  `audio_lib_fetch.py` ponawia; spisy są dla wszystkich roczników 2016–2020, 2023, 2024 i 2026 (razem ok. 230 GB archiwów).
+- **Repo jest publiczne** — patrz zasada 7 i decyzja 3.
 - **Stable Audio 3 działa lokalnie** na RTX 3080 10 GB: model Medium i mały model SFX, cztery pięciosekundowe próbki w kilka sekund.
   Medium daje więcej szczegółu w środku pasma, mały SFX ciemny, ciągły pomruk. Wynik to FLAC 44,1 kHz (bake przepróbkowuje do 48 kHz).
 - Brzmienia nie oceniałem uchem — wybór wycinków i próbek opiera się na pomiarach (poziom, widmo, okresowość); od tego jest bramka A.
