@@ -29,7 +29,7 @@ Z nagrań: m83_shot, spread12_shot, srut8_shot, srut8_pump, gniew4_shot, ciegno6
 impact_flesh, shell, reload, reload_shell, maczeta, hkm9_flame_loop; stalker_growl, stalker_shriek, stalker_step,
 amb_far_cry; trzosek_attack, trzosek_death (wilkołak), wolek_attack, wolek_death, slepiec_death, podsluchacz_scream, leech_growl,
 leech_shriek, zyla_roar; door, glass_break, thunder, amb_creak, amb_gust, amb_thud; step_concrete, step_metal, step_dirt,
-step_water, land_hard (buty), effort (odbicie bez głosu), player_hurt, player_down; amb_forest, amb_rain, amb_rain_roof, amb_wind.
+step_water, land_hard (buty), player_hurt, player_down; amb_forest, amb_rain, amb_rain_roof, amb_wind.
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz, foley_gear,
 dry_fire, hkm9_ignite, kilof_swing, stalker_whisper_loop, slepiec_attack, zyla_growl. Po odsłuchu w grze
 wymienione: Trzosek (owadzi terkot był za wysoki → pies z warkotem ogara), lądowanie (upadek ciała → buty na obie stopy).
@@ -431,20 +431,9 @@ def _step_water_bake() -> None:
 
 
 # --- Twarde lądowanie: upadek ciała na beton (stopy) + sub-uderzenie.
-# Skok i lądowanie z jednego nagrania skoków na obie stopy. Skok (klucz `effort`) to samo odbicie butów z szelestem
-# ubrania — bez głosu: stęknięcie przy każdym skoku męczyło. Lądowanie to dwa stąpnięcia tuż po sobie, obniżone,
-# z uderzeniem w dole pasma (nagranie upadku ciała grało jak przewrócenie się po każdym podskoku).
-JUMP_NEEDS = ["jump_land_two_feet"]
-
-
-def _jump_bake() -> None:
-    for i, t0 in enumerate((1.00, 4.04)):                            # pojedyncze, miękkie stąpnięcia = odbicie
-        r = Rng(0x4A00 + i * 613)
-        n = ms(300)
-        push = _clip("jump_land_two_feet", t0 - 0.02, 0.2, 2.0, 0.16, tail=.08)
-        cloth = d.lp(d.filt(d.colored(n, r, 1.0), "bp", 800.0 + 150.0 * i, 0.9), 2500.0) * d.env_pts(n, [(0, 0), (.05, 1), (.14, .5), (.3, 0)])
-        x = d.limiter(_unit(d.mix([(push, 1.0), (_unit(cloth), 0.12, .02)], n)), -6.0)
-        finalize("effort_%d" % (i + 1), d.filt(x, "hp", 70.0, order=2), lufs=-16.4)
+# Lądowanie: dwa stąpnięcia tuż po sobie z nagrania skoków na obie stopy, obniżone, z uderzeniem w dole pasma (nagranie
+# upadku ciała grało jak przewrócenie się po każdym podskoku). Sam skok jest w grze niemy — rodzina `effort` usunięta.
+LAND_NEEDS = ["jump_land_two_feet"]
 
 
 def _land_hard_bake() -> None:
@@ -461,8 +450,7 @@ def player() -> None:
     bc.hybrid(_keys("step_metal", 5), _step_metal_bake, STEP_METAL_NEEDS)
     bc.hybrid(_keys("step_dirt", 5), _step_dirt_bake, STEP_DIRT_NEEDS)
     bc.hybrid(_keys("step_water", 5), _step_water_bake, STEP_WATER_NEEDS)
-    bc.hybrid(["land_hard"], _land_hard_bake, JUMP_NEEDS)
-    bc.hybrid(_keys("effort", 2), _jump_bake, JUMP_NEEDS)
+    bc.hybrid(["land_hard"], _land_hard_bake, LAND_NEEDS)
     bc.hybrid(_keys("player_hurt", 2), _player_hurt_bake, PLAYER_HURT_NEEDS)
     bc.hybrid(["player_down"], _player_down_bake, PLAYER_DOWN_NEEDS)
 
@@ -676,7 +664,6 @@ def _zyla_roar_bake() -> None:
 
 # ============================================================ GRACZ I EMITERY AMBIENTU (bake_sfx.build_player / build_world)
 # Głos gracza: ból z dwóch okrzyków tego samego zestawu nagrań, upadek z jęku + to samo uderzenie ciała co w syntezie.
-# `effort` (wydech przy skoku) zostaje syntetyczny — w archiwach są tylko okrzyki bólu i walki, za mocne na każdy skok.
 
 PLAYER_HURT_NEEDS = ["male_shout_pain_132", "male_grunt_shout_317"]
 

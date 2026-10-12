@@ -1,6 +1,6 @@
 # Plan: refaktor dźwięku — źródła hybrydowe i propagacja po mapie
 
-Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) i F8 (format wydania) wdrożone, zostaje eksperyment F7; 121 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
+Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) i F8 (format wydania) wdrożone, zostaje eksperyment F7; 119 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
 `default_bus_layout.tres`, `AUDIO.md`), nie na próbnej implementacji — rozmiary faz są szacunkowe. Kontynuacja `prototype/AUDIO.md`
 (overhaul v2), który sam stwierdza w §5: „to nie jest jeszcze AAA w sensie brzmienia” i „brzmienia nie oceniałem uchem”.
 
@@ -141,7 +141,7 @@ Pomiar (nie odsłuch): strzał z nagrań ma środek ciężkości widma ok. 1,4 k
 ok. 380 ms zamiast 255 ms, głośność zrównana z obecnym do 0,5 LU. Kroki z nagrań są ciemniejsze powyżej 4 kHz niż syntetyczne. Alternatywy
 pieką się deterministycznie (dwa przebiegi = te same sumy).
 
-**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 111 plików z nagrań, do tego 10 wyprowadzonych z nich dalekich wersji z F6):**
+**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 109 plików z nagrań, do tego 10 wyprowadzonych z nich dalekich wersji z F6):**
 
 | Rodzina | Werdykt | Źródła wersji z nagrań |
 |---|---|---|
@@ -179,7 +179,7 @@ pieką się deterministycznie (dwa przebiegi = te same sumy).
 | `thunder` ×3 | z nagrań | trzy nagrane uderzenia pioruna, przycięte do ok. 6 s |
 | `amb_creak` ×3, `amb_gust` ×3, `amb_thud` ×2 | z nagrań | skrzypienie metalu i zablokowanych drzwi; porywy (świst i wycie w szczelinie); głębokie uderzenia w pogłosie jaskini |
 | `player_hurt` ×2, `player_down` | z nagrań | okrzyki bólu z jednego zestawu nagrań; jęk + to samo uderzenie ciała co w syntezie |
-| `effort` ×2 | z nagrań | skok: samo odbicie butów z szelestem ubrania, bez głosu (stęknięcie przy każdym skoku męczyło; wersja publiczna też jest teraz bez głosu) |
+| `effort` ×2 | **usunięte** | dźwięk podskoku: stęknięcie męczyło, odbicie butów też było zbędne — po odsłuchu w grze skok jest niemy, słychać dopiero lądowanie |
 | `trzosek_attack` ×3, `trzosek_death` ×2 | z nagrań | duży pies obniżony o 6 półtonów z warkotem ogara („wilkołak”); śmierć: szczeknięcie przechodzące w skowyt. Pierwsza wersja (owadzi terkot) była w grze za wysoka |
 | `wolek_attack` ×2, `wolek_death` ×2 | z nagrań | ryk bestii + sub-uderzenie; jęk trolla / yeti + upadek cielska |
 | `slepiec_death` ×2 | z nagrań | trzepoczący, urywany wydech + syntetyczne klikanie |
@@ -211,7 +211,7 @@ ma już `impact_flesh`, a wataha pod ostrzałem robiłaby ścianę dźwięku. U 
 bo jeden krzyk Stalkera udawał wszystko). Limity jednoczesnych głosów: `audio_director.gd: VOICE`. Napisy: `bake_audio.py: CAPTIONS`
 + `translations/ui.csv`. Werdykt odsłuchu: 9 z 11 rodzin z nagrań, zapowiedź ciosu Ślepca i pomruk Żyły syntetyczne (tabela wyżej).
 
-Wzór z werdyktów (45 rodzin z nagrań, 10 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
+Wzór z werdyktów (44 rodziny z nagrań, 10 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
 trafienia, łuski, kroki, głos stwora, ogień), a przegrywały dla dźwięków krótkich, jasnych i „bliskich gracza” z samego nagrania (pistolet,
 przelot, szelest, kurek) — synteza jest tam pełniejsza w dole pasma. Po dołożeniu pod nagranie niskich stuków syntezy mechanika broni
 (przeładowania) wygrała. Szept Stalkera pokazuje granicę: rozpoznawalnie ludzkie nagranie przegrało z abstrakcyjną syntezą.
@@ -282,6 +282,7 @@ Głośności dobrane z rachunku — do oceny w grze. F8 jest zamknięte.
 Trzosek (za wysoki — owad zamiast drapieżnika), skok (stęknięcie przy każdym odbiciu) i lądowanie (upadek ciała po każdym
 podskoku). Wniosek na przyszłość: strona A/B porównuje pojedynczy dźwięk, a nie to, jak często i w jakim kontekście gra —
 dźwięki powtarzane co sekundę (skok, lądowanie, głos najliczniejszego wroga) trzeba sprawdzać w grze, zanim uzna się je za zamknięte.
+Drugi odsłuch w grze: Trzosek i lądowanie zostają, a dźwięk podskoku został usunięty całkowicie (bank ma teraz 194 assety).
 
 **Ustalenia, które zmieniają plan:**
 

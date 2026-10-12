@@ -99,7 +99,7 @@ const VOICE := {
 	"player_hurt": [80, 2, 120], "stalker_step": [70, 3, 140], "spread12_shot": [75, 4, 0],
 	"p64_shot": [65, 5, 0], "m83_shot": [60, 8, 0], "ui_": [55, 3, 0], "warn_pulse": [55, 1, 300],
 	"oc_load": [55, 1, 0], "radio_beep": [50, 2, 0], "impact_flesh": [45, 5, 30],
-	"land_hard": [40, 2, 100], "dry_fire": [40, 1, 90], "effort": [38, 1, 200],
+	"land_hard": [40, 2, 100], "dry_fire": [40, 1, 90],
 	"impact_hard": [35, 6, 25], "step_": [30, 6, 0], "ricochet": [30, 3, 60],
 	"whizz": [25, 3, 70], "amb_": [20, 3, 0], "foley_gear": [10, 2, 120], "shell_": [8, 4, 60],
 	# głosy gatunków: krzyk alarmu i bossowie jak Stalker; zwykli wrogowie niżej, z odstępem — wataha nie robi ściany dźwięku
