@@ -75,10 +75,15 @@ func _setup(m: Node2D) -> void:
 func dummy(x_off: float, hp := 100000.0, kind := "trzosek", y_off := 0.0) -> Node:
 	_dummy_serial += 1
 	var n := "TDummy%d" % _dummy_serial
-	level._add_enemy(n, kind, player.global_position + Vector2(x_off, y_off))
+	var at: Vector2 = player.global_position + Vector2(x_off, y_off)
+	level._add_enemy(n, kind, at)
 	var e: Node = level.get_node(n)
 	await frames(2)
 	e.set_physics_process(false)
+	# przez te dwie klatki żywy stwór zdążył ruszyć (krok w bok, a skaczący — odbić się od podłogi); zamrożony w powietrzu wychodził z linii
+	# promienia i test przebicia LR-7 losowo liczył nie te cele. Manekin wraca dokładnie na swoje miejsce.
+	e.global_position = at
+	e.set("_last_x", at.x)                 # zwrot stwora liczy się z przesunięcia — sam powrót na miejsce nie może go odwrócić
 	e.hp = hp
 	e._max_hp = maxf(hp, 1.0)
 	e.velocity = Vector2.ZERO

@@ -38,7 +38,7 @@ static func enemy_sheet(kind: String) -> String:
 	if newmon and has(kind + "_hd"):
 		return kind + "_hd"
 	return kind
-## Dev (--newworld): świat HD — teren z art/world/terrain_hd(.png/_n.png), tła HD i rekwizyty HD (art/world/), jeśli istnieją.
+## Dev (--newworld): znacznik zasobów HD świata. Dawny teren, tła i rekwizyty HD rysowane w 2D (art/world/, art/backdrop/) zostały usunięte.
 static var newworld := false
 
 static var _gunhd: Dictionary = {}
