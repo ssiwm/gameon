@@ -229,6 +229,10 @@ innych graczy i botów oraz wybuchów; własny strzał jest niepozycyjny i zosta
 dobrane z rachunku — do oceny w grze. Inaczej niż w planie F3, dalekie wersje nie są osobnymi przepisami z nagrań z dystansu:
 wyprowadzenie z bliskiej gwarantuje, że to „ten sam strzał”, i nie wymaga osobnego odsłuchu każdej broni.
 
+**F8 — rozpoznanie (2026-10-12).** Pięć rodzin jest w banku, ale gra ich nigdzie nie odtwarza: `amb_air`, `amb_drips`,
+`mine_beep_loop`, `radio_static_loop`, `stalker_appear`. Do decyzji: podpiąć (np. `stalker_appear` przy wyjściu Stalkera z ukrycia,
+`mine_beep_loop` przy uzbrojonej minie) albo usunąć z bake'a. Liczby w `README.md` i `AUDIO.md` wyrównane do 196.
+
 **Ustalenia, które zmieniają plan:**
 
 - **Paczka Sonniss 2026 nie zawiera strzałów, kroków ani przeładowań** (347 plików; są głosy stworów, gore, drzwi, wiatr). Broń i kroki są
