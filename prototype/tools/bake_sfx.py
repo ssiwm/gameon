@@ -659,9 +659,10 @@ def build_ui() -> None:
 
     # Potwierdzenie: mechaniczny przełącznik — stuk dźwigni i zaskok zapadki (dawne dwa syntezatorowe bliki nie pasowały
     # do świata gry; gra tym m.in. zebranie przedmiotu z zadania)
-    x = d.mix([(thump(.09, 150, 65, .02, .04), .45), (tick(r, 1100, 1.6, 16, .004), 1.0), (tick(r, 1900, 1.4, 10, .003), .6, .004),
-               (thump(.07, 190, 90, .02, .03), .3, .095), (tick(r, 1500, 1.5, 14, .004), 1.0, .095),
-               (ring(r, [820, 1350], [.05, .035], dur=.1), .35, .1)], ms(300))
+    rc = Rng(0xDE10)                                         # własne ziarno: wspólne `r` zostaje nietknięte dla oc_load
+    x = d.mix([(thump(.09, 150, 65, .02, .04), .45), (tick(rc, 1100, 1.6, 16, .004), 1.0), (tick(rc, 1900, 1.4, 10, .003), .6, .004),
+               (thump(.07, 190, 90, .02, .03), .3, .095), (tick(rc, 1500, 1.5, 14, .004), 1.0, .095),
+               (ring(rc, [820, 1350], [.05, .035], dur=.1), .35, .1)], ms(300))
     finalize("ui_confirm", d.reverb(d.lp(x, 5000.0), ir("dead"), wet=.08), lufs=-15.0)
 
     # Odmowa: niski, matowy podwójny buczek
