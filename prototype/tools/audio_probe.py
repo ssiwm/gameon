@@ -8,6 +8,7 @@ ich długość, szczyt, czas wybrzmiewania i rozkład energii w pasmach. O brzmi
     python tools/audio_probe.py audio/sfx/weapons/m83_shot_1.wav
     python tools/audio_probe.py "BOOT_CONC" --thr -26 --gap 0.15 --max 20
     python tools/audio_probe.py "SIG_P229_9mm_1m" --hits            # początki pojedynczych strzałów w serii
+    python tools/audio_probe.py "WINTER Forest night" --steady 20   # najrówniejsze 20-sekundowe okna (materiał na pętlę)
 """
 import argparse
 import os
@@ -57,6 +58,28 @@ def hits(x, thr_db=-12.0, min_gap=0.06):
     return out
 
 
+def steady(x, win_s, top=3):
+    """Najrówniejsze okna długości win_s (materiał na pętlę ambientu): [(start_s, średni poziom dB, rozrzut dB, szczyt−średnia dB)].
+    Rozrzut liczony z poziomów w blokach 0,25 s — okno bez wyraźnych zdarzeń ma mały rozrzut i mały odstęp szczytu."""
+    blk = d.SR // 4
+    nb = len(x) // blk
+    lev = np.array([d.lin_to_db(np.sqrt(np.mean(x[i * blk:(i + 1) * blk] ** 2)) + 1e-9) for i in range(nb)])
+    w = max(2, int(win_s * 4))
+    cands = []
+    for i in range(0, nb - w + 1):
+        seg = lev[i:i + w]
+        cands.append((float(seg.std()) + 0.5 * float(seg.max() - seg.mean()), i))
+    out, used = [], []
+    for score, i in sorted(cands):
+        if all(abs(i - j) >= w // 2 for j in used):
+            seg = lev[i:i + w]
+            out.append((i / 4.0, float(seg.mean()), float(seg.std()), float(seg.max() - seg.mean())))
+            used.append(i)
+        if len(out) >= top:
+            break
+    return out
+
+
 def features(x):
     n = len(x)
     X = np.abs(np.fft.rfft(x * np.hanning(n))) ** 2
@@ -91,6 +114,7 @@ def main():
     ap.add_argument("--gap", type=float, default=0.12, help="cisza rozdzielająca zdarzenia [s]")
     ap.add_argument("--win", type=float, default=1.0, help="okno pomiaru po początku zdarzenia [s]")
     ap.add_argument("--max", type=int, default=16, help="ile zdarzeń pokazać")
+    ap.add_argument("--steady", type=float, default=0.0, help="zamiast zdarzeń: najrówniejsze okna tej długości [s] (pętle ambientu)")
     ap.add_argument("--hits", action="store_true", help="zamiast zdarzeń: pojedyncze uderzenia (strzały w serii)")
     ap.add_argument("--hits-thr", type=float, default=-12.0, help="próg uderzenia [dB od szczytu]")
     ap.add_argument("--hits-gap", type=float, default=0.06, help="najmniejszy odstęp uderzeń [s]")
@@ -103,6 +127,13 @@ def main():
         ev = events(x, a.thr, a.gap)
         print("%s\n  %.2f s, szczyt %.1f dB, zdarzeń: %d   (pasma: sub low lmid mid high air)" % (
             os.path.relpath(path, bc.LIB_DIR) if path.startswith(bc.LIB_DIR) else path, len(x) / d.SR, d.lin_to_db(d.peak(x)), len(ev)))
+        if a.steady > 0.0:
+            for t, mean, std, crest in steady(x, a.steady):
+                s = x[d.sec(t):d.sec(t + a.steady)]
+                ft = features(s)
+                print("    równe okno t=%7.2f  poziom=%5.1f dB  rozrzut=%.1f dB  szczyt−śr.=%.1f dB  cen=%5.0f Hz  | %s" % (
+                    t, mean, std, crest, ft["cen"], " ".join("%5.1f" % b for b in ft["bands"])))
+            continue
         if a.hits:
             hs = hits(x, a.hits_thr, a.hits_gap)
             print("  uderzenia (%d): %s" % (len(hs), " ".join("%.3f" % h for h in hs)))

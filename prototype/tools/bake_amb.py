@@ -15,6 +15,7 @@ from __future__ import annotations
 import numpy as np
 
 import audio_dsp as d
+import bake_hybrid
 from audio_dsp import SR, Rng, ms, sec
 from bake_common import asset, finalize, group, ir, ring, thump, tick
 
@@ -192,3 +193,4 @@ def build_ambience() -> None:
     bed = _drips(n, r)
     floor = d.stereo_noise_bed(lambda rr: d.circ_filter(d.colored(n, rr, 1.6), lambda z: d.lp(z, 300.0, order=2)) * 0.12, r)
     finalize("amb_drips", bed + floor, loop=True, lufs=-20.0)
+    bake_hybrid.ambience()                                  # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
