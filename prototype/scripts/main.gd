@@ -423,6 +423,8 @@ func _handle_cmdline() -> void:
 		if a == "--char3d-lq":
 			Sprites.char3d = true                                                                  # dev: postać 3D w niskiej jakości (SS 2, bez MSAA) — test kosztu na słabszym GPU
 			load("res://scripts/char3d.gd").set_low_quality(true)
+		if a == "--noclips":
+			load("res://scripts/char_clips.gd").enabled = false                                    # dev: bez klipów animacji postaci (same pozy z kodu) — porównania
 		if a == "--char3d":
 			Sprites.char3d = true                                                                  # dev (spike): postać 3D w czasie rzeczywistym zamiast arkuszy
 		if a == "--newgun":
@@ -1052,6 +1054,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					ac.set("vel", Vector2(-70.0, -210.0))
 					level.add_child(ac)
 					ac.global_position = ap.global_position + Vector2(90.0, -14.0))
+	if "--shotrun" in OS.get_cmdline_user_args():
+		Input.action_press("move_right")                      # --shotrun: gracz 1 biegnie w prawo przez cały podgląd (ocena animacji biegu)
 	if "--shotcrouch" in OS.get_cmdline_user_args():
 		Input.action_press("crouch")                          # --shotcrouch: gracz 1 skrada się przez cały podgląd
 	for ia in OS.get_cmdline_user_args():

@@ -29,6 +29,7 @@ const DEFAULT_CHAR := "male_scav"
 const DEFAULT_GUN := "m83"
 
 const Look := preload("res://scripts/look.gd")
+const CharClips := preload("res://scripts/char_clips.gd")
 
 ## Materiał modelu z paletą kolorów (look.gd, PALETTES): kolor + normalne + ORM z modelu, metaliczność 0 (bez sondy odbić czarna).
 const PALETTE_SHADER := """
@@ -222,6 +223,11 @@ const WEAPON_POSE := {
 const AW_RATE := 13.0                        ## 1/s: tempo mieszania póz bazowych (przejścia ~80 ms)
 var _aw := {}                                ## wagi póz bazowych — płynne przejścia zamiast przeskoków
 var _down := 0.0                             ## 0..1 postęp upadku (rośnie przy „down”, maleje przy wstawaniu po reanimacji)
+## Klipy animacji (char_clips.gd): drzewo daje ruch ciała w stanach, które mają klip (bieg); IK rąk i stóp liczymy na wierzchu.
+var clips_on := true                         ## false = same pozy z kodu (porównania w tools/shot_anim3d.gd)
+var _clips: AnimationTree
+var _clip_w := 0.0                           ## 0..1 waga klipu biegu w tej klatce (0 = poza z kodu)
+var _clip_foot := {}                         ## strona → Transform3D stopy z klipu (przestrzeń szkieletu), zanim ruszą ją nakładki
 
 ## Wyniki ostatniej klatki, w pikselach świata względem stóp (z uwzględnieniem odbicia) — dla efektów.
 var muzzle_px := Vector2.ZERO
@@ -575,6 +581,10 @@ func set_look(char_name: String) -> bool:
 	for side in ["Left", "Right"]:
 		_leg_len[side] = [_rest_dist(side + "UpLeg", side + "Leg"), _rest_dist(side + "Leg", side + "Foot")]
 		_arm_len[side] = [_rest_dist(side + "Arm", side + "ForeArm"), _rest_dist(side + "ForeArm", side + "Hand")]
+	_clips = CharClips.build(_sk, char_name)
+	if _clips != null:
+		_sk.get_parent().add_child(_clips)
+	_clip_w = 0.0
 	_origin_x = _sk.get_bone_global_rest(_b["Hips"]).origin.x
 	_ankle_y = _sk.get_bone_global_rest(_b["RightFoot"]).origin.y
 	_place_cameras()
@@ -662,10 +672,11 @@ func _set_global_basis(i: int, gb: Basis) -> void:
 
 ## Przesuwa kość o wektor w przestrzeni szkieletu (świata modelu). Osie lokalne kości Mixamo są obrócone (w biodrach „góra" to lokalne Z),
 ## więc przesunięcie w pozie trzeba przeliczyć przez bazę rodzica — samo dodanie wektora do lokalnej pozycji ruszało biodra w bok.
+## Dodaje do bieżącej pozy (po `reset_bone_poses` to spoczynek, z klipem — poza klipu); wołać raz na kość w klatce.
 func _move_global(i: int, delta: Vector3) -> void:
 	var p := _sk.get_bone_parent(i)
 	var pb := _gp(p).basis if p >= 0 else Basis.IDENTITY
-	_sk.set_bone_pose_position(i, _sk.get_bone_rest(i).origin + pb.inverse() * delta)
+	_sk.set_bone_pose_position(i, _sk.get_bone_pose_position(i) + pb.inverse() * delta)
 
 ## Obraca kość (i całe jej poddrzewo) wokół jej własnego początku o kąt wokół osi świata.
 func _rot_world(i: int, axis: Vector3, ang: float) -> void:
@@ -756,8 +767,11 @@ func _body_state(a: String) -> Dictionary:
 			lean = 4.0 + 0.8 * sin(_time * 2.4)
 			bob = -0.006 * sin(_time * 2.4)
 		"run":
-			lean = 13.0
-			bob = -0.035 * absf(sin(_phase))
+			if _clip_w > 0.0:
+				lean = 0.0                                            # pochylenie i kołysanie biegu niesie klip
+			else:
+				lean = 13.0
+				bob = -0.035 * absf(sin(_phase))
 		"jump", "fall":
 			var ap := _air_params()
 			lean = lerpf(8.0, 2.0, float(ap["fl"])) + 6.0 * float(ap["tk"])       # odbicie: wyprost z lekkim pochyleniem, spadanie: tułów pionowo
@@ -785,6 +799,15 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		sum += float(_aw[n])
 	if anim == "run" or anim == "crouch_walk":
 		_phase += (-1.0 if back_run else 1.0) * delta * clampf(speed / 95.0, 0.4, 1.4) * TAU * 2.0
+	# klip biegu: drzewo ustawia biodra, tułów, głowę i nogi wg fazy kroku; zapamiętujemy stopy z klipu, zanim nakładki ruszą biodra
+	_clip_w = 0.0
+	if _clips != null and clips_on and CharClips.has("run"):
+		var wr := float(_aw["run"]) / maxf(sum, 0.0001)
+		if wr > 0.002:
+			_clip_w = wr
+			CharClips.drive(_clips, {"run": wr}, _phase / TAU)
+			for side in ["Left", "Right"]:
+				_clip_foot[side] = _gp(_b[side + "Foot"])
 	# poza bazowa = mieszanka stanów wg wag (faza kroku ciągła, więc bez przeskoków przy zmianie stanu)
 	var lean := 0.0
 	var drop := 0.0
@@ -883,9 +906,10 @@ func _leg_state(a: String, side: String) -> Array:
 		"idle":
 			off = Vector3(0.12 * sgn * 0.8, 0.0, 0.0)
 		"run":
-			var stride := 0.34 * (0.8 if back_run else 1.0)
-			off = Vector3(stride * sin(ph), 0.17 * maxf(0.0, cos(ph)), 0.0)
-			tilt = deg_to_rad(-14.0) * maxf(0.0, cos(ph))
+			if _clip_w <= 0.0:                                        # z klipem tor stopy pochodzi z klipu (_pose_legs)
+				var stride := 0.34 * (0.8 if back_run else 1.0)
+				off = Vector3(stride * sin(ph), 0.17 * maxf(0.0, cos(ph)), 0.0)
+				tilt = deg_to_rad(-14.0) * maxf(0.0, cos(ph))
 		"jump", "fall":
 			# ciągła poza lotu z prędkości: wyprost przy odbiciu → kolana podciągnięte w apeksie → nogi sięgają w dół przed lądowaniem
 			var ap := _air_params()
@@ -929,14 +953,20 @@ func _pose_legs(e: float) -> void:
 			off.x += st if side == "Right" else -0.4 * st
 		var foot: int = _b[side + "Foot"]
 		var rest_foot := _sk.get_bone_global_rest(foot).origin
-		var target := Vector3(_origin_x + off.x, _ankle_y + off.y, rest_foot.z)
+		var base := Vector3(_origin_x, _ankle_y, rest_foot.z)
+		var target := base + off
+		var rest_gb := _sk.get_bone_global_rest(foot).basis
+		if _clip_w > 0.0:
+			# stopa z klipu: jej odchylenie od spoczynku już niesie wagę klipu (drzewo miesza klip z pozą spoczynkową); przy pełnej wadze cel = stopa klipu
+			var cf: Transform3D = _clip_foot[side]
+			target += (cf.origin - rest_foot) + _clip_w * (rest_foot - base)
+			rest_gb = cf.basis
 		if e > 0.001:
 			# upadek: stopy zostają na ziemi, dopóki biodra opadają (kolana się uginają), potem nogi podążają sztywno za ciałem
 			var rigid := _gp(foot).origin
 			target = target.lerp(rigid, smoothstep(0.5, 0.9, e))
 		_two_bone(_b[side + "UpLeg"], _b[side + "Leg"], foot, _leg_len[side][0], _leg_len[side][1], target, Vector3(1.0, 0.0, 0.0))
 		# stopa płasko (z lekkim obrotem czubka); przy upadku obraca się razem z ciałem
-		var rest_gb := _sk.get_bone_global_rest(foot).basis
 		var flat := Basis(Vector3.BACK, tilt) * rest_gb
 		if e > 0.001:
 			flat = _gp(foot).basis.slerp(flat, 1.0 - smoothstep(0.3, 0.8, e))

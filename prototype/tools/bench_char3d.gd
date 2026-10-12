@@ -1,5 +1,5 @@
 extends SceneTree
-## Pomiar kosztu postaci 3D (spike): średni czas klatki dla N postaci. godot --path prototype --script tools/bench_char3d.gd -- [--n=1,5,10] [--frames=240]
+## Pomiar kosztu postaci 3D (spike): średni czas klatki dla N postaci. godot --path prototype --script tools/bench_char3d.gd -- [--n=1,5,10] [--frames=240] [--noclips]
 const Char3D := preload("res://scripts/char3d.gd")
 var _counts: Array = [0, 1, 5, 10]
 var _frames := 240
@@ -18,6 +18,8 @@ func _initialize() -> void:
 				_counts.append(int(s))
 		elif a == "--nonormals":
 			Char3D.normals = false
+		elif a == "--noclips":
+			load("res://scripts/char_clips.gd").enabled = false
 		elif a == "--lq":
 			Char3D.set_low_quality(true)
 		elif a.begins_with("--frames="):
