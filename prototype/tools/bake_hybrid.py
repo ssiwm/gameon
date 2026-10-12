@@ -295,6 +295,14 @@ def weapons() -> None:
     bc.hybrid(_keys("reload_shell", 3), _reload_shell_bake, RELOAD_SHELL_NEEDS)
     bc.hybrid(_keys("maczeta", 2), _maczeta_bake, MACZETA_NEEDS)
     bc.hybrid(["hkm9_flame_loop"], _flame_loop_bake, FLAME_NEEDS)
+    # Dalekie wersje (F6 a) rodzin, których bliska wersja jest z nagrań: ta sama funkcja co dla syntezy, na plikach z nagrań.
+    import bake_weapons
+    for near, needs in (("m83_shot", M83_NEEDS), ("spread12_shot", SPREAD12_NEEDS), ("srut8_shot", SRUT8_NEEDS),
+                        ("gniew4_shot", GNIEW4_NEEDS), ("explosion", list(EXPLOSION_SRC))):
+        far = dict(bake_weapons.FAR_FAMILIES)[near]
+        if "%s_1" % near in bc.HYBRID:
+            bc.hybrid(_keys(far, bake_weapons.FAR_VARIANTS),
+                      lambda near=near, far=far: bake_weapons.bake_far_family(bc.LICENSED, near, far), needs)
 
 
 # ============================================================ STALKER (bake_sfx.build_stalker)

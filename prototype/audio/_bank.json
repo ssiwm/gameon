@@ -123,6 +123,14 @@
   "sfx/weapons/explosion_2",
   0
  ],
+ "explosion_far_1": [
+  "sfx/weapons/explosion_far_1",
+  0
+ ],
+ "explosion_far_2": [
+  "sfx/weapons/explosion_far_2",
+  0
+ ],
  "flare_ignite": [
   "sfx/world/flare_ignite",
   0
@@ -153,6 +161,14 @@
  ],
  "glass_break_2": [
   "sfx/world/glass_break_2",
+  0
+ ],
+ "gniew4_far_1": [
+  "sfx/weapons/gniew4_far_1",
+  0
+ ],
+ "gniew4_far_2": [
+  "sfx/weapons/gniew4_far_2",
   0
  ],
  "gniew4_shot_1": [
@@ -255,6 +271,14 @@
   "sfx/weapons/lr7_start",
   0
  ],
+ "m83_far_1": [
+  "sfx/weapons/m83_far_1",
+  0
+ ],
+ "m83_far_2": [
+  "sfx/weapons/m83_far_2",
+  0
+ ],
  "m83_shot_1": [
   "sfx/weapons/m83_shot_1",
   0
@@ -309,6 +333,14 @@
  ],
  "oc_load": [
   "sfx/ui/oc_load",
+  0
+ ],
+ "p64_far_1": [
+  "sfx/weapons/p64_far_1",
+  0
+ ],
+ "p64_far_2": [
+  "sfx/weapons/p64_far_2",
   0
  ],
  "p64_shot_1": [
@@ -439,6 +471,14 @@
   "sfx/enemies/slepiec_death_2",
   0
  ],
+ "sokol6_far_1": [
+  "sfx/weapons/sokol6_far_1",
+  0
+ ],
+ "sokol6_far_2": [
+  "sfx/weapons/sokol6_far_2",
+  0
+ ],
  "sokol6_shot_1": [
   "sfx/weapons/sokol6_shot_1",
   0
@@ -451,6 +491,14 @@
   "sfx/weapons/sokol6_shot_3",
   0
  ],
+ "spread12_far_1": [
+  "sfx/weapons/spread12_far_1",
+  0
+ ],
+ "spread12_far_2": [
+  "sfx/weapons/spread12_far_2",
+  0
+ ],
  "spread12_shot_1": [
   "sfx/weapons/spread12_shot_1",
   0
@@ -461,6 +509,14 @@
  ],
  "spread12_shot_3": [
   "sfx/weapons/spread12_shot_3",
+  0
+ ],
+ "srut8_far_1": [
+  "sfx/weapons/srut8_far_1",
+  0
+ ],
+ "srut8_far_2": [
+  "sfx/weapons/srut8_far_2",
   0
  ],
  "srut8_pump_1": [
@@ -677,6 +733,14 @@
  ],
  "widmo1_charge": [
   "sfx/weapons/widmo1_charge",
+  0
+ ],
+ "widmo1_far_1": [
+  "sfx/weapons/widmo1_far_1",
+  0
+ ],
+ "widmo1_far_2": [
+  "sfx/weapons/widmo1_far_2",
   0
  ],
  "widmo1_shot_1": [

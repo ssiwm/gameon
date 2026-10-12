@@ -20,9 +20,12 @@ i własny ogon — przy ogniu ciągłym 10 strz./s unika to „efektu karabinu m
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 import audio_dsp as d
+import bake_common as bc
 import bake_hybrid
 from audio_dsp import SR, Rng, ms, sec
 from bake_common import (asset, burst, finalize, group, ir, ring, thump, tick, vary)
@@ -67,10 +70,43 @@ def gun(rng: Rng, *, body=(190.0, 55.0), body_tau=0.028, body_dur=0.16, crack_f=
     return d.reverb(x, wet, wet=tail_wet, dry=1.0)
 
 
+# ============================================================ WERSJE DALEKIE (AUDIO_PLAN.md F6 a)
+# Strzał i wybuch z daleka to nie cichszy strzał z bliska: trzask ginie, powietrze zjada górę pasma, a zostaje korpus
+# z echem i pogłosem terenu. Gra przenika wersję bliską w daleką wg odległości (audio_director.gd: play_at).
+
+FAR_FAMILIES = (("m83_shot", "m83_far"), ("p64_shot", "p64_far"), ("spread12_shot", "spread12_far"), ("srut8_shot", "srut8_far"),
+                ("gniew4_shot", "gniew4_far"), ("sokol6_shot", "sokol6_far"), ("widmo1_shot", "widmo1_far"),
+                ("explosion", "explosion_far"))
+FAR_VARIANTS = 2
+
+
+def far_version(x: np.ndarray, i: int) -> np.ndarray:
+    """Daleka wersja z gotowej bliskiej: stłumiony atak, pochłonięta góra pasma, dwa echa i pogłos dużej przestrzeni.
+    Jedna funkcja dla syntezy i dla wersji z nagrań — daleka zawsze pochodzi od tej bliskiej, którą gra gra."""
+    x = d.to_mono(x)
+    body = d.transient_shape(x, attack_gain_db=-9.0)
+    body = d.lp(d.filt(body, "hp", 45.0, order=2), 2400.0 - 300.0 * i)
+    y = d.reverb(d.echo_tail(body, [130.0 + 35.0 * i, 290.0 + 50.0 * i], [.42, .22], lp_hz=1500.0), ir("hall"), wet=.55, dry=.8)
+    y = d.limiter(y / (d.peak(y) + 1e-9), -5.0)                 # ogon gęsty, bez czubka — głośność blisko wersji bliskiej
+    n = min(len(y), sec(1.8))
+    return y[:n] * d.env_pts(n, [(0, 1), (n / SR - .6, 1), (n / SR, 0)])
+
+
+def bake_far_family(root: str, near: str, far: str) -> None:
+    """Rodzina daleka z plików bliskich w `root` (audio/ albo audio_licensed/); głośność = zmierzona głośność bliskiej,
+    żeby przenikanie w grze nie zmieniało poziomu."""
+    xs = [d.read_audio(os.path.join(root, bc.REG["%s_%d" % (near, i + 1)][0] + ".wav")) for i in range(FAR_VARIANTS)]
+    lufs = float(np.mean([d.active_lufs(x) for x in xs]))
+    for i, x in enumerate(xs):
+        finalize("%s_%d" % (far, i + 1), far_version(x, i), lufs=lufs, fade_out_ms=300)
+
+
 def build_weapons() -> None:
     group("sfx/weapons")
     _build_core_weapons()
     build_weapons_ext()
+    for near, far in FAR_FAMILIES:
+        bake_far_family(bc.AUDIO, near, far)
     bake_hybrid.weapons()                                   # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
 
 
