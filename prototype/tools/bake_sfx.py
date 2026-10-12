@@ -176,33 +176,31 @@ def _bubbles(n: int, r: Rng, count: int, t0: float, t1: float) -> np.ndarray:
 
 def build_enemies() -> None:
     """Własne głosy gatunków (AUDIO_PLAN.md F5): każdy ma inne źródło i inny gest, żeby dało się je rozróżnić na ślepo.
-    Trzosek — wysoki, terkoczący warkot; Wołek — niski ryk byka z parsknięciem; Ślepiec — suche klikanie i świst oddechu;
+    Trzosek — niskie, psie warknięcie i skowyt; Wołek — niski ryk byka z parsknięciem; Ślepiec — suche klikanie i świst oddechu;
     Podsłuchacz — dwugłosowy, drżący wrzask alarmu; Pijawka — mokry bulgot i syk; Żyła — tętniący pomruk i wielogłosowy ryk."""
     group("sfx/enemies")
 
-    # --- Trzosek: zapowiedź skoku (krótki, wysoki, ze szczękaniem) i śmierć (opadający pisk urwany charkotem)
+    # --- Trzosek: zapowiedź skoku (krótkie, niskie warknięcie-szczeknięcie — pies, nie owad) i śmierć (opadający skowyt)
     for i in range(3):
         r = Rng(0xE100 + i * 3331)
-        n = ms(380 + 30 * i)
+        n = ms(420 + 30 * i)
         T = n / SR
-        f0 = d.env_pts(n, [(0, 300 + 30 * i), (.08, 520 + 40 * i), (.2, 430), (T, 300 - 20 * i)])
-        v = _voice(n, f0, r, (("e", 1.0), ("i", .6)), jitter=.05, shimmer=.4, breath=.3, rough_hz=62 + 6 * i, rough=.7, bw=8.0)
-        env = d.env_pts(n, [(0, 0), (.01, 1), (.12, .8), (.26, .55), (T, 0)])
-        jaws = np.zeros(n)
-        for j in range(4 + i % 2):
-            _put(jaws, tick(r, vary(r, 3400, .12), 2.0, 10, .002), .018 + j * (.052 - .004 * i) + r.uniform(0.0, .008), 1.0 - .12 * j)
-        hiss = d.filt(d.white(n, r), "bp", 4200.0, 0.8) * d.env_perc(n, .004, .12)
-        x = d.saturate(d.mix([(v * env, 1.0), (jaws, .5), (hiss, .5)], n) * 1.3, 2.4)
+        f0 = d.env_pts(n, [(0, 150 + 12 * i), (.06, 235 + 18 * i), (.2, 190), (T, 118 - 8 * i)])
+        v = _voice(n, f0, r, (("a", 1.0), ("gutt", .8)), jitter=.06, shimmer=.5, breath=.25, rough_hz=34 + 4 * i, rough=.75, bw=7.0)
+        env = d.env_pts(n, [(0, 0), (.012, 1), (.14, .8), (.28, .5), (T, 0)])
+        bark = burst(ms(70), r, 2600, 500, .012, color=.4)                    # zgrzyt szczęk na początku szczeknięcia
+        breath = d.filt(d.colored(n, r, .5), "bp", 1500.0, 0.8) * d.env_perc(n, .004, .14)
+        x = d.saturate(d.mix([(v * env, 1.0), (bark, .6), (breath, .4)], n) * 1.4, 2.6)
         finalize("trzosek_attack_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), lufs=-16.0, fade_out_ms=30)
     for i in range(2):
         r = Rng(0xE200 + i * 2221)
-        n = ms(540 + 60 * i)
+        n = ms(560 + 60 * i)
         T = n / SR
-        f0 = d.env_pts(n, [(0, 640 - 60 * i), (.05, 720 - 40 * i), (.3, 380), (T, 170)])
-        v = _voice(n, f0, r, (("e", 1.0), ("a", .7)), jitter=.06, shimmer=.5, breath=.35, rough_hz=48.0, rough=.6)
-        env = d.env_pts(n, [(0, 0), (.008, 1), (.2, .7), (.38, .3), (T, 0)])
-        gurgle = burst(ms(220), r, 1800, 300, .06, color=.6)
-        x = d.saturate(d.mix([(v * env, 1.0), (gurgle, .5, .22 + .04 * i)], n) * 1.3, 2.2)
+        f0 = d.env_pts(n, [(0, 420 - 40 * i), (.05, 470 - 30 * i), (.3, 250), (T, 120)])
+        v = _voice(n, f0, r, (("o", 1.0), ("a", .5)), jitter=.05, shimmer=.45, breath=.3, rough_hz=30.0, rough=.5)
+        env = d.env_pts(n, [(0, 0), (.008, 1), (.2, .7), (.4, .3), (T, 0)])
+        gurgle = burst(ms(220), r, 1200, 250, .06, color=.6)
+        x = d.saturate(d.mix([(v * env, 1.0), (gurgle, .4, .26 + .04 * i)], n) * 1.3, 2.2)
         finalize("trzosek_death_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), lufs=-16.0, fade_out_ms=40)
 
     # --- Wołek: zapowiedź szarży / ciosu (parsknięcie + ryk) i śmierć (długi, opadający jęk + upadek cielska)

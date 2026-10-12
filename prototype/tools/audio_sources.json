@@ -137,6 +137,14 @@
    "supplier": "Eiravaein Works",
    "license": "sonniss-gdc-2.0"
   },
+  "breath_gasping": {
+   "kind": "lib",
+   "file": "sonniss/2023/Pole Position Production - The Grunts Library/Male 1 - Breathing - Gasping - Ehrlund M1.wav",
+   "sha256": "51fbace3a3d549af8e5a6e7bca7a8e9ff42eff773e1c5e3da2fc3e4444b43cfb",
+   "pack": "Sonniss GDC 2023 — The Grunts Library",
+   "supplier": "Pole Position Production",
+   "license": "sonniss-gdc-2.0"
+  },
   "bullet_drop_wood_04": {
    "kind": "lib",
    "file": "sonniss/2016/Stuart Duffield - Bullet SFX/Bullet_Drop_Wood_04.wav",
@@ -207,6 +215,22 @@
    "sha256": "dd86a640f1a91a433b1d874f31145466b5c99f4f928c0131a3b816d718fb909c",
    "pack": "Sonniss GDC 2019 — STEPS Dirt & Gravel",
    "supplier": "PMSFX",
+   "license": "sonniss-gdc-2.0"
+  },
+  "dog_bark_growl": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 1of8/Bart Kamski - Dogs - game ready/Dog_big_close_barking_growling.wav",
+   "sha256": "f0deba6aaa980eb51face403e7bfe6de1432edc2ab57b64b094e568d072ec1fd",
+   "pack": "Sonniss GDC 2019 — Dogs - game ready",
+   "supplier": "Bart Kamski",
+   "license": "sonniss-gdc-2.0"
+  },
+  "dog_whimper": {
+   "kind": "lib",
+   "file": "sonniss/2020/Soundopolis - Dogs/Dog_German Short-Haired Pointer_Bark and Whimper_Fienup_001.wav",
+   "sha256": "0bf67a2df81a30ca6dd3387a4a48398c49061d53c877e31a4af1bac4cbb14e9e",
+   "pack": "Sonniss GDC 2020 — Dogs",
+   "supplier": "Soundopolis",
    "license": "sonniss-gdc-2.0"
   },
   "door_creak_metal": {
@@ -337,6 +361,14 @@
    "supplier": "BluezoneCorp",
    "license": "sonniss-gdc-2.0"
   },
+  "hellhound_idle": {
+   "kind": "lib",
+   "file": "sonniss/2020/SmartSoundFX - Monsters/HELLHOUND Idle Weak 03.wav",
+   "sha256": "6abc65be634f49b3283b1a746b5f5a8dfa6fb2ea0d31ac28e26f64011e19a909",
+   "pack": "Sonniss GDC 2020 — Monsters",
+   "supplier": "SmartSoundFX",
+   "license": "sonniss-gdc-2.0"
+  },
   "impact_22": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Olivier Girardot - Guns & Explosions/Bullet Impact 22.wav",
@@ -383,6 +415,14 @@
    "sha256": "231cfae7f8af1c5f2003474f68a4f98858d4fe180a541a7feed4f694da7a542d",
    "pack": "Sonniss GDC 2020 — Monster Roars",
    "supplier": "Phase 4 Libraries",
+   "license": "sonniss-gdc-2.0"
+  },
+  "jump_land_two_feet": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 8of9/Tovusound - Edward – Foleyart Collection Add-On Extended Footsteps/289_Foley_Footsteps_Rocks_Sneaker_Jump_Land_On_Two_Feet_Close.wav",
+   "sha256": "dc1f563a26f1089f576914ed7d83d2c5124701ab985561ab414d9d8d84068f9a",
+   "pack": "Sonniss GDC 2017 — Edward – Foleyart Collection Add-On Extended Footsteps",
+   "supplier": "Tovusound",
    "license": "sonniss-gdc-2.0"
   },
   "knife_swing_04": {
@@ -575,6 +615,14 @@
    "sha256": "08060b75babefa9e12518c5591bbbb71eaf0acafc1f95fd162252fa0fa4c5f80",
    "pack": "Sonniss GDC 2016 — 12 Gauge Shotgun",
    "supplier": "TS Sound",
+   "license": "sonniss-gdc-2.0"
+  },
+  "shepherd_barks": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 3of8/Pole Position - Barking Dog/Dog_German_Shepherd_t2_Ext_Field_Bark_Many_TImes_Start_and_Stop_DPA4060.wav",
+   "sha256": "f6e128c8e928de3d259ef03da416324ab9ecfdc95994a0d0568341fd631c48a1",
+   "pack": "Sonniss GDC 2019 — Barking Dog",
+   "supplier": "Pole Position",
    "license": "sonniss-gdc-2.0"
   },
   "shotgun_quick_pump": {

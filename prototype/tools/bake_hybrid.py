@@ -736,11 +736,90 @@ def world() -> None:
     bc.hybrid(_keys("amb_thud", 2), _thud_bake, THUD_NEEDS)
 
 
+# ============================================================ POPRAWKI PO ODSŁUCHU W GRZE — kandydaci (2026-10-12)
+# Trzosek z nagrań (owadzi terkot) okazał się w grze za wysoki — kierunek: wilczur / wilkołak. Dwie propozycje:
+# „wilczur” (duży pies, lekko obniżony) i „wilkolak” (ten sam pies niżej + warkot ogara pod spodem).
+# Skok i lądowanie: wydech zamiast syntetycznego stęknięcia albo samo odbicie butów; lądowanie na obie stopy
+# zamiast nagrania upadku ciała.
+
+DOG_NEEDS = ["dog_bark_growl", "dog_whimper", "shepherd_barks"]
+WEREWOLF_NEEDS = DOG_NEEDS + ["hellhound_idle"]
+_DOG_ATTACKS = (1.51, 4.16, 17.91)                                   # warknięcia-szczeknięcia dużego psa w dog_bark_growl [s]
+_DOG_WHIMPERS = (7.56, 9.80)                                         # długie skowyty w dog_whimper [s]
+_DOG_YELPS = (10.77, 11.52)                                          # pojedyncze szczeknięcia owczarka [s]
+
+
+def _dog_attack_bake(semis: float, growl: float) -> None:
+    for i, t0 in enumerate(_DOG_ATTACKS):
+        x = _clip("dog_bark_growl", t0 - 0.03, 0.75, semis, 0.60, tail=.2)
+        parts = [(x, 1.0)]
+        if growl > 0.0:
+            parts.append((_clip("hellhound_idle", 3.6 + 0.5 * i, 0.6, -3.0, 0.60, tail=.25, onset=False), growl))
+            parts.append((_unit(d.lp(d.repitch(x, -12.0)[:len(x)], 180.0)), 0.3))
+        x = d.saturate(_unit(d.filt(d.mix(parts, ms(620)), "hp", 70.0, order=2)), 2.0)
+        finalize("trzosek_attack_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), lufs=-16.0, fade_out_ms=30)
+
+
+def _dog_death_bake(semis: float, growl: float) -> None:
+    for i, t0 in enumerate(_DOG_WHIMPERS):
+        yelp = _clip("shepherd_barks", _DOG_YELPS[i] - 0.02, 0.22, semis, 0.20, tail=.07)
+        whine = _clip("dog_whimper", t0, 0.9, semis, 0.72, tail=.35, onset=False)
+        parts = [(yelp, 0.8), (whine, 1.0, 0.09)]
+        if growl > 0.0:
+            parts.append((_clip("hellhound_idle", 4.2, 0.7, -3.0, 0.70, tail=.4, onset=False), growl))
+        x = d.saturate(_unit(d.filt(d.mix(parts, ms(820)), "hp", 70.0, order=2)), 1.6)
+        finalize("trzosek_death_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), lufs=-16.0, fade_out_ms=40)
+
+
+# --- Skok (klucz `effort`): cichy wydech albo samo odbicie butów, bez głosu.
+JUMP_BREATH_NEEDS = ["breath_gasping"]
+JUMP_FOLEY_NEEDS = ["jump_land_two_feet"]
+
+
+def _jump_breath_bake() -> None:
+    for i, t0 in enumerate((2.33, 5.52)):                            # dwa krótkie wydechy z nagrania zadyszki
+        x = _clip("breath_gasping", t0 - 0.02, 0.4, 0.0, 0.34, tail=.12)
+        finalize("effort_%d" % (i + 1), d.reverb(d.filt(x, "hp", 90.0, order=2), ir("dead"), wet=.1), lufs=-16.4)
+
+
+def _jump_foley_bake() -> None:
+    for i, t0 in enumerate((1.00, 4.04)):                            # pojedyncze, miękkie stąpnięcia = odbicie
+        r = Rng(0x4A00 + i * 613)
+        n = ms(300)
+        push = _clip("jump_land_two_feet", t0 - 0.02, 0.2, 2.0, 0.16, tail=.08)
+        cloth = d.lp(d.filt(d.colored(n, r, 1.0), "bp", 800.0 + 150.0 * i, 0.9), 2500.0) * d.env_pts(n, [(0, 0), (.05, 1), (.14, .5), (.3, 0)])
+        x = d.limiter(_unit(d.mix([(push, 1.0), (_unit(cloth), 0.12, .02)], n)), -6.0)
+        finalize("effort_%d" % (i + 1), d.filt(x, "hp", 70.0, order=2), lufs=-16.4)
+
+
+# --- Lądowanie (klucz `land_hard`): buty na obie stopy; wersja cięższa na dłuższe spadki.
+def _land_boots_bake() -> None:
+    x = d.mix([(_clip("jump_land_two_feet", 2.02, 0.4, -2.0, 0.36, tail=.15), 1.0), (thump(.14, 95, 50, .03, .05), 0.5)], ms(380))
+    x = d.limiter(_unit(d.filt(x, "hp", 40.0, order=2)), -4.0)
+    finalize("land_hard", d.reverb(x, ir("close"), wet=.15), lufs=-17.5)
+
+
+def _land_boots_heavy_bake() -> None:
+    a = _clip("jump_land_two_feet", 3.04, 0.3, -4.0, 0.30, tail=.14)
+    b = _clip("jump_land_two_feet", 5.04, 0.3, -4.0, 0.30, tail=.14)
+    x = d.mix([(a, 1.0), (b, 0.9, .03), (thump(.2, 110, 45, .04, .07), 0.9)], ms(400))
+    x = d.limiter(_unit(d.filt(x, "hp", 30.0, order=2)), -5.0)
+    finalize("land_hard", d.reverb(x, ir("close"), wet=.15), lufs=-17.5)
+
+
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts.
-# Pusto: wszystkie dotychczasowe rodziny mają werdykt.
-CANDIDATES: tuple = ()
+CANDIDATES: tuple = (
+    ("wilczur", lambda: _dog_attack_bake(-2.0, 0.0), DOG_NEEDS),
+    ("wilczur", lambda: _dog_death_bake(-2.0, 0.0), DOG_NEEDS),
+    ("wilkolak", lambda: _dog_attack_bake(-6.0, 0.5), WEREWOLF_NEEDS),
+    ("wilkolak", lambda: _dog_death_bake(-6.0, 0.4), WEREWOLF_NEEDS),
+    ("wydech", _jump_breath_bake, JUMP_BREATH_NEEDS),
+    ("bez_glosu", _jump_foley_bake, JUMP_FOLEY_NEEDS),
+    ("buty", _land_boots_bake, JUMP_FOLEY_NEEDS),
+    ("buty_ciezko", _land_boots_heavy_bake, JUMP_FOLEY_NEEDS),
+)
 
 
 def build_alts() -> None:
