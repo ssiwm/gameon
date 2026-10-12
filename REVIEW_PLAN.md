@@ -137,6 +137,10 @@ nie dla grozy.
   i obraz nie jest jednolity. To pierwszy test, który w ogóle wykona kod widoku 3D.
 - Pomiar `--perf` na zintegrowanej grafice albo Steam Decku przed sesją — wymaga sprzętu, którego tu nie ma.
 
+**Stan:** krok CI jest dopisany (`tests.yml`, zrzut z pięciu map + artefakt), ale z `continue-on-error`, bo nie był jeszcze
+uruchomiony na runnerze — po pierwszym zielonym przebiegu trzeba tę linię usunąć, żeby krok blokował PR-y. Lokalnie flaga
+`--shot` działa (zrzut 1.2 z okna: 1,8 MB). Pomiar na słabszym sprzęcie zostaje do zrobienia.
+
 ## 4. Decyzje do podjęcia
 
 | # | Decyzja | Rekomendacja |
