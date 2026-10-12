@@ -26,12 +26,12 @@ Zasady składania (wnioski z pomiaru źródeł; brzmienie ocenia się uchem na s
 
 Werdykty odsłuchów A/B (2026-10-12), szczegóły w AUDIO_PLAN.md §7.
 Z nagrań: m83_shot, spread12_shot, srut8_shot, srut8_pump, gniew4_shot, ciegno6_shot (wersja 2), explosion, impact_hard,
-impact_flesh, shell, reload, reload_shell, maczeta, hkm9_flame_loop; stalker_growl, stalker_shriek, stalker_step,
+impact_flesh, shell, reload, reload_shell, maczeta, hkm9_flame_loop, foley_gear; stalker_growl, stalker_shriek, stalker_step,
 stalker_whisper_loop (niski oddech),
 amb_far_cry; trzosek_attack, trzosek_death (wilkołak), wolek_attack, wolek_death, slepiec_death, podsluchacz_scream, leech_growl,
 leech_shriek, zyla_roar; door, glass_break, thunder, amb_creak, amb_gust, amb_thud; step_concrete, step_metal, step_dirt,
 step_water, land_hard (buty), player_hurt, player_down; amb_forest, amb_rain, amb_rain_roof, amb_wind.
-Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz, foley_gear,
+Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz,
 dry_fire, hkm9_ignite, kilof_swing, slepiec_attack, zyla_growl. Po odsłuchu w grze
 wymienione: Trzosek (owadzi terkot był za wysoki → pies z warkotem ogara), lądowanie (upadek ciała → buty na obie stopy).
 """
@@ -283,8 +283,21 @@ def _flame_loop_bake() -> None:
     finalize("hkm9_flame_loop", d.seam_xfade(d.filt(x, "hp", 40.0), xf), loop=True, lufs=-19.0)
 
 
+# --- Szelest ekwipunku przy chodzeniu (foley_gear): pojedyncze ruchy oporządzenia z nagrania biegu, obniżone i przyciemnione.
+# Synteza (szum + metaliczne stuknięcia 1,8–5 kHz) była w grze wysoka i sztuczna — gra przy co trzecim kroku.
+GEAR_NEEDS = ["gear_running_10"]
+GEAR_LUFS = -28.8                                                    # zmierzona głośność dawnej syntezy (średnia rodziny)
+
+
+def _gear_bake() -> None:
+    for i, t0 in enumerate((13.181, 8.980, 4.183)):
+        x = _clip("gear_running_10", t0 - 0.01, 0.32, -2.0, 0.30, tail=.12)
+        finalize("foley_gear_%d" % (i + 1), d.lp(d.filt(x, "hp", 120.0, order=2), 3500.0), lufs=GEAR_LUFS)
+
+
 def weapons() -> None:
     """Wersje z nagrań dla broni — wołane na końcu bake_weapons.build_weapons()."""
+    bc.hybrid(_keys("foley_gear", 3), _gear_bake, GEAR_NEEDS)
     bc.hybrid(_keys("m83_shot", 6), _m83_bake, M83_NEEDS)
     bc.hybrid(_keys("spread12_shot", 3), _spread12_bake, SPREAD12_NEEDS)
     bc.hybrid(_keys("srut8_shot", 3), _srut8_bake, SRUT8_NEEDS)

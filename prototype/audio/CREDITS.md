@@ -55,6 +55,7 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | forest_winter_night | nagranie | Sonniss GDC 2018 — Winter Forest Ambience | Articulated Sounds | sonniss-gdc-2.0 | WINTER Forest night dark moon with distant wolves howls, North Laurentian Woods, Canada_LOOP.LR.wav |
 | g36c_mag_foley | nagranie | Sonniss GDC 2016 — Various Gun Foley & Handling | Pole Position Production | sonniss-gdc-2.0 | Heckler_&_Koch_G36C_5.56mm_foley_close_up_MKH60_mag_in_&_out.wav |
 | gas_burner_4 | nagranie | Sonniss GDC 2017 — Driving Forces | Digital Rain Lab | sonniss-gdc-2.0 | Gas Burner Stereo 4.wav |
+| gear_running_10 | nagranie | Sonniss GDC 2016 — INTERVENTION | SoundMorph | sonniss-gdc-2.0 | Gear - movements_running_10.wav |
 | glass_impact_break | nagranie | Sonniss GDC 2023 — Broken Glass | BluezoneCorp | sonniss-gdc-2.0 | Bluezone_BC0274_glass_impact_break_002.wav |
 | glass_shards_smash | nagranie | Sonniss GDC 2017 — Shards Broken Glass | Chris Skyes | sonniss-gdc-2.0 | Glass,Shards,Smash,Medium Impact,Lots of Large Shards.wav |
 | glass_window_break | nagranie | Sonniss GDC 2017 — Shards Broken Glass | Chris Skyes | sonniss-gdc-2.0 | Window,Small,Break,Medium Impact,Large Amount of Clinking Pieces.wav |

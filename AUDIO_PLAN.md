@@ -1,6 +1,6 @@
 # Plan: refaktor dźwięku — źródła hybrydowe i propagacja po mapie
 
-Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) i F8 (format wydania) wdrożone, zostaje eksperyment F7; 120 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
+Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) i F8 (format wydania) wdrożone, zostaje eksperyment F7; 123 pliki z nagrań żyją poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
 `default_bus_layout.tres`, `AUDIO.md`), nie na próbnej implementacji — rozmiary faz są szacunkowe. Kontynuacja `prototype/AUDIO.md`
 (overhaul v2), który sam stwierdza w §5: „to nie jest jeszcze AAA w sensie brzmienia” i „brzmienia nie oceniałem uchem”.
 
@@ -141,7 +141,7 @@ Pomiar (nie odsłuch): strzał z nagrań ma środek ciężkości widma ok. 1,4 k
 ok. 380 ms zamiast 255 ms, głośność zrównana z obecnym do 0,5 LU. Kroki z nagrań są ciemniejsze powyżej 4 kHz niż syntetyczne. Alternatywy
 pieką się deterministycznie (dwa przebiegi = te same sumy).
 
-**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 110 plików z nagrań, do tego 10 wyprowadzonych z nich dalekich wersji z F6):**
+**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 113 plików z nagrań, do tego 10 wyprowadzonych z nich dalekich wersji z F6):**
 
 | Rodzina | Werdykt | Źródła wersji z nagrań |
 |---|---|---|
@@ -156,7 +156,7 @@ pieką się deterministycznie (dwa przebiegi = te same sumy).
 | `p64_shot` ×4 | **synteza** | odrzucone: SIG P229 9 mm z 1 m (jasny i krótki wobec syntezy) |
 | `sokol6_shot` ×3 | **synteza** | odrzucone: start fajerwerku z bliska |
 | `whizz` ×3 | **synteza** | odrzucone: nagrane przeloty pocisków |
-| `foley_gear` ×3 | **synteza** | odrzucone: ruchy oporządzenia wycięte z nagranego marszu |
+| `foley_gear` ×3 | z nagrań | ruchy oporządzenia z nagrania biegu, obniżone i przyciemnione („wojskowo”). Pierwsza próba z nagrań przegrała z syntezą na stronie A/B, ale syntetyczny brzęk okazał się w grze wysoki i męczący; synteza w repo też jest teraz bez metalicznych stuknięć |
 | `dry_fire` | **synteza** | odrzucone: kurek M1911 z dołożonym niskim stukiem |
 | `ricochet` ×2 | synteza (bez kandydata) | w archiwach nie ma czystego, pojedynczego rykoszetu |
 | `reload` ×3 | z nagrań | magazynek G36C i zamek Saigi na osi czasu syntezy + jej niskie stuki |
@@ -211,7 +211,7 @@ ma już `impact_flesh`, a wataha pod ostrzałem robiłaby ścianę dźwięku. U 
 bo jeden krzyk Stalkera udawał wszystko). Limity jednoczesnych głosów: `audio_director.gd: VOICE`. Napisy: `bake_audio.py: CAPTIONS`
 + `translations/ui.csv`. Werdykt odsłuchu: 9 z 11 rodzin z nagrań, zapowiedź ciosu Ślepca i pomruk Żyły syntetyczne (tabela wyżej).
 
-Wzór z werdyktów (45 rodzin z nagrań, 9 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
+Wzór z werdyktów (46 rodzin z nagrań, 8 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
 trafienia, łuski, kroki, głos stwora, ogień), a przegrywały dla dźwięków krótkich, jasnych i „bliskich gracza” z samego nagrania (pistolet,
 przelot, szelest, kurek) — synteza jest tam pełniejsza w dole pasma. Po dołożeniu pod nagranie niskich stuków syntezy mechanika broni
 (przeładowania) wygrała. Szept Stalkera pokazuje granicę: rozpoznawalnie ludzkie nagranie przegrało z abstrakcyjną syntezą.
@@ -283,6 +283,8 @@ Trzosek (za wysoki — owad zamiast drapieżnika), skok (stęknięcie przy każd
 podskoku). Wniosek na przyszłość: strona A/B porównuje pojedynczy dźwięk, a nie to, jak często i w jakim kontekście gra —
 dźwięki powtarzane co sekundę (skok, lądowanie, głos najliczniejszego wroga) trzeba sprawdzać w grze, zanim uzna się je za zamknięte.
 Drugi odsłuch w grze: Trzosek i lądowanie zostają, a dźwięk podskoku został usunięty całkowicie (bank ma teraz 194 assety).
+Trzeci: chodzenie — szelest ekwipunku z nagrań zamiast syntetycznego brzęku, a krok po metalu stracił syntetyczną warstwę
+(obniżony `ricochet`), bo nagrany krok po blasze sam niesie charakter podłoża.
 
 **Ustalenia, które zmieniają plan:**
 

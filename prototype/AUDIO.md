@@ -170,7 +170,7 @@ python3 tools/audio_ab.py --ref origin/main                 # to samo dla asset�
 ```
 
 Katalog nagrań: `DA87_AUDIO_LIB`, `art_src/audio_lib/` albo `audio_lib/` obok repo (wspólny dla kilku kopii roboczych). Bez nagrań
-bake piecze samą syntezę. Z nagrań jest 45 rodzin, 110 plików — plus 10 dalekich wersji wyprowadzonych z nich w 3.5 (każda po
+bake piecze samą syntezę. Z nagrań jest 46 rodzin, 113 plików — plus 10 dalekich wersji wyprowadzonych z nich w 3.5 (każda po
 odsłuchu A/B; lista, werdykty i odrzucone — `AUDIO_PLAN.md` §7): większość broni (strzały M-83 i strzelb, granatnik, kusza, wybuchy,
 trafienia, łuski, przeładowania, maczeta, pętla miotacza), cały Stalker poza „pojawieniem się”, głosy wrogów poza zapowiedzią ciosu Ślepca
 i pomrukiem Żyły, kroki, lądowanie, ból i upadek gracza, drzwi, szkło, grzmoty, emitery ambientu (skrzypienia, podmuchy, odległe
