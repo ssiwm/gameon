@@ -130,9 +130,16 @@ textarea { width:100%; min-height:130px; font:13px/1.5 ui-monospace, Consolas, m
 const DATA = __DATA__;
 const LABELS = __LABELS__;
 const playing = new Set();
-function stopAll() { for (const a of playing) { a.pause(); } playing.clear(); for (const t of timers) clearTimeout(t); timers.length = 0; }
+function stopAll() { for (const a of playing) { a.pause ? a.pause() : a.stop(); } playing.clear(); for (const t of timers) clearTimeout(t); timers.length = 0; }
 const timers = [];
-function play(uri, loop) { const a = new Audio(uri); a.loop = !!loop; playing.add(a); a.onended = () => playing.delete(a); a.play(); return a; }
+let actx = null;
+// Pętle przez Web Audio: znacznik <audio loop> zostawia przerwę na zawinięciu, a w grze pętla jest bezszwowa.
+async function playLoop(uri) {
+  actx = actx || new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });   // bez przepróbkowania: szew co do próbki
+  const buf = await actx.decodeAudioData(await (await fetch(uri)).arrayBuffer());
+  const src = actx.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(actx.destination); src.start(); playing.add(src);
+}
+function play(uri, loop) { if (loop) { playLoop(uri); return null; } const a = new Audio(uri); playing.add(a); a.onended = () => playing.delete(a); a.play(); return a; }
 function shuffle(n) { const o = [...Array(n).keys()]; for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [o[i], o[j]] = [o[j], o[i]]; } return o; }
 const state = DATA.map(f => ({ order: shuffle(f.versions.length), pick: null, note: "" }));
 const letter = i => String.fromCharCode(65 + i);
