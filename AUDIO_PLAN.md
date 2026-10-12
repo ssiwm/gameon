@@ -246,6 +246,14 @@ wyprowadzenie z bliskiej gwarantuje, że to „ten sam strzał”, i nie wymaga 
 `mine_beep_loop`, `radio_static_loop`, `stalker_appear`. Do decyzji: podpiąć (np. `stalker_appear` przy wyjściu Stalkera z ukrycia,
 `mine_beep_loop` przy uzbrojonej minie) albo usunąć z bake'a. Liczby w `README.md` i `AUDIO.md` wyrównane do 196.
 
+Stan importu: 73 z 196 plików w repo (i wszystkie wersje z nagrań) są już importowane z kompresją QOA — Godot 4.7 ustawia ją
+domyślnie nowym plikom; reszta to PCM. Przy okazji wyszedł błąd: `audio_director.gd: _enable_loop()` liczył koniec pętli z rozmiaru
+danych, więc pętle w QOA (`amb_rain`, `amb_rain_roof`, `hkm9_flame_loop`, `lr7_beam_loop`, pętle ambientu z nagrań) urywały się po
+ok. 1/5 długości. Naprawione, pilnuje tego `tools/test_audio_loops.gd` (w CI). Pomiar QOA na całym banku (zrzut danych z Godota,
+dekodowanie ffmpeg): 53,1 MB → 10,7 MB, długości co do próbki; szum kodeka 14–20 dB pod sygnałem dla strzałów i szkła (szum na szumie),
+40–65 dB dla dźwięków niskich i tonalnych, ale dla stemów muzyki tylko ok. 22 dB w paśmie 2–8 kHz — to potwierdza podział z planu:
+QOA dla efektów, Ogg Vorbis dla muzyki i długich pętli ambientu.
+
 **Ustalenia, które zmieniają plan:**
 
 - **Paczka Sonniss 2026 nie zawiera strzałów, kroków ani przeładowań** (347 plików; są głosy stworów, gore, drzwi, wiatr). Broń i kroki są

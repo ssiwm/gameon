@@ -286,8 +286,9 @@ func _path(key: String) -> String:
 func _enable_loop(s: AudioStreamWAV) -> void:
 	s.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	s.loop_begin = 0
-	var bytes_per_frame := (2 if s.stereo else 1) * 2
-	s.loop_end = s.data.size() / maxi(1, bytes_per_frame)
+	# Długość ze strumienia, nie z rozmiaru danych: po imporcie z kompresją (QOA) bajty nie są klatkami
+	# i pętla urywała się po ok. 1/5 długości (tools/test_audio_loops.gd).
+	s.loop_end = int(round(s.get_length() * s.mix_rate))
 
 
 func _report_missing(key: String, why: String) -> void:

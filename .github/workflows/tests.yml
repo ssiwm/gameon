@@ -35,5 +35,9 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_sound_grid.gd 2>&1 | tee soundgrid.log
           grep -a "\[SOUNDGRID\] PASS" soundgrid.log
+      - name: Pętle dźwięku (test_audio_loops.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_audio_loops.gd 2>&1 | tee audioloops.log
+          grep -a "\[AUDIOLOOPS\] PASS" audioloops.log
       - name: Bronie i sieć (test_weapons.sh)
         run: bash prototype/tools/test_weapons.sh

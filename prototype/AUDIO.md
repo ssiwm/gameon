@@ -110,6 +110,9 @@ Okluzja z 3.3 tylko tłumi dźwięk zza ściany — dalej dochodzi on „na wpro
 Koszt (pomiar orientacyjny na mapach strefy I, 2000 losowych par punktów): budowa siatki 22–37 ms przy wczytaniu mapy,
 droga średnio ok. 0,1 ms, najgorsza ok. 1,5 ms; wynik — także „brak drogi” — jest pamiętany.
 
+Pętle: `godot --headless --path . -s tools/test_audio_loops.gd` — każda pętla z manifestu ma się zapętlać na całej długości,
+także po imporcie z kompresją QOA (koniec pętli liczony z długości strumienia, nie z rozmiaru danych).
+
 Testy: `godot --headless --path . -s tools/test_sound_grid.gd` (siatka na małej mapie), `--maptest` (dźwięk ma drogę wszędzie,
 dokąd dochodzi postać). Dev: `--nosoundpath` wyłącza drogę — do porównania w grze. **Strojone liczbami, nie uchem**: wagi
 `ROUTE_LOSS_DB` / `WALL_LOSS_DB` wymagają odsłuchu w grze na słuchawkach.
