@@ -325,6 +325,7 @@ def build_enemies() -> None:
         x = d.mix([(v * env, 1.0), (roar, .5), (thump(.6, 80, 30, .12, .2), 1.0)], n)
         x = d.saturate(x * 1.5, 3.4)
         finalize("zyla_roar_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.3, keep_len=True), lufs=-9.5, fade_out_ms=150)
+    bake_hybrid.enemies()                                   # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
 
 
 # ============================================================ ŚWIAT
@@ -509,6 +510,7 @@ def build_world() -> None:
             parts.append((crack, 1.4 - 0.5 * i))
         x = d.mix(parts, n)
         finalize("thunder_%d" % (i + 1), d.reverb(x, ir("hall"), wet=0.35), lufs=-17.0, fade_out_ms=900)
+    bake_hybrid.world()                                     # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
 
 
 # ============================================================ GRACZ

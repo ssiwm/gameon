@@ -25,14 +25,6 @@
    "supplier": "Pole Position Production",
    "license": "sonniss-gdc-2.0"
   },
-  "alien_beast_deep_5": {
-   "kind": "lib",
-   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Gage Freeman - Alien Voices/Alien Beast Deep - Medium 5.wav",
-   "sha256": "4f2ea080c3f01803d15e7424adecb4d59c4ea83b7830fb561c9f317d52b43eac",
-   "pack": "Sonniss GDC 2019 — Alien Voices",
-   "supplier": "Gage Freeman",
-   "license": "sonniss-gdc-2.0"
-  },
   "alien_death_01": {
    "kind": "lib",
    "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 5of9/MatiasMacSD - CREATURES ZONE/Creature_Alien_Death_01.wav",
@@ -143,14 +135,6 @@
    "sha256": "1a506d63619175b8d8bb137ad37364268d7d3c8b6d5afdb4f09ef34d994d8801",
    "pack": "Sonniss GDC 2019 — Nocked",
    "supplier": "Eiravaein Works",
-   "license": "sonniss-gdc-2.0"
-  },
-  "breath_inhale_squeal_05": {
-   "kind": "lib",
-   "file": "sonniss/2026/Epic Stock Media - Humanoid Creatures Vol 4 - Monstrous and Undead Creature Vocalization Sound Sets/HMNBrth_Construction Kit Male Screeching Breath Inhale Weak Squeal 05_ESM_HC4.wav",
-   "sha256": "f85227648434c27d41932a88029be05f809c8d825dbe93de86f3d40260c0d09c",
-   "pack": "Sonniss GDC 2026 — Humanoid Creatures Vol 4 - Monstrous and Undead Creature Vocalization Sound Sets",
-   "supplier": "Epic Stock Media",
    "license": "sonniss-gdc-2.0"
   },
   "bullet_drop_wood_04": {
@@ -649,14 +633,6 @@
    "supplier": "Gamemaster Audio",
    "license": "sonniss-gdc-2.0"
   },
-  "troll_growl_long_05": {
-   "kind": "lib",
-   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Gamemaster Audio - Troll Monster Vocalizations/troll_monster_growl_long_05.wav",
-   "sha256": "917a95969b4e939be23d8c6733291a6323f7d0de7086614e3622507369aace4d",
-   "pack": "Sonniss GDC 2017 — Troll Monster Vocalizations",
-   "supplier": "Gamemaster Audio",
-   "license": "sonniss-gdc-2.0"
-  },
   "usas12_close_1m": {
    "kind": "lib",
    "file": "sonniss/2016/Pole Position Production - USAS-12 12g solid slug/USAS-12_12g_solid_slug_1m_right_CS3_clean_Double_shots_x_1.wav",
@@ -697,6 +673,14 @@
    "supplier": "Hzandbits",
    "license": "sonniss-gdc-2.0"
   },
+  "wind_mountain_loop": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Soundrangers - Wind/wind_harsh_mountain_02_30_loop.wav",
+   "sha256": "df2c0f7af4e6158f93b31fb1d9eb432c043d4d7a223ca9be95c786fff647afdb",
+   "pack": "Sonniss GDC 2018 — Wind",
+   "supplier": "Soundrangers",
+   "license": "sonniss-gdc-2.0"
+  },
   "yeti_grumble_02": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 1of8/Articulated Sounds - Yeti Monster/MONSTER Yeti grumble 02.wav",
@@ -709,14 +693,6 @@
    "kind": "lib",
    "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Glitchedtones - Zombie/Zombie Subject C Zombie Brat Groan (9).wav",
    "sha256": "5f6a513da7a97f5058ac213740ddafa082ab2dcb0d698662bef1783d861521cb",
-   "pack": "Sonniss GDC 2019 — Zombie",
-   "supplier": "Glitchedtones",
-   "license": "sonniss-gdc-2.0"
-  },
-  "zombie_hiss_1": {
-   "kind": "lib",
-   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Glitchedtones - Zombie/Zombie Subject B Hiss (1).wav",
-   "sha256": "14d282072c76428b6cd5c6998b69c9f251ab9f61f8bf125ccc6247d338813305",
    "pack": "Sonniss GDC 2019 — Zombie",
    "supplier": "Glitchedtones",
    "license": "sonniss-gdc-2.0"

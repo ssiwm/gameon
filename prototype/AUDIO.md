@@ -53,7 +53,7 @@ bez crossfade'u i bez dziury w energii.
 > Poprzedni komentarz „stdlib, brak numpy w środowisku" przestał być prawdą; `matplotlib` jest tylko do podglądu.
 > Gra (Godot) nie potrzebuje Pythona — pliki WAV są w repozytorium.
 
-### 3.2 Assety (116, `tools/bake_*.py`)
+### 3.2 Assety (196, `tools/bake_*.py`)
 * **Broń** — strzał warstwowy: crack (1,5 ms) / blast (swept LP) / body (sinus z opadającą wysokością) /
   punch / mechanika modalna / krótki ogon źródła. Własna **strzelba** (5 cracków śrutu + sub), przeładowanie
   w 5 zdarzeniach, **łuska** `shell_1..3` (mosiądz z odbiciami; gra ją `Vfx.casing()` przy lądowaniu fizycznej łuski), **foley ekwipunku**, **szum w uszach**.
@@ -155,11 +155,12 @@ python3 tools/audio_ab.py --ref origin/main                 # to samo dla asset�
 ```
 
 Katalog nagrań: `DA87_AUDIO_LIB`, `art_src/audio_lib/` albo `audio_lib/` obok repo (wspólny dla kilku kopii roboczych). Bez nagrań
-bake piecze samą syntezę. Z nagrań jest 26 rodzin, 71 plików — plus 10 dalekich wersji wyprowadzonych z nich w 3.5 (każda po odsłuchu A/B; lista, werdykty i odrzucone — `AUDIO_PLAN.md` §7):
-większość broni (strzały M-83 i strzelb, granatnik, kusza, wybuchy, trafienia, łuski, przeładowania, maczeta, pętla miotacza),
-Stalker poza szeptem (warkot, krzyk, kroki, odległy zew), kroki gracza po wszystkich powierzchniach i twarde lądowanie oraz
-trzy pętle ambientu (las, deszcz, deszcz o dach; wiatr został syntetyczny).
-Przepisy: `tools/bake_hybrid.py` (`weapons()`, `stalker()`, `player()`, `ambience()`).
+bake piecze samą syntezę. Z nagrań są 44 rodziny, 109 plików — plus 10 dalekich wersji wyprowadzonych z nich w 3.5 (każda po
+odsłuchu A/B; lista, werdykty i odrzucone — `AUDIO_PLAN.md` §7): większość broni (strzały M-83 i strzelb, granatnik, kusza, wybuchy,
+trafienia, łuski, przeładowania, maczeta, pętla miotacza), Stalker poza szeptem, głosy wrogów poza zapowiedzią ciosu Ślepca
+i pomrukiem Żyły, kroki, lądowanie, ból i upadek gracza, drzwi, szkło, grzmoty, emitery ambientu (skrzypienia, podmuchy, odległe
+uderzenia) oraz cztery pętle ambientu (las, deszcz, deszcz o dach, wiatr).
+Przepisy: `tools/bake_hybrid.py` (`weapons()`, `stalker()`, `enemies()`, `world()`, `player()`, `ambience()`).
 Wybieranie wycinków z nagrań: `python3 tools/audio_probe.py "fragment nazwy" [--hits]`; wpis do rejestru: `audio_lib_fetch.py add <id> <regex>`.
 
 ## 5. Ograniczenia i uczciwa ocena

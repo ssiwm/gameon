@@ -2,8 +2,8 @@
 bake_hybrid.py — wersje assetów Z NAGRAŃ z bibliotek (AUDIO_PLAN.md).
 
 Dwa rodzaje przepisów:
-  * wersje z nagrań dla GRY — weapons(), stalker(), player(), ambience(): wołane na końcu builderów (bake_weapons.py,
-    bake_sfx.py, bake_amb.py),
+  * wersje z nagrań dla GRY — weapons(), stalker(), enemies(), world(), player(), ambience(): wołane na końcu
+    builderów (bake_weapons.py, bake_sfx.py, bake_amb.py),
     po syntezie tych samych kluczy, przez bc.hybrid(). Plik trafia do audio_licensed/ (poza repo), a gra woli go
     od syntetycznego z audio/. Bez plików źródłowych na dysku nic się nie dzieje — zostaje sama synteza;
   * WERSJE ALTERNATYWNE do odsłuchu przed decyzją — CANDIDATES → build_alts() przez bc.alt(): katalog z --alts,
@@ -27,9 +27,11 @@ Zasady składania (wnioski z pomiaru źródeł; brzmienie ocenia się uchem na s
 Werdykty odsłuchów A/B (2026-10-12), szczegóły w AUDIO_PLAN.md §7.
 Z nagrań: m83_shot, spread12_shot, srut8_shot, srut8_pump, gniew4_shot, ciegno6_shot (wersja 2), explosion, impact_hard,
 impact_flesh, shell, reload, reload_shell, maczeta, hkm9_flame_loop; stalker_growl, stalker_shriek, stalker_step,
-amb_far_cry; step_concrete, step_metal, step_dirt, step_water, land_hard; amb_forest, amb_rain, amb_rain_roof.
+amb_far_cry; trzosek_attack, trzosek_death, wolek_attack, wolek_death, slepiec_death, podsluchacz_scream, leech_growl,
+leech_shriek, zyla_roar; door, glass_break, thunder, amb_creak, amb_gust, amb_thud; step_concrete, step_metal, step_dirt,
+step_water, land_hard, player_hurt, player_down; amb_forest, amb_rain, amb_rain_roof, amb_wind.
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz, foley_gear,
-dry_fire, hkm9_ignite, kilof_swing, stalker_whisper_loop, amb_wind.
+dry_fire, hkm9_ignite, kilof_swing, stalker_whisper_loop, slepiec_attack, zyla_growl.
 """
 
 from __future__ import annotations
@@ -445,6 +447,8 @@ def player() -> None:
     bc.hybrid(_keys("step_dirt", 5), _step_dirt_bake, STEP_DIRT_NEEDS)
     bc.hybrid(_keys("step_water", 5), _step_water_bake, STEP_WATER_NEEDS)
     bc.hybrid(["land_hard"], _land_hard_bake, LAND_NEEDS)
+    bc.hybrid(_keys("player_hurt", 2), _player_hurt_bake, PLAYER_HURT_NEEDS)
+    bc.hybrid(["player_down"], _player_down_bake, PLAYER_DOWN_NEEDS)
 
 
 # ============================================================ AMBIENT (bake_amb.build_ambience)
@@ -454,6 +458,7 @@ AMB_LOOPS = (                       # klucz, źródło, start [s], głośność 
     ("amb_forest", "forest_winter_night", 0.5, -14.6, 0.0),
     ("amb_rain", "rain_hard_loop", 1.0, -16.0, 0.0),
     ("amb_rain_roof", "rain_on_plastic", 0.5, -17.0, -12.0),      # pojedyncze głośne krople: bez ścięcia pętla wychodzi za cicha
+    ("amb_wind", "wind_mountain_loop", 10.25, -19.6, 0.0),
 )
 
 
@@ -471,7 +476,7 @@ def ambience() -> None:
         bc.hybrid([row[0]], lambda row=row: _amb_loop_bake(*row), [row[1]])
 
 
-# ============================================================ ŚWIAT — kandydaci do odsłuchu (F4, część 2)
+# ============================================================ ŚWIAT (bake_sfx.build_world)
 
 # --- Drzwi (metal): skrzyp zawiasu, potem uderzenie skrzydła o futrynę; pogłos blaszanego korytarza jak w syntezie.
 DOOR_NEEDS = ["door_creak_metal", "door_impact_metal"]
@@ -509,11 +514,11 @@ def _thunder_bake() -> None:
         finalize("thunder_%d" % (i + 1), d.filt(x, "hp", 25.0, order=2), lufs=-19.4, fade_out_ms=400)
 
 
-# ============================================================ WROGOWIE — kandydaci do odsłuchu (F5, część 2)
+# ============================================================ WROGOWIE (bake_sfx.build_enemies)
 # Każdy gatunek ma własne źródła (inne niż Stalker) i zachowuje gest wersji syntetycznej: Trzosek — owadzi terkot na
-# wysokim głosie, Wołek — ryk bestii z ciężarem w dole, Ślepiec — klikanie (syntetyczne, jak w wersji publicznej) na
-# nagranym oddechu, Podsłuchacz — drżący wrzask, Pijawka — bulgot i skrzek morskiego stwora, Żyła — tętniący pomruk
-# i ryk złożony z kilku głosów naraz. Głośność = zmierzona głośność syntezy tej samej rodziny.
+# wysokim głosie, Wołek — ryk bestii z ciężarem w dole, Ślepiec — trzepoczący wydech z klikaniem (śmierć), Podsłuchacz —
+# drżący wrzask, Pijawka — bulgot i skrzek morskiego stwora, Żyła — ryk złożony z kilku głosów naraz.
+# Zapowiedź ciosu Ślepca i pomruk Żyły zostały syntetyczne (werdykt odsłuchu). Głośność = zmierzona głośność syntezy.
 
 def _clip(sid: str, t0: float, dur: float, semis: float, end: float, tail: float = 0.12, onset: bool = True) -> np.ndarray:
     """Wycinek nagrania (od ataku albo od t0), przestrojony o `semis` półtonów, wygaszony do `end` [s]; szczyt = 1."""
@@ -522,18 +527,6 @@ def _clip(sid: str, t0: float, dur: float, semis: float, end: float, tail: float
     n = min(len(x), d.sec(end))
     end = n / d.SR
     return _unit(x[:n] * d.env_pts(n, [(0, 0), (.004 if onset else .03, 1), (max(.04, end - tail), 1), (end, 0)]))
-
-
-def _throb(n: int, beat: float) -> np.ndarray:
-    """Obwiednia tętna („łup-łup": dwa uderzenia na takt, drugie słabsze), 0–1 — jak w syntetycznym pomruku Żyły."""
-    env = np.zeros(n)
-    for j in range(int(n / d.SR / beat) + 1):
-        for off, g in ((0.0, 1.0), (.22, .65)):
-            st = d.sec(j * beat + off)
-            if st < n:
-                ln = n - st
-                env[st:] += np.minimum(1.0, np.arange(ln) / ms(40)) * d.env_exp(ln, .22) * g
-    return env / env.max()
 
 
 TRZOSEK_ATTACK_NEEDS = ["insect_attack_02", "monster11_mouth2", "monster_pain_01", "monster4_call2"]
@@ -585,27 +578,11 @@ def _wolek_death_bake() -> None:
         finalize("wolek_death_%d" % (i + 1), d.reverb(x, ir("room"), wet=.2, keep_len=True), lufs=-14.3, fade_out_ms=80)
 
 
-SLEPIEC_ATTACK_NEEDS = ["breath_inhale_squeal_05", "zombie_hiss_1"]
-
-
-def _slepiec_attack_bake() -> None:
-    import bake_sfx                                                  # klikanie to ta sama synteza co w wersji publicznej
-    for i, (sid, t0, semis) in enumerate((("breath_inhale_squeal_05", 0.0, -2.0), ("zombie_hiss_1", 0.5, 0.0))):
-        r = Rng(0x5E00 + i * 977)
-        n = ms(650 + 50 * i)
-        T = n / d.SR
-        clicks = bake_sfx._clicks(n, r, .02, T - .08, .075 - .008 * i, .86, 2100.0 + 300 * i)
-        breath = _clip(sid, t0, 0.8, semis, T, tail=.15, onset=(i == 0))
-        breath = breath * d.env_pts(len(breath), [(0, .3), (.3, 1), (10, 1)])
-        x = d.mix([(_unit(clicks), 1.0), (breath, 0.6)], n)
-        finalize("slepiec_attack_%d" % (i + 1), d.reverb(x, ir("close"), wet=.2), lufs=-17.8, fade_out_ms=30)
-
-
 SLEPIEC_DEATH_NEEDS = ["flutter_death_05"]
 
 
 def _slepiec_death_bake() -> None:
-    import bake_sfx
+    import bake_sfx                                                  # klikanie to ta sama synteza co w wersji publicznej
     for i, t0 in enumerate((1.0, 2.8)):                              # dwa głośne odcinki trzepoczącego, urywanego wydechu
         r = Rng(0x5F00 + i * 1361)
         n = ms(950 + 80 * i)
@@ -662,21 +639,6 @@ def _leech_shriek_bake() -> None:
         finalize("leech_shriek_%d" % (i + 1), x, lufs=-10.55, fade_out_ms=120)
 
 
-ZYLA_GROWL_NEEDS = ["alien_beast_deep_5", "troll_growl_long_05"]
-
-
-def _zyla_growl_bake() -> None:
-    a = _clip("alien_beast_deep_5", 1.2, 2.4, -3.0, 2.8, tail=.6, onset=False)
-    b = d.mix([(_clip("alien_beast_deep_5", 2.9, 2.2, -5.0, 2.8, tail=.6, onset=False), 1.0),
-               (d.lp(_clip("troll_growl_long_05", 0.2, 2.4, -7.0, 2.6, tail=.6, onset=False), 900.0), 0.5, .1)], d.sec(2.8))
-    for i, x in enumerate((a, b)):
-        n = len(x)
-        sub = d.lp(d.repitch(x, -12.0)[:n], 160.0)
-        x = d.mix([(x, 1.0), (_unit(sub), 0.35)], n) * (.55 + .45 * _throb(n, .78 - .08 * i))
-        x = d.saturate(_unit(d.filt(x, "hp", 40.0, order=2)), 1.8)
-        finalize("zyla_growl_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.3, keep_len=True), lufs=-14.3, fade_out_ms=250)
-
-
 ZYLA_ROAR_NEEDS = ["dragon_roar_01", "large_beast_taunt_03", "behemoth_talk_04", "large_monster11_roar03"]
 
 
@@ -693,7 +655,7 @@ def _zyla_roar_bake() -> None:
         finalize("zyla_roar_%d" % (i + 1), x, lufs=-11.25, fade_out_ms=150)
 
 
-# ============================================================ GRACZ I ŚWIAT — kandydaci do odsłuchu (F4, część 3)
+# ============================================================ GRACZ I EMITERY AMBIENTU (bake_sfx.build_player / build_world)
 # Głos gracza: ból z dwóch okrzyków tego samego zestawu nagrań, upadek z jęku + to samo uderzenie ciała co w syntezie.
 # `effort` (wydech przy skoku) zostaje syntetyczny — w archiwach są tylko okrzyki bólu i walki, za mocne na każdy skok.
 
@@ -751,30 +713,34 @@ def _thud_bake() -> None:
         finalize("amb_thud_%d" % (i + 1), x, lufs=-24.0, fade_out_ms=500)
 
 
+def enemies() -> None:
+    """Wersje z nagrań dla głosów wrogów — wołane na końcu bake_sfx.build_enemies()."""
+    bc.hybrid(_keys("trzosek_attack", 3), _trzosek_attack_bake, TRZOSEK_ATTACK_NEEDS)
+    bc.hybrid(_keys("trzosek_death", 2), _trzosek_death_bake, TRZOSEK_DEATH_NEEDS)
+    bc.hybrid(_keys("wolek_attack", 2), _wolek_attack_bake, WOLEK_ATTACK_NEEDS)
+    bc.hybrid(_keys("wolek_death", 2), _wolek_death_bake, WOLEK_DEATH_NEEDS)
+    bc.hybrid(_keys("slepiec_death", 2), _slepiec_death_bake, SLEPIEC_DEATH_NEEDS)
+    bc.hybrid(_keys("podsluchacz_scream", 2), _scream_bake, SCREAM_NEEDS)
+    bc.hybrid(_keys("leech_growl", 2), _leech_growl_bake, LEECH_GROWL_NEEDS)
+    bc.hybrid(_keys("leech_shriek", 2), _leech_shriek_bake, LEECH_SHRIEK_NEEDS)
+    bc.hybrid(_keys("zyla_roar", 2), _zyla_roar_bake, ZYLA_ROAR_NEEDS)
+
+
+def world() -> None:
+    """Wersje z nagrań dla dźwięków świata — wołane na końcu bake_sfx.build_world()."""
+    bc.hybrid(_keys("door", 2), _door_bake, DOOR_NEEDS)
+    bc.hybrid(_keys("glass_break", 2), _glass_bake, GLASS_NEEDS)
+    bc.hybrid(_keys("thunder", 3), _thunder_bake, list(THUNDER_SRC))
+    bc.hybrid(_keys("amb_creak", 3), _creak_bake, CREAK_NEEDS)
+    bc.hybrid(_keys("amb_gust", 3), _gust_bake, GUST_NEEDS)
+    bc.hybrid(_keys("amb_thud", 2), _thud_bake, THUD_NEEDS)
+
+
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
-# (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts
-CANDIDATES: tuple = (
-    ("hybrid", _door_bake, DOOR_NEEDS),
-    ("hybrid", _glass_bake, GLASS_NEEDS),
-    ("hybrid", _thunder_bake, list(THUNDER_SRC)),
-    ("hybrid", _trzosek_attack_bake, TRZOSEK_ATTACK_NEEDS),
-    ("hybrid", _trzosek_death_bake, TRZOSEK_DEATH_NEEDS),
-    ("hybrid", _wolek_attack_bake, WOLEK_ATTACK_NEEDS),
-    ("hybrid", _wolek_death_bake, WOLEK_DEATH_NEEDS),
-    ("hybrid", _slepiec_attack_bake, SLEPIEC_ATTACK_NEEDS),
-    ("hybrid", _slepiec_death_bake, SLEPIEC_DEATH_NEEDS),
-    ("hybrid", _scream_bake, SCREAM_NEEDS),
-    ("hybrid", _leech_growl_bake, LEECH_GROWL_NEEDS),
-    ("hybrid", _leech_shriek_bake, LEECH_SHRIEK_NEEDS),
-    ("hybrid", _zyla_growl_bake, ZYLA_GROWL_NEEDS),
-    ("hybrid", _zyla_roar_bake, ZYLA_ROAR_NEEDS),
-    ("hybrid", _player_hurt_bake, PLAYER_HURT_NEEDS),
-    ("hybrid", _player_down_bake, PLAYER_DOWN_NEEDS),
-    ("hybrid", _creak_bake, CREAK_NEEDS),
-    ("hybrid", _gust_bake, GUST_NEEDS),
-    ("hybrid", _thud_bake, THUD_NEEDS),
-)
+# (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts.
+# Pusto: wszystkie dotychczasowe rodziny mają werdykt.
+CANDIDATES: tuple = ()
 
 
 def build_alts() -> None:

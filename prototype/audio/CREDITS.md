@@ -18,7 +18,6 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 |---|---|---|---|---|---|
 | ak47_open_2m | nagranie | Sonniss GDC 2018 — The Outdoor Gun Acoustics Library | Pole Position Production | sonniss-gdc-2.0 | AK47_big_open_area_2m_above_behind_gun_RSM191_M.wav |
 | akm_close_1m | nagranie | Sonniss GDC 2016 — AKM 7.62x39mm | Pole Position Production | sonniss-gdc-2.0 | AKM_7.62x39mm_1m_left_on_ground_DPA4062_clean_Triple_shots_x_1.wav |
-| alien_beast_deep_5 | nagranie | Sonniss GDC 2019 — Alien Voices | Gage Freeman | sonniss-gdc-2.0 | Alien Beast Deep - Medium 5.wav |
 | alien_death_01 | nagranie | Sonniss GDC 2017 — CREATURES ZONE | MatiasMacSD | sonniss-gdc-2.0 | Creature_Alien_Death_01.wav |
 | aquatic_gurgling_2 | nagranie | Sonniss GDC 2026 — Vox Bestiae - Source Elements | SoundBits | sonniss-gdc-2.0 | CREAAqua_Aquatic Creature Gurgling 2_SNDBTS_VB-SE.wav |
 | arrow_whoosh | nagranie | Sonniss GDC 2020 — PARTICLES An Organic & Granular Journey | SoundFxwizard | sonniss-gdc-2.0 | PARTICLES_WHOOSH_Arrow 01.wav |
@@ -33,7 +32,6 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | boot_concrete_walk | nagranie | Sonniss GDC 2018 — Ultimate Bare Feet Expansion | Joshua Reinhardt | sonniss-gdc-2.0 | BOOT_CONC CLEAN_WALK.R.wav |
 | boot_metal_walk | nagranie | Sonniss GDC 2017 — Edward – Foleyart Collection Add-On Extended Footsteps | Tovusound | sonniss-gdc-2.0 | 237_Foley_Footsteps_Metal_Boot_Walk_Normal_Close.wav |
 | bow_midflight | nagranie | Sonniss GDC 2019 — Nocked | Eiravaein Works | sonniss-gdc-2.0 | Nocked,archery,firing,loose,Vaeyanbow,midflight,wide,mythic,sleek,swirl,rattle,alt14.wav |
-| breath_inhale_squeal_05 | nagranie | Sonniss GDC 2026 — Humanoid Creatures Vol 4 - Monstrous and Undead Creature Vocalization Sound Sets | Epic Stock Media | sonniss-gdc-2.0 | HMNBrth_Construction Kit Male Screeching Breath Inhale Weak Squeal 05_ESM_HC4.wav |
 | bullet_drop_wood_04 | nagranie | Sonniss GDC 2016 — Bullet SFX | Stuart Duffield | sonniss-gdc-2.0 | Bullet_Drop_Wood_04.wav |
 | cannonball_impact_005 | nagranie | Sonniss GDC 2023 — Naval Warfare | Gladestock Studios | sonniss-gdc-2.0 | GS cannonball impact 005.wav |
 | creature_step_damp | nagranie | Sonniss GDC 2020 — Cave Creature Sound Effects | Bluezone | sonniss-gdc-2.0 | Bluezone_BC0272_creature_footstep_damp_015.wav |
@@ -96,12 +94,11 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | thunder_crack_02 | nagranie | Sonniss GDC 2018 — Thunder | Soundrangers | sonniss-gdc-2.0 | thunder_mountainous_big_crack_02.wav |
 | thunder_strike_03 | nagranie | Sonniss GDC 2018 — Thunder | Soundrangers | sonniss-gdc-2.0 | thunder_strike_03.wav |
 | troll_death_01 | nagranie | Sonniss GDC 2017 — Troll Monster Vocalizations | Gamemaster Audio | sonniss-gdc-2.0 | troll_monster_death_01.wav |
-| troll_growl_long_05 | nagranie | Sonniss GDC 2017 — Troll Monster Vocalizations | Gamemaster Audio | sonniss-gdc-2.0 | troll_monster_growl_long_05.wav |
 | usas12_close_1m | nagranie | Sonniss GDC 2016 — USAS-12 12g solid slug | Pole Position Production | sonniss-gdc-2.0 | USAS-12_12g_solid_slug_1m_right_CS3_clean_Double_shots_x_1.wav |
 | water_movement_large_009 | nagranie | Sonniss GDC 2020 — Cave Creature Sound Effects | Bluezone | sonniss-gdc-2.0 | Bluezone_BC0272_creature_texture_water_movement_large_animal_009.wav |
 | whip_21 | nagranie | Sonniss GDC 2020 — Hand Guns Sound Effects Pack | Olivier Girardot | sonniss-gdc-2.0 | Whip sound 21.wav |
 | whoosh_wind_gust_11 | nagranie | Sonniss GDC 2024 — Distinct Whooshes | Rescopic Sound | sonniss-gdc-2.0 | WHSH_Airy-Whoosh Wind Gust 11_RSCPC_DW.wav |
 | wind_howl_gust | nagranie | Sonniss GDC 2016 — Howling Winds - Interior | Hzandbits | sonniss-gdc-2.0 | Wind,Int,Howl,Forceful,Tonal,Vocal,Gust.wav |
+| wind_mountain_loop | nagranie | Sonniss GDC 2018 — Wind | Soundrangers | sonniss-gdc-2.0 | wind_harsh_mountain_02_30_loop.wav |
 | yeti_grumble_02 | nagranie | Sonniss GDC 2018 — Yeti Monster | Articulated Sounds | sonniss-gdc-2.0 | MONSTER Yeti grumble 02.wav |
 | zombie_brat_groan_9 | nagranie | Sonniss GDC 2019 — Zombie | Glitchedtones | sonniss-gdc-2.0 | Zombie Subject C Zombie Brat Groan (9).wav |
-| zombie_hiss_1 | nagranie | Sonniss GDC 2019 — Zombie | Glitchedtones | sonniss-gdc-2.0 | Zombie Subject B Hiss (1).wav |
