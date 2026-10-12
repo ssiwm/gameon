@@ -38,7 +38,6 @@ const Lights := preload("res://scripts/lights.gd")
 const Nav := preload("res://scripts/nav.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const ART_TILES := "res://art/tiles.png"     ## 8×4: rzędy 0/2 wierzch, 1/3 wypełnienie
-const ART_PROPS := "res://art/props.png"
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const NEST_SCENE := preload("res://scenes/nest.tscn")
 const STALKER_SCENE := preload("res://scenes/stalker.tscn")
@@ -132,16 +131,7 @@ var _opened_walls: Array = []    ## nazwy już rozbitych ścian (synchronizacja 
 
 var _solid: TileMapLayer
 var _back: TileMapLayer
-var _decals: Node2D
-var _deco: Node2D
-var _terrain_hd: Node2D                 ## dev (--newworld): teren HD rysowany nad kaflami
-var _terrain_tex: CanvasTexture
-var _terrain_list: Array = []           ## [kolumna, wiersz, wierzch(1)/wypełnienie(0), materiał] — kafle solid/platformy (nad _solid)
-var _terrain_back_list: Array = []      ## to samo dla kafli tła (b, w) — rysowane nad _back, pod postaciami
-var _terrain_back: Node2D
 var _mat_tex: Dictionary = {}           ## materiał → CanvasTexture (albedo + normalne)
-var _prop_hd: Dictionary = {}           ## dev: indeks dekoracji (props.png) → [CanvasTexture, rozmiar w pikselach świata] — rekwizyty HD z Tripo
-var _props_tex: Texture2D
 var _deco_list: Array = []             ## [pozycja stóp, indeks dekoracji, flip]
 var _rows := 2                         ## wierszy w atlasie (2 = kod, 4 = art/tiles.png)
 var _decal_list: Array = []            ## [pos, radius, seed]
@@ -170,18 +160,10 @@ func _ready() -> void:
 	add_child(_solid)
 	for l in [_back, _solid]:
 		l.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	# dekoracje (trawa, kamienie, trzciny…) — nad kaflami, cieniowane
-	_deco = Node2D.new()
-	_deco.name = "Deco"
-	_deco.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	add_child(_deco)
-	# plamy krwi — nad kaflami, pod postaciami; cieniowane (widać je w świetle)
-	_decals = Node2D.new()
-	_decals.name = "Decals"
-	if Sprites.newitem:
-		_decals.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	add_child(_decals)
-	_stable = [_back, _solid, _deco, _decals]
+	# kafle to już tylko kolizje: obraz mapy (geometria, dekoracje, krew) buduje widok 3D z tej samej mapy — warstwy nic nie rysują
+	_back.visible = false
+	_solid.visible = false
+	_stable = [_back, _solid]
 	_load(CAMPAIGN[0])
 
 ## Przebudowuje poziom na mapę `id` (wołane na każdym peerze z tym samym id). Encje starej mapy znikają od razu
@@ -196,7 +178,6 @@ func load_map(id: String) -> void:
 	_back.clear()
 	_solid.clear()
 	_deco_list.clear()
-	_terrain_list.clear()
 	_decal_list.clear()
 	spawns.clear()
 	exits.clear()
@@ -232,8 +213,6 @@ func _load(id: String) -> void:
 	nav = Nav.new()
 	nav.build((_map[0] as String).length(), _map.size(), _is_solid, _is_platform_cell)
 	_spawn_entities()
-	_deco.queue_redraw()
-	_decals.queue_redraw()
 
 
 # ---------------------------------------------------------------- mapa
@@ -254,7 +233,6 @@ func _build_map() -> void:
 		for c in cols:
 			_place_cell(c, r)
 	_place_deco()
-	_build_terrain_hd()
 
 ## Kolor ciemności = ambient mapy × tint pogody, przy błysku ciągnięty ku jasnemu kolorowi burzy.
 func _apply_darkness() -> void:
@@ -392,8 +370,6 @@ func _refresh_region(rc: Rect2i) -> void:
 			_place_cell(c, r)
 	nav = Nav.new()
 	nav.build(cols, _map.size(), _is_solid, _is_platform_cell)
-	if _terrain_hd != null:
-		_build_terrain_hd()                  # zawał / odbudowa: kafle HD wg aktualnej mapy
 
 ## Serwer: restart misji (wipe / nowa misja) — mapa wraca do stanu z danych.
 func reset_collapse() -> void:
@@ -428,9 +404,6 @@ func _row(c: int, r: int, top: bool) -> int:
 ## Dekoracje z art/props.png na wierzchach brył — deterministycznie z pozycji.
 ## Indeksy jak w bake_sprites.PROPS: grass_a, grass_b, fern, rock, bones, reeds, fence, logs.
 func _place_deco() -> void:
-	_props_tex = Sprites.texture(ART_PROPS)
-	if _props_tex == null:
-		return
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -461,7 +434,6 @@ func _place_deco() -> void:
 	# akcenty ręczne z danych mapy (płot, kłody…)
 	for p in _accents:
 		_deco_list.append([p[0], p[1], false])
-	_deco.queue_redraw()
 
 ## Znak mapy → materiał HD (art/world/mat_<nazwa>.png; „terrain" = terrain_hd.png). Kolumny atlasu kafli (KINDS) pokrywane przez HD są
 ## w trybie --newworld przezroczyste w oryginalnym atlasie, żeby stary pixel-art nie prześwitywał.
@@ -472,117 +444,6 @@ const PLATFORM_MATS := ["grate", "plank"]
 ## Dev: HD teren z atlasu art/world/terrain_hd.png (+ _n.png): wiersz 0 = glina 1024×256, wiersz 1 = wierzch 1024×320 (z przewisem trawy 64 px).
 ## Pas ma okres 4 kafli (kolumna % 4), więc sąsiednie kafle łączą się bez szwów.
 const TERRAIN_HD_OVER := 4.0           ## przewis trawy ponad komórką (piksele świata)
-
-func _load_terrain_hd() -> CanvasTexture:
-	if not Sprites.newworld:
-		return null
-	return _load_material("terrain")
-
-## Atlas materiału (albedo + normalne, mipmapy). „terrain" to terrain_hd.png, reszta mat_<nazwa>.png.
-func _load_material(mat: String) -> CanvasTexture:
-	if _mat_tex.has(mat):
-		return _mat_tex[mat]
-	var base := "res://art/world/terrain_hd" if mat == "terrain" else "res://art/world/mat_" + mat
-	var d := Sprites.texture(base + ".png")
-	var ct: CanvasTexture = null
-	if d != null:
-		ct = CanvasTexture.new()
-		ct.diffuse_texture = Sprites.hd_texture(d.get_image(), false)
-		var n := Sprites.texture(base + "_n.png")
-		if n != null:
-			ct.normal_texture = Sprites.hd_texture(n.get_image(), true)
-		ct.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	_mat_tex[mat] = ct
-	return ct
-
-## Wołane z main.gd po sparsowaniu `--newworld` (poziom budowany jest wcześniej niż flagi) oraz przy każdej budowie mapy.
-func enable_world_hd() -> void:
-	if _terrain_hd == null:
-		_terrain_tex = _load_terrain_hd()
-		if _terrain_tex == null:
-			return
-		_terrain_hd = Node2D.new()
-		_terrain_hd.name = "TerrainHD"
-		_terrain_hd.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		add_child(_terrain_hd)
-		move_child(_terrain_hd, _solid.get_index() + 1)               # nad kaflami, pod dekoracjami i postaciami
-		_stable.append(_terrain_hd)
-		_terrain_back = Node2D.new()
-		_terrain_back.name = "TerrainHDBack"
-		_terrain_back.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		add_child(_terrain_back)
-		move_child(_terrain_back, _back.get_index() + 1)               # nad tłem-kaflami, pod bryłami i postaciami
-		_stable.append(_terrain_back)
-		_hide_pixel_tiles()
-		_load_props_hd()
-	_build_terrain_hd()
-	_deco.queue_redraw()
-
-## Kolumny atlasu kafli pokryte materiałami HD stają się przezroczyste (kolizje i okludery zostają w danych kafli).
-func _hide_pixel_tiles() -> void:
-	var src := _ts.get_source(0) as TileSetAtlasSource
-	var tex: Texture2D = src.texture
-	if tex == null:
-		return
-	var img: Image = tex.get_image()
-	img.convert(Image.FORMAT_RGBA8)
-	for ch in MATERIALS:
-		if not KINDS.has(ch) or _load_material(MATERIALS[ch]) == null:
-			continue
-		var col: int = KINDS[ch][0]
-		for y in img.get_height():
-			for x in range(col * TILE, col * TILE + TILE):
-				img.set_pixel(x, y, Color(0, 0, 0, 0))
-	src.texture = ImageTexture.create_from_image(img)
-
-## Rekwizyty HD (art/world/prop_<nazwa>.png + _n.png, 16 px na piksel świata) podmieniają dekoracje z props.png: 3 kamień, 6 płot, 7 kłody.
-func _load_props_hd() -> void:
-	_prop_hd.clear()
-	for spec in [[3, "rock", Vector2(14, 8)], [6, "fence", Vector2(20, 14)], [7, "logs", Vector2(18, 10)]]:
-		var d := Sprites.texture("res://art/world/prop_%s.png" % spec[1])
-		if d == null:
-			continue
-		var ct := CanvasTexture.new()
-		ct.diffuse_texture = Sprites.hd_texture(d.get_image(), false)
-		var n := Sprites.texture("res://art/world/prop_%s_n.png" % spec[1])
-		if n != null:
-			ct.normal_texture = Sprites.hd_texture(n.get_image(), true)
-		ct.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		_prop_hd[int(spec[0])] = [ct, spec[2]]
-	# kości i trzciny: modele z art/items/ (items_proc_bake.py), skala względem ramki modelu
-	for spec in [[4, "bones", 0.7], [5, "reeds", 0.9]]:
-		var ct2: CanvasTexture = ItemsHd.texture(String(spec[1]))
-		if ct2 != null:
-			_prop_hd[int(spec[0])] = [ct2, ItemsHd.frame_wp(String(spec[1])) * float(spec[2])]
-
-func _build_terrain_hd() -> void:
-	if _terrain_hd == null:
-		return
-	_terrain_list.clear()
-	_terrain_back_list.clear()
-	for r in _map.size():
-		var row: String = _map[r]
-		for c in row.length():
-			var ch := row[c]
-			if not KINDS.has(ch) and ch != ".":
-				# znacznik (S, f, g…) — tło jak w _place_cell (słup nad / pod komórką, inaczej lewy sąsiad)
-				var bc := _marker_back_char(c, r)
-				if bc != "." and KINDS.has(bc) and KINDS[bc][2] == 2 and MATERIALS.has(bc) and _load_material(MATERIALS[bc]) != null:
-					_terrain_back_list.append([c, r, 0, MATERIALS[bc]])
-				continue
-			if not MATERIALS.has(ch) or not KINDS.has(ch):
-				continue
-			var mat: String = MATERIALS[ch]
-			if _load_material(mat) == null:
-				continue
-			var kind: int = KINDS[ch][2]
-			var top := 0 if (kind != 0 or _is_solid(c, r - 1)) else 1
-			var entry := [c, r, top, mat]
-			if kind == 2:
-				_terrain_back_list.append(entry)
-			else:
-				_terrain_list.append(entry)
-	_rebuild_hd_chunks()
 
 ## Fragment (chunk) świata HD: węzeł rysujący swoją porcję kafli i rekwizytów. Dzięki podziałowi silnik odrzuca (culling) fragmenty poza kadrem
 ## zamiast rysować całą mapę jednym elementem; wpisy posortowane wg tekstury sklejają się w mało wywołań rysowania.
@@ -597,62 +458,6 @@ class HdChunk extends Node2D:
 				draw_texture_rect_region(it[0], it[1], it[2])
 
 const HD_CHUNK := 16                    ## kafli na bok fragmentu (16×16 kafli = 256×256 px świata; kadr gry to ok. 400×225 px)
-
-## Buduje fragmenty obu warstw HD (tło nad `_back`, bryły i rekwizyty nad `_solid`) z list `_terrain_list`, `_terrain_back_list` i `_deco_list`.
-func _rebuild_hd_chunks() -> void:
-	for node in [_terrain_hd, _terrain_back]:
-		if node == null:
-			continue
-		for ch in node.get_children():
-			node.remove_child(ch)
-			ch.queue_free()
-	var layers := [[_terrain_hd, _terrain_list, true], [_terrain_back, _terrain_back_list, false]]
-	for layer in layers:
-		var node: Node2D = layer[0]
-		if node == null:
-			continue
-		var list: Array = (layer[1] as Array).duplicate()
-		list.sort_custom(func(x, y): return String(x[3]) < String(y[3]))            # wg materiału → sklejanie wywołań rysowania
-		var buckets := {}
-		for t in list:
-			var c: int = t[0]
-			var r: int = t[1]
-			var mat: String = t[3]
-			var tex := _load_material(mat)
-			if tex == null:
-				continue
-			var col := c % 4
-			var dst: Rect2
-			var src: Rect2
-			if int(t[2]) == 1 and not PLATFORM_MATS.has(mat):
-				dst = Rect2(c * TILE, r * TILE - TERRAIN_HD_OVER, TILE, TILE + TERRAIN_HD_OVER)
-				src = Rect2(col * 256, 256, 256, 320)
-			else:
-				dst = Rect2(c * TILE, r * TILE, TILE, TILE)
-				src = Rect2(col * 256, 0, 256, 256)
-			var key := Vector2i(c / HD_CHUNK, r / HD_CHUNK)
-			if not buckets.has(key):
-				buckets[key] = []
-			buckets[key].append([tex, dst, src])
-		if bool(layer[2]):
-			for d in _deco_list:                                                      # rekwizyty HD (płot, kłody, kamień) po kaflach w swoim fragmencie
-				if not _prop_hd.has(int(d[1])):
-					continue
-				var info: Array = _prop_hd[int(d[1])]
-				var sz: Vector2 = info[1]
-				var feet: Vector2 = d[0]
-				var pdst := Rect2(feet.x - sz.x * 0.5, feet.y - sz.y, sz.x, sz.y)
-				if d[2]:
-					pdst = Rect2(feet.x + sz.x * 0.5, feet.y - sz.y, -sz.x, sz.y)
-				var pkey := Vector2i(int(feet.x / TILE) / HD_CHUNK, int((feet.y - 1.0) / TILE) / HD_CHUNK)
-				if not buckets.has(pkey):
-					buckets[pkey] = []
-				buckets[pkey].append([info[0], pdst, null])
-		for key in buckets:
-			var chunk := HdChunk.new()
-			chunk.name = "c_%d_%d" % [key.x, key.y]
-			chunk.items = buckets[key]
-			node.add_child(chunk)
 
 func _is_solid(c: int, r: int) -> bool:
 	# poza mapą = bryła (krawędzie mapy nie świecą)
@@ -1336,7 +1141,6 @@ func add_decal(pos: Vector2, radius: float) -> void:
 	_decal_list.append([pos, radius, randi()])
 	if _decal_list.size() > 260:
 		_decal_list.pop_front()
-	_decals.queue_redraw()
 
 ## Punkt startowy dla slotu gracza (1..4); kolejne sloty lekko przesunięte.
 func spawn_for(slot: int) -> Vector2:
