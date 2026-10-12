@@ -228,8 +228,106 @@ def weapons() -> None:
     bc.hybrid(_keys("explosion", 2), _explosion_bake, list(EXPLOSION_SRC))
 
 
+# ============================================================ F3, część 2 — kandydaci do odsłuchu
+
+# --- SINEW-6, wersja 2 (uwaga z odsłuchu: wersja 1 „zbyt krótka i jednostajna, to kusza — więcej dynamiki").
+# Strzał z kuszy to ciąg zdarzeń, nie jedno pyknięcie: zamek → strzał cięciwy i uderzenie ramion o ogranicznik →
+# gasnące drganie ramion → świst odlatującego bełtu. Głośny, ostry początek, potem dwa cichsze plany.
+CIEGNO6_V2_NEEDS = ["crossbow_loose", "crossbow_functions", "whip_21", "arrow_whoosh", "bow_midflight"]
+
+
+def _ciegno6_v2_bake() -> None:
+    for i in range(2):
+        r = Rng(0x3480 + i * 2113)
+        latch = _fade(d.from_onset(bc.src("crossbow_functions", 1.00, 0.08), 0.3, thr_db=-18.0), 0.02, 0.05)
+        snap = d.repitch(d.from_onset(bc.src("crossbow_loose", 0.06, 0.34), 0.5), (0.0, -1.5)[i])
+        crack = _fade(d.from_onset(bc.src("whip_21", 0.0, 0.5), 0.5, thr_db=-8.0), 0.06, 0.16)       # trzask bicza od samego czubka
+        thunk = thump(0.10, vary(r, 150, .08), vary(r, 62, .08), 0.02, 0.035)                        # ramiona o ogranicznik
+        f0 = vary(r, 132, .06)
+        thrum = ring(r, [f0, f0 * 2.01, f0 * 3.03, f0 * 4.2], [.55, .38, .22, .12], [1.0, .6, .35, .2], dur=.62)
+        tt = np.arange(len(thrum)) / d.SR
+        thrum = thrum * (1.0 + 0.55 * np.sin(d.TAU * vary(r, 27, .1) * tt) * np.exp(-tt / 0.18))     # brzęczenie gasnące w ok. 0,2 s
+        whoosh = bc.src(("arrow_whoosh", "bow_midflight")[i], (0.18, 0.12)[i], 0.60)
+        whoosh = _fade(whoosh * d.env_pts(len(whoosh), [(0, 0), (.03, 1), (10, 1)]), 0.30, 0.56)     # narasta i odchodzi
+        x = d.mix([(_unit(latch), 0.45, 0.0), (_unit(snap), 1.0, 0.012), (_unit(crack), 0.5, 0.012), (thunk, 0.7, 0.014),
+                   (thrum, 0.42, 0.016), (_unit(whoosh), 0.34, 0.045)], ms(760))
+        finalize("ciegno6_shot_%d" % (i + 1), d.reverb(d.filt(x, "hp", 45.0, order=2), ir("close"), wet=.15), lufs=-21.7)
+
+
+# --- Trafienie pocisku w twarde: cegła/beton, skała, ściana — krótko, bo pogłos dokłada silnik.
+IMPACT_HARD_SRC = ("impact_concrete_brick", "impact_rock_4", "impact_22")
+
+
+def _impact_hard_bake() -> None:
+    for i, sid in enumerate(IMPACT_HARD_SRC):
+        x = _fade(_decay(d.from_onset(bc.src(sid, 0.0, 0.6), 1.0, thr_db=-10.0), 0.02, 0.07), 0.20, 0.32)
+        finalize("impact_hard_%d" % (i + 1), d.reverb(d.filt(x, "hp", 80.0), ir("close"), wet=.18), lufs=-23.0)
+
+
+# --- Trafienie w ciało: uderzenie pocisku, mokre trafienie, tępy cios.
+IMPACT_FLESH_SRC = (("impact_body_thump", 0.0), ("impact_body_flesh_25", 0.12), ("stab_punch_hit", 0.03))
+
+
+def _impact_flesh_bake() -> None:
+    for i, (sid, t0) in enumerate(IMPACT_FLESH_SRC):
+        x = _fade(d.from_onset(bc.src(sid, t0, 0.5), 1.0, thr_db=-10.0), 0.22, 0.38)
+        finalize("impact_flesh_%d" % (i + 1), d.saturate(d.reverb(x, ir("close"), wet=.15), 1.6), lufs=-15.0)
+
+
+# --- Przelot pocisku obok słuchacza (stereo jak w syntezie): dwa nagrania, trzeci wariant o 3 półtony wyżej.
+WHIZZ_NEEDS = ["bullet_flyby_05", "bullet_flyby_06"]
+
+
+def _whizz_bake() -> None:
+    for i, (sid, semis) in enumerate((("bullet_flyby_05", 0.0), ("bullet_flyby_06", 0.0), ("bullet_flyby_05", 3.0))):
+        x = d.from_onset(d.repitch(bc.src(sid, 0.0, 0.5, mono=False), semis), 8.0, thr_db=-30.0)
+        finalize("whizz_%d" % (i + 1), _fade(x, 0.16, 0.26), lufs=-12.7)
+
+
+# --- Łuska na ziemi: mosiężna łuska odbijająca się od drewna, pocisk na drewnie, łuska strzelby na betonie.
+SHELL_SRC = (("shell_bounce_wood_05", 0.0), ("bullet_drop_wood_04", 0.0), ("shell_land_concrete_02", 0.0))
+
+
+def _shell_bake() -> None:
+    for i, (sid, t0) in enumerate(SHELL_SRC):
+        x = _fade(d.from_onset(bc.src(sid, t0, 0.5), 1.0, thr_db=-10.0), 0.18, 0.30)
+        x = d.limiter(d.saturate(_unit(d.filt(x, "hp", 300.0)), 1.5), -7.0)      # ścięcie czubka: dzwonienie łuski słyszalne przy tym samym szczycie
+        finalize("shell_%d" % (i + 1), d.reverb(x, ir("dead"), wet=.15), lufs=-19.4)
+
+
+# --- Szelest ekwipunku: trzy ruchy oporządzenia z nagranego marszu (bez kroków — odcięte poniżej 250 Hz).
+GEAR_NEEDS = ["army_gear_walk"]
+_GEAR = (1.64, 2.78, 4.72)
+
+
+def _foley_gear_bake() -> None:
+    for i, t in enumerate(_GEAR):
+        x = d.filt(bc.src("army_gear_walk", t - 0.03, 0.34), "hp", 250.0, order=4)
+        x = _fade(x * d.env_pts(x.shape[-1], [(0, 0), (.008, 1), (10, 1)]), 0.20, 0.30)
+        finalize("foley_gear_%d" % (i + 1), x, lufs=-28.8)
+
+
+# --- Suchy strzał: kurek pistoletu bez naboju + niski stuk bijaka (samo nagranie to cienkie tyknięcie powyżej 5 kHz).
+DRY_FIRE_NEEDS = ["m1911_dry_fire"]
+
+
+def _dry_fire_bake() -> None:
+    click = _fade(d.from_onset(bc.src("m1911_dry_fire", 1.05, 0.25), 0.5, thr_db=-10.0), 0.08, 0.14)
+    knock = thump(0.05, 260, 120, 0.012, 0.018)
+    x = d.mix([(_unit(click), 1.0), (knock, 0.6)], ms(140))
+    finalize("dry_fire", d.reverb(x, ir("dead"), wet=.1), lufs=-21.3)
+
+
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — kandydaci do następnego odsłuchu
-CANDIDATES: tuple = ()
+CANDIDATES: tuple = (
+    ("hybrid2", _ciegno6_v2_bake, CIEGNO6_V2_NEEDS),
+    ("hybrid", _impact_hard_bake, list(IMPACT_HARD_SRC)),
+    ("hybrid", _impact_flesh_bake, [s for s, _ in IMPACT_FLESH_SRC]),
+    ("hybrid", _whizz_bake, WHIZZ_NEEDS),
+    ("hybrid", _shell_bake, [s for s, _ in SHELL_SRC]),
+    ("hybrid", _foley_gear_bake, GEAR_NEEDS),
+    ("hybrid", _dry_fire_bake, DRY_FIRE_NEEDS),
+)
 
 
 def build_alts() -> None:
