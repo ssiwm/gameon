@@ -265,8 +265,11 @@ func stream(key: String) -> AudioStream:
 	if s == null:
 		_report_missing(key, "nie załadował się jako AudioStream")
 		return null
-	if Manifest.LOOPS.has(key) and s is AudioStreamWAV:
-		_enable_loop(s)
+	if Manifest.LOOPS.has(key):
+		if s is AudioStreamWAV:
+			_enable_loop(s)
+		elif s is AudioStreamOggVorbis:
+			(s as AudioStreamOggVorbis).loop = true      # muzyka i ambient: Ogg Vorbis, pętla na całej długości co do próbki
 	_cache[key] = s
 	return s
 

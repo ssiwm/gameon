@@ -127,6 +127,14 @@ ekranu) sama bliska, od `FAR_FULL` (900 px) sama daleka. Rodzinę daleką rozpoz
 ją przez dopisanie do `FAR_FAMILIES` w `bake_weapons.py`, bez zmian w grze. Własny strzał gracza jest niepozycyjny i zawsze bliski.
 Dev: `--nofar` wyłącza dalekie wersje — do porównania w grze. Progi i charakter ogona dobrane liczbami, nie uchem.
 
+### 3.6 Format wydania
+
+Efekty (`audio/sfx/**`) to WAV-y importowane z kompresją QOA. Muzyka i ambient (`audio/music/`, `audio/amb/`) grają z plików
+Ogg Vorbis, które `bake_audio.py` koduje z WAV-ów (potrzebny `ffmpeg` w PATH); WAV-y tych dwóch grup są plikami wzorcowymi
+z importem „skip” — Godot ich nie importuje ani nie eksportuje. Manifest wskazuje właściwe rozszerzenie, a pętlę włącza
+`audio_director.gd: stream()` dla obu rodzajów strumieni. Zaimportowane audio waży ok. 8 MB zamiast 53 MB.
+Nowa grupa w Ogg: dopisać katalog do `OGG_GROUPS` w `bake_audio.py`.
+
 ## 4. Narzędzia
 
 ```bash
