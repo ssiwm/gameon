@@ -265,18 +265,18 @@ def _build_core_weapons() -> None:
             amp *= .5
         x[:ms(6)] += tick(r, 5500, 1.5, 6, .0012)[:ms(6)] * .3
         finalize("shell_%d" % (i + 1), d.reverb(x, ir("dead"), wet=.15), peak=-1.5)
-    # Foley ekwipunku (podczas biegu): pasy, klamry, magazynki
+    # Foley ekwipunku (przy chodzeniu): szelest ubrania + głuche stuknięcia pasów i ładownic. Bez metalicznego brzęku —
+    # wysokie „klamry” (1,8–5 kHz) grane przy co trzecim kroku brzmiały w grze sztucznie i męcząco.
     for i in range(3):
         r = Rng(0xB300 + i * 1999)
         n = ms(300)
-        cloth = d.sweep(d.colored(n, r, 1.0), "bp", d.glide(vary(r, 900, .2), vary(r, 1600, .2), n), 1.0) * d.env_pts(n, [(0, 0), (.04, .8), (.10, .4), (.28, 0)]) * .6
+        cloth = d.sweep(d.colored(n, r, 1.2), "bp", d.glide(vary(r, 520, .2), vary(r, 900, .2), n), 1.0) * d.env_pts(n, [(0, 0), (.04, .8), (.10, .4), (.28, 0)]) * .6
         x = cloth.copy()
-        for _ in range(r.integers(2, 5)):
-            k = ms(r.uniform(5, 160))
-            f = r.uniform(1800, 5200)
-            seg = d.mix([(tick(r, f, 3.0, 8, .0015), 1.0), (ring(r, [f * .9, f * 1.7], [.03, .02], dur=.06), .5)])[:n - k]
-            x[k:k + len(seg)] += seg * r.uniform(.3, .8)
-        finalize("foley_gear_%d" % (i + 1), x, peak=-8.0)
+        for _ in range(r.integers(1, 3)):
+            k = ms(r.uniform(5, 150))
+            seg = d.mix([(thump(.05, r.uniform(260, 420), 140, .012, .018), .9), (tick(r, r.uniform(700, 1300), 1.5, 12, .004), .25)])[:n - k]
+            x[k:k + len(seg)] += seg * r.uniform(.4, .8)
+        finalize("foley_gear_%d" % (i + 1), d.lp(x, 3500.0), lufs=-28.8)
 
     # Szum w uszach po wybuchu/ciosie (tinnitus): dwa tony HF, powolne zanikanie
     n = d.sec(3.6)
