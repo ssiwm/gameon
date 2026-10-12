@@ -1028,13 +1028,18 @@ func take_item(n: String) -> void:
 	else:
 		_take_item_rpc(n)
 
+## Dźwięk podniesienia wg rodzaju przedmiotu (pickup.gd: kind); reszta (flary, zaopatrzenie) gra „item_pickup”.
+const PICKUP_SOUND := {
+	"ammo": "ammo_pickup", "cache": "ammo_pickup", "weapon": "weapon_pickup", "health": "medkit_pickup",
+	"scrap": "scrap_pickup", "stash": "scrap_pickup", "tag": "tag_pickup",
+}
+
 @rpc("authority", "call_local", "reliable")
 func _take_item_rpc(n: String) -> void:
 	var h := get_node_or_null(n)
 	if h == null:
 		return
-	var snd := "revive" if h.kind == "health" else ("weapon_pickup" if h.kind == "weapon" else "ammo_pickup")
-	Audio.play_at(snd, h.global_position, Audio.BUS_WORLD, -8.0, 1.4 if h.kind == "health" else 1.0)
+	Audio.play_at(String(PICKUP_SOUND.get(h.kind, "item_pickup")), h.global_position, Audio.BUS_WORLD, -8.0)
 	h.queue_free()
 
 ## Serwer: restart misji czyści przedmioty.

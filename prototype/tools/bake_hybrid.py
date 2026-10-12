@@ -808,11 +808,50 @@ def world() -> None:
     bc.hybrid(_keys("amb_thud", 2), _thud_bake, THUD_NEEDS)
 
 
+# ============================================================ PODNOSZENIE: RODZAJE PRZEDMIOTÓW — kandydaci
+# Nowe klucze (synteza w bake_weapons.py): każdy rodzaj przedmiotu brzmi jak to, czym jest. Głośność = zmierzona synteza.
+PICKUP_ITEM_NEEDS = ["bag_grab_04"]
+PICKUP_MEDKIT_NEEDS = ["zipper_smallbag", "bag_grab_04"]
+PICKUP_SCRAP_NEEDS = ["scrap_pile_03"]
+PICKUP_TAG_NEEDS = ["chain_clinking_04", "bag_grab_04"]
+
+
+def _pickup_item_bake() -> None:                                     # flary, zaopatrzenie: miękki chwyt torby
+    x = d.lp(d.filt(_clip("bag_grab_04", 0.0, 0.3, -1.0, 0.24, tail=.10), "hp", 70.0, order=2), 4000.0)
+    finalize("item_pickup", d.reverb(x, ir("dead"), wet=.12), lufs=-19.0)
+
+
+def _pickup_medkit_bake() -> None:                                   # apteczka: chwyt + krótki suwak torby
+    zipr = d.lp(_clip("zipper_smallbag", 1.07, 0.4, -3.0, 0.36, tail=.12), 6000.0)
+    grab = d.lp(_clip("bag_grab_04", 0.0, 0.3, -1.0, 0.24, tail=.10), 3000.0)
+    x = d.limiter(_unit(d.filt(d.mix([(grab, 0.7), (zipr, 1.0, .04)], ms(410)), "hp", 80.0, order=2)), -5.0)
+    finalize("medkit_pickup", d.reverb(x, ir("dead"), wet=.12), lufs=-19.0)
+
+
+def _pickup_scrap_bake() -> None:                                    # złom: garść żelastwa
+    x = d.mix([(d.lp(_clip("scrap_pile_03", 0.50, 0.7, -4.0, 0.50, tail=.25), 5000.0), 1.0), (thump(.08, 150, 70, .02, .035), 0.4)], ms(520))
+    x = d.limiter(_unit(d.filt(x, "hp", 70.0, order=2)), -5.0)
+    finalize("scrap_pickup", d.reverb(x, ir("dead"), wet=.14), lufs=-19.5)
+
+
+def _pickup_tag_bake() -> None:                                      # nieśmiertelnik: dwa brzęknięcia blaszek na łańcuszku
+    a = _clip("chain_clinking_04", 0.41, 0.12, -5.0, 0.14, tail=.08)
+    b = _clip("chain_clinking_04", 1.11, 0.36, -5.0, 0.40, tail=.2)
+    grab = d.lp(_clip("bag_grab_04", 0.0, 0.3, -1.0, 0.24, tail=.10), 2500.0)
+    x = d.lp(d.mix([(a, 0.7), (b, 1.0, .09), (grab, 0.35)], ms(500)), 6500.0)
+    x = d.limiter(_unit(d.filt(x, "hp", 90.0, order=2)), -5.0)
+    finalize("tag_pickup", d.reverb(x, ir("close"), wet=.16), lufs=-19.0)
+
+
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts.
-# Pusto: wszystkie dotychczasowe rodziny mają werdykt.
-CANDIDATES: tuple = ()
+CANDIDATES: tuple = (
+    ("hybrid", _pickup_item_bake, PICKUP_ITEM_NEEDS),
+    ("hybrid", _pickup_medkit_bake, PICKUP_MEDKIT_NEEDS),
+    ("hybrid", _pickup_scrap_bake, PICKUP_SCRAP_NEEDS),
+    ("hybrid", _pickup_tag_bake, PICKUP_TAG_NEEDS),
+)
 
 
 def build_alts() -> None:

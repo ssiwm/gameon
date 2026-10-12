@@ -161,6 +161,14 @@
    "supplier": "BluezoneCorp",
    "license": "sonniss-gdc-2.0"
   },
+  "chain_clinking_04": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 1of8/Articulated Sounds - Ghosts Return/METAL CHAIN Old Barn, Manipulation, Clinking 04.wav",
+   "sha256": "a72002a8e4a1b01f33343c131448d6b6688dd891d37815a22b6672561b491f7b",
+   "pack": "Sonniss GDC 2019 — Ghosts Return",
+   "supplier": "Articulated Sounds",
+   "license": "sonniss-gdc-2.0"
+  },
   "creature_step_damp": {
    "kind": "lib",
    "file": "sonniss/2020/Bluezone - Cave Creature Sound Effects/Bluezone_BC0272_creature_footstep_damp_015.wav",
@@ -569,6 +577,14 @@
    "supplier": "Pole Position Production",
    "license": "sonniss-gdc-2.0"
   },
+  "scrap_pile_03": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 3of9/Double Trouble Audio - Junk and Debris/Pile of Scrap Metal - Metal Scrap Pile, Rustle, Drop, Long Tail 03.wav",
+   "sha256": "8201cf9e77f23517edb52018a137b6d1d3de978b79d6f86f25d2e3bc683c9a42",
+   "pack": "Sonniss GDC 2017 — Junk and Debris",
+   "supplier": "Double Trouble Audio",
+   "license": "sonniss-gdc-2.0"
+  },
   "screeching_monster_2": {
    "kind": "lib",
    "file": "sonniss/2020/Olivier Girardot - Monster Sounds & Atmospheres/Screeching Monster 2-1.wav",
@@ -727,6 +743,14 @@
    "sha256": "e5bf5e2989901ab6e54f0ea6f3373ab71d49f840220ef186c536c25fdd53e10f",
    "pack": "Sonniss GDC 2018 — Yeti Monster",
    "supplier": "Articulated Sounds",
+   "license": "sonniss-gdc-2.0"
+  },
+  "zipper_smallbag": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 8of9/SoundBits - Open & Close/Zipper_SmallBag_01_04.wav",
+   "sha256": "15c6bd66ddd320dc5e89dff7454a4eb809e9a74b755542d627369c461e341316",
+   "pack": "Sonniss GDC 2017 — Open & Close",
+   "supplier": "SoundBits",
    "license": "sonniss-gdc-2.0"
   }
  }
