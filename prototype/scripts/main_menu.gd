@@ -213,7 +213,7 @@ func _build_squad_panel() -> void:
 	_diff_label.tooltip_text = tr("Chosen by the host. Applies to enemies, the stalker, the boss, noise and drops.")
 	_diff_label.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			Difficulty.set_level((Difficulty.level + 1) % Difficulty.NAMES.size())
+			Difficulty.choose((Difficulty.level + 1) % Difficulty.NAMES.size())
 			Audio.play("ui_click", Audio.BUS_UI, -10.0))
 	_oper = _kv(v, "Operator", "")
 	v.add_child(W.hairline(UiTheme.LINE))

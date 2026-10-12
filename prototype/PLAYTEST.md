@@ -5,12 +5,18 @@ decydują o priorytetach przed jakąkolwiek nową zawartością.
 
 ## 1. Przed sesją (10 min)
 
-- [ ] Eksport z Godota (**nie z edytora**): Project → Export → Windows Desktop, „Export Project". Sprawdź na komputerze,
-      na którym nie ma Godota ani repozytorium.
+- [ ] Eksport skryptem `tools/export_build.sh Windows` (**nie z edytora**) z drzewa, w którym jest komplet `audio_licensed/`
+      (`python3 tools/audio_lib_fetch.py sync`, potem `python3 tools/bake_audio.py`; kontrola: `python3 tools/audio_audit.py --licensed`).
+      Skrypt odmawia eksportu bez nagrań: build z samej syntezy brzmi inaczej, a groza Stalkera stoi na dźwięku — wszyscy
+      uczestnicy muszą dostać ten sam zestaw. Sprawdź build na komputerze, na którym nie ma Godota ani repozytorium.
 - [ ] Uruchom eksport: menu → host → cała misja → ekran wyniku → [ENTER] → druga misja. Zero błędów w konsoli.
 - [ ] Włącz nagrywanie ekranu **z dźwiękiem i mikrofonem** (OBS). Reakcje graczy są ważniejsze od ich opinii.
-- [ ] Zapisz wersję gry (changelog GDD §22) i poziom trudności (domyślnie EASY — dla nowych graczy zostaw).
+- [ ] Zapisz wersję buildu ze stopki menu głównego (np. `1.7.208+abc1234`; ta sama trafia do dziennika sesji).
+- [ ] Ustaw poziom trudności w menu głównym: **EASY** dla nowych graczy. Gra startuje na NORMAL i zapamiętuje ostatni wybór,
+      więc sprawdź go na każdym komputerze, który będzie hostem.
 - [ ] Gracze mają słuchawki. Bez nich cały filar „dźwięk jako groza" przepada.
+- [ ] Dziennik sesji pisze się sam u hosta (`%APPDATA%\Godot\app_userdata\Dead Air '87 Prototype\sessions\`). Po sesji skopiuj
+      ten katalog razem z nagraniem — jest w nim źródło każdego upadku, Uwaga, zamachy Stalkera i statystyki broni (README, „Dziennik sesji”).
 
 ## 2. Zasady sesji
 
@@ -32,7 +38,7 @@ decydują o priorytetach przed jakąkolwiek nową zawartością.
 | Reakcje na głos / śmiech / krzyk do mikrofonu | Czy VAD działa u kogoś innego niż my? |
 | Ile powtórek bez znudzenia | Powtarzalność mapy (GDD §16.0) |
 
-## 3b. Misja 1.2 „Przerwa w Nadawaniu" (kampania zaczyna od niej)
+## 3b. Misja 1.2 „Przerwa w Nadawaniu" (druga misja kampanii; pierwsza to samouczek 1.1 bez Stalkera)
 
 - [ ] Czy gracz rozumie, co robić z generatorem (podpowiedź „Hold E”, pasek postępu)? Ile prób, zanim to zrobi?
 - [ ] Czy generator jest „za głośny / za cichy”? Ile Uwagi zwykle wyrabia drużyna do końca celu (karta wyniku: stealth kept/lost)?
@@ -46,7 +52,7 @@ decydują o priorytetach przed jakąkolwiek nową zawartością.
 - [ ] Kryjówka: czy karta statystyk broni jest czytelna i pomaga wybrać? Czy tablica z odprawą zostaje zauważona i czy lista zagrożeń jest przydatna (nie za długa)?
 - [ ] Kryjówka: czy nic się tam nie pojawia (żadnych wrogów, żadnych odgłosów straszaków)?
 - [ ] Kryjówka: czy gracze zauważają skrzynki i bronie? Czy [Enter] hosta nie pojawia się za wcześnie (klient czeka)?
-- [ ] Kampania: [Enter] po 1.2 → kryjówka → 1.3 (zmiana mapy u klienta bez zawieszenia), po 1.3 → kryjówka → znowu 1.2.
+- [ ] Kampania: [Enter] po 1.2 → kryjówka → 1.3 (zmiana mapy u klienta bez zawieszenia), po 1.3 → kryjówka → boss B1 → kryjówka → znowu 1.1.
 
 ## 4. Sieć (osobny test, 2 komputery w różnych sieciach)
 
@@ -78,3 +84,5 @@ decydują o priorytetach przed jakąkolwiek nową zawartością.
 ## 7. Wynik
 
 Wypełnij tabelę w GDD §23.3 (data, osoby, moment nudy, moment strachu, wniosek → zmiana) i dopiero wtedy zaplanuj kolejne prace.
+Do wniosków dołącz liczby z dziennika sesji: trafienia Stalkera w ludzi na misję, źródła upadków, czas faz, użycia Q, udział broni
+w obrażeniach i w Uwadze. Pytania, na które sesja ma odpowiedzieć, są w `REVIEW_PLAN.md` (etap R6).

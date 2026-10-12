@@ -1,6 +1,6 @@
 # Plan: zmiany po przeglądzie designu (droga do pierwszego playtestu)
 
-Status: **plan z 2026-10-12, sprawdzony ponownie 2026-10-13 względem `origin/main` (621cf2a, PR #266); R1–R3 wdrożone, wyniki w §6.**
+Status: **plan z 2026-10-12, sprawdzony ponownie 2026-10-13 względem `origin/main` (621cf2a, PR #266); R1–R3, przygotowania z R4 i R5 wdrożone (wyniki w §6); zostaje sama sesja (R4), decyzje po niej (R6) i pomiar na słabszym sprzęcie (R7).**
 Podstawa: przegląd designu spisany przy 1.7.150, sprawdzony względem kodu, oraz log jednej sesji (EASY, człowiek + bot, misje 1.1–1.3,
 jeszcze na starym dźwięku). Liczby w §2 pochodzą z kodu; zachowania oznaczone „z lektury kodu” nie były jeszcze uruchomione w grze
 i potwierdza je dopiero etap R1.
@@ -102,10 +102,13 @@ Test: `--missiontest` z włączonym zapisem do katalogu tymczasowego sprawdza, �
 4. Sesja 3–5 osób: solo z botem i koop, bez tłumaczenia gry, nagranie z dźwiękiem.
 5. Wypełnić GDD §23.3 i dołączyć liczby z dziennika (trafienia Stalkera w ludzi na misję, źródła upadków, czas faz, użycia Q).
 
+**Stan:** kroki 1–2 przygotowane (PLAYTEST.md, `tools/export_build.sh`, zapamiętywanie trudności); eksport, sesja i wypełnienie §23.3
+wymagają ludzi i szablonów eksportu, więc zostają do zrobienia.
+
 Sesja z 2026-10-12 (0 trafień Stalkera w człowieka) szła na starym dźwięku i bez nagrań, więc jest punktem odniesienia dla mechaniki,
 nie dla grozy.
 
-### R5. Dokumenty (równolegle)
+### R5. Dokumenty (równolegle) — zrobione
 
 - Changelog §22 do osobnego `CHANGELOG.md`; w GDD zostaje odnośnik. Przy okazji zdublowane numery 1.7.100 i 1.7.101.
 - Changelog nie jest prowadzony od PR #245 (23 PR-y dźwiękowe opisuje tylko `AUDIO_PLAN.md` §7). Przy wydzielaniu zdecydować, czy dalej
@@ -205,4 +208,19 @@ i odmowa przy braku nagrań.
 
 Testy po zmianach: `--missiontest` z `--sessionlog` (nowy krok CI), `--wipetest`, `--stalkertest` 8/8, `--stealthtest`, `--maptest`,
 `test_weapons.sh` 191/191 + sieć 7/7 (zmieniła się sygnatura RPC `_report` w `noise_manager.gd` — doszedł znacznik źródła).
+
+### R4 (przygotowania) i R5 (2026-10-13)
+
+- **Trudność (D3):** wybór z menu głównego albo lobby zapisuje się w `user://settings.cfg` (`Difficulty.choose`); poziom narzucony
+  przez hosta albo flagę `--difficulty` nie jest zapisywany. Domyślnie nadal NORMAL, testy headless zawsze NORMAL.
+- **Quiet steps (D4):** opis perka mówi o Ślepcu; `--weapontest` pilnuje, żeby krok z perkiem (0,125) był poniżej progu słuchu
+  Ślepca (0,25), a zwykły krok (0,25) na progu. Wynik: 192/192.
+- **PLAYTEST.md:** eksport skryptem z kompletem nagrań, wersja buildu ze stopki menu, trudność ustawiana ręcznie, kopiowanie
+  dziennika sesji, kampania od 1.1.
+- **Changelog:** `CHANGELOG.md` (241 wierszy), GDD schudł z 265 do 62 KB. Zdublowane numery to teraz 1.7.107a i 1.7.107b.
+  23 PR-y dźwiękowe mają jeden wspólny wiersz z tytułami. Zasada na przyszłość (nagłówek pliku i `CLAUDE.md`): PR zmieniający
+  grę podbija `config/version` i dopisuje wiersz o tytule PR-a.
+- **GDD:** nagłówek (wersja, grafika tylko 3D), §5 sterowanie wg `actions.gd`, §6.7, §7.3 (brzmienie Stalkera), §10.2, §13, §19.
+- **Nie ruszone:** w GDD §5 zostaje zdanie o sprincie, chwycie krawędzi i uniku, a w §19 o wrogach bez A* — nie sprawdzałem,
+  czy opisują stan gry.
 

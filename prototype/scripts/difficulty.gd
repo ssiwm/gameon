@@ -1,5 +1,7 @@
 extends Node
 ## Poziom trudności (autoload). Domyślnie NORMAL = dotychczasowa gra (wszystkie mnożniki 1,0).
+## Wybór gracza z menu albo lobby jest zapamiętywany (`user://settings.cfg`, sekcja „game”); poziom narzucony przez hosta
+## albo flagę nie jest.
 ## Wybiera host (lobby albo --difficulty=easy|normal|hard); main.gd rozsyła wybór
 ## do klientów. Mnożniki czytają systemy symulowane na serwerze (wrogowie, Stalker,
 ## Żyła, hałas) oraz gracz (czas wykrwawiania i podnoszenia).
@@ -9,6 +11,7 @@ signal changed(level: int)
 enum Level { EASY, NORMAL, HARD }
 
 const NAMES := ["EASY", "NORMAL", "HARD"]
+const SAVE_PATH := "user://settings.cfg"       ## wspólny plik ustawień, jak w settings.gd i voice.gd
 
 ## Wiersze w kolejności enum Level. Opis kluczy:
 ##   enemy_hp / enemy_speed   Trzosek i Wołek
@@ -44,6 +47,23 @@ const TABLE := [
 ]
 
 var level: int = Level.NORMAL
+
+func _ready() -> void:
+	if DisplayServer.get_name() == "headless":
+		return                          # testy zawsze startują na NORMAL
+	var cf := ConfigFile.new()
+	if cf.load(SAVE_PATH) == OK:
+		level = clampi(int(cf.get_value("game", "difficulty", Level.NORMAL)), 0, TABLE.size() - 1)
+
+## Wybór gracza (menu główne, lobby): ustawia poziom i zapamiętuje go na następne uruchomienie.
+func choose(new_level: int) -> void:
+	set_level(new_level)
+	if DisplayServer.get_name() == "headless":
+		return
+	var cf := ConfigFile.new()
+	cf.load(SAVE_PATH)
+	cf.set_value("game", "difficulty", level)
+	cf.save(SAVE_PATH)
 
 func set_level(new_level: int) -> void:
 	new_level = clampi(new_level, 0, TABLE.size() - 1)

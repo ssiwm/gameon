@@ -14,7 +14,7 @@ run() {   # etykieta mapa kolumna flagi...
 for m in "z1_m2:12:120:260" "z1_m3:12:90:170"; do
   IFS=: read map c1 c2 c3 <<<"$m"
   for col in $c1 $c2 $c3; do
-    run classic "$map" "$col"
+    run default "$map" "$col"
     run world "$map" "$col" --newworld
     run all-hd "$map" "$col" --newchar=tripo-hd-male --newgun --newworld --newmon
   done

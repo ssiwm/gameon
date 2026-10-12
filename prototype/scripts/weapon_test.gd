@@ -383,6 +383,11 @@ func _t_profile() -> void:
 	player.perks = Perks.to_indexes(["quiet_steps", "wide_arm"])
 	check("Ciche kroki ×%.2f, Szerokie ramię ×%.1f, bez perka ×1" % [player.perk_param("quiet_steps", "run_noise_mult", 1.0), player.perk_param("wide_arm", "throw_mult", 1.0)],
 		is_equal_approx(player.perk_param("quiet_steps", "run_noise_mult", 1.0), 0.5) and is_equal_approx(player.perk_param("wide_arm", "throw_mult", 1.0), 1.3) and is_equal_approx(player.perk_param("scout", "scan_stalker_range", 0.0), 0.0))
+	# krok biegu wobec progu słuchu Ślepca: bez perka słyszy (krok na progu), z „Cichymi krokami” już nie — opis perka to obiecuje
+	var step := NoiseMgr.N_RUN_PER_SEC * 0.5
+	var keen_min := float(Enemy.KINDS["slepiec"]["min_noise"])
+	check("Ciche kroki: krok %.3f poniżej progu słuchu Ślepca %.2f, zwykły krok %.3f na progu" % [step * Perks.param("quiet_steps", "run_noise_mult", 1.0), keen_min, step],
+		step >= keen_min and step * Perks.param("quiet_steps", "run_noise_mult", 1.0) < keen_min)
 	player.perks = Perks.to_indexes(["cold_blood", "scout"])
 	check("Zimna krew: limit krzyku %.0f, Zwiadowca: Stalker na skanerze do %.0f px" % [player.perk_param("cold_blood", "scream_cap", 99.0), player.perk_param("scout", "scan_stalker_range", 0.0)],
 		is_equal_approx(player.perk_param("cold_blood", "scream_cap", 99.0), 10.0) and is_equal_approx(player.perk_param("scout", "scan_stalker_range", 0.0), 160.0))
