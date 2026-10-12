@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strona do odsłuchu A/B dźwięków: jedna, samodzielna strona HTML (pliki WAV są w niej zaszyte).
+"""Strona do odsłuchu A/B dźwięków: samodzielna strona HTML (dźwięk jest w niej zaszyty, bezstratnie — FLAC).
 
 Porównuje wersje tego samego assetu obok siebie, domyślnie „na ślepo" (wersje jako A/B/C w losowej kolejności),
 i zbiera werdykt do skopiowania. Pomiar (tools/audio_audit.py) pilnuje techniki — o brzmieniu decyduje ucho.
@@ -10,7 +10,10 @@ i zbiera werdykt do skopiowania. Pomiar (tools/audio_audit.py) pilnuje techniki 
     python tools/audio_ab.py --ref origin/main                      # assety zmienione względem gałęzi (przed / po)
     python tools/audio_ab.py --alts ../build/audio_alt --out ../build/audio_ab.html
 
-Uruchamiać z katalogu prototype/. Tylko stdlib (+ git przy --ref).
+Duże zestawy są dzielone na kilka stron (--max-mb, domyślnie 3,5 MB na stronę): podgląd plików w aplikacjach
+często nie otwiera większych. Stronę zawsze da się otworzyć zwykłą przeglądarką (dwuklik na pliku).
+
+Uruchamiać z katalogu prototype/. Tylko stdlib (+ ffmpeg do FLAC, git przy --ref).
 """
 import argparse
 import base64
@@ -19,6 +22,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AUDIO = os.path.join(ROOT, "audio")
@@ -31,7 +35,24 @@ SERIES_MS = (("m83_shot", 110), ("p64_shot", 200), ("spread12_shot", 260), ("sru
              ("gniew4_shot", 1200), ("ciegno6_shot", 800), ("_shot", 150), ("step_", 330), ("impact_", 160), ("shell", 140))
 
 
+WAV_ONLY = [False]
+
+
 def _uri(data: bytes) -> str:
+    """WAV → data URI. Domyślnie przez FLAC (bezstratnie, zwykle 50–70% rozmiaru); bez ffmpeg albo z --wav zostaje WAV."""
+    if not WAV_ONLY[0]:
+        fd, tmp = tempfile.mkstemp(suffix=".flac")         # do pliku, nie do potoku: nagłówek FLAC dostaje wtedy długość
+        os.close(fd)
+        try:
+            r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", "pipe:0", "-c:a", "flac", "-compression_level", "8", tmp],
+                               input=data, capture_output=True)
+            flac = open(tmp, "rb").read() if r.returncode == 0 else b""
+            if 0 < len(flac) < len(data):
+                return "data:audio/flac;base64," + base64.b64encode(flac).decode("ascii")
+        except OSError:
+            pass
+        finally:
+            os.remove(tmp)
     return "data:audio/wav;base64," + base64.b64encode(data).decode("ascii")
 
 
@@ -100,7 +121,7 @@ button:hover { border-color:var(--acc); } button.on { background:var(--acc); col
 textarea { width:100%; min-height:130px; font:13px/1.5 ui-monospace, Consolas, monospace; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px; }
 </style></head><body><main>
 <h1>Odsłuch A/B</h1>
-<p class="lead">Słuchaj na słuchawkach. Wersje są wymieszane i podpisane literami; nazwy odkryjesz dopiero po wyborze. „Seria" gra wszystkie warianty po kolei, tak jak w grze przy ogniu ciągłym albo w marszu.</p>
+<p class="lead">__PART__Słuchaj na słuchawkach. Wersje są wymieszane i podpisane literami; nazwy odkryjesz dopiero po wyborze. „Seria" gra wszystkie warianty po kolei, tak jak w grze przy ogniu ciągłym albo w marszu.</p>
 <div class="bar"><label><input type="checkbox" id="reveal"> Pokaż nazwy wersji</label><button id="stop">Zatrzymaj</button></div>
 <div id="fams"></div>
 <div class="card"><div class="head"><h2>Werdykt</h2><button id="copy">Kopiuj</button></div><textarea id="out" readonly></textarea></div>
@@ -170,7 +191,7 @@ render();
 """
 
 
-def build(fams, out):
+def build(fams, out, max_mb=3.5):
     data = []
     for fam in sorted(fams):
         versions = fams[fam]
@@ -185,13 +206,30 @@ def build(fams, out):
         })
     if not data:
         sys.exit("nie ma czego porównywać (brak wersji alternatywnych i zmienionych plików)")
-    html = PAGE.replace("__DATA__", json.dumps(data)).replace("__LABELS__", json.dumps(LABELS, ensure_ascii=False))
-    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-    with open(out, "w", encoding="utf-8", newline="\n") as f:
-        f.write(html)
-    print("OK %s: rodzin %d, %.1f MB" % (out, len(data), os.path.getsize(out) / 1e6))
+    # podział na strony: rodziny po kolei, nowa strona, gdy bieżąca przekroczyłaby limit
+    pages, cur, size = [], [], 0
     for d in data:
-        print("   %-22s %s" % (d["name"], " / ".join(v["name"] for v in d["versions"])))
+        w = sum(len(u) for v in d["versions"] for u in v["files"].values())
+        if cur and size + w > max_mb * 1e6:
+            pages.append(cur)
+            cur, size = [], 0
+        cur.append(d)
+        size += w
+    pages.append(cur)
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    stem, ext = os.path.splitext(out)
+    outs = []
+    for i, page in enumerate(pages):
+        path = out if len(pages) == 1 else "%s_%d%s" % (stem, i + 1, ext)
+        part = "" if len(pages) == 1 else "<b>Strona %d z %d.</b> " % (i + 1, len(pages))
+        html = PAGE.replace("__DATA__", json.dumps(page)).replace("__LABELS__", json.dumps(LABELS, ensure_ascii=False)).replace("__PART__", part)
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(html)
+        outs.append(path)
+        print("OK %s: rodzin %d, %.1f MB" % (path, len(page), os.path.getsize(path) / 1e6))
+        for d in page:
+            print("   %-22s %s" % (d["name"], " / ".join(v["name"] for v in d["versions"])))
+    return outs
 
 
 def main():
@@ -201,6 +239,8 @@ def main():
     ap.add_argument("--alts", help="katalog z bake_audio.py --alts")
     ap.add_argument("--ref", help="gałąź albo commit do porównania (np. origin/main)")
     ap.add_argument("--out", default=os.path.join(ROOT, "..", "build", "audio_ab.html"))
+    ap.add_argument("--max-mb", type=float, default=3.5, help="limit rozmiaru jednej strony; większy zestaw jest dzielony na strony _1, _2…")
+    ap.add_argument("--wav", action="store_true", help="zaszyj WAV zamiast FLAC")
     a = ap.parse_args()
     if not a.alts and not a.ref and not a.licensed:
         ap.error("podaj --licensed, --alts KATALOG albo --ref GAŁĄŹ")
@@ -216,7 +256,8 @@ def main():
     if a.only:
         want = [w for w in a.only.split(",") if w]
         fams = {k: v for k, v in fams.items() if any(w in k for w in want)}
-    build(fams, a.out)
+    WAV_ONLY[0] = a.wav
+    build(fams, a.out, a.max_mb)
 
 
 if __name__ == "__main__":
