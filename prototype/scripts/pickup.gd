@@ -283,7 +283,6 @@ func _try_supply() -> void:
 		if pl.dead or pl.is_bot or not _near(pl):
 			continue
 		Arsenal.add_throwable(kind_s, 1)
-		Audio.play("ammo_pickup", Audio.BUS_UI, -8.0)
 		var lvl := _level()
 		if lvl != null:
 			lvl.take_item(String(name))

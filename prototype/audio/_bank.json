@@ -223,6 +223,10 @@
   "sfx/weapons/impact_hard_3",
   0
  ],
+ "item_pickup": [
+  "sfx/weapons/item_pickup",
+  0
+ ],
  "killmark": [
   "sfx/weapons/killmark",
   0
@@ -301,6 +305,10 @@
  ],
  "maczeta_2": [
   "sfx/weapons/maczeta_2",
+  0
+ ],
+ "medkit_pickup": [
+  "sfx/weapons/medkit_pickup",
   0
  ],
  "mine_beep_loop": [
@@ -433,6 +441,10 @@
  ],
  "ricochet_2": [
   "sfx/weapons/ricochet_2",
+  0
+ ],
+ "scrap_pickup": [
+  "sfx/weapons/scrap_pickup",
   0
  ],
  "shell_1": [
@@ -653,6 +665,10 @@
  ],
  "sting_tension": [
   "music/sting_tension",
+  0
+ ],
+ "tag_pickup": [
+  "sfx/weapons/tag_pickup",
   0
  ],
  "tape_stop": [

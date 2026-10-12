@@ -496,3 +496,40 @@ def build_weapons_ext() -> None:
     x = d.mix([(thump(.12, 150, 60, .03, .05), 1.0), (tick(r, 1500, 1.4, 18, .005), .9, .004),
                (tick(r, 2600, 2.0, 10, .003), .9, .09), (ring(r, [1100, 2400], [.1, .06], dur=.2), .5, .01)], ms(300))
     finalize("weapon_pickup", d.reverb(x, ir("close"), wet=.14), peak=-5.0)
+
+    # Podniesienie pozostałych przedmiotów — każdy rodzaj brzmi jak to, czym jest (gra: level.gd PICKUP_SOUND).
+    # Zwykły przedmiot (flary, zaopatrzenie): miękki chwyt — stuknięcie + szelest materiału.
+    r = Rng(0x3C20)
+    n = ms(240)
+    cloth = d.lp(d.filt(d.colored(n, r, 1.0), "bp", 700.0, 0.9), 2500.0) * d.env_pts(n, [(0, 0), (.02, 1), (.09, .5), (.24, 0)])
+    x = d.mix([(thump(.08, 170, 80, .02, .035), .9), (cloth / (d.peak(cloth) + 1e-9), .5, .005)], n)
+    finalize("item_pickup", d.reverb(x, ir("dead"), wet=.12), lufs=-19.0)
+    # Apteczka: krótki suwak (szum przemiatany w górę, „ząbki”) + chwyt.
+    r = Rng(0x3C30)
+    n = ms(320)
+    t = np.arange(n) / SR
+    zipn = d.sweep(d.colored(n, r, .3), "bp", d.glide(900, 2200, n), 2.0) * (0.5 + 0.5 * np.sign(np.sin(d.TAU * 170.0 * t)))
+    zipn *= d.env_pts(n, [(0, 0), (.03, 1), (.2, .8), (.26, 0), (.32, 0)])
+    x = d.mix([(zipn / (d.peak(zipn) + 1e-9), .8, .03), (thump(.08, 160, 75, .02, .035), .8)], n)
+    finalize("medkit_pickup", d.reverb(x, ir("dead"), wet=.12), lufs=-19.0)
+    # Złom: kilka głuchych, blaszanych stuknięć o siebie.
+    r = Rng(0x3C40)
+    n = ms(420)
+    x = np.zeros(n)
+    for j, k_ms in enumerate((4, 70, 130, 215)):
+        f = r.uniform(520, 1100)
+        seg = d.mix([(ring(r, [f, f * 1.83, f * 2.9], [.07, .05, .03], dur=.14), 1.0), (tick(r, f * 1.6, 1.4, 10, .003), .5)])
+        k = ms(k_ms + r.uniform(0, 12))
+        x[k:k + len(seg)] += seg[:n - k] * (1.0 - .17 * j)
+    finalize("scrap_pickup", d.reverb(d.lp(x, 4500.0), ir("dead"), wet=.14), lufs=-19.0)
+    # Nieśmiertelnik (cel misji): dwie cienkie blaszki na łańcuszku — krótki, czysty brzęk; ma się odróżniać od reszty.
+    r = Rng(0x3C50)
+    n = ms(460)
+    x = np.zeros(n)
+    for j, k_ms in enumerate((6, 72, 150)):
+        f = (1750.0, 2150.0, 1900.0)[j]
+        seg = ring(r, [f, f * 1.52, f * 2.41], [.16, .11, .07], dur=.26)
+        k = ms(k_ms)
+        x[k:k + len(seg)] += seg[:n - k] * (1.0, .7, .45)[j]
+    x = d.mix([(x / (d.peak(x) + 1e-9), 1.0), (thump(.06, 180, 90, .02, .03), .35)], n)
+    finalize("tag_pickup", d.reverb(d.lp(x, 6000.0), ir("close"), wet=.16), lufs=-19.0)
