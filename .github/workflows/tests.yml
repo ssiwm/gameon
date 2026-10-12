@@ -31,5 +31,9 @@ jobs:
         run: |
           godot --headless --path prototype -- --maptest --autoquit=4 2>&1 | tee maptest.log
           grep -a "\[MAPTEST\] PASS" maptest.log
+      - name: Droga dźwięku po mapie (test_sound_grid.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_sound_grid.gd 2>&1 | tee soundgrid.log
+          grep -a "\[SOUNDGRID\] PASS" soundgrid.log
       - name: Bronie i sieć (test_weapons.sh)
         run: bash prototype/tools/test_weapons.sh

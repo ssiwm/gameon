@@ -177,6 +177,13 @@ Uwagi z pomiaru:
   miara głośności (i ucho) tłumi. Wersja została wybrana w odsłuchu, więc zostaje; jeśli w grze dominuje, ściszyć w `stalker.gd`.
 - `get` / `sync` z archiwów działają dla wszystkich roczników (wcześniejsze błędy zakresów były przejściowe).
 
+**F6 (b) droga dźwięku po mapie — wdrożona, czeka na strojenie w grze.** `scripts/sound_grid.gd` (natywny `AStarGrid2D` na kaflach mapy,
+własność poziomu) + `audio_director.gd: _placement()`: źródło mocno zasłonięte gra z kierunku ostatniego rogu drogi i z odległości równej
+jej długości, jeśli tak wychodzi głośniej niż przez ścianę; pętle pozycyjne dojeżdżają do pozornego położenia płynnie. Zamiast zalewania
+siatki z planu jest wyszukiwanie drogi na żądanie z pamięcią podręczną — prościej i bez pracy co klatkę. Testy: `tools/test_sound_grid.gd`
+(w CI), `--maptest` sprawdza drogę dźwięku do każdego punktu mapy. Wagi (`ROUTE_LOSS_DB`, `WALL_LOSS_DB`) dobrane z rachunku, nie z odsłuchu;
+do porównania w grze służy `--nosoundpath`. Część (a) — mieszanie wersji bliskiej i dalekiej — czeka na klucze `_far`.
+
 **Ustalenia, które zmieniają plan:**
 
 - **Paczka Sonniss 2026 nie zawiera strzałów, kroków ani przeładowań** (347 plików; są głosy stworów, gore, drzwi, wiatr). Broń i kroki są

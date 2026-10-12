@@ -2374,6 +2374,9 @@ func _map_test() -> void:
 				bad.append("%s: brak drogi ze startu" % p[0])
 			elif nav.get_id_path(cid, start_id).is_empty():
 				bad.append("%s: brak drogi powrotnej na start" % p[0])
+			# gdzie dojdzie postać, tam musi dojść i dźwięk (siatka propagacji zbudowana i spójna z mapą)
+			elif level.sound_grid.route(level.to_local(p[1] - Vector2(0, 8)), level.to_local(level.spawns[0] - Vector2(0, 8))).is_empty():
+				bad.append("%s: brak drogi dźwięku ze startu" % p[0])
 		if not level.exits.is_empty():           # kryjówka nie ma celów ani wyjścia
 			# szacunek długości trasy: start → cele (od lewej) → najdalsze wyjście; sam marsz 95 px/s, bez walki i czekania
 			var goals: Array = []

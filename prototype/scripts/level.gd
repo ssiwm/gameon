@@ -36,6 +36,7 @@ const LAYER_PLATFORM := 16
 
 const Lights := preload("res://scripts/lights.gd")
 const Nav := preload("res://scripts/nav.gd")
+const SoundGrid := preload("res://scripts/sound_grid.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const ART_TILES := "res://art/tiles.png"     ## 8×4: rzędy 0/2 wierzch, 1/3 wypełnienie
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
@@ -119,6 +120,8 @@ var stalker_home := Vector2.ZERO
 var boss_home := Vector2.ZERO
 ## Graf A* platformówki (nav.gd) — bot i Stalker.
 var nav: AStar2D
+## Siatka propagacji dźwięku (sound_grid.gd): którędy dźwięk zza ściany dociera do słuchacza — czyta ją AudioDirector.
+var sound_grid: SoundGrid
 ## Zawał (misja 1.1, finał): obszary [c0, r0, c1, r1] (kafle, włącznie), które po zdarzeniu zamieniają się w skałę.
 ## Dane z mapy (const COLLAPSE); drugie wyjście po zawale to znacznik „e" (exits_alt).
 var collapse_rects: Array = []
@@ -207,6 +210,8 @@ func _load(id: String) -> void:
 	_register_walls()
 	nav = Nav.new()
 	nav.build((_map[0] as String).length(), _map.size(), _is_solid, _is_platform_cell)
+	sound_grid = SoundGrid.new()
+	sound_grid.build((_map[0] as String).length(), _map.size(), _is_solid)
 	_spawn_entities()
 
 
@@ -363,6 +368,8 @@ func _refresh_region(rc: Rect2i) -> void:
 			_place_cell(c, r)
 	nav = Nav.new()
 	nav.build(cols, _map.size(), _is_solid, _is_platform_cell)
+	if sound_grid != null:
+		sound_grid.refresh(g, _is_solid)
 
 ## Serwer: restart misji (wipe / nowa misja) — mapa wraca do stanu z danych.
 func reset_collapse() -> void:

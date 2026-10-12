@@ -10,6 +10,9 @@ extends Node
 ##      (OccLight/OccHeavy/OccBlocked). Boczne promienie dają „dyfrakcję": źródło
 ##      za rogiem brzmi inaczej niż źródło za grubą ścianą. Pętle pozycyjne (szept
 ##      stalkera) są przeliczane co 0,2 s z histerezą, żeby próg nie migotał.
+##      Źródło mocno zasłonięte może zagrać „dookoła": drogą po wolnych kaflach mapy
+##      (level.sound_grid), z kierunku przejścia i z odległości równej długości drogi —
+##      jeśli tak wychodzi głośniej niż przez ścianę (_placement).
 ##
 ##   2. POGŁOS ŚRODOWISKOWY. Wachlarz promieni wokół słuchawki mierzy „zamknięcie"
 ##      (ile promieni uderza w ścianę) i średnią odległość; z tego rośnie wet/room_size
@@ -67,6 +70,14 @@ const OCCL_FLANK := 18.0
 const PUBLIC_ROOT := "res://audio/"
 const LICENSED_ROOT := "res://audio_licensed/"
 
+## Droga dźwięku po mapie (AUDIO_PLAN.md F6, level.sound_grid). Źródło zasłonięte (próg okluzji ≥ 2) może zagrać
+## „dookoła": z kierunku ostatniego rogu drogi, z odległości równej jej długości, przez najlżejszy filtr.
+## Wybieramy głośniejszą z dwóch dróg — dookoła albo przez ścianę (wprost, z ciężkim filtrem).
+const ROUTE_TIER := 1                 ## próg okluzji (szyna) dla dźwięku, który obszedł przeszkodę
+const ROUTE_LOSS_DB := -2.0           ## strata na ugięciu wokół rogu
+const WALL_LOSS_DB := [0.0, 0.0, -9.0, -16.0]   ## szacowana strata „przez ścianę” dla progów okluzji 0–3 (filtry OccHeavy / OccBlocked)
+const ROUTE_SMOOTH := 8.0             ## 1/s: jak szybko pętla pozycyjna przesuwa się do nowego pozornego położenia
+
 const ONESHOT_POOL := 32
 const POSITIONAL_POOL := 28
 const MAX_DISTANCE := 1600.0
@@ -115,6 +126,10 @@ var _occl: Dictionary = {}           # Vector2i -> int (próg okluzji)
 var _heart_key := ""
 var _enabled := true
 var _use_licensed := not ("--synthaudio" in OS.get_cmdline_user_args())
+var _use_routes := not ("--nosoundpath" in OS.get_cmdline_user_args())   ## dev: bez drogi po mapie (porównanie w grze)
+var _routes: Dictionary = {}         # Vector2i (komórka źródła) -> [pozorne położenie: Vector2, długość drogi: float] albo []
+var _routes_ear := Vector2i(-9999, -9999)    # komórka słuchacza, dla której policzono _routes
+var _routes_ver := -1                # wersja siatki poziomu, dla której policzono _routes
 var _clock := 0.0
 
 # --- muzyka
@@ -428,12 +443,13 @@ func play_at(key: String, pos: Vector2, bus: String = BUS_WORLD,
 	var p := _acquire(_pos_pool, key) as AudioStreamPlayer2D
 	if p == null:
 		return
+	var place := _placement(pos)
 	p.stream = s
-	p.position = pos
+	p.position = place[0]
 	p.max_distance = MAX_DISTANCE
 	p.attenuation = 1.1
 	p.panning_strength = 0.0 if Settings.mono_audio else 1.0       # ustawienie „Mono audio": dźwięk pozycyjny bez panoramy
-	p.bus = _tier_bus(bus, occlusion_tier(pos))
+	p.bus = _tier_bus(bus, int(place[1]))
 	p.volume_db = vol_db
 	p.pitch_scale = pitch
 	p.play()
@@ -628,6 +644,75 @@ func is_occluded(from: Vector2) -> bool:
 	return occlusion_tier(from) >= 2
 
 
+## Gdzie i przez jaki filtr zagrać źródło z `pos`: [położenie odtwarzacza: Vector2, próg okluzji: int].
+## Źródło widoczne albo lekko zasłonięte gra ze swojego miejsca. Zasłonięte (próg ≥ 2) dostaje drogę po mapie:
+## jeśli „dookoła” wychodzi głośniej niż „przez ścianę”, gra z pozornego położenia przy ostatnim rogu drogi.
+## Napisy dźwięków i ogłuszenie liczą się zawsze z prawdziwego `pos`.
+func _placement(pos: Vector2) -> Array:
+	var tier := occlusion_tier(pos)
+	if tier < 2 or not _use_routes:
+		return [pos, tier]
+	var r := _route(pos)
+	if r.is_empty():
+		return [pos, tier]
+	var around_db := _distance_db(float(r[1])) + ROUTE_LOSS_DB
+	var through_db := _distance_db(pos.distance_to(_listener_pos)) + float(WALL_LOSS_DB[clampi(tier, 0, 3)])
+	if around_db < through_db:
+		return [pos, tier]
+	return [r[0], ROUTE_TIER]
+
+
+## Tłumienie odległościowe odtwarzacza pozycyjnego w dB (ten sam wzór co AudioStreamPlayer2D: (1 − d/max)^attenuation).
+func _distance_db(dist: float) -> float:
+	return linear_to_db(pow(maxf(1.0 - dist / MAX_DISTANCE, 0.0001), 1.1))
+
+
+## Droga dźwięku z `pos` do słuchacza: [pozorne położenie, długość drogi px] albo [] (brak poziomu, brak drogi,
+## droga dłuższa niż zasięg słyszalności). Pamięć podręczna per komórka źródła; czyszczona, gdy słuchacz zmieni kafel
+## albo zmieni się mapa (zawał, rozbita ściana).
+func _route(pos: Vector2) -> Array:
+	var lvl := get_tree().get_first_node_in_group("level") as Node2D
+	if lvl == null or lvl.get("sound_grid") == null:
+		return []
+	var grid: RefCounted = lvl.sound_grid
+	var ear_local := lvl.to_local(_listener_pos)
+	var ear: Vector2i = grid.cell(ear_local)
+	if ear != _routes_ear or int(grid.version) != _routes_ver:
+		_routes.clear()
+		_routes_ear = ear
+		_routes_ver = int(grid.version)
+	var src_local := lvl.to_local(pos)
+	var key: Vector2i = grid.cell(src_local)
+	if _routes.has(key):
+		return _routes[key]
+	var out: Array = []
+	var r: Array = grid.route(src_local, ear_local)
+	if not r.is_empty() and float(r[0]) < MAX_DISTANCE * 0.98:
+		var dir := lvl.to_global(r[1]) - _listener_pos
+		if dir.length() > 1.0:
+			out = [_listener_pos + dir.normalized() * float(r[0]), float(r[0])]
+	_routes[key] = out
+	return out
+
+
+## Co klatkę: pętle pozycyjne dojeżdżają płynnie do pozornego położenia (bez skoku panoramy, gdy droga się zmienia).
+func _update_loop_routes(delta: float) -> void:
+	var k := 1.0 - exp(-delta * ROUTE_SMOOTH)
+	for key in _pos_loops:
+		var q = _pos_loops[key]
+		if not is_instance_valid(q):
+			continue
+		var host := q.get_parent() as Node2D
+		if host == null:
+			continue
+		var want: Vector2 = q.get_meta("route_off", Vector2.ZERO)
+		var off: Vector2 = (q.get_meta("route_cur", Vector2.ZERO) as Vector2).lerp(want, k)
+		if off.length_squared() < 0.25 and want == Vector2.ZERO:
+			off = Vector2.ZERO
+		q.set_meta("route_cur", off)
+		q.global_position = host.global_position + off
+
+
 func _tier_bus(base: String, tier: int) -> String:
 	if tier <= 0:
 		return base
@@ -662,7 +747,12 @@ func _update_loop_occlusion() -> void:
 		if not is_instance_valid(q):
 			_pos_loops.erase(key)
 			continue
-		var tier := occlusion_tier(q.global_position)
+		var host := q.get_parent() as Node2D
+		if host == null:
+			continue
+		var place := _placement(host.global_position)
+		q.set_meta("route_off", (place[0] as Vector2) - host.global_position)    # dokąd ma dojechać odtwarzacz (0 = na źródle)
+		var tier := int(place[1])
 		var cur: int = q.get_meta("tier", 0)
 		if tier != cur and _clock - float(q.get_meta("tier_t", 0.0)) > 0.35:
 			q.set_meta("tier", tier)
@@ -938,6 +1028,7 @@ func _process(delta: float) -> void:
 	if _loop_occl_timer <= 0.0:
 		_loop_occl_timer = 0.2
 		_update_loop_occlusion()
+	_update_loop_routes(delta)
 	_update_reverb(delta)
 	_update_deafness(delta)
 	_update_music(delta)
