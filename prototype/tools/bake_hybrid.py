@@ -2,7 +2,8 @@
 bake_hybrid.py — wersje assetów Z NAGRAŃ z bibliotek (AUDIO_PLAN.md).
 
 Dwa rodzaje przepisów:
-  * wersje z nagrań dla GRY — weapons(), stalker(), player(): wołane na końcu builderów (bake_weapons.py, bake_sfx.py),
+  * wersje z nagrań dla GRY — weapons(), stalker(), player(), ambience(): wołane na końcu builderów (bake_weapons.py,
+    bake_sfx.py, bake_amb.py),
     po syntezie tych samych kluczy, przez bc.hybrid(). Plik trafia do audio_licensed/ (poza repo), a gra woli go
     od syntetycznego z audio/. Bez plików źródłowych na dysku nic się nie dzieje — zostaje sama synteza;
   * WERSJE ALTERNATYWNE do odsłuchu przed decyzją — CANDIDATES → build_alts() przez bc.alt(): katalog z --alts,
@@ -26,9 +27,9 @@ Zasady składania (wnioski z pomiaru źródeł; brzmienie ocenia się uchem na s
 Werdykty odsłuchów A/B (2026-10-12), szczegóły w AUDIO_PLAN.md §7.
 Z nagrań: m83_shot, spread12_shot, srut8_shot, srut8_pump, gniew4_shot, ciegno6_shot (wersja 2), explosion, impact_hard,
 impact_flesh, shell, reload, reload_shell, maczeta, hkm9_flame_loop; stalker_growl, stalker_shriek, stalker_step,
-amb_far_cry; step_concrete, step_metal, step_dirt, step_water, land_hard.
+amb_far_cry; step_concrete, step_metal, step_dirt, step_water, land_hard; amb_forest, amb_rain, amb_rain_roof.
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz, foley_gear,
-dry_fire, hkm9_ignite, kilof_swing, stalker_whisper_loop.
+dry_fire, hkm9_ignite, kilof_swing, stalker_whisper_loop, amb_wind.
 """
 
 from __future__ import annotations
@@ -438,7 +439,31 @@ def player() -> None:
     bc.hybrid(["land_hard"], _land_hard_bake, LAND_NEEDS)
 
 
-# ============================================================ ŚWIAT I AMBIENT — kandydaci do odsłuchu (F4, część 2)
+# ============================================================ AMBIENT (bake_amb.build_ambience)
+
+# Pętle stereo: 16 s z najrówniejszego fragmentu nagrania (audio_probe.py --steady), szew przenikany 1,5 s.
+AMB_LOOPS = (                       # klucz, źródło, start [s], głośność docelowa = zmierzona głośność syntezy, ścięcie szczytów [dB]
+    ("amb_forest", "forest_winter_night", 0.5, -14.6, 0.0),
+    ("amb_rain", "rain_hard_loop", 1.0, -16.0, 0.0),
+    ("amb_rain_roof", "rain_on_plastic", 0.5, -17.0, -12.0),      # pojedyncze głośne krople: bez ścięcia pętla wychodzi za cicha
+)
+
+
+def _amb_loop_bake(key: str, sid: str, t0: float, lufs: float, ceil: float) -> None:
+    xf = d.sec(1.5)
+    x = d.filt(bc.src(sid, t0, 16.0 + 1.5, mono=False), "hp", 40.0, order=2)
+    if ceil < 0.0:
+        x = d.limiter(_unit(x), ceil)
+    finalize(key, d.seam_xfade(x, xf), loop=True, lufs=lufs)
+
+
+def ambience() -> None:
+    """Wersje z nagrań dla pętli ambientu — wołane na końcu bake_amb.build_ambience()."""
+    for row in AMB_LOOPS:
+        bc.hybrid([row[0]], lambda row=row: _amb_loop_bake(*row), [row[1]])
+
+
+# ============================================================ ŚWIAT — kandydaci do odsłuchu (F4, część 2)
 
 # --- Drzwi (metal): skrzyp zawiasu, potem uderzenie skrzydła o futrynę; pogłos blaszanego korytarza jak w syntezie.
 DOOR_NEEDS = ["door_creak_metal", "door_impact_metal"]
@@ -476,27 +501,6 @@ def _thunder_bake() -> None:
         finalize("thunder_%d" % (i + 1), d.filt(x, "hp", 25.0, order=2), lufs=-19.4, fade_out_ms=400)
 
 
-# --- Pętle ambientu (stereo): 16 s z najrówniejszego fragmentu nagrania (audio_probe.py --steady), szew przenikany 1,5 s.
-AMB_LOOPS = (                       # klucz, źródło, start [s], głośność docelowa = zmierzona głośność syntezy, ścięcie szczytów [dB]
-    ("amb_forest", "forest_winter_night", 0.5, -14.6, 0.0),
-    ("amb_rain", "rain_hard_loop", 1.0, -16.0, 0.0),
-    ("amb_rain_roof", "rain_on_plastic", 0.5, -17.0, -12.0),      # pojedyncze głośne krople: bez ścięcia pętla wychodzi za cicha
-    ("amb_wind", "wind_mountain_loop", 10.25, -19.6, 0.0),
-)
-
-
-def _amb_loop_bake(key: str, sid: str, t0: float, lufs: float, ceil: float) -> None:
-    xf = d.sec(1.5)
-    x = d.filt(bc.src(sid, t0, 16.0 + 1.5, mono=False), "hp", 40.0, order=2)
-    if ceil < 0.0:
-        x = d.limiter(_unit(x), ceil)
-    finalize(key, d.seam_xfade(x, xf), loop=True, lufs=lufs)
-
-
-def _amb_candidate(row: tuple):
-    return lambda: _amb_loop_bake(*row)
-
-
 # ============================================================ KANDYDACI DO ODSŁUCHU
 
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — przed decyzją; build_alts() piecze je do katalogu z --alts
@@ -504,7 +508,7 @@ CANDIDATES: tuple = (
     ("hybrid", _door_bake, DOOR_NEEDS),
     ("hybrid", _glass_bake, GLASS_NEEDS),
     ("hybrid", _thunder_bake, list(THUNDER_SRC)),
-) + tuple(("hybrid", _amb_candidate(row), [row[1]]) for row in AMB_LOOPS)
+)
 
 
 def build_alts() -> None:

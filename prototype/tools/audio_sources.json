@@ -424,14 +424,6 @@
    "pack": "Sonniss GDC 2020 — Hand Guns Sound Effects Pack",
    "supplier": "Olivier Girardot",
    "license": "sonniss-gdc-2.0"
-  },
-  "wind_mountain_loop": {
-   "kind": "lib",
-   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Soundrangers - Wind/wind_harsh_mountain_02_30_loop.wav",
-   "sha256": "df2c0f7af4e6158f93b31fb1d9eb432c043d4d7a223ca9be95c786fff647afdb",
-   "pack": "Sonniss GDC 2018 — Wind",
-   "supplier": "Soundrangers",
-   "license": "sonniss-gdc-2.0"
   }
  }
 }

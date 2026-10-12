@@ -1,6 +1,6 @@
 # Plan: refaktor dźwięku — źródła hybrydowe i propagacja po mapie
 
-Status: **plan z 2026-10-12; F0–F3 zrobione, F4 i F5 w toku, F6 (droga dźwięku po mapie) wdrożona; 68 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
+Status: **plan z 2026-10-12; F0–F3 zrobione, F4 i F5 w toku, F6 (droga dźwięku po mapie) wdrożona; 71 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
 `default_bus_layout.tres`, `AUDIO.md`), nie na próbnej implementacji — rozmiary faz są szacunkowe. Kontynuacja `prototype/AUDIO.md`
 (overhaul v2), który sam stwierdza w §5: „to nie jest jeszcze AAA w sensie brzmienia” i „brzmienia nie oceniałem uchem”.
 
@@ -141,7 +141,7 @@ Pomiar (nie odsłuch): strzał z nagrań ma środek ciężkości widma ok. 1,4 k
 ok. 380 ms zamiast 255 ms, głośność zrównana z obecnym do 0,5 LU. Kroki z nagrań są ciemniejsze powyżej 4 kHz niż syntetyczne. Alternatywy
 pieką się deterministycznie (dwa przebiegi = te same sumy).
 
-**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 68 plików z nagrań):**
+**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 71 plików z nagrań):**
 
 | Rodzina | Werdykt | Źródła wersji z nagrań |
 |---|---|---|
@@ -172,13 +172,16 @@ pieką się deterministycznie (dwa przebiegi = te same sumy).
 | `stalker_whisper_loop` | **synteza** | odrzucone: nagrany ludzki szept z upiornym głosem w hali |
 | `step_metal` ×5, `step_dirt` ×5, `step_water` ×5 | z nagrań | pojedyncze kroki z nagranych marszów (blacha, ziemia, kałuża), jak beton z bramki A |
 | `land_hard` | z nagrań | upadek na beton + sub-uderzenie |
+| `amb_forest`, `amb_rain`, `amb_rain_roof` | z nagrań | pętle stereo 16 s z najrówniejszego fragmentu nagrania (zimowy las nocą, ulewa, deszcz o daszek), szew przenikany 1,5 s |
+| `amb_wind` | **synteza** | odrzucone: nagrany górski wiatr |
 
 Głośność każdej rodziny zrównana ze ZMIERZONĄ głośnością syntezy (nominalne cele z `bake_weapons.py` synteza osiąga tylko częściowo, bo
 ogranicza ją szczyt). Zostają syntetyczne także: `widmo1` (działo szynowe), `lr7` (promień), znaczniki trafień — to dźwięki bez odpowiednika w
-nagraniach. F3 (bronie) jest zamknięta. Zostało: F4 — drzwi, szkło, głos gracza, ambienty; F5 — własne głosy wrogów;
+nagraniach. F3 (bronie) jest zamknięta. Zostało: F4 — drzwi, szkło i grzmoty (kandydaci czekają na odsłuch), głos gracza, pozostałe
+ambienty; F5 — własne głosy wrogów;
 F6 (a) — mieszanie wersji bliskiej i dalekiej.
 
-Wzór z werdyktów (23 rodziny z nagrań, 8 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
+Wzór z werdyktów (26 rodzin z nagrań, 9 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
 trafienia, łuski, kroki, głos stwora, ogień), a przegrywały dla dźwięków krótkich, jasnych i „bliskich gracza” z samego nagrania (pistolet,
 przelot, szelest, kurek) — synteza jest tam pełniejsza w dole pasma. Po dołożeniu pod nagranie niskich stuków syntezy mechanika broni
 (przeładowania) wygrała. Szept Stalkera pokazuje granicę: rozpoznawalnie ludzkie nagranie przegrało z abstrakcyjną syntezą.

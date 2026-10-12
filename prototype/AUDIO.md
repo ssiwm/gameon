@@ -139,10 +139,11 @@ python3 tools/audio_ab.py --ref origin/main                 # to samo dla asset�
 ```
 
 Katalog nagrań: `DA87_AUDIO_LIB`, `art_src/audio_lib/` albo `audio_lib/` obok repo (wspólny dla kilku kopii roboczych). Bez nagrań
-bake piecze samą syntezę. Z nagrań są 23 rodziny, 68 plików (każda po odsłuchu A/B; lista, werdykty i odrzucone — `AUDIO_PLAN.md` §7):
+bake piecze samą syntezę. Z nagrań jest 26 rodzin, 71 plików (każda po odsłuchu A/B; lista, werdykty i odrzucone — `AUDIO_PLAN.md` §7):
 większość broni (strzały M-83 i strzelb, granatnik, kusza, wybuchy, trafienia, łuski, przeładowania, maczeta, pętla miotacza),
-Stalker poza szeptem (warkot, krzyk, kroki, odległy zew) oraz kroki gracza po wszystkich powierzchniach i twarde lądowanie.
-Przepisy: `tools/bake_hybrid.py` (`weapons()`, `stalker()`, `player()`).
+Stalker poza szeptem (warkot, krzyk, kroki, odległy zew), kroki gracza po wszystkich powierzchniach i twarde lądowanie oraz
+trzy pętle ambientu (las, deszcz, deszcz o dach; wiatr został syntetyczny).
+Przepisy: `tools/bake_hybrid.py` (`weapons()`, `stalker()`, `player()`, `ambience()`).
 Wybieranie wycinków z nagrań: `python3 tools/audio_probe.py "fragment nazwy" [--hits]`; wpis do rejestru: `audio_lib_fetch.py add <id> <regex>`.
 
 ## 5. Ograniczenia i uczciwa ocena
