@@ -26,7 +26,8 @@ Zasady składania (wnioski z pomiaru źródeł; brzmienie ocenia się uchem na s
 
 Werdykty odsłuchów A/B (2026-10-12), szczegóły w AUDIO_PLAN.md §7.
 Z nagrań: m83_shot, spread12_shot, srut8_shot, srut8_pump, gniew4_shot, ciegno6_shot (wersja 2), explosion, impact_hard,
-impact_flesh, shell, reload, reload_shell, maczeta, hkm9_flame_loop, foley_gear; stalker_growl, stalker_shriek, stalker_step,
+impact_flesh, shell, reload, reload_shell, maczeta, hkm9_flame_loop, foley_gear, ammo_pickup, weapon_pickup;
+stalker_growl, stalker_shriek, stalker_step,
 stalker_whisper_loop (niski oddech),
 amb_far_cry; trzosek_attack, trzosek_death (wilkołak), wolek_attack, wolek_death, slepiec_death, podsluchacz_scream, leech_growl,
 leech_shriek, zyla_roar; door, glass_break, thunder, amb_creak, amb_gust, amb_thud; step_concrete, step_metal, step_dirt,
@@ -295,8 +296,33 @@ def _gear_bake() -> None:
         finalize("foley_gear_%d" % (i + 1), d.lp(d.filt(x, "hp", 120.0, order=2), 3500.0), lufs=GEAR_LUFS)
 
 
+# --- Podnoszenie amunicji i broni: prawdziwy chwyt zamiast syntetycznego sygnału (tyknięcia z dzwonkiem 3,6–5,2 kHz).
+# Amunicja: naboje przesypujące się w dłoni + miękki chwyt torby. Broń: chwyt karabinu obniżony o 5 półtonów,
+# z chwytem przedmiotu i uderzeniem w dole pasma.
+PICKUP_AMMO_NEEDS = ["cartridge_handling_018", "bag_grab_04"]
+PICKUP_WEAPON_NEEDS = ["rifle_pickup_004", "object_grab_04"]
+PICKUP_AMMO_LUFS = -18.2                                             # zmierzona głośność dawnej syntezy
+PICKUP_WEAPON_LUFS = -21.2
+
+
+def _pickup_ammo_bake() -> None:
+    rattle = d.lp(_clip("cartridge_handling_018", 0.08, 0.5, -3.0, 0.36, tail=.16), 5000.0)
+    grab = d.lp(_clip("bag_grab_04", 0.0, 0.3, -1.0, 0.24, tail=.10), 3000.0)
+    x = d.limiter(_unit(d.filt(d.mix([(rattle, 1.0, .02), (grab, 0.6)], ms(390)), "hp", 90.0, order=2)), -5.0)
+    finalize("ammo_pickup", d.reverb(x, ir("dead"), wet=.12), lufs=PICKUP_AMMO_LUFS)
+
+
+def _pickup_weapon_bake() -> None:
+    x = d.mix([(d.lp(_clip("rifle_pickup_004", 0.0, 0.5, -5.0, 0.48, tail=.16), 4500.0), 1.0),
+               (d.lp(_clip("object_grab_04", 0.0, 0.5, -4.0, 0.44, tail=.16), 2500.0), 0.6), (thump(.14, 130, 55, .03, .06), 0.8)], ms(500))
+    x = d.limiter(_unit(d.filt(x, "hp", 45.0, order=2)), -5.0)
+    finalize("weapon_pickup", d.reverb(x, ir("close"), wet=.14), lufs=PICKUP_WEAPON_LUFS)
+
+
 def weapons() -> None:
     """Wersje z nagrań dla broni — wołane na końcu bake_weapons.build_weapons()."""
+    bc.hybrid(["ammo_pickup"], _pickup_ammo_bake, PICKUP_AMMO_NEEDS)
+    bc.hybrid(["weapon_pickup"], _pickup_weapon_bake, PICKUP_WEAPON_NEEDS)
     bc.hybrid(_keys("foley_gear", 3), _gear_bake, GEAR_NEEDS)
     bc.hybrid(_keys("m83_shot", 6), _m83_bake, M83_NEEDS)
     bc.hybrid(_keys("spread12_shot", 3), _spread12_bake, SPREAD12_NEEDS)

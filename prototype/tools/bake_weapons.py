@@ -487,8 +487,10 @@ def build_weapons_ext() -> None:
 
     # Podniesienie amunicji i broni
     r = Rng(0x3C00)
-    x = d.mix([(tick(r, 2100, 1.8, 14, .004), 1.0), (thump(.07, 190, 90, .02, .03), .7, .004),
-               (ring(r, [3600, 5200], [.06, .04], dur=.1), .5, .03), (tick(r, 2900, 1.6, 10, .003), .7, .07)], ms(200))
+    # bez wysokiego dzwonka (3,6–5,2 kHz brzmiało w grze jak sygnał, nie jak przedmiot): stuknięcia naboi niżej + chwyt
+    x = d.mix([(tick(r, 1300, 1.8, 14, .004), 1.0), (thump(.07, 190, 90, .02, .03), .7, .004),
+               (ring(r, [1500, 2300], [.05, .035], dur=.1), .3, .03), (tick(r, 1750, 1.6, 10, .003), .7, .07),
+               (tick(r, 1100, 1.4, 12, .004), .6, .12)], ms(240))
     finalize("ammo_pickup", d.reverb(x, ir("dead"), wet=.12), peak=-6.0)
     r = Rng(0x3C10)
     x = d.mix([(thump(.12, 150, 60, .03, .05), 1.0), (tick(r, 1500, 1.4, 18, .005), .9, .004),
