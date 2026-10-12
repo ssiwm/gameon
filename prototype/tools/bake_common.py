@@ -7,10 +7,16 @@ finalize() jest JEDYNYM miejscem, które zapisuje WAV-y. Polityka (AAA-owy „lo
   * zawsze:  true-peak ≤ TP_CEIL (-1.5 dBTP), brak DC, dither TPDF, zero próbek na pełnej skali
   * one-shot: wycięcie ciszy z ogona, fade-in 1 ms, fade-out dopasowany do ogona (koniec = 0)
   * pętla: bez fade'ów (szew jest zamknięty konstrukcyjnie: circ_filter/fold_loop)
+
+Źródła nagrane i wygenerowane (AUDIO_PLAN.md, F1): src(id) wczytuje plik opisany w
+tools/audio_sources.json i sprawdza jego SHA-256; hybrid(klucze, fn, needs=[...]) piecze assety
+zależne od źródeł, a gdy któregoś brakuje na dysku — zostawia poprzednie WAV-y (--strict: błąd).
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import zlib
 
@@ -24,12 +30,125 @@ AUDIO = os.path.join(ROOT, "audio")
 
 TP_CEIL = -1.5
 
+REPO = os.path.dirname(ROOT)
+SOURCES_JSON = os.path.join(ROOT, "tools", "audio_sources.json")
+# Nagrania z bibliotek leżą poza repo (licencja zabrania udostępniania plików dalej): art_src/audio_lib/ jest w .gitignore,
+# a DA87_AUDIO_LIB wskazuje wspólny katalog, gdy pracuje się w kilku kopiach repo. Pliki wygenerowane: art_src/audio_gen/ (w repo).
+LIB_DIR = os.environ.get("DA87_AUDIO_LIB") or os.path.join(REPO, "art_src", "audio_lib")
+GEN_DIR = os.path.join(REPO, "art_src", "audio_gen")
+
 # key -> (ścieżka względna, pętla?)
 REG: dict[str, tuple[str, bool]] = {}
 GROUPS: dict[str, list[str]] = {}
 # key -> pomiary po finalizacji (do raportu bake'u)
 STATS: dict[str, dict] = {}
 _CUR = ["sfx/misc"]
+
+# --- źródła nagrane i wygenerowane
+STRICT = [False]                             # --strict: brak źródła przerywa bake
+SKIPPED: list[tuple[list[str], str]] = []    # (klucze, powód) — assety pominięte z braku źródeł
+_SOURCES: dict = {}
+_SRC_CACHE: dict = {}
+_NEEDS: list = [None]                        # źródła zadeklarowane przez bieżące hybrid() / alt()
+ALT_ROOT: list = [None]                      # --alts KATALOG: dokąd piec wersje alternatywne
+_ALT: list = [None]                          # katalog bieżącej wersji alternatywnej (finalize pisze tam zamiast do audio/)
+
+
+class MissingSource(Exception):
+    pass
+
+
+def sources() -> dict:
+    """Rejestr źródeł: id -> {kind: lib|gen, file, sha256, pack, supplier, license, ...}."""
+    if not _SOURCES and os.path.exists(SOURCES_JSON):
+        with open(SOURCES_JSON, encoding="utf-8") as f:
+            _SOURCES.update(json.load(f).get("sources", {}))
+    return _SOURCES
+
+
+def source_path(sid: str) -> str:
+    e = sources().get(sid)
+    if e is None:
+        raise KeyError("źródło %r nie jest opisane w tools/audio_sources.json" % sid)
+    return os.path.join(GEN_DIR if e.get("kind") == "gen" else LIB_DIR, *e["file"].split("/"))
+
+
+def file_sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for blk in iter(lambda: f.read(1 << 20), b""):
+            h.update(blk)
+    return h.hexdigest()
+
+
+def have_source(sid: str) -> bool:
+    """Plik źródła jest na dysku (wskaźnik Git LFS bez pobranej treści liczy się jako brak)."""
+    path = source_path(sid)
+    if not os.path.exists(path):
+        return False
+    if os.path.getsize(path) < 1024:
+        with open(path, "rb") as f:
+            return not f.read(40).startswith(b"version https://git-lfs")
+    return True
+
+
+def src(sid: str, start: float = 0.0, dur: float | None = None, mono: bool = True) -> np.ndarray:
+    """Wycinek źródła jako bufor w SR. Plik musi zgadzać się z SHA-256 z rejestru — inaczej
+    ten sam przepis dałby inny dźwięk bez śladu w repo."""
+    if _NEEDS[0] is not None:
+        assert sid in _NEEDS[0], "źródło %r nie jest zadeklarowane w needs= tego hybrid()" % sid
+    key = (sid, mono)
+    if key not in _SRC_CACHE:
+        path = source_path(sid)
+        if not have_source(sid):
+            raise MissingSource(sid)
+        want = sources()[sid].get("sha256", "")
+        got = file_sha256(path)
+        assert want == got, "%s: SHA-256 pliku (%s...) różni się od rejestru (%s...)" % (sid, got[:12], want[:12])
+        _SRC_CACHE[key] = d.read_audio(path, mono=mono)
+    return d.cut(_SRC_CACHE[key], start, dur)
+
+
+def hybrid(keys: list[str], fn, needs: list[str], loop: bool = False) -> bool:
+    """Piecze assety zależne od plików źródłowych: fn() ma wywołać finalize() dla każdego z `keys`.
+    Brak któregokolwiek źródła z `needs` → nic nie jest zapisywane, zostają poprzednie WAV-y, a klucze
+    trafiają do SKIPPED (całe rodziny naraz, żeby nie mieszać starych wariantów z nowymi)."""
+    for k in keys:
+        REG.setdefault(k, (_CUR[0] + "/" + k, loop))
+    missing = [sid for sid in needs if not have_source(sid)]
+    if missing:
+        if STRICT[0]:
+            raise MissingSource(", ".join(missing))
+        SKIPPED.append((list(keys), "brak źródeł: " + ", ".join(missing)))
+        return False
+    _NEEDS[0] = list(needs)
+    try:
+        fn()
+    finally:
+        _NEEDS[0] = None
+    return True
+
+
+def alt(name: str, fn, needs: list[str] = ()) -> bool:
+    """Wersja alternatywna ISTNIEJĄCYCH assetów do odsłuchu A/B (bake_audio.py --alts KATALOG, potem tools/audio_ab.py):
+    fn() woła finalize() dla kluczy z banku, a pliki trafiają do KATALOG/<name>/<ta sama ścieżka> zamiast do audio/.
+    Bez --alts nic nie robi, więc zwykły bake zostaje bit w bit taki sam."""
+    if not ALT_ROOT[0]:
+        return False
+    missing = [sid for sid in needs if not have_source(sid)]
+    if missing:
+        if STRICT[0]:
+            raise MissingSource(", ".join(missing))
+        SKIPPED.append((["alt:" + name], "brak źródeł: " + ", ".join(missing)))
+        return False
+    _ALT[0] = os.path.join(ALT_ROOT[0], name)
+    _NEEDS[0] = list(needs)
+    try:
+        fn()
+    finally:
+        _ALT[0] = None
+        _NEEDS[0] = None
+    return True
 
 
 def group(path: str) -> None:
@@ -47,11 +166,15 @@ def finalize(key: str, x: np.ndarray, *, loop: bool = False, peak: float | None 
              fade_in_ms: float = 0.6, trim: bool = True, tp: float = TP_CEIL) -> None:
     """Domyka bufor i zapisuje asset. Dokładnie jedno z: peak (dBFS) albo lufs (LUFS)."""
     assert (peak is None) != (lufs is None), "%s: podaj peak= albo lufs=" % key
-    if key not in REG:
-        REG[key] = (_CUR[0] + "/" + key, loop)
+    alt_dir = _ALT[0]
+    if alt_dir is None:
+        if key not in REG:
+            REG[key] = (_CUR[0] + "/" + key, loop)
+    else:
+        assert key in REG, "%s: wersja alternatywna wymaga klucza, który już istnieje w banku" % key
     path, reg_loop = REG[key]
     assert reg_loop == loop, "%s: niezgodność flagi pętli z rejestrem" % key
-    full = os.path.join(AUDIO, path + ".wav")
+    full = os.path.join(AUDIO if alt_dir is None else alt_dir, path + ".wav")
     os.makedirs(os.path.dirname(full), exist_ok=True)
 
     x = np.asarray(x, dtype=np.float64)
@@ -85,7 +208,7 @@ def finalize(key: str, x: np.ndarray, *, loop: bool = False, peak: float | None 
             x = x * d.db_to_lin(tp - tpk - 0.05)
 
     d.write_wav(full, x, Rng(zlib.crc32(key.encode()) | 1))
-    STATS[key] = {"dur": x.shape[-1] / SR, "ch": 1 if x.ndim == 1 else 2,
+    STATS[key if alt_dir is None else os.path.basename(alt_dir) + ":" + key] = {"dur": x.shape[-1] / SR, "ch": 1 if x.ndim == 1 else 2,
                   "lufs": d.lufs(x) if loop else d.active_lufs(x),
                   "tp": d.true_peak_db(x), "peak": d.lin_to_db(d.peak(x))}
 

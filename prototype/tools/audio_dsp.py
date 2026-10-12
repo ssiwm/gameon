@@ -19,6 +19,8 @@ Konwencje:
     ten sam plik (kontrakt bake'u).
   * Pętle robimy KOŁOWO (circular()): sygnał okresowy → filtr → środkowa kopia.
     Szew jest idealny z konstrukcji, bez crossfade'u i bez dziury w energii.
+  * Źródła nagrane i wygenerowane (read_audio) wchodzą jako bufory jak każdy inny sygnał;
+    determinizm jest wtedy względem pliku źródłowego (bake_common.src sprawdza jego SHA-256).
 """
 
 from __future__ import annotations
@@ -717,6 +719,85 @@ def trim_silence(x: np.ndarray, thr_db: float = -66.0, keep_ms: float = 5.0) -> 
         return x
     end = min(x.shape[-1], idx[-1] + ms(keep_ms))
     return x[..., :end]
+
+
+# ------------------------------------------------------------------ odczyt (źródła nagrane i wygenerowane)
+
+def resample(x: np.ndarray, sr_from: int, sr_to: int = SR) -> np.ndarray:
+    """Zmiana częstotliwości próbkowania filtrem wielofazowym (deterministyczna, bez ffmpeg)."""
+    if sr_from == sr_to:
+        return x
+    g = math.gcd(int(sr_from), int(sr_to))
+    return sg.resample_poly(x, sr_to // g, sr_from // g, axis=-1)
+
+
+def read_audio(path: str, mono: bool = True) -> np.ndarray:
+    """Plik dźwiękowy → bufor float64 w SR: (n,) dla mono, (2, n) dla stereo.
+
+    WAV (PCM 8/16/24/32 bit i float, także WAVE_FORMAT_EXTENSIBLE) czytany jest bez narzędzi
+    zewnętrznych; inne formaty (FLAC z ComfyUI, MP3) dekoduje ffmpeg do WAV w natywnej
+    częstotliwości. Przepróbkowanie robi zawsze resample() — wynik nie zależy od wersji ffmpeg.
+    """
+    import os
+    import subprocess
+    import tempfile
+    import warnings
+    from scipy.io import wavfile
+
+    tmp = None
+    if not path.lower().endswith(".wav"):
+        fd, tmp = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", path, "-c:a", "pcm_f32le", tmp], check=True)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")              # nieznane chunki (bext, iXML) w plikach z bibliotek
+            sr, a = wavfile.read(tmp or path)
+    finally:
+        if tmp:
+            os.remove(tmp)
+    if a.dtype == np.uint8:
+        x = (a.astype(np.float64) - 128.0) / 128.0
+    elif a.dtype.kind == "i":
+        x = a.astype(np.float64) / float(2 ** (8 * a.dtype.itemsize - 1))   # 24 bit przychodzi jako int32 dosunięty do lewej
+    else:
+        x = a.astype(np.float64)
+    x = x.T if x.ndim == 2 else x                        # (n, ch) → (ch, n)
+    if x.ndim == 2:
+        x = x.mean(axis=0) if mono else (x[:2] if x.shape[0] >= 2 else np.vstack([x[0], x[0]]))
+    elif not mono:
+        x = np.vstack([x, x])
+    return resample(x, int(sr))
+
+
+def cut(x: np.ndarray, start: float = 0.0, dur: float | None = None) -> np.ndarray:
+    """Wycinek [start, start+dur) w sekundach (kopia)."""
+    a = max(0, sec(start))
+    b = x.shape[-1] if dur is None else min(x.shape[-1], a + sec(dur))
+    return x[..., a:b].copy()
+
+
+def onset(x: np.ndarray, thr_db: float = -24.0) -> int:
+    """Indeks pierwszej próbki powyżej progu liczonego od szczytu — do równania ataków warstw."""
+    m = np.abs(x if x.ndim == 1 else x.mean(axis=0))
+    pk = float(m.max())
+    if pk <= 0.0:
+        return 0
+    return int(np.argmax(m >= pk * db_to_lin(thr_db)))
+
+
+def from_onset(x: np.ndarray, pre_ms: float = 1.0, thr_db: float = -24.0) -> np.ndarray:
+    """Bufor przycięty tak, żeby atak zaczynał się pre_ms po początku."""
+    return x[..., max(0, onset(x, thr_db) - ms(pre_ms)):].copy()
+
+
+def repitch(x: np.ndarray, semitones: float) -> np.ndarray:
+    """Zmiana wysokości przez przepróbkowanie (jak taśma: wyżej = krócej)."""
+    if abs(semitones) < 1e-6:
+        return x
+    from fractions import Fraction
+    fr = Fraction(2.0 ** (-semitones / 12.0)).limit_denominator(512)
+    return sg.resample_poly(x, fr.numerator, fr.denominator, axis=-1)
 
 
 # ------------------------------------------------------------------ zapis

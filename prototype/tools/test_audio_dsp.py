@@ -177,8 +177,88 @@ def test_determinism():
     check("fork niezależny", a != b)
 
 
+def test_sources():
+    """Źródła nagrane i wygenerowane (AUDIO_PLAN.md, F1): odczyt plików, rejestr z SHA-256, pomijanie przy braku pliku."""
+    print("źródła")
+    import json
+    from scipy.io import wavfile
+    import bake_common as bc
+    tmp = tempfile.mkdtemp(prefix="da87_src_")
+    try:
+        tone = d.osc("sine", 1000.0, SR) * 0.5
+        p48 = os.path.join(tmp, "t48.wav")
+        d.write_wav(p48, tone)
+        back = d.read_audio(p48)
+        check("WAV 48 kHz wraca bez zmian (poza ditherem)", len(back) == SR and np.abs(back - tone).max() < 3.0 / 32768.0)
+        # 96 kHz / 32 bit stereo, jak pliki z bibliotek: przepróbkowanie i zejście do mono
+        t = np.arange(2 * SR) / (2.0 * SR)
+        hi = (np.sin(2 * np.pi * 1000.0 * t) * 0.5 * 2 ** 31).astype(np.int32)
+        p96 = os.path.join(tmp, "t96.wav")
+        wavfile.write(p96, 2 * SR, np.stack([hi, hi], axis=1))
+        m = d.read_audio(p96)
+        check("96 kHz → 48 kHz: długość i wysokość", abs(len(m) - SR) <= 1 and abs(peak_hz(m) - 1000.0) < 0.5, "%.2f Hz" % peak_hz(m))
+        check("96 kHz → 48 kHz: poziom", abs(d.lin_to_db(d.peak(m)) - d.lin_to_db(0.5)) < 0.1)
+        st = d.read_audio(p96, mono=False)
+        check("mono=False daje (2, n)", st.shape == (2, len(m)))
+        # atak i zmiana wysokości
+        click = np.zeros(SR // 2)
+        click[4800:4810] = 1.0
+        check("onset trafia w atak", abs(d.onset(click) - 4800) <= 1, str(d.onset(click)))
+        check("from_onset zostawia pre_ms przed atakiem", abs(d.onset(d.from_onset(click, 2.0)) - 96) <= 1)
+        up = d.repitch(tone, 12.0)
+        check("repitch +12: oktawa wyżej i połowa długości", abs(peak_hz(up) - 2000.0) < 2.0 and abs(len(up) - SR // 2) <= 2, "%.1f Hz" % peak_hz(up))
+        check("cut w sekundach", len(d.cut(tone, 0.25, 0.5)) == SR // 2)
+
+        # rejestr: suma kontrolna, brak pliku, wskaźnik LFS, wersje alternatywne
+        keep = (bc.LIB_DIR, bc.GEN_DIR, bc.AUDIO, dict(bc._SOURCES), dict(bc.REG), list(bc.SKIPPED))
+        bc.LIB_DIR, bc.GEN_DIR, bc.AUDIO = tmp, tmp, os.path.join(tmp, "audio")
+        bc._SOURCES.clear()
+        bc._SOURCES.update({
+            "ok": {"kind": "lib", "file": "t48.wav", "sha256": bc.file_sha256(p48)},
+            "bad": {"kind": "lib", "file": "t96.wav", "sha256": "0" * 64},
+            "none": {"kind": "lib", "file": "missing.wav", "sha256": ""},
+            "lfs": {"kind": "gen", "file": "pointer.flac", "sha256": ""},
+        })
+        with open(os.path.join(tmp, "pointer.flac"), "w") as f:
+            f.write("version https://git-lfs.github.com/spec/v1\noid sha256:0\nsize 1\n")
+        bc._SRC_CACHE.clear()
+        check("src: wycinek zgodny z plikiem", len(bc.src("ok", 0.1, 0.2)) == SR // 5)
+        try:
+            bc.src("bad")
+            check("src: zła suma kontrolna zatrzymuje bake", False)
+        except AssertionError:
+            check("src: zła suma kontrolna zatrzymuje bake", True)
+        check("brak pliku i wskaźnik LFS liczą się jako brak źródła", not bc.have_source("none") and not bc.have_source("lfs"))
+        bc.REG.clear()
+        bc.SKIPPED.clear()
+        ran = bc.hybrid(["x_1"], lambda: bc.finalize("x_1", bc.src("none"), peak=-3.0), needs=["none"])
+        check("hybrid: brak źródła → pominięte, nic nie zapisane, klucz zostaje w rejestrze",
+              not ran and len(bc.SKIPPED) == 1 and "x_1" in bc.REG and not os.path.exists(os.path.join(bc.AUDIO, "sfx", "misc", "x_1.wav")))
+        ran = bc.hybrid(["x_1"], lambda: bc.finalize("x_1", bc.src("ok"), peak=-3.0), needs=["ok"])
+        main_wav = os.path.join(bc.AUDIO, "sfx", "misc", "x_1.wav")
+        check("hybrid: komplet źródeł → asset zapisany", ran and os.path.exists(main_wav))
+        before = open(main_wav, "rb").read()
+        check("alt bez --alts nic nie robi", not bc.alt("v2", lambda: bc.finalize("x_1", bc.src("ok") * 0.5, peak=-9.0), ["ok"]))
+        bc.ALT_ROOT[0] = os.path.join(tmp, "alts")
+        ran = bc.alt("v2", lambda: bc.finalize("x_1", bc.src("ok"), peak=-9.0), ["ok"])
+        check("alt: plik w katalogu wersji, asset gry nietknięty",
+              ran and os.path.exists(os.path.join(tmp, "alts", "v2", "sfx", "misc", "x_1.wav")) and open(main_wav, "rb").read() == before)
+        bc.ALT_ROOT[0] = None
+        bc.LIB_DIR, bc.GEN_DIR, bc.AUDIO = keep[0], keep[1], keep[2]
+        bc._SOURCES.clear(); bc._SOURCES.update(keep[3])
+        bc.REG.clear(); bc.REG.update(keep[4])
+        bc.SKIPPED[:] = keep[5]
+        bc._SRC_CACHE.clear()
+        with open(bc.SOURCES_JSON, encoding="utf-8") as f:
+            reg = json.load(f)
+        bad = [k for k, e in reg["sources"].items() if e.get("license") not in reg["licenses"] or len(e.get("sha256", "")) != 64 or e.get("kind") not in ("lib", "gen")]
+        check("audio_sources.json: każde źródło ma rodzaj, sumę i znaną licencję", not bad, ", ".join(bad))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
-    for t in (test_osc, test_fm, test_filters, test_dyn, test_loops, test_reverb, test_loudness, test_determinism):
+    for t in (test_osc, test_fm, test_filters, test_dyn, test_loops, test_reverb, test_loudness, test_determinism, test_sources):
         t()
     print("\n%s" % ("WSZYSTKIE TESTY OK" if not FAILS else "NIEPOWODZENIA: %s" % ", ".join(FAILS)))
     sys.exit(1 if FAILS else 0)

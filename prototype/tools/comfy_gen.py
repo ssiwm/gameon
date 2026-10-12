@@ -5,6 +5,11 @@ Darmowa, lokalna alternatywa dla `tripo_gen.py`. ComfyUI musi być uruchomione. 
     python prototype/tools/comfy_gen.py image "opis..." --out art_src/gibs/meat_a.png [--seed 7] [--neg "..."]
     python prototype/tools/comfy_gen.py model art_src/gibs/meat_a.png --out art_src/gibs/meat_a.glb [--faces 60000] [--tex 2048]
     python prototype/tools/comfy_gen.py both "opis..." --out art_src/gibs/meat_a      (zapisze .png i .glb)
+    python prototype/tools/comfy_gen.py audio "opis..." --out art_src/audio_gen/stalker/growl.flac [--seconds 6] [--seed 7] [--count 4] [--model medium|sfx]
+
+Dźwięk (źródła do `bake_audio.py`, patrz AUDIO_PLAN.md): Stable Audio 3 — modele `stable_audio_3_medium` / `stable_audio_3_small_sfx`
+i enkoder `t5gemma_b_b_ul2` z https://huggingface.co/Comfy-Org/stable-audio-3. Wynik to FLAC stereo; przy --count > 1 pliki dostają
+przyrostek _1.._N. Wybrany plik trzeba wpisać do `tools/audio_sources.json` (opis, ziarno, SHA-256).
 
 Model 3D powstaje z szablonu ComfyUI `3d_pixal3d_trellis2_image_to_model.json` (format interfejsu → format API, patrz `_to_api`):
 usuwa tło z obrazu, generuje kształt i teksturę, upraszcza siatkę, rozwija UV i wypala kolor, metal/chropowatość, okluzję i normalne.
@@ -81,6 +86,37 @@ def image(prompt_text, out, seed=1, neg="", size=1024, steps=28):
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     shutil.copy(src, out)
     print("OK obraz %s (%.0f s)" % (out, dt))
+
+
+AUDIO_CKPT = {"medium": "stable_audio_3_medium.safetensors", "sfx": "stable_audio_3_small_sfx.safetensors"}
+AUDIO_CLIP = "t5gemma_b_b_ul2.safetensors"
+
+
+def audio(prompt_text, out, seconds=6.0, seed=1, count=1, model_key="medium", neg="", steps=8, cfg=1.0):
+    """Opis → dźwięk (Stable Audio 3, wersja destylowana: 8 kroków, cfg 1 — jak w szablonie ComfyUI `audio_stable_audio_3_medium`)."""
+    stem, ext = os.path.splitext(out)
+    prefix = "da87_" + os.path.basename(stem)
+    p = {
+        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": AUDIO_CKPT[model_key]}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": AUDIO_CLIP, "type": "stable_audio", "device": "default"}},
+        "3": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt_text, "clip": ["2", 0]}},
+        "4": {"class_type": "CLIPTextEncode", "inputs": {"text": neg, "clip": ["2", 0]}},
+        "5": {"class_type": "EmptyLatentAudio", "inputs": {"seconds": float(seconds), "batch_size": int(count)}},
+        "6": {"class_type": "KSampler", "inputs": {"seed": seed, "steps": steps, "cfg": cfg, "sampler_name": "lcm", "scheduler": "simple", "denoise": 1.0,
+                                                   "model": ["1", 0], "positive": ["3", 0], "negative": ["4", 0], "latent_image": ["5", 0]}},
+        "7": {"class_type": "VAEDecodeAudio", "inputs": {"samples": ["6", 0], "vae": ["1", 2]}},
+        "8": {"class_type": "SaveAudio", "inputs": {"audio": ["7", 0], "filename_prefix": "audio/" + prefix}},
+    }
+    outs, dt = _run(p, 900)
+    files = [os.path.join(OUTPUT, f.get("subfolder", ""), f["filename"]) for f in outs.get("8", {}).get("audio", [])]
+    if not files:
+        sys.exit("brak pliku wynikowego (węzeł SaveAudio nic nie zwrócił)")
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    for i, src in enumerate(files):
+        dst = out if len(files) == 1 else "%s_%d%s" % (stem, i + 1, ext or ".flac")
+        shutil.copy(src, dst)
+        print("OK dźwięk %s" % dst)
+    print("   model=%s seed=%d seconds=%.1f (%.0f s)" % (model_key, seed, seconds, dt))
 
 
 def _template_path():
@@ -179,6 +215,14 @@ def main():
     b.add_argument("--neg", default="")
     b.add_argument("--faces", type=int, default=60000)
     b.add_argument("--tex", type=int, default=2048)
+    au = sub.add_parser("audio")
+    au.add_argument("prompt")
+    au.add_argument("--out", required=True, help="plik .flac")
+    au.add_argument("--seconds", type=float, default=6.0)
+    au.add_argument("--seed", type=int, default=1)
+    au.add_argument("--count", type=int, default=1, help="ile wersji naraz (kolejne próbki z jednego ziarna)")
+    au.add_argument("--model", choices=sorted(AUDIO_CKPT), default="medium")
+    au.add_argument("--neg", default="")
     a = ap.parse_args()
     try:
         _get("/system_stats")
@@ -188,6 +232,8 @@ def main():
         image(a.prompt, a.out, a.seed, a.neg)
     elif a.cmd == "model":
         model(a.image, a.out, a.faces, a.tex)
+    elif a.cmd == "audio":
+        audio(a.prompt, a.out, a.seconds, a.seed, a.count, a.model, a.neg)
     else:
         image(a.prompt, a.out + ".png", a.seed, a.neg)
         model(a.out + ".png", a.out + ".glb", a.faces, a.tex)

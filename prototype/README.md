@@ -332,6 +332,7 @@ scenes/
   main.tscn  player.tscn  bot_companion.tscn  stalker.tscn  enemy.tscn  nest.tscn  boss.tscn
 tools/
   bake_audio.py  audio_dsp.py   # generowanie ścieżek audio
+  bake_hybrid.py audio_lib_fetch.py audio_ab.py   # dźwięk ze źródeł nagranych i wygenerowanych, odsłuch A/B (AUDIO.md §4)
 ```
 
 ## Znane ograniczenia (świadome, prototyp)
