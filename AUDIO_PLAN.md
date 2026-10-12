@@ -1,6 +1,6 @@
 # Plan: refaktor dźwięku — źródła hybrydowe i propagacja po mapie
 
-Status: **plan z 2026-10-12; F0–F3 zrobione, F4 i F5 w toku, F6 (droga dźwięku po mapie, wersje bliska / daleka) wdrożona; 81 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
+Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) wdrożona, zostają F7 i F8; 119 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
 `default_bus_layout.tres`, `AUDIO.md`), nie na próbnej implementacji — rozmiary faz są szacunkowe. Kontynuacja `prototype/AUDIO.md`
 (overhaul v2), który sam stwierdza w §5: „to nie jest jeszcze AAA w sensie brzmienia” i „brzmienia nie oceniałem uchem”.
 
@@ -141,7 +141,7 @@ Pomiar (nie odsłuch): strzał z nagrań ma środek ciężkości widma ok. 1,4 k
 ok. 380 ms zamiast 255 ms, głośność zrównana z obecnym do 0,5 LU. Kroki z nagrań są ciemniejsze powyżej 4 kHz niż syntetyczne. Alternatywy
 pieką się deterministycznie (dwa przebiegi = te same sumy).
 
-**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 71 plików z nagrań, do tego 10 wyprowadzonych z nich dalekich wersji z F6):**
+**F3–F5 — odsłuchy 2026-10-12, wybrane rodziny grają z `audio_licensed/` (razem z bramką A 109 plików z nagrań, do tego 10 wyprowadzonych z nich dalekich wersji z F6):**
 
 | Rodzina | Werdykt | Źródła wersji z nagrań |
 |---|---|---|
@@ -173,12 +173,25 @@ pieką się deterministycznie (dwa przebiegi = te same sumy).
 | `step_metal` ×5, `step_dirt` ×5, `step_water` ×5 | z nagrań | pojedyncze kroki z nagranych marszów (blacha, ziemia, kałuża), jak beton z bramki A |
 | `land_hard` | z nagrań | upadek na beton + sub-uderzenie |
 | `amb_forest`, `amb_rain`, `amb_rain_roof` | z nagrań | pętle stereo 16 s z najrówniejszego fragmentu nagrania (zimowy las nocą, ulewa, deszcz o daszek), szew przenikany 1,5 s |
-| `amb_wind` | **synteza** | odrzucone: nagrany górski wiatr |
+| `amb_wind` | z nagrań | górski wiatr, ta sama technika pętli; przy pierwszym odsłuchu odrzucony, przy drugim wybrany |
+| `door` ×2 | z nagrań | skrzyp metalowego zawiasu + uderzenie skrzydła, pogłos blaszanego korytarza |
+| `glass_break` ×2 | z nagrań | wybite okno z odłamkami; uderzenie w szkło + rozsypanie odłamków |
+| `thunder` ×3 | z nagrań | trzy nagrane uderzenia pioruna, przycięte do ok. 6 s |
+| `amb_creak` ×3, `amb_gust` ×3, `amb_thud` ×2 | z nagrań | skrzypienie metalu i zablokowanych drzwi; porywy (świst i wycie w szczelinie); głębokie uderzenia w pogłosie jaskini |
+| `player_hurt` ×2, `player_down` | z nagrań | okrzyki bólu z jednego zestawu nagrań; jęk + to samo uderzenie ciała co w syntezie |
+| `effort` ×2 | synteza (bez kandydata) | w archiwach są tylko okrzyki bólu i walki — za mocne na każdy skok |
+| `trzosek_attack` ×3, `trzosek_death` ×2 | z nagrań | owadzi terkot na wysokim głosie małego stwora |
+| `wolek_attack` ×2, `wolek_death` ×2 | z nagrań | ryk bestii + sub-uderzenie; jęk trolla / yeti + upadek cielska |
+| `slepiec_death` ×2 | z nagrań | trzepoczący, urywany wydech + syntetyczne klikanie |
+| `slepiec_attack` ×2 | **synteza** | odrzucone: syntetyczne klikanie na nagranym wdechu / syku |
+| `podsluchacz_scream` ×2 | z nagrań | wrzask banshee + przestrojony jęk, drżenie alarmu jak w syntezie |
+| `leech_growl` ×2, `leech_shriek` ×2 | z nagrań | bulgot wodnego stwora + niska faktura; skrzek morskiej bestii |
+| `zyla_roar` ×2 | z nagrań | kilka ryków naraz (smok, wielka bestia, behemot) + sub-uderzenie |
+| `zyla_growl` ×2 | **synteza** | odrzucone: niski pomruk obcej bestii z nałożonym tętnem |
 
 Głośność każdej rodziny zrównana ze ZMIERZONĄ głośnością syntezy (nominalne cele z `bake_weapons.py` synteza osiąga tylko częściowo, bo
 ogranicza ją szczyt). Zostają syntetyczne także: `widmo1` (działo szynowe), `lr7` (promień), znaczniki trafień — to dźwięki bez odpowiednika w
-nagraniach. F3 (bronie) jest zamknięta. Zostało: F4 — drzwi, szkło i grzmoty (kandydaci czekają na odsłuch), głos gracza, pozostałe
-ambienty (kandydaci czekają na odsłuch); F5 — werdykt dla głosów wrogów (niżej).
+nagraniach. F3, F4 i F5 są zamknięte: każda rodzina, dla której był kandydat, ma werdykt; lista kandydatów jest pusta.
 
 **F5, część 2 — własne głosy wrogów (2026-10-12).** Wrogowie przestali pożyczać głos Stalkera. 11 nowych rodzin, 23 pliki
 (`audio/sfx/enemies/`, builder `bake_sfx.build_enemies()`; razem 180 assetów), każda z wersją syntetyczną w repo:
@@ -196,9 +209,9 @@ Zwykli wrogowie odzywają się przy zboczu `winding` (zapowiedź ciosu — to in
 lokalnie na każdym peerze z replikowanego stanu, bez nowych RPC. Ćma jest niema. „Ból” przy każdym trafieniu pominięty celowo: trafienie
 ma już `impact_flesh`, a wataha pod ostrzałem robiłaby ścianę dźwięku. U bossów wysokości odtwarzania zbliżone do 1,0 (wcześniej 0,42–1,35,
 bo jeden krzyk Stalkera udawał wszystko). Limity jednoczesnych głosów: `audio_director.gd: VOICE`. Napisy: `bake_audio.py: CAPTIONS`
-+ `translations/ui.csv`. Kandydaci z nagrań dla wszystkich 11 rodzin czekają na odsłuch (`bake_hybrid.py: CANDIDATES`).
++ `translations/ui.csv`. Werdykt odsłuchu: 9 z 11 rodzin z nagrań, zapowiedź ciosu Ślepca i pomruk Żyły syntetyczne (tabela wyżej).
 
-Wzór z werdyktów (26 rodzin z nagrań, 9 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
+Wzór z werdyktów (44 rodziny z nagrań, 10 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
 trafienia, łuski, kroki, głos stwora, ogień), a przegrywały dla dźwięków krótkich, jasnych i „bliskich gracza” z samego nagrania (pistolet,
 przelot, szelest, kurek) — synteza jest tam pełniejsza w dole pasma. Po dołożeniu pod nagranie niskich stuków syntezy mechanika broni
 (przeładowania) wygrała. Szept Stalkera pokazuje granicę: rozpoznawalnie ludzkie nagranie przegrało z abstrakcyjną syntezą.
