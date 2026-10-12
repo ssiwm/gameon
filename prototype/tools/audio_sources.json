@@ -745,14 +745,6 @@
    "supplier": "Pole Position Production",
    "license": "sonniss-gdc-2.0"
   },
-  "walkie_beep": {
-   "kind": "lib",
-   "file": "sonniss/2020/Bluezone - Interception - Radio Transmission/Bluezone_BC0266_radio_beep_walkie_talkie_002.wav",
-   "sha256": "cd7e29ee833a6263626bf91a315f8b84fe77c49dc07f412b1d88862a915d7610",
-   "pack": "Sonniss GDC 2020 — Interception - Radio Transmission",
-   "supplier": "Bluezone",
-   "license": "sonniss-gdc-2.0"
-  },
   "walkie_kenwood": {
    "kind": "lib",
    "file": "sonniss/2016/Sergey Eybog - Handheld Tranceivers/Walkie Talkie,Kenwood TK-3107 FM,Radio Communication,No Speech,Static,Feedback Squelch,Manipulations.wav",

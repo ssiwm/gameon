@@ -290,7 +290,7 @@ const CAPTIONS := {
 	"door_": ["[Door]", 1],
 	"impact_flesh": ["[Impact]", 0],
 	"ricochet": ["[Ricochet]", 1],
-	"radio_beep": ["[Radio beep]", 1],
+	"radio_beep": ["[Radio static]", 1],
 	"shell_": ["[Casing drops]", 0],
 	"ear_ring": ["[Ringing]", 1],
 }

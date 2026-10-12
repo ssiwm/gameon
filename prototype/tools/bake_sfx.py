@@ -419,10 +419,13 @@ def build_world() -> None:
 
     r = Rng(0xD700)
     n = ms(220)
-    b = d.osc("square", 880.0, n) * d.env_adsr(n, .003, .02, .75, .05)
-    b = d.filt(b, "lp", 3200.0)
-    x = d.mix([(b, 1.0), (tick(r, 3000, 1.2, 14, .003), .4)], n)
-    finalize("radio_beep", d.reverb(x, ir("dead"), wet=.1), peak=-1.5)
+    # sygnał radia bez tonu (pisk 880 Hz z fali prostokątnej nie pasował do świata gry): klik nadawania i krótki szum
+    # pasmowy zamykanej blokady szumów
+    n = ms(380)
+    hiss = d.filt(d.filt(d.white(n, r), "bp", 1500.0, 0.7), "hp", 400.0, order=2) * d.env_pts(n, [(0, 0), (.02, 1), (.24, .8), (.38, 0)])
+    x = d.mix([(hiss / (d.peak(hiss) + 1e-9), 1.0), (tick(r, 1300, 1.4, 12, .003), .5), (tick(r, 1000, 1.4, 10, .003), .35, .33)], n)
+    x = d.limiter(x / (d.peak(x) + 1e-9), -9.0)
+    finalize("radio_beep", d.reverb(x, ir("dead"), wet=.1), lufs=-14.3)
 
     # Mina kierunkowa: sygnał 1760 Hz, 0,2 s co 0,5 s — pętla dokładnie 4 impulsów
     asset("mine_beep_loop", "sfx/world/mine_beep_loop", loop=True)
