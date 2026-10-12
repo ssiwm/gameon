@@ -51,7 +51,6 @@ var _spr: Array = []
 var _glow: Lights.GameLight
 ## Grafika HD (Sprites.newitem): korzeń z bujaniem, sprite oświetlany, kopia „unshaded" (widać w ciemności) i nakładka (plakietka, kłódka).
 var _hd: Node2D
-var _hd_over: Node2D
 var _hd_gun := ""
 var _hd_gun_rect := Rect2()
 static var _bbox := {}            ## wiersz arkusza broni → prostokąt nieprzezroczystych pikseli w klatce (do wyśrodkowania na stojaku)
@@ -201,32 +200,12 @@ func _setup_hd() -> void:
 	var sc := _hd_scale()
 	var main := ItemsHd.make(nm, _hd, sc)
 	_hd_main = main
-	if kind == "supply" or kind == "ammo":
-		_hd_over = Node2D.new()
-		_hd_over.draw.connect(_draw_over)
-		_hd.add_child(_hd_over)
 
 var _hd_main: ItemsHd.ItemMark
 
 ## Wysokość spodu sylwetki broni na stojaku: kołyska HD jest wyższa niż pikselowa.
 func _shelf_y() -> float:
 	return -9.8 if (Sprites.newitem and ItemsHd.has("rack")) else -7.0
-
-## Nakładka: kolorowa plakietka na skrzynce zaopatrzenia / amunicji (rodzaj zawartości).
-func _draw_over() -> void:
-	var sc := _hd_scale()
-	if kind == "supply":
-		var sk := String(Throwables.ORDER[clampi(arg, 0, Throwables.ORDER.size() - 1)])
-		var col: Color = Throwables.KINDS[sk]["color"]
-		var r := Rect2(-2.8 * sc, -(4.4 + 1.9) * sc, 5.6 * sc, 3.8 * sc)
-		_hd_over.draw_rect(r, col.darkened(0.15))
-		_hd_over.draw_rect(Rect2(r.position + Vector2(0.5, 0.5) * sc, Vector2(r.size.x - 1.0 * sc, 0.5 * sc)), Color(1, 1, 1, 0.45))
-		_hd_over.draw_rect(Rect2(r.get_center() - Vector2(0.9, 0.9) * sc, Vector2(1.8, 1.8) * sc), Color(1, 1, 1, 0.75))
-	elif kind == "ammo":
-		var col2: Color = Weapons.def(arg).tracer_color.lerp(Color(0.85, 0.68, 0.3), 0.4)
-		var r2 := Rect2(-2.8 * sc, -(3.2 + 1.3) * sc, 5.6 * sc, 2.6 * sc)
-		_hd_over.draw_rect(r2, col2)
-		_hd_over.draw_rect(Rect2(r2.position, Vector2(r2.size.x, 0.4 * sc)), Color(1, 1, 1, 0.35))
 
 ## Prostokąt nieprzezroczystych pikseli broni `row` w jej klatce (px arkusza); liczony raz i zapamiętany.
 static func _content_box(tex: Texture2D, row: int, tfs: Vector2) -> Rect2i:

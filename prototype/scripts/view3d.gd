@@ -18,6 +18,8 @@ const Lights := preload("res://scripts/lights.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Enemy3D := preload("res://scripts/enemy3d.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
+const Throwables := preload("res://scripts/throwables.gd")
+const Weapons := preload("res://scripts/weapons.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 
 const PX := Level3D.PX
@@ -3055,7 +3057,8 @@ func _sync_weather(_delta: float) -> void:
 		if not env.has_meta("base_amb"):
 			env.set_meta("base_amb", env.ambient_light_energy)
 			env.set_meta("base_fog", env.fog_light_color)
-		env.ambient_light_energy = float(env.get_meta("base_amb")) + 0.55 * flash
+		var deep = _level.get("depth_mult")                          # głębiej = ciemniej (dread.gd): pod ziemią światło otoczenia słabnie
+		env.ambient_light_energy = float(env.get_meta("base_amb")) * (float(deep) if deep != null else 1.0) + 0.55 * flash
 		env.fog_light_color = (env.get_meta("base_fog") as Color) * (1.0 + 1.6 * fogk + 9.0 * flash)
 		if id == "fog":
 			env.fog_depth_begin -= 1.5 * k                        # mgła głębi podchodzi pod sam plan gry (początek ustawia co klatkę _sync_camera)
@@ -3311,12 +3314,57 @@ func _item_model(name: String, glow := 0.0) -> Node3D:
 	_item_tuned[name] = true
 	return root
 
+## Plakietka rodzaju na skrzynce zaopatrzenia / amunicji: kolorowa tabliczka na przedniej ściance modelu (kolor przedmiotu albo broni),
+## z lekką własną jasnością, żeby rodzaj dało się rozpoznać także w półmroku. Jednostka modelu = piksel świata.
+func _add_kind_tag(sp: ItemsHd.ItemMark, model: Node3D) -> void:
+	var owner_n := sp.get_parent().get_parent() if sp.get_parent() != null else null
+	if owner_n == null or owner_n.get("kind") == null:
+		return
+	var kind := String(owner_n.get("kind"))
+	var col: Color
+	var size: Vector2
+	var cy: float
+	if kind == "supply":
+		var sk := String(Throwables.ORDER[clampi(int(owner_n.get("arg")), 0, Throwables.ORDER.size() - 1)])
+		col = (Throwables.KINDS[sk]["color"] as Color).darkened(0.15)
+		size = Vector2(5.6, 3.8)
+		cy = 4.4
+	elif kind == "ammo":
+		col = (Weapons.def(int(owner_n.get("arg"))).tracer_color as Color).lerp(Color(0.85, 0.68, 0.3), 0.4)
+		size = Vector2(5.6, 2.6)
+		cy = 3.2
+	else:
+		return
+	var front := -INF
+	for mn in model.find_children("*", "MeshInstance3D", true, false):
+		var ab: AABB = _local_xf(mn as MeshInstance3D, model) * (mn as MeshInstance3D).get_aabb()
+		front = maxf(front, ab.end.z)
+	if front == -INF:
+		return
+	var tag := MeshInstance3D.new()
+	tag.name = "KindTag"
+	var bm := BoxMesh.new()
+	bm.size = Vector3(size.x, size.y, 0.3)
+	tag.mesh = bm
+	var tm := StandardMaterial3D.new()
+	tm.albedo_color = col
+	tm.roughness = 0.6
+	tm.emission_enabled = true
+	tm.emission = col
+	tm.emission_energy_multiplier = 0.35
+	tag.material_override = tm
+	tag.position = Vector3(0.0, cy, front + 0.1)
+	tag.layers = LAYER_WORLD
+	tag.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	model.add_child(tag)
+
 func _make_item(sp: ItemsHd.ItemMark) -> void:
 	var name := String(sp.get_meta("hd_name", ""))
 	var alb: Texture2D = ItemsHd.albedo(name) if _item_scene(name) == null else null      # karta zastępcza tylko dla przedmiotu bez modelu
 	var model := _item_model(name, float(sp.get_meta("hd_dark", 0.0)) * 0.35)
 	if model != null:                                          # prawdziwa bryła zamiast karty
 		_world.add_child(model)
+		_add_kind_tag(sp, model)
 		if name == "stake":                                    # kołek strefy wyjścia: świecąca głowica w kolorze flary (zamiast nakładki 2D)
 			var tip := MeshInstance3D.new()
 			var ts := SphereMesh.new()

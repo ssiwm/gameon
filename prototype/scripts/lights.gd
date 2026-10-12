@@ -7,7 +7,7 @@ extends RefCounted
 
 const PX_PER_M := 16.0
 
-## Światło otoczenia (CanvasModulate) i tło nieba. Strojone pomiarem
+## Światło otoczenia (stan mapy) i tło nieba. Strojone pomiarem
 ## luminancji ekranu (1.3.6), potem −30% (1.6.7: ambient i aura gracza ×0,7): przy 0,13 świat poza aurą był prawie tak jasny
 ## jak przy graczu (0,035 vs 0,077) — ciemność nie robiła różnicy.
 const AMBIENT := Color(0.0245, 0.0266, 0.0406)
