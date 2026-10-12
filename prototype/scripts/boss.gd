@@ -159,7 +159,7 @@ func _nest_count() -> int:
 func on_nest_lost(left: int) -> void:
 	nests_left = left
 	_flinch = 0.6
-	Audio.play_variant_at("stalker_growl", 2, global_position, Audio.BUS_STALKER, -6.0, 0.6)
+	Audio.play_variant_at("zyla_growl", 2, global_position, Audio.BUS_STALKER, -6.0, 0.9)
 	_send_state(true)
 
 func awaken() -> void:
@@ -613,34 +613,34 @@ func _sync(s: int, h: float, mh: float, a: int, mo: bool, st: bool, ph: int, nl:
 func _event(kind: String) -> void:
 	match kind:
 		"awaken":
-			Audio.play_variant_at("stalker_shriek", 2, global_position, Audio.BUS_STALKER, 0.0, 0.55)
+			Audio.play_variant_at("zyla_roar", 2, global_position, Audio.BUS_STALKER, 0.0, 0.9)
 			Audio.sting(2)
 			_shake_near(5.0)
 		"lash_windup":
-			Audio.play_variant_at("stalker_growl", 2, global_position, Audio.BUS_STALKER, -2.0, 0.75)
+			Audio.play_variant_at("zyla_growl", 2, global_position, Audio.BUS_STALKER, -2.0, 1.0)
 		"spit_windup":
-			Audio.play_variant_at("stalker_growl", 2, global_position, Audio.BUS_STALKER, -4.0, 1.35)
+			Audio.play_variant_at("zyla_growl", 2, global_position, Audio.BUS_STALKER, -4.0, 1.25)
 		"sweep_windup":
 			# dudnienie pod wodą — „zaraz pójdzie fala, skacz"
-			Audio.play_variant_at("stalker_step", 3, global_position, Audio.BUS_STALKER, 0.0, 0.5)
-			Audio.play_variant_at("stalker_growl", 2, global_position, Audio.BUS_STALKER, -6.0, 0.55)
+			Audio.play_variant_at("amb_thud", 2, global_position, Audio.BUS_STALKER, 5.0, 0.6)
+			Audio.play_variant_at("zyla_growl", 2, global_position, Audio.BUS_STALKER, -6.0, 0.8)
 		"sweep_go":
 			_wave_start_ms = Time.get_ticks_msec()
 			Audio.play_variant_at("step_water", 3, global_position, Audio.BUS_WORLD, 2.0, 0.6)
 			_shake_near(2.0)
 		"blinded":
-			Audio.play_variant_at("stalker_shriek", 2, global_position, Audio.BUS_STALKER, -6.0, 1.1)
+			Audio.play_variant_at("zyla_roar", 2, global_position, Audio.BUS_STALKER, -6.0, 1.2)
 		"enrage":
-			Audio.play_variant_at("stalker_shriek", 2, global_position, Audio.BUS_STALKER, -2.0, 0.7)
+			Audio.play_variant_at("zyla_roar", 2, global_position, Audio.BUS_STALKER, -2.0, 1.0)
 			_shake_near(3.0)
 		"phase3":
-			Audio.play_variant_at("stalker_shriek", 2, global_position, Audio.BUS_STALKER, 2.0, 0.42)
+			Audio.play_variant_at("zyla_roar", 2, global_position, Audio.BUS_STALKER, 2.0, 0.8)
 			Audio.sting(2)
 			Lights.flicker_until_ms = Time.get_ticks_msec() + 3500
 			_shake_near(6.0)
 		"death":
 			Audio.play_variant_at("explosion", 2, global_position, Audio.BUS_WORLD, 0.0, 0.6)
-			Audio.play_variant_at("stalker_shriek", 2, global_position, Audio.BUS_STALKER, -2.0, 0.45)
+			Audio.play_variant_at("zyla_roar", 2, global_position, Audio.BUS_STALKER, -2.0, 0.7)
 			_shake_near(7.0)
 			Feel.hitstop(0.12)
 			_death_fx()

@@ -9,7 +9,7 @@ runtime'u i bez zmian w sieci.
 
 ## 1. Stan obecny (z kodu)
 
-- **Assety:** 157 plików WAV (48 kHz / 16 bit, 139 mono, 18 stereo, 330 s, 46 MB) w `prototype/audio/`, commitowane zwykłym gitem (nie LFS).
+- **Assety:** 157 plików WAV (stan z dnia planu; po F5 — 180) (48 kHz / 16 bit, 139 mono, 18 stereo, 330 s, 46 MB) w `prototype/audio/`, commitowane zwykłym gitem (nie LFS).
   Wszystkie powstają z czystej syntezy numpy (`bake_weapons.py`, `bake_sfx.py`, `bake_amb.py`, `bake_music.py`); `audio_dsp.py` nie ma
   funkcji wczytującej plik dźwiękowy.
 - **Finalizacja:** `bake_common.finalize()` — jedyne miejsce zapisu: normalizacja (peak albo LUFS), true-peak ≤ −1,5 dBTP, fade'y, dither.
@@ -178,8 +178,25 @@ pieką się deterministycznie (dwa przebiegi = te same sumy).
 Głośność każdej rodziny zrównana ze ZMIERZONĄ głośnością syntezy (nominalne cele z `bake_weapons.py` synteza osiąga tylko częściowo, bo
 ogranicza ją szczyt). Zostają syntetyczne także: `widmo1` (działo szynowe), `lr7` (promień), znaczniki trafień — to dźwięki bez odpowiednika w
 nagraniach. F3 (bronie) jest zamknięta. Zostało: F4 — drzwi, szkło i grzmoty (kandydaci czekają na odsłuch), głos gracza, pozostałe
-ambienty; F5 — własne głosy wrogów;
-F6 (a) — mieszanie wersji bliskiej i dalekiej.
+ambienty; F5 — werdykt dla głosów wrogów (niżej); F6 (a) — mieszanie wersji bliskiej i dalekiej.
+
+**F5, część 2 — własne głosy wrogów (2026-10-12).** Wrogowie przestali pożyczać głos Stalkera. 11 nowych rodzin, 23 pliki
+(`audio/sfx/enemies/`, builder `bake_sfx.build_enemies()`; razem 180 assetów), każda z wersją syntetyczną w repo:
+
+| Rodzina | Kto i kiedy | Gest wersji syntetycznej |
+|---|---|---|
+| `trzosek_attack` ×3, `trzosek_death` ×2 | Trzosek (i Skoczek, niżej): zapowiedź ciosu, śmierć | wysoki, terkoczący warkot ze szczękaniem; opadający pisk |
+| `wolek_attack` ×2, `wolek_death` ×2 | Wołek: zapowiedź ciosu / szarży / rzutu, śmierć | parsknięcie i niski ryk; długi jęk + upadek cielska |
+| `slepiec_attack` ×2, `slepiec_death` ×2 | Ślepiec (i zdemaskowany Mimik, wyżej): zapowiedź, śmierć; śmierć Podsłuchacza | przyspieszające klikanie + świst wdechu; wydech z gasnącym klikaniem |
+| `podsluchacz_scream` ×2 | krzyk alarmu Podsłuchacza, demaskacja Mimika | dwa głosy o pół tonu od siebie, szybkie drżenie |
+| `leech_growl` ×2, `leech_shriek` ×2 | Pijawka (boss): te same zdarzenia co dotąd | mokry, bulgoczący warkot; syczący skrzek |
+| `zyla_growl` ×2, `zyla_roar` ×2 | Żyła (boss): te same zdarzenia co dotąd | pomruk tętniący jak serce; ryk z trzech głosów naraz |
+
+Zwykli wrogowie odzywają się przy zboczu `winding` (zapowiedź ciosu — to informacja dla gracza, nie ozdoba) i przy śmierci; głos gra
+lokalnie na każdym peerze z replikowanego stanu, bez nowych RPC. Ćma jest niema. „Ból” przy każdym trafieniu pominięty celowo: trafienie
+ma już `impact_flesh`, a wataha pod ostrzałem robiłaby ścianę dźwięku. U bossów wysokości odtwarzania zbliżone do 1,0 (wcześniej 0,42–1,35,
+bo jeden krzyk Stalkera udawał wszystko). Limity jednoczesnych głosów: `audio_director.gd: VOICE`. Napisy: `bake_audio.py: CAPTIONS`
++ `translations/ui.csv`. Kandydaci z nagrań dla wszystkich 11 rodzin czekają na odsłuch (`bake_hybrid.py: CANDIDATES`).
 
 Wzór z werdyktów (26 rodzin z nagrań, 9 odrzuconych): nagrania wygrywają tam, gdzie liczy się masa i faktura (strzelby, wybuchy,
 trafienia, łuski, kroki, głos stwora, ogień), a przegrywały dla dźwięków krótkich, jasnych i „bliskich gracza” z samego nagrania (pistolet,
