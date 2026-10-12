@@ -274,8 +274,89 @@ def weapons() -> None:
     bc.hybrid(_keys("shell", 3), _shell_bake, [sid for sid, _ in SHELL_SRC])
 
 
+# ============================================================ F3, część 3 — kandydaci do odsłuchu
+# Wniosek z poprzednich odsłuchów: krótkie, jasne dźwięki „przy graczu" z samych nagrań przegrywały z syntezą, która ma
+# pełniejszy dół. Dlatego mechanika broni dostaje pod nagranie te same niskie stuki, których używa synteza.
+
+# --- Przeładowanie magazynka na osi czasu syntezy: wyjęcie (0 s) → wsunięcie i zatrzask (0,30 s) → przeładowanie zamka (0,62 s).
+RELOAD_NEEDS = ["g36c_mag_foley", "saiga12_cocking"]
+_MAG_OUT = (6.607, 14.363, 28.696)                                  # pojedyncze stuknięcia: magazynek wychodzi
+_MAG_IN = (4.166, 9.416, 11.509)                                    # podwójne: wsunięcie + zatrzask
+_RACK = (4.461, 6.113, 7.847)                                       # zamek do tyłu i do przodu (ok. 0,1 s)
+
+
+def _reload_bake() -> None:
+    for i in range(3):
+        r = Rng(0x3100 + i * 7919)
+        out = _fade(bc.src("g36c_mag_foley", _MAG_OUT[i] - 0.01, 0.22), 0.12, 0.20)
+        mag = _fade(bc.src("g36c_mag_foley", _MAG_IN[i] - 0.01, 0.26), 0.16, 0.24)
+        rack = _fade(bc.src("saiga12_cocking", _RACK[i] - 0.01, 0.30), 0.20, 0.28)
+        seat = thump(.09, 220, 90, .02, .03)
+        snap = thump(.07, 260, 120, .015, .02)
+        t_in = 0.30 + r.uniform(0, .03)
+        x = d.mix([(_unit(out), 0.8, 0.0), (_unit(mag), 1.0, t_in), (seat, 0.6, t_in + 0.05),
+                   (_unit(rack), 0.9, 0.62), (snap, 0.4, 0.70)], ms(1000))
+        finalize("reload_%d" % (i + 1), d.reverb(x, ir("close"), wet=.14), lufs=-22.2)
+
+
+# --- Nabój do strzelby: wsunięcie naboju, wyrzut łuski, to samo wsunięcie o 2 półtony niżej.
+RELOAD_SHELL_NEEDS = ["shell_load_eject"]
+
+
+def _reload_shell_bake() -> None:
+    for i, (t, semis) in enumerate(((2.845, 0.0), (4.280, 0.0), (2.845, -2.0))):
+        click = d.from_onset(d.repitch(bc.src("shell_load_eject", t, 0.30), semis), 1.0, thr_db=-10.0)   # od głównego kliknięcia
+        x = d.mix([(_unit(_fade(click, 0.12, 0.18)), 1.0), (thump(.05, 200, 95, .012, .02), 0.5, 0.05)], ms(200))
+        finalize("reload_shell_%d" % (i + 1), d.reverb(x, ir("dead"), wet=.12), lufs=-20.1)
+
+
+# --- Maczeta: zamach długą klingą (świst z metalicznym „szzing") + krótki świst noża na ataku.
+MACZETA_NEEDS = ["blade_swing_scrape_14", "knife_swing_04"]
+
+
+def _maczeta_bake() -> None:
+    for i in range(2):
+        blade = d.repitch(d.from_onset(bc.src("blade_swing_scrape_14", 0.0, 0.7), 2.0, thr_db=-20.0), (0.0, 1.5)[i])
+        whoosh = d.repitch(bc.src("knife_swing_04", 0.0, 0.24), (-3.0, -1.0)[i])
+        x = d.mix([(_unit(_fade(blade, 0.22, 0.40)), 1.0), (_unit(whoosh), 0.6, 0.02)], ms(400))
+        finalize("maczeta_%d" % (i + 1), d.reverb(x, ir("close"), wet=.12), lufs=-19.9)
+
+
+# --- Kilof: wolny zamach długim trzonkiem, o 3 półtony niżej (ciężkie narzędzie).
+KILOF_NEEDS = ["broom_stick_swings"]
+_STICK = (6.12, 8.13)
+
+
+def _kilof_bake() -> None:
+    for i, t in enumerate(_STICK):
+        sw = d.repitch(bc.src("broom_stick_swings", t - 0.04, 0.54), -3.0)
+        sw = _fade(sw * d.env_pts(sw.shape[-1], [(0, 0), (.03, 1), (10, 1)]), 0.42, 0.56)
+        finalize("kilof_swing_%d" % (i + 1), d.reverb(d.filt(sw, "hp", 90.0, order=4), ir("close"), wet=.12), lufs=-18.4)
+
+
+# --- HKM-9: zapłon (początek nagrania dużego zapłonu) i pętla płomienia (ryk ognia + syk palnika gazowego).
+FLAME_NEEDS = ["fire_ignition_03", "gas_burner_4"]
+
+
+def _flame_bake() -> None:
+    ignite = _fade(d.from_onset(bc.src("fire_ignition_03", 0.0, 0.9), 1.0), 0.40, 0.66)
+    finalize("hkm9_ignite", d.reverb(d.saturate(_unit(ignite), 1.6), ir("close"), wet=.16), lufs=-17.0)
+    xf = ms(300)                                                     # zakładka szwu pętli
+    roar = bc.src("fire_ignition_03", 4.0, 2.0 + 0.3)
+    hiss = bc.src("gas_burner_4", 10.0, 2.0 + 0.3)
+    n = min(len(roar), len(hiss))
+    x = roar[:n] / (np.std(roar) + 1e-9) + 0.9 * hiss[:n] / (np.std(hiss) + 1e-9)
+    finalize("hkm9_flame_loop", d.seam_xfade(d.filt(x, "hp", 40.0), xf), loop=True, lufs=-19.0)
+
+
 # (nazwa wersji, funkcja piekąca, potrzebne źródła) — kandydaci do następnego odsłuchu
-CANDIDATES: tuple = ()
+CANDIDATES: tuple = (
+    ("hybrid", _reload_bake, RELOAD_NEEDS),
+    ("hybrid", _reload_shell_bake, RELOAD_SHELL_NEEDS),
+    ("hybrid", _maczeta_bake, MACZETA_NEEDS),
+    ("hybrid", _kilof_bake, KILOF_NEEDS),
+    ("hybrid", _flame_bake, FLAME_NEEDS),
+)
 
 
 def build_alts() -> None:

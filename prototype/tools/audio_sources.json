@@ -33,6 +33,14 @@
    "supplier": "SoundFxwizard",
    "license": "sonniss-gdc-2.0"
   },
+  "blade_swing_scrape_14": {
+   "kind": "lib",
+   "file": "sonniss/2026/David Dumais Audio - Melee Weapons Sound Effects Pack 2/METLFric_SWING SCRAPE Swift Melee Weapon Swing With A Long Blade 14_DDUMAIS_MWP2.wav",
+   "sha256": "5af061af596532feef49c83274c98f26e4994aa2f4f47f573e59e075065df70b",
+   "pack": "Sonniss GDC 2026 — Melee Weapons Sound Effects Pack 2",
+   "supplier": "David Dumais Audio",
+   "license": "sonniss-gdc-2.0"
+  },
   "boot_concrete_walk": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Joshua Reinhardt - Ultimate Bare Feet Expansion/BOOT_CONC CLEAN_WALK.R.wav",
@@ -47,6 +55,14 @@
    "sha256": "1a506d63619175b8d8bb137ad37364268d7d3c8b6d5afdb4f09ef34d994d8801",
    "pack": "Sonniss GDC 2019 — Nocked",
    "supplier": "Eiravaein Works",
+   "license": "sonniss-gdc-2.0"
+  },
+  "broom_stick_swings": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 6of8/Soundholder - Swipes And Whooshes/swipes and whooshes broom long stick slow and long swings stereo ORTF 8040.wav",
+   "sha256": "c6385f99792aade45c2ba78d5a80c0b6cfc7552e4a0e5f94ad8bf32ce3436ee1",
+   "pack": "Sonniss GDC 2019 — Swipes And Whooshes",
+   "supplier": "Soundholder",
    "license": "sonniss-gdc-2.0"
   },
   "bullet_drop_wood_04": {
@@ -87,6 +103,30 @@
    "sha256": "aa26f39d6e9fe6e6942e15fd4260f8da62f201451784995b718b9abfd2af712c",
    "pack": "Sonniss GDC 2017 — Explosion Sound Pack",
    "supplier": "Gamemaster Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "fire_ignition_03": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 3of8/Gregor Quendel – Designed Fire/Designed Fire - Impacts - Large, ignition 03.wav",
+   "sha256": "1d0632a644f86c655d1203a5c45478637e1b0b8732ba7e312c1eab585c8a341a",
+   "pack": "Sonniss GDC 2018 — Designed Fire",
+   "supplier": "Gregor Quendel",
+   "license": "sonniss-gdc-2.0"
+  },
+  "g36c_mag_foley": {
+   "kind": "lib",
+   "file": "sonniss/2016/Pole Position Production - Various Gun Foley & Handling/Heckler_&_Koch_G36C_5.56mm_foley_close_up_MKH60_mag_in_&_out.wav",
+   "sha256": "ec95eba324d5194673005f5a02888537b457ede5a20b3894c2421daa24689191",
+   "pack": "Sonniss GDC 2016 — Various Gun Foley & Handling",
+   "supplier": "Pole Position Production",
+   "license": "sonniss-gdc-2.0"
+  },
+  "gas_burner_4": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 3of9/Digital Rain Lab - Driving Forces/Gas Burner Stereo 4.wav",
+   "sha256": "b10aafb69895e7ba172f93a16f1a25c0cc1d7943c76b69a9c1095af76d85faa1",
+   "pack": "Sonniss GDC 2017 — Driving Forces",
+   "supplier": "Digital Rain Lab",
    "license": "sonniss-gdc-2.0"
   },
   "grenade_launcher_smoke": {
@@ -137,6 +177,14 @@
    "supplier": "Olivier Girardot",
    "license": "sonniss-gdc-2.0"
   },
+  "knife_swing_04": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 3of8/Gamemaster Audio - Punch and Combat Sounds/whoosh_weapon_knife_swing_04.wav",
+   "sha256": "9a0ae0f81ed8d36f7131bfc24e224f9b8d65648c0b94261dbd00dc132d2a229a",
+   "pack": "Sonniss GDC 2018 — Punch and Combat Sounds",
+   "supplier": "Gamemaster Audio",
+   "license": "sonniss-gdc-2.0"
+  },
   "monster_growls_4": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Olivier Girardot - Monsters/Monster Growls 4.wav",
@@ -150,6 +198,14 @@
    "file": "sonniss/2016/Pole Position Production - Saiga-12 12g solid slug/SAIGA-12_12g_solid_slug_1m_left_off_axis_MKH416_clean_Single_shots_x_5.wav",
    "sha256": "2796c03f4516eb6ba5fd3a188e1e26375508815143958bf0eaf34419673d2d7d",
    "pack": "Sonniss GDC 2016 — Saiga-12 12g solid slug",
+   "supplier": "Pole Position Production",
+   "license": "sonniss-gdc-2.0"
+  },
+  "saiga12_cocking": {
+   "kind": "lib",
+   "file": "sonniss/2016/Pole Position Production - Various Gun Foley & Handling/SAIGA-12_12g_solid_slug_foley_close_up_RSM191_R_cocking.wav",
+   "sha256": "3c7a37f76b156688c75a20ecf10e6c24aae835baa5724ee1ae6121ff3f5e9fb4",
+   "pack": "Sonniss GDC 2016 — Various Gun Foley & Handling",
    "supplier": "Pole Position Production",
    "license": "sonniss-gdc-2.0"
   },
@@ -167,6 +223,14 @@
    "sha256": "e2c0e5210c59e8b4b871bf99a43dcf4c4c52e27c2efa00288ac95f4779ee1e38",
    "pack": "Sonniss GDC 2016 — Bullet SFX",
    "supplier": "Stuart Duffield",
+   "license": "sonniss-gdc-2.0"
+  },
+  "shell_load_eject": {
+   "kind": "lib",
+   "file": "sonniss/2016/TS Sound - 12 Gauge Shotgun/Shell Load_Round Eject.wav",
+   "sha256": "08060b75babefa9e12518c5591bbbb71eaf0acafc1f95fd162252fa0fa4c5f80",
+   "pack": "Sonniss GDC 2016 — 12 Gauge Shotgun",
+   "supplier": "TS Sound",
    "license": "sonniss-gdc-2.0"
   },
   "shotgun_quick_pump": {
