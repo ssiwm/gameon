@@ -227,7 +227,10 @@ var _down := 0.0                             ## 0..1 postęp upadku (rośnie prz
 var clips_on := true                         ## false = same pozy z kodu (porównania w tools/shot_anim3d.gd)
 var clips_raw := false                       ## true = klipy bez tłumienia tułowia (ustaw przed setup; tylko do porównań)
 var _clips: AnimationTree
-var _clip_w := 0.0                           ## 0..1 waga klipu biegu w tej klatce (0 = poza z kodu)
+var _clip_w := 0.0                           ## 0..1 łączna waga klipów w tej klatce (0 = poza z kodu)
+var _clip_k := 0.0                           ## 0..1 udział klipu w stanach, które go mają (1 = cały stan z klipu; maleje przy upadku)
+var _clip_bounce := 0.0                      ## m: poprawka pionu bioder zdejmująca część kołysania klipu (CharClips.bounce_fix)
+var _clip_ws := {}                           ## stan → waga klipu w tej klatce (wejście dla CharClips.drive)
 var _clip_foot := {}                         ## strona → Transform3D stopy z klipu (przestrzeń szkieletu), zanim ruszą ją nakładki
 
 ## Wyniki ostatniej klatki, w pikselach świata względem stóp (z uwzględnieniem odbicia) — dla efektów.
@@ -763,16 +766,14 @@ func _body_state(a: String) -> Dictionary:
 	var lean := 4.0
 	var drop := 0.0
 	var bob := 0.0
+	var clip := _clip_k if CharClips.has(a) else 0.0              # udział klipu: pochylenie i kołysanie niesie klip, z kodu zostaje reszta
 	match a:
 		"idle":
 			lean = 4.0 + 0.8 * sin(_time * 2.4)
 			bob = -0.006 * sin(_time * 2.4)
 		"run":
-			if _clip_w > 0.0:
-				lean = 0.0                                            # pochylenie i kołysanie biegu niesie klip
-			else:
-				lean = 13.0
-				bob = -0.035 * absf(sin(_phase))
+			lean = 13.0
+			bob = -0.035 * absf(sin(_phase))
 		"jump", "fall":
 			var ap := _air_params()
 			lean = lerpf(8.0, 2.0, float(ap["fl"])) + 6.0 * float(ap["tk"])       # odbicie: wyprost z lekkim pochyleniem, spadanie: tułów pionowo
@@ -784,6 +785,10 @@ func _body_state(a: String) -> Dictionary:
 			lean = 6.0
 			drop = 0.48
 			bob = 0.012 * sin(_phase * 2.0)
+	if clip > 0.0:
+		lean *= 1.0 - clip
+		bob *= 1.0 - clip
+		drop = lerpf(drop, CharClips.param(a, "drop", 0.0), clip)
 	return {"lean": lean, "drop": drop, "bob": bob}
 
 func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
@@ -800,15 +805,23 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		sum += float(_aw[n])
 	if anim == "run" or anim == "crouch_walk":
 		_phase += (-1.0 if back_run else 1.0) * delta * clampf(speed / 95.0, 0.4, 1.4) * TAU * 2.0
-	# klip biegu: drzewo ustawia biodra, tułów, głowę i nogi wg fazy kroku; zapamiętujemy stopy z klipu, zanim nakładki ruszą biodra
+	# klipy: drzewo ustawia biodra, tułów, głowę i nogi w stanach, które mają klip; zapamiętujemy stopy z klipu, zanim nakładki ruszą biodra.
+	# Przy upadku udział klipu znika (leżenie i wstawanie to poza z kodu).
 	_clip_w = 0.0
-	if _clips != null and clips_on and CharClips.has("run"):
-		var wr := float(_aw["run"]) / maxf(sum, 0.0001)
-		if wr > 0.002:
-			_clip_w = wr
-			CharClips.drive(_clips, {"run": wr}, _phase / TAU)
+	_clip_bounce = 0.0
+	_clip_k = 1.0 - smoothstep(0.0, 1.0, _down) if (_clips != null and clips_on and CharClips.enabled) else 0.0
+	if _clip_k > 0.0:
+		_clip_ws.clear()
+		for n in AW_STATES:
+			var wc := float(_aw[n]) / maxf(sum, 0.0001) * _clip_k
+			if wc > 0.002 and CharClips.has(n):
+				_clip_ws[n] = wc
+				_clip_w += wc
+		if _clip_w > 0.0:
+			CharClips.drive(_clips, _clip_ws, _phase / TAU, _time)
 			for side in ["Left", "Right"]:
 				_clip_foot[side] = _gp(_b[side + "Foot"])
+			_clip_bounce = CharClips.bounce_fix(_clips, _clip_ws, _gp(hips).origin.y - _sk.get_bone_global_rest(hips).origin.y)
 	# poza bazowa = mieszanka stanów wg wag (faza kroku ciągła, więc bez przeskoków przy zmianie stanu)
 	var lean := 0.0
 	var drop := 0.0
@@ -864,12 +877,12 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		drop = lerpf(drop, 0.62, e)
 		lean = lerpf(lean, 0.0, e)
 	var stand := 1.0 - e
-	if w_idle > 0.01 and e < 0.5:
+	if w_idle > 0.01 and e < 0.5 and not CharClips.has("idle"):
 		# mikroruch: oddech klatki piersiowej, głowa „szuka” (bez wpływu na broń: tylko kręgosłup i głowa)
 		_rot_world(_b["Spine2"], Vector3.BACK, deg_to_rad(0.9 * sin(_time * 1.9)) * w_idle * stand)
 		_rot_world(_b["Head"], Vector3.UP, deg_to_rad(2.5 * sin(_time * 0.43) + 1.2 * sin(_time * 1.1)) * w_idle * stand)
 	var fall_rot := -PI * 0.5 * pow(e, 1.3)                       # ciało przewraca się wokół bioder (opóźnione względem opadania bioder)
-	_move_global(hips, Vector3(lunge, -drop + bob, 0.0) + jit)                     # kucając biodra cofnięte za stopy
+	_move_global(hips, Vector3(lunge, -drop + bob + _clip_bounce, 0.0) + jit)                     # kucając biodra cofnięte za stopy
 	_rot_world(hips, Vector3.BACK, -deg_to_rad(lean) + fall_rot)
 	if _grab_w > 0.001:
 		_rot_world(hips, Vector3.UP, deg_to_rad(7.0) * sin(_time * 11.0) * _grab_w)
@@ -903,14 +916,14 @@ func _leg_state(a: String, side: String) -> Array:
 	var off := Vector3.ZERO
 	var tilt := 0.0
 	var ph := _phase + (0.0 if side == "Right" else PI)
+	var own := 1.0 - (_clip_k if CharClips.has(a) else 0.0)        # z klipem tor stopy pochodzi z klipu (_pose_legs), z kodu zostaje reszta
 	match a:
 		"idle":
 			off = Vector3(0.12 * sgn * 0.8, 0.0, 0.0)
 		"run":
-			if _clip_w <= 0.0:                                        # z klipem tor stopy pochodzi z klipu (_pose_legs)
-				var stride := 0.34 * (0.8 if back_run else 1.0)
-				off = Vector3(stride * sin(ph), 0.17 * maxf(0.0, cos(ph)), 0.0)
-				tilt = deg_to_rad(-14.0) * maxf(0.0, cos(ph))
+			var stride := 0.34 * (0.8 if back_run else 1.0)
+			off = Vector3(stride * sin(ph), 0.17 * maxf(0.0, cos(ph)), 0.0)
+			tilt = deg_to_rad(-14.0) * maxf(0.0, cos(ph))
 		"jump", "fall":
 			# ciągła poza lotu z prędkości: wyprost przy odbiciu → kolana podciągnięte w apeksie → nogi sięgają w dół przed lądowaniem
 			var ap := _air_params()
@@ -925,7 +938,7 @@ func _leg_state(a: String, side: String) -> Array:
 			off = Vector3(0.10 if sgn > 0 else -0.10, 0.0, 0.0)
 		"crouch_walk":
 			off = Vector3(0.13 * sin(ph) + (0.06 if sgn > 0 else -0.06), 0.07 * maxf(0.0, cos(ph)), 0.0)
-	return [off, tilt]
+	return [off * own, tilt * own]
 
 func _pose_legs(e: float) -> void:
 	var sum := 0.0

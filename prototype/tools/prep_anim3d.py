@@ -232,7 +232,8 @@ def retarget(src_arm, tgt_arm, action, keep_travel, step_sync):
         update()
         return A @ (sw @ src_arm.pose.bones[bm["Hips"]].matrix).translation
 
-    # przemieszczenie bioder w klipie: położenie początkowe w poziomie i (bez --keep-travel) liniowy dryf zdejmujemy — klip gra w miejscu
+    # przemieszczenie bioder w klipie: liniowy dryf w poziomie zdejmujemy (bez --keep-travel) — klip gra w miejscu. Stałe odsunięcie bioder
+    # od środka postaci zostaje (np. kucanie z biodrami nad tylną stopą): środek klipu to środek postaci w grze
     h0, h1 = hips_at(f0), hips_at(f1)
     hr = A @ s_rest["Hips"].translation
     travel = Vector((h1.x - h0.x, h1.y - h0.y, 0.0))
@@ -261,7 +262,7 @@ def retarget(src_arm, tgt_arm, action, keep_travel, step_sync):
             if n not in s_now:
                 continue
             if n == "Hips":
-                off = A @ s_now[n].translation - hr - Vector((h0.x - hr.x, h0.y - hr.y, 0.0))
+                off = A @ s_now[n].translation - hr
                 if not keep_travel:
                     off -= travel * ((f - f0) / max(f1 - f0, 1))
                 elif shift:
