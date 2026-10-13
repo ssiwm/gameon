@@ -1,6 +1,7 @@
-"""Przygotowuje WSZYSTKIE modele 3D gry (postacie i bronie) do renderu w czasie rzeczywistym — patrz prep_char3d.py / prep_gun3d.py.
+"""Przygotowuje modele 3D postaci do renderu w czasie rzeczywistym — patrz prep_char3d.py. Bronie od 1.7.213 buduje tools/gun_proc.py
+(wszystkie naraz: tools/gun_proc_all.sh); stara droga z modeli Tripo (prep_gun3d.py) została pod --guns i NADPISUJE modele ze skryptu.
 
-Uruchomienie (z korzenia repo, Blender w PATH): python prototype/tools/prep_char3d_all.py [--guns] [--chars] [--only=m83,p64]
+Uruchomienie (z korzenia repo, Blender w PATH): python prototype/tools/prep_char3d_all.py [--chars] [--guns] [--only=m83,p64]
 Długości broni to 0,8 × długość sprite'a 2D (broń w grze jest „komiksowo" duża; 3D trzymana dwiema rękami musi mieścić się w zasięgu ramion).
 Ułamki chwytów (tylna dłoń fx/fz) pochodzą z arkusza guns.png (tools/concept/weapons_hd_bake.py geometry()); łoże = tylna + 0,31 (karabiny).
 Pola: długość m, chwyt tylny (fx, fz), chwyt przedni (fx, fz) lub None = jedna ręka, flip lufy (heurystyka kolby się myli).
@@ -58,7 +59,7 @@ def run(args):
 def main():
     a = sys.argv[1:]
     only = next((x.split("=", 1)[1].split(",") for x in a if x.startswith("--only=")), None)
-    do_guns = "--guns" in a or "--chars" not in a
+    do_guns = "--guns" in a                                   # tylko na wyraźne życzenie: bronie buduje gun_proc.py
     do_chars = "--chars" in a or "--guns" not in a
     if do_chars:
         for c in CHARS:
