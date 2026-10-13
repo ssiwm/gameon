@@ -23,7 +23,8 @@ Flaga działa tylko z oknem (w trybie headless gra używa sprite'ów, więc `--m
   shader dodaje obrys, światła 2D gry oświetlają sprite. Odbicie (patrzenie w lewo) = `flip_h`. Poza ekranem viewport jest wyłączany.
 - Pozy w kodzie: nogi i ręce przez własne dwukostkowe IK (idle, bieg, skok, spadanie, kucanie, marsz w kucaniu, leżenie), tułów zwraca się ku kamerze
   i pochyla za celem.
-- Broń: 12 modeli (`art/char3d/gun_<klucz>.glb` + `.json` z chwytami: tylny, przedni, wylot, liczba rąk). Broń obraca się wokół barku;
+- Broń: 12 modeli (`art/char3d/gun_<klucz>.glb` + `.json` z chwytami: tylny, przedni, wylot, liczba rąk), od 1.7.213 budowanych skryptem
+  `tools/gun_proc.py` w naturalnej skali. Broń obraca się wokół barku;
   prawa dłoń trzyma chwyt pistoletowy, lewa łoże (karabiny, strzelby, miotacze) — pistolet i broń biała jedną ręką, druga zwisa.
   Gdy łoże jest za daleko, broń jest wsuwana ku ciału.
 - Ruch broni z `weapon_view.gd` (odrzut, dobycie, przeładowanie, zamach) trafia do postaci (`gun_extra`, `gun_kick_px`, `reload_t`, `swing_t`);
@@ -31,8 +32,13 @@ Flaga działa tylko z oknem (w trybie headless gra używa sprite'ów, więc `--m
 - Wyglądy: 6 modeli (`<płeć>_<strój>.glb`: scav / hazmat / medic) wg `player.look` (replikowane, kosmetyka); bot = kobieta Scavenger.
   Wymiana wyglądu w trakcie gry przez `Char3D.set_look`.
 - Wszystko czyta zreplikowany stan gracza (`aim_dir`, kierunek, animacja z prędkości/podłoża, `weapon`, `w_state`); serwer i sieć bez zmian.
-- `tools/prep_char3d.py` / `prep_gun3d.py` (Blender) robią lekkie GLB: 6 tys. ścian postaci, 2,5 tys. broni, sama tekstura koloru (≈0,5 MB zamiast 13 MB);
-  `prep_char3d_all.py` zawiera tabelę wszystkich broni (długość, chwyty, flip lufy). Długość broni 3D = 0,8 × sprite 2D.
+- `tools/prep_char3d.py` (Blender) robi lekkie GLB postaci: 6 tys. ścian, sama tekstura koloru (≈0,5 MB zamiast 13 MB).
+- Bronie buduje `tools/gun_proc.py` (wszystkie naraz: `tools/gun_proc_all.sh`, ok. 3 min): bryły z fazami + materiały proceduralne wypieczone
+  w Cycles do koloru, normalnych, ORM i emisji 2048² (2–11 tys. trójkątów, ok. 1 MB na broń). Projekty wzorowane na prawdziwych konstrukcjach,
+  długości naturalne względem postaci 1,8 m (P-64 0,18 m, M-83 0,88 m, SPECTER-1 1,15 m). Początek układu modelu = nadgarstek dłoni tylnej.
+  Stara droga (`prep_gun3d.py`, tabela w `prep_char3d_all.py --guns`) przycinała modele z Tripo do 2,5 tys. trójkątów.
+- Stal broni ma pełną metaliczność: w rękach odbija niewidoczne „niebo odbić" warstwy graczy (`view3d.gd`, `ACTOR_REFLECT`), na stojakach
+  kryjówki — sondę odbić z dwoma ekranami (`_add_rack_probe`); oglądana broń kołysze się i ma dwa własne reflektory.
 
 ## Pomiar (RTX 3080, 4 px na piksel świata, MSAA 2×)
 
