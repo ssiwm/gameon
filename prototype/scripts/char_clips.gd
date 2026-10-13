@@ -35,24 +35,32 @@ const CLIPS := {
 	"revive": {"file": "kneel", "hold": [0.3, 1.0, 3.6, 0.4], "arms": true},
 	"down": {"file": "down", "scrub": [0.15, 1.65], "drop": -0.05},
 }
+## Klipy wrogów dwunożnych (enemy3d.gd): chód. Faza kroku wroga ma lądowanie prawej stopy w połowie obrotu (u gracza w ćwierci), stąd phase0.
+## Postawę potwora (pochylenie, ręce) dalej daje profil z enemy3d.gd; z klipu idą biodra, nogi i część ruchu tułowia.
+const ENEMY_CLIPS := {
+	"walk": {"file": "walk", "step": true, "phase0": -0.25, "upper": 0.15},
+}
+## Zestawy klipów: nazwa zestawu → tabela stan → klip. Drzewo pamięta swój zestaw (meta „set").
+const SETS := {"player": CLIPS, "enemy": ENEMY_CLIPS}
 
 static var enabled := true                   ## --noclips wyłącza klipy (same pozy z kodu, do porównań)
 static var _src := {}                        ## plik → {"anim": Animation, "rest": {kość → Transform3D}, "hips_y": float} albo {} (brak pliku)
 static var _libs := {}                       ## nazwa modelu → AnimationLibrary (klipy przeliczone na ten szkielet + "rest")
 static var _means := {}                      ## nazwa modelu → {stan → średnie pionowe przesunięcie bioder w klipie względem spoczynku (m)}
-static var _blend: AnimationNodeBlendTree
-static var _order: Array = []                ## klipy w kolejności grafu: [stan, ścieżka wagi, ścieżka czasu, długość (s), czy pętla kroku, phase0, scrub albo null, hold albo null]
+static var _blends := {}                     ## zestaw → AnimationNodeBlendTree
+static var _orders := {}                     ## zestaw → klipy w kolejności grafu: [stan, ścieżka wagi, ścieżka czasu, długość (s), czy pętla kroku, phase0, scrub albo null, hold albo null]
 
-static func has(state: String) -> bool:
-	return enabled and not _source(state).is_empty()
+static func has(state: String, set_name := "player") -> bool:
+	return enabled and not _source(state, set_name).is_empty()
 
-## Parametr klipu danego stanu z tabeli CLIPS (np. "drop").
-static func param(state: String, key: String, default: float) -> float:
-	return float((CLIPS.get(state, {}) as Dictionary).get(key, default))
+## Parametr klipu danego stanu z tabeli zestawu (np. "drop").
+static func param(state: String, key: String, default: float, set_name := "player") -> float:
+	return float(((SETS[set_name] as Dictionary).get(state, {}) as Dictionary).get(key, default))
 
 ## Klip źródłowy stanu (pusty słownik, gdy stan nie ma klipu albo brak pliku).
-static func _source(state: String) -> Dictionary:
-	return _load(String((CLIPS[state] as Dictionary)["file"])) if CLIPS.has(state) else {}
+static func _source(state: String, set_name := "player") -> Dictionary:
+	var tab: Dictionary = SETS[set_name]
+	return _load(String((tab[state] as Dictionary)["file"])) if tab.has(state) else {}
 
 ## Surowy klip z pliku `art/char3d/anim/<file>.glb` przeliczony na szkielet `sk` (bez dostrojenia) — do podglądów (tools/shot_clip3d.gd).
 static func clip(file: String, sk: Skeleton3D) -> Animation:
@@ -146,17 +154,21 @@ static func _rest_anim(sk: Skeleton3D, like: Array) -> Animation:
 				o.position_track_insert_key(nt, 0.0, rest.origin)
 	return o
 
-## Wspólny graf: rest → mix_<stan> ← seek_<stan> ← klip, po kolei dla każdego klipu; wynik ostatniego miksu idzie na wyjście.
-static func _blend_tree() -> AnimationNodeBlendTree:
-	if _blend != null:
-		return _blend
-	_blend = AnimationNodeBlendTree.new()
+## Wspólny graf zestawu: rest → mix_<stan> ← seek_<stan> ← klip, po kolei dla każdego klipu; wynik ostatniego miksu idzie na wyjście.
+static func _blend_tree(set_name: String) -> AnimationNodeBlendTree:
+	if _blends.has(set_name):
+		return _blends[set_name]
+	var tab: Dictionary = SETS[set_name]
+	var _blend := AnimationNodeBlendTree.new()
+	var _order: Array = []
+	_blends[set_name] = _blend
+	_orders[set_name] = _order
 	var n_rest := AnimationNodeAnimation.new()
 	n_rest.animation = &"rest"
 	_blend.add_node(&"rest", n_rest)
 	var prev := &"rest"
-	for st in CLIPS:
-		if _source(st).is_empty():
+	for st in tab:
+		if _source(st, set_name).is_empty():
 			continue
 		var na := AnimationNodeAnimation.new()
 		na.animation = StringName(st)
@@ -167,26 +179,29 @@ static func _blend_tree() -> AnimationNodeBlendTree:
 		_blend.connect_node(StringName("mix_" + st), 0, prev)
 		_blend.connect_node(StringName("mix_" + st), 1, StringName("seek_" + st))
 		prev = StringName("mix_" + st)
-		var c: Dictionary = CLIPS[st]
+		var c: Dictionary = tab[st]
 		_order.append([st, StringName("parameters/mix_%s/blend_amount" % st), StringName("parameters/seek_%s/seek_request" % st),
-				(_source(st)["anim"] as Animation).length, bool(c.get("step", false)), float(c.get("phase0", 0.0)), c.get("scrub"), c.get("hold")])
+				(_source(st, set_name)["anim"] as Animation).length, bool(c.get("step", false)), float(c.get("phase0", 0.0)), c.get("scrub"), c.get("hold")])
 	_blend.connect_node(&"output", 0, prev)
 	return _blend
 
 ## Drzewo animacji dla szkieletu `sk` modelu `key` (nazwa wyglądu — biblioteka przeliczonych klipów jest wspólna dla wszystkich postaci tego modelu).
 ## Zwraca null, gdy nie ma żadnego klipu. Wołający dodaje drzewo jako dziecko rodzica szkieletu. raw: klipy bez tłumienia tułowia (porównania).
-static func build(sk: Skeleton3D, key: String, raw := false) -> AnimationTree:
+## set_name: zestaw klipów („player" albo „enemy").
+static func build(sk: Skeleton3D, key: String, raw := false, set_name := "player") -> AnimationTree:
+	key = set_name + "|" + key
 	if raw:
 		key += "|raw"
+	var tab: Dictionary = SETS[set_name]
 	if not _libs.has(key):
 		var lib := AnimationLibrary.new()
 		var anims: Array = []
 		var means := {}
-		for st in CLIPS:
-			var src := _source(st)
+		for st in tab:
+			var src := _source(st, set_name)
 			if src.is_empty():
 				continue
-			var a := _retarget(src, sk, 1.0 if raw else float((CLIPS[st] as Dictionary).get("upper", 1.0)))
+			var a := _retarget(src, sk, 1.0 if raw else float((tab[st] as Dictionary).get("upper", 1.0)))
 			lib.add_animation(StringName(st), a)
 			anims.append(a)
 			means[st] = float(a.get_meta("hips_mean", 0.0))
@@ -200,8 +215,9 @@ static func build(sk: Skeleton3D, key: String, raw := false) -> AnimationTree:
 	tree.name = "Clips"
 	tree.set_meta("key", key)
 	tree.set_meta("raw", raw)
+	tree.set_meta("set", set_name)
 	tree.add_animation_library(&"", _libs[key])
-	tree.tree_root = _blend_tree()
+	tree.tree_root = _blend_tree(set_name)
 	tree.root_node = NodePath("..")
 	tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	tree.active = true
@@ -213,13 +229,14 @@ static func bounce_fix(tree: AnimationTree, weights: Dictionary, hips_up: float)
 	if tree.get_meta("raw", false):
 		return 0.0
 	var means: Dictionary = _means.get(tree.get_meta("key", ""), {})
+	var set_name := String(tree.get_meta("set", "player"))
 	var mean := 0.0
 	var cut := 0.0
 	var total := 0.0
 	for st in weights:
 		var w := float(weights[st])
 		mean += w * float(means.get(st, 0.0))
-		cut += w * (1.0 - param(st, "bounce", 1.0))
+		cut += w * (1.0 - param(st, "bounce", 1.0, set_name))
 		total += w
 	return -(hips_up - mean) * cut / total if total > 0.0001 else 0.0
 
@@ -230,7 +247,7 @@ static func drive(tree: AnimationTree, weights: Dictionary, phase: float, time: 
 	for st in weights:
 		acc -= float(weights[st])
 	acc = maxf(acc, 0.0)
-	for o in _order:
+	for o in (_orders[tree.get_meta("set", "player")] as Array):
 		var w := float(weights.get(o[0], 0.0))
 		acc += w
 		tree.set(o[1], w / acc if acc > 0.0001 else 0.0)
