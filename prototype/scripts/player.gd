@@ -96,6 +96,7 @@ var aim_dir := Vector2.RIGHT
 var crouching := false
 ## `dead` znaczy „down": gracz leży i wykrwawia się, ale można go podnieść.
 var dead := false
+var is_reviving := false        ## podnosi leżącego towarzysza (replikowane; kosmetyka — klęczenie widzą wszyscy, serwer niczego z tego nie liczy)
 var grabbed := false            ## chwycony przez Pijawkę (leech.gd): przypięty w miejscu, nie chodzi ani nie skacze, ale może strzelać i bić
 var grab_pos := Vector2.ZERO
 var pumping := false            ## drezyna (handcar.gd): gracz pompuje — nie chodzi, nie skacze i nie strzela
@@ -346,8 +347,11 @@ func _update_char3d() -> void:
 		anim = "jump" if velocity.y < 0.0 else "fall"
 	elif crouching:
 		anim = "crouch_walk" if absf(velocity.x) > 8.0 else "crouch"
-	elif _revive_hold > 0.0 and not _is_remote:
-		anim = "crouch"                                    # reanimuje: klęka przy rannym
+	elif is_reviving:
+		anim = "revive"                                    # reanimuje: klęka przy rannym (bez klipu — przysiad), twarzą do niego
+		var rt := _revive_target()
+		if rt != null and absf(rt.global_position.x - global_position.x) > 1.0:
+			_facing = signf(rt.global_position.x - global_position.x)
 	elif absf(velocity.x) > 10.0:
 		anim = "run"
 	# zdarzenia dla animacji 3D: rekoil po utracie zdrowia, amortyzacja lądowania, bieg tyłem (z replikowanego stanu — także zdalni gracze)
@@ -414,7 +418,7 @@ func _setup_sync() -> void:
 	sync.replication_interval = 0.05
 	sync.delta_interval = 0.05
 	var cfg := SceneReplicationConfig.new()
-	for path in [":position", ":velocity", ":aim_dir", ":hp", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":kit", ":perks", ":look", ":grabbed"]:
+	for path in [":position", ":velocity", ":aim_dir", ":hp", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":kit", ":perks", ":look", ":grabbed", ":is_reviving"]:
 		cfg.add_property(path)
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
 	for path in [":position", ":velocity", ":hp", ":crouching", ":dead", ":is_bot", ":display_id"]:
@@ -626,6 +630,7 @@ func _physics_process(delta: float) -> void:
 
 func _local_brain(delta: float) -> void:
 	var reviving := _handle_revive(delta, Input.is_action_pressed("interact"))
+	is_reviving = reviving
 	var gear_busy := _gear_tick(delta)
 	var busy := reviving or pumping or gear_busy
 	weapons.tick_local(delta, busy)
@@ -1010,6 +1015,7 @@ func _revive_time() -> float:
 
 func _go_down() -> void:
 	grabbed = false
+	is_reviving = false
 	hp = 0
 	dead = true
 	bleed_left = bleed_time()
@@ -1310,6 +1316,7 @@ func _bot_brain(delta: float) -> void:
 		and absf(downed.global_position.x - global_position.x) < REVIVE_RANGE - 6.0 \
 		and absf(downed.global_position.y - global_position.y) < 30.0
 	var reviving := _handle_revive(delta, near_downed)
+	is_reviving = reviving
 	reviving = _bot_gear(delta, downed) or reviving
 	_bot_dodge_acid()
 

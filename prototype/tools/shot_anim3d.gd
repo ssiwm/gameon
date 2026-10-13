@@ -1,7 +1,7 @@
 extends SceneTree
 ## Porównanie ruchu postaci 3D: ta sama postać w trzech wersjach — pozy z kodu | klip surowy | klip z tłumieniem tułowia (char_clips.gd), z IK na wierzchu.
 ## Zapisuje klatki PNG (30 kl./s) do katalogu; film składa ffmpeg:
-##   godot --path prototype --script tools/shot_anim3d.gd -- --set=run|stand|crouch --out=/tmp/anim [--frames=90] [--zoom=8]
+##   godot --path prototype --script tools/shot_anim3d.gd -- --set=run|stand|crouch|revive --out=/tmp/anim [--frames=90] [--zoom=8]
 ##   ffmpeg -y -framerate 30 -i /tmp/anim/f_%03d.png -pix_fmt yuv420p /tmp/anim/run.mp4
 ## Wiersz: {char, gun, anim, aim (°), speed (px/s), back (bieg tyłem), alt + toggle (co `toggle` s zmiana anim ↔ alt), label}
 const Char3D := preload("res://scripts/char3d.gd")
@@ -25,6 +25,12 @@ const SETS := {
 		{"char": "female_medic", "gun": "p64", "anim": "crouch_walk", "aim": 20, "speed": 45.0, "label": "marsz w kucaniu, pistolet"},
 		{"char": "male_hazmat", "gun": "srut8", "anim": "crouch", "alt": "idle", "toggle": 0.8, "aim": 0, "label": "kucnij / wstań"},
 		{"char": "female_scav", "gun": "lr7", "anim": "crouch_walk", "alt": "run", "toggle": 0.9, "aim": 0, "speed": 45.0, "label": "marsz w kucaniu / bieg"},
+	],
+	"revive": [
+		{"char": "male_scav", "gun": "m83", "anim": "revive", "aim": 0, "label": "reanimacja (klęczenie)"},
+		{"char": "female_medic", "gun": "p64", "anim": "revive", "aim": 30, "label": "inny model"},
+		{"char": "male_hazmat", "gun": "srut8", "anim": "idle", "alt": "revive", "toggle": 1.2, "aim": 0, "label": "postój / reanimacja"},
+		{"char": "female_scav", "gun": "lr7", "anim": "run", "alt": "revive", "toggle": 1.2, "aim": 0, "label": "bieg / reanimacja"},
 	],
 }
 var _out := "/tmp/anim"

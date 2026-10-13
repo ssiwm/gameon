@@ -6,16 +6,21 @@ extends RefCounted
 ## Klip niesie własną pozę spoczynkową, więc działa na każdym modelu z kośćmi Mixamo: obroty przenosimy względem spoczynku,
 ## przesunięcie bioder skalujemy wysokością bioder. Pozostałe przesunięcia i skale kości pomijamy (zmieniałyby proporcje modelu).
 ## Czas klipu ustawia gra, nie zegar drzewa: pętle kroku idą fazą kroku z `char3d.gd` (krok klipu i krok z kodu to ta sama faza),
-## pozostałe pętle (postój, kucanie) — zegarem postaci, a klipy jednorazowe (upadek) — postępem 0..1, który gra już liczy.
+## pozostałe pętle (postój, kucanie) — zegarem postaci, klipy jednorazowe (upadek) — postępem 0..1, który gra już liczy,
+## a pozy trzymane (klęczenie przy rannym) — czasem od wejścia w stan.
 
 const DIR := "res://art/char3d/anim/"
 const HIPS := "mixamorig_Hips"
 ## Kości tułowia i głowy: ich ruch z klipu można stłumić (`upper`), bo tułów ma przede wszystkim celować.
 const UPPER := ["mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2", "mixamorig_Neck", "mixamorig_Head", "mixamorig_LeftShoulder", "mixamorig_RightShoulder"]
 ## Stan → klip. Stany bazowe to AW_STATES z char3d.gd; „down" to upadek (waga i postęp z `char3d.gd`).
+## Wartość w `progress` (CharClips.drive) znaczy: dla `scrub` postęp 0..1, dla `hold` sekundy od wejścia w stan.
 ## step: pętla kroku — czas z fazy kroku gry; phase0 to ułamek cyklu, w którym prawa stopa ląduje (klipy z `prep_anim3d.py --step-sync` mają 0).
 ## scrub: [t0, t1] — klip jednorazowy: postęp 0..1 z gry wybiera chwilę klipu między t0 a t1 (s); wstecz gra się go tym samym postępem.
-##   Bez `step` i `scrub` klip idzie zegarem postaci.
+## hold: [t0, t1, t2, wejście] — poza trzymana: przez `wejście` s klip idzie od t0 do t1 (zejście do pozy), potem chodzi tam i z powrotem
+##   między t1 a t2 (praca rąk), dopóki stan trwa; wyjście to zwykłe mieszanie stanów.
+##   Bez `step`, `scrub` i `hold` klip idzie zegarem postaci.
+## arms: ręce z klipu zamiast IK, broń schowana (stan bez strzelania).
 ## upper: ile ruchu tułowia i głowy z klipu zostaje (1 = cały, 0 = tułów jak w spoczynku) — klipy z biblioteki pochylają tułów i skręcają barki
 ##   o kilkadziesiąt stopni, co przy celowaniu rzuca bronią.
 ## drop: o tyle metrów niżej stoją biodra niż w klipie (kucanie: sylwetka ma mieć wysokość hitboxa kucania, jak poza z kodu);
@@ -27,6 +32,7 @@ const CLIPS := {
 	"run": {"file": "run", "step": true, "phase0": 0.0, "upper": 0.35, "bounce": 0.45},
 	"crouch": {"file": "crouch", "upper": 0.35, "drop": 0.05},
 	"crouch_walk": {"file": "crouch_walk", "step": true, "phase0": 0.0, "upper": 0.35, "drop": 0.06},
+	"revive": {"file": "kneel", "hold": [0.3, 1.0, 3.6, 0.4], "arms": true},
 	"down": {"file": "down", "scrub": [0.15, 1.65], "drop": -0.05},
 }
 
@@ -35,7 +41,7 @@ static var _src := {}                        ## plik → {"anim": Animation, "re
 static var _libs := {}                       ## nazwa modelu → AnimationLibrary (klipy przeliczone na ten szkielet + "rest")
 static var _means := {}                      ## nazwa modelu → {stan → średnie pionowe przesunięcie bioder w klipie względem spoczynku (m)}
 static var _blend: AnimationNodeBlendTree
-static var _order: Array = []                ## klipy w kolejności grafu: [stan, ścieżka wagi, ścieżka czasu, długość (s), czy pętla kroku, phase0, scrub albo null]
+static var _order: Array = []                ## klipy w kolejności grafu: [stan, ścieżka wagi, ścieżka czasu, długość (s), czy pętla kroku, phase0, scrub albo null, hold albo null]
 
 static func has(state: String) -> bool:
 	return enabled and not _source(state).is_empty()
@@ -163,7 +169,7 @@ static func _blend_tree() -> AnimationNodeBlendTree:
 		prev = StringName("mix_" + st)
 		var c: Dictionary = CLIPS[st]
 		_order.append([st, StringName("parameters/mix_%s/blend_amount" % st), StringName("parameters/seek_%s/seek_request" % st),
-				(_source(st)["anim"] as Animation).length, bool(c.get("step", false)), float(c.get("phase0", 0.0)), c.get("scrub")])
+				(_source(st)["anim"] as Animation).length, bool(c.get("step", false)), float(c.get("phase0", 0.0)), c.get("scrub"), c.get("hold")])
 	_blend.connect_node(&"output", 0, prev)
 	return _blend
 
@@ -232,6 +238,12 @@ static func drive(tree: AnimationTree, weights: Dictionary, phase: float, time: 
 			var dur: float = o[3]
 			if o[6] != null:
 				tree.set(o[2], lerpf(float(o[6][0]), minf(float(o[6][1]), dur - 0.001), clampf(float(progress.get(o[0], 0.0)), 0.0, 1.0)))
+			elif o[7] != null:
+				var h: Array = o[7]
+				var s := float(progress.get(o[0], 0.0))
+				var t_in := float(h[3])
+				tree.set(o[2], lerpf(float(h[0]), float(h[1]), smoothstep(0.0, 1.0, s / t_in)) if s < t_in
+						else float(h[1]) + pingpong(s - t_in, float(h[2]) - float(h[1])))
 			else:
 				tree.set(o[2], fposmod(phase - 0.25 + float(o[5]), 1.0) * dur if o[4] else fposmod(time, dur))
 	tree.advance(0.0)
