@@ -29,6 +29,9 @@ const SHADOW_LIGHTS := 5
 const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wrogów
 const LAYER_ACTORS := 2                    ## warstwa wizualna graczy (modele 3D)
 const ACTOR_AMBIENT := 0.09                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
+const ACTOR_REFLECT := 0.22                ## jasność „nieba odbić" warstwy graczy: tyle światła odbija stal trzymanej broni (nie więcej niż widać postać)
+const LAYER_REFL := 8                      ## znacznik: broń na stojaku przyjmuje odbicia z sondy kryjówki (reflection_mask)
+const LAYER_CARD := 16                     ## ekrany odbić widziane tylko przez sondę (żadna kamera ich nie rysuje)
 const ACTOR_LIGHT := 1.0                   ## mnożnik świateł pomocniczych graczy (kontra, wypełnienie, obrys)
 const AURA_RANGE_M := 2.6                   ## zasięg aury gracza na terenie w widoku 3D [m] (w 2D: 6 m)
 const PROP_Z := 0.0                         ## oś skrzyń i beczek: płaszczyzna gry (postacie stoją na nich i przez nie skaczą)
@@ -71,6 +74,9 @@ var _fp := 0.0                           ## 0..1: przejście kamery do widoku z 
 var _fp_hidden: Node3D                   ## model gracza schowany na czas oględzin (do przywrócenia)
 var _fp_last: Node2D                     ## ostatni gracz w oględzinach (kamera wraca od jego oczu)
 var _fp_player: Node2D                   ## lokalny gracz w oględzinach (jego model jest wtedy schowany)
+var _fp_item: Node                       ## broń na stojaku oglądana teraz albo przed chwilą (obraca się i ma własne światła)
+var _fp_lights: Array = []               ## światło kluczowe i kontra oględzin (SpotLight3D)
+var _rack_probe: ReflectionProbe         ## sonda odbić przy stojakach kryjówki
 var _dots_mi: MeshInstance3D             ## świecące punkty (lampki, diody, oczy w mroku) i znaczniki na podłodze — jedna siatka
 var _hid2d: Array = []                   ## węzły 2D schowane przez `self_modulate` (do przywrócenia w widoku 2D)
 var _worldfx := {}                       ## id obiektu → {"src", "nodes": [węzły 3D], …} (dym generatora, tablica wyników)
@@ -339,9 +345,13 @@ func _sync_camera() -> void:
 		if is_instance_valid(p) and p.get("is_bot") == false and (p as Node).is_multiplayer_authority() and p.get("weapons") != null and p.weapons.inspect_item != null:
 			_fp_player = p
 	_fp = move_toward(_fp, 1.0 if _fp_player != null else 0.0, get_process_delta_time() * 3.2)
+	if _fp <= 0.0:                                          # po oględzinach światła oględzin gasną do zera
+		for sl in _fp_lights:
+			(sl as SpotLight3D).light_energy = 0.0
 	var fe := smoothstep(0.0, 1.0, _fp)
 	if _fp_player != null:
 		_fp_last = _fp_player
+		_fp_item = _fp_player.weapons.inspect_item
 	if fe > 0.0 and _fp_last != null and is_instance_valid(_fp_last):
 		var eye := Level3D.px_to_m(_fp_last.global_position) + Vector3(0.0, FP_EYE_M, FP_Z)
 		xf.origin = xf.origin.lerp(eye, fe)
@@ -392,7 +402,8 @@ func _sync_geometry() -> void:
 	_cam_a.environment = env_a
 	var env_b := env_a.duplicate() as Environment         # warstwa graczy: bez nieba i glow (przezroczyste tło), to samo światło otoczenia i mgła
 	env_b.background_mode = Environment.BG_CLEAR_COLOR
-	env_b.sky = null
+	env_b.sky = _actor_reflection_sky()                   # tło zostaje przezroczyste; niebo służy tylko odbiciom na metalu trzymanej broni
+	env_b.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env_b.glow_enabled = false
 	env_b.ssao_enabled = false
 	env_b.ssil_enabled = false
@@ -1053,16 +1064,23 @@ func _sync_guns() -> void:
 		var first := true
 		for mn in model.find_children("*", "MeshInstance3D", true, false):
 			var mi := mn as MeshInstance3D
-			mi.layers = LAYER_WORLD
+			mi.layers = LAYER_WORLD | (LAYER_REFL if on_rack else 0)
 			var bb := _local_xf(mi, model) * mi.get_aabb()
 			box = bb if first else box.merge(bb)
 			first = false
 			if mi.mesh != null:
 				for si in mi.mesh.get_surface_count():
 					var sm := mi.mesh.surface_get_material(si) as StandardMaterial3D
-					if sm != null:
-						sm.metallic = 0.45
-						sm.metallic_specular = 0.6
+					if sm == null:
+						continue
+					if on_rack:                                    # stojak ma sondę odbić: pełny metal (jak broń w rękach)
+						sm.metallic = 1.0
+						sm.metallic_specular = 0.5
+					else:                                          # łup leży w ciemności bez odbić — pełny metal byłby czarny, więc własna kopia materiału
+						var lm := sm.duplicate() as StandardMaterial3D
+						lm.metallic = 0.45
+						lm.metallic_specular = 0.6
+						mi.set_surface_override_material(si, lm)
 		var rect: Rect2 = n.get("_hd_gun_rect")
 		var k := (rect.size.x / 16.0 * PX) / maxf(box.size.x, 0.001) * (RACK_GUN_SCALE if on_rack else 1.0)
 		var pivot := Node3D.new()
@@ -1116,7 +1134,7 @@ func _sync_guns() -> void:
 			label.position = Vector3(0.0, 0.0, 0.013)
 			plate.add_child(label)
 			plate.position = Vector3(0.0, -(RACK_SHELF_PX - 4.1) * RACK_SCALE * PX - 1.6 * PX, RACK_PLATE_Z - RACK_GUN_Z)
-		_guns[id] = [n, pivot, spr, RACK_GUN_Z if on_rack else -0.25, on_rack, model, lock, plate, label, -1, null]
+		_guns[id] = [n, pivot, spr, RACK_GUN_Z if on_rack else -0.25, on_rack, model, lock, plate, label, -1, null, model.position, k]
 	for id in _guns.keys():
 		var g: Array = _guns[id]
 		if not is_instance_valid(g[0]) or (g[0] as Node).is_queued_for_deletion() or not is_instance_valid(g[2]):
@@ -1134,6 +1152,15 @@ func _sync_guns() -> void:
 		# gdy lampy nie ma, stawiamy ją ponownie (wcześniej powstawała raz i znikała przy przebudowie)
 		if _geo_key != "" and (g[10] == null or not is_instance_valid(g[10])):
 			g[10] = _add_rack_lamp(g[0] as Node2D)
+		if _geo_key != "" and (_rack_probe == null or not is_instance_valid(_rack_probe)):
+			_rack_probe = _add_rack_probe()
+		# oględziny: oglądana broń kołysze się wokół pionu i lekko pochyla — odblaski wędrują po stali; reszta leży oparta o deskę
+		var sway := smoothstep(0.0, 1.0, _fp) if g[0] == _fp_item else 0.0
+		var tt := Time.get_ticks_msec() * 0.001
+		var turn := Basis(Vector3.UP, sin(tt * 0.8) * deg_to_rad(17.0) * sway) * Basis(Vector3.RIGHT, sin(tt * 0.55) * deg_to_rad(6.0) * sway)
+		(g[5] as Node3D).transform = Transform3D(turn, Vector3.ZERO) * Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-7.0)).scaled(Vector3.ONE * float(g[12])), g[11] as Vector3)
+		if sway > 0.0:
+			_place_inspect_lights(pv.position, sway)
 		# stojak: broń na półce (podłoga = początek pickupu), stan blokady z warsztatu
 		var floor_px := (g[0] as Node2D).global_position
 		pv.position = Level3D.px_to_m(floor_px) + Vector3(0.0, (RACK_UP_PX + RACK_SHELF_PX * RACK_SCALE - 2.6) * PX, float(g[3]))
@@ -1148,6 +1175,104 @@ func _sync_guns() -> void:
 				(g[6] as Node3D).visible = locked
 			(g[7] as Node3D).visible = locked
 			(g[8] as Label3D).text = ("%d" % price) if price > 0 else "SOON"
+
+## „Niebo" warstwy graczy: nie jest rysowane (tło warstwy jest przezroczyste), daje tylko otoczenie do odbić — chłodna jasność z góry, ciemny
+## horyzont, cieplejszy dół. Bez niego stal trzymanej broni nie miała czego odbijać i wyglądała jak tworzywo. Jasność trzyma `ACTOR_REFLECT`,
+## żeby broń nie świeciła mocniej, niż widać postać w ciemności (GDD §8.3).
+static func _actor_reflection_sky() -> Sky:
+	var sm := ProceduralSkyMaterial.new()
+	sm.sky_top_color = Color(0.62, 0.70, 0.88)
+	sm.sky_horizon_color = Color(0.10, 0.11, 0.14)
+	sm.sky_curve = 0.35
+	sm.ground_horizon_color = Color(0.07, 0.07, 0.08)
+	sm.ground_bottom_color = Color(0.30, 0.24, 0.18)
+	sm.ground_curve = 0.2
+	sm.sun_angle_max = 0.0
+	sm.sky_energy_multiplier = ACTOR_REFLECT
+	sm.ground_energy_multiplier = ACTOR_REFLECT
+	var sky := Sky.new()
+	sky.sky_material = sm
+	sky.radiance_size = Sky.RADIANCE_SIZE_64
+	return sky
+
+## Sonda odbić przy stojakach kryjówki: stal broni na półkach odbija pokój (lampy, mur) i dwa niewidoczne dla kamer ekrany — ciepły od strony
+## widza z jaśniejszymi pasami i chłodniejszy pod stropem. Działa tylko na broń ze stojaków (`LAYER_REFL`), nie zmienia reszty sceny.
+func _add_rack_probe() -> ReflectionProbe:
+	var lo := Vector3(INF, INF, INF)
+	var hi := Vector3(-INF, -INF, -INF)
+	for g in _guns.values():
+		if bool(g[4]) and is_instance_valid(g[1]):
+			lo = lo.min((g[1] as Node3D).position)
+			hi = hi.max((g[1] as Node3D).position)
+	if lo.x == INF:
+		return null
+	var mid := Vector3((lo.x + hi.x) * 0.5, (lo.y + hi.y) * 0.5 + 0.5, RACK_GUN_Z + 0.8)
+	var span := hi.x - lo.x + 5.0
+	var probe := ReflectionProbe.new()
+	probe.name = "RackProbe"
+	probe.update_mode = ReflectionProbe.UPDATE_ONCE
+	probe.size = Vector3(span, 5.0, 6.0)
+	probe.position = mid
+	probe.interior = true
+	probe.ambient_mode = ReflectionProbe.AMBIENT_DISABLED
+	probe.cull_mask = LAYER_WORLD | LAYER_CARD
+	probe.reflection_mask = LAYER_REFL
+	probe.layers = LAYER_WORLD
+	_geo.add_child(probe)
+	# ekran od strony widza: ciepłe światło pokoju z kilkoma jaśniejszymi pasami (okna / lampy), ekran górny: chłodniejsza poświata stropu
+	var grad := Gradient.new()
+	grad.offsets = PackedFloat32Array([0.0, 0.18, 0.22, 0.34, 0.38, 0.6, 0.64, 0.78, 0.82, 1.0])
+	grad.colors = PackedColorArray([Color(0.05, 0.04, 0.03), Color(0.10, 0.08, 0.06), Color(0.9, 0.78, 0.6), Color(0.9, 0.78, 0.6), Color(0.12, 0.10, 0.08),
+			Color(0.08, 0.07, 0.06), Color(0.75, 0.68, 0.58), Color(0.75, 0.68, 0.58), Color(0.10, 0.08, 0.06), Color(0.04, 0.035, 0.03)])
+	var gt := GradientTexture2D.new()
+	gt.gradient = grad
+	gt.width = 256
+	gt.height = 8
+	for spec in [[Vector3(0.0, 0.4, 2.6), Vector3(0.0, PI, 0.0), Vector2(span, 3.4), 2.6], [Vector3(0.0, 2.2, 0.6), Vector3(PI * 0.5, 0.0, 0.0), Vector2(span, 3.0), 1.4]]:
+		var card := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = spec[2]
+		card.mesh = qm
+		var cm := StandardMaterial3D.new()
+		cm.albedo_color = Color.BLACK
+		cm.emission_enabled = true
+		cm.emission_texture = gt
+		cm.emission_energy_multiplier = float(spec[3])
+		cm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		card.material_override = cm
+		card.layers = LAYER_CARD
+		card.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		card.position = mid + (spec[0] as Vector3)
+		card.rotation = spec[1]
+		_geo.add_child(card)
+	return probe
+
+## Światła oględzin: ciepłe kluczowe z lewej od strony widza i chłodna kontra znad broni — przy kołysaniu przesuwają odblaski po krawędziach.
+## Świecą tylko na oglądaną broń (wąski stożek), jasność rośnie i gaśnie razem z najazdem kamery.
+func _place_inspect_lights(at: Vector3, k: float) -> void:
+	if _fp_lights.is_empty():
+		for spec in [[Color(1.0, 0.93, 0.82), 26.0], [Color(0.72, 0.84, 1.0), 34.0]]:
+			var sl := SpotLight3D.new()
+			sl.light_color = spec[0]
+			sl.spot_angle = float(spec[1])
+			sl.spot_range = 4.0
+			sl.spot_attenuation = 0.6
+			sl.light_specular = 1.6
+			sl.shadow_enabled = false
+			sl.light_cull_mask = LAYER_WORLD
+			sl.light_volumetric_fog_energy = 0.0
+			sl.layers = LAYER_WORLD | LAYER_ACTORS
+			_world.add_child(sl)
+			_fp_lights.append(sl)
+	var aim := at + Vector3(0.0, 0.12, 0.0)
+	var key := _fp_lights[0] as SpotLight3D
+	key.global_position = at + Vector3(-1.0, 0.5, 1.5)
+	key.look_at(aim, Vector3.UP)
+	key.light_energy = 2.2 * k
+	var rim := _fp_lights[1] as SpotLight3D
+	rim.global_position = at + Vector3(0.45, 0.85, 0.12)
+	rim.look_at(aim, Vector3.RIGHT)
+	rim.light_energy = 5.0 * k
 
 ## Gruz po rozbitej ścianie: model `rubble` na podłodze przejścia (w głębi, żeby nie zasłaniał drogi) i dwa wyszczerbione fragmenty muru
 ## przy stropie — wyrwa zamiast gładkiego otworu. Żyje z geometrią mapy.
