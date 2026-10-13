@@ -205,7 +205,7 @@ var climb_t := -1.0                          ## 0..1 podciągnięcia przy wskaki
 var _air_t := 0.0                            ## s w powietrzu (od odbicia)
 var sink_m := 0.0                            ## m: o tyle opuszczamy model pod podłoże (czyta view3d.gd)
 var _mc := {}                                ## bieżący cios bronią białą (krzywe ruchu), puste = brak ciosu
-const AW_STATES := ["idle", "run", "jump", "fall", "crouch", "crouch_walk"]
+const AW_STATES := ["idle", "run", "jump", "fall", "crouch", "crouch_walk", "revive"]
 ## Pozy specyficzne dla broni: promień dłoni od barku (m) i opuszczenie względem linii celowania (− = wyżej, na ramieniu), rodzaj przeładowania
 ## (mag / shell / cell / rail / bolt / pistol), cykl po strzale (pump / bolt), mnożniki wznosu lufy (climb) i cofnięcia ciała (body), odchylenie tułowia (lean, °).
 const WEAPON_POSE := {
@@ -229,6 +229,8 @@ var clips_raw := false                       ## true = klipy bez tłumienia tuł
 var _clips: AnimationTree
 var _clip_w := 0.0                           ## 0..1 łączna waga klipów w tej klatce (0 = poza z kodu)
 var _clip_k := 0.0                           ## 0..1 udział klipu w stanach, które go mają (1 = cały stan z klipu; maleje przy upadku)
+var _kneel_t := 0.0                          ## s od wejścia w stan „revive" (czas klipu klęczenia)
+var _clip_arms := 0.0                        ## 0..1 waga stanu, w którym ręce idą z klipu, a broń jest schowana (klęczenie przy rannym)
 var _clip_down := 0.0                        ## 0..1 udział klipu upadku (zastępuje upadek z kodu, gdy klip jest)
 var _clip_prog := {}                         ## stan → postęp 0..1 klipów jednorazowych (wejście dla CharClips.drive)
 var _clip_knee := {}                         ## strona → kierunek kolana w klipie (biegun IK nogi), pusty wektor = brak
@@ -714,7 +716,7 @@ func _two_bone(a: int, m: int, e: int, la: float, lb: float, target: Vector3, po
 
 # ---------------------------------------------------------------- klatka
 
-## anim: idle | run | jump | fall | crouch | crouch_walk | down. aim: kierunek celowania na ekranie (y w dół).
+## anim: idle | run | jump | fall | crouch | crouch_walk | revive | down. aim: kierunek celowania na ekranie (y w dół).
 ## speed: |prędkość pozioma| w px/s (tempo kroku). armed=false chowa broń (leżenie).
 func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.0, armed := true, tint := Color.WHITE) -> void:
 	if not ready_ok:
@@ -753,13 +755,13 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		_mc = _melee_curve(swing_t, "chop" if _gun_key == "kilof" else "slash")
 	sink_m = 0.45 * smoothstep(0.0, 1.0, dying)
 	_pose_body(delta, anim, speed, theta)
-	var holding := armed and _down < 0.2 and throw_t < 0.0
+	var holding := armed and _down < 0.2 and throw_t < 0.0 and _clip_arms < 0.5
 	if throw_t >= 0.0 and armed and _down < 0.2:
 		_pose_throw(theta)
 	elif holding:
 		_pose_arms(theta)
 	else:
-		_pose_arms_relaxed(_clip_down < 0.5)                      # z klipem upadku ręce zostają z klipu
+		_pose_arms_relaxed(_clip_down < 0.5 and _clip_arms < 0.5)   # z klipem upadku albo klęczenia ręce zostają z klipu
 	if _gun != null:
 		_gun.visible = holding
 		if _gun_n != null:
@@ -782,7 +784,7 @@ func _body_state(a: String) -> Dictionary:
 			var ap := _air_params()
 			lean = lerpf(8.0, 2.0, float(ap["fl"])) + 6.0 * float(ap["tk"])       # odbicie: wyprost z lekkim pochyleniem, spadanie: tułów pionowo
 			drop = -0.05 * float(ap["tk"]) + 0.05 * float(ap["tuck"])             # wyprost przy odbiciu, w apeksie biodra niżej względem podciągniętych nóg
-		"crouch":
+		"crouch", "revive":                                       # „revive" bez klipu to zwykły przysiad
 			lean = 6.0                                                # przysiad: tułów prawie pionowo, kolana do przodu
 			drop = 0.48                                               # głęboki przysiad: sylwetka ok. 0,65 wysokości stojącej, jak hitbox kucania
 		"crouch_walk":
@@ -813,6 +815,11 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	# Upadek: klip „down" przejmuje całą pozę (postęp = _down, wstawanie gra go wstecz); bez niego udział klipów znika i upadek liczy kod.
 	_clip_w = 0.0
 	_clip_bounce = 0.0
+	_clip_arms = 0.0
+	if anim == "revive":
+		_kneel_t += delta
+	elif float(_aw["revive"]) < 0.01 * sum:
+		_kneel_t = 0.0
 	var usable := _clips != null and clips_on and CharClips.enabled
 	var fall_clip := usable and CharClips.has("down")
 	_clip_down = smoothstep(0.0, 0.12, _down) if fall_clip else 0.0
@@ -824,6 +831,9 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 			if wc > 0.002 and CharClips.has(n):
 				_clip_ws[n] = wc
 				_clip_w += wc
+				if CharClips.param(n, "arms", 0.0) > 0.0:
+					_clip_arms += wc
+		_clip_prog["revive"] = _kneel_t
 		if _clip_down > 0.002:
 			_clip_ws["down"] = _clip_down
 			_clip_prog["down"] = _down
@@ -911,10 +921,11 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 			_rot_world(_b[side + "Arm"], Vector3.BACK, deg_to_rad(14.0) * sin(_time * 38.0 + (0.0 if side == "Left" else 1.7)))
 			_rot_world(_b[side + "UpLeg"], Vector3.BACK, deg_to_rad(10.0) * sin(_time * 29.0 + (0.0 if side == "Left" else 2.3)))
 	# tułów zwraca się ku kamerze (broń po bliższej stronie) i pochyla się za celem
-	_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(-22.0) * stand)
+	var aim_k := stand * (1.0 - _clip_arms)                       # klęczenie przy rannym: tułów nie celuje
+	_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(-22.0) * aim_k)
 	for n in ["Spine", "Spine1", "Spine2"]:
-		_rot_world(_b[n], Vector3.BACK, (theta * 0.13 + deg_to_rad(lean) * 0.12 - gun_extra * 0.06) * stand)
-	_rot_world(_b["Head"], Vector3.BACK, (theta * 0.2 - deg_to_rad(lean) * 0.5) * stand + deg_to_rad(head_hit))
+		_rot_world(_b[n], Vector3.BACK, (theta * 0.13 + deg_to_rad(lean) * 0.12 - gun_extra * 0.06) * aim_k)
+	_rot_world(_b["Head"], Vector3.BACK, (theta * 0.2 - deg_to_rad(lean) * 0.5) * aim_k + deg_to_rad(head_hit))
 	_pose_legs(e)
 
 ## Pomocnicze parametry lotu z prędkości pionowej i czasu w powietrzu: tk — wyprost tuż po odbiciu, tuck — podciągnięte kolana (najmocniej w apeksie),
@@ -951,7 +962,7 @@ func _leg_state(a: String, side: String) -> Array:
 			var launch := Vector3(-0.04 if front else -0.14, 0.0, 0.0)
 			off = base.lerp(tucked, float(ap["tuck"])).lerp(reach, float(ap["ext"])).lerp(launch, float(ap["tk"]))
 			tilt = deg_to_rad(-14.0) * (1.0 - float(ap["ext"])) + deg_to_rad(12.0) * float(ap["tk"])
-		"crouch":
+		"crouch", "revive":
 			off = Vector3(0.10 if sgn > 0 else -0.10, 0.0, 0.0)
 		"crouch_walk":
 			off = Vector3(0.13 * sin(ph) + (0.06 if sgn > 0 else -0.06), 0.07 * maxf(0.0, cos(ph)), 0.0)

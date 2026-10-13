@@ -46,7 +46,7 @@ Typowa sesja (4 graczy + bot) ≈ 2,5 ms z 16,7 ms. Nie mierzono na słabszym GP
 Pokrętła kosztu: `Char3D.ss` (rozdzielczość renderu, 4), `Char3D.msaa`, `FRAME_WP` (rozmiar ramki); tryb niskiej jakości `--char3d-lq` = SS 2 + bez MSAA.
 Test sieciowy (host + klient, oba z 3D): zdalni gracze i bot mają model, broń i wygląd; przeładowanie hosta widoczne u klienta.
 
-## Klipy animacji (postój, bieg, kucanie, upadek — biblioteka CC0)
+## Klipy animacji (postój, bieg, kucanie, upadek, reanimacja — biblioteka CC0)
 
 Ruch ciała w stanach pętlonych i przy upadku pochodzi z klipów zamiast z wzorów w kodzie; ręce z bronią i postawienie stóp dalej liczy IK,
 na wierzchu klipu.
@@ -58,6 +58,7 @@ na wierzchu klipu.
 | `run` | `Sprint_Loop` | faza kroku | 0,35 | `bounce` 0,45 |
 | `crouch` | `Crouch_Idle_Loop` | zegar postaci | 0,35 | `drop` 0,05 m |
 | `crouch_walk` | `Crouch_Fwd_Loop` | faza kroku | 0,35 | `drop` 0,06 m |
+| `revive` | `Fixing_Kneeling` | czas od wejścia w stan (`hold`) | 1 | `arms` — ręce z klipu, broń schowana |
 | upadek (`down`) | `Death01` | postęp upadku (`scrub` 0,15–1,65 s) | 1 | `drop` −0,05 m |
 
 Skok, spadanie, lądowanie, trafienie, rzut, cios i przeładowanie to nadal pozy z kodu — po obejrzeniu klipów z paczki (`shot_clip3d.gd`):
@@ -71,7 +72,10 @@ blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=$L --ma
 blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=$L --map=Sprint_Loop:run,Crouch_Fwd_Loop:crouch_walk --step-sync   # pętle kroku
 blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=$L --map=Death01:down --keep-travel                 # klip jednorazowy: ciało ma się przemieścić
 godot --path prototype --script tools/shot_clip3d.gd -- --clips=down,idle --out=/tmp/clips.png   # stykówka surowych klipów na modelu (wybór klipów)
-godot --path prototype --script tools/shot_anim3d.gd -- --set=run|stand|crouch --out=/tmp/anim   # klatki porównania: pozy z kodu | klip surowy | klip + IK (film składa ffmpeg)
+godot --path prototype --script tools/shot_anim3d.gd -- --set=run|stand|crouch|revive --out=/tmp/anim   # klatki porównania: pozy z kodu | klip surowy | klip + IK (film składa ffmpeg)
+# reanimacja w sieci (dwa okna): host powala bota i go podnosi, klient zapisuje zrzut, gdy zdalny gracz klęczy
+godot --path prototype --script tools/shot_net3d.gd -- --host --port=8980 --mission=z1_m1 --revive --wait=440 --out=/tmp/h.png
+godot --path prototype --script tools/shot_net3d.gd -- --join=127.0.0.1 --port=8980 --watch --wait=520 --out=/tmp/c.png
 godot --path prototype -- --host --mission=z1_m1 --shot=/tmp/run.png --shotat=20 [--shotrun|--shotcrouch] [--noclips]   # w grze, z klipami i bez
 ```
 
@@ -93,6 +97,10 @@ godot --path prototype -- --host --mission=z1_m1 --shot=/tmp/run.png --shotat=20
   (`scrub`); wstawanie po reanimacji gra ten sam klip wstecz. Postać pada na plecy (poza z kodu padała twarzą w dół), upadek trwa 1,0 s
   zamiast 0,75 s. Ręce i kolana zostają z klipu (biegun IK nóg to kierunek kolana w klipie). Drgawki i zapadanie się w ostatniej sekundzie
   wykrwawiania to dalej nakładka z kodu. Bez klipu (`--noclips`) udział klipów przy upadku znika i upadek liczy kod.
+- Reanimacja: `player.is_reviving` (replikowane przez `MultiplayerSynchronizer`, kosmetyka — serwer niczego z tego nie liczy) wybiera stan
+  `revive`, więc klęczenie widzą wszyscy gracze, nie tylko podnoszący (wcześniej zdalny gracz stał przy rannym). Postać w 0,4 s schodzi do
+  klęczenia (klip od 0,3 do 1,0 s), potem ręce pracują tam i z powrotem między 1,0 a 3,6 s klipu, dopóki trwa podnoszenie; broń jest
+  schowana, ręce idą z klipu, tułów nie celuje, a postać odwraca się twarzą do rannego. Bez klipu `revive` to przysiad z bronią, jak dotąd.
 - Po klipie idą nakładki z kodu: celowanie tułowiem, odrzut, trafienie, lądowanie, chwyt Pijawki. Stopy z klipu są celem IK nóg, więc nakładki
   ruszające biodrami nie odrywają ich od podłoża.
 - `--noclips` wyłącza klipy (same pozy z kodu); `Char3D.clips_on` robi to samo dla jednej postaci, `Char3D.clips_raw` wyłącza dostrojenie
@@ -101,8 +109,8 @@ godot --path prototype -- --host --mission=z1_m1 --shot=/tmp/run.png --shotat=20
   wartość (pozę szkieletu liczy się wcześniej); suma mieści się w szumie pomiaru.
 - Chwyt broni (punkt celowania) względem póz z kodu: w biegu waha się o 1,3 px zamiast 0,4 px, w kucaniu jest o ok. 1,2 px wyżej.
 
-Kandydaci z paczki na później: `Fixing_Kneeling` (klęczenie przy rannym / generatorze) i `Interact` (sięgnięcie ręką). Oba wymagają schowania
-broni, rąk z klipu zamiast IK i stanu replikowanego w sieci (reanimację widzi dziś tylko lokalny gracz — `player._update_char3d`).
+Kandydat z paczki na później: `Interact` (sięgnięcie ręką po przedmiot, dźwignię). Wymaga tego samego co reanimacja: schowania broni, rąk
+z klipu i stanu replikowanego w sieci.
 
 ## Ograniczenia / dalsze kroki
 
@@ -110,7 +118,7 @@ broni, rąk z klipu zamiast IK i stanu replikowanego w sieci (reanimację widzi 
 - Celowanie w dół wysuwa broń ku kamerze (inaczej chowa się za tułowiem); celowanie prosto w górę zasłania głowę ramieniem.
 - Oświetlenie: drugi przebieg renderu (kopie siatek na warstwie 2, shader wypisuje normalne widokowe) daje mapę normalnych, więc latarka i flara dają relief jak na sprite'ach HD (odbicie `flip_h` odwraca X normalnych w shaderze). Kosztuje ok. +50% renderu postaci; `--char3d-lq` go wyłącza.
 - Kucanie / skradanie to **przysiad** (biodra 0,48 m niżej, tułów niemal pionowo — wysokość ok. 0,75 stojącej); przesunięcia bioder liczy `_move_global` w przestrzeni szkieletu (osie lokalne kości Mixamo są obrócone, wcześniej przesunięcie ruszało biodra w bok, a nie w dół).
-- Poza postojem, biegiem, kucaniem i upadkiem (klipy, patrz wyżej) pozy to proste funkcje sin/cos, nie animacje artysty; dłonie nie obejmują palcami chwytu (tylko orientacja).
+- Poza postojem, biegiem, kucaniem, upadkiem i reanimacją (klipy, patrz wyżej) pozy to proste funkcje sin/cos, nie animacje artysty; dłonie nie obejmują palcami chwytu (tylko orientacja).
 - Broń biała ma jedną, uproszczoną pozę zamachu. SPECTER-1 używa swojego modelu `widmo1_01` (cewka, ten sam co w sprite'ach HD); `widmo1_02` (szyny + cewki, olive) to nieużywana alternatywa.
 - Wrogowie nadal sprite'y HD — styl postaci gracza (3D) i wrogów trzeba będzie zestroić.
 - Od 1.7.156 domyślne: widok 3D zawsze używa modeli, a w widoku 2D decyduje ustawienie **Characters in 2D view** (`Settings.char3d`, domyślnie 3D) lub flaga `--char3d`. Pomiar na słabszym sprzęcie nadal nie jest zrobiony.

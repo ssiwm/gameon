@@ -2,12 +2,14 @@ extends SceneTree
 ## Test widoku sieciowego postaci 3D: dwa okna (host i klient) — każde zapisuje zrzut i wypisuje stan graczy (czy mają model 3D, broń, wygląd).
 ## godot --path prototype --script tools/shot_net3d.gd -- --host --port=8980 --out=/tmp/h.png --act     (host strzela i przeładowuje)
 ## godot --path prototype --script tools/shot_net3d.gd -- --join=127.0.0.1 --port=8980 --out=/tmp/c.png  (klient tylko patrzy)
+## Reanimacja: host z `--revive` powala bota i podnosi go (trzyma „interact"), klient z `--watch` zapisuje zrzut, gdy ZDALNY człowiek klęczy.
 var _f := 0
 var _m: Node
 var _out := "/tmp/net3d.png"
 var _act := false
 var _wait := 360
 var _watch := false
+var _revive := false
 var _seen := {}
 func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -17,6 +19,8 @@ func _initialize() -> void:
 			_watch = true
 		elif a == "--act":
 			_act = true
+		elif a == "--revive":
+			_revive = true
 		elif a.begins_with("--wait="):
 			_wait = int(a.substr(7))
 	_m = (load("res://scenes/main.tscn") as PackedScene).instantiate()
@@ -35,10 +39,30 @@ func _process(_d: float) -> bool:
 		_press("move_right", k > 100 and k < 140)
 		_press("fire", k > 150 and k < 200)
 		_press("reload", k > 220 and k < 226)
-	if _watch:                                                   # klient: zrzut, gdy ZDALNY człowiek strzela / przeładowuje
+	if _revive and _f == 150:                                    # host: bot pada, człowiek staje przy nim i trzyma „interact"
+		var me: Node2D = null
+		var bot: Node2D = null
+		for p in get_nodes_in_group("players"):
+			if p.is_bot:
+				bot = p
+			elif p.is_multiplayer_authority():
+				me = p
+		if me != null and bot != null:
+			bot._go_down()
+			me.global_position = bot.global_position + Vector2(-14.0, 0.0)
+			_press("interact", true)
+			print("REVIVE start f=", _f)
+	if _revive and _f == 290:
+		root.get_texture().get_image().save_png(_out.replace(".png", "_revive.png"))
+	if _watch:                                                   # klient: zrzut, gdy ZDALNY człowiek strzela / przeładowuje / klęczy przy rannym
 		for p in get_nodes_in_group("players"):
 			if p.is_bot or p.is_multiplayer_authority():
 				continue
+			if p.is_reviving:
+				_seen["revive_f"] = int(_seen.get("revive_f", 0)) + 1
+				if int(_seen["revive_f"]) == 90:                     # półtorej sekundy klęczenia
+					root.get_texture().get_image().save_png(_out.replace(".png", "_revive.png"))
+					print("remote REVIVE seen f=", _f, " anim arms=", p.c3d._clip_arms if p.c3d != null else -1.0)
 			if p.w_firing and not _seen.has("fire") and _f > 120:
 				_seen["fire"] = true
 				root.get_texture().get_image().save_png(_out.replace(".png", "_fire.png"))
