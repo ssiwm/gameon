@@ -60,10 +60,13 @@ na wierzchu klipu.
 | `crouch_walk` | `Crouch_Fwd_Loop` | faza kroku | 0,35 | `drop` 0,06 m |
 | `revive` | `Fixing_Kneeling` | czas od wejścia w stan (`hold`) | 1 | `arms` — ręce z klipu, broń schowana |
 | upadek (`down`) | `Death01` | postęp upadku (`scrub` 0,15–1,65 s) | 1 | `drop` −0,05 m |
+| wstawanie (`getup`) | `LayToIdle` (druga paczka, `art_src/animations/ual2/`) | postęp wstawania (`scrub` 0,1–1,5 s) | 1 | — |
 
-Skok, spadanie, lądowanie, trafienie, rzut, cios i przeładowanie to nadal pozy z kodu — po obejrzeniu klipów z paczki (`shot_clip3d.gd`):
+Skok, spadanie, lądowanie, trafienie, rzut, cios i przeładowanie to nadal pozy z kodu — po obejrzeniu klipów z paczek (`shot_clip3d.gd`):
 `Hit_Chest` / `Hit_Head` są przy tej wielkości postaci niemal niewidoczne (poza z kodu szarpie tułowiem i głową wyraźniej), a `Jump_Loop`
 to jedna nieruchoma poza, podczas gdy poza z kodu zmienia się z prędkością pionową (wyprost, podciągnięte kolana, sięganie do ziemi).
+`OverhandThrow` sprawdzony jako nakładka na górę ciała: postać odwraca się przy zamachu do kamery i kłania po rzucie, a poza z kodu
+prowadzi rękę łukiem w kierunku celowania — w widoku z boku czyta się lepiej.
 
 ```bash
 L=art_src/animations/ual1/AnimationLibrary_Godot_Standard.glb
@@ -71,8 +74,9 @@ blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=$L --li
 blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=$L --map=Idle_Loop:idle,Crouch_Idle_Loop:crouch       # pętle na zegarze
 blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=$L --map=Sprint_Loop:run,Crouch_Fwd_Loop:crouch_walk --step-sync   # pętle kroku
 blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=$L --map=Death01:down --keep-travel                 # klip jednorazowy: ciało ma się przemieścić
+blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=art_src/animations/ual2/UAL2_Standard.glb --map=LayToIdle:getup --keep-travel
 godot --path prototype --script tools/shot_clip3d.gd -- --clips=down,idle --out=/tmp/clips.png   # stykówka surowych klipów na modelu (wybór klipów)
-godot --path prototype --script tools/shot_anim3d.gd -- --set=run|stand|crouch|revive --out=/tmp/anim   # klatki porównania: pozy z kodu | klip surowy | klip + IK (film składa ffmpeg)
+godot --path prototype --script tools/shot_anim3d.gd -- --set=run|stand|crouch|revive|getup --out=/tmp/anim   # klatki porównania: pozy z kodu | klip surowy | klip + IK (film składa ffmpeg)
 # reanimacja w sieci (dwa okna): host powala bota i go podnosi, klient zapisuje zrzut, gdy zdalny gracz klęczy
 godot --path prototype --script tools/shot_net3d.gd -- --host --port=8980 --mission=z1_m1 --revive --wait=440 --out=/tmp/h.png
 godot --path prototype --script tools/shot_net3d.gd -- --join=127.0.0.1 --port=8980 --watch --wait=520 --out=/tmp/c.png
@@ -94,8 +98,9 @@ godot --path prototype -- --host --mission=z1_m1 --shot=/tmp/run.png --shotat=20
 - `char3d.gd` co klatkę podaje drzewu wagi stanów (te same co póz z kodu, więc przejścia trwają jak dotąd ok. 80 ms), fazę kroku (`_phase`)
   i zegar; tempo kroku i bieg tyłem działają jak dotąd. Drzewo działa w trybie ręcznym (`advance(0)` w `update()`).
 - Upadek: klip `down` przejmuje całą pozę w pierwszych 12% upadku, a jego czas wybiera postęp upadku `_down`, który gra już liczy
-  (`scrub`); wstawanie po reanimacji gra ten sam klip wstecz. Postać pada na plecy (poza z kodu padała twarzą w dół), upadek trwa 1,0 s
-  zamiast 0,75 s. Ręce i kolana zostają z klipu (biegun IK nóg to kierunek kolana w klipie). Drgawki i zapadanie się w ostatniej sekundzie
+  (`scrub`). Postać pada na plecy (poza z kodu padała twarzą w dół), upadek trwa 1,0 s zamiast 0,75 s. Wstawanie po reanimacji gra
+  klip `getup` (siada, podpiera się, wstaje; 0,95 s jak dotąd) — zaczyna się w tej samej pozie, w której kończy się upadek, a przejście
+  między klipami trwa 0,2 s; powalenie w trakcie wstawania wraca płynnie do klipu upadku. Ręce i kolana zostają z klipu (biegun IK nóg to kierunek kolana w klipie). Drgawki i zapadanie się w ostatniej sekundzie
   wykrwawiania to dalej nakładka z kodu. Bez klipu (`--noclips`) udział klipów przy upadku znika i upadek liczy kod.
 - Reanimacja: `player.is_reviving` (replikowane przez `MultiplayerSynchronizer`, kosmetyka — serwer niczego z tego nie liczy) wybiera stan
   `revive`, więc klęczenie widzą wszyscy gracze, nie tylko podnoszący (wcześniej zdalny gracz stał przy rannym). Postać w 0,4 s schodzi do
@@ -139,8 +144,8 @@ CC0, 43 klipy; patrz `SOURCE.md`). Zestaw klipów wybiera na rodzaj klucz `walk_
   --sets=human,zombie --movie=/tmp/en` (wiersze: kod, klip human, klip zombie); `--anim=attackseq --movie=…` (chód → zapowiedź → cios,
   kod kontra zestaw rodzaju); bez `--movie` stykówka: kod | surowy klip | w grze.
 
-W drugiej paczce są też klipy dla gracza, jeszcze nieużyte: `LayToIdle` (wstawanie z leżenia), `OverhandThrow` (rzut), `Consume`,
-`Chest_Open`, `ClimbUp_1m_RM`.
+W drugiej paczce są też klipy dla gracza, jeszcze nieużyte: `Consume`, `Chest_Open`, `ClimbUp_1m_RM` — każdy wymaga stanu w grze
+(leczenie, otwieranie skrzyni, wspinaczka), którego postać dziś nie ma.
 
 ## Ograniczenia / dalsze kroki
 

@@ -231,6 +231,7 @@ var _clip_w := 0.0                           ## 0..1 łączna waga klipów w tej
 var _clip_k := 0.0                           ## 0..1 udział klipu w stanach, które go mają (1 = cały stan z klipu; maleje przy upadku)
 var _kneel_t := 0.0                          ## s od wejścia w stan „revive" (czas klipu klęczenia)
 var _clip_arms := 0.0                        ## 0..1 waga stanu, w którym ręce idą z klipu, a broń jest schowana (klęczenie przy rannym)
+var _rise_w := 0.0                           ## 0..1 wstawanie: klip „getup" zamiast klipu upadku granego wstecz
 var _clip_down := 0.0                        ## 0..1 udział klipu upadku (zastępuje upadek z kodu, gdy klip jest)
 var _clip_prog := {}                         ## stan → postęp 0..1 klipów jednorazowych (wejście dla CharClips.drive)
 var _clip_knee := {}                         ## strona → kierunek kolana w klipie (biegun IK nogi), pusty wektor = brak
@@ -750,6 +751,7 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 	_air_t = _air_t + delta if (anim == "jump" or anim == "fall") else 0.0
 	var fall_s := 1.0 if (clips_on and CharClips.has("down")) else 0.75      # klip upadku jest dłuższy niż upadek z kodu
 	_down = move_toward(_down, 1.0 if anim == "down" else 0.0, delta / (fall_s if anim == "down" else 0.95))
+	_rise_w = move_toward(_rise_w, 0.0 if anim == "down" else 1.0, delta / 0.2)
 	_mc = {}
 	if swing_t >= 0.0 and _down < 0.2:
 		_mc = _melee_curve(swing_t, "chop" if _gun_key == "kilof" else "slash")
@@ -835,8 +837,14 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 					_clip_arms += wc
 		_clip_prog["revive"] = _kneel_t
 		if _clip_down > 0.002:
-			_clip_ws["down"] = _clip_down
-			_clip_prog["down"] = _down
+			# upadek gra klip „down" postępem _down; wstawanie po reanimacji — klip „getup" (bez niego „down" wstecz)
+			var w_up := _clip_down * _rise_w if CharClips.has("getup") else 0.0
+			if _clip_down - w_up > 0.002:
+				_clip_ws["down"] = _clip_down - w_up
+				_clip_prog["down"] = _down
+			if w_up > 0.002:
+				_clip_ws["getup"] = w_up
+				_clip_prog["getup"] = 1.0 - _down
 			_clip_w += _clip_down
 		if _clip_w > 0.0:
 			CharClips.drive(_clips, _clip_ws, _phase / TAU, _time, _clip_prog)
