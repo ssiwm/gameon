@@ -59,20 +59,25 @@ static func gun_hd_rect(key: String) -> Rect2:
 static var _mip: Dictionary = {}
 
 ## Tekstura HD z mipmapami skompresowana w locie do S3TC (DXT5): ~4× mniej pamięci wideo przy kilku ms na arkusz (zmierzone: 2048×2688 → 5 ms).
-## Mapy normalnych dostają kompresję „normal". Gdy kompresja się nie uda (platforma bez S3TC) zostaje RGBA8 z mipmapami.
+## Mapy normalnych dostają kompresję „normal". Kompresja działa tylko przy uruchomieniu z edytora Godota (`_can_compress`): w wyeksportowanym
+## buildzie zostaje RGBA8 z mipmapami — tak samo, gdy kompresja się nie uda (platforma bez S3TC).
 static func hd_texture(img: Image, normal := false) -> ImageTexture:
 	var im := img.duplicate() as Image
 	if im.get_format() != Image.FORMAT_RGBA8:
 		im.convert(Image.FORMAT_RGBA8)
 	im.generate_mipmaps()
-	if compress_hd:
+	if compress_hd and _can_compress:
 		var keep := im.duplicate() as Image
 		if im.compress(Image.COMPRESS_S3TC, Image.COMPRESS_SOURCE_NORMAL if normal else Image.COMPRESS_SOURCE_GENERIC) != OK:
 			im = keep
 	return ImageTexture.create_from_image(im)
 
-## Kompresja tekstur HD (dev): `--nocompress` ją wyłącza do porównań jakości i pamięci.
-static var compress_hd := true
+## Kompresja tekstur HD (dev): `--nocompress` ją wyłącza do porównań jakości i pamięci. Flagę czytamy już tutaj, bo ikony menu wczytują
+## swoje tekstury, zanim main.gd przejrzy wiersz poleceń.
+static var compress_hd := not OS.get_cmdline_user_args().has("--nocompress")
+## Kompresor BC (`Image.compress` do S3TC) ma tylko edytor Godota. Szablony eksportu go nie zawierają i każde wywołanie zgłasza tam błąd
+## silnika („_image_compress_bc_func is null"), więc w buildzie w ogóle go nie wołamy — nawet na próbę, bo próba też trafia do logu.
+static var _can_compress := OS.has_feature("editor")
 
 ## Arkusz z mipmapami (ImageTexture) — dla UI rysującego duże klatki HD w małym rozmiarze (kodeks): bez mipmap zmniejszanie ×4 daje szum.
 static func mip_texture(path: String) -> Texture2D:
