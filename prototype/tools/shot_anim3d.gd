@@ -1,7 +1,7 @@
 extends SceneTree
 ## Porównanie ruchu postaci 3D: ta sama postać w trzech wersjach — pozy z kodu | klip surowy | klip z tłumieniem tułowia (char_clips.gd), z IK na wierzchu.
 ## Zapisuje klatki PNG (30 kl./s) do katalogu; film składa ffmpeg:
-##   godot --path prototype --script tools/shot_anim3d.gd -- --set=run|stand|crouch|revive --out=/tmp/anim [--frames=90] [--zoom=8]
+##   godot --path prototype --script tools/shot_anim3d.gd -- --set=run|stand|crouch|revive|getup --out=/tmp/anim [--frames=90] [--zoom=8]
 ##   ffmpeg -y -framerate 30 -i /tmp/anim/f_%03d.png -pix_fmt yuv420p /tmp/anim/run.mp4
 ## Wiersz: {char, gun, anim, aim (°), speed (px/s), back (bieg tyłem), alt + toggle (co `toggle` s zmiana anim ↔ alt), label}
 const Char3D := preload("res://scripts/char3d.gd")
@@ -31,6 +31,12 @@ const SETS := {
 		{"char": "female_medic", "gun": "p64", "anim": "revive", "aim": 30, "label": "inny model"},
 		{"char": "male_hazmat", "gun": "srut8", "anim": "idle", "alt": "revive", "toggle": 1.2, "aim": 0, "label": "postój / reanimacja"},
 		{"char": "female_scav", "gun": "lr7", "anim": "run", "alt": "revive", "toggle": 1.2, "aim": 0, "label": "bieg / reanimacja"},
+	],
+	"getup": [
+		{"char": "male_scav", "gun": "m83", "anim": "down", "alt": "idle", "toggle": 1.8, "aim": 0, "label": "upadek i wstawanie"},
+		{"char": "female_medic", "gun": "p64", "anim": "down", "alt": "idle", "toggle": 1.8, "aim": 20, "label": "inny model"},
+		{"char": "male_hazmat", "gun": "srut8", "anim": "down", "alt": "run", "toggle": 1.8, "aim": 0, "label": "wstaje i biegnie"},
+		{"char": "female_scav", "gun": "lr7", "anim": "down", "alt": "idle", "toggle": 0.7, "aim": 0, "label": "powalona w trakcie wstawania"},
 	],
 }
 var _out := "/tmp/anim"

@@ -13,7 +13,7 @@ const DIR := "res://art/char3d/anim/"
 const HIPS := "mixamorig_Hips"
 ## Kości tułowia i głowy: ich ruch z klipu można stłumić (`upper`), bo tułów ma przede wszystkim celować.
 const UPPER := ["mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2", "mixamorig_Neck", "mixamorig_Head", "mixamorig_LeftShoulder", "mixamorig_RightShoulder"]
-## Stan → klip. Stany bazowe to AW_STATES z char3d.gd; „down" to upadek (waga i postęp z `char3d.gd`).
+## Stan → klip. Stany bazowe to AW_STATES z char3d.gd; „down" i „getup" to upadek i wstawanie (wagi i postęp z `char3d.gd`).
 ## Wartość w `progress` (CharClips.drive) znaczy: dla `scrub` postęp 0..1, dla `hold` sekundy od wejścia w stan.
 ## step: pętla kroku — czas z fazy kroku gry; phase0 to ułamek cyklu, w którym prawa stopa ląduje (klipy z `prep_anim3d.py --step-sync` mają 0).
 ## scrub: [t0, t1] — klip jednorazowy: postęp 0..1 z gry wybiera chwilę klipu między t0 a t1 (s); wstecz gra się go tym samym postępem.
@@ -34,6 +34,7 @@ const CLIPS := {
 	"crouch_walk": {"file": "crouch_walk", "step": true, "phase0": 0.0, "upper": 0.35, "drop": 0.06},
 	"revive": {"file": "kneel", "hold": [0.3, 1.0, 3.6, 0.4], "arms": true},
 	"down": {"file": "down", "scrub": [0.15, 1.65], "drop": -0.05},
+	"getup": {"file": "getup", "scrub": [0.1, 1.5]},
 }
 ## Klipy wrogów dwunożnych (enemy3d.gd): chód. Faza kroku wroga ma lądowanie prawej stopy w połowie obrotu (u gracza w ćwierci), stąd phase0.
 ## Postawę potwora (pochylenie, ręce) dalej daje profil z enemy3d.gd; z klipu idą biodra, nogi i część ruchu tułowia.
