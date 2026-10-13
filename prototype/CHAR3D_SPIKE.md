@@ -46,30 +46,36 @@ Typowa sesja (4 graczy + bot) ≈ 2,5 ms z 16,7 ms. Nie mierzono na słabszym GP
 Pokrętła kosztu: `Char3D.ss` (rozdzielczość renderu, 4), `Char3D.msaa`, `FRAME_WP` (rozmiar ramki); tryb niskiej jakości `--char3d-lq` = SS 2 + bez MSAA.
 Test sieciowy (host + klient, oba z 3D): zdalni gracze i bot mają model, broń i wygląd; przeładowanie hosta widoczne u klienta.
 
-## Klipy animacji (próbka: bieg)
+## Klipy animacji (bieg z biblioteki CC0)
 
 Ruch ciała może pochodzić z klipu zamiast z wzorów w kodzie; ręce z bronią i postawienie stóp dalej liczy IK, na wierzchu klipu.
+Źródło klipów: `art_src/animations/ual1/` — Universal Animation Library (Quaternius, CC0, 46 klipów; patrz `SOURCE.md` w tym katalogu).
 
 ```bash
-blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --standin=run            # klip zastępczy biegu (klucze w skrypcie) → art/char3d/anim/run.glb
-blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=PLIK.glb --name=run   # klip z pliku z animacją (ten sam układ kości)
-godot --path prototype --script tools/shot_anim3d.gd -- --out=/tmp/anim                   # klatki porównania: pozy z kodu | klip + IK (film składa ffmpeg)
+blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=art_src/animations/ual1/AnimationLibrary_Godot_Standard.glb --list
+blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=art_src/animations/ual1/AnimationLibrary_Godot_Standard.glb --map=Sprint_Loop:run --step-sync
+godot --path prototype --script tools/shot_anim3d.gd -- --out=/tmp/anim                   # klatki porównania: pozy z kodu | klip surowy | klip + IK (film składa ffmpeg)
 godot --path prototype -- --host --mission=z1_m1 --shot=/tmp/run.png --shotat=20 --shotrun [--noclips]   # bieg w grze, z klipem i bez
 ```
 
-- `scripts/char_clips.gd` wczytuje `art/char3d/anim/<nazwa>.glb` (sam szkielet i klip), przelicza klip na szkielet każdego wyglądu
-  (obroty względem pozy spoczynkowej, przesunięcie bioder w skali wysokości bioder, reszta przesunięć pominięta) i buduje `AnimationTree`:
-  poza spoczynkowa → `mix_<stan>` ← `seek_<stan>` ← klip. Tabela `CLIPS` mówi, który stan bazowy ma klip.
+- `tools/prep_anim3d.py` przenosi klip z obcego szkieletu (tu Rigify `DEF-*`; nazwy kości innych układów w tabeli `ALIASES`) na nasz, w przestrzeni
+  świata: wyrównuje kierunek „przodu", skalę i pozę spoczynkową (T źródła kontra nasze A), zdejmuje przemieszczanie się postaci (klip gra w miejscu),
+  a `--step-sync` zaczyna pętlę od lądowania prawej stopy, żeby zgadzała się z fazą kroku gry. Wynik: `art/char3d/anim/<nazwa>.glb` (sam szkielet i klip).
+- `scripts/char_clips.gd` wczytuje te pliki, przelicza klip na szkielet każdego wyglądu (obroty względem pozy spoczynkowej, przesunięcie bioder
+  w skali wysokości bioder, reszta przesunięć pominięta) i buduje `AnimationTree`: poza spoczynkowa → `mix_<stan>` ← `seek_<stan>` ← klip.
+  Tabela `CLIPS` mówi, który stan bazowy ma klip i ile ruchu tułowia z klipu zostaje (`upper`).
+- `upper` = 0,35 dla biegu: klip sprintu pochyla tułów i skręca barki o kilkadziesiąt stopni, co przy celowaniu rzucało bronią; tułów i głowa
+  dostają 35% tego ruchu, biodra i nogi cały.
 - `char3d.gd` co klatkę ustawia wagę klipu (ta sama waga co stanu „run", więc przejścia trwają jak dotąd ok. 80 ms) i czas klipu z fazy kroku
   (`_phase`) — tempo kroku i bieg tyłem działają jak dotąd. Drzewo działa w trybie ręcznym (`advance(0)` w `update()`).
 - Po klipie idą nakładki z kodu: celowanie tułowiem, odrzut, trafienie, lądowanie, chwyt Pijawki. Stopy z klipu są celem IK nóg, więc nakładki
   ruszające biodrami nie odrywają ich od podłoża.
-- `--noclips` wyłącza klipy (same pozy z kodu); `Char3D.clips_on` robi to samo dla jednej postaci.
-- Koszt: `bench_char3d.gd --n=10` z klipami i z `--noclips` daje ten sam czas `update()` w granicach szumu pomiaru (0,8–0,95 ms na 10 postaci, RTX 3080).
+- `--noclips` wyłącza klipy (same pozy z kodu); `Char3D.clips_on` robi to samo dla jednej postaci, `Char3D.clips_raw` wyłącza tłumienie tułowia.
+- Koszt: `bench_char3d.gd --n=10` z klipami i z `--noclips` daje ten sam czas `update()` w granicach szumu pomiaru (RTX 3080).
 
-Stan próbki: klip `run` jest **zastępczy** — ułożony kluczami w `prep_anim3d.py` (tor kostek, miednica, tułów), nie nagranie ruchu. Tryb `--from`
-nie był sprawdzony na prawdziwym pliku: presety Tripo dla postaci dwunożnych zwracały błąd 1004 na rigach v1.0 (patrz README), a klip z innego
-układu kości (np. oryginalny Mixamo) wymaga przeniesienia w Blenderze w przestrzeni świata, czego ten skrypt jeszcze nie robi.
+Klip ma na razie tylko stan „run". Kandydaci z paczki dla pozostałych stanów: `Idle_Loop`, `Crouch_Idle_Loop`, `Crouch_Fwd_Loop`, `Jump_Start` /
+`Jump_Loop` / `Jump_Land`, `Death01`, `Hit_Chest`, `Interact`, `Fixing_Kneeling` (reanimacja). Stany jednorazowe (śmierć, trafienie,
+interakcja) potrzebują w drzewie węzła odtwarzanego zegarem, nie fazą kroku — tego jeszcze nie ma.
 
 ## Ograniczenia / dalsze kroki
 

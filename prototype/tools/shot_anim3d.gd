@@ -1,11 +1,12 @@
 extends SceneTree
-## Porównanie ruchu postaci 3D: ta sama postać parami — z lewej pozy z kodu, z prawej klip animacji (char_clips.gd) z IK na wierzchu.
+## Porównanie ruchu postaci 3D: ta sama postać w trzech wersjach — pozy z kodu | klip surowy | klip z tłumieniem tułowia (char_clips.gd), z IK na wierzchu.
 ## Zapisuje klatki PNG (30 kl./s) do katalogu; film składa ffmpeg:
-##   godot --path prototype --script tools/shot_anim3d.gd -- --out=/tmp/anim [--frames=90] [--zoom=10]
+##   godot --path prototype --script tools/shot_anim3d.gd -- --out=/tmp/anim [--frames=90] [--zoom=8]
 ##   ffmpeg -y -framerate 30 -i /tmp/anim/f_%03d.png -pix_fmt yuv420p /tmp/anim/run.mp4
 ## Wiersz: {char, gun, aim (°), speed (px/s), back (bieg tyłem), toggle (s: co tyle zmiana bieg ↔ postój, 0 = ciągły bieg), label}
 const Char3D := preload("res://scripts/char3d.gd")
 const DT := 1.0 / 60.0
+const MODES := ["KOD", "KLIP surowy", "KLIP + IK"]
 const ROWS := [
 	{"char": "male_scav", "gun": "m83", "aim": 0, "speed": 95.0, "label": "bieg, karabin"},
 	{"char": "female_medic", "gun": "p64", "aim": 30, "speed": 95.0, "label": "inny model, pistolet, cel w górę"},
@@ -19,7 +20,7 @@ var _saved := 0
 var _chars: Array = []
 
 func _initialize() -> void:
-	var zoom := 10.0
+	var zoom := 8.0
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			_out = a.substr(6)
@@ -39,21 +40,28 @@ func _initialize() -> void:
 		var cell := Vector2(640.0 * (i % 2), 360.0 * (i / 2))
 		var ground := ColorRect.new()                         # linia podłoża: widać, czy stopy stoją na ziemi
 		ground.color = Color(0.3, 0.34, 0.32)
-		ground.position = cell + Vector2(20.0, 318.0)
-		ground.size = Vector2(600.0, 2.0)
+		ground.position = cell + Vector2(10.0, 312.0)
+		ground.size = Vector2(620.0, 2.0)
 		root.add_child(ground)
-		for k in 2:
+		var title := Label.new()
+		title.text = cfg["label"]
+		title.position = cell + Vector2(14.0, 338.0)
+		title.add_theme_font_size_override("font_size", 13)
+		title.modulate = Color(1, 1, 1, 0.6)
+		root.add_child(title)
+		for k in MODES.size():
 			var c := Char3D.new()
-			c.position = cell + Vector2(170.0 + 300.0 * k, 318.0)
+			c.position = cell + Vector2(105.0 + 210.0 * k, 312.0)
 			c.scale = Vector2(zoom, zoom)
-			c.clips_on = k == 1
+			c.clips_on = k > 0
+			c.clips_raw = k == 1
 			root.add_child(c)
 			if not c.setup(cfg["char"], cfg["gun"]):
 				push_error("setup nie powiodło się: %s" % cfg)
 			_chars.append([c, cfg])
 			var l := Label.new()
-			l.text = "%s — %s" % ["KOD" if k == 0 else "KLIP + IK", cfg["label"]]
-			l.position = cell + Vector2(40.0 + 300.0 * k, 328.0)
+			l.text = MODES[k]
+			l.position = cell + Vector2(60.0 + 210.0 * k, 318.0)
 			l.add_theme_font_size_override("font_size", 14)
 			root.add_child(l)
 

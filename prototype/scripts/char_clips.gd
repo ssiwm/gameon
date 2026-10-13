@@ -9,9 +9,13 @@ extends RefCounted
 
 const DIR := "res://art/char3d/anim/"
 const HIPS := "mixamorig_Hips"
-## Stan bazowy (AW_STATES w char3d.gd) → klip. phase0: ułamek cyklu, w którym prawa stopa ląduje (faza kroku gry ma wtedy 0,25 obrotu).
+## Kości tułowia i głowy: ich ruch z klipu można stłumić (`upper`), bo tułów ma przede wszystkim celować.
+const UPPER := ["mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2", "mixamorig_Neck", "mixamorig_Head", "mixamorig_LeftShoulder", "mixamorig_RightShoulder"]
+## Stan bazowy (AW_STATES w char3d.gd) → klip. phase0: ułamek cyklu, w którym prawa stopa ląduje (faza kroku gry ma wtedy 0,25 obrotu;
+## klipy z `prep_anim3d.py --step-sync` mają 0). upper: ile ruchu tułowia i głowy z klipu zostaje (1 = cały, 0 = tułów jak w spoczynku) —
+## klipy biegu z bibliotek skręcają barki o kilkadziesiąt stopni, co przy celowaniu rzuca bronią.
 const CLIPS := {
-	"run": {"file": "run", "phase0": 0.0},
+	"run": {"file": "run", "phase0": 0.0, "upper": 0.35},
 }
 
 static var enabled := true                   ## --noclips wyłącza klipy (same pozy z kodu, do porównań)
@@ -46,7 +50,8 @@ static func _source(state: String) -> Dictionary:
 	return out
 
 ## Klip przeliczony na szkielet `sk`: ścieżki „<Skeleton3D>:<kość>”, obroty względem spoczynku celu, biodra w skali celu.
-static func _retarget(src: Dictionary, sk: Skeleton3D) -> Animation:
+## upper < 1 tłumi ruch kości tułowia i głowy (UPPER) w stronę pozy spoczynkowej.
+static func _retarget(src: Dictionary, sk: Skeleton3D, upper := 1.0) -> Animation:
 	var a: Animation = src["anim"]
 	var rest_s: Dictionary = src["rest"]
 	var hi := sk.find_bone(HIPS)
@@ -63,11 +68,14 @@ static func _retarget(src: Dictionary, sk: Skeleton3D) -> Animation:
 		var rt := sk.get_bone_rest(bi)
 		match a.track_get_type(t):
 			Animation.TYPE_ROTATION_3D:
-				var fix := rt.basis.get_rotation_quaternion() * rs.basis.get_rotation_quaternion().inverse()
+				var rq := rt.basis.get_rotation_quaternion()
+				var fix := rq * rs.basis.get_rotation_quaternion().inverse()
+				var damp := upper if UPPER.has(bone) else 1.0
 				var nt := o.add_track(Animation.TYPE_ROTATION_3D)
 				o.track_set_path(nt, NodePath("%s:%s" % [sk.name, bone]))
 				for k in a.track_get_key_count(t):
-					o.rotation_track_insert_key(nt, a.track_get_key_time(t, k), (fix * (a.track_get_key_value(t, k) as Quaternion)).normalized())
+					var q := (fix * (a.track_get_key_value(t, k) as Quaternion)).normalized()
+					o.rotation_track_insert_key(nt, a.track_get_key_time(t, k), rq.slerp(q, damp) if damp < 1.0 else q)
 			Animation.TYPE_POSITION_3D:
 				if bone != HIPS:
 					continue
@@ -124,8 +132,10 @@ static func _blend_tree() -> AnimationNodeBlendTree:
 	return _blend
 
 ## Drzewo animacji dla szkieletu `sk` modelu `key` (nazwa wyglądu — biblioteka przeliczonych klipów jest wspólna dla wszystkich postaci tego modelu).
-## Zwraca null, gdy nie ma żadnego klipu. Wołający dodaje drzewo jako dziecko rodzica szkieletu.
-static func build(sk: Skeleton3D, key: String) -> AnimationTree:
+## Zwraca null, gdy nie ma żadnego klipu. Wołający dodaje drzewo jako dziecko rodzica szkieletu. raw: klipy bez tłumienia tułowia (porównania).
+static func build(sk: Skeleton3D, key: String, raw := false) -> AnimationTree:
+	if raw:
+		key += "|raw"
 	if not _libs.has(key):
 		var lib := AnimationLibrary.new()
 		var anims: Array = []
@@ -133,7 +143,7 @@ static func build(sk: Skeleton3D, key: String) -> AnimationTree:
 			var src := _source(st)
 			if src.is_empty():
 				continue
-			var a := _retarget(src, sk)
+			var a := _retarget(src, sk, 1.0 if raw else float((CLIPS[st] as Dictionary).get("upper", 1.0)))
 			lib.add_animation(StringName(st), a)
 			anims.append(a)
 		if not anims.is_empty():

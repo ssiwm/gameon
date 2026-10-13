@@ -225,6 +225,7 @@ var _aw := {}                                ## wagi póz bazowych — płynne p
 var _down := 0.0                             ## 0..1 postęp upadku (rośnie przy „down”, maleje przy wstawaniu po reanimacji)
 ## Klipy animacji (char_clips.gd): drzewo daje ruch ciała w stanach, które mają klip (bieg); IK rąk i stóp liczymy na wierzchu.
 var clips_on := true                         ## false = same pozy z kodu (porównania w tools/shot_anim3d.gd)
+var clips_raw := false                       ## true = klipy bez tłumienia tułowia (ustaw przed setup; tylko do porównań)
 var _clips: AnimationTree
 var _clip_w := 0.0                           ## 0..1 waga klipu biegu w tej klatce (0 = poza z kodu)
 var _clip_foot := {}                         ## strona → Transform3D stopy z klipu (przestrzeń szkieletu), zanim ruszą ją nakładki
@@ -581,7 +582,7 @@ func set_look(char_name: String) -> bool:
 	for side in ["Left", "Right"]:
 		_leg_len[side] = [_rest_dist(side + "UpLeg", side + "Leg"), _rest_dist(side + "Leg", side + "Foot")]
 		_arm_len[side] = [_rest_dist(side + "Arm", side + "ForeArm"), _rest_dist(side + "ForeArm", side + "Hand")]
-	_clips = CharClips.build(_sk, char_name)
+	_clips = CharClips.build(_sk, char_name, clips_raw)
 	if _clips != null:
 		_sk.get_parent().add_child(_clips)
 	_clip_w = 0.0
