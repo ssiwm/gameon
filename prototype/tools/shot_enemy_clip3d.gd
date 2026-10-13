@@ -2,8 +2,9 @@ extends SceneTree
 ## Stykówka ruchu wrogów 3D: dla każdego rodzaju trzy wiersze — poza z kodu (enemy3d.gd), surowy klip animacji na tym samym szkielecie
 ## i to, co widać w grze (klip + postawa i ręce z profilu rodzaju). Służy do oceny, czy klip z biblioteki pasuje do potwora.
 ##   godot --path prototype --script tools/shot_enemy_clip3d.gd -- --kinds=wolek,slepiec --anim=walk --clip=walk --out=/tmp/enemy.png [--cols=8] [--px=190]
-## Ruch w czasie: `--movie=KATALOG [--frames=90]` zapisuje klatki PNG (30 kl./s; film składa ffmpeg) — górny wiersz poza z kodu, dolny klip + profil.
-## --anim: nazwa animacji gry (idle | walk | windup | sleep), --clip: plik z `art/char3d/anim/` (tools/prep_anim3d.py).
+## Ruch w czasie: `--movie=KATALOG [--frames=90] [--sets=human,zombie]` zapisuje klatki PNG (30 kl./s; film składa ffmpeg) — górny wiersz
+## poza z kodu, pod nim po wierszu na zestaw klipów (bez --sets: zestaw rodzaju ze SPEC).
+## --anim: nazwa animacji gry (idle | walk | windup | sleep; w filmie także attackseq = chód → zapowiedź → cios), --clip: plik z `art/char3d/anim/` (tools/prep_anim3d.py).
 const Enemy3D := preload("res://scripts/enemy3d.gd")
 const CharClips := preload("res://scripts/char_clips.gd")
 const CELL_W := 4.2                          ## m: szerokość komórki (Stalker ma 4,4 m wysokości, ale jest wąski)
@@ -17,6 +18,7 @@ var _movie := ""                             ## katalog klatek filmu (pusty = st
 var _movie_n := 90
 var _live: Array = []                        ## [wróg, animacja] — film: poza liczona co klatkę
 var _saved := 0
+var _sets: Array = [""]                      ## zestawy klipów do porównania w filmie ("" = zestaw rodzaju ze SPEC)
 var _vp: SubViewport                         ## własny obraz o zadanym rozmiarze (okno gry bywa większe: ekran 4K)
 
 func _initialize() -> void:
@@ -42,10 +44,12 @@ func _initialize() -> void:
 			_movie = a.substr(8)
 		elif a.begins_with("--frames="):
 			_movie_n = int(a.substr(9))
+		elif a.begins_with("--sets="):
+			_sets = Array(a.substr(7).split(","))
 	if _movie != "":
 		cols = kinds.size()
 		DirAccess.make_dir_recursive_absolute(_movie)
-	var rows := 2 if _movie != "" else kinds.size() * 3
+	var rows := (1 + _sets.size()) if _movie != "" else kinds.size() * 3
 	_size = Vector2i(int(px * cols), int(px * ROW_H / CELL_W * rows))
 	_vp = SubViewport.new()
 	_vp.size = _size
@@ -73,19 +77,21 @@ func _initialize() -> void:
 	cam.look_at_from_position(Vector3(0.0, cy, 30.0), Vector3(0.0, cy, 0.0), Vector3.UP)
 	cam.current = true
 	if _movie != "":
-		for r in 2:
+		for r in rows:
 			for k in cols:
 				var em: Node3D = (Enemy3D as Script).new()
 				_vp.add_child(em)
+				if r > 0:
+					em.set("walk_set", String(_sets[r - 1]))
 				if not em.setup(String(kinds[k])):
 					push_error("setup nie powiodło się: %s" % kinds[k])
 					continue
 				em.position = Vector3((k - (cols - 1) * 0.5) * CELL_W, -ROW_H * r, 0.0)
-				em.set("clips_on", r == 1)
+				em.set("clips_on", r > 0)
 				_live.append([em, anim])
 				var lm := Label.new()
-				lm.text = "%s — %s" % [kinds[k], "kod" if r == 0 else "klip + profil"]
-				lm.position = Vector2(px * k + 8.0, float(_size.y) * (r + 1) / 2.0 - 22.0)
+				lm.text = "%s — %s" % [kinds[k], "kod" if r == 0 else ("klip %s + profil" % (_sets[r - 1] if String(_sets[r - 1]) != "" else "ze SPEC"))]
+				lm.position = Vector2(px * k + 8.0, float(_size.y) * (r + 1) / float(rows) - 22.0)
 				lm.add_theme_font_size_override("font_size", 14)
 				_vp.add_child(lm)
 		return
@@ -120,8 +126,14 @@ func _initialize() -> void:
 func _process(_d: float) -> bool:
 	_frames += 1
 	if _movie != "":
+		var seq_t := fposmod(float(_frames) / 60.0, 2.6)              # --anim=attackseq: chód → zapowiedź ciosu → cios → postój, w pętli
 		for c in _live:
-			(c[0] as Node3D).call("pose", 1.0 / 60.0, c[1], false, Color.WHITE)
+			var an := String(c[1])
+			if an == "attackseq":
+				an = "walk" if seq_t < 1.0 else ("windup" if seq_t < 1.6 else "idle")
+				if seq_t >= 1.6 and seq_t - 1.0 / 60.0 < 1.6:
+					(c[0] as Node3D).call("trigger", "attack")
+			(c[0] as Node3D).call("pose", 1.0 / 60.0, an, false, Color.WHITE)
 		if _frames > 40 and _frames % 2 == 0:
 			_vp.get_texture().get_image().save_png("%s/f_%03d.png" % [_movie, _saved])
 			_saved += 1
