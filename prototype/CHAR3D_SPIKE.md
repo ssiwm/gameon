@@ -46,9 +46,10 @@ Typowa sesja (4 graczy + bot) ≈ 2,5 ms z 16,7 ms. Nie mierzono na słabszym GP
 Pokrętła kosztu: `Char3D.ss` (rozdzielczość renderu, 4), `Char3D.msaa`, `FRAME_WP` (rozmiar ramki); tryb niskiej jakości `--char3d-lq` = SS 2 + bez MSAA.
 Test sieciowy (host + klient, oba z 3D): zdalni gracze i bot mają model, broń i wygląd; przeładowanie hosta widoczne u klienta.
 
-## Klipy animacji (postój, bieg, kucanie — biblioteka CC0)
+## Klipy animacji (postój, bieg, kucanie, upadek — biblioteka CC0)
 
-Ruch ciała w stanach pętlonych pochodzi z klipów zamiast z wzorów w kodzie; ręce z bronią i postawienie stóp dalej liczy IK, na wierzchu klipu.
+Ruch ciała w stanach pętlonych i przy upadku pochodzi z klipów zamiast z wzorów w kodzie; ręce z bronią i postawienie stóp dalej liczy IK,
+na wierzchu klipu.
 Źródło klipów: `art_src/animations/ual1/` — Universal Animation Library (Quaternius, CC0, 46 klipów; patrz `SOURCE.md` w tym katalogu).
 
 | Stan gry | Klip z paczki | Czas klipu | Tłumienie tułowia (`upper`) | Inne |
@@ -57,14 +58,19 @@ Ruch ciała w stanach pętlonych pochodzi z klipów zamiast z wzorów w kodzie; 
 | `run` | `Sprint_Loop` | faza kroku | 0,35 | `bounce` 0,45 |
 | `crouch` | `Crouch_Idle_Loop` | zegar postaci | 0,35 | `drop` 0,05 m |
 | `crouch_walk` | `Crouch_Fwd_Loop` | faza kroku | 0,35 | `drop` 0,06 m |
+| upadek (`down`) | `Death01` | postęp upadku (`scrub` 0,15–1,65 s) | 1 | `drop` −0,05 m |
 
-Skok, spadanie, upadek, trafienie, rzut, cios i przeładowanie to nadal pozy z kodu.
+Skok, spadanie, lądowanie, trafienie, rzut, cios i przeładowanie to nadal pozy z kodu — po obejrzeniu klipów z paczki (`shot_clip3d.gd`):
+`Hit_Chest` / `Hit_Head` są przy tej wielkości postaci niemal niewidoczne (poza z kodu szarpie tułowiem i głową wyraźniej), a `Jump_Loop`
+to jedna nieruchoma poza, podczas gdy poza z kodu zmienia się z prędkością pionową (wyprost, podciągnięte kolana, sięganie do ziemi).
 
 ```bash
 L=art_src/animations/ual1/AnimationLibrary_Godot_Standard.glb
 blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=$L --list                                          # klipy i kości paczki
 blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=$L --map=Idle_Loop:idle,Crouch_Idle_Loop:crouch       # pętle na zegarze
 blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=$L --map=Sprint_Loop:run,Crouch_Fwd_Loop:crouch_walk --step-sync   # pętle kroku
+blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=$L --map=Death01:down --keep-travel                 # klip jednorazowy: ciało ma się przemieścić
+godot --path prototype --script tools/shot_clip3d.gd -- --clips=down,idle --out=/tmp/clips.png   # stykówka surowych klipów na modelu (wybór klipów)
 godot --path prototype --script tools/shot_anim3d.gd -- --set=run|stand|crouch --out=/tmp/anim   # klatki porównania: pozy z kodu | klip surowy | klip + IK (film składa ffmpeg)
 godot --path prototype -- --host --mission=z1_m1 --shot=/tmp/run.png --shotat=20 [--shotrun|--shotcrouch] [--noclips]   # w grze, z klipami i bez
 ```
@@ -82,8 +88,11 @@ godot --path prototype -- --host --mission=z1_m1 --shot=/tmp/run.png --shotat=20
 - `drop`: kucanie z klipu jest wyższe niż poza z kodu, a sylwetka ma mieć wysokość hitboxa kucania — biodra schodzą o `drop`, głowa jest wtedy
   na tej samej wysokości co w pozie z kodu (1,00–1,02 m dla `male_scav`).
 - `char3d.gd` co klatkę podaje drzewu wagi stanów (te same co póz z kodu, więc przejścia trwają jak dotąd ok. 80 ms), fazę kroku (`_phase`)
-  i zegar; tempo kroku i bieg tyłem działają jak dotąd. Drzewo działa w trybie ręcznym (`advance(0)` w `update()`). Przy upadku udział klipów
-  znika — leżenie i wstawanie to poza z kodu.
+  i zegar; tempo kroku i bieg tyłem działają jak dotąd. Drzewo działa w trybie ręcznym (`advance(0)` w `update()`).
+- Upadek: klip `down` przejmuje całą pozę w pierwszych 12% upadku, a jego czas wybiera postęp upadku `_down`, który gra już liczy
+  (`scrub`); wstawanie po reanimacji gra ten sam klip wstecz. Postać pada na plecy (poza z kodu padała twarzą w dół), upadek trwa 1,0 s
+  zamiast 0,75 s. Ręce i kolana zostają z klipu (biegun IK nóg to kierunek kolana w klipie). Drgawki i zapadanie się w ostatniej sekundzie
+  wykrwawiania to dalej nakładka z kodu. Bez klipu (`--noclips`) udział klipów przy upadku znika i upadek liczy kod.
 - Po klipie idą nakładki z kodu: celowanie tułowiem, odrzut, trafienie, lądowanie, chwyt Pijawki. Stopy z klipu są celem IK nóg, więc nakładki
   ruszające biodrami nie odrywają ich od podłoża.
 - `--noclips` wyłącza klipy (same pozy z kodu); `Char3D.clips_on` robi to samo dla jednej postaci, `Char3D.clips_raw` wyłącza dostrojenie
@@ -92,9 +101,8 @@ godot --path prototype -- --host --mission=z1_m1 --shot=/tmp/run.png --shotat=20
   wartość (pozę szkieletu liczy się wcześniej); suma mieści się w szumie pomiaru.
 - Chwyt broni (punkt celowania) względem póz z kodu: w biegu waha się o 1,3 px zamiast 0,4 px, w kucaniu jest o ok. 1,2 px wyżej.
 
-Kandydaci z paczki dla pozostałych stanów: `Jump_Start` / `Jump_Loop` / `Jump_Land`, `Death01`, `Hit_Chest`, `Interact`, `Fixing_Kneeling`
-(reanimacja). Stany jednorazowe (śmierć, trafienie, interakcja) potrzebują w drzewie węzła odtwarzanego od początku do końca, nie pętli —
-tego jeszcze nie ma.
+Kandydaci z paczki na później: `Fixing_Kneeling` (klęczenie przy rannym / generatorze) i `Interact` (sięgnięcie ręką). Oba wymagają schowania
+broni, rąk z klipu zamiast IK i stanu replikowanego w sieci (reanimację widzi dziś tylko lokalny gracz — `player._update_char3d`).
 
 ## Ograniczenia / dalsze kroki
 
@@ -102,7 +110,7 @@ tego jeszcze nie ma.
 - Celowanie w dół wysuwa broń ku kamerze (inaczej chowa się za tułowiem); celowanie prosto w górę zasłania głowę ramieniem.
 - Oświetlenie: drugi przebieg renderu (kopie siatek na warstwie 2, shader wypisuje normalne widokowe) daje mapę normalnych, więc latarka i flara dają relief jak na sprite'ach HD (odbicie `flip_h` odwraca X normalnych w shaderze). Kosztuje ok. +50% renderu postaci; `--char3d-lq` go wyłącza.
 - Kucanie / skradanie to **przysiad** (biodra 0,48 m niżej, tułów niemal pionowo — wysokość ok. 0,75 stojącej); przesunięcia bioder liczy `_move_global` w przestrzeni szkieletu (osie lokalne kości Mixamo są obrócone, wcześniej przesunięcie ruszało biodra w bok, a nie w dół).
-- Poza postojem, biegiem i kucaniem (klipy, patrz wyżej) pozy to proste funkcje sin/cos, nie animacje artysty; dłonie nie obejmują palcami chwytu (tylko orientacja).
+- Poza postojem, biegiem, kucaniem i upadkiem (klipy, patrz wyżej) pozy to proste funkcje sin/cos, nie animacje artysty; dłonie nie obejmują palcami chwytu (tylko orientacja).
 - Broń biała ma jedną, uproszczoną pozę zamachu. SPECTER-1 używa swojego modelu `widmo1_01` (cewka, ten sam co w sprite'ach HD); `widmo1_02` (szyny + cewki, olive) to nieużywana alternatywa.
 - Wrogowie nadal sprite'y HD — styl postaci gracza (3D) i wrogów trzeba będzie zestroić.
 - Od 1.7.156 domyślne: widok 3D zawsze używa modeli, a w widoku 2D decyduje ustawienie **Characters in 2D view** (`Settings.char3d`, domyślnie 3D) lub flaga `--char3d`. Pomiar na słabszym sprzęcie nadal nie jest zrobiony.

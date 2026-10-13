@@ -6,18 +6,20 @@ extends RefCounted
 ## Klip niesie własną pozę spoczynkową, więc działa na każdym modelu z kośćmi Mixamo: obroty przenosimy względem spoczynku,
 ## przesunięcie bioder skalujemy wysokością bioder. Pozostałe przesunięcia i skale kości pomijamy (zmieniałyby proporcje modelu).
 ## Czas klipu ustawia gra, nie zegar drzewa: pętle kroku idą fazą kroku z `char3d.gd` (krok klipu i krok z kodu to ta sama faza),
-## pozostałe pętle (postój, kucanie) — zegarem postaci.
+## pozostałe pętle (postój, kucanie) — zegarem postaci, a klipy jednorazowe (upadek) — postępem 0..1, który gra już liczy.
 
 const DIR := "res://art/char3d/anim/"
 const HIPS := "mixamorig_Hips"
 ## Kości tułowia i głowy: ich ruch z klipu można stłumić (`upper`), bo tułów ma przede wszystkim celować.
 const UPPER := ["mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2", "mixamorig_Neck", "mixamorig_Head", "mixamorig_LeftShoulder", "mixamorig_RightShoulder"]
-## Stan bazowy (AW_STATES w char3d.gd) → klip.
+## Stan → klip. Stany bazowe to AW_STATES z char3d.gd; „down" to upadek (waga i postęp z `char3d.gd`).
 ## step: pętla kroku — czas z fazy kroku gry; phase0 to ułamek cyklu, w którym prawa stopa ląduje (klipy z `prep_anim3d.py --step-sync` mają 0).
-##   Bez `step` klip idzie zegarem postaci.
+## scrub: [t0, t1] — klip jednorazowy: postęp 0..1 z gry wybiera chwilę klipu między t0 a t1 (s); wstecz gra się go tym samym postępem.
+##   Bez `step` i `scrub` klip idzie zegarem postaci.
 ## upper: ile ruchu tułowia i głowy z klipu zostaje (1 = cały, 0 = tułów jak w spoczynku) — klipy z biblioteki pochylają tułów i skręcają barki
 ##   o kilkadziesiąt stopni, co przy celowaniu rzuca bronią.
-## drop: o tyle metrów niżej stoją biodra niż w klipie (kucanie: sylwetka ma mieć wysokość hitboxa kucania, jak poza z kodu).
+## drop: o tyle metrów niżej stoją biodra niż w klipie (kucanie: sylwetka ma mieć wysokość hitboxa kucania, jak poza z kodu);
+##   ujemne podnosi (leżenie: plecak modelu nie wchodzi w podłoże).
 ## bounce: ile pionowego kołysania bioder z klipu zostaje (1 = całe). Sprint z biblioteki kołysze ciałem o 11 cm, a z barkiem idzie chwyt broni,
 ##   czyli punkt, z którego gra liczy celowanie i wylot pocisku; stopy zostają na torze z klipu (IK nóg).
 const CLIPS := {
@@ -25,14 +27,15 @@ const CLIPS := {
 	"run": {"file": "run", "step": true, "phase0": 0.0, "upper": 0.35, "bounce": 0.45},
 	"crouch": {"file": "crouch", "upper": 0.35, "drop": 0.05},
 	"crouch_walk": {"file": "crouch_walk", "step": true, "phase0": 0.0, "upper": 0.35, "drop": 0.06},
+	"down": {"file": "down", "scrub": [0.15, 1.65], "drop": -0.05},
 }
 
 static var enabled := true                   ## --noclips wyłącza klipy (same pozy z kodu, do porównań)
-static var _src := {}                        ## stan → {"anim": Animation, "rest": {kość → Transform3D}, "hips_y": float} albo {} (brak pliku)
+static var _src := {}                        ## plik → {"anim": Animation, "rest": {kość → Transform3D}, "hips_y": float} albo {} (brak pliku)
 static var _libs := {}                       ## nazwa modelu → AnimationLibrary (klipy przeliczone na ten szkielet + "rest")
 static var _means := {}                      ## nazwa modelu → {stan → średnie pionowe przesunięcie bioder w klipie względem spoczynku (m)}
 static var _blend: AnimationNodeBlendTree
-static var _order: Array = []                ## klipy w kolejności grafu: [stan, ścieżka wagi, ścieżka czasu, długość (s), czy pętla kroku, phase0]
+static var _order: Array = []                ## klipy w kolejności grafu: [stan, ścieżka wagi, ścieżka czasu, długość (s), czy pętla kroku, phase0, scrub albo null]
 
 static func has(state: String) -> bool:
 	return enabled and not _source(state).is_empty()
@@ -41,13 +44,22 @@ static func has(state: String) -> bool:
 static func param(state: String, key: String, default: float) -> float:
 	return float((CLIPS.get(state, {}) as Dictionary).get(key, default))
 
-## Klip źródłowy z pliku (raz na sesję).
+## Klip źródłowy stanu (pusty słownik, gdy stan nie ma klipu albo brak pliku).
 static func _source(state: String) -> Dictionary:
-	if _src.has(state):
-		return _src[state]
+	return _load(String((CLIPS[state] as Dictionary)["file"])) if CLIPS.has(state) else {}
+
+## Surowy klip z pliku `art/char3d/anim/<file>.glb` przeliczony na szkielet `sk` (bez dostrojenia) — do podglądów (tools/shot_clip3d.gd).
+static func clip(file: String, sk: Skeleton3D) -> Animation:
+	var src := _load(file)
+	return _retarget(src, sk) if not src.is_empty() else null
+
+## Klip źródłowy z pliku (raz na sesję).
+static func _load(file: String) -> Dictionary:
+	if _src.has(file):
+		return _src[file]
 	var out := {}
-	var path := DIR + String((CLIPS.get(state, {}) as Dictionary).get("file", "")) + ".glb"
-	if CLIPS.has(state) and ResourceLoader.exists(path):
+	var path := DIR + file + ".glb"
+	if ResourceLoader.exists(path):
 		var scene: Node = (load(path) as PackedScene).instantiate()
 		var sk: Skeleton3D = scene.find_child("Skeleton3D", true, false)
 		var aps := scene.find_children("*", "AnimationPlayer", true, false)
@@ -61,7 +73,7 @@ static func _source(state: String) -> Dictionary:
 				var hi := sk.find_bone(HIPS)
 				out = {"anim": ap.get_animation(names[0]), "rest": rest, "hips_y": sk.get_bone_global_rest(hi).origin.y if hi >= 0 else 1.0}
 		scene.free()
-	_src[state] = out
+	_src[file] = out
 	return out
 
 ## Klip przeliczony na szkielet `sk`: ścieżki „<Skeleton3D>:<kość>”, obroty względem spoczynku celu, biodra w skali celu.
@@ -71,6 +83,8 @@ static func _retarget(src: Dictionary, sk: Skeleton3D, upper := 1.0) -> Animatio
 	var rest_s: Dictionary = src["rest"]
 	var hi := sk.find_bone(HIPS)
 	var k_h := sk.get_bone_global_rest(hi).origin.y / maxf(float(src["hips_y"]), 0.001) if hi >= 0 else 1.0
+	var hp := sk.get_bone_parent(hi) if hi >= 0 else -1
+	var up_axis := (sk.get_bone_global_rest(hp).basis if hp >= 0 else Basis.IDENTITY).inverse() * Vector3.UP   # pion szkieletu w układzie rodzica bioder (kość Root jest obrócona)
 	var o := Animation.new()
 	o.length = a.length
 	o.loop_mode = Animation.LOOP_LINEAR
@@ -99,9 +113,9 @@ static func _retarget(src: Dictionary, sk: Skeleton3D, upper := 1.0) -> Animatio
 				var up := 0.0
 				for k in a.track_get_key_count(t):
 					var off := ((a.track_get_key_value(t, k) as Vector3) - rs.origin) * k_h
-					up += off.y
+					up += off.dot(up_axis)
 					o.position_track_insert_key(np, a.track_get_key_time(t, k), rt.origin + off)
-				o.set_meta("hips_mean", up / maxf(float(a.track_get_key_count(t)), 1.0))      # biodra to kość główna: jej Y to pion szkieletu
+				o.set_meta("hips_mean", up / maxf(float(a.track_get_key_count(t)), 1.0))
 	return o
 
 ## Poza spoczynkowa jako klip: tło, z którym drzewo miesza klipy (te same ścieżki co w klipach).
@@ -149,7 +163,7 @@ static func _blend_tree() -> AnimationNodeBlendTree:
 		prev = StringName("mix_" + st)
 		var c: Dictionary = CLIPS[st]
 		_order.append([st, StringName("parameters/mix_%s/blend_amount" % st), StringName("parameters/seek_%s/seek_request" % st),
-				(_source(st)["anim"] as Animation).length, bool(c.get("step", false)), float(c.get("phase0", 0.0))])
+				(_source(st)["anim"] as Animation).length, bool(c.get("step", false)), float(c.get("phase0", 0.0)), c.get("scrub")])
 	_blend.connect_node(&"output", 0, prev)
 	return _blend
 
@@ -204,8 +218,8 @@ static func bounce_fix(tree: AnimationTree, weights: Dictionary, hips_up: float)
 	return -(hips_up - mean) * cut / total if total > 0.0001 else 0.0
 
 ## Ustawia pozę szkieletu z klipów: weights = {stan → waga 0..1} (reszta do 1 to poza spoczynkowa), phase = faza kroku gry w obrotach,
-## time = zegar postaci (s) dla pętli bez kroku.
-static func drive(tree: AnimationTree, weights: Dictionary, phase: float, time: float) -> void:
+## time = zegar postaci (s) dla pętli bez kroku, progress = {stan → postęp 0..1} dla klipów jednorazowych.
+static func drive(tree: AnimationTree, weights: Dictionary, phase: float, time: float, progress: Dictionary) -> void:
 	var acc := 1.0
 	for st in weights:
 		acc -= float(weights[st])
@@ -216,5 +230,8 @@ static func drive(tree: AnimationTree, weights: Dictionary, phase: float, time: 
 		tree.set(o[1], w / acc if acc > 0.0001 else 0.0)
 		if w > 0.0:                                               # klip bez wagi nie jest liczony — czas dostanie w klatce, w której wejdzie
 			var dur: float = o[3]
-			tree.set(o[2], fposmod(phase - 0.25 + float(o[5]), 1.0) * dur if o[4] else fposmod(time, dur))
+			if o[6] != null:
+				tree.set(o[2], lerpf(float(o[6][0]), minf(float(o[6][1]), dur - 0.001), clampf(float(progress.get(o[0], 0.0)), 0.0, 1.0)))
+			else:
+				tree.set(o[2], fposmod(phase - 0.25 + float(o[5]), 1.0) * dur if o[4] else fposmod(time, dur))
 	tree.advance(0.0)
