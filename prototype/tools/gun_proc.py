@@ -20,6 +20,7 @@ import sys
 
 import bmesh
 import bpy
+import numpy as np
 from mathutils import Matrix, Vector
 
 argv = sys.argv[sys.argv.index("--") + 1:]
@@ -569,13 +570,14 @@ def _checker(g, x, z, pitch, deg):
     return g.m("MINIMUM", g.mul(pyr, 1.7), 1.0), g.inv(g.sstep(pyr, 0.0, 0.45)), pyr
 
 
-def steel(name, tone="blued", grooves=(), slot=None, wear_k=1.0, engrave=(), blue=None, muzzle=None, holes=(), eng_style=(0.2, (0.24, 0.24, 0.25), 0.55), feats=(), r0=None, eng_dist=0.3):
+def steel(name, tone="blued", grooves=(), slot=None, wear_k=1.0, engrave=(), blue=None, muzzle=None, holes=(), eng_style=(0.2, (0.24, 0.24, 0.25), 0.55), feats=(), r0=None, stencil=()):
     """Stal: oksydowana (blued) albo jasna (bright). grooves = [(oś 'x'|'z', podziałka mm, x0, x1, z0, z1, głębokość mm, tylko boki)] — rowki w mapie
     normalnych; slot = (cx, cz, kąt°) — nacięcie łba śruby na ścianach bocznych; engrave = [(x0, x1, z0, z1)] — pola napisów na bokach: grawer tam,
     gdzie tuż pod powierzchnią leży siatka-znacznik (marker_text); blue = dwa odcienie oksydy (krotki RGB liniowe); muzzle = (x0, x1) — boki przy
     wylocie wytarte od kabury / futerału; tone "paint" = stal lakierowana (blue = odcienie lakieru, metal wychodzi tylko w odpryskach);
     holes = [(podziałka mm, promień mm, x0, x1, z0, z1)] — otwory osłony na bokach; eng_style = (głębokość mm, kolor, krycie) napisu;
-    feats = tłoczenia, szczeliny, nity (patrz _feats); r0 = chropowatość wykończenia (domyślnie 0,36 oksyda / 0,55 lakier)."""
+    feats = tłoczenia, szczeliny, nity (patrz _feats); r0 = chropowatość wykończenia (domyślnie 0,36 oksyda / 0,55 lakier);
+    stencil = napisy z stencil_text() rzutowane z boku — do powierzchni walcowych, na których siatka-znacznik się nie sprawdza."""
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     m.node_tree.nodes.clear()
@@ -611,7 +613,7 @@ def steel(name, tone="blued", grooves=(), slot=None, wear_k=1.0, engrave=(), blu
             one = g.mul(g.box(x, x0, x1), g.box(z, z0, z1))
             reg = one if reg is None else g.m("MAXIMUM", reg, one)
         reg = g.mul(reg, side)
-        eng = g.mul(g.sstep(g.inv(g.ao(eng_dist, inside=True, samples=12)), 0.3, 0.6), reg)   # eng_dist większy dla napisów na walcach
+        eng = g.mul(g.sstep(g.inv(g.ao(0.3, inside=True, samples=12)), 0.3, 0.6), reg)
         edge = g.mul(edge, g.inv(reg))
     wear = g.m("MINIMUM", g.mul(edge, g.inv(cavity), wear_k), 1.0)
     rust = g.mul(g.sstep(g.noise(P, 0.45, 6.0, 0.65), 0.67, 0.73), g.add(0.2, cavity), g.inv(wear))
@@ -658,6 +660,19 @@ def steel(name, tone="blued", grooves=(), slot=None, wear_k=1.0, engrave=(), blu
         dip = g.mul(g.inv(g.sstep(d, 0.35, 0.6)), side)
         height = g.add(height, g.mul(dip, -0.6))
         col = g.mixc(g.mul(dip, 0.7), col, rgb(0.01, 0.01, 0.01))
+    for img, x0, x1, z0, z1, sgn in (t for t in stencil if t is not None):
+        # rzut z boku: u wzdłuż napisu (po lewej stronie broni biegnie ku tyłowi), v w górę; maska działa tylko po swojej stronie
+        u = g.m("DIVIDE", g.m("SUBTRACT", x1, x) if sgn > 0.0 else g.m("SUBTRACT", x, x0), x1 - x0)
+        v = g.m("DIVIDE", g.m("SUBTRACT", z, z0), z1 - z0)
+        uv = g.N.new("ShaderNodeCombineXYZ")
+        g.put(uv.inputs[0], u)
+        g.put(uv.inputs[1], v)
+        tex = g.N.new("ShaderNodeTexImage")
+        tex.image = img
+        tex.extension = "CLIP"
+        g.L.new(uv.outputs[0], tex.inputs["Vector"])
+        mask = g.mul(g.m("MULTIPLY", tex.outputs["Color"], 1.0), g.sstep(g.mul(ny, sgn), 0.55, 0.8))
+        eng = mask if eng is None else g.m("MAXIMUM", eng, mask)
     if eng is not None:
         height = g.add(height, g.mul(eng, -eng_style[0]))
         col = g.mixc(g.mul(eng, eng_style[2]), col, rgb(*eng_style[1]))             # bicie przecina oksydę — jaśniejsze od tła
@@ -787,12 +802,8 @@ ORANGEBAKE = ((0.1, 0.026, 0.01), (0.25, 0.075, 0.02))          # bakelit AG-4 m
 PHENOL = ((0.06, 0.026, 0.01), (0.13, 0.06, 0.022))             # tekstolit
 
 
-def marker_text(body, size, x, z, y, mat, curve=None):
-    """Napis jako płaska siatka-znacznik tuż pod powierzchnią boku: materiał stali (engrave) znajduje ją promieniami AO i żłobi w tym miejscu grawer.
-    Znaczniki znikają po wypieku. Napis jest czytelny od swojej strony: y > 0 = lewa strona broni (biegnie od x ku tyłowi), y < 0 = prawa (od x ku przodowi).
-    curve = (z osi, promień) — napis na boku walca wzdłuż X (znacznik idzie po łuku, y podaje wtedy tylko stronę)."""
-    if mat is None:
-        return None
+def _text_mesh(body, size):
+    """Siatka napisu wbudowaną czcionką Blendera w układzie własnym (x w prawo, y w górę, linia bazowa na y = 0)."""
     cu = bpy.data.curves.new("txt", "FONT")
     cu.body = body
     cu.size = size
@@ -800,22 +811,60 @@ def marker_text(body, size, x, z, y, mat, curve=None):
     bpy.context.scene.collection.objects.link(tmp)
     me = bpy.data.meshes.new_from_object(tmp.evaluated_get(bpy.context.evaluated_depsgraph_get()))
     bpy.data.objects.remove(tmp, do_unlink=True)
-    if curve is not None:
-        bm = bmesh.new()
-        bm.from_mesh(me)
-        bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=4, use_grid_fill=True)
-        bm.to_mesh(me)
-        bm.free()
+    return me
+
+
+def marker_text(body, size, x, z, y, mat):
+    """Napis jako płaska siatka-znacznik tuż pod powierzchnią boku: materiał stali (engrave) znajduje ją promieniami AO i żłobi w tym miejscu grawer.
+    Znaczniki znikają po wypieku. Napis jest czytelny od swojej strony: y > 0 = lewa strona broni (biegnie od x ku tyłowi), y < 0 = prawa (od x ku przodowi).
+    Tylko na płaskie boki — na walcach użyj stencil_text()."""
+    if mat is None:
+        return None
+    me = _text_mesh(body, size)
     sx = -1.0 if y > 0.0 else 1.0
     for v in me.vertices:
-        zz = z + v.co.y
-        yy = y if curve is None else math.copysign(math.sqrt(max(curve[1] ** 2 - (zz - curve[0]) ** 2, 0.0)) - 0.07, y)
-        v.co = Vector((x + sx * v.co.x, yy, zz))
+        v.co = Vector((x + sx * v.co.x, y, z + v.co.y))
     ob = bpy.data.objects.new("marker", me)
     bpy.context.scene.collection.objects.link(ob)
     me.materials.append(mat)
     OBJS.append(ob)
     return ob
+
+
+def stencil_text(body, size, x, z, left, ppm=10.0, pad=1.5):
+    """Napis jako maska rastrowa rzutowana z boku (dla steel(stencil=[…])): działa na walcach, gdzie płaski znacznik odstaje od powierzchni.
+    (x, z) = początek linii bazowej; left = lewa strona broni (napis biegnie od x ku tyłowi), inaczej prawa (od x ku przodowi).
+    Zwraca (obraz, x0, x1, z0, z1, znak strony) albo None przy --nobake."""
+    if NOBAKE:
+        return None
+    me = _text_mesh(body, size)
+    me.calc_loop_triangles()
+    vs = np.array([(v.co.x, v.co.y) for v in me.vertices], dtype=np.float64)
+    lo = vs.min(axis=0) - pad
+    hi = vs.max(axis=0) + pad
+    w, h = int(math.ceil((hi[0] - lo[0]) * ppm)), int(math.ceil((hi[1] - lo[1]) * ppm))
+    buf = np.zeros((h, w), dtype=np.float32)
+    pts = (vs - lo) * ppm
+    for t in me.loop_triangles:
+        a, b, c = (pts[i] for i in t.vertices)
+        x0, x1 = max(int(min(a[0], b[0], c[0])), 0), min(int(max(a[0], b[0], c[0])) + 1, w)
+        y0, y1 = max(int(min(a[1], b[1], c[1])), 0), min(int(max(a[1], b[1], c[1])) + 1, h)
+        if x1 <= x0 or y1 <= y0:
+            continue
+        gx, gy = np.meshgrid(np.arange(x0, x1) + 0.5, np.arange(y0, y1) + 0.5)
+        e0 = (b[0] - a[0]) * (gy - a[1]) - (b[1] - a[1]) * (gx - a[0])
+        e1 = (c[0] - b[0]) * (gy - b[1]) - (c[1] - b[1]) * (gx - b[0])
+        e2 = (a[0] - c[0]) * (gy - c[1]) - (a[1] - c[1]) * (gx - c[0])
+        inside = ((e0 >= 0) & (e1 >= 0) & (e2 >= 0)) | ((e0 <= 0) & (e1 <= 0) & (e2 <= 0))
+        buf[y0:y1, x0:x1][inside] = 1.0
+    bpy.data.meshes.remove(me)
+    img = bpy.data.images.new("stencil", w, h, alpha=False)
+    img.colorspace_settings.name = "Non-Color"
+    img.pixels.foreach_set(np.repeat(buf[:, :, None], 4, axis=2).ravel())
+    img.pack()
+    if left:
+        return img, x - hi[0], x - lo[0], z + lo[1], z + hi[1], 1.0
+    return img, x + lo[0], x + hi[0], z + lo[1], z + hi[1], -1.0
 
 
 # ---------------------------------------------------------------- P-64
@@ -1118,7 +1167,8 @@ def build_hkm9():
     st = M(steel, "hkm_steel", blue=PARK, r0=0.48, engrave=[(340.0, 400.0, -24.0, -6.0)],
            feats=[("seam", 330.0, 472.0, -30.0, 0.0, 3.0, 0.5), ("rivet", 338.0, -8.0, 2.4), ("rivet", 464.0, -8.0, 2.4), ("rivet", 464.0, -26.0, 2.4)])
     small = M(steel, "hkm_small", blue=BLACKOX, r0=0.42, wear_k=0.4)
-    tank_m = M(steel, "hkm_tank", tone="paint", blue=OLIVE, engrave=[(540.0, 690.0, -74.0, -36.0)], eng_style=STENCIL, wear_k=1.2, eng_dist=0.9)
+    tank_m = M(steel, "hkm_tank", tone="paint", blue=OLIVE, eng_style=STENCIL, wear_k=1.2,
+               stencil=[stencil_text("HKM-9", 16.0, 676.0, -60.0, True), stencil_text("PALNE", 16.0, 548.0, -60.0, False)])
     red = M(steel, "hkm_red", tone="paint", blue=((0.2, 0.018, 0.012), (0.32, 0.04, 0.02)), wear_k=1.3)
     jacket = M(steel, "hkm_jacket", blue=BLACKOX, r0=0.5, holes=[(11.0, 3.2, 826.0, 934.0, -11.5, 11.5)])
     heat = M(steel, "hkm_heat", blue=((0.07, 0.04, 0.1), (0.2, 0.12, 0.04)), r0=0.3, wear_k=0.5)               # stal odbarwiona żarem
@@ -1129,8 +1179,6 @@ def build_hkm9():
     brass = M(steel, "hkm_brass", blue=BRASS, wear_k=0.5)
     pilot = M(glow, "hkm_pilot", (1.0, 0.42, 0.06))
     mark = M(plain, "marker", rgb(0.0, 0.0, 0.0), 1.0, 0.0)
-    marker_text("HKM-9", 15.0, 686.0, -61.0, 1.0, mark, curve=(-54.0, 38.0))
-    marker_text("PALNE", 15.0, 546.0, -61.0, -1.0, mark, curve=(-54.0, 38.0))
     marker_text("HKM-9", 8.0, 342.0, -19.0, -14.93, mark)
     marker_text("1987", 8.0, 398.0, -19.0, 14.93, mark)
 
@@ -1164,9 +1212,9 @@ def build_hkm9():
         box("hanger", cx - 5.0, cx + 5.0, -20.0, 6.0, 6.0, small, bv=0.5, seg=1)
     cyl("filler", 484.0, 502.0, 12.0, (0.0, -54.0), brass, seg=14, bv=0.8)
     box("filler_wing", 480.0, 486.0, -68.0, -40.0, 2.5, brass, bv=0.5, seg=1)
-    revolve("gauge", [(-50.0, 0.0), (-50.0, 13.0), (-36.0, 13.0), (-36.0, 0.0)], (612.0, -54.0), brass, axis="Y", seg=18, bv=0.6)
-    revolve("gauge_dial", [(-50.6, 0.0), (-50.6, 10.5), (-49.8, 10.5), (-49.8, 0.0)], (612.0, -54.0), dial, axis="Y", seg=18, bv=0.0)
-    box("gauge_needle", 606.0, 613.0, -47.0, -45.6, 0.3, small, bv=0.0, seg=1, y=-50.9)
+    revolve("gauge", [(-50.0, 0.0), (-50.0, 13.0), (-36.0, 13.0), (-36.0, 0.0)], (632.0, -54.0), brass, axis="Y", seg=18, bv=0.6)
+    revolve("gauge_dial", [(-50.6, 0.0), (-50.6, 10.5), (-49.8, 10.5), (-49.8, 0.0)], (632.0, -54.0), dial, axis="Y", seg=18, bv=0.0)
+    box("gauge_needle", 626.0, 633.0, -47.0, -45.6, 0.3, small, bv=0.0, seg=1, y=-50.9)
     cyl("valve", 724.0, 752.0, 9.0, (0.0, -54.0), brass, seg=12, bv=0.6)
     revolve("valve_wheel", [(-26.0, 0.0), (-26.0, 4.0), (-24.0, 15.0), (-20.0, 15.0), (-18.0, 4.0), (-18.0, 0.0)], (740.0, -54.0), red, axis="Y", seg=14, bv=0.6)
     pipe("hose", [(750.0, 0.0, -54.0), (790.0, 0.0, -57.0), (814.0, 0.0, -38.0), (806.0, 0.0, -9.0)], 5.0, hose)
@@ -1179,7 +1227,8 @@ def build_gniew4():
     """WRATH-4: rewolwerowy granatnik 40 mm w układzie Milkor MGL (1983): szkielet z bębnem pod lufą, wysuwana kolba na prętach, kolimator, chwyt
     przedni, żółty pas amunicji odłamkowej. Oś lufy na z = 0 (bęben na z = −27), wylot na x = 770 mm."""
     frame = M(steel, "wr_frame", blue=PARK, r0=0.48, wear_k=1.2)
-    drum_m = M(steel, "wr_drum", tone="paint", blue=OLIVE, engrave=[(322.0, 434.0, -38.0, -16.0)], eng_style=STENCIL, eng_dist=0.9,
+    drum_m = M(steel, "wr_drum", tone="paint", blue=OLIVE, eng_style=STENCIL,
+               stencil=[stencil_text("WRATH-4", 15.0, 432.0, -33.0, True), stencil_text("40 MM HE", 15.0, 324.0, -33.0, False)],
                feats=[("pocket", 326.0, 430.0, -55.0, -44.0, 5.0, 1.8), ("pocket", 326.0, 430.0, -10.0, 1.0, 5.0, 1.8)])
     tube = M(steel, "wr_tube", tone="paint", blue=OLIVE, muzzle=(690.0, 770.0), grooves=[("x", 9.0, 470.0, 560.0, -30.0, 30.0, 0.8, False)])
     small = M(steel, "wr_small", blue=BLACKOX, r0=0.42, wear_k=0.4)
@@ -1189,9 +1238,6 @@ def build_gniew4():
     lam = M(wood, "wr_lam", laminate=True, tone=LAMINATE, grooves=[("z", 9.0, 540.0, 600.0, -124.0, -40.0, 1.0, True)])
     rubber = M(plain, "wr_rubber", rgb(0.012, 0.012, 0.012), 0.85, 0.0)
     glass = M(plain, "wr_glass", rgb(0.03, 0.008, 0.006), 0.08, 0.0)
-    mark = M(plain, "marker", rgb(0.0, 0.0, 0.0), 1.0, 0.0)
-    marker_text("WRATH-4", 14.0, 430.0, -33.0, 1.0, mark, curve=(-27.0, 55.0))
-    marker_text("40 MM HE", 14.0, 326.0, -33.0, -1.0, mark, curve=(-27.0, 55.0))
 
     # szkielet: płyty przed i za bębnem, belka górna i dolna; bęben z czterema komorami
     cyl("rear_plate", 296.0, 312.0, 61.0, (0.0, -27.0), frame, seg=28, bv=1.2)
