@@ -1740,12 +1740,15 @@ func mirror_streak(a: Vector2, b: Vector2, color: Color, width: float, life: flo
 	tw.tween_callback(core.queue_free)
 
 ## Wołane z `Vfx.casing`: łuska jako mosiężny (śrutowa: czerwony) walec 3D podążający za ciałem fizycznym 2D; rysunek 2D jest chowany.
+## Wymiary naturalne względem broni (ta ma od 1.7.213 naturalną skalę): łuska karabinowa ok. 42 × 13 mm, śrutowa kal. 12 ok. 72 × 21 mm.
+## Ciało fizyczne jest większe od bryłki, więc ta leży niżej o różnicę — inaczej łuska wisiałaby nad ziemią.
 func mirror_casing(body: RigidBody2D, big: bool) -> void:
 	var mi := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
-	cm.top_radius = (0.55 if big else 0.32) * PX
+	cm.top_radius = 0.0105 if big else 0.0065
 	cm.bottom_radius = cm.top_radius
-	cm.height = (3.0 if big else 2.0) * PX
+	cm.height = 0.072 if big else 0.042
+	mi.set_meta("drop", (1.0 if big else 0.5) * PX - cm.top_radius)
 	cm.radial_segments = 8
 	cm.rings = 0
 	mi.mesh = cm
@@ -1772,7 +1775,7 @@ func _sync_casings() -> void:
 			continue
 		var b := cs[0] as RigidBody2D
 		var mi := cs[1] as Node3D
-		mi.position = Level3D.px_to_m(b.global_position) + Vector3(0.0, 0.0, 0.35 + float(cs[2]) * 0.3)
+		mi.position = Level3D.px_to_m(b.global_position) + Vector3(0.0, -float(mi.get_meta("drop", 0.0)), 0.35 + float(cs[2]) * 0.3)
 		mi.rotation = Vector3(float(cs[2]), 0.0, -b.global_rotation + (float(cs[3]) if cs.size() > 3 else PI * 0.5))       # łuska: walec wzdłuż osi łuski 2D; szczątek: płasko
 
 # ---------------------------------------------------------------- ogień, wybuchy, dym
