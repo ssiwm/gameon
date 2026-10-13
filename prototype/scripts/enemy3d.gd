@@ -14,24 +14,24 @@ const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Lev
 
 ## fit: [„height" | „length", rozmiar w pikselach świata] — jak w wypieku; frame_h: wysokość ramki sprite'a (Skoczek wisi u jej góry);
 ## cycle: okres cyklu kroku (s); prof: profil pozy (jak PROF w wypieku); yaw: obrót modelu (stopnie), by przód patrzył w +X.
-## walk_clip: chód z klipu animacji (char_clips.gd, zestaw „enemy") — tylko rodzaje, którym ludzki krok pasuje; Wołek ma za krótkie nogi
-## (z klipem kuca i unosi kolana pod brzuch), więc zostaje przy chodzie z kodu.
+## walk_clip: zestaw klipów chodu z char_clips.gd — „zombie" (powłóczysty krok) albo „human" (zwykły chód: Mimik udaje człowieka);
+## bez tego klucza rodzaj chodzi pozą z kodu. attack_clip: zapowiedź i cios z klipu (zestaw musi je mieć), ręce wtedy z klipu.
 const SPEC := {
 	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 1.0, "prof": {}, "clips": true, "clip_amp": 0.6, "stun": true},
-	"slepiec": {"fit": ["height", 27.0], "frame_h": 32.0, "cycle": 1.0, "prof": {"hy": 0.50, "hz": 0.35}, "clips": true, "attack_kind": "claw", "walk_clip": true,
+	"slepiec": {"fit": ["height", 27.0], "frame_h": 32.0, "cycle": 1.0, "prof": {"hy": 0.50, "hz": 0.35}, "clips": true, "attack_kind": "claw", "walk_clip": "zombie", "attack_clip": true,
 		"death": {"dir": 1.0, "lean": -8.0, "dur": 0.95, "tilt": 86.0}},
 	"podsluchacz": {"fit": ["height", 34.0], "frame_h": 40.0, "cycle": 1.0,
-		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}, "clips": true, "attack_kind": "scream", "walk_clip": true,
+		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}, "clips": true, "attack_kind": "scream", "walk_clip": "zombie",
 		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}},
 	"stalker": {"fit": ["height", 54.0], "frame_h": 60.0, "cycle": 1.1,
-		"prof": {"lean": 5.0, "lean_walk": 8.0, "hy": 0.42, "hz": 0.62, "stride": 0.28, "windup": "reach"}, "clips": true, "attack_kind": "grab", "walk_clip": true,
+		"prof": {"lean": 5.0, "lean_walk": 8.0, "hy": 0.42, "hz": 0.62, "stride": 0.28, "windup": "reach"}, "clips": true, "attack_kind": "grab", "walk_clip": "zombie", "attack_clip": true,
 		"death": {"dir": 1.0, "lean": 0.0, "dur": 1.0, "tilt": 88.0}},
 	"skoczek": {"fit": ["height", 17.0], "frame_h": 26.0, "cycle": 0.5, "crawler": true, "clips": true},
 	"trzosek": {"fit": ["length", 21.0], "frame_h": 22.0, "cycle": 0.55, "quad": true, "yaw": -90.0, "clips": true, "idle_t": 0.0},
 	# Mimik to model gracza z kolorem „kolegi” i świecącymi oczami; pozostałe poniżej to modele statyczne animowane deformacją wierzchołków w shaderze
 	# (`DEFORM`), tak jak wypiek `concept/static_tripo_bake.py` — poza z numeru klatki sprite'a 2D (animacja idzie w tempie gry).
 	"mimik": {"model": "res://art/char3d/male_scav.glb", "fit": ["height", 22.0], "frame_h": 28.0, "cycle": 0.8, "eyes": true,
-		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": true,
+		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human",
 		"death": {"dir": 1.0, "lean": 8.0, "dur": 1.2, "tilt": 84.0}},
 	"cma": {"fit": ["width", 18.0], "frame_h": 20.0, "deform": "cma", "float": true, "clips": true, "death_dur": 0.9},
 	"nest": {"fit": ["height", 30.0], "frame_h": 34.0, "deform": "nest", "clips": true, "death_dur": 0.6},
@@ -224,15 +224,22 @@ var _airborne := false
 var _sp := 0                               ## stan specjalny wroga z gry (Wołek: 1 zapowiedź szarży, 2 szarża, 3 zapowiedź rzutu, 4 oszołomiony)
 var _inv_w := 0.0                          ## 0..1 odwrócenia do góry nogami (wiszący Skoczek / śpiąca Ćma): płynny obrót przy budzeniu
 var _model_h := 1.0                        ## wysokość modelu w spoczynku (m, natywna skala)
-## Klipy animacji (char_clips.gd, zestaw „enemy"): chód dwunożnych — biodra i nogi z klipu, postawa i ręce dalej z profilu rodzaju.
+## Klipy animacji (char_clips.gd): chód dwunożnych — biodra i nogi z klipu, postawa i ręce dalej z profilu rodzaju.
 var clips_on := true                       ## false = same pozy z kodu (porównania w tools/shot_enemy_clip3d.gd)
+var walk_set := ""                         ## zestaw klipów wymuszony przed setup() (porównania); pusty = `walk_clip` ze SPEC
+var _cset := ""                            ## zestaw klipów tego wroga
 var _tree: AnimationTree
-var _ck := 0.0                             ## 0..1 udział klipu w chodzie (gaśnie po śmierci)
-var _cwalk := 0.0                          ## 0..1 waga klipu chodu w tej klatce
+var _ck := 0.0                             ## 0..1 udział klipów w stanach, które je mają (gaśnie po śmierci)
+var _cwalk := 0.0                          ## 0..1 łączna waga klipów w tej klatce (stopy i kolana z klipu)
+var _carm := 0.0                           ## 0..1 waga stanów, w których ręce idą z klipu (zapowiedź i cios)
+var _catt := false                         ## rodzaj ma zapowiedź i cios z klipu
+var _windup_t := 0.0                       ## s od wejścia w zapowiedź ciosu (czas klipu)
+var _chand := {}                           ## strona → pozycja dłoni z klipu (przestrzeń szkieletu)
 var _cw := {}                              ## stan → waga (wejście dla CharClips.drive)
 var _cprog := {}
 var _cfoot := {}                           ## strona → Transform3D stopy z klipu (przestrzeń szkieletu)
 var _cknee := {}                           ## strona → kierunek kolana w klipie (biegun IK nogi)
+var _crise := 0.0                          ## o tyle biodra stoją wyżej niż w klipie (jednostki modelu)
 var _chips := Vector3.ZERO                 ## przesunięcie bioder z klipu względem spoczynku — ręce idą za ciałem
 
 static func has_model(k: String) -> bool:
@@ -294,10 +301,13 @@ func setup(k: String, translucent := false) -> bool:
 		_x0 = hips_x - 0.05
 		if _spec.get("crawler", false):
 			_x0 = c.x
-		elif _spec.get("walk_clip", false):
-			_tree = CharClips.build(_sk, k, false, "enemy")
-			if _tree != null:
-				_sk.get_parent().add_child(_tree)
+		else:
+			_cset = walk_set if walk_set != "" else String(_spec.get("walk_clip", ""))
+			if _cset != "":
+				_tree = CharClips.build(_sk, k, false, _cset)
+				if _tree != null:
+					_sk.get_parent().add_child(_tree)
+					_catt = bool(_spec.get("attack_clip", false)) and CharClips.has("attack", _cset) and CharClips.has("windup", _cset)
 		_pivot.position.x = -_x0 * _scale
 	if _spec.get("quad", false):
 		for n in ["tripo__Spine_0", "tripo__Spine_1", "tripo__Spine_2", "tripo__Spine_3"]:
@@ -1102,20 +1112,43 @@ func _pose_biped(anim: String, delta: float) -> void:
 		var cur := float(_w.get(n, 0.0))
 		_w[n] = lerpf(cur, 1.0 if n == key else 0.0, kk)
 		sum += float(_w[n])
-	# klip chodu: drzewo ustawia biodra, tułów i nogi wg fazy kroku; stopy i kolana z klipu zapamiętujemy jako cele IK nóg
-	var has_clip := _tree != null and clips_on and CharClips.has("walk", "enemy")
+	# klipy: drzewo ustawia biodra, tułów i nogi (chód wg fazy kroku; zapowiedź i cios — klip ataku); stopy, kolana i dłonie z klipu
+	# zapamiętujemy jako cele IK
+	var has_clip := _tree != null and clips_on and CharClips.has("walk", _cset)
 	_ck = move_toward(_ck, 1.0 if (has_clip and not _dead) else 0.0, delta * 8.0)
-	_cwalk = float(_w["walk"]) / maxf(sum, 0.0001) * _ck
-	if _cwalk > 0.002:
-		_cw["walk"] = _cwalk
+	if key == "windup":
+		_windup_t += delta
+	elif float(_w["windup"]) < 0.01 * sum:
+		_windup_t = 0.0
+	var w_att := 0.0                                              # cios: klip przejmuje pozę na czas ciosu (szybko wchodzi, miękko wraca)
+	if _catt and _clip == "attack" and not _dead:
+		var ua := _clip_t / float(CLIP_DUR["attack"])
+		w_att = smoothstep(0.0, 0.12, ua) * (1.0 - smoothstep(0.8, 1.0, ua)) * _ck
+		_cprog["attack"] = ua
+	var w_walk := float(_w["walk"]) / maxf(sum, 0.0001) * _ck * (1.0 - w_att)
+	var w_wind := (float(_w["windup"]) / maxf(sum, 0.0001) * _ck * (1.0 - w_att)) if _catt else 0.0
+	_cw.clear()
+	if w_walk > 0.002:
+		_cw["walk"] = w_walk
+	if w_wind > 0.002:
+		_cw["windup"] = w_wind
+		_cprog["windup"] = _windup_t
+	if w_att > 0.002:
+		_cw["attack"] = w_att
+	_cwalk = 0.0
+	_carm = 0.0
+	_crise = 0.0
+	if not _cw.is_empty():
+		_cwalk = w_walk + w_wind + w_att
+		_carm = w_wind + w_att
 		CharClips.drive(_tree, _cw, _phase / TAU, _t, _cprog)
 		for side in ["Left", "Right"]:
 			var cf := _gp(_b[side + "Foot"])
 			_cfoot[side] = cf
 			_cknee[side] = _gp(_b[side + "Leg"]).origin - (_gp(_b[side + "UpLeg"]).origin + cf.origin) * 0.5
+			_chand[side] = _gp(_b[side + "Hand"]).origin
 		_chips = _gp(_b["Hips"]).origin - _sk.get_bone_global_rest(_b["Hips"]).origin
-	else:
-		_cwalk = 0.0
+		_crise = CharClips.param("walk", "rise", 0.0, _cset) * _sk.get_bone_global_rest(_b["Hips"]).origin.y * w_walk
 	var p := {}
 	var acc := 0.0
 	for n in ["idle", "walk", "windup", "sleep", "air", "stun", "charge"]:
@@ -1123,6 +1156,8 @@ func _pose_biped(anim: String, delta: float) -> void:
 		if w < 0.004:
 			continue
 		var bp := _biped_params(n)
+		if n == "windup" and _catt and _ck > 0.0:
+			bp = _mix_p(bp, _biped_params("idle"), _ck)       # zapowiedź z klipu: z profilu zostaje zwykła postawa, ruch niesie klip
 		if p.is_empty():
 			p = bp
 			acc = w
@@ -1170,6 +1205,8 @@ func _pose_biped(anim: String, delta: float) -> void:
 		var u := _clip_t / float(CLIP_DUR["attack"])
 		var s_in := smoothstep(0.0, 0.26, u)
 		var w := s_in * (1.0 - smoothstep(0.34, 1.0, u))                               # uderzenie szybko, powrót miękko
+		if _catt:
+			w *= 1.0 - _ck                                                             # cios z klipu: poza z kodu tylko, gdy klip wygasł
 		var hy2 := float((_spec.get("prof", {}) as Dictionary).get("hy", 0.62))
 		var ak := String(_spec.get("attack_kind", "smash"))
 		# lean, drop, x ręki, wysokość ręki, rozstaw rąk (ułamek hy), stopa prawa, stopa lewa, głowa
@@ -1195,7 +1232,7 @@ func _pose_biped(anim: String, delta: float) -> void:
 
 func _apply_biped(p: Dictionary) -> void:
 	var hips: int = _b["Hips"]
-	_shift_global(hips, Vector3(0.0, -float(p["drop"]) + float(p["bob"]), 0.0))
+	_shift_global(hips, Vector3(0.0, -float(p["drop"]) + float(p["bob"]) + _crise, 0.0))
 	_rot_world(hips, Vector3.BACK, -deg_to_rad(float(p["lean"])))
 	_rot_world(_b["Head"], Vector3.BACK, deg_to_rad(float(p["lean"])) * float(p["hk"]))
 	for side in ["Right", "Left"]:
@@ -1221,4 +1258,6 @@ func _apply_biped(p: Dictionary) -> void:
 		var target: Vector3 = p["hR"] if side == "Right" else p["hL"]
 		if _cwalk > 0.0:
 			target += _chips                                      # ręce idą za biodrami z klipu (kołysanie kroku)
+			if _carm > 0.0:
+				target = target.lerp(_chand[side], _carm)         # zapowiedź i cios: dłoń tam, gdzie w klipie
 		_two_bone(_b[side + "Arm"], _b[side + "ForeArm"], _b[side + "Hand"], _arm_len[side][0], _arm_len[side][1], target, Vector3(-0.4, -0.5, sg * 0.8))

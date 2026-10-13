@@ -112,26 +112,35 @@ godot --path prototype -- --host --mission=z1_m1 --shot=/tmp/run.png --shotat=20
 Kandydat z paczki na później: `Interact` (sięgnięcie ręką po przedmiot, dźwignię). Wymaga tego samego co reanimacja: schowania broni, rąk
 z klipu i stanu replikowanego w sieci.
 
-### Wrogowie dwunożni: chód z klipu
+### Wrogowie dwunożni: chód i cios z klipów
 
-Ten sam mechanizm w `enemy3d.gd` (zestaw klipów „enemy" w `char_clips.gd`): w chodzie biodra i nogi idą z klipu `Walk_Loop`, a postawę
-potwora (pochylenie, ręce, głowa) dalej daje profil rodzaju z `SPEC`. Klip jest włączany na rodzaj flagą `walk_clip`:
+Ten sam mechanizm w `enemy3d.gd`: w chodzie biodra i nogi idą z klipu, a postawę potwora (pochylenie, ręce, głowa) dalej daje profil
+rodzaju z `SPEC`. Klipy potworów pochodzą z drugiej paczki tego samego autora: `art_src/animations/ual2/` (Universal Animation Library 2,
+CC0, 43 klipy; patrz `SOURCE.md`). Zestaw klipów wybiera na rodzaj klucz `walk_clip`, cios z klipu — `attack_clip`:
 
-| Rodzaj | Chód z klipu | Uwagi |
-|---|---|---|
-| Ślepiec, Podsłuchacz, Stalker, Mimik | tak | kolano i stopa pracują jak w kroku, postawa z profilu |
-| Wołek | nie | za krótkie nogi: z ludzkim krokiem kuca i unosi kolana pod brzuch |
-| Skoczek, Trzosek, Ćma, gniazdo, bossowie | nie dotyczy | pełzacz, czworonóg i modele bez szkieletu mają własny ruch |
+| Rodzaj | Chód | Zapowiedź i cios | Uwagi |
+|---|---|---|---|
+| Ślepiec | `zombie` (`Zombie_Walk_Fwd_Loop`) | klip `Zombie_Scratch` | powłóczysty krok; przy ciosie unosi się i rzuca w dół |
+| Stalker | `zombie` | klip `Zombie_Scratch` | jak wyżej |
+| Podsłuchacz | `zombie` | z kodu (krzyk) | klip ataku to zamach pazurami, nie pasuje do krzyku |
+| Mimik | `human` (`Walk_Loop`) | z kodu | udaje człowieka, więc chodzi jak człowiek |
+| Wołek | z kodu | z kodu | za krótkie nogi: z klipem kuca i unosi kolana pod brzuch |
+| Skoczek, Trzosek, Ćma, gniazdo, bossowie | nie dotyczy | nie dotyczy | pełzacz, czworonóg i modele bez szkieletu mają własny ruch |
 
-- Z klipu zostaje 15% ruchu tułowia (`upper`), reszta to pochylenie z profilu; ręce idą za biodrami z klipu.
-- Stopa nie schodzi poniżej poziomu spoczynkowego: potwory mają inne proporcje nóg niż człowiek z klipu i bez tego wchodziły w podłoże
-  (Wołek do 26 cm, Stalker 11 cm).
-- Postój, sen, zapowiedź ciosu, szarża, oszołomienie, trafienie, cios i śmierć to dalej pozy z kodu.
-- Porównanie: `godot --path prototype --script tools/shot_enemy_clip3d.gd -- --kinds=slepiec,podsluchacz,stalker,mimik --anim=walk --movie=/tmp/en`
-  (górny wiersz poza z kodu, dolny klip + profil) albo bez `--movie` stykówka: kod | surowy klip | w grze.
+- Chód zombie obniża sylwetkę. Z klipu zostaje 20% ruchu tułowia (`upper`), a biodra stoją o 5% swojej wysokości wyżej niż w klipie
+  (`rise`); mimo to głowa jest w chodzie niżej niż w pozie z kodu: Ślepiec ok. 20 cm, Podsłuchacz ok. 15 cm, Stalker ok. 20 cm.
+- Zapowiedź ciosu (`windup`) trzyma chwilę klipu, w której potwór unosi się z ręką w górze; cios (`attack`) gra rzut w dół postępem ciosu
+  z gry. Ręce idą wtedy z klipu (cele IK = dłonie z klipu), więc **zapowiedź wygląda inaczej niż dotąd** (było: ręce wyciągnięte w przód
+  u Stalkera, uniesione u Ślepca). Czas zapowiedzi i ciosu, rozżarzenie oczu i trafienie liczy gra jak dotąd.
+- Stopa nie schodzi poniżej poziomu spoczynkowego: potwory mają inne proporcje nóg niż człowiek z klipu.
+- Postój, sen, szarża, oszołomienie, trafienie i śmierć to dalej pozy z kodu. Klip postoju zombie (`Zombie_Idle_Loop`) odrzucony: zgina
+  Stalkera do ok. 60% wysokości.
+- Porównania: `godot --path prototype --script tools/shot_enemy_clip3d.gd -- --kinds=slepiec,podsluchacz,stalker,mimik --anim=walk
+  --sets=human,zombie --movie=/tmp/en` (wiersze: kod, klip human, klip zombie); `--anim=attackseq --movie=…` (chód → zapowiedź → cios,
+  kod kontra zestaw rodzaju); bez `--movie` stykówka: kod | surowy klip | w grze.
 
-Różnica względem chodu z kodu jest mniejsza niż u gracza: chód z kodu już stawia wyraźne kroki, klip dodaje pracę kolana i stopy.
-Paczka nie ma ruchu potworów; pasujące klipy (chód zombie) są w drugiej części biblioteki (Universal Animation Library 2), której w repo nie ma.
+W drugiej paczce są też klipy dla gracza, jeszcze nieużyte: `LayToIdle` (wstawanie z leżenia), `OverhandThrow` (rzut), `Consume`,
+`Chest_Open`, `ClimbUp_1m_RM`.
 
 ## Ograniczenia / dalsze kroki
 

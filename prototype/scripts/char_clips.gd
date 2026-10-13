@@ -37,11 +37,21 @@ const CLIPS := {
 }
 ## Klipy wrogów dwunożnych (enemy3d.gd): chód. Faza kroku wroga ma lądowanie prawej stopy w połowie obrotu (u gracza w ćwierci), stąd phase0.
 ## Postawę potwora (pochylenie, ręce) dalej daje profil z enemy3d.gd; z klipu idą biodra, nogi i część ruchu tułowia.
-const ENEMY_CLIPS := {
+## rise: o tyle (ułamek wysokości bioder w spoczynku) biodra stoją wyżej niż w klipie — chód zombie mocno obniża sylwetkę,
+##   a wróg ma zostać czytelny względem swojego hitboxa.
+## Dwa zestawy: „zombie" (powłóczysty krok potwora) i „human" (zwykły ludzki chód — Mimik udaje człowieka).
+## Atak pazurami to jeden klip w dwóch stanach: „windup" trzyma chwilę, w której potwór unosi się z ręką w górze (zapowiedź ciosu trwa
+## tyle, ile każe gra), „attack" gra rzut w dół i powrót postępem ciosu z enemy3d.gd. Ręce idą wtedy z klipu.
+const ZOMBIE_CLIPS := {
+	"walk": {"file": "zombie_walk", "step": true, "phase0": -0.25, "upper": 0.2, "rise": 0.05},
+	"windup": {"file": "zombie_attack", "hold": [0.1, 0.5, 0.5, 0.25], "arms": true},
+	"attack": {"file": "zombie_attack", "scrub": [0.5, 1.4], "arms": true},
+}
+const HUMAN_CLIPS := {
 	"walk": {"file": "walk", "step": true, "phase0": -0.25, "upper": 0.15},
 }
 ## Zestawy klipów: nazwa zestawu → tabela stan → klip. Drzewo pamięta swój zestaw (meta „set").
-const SETS := {"player": CLIPS, "enemy": ENEMY_CLIPS}
+const SETS := {"player": CLIPS, "zombie": ZOMBIE_CLIPS, "human": HUMAN_CLIPS}
 
 static var enabled := true                   ## --noclips wyłącza klipy (same pozy z kodu, do porównań)
 static var _src := {}                        ## plik → {"anim": Animation, "rest": {kość → Transform3D}, "hips_y": float} albo {} (brak pliku)
