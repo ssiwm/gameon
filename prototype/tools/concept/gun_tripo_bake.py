@@ -73,7 +73,15 @@ def pass_material(src, normal):
         nt.links.new(ma.outputs["Vector"], em.inputs["Color"])
     else:
         link = next((l for l in nt.links if l.to_node == bsdf and l.to_socket.name == "Base Color"), None)
-        if link is not None:
+        glow = next((l for l in nt.links if l.to_node == bsdf and l.to_socket.name == "Emission Color"), None)
+        if link is not None and glow is not None:
+            # modele z mapą emisji (ogniwa, cewki, płomyk): świecenie dodane do koloru, żeby miniatura i maska --glow je widziały
+            add = nt.nodes.new("ShaderNodeVectorMath")
+            add.operation = "ADD"
+            nt.links.new(link.from_socket, add.inputs[0])
+            nt.links.new(glow.from_socket, add.inputs[1])
+            nt.links.new(add.outputs["Vector"], em.inputs["Color"])
+        elif link is not None:
             nt.links.new(link.from_socket, em.inputs["Color"])
     nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
     return m
