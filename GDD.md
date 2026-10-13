@@ -1,6 +1,6 @@
 # DEAD AIR '87 — Game Design Document
 
-**Wersja:** 1.7.209 — numer gry z `prototype/project.godot` (`config/version`); historia zmian: [`CHANGELOG.md`](CHANGELOG.md). Zręby dokumentu pochodzą z 1.6.0 (analiza „wciągająca, przyjemna gra”: game feel, Stalker, down/revive, zakres; patrz §23)
+**Wersja:** 1.7.210 — numer gry z `prototype/project.godot` (`config/version`); historia zmian: [`CHANGELOG.md`](CHANGELOG.md). Zręby dokumentu pochodzą z 1.6.0 (analiza „wciągająca, przyjemna gra”: game feel, Stalker, down/revive, zakres; patrz §23)
 **Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
 **Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
 **Silnik:** Godot 4.7 (renderer Forward+) + GodotSteam
@@ -710,7 +710,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 
 ## 22. Aneks C — Historia wersji
 
-Historia zmian jest w [`CHANGELOG.md`](CHANGELOG.md) — 242 wpisy od 1.0 do bieżącej wersji. Wydzielona w 1.7.208, żeby ten dokument
+Historia zmian jest w [`CHANGELOG.md`](CHANGELOG.md) — 243 wpisy od 1.0 do bieżącej wersji. Wydzielona w 1.7.208, żeby ten dokument
 opisywał stan gry, a nie drogę do niego. Zasady prowadzenia są w nagłówku tamtego pliku.
 
 ---
