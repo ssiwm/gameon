@@ -112,6 +112,27 @@ godot --path prototype -- --host --mission=z1_m1 --shot=/tmp/run.png --shotat=20
 Kandydat z paczki na później: `Interact` (sięgnięcie ręką po przedmiot, dźwignię). Wymaga tego samego co reanimacja: schowania broni, rąk
 z klipu i stanu replikowanego w sieci.
 
+### Wrogowie dwunożni: chód z klipu
+
+Ten sam mechanizm w `enemy3d.gd` (zestaw klipów „enemy" w `char_clips.gd`): w chodzie biodra i nogi idą z klipu `Walk_Loop`, a postawę
+potwora (pochylenie, ręce, głowa) dalej daje profil rodzaju z `SPEC`. Klip jest włączany na rodzaj flagą `walk_clip`:
+
+| Rodzaj | Chód z klipu | Uwagi |
+|---|---|---|
+| Ślepiec, Podsłuchacz, Stalker, Mimik | tak | kolano i stopa pracują jak w kroku, postawa z profilu |
+| Wołek | nie | za krótkie nogi: z ludzkim krokiem kuca i unosi kolana pod brzuch |
+| Skoczek, Trzosek, Ćma, gniazdo, bossowie | nie dotyczy | pełzacz, czworonóg i modele bez szkieletu mają własny ruch |
+
+- Z klipu zostaje 15% ruchu tułowia (`upper`), reszta to pochylenie z profilu; ręce idą za biodrami z klipu.
+- Stopa nie schodzi poniżej poziomu spoczynkowego: potwory mają inne proporcje nóg niż człowiek z klipu i bez tego wchodziły w podłoże
+  (Wołek do 26 cm, Stalker 11 cm).
+- Postój, sen, zapowiedź ciosu, szarża, oszołomienie, trafienie, cios i śmierć to dalej pozy z kodu.
+- Porównanie: `godot --path prototype --script tools/shot_enemy_clip3d.gd -- --kinds=slepiec,podsluchacz,stalker,mimik --anim=walk --movie=/tmp/en`
+  (górny wiersz poza z kodu, dolny klip + profil) albo bez `--movie` stykówka: kod | surowy klip | w grze.
+
+Różnica względem chodu z kodu jest mniejsza niż u gracza: chód z kodu już stawia wyraźne kroki, klip dodaje pracę kolana i stopy.
+Paczka nie ma ruchu potworów; pasujące klipy (chód zombie) są w drugiej części biblioteki (Universal Animation Library 2), której w repo nie ma.
+
 ## Ograniczenia / dalsze kroki
 
 - Rzut flary i przedmiotów ma pozę (prawa ręka zamachem nad głową), ale tylko lokalnie — rzut jest zdarzeniem lokalnego gracza, inni widzą dopiero rzucony przedmiot.
