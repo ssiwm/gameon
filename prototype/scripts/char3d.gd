@@ -229,6 +229,9 @@ var clips_raw := false                       ## true = klipy bez tłumienia tuł
 var _clips: AnimationTree
 var _clip_w := 0.0                           ## 0..1 łączna waga klipów w tej klatce (0 = poza z kodu)
 var _clip_k := 0.0                           ## 0..1 udział klipu w stanach, które go mają (1 = cały stan z klipu; maleje przy upadku)
+var _clip_down := 0.0                        ## 0..1 udział klipu upadku (zastępuje upadek z kodu, gdy klip jest)
+var _clip_prog := {}                         ## stan → postęp 0..1 klipów jednorazowych (wejście dla CharClips.drive)
+var _clip_knee := {}                         ## strona → kierunek kolana w klipie (biegun IK nogi), pusty wektor = brak
 var _clip_bounce := 0.0                      ## m: poprawka pionu bioder zdejmująca część kołysania klipu (CharClips.bounce_fix)
 var _clip_ws := {}                           ## stan → waga klipu w tej klatce (wejście dla CharClips.drive)
 var _clip_foot := {}                         ## strona → Transform3D stopy z klipu (przestrzeń szkieletu), zanim ruszą ją nakładki
@@ -743,7 +746,8 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		if climb_t >= 1.0:
 			climb_t = -1.0
 	_air_t = _air_t + delta if (anim == "jump" or anim == "fall") else 0.0
-	_down = move_toward(_down, 1.0 if anim == "down" else 0.0, delta / (0.75 if anim == "down" else 0.95))
+	var fall_s := 1.0 if (clips_on and CharClips.has("down")) else 0.75      # klip upadku jest dłuższy niż upadek z kodu
+	_down = move_toward(_down, 1.0 if anim == "down" else 0.0, delta / (fall_s if anim == "down" else 0.95))
 	_mc = {}
 	if swing_t >= 0.0 and _down < 0.2:
 		_mc = _melee_curve(swing_t, "chop" if _gun_key == "kilof" else "slash")
@@ -755,7 +759,7 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 	elif holding:
 		_pose_arms(theta)
 	else:
-		_pose_arms_relaxed(true)
+		_pose_arms_relaxed(_clip_down < 0.5)                      # z klipem upadku ręce zostają z klipu
 	if _gun != null:
 		_gun.visible = holding
 		if _gun_n != null:
@@ -805,22 +809,31 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		sum += float(_aw[n])
 	if anim == "run" or anim == "crouch_walk":
 		_phase += (-1.0 if back_run else 1.0) * delta * clampf(speed / 95.0, 0.4, 1.4) * TAU * 2.0
-	# klipy: drzewo ustawia biodra, tułów, głowę i nogi w stanach, które mają klip; zapamiętujemy stopy z klipu, zanim nakładki ruszą biodra.
-	# Przy upadku udział klipu znika (leżenie i wstawanie to poza z kodu).
+	# klipy: drzewo ustawia biodra, tułów, głowę i nogi w stanach, które mają klip; zapamiętujemy stopy i kolana z klipu, zanim nakładki ruszą biodra.
+	# Upadek: klip „down" przejmuje całą pozę (postęp = _down, wstawanie gra go wstecz); bez niego udział klipów znika i upadek liczy kod.
 	_clip_w = 0.0
 	_clip_bounce = 0.0
-	_clip_k = 1.0 - smoothstep(0.0, 1.0, _down) if (_clips != null and clips_on and CharClips.enabled) else 0.0
+	var usable := _clips != null and clips_on and CharClips.enabled
+	var fall_clip := usable and CharClips.has("down")
+	_clip_down = smoothstep(0.0, 0.12, _down) if fall_clip else 0.0
+	_clip_k = (1.0 if fall_clip else 1.0 - smoothstep(0.0, 1.0, _down)) if usable else 0.0
 	if _clip_k > 0.0:
 		_clip_ws.clear()
 		for n in AW_STATES:
-			var wc := float(_aw[n]) / maxf(sum, 0.0001) * _clip_k
+			var wc := float(_aw[n]) / maxf(sum, 0.0001) * _clip_k * (1.0 - _clip_down)
 			if wc > 0.002 and CharClips.has(n):
 				_clip_ws[n] = wc
 				_clip_w += wc
+		if _clip_down > 0.002:
+			_clip_ws["down"] = _clip_down
+			_clip_prog["down"] = _down
+			_clip_w += _clip_down
 		if _clip_w > 0.0:
-			CharClips.drive(_clips, _clip_ws, _phase / TAU, _time)
+			CharClips.drive(_clips, _clip_ws, _phase / TAU, _time, _clip_prog)
 			for side in ["Left", "Right"]:
-				_clip_foot[side] = _gp(_b[side + "Foot"])
+				var cf := _gp(_b[side + "Foot"])
+				_clip_foot[side] = cf
+				_clip_knee[side] = _gp(_b[side + "Leg"]).origin - (_gp(_b[side + "UpLeg"]).origin + cf.origin) * 0.5
 			_clip_bounce = CharClips.bounce_fix(_clips, _clip_ws, _gp(hips).origin.y - _sk.get_bone_global_rest(hips).origin.y)
 	# poza bazowa = mieszanka stanów wg wag (faza kroku ciągła, więc bez przeskoków przy zmianie stanu)
 	var lean := 0.0
@@ -834,6 +847,10 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		lean += w * float(st["lean"])
 		drop += w * float(st["drop"])
 		bob += w * float(st["bob"])
+	if _clip_down > 0.0:                                          # klip upadku niesie całą pozę: z póz bazowych z kodu nie zostaje nic
+		lean *= 1.0 - _clip_down
+		drop = drop * (1.0 - _clip_down) + CharClips.param("down", "drop", 0.0) * _clip_down
+		bob *= 1.0 - _clip_down
 	var w_idle := float(_aw["idle"]) / maxf(sum, 0.0001)
 	var w_run := (float(_aw["run"]) + float(_aw["crouch_walk"])) / maxf(sum, 0.0001)
 	if back_run:
@@ -872,11 +889,11 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		lean += 15.0 * cw
 		drop += 0.07 * cw
 	# upadek (po zdjęciu zdrowia) i wstawanie po reanimacji: ten sam ruch w drugą stronę
-	var e := smoothstep(0.0, 1.0, _down)
+	var stand := 1.0 - smoothstep(0.0, 1.0, _down)
+	var e := 0.0 if fall_clip else 1.0 - stand                    # upadek z kodu tylko wtedy, gdy nie ma klipu upadku
 	if e > 0.001:
 		drop = lerpf(drop, 0.62, e)
 		lean = lerpf(lean, 0.0, e)
-	var stand := 1.0 - e
 	if w_idle > 0.01 and e < 0.5 and not CharClips.has("idle"):
 		# mikroruch: oddech klatki piersiowej, głowa „szuka” (bez wpływu na broń: tylko kręgosłup i głowa)
 		_rot_world(_b["Spine2"], Vector3.BACK, deg_to_rad(0.9 * sin(_time * 1.9)) * w_idle * stand)
@@ -954,6 +971,8 @@ func _pose_legs(e: float) -> void:
 			var ls := _leg_state(n, side)
 			off += w * (ls[0] as Vector3)
 			tilt += w * float(ls[1])
+		off *= 1.0 - _clip_down
+		tilt *= 1.0 - _clip_down
 		if _grab_w > 0.001:                                       # chwycony: nogi nad ziemią, kopią naprzemiennie
 			var kp := _time * 9.0 + (0.0 if side == "Right" else PI)
 			off.y += (0.12 + 0.22 * maxf(0.0, sin(kp))) * _grab_w
@@ -970,16 +989,23 @@ func _pose_legs(e: float) -> void:
 		var base := Vector3(_origin_x, _ankle_y, rest_foot.z)
 		var target := base + off
 		var rest_gb := _sk.get_bone_global_rest(foot).basis
+		var pole := Vector3(1.0, 0.0, 0.0)                            # kolano do przodu
 		if _clip_w > 0.0:
 			# stopa z klipu: jej odchylenie od spoczynku już niesie wagę klipu (drzewo miesza klip z pozą spoczynkową); przy pełnej wadze cel = stopa klipu
 			var cf: Transform3D = _clip_foot[side]
 			target += (cf.origin - rest_foot) + _clip_w * (rest_foot - base)
 			rest_gb = cf.basis
+			# kolano tam, gdzie w klipie (leżenie na plecach, przyklęk): bez tego IK wyginałoby je zawsze do przodu
+			var ck: Vector3 = _clip_knee[side]
+			if ck.length() > 0.02:
+				pole = pole.lerp(ck.normalized(), _clip_w)
+				if pole.length() < 0.05:
+					pole = ck
 		if e > 0.001:
 			# upadek: stopy zostają na ziemi, dopóki biodra opadają (kolana się uginają), potem nogi podążają sztywno za ciałem
 			var rigid := _gp(foot).origin
 			target = target.lerp(rigid, smoothstep(0.5, 0.9, e))
-		_two_bone(_b[side + "UpLeg"], _b[side + "Leg"], foot, _leg_len[side][0], _leg_len[side][1], target, Vector3(1.0, 0.0, 0.0))
+		_two_bone(_b[side + "UpLeg"], _b[side + "Leg"], foot, _leg_len[side][0], _leg_len[side][1], target, pole)
 		# stopa płasko (z lekkim obrotem czubka); przy upadku obraca się razem z ciałem
 		var flat := Basis(Vector3.BACK, tilt) * rest_gb
 		if e > 0.001:
