@@ -122,7 +122,7 @@ godot --headless --path prototype --export-release "Windows"   # -> build/window
 cp prototype/steam_appid.txt build/linux/ ; cp prototype/steam_appid.txt build/windows/
 ```
 
-Presety są w `export_presets.cfg` (szablony eksportu 4.7.2 muszą być zainstalowane). Testerom wyślij zipem cały folder (`.pck`, biblioteki i `steam_appid.txt`). Każdy tester: Steam uruchomiony i zalogowany, wszyscy muszą być **znajomymi na Steamie** z hostem. Host: STEAM HOST, potem F2 albo wysłanie ID lobby; reszta: „Dołącz do gry” albo ID + STEAM JOIN. W Steamie tester widnieje jako grający w „Spacewar”.
+Presety są w `export_presets.cfg` (szablony eksportu 4.7.2 muszą być zainstalowane). Testerom wyślij zipem cały folder (`.pck`, biblioteki i `steam_appid.txt`) — paczkę z instrukcją dla testera (`tools/testers_readme.txt` → `CZYTAJ.txt`) robi `tools/package_build.sh [Windows|Linux]` po `tools/export_build.sh`, wynik: `build/dead-air-87_<wersja>+<commit>_<system>.zip`. Każdy tester: Steam uruchomiony i zalogowany, wszyscy muszą być **znajomymi na Steamie** z hostem. Host: STEAM HOST, potem F2 albo wysłanie ID lobby; reszta: „Dołącz do gry” albo ID + STEAM JOIN. W Steamie tester widnieje jako grający w „Spacewar”.
 
 ## Dziennik sesji (playtesty)
 
