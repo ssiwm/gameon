@@ -1,5 +1,7 @@
 extends SceneTree
-## Teleportuje lokalnego gracza do wrogów każdego rodzaju i robi zrzuty.
+## Teleportuje lokalnego gracza do wrogów każdego rodzaju i robi zrzuty (po jednym PNG na rodzaj: KATALOG/RODZAJ.png).
+##   godot --path prototype --script tools/shot_enemies.gd -- --view3dlit --mission=z1_m2 --dir=KATALOG
+## --view3dlit: pełne, białe światło otoczenia (level3d.gd) — bez niej zrzuty są w nocy gry; --mission: mapa (main.gd). Wymaga okna.
 var _frames := 0
 var _main: Node
 var _dir := "/tmp/shots"
@@ -25,10 +27,8 @@ func _process(_d: float) -> bool:
 	if _frames == 5:
 		_main.host_game()
 	if _frames == 30:
-		_main.get_node("Darkness").color = Color(1, 1, 1)
-		_main.get_node("UI/HUD").visible = false
+		_main.get_node("UI").visible = false                         # cała warstwa interfejsu: sam HUD co klatkę włącza się z powrotem (hud.gd)
 	if _frames == 60:
-		_main.get_node("UI/HUD").visible = false
 		for e in get_nodes_in_group("enemies"):
 			var k: String = String(e.get("kind")) if e.get("kind") != null else ""
 			if e.is_in_group("boss"):
