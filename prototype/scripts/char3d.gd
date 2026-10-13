@@ -641,8 +641,9 @@ func set_gun(key: String) -> void:
 	_gun_key = key
 	_load_gun_info(path.get_basename() + ".json")
 
-## Materiały broni z GLB (albedo + normalne + ORM + opcjonalnie emisja): metaliczność przycięta, bo bez sondy odbić pełny metal byłby czarny
-## (tryb zgodności; reszta modeli ma ją wyzerowaną w shaderach); emisja (cewki energetyczne, kontrolki) wzmocniona dla bloomu.
+## Materiały broni z GLB (albedo + normalne + ORM + opcjonalnie emisja): pełna metaliczność z tekstury — stal odbija „niebo odbić" warstwy graczy
+## (view3d.gd, `_actor_reflection_sky`) i światła sceny; reszta modeli ma metaliczność wyzerowaną w shaderach. Emisja (cewki, kontrolki) wzmocniona
+## dla bloomu.
 func _tune_gun_materials(root: Node) -> void:
 	for n in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
@@ -652,8 +653,8 @@ func _tune_gun_materials(root: Node) -> void:
 			var m := mi.mesh.surface_get_material(i)
 			if m is StandardMaterial3D:
 				var sm := m as StandardMaterial3D
-				sm.metallic = 0.45
-				sm.metallic_specular = 0.6
+				sm.metallic = 1.0
+				sm.metallic_specular = 0.5
 				if sm.emission_enabled:
 					sm.emission_energy_multiplier = 1.8
 
