@@ -56,6 +56,11 @@ BAKE_TEX = int(arg("bake-tex", "2048"))       # rozdzielczość wypieku cieni (p
 BODY_TRIS = int(arg("body-tris", "7000"))     # budżet trójkątów: ciało i każda część ubrania (cała postać ok. 25–30 tys.)
 PART_TRIS = int(arg("part-tris", "3500"))     # domyślny budżet części; wpis stroju może mieć własny ("tris")
 SAMPLES = int(arg("samples", "32"))           # próbki Cycles przy wypiekaniu cieni kontaktowych
+SEWN = "--sewn" in argv                       # próba: ubrania szyte symulacją (tools/cloth_jacket.py, art_src/clothes) zamiast z paczek MPFB
+if arg("out"):
+    OUT = os.path.join(os.path.dirname(HERE), "art", "char3d", arg("out"))     # inny zestaw modeli (Char3D.charset), np. do porównań
+CLOTH_SRC = os.path.join(os.path.dirname(os.path.dirname(HERE)), "art_src", "clothes")
+UPPER = ("Spine", "Neck", "Shoulder", "Arm", "Hand")   # kości górnej połowy (kurtka); Hips i nogi to spodnie
 
 # przebarwienie tekstury: piksele o odcieniu w [od, do] (stopnie) i nasyceniu w [od, do] dostają nowy odcień, nasycenie i jasność
 # (mnożnik); reguły idą po kolei, piksel zmieniony przez wcześniejszą regułę już nie łapie się na następne
@@ -96,6 +101,8 @@ OUTFITS = {
             "gredal_gas_mask": {"relocate": "left_hip", "tris": 1800},   # maska przeciwgazowa przy biodrze (CC-BY, Mathias_Gredal)
         },
         "gear": ["backpack_model", "belt_pouches", "neckerchief"],
+        # --sewn: kurtka M65 z symulacji tkaniny w miejsce góry kompletu casualsuit05 (spodnie zostają)
+        "sewn": {"m65": {"file": "male_scav_m65.glb", "replaces": "male_casualsuit05", "tris": 6500}},
     },
     "female_scav": {
         "sex": "female", "height": 1.70, "phenotype": FEMALE, "race": WHITE_RACE,
@@ -857,6 +864,65 @@ def bake_shading(rig, body, size_cap=2048):
         print("BAKED", o.name, w, "x", h)
 
 
+def add_sewn(rig, body, spec):
+    """Ubrania szyte symulacją (cloth_jacket.py): import GLB, wagi kości z ciała (najbliższa ściana, interpolacja), Armature.
+    Część kompletu MPFB, którą zastępują, traci górną połowę (ściany przypięte głównie do kości tułowia i rąk)."""
+    masks = [m for m in body.modifiers if m.type == "MASK"]
+    for m in masks:                                   # wagi z całego ciała, także spod ubrań
+        m.show_viewport = False
+    for key, conf in spec.get("sewn", {}).items():
+        src = os.path.join(CLOTH_SRC, conf["file"])
+        if not os.path.exists(src):
+            print("SEWN missing", src)
+            continue
+        old = bpy.data.objects.get(conf.get("replaces", ""))
+        if old is not None:
+            names = {g.index: g.name for g in old.vertex_groups}
+            bm = bmesh.new()
+            bm.from_mesh(old.data)
+            dl = bm.verts.layers.deform.active
+            upper = set()
+            for v in bm.verts:
+                w = {names[g]: x for g, x in v[dl].items()} if dl else {}
+                up = sum(x for n, x in w.items() if any(u in n for u in UPPER))
+                if up > 0.5 * max(sum(w.values()), 1e-6):
+                    upper.add(v)
+            bmesh.ops.delete(bm, geom=[f for f in bm.faces if sum(v in upper for v in f.verts) * 2 > len(f.verts)], context="FACES")
+            bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+            bm.to_mesh(old.data)
+            bm.free()
+            print("SEWN cut", old.name, "upper verts", len(upper))
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=src)
+        ob = next(o for o in set(bpy.data.objects) - before if o.type == "MESH")
+        for o in set(bpy.data.objects) - before - {ob}:
+            bpy.data.objects.remove(o)
+        ob.name = key
+        ob.parent = rig
+        ob.matrix_parent_inverse.identity()
+        for m in ob.data.materials:                   # kolor pod nazwą węzła jak w MPFB (bake_shading dopieka na nim cienie)
+            for n in m.node_tree.nodes:
+                if n.type == "TEX_IMAGE" and n.image and any(l.to_socket.name == "Base Color" for l in n.outputs["Color"].links):
+                    n.name = "diffuseTexture"
+        _only(ob)
+        dt = ob.modifiers.new("dt", "DATA_TRANSFER")
+        dt.object = body
+        dt.use_vert_data = True
+        dt.data_types_verts = {"VGROUP_WEIGHTS"}
+        dt.vert_mapping = "POLYINTERP_NEAREST"
+        dt.layers_vgroup_select_src = "ALL"
+        dt.layers_vgroup_select_dst = "NAME"
+        bpy.ops.object.datalayout_transfer(modifier=dt.name)
+        bpy.ops.object.modifier_apply(modifier=dt.name)
+        for g in [g for g in ob.vertex_groups if not g.name.startswith("mixamorig:")]:
+            ob.vertex_groups.remove(g)
+        am = ob.modifiers.new("Armature", "ARMATURE")
+        am.object = rig
+        print("SEWN", key, len(ob.data.vertices), "verts", len(ob.vertex_groups), "groups")
+    for m in masks:
+        m.show_viewport = True
+
+
 def build(name, spec):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     info = HumanService._create_default_human_info_dict()
@@ -902,6 +968,9 @@ def build(name, spec):
                             m.node_tree.links.remove(lk)
                         n.inputs["Base Color"].default_value = tuple(conf["tint"]) + (1.0,)
 
+    if SEWN:
+        add_sewn(rig, body, spec)
+
     # ciało: zapiecz klucze kształtu (cele fenotypu), zastosuj maski (pomocnicze bryły MPFB, ciało pod ubraniami), uprość
     bpy.ops.object.select_all(action="DESELECT")
     bpy.context.view_layer.objects.active = body
@@ -926,7 +995,8 @@ def build(name, spec):
     # upraszczanie (wagi kości zostają); Decimate przesuwamy przed Armature, żeby liczył geometrię spoczynkową
     for o in [o for o in rig.children if o.type == "MESH"]:
         tris = sum(len(p.vertices) - 2 for p in o.data.polygons)
-        budget = BODY_TRIS if o == body else int(spec["clothes"].get(o.name, {}).get("tris", PART_TRIS))
+        conf = spec["clothes"].get(o.name) or spec.get("sewn", {}).get(o.name, {})
+        budget = BODY_TRIS if o == body else int(conf.get("tris", PART_TRIS))
         if tris <= budget:
             continue
         bpy.ops.object.select_all(action="DESELECT")
