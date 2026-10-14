@@ -36,7 +36,8 @@ const CharClips := preload("res://scripts/char_clips.gd")
 ## Materiał modelu z paletą kolorów (look.gd, PALETTES): kolor + normalne + ORM z modelu, metaliczność 0 (bez sondy odbić czarna).
 const PALETTE_SHADER := """
 shader_type spatial;
-uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D albedo_tex : source_color, hint_default_white, filter_linear_mipmap, repeat_enable;
+uniform vec4 albedo_mul : source_color = vec4(1.0);   // kolor materiału (części bez tekstury: ekwipunek, czapka z MPFB)
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D orm_tex : hint_default_white, filter_linear_mipmap, repeat_enable;
 uniform bool has_normal = false;
@@ -75,7 +76,7 @@ void vertex() {
 	wy = (MODEL_MATRIX * vec4(VERTEX, 1.0)).y;
 }
 void fragment() {
-	vec3 c = texture(albedo_tex, UV).rgb;
+	vec3 c = texture(albedo_tex, UV).rgb * albedo_mul.rgb;
 	if (hue_target >= 0.0 || sat_mul != 1.0 || val_mul != 1.0) {
 		vec3 h = rgb2hsv(c);
 		// skóra (pomarańcz, średnie nasycenie) zostaje; szarości, czerń i biel nie dostają obrotu barwy
@@ -545,6 +546,7 @@ func _prepare_materials(root: Node) -> void:
 				var sm := ShaderMaterial.new()
 				sm.shader = sh
 				sm.set_shader_parameter("albedo_tex", src.albedo_texture)
+				sm.set_shader_parameter("albedo_mul", src.albedo_color)
 				if src.normal_texture != null:
 					sm.set_shader_parameter("normal_tex", src.normal_texture)
 					sm.set_shader_parameter("has_normal", true)
@@ -599,11 +601,17 @@ func _normal_clones(root: Node, skinned: bool) -> void:
 			c.skeleton = c.get_path_to(mi.get_parent())
 
 
+## Zestaw modeli: "mpfb" = art/char3d/mpfb/ (realistyczne, MPFB2, tools/char_mpfb.py — domyślny), "tripo" = art/char3d/ (stylizowane
+## modele Tripo sprzed 1.7.220, --charset=tripo). Brak modelu w zestawie → art/char3d/.
+static var charset := "mpfb"
+
 ## Wymiana modelu postaci (wygląd z warsztatu, replikowany `player.look`). Zwraca false, gdy brak pliku.
 func set_look(char_name: String) -> bool:
 	if char_name == _char_name and _sk != null:
 		return true
 	var path := DIR + char_name + ".glb"
+	if charset != "" and charset != "tripo" and ResourceLoader.exists(DIR + charset + "/" + char_name + ".glb"):
+		path = DIR + charset + "/" + char_name + ".glb"
 	if not ResourceLoader.exists(path):
 		return false
 	var scene: Node = (load(path) as PackedScene).instantiate()

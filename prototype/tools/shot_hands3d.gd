@@ -38,6 +38,8 @@ func _initialize() -> void:
 			_views = Array(a.substr(8).split(","))
 		elif a.begins_with("--anim="):
 			_anim = a.substr(7)
+		elif a.begins_with("--charset="):
+			Char3D.charset = a.substr(10)
 		elif a.begins_with("--char="):
 			ch = a.substr(7)
 		elif a.begins_with("--size="):

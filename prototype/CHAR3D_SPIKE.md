@@ -194,6 +194,31 @@ CC0, 43 klipy; patrz `SOURCE.md`). Zestaw klipów wybiera na rodzaj klucz `walk_
 W drugiej paczce są też klipy dla gracza, jeszcze nieużyte: `Consume`, `Chest_Open`, `ClimbUp_1m_RM` — każdy wymaga stanu w grze
 (leczenie, otwieranie skrzyni, wspinaczka), którego postać dziś nie ma.
 
+## Realistyczne postacie (1.7.220, CHARACTER_PLAN.md)
+
+Stylizowane modele Tripo (głowa 1/4–1/5 wzrostu, krótkie ręce, wielkie dłonie) zastąpił komplet sześciu realistycznych postaci w
+`art/char3d/mpfb/` (`Char3D.charset = "mpfb"`; stare: `--charset=tripo`). Wszystko powstaje skryptem — `tools/char_mpfb.py` w Blenderze
+z dodatkiem MPFB2 i paczkami zasobów MakeHuman (instrukcja w nagłówku skryptu):
+
+- **Ciało:** MPFB2 (CC0), fenotyp z tabeli `OUTFITS`, wzrost 1,8 m (mężczyzna) i 1,7 m (kobieta). Szkielet „mixamo" z MPFB ma te same nazwy
+  kości co modele Tripo, plus palce — `char3d.gd`, IK, `aim_points` i klipy działają bez zmian w logice.
+- **Stroje:** ubrania z paczek MakeHuman (CC0 i CC-BY: kamizelka taktyczna, hełmy KZ45 i M1951, maska przeciwgazowa, mundur ratownika,
+  kombinezony), przebarwiane skryptem: kamuflaż leśny lat 80. (scav), żółty kombinezon (hazmat), granat (medyk). Maska scava wisi przy
+  biodrze (`relocate`).
+- **Ekwipunek:** modele z lokalnej generacji — obraz z FLUX.1 [schnell], model 3D z PBR z TRELLIS 2 (ComfyUI) — w `art_src/gear/`
+  (`GEAR_MODELS`): plecak, śpiwór, aparat oddechowy, plecak medyczny, ładownice, manierka. Generator skaluje je do rzeczywistych wymiarów
+  i przerywa pracę przy odchyłce ponad 10%; szelki, pas, chusta, taśma i krzyż na hełmie są bryłami ze skryptu.
+- **Detal:** Cycles wypieka w kolor ubrań i ekwipunku cienie kontaktowe (AO) i brud od dołu; tekstury w GLB jako WebP (1024 px),
+  ok. 30 tys. trójkątów na postać, 1–3 MB na model.
+- **Klipy:** `char_clips._retarget` przelicza klip w przestrzeni szkieletu (ten sam obrót względem pozy spoczynkowej w świecie szkieletu),
+  więc klip ze szkieletu Tripo gra na szkielecie MPFB mimo innych osi kości; przy identycznych osiach wynik jest jak dawniej.
+- **Mimik** używa modelu `mpfb/male_scav`; świecące oczy liczone z pozy kości głowy przez transformację szkieletu (`eye_off` w SPEC).
+- **Test:** `test_proportions.gd` (6) sprawdza ze szkieletu anatomię każdej postaci: kark 0,80–0,88 H, biodra 0,50–0,60 H, ręka 0,28–0,36 H,
+  noga 0,42–0,52 H, barki 0,18–0,26 H, głowa z nakryciem od karku ≤ 0,22 H.
+
+Ograniczenia: ubrania MakeHuman mają prostsze tekstury niż stroje Tripo (kombinezon damski hazmat ma smugi po napisach oryginału);
+palce są w szkielecie, ale chwyt broni ich jeszcze nie zgina (CHARACTER_PLAN E4); klipy ruchu to nadal Quaternius UAL (mocap — E3).
+
 ## Ograniczenia / dalsze kroki
 
 - Rzut flary i przedmiotów ma pozę (prawa ręka zamachem nad głową), ale tylko lokalnie — rzut jest zdarzeniem lokalnego gracza, inni widzą dopiero rzucony przedmiot.

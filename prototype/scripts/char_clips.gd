@@ -93,55 +93,104 @@ static func _load(file: String) -> Dictionary:
 			var names := ap.get_animation_list()
 			if not names.is_empty():
 				var rest := {}
+				var parent := {}
+				var grest := {}
 				for i in sk.get_bone_count():
 					rest[sk.get_bone_name(i)] = sk.get_bone_rest(i)
+					grest[sk.get_bone_name(i)] = sk.get_bone_global_rest(i)
+					var pi := sk.get_bone_parent(i)
+					parent[sk.get_bone_name(i)] = sk.get_bone_name(pi) if pi >= 0 else ""
 				var hi := sk.find_bone(HIPS)
-				out = {"anim": ap.get_animation(names[0]), "rest": rest, "hips_y": sk.get_bone_global_rest(hi).origin.y if hi >= 0 else 1.0}
+				out = {"anim": ap.get_animation(names[0]), "rest": rest, "grest": grest, "parent": parent,
+						"hips_y": sk.get_bone_global_rest(hi).origin.y if hi >= 0 else 1.0}
 		scene.free()
 	_src[file] = out
 	return out
 
-## Klip przeliczony na szkielet `sk`: ścieżki „<Skeleton3D>:<kość>”, obroty względem spoczynku celu, biodra w skali celu.
-## upper < 1 tłumi ruch kości tułowia i głowy (UPPER) w stronę pozy spoczynkowej.
+## Klip przeliczony na szkielet `sk`: ścieżki „<Skeleton3D>:<kość>”, biodra w skali celu. Przeliczenie w przestrzeni szkieletu: każda kość
+## dostaje ten sam obrót względem swojej pozy spoczynkowej co kość źródłowa (świat szkieletu), niezależnie od osi lokalnych kości — klip ze
+## szkieletu Tripo gra więc poprawnie na szkielecie MPFB (inne osie kości, inna poza spoczynkowa) i na każdym innym o tych samych nazwach.
+## Przy identycznych osiach lokalnych wynik jest taki sam jak przy przeliczeniu lokalnym. upper < 1 tłumi ruch kości tułowia i głowy (UPPER)
+## w stronę pozy spoczynkowej.
 static func _retarget(src: Dictionary, sk: Skeleton3D, upper := 1.0) -> Animation:
 	var a: Animation = src["anim"]
 	var rest_s: Dictionary = src["rest"]
+	var grest_s: Dictionary = src["grest"]
+	var parent_s: Dictionary = src["parent"]
 	var hi := sk.find_bone(HIPS)
 	var k_h := sk.get_bone_global_rest(hi).origin.y / maxf(float(src["hips_y"]), 0.001) if hi >= 0 else 1.0
 	var hp := sk.get_bone_parent(hi) if hi >= 0 else -1
 	var up_axis := (sk.get_bone_global_rest(hp).basis if hp >= 0 else Basis.IDENTITY).inverse() * Vector3.UP   # pion szkieletu w układzie rodzica bioder (kość Root jest obrócona)
+	# ścieżki obrotu źródła i czasy kluczy (klipy z prep_anim3d.py mają klucze co klatkę na wszystkich kościach)
+	var rot_tr := {}
+	var pos_tr := -1
+	var times := PackedFloat32Array()
+	for t in a.get_track_count():
+		var bone := String(a.track_get_path(t).get_concatenated_subnames())
+		if a.track_get_type(t) == Animation.TYPE_ROTATION_3D and rest_s.has(bone):
+			rot_tr[bone] = t
+			if a.track_get_key_count(t) > times.size():
+				times = PackedFloat32Array()
+				for k in a.track_get_key_count(t):
+					times.append(a.track_get_key_time(t, k))
+		elif a.track_get_type(t) == Animation.TYPE_POSITION_3D and bone == HIPS:
+			pos_tr = t
+	# kości celu z odpowiednikiem w źródle, w kolejności rodzic przed dzieckiem
+	var bones: Array = []
+	for i in sk.get_bone_count():
+		if rot_tr.has(sk.get_bone_name(i)):
+			bones.append(i)
+	bones.sort_custom(func(x: int, y: int) -> bool: return _depth(sk, x) < _depth(sk, y))
 	var o := Animation.new()
 	o.length = a.length
 	o.loop_mode = Animation.LOOP_LINEAR
-	for t in a.get_track_count():
-		var bone := String(a.track_get_path(t).get_concatenated_subnames())
-		var bi := sk.find_bone(bone)
-		if bi < 0 or not rest_s.has(bone):
-			continue
-		var rs: Transform3D = rest_s[bone]
-		var rt := sk.get_bone_rest(bi)
-		match a.track_get_type(t):
-			Animation.TYPE_ROTATION_3D:
-				var rq := rt.basis.get_rotation_quaternion()
-				var fix := rq * rs.basis.get_rotation_quaternion().inverse()
-				var damp := upper if UPPER.has(bone) else 1.0
-				var nt := o.add_track(Animation.TYPE_ROTATION_3D)
-				o.track_set_path(nt, NodePath("%s:%s" % [sk.name, bone]))
-				for k in a.track_get_key_count(t):
-					var q := (fix * (a.track_get_key_value(t, k) as Quaternion)).normalized()
-					o.rotation_track_insert_key(nt, a.track_get_key_time(t, k), rq.slerp(q, damp) if damp < 1.0 else q)
-			Animation.TYPE_POSITION_3D:
-				if bone != HIPS:
-					continue
-				var np := o.add_track(Animation.TYPE_POSITION_3D)
-				o.track_set_path(np, NodePath("%s:%s" % [sk.name, bone]))
-				var up := 0.0
-				for k in a.track_get_key_count(t):
-					var off := ((a.track_get_key_value(t, k) as Vector3) - rs.origin) * k_h
-					up += off.dot(up_axis)
-					o.position_track_insert_key(np, a.track_get_key_time(t, k), rt.origin + off)
-				o.set_meta("hips_mean", up / maxf(float(a.track_get_key_count(t)), 1.0))
+	var tracks := {}
+	for bi in bones:
+		var nt := o.add_track(Animation.TYPE_ROTATION_3D)
+		o.track_set_path(nt, NodePath("%s:%s" % [sk.name, sk.get_bone_name(bi)]))
+		tracks[bi] = nt
+	for time in times:
+		var gs := {}                                                  # nazwa → globalny obrót kości źródła w tej klatce
+		var gt := {}                                                  # indeks → globalny obrót kości celu w tej klatce
+		for bi in bones:
+			var bone := sk.get_bone_name(bi)
+			var q_src := a.rotation_track_interpolate(int(rot_tr[bone]), time)
+			var ps := String(parent_s[bone])
+			var gps: Quaternion = gs[ps] if gs.has(ps) else ((grest_s[ps] as Transform3D).basis.get_rotation_quaternion() if ps != "" else Quaternion.IDENTITY)
+			gs[bone] = gps * q_src
+			var delta: Quaternion = gs[bone] * (grest_s[bone] as Transform3D).basis.get_rotation_quaternion().inverse()
+			var g_t := (delta * sk.get_bone_global_rest(bi).basis.get_rotation_quaternion()).normalized()
+			gt[bi] = g_t
+			var pt := sk.get_bone_parent(bi)
+			var gpt: Quaternion = gt[pt] if gt.has(pt) else (sk.get_bone_global_rest(pt).basis.get_rotation_quaternion() if pt >= 0 else Quaternion.IDENTITY)
+			var q := (gpt.inverse() * g_t).normalized()
+			if UPPER.has(bone) and upper < 1.0:
+				q = sk.get_bone_rest(bi).basis.get_rotation_quaternion().slerp(q, upper)
+			o.rotation_track_insert_key(int(tracks[bi]), time, q)
+	if pos_tr >= 0 and hi >= 0:
+		# biodra: przesunięcie względem spoczynku przeniesione przez przestrzeń szkieletu (rodzic bioder może mieć inne osie) i w skali celu
+		var ps := String(parent_s[HIPS])
+		var bs_src: Basis = (grest_s[ps] as Transform3D).basis if ps != "" else Basis.IDENTITY
+		var bs_dst: Basis = sk.get_bone_global_rest(hp).basis if hp >= 0 else Basis.IDENTITY
+		var rt := sk.get_bone_rest(hi)
+		var rs: Transform3D = rest_s[HIPS]
+		var np := o.add_track(Animation.TYPE_POSITION_3D)
+		o.track_set_path(np, NodePath("%s:%s" % [sk.name, HIPS]))
+		var up := 0.0
+		for k in a.track_get_key_count(pos_tr):
+			var off := bs_dst.inverse() * (bs_src * (((a.track_get_key_value(pos_tr, k) as Vector3) - rs.origin) * k_h))
+			up += off.dot(up_axis)
+			o.position_track_insert_key(np, a.track_get_key_time(pos_tr, k), rt.origin + off)
+		o.set_meta("hips_mean", up / maxf(float(a.track_get_key_count(pos_tr)), 1.0))
 	return o
+
+static func _depth(sk: Skeleton3D, bi: int) -> int:
+	var d := 0
+	var p := sk.get_bone_parent(bi)
+	while p >= 0:
+		d += 1
+		p = sk.get_bone_parent(p)
+	return d
 
 ## Poza spoczynkowa jako klip: tło, z którym drzewo miesza klipy (te same ścieżki co w klipach).
 static func _rest_anim(sk: Skeleton3D, like: Array) -> Animation:

@@ -32,7 +32,7 @@ const SPEC := {
 	"trzosek": {"fit": ["length", 21.0], "frame_h": 22.0, "cycle": 0.55, "quad": true, "yaw": -90.0, "clips": true, "idle_t": 0.0},
 	# Mimik to model gracza z kolorem „kolegi” i świecącymi oczami; pozostałe poniżej to modele statyczne animowane deformacją wierzchołków w shaderze
 	# (`DEFORM`), tak jak wypiek `concept/static_tripo_bake.py` — poza z numeru klatki sprite'a 2D (animacja idzie w tempie gry).
-	"mimik": {"model": "res://art/char3d/male_scav.glb", "fit": ["height", 22.0], "frame_h": 28.0, "cycle": 0.8, "eyes": true, "turn": true,
+	"mimik": {"model": "res://art/char3d/mpfb/male_scav.glb", "eye_off": [0.12, 0.095, 0.033], "fit": ["height", 22.0], "frame_h": 28.0, "cycle": 0.8, "eyes": true, "turn": true,
 		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human",
 		"death": {"dir": 1.0, "lean": 8.0, "dur": 1.2, "tilt": 84.0}},
 	"cma": {"fit": ["width", 18.0], "frame_h": 20.0, "deform": "cma", "float": true, "clips": true, "death_dur": 0.9},
@@ -497,10 +497,16 @@ func revive() -> void:
 
 ## Oczy Mimika: dwie świecące kulki przy głowie (model gracza nie ma świecących pikseli w teksturze).
 func _place_eyes() -> void:
+	# oczy: przesunięcie względem kości głowy w pozie spoczynkowej (przód, góra, rozstaw — wg modelu), obracane razem z głową,
+	# przeliczone z przestrzeni szkieletu do węzła modelu (szkielet w GLB może mieć własną transformację)
 	var hp := _sk.get_bone_global_pose(_b["Head"])
+	var rest := _sk.get_bone_global_rest(_b["Head"])
+	var rel := _model.global_transform.affine_inverse() * _sk.global_transform
 	for e in _eyes:
 		var mi := e as MeshInstance3D
-		mi.position = hp.origin + hp.basis * Vector3(0.0, 0.0, 0.0) + Vector3(0.085, 0.115, 0.035 * float(mi.get_meta("side")))
+		var off: Array = _spec.get("eye_off", [0.085, 0.115, 0.035])
+		var p := rest.origin + Vector3(float(off[0]), float(off[1]), float(off[2]) * float(mi.get_meta("side")))
+		mi.position = rel * (hp * (rest.affine_inverse() * p))
 
 ## Wartość z tabeli klatek (liniowo między klatkami; loop: ostatnia łączy się z pierwszą).
 func _tab(a: Array, f: float, loop: bool) -> float:
