@@ -20,7 +20,7 @@ Flaga działa tylko z oknem (w trybie headless gra używa sprite'ów, więc `--m
 ## Jak działa
 
 - `scripts/char3d.gd` — `SubViewport` (176×176 px, 4 px na piksel świata) z kamerą ortogonalną z boku; `Sprite2D` pokazuje wynik,
-  shader dodaje obrys, światła 2D gry oświetlają sprite. Odbicie (patrzenie w lewo) = `flip_h`. Poza ekranem viewport jest wyłączany.
+  shader dodaje obrys, światła 2D gry oświetlają sprite. Odbicie (patrzenie w lewo) = `flip_h` — tylko w podglądzie 2D; w widoku 3D model się obraca (sekcja „Chwyt broni i punkty celowania”). Poza ekranem viewport jest wyłączany.
 - Pozy w kodzie: nogi i ręce przez własne dwukostkowe IK (idle, bieg, skok, spadanie, kucanie, marsz w kucaniu, leżenie), tułów zwraca się ku kamerze
   i pochyla za celem.
 - Broń: 12 modeli (`art/char3d/gun_<klucz>.glb` + `.json` z chwytami: tylny, przedni, wylot, liczba rąk), od 1.7.213 budowanych skryptem
@@ -69,6 +69,12 @@ blender -b --factory-startup -P prototype/tools/gun_proc.py -- m83 prototype/art
 - **IK ręki** (`_arm_ik`): po wyznaczeniu łokcia ramię i przedramię są obracane wokół własnej osi tak, żeby zgięcie wypadało w anatomicznej osi łokcia
   (z lekkiego ugięcia ręki w pozie spoczynkowej); `_set_hand` oddaje przedramieniu 55% skrętu nadgarstka (model nie ma kości skrętu), `_reach_clavicle`
   przesuwa bark ku dłoni (22% kąta, najwyżej 16°). Obojczyki nie biorą ruchu z klipów (`_rest_clavicles`), gdy ręce prowadzi IK.
+- **Obrót (1.7.216).** Zmiana kierunku to obrót modelu wokół pionu w `TURN_TIME` (0,16 s, sinusem — łagodny start i hamowanie), przez pozę przodem
+  do kamery: `_face` (−1..1) → `_cam_c` → `model_yaw`, który `view3d.gd` przykłada do aktora zamiast odbicia skalą. Broń zostaje w prawej ręce. Tułów
+  zwraca się ku kamerze w obie strony, celując w dół broń wysuwa się ku kamerze po właściwej stronie. Rozgrywka bierze stronę od razu docelową;
+  poza nominalna jest zawsze liczona jak dla zwrotu w prawo i odbijana, a stałe przesunięcie barków od zwrotu tułowia (ok. 0,18 m) wybierają ręce —
+  broń modelu zostaje przy wylocie rozgrywki (`test_aim_points.gd`: 0,6 px w obie strony). `muzzle_px` / `grip_px` liczy `_to_px` tak jak widok 3D
+  (aktor w pozycji gracza, obrócony o `model_yaw`). Podgląd obrotu: `tools/shot_hands3d.gd -- --guns=m83 --views=game --size=2.1 --turn=-2,2,4,6,8,10,20`.
 - **P-64** oburącz na wyprostowanych rękach, lewa dłoń podpiera stopkę chwytu; przy przeładowaniu schodzi do pasa i wraca. **Broń biała** w spoczynku
   stoi w gardzie (`MELEE_GUARD`), cios wychodzi z gardy i do niej wraca; kilof jest zawsze trzymany oburącz.
 - Klipy z paczek CC0 do walki wręcz (`Sword_Regular_A/B/C`, `Sword_Attack`, `Melee_Hook`) obejrzane na stykówce i odrzucone: to cięcia z obrotem całego
@@ -195,7 +201,7 @@ W drugiej paczce są też klipy dla gracza, jeszcze nieużyte: `Consume`, `Chest
 - Oświetlenie: drugi przebieg renderu (kopie siatek na warstwie 2, shader wypisuje normalne widokowe) daje mapę normalnych, więc latarka i flara dają relief jak na sprite'ach HD (odbicie `flip_h` odwraca X normalnych w shaderze). Kosztuje ok. +50% renderu postaci; `--char3d-lq` go wyłącza.
 - Kucanie / skradanie to **przysiad** (biodra 0,48 m niżej, tułów niemal pionowo — wysokość ok. 0,75 stojącej); przesunięcia bioder liczy `_move_global` w przestrzeni szkieletu (osie lokalne kości Mixamo są obrócone, wcześniej przesunięcie ruszało biodra w bok, a nie w dół).
 - Poza postojem, biegiem, kucaniem, upadkiem i reanimacją (klipy, patrz wyżej) pozy to proste funkcje sin/cos, nie animacje artysty; dłonie nie obejmują palcami chwytu — modele mają 23 kości, bez palców, więc rękawica jest sztywna i otwarta (leży na chwycie, ale go nie zamyka). Zamknięcie dłoni wymaga dorobienia kości palców w modelach.
-- Odwrócenie postaci to nadal lustro w jednej klatce; od 1.7.215 nic w rozgrywce od tego nie zależy, więc obrót z animacją można dodać samym widokiem.
+- Przy zmianie kierunku tułów zwraca się ku kamerze w obie strony (`BODY_YAW` ze znakiem `_cam_c`) — to nie jest anatomiczna postawa praworęcznego strzelca, ale przy anatomicznej postać zwrócona w lewo pokazywała głównie plecak.
 - Broń biała ma jedną, uproszczoną pozę zamachu. SPECTER-1 używa swojego modelu `widmo1_01` (cewka, ten sam co w sprite'ach HD); `widmo1_02` (szyny + cewki, olive) to nieużywana alternatywa.
 - Wrogowie nadal sprite'y HD — styl postaci gracza (3D) i wrogów trzeba będzie zestroić.
 - Od 1.7.156 domyślne: widok 3D zawsze używa modeli, a w widoku 2D decyduje ustawienie **Characters in 2D view** (`Settings.char3d`, domyślnie 3D) lub flaga `--char3d`. Pomiar na słabszym sprzęcie nadal nie jest zrobiony.

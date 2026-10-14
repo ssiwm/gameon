@@ -470,7 +470,7 @@ func _sync_rigs() -> void:
 		rig["lift"] = lerpf(float(rig.get("lift", 0.0)), want_lift, 0.25)
 		actor.position = Level3D.px_to_m(p.global_position) + Vector3(0.0, -float(c3.sink_m), float(rig["lift"]))
 		_splash_update(actor, p.global_position, absf(float(p.get("velocity").x)) if p.get("velocity") != null else 0.0, LAYER_ACTORS)
-		actor.scale = Vector3(c3.px_flip, 1.0, 1.0)
+		actor.basis = Basis(Vector3.UP, float(c3.model_yaw))         # zwrot postaci: obrót z animacją (Char3D.TURN_TIME), nie odbicie lustrzane
 		c3._on_screen = true                       # poza liczymy zawsze (bez powiadomień o ekranie 2D)
 	for p in _rigs.keys():
 		if not alive.has(p) or not is_instance_valid(p):
