@@ -14,6 +14,7 @@ extends Node2D
 
 const Weapons := preload("res://scripts/weapons.gd")
 const Combat := preload("res://scripts/combat.gd")
+const Hurtbox := preload("res://scripts/hurtbox.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Lights := preload("res://scripts/lights.gd")
 
@@ -137,13 +138,14 @@ func _sweep(from: Vector2, to: Vector2, rewind := -1.0) -> bool:
 	var comp := rewind >= 0.0 and authoritative
 	for _i in MAX_SEGMENTS:
 		var q := PhysicsRayQueryParameters2D.create(cur, to, MASK_AUTH if authoritative else MASK_COSMETIC)
+		q.collide_with_areas = true                               # strefy trafień wrogów (hurtbox.gd)
 		if comp:
 			var ex: Array[RID] = _skip.duplicate()
 			ex.append_array(_comp_rids)
-			q.exclude = ex
+			q.exclude = Hurtbox.with_areas(ex)
 		else:
-			q.exclude = _skip
-		var hit := space.intersect_ray(q)
+			q.exclude = Hurtbox.with_areas(_skip)
+		var hit := Hurtbox.resolve(space.intersect_ray(q))
 		if comp:
 			# wróg w pozycji sprzed `lag` s (jeśli wcześniej niż ściana / kolega) zastępuje trafienie fizyczne
 			var lim: Vector2 = to if hit.is_empty() else hit["position"]
@@ -227,8 +229,14 @@ func _check_origin() -> void:
 	var pq := PhysicsPointQueryParameters2D.new()
 	pq.position = global_position
 	pq.collision_mask = Combat.LAYER_WORLD | Combat.LAYER_TARGET
-	var found := space.intersect_point(pq, 4)
-	for f in found:
+	pq.collide_with_areas = true
+	var found := space.intersect_point(pq, 8)
+	var seen := {}
+	for f0 in found:
+		var f := Hurtbox.resolve(f0)
+		if seen.has(f.get("rid")):
+			continue                                          # ciało i jego strefa trafień — jeden cel
+		seen[f.get("rid")] = true
 		var node := f["collider"] as Node
 		if node == null:
 			continue

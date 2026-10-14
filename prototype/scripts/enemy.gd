@@ -26,7 +26,7 @@ const KINDS := {
 		"hp": 40.0, "speed": 84.0, "damage": 1, "windup": 0.3, "reach": 13.0,
 		"cooldown": 1.0, "leap": true, "hear": 230.0, "wake_near": 60.0, "sight": 280.0,
 		"hang": true, "fire_shy": true,
-		"color": Color(0.62, 0.6, 0.5), "size": Vector2(12, 14), "knock": 60.0, "knock_mult": 0.9, "head": 0.0,
+		"color": Color(0.62, 0.6, 0.5), "size": Vector2(12, 14), "hurt_h": 17.0, "knock": 60.0, "knock_mult": 0.9, "head": 0.0,
 	},
 	# Mimik (GDD §7.1): udaje kolegę z drużyny — stoi jak człowiek i wzywa pomocy głosem gracza.
 	# Zdradzają go: brak serduszek nad głową, brak kroków i oddechu, oczy świecące w ciemności,
@@ -35,30 +35,31 @@ const KINDS := {
 		"hp": 70.0, "speed": 95.0, "damage": 2, "windup": 0.4, "reach": 14.0,
 		"cooldown": 1.2, "leap": true, "hear": 0.0, "wake_near": 46.0, "sight": 220.0,
 		"mimic": true,
-		"color": Color(0.6, 0.72, 0.6), "size": Vector2(10, 16), "knock": 50.0, "knock_mult": 0.8, "head": 0.28,
+		"color": Color(0.6, 0.72, 0.6), "size": Vector2(10, 16), "hurt_h": 22.0, "knock": 50.0, "knock_mult": 0.8, "head": 0.28,
 	},
 	# Ślepiec (GDD §7.1): nie widzi, tylko słyszy — idzie do źródła hałasu; kucanie i cisza go mijają.
 	"slepiec": {
 		"hp": 60.0, "speed": 70.0, "damage": 1, "windup": 0.35, "reach": 14.0,
 		"cooldown": 1.1, "leap": false, "hear": 300.0, "wake_near": 36.0, "sight": 26.0,
 		"keen": true, "min_noise": 0.25, "blind": true, "fire_shy": true,
-		"color": Color(0.8, 0.78, 0.76), "size": Vector2(12, 17), "knock": 40.0, "knock_mult": 0.6, "head": 0.28,
+		"color": Color(0.8, 0.78, 0.76), "size": Vector2(12, 17), "hurt_h": 27.0, "knock": 40.0, "knock_mult": 0.6, "head": 0.28,
 	},
 	# Podsłuchacz (GDD §7.1): stoi nieruchomo i nasłuchuje; zobaczy albo usłyszy — krzyczy i ściąga hordę.
 	"podsluchacz": {
 		"hp": 35.0, "speed": 0.0, "damage": 0, "windup": 0.9, "reach": 0.0,
 		"cooldown": 6.0, "leap": false, "hear": 170.0, "wake_near": 0.0, "sight": 240.0,
-		"color": Color(0.58, 0.5, 0.57), "size": Vector2(12, 24), "knock": 30.0, "knock_mult": 0.5, "head": 0.28,
+		"color": Color(0.58, 0.5, 0.57), "size": Vector2(12, 24), "hurt_h": 34.0, "knock": 30.0, "knock_mult": 0.5, "head": 0.28,
 	},
 	"wolek": {
 		"hp": 140.0, "speed": 36.0, "damage": 2, "windup": 0.6, "reach": 20.0,
 		"cooldown": 1.6, "leap": false, "hear": 150.0, "wake_near": 70.0, "sight": 200.0,
 		"bruiser": true, "armor": 3.0,
-		"color": Color(0.36, 0.27, 0.34), "size": Vector2(20, 26), "knock": 14.0, "knock_mult": 0.2, "head": 0.28,
+		"color": Color(0.36, 0.27, 0.34), "size": Vector2(20, 26), "hurt_h": 32.0, "knock": 14.0, "knock_mult": 0.2, "head": 0.28,
 	},
 }
 
 const Lights := preload("res://scripts/lights.gd")
+const Hurtbox := preload("res://scripts/hurtbox.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const SmokeCloud := preload("res://scripts/smoke_cloud.gd")
 const Vfx := preload("res://scripts/vfx.gd")
@@ -226,6 +227,7 @@ func _ready() -> void:
 	shape.size = size
 	cs.shape = shape
 	cs.position = Vector2(0, -size.y * 0.5)
+	Hurtbox.add(self, size.x, _hurt_h())                      # strefa trafień na wysokość modelu (ciało ruchu zostaje niższe)
 	# oczy i pasek HP świecą w ciemności — śpiącego wroga widać jako
 	# przygaszone oczy, a nie wcale (skradanie musi mieć informację)
 	if Sprites.has(Sprites.enemy_sheet(kind)):
@@ -324,7 +326,7 @@ func reset_enemy() -> void:
 func _set_alive(a: bool) -> void:
 	alive = a
 	visible = a
-	($CollisionShape2D as CollisionShape2D).set_deferred("disabled", not a)
+	Hurtbox.set_enabled(self, a)
 
 ## Siatka przestrzenna wrogów (komórka 48 px), budowana raz na klatkę fizyki przy pierwszym zapytaniu: pętle „każdy z każdym" (separacja, budzenie
 ## watahy, blokada ataku, śmierć w watasze) przeglądają tylko sąsiednie komórki zamiast całej grupy — koszt rośnie liniowo z liczbą wrogów.
@@ -538,7 +540,7 @@ func lag_rect(at_time: float) -> Rect2:
 					var k := inverse_lerp(a.x, b.x, at_time)
 					p = Vector2(lerpf(a.y, b.y, k), lerpf(a.z, b.z, k))
 					break
-	var size: Vector2 = _def["size"]
+	var size := Vector2((_def["size"] as Vector2).x, _hurt_h())
 	return Rect2(p.x - size.x * 0.5 - 1.0, p.y - size.y - 1.0, size.x + 2.0, size.y + 2.0)
 
 ## Mnożnik prędkości wynikający z powierzchni pod stopami (surfaces.gd).
@@ -1240,7 +1242,7 @@ func _resolve_attack() -> void:
 
 ## --- API walki (combat.gd) -------------------------------------------------
 
-## Górna część sylwetki = głowa; trafienie powyżej tej linii to krytyk. Niski Trzosek (14 px)
+## Górna część sylwetki (strefy trafień, `_hurt_h`) = głowa; trafienie powyżej tej linii to krytyk. Niski Trzosek (14 px)
 ## nie ma słabego punktu — strzał z wysokości barku (−12 px) trafiałby go w „głowę” zawsze,
 ## więc krytyk byłby stałym mnożnikiem, a nie nagrodą za celowanie. Wołek (26 px) ma głowę
 ## w górnych 28%: trzeba celować w górę, skakać albo strzelać ze wzniesienia.
@@ -1248,7 +1250,11 @@ func head_y() -> float:
 	var frac: float = _def.get("head", 0.0)
 	if frac <= 0.0:
 		return -INF
-	return global_position.y - (_def["size"] as Vector2).y * (1.0 - frac)
+	return global_position.y - _hurt_h() * (1.0 - frac)
+
+## Wysokość strefy trafień (px): wysokość modelu 3D (`hurt_h` w KINDS = SPEC „fit" z enemy3d.gd), a bez niej — ciało ruchu.
+func _hurt_h() -> float:
+	return maxf(float(_def.get("hurt_h", 0.0)), (_def["size"] as Vector2).y)
 
 func body_center() -> Vector2:
 	return global_position + Vector2(0, -(_def["size"] as Vector2).y * 0.5)

@@ -40,7 +40,7 @@ func _physics_process(delta: float) -> void:
 		for p in get_tree().get_nodes_in_group("players"):
 			if p.dead or p.is_queued_for_deletion():
 				continue
-			if (p.global_position + Vector2(0, -9)).distance_to(global_position) <= HIT_R + 3.0:
+			if p.hurt_point(global_position).distance_to(global_position) <= HIT_R + 3.0:
 				p.deliver_hit(1, global_position, "acid")
 				_splash()
 				return

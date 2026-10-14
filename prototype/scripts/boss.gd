@@ -26,6 +26,7 @@ extends CharacterBody2D
 
 signal died
 
+const Hurtbox := preload("res://scripts/hurtbox.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
@@ -123,6 +124,7 @@ var _spr: Array = []                  ## [cialo, glow] z arkusza vein; puste = r
 func _ready() -> void:
 	add_to_group("enemies")
 	add_to_group("boss")
+	Hurtbox.add(self, 70.0, 66.0)                             # strefa trafień na wysokość modelu (enemy3d.gd SPEC „fit")
 	nests_left = _nest_count()
 	_light = Lights.make_light(Lights.radial(), 3.5, Color(1.0, 0.35, 0.25), 0.5, false)
 	_light.position = Vector2(0, -20)
@@ -194,7 +196,7 @@ func reset_enemy() -> void:
 	_wave_r = -1.0
 	_wave_start_ms = -1
 	visible = true
-	($CollisionShape2D as CollisionShape2D).set_deferred("disabled", false)
+	Hurtbox.set_enabled(self, true)
 	if NoiseMgr.is_server():
 		_clear_brood.rpc()
 		_send_state(true)
@@ -399,7 +401,7 @@ func _tick_spits(delta: float) -> void:
 		sp.pos += sp.vel * delta
 		var hit := false
 		for p in get_tree().get_nodes_in_group("players"):
-			if not p.dead and (p.global_position + Vector2(0, -8)).distance_to(sp.pos) <= SPIT_HIT_R:
+			if not p.dead and p.hurt_point(sp.pos).distance_to(sp.pos) <= SPIT_HIT_R:
 				p.deliver_hit(1, sp.pos, "vein")
 				hit = true
 				break
@@ -607,7 +609,7 @@ func _sync(s: int, h: float, mh: float, a: int, mo: bool, st: bool, ph: int, nl:
 	nests_left = nl
 	if s != State.DEAD and not visible:
 		visible = true
-		($CollisionShape2D as CollisionShape2D).set_deferred("disabled", false)
+		Hurtbox.set_enabled(self, true)
 
 @rpc("authority", "call_local", "reliable")
 func _event(kind: String) -> void:
@@ -646,7 +648,7 @@ func _event(kind: String) -> void:
 			_death_fx()
 			Vfx.gibs(get_parent(), global_position + Vector2(0, -24), Color(0.4, 0.1, 0.14), 26)
 			visible = false
-			($CollisionShape2D as CollisionShape2D).set_deferred("disabled", true)
+			Hurtbox.set_enabled(self, false)
 
 func _shake_near(amount: float) -> void:
 	for p in get_tree().get_nodes_in_group("players"):

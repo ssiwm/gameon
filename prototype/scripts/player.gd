@@ -21,6 +21,8 @@ const Vfx := preload("res://scripts/vfx.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 
 const SPEED := 95.0
+const HURT_H := 22.0             ## px: wysokość sylwetki (model 3D 1,8 m) — ciało kolizji i strefa trafień
+const HURT_H_CROUCH := 13.0      ## px: wysokość sylwetki w przysiadzie
 const CROUCH_SPEED := 45.0
 const JUMP_VELOCITY := -275.0
 const GRAVITY := 900.0
@@ -1644,6 +1646,12 @@ func apply_heal(amount: int) -> void:
 		Vector2.UP, 60.0, -30.0, 0.6, Vector2(1.0, 1.8), true)
 	if not is_bot:
 		Audio.play("revive", Audio.BUS_PLAYER, -6.0, 1.4)
+
+## Najbliższy punkt sylwetki gracza (pion od stóp po czubek głowy: 22 px stojąc, 13 px w przysiadzie — jak model 3D) do punktu `pos`.
+## Ataki wrogów liczą odległość do niego zamiast do środka korpusu, więc trafia też to, co leci w głowę.
+func hurt_point(pos: Vector2) -> Vector2:
+	var top := global_position.y - (HURT_H_CROUCH if crouching else HURT_H) + 2.0
+	return Vector2(global_position.x, clampf(pos.y, top, global_position.y - 2.0))
 
 ## `source`: kto zadaje cios (rodzaj wroga, "stalker", "blast"…) — serwer zapamiętuje go dla dziennika sesji.
 func deliver_hit(amount: int, from_pos: Vector2, source := "") -> void:
