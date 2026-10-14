@@ -954,15 +954,16 @@ func _sync_drawn() -> void:
 
 const GUN_DIR := "res://art/char3d/"
 
-const RACK_SCALE := 0.66                    ## stojak w 3D względem sprite'a 2D (48 × 36 px to prawie 4 m szerokości)
+const RACK_SCALE := 0.42                    ## stojak w 3D względem sprite'a 2D (48 × 36 px to prawie 4 m szerokości): deska ok. 1,6 m — pod broń w naturalnej długości
 const RACK_UP_PX := 9.0                     ## dół stojaka nad podłogą [px świata]
 const RACK_Z := -1.80                       ## oś stojaka: plecy deski przy ścianie tła
 const RACK_SHELF_PX := 5.3                  ## góra półki w jednostkach modelu stojaka
-const RACK_GUN_SCALE := 1.3                 ## broń na stojaku względem sprite'a 2D
+const LOOT_MIN_M := 0.35                    ## m: najkrótsza broń leżąca na ziemi (P-64 ma 0,18 m — w naturalnej skali ginąłby pod stopami)
+const RACK_MIN_M := 0.25                    ## m: najkrótsza broń na stojaku (oglądana z bliska, więc mniejsze minimum)
 const RACK_GUN_Z := -1.70                   ## broń leży na półce, tuż przed deską
 const RACK_PLATE_Z := -1.50                 ## front półki: tabliczka z ceną
 
-const RACK_LAMP_PX := 41.0                  ## spód lampy nad podłogą [px świata] (stojak kończy się ok. 31 px nad podłogą)
+const RACK_LAMP_PX := 32.0                  ## spód lampy nad podłogą [px świata] (stojak kończy się ok. 24 px nad podłogą)
 
 ## Lampa wisząca nad stojakiem z bronią (kryjówka): emaliowany klosz z modelu `lamp`, przewód do stropu i ciepły reflektor w dół — stojak i broń
 ## oświetla widoczne źródło, a nie poświata „znikąd” (poświata pickupu na stojaku jest w 3D pomijana, zob. `_scan_lights`).
@@ -1043,7 +1044,9 @@ func _tint_model(root: Node, tint: Color) -> void:
 			mi.set_surface_override_material(si, dm)
 
 ## Broń jako łup i na stojakach kryjówki (`pickup.gd`, sprite broni HD poza potokiem przedmiotów) dostaje ten sam model 3D, który trzymają postacie
-## (art/char3d/gun_<klucz>.glb). Łup na ziemi ma rozmiar sprite'a 2D. Na stojaku broń jest większa i leży na półce; zablokowana jest przyciemniona,
+## (art/char3d/gun_<klucz>.glb), w tej samej, naturalnej długości (LOOT_MIN_M: najkrótsza broń na ziemi nie jest krótsza — pistolet ma ok. 2×,
+## jak znajdźki). Dotąd skalę brał z szerokości miniatury HD: łup był 1,3–5,4×, a broń na stojaku 1,7–7× większa niż w rękach. Na stojaku broń
+## leży na półce; zablokowana jest przyciemniona,
 ## wisi na niej kłódka (model), a na froncie półki mosiężna tabliczka z wytłoczoną ceną — nakładka 2D (kłódka i cena) jest wtedy chowana.
 func _sync_guns() -> void:
 	for n in get_tree().get_nodes_in_group("pickups"):
@@ -1081,8 +1084,7 @@ func _sync_guns() -> void:
 						lm.metallic = 0.45
 						lm.metallic_specular = 0.6
 						mi.set_surface_override_material(si, lm)
-		var rect: Rect2 = n.get("_hd_gun_rect")
-		var k := (rect.size.x / 16.0 * PX) / maxf(box.size.x, 0.001) * (RACK_GUN_SCALE if on_rack else 1.0)
+		var k := maxf(1.0, (RACK_MIN_M if on_rack else LOOT_MIN_M) / maxf(box.size.x, 0.001))      # model broni ma naturalną długość (gun_proc.py)
 		var pivot := Node3D.new()
 		_world.add_child(pivot)
 		pivot.add_child(model)

@@ -19,7 +19,7 @@ const KINDS := {
 		"hp": 18.0, "speed": 74.0, "damage": 1, "windup": 0.2, "reach": 10.0,
 		"cooldown": 1.2, "leap": false, "hear": 0.0, "wake_near": 0.0, "sight": 0.0,
 		"fly": true, "moth": true, "phototaxis": true,
-		"color": Color(0.74, 0.7, 0.55), "size": Vector2(10, 8), "knock": 40.0, "knock_mult": 1.0, "head": 0.0,
+		"color": Color(0.74, 0.7, 0.55), "size": Vector2(10, 8), "hurt_h": 18.0, "hurt_w": 16.0, "knock": 40.0, "knock_mult": 1.0, "head": 0.0,
 	},
 	# Skoczek (GDD §7.1): wisi pod sufitem nad przejściem i spada na tego, kto pod nim przejdzie (2 obrażenia).
 	"skoczek": {
@@ -227,7 +227,7 @@ func _ready() -> void:
 	shape.size = size
 	cs.shape = shape
 	cs.position = Vector2(0, -size.y * 0.5)
-	Hurtbox.add(self, size.x, _hurt_h())                      # strefa trafień na wysokość modelu (ciało ruchu zostaje niższe)
+	Hurtbox.add(self, float(_def.get("hurt_w", size.x)), _hurt_h())   # strefa trafień na wysokość modelu (ciało ruchu zostaje niższe)
 	# oczy i pasek HP świecą w ciemności — śpiącego wroga widać jako
 	# przygaszone oczy, a nie wcale (skradanie musi mieć informację)
 	if Sprites.has(Sprites.enemy_sheet(kind)):
@@ -1253,6 +1253,7 @@ func head_y() -> float:
 	return global_position.y - _hurt_h() * (1.0 - frac)
 
 ## Wysokość strefy trafień (px): wysokość modelu 3D (`hurt_h` w KINDS = SPEC „fit" z enemy3d.gd), a bez niej — ciało ruchu.
+## Ćma (model dopasowany szerokością) wisi w środku ramki 20 px i rozpościera skrzydła na 18 × 16 px — `hurt_h` / `hurt_w` obejmują je całe.
 func _hurt_h() -> float:
 	return maxf(float(_def.get("hurt_h", 0.0)), (_def["size"] as Vector2).y)
 
