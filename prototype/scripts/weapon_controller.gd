@@ -886,24 +886,52 @@ func nearby_weapon_item() -> Node2D:
 ## Przy broni (stojak albo łup na ziemi): [F] otwiera / zamyka oględziny (widok z oczu gracza, broń unosi się przed nim, statystyki obok —
 ## weapon_inspect.gd i view3d.gd, lokalnie), [E] bierze broń (zamianę rozstrzyga serwer). Klawisz flary przy broni służy do oględzin,
 ## więc flara w tym miejscu nie leci (player.gd). Odejście od broni albo utrata zdrowia zamyka oględziny.
+## Gablota (cabinet.gd): oględziny obejmują całą gablotę — ↑ / ↓ wybiera broń rząd wyżej / niżej, [E] bierze wybraną; zamyka je dopiero odejście
+## od gabloty (najbliższa broń jest wtedy z innej gabloty albo żadna).
 func _tick_inspect() -> void:
 	var it := nearby_weapon_item()
 	var hp_v = player.get("hp")
 	var hp_now := float(hp_v) if hp_v != null else 0.0
-	if inspect_item != null and (not is_instance_valid(inspect_item) or it != inspect_item or hp_now < _inspect_hp):
+	if inspect_item != null and (not is_instance_valid(inspect_item) or inspect_item.is_queued_for_deletion() or hp_now < _inspect_hp
+			or (it != inspect_item and not _same_cabinet(it, inspect_item)) or not inspect_item.in_reach(player)):
 		inspect_item = null
 	if it == null:
 		return
+	if inspect_item != null and inspect_item.has_meta("cabinet"):
+		if Input.is_action_just_pressed("move_up"):
+			_cycle_cabinet(-1)
+		elif Input.is_action_just_pressed("move_down"):
+			_cycle_cabinet(1)
 	if Input.is_action_just_pressed("flare"):
-		inspect_item = null if inspect_item == it else it
+		inspect_item = null if (inspect_item == it or _same_cabinet(inspect_item, it)) else it
 		_inspect_hp = hp_now
 		Audio.play("ui_click", Audio.BUS_UI, -16.0)
 	elif Input.is_action_just_pressed("interact"):
+		var target := inspect_item
 		inspect_item = null
-		_try_pickup()
+		_try_pickup(target)
 
-func _try_pickup() -> void:
-	var it := nearby_weapon_item()
+## Czy dwa przedmioty broni wiszą w tej samej gablocie (meta „cabinet" z level.gd).
+static func _same_cabinet(a: Node, b: Node) -> bool:
+	return a != null and b != null and is_instance_valid(a) and is_instance_valid(b) and a.has_meta("cabinet") and b.has_meta("cabinet") \
+			and int(a.get_meta("cabinet")) == int(b.get_meta("cabinet"))
+
+## Oględziny gabloty: wybór broni rząd wyżej (step −1) albo niżej (+1); puste haki (broń wzięta) są pomijane, na krańcach wybór stoi.
+func _cycle_cabinet(step: int) -> void:
+	var cab := int(inspect_item.get_meta("cabinet"))
+	var items: Array = get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool:
+		return n.has_meta("cabinet") and int(n.get_meta("cabinet")) == cab and not n.is_queued_for_deletion())
+	items.sort_custom(func(a: Node, b: Node) -> bool: return int(a.get_meta("slot")) < int(b.get_meta("slot")))
+	var i := items.find(inspect_item)
+	var j := clampi(i + step, 0, items.size() - 1)
+	if i < 0 or j == i:
+		return
+	inspect_item = items[j]
+	Audio.play("ui_click", Audio.BUS_UI, -18.0)
+
+## [E]: bierze `target` (broń wybraną w oględzinach), a bez niej — najbliższą. Zamianę rozstrzyga serwer (odległość, blokada).
+func _try_pickup(target: Node2D = null) -> void:
+	var it := target if target != null and is_instance_valid(target) and not target.is_queued_for_deletion() else nearby_weapon_item()
 	if it == null:
 		return
 	var lvl := get_tree().get_first_node_in_group("level")

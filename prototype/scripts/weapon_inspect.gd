@@ -45,6 +45,7 @@ var _yaw := 0.0
 var _pitch := 0.0
 var _idle := 0.0                              ## s od ostatniego ręcznego obrotu (potem broń obraca się sama)
 var _locked := false
+var _cabinet := false                         ## oglądana broń wisi w gablocie (show_weapon)
 
 func _ready() -> void:
 	visible = false
@@ -138,7 +139,9 @@ func _ready() -> void:
 	col.add_child(_foot)
 
 ## Pokazuje broń `wid`; `hand` = broń, którą zastąpi (−1 = brak porównania), `lock_text` = warunek odblokowania ("" = dostępna).
-func show_weapon(wid: int, gun_key: String, hand: int, lock_text: String, foot: String) -> void:
+## `cabinet`: broń z gabloty — kamera patrzy na samą gablotę (view3d.gd), więc bez rozmycia tła i bez broni unoszącej się przed oczami.
+func show_weapon(wid: int, gun_key: String, hand: int, lock_text: String, foot: String, cabinet := false) -> void:
+	_cabinet = cabinet
 	var key := "%d|%d|%s|%s" % [wid, hand, lock_text, gun_key]
 	if key != _key:
 		_key = key
@@ -229,11 +232,11 @@ func _process(delta: float) -> void:
 	if _idle > 1.5:
 		_yaw += delta * 0.4                                    # nikt nie obraca: broń kręci się sama
 	var e := smoothstep(0.0, 1.0, level)
-	_blur_mat.set_shader_parameter("amount", e)
+	_blur_mat.set_shader_parameter("amount", e * (0.0 if _cabinet else 1.0))
 	# broń wypływa z dołu i lekko się kołysze, jakby wisiała w powietrzu przed oczami
 	_pivot.rotation = Vector3(_pitch + 0.03 * sin(_t * 0.9), _yaw, 0.02 * sin(_t * 0.6))
 	_pivot.position = Vector3(0.0, 0.05 * sin(_t * 1.1) - 0.5 * (1.0 - e), 0.0)
-	_view.modulate.a = e
+	_view.modulate.a = 0.0 if _cabinet else e
 	_panel.modulate.a = e
 	# układ: tło na cały ekran, broń zajmuje lewą i środkową część, panel stoi przy prawej krawędzi
 	_blur.position = Vector2.ZERO

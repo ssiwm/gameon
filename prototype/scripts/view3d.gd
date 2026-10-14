@@ -65,6 +65,7 @@ var _lights := {}                        ## id światła gry (Lights.GameLight) 
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
 var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
+var _cabinets := {}                      ## id gabloty (cabinet.gd) → {node, root, door, ghosts: [Node3D], open}
 var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
 var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D, MeshInstance3D, losowe odchylenie]
 var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
@@ -282,6 +283,7 @@ func _process(delta: float) -> void:
 	_build_rails()
 	_sync_drawn()
 	_sync_guns()
+	_sync_cabinets(delta)
 	_sync_fires()
 	_sync_weapon_fx()
 	_sync_casings()
@@ -354,6 +356,9 @@ func _sync_camera() -> void:
 		_fp_item = _fp_player.weapons.inspect_item
 	if fe > 0.0 and _fp_last != null and is_instance_valid(_fp_last):
 		var eye := Level3D.px_to_m(_fp_last.global_position) + Vector3(0.0, FP_EYE_M, FP_Z)
+		if _fp_item != null and is_instance_valid(_fp_item) and _fp_item.has_meta("cab_x"):
+			# gablota: kamera na wprost gabloty, na wysokości jej środka — cała gablota w kadrze (jak na zdjęciach-wzorach)
+			eye = Level3D.px_to_m(Vector2(float(_fp_item.get_meta("cab_x")), (_fp_item as Node2D).global_position.y + 2.0)) + Vector3(0.0, CAB_H * 0.52, FP_Z)
 		xf.origin = xf.origin.lerp(eye, fe)
 		dist = lerpf(dist, FP_Z + 0.5, fe)
 		fsize = 2.0 * near * tan(deg_to_rad(lerpf(FOV, FP_FOV, fe) * 0.5))
@@ -963,6 +968,19 @@ const RACK_MIN_M := 0.25                    ## m: najkrótsza broń na stojaku (
 const RACK_GUN_Z := -1.70                   ## broń leży na półce, tuż przed deską
 const RACK_PLATE_Z := -1.50                 ## front półki: tabliczka z ceną
 
+## Gablota na broń w kryjówce (cabinet.gd, ARMORY_PLAN.md): korpus ze stali malowanej proszkowo, ściana listwowa w grafitowym filcu, broń na
+## hakach w rzędach (od góry), półka z pistoletem i magazynkami, trzy ciepłe punkty LED w daszku, szklane drzwi uchylane przy oględzinach.
+## Początek układu gabloty = środek dołu frontu; plecy przy ścianie tła (CAB_BACK_Z).
+const CAB_W := 1.7                          ## szerokość [m] (najdłuższa broń, SPECTER-1, ma 1,15 m)
+const CAB_H := 2.1                          ## wysokość [m]
+const CAB_D := 0.42                         ## głębokość [m]
+const CAB_BACK_Z := -1.80                   ## plecy gabloty (jak deska stojaka)
+const CAB_ROWS := [1.74, 1.38, 1.02, 0.66]  ## wysokość osi broni w kolejnych rzędach od góry [m]
+const CAB_SHELF_Y := 0.30                   ## półka na dole [m]
+const CAB_GUN_Z := 0.12                     ## oś broni przed tłem [m]
+const CAB_FELT := Color(0.09, 0.095, 0.1)   ## tło: grafitowy filc (wariant A z projektu)
+const CAB_LED := Color(1.0, 0.84, 0.62)     ## punkty LED ok. 3000 K
+const CAB_ROMAN := ["I", "II", "III", "IV"]
 const RACK_LAMP_PX := 32.0                  ## spód lampy nad podłogą [px świata] (stojak kończy się ok. 24 px nad podłogą)
 
 ## Lampa wisząca nad stojakiem z bronią (kryjówka): emaliowany klosz z modelu `lamp`, przewód do stropu i ciepły reflektor w dół — stojak i broń
@@ -1093,7 +1111,11 @@ func _sync_guns() -> void:
 		var lock: Node3D = null
 		var plate: Node3D = null
 		var label: Label3D = null
-		if on_rack:
+		var cab := on_rack and n.has_meta("cabinet")
+		if cab:
+			# gablota: broń wisi na hakach; zamknięta dostaje czerwoną plombę na kabłąku zamiast kłódki
+			lock = _cab_box(pivot, Vector3(0.03, 0.05, 0.02), Vector3(0.06, box.size.y * k * 0.35, 0.05), _cab_mat(Color(0.6, 0.05, 0.04), 0.5))
+		if on_rack and not cab:
 			model.rotation.x = deg_to_rad(-7.0)                   # oparta o deskę
 			lock = _item_model("padlock")
 			if lock != null:
@@ -1101,6 +1123,7 @@ func _sync_guns() -> void:
 				lock.position = Vector3(0.0, box.size.y * k * 0.5 - 3.4 * PX, 0.10)
 				lock.rotation.z = deg_to_rad(6.0)
 				pivot.add_child(lock)
+		if on_rack:
 			plate = Node3D.new()
 			pivot.add_child(plate)
 			var pm := BoxMesh.new()
@@ -1136,7 +1159,10 @@ func _sync_guns() -> void:
 			label.position = Vector3(0.0, 0.0, 0.013)
 			plate.add_child(label)
 			plate.position = Vector3(0.0, -(RACK_SHELF_PX - 4.1) * RACK_SCALE * PX - 1.6 * PX, RACK_PLATE_Z - RACK_GUN_Z)
-		_guns[id] = [n, pivot, spr, RACK_GUN_Z if on_rack else -0.25, on_rack, model, lock, plate, label, -1, null, model.position, k]
+			if cab:                                                # gablota: mała tabliczka pod bronią, na filcu (ok. 26 × 9 cm)
+				plate.position = Vector3(0.0, -0.06, -CAB_GUN_Z + 0.035)
+				plate.scale = Vector3.ONE * 0.35
+		_guns[id] = [n, pivot, spr, RACK_GUN_Z if on_rack else -0.25, on_rack, model, lock, plate, label, -1, null, model.position, k, box.size.y * k]
 	for id in _guns.keys():
 		var g: Array = _guns[id]
 		if not is_instance_valid(g[0]) or (g[0] as Node).is_queued_for_deletion() or not is_instance_valid(g[2]):
@@ -1152,7 +1178,8 @@ func _sync_guns() -> void:
 			continue
 		# lampa nad stojakiem należy do geometrii mapy, a ta bywa budowana od nowa (wejście do kryjówki po misji, zmiana mapy) —
 		# gdy lampy nie ma, stawiamy ją ponownie (wcześniej powstawała raz i znikała przy przebudowie)
-		if _geo_key != "" and (g[10] == null or not is_instance_valid(g[10])):
+		var in_cab := (g[0] as Node).has_meta("cabinet")         # broń w gablocie świeci LED-ami gabloty, bez lampy wiszącej
+		if not in_cab and _geo_key != "" and (g[10] == null or not is_instance_valid(g[10])):
 			g[10] = _add_rack_lamp(g[0] as Node2D)
 		if _geo_key != "" and (_rack_probe == null or not is_instance_valid(_rack_probe)):
 			_rack_probe = _add_rack_probe()
@@ -1160,12 +1187,22 @@ func _sync_guns() -> void:
 		var sway := smoothstep(0.0, 1.0, _fp) if g[0] == _fp_item else 0.0
 		var tt := Time.get_ticks_msec() * 0.001
 		var turn := Basis(Vector3.UP, sin(tt * 0.8) * deg_to_rad(17.0) * sway) * Basis(Vector3.RIGHT, sin(tt * 0.55) * deg_to_rad(6.0) * sway)
-		(g[5] as Node3D).transform = Transform3D(turn, Vector3.ZERO) * Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-7.0)).scaled(Vector3.ONE * float(g[12])), g[11] as Vector3)
+		var lean := deg_to_rad(-7.0)
+		if in_cab:                                                 # gablota: wybrana broń nie kręci się, tylko wysuwa ku szybie i lekko uchyla
+			turn = Basis(Vector3.RIGHT, deg_to_rad(8.0) * sway)
+			lean = 0.0
+		(g[5] as Node3D).transform = Transform3D(turn, Vector3.ZERO) * Transform3D(Basis(Vector3.RIGHT, lean).scaled(Vector3.ONE * float(g[12])), g[11] as Vector3)
 		if sway > 0.0:
-			_place_inspect_lights(pv.position, sway)
-		# stojak: broń na półce (podłoga = początek pickupu), stan blokady z warsztatu
+			_place_inspect_lights(pv.position + (Vector3(0.0, 0.0, 0.0) if not in_cab else Vector3(0.0, 0.1, 0.0)), sway)
 		var floor_px := (g[0] as Node2D).global_position
-		pv.position = Level3D.px_to_m(floor_px) + Vector3(0.0, (RACK_UP_PX + RACK_SHELF_PX * RACK_SCALE - 2.6) * PX, float(g[3]))
+		if in_cab:
+			# gablota: broń na haku w swoim rzędzie, na osi gabloty (meta „cab_x"), środek bryły na wysokości rzędu
+			var slot := int((g[0] as Node).get_meta("slot"))
+			var hh := float(g[13]) * 0.5
+			pv.position = Level3D.px_to_m(Vector2(float((g[0] as Node).get_meta("cab_x")), floor_px.y + 2.0)) 					+ Vector3(0.0, float(CAB_ROWS[mini(slot, CAB_ROWS.size() - 1)]) - hh, CAB_BACK_Z + CAB_GUN_Z + 0.07 * sway)
+		else:
+			# stojak: broń na półce (podłoga = początek pickupu), stan blokady z warsztatu
+			pv.position = Level3D.px_to_m(floor_px) + Vector3(0.0, (RACK_UP_PX + RACK_SHELF_PX * RACK_SCALE - 2.6) * PX, float(g[3]))
 		var arg = (g[0] as Node).get("arg")
 		var locked := not Scrap.is_unlocked(arg)
 		var price := int(Scrap.price_of(arg))
@@ -1175,8 +1212,180 @@ func _sync_guns() -> void:
 			_tint_model(g[5], Color(0.34, 0.36, 0.42) if locked else Color.WHITE)
 			if g[6] != null:
 				(g[6] as Node3D).visible = locked
-			(g[7] as Node3D).visible = locked
-			(g[8] as Label3D).text = ("%d" % price) if price > 0 else "SOON"
+			(g[7] as Node3D).visible = locked or in_cab            # gablota: tabliczka pod każdą bronią — cena albo nazwa
+			(g[8] as Label3D).text = (("%d" % price) if price > 0 else "SOON") if locked else String(Weapons.def(int(arg)).name)
+
+# ---------------------------------------------------------------- gablota na broń (kryjówka)
+
+func _cab_mat(c: Color, rough := 0.6, metal := 0.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.roughness = rough
+	m.metallic = metal
+	return m
+
+func _cab_box(parent: Node3D, size: Vector3, pos: Vector3, m: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	mi.material_override = m
+	mi.position = pos
+	mi.layers = LAYER_WORLD
+	parent.add_child(mi)
+	return mi
+
+## Model broni do gabloty (pistolet na półce, ślad pustego haka): naturalna długość z gun_proc.py, środek bryły w (0, 0, 0).
+func _cab_gun(key: String) -> Node3D:
+	var path := GUN_DIR + "gun_%s.glb" % key
+	if not ResourceLoader.exists(path):
+		return null
+	var g := (load(path) as PackedScene).instantiate() as Node3D
+	var box := AABB()
+	var first := true
+	for n in g.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		mi.layers = LAYER_WORLD
+		var bb := _local_xf(mi, g) * mi.get_aabb()
+		box = bb if first else box.merge(bb)
+		first = false
+	var holder := Node3D.new()
+	holder.add_child(g)
+	g.position = -box.get_center()
+	return holder
+
+## Gabloty: bryła powstaje raz na węzeł gabloty (po przebudowie kryjówki — od nowa); drzwi uchylają się, gdy lokalny gracz ogląda broń z tej
+## gabloty, a pusty hak (broń wzięta) pokazuje jaśniejszy ślad broni na filcu.
+func _sync_cabinets(delta: float) -> void:
+	for n in get_tree().get_nodes_in_group("cabinets"):
+		if n is Node2D and not (n as Node).is_queued_for_deletion() and not _cabinets.has(n.get_instance_id()):
+			_cabinets[n.get_instance_id()] = _build_cabinet(n as Node2D)
+	var held := {}                                             # gablota → rzędy, w których wisi broń
+	for pk in get_tree().get_nodes_in_group("pickups"):
+		if pk.has_meta("cabinet") and not pk.is_queued_for_deletion():
+			held["%d:%d" % [int(pk.get_meta("cabinet")), int(pk.get_meta("slot"))]] = true
+	var looking := -1
+	if _fp_player != null and _fp_item != null and is_instance_valid(_fp_item) and _fp_item.has_meta("cabinet"):
+		looking = int(_fp_item.get_meta("cabinet"))
+	for id in _cabinets.keys():
+		var c: Dictionary = _cabinets[id]
+		var node = c["node"]
+		if not is_instance_valid(node) or (node as Node).is_queued_for_deletion():
+			if is_instance_valid(c["root"]):
+				(c["root"] as Node).queue_free()
+			_cabinets.erase(id)
+			continue
+		var idx := int(node.get("index"))
+		c["open"] = move_toward(float(c["open"]), 1.0 if looking == idx else 0.0, delta * 2.2)
+		(c["door"] as Node3D).rotation.y = deg_to_rad(-105.0) * smoothstep(0.0, 1.0, float(c["open"]))
+		var ghosts: Array = c["ghosts"]
+		for s in ghosts.size():
+			if ghosts[s] != null:
+				(ghosts[s] as Node3D).visible = not held.has("%d:%d" % [idx, s])
+
+func _build_cabinet(n: Node2D) -> Dictionary:
+	var root := Node3D.new()
+	root.name = "Cabinet%d" % int(n.get("index"))
+	_world.add_child(root)
+	root.position = Level3D.px_to_m(n.global_position) + Vector3(0.0, 0.0, CAB_BACK_Z + CAB_D)
+	var W := CAB_W
+	var H := CAB_H
+	var D := CAB_D
+	var steel := _cab_mat(Color(0.045, 0.045, 0.05), 0.5, 0.35)
+	var felt := _cab_mat(CAB_FELT, 0.92)
+	var slat := _cab_mat(CAB_FELT.darkened(0.6), 0.95)
+	var hook := _cab_mat(Color(0.02, 0.02, 0.02), 0.35, 0.7)
+	# korpus: boki, cokół, daszek z listwą LED, plecy z filcu, poziome rowki ściany listwowej co 10 cm
+	_cab_box(root, Vector3(0.05, H, D), Vector3(-W * 0.5 + 0.025, H * 0.5, -D * 0.5), steel)
+	_cab_box(root, Vector3(0.05, H, D), Vector3(W * 0.5 - 0.025, H * 0.5, -D * 0.5), steel)
+	_cab_box(root, Vector3(W, 0.12, D), Vector3(0.0, 0.06, -D * 0.5), steel)
+	_cab_box(root, Vector3(W, 0.16, D), Vector3(0.0, H - 0.08, -D * 0.5), steel)
+	_cab_box(root, Vector3(W - 0.1, H - 0.28, 0.02), Vector3(0.0, 0.12 + (H - 0.28) * 0.5, -D + 0.01), felt)
+	var y := 0.2
+	while y < H - 0.18:
+		_cab_box(root, Vector3(W - 0.1, 0.012, 0.012), Vector3(0.0, y, -D + 0.026), slat)
+		y += 0.1
+	# haki pod każdym rzędem broni
+	var slots := int(n.get("slots"))
+	for s in mini(slots, CAB_ROWS.size()):
+		for hx in [-0.2, 0.2]:
+			_cab_box(root, Vector3(0.018, 0.05, 0.1), Vector3(hx, float(CAB_ROWS[s]) - 0.11, -D + 0.07), hook)
+	# ślady pustych haków: płaska, jaśniejsza sylwetka broni na filcu (widać, czego brakuje — broń jest w czyichś rękach)
+	var ghosts: Array = []
+	var weps: Array = _level.get("_weapons") if _level.get("_weapons") != null else []
+	var ghost_m := _cab_mat(CAB_FELT.lightened(0.16), 0.95)
+	for s in mini(slots, CAB_ROWS.size()):
+		var wi := int(n.get("index")) * slots + s
+		var gh: Node3D = null
+		if wi < weps.size():
+			gh = _cab_gun(String(Weapons.def(int(weps[wi])).key))
+		if gh != null:
+			gh.position = Vector3(0.0, float(CAB_ROWS[s]), -D + 0.028)
+			gh.scale = Vector3(1.0, 1.0, 0.04)
+			for m in gh.find_children("*", "MeshInstance3D", true, false):
+				(m as MeshInstance3D).material_override = ghost_m
+				(m as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			gh.visible = false
+			root.add_child(gh)
+		ghosts.append(gh)
+	# półka: pistolet P-64, cztery magazynki, skrzynka amunicji (dekoracja, jak na zdjęciu-wzorze)
+	_cab_box(root, Vector3(W - 0.1, 0.025, D - 0.08), Vector3(0.0, CAB_SHELF_Y, -D * 0.5 - 0.02), steel)
+	var p64 := _cab_gun("p64")
+	if p64 != null:
+		p64.position = Vector3(-0.45, CAB_SHELF_Y + 0.075, -D * 0.5 - 0.02)
+		root.add_child(p64)
+	var mag_m := _cab_mat(Color(0.1, 0.09, 0.08), 0.55, 0.3)
+	for i in 4:
+		_cab_box(root, Vector3(0.035, 0.15, 0.028), Vector3(-0.17 + i * 0.065, CAB_SHELF_Y + 0.088, -D * 0.5 - 0.05), mag_m)
+	_cab_box(root, Vector3(0.28, 0.17, 0.14), Vector3(0.45, CAB_SHELF_Y + 0.098, -D * 0.5 - 0.02), _cab_mat(Color(0.2, 0.22, 0.12), 0.7))
+	# daszek: trzy punkty LED (świecące krążki + reflektory z cieniem — plamy światła i cienie broni na filcu) i napis szablonem
+	for lx in [-0.5, 0.0, 0.5]:
+		var led := _cab_box(root, Vector3(0.07, 0.01, 0.07), Vector3(lx, H - 0.165, -D * 0.5), _cab_mat(CAB_LED))
+		var lm := led.material_override as StandardMaterial3D
+		lm.emission_enabled = true
+		lm.emission = CAB_LED
+		lm.emission_energy_multiplier = 6.0
+		var sl := SpotLight3D.new()
+		sl.position = Vector3(lx, H - 0.18, -D * 0.5)
+		sl.basis = Basis.looking_at(Vector3(0.0, -1.0, -0.18), Vector3.FORWARD)
+		sl.spot_angle = 38.0
+		sl.spot_range = 2.6
+		sl.spot_attenuation = 0.8
+		sl.light_energy = 3.0
+		sl.light_color = CAB_LED
+		sl.shadow_enabled = true
+		sl.light_volumetric_fog_energy = 0.0                       # bez mgły w gablocie: wnętrze za szybą było mleczne
+		sl.layers = LAYER_WORLD | LAYER_ACTORS
+		root.add_child(sl)
+	var title := Label3D.new()
+	title.text = "ARMORY · %s" % CAB_ROMAN[int(n.get("index")) % CAB_ROMAN.size()]
+	title.font = UiTheme.display_font(700)
+	title.font_size = 64
+	title.pixel_size = 0.0011
+	title.modulate = Color(0.85, 0.8, 0.65)
+	title.outline_size = 0
+	title.shaded = true
+	title.double_sided = false
+	title.layers = LAYER_WORLD
+	title.position = Vector3(0.0, H - 0.08, 0.002)
+	root.add_child(title)
+	# zamek szyfrowy z zieloną diodą na prawym boku
+	_cab_box(root, Vector3(0.07, 0.11, 0.025), Vector3(W * 0.5 + 0.035, 1.15, -0.15), _cab_mat(Color(0.08, 0.08, 0.08), 0.4, 0.5))
+	var dio := _cab_box(root, Vector3(0.012, 0.012, 0.006), Vector3(W * 0.5 + 0.035, 1.18, -0.135), _cab_mat(Color(0.2, 1.0, 0.3)))
+	(dio.material_override as StandardMaterial3D).emission_enabled = true
+	(dio.material_override as StandardMaterial3D).emission = Color(0.2, 1.0, 0.3)
+	(dio.material_override as StandardMaterial3D).emission_energy_multiplier = 3.0
+	# szklane drzwi: jedno skrzydło na zawiasie przy lewym boku, z wąską ramą
+	var door := Node3D.new()
+	door.position = Vector3(-W * 0.5 + 0.05, 0.0, -0.005)
+	root.add_child(door)
+	var glass := _cab_mat(Color(0.75, 0.85, 0.9, 0.04), 0.04)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var pane := _cab_box(door, Vector3(W - 0.1, H - 0.28, 0.008), Vector3((W - 0.1) * 0.5, 0.12 + (H - 0.28) * 0.5, 0.0), glass)
+	pane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for fx in [0.0, W - 0.1]:
+		_cab_box(door, Vector3(0.02, H - 0.28, 0.02), Vector3(fx, 0.12 + (H - 0.28) * 0.5, 0.0), steel)
+	return {"node": n, "root": root, "door": door, "ghosts": ghosts, "open": 0.0}
 
 ## „Niebo" warstwy graczy: nie jest rysowane (tło warstwy jest przezroczyste), daje tylko otoczenie do odbić — chłodna jasność z góry, ciemny
 ## horyzont, cieplejszy dół. Bez niego stal trzymanej broni nie miała czego odbijać i wyglądała jak tworzywo. Jasność trzyma `ACTOR_REFLECT`,

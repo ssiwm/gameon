@@ -2056,16 +2056,17 @@ func _gen_test() -> void:
 	check.call("[Enter] po 1.2 → kryjówka (następna: %s, wrogów %d)" % [after_hub, foes.size()],
 		level.map_id == "z1_hub" and mission.kind == "hub" and after_hub == "z1_m3" and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE
 		and foes.is_empty() and p.global_position.distance_to(level.spawn_for(1)) < 40.0)
-	var racks := 0
+	var cabinets := 0
 	var lamps := 0
 	for c in level.get_children():
-		if String(c.name).begins_with("Rack"):
-			racks += 1
+		if String(c.name).begins_with("Cabinet"):
+			cabinets += 1
 		elif String(c.name).begins_with("Lamp"):
 			lamps += 1
+	var in_cab := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "weapon" and n.has_meta("cabinet")).size()
 	var brief: Dictionary = level.briefing(after_hub)
-	check.call("kryjówka: 8 stojaków, 9 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
-		racks == 8 and lamps == 9 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
+	check.call("kryjówka: 2 gabloty z 8 broniami, 9 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
+		cabinets == 2 and in_cab == 8 and lamps == 9 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
 	# radiostacja (R, weather.gd): jedna w kryjówce, w kryjówce pogody misji nie ma, prognoza jest znanym rodzajem; mnożniki pogody łączą się z NightShift
 	check.call("niebo (deszcz): w kryjówce zamknięte (sufit), ustawienie efektów pogody domyślnie REDUCED (%s)" % Settings.WEATHER_FX_NAMES[Settings.weather_fx_idx],
 		not level.sky_open_at(p.global_position) and Settings.WEATHER_FX_NAMES.size() == 3)
@@ -2375,12 +2376,13 @@ func _map_test() -> void:
 			points.append(["dom Stalkera", level.stalker_home])
 		for k in level._map_items:
 			for i in (level._map_items[k] as Array).size():
-				points.append(["przedmiot %s%d" % [k, i], level._map_items[k][i]])
+				# broń w gablocie (cabinet.gd) leży do 7,5 px od środka kafla gabloty — rozstawiona na jej szerokości
+				points.append(["przedmiot %s%d" % [k, i], level._map_items[k][i], 8.0 if (k == "g" and level._cab_slots > 0) else 2.0])
 		var ids := {}
 		var bad: Array = []
 		for p in points:
 			var cid := nav.get_closest_point(p[1])
-			if cid < 0 or nav.get_point_position(cid).distance_to(p[1]) > 2.0:
+			if cid < 0 or nav.get_point_position(cid).distance_to(p[1]) > (float(p[2]) if p.size() > 2 else 2.0):
 				bad.append("%s nie stoi na podłodze (%s)" % [p[0], str(p[1])])
 			ids[p[0]] = cid
 		var start_id: int = ids["start 0"]
