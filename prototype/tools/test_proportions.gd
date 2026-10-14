@@ -95,6 +95,8 @@ func _run() -> void:
 		var kd: Dictionary = Enemy.KINDS[k]
 		var hurt := maxf(float(kd.get("hurt_h", 0.0)), (kd["size"] as Vector2).y)
 		_check(is_equal_approx(hurt, float(fit[1])), "%s: strefa trafień %.0f px = model %.0f px (%.2f m)" % [k, hurt, float(fit[1]), hurt * PX])
+	var cma: Dictionary = Enemy.KINDS["cma"]
+	_check(float(cma.get("hurt_h", 0.0)) >= 16.0, "cma: strefa trafień %.0f px obejmuje skrzydła (model ok. 16 px wysokości)" % float(cma.get("hurt_h", 0.0)))
 	var sh := float(Stalker.get("HURT_H"))
 	_check(is_equal_approx(sh, float(Enemy3D.SPEC["stalker"]["fit"][1])), "stalker: strefa trafień %.0f px = model" % sh)
 	# (3) przedmioty
@@ -103,5 +105,10 @@ func _run() -> void:
 		var sz := _size("res://art/items3d/%s.glb" % name) * PX * float(View3D.ITEM_SCALE.get(name, 1.0))
 		var v := sz.y if String(lim[0]) == "h" else maxf(sz.x, maxf(sz.y, sz.z))
 		_check(v <= float(lim[1]), "%s: %s %.2f m (granica %.2f)" % [name, "wysokość" if String(lim[0]) == "h" else "najdłuższy bok", v, float(lim[1])])
+	# broń jako łup i na stojaku: naturalna długość modelu (gun_proc.py), minimum tylko dla najkrótszych
+	for gk in ["m83", "p64", "maczeta"]:
+		var glen := _size("res://art/char3d/gun_%s.glb" % gk).x
+		var loot := maxf(glen, float(View3D.get("LOOT_MIN_M")))
+		_check(loot <= maxf(glen * 1.05, 0.4), "%s jako łup: %.2f m (w ręku %.2f m)" % [gk, loot, glen])
 	var fence := _size("res://art/items3d/fence.glb").y * PX * float(View3D.DECO_MODELS[6][1])
 	_check(fence <= 2.5, "płot (dekoracja): wysokość %.2f m (granica 2,50)" % fence)

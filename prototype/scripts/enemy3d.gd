@@ -7,6 +7,8 @@ extends Node3D
 ## Układ: Enemy3D (pozycja stóp, skala.x = ±1 odbicie) → pivot (skala dopasowana do rozmiaru sprite'a 2D) → model.
 ## Model w układzie Godota: +X to przód, Y w górę, Z do kamery (blenderowe −Y); stąd przeliczenia osi względem skryptu wypieku.
 
+const TURN_TIME := 0.16                      ## s: obrót przy zmianie kierunku (jak Char3D.TURN_TIME)
+const BODY_YAW := -22.0                      ## °: tułów zwrócony ku kamerze (jak Char3D.BODY_YAW)
 const CharClips := preload("res://scripts/char_clips.gd")
 const DIR := "res://art/enemy3d/"
 const PRE := "mixamorig_"
@@ -30,7 +32,7 @@ const SPEC := {
 	"trzosek": {"fit": ["length", 21.0], "frame_h": 22.0, "cycle": 0.55, "quad": true, "yaw": -90.0, "clips": true, "idle_t": 0.0},
 	# Mimik to model gracza z kolorem „kolegi” i świecącymi oczami; pozostałe poniżej to modele statyczne animowane deformacją wierzchołków w shaderze
 	# (`DEFORM`), tak jak wypiek `concept/static_tripo_bake.py` — poza z numeru klatki sprite'a 2D (animacja idzie w tempie gry).
-	"mimik": {"model": "res://art/char3d/male_scav.glb", "fit": ["height", 22.0], "frame_h": 28.0, "cycle": 0.8, "eyes": true,
+	"mimik": {"model": "res://art/char3d/male_scav.glb", "fit": ["height", 22.0], "frame_h": 28.0, "cycle": 0.8, "eyes": true, "turn": true,
 		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human",
 		"death": {"dir": 1.0, "lean": 8.0, "dur": 1.2, "tilt": 84.0}},
 	"cma": {"fit": ["width", 18.0], "frame_h": 20.0, "deform": "cma", "float": true, "clips": true, "death_dur": 0.9},
@@ -193,6 +195,8 @@ var _arm_len := {}
 var _x0 := 0.0                             ## oś ciała (m, układ modelu)
 var _scale := 1.0
 var _t := 0.0
+var _face := 1.0                             ## −1..1: zwrot w trakcie obrotu (SPEC „turn": Mimik), jak Char3D._face
+var _cam_c := 1.0                            ## −1..1: strona kamery względem modelu (znak zwrotu tułowia ku kamerze)
 var _phase := 0.0
 var _prev_anim := ""
 var _eyes: Array = []
@@ -413,7 +417,15 @@ func _two_bone(a: int, m: int, e: int, la: float, lb: float, target: Vector3, po
 ## (modele statyczne dostają pozę z numeru klatki, żeby animacja szła w tempie gry — np. trafienie Pijawki na klatce 2).
 func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 1, loop := true, air_vy := 0.0, sp := 0) -> void:
 	_t += delta
-	scale.x = -1.0 if flip else 1.0
+	if bool(_spec.get("turn", false)):
+		# Mimik udaje gracza, więc odwraca się jak postać gracza (char3d.gd): obrót przodem do kamery w TURN_TIME, tułów zwrócony ku kamerze
+		# w obie strony (_apply_biped). Odbicie lustrem w jednej klatce zdradzało go na tle graczy, którzy od 1.7.216 się obracają.
+		_face = move_toward(_face, -1.0 if flip else 1.0, delta * 2.0 / TURN_TIME) if _t > delta else (-1.0 if flip else 1.0)
+		_cam_c = sin(PI * 0.5 * _face)
+		scale.x = 1.0
+		rotation.y = -PI * 0.5 + PI * 0.5 * _cam_c
+	else:
+		scale.x = -1.0 if flip else 1.0
 	_sp = sp
 	var hang: bool = anim == "sleep" and not _dead and (bool(_spec.get("crawler", false)) or String(_spec.get("deform", "")) == "cma")
 	_inv_w = move_toward(_inv_w, 1.0 if hang else 0.0, delta / 0.30)
@@ -1234,6 +1246,8 @@ func _apply_biped(p: Dictionary) -> void:
 	var hips: int = _b["Hips"]
 	_shift_global(hips, Vector3(0.0, -float(p["drop"]) + float(p["bob"]) + _crise, 0.0))
 	_rot_world(hips, Vector3.BACK, -deg_to_rad(float(p["lean"])))
+	if bool(_spec.get("turn", false)):                            # jak postać gracza: tułów zwrócony ku kamerze (Char3D.BODY_YAW)
+		_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(BODY_YAW) * _cam_c)
 	_rot_world(_b["Head"], Vector3.BACK, deg_to_rad(float(p["lean"])) * float(p["hk"]))
 	for side in ["Right", "Left"]:
 		var foot: int = _b[side + "Foot"]
