@@ -10,7 +10,8 @@ extends Node2D
 ## z pozy nominalnej (postawa, kąt, broń, model), bez udziału bieżącej klatki animacji.
 ##
 ## Układ: model patrzy w +X, kamera stoi na +Z (bliższa jest prawa strona postaci), stopy w y = 0.
-## Odbicie (patrzenie w lewo) to flip_h na sprite'ie — jak w arkuszach 2D.
+## Zwrot w lewo: w widoku 3D model obraca się wokół pionu (`model_yaw`, obrót przodem do kamery w TURN_TIME) — broń zostaje w prawej
+## ręce, więc patrząc w lewo postać pokazuje lewy bok; w podglądzie 2D (sprite) to dalej odbicie flip_h.
 
 const CHAR_H_M := 1.8                       ## wysokość postaci odniesienia (m)
 const CHAR_H_WP := 22.0                     ## ... w pikselach świata
@@ -184,6 +185,9 @@ var _arm_hinge := {}                         ## strona → [oś zgięcia łokcia
 var _hand_rel := {}                          ## strona → orientacja dłoni względem przedramienia w spoczynku (do podziału skrętu nadgarstka)
 var _hand := {}                              ## strona → {"fix": Basis, "len": m, "thick": m}: układ anatomiczny dłoni zmierzony z siatki (_measure_hands)
 static var _hand_cache := {}                 ## nazwa modelu → to samo (pomiar raz na model)
+var _face := 1.0                             ## −1..1: zwrot w trakcie obrotu (1 = w prawo, −1 = w lewo); w połowie postać stoi przodem do kamery
+var _cam_c := 1.0                            ## −1..1: po której stronie modelu jest kamera (+1 = +Z, prawy bok); przy obrocie przechodzi płynnie przez 0
+var model_yaw := 0.0                         ## rad: obrót modelu wokół pionu w widoku 3D (czyta view3d.gd zamiast odbicia lustrzanego)
 var _vis_aim := NAN                          ## rad: kąt broni modelu (goni kąt celowania sprężyną — broń ma bezwładność); NAN = pierwsza klatka
 var _vis_vel := 0.0                          ## rad/s
 var _last_recoil := 0.0
@@ -241,10 +245,13 @@ const GRIP_HALF := 0.013                     ## pół grubości chwytu / rękoje
 const GUN_FOLLOW := 0.5                      ## ile ruchu barku względem pozy nominalnej przechodzi na broń (1 = broń sztywno przy barku, 0 = nieruchoma w pozie nominalnej)
 const AIM_SPRING := 34.0                     ## 1/s: sztywność sprężyny, którą broń MODELU goni kierunek celowania (rozgrywka celuje od razu)
 const MELEE_GUARD := 0.95                    ## rad: uniesienie ostrza w gardzie (broń biała w spoczynku)
+const TURN_TIME := 0.16                      ## s: obrót postaci przy zmianie kierunku (przodem do kamery)
 const UP_REACH := 0.10                       ## m: o tyle dalej od barku jest broń przy celowaniu pionowo w górę
 const CROUCH_DROP := 0.48                    ## m: o tyle niżej są biodra w przysiadzie (poza z kodu i barki nominalne)
 const SPINE_AIM := 0.13                      ## ułamek kąta celowania, o który pochyla się każda z trzech kości kręgosłupa
-const BODY_YAW := -22.0                      ## °: tułów zwrócony ku kamerze (broń po bliższej stronie)
+const BODY_YAW := -22.0                      ## °: tułów zwrócony ku kamerze — w obie strony (znak z `_cam_c`), więc po obrocie w lewo widać pierś,
+                                             ## dłonie i broń, a nie plecak. Poza nominalna (rozgrywka) liczy go zawsze jak dla zwrotu w prawo, żeby wylot
+                                             ## był lustrzany; różnicę (bark ok. 0,18 m dalej w przód przy zwrocie w lewo) wybierają ręce (GUN_FOLLOW).
 const AW_RATE := 13.0                        ## 1/s: tempo mieszania póz bazowych (przejścia ~80 ms)
 var _aw := {}                                ## wagi póz bazowych — płynne przejścia zamiast przeskoków
 var _down := 0.0                             ## 0..1 postęp upadku (rośnie przy „down”, maleje przy wstawaniu po reanimacji)
@@ -968,7 +975,8 @@ func _left_hold(gx: Transform3D, info: Dictionary, wp: Dictionary) -> Transform3
 
 ## Początek układu broni dla barków sr / sl: na promieniu `radial` od prawego barku wzdłuż kierunku `hd`, opuszczony o `perp`; broń trzymana oburącz jest
 ## wsuwana ku ciału, dopóki dłoń przednia nie sięga swojego chwytu. Wspólne dla pozy (barki z animacji) i punktów celowania rozgrywki (barki nominalne).
-func _gun_origin(sr: Vector3, sl: Vector3, hd: float, gun_b: Basis, radial: float, perp: float, info: Dictionary, wp: Dictionary, two: bool) -> Vector3:
+## cam: strona kamery (+1 / −1, `_cam_c`) — celując w dół broń wysuwa się ku niej, żeby nie schować się za tułowiem.
+func _gun_origin(sr: Vector3, sl: Vector3, hd: float, gun_b: Basis, radial: float, perp: float, info: Dictionary, wp: Dictionary, two: bool, cam := 1.0) -> Vector3:
 	var reach_l: float = (float(_arm_len["Left"][0]) + float(_arm_len["Left"][1])) * 0.97
 	var side_z := float(wp.get("side", -0.13))
 	var rear := Vector3.ZERO
@@ -980,6 +988,7 @@ func _gun_origin(sr: Vector3, sl: Vector3, hd: float, gun_b: Basis, radial: floa
 		if not two or _left_hold(Transform3D(gun_b, rear), info, wp).origin.distance_to(sl) <= reach_l:
 			break
 		radial -= 0.035
+	rear.z += 0.28 * maxf(0.0, -sin(hd)) * (cam - 1.0)        # ku kamerze po drugiej stronie dopiero na końcu: wsunięcie broni nie zależy od strony, więc wylot w obie strony jest lustrzany
 	return rear
 
 ## Kąt celowania w górę od poziomu (rad) z kierunku na ekranie (y w dół); lustro załatwia odbicie postaci.
@@ -1023,7 +1032,8 @@ func _stance_pts(crouching: bool) -> Dictionary:
 
 ## Barki (prawy, lewy) w pozie nominalnej: sama postawa (stoi / kuca), pochylenie od broni i celowanie tułowiem — bez kroku, kołysania, odrzutu,
 ## trafień i lądowań. Te same obroty co w `_pose_body`, policzone na punktach postawy (`_stance_pts`).
-func _nominal_shoulders(theta: float, crouching: bool, wp: Dictionary) -> Array:
+## cam: znak zwrotu tułowia ku kamerze (`_cam_c`); rozgrywka liczy zawsze z +1.
+func _nominal_shoulders(theta: float, crouching: bool, wp: Dictionary, cam := 1.0) -> Array:
 	var sp := _stance_pts(crouching)
 	var clip := bool(sp["clip"])
 	var st := "crouch" if crouching else "idle"
@@ -1036,7 +1046,7 @@ func _nominal_shoulders(theta: float, crouching: bool, wp: Dictionary) -> Array:
 	var tilt := Basis(Vector3.BACK, -lean)
 	for i in 5:
 		p[i] = h + Vector3(0.0, -drop, 0.0) + tilt * ((p[i] as Vector3) - h)
-	var yaw := Basis(Vector3.UP, deg_to_rad(BODY_YAW))
+	var yaw := Basis(Vector3.UP, deg_to_rad(BODY_YAW) * cam)
 	for i in range(1, 5):
 		p[i] = (p[0] as Vector3) + yaw * ((p[i] as Vector3) - (p[0] as Vector3))
 	var pitch := Basis(Vector3.BACK, theta * SPINE_AIM + lean * 0.12)
@@ -1047,7 +1057,8 @@ func _nominal_shoulders(theta: float, crouching: bool, wp: Dictionary) -> Array:
 
 ## Punkty celowania dla ROZGRYWKI: [chwyt, wylot lufy] w pikselach świata względem stóp, dla kierunku celowania `aim` (y w dół), strony `side` (±1),
 ## postawy i broni `gun_key`. Liczone z pozy nominalnej, więc nie zależą od klatki animacji: bieg, odrzut, trafienie, przeładowanie ani obrót modelu
-## nie przesuwają toru pocisków, a każdy peer dostaje ten sam wynik dla tego samego stanu. Do efektów (błysk, wiązka) służą `muzzle_px` / `grip_px`.
+## nie przesuwają toru pocisków, a każdy peer dostaje ten sam wynik dla tego samego stanu. Strona jest od razu docelowa — obrót modelu
+## (TURN_TIME) jest samym widokiem. Do efektów (błysk, wiązka) służą `muzzle_px` / `grip_px`.
 func aim_points(aim: Vector2, side: float, crouching: bool, gun_key: String) -> Array:
 	if not ResourceLoader.exists(DIR + "gun_%s.glb" % gun_key):
 		gun_key = DEFAULT_GUN
@@ -1057,7 +1068,7 @@ func aim_points(aim: Vector2, side: float, crouching: bool, gun_key: String) -> 
 	var sh := _nominal_shoulders(theta, crouching, wp)
 	var gun_b := Basis(Vector3.BACK, theta)
 	var two := int(info["hands"]) == 2 or String(wp.get("reload", "")) == "pistol"
-	var rear := _gun_origin(sh[0], sh[1], theta, gun_b, float(wp.get("radial", 0.30)), float(wp.get("perp", 0.11)), info, wp, two)
+	var rear := _gun_origin(sh[0], sh[1], theta, gun_b, float(wp.get("radial", 0.30)), float(wp.get("perp", 0.11)), info, wp, two, -1.0 if side < 0.0 else 1.0)
 	var fl := -1.0 if side < 0.0 else 1.0
 	return [_to_px_side(rear, fl), _to_px_side(Transform3D(gun_b, rear) * (info["muzzle"] as Vector3), fl)]
 
@@ -1071,6 +1082,10 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 	_time += delta
 	_sprite.flip_h = facing < 0.0
 	px_flip = -1.0 if _sprite.flip_h else 1.0
+	# obrót zamiast lustra: zwrot dochodzi do kierunku patrzenia w TURN_TIME (sinus: rusza i hamuje łagodnie), przez pozę przodem do kamery
+	_face = move_toward(_face, px_flip, delta * 2.0 / TURN_TIME) if _posed and delta < 0.1 else px_flip
+	_cam_c = sin(PI * 0.5 * _face)
+	model_yaw = -PI * 0.5 + PI * 0.5 * _cam_c
 	(_sprite.material as ShaderMaterial).set_shader_parameter("flip_n", _sprite.flip_h)
 	_sprite.modulate = tint
 	if not _on_screen:
@@ -1286,7 +1301,7 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 			_rot_world(_b[side + "UpLeg"], Vector3.BACK, deg_to_rad(10.0) * sin(_time * 29.0 + (0.0 if side == "Left" else 2.3)))
 	# tułów zwraca się ku kamerze (broń po bliższej stronie) i pochyla się za celem
 	var aim_k := stand * (1.0 - _clip_arms)                       # klęczenie przy rannym: tułów nie celuje
-	_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(BODY_YAW) * aim_k)
+	_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(BODY_YAW) * aim_k * _cam_c)
 	for n in ["Spine", "Spine1", "Spine2"]:
 		_rot_world(_b[n], Vector3.BACK, (theta * SPINE_AIM + deg_to_rad(lean) * 0.12 - gun_extra * 0.06) * aim_k)
 	_rot_world(_b["Head"], Vector3.BACK, (theta * 0.2 - deg_to_rad(lean) * 0.5) * aim_k + deg_to_rad(head_hit))
@@ -1414,14 +1429,25 @@ func _pose_arms(theta: float) -> void:
 	# broń palna trzyma się pozy nominalnej (tej, z której rozgrywka liczy wylot), a ruch barku z animacji — krok, kołysanie, odrzut ciała, trafienie —
 	# przechodzi na nią tylko w części: ciało pracuje pod bronią, ręce to wybierają, a lufa zostaje przy torze pocisku
 	var anchor := sr
+	var anchor_l := sl
 	if _hands == 2 or pistol:
 		var wsum := 0.0
 		for n in AW_STATES:
 			wsum += float(_aw.get(n, 0.0))
 		var wc := (float(_aw.get("crouch", 0.0)) + float(_aw.get("crouch_walk", 0.0))) / maxf(wsum, 0.0001)
-		var nom: Vector3 = (_nominal_shoulders(theta, false, wp)[0] as Vector3).lerp(_nominal_shoulders(theta, true, wp)[0], wc) if wc > 0.001 else _nominal_shoulders(theta, false, wp)[0]
-		anchor = nom + (sr - nom) * float(wp.get("follow", GUN_FOLLOW))
-	var rear := _gun_origin(anchor, sl, hd, gun_b, radial, perp, _gun_info, wpa, two)
+		var base: Array = _nominal_shoulders(theta, false, wp)             # barki, z których rozgrywka liczy wylot (zwrot jak w prawo)
+		var now: Array = _nominal_shoulders(theta, false, wp, _cam_c)      # barki nominalne przy obecnym zwrocie tułowia
+		if wc > 0.001:
+			var bc := _nominal_shoulders(theta, true, wp)
+			var nc := _nominal_shoulders(theta, true, wp, _cam_c)
+			for k in 2:
+				base[k] = (base[k] as Vector3).lerp(bc[k], wc)
+				now[k] = (now[k] as Vector3).lerp(nc[k], wc)
+		# stałe przesunięcie barków od zwrotu tułowia wybierają ręce (broń zostaje przy wylocie rozgrywki); z ruchu animacji broń bierze część
+		var fol := float(wp.get("follow", GUN_FOLLOW))
+		anchor = (base[0] as Vector3) + (sr - (now[0] as Vector3)) * fol
+		anchor_l = (base[1] as Vector3) + (sl - (now[1] as Vector3)) * fol
+	var rear := _gun_origin(anchor, anchor_l, hd, gun_b, radial, perp, _gun_info, wpa, two, _cam_c)
 	rear -= gun_b.x * (gun_kick_px / WP_PER_M * 0.6)
 	if charge_t > 0.0:                                            # ładowanie szyny: drżenie trzymanej broni
 		rear += Vector3(randf() - 0.5, randf() - 0.5, 0.0) * 0.018 * charge_t
@@ -1612,11 +1638,11 @@ func _pose_arms_relaxed(both: bool) -> void:
 		_arm_ik("Right", sr + Vector3(0.10, -reach * 0.9, -0.03), Vector3(-0.3, -1.0, 0.5))
 		_pose_left_relaxed()
 
-## Punkt 3D (m) → piksele świata względem stóp, z odbiciem.
+## Punkt 3D (m, układ modelu) → piksele świata względem stóp, tak jak widać go w widoku 3D: aktor stoi w pozycji gracza i jest obrócony
+## o `model_yaw` (kamera patrzy wzdłuż −Z, więc liczy się tylko składowa x po obrocie).
 func _to_px(p: Vector3) -> Vector2:
-	return _to_px_side(p, -1.0 if _sprite.flip_h else 1.0)
+	return Vector2((p.x * cos(model_yaw) + p.z * sin(model_yaw)) * WP_PER_M, -p.y * WP_PER_M)
 
+## To samo dla postaci zwróconej na stałe w stronę `fl` (±1) — punkty celowania rozgrywki.
 func _to_px_side(p: Vector3, fl: float) -> Vector2:
-	var y := deg_to_rad(view_yaw)
-	var sx := (p.x - _origin_x) * cos(y) - p.z * sin(y)       # współrzędna wzdłuż prawej osi kamery obróconej o yaw
-	return Vector2(sx * WP_PER_M * fl, -p.y * WP_PER_M)
+	return Vector2(fl * p.x * WP_PER_M, -p.y * WP_PER_M)
