@@ -33,8 +33,11 @@ static func add(body: CollisionObject2D, width: float, height: float) -> void:
 ## Włącza / wyłącza ciało razem ze strefą trafień (śmierć, ukrycie, powrót).
 static func set_enabled(body: Node, on: bool) -> void:
 	(body.get_node("CollisionShape2D") as CollisionShape2D).set_deferred("disabled", not on)
-	var s = body.get_meta("hurt_shape", null)
-	if s != null and is_instance_valid(s):
+	# Nie `get_meta(…, null)`: w Godocie 4 domyślne `null` znaczy „bez domyślnej", więc wróg bez strefy sypał błędem do logu.
+	if not body.has_meta("hurt_shape"):
+		return
+	var s = body.get_meta("hurt_shape")
+	if is_instance_valid(s):
 		(s as CollisionShape2D).set_deferred("disabled", not on)
 
 ## Wyłączenia zapytania: do RID-ów ciał dokłada RID-y ich stref (wróg już przebity albo przewinięty nie trafia drugi raz strefą).
