@@ -423,6 +423,8 @@ func _handle_cmdline() -> void:
 		if a == "--char3d-lq":
 			Sprites.char3d = true                                                                  # dev: postać 3D w niskiej jakości (SS 2, bez MSAA) — test kosztu na słabszym GPU
 			load("res://scripts/char3d.gd").set_low_quality(true)
+		if a.begins_with("--charset="):
+			load("res://scripts/char3d.gd").charset = a.substr("--charset=".length())              # dev: zestaw modeli postaci (mpfb — domyślny, tripo — stare stylizowane) — porównania
 		if a == "--noclips":
 			load("res://scripts/char_clips.gd").enabled = false                                    # dev: bez klipów animacji postaci (same pozy z kodu) — porównania
 		if a == "--char3d":

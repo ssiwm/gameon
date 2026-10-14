@@ -2,7 +2,8 @@ extends SceneTree
 ## Test proporcji świata: postać 1,8 m (22 px świata, 1 px = 0,082 m) kontra hitboxy, meble i znajdźki.
 ## (1) ciało gracza ma wysokość modelu postaci, (2) strefa trafień każdego wroga ma wysokość jego modelu (enemy3d.gd SPEC „fit"),
 ## (3) przedmioty w skali widoku 3D (view3d.gd ITEM_SCALE) mieszczą się w naturalnych wymiarach — meble jak prawdziwe, znajdźki najwyżej ok. 2×,
-## (4) promień w głowę wysokiego wroga trafia jego strefę trafień, a przebicie nie liczy go dwa razy, (5) gablota na broń mieści broń w rzędach.
+## (4) promień w głowę wysokiego wroga trafia jego strefę trafień, a przebicie nie liczy go dwa razy, (5) gablota na broń mieści broń w rzędach,
+## (6) postacie MPFB (art/char3d/mpfb) mają proporcje dorosłego człowieka.
 ## godot --headless --path prototype -s tools/test_proportions.gd      → ma wypisać PASS
 const PX := 1.8 / 22.0
 const Char3D := preload("res://scripts/char3d.gd")
@@ -125,3 +126,36 @@ func _run() -> void:
 	_check(float(View3D.get("CAB_H")) <= 2.3, "gablota: wysokość %.2f m (postać 1,8 m)" % float(View3D.get("CAB_H")))
 	var fence := _size("res://art/items3d/fence.glb").y * PX * float(View3D.DECO_MODELS[6][1])
 	_check(fence <= 2.5, "płot (dekoracja): wysokość %.2f m (granica 2,50)" % fence)
+	_anatomy()
+
+## (6) postacie MPFB: proporcje dorosłego człowieka liczone ze szkieletu (H = wzrost modelu: 1,8 m mężczyzna, 1,7 m kobieta).
+## Kark 0,80–0,88 H, biodra 0,50–0,60 H (kość Hips rigu Mixamo leży nad stawem biodrowym), ręka (bark–nadgarstek) 0,28–0,36 H, noga (biodro–kostka) 0,42–0,52 H, rozstaw barków 0,18–0,26 H,
+## od karku do wierzchu głowy z hełmem / kapturem najwyżej 0,22 H (modele Tripo miały 0,21–0,24 H bez szyi — głowa 1/4–1/5 wzrostu).
+func _anatomy() -> void:
+	var dir := "res://art/char3d/mpfb/"
+	for g in ["male", "female"]:
+		for o in ["scav", "hazmat", "medic"]:
+			var path := dir + "%s_%s.glb" % [g, o]
+			if not ResourceLoader.exists(path):
+				continue
+			var inst: Node = (load(path) as PackedScene).instantiate()
+			var sk: Skeleton3D = inst.find_child("Skeleton3D", true, false)
+			var hgt := 1.8 if g == "male" else 1.7
+			var b := func(n: String) -> Vector3: return sk.get_bone_global_rest(sk.find_bone("mixamorig_" + n)).origin
+			var top := 0.0
+			for mi in inst.find_children("*", "MeshInstance3D", true, false):
+				var m := mi as MeshInstance3D
+				if m.mesh != null and not String(m.name).begins_with("gear") and not String(m.name).begins_with("backpack") 						and not String(m.name).begins_with("bedroll") and not String(m.name).begins_with("airtank"):
+					top = maxf(top, m.mesh.get_aabb().end.y)
+			var arm: float = (b.call("RightArm") as Vector3).distance_to(b.call("RightForeArm")) + (b.call("RightForeArm") as Vector3).distance_to(b.call("RightHand"))
+			var leg: float = (b.call("RightUpLeg") as Vector3).distance_to(b.call("RightLeg")) + (b.call("RightLeg") as Vector3).distance_to(b.call("RightFoot"))
+			var sh: float = (b.call("RightArm") as Vector3).distance_to(b.call("LeftArm"))
+			var neck: float = (b.call("Neck") as Vector3).y
+			var hips: float = (b.call("Hips") as Vector3).y
+			var name := "%s_%s" % [g, o]
+			for c in [["kark", neck, 0.80, 0.88], ["biodra", hips, 0.50, 0.60], ["ręka", arm, 0.28, 0.36], ["noga", leg, 0.42, 0.52],
+					["barki", sh, 0.18, 0.26]]:
+				var r := float(c[1]) / hgt
+				_check(r >= float(c[2]) and r <= float(c[3]), "%s: %s %.2f H (%.2f–%.2f)" % [name, c[0], r, c[2], c[3]])
+			_check((top - neck) / hgt <= 0.22, "%s: głowa z nakryciem od karku %.2f H (≤ 0,22)" % [name, (top - neck) / hgt])
+			inst.free()
