@@ -167,14 +167,11 @@ func muzzle_pos(dir: Vector2, d: WeaponDef) -> Vector2:
 	var tip := hand + dir * d.gun_len
 	var c3d: Node2D = player.get("c3d")
 	if c3d != null and c3d.ready_ok and not bool(player.get("dead")):
-		# postać 3D (--char3d / ustawienie Characters): wylot z modelu broni w rękach, żeby pocisk wychodził z lufy, nie ze środka ciała
-		var g: Vector2 = c3d.grip_px
-		var t: Vector2 = c3d.muzzle_px
-		if side * c3d.px_flip < 0.0:                    # odwrócenie celowania w tej samej klatce: postać jeszcze nie zdążyła się obrócić — lustro względem osi ciała
-			g.x = -g.x
-			t.x = -t.x
-		hand = player.global_position + g
-		tip = player.global_position + t
+		# postać 3D: chwyt i wylot z pozy nominalnej (Char3D.aim_points) — pocisk wychodzi z lufy, a klatka animacji (bieg, odrzut, obrót modelu,
+		# przeładowanie) nie przesuwa jego toru; ten sam stan gracza daje ten sam punkt u każdego peera
+		var ap: Array = c3d.aim_points(dir, side, bool(player.get("crouching")), String(d.key))
+		hand = player.global_position + (ap[0] as Vector2)
+		tip = player.global_position + (ap[1] as Vector2)
 	if not player.is_inside_tree():
 		return tip
 	var q := PhysicsRayQueryParameters2D.create(hand, tip, Combat.LAYER_WORLD)

@@ -5,8 +5,9 @@ extends Node2D
 ## ortogonalną patrzącą z boku; wynik wyświetla zwykły Sprite2D (obrys robi shader, oświetlenie 2D robi gra).
 ## Pozy to czysty kod: nogi i ręce rozwiązuje dwukostkowe IK, więc broń (art/char3d/gun_<klucz>.glb, chwyty w .json)
 ## leży w dłoniach przy KAŻDYM kącie celowania, animacji, broni i wyglądzie. Przeładowanie, dobycie i cios to ruch broni
-## (ten sam co w weapon_view) plus lewa dłoń sięgająca do magazynka. Czyta tylko stan zreplikowany w graczu — nic tu
-## nie rozstrzyga gameplayu, więc każdy peer widzi to samo.
+## (ten sam co w weapon_view) plus lewa dłoń sięgająca do magazynka. Czyta tylko stan zreplikowany w graczu — poza nic
+## nie rozstrzyga w gameplayu, więc każdy peer widzi to samo. Rozgrywka bierze stąd tylko `aim_points`: chwyt i wylot lufy
+## z pozy nominalnej (postawa, kąt, broń, model), bez udziału bieżącej klatki animacji.
 ##
 ## Układ: model patrzy w +X, kamera stoi na +Z (bliższa jest prawa strona postaci), stopy w y = 0.
 ## Odbicie (patrzenie w lewo) to flip_h na sprite'ie — jak w arkuszach 2D.
@@ -174,10 +175,20 @@ var _gun: Node3D
 var _gun_key := ""
 var _hands := 2
 var _gun_len := 1.2
-var _gun_info := {"rear": Vector3.ZERO, "fore": Vector3(0.4, 0.03, 0.0), "muzzle": Vector3(0.9, 0.08, 0.0)}   ## w układzie Godota (x, y w górę, z do kamery)
+var _gun_info := {"rear": Vector3.ZERO, "fore": Vector3(0.4, 0.03, 0.0), "muzzle": Vector3(0.9, 0.08, 0.0)}   ## dane trzymanej broni (gun_info): układ Godota (x, y w górę, z do kamery)
+static var _gun_infos := {}                  ## klucz broni → dane z gun_<klucz>.json (raz na sesję)
 var _b := {}                                 ## nazwa kości → indeks
 var _leg_len := {}                           ## długości [udo, goleń] (m)
 var _arm_len := {}                           ## długości [ramię, przedramię] (m)
+var _arm_hinge := {}                         ## strona → [oś zgięcia łokcia w układzie kości ramienia, … przedramienia] (z pozy spoczynkowej); brak = ręka prosta w spoczynku
+var _hand_rel := {}                          ## strona → orientacja dłoni względem przedramienia w spoczynku (do podziału skrętu nadgarstka)
+var _hand := {}                              ## strona → {"fix": Basis, "len": m, "thick": m}: układ anatomiczny dłoni zmierzony z siatki (_measure_hands)
+static var _hand_cache := {}                 ## nazwa modelu → to samo (pomiar raz na model)
+var _vis_aim := NAN                          ## rad: kąt broni modelu (goni kąt celowania sprężyną — broń ma bezwładność); NAN = pierwsza klatka
+var _vis_vel := 0.0                          ## rad/s
+var _last_recoil := 0.0
+var _stance := {}                            ## czy kuca → punkty postawy (biodra, kręgosłup, barki) do liczenia barków „nominalnych" (_stance_pts)
+var _posed := false                          ## pierwsza poza już policzona (drzewo klipów działa dopiero od pierwszej klatki)
 var _origin_x := 0.163                       ## oś ciała (m) — biodra w pozie spoczynkowej
 var _ankle_y := 0.077                        ## wysokość kostki na podłożu (m)
 var _time := 0.0
@@ -206,20 +217,34 @@ var _air_t := 0.0                            ## s w powietrzu (od odbicia)
 var sink_m := 0.0                            ## m: o tyle opuszczamy model pod podłoże (czyta view3d.gd)
 var _mc := {}                                ## bieżący cios bronią białą (krzywe ruchu), puste = brak ciosu
 const AW_STATES := ["idle", "run", "jump", "fall", "crouch", "crouch_walk", "revive"]
-## Pozy specyficzne dla broni: promień dłoni od barku (m) i opuszczenie względem linii celowania (− = wyżej, na ramieniu), rodzaj przeładowania
-## (mag / shell / cell / rail / bolt / pistol), cykl po strzale (pump / bolt), mnożniki wznosu lufy (climb) i cofnięcia ciała (body), odchylenie tułowia (lean, °).
+## Pozy specyficzne dla broni: promień początku układu broni od barku (m) i opuszczenie względem linii celowania (− = wyżej, na ramieniu), rodzaj przeładowania
+## (mag / shell / cell / rail / bolt / pistol), cykl po strzale (pump / bolt), mnożniki wznosu lufy (climb) i cofnięcia ciała (body), odchylenie tułowia (lean, °),
+## side — przesunięcie broni w poprzek ciała względem prawego barku (m, − = ku środkowi; domyślnie −0,13), wrist — kąt śródręcza dłoni tylnej względem lufy
+## (°, + = knykcie wyżej niż nadgarstek; chwyt pistoletowy 12, szyjka kolby −8, rękojeść broni białej −50), grip_dy — przesunięcie dłoni tylnej wzdłuż
+## chwytu (m, − = niżej: rękawica jest większa od pistoletu, więc trzyma go nisko, żeby zamek wystawał nad dłoń), follow — jak GUN_FOLLOW, dla tej broni.
 const WEAPON_POSE := {
 	"m83": {"reload": "mag", "radial": 0.30, "perp": 0.11, "climb": 1.0, "body": 1.0},
 	"sokol6": {"reload": "mag", "radial": 0.31, "perp": 0.11, "climb": 1.0, "body": 1.0},
-	"p64": {"reload": "pistol", "radial": 0.34, "perp": 0.07, "climb": 1.6, "body": 0.6},
-	"spread12": {"reload": "mag", "cycle": "pump", "radial": 0.29, "perp": 0.11, "climb": 1.2, "body": 1.3},
-	"srut8": {"reload": "shell", "cycle": "pump", "radial": 0.28, "perp": 0.10, "climb": 1.4, "body": 1.7, "lean": -2.0},
+	"p64": {"reload": "pistol", "follow": 0.8, "radial": 0.56, "perp": 0.16, "side": -0.21, "wrist": -4.0, "grip_dy": -0.04, "climb": 1.6, "body": 0.6},
+	"spread12": {"reload": "mag", "cycle": "pump", "radial": 0.29, "perp": 0.11, "climb": 1.2, "body": 1.3, "wrist": -8.0},
+	"srut8": {"reload": "shell", "cycle": "pump", "radial": 0.28, "perp": 0.10, "climb": 1.4, "body": 1.7, "lean": -2.0, "wrist": -8.0},
 	"lr7": {"reload": "cell", "radial": 0.30, "perp": 0.11, "climb": 0.5, "body": 0.5},
-	"hkm9": {"reload": "cell", "radial": 0.24, "perp": 0.20, "climb": 0.3, "body": 0.5, "lean": 3.0},
+	"hkm9": {"reload": "cell", "radial": 0.24, "perp": 0.20, "climb": 0.3, "body": 0.5, "lean": 3.0, "wrist": -8.0},
 	"gniew4": {"reload": "shell", "radial": 0.20, "perp": -0.03, "climb": 1.2, "body": 2.2, "lean": -6.0},
 	"widmo1": {"reload": "rail", "radial": 0.27, "perp": 0.10, "climb": 1.0, "body": 2.4, "lean": -6.0},
-	"ciegno6": {"reload": "bolt", "cycle": "bolt", "radial": 0.31, "perp": 0.10, "climb": 0.8, "body": 1.2},
+	"ciegno6": {"reload": "bolt", "cycle": "bolt", "radial": 0.31, "perp": 0.10, "climb": 0.8, "body": 1.2, "wrist": -8.0},
+	"maczeta": {"wrist": -50.0},
+	"kilof": {"wrist": -50.0},
 }
+const PALM_AT := 0.45                        ## środek dłoni: ułamek długości dłoni od nadgarstka (tam leży chwyt)
+const GRIP_HALF := 0.013                     ## pół grubości chwytu / rękojeści (m): o tyle dłoń leży obok jego osi
+const GUN_FOLLOW := 0.5                      ## ile ruchu barku względem pozy nominalnej przechodzi na broń (1 = broń sztywno przy barku, 0 = nieruchoma w pozie nominalnej)
+const AIM_SPRING := 34.0                     ## 1/s: sztywność sprężyny, którą broń MODELU goni kierunek celowania (rozgrywka celuje od razu)
+const MELEE_GUARD := 0.95                    ## rad: uniesienie ostrza w gardzie (broń biała w spoczynku)
+const UP_REACH := 0.10                       ## m: o tyle dalej od barku jest broń przy celowaniu pionowo w górę
+const CROUCH_DROP := 0.48                    ## m: o tyle niżej są biodra w przysiadzie (poza z kodu i barki nominalne)
+const SPINE_AIM := 0.13                      ## ułamek kąta celowania, o który pochyla się każda z trzech kości kręgosłupa
+const BODY_YAW := -22.0                      ## °: tułów zwrócony ku kamerze (broń po bliższej stronie)
 const AW_RATE := 13.0                        ## 1/s: tempo mieszania póz bazowych (przejścia ~80 ms)
 var _aw := {}                                ## wagi póz bazowych — płynne przejścia zamiast przeskoków
 var _down := 0.0                             ## 0..1 postęp upadku (rośnie przy „down”, maleje przy wstawaniu po reanimacji)
@@ -586,11 +611,24 @@ func set_look(char_name: String) -> bool:
 	_root3d.add_child(scene)
 	_b.clear()
 	for n in ["Hips", "Spine", "Spine1", "Spine2", "Neck", "Head", "LeftUpLeg", "LeftLeg", "LeftFoot", "RightUpLeg", "RightLeg", "RightFoot",
-			"LeftArm", "LeftForeArm", "LeftHand", "RightArm", "RightForeArm", "RightHand"]:
+			"LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand", "RightShoulder", "RightArm", "RightForeArm", "RightHand"]:
 		_b[n] = _sk.find_bone(PRE + n)
+	_arm_hinge.clear()
 	for side in ["Left", "Right"]:
 		_leg_len[side] = [_rest_dist(side + "UpLeg", side + "Leg"), _rest_dist(side + "Leg", side + "Foot")]
 		_arm_len[side] = [_rest_dist(side + "Arm", side + "ForeArm"), _rest_dist(side + "ForeArm", side + "Hand")]
+		# oś zgięcia łokcia: w spoczynku ręka jest lekko ugięta — normalna tej płaszczyzny, zapisana w układach obu kości, mówi, w którą stronę zgina się łokieć
+		var ga := _sk.get_bone_global_rest(_b[side + "Arm"])
+		var gf := _sk.get_bone_global_rest(_b[side + "ForeArm"])
+		var gh := _sk.get_bone_global_rest(_b[side + "Hand"])
+		var hinge := (gf.origin - ga.origin).cross(gh.origin - gf.origin)
+		if hinge.length() > 0.08 * float(_arm_len[side][0]) * float(_arm_len[side][1]):           # zgięcie w spoczynku ≥ ok. 5°
+			hinge = hinge.normalized()
+			_arm_hinge[side] = [ga.basis.orthonormalized().inverse() * hinge, gf.basis.orthonormalized().inverse() * hinge]
+		_hand_rel[side] = gf.basis.orthonormalized().inverse() * gh.basis.orthonormalized()
+	_stance.clear()
+	_posed = false
+	_measure_hands(scene)
 	_clips = CharClips.build(_sk, char_name, clips_raw)
 	if _clips != null:
 		_sk.get_parent().add_child(_clips)
@@ -639,7 +677,9 @@ func set_gun(key: String) -> void:
 			(mi as MeshInstance3D).layers = 2
 			(mi as MeshInstance3D).material_override = _normal_mat
 	_gun_key = key
-	_load_gun_info(path.get_basename() + ".json")
+	_gun_info = gun_info(key)
+	_hands = int(_gun_info["hands"])
+	_gun_len = float(_gun_info["length"])
 
 ## Materiały broni z GLB (albedo + normalne + ORM + opcjonalnie emisja): pełna metaliczność z tekstury — stal odbija „niebo odbić" warstwy graczy
 ## (view3d.gd, `_actor_reflection_sky`) i światła sceny; reszta modeli ma metaliczność wyzerowaną w shaderach. Emisja (cewki, kontrolki) wzmocniona
@@ -658,15 +698,28 @@ func _tune_gun_materials(root: Node) -> void:
 				if sm.emission_enabled:
 					sm.emission_energy_multiplier = 1.8
 
-func _load_gun_info(path: String) -> void:
-	if not FileAccess.file_exists(path):
-		return
-	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
-	for k in ["rear", "fore", "muzzle"]:
-		var a: Array = d[k]
-		_gun_info[k] = Vector3(float(a[0]), float(a[2]), -float(a[1]))      # Blender (x, y, z) → Godot (x, z, −y)
-	_hands = int(d.get("hands", 2))
-	_gun_len = float(d.get("length", 1.2))
+## Dane broni z `gun_<klucz>.json` w układzie Godota (x wzdłuż lufy, y w górę, z ku prawej stronie postaci), raz na sesję: rear = początek układu modelu,
+## grip = środek chwytu (dłoń tylna), hold = spód łoża (dłoń przednia; hold_v = chwyt przedni pionowy), fore = stary punkt dłoni przedniej, muzzle = wylot.
+static func gun_info(key: String) -> Dictionary:
+	if _gun_infos.has(key):
+		return _gun_infos[key]
+	var o := {"rear": Vector3.ZERO, "fore": Vector3(0.4, 0.03, 0.0), "muzzle": Vector3(0.9, 0.08, 0.0), "hands": 2, "length": 1.2, "hold_v": false}
+	var path := DIR + "gun_%s.json" % key
+	if FileAccess.file_exists(path):
+		var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+		for k in ["rear", "fore", "muzzle", "grip", "hold"]:
+			if d.has(k):
+				var a: Array = d[k]
+				o[k] = Vector3(float(a[0]), float(a[2]), -float(a[1]))      # Blender (x, y, z) → Godot (x, z, −y)
+		o["hands"] = int(d.get("hands", 2))
+		o["length"] = float(d.get("length", 1.2))
+		o["hold_v"] = bool(d.get("hold_v", false))
+	if not o.has("grip"):                                         # stary plik bez punktów chwytu: przybliżenie z punktów nadgarstków
+		o["grip"] = (o["rear"] as Vector3) + Vector3(0.0, 0.06, 0.0)
+	if not o.has("hold"):
+		o["hold"] = (o["fore"] as Vector3) + Vector3(0.0, 0.09, 0.0)
+	_gun_infos[key] = o
+	return o
 
 func _rest_dist(a: String, b: String) -> float:
 	return _sk.get_bone_global_rest(_sk.find_bone(PRE + a)).origin.distance_to(_sk.get_bone_global_rest(_sk.find_bone(PRE + b)).origin)
@@ -716,6 +769,298 @@ func _two_bone(a: int, m: int, e: int, la: float, lb: float, target: Vector3, po
 	_point_bone(a, m, mid)
 	_point_bone(m, e, s + dn * dist)
 
+## IK ręki: jak `_two_bone`, ale ramię i przedramię są jeszcze obracane wokół własnej osi tak, żeby łokieć zginał się w swojej anatomicznej osi
+## (z pozy spoczynkowej). Bez tego obrót wokół osi kości jest przypadkowy (najkrótszy łuk od poprzedniej pozy) i siatka łokcia łamie się w bok.
+func _arm_ik(side: String, target: Vector3, pole: Vector3) -> void:
+	var a: int = _b[side + "Arm"]
+	var m: int = _b[side + "ForeArm"]
+	var e: int = _b[side + "Hand"]
+	var la: float = _arm_len[side][0]
+	var lb: float = _arm_len[side][1]
+	var s := _gp(a).origin
+	var d := target - s
+	var dist := clampf(d.length(), absf(la - lb) + 0.001, (la + lb) * 0.999)
+	var dn := d.normalized()
+	var x := (la * la - lb * lb + dist * dist) / (2.0 * dist)
+	var h := sqrt(maxf(la * la - x * x, 0.0))
+	var pv := pole - dn * pole.dot(dn)
+	pv = pv.normalized() if pv.length() > 0.0001 else Vector3.UP
+	var mid := s + dn * x + pv * h
+	var tip := s + dn * dist
+	var hl: Array = _arm_hinge.get(side, [])
+	var bend := (mid - s).cross(tip - mid)
+	var roll := not hl.is_empty() and bend.length() > 0.02 * la * lb
+	_point_bone(a, m, mid)
+	if roll:
+		_roll_to(a, (mid - s).normalized(), hl[0], bend)
+	_point_bone(m, e, tip)
+	if roll:
+		_roll_to(m, (tip - mid).normalized(), hl[1], bend)
+
+## Obraca kość wokół jej osi tak, żeby kierunek `local_ref` (w układzie kości) wskazywał `want` (rzut na płaszczyznę prostopadłą do osi).
+func _roll_to(i: int, axis: Vector3, local_ref: Vector3, want: Vector3) -> void:
+	var g := _gp(i).basis
+	var cur := g.orthonormalized() * local_ref
+	cur -= axis * cur.dot(axis)
+	want -= axis * want.dot(axis)
+	if cur.length() < 0.01 or want.length() < 0.0001:
+		return
+	_set_global_basis(i, Basis(axis, cur.normalized().signed_angle_to(want.normalized(), axis)) * g)
+
+## Ustawia orientację dłoni (w przestrzeni szkieletu) i oddaje część skrętu nadgarstka przedramieniu — model nie ma kości skrętu, więc cały skręt
+## w jednym stawie zwijał rękaw jak cukierek. w < 1 miesza orientację z tą, którą dłoń ma sama z siebie (przedłużenie przedramienia).
+func _set_hand(side: String, gb: Basis, w := 1.0, share := 0.55) -> void:
+	var f: int = _b[side + "ForeArm"]
+	var hnd: int = _b[side + "Hand"]
+	var gf := _gp(f).basis.orthonormalized()
+	var follow: Basis = gf * (_hand_rel[side] as Basis)              # dłoń sztywno za przedramieniem, jak w spoczynku
+	gb = gb.orthonormalized()
+	if w < 1.0:
+		gb = follow.slerp(gb, w)
+	var axis := (_gp(hnd).origin - _gp(f).origin).normalized()
+	var q := (gb * follow.inverse()).get_rotation_quaternion()
+	var tw := wrapf(2.0 * atan2(Vector3(q.x, q.y, q.z).dot(axis), q.w), -PI, PI)
+	_set_global_basis(f, Basis(axis, clampf(tw * share, -1.5, 1.5)) * _gp(f).basis)
+	_set_global_basis(hnd, gb)
+
+## Obojczyki wracają do pozy spoczynkowej: klipy z biblioteki cofają prawy bark o kilkanaście centymetrów (ręce zwisają tam swobodnie), a od barku
+## liczymy położenie broni — karabin lądował przez to na środku piersi, pod brodą. Gdy ręce prowadzi IK, obojczykiem rusza tylko `_reach_clavicle`.
+func _rest_clavicles() -> void:
+	for side in ["Left", "Right"]:
+		var c: int = _b[side + "Shoulder"]
+		if c >= 0:
+			_sk.set_bone_pose_rotation(c, _sk.get_bone_rest(c).basis.get_rotation_quaternion())
+
+## Obojczyk podąża za ręką: bark przesuwa się ku celowi dłoni o ułamek `w` kąta (najwyżej `max_deg`). Wołać przed IK ręki.
+func _reach_clavicle(side: String, target: Vector3, w: float, max_deg := 16.0) -> void:
+	var c: int = _b[side + "Shoulder"]
+	if c < 0:
+		return
+	var o := _gp(c).origin
+	var cur := (_gp(_b[side + "Arm"]).origin - o).normalized()
+	var to := (target - o).normalized()
+	var axis := cur.cross(to)
+	if axis.length() < 0.001:
+		return
+	_rot_world(c, axis.normalized(), minf(cur.angle_to(to) * w, deg_to_rad(max_deg)))
+
+## Układ anatomiczny dłoni z siatki modelu: kości Tripo mają przypadkowe osie (inne w każdym modelu i w każdej dłoni), więc kierunek palców i grzbiet dłoni
+## bierzemy z wierzchołków przypisanych do kości dłoni — palce: od nadgarstka do środka ciężkości, grzbiet: najcieńszy wymiar bryły (dłoń jest płaska),
+## po tej stronie, przy której kciuk wypada z przodu (w pozie A / T kciuki patrzą w przód). fix = orientacja kości względem tego układu.
+func _measure_hands(scene: Node) -> void:
+	if _hand_cache.has(_char_name):
+		_hand = _hand_cache[_char_name]
+		return
+	var out := {}
+	for side in ["Left", "Right"]:
+		var hb: int = _b[side + "Hand"]
+		var rest := _sk.get_bone_global_rest(hb)
+		var wrist := rest.origin
+		var pts := PackedVector3Array()
+		for n in scene.find_children("*", "MeshInstance3D", true, false):
+			var mi := n as MeshInstance3D
+			if mi.skin == null or mi.mesh == null or mi.layers == 2:
+				continue
+			var bind := -1
+			for j in mi.skin.get_bind_count():
+				var bn := String(mi.skin.get_bind_name(j))
+				if (bn != "" and bn == _sk.get_bone_name(hb)) or (bn == "" and mi.skin.get_bind_bone(j) == hb):
+					bind = j
+			if bind < 0:
+				continue
+			var xf := _xf_under(_sk, scene).affine_inverse() * _xf_under(mi, scene)
+			for si in mi.mesh.get_surface_count():
+				var arr := mi.mesh.surface_get_arrays(si)
+				var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+				if arr[Mesh.ARRAY_BONES] == null or vs.is_empty():
+					continue
+				var bs: PackedInt32Array = arr[Mesh.ARRAY_BONES]
+				var ws: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
+				var per := bs.size() / vs.size()
+				for v in vs.size():
+					var wsum := 0.0
+					for k in per:
+						if bs[v * per + k] == bind:
+							wsum += ws[v * per + k]
+					if wsum > 0.5:
+						pts.append(xf * vs[v])
+		var fwd := (wrist - _sk.get_bone_global_rest(_b[side + "ForeArm"]).origin).normalized()      # zapas: dłoń jako przedłużenie przedramienia
+		var back := Vector3.UP
+		var length := 0.18
+		var thick := 0.03
+		if pts.size() >= 12:
+			var c := Vector3.ZERO
+			for q in pts:
+				c += q
+			c /= float(pts.size())
+			var thin := _thin_axis(pts, c)
+			var f := (c - wrist) - thin * (c - wrist).dot(thin)
+			if f.length() > 0.01:
+				fwd = f.normalized()
+				back = thin
+				var lo := 0.0
+				var hi := 0.0
+				length = 0.0
+				for q in pts:
+					length = maxf(length, (q - wrist).dot(fwd))
+					lo = minf(lo, (q - c).dot(thin))
+					hi = maxf(hi, (q - c).dot(thin))
+				thick = (hi - lo) * 0.3
+		back = (back - fwd * back.dot(fwd)).normalized()
+		var thumb := back.cross(fwd) if side == "Right" else fwd.cross(back)
+		if thumb.x < 0.0:
+			back = -back
+		out[side] = {"fix": Basis(fwd, back, fwd.cross(back)).inverse() * rest.basis.orthonormalized(), "len": length, "thick": thick, "n": pts.size(), "f": fwd, "b": back}
+	_hand_cache[_char_name] = out
+	_hand = out
+
+## Transformacja węzła względem przodka `top` (bez drzewa sceny — model bywa mierzony, zanim do niego trafi).
+static func _xf_under(n: Node, top: Node) -> Transform3D:
+	var xf := Transform3D.IDENTITY
+	while n != null and n != top:
+		if n is Node3D:
+			xf = (n as Node3D).transform * xf
+		n = n.get_parent()
+	return xf
+
+## Najcieńszy wymiar chmury punktów (oś o najmniejszej wariancji): dwie największe osie metodą potęgową, trzecia z iloczynu wektorowego.
+static func _thin_axis(pts: PackedVector3Array, c: Vector3) -> Vector3:
+	var r0 := Vector3.ZERO
+	var r1 := Vector3.ZERO
+	var r2 := Vector3.ZERO
+	for q in pts:
+		var d := q - c
+		r0 += d * d.x
+		r1 += d * d.y
+		r2 += d * d.z
+	var v1 := Vector3(0.6, 0.5, 0.62).normalized()
+	for i in 48:
+		v1 = Vector3(r0.dot(v1), r1.dot(v1), r2.dot(v1)).normalized()
+	var l1 := v1.dot(Vector3(r0.dot(v1), r1.dot(v1), r2.dot(v1)))
+	var v2 := v1.cross(Vector3(0.3, -0.8, 0.52)).normalized()
+	for i in 48:
+		v2 = Vector3(r0.dot(v2), r1.dot(v2), r2.dot(v2)) - v1 * (l1 * v1.dot(v2))
+		v2 = (v2 - v1 * v2.dot(v1)).normalized()
+	return v1.cross(v2).normalized()
+
+## Cel dłoni (orientacja kości i pozycja nadgarstka w przestrzeni szkieletu), gdy środek dłoni ma leżeć w punkcie `point` broni: `f` = kierunek palców,
+## `back` = strona grzbietu dłoni (oba w układzie broni), `off` = odstęp wnętrza dłoni od punktu (pół grubości tego, co trzyma).
+func _hand_target(side: String, gx: Transform3D, point: Vector3, f: Vector3, back: Vector3, off: float) -> Transform3D:
+	var hd: Dictionary = _hand[side]
+	var fw := (gx.basis * f).normalized()
+	var bw := gx.basis * back
+	bw = (bw - fw * bw.dot(fw)).normalized()
+	return Transform3D(Basis(fw, bw, fw.cross(bw)) * (hd["fix"] as Basis), gx * point - fw * (float(hd["len"]) * PALM_AT) + bw * (float(hd["thick"]) + off))
+
+## Kierunek palców dłoni na chwycie / rękojeści w układzie broni (kąt `wrist` z WEAPON_POSE).
+static func _wrist_dir(wp: Dictionary) -> Vector3:
+	var a := deg_to_rad(float(wp.get("wrist", 12.0)))
+	return Vector3(cos(a), sin(a), 0.0)
+
+## Cel dłoni przedniej w chwycie: pod łożem (wnętrzem do góry, palce owijają łoże od strony kamery), na chwycie pionowym albo — przy pistolecie —
+## pod stopką chwytu (podparcie od dołu: dłonie modelu są otwarte, więc złożone bokami wyglądałyby jak do oklasków).
+func _left_hold(gx: Transform3D, info: Dictionary, wp: Dictionary) -> Transform3D:
+	if String(wp.get("reload", "")) == "pistol":
+		return _hand_target("Left", gx, (info["grip"] as Vector3) + Vector3(-0.01, -0.105, 0.0), Vector3(0.42, 0.22, 0.88), Vector3.DOWN, 0.0)
+	if bool(info.get("hold_v", false)):
+		return _hand_target("Left", gx, info["hold"], _wrist_dir(wp), Vector3.FORWARD, GRIP_HALF)
+	return _hand_target("Left", gx, info["hold"], Vector3(0.42, 0.22, 0.88), Vector3.DOWN, 0.0)
+
+## Początek układu broni dla barków sr / sl: na promieniu `radial` od prawego barku wzdłuż kierunku `hd`, opuszczony o `perp`; broń trzymana oburącz jest
+## wsuwana ku ciału, dopóki dłoń przednia nie sięga swojego chwytu. Wspólne dla pozy (barki z animacji) i punktów celowania rozgrywki (barki nominalne).
+func _gun_origin(sr: Vector3, sl: Vector3, hd: float, gun_b: Basis, radial: float, perp: float, info: Dictionary, wp: Dictionary, two: bool) -> Vector3:
+	var reach_l: float = (float(_arm_len["Left"][0]) + float(_arm_len["Left"][1])) * 0.97
+	var side_z := float(wp.get("side", -0.13))
+	var rear := Vector3.ZERO
+	for k in 8:
+		# celowanie w dół: broń wysuwa się ku kamerze, żeby nie chować się za tułowiem (z=+ to bliższa strona)
+		# celowanie w górę: broń odsuwa się od barku, żeby ręce nie zasłaniały twarzy
+		var r := radial + UP_REACH * maxf(0.0, sin(hd))
+		rear = sr + Vector3(cos(hd), sin(hd), 0.0) * r - Vector3(-sin(hd), cos(hd), 0.0) * perp + Vector3(0.0, 0.0, side_z + 0.28 * maxf(0.0, -sin(hd)))
+		if not two or _left_hold(Transform3D(gun_b, rear), info, wp).origin.distance_to(sl) <= reach_l:
+			break
+		radial -= 0.035
+	return rear
+
+## Kąt celowania w górę od poziomu (rad) z kierunku na ekranie (y w dół); lustro załatwia odbicie postaci.
+static func _aim_theta(aim: Vector2) -> float:
+	var ax := absf(aim.x)
+	var theta := atan2(-aim.y, maxf(ax, 0.0001))
+	if ax < 0.05:
+		theta = PI * 0.5 * signf(-aim.y)
+	return clampf(theta, deg_to_rad(-80.0), deg_to_rad(85.0))
+
+## Punkty postawy do pozy nominalnej: biodra, trzy kości kręgosłupa i oba barki tam, gdzie stawia je klip postoju / kucania tego modelu (chwila 0,
+## bez nakładek z kodu), a bez klipów — w pozie spoczynkowej. Liczone raz na model i postawę; poza szkieletu po pomiarze wraca na miejsce.
+func _stance_pts(crouching: bool) -> Dictionary:
+	if _stance.has(crouching):
+		return _stance[crouching]
+	var st := "crouch" if crouching else "idle"
+	var clip := _clips != null and clips_on and CharClips.enabled and CharClips.has(st)
+	if clip and not _posed:
+		clip = false                                              # przed pierwszą klatką drzewo klipów jeszcze nie liczy — tymczasem poza spoczynkowa (bez zapamiętania)
+	var keep: Array = []
+	if clip:
+		for i in _sk.get_bone_count():
+			keep.append([_sk.get_bone_pose_position(i), _sk.get_bone_pose_rotation(i)])
+		_sk.reset_bone_poses()
+		CharClips.drive(_clips, {st: 1.0}, 0.0, 0.0, {})
+		_rest_clavicles()
+	var o := {"clip": clip, "S": []}
+	for n in ["Hips", "Spine", "Spine1", "Spine2", "RightArm", "LeftArm"]:
+		var q := _gp(_b[n]).origin if clip else _sk.get_bone_global_rest(_b[n]).origin
+		if n.begins_with("Spine"):
+			(o["S"] as Array).append(q)
+		else:
+			o[n] = q
+	if clip:
+		for i in _sk.get_bone_count():
+			_sk.set_bone_pose_position(i, keep[i][0])
+			_sk.set_bone_pose_rotation(i, keep[i][1])
+	if clip or _posed or _clips == null:
+		_stance[crouching] = o
+	return o
+
+## Barki (prawy, lewy) w pozie nominalnej: sama postawa (stoi / kuca), pochylenie od broni i celowanie tułowiem — bez kroku, kołysania, odrzutu,
+## trafień i lądowań. Te same obroty co w `_pose_body`, policzone na punktach postawy (`_stance_pts`).
+func _nominal_shoulders(theta: float, crouching: bool, wp: Dictionary) -> Array:
+	var sp := _stance_pts(crouching)
+	var clip := bool(sp["clip"])
+	var st := "crouch" if crouching else "idle"
+	# z klipem pochylenie i przysiad niesie klip (z kodu zostaje `drop` z tabeli klipów), bez klipu — poza z kodu
+	var lean := deg_to_rad((0.0 if clip else (6.0 if crouching else 4.0)) + float(wp.get("lean", 0.0)))
+	var drop := CharClips.param(st, "drop", 0.0) if clip else (CROUCH_DROP if crouching else 0.0)
+	var h: Vector3 = sp["Hips"]
+	var ss: Array = sp["S"]
+	var p: Array = [ss[0], ss[1], ss[2], sp["RightArm"], sp["LeftArm"]]
+	var tilt := Basis(Vector3.BACK, -lean)
+	for i in 5:
+		p[i] = h + Vector3(0.0, -drop, 0.0) + tilt * ((p[i] as Vector3) - h)
+	var yaw := Basis(Vector3.UP, deg_to_rad(BODY_YAW))
+	for i in range(1, 5):
+		p[i] = (p[0] as Vector3) + yaw * ((p[i] as Vector3) - (p[0] as Vector3))
+	var pitch := Basis(Vector3.BACK, theta * SPINE_AIM + lean * 0.12)
+	for j in 3:
+		for i in range(j + 1, 5):
+			p[i] = (p[j] as Vector3) + pitch * ((p[i] as Vector3) - (p[j] as Vector3))
+	return [p[3], p[4]]
+
+## Punkty celowania dla ROZGRYWKI: [chwyt, wylot lufy] w pikselach świata względem stóp, dla kierunku celowania `aim` (y w dół), strony `side` (±1),
+## postawy i broni `gun_key`. Liczone z pozy nominalnej, więc nie zależą od klatki animacji: bieg, odrzut, trafienie, przeładowanie ani obrót modelu
+## nie przesuwają toru pocisków, a każdy peer dostaje ten sam wynik dla tego samego stanu. Do efektów (błysk, wiązka) służą `muzzle_px` / `grip_px`.
+func aim_points(aim: Vector2, side: float, crouching: bool, gun_key: String) -> Array:
+	if not ResourceLoader.exists(DIR + "gun_%s.glb" % gun_key):
+		gun_key = DEFAULT_GUN
+	var info := gun_info(gun_key)
+	var wp: Dictionary = WEAPON_POSE.get(gun_key, {})
+	var theta := _aim_theta(aim)
+	var sh := _nominal_shoulders(theta, crouching, wp)
+	var gun_b := Basis(Vector3.BACK, theta)
+	var two := int(info["hands"]) == 2 or String(wp.get("reload", "")) == "pistol"
+	var rear := _gun_origin(sh[0], sh[1], theta, gun_b, float(wp.get("radial", 0.30)), float(wp.get("perp", 0.11)), info, wp, two)
+	var fl := -1.0 if side < 0.0 else 1.0
+	return [_to_px_side(rear, fl), _to_px_side(Transform3D(gun_b, rear) * (info["muzzle"] as Vector3), fl)]
+
 # ---------------------------------------------------------------- klatka
 
 ## anim: idle | run | jump | fall | crouch | crouch_walk | revive | down. aim: kierunek celowania na ekranie (y w dół).
@@ -731,11 +1076,7 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 	if not _on_screen:
 		return                                                    # poza ekranem nic nie rysujemy (viewport wyłączony), pozę nadrobi pierwsza klatka po wejściu
 	_sk.reset_bone_poses()
-	var ax := absf(aim.x)
-	var theta := atan2(-aim.y, maxf(ax, 0.0001))               # kąt w górę od poziomu; ax≥0 (lustro załatwia flip_h)
-	if ax < 0.05:
-		theta = PI * 0.5 * signf(-aim.y)
-	theta = clampf(theta, deg_to_rad(-80.0), deg_to_rad(85.0))
+	var theta := _aim_theta(aim)
 	if hit_t >= 0.0:
 		hit_t += delta / 0.30
 		if hit_t >= 1.0:
@@ -758,11 +1099,25 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		_mc = _melee_curve(swing_t, "chop" if _gun_key == "kilof" else "slash")
 	sink_m = 0.45 * smoothstep(0.0, 1.0, dying)
 	_pose_body(delta, anim, speed, theta)
+	if not _posed:
+		_posed = true
+		_stance.clear()
 	var holding := armed and _down < 0.2 and throw_t < 0.0 and _clip_arms < 0.5
+	# bezwładność broni: kąt broni modelu goni kąt celowania sprężyną lekko niedotłumioną (obrót o 45° trwa ok. 0,1 s i kończy się drobnym wybiegiem);
+	# strzał dociąga broń na linię celowania od razu, żeby błysk wylotowy nie rozjechał się z torem pocisku
+	if is_nan(_vis_aim) or not holding or recoil_px > _last_recoil + 0.05 or delta > 0.1:
+		_vis_aim = theta
+		_vis_vel = 0.0
+	else:
+		_vis_vel += ((theta - _vis_aim) * AIM_SPRING * AIM_SPRING - _vis_vel * 2.0 * 0.78 * AIM_SPRING) * delta
+		_vis_aim += _vis_vel * delta
+	_last_recoil = recoil_px
+	if armed and _down < 0.2 and _clip_arms < 0.5:
+		_rest_clavicles()
 	if throw_t >= 0.0 and armed and _down < 0.2:
 		_pose_throw(theta)
 	elif holding:
-		_pose_arms(theta)
+		_pose_arms(_vis_aim)
 	else:
 		_pose_arms_relaxed(_clip_down < 0.5 and _clip_arms < 0.5)   # z klipem upadku albo klęczenia ręce zostają z klipu
 	if _gun != null:
@@ -789,10 +1144,10 @@ func _body_state(a: String) -> Dictionary:
 			drop = -0.05 * float(ap["tk"]) + 0.05 * float(ap["tuck"])             # wyprost przy odbiciu, w apeksie biodra niżej względem podciągniętych nóg
 		"crouch", "revive":                                       # „revive" bez klipu to zwykły przysiad
 			lean = 6.0                                                # przysiad: tułów prawie pionowo, kolana do przodu
-			drop = 0.48                                               # głęboki przysiad: sylwetka ok. 0,65 wysokości stojącej, jak hitbox kucania
+			drop = CROUCH_DROP                                               # głęboki przysiad: sylwetka ok. 0,65 wysokości stojącej, jak hitbox kucania
 		"crouch_walk":
 			lean = 6.0
-			drop = 0.48
+			drop = CROUCH_DROP
 			bob = 0.012 * sin(_phase * 2.0)
 	if clip > 0.0:
 		lean *= 1.0 - clip
@@ -931,9 +1286,9 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 			_rot_world(_b[side + "UpLeg"], Vector3.BACK, deg_to_rad(10.0) * sin(_time * 29.0 + (0.0 if side == "Left" else 2.3)))
 	# tułów zwraca się ku kamerze (broń po bliższej stronie) i pochyla się za celem
 	var aim_k := stand * (1.0 - _clip_arms)                       # klęczenie przy rannym: tułów nie celuje
-	_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(-22.0) * aim_k)
+	_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(BODY_YAW) * aim_k)
 	for n in ["Spine", "Spine1", "Spine2"]:
-		_rot_world(_b[n], Vector3.BACK, (theta * 0.13 + deg_to_rad(lean) * 0.12 - gun_extra * 0.06) * aim_k)
+		_rot_world(_b[n], Vector3.BACK, (theta * SPINE_AIM + deg_to_rad(lean) * 0.12 - gun_extra * 0.06) * aim_k)
 	_rot_world(_b["Head"], Vector3.BACK, (theta * 0.2 - deg_to_rad(lean) * 0.5) * aim_k + deg_to_rad(head_hit))
 	_pose_legs(e)
 
@@ -1032,84 +1387,89 @@ func _pose_legs(e: float) -> void:
 			flat = _gp(foot).basis.slerp(flat, 1.0 - smoothstep(0.3, 0.8, e))
 		_set_global_basis(foot, flat)
 
-## Broń wokół barku: prawa dłoń na chwycie pistoletowym; lewa na łożu (broń dwuręczna), sięga po magazynek przy przeładowaniu,
-## albo zwisa (pistolet, broń biała). Gdy łoże za daleko, broń jest wsuwana ku ciału.
+## Broń wokół barku: dłoń tylna obejmuje chwyt (grzbietem do kamery, palce wzdłuż broni), przednia podchodzi pod łoże (broń dwuręczna), sięga po
+## magazynek przy przeładowaniu, przy pistolecie dokłada się do chwytu, a przy broni białej zwisa. Gdy łoże jest za daleko, broń jest wsuwana ku ciału.
+## Ustawia też `muzzle_px` / `grip_px` — punkty MODELU dla efektów; rozgrywka liczy swoje z `aim_points`.
 func _pose_arms(theta: float) -> void:
 	var sr := _gp(_b["RightArm"]).origin
 	var sl := _gp(_b["LeftArm"]).origin
 	var swinging := not _mc.is_empty()
-	var aim_t := theta - (float(_mc["ang"]) if swinging else gun_extra)
-	var dirv := Vector3(cos(aim_t), sin(aim_t), 0.0)
-	var up := Vector3(-sin(aim_t), cos(aim_t), 0.0)
-	var gun_b := Basis(Vector3.BACK, aim_t)
-	var wpa: Dictionary = {} if swinging else WEAPON_POSE.get(_gun_key, {})
-	if not swinging and reload_t >= 0.0 and wpa.has("reload"):
-		aim_t = theta - _reload_tilt(String(wpa["reload"]), clampf(reload_t, 0.0, 1.0))   # pochylenie broni wg rodzaju przeładowania (zamiast jednej sinusoidy)
-		dirv = Vector3(cos(aim_t), sin(aim_t), 0.0)
-		up = Vector3(-sin(aim_t), cos(aim_t), 0.0)
-		gun_b = Basis(Vector3.BACK, aim_t)
-	var radial := float(_mc["rad"]) if swinging else float(wpa.get("radial", 0.30))
-	var perp := 0.11 if swinging else float(wpa.get("perp", 0.11))
+	var wp: Dictionary = WEAPON_POSE.get(_gun_key, {})
+	var wpa: Dictionary = {} if swinging else wp
+	var pistol := String(wp.get("reload", "")) == "pistol"
+	# broń biała w spoczynku: garda — ostrze uniesione, dłoń przed piersią; cios wychodzi z gardy i do niej wraca (bez gardy ostrze sterczało poziomo spod brody)
+	var guard := 0.0
+	if _hands == 1 and not pistol:
+		guard = 1.0 - smoothstep(0.0, 0.14, swing_t) + smoothstep(0.8, 1.0, swing_t) if swinging else 1.0
+	var aim_t := theta - (float(_mc["ang"]) if swinging else gun_extra) + MELEE_GUARD * guard
 	if not swinging:
+		if reload_t >= 0.0 and wpa.has("reload"):
+			aim_t = theta - _reload_tilt(String(wpa["reload"]), clampf(reload_t, 0.0, 1.0))   # pochylenie broni wg rodzaju przeładowania (zamiast jednej sinusoidy)
 		aim_t += clampf(recoil_px * 0.012 * float(wpa.get("climb", 1.0)), 0.0, 0.18)       # wznos lufy po strzale
-		dirv = Vector3(cos(aim_t), sin(aim_t), 0.0)
-		up = Vector3(-sin(aim_t), cos(aim_t), 0.0)
-		gun_b = Basis(Vector3.BACK, aim_t)
-	var rear := Vector3.ZERO
-	var fore := Vector3.ZERO
-	var reach_l: float = _arm_len["Left"][0] + _arm_len["Left"][1]
-	var kick_m := gun_kick_px / WP_PER_M * 0.6
-	# celowanie w dół: broń wysuwa się ku kamerze, żeby nie chować się za tułowiem (z=+ to bliższa strona)
-	for k in 8:
-		var hd := aim_t if swinging else theta                    # przy ciosie dłoń wędruje po łuku wokół barku (razem z ostrzem)
-		rear = sr + Vector3(cos(hd), sin(hd), 0.0) * radial - Vector3(-sin(hd), cos(hd), 0.0) * perp + Vector3(0.0, 0.0, -0.13 + 0.28 * maxf(0.0, -sin(hd)))
-		rear -= dirv * kick_m
-		if charge_t > 0.0:                                        # ładowanie szyny: drżenie trzymanej broni
-			rear += Vector3(randf() - 0.5, randf() - 0.5, 0.0) * 0.018 * charge_t
-		fore = rear + gun_b * (_gun_info["fore"] as Vector3)
-		if _hands == 1 or fore.distance_to(sl) <= reach_l * 0.97:
-			break
-		radial -= 0.035
+	var gun_b := Basis(Vector3.BACK, aim_t)
+	var radial := lerpf(float(_mc["rad"]) if swinging else float(wpa.get("radial", 0.30)), 0.25, guard)
+	var perp := lerpf(0.11 if swinging else float(wpa.get("perp", 0.11)), 0.30, guard)
+	var two := (_hands == 2 or pistol) and not swinging
+	var hd := lerpf(aim_t, theta, guard) if swinging else theta    # przy ciosie dłoń wędruje po łuku wokół barku (razem z ostrzem)
+	# broń palna trzyma się pozy nominalnej (tej, z której rozgrywka liczy wylot), a ruch barku z animacji — krok, kołysanie, odrzut ciała, trafienie —
+	# przechodzi na nią tylko w części: ciało pracuje pod bronią, ręce to wybierają, a lufa zostaje przy torze pocisku
+	var anchor := sr
+	if _hands == 2 or pistol:
+		var wsum := 0.0
+		for n in AW_STATES:
+			wsum += float(_aw.get(n, 0.0))
+		var wc := (float(_aw.get("crouch", 0.0)) + float(_aw.get("crouch_walk", 0.0))) / maxf(wsum, 0.0001)
+		var nom: Vector3 = (_nominal_shoulders(theta, false, wp)[0] as Vector3).lerp(_nominal_shoulders(theta, true, wp)[0], wc) if wc > 0.001 else _nominal_shoulders(theta, false, wp)[0]
+		anchor = nom + (sr - nom) * float(wp.get("follow", GUN_FOLLOW))
+	var rear := _gun_origin(anchor, sl, hd, gun_b, radial, perp, _gun_info, wpa, two)
+	rear -= gun_b.x * (gun_kick_px / WP_PER_M * 0.6)
+	if charge_t > 0.0:                                            # ładowanie szyny: drżenie trzymanej broni
+		rear += Vector3(randf() - 0.5, randf() - 0.5, 0.0) * 0.018 * charge_t
 	var gx := Transform3D(gun_b, rear)
 	if _gun != null:
 		_gun.transform = gx
 		if _gun_n != null:
 			_gun_n.transform = gx
-	_two_bone(_b["RightArm"], _b["RightForeArm"], _b["RightHand"], _arm_len["Right"][0], _arm_len["Right"][1], rear, Vector3(-0.35, -1.0, 0.55))
-	if _hands == 2:
-		var lt := fore
-		if climb_t >= 0.0:                                        # podciągnięcie: wolna ręka podpiera się o krawędź platformy
-			lt = fore.lerp(sl + Vector3(0.20, -reach_l * 0.97, 0.08), sin(PI * climb_t))
-		elif reload_t >= 0.0:                                       # przeładowanie wg rodzaju broni: lewa dłoń po torze (magazynek, naboje, ogniwo, zamek)
-			lt = rear + gun_b * _left_path(String(wpa.get("reload", "mag")), clampf(reload_t, 0.0, 1.0), _gun_info["fore"] as Vector3)
-		elif cycle_t >= 0.0 and String(wpa.get("cycle", "")) != "":  # cykl po strzale: pompka (dłoń po łożu tam i z powrotem) / zamek
-			var fl: Vector3 = _gun_info["fore"]
+	var rh := _hand_target("Right", gx, (_gun_info["grip"] as Vector3) + Vector3(0.0, float(wp.get("grip_dy", 0.0)), 0.0), _wrist_dir(wp), Vector3.BACK, GRIP_HALF)
+	_reach_clavicle("Right", rh.origin, 0.22)
+	_arm_ik("Right", rh.origin, Vector3(-0.35, -1.0, 0.55))
+	_set_hand("Right", rh.basis)
+	if swinging or _gun_key == "kilof":
+		_pose_left_melee(gx, "chop" if _gun_key == "kilof" else "slash")
+	elif two:
+		var lh := _left_hold(gx, _gun_info, wp)
+		var keep := 1.0                                           # ile orientacji chwytu zostaje dłoni (w drodze po magazynek dłoń idzie za przedramieniem)
+		var reach_l: float = float(_arm_len["Left"][0]) + float(_arm_len["Left"][1])
+		if climb_t >= 0.0 and not pistol:                         # podciągnięcie: wolna ręka podpiera się o krawędź platformy
+			var cw := sin(PI * climb_t)
+			lh.origin = lh.origin.lerp(sl + Vector3(0.20, -reach_l * 0.97, 0.08), cw)
+			keep = 1.0 - cw
+		elif reload_t >= 0.0:
+			var u := clampf(reload_t, 0.0, 1.0)
+			keep = 1.0 - 0.85 * sin(PI * u)
+			if pistol:
+				# pistolet: lewa dłoń schodzi po magazynek do pasa, wsuwa go od dołu w chwyt i wraca do chwytu oburącz
+				var belt := sl + Vector3(-0.06, -reach_l * 0.95, 0.04)
+				var well := gx * ((_gun_info["grip"] as Vector3) + Vector3(-0.02, -0.14, -0.04))
+				if u < 0.35:
+					lh.origin = lh.origin.lerp(belt, smoothstep(0.0, 0.35, u))
+				elif u < 0.75:
+					lh.origin = belt.lerp(well, smoothstep(0.35, 0.75, u))
+				else:
+					lh.origin = well.lerp(lh.origin, smoothstep(0.75, 1.0, u))
+			else:                                                 # przeładowanie wg rodzaju broni: środek lewej dłoni po torze (magazynek, naboje, ogniwo, zamek)
+				var palm := _left_path(String(wpa.get("reload", "mag")), u, _gun_info["hold"] as Vector3)
+				lh.origin += gx * palm - gx * (_gun_info["hold"] as Vector3)
+		elif cycle_t >= 0.0 and String(wpa.get("cycle", "")) != "":   # cykl po strzale: pompka (dłoń po łożu tam i z powrotem) / zamek
 			if String(wpa["cycle"]) == "pump":
-				var bump := sin(clampf((cycle_t - 0.12) / 0.6, 0.0, 1.0) * PI)
-				lt = rear + gun_b * (fl + Vector3(-0.17 * bump, 0.0, 0.0))
+				lh.origin += gun_b.x * (-0.17 * sin(clampf((cycle_t - 0.12) / 0.6, 0.0, 1.0) * PI))
 			else:
-				lt = rear + gun_b * _left_path("bolt", clampf(cycle_t / 0.9, 0.0, 1.0), fl)
-		_two_bone(_b["LeftArm"], _b["LeftForeArm"], _b["LeftHand"], _arm_len["Left"][0], _arm_len["Left"][1], lt, Vector3(-0.25, -1.0, -0.4))
-		_set_global_basis(_b["LeftHand"], gx.basis)
-	elif swinging:
-		_pose_left_melee(gx, rear)
-	elif reload_t >= 0.0 and String(wpa.get("reload", "")) == "pistol":
-		# pistolet: lewa ręka podchodzi po magazynek z pasa (w dół i w tył), wsuwa go w chwyt i wraca
-		var rl2 := clampf(reload_t, 0.0, 1.0)
-		var reach2: float = _arm_len["Left"][0] + _arm_len["Left"][1]
-		var belt := sl + Vector3(-0.06, -reach2 * 0.95, 0.04)
-		var well := rear + gun_b * Vector3(0.05, -0.15, 0.0)
-		var tgt: Vector3
-		if rl2 < 0.35:
-			tgt = sl.lerp(belt, smoothstep(0.0, 0.35, rl2)) + Vector3(0.12, 0.0, 0.0) * (1.0 - smoothstep(0.0, 0.35, rl2))
-		elif rl2 < 0.75:
-			tgt = belt.lerp(well, smoothstep(0.35, 0.75, rl2))
-		else:
-			tgt = well.lerp(sl + Vector3(0.12, -reach2 * 0.9, 0.05), smoothstep(0.75, 1.0, rl2))
-		_two_bone(_b["LeftArm"], _b["LeftForeArm"], _b["LeftHand"], _arm_len["Left"][0], _arm_len["Left"][1], tgt, Vector3(-0.3, -1.0, -0.5))
+				lh.origin += gx * _left_path("bolt", clampf(cycle_t / 0.9, 0.0, 1.0), _gun_info["hold"] as Vector3) - gx * (_gun_info["hold"] as Vector3)
+		_reach_clavicle("Left", lh.origin, 0.22)
+		_arm_ik("Left", lh.origin, Vector3(-0.25, -1.0, -0.4))
+		_set_hand("Left", lh.basis, keep)
 	else:
 		_pose_left_relaxed()
-	_set_global_basis(_b["RightHand"], gx.basis * Basis(Vector3.FORWARD, deg_to_rad(8.0)))
 	muzzle_px = _to_px(gx * (_gun_info["muzzle"] as Vector3))
 	grip_px = _to_px(rear)
 
@@ -1120,7 +1480,7 @@ func _pose_throw(theta: float) -> void:
 	var sr := _gp(_b["RightArm"]).origin
 	var reach: float = (_arm_len["Right"][0] + _arm_len["Right"][1]) * 0.92
 	var target := sr + Vector3(cos(ang), sin(ang), 0.0) * reach + Vector3(0.0, 0.0, 0.06)
-	_two_bone(_b["RightArm"], _b["RightForeArm"], _b["RightHand"], _arm_len["Right"][0], _arm_len["Right"][1], target, Vector3(-0.3, -0.6, 0.6))
+	_arm_ik("Right", target, Vector3(-0.3, -0.6, 0.6))
 	_pose_left_relaxed()
 	muzzle_px = _to_px(target)
 	grip_px = muzzle_px
@@ -1146,7 +1506,7 @@ func _reload_tilt(kind: String, u: float) -> float:
 			var slap := -0.09 * sin(PI * clampf((u - 0.84) / 0.08, 0.0, 1.0))
 			return 0.55 * env + jolt + slap
 
-## Tor lewej dłoni przy przeładowaniu w układzie broni (względem chwytu tylnego); u ∈ 0..1 to postęp przeładowania.
+## Tor środka lewej dłoni przy przeładowaniu w układzie broni (względem początku układu modelu); u ∈ 0..1 to postęp przeładowania, fore_l = punkt chwytu łoża.
 ## mag — wysuń magazynek, weź nowy z pasa, wsuń, przeładuj zamek; shell — kilka razy: nabój z pasa do gniazda; cell — ogniwo z góry; rail — jak cell, wolniej;
 ## bolt — odciągnięcie i dosunięcie zamka. Pozycje zależne od długości broni.
 func _left_path(kind: String, u: float, fore_l: Vector3) -> Vector3:
@@ -1155,7 +1515,7 @@ func _left_path(kind: String, u: float, fore_l: Vector3) -> Vector3:
 	match kind:
 		"shell":
 			var v := fposmod(u * 3.0, 1.0)                            # trzy ładowania
-			P = [[0.0, fore_l], [0.25, Vector3(-0.04, -0.60, 0.0)], [0.55, Vector3(L * 0.16, -0.12, 0.0)], [0.72, Vector3(L * 0.16, -0.12, 0.0)], [1.0, fore_l]]
+			P = [[0.0, fore_l], [0.25, Vector3(-0.04, -0.50, 0.0)], [0.55, Vector3(L * 0.16, -0.02, 0.0)], [0.72, Vector3(L * 0.16, -0.02, 0.0)], [1.0, fore_l]]
 			return _path_eval(P, v)
 		"cell", "rail":
 			P = [[0.0, fore_l], [0.18, Vector3(L * 0.08, 0.14, 0.0)], [0.38, Vector3(L * 0.08, 0.36, 0.0)], [0.55, Vector3(-0.10, -0.55, 0.0)],
@@ -1166,6 +1526,8 @@ func _left_path(kind: String, u: float, fore_l: Vector3) -> Vector3:
 		_:
 			P = [[0.0, fore_l], [0.18, Vector3(L * 0.10, -0.22, 0.0)], [0.34, Vector3(L * 0.10, -0.46, 0.0)], [0.48, Vector3(-0.08, -0.60, 0.0)],
 				[0.64, Vector3(L * 0.10, -0.30, 0.0)], [0.74, Vector3(L * 0.10, -0.12, 0.0)], [0.84, Vector3(L * 0.14, 0.05, 0.0)], [1.0, fore_l]]
+	for i in range(1, P.size() - 1):                              # punkty pośrednie opisywały nadgarstek dłoni sięgającej w górę — środek dłoni leży 0,1 m wyżej
+		P[i][1] = (P[i][1] as Vector3) + Vector3(0.0, 0.1, 0.0)
 	return _path_eval(P, u)
 
 func _path_eval(P: Array, u: float) -> Vector3:
@@ -1222,16 +1584,16 @@ func _keyframes(keys: Array, u: float) -> float:
 	return float(keys[keys.size() - 1][1])
 
 ## Druga ręka przy ciosie: kilof — na trzonku (chwyt oburącz), maczeta — przeciwwaga: zamach w przeciwną stronę.
-func _pose_left_melee(gx: Transform3D, rear: Vector3) -> void:
+func _pose_left_melee(gx: Transform3D, style: String) -> void:
+	if style == "chop":
+		var lh := _hand_target("Left", gx, (_gun_info["grip"] as Vector3) + Vector3(0.2, 0.0, 0.0), _wrist_dir(WEAPON_POSE.get(_gun_key, {})), Vector3.FORWARD, GRIP_HALF)
+		_arm_ik("Left", lh.origin, Vector3(-0.25, -1.0, -0.4))
+		_set_hand("Left", lh.basis)
+		return
 	var sl := _gp(_b["LeftArm"]).origin
-	var reach: float = _arm_len["Left"][0] + _arm_len["Left"][1]
-	var target := Vector3.ZERO
-	if String(_mc["style"]) == "chop":
-		target = rear + gx.basis * Vector3(0.26, 0.0, 0.0)
-	else:
-		var counter := float(_mc["ang"])                       # ostrze w dół → lewa ręka odchodzi w tył i w górę
-		target = sl + Vector3(-0.10 - 0.16 * clampf(counter, 0.0, 1.0), -reach * 0.78 + 0.20 * clampf(counter, 0.0, 1.0), 0.05)
-	_two_bone(_b["LeftArm"], _b["LeftForeArm"], _b["LeftHand"], _arm_len["Left"][0], _arm_len["Left"][1], target, Vector3(-0.25, -1.0, -0.4))
+	var reach: float = float(_arm_len["Left"][0]) + float(_arm_len["Left"][1])
+	var counter := float(_mc["ang"])                           # ostrze w dół → lewa ręka odchodzi w tył i w górę
+	_arm_ik("Left", sl + Vector3(-0.10 - 0.16 * clampf(counter, 0.0, 1.0), -reach * 0.78 + 0.20 * clampf(counter, 0.0, 1.0), 0.05), Vector3(-0.25, -1.0, -0.4))
 
 func _pose_left_relaxed() -> void:
 	var sl := _gp(_b["LeftArm"]).origin
@@ -1239,7 +1601,7 @@ func _pose_left_relaxed() -> void:
 	var tgt := sl + Vector3(0.12, -reach * 0.9, 0.05)
 	if climb_t >= 0.0:                                                # podciągnięcie: ręka wyciągnięta w dół i w przód, na krawędź
 		tgt = tgt.lerp(sl + Vector3(0.22, -reach * 0.98, 0.08), sin(PI * climb_t))
-	_two_bone(_b["LeftArm"], _b["LeftForeArm"], _b["LeftHand"], _arm_len["Left"][0], _arm_len["Left"][1], tgt, Vector3(-0.3, -1.0, -0.5))
+	_arm_ik("Left", tgt, Vector3(-0.3, -1.0, -0.5))
 
 func _pose_arms_relaxed(both: bool) -> void:
 	muzzle_px = Vector2(0.0, -10.0)
@@ -1247,12 +1609,14 @@ func _pose_arms_relaxed(both: bool) -> void:
 	if both and not _b.is_empty():
 		var sr := _gp(_b["RightArm"]).origin
 		var reach: float = _arm_len["Right"][0] + _arm_len["Right"][1]
-		_two_bone(_b["RightArm"], _b["RightForeArm"], _b["RightHand"], _arm_len["Right"][0], _arm_len["Right"][1], sr + Vector3(0.10, -reach * 0.9, -0.03), Vector3(-0.3, -1.0, 0.5))
+		_arm_ik("Right", sr + Vector3(0.10, -reach * 0.9, -0.03), Vector3(-0.3, -1.0, 0.5))
 		_pose_left_relaxed()
 
 ## Punkt 3D (m) → piksele świata względem stóp, z odbiciem.
 func _to_px(p: Vector3) -> Vector2:
-	var fl := -1.0 if _sprite.flip_h else 1.0
+	return _to_px_side(p, -1.0 if _sprite.flip_h else 1.0)
+
+func _to_px_side(p: Vector3, fl: float) -> Vector2:
 	var y := deg_to_rad(view_yaw)
 	var sx := (p.x - _origin_x) * cos(y) - p.z * sin(y)       # współrzędna wzdłuż prawej osi kamery obróconej o yaw
 	return Vector2(sx * WP_PER_M * fl, -p.y * WP_PER_M)

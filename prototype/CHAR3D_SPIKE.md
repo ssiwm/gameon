@@ -26,12 +26,13 @@ Flaga działa tylko z oknem (w trybie headless gra używa sprite'ów, więc `--m
 - Broń: 12 modeli (`art/char3d/gun_<klucz>.glb` + `.json` z chwytami: tylny, przedni, wylot, liczba rąk), od 1.7.213 budowanych skryptem
   `tools/gun_proc.py` w naturalnej skali. Broń obraca się wokół barku;
   prawa dłoń trzyma chwyt pistoletowy, lewa łoże (karabiny, strzelby, miotacze) — pistolet i broń biała jedną ręką, druga zwisa.
-  Gdy łoże jest za daleko, broń jest wsuwana ku ciału.
+  Gdy łoże jest za daleko, broń jest wsuwana ku ciału. Szczegóły chwytu i punktów celowania: sekcja „Chwyt broni i punkty celowania".
 - Ruch broni z `weapon_view.gd` (odrzut, dobycie, przeładowanie, zamach) trafia do postaci (`gun_extra`, `gun_kick_px`, `reload_t`, `swing_t`);
   przy przeładowaniu lewa dłoń schodzi po magazynek i wraca, przy ciosie postać robi wypad.
 - Wyglądy: 6 modeli (`<płeć>_<strój>.glb`: scav / hazmat / medic) wg `player.look` (replikowane, kosmetyka); bot = kobieta Scavenger.
   Wymiana wyglądu w trakcie gry przez `Char3D.set_look`.
 - Wszystko czyta zreplikowany stan gracza (`aim_dir`, kierunek, animacja z prędkości/podłoża, `weapon`, `w_state`); serwer i sieć bez zmian.
+  W drugą stronę idą tylko punkty celowania (`aim_points`) — liczone z pozy nominalnej, nie z klatki animacji.
 - `tools/prep_char3d.py` (Blender) robi lekkie GLB postaci: 6 tys. ścian, sama tekstura koloru (≈0,5 MB zamiast 13 MB).
 - Bronie buduje `tools/gun_proc.py` (wszystkie naraz: `tools/gun_proc_all.sh`, ok. 3 min): bryły z fazami + materiały proceduralne wypieczone
   w Cycles do koloru, normalnych, ORM i emisji 2048² (2–11 tys. trójkątów, ok. 1 MB na broń). Projekty wzorowane na prawdziwych konstrukcjach,
@@ -39,6 +40,40 @@ Flaga działa tylko z oknem (w trybie headless gra używa sprite'ów, więc `--m
   Stara droga (`prep_gun3d.py`, tabela w `prep_char3d_all.py --guns`) przycinała modele z Tripo do 2,5 tys. trójkątów.
 - Stal broni ma pełną metaliczność: w rękach odbija niewidoczne „niebo odbić" warstwy graczy (`view3d.gd`, `ACTOR_REFLECT`), na stojakach
   kryjówki — sondę odbić z dwoma ekranami (`_add_rack_probe`); oglądana broń kołysze się i ma dwa własne reflektory.
+
+## Chwyt broni i punkty celowania (1.7.215)
+
+```bash
+godot --path prototype --script tools/shot_hands3d.gd -- --guns=m83,p64 --aims=-50,0,50 --out=/tmp/hands.png   # zbliżenia rąk: z boku, od lufy, z góry
+godot --path prototype --script tools/shot_hands3d.gd -- --guns=maczeta,kilof --aims=0 --views=side --size=2.3 --swing=0.45   # cała postać, faza ciosu
+godot --headless --path prototype -s tools/test_aim_points.gd                                                    # wylot rozgrywki kontra lufa modelu, PASS
+blender -b --factory-startup -P prototype/tools/gun_proc.py -- m83 prototype/art/char3d/gun_m83.glb --json-only  # sam .json (punkty chwytu), bez wypieku
+```
+
+- **Punkty celowania rozgrywki.** `player._aim_origin()` i `weapon_controller.muzzle_pos()` biorą chwyt i wylot z `Char3D.aim_points(aim, strona,
+  kuca, klucz broni)`, a nie z modelu. Poza nominalna to postawa z klipu postoju / kucania danego modelu (chwila 0, obojczyki w spoczynku; bez klipów —
+  poza spoczynkowa z pochyleniem z kodu) plus obroty z `_pose_body`, które zależą tylko od stanu rozgrywki: pochylenie od broni, zwrot tułowia ku kamerze
+  i celowanie kręgosłupem (`SPINE_AIM`). Nie ma w niej kroku, kołysania, odrzutu, trafienia, lądowania, przeładowania ani odbicia lustrzanego modelu,
+  więc te rzeczy nie ruszają toru pocisków. `muzzle_px` / `grip_px` zostały jako punkty MODELU dla efektów (błysk, wiązka, latarka).
+  `tools/test_aim_points.gd` (CI) sprawdza niezależność od animacji, symetrię stron i odchylenie wylotu od lufy modelu w spokojnej pozie (próg 1,5 px
+  świata, jest 0,8). Tryb headless nie ma postaci 3D — serwer dedykowany liczy wylot po staremu, od korpusu (`MUZZLE_TOLERANCE` 40 px to przykrywa).
+- **Broń trzyma się pozy nominalnej.** Początek układu broni liczymy od barku nominalnego, a odchylenie barku modelu od niego przechodzi na broń
+  w części `GUN_FOLLOW` (0,5; P-64 0,8; broń biała 1): ciało pracuje pod bronią, ręce to wybierają. Kąt broni modelu goni kąt celowania sprężyną
+  (`AIM_SPRING`, tłumienie 0,78): obrót o 45° trwa ok. 0,1 s z drobnym wybiegiem, a strzał dociąga broń na linię celowania od razu.
+- **Dłonie z geometrii.** Kości dłoni z Tripo mają przypadkowe osie, inne w każdym modelu i w każdej dłoni, więc `_measure_hands` wyznacza układ dłoni
+  z wierzchołków przypisanych do kości: palce = od nadgarstka do środka ciężkości, grzbiet = najcieńszy wymiar bryły po stronie, przy której kciuk
+  wypada z przodu; do tego długość i grubość dłoni. `_hand_target` ustawia środek dłoni (`PALM_AT` długości) w punkcie broni: dłoń tylna na `grip`
+  grzbietem do kamery (kąt śródręcza `wrist` z `WEAPON_POSE`: chwyt pistoletowy 12°, szyjka kolby −8°, rękojeść −50°), przednia pod `hold` wnętrzem
+  do góry, a przy `hold_v` (WRATH-4) na chwycie pionowym. Punkty `grip` / `hold` są w `gun_<klucz>.json` (z `gun_proc.py`); stare `rear` / `fore`
+  to nadgarstki z poprzedniego układu (początek układu modelu się nie zmienił).
+- **IK ręki** (`_arm_ik`): po wyznaczeniu łokcia ramię i przedramię są obracane wokół własnej osi tak, żeby zgięcie wypadało w anatomicznej osi łokcia
+  (z lekkiego ugięcia ręki w pozie spoczynkowej); `_set_hand` oddaje przedramieniu 55% skrętu nadgarstka (model nie ma kości skrętu), `_reach_clavicle`
+  przesuwa bark ku dłoni (22% kąta, najwyżej 16°). Obojczyki nie biorą ruchu z klipów (`_rest_clavicles`), gdy ręce prowadzi IK.
+- **P-64** oburącz na wyprostowanych rękach, lewa dłoń podpiera stopkę chwytu; przy przeładowaniu schodzi do pasa i wraca. **Broń biała** w spoczynku
+  stoi w gardzie (`MELEE_GUARD`), cios wychodzi z gardy i do niej wraca; kilof jest zawsze trzymany oburącz.
+- Klipy z paczek CC0 do walki wręcz (`Sword_Regular_A/B/C`, `Sword_Attack`, `Melee_Hook`) obejrzane na stykówce i odrzucone: to cięcia z obrotem całego
+  ciała, w widoku z boku postać odwraca się plecami do kamery (ten sam powód co przy `OverhandThrow`). Klipy pistoletowe (`Pistol_*`) nic nie dają, dopóki
+  ręce prowadzi IK pod dowolny kąt celowania.
 
 ## Pomiar (RTX 3080, 4 px na piksel świata, MSAA 2×)
 
@@ -61,9 +96,9 @@ na wierzchu klipu.
 | Stan gry | Klip z paczki | Czas klipu | Tłumienie tułowia (`upper`) | Inne |
 |---|---|---|---|---|
 | `idle` | `Idle_Loop` | zegar postaci | 0,5 | — |
-| `run` | `Sprint_Loop` | faza kroku | 0,35 | `bounce` 0,45 |
+| `run` | `Sprint_Loop` | faza kroku | 0,55 | `bounce` 0,8 |
 | `crouch` | `Crouch_Idle_Loop` | zegar postaci | 0,35 | `drop` 0,05 m |
-| `crouch_walk` | `Crouch_Fwd_Loop` | faza kroku | 0,35 | `drop` 0,06 m |
+| `crouch_walk` | `Crouch_Fwd_Loop` | faza kroku | 0,5 | `drop` 0,06 m |
 | `revive` | `Fixing_Kneeling` | czas od wejścia w stan (`hold`) | 1 | `arms` — ręce z klipu, broń schowana |
 | upadek (`down`) | `Death01` | postęp upadku (`scrub` 0,15–1,65 s) | 1 | `drop` −0,05 m |
 | wstawanie (`getup`) | `LayToIdle` (druga paczka, `art_src/animations/ual2/`) | postęp wstawania (`scrub` 0,1–1,5 s) | 1 | — |
@@ -95,10 +130,10 @@ godot --path prototype -- --host --mission=z1_m1 --shot=/tmp/run.png --shotat=20
 - `scripts/char_clips.gd` wczytuje te pliki, przelicza klip na szkielet każdego wyglądu (obroty względem pozy spoczynkowej, przesunięcie bioder
   w skali wysokości bioder, reszta przesunięć pominięta) i buduje `AnimationTree`: poza spoczynkowa → kolejno `mix_<stan>` ← `seek_<stan>` ← klip.
   Tabela `CLIPS` mówi, który stan bazowy ma klip i jak go dostroić.
-- `upper`: klipy tej paczki są przerysowane — pochylają tułów i skręcają barki o kilkadziesiąt stopni, co przy celowaniu rzucało bronią; tułów
-  i głowa dostają tylko część tego ruchu, biodra i nogi cały.
-- `bounce`: sprint kołysze biodrami o 11 cm, a z barkiem idzie chwyt broni, czyli punkt, z którego gra liczy celowanie i wylot pocisku
-  (`player._aim_origin`, `weapon_controller.muzzle_pos`). Zostaje 45% kołysania (głowa 4 cm, jak w pozie z kodu); stopy trzyma na torze IK nóg.
+- `upper`: klipy tej paczki są przerysowane — pochylają tułów i skręcają barki o kilkadziesiąt stopni; tułów i głowa dostają część tego ruchu
+  (bieg 0,55, postój 0,5), biodra i nogi cały. Do 1.7.214 było 0,35, bo z barkiem szła broń i punkt wylotu pocisku.
+- `bounce`: sprint kołysze biodrami o 11 cm; zostaje 80% kołysania (do 1.7.214 — 45%). Od 1.7.215 rozgrywka liczy celowanie i wylot z pozy nominalnej
+  (`aim_points`), a broń modelu bierze tylko połowę ruchu barku, więc kołysanie ciała nie rzuca już bronią ani torem pocisku.
 - `drop`: kucanie z klipu jest wyższe niż poza z kodu, a sylwetka ma mieć wysokość hitboxa kucania — biodra schodzą o `drop`, głowa jest wtedy
   na tej samej wysokości co w pozie z kodu (1,00–1,02 m dla `male_scav`).
 - `char3d.gd` co klatkę podaje drzewu wagi stanów (te same co póz z kodu, więc przejścia trwają jak dotąd ok. 80 ms), fazę kroku (`_phase`)
@@ -159,7 +194,8 @@ W drugiej paczce są też klipy dla gracza, jeszcze nieużyte: `Consume`, `Chest
 - Celowanie w dół wysuwa broń ku kamerze (inaczej chowa się za tułowiem); celowanie prosto w górę zasłania głowę ramieniem.
 - Oświetlenie: drugi przebieg renderu (kopie siatek na warstwie 2, shader wypisuje normalne widokowe) daje mapę normalnych, więc latarka i flara dają relief jak na sprite'ach HD (odbicie `flip_h` odwraca X normalnych w shaderze). Kosztuje ok. +50% renderu postaci; `--char3d-lq` go wyłącza.
 - Kucanie / skradanie to **przysiad** (biodra 0,48 m niżej, tułów niemal pionowo — wysokość ok. 0,75 stojącej); przesunięcia bioder liczy `_move_global` w przestrzeni szkieletu (osie lokalne kości Mixamo są obrócone, wcześniej przesunięcie ruszało biodra w bok, a nie w dół).
-- Poza postojem, biegiem, kucaniem, upadkiem i reanimacją (klipy, patrz wyżej) pozy to proste funkcje sin/cos, nie animacje artysty; dłonie nie obejmują palcami chwytu (tylko orientacja).
+- Poza postojem, biegiem, kucaniem, upadkiem i reanimacją (klipy, patrz wyżej) pozy to proste funkcje sin/cos, nie animacje artysty; dłonie nie obejmują palcami chwytu — modele mają 23 kości, bez palców, więc rękawica jest sztywna i otwarta (leży na chwycie, ale go nie zamyka). Zamknięcie dłoni wymaga dorobienia kości palców w modelach.
+- Odwrócenie postaci to nadal lustro w jednej klatce; od 1.7.215 nic w rozgrywce od tego nie zależy, więc obrót z animacją można dodać samym widokiem.
 - Broń biała ma jedną, uproszczoną pozę zamachu. SPECTER-1 używa swojego modelu `widmo1_01` (cewka, ten sam co w sprite'ach HD); `widmo1_02` (szyny + cewki, olive) to nieużywana alternatywa.
 - Wrogowie nadal sprite'y HD — styl postaci gracza (3D) i wrogów trzeba będzie zestroić.
 - Od 1.7.156 domyślne: widok 3D zawsze używa modeli, a w widoku 2D decyduje ustawienie **Characters in 2D view** (`Settings.char3d`, domyślnie 3D) lub flaga `--char3d`. Pomiar na słabszym sprzęcie nadal nie jest zrobiony.
