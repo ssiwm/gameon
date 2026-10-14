@@ -440,6 +440,7 @@ Inny wymiar: organiczne korytarze, grawitacja się zmienia, radio mówi głosami
 
 ### 10.3 Kryjówka (hub)
 - **Warsztat** — bronie i ulepszenia.
+- **Zbrojownia** — dwie gabloty po cztery broni (w prototypie od 1.7.219): [F] przy gablocie, ↑ / ↓ wybór, [E] bierze; zamknięta broń z ceną w złomie (odblokowanie w warsztacie).
 - **Szpital** — stan uratowanych NPC, bonusy fabularne (np. uratowany naukowiec daje schemat EMP).
 - **Radiostacja** — wywiad: prognoza pogody (modyfikatory misji), tygodniowe wyzwania.
 - **Ściana pamięci** — statystyki drużyny, osiągnięcia.

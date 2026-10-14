@@ -2,7 +2,7 @@ extends SceneTree
 ## Test proporcji świata: postać 1,8 m (22 px świata, 1 px = 0,082 m) kontra hitboxy, meble i znajdźki.
 ## (1) ciało gracza ma wysokość modelu postaci, (2) strefa trafień każdego wroga ma wysokość jego modelu (enemy3d.gd SPEC „fit"),
 ## (3) przedmioty w skali widoku 3D (view3d.gd ITEM_SCALE) mieszczą się w naturalnych wymiarach — meble jak prawdziwe, znajdźki najwyżej ok. 2×,
-## (4) promień w głowę wysokiego wroga trafia jego strefę trafień, a przebicie nie liczy go dwa razy.
+## (4) promień w głowę wysokiego wroga trafia jego strefę trafień, a przebicie nie liczy go dwa razy, (5) gablota na broń mieści broń w rzędach.
 ## godot --headless --path prototype -s tools/test_proportions.gd      → ma wypisać PASS
 const PX := 1.8 / 22.0
 const Char3D := preload("res://scripts/char3d.gd")
@@ -110,5 +110,18 @@ func _run() -> void:
 		var glen := _size("res://art/char3d/gun_%s.glb" % gk).x
 		var loot := maxf(glen, float(View3D.get("LOOT_MIN_M")))
 		_check(loot <= maxf(glen * 1.05, 0.4), "%s jako łup: %.2f m (w ręku %.2f m)" % [gk, loot, glen])
+	# gablota na broń (kryjówka): najdłuższa broń mieści się między bokami, rzędy nie nachodzą na siebie, gablota niższa niż 2,3 m
+	var cab_w := float(View3D.get("CAB_W"))
+	var rows: Array = View3D.get("CAB_ROWS")
+	var longest := 0.0
+	var tallest := 0.0
+	for gk in ["spread12", "srut8", "lr7", "hkm9", "gniew4", "widmo1", "sokol6", "ciegno6"]:
+		var gs := _size("res://art/char3d/gun_%s.glb" % gk)
+		longest = maxf(longest, gs.x)
+		tallest = maxf(tallest, gs.y)
+	_check(longest <= cab_w - 0.25, "gablota %.2f m: najdłuższa broń %.2f m mieści się z zapasem" % [cab_w, longest])
+	var gap := absf(float(rows[0]) - float(rows[1]))
+	_check(tallest <= gap, "rzędy co %.2f m: najwyższa broń %.2f m nie nachodzi na sąsiedni rząd" % [gap, tallest])
+	_check(float(View3D.get("CAB_H")) <= 2.3, "gablota: wysokość %.2f m (postać 1,8 m)" % float(View3D.get("CAB_H")))
 	var fence := _size("res://art/items3d/fence.glb").y * PX * float(View3D.DECO_MODELS[6][1])
 	_check(fence <= 2.5, "płot (dekoracja): wysokość %.2f m (granica 2,50)" % fence)

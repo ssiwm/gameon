@@ -1785,7 +1785,10 @@ func _drive_cards() -> void:
 		var hand: int = wc.melee_id if nd.slot == Weapons.Slot.MELEE else wc.loadout[wc.slot if wc.slot < 2 else 0]
 		var gk = it.get("_hd_gun")
 		var foot := Actions.fmt(tr("[{flare}]  Close")) if locked else Actions.fmt(tr("[{interact}]  Take   ·   [{flare}]  Close"))
-		_inspect.show_weapon(wid, String(gk) if gk != null and String(gk) != "" else String(nd.key), hand, Scrap.lock_text(wid) if locked else "", foot)
+		var cab := it.has_meta("cabinet")                     # gablota: kamera patrzy na gablotę, ↑ / ↓ wybiera broń
+		if cab:
+			foot = Actions.fmt(tr("[{move_up}] [{move_down}]  Select")) + "   ·   " + foot
+		_inspect.show_weapon(wid, String(gk) if gk != null and String(gk) != "" else String(nd.key), hand, Scrap.lock_text(wid) if locked else "", foot, cab)
 	else:
 		_inspect.close()
 	# --- odprawa przy tablicy

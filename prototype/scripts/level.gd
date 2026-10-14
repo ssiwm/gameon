@@ -56,6 +56,7 @@ const FLARE := preload("res://scripts/flare.gd")
 const GENERATOR := preload("res://scripts/generator.gd")
 const HANDCAR := preload("res://scripts/handcar.gd")
 const RACK := preload("res://scripts/rack.gd")
+const CABINET := preload("res://scripts/cabinet.gd")
 const LAMP := preload("res://scripts/lamp.gd")
 const BOARD := preload("res://scripts/board.gd")
 const RADIO_SET := preload("res://scripts/radio_set.gd")
@@ -106,6 +107,9 @@ var objective := "nests"
 var radio: Array = []             ## linie radia z danych mapy (kryjówka)
 var ambient := Color(0.0245, 0.0266, 0.0406)   ## kolor ciemności mapy (stan; obraz daje scena 3D): domyślny z lights.gd albo z AMBIENT mapy
 var _racks := false
+var _cab_slots := 0                   ## CABINET_SLOTS z danych mapy: > 0 = każde „g" to gablota na tyle broni (cabinet.gd), 0 = stojaki
+var _gun_cab: Array = []              ## Vector2i(gablota, rząd) dla kolejnych przedmiotów broni z „g" (puste bez gablot)
+var _gun_cab_x: Array = []            ## środek gabloty [px] dla kolejnych przedmiotów broni
 var hp_mult := 1.0               ## mnożnik HP wrogów tej mapy (ENEMY_HP w danych mapy)
 ## Pogoda (weather_fx.gd): tint i błysk ciemności nałożone na `ambient` — sam stan, czyta go widok 3D.
 const WEATHER_FLASH := Color(0.34, 0.38, 0.52)           ## kolor ciemności w szczycie błysku (zimne światło burzy)
@@ -193,6 +197,7 @@ func _load(id: String) -> void:
 	hp_mult = float(m.ENEMY_HP)
 	radio = m.RADIO
 	_racks = m.RACKS
+	_cab_slots = int((m as GDScript).get_script_constant_map().get("CABINET_SLOTS", 0))
 	ambient = m.AMBIENT if m.AMBIENT.a > 0.0 else Lights.AMBIENT      # alfa 0 = domyślna ciemność gry
 	_apply_darkness()
 	NoiseMgr.safe_zone = objective == "hub"
@@ -577,6 +582,8 @@ func _spawn_entities() -> void:
 					wide[pc] = 4.6
 				if k == "g":
 					quiet.append(pc)                         # między stojakami zostaje goła ściana — tam patrzy się na broń
+					if _cab_slots > 0:
+						wide[pc] = 2.0                           # gablota ma 1,7 m szerokości
 		var x0 := 0
 		while x0 < ncols - 1 and (_is_solid(x0, fr - 1) or not _is_solid(x0, fr)):
 			x0 += 1
@@ -587,7 +594,24 @@ func _spawn_entities() -> void:
 		dc.name = "HubDecor"
 		add_child(dc)
 		dc.setup(occ, wide, quiet, x0, x1, float(fr * TILE), float(TILE))
-	if _racks:
+	var guns_at: Array = found["g"]
+	_gun_cab.clear()
+	_gun_cab_x.clear()
+	if _racks and _cab_slots > 0:
+		# gabloty: każde „g" to gablota; jej broń leży w symulacji obok siebie na szerokości gabloty (cabinet.gd SLOT_DX)
+		guns_at = []
+		for i in found["g"].size():
+			var cb: Node2D = CABINET.new()
+			cb.name = "Cabinet%d" % (i + 1)
+			cb.index = i
+			cb.slots = _cab_slots
+			cb.position = found["g"][i]
+			add_child(cb)
+			for k in _cab_slots:
+				guns_at.append((found["g"][i] as Vector2) + Vector2(float(CABINET.SLOT_DX[k]), 0.0))
+				_gun_cab.append(Vector2i(i, k))
+				_gun_cab_x.append(float((found["g"][i] as Vector2).x))
+	elif _racks:
 		for i in found["g"].size():
 			var rk: Node2D = RACK.new()
 			rk.name = "Rack%d" % (i + 1)
@@ -602,7 +626,7 @@ func _spawn_entities() -> void:
 			# fizyka uznawała za „w środku" i skrzynia przelatywała piętro niżej
 			pr.position = found[k[0]][i] + Vector2(0, -1)
 			add_child(pr)
-	_map_items = {"a": found["a"], "g": found["g"], "u": found["u"], "F": found["F"], "H": found["H"], "f": found["f"]}
+	_map_items = {"a": found["a"], "g": guns_at, "u": found["u"], "F": found["F"], "H": found["H"], "f": found["f"]}
 	_spawn_map_items()
 	if stalker_home != Vector2.ZERO:         # kryjówka (bez znacznika X) nie ma Stalkera
 		var s := STALKER_SCENE.instantiate()
@@ -697,7 +721,11 @@ var _map_items := {}
 func _spawn_map_items() -> void:
 	var guns: Array = _map_items.get("g", [])
 	for i in guns.size():
-		_add_map_item("MapGun%d" % i, "weapon", _weapons[i % _weapons.size()], guns[i])
+		var gi := _add_map_item("MapGun%d" % i, "weapon", _weapons[i % _weapons.size()], guns[i])
+		if gi != null and i < _gun_cab.size():                # broń w gablocie: numer gabloty, rząd i środek gabloty (wybór, obraz 3D)
+			gi.set_meta("cabinet", (_gun_cab[i] as Vector2i).x)
+			gi.set_meta("slot", (_gun_cab[i] as Vector2i).y)
+			gi.set_meta("cab_x", float(_gun_cab_x[i]))
 	if Scrap.enabled():
 		var stash: Array = _map_items.get("H", [])
 		for i in stash.size():
@@ -716,9 +744,9 @@ func _spawn_map_items() -> void:
 		for i in stash.size():
 			_add_map_item("MapScrap%d" % i, "scrap", 0, stash[i], Scrap.CACHE_VALUE)
 
-func _add_map_item(n: String, kind: String, arg: int, pos: Vector2, value := 0) -> void:
+func _add_map_item(n: String, kind: String, arg: int, pos: Vector2, value := 0) -> Node2D:
 	if has_node(n):
-		return
+		return null
 	var it: Node2D = PICKUP.new()
 	it.name = n
 	it.kind = kind
@@ -727,6 +755,7 @@ func _add_map_item(n: String, kind: String, arg: int, pos: Vector2, value := 0) 
 	it.position = pos + Vector2(0, -2)
 	it.static_display = kind == "weapon" and _racks      # broń na stojaku stoi w miejscu
 	add_child(it)
+	return it
 
 # ---------------------------------------------------------------- flary
 
