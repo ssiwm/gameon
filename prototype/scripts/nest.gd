@@ -9,6 +9,7 @@ extends CharacterBody2D
 
 signal destroyed(nest: Node)
 
+const Hurtbox := preload("res://scripts/hurtbox.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Sprites := preload("res://scripts/sprites.gd")
@@ -29,6 +30,7 @@ var _overlay: Node2D
 func _ready() -> void:
 	add_to_group("enemies")
 	add_to_group("nests")
+	Hurtbox.add(self, 20.0, 30.0)                             # strefa trafień na wysokość modelu (enemy3d.gd SPEC „fit")
 	# słaba pomarańczowa poświata — cel misji ma być do znalezienia w mroku,
 	# ale nie oświetla okolicy (2,5 m, bez cieni)
 	_glow = Lights.make_light(Lights.radial(), 2.5, Color(1.0, 0.45, 0.2), 0.7, false)
@@ -52,7 +54,7 @@ func reset_enemy() -> void:
 func _set_alive(a: bool) -> void:
 	alive = a
 	visible = a
-	($CollisionShape2D as CollisionShape2D).set_deferred("disabled", not a)
+	Hurtbox.set_enabled(self, a)
 
 ## Obrażenia z broni (combat.gd).
 func take_hit(info: Dictionary) -> Dictionary:

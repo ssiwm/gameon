@@ -19,6 +19,7 @@ extends RefCounted
 const Weapons := preload("res://scripts/weapons.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 
+const Hurtbox := preload("res://scripts/hurtbox.gd")
 const LAYER_WORLD := 1
 const LAYER_PLAYER := 2
 const LAYER_TARGET := 4 | 32      ## wrogowie, gniazda, boss, Stalker (4) i obiekty (32)
@@ -119,13 +120,14 @@ static func trace(space: PhysicsDirectSpaceState2D, from: Vector2, dir: Vector2,
 	while left > 0.5 and guard < 64:
 		guard += 1
 		var q := PhysicsRayQueryParameters2D.create(cur, cur + dir * left, LAYER_WORLD | LAYER_TARGET)
+		q.collide_with_areas = true                               # strefy trafień wrogów (hurtbox.gd) — wyższe niż ciała ruchu
 		if comp:
 			var all_ex: Array[RID] = ex.duplicate()
 			all_ex.append_array(comp_rids)
-			q.exclude = all_ex
+			q.exclude = Hurtbox.with_areas(all_ex)
 		else:
-			q.exclude = ex
-		var hit := space.intersect_ray(q)
+			q.exclude = Hurtbox.with_areas(ex)
+		var hit := Hurtbox.resolve(space.intersect_ray(q))
 		if comp:
 			var lim: Vector2 = cur + dir * left if hit.is_empty() else hit["position"]
 			var eh := LagComp.enemy_hit(cur, lim, rewind, ex)
@@ -259,5 +261,5 @@ static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float,
 	for p in tree.get_nodes_in_group("players"):
 		if p.dead:
 			continue
-		if (p.global_position + Vector2(0, -8)).distance_to(pos) <= radius * 0.9:
+		if p.hurt_point(pos).distance_to(pos) <= radius * 0.9:
 			p.deliver_hit(1, pos, "blast")

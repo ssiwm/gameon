@@ -13,6 +13,8 @@ extends CharacterBody2D
 ##   Teren spowalnia go tak samo jak gracza (woda, błoto) — na każdej powierzchni zostaje wolniejszy od biegnącego
 ##   Ciało widać tylko z bliska; z daleka są same oczy
 
+const Hurtbox := preload("res://scripts/hurtbox.gd")
+const HURT_H := 54.0                         ## px: wysokość strefy trafień = model (enemy3d.gd SPEC „fit")
 const Lights := preload("res://scripts/lights.gd")
 const Nav := preload("res://scripts/nav.gd")
 const Sprites := preload("res://scripts/sprites.gd")
@@ -101,6 +103,7 @@ var _leg_for := -1
 
 func _ready() -> void:
 	add_to_group("enemies")
+	Hurtbox.add(self, 14.0, HURT_H)                           # strefa trafień na wysokość modelu (54 px), ciało ruchu 30 px
 	target_pos = global_position
 	_remote_pos = global_position
 	_home = global_position

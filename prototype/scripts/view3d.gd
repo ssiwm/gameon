@@ -826,7 +826,7 @@ func spawn_burst(pos: Vector2, cfg: Dictionary) -> void:
 
 # ---------------------------------------------------------------- dekoracje mapy (kamienie, kłody, płoty, kości)
 
-const DECO_MODELS := {3: ["rock", 1.0], 4: ["bones", 0.7], 6: ["fence", 1.0], 7: ["logs", 1.0]}
+const DECO_MODELS := {3: ["rock", 1.0], 4: ["bones", 0.7], 6: ["fence", 0.34], 7: ["logs", 1.0]}   ## płot: model ma 6,5 m wysokości — w skali 0,34 ok. 2,2 m
 
 ## Dekoracje z listy poziomu (`level.gd: _deco_list` — te same miejsca co w 2D) jako modele 3D w `MultiMesh`: kamienie i kości rozrzucone w głąb
 ## bryły gruntu, płoty i kłody tuż za płaszczyzną gry. Trzciny (5) mają własne bryły przy cieczach (`Level3D.build_liquid_props`).
@@ -897,7 +897,7 @@ func _sync_drawn() -> void:
 		var m := _item_model("radio_set")
 		if m == null:
 			continue
-		m.scale = Vector3(PX, PX, PX)
+		m.scale = Vector3(PX, PX, PX) * float(ITEM_SCALE["radio_set"])
 		m.position = Level3D.px_to_m((n as Node2D).global_position) + Vector3(0.0, 0.0, -1.2)
 		_world.add_child(m)
 		(n as CanvasItem).modulate = Color(1, 1, 1, 0)
@@ -975,7 +975,7 @@ func _add_rack_lamp(rack_item: Node2D, up_px := RACK_LAMP_PX, z := RACK_GUN_Z + 
 	root.name = "RackLamp"
 	_geo.add_child(root)                                       # razem z geometrią mapy (znika przy zmianie mapy)
 	root.position = Level3D.px_to_m(foot) + Vector3(0.0, up_px * PX, z)
-	lamp.scale = Vector3(PX, PX, PX) * 1.25
+	lamp.scale = Vector3(PX, PX, PX) * 1.25 * float(ITEM_SCALE["lamp"])
 	root.add_child(lamp)
 	# przewód do stropu: pierwszy lity kafel nad lampą
 	var c := int(foot.x / 16.0)
@@ -985,7 +985,7 @@ func _add_rack_lamp(rack_item: Node2D, up_px := RACK_LAMP_PX, z := RACK_GUN_Z + 
 		r -= 1
 		guard += 1
 	var top_m := -float(r + 1) * Level3D.T
-	var lamp_top := root.position.y + 11.7 * PX * 1.25
+	var lamp_top := root.position.y + 11.7 * PX * 1.25 * float(ITEM_SCALE["lamp"])
 	if top_m > lamp_top + 0.05:
 		var cord := CylinderMesh.new()
 		cord.top_radius = 0.012
@@ -1095,7 +1095,7 @@ func _sync_guns() -> void:
 			model.rotation.x = deg_to_rad(-7.0)                   # oparta o deskę
 			lock = _item_model("padlock")
 			if lock != null:
-				lock.scale = Vector3(PX, PX, PX) * 0.75
+				lock.scale = Vector3(PX, PX, PX) * 0.75 * float(ITEM_SCALE["padlock"])
 				lock.position = Vector3(0.0, box.size.y * k * 0.5 - 3.4 * PX, 0.10)
 				lock.rotation.z = deg_to_rad(6.0)
 				pivot.add_child(lock)
@@ -3305,6 +3305,16 @@ func _build_rails() -> void:
 
 const ITEM_TONE := 0.7                      ## przyciemnienie albedo kart: przedmiot z własnym światłem (skrytka, pickup) stoi tuż przy nim
 const ITEM3D_DIR := "res://art/items3d/"
+## Skala modeli przedmiotów względem wymiarów z potoku sprite'ów (1 jednostka = 1 px świata): meble i sprzęt kryjówki stały w skali
+## „komiksowej" (stół 1,55 m, szafka 2,54 m, radiostacja jak lodówka), a znajdźki były 2–8 razy większe od prawdziwych (granat 0,6 m) —
+## przy postaci 1,8 m i broni w naturalnej skali. Meble → wymiary naturalne, znajdźki → ok. 1,5–2× naturalnych (zostają czytelne: poświata,
+## znacznik rodzaju). Tylko obraz: przedmioty stoją za płaszczyzną gry albo nie mają kolizji. Skrzynie i beczki (prop.gd) mają ciała 2D, na
+## których się staje — ich skala zostaje. Sprawdza tools/test_proportions.gd.
+const ITEM_SCALE := {
+	"table": 0.78, "chair": 0.73, "stool": 0.76, "cot": 0.76, "workshop": 0.9, "locker": 0.73, "shelf": 0.8, "radio_set": 0.5, "lamp": 0.5,
+	"frag": 0.37, "smoke": 0.5, "phos": 0.35, "flare": 0.6, "mine": 0.6, "ammo": 0.7, "medkit": 0.6, "charge": 0.65, "defib": 0.6,
+	"scanner": 0.45, "tag": 0.6, "padlock": 0.4,
+}
 const ITEM_BACK := ["shelf", "table", "chair", "locker", "cot", "stool", "board", "results_board", "workshop", "tools_wall", "rack"]
 
 ## Każdy sprite z `ItemsHd.make` (grupa „items_hd”) dostaje w scenie 3D kartę z tym samym albedo i mapą normalnych: oświetlają ją światła 3D,
@@ -3335,7 +3345,7 @@ func _sync_items() -> void:
 		var xf := sp.global_transform
 		var sc := xf.get_scale()
 		if bool(it[5]):                                        # model 3D: początek w stopach sprite'a, jednostka modelu = piksel świata
-			var k := absf(sc.x) * ItemsHd.ppw(String(sp.get_meta("hd_name", ""))) * PX
+			var k := absf(sc.x) * ItemsHd.ppw(String(sp.get_meta("hd_name", ""))) * PX * float(ITEM_SCALE.get(String(sp.get_meta("hd_name", "")), 1.0))
 			var fl := -1.0 if (sp.flip_h != (xf.determinant() < 0.0)) else 1.0
 			# stopy modelu = dolna krawędź bryły w ramce sprite'a (dla sprite'ów obracanych wokół środka — koła, dźwignia — to nie jest początek węzła)
 			var nm3 := String(sp.get_meta("hd_name", ""))
