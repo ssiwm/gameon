@@ -3,7 +3,8 @@ extends RefCounted
 ## reguła „kogo oświetla latarka" — używane przez gracza, wrogów, Stalkera,
 ## gniazda i znacznik ekstrakcji.
 ##
-## Skala: 16 px = 1 m (jak w HUD ekstrakcji).
+## Skala: 16 px = 1 m projektowy (jak w HUD ekstrakcji i kodeksie) — zasięgi w GDD są w tych metrach. Świat 3D ma skalę prawdziwą
+## (`Level3D.PX`: 1 px = 0,082 m, postać 1,8 m = 22 px), więc metr projektowy to w obrazie ok. 1,31 m.
 
 const PX_PER_M := 16.0
 

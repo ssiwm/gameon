@@ -13,7 +13,7 @@ const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
 
-const PX_PER_M := 16.0               ## lights.gd: 1 m = 16 px
+const PX_PER_M := 16.0               ## lights.gd: 1 m projektowy = 16 px (w świecie 3D ok. 1,31 m)
 
 # ---------------------------------------------------------------- bestiariusz
 
