@@ -1,6 +1,7 @@
 extends SceneTree
 ## Zrzut kontrolny postaci 3D: zestawy póz / broni / wyglądów / stanów broni (przeładowanie, cios, odrzut).
 ## godot --path prototype --script tools/shot_char3d.gd -- --set=poses|weapons|looks|states|palettes [--part=N] [--zoom=6] [--out=/tmp/char3d.png] [--wait=40]
+##       [--charset=mpfb] — zestaw modeli (Char3D.charset: katalog w art/char3d/), np. do porównania wersji
 ## Wiersz konfiguracji: {anim, aim (°), dir (+1 prawo / −1 lewo), speed, gun, char, extra (rad), kick (px), reload (0..1), swing (0..1)}
 const Char3D := preload("res://scripts/char3d.gd")
 const WEAPONS := ["m83", "spread12", "p64", "srut8", "lr7", "hkm9", "gniew4", "sokol6", "widmo1", "ciegno6", "maczeta", "kilof"]
@@ -30,6 +31,8 @@ func _initialize() -> void:
 			part = int(a.substr(7))
 		elif a == "--light":
 			_light = true
+		elif a.begins_with("--charset="):
+			Char3D.charset = a.substr(10)
 		elif a.begins_with("--set="):
 			set_name = a.substr(6)
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
