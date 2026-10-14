@@ -197,7 +197,7 @@ W drugiej paczce są też klipy dla gracza, jeszcze nieużyte: `Consume`, `Chest
 ## Ograniczenia / dalsze kroki
 
 - Rzut flary i przedmiotów ma pozę (prawa ręka zamachem nad głową), ale tylko lokalnie — rzut jest zdarzeniem lokalnego gracza, inni widzą dopiero rzucony przedmiot.
-- Celowanie w dół wysuwa broń ku kamerze (inaczej chowa się za tułowiem); celowanie prosto w górę zasłania głowę ramieniem.
+- Celowanie w dół wysuwa broń ku kamerze (inaczej chowa się za tułowiem). Przy celowaniu w górę tułów odchyla się do tyłu (`SPINE_AIM_UP`), a broń odsuwa się od barku (`UP_REACH`); przy celowaniu pionowo w górę ręce i tak przechodzą przed twarzą (bark postaci jest na wysokości brody).
 - Oświetlenie: drugi przebieg renderu (kopie siatek na warstwie 2, shader wypisuje normalne widokowe) daje mapę normalnych, więc latarka i flara dają relief jak na sprite'ach HD (odbicie `flip_h` odwraca X normalnych w shaderze). Kosztuje ok. +50% renderu postaci; `--char3d-lq` go wyłącza.
 - Kucanie / skradanie to **przysiad** (biodra 0,48 m niżej, tułów niemal pionowo — wysokość ok. 0,75 stojącej); przesunięcia bioder liczy `_move_global` w przestrzeni szkieletu (osie lokalne kości Mixamo są obrócone, wcześniej przesunięcie ruszało biodra w bok, a nie w dół).
 - Poza postojem, biegiem, kucaniem, upadkiem i reanimacją (klipy, patrz wyżej) pozy to proste funkcje sin/cos, nie animacje artysty; dłonie nie obejmują palcami chwytu — modele mają 23 kości, bez palców, więc rękawica jest sztywna i otwarta (leży na chwycie, ale go nie zamyka). Zamknięcie dłoni wymaga dorobienia kości palców w modelach.

@@ -246,9 +246,11 @@ const GUN_FOLLOW := 0.5                      ## ile ruchu barku względem pozy n
 const AIM_SPRING := 34.0                     ## 1/s: sztywność sprężyny, którą broń MODELU goni kierunek celowania (rozgrywka celuje od razu)
 const MELEE_GUARD := 0.95                    ## rad: uniesienie ostrza w gardzie (broń biała w spoczynku)
 const TURN_TIME := 0.16                      ## s: obrót postaci przy zmianie kierunku (przodem do kamery)
-const UP_REACH := 0.10                       ## m: o tyle dalej od barku jest broń przy celowaniu pionowo w górę
+const UP_REACH := 0.16                       ## m: o tyle dalej od barku jest broń przy celowaniu pionowo w górę
 const CROUCH_DROP := 0.48                    ## m: o tyle niżej są biodra w przysiadzie (poza z kodu i barki nominalne)
 const SPINE_AIM := 0.13                      ## ułamek kąta celowania, o który pochyla się każda z trzech kości kręgosłupa
+const SPINE_AIM_UP := 0.060                    ## … i dodatkowo przy celowaniu w górę (rośnie z sinusem kąta): tułów odchyla się do tyłu, a głowa
+                                             ## odsuwa się od rąk — bez tego przy celowaniu stromo w górę ręce zasłaniały twarz
 const BODY_YAW := -22.0                      ## °: tułów zwrócony ku kamerze — w obie strony (znak z `_cam_c`), więc po obrocie w lewo widać pierś,
                                              ## dłonie i broń, a nie plecak. Poza nominalna (rozgrywka) liczy go zawsze jak dla zwrotu w prawo, żeby wylot
                                              ## był lustrzany; różnicę (bark ok. 0,18 m dalej w przód przy zwrocie w lewo) wybierają ręce (GUN_FOLLOW).
@@ -991,6 +993,10 @@ func _gun_origin(sr: Vector3, sl: Vector3, hd: float, gun_b: Basis, radial: floa
 	rear.z += 0.28 * maxf(0.0, -sin(hd)) * (cam - 1.0)        # ku kamerze po drugiej stronie dopiero na końcu: wsunięcie broni nie zależy od strony, więc wylot w obie strony jest lustrzany
 	return rear
 
+## Pochylenie jednej kości kręgosłupa za celowaniem (rad): stały ułamek kąta, a w górę jeszcze odchylenie do tyłu.
+static func _spine_pitch(theta: float) -> float:
+	return theta * SPINE_AIM + theta * SPINE_AIM_UP * maxf(0.0, sin(theta))
+
 ## Kąt celowania w górę od poziomu (rad) z kierunku na ekranie (y w dół); lustro załatwia odbicie postaci.
 static func _aim_theta(aim: Vector2) -> float:
 	var ax := absf(aim.x)
@@ -1049,7 +1055,7 @@ func _nominal_shoulders(theta: float, crouching: bool, wp: Dictionary, cam := 1.
 	var yaw := Basis(Vector3.UP, deg_to_rad(BODY_YAW) * cam)
 	for i in range(1, 5):
 		p[i] = (p[0] as Vector3) + yaw * ((p[i] as Vector3) - (p[0] as Vector3))
-	var pitch := Basis(Vector3.BACK, theta * SPINE_AIM + lean * 0.12)
+	var pitch := Basis(Vector3.BACK, _spine_pitch(theta) + lean * 0.12)
 	for j in 3:
 		for i in range(j + 1, 5):
 			p[i] = (p[j] as Vector3) + pitch * ((p[i] as Vector3) - (p[j] as Vector3))
@@ -1303,7 +1309,7 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	var aim_k := stand * (1.0 - _clip_arms)                       # klęczenie przy rannym: tułów nie celuje
 	_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(BODY_YAW) * aim_k * _cam_c)
 	for n in ["Spine", "Spine1", "Spine2"]:
-		_rot_world(_b[n], Vector3.BACK, (theta * SPINE_AIM + deg_to_rad(lean) * 0.12 - gun_extra * 0.06) * aim_k)
+		_rot_world(_b[n], Vector3.BACK, (_spine_pitch(theta) + deg_to_rad(lean) * 0.12 - gun_extra * 0.06) * aim_k)
 	_rot_world(_b["Head"], Vector3.BACK, (theta * 0.2 - deg_to_rad(lean) * 0.5) * aim_k + deg_to_rad(head_hit))
 	_pose_legs(e)
 
