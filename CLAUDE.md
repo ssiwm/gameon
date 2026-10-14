@@ -25,6 +25,7 @@ godot --headless --path prototype -- --maptest --autoquit=4     # mapy (~6 s), m
 godot --headless --path prototype -- --host --stalkertest --autoquit=70   # Stalker: ostrzał, teren, po ciosie (~45 s), ma wypisać PASS
 godot --headless --path prototype -s tools/test_sound_grid.gd   # droga dźwięku po mapie, ma wypisać PASS
 godot --headless --path prototype -s tools/test_audio_loops.gd  # pętle dźwięku na całej długości, ma wypisać PASS
+godot --headless --path prototype -s tools/test_aim_points.gd   # wylot pocisku: niezależny od animacji i zgodny z lufą modelu, ma wypisać PASS
 prototype/tools/test_weapons.sh                                 # bronie + sieć (~3 min)
 ```
 

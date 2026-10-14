@@ -29,9 +29,9 @@ const UPPER := ["mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2", "mixa
 ##   czyli punkt, z którego gra liczy celowanie i wylot pocisku; stopy zostają na torze z klipu (IK nóg).
 const CLIPS := {
 	"idle": {"file": "idle", "upper": 0.5},
-	"run": {"file": "run", "step": true, "phase0": 0.0, "upper": 0.35, "bounce": 0.45},
+	"run": {"file": "run", "step": true, "phase0": 0.0, "upper": 0.55, "bounce": 0.8},
 	"crouch": {"file": "crouch", "upper": 0.35, "drop": 0.05},
-	"crouch_walk": {"file": "crouch_walk", "step": true, "phase0": 0.0, "upper": 0.35, "drop": 0.06},
+	"crouch_walk": {"file": "crouch_walk", "step": true, "phase0": 0.0, "upper": 0.5, "drop": 0.06},
 	"revive": {"file": "kneel", "hold": [0.3, 1.0, 3.6, 0.4], "arms": true},
 	"down": {"file": "down", "scrub": [0.15, 1.65], "drop": -0.05},
 	"getup": {"file": "getup", "scrub": [0.1, 1.5]},

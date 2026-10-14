@@ -48,6 +48,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_audio_loops.gd 2>&1 | tee audioloops.log
           grep -a "\[AUDIOLOOPS\] PASS" audioloops.log
+      - name: Punkty celowania postaci 3D (test_aim_points.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_aim_points.gd 2>&1 | tee aimpoints.log
+          grep -a "^PASS" aimpoints.log
       - name: Bronie i sieć (test_weapons.sh)
         run: bash prototype/tools/test_weapons.sh
       - name: Obraz 3D pod xvfb (zrzut z każdej mapy)

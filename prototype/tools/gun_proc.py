@@ -7,7 +7,9 @@ Uruchomienie (z korzenia repo):
     materiałem (szybki podgląd brył). Wszystkie naraz: tools/gun_proc_all.sh.
 Model powstaje w milimetrach (lufa w +X, góra w +Z, lewa strona broni w +Y), na końcu jest skalowany do --length i przesuwany tak, by początek układu
 wypadł w nadgarstku dłoni tylnej — jak w prep_gun3d.py (char3d.gd ustawia dłoń wzdłuż osi „góra" broni, sięga od nadgarstka ok. 0,2 m).
-Obok GLB powstaje <nazwa>.json: {"hands", "length", "rear", "fore", "muzzle"}.
+Obok GLB powstaje <nazwa>.json: {"hands", "length", "rear", "fore", "muzzle", "grip", "hold"[, "hold_v"]}; `rear` / `fore` to nadgarstki pod chwytem
+i łożem (stary układ dłoni), `grip` = środek chwytu, który obejmuje dłoń tylna, `hold` = punkt na spodzie łoża, pod który podchodzi dłoń przednia
+(`hold_v` = chwyt przedni pionowy, obejmowany z boku). --json-only przelicza sam plik .json (bez wypieku i bez zapisu GLB).
 Tekstury (kolor, normalne, ORM) wypieka Cycles z węzłów: przetarcia oksydy na wypukłych krawędziach (AO „do środka"), brud we wnękach (AO), rysy,
 słoje drewna, rowki, kratka i grawerowane napisy jako wypukłości w mapie normalnych; broń energetyczna dostaje też mapę emisji (ogniwa, cewki,
 płomyk). Siatka zostaje lekka — detal siedzi w teksturach. Stal jest malowana pod pełną metaliczność (kolor bazowy = barwa odbicia): w grze odbija
@@ -35,6 +37,7 @@ LENGTH = _opt("length", 0.0, float)          # 0 = długość domyślna danej br
 TEX = _opt("tex", 2048, int)
 SAMPLES = _opt("samples", 48, int)
 NOBAKE = "--nobake" in argv
+JSON_ONLY = "--json-only" in argv
 DUST = _opt("dust", 1.0, float)              # siła kurzu i brudu (0 = broń prosto z magazynu)
 
 OBJS = []          # części modelu (po zbudowaniu łączone w jedną siatkę)
@@ -928,7 +931,7 @@ def build_p64():
           -9.0, 9.0, grip_m, bv=0.8, seg=2)
     prism("mag_catch", fillet([(-11.0, 2.0, 1.0), (-6.0, 2.0), (-5.0, 9.0), (-10.0, 9.0, 1.5)]), -5.0, 5.0, blued, bv=0.5, seg=1)
     # nadgarstek pod chwytem: dłoń postaci (ok. 0,2 m od nadgarstka w górę) kończy się wtedy na wysokości grzbietu zamka, nie wystaje nad broń
-    return {"rear": Vector((14.0, 0.0, -75.0)), "fore": None, "muzzle": Vector((153.5, 0.0, 91.0)), "hands": 1, "length": 0.18}
+    return {"rear": Vector((14.0, 0.0, -75.0)), "fore": None, "muzzle": Vector((153.5, 0.0, 91.0)), "hands": 1, "length": 0.18, "grip": Vector((18.0, 0.0, 44.0))}
 
 
 # ---------------------------------------------------------------- strzelby: SPREAD-12, PELLET-8
@@ -992,7 +995,8 @@ def _shotgun(v):
     if v.get("extras"):
         v["extras"](blued, small, brass, top, bot)
     # nadgarstki pod szyjką kolby i pod czółenkiem (dłonie sięgają od nich ok. 0,2 m w górę)
-    return {"rear": Vector((335.0, 0.0, -120.0)), "fore": Vector((742.0, 0.0, -116.0)), "muzzle": Vector((tip, 0.0, 0.0)), "hands": 2, "length": v["length"]}
+    return {"rear": Vector((335.0, 0.0, -120.0)), "fore": Vector((742.0, 0.0, -116.0)), "muzzle": Vector((tip, 0.0, 0.0)), "hands": 2, "length": v["length"],
+            "grip": Vector((332.0, 0.0, -42.0)), "hold": Vector((742.0, 0.0, -50.0))}
 
 
 def build_spread12():
@@ -1096,7 +1100,8 @@ def build_m83():
     cyl("thread_ring", 846.0, 851.0, 10.4, (0.0, 0.0), st, seg=16, bv=0.4)
     barrel("muzzle", 850.0, 880.0, 9.6, 4.2, (0.0, 0.0), st, bore, depth=24.0, seg=16)
     cyl("rod", 742.0, 846.0, 2.4, (0.0, -12.5), bright, seg=8, bv=0.0)
-    return {"rear": Vector((350.0, 0.0, -140.0)), "fore": Vector((655.0, 0.0, -118.0)), "muzzle": Vector((880.0, 0.0, 0.0)), "hands": 2, "length": 0.88}
+    return {"rear": Vector((350.0, 0.0, -140.0)), "fore": Vector((655.0, 0.0, -118.0)), "muzzle": Vector((880.0, 0.0, 0.0)), "hands": 2, "length": 0.88,
+            "grip": Vector((342.0, 0.0, -83.0)), "hold": Vector((650.0, 0.0, -29.0))}
 
 
 # ---------------------------------------------------------------- LR-7
@@ -1156,7 +1161,8 @@ def build_lr7():
     revolve("turret", [(56.0, 0.0), (56.0, 6.5), (67.0, 6.5), (67.0, 0.0)], (440.0, 0.0), small, axis="Z", seg=12, bv=0.5)
     # przewód spiralny z zasobnika do głowicy
     pipe("cable", helix((518.0, 0.0, -122.0), (596.0, 0.0, -28.0), 7.0, 9.0), 2.0, rubber, seg=6, smooth=0)
-    return {"rear": Vector((350.0, 0.0, -140.0)), "fore": Vector((655.0, 0.0, -142.0)), "muzzle": Vector((900.0, 0.0, 6.0)), "hands": 2, "length": 0.9}
+    return {"rear": Vector((350.0, 0.0, -140.0)), "fore": Vector((655.0, 0.0, -142.0)), "muzzle": Vector((900.0, 0.0, 6.0)), "hands": 2, "length": 0.9,
+            "grip": Vector((342.0, 0.0, -83.0)), "hold": Vector((654.0, 0.0, -51.0))}
 
 
 # ---------------------------------------------------------------- HKM-9
@@ -1218,7 +1224,8 @@ def build_hkm9():
     cyl("valve", 724.0, 752.0, 9.0, (0.0, -54.0), brass, seg=12, bv=0.6)
     revolve("valve_wheel", [(-26.0, 0.0), (-26.0, 4.0), (-24.0, 15.0), (-20.0, 15.0), (-18.0, 4.0), (-18.0, 0.0)], (740.0, -54.0), red, axis="Y", seg=14, bv=0.6)
     pipe("hose", [(750.0, 0.0, -54.0), (790.0, 0.0, -57.0), (814.0, 0.0, -38.0), (806.0, 0.0, -9.0)], 5.0, hose)
-    return {"rear": Vector((338.0, 0.0, -120.0)), "fore": Vector((618.0, 0.0, -172.0)), "muzzle": Vector((1000.0, 0.0, 0.0)), "hands": 2, "length": 1.0}
+    return {"rear": Vector((338.0, 0.0, -120.0)), "fore": Vector((618.0, 0.0, -172.0)), "muzzle": Vector((1000.0, 0.0, 0.0)), "hands": 2, "length": 1.0,
+            "grip": Vector((305.0, 0.0, -34.0)), "hold": Vector((615.0, 0.0, -92.0))}
 
 
 # ---------------------------------------------------------------- WRATH-4
@@ -1266,7 +1273,8 @@ def build_gniew4():
     barrel("sight_lens", 416.0, 432.0, 14.5, 12.0, (0.0, 66.0), small, glass, depth=5.0, seg=16)
     revolve("sight_knob", [(-22.0, 0.0), (-22.0, 7.0), (-9.0, 7.0), (-9.0, 0.0)], (378.0, 50.0), small, axis="Y", seg=12, bv=0.6)
     prism("front_sight", fillet([(738.0, 24.0), (752.0, 24.0), (749.0, 44.0, 1.5), (741.0, 44.0, 1.5)]), -2.5, 2.5, small, bv=0.5, seg=1)
-    return {"rear": Vector((334.0, 0.0, -182.0)), "fore": Vector((571.0, 0.0, -176.0)), "muzzle": Vector((770.0, 0.0, 0.0)), "hands": 2, "length": 0.77}
+    return {"rear": Vector((334.0, 0.0, -182.0)), "fore": Vector((571.0, 0.0, -176.0)), "muzzle": Vector((770.0, 0.0, 0.0)), "hands": 2, "length": 0.77,
+            "grip": Vector((326.0, 0.0, -137.0)), "hold": Vector((571.0, 0.0, -80.0)), "hold_v": True}
 
 
 # ---------------------------------------------------------------- FALCON-6
@@ -1328,7 +1336,8 @@ def build_sokol6():
     cyl("nsp_eye", 354.0, 394.0, 15.0, (0.0, 58.0), rubber, seg=16, bv=1.0)
     box("nsp_batt", 418.0, 500.0, 78.0, 96.0, 12.0, navy, bv=1.0, r=3.0)
     barrel("ir_lamp", 500.0, 546.0, 14.0, 11.5, (0.0, 97.0), small, ir, depth=6.0, seg=16)
-    return {"rear": Vector((340.0, 0.0, -140.0)), "fore": Vector((650.0, 0.0, -128.0)), "muzzle": Vector((950.0, 0.0, 0.0)), "hands": 2, "length": 0.95}
+    return {"rear": Vector((340.0, 0.0, -140.0)), "fore": Vector((650.0, 0.0, -128.0)), "muzzle": Vector((950.0, 0.0, 0.0)), "hands": 2, "length": 0.95,
+            "grip": Vector((332.0, 0.0, -83.0)), "hold": Vector((650.0, 0.0, -18.0))}
 
 
 # ---------------------------------------------------------------- SPECTER-1
@@ -1396,7 +1405,8 @@ def build_widmo1():
     prism("forend", fillet([(692.0, -33.0), (832.0, -33.0), (828.0, -58.0, 8.0), (702.0, -62.0, 8.0)]), -15.0, 15.0, lam, bv=2.5, seg=2)
     pipe("cable_p", [(522.0, -21.0, -48.0), (552.0, -27.0, -20.0), (576.0, -16.0, 22.0), (592.0, -6.0, 41.0)], 4.2, cab_p)
     pipe("cable_n", [(560.0, 21.0, -48.0), (580.0, 25.0, -42.0), (592.0, 12.0, -33.0)], 4.2, rubber)
-    return {"rear": Vector((362.0, 0.0, -142.0)), "fore": Vector((760.0, 0.0, -162.0)), "muzzle": Vector((1150.0, 0.0, 0.0)), "hands": 2, "length": 1.15}
+    return {"rear": Vector((362.0, 0.0, -142.0)), "fore": Vector((760.0, 0.0, -162.0)), "muzzle": Vector((1150.0, 0.0, 0.0)), "hands": 2, "length": 1.15,
+            "grip": Vector((354.0, 0.0, -85.0)), "hold": Vector((762.0, 0.0, -61.0))}
 
 
 # ---------------------------------------------------------------- SINEW-6
@@ -1451,7 +1461,8 @@ def build_ciegno6():
     revolve("reel_hub", [(-14.0, 0.0), (-14.0, 7.0), (14.0, 7.0), (14.0, 0.0)], (760.0, -64.0), small, axis="Y", seg=12, bv=0.5)
     revolve("crank", [(-25.0, 0.0), (-25.0, 3.6), (-11.0, 3.6), (-11.0, 0.0)], (779.0, -79.0), small, axis="Y", seg=10, bv=0.5)
     pipe("line", [(772.0, 0.0, -34.0), (900.0, 0.0, -24.0), (966.0, 0.0, -20.0), (984.0, 0.0, 0.0), (1000.0, 0.0, 9.5)], 1.0, rope, seg=5, smooth=0)
-    return {"rear": Vector((338.0, 0.0, -120.0)), "fore": Vector((610.0, 0.0, -130.0)), "muzzle": Vector((1110.0, 0.0, 13.0)), "hands": 2, "length": 1.11}
+    return {"rear": Vector((338.0, 0.0, -120.0)), "fore": Vector((610.0, 0.0, -130.0)), "muzzle": Vector((1110.0, 0.0, 13.0)), "hands": 2, "length": 1.11,
+            "grip": Vector((332.0, 0.0, -38.0)), "hold": Vector((610.0, 0.0, -36.0))}
 
 
 # ---------------------------------------------------------------- broń biała: maczeta, kilof
@@ -1481,7 +1492,7 @@ def build_maczeta():
     oval_loft("handle", 0.0, 142.0, curve_fn([(0.0, 19.0), (20.0, 17.0), (70.0, 15.5), (120.0, 16.5), (142.0, 17.0)]),
               curve_fn([(0.0, -26.0), (18.0, -21.0), (70.0, -16.0), (120.0, -17.0), (142.0, -17.0)]), curve_fn([(0.0, 11.5), (70.0, 10.5), (142.0, 10.5)]), wd, n=12)
     pins("rivet", ((30.0, 0.0), (72.0, 0.0), (114.0, 0.5)), 10.8, brass, 3.2)
-    return {"rear": Vector((72.0, 0.0, -85.0)), "fore": None, "muzzle": Vector((598.0, 0.0, 5.0)), "hands": 1, "length": 0.6}
+    return {"rear": Vector((72.0, 0.0, -85.0)), "fore": None, "muzzle": Vector((598.0, 0.0, 5.0)), "hands": 1, "length": 0.6, "grip": Vector((72.0, 0.0, 0.0))}
 
 
 def build_kilof():
@@ -1493,7 +1504,7 @@ def build_kilof():
     prism("pick", strip(spline([(606.0, 212.0), (652.0, 136.0), (681.0, 62.0), (690.0, 0.0), (681.0, -62.0), (652.0, -136.0), (606.0, -212.0)], 5),
                         lambda t: 9.0 + 36.0 * (1.0 - abs(2.0 * t - 1.0)) ** 0.8), -13.0, 13.0, head, bv=2.5, seg=2)
     box("eye", 660.0, 720.0, -30.0, 30.0, 20.0, head, bv=1.5, r=6.0)
-    return {"rear": Vector((150.0, 0.0, -85.0)), "fore": None, "muzzle": Vector((606.0, 0.0, 212.0)), "hands": 1, "length": 0.72}
+    return {"rear": Vector((150.0, 0.0, -85.0)), "fore": None, "muzzle": Vector((606.0, 0.0, 212.0)), "hands": 1, "length": 0.72, "grip": Vector((150.0, 0.0, 0.0))}
 
 
 BUILDERS = {"m83": build_m83, "spread12": build_spread12, "p64": build_p64, "srut8": build_srut8, "lr7": build_lr7, "hkm9": build_hkm9, "gniew4": build_gniew4,
@@ -1656,7 +1667,7 @@ def main():
     rear, muzzle, length = spec["rear"], spec["muzzle"], LENGTH or spec["length"]
     ob = merge_parts()
     imgs = None
-    if not NOBAKE:
+    if not NOBAKE and not JSON_ONLY:
         unwrap(ob)
         imgs = bake(ob)
         drop_markers(ob)
@@ -1667,10 +1678,16 @@ def main():
     ob.data.transform(Matrix.Translation(-rear))
     ob.data.transform(Matrix.Scale(sc, 4))
     ob.data.update()
-    bpy.ops.export_scene.gltf(filepath=DST, export_format="GLB", export_image_format="JPEG", export_jpeg_quality=95, export_animations=False)
+    if not JSON_ONLY:
+        bpy.ops.export_scene.gltf(filepath=DST, export_format="GLB", export_image_format="JPEG", export_jpeg_quality=95, export_animations=False)
     rel = lambda v: [round(c, 4) for c in (v - rear) * sc]
     info = {"hands": spec["hands"], "length": length, "rear": [0.0, 0.0, 0.0], "fore": rel(spec["fore"]) if spec["fore"] is not None else [0.0, 0.0, 0.0],
             "muzzle": rel(muzzle)}
+    for k in ("grip", "hold"):
+        if spec.get(k) is not None:
+            info[k] = rel(spec[k])
+    if spec.get("hold_v"):
+        info["hold_v"] = True
     with open(DST.rsplit(".", 1)[0] + ".json", "w") as f:
         json.dump(info, f, indent=1)
     print("OK", DST, info)
