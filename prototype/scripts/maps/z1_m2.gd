@@ -25,7 +25,8 @@ const UNDERGROUND_ROW := 30
 ## Broń na ziemi („g") od lewej: strzelba na dziedzińcu, kusza (cicha — pasuje do celu pobocznego) na antresoli chaty, kilof przy wieży nad podziemną halą
 ## (rozbija zamurowane przejście „q" w lewej ścianie hali: skrytka ze złomem i amunicją; wejście 3 kafle, wiersze 37-39).
 const WEAPONS := [Weapons.SRUT8, Weapons.CIEGNO6, Weapons.KILOF]
-const ACCENTS := [[Vector2(152, 416), 6], [Vector2(184, 416), 6], [Vector2(648, 416), 7], [Vector2(2000, 416), 7], [Vector2(3500, 416), 7]]
+## (8+) Poly Haven: koksownik przy kłodach za chatą radiową, opona w bagnie, pniak za bagnem.
+const ACCENTS := [[Vector2(152, 416), 6], [Vector2(184, 416), 6], [Vector2(648, 416), 7], [Vector2(2000, 416), 7], [Vector2(3500, 416), 7], [Vector2(696, 416), 11], [Vector2(808, 416), 13], [Vector2(968, 416), 9]]
 
 const MAP := [
 	"##........................................................................................................................................................................................................................................................................ww..................##",

@@ -7,9 +7,10 @@ albo bezpośrednio: blender -b --factory-startup -P prototype/tools/prep_items3d
 Dwa źródła:
   * proceduralne bryły z `concept/items_proc_bake.py` (te same, z których powstają sprite'y HD): siatki są łączone, rozwijane (Smart UV),
     a materiały węzłowe wypalane w Cycles do tekstur — kolor, mapa normalnych w przestrzeni stycznej, ORM (okluzja, chropowatość, metal), emisja;
-  * modele z Tripo (`art_src/world/tripo/*.glb`: warsztat, złom, kamień, kłody, płot, skrzynia, beczka, regał, szafka, stół, prycza, generator,
+  * modele z Tripo (`art_src/world/tripo/*.glb`: warsztat, złom, kłody, płot, skrzynia, beczka, szafka, stół, prycza, generator,
     skrytka, stojak, krzesło, worek, apteczka, amunicja, torba, flary, granaty, stołek, kości): obrót czołem do kamery gry, uproszczenie siatki,
-    zmniejszenie tekstur.
+    zmniejszenie tekstur;
+  * skany z Poly Haven (CC0, `art_src/world/polyhaven/*.glb` z `tools/polyhaven_fetch.py`): kamienie, pnie, radiostacja, regał i dekoracje map.
 Wynik: prototype/art/items3d/<nazwa>.glb. Jednostka modelu = 1 piksel świata gry, początek układu w stopach (środek szerokości, z = 0),
 front bryły w stronę −Y Blendera (= +Z w Godocie, ku kamerze gry) — dokładnie tak, jak sprite z `ItemsHd.make` leży względem swojego węzła.
 """
@@ -28,13 +29,11 @@ TRIPO = os.path.join(ROOT, "art_src", "world", "tripo")
 TRIPO_MODELS = {
     "workshop": ("workshop.glb", "+X", 30.0, 14000),
     "scrap_pile": ("scrap_pile.glb", "+X", 14.0, 6000),
-    "rock": ("rock.glb", "-Y", 14.0, 3000, 9.0),
     "logs": ("logs.glb", "-Y", 18.0, 6000),
     "fence": ("fence.glb", "-Y", 20.0, 6000),
     # meble i sprzęt (Tripo, 2026-10-11): szerokość i wysokość jak bryła sprite'a w art/items/items.json — model mieści się w tej ramce
     "crate": ("crate.glb", "+X", 14.0, 8000, 14.0, True),      # True: wypełnia ramkę dokładnie (kształt kolizji 14×14 — na skrzyni się stoi)
     "barrel": ("barrel.glb", "+X", 10.0, 6000, 15.0, True),
-    "shelf": ("shelf.glb", "+X", 31.8, 12000, 34.4),
     "locker": ("locker.glb", "+X", 13.0, 6000, 31.0),
     "table": ("table.glb", "-Y", 40.0, 10000, 19.0),
     "cot": ("cot.glb", "-Y", 36.0, 8000, 13.0),
@@ -81,16 +80,30 @@ TRIPO_MODELS = {
     "gib_bone_a": ("../../gibs/bone_a.glb", "-Y", 100.0, 1000, 1000.0),
     "gib_bone_b": ("../../gibs/bone_b.glb", "-Y", 100.0, 1000, 1000.0),            # kłódka zablokowanej broni na stojaku
     "stake": ("stake.glb", "+X", 4.0, 2500, 8.9),
-    "radio_set": ("radio_set.glb", "+X", 30.0, 6000, 24.0),
     "tree_snag": ("tree_snag.glb", "+X", 1000.0, 2500, 100.0),
     # wersja szczegółowa dla najbliższego rzędu lasu
     "tree_snag_hi": ("tree_snag.glb", "+X", 1000.0, 7000, 100.0),
-    "tree_log": ("tree_log.glb", "-Y", 100.0, 2500, 1000.0),
     "post": ("post.glb", "-Y", 1000.0, 1500, 100.0),
     # kładki: odcinek o długości 100 jednostek (x), góra pokładu = góra bryły; gra układa odcinki jeden za drugim (`Level3D.build_level`).
     # Deski leżą w poprzek kładki, więc łączenia odcinków wypadają w szczelinach między deskami; krata ma ramę — łączenie to styk paneli.
     "walkway_plank": ("walkway_plank.glb", "+X", 100.0, 5000, 17.6, True, 99.0),
     "walkway_grate": ("walkway_grate.glb", "-Y", 100.0, 6000, 8.0, True, 33.0),
+    # Poly Haven (CC0, skany; źródła pobiera tools/polyhaven_fetch.py do art_src/world/polyhaven/). Front modeli Poly Haven leży na −Y Blendera.
+    # Zamienniki modeli z Tripo — te same nazwy, ramki i skale w grze:
+    "tree_log": ("../polyhaven/dead_tree_trunk.glb", "-Y", 100.0, 6000, 1000.0),
+    "rock": ("../polyhaven/rock_moss_set_01__rock01.glb", "-Y", 14.0, 3000, 9.0),
+    "radio_set": (["../polyhaven/metal_office_desk.glb", "../polyhaven/vintage_radio_transceiver.glb"], "-Y", 43.9, 10000),   # radio na biurku: 1,8 m w skali gry 0,5
+    "shelf": ("../polyhaven/steel_frame_shelves_01.glb", "-Y", 31.8, 4400, 29.5),        # 1,93 m w skali gry 0,8 (granica 2,0 w test_proportions)
+    # nowe dekoracje mapy (view3d.gd: DECO_MODELS) w naturalnej skali: szerokość w px świata = metry / 0,082
+    "rock_b": ("../polyhaven/rock_moss_set_01__rock04.glb", "-Y", 14.0, 3000, 9.0),
+    "rock_c": ("../polyhaven/rock_moss_set_01__rock05.glb", "-Y", 14.0, 3000, 9.0),
+    "fire_pit": ("../polyhaven/stone_fire_pit.glb", "-Y", 17.7, 3900),
+    "stump": ("../polyhaven/tree_stump_01.glb", "-Y", 17.4, 5000),
+    "trunk_big": ("../polyhaven/dead_tree_trunk_02.glb", "-Y", 49.4, 7000),
+    "barrel_stove": ("../polyhaven/barrel_stove.glb", "-Y", 7.3, 5000),
+    "mil_crate": ("../polyhaven/wooden_military_crate.glb", "-Y", 15.1, 6000),
+    "tyre": ("../polyhaven/old_tyre.glb", "-Y", 7.3, 2000),
+    "barrier": ("../polyhaven/concrete_road_barrier_02.glb", "-Y", 19.1, 4000),
 }
 # modele z Tripo ze świecącymi elementami (diody, ekrany, żarówka): emisja = jasne, nasycone piksele koloru (żarówka: jasne, blade)
 EMISSIVE = {"mine": "led", "charge": "led", "defib": "led", "scanner": "led", "lamp": "bulb", "stake": "led"}
@@ -464,14 +477,7 @@ def build_spruce(name, seed, fullness, bare):
     export_glb(trunk, name)
 
 
-def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False, depth_wp=None):
-    src = os.path.join(TRIPO, fname)
-    if not os.path.exists(src):
-        print("SKIP", name, "(brak", fname + ")")
-        return
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.ops.import_scene.gltf(filepath=src)
-    meshes = [o for o in bpy.data.objects if o.type == "MESH"]
+def _join(meshes):
     bpy.ops.object.select_all(action="DESELECT")
     for o in meshes:
         o.select_set(True)
@@ -481,6 +487,33 @@ def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False
     obj = bpy.context.view_layer.objects.active
     bpy.ops.object.parent_clear(type="CLEAR_KEEP_TRANSFORM")
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    return obj
+
+
+def _bounds(obj):
+    vs = np.array([v.co[:] for v in obj.data.vertices])
+    return vs.min(axis=0), vs.max(axis=0)
+
+
+def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False, depth_wp=None):
+    # fname może być listą plików: kolejne bryły stoją na poprzedniej (np. radio na biurku), środkiem w osi X, przy tylnej krawędzi
+    srcs = [os.path.join(TRIPO, f) for f in (fname if isinstance(fname, (list, tuple)) else [fname])]
+    if not all(os.path.exists(s) for s in srcs):
+        print("SKIP", name, "(brak", fname, ")")
+        return
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    parts = []
+    for src in srcs:
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=src)
+        part = _join([o for o in bpy.data.objects if o not in before and o.type == "MESH"])
+        if parts:
+            lo0, hi0 = _bounds(parts[-1])
+            lo, hi = _bounds(part)
+            part.data.transform(Matrix.Translation(((lo0[0] + hi0[0] - lo[0] - hi[0]) * 0.5,
+                                                    hi0[1] - hi[1] - 0.08 * (hi0[1] - lo0[1]), hi0[2] - lo[2])))
+        parts.append(part)
+    obj = _join(parts)
     # strona, z której patrzy wypiek 2D, ma trafić na −Y (ku kamerze gry)
     rot = {"-Y": 0.0, "+Y": 180.0, "+X": -90.0, "-X": 90.0}[cam]
     me = obj.data

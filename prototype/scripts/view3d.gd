@@ -832,10 +832,16 @@ func spawn_burst(pos: Vector2, cfg: Dictionary) -> void:
 
 # ---------------------------------------------------------------- dekoracje mapy (kamienie, kłody, płoty, kości)
 
-const DECO_MODELS := {3: ["rock", 1.0], 4: ["bones", 0.7], 6: ["fence", 0.34], 7: ["logs", 1.0]}   ## płot: model ma 6,5 m wysokości — w skali 0,34 ok. 2,2 m
+## Indeks dekoracji → [model albo lista wariantów (wybór z pozycji), skala]. 0–7 jak w `bake_sprites.PROPS` (kamienie i kości losuje
+## `level.gd: _place_deco`), 8+ tylko z akcentów map (`ACCENTS`). Kamienie i dekoracje 8+ to skany Poly Haven w naturalnej skali.
+const DECO_MODELS := {3: [["rock", "rock_b", "rock_c", "rock", "stump"], 1.0], 4: ["bones", 0.7], 6: ["fence", 0.34], 7: ["logs", 1.0],   ## płot: model ma 6,5 m wysokości — w skali 0,34 ok. 2,2 m
+	8: ["fire_pit", 1.0], 9: ["stump", 1.0], 10: ["trunk_big", 1.0], 11: ["barrel_stove", 1.0], 12: ["mil_crate", 1.0], 13: ["tyre", 1.0],
+	14: ["barrier", 1.0]}
+## Głębokość (z, m) dekoracji stojących w stałym miejscu za płaszczyzną gry; pozostałe leżą losowo w głębi bryły gruntu.
+const DECO_Z := {6: -0.9, 7: -0.9, 8: -0.8, 9: -1.3, 10: -1.9, 11: -0.95, 12: -1.0, 13: -0.85, 14: -0.9}
 
 ## Dekoracje z listy poziomu (`level.gd: _deco_list` — te same miejsca co w 2D) jako modele 3D w `MultiMesh`: kamienie i kości rozrzucone w głąb
-## bryły gruntu, płoty i kłody tuż za płaszczyzną gry. Trzciny (5) mają własne bryły przy cieczach (`Level3D.build_liquid_props`).
+## bryły gruntu, płoty, kłody i akcenty map tuż za płaszczyzną gry. Trzciny (5) mają własne bryły przy cieczach (`Level3D.build_liquid_props`).
 func _build_deco() -> void:
 	var list = _level.get("_deco_list")
 	if list == null:
@@ -849,15 +855,17 @@ func _build_deco() -> void:
 		var h := int(feet.x) * 73856093 ^ int(feet.y) * 19349663
 		var r1 := float(absi(h) % 1000) / 1000.0
 		var r2 := float(absi(h >> 7) % 1000) / 1000.0
+		var mdl = DECO_MODELS[id][0]
+		var mname := String(mdl[absi(h >> 11) % (mdl as Array).size()]) if mdl is Array else String(mdl)
 		var k := PX * float(DECO_MODELS[id][1]) * (0.85 + 0.4 * r2 if id == 3 else 1.0)
-		var z := -0.9 if (id == 6 or id == 7) else lerpf(-1.9, -0.45, r1)
+		var z: float = DECO_Z.get(id, lerpf(-1.9, -0.45, r1))
 		var yaw := (PI if bool(d[2]) else 0.0) + (lerpf(-0.6, 0.6, r2) if id == 3 or id == 4 else lerpf(-0.08, 0.08, r2))
 		var b := Basis(Vector3.UP, yaw).scaled(Vector3(k, k, k))
-		if not groups.has(id):
-			groups[id] = []
-		(groups[id] as Array).append(Transform3D(b, Level3D.px_to_m(feet) + Vector3(0.0, 0.0, z)))
-	for id in groups:
-		var ps := _item_scene(String(DECO_MODELS[id][0]))
+		if not groups.has(mname):
+			groups[mname] = []
+		(groups[mname] as Array).append(Transform3D(b, Level3D.px_to_m(feet) + Vector3(0.0, 0.0, z)))
+	for mname in groups:
+		var ps := _item_scene(String(mname))
 		if ps == null:
 			continue
 		var inst := ps.instantiate()
@@ -870,12 +878,12 @@ func _build_deco() -> void:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.mesh = smi.mesh
-		var xfs: Array = groups[id]
+		var xfs: Array = groups[mname]
 		mm.instance_count = xfs.size()
 		for i in xfs.size():
 			mm.set_instance_transform(i, (xfs[i] as Transform3D) * base)
 		var mmi := MultiMeshInstance3D.new()
-		mmi.name = "Deco_" + String(DECO_MODELS[id][0])
+		mmi.name = "Deco_" + String(mname)
 		mmi.multimesh = mm
 		mmi.layers = LAYER_WORLD
 		_geo.add_child(mmi)
