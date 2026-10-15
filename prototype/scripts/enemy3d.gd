@@ -32,7 +32,7 @@ const SPEC := {
 	"trzosek": {"fit": ["length", 21.0], "frame_h": 22.0, "cycle": 0.55, "quad": true, "yaw": -90.0, "clips": true, "idle_t": 0.0},
 	# Mimik to model gracza z kolorem „kolegi” i świecącymi oczami; pozostałe poniżej to modele statyczne animowane deformacją wierzchołków w shaderze
 	# (`DEFORM`), tak jak wypiek `concept/static_tripo_bake.py` — poza z numeru klatki sprite'a 2D (animacja idzie w tempie gry).
-	"mimik": {"model": "res://art/char3d/mpfb/male_scav.glb", "eye_off": [0.12, 0.095, 0.033], "fit": ["height", 22.0], "frame_h": 28.0, "cycle": 0.8, "eyes": true, "turn": true,
+	"mimik": {"model": "res://art/char3d/mpfb/male_scav.glb", "eye_off": [0.12, 0.095, 0.033], "fit": ["height", 22.0], "fit_mesh": "body", "frame_h": 28.0, "cycle": 0.8, "eyes": true, "turn": true,
 		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human",
 		"death": {"dir": 1.0, "lean": 8.0, "dur": 1.2, "tilt": 84.0}},
 	"cma": {"fit": ["width", 18.0], "frame_h": 20.0, "deform": "cma", "float": true, "clips": true, "death_dur": 0.9},
@@ -276,6 +276,13 @@ func setup(k: String, translucent := false) -> bool:
 		_ap = aps[0]
 	# skala: rozmiar modelu w spoczynku → rozmiar sprite'a 2D (jak w wypieku)
 	var bb := _mesh.get_aabb()
+	var fit_name := String(_spec.get("fit_mesh", ""))
+	if fit_name != "":
+		# model gracza (Mimik) ma osobne siatki ekwipunku (plecak, kamizelka…) i `mis[0]` to nie ciało: skala dopasowana do plecaka powiększała postać ok. 3×
+		for m in mis:
+			if String(m.name) == fit_name:
+				bb = (m as MeshInstance3D).get_aabb()
+				break
 	var fit: Array = _spec["fit"]
 	var ext := bb.size.y
 	if String(fit[0]) == "length":
