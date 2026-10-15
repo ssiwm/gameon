@@ -103,6 +103,7 @@ var _span_map := ""
 var _item_tuned := {}                    ## nazwy modeli z już dostrojonymi materiałami
 var _item_scenes := {}                   ## nazwa przedmiotu → PackedScene modelu 3D albo null
 var _items := {}                         ## id sprite'a przedmiotu HD → [Sprite2D, MeshInstance3D, materiał, z, ukryte węzły 2D]
+var _cache_piles := {}                   ## id sprite'a skrzyni z mapy → klucze broni, z których zbudowano jej stertę (_build_cache_pile)
 var _scan_t := 0.0
 var _life := 0.0
 var _saved := false
@@ -3556,11 +3557,17 @@ func _sync_items() -> void:
 			if is_instance_valid(mi):
 				mi.queue_free()
 			_items.erase(id)
+			_cache_piles.erase(id)
 			continue
 		var sp := src_v as ItemsHd.ItemMark
 		mi.visible = sp.is_visible_in_tree()
 		if not mi.visible:
 			continue
+		if _cache_piles.has(id):                               # sterta skrzyni z mapy idzie za bronią drużyny (zmiana broni, śmierć, dołączenie)
+			var keys := _team_primaries()
+			if keys != _cache_piles[id]:
+				_cache_piles[id] = keys
+				_build_cache_pile(mi, keys, float(sp.get_meta("hd_dark", 0.0)) * 0.35)
 		var xf := sp.global_transform
 		var sc := xf.get_scale()
 		if bool(it[5]):                                        # model 3D: początek w stopach sprite'a, jednostka modelu = piksel świata
@@ -3627,24 +3634,21 @@ func _item_model(name: String, glow := 0.0) -> Node3D:
 	_item_tuned[name] = true
 	return root
 
-## Wygląd naboi na skrzynce amunicji wg broni: [rodzaj, liczba sztuk]. Rodzaje rysuje `_ammo_round`.
+## Wygląd naboi broni: [rodzaj, liczba sztuk rozsypanych przy skrzynce]. Rodzaje rysuje `_ammo_round`.
 const AMMO_LOOK := {
-	"m83": ["rifle", 5], "p64": ["pistol", 6], "spread12": ["shell", 4], "srut8": ["shell_g", 4], "lr7": ["cell", 2], "hkm9": ["fuel", 1],
-	"gniew4": ["grenade40", 2], "sokol6": ["rocket", 3], "widmo1": ["slug", 3], "ciegno6": ["bolt", 2],
+	"m83": ["rifle", 3], "p64": ["pistol", 3], "spread12": ["shell", 3], "srut8": ["shell_g", 3], "lr7": ["cell", 2], "hkm9": ["fuel", 1],
+	"gniew4": ["grenade40", 2], "sokol6": ["rocket", 2], "widmo1": ["slug", 2], "ciegno6": ["bolt", 2],
 }
-const AMMO_FIT := Vector2(7.0, 4.4)         ## ramka naboi na przodzie skrzynki (szer. × wys., jednostki modelu; przód ma 9 jednostek)
-const AMMO_CY := 3.6                        ## wysokość środka ramki nad stopami skrzynki
-const AMMO_DEPTH := 1.6                     ## największa głębokość naboi (płaskorzeźba na ściance, bez paralaksy w perspektywie)
+## Promień leżącego naboju (jednostki modelu): oś na tej wysokości nad ziemią.
+const AMMO_LIE_R := {"rifle": 0.45, "pistol": 0.45, "shell": 0.72, "shell_g": 0.72, "cell": 1.04, "grenade40": 1.1, "rocket": 0.8, "slug": 0.36}
+const AMMO_LOOSE_K := 1.35                  ## skala rozsypanych naboi względem skrzynki (większe niż w naturze — czytelne w kamerze gry)
 
-## Oznaczenie skrzynki amunicji: na przedniej ściance, na ciemnej tabliczce, naboje tej broni (łuski karabinowe, śrut, ogniwa lasera,
-## kanister paliwa, granaty 40 mm, rakietki, pręty railguna, bełty) — od razu widać, do czego jest amunicja. Pod spodem wąski pasek
-## w kolorze smugi broni. Jednostka modelu = piksel świata.
+## Skrzynka amunicji bez tabliczki: przed nią leży kilka naboi broni, do której jest (łuski karabinowe, śrut, ogniwa lasera, kanister,
+## granaty 40 mm, rakietki, pręty railguna, bełty) — rodzaj amunicji widać po nich, jak na stercie skrzyni z mapy.
 func _add_kind_tag(sp: ItemsHd.ItemMark, model: Node3D) -> void:
 	var owner_n := sp.get_parent().get_parent() if sp.get_parent() != null else null
 	if owner_n == null or owner_n.get("kind") == null or String(owner_n.get("kind")) != "ammo":
 		return
-	var wd := Weapons.def(int(owner_n.get("arg")))
-	var col := (wd.tracer_color as Color).lerp(Color(0.85, 0.68, 0.3), 0.4)
 	var front := -INF
 	var span := Vector2(INF, -INF)                             # zakres x bryły: środek modelu z generatora nie zawsze leży w x = 0
 	for mn in model.find_children("*", "MeshInstance3D", true, false):
@@ -3653,42 +3657,92 @@ func _add_kind_tag(sp: ItemsHd.ItemMark, model: Node3D) -> void:
 		span = Vector2(minf(span.x, ab.position.x), maxf(span.y, ab.end.x))
 	if front == -INF:
 		return
-	var mid := (span.x + span.y) * 0.5
-	var rounds := _ammo_rounds(String(wd.key))
-	var box := AABB()
-	var first := true
-	for mn in rounds.find_children("*", "MeshInstance3D", true, false):
-		var bb := _local_xf(mn as MeshInstance3D, rounds) * (mn as MeshInstance3D).get_aabb()
-		box = bb if first else box.merge(bb)
-		first = false
-	var s := minf(AMMO_FIT.x / maxf(box.size.x, 0.001), AMMO_FIT.y / maxf(box.size.y, 0.001))
-	var sz := minf(s, AMMO_DEPTH / maxf(box.size.z, 0.001))
-	rounds.scale = Vector3(s, s, sz)
-	rounds.position = Vector3(mid - box.get_center().x * s, AMMO_CY - box.get_center().y * s, front + 0.25 - box.position.z * sz)
-	model.add_child(rounds)
-	var plate := _ammo_box(model, Vector3(AMMO_FIT.x + 1.2, AMMO_FIT.y + 1.0, 0.2), Vector3(mid, AMMO_CY, front + 0.1),
-			_ammo_mat(Color(0.07, 0.07, 0.065), 0.9))                  # ciemna tabliczka: mosiądz i czerwień odcinają się od jasnej skrzynki
-	plate.name = "AmmoPlate"
-	var tm := _ammo_mat(col, 0.6)
-	tm.emission_enabled = true
-	tm.emission = col
-	tm.emission_energy_multiplier = 0.35
-	var tag := _ammo_box(model, Vector3(AMMO_FIT.x + 1.2, 0.8, 0.3), Vector3(mid, AMMO_CY - AMMO_FIT.y * 0.5 - 1.1, front + 0.1), tm)
-	tag.name = "KindTag"
+	_loose_rounds(model, String(Weapons.def(int(owner_n.get("arg"))).key), Vector3((span.x + span.y) * 0.5, 0.0, front + 1.4),
+			span.y - span.x, int(owner_n.get_instance_id()))
 
-## Naboje jednej broni ułożone obok siebie (bryły z prymitywów; skalę i położenie nadaje `_add_kind_tag`).
-func _ammo_rounds(key: String) -> Node3D:
-	var look: Array = AMMO_LOOK.get(key, ["rifle", 5])
-	var root := Node3D.new()
-	root.name = "AmmoRounds"
+## Naboje broni `key` rozsypane na ziemi wokół `at` (w poprzek ok. `width`): leżą osią w bok, każdy pod innym kątem; kanister stoi.
+## `k` — jednostka modelu ammo.glb w jednostkach rodzica (na stercie skrzyni z mapy rodzic ma inną skalę niż skrzynka).
+func _loose_rounds(parent: Node3D, key: String, at: Vector3, width: float, seed_v: int, k := 1.0) -> void:
+	var sk := AMMO_LOOSE_K * k
+	var look: Array = AMMO_LOOK.get(key, ["rifle", 3])
+	var kind := String(look[0])
 	var n := int(look[1])
-	var step := {"rifle": 1.25, "pistol": 1.2, "shell": 1.7, "shell_g": 1.7, "cell": 2.6, "fuel": 1.0, "grenade40": 2.6, "rocket": 1.5, "slug": 1.1, "bolt": 1.6}
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_v
 	for i in n:
 		var r := Node3D.new()
-		r.position = Vector3((float(i) - float(n - 1) * 0.5) * float(step.get(String(look[0]), 1.5)), 0.0, 0.0)
-		root.add_child(r)
-		_ammo_round(r, String(look[0]))
-	return root
+		r.name = "LooseRound"
+		parent.add_child(r)
+		_ammo_round(r, kind)
+		var x := at.x + (float(i) - float(n - 1) * 0.5) * width * 0.32 + rng.randf_range(-0.8, 0.8) * k
+		var z := at.z + rng.randf_range(-0.6, 0.6) * k
+		r.scale = Vector3.ONE * sk
+		if kind == "fuel":                                     # kanister stoi obok skrzynki
+			r.position = Vector3(x, 0.0, z)
+			r.rotation.y = rng.randf_range(-0.5, 0.5)
+		elif kind == "bolt":                                   # bełt leży już poziomo (oś x)
+			r.position = Vector3(x, 0.45 * sk, z)
+			r.rotation.y = rng.randf_range(-0.6, 0.6)
+		else:                                                  # nabój stoi w osi y: obrót o 90° wokół z kładzie go na boku
+			r.position = Vector3(x, float(AMMO_LIE_R.get(kind, 0.5)) * sk, z)
+			r.rotation = Vector3(0.0, rng.randf_range(-1.2, 1.2), -PI * 0.5)
+
+# ---------------------------------------------------------------- skrzynia z mapy jako sterta zawartości
+
+const CACHE_PILE_MAX := 3                   ## najwięcej skrzynek amunicji na stercie (po jednej na broń)
+
+## Bronie główne, które skrzynia z mapy uzupełni (jak `pickup._try_cache`: żywi gracze ludzie), klucze posortowane, najwyżej CACHE_PILE_MAX.
+func _team_primaries() -> Array:
+	var keys: Array = []
+	for p in get_tree().get_nodes_in_group("players"):
+		if bool(p.get("is_bot")) or bool(p.get("dead")) or not p.has_method("kit_primaries"):
+			continue
+		for w in p.kit_primaries():
+			if int(w) >= 0:
+				var k := String(Weapons.def(int(w)).key)
+				if not keys.has(k):
+					keys.append(k)
+	keys.sort()
+	return keys.slice(0, CACHE_PILE_MAX)
+
+## Skrzynia z mapy (pickup „cache”) rysowana jako sterta tego, co daje: skrzynka amunicji na każdą broń główną drużyny (druga na pierwszej,
+## trzecia obok), przed nimi rozsypane naboje tych broni, flara oparta o stos. Jednostka modelu = piksel świata w skali skrzyni z mapy.
+func _build_cache_pile(root: Node3D, keys: Array, glow: float) -> void:
+	for c in root.get_children():
+		root.remove_child(c)
+		c.queue_free()
+	var kc := ItemsHd.ppw("cache") * float(ITEM_SCALE.get("cache", 1.0))
+	var ka := ItemsHd.ppw("ammo") * float(ITEM_SCALE["ammo"]) / kc        # skrzynka i flara w tej samej skali co na ziemi osobno
+	var kf := ItemsHd.ppw("flare") * float(ITEM_SCALE["flare"]) / kc
+	var crates: Array = keys.duplicate() if not keys.is_empty() else [""]
+	var size := Vector3(10.4, 8.6, 9.0)                        # bryła ammo.glb (tools/prep_items3d.py: szerokość 10,4 × wysokość 8,6)
+	var w := size.x * ka
+	var spots := [Vector3(-w * 0.28, 0.0, 0.0), Vector3(w * 0.12, size.y * ka * 0.97, 0.4), Vector3(w * 0.78, 0.0, -1.2)]
+	var tilt := [0.06, -0.2, 0.14]
+	var right := -INF
+	for i in crates.size():
+		var m := _item_model("ammo", glow)
+		if m == null:
+			continue
+		m.name = "PileCrate%d" % i
+		m.scale = Vector3.ONE * ka * (0.94 if i == 1 else 1.0)
+		m.position = spots[i]
+		m.rotation.y = tilt[i]
+		root.add_child(m)
+		right = maxf(right, (spots[i] as Vector3).x + w * 0.5)
+	var left := (spots[0] as Vector3).x - w * 0.5
+	var lane := (right - left) / float(crates.size())          # naboje każdej broni na osobnym odcinku przed stertą, żeby się nie mieszały
+	for i in crates.size():
+		if String(crates[i]) != "":
+			_loose_rounds(root, String(crates[i]), Vector3(left + lane * (float(i) + 0.5), 0.0, (size.z * 0.5 + 1.8 + 0.5 * float(i)) * ka),
+					lane * 0.9, i * 7919 + 13, ka)
+	var fl := _item_model("flare", glow)
+	if fl != null:                                              # flara oparta o stos z prawej, leży ukośnie
+		fl.name = "PileFlare"
+		fl.scale = Vector3.ONE * kf * 0.75                       # flara w pełnej skali przytłaczała skrzynki
+		fl.position = Vector3(right + 15.8 * kf * 0.2, 0.0, 1.8)
+		fl.rotation = Vector3(0.0, -0.35, 1.18)
+		root.add_child(fl)
 
 ## Jeden nabój danego rodzaju, stojący pionowo (dno w y = 0); bełt leży poziomo.
 func _ammo_round(r: Node3D, look: String) -> void:
@@ -3780,7 +3834,15 @@ func _ammo_box(parent: Node3D, size: Vector3, pos: Vector3, m: Material) -> Mesh
 func _make_item(sp: ItemsHd.ItemMark) -> void:
 	var name := String(sp.get_meta("hd_name", ""))
 	var alb: Texture2D = ItemsHd.albedo(name) if _item_scene(name) == null else null      # karta zastępcza tylko dla przedmiotu bez modelu
-	var model := _item_model(name, float(sp.get_meta("hd_dark", 0.0)) * 0.35)
+	var model: Node3D = null
+	if name == "cache" and _item_scene("ammo") != null:        # skrzynia z mapy: sterta jej zawartości (amunicja broni drużyny + flara)
+		model = Node3D.new()
+		model.name = "CachePile"
+		var keys := _team_primaries()
+		_build_cache_pile(model, keys, float(sp.get_meta("hd_dark", 0.0)) * 0.35)
+		_cache_piles[sp.get_instance_id()] = keys
+	else:
+		model = _item_model(name, float(sp.get_meta("hd_dark", 0.0)) * 0.35)
 	if model != null:                                          # prawdziwa bryła zamiast karty
 		_world.add_child(model)
 		_add_kind_tag(sp, model)
