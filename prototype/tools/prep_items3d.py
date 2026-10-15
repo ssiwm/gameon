@@ -111,6 +111,8 @@ TRIPO_MODELS = {
     "compressor": ("../polyhaven/old_military_compressor.glb", "+X", 20.5, 8000, 14.4),       # model leży wzdłuż osi Y: bokiem do kamery
     "cart": ("../polyhaven/industrial_storage_cart.glb", "-Y", 19.6, 5000, 16.8),
     "barrel_n": ("../polyhaven/barrel_03.glb", "-Y", 7.75, 2500, 11.4),
+    "jerrycan": ("../polyhaven/metal_jerrycan.glb", "-Y", 4.3, 3000, 5.6),                    # kanister 35 × 46 cm w naturalnej skali
+    "gas_mask": ("../polyhaven/old_gas_mask.glb", "-Y", 2.6, 5000, 13.8),                     # maska z wężem i filtrem (1,13 m): wisi na ścianie za głowicę
 }
 # modele z Tripo ze świecącymi elementami (diody, ekrany, żarówka): emisja = jasne, nasycone piksele koloru (żarówka: jasne, blade)
 EMISSIVE = {"mine": "led", "charge": "led", "defib": "led", "scanner": "led", "lamp": "bulb", "stake": "led"}

@@ -23,3 +23,5 @@ Większość modeli w tym katalogu powstaje z Tripo albo z brył proceduralnych 
 | compressor | old_military_compressor | kompresor w Pompowni (1.2) |
 | cart | industrial_storage_cart | wózek w Składzie (1.3) |
 | barrel_n | barrel_03 | beczki we wnętrzach (1.2, 1.3) |
+| jerrycan | metal_jerrycan | kanistry (1.1, 1.2, 1.3, B1, kryjówka) |
+| gas_mask | old_gas_mask | maska wisząca na ścianie (1.2, 1.3, B1, kryjówka) |
