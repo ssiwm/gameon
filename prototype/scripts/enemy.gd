@@ -124,6 +124,9 @@ const CHARGE_CD := 7.0
 const THROW_WINDUP := 0.8
 const THROW_CD := 6.0
 const CRASH_STUN := 1.3
+const RUN_CHECK_MAX := 280.0         ## px: tyle rozbiegu sprawdzamy przed szarżą (ściana i podłoga)
+const RUN_FLOOR_STEP := 16.0         ## px: co tyle sprawdzamy, czy pod rozbiegiem jest podłoga (kafel)
+const RUN_FLOOR_DEPTH := 28.0        ## px w dół od poziomu stóp: głębiej to już przepaść, nie stopień
 ## Ćma i światło
 const MOTH_SEEK_R := 420.0           ## z tej odległości ćma wyczuwa światło
 const MOTH_BURN_DPS := 6.0           ## spalanie przy flarze
@@ -171,8 +174,10 @@ var _facing := 1.0
 var _last_x := 0.0
 ## Percepcja i nawigacja (serwer)
 var omniscient := false       ## potomstwo Żyły zawsze zna położenie graczy
+var summoned := false         ## przywołany przez bossa (potomstwo Żyły, Trzoski Pijawki): bez XP i dropów — inaczej dałoby się na nich farmić
 var _target: Node2D = null    ## gracz, którego widzi
 var _perceive_t := 0.0
+var _flash_check_ms := 0      ## kiedy (ms silnika) śpiący wróg znów sprawdza, czy świeci na niego latarka
 var _has_lead := false        ## ma ślad do sprawdzenia
 var _last_known := Vector2.ZERO
 var _lose_t := 0.0
@@ -480,13 +485,17 @@ func _phys_tick(delta: float) -> void:
 		_land_hit()
 	_send_state(delta)
 
+## Obrażenia ataku wroga po poziomie trudności (zaokrąglane, min. 1) — jedno miejsce dla zwykłego ciosu, lądowania skoczka, szarży Wołka i ćmy.
+func _scaled_damage(base: int) -> int:
+	return maxi(1, roundi(float(base) * Difficulty.m("enemy_damage")))
+
 ## Skoczek lądujący na graczu: 2 obrażenia, łoskot (hałas) i pył.
 func _land_hit() -> void:
 	_drop_attack = false
 	winding = false
 	for p in get_tree().get_nodes_in_group("players"):
 		if not p.dead and absf(p.global_position.x - global_position.x) < 16.0 and absf(p.global_position.y - global_position.y) < 22.0:
-			p.deliver_hit(2, global_position, kind)
+			p.deliver_hit(_scaled_damage(2), global_position, kind)
 	NoiseMgr.add_noise(5.0, global_position)
 	if NoiseMgr.has_network():
 		_crash_fx.rpc()
@@ -629,7 +638,7 @@ func _moth_tick(delta: float) -> void:
 				return
 		elif lt["kind"] == "player" and dist < 12.0 and _cd <= 0.0:
 			var pl: Node = lt["node"]
-			pl.deliver_hit(1, global_position, kind)
+			pl.deliver_hit(_scaled_damage(1), global_position, kind)
 			_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
 	else:
 		_lose_t += delta
@@ -732,11 +741,21 @@ func _bruiser_tick(delta: float, target: Node2D) -> bool:
 			return true
 	return false
 
-## Czy przed Wołkiem jest wolna droga na rozbieg (bez ściany).
+## Czy przed Wołkiem jest wolna droga na rozbieg: bez ściany na całym dystansie szarży i z podłogą pod każdym kaflem (nie rozpędza się w przepaść).
 func _run_clear(dir: float, dist: float) -> bool:
+	var space := get_world_2d().direct_space_state
+	var run := minf(dist, RUN_CHECK_MAX)
 	var from := global_position + Vector2(0, -10)
-	var q := PhysicsRayQueryParameters2D.create(from, from + Vector2(dir * minf(dist, 200.0), 0), 1)
-	return get_world_2d().direct_space_state.intersect_ray(q).is_empty()
+	if not space.intersect_ray(PhysicsRayQueryParameters2D.create(from, from + Vector2(dir * run, 0), 1)).is_empty():
+		return false
+	var x := RUN_FLOOR_STEP
+	while x <= run:
+		var top := global_position + Vector2(dir * x, -4.0)
+		var fq := PhysicsRayQueryParameters2D.create(top, top + Vector2(0, RUN_FLOOR_DEPTH), 1 | (1 << (PLATFORM_BIT - 1)))
+		if space.intersect_ray(fq).is_empty():
+			return false
+		x += RUN_FLOOR_STEP
+	return true
 
 func _end_charge() -> void:
 	_sp = 0
@@ -761,7 +780,7 @@ func _after_move_bruiser() -> void:
 	if not _charge_hit:
 		for p in get_tree().get_nodes_in_group("players"):
 			if not p.dead and absf(p.global_position.x - global_position.x) < 16.0 and absf(p.global_position.y - global_position.y) < 18.0:
-				p.deliver_hit(2, global_position, kind)
+				p.deliver_hit(_scaled_damage(2), global_position, kind)
 				_charge_hit = true
 	if crashed:
 		_crash()
@@ -879,10 +898,36 @@ func _lead_at(pos: Vector2) -> void:
 func _listen() -> void:
 	if NoiseMgr.noise_serial == _seen_serial:
 		return
-	_seen_serial = NoiseMgr.noise_serial
 	var reach := _noise_reach(NoiseMgr.last_noise_amount, 1.4)
+	if reach > 0.0 and _sound_needs_path(NoiseMgr.last_noise_pos, reach) and not _sound_slot():
+		return                                # budżet A* tej klatki wyczerpany — hałas zostaje nieprzeczytany, wróg usłyszy go w następnej
+	_seen_serial = NoiseMgr.noise_serial
 	if reach > 0.0 and _sound_distance(NoiseMgr.last_noise_pos, reach) < reach:
 		_lead_at(NoiseMgr.last_noise_pos)
+
+## Budżet wyszukiwań A* na klatkę fizyki dla słuchania hałasu (`_listen`, `_check_wake`): głośny strzał słyszy naraz cała okolica,
+## a każdy słyszący liczył własną trasę w tej samej klatce. Nadmiar czeka do następnej klatki (ułamek sekundy opóźnienia reakcji).
+const SOUND_BUDGET := 6
+static var _snd_frame := -1
+static var _snd_used := 0
+
+static func _sound_slot() -> bool:
+	var f := Engine.get_physics_frames()
+	if f != _snd_frame:
+		_snd_frame = f
+		_snd_used = 0
+	if _snd_used >= SOUND_BUDGET:
+		return false
+	_snd_used += 1
+	return true
+
+## Czy `_sound_distance` policzy dla tego źródła trasę A* (a nie odpowie z linii prostej).
+func _sound_needs_path(pos: Vector2, limit: float) -> bool:
+	var d := global_position.distance_to(pos)
+	if d >= limit or d < 24.0:
+		return false
+	var lvl := get_tree().get_first_node_in_group("level")
+	return lvl != null and lvl.get("nav") != null
 
 ## Odległość „słyszalna" do punktu: długość trasy po grafie nawigacji (nav.gd), nie linia prosta —
 ## strzał nad głową przez piętro betonu jest daleko, ten sam strzał w sąsiednim korytarzu blisko.
@@ -1183,12 +1228,14 @@ func _apply_gravity(delta: float) -> void:
 ## albo gdy gracz stoi za blisko.
 func _check_wake() -> void:
 	if NoiseMgr.noise_serial != _seen_serial:
-		_seen_serial = NoiseMgr.noise_serial
 		var reach := _noise_reach(NoiseMgr.last_noise_amount)
-		if reach > 0.0 and _sound_distance(NoiseMgr.last_noise_pos, reach) < reach:
-			_lead_at(NoiseMgr.last_noise_pos)     # idzie do źródła hałasu, nie wprost do gracza
-			wake()
-			return
+		var wait := reach > 0.0 and _sound_needs_path(NoiseMgr.last_noise_pos, reach) and not _sound_slot()    # budżet A* tej klatki — spróbuje w następnej
+		if not wait:
+			_seen_serial = NoiseMgr.noise_serial
+			if reach > 0.0 and _sound_distance(NoiseMgr.last_noise_pos, reach) < reach:
+				_lead_at(NoiseMgr.last_noise_pos)     # idzie do źródła hałasu, nie wprost do gracza
+				wake()
+				return
 	for p in get_tree().get_nodes_in_group("players"):
 		var pp := p as Node2D
 		if pp == null or pp.dead:
@@ -1200,9 +1247,13 @@ func _check_wake() -> void:
 			return
 	# „Światło przyciąga wzrok Trzosków" (GDD §8.3): snop latarki na
 	# śpiącym wrogu go budzi — świecenie po pokoju ma cenę.
-	if not _def.get("blind", false) \
-			and Lights.flashlight_on(global_position + Vector2(0, -6), get_tree(), get_world_2d().direct_space_state) != null:
-		wake()
+	# (sprawdzane co ~0,12 s z losowym przesunięciem na wroga, nie co klatkę: promienie wszystkich śpiących naraz to był koszt bez korzyści)
+	var now_ms := Time.get_ticks_msec()
+	if now_ms >= _flash_check_ms:
+		_flash_check_ms = now_ms + int(PERCEIVE_DT * 1000.0) + randi() % 40
+		if not _def.get("blind", false) \
+				and Lights.flashlight_on(global_position + Vector2(0, -6), get_tree(), get_world_2d().direct_space_state) != null:
+			wake()
 
 func _nearest_player() -> Node2D:
 	var best: Node2D = null
@@ -1222,10 +1273,19 @@ func _in_reach(pp: Node2D, slack: float) -> bool:
 	return absf(pp.global_position.x - global_position.x) <= reach \
 		and absf(pp.global_position.y - global_position.y) <= 18.0
 
+## Ściana między wrogiem a celem na tym samym poziomie (cios z bliska nie przechodzi przez mur; dym go nie chroni, więc to nie `_clear_line`).
+## Przy różnicy poziomów nie sprawdzamy: poziomy promień trafiałby w bok stopnia, na którym stoi cel.
+func _wall_between(pp: Node2D) -> bool:
+	if absf(pp.global_position.y - global_position.y) > 6.0:
+		return false
+	var a := global_position + Vector2(0, -(_def["size"] as Vector2).y * 0.6)
+	var q := PhysicsRayQueryParameters2D.create(a, Vector2(pp.global_position.x, a.y), 1)
+	return not get_world_2d().direct_space_state.intersect_ray(q).is_empty()
+
 func _try_begin_attack(target: Node2D) -> void:
 	if _cd > 0.0 or _windup > 0.0:
 		return
-	if _in_reach(target, 0.0):
+	if _in_reach(target, 0.0) and not _wall_between(target):
 		_windup = float(_def["windup"]) * Difficulty.m("enemy_windup")
 		_windup_target = target
 		winding = true
@@ -1237,8 +1297,8 @@ func _resolve_attack() -> void:
 	_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
 	if kind == "trzosek":
 		_retreat = 0.32
-	if pp != null and is_instance_valid(pp) and not pp.dead and _in_reach(pp, 6.0):
-		pp.deliver_hit(maxi(1, roundi(float(_def["damage"]) * Difficulty.m("enemy_damage"))), global_position, kind)
+	if pp != null and is_instance_valid(pp) and not pp.dead and _in_reach(pp, 6.0) and not _wall_between(pp):
+		pp.deliver_hit(_scaled_damage(int(_def["damage"])), global_position, kind)
 
 ## --- API walki (combat.gd) -------------------------------------------------
 
@@ -1358,24 +1418,24 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 		_begin_scream()
 
 func _die() -> void:
-	if NoiseMgr.is_server() and _last_attacker != 0 and not String(name).begins_with("LeechSpawn") and not is_in_group("roamers"):
+	if NoiseMgr.is_server() and _last_attacker != 0 and not summoned and not String(name).begins_with("LeechSpawn") and not is_in_group("roamers"):
 		Profile.server_award_kill(_last_attacker, kind)         # XP profilu strzelca (boty, Trzoski bossa i wędrowcy Dyrektora nie liczą się)
 	if NoiseMgr.is_server() and randf() < minf(1.0, float(HEALTH_DROP.get(kind, 0.0)) * Difficulty.m("drops")):
 		var lvl := get_tree().get_first_node_in_group("level")
 		if lvl != null:
 			lvl.spawn_health(global_position + Vector2(0, -14))
-	if NoiseMgr.is_server() and randf() < minf(1.0, float(AMMO_DROP.get(kind, 0.0)) * Difficulty.m("drops")):
+	if NoiseMgr.is_server() and not summoned and randf() < minf(1.0, float(AMMO_DROP.get(kind, 0.0)) * Difficulty.m("drops")):
 		var w := Arsenal.pick_drop_weapon()
 		var lv := get_tree().get_first_node_in_group("level")
 		if w >= 0 and lv != null:
 			var n: int = maxi(1, int(Weapons.def(w).pickup_rounds * 0.5))
 			lv.spawn_item("ammo", w, global_position + Vector2(randf_range(-6.0, 6.0), -14), n)
-	if NoiseMgr.is_server() and not NightShift.active and randf() < minf(1.0, float(SUPPLY_DROP.get(kind, 0.0)) * Difficulty.m("drops")):
+	if NoiseMgr.is_server() and not summoned and not NightShift.active and randf() < minf(1.0, float(SUPPLY_DROP.get(kind, 0.0)) * Difficulty.m("drops")):
 		var lsup := get_tree().get_first_node_in_group("level")
 		if lsup != null:
 			var sk := Throwables.drop_kind()                     # skrzynka zaopatrzenia: granat, apteczka, mina… do wspólnego zapasu
 			lsup.spawn_item("supply", Throwables.ORDER.find(sk), global_position + Vector2(randf_range(-6.0, 6.0), -14))
-	if NoiseMgr.is_server() and Scrap.enabled() and Scrap.DROP.has(kind) and randf() < Scrap.DROP_CHANCE:
+	if NoiseMgr.is_server() and not summoned and Scrap.enabled() and Scrap.DROP.has(kind) and randf() < Scrap.DROP_CHANCE:
 		var ls := get_tree().get_first_node_in_group("level")
 		if ls != null:
 			ls.spawn_item("scrap", 0, global_position + Vector2(randf_range(-6.0, 6.0), -14), int(Scrap.DROP[kind]))

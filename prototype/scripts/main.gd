@@ -23,6 +23,7 @@ const SessionLog := preload("res://scripts/session_log.gd")
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
 const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
 const STALKER_TEST := preload("res://scripts/stalker_test.gd")
+const ENEMY_TEST := preload("res://scripts/enemy_test.gd")
 const DREAD := preload("res://scripts/dread.gd")
 const STEAM_NET := preload("res://scripts/steam_net.gd")
 const PAUSE_MENU := preload("res://scripts/pause_menu.gd")
@@ -370,6 +371,7 @@ func _handle_cmdline() -> void:
 	var wipetest := -1.0
 	var missiontest := false
 	var stalkertest := false
+	var enemytest := false
 	var shifttest := false
 	var maptest := false
 	var ridetest := false
@@ -446,7 +448,7 @@ func _handle_cmdline() -> void:
 	if _start_map == "":
 		for a in args:
 			if a.begins_with("--stealthtest") or a.begins_with("--wipetest") or a == "--missiontest" or a == "--shifttest" \
-					or a == "--weapontest" or a.begins_with("--weaponshots=") or a == "--weaptestnet" or a == "--weaptestclient" 					or a == "--stalkertest":
+					or a == "--weapontest" or a.begins_with("--weaponshots=") or a == "--weaptestnet" or a == "--weaptestclient" 					or a == "--stalkertest" or a == "--enemytest":
 				_start_map = "z1_m3"
 	for a in args:
 		if a == "--host":
@@ -473,6 +475,8 @@ func _handle_cmdline() -> void:
 			missiontest = true
 		elif a == "--stalkertest":
 			stalkertest = true
+		elif a == "--enemytest":
+			enemytest = true
 		elif a == "--shifttest":
 			shifttest = true
 		elif a == "--maptest":
@@ -578,6 +582,11 @@ func _handle_cmdline() -> void:
 		st.name = "StalkerTest"
 		add_child(st)
 		st.run(self)
+	if enemytest:
+		var et := ENEMY_TEST.new()
+		et.name = "EnemyTest"
+		add_child(et)
+		et.run(self)
 	if weapon_mode != "":
 		var wt := WEAPON_TEST.new()
 		wt.name = "WeaponTest"

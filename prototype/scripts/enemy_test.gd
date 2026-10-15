@@ -1,0 +1,209 @@
+extends Node
+## Test headless AI zwykłych wrogów i hałasu (ENEMY_PLAN.md F0): każda poprawka z fazy 0 ma tu asercję.
+##
+##   godot --headless --path . -- --host --enemytest --autoquit=40
+##
+## Mapa 1.3 (jak testy Stalkera). Testy fizyczne stawiają własną geometrię (podłoga i ściana jako `StaticBody2D` na warstwie 1) daleko poza mapą,
+## żeby nic ze świata gry ich nie zakłócało. Wynik: linie [ENEMY-TEST] i kod wyjścia (0 = OK) — nadaje się do CI.
+
+const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
+const Enemy := preload("res://scripts/enemy.gd")
+const FAR_X := 30000.0                ## px: obszar testów fizycznych poza mapą
+
+var main: Node2D
+var level: Node2D
+var player: CharacterBody2D
+var failed := 0
+var total := 0
+
+func check(label: String, ok: bool, detail := "") -> void:
+	total += 1
+	if not ok:
+		failed += 1
+	print("[ENEMY-TEST] %s  %s%s" % ["PASS" if ok else "FAIL", label, ("  (" + detail + ")") if detail != "" else ""])
+
+func run(m: Node2D) -> void:
+	main = m
+	level = m.level
+	await get_tree().create_timer(1.0).timeout
+	player = m.get_node("Players").get_node_or_null("1")
+	check("mapa ma gracza", player != null)
+	if player == null:
+		_finish()
+		return
+	Director.set_process(false)
+	_test_noise_validation()
+	_test_noise_same_frame()
+	_test_sound_budget()
+	_test_scaled_damage()
+	await _test_forced_hit()
+	await _test_run_clear()
+	await _test_wall_between()
+	await _test_summoned()
+	_finish()
+
+func _finish() -> void:
+	print("[ENEMY-TEST] ==== %s (%d/%d) ====" % ["PASS" if failed == 0 else "FAIL", total - failed, total])
+	get_tree().quit(1 if failed > 0 else 0)
+
+# ---------------------------------------------------------------- hałas
+
+## Zgłoszenie klienta (RPC `_report`) jest walidowane: ujemne, NaN i gigantyczne wartości nie mogą zmienić Uwagi.
+func _test_noise_validation() -> void:
+	check("hałas od klienta: ujemna wartość odrzucona", NoiseMgr.sane_amount(-100.0) == 0.0)
+	check("hałas od klienta: NaN odrzucony", NoiseMgr.sane_amount(NAN) == 0.0)
+	check("hałas od klienta: nieskończoność odrzucona", NoiseMgr.sane_amount(INF) == 0.0)
+	check("hałas od klienta: gigantyczna wartość przycięta", NoiseMgr.sane_amount(1.0e9) == NoiseMgr.MAX_REPORT)
+	check("hałas od klienta: zwykły strzał bez zmian", is_equal_approx(NoiseMgr.sane_amount(2.5), 2.5))
+	var p := NoiseMgr.sane_pos(Vector2(1.0e9, -1.0e9))
+	check("hałas od klienta: pozycja przycięta do mapy", absf(p.x) < 1.0e6 and absf(p.y) < 1.0e6, str(p))
+	check("hałas od klienta: pozycja NaN zastąpiona", NoiseMgr.sane_pos(Vector2(NAN, 0.0)).is_finite())
+
+## W jednej klatce fizyki zostaje najgłośniejsze zdarzenie — cichy krok po strzale nie przesłania strzału.
+func _test_noise_same_frame() -> void:
+	NoiseMgr.safe_zone = false
+	NoiseMgr.last_noise_amount = 0.0
+	var shot := Vector2(111.0, 22.0)
+	var step := Vector2(333.0, 44.0)
+	var serial0: int = NoiseMgr.noise_serial
+	NoiseMgr.add_noise(2.0, shot, "test")
+	NoiseMgr.add_noise(0.25, step, "test")
+	check("ten sam tik: strzał nie jest nadpisany krokiem", NoiseMgr.last_noise_pos == shot and is_equal_approx(NoiseMgr.last_noise_amount, 2.0),
+		"pozycja %s, głośność %.2f" % [NoiseMgr.last_noise_pos, NoiseMgr.last_noise_amount])
+	check("ten sam tik: serial rośnie tylko za zapisane zdarzenie", NoiseMgr.noise_serial == serial0 + 1)
+	NoiseMgr.add_noise(5.0, step, "test")
+	check("ten sam tik: głośniejsze zdarzenie nadpisuje", NoiseMgr.last_noise_pos == step and is_equal_approx(NoiseMgr.last_noise_amount, 5.0))
+	NoiseMgr.level = 0.0
+	NoiseMgr.stalker_awake = false
+
+## Budżet A* słuchania hałasu: SOUND_BUDGET trasy na klatkę fizyki, nadmiar czeka.
+func _test_sound_budget() -> void:
+	var granted := 0
+	for i in Enemy.SOUND_BUDGET + 4:
+		if Enemy._sound_slot():
+			granted += 1
+	check("budżet słuchania: dokładnie SOUND_BUDGET w jednej klatce", granted == Enemy.SOUND_BUDGET, "%d z %d" % [granted, Enemy.SOUND_BUDGET])
+
+# ---------------------------------------------------------------- walka
+
+## Ataki specjalne (lądowanie skoczka, szarża Wołka, ćma) skalują się trudnością jak zwykły cios.
+func _test_scaled_damage() -> void:
+	var e := _spawn("trzosek", Vector2(FAR_X, -4000.0))
+	var prev: int = Difficulty.level
+	Difficulty.set_level(Difficulty.Level.NORMAL)
+	var normal: int = e._scaled_damage(2)
+	Difficulty.set_level(Difficulty.Level.EASY)
+	var easy: int = e._scaled_damage(2)
+	var easy_min: int = e._scaled_damage(1)
+	Difficulty.set_level(prev)
+	check("obrażenia specjalne: normalny poziom bez zmian", normal == 2, str(normal))
+	check("obrażenia specjalne: łatwy poziom mniejszy", easy < normal, str(easy))
+	check("obrażenia specjalne: minimum 1", easy_min >= 1)
+	e.queue_free()
+
+## `deliver_hit(force)` omija niewrażliwość po trafieniu (kara za nieudane QTE Pijawki), zwykłe trafienie jej nie omija.
+func _test_forced_hit() -> void:
+	player.hp = 5
+	player._invuln = 0.5
+	player.deliver_hit(1, player.global_position + Vector2(10, 0), "test")
+	check("niewrażliwość: zwykłe trafienie jest ignorowane", player.hp == 5, "hp %d" % player.hp)
+	player.deliver_hit(1, player.global_position + Vector2(10, 0), "test", true)
+	check("niewrażliwość: wymuszone trafienie przechodzi", player.hp == 4, "hp %d" % player.hp)
+	player._invuln = 0.0
+	player.hp = 5
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- fizyka (własna geometria)
+
+## Podłoga: prostokąt z górną krawędzią na `y`, od `x0` do `x1`, warstwa 1 (to, co widzą promienie wrogów).
+func _floor(x0: float, x1: float, y: float) -> StaticBody2D:
+	return _block(Vector2((x0 + x1) * 0.5, y + 4.0), Vector2(x1 - x0, 8.0))
+
+func _block(center: Vector2, size: Vector2) -> StaticBody2D:
+	var b := StaticBody2D.new()
+	b.collision_layer = 1
+	b.collision_mask = 0
+	var cs := CollisionShape2D.new()
+	var r := RectangleShape2D.new()
+	r.size = size
+	cs.shape = r
+	b.add_child(cs)
+	b.global_position = center
+	level.add_child(b)
+	return b
+
+func _spawn(kind: String, pos: Vector2) -> CharacterBody2D:
+	var e := ENEMY_SCENE.instantiate() as CharacterBody2D
+	e.kind = kind
+	level.add_child(e)
+	e.global_position = pos
+	return e
+
+## Wołek rozpędza się tylko tam, gdzie ma podłogę pod całym rozbiegiem (i ścianę sprawdzoną na pełnym dystansie).
+func _test_run_clear() -> void:
+	var y := -3000.0
+	var full := _floor(FAR_X, FAR_X + 400.0, y)
+	var cut := _floor(FAR_X + 1000.0, FAR_X + 1120.0, y)         # podłoga kończy się 120 px od startu — dalej przepaść
+	var wall := _block(Vector2(FAR_X + 2250.0, y - 30.0), Vector2(4.0, 60.0))
+	var strip := _floor(FAR_X + 2000.0, FAR_X + 2400.0, y)
+	var w1 := _spawn("wolek", Vector2(FAR_X + 40.0, y))
+	var w2 := _spawn("wolek", Vector2(FAR_X + 1040.0, y))
+	var w3 := _spawn("wolek", Vector2(FAR_X + 2040.0, y))
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("rozbieg Wołka: ciągła podłoga — wolno", w1._run_clear(1.0, 200.0))
+	check("rozbieg Wołka: przepaść na trasie — nie rozpędza się", not w2._run_clear(1.0, 200.0))
+	check("rozbieg Wołka: ściana dalej niż 200 px — też blokuje (pełny dystans)", not w3._run_clear(1.0, 260.0))
+	check("rozbieg Wołka: ściana poza dystansem — nie blokuje", w3._run_clear(1.0, 150.0))
+	for n in [w1, w2, w3, full, cut, wall, strip]:
+		n.queue_free()
+
+## Cios wręcz nie przechodzi przez ścianę, ale poziomy promień nie blokuje celu stojącego na stopniu.
+func _test_wall_between() -> void:
+	var y := -3500.0
+	var strip := _floor(FAR_X, FAR_X + 300.0, y)
+	var wall := _block(Vector2(FAR_X + 80.0, y - 30.0), Vector2(4.0, 60.0))
+	var e := _spawn("trzosek", Vector2(FAR_X + 40.0, y))
+	var behind := Node2D.new()
+	var before := Node2D.new()
+	var above := Node2D.new()
+	level.add_child(behind)
+	level.add_child(before)
+	level.add_child(above)
+	behind.global_position = Vector2(FAR_X + 120.0, y)
+	before.global_position = Vector2(FAR_X + 60.0, y)
+	above.global_position = Vector2(FAR_X + 120.0, y - 20.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("cios wręcz: ściana między wrogiem a celem blokuje", e._wall_between(behind))
+	check("cios wręcz: cel przed ścianą nie jest zasłonięty", not e._wall_between(before))
+	check("cios wręcz: cel na innym poziomie nie jest sprawdzany promieniem", not e._wall_between(above))
+	for n in [e, behind, before, above, strip, wall]:
+		n.queue_free()
+
+# ---------------------------------------------------------------- przywołani
+
+func _kill_xp(summoned: bool) -> int:
+	var e := _spawn("trzosek", Vector2(FAR_X + 5000.0, -2000.0))
+	e.summoned = summoned
+	var xp0: int = Profile.xp
+	e.take_hit({"amount": 9999.0, "dir": Vector2.RIGHT, "pos": e.global_position, "shooter": int(player.player_id), "type": "bullet"})
+	var gained: int = Profile.xp - xp0
+	e.queue_free()
+	return gained
+
+## Potomstwo bossów nie daje XP (zwykły Trzosek tak) — a boss oznacza przywołanych flagą, nie nazwą.
+func _test_summoned() -> void:
+	var normal := _kill_xp(false)
+	var summoned := _kill_xp(true)
+	check("XP: zwykły Trzosek daje XP", normal > 0, "+%d" % normal)
+	check("XP: przywołany nie daje XP", summoned == 0, "+%d" % summoned)
+	var boss := get_tree().get_first_node_in_group("boss")
+	check("mapa ma bossa z potomstwem", boss != null and boss.has_method("_spawn_brood"))
+	if boss != null and boss.has_method("_spawn_brood"):
+		boss._spawn_brood("BroodTest", Vector2(FAR_X + 6000.0, -2000.0))
+		var kid := level.get_node_or_null("BroodTest")
+		check("potomstwo Żyły jest oznaczone jako przywołane", kid != null and bool(kid.summoned))
+		if kid != null:
+			kid.queue_free()
+	await get_tree().physics_frame

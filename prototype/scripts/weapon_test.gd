@@ -1065,6 +1065,7 @@ func _t_phase3() -> void:
 	d = equip(Weapons.M83)
 	wc._burst_left = 0
 	wc.cd = 0.0
+	await frames(1)                                       # inny tik fizyki niż pierwszy strzał: w jednym tiku hałas zapisuje się tylko, gdy jest głośniejszy (noise_manager.gd: _apply)
 	wc._fire_shot(d)
 	var burst_noise: float = NoiseMgr.last_noise_amount
 	var burst_heat: float = wc.heat_of(d.id)

@@ -62,6 +62,7 @@ var last_noise_amount := 0.0
 ## Rośnie przy każdym zdarzeniu hałasu (tylko serwer). Wrogowie i Stalker
 ## porównują go z własnym, żeby wiedzieć, że usłyszeli COŚ NOWEGO.
 var noise_serial := 0
+var _noise_frame := -1                ## klatka fizyki ostatniego zapisanego zdarzenia (patrz `_apply`)
 var stalker_awake := false
 
 # Przesterowanie: ładunek startuje w misji, regeneruje się, max 3 (GDD §8.4)
@@ -229,10 +230,29 @@ func _apply_scream(amount: float, pos: Vector2) -> void:
 	if has_network():
 		_push.rpc(level, last_noise_pos, stalker_awake, overcharge_charges)
 
+## Największy hałas, jaki klient może zgłosić jednym zdarzeniem (SPECTER-1 ≈ 14, granat 15, krzyk 20, skok skryptowy 30 idzie z serwera).
+const MAX_REPORT := 30.0
+
+## Zgłoszenie od klienta to dane z zewnątrz: ujemna wartość obniżałaby Uwagę (usypiała Stalkera), NaN psułby poziom. Zwraca 0, gdy do odrzucenia.
+static func sane_amount(a: float) -> float:
+	return clampf(a, 0.0, MAX_REPORT) if is_finite(a) else 0.0
+
+## Pozycja zgłoszenia przycięta do mapy (z zapasem) — wabik nie może leżeć w nieskończoności.
+func sane_pos(pos: Vector2) -> Vector2:
+	if not pos.is_finite():
+		return last_noise_pos
+	var lvl := get_tree().get_first_node_in_group("level")
+	var b: Rect2 = lvl.bounds if lvl != null else Rect2()
+	if b.size == Vector2.ZERO:
+		return pos
+	return pos.clamp(b.position - Vector2(64, 64), b.end + Vector2(64, 64))
+
 @rpc("any_peer", "call_remote", "reliable")
 func _report(amount: float, pos: Vector2, tag := "") -> void:
 	if multiplayer.is_server():
-		_apply(amount, pos, true, tag)
+		var a := sane_amount(amount)
+		if a > 0.0:
+			_apply(a, sane_pos(pos), true, tag)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _push(new_level: float, noise_pos: Vector2, awake: bool, charges: int) -> void:
@@ -249,9 +269,15 @@ func _apply(amount: float, pos: Vector2, track := true, tag := "") -> void:
 	if amount > 0.0:
 		_server_last_active = Time.get_ticks_msec() / 1000.0
 	if amount > 0.0 and track:
-		last_noise_pos = pos
-		last_noise_amount = amount          # surowa głośność: próg budzenia wrogów nie zależy od trudności
-		noise_serial += 1
+		# w jednej klatce fizyki zostaje NAJGŁOŚNIEJSZE zdarzenie: wróg czyta tylko ostatnie, więc cichy krok zapisany po strzale
+		# (oba w tej samej klatce) przesłaniał strzał i śpiący go nie słyszał
+		var frame := Engine.get_physics_frames()
+		var louder := frame != _noise_frame or amount >= last_noise_amount
+		_noise_frame = frame
+		if louder:
+			last_noise_pos = pos
+			last_noise_amount = amount          # surowa głośność: próg budzenia wrogów nie zależy od trudności
+			noise_serial += 1
 		if amount >= HOT_SPOT_MIN:
 			_note_hot_spot(pos)
 	var add := amount * Difficulty.m("noise") * NightShift.noise_mult() if amount > 0.0 else amount
@@ -349,8 +375,8 @@ func request_flare(pos: Vector2, vel: Vector2) -> void:
 
 @rpc("any_peer", "call_remote", "reliable")
 func _flare_request(pos: Vector2, vel: Vector2) -> void:
-	if is_server():
-		_throw_flare(pos, vel)
+	if is_server() and pos.is_finite() and vel.is_finite():
+		_throw_flare(sane_pos(pos), vel)
 
 func _throw_flare(pos: Vector2, vel: Vector2) -> void:
 	if flares <= 0:
