@@ -118,6 +118,10 @@ func _ready() -> void:
 		_spr = Sprites.attach(self, Sprites.enemy_sheet("stalker"))
 	_overlay = Lights.add_overlay(self)
 
+## Kontrakt widoku (view3d.gd) — patrz enemy.gd: view_info. Stalker jest nieśmiertelny i nie błyska po trafieniu.
+func view_info() -> Dictionary:
+	return {"kind": "stalker", "alive": true, "winding": winding, "sp": 0, "flash": false}
+
 ## Skaner z perkiem „Scout" pokazuje śpiącego (niewidocznego) Stalkera z bliska.
 func is_stalker() -> bool:
 	return true

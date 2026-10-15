@@ -40,6 +40,7 @@ func run(m: Node2D) -> void:
 	await _test_run_clear()
 	await _test_wall_between()
 	await _test_summoned()
+	await _test_view_contract()
 	_finish()
 
 func _finish() -> void:
@@ -206,4 +207,52 @@ func _test_summoned() -> void:
 		check("potomstwo Żyły jest oznaczone jako przywołane", kid != null and bool(kid.summoned))
 		if kid != null:
 			kid.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- kontrakt widoku (ENEMY_PLAN.md F1)
+
+const VIEW_KEYS := ["kind", "alive", "winding", "sp", "flash"]
+
+## Każdy wróg, który ma model 3D (Stalker, Żyła, gniazda, zwykli), podaje `view_info()` z kompletem kluczy — view3d.gd czyta tylko to.
+## Stan specjalny Wołka (`sp`) przechodzi przez `_sync` do klienta, a błysk trafienia to jawna flaga, nie kolor sprite'a.
+func _test_view_contract() -> void:
+	var Enemy3D := load("res://scripts/enemy3d.gd")
+	var seen := 0
+	var bad := []
+	for g in ["enemies", "boss", "nests"]:
+		for n in get_tree().get_nodes_in_group(g):
+			var k = n.get("kind")
+			if n.has_method("view_info"):
+				var info: Dictionary = n.view_info()
+				seen += 1
+				for key in VIEW_KEYS:
+					if not info.has(key):
+						bad.append("%s bez klucza %s" % [n.name, key])
+				if not Enemy3D.has_model(String(info.get("kind", ""))):
+					bad.append("%s: rodzaj %s bez modelu" % [n.name, info.get("kind")])
+			elif k != null and Enemy3D.has_model(String(k)):
+				bad.append("%s (%s) ma model 3D, ale nie ma view_info" % [n.name, k])
+	check("kontrakt widoku: wszyscy wrogowie z modelem mają komplet kluczy (%d węzłów)" % seen, seen > 0 and bad.is_empty(), ", ".join(bad))
+	var kinds := {}
+	for g in ["enemies", "boss", "nests"]:
+		for n in get_tree().get_nodes_in_group(g):
+			if n.has_method("view_info"):
+				kinds[String(n.view_info()["kind"])] = true
+	check("kontrakt widoku: mapa 1.3 pokrywa Stalkera, Żyłę i gniazdo", kinds.has("stalker") and kinds.has("vein") and kinds.has("nest"), str(kinds.keys()))
+
+	var server := _spawn("wolek", Vector2(FAR_X + 7000.0, -2000.0))
+	var client := _spawn("wolek", Vector2(FAR_X + 7100.0, -2000.0))
+	server._sp = 2                                         # szarża
+	server._flash = 0.1
+	var info_s: Dictionary = server.view_info()
+	check("kontrakt widoku: serwer podaje sp i błysk", int(info_s["sp"]) == 2 and bool(info_s["flash"]) and info_s["kind"] == "wolek")
+	# klient dostaje to, co serwer wysyła w `_sync` (kolejność argumentów jak w `_send_state`)
+	client._sync(server.global_position, server.hp, true, true, false, server._sp)
+	check("kontrakt widoku: klient widzi stan specjalny Wołka z `_sync`", int(client.view_info()["sp"]) == 2, str(client.view_info()))
+	client._sync(server.global_position, server.hp, true, true, false)
+	check("kontrakt widoku: koniec szarży zeruje sp u klienta", int(client.view_info()["sp"]) == 0)
+	server._flash = 0.0
+	check("kontrakt widoku: błysk gaśnie razem z `_flash`", not bool(server.view_info()["flash"]))
+	server.queue_free()
+	client.queue_free()
 	await get_tree().physics_frame

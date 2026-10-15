@@ -1,6 +1,6 @@
 # Plan: porządki w logice wrogów pod widok 3D i mądrzejsza AI
 
-Status: **plan z 2026-10-16; F0 zrobiona (1.7.234, gałąź `feat/enemy-phase0`), zostają F1–F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
+Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235, gałąź `feat/enemy-view-contract`), zostają F1b–F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
 `stalker.gd`, `nest.gd`, `director.gd`, `nav.gd`, `noise_manager.gd`, `view3d.gd`) i na `MISSION_3D_SPIKE.md` — nie na próbnej implementacji,
 więc rozmiary faz są szacunkowe, a uwagi o błędach pochodzą z lektury kodu, nie z gry.
 
@@ -16,9 +16,9 @@ Przebudowujemy `enemy.gd` i okolice, nie wymiar.
 
 ## 2. Stan obecny (z kodu)
 
-- **Widok 3D czyta stan wroga ze sprite'a 2D.** `view3d.gd: _sync_enemies` bierze z węzła `AnimatedSprite2D "Body"` nazwę animacji, klatkę,
-  flip, pozycję i **kolor** (`modulate.r > 1.9` = trafienie); wróg bez tego sprite'a nie jest pokazany (`show = … and body != null`).
-- **`_sp` (szarża / rzut / oszołomienie Wołka) nie jest w `_sync`.** Zdalny gracz prawdopodobnie nie widzi tych póz (do potwierdzenia grą w sieci).
+- **Widok 3D czytał stan wroga okrężnie** (patrz korekta w F1): z węzła `Body` (zegar animacji) nazwę animacji, klatkę i flip, a rodzaj ze ścieżki
+  skryptu, błysk trafienia z **koloru** (`modulate.r > 1.9`) i `_sp` z prywatnego pola — naprawione w F1a.
+- **`_sp` (szarża / rzut / oszołomienie Wołka) nie było w `_sync`** — klient nie widział tych póz (naprawione w F1a).
 - **`_facing` żyje w `_update_sprite()`**, a od niego zależy backstab (`take_hit` → `_is_behind`). Usunięcie sprite'ów 2D bez wcześniejszego
   przeniesienia go zepsułoby maczetę.
 - **Rodzaj wroga jest rozsypany po tabelach:** `KINDS`, `SUPPLY_DROP`, `AMMO_DROP`, `HEALTH_DROP`, `VOICES` (`enemy.gd`), `SPEC` / `DEFORM`
@@ -56,12 +56,20 @@ Przebudowujemy `enemy.gd` i okolice, nie wymiar.
 
 Nie sprawdzone grą (tylko testy headless): wygląd i odczucie szarży Wołka oraz reakcji wrogów na budżet słuchania — do playtestu.
 
-### F1 — kontrakt widoku (porządki pod 3D), ok. 3–5 dni
+### F1 — kontrakt widoku (porządki pod 3D)
 
-`enemy.gd` publikuje małą strukturę stanu: poza (`SLEEP / IDLE / WALK / RUN / WINDUP / STAGGER / DEAD`), `facing`, stan specjalny,
-`hit_serial` i `attack_serial` (liczniki zdarzeń zamiast koloru). Idzie w `_sync`, więc klient widzi to samo co serwer. `view3d.gd` czyta tylko to.
-`_facing` do backstabu przechodzi do symulacji. Dopiero potem: usunięcie `Sprites.attach` z wrogów, `_update_sprite` i hacków `modulate`.
-Na czas przejścia oba tory są porównywane. Test: serwer i symulowany klient dają ten sam stan widoku.
+**Korekta diagnozy z §2 (2026-10-16, przy wdrażaniu):** węzeł `Body` wrogów to **bezteksturowy zegar animacji** (`Sprites.attach` → `pose_frames`,
+„niczego nie rysuje”), a nie sprite 2D z grafiką; PNG arkuszy wrogów nie są ładowane. Zegar (nazwa animacji, klatka, tempo, pętla z manifestu)
+jest sensowny i zostaje — Pijawka i Żyła opierają na nim jednorazowe animacje i klatki startowe. Realne problemy były dwa: stan przekazywany
+okrężnie (rodzaj ze ścieżki skryptu, błysk trafienia z koloru `modulate`, `_sp` z prywatnego pola) i `_sp` Wołka nieobecny u klientów.
+
+- **F1a — zrobione w 1.7.235:** `view_info()` na wrogu, Stalkerze, Żyle, Pijawce i gnieździe (kind, alive, winding, sp, flash); `view3d.gd: _sync_enemies`
+  czyta tylko to; `_sp` replikowany w `enemy.gd: _sync`; test kontraktu w `--enemytest`. Zrzuty z gry przed i po zmianie (Wołek, Żyła, Pijawka) identyczne.
+- **F1b — do zrobienia:** `_facing` (backstab, ucieczka w panice) przenieść z `_update_sprite` do symulacji serwera, żeby nie zależało od warstwy
+  prezentacji; `view_info` rozszerzyć o `facing`, gdy klient ma go potrzebować.
+- **F1c — opcjonalnie, dopiero gdy będzie powód:** zastąpić zegar `AnimatedSprite2D` własnym (`EnemyView`). Wymaga przepisania logiki jednorazowych
+  animacji Pijawki (`_set_anim`, `_anim_start`) i koloru-kanału tintu (uśpiony ×0,8, przezroczystość Stalkera) — ryzyko większe niż zysk, dopóki
+  nic nowego tego nie wymaga.
 
 ### F2 — dane i moduły, ok. tygodnia
 

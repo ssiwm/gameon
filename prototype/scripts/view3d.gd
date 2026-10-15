@@ -543,13 +543,7 @@ func _release_rig(p) -> void:
 
 ## Rodzaj wroga, jeśli ma model 3D (`enemy3d.gd`), inaczej "".
 func _enemy_kind(n: Node) -> String:
-	var k = n.get("kind")
-	if k == null:
-		var scr: Script = n.get_script()
-		var path := String(scr.resource_path) if scr != null else ""
-		for pair in [["stalker.gd", "stalker"], ["boss.gd", "vein"], ["leech.gd", "leech"], ["nest.gd", "nest"]]:
-			if path.ends_with(pair[0]):
-				k = pair[1]
+	var k = n.call("view_info").get("kind") if n.has_method("view_info") else n.get("kind")        # rekwizyty w grupie „enemies” (skrzynie, beczki) nie mają kontraktu ani modelu
 	return String(k) if k != null and Enemy3D.has_model(String(k)) else ""
 
 ## Wrogowie z modelem 3D: model stoi na pozycji węzła 2D, poza z nazwy animacji sprite'a (`Body`), sprite'y 2D są przezroczyste.
@@ -594,20 +588,15 @@ func _sync_enemies(delta: float) -> void:
 		var pos := Level3D.px_to_m(body.global_position if body != null else src.global_position)
 		# zdarzenia z symulacji 2D → klipy modelu: śmierć (alive = false; węzeł jest tylko chowany), trafienie (błysk), atak (koniec zapowiedzi)
 		var st: Dictionary = _estate.get(id, {"alive": true, "flash": false, "wind": false, "py": NAN, "vy": 0.0})
-		var alive_v = src.get("alive")
-		var alive: bool = true if alive_v == null else bool(alive_v)
-		if alive_v == null and String(e.get("kind")) == "vein":                 # boss nie ma `alive`: martwy = stan DEAD (2)
-			var stv = src.get("state")
-			if stv != null and int(stv) == 2:
-				alive = false
-		var wind_v = src.get("winding")
-		var winding: bool = false if wind_v == null else bool(wind_v)
+		var info: Dictionary = src.call("view_info")                          # kontrakt widoku (enemy.gd: view_info) — wszystkie rodzaje z modelem go mają
+		var alive: bool = bool(info["alive"])
+		var winding: bool = bool(info["winding"])
 		if bool(st["alive"]) and not alive:
 			e.call("die")
 		elif not bool(st["alive"]) and alive:
 			e.call("revive")
 		var dying: bool = not alive and not bool(e.get("finished"))
-		var flash: bool = body != null and body.modulate.r > 1.9 and body.modulate.g > 1.9
+		var flash: bool = body != null and bool(info["flash"])
 		if alive and body != null:
 			if flash and not bool(st["flash"]):
 				e.call("trigger", "hit")
@@ -651,8 +640,7 @@ func _sync_enemies(delta: float) -> void:
 		st["vx"] = lerpf(float(st.get("vx", 0.0)), vx_now, 0.5)
 		st["vy"] = lerpf(float(st["vy"]), vy_now, 0.45)
 		_estate[id] = st
-		var sp_v = src.get("_sp")                          # stan specjalny wroga (Wołek: szarża, oszołomienie)
-		e.call("pose", delta, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), 0 if sp_v == null else int(sp_v))
+		e.call("pose", delta, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), int(info["sp"]))      # sp: stan specjalny (Wołek: szarża, oszołomienie)
 
 ## Rodzaj cieczy pod stopami (0 błoto, 1 olej, 2 woda), −1 gdy stoi na zwykłym gruncie.
 func _liquid_kind(px: Vector2) -> int:

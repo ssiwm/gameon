@@ -45,6 +45,10 @@ func _ready() -> void:
 func is_threat() -> bool:
 	return false
 
+## Kontrakt widoku (view3d.gd) — patrz enemy.gd: view_info.
+func view_info() -> Dictionary:
+	return {"kind": "nest", "alive": alive, "winding": false, "sp": 0, "flash": _flash > 0.0}
+
 ## Restart misji (wipe / nowa próba).
 func reset_enemy() -> void:
 	hp = MAX_HP
