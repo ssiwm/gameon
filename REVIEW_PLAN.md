@@ -39,11 +39,10 @@ i mieć z niej dane zamiast wrażeń. Plan nie dodaje zawartości i nie zmienia 
 
 Każdy etap to osobny PR. R1–R4 idą po kolei; R5 i R7 można robić równolegle, bo nie dotykają rozgrywki.
 
-### R0. Zamrożenie zakresu grafiki i dźwięku (decyzja, bez kodu)
+### R0. ~~Zamrożenie zakresu grafiki i dźwięku~~ — wycofane 2026-10-15
 
-Do wypełnienia GDD §23.3: w grafice i dźwięku tylko poprawki błędów, które blokują sesję. Bez nowych modeli, efektów, materiałów
-i rodzin dźwięków. Z `AUDIO_PLAN.md` zostaje eksperyment F7 (HRTF) i strojenie F6 w grze: F7 czeka na wynik sesji, strojenie F6 można
-zrobić przy przejściu kontrolnym w R4, bo i tak trzeba wtedy grać w słuchawkach.
+Decyzja zniesiona: grafika i dźwięk rozwijane na bieżąco także przed playtestem (testy przed każdym PR-em zostają).
+Z `AUDIO_PLAN.md` F7 (HRTF) nadal czeka na wynik sesji.
 
 ### R1. Test Stalkera (`--stalkertest`, headless)
 
@@ -145,7 +144,7 @@ uruchomiony na runnerze — po pierwszym zielonym przebiegu trzeba tę linię us
 
 | # | Decyzja | Rekomendacja |
 |---|---|---|
-| D1 | Zamrozić grafikę i dźwięk do wypełnienia §23.3? | tak; F7 po sesji |
+| D1 | ~~Zamrozić grafikę i dźwięk do wypełnienia §23.3?~~ | wycofane 2026-10-15; F7 po sesji |
 | D2 | Cofnięcie Stalkera: poprawić GDD czy kod? | GDD; kod dopiero po sesji |
 | D3 | Trudność na sesję | zapamiętywać wybór w `settings.cfg`, domyślnie NORMAL, prowadzący ustawia EASY |
 | D4 | Ślepiec nie słyszy biegu z Quiet steps: zamierzone? | tak i dopisać to do opisu perka; inaczej próg jest przypadkiem |

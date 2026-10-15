@@ -258,7 +258,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				marks["E"].append(cell_pos(c, r) + Vector3(0.0, -T * 0.5, 0.0))
 	var mats := {
 		"#": make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic"),
-		"C": make_pbr("concrete", 0.35, Color(0.30, 0.31, 0.33), 0.9, 1.0, 1.0, false, "stone"),
+		"C": make_pbr("concrete", 0.33, Color(0.30, 0.31, 0.33), 0.9, 1.0, 1.0, false, "stone"),
 		"roof": make_pbr("roof", 0.25, Color(0.30, 0.22, 0.20), 0.8, 1.0, 1.0, false, "rust"),
 		"M": make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"),
 		"m": make_pbr("mud", 0.30, Color(0.18, 0.2, 0.1), 1.0, 1.0, 1.0, false, "organic"),

@@ -8,7 +8,7 @@ Skany pochodzą z [ambientCG](https://ambientcg.com) — licencja **CC0 1.0** (d
 
 | Materiał w grze | Asset ambientCG |
 |---|---|
-| concrete | Concrete034 |
+| concrete | Poly Haven `dirty_concrete` (od 1.7.232; poprzednio ambientCG Concrete034) |
 | metal | MetalPlates013 |
 | grate | MetalWalkway013 |
 | plank | Planks037A |
