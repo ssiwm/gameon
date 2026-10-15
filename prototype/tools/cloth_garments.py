@@ -20,7 +20,7 @@ import sys
 import bmesh
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
@@ -62,7 +62,7 @@ def _is_leg(bone):
 
 # ------------------------------------------------------------------------------------------------ ciało i bryła
 
-def make_body(spec):
+def make_body(spec, collide=COLLIDE):
     """Ciało MPFB (klucze kształtu zapieczone, bryły pomocnicze usunięte) + buty i rękawice stroju jako przeszkody.
     Zwraca (rig, ciało, dominująca kość wierzchołka, przeszkody)."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -72,7 +72,7 @@ def make_body(spec):
     ph["gender"] = 1.0 if spec["sex"] == "male" else 0.0
     ph["race"] = dict(spec["race"])
     info["rig"] = "mixamo"
-    info["clothes"] = ["%s/%s.mhclo" % (c, c) for c in spec["clothes"] if any(k in c for k in COLLIDE)]
+    info["clothes"] = ["%s/%s.mhclo" % (c, c) for c in spec["clothes"] if any(k in c for k in collide)]
     info["skin_mhmat"] = "%s/%s.mhmat" % (spec["skin"], spec["skin"])
     info["skin_material_type"] = "MAKESKIN"
     info["alternative_materials"] = {}
@@ -544,7 +544,7 @@ def _solidify(ob, thick, offset=1.0):
     return ob
 
 
-def _patch(bvh, name, centre, u, v, size, axis, lift, thick, res=(10, 10), point=0.0, reach=4.0):
+def _patch(bvh, name, centre, u, v, size, axis, lift, thick, res=(10, 10), point=0.0, reach=4.0, back=0.4):
     """Łata przylegająca do ubrania: siatka w płaszczyźnie (u, v) wokół `centre`, rzutowana wzdłuż `axis` na powierzchnię i odsunięta
     o `lift` wzdłuż normalnej, potem pogrubiona o `thick`. `point`: dolna krawędź w lekki szpic (patka kieszeni)."""
     u, v, axis = Vector(u).normalized(), Vector(v).normalized(), Vector(axis).normalized()
@@ -556,7 +556,7 @@ def _patch(bvh, name, centre, u, v, size, axis, lift, thick, res=(10, 10), point
             if j == 0 and point:
                 b -= point * (1 - 2 * abs(a)) / size[1]
             p = Vector(centre) + u * (a * size[0]) + v * (b * size[1])
-            hit, nrm, _, _ = bvh.ray_cast(p - axis * 0.4, axis, reach)
+            hit, nrm, _, _ = bvh.ray_cast(p - axis * back, axis, reach)
             if hit is None:                                # poza ubraniem: ten wierzchołek i jego ściany odpadają
                 miss.add(len(verts))
                 hit, nrm = p, -axis
@@ -672,7 +672,7 @@ def make_collar(ob, rim, rig, look):
     return _solidify(col, look["collar_thick"], 1.0)
 
 
-def ring_band(bvh, name, z, h, centre, lift, thick, n=72):
+def ring_band(bvh, name, z, h, centre, lift, thick, n=72, r0=0.8):
     """Pas wokół ubrania na wysokości `z` (np. pas kombinezonu): punkty rzutowane z zewnątrz do osi."""
     verts = []
     rows = 2
@@ -681,10 +681,10 @@ def ring_band(bvh, name, z, h, centre, lift, thick, n=72):
         for i in range(n):
             a = 2 * math.pi * i / n
             d = Vector((math.cos(a), math.sin(a), 0))
-            o = Vector((centre[0], centre[1], zz)) + d * 0.8
-            hit, nrm, _, _ = bvh.ray_cast(o, -d, 1.0)
+            o = Vector((centre[0], centre[1], zz)) + d * r0
+            hit, nrm, _, _ = bvh.ray_cast(o, -d, r0 + 0.2)
             if hit is None:
-                hit, nrm, _, _ = bvh.find_nearest(o - d * 0.6)
+                hit, nrm, _, _ = bvh.find_nearest(o - d * r0 * 0.75)
             if nrm.dot(d) < 0:
                 nrm = -nrm
             verts.append(hit + nrm * lift)
@@ -798,6 +798,383 @@ def details_coverall(bvh, rig, ob, look, L, rims, body, dom):
 
 
 DETAILS = {"jacket": details_jacket, "trousers": details_trousers, "coverall": details_coverall}
+
+
+# ------------------------------------------------------------------------------------------------ buty
+
+def _boundary_loops(ob):
+    """Pętle brzegu siatki (krawędzie z jedną ścianą) jako uporządkowane listy wierzchołków, od najdłuższej."""
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    adj = {}
+    for e in bm.edges:
+        if e.is_boundary:
+            i, j = e.verts[0].index, e.verts[1].index
+            adj.setdefault(i, []).append(j)
+            adj.setdefault(j, []).append(i)
+    bm.free()
+    loops, seen = [], set()
+    for st in adj:
+        if st in seen:
+            continue
+        lp, prev, cur = [st], None, st
+        seen.add(st)
+        while True:
+            nxt = [n for n in adj[cur] if n != prev and n not in seen]
+            if not nxt:
+                break
+            prev, cur = cur, nxt[0]
+            seen.add(cur)
+            lp.append(cur)
+        loops.append(lp)
+    return sorted(loops, key=len, reverse=True)
+
+
+def make_boot_shell(rig, body, dom, look, L, name):
+    """Cholewka i przyszwa obu butów: ciało od palców do połowy łydki poszerzone (luz rośnie ku górze cholewki, zaokrąglony nosek
+    wysunięty przed palce), remesh wokselowy, przycięcie na wysokości cholewki, spód spłaszczony pod podeszwę."""
+    co = np.array([tuple(v.co) for v in body.data.vertices])
+    nr = np.array([tuple(v.normal) for v in body.data.vertices])
+    dom = np.array(dom)
+    ankle = (L["ankle_L"].z + L["ankle_R"].z) * 0.5
+    top = ankle + look["shaft_h"]
+    leg = np.array([_is_leg(b) and "UpLeg" not in b for b in dom])
+    toe = np.char.find(dom.astype(str), "Toe") >= 0
+    disp = np.where(leg, np.interp(co[:, 2], [0.0, ankle, top], look["ease"]), 0.0)
+    disp = np.where(toe, disp + look["toe_box"], disp)
+    fat = co + nr * disp[:, None]
+    fat[toe, 1] -= look["toe_ext"]                                    # nosek przed palcami (przód ciała to −Y)
+    bm = bmesh.new()
+    bm.from_mesh(body.data)
+    for v, p in zip(bm.verts, fat):
+        v.co = Vector(p)
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    rm = ob.modifiers.new("remesh", "REMESH")
+    rm.mode = "VOXEL"
+    rm.voxel_size = look.get("voxel", 0.005)
+    rm.adaptivity = 0.0
+    C._only(ob)
+    bpy.ops.object.modifier_apply(modifier=rm.name)
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z > top], context="VERTS")
+    flat = look["flat_z"]
+    for v in bm.verts:                                                # spód pod podeszwę: płasko
+        if v.co.z < flat:
+            v.co.z = flat
+    seen, parts = set(), []
+    for v in bm.verts:
+        if v in seen:
+            continue
+        stack, part = [v], []
+        seen.add(v)
+        while stack:
+            x = stack.pop()
+            part.append(x)
+            for e in x.link_edges:
+                y = e.other_vert(x)
+                if y not in seen:
+                    seen.add(y)
+                    stack.append(y)
+        parts.append(part)
+    bmesh.ops.delete(bm, geom=[v for p in parts if len(p) < 300 for v in p], context="VERTS")
+    _smooth_boundary(bm, 20)                                          # równa krawędź cholewki
+    for v in bm.verts:
+        if v.is_boundary:
+            v.co.z = top
+    bm.to_mesh(ob.data)
+    bm.free()
+    sm = ob.modifiers.new("smooth", "SMOOTH")
+    sm.factor = 0.5
+    sm.iterations = 4
+    bpy.ops.object.modifier_apply(modifier=sm.name)
+    # przód buta mocniej: bez zarysu palców (siatka ciała ma osobne palce)
+    vco = np.array([tuple(v.co) for v in ob.data.vertices])
+    toes = []
+    for side in ("Left", "Right"):
+        a, t = np.array(P(rig, side + "Foot")), np.array(P(rig, side + "ToeBase"))
+        fwd = (t - a) * np.array([1, 1, 0])
+        fwd /= np.linalg.norm(fwd)
+        toes.append(((vco - t) @ fwd > -0.03) & (vco[:, 0] * a[0] > 0) & (vco[:, 2] < 0.09))
+    front = np.clip(np.max(toes, axis=0).astype(float), 0, 1)
+    _group(ob, "toe", front)
+    sm = ob.modifiers.new("smooth_toe", "SMOOTH")
+    sm.factor = 0.8
+    sm.iterations = 25
+    sm.vertex_group = "toe"
+    bpy.ops.object.modifier_apply(modifier=sm.name)
+    ob.vertex_groups.clear()
+    for v in ob.data.vertices:                                       # wygładzanie uniosło spód: z powrotem płasko
+        if v.co.z < flat + 0.004:
+            v.co.z = flat
+    ob.data.shade_smooth()
+    print("BOOT SHELL", name, len(ob.data.vertices), "verts, top %.3f" % top)
+    return ob, top
+
+
+def make_soles(shell, look):
+    """Podeszwy: obrys spodu cholewki (otoczka wypukła po każdej stronie, wygładzona, z rantem), grube, z fazą od spodu.
+    Zwraca (obiekt podeszw, obrysy [(punkty, normalne na zewnątrz)] do bieżnika)."""
+    flat = look["flat_z"]
+    co = np.array([tuple(v.co) for v in shell.data.vertices])
+    verts, faces, outlines = [], [], []
+    for sx in (1, -1):
+        pts = co[(co[:, 2] < flat + 0.003) & (co[:, 0] * sx > 0)][:, :2]
+        h = np.array(_hull(np.round(pts, 5)), float)
+        per = np.r_[0, np.cumsum(np.linalg.norm(np.diff(np.vstack([h, h[:1]]), axis=0), axis=1))]
+        n = 72
+        ts = np.linspace(0, per[-1], n, endpoint=False)
+        hp = np.vstack([h, h[:1]])
+        ring = np.array([np.interp(ts, per, hp[:, 0]), np.interp(ts, per, hp[:, 1])]).T
+        for _ in range(3):
+            ring = 0.5 * ring + 0.25 * (np.roll(ring, 1, 0) + np.roll(ring, -1, 0))
+        tang = np.roll(ring, -1, 0) - np.roll(ring, 1, 0)
+        out = np.c_[tang[:, 1], -tang[:, 0]]
+        out /= np.linalg.norm(out, axis=1)[:, None]
+        c = ring.mean(0)
+        if ((ring - c) * out).sum() < 0:
+            out = -out
+        ring = ring + out * look["welt"]
+        outlines.append((ring, out))
+        z_top, z_bot = flat + 0.002, flat - look["sole"]
+        # wcięcie pod śródstopiem: spód podniesiony między obcasem a przodem (oś stopy: najdłuższy wymiar obrysu)
+        d = ring - c
+        axis = d[np.argmax(np.linalg.norm(d, axis=1))]
+        axis /= np.linalg.norm(axis)
+        u = (d @ axis - (d @ axis).min()) / max(np.ptp(d @ axis), 1e-6)            # 0..1 wzdłuż stopy
+        arch = np.clip(1 - np.abs(u - 0.45) / 0.14, 0, 1) * look.get("arch", 0.009)
+        layers = [(ring, np.full(n, z_top)), (ring, z_bot + 0.005 + arch), (ring - out * 0.003, z_bot + arch)]
+        base = len(verts)
+        for r, z in layers:
+            z = np.broadcast_to(z, (n,))
+            verts += [(p[0], p[1], zz) for p, zz in zip(r, z)]
+        for k in range(len(layers) - 1):
+            for i in range(n):
+                a, b = base + k * n + i, base + k * n + (i + 1) % n
+                faces.append((a, b, b + n, a + n))
+        ct = len(verts)
+        verts.append((c[0], c[1], z_top))
+        cb = len(verts)
+        verts.append((c[0], c[1], z_bot))
+        for i in range(n):
+            faces.append((ct, base + (i + 1) % n, base + i))
+            faces.append((cb, base + 2 * n + i, base + 2 * n + (i + 1) % n))
+    ob = _new_obj("soles", verts, faces)
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(ob.data)
+    bm.free()
+    for p in ob.data.polygons:
+        p.use_smooth = False
+    return ob, outlines
+
+
+def _box_obj(name, centre, size, rot=None):
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    bmesh.ops.scale(bm, vec=Vector(size), verts=bm.verts)
+    if rot is not None:
+        bmesh.ops.rotate(bm, verts=bm.verts, cent=Vector(), matrix=rot)
+    bmesh.ops.translate(bm, vec=Vector(centre), verts=bm.verts)
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    return ob
+
+
+def _bm_obj(name, bm):
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    ob.data.shade_smooth()
+    return ob
+
+
+BOOT_MATS = {   # część buta → (kolor, szorstkość): wypiekane w jedną teksturę koloru
+    "leather": ((0.024, 0.023, 0.022), 0.55), "toecap": ((0.016, 0.016, 0.015), 0.35), "panel": ((0.030, 0.029, 0.027), 0.6),
+    "metal": ((0.16, 0.16, 0.17), 0.35), "lace": ((0.016, 0.016, 0.016), 0.8), "sole": ((0.022, 0.022, 0.022), 0.85),
+    "pad": ((0.040, 0.038, 0.036), 0.7), "rubber": ((0.030, 0.032, 0.028), 0.3),
+}
+
+
+def _bmat(ob, key):
+    if ob is None:
+        return None
+    col, rough = BOOT_MATS[key]
+    ob.data.materials.clear()
+    ob.data.materials.append(_mat("boot_" + key, col, rough))
+    return ob
+
+
+def _smooth_boundary(bm, iters=10, keep_z=False):
+    """Wygładzenie brzegów siatki bmesh wzdłuż pętli (poszarpane krawędzie po wokselach)."""
+    bverts = [v for v in bm.verts if v.is_boundary]
+    for _ in range(iters):
+        new = {}
+        for v in bverts:
+            nb = [e.other_vert(v) for e in v.link_edges if e.is_boundary]
+            if len(nb) == 2:
+                q = v.co * 0.5 + (nb[0].co + nb[1].co) * 0.25
+                if keep_z:
+                    q.z = v.co.z
+                new[v] = q
+        for v, q in new.items():
+            v.co = q
+
+
+def _overlay(shell, name, inside, lift, thick):
+    """Nakładka z fragmentu cholewki (nosek, zapiętek): ściany, których środek spełnia `inside(p)`, skopiowane i odsunięte o `lift`
+    wzdłuż normalnych, pogrubione — krawędź idzie po siatce, gładko."""
+    bm = bmesh.new()
+    bm.from_mesh(shell.data)
+    bm.normal_update()
+    keep = [f for f in bm.faces if inside(f.calc_center_median())]
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f not in set(keep)], context="FACES")
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    if not bm.faces:
+        bm.free()
+        return None
+    _smooth_boundary(bm, 12)
+    bm.normal_update()
+    for v in bm.verts:
+        v.co += v.normal * lift
+    bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=thick)
+    return _bm_obj(name, bm)
+
+
+def details_boots(bvh, rig, shell, look, top, outlines):
+    """Detale buta wojskowego (jak na zdjęciach): wzmocniony nosek, panel sznurowania z oczkami i hakami, sznurówki na krzyż, zamek
+    od środka, pasek z klamrą przy kostce, wyściełany brzeg cholewki, tab z tyłu, bieżnik na boku podeszwy. Gumowy: nosek, zapiętek, brzeg."""
+    det = []
+    rubber = look["style"] == "rubber"
+    for side, sx in (("Left", 1), ("Right", -1)):
+        a, t = P(rig, side + "Foot"), P(rig, side + "ToeBase")
+        fwd = Vector((t.x - a.x, t.y - a.y, 0)).normalized()          # w stronę palców
+        lat = Vector((0, 0, 1)).cross(fwd).normalized()
+        tip = t + fwd * 0.05
+
+        def cap(p, t=t, fwd=fwd, sx=sx):                              # przód noska: linia szwu łukiem (wyżej na boku, niżej na wierzchu)
+            d = (p - t).dot(fwd)
+            return p.x * sx > 0 and p.z < 0.075 and d > 0.005 + 0.25 * max(0.0, p.z - 0.02)
+
+        def counter(p, a=a, fwd=fwd, sx=sx):                          # zapiętek: tył pięty
+            return p.x * sx > 0 and p.z < 0.085 and (p - a).dot(fwd) < -0.035
+        det.append(_bmat(_overlay(shell, "toecap" + side, cap, 0.0012, 0.0015), "toecap"))
+        det.append(_bmat(_overlay(shell, "counter" + side, counter, 0.0012, 0.0015), "toecap" if not rubber else "rubber"))
+        if rubber:
+            continue
+        # panel sznurowania na podbiciu i przodzie cholewki
+        z0, z1 = a.z + 0.005, top - 0.004
+        front = Vector((a.x, a.y, (z0 + z1) * 0.5)) + fwd * 0.3
+        det.append(_bmat(_patch(bvh, "panel" + side, front, lat, Z, (0.05, z1 - z0), -fwd, 0.002, 0.002, res=(4, 24)), "panel"))
+        rows = []
+        z = z0 + 0.012
+        while z < z1 - 0.012:
+            row = []
+            for k in (-1, 1):
+                p = Vector((a.x, a.y, z)) + fwd * 0.3 + lat * (0.017 * k)
+                hit, n, _, _ = bvh.ray_cast(p, -fwd, 0.6)
+                if hit is not None:
+                    hook = z > z1 - 0.06
+                    s = _snap(bvh, "eyelet", p, -fwd, r=0.005 if hook else 0.0042, h=0.007 if hook else 0.003, lift=0.004)
+                    if s is not None:
+                        det.append(_bmat(s, "metal"))
+                    row.append(hit + (n if n.dot(fwd) > 0 else -n) * 0.007)
+            if len(row) == 2:
+                rows.append(row)
+            z += 0.021
+        for r0, r1 in zip(rows, rows[1:]):                           # sznurówki na krzyż
+            for i, j in ((0, 1), (1, 0)):
+                det.append(_bmat(_bm_obj("lace", C._tube([r0[i], (r0[i] + r1[j]) * 0.5 + fwd * 0.003, r1[j]], 0.0022, seg=6, smooth=2)), "lace"))
+        if rows:
+            det.append(_bmat(_bm_obj("lace", C._tube(rows[-1], 0.0022, seg=6, smooth=1)), "lace"))
+            kb = (rows[-1][0] + rows[-1][1]) * 0.5 + fwd * 0.004            # kokardka
+            for k in (-1, 1):
+                det.append(_bmat(_bm_obj("lace", C._tube([kb, kb + lat * (0.025 * k) + Vector((0, 0, -0.01)), kb + lat * (0.012 * k) - Vector((0, 0, 0.035))],
+                                                         0.002, seg=6, smooth=3)), "lace"))
+        # zamek od wewnątrz (promień z przestrzeni między nogami)
+        inner = Vector((a.x, a.y, 0)) - Vector((sx, 0, 0)) * 0.085
+        det.append(_bmat(_patch(bvh, "zip" + side, (inner.x, a.y, (z0 + 0.02 + z1) * 0.5), fwd, Z, (0.008, z1 - z0 - 0.03), (sx, 0, 0),
+                                0.002, 0.0025, res=(2, 20), reach=0.2, back=0.02), "metal"))
+        # pasek z klamrą przy kostce i klamra od zewnątrz
+        zb = a.z + 0.035
+        c = (a.x, a.y)
+        det.append(_bmat(ring_band(bvh, "strap" + side, zb, 0.022, c, 0.003, 0.003, r0=0.16), "panel"))
+        outer = Vector((a.x, a.y, zb)) + Vector((sx, 0, 0)) * 0.3
+        det.append(_bmat(_patch(bvh, "buckle" + side, outer, fwd, Z, (0.024, 0.026), (-sx, 0, 0), 0.006, 0.003, res=(3, 3), reach=0.9), "metal"))
+        # tab z tyłu
+        back = Vector((a.x, a.y, top - 0.02)) - fwd * 0.3
+        det.append(_bmat(_patch(bvh, "tab" + side, back, -lat, Z, (0.016, 0.03), fwd, 0.003, 0.003, res=(2, 4)), "pad"))
+    # wyściełany brzeg cholewki
+    for lp in _boundary_loops(shell)[:2]:
+        det.append(_bmat(make_band(shell, lp, 0.014, 0.004, 0.005, "collar_pad"), "pad"))
+    # bieżnik: klocki na boku podeszwy
+    for ring, out in outlines:
+        z = look["flat_z"] - look["sole"] + 0.006
+        for i in range(0, len(ring), 2):
+            p, o = ring[i], out[i]
+            ang = math.atan2(o[1], o[0])
+            det.append(_bmat(_box_obj("lug", (p[0] + o[0] * 0.001, p[1] + o[1] * 0.001, z), (0.004, 0.009, 0.008),
+                                      Matrix.Rotation(ang, 3, "Z")), "sole"))
+    det = [d for d in det if d is not None]
+    print("BOOT DETAILS", len(det))
+    return det
+
+
+def build_boots(outfit, gname, base, rig, body, dom, L):
+    """Buty: cholewki, podeszwy, detale wypiekane na lekką wersję, kolor wypiekany z materiałów części."""
+    look = dict(base)
+    shell, top = make_boot_shell(rig, body, dom, look, L, gname)
+    _bmat(shell, "rubber" if look["style"] == "rubber" else "leather")
+    soles, outlines = make_soles(shell, look)
+    _bmat(soles, "sole")
+    det = details_boots(bpy_bvh(shell), rig, shell, look, top, outlines)
+    hi = _hi_copy(shell)
+    high = [hi, soles] + det
+    shell.hide_render = True
+    shot(os.path.join(WORK, "%s_%s_hi.png" % (outfit, gname)), high, views=("front", "q", "side", "back"), zr=(-0.04, top + 0.05))
+    low = shell.copy()
+    low.data = shell.data.copy()
+    low.name = "%s_%s" % (outfit, gname)
+    bpy.context.scene.collection.objects.link(low)
+    C._only(low)
+    cur = sum(len(p.vertices) - 2 for p in low.data.polygons)
+    dec = low.modifiers.new("dec", "DECIMATE")
+    dec.ratio = min(1.0, look["low_tris"] / cur)
+    bpy.ops.object.modifier_apply(modifier=dec.name)
+    sl = soles.copy()
+    sl.data = soles.data.copy()
+    bpy.context.scene.collection.objects.link(sl)
+    bpy.ops.object.select_all(action="DESELECT")
+    sl.select_set(True)
+    low.select_set(True)
+    bpy.context.view_layer.objects.active = low
+    bpy.ops.object.join()
+    low.hide_render = False
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.004)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    print("LOW", low.name, "tris", sum(len(p.vertices) - 2 for p in low.data.polygons))
+    bake_maps(low, high, look, TEX)
+    for o in high:
+        o.hide_render = True
+    os.makedirs(OUT, exist_ok=True)
+    dst = os.path.join(OUT, "%s_%s.glb" % (outfit, gname))
+    C._only(low)
+    bpy.ops.export_scene.gltf(filepath=dst, export_format="GLB", use_selection=True, export_image_format="WEBP",
+                              export_image_quality=90, export_animations=False, export_apply=True)
+    print("OK", dst)
+    return low
 
 
 # ------------------------------------------------------------------------------------------------ rozkrój i mapy
@@ -964,11 +1341,13 @@ def bake_maps(low, high_objs, look, size):
     for p in low.data.polygons:
         p.material_index = 0
     cloth = _mat("cloth", (0.3, 0.3, 0.2))
+    paint = look.get("paint") == "bake"                       # kolor z materiałów części (buty), nie wzór tkaniny
     for o in [low] + high_objs:
         o.hide_render = False
-    for h in high_objs:
-        h.data.materials.clear()
-        h.data.materials.append(cloth)
+    if not paint:
+        for h in high_objs:
+            h.data.materials.clear()
+            h.data.materials.append(cloth)
     bpy.ops.object.select_all(action="DESELECT")
     for h in high_objs:
         h.select_set(True)
@@ -984,9 +1363,36 @@ def bake_maps(low, high_objs, look, size):
     sc.world.light_settings.distance = 0.04
     C._bake_target(low, ao)
     C._bake(type="AO")
+    if paint:
+        dif = bpy.data.images.new(low.name + "_dif", size, size)
+        sc.render.bake.use_pass_direct = False
+        sc.render.bake.use_pass_indirect = False
+        sc.render.bake.use_pass_color = True
+        C._bake_target(low, dif)
+        C._bake(type="DIFFUSE", pass_filter={"COLOR"})
     C._drop_target(low)
     sc.render.bake.use_selected_to_active = False
-    # kolor: wzór (kamuflaż / jednolity) w przestrzeni UV — plamy tej samej wielkości na każdym elemencie — × okluzja, przeszycia
+    if paint:
+        m_per_uv = _uv_scale(low)
+        col = np.array(dif.pixels[:], np.float32).reshape(-1, 4)[:, :3]
+        fiber = C.smooth_noise(size, size, max(8, int(m_per_uv / 0.004)), 77).ravel()     # ziarno skóry
+        scuff = C.smooth_noise(size, size, max(4, int(m_per_uv / 0.03)), 78).ravel()      # przetarcia (jaśniej)
+        col *= (1 - look.get("mottle", 0.06) + 2 * look.get("mottle", 0.06) * fiber)[:, None]
+        col += (np.clip(scuff - 0.62, 0, 1) * 0.12)[:, None]
+        a = np.array(ao.pixels[:], np.float32).reshape(-1, 4)[:, 0]
+        k = look.get("ao", 0.5)
+        col *= (1 - k + k * np.clip(a, 0, 1) ** 1.2)[:, None]
+        px = np.c_[np.clip(col, 0, 1), np.ones(size * size, np.float32)]
+        alb = bpy.data.images.new(low.name + "_albedo", size, size)
+        alb.pixels[:] = px.ravel()
+        print("BAKE paint m/uv %.2f" % m_per_uv)
+    else:
+        alb = _paint_cloth(low, ao, look, size)
+    _final_material(low, mat, alb, nrm, look)
+
+
+def _paint_cloth(low, ao, look, size):
+    """Kolor tkaniny: wzór (kamuflaż / jednolity) w przestrzeni UV — plamy tej samej wielkości na każdym elemencie — × okluzja, przeszycia."""
     m_per_uv = _uv_scale(low)
     cm = C.CAMO[look["camo"]]
     cells = max(2, int(round(m_per_uv / look.get("camo_blotch", 0.055))))
@@ -1008,6 +1414,10 @@ def bake_maps(low, high_objs, look, size):
     alb = bpy.data.images.new(low.name + "_albedo", size, size)
     alb.pixels[:] = px.ravel()
     print("BAKE m/uv %.2f cells %d stitches %d px" % (m_per_uv, cells, n))
+    return alb
+
+
+def _final_material(low, mat, alb, nrm, look):
     nt = _nodes(mat)                                   # kolor pod nazwą węzła jak w MPFB (char_mpfb dopieka na nim cienie) + normalne
     bsdf = next(x for x in nt.nodes if x.type == "BSDF_PRINCIPLED")
     bsdf.inputs["Roughness"].default_value = look.get("rough", 0.85)
@@ -1095,11 +1505,22 @@ COVERALL = {
     "camo": "hazmat", "stitch": TAPE_HAZMAT, "mottle": 0.04, "rough": 0.62, "low_tris": 5000,
 }
 
-# ubrania strojów od warstwy spodniej do wierzchniej (wierzchnia ma spodnią jako przeszkodę w symulacji)
+# buty wojskowe: cholewka do połowy łydki, wzmocniony nosek, sznurowanie z hakami, zamek od środka, pasek z klamrą, gruba podeszwa z bieżnikiem
+COMBAT_BOOTS = {
+    "kind": "boots", "style": "combat", "shaft_h": 0.165, "ease": (0.007, 0.009, 0.016), "toe_box": 0.002, "toe_ext": 0.012,
+    "flat_z": 0.010, "sole": 0.030, "welt": 0.006, "low_tris": 4200, "paint": "bake", "rough": 0.55, "ao": 0.5, "mottle": 0.06,
+}
+# gumowe buty ochronne (hazmat): wyższa, gładka cholewka, bez sznurowania
+RUBBER_BOOTS = dict(COMBAT_BOOTS, style="rubber", shaft_h=0.25, ease=(0.009, 0.013, 0.027), sole=0.024, rough=0.35, low_tris=3200)
+
+# ubrania strojów od warstwy spodniej do wierzchniej (wierzchnia ma spodnią jako przeszkodę w symulacji); buty pierwsze
 WARDROBE = {
-    "male_scav": [("bdu", BDU), ("m65", M65)],
-    "male_medic": [("emt_trousers", EMT_TROUSERS), ("emt_jacket", EMT_JACKET)],
-    "male_hazmat": [("coverall", COVERALL)],
+    "male_scav": [("boots", COMBAT_BOOTS), ("bdu", BDU), ("m65", M65)],
+    "male_medic": [("boots", COMBAT_BOOTS), ("emt_trousers", EMT_TROUSERS), ("emt_jacket", EMT_JACKET)],
+    "male_hazmat": [("boots", RUBBER_BOOTS), ("coverall", COVERALL)],
+    "female_scav": [("boots", COMBAT_BOOTS)],
+    "female_medic": [("boots", COMBAT_BOOTS)],
+    "female_hazmat": [("boots", RUBBER_BOOTS)],
 }
 
 
@@ -1190,13 +1611,23 @@ def _hi_copy(ob):
 
 def build(outfit):
     spec = C.OUTFITS[outfit]
-    rig, body, dom, obst = make_body(spec)
+    only = arg("only")                                                # --only=boots: tylko wybrane ubrania (buty zawsze, to przeszkoda)
+    items = [it for it in WARDROBE[outfit] if only is None or it[0] in only.split(",") or it[1]["kind"] == "boots"]
+    own_boots = any(b["kind"] == "boots" for _, b in items)
+    rig, body, dom, obst = make_body(spec, ("gloves",) if own_boots else COLLIDE)    # własne buty zamiast butów z paczki MPFB
     body.data.materials.clear()
     body.data.materials.append(_mat("skin", (0.62, 0.45, 0.36), 0.6))
     L = landmarks(rig, body, obst)
     colliders = [body] + obst
     lows = []
-    for gname, base in WARDROBE[outfit]:
+    for gname, base in items:
+        if base["kind"] == "boots":
+            low = build_boots(outfit, gname, base, rig, body, dom, L)
+            obst.append(low)                                           # przeszkoda i krawędź cholewki dla nogawek
+            colliders.append(low)
+            L = landmarks(rig, body, obst)
+            lows.append(low)
+            continue
         look = fit_look(base, L)
         ob = make_shell(rig, body, dom, look, gname, obst)
         ob.data.materials.append(_mat("cloth", (0.29, 0.30, 0.20)))

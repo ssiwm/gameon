@@ -59,6 +59,7 @@ static var _src := {}                        ## plik → {"anim": Animation, "re
 static var _libs := {}                       ## nazwa modelu → AnimationLibrary (klipy przeliczone na ten szkielet + "rest")
 static var _means := {}                      ## nazwa modelu → {stan → średnie pionowe przesunięcie bioder w klipie względem spoczynku (m)}
 static var _blends := {}                     ## zestaw → AnimationNodeBlendTree
+static var _flat := {}                       ## kość stopy / palców → globalny obrót w 1. klatce klipu idle (stopa płasko na ziemi); {} = brak klipu
 static var _orders := {}                     ## zestaw → klipy w kolejności grafu: [stan, ścieżka wagi, ścieżka czasu, długość (s), czy pętla kroku, phase0, scrub albo null, hold albo null]
 
 static func has(state: String, set_name := "player") -> bool:
@@ -107,6 +108,47 @@ static func _load(file: String) -> Dictionary:
 	_src[file] = out
 	return out
 
+## Stopy i palce źródła w pozie „stoi płasko” (1. klatka klipu idle, globalnie w przestrzeni szkieletu źródła). Poza spoczynkowa
+## szkieletu biblioteki ma stopy inaczej ustawione niż przy staniu — przeniesienie względem spoczynku wyprostowywało stopy o ~19°
+## w każdym klipie (postać stała na palcach, czubki pod podłogą). Stopy przenosimy więc względem tej pozy.
+static func _flat_ref() -> Dictionary:
+	if not _flat.is_empty():
+		return _flat
+	var src := _load(String((CLIPS["idle"] as Dictionary)["file"]))
+	if src.is_empty():
+		return _flat
+	var a: Animation = src["anim"]
+	var parent_s: Dictionary = src["parent"]
+	var grest_s: Dictionary = src["grest"]
+	var rot := {}
+	for t in a.get_track_count():
+		if a.track_get_type(t) == Animation.TYPE_ROTATION_3D:
+			rot[String(a.track_get_path(t).get_concatenated_subnames())] = a.rotation_track_interpolate(t, 0.0)
+	var g := {}
+	var todo: Array = grest_s.keys()
+	todo.sort_custom(func(x: String, y: String) -> bool: return _src_depth(parent_s, x) < _src_depth(parent_s, y))
+	for bone: String in todo:
+		var ps := String(parent_s[bone])
+		var gp: Quaternion = g[ps] if g.has(ps) else Quaternion.IDENTITY
+		var q: Quaternion = rot[bone] if rot.has(bone) else (src["rest"][bone] as Transform3D).basis.get_rotation_quaternion()
+		g[bone] = gp * q
+	for bone: String in g:
+		if _is_foot(bone):
+			_flat[bone] = (g[bone] as Quaternion).normalized()
+	_flat["_grest"] = grest_s                      # spoczynek szkieletu idle: inne pliki z tym samym spoczynkiem dostają tę samą poprawkę
+	return _flat
+
+static func _is_foot(bone: String) -> bool:
+	return bone.ends_with("Foot") or bone.contains("ToeBase")
+
+static func _src_depth(parent_s: Dictionary, bone: String) -> int:
+	var d := 0
+	var b := String(parent_s.get(bone, ""))
+	while b != "":
+		d += 1
+		b = String(parent_s.get(b, ""))
+	return d
+
 ## Klip przeliczony na szkielet `sk`: ścieżki „<Skeleton3D>:<kość>”, biodra w skali celu. Przeliczenie w przestrzeni szkieletu: każda kość
 ## dostaje ten sam obrót względem swojej pozy spoczynkowej co kość źródłowa (świat szkieletu), niezależnie od osi lokalnych kości — klip ze
 ## szkieletu Tripo gra więc poprawnie na szkielecie MPFB (inne osie kości, inna poza spoczynkowa) i na każdym innym o tych samych nazwach.
@@ -141,6 +183,15 @@ static func _retarget(src: Dictionary, sk: Skeleton3D, upper := 1.0) -> Animatio
 		if rot_tr.has(sk.get_bone_name(i)):
 			bones.append(i)
 	bones.sort_custom(func(x: int, y: int) -> bool: return _depth(sk, x) < _depth(sk, y))
+	# stopy: odniesieniem poza „stoi płasko” z klipu idle (o ile ten plik ma ten sam spoczynek stóp co idle)
+	var flat := _flat_ref()
+	var feet_ref := {}
+	for bone: String in rest_s:
+		if _is_foot(bone) and flat.has(bone):
+			var gi: Transform3D = (flat["_grest"] as Dictionary).get(bone, Transform3D())
+			var gs_rest: Quaternion = (grest_s[bone] as Transform3D).basis.get_rotation_quaternion()
+			if gi.basis.get_rotation_quaternion().angle_to(gs_rest) < deg_to_rad(1.0):
+				feet_ref[bone] = flat[bone]
 	var o := Animation.new()
 	o.length = a.length
 	o.loop_mode = Animation.LOOP_LINEAR
@@ -158,7 +209,8 @@ static func _retarget(src: Dictionary, sk: Skeleton3D, upper := 1.0) -> Animatio
 			var ps := String(parent_s[bone])
 			var gps: Quaternion = gs[ps] if gs.has(ps) else ((grest_s[ps] as Transform3D).basis.get_rotation_quaternion() if ps != "" else Quaternion.IDENTITY)
 			gs[bone] = gps * q_src
-			var delta: Quaternion = gs[bone] * (grest_s[bone] as Transform3D).basis.get_rotation_quaternion().inverse()
+			var ref: Quaternion = feet_ref[bone] if feet_ref.has(bone) else (grest_s[bone] as Transform3D).basis.get_rotation_quaternion()
+			var delta: Quaternion = gs[bone] * ref.inverse()
 			var g_t := (delta * sk.get_bone_global_rest(bi).basis.get_rotation_quaternion()).normalized()
 			gt[bi] = g_t
 			var pt := sk.get_bone_parent(bi)
