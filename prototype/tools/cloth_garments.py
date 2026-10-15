@@ -493,7 +493,7 @@ def simulate(rig, ob, colliders, look, obst=()):
     print("SIM done", ob.name, len(ob.data.vertices), "verts, z %.3f..%.3f" % (min(v.co.z for v in ob.data.vertices), max(v.co.z for v in ob.data.vertices)))
 
 
-def smooth_rims(ob, rig, look, iters=12):
+def smooth_rims(ob, rig, look, iters=20):
     """Brzegi po cięciu wokselami są poszarpane: wygładzenie wzdłuż każdej pętli brzegu, pierwszy pierścień sąsiadów idzie za nią."""
     me = ob.data
     co = np.array([tuple(v.co) for v in me.vertices])
@@ -785,8 +785,9 @@ def details_coverall(bvh, rig, ob, look, L, rims, body, dom):
     cx, cw, chh = look["chest_pocket"]
     for sx in (-1, 1):
         det += pocket(bvh, "pocket_c%d" % sx, (sx * cx, -0.5, L["chest"] + look["chest_dz"]), X, Z, FWD, cw, chh, 0.05, snap=False)
-    c = co[(np.abs(co[:, 2] - look["waist_z"]) < 0.02)][:, :2].mean(0)
-    det.append(ring_band(bvh, "belt", look["waist_z"], look["belt_h"], c, 0.003, 0.004))
+    if look.get("belt_h"):
+        c = co[(np.abs(co[:, 2] - look["waist_z"]) < 0.02)][:, :2].mean(0)
+        det.append(ring_band(bvh, "belt", look["waist_z"], look["belt_h"], c, 0.003, 0.004))
     for s in ("L", "R"):
         k = L["knee_" + s]
         w, h = look["knee_patch"]
@@ -988,15 +989,18 @@ def bake_maps(low, high_objs, look, size):
     # kolor: wzór (kamuflaż / jednolity) w przestrzeni UV — plamy tej samej wielkości na każdym elemencie — × okluzja, przeszycia
     m_per_uv = _uv_scale(low)
     cm = C.CAMO[look["camo"]]
-    cells = max(2, int(round(m_per_uv / look.get("camo_blotch", 0.07))))
-    col = np.tile(np.array(cm["base"], np.float32), (size * size, 1))
+    cells = max(2, int(round(m_per_uv / look.get("camo_blotch", 0.055))))
+    col = np.tile(np.array(look.get("base", cm["base"]), np.float32), (size * size, 1))
+    cover = look.get("camo_cover", (0.24, 0.30, 0.12))                  # udział plam (brąz, zieleń, czerń): progi z kwantyli, nie stałe
     for i, (c, thr) in enumerate(cm["spots"]):
         fld = C.smooth_noise(size, size, cells, look.get("camo_seed", 3) * 10 + i).ravel()
-        col[fld > thr] = np.array(c, np.float32)
+        q = np.quantile(fld, 1.0 - cover[i]) if i < len(cover) else thr
+        col[fld > q] = np.array(c, np.float32)
     fiber = C.smooth_noise(size, size, cells * 12, 99).ravel()            # nierówność barwienia
     col *= (1 - look.get("mottle", 0.08) + 2 * look.get("mottle", 0.08) * fiber)[:, None]
     a = np.array(ao.pixels[:], np.float32).reshape(-1, 4)[:, 0]
-    col *= (0.55 + 0.45 * np.clip(a, 0, 1) ** 1.2)[:, None]
+    k = look.get("ao", 0.45)
+    col *= (1 - k + k * np.clip(a, 0, 1) ** 1.2)[:, None]
     px = np.c_[np.clip(col, 0, 1), np.ones(size * size, np.float32)].reshape(size, size, 4)
     st = look.get("stitch", {})
     n = _stitches(low, px, size, inset_px=max(2, int(0.005 / m_per_uv * size)), color=st.get("color", (0.20, 0.19, 0.12)),
@@ -1050,32 +1054,34 @@ def make_low(ob, collar, tris, name):
 
 STITCH_OLIVE = {"color": (0.20, 0.19, 0.12)}
 STITCH_NAVY = {"color": (0.05, 0.07, 0.13)}
+STITCH_NAVY_LIGHT = {"color": (0.30, 0.34, 0.45)}             # jasna nić: kieszenie i listwa czytelne na granacie
 TAPE_HAZMAT = {"color": (0.55, 0.40, 0.04), "dash": (1, 0), "width": 4}     # zgrzewane szwy podklejone taśmą
 
 # kurtka polowa M65: dół tuż pod kroczem (zakrywa siedzenie), ściągacz w talii, stójka, cztery kieszenie z patkami, pagony
 M65 = {
-    "kind": "jacket", "hem_dz": -0.025, "waist_dz": 0.0, "loft_dz": 0.035,
-    "ease_body": 0.012, "ease_sleeve": (0.026, 0.019), "ease_torso": (0.032, 0.026, 0.014),
+    "kind": "jacket", "hem_dz": -0.025, "waist_dz": 0.0, "loft_dz": 0.0,          # powłoka do stawu barkowego (wyżej: kanciaste barki)
+    "ease_body": 0.012, "ease_sleeve": (0.018, 0.013), "ease_torso": (0.030, 0.025, 0.012),
     "waist_band": 0.018, "waist_shrink": 0.05, "cuff_band": 0.035, "cuff_shrink": 0.30,
     "neck_r": 0.085, "neck_dz": -0.005, "neck_drop": 0.035, "cuff_over": 0.03,
     "collar_h": 0.065, "collar_flare": 0.008, "collar_thick": 0.004, "hem_band": 0.03, "cuff_h": 0.045,
     "chest_dz": 0.025, "chest_pocket": (0.115, 0.13, 0.16), "hip_dz": 0.13, "hip_pocket": (0.098, 0.125, 0.19),
     "epaulet": 0.05, "placket_x": 0.012, "placket_w": 0.036,
-    "camo": "woodland", "camo_blotch": 0.07, "camo_seed": 3, "stitch": STITCH_OLIVE, "low_tris": 5000,
+    "camo": "woodland", "camo_seed": 3, "stitch": STITCH_OLIVE, "low_tris": 5000,
 }
 # spodnie polowe BDU: pas na biodrach, nogawki wpuszczone w buty (ściągacz nad cholewką), kieszenie boczne miechowe, nakolanniki
 BDU = {
     "kind": "trousers", "top_dz": 0.055, "waist_dz": 0.0,
-    "ease_body": 0.012, "ease_leg": (0.030, 0.026, 0.024), "ease_torso": (0.018, 0.016, 0.014),
+    "ease_body": 0.012, "ease_leg": (0.028, 0.022, 0.016), "ease_torso": (0.018, 0.016, 0.014),
     "leg_end": "boot", "leg_dz": -0.015, "leg_band": 0.03, "leg_shrink": 0.0,    # nogawka kończy się tuż za krawędzią cholewki (ściągacz na bucie zsuwa się w górę, głębiej wpada do buta)
     "waistband": 0.04, "leg_hem": 0.025, "cargo": (0.17, 0.20), "back_pocket": (0.13, 0.15), "knee_patch": (0.13, 0.19),
-    "camo": "woodland", "camo_blotch": 0.07, "camo_seed": 5, "stitch": STITCH_OLIVE, "low_tris": 4000,
+    "camo": "woodland", "camo_seed": 5, "stitch": STITCH_OLIVE, "low_tris": 4000,
 }
 # mundur ratownika: kurtka do bioder (ściągacz w pasie), niska stójka, kieszenie piersiowe, pagony; spodnie z kieszeniami bocznymi na buty
+NAVY = (0.13, 0.18, 0.31)                  # jaśniejszy granat niż w CAMO (detale ginęły w ciemnym)
 EMT_JACKET = dict(M65, hem_dz=0.075, collar_h=0.042, hip_pocket=None, chest_pocket=(0.11, 0.12, 0.14), waist_shrink=0.0,
-                  hem_band=0.045, camo="navy", stitch=STITCH_NAVY, mottle=0.05, low_tris=4500)
-EMT_TROUSERS = dict(BDU, leg_end="ankle", leg_dz=-0.01, leg_shrink=0.0, ease_leg=(0.028, 0.025, 0.030), knee_patch=None,
-                    camo="navy", stitch=STITCH_NAVY, mottle=0.05)
+                  hem_band=0.045, camo="navy", base=NAVY, ao=0.6, stitch=STITCH_NAVY_LIGHT, mottle=0.06, low_tris=4500)
+EMT_TROUSERS = dict(BDU, leg_end="boot", leg_dz=-0.03, leg_shrink=0.0, ease_leg=(0.026, 0.022, 0.020), knee_patch=None,
+                    camo="navy", base=NAVY, ao=0.6, stitch=STITCH_NAVY_LIGHT, mottle=0.06)     # nogawka oparta na cholewce
 # kombinezon ochronny: jedna część od szyi do kostek, pas, nakolanniki, gumowany (gładszy), szwy podklejone taśmą
 COVERALL = {
     "kind": "coverall", "waist_dz": 0.0, "loft_dz": 0.035,
@@ -1083,10 +1089,10 @@ COVERALL = {
     "waist_band": 0.02, "waist_shrink": 0.06, "cuff_band": 0.035, "cuff_shrink": 0.30,
     "leg_end": "ankle", "leg_dz": -0.005, "leg_band": 0.04, "leg_shrink": 0.15,
     "neck_r": 0.085, "neck_dz": -0.005, "neck_drop": 0.03, "cuff_over": 0.03,
-    "collar_h": 0.035, "collar_flare": 0.006, "collar_thick": 0.004, "cuff_h": 0.04, "leg_hem": 0.03,
-    "chest_dz": 0.03, "chest_pocket": (0.11, 0.12, 0.13), "placket_x": 0.0, "placket_w": 0.04, "belt_h": 0.045,
+    "cuff_h": 0.04, "leg_hem": 0.03,                                # bez stójki: kaptur kryje szyję (stójka wchodziła w pochłaniacz maski)
+    "chest_dz": 0.03, "chest_pocket": (0.11, 0.12, 0.13), "placket_x": 0.0, "placket_w": 0.04, "belt_h": None,   # pas z ekwipunku
     "knee_patch": (0.13, 0.16), "bending": 10.0,
-    "camo": "hazmat", "stitch": TAPE_HAZMAT, "mottle": 0.04, "rough": 0.45, "low_tris": 5000,
+    "camo": "hazmat", "stitch": TAPE_HAZMAT, "mottle": 0.04, "rough": 0.62, "low_tris": 5000,
 }
 
 # ubrania strojów od warstwy spodniej do wierzchniej (wierzchnia ma spodnią jako przeszkodę w symulacji)

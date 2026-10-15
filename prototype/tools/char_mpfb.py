@@ -32,13 +32,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(os.path.dirname(HERE), "art", "char3d", "mpfb")
 GEAR_SRC = os.path.join(os.path.dirname(os.path.dirname(HERE)), "art_src", "gear")   # modele ekwipunku (FLUX + TRELLIS 2, SOURCE.md)
 
-# gotowe modele ekwipunku: plik w art_src/gear, kość, rozmiar (m: „height” — wysokość albo „length” — najdłuższy wymiar w poziomie),
+# gotowe modele ekwipunku: plik w art_src/gear, kość, rozmiar (śpiwór i aparat oddechowy są skryptem: z TRELLIS wychodziły
+# grudkowaty koc i węże porwane przy upraszczaniu) (m: „height” — wysokość albo „length” — najdłuższy wymiar w poziomie),
 # obrót wokół pionu (°: przód modelu → od pleców; śpiwór w poprzek pleców), budżet trójkątów
 GEAR_MODELS = {
     "backpack": {"file": "backpack.glb", "bone": "Spine2", "height": 0.58, "yaw": -90.0, "tris": 4000},
-    "bedroll": {"file": "bedroll.glb", "bone": "Spine2", "length": 0.56, "diameter": 0.2, "yaw": 0.0, "axis": "Y", "tris": 6000},
-    "airtank": {"file": "airtank.glb", "bone": "Spine2", "height": 0.60, "yaw": -90.0, "tris": 5000},     # aparat oddechowy: butle ~60 cm
-    "medbag": {"file": "medbag.glb", "bone": "Spine2", "height": 0.42, "yaw": -90.0, "tris": 4000},      # plecak medyczny
+    "medbag": {"file": "medbag.glb", "bone": "Spine2", "height": 0.34, "yaw": -90.0, "tris": 4000},      # plecak medyczny (0,42 wystawał spod pach)
     "pouch": {"file": "pouch.glb", "bone": "Hips", "height": 0.12, "depth": 0.065, "yaw": 0.0, "tris": 1500},      # ładownica na pas
     "canteen": {"file": "canteen.glb", "bone": "Hips", "height": 0.20, "depth": 0.085, "yaw": -90.0, "tris": 1500},  # manierka w pokrowcu   # oś walca w poprzek pleców
 }
@@ -78,7 +77,7 @@ GREY_TO_CAMO = dict(GREY_TO_OLIVE, camo="woodland", seed=7)
 # kamuflaż leśny lat 80.: tło i plamy — brąz, ciemna zieleń, czerń (próg pola szumu), wielkość plam (komórki szumu na atlas);
 # wzór bez plam = jednolity kolor tkaniny z zachowaniem fałd („clip”: zakres jasności względem mediany — mniejszy gasi logo i napisy)
 CAMO = {
-    "hazmat": {"base": (0.80, 0.62, 0.07), "cells": 1, "spots": [], "clip": (0.5, 1.3)},
+    "hazmat": {"base": (0.80, 0.62, 0.07), "cells": 1, "spots": [], "clip": (0.9, 1.1)},      # wąsko: napisy stroju wyścigowego znikają (fałdy dopieka bake_shading)
     "navy": {"base": (0.10, 0.14, 0.25), "cells": 1, "spots": [], "clip": (0.7, 1.2)},
     "woodland": {"base": (0.36, 0.34, 0.22), "cells": 42,
                  "spots": [((0.27, 0.19, 0.11), 0.60), ((0.15, 0.19, 0.10), 0.58), ((0.06, 0.06, 0.05), 0.71)]},
@@ -352,6 +351,75 @@ def _strap(rig, p0, p1, bone):
     _part(rig, "strap", _box((0.012, 0.045, v.length + 0.02), (p0 + p1) * 0.5, 0.004, rot), bone, "strap")
 
 
+def _surface(rig, skip=("gear", "low-poly", "eyebrow", "eyelash", "short", "ponytail", "helmet", "m1951", "hood", "gas_mask")):
+    """BVH powierzchni postaci (ciało i ubrania, bez ekwipunku, włosów, oczu i nakryć głowy) — do przyklejania pasków i chusty."""
+    from mathutils.bvhtree import BVHTree
+    verts, polys = [], []
+    for o in rig.children:
+        if o.type != "MESH" or any(k in o.name for k in skip) or o.name in GEAR_MODELS or o.name.startswith(("strap", "pouch", "canteen")):
+            continue
+        off = len(verts)
+        verts += [o.matrix_world @ v.co for v in o.data.vertices]
+        polys += [[off + i for i in p.vertices] for p in o.data.polygons]
+    return BVHTree.FromPolygons(verts, polys)
+
+
+def _onto(bvh, p, d, lift):
+    """Punkt `p` rzutowany wzdłuż `d` (do środka ciała) na powierzchnię, odsunięty o `lift`; bez trafienia — najbliższy punkt."""
+    d = d.normalized()
+    hit, n, _, _ = bvh.ray_cast(p - d * 0.25, d, 0.5)
+    if hit is None:
+        hit, n, _, _ = bvh.find_nearest(p)
+    if n.dot(d) > 0:
+        n = -n
+    return hit + n * lift, n
+
+
+def _ribbon(bvh, path, inward, width, lift, thick, step=0.02):
+    """Pasek przylegający do postaci: łamana `path` gęsto próbkowana, każdy punkt rzutowany na powierzchnię (`inward(p)` — kierunek
+    do środka ciała), szerokość w płaszczyźnie powierzchni, pogrubiony o `thick`."""
+    pts = []
+    for a, b in zip(path, path[1:]):
+        n = max(1, int((b - a).length / step))
+        pts += [a.lerp(b, i / n) for i in range(n)]
+    pts.append(path[-1])
+    on = [_onto(bvh, p, inward(p), lift) for p in pts]
+    bm = bmesh.new()
+    rows = []
+    for i, (q, n) in enumerate(on):
+        t = (on[min(i + 1, len(on) - 1)][0] - on[max(i - 1, 0)][0]).normalized()
+        side = t.cross(n).normalized() * (width * 0.5)
+        rows.append((bm.verts.new(q - side), bm.verts.new(q + side)))
+    faces = [bm.faces.new((a0, b0, b1, a1)) for (a0, b0), (a1, b1) in zip(rows, rows[1:])]
+    bmesh.ops.recalc_face_normals(bm, faces=faces)
+    bmesh.ops.solidify(bm, geom=faces, thickness=thick)
+    return bm
+
+
+def _tube(path, r, seg=8, smooth=4):
+    """Wąż / rurka wzdłuż łamanej (wygładzonej Catmull-Rom)."""
+    pts = []
+    ext = [path[0]] + list(path) + [path[-1]]
+    for i in range(1, len(ext) - 2):
+        p0, p1, p2, p3 = ext[i - 1], ext[i], ext[i + 1], ext[i + 2]
+        for k in range(smooth):
+            t = k / smooth
+            pts.append(0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t ** 3))
+    pts.append(path[-1])
+    bm = bmesh.new()
+    rings = []
+    up = Vector((0, 0, 1))
+    for i, p in enumerate(pts):
+        t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+        a = (up if abs(t.dot(up)) < 0.9 else Vector((1, 0, 0))).cross(t).normalized()
+        b = t.cross(a)
+        rings.append([bm.verts.new(p + (a * math.cos(2 * math.pi * k / seg) + b * math.sin(2 * math.pi * k / seg)) * r) for k in range(seg)])
+    for ra, rb in zip(rings, rings[1:]):
+        for k in range(seg):
+            bm.faces.new((ra[k], ra[(k + 1) % seg], rb[(k + 1) % seg], rb[k]))
+    return bm
+
+
 def add_gear(rig, gear):
     before = set(rig.children)
     _add_gear(rig, gear)
@@ -387,20 +455,34 @@ def relocate(rig, o, where):
     vg.add(list(range(len(o.data.vertices))), 1.0, "REPLACE")
 
 
-def _ring(rig, pts, at_bone, along_bone, weight_bone, width, col, grow=0.006):
-    """Opaska wokół kończyny w punkcie kości `at_bone` (oś: kość `along_bone`), promień z otaczającej siatki ubrań."""
+def _ring(rig, pts, at_bone, along_bone, weight_bone, width, col, grow=0.008, shift=0.0, bvh=None):
+    """Opaska wokół kończyny przy kości `at_bone` (oś: kość `along_bone`, przesunięta o `shift` w stronę `along_bone`): promień
+    w każdym kierunku z powierzchni ubrania (promień z zewnątrz do osi), więc taśma przylega jak owinięta."""
     a = rig.matrix_world @ rig.data.bones["mixamorig:" + along_bone].head_local
     c = rig.matrix_world @ rig.data.bones["mixamorig:" + at_bone].head_local
     ax = (c - a).normalized()
-    near = [p for p in pts if abs((p - c).dot(ax)) < width and ((p - c) - ax * (p - c).dot(ax)).length < 0.14]
-    if not near:
-        return
-    r = sorted(((p - c) - ax * (p - c).dot(ax)).length for p in near)[int(len(near) * 0.92)] + grow
+    c = c - ax * shift
+    bvh = bvh or _surface(rig)
+    e1 = ax.orthogonal().normalized()
+    e2 = ax.cross(e1)
+    seg = 32
     bm = bmesh.new()
-    bmesh.ops.create_cone(bm, cap_ends=False, segments=14, radius1=r, radius2=r, depth=width)
-    rot = Vector((0, 0, 1)).rotation_difference(ax).to_matrix()
-    bmesh.ops.rotate(bm, verts=bm.verts, cent=Vector(), matrix=rot)
-    bmesh.ops.translate(bm, vec=c, verts=bm.verts)
+    rad = []
+    for k in range(seg):                                         # promień: największy z trzech przekrojów (brzegi i środek taśmy)
+        d = e1 * math.cos(2 * math.pi * k / seg) + e2 * math.sin(2 * math.pi * k / seg)
+        rs = []
+        for off in (-width * 0.5, 0.0, width * 0.5):
+            cc = c + ax * off
+            hit = bvh.ray_cast(cc + d * 0.25, -d, 0.25)[0]
+            rs.append((hit - cc).length if hit is not None else 0.06)
+        rad.append((d, max(rs)))
+    rings = []
+    for off in (-width * 0.5, width * 0.5):
+        cc = c + ax * off
+        rings.append([bm.verts.new(cc + d * (r + grow)) for d, r in rad])
+    faces = [bm.faces.new((rings[0][k], rings[0][(k + 1) % seg], rings[1][(k + 1) % seg], rings[1][k])) for k in range(seg)]
+    bmesh.ops.recalc_face_normals(bm, faces=faces)
+    bmesh.ops.solidify(bm, geom=faces, thickness=0.002)
     _part(rig, "tape", bm, weight_bone, col)
 
 
@@ -493,18 +575,19 @@ def gear_model(rig, pts, key, neck, sh):
 
 
 def _harness(rig, pts, xc, d, top, zc, sh):
-    """Szelki: od górnej krawędzi plecaka przez barki na pierś."""
+    """Szelki: od górnej krawędzi plecaka przez barki na pierś do pasa — paski przyklejone do ubrania (kamizelki, kurtki)."""
     front_top = _section(pts, sh.z - 0.06, y_max=0.12)[1]
     front_low = _section(pts, zc - 0.12, y_max=0.12)[1]
+    bvh = _surface(rig)
+    xm = (xc + front_top) * 0.5                                  # oś ciała (x) — paski rzutowane do niej
+
+    def inward(p):
+        return Vector((xm, p.y * 0.4, min(p.z, sh.z - 0.12))) - p
     for side in (-1, 1):
         y = side * 0.1
-        a = Vector((xc + d * 0.4, y, top - 0.02))
-        m = Vector(((xc + front_top) * 0.5, y, sh.z + 0.05))
-        b = Vector((front_top + 0.008, y, sh.z - 0.03))
-        c = Vector((front_low + 0.01, y, zc - 0.14))
-        _strap(rig, a, m, "Spine2")
-        _strap(rig, m, b, "Spine2")
-        _strap(rig, b, c, "Spine2")
+        path = [Vector((xc + d * 0.4, y, top - 0.02)), Vector((xm - 0.04, y, sh.z + 0.08)), Vector((xm + 0.04, y, sh.z + 0.08)),
+                Vector((front_top + 0.05, y, sh.z - 0.03)), Vector((front_low + 0.05, y, zc - 0.14))]
+        _part(rig, "strap", _ribbon(bvh, path, inward, 0.042, 0.005, 0.003), "Spine2", "strap")
 
 
 def _add_gear(rig, gear):
@@ -548,7 +631,11 @@ def _add_gear(rig, gear):
             _part(rig, "tank_valve", _cyl(0.022, 0.06, (xc, yy, top + 0.03), axis="Z", seg=8), "Spine2", "metal")
             for zz in (zc + ln * 0.3, zc - ln * 0.3):
                 _part(rig, "tank_band", _cyl(r + 0.004, 0.03, (xc, yy, zz), axis="Z", seg=16), "Spine2", "strap")
-        _part(rig, "tank_hose", _cyl(0.012, 0.32, (xc + 0.05, 0.12 * ks, top - 0.02), axis="Y", seg=6), "Spine2", "strap")
+        # wąż od zaworu przez prawy bark do pochłaniacza maski przed brodą
+        front = _section(pts, sh.z - 0.06, y_max=0.12)[1]
+        hose = [Vector((xc, -0.08 * ks, top + 0.07)), Vector((xc + 0.02, -0.15, top + 0.12)), Vector(((xc + front) * 0.5, -0.17, sh.z + 0.11)),
+                Vector((front + 0.04, -0.12, sh.z + 0.02)), Vector((front + 0.07, -0.04, neck.z + 0.01)), Vector((neck.x + 0.14, 0.0, neck.z + 0.06))]
+        _part(rig, "tank_hose", _tube(hose, 0.013), "Spine2", "strap")
         _part(rig, "tank_bridge", _box((0.03, 0.16 * ks + 0.04, 0.03), (xc, 0.0, top + 0.05), 0.008), "Spine2", "metal")
         _part(rig, "tank_gauge", _cyl(0.025, 0.02, (xc - 0.03, 0.0, top + 0.05), axis="Z", seg=12), "Spine2", "white")
         _part(rig, "tank_plate", _box((0.012, 0.12, 0.08), (xc - r - 0.004, 0.0, zc), 0.004), "Spine2", "white")
@@ -557,9 +644,10 @@ def _add_gear(rig, gear):
         # taśma na styku rękawic i rękawów oraz butów i nogawek — klasyczny kombinezon ochronny
         cl = [o.matrix_world @ v.co for o in rig.children if o.type == "MESH" and o.name not in ("body", "gear")
               for v in o.data.vertices]
+        bvh = _surface(rig)
         for side in ("Left", "Right"):
-            _ring(rig, cl, side + "Hand", side + "ForeArm", side + "ForeArm", 0.05, "tape")
-            _ring(rig, cl, side + "Foot", side + "Leg", side + "Leg", 0.06, "tape")
+            _ring(rig, cl, side + "Hand", side + "ForeArm", side + "ForeArm", 0.05, "tape", shift=0.03, bvh=bvh)      # styk rękawa i rękawicy
+            _ring(rig, cl, side + "Foot", side + "Leg", side + "Leg", 0.06, "tape", shift=0.10, bvh=bvh)         # styk nogawki i cholewki
     if "helmet_cross" in gear:
         # biały hełm medyka: czerwony krzyż z przodu (Head)
         hm = next((o for o in rig.children if o.type == "MESH" and ("helmet" in o.name or "m1951" in o.name)), None)
@@ -569,24 +657,23 @@ def _add_gear(rig, gear):
             zc = z1 - 0.06                                       # czasza hełmu (bez paska pod brodą)
             band = [p.x for p in hv if abs(p.z - zc) < 0.02 and abs(p.y) < 0.04]
             xf = max(band) if band else max(p.x for p in hv)
-            _part(rig, "helmet_cross", _box((0.006, 0.07, 0.022), (xf + 0.001, 0.0, zc), 0.0), "Head", "red")
-            _part(rig, "helmet_cross", _box((0.006, 0.022, 0.07), (xf + 0.001, 0.0, zc), 0.0), "Head", "red")
+            # krzyż odsunięty od czaszy (na zakrzywionej powierzchni płaskie kostki częściowo chowały się w hełmie)
+            _part(rig, "helmet_cross", _box((0.008, 0.07, 0.022), (xf + 0.004, 0.0, zc), 0.0), "Head", "red")
+            _part(rig, "helmet_cross", _box((0.008, 0.022, 0.07), (xf + 0.004, 0.0, zc), 0.0), "Head", "red")
     if "backpack_model" in gear:
         xc, d, top, zc = gear_model(rig, pts, "backpack", neck, sh)
         _harness(rig, pts, xc, d, top, zc, sh)
         # duży śpiwór w poprzek na wierzchu plecaka (koc z modelu był za mały), dwa paski
         cx, z1 = bpy.data.objects["backpack"]["crown"]
-        if os.path.exists(os.path.join(GEAR_SRC, GEAR_MODELS["bedroll"]["file"])):
-            br = _import_gear(rig, "bedroll", ks)
-            bv = [v.co for v in br.data.vertices]
-            hz = (max(v.z for v in bv) - min(v.z for v in bv)) * 0.5
-            br.data.transform(Matrix.Translation((cx, 0.0, z1 - 0.07 + hz * 0.8)))   # wciśnięty w klapę plecaka, przykrywa koc modelu
-        else:
-            r, ln = 0.085 * ks, 0.56 * ks
-            zr = z1 - 0.035
-            _part(rig, "bedroll", _cyl(r, ln, (cx, 0.0, zr), seg=20), "Spine2", "canvas")
-            for yy in (-ln * 0.3, ln * 0.3):
-                _part(rig, "bedroll_strap", _cyl(r + 0.005, 0.03, (cx, yy, zr), seg=20), "Spine2", "strap")
+        r, ln = 0.095 * ks, 0.58 * ks
+        zr = z1 - 0.02
+        _part(rig, "bedroll", _cyl(r, ln, (cx, 0.0, zr), seg=24), "Spine2", "olive")
+        for yy in (-1, 1):                                            # zwój widoczny na czołach: wewnętrzna warstwa koca
+            _part(rig, "bedroll_end", _cyl(r * 0.62, 0.012, (cx, yy * (ln * 0.5 + 0.002), zr), seg=20), "Spine2", "canvas_dark")
+            _part(rig, "bedroll_end", _cyl(r * 0.3, 0.016, (cx, yy * (ln * 0.5 + 0.004), zr), seg=16), "Spine2", "olive")
+        for yy in (-ln * 0.3, ln * 0.3):
+            _part(rig, "bedroll_strap", _cyl(r + 0.004, 0.03, (cx, yy, zr), seg=24), "Spine2", "leather")
+            _part(rig, "bedroll_buckle", _box((0.012, 0.035, 0.03), (cx + r + 0.006, yy, zr), 0.003), "Spine2", "metal")
     if "backpack_bedroll" in gear:
         # plecak na łopatkach (Spine2), śpiwór zwinięty na górze, szelki przez barki na pierś
         top = neck.z - 0.07
@@ -644,16 +731,43 @@ def _add_gear(rig, gear):
                 _part(rig, "pouch", _box((0.09, 0.055, 0.11), (cx + 0.04, yy, zb - 0.05), 0.012), "Hips", "olive")
             _part(rig, "canteen", _cyl(0.05, 0.16, (x0 - 0.02, y0 + 0.08, zb - 0.08), axis="Z"), "Hips", "olive")
     if "neckerchief" in gear:
-        zn = neck.z - 0.01
+        # zwinięta chusta na kołnierzu (pętla przyklejona do ubrania), trójkąt na piersi i węzeł z przodu
+        bvh = _surface(rig)
+        zn = neck.z - 0.035
         x0, x1, y0, y1 = _section(pts, zn, dz=0.02, y_max=0.12)
         cx, cy = (x0 + x1) * 0.5, (y0 + y1) * 0.5
-        _part(rig, "neckerchief", _cyl(1.0, 0.06, (cx, cy, zn), axis="Z", caps=False, seg=20,
-                                       scale_xy=((x1 - x0) * 0.5 + 0.008, (y1 - y0) * 0.5 + 0.008)), "Neck", "rust")
+        nk = rig.matrix_world @ rig.data.bones["mixamorig:Neck"].head_local
+        near = [p for p in pts if abs(p.z - zn) < 0.02 and math.hypot(p.x - nk.x, p.y - nk.y) < 0.11]   # szyja i kołnierz, bez barków
+        ring = []
+        for i in range(24):
+            a = 2 * math.pi * i / 24
+            d = Vector((math.cos(a), math.sin(a), 0.0))
+            sag = 0.025 * max(0.0, math.cos(a)) ** 2                 # z przodu chusta opada
+            r = max([(Vector((p.x - nk.x, p.y - nk.y, 0)).dot(d)) for p in near if Vector((p.x - nk.x, p.y - nk.y, 0)).normalized().dot(d) > 0.9]
+                    or [0.07])
+            ring.append(Vector((nk.x, nk.y, zn - sag)) + d * (r + 0.014))
+        _part(rig, "neckerchief", _tube(ring + ring[:3], 0.014, seg=8, smooth=2), "Spine2", "rust")
+        xf = x1
+        # trójkąt płaski, styczny do piersi pod węzłem (rzut każdego wierzchołka osobno łapał paski kamizelki — wychodził „namiot”)
+        q0, n0 = _onto(bvh, Vector((xf + 0.3, cy, zn - 0.06)), Vector((-1, 0, 0)), 0.012)
+        side = Vector((0, 0, 1)).cross(n0).normalized()
+        down = n0.cross(side).normalized()
+        if down.z > 0:
+            down = -down
+        w, h = 0.12 * ks, 0.10 * ks
+        top = q0 - down * (h * 0.35)
         bm = bmesh.new()
-        bmesh.ops.create_cone(bm, cap_ends=True, segments=3, radius1=0.07, radius2=0.0, depth=0.1)
-        bmesh.ops.scale(bm, vec=Vector((0.25, 1.0, 1.0)), verts=bm.verts)
-        bmesh.ops.rotate(bm, verts=bm.verts, cent=Vector(), matrix=Matrix.Rotation(math.radians(180), 3, "X"))
-        bmesh.ops.translate(bm, vec=Vector((x1 + 0.01, cy, zn - 0.07)), verts=bm.verts)
+        tri = [bm.verts.new(top - side * w * 0.5), bm.verts.new(top + side * w * 0.5), bm.verts.new(top + down * h)]
+        f = bm.faces.new(tri)
+        bmesh.ops.subdivide_edges(bm, edges=list(bm.edges), cuts=3, use_grid_fill=True)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=0.003)
+        _part(rig, "neckerchief_flap", bm, "Spine2", "rust")
+        q = ring[0] + Vector((0.012, 0.0, -0.012))                   # węzeł na przodzie pętli (rzut z przodu łapał wysoką stójkę — broda)
+        bm = bmesh.new()
+        bmesh.ops.create_uvsphere(bm, u_segments=10, v_segments=6, radius=0.02)
+        bmesh.ops.scale(bm, vec=Vector((0.8, 1.2, 0.9)), verts=bm.verts)
+        bmesh.ops.translate(bm, vec=q, verts=bm.verts)
         _part(rig, "neckerchief_knot", bm, "Spine2", "rust")
 
 
@@ -931,6 +1045,237 @@ def add_sewn(rig, body, spec):
         m.show_viewport = True
 
 
+HAIR = ("short0", "ponytail", "eyebrow", "eyelash")             # karty z przezroczystością (w GLB: przycinanie alfa); po początku nazwy
+
+
+def _is_hair(name):
+    return name.startswith(HAIR)                                # „toigo_gloves_short” to nie włosy
+
+
+def tighten_cuffs(rig, body):
+    """Mankiety rękawic MPFB odstają od nadgarstka jak obręcze: wierzchołki za nadgarstkiem (w stronę łokcia) ściągnięte do ręki
+    (promień najbliższego punktu ciała + 4 mm)."""
+    from mathutils.kdtree import KDTree
+    kd = KDTree(len(body.data.vertices))
+    for v in body.data.vertices:
+        kd.insert(body.matrix_world @ v.co, v.index)
+    kd.balance()
+    for o in [o for o in rig.children if o.type == "MESH" and "gloves" in o.name]:
+        n = 0
+        for side, sx in (("Left", 1), ("Right", -1)):
+            w = rig.matrix_world @ rig.pose.bones["mixamorig:" + side + "Hand"].head
+            d = (w - rig.matrix_world @ rig.pose.bones["mixamorig:" + side + "ForeArm"].head).normalized()
+            for v in o.data.vertices:
+                p = o.matrix_world @ v.co
+                t = (p - w).dot(d)
+                if p.x * w.x <= 0 or t > 0.01:
+                    continue
+                a = w + d * t
+                r = p - a
+                b = kd.find(p)[0]
+                rb = ((b - w) - d * (b - w).dot(d)).length
+                lim = rb + 0.004
+                if r.length > lim:
+                    v.co = o.matrix_world.inverted() @ (a + r.normalized() * lim)
+                    n += 1
+        print("CUFFS", o.name, n)
+
+
+def _uv_overlap(o, res=256):
+    """Udział nakładających się tekseli w UV (lustrzane połówki ubrań MPFB dzielą teksturę)."""
+    uv = o.data.uv_layers.active.data
+    cnt = np.zeros((res, res), np.int16)
+    for p in o.data.polygons:
+        q = [np.array(uv[li].uv) * res for li in p.loop_indices]
+        for k in range(1, len(q) - 1):
+            a, b, c = q[0], q[k], q[k + 1]
+            x0, x1 = int(max(0, min(a[0], b[0], c[0]))), int(min(res - 1, max(a[0], b[0], c[0])))
+            y0, y1 = int(max(0, min(a[1], b[1], c[1]))), int(min(res - 1, max(a[1], b[1], c[1])))
+            if x1 < x0 or y1 < y0:
+                continue
+            xs, ys = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
+            d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+            if abs(d) < 1e-9:
+                continue
+            l1 = ((b[1] - c[1]) * (xs - c[0]) + (c[0] - b[0]) * (ys - c[1])) / d
+            l2 = ((c[1] - a[1]) * (xs - c[0]) + (a[0] - c[0]) * (ys - c[1])) / d
+            inside = (l1 >= 0) & (l2 >= 0) & (l1 + l2 <= 1)
+            cnt[y0:y1 + 1, x0:x1 + 1] += inside
+    used = cnt > 0
+    return float((cnt > 1).sum()) / max(1, used.sum())
+
+
+def unique_uv(o, size_cap=2048):
+    """Część z nakładającym się UV: wypiek cieni pisałby kilka miejsc w jeden teksel (trójkątne ciemne łaty). Nowy rozkład UV bez
+    nakładania, kolor i mapa normalnych przeniesione wypiekiem ze starego rozkładu."""
+    img = obj_images(o).get("diffuseTexture")
+    if img is None or not o.data.uv_layers:
+        return
+    ov = _uv_overlap(o)
+    if ov < 0.03:
+        return
+    old_name = o.data.uv_layers.active.name                  # nazwa, nie referencja (po dodaniu warstwy referencje są nieważne)
+    o.data.uv_layers.new(name="unique")
+    o.data.uv_layers.active = o.data.uv_layers["unique"]
+    _only(o)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.004)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    tex_nodes = []
+    for m in o.data.materials:
+        nt = m.node_tree
+        for n in [n for n in nt.nodes if n.type == "TEX_IMAGE" and n.image]:
+            um = nt.nodes.new("ShaderNodeUVMap")                   # stara tekstura czytana starym UV
+            um.uv_map = old_name
+            nt.links.new(um.outputs["UV"], n.inputs["Vector"])
+            tex_nodes.append((nt, n, um))
+    w = min(img.size[0], size_cap)
+    sc = bpy.context.scene
+    sc.render.bake.use_pass_direct = False
+    sc.render.bake.use_pass_indirect = False
+    sc.render.bake.use_pass_color = True
+    col = bpy.data.images.new("uv_" + o.name, w, w)
+    _bake_target(o, col)
+    _bake(type="DIFFUSE", pass_filter={"COLOR"})
+    # alfa (wycięcia: siatki, dziurki) osobno: tymczasowa emisja kanału alfa starej tekstury
+    al = bpy.data.images.new("uva_" + o.name, w, w)
+    al.colorspace_settings.name = "Non-Color"
+    saved = []
+    for m in o.data.materials:
+        nt = m.node_tree
+        d = nt.nodes.get("diffuseTexture")
+        out = next((n for n in nt.nodes if n.type == "OUTPUT_MATERIAL"), None)
+        if d is None or out is None:
+            continue
+        prev = [l.from_socket for l in out.inputs["Surface"].links]
+        em = nt.nodes.new("ShaderNodeEmission")
+        nt.links.new(d.outputs["Alpha"], em.inputs["Color"])
+        nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
+        saved.append((nt, out, em, prev))
+    _bake_target(o, al)
+    _bake(type="EMIT")
+    for nt, out, em, prev in saved:
+        nt.nodes.remove(em)
+        for sk in prev:
+            nt.links.new(sk, out.inputs["Surface"])
+    px = np.array(col.pixels[:], np.float32).reshape(-1, 4)
+    px[:, 3] = np.array(al.pixels[:], np.float32).reshape(-1, 4)[:, 0]
+    col.pixels[:] = px.ravel()
+    bpy.data.images.remove(al)
+    nrm_node = next((n for nt, n, um in tex_nodes if n.image.colorspace_settings.name == "Non-Color"
+                     and any(l.to_node.type == "NORMAL_MAP" for l in n.outputs["Color"].links)), None)
+    nrm = None
+    if nrm_node is not None:
+        nrm = bpy.data.images.new("uvn_" + o.name, w, w)
+        nrm.colorspace_settings.name = "Non-Color"
+        _bake_target(o, nrm)
+        _bake(type="NORMAL")
+    _drop_target(o)
+    for nt, n, um in tex_nodes:
+        nt.nodes.remove(um)
+        if n.name == "diffuseTexture":
+            n.image = col
+        elif n is nrm_node:
+            n.image = nrm
+    o.data.uv_layers.remove(o.data.uv_layers[old_name])
+    o.data.uv_layers["unique"].name = "UVMap"
+    o.data.uv_layers.active_index = 0
+    print("UNIQUE UV", o.name, "overlap %.0f%%" % (ov * 100))
+
+
+def _fill_transparent(img, glass=None):
+    """Teksele z alfą < 0,5 (dziurki, wycięcia, szkła) w nieprzezroczystym materiale: kolor sąsiadów (rozlewany do środka) albo szkło."""
+    w, h = img.size
+    px = np.array(img.pixels[:], np.float32).reshape(h, w, 4)
+    hole = px[:, :, 3] < 0.5
+    if not hole.any():
+        return 0
+    n = int(hole.sum())
+    if glass is not None:
+        px[hole, :3] = glass
+    else:
+        known = ~hole
+        rgb = np.where(known[:, :, None], px[:, :, :3], 0.0)
+        for _ in range(64):
+            if known.all():
+                break
+            acc = np.zeros_like(rgb)
+            cnt = np.zeros((h, w), np.float32)
+            for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                k = np.roll(known, (dy, dx), (0, 1))
+                acc += np.where(k[:, :, None], np.roll(rgb, (dy, dx), (0, 1)), 0.0)
+                cnt += k
+            new = ~known & (cnt > 0)
+            rgb[new] = acc[new] / cnt[new][:, None]
+            known |= new
+        px[:, :, :3] = np.where(hole[:, :, None], rgb, px[:, :, :3])
+    px[:, :, 3] = 1.0
+    img.pixels[:] = px.ravel()
+    return n
+
+
+def hair_under_hat(rig):
+    """Włosy pod hełmem / kapturem przebijały przez czaszę (czarne plamy z tyłu): ściany włosów przykryte nakryciem głowy
+    (promień w górę trafia w hełm) usunięte; zostają kosmyki pod krawędzią, przy karku i skroniach."""
+    from mathutils.bvhtree import BVHTree
+    hats = [o for o in rig.children if o.type == "MESH" and any(k in o.name for k in ("helmet", "m1951", "hood", "hat"))]
+    if not hats:
+        return
+    dg = bpy.context.evaluated_depsgraph_get()
+    bvs = [BVHTree.FromObject(o, dg) for o in hats]
+    rim = min(min((o.matrix_world @ v.co).z for v in o.data.vertices) for o in hats)   # najniższa krawędź nakrycia (z tyłu)
+    for o in [o for o in rig.children if o.type == "MESH" and _is_hair(o.name) and not o.name.startswith(("eyebrow", "eyelash"))]:
+        mw = o.matrix_world
+        covered = set()
+        for v in o.data.vertices:
+            p = mw @ v.co
+            if p.z > rim or any(bv.ray_cast(p, Vector((0, 0, 1)), 0.4)[0] is not None for bv in bvs):
+                covered.add(v.index)
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        bm.faces.ensure_lookup_table()
+        dead = [f for f in bm.faces if any(v.index in covered for v in f.verts)]
+        bmesh.ops.delete(bm, geom=dead, context="FACES")
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+        bm.to_mesh(o.data)
+        bm.free()
+        print("HAIR under hat", o.name, len(dead), "faces removed")
+        if not o.data.polygons:                                  # całe włosy pod hełmem
+            bpy.data.objects.remove(o)
+
+
+def fix_alpha(rig):
+    """Tryby przezroczystości do GLB: ciało, ubrania i ekwipunek nieprzezroczyste (MPFB daje wszystkim „blend” — źle sortowane trójkąty,
+    w grze i tak bez przezroczystości), karty włosów, brwi i rzęs z przycinaniem alfa (węzeł Round → glTF MASK)."""
+    for o in [o for o in rig.children if o.type == "MESH"]:
+        for m in o.data.materials:
+            if m is None or m.node_tree is None:
+                continue
+            nt = m.node_tree
+            b = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
+            if b is None:
+                continue
+            links = list(b.inputs["Alpha"].links)
+            cut = _is_hair(o.name)
+            img = next((n.image for n in nt.nodes if n.type == "TEX_IMAGE" and n.name == "diffuseTexture" and n.image), None)
+            if not cut and img is not None:                    # dziurki i wycięcia: w nieprzezroczystym materiale byłyby czarne plamy
+                k = _fill_transparent(img, (0.04, 0.05, 0.05) if "gas_mask" in o.name else None)
+                if k:
+                    print("FILL", o.name, k, "px")
+            if cut and links:
+                src = links[0].from_socket
+                nt.links.remove(links[0])
+                rd = nt.nodes.new("ShaderNodeMath")
+                rd.operation = "ROUND"
+                nt.links.new(src, rd.inputs[0])
+                nt.links.new(rd.outputs[0], b.inputs["Alpha"])
+            else:
+                for l in links:
+                    nt.links.remove(l)
+                b.inputs["Alpha"].default_value = 1.0
+
+
 def build(name, spec):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     info = HumanService._create_default_human_info_dict()
@@ -966,6 +1311,11 @@ def build(name, spec):
         if img is not None:
             if conf.get("recolor"):
                 recolor_image(img, conf["recolor"])
+                if any(r.get("all_px") for r in conf["recolor"]):     # cały strój w nowym kolorze: wytłoczone napisy z mapy normalnych precz
+                    for m in o.data.materials:
+                        for n in [n for n in m.node_tree.nodes if n.type == "NORMAL_MAP"]:
+                            for lk in list(n.outputs["Normal"].links):
+                                m.node_tree.links.remove(lk)
             if "tint" in conf:
                 tint_image(img, conf["tint"])
         elif "tint" in conf:                                         # część bez tekstury (np. czapka): sam kolor materiału
@@ -985,6 +1335,7 @@ def build(name, spec):
     body.select_set(True)
     if body.data.shape_keys:
         bpy.ops.object.shape_key_remove(all=True, apply_mix=True)
+    tighten_cuffs(rig, body)
     # wzrost ciała mierzony przed ukryciem stóp pod butami (grupa „body” bez brył pomocniczych)
     gi = body.vertex_groups["body"].index
     zs = [(body.matrix_world @ v.co).z for v in body.data.vertices if any(g.group == gi and g.weight > 0.5 for g in v.groups)]
@@ -1030,9 +1381,12 @@ def build(name, spec):
     for k, c in spec["clothes"].items():
         if c.get("relocate"):
             relocate(rig, bpy.data.objects[k], c["relocate"])
+    hair_under_hat(rig)
     add_gear(rig, spec.get("gear", []))
     _cycles(SAMPLES)
     texture_gear(rig)
+    for o in [o for o in rig.children if o.type == "MESH" and o != body and not _is_hair(o.name) and o.name != "low-poly"]:
+        unique_uv(o, BAKE_TEX)
     bake_shading(rig, body, BAKE_TEX)
 
     # tekstury i metaliczność; w GLB tekstury idą jako WebP (z przezroczystością, kilka razy mniejsze niż PNG)
@@ -1047,6 +1401,7 @@ def build(name, spec):
                 if n.type == "BSDF_PRINCIPLED":
                     n.inputs["Metallic"].default_value = 0.0
 
+    fix_alpha(rig)
     per = {o.name: sum(len(p.vertices) - 2 for p in o.data.polygons) for o in rig.children if o.type == "MESH"}
     print("TRIS", sum(per.values()), per, "BONES", len(rig.data.bones), "MESHES", [o.name for o in rig.children if o.type == "MESH"])
 
