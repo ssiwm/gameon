@@ -99,6 +99,8 @@ OUTFITS = {
             "toigo_gloves_short": {"tint": (0.30, 0.20, 0.13)},      # rękawice skórzane
             "gredal_gas_mask": {"relocate": "left_hip", "tris": 1800},   # maska przeciwgazowa przy biodrze (CC-BY, Mathias_Gredal)
         },
+        # buty wojskowe / gumowe z cloth_garments.py zamiast butów z paczki MPFB (zawsze, nie tylko z --sewn)
+        "parts": {"boots": {"file": "male_scav_boots.glb", "replaces": "mindfront_shoes_biker_boots_male", "tris": 5200, "floor": True}},
         "gear": ["backpack_model", "belt_pouches", "neckerchief"],
         # --sewn: spodnie BDU i kurtka M65 z symulacji tkaniny w miejsce kompletu casualsuit05 (dół i góra)
         "sewn": {"bdu": {"file": "male_scav_bdu.glb", "replaces": "male_casualsuit05", "part": "lower", "tris": 4200},
@@ -116,6 +118,8 @@ OUTFITS = {
             "toigo_gloves_short": {"tint": (0.30, 0.20, 0.13)},
             "gredal_gas_mask": {"relocate": "left_hip", "tris": 1800},
         },
+        # buty wojskowe / gumowe z cloth_garments.py zamiast butów z paczki MPFB (zawsze, nie tylko z --sewn)
+        "parts": {"boots": {"file": "female_scav_boots.glb", "replaces": "mindfront_shoes_biker_boots_female", "tris": 5200, "floor": True}},
         "gear": ["backpack_model", "belt_pouches", "neckerchief"],
     },
     "male_hazmat": {
@@ -128,6 +132,8 @@ OUTFITS = {
             "toigo_gloves_short": {"tint": (0.10, 0.10, 0.09)},      # gumowe rękawice (długie przebijały przez rękawy)
             "toigo_ankle_boots_male": {"tint": (0.09, 0.09, 0.08)},   # gumowe buty (wysokie przebijały przez nogawki)
         },
+        # buty wojskowe / gumowe z cloth_garments.py zamiast butów z paczki MPFB (zawsze, nie tylko z --sewn)
+        "parts": {"boots": {"file": "male_hazmat_boots.glb", "replaces": "toigo_ankle_boots_male", "tris": 5200, "floor": True}},
         "gear": ["air_tank", "belt_pouches", "tape"],
         "sewn": {"coverall": {"file": "male_hazmat_coverall.glb", "replaces": "elvs_male_coveralls_1", "tris": 7200}},
     },
@@ -141,6 +147,8 @@ OUTFITS = {
             "toigo_gloves_short": {"tint": (0.10, 0.10, 0.09)},
             "toigo_ankle_boots_female": {"tint": (0.09, 0.09, 0.08)},
         },
+        # buty wojskowe / gumowe z cloth_garments.py zamiast butów z paczki MPFB (zawsze, nie tylko z --sewn)
+        "parts": {"boots": {"file": "female_hazmat_boots.glb", "replaces": "toigo_ankle_boots_female", "tris": 5200, "floor": True}},
         "gear": ["air_tank", "belt_pouches", "tape"],
     },
     "male_medic": {
@@ -153,6 +161,8 @@ OUTFITS = {
             "punkduck_stethoscope": {"tris": 600},                    # stetoskop (CC-BY, punkduck)
             "toigo_ankle_boots_male": {"tint": (0.12, 0.09, 0.07)},
         },
+        # buty wojskowe / gumowe z cloth_garments.py zamiast butów z paczki MPFB (zawsze, nie tylko z --sewn)
+        "parts": {"boots": {"file": "male_medic_boots.glb", "replaces": "toigo_ankle_boots_male", "tris": 5200, "floor": True}},
         "gear": ["medkit_pack", "helmet_cross", "belt_pouches"],
         "sewn": {"emt_trousers": {"file": "male_medic_emt_trousers.glb", "replaces": "elvs_emt_uniform_pants_male", "tris": 4200},
                  "emt_jacket": {"file": "male_medic_emt_jacket.glb", "replaces": "elvs_emt_uniform_jacket_male", "tris": 6000}},
@@ -167,6 +177,8 @@ OUTFITS = {
             "punkduck_stethoscope": {"tris": 600},
             "toigo_ankle_boots_female": {"tint": (0.12, 0.09, 0.07)},
         },
+        # buty wojskowe / gumowe z cloth_garments.py zamiast butów z paczki MPFB (zawsze, nie tylko z --sewn)
+        "parts": {"boots": {"file": "female_medic_boots.glb", "replaces": "toigo_ankle_boots_female", "tris": 5200, "floor": True}},
         "gear": ["medkit_pack", "helmet_cross", "belt_pouches"],
     },
 }
@@ -455,12 +467,14 @@ def relocate(rig, o, where):
     vg.add(list(range(len(o.data.vertices))), 1.0, "REPLACE")
 
 
-def _ring(rig, pts, at_bone, along_bone, weight_bone, width, col, grow=0.008, shift=0.0, bvh=None):
+def _ring(rig, pts, at_bone, along_bone, weight_bone, width, col, grow=0.008, shift=0.0, bvh=None, at_z=None):
     """Opaska wokół kończyny przy kości `at_bone` (oś: kość `along_bone`, przesunięta o `shift` w stronę `along_bone`): promień
     w każdym kierunku z powierzchni ubrania (promień z zewnątrz do osi), więc taśma przylega jak owinięta."""
     a = rig.matrix_world @ rig.data.bones["mixamorig:" + along_bone].head_local
     c = rig.matrix_world @ rig.data.bones["mixamorig:" + at_bone].head_local
     ax = (c - a).normalized()
+    if at_z is not None:                                          # na zadanej wysokości (krawędź cholewki)
+        shift = (at_z - c.z) / max(-ax.z, 0.3)
     c = c - ax * shift
     bvh = bvh or _surface(rig)
     e1 = ax.orthogonal().normalized()
@@ -647,7 +661,10 @@ def _add_gear(rig, gear):
         bvh = _surface(rig)
         for side in ("Left", "Right"):
             _ring(rig, cl, side + "Hand", side + "ForeArm", side + "ForeArm", 0.05, "tape", shift=0.03, bvh=bvh)      # styk rękawa i rękawicy
-            _ring(rig, cl, side + "Foot", side + "Leg", side + "Leg", 0.06, "tape", shift=0.10, bvh=bvh)         # styk nogawki i cholewki
+            bt = bpy.data.objects.get("boots")
+            top = max((bt.matrix_world @ v.co).z for v in bt.data.vertices) if bt is not None else None
+            _ring(rig, cl, side + "Foot", side + "Leg", side + "Leg", 0.06, "tape", shift=0.10, bvh=bvh,
+                  at_z=None if top is None else top + 0.01)                                                  # styk nogawki i cholewki
     if "helmet_cross" in gear:
         # biały hełm medyka: czerwony krzyż z przodu (Head)
         hm = next((o for o in rig.children if o.type == "MESH" and ("helmet" in o.name or "m1951" in o.name)), None)
@@ -982,14 +999,15 @@ def bake_shading(rig, body, size_cap=2048):
         print("BAKED", o.name, w, "x", h)
 
 
-def add_sewn(rig, body, spec):
+def add_sewn(rig, body, spec, entries=None):
     """Ubrania szyte symulacją (cloth_garments.py): import GLB, wagi kości z ciała (najbliższa ściana, interpolacja), Armature.
     Część paczki MPFB, którą zastępują, znika w całości albo traci połowę ("part": "upper" — ściany przypięte głównie do kości
     tułowia i rąk, "lower" — pozostałe); maska ciała pod nią zostaje."""
     masks = [m for m in body.modifiers if m.type == "MASK"]
     for m in masks:                                   # wagi z całego ciała, także spod ubrań
         m.show_viewport = False
-    for key, conf in spec.get("sewn", {}).items():
+    out = {}
+    for key, conf in (entries if entries is not None else spec.get("sewn", {})).items():
         src = os.path.join(CLOTH_SRC, conf["file"])
         if not os.path.exists(src):
             print("SEWN missing", src)
@@ -1041,8 +1059,65 @@ def add_sewn(rig, body, spec):
         am = ob.modifiers.new("Armature", "ARMATURE")
         am.object = rig
         print("SEWN", key, len(ob.data.vertices), "verts", len(ob.vertex_groups), "groups")
+        if conf.get("floor"):                                     # buty: podeszwa wyznacza podłogę, krawędź cholewki — schowek nogawek i ciała
+            zs = [(ob.matrix_world @ v.co).z for v in ob.data.vertices]
+            out["floor"] = min(zs)
+            out["boot_top"] = max(zs)
     for m in masks:
         m.show_viewport = True
+    return out
+
+
+def tuck_into_boots(rig, body, top):
+    """Nogawki i ciało w butach: dół nogawek ściągnięty do wnętrza cholewki (od 4 cm nad krawędzią coraz ciaśniej — nogawka
+    wpuszczona w but), ściany ubrań całe poniżej krawędzi − 3 cm usunięte, ciało poniżej krawędzi − 2 cm też."""
+    from mathutils.bvhtree import BVHTree
+    bt = bpy.data.objects["boots"]
+    bvh = BVHTree.FromObject(bt, bpy.context.evaluated_depsgraph_get())
+    legs = {s: (rig.matrix_world @ rig.pose.bones["mixamorig:" + s + "Leg"].head,
+                rig.matrix_world @ rig.pose.bones["mixamorig:" + s + "Foot"].head) for s in ("Left", "Right")}
+    for o in [o for o in rig.children if o.type == "MESH" and o not in (body, bt) and o.name != "low-poly" and "gloves" not in o.name]:
+        mw, mi = o.matrix_world, o.matrix_world.inverted()
+        n = 0
+        for v in o.data.vertices:
+            p = mw @ v.co
+            if p.z > top + 0.04:
+                continue
+            k, f = legs["Left" if p.x > 0 else "Right"]
+            t = min(max((p.z - f.z) / max(k.z - f.z, 1e-6), 0.0), 1.0)
+            ax = f.lerp(k, t)
+            ax.z = p.z
+            d = p - ax
+            d.z = 0.0
+            if d.length < 1e-6:
+                continue
+            d.normalize()
+            hit = bvh.ray_cast(Vector((ax.x, ax.y, min(p.z, top - 0.005))), d, 0.3)[0]   # wnętrze cholewki na tej wysokości
+            if hit is None:
+                continue
+            r_in = (Vector((hit.x, hit.y, 0)) - Vector((ax.x, ax.y, 0))).length - 0.007
+            w = min(max((top + 0.04 - p.z) / 0.04, 0.0), 1.0)                       # 0 nad przejściem, 1 w cholewce
+            r = (Vector((p.x, p.y, 0)) - Vector((ax.x, ax.y, 0))).length
+            r_new = r + (min(r, r_in) - r) * w
+            if r_new < r - 1e-5:
+                v.co = mi @ Vector((ax.x + d.x * r_new, ax.y + d.y * r_new, p.z))
+                n += 1
+        if n:
+            print("TUCK squeeze", o.name, n)
+    for o in [o for o in rig.children if o.type == "MESH" and o.name not in ("boots", "low-poly") and "gloves" not in o.name]:
+        z_cut = top - (0.02 if o == body else 0.03)
+        mw = o.matrix_world
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        dead = [f for f in bm.faces if all((mw @ v.co).z < z_cut for v in f.verts)]
+        if not dead:
+            bm.free()
+            continue
+        bmesh.ops.delete(bm, geom=dead, context="FACES")
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+        bm.to_mesh(o.data)
+        bm.free()
+        print("TUCK", o.name, len(dead), "faces")
 
 
 HAIR = ("short0", "ponytail", "eyebrow", "eyelash")             # karty z przezroczystością (w GLB: przycinanie alfa); po początku nazwy
@@ -1326,6 +1401,7 @@ def build(name, spec):
                             m.node_tree.links.remove(lk)
                         n.inputs["Base Color"].default_value = tuple(conf["tint"]) + (1.0,)
 
+    boots = add_sewn(rig, body, spec, spec.get("parts", {}))      # części stałe (buty)
     if SEWN:
         add_sewn(rig, body, spec)
 
@@ -1341,6 +1417,8 @@ def build(name, spec):
     zs = [(body.matrix_world @ v.co).z for v in body.data.vertices if any(g.group == gi and g.weight > 0.5 for g in v.groups)]
     k = spec["height"] / (max(zs) - min(zs))
     floor = min(zs)
+    if "floor" in boots:                                          # postać stoi na podeszwie, nie w niej
+        floor = min(floor, boots["floor"])
     arm_mod = next(m for m in body.modifiers if m.type == "ARMATURE")
     body.modifiers.remove(arm_mod)
     moved = [k for k, c in spec["clothes"].items() if c.get("relocate")]
@@ -1351,10 +1429,12 @@ def build(name, spec):
         bpy.ops.object.modifier_apply(modifier=m.name)
     am = body.modifiers.new("Armature", "ARMATURE")
     am.object = rig
+    if "boot_top" in boots:
+        tuck_into_boots(rig, body, boots["boot_top"])
     # upraszczanie (wagi kości zostają); Decimate przesuwamy przed Armature, żeby liczył geometrię spoczynkową
     for o in [o for o in rig.children if o.type == "MESH"]:
         tris = sum(len(p.vertices) - 2 for p in o.data.polygons)
-        conf = spec["clothes"].get(o.name) or spec.get("sewn", {}).get(o.name, {})
+        conf = spec["clothes"].get(o.name) or spec.get("sewn", {}).get(o.name) or spec.get("parts", {}).get(o.name, {})
         budget = BODY_TRIS if o == body else int(conf.get("tris", PART_TRIS))
         if tris <= budget:
             continue
