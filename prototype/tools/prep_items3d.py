@@ -104,6 +104,13 @@ TRIPO_MODELS = {
     "mil_crate": ("../polyhaven/wooden_military_crate.glb", "-Y", 15.1, 6000),
     "tyre": ("../polyhaven/old_tyre.glb", "-Y", 7.3, 2000),
     "barrier": ("../polyhaven/concrete_road_barrier_02.glb", "-Y", 19.1, 4000),
+    # wnętrza Składu (1.3) i Pompowni (1.2): regały, rury, kompresor, wózek, beczka — w naturalnej skali (szerokość i wysokość w px świata = metry / 0,082)
+    "shelf_n": ("../polyhaven/steel_frame_shelves_01.glb", "-Y", 13.4, 4400, 26.2),
+    "shelf_b": ("../polyhaven/steel_frame_shelves_02.glb", "-Y", 7.25, 4400, 26.2),
+    "pipes": ("../polyhaven/modular_industrial_pipes_01.glb", "-Y", 17.1, 7000, 23.9),         # zestaw rur ułożony w panel 1,4 × 1,95 m
+    "compressor": ("../polyhaven/old_military_compressor.glb", "+X", 20.5, 8000, 14.4),       # model leży wzdłuż osi Y: bokiem do kamery
+    "cart": ("../polyhaven/industrial_storage_cart.glb", "-Y", 19.6, 5000, 16.8),
+    "barrel_n": ("../polyhaven/barrel_03.glb", "-Y", 7.75, 2500, 11.4),
 }
 # modele z Tripo ze świecącymi elementami (diody, ekrany, żarówka): emisja = jasne, nasycone piksele koloru (żarówka: jasne, blade)
 EMISSIVE = {"mine": "led", "charge": "led", "defib": "led", "scanner": "led", "lamp": "bulb", "stake": "led"}

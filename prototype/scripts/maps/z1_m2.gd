@@ -26,7 +26,7 @@ const UNDERGROUND_ROW := 30
 ## (rozbija zamurowane przejście „q" w lewej ścianie hali: skrytka ze złomem i amunicją; wejście 3 kafle, wiersze 37-39).
 const WEAPONS := [Weapons.SRUT8, Weapons.CIEGNO6, Weapons.KILOF]
 ## (8+) Poly Haven: koksownik przy kłodach za chatą radiową, opona w bagnie, pniak za bagnem.
-const ACCENTS := [[Vector2(152, 416), 6], [Vector2(184, 416), 6], [Vector2(648, 416), 7], [Vector2(2000, 416), 7], [Vector2(3500, 416), 7], [Vector2(696, 416), 11], [Vector2(808, 416), 13], [Vector2(968, 416), 9]]
+const ACCENTS := [[Vector2(152, 416), 6], [Vector2(184, 416), 6], [Vector2(648, 416), 7], [Vector2(2000, 416), 7], [Vector2(3500, 416), 7], [Vector2(696, 416), 11], [Vector2(808, 416), 13], [Vector2(968, 416), 9], [Vector2(3592, 416), 17], [Vector2(3624, 416), 15], [Vector2(3704, 416), 18], [Vector2(3752, 416), 17], [Vector2(3816, 416), 20], [Vector2(3864, 416), 19], [Vector2(3928, 416), 17], [Vector2(3624, 353), 17], [Vector2(3656, 353), 15], [Vector2(3704, 353), 20], [Vector2(3816, 353), 17], [Vector2(3848, 353), 18], [Vector2(3928, 353), 15]]
 
 const MAP := [
 	"##........................................................................................................................................................................................................................................................................ww..................##",

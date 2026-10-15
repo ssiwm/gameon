@@ -17,6 +17,17 @@ static func is_solid_ch(ch: String) -> bool:
 static func is_platform_ch(ch: String) -> bool:
 	return ch == "-" or ch == "="
 
+## Dach szopy: samotna warstwa betonu `C` z niebem nad sobą (kolumna bez bryły, kładki i słupa aż do góry mapy) i pustką pod spodem. Dostaje blachę
+## falistą (materiał „roof"); stropy międzypiętrowe mają nad sobą wnętrze, a podłogi i skały sąsiadują z bryłą, więc zostają betonowe.
+static func is_roof_cell(rows: Array, c: int, r: int) -> bool:
+	if _ch(rows, c, r) != "C" or is_solid_ch(_ch(rows, c, r + 1)) or is_solid_ch(_ch(rows, c, r - 1)):
+		return false
+	for k in range(r - 1, -1, -1):
+		var n := _ch(rows, c, k)
+		if is_solid_ch(n) or is_platform_ch(n) or n == "w":
+			return false
+	return true
+
 ## Środek kafla (c, r) w metrach świata.
 static func cell_pos(c: float, r: float) -> Vector3:
 	return Vector3((c + 0.5) * T, -(r + 0.5) * T, 0.0)
@@ -206,7 +217,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
 	var box := BoxMesh.new()
 	box.size = Vector3(T, T, DEPTH_FRONT + DEPTH_BACK)
-	var groups := {"#": [], "C": [], "M": [], "m": [], "O": [], "~": []}
+	var groups := {"#": [], "C": [], "R": [], "M": [], "m": [], "O": [], "~": []}
 	var walls: Array = []
 	var posts: Array = []
 	var planks: Array = []
@@ -216,6 +227,8 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	for r in nrows:
 		for c in cols:
 			var ch := _ch(rows, c, r)
+			if ch == "C" and is_roof_cell(rows, c, r):
+				ch = "R"                                            # dach szopy: blacha falista zamiast betonu (znak mapy i kolizja bez zmian)
 			if groups.has(ch):
 				# tylko odsłonięte kafle (sąsiad z powietrzem lub tłem) — wnętrza skał nie są widoczne
 				if is_solid_ch(_ch(rows, c - 1, r)) and is_solid_ch(_ch(rows, c + 1, r)) and is_solid_ch(_ch(rows, c, r - 1)) and is_solid_ch(_ch(rows, c, r + 1)):
@@ -246,6 +259,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	var mats := {
 		"#": make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic"),
 		"C": make_pbr("concrete", 0.35, Color(0.30, 0.31, 0.33), 0.9, 1.0, 1.0, false, "stone"),
+		"R": make_pbr("roof", 0.25, Color(0.30, 0.22, 0.20), 0.8, 1.0, 1.0, false, "rust"),
 		"M": make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"),
 		"m": make_pbr("mud", 0.30, Color(0.18, 0.2, 0.1), 1.0, 1.0, 1.0, false, "organic"),
 	}

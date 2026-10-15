@@ -29,6 +29,9 @@ const SHADOW_LIGHTS := 5
 const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wrogów
 const LAYER_ACTORS := 2                    ## warstwa wizualna graczy (modele 3D)
 const ACTOR_AMBIENT := 0.09                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
+const ACTOR_HDRI_MISSION := "res://art/world3d/hdri/kloppenheim_07.hdr"          ## Poly Haven „Kloppenheim 07": noc, pole, zachmurzenie
+const ACTOR_HDRI_HUB := "res://art/world3d/hdri/debris_basement_corridor.hdr"   ## Poly Haven „Debris Basement Corridor": betonowa piwnica
+const ACTOR_SKY_MEAN := 0.34               ## średnia luminancja dawnego nieba proceduralnego (po sferze): HDRI o średniej 1 × ta wartość × `ACTOR_REFLECT` = ta sama jasność odbić
 const ACTOR_REFLECT := 0.22                ## jasność „nieba odbić" warstwy graczy: tyle światła odbija stal trzymanej broni (nie więcej niż widać postać)
 const LAYER_REFL := 8                      ## znacznik: broń na stojaku przyjmuje odbicia z sondy kryjówki (reflection_mask)
 const LAYER_CARD := 16                     ## ekrany odbić widziane tylko przez sondę (żadna kamera ich nie rysuje)
@@ -408,7 +411,7 @@ func _sync_geometry() -> void:
 	_cam_a.environment = env_a
 	var env_b := env_a.duplicate() as Environment         # warstwa graczy: bez nieba i glow (przezroczyste tło), to samo światło otoczenia i mgła
 	env_b.background_mode = Environment.BG_CLEAR_COLOR
-	env_b.sky = _actor_reflection_sky()                   # tło zostaje przezroczyste; niebo służy tylko odbiciom na metalu trzymanej broni
+	env_b.sky = _actor_reflection_sky(hub)                 # tło zostaje przezroczyste; niebo służy tylko odbiciom na metalu trzymanej broni
 	env_b.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env_b.glow_enabled = false
 	env_b.ssao_enabled = false
@@ -836,9 +839,10 @@ func spawn_burst(pos: Vector2, cfg: Dictionary) -> void:
 ## `level.gd: _place_deco`), 8+ tylko z akcentów map (`ACCENTS`). Kamienie i dekoracje 8+ to skany Poly Haven w naturalnej skali.
 const DECO_MODELS := {3: [["rock", "rock_b", "rock_c", "rock", "stump"], 1.0], 4: ["bones", 0.7], 6: ["fence", 0.34], 7: ["logs", 1.0],   ## płot: model ma 6,5 m wysokości — w skali 0,34 ok. 2,2 m
 	8: ["fire_pit", 1.0], 9: ["stump", 1.0], 10: ["trunk_big", 1.0], 11: ["barrel_stove", 1.0], 12: ["mil_crate", 1.0], 13: ["tyre", 1.0],
-	14: ["barrier", 1.0]}
+	14: ["barrier", 1.0], 15: ["shelf_n", 1.0], 16: ["shelf_b", 1.0], 17: ["pipes", 1.0], 18: ["compressor", 1.0], 19: ["cart", 1.0], 20: ["barrel_n", 1.0]}
 ## Głębokość (z, m) dekoracji stojących w stałym miejscu za płaszczyzną gry; pozostałe leżą losowo w głębi bryły gruntu.
-const DECO_Z := {6: -0.9, 7: -0.9, 8: -0.8, 9: -1.3, 10: -1.9, 11: -0.95, 12: -1.0, 13: -0.85, 14: -0.9}
+const DECO_Z := {6: -0.9, 7: -0.9, 8: -0.8, 9: -1.3, 10: -1.9, 11: -0.95, 12: -1.0, 13: -0.85, 14: -0.9,
+	15: -1.4, 16: -1.4, 17: -1.85, 18: -1.3, 19: -1.2, 20: -1.2}   ## 15–20: wnętrza Składu i Pompowni; rury przy samej ścianie tła (przód ściany ok. −2,1 m)
 
 ## Dekoracje z listy poziomu (`level.gd: _deco_list` — te same miejsca co w 2D) jako modele 3D w `MultiMesh`: kamienie i kości rozrzucone w głąb
 ## bryły gruntu, płoty, kłody i akcenty map tuż za płaszczyzną gry. Trzciny (5) mają własne bryły przy cieczach (`Level3D.build_liquid_props`).
@@ -1396,10 +1400,20 @@ func _build_cabinet(n: Node2D) -> Dictionary:
 		_cab_box(door, Vector3(0.02, H - 0.28, 0.02), Vector3(fx, 0.12 + (H - 0.28) * 0.5, 0.0), steel)
 	return {"node": n, "root": root, "door": door, "ghosts": ghosts, "open": 0.0}
 
-## „Niebo" warstwy graczy: nie jest rysowane (tło warstwy jest przezroczyste), daje tylko otoczenie do odbić — chłodna jasność z góry, ciemny
-## horyzont, cieplejszy dół. Bez niego stal trzymanej broni nie miała czego odbijać i wyglądała jak tworzywo. Jasność trzyma `ACTOR_REFLECT`,
-## żeby broń nie świeciła mocniej, niż widać postać w ciemności (GDD §8.3).
-static func _actor_reflection_sky() -> Sky:
+## „Niebo" warstwy graczy: nie jest rysowane (tło warstwy jest przezroczyste), daje tylko otoczenie do odbić. Bez niego stal trzymanej broni nie
+## miała czego odbijać i wyglądała jak tworzywo. To prawdziwa panorama HDRI z Poly Haven (CC0; `tools/polyhaven_fetch.py --hdri`): w misjach noc
+## nad polem, w kryjówce wnętrze piwnicy. Panoramy mają przycięte błyski i średnią luminancję 1, więc jasność trzyma sama `ACTOR_REFLECT`
+## (razem z `ACTOR_SKY_MEAN`), żeby broń nie świeciła mocniej, niż widać postać w ciemności (GDD §8.3). Bez pliku — niebo proceduralne.
+static func _actor_reflection_sky(hub := false) -> Sky:
+	var hdri := ACTOR_HDRI_HUB if hub else ACTOR_HDRI_MISSION
+	if ResourceLoader.exists(hdri):
+		var pm := PanoramaSkyMaterial.new()
+		pm.panorama = load(hdri) as Texture2D
+		pm.energy_multiplier = ACTOR_REFLECT * ACTOR_SKY_MEAN
+		var psky := Sky.new()
+		psky.sky_material = pm
+		psky.radiance_size = Sky.RADIANCE_SIZE_64
+		return psky
 	var sm := ProceduralSkyMaterial.new()
 	sm.sky_top_color = Color(0.62, 0.70, 0.88)
 	sm.sky_horizon_color = Color(0.10, 0.11, 0.14)

@@ -7,6 +7,10 @@ albo bezpośrednio: blender -b --factory-startup -P prototype/tools/polyhaven_fe
 Model przychodzi jako glTF z osobnymi teksturami (kolor, normalne, ARM); Blender składa go w jeden plik GLB z teksturami w środku.
 `--split` rozdziela zestawy (np. `rock_moss_set_01`) na osobne pliki `<id>__<nazwa obiektu>.glb` — jeden kamień na plik.
 Siatka zostaje pełna; upraszcza ją dopiero `prep_items3d.py` (do budżetu trójkątów z tabeli TRIPO_MODELS).
+
+`--hdri id1 id2 ...` pobiera zamiast modeli panoramy HDRI (1K) do prototype/art/world3d/hdri/<id>.hdr — „niebo odbić" warstwy graczy w `view3d.gd`
+(nocny krajobraz w misjach, wnętrze w kryjówce). Panorama jest przycinana (latarnie i księżyc do HDRI_CLIP, inaczej na stali broni wychodzą
+błyski) i normalizowana do średniej luminancji 1 (po sferze), więc o jasności decyduje w grze samo `ACTOR_REFLECT` — jak przy niebie proceduralnym.
 """
 import json
 import os
@@ -32,12 +36,16 @@ import bpy  # noqa: E402
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 RES = "1k"
 SPLIT = False
+HDRI = False
 IDS = []
+HDRI_CLIP = 8.0                                                  # przycięcie względem surowej panoramy (księżyc ma ok. 7000)
 for a in argv:
     if a.startswith("--res="):
         RES = a[6:]
     elif a == "--split":
         SPLIT = True
+    elif a == "--hdri":
+        HDRI = True
     else:
         IDS.append(a)
 
@@ -89,6 +97,33 @@ def fetch(aid):
         export(meshes, os.path.join(OUT, aid + ".glb"))
 
 
+def fetch_hdri(aid):
+    import math
+    import numpy as np
+    url = json.loads(get("https://api.polyhaven.com/files/" + aid))["hdri"]["1k"]["hdr"]["url"]
+    with tempfile.TemporaryDirectory() as tmp:
+        raw = os.path.join(tmp, aid + ".hdr")
+        with open(raw, "wb") as f:
+            f.write(get(url))
+        im = bpy.data.images.load(raw)
+        w, h = im.size
+        a = np.array(im.pixels[:], np.float32).reshape(h, w, 4)
+        a[..., :3] = np.minimum(a[..., :3], HDRI_CLIP)
+        y = a[..., :3] @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+        wt = np.cos((np.arange(h) + 0.5) / h * math.pi - math.pi / 2)[:, None] * np.ones((1, w))
+        mean = float((y * wt).sum() / wt.sum())
+        a[..., :3] /= mean
+        im.pixels.foreach_set(a.ravel())
+        out = os.path.join(ROOT, "prototype", "art", "world3d", "hdri")
+        os.makedirs(out, exist_ok=True)
+        path = os.path.join(out, aid + ".hdr")
+        sc = bpy.context.scene
+        sc.render.image_settings.file_format = "HDR"
+        sc.render.image_settings.color_depth = "32"
+        im.save_render(path, scene=sc)
+        print("SAVED", os.path.relpath(path, ROOT), os.path.getsize(path) // 1024, "kB (średnia przed normalizacją %.3f)" % mean)
+
+
 for aid in IDS:
-    fetch(aid)
+    fetch_hdri(aid) if HDRI else fetch(aid)
 print("DONE-POLYHAVEN")
