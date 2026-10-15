@@ -17,3 +17,9 @@ Większość modeli w tym katalogu powstaje z Tripo albo z brył proceduralnych 
 | mil_crate | wooden_military_crate | skrzynie wojskowe (1.1, kryjówka) |
 | tyre | old_tyre | opona w bagnie (1.2) |
 | barrier | concrete_road_barrier_02 | zapora przy posterunku (1.3) |
+| shelf_n | steel_frame_shelves_01 | regały w Składzie i Pompowni, naturalna skala (1.2, 1.3) |
+| shelf_b | steel_frame_shelves_02 | wąski regał (1.2, 1.3) |
+| pipes | modular_industrial_pipes_01 | panel rur przy ścianie (1.2, 1.3) |
+| compressor | old_military_compressor | kompresor w Pompowni (1.2) |
+| cart | industrial_storage_cart | wózek w Składzie (1.3) |
+| barrel_n | barrel_03 | beczki we wnętrzach (1.2, 1.3) |
