@@ -1,6 +1,6 @@
 # Plan: porządki w logice wrogów pod widok 3D i mądrzejsza AI
 
-Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235, gałąź `feat/enemy-view-contract`), zostają F1b–F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
+Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236, gałąź `feat/enemy-facing`), zostają F2–F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
 `stalker.gd`, `nest.gd`, `director.gd`, `nav.gd`, `noise_manager.gd`, `view3d.gd`) i na `MISSION_3D_SPIKE.md` — nie na próbnej implementacji,
 więc rozmiary faz są szacunkowe, a uwagi o błędach pochodzą z lektury kodu, nie z gry.
 
@@ -65,8 +65,9 @@ okrężnie (rodzaj ze ścieżki skryptu, błysk trafienia z koloru `modulate`, `
 
 - **F1a — zrobione w 1.7.235:** `view_info()` na wrogu, Stalkerze, Żyle, Pijawce i gnieździe (kind, alive, winding, sp, flash); `view3d.gd: _sync_enemies`
   czyta tylko to; `_sp` replikowany w `enemy.gd: _sync`; test kontraktu w `--enemytest`. Zrzuty z gry przed i po zmianie (Wołek, Żyła, Pijawka) identyczne.
-- **F1b — do zrobienia:** `_facing` (backstab, ucieczka w panice) przenieść z `_update_sprite` do symulacji serwera, żeby nie zależało od warstwy
-  prezentacji; `view_info` rozszerzyć o `facing`, gdy klient ma go potrzebować.
+- **F1b — zrobione w 1.7.236:** `_facing` (cios w plecy, ucieczka w panice) liczy serwer z faktycznego ruchu w `enemy.gd: _update_facing`; zwrot
+  modelu to osobne `_view_facing` na każdym peerze (`_update_sprite`). Podsłuchacz nadal „patrzy na lokalnego gracza” (jak dotąd) — w F3 powinien na swój
+  cel. `view_info` bez `facing` — klient go nie potrzebuje.
 - **F1c — opcjonalnie, dopiero gdy będzie powód:** zastąpić zegar `AnimatedSprite2D` własnym (`EnemyView`). Wymaga przepisania logiki jednorazowych
   animacji Pijawki (`_set_anim`, `_anim_start`) i koloru-kanału tintu (uśpiony ×0,8, przezroczystość Stalkera) — ryzyko większe niż zysk, dopóki
   nic nowego tego nie wymaga.

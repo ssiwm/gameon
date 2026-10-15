@@ -41,6 +41,7 @@ func run(m: Node2D) -> void:
 	await _test_wall_between()
 	await _test_summoned()
 	await _test_view_contract()
+	await _test_facing()
 	_finish()
 
 func _finish() -> void:
@@ -255,4 +256,29 @@ func _test_view_contract() -> void:
 	check("kontrakt widoku: błysk gaśnie razem z `_flash`", not bool(server.view_info()["flash"]))
 	server.queue_free()
 	client.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- kierunek patrzenia (ENEMY_PLAN.md F1b)
+
+## `_facing` (cios w plecy) liczy symulacja z ruchu — bez warstwy animacji: wróg bez `_spr` i bez `_process` nadal wie, w którą stronę patrzy.
+func _test_facing() -> void:
+	var e := _spawn("trzosek", Vector2(FAR_X + 8000.0, -2000.0))
+	e._spr.clear()                                        # żadnego zegara animacji
+	e.set_process(false)                                  # i żadnego `_update_sprite`
+	await get_tree().physics_frame
+	e.global_position.x += 12.0
+	await get_tree().physics_frame
+	check("kierunek patrzenia: ruch w prawo → patrzy w prawo (bez warstwy animacji)", e._facing > 0.0, str(e._facing))
+	e.global_position.x -= 12.0
+	await get_tree().physics_frame
+	check("kierunek patrzenia: ruch w lewo → patrzy w lewo", e._facing < 0.0, str(e._facing))
+	# cios w plecy: atakujący stoi za wrogiem (cios leci w tę samą stronę, w którą wróg patrzy)
+	check("cios w plecy: z tyłu (kierunek zgodny ze zwrotem)", e._is_behind(Vector2.LEFT))
+	check("cios w plecy: z przodu (kierunek przeciwny do zwrotu)", not e._is_behind(Vector2.RIGHT))
+	e.active = true                                       # aktywny: bez „śpi” maczeta bije tylko od tyłu
+	var front: Dictionary = e.take_hit({"amount": 1.0, "dir": Vector2.RIGHT, "pos": e.global_position, "shooter": int(player.player_id), "type": "melee", "backstab": true})
+	check("maczeta: cios z przodu aktywnego wroga nie zabija", e.alive and not bool(front.get("killed", false)))
+	var back: Dictionary = e.take_hit({"amount": 1.0, "dir": Vector2.LEFT, "pos": e.global_position, "shooter": int(player.player_id), "type": "melee", "backstab": true})
+	check("maczeta: cios w plecy aktywnego wroga zabija", bool(back.get("killed", false)) and not e.alive)
+	e.queue_free()
 	await get_tree().physics_frame
