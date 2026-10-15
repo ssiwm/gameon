@@ -20,7 +20,7 @@ const BRIEF := "Something lives in the flooded hall. Light shows its shadow unde
 const ENEMY_HP := 1.0
 const UNDERGROUND_ROW := 99
 const WEAPONS := []
-const ACCENTS := []
+const ACCENTS := [[Vector2(72, 496), 17], [Vector2(136, 496), 15], [Vector2(200, 496), 20], [Vector2(264, 496), 12], [Vector2(344, 496), 18], [Vector2(392, 496), 20], [Vector2(1816, 496), 20], [Vector2(1864, 496), 17], [Vector2(1928, 496), 19], [Vector2(1992, 496), 15], [Vector2(2056, 496), 20], [Vector2(2104, 496), 12], [Vector2(2152, 496), 17]]
 const POOL := [28, 110]                    ## kolumny basenu (od, do włącznie): zakres ruchu Pijawki
 
 const MAP := [
