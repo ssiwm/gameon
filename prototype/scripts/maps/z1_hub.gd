@@ -17,7 +17,7 @@ const UNDERGROUND_ROW := 99               ## poza mapą: bez „głębi" (ambien
 ## Broń w gablotach („g": CABINET_SLOTS sztuk na gablotę, od lewej gabloty i od górnego rzędu): drużyna wymienia ekwipunek przed misją.
 const WEAPONS := [Weapons.SPREAD12, Weapons.SRUT8, Weapons.LR7, Weapons.HKM9, Weapons.GNIEW4, Weapons.WIDMO1, Weapons.SOKOL6, Weapons.CIEGNO6]
 ## Akcenty dekoracji 3D [stopy, indeks z view3d.DECO_MODELS] za płaszczyzną gry: koksownik przy wejściu, skrzynie wojskowe między zbrojownią a tablicą.
-const ACCENTS := [[Vector2(168, 640), 11], [Vector2(968, 640), 12], [Vector2(1208, 640), 12], [Vector2(1144, 640), 17], [Vector2(1176, 640), 20], [Vector2(1192, 640), 20], [Vector2(1448, 640), 19], [Vector2(1688, 640), 18], [Vector2(1720, 640), 20], [Vector2(1848, 640), 17], [Vector2(1880, 640), 20]]
+const ACCENTS := [[Vector2(168, 640), 11], [Vector2(968, 640), 12], [Vector2(1208, 640), 12], [Vector2(1144, 640), 17], [Vector2(1176, 640), 20], [Vector2(1192, 640), 20], [Vector2(1448, 640), 19], [Vector2(1688, 640), 18], [Vector2(1720, 640), 20], [Vector2(1848, 640), 17], [Vector2(1880, 640), 20], [Vector2(1656, 640), 21], [Vector2(1800, 640), 21], [Vector2(1768, 629), 22]]
 ## Radio: kolejne linie pokazuje HUD w pierwszych sekundach pobytu.
 const RADIO := ["...the transmitter is still humming. Whatever listens out there heard it too.", "Restock. Swap guns at the armory. Check the board for the next job."]
 const RACKS := true                       ## broń z „g" stoi w miejscu (ekspozycja)
