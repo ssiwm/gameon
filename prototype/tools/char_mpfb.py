@@ -480,16 +480,28 @@ def _ring(rig, pts, at_bone, along_bone, weight_bone, width, col, grow=0.008, sh
     e1 = ax.orthogonal().normalized()
     e2 = ax.cross(e1)
     seg = 32
+    lim = 0.10                                                   # dalej jest już druga noga / tułów (promień z zewnątrz trafiał w nie)
     bm = bmesh.new()
     rad = []
-    for k in range(seg):                                         # promień: największy z trzech przekrojów (brzegi i środek taśmy)
+    for k in range(seg):                                         # promień: najdalsza warstwa kończyny w zasięgu `lim`, z trzech przekrojów
         d = e1 * math.cos(2 * math.pi * k / seg) + e2 * math.sin(2 * math.pi * k / seg)
-        rs = []
+        r = 0.0
         for off in (-width * 0.5, 0.0, width * 0.5):
             cc = c + ax * off
-            hit = bvh.ray_cast(cc + d * 0.25, -d, 0.25)[0]
-            rs.append((hit - cc).length if hit is not None else 0.06)
-        rad.append((d, max(rs)))
+            o, gone = cc, 0.0
+            while gone < lim:                                    # od osi na zewnątrz: kolejne warstwy (ciało, nogawka, cholewka)
+                hit = bvh.ray_cast(o + d * 1e-4, d, lim - gone)[0]
+                if hit is None:
+                    break
+                gone = (hit - cc).length
+                r = max(r, gone)
+                o = hit
+        rad.append([d, r])
+    rs = np.array([x[1] for x in rad])
+    med = float(np.median(rs[rs > 0])) if (rs > 0).any() else 0.06
+    for x in rad:                                                # odstające (brak trafienia, sięgnięcie poza kończynę) — mediana
+        if x[1] <= 0 or x[1] > med * 1.5:
+            x[1] = med
     rings = []
     for off in (-width * 0.5, width * 0.5):
         cc = c + ax * off
