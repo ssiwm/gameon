@@ -152,6 +152,10 @@ func is_threat() -> bool:
 func is_alive() -> bool:
 	return state != State.DEAD
 
+## Kontrakt widoku (view3d.gd) — patrz enemy.gd: view_info. `winding` to zapowiedź macki (inne ataki mają własne pozy z animacji).
+func view_info() -> Dictionary:
+	return {"kind": "vein", "alive": state != State.DEAD, "winding": winding, "sp": 0, "flash": _flash > 0.0}
+
 # ---------------------------------------------------------------- misja (serwer)
 
 ## Liczba gniazd na mapie (tyle żył świeci, dopóki Żyła śpi).

@@ -1473,10 +1473,10 @@ func _send_state(delta: float) -> void:
 	if _net_timer > 0.0:
 		return
 	_net_timer = 0.05
-	_sync.rpc(global_position, hp, active, alive, winding)
+	_sync.rpc(global_position, hp, active, alive, winding, _sp)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_winding: bool) -> void:
+func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_winding: bool, new_sp := 0) -> void:
 	_remote_pos = pos
 	if new_hp < hp - 0.01:
 		_flash = 0.1
@@ -1484,12 +1484,19 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 	hp = new_hp
 	active = is_active
 	winding = is_winding
+	_sp = new_sp                          # stan specjalny Wołka (szarża, rzut, oszołomienie) — bez niego klient nie widział póz w modelu 3D
 	if alive and not is_alive:
 		_set_alive(false)
 		_death_fx()
 	elif not alive and is_alive:
 		_set_alive(true)
 		global_position = pos
+
+## Kontrakt widoku (view3d.gd: `_sync_enemies`): to, co model 3D musi wiedzieć o wrogu, podane jawnie — zamiast zgadywania z prywatnych pól
+## (`_sp`), z koloru sprite'a (błysk trafienia) i ze ścieżki skryptu (rodzaj). Tę samą metodę mają Stalker, Żyła, Pijawka i gniazdo.
+## Klucze: kind (rodzaj modelu), alive, winding (zapowiedź ciosu), sp (stan specjalny Wołka), flash (świeże trafienie).
+func view_info() -> Dictionary:
+	return {"kind": kind, "alive": alive, "winding": winding, "sp": _sp, "flash": _flash > 0.0}
 
 ## Głos gatunku dla zdarzenia (VOICES); gatunek bez wpisu milczy.
 func _voice(event: String) -> void:

@@ -163,6 +163,10 @@ func is_threat() -> bool:
 func is_alive() -> bool:
 	return state != State.DEAD
 
+## Kontrakt widoku (view3d.gd) — patrz enemy.gd: view_info.
+func view_info() -> Dictionary:
+	return {"kind": "leech", "alive": state != State.DEAD, "winding": mode == Mode.WIND, "sp": 0, "flash": _flash > 0.0}
+
 func body_center() -> Vector2:
 	return global_position + Vector2(0, -8 if mode == Mode.SUB else -16)
 
