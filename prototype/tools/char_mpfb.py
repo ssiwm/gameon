@@ -56,11 +56,11 @@ BAKE_TEX = int(arg("bake-tex", "2048"))       # rozdzielczość wypieku cieni (p
 BODY_TRIS = int(arg("body-tris", "7000"))     # budżet trójkątów: ciało i każda część ubrania (cała postać ok. 25–30 tys.)
 PART_TRIS = int(arg("part-tris", "3500"))     # domyślny budżet części; wpis stroju może mieć własny ("tris")
 SAMPLES = int(arg("samples", "32"))           # próbki Cycles przy wypiekaniu cieni kontaktowych
-SEWN = "--sewn" in argv                       # próba: ubrania szyte symulacją (tools/cloth_jacket.py, art_src/clothes) zamiast z paczek MPFB
+SEWN = "--sewn" in argv                       # ubrania szyte symulacją (tools/cloth_garments.py, art_src/clothes) zamiast z paczek MPFB
 if arg("out"):
     OUT = os.path.join(os.path.dirname(HERE), "art", "char3d", arg("out"))     # inny zestaw modeli (Char3D.charset), np. do porównań
 CLOTH_SRC = os.path.join(os.path.dirname(os.path.dirname(HERE)), "art_src", "clothes")
-UPPER = ("Spine", "Neck", "Shoulder", "Arm", "Hand")   # kości górnej połowy (kurtka); Hips i nogi to spodnie
+UPPER = ("Spine", "Neck", "Shoulder", "Arm", "Hand")   # kości górnej połowy (kurtka); Hips i nogi to spodnie (sewn: "part")
 
 # przebarwienie tekstury: piksele o odcieniu w [od, do] (stopnie) i nasyceniu w [od, do] dostają nowy odcień, nasycenie i jasność
 # (mnożnik); reguły idą po kolei, piksel zmieniony przez wcześniejszą regułę już nie łapie się na następne
@@ -101,8 +101,9 @@ OUTFITS = {
             "gredal_gas_mask": {"relocate": "left_hip", "tris": 1800},   # maska przeciwgazowa przy biodrze (CC-BY, Mathias_Gredal)
         },
         "gear": ["backpack_model", "belt_pouches", "neckerchief"],
-        # --sewn: kurtka M65 z symulacji tkaniny w miejsce góry kompletu casualsuit05 (spodnie zostają)
-        "sewn": {"m65": {"file": "male_scav_m65.glb", "replaces": "male_casualsuit05", "tris": 6500}},
+        # --sewn: spodnie BDU i kurtka M65 z symulacji tkaniny w miejsce kompletu casualsuit05 (dół i góra)
+        "sewn": {"bdu": {"file": "male_scav_bdu.glb", "replaces": "male_casualsuit05", "part": "lower", "tris": 4200},
+                 "m65": {"file": "male_scav_m65.glb", "replaces": "male_casualsuit05", "part": "upper", "tris": 6500}},
     },
     "female_scav": {
         "sex": "female", "height": 1.70, "phenotype": FEMALE, "race": WHITE_RACE,
@@ -129,6 +130,7 @@ OUTFITS = {
             "toigo_ankle_boots_male": {"tint": (0.09, 0.09, 0.08)},   # gumowe buty (wysokie przebijały przez nogawki)
         },
         "gear": ["air_tank", "belt_pouches", "tape"],
+        "sewn": {"coverall": {"file": "male_hazmat_coverall.glb", "replaces": "elvs_male_coveralls_1", "tris": 7200}},
     },
     "female_hazmat": {
         "sex": "female", "height": 1.70, "phenotype": FEMALE, "race": WHITE_RACE,
@@ -153,6 +155,8 @@ OUTFITS = {
             "toigo_ankle_boots_male": {"tint": (0.12, 0.09, 0.07)},
         },
         "gear": ["medkit_pack", "helmet_cross", "belt_pouches"],
+        "sewn": {"emt_trousers": {"file": "male_medic_emt_trousers.glb", "replaces": "elvs_emt_uniform_pants_male", "tris": 4200},
+                 "emt_jacket": {"file": "male_medic_emt_jacket.glb", "replaces": "elvs_emt_uniform_jacket_male", "tris": 6000}},
     },
     "female_medic": {
         "sex": "female", "height": 1.70, "phenotype": FEMALE, "race": {"asian": 0.6, "caucasian": 0.35, "african": 0.05},
@@ -865,8 +869,9 @@ def bake_shading(rig, body, size_cap=2048):
 
 
 def add_sewn(rig, body, spec):
-    """Ubrania szyte symulacją (cloth_jacket.py): import GLB, wagi kości z ciała (najbliższa ściana, interpolacja), Armature.
-    Część kompletu MPFB, którą zastępują, traci górną połowę (ściany przypięte głównie do kości tułowia i rąk)."""
+    """Ubrania szyte symulacją (cloth_garments.py): import GLB, wagi kości z ciała (najbliższa ściana, interpolacja), Armature.
+    Część paczki MPFB, którą zastępują, znika w całości albo traci połowę ("part": "upper" — ściany przypięte głównie do kości
+    tułowia i rąk, "lower" — pozostałe); maska ciała pod nią zostaje."""
     masks = [m for m in body.modifiers if m.type == "MASK"]
     for m in masks:                                   # wagi z całego ciała, także spod ubrań
         m.show_viewport = False
@@ -881,17 +886,20 @@ def add_sewn(rig, body, spec):
             bm = bmesh.new()
             bm.from_mesh(old.data)
             dl = bm.verts.layers.deform.active
-            upper = set()
+            part = conf.get("part", "all")
+            cut = set()
             for v in bm.verts:
                 w = {names[g]: x for g, x in v[dl].items()} if dl else {}
-                up = sum(x for n, x in w.items() if any(u in n for u in UPPER))
-                if up > 0.5 * max(sum(w.values()), 1e-6):
-                    upper.add(v)
-            bmesh.ops.delete(bm, geom=[f for f in bm.faces if sum(v in upper for v in f.verts) * 2 > len(f.verts)], context="FACES")
+                up = sum(x for n, x in w.items() if any(u in n for u in UPPER)) > 0.5 * max(sum(w.values()), 1e-6)
+                if part == "all" or up == (part == "upper"):
+                    cut.add(v)
+            bmesh.ops.delete(bm, geom=[f for f in bm.faces if sum(v in cut for v in f.verts) * 2 > len(f.verts)], context="FACES")
             bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
             bm.to_mesh(old.data)
             bm.free()
-            print("SEWN cut", old.name, "upper verts", len(upper))
+            print("SEWN cut", old.name, part, len(cut), "verts")
+            if len(old.data.polygons) < 150:              # resztki na granicy góra / dół po obu cięciach
+                bpy.data.objects.remove(old)
         before = set(bpy.data.objects)
         bpy.ops.import_scene.gltf(filepath=src)
         ob = next(o for o in set(bpy.data.objects) - before if o.type == "MESH")
