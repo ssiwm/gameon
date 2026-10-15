@@ -38,6 +38,7 @@ MAP = {
 # materiały z Poly Haven: nazwa w grze → id zasobu (1K, JPG). Kafel rusty_corrugated_iron ma 2×2 m, fale biegną w poziomie.
 PH = {
     "roof": "rusty_corrugated_iron",    # blacha falista na dachach szop (level3d: samotna warstwa betonu „C” z niebem nad i pustką pod)
+    "concrete": "dirty_concrete",       # beton hal i podłóg (kafel 3 m); wpis z PH wygrywa z MAP, `--ambientcg` wraca do skanu Concrete034
 }
 PH_URL = "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/{id}/{id}_{kind}_1k.jpg"
 
@@ -254,7 +255,7 @@ def main():
     def want(name):
         return only is None or name in only
     for name, asset in MAP.items():
-        if not want(name):
+        if not want(name) or (name in PH and "--ambientcg" not in a):
             continue
         if name in PROC:
             convert_proc(name, out, "--preview" in a)
