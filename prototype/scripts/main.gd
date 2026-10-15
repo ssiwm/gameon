@@ -1112,6 +1112,17 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			if zp != null:
 				zp._camera.zoom *= float(a.substr("--shotzoom=".length()))
 				zp._camera.offset += Vector2(-20.0, 26.0)
+	if _has_arg_prefix("--shotloot"):
+		var lp: Node2D = _players.get_node_or_null("1")       # --shotloot: torby zaopatrzenia z każdą zawartością z puli zrzutów na przemian po obu stronach
+		if lp != null:                                        # gracza; --shotloot=ammo: skrzynki amunicji różnych broni (podgląd oznaczeń zawartości)
+			var ammo := "--shotloot=ammo" in OS.get_cmdline_user_args()
+			var loot: Array = [9, 1, 7, 8, 0, 3, 4, 5, 6] if ammo else Throwables.DROP_WEIGHTS.keys()
+			for li in loot.size():
+				var dx := (-1.0 if li % 2 == 0 else 1.0) * (22.0 + (13.0 if ammo else 19.0) * float(li / 2))
+				if ammo:
+					level.spawn_item("ammo", int(loot[li]), lp.global_position + Vector2(dx, -14.0), 1)
+				else:
+					level.spawn_item("supply", Throwables.ORDER.find(String(loot[li])), lp.global_position + Vector2(dx, -14.0))
 	if "--shothurt" in OS.get_cmdline_user_args():
 		var hp1: Node2D = _players.get_node_or_null("1")       # --shothurt: gracz 1 z 1 HP (podgląd ran na ciele i ostrzeżenia obrazem)
 		if hp1 != null:

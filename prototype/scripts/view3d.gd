@@ -3619,49 +3619,155 @@ func _item_model(name: String, glow := 0.0) -> Node3D:
 	_item_tuned[name] = true
 	return root
 
-## Plakietka rodzaju na skrzynce zaopatrzenia / amunicji: kolorowa tabliczka na przedniej ściance modelu (kolor przedmiotu albo broni),
-## z lekką własną jasnością, żeby rodzaj dało się rozpoznać także w półmroku. Jednostka modelu = piksel świata.
+## Wygląd naboi na skrzynce amunicji wg broni: [rodzaj, liczba sztuk]. Rodzaje rysuje `_ammo_round`.
+const AMMO_LOOK := {
+	"m83": ["rifle", 5], "p64": ["pistol", 6], "spread12": ["shell", 4], "srut8": ["shell_g", 4], "lr7": ["cell", 2], "hkm9": ["fuel", 1],
+	"gniew4": ["grenade40", 2], "sokol6": ["rocket", 3], "widmo1": ["slug", 3], "ciegno6": ["bolt", 2],
+}
+const AMMO_FIT := Vector2(7.0, 4.4)         ## ramka naboi na przodzie skrzynki (szer. × wys., jednostki modelu; przód ma 9 jednostek)
+const AMMO_CY := 3.6                        ## wysokość środka ramki nad stopami skrzynki
+const AMMO_DEPTH := 1.6                     ## największa głębokość naboi (płaskorzeźba na ściance, bez paralaksy w perspektywie)
+
+## Oznaczenie skrzynki amunicji: na przedniej ściance, na ciemnej tabliczce, naboje tej broni (łuski karabinowe, śrut, ogniwa lasera,
+## kanister paliwa, granaty 40 mm, rakietki, pręty railguna, bełty) — od razu widać, do czego jest amunicja. Pod spodem wąski pasek
+## w kolorze smugi broni. Jednostka modelu = piksel świata.
 func _add_kind_tag(sp: ItemsHd.ItemMark, model: Node3D) -> void:
 	var owner_n := sp.get_parent().get_parent() if sp.get_parent() != null else null
-	if owner_n == null or owner_n.get("kind") == null:
+	if owner_n == null or owner_n.get("kind") == null or String(owner_n.get("kind")) != "ammo":
 		return
-	var kind := String(owner_n.get("kind"))
-	var col: Color
-	var size: Vector2
-	var cy: float
-	if kind == "supply":
-		var sk := String(Throwables.ORDER[clampi(int(owner_n.get("arg")), 0, Throwables.ORDER.size() - 1)])
-		col = (Throwables.KINDS[sk]["color"] as Color).darkened(0.15)
-		size = Vector2(5.6, 3.8)
-		cy = 4.4
-	elif kind == "ammo":
-		col = (Weapons.def(int(owner_n.get("arg"))).tracer_color as Color).lerp(Color(0.85, 0.68, 0.3), 0.4)
-		size = Vector2(5.6, 2.6)
-		cy = 3.2
-	else:
-		return
+	var wd := Weapons.def(int(owner_n.get("arg")))
+	var col := (wd.tracer_color as Color).lerp(Color(0.85, 0.68, 0.3), 0.4)
 	var front := -INF
+	var span := Vector2(INF, -INF)                             # zakres x bryły: środek modelu z generatora nie zawsze leży w x = 0
 	for mn in model.find_children("*", "MeshInstance3D", true, false):
 		var ab: AABB = _local_xf(mn as MeshInstance3D, model) * (mn as MeshInstance3D).get_aabb()
 		front = maxf(front, ab.end.z)
+		span = Vector2(minf(span.x, ab.position.x), maxf(span.y, ab.end.x))
 	if front == -INF:
 		return
-	var tag := MeshInstance3D.new()
-	tag.name = "KindTag"
-	var bm := BoxMesh.new()
-	bm.size = Vector3(size.x, size.y, 0.3)
-	tag.mesh = bm
-	var tm := StandardMaterial3D.new()
-	tm.albedo_color = col
-	tm.roughness = 0.6
+	var mid := (span.x + span.y) * 0.5
+	var rounds := _ammo_rounds(String(wd.key))
+	var box := AABB()
+	var first := true
+	for mn in rounds.find_children("*", "MeshInstance3D", true, false):
+		var bb := _local_xf(mn as MeshInstance3D, rounds) * (mn as MeshInstance3D).get_aabb()
+		box = bb if first else box.merge(bb)
+		first = false
+	var s := minf(AMMO_FIT.x / maxf(box.size.x, 0.001), AMMO_FIT.y / maxf(box.size.y, 0.001))
+	var sz := minf(s, AMMO_DEPTH / maxf(box.size.z, 0.001))
+	rounds.scale = Vector3(s, s, sz)
+	rounds.position = Vector3(mid - box.get_center().x * s, AMMO_CY - box.get_center().y * s, front + 0.25 - box.position.z * sz)
+	model.add_child(rounds)
+	var plate := _ammo_box(model, Vector3(AMMO_FIT.x + 1.2, AMMO_FIT.y + 1.0, 0.2), Vector3(mid, AMMO_CY, front + 0.1),
+			_ammo_mat(Color(0.07, 0.07, 0.065), 0.9))                  # ciemna tabliczka: mosiądz i czerwień odcinają się od jasnej skrzynki
+	plate.name = "AmmoPlate"
+	var tm := _ammo_mat(col, 0.6)
 	tm.emission_enabled = true
 	tm.emission = col
 	tm.emission_energy_multiplier = 0.35
-	tag.material_override = tm
-	tag.position = Vector3(0.0, cy, front + 0.1)
-	tag.layers = LAYER_WORLD
-	tag.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	model.add_child(tag)
+	var tag := _ammo_box(model, Vector3(AMMO_FIT.x + 1.2, 0.8, 0.3), Vector3(mid, AMMO_CY - AMMO_FIT.y * 0.5 - 1.1, front + 0.1), tm)
+	tag.name = "KindTag"
+
+## Naboje jednej broni ułożone obok siebie (bryły z prymitywów; skalę i położenie nadaje `_add_kind_tag`).
+func _ammo_rounds(key: String) -> Node3D:
+	var look: Array = AMMO_LOOK.get(key, ["rifle", 5])
+	var root := Node3D.new()
+	root.name = "AmmoRounds"
+	var n := int(look[1])
+	var step := {"rifle": 1.25, "pistol": 1.2, "shell": 1.7, "shell_g": 1.7, "cell": 2.6, "fuel": 1.0, "grenade40": 2.6, "rocket": 1.5, "slug": 1.1, "bolt": 1.6}
+	for i in n:
+		var r := Node3D.new()
+		r.position = Vector3((float(i) - float(n - 1) * 0.5) * float(step.get(String(look[0]), 1.5)), 0.0, 0.0)
+		root.add_child(r)
+		_ammo_round(r, String(look[0]))
+	return root
+
+## Jeden nabój danego rodzaju, stojący pionowo (dno w y = 0); bełt leży poziomo.
+func _ammo_round(r: Node3D, look: String) -> void:
+	var brass := _ammo_mat(Color(0.78, 0.6, 0.3), 0.35, 0.4)
+	match look:
+		"rifle", "pistol":
+			var h := 3.0 if look == "rifle" else 1.6
+			_ammo_cyl(r, 0.45, 0.45, h, 0.0, brass)                                     # łuska
+			_ammo_cyl(r, 0.42, 0.08, 1.2 if look == "rifle" else 0.7, h, _ammo_mat(Color(0.7, 0.38, 0.2), 0.35, 0.4))      # pocisk
+		"shell", "shell_g":
+			_ammo_cyl(r, 0.72, 0.72, 0.7, 0.0, brass)                                   # mosiężna stopka
+			_ammo_cyl(r, 0.7, 0.7, 2.2, 0.7, _ammo_mat(Color(0.6, 0.1, 0.08) if look == "shell" else Color(0.18, 0.4, 0.2), 0.55))
+		"cell":
+			_ammo_cyl(r, 1.0, 1.0, 3.6, 0.0, _ammo_mat(Color(0.16, 0.17, 0.18), 0.5, 0.3))
+			_ammo_cyl(r, 0.5, 0.5, 0.35, 3.6, _ammo_mat(Color(0.6, 0.62, 0.65), 0.4, 0.4))      # styk
+			var gm := _ammo_mat(Color(0.4, 0.85, 1.0), 0.4)
+			gm.emission_enabled = true
+			gm.emission = Color(0.4, 0.85, 1.0)
+			gm.emission_energy_multiplier = 1.2
+			_ammo_cyl(r, 1.04, 1.04, 0.5, 2.4, gm)                                       # świecący pasek naładowania
+		"fuel":
+			var red := _ammo_mat(Color(0.55, 0.1, 0.07), 0.5)
+			_ammo_box(r, Vector3(3.4, 4.2, 1.4), Vector3(0.0, 2.1, 0.0), red)            # kanister
+			_ammo_box(r, Vector3(1.6, 0.5, 0.6), Vector3(-0.6, 4.45, 0.0), red)          # rączka
+			_ammo_cyl(r, 0.35, 0.35, 0.6, 4.2, _ammo_mat(Color(0.2, 0.2, 0.2), 0.5)).position.x = 1.1      # korek
+		"grenade40":
+			_ammo_cyl(r, 1.1, 1.1, 1.3, 0.0, brass)                                       # krótka łuska
+			_ammo_cyl(r, 1.05, 0.55, 1.5, 1.3, _ammo_mat(Color(0.33, 0.36, 0.2), 0.6))   # oliwkowa głowica
+			_ammo_cyl(r, 1.06, 1.06, 0.2, 1.6, _ammo_mat(Color(0.75, 0.62, 0.15), 0.5))  # żółty pasek (odłamkowy)
+		"rocket":
+			var ol := _ammo_mat(Color(0.3, 0.33, 0.2), 0.6)
+			_ammo_cyl(r, 0.5, 0.5, 3.4, 0.6, ol)                                         # korpus
+			_ammo_cyl(r, 0.5, 0.05, 1.1, 4.0, _ammo_mat(Color(0.6, 0.12, 0.08), 0.5))   # czerwony czubek
+			_ammo_box(r, Vector3(1.6, 0.9, 0.12), Vector3(0.0, 0.45, 0.0), ol)           # stateczniki
+		"slug":
+			_ammo_cyl(r, 0.32, 0.32, 4.6, 0.0, _ammo_mat(Color(0.58, 0.6, 0.64), 0.35, 0.4))
+			var sm := _ammo_mat(Color(0.55, 0.85, 1.0), 0.4)
+			sm.emission_enabled = true
+			sm.emission = Color(0.55, 0.85, 1.0)
+			sm.emission_energy_multiplier = 1.0
+			_ammo_cyl(r, 0.36, 0.36, 0.3, 3.4, sm)
+			_ammo_cyl(r, 0.36, 0.36, 0.3, 1.0, sm)
+		"bolt":                                                                          # bełt harpunu: leży poziomo, grot w prawo
+			r.position = Vector3(0.0, float(r.get_index()) * 0.9, 0.0)        # bełty jeden nad drugim
+			var shaft := _ammo_cyl(r, 0.16, 0.16, 6.4, -3.2, _ammo_mat(Color(0.22, 0.2, 0.18), 0.6))
+			shaft.rotation.z = -PI * 0.5
+			shaft.position = Vector3.ZERO
+			var tip := _ammo_cyl(r, 0.42, 0.02, 1.2, 0.0, _ammo_mat(Color(0.62, 0.64, 0.66), 0.35, 0.4))
+			tip.rotation.z = -PI * 0.5
+			tip.position = Vector3(3.8, 0.0, 0.0)
+			_ammo_box(r, Vector3(1.2, 0.8, 0.08), Vector3(-2.7, 0.0, 0.0), _ammo_mat(Color(0.6, 0.15, 0.1), 0.7))    # lotka
+
+func _ammo_mat(c: Color, rough: float, metal := 0.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.roughness = rough
+	m.metallic = metal                                         # bez pełnego metalu: w ciemności bez odbić byłby czarny
+	return m
+
+## Walec (albo stożek ścięty) o dnie w y = `y0`.
+func _ammo_cyl(parent: Node3D, r_bot: float, r_top: float, h: float, y0: float, m: Material) -> MeshInstance3D:
+	var cm := CylinderMesh.new()
+	cm.bottom_radius = r_bot
+	cm.top_radius = r_top
+	cm.height = h
+	cm.radial_segments = 16
+	cm.rings = 1
+	var mi := MeshInstance3D.new()
+	mi.mesh = cm
+	mi.material_override = m
+	mi.position = Vector3(0.0, y0 + h * 0.5, 0.0)
+	mi.layers = LAYER_WORLD
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+	return mi
+
+func _ammo_box(parent: Node3D, size: Vector3, pos: Vector3, m: Material) -> MeshInstance3D:
+	var bm := BoxMesh.new()
+	bm.size = size
+	var mi := MeshInstance3D.new()
+	mi.mesh = bm
+	mi.material_override = m
+	mi.position = pos
+	mi.layers = LAYER_WORLD
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+	return mi
 
 func _make_item(sp: ItemsHd.ItemMark) -> void:
 	var name := String(sp.get_meta("hd_name", ""))

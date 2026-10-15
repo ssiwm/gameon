@@ -11,6 +11,8 @@ extends Node2D
 ##   tag     nieśmiertelnik (misja 1.1): dotknięcie przez dowolnego żywego gracza zalicza cel główny (mission.on_tag_taken)
 ##   stash   ukryta skrytka (cel poboczny misji 1.1): jak złom (rounds = wartość), a do tego zalicza skrytkę w misji (mission.on_stash_found)
 ##   flares  skrzynka z flarami (arena Pijawki): +rounds flar do wspólnej puli (NoiseMgr.add_flare), o ile pula nie jest pełna
+##   supply  zrzut zaopatrzenia (arg = indeks w Throwables.ORDER): +1 przedmiot do wspólnego zapasu, o ile nie jest pełny; leży jako
+##           sam przedmiot (granat, mina, skaner…) z poświatą w jego kolorze
 ##   weapon  nie podnosi się samo: gracz naciska E (wymiana broni to decyzja, a nie
 ##           wypadek); serwer sprawdza odległość i przyznaje (level.gd)
 
@@ -35,8 +37,13 @@ const GLOW := {
 	"tag": Color(0.6, 0.85, 1.0),
 	"stash": Color(0.95, 0.75, 0.35),
 	"flares": Color(1.0, 0.45, 0.22),
-	"supply": Color(0.7, 0.85, 0.6),
+	"supply": Color(0.7, 0.85, 0.6),       # zastępowany kolorem zawartości (Throwables.KINDS), patrz _glow_color
 }
+
+## Zrzut zaopatrzenia leży na ziemi jako sam przedmiot (granat, mina, skaner…), nie w torbie — rodzaj ma być widoczny od razu, a nie
+## tylko po kolorze tabliczki. Skala sprite'a na rodzaj: modele znajdziek mają w view3d.gd (ITEM_SCALE) skalę ok. 1,5–2× naturalnej,
+## co dla granatu daje 17 cm — ginie przy postaci; tu dobieramy czytelny rozmiar (granat ok. 30 cm, mina i apteczka ok. 0,5 m).
+const SUPPLY_SCALE := {"frag": 1.4, "phos": 1.2, "smoke": 0.85, "mine": 0.9, "medkit": 0.7, "scanner": 0.8, "charge": 0.75, "defib": 0.7}
 
 var kind := "health"
 var arg := 0                      ## ammo/weapon: id broni
@@ -72,7 +79,7 @@ func _ready() -> void:
 		material = Lights.unshaded()          # skrzynkę i broń widać w ciemności
 		modulate = Color(0.88, 0.88, 0.88)
 	# poświata — przedmiot widać w ciemności, ale nie oświetla okolicy
-	_glow = Lights.make_light(Lights.radial(), 0.9 if kind == "stash" else 1.6, GLOW.get(kind, Color.WHITE), 0.6, false)      # skrytka świeci słabo — trzeba ją znaleźć
+	_glow = Lights.make_light(Lights.radial(), 0.9 if kind == "stash" else 1.6, _glow_color(), 0.6, false)      # skrytka świeci słabo — trzeba ją znaleźć
 	_glow.position = Vector2(0, -8)
 	add_child(_glow)
 	if static_display:
@@ -157,7 +164,7 @@ func _hd_name() -> String:
 	match kind:
 		"health": return "medkit"
 		"flares": return "flare_box"
-		"supply": return "supply"
+		"supply": return _supply_kind()
 		"stash": return "stash"
 		"tag": return "tag"
 		"scrap": return "scrap_pile"
@@ -170,7 +177,7 @@ func _hd_scale() -> float:
 	match kind:
 		"health": return 0.7
 		"flares": return 0.8
-		"supply": return 0.8
+		"supply": return float(SUPPLY_SCALE.get(_supply_kind(), 0.8))
 		"stash": return 0.75
 		"cache": return 0.8
 		"ammo": return 0.9
@@ -274,9 +281,19 @@ func _try_flares() -> void:
 			lvl.take_item(String(name))
 		return
 
-## Skrzynka zaopatrzenia (arg = indeks w Throwables.ORDER): bierze ją człowiek, gdy zapas tego rodzaju nie jest pełny.
+## Rodzaj przedmiotu w zrzucie zaopatrzenia (arg = indeks w Throwables.ORDER).
+func _supply_kind() -> String:
+	return String(Throwables.ORDER[clampi(arg, 0, Throwables.ORDER.size() - 1)])
+
+## Kolor poświaty: zrzut zaopatrzenia świeci kolorem swojej zawartości (jak ikona w HUD), reszta wg rodzaju znajdźki.
+func _glow_color() -> Color:
+	if kind == "supply":
+		return Throwables.KINDS[_supply_kind()]["color"] as Color
+	return GLOW.get(kind, Color.WHITE)
+
+## Zrzut zaopatrzenia (arg = indeks w Throwables.ORDER): bierze go człowiek, gdy zapas tego rodzaju nie jest pełny.
 func _try_supply() -> void:
-	var kind_s := String(Throwables.ORDER[clampi(arg, 0, Throwables.ORDER.size() - 1)])
+	var kind_s := _supply_kind()
 	if Arsenal.get_throwable(kind_s) >= int(Throwables.KINDS[kind_s]["max"]):
 		return
 	for pl in get_tree().get_nodes_in_group("players"):
