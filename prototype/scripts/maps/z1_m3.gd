@@ -19,7 +19,8 @@ const UNDERGROUND_ROW := 31               ## od tego rzędu postać jest w podzi
 ## Broń na ziemi („g") w kolejności od lewej (rosnąca moc).
 const WEAPONS := [Weapons.SRUT8, Weapons.CIEGNO6, Weapons.HKM9, Weapons.GNIEW4]
 ## Ręczne akcenty dekoracji: [pozycja stóp, indeks z art/props.png] — płot przy starcie, kłody w tartaku.
-const ACCENTS := [[Vector2(152, 416), 6], [Vector2(184, 416), 6], [Vector2(1432, 416), 7], [Vector2(2872, 416), 7]]
+## (8+) Poly Haven: zapora betonowa przy starcie, koksownik wartowników przed posterunkiem.
+const ACCENTS := [[Vector2(152, 416), 6], [Vector2(184, 416), 6], [Vector2(1432, 416), 7], [Vector2(2872, 416), 7], [Vector2(200, 416), 14], [Vector2(584, 416), 11]]
 
 const MAP := [
 	"##............................................................................................................................................................................................##",

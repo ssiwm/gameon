@@ -21,7 +21,8 @@ const BRIEF := "Find the four dog tags of the missing patrol and get out through
 const ENEMY_HP := 1.0                     ## mnożnik HP wrogów tej mapy
 const UNDERGROUND_ROW := 33
 const WEAPONS := []
-const ACCENTS := []
+## Akcenty dekoracji 3D [stopy, indeks z view3d.DECO_MODELS]: porzucony obóz patrolu — skrzynia, pniak, wygasłe ognisko przy Trzoskach, powalony pień.
+const ACCENTS := [[Vector2(392, 496), 12], [Vector2(536, 496), 9], [Vector2(936, 496), 8], [Vector2(1288, 496), 10]]
 ## Czwarty nieśmiertelnik leży na zachodnim końcu dolnej galerii (za dwoma Trzoskami, obok skrzynki i skrytki) — powód, żeby zejść szybem serwisowym.
 ## Finał (mission._start_finale): po ostatnim nieśmiertelniku rampa do sali zawala się (obszary [c0, r0, c1, r1]), a wyjściem jest flara „e"
 ## przy szybie wentylacyjnym na wschodnim końcu sali (wspinaczka po podestach, Ćmy i Skoczki pod sufitem sali).

@@ -16,7 +16,8 @@ const ENEMY_HP := 1.0
 const UNDERGROUND_ROW := 99               ## poza mapą: bez „głębi" (ambient, straszaki)
 ## Broń w gablotach („g": CABINET_SLOTS sztuk na gablotę, od lewej gabloty i od górnego rzędu): drużyna wymienia ekwipunek przed misją.
 const WEAPONS := [Weapons.SPREAD12, Weapons.SRUT8, Weapons.LR7, Weapons.HKM9, Weapons.GNIEW4, Weapons.WIDMO1, Weapons.SOKOL6, Weapons.CIEGNO6]
-const ACCENTS := []
+## Akcenty dekoracji 3D [stopy, indeks z view3d.DECO_MODELS] za płaszczyzną gry: koksownik przy wejściu, skrzynie wojskowe między zbrojownią a tablicą.
+const ACCENTS := [[Vector2(168, 640), 11], [Vector2(968, 640), 12], [Vector2(1208, 640), 12]]
 ## Radio: kolejne linie pokazuje HUD w pierwszych sekundach pobytu.
 const RADIO := ["...the transmitter is still humming. Whatever listens out there heard it too.", "Restock. Swap guns at the armory. Check the board for the next job."]
 const RACKS := true                       ## broń z „g" stoi w miejscu (ekspozycja)
