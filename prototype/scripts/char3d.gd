@@ -535,6 +535,10 @@ func _prepare_materials(root: Node) -> void:
 	_pal_mats.clear()
 	var sh := Shader.new()
 	sh.code = PALETTE_SHADER
+	# karty włosów, brwi i rzęs (w GLB przycinanie alfa): ten sam shader z odrzucaniem przezroczystych tekseli, obie strony karty
+	var sh_cut := Shader.new()
+	sh_cut.code = PALETTE_SHADER.replace("shader_type spatial;", "shader_type spatial;\nrender_mode cull_disabled;") \
+			.replace("\tALBEDO = c;", "\tALBEDO = c;\n\tALPHA = texture(albedo_tex, UV).a;\n\tALPHA_SCISSOR_THRESHOLD = 0.5;")
 	for n in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		if mi.mesh == null:
@@ -544,7 +548,7 @@ func _prepare_materials(root: Node) -> void:
 			if m is StandardMaterial3D:
 				var src := m as StandardMaterial3D
 				var sm := ShaderMaterial.new()
-				sm.shader = sh
+				sm.shader = sh_cut if src.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR else sh
 				sm.set_shader_parameter("albedo_tex", src.albedo_texture)
 				sm.set_shader_parameter("albedo_mul", src.albedo_color)
 				if src.normal_texture != null:
