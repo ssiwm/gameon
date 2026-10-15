@@ -170,7 +170,9 @@ var _remote_pos := Vector2.ZERO
 var _max_hp := 30.0
 var _overlay: Node2D
 var _spr: Array = []
-var _facing := 1.0
+var _facing := 1.0             ## SYMULACJA (serwer): w którą stronę patrzy wróg — cios w plecy, ucieczka w panice; liczone z ruchu w `_update_facing`, bez warstwy animacji
+var _phys_x := 0.0
+var _view_facing := 1.0        ## PREZENTACJA (każdy peer): zwrot modelu; Podsłuchacz patrzy tu na lokalnego gracza, u klientów kierunek z przesunięcia pozycji
 var _last_x := 0.0
 ## Percepcja i nawigacja (serwer)
 var omniscient := false       ## potomstwo Żyły zawsze zna położenie graczy
@@ -238,6 +240,7 @@ func _ready() -> void:
 	if Sprites.has(Sprites.enemy_sheet(kind)):
 		_spr = Sprites.attach(self, Sprites.enemy_sheet(kind))
 	_last_x = global_position.x
+	_phys_x = global_position.x
 	if _def.get("fire_shy", false):
 		set_collision_mask_value(FIRE_BIT, true)         # ogień na podłodze jest dla nich murem
 	_hanging = bool(_def.get("hang", false)) or bool(_def.get("moth", false))
@@ -403,6 +406,7 @@ func _phys_tick(delta: float) -> void:
 		return
 
 	_record_history()
+	_update_facing()
 	_cd = maxf(0.0, _cd - delta)
 	_leap_cd = maxf(0.0, _leap_cd - delta)
 	_stagger = maxf(0.0, _stagger - delta)
@@ -488,6 +492,18 @@ func _phys_tick(delta: float) -> void:
 ## Obrażenia ataku wroga po poziomie trudności (zaokrąglane, min. 1) — jedno miejsce dla zwykłego ciosu, lądowania skoczka, szarży Wołka i ćmy.
 func _scaled_damage(base: int) -> int:
 	return maxi(1, roundi(float(base) * Difficulty.m("enemy_damage")))
+
+## Kierunek patrzenia z faktycznego ruchu (serwer, co tik fizyki) — nie zależy od warstwy animacji, więc cios w plecy działa, nawet gdy jej nie ma.
+## Podsłuchacz stoi i patrzy na lokalnego gracza, jak dotąd (w F3: na swój cel, nie na gracza hosta).
+func _update_facing() -> void:
+	var dx := global_position.x - _phys_x
+	_phys_x = global_position.x
+	if absf(dx) > 0.05:
+		_facing = signf(dx)
+	if kind == "podsluchacz":
+		var lp := _local_player_pos()
+		if is_finite(lp.x) and absf(lp.x - global_position.x) > 4.0:
+			_facing = signf(lp.x - global_position.x)
 
 ## Skoczek lądujący na graczu: 2 obrażenia, łoskot (hałas) i pył.
 func _land_hit() -> void:
@@ -1523,13 +1539,13 @@ func _update_sprite() -> void:
 	var dx := global_position.x - _last_x
 	_last_x = global_position.x
 	if absf(dx) > 0.05:
-		_facing = signf(dx)
+		_view_facing = signf(dx)
 	var moving := absf(dx) > 0.05
 	if kind == "podsluchacz":
 		# stoi w miejscu — patrzy na lokalnego gracza (nasłuchuje)
 		var lp := _local_player_pos()
 		if is_finite(lp.x) and absf(lp.x - global_position.x) > 4.0:
-			_facing = signf(lp.x - global_position.x)
+			_view_facing = signf(lp.x - global_position.x)
 	var anim := "sleep"
 	if active:
 		if winding:
@@ -1542,7 +1558,7 @@ func _update_sprite() -> void:
 		anim = "idle"          # zamaskowany stoi jak żywy kolega, nie „śpi"
 	if kind == "cma" and active:
 		anim = "idle"          # trzepocze skrzydłami w locie
-	Sprites.play(_spr, anim, _facing < 0.0)
+	Sprites.play(_spr, anim, _view_facing < 0.0)
 	var body: AnimatedSprite2D = _spr[0]
 	var m := Color.WHITE
 	if _flash > 0.0:
