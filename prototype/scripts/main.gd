@@ -1114,9 +1114,12 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				zp._camera.offset += Vector2(-20.0, 26.0)
 	if _has_arg_prefix("--shotloot"):
 		var lp: Node2D = _players.get_node_or_null("1")       # --shotloot: torby zaopatrzenia z każdą zawartością z puli zrzutów na przemian po obu stronach
-		if lp != null:                                        # gracza; --shotloot=ammo: skrzynki amunicji różnych broni (podgląd oznaczeń zawartości)
+		if lp != null:                                        # gracza; --shotloot=ammo: skrzynki amunicji różnych broni (podgląd oznaczeń zawartości); =cache: skrzynie z mapy
 			var ammo := "--shotloot=ammo" in OS.get_cmdline_user_args()
-			var loot: Array = [9, 1, 7, 8, 0, 3, 4, 5, 6] if ammo else Throwables.DROP_WEIGHTS.keys()
+			if "--shotloot=cache" in OS.get_cmdline_user_args():     # --shotloot=cache: skrzynie z mapy (sterty zawartości) po obu stronach gracza
+				for dx in [-34.0, 40.0]:
+					level.spawn_item("cache", 0, lp.global_position + Vector2(dx, -14.0))
+			var loot: Array = [] if "--shotloot=cache" in OS.get_cmdline_user_args() else ([9, 1, 7, 8, 0, 3, 4, 5, 6] if ammo else Throwables.DROP_WEIGHTS.keys())
 			for li in loot.size():
 				var dx := (-1.0 if li % 2 == 0 else 1.0) * (22.0 + (13.0 if ammo else 19.0) * float(li / 2))
 				if ammo:
