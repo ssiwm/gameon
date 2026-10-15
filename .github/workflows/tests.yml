@@ -35,6 +35,10 @@ jobs:
         run: |
           godot --headless --path prototype -- --host --stalkertest --autoquit=70 2>&1 | tee stalkertest.log
           grep -a "\[STALKER-TEST\] ==== PASS" stalkertest.log
+      - name: Wrogowie i hałas (--enemytest)
+        run: |
+          godot --headless --path prototype -- --host --enemytest --autoquit=40 2>&1 | tee enemytest.log
+          grep -a "\[ENEMY-TEST\] ==== PASS" enemytest.log
       - name: Pętla misji i dziennik sesji (--missiontest, --sessionlog)
         run: |
           godot --headless --path prototype -- --host --missiontest --sessionlog="$RUNNER_TEMP/sessions" --autoquit=12 2>&1 | tee missiontest.log

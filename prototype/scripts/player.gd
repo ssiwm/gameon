@@ -1654,16 +1654,17 @@ func hurt_point(pos: Vector2) -> Vector2:
 	return Vector2(global_position.x, clampf(pos.y, top, global_position.y - 2.0))
 
 ## `source`: kto zadaje cios (rodzaj wroga, "stalker", "blast"…) — serwer zapamiętuje go dla dziennika sesji.
-func deliver_hit(amount: int, from_pos: Vector2, source := "") -> void:
+## `force`: cios omija niewrażliwość po trafieniu (kara za nieudane QTE Pijawki nie może zniknąć, bo chwilę wcześniej ugryzł trzosek).
+func deliver_hit(amount: int, from_pos: Vector2, source := "", force := false) -> void:
 	last_hit_source = source
 	if not NoiseMgr.has_network() or is_multiplayer_authority():
-		apply_hit(amount, from_pos)
+		apply_hit(amount, from_pos, force)
 	else:
-		apply_hit.rpc_id(get_multiplayer_authority(), amount, from_pos)
+		apply_hit.rpc_id(get_multiplayer_authority(), amount, from_pos, force)
 
 @rpc("any_peer", "call_remote", "reliable")
-func apply_hit(amount: int, _from_pos: Vector2) -> void:
-	if not is_multiplayer_authority() or dead or _invuln > 0.0 or not _from_server() or amount <= 0:
+func apply_hit(amount: int, _from_pos: Vector2, force := false) -> void:
+	if not is_multiplayer_authority() or dead or (_invuln > 0.0 and not force) or not _from_server() or amount <= 0:
 		return
 	hp -= amount
 	_invuln = INVULN_AFTER_HIT

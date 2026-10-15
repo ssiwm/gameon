@@ -176,6 +176,8 @@ func awaken() -> void:
 	_spit_cd = 1.0
 	_sweep_cd = 3.0
 	_brood_t = 2.0
+	_stun_cd = 0.0                    # po wipe poprzednia próba nie może zostawić cooldownu oślepienia
+	_light_check = 0.0
 	NoiseMgr.add_noise(N_SCREAM, global_position)
 	print("[BOSS] Żyła budzi się, HP=%.0f" % max_hp)
 	_event.rpc("awaken")
@@ -471,11 +473,12 @@ func _spawn_brood(n: String, pos: Vector2) -> void:
 	e.name = n
 	e.kind = "trzosek"
 	e.omniscient = true      # potomstwo zawsze wie, gdzie są gracze
+	e.summoned = true        # przywołany przez bossa: bez XP i dropów (enemy.gd: _die)
 	e.position = pos
 	lvl.add_child(e)
-	_brood.append(e)
 	Audio.play_variant_at("impact_flesh", 3, pos, Audio.BUS_WORLD, -6.0, 0.55)
 	if NoiseMgr.is_server():
+		_brood.append(e)                  # listę czyści tylko serwer (_tick_brood) — u klientów rosłaby bez końca
 		e.wake()
 
 @rpc("authority", "call_local", "reliable")
