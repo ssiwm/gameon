@@ -86,15 +86,15 @@ func _test_listener() -> void:
 	# zapowiedź: tylko usłyszał (bez celu) → dłuższa o `blind`; z celem → zwykła
 	l.set_physics_process(false)
 	l._target = null
-	l._begin_scream()
+	l._beh.begin_scream()
 	var blind_w: float = l._windup
 	l._windup = 0.0
 	l.winding = false
 	l._target = player
-	l._begin_scream()
+	l._beh.begin_scream()
 	var seen_w: float = l._windup
 	check("Podsłuchacz/zapowiedź: bez celu dłuższa o `blind` (×1,3) niż z celem", seen_w > 0.1 and absf(blind_w / seen_w - 1.3) < 0.01, "%.2f / %.2f" % [blind_w, seen_w])
-	check("Podsłuchacz/pole: przed krzykiem nie ma pola ochronnego", l._shield_t == 0.0 and not bool(l.view_info()["shield"]))
+	check("Podsłuchacz/pole: przed krzykiem nie ma pola ochronnego", l._beh.shield_t == 0.0 and not bool(l.view_info()["shield"]))
 	l._set_ai_state(l._derive_ai_state())
 	check("Podsłuchacz/widok: zapowiedź → stan windup i oczy (`alert`)", l.ai_name() == "windup" and bool(l.view_info()["alert"]), l.ai_name())
 	var hp0: float = l.hp
@@ -106,9 +106,9 @@ func _test_listener() -> void:
 	l._target = null
 
 	# krzyk: pole, fala, zasięg
-	l._scream_cd = 0.0
-	l._scream()
-	check("Podsłuchacz/krzyk: uruchamia pole ochronne i liczy krzyk", l._shield_t > 1.0 and l._screams == 1 and l._alerted, "%.2f / %d" % [l._shield_t, l._screams])
+	l._beh.scream_cd = 0.0
+	l._beh.scream()
+	check("Podsłuchacz/krzyk: uruchamia pole ochronne i liczy krzyk", l._beh.shield_t > 1.0 and l._beh.screams == 1 and l._beh.alerted, "%.2f / %d" % [l._beh.shield_t, l._beh.screams])
 	l._set_ai_state(l._derive_ai_state())
 	check("Podsłuchacz/widok: w polu stan scream, `shield` i `alert` w view_info, boty nie strzelają", l.ai_name() == "scream" and bool(l.view_info()["shield"]) and bool(l.view_info()["alert"]) and not l.is_threat())
 	check("Podsłuchacz/fala: tuż po krzyku nikt jeszcze nie reaguje (głos ma czas dojść)", not near.active and not far.active)
@@ -125,9 +125,9 @@ func _test_listener() -> void:
 	check("Podsłuchacz/fala: po chwili cała okolica w zasięgu jest obudzona i idzie na krzyk", far.active and far._has_lead)
 	l.set_physics_process(true)
 	await get_tree().create_timer(1.6).timeout
-	check("Podsłuchacz/pole: po `shield.time` (1,4 s) pole znika — stan listen, boty znów strzelają", l._shield_t == 0.0 and l.ai_name() == "listen" and l.is_threat(), "%.2f %s" % [l._shield_t, l.ai_name()])
+	check("Podsłuchacz/pole: po `shield.time` (1,4 s) pole znika — stan listen, boty znów strzelają", l._beh.shield_t == 0.0 and l.ai_name() == "listen" and l.is_threat(), "%.2f %s" % [l._beh.shield_t, l.ai_name()])
 	l.set_physics_process(false)
-	l._shield_t = 0.0
+	l._beh.shield_t = 0.0
 	l._set_ai_state(l._derive_ai_state())
 	hp0 = l.hp
 	l.take_hit(info.duplicate())
@@ -138,24 +138,24 @@ func _test_listener() -> void:
 	var near2 := _spawn("trzosek", Vector2(x0 + 60.0, y - 0.5))
 	await get_tree().physics_frame
 	l.hp = l.get("_max_hp")
-	l._scream_cd = 0.0
-	l._scream()
+	l._beh.scream_cd = 0.0
+	l._beh.scream()
 	await get_tree().create_timer(1.0).timeout
-	check("Podsłuchacz/zasięg: drugi krzyk sięga 60% promienia — bliski budzi się, dalszy (360 > 252) nie", near2.active and not far2.active and l._screams == 2, "near=%s far=%s n=%d" % [near2.active, far2.active, l._screams])
+	check("Podsłuchacz/zasięg: drugi krzyk sięga 60% promienia — bliski budzi się, dalszy (360 > 252) nie", near2.active and not far2.active and l._beh.screams == 2, "near=%s far=%s n=%d" % [near2.active, far2.active, l._beh.screams])
 
 	# limit krzyków
-	l._screams = 3
-	l._scream_cd = 0.0
-	l._shield_t = 0.0
+	l._beh.screams = 3
+	l._beh.scream_cd = 0.0
+	l._beh.shield_t = 0.0
 	l._windup = 0.0
-	l._begin_scream()
+	l._beh.begin_scream()
 	check("Podsłuchacz/limit: po 3 krzykach milknie (zapowiedź się nie zaczyna)", l._windup == 0.0 and not l.winding)
-	l._calm_t = 20.0
+	l._beh.calm_t = 20.0
 	l._target = null
 	l.set_physics_process(true)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	check("Podsłuchacz/limit: po 12 s spokoju licznik się zeruje", l._screams == 0, str(l._screams))
+	check("Podsłuchacz/limit: po 12 s spokoju licznik się zeruje", l._beh.screams == 0, str(l._beh.screams))
 
 	# kierunek patrzenia: serwer liczy go z celu / śladu, nie z lokalnego gracza
 	l.set_physics_process(false)
@@ -183,7 +183,7 @@ func _test_listener() -> void:
 	dl.winding = true
 	dl.take_hit({"amount": 500.0, "dir": Vector2.RIGHT, "pos": dl.global_position, "shooter": int(player.player_id), "type": "bullet"})
 	await get_tree().create_timer(1.0).timeout
-	check("Podsłuchacz/zapowiedź: zabity przed krzykiem nie krzyczy (nic się nie budzi, brak pola)", not dl.alive and dl._screams == 0 and not sleeper.active and dl._shield_t == 0.0, "żywy=%s krzyki=%d budzi=%s" % [dl.alive, dl._screams, sleeper.active])
+	check("Podsłuchacz/zapowiedź: zabity przed krzykiem nie krzyczy (nic się nie budzi, brak pola)", not dl.alive and dl._beh.screams == 0 and not sleeper.active and dl._beh.shield_t == 0.0, "żywy=%s krzyki=%d budzi=%s" % [dl.alive, dl._beh.screams, sleeper.active])
 	dl.queue_free()
 	sleeper.queue_free()
 	for n in [l, near, far, near2, far2, client, strip]:

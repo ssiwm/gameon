@@ -63,6 +63,7 @@ const DEFS := {
 	},
 	# Podsłuchacz (GDD §7.1): stoi nieruchomo i nasłuchuje; zobaczy albo usłyszy — krzyczy i ściąga hordę.
 	"podsluchacz": {
+		"behavior": "listener",
 		"hp": 35.0, "speed": 0.0, "damage": 0, "windup": 0.9, "reach": 0.0,
 		"cooldown": 6.0, "leap": false, "hear": 170.0, "wake_near": 0.0, "sight": 240.0,
 		"color": Color(0.58, 0.5, 0.57), "size": Vector2(12, 24), "hurt_h": 34.0, "knock": 30.0, "knock_mult": 0.5, "head": 0.28,
