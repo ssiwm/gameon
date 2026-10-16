@@ -189,3 +189,46 @@ Maksymalny DPS przy braku uników: ≈ 0,06 / 0,10 / 0,16 HP/s — znacznie mnie
 (`_boulder_ready`, `_throw_boulder`, `Enemy.boulder_cooldown`), `Player.chip` + `deliver_chip` / `apply_chip` (replikowane), pęknięte serce w `hud.gd` (`Pips.cracked`), model skały w `view3d.gd`
 (`_sync_boulders`). Nie zrobione: pęknięcie w plakietce nad głową postaci 3D (tylko HUD drużyny); osobny dźwięk rzutu i uderzenia (użyty `impact_hard`); pozę rzutu Wołka dalej daje
 animacja zapowiedzi (nie ma osobnej pozy podnoszenia głazu).
+
+### F3.10 — Dyrektor: kompozycja wg napięcia i czasu, własne tabele map (zrobione w 1.7.251)
+
+**Dziś:** `Director.pick_group(table, roll)` losuje zestaw tylko z wag; jedna tabela `GROUPS` (60% 2 Trzoski, 25% 3 Trzoski, 15% Ślepiec), `GROUPS_BY_MAP` jest puste. Tabela nie widzi ani czasu, ani napięcia, więc w 20. minucie przychodzi to samo co w pierwszej, a na mapie z generatorami (głośnych) tak samo jak w ciszy.
+Warunki wypuszczenia grupy się nie zmieniają: faza OBJECTIVE, poza kryjówką, stres ≤ 0,3, ≥ 35 s od ostatniego starcia, < 2 grupy, interwał 55–90 s × `dread`.
+
+**Wejścia (`ctx`, liczone w `_spawn_group`):**
+- `time` — `mission.elapsed` (s od startu misji; zerowany przy restarcie) × `Difficulty.m("dread")` (łatwy ×0,6 spowalnia eskalację, trudny ×1,5 przyspiesza — bez nowych kluczy trudności);
+- `tension` — `Director.tension` = max(stres, Uwaga × 0,7). **Uwaga:** w chwili spawnu stres ≤ 0,3, więc napięcie to w praktyce Uwaga × 0,7 (0…0,7). Okna napięcia w tabelach trzeba więc ustawiać w 0…0,7, nie 0…1;
+- `quiet` — `_since_enc` (jak długo drużyna ma spokój), do ewentualnego strojenia.
+
+**Format tabeli (zgodny wstecz):** wpis `[waga, [rodzaje]]` zostaje; opcjonalny 3. element to słownik okien `{"time": [od, do], "tension": [od, do], "fade": 60.0}`.
+Waga efektywna = waga × czynnik okna (1 w środku, liniowo do 0 na krawędzi w `fade` s / 0,1 napięcia — skład zmienia się płynnie, nie skokiem). Czysta funkcja `Director.entry_weight(entry, ctx)`,
+`pick_group(table, roll, ctx := {})` (bez `ctx` działa jak dziś, więc stare testy zostają). Gdy wszystkie wagi wyjdą 0 → ostatni wpis tabeli (bezpiecznik).
+Alternatywa odrzucona: „budżet zagrożenia” (punkty za rodzaj, losowe dobieranie) — płynniejszy, ale trudny do zaprojektowania i przetestowania, a zależy nam na ręcznie ułożonych, czytelnych zestawach.
+
+**Proponowane tabele** (wagi startowe; do strojenia po playtestach). Wędrować mogą tylko ruchome rodzaje (Trzosek, Ślepiec, Wołek); Skoczek, Podsłuchacz, Ćma i Mimik odpadają (wiszą, stoją, latają, udają).
+
+| Zestaw | Czas | Napięcie (Uwaga) | Uzasadnienie |
+|---|---|---|---|
+| 2 Trzoski | zawsze, mocniej < 8 min | zawsze | podstawa, jak dziś |
+| 3 Trzoski | od 3 min | zawsze | pierwszy wzrost |
+| 4 Trzoski | od 8 min | ≥ 0,2 | późna presja |
+| Ślepiec | od 1,5 min | ≥ 0,2 (rośnie z hałasem) | kara za hałas: słyszy, więc przychodzi, gdy głośno |
+| 2 Ślepce | od 6 min | ≥ 0,4 | głośna drużyna w późnej fazie |
+| Wołek + Trzosek | od 6 min | ≥ 0,15 | tank na przełamanie, nigdy w pierwszych minutach |
+| Wołek + 2 Trzoski | od 10 min | ≥ 0,3 | szczyt eskalacji |
+
+Tabele map (`GROUPS_BY_MAP`):
+- **1.1 Missing Patrol** (12 T, 3 W, 0 L; samouczek): bez Ślepca (mapa go nie ma — pierwszy raz w 1.2), Wołek dopiero po 8 min.
+- **1.2 Radio Silence** (generatory, głośna; 5 L, 8 P): Ślepiec i 2 Ślepce mocniej wg Uwagi — misja z założenia hałaśliwa, a Dyrektor ma na to odpowiadać.
+- **1.3 The Nest** (las i tunele; 16 T, 4 W, 3 L): domyślna z naciskiem na Trzoski i Wołka, mało Ślepców.
+- B1 (boss) i kryjówka: bez zmian — Dyrektor tam nie działa.
+
+**Co nie zmienia się:** interwał, limit grup, kleszcze (F3.4c), okno oddechu, kierunek marszu na gorące miejsce.
+**Logi do strojenia:** linia `[DIRECTOR]` dopisze `ctx` i prawdopodobieństwa zestawu; zdarzenie sesji (`SessionLog.event("director_spawn", …)`) z czasem, napięciem i zestawem, żeby po playteście dało się zobaczyć, co faktycznie przychodziło.
+
+**Kroki:** (1) `entry_weight` + `pick_group(…, ctx)` + `build_ctx()` w `director.gd`, domyślna `GROUPS` z oknami; (2) tabele `GROUPS_BY_MAP` dla 1.1–1.3; (3) log i zdarzenie sesji; (4) testy: okna i krawędzie `fade`; brak `ctx` = stary wynik (0,59 / 0,61 / 0,86); czas 0 nie losuje Wołka, 12 min tak; napięcie 0 nie losuje 2 Ślepców; skala `dread` przesuwa czas; każda tabela mapy ma niezerową sumę wag w siatce (czas × napięcie) i same ruchome rodzaje; (5) GDD §7/§13 (opis Dyrektora i składu grup), CHANGELOG 1.7.251, README.
+**Ryzyka:** zmienia odczucie gry (kolejność i ciężar spotkań) — wymaga playtestu, wagi to dane; `mission.elapsed` liczy też czas w kryjówce, jeśli Dyrektor tam nie spawnuje, czas „ucieka” — do sprawdzenia, czy brać własny licznik `_run_t` tylko z fazy OBJECTIVE (zalecane).
+
+**Wdrożenie F3.10 (1.7.251):** `director.gd`: `_run_t` (własny licznik fazy celu, decyzja 2), `build_ctx()`, `window_factor` / `entry_weight` / `group_odds` / `pick_group(…, ctx)`, nowe `GROUPS` z oknami i `GROUPS_BY_MAP` dla 1.1–1.3;
+Wołek wędruje od 6 min (decyzja 1). Test integracyjny stawia grupę z kontekstem na punkcie siatki mapy. Dopisek do planu: napięcie w chwili spawnu to ≤ 0,7, więc najwyższy próg okna to 0,2 (Uwaga ≈ 29%).
+Nie zrobione: strojenie po playtestach (tempo 3 / 6 / 10 min), osobne tabele zależne od liczby graczy.

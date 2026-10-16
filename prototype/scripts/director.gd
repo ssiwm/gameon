@@ -13,6 +13,7 @@ extends Node
 ## Częstość skaluje Difficulty „dread" (łatwo ×0,6, trudno ×1,5). Wszystko serwerowe; klienci tylko czytają `tension`.
 
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
+const SessionLog := preload("res://scripts/session_log.gd")
 
 const PEAK_STRESS := 0.75
 const RELAX_TIME := 45.0
@@ -38,6 +39,7 @@ var _serial := 0
 var _roamers: Array[String] = []
 var _groups: Array = []                ## grupy wędrowców: tablice nazw (patrz `live_groups`)
 var _idle: Dictionary = {}            ## nazwa wędrowca → s uśpienia poza polem widzenia (patrz `_cleanup`)
+var _run_t := 0.0                     ## s w fazie OBJECTIVE poza kryjówką — „czas od startu" dla składu grup (F3.10); nie liczy kryjówki ani bossa
 
 func _process(delta: float) -> void:
 	if not NoiseMgr.is_server():
@@ -54,6 +56,7 @@ func _process(delta: float) -> void:
 	_cleanup(humans, delta)
 	if not _can_spawn_now():
 		return
+	_run_t += delta
 	_relax_t = maxf(0.0, _relax_t - delta)
 	if _relax_t > 0.0 or _since_enc < BREATH_MIN or stress > 0.3 or live_groups() >= MAX_GROUPS:
 		return
@@ -80,6 +83,7 @@ func reset() -> void:
 	_prev_hp = -1
 	_since_enc = 0.0
 	_relax_t = 0.0
+	_run_t = 0.0
 	_spawn_t = randf_range(SPAWN_MIN, SPAWN_MAX)
 
 # ---------------------------------------------------------------- model napięcia
@@ -137,7 +141,13 @@ func _spawn_group(humans: Array) -> void:
 	var pos := _pick_spot(lvl, anchor.global_position, humans)
 	if pos == Vector2.ZERO:
 		return
-	var kinds: Array = pick_group(groups_for(String(lvl.get("map_id"))), randf())
+	var map_id := String(lvl.get("map_id"))
+	var ctx := build_ctx()
+	var table := groups_for(map_id)
+	var kinds: Array = pick_group(table, randf(), ctx)
+	var odds := group_odds(table, ctx)
+	print("[DIRECTOR] skład: czas %.0f s, napięcie %.2f, szanse %s" % [float(ctx["time"]), float(ctx["tension"]), str(odds)])
+	SessionLog.event("director_spawn", {"map": map_id, "time": snappedf(float(ctx["time"]), 1.0), "tension": snappedf(float(ctx["tension"]), 0.01), "quiet": snappedf(float(ctx["quiet"]), 1.0), "kinds": kinds, "odds": odds})
 	# dokąd ruszają: jeśli niedawno (≤ HOT_SPOT_AGE) gdzieś w pobliżu gracza strzelano, do tego „gorącego miejsca"; inaczej na pozycję gracza
 	var hot: Variant = NoiseMgr.hot_spot_near(anchor.global_position, HOT_SPOT_R, HOT_SPOT_AGE)
 	var hunt_at: Vector2 = hot if hot != null else anchor.global_position
@@ -154,14 +164,49 @@ func _spawn_group(humans: Array) -> void:
 			_spawn_roamer(n, kinds[i], at, hunt_at)
 	_groups.append(group)
 
-## Zestawy wędrowców (F3.7): [waga względna, rodzaje]. Domyślnie 60% dwa Trzoski, 25% trzy, 15% sam Ślepiec; mapa może mieć własny w GROUPS_BY_MAP
-## (np. więcej Ślepców w mrocznym lesie) — nowy rodzaj dopisuje się tu, nie w kodzie.
+## Zestawy wędrowców (F3.7, F3.10): [waga względna, rodzaje] albo [waga, rodzaje, okna]. `okna` (opcjonalne) to słownik `{"time": [od, do], "tension": [od, do], "fade": s}`:
+## zestaw jest dostępny tylko wtedy, gdy czas od startu (s; × `dread`, więc łatwy eskaluje wolniej) i napięcie mieszczą się w oknach. Waga rośnie liniowo od 0 na początku
+## okna do pełnej po `T_FADE` s (czas) albo `TENSION_FADE` (napięcie) i spada tak samo po końcu okna — patrz `entry_weight`; `INF` = bez końca; `fade` w oknach nadpisuje czas.
+## Uwaga: w chwili spawnu stres ≤ 0,3, więc napięcie to w praktyce Uwaga × 0,7 (0…0,7): okna napięcia ustawiamy w tym zakresie.
+## Tylko ruchome rodzaje (Trzosek, Ślepiec, Wołek) — Skoczek wisi, Podsłuchacz stoi, Ćma lata, Mimik udaje kolegę. Mapa może mieć własną tabelę w GROUPS_BY_MAP.
+const T_FADE := 60.0                         ## s narastania wagi zestawu po początku okna czasu
+const TENSION_FADE := 0.1                    ## napięcia, na których narasta waga po początku okna napięcia
 const GROUPS := [
 	[60.0, ["trzosek", "trzosek"]],
-	[25.0, ["trzosek", "trzosek", "trzosek"]],
-	[15.0, ["slepiec"]],
+	[25.0, ["trzosek", "trzosek", "trzosek"], {"time": [180.0, INF]}],
+	[20.0, ["trzosek", "trzosek", "trzosek", "trzosek"], {"time": [480.0, INF], "tension": [0.15, INF]}],
+	[15.0, ["slepiec"], {"time": [90.0, INF], "tension": [0.1, INF]}],
+	[12.0, ["slepiec", "slepiec"], {"time": [360.0, INF], "tension": [0.2, INF]}],
+	[12.0, ["wolek", "trzosek"], {"time": [360.0, INF], "tension": [0.1, INF]}],
+	[10.0, ["wolek", "trzosek", "trzosek"], {"time": [600.0, INF], "tension": [0.2, INF]}],
 ]
-const GROUPS_BY_MAP := {}                    ## id mapy → tabela jak GROUPS (brak wpisu = GROUPS)
+const GROUPS_BY_MAP := {
+	# 1.1 Missing Patrol (samouczek: 12 T, 3 W, bez Ślepców — pierwszy raz w 1.2): same Trzoski, Wołek dopiero po 8 min
+	"z1_m1": [
+		[60.0, ["trzosek", "trzosek"]],
+		[25.0, ["trzosek", "trzosek", "trzosek"], {"time": [150.0, INF]}],
+		[15.0, ["trzosek", "trzosek", "trzosek", "trzosek"], {"time": [420.0, INF]}],
+		[10.0, ["wolek", "trzosek"], {"time": [480.0, INF]}],
+	],
+	# 1.2 Radio Silence (generatory — głośna misja, 5 L, 8 P): Ślepce odpowiadają na hałas, Wołek od 6 min
+	"z1_m2": [
+		[45.0, ["trzosek", "trzosek"]],
+		[20.0, ["trzosek", "trzosek", "trzosek"], {"time": [180.0, INF]}],
+		[22.0, ["slepiec"], {"time": [60.0, INF], "tension": [0.1, INF]}],
+		[16.0, ["slepiec", "slepiec"], {"time": [360.0, INF], "tension": [0.2, INF]}],
+		[12.0, ["wolek", "trzosek"], {"time": [360.0, INF], "tension": [0.1, INF]}],
+		[10.0, ["wolek", "trzosek", "trzosek"], {"time": [600.0, INF], "tension": [0.2, INF]}],
+	],
+	# 1.3 The Nest (las i tunele, 16 T, 4 W, 3 L): przewaga Trzosków i Wołka, mało Ślepców
+	"z1_m3": [
+		[55.0, ["trzosek", "trzosek"]],
+		[30.0, ["trzosek", "trzosek", "trzosek"], {"time": [150.0, INF]}],
+		[15.0, ["trzosek", "trzosek", "trzosek", "trzosek"], {"time": [420.0, INF], "tension": [0.15, INF]}],
+		[8.0, ["slepiec"], {"time": [120.0, INF], "tension": [0.15, INF]}],
+		[18.0, ["wolek", "trzosek"], {"time": [300.0, INF]}],
+		[10.0, ["wolek", "trzosek", "trzosek"], {"time": [540.0, INF], "tension": [0.15, INF]}],
+	],
+}                                            ## id mapy → tabela jak GROUPS (brak wpisu = GROUPS)
 const MAX_GROUPS := 2                        ## tyle grup wędrowców naraz (nowa dopiero, gdy któraś zginie albo zniknie)
 const HOT_SPOT_R := 600.0                    ## „gorące miejsce" (niedawna strzelanina) w tym promieniu od gracza wyznacza cel wędrowców
 const HOT_SPOT_AGE := 90.0                   ## s: starsze strzelaniny się nie liczą
@@ -174,17 +219,63 @@ const PINCER_MIN_DX := 40.0                  ## px: średnia pozycja bliżej gra
 static func groups_for(map_id: String) -> Array:
 	return GROUPS_BY_MAP.get(map_id, GROUPS)
 
-## Wybiera zestaw z tabeli wg rzutu `roll` ∈ [0, 1) i wag (kolejność wpisów = kolejność przedziałów).
-static func pick_group(table: Array, roll: float) -> Array:
+## Kontekst losowania składu grupy (F3.10): czas od startu w fazie celu × `dread`, napięcie Dyrektora i spokój od ostatniego starcia.
+func build_ctx() -> Dictionary:
+	return {"time": _run_t * Difficulty.m("dread"), "tension": tension, "quiet": _since_enc}
+
+## Czynnik okna `[od, do]` dla wartości `x`: 0 przed początkiem, rośnie liniowo do 1 w `fade` jednostek od początku, a po końcu spada tak samo do 0 (`do` = INF → bez końca).
+## Początek ≤ 0 oznacza „od zawsze".
+static func window_factor(x: float, win: Array, fade: float) -> float:
+	var lo := float(win[0])
+	var hi := float(win[1])
+	var f_in := 1.0 if lo <= 0.0 else clampf((x - lo) / maxf(fade, 0.0001), 0.0, 1.0)
+	var f_out := 1.0 if is_inf(hi) else clampf((hi + fade - x) / maxf(fade, 0.0001), 0.0, 1.0)
+	return minf(f_in, f_out)
+
+## Waga zestawu przy danym kontekście: waga × czynnik okna czasu × czynnik okna napięcia. Wpis bez okien (albo kontekst bez danego klucza) = sama waga.
+static func entry_weight(entry: Array, ctx: Dictionary) -> float:
+	var w := float(entry[0])
+	if entry.size() < 3 or ctx.is_empty():
+		return w
+	var win := entry[2] as Dictionary
+	if win.has("time") and ctx.has("time"):
+		w *= window_factor(float(ctx["time"]), win["time"], float(win.get("fade", T_FADE)))
+	if win.has("tension") and ctx.has("tension"):
+		w *= window_factor(float(ctx["tension"]), win["tension"], float(win.get("tension_fade", TENSION_FADE)))
+	return w
+
+## Szanse zestawów (procenty w kolejności wpisów) — do logu i testów.
+static func group_odds(table: Array, ctx: Dictionary) -> Array:
+	var ws: Array = []
 	var total := 0.0
 	for g in table:
-		total += float(g[0])
-	var acc := 0.0
+		var w := entry_weight(g, ctx)
+		ws.append(w)
+		total += w
+	var out: Array = []
+	for w in ws:
+		out.append(snappedf(100.0 * float(w) / total, 0.1) if total > 0.0 else 0.0)
+	return out
+
+## Wybiera zestaw z tabeli wg rzutu `roll` ∈ [0, 1) i wag (kolejność wpisów = kolejność przedziałów); z `ctx` wagi uwzględniają okna czasu i napięcia.
+## Gdyby wszystkie wagi wyszły 0, bierze pierwszy wpis (podstawowy zestaw tabeli).
+static func pick_group(table: Array, roll: float, ctx := {}) -> Array:
+	var total := 0.0
 	for g in table:
-		acc += float(g[0]) / total
+		total += entry_weight(g, ctx)
+	if total <= 0.0:
+		return ((table[0] as Array)[1] as Array).duplicate()
+	var acc := 0.0
+	var last := table[0] as Array
+	for g in table:
+		var w := entry_weight(g, ctx)
+		if w <= 0.0:
+			continue
+		last = g
+		acc += w / total
 		if roll < acc:
 			return (g[1] as Array).duplicate()
-	return ((table[table.size() - 1] as Array)[1] as Array).duplicate()
+	return (last[1] as Array).duplicate()
 
 ## Ile grup wędrowców wciąż ma żywego członka na liście (martwe i zniknięte grupy są usuwane).
 func live_groups() -> int:

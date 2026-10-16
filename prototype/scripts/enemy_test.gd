@@ -53,6 +53,7 @@ func run(m: Node2D) -> void:
 	await _test_windup_interrupt()
 	await _test_director()
 	await _test_pincer()
+	await _test_director_composition()
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
 	await _test_slepiec_listen()
@@ -302,6 +303,106 @@ func _test_wolek_boulder() -> void:
 	player.chip = 0.0
 	for n in [w, dummy, wall2, strip]:
 		n.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- Dyrektor: skład grup wg czasu i napięcia (ENEMY_PLAN.md F3.10)
+
+## Okna czasu i napięcia w tabelach zestawów, tabele map, skala `dread`, licznik czasu fazy celu.
+func _test_director_composition() -> void:
+	var D := Director
+	var W := D.window_factor
+	check("skład/okno: początek 180 s z narastaniem 60 s — 0 w 180, 0,5 w 210, 1 w 240", W.call(180.0, [180.0, INF], 60.0) == 0.0 and absf(W.call(210.0, [180.0, INF], 60.0) - 0.5) < 0.001 and W.call(240.0, [180.0, INF], 60.0) == 1.0)
+	check("skład/okno: początek 0 = od zawsze, koniec spada liniowo po `fade` (1 do końca, 0,5 w połowie, 0 po)", W.call(0.0, [0.0, 100.0], 50.0) == 1.0 and W.call(100.0, [0.0, 100.0], 50.0) == 1.0 and absf(W.call(125.0, [0.0, 100.0], 50.0) - 0.5) < 0.001 and W.call(150.0, [0.0, 100.0], 50.0) == 0.0)
+	var e := [10.0, ["a"], {"time": [180.0, INF], "tension": [0.2, INF]}]
+	check("skład/waga: czas i napięcie mnożą się (za wcześnie = 0, za cicho = 0, oba spełnione = pełna waga, bez kontekstu = sama waga)",
+		D.entry_weight(e, {"time": 100.0, "tension": 0.5}) == 0.0 and D.entry_weight(e, {"time": 400.0, "tension": 0.05}) == 0.0 and D.entry_weight(e, {"time": 400.0, "tension": 0.5}) == 10.0 and D.entry_weight(e, {}) == 10.0 and D.entry_weight([7.0, ["a"]], {"time": 1.0}) == 7.0)
+	var early := {"time": 0.0, "tension": 0.0}
+	var late := {"time": 800.0, "tension": 0.6}
+	var odds_early: Array = D.group_odds(D.GROUPS, early)
+	var odds_late: Array = D.group_odds(D.GROUPS, late)
+	var sum_late := 0.0
+	for o in odds_late:
+		sum_late += float(o)
+	check("skład/domyślna: na starcie i w ciszy tylko pary Trzosków (100%)", float(odds_early[0]) == 100.0 and D.pick_group(D.GROUPS, 0.0, early) == ["trzosek", "trzosek"] and D.pick_group(D.GROUPS, 0.999, early) == ["trzosek", "trzosek"], str(odds_early))
+	check("skład/domyślna: po 13 min przy hałasie wszystkie zestawy możliwe (też Wołek i 2 Ślepce), szanse sumują się do 100%", absf(sum_late - 100.0) < 0.5 and D.pick_group(D.GROUPS, 0.999, late) == ["wolek", "trzosek", "trzosek"] and not odds_late.has(0.0), str(odds_late))
+	var quiet_late: Array = D.group_odds(D.GROUPS, {"time": 800.0, "tension": 0.0})
+	check("skład/napięcie: w ciszy (napięcie 0) nawet po 13 min tylko Trzoski — Ślepce i Wołek wymagają hałasu (wagi 0)", float(quiet_late[3]) == 0.0 and float(quiet_late[4]) == 0.0 and float(quiet_late[5]) == 0.0 and float(quiet_late[2]) == 0.0, str(quiet_late))
+	var mid := {"time": 300.0, "tension": 0.3}
+	var m1: Array = D.group_odds(D.GROUPS_BY_MAP["z1_m1"], mid)
+	var m2: Array = D.group_odds(D.GROUPS_BY_MAP["z1_m2"], mid)
+	var m2_ślepiec := 0.0
+	for i in D.GROUPS_BY_MAP["z1_m2"].size():
+		if "slepiec" in D.GROUPS_BY_MAP["z1_m2"][i][1]:
+			m2_ślepiec += float(m2[i])
+	var m1_ślepiec := false
+	for g in D.GROUPS_BY_MAP["z1_m1"]:
+		m1_ślepiec = m1_ślepiec or ("slepiec" in g[1])
+	check("skład/mapy: 1.1 nie ma Ślepców, 1.2 (głośna) ma ich wyraźnie (> 20% po 5 min przy hałasie)", not m1_ślepiec and m2_ślepiec > 20.0, "m2 ślepiec %.1f%%" % m2_ślepiec)
+	check("skład/mapy: 1.1 po 5 min bez Wołka (wchodzi po 8 min)", float(m1[3]) == 0.0 and float(D.group_odds(D.GROUPS_BY_MAP["z1_m1"], {"time": 700.0, "tension": 0.3})[3]) > 0.0, str(m1))
+
+	# każda tabela: w całej siatce czas × napięcie jest z czego losować, a na starcie tylko pierwszy zestaw (podstawa)
+	var Defs := load("res://scripts/enemy_defs.gd")
+	var tables: Dictionary = {"domyślna": D.GROUPS}
+	for m in D.GROUPS_BY_MAP:
+		tables[m] = D.GROUPS_BY_MAP[m]
+	var empty_at := []
+	var not_mobile := []
+	var early_extra := []
+	for name in tables:
+		var t: Array = tables[name]
+		for ti in range(0, 1201, 30):
+			for te in 15:
+				if D.group_odds(t, {"time": float(ti), "tension": 0.05 * float(te)}).max() <= 0.0:
+					empty_at.append("%s %d/%d" % [name, ti, te])
+		var o0: Array = D.group_odds(t, early)
+		for i in range(1, o0.size()):
+			if float(o0[i]) > 0.0:
+				early_extra.append("%s #%d" % [name, i])
+		for g in t:
+			for k in g[1]:
+				var d: Dictionary = Defs.DEFS[String(k)]
+				if float(d["speed"]) <= 0.0 or d.get("hang", false) or d.get("moth", false) or d.get("mimic", false) or d.get("fly", false):
+					not_mobile.append(String(k))
+	check("skład/tabele: w całej siatce czas × napięcie każda tabela ma z czego losować", empty_at.is_empty(), str(empty_at.slice(0, 5)))
+	check("skład/tabele: na starcie (czas 0, cisza) wszystkie tabele dają tylko pierwszy zestaw", early_extra.is_empty(), str(early_extra))
+	check("skład/tabele: wędrować mogą tylko ruchome rodzaje (bez wiszących, stojących, latających i Mimika)", not_mobile.is_empty(), str(not_mobile))
+
+	# czas × dread; licznik czasu fazy celu
+	var keep_t: float = D._run_t
+	var keep_tension: float = D.tension
+	var keep_level: int = Difficulty.level
+	D._run_t = 300.0
+	D.tension = 0.4
+	Difficulty.set_level(Difficulty.Level.EASY)
+	var c_easy: Dictionary = D.build_ctx()
+	Difficulty.set_level(Difficulty.Level.HARD)
+	var c_hard: Dictionary = D.build_ctx()
+	Difficulty.set_level(keep_level)
+	check("skład/trudność: czas składu = czas fazy × dread (łatwy 180 s, trudny 450 s), napięcie i spokój z Dyrektora",
+		absf(float(c_easy["time"]) - 300.0 * 0.6) < 0.01 and absf(float(c_hard["time"]) - 300.0 * 1.5) < 0.01 and is_equal_approx(float(c_hard["tension"]), 0.4) and c_hard.has("quiet"), "%.0f / %.0f" % [c_easy["time"], c_hard["time"]])
+	D._run_t = 123.0
+	D.reset()
+	check("skład/czas: reset (nowa misja, wipe) zeruje licznik czasu fazy celu", D._run_t == 0.0)
+
+	# integracja: `_spawn_group` losuje z kontekstem, loguje skład i stawia wędrowców (na realnej mapie, przy graczu)
+	var spawned_before: int = D._roamers.size()
+	D._run_t = 700.0
+	D.tension = 0.5
+	var keep_pos: Vector2 = player.global_position
+	var nav_ids: Array = level.nav.get_point_ids()
+	player.global_position = level.nav.get_point_position(nav_ids[nav_ids.size() / 2]) + Vector2(0.0, -4.0)
+	D._spawn_group([player])
+	await get_tree().physics_frame
+	check("skład/spawn: `_spawn_group` z kontekstem stawia grupę wędrowców (na punkcie siatki 380–640 px od gracza)", D._roamers.size() > spawned_before, str(D._roamers.size() - spawned_before))
+	player.global_position = keep_pos
+	for n in D._roamers.duplicate():
+		D._despawn(n)
+	D._roamers.clear()
+	D._groups.clear()
+	D._run_t = keep_t
+	D.tension = keep_tension
+	D._run_t = keep_t
+	D.tension = keep_tension
 	await get_tree().physics_frame
 
 func _finish() -> void:
@@ -1072,14 +1173,15 @@ func _test_windup_interrupt() -> void:
 func _test_director() -> void:
 	var D := Director
 	var table: Array = D.GROUPS
-	check("dyrektor: domyślna tabela jak dotąd — 0,59 → 2 Trzoski, 0,61 → 3, 0,86 → Ślepiec",
-		D.pick_group(table, 0.0) == ["trzosek", "trzosek"] and D.pick_group(table, 0.59) == ["trzosek", "trzosek"] and D.pick_group(table, 0.61).size() == 3
-		and D.pick_group(table, 0.84).size() == 3 and D.pick_group(table, 0.86) == ["slepiec"] and D.pick_group(table, 0.999) == ["slepiec"])
+	var legacy := [[60.0, ["trzosek", "trzosek"]], [25.0, ["trzosek", "trzosek", "trzosek"]], [15.0, ["slepiec"]]]        # stary format wpisów (bez okien) działa jak dotąd
+	check("dyrektor: tabela bez okien jak dotąd — 0,59 → 2 Trzoski, 0,61 → 3, 0,86 → Ślepiec",
+		D.pick_group(legacy, 0.0) == ["trzosek", "trzosek"] and D.pick_group(legacy, 0.59) == ["trzosek", "trzosek"] and D.pick_group(legacy, 0.61).size() == 3
+		and D.pick_group(legacy, 0.84).size() == 3 and D.pick_group(legacy, 0.86) == ["slepiec"] and D.pick_group(legacy, 0.999) == ["slepiec"])
 	check("dyrektor: wagi względne (nie muszą dawać 100)", D.pick_group([[1.0, ["a"]], [3.0, ["b"]]], 0.1) == ["a"] and D.pick_group([[1.0, ["a"]], [3.0, ["b"]]], 0.3) == ["b"])
 	var copy: Array = D.pick_group(table, 0.0)
 	copy.append("x")
 	check("dyrektor: zwrócony zestaw to kopia (tabela się nie psuje)", D.pick_group(table, 0.0).size() == 2)
-	check("dyrektor: mapa bez własnej tabeli dostaje domyślną", D.groups_for("z1_m3") == D.GROUPS)
+	check("dyrektor: mapa bez własnej tabeli dostaje domyślną, mapa z własną — swoją", D.groups_for("nieznana") == D.GROUPS and D.groups_for("z1_m3") == D.GROUPS_BY_MAP["z1_m3"])
 	var Defs := load("res://scripts/enemy_defs.gd")
 	var bad := []
 	var tables: Array = [D.GROUPS]
