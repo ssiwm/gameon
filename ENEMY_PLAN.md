@@ -190,7 +190,7 @@ Maksymalny DPS przy braku uników: ≈ 0,06 / 0,10 / 0,16 HP/s — znacznie mnie
 (`_sync_boulders`). Nie zrobione: pęknięcie w plakietce nad głową postaci 3D (tylko HUD drużyny); osobny dźwięk rzutu i uderzenia (użyty `impact_hard`); pozę rzutu Wołka dalej daje
 animacja zapowiedzi (nie ma osobnej pozy podnoszenia głazu).
 
-### F3.10 — Dyrektor: kompozycja wg napięcia i czasu, własne tabele map (plan, do decyzji — 1.7.251)
+### F3.10 — Dyrektor: kompozycja wg napięcia i czasu, własne tabele map (zrobione w 1.7.251)
 
 **Dziś:** `Director.pick_group(table, roll)` losuje zestaw tylko z wag; jedna tabela `GROUPS` (60% 2 Trzoski, 25% 3 Trzoski, 15% Ślepiec), `GROUPS_BY_MAP` jest puste. Tabela nie widzi ani czasu, ani napięcia, więc w 20. minucie przychodzi to samo co w pierwszej, a na mapie z generatorami (głośnych) tak samo jak w ciszy.
 Warunki wypuszczenia grupy się nie zmieniają: faza OBJECTIVE, poza kryjówką, stres ≤ 0,3, ≥ 35 s od ostatniego starcia, < 2 grupy, interwał 55–90 s × `dread`.
@@ -228,3 +228,7 @@ Tabele map (`GROUPS_BY_MAP`):
 
 **Kroki:** (1) `entry_weight` + `pick_group(…, ctx)` + `build_ctx()` w `director.gd`, domyślna `GROUPS` z oknami; (2) tabele `GROUPS_BY_MAP` dla 1.1–1.3; (3) log i zdarzenie sesji; (4) testy: okna i krawędzie `fade`; brak `ctx` = stary wynik (0,59 / 0,61 / 0,86); czas 0 nie losuje Wołka, 12 min tak; napięcie 0 nie losuje 2 Ślepców; skala `dread` przesuwa czas; każda tabela mapy ma niezerową sumę wag w siatce (czas × napięcie) i same ruchome rodzaje; (5) GDD §7/§13 (opis Dyrektora i składu grup), CHANGELOG 1.7.251, README.
 **Ryzyka:** zmienia odczucie gry (kolejność i ciężar spotkań) — wymaga playtestu, wagi to dane; `mission.elapsed` liczy też czas w kryjówce, jeśli Dyrektor tam nie spawnuje, czas „ucieka” — do sprawdzenia, czy brać własny licznik `_run_t` tylko z fazy OBJECTIVE (zalecane).
+
+**Wdrożenie F3.10 (1.7.251):** `director.gd`: `_run_t` (własny licznik fazy celu, decyzja 2), `build_ctx()`, `window_factor` / `entry_weight` / `group_odds` / `pick_group(…, ctx)`, nowe `GROUPS` z oknami i `GROUPS_BY_MAP` dla 1.1–1.3;
+Wołek wędruje od 6 min (decyzja 1). Test integracyjny stawia grupę z kontekstem na punkcie siatki mapy. Dopisek do planu: napięcie w chwili spawnu to ≤ 0,7, więc najwyższy próg okna to 0,2 (Uwaga ≈ 29%).
+Nie zrobione: strojenie po playtestach (tempo 3 / 6 / 10 min), osobne tabele zależne od liczby graczy.
