@@ -1087,20 +1087,20 @@ func _test_pack_shout() -> void:
 	busy._target = player
 	minion.summoned = true
 	var spot := Vector2(x0 + 200.0, y)
-	a._shout_sighting(spot)
+	a._beh.shout_sighting(spot)
 	check("wataha: kolega w zasięgu dostaje ślad w miejscu gracza i reakcję „zauważył”", b._has_lead and b._last_known.is_equal_approx(spot) and b.ai_name() == "alert", "lead=%s ai=%s" % [b._has_lead, b.ai_name()])
 	check("wataha: śpiący kolega nie dostaje śladu (budzi go wake())", not c._has_lead and not c.active)
 	check("wataha: inny rodzaj, inne piętro i za daleko nie słyszą", not d._has_lead and not up._has_lead and not far._has_lead)
 	check("wataha: kolega, który ma już cel, i przywołany bossa nie zmieniają śladu", not busy._has_lead and not minion._has_lead)
-	check("wataha: krzykacz ma cooldown", a._share_cd > 2.5, str(a._share_cd))
+	check("wataha: krzykacz ma cooldown", a._beh.share_cd > 2.5, str(a._beh.share_cd))
 	b._has_lead = false
 	b._ai = Enemy.Ai.RETURN
 	b._alert = 0.0
-	a._shout_sighting(spot)
+	a._beh.shout_sighting(spot)
 	check("wataha: w czasie cooldownu drugi krzyk nic nie robi", not b._has_lead)
 
 	# ścieżka percepcji: krzykacz widzi gracza po raz pierwszy → kolega poza zasięgiem wzroku (400 px od gracza) dostaje ślad
-	a._share_cd = 0.0
+	a._beh.share_cd = 0.0
 	a._ai = Enemy.Ai.RETURN
 	a._target = null
 	b._has_lead = false

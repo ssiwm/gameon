@@ -13,6 +13,7 @@ const BEHAVIORS := {
 	"moth": "res://scripts/enemy_moth.gd",
 	"mimic": "res://scripts/enemy_mimic.gd",
 	"ambusher": "res://scripts/enemy_ambusher.gd",
+	"pack": "res://scripts/enemy_pack.gd",
 }
 
 ## Węzeł wroga (`enemy.gd`) — bez typu, bo `enemy.gd` ładuje tę klasę (cykl preload).
@@ -113,4 +114,52 @@ func disguised() -> bool:
 
 ## Dodatkowe rysowanie w nakładce (etykieta Mimika).
 func draw_overlay(_ov: Node2D) -> void:
+	pass
+
+## Wstęp tiku serwera (liczniki zachowania: cooldowny watahy, rzutu na dźwięk).
+func tick_prelude(_delta: float) -> void:
+	pass
+
+## Tik aktywnego wroga po percepcji (np. strach watahy przed Stalkerem).
+func tick_awake(_delta: float) -> void:
+	pass
+
+## Czy wróg stoi w miejscu w zapowiedzi zachowania (obok reakcji „zauważył"): zapowiedź rzutu Ślepca.
+func holds_still() -> bool:
+	return false
+
+## Ruch narzucony przez zachowanie w łańcuchu decyzji (po zapowiedziach, przed pościgiem): rzut Ślepca, odskok Trzoska po ciosie; true = ustawił `velocity`.
+func drive(_delta: float, _target: Node2D, _speed: float) -> bool:
+	return false
+
+## Stan AI w pościgu za widocznym celem (Trzosek po ciosie: RETREAT).
+func chase_state() -> int:
+	return e.Ai.CHASE
+
+## Czy w pościgu wróg czeka na wolne miejsce przy celu (wataha); true = ustawił `velocity`.
+func chase_hold(_target: Node2D, _d: Vector2, _speed: float) -> bool:
+	return false
+
+## Wróg właśnie zauważył gracza (wataha daje znać kolegom).
+func on_sighting(_pos: Vector2) -> void:
+	pass
+
+## Cios (zapowiedź skończona, po ustawieniu cooldownu): Trzosek odskakuje.
+func after_attack() -> void:
+	pass
+
+## Wróg się zapalił.
+func on_ignite() -> void:
+	pass
+
+## Wróg zginął (po śmierci): morale watahy.
+func on_death() -> void:
+	pass
+
+## Wróg dostał obrażenia (też nieśmiertelne trafienie): przerywa zapowiedź rzutu Ślepca.
+func on_damaged() -> void:
+	pass
+
+## Wróg usłyszał hałas (po ustaleniu śladu `lead`, `dist` = słyszalna odległość po trasie, `amount` = głośność): szarża Ślepca.
+func on_heard_noise(_lead: Vector2, _dist: float, _amount: float) -> void:
 	pass

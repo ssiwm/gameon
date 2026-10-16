@@ -58,21 +58,8 @@ const DROP_TIME := 0.25
 ## Słyszalność po trasie (1.7.4): dźwięk nie przechodzi przez ściany ani piętra — liczy się długość
 ## ścieżki po grafie nawigacji, nie linia prosta. Bez ścieżki (brak węzła) — tłumienie przez mur.
 const SOUND_MUFFLE := 3.0
-## Wataha (Trzosek): max atakujących naraz, pasmo krążenia, morale, strach przed Stalkerem.
-const MAX_ATTACKERS := 2
-const HOVER_MIN := 26.0
-const HOVER_MAX := 44.0
-const PACK_R := 220.0
 const WINDUP_INTERRUPT_STUN := 0.4   ## s ogłuszenia z trafienia, od którego przerywa się zapowiedź ciosu (strzelba, szyna, harpun, maczeta; F3.6)
 const WINDUP_INTERRUPT_CD := 0.6     ## s przerwy po przerwanym ciosie (× enemy_cd trudności)
-const SHARE_RADIUS := 220.0          ## px w poziomie: tyle słyszą krzyk kolegi, który zauważył gracza (F3.4a)
-const SHARE_DY := 40.0               ## px w pionie: kolega z innego piętra go nie słyszy
-const SHARE_COOLDOWN := 3.0          ## s: ten sam wróg daje znać najwyżej raz na tyle
-const FEAR_PER_DEATH := 0.34
-const FEAR_ALPHA := 0.7              ## śmierć przewodnika (najstarszy w watasze) łamie morale mocniej
-const FEAR_DECAY := 0.12             ## /s
-const PANIC_TIME := 2.4
-const STALKER_FEAR_R := 260.0
 const LIGHT_LURE_R := 360.0          ## ciekawość Trzosków: flara w tym promieniu (po trasie) daje im ślad
 ## Pamięć: wracający do domu wróg sprawdza „gorące miejsce" (gdzie ostatnio strzelano)
 const PATROL_RADIUS := 600.0
@@ -139,7 +126,6 @@ const BLOCK_GIVEUP := 4.0
 const RETURN_STUCK_TIME := 4.0       ## s w miejscu w drodze do domu, po których dom przenosi się na miejsce postoju
 const IGNORE_TIME := 8.0
 var _home_t := 0.0
-var _retreat := 0.0           ## Trzosek odskakuje po ciosie (uderz i uciekaj)
 var _path: Array = []
 var _path_i := 0
 var _repath := 0.0
@@ -147,9 +133,7 @@ var _path_goal := Vector2.ZERO
 var _drop_t := 0.0
 var _blocked := false         ## następny krok grafu to skok, którego nie potrafi
 var _hist: Array = []         ## Vector3(czas, x, y) — pozycje z ostatnich HISTORY_S s (serwer)
-var _fear := 0.0              ## morale watahy: śmierć kolegów go podnosi, 1.0 = ucieczka
 var _flee_src := Vector2.ZERO ## od czego ucieka w panice (ZERO = od gracza)
-var _stalker_t := 0.0
 var _sp := 0                  ## Wołek: 0 nic, 1 zapowiedź szarży, 2 szarża, 3 zapowiedź rzutu, 4 ogłuszony po uderzeniu
 var _ai: int = Ai.SLEEP       ## bieżący stan AI (patrz `Ai`)
 var _ai_t := 0.0              ## s w bieżącym stanie AI (serwer)
@@ -161,7 +145,6 @@ var _lunge_pos := Vector2.ZERO ## dokąd (z błędem lokalizacji) leci rzut
 var _lunge_cd := 0.0
 var _sweep_dir := 1.0         ## kierunek przeszukiwania okolicy śladu (Ślepiec)
 var _alert_cd := 0.0          ## s do następnej reakcji — ten sam wróg nie staje za każdym razem, gdy cel mignie na granicy wzroku
-var _share_cd := 0.0          ## s do następnego „dania znać" kolegom o zauważonym graczu (serwer)
 var _net_face := 0.0          ## kierunek patrzenia z serwera (u klientów; `_sync`) — odwrót przy reakcji „zauważył"
 var _hanging := false         ## Skoczek / ćma wiszą pod sufitem, dopóki ich nic nie obudzi
 var _patrolled := false       ## wracając do domu sprawdził już jedno gorące miejsce
@@ -256,14 +239,11 @@ func reset_enemy() -> void:
 	_lunge_wind = 0.0
 	_lunge_t = 0.0
 	_lunge_cd = 0.0
-	_share_cd = 0.0
 	_target = null
 	_hist.clear()
 	_has_lead = false
 	_lose_t = 0.0
 	_search_t = 0.0
-	_retreat = 0.0
-	_fear = 0.0
 	_flee_src = Vector2.ZERO
 	_sp = 0
 	_beh.reset()
@@ -380,7 +360,7 @@ func _derive_ai_state() -> int:
 	if _lunge_t > 0.0:
 		return Ai.LUNGE
 	if _target != null:
-		return Ai.RETREAT if _retreat > 0.0 else Ai.CHASE
+		return _beh.chase_state()
 	if _has_lead:
 		return Ai.SEARCH if _search_t > 0.0 else Ai.INVESTIGATE
 	return Ai.RETURN
@@ -422,9 +402,7 @@ func _tick_server(delta: float) -> void:
 	_alert = maxf(0.0, _alert - delta)
 	_alert_cd = maxf(0.0, _alert_cd - delta)
 	_tick_lunge(delta)
-	_share_cd = maxf(0.0, _share_cd - delta)
-	_retreat = maxf(0.0, _retreat - delta)
-	_fear = maxf(0.0, _fear - FEAR_DECAY * delta)
+	_beh.tick_prelude(delta)
 	_tick_drop(delta)
 	_tick_burn(delta)
 	if not alive:
@@ -455,11 +433,7 @@ func _tick_server(delta: float) -> void:
 		speed *= 0.25
 	if not _def.get("fly", false):
 		speed *= _surface_speed()          # bagno, błoto i olej spowalniają też potwory — da się je tam zwabić
-
-	_stalker_t -= delta
-	if _stalker_t <= 0.0:
-		_stalker_t = 0.3
-		_check_stalker_fear()
+	_beh.tick_awake(delta)
 
 	# faza specjalna rodzaju (Wołek: szarża i rzuty) przejmuje ruch na czas swoich faz
 	if _beh.tick_phase(delta, target):
@@ -486,9 +460,8 @@ func _tick_server(delta: float) -> void:
 		velocity.x = _lunge_dir * speed * float((_def.get("lunge", {}) as Dictionary).get("mult", 2.0))
 		if target != null:
 			_try_begin_attack(target)
-	elif target != null and _retreat > 0.0:
-		# uderz i uciekaj: po ciosie Trzosek odskakuje, więc wataha nie stoi w miejscu
-		velocity.x = -signf(target.global_position.x - global_position.x) * speed * 0.8
+	elif _beh.drive(delta, target, speed):
+		pass
 	elif target != null:
 		_chase(target, speed, delta)
 		_try_begin_attack(target)
@@ -763,33 +736,11 @@ func _perceive(delta: float) -> void:
 	if best != null and not had_target and _ai in [Ai.INVESTIGATE, Ai.SEARCH, Ai.RETURN]:
 		_begin_alert()                    # nowy kontakt wzrokowy po śledztwie / szukaniu / powrocie — nie przy każdym mignięciu celu (ALERT_COOLDOWN)
 	if best != null and not had_target:
-		_shout_sighting(best.global_position)
+		_beh.on_sighting(best.global_position)
 	if best != null:
 		_lead_at(best.global_position)
 	else:
 		_lose_t += PERCEIVE_DT
-
-## Wataha dzieli się tym, co zobaczyła (F3.4a): Trzosek, który właśnie zauważył gracza, „daje znać" pobliskim kolegom — ci, którzy nic nie widzą (śledzą,
-## szukają albo wracają), dostają ślad w miejscu gracza i reakcję „zauważył", więc wataha nie atakuje po jednym, tylko schodzi się razem. Śpiących budzi
-## osobno `wake()`. Zasięg SHARE_RADIUS w poziomie (w pionie ±SHARE_DY — nie przez piętra), cooldown SHARE_COOLDOWN na krzykacza.
-func _shout_sighting(pos: Vector2) -> void:
-	if not _def.get("pack", false) or _share_cd > 0.0 or summoned or omniscient:
-		return
-	_share_cd = SHARE_COOLDOWN
-	for e in _near(global_position, SHARE_RADIUS):
-		if not is_instance_valid(e) or e == self or e.get_script() != get_script() or e.kind != kind:
-			continue
-		if absf(e.global_position.x - global_position.x) <= SHARE_RADIUS and absf(e.global_position.y - global_position.y) <= SHARE_DY:
-			e._hear_shout(pos)
-
-## Kolega dał znać, gdzie jest gracz: tylko aktywny, nic niewidzący (śledztwo / szukanie / powrót) i niebędący przywołanym bossa.
-func _hear_shout(pos: Vector2) -> void:
-	if not alive or not active or _target != null or summoned or omniscient:
-		return
-	if not (_ai in [Ai.INVESTIGATE, Ai.SEARCH, Ai.RETURN]):
-		return
-	_lead_at(pos)
-	_begin_alert()
 
 ## Waga gracza jako celu (F3.5b): mnożnik odległości, im mniejszy, tym chętniej wróg wybiera tego gracza. Człowiek bije bota (bot nie jest wabikiem),
 ## przyciąga światło latarki (nie ślepca) i ogień, a łatwiejszym łupem jest ranny (≤ 1 serce) i odizolowany od drużyny (nikt żywy w TARGET_ISOLATED_R).
@@ -957,8 +908,7 @@ func _chase(target: Node2D, speed: float, delta: float) -> void:
 		return
 	_blocked_t = 0.0
 	_blocked = false
-	if _def.get("pack", false) and _pack_hold(target):
-		_hover(d, speed)
+	if _beh.chase_hold(target, d, speed):
 		return
 	var want := signf(d.x) * speed if absf(d.x) > 3.0 else 0.0
 	# rozsuwanie watahy: nie stają w jednym punkcie, tylko w szeregu (można strzelać po kolei)
@@ -967,67 +917,6 @@ func _chase(target: Node2D, speed: float, delta: float) -> void:
 	velocity.x = want
 	if is_on_wall() and is_on_floor() and _def["leap"]:
 		velocity.y = -230.0
-
-## Wataha atakuje po kolei: gdy MAX_ATTACKERS kolegów już jest przy celu (zapowiedź albo w zasięgu),
-## reszta krąży w pasmie HOVER_MIN..HOVER_MAX i czeka na wolne miejsce — zamiast stać w kolejce w jednym punkcie.
-func _pack_hold(target: Node2D) -> bool:
-	var dx := absf(target.global_position.x - global_position.x)
-	if winding or dx <= float(_def["reach"]) + 6.0:
-		return false
-	var committed := 0
-	for e in _near(target.global_position, 120.0):
-		if not is_instance_valid(e) or e == self or e.get_script() != get_script() or not e.alive or not e.active or e.kind != kind:
-			continue
-		if e._target != target:
-			continue
-		if e.winding or (absf(e.global_position.x - target.global_position.x) <= float(e._def["reach"]) + 6.0 \
-				and absf(e.global_position.y - target.global_position.y) < 18.0):
-			committed += 1
-			if committed >= MAX_ATTACKERS:
-				break                                  # wynik i tak „zajęte" — nie liczymy dalej
-	return committed >= MAX_ATTACKERS
-
-func _hover(d: Vector2, speed: float) -> void:
-	var ax := absf(d.x)
-	if ax > HOVER_MAX:
-		velocity.x = signf(d.x) * speed
-	elif ax < HOVER_MIN:
-		velocity.x = -signf(d.x) * speed * 0.5
-	else:
-		velocity.x = sin(Time.get_ticks_msec() * 0.004 + float(get_instance_id() % 7)) * speed * 0.3
-
-## Morale: śmierć kolegi z watahy w PACK_R podnosi strach; przy 1.0 reszta się rozbiega (PANIC_TIME).
-func _notify_pack_death() -> void:
-	if not _def.get("pack", false):
-		return
-	var alpha := true
-	var mates: Array = []
-	for e in _near(global_position, PACK_R):
-		if not is_instance_valid(e) or e == self or e.get_script() != get_script() or not e.alive or not e.active or e.kind != kind:
-			continue
-		if e.global_position.distance_to(global_position) > PACK_R:
-			continue
-		mates.append(e)
-		if e.get_instance_id() < get_instance_id():
-			alpha = false          # przewodnik = najstarszy w watasze
-	for e in mates:
-		e._on_packmate_died(alpha, global_position)
-
-func _on_packmate_died(was_alpha: bool, pos: Vector2) -> void:
-	_fear += FEAR_ALPHA if was_alpha else FEAR_PER_DEATH
-	if _fear >= 1.0:
-		_fear = 0.0
-		_panic = maxf(_panic, PANIC_TIME)
-		_flee_src = _target.global_position if _target != null else pos
-
-## Strach przed Stalkerem: gdy ON jest aktywny i blisko, Trzoski uciekają od niego.
-func _check_stalker_fear() -> void:
-	if not _def.get("fears", false) or not NoiseMgr.stalker_awake:
-		return
-	var st := get_parent().get_node_or_null("Stalker") as Node2D
-	if st != null and global_position.distance_to(st.global_position) < STALKER_FEAR_R:
-		_panic = maxf(_panic, 1.6)
-		_flee_src = st.global_position
 
 func _separation(speed: float) -> float:
 	var push := 0.0
@@ -1200,8 +1089,7 @@ func _resolve_attack() -> void:
 	var pp := _windup_target
 	_windup_target = null
 	_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
-	if kind == "trzosek":
-		_retreat = 0.32
+	_beh.after_attack()
 	if pp != null and is_instance_valid(pp) and not pp.dead and _in_reach(pp, 6.0) and not _wall_between(pp):
 		pp.deliver_hit(_scaled_damage(int(_def["damage"])), global_position, kind)
 
@@ -1290,9 +1178,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 func _ignite(seconds: float) -> void:
 	var fresh := _burn <= 0.0
 	_burn = maxf(_burn, seconds)
-	if kind == "trzosek":
-		_panic = maxf(_panic, 1.2)
-		_flee_src = Vector2.ZERO
+	_beh.on_ignite()
 	if fresh:
 		if NoiseMgr.has_network():
 			_ignite_fx.rpc(seconds)
@@ -1356,7 +1242,7 @@ func _die() -> void:
 		var ls := get_tree().get_first_node_in_group("level")
 		if ls != null:
 			ls.spawn_item("scrap", 0, global_position + Vector2(randf_range(-6.0, 6.0), -14), int(EnemyDefs.value(kind, "scrap")))
-	_notify_pack_death()
+	_beh.on_death()
 	_set_alive(false)
 	winding = false
 	_windup = 0.0
@@ -1464,7 +1350,7 @@ func _update_sprite() -> void:
 		if winding:
 			anim = "windup"
 		elif moving:
-			anim = "run" if (kind == "trzosek" or _ai == Ai.LUNGE) else "walk"
+			anim = "run" if _ai == Ai.LUNGE else "walk"
 		else:
 			anim = "idle"
 	anim = _beh.anim(anim, moving)
