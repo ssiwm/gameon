@@ -49,6 +49,7 @@ func run(m: Node2D) -> void:
 	await _test_target_hysteresis()
 	await _test_hear_error()
 	await _test_pack_shout()
+	await _test_windup_interrupt()
 	_finish()
 
 func _finish() -> void:
@@ -709,5 +710,51 @@ func _test_pack_shout() -> void:
 	player.set_physics_process(true)
 	player.global_position = Vector2(-4000.0, -4000.0)
 	for n in [a, b, c, d, up, far, busy, minion, strip]:
+		n.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- uczciwe zapowiedzi (ENEMY_PLAN.md F3.6)
+
+func _hit_info(e: Node, stun: float) -> Dictionary:
+	return {"amount": 1.0, "dir": Vector2.RIGHT, "pos": e.global_position, "shooter": int(player.player_id), "type": "bullet", "stun": stun}
+
+## Mocne ogłuszenie (≥ 0,4 s) przerywa zwykły cios w trakcie zapowiedzi i daje wrogowi przerwę; słabe trafienie, zapowiedzi specjalne Wołka,
+## krzyk Podsłuchacza i przemiana Mimika (bez celu ciosu) nie są przerywane.
+func _test_windup_interrupt() -> void:
+	var y := -7500.0
+	var strip := _floor(FAR_X + 16000.0, FAR_X + 16600.0, y)
+	var e := _spawn("trzosek", Vector2(FAR_X + 16100.0, y))
+	e.set_physics_process(false)
+	e._windup = 0.3
+	e._windup_target = player
+	e.winding = true
+	e.take_hit(_hit_info(e, 0.1))
+	check("zapowiedź: słabe trafienie jej nie przerywa", e._windup > 0.0 and e.winding and e._windup_target == player)
+	e.take_hit(_hit_info(e, 0.5))
+	check("zapowiedź: ogłuszenie 0,5 s przerywa cios (bez zapowiedzi, bez celu)", e._windup == 0.0 and not e.winding and e._windup_target == null)
+	check("zapowiedź: po przerwaniu przerwa przed kolejnym ciosem", e._cd >= 0.5, str(e._cd))
+	var w := _spawn("wolek", Vector2(FAR_X + 16200.0, y))
+	w.set_physics_process(false)
+	w._windup = 0.3
+	w._windup_target = player
+	w.winding = true
+	w._sp = 1                                              # zapowiedź szarży
+	w.take_hit(_hit_info(w, 0.8))
+	check("zapowiedź: szarża Wołka (stan specjalny) nie jest przerywana", w._windup > 0.0 and w.winding)
+	var l := _spawn("podsluchacz", Vector2(FAR_X + 16300.0, y))
+	l.set_physics_process(false)
+	l._windup = 0.5
+	l._windup_target = player
+	l.winding = true
+	l.take_hit(_hit_info(l, 0.8))
+	check("zapowiedź: krzyk Podsłuchacza nie jest przerywany ogłuszeniem", l._windup > 0.0)
+	var m := _spawn("mimik", Vector2(FAR_X + 16400.0, y))
+	m.set_physics_process(false)
+	m._windup = 0.35
+	m._windup_target = null
+	m.winding = true
+	m._interrupt_windup()
+	check("zapowiedź: przemiana Mimika (bez celu ciosu) nie jest przerywana", m._windup > 0.0 and m.winding)
+	for n in [e, w, l, m, strip]:
 		n.queue_free()
 	await get_tree().physics_frame

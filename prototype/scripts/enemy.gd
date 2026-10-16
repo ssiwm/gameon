@@ -53,6 +53,8 @@ const MAX_ATTACKERS := 2
 const HOVER_MIN := 26.0
 const HOVER_MAX := 44.0
 const PACK_R := 220.0
+const WINDUP_INTERRUPT_STUN := 0.4   ## s ogłuszenia z trafienia, od którego przerywa się zapowiedź ciosu (strzelba, szyna, harpun, maczeta; F3.6)
+const WINDUP_INTERRUPT_CD := 0.6     ## s przerwy po przerwanym ciosie (× enemy_cd trudności)
 const SHARE_RADIUS := 220.0          ## px w poziomie: tyle słyszą krzyk kolegi, który zauważył gracza (F3.4a)
 const SHARE_DY := 40.0               ## px w pionie: kolega z innego piętra go nie słyszy
 const SHARE_COOLDOWN := 3.0          ## s: ten sam wróg daje znać najwyżej raz na tyle
@@ -541,6 +543,17 @@ func _update_facing() -> void:
 		var lp := _local_player_pos()
 		if is_finite(lp.x) and absf(lp.x - global_position.x) > 4.0:
 			_facing = signf(lp.x - global_position.x)
+
+## Mocne ogłuszenie (strzelba, szyna, harpun, maczeta) przerywa zwykły cios w trakcie zapowiedzi (F3.6) — kontra, którą gracz może zaplanować: zapowiedź
+## daje czas na unik ALBO na ogłuszenie. Nie dotyczy zapowiedzi specjalnych Wołka (`_sp`), przemiany Mimika (bez celu ciosu) i krzyku Podsłuchacza
+## (który i tak zaczyna się od nowa po trafieniu). Po przerwaniu krótka przerwa, żeby wróg nie ponowił ciosu w tej samej chwili.
+func _interrupt_windup() -> void:
+	if _windup <= 0.0 or _windup_target == null or _sp != 0 or kind == "podsluchacz":
+		return
+	_windup = 0.0
+	_windup_target = null
+	winding = false
+	_cd = maxf(_cd, WINDUP_INTERRUPT_CD * Difficulty.m("enemy_cd"))
 
 ## Skoczek lądujący na graczu: 2 obrażenia, łoskot (hałas) i pył.
 func _land_hit() -> void:
@@ -1472,6 +1485,8 @@ func take_hit(info: Dictionary) -> Dictionary:
 	hp -= dmg
 	_flash = 0.1
 	_stagger = maxf(_stagger, 0.12 + float(info.get("stun", 0.0)))
+	if float(info.get("stun", 0.0)) >= WINDUP_INTERRUPT_STUN:
+		_interrupt_windup()
 	velocity.x += signf(info["dir"].x) * float(info.get("knock", 0.0)) * float(_def["knock_mult"])
 	var pull: float = info.get("pull", 0.0)
 	if pull > 0.0:
