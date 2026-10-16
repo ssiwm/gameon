@@ -1,6 +1,6 @@
 # Plan: porządki w logice wrogów pod widok 3D i mądrzejsza AI
 
-Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236, gałąź `feat/enemy-facing`), zostają F2–F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
+Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237, gałąź `feat/enemy-defs`), zostają F2b–F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
 `stalker.gd`, `nest.gd`, `director.gd`, `nav.gd`, `noise_manager.gd`, `view3d.gd`) i na `MISSION_3D_SPIKE.md` — nie na próbnej implementacji,
 więc rozmiary faz są szacunkowe, a uwagi o błędach pochodzą z lektury kodu, nie z gry.
 
@@ -74,9 +74,14 @@ okrężnie (rodzaj ze ścieżki skryptu, błysk trafienia z koloru `modulate`, `
 
 ### F2 — dane i moduły, ok. tygodnia
 
-- `EnemyDef` (Resource) per rodzaj: statystyki, zmysły, dropy, głosy, XP, model 3D; `hurt_h` wyliczane z modelu.
-- `BossBase`: wspólne `_humans()`, `hp_for`, fazy, miniony przez RPC, zdarzenia, `reset`.
-- Podział `enemy.gd` na zmysły, mózg (maszyna stanów) i zachowania (wataha, szarża, zasadzka, nasłuch, ćma, mimik).
+- **F2a — zrobione w 1.7.237:** `enemy_defs.gd` — jedno źródło danych rodzaju (statystyki, zmysły, `xp`, `scrap`, `supply`, `ammo`, `health`, `voice`).
+  Zamiast zasobów `.tres` zwykły `const` w skrypcie, jak `weapons.gd` i `throwables.gd` (bez dodatkowych plików do ładowania i commitowania).
+  `Enemy.KINDS` zostaje jako alias (kodeks, HUD, testy bez zmian); `SUPPLY_DROP`, `AMMO_DROP`, `HEALTH_DROP`, `VOICES`, `KILL_XP`, `Scrap.DROP` usunięte.
+  Test w `--enemytest`: komplet pól, wzorzec wartości sprzed przeniesienia, dźwięki głosów w manifeście, model 3D (`SPEC`) dla każdego rodzaju.
+  **Zostaje:** `hurt_h` nadal ręcznie zsynchronizowane z `fit` w `enemy3d.gd: SPEC` (pilnuje tego `test_proportions.gd`); `SPEC` zostaje osobno jako dane prezentacji.
+- **F2b — do zrobienia:** `BossBase`: wspólne `_humans()`, `hp_for`, fazy, miniony przez RPC, zdarzenia, `reset` (dziś `boss.gd` i `leech.gd` je dublują).
+- **F2c — do zrobienia:** podział `enemy.gd` na zmysły, mózg (maszyna stanów) i zachowania (wataha, szarża, zasadzka, nasłuch, ćma, mimik) — najlepiej razem
+  z F3, żeby nie przenosić kodu dwa razy.
 
 ### F3 — inteligencja, 2–3 tygodnie etapami (kolejność wg wpływu na rozgrywkę)
 

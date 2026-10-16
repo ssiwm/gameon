@@ -6,57 +6,9 @@ extends CharacterBody2D
 ## w swoim promieniu słyszenia albo gracz nie podejdzie za blisko. Dzięki temu
 ## cisza i skradanie mają realną wartość także wobec zwykłych wrogów (filar 2).
 
-const KINDS := {
-	"trzosek": {
-		"hp": 30.0, "speed": 88.0, "damage": 1, "windup": 0.28, "reach": 13.0,
-		"cooldown": 0.9, "leap": true, "hear": 200.0, "wake_near": 90.0, "sight": 260.0,
-		"pack": true, "fears": true, "phototaxis": true, "fire_shy": true,
-		"color": Color(0.62, 0.2, 0.22), "size": Vector2(10, 14), "knock": 70.0, "knock_mult": 1.0, "head": 0.0,
-	},
-	# Ćma (1.7.5): światłolubna — wisi pod sufitem, budzi ją światło (latarka, flara) i leci na nie.
-	# Przy flarze spala się, przy latarce gryzie gracza: rzuć flarę daleko, żeby ją odciągnąć.
-	"cma": {
-		"hp": 18.0, "speed": 74.0, "damage": 1, "windup": 0.2, "reach": 10.0,
-		"cooldown": 1.2, "leap": false, "hear": 0.0, "wake_near": 0.0, "sight": 0.0,
-		"fly": true, "moth": true, "phototaxis": true,
-		"color": Color(0.74, 0.7, 0.55), "size": Vector2(10, 8), "hurt_h": 18.0, "hurt_w": 16.0, "knock": 40.0, "knock_mult": 1.0, "head": 0.0,
-	},
-	# Skoczek (GDD §7.1): wisi pod sufitem nad przejściem i spada na tego, kto pod nim przejdzie (2 obrażenia).
-	"skoczek": {
-		"hp": 40.0, "speed": 84.0, "damage": 1, "windup": 0.3, "reach": 13.0,
-		"cooldown": 1.0, "leap": true, "hear": 230.0, "wake_near": 60.0, "sight": 280.0,
-		"hang": true, "fire_shy": true,
-		"color": Color(0.62, 0.6, 0.5), "size": Vector2(12, 14), "hurt_h": 17.0, "knock": 60.0, "knock_mult": 0.9, "head": 0.0,
-	},
-	# Mimik (GDD §7.1): udaje kolegę z drużyny — stoi jak człowiek i wzywa pomocy głosem gracza.
-	# Zdradzają go: brak serduszek nad głową, brak kroków i oddechu, oczy świecące w ciemności,
-	# dziwny numer w etykiecie. Latarka, strzał albo podejście (46 px) go demaskują.
-	"mimik": {
-		"hp": 70.0, "speed": 95.0, "damage": 2, "windup": 0.4, "reach": 14.0,
-		"cooldown": 1.2, "leap": true, "hear": 0.0, "wake_near": 46.0, "sight": 220.0,
-		"mimic": true,
-		"color": Color(0.6, 0.72, 0.6), "size": Vector2(10, 16), "hurt_h": 22.0, "knock": 50.0, "knock_mult": 0.8, "head": 0.28,
-	},
-	# Ślepiec (GDD §7.1): nie widzi, tylko słyszy — idzie do źródła hałasu; kucanie i cisza go mijają.
-	"slepiec": {
-		"hp": 60.0, "speed": 70.0, "damage": 1, "windup": 0.35, "reach": 14.0,
-		"cooldown": 1.1, "leap": false, "hear": 300.0, "wake_near": 36.0, "sight": 26.0,
-		"keen": true, "min_noise": 0.25, "blind": true, "fire_shy": true,
-		"color": Color(0.8, 0.78, 0.76), "size": Vector2(12, 17), "hurt_h": 27.0, "knock": 40.0, "knock_mult": 0.6, "head": 0.28,
-	},
-	# Podsłuchacz (GDD §7.1): stoi nieruchomo i nasłuchuje; zobaczy albo usłyszy — krzyczy i ściąga hordę.
-	"podsluchacz": {
-		"hp": 35.0, "speed": 0.0, "damage": 0, "windup": 0.9, "reach": 0.0,
-		"cooldown": 6.0, "leap": false, "hear": 170.0, "wake_near": 0.0, "sight": 240.0,
-		"color": Color(0.58, 0.5, 0.57), "size": Vector2(12, 24), "hurt_h": 34.0, "knock": 30.0, "knock_mult": 0.5, "head": 0.28,
-	},
-	"wolek": {
-		"hp": 140.0, "speed": 36.0, "damage": 2, "windup": 0.6, "reach": 20.0,
-		"cooldown": 1.6, "leap": false, "hear": 150.0, "wake_near": 70.0, "sight": 200.0,
-		"bruiser": true, "armor": 3.0,
-		"color": Color(0.36, 0.27, 0.34), "size": Vector2(20, 26), "hurt_h": 32.0, "knock": 14.0, "knock_mult": 0.2, "head": 0.28,
-	},
-}
+const EnemyDefs := preload("res://scripts/enemy_defs.gd")
+## Dane rodzajów (statystyki, zmysły, dropy, XP, głos) żyją w `enemy_defs.gd`; `Enemy.KINDS` zostaje jako ta sama tabela dla kodeksu, HUD-u i testów.
+const KINDS := EnemyDefs.DEFS
 
 const Lights := preload("res://scripts/lights.gd")
 const Hurtbox := preload("res://scripts/hurtbox.gd")
@@ -74,22 +26,9 @@ const MAX_FALL := 620.0
 ## Kroki (0,25 na tick) nie budzą; każdy strzał tak — także pierwszy z zimnej
 ## lufy M-83 (0,6). Przy progu 1,0 pojedyncze strzały M-83 były dla wrogów nieme.
 const MIN_WAKE_NOISE := 0.5
-const SUPPLY_DROP := {"wolek": 0.35, "mimik": 0.4, "slepiec": 0.1, "podsluchacz": 0.15, "skoczek": 0.08}   ## szansa na skrzynkę zaopatrzenia (throwables.gd)
-const AMMO_DROP := {"trzosek": 0.22, "wolek": 0.6, "slepiec": 0.3, "podsluchacz": 0.15, "mimik": 0.3, "skoczek": 0.25, "cma": 0.0}   ## szansa na skrzynkę z amunicją do broni, którą ktoś nosi
-const HEALTH_DROP := {"wolek": 0.75}   ## szansa na apteczkę (1.5) — tylko mocniejsi wrogowie
 const SIBLING_WAKE_RADIUS := 140.0
 const DEATH_FX_COLOR_VAR := 0.15
 const BURN_DPS := 8.0
-## Głos gatunku: zdarzenie -> [rodzina, liczba wariantów, głośność dB, wysokość]. „attack" gra przy zapowiedzi ciosu,
-## „death" przy śmierci. Skoczek mówi głosem Trzoska (niżej), zdemaskowany Mimik głosem Ślepca (wyżej); Ćma jest niema.
-const VOICES := {
-	"trzosek": {"attack": ["trzosek_attack", 3, -6.0, 1.0], "death": ["trzosek_death", 2, -4.0, 1.0]},
-	"skoczek": {"attack": ["trzosek_attack", 3, -5.0, 0.8], "death": ["trzosek_death", 2, -4.0, 0.8]},
-	"wolek": {"attack": ["wolek_attack", 2, -3.0, 1.0], "death": ["wolek_death", 2, -2.0, 1.0]},
-	"slepiec": {"attack": ["slepiec_attack", 2, -4.0, 1.0], "death": ["slepiec_death", 2, -3.0, 1.0]},
-	"mimik": {"attack": ["slepiec_attack", 2, -4.0, 1.2], "death": ["slepiec_death", 2, -3.0, 1.2]},
-	"podsluchacz": {"death": ["slepiec_death", 2, -4.0, 1.35]},
-}
 const ARMOR_MIN_FRAC := 0.4           ## pancerz nigdy nie zbija trafienia poniżej tego ułamka
 ## Percepcja (1.7): wróg goni tylko to, co widzi (promień wzroku + linia bez ściany), albo idzie
 ## na ostatni znany ślad (hałas, ostatnia pozycja gracza), rozgląda się, a po dłuższym braku
@@ -1436,25 +1375,25 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 func _die() -> void:
 	if NoiseMgr.is_server() and _last_attacker != 0 and not summoned and not String(name).begins_with("LeechSpawn") and not is_in_group("roamers"):
 		Profile.server_award_kill(_last_attacker, kind)         # XP profilu strzelca (boty, Trzoski bossa i wędrowcy Dyrektora nie liczą się)
-	if NoiseMgr.is_server() and randf() < minf(1.0, float(HEALTH_DROP.get(kind, 0.0)) * Difficulty.m("drops")):
+	if NoiseMgr.is_server() and randf() < minf(1.0, EnemyDefs.value(kind, "health") * Difficulty.m("drops")):
 		var lvl := get_tree().get_first_node_in_group("level")
 		if lvl != null:
 			lvl.spawn_health(global_position + Vector2(0, -14))
-	if NoiseMgr.is_server() and not summoned and randf() < minf(1.0, float(AMMO_DROP.get(kind, 0.0)) * Difficulty.m("drops")):
+	if NoiseMgr.is_server() and not summoned and randf() < minf(1.0, EnemyDefs.value(kind, "ammo") * Difficulty.m("drops")):
 		var w := Arsenal.pick_drop_weapon()
 		var lv := get_tree().get_first_node_in_group("level")
 		if w >= 0 and lv != null:
 			var n: int = maxi(1, int(Weapons.def(w).pickup_rounds * 0.5))
 			lv.spawn_item("ammo", w, global_position + Vector2(randf_range(-6.0, 6.0), -14), n)
-	if NoiseMgr.is_server() and not summoned and not NightShift.active and randf() < minf(1.0, float(SUPPLY_DROP.get(kind, 0.0)) * Difficulty.m("drops")):
+	if NoiseMgr.is_server() and not summoned and not NightShift.active and randf() < minf(1.0, EnemyDefs.value(kind, "supply") * Difficulty.m("drops")):
 		var lsup := get_tree().get_first_node_in_group("level")
 		if lsup != null:
 			var sk := Throwables.drop_kind()                     # skrzynka zaopatrzenia: granat, apteczka, mina… do wspólnego zapasu
 			lsup.spawn_item("supply", Throwables.ORDER.find(sk), global_position + Vector2(randf_range(-6.0, 6.0), -14))
-	if NoiseMgr.is_server() and not summoned and Scrap.enabled() and Scrap.DROP.has(kind) and randf() < Scrap.DROP_CHANCE:
+	if NoiseMgr.is_server() and not summoned and Scrap.enabled() and EnemyDefs.value(kind, "scrap") > 0.0 and randf() < Scrap.DROP_CHANCE:
 		var ls := get_tree().get_first_node_in_group("level")
 		if ls != null:
-			ls.spawn_item("scrap", 0, global_position + Vector2(randf_range(-6.0, 6.0), -14), int(Scrap.DROP[kind]))
+			ls.spawn_item("scrap", 0, global_position + Vector2(randf_range(-6.0, 6.0), -14), int(EnemyDefs.value(kind, "scrap")))
 	_notify_pack_death()
 	_set_alive(false)
 	winding = false
@@ -1514,9 +1453,9 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 func view_info() -> Dictionary:
 	return {"kind": kind, "alive": alive, "winding": winding, "sp": _sp, "flash": _flash > 0.0}
 
-## Głos gatunku dla zdarzenia (VOICES); gatunek bez wpisu milczy.
+## Głos gatunku dla zdarzenia (`enemy_defs.gd`: voice); gatunek bez wpisu milczy.
 func _voice(event: String) -> void:
-	var v: Array = (VOICES.get(kind, {}) as Dictionary).get(event, [])
+	var v: Array = EnemyDefs.voice(kind, event)
 	if not v.is_empty():
 		Audio.play_variant_at(String(v[0]), int(v[1]), global_position, Audio.BUS_WORLD, float(v[2]), float(v[3]))
 

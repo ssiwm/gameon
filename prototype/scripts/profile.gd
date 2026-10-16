@@ -2,7 +2,7 @@ extends Node
 ## Autoload „Profile”: lokalny profil gracza (GDD §10.1 „Wroga wiedza”, §10.2 perki). Każdy człowiek ma własny — XP, poziom i założone perki
 ## żyją na JEGO komputerze (`user://profile.cfg`), nie w zapisie hosta (złom i ulepszenia są wspólne, perk jest osobisty).
 ##
-## XP (liczone na serwerze, wysyłane do właściciela profilu): zabójstwa (tabela KILL_XP, ostatni trafiający), ukończenie misji (+bonusy: cel
+## XP (liczone na serwerze, wysyłane do właściciela profilu): zabójstwa (pole `xp` w enemy_defs.gd, ostatni trafiający), ukończenie misji (+bonusy: cel
 ## poboczny, bez upadków, boss, pierwsze ukończenie danej misji), podniesienie kolegi. Nocny Dyżur: połowa. Poziom: próg kolejnego rośnie
 ## o 150, 250, 350… (L2 = 150 XP, L3 = 400, L4 = 750, L5 = 1200). Sloty perków: 1 od poziomu 2, 2 od poziomu 4. Perki: perks.gd (hooki — faza B3).
 
@@ -20,8 +20,7 @@ const STEP_PER_LEVEL := 100
 const SLOT_LEVELS := [2, 4]           ## poziom odblokowujący 1. i 2. slot perka
 const MAX_SLOTS := 2
 
-## XP za zabójstwo wg rodzaju wroga (enemy.gd KINDS).
-const KILL_XP := {"trzosek": 2, "cma": 3, "podsluchacz": 4, "skoczek": 5, "slepiec": 6, "mimik": 10, "wolek": 12}
+const EnemyDefs := preload("res://scripts/enemy_defs.gd")        ## XP za zabójstwo wg rodzaju wroga: pole `xp` w enemy_defs.gd
 const XP_MISSION := 100
 const XP_SIDE := 50
 const XP_NO_DOWNS := 25
@@ -121,12 +120,12 @@ func _is_local(player_id: int) -> bool:
 
 ## Serwer: zabójstwo wroga `kind` przez gracza `shooter_id` (boty i przypadkowe zgony nie dają XP).
 func server_award_kill(shooter_id: int, kind: String) -> void:
-	if not NoiseMgr.is_server() or not KILL_XP.has(kind) or _human_by_id(shooter_id) == null:
+	if not NoiseMgr.is_server() or EnemyDefs.xp(kind) <= 0 or _human_by_id(shooter_id) == null:
 		return
 	var ms: Variant = get_tree().current_scene.get("mission") if get_tree().current_scene != null else null
 	if ms != null and ms.has_method("note_kill"):
 		ms.note_kill(shooter_id)                                   # statystyka do ekranu wyniku (liczba zabójstw per gracz)
-	var amount := int(KILL_XP[kind])
+	var amount := EnemyDefs.xp(kind)
 	if NightShift.active:
 		amount = maxi(1, amount / 2)
 	if _is_local(shooter_id):
