@@ -76,7 +76,7 @@ const DEFS := {
 	"wolek": {
 		"hp": 140.0, "speed": 36.0, "damage": 2, "windup": 0.6, "reach": 20.0,
 		"cooldown": 1.6, "leap": false, "hear": 150.0, "wake_near": 70.0, "sight": 200.0,
-		"bruiser": true, "armor": 3.0,
+		"behavior": "bruiser", "armor": 3.0,
 		# głaz (F3.9): zawsze dostępny, gdy w pobliżu brak skrzyni; `dmg` HP (0,5 = ukryte „stłuczenie", dwa trafienia = serce), `cd` s przerwy wg trudności
 		# [EASY, NORMAL, HARD], `windup` s zapowiedzi (× `enemy_windup`), `range` px poziomo, `noise` hałas rzutu
 		"boulder": {"dmg": 0.5, "cd": [8.0, 5.0, 3.2], "windup": 0.6, "range": 220.0, "noise": 2.0},

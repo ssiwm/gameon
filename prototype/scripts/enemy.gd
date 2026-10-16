@@ -73,18 +73,6 @@ const FEAR_ALPHA := 0.7              ## śmierć przewodnika (najstarszy w watas
 const FEAR_DECAY := 0.12             ## /s
 const PANIC_TIME := 2.4
 const STALKER_FEAR_R := 260.0
-## Wołek (bruiser): szarża z zapowiedzią (rozbija skrzynie i beczki, o ścianę się ogłusza) i rzut skrzynią.
-const CHARGE_WINDUP := 0.7
-const CHARGE_TIME := 0.9
-const CHARGE_MULT := 3.4
-const CHARGE_CD := 7.0
-const THROW_WINDUP := 0.8
-const THROW_CD := 6.0
-const THROW_DY_MAX := 160.0          ## px różnicy poziomów, z której Wołek jeszcze rzuca skrzynią (w górę i w dół; ok. 10 kafli)
-const CRASH_STUN := 1.3
-const RUN_CHECK_MAX := 280.0         ## px: tyle rozbiegu sprawdzamy przed szarżą (ściana i podłoga)
-const RUN_FLOOR_STEP := 16.0         ## px: co tyle sprawdzamy, czy pod rozbiegiem jest podłoga (kafel)
-const RUN_FLOOR_DEPTH := 28.0        ## px w dół od poziomu stóp: głębiej to już przepaść, nie stopień
 ## Ćma i światło
 const MOTH_SEEK_R := 420.0           ## z tej odległości ćma wyczuwa światło
 const MOTH_BURN_DPS := 6.0           ## spalanie przy flarze
@@ -182,14 +170,6 @@ var _sweep_dir := 1.0         ## kierunek przeszukiwania okolicy śladu (Ślepie
 var _alert_cd := 0.0          ## s do następnej reakcji — ten sam wróg nie staje za każdym razem, gdy cel mignie na granicy wzroku
 var _share_cd := 0.0          ## s do następnego „dania znać" kolegom o zauważonym graczu (serwer)
 var _net_face := 0.0          ## kierunek patrzenia z serwera (u klientów; `_sync`) — odwrót przy reakcji „zauważył"
-var _sp_t := 0.0
-var _sp_dir := 1.0
-var _sp_crate: Node = null
-var _sp_boulder := false      ## zapowiedź rzutu (`_sp` 3) dotyczy głazu, nie skrzyni (F3.9)
-var _boulder_cd := 2.0        ## przerwa między głazami (wg trudności, `enemy_defs.gd: boulder.cd`)
-var _charge_cd := 3.0
-var _throw_cd := 2.0
-var _charge_hit := false
 var _hanging := false         ## Skoczek / ćma wiszą pod sufitem, dopóki ich nic nie obudzi
 var _drop_attack := false     ## Skoczek spada na gracza (obrażenia przy lądowaniu)
 var _patrolled := false       ## wracając do domu sprawdził już jedno gorące miejsce
@@ -309,16 +289,11 @@ func reset_enemy() -> void:
 	_fear = 0.0
 	_flee_src = Vector2.ZERO
 	_sp = 0
-	_sp_crate = null
-	_sp_boulder = false
-	_boulder_cd = 2.0
-	_charge_cd = 3.0
-	_throw_cd = 2.0
+	_beh.reset()
 	_lure_t = 4.0
 	_hanging = bool(_def.get("hang", false)) or bool(_def.get("moth", false))
 	_drop_attack = false
 	_patrolled = false
-	_beh.reset()
 	_level_t = 0.0
 	_home_t = 0.0
 	_path.clear()
@@ -518,11 +493,11 @@ func _tick_server(delta: float) -> void:
 		_stalker_t = 0.3
 		_check_stalker_fear()
 
-	# Wołek: szarża i rzut skrzynią przejmują ruch na czas swoich faz
-	if _def.get("bruiser", false) and _bruiser_tick(delta, target):
+	# faza specjalna rodzaju (Wołek: szarża i rzuty) przejmuje ruch na czas swoich faz
+	if _beh.tick_phase(delta, target):
 		_apply_gravity(delta)
 		_slide()
-		_after_move_bruiser()
+		_beh.after_phase_move()
 		_send_state(delta)
 		return
 
@@ -785,206 +760,13 @@ func _mimik_lure(delta: float) -> void:
 func _mimic_call() -> void:
 	Audio.play_variant_at("player_hurt", 2, global_position, Audio.BUS_WORLD, -5.0, randf_range(0.95, 1.1))
 
-## --- Wołek: szarża i rzut skrzynią ------------------------------------------
-
-## Zwraca true, gdy faza specjalna przejęła ruch w tej klatce.
-func _bruiser_tick(delta: float, target: Node2D) -> bool:
-	_charge_cd = maxf(0.0, _charge_cd - delta)
-	_throw_cd = maxf(0.0, _throw_cd - delta)
-	_boulder_cd = maxf(0.0, _boulder_cd - delta)
-	match _sp:
-		0:
-			if target == null or _windup > 0.0 or _stagger > 0.0 or _panic > 0.0:
-				return false
-			var d := target.global_position - global_position
-			var level := absf(d.y) <= 24.0
-			var ax := absf(d.x)
-			if level and ax > 100.0 and ax < 280.0 and _charge_cd <= 0.0 and _run_clear(signf(d.x), ax):
-				_sp = 1
-				_sp_t = CHARGE_WINDUP * Difficulty.m("enemy_windup")
-				_sp_dir = signf(d.x)
-				_charge_hit = false
-				winding = true
-				return true
-			# rzut skrzynią także w górę i w dół (Wołek nie jest bezradny wobec gracza na półce nad nim czy w dole): do THROW_DY_MAX px różnicy
-			# poziomów, a cel prawie nad / pod nim (ax < 60) też jest w zasięgu; łuk balistyczny liczy `_throw_crate`
-			if ax < 220.0 and (ax > 60.0 or not level) and absf(d.y) <= THROW_DY_MAX:
-				var c := _find_crate()
-				if c != null:
-					if _throw_cd <= 0.0 and _throw_clear(target):
-						_sp = 3
-						_sp_t = THROW_WINDUP * Difficulty.m("enemy_windup")
-						_sp_dir = signf(d.x) if absf(d.x) > 1.0 else _facing
-						_sp_crate = c
-						_sp_boulder = false
-						winding = true
-						return true
-				elif _boulder_ready(ax) and _throw_clear(target):
-					# głaz (F3.9): zawsze pod ręką, gdy w pobliżu nie ma skrzyni — słabszy, ale częstszy; przerwa zależy od trudności
-					_sp = 3
-					_sp_t = float(_def["boulder"].get("windup", 0.6)) * Difficulty.m("enemy_windup")
-					_sp_dir = signf(d.x) if absf(d.x) > 1.0 else _facing
-					_sp_crate = null
-					_sp_boulder = true
-					winding = true
-					return true
-			return false
-		1:
-			velocity.x = 0.0
-			_sp_t -= delta
-			if _sp_t <= 0.0:
-				_sp = 2
-				_sp_t = CHARGE_TIME
-				winding = false
-			return true
-		2:
-			_sp_t -= delta
-			velocity.x = _sp_dir * float(_def["speed"]) * Difficulty.m("enemy_speed") * CHARGE_MULT
-			if _sp_t <= 0.0:
-				_end_charge()
-			return true
-		3:
-			velocity.x = 0.0
-			_sp_t -= delta
-			if _sp_t <= 0.0:
-				_throw_crate(target)
-			return true
-		4:
-			velocity.x = 0.0
-			_sp_t -= delta
-			if _sp_t <= 0.0:
-				_sp = 0
-				winding = false
-			return true
-	return false
-
-## Czy przed Wołkiem jest wolna droga na rozbieg: bez ściany na całym dystansie szarży i z podłogą pod każdym kaflem (nie rozpędza się w przepaść).
-func _run_clear(dir: float, dist: float) -> bool:
-	var space := get_world_2d().direct_space_state
-	var run := minf(dist, RUN_CHECK_MAX)
-	var from := global_position + Vector2(0, -10)
-	if not space.intersect_ray(PhysicsRayQueryParameters2D.create(from, from + Vector2(dir * run, 0), 1)).is_empty():
-		return false
-	var x := RUN_FLOOR_STEP
-	while x <= run:
-		var top := global_position + Vector2(dir * x, -4.0)
-		var fq := PhysicsRayQueryParameters2D.create(top, top + Vector2(0, RUN_FLOOR_DEPTH), 1 | (1 << (PLATFORM_BIT - 1)))
-		if space.intersect_ray(fq).is_empty():
-			return false
-		x += RUN_FLOOR_STEP
-	return true
-
-func _end_charge() -> void:
-	_sp = 0
-	winding = false
-	_charge_cd = CHARGE_CD * Difficulty.m("enemy_cd")
-
-## Po ruchu: szarża rozbija skrzynie, detonuje beczki (wybuch rani też Wołka), uderza gracza; ściana ogłusza.
-func _after_move_bruiser() -> void:
-	if _sp != 2:
-		return
-	var crashed := false
-	for i in get_slide_collision_count():
-		var c := get_slide_collision(i)
-		var col := c.get_collider() as Node
-		if col == null:
-			continue
-		if col.is_in_group("props"):
-			if col.has_method("take_bullet"):
-				col.take_bullet(global_position, 45.0)
-		elif absf(c.get_normal().x) > 0.7:
-			crashed = true
-	if not _charge_hit:
-		for p in get_tree().get_nodes_in_group("players"):
-			if not p.dead and absf(p.global_position.x - global_position.x) < 16.0 and absf(p.global_position.y - global_position.y) < 18.0:
-				p.deliver_hit(_scaled_damage(2), global_position, kind)
-				_charge_hit = true
-	if crashed:
-		_crash()
-
-func _crash() -> void:
-	_sp = 4
-	_sp_t = CRASH_STUN
-	winding = false
-	_charge_cd = CHARGE_CD * Difficulty.m("enemy_cd")
-	velocity.x = -_sp_dir * 40.0
-	NoiseMgr.add_noise(7.0, global_position)
-	if NoiseMgr.has_network():
-		_crash_fx.rpc()
-	else:
-		_crash_fx()
-
+## Efekt uderzenia Wołka o ścianę (RPC musi żyć w węźle wroga; woła go `enemy_bruiser.gd` i lądowanie Skoczka).
 @rpc("authority", "call_local", "reliable")
 func _crash_fx() -> void:
 	Audio.play_variant_at("impact_hard", 3, global_position, Audio.BUS_WORLD, 0.0, 0.5)
 	Vfx.dust(get_parent(), global_position, 1.0)
 	if _local_player_pos().distance_to(global_position) < 300.0:
 		Feel.shake(3.5)
-
-func _find_crate() -> Node:
-	var best: Node = null
-	var best_d := 60.0
-	for p in get_tree().get_nodes_in_group("props"):
-		if p.get("kind") != "crate" or p.get("exploded") or float(p.get("thrown_t")) > 0.0:
-			continue
-		var dx := absf(p.global_position.x - global_position.x)
-		if dx < best_d and absf(p.global_position.y - global_position.y) < 30.0:
-			best_d = dx
-			best = p
-	return best
-
-## Czy między wrogiem (wysokość ramienia) a celem nie ma ściany — nie zaczyna rzutu w mur (skrzynia i tak poleciałaby łukiem, ale w zamknięty strop nie ma sensu).
-func _throw_clear(target: Node2D) -> bool:
-	var from := global_position + Vector2(0, -26.0)
-	var q := PhysicsRayQueryParameters2D.create(from, target.global_position + Vector2(0, -10.0), 1)
-	return get_world_2d().direct_space_state.intersect_ray(q).is_empty()
-
-## Czy Wołek ma teraz prawo rzucić głazem: rodzaj ma wpis `boulder`, przerwa minęła, a cel jest w jego poziomym zasięgu (`range`).
-func _boulder_ready(ax: float) -> bool:
-	var cfg := _def.get("boulder", {}) as Dictionary
-	return not cfg.is_empty() and _boulder_cd <= 0.0 and ax < float(cfg.get("range", 220.0))
-
-## Przerwa po rzucie głazem wg poziomu trudności (tabela `cd` = [EASY, NORMAL, HARD] — osobne wartości, nie mnożnik `enemy_cd`).
-static func boulder_cooldown(cfg: Dictionary, level: int) -> float:
-	var cds: Array = cfg.get("cd", [5.0])
-	return float(cds[clampi(level, 0, cds.size() - 1)])
-
-## Rzut głazem: ten sam łuk balistyczny co skrzynia (grawitacja 980), ale pocisk to lekki węzeł `boulder.gd` zadający 0,5 HP i znikający po uderzeniu.
-func _throw_boulder(target: Node2D) -> void:
-	var cfg := _def.get("boulder", {}) as Dictionary
-	_sp = 0
-	_sp_boulder = false
-	winding = false
-	_boulder_cd = boulder_cooldown(cfg, Difficulty.level)
-	if target == null or not is_instance_valid(target):
-		return
-	var from := global_position + Vector2(_sp_dir * 10.0, -26.0)
-	var aim := (target.global_position + Vector2(0, -10.0)) - from
-	var t := clampf(maxf(absf(aim.x) / 360.0, absf(aim.y) / 500.0), 0.35, 0.8)
-	var vel := Vector2(clampf(aim.x / t, -420.0, 420.0), (aim.y - 0.5 * 980.0 * t * t) / t)
-	var lvl := get_tree().get_first_node_in_group("level")
-	if lvl != null and lvl.has_method("spawn_boulder"):
-		lvl.spawn_boulder(from, vel, float(cfg.get("dmg", 0.5)))
-	NoiseMgr.add_noise(float(cfg.get("noise", 2.0)), global_position)
-
-## Rzut: balistyczny łuk w gracza (grawitacja ciał fizycznych 980), skrzynia rani przy trafieniu (prop.gd).
-func _throw_crate(target: Node2D) -> void:
-	if _sp_boulder:
-		_throw_boulder(target)
-		return
-	var crate := _sp_crate
-	_sp = 0
-	winding = false
-	_throw_cd = THROW_CD * Difficulty.m("enemy_cd")
-	_sp_crate = null
-	if crate == null or not is_instance_valid(crate) or crate.exploded or target == null or not is_instance_valid(target):
-		return
-	var from := global_position + Vector2(_sp_dir * 10.0, -26.0)
-	var aim := (target.global_position + Vector2(0, -10.0)) - from
-	var t := clampf(maxf(absf(aim.x) / 300.0, absf(aim.y) / 500.0), 0.3, 0.9)        # rzut pionowy dostaje więcej czasu lotu (mniejsza prędkość początkowa)
-	var vel := Vector2(clampf(aim.x / t, -420.0, 420.0), (aim.y - 0.5 * 980.0 * t * t) / t)
-	crate.throw_to(from, vel)
-	NoiseMgr.add_noise(4.0, global_position)
 
 ## Odpowiedź na alarm Podsłuchacza (F3.8): ślad z błędem lokalizacji jak przy każdym hałasie (`hear_error` rodzaju), a wrogowie dalej budzą się później —
 ## głos niesie `wave` px/s plus rozrzut do ALARM_JITTER, więc horda nie rusza w jednej klatce, tylko falą od krzykacza.

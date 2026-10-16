@@ -9,6 +9,7 @@ extends RefCounted
 
 const BEHAVIORS := {
 	"listener": "res://scripts/enemy_listener.gd",
+	"bruiser": "res://scripts/enemy_bruiser.gd",
 }
 
 ## Węzeł wroga (`enemy.gd`) — bez typu, bo `enemy.gd` ładuje tę klasę (cykl preload).
@@ -70,3 +71,11 @@ func anim(a: String, _moving: bool) -> String:
 ## Czy kierunek patrzenia modelu 3D pochodzi z serwera (stoi i patrzy na cel), a nie z przesunięcia pozycji.
 func server_facing() -> bool:
 	return false
+
+## Faza specjalna rodzaju w tiku aktywnego wroga (po percepcji, przed zwykłym łańcuchem decyzji — szarża i rzuty Wołka); true = przejęła ruch w tej klatce.
+func tick_phase(_delta: float, _target: Node2D) -> bool:
+	return false
+
+## Po ruchu klatki, w której zadziałała `tick_phase` (szarża Wołka rozbija skrzynie i uderza gracza).
+func after_phase_move() -> void:
+	pass

@@ -8,6 +8,7 @@ extends Node
 
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const Enemy := preload("res://scripts/enemy.gd")
+const Bruiser := preload("res://scripts/enemy_bruiser.gd")
 const FAR_X := 30000.0                ## px: obszar testów fizycznych poza mapą
 
 var main: Node2D
@@ -198,7 +199,7 @@ func _test_wolek_boulder() -> void:
 	var cfg: Dictionary = Defs.DEFS["wolek"]["boulder"]
 	check("głaz/dane: 0,5 HP, trzy przerwy malejące z trudnością (łatwy > normalny > trudny)", is_equal_approx(float(cfg["dmg"]), 0.5) and cfg["cd"].size() == 3 and float(cfg["cd"][0]) > float(cfg["cd"][1]) and float(cfg["cd"][1]) > float(cfg["cd"][2]))
 	check("głaz/trudność: przerwa z tabeli dla EASY / NORMAL / HARD, poza zakresem przycięta",
-		Enemy.boulder_cooldown(cfg, Difficulty.Level.EASY) == float(cfg["cd"][0]) and Enemy.boulder_cooldown(cfg, Difficulty.Level.NORMAL) == float(cfg["cd"][1]) and Enemy.boulder_cooldown(cfg, Difficulty.Level.HARD) == float(cfg["cd"][2]) and Enemy.boulder_cooldown(cfg, 9) == float(cfg["cd"][2]))
+		Bruiser.boulder_cooldown(cfg, Difficulty.Level.EASY) == float(cfg["cd"][0]) and Bruiser.boulder_cooldown(cfg, Difficulty.Level.NORMAL) == float(cfg["cd"][1]) and Bruiser.boulder_cooldown(cfg, Difficulty.Level.HARD) == float(cfg["cd"][2]) and Bruiser.boulder_cooldown(cfg, 9) == float(cfg["cd"][2]))
 	var y := -13500.0
 	var strip := _floor(FAR_X + 27000.0, FAR_X + 27600.0, y)
 	var x0 := FAR_X + 27100.0
@@ -208,37 +209,37 @@ func _test_wolek_boulder() -> void:
 	level.add_child(dummy)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	w._charge_cd = 99.0
-	w._throw_cd = 0.0
-	w._boulder_cd = 0.0
+	w._beh.charge_cd = 99.0
+	w._beh.throw_cd = 0.0
+	w._beh.boulder_cd = 0.0
 	dummy.global_position = Vector2(x0 + 120.0, y)
-	check("głaz/wybór: brak skrzyni w pobliżu → zapowiedź rzutu głazem (nie skrzynią)", w._bruiser_tick(0.016, dummy) and w._sp == 3 and w._sp_boulder and w._sp_crate == null, "sp=%d boulder=%s" % [w._sp, w._sp_boulder])
-	check("głaz/zapowiedź: krótsza niż rzut skrzynią (0,6 s × trudność)", w._sp_t < Enemy.THROW_WINDUP * Difficulty.m("enemy_windup") and w._sp_t > 0.3, "%.2f" % w._sp_t)
+	check("głaz/wybór: brak skrzyni w pobliżu → zapowiedź rzutu głazem (nie skrzynią)", w._beh.tick_phase(0.016, dummy) and w._sp == 3 and w._beh.sp_boulder and w._beh.sp_crate == null, "sp=%d boulder=%s" % [w._sp, w._beh.sp_boulder])
+	check("głaz/zapowiedź: krótsza niż rzut skrzynią (0,6 s × trudność)", w._beh.sp_t < Bruiser.THROW_WINDUP * Difficulty.m("enemy_windup") and w._beh.sp_t > 0.3, "%.2f" % w._beh.sp_t)
 	w._sp = 0
-	w._sp_boulder = false
+	w._beh.sp_boulder = false
 	w.winding = false
-	w._boulder_cd = 3.0
-	check("głaz/cooldown: w czasie przerwy nie rzuca", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
-	w._boulder_cd = 0.0
+	w._beh.boulder_cd = 3.0
+	check("głaz/cooldown: w czasie przerwy nie rzuca", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
+	w._beh.boulder_cd = 0.0
 	dummy.global_position = Vector2(x0 + 300.0, y)
-	check("głaz/zasięg: cel dalej niż 220 px → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	check("głaz/zasięg: cel dalej niż 220 px → bez rzutu", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
 	dummy.global_position = Vector2(x0 + 120.0, y)
 	var crate := _crate_at(Vector2(x0 + 10.0, y - 7.0))
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	check("głaz/pierwszeństwo: skrzynia obok → rzut skrzynią, nie głazem", w._bruiser_tick(0.016, dummy) and w._sp == 3 and not w._sp_boulder and w._sp_crate != null, "boulder=%s" % w._sp_boulder)
+	check("głaz/pierwszeństwo: skrzynia obok → rzut skrzynią, nie głazem", w._beh.tick_phase(0.016, dummy) and w._sp == 3 and not w._beh.sp_boulder and w._beh.sp_crate != null, "boulder=%s" % w._beh.sp_boulder)
 	w._sp = 0
-	w._sp_crate = null
+	w._beh.sp_crate = null
 	w.winding = false
-	w._throw_cd = 5.0
-	check("głaz/pierwszeństwo: skrzynia obok, ale na cooldownie → nie zastępuje jej głazem", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	w._beh.throw_cd = 5.0
+	check("głaz/pierwszeństwo: skrzynia obok, ale na cooldownie → nie zastępuje jej głazem", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
 	crate.queue_free()
 	await get_tree().physics_frame
-	w._throw_cd = 0.0
+	w._beh.throw_cd = 0.0
 	var wall := _block(Vector2(x0 + 60.0, y - 30.0), Vector2(6.0, 120.0))
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	check("głaz/ściana: mur na linii rzutu → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	check("głaz/ściana: mur na linii rzutu → bez rzutu", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
 	wall.queue_free()
 	await get_tree().physics_frame
 
@@ -250,13 +251,13 @@ func _test_wolek_boulder() -> void:
 	for lvl in [Difficulty.Level.EASY, Difficulty.Level.NORMAL, Difficulty.Level.HARD]:
 		Difficulty.set_level(lvl)
 		w._sp = 3
-		w._sp_boulder = true
-		w._sp_dir = 1.0
-		w._sp_t = 0.0
-		w._boulder_cd = 0.0
-		w._bruiser_tick(0.016, dummy)
-		ok = ok and w._sp == 0 and not w._sp_boulder and is_equal_approx(w._boulder_cd, float(cfg["cd"][int(lvl)]))
-		detail += "%d: %.1f  " % [int(lvl), w._boulder_cd]
+		w._beh.sp_boulder = true
+		w._beh.sp_dir = 1.0
+		w._beh.sp_t = 0.0
+		w._beh.boulder_cd = 0.0
+		w._beh.tick_phase(0.016, dummy)
+		ok = ok and w._sp == 0 and not w._beh.sp_boulder and is_equal_approx(w._beh.boulder_cd, float(cfg["cd"][int(lvl)]))
+		detail += "%d: %.1f  " % [int(lvl), w._beh.boulder_cd]
 	Difficulty.set_level(prev)
 	check("głaz/rzut: pocisk powstaje, a przerwa po rzucie to 8 / 5 / 3,2 s dla łatwego / normalnego / trudnego", ok and get_tree().get_nodes_in_group("boulders").size() == n0 + 3, detail)
 	for b in get_tree().get_nodes_in_group("boulders"):
@@ -518,10 +519,10 @@ func _test_run_clear() -> void:
 	var w3 := _spawn("wolek", Vector2(FAR_X + 2040.0, y))
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	check("rozbieg Wołka: ciągła podłoga — wolno", w1._run_clear(1.0, 200.0))
-	check("rozbieg Wołka: przepaść na trasie — nie rozpędza się", not w2._run_clear(1.0, 200.0))
-	check("rozbieg Wołka: ściana dalej niż 200 px — też blokuje (pełny dystans)", not w3._run_clear(1.0, 260.0))
-	check("rozbieg Wołka: ściana poza dystansem — nie blokuje", w3._run_clear(1.0, 150.0))
+	check("rozbieg Wołka: ciągła podłoga — wolno", w1._beh._run_clear(1.0, 200.0))
+	check("rozbieg Wołka: przepaść na trasie — nie rozpędza się", not w2._beh._run_clear(1.0, 200.0))
+	check("rozbieg Wołka: ściana dalej niż 200 px — też blokuje (pełny dystans)", not w3._beh._run_clear(1.0, 260.0))
+	check("rozbieg Wołka: ściana poza dystansem — nie blokuje", w3._beh._run_clear(1.0, 150.0))
 	for n in [w1, w2, w3, full, cut, wall, strip]:
 		n.queue_free()
 
@@ -1311,36 +1312,36 @@ func _test_wolek_throw_vertical() -> void:
 	level.add_child(dummy)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	w._throw_cd = 0.0
-	w._charge_cd = 99.0                                    # bez szarży — sprawdzamy sam rzut
+	w._beh.throw_cd = 0.0
+	w._beh.charge_cd = 99.0                                    # bez szarży — sprawdzamy sam rzut
 	dummy.global_position = Vector2(x0 + 120.0, y - 100.0)  # półka 100 px nad nim, 120 px w bok
-	check("Wołek: gracz na półce 100 px nad nim → zaczyna rzut skrzynią", w._bruiser_tick(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
+	check("Wołek: gracz na półce 100 px nad nim → zaczyna rzut skrzynią", w._beh.tick_phase(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
 	w._sp = 0
 	w.winding = false
-	w._throw_cd = 0.0
+	w._beh.throw_cd = 0.0
 	dummy.global_position = Vector2(x0 + 120.0, y + 100.0)  # 100 px niżej (po drugiej stronie podłogi pomiarowej — tylko pozycja, bez fizyki)
-	check("Wołek: gracz 100 px niżej (na niższym poziomie za krawędzią) → też rzut", w._bruiser_tick(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
+	check("Wołek: gracz 100 px niżej (na niższym poziomie za krawędzią) → też rzut", w._beh.tick_phase(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
 	w._sp = 0
 	w.winding = false
-	w._throw_cd = 0.0
+	w._beh.throw_cd = 0.0
 	dummy.global_position = Vector2(x0 + 20.0, y - 90.0)    # prawie nad nim (ax < 60) na półce
-	check("Wołek: gracz prawie nad nim (ax < 60) na półce → rzut", w._bruiser_tick(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
+	check("Wołek: gracz prawie nad nim (ax < 60) na półce → rzut", w._beh.tick_phase(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
 	w._sp = 0
 	w.winding = false
-	w._throw_cd = 0.0
+	w._beh.throw_cd = 0.0
 	dummy.global_position = Vector2(x0 + 120.0, y - 300.0)  # za wysoko (> THROW_DY_MAX)
-	check("Wołek: za wysoko (300 px) → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
-	w._throw_cd = 0.0
+	check("Wołek: za wysoko (300 px) → bez rzutu", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
+	w._beh.throw_cd = 0.0
 	dummy.global_position = Vector2(x0 + 400.0, y - 60.0)   # za daleko w poziomie
-	check("Wołek: za daleko w poziomie → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
-	w._throw_cd = 5.0
+	check("Wołek: za daleko w poziomie → bez rzutu", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
+	w._beh.throw_cd = 5.0
 	dummy.global_position = Vector2(x0 + 120.0, y - 100.0)
-	check("Wołek: w czasie cooldownu rzutu nie zaczyna", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
-	w._throw_cd = 0.0
+	check("Wołek: w czasie cooldownu rzutu nie zaczyna", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
+	w._beh.throw_cd = 0.0
 	var wall := _block(Vector2(x0 + 60.0, y - 80.0), Vector2(6.0, 120.0))     # ściana na linii rzutu
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	check("Wołek: ściana na linii rzutu → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	check("Wołek: ściana na linii rzutu → bez rzutu", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
 	for n in [w, crate, dummy, wall, strip, strip2]:
 		n.queue_free()
 	await get_tree().physics_frame
