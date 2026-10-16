@@ -5,7 +5,7 @@ extends Node
 ## Napięcie (`tension` 0..1) = max(stres, Uwaga·0,7). Stres rośnie od obrażeń (każdy utracony HP) i od walki w pobliżu,
 ## a opada, gdy jest cicho. Dyrektor:
 ##   • po szczycie stresu (> PEAK_STRESS) włącza OKNO ODDECHU (RELAX_TIME) — żadnych nowych wędrowców;
-##   • gdy od ostatniego starcia minęło ≥ BREATH_MIN, stres jest niski, a „na mapie" są ≤ MAX_ROAMERS wędrowców —
+##   • gdy od ostatniego starcia minęło ≥ BREATH_MIN, stres jest niski, a „na mapie" są mniej niż MAX_GROUPS grup wędrowców —
 ##     po losowym czasie wypuszcza z ciemności (poza kadrem i bez linii wzroku) małą grupę wędrowców, która rusza
 ##     na ostatnią pozycję drużyny; to utrzymuje presję tam, gdzie gracze „wyczyścili" mapę;
 ##   • tylko w fazie OBJECTIVE (boss i ekstrakcja mają własny rytm);
@@ -19,7 +19,6 @@ const RELAX_TIME := 45.0
 const BREATH_MIN := 35.0              ## s bez starcia, zanim wolno dosypać wędrowców
 const SPAWN_MIN := 55.0
 const SPAWN_MAX := 90.0
-const MAX_ROAMERS := 3
 const ENCOUNTER_R := 520.0            ## aktywny wróg w tym promieniu od gracza = „starcie"
 const SPAWN_DIST_MIN := 380.0         ## poza kadrem (widok ≈ ±200 px) z zapasem
 const SPAWN_DIST_MAX := 640.0
@@ -37,6 +36,8 @@ var _spawn_t := 60.0
 var _sync_t := 0.0
 var _serial := 0
 var _roamers: Array[String] = []
+var _groups: Array = []                ## grupy wędrowców: tablice nazw (patrz `live_groups`)
+var _idle: Dictionary = {}            ## nazwa wędrowca → s uśpienia poza polem widzenia (patrz `_cleanup`)
 
 func _process(delta: float) -> void:
 	if not NoiseMgr.is_server():
@@ -50,11 +51,11 @@ func _process(delta: float) -> void:
 	if _sync_t <= 0.0 and NoiseMgr.has_network():
 		_sync_t = 1.0
 		_tension_rpc.rpc(tension)
-	_cleanup(humans)
+	_cleanup(humans, delta)
 	if not _can_spawn_now():
 		return
 	_relax_t = maxf(0.0, _relax_t - delta)
-	if _relax_t > 0.0 or _since_enc < BREATH_MIN or stress > 0.3 or _roamers.size() >= MAX_ROAMERS:
+	if _relax_t > 0.0 or _since_enc < BREATH_MIN or stress > 0.3 or live_groups() >= MAX_GROUPS:
 		return
 	_spawn_t -= delta * Difficulty.m("dread")
 	if _spawn_t <= 0.0:
@@ -72,6 +73,8 @@ func reset() -> void:
 	for n in _roamers.duplicate():
 		_despawn(n)
 	_roamers.clear()
+	_groups.clear()
+	_idle.clear()
 	stress = 0.0
 	tension = 0.0
 	_prev_hp = -1
@@ -134,21 +137,65 @@ func _spawn_group(humans: Array) -> void:
 	var pos := _pick_spot(lvl, anchor.global_position, humans)
 	if pos == Vector2.ZERO:
 		return
-	var roll := randf()
-	var kinds: Array = ["trzosek", "trzosek"]
-	if roll > 0.85:
-		kinds = ["slepiec"]
-	elif roll > 0.6:
-		kinds = ["trzosek", "trzosek", "trzosek"]
-	print("[DIRECTOR] wędrowcy %s przy %s (stres %.2f, od starcia %.0f s)" % [str(kinds), str(pos.round()), stress, _since_enc])
+	var kinds: Array = pick_group(groups_for(String(lvl.get("map_id"))), randf())
+	# dokąd ruszają: jeśli niedawno (≤ HOT_SPOT_AGE) gdzieś w pobliżu gracza strzelano, do tego „gorącego miejsca"; inaczej na pozycję gracza
+	var hot: Variant = NoiseMgr.hot_spot_near(anchor.global_position, HOT_SPOT_R, HOT_SPOT_AGE)
+	var hunt_at: Vector2 = hot if hot != null else anchor.global_position
+	print("[DIRECTOR] wędrowcy %s przy %s ku %s (stres %.2f, od starcia %.0f s)" % [str(kinds), str(pos.round()), str(hunt_at.round()), stress, _since_enc])
+	var group: Array = []
 	for i in kinds.size():
 		_serial += 1
 		var n := "Roamer%d" % _serial
+		group.append(n)
 		var at := pos + Vector2(float(i) * 14.0, 0.0)
 		if NoiseMgr.has_network():
-			_spawn_roamer.rpc(n, kinds[i], at, anchor.global_position)
+			_spawn_roamer.rpc(n, kinds[i], at, hunt_at)
 		else:
-			_spawn_roamer(n, kinds[i], at, anchor.global_position)
+			_spawn_roamer(n, kinds[i], at, hunt_at)
+	_groups.append(group)
+
+## Zestawy wędrowców (F3.7): [waga względna, rodzaje]. Domyślnie 60% dwa Trzoski, 25% trzy, 15% sam Ślepiec; mapa może mieć własny w GROUPS_BY_MAP
+## (np. więcej Ślepców w mrocznym lesie) — nowy rodzaj dopisuje się tu, nie w kodzie.
+const GROUPS := [
+	[60.0, ["trzosek", "trzosek"]],
+	[25.0, ["trzosek", "trzosek", "trzosek"]],
+	[15.0, ["slepiec"]],
+]
+const GROUPS_BY_MAP := {}                    ## id mapy → tabela jak GROUPS (brak wpisu = GROUPS)
+const MAX_GROUPS := 2                        ## tyle grup wędrowców naraz (nowa dopiero, gdy któraś zginie albo zniknie)
+const HOT_SPOT_R := 600.0                    ## „gorące miejsce" (niedawna strzelanina) w tym promieniu od gracza wyznacza cel wędrowców
+const HOT_SPOT_AGE := 90.0                   ## s: starsze strzelaniny się nie liczą
+const ROAMER_IDLE_DESPAWN := 45.0            ## s uśpienia poza polem widzenia, po których wędrowiec znika (żeby uśpiona grupa nie blokowała następnych)
+
+static func groups_for(map_id: String) -> Array:
+	return GROUPS_BY_MAP.get(map_id, GROUPS)
+
+## Wybiera zestaw z tabeli wg rzutu `roll` ∈ [0, 1) i wag (kolejność wpisów = kolejność przedziałów).
+static func pick_group(table: Array, roll: float) -> Array:
+	var total := 0.0
+	for g in table:
+		total += float(g[0])
+	var acc := 0.0
+	for g in table:
+		acc += float(g[0]) / total
+		if roll < acc:
+			return (g[1] as Array).duplicate()
+	return ((table[table.size() - 1] as Array)[1] as Array).duplicate()
+
+## Ile grup wędrowców wciąż ma żywego członka na liście (martwe i zniknięte grupy są usuwane).
+func live_groups() -> int:
+	var live := 0
+	for g in _groups.duplicate():
+		var any := false
+		for n in g:
+			if _roamers.has(n):
+				any = true
+				break
+		if any:
+			live += 1
+		else:
+			_groups.erase(g)
+	return live
 
 ## Punkt do postawienia wędrowców: węzeł grafu nawigacji 380–640 px od gracza, bez linii wzroku do żadnego człowieka.
 func _pick_spot(lvl: Node, near: Vector2, humans: Array) -> Vector2:
@@ -200,8 +247,9 @@ func _despawn(n: String) -> void:
 	else:
 		_despawn_rpc(n)
 
-## Martwi i bardzo odlegli, uśpieni wędrowcy znikają z listy / ze świata.
-func _cleanup(humans: Array) -> void:
+## Martwi znikają z listy; uśpieni znikają ze świata, gdy są bardzo daleko od drużyny (DESPAWN_DIST) albo gdy śpią ≥ ROAMER_IDLE_DESPAWN s poza polem widzenia
+## (bliżej niż SPAWN_DIST_MIN albo w linii wzroku człowieka nie znikają — gracz nie może zobaczyć, jak wróg rozpływa się w powietrzu).
+func _cleanup(humans: Array, delta := 0.0) -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
 	if lvl == null:
 		return
@@ -209,13 +257,30 @@ func _cleanup(humans: Array) -> void:
 		var e := lvl.get_node_or_null(n)
 		if e == null or not is_instance_valid(e) or e.is_queued_for_deletion() or not e.alive:
 			_roamers.erase(n)
+			_idle.erase(n)
 			continue
 		if e.active:
+			_idle[n] = 0.0
 			continue
+		_idle[n] = float(_idle.get(n, 0.0)) + delta
 		var far := true
 		for p in humans:
 			if p.global_position.distance_to(e.global_position) < DESPAWN_DIST:
 				far = false
-		if far:
+		if far or (float(_idle[n]) >= ROAMER_IDLE_DESPAWN and not _seen_or_close(e, humans)):
 			_roamers.erase(n)
+			_idle.erase(n)
 			_despawn(n)
+
+## Czy któryś człowiek jest blisko wroga (< SPAWN_DIST_MIN) albo go widzi (linia bez ściany w 460 px) — wtedy nie znika.
+func _seen_or_close(e: Node2D, humans: Array) -> bool:
+	var space := get_tree().root.get_world_2d().direct_space_state
+	for p in humans:
+		var d: float = p.global_position.distance_to(e.global_position)
+		if d < SPAWN_DIST_MIN:
+			return true
+		if d < 460.0:
+			var q := PhysicsRayQueryParameters2D.create(p.global_position + Vector2(0, -9), e.global_position + Vector2(0, -8), 1)
+			if space.intersect_ray(q).is_empty():
+				return true
+	return false

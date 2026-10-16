@@ -1,6 +1,6 @@
 # Plan: porządki w logice wrogów pod widok 3D i mądrzejsza AI
 
-Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237), F2b zrobiona (1.7.238), F3.1a zrobiona (1.7.239), F3.1b zrobiona (1.7.240), F3.3 odrzucone po pomiarze, F3.5a zrobiona (1.7.241), F3.2 zrobiona (1.7.242), F3.4a zrobiona (1.7.243), F3.6a zrobiona (1.7.244, gałąź `feat/enemy-windup-interrupt`), zostają F2c, F3.1c, F3.4b, F3.5b, F3.6b, F3.7, F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
+Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237), F2b zrobiona (1.7.238), F3.1a zrobiona (1.7.239), F3.1b zrobiona (1.7.240), F3.3 odrzucone po pomiarze, F3.5a zrobiona (1.7.241), F3.2 zrobiona (1.7.242), F3.4a zrobiona (1.7.243), F3.6a zrobiona (1.7.244), F3.7 zrobiona (1.7.245, gałąź `feat/director-groups`), zostają F2c, F3.1c, F3.4b, F3.5b, F3.6b, F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
 `stalker.gd`, `nest.gd`, `director.gd`, `nav.gd`, `noise_manager.gd`, `view3d.gd`) i na `MISSION_3D_SPIKE.md` — nie na próbnej implementacji,
 więc rozmiary faz są szacunkowe, a uwagi o błędach pochodzą z lektury kodu, nie z gry.
 
@@ -122,6 +122,10 @@ okrężnie (rodzaj ze ścieżki skryptu, błysk trafienia z koloru `modulate`, `
    - **F3.6b — do zrobienia, jeśli playtest pokaże potrzebę:** minimalny czas zapowiedzi po trudności (dziś Trzosek 0,28 s × 0,8 = 0,22 s na trudnym), brak nowych „darmowych”
      trafień po przerwaniu; ujednolicenie czasu zapowiedzi między rodzajami.
 7. Dyrektor: kompozycja wędrowców z tabeli per misja, limit grup zamiast sztuk, uwzględnianie gorących miejsc.
+   - **F3.7 — zrobione w 1.7.245:** `GROUPS` / `GROUPS_BY_MAP` / `pick_group` (zestawy jako dane, domyślnie jak dotąd), `MAX_GROUPS` 2 zamiast `MAX_ROAMERS` 3, `live_groups()`,
+     sprzątanie uśpionych wędrowców po `ROAMER_IDLE_DESPAWN` 45 s poza polem widzenia (`_seen_or_close`), cel wędrowców = świeże gorące miejsce (`HOT_SPOT_R` 600 px,
+     `HOT_SPOT_AGE` 90 s) albo pozycja gracza. **Zostaje:** kompozycja zależna od napięcia / czasu od starcia (więcej Ślepców przy długiej ciszy) i własne tabele
+     per mapa — dane wypełnić po playtestach; test `_spawn_group` na prawdziwym grafie nawigacji (losowy punkt spawnu — niedeterministyczny w teście headless).
 
 ### F4 — nowa zawartość
 

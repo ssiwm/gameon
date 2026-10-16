@@ -50,6 +50,7 @@ func run(m: Node2D) -> void:
 	await _test_hear_error()
 	await _test_pack_shout()
 	await _test_windup_interrupt()
+	await _test_director()
 	_finish()
 
 func _finish() -> void:
@@ -757,4 +758,85 @@ func _test_windup_interrupt() -> void:
 	check("zapowiedź: przemiana Mimika (bez celu ciosu) nie jest przerywana", m._windup > 0.0 and m.winding)
 	for n in [e, w, l, m, strip]:
 		n.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- Dyrektor: grupy wędrowców (ENEMY_PLAN.md F3.7)
+
+## Tabela zestawów, limit grup, sprzątanie uśpionych poza polem widzenia. Dyrektor stoi (`set_process(false)`), metody woła test.
+func _test_director() -> void:
+	var D := Director
+	var table: Array = D.GROUPS
+	check("dyrektor: domyślna tabela jak dotąd — 0,59 → 2 Trzoski, 0,61 → 3, 0,86 → Ślepiec",
+		D.pick_group(table, 0.0) == ["trzosek", "trzosek"] and D.pick_group(table, 0.59) == ["trzosek", "trzosek"] and D.pick_group(table, 0.61).size() == 3
+		and D.pick_group(table, 0.84).size() == 3 and D.pick_group(table, 0.86) == ["slepiec"] and D.pick_group(table, 0.999) == ["slepiec"])
+	check("dyrektor: wagi względne (nie muszą dawać 100)", D.pick_group([[1.0, ["a"]], [3.0, ["b"]]], 0.1) == ["a"] and D.pick_group([[1.0, ["a"]], [3.0, ["b"]]], 0.3) == ["b"])
+	var copy: Array = D.pick_group(table, 0.0)
+	copy.append("x")
+	check("dyrektor: zwrócony zestaw to kopia (tabela się nie psuje)", D.pick_group(table, 0.0).size() == 2)
+	check("dyrektor: mapa bez własnej tabeli dostaje domyślną", D.groups_for("z1_m3") == D.GROUPS)
+	var Defs := load("res://scripts/enemy_defs.gd")
+	var bad := []
+	var tables: Array = [D.GROUPS]
+	for m in D.GROUPS_BY_MAP:
+		tables.append(D.GROUPS_BY_MAP[m])
+	for t in tables:
+		for g in t:
+			for k in g[1]:
+				if not Defs.has(String(k)):
+					bad.append(String(k))
+	check("dyrektor: każdy rodzaj w tabelach zestawów istnieje w enemy_defs.gd", bad.is_empty(), str(bad))
+
+	# limit grup: liczą się grupy z żywym członkiem na liście
+	var r0 := D._roamers.duplicate()
+	var g0 := D._groups.duplicate()
+	D._roamers.assign(["R1", "R2", "R3"])
+	D._groups.assign([["R1", "R2"], ["R3"]])
+	check("dyrektor: dwie grupy z żywymi członkami → live_groups = 2 (= MAX_GROUPS, nowej nie wolno)", D.live_groups() == 2 and D.live_groups() >= D.MAX_GROUPS)
+	D._roamers.erase("R3")
+	check("dyrektor: grupa bez żywych znika z liczenia → 1 (nowa wolno)", D.live_groups() == 1 and D._groups.size() == 1)
+	D._roamers.clear()
+	check("dyrektor: bez wędrowców → 0 grup", D.live_groups() == 0 and D._groups.is_empty())
+	D._roamers.assign(r0)
+	D._groups.assign(g0)
+
+	# sprzątanie uśpionych: po ROAMER_IDLE_DESPAWN s poza polem widzenia znikają; blisko, w linii wzroku i aktywni zostają
+	var y := -8000.0
+	var strip := _floor(FAR_X + 17000.0, FAR_X + 18200.0, y)
+	var wall := _block(Vector2(FAR_X + 17500.0, y - 30.0), Vector2(4.0, 60.0))
+	var left := FAR_X + 17100.0
+	var hidden := _spawn("trzosek", Vector2(left, y))            # za ścianą, 500 px od gracza
+	var close := _spawn("trzosek", Vector2(FAR_X + 17900.0, y))  # 100 px od gracza
+	var seen := _spawn("trzosek", Vector2(FAR_X + 18150.0, y))   # 350 px? bliżej niż SPAWN_DIST_MIN — blisko
+	var awake := _spawn("trzosek", Vector2(left + 20.0, y))      # aktywny — nie znika
+	for e in [hidden, close, seen, awake]:
+		e.set_physics_process(false)
+		e.add_to_group("roamers")
+		e.active = false
+	awake.active = true
+	hidden.name = "RoamerT1"
+	close.name = "RoamerT2"
+	seen.name = "RoamerT3"
+	awake.name = "RoamerT4"
+	D._roamers.assign(["RoamerT1", "RoamerT2", "RoamerT3", "RoamerT4"])
+	player.set_physics_process(false)
+	player.velocity = Vector2.ZERO
+	player.global_position = Vector2(FAR_X + 17800.0, y)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	D._cleanup([player], 20.0)
+	check("dyrektor: przed ROAMER_IDLE_DESPAWN nikt nie znika", D._roamers.size() == 4, str(D._roamers))
+	D._cleanup([player], 30.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("dyrektor: uśpiony za ścianą (> 380 px, bez linii wzroku) po 50 s znika", level.get_node_or_null("RoamerT1") == null and not D._roamers.has("RoamerT1"))
+	check("dyrektor: uśpiony blisko gracza, uśpiony w zasięgu i aktywny zostają",
+		level.get_node_or_null("RoamerT2") != null and level.get_node_or_null("RoamerT3") != null and level.get_node_or_null("RoamerT4") != null and D._roamers.size() == 3, str(D._roamers))
+	D._roamers.assign(r0)
+	D._groups.assign(g0)
+	D._idle.clear()
+	player.set_physics_process(true)
+	player.global_position = Vector2(-4000.0, -4000.0)
+	for n in [close, seen, awake, strip, wall]:
+		if is_instance_valid(n):
+			n.queue_free()
 	await get_tree().physics_frame
