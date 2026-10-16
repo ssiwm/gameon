@@ -46,6 +46,7 @@ func run(m: Node2D) -> void:
 	await _test_boss_base()
 	await _test_ai_states()
 	await _test_alert()
+	await _test_target_hysteresis()
 	_finish()
 
 func _finish() -> void:
@@ -526,4 +527,58 @@ func _test_alert() -> void:
 	check("alert: klient odtwarza stan i kierunek z `_sync`", bool(client.view_info()["alert"]) and client._net_face == -1.0)
 	for n in [e, w, sleeper, client, strip]:
 		n.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- wybór celu (ENEMY_PLAN.md F3.5)
+
+## Histereza celu: wróg trzyma dotychczasowy cel, dopóki inny gracz nie jest wyraźnie bliżej (< 70% odległości); utrata wzroku zmienia cel od razu.
+## Dwóch graczy: człowiek i bot z sesji testowej, zamrożeni na własnej podłodze; wróg zamrożony, `_perceive` wołany ręcznie.
+func _test_target_hysteresis() -> void:
+	check("cel: reguła przełączenia — 69% odległości przełącza, 71% nie", Enemy._prefer_new_target(100.0, 69.0) and not Enemy._prefer_new_target(100.0, 71.0))
+	var bot: Node = null
+	for p in get_tree().get_nodes_in_group("players"):
+		if p != player:
+			bot = p
+	if bot == null:
+		check("cel: sesja testowa ma drugiego gracza (bota)", false)
+		return
+	var y := -5500.0
+	var strip := _floor(FAR_X + 13000.0, FAR_X + 13800.0, y)
+	var x0 := FAR_X + 13400.0
+	var e := _spawn("trzosek", Vector2(x0, y))
+	e.set_physics_process(false)
+	var frozen := []
+	for p in [player, bot]:
+		p.set_physics_process(false)
+		p.velocity = Vector2.ZERO
+		frozen.append(p)
+	player.global_position = Vector2(x0 + 100.0, y)
+	bot.global_position = Vector2(x0 - 95.0, y)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	e._perceive_t = 0.0
+	e._perceive(0.2)
+	check("cel: na starcie najbliższy widoczny (bot 95 px < człowiek 100 px)", e._target == bot, str(e._target))
+	player.global_position = Vector2(x0 + 70.0, y)                    # 70 px vs 95 px: 74% — za mało, żeby przełączyć
+	e._perceive_t = 0.0
+	e._perceive(0.2)
+	check("cel: gracz bliżej tylko o 26% nie przejmuje celu (histereza)", e._target == bot, str(e._target))
+	player.global_position = Vector2(x0 + 60.0, y)                    # 60 px vs 95 px: 63% — wyraźnie bliżej
+	e._perceive_t = 0.0
+	e._perceive(0.2)
+	check("cel: gracz wyraźnie bliżej (63%) przejmuje cel", e._target == player, str(e._target))
+	bot.global_position = Vector2(x0 - 50.0, y)                       # 50 vs 60: 83% — znów za mało
+	e._perceive_t = 0.0
+	e._perceive(0.2)
+	check("cel: powrót nie następuje przy 83% odległości (brak migania)", e._target == player, str(e._target))
+	player.global_position = Vector2(x0 + 600.0, y)                   # dotychczasowy cel poza zasięgiem wzroku — zmiana od razu, bez histerezy
+	e._perceive_t = 0.0
+	e._perceive(0.2)
+	check("cel: dotychczasowy cel poza wzrokiem → przejmuje widoczny", e._target == bot, str(e._target))
+	for p in frozen:
+		p.set_physics_process(true)
+	player.global_position = Vector2(-4000.0, -4000.0)
+	bot.global_position = Vector2(-4100.0, -4000.0)
+	e.queue_free()
+	strip.queue_free()
 	await get_tree().physics_frame
