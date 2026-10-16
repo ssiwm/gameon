@@ -37,6 +37,8 @@ const SEARCH_TIME := 3.5         ## s rozglądania się po dojściu na ślad
 const GIVE_UP_TIME := 9.0        ## s bez kontaktu, po których porzuca ślad
 const HOME_SLEEP_TIME := 1.2     ## s w domu, po których znów zasypia
 const PERCEIVE_DT := 0.12        ## co tyle sprawdzamy wzrok (promień)
+const ALERT_COOLDOWN := 5.0      ## s: tyle po reakcji „zauważył" wróg nie staje drugi raz (cel migający w polu widzenia)
+const ALERT_JITTER := 0.15       ## ±: rozrzut czasu reakcji, żeby wataha nie ruszała w jednej klatce
 const CROUCH_SIGHT := 0.6        ## kucającego widać z mniejszej odległości
 const JUMP_V := -275.0           ## skok po grafie A* (42 px, tyle co gracz)
 const PLATFORM_BIT := 5          ## warstwa kładek w masce (zeskok)
@@ -87,8 +89,8 @@ const SCREAM_LURE_R := 400.0     ## krzyk GRACZA (voice.gd, GDD §8.2) przyciąg
 ## Jawny stan AI (ENEMY_PLAN.md F3): to, co wróg „robi" w tej chwili. Dotąd wynikał z kolejności gałęzi w `_phys_tick`; teraz jest liczony raz na tik
 ## z tych samych flag (`_derive_ai_state`), replikowany klientom i podawany widokowi 3D (`view_info`). Na razie tylko obserwacja — decyzje wciąż
 ## podejmują stare gałęzie; kolejne kroki F3 (reakcja „zauważył", flankowanie, wybór celu) będą dopisywać stany i na nich oprzeć decyzje.
-enum Ai { DEAD, SLEEP, HANG, LISTEN, FLY, INVESTIGATE, SEARCH, CHASE, WINDUP, RETREAT, PANIC, SPECIAL, RETURN }
-const AI_NAMES := ["dead", "sleep", "hang", "listen", "fly", "investigate", "search", "chase", "windup", "retreat", "panic", "special", "return"]
+enum Ai { DEAD, SLEEP, HANG, LISTEN, FLY, INVESTIGATE, SEARCH, CHASE, WINDUP, RETREAT, PANIC, SPECIAL, RETURN, ALERT }
+const AI_NAMES := ["dead", "sleep", "hang", "listen", "fly", "investigate", "search", "chase", "windup", "retreat", "panic", "special", "return", "alert"]
 ## Zmiana stanu AI (serwer; u klientów po `_sync`): `from_state` → `to_state` (wartości `Ai`).
 signal ai_changed(from_state: int, to_state: int)
 
@@ -151,6 +153,9 @@ var _lure_t := 4.0            ## Mimik: odstęp między fałszywymi wołaniami
 var _sp := 0                  ## Wołek: 0 nic, 1 zapowiedź szarży, 2 szarża, 3 zapowiedź rzutu, 4 ogłuszony po uderzeniu
 var _ai: int = Ai.SLEEP       ## bieżący stan AI (patrz `Ai`)
 var _ai_t := 0.0              ## s w bieżącym stanie AI (serwer)
+var _alert := 0.0             ## s reakcji „zauważył cię" (stan Ai.ALERT): wróg stoi i patrzy na źródło, zanim ruszy (serwer)
+var _alert_cd := 0.0          ## s do następnej reakcji — ten sam wróg nie staje za każdym razem, gdy cel mignie na granicy wzroku
+var _net_face := 0.0          ## kierunek patrzenia z serwera (u klientów; `_sync`) — odwrót przy reakcji „zauważył"
 var _sp_t := 0.0
 var _sp_dir := 1.0
 var _sp_crate: Node = null
@@ -167,9 +172,18 @@ var _alerted := false         ## Podsłuchacz: już krzyknął (od tej pory boty
 var _ring := 0.0              ## efekt fali krzyku (każdy peer)
 var _level_t := 0.0           ## s, przez które cel jest na innym poziomie (histereza: skok gracza to nie zmiana piętra)
 
+func _on_ai_changed(_from: int, to: int) -> void:
+	if to == Ai.ALERT and alive:
+		_voice("alert")                   # cichy, wysoki warkot — na każdym peerze, z własnej zmiany stanu
+
 func _ready() -> void:
 	add_to_group("enemies")
+	ai_changed.connect(_on_ai_changed)
 	_def = KINDS.get(kind, KINDS["trzosek"])
+	for ev in ["attack", "alert", "death"]:                 # głosy rodzaju wczytane z góry: pierwszy warkot w walce nie zacina klatki
+		var vo: Array = EnemyDefs.voice(kind, ev)
+		if not vo.is_empty():
+			Audio.warm_family(String(vo[0]), int(vo[1]))
 	_max_hp = _scaled_hp()
 	hp = _max_hp
 	Difficulty.changed.connect(_on_difficulty_changed)
@@ -224,6 +238,7 @@ func wake() -> void:
 		var p := _nearest_player()
 		if p != null:
 			_lead_at(p.global_position)
+	_begin_alert()                       # obudzony hałasem lub światłem: chwila na zorientowanie się, zanim ruszy
 	# cała wataha budzi się razem
 	for e in _near(global_position, SIBLING_WAKE_RADIUS):
 		if is_instance_valid(e) and e != self and e.has_method("wake") and e.global_position.distance_to(global_position) < SIBLING_WAKE_RADIUS:
@@ -252,6 +267,8 @@ func reset_enemy() -> void:
 	_cd = 0.0
 	_burn = 0.0
 	_panic = 0.0
+	_alert = 0.0
+	_alert_cd = 0.0
 	_target = null
 	_hist.clear()
 	_has_lead = false
@@ -377,6 +394,8 @@ func _derive_ai_state() -> int:
 		return Ai.WINDUP
 	if _panic > 0.0:
 		return Ai.PANIC
+	if _alert > 0.0:
+		return Ai.ALERT
 	if _target != null:
 		return Ai.RETREAT if _retreat > 0.0 else Ai.CHASE
 	if _has_lead:
@@ -391,6 +410,20 @@ func _set_ai_state(s: int) -> void:
 	_ai_t = 0.0
 	ai_changed.emit(from, s)
 
+## Reakcja „zauważył cię" (F3.1b): wróg z polem `alert` w `enemy_defs.gd` staje na ten czas (skalowany trudnością jak zapowiedź ciosu, ±ALERT_JITTER)
+## i odwraca się ku źródłu (cel, inaczej ślad), a dopiero potem goni albo sprawdza ślad. Nie dotyczy przywołanych przez bossa (wiedzą, gdzie są gracze)
+## ani rodzajów bez pola; po reakcji ALERT_COOLDOWN s spokoju, a trafienie ją przerywa.
+func _begin_alert() -> void:
+	var base := float(_def.get("alert", 0.0))
+	if base <= 0.0 or summoned or omniscient or _alert > 0.0 or _alert_cd > 0.0 or not alive:
+		return
+	_alert = base * Difficulty.m("enemy_windup") * randf_range(1.0 - ALERT_JITTER, 1.0 + ALERT_JITTER)
+	_alert_cd = ALERT_COOLDOWN
+	var src_x := _target.global_position.x if _target != null else _last_known.x
+	if absf(src_x - global_position.x) > 4.0:
+		_facing = signf(src_x - global_position.x)
+	_set_ai_state(Ai.ALERT)                      # od razu, żeby `_sync` i głos w tym tiku niosły nowy stan
+
 ## Nazwa stanu AI do logów i testów.
 func ai_name() -> String:
 	return AI_NAMES[_ai]
@@ -403,6 +436,8 @@ func _tick_server(delta: float) -> void:
 	_leap_cd = maxf(0.0, _leap_cd - delta)
 	_stagger = maxf(0.0, _stagger - delta)
 	_panic = maxf(0.0, _panic - delta)
+	_alert = maxf(0.0, _alert - delta)
+	_alert_cd = maxf(0.0, _alert_cd - delta)
 	_retreat = maxf(0.0, _retreat - delta)
 	_fear = maxf(0.0, _fear - FEAR_DECAY * delta)
 	_tick_drop(delta)
@@ -464,6 +499,9 @@ func _tick_server(delta: float) -> void:
 		# ucieczka: płonący Trzosek (HKM-9), załamane morale watahy, strach przed Stalkerem
 		var src_x := _flee_src.x if _flee_src != Vector2.ZERO else (target.global_position.x if target != null else global_position.x - _facing)
 		velocity.x = -signf(src_x - global_position.x) * speed * 0.9
+	elif _alert > 0.0:
+		# „zauważył cię": staje i patrzy na źródło, zanim ruszy (czas i odwrót w `_begin_alert`; ruch wznawia pościg albo śledztwo)
+		velocity.x = move_toward(velocity.x, 0.0, 800.0 * delta)
 	elif target != null and _retreat > 0.0:
 		# uderz i uciekaj: po ciosie Trzosek odskakuje, więc wataha nie stoi w miejscu
 		velocity.x = -signf(target.global_position.x - global_position.x) * speed * 0.8
@@ -994,7 +1032,10 @@ func _perceive(delta: float) -> void:
 				continue
 		best = pp
 		best_d = d
+	var had_target := _target != null
 	_target = best
+	if best != null and not had_target and _ai in [Ai.INVESTIGATE, Ai.SEARCH, Ai.RETURN]:
+		_begin_alert()                    # nowy kontakt wzrokowy po śledztwie / szukaniu / powrocie — nie przy każdym mignięciu celu (ALERT_COOLDOWN)
 	if best != null:
 		_lead_at(best.global_position)
 	else:
@@ -1343,6 +1384,8 @@ func take_hit(info: Dictionary) -> Dictionary:
 		return {}
 	var dmg: float = info["amount"]
 	var silent: bool = info.get("silent", false)
+	_alert = 0.0                                                       # trafiony nie stoi i nie patrzy — walczy (i nie dostaje reakcji przy budzeniu od tego trafienia)
+	_alert_cd = ALERT_COOLDOWN
 	_last_attacker = int(info.get("shooter", _last_attacker))          # kto dobił (też od podpalenia) dostaje XP w _die
 	if info.get("backstab", false) and (not active or _is_behind(info["dir"])):
 		dmg = maxf(dmg, hp + 1.0)
@@ -1413,6 +1456,8 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 	if not NoiseMgr.is_server() or not alive:
 		return
 	hp -= dmg
+	_alert = 0.0
+	_alert_cd = ALERT_COOLDOWN
 	_flash = 0.1
 	_stagger = 0.12
 	Vfx.blood(get_parent(), global_position + Vector2(0, -8), (global_position - from_pos).normalized(), 5)
@@ -1481,10 +1526,10 @@ func _send_state(delta: float) -> void:
 	if _net_timer > 0.0:
 		return
 	_net_timer = 0.05
-	_sync.rpc(global_position, hp, active, alive, winding, _sp, _ai)
+	_sync.rpc(global_position, hp, active, alive, winding, _sp, _ai, _facing)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_winding: bool, new_sp := 0, new_ai := -1) -> void:
+func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_winding: bool, new_sp := 0, new_ai := -1, new_face := 0.0) -> void:
 	_remote_pos = pos
 	if new_hp < hp - 0.01:
 		_flash = 0.1
@@ -1499,14 +1544,17 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 	elif not alive and is_alive:
 		_set_alive(true)
 		global_position = pos
+	if new_face != 0.0:
+		_net_face = new_face
 	if new_ai >= 0:
 		_set_ai_state(new_ai)             # stan AI liczy serwer; klient go tylko odtwarza (-1 = starszy nadawca bez pola)
 
 ## Kontrakt widoku (view3d.gd: `_sync_enemies`): to, co model 3D musi wiedzieć o wrogu, podane jawnie — zamiast zgadywania z prywatnych pól
 ## (`_sp`), z koloru sprite'a (błysk trafienia) i ze ścieżki skryptu (rodzaj). Tę samą metodę mają Stalker, Żyła, Pijawka i gniazdo.
-## Klucze: kind (rodzaj modelu), alive, winding (zapowiedź ciosu), sp (stan specjalny Wołka), flash (świeże trafienie), ai (stan AI, `Ai`).
+## Klucze: kind (rodzaj modelu), alive, winding (zapowiedź ciosu), sp (stan specjalny Wołka), flash (świeże trafienie), ai (stan AI, `Ai`),
+## alert (reakcja „zauważył cię": oczy rozżarzone, wróg stoi i patrzy na źródło).
 func view_info() -> Dictionary:
-	return {"kind": kind, "alive": alive, "winding": winding, "sp": _sp, "flash": _flash > 0.0, "ai": _ai}
+	return {"kind": kind, "alive": alive, "winding": winding, "sp": _sp, "flash": _flash > 0.0, "ai": _ai, "alert": _ai == Ai.ALERT}
 
 ## Głos gatunku dla zdarzenia (`enemy_defs.gd`: voice); gatunek bez wpisu milczy.
 func _voice(event: String) -> void:
@@ -1535,6 +1583,11 @@ func _update_sprite() -> void:
 	if absf(dx) > 0.05:
 		_view_facing = signf(dx)
 	var moving := absf(dx) > 0.05
+	if _ai == Ai.ALERT:
+		# „zauważył": odwraca się ku źródłu — serwer (host) zna kierunek, klient dostaje go w `_sync`
+		var face := _facing if NoiseMgr.is_server() else _net_face
+		if face != 0.0:
+			_view_facing = signf(face)
 	if kind == "podsluchacz":
 		# stoi w miejscu — patrzy na lokalnego gracza (nasłuchuje)
 		var lp := _local_player_pos()

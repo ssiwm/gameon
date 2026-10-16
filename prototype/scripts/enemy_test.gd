@@ -45,6 +45,7 @@ func run(m: Node2D) -> void:
 	_test_defs()
 	await _test_boss_base()
 	await _test_ai_states()
+	await _test_alert()
 	_finish()
 
 func _finish() -> void:
@@ -319,7 +320,7 @@ func _test_defs() -> void:
 			problems.append("%s bez wpisu SPEC (model 3D)" % k)
 		if not GOLDEN.has(k):
 			problems.append("%s: brak wzorca w teście" % k)
-		for ev in ["attack", "death"]:
+		for ev in ["attack", "alert", "death"]:
 			var v: Array = Defs.voice(k, ev)
 			if v.is_empty():
 				continue
@@ -456,5 +457,73 @@ func _test_ai_states() -> void:
 	await get_tree().physics_frame
 	check("stan AI: obudzona ćma → fly", moth.ai_name() == "fly")
 	for n in [e, client, moth, listener, hanger, strip]:
+		n.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- reakcja „zauważył” (ENEMY_PLAN.md F3.1b)
+
+## Trzosek obudzony hałasem staje na ~0,4 s i patrzy na źródło, zanim ruszy; czas skaluje trudność, przywołani i trafieni nie stoją, reakcja ma cooldown.
+func _test_alert() -> void:
+	var y := -5000.0
+	var strip := _floor(FAR_X + 12000.0, FAR_X + 12600.0, y)
+	var Defs := load("res://scripts/enemy_defs.gd")
+	check("alert: Trzosek ma pole `alert` ≈ 0,4 s, reszta rodzajów bez reakcji", is_equal_approx(Defs.value("trzosek", "alert"), 0.4) and Defs.value("wolek", "alert") == 0.0 and Defs.value("slepiec", "alert") == 0.0)
+	var e := _spawn("trzosek", Vector2(FAR_X + 12100.0, y))
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var x0: float = e.global_position.x
+	e._lead_at(e.global_position + Vector2(-60.0, 0.0))        # źródło po lewej, blisko (bez nawigacji po mapie gry)
+	e.wake()
+	await get_tree().physics_frame
+	check("alert: obudzony Trzosek od razu w stanie alert", e.ai_name() == "alert" and e._alert > 0.25 and bool(e.view_info()["alert"]), "%s, %.2f s" % [e.ai_name(), e._alert])
+	check("alert: odwrócony ku źródłu hałasu", e._facing < 0.0, str(e._facing))
+	await get_tree().create_timer(0.2).timeout
+	check("alert: w trakcie reakcji stoi w miejscu", e.ai_name() == "alert" and absf(e.global_position.x - x0) < 2.0, "%s, Δx %.1f" % [e.ai_name(), e.global_position.x - x0])
+	await get_tree().create_timer(0.6).timeout
+	check("alert: po reakcji rusza (śledztwo ku źródłu)", e.ai_name() != "alert" and e.global_position.x < x0 - 2.0, "%s, Δx %.1f" % [e.ai_name(), e.global_position.x - x0])
+
+	# czas reakcji: trudność skaluje jak zapowiedź ciosu, rozrzut ±15%
+	var prev: int = Difficulty.level
+	var times := {}
+	for lvl in [Difficulty.Level.EASY, Difficulty.Level.NORMAL, Difficulty.Level.HARD]:
+		Difficulty.set_level(lvl)
+		e._alert = 0.0
+		e._alert_cd = 0.0
+		e._begin_alert()
+		times[lvl] = e._alert
+	Difficulty.set_level(prev)
+	check("alert: łatwy dłuższy niż normalny, normalny dłuższy niż trudny", times[Difficulty.Level.EASY] > times[Difficulty.Level.NORMAL] and times[Difficulty.Level.NORMAL] > times[Difficulty.Level.HARD], str(times))
+	check("alert: normalny w granicach 0,4 s ±15%", times[Difficulty.Level.NORMAL] >= 0.34 and times[Difficulty.Level.NORMAL] <= 0.46)
+
+	# cooldown, przywołany, inny rodzaj
+	e._alert = 0.0
+	e._alert_cd = 3.0
+	e._begin_alert()
+	check("alert: w czasie cooldownu nie powtarza reakcji", e._alert == 0.0)
+	e._alert_cd = 0.0
+	e.summoned = true
+	e._begin_alert()
+	check("alert: przywołany przez bossa nie staje", e._alert == 0.0)
+	var w := _spawn("wolek", Vector2(FAR_X + 12300.0, y))
+	w._begin_alert()
+	check("alert: rodzaj bez pola `alert` (Wołek) nie staje", w._alert == 0.0)
+
+	# trafienie przerywa reakcję i budzenie od trafienia jej nie daje
+	e.summoned = false
+	e._alert = 0.0
+	e._alert_cd = 0.0
+	e._begin_alert()
+	e.take_hit({"amount": 1.0, "dir": Vector2.RIGHT, "pos": e.global_position, "shooter": int(player.player_id), "type": "bullet"})
+	check("alert: trafienie przerywa reakcję", e._alert == 0.0 and e._alert_cd > 0.0)
+	var sleeper := _spawn("trzosek", Vector2(FAR_X + 12450.0, y))
+	await get_tree().physics_frame
+	sleeper.take_hit({"amount": 1.0, "dir": Vector2.RIGHT, "pos": sleeper.global_position, "shooter": int(player.player_id), "type": "bullet"})
+	check("alert: śpiący trafiony budzi się od razu do walki, bez reakcji", sleeper.active and sleeper._alert == 0.0, "aktywny=%s alert=%.2f" % [sleeper.active, sleeper._alert])
+
+	# klient: stan i kierunek odwrotu z `_sync`
+	var client := _spawn("trzosek", Vector2(FAR_X + 12550.0, y))
+	client._sync(client.global_position, client.hp, true, true, false, 0, Enemy.Ai.ALERT, -1.0)
+	check("alert: klient odtwarza stan i kierunek z `_sync`", bool(client.view_info()["alert"]) and client._net_face == -1.0)
+	for n in [e, w, sleeper, client, strip]:
 		n.queue_free()
 	await get_tree().physics_frame

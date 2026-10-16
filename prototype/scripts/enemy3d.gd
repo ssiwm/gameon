@@ -422,7 +422,7 @@ func _two_bone(a: int, m: int, e: int, la: float, lb: float, target: Vector3, po
 ## anim: nazwa animacji sprite'a 2D (sleep / idle / walk / run / windup, bossowie: dormant / open / spit / peek / strike / grab / dive / ...).
 ## flip: sprite odbity (patrzy w lewo). mod: modulate sprite'a. fr: numer klatki + postęp w klatce, nfr: liczba klatek animacji, loop: czy pętla
 ## (modele statyczne dostają pozę z numeru klatki, żeby animacja szła w tempie gry — np. trafienie Pijawki na klatce 2).
-func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 1, loop := true, air_vy := 0.0, sp := 0) -> void:
+func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 1, loop := true, air_vy := 0.0, sp := 0, alert := false) -> void:
 	_t += delta
 	if bool(_spec.get("turn", false)):
 		# Mimik udaje gracza, więc odwraca się jak postać gracza (char3d.gd): obrót przodem do kamery w TURN_TIME, tułów zwrócony ku kamerze
@@ -450,8 +450,9 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 			_clip = ""
 	var eye := 1.4
 	# zapowiedź ciosu: oczy rozżarzają się i pulsują (zamiast czerwienienia całego modelu); po ciosie gasną do zwykłej jasności
-	_eye_w = move_toward(_eye_w, 1.0 if (anim == "windup" and not _dead) else 0.0, delta * (9.0 if anim == "windup" else 4.0))
-	eye += _eye_w * (4.2 + 1.4 * sin(_t * 24.0))
+	var hot := (anim == "windup" or alert) and not _dead
+	_eye_w = move_toward(_eye_w, 1.0 if hot else 0.0, delta * (9.0 if hot else 4.0))
+	eye += _eye_w * ((4.2 + 1.4 * sin(_t * 24.0)) if anim == "windup" else 3.0)        # zapowiedź ciosu pulsuje; reakcja „zauważył" (alert) żarzy się równo i słabiej
 	if _dead:
 		eye = 1.4 * (1.0 - smoothstep(0.0, 0.35, _dead_t))        # oczy gasną po śmierci
 	for m in _mats:

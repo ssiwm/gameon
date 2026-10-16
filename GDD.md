@@ -210,7 +210,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 
 | Wróg | HP | Szybkość | Zachowanie | Kontra |
 |------|----|----------|------------|--------|
-| **Trzosek** | 30 | szybka | Wataha 3–6, biegnie wprost | Ogień ciągły, maczeta |
+| **Trzosek** | 30 | szybka | Wataha 3–6, biegnie wprost; po zauważeniu gracza staje na ok. 0,4 s (odwraca się, oczy żarzą się, cichy warkot) — czytelny sygnał „zauważył cię" | Ogień ciągły, maczeta |
 | **Wołek** | 140 | wolna | Tankuje, potężny cios | Unik, strzelba w plecy |
 | **Skoczek** | 40 | skok | Spada z sufitu/wysokości | Ciągły ogień w górę, FALCON |
 | **Pijawka** | 15 | pełznie | Dopada, wysysa HP, QTE (30 s) | Maczeta, strzał w twarz kolegi? (friendly fire) |

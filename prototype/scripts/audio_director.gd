@@ -274,6 +274,15 @@ func stream(key: String) -> AudioStream:
 	return s
 
 
+## Wczytuje z góry warianty rodziny (`base_1` … `base_N`) do cache'u — żeby pierwsze zagranie w środku walki nie zacinało klatki ładowaniem pliku
+## (zacięcie w złym momencie potrafi przepuścić pocisk przez cel; wróg warmuje swoje głosy w `_ready`).
+func warm_family(base: String, count: int) -> void:
+	for i in count:
+		var key := "%s_%d" % [base, i + 1]
+		if Manifest.PATHS.has(key):
+			stream(key)
+
+
 ## Plik, który faktycznie gra pod kluczem. Wersje z nagrań z bibliotek nie mogą leżeć w publicznym repo (licencja,
 ## AUDIO_PLAN.md §6), więc lokalny bake zapisuje je do res://audio_licensed/ pod tą samą ścieżką względną: jeśli plik
 ## tam jest, wygrywa z syntetycznym z res://audio/. Dev: `--synthaudio` wymusza samą syntezę (porównanie w grze).

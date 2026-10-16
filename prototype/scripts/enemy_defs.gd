@@ -9,7 +9,8 @@ extends RefCounted
 ##   supply  szansa na skrzynkę zaopatrzenia (throwables.gd)
 ##   ammo    szansa na skrzynkę z amunicją do broni, którą ktoś nosi
 ##   health  szansa na apteczkę (1.5) — tylko mocniejsi wrogowie
-##   voice   zdarzenie → [rodzina, liczba wariantów, głośność dB, wysokość]; „attack" gra przy zapowiedzi ciosu, „death" przy śmierci;
+##   alert   s reakcji „zauważył cię" (F3.1b): wróg staje, odwraca się i rozżarza oczy, zanim ruszy do ataku; 0 / brak = bez reakcji
+##   voice   zdarzenie → [rodzina, liczba wariantów, głośność dB, wysokość]; „attack" gra przy zapowiedzi ciosu, „alert" przy reakcji „zauważył", „death" przy śmierci;
 ##           rodzaj bez wpisu milczy (Ćma). Skoczek mówi głosem Trzoska (niżej), zdemaskowany Mimik głosem Ślepca (wyżej).
 
 const DEFS := {
@@ -18,7 +19,7 @@ const DEFS := {
 		"cooldown": 0.9, "leap": true, "hear": 200.0, "wake_near": 90.0, "sight": 260.0,
 		"pack": true, "fears": true, "phototaxis": true, "fire_shy": true,
 		"color": Color(0.62, 0.2, 0.22), "size": Vector2(10, 14), "knock": 70.0, "knock_mult": 1.0, "head": 0.0,
-		"xp": 2, "scrap": 2, "ammo": 0.22, "voice": {"attack": ["trzosek_attack", 3, -6.0, 1.0], "death": ["trzosek_death", 2, -4.0, 1.0]},
+		"xp": 2, "scrap": 2, "ammo": 0.22, "alert": 0.4, "voice": {"attack": ["trzosek_attack", 3, -6.0, 1.0], "alert": ["trzosek_attack", 3, -12.0, 1.35], "death": ["trzosek_death", 2, -4.0, 1.0]},
 	},
 	# Ćma (1.7.5): światłolubna — wisi pod sufitem, budzi ją światło (latarka, flara) i leci na nie.
 	# Przy flarze spala się, przy latarce gryzie gracza: rzuć flarę daleko, żeby ją odciągnąć.
