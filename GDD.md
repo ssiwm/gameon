@@ -211,10 +211,10 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 | Wróg | HP | Szybkość | Zachowanie | Kontra |
 |------|----|----------|------------|--------|
 | **Trzosek** | 30 | szybka | Wataha 3–6, biegnie wprost; po zauważeniu gracza staje na ok. 0,4 s (odwraca się, oczy żarzą się, cichy warkot) — czytelny sygnał „zauważył cię"; kto pierwszy zauważy gracza, daje znać kolegom z watahy w ok. 14 m, więc schodzą się razem | Ogień ciągły, maczeta; mocne ogłuszenie (strzelba, szyna, harpun) przerywa jego cios w zapowiedzi |
-| **Wołek** | 140 | wolna | Tankuje, potężny cios | Unik, strzelba w plecy |
+| **Wołek** | 140 | wolna | Tankuje, potężny cios; szarża po poziomie, rzut skrzynią także w górę i w dół (do ok. 10 kafli różnicy poziomów) | Unik, strzelba w plecy |
 | **Skoczek** | 40 | skok | Spada z sufitu/wysokości | Ciągły ogień w górę, FALCON |
 | **Pijawka** | 15 | pełznie | Dopada, wysysa HP, QTE (30 s) | Maczeta, strzał w twarz kolegi? (friendly fire) |
-| **Ślepiec** | 60 | węszy | **Nie widzi — słyszy.** Idzie w okolice ostatniego hałasu (z błędem lokalizacji — z daleka i przy cichych dźwiękach mniej dokładnie) | Kucnij i przejdź; harpun |
+| **Ślepiec** | 60 | węszy | **Nie widzi — słyszy.** Idzie w okolice ostatniego hałasu (z błędem lokalizacji — z daleka i przy cichych dźwiękach mniej dokładnie), po dojściu **przeszukuje okolicę** (±4 m, 6 s), a na **głośny dźwięk w 9 m** (strzał ze strzelby, granat, krzyk) po krótkiej zapowiedzi **rzuca się** w jego stronę (0,7 s, 2,2× szybciej, z błędem celu) — kroki w błocie i oleju go nie budzą | Kucnij i przejdź; harpun |
 | **Podsłuchacz** | 35 | stoi | Nieruchomy „słuchacz" — krzyczy i ściąga hordę | Priorytet: zabić cicho (harpun) |
 | **Mimik** | 70 | udaje | Udaje sylwetkę/radio kolegi z drużyny | Sprawdź pingiem/kodem drużyny |
 | **Żyła** | 200 | rośnie | Splot 5–10 m, rodzi Trzoski | Ogień, WRATH-4, ładunek |

@@ -53,6 +53,8 @@ func run(m: Node2D) -> void:
 	await _test_windup_interrupt()
 	await _test_director()
 	await _test_pincer()
+	await _test_wolek_throw_vertical()
+	await _test_slepiec_mechanics()
 	_finish()
 
 func _finish() -> void:
@@ -929,5 +931,133 @@ func _test_pincer() -> void:
 	check("kleszcze: bez wędrowców strona 0", D._roamer_side(level, near) == 0.0)
 	D._roamers.assign(r0)
 	for n in [a, b, far, dead]:
+		n.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- Wołek: rzut w górę i w dół; Ślepiec: przeszukiwanie i rzut na dźwięk
+
+const PROP_SCRIPT := preload("res://scripts/prop.gd")
+
+func _crate_at(pos: Vector2) -> RigidBody2D:
+	var pr: RigidBody2D = PROP_SCRIPT.new()
+	pr.kind = "crate"
+	level.add_child(pr)
+	pr.global_position = pos
+	pr.freeze = true                                       # skrzynia stoi w miejscu (bez fizyki), test sprawdza tylko decyzję Wołka
+	return pr
+
+## Wołek z skrzynią przy sobie zaczyna rzut także wobec gracza na półce nad nim i w dole pod nim (do THROW_DY_MAX), a poza zakresem albo za ścianą nie.
+func _test_wolek_throw_vertical() -> void:
+	var y := -10000.0
+	var strip := _floor(FAR_X + 21000.0, FAR_X + 21208.0, y)                   # półka Wołka kończy się 8 px przed nim (krawędź), żeby rzut w dół nie przechodził przez podłogę
+	var strip2 := _floor(FAR_X + 21260.0, FAR_X + 21500.0, y + 100.0)         # niższy poziom po drugiej stronie krawędzi
+	var x0 := FAR_X + 21200.0
+	var w := _spawn("wolek", Vector2(x0, y))
+	w.set_physics_process(false)
+	var crate := _crate_at(Vector2(x0 + 10.0, y - 7.0))
+	var dummy := Node2D.new()                              # cel: wystarczy pozycja (`_bruiser_tick` czyta tylko `global_position`)
+	level.add_child(dummy)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	w._throw_cd = 0.0
+	w._charge_cd = 99.0                                    # bez szarży — sprawdzamy sam rzut
+	dummy.global_position = Vector2(x0 + 120.0, y - 100.0)  # półka 100 px nad nim, 120 px w bok
+	check("Wołek: gracz na półce 100 px nad nim → zaczyna rzut skrzynią", w._bruiser_tick(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
+	w._sp = 0
+	w.winding = false
+	w._throw_cd = 0.0
+	dummy.global_position = Vector2(x0 + 120.0, y + 100.0)  # 100 px niżej (po drugiej stronie podłogi pomiarowej — tylko pozycja, bez fizyki)
+	check("Wołek: gracz 100 px niżej (na niższym poziomie za krawędzią) → też rzut", w._bruiser_tick(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
+	w._sp = 0
+	w.winding = false
+	w._throw_cd = 0.0
+	dummy.global_position = Vector2(x0 + 20.0, y - 90.0)    # prawie nad nim (ax < 60) na półce
+	check("Wołek: gracz prawie nad nim (ax < 60) na półce → rzut", w._bruiser_tick(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
+	w._sp = 0
+	w.winding = false
+	w._throw_cd = 0.0
+	dummy.global_position = Vector2(x0 + 120.0, y - 300.0)  # za wysoko (> THROW_DY_MAX)
+	check("Wołek: za wysoko (300 px) → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	w._throw_cd = 0.0
+	dummy.global_position = Vector2(x0 + 400.0, y - 60.0)   # za daleko w poziomie
+	check("Wołek: za daleko w poziomie → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	w._throw_cd = 5.0
+	dummy.global_position = Vector2(x0 + 120.0, y - 100.0)
+	check("Wołek: w czasie cooldownu rzutu nie zaczyna", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	w._throw_cd = 0.0
+	var wall := _block(Vector2(x0 + 60.0, y - 80.0), Vector2(6.0, 120.0))     # ściana na linii rzutu
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("Wołek: ściana na linii rzutu → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	for n in [w, crate, dummy, wall, strip, strip2]:
+		n.queue_free()
+	await get_tree().physics_frame
+
+## Ślepiec: po dojściu na ślad przeszukuje okolicę zamiast stać, a głośny dźwięk blisko uruchamia zapowiedź i rzut w jego stronę.
+func _test_slepiec_mechanics() -> void:
+	var Defs := load("res://scripts/enemy_defs.gd")
+	var cfg: Dictionary = Defs.DEFS["slepiec"]["lunge"]
+	check("Ślepiec: rzut na dźwięk — głośny i blisko tak, cichy albo daleko nie, rodzaj bez pola `lunge` nie",
+		Enemy.lunge_triggers(cfg, 3.0, 100.0) and not Enemy.lunge_triggers(cfg, 1.0, 100.0) and not Enemy.lunge_triggers(cfg, 3.0, 200.0) and not Enemy.lunge_triggers({}, 9.0, 10.0))
+	var y := -10500.0
+	var strip := _floor(FAR_X + 22000.0, FAR_X + 23000.0, y)
+	var x0 := FAR_X + 22500.0
+	var e := _spawn("slepiec", Vector2(x0, y))
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	# przeszukiwanie: aktywny ze śladem 5 px obok chodzi po okolicy (± sweep), zamiast stać, i po `search` s rezygnuje
+	e.active = true
+	e._lead_at(e.global_position + Vector2(5.0, 0.0))
+	var lo := x0
+	var hi := x0
+	var t := 0.0
+	while t < 3.0:
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
+		lo = minf(lo, e.global_position.x)
+		hi = maxf(hi, e.global_position.x)
+	var amp: float = Defs.DEFS["slepiec"]["sweep"]
+	check("Ślepiec: przeszukuje okolicę śladu (w 3 s przeszedł ponad 40 px, nie dalej niż ±sweep od śladu)", hi - lo > 40.0 and lo >= x0 + 5.0 - amp - 12.0 and hi <= x0 + 5.0 + amp + 12.0, "%.0f … %.0f (ślad %.0f, ±%.0f)" % [lo, hi, x0 + 5.0, amp])
+	check("Ślepiec: w trakcie szukania stan search", e.ai_name() == "search", e.ai_name())
+	t = 0.0
+	while t < 5.0 and e._has_lead:
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
+	check("Ślepiec: po czasie szukania (6 s, dłuższym niż domyślne 3,5 s) rezygnuje ze śladu", not e._has_lead, "has_lead=%s po łącznie ≈ %.1f s" % [e._has_lead, 3.0 + t])
+
+	# rzut na głośny dźwięk 100 px na prawo (bez nawigacji po mapie: wołamy wprost `_maybe_lunge`)
+	e._lunge_cd = 0.0
+	e._target = null
+	e.global_position.x = x0
+	var src := Vector2(x0 + 100.0, y)
+	e._lead_at(src)
+	e._maybe_lunge(src, 100.0, 3.0)
+	check("Ślepiec: głośny dźwięk 100 px obok → zapowiedź (alert) i oczy w widoku", e.ai_name() == "alert" and bool(e.view_info()["alert"]) and e._lunge_wind > 0.0, "%s / %.2f" % [e.ai_name(), e._lunge_wind])
+	var x_wind: float = e.global_position.x
+	await get_tree().create_timer(0.15).timeout
+	check("Ślepiec: w zapowiedzi stoi w miejscu", absf(e.global_position.x - x_wind) < 2.0 and e.ai_name() == "alert")
+	t = 0.0
+	while t < 1.2 and e._lunge_t <= 0.0:
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
+	var x_start: float = e.global_position.x
+	check("Ślepiec: po zapowiedzi pędzi (stan lunge)", e.ai_name() == "lunge" and e._lunge_t > 0.0, e.ai_name())
+	await get_tree().create_timer(0.3).timeout
+	var v: float = (e.global_position.x - x_start) / 0.3
+	check("Ślepiec: w rzucie jest szybszy niż w chodzie (> 1,5 × 70 px/s)", v > 105.0, "%.0f px/s" % v)
+	t = 0.0
+	while t < 2.0 and e._lunge_t > 0.0:
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
+	check("Ślepiec: rzut kończy się za źródłem dźwięku i wraca do normalnego stanu", e._lunge_t <= 0.0 and e.global_position.x >= x0 + 90.0 and e.ai_name() != "lunge", "x=%.0f, %s" % [e.global_position.x, e.ai_name()])
+	e._maybe_lunge(src, 100.0, 3.0)
+	check("Ślepiec: cooldown rzutu (6 s) blokuje kolejny", e._lunge_wind == 0.0 and e._lunge_cd > 4.0, str(e._lunge_cd))
+	e._lunge_cd = 0.0
+	e.take_hit({"amount": 1.0, "dir": Vector2.RIGHT, "pos": e.global_position, "shooter": int(player.player_id), "type": "bullet"})
+	e._maybe_lunge(src, 100.0, 3.0)
+	e.take_hit({"amount": 1.0, "dir": Vector2.RIGHT, "pos": e.global_position, "shooter": int(player.player_id), "type": "bullet"})
+	check("Ślepiec: trafiony w zapowiedzi rzutu nie stoi (zapowiedź przerwana)", e._lunge_wind == 0.0)
+	for n in [e, strip]:
 		n.queue_free()
 	await get_tree().physics_frame
