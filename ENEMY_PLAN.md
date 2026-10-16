@@ -163,3 +163,24 @@ dla całej okolicy, powtarzany co 6 s bez limitu. Zrobione (dane w `enemy_defs.g
 - **D** — kolejne krzyki ×0,6 zasięgu, po 3 milknie (`calm` 12 s), zapowiedź ×1,3 gdy tylko usłyszał.
 - Łańcuch Podsłuchaczy: odrzucone jako problem — na mapach 1.2/1.3 stoją ≥ 416 px od siebie, a słuch to 238 px (test pilnuje).
 - Otwarte: czy limit 3 krzyków i pole 1,4 s są dobrze dobrane (playtest); klucz 3D „scream" pozostaje pozą zapowiedzi (osobna poza krzyku w modelu — F4/grafika).
+
+### F3.9 — Głaz Wołka (plan, do decyzji — 1.7.250)
+
+**Cel:** Wołek bez skrzyni w pobliżu nie jest bezradny na dystans: rzuca **głazem**, który jest zawsze dostępny, zabiera **0,5 HP** i leci częściej na wyższej trudności.
+
+**Reguły**
+- Wybór pocisku w `_bruiser_tick` (stan 0, ta sama geometria co rzut skrzynią: `ax < 220`, `|dy| ≤ THROW_DY_MAX`, `_throw_clear`): `_find_crate()` jest → rzut skrzynią (jak dziś, cooldown `THROW_CD`); brak skrzyni w 60 px → głaz (własny `_boulder_cd`). Skrzynia ma pierwszeństwo, więc głaz nigdy jej nie zastępuje, gdy leży obok.
+- Zapowiedź krótsza niż skrzyni (0,6 s zamiast 0,8 s, skalowana `enemy_windup`), lot 0,5–0,8 s, mały promień trafienia (8 px) — da się uniknąć kucnięciem, skokiem albo zejściem z linii.
+- Hałas rzutu 2,0 (cichszy niż skrzynia 4,0); wróg nie rzuca, gdy ma cel w zwarciu (`ax ≤ 60` na tym samym poziomie → zwykły cios).
+
+**Częstotliwość zależna od trudności** (osobna tabela w `enemy_defs.gd`, nie mnożnik `enemy_cd`, żeby dało się stroić każdy poziom): `"boulder": {"dmg": 0.5, "cd": [8.0, 5.0, 3.2], "windup": 0.6, "range": 220.0, "noise": 2.0}` — kolejno EASY / NORMAL / HARD (indeks `Difficulty.level`), do strojenia po playteście.
+Maksymalny DPS przy braku uników: ≈ 0,06 / 0,10 / 0,16 HP/s — znacznie mniej niż szarża (2 obrażenia) i skrzynia (1 HP co 6 s), więc głaz jest dokuczliwy, a nie śmiertelny.
+
+**Obrażenia 0,5 HP — decyzja potrzebna:** `Player.hp` to `int` (3 serca), `apply_hit(amount: int)` odrzuca `amount ≤ 0`, HUD rysuje całe serca.
+- **A. Półserca w całej grze** (hp w połówkach): czysto, ale dotyka HUD, apteczek, perków, sieci, botów, zapisu i testów — osobny, duży PR.
+- **B. Licznik „stłuczenia" (zalecane):** gracz trzyma ukryte 0,5; drugi głaz zamienia je w 1 realne obrażenie. HUD pokazuje popękane serce przy 0,5. Licznik zeruje się przy leczeniu, powaleniu i respawnie. Nowa metoda `deliver_chip(0.5, from, "boulder")` obok `deliver_hit`; niewrażliwość po trafieniu krótsza (0,3 s). Jeden plik gracza + HUD + test.
+
+**Pocisk:** nowy lekki węzeł `boulder.gd` (serwer liczy łuk balistyczny, kolizja ze ścianą promieniem na warstwie 1 i z graczami `hurt_point < 8 px`, znika po trafieniu / uderzeniu / 2 s; pozycja replikowana jak pocisk). Nie reuse `prop.gd` — skrzynia to ciało fizyczne zostające na mapie, a głazy by się kumulowały. Model 3D: istniejący `rock` z `DECO_MODELS` (`view3d.gd`) obracający się w locie, pył przy uderzeniu.
+**Ryzyko widoku:** poza rzutu (`sp == 3`) zakłada, że Wołek unosi skrzynię — dla głazu trzeba sprawdzić w `enemy3d.gd`, czy poza wygląda dobrze bez rekwizytu w rękach (ewentualnie podnosi „głaz z ziemi" tym samym ruchem).
+
+**Kroki:** (1) `boulder.gd` + dane `boulder` w `enemy_defs.gd`; (2) wybór pocisku i `_boulder_cd` w `_bruiser_tick`; (3) `deliver_chip` + HUD popękanego serca (wariant B); (4) model 3D + dźwięk (rzut, uderzenie); (5) testy: skrzynia obok → skrzynia, brak → głaz, 2 głazy = 1 HP, cd per poziom (3 wartości), ściana blokuje, replikacja; (6) GDD (wiersz Wołka), CHANGELOG 1.7.250, README.
