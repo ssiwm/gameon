@@ -55,6 +55,7 @@ func run(m: Node2D) -> void:
 	await _test_pincer()
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
+	await _test_slepiec_listen()
 	_finish()
 
 func _finish() -> void:
@@ -998,7 +999,7 @@ func _test_slepiec_mechanics() -> void:
 	var Defs := load("res://scripts/enemy_defs.gd")
 	var cfg: Dictionary = Defs.DEFS["slepiec"]["lunge"]
 	check("Ślepiec: rzut na dźwięk — głośny i blisko tak, cichy albo daleko nie, rodzaj bez pola `lunge` nie",
-		Enemy.lunge_triggers(cfg, 3.0, 100.0) and not Enemy.lunge_triggers(cfg, 1.0, 100.0) and not Enemy.lunge_triggers(cfg, 3.0, 200.0) and not Enemy.lunge_triggers({}, 9.0, 10.0))
+		Enemy.lunge_triggers(cfg, 3.0, 100.0) and not Enemy.lunge_triggers(cfg, 0.6, 100.0) and not Enemy.lunge_triggers(cfg, 3.0, 200.0) and not Enemy.lunge_triggers({}, 9.0, 10.0))
 	var y := -10500.0
 	var strip := _floor(FAR_X + 22000.0, FAR_X + 23000.0, y)
 	var x0 := FAR_X + 22500.0
@@ -1060,4 +1061,40 @@ func _test_slepiec_mechanics() -> void:
 	check("Ślepiec: trafiony w zapowiedzi rzutu nie stoi (zapowiedź przerwana)", e._lunge_wind == 0.0)
 	for n in [e, strip]:
 		n.queue_free()
+	await get_tree().physics_frame
+
+## Rzut Ślepca na dźwięk przez prawdziwe `_listen()` (nie tylko `_maybe_lunge`) na realnych punktach nawigacji mapy 1.3: rozgrzana M-83 (≥ 1,0) uruchamia zapowiedź,
+## zimna lufa (0,6) i cichy krok tylko prowadzą do źródła. (Playtest pokazał, że próg 2,0 nie reagował na domyślną M-83 — stąd test na kanale słuchu.)
+func _test_slepiec_listen() -> void:
+	var nav = level.get("nav")
+	var pa := Vector2.ZERO
+	var pb := Vector2.ZERO
+	var found := false
+	if nav != null:
+		for ida in nav.get_point_ids():
+			var a: Vector2 = nav.get_point_position(ida)
+			for idb in nav.get_point_ids():
+				var b: Vector2 = nav.get_point_position(idb)
+				if absf(b.y - a.y) < 1.0 and absf(b.x - a.x) > 80.0 and absf(b.x - a.x) < 110.0:
+					pa = a
+					pb = b
+					found = true
+					break
+			if found:
+				break
+	check("Ślepiec/słuch: mapa 1.3 ma dwa sąsiednie punkty nawigacji do testu", found)
+	if not found:
+		return
+	var thresholds := [[0.6, false], [1.2, true], [3.5, true]]       # zimna M-83, rozgrzana M-83, strzelba
+	for th in thresholds:
+		var e := _spawn("slepiec", level.to_global(pa))
+		e.set_physics_process(false)
+		e.active = true
+		NoiseMgr.last_noise_pos = level.to_global(pb)
+		NoiseMgr.last_noise_amount = float(th[0])
+		NoiseMgr.noise_serial += 1
+		e._listen()
+		check("Ślepiec/słuch: strzał o głośności %.1f %s rzut (przez `_listen`)" % [th[0], "uruchamia" if th[1] else "nie uruchamia"],
+			(e._lunge_wind > 0.0) == bool(th[1]) and e._has_lead, "wind=%.2f lead=%s ai=%s" % [e._lunge_wind, e._has_lead, e.ai_name()])
+		e.queue_free()
 	await get_tree().physics_frame

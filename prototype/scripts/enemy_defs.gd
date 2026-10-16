@@ -58,7 +58,7 @@ const DEFS := {
 		"keen": true, "min_noise": 0.25, "blind": true, "fire_shy": true,
 		"color": Color(0.8, 0.78, 0.76), "size": Vector2(12, 17), "hurt_h": 27.0, "knock": 40.0, "knock_mult": 0.6, "head": 0.28,
 		"xp": 6, "scrap": 5, "supply": 0.1, "ammo": 0.3, "hear_error": 36.0, "sweep": 70.0, "search": 6.0,
-		"lunge": {"noise": 2.0, "range": 140.0, "wind": 0.3, "mult": 2.2, "time": 0.7, "cd": 6.0},
+		"lunge": {"noise": 1.0, "range": 140.0, "wind": 0.3, "mult": 2.2, "time": 0.7, "cd": 6.0},
 		"voice": {"attack": ["slepiec_attack", 2, -4.0, 1.0], "alert": ["slepiec_attack", 2, -9.0, 1.25], "death": ["slepiec_death", 2, -3.0, 1.0]},
 	},
 	# Podsłuchacz (GDD §7.1): stoi nieruchomo i nasłuchuje; zobaczy albo usłyszy — krzyczy i ściąga hordę.
