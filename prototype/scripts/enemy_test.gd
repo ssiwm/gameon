@@ -47,6 +47,7 @@ func run(m: Node2D) -> void:
 	await _test_ai_states()
 	await _test_alert()
 	await _test_target_hysteresis()
+	await _test_hear_error()
 	_finish()
 
 func _finish() -> void:
@@ -581,4 +582,65 @@ func _test_target_hysteresis() -> void:
 	bot.global_position = Vector2(-4100.0, -4000.0)
 	e.queue_free()
 	strip.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- lokalizacja hałasu z błędem (ENEMY_PLAN.md F3.2)
+
+## Wróg słyszy hałas z błędem poziomym: z bliska prawie dokładnie, na granicy zasięgu do `hear_error` px (cichy 1,5× bardziej); ślepiec dokładniej, wołek gorzej.
+func _test_hear_error() -> void:
+	var off := Enemy.heard_offset
+	check("błąd słuchu: tuż przy źródle zero", off.call(64.0, 0.0, 200.0, 3.0, 1.0) == 0.0)
+	check("błąd słuchu: na granicy zasięgu głośny = pełny błąd, w obie strony", is_equal_approx(off.call(64.0, 200.0, 200.0, 3.0, 1.0), 64.0) and is_equal_approx(off.call(64.0, 200.0, 200.0, 3.0, -1.0), -64.0))
+	check("błąd słuchu: pół zasięgu = pół błędu", is_equal_approx(off.call(64.0, 100.0, 200.0, 3.0, 1.0), 32.0))
+	check("błąd słuchu: cichy (0,5) myli się 1,5× bardziej niż głośny", is_equal_approx(off.call(64.0, 200.0, 200.0, 0.5, 1.0), 96.0))
+	check("błąd słuchu: za zasięgiem nie rośnie ponad pełny błąd", is_equal_approx(off.call(64.0, 900.0, 200.0, 3.0, 1.0), 64.0))
+	var Defs := load("res://scripts/enemy_defs.gd")
+	check("błąd słuchu: ślepiec dokładniejszy, wołek mniej dokładny niż domyślny",
+		Defs.value("slepiec", "hear_error") < Enemy.HEAR_ERROR and Defs.value("wolek", "hear_error") > Enemy.HEAR_ERROR and Defs.value("trzosek", "hear_error") == 0.0)
+
+	var e := _spawn("trzosek", Vector2(FAR_X + 14000.0, -6000.0))
+	e.set_physics_process(false)
+	var src := Vector2(FAR_X + 14100.0, -6000.0)
+	var lo := 0.0
+	var hi := 0.0
+	var same_y := true
+	for i in 300:
+		var p: Vector2 = e._heard_pos(src, 150.0, 200.0, 3.0)
+		lo = minf(lo, p.x - src.x)
+		hi = maxf(hi, p.x - src.x)
+		same_y = same_y and p.y == src.y
+	var bound := Enemy.HEAR_ERROR * 0.75
+	check("błąd słuchu: 300 losowań w granicach ±48 px, obie strony, bez błędu w pionie", lo >= -bound - 0.01 and hi <= bound + 0.01 and lo < -bound * 0.5 and hi > bound * 0.5 and same_y, "%.1f … %.1f" % [lo, hi])
+	e.queue_free()
+
+	# wiring na prawdziwej mapie: wróg śpi w punkcie grafu nawigacji, hałas w drugim punkcie obok — ślad jest w pobliżu źródła, nie dokładnie w nim
+	var nav = level.get("nav")
+	var pa := Vector2.ZERO
+	var pb := Vector2.ZERO
+	var found := false
+	if nav != null:
+		for ida in nav.get_point_ids():
+			var a: Vector2 = nav.get_point_position(ida)
+			for idb in nav.get_point_ids():
+				var b: Vector2 = nav.get_point_position(idb)
+				if absf(b.y - a.y) < 1.0 and absf(b.x - a.x) > 100.0 and absf(b.x - a.x) < 140.0:
+					pa = a
+					pb = b
+					found = true
+					break
+			if found:
+				break
+	check("błąd słuchu: mapa 1.3 ma dwa sąsiednie punkty nawigacji do testu", found)
+	if found:
+		var sleeper := _spawn("trzosek", level.to_global(pa))
+		sleeper.set_physics_process(false)
+		NoiseMgr.last_noise_pos = level.to_global(pb)
+		NoiseMgr.last_noise_amount = 3.0
+		NoiseMgr.noise_serial += 1
+		sleeper._check_wake()
+		var dx: float = sleeper._last_known.x - NoiseMgr.last_noise_pos.x
+		check("błąd słuchu: śpiący budzi się od hałasu, ślad w granicach błędu i na tej samej wysokości",
+			sleeper.active and absf(dx) <= Enemy.HEAR_ERROR + 0.5 and is_equal_approx(sleeper._last_known.y, NoiseMgr.last_noise_pos.y),
+			"aktywny=%s, Δx=%.1f, y %.1f vs %.1f" % [sleeper.active, dx, sleeper._last_known.y, NoiseMgr.last_noise_pos.y])
+		sleeper.queue_free()
 	await get_tree().physics_frame

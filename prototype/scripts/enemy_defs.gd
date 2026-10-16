@@ -9,6 +9,7 @@ extends RefCounted
 ##   supply  szansa na skrzynkę zaopatrzenia (throwables.gd)
 ##   ammo    szansa na skrzynkę z amunicją do broni, którą ktoś nosi
 ##   health  szansa na apteczkę (1.5) — tylko mocniejsi wrogowie
+##   hear_error  błąd lokalizacji hałasu [px] na granicy zasięgu słyszenia (F3.2; domyślnie enemy.gd HEAR_ERROR = 64): ślepiec słyszy dokładniej, wołek gorzej
 ##   alert   s reakcji „zauważył cię" (F3.1b): wróg staje, odwraca się i rozżarza oczy, zanim ruszy do ataku; 0 / brak = bez reakcji
 ##   voice   zdarzenie → [rodzina, liczba wariantów, głośność dB, wysokość]; „attack" gra przy zapowiedzi ciosu, „alert" przy reakcji „zauważył", „death" przy śmierci;
 ##           rodzaj bez wpisu milczy (Ćma). Skoczek mówi głosem Trzoska (niżej), zdemaskowany Mimik głosem Ślepca (wyżej).
@@ -54,7 +55,7 @@ const DEFS := {
 		"cooldown": 1.1, "leap": false, "hear": 300.0, "wake_near": 36.0, "sight": 26.0,
 		"keen": true, "min_noise": 0.25, "blind": true, "fire_shy": true,
 		"color": Color(0.8, 0.78, 0.76), "size": Vector2(12, 17), "hurt_h": 27.0, "knock": 40.0, "knock_mult": 0.6, "head": 0.28,
-		"xp": 6, "scrap": 5, "supply": 0.1, "ammo": 0.3, "voice": {"attack": ["slepiec_attack", 2, -4.0, 1.0], "death": ["slepiec_death", 2, -3.0, 1.0]},
+		"xp": 6, "scrap": 5, "supply": 0.1, "ammo": 0.3, "hear_error": 36.0, "voice": {"attack": ["slepiec_attack", 2, -4.0, 1.0], "death": ["slepiec_death", 2, -3.0, 1.0]},
 	},
 	# Podsłuchacz (GDD §7.1): stoi nieruchomo i nasłuchuje; zobaczy albo usłyszy — krzyczy i ściąga hordę.
 	"podsluchacz": {
@@ -68,7 +69,7 @@ const DEFS := {
 		"cooldown": 1.6, "leap": false, "hear": 150.0, "wake_near": 70.0, "sight": 200.0,
 		"bruiser": true, "armor": 3.0,
 		"color": Color(0.36, 0.27, 0.34), "size": Vector2(20, 26), "hurt_h": 32.0, "knock": 14.0, "knock_mult": 0.2, "head": 0.28,
-		"xp": 12, "scrap": 6, "supply": 0.35, "ammo": 0.6, "health": 0.75, "voice": {"attack": ["wolek_attack", 2, -3.0, 1.0], "death": ["wolek_death", 2, -2.0, 1.0]},
+		"xp": 12, "scrap": 6, "supply": 0.35, "ammo": 0.6, "health": 0.75, "hear_error": 96.0, "voice": {"attack": ["wolek_attack", 2, -3.0, 1.0], "death": ["wolek_death", 2, -2.0, 1.0]},
 	},
 }
 
