@@ -214,7 +214,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 | **Wołek** | 140 | wolna | Tankuje, potężny cios | Unik, strzelba w plecy |
 | **Skoczek** | 40 | skok | Spada z sufitu/wysokości | Ciągły ogień w górę, FALCON |
 | **Pijawka** | 15 | pełznie | Dopada, wysysa HP, QTE (30 s) | Maczeta, strzał w twarz kolegi? (friendly fire) |
-| **Ślepiec** | 60 | węszy | **Nie widzi — słyszy.** Idzie do ostatniego hałasu | Kucnij i przejdź; harpun |
+| **Ślepiec** | 60 | węszy | **Nie widzi — słyszy.** Idzie w okolice ostatniego hałasu (z błędem lokalizacji — z daleka i przy cichych dźwiękach mniej dokładnie) | Kucnij i przejdź; harpun |
 | **Podsłuchacz** | 35 | stoi | Nieruchomy „słuchacz" — krzyczy i ściąga hordę | Priorytet: zabić cicho (harpun) |
 | **Mimik** | 70 | udaje | Udaje sylwetkę/radio kolegi z drużyny | Sprawdź pingiem/kodem drużyny |
 | **Żyła** | 200 | rośnie | Splot 5–10 m, rodzi Trzoski | Ogień, WRATH-4, ładunek |

@@ -1,6 +1,6 @@
 # Plan: porządki w logice wrogów pod widok 3D i mądrzejsza AI
 
-Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237), F2b zrobiona (1.7.238), F3.1a zrobiona (1.7.239), F3.1b zrobiona (1.7.240), F3.3 odrzucone po pomiarze, F3.5a zrobiona (1.7.241, gałąź `feat/enemy-target-hysteresis`), zostają F2c, F3.1c, F3.2, F3.4, F3.5b, F3.6, F3.7, F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
+Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237), F2b zrobiona (1.7.238), F3.1a zrobiona (1.7.239), F3.1b zrobiona (1.7.240), F3.3 odrzucone po pomiarze, F3.5a zrobiona (1.7.241), F3.2 zrobiona (1.7.242, gałąź `feat/enemy-hear-error`), zostają F2c, F3.1c, F3.4, F3.5b, F3.6, F3.7, F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
 `stalker.gd`, `nest.gd`, `director.gd`, `nav.gd`, `noise_manager.gd`, `view3d.gd`) i na `MISSION_3D_SPIKE.md` — nie na próbnej implementacji,
 więc rozmiary faz są szacunkowe, a uwagi o błędach pochodzą z lektury kodu, nie z gry.
 
@@ -100,6 +100,9 @@ okrężnie (rodzaj ze ścieżki skryptu, błysk trafienia z koloru `modulate`, `
      zapowiedzi; czy ślepiec / skoczek / mimik też powinni mieć reakcję (pole `alert` per rodzaj); czy wataha rusza jednocześnie (rozrzut ±15%).
    - **F3.1c — po F3.1b:** przestawić gałęzie `_tick_server` tak, żeby decyzje wynikały ze stanu (`match _ai`), razem z podziałem `enemy.gd` (F2c).
 2. Lokalizacja hałasu z niedokładnością (im dalej i ciszej, tym większy błąd); ślepiec „sprawdza okolicę”.
+   - **F3.2 — zrobione w 1.7.242:** `heard_offset` / `_heard_pos` w `enemy.gd`: błąd poziomy = `hear_error` (64 px domyślnie; ślepiec 36, wołek 96) × (słyszalna odległość / zasięg)
+     × (1,5 dla zdarzeń cichych); stosowany przy budzeniu hałasem (`_check_wake`), śledztwie po hałasie (`_listen`) i krzyku gracza (`hear_scream`). Tylko w poziomie.
+     **Zostaje:** „sprawdzanie okolicy” — dłuższe szukanie po dojściu do niedokładnego śladu (dziś standardowe `SEARCH_TIME`), do decyzji po playtestach.
 3. ~~Odległość dźwięku jednym przebiegiem od źródła hałasu (zamiast A* na każdego wroga); wspólne z `sound_grid.gd`.~~ **Odrzucone po pomiarze (2026-10-16):**
    `_sound_distance` (A* po grafie `nav`) kosztuje ≈ 76 µs na wywołanie (30 wrogów naraz = 2,3 ms), a `sound_grid.route` ≈ 81 µs; budżet 6 wyszukiwań na klatkę
    z F0 ogranicza szczyt do ≈ 0,5 ms. Pole odległości z jednego przebiegu pisane w GDScript (BFS po ok. 2–8 tys. komórek) byłoby wolniejsze niż natywny A*, więc

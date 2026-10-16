@@ -567,9 +567,10 @@ func hear_scream(pos: Vector2) -> void:
 	if not NoiseMgr.is_server() or not alive:
 		return
 	var lim := SCREAM_LURE_R * Difficulty.m("enemy_hear")
-	if _sound_distance(pos, lim) > lim:
+	var heard := _sound_distance(pos, lim)
+	if heard > lim:
 		return
-	_lead_at(pos)
+	_lead_at(_heard_pos(pos, heard, lim, NoiseMgr.N_SCREAM))        # krzyk jest głośny (mały błąd), ale też nie wskazuje punktu co do piksela
 	wake()
 
 ## --- kompensacja opóźnienia (lag_comp.gd) ----------------------------------
@@ -949,8 +950,25 @@ func _listen() -> void:
 	if reach > 0.0 and _sound_needs_path(NoiseMgr.last_noise_pos, reach) and not _sound_slot():
 		return                                # budżet A* tej klatki wyczerpany — hałas zostaje nieprzeczytany, wróg usłyszy go w następnej
 	_seen_serial = NoiseMgr.noise_serial
-	if reach > 0.0 and _sound_distance(NoiseMgr.last_noise_pos, reach) < reach:
-		_lead_at(NoiseMgr.last_noise_pos)
+	if reach > 0.0:
+		var heard := _sound_distance(NoiseMgr.last_noise_pos, reach)
+		if heard < reach:
+			_lead_at(_heard_pos(NoiseMgr.last_noise_pos, heard, reach, NoiseMgr.last_noise_amount))
+
+## Lokalizacja hałasu z niedokładnością (F3.2): wróg słyszy, że „coś hałasuje stamtąd", ale nie wskazuje punktu co do piksela — im dalej źródło
+## (względem zasięgu słyszenia) i im ciszej, tym większy błąd. Tylko w poziomie (pomyłka o piętro wysłałaby wroga na zły poziom); z bliska prawie dokładnie.
+## Pole `hear_error` w `enemy_defs.gd` (px na granicy zasięgu przy głośnym zdarzeniu); cicha rzecz (≤ 0,5) myli się 1,5× bardziej.
+const HEAR_ERROR := 64.0
+const HEAR_ERROR_QUIET := 1.5                 ## mnożnik błędu dla zdarzeń cichych (kroki, ostatnie ułamki strzału z zimnej lufy)
+
+## Przesunięcie poziome [px] źródła hałasu: `rnd` ∈ [−1, 1], `dist` — słyszalna odległość (po trasie), `reach` — zasięg słyszenia, `amount` — głośność zdarzenia.
+static func heard_offset(error_max: float, dist: float, reach: float, amount: float, rnd: float) -> float:
+	var ratio := clampf(dist / maxf(reach, 1.0), 0.0, 1.0)
+	var quiet := lerpf(HEAR_ERROR_QUIET, 1.0, clampf((amount - MIN_WAKE_NOISE) / 1.5, 0.0, 1.0))
+	return clampf(rnd, -1.0, 1.0) * error_max * ratio * quiet
+
+func _heard_pos(pos: Vector2, dist: float, reach: float, amount: float) -> Vector2:
+	return pos + Vector2(heard_offset(float(_def.get("hear_error", HEAR_ERROR)), dist, reach, amount, randf_range(-1.0, 1.0)), 0.0)
 
 ## Budżet wyszukiwań A* na klatkę fizyki dla słuchania hałasu (`_listen`, `_check_wake`): głośny strzał słyszy naraz cała okolica,
 ## a każdy słyszący liczył własną trasę w tej samej klatce. Nadmiar czeka do następnej klatki (ułamek sekundy opóźnienia reakcji).
@@ -1298,8 +1316,9 @@ func _check_wake() -> void:
 		var wait := reach > 0.0 and _sound_needs_path(NoiseMgr.last_noise_pos, reach) and not _sound_slot()    # budżet A* tej klatki — spróbuje w następnej
 		if not wait:
 			_seen_serial = NoiseMgr.noise_serial
-			if reach > 0.0 and _sound_distance(NoiseMgr.last_noise_pos, reach) < reach:
-				_lead_at(NoiseMgr.last_noise_pos)     # idzie do źródła hałasu, nie wprost do gracza
+			var heard := _sound_distance(NoiseMgr.last_noise_pos, reach) if reach > 0.0 else INF
+			if reach > 0.0 and heard < reach:
+				_lead_at(_heard_pos(NoiseMgr.last_noise_pos, heard, reach, NoiseMgr.last_noise_amount))     # idzie w okolice źródła hałasu (z błędem), nie wprost do gracza
 				wake()
 				return
 	for p in get_tree().get_nodes_in_group("players"):
