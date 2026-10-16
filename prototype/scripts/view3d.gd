@@ -640,7 +640,7 @@ func _sync_enemies(delta: float) -> void:
 		st["vx"] = lerpf(float(st.get("vx", 0.0)), vx_now, 0.5)
 		st["vy"] = lerpf(float(st["vy"]), vy_now, 0.45)
 		_estate[id] = st
-		e.call("pose", delta, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), int(info["sp"]))      # sp: stan specjalny (Wołek: szarża, oszołomienie)
+		e.call("pose", delta, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), int(info["sp"]), bool(info.get("alert", false)))      # sp: stan specjalny (Wołek: szarża, oszołomienie); alert: reakcja „zauważył" (oczy)
 
 ## Rodzaj cieczy pod stopami (0 błoto, 1 olej, 2 woda), −1 gdy stoi na zwykłym gruncie.
 func _liquid_kind(px: Vector2) -> int:
