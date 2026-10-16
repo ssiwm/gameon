@@ -1,6 +1,6 @@
 # Plan: porządki w logice wrogów pod widok 3D i mądrzejsza AI
 
-Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237, gałąź `feat/enemy-defs`), zostają F2b–F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
+Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237), F2b zrobiona (1.7.238, gałąź `feat/boss-base`), zostają F2c–F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
 `stalker.gd`, `nest.gd`, `director.gd`, `nav.gd`, `noise_manager.gd`, `view3d.gd`) i na `MISSION_3D_SPIKE.md` — nie na próbnej implementacji,
 więc rozmiary faz są szacunkowe, a uwagi o błędach pochodzą z lektury kodu, nie z gry.
 
@@ -79,7 +79,11 @@ okrężnie (rodzaj ze ścieżki skryptu, błysk trafienia z koloru `modulate`, `
   `Enemy.KINDS` zostaje jako alias (kodeks, HUD, testy bez zmian); `SUPPLY_DROP`, `AMMO_DROP`, `HEALTH_DROP`, `VOICES`, `KILL_XP`, `Scrap.DROP` usunięte.
   Test w `--enemytest`: komplet pól, wzorzec wartości sprzed przeniesienia, dźwięki głosów w manifeście, model 3D (`SPEC`) dla każdego rodzaju.
   **Zostaje:** `hurt_h` nadal ręcznie zsynchronizowane z `fit` w `enemy3d.gd: SPEC` (pilnuje tego `test_proportions.gd`); `SPEC` zostaje osobno jako dane prezentacji.
-- **F2b — do zrobienia:** `BossBase`: wspólne `_humans()`, `hp_for`, fazy, miniony przez RPC, zdarzenia, `reset` (dziś `boss.gd` i `leech.gd` je dublują).
+- **F2b — zrobione w 1.7.238:** `boss_base.gd` (`extends CharacterBody2D`): `State`, `state`/`hp`/`max_hp`/`phase`, `is_threat`/`is_alive`, `_humans`, `scaled_hp`,
+  `_shake_near`, `_summon` / `_clear_summoned` / `_kill_summoned` (przywołani Trzoski), `_drop_boss_loot`. `boss.gd` i `leech.gd` dziedziczą po nim
+  (`extends "res://scripts/boss_base.gd"`; bez `class_name`, jak reszta projektu); `hp`/`max_hp` startują z `_init` (BASE_HP) w podklasach.
+  **Zostaje własne:** ataki, okna obrażeń, progi faz, `_sync`/`_event`, `reset_enemy` — różnią się za bardzo, żeby wspólna wersja była czytelniejsza
+  (zdarzenia i replikacja mają inne pola); do wspólnej wersji wrócić dopiero przy trzecim bossie.
 - **F2c — do zrobienia:** podział `enemy.gd` na zmysły, mózg (maszyna stanów) i zachowania (wataha, szarża, zasadzka, nasłuch, ćma, mimik) — najlepiej razem
   z F3, żeby nie przenosić kodu dwa razy.
 

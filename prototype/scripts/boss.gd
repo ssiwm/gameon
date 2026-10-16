@@ -1,4 +1,4 @@
-extends CharacterBody2D
+extends "res://scripts/boss_base.gd"
 ## Żyła — matka gniazd. Boss misji „Gniazdo" (GDD §7.1 Żyła: splot, rodzi
 ## Trzoski; §16.0 pkt 1: demo = misja w całości z bossem).
 ##
@@ -24,16 +24,11 @@ extends CharacterBody2D
 ##
 ## Symulacja TYLKO na serwerze; klienci dostają stan przez _sync i _event.
 
-signal died
-
 const Hurtbox := preload("res://scripts/hurtbox.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
-const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
-const NightShift := preload("res://scripts/night_shift.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 
-enum State { DORMANT, AWAKE, DEAD }
 enum Atk { NONE, LASH, SPIT, SWEEP }
 
 const BASE_HP := 750.0
@@ -84,10 +79,7 @@ const VEINS := [
 	[Vector2(6, -18), Vector2(12, -22), Vector2(18, -24), Vector2(23, -30)],
 ]
 
-var state: int = State.DORMANT
-var hp := BASE_HP
-var max_hp := BASE_HP
-var phase := 1                    ## 1 / 2 (furia, <66%) / 3 (krzyk, <33%)
+## state, hp, max_hp, phase (1 / 2 furia <66% / 3 krzyk <33%) — w boss_base.gd
 var atk: int = Atk.NONE           ## trwająca zapowiedź ataku (synchronizowane)
 var maw_open := false
 var stunned := false
@@ -121,6 +113,10 @@ var _light: Lights.GameLight
 var _overlay: Node2D
 var _spr: Array = []                  ## [cialo, glow] z arkusza vein; puste = rysunek zastepczy z kolek
 
+func _init() -> void:
+	hp = BASE_HP
+	max_hp = BASE_HP
+
 func _ready() -> void:
 	add_to_group("enemies")
 	add_to_group("boss")
@@ -146,12 +142,6 @@ func _maw_point() -> Vector2:
 		return Vector2(0, -8)
 	return MAW_POS_HD if _is_hd() else MAW_POS
 
-func is_threat() -> bool:
-	return state == State.AWAKE
-
-func is_alive() -> bool:
-	return state != State.DEAD
-
 ## Kontrakt widoku (view3d.gd) — patrz enemy.gd: view_info. `winding` to zapowiedź macki (inne ataki mają własne pozy z animacji).
 func view_info() -> Dictionary:
 	return {"kind": "vein", "alive": state != State.DEAD, "winding": winding, "sp": 0, "flash": _flash > 0.0}
@@ -171,7 +161,7 @@ func on_nest_lost(left: int) -> void:
 func awaken() -> void:
 	if not NoiseMgr.is_server() or state != State.DORMANT:
 		return
-	max_hp = (BASE_HP + HP_PER_EXTRA_HUMAN * maxi(0, _humans() - 1)) * Difficulty.m("boss_hp") * NightShift.hp_mult()
+	max_hp = scaled_hp(BASE_HP, HP_PER_EXTRA_HUMAN, _humans())
 	hp = max_hp
 	state = State.AWAKE
 	phase = 1
@@ -206,13 +196,6 @@ func reset_enemy() -> void:
 	if NoiseMgr.is_server():
 		_clear_brood.rpc()
 		_send_state(true)
-
-func _humans() -> int:
-	var n := 0
-	for p in get_tree().get_nodes_in_group("players"):
-		if not p.is_bot:
-			n += 1
-	return n
 
 # ---------------------------------------------------------------- symulacja
 
@@ -470,26 +453,13 @@ func _spawn_one() -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _spawn_brood(n: String, pos: Vector2) -> void:
-	var lvl := get_parent()
-	if lvl.has_node(n):
-		return
-	var e := ENEMY_SCENE.instantiate()
-	e.name = n
-	e.kind = "trzosek"
-	e.omniscient = true      # potomstwo zawsze wie, gdzie są gracze
-	e.summoned = true        # przywołany przez bossa: bez XP i dropów (enemy.gd: _die)
-	e.position = pos
-	lvl.add_child(e)
-	Audio.play_variant_at("impact_flesh", 3, pos, Audio.BUS_WORLD, -6.0, 0.55)
-	if NoiseMgr.is_server():
+	var e := _summon(n, pos, 0.55)
+	if e != null and NoiseMgr.is_server():
 		_brood.append(e)                  # listę czyści tylko serwer (_tick_brood) — u klientów rosłaby bez końca
-		e.wake()
 
 @rpc("authority", "call_local", "reliable")
 func _clear_brood() -> void:
-	for n in get_parent().get_children():
-		if n.name.begins_with("Brood"):
-			n.queue_free()
+	_clear_summoned("Brood")
 	_brood.clear()
 
 # ---------------------------------------------------------------- obrażenia
@@ -573,18 +543,10 @@ func _die() -> void:
 	maw_open = false
 	_wave_r = -1.0
 	NoiseMgr.add_noise(N_DEATH, global_position)
-	for b in _brood:
-		if is_instance_valid(b) and b.alive:
-			b.take_bullet(global_position, 999.0)
+	_kill_summoned(_brood)
 	_brood.clear()
 	print("[BOSS] Żyła nie żyje")
-	# dwie apteczki na drogę do ekstrakcji przez obudzony teren
-	var lvl := get_tree().get_first_node_in_group("level")
-	if lvl != null:
-		lvl.spawn_health(global_position + Vector2(-20, -30))
-		lvl.spawn_health(global_position + Vector2(20, -30))
-		if Scrap.enabled():
-			lvl.spawn_item("scrap", 0, global_position + Vector2(0, -30), Scrap.BOSS_VALUE)
+	_drop_boss_loot()                 # dwie apteczki na drogę do ekstrakcji przez obudzony teren i złom
 	_event.rpc("death")
 	_send_state(true)
 	died.emit()
@@ -656,11 +618,6 @@ func _event(kind: String) -> void:
 			Vfx.gibs(get_parent(), global_position + Vector2(0, -24), Color(0.4, 0.1, 0.14), 26)
 			visible = false
 			Hurtbox.set_enabled(self, false)
-
-func _shake_near(amount: float) -> void:
-	for p in get_tree().get_nodes_in_group("players"):
-		if not p.is_bot and p.is_multiplayer_authority() and p.global_position.distance_to(global_position) < 400.0:
-			Feel.shake(amount)
 
 func _death_fx() -> void:
 	Vfx.burst_fx(global_position + Vector2(0, -20), {"color": Color(0.55, 0.12, 0.16), "amount": 90, "life": 1.4, "dir": Vector2(0, -1), "spread": 80.0,

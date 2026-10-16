@@ -43,6 +43,7 @@ func run(m: Node2D) -> void:
 	await _test_view_contract()
 	await _test_facing()
 	_test_defs()
+	await _test_boss_base()
 	_finish()
 
 func _finish() -> void:
@@ -333,3 +334,42 @@ func _test_defs() -> void:
 	check("dane rodzajów: nieznany rodzaj nic nie daje", Defs.xp("nie_ma") == 0 and Defs.value("nie_ma", "ammo") == 0.0 and Defs.voice("nie_ma", "death").is_empty())
 	check("dane rodzajów: Enemy.KINDS to ta sama tabela (kodeks, HUD, testy)", Enemy.KINDS == Defs.DEFS)
 	check("dane rodzajów: Podsłuchacz krzyczy tylko przy śmierci, Ćma milczy", Defs.voice("podsluchacz", "attack").is_empty() and not Defs.voice("podsluchacz", "death").is_empty() and Defs.voice("cma", "death").is_empty())
+
+# ---------------------------------------------------------------- bossowie: wspólna podstawa (ENEMY_PLAN.md F2b)
+
+## Żyła i Pijawka dziedziczą `boss_base.gd`: ten sam stan, HP skalowane tym samym wzorem, przywołani Trzoski tą samą drogą.
+func _test_boss_base() -> void:
+	var Base := load("res://scripts/boss_base.gd")
+	var Leech := load("res://scripts/leech.gd")
+	var boss := get_tree().get_first_node_in_group("boss")
+	check("boss: Żyła dziedziczy boss_base.gd", boss != null and boss.get_script().get_base_script() == Base)
+	check("boss: Pijawka dziedziczy boss_base.gd", Leech.get_base_script() == Base)
+	var m: float = Difficulty.m("boss_hp")
+	check("boss: HP skalowane liczbą ludzi (1 → baza, 3 → baza + 2 dodatki)",
+		is_equal_approx(Base.scaled_hp(750.0, 250.0, 1), 750.0 * m) and is_equal_approx(Base.scaled_hp(750.0, 250.0, 3), 1250.0 * m) and is_equal_approx(Base.scaled_hp(750.0, 250.0, 0), 750.0 * m))
+	check("boss: Pijawka 5000 + 1500 za każdego dodatkowego człowieka", is_equal_approx(Leech.hp_for(1), 5000.0 * m) and is_equal_approx(Leech.hp_for(3), 8000.0 * m))
+	check("boss: śpiąca Żyła ma pełne HP z `_init` (750)", is_equal_approx(boss.hp, 750.0) and is_equal_approx(boss.max_hp, 750.0) and boss.state == Base.State.DORMANT)
+
+	# potomstwo Żyły: lista żywych tylko na serwerze, sprzątanie po prefiksie
+	boss._spawn_brood("BroodT9", Vector2(FAR_X + 9000.0, -2000.0))
+	var kid := level.get_node_or_null("BroodT9")
+	check("boss: potomstwo Żyły jest przywołane, wie gdzie są gracze i trafia na listę serwera", kid != null and bool(kid.summoned) and bool(kid.omniscient) and boss._brood.has(kid))
+	boss._clear_brood()
+	await get_tree().physics_frame
+	check("boss: `_clear_brood` usuwa potomstwo i czyści listę", level.get_node_or_null("BroodT9") == null and boss._brood.is_empty())
+
+	# Pijawka stworzona w teście (mapa 1.3 jej nie ma): ta sama droga przywoływania, zabicie i sprzątanie po prefiksie LeechSpawn
+	var lc: Node = Leech.new()
+	level.add_child(lc)
+	lc.global_position = Vector2(FAR_X + 10000.0, -2000.0)
+	check("boss: Pijawka ma pełne HP z `_init` (5000)", is_equal_approx(lc.hp, 5000.0) and lc.state == Base.State.DORMANT)
+	lc._spawn_minion("LeechSpawnT9", Vector2(FAR_X + 10100.0, -2000.0))
+	var mn := level.get_node_or_null("LeechSpawnT9")
+	check("boss: Trzosek Pijawki jest przywołany i na liście serwera", mn != null and bool(mn.summoned) and lc._minions.has(mn))
+	lc._kill_summoned(lc._minions)
+	check("boss: `_kill_summoned` zabija przywołanych", mn != null and not mn.alive)
+	lc._clear_minions()
+	await get_tree().physics_frame
+	check("boss: `_clear_minions` usuwa Trzoski Pijawki", level.get_node_or_null("LeechSpawnT9") == null and lc._minions.is_empty())
+	lc.queue_free()
+	await get_tree().physics_frame
