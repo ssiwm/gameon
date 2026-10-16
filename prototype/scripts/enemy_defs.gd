@@ -9,6 +9,8 @@ extends RefCounted
 ##   supply  szansa na skrzynkę zaopatrzenia (throwables.gd)
 ##   ammo    szansa na skrzynkę z amunicją do broni, którą ktoś nosi
 ##   health  szansa na apteczkę (1.5) — tylko mocniejsi wrogowie
+##   sweep   amplituda [px] przeszukiwania okolicy śladu po dojściu na miejsce hałasu (Ślepiec); search — czas szukania [s], domyślnie SEARCH_TIME
+##   lunge   rzut na głośny dźwięk (Ślepiec): {noise, range, wind, mult, time, cd} — patrz enemy.gd: _maybe_lunge; brak = bez rzutu
 ##   hear_error  błąd lokalizacji hałasu [px] na granicy zasięgu słyszenia (F3.2; domyślnie enemy.gd HEAR_ERROR = 64): ślepiec słyszy dokładniej, wołek gorzej
 ##   alert   s reakcji „zauważył cię" (F3.1b): wróg staje, odwraca się i rozżarza oczy, zanim ruszy do ataku; 0 / brak = bez reakcji
 ##   voice   zdarzenie → [rodzina, liczba wariantów, głośność dB, wysokość]; „attack" gra przy zapowiedzi ciosu, „alert" przy reakcji „zauważył", „death" przy śmierci;
@@ -51,11 +53,13 @@ const DEFS := {
 	},
 	# Ślepiec (GDD §7.1): nie widzi, tylko słyszy — idzie do źródła hałasu; kucanie i cisza go mijają.
 	"slepiec": {
-		"hp": 60.0, "speed": 70.0, "damage": 1, "windup": 0.35, "reach": 14.0,
-		"cooldown": 1.1, "leap": false, "hear": 300.0, "wake_near": 36.0, "sight": 26.0,
+		"hp": 100.0, "speed": 70.0, "damage": 2, "windup": 0.35, "reach": 14.0,
+		"cooldown": 1.1, "leap": true, "hear": 300.0, "wake_near": 36.0, "sight": 26.0,
 		"keen": true, "min_noise": 0.25, "blind": true, "fire_shy": true,
 		"color": Color(0.8, 0.78, 0.76), "size": Vector2(12, 17), "hurt_h": 27.0, "knock": 40.0, "knock_mult": 0.6, "head": 0.28,
-		"xp": 6, "scrap": 5, "supply": 0.1, "ammo": 0.3, "hear_error": 36.0, "voice": {"attack": ["slepiec_attack", 2, -4.0, 1.0], "death": ["slepiec_death", 2, -3.0, 1.0]},
+		"xp": 6, "scrap": 5, "supply": 0.1, "ammo": 0.3, "hear_error": 36.0, "sweep": 70.0, "search": 6.0,
+		"lunge": {"noise": 1.0, "range": 300.0, "wind": 0.3, "mult": 2.4, "time": 1.4, "cd": 6.0},
+		"voice": {"attack": ["slepiec_attack", 2, -4.0, 1.0], "alert": ["slepiec_attack", 2, -9.0, 1.25], "death": ["slepiec_death", 2, -3.0, 1.0]},
 	},
 	# Podsłuchacz (GDD §7.1): stoi nieruchomo i nasłuchuje; zobaczy albo usłyszy — krzyczy i ściąga hordę.
 	"podsluchacz": {
