@@ -74,6 +74,7 @@ var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D
 var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
 var _ws_lamps := {}                      ## id warsztatu → lampa nad nim (Node3D w geometrii mapy)
 var _globs := {}                         ## id plwociny / kwasu → [węzeł 2D, kula 3D]
+var _boulders := {}                      ## id głazu Wołka → [węzeł 2D, model 3D]
 var _fp := 0.0                           ## 0..1: przejście kamery do widoku z oczu gracza (oględziny broni)
 var _fp_hidden: Node3D                   ## model gracza schowany na czas oględzin (do przywrócenia)
 var _fp_last: Node2D                     ## ostatni gracz w oględzinach (kamera wraca od jego oczu)
@@ -212,7 +213,7 @@ func release() -> void:
 		if is_instance_valid(_nestfx[id][1]):
 			(_nestfx[id][1] as Node).queue_free()
 	_nestfx.clear()
-	for tab in [_globs, _bossfx, _leechfx, _lampfx]:
+	for tab in [_globs, _boulders, _bossfx, _leechfx, _lampfx]:
 		for id in tab.keys():
 			if is_instance_valid(tab[id][0]):
 				(tab[id][0] as CanvasItem).self_modulate = Color.WHITE
@@ -296,6 +297,7 @@ func _process(delta: float) -> void:
 	_sync_weather(delta)
 	_sync_mine_dust()
 	_sync_globs()
+	_sync_boulders()
 	_sync_boss_fx()
 	_sync_leech_fx()
 	_sync_lamps()
@@ -2392,6 +2394,39 @@ func _sync_globs() -> void:
 			_globs.erase(id)
 			continue
 		g3.position = Level3D.px_to_m((src as Node2D).global_position) + Vector3(0.0, 0.0, 0.3)
+
+## Głaz Wołka (`boulder.gd`, grupa „boulders"): kamień z modelu `rock_b` (skan Poly Haven) o średnicy ok. 16 px, obracający się w locie. Lot liczy węzeł 2D.
+func _sync_boulders() -> void:
+	for n in get_tree().get_nodes_in_group("boulders"):
+		if not (n is Node2D) or n.is_queued_for_deletion() or _boulders.has(n.get_instance_id()):
+			continue
+		var root := Node3D.new()
+		root.name = "Boulder"
+		var mdl := _item_model("rock_b")
+		if mdl != null:
+			var big := 0.001
+			for mi in mdl.find_children("*", "MeshInstance3D", true, false):
+				if (mi as MeshInstance3D).mesh != null:
+					big = maxf(big, (mi as MeshInstance3D).mesh.get_aabb().size.length())
+			var k := 16.0 * PX / big
+			mdl.scale = Vector3(k, k, k)
+			root.add_child(mdl)
+		else:
+			_sphere(root, 7.0 * PX, Vector3.ZERO, Color(0.45, 0.42, 0.38))
+		_world.add_child(root)
+		(n as CanvasItem).self_modulate = Color(1, 1, 1, 0)
+		_boulders[n.get_instance_id()] = [n, root]
+	for id in _boulders.keys():
+		var src = _boulders[id][0]
+		var b3: Node3D = _boulders[id][1]
+		if not is_instance_valid(src) or (src as Node).is_queued_for_deletion():
+			if is_instance_valid(b3):
+				b3.queue_free()
+			_boulders.erase(id)
+			continue
+		b3.position = Level3D.px_to_m((src as Node2D).global_position) + Vector3(0.0, 0.0, 0.3)
+		b3.rotation.z -= 0.25 * (1.0 if (src as Node2D).get("vel").x >= 0.0 else -1.0) * 0.5
+		b3.rotation.x += 0.1
 
 ## Efekty Żyły w scenie 3D (stan z `boss.gd`):
 ##  - żar paszczy (słaby punkt): poświata i światło przed pyskiem — tli się, gdy zamknięta; płonie, gdy otwarta; zielona przy pluciu; biała, gdy oślepiona;

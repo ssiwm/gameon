@@ -60,6 +60,7 @@ func run(m: Node2D) -> void:
 	await _test_slepiec_shaft()
 	await _test_return_home_stuck()
 	await _test_listener()
+	await _test_wolek_boulder()
 	_finish()
 
 # ---------------------------------------------------------------- Podsłuchacz: pole ochronne, fala alarmu, limit krzyków (ENEMY_PLAN.md F3.8)
@@ -185,6 +186,121 @@ func _test_listener() -> void:
 	dl.queue_free()
 	sleeper.queue_free()
 	for n in [l, near, far, near2, far2, client, strip]:
+		n.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- Głaz Wołka (ENEMY_PLAN.md F3.9)
+
+## Wołek bez skrzyni w pobliżu rzuca głazem (0,5 HP = ukryte „stłuczenie” gracza, dwa głazy = serce), z przerwą zależną od trudności; skrzynia obok ma pierwszeństwo.
+func _test_wolek_boulder() -> void:
+	var Defs := load("res://scripts/enemy_defs.gd")
+	var cfg: Dictionary = Defs.DEFS["wolek"]["boulder"]
+	check("głaz/dane: 0,5 HP, trzy przerwy malejące z trudnością (łatwy > normalny > trudny)", is_equal_approx(float(cfg["dmg"]), 0.5) and cfg["cd"].size() == 3 and float(cfg["cd"][0]) > float(cfg["cd"][1]) and float(cfg["cd"][1]) > float(cfg["cd"][2]))
+	check("głaz/trudność: przerwa z tabeli dla EASY / NORMAL / HARD, poza zakresem przycięta",
+		Enemy.boulder_cooldown(cfg, Difficulty.Level.EASY) == float(cfg["cd"][0]) and Enemy.boulder_cooldown(cfg, Difficulty.Level.NORMAL) == float(cfg["cd"][1]) and Enemy.boulder_cooldown(cfg, Difficulty.Level.HARD) == float(cfg["cd"][2]) and Enemy.boulder_cooldown(cfg, 9) == float(cfg["cd"][2]))
+	var y := -13500.0
+	var strip := _floor(FAR_X + 27000.0, FAR_X + 27600.0, y)
+	var x0 := FAR_X + 27100.0
+	var w := _spawn("wolek", Vector2(x0, y))
+	w.set_physics_process(false)
+	var dummy := Node2D.new()
+	level.add_child(dummy)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	w._charge_cd = 99.0
+	w._throw_cd = 0.0
+	w._boulder_cd = 0.0
+	dummy.global_position = Vector2(x0 + 120.0, y)
+	check("głaz/wybór: brak skrzyni w pobliżu → zapowiedź rzutu głazem (nie skrzynią)", w._bruiser_tick(0.016, dummy) and w._sp == 3 and w._sp_boulder and w._sp_crate == null, "sp=%d boulder=%s" % [w._sp, w._sp_boulder])
+	check("głaz/zapowiedź: krótsza niż rzut skrzynią (0,6 s × trudność)", w._sp_t < Enemy.THROW_WINDUP * Difficulty.m("enemy_windup") and w._sp_t > 0.3, "%.2f" % w._sp_t)
+	w._sp = 0
+	w._sp_boulder = false
+	w.winding = false
+	w._boulder_cd = 3.0
+	check("głaz/cooldown: w czasie przerwy nie rzuca", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	w._boulder_cd = 0.0
+	dummy.global_position = Vector2(x0 + 300.0, y)
+	check("głaz/zasięg: cel dalej niż 220 px → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	dummy.global_position = Vector2(x0 + 120.0, y)
+	var crate := _crate_at(Vector2(x0 + 10.0, y - 7.0))
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("głaz/pierwszeństwo: skrzynia obok → rzut skrzynią, nie głazem", w._bruiser_tick(0.016, dummy) and w._sp == 3 and not w._sp_boulder and w._sp_crate != null, "boulder=%s" % w._sp_boulder)
+	w._sp = 0
+	w._sp_crate = null
+	w.winding = false
+	w._throw_cd = 5.0
+	check("głaz/pierwszeństwo: skrzynia obok, ale na cooldownie → nie zastępuje jej głazem", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	crate.queue_free()
+	await get_tree().physics_frame
+	w._throw_cd = 0.0
+	var wall := _block(Vector2(x0 + 60.0, y - 30.0), Vector2(6.0, 120.0))
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("głaz/ściana: mur na linii rzutu → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	wall.queue_free()
+	await get_tree().physics_frame
+
+	# rzut: pocisk powstaje, przerwa wg trudności
+	var prev: int = Difficulty.level
+	var n0 := get_tree().get_nodes_in_group("boulders").size()
+	var ok := true
+	var detail := ""
+	for lvl in [Difficulty.Level.EASY, Difficulty.Level.NORMAL, Difficulty.Level.HARD]:
+		Difficulty.set_level(lvl)
+		w._sp = 3
+		w._sp_boulder = true
+		w._sp_dir = 1.0
+		w._sp_t = 0.0
+		w._boulder_cd = 0.0
+		w._bruiser_tick(0.016, dummy)
+		ok = ok and w._sp == 0 and not w._sp_boulder and is_equal_approx(w._boulder_cd, float(cfg["cd"][int(lvl)]))
+		detail += "%d: %.1f  " % [int(lvl), w._boulder_cd]
+	Difficulty.set_level(prev)
+	check("głaz/rzut: pocisk powstaje, a przerwa po rzucie to 8 / 5 / 3,2 s dla łatwego / normalnego / trudnego", ok and get_tree().get_nodes_in_group("boulders").size() == n0 + 3, detail)
+	for b in get_tree().get_nodes_in_group("boulders"):
+		b.queue_free()
+	await get_tree().physics_frame
+
+	# trafienie: 0,5 HP → stłuczenie; drugie → realne serce; leczenie zeruje
+	var hp_keep: int = player.hp
+	player.hp = 3
+	player.chip = 0.0
+	player._invuln = 0.0
+	player.deliver_chip(0.5, player.global_position + Vector2(40.0, 0.0), "boulder")
+	check("głaz/gracz: pierwsze trafienie nie zabiera serca, tylko 0,5 stłuczenia i daje krótką niewrażliwość", player.hp == 3 and is_equal_approx(player.chip, 0.5) and player._invuln > 0.0 and player._invuln < 0.5, "hp=%d chip=%.1f inv=%.2f" % [player.hp, player.chip, player._invuln])
+	player.deliver_chip(0.5, player.global_position + Vector2(40.0, 0.0), "boulder")
+	check("głaz/gracz: w niewrażliwości kolejne trafienie jest ignorowane", player.hp == 3 and is_equal_approx(player.chip, 0.5))
+	player._invuln = 0.0
+	player.deliver_chip(0.5, player.global_position + Vector2(40.0, 0.0), "boulder")
+	check("głaz/gracz: drugie trafienie = 1 realny HP, stłuczenie zerowe", player.hp == 2 and player.chip == 0.0, "hp=%d chip=%.1f" % [player.hp, player.chip])
+	player._invuln = 0.0
+	player.deliver_chip(0.5, player.global_position + Vector2(40.0, 0.0), "boulder")
+	player.apply_heal(1)
+	check("głaz/gracz: leczenie zeruje stłuczenie", player.hp == 3 and player.chip == 0.0, "hp=%d chip=%.1f" % [player.hp, player.chip])
+	player._invuln = 0.0
+
+	# lot głazu: trafia gracza (chip), ściana go zatrzymuje
+	var BoulderScript := load("res://scripts/boulder.gd")
+	var b = BoulderScript.new()
+	level.add_child(b)
+	b.global_position = player.global_position + Vector2(0.0, -10.0)
+	b.vel = Vector2.ZERO
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("głaz/lot: głaz w punkcie trafienia gracza zadaje 0,5 i znika", is_equal_approx(player.chip, 0.5) and not is_instance_valid(b), "chip=%.1f" % player.chip)
+	player.chip = 0.0
+	player._invuln = 0.0
+	var wall2 := _block(Vector2(x0 + 400.0, y - 30.0), Vector2(6.0, 120.0))
+	var b2 = BoulderScript.new()
+	level.add_child(b2)
+	b2.global_position = Vector2(x0 + 340.0, y - 30.0)
+	b2.vel = Vector2(400.0, 0.0)
+	await get_tree().create_timer(0.35).timeout
+	check("głaz/lot: ściana zatrzymuje głaz (znika bez obrażeń)", not is_instance_valid(b2) or b2.is_queued_for_deletion(), "")
+	player.hp = hp_keep
+	player.chip = 0.0
+	for n in [w, dummy, wall2, strip]:
 		n.queue_free()
 	await get_tree().physics_frame
 

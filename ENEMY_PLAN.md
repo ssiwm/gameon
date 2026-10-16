@@ -164,7 +164,7 @@ dla całej okolicy, powtarzany co 6 s bez limitu. Zrobione (dane w `enemy_defs.g
 - Łańcuch Podsłuchaczy: odrzucone jako problem — na mapach 1.2/1.3 stoją ≥ 416 px od siebie, a słuch to 238 px (test pilnuje).
 - Otwarte: czy limit 3 krzyków i pole 1,4 s są dobrze dobrane (playtest); klucz 3D „scream" pozostaje pozą zapowiedzi (osobna poza krzyku w modelu — F4/grafika).
 
-### F3.9 — Głaz Wołka (plan, do decyzji — 1.7.250)
+### F3.9 — Głaz Wołka (zrobione w 1.7.250, wariant B „stłuczenie”)
 
 **Cel:** Wołek bez skrzyni w pobliżu nie jest bezradny na dystans: rzuca **głazem**, który jest zawsze dostępny, zabiera **0,5 HP** i leci częściej na wyższej trudności.
 
@@ -184,3 +184,8 @@ Maksymalny DPS przy braku uników: ≈ 0,06 / 0,10 / 0,16 HP/s — znacznie mnie
 **Ryzyko widoku:** poza rzutu (`sp == 3`) zakłada, że Wołek unosi skrzynię — dla głazu trzeba sprawdzić w `enemy3d.gd`, czy poza wygląda dobrze bez rekwizytu w rękach (ewentualnie podnosi „głaz z ziemi" tym samym ruchem).
 
 **Kroki:** (1) `boulder.gd` + dane `boulder` w `enemy_defs.gd`; (2) wybór pocisku i `_boulder_cd` w `_bruiser_tick`; (3) `deliver_chip` + HUD popękanego serca (wariant B); (4) model 3D + dźwięk (rzut, uderzenie); (5) testy: skrzynia obok → skrzynia, brak → głaz, 2 głazy = 1 HP, cd per poziom (3 wartości), ściana blokuje, replikacja; (6) GDD (wiersz Wołka), CHANGELOG 1.7.250, README.
+
+**Wdrożenie F3.9 (1.7.250):** `boulder.gd` (+ `Level.spawn_boulder`, pocisk po łuku liczony na każdym peerze jak kwas Pijawki), dane `boulder` w `enemy_defs.gd`, wybór pocisku w `_bruiser_tick`
+(`_boulder_ready`, `_throw_boulder`, `Enemy.boulder_cooldown`), `Player.chip` + `deliver_chip` / `apply_chip` (replikowane), pęknięte serce w `hud.gd` (`Pips.cracked`), model skały w `view3d.gd`
+(`_sync_boulders`). Nie zrobione: pęknięcie w plakietce nad głową postaci 3D (tylko HUD drużyny); osobny dźwięk rzutu i uderzenia (użyty `impact_hard`); pozę rzutu Wołka dalej daje
+animacja zapowiedzi (nie ma osobnej pozy podnoszenia głazu).
