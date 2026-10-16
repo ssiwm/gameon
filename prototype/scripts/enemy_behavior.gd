@@ -14,6 +14,7 @@ const BEHAVIORS := {
 	"mimic": "res://scripts/enemy_mimic.gd",
 	"ambusher": "res://scripts/enemy_ambusher.gd",
 	"pack": "res://scripts/enemy_pack.gd",
+	"blind": "res://scripts/enemy_blind.gd",
 }
 
 ## Węzeł wroga (`enemy.gd`) — bez typu, bo `enemy.gd` ładuje tę klasę (cykl preload).

@@ -138,11 +138,6 @@ var _sp := 0                  ## Wołek: 0 nic, 1 zapowiedź szarży, 2 szarża,
 var _ai: int = Ai.SLEEP       ## bieżący stan AI (patrz `Ai`)
 var _ai_t := 0.0              ## s w bieżącym stanie AI (serwer)
 var _alert := 0.0             ## s reakcji „zauważył cię" (stan Ai.ALERT): wróg stoi i patrzy na źródło, zanim ruszy (serwer)
-var _lunge_wind := 0.0        ## s zapowiedzi rzutu Ślepca na dźwięk (stan Ai.ALERT: staje, odwraca się, oczy żarzą się)
-var _lunge_t := 0.0           ## s trwania rzutu (stan Ai.LUNGE: pędzi w stronę źródła dźwięku)
-var _lunge_dir := 1.0
-var _lunge_pos := Vector2.ZERO ## dokąd (z błędem lokalizacji) leci rzut
-var _lunge_cd := 0.0
 var _sweep_dir := 1.0         ## kierunek przeszukiwania okolicy śladu (Ślepiec)
 var _alert_cd := 0.0          ## s do następnej reakcji — ten sam wróg nie staje za każdym razem, gdy cel mignie na granicy wzroku
 var _net_face := 0.0          ## kierunek patrzenia z serwera (u klientów; `_sync`) — odwrót przy reakcji „zauważył"
@@ -236,9 +231,6 @@ func reset_enemy() -> void:
 	_panic = 0.0
 	_alert = 0.0
 	_alert_cd = 0.0
-	_lunge_wind = 0.0
-	_lunge_t = 0.0
-	_lunge_cd = 0.0
 	_target = null
 	_hist.clear()
 	_has_lead = false
@@ -355,10 +347,11 @@ func _derive_ai_state() -> int:
 		return Ai.WINDUP
 	if _panic > 0.0:
 		return Ai.PANIC
-	if _alert > 0.0 or _lunge_wind > 0.0:
+	if _alert > 0.0:
 		return Ai.ALERT
-	if _lunge_t > 0.0:
-		return Ai.LUNGE
+	var mid: int = _beh.derive_mid()
+	if mid >= 0:
+		return mid
 	if _target != null:
 		return _beh.chase_state()
 	if _has_lead:
@@ -401,7 +394,6 @@ func _tick_server(delta: float) -> void:
 	_panic = maxf(0.0, _panic - delta)
 	_alert = maxf(0.0, _alert - delta)
 	_alert_cd = maxf(0.0, _alert_cd - delta)
-	_tick_lunge(delta)
 	_beh.tick_prelude(delta)
 	_tick_drop(delta)
 	_tick_burn(delta)
@@ -452,14 +444,9 @@ func _tick_server(delta: float) -> void:
 		# ucieczka: płonący Trzosek (HKM-9), załamane morale watahy, strach przed Stalkerem
 		var src_x := _flee_src.x if _flee_src != Vector2.ZERO else (target.global_position.x if target != null else global_position.x - _facing)
 		velocity.x = -signf(src_x - global_position.x) * speed * 0.9
-	elif _alert > 0.0 or _lunge_wind > 0.0:
-		# „zauważył cię" / zapowiedź rzutu na dźwięk: staje i patrzy na źródło, zanim ruszy (czas i odwrót w `_begin_alert` / `_start_lunge`)
+	elif _alert > 0.0 or _beh.holds_still():
+		# „zauważył cię" / zapowiedź szarży na dźwięk: staje i patrzy na źródło, zanim ruszy (czas i odwrót w `_begin_alert` / `maybe_lunge`)
 		velocity.x = move_toward(velocity.x, 0.0, 800.0 * delta)
-	elif _lunge_t > 0.0:
-		# rzut Ślepca na dźwięk: pędzi w stronę źródła (z błędem lokalizacji), nie sprawdzając drogi; kończy po czasie albo za źródłem; na styku z graczem bije
-		velocity.x = _lunge_dir * speed * float((_def.get("lunge", {}) as Dictionary).get("mult", 2.0))
-		if target != null:
-			_try_begin_attack(target)
 	elif _beh.drive(delta, target, speed):
 		pass
 	elif target != null:
@@ -627,7 +614,7 @@ func _listen() -> void:
 		if heard < reach:
 			var lead := _heard_pos(NoiseMgr.last_noise_pos, heard, reach, NoiseMgr.last_noise_amount)
 			_lead_at(lead)
-			_maybe_lunge(lead, heard, NoiseMgr.last_noise_amount)
+			_beh.on_heard_noise(lead, heard, NoiseMgr.last_noise_amount)
 
 ## Lokalizacja hałasu z niedokładnością (F3.2): wróg słyszy, że „coś hałasuje stamtąd", ale nie wskazuje punktu co do piksela — im dalej źródło
 ## (względem zasięgu słyszenia) i im ciszej, tym większy błąd. Tylko w poziomie (pomyłka o piętro wysłałaby wroga na zły poziom); z bliska prawie dokładnie.
@@ -790,39 +777,6 @@ func _clear_line(pp: Node2D) -> bool:
 ## --- zachowanie bez widocznego celu ----------------------------------------
 
 ## Idzie na ostatni ślad, rozgląda się i rezygnuje; po dłuższym braku kontaktu wraca do domu.
-## Rzut Ślepca na dźwięk (mechanika „ślepiec słyszy"): głośne zdarzenie (≥ `lunge.noise`, np. strzał ze strzelby, granat, krzyk) w `lunge.range` px po trasie
-## sprawia, że obudzony Ślepiec staje na `lunge.wind` s (stan alert: odwraca się, oczy żarzą się, cichy warkot), a potem na `lunge.time` s pędzi
-## `lunge.mult`× szybciej w stronę źródła — z błędem lokalizacji (`hear_error`) i bez sprawdzania drogi. Kontra: po głośnym strzale zejść z miejsca
-## (rzut leci tam, gdzie był dźwięk), kucnąć albo strzelać cicho. Cooldown `lunge.cd` s; pole `lunge` w `enemy_defs.gd` (brak = rodzaj bez rzutu).
-static func lunge_triggers(cfg: Dictionary, amount: float, dist: float) -> bool:
-	return not cfg.is_empty() and amount >= float(cfg.get("noise", 2.0)) and dist <= float(cfg.get("range", 140.0))
-
-func _maybe_lunge(lead: Vector2, dist: float, amount: float) -> void:
-	var cfg := _def.get("lunge", {}) as Dictionary
-	if _target != null or not lunge_triggers(cfg, amount, dist):
-		return
-	if _lunge_cd > 0.0 or _lunge_wind > 0.0 or _lunge_t > 0.0 or _windup > 0.0 or summoned or not alive:
-		return
-	_lunge_wind = float(cfg.get("wind", 0.3)) * Difficulty.m("enemy_windup")
-	_lunge_cd = float(cfg.get("cd", 6.0)) * Difficulty.m("enemy_cd")
-	_lunge_pos = lead
-	if absf(lead.x - global_position.x) > 4.0:
-		_facing = signf(lead.x - global_position.x)
-	_set_ai_state(Ai.ALERT)                       # od razu, żeby `_sync` i głos zapowiedzi poszły w tym tiku
-
-func _tick_lunge(delta: float) -> void:
-	_lunge_cd = maxf(0.0, _lunge_cd - delta)
-	if _lunge_wind > 0.0:
-		_lunge_wind -= delta
-		if _lunge_wind <= 0.0:
-			_lunge_wind = 0.0
-			_lunge_t = float((_def.get("lunge", {}) as Dictionary).get("time", 0.7))
-			_lunge_dir = signf(_lunge_pos.x - global_position.x) if absf(_lunge_pos.x - global_position.x) > 1.0 else _facing
-	elif _lunge_t > 0.0:
-		_lunge_t -= delta
-		if (_lunge_pos.x - global_position.x) * _lunge_dir <= 0.0 or is_on_wall():
-			_lunge_t = 0.0                          # za źródłem albo przy ścianie kończy
-
 ## Przeszukiwanie okolicy śladu (Ślepiec, pole `sweep` = amplituda px): po dojściu do miejsca hałasu nie stoi jak kołek, tylko chodzi tam i z powrotem
 ## w ±`sweep` px od śladu, aż minie czas szukania (`search`). Gracz stojący na jego drodze w zasięgu dotyku (26 px) zostaje wyczuty.
 func _sweep(amp: float, speed: float) -> void:
@@ -1130,7 +1084,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 	var silent: bool = info.get("silent", false)
 	_alert = 0.0                                                       # trafiony nie stoi i nie patrzy — walczy (i nie dostaje reakcji przy budzeniu od tego trafienia)
 	_alert_cd = ALERT_COOLDOWN
-	_lunge_wind = 0.0
+	_beh.on_damaged()
 	_last_attacker = int(info.get("shooter", _last_attacker))          # kto dobił (też od podpalenia) dostaje XP w _die
 	if info.get("backstab", false) and (not active or _is_behind(info["dir"])):
 		dmg = maxf(dmg, hp + 1.0)
@@ -1207,7 +1161,7 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 	hp -= dmg * _beh.damage_mult()
 	_alert = 0.0
 	_alert_cd = ALERT_COOLDOWN
-	_lunge_wind = 0.0
+	_beh.on_damaged()
 	_flash = 0.1
 	_stagger = 0.12
 	Vfx.blood(get_parent(), global_position + Vector2(0, -8), (global_position - from_pos).normalized(), 5)
@@ -1350,7 +1304,7 @@ func _update_sprite() -> void:
 		if winding:
 			anim = "windup"
 		elif moving:
-			anim = "run" if _ai == Ai.LUNGE else "walk"
+			anim = "walk"
 		else:
 			anim = "idle"
 	anim = _beh.anim(anim, moving)

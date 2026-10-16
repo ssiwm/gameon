@@ -55,7 +55,7 @@ const DEFS := {
 	"slepiec": {
 		"hp": 100.0, "speed": 70.0, "damage": 2, "windup": 0.35, "reach": 14.0,
 		"cooldown": 1.1, "leap": true, "hear": 300.0, "wake_near": 36.0, "sight": 26.0,
-		"keen": true, "min_noise": 0.25, "blind": true, "fire_shy": true,
+		"behavior": "blind", "keen": true, "min_noise": 0.25, "blind": true, "fire_shy": true,
 		"color": Color(0.8, 0.78, 0.76), "size": Vector2(12, 17), "hurt_h": 27.0, "knock": 40.0, "knock_mult": 0.6, "head": 0.28,
 		"xp": 6, "scrap": 5, "supply": 0.1, "ammo": 0.3, "hear_error": 36.0, "sweep": 70.0, "search": 6.0,
 		"lunge": {"noise": 1.0, "range": 300.0, "wind": 0.3, "mult": 2.4, "time": 1.4, "cd": 6.0},

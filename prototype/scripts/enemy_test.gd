@@ -9,6 +9,7 @@ extends Node
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const Enemy := preload("res://scripts/enemy.gd")
 const Bruiser := preload("res://scripts/enemy_bruiser.gd")
+const Blind := preload("res://scripts/enemy_blind.gd")
 const FAR_X := 30000.0                ## px: obszar testów fizycznych poza mapą
 
 var main: Node2D
@@ -1351,7 +1352,7 @@ func _test_slepiec_mechanics() -> void:
 	var Defs := load("res://scripts/enemy_defs.gd")
 	var cfg: Dictionary = Defs.DEFS["slepiec"]["lunge"]
 	check("Ślepiec: rzut na dźwięk — głośny i blisko tak, cichy albo za daleko (> 300 px) nie, rodzaj bez pola `lunge` nie",
-		Enemy.lunge_triggers(cfg, 3.0, 100.0) and not Enemy.lunge_triggers(cfg, 0.6, 100.0) and Enemy.lunge_triggers(cfg, 3.0, 250.0) and not Enemy.lunge_triggers(cfg, 3.0, 400.0) and not Enemy.lunge_triggers({}, 9.0, 10.0))
+		Blind.lunge_triggers(cfg, 3.0, 100.0) and not Blind.lunge_triggers(cfg, 0.6, 100.0) and Blind.lunge_triggers(cfg, 3.0, 250.0) and not Blind.lunge_triggers(cfg, 3.0, 400.0) and not Blind.lunge_triggers({}, 9.0, 10.0))
 	var y := -10500.0
 	var strip := _floor(FAR_X + 22000.0, FAR_X + 23000.0, y)
 	var x0 := FAR_X + 22500.0
@@ -1380,37 +1381,37 @@ func _test_slepiec_mechanics() -> void:
 	check("Ślepiec: po czasie szukania (6 s, dłuższym niż domyślne 3,5 s) rezygnuje ze śladu", not e._has_lead, "has_lead=%s po łącznie ≈ %.1f s" % [e._has_lead, 3.0 + t])
 
 	# rzut na głośny dźwięk 100 px na prawo (bez nawigacji po mapie: wołamy wprost `_maybe_lunge`)
-	e._lunge_cd = 0.0
+	e._beh.lunge_cd = 0.0
 	e._target = null
 	e.global_position.x = x0
 	var src := Vector2(x0 + 100.0, y)
 	e._lead_at(src)
-	e._maybe_lunge(src, 100.0, 3.0)
-	check("Ślepiec: głośny dźwięk 100 px obok → zapowiedź (alert) i oczy w widoku", e.ai_name() == "alert" and bool(e.view_info()["alert"]) and e._lunge_wind > 0.0, "%s / %.2f" % [e.ai_name(), e._lunge_wind])
+	e._beh.maybe_lunge(src, 100.0, 3.0)
+	check("Ślepiec: głośny dźwięk 100 px obok → zapowiedź (alert) i oczy w widoku", e.ai_name() == "alert" and bool(e.view_info()["alert"]) and e._beh.lunge_wind > 0.0, "%s / %.2f" % [e.ai_name(), e._beh.lunge_wind])
 	var x_wind: float = e.global_position.x
 	await get_tree().create_timer(0.15).timeout
 	check("Ślepiec: w zapowiedzi stoi w miejscu", absf(e.global_position.x - x_wind) < 2.0 and e.ai_name() == "alert")
 	t = 0.0
-	while t < 1.2 and e._lunge_t <= 0.0:
+	while t < 1.2 and e._beh.lunge_t <= 0.0:
 		await get_tree().physics_frame
 		t += get_physics_process_delta_time()
 	var x_start: float = e.global_position.x
-	check("Ślepiec: po zapowiedzi pędzi (stan lunge)", e.ai_name() == "lunge" and e._lunge_t > 0.0, e.ai_name())
+	check("Ślepiec: po zapowiedzi pędzi (stan lunge)", e.ai_name() == "lunge" and e._beh.lunge_t > 0.0, e.ai_name())
 	await get_tree().create_timer(0.3).timeout
 	var v: float = (e.global_position.x - x_start) / 0.3
 	check("Ślepiec: w rzucie jest szybszy niż w chodzie (> 1,5 × 70 px/s)", v > 105.0, "%.0f px/s" % v)
 	t = 0.0
-	while t < 2.0 and e._lunge_t > 0.0:
+	while t < 2.0 and e._beh.lunge_t > 0.0:
 		await get_tree().physics_frame
 		t += get_physics_process_delta_time()
-	check("Ślepiec: rzut kończy się za źródłem dźwięku i wraca do normalnego stanu", e._lunge_t <= 0.0 and e.global_position.x >= x0 + 90.0 and e.ai_name() != "lunge", "x=%.0f, %s" % [e.global_position.x, e.ai_name()])
-	e._maybe_lunge(src, 100.0, 3.0)
-	check("Ślepiec: cooldown rzutu (6 s) blokuje kolejny", e._lunge_wind == 0.0 and e._lunge_cd > 4.0, str(e._lunge_cd))
-	e._lunge_cd = 0.0
+	check("Ślepiec: rzut kończy się za źródłem dźwięku i wraca do normalnego stanu", e._beh.lunge_t <= 0.0 and e.global_position.x >= x0 + 90.0 and e.ai_name() != "lunge", "x=%.0f, %s" % [e.global_position.x, e.ai_name()])
+	e._beh.maybe_lunge(src, 100.0, 3.0)
+	check("Ślepiec: cooldown rzutu (6 s) blokuje kolejny", e._beh.lunge_wind == 0.0 and e._beh.lunge_cd > 4.0, str(e._beh.lunge_cd))
+	e._beh.lunge_cd = 0.0
 	e.take_hit({"amount": 1.0, "dir": Vector2.RIGHT, "pos": e.global_position, "shooter": int(player.player_id), "type": "bullet"})
-	e._maybe_lunge(src, 100.0, 3.0)
+	e._beh.maybe_lunge(src, 100.0, 3.0)
 	e.take_hit({"amount": 1.0, "dir": Vector2.RIGHT, "pos": e.global_position, "shooter": int(player.player_id), "type": "bullet"})
-	check("Ślepiec: trafiony w zapowiedzi rzutu nie stoi (zapowiedź przerwana)", e._lunge_wind == 0.0)
+	check("Ślepiec: trafiony w zapowiedzi rzutu nie stoi (zapowiedź przerwana)", e._beh.lunge_wind == 0.0)
 	for n in [e, strip]:
 		n.queue_free()
 	await get_tree().physics_frame
@@ -1447,7 +1448,7 @@ func _test_slepiec_listen() -> void:
 		NoiseMgr.noise_serial += 1
 		e._listen()
 		check("Ślepiec/słuch: strzał o głośności %.1f %s rzut (przez `_listen`)" % [th[0], "uruchamia" if th[1] else "nie uruchamia"],
-			(e._lunge_wind > 0.0) == bool(th[1]) and e._has_lead, "wind=%.2f lead=%s ai=%s" % [e._lunge_wind, e._has_lead, e.ai_name()])
+			(e._beh.lunge_wind > 0.0) == bool(th[1]) and e._has_lead, "wind=%.2f lead=%s ai=%s" % [e._beh.lunge_wind, e._has_lead, e.ai_name()])
 		e.queue_free()
 	await get_tree().physics_frame
 
