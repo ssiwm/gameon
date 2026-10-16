@@ -50,6 +50,7 @@ const FIRE_PATCH := preload("res://scripts/fire_patch.gd")
 const BRICK_WALL := preload("res://scripts/brick_wall.gd")
 const GRENADE := preload("res://scripts/grenade.gd")
 const ACID := preload("res://scripts/acid_spit.gd")
+const BOULDER := preload("res://scripts/boulder.gd")
 const PLACED := preload("res://scripts/placed.gd")
 const SMOKE_CLOUD := preload("res://scripts/smoke_cloud.gd")
 const FLARE := preload("res://scripts/flare.gd")
@@ -990,6 +991,30 @@ func _spawn_acid_rpc(n: String, pos: Vector2, vel: Vector2) -> void:
 	a.position = pos
 	a.vel = vel
 	add_child(a)
+
+var _boulder_serial := 0
+
+## Serwer: głaz Wołka (enemy.gd `_throw_boulder`) — pocisk po łuku u wszystkich peerów; trafienie rozstrzyga serwer.
+func spawn_boulder(pos: Vector2, vel: Vector2, dmg: float) -> void:
+	if not NoiseMgr.is_server():
+		return
+	_boulder_serial += 1
+	var n := "Boulder%d" % _boulder_serial
+	if NoiseMgr.has_network():
+		_spawn_boulder_rpc.rpc(n, pos, vel, dmg)
+	else:
+		_spawn_boulder_rpc(n, pos, vel, dmg)
+
+@rpc("authority", "call_local", "reliable")
+func _spawn_boulder_rpc(n: String, pos: Vector2, vel: Vector2, dmg: float) -> void:
+	if has_node(n):
+		return
+	var b: Node2D = BOULDER.new()
+	b.name = n
+	b.position = pos
+	b.vel = vel
+	b.damage = dmg
+	add_child(b)
 
 # ---------------------------------------------------------------- granaty (rzucane przedmioty)
 

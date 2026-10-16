@@ -47,6 +47,7 @@ const COYOTE_TIME := 0.10       ## skok jeszcze chwilę po zejściu z krawędzi
 const JUMP_BUFFER := 0.10       ## skok wciśnięty tuż przed lądowaniem się liczy
 const JUMP_CUT := 0.45          ## puszczenie skoku skraca go (zmienna wysokość)
 const INVULN_AFTER_HIT := 0.6   ## chroni przed „serią\" trafień z kilku wrogów naraz
+const CHIP_INVULN := 0.3         ## krótsza niewrażliwość po lekkim trafieniu (głaz 0,5 HP)
 const KICK_DECAY := 600.0
 const DROP_TIME := 0.25         ## tyle trwa zeskok przez kładkę (dół + skok)
 const PLATFORM_LAYER_BIT := 5   ## warstwa kładek = 16 (level.gd LAYER_PLATFORM)
@@ -94,6 +95,7 @@ const BOT_COLOR := Color(0.62, 0.62, 0.70)
 var player_id := 1
 var display_id := 1
 var hp := MAX_HP
+var chip := 0.0                 ## ukryte „stłuczenie” 0–0,5 (głaz Wołka, F3.9): drugie trafienie zamienia je w 1 realny HP; zeruje się przy leczeniu, powaleniu i respawnie
 var aim_dir := Vector2.RIGHT
 var crouching := false
 ## `dead` znaczy „down": gracz leży i wykrwawia się, ale można go podnieść.
@@ -420,10 +422,10 @@ func _setup_sync() -> void:
 	sync.replication_interval = 0.05
 	sync.delta_interval = 0.05
 	var cfg := SceneReplicationConfig.new()
-	for path in [":position", ":velocity", ":aim_dir", ":hp", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":kit", ":perks", ":look", ":grabbed", ":is_reviving"]:
+	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":kit", ":perks", ":look", ":grabbed", ":is_reviving"]:
 		cfg.add_property(path)
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
-	for path in [":position", ":velocity", ":hp", ":crouching", ":dead", ":is_bot", ":display_id"]:
+	for path in [":position", ":velocity", ":hp", ":chip", ":crouching", ":dead", ":is_bot", ":display_id"]:
 		cfg.property_set_spawn(path, true)
 	sync.replication_config = cfg
 	add_child(sync)
@@ -1019,6 +1021,7 @@ func _go_down() -> void:
 	grabbed = false
 	is_reviving = false
 	hp = 0
+	chip = 0.0
 	dead = true
 	bleed_left = bleed_time()
 	_down_t = 0.0
@@ -1112,6 +1115,7 @@ func _do_revive() -> void:
 		return
 	dead = false
 	hp = REVIVE_HP
+	chip = 0.0
 	bleed_left = 0.0
 	revive_progress = 0.0
 	_invuln = 1.2
@@ -1122,6 +1126,7 @@ func _do_revive() -> void:
 func _respawn(hp_amount: int) -> void:
 	dead = false
 	hp = hp_amount
+	chip = 0.0
 	bleed_left = 0.0
 	revive_progress = 0.0
 	global_position = _spawn_point
@@ -1613,6 +1618,31 @@ func deliver_ff(from_pos: Vector2) -> void:
 func _from_server() -> bool:
 	return not NoiseMgr.has_network() or multiplayer.get_remote_sender_id() in [0, 1]
 
+## Lekkie trafienie ułamkiem HP (głaz Wołka, 0,5): HP gracza są całkowite, więc ułamek zbiera się w `chip`; gdy sięgnie 1, zamienia się w zwykłe trafienie.
+## Niewrażliwość po lekkim trafieniu jest krótsza niż po zwykłym.
+func deliver_chip(amount: float, from_pos: Vector2, source := "") -> void:
+	last_hit_source = source
+	if not NoiseMgr.has_network() or is_multiplayer_authority():
+		apply_chip(amount, from_pos)
+	else:
+		apply_chip.rpc_id(get_multiplayer_authority(), amount, from_pos)
+
+@rpc("any_peer", "call_remote", "reliable")
+func apply_chip(amount: float, from_pos: Vector2) -> void:
+	if not is_multiplayer_authority() or dead or _invuln > 0.0 or not _from_server() or amount <= 0.0:
+		return
+	chip += amount
+	if chip >= 1.0 - 0.001:
+		chip = maxf(0.0, chip - 1.0)
+		apply_hit(1, from_pos)
+		return
+	_invuln = CHIP_INVULN
+	_flash = 0.15
+	Vfx.blood(_fx_root(), global_position + Vector2(0, -9), (global_position - from_pos).normalized(), 3)
+	Audio.play_variant("player_hurt", 2, Audio.BUS_PLAYER, -12.0)
+	if not is_bot:
+		Feel.shake(2.0)
+
 ## Trafienie przez kolegę: odrzut, błysk i krzyk = HAŁAS (Uwaga), zero HP.
 @rpc("any_peer", "call_remote", "reliable")
 func apply_ff(from_pos: Vector2) -> void:
@@ -1642,6 +1672,7 @@ func apply_heal(amount: int) -> void:
 	if NoiseMgr.has_network() and multiplayer.get_remote_sender_id() not in [0, 1]:
 		return          # tylko serwer (albo lokalnie) może leczyć
 	hp = mini(stack_hp(), hp + amount)
+	chip = 0.0
 	Vfx.burst(_fx_root(), global_position + Vector2(0, -10), Color(0.4, 1.0, 0.5), 10, 15.0, 45.0,
 		Vector2.UP, 60.0, -30.0, 0.6, Vector2(1.0, 1.8), true)
 	if not is_bot:

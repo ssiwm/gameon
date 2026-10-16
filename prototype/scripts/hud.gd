@@ -178,6 +178,7 @@ class Pips extends Control:
 	var on := Color(0.95, 0.28, 0.32)
 	var off := Color(1, 1, 1, 0.14)
 	var bonus_from := 99          ## ikony od tego indeksu to serca „ponad stan" (złote)
+	var cracked := -1             ## indeks serca „stłuczonego" (głaz Wołka: ukryte 0,5 HP) — przygaszone z pęknięciem
 	var bonus := Color(1.0, 0.8, 0.25)
 	var u := 1.0                  ## skala ikon (własne serca w karcie drużyny są większe)
 	var edge_off := Color(0.29, 0.12, 0.10)   ## "drop": kontur pustej kropli
@@ -249,6 +250,8 @@ class Pips extends Control:
 			var c := on if i < filled else off
 			if i >= bonus_from:
 				c = bonus
+			if i == cracked:
+				c = c.darkened(0.35)
 			var o := Vector2(i * 11.0, 0.0)
 			if shape == "drop":
 				# makieta Hud.dc.html: kropla 14×18 px (9×11 j.), pełna = kolor, pusta = sam kontur; dół zaokrąglony mocniej niż góra
@@ -289,6 +292,10 @@ class Pips extends Control:
 					draw_colored_polygon(dia, c)
 				else:
 					draw_polyline(PackedVector2Array([dia[0], dia[1], dia[2], dia[3], dia[0]]), Color(1, 1, 1, 0.3), 1.0, true)
+			if i == cracked:
+				# pęknięcie przez serce: pół punktu życia już zabrane (głaz Wołka), kolejne trafienie zabierze resztę
+				var ox := float(i) * (12.0 if shape == "drop" else 11.0)
+				draw_polyline(PackedVector2Array([Vector2(ox + 5.0, -0.5), Vector2(ox + 3.4, 3.2), Vector2(ox + 5.7, 5.0), Vector2(ox + 4.2, 8.5)]), Color(0.06, 0.02, 0.02, 0.95), 1.2)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 ## Mały przebieg EKG obok serc własnego gracza (makieta): linia "biegnie" co 1,2 s; przy "Reduce effects" stała.
@@ -870,6 +877,7 @@ func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 	pips.count = maxi(p.max_hp(), hp)
 	pips.bonus_from = p.max_hp()
 	pips.filled = hp
+	pips.cracked = hp - 1 if hp > 0 and float(p.get("chip")) > 0.0 else -1        # ukryte 0,5 HP z głazu: ostatnie pełne serce pęknięte
 	if p.dead:
 		pips.on = Color(0.45, 0.17, 0.15)
 	else:

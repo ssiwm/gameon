@@ -186,6 +186,8 @@ var _net_face := 0.0          ## kierunek patrzenia z serwera (u klientów; `_sy
 var _sp_t := 0.0
 var _sp_dir := 1.0
 var _sp_crate: Node = null
+var _sp_boulder := false      ## zapowiedź rzutu (`_sp` 3) dotyczy głazu, nie skrzyni (F3.9)
+var _boulder_cd := 2.0        ## przerwa między głazami (wg trudności, `enemy_defs.gd: boulder.cd`)
 var _charge_cd := 3.0
 var _throw_cd := 2.0
 var _charge_hit := false
@@ -313,6 +315,8 @@ func reset_enemy() -> void:
 	_flee_src = Vector2.ZERO
 	_sp = 0
 	_sp_crate = null
+	_sp_boulder = false
+	_boulder_cd = 2.0
 	_charge_cd = 3.0
 	_throw_cd = 2.0
 	_lure_t = 4.0
@@ -807,6 +811,7 @@ func _mimic_call() -> void:
 func _bruiser_tick(delta: float, target: Node2D) -> bool:
 	_charge_cd = maxf(0.0, _charge_cd - delta)
 	_throw_cd = maxf(0.0, _throw_cd - delta)
+	_boulder_cd = maxf(0.0, _boulder_cd - delta)
 	match _sp:
 		0:
 			if target == null or _windup > 0.0 or _stagger > 0.0 or _panic > 0.0:
@@ -823,13 +828,24 @@ func _bruiser_tick(delta: float, target: Node2D) -> bool:
 				return true
 			# rzut skrzynią także w górę i w dół (Wołek nie jest bezradny wobec gracza na półce nad nim czy w dole): do THROW_DY_MAX px różnicy
 			# poziomów, a cel prawie nad / pod nim (ax < 60) też jest w zasięgu; łuk balistyczny liczy `_throw_crate`
-			if ax < 220.0 and (ax > 60.0 or not level) and absf(d.y) <= THROW_DY_MAX and _throw_cd <= 0.0:
+			if ax < 220.0 and (ax > 60.0 or not level) and absf(d.y) <= THROW_DY_MAX:
 				var c := _find_crate()
-				if c != null and _throw_clear(target):
+				if c != null:
+					if _throw_cd <= 0.0 and _throw_clear(target):
+						_sp = 3
+						_sp_t = THROW_WINDUP * Difficulty.m("enemy_windup")
+						_sp_dir = signf(d.x) if absf(d.x) > 1.0 else _facing
+						_sp_crate = c
+						_sp_boulder = false
+						winding = true
+						return true
+				elif _boulder_ready(ax) and _throw_clear(target):
+					# głaz (F3.9): zawsze pod ręką, gdy w pobliżu nie ma skrzyni — słabszy, ale częstszy; przerwa zależy od trudności
 					_sp = 3
-					_sp_t = THROW_WINDUP * Difficulty.m("enemy_windup")
+					_sp_t = float(_def["boulder"].get("windup", 0.6)) * Difficulty.m("enemy_windup")
 					_sp_dir = signf(d.x) if absf(d.x) > 1.0 else _facing
-					_sp_crate = c
+					_sp_crate = null
+					_sp_boulder = true
 					winding = true
 					return true
 			return false
@@ -943,8 +959,39 @@ func _throw_clear(target: Node2D) -> bool:
 	var q := PhysicsRayQueryParameters2D.create(from, target.global_position + Vector2(0, -10.0), 1)
 	return get_world_2d().direct_space_state.intersect_ray(q).is_empty()
 
+## Czy Wołek ma teraz prawo rzucić głazem: rodzaj ma wpis `boulder`, przerwa minęła, a cel jest w jego poziomym zasięgu (`range`).
+func _boulder_ready(ax: float) -> bool:
+	var cfg := _def.get("boulder", {}) as Dictionary
+	return not cfg.is_empty() and _boulder_cd <= 0.0 and ax < float(cfg.get("range", 220.0))
+
+## Przerwa po rzucie głazem wg poziomu trudności (tabela `cd` = [EASY, NORMAL, HARD] — osobne wartości, nie mnożnik `enemy_cd`).
+static func boulder_cooldown(cfg: Dictionary, level: int) -> float:
+	var cds: Array = cfg.get("cd", [5.0])
+	return float(cds[clampi(level, 0, cds.size() - 1)])
+
+## Rzut głazem: ten sam łuk balistyczny co skrzynia (grawitacja 980), ale pocisk to lekki węzeł `boulder.gd` zadający 0,5 HP i znikający po uderzeniu.
+func _throw_boulder(target: Node2D) -> void:
+	var cfg := _def.get("boulder", {}) as Dictionary
+	_sp = 0
+	_sp_boulder = false
+	winding = false
+	_boulder_cd = boulder_cooldown(cfg, Difficulty.level)
+	if target == null or not is_instance_valid(target):
+		return
+	var from := global_position + Vector2(_sp_dir * 10.0, -26.0)
+	var aim := (target.global_position + Vector2(0, -10.0)) - from
+	var t := clampf(maxf(absf(aim.x) / 360.0, absf(aim.y) / 500.0), 0.35, 0.8)
+	var vel := Vector2(clampf(aim.x / t, -420.0, 420.0), (aim.y - 0.5 * 980.0 * t * t) / t)
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl != null and lvl.has_method("spawn_boulder"):
+		lvl.spawn_boulder(from, vel, float(cfg.get("dmg", 0.5)))
+	NoiseMgr.add_noise(float(cfg.get("noise", 2.0)), global_position)
+
 ## Rzut: balistyczny łuk w gracza (grawitacja ciał fizycznych 980), skrzynia rani przy trafieniu (prop.gd).
 func _throw_crate(target: Node2D) -> void:
+	if _sp_boulder:
+		_throw_boulder(target)
+		return
 	var crate := _sp_crate
 	_sp = 0
 	winding = false

@@ -211,7 +211,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 | Wróg | HP | Szybkość | Zachowanie | Kontra |
 |------|----|----------|------------|--------|
 | **Trzosek** | 30 | szybka | Wataha 3–6, biegnie wprost; po zauważeniu gracza staje na ok. 0,4 s (odwraca się, oczy żarzą się, cichy warkot) — czytelny sygnał „zauważył cię"; kto pierwszy zauważy gracza, daje znać kolegom z watahy w ok. 14 m, więc schodzą się razem | Ogień ciągły, maczeta; mocne ogłuszenie (strzelba, szyna, harpun) przerywa jego cios w zapowiedzi |
-| **Wołek** | 140 | wolna | Tankuje, potężny cios; szarża po poziomie, rzut skrzynią także w górę i w dół (do ok. 10 kafli różnicy poziomów) | Unik, strzelba w plecy |
+| **Wołek** | 140 | wolna | Tankuje, potężny cios; szarża po poziomie, rzut skrzynią także w górę i w dół (do ok. 10 kafli różnicy poziomów); bez skrzyni w pobliżu rzuca **głazem** (0,5 HP — dwa trafienia = jedno serce, przerwa 8 / 5 / 3,2 s wg trudności) | Unik, strzelba w plecy |
 | **Skoczek** | 40 | skok | Spada z sufitu/wysokości | Ciągły ogień w górę, FALCON |
 | **Pijawka** | 15 | pełznie | Dopada, wysysa HP, QTE (30 s) | Maczeta, strzał w twarz kolegi? (friendly fire) |
 | **Ślepiec** | 100 | węszy | **Nie widzi — słyszy.** Idzie w okolice ostatniego hałasu (z błędem lokalizacji — z daleka i przy cichych dźwiękach mniej dokładnie), po dojściu **przeszukuje okolicę** (±4 m, 6 s), a na **głośny dźwięk w 19 m** (rozgrzana M-83 i głośniejsze: strzelba, granat, krzyk) po krótkiej zapowiedzi **szarżuje** w jego stronę (do 1,4 s, 2,4× szybciej, z błędem celu; 2 obrażenia za cios; skacze przez przeszkody) — kroki w błocie i oleju go nie budzą | Kucnij i przejdź; harpun |
