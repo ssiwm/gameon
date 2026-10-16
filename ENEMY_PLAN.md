@@ -232,3 +232,16 @@ Tabele map (`GROUPS_BY_MAP`):
 **Wdrożenie F3.10 (1.7.251):** `director.gd`: `_run_t` (własny licznik fazy celu, decyzja 2), `build_ctx()`, `window_factor` / `entry_weight` / `group_odds` / `pick_group(…, ctx)`, nowe `GROUPS` z oknami i `GROUPS_BY_MAP` dla 1.1–1.3;
 Wołek wędruje od 6 min (decyzja 1). Test integracyjny stawia grupę z kontekstem na punkcie siatki mapy. Dopisek do planu: napięcie w chwili spawnu to ≤ 0,7, więc najwyższy próg okna to 0,2 (Uwaga ≈ 29%).
 Nie zrobione: strojenie po playtestach (tempo 3 / 6 / 10 min), osobne tabele zależne od liczby graczy.
+
+### F2c / F3.1c — podział `enemy.gd` na zachowania rodzajów (zrobione w 1.7.252)
+
+Cel: nowe rodzaje (F4) nie dopisują `if kind ==` w rdzeniu. Wynik: `enemy.gd` 1963 → ok. 1340 linii, **zero** `kind == "…"` (pilnuje tego test `_test_behaviors`).
+
+- **Architektura:** `enemy_behavior.gd` — klasa bazowa z hakami o bezpiecznych domyślnych działaniach + fabryka `create(nazwa, węzeł)`; podklasy `enemy_listener.gd`, `enemy_bruiser.gd`, `enemy_blind.gd`, `enemy_pack.gd`, `enemy_moth.gd`, `enemy_mimic.gd`, `enemy_ambusher.gd`. Rodzaj wybiera klasę polem `behavior` w `enemy_defs.gd`. Węzeł trzyma `_beh` i wywołuje haki.
+- **Haki rdzenia (miejsca w `_tick_server`):** wstęp (`tick_prelude`), pełne przejęcie tiku (`tick_special`: Podsłuchacz, Ćma), uśpiony (`tick_asleep`, `tick_hanging`), po percepcji (`tick_awake`, `tick_phase` + `after_phase_move`: Wołek), łańcuch decyzji
+  (`holds_still`, `drive`, `chase_hold`), stan AI (`derive_pre`, `derive_mid`, `chase_state`), zdarzenia (`on_wake`, `on_hit`, `on_damaged`, `on_ignite`, `on_death`, `on_sighting`, `on_heard_noise`, `after_attack`, `after_slide`),
+  reguły (`threat_ok`, `damage_mult`, `can_interrupt_windup`, `returns_home`, `look_at_point`), widok (`view_extra`, `anim`, `server_facing`, `disguised`, `draw_overlay`, `scream_pitch`).
+- **Co zostaje w rdzeniu (świadomie):** stan replikowany klientom (`_sp`, `winding`, `_ai`, `_facing`, `_windup`), funkcje RPC (RPC wymaga węzła w scenie), wspólna panika (`_panic`, `_flee_src`), nawigacja i percepcja wspólne wszystkim rodzajom
+  (`_steer_to`, `_chase`, `_investigate`, `_return_home`, `_listen`, `_perceive`, `_sound_distance`, `_target_weight`) oraz dane przeszukiwania `sweep` (każdy rodzaj może je mieć).
+- **Nie zrobione (osobny, opcjonalny etap):** wydzielenie percepcji (`enemy_senses.gd`) i nawigacji (`enemy_steer.gd`) z rdzenia — to wspólny kod, więc zysk dla F4 niewielki, a ryzyko (setki odwołań do pól) duże; wracamy, gdy rdzeń znów urośnie.
+- **Wnioski z refaktoru:** przy mechanicznym przenoszeniu największe ryzyko to przypadkowe usunięcie sąsiednich linii przy edycji po numerach (np. zgubiony `_slide()`); wyłapały to testy ruchu (alert, śledztwo, szarża Ślepca) — przy kolejnych podziałach przeglądać `git diff` hunk po hunku.

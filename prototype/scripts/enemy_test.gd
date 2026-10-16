@@ -56,6 +56,7 @@ func run(m: Node2D) -> void:
 	await _test_director()
 	await _test_pincer()
 	await _test_director_composition()
+	await _test_behaviors()
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
 	await _test_slepiec_listen()
@@ -405,6 +406,50 @@ func _test_director_composition() -> void:
 	D.tension = keep_tension
 	D._run_t = keep_t
 	D.tension = keep_tension
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- podział enemy.gd na zachowania rodzajów (ENEMY_PLAN.md F2c / F3.1c)
+
+## Każdy rodzaj z `behavior` w danych ma klasę zachowania, nieznane / puste zachowanie daje bezpieczną bazę, a rdzeń (`enemy.gd`) nie rozgałęzia się już po nazwie rodzaju.
+func _test_behaviors() -> void:
+	var Defs := load("res://scripts/enemy_defs.gd")
+	var Base := load("res://scripts/enemy_behavior.gd")
+	var bad := []
+	var kinds_with := {}
+	for k in Defs.DEFS:
+		var b := String(Defs.DEFS[k].get("behavior", ""))
+		if b != "":
+			kinds_with[k] = b
+			if not Base.BEHAVIORS.has(b) or not ResourceLoader.exists(String(Base.BEHAVIORS[b])):
+				bad.append("%s→%s" % [k, b])
+	check("zachowania: każdy `behavior` z enemy_defs.gd ma klasę (BEHAVIORS)", bad.is_empty(), str(bad))
+	check("zachowania: rodzaje z własną mechaniką mają zachowanie (7 rodzajów)", kinds_with.size() == 7 and kinds_with.get("podsluchacz") == "listener" and kinds_with.get("wolek") == "bruiser" and kinds_with.get("slepiec") == "blind" and kinds_with.get("trzosek") == "pack", str(kinds_with))
+	var unknown = Base.create("nie_ma_takiego", null)
+	var empty = Base.create("", null)
+	check("zachowania: pusta i nieznana nazwa → baza z domyślnymi hakami (bez błędu)", unknown != null and empty != null and unknown.damage_mult() == 1.0 and unknown.threat_ok() and not unknown.tick_special(0.1) and unknown.derive_pre() == -1 and empty.returns_home() and not empty.holds_still())
+	var made := true
+	for b in Base.BEHAVIORS:
+		var inst = Base.create(String(b), null)
+		made = made and inst != null and inst.get_script().resource_path == String(Base.BEHAVIORS[b])
+	check("zachowania: fabryka tworzy każdą zarejestrowaną klasę", made)
+	var src := FileAccess.get_file_as_string("res://scripts/enemy.gd")
+	var branches := 0
+	for pat in ['kind == "', 'kind != "']:
+		var from := 0
+		while true:
+			var i := src.find(pat, from)
+			if i < 0:
+				break
+			branches += 1
+			from = i + 1
+	check("zachowania: rdzeń enemy.gd nie rozgałęzia się po nazwie rodzaju (żadnego `kind == \"…\"`)", branches == 0, "%d wystąpień" % branches)
+	var w := _spawn("wolek", Vector2(FAR_X + 28000.0, -14000.0))
+	var t := _spawn("trzosek", Vector2(FAR_X + 28100.0, -14000.0))
+	w.set_physics_process(false)
+	t.set_physics_process(false)
+	check("zachowania: węzeł wroga tworzy zachowanie wg danych (Wołek: bruiser, Trzosek: pack)", w._beh.get_script().resource_path.ends_with("enemy_bruiser.gd") and t._beh.get_script().resource_path.ends_with("enemy_pack.gd"))
+	w.queue_free()
+	t.queue_free()
 	await get_tree().physics_frame
 
 func _finish() -> void:

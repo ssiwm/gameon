@@ -1207,14 +1207,14 @@ func _die() -> void:
 ## Efekty śmierci na KAŻDYM peerze (serwer wywołuje wprost, klient po zmianie alive).
 func _death_fx() -> void:
 	Audio.play_variant_at("impact_flesh", 3, global_position, Audio.BUS_WORLD, -4.0, 0.8)
-	_voice("death")
 	var local := _local_player_pos()
+	var fx := _def.get("death_fx", {}) as Dictionary        # drobny wróg (Trzosek) pada ciszej: słabszy wstrząs i mniej szczątków (domyślnie ciężki)
 	if local.distance_to(global_position) < 220.0:
-		Feel.shake(1.8 if kind == "trzosek" else 3.0)
-		Feel.hitstop(0.05 if kind == "trzosek" else 0.09)
+		Feel.shake(float(fx.get("shake", 3.0)))
+		Feel.hitstop(float(fx.get("hitstop", 0.09)))
 	# szczątki (fizyczne, lokalne) + krew na podłożu; odrzut z kierunku trafienia
 	Vfx.gibs(get_parent(), global_position + Vector2(0, -6), (_def["color"] as Color).lightened(DEATH_FX_COLOR_VAR),
-		6 if kind == "trzosek" else 11, Vector2(signf(velocity.x) * 60.0, 0))
+		int(fx.get("gibs", 11)), Vector2(signf(velocity.x) * 60.0, 0))
 
 func _local_player_pos() -> Vector2:
 	for p in get_tree().get_nodes_in_group("players"):
