@@ -180,6 +180,10 @@ func _ready() -> void:
 	add_to_group("enemies")
 	ai_changed.connect(_on_ai_changed)
 	_def = KINDS.get(kind, KINDS["trzosek"])
+	for ev in ["attack", "alert", "death"]:                 # głosy rodzaju wczytane z góry: pierwszy warkot w walce nie zacina klatki
+		var vo: Array = EnemyDefs.voice(kind, ev)
+		if not vo.is_empty():
+			Audio.warm_family(String(vo[0]), int(vo[1]))
 	_max_hp = _scaled_hp()
 	hp = _max_hp
 	Difficulty.changed.connect(_on_difficulty_changed)
