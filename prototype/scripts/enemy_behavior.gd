@@ -10,6 +10,9 @@ extends RefCounted
 const BEHAVIORS := {
 	"listener": "res://scripts/enemy_listener.gd",
 	"bruiser": "res://scripts/enemy_bruiser.gd",
+	"moth": "res://scripts/enemy_moth.gd",
+	"mimic": "res://scripts/enemy_mimic.gd",
+	"ambusher": "res://scripts/enemy_ambusher.gd",
 }
 
 ## Węzeł wroga (`enemy.gd`) — bez typu, bo `enemy.gd` ładuje tę klasę (cykl preload).
@@ -78,4 +81,36 @@ func tick_phase(_delta: float, _target: Node2D) -> bool:
 
 ## Po ruchu klatki, w której zadziałała `tick_phase` (szarża Wołka rozbija skrzynie i uderza gracza).
 func after_phase_move() -> void:
+	pass
+
+## Wróg właśnie się obudził (po `active = true`): odczepienie od sufitu (Skoczek), demaskacja (Mimik).
+func on_wake() -> void:
+	pass
+
+## Tik uśpionego wroga (po sprawdzeniu budzenia): fałszywe wołanie Mimika.
+func tick_asleep(_delta: float) -> void:
+	pass
+
+## Tik wiszącego (uśpionego) wroga: zasadzka Skoczka.
+func tick_hanging() -> void:
+	pass
+
+## Po zwykłym ruchu (`move_and_slide`) w klatce aktywnego wroga: lądowanie Skoczka.
+func after_slide() -> void:
+	pass
+
+## Czy bez śladu i celu wróg wraca do domu (Skoczek po zasadzce czatuje tam, gdzie wylądował).
+func returns_home() -> bool:
+	return true
+
+## Wysokość głosu krzyku demaskacji (Mimik niżej niż Podsłuchacz).
+func scream_pitch() -> float:
+	return 1.0
+
+## Czy uśpiony wróg wygląda jak zwykły stojący (Mimik: bez przygaszenia „uśpionego").
+func disguised() -> bool:
+	return false
+
+## Dodatkowe rysowanie w nakładce (etykieta Mimika).
+func draw_overlay(_ov: Node2D) -> void:
 	pass

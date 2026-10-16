@@ -73,13 +73,7 @@ const FEAR_ALPHA := 0.7              ## śmierć przewodnika (najstarszy w watas
 const FEAR_DECAY := 0.12             ## /s
 const PANIC_TIME := 2.4
 const STALKER_FEAR_R := 260.0
-## Ćma i światło
-const MOTH_SEEK_R := 420.0           ## z tej odległości ćma wyczuwa światło
-const MOTH_BURN_DPS := 6.0           ## spalanie przy flarze
 const LIGHT_LURE_R := 360.0          ## ciekawość Trzosków: flara w tym promieniu (po trasie) daje im ślad
-## Skoczek: zasadzka spod sufitu
-const AMBUSH_DX := 36.0
-const AMBUSH_DY_MAX := 220.0
 ## Pamięć: wracający do domu wróg sprawdza „gorące miejsce" (gdzie ostatnio strzelano)
 const PATROL_RADIUS := 600.0
 const PATROL_MAX_AGE := 90.0
@@ -156,7 +150,6 @@ var _hist: Array = []         ## Vector3(czas, x, y) — pozycje z ostatnich HIS
 var _fear := 0.0              ## morale watahy: śmierć kolegów go podnosi, 1.0 = ucieczka
 var _flee_src := Vector2.ZERO ## od czego ucieka w panice (ZERO = od gracza)
 var _stalker_t := 0.0
-var _lure_t := 4.0            ## Mimik: odstęp między fałszywymi wołaniami
 var _sp := 0                  ## Wołek: 0 nic, 1 zapowiedź szarży, 2 szarża, 3 zapowiedź rzutu, 4 ogłuszony po uderzeniu
 var _ai: int = Ai.SLEEP       ## bieżący stan AI (patrz `Ai`)
 var _ai_t := 0.0              ## s w bieżącym stanie AI (serwer)
@@ -171,9 +164,7 @@ var _alert_cd := 0.0          ## s do następnej reakcji — ten sam wróg nie s
 var _share_cd := 0.0          ## s do następnego „dania znać" kolegom o zauważonym graczu (serwer)
 var _net_face := 0.0          ## kierunek patrzenia z serwera (u klientów; `_sync`) — odwrót przy reakcji „zauważył"
 var _hanging := false         ## Skoczek / ćma wiszą pod sufitem, dopóki ich nic nie obudzi
-var _drop_attack := false     ## Skoczek spada na gracza (obrażenia przy lądowaniu)
 var _patrolled := false       ## wracając do domu sprawdził już jedno gorące miejsce
-var _t_moth := 0.0
 var _last_attacker := 0               ## player_id ostatniego trafiającego (XP za zabójstwo, profile.gd)
 var _ring := 0.0              ## efekt fali krzyku (każdy peer)
 var _level_t := 0.0           ## s, przez które cel jest na innym poziomie (histereza: skok gracza to nie zmiana piętra)
@@ -226,21 +217,7 @@ func wake() -> void:
 	if not NoiseMgr.is_server() or not alive or active:
 		return
 	active = true
-	if _hanging and _def.get("hang", false):
-		# zasadzka: odczepia się od sufitu i spada (lądowanie rani, patrz _land_hit)
-		_hanging = false
-		_drop_attack = true
-		winding = true
-		velocity = Vector2(0.0, 40.0)
-	if _def.get("mimic", false):
-		# demaskacja: krzyk, fala i chwila na zmianę postaci (zapowiedź), potem normalny pościg
-		NoiseMgr.add_noise(6.0, global_position)
-		if NoiseMgr.has_network():
-			_scream_fx.rpc()
-		else:
-			_scream_fx()
-		_windup = 0.35
-		winding = true
+	_beh.on_wake()
 	if not _has_lead:
 		var p := _nearest_player()
 		if p != null:
@@ -290,9 +267,7 @@ func reset_enemy() -> void:
 	_flee_src = Vector2.ZERO
 	_sp = 0
 	_beh.reset()
-	_lure_t = 4.0
 	_hanging = bool(_def.get("hang", false)) or bool(_def.get("moth", false))
-	_drop_attack = false
 	_patrolled = false
 	_level_t = 0.0
 	_home_t = 0.0
@@ -392,8 +367,6 @@ func _derive_ai_state() -> int:
 	var pre: int = _beh.derive_pre()
 	if pre >= 0:
 		return pre
-	if kind == "cma":
-		return Ai.FLY if active else Ai.HANG
 	if not active:
 		return Ai.HANG if _hanging else Ai.SLEEP
 	if _sp != 0:
@@ -458,17 +431,12 @@ func _tick_server(delta: float) -> void:
 		return
 	if _beh.tick_special(delta):
 		return
-		return
-	if kind == "cma":
-		_moth_tick(delta)
-		return
 
 	if not active:
 		_check_wake()
-		if kind == "mimik":
-			_mimik_lure(delta)
+		_beh.tick_asleep(delta)
 		if _hanging:
-			_check_ambush()
+			_beh.tick_hanging()
 			velocity = Vector2.ZERO          # wisi pod sufitem — bez grawitacji
 			_send_state(delta)
 			return
@@ -531,8 +499,7 @@ func _tick_server(delta: float) -> void:
 
 	_apply_gravity(delta)
 	_slide()
-	if _drop_attack and is_on_floor():
-		_land_hit()
+	_beh.after_slide()
 	_send_state(delta)
 
 ## Czas zapowiedzi zwykłego ciosu po trudności: `base` × mnożnik, ale nie krócej niż MIN_WINDUP (F3.6b) — Trzosek na trudnym (0,28 × 0,8 = 0,22 s) był poniżej ludzkiej reakcji.
@@ -566,32 +533,6 @@ func _interrupt_windup() -> void:
 	_windup_target = null
 	winding = false
 	_cd = maxf(_cd, WINDUP_INTERRUPT_CD * Difficulty.m("enemy_cd"))
-
-## Skoczek lądujący na graczu: 2 obrażenia, łoskot (hałas) i pył.
-func _land_hit() -> void:
-	_drop_attack = false
-	winding = false
-	for p in get_tree().get_nodes_in_group("players"):
-		if not p.dead and absf(p.global_position.x - global_position.x) < 16.0 and absf(p.global_position.y - global_position.y) < 22.0:
-			p.deliver_hit(_scaled_damage(2), global_position, kind)
-	NoiseMgr.add_noise(5.0, global_position)
-	if NoiseMgr.has_network():
-		_crash_fx.rpc()
-	else:
-		_crash_fx()
-
-## Wiszący Skoczek spada, gdy ktoś stoi (prawie) pod nim i go widać (linia bez ściany).
-func _check_ambush() -> void:
-	if not _def.get("hang", false):
-		return
-	for p in get_tree().get_nodes_in_group("players"):
-		if p.dead:
-			continue
-		var dx := absf(p.global_position.x - global_position.x)
-		var dy: float = p.global_position.y - global_position.y
-		if dx < AMBUSH_DX and dy > 10.0 and dy < AMBUSH_DY_MAX and _clear_line(p):
-			wake()
-			return
 
 ## Krzyk gracza (mikrofon albo G): wróg w promieniu 25 m rusza do źródła; śpiącego budzi.
 func hear_scream(pos: Vector2) -> void:
@@ -653,108 +594,7 @@ func see_light(pos: Vector2) -> void:
 	if not active:
 		wake()
 
-## Najbliższe źródło światła dla ćmy: flara albo włączona latarka gracza (w promieniu `max_r`).
-func _nearest_light(max_r: float) -> Dictionary:
-	var best := {}
-	var best_d := max_r
-	for f in get_tree().get_nodes_in_group("flares"):
-		var d := global_position.distance_to(f.global_position)
-		if d < best_d:
-			best_d = d
-			best = {"pos": f.global_position, "kind": "flare", "node": f}
-	for fp in get_tree().get_nodes_in_group("fire_patches"):
-		var df := global_position.distance_to(fp.global_position)
-		if df < best_d:
-			best_d = df
-			best = {"pos": fp.global_position + Vector2(0, -4), "kind": "flare", "node": fp}       # ogień na podłodze spala ćmę jak flara
-	for f in Lights.active_flashes():
-		var shooter: Node = f["node"]
-		if shooter == null or not is_instance_valid(shooter):
-			continue
-		var d3 := global_position.distance_to(f["pos"])
-		if d3 < best_d:
-			best_d = d3
-			best = {"pos": f["pos"], "kind": "player", "node": shooter}                             # błysk z lufy: ćma leci na strzelca
-	for p in get_tree().get_nodes_in_group("players"):
-		if p.dead or not (p.flashlight or _beam_lit(p)):
-			continue
-		var d2 := global_position.distance_to(p.global_position)
-		if d2 < best_d:
-			best_d = d2
-			best = {"pos": p.global_position + Vector2(0, -8), "kind": "player", "node": p}
-	return best
-
-## Gracz strzela wiązką (LR-7): świeci jak latarka, ćmy lecą na tę wiązkę.
-func _beam_lit(p: Node) -> bool:
-	return bool(p.w_firing) and Weapons.def(int(p.weapon)).kind == Weapons.Kind.BEAM
-
-## Ćma: wisi (śpi), dopóki w zasięgu nie pojawi się światło; wtedy leci na nie falistym lotem.
-## Flara ją spala, latarka — kąsa gracza. Bez światła wraca pod sufit.
-func _moth_tick(delta: float) -> void:
-	_t_moth += delta
-	_cd = maxf(0.0, _cd - delta)
-	var lt := _nearest_light(MOTH_SEEK_R)
-	if not active:
-		velocity = Vector2.ZERO
-		if not lt.is_empty():
-			wake()
-		_send_state(delta)
-		return
-	var speed: float = float(_def["speed"]) * Difficulty.m("enemy_speed")
-	var want := Vector2.ZERO
-	if not lt.is_empty():
-		_lose_t = 0.0
-		var tp: Vector2 = lt["pos"]
-		var to := tp - global_position
-		var dist := to.length()
-		var dir := to / maxf(dist, 0.001)
-		want = dir * speed + Vector2(-dir.y, dir.x) * sin(_t_moth * 9.0 + float(get_instance_id() % 5)) * speed * 0.6
-		if lt["kind"] == "flare" and dist < 14.0:
-			hp -= MOTH_BURN_DPS * delta                 # krąży przy płomieniu i się spala
-			want = Vector2(-dir.y, dir.x) * speed * 0.7
-			if hp <= 0.0:
-				_die()
-				return
-		elif lt["kind"] == "player" and dist < 12.0 and _cd <= 0.0:
-			var pl: Node = lt["node"]
-			pl.deliver_hit(_scaled_damage(1), global_position, kind)
-			_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
-	else:
-		_lose_t += delta
-		want = Vector2(sin(_t_moth * 3.1), cos(_t_moth * 2.3)) * speed * 0.35
-		if _lose_t > 6.0:
-			# światło zgasło: wraca pod sufit i znów zasypia
-			var back := _home - global_position
-			want = back.normalized() * speed * 0.7
-			if back.length() < 8.0:
-				active = false
-				velocity = Vector2.ZERO
-				global_position = _home
-				_lose_t = 0.0
-	velocity = velocity.lerp(want, 0.18)
-	if is_on_wall() or is_on_ceiling():
-		velocity.y += 25.0 * (-1.0 if is_on_floor() else 1.0)
-	move_and_slide()
-	_send_state(delta)
-
 ## --- Mimik ----------------------------------------------------------------
-
-## Zamaskowany Mimik woła o pomoc głosem gracza (próbka bólu), gdy ktoś jest w zasięgu słuchu, ale jeszcze
-## nie przy nim — wabi do zasadzki. Kto podejdzie, poświeci albo strzeli, ten go demaskuje (wake()).
-func _mimik_lure(delta: float) -> void:
-	_lure_t -= delta
-	if _lure_t > 0.0:
-		return
-	var p := _nearest_player()
-	var d := p.global_position.distance_to(global_position) if p != null else INF
-	if d < 340.0 and d > 70.0:
-		_lure_t = randf_range(6.0, 10.0)
-		if NoiseMgr.has_network():
-			_mimic_call.rpc()
-		else:
-			_mimic_call()
-	else:
-		_lure_t = 1.0
 
 @rpc("authority", "call_local", "unreliable")
 func _mimic_call() -> void:
@@ -788,7 +628,7 @@ func _hear_alarm(lead: Vector2) -> void:
 @rpc("authority", "call_local", "reliable")
 func _scream_fx() -> void:
 	_ring = 0.7
-	Audio.play_variant_at("podsluchacz_scream", 2, global_position, Audio.BUS_WORLD, -3.0, 0.85 if kind == "mimik" else 1.0)
+	Audio.play_variant_at("podsluchacz_scream", 2, global_position, Audio.BUS_WORLD, -3.0, _beh.scream_pitch())
 	if _local_player_pos().distance_to(global_position) < 300.0:
 		Feel.shake(2.2)
 
@@ -1063,7 +903,7 @@ func _investigate(speed: float, delta: float) -> void:
 		_has_lead = false
 
 func _return_home(speed: float, delta: float) -> void:
-	if kind == "skoczek":
+	if not _beh.returns_home():
 		velocity.x = 0.0            # po zasadzce nie wraca na sufit — czatuje tam, gdzie wylądował
 		return
 	# pamięć: zanim wróci do domu, raz sprawdza „gorące miejsce" — gdzie drużyna ostatnio strzelała
@@ -1627,10 +1467,6 @@ func _update_sprite() -> void:
 			anim = "run" if (kind == "trzosek" or _ai == Ai.LUNGE) else "walk"
 		else:
 			anim = "idle"
-	elif kind == "mimik":
-		anim = "idle"          # zamaskowany stoi jak żywy kolega, nie „śpi"
-	if kind == "cma" and active:
-		anim = "idle"          # trzepocze skrzydłami w locie
 	anim = _beh.anim(anim, moving)
 	Sprites.play(_spr, anim, _view_facing < 0.0)
 	var body: AnimatedSprite2D = _spr[0]
@@ -1641,19 +1477,14 @@ func _update_sprite() -> void:
 		# zapowiedź ciosu: pulsujące czerwienienie (klatka „windup" unosi łapę)
 		var p := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.03)
 		m = Color(1.6 + 0.6 * p, 0.55, 0.5)
-	elif not active and kind != "mimik":
+	elif not active and not _beh.disguised():
 		m = Color(0.8, 0.8, 0.8)
 	body.modulate = m
 
 ## Oczy, kontur zapowiedzi ataku i HP — unshaded, widoczne w ciemności.
 func _draw_overlay(ov: Node2D) -> void:
 	var size: Vector2 = _def["size"]
-	if kind == "mimik" and not active:
-		# etykieta jak u gracza, ale bez serduszek (zdradza go) i z numerem, którego nie ma w drużynie
-		var f := ThemeDB.fallback_font
-		var txt := "P%d" % (2 + int(get_instance_id() % 3))
-		ov.draw_string(f, Vector2(-30 + 0.5, -31 + 0.5), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, 4, Color(0, 0, 0, 0.8))
-		ov.draw_string(f, Vector2(-30, -31), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, 4, Color(0.72, 0.8, 0.72))
+	_beh.draw_overlay(ov)
 	# pasek HP po pierwszym trafieniu
 	if hp < _max_hp:
 		var w := size.x + 4.0

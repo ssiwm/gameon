@@ -29,7 +29,7 @@ const DEFS := {
 	"cma": {
 		"hp": 18.0, "speed": 74.0, "damage": 1, "windup": 0.2, "reach": 10.0,
 		"cooldown": 1.2, "leap": false, "hear": 0.0, "wake_near": 0.0, "sight": 0.0,
-		"fly": true, "moth": true, "phototaxis": true,
+		"fly": true, "moth": true, "phototaxis": true, "behavior": "moth",
 		"color": Color(0.74, 0.7, 0.55), "size": Vector2(10, 8), "hurt_h": 18.0, "hurt_w": 16.0, "knock": 40.0, "knock_mult": 1.0, "head": 0.0,
 		"xp": 3, "scrap": 4,
 	},
@@ -37,7 +37,7 @@ const DEFS := {
 	"skoczek": {
 		"hp": 40.0, "speed": 84.0, "damage": 1, "windup": 0.3, "reach": 13.0,
 		"cooldown": 1.0, "leap": true, "hear": 230.0, "wake_near": 60.0, "sight": 280.0,
-		"hang": true, "fire_shy": true,
+		"hang": true, "fire_shy": true, "behavior": "ambusher",
 		"color": Color(0.62, 0.6, 0.5), "size": Vector2(12, 14), "hurt_h": 17.0, "knock": 60.0, "knock_mult": 0.9, "head": 0.0,
 		"xp": 5, "scrap": 5, "supply": 0.08, "ammo": 0.25, "voice": {"attack": ["trzosek_attack", 3, -5.0, 0.8], "death": ["trzosek_death", 2, -4.0, 0.8]},
 	},
@@ -47,7 +47,7 @@ const DEFS := {
 	"mimik": {
 		"hp": 70.0, "speed": 95.0, "damage": 2, "windup": 0.4, "reach": 14.0,
 		"cooldown": 1.2, "leap": true, "hear": 0.0, "wake_near": 46.0, "sight": 220.0,
-		"mimic": true,
+		"behavior": "mimic",
 		"color": Color(0.6, 0.72, 0.6), "size": Vector2(10, 16), "hurt_h": 22.0, "knock": 50.0, "knock_mult": 0.8, "head": 0.28,
 		"xp": 10, "scrap": 10, "supply": 0.4, "ammo": 0.3, "voice": {"attack": ["slepiec_attack", 2, -4.0, 1.2], "death": ["slepiec_death", 2, -3.0, 1.2]},
 	},

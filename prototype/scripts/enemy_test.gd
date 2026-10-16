@@ -362,7 +362,7 @@ func _test_director_composition() -> void:
 		for g in t:
 			for k in g[1]:
 				var d: Dictionary = Defs.DEFS[String(k)]
-				if float(d["speed"]) <= 0.0 or d.get("hang", false) or d.get("moth", false) or d.get("mimic", false) or d.get("fly", false):
+				if float(d["speed"]) <= 0.0 or d.get("hang", false) or d.get("moth", false) or d.get("behavior", "") == "mimic" or d.get("fly", false):
 					not_mobile.append(String(k))
 	check("skład/tabele: w całej siatce czas × napięcie każda tabela ma z czego losować", empty_at.is_empty(), str(empty_at.slice(0, 5)))
 	check("skład/tabele: na starcie (czas 0, cisza) wszystkie tabele dają tylko pierwszy zestaw", early_extra.is_empty(), str(early_extra))

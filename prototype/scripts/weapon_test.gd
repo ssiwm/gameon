@@ -284,9 +284,9 @@ func _t_phase1() -> void:
 	player.flashlight = false
 	player.w_firing = true
 	player.weapon = Weapons.LR7
-	var lit_beam: Dictionary = moth._nearest_light(300.0)
+	var lit_beam: Dictionary = moth._beh.nearest_light(300.0)
 	player.weapon = Weapons.M83
-	var lit_gun: Dictionary = moth._nearest_light(300.0)
+	var lit_gun: Dictionary = moth._beh.nearest_light(300.0)
 	player.w_firing = false
 	check("ćma leci na wiązkę LR-7, a nie na strzał z M-83", not lit_beam.is_empty() and lit_gun.is_empty())
 	free_dummies()
@@ -1126,10 +1126,10 @@ func _t_phase3() -> void:
 	Lights.flashes.clear()
 	player.flashlight = false
 	player.w_firing = false
-	var quiet: bool = moth._nearest_light(420.0).is_empty()
+	var quiet: bool = moth._beh.nearest_light(420.0).is_empty()
 	level.spawn_fire_patch(moth.global_position + Vector2(40, 0), Weapons.HKM9, 1)
 	await frames(2)
-	var by_fire: Dictionary = moth._nearest_light(420.0)
+	var by_fire: Dictionary = moth._beh.nearest_light(420.0)
 	check("ćma leci na ogień na podłodze (jak na flarę)", quiet and not by_fire.is_empty() and by_fire["kind"] == "flare")
 	free_dummies()
 	await frames(2)
@@ -1137,11 +1137,11 @@ func _t_phase3() -> void:
 	var e0 := equip(Weapons.M83)
 	wc.cd = 0.0
 	wc._server_fire(wc.muzzle_pos(Vector2.RIGHT, e0), Vector2.RIGHT, e0.id, 1, 0.0, 1, true)
-	var after_m83: bool = moth._nearest_light(420.0).is_empty()
+	var after_m83: bool = moth._beh.nearest_light(420.0).is_empty()
 	var sp := equip(Weapons.SPREAD12)
 	wc.cd = 0.0
 	wc._server_fire(wc.muzzle_pos(Vector2.RIGHT, sp), Vector2.RIGHT, sp.id, 1, 0.0, 1, true)
-	var after_spread: Dictionary = moth._nearest_light(420.0)
+	var after_spread: Dictionary = moth._beh.nearest_light(420.0)
 	check("błysk z lufy: M-83 (%.1f) nie budzi ćmy, SPREAD-12 (%.1f ≥ %.1f) tak" % [e0.flash_light, sp.flash_light, Lights.FLASH_MIN], after_m83 and not after_spread.is_empty() and after_spread["kind"] == "player")
 	free_dummies()
 	await frames(2)
