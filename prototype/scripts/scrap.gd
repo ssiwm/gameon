@@ -21,8 +21,7 @@ const Throwables := preload("res://scripts/throwables.gd")
 const SAVE_PATH := "user://progress.cfg"
 
 ## Stałe balansu w jednym miejscu — do strojenia po playtestach.
-const DROP_CHANCE := 0.35
-const DROP := {"trzosek": 2, "wolek": 6, "slepiec": 5, "podsluchacz": 4, "mimik": 10, "skoczek": 5, "cma": 4}
+const DROP_CHANCE := 0.35              ## szansa na złom z trupa; ile złomu daje rodzaj — pole `scrap` w enemy_defs.gd
 const CACHE_VALUE := 6               ## skrytka z mapy
 const BOSS_VALUE := 30
 const STASH_VALUE := 20               ## ukryta skrytka (cel poboczny misji 1.1)

@@ -65,7 +65,7 @@ bez crossfade'u i bez dziury w energii.
   Wołek — parsknięcie i ryk byka (`wolek_*`), Ślepiec — przyspieszające klikanie i świst oddechu (`slepiec_*`), Podsłuchacz —
   dwugłosowy, drżący wrzask alarmu (`podsluchacz_scream`), Pijawka — bulgot i syk (`leech_growl`, `leech_shriek`), Żyła — tętniący
   pomruk i wielogłosowy ryk (`zyla_growl`, `zyla_roar`). `attack` gra przy zapowiedzi ciosu (zbocze `winding` w `enemy.gd`), `death`
-  przy śmierci; tabela gatunek → rodzina: `enemy.gd: VOICES` (Skoczek mówi głosem Trzoska, zdemaskowany Mimik — Ślepca, Ćma milczy).
+  przy śmierci; tabela gatunek → rodzina: `enemy_defs.gd` (pole `voice`) (Skoczek mówi głosem Trzoska, zdemaskowany Mimik — Ślepca, Ćma milczy).
 * **Kroki** — pięta + palce, 5 wariantów × 4 powierzchnie (beton/metal modalny/ziemia z chrzęstem/woda z bąblami).
 * **Ambient** — stereo z niezależnych realizacji, okresowe; nowe emitery jednorazowe (podmuch, skrzyp, huk, zew).
 * **Pogoda** (`weather_fx.gd`, faza C): `amb_rain` (deszcz na gruncie i listowiu: szum pasmowy 2–9 kHz + trzask kropel + plinki w kałużach), `amb_rain_roof` (deszcz na dachu / blasze: tupot kropel na rezonującej płycie), `thunder_1..3` (blisko: trzask + ostry rumor, daleko: sam turlający się pomruk); wiatr burzy i mgły to istniejący `amb_wind`, mokre kroki to istniejący `step_water`. 157 assetów, audyt 0 uwag.

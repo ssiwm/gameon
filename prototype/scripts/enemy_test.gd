@@ -42,6 +42,7 @@ func run(m: Node2D) -> void:
 	await _test_summoned()
 	await _test_view_contract()
 	await _test_facing()
+	_test_defs()
 	_finish()
 
 func _finish() -> void:
@@ -282,3 +283,53 @@ func _test_facing() -> void:
 	check("maczeta: cios w plecy aktywnego wroga zabija", bool(back.get("killed", false)) and not e.alive)
 	e.queue_free()
 	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- dane rodzajów (ENEMY_PLAN.md F2)
+
+const STAT_KEYS := ["hp", "speed", "damage", "windup", "reach", "cooldown", "leap", "hear", "wake_near", "sight", "color", "size", "knock", "knock_mult", "head"]
+## Wartości sprzed przeniesienia do `enemy_defs.gd` (SUPPLY_DROP, AMMO_DROP, HEALTH_DROP, KILL_XP, Scrap.DROP, VOICES): przeniesienie nie zmienia balansu.
+const GOLDEN := {
+	"trzosek": {"xp": 2, "scrap": 2, "supply": 0.0, "ammo": 0.22, "health": 0.0, "voice": ["trzosek_attack", 3, -6.0, 1.0]},
+	"cma": {"xp": 3, "scrap": 4, "supply": 0.0, "ammo": 0.0, "health": 0.0, "voice": []},
+	"skoczek": {"xp": 5, "scrap": 5, "supply": 0.08, "ammo": 0.25, "health": 0.0, "voice": ["trzosek_attack", 3, -5.0, 0.8]},
+	"mimik": {"xp": 10, "scrap": 10, "supply": 0.4, "ammo": 0.3, "health": 0.0, "voice": ["slepiec_attack", 2, -4.0, 1.2]},
+	"slepiec": {"xp": 6, "scrap": 5, "supply": 0.1, "ammo": 0.3, "health": 0.0, "voice": ["slepiec_attack", 2, -4.0, 1.0]},
+	"podsluchacz": {"xp": 4, "scrap": 4, "supply": 0.15, "ammo": 0.15, "health": 0.0, "voice": []},
+	"wolek": {"xp": 12, "scrap": 6, "supply": 0.35, "ammo": 0.6, "health": 0.75, "voice": ["wolek_attack", 2, -3.0, 1.0]},
+}
+
+## Jedno źródło danych rodzaju: komplet pól, wartości jak przed przeniesieniem, głosy istnieją w manifeście dźwięku, każdy rodzaj ma model 3D.
+func _test_defs() -> void:
+	var Defs := load("res://scripts/enemy_defs.gd")
+	var Manifest := load("res://scripts/audio_manifest.gd")
+	var Enemy3D := load("res://scripts/enemy3d.gd")
+	var problems := []
+	for k in Defs.DEFS:
+		var d: Dictionary = Defs.DEFS[k]
+		for key in STAT_KEYS:
+			if not d.has(key):
+				problems.append("%s bez pola %s" % [k, key])
+		if not Enemy3D.SPEC.has(k):
+			problems.append("%s bez wpisu SPEC (model 3D)" % k)
+		if not GOLDEN.has(k):
+			problems.append("%s: brak wzorca w teście" % k)
+		for ev in ["attack", "death"]:
+			var v: Array = Defs.voice(k, ev)
+			if v.is_empty():
+				continue
+			for i in range(1, int(v[1]) + 1):
+				if not Manifest.PATHS.has("%s_%d" % [v[0], i]):
+					problems.append("%s/%s: brak dźwięku %s_%d" % [k, ev, v[0], i])
+	check("dane rodzajów: komplet pól, model 3D i dźwięki głosów (%d rodzajów)" % Defs.DEFS.size(), problems.is_empty(), ", ".join(problems))
+	var diffs := []
+	for k in GOLDEN:
+		var g: Dictionary = GOLDEN[k]
+		for key in ["xp", "scrap", "supply", "ammo", "health"]:
+			if not is_equal_approx(Defs.value(k, key), float(g[key])):
+				diffs.append("%s.%s = %s (było %s)" % [k, key, Defs.value(k, key), g[key]])
+		if g["voice"] != Defs.voice(k, "attack"):
+			diffs.append("%s.voice attack = %s (było %s)" % [k, Defs.voice(k, "attack"), g["voice"]])
+	check("dane rodzajów: drop, XP, złom i głos bez zmian względem starych tabel", diffs.is_empty(), ", ".join(diffs))
+	check("dane rodzajów: nieznany rodzaj nic nie daje", Defs.xp("nie_ma") == 0 and Defs.value("nie_ma", "ammo") == 0.0 and Defs.voice("nie_ma", "death").is_empty())
+	check("dane rodzajów: Enemy.KINDS to ta sama tabela (kodeks, HUD, testy)", Enemy.KINDS == Defs.DEFS)
+	check("dane rodzajów: Podsłuchacz krzyczy tylko przy śmierci, Ćma milczy", Defs.voice("podsluchacz", "attack").is_empty() and not Defs.voice("podsluchacz", "death").is_empty() and Defs.voice("cma", "death").is_empty())
