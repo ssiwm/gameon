@@ -1,6 +1,6 @@
 # Plan: porządki w logice wrogów pod widok 3D i mądrzejsza AI
 
-Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237), F2b zrobiona (1.7.238), F3.1a zrobiona (1.7.239), F3.1b zrobiona (1.7.240), F3.3 odrzucone po pomiarze, F3.5a zrobiona (1.7.241), F3.2 zrobiona (1.7.242, gałąź `feat/enemy-hear-error`), zostają F2c, F3.1c, F3.4, F3.5b, F3.6, F3.7, F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
+Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237), F2b zrobiona (1.7.238), F3.1a zrobiona (1.7.239), F3.1b zrobiona (1.7.240), F3.3 odrzucone po pomiarze, F3.5a zrobiona (1.7.241), F3.2 zrobiona (1.7.242), F3.4a zrobiona (1.7.243, gałąź `feat/enemy-pack-shout`), zostają F2c, F3.1c, F3.4b, F3.5b, F3.6, F3.7, F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
 `stalker.gd`, `nest.gd`, `director.gd`, `nav.gd`, `noise_manager.gd`, `view3d.gd`) i na `MISSION_3D_SPIKE.md` — nie na próbnej implementacji,
 więc rozmiary faz są szacunkowe, a uwagi o błędach pochodzą z lektury kodu, nie z gry.
 
@@ -108,6 +108,10 @@ okrężnie (rodzaj ze ścieżki skryptu, błysk trafienia z koloru `modulate`, `
    z F0 ogranicza szczyt do ≈ 0,5 ms. Pole odległości z jednego przebiegu pisane w GDScript (BFS po ok. 2–8 tys. komórek) byłoby wolniejsze niż natywny A*, więc
    nic by nie dało. Wrócić do tego tylko, jeśli pomiar w grze z dziesiątkami wrogów pokaże `Nav.stat_usec` jako problem.
 4. Współdzielona wiedza grupy z opóźnieniem; role w watasze; flankowanie trasą alternatywną po nawigacji.
+   - **F3.4a — zrobione w 1.7.243:** `_shout_sighting` / `_hear_shout`: Trzosek, który po raz pierwszy zauważył gracza, daje znać kolegom z watahy w `SHARE_RADIUS` (220 px,
+     ±`SHARE_DY` 40 px w pionie); aktywni i nic niewidzący (`investigate` / `search` / `return`) dostają ślad i `alert`. Cooldown 3 s. Opóźnienie daje sam `alert` (0,4 s ±15%).
+   - **F3.4b — do zrobienia (największe ryzyko, playtest):** flankowanie — wróg wstrzymany przez `_pack_hold` (≥ 2 atakujących) obchodzi gracza na stronę przeciwną do
+     atakujących zamiast krążyć w paśmie po tej samej stronie; wymaga sprawdzenia podłogi i ściany po drugiej stronie i ustalenia, czy wróg może minąć gracza (kolizje).
 5. Wybór celu z pamięcią i histerezą (świecący, hałasujący, odizolowany, ranny; bot nie jest wabikiem).
    - **F3.5a — zrobione w 1.7.241:** histereza — dotychczasowy, wciąż widoczny cel zostaje, dopóki inny gracz nie jest bliżej niż 70% (`TARGET_SWITCH_RATIO`).
    - **F3.5b — do zrobienia (wymaga playtestu w kooperacji):** preferencje — świecący latarką / hałasujący / odizolowany / ranny; bot nie jest wabikiem dla wroga,

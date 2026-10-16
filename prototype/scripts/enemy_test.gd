@@ -48,6 +48,7 @@ func run(m: Node2D) -> void:
 	await _test_alert()
 	await _test_target_hysteresis()
 	await _test_hear_error()
+	await _test_pack_shout()
 	_finish()
 
 func _finish() -> void:
@@ -643,4 +644,70 @@ func _test_hear_error() -> void:
 			sleeper.active and absf(dx) <= Enemy.HEAR_ERROR + 0.5 and is_equal_approx(sleeper._last_known.y, NoiseMgr.last_noise_pos.y),
 			"aktywny=%s, Δx=%.1f, y %.1f vs %.1f" % [sleeper.active, dx, sleeper._last_known.y, NoiseMgr.last_noise_pos.y])
 		sleeper.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- wiedza grupy (ENEMY_PLAN.md F3.4a)
+
+func _idle_ally(e: Node) -> void:
+	e.set_physics_process(false)
+	e.active = true
+	e._ai = Enemy.Ai.RETURN                   # aktywny, nic niewidzący, wraca do domu
+	e._has_lead = false
+	e._target = null
+	e._alert = 0.0
+	e._alert_cd = 0.0
+
+## Trzosek, który zauważył gracza, daje znać kolegom z watahy w zasięgu: aktywni i nic niewidzący dostają ślad i reakcję „zauważył"; śpiący, inny rodzaj,
+## inne piętro, za daleko, mający już cel i przywołani — nie.
+func _test_pack_shout() -> void:
+	var y := -7000.0
+	var strip := _floor(FAR_X + 15000.0, FAR_X + 15900.0, y)
+	var x0 := FAR_X + 15400.0
+	var a := _spawn("trzosek", Vector2(x0, y))
+	var b := _spawn("trzosek", Vector2(x0 - 150.0, y))
+	var c := _spawn("trzosek", Vector2(x0 - 100.0, y))                  # śpi
+	var d := _spawn("slepiec", Vector2(x0 - 120.0, y))                  # inny rodzaj
+	var up := _spawn("trzosek", Vector2(x0 - 100.0, y - 100.0))         # inne piętro
+	var far := _spawn("trzosek", Vector2(x0 + 400.0, y))                # za daleko
+	var busy := _spawn("trzosek", Vector2(x0 - 60.0, y))                # ma już cel
+	var minion := _spawn("trzosek", Vector2(x0 - 80.0, y))              # przywołany
+	for e in [a, b, d, up, far, busy, minion]:
+		_idle_ally(e)
+	c.set_physics_process(false)
+	busy._target = player
+	minion.summoned = true
+	var spot := Vector2(x0 + 200.0, y)
+	a._shout_sighting(spot)
+	check("wataha: kolega w zasięgu dostaje ślad w miejscu gracza i reakcję „zauważył”", b._has_lead and b._last_known.is_equal_approx(spot) and b.ai_name() == "alert", "lead=%s ai=%s" % [b._has_lead, b.ai_name()])
+	check("wataha: śpiący kolega nie dostaje śladu (budzi go wake())", not c._has_lead and not c.active)
+	check("wataha: inny rodzaj, inne piętro i za daleko nie słyszą", not d._has_lead and not up._has_lead and not far._has_lead)
+	check("wataha: kolega, który ma już cel, i przywołany bossa nie zmieniają śladu", not busy._has_lead and not minion._has_lead)
+	check("wataha: krzykacz ma cooldown", a._share_cd > 2.5, str(a._share_cd))
+	b._has_lead = false
+	b._ai = Enemy.Ai.RETURN
+	b._alert = 0.0
+	a._shout_sighting(spot)
+	check("wataha: w czasie cooldownu drugi krzyk nic nie robi", not b._has_lead)
+
+	# ścieżka percepcji: krzykacz widzi gracza po raz pierwszy → kolega poza zasięgiem wzroku (400 px od gracza) dostaje ślad
+	a._share_cd = 0.0
+	a._ai = Enemy.Ai.RETURN
+	a._target = null
+	b._has_lead = false
+	b._ai = Enemy.Ai.RETURN
+	b._alert = 0.0
+	b._alert_cd = 0.0
+	player.set_physics_process(false)
+	player.velocity = Vector2.ZERO
+	player.global_position = Vector2(x0 + 150.0, y)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	a._perceive_t = 0.0
+	a._perceive(0.2)
+	check("wataha: pierwszy kontakt wzrokowy w `_perceive` daje znać koledze, który gracza nie widzi", a._target == player and b._has_lead and absf(b._last_known.x - player.global_position.x) < 2.0,
+		"cel=%s lead=%s" % [a._target, b._has_lead])
+	player.set_physics_process(true)
+	player.global_position = Vector2(-4000.0, -4000.0)
+	for n in [a, b, c, d, up, far, busy, minion, strip]:
+		n.queue_free()
 	await get_tree().physics_frame
