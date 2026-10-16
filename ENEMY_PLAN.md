@@ -1,6 +1,6 @@
 # Plan: porządki w logice wrogów pod widok 3D i mądrzejsza AI
 
-Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237), F2b zrobiona (1.7.238), F3.1a zrobiona (1.7.239), F3.1b zrobiona (1.7.240, gałąź `feat/enemy-alert`), zostają F2c, F3.1c–F3.7, F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
+Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237), F2b zrobiona (1.7.238), F3.1a zrobiona (1.7.239), F3.1b zrobiona (1.7.240), F3.3 odrzucone po pomiarze, F3.5a zrobiona (1.7.241, gałąź `feat/enemy-target-hysteresis`), zostają F2c, F3.1c, F3.2, F3.4, F3.5b, F3.6, F3.7, F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
 `stalker.gd`, `nest.gd`, `director.gd`, `nav.gd`, `noise_manager.gd`, `view3d.gd`) i na `MISSION_3D_SPIKE.md` — nie na próbnej implementacji,
 więc rozmiary faz są szacunkowe, a uwagi o błędach pochodzą z lektury kodu, nie z gry.
 
@@ -100,9 +100,15 @@ okrężnie (rodzaj ze ścieżki skryptu, błysk trafienia z koloru `modulate`, `
      zapowiedzi; czy ślepiec / skoczek / mimik też powinni mieć reakcję (pole `alert` per rodzaj); czy wataha rusza jednocześnie (rozrzut ±15%).
    - **F3.1c — po F3.1b:** przestawić gałęzie `_tick_server` tak, żeby decyzje wynikały ze stanu (`match _ai`), razem z podziałem `enemy.gd` (F2c).
 2. Lokalizacja hałasu z niedokładnością (im dalej i ciszej, tym większy błąd); ślepiec „sprawdza okolicę”.
-3. Odległość dźwięku jednym przebiegiem od źródła hałasu (zamiast A* na każdego wroga); wspólne z `sound_grid.gd`.
+3. ~~Odległość dźwięku jednym przebiegiem od źródła hałasu (zamiast A* na każdego wroga); wspólne z `sound_grid.gd`.~~ **Odrzucone po pomiarze (2026-10-16):**
+   `_sound_distance` (A* po grafie `nav`) kosztuje ≈ 76 µs na wywołanie (30 wrogów naraz = 2,3 ms), a `sound_grid.route` ≈ 81 µs; budżet 6 wyszukiwań na klatkę
+   z F0 ogranicza szczyt do ≈ 0,5 ms. Pole odległości z jednego przebiegu pisane w GDScript (BFS po ok. 2–8 tys. komórek) byłoby wolniejsze niż natywny A*, więc
+   nic by nie dało. Wrócić do tego tylko, jeśli pomiar w grze z dziesiątkami wrogów pokaże `Nav.stat_usec` jako problem.
 4. Współdzielona wiedza grupy z opóźnieniem; role w watasze; flankowanie trasą alternatywną po nawigacji.
 5. Wybór celu z pamięcią i histerezą (świecący, hałasujący, odizolowany, ranny; bot nie jest wabikiem).
+   - **F3.5a — zrobione w 1.7.241:** histereza — dotychczasowy, wciąż widoczny cel zostaje, dopóki inny gracz nie jest bliżej niż 70% (`TARGET_SWITCH_RATIO`).
+   - **F3.5b — do zrobienia (wymaga playtestu w kooperacji):** preferencje — świecący latarką / hałasujący / odizolowany / ranny; bot nie jest wabikiem dla wroga,
+     który widzi człowieka.
 6. Ujednolicone, uczciwe zapowiedzi ataków (minimalny czas, przerwanie, brak darmowych trafień).
 7. Dyrektor: kompozycja wędrowców z tabeli per misja, limit grup zamiast sztuk, uwzględnianie gorących miejsc.
 

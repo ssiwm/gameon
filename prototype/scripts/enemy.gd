@@ -37,6 +37,7 @@ const SEARCH_TIME := 3.5         ## s rozglądania się po dojściu na ślad
 const GIVE_UP_TIME := 9.0        ## s bez kontaktu, po których porzuca ślad
 const HOME_SLEEP_TIME := 1.2     ## s w domu, po których znów zasypia
 const PERCEIVE_DT := 0.12        ## co tyle sprawdzamy wzrok (promień)
+const TARGET_SWITCH_RATIO := 0.7  ## nowy cel musi być bliżej niż 70% odległości do dotychczasowego, żeby wróg go zmienił (histereza)
 const ALERT_COOLDOWN := 5.0      ## s: tyle po reakcji „zauważył" wróg nie staje drugi raz (cel migający w polu widzenia)
 const ALERT_JITTER := 0.15       ## ±: rozrzut czasu reakcji, żeby wataha nie ruszała w jednej klatce
 const CROUCH_SIGHT := 0.6        ## kucającego widać z mniejszej odległości
@@ -1033,6 +1034,11 @@ func _perceive(delta: float) -> void:
 		best = pp
 		best_d = d
 	var had_target := _target != null
+	# histereza celu (F3.5): dotychczasowy cel, który wróg wciąż widzi, zostaje, dopóki inny gracz nie jest wyraźnie bliżej (TARGET_SWITCH_RATIO) —
+	# przy dwóch graczach w podobnej odległości wróg nie przeskakuje między nimi co 0,12 s i nie zawraca w pół kroku
+	if had_target and best != null and best != _target and is_instance_valid(_target) and not _target.dead and _can_see(_target, sight):
+		if not _prefer_new_target(global_position.distance_to(_target.global_position), best_d):
+			best = _target
 	_target = best
 	if best != null and not had_target and _ai in [Ai.INVESTIGATE, Ai.SEARCH, Ai.RETURN]:
 		_begin_alert()                    # nowy kontakt wzrokowy po śledztwie / szukaniu / powrocie — nie przy każdym mignięciu celu (ALERT_COOLDOWN)
@@ -1040,6 +1046,17 @@ func _perceive(delta: float) -> void:
 		_lead_at(best.global_position)
 	else:
 		_lose_t += PERCEIVE_DT
+
+## Czy wróg widzi gracza `pp` (promień wzroku z poprawką na kucanie + czysta linia) — ta sama reguła co w pętli `_perceive`.
+func _can_see(pp: Node2D, sight: float) -> bool:
+	if omniscient:
+		return true
+	var d := global_position.distance_to(pp.global_position)
+	return d <= sight * (CROUCH_SIGHT if pp.crouching else 1.0) and _clear_line(pp)
+
+## Czy przerzucić się na nowy cel: tylko gdy jest wyraźnie bliżej (o `1 − TARGET_SWITCH_RATIO`) niż dotychczasowy.
+static func _prefer_new_target(current_d: float, new_d: float) -> bool:
+	return new_d < current_d * TARGET_SWITCH_RATIO
 
 func _clear_line(pp: Node2D) -> bool:
 	var h: float = (_def["size"] as Vector2).y * 0.6
