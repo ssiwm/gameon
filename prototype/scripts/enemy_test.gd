@@ -47,6 +47,7 @@ func run(m: Node2D) -> void:
 	await _test_ai_states()
 	await _test_alert()
 	await _test_target_hysteresis()
+	await _test_target_weights()
 	await _test_hear_error()
 	await _test_pack_shout()
 	await _test_windup_interrupt()
@@ -538,7 +539,7 @@ func _test_alert() -> void:
 ## Histereza celu: wróg trzyma dotychczasowy cel, dopóki inny gracz nie jest wyraźnie bliżej (< 70% odległości); utrata wzroku zmienia cel od razu.
 ## Dwóch graczy: człowiek i bot z sesji testowej, zamrożeni na własnej podłodze; wróg zamrożony, `_perceive` wołany ręcznie.
 func _test_target_hysteresis() -> void:
-	check("cel: reguła przełączenia — 69% odległości przełącza, 71% nie", Enemy._prefer_new_target(100.0, 69.0) and not Enemy._prefer_new_target(100.0, 71.0))
+	check("cel: reguła przełączenia — 69% punktów przełącza, 71% nie", Enemy._prefer_new_target(100.0, 69.0) and not Enemy._prefer_new_target(100.0, 71.0))
 	var bot: Node = null
 	for p in get_tree().get_nodes_in_group("players"):
 		if p != player:
@@ -556,25 +557,30 @@ func _test_target_hysteresis() -> void:
 		p.set_physics_process(false)
 		p.velocity = Vector2.ZERO
 		frozen.append(p)
+	# punkty celu = odległość × waga; bot waży 1,3 (człowiek 1,0); odizolowany (nikt w 150 px) ×0,9 obaj
 	player.global_position = Vector2(x0 + 100.0, y)
 	bot.global_position = Vector2(x0 - 95.0, y)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	e._perceive_t = 0.0
 	e._perceive(0.2)
-	check("cel: na starcie najbliższy widoczny (bot 95 px < człowiek 100 px)", e._target == bot, str(e._target))
-	player.global_position = Vector2(x0 + 70.0, y)                    # 70 px vs 95 px: 74% — za mało, żeby przełączyć
+	check("cel: człowiek 100 px wygrywa z botem 95 px (bot nie jest wabikiem)", e._target == player, str(e._target))
+	bot.global_position = Vector2(x0 - 65.0, y)                       # bot 65 px: punkty 76 vs człowiek 90 → 84% — za mało, żeby przełączyć
 	e._perceive_t = 0.0
 	e._perceive(0.2)
-	check("cel: gracz bliżej tylko o 26% nie przejmuje celu (histereza)", e._target == bot, str(e._target))
-	player.global_position = Vector2(x0 + 60.0, y)                    # 60 px vs 95 px: 63% — wyraźnie bliżej
+	check("cel: bliższy bot, ale niewyraźnie lepszy, nie przejmuje celu (histereza)", e._target == player, str(e._target))
+	bot.global_position = Vector2(x0 - 40.0, y)                       # bot 40 px: 52 vs 100 (nie odizolowani, bo 140 px od siebie) → 52% — wyraźnie lepszy
 	e._perceive_t = 0.0
 	e._perceive(0.2)
-	check("cel: gracz wyraźnie bliżej (63%) przejmuje cel", e._target == player, str(e._target))
-	bot.global_position = Vector2(x0 - 50.0, y)                       # 50 vs 60: 83% — znów za mało
+	check("cel: wyraźnie lepszy cel (bot 40 px) przejmuje cel", e._target == bot, str(e._target))
+	player.global_position = Vector2(x0 + 30.0, y)                    # człowiek 30 px: 30 vs bot 52 → 58%
 	e._perceive_t = 0.0
 	e._perceive(0.2)
-	check("cel: powrót nie następuje przy 83% odległości (brak migania)", e._target == player, str(e._target))
+	check("cel: człowiek tuż obok (58% punktów bota) przejmuje cel z powrotem", e._target == player, str(e._target))
+	bot.global_position = Vector2(x0 - 20.0, y)                       # bot 20 px: 26 vs człowiek 30 → 87% — brak migania
+	e._perceive_t = 0.0
+	e._perceive(0.2)
+	check("cel: powrót nie następuje przy 87% punktów (brak migania)", e._target == player, str(e._target))
 	player.global_position = Vector2(x0 + 600.0, y)                   # dotychczasowy cel poza zasięgiem wzroku — zmiana od razu, bez histerezy
 	e._perceive_t = 0.0
 	e._perceive(0.2)
@@ -586,6 +592,53 @@ func _test_target_hysteresis() -> void:
 	e.queue_free()
 	strip.queue_free()
 	await get_tree().physics_frame
+
+## Wagi celu: człowiek bije bota, latarka i ogień przyciągają (latarka nie ślepca), ranny i odizolowany są łatwiejszym łupem; minimalna zapowiedź ciosu.
+func _test_target_weights() -> void:
+	var bot: Node = null
+	for p in get_tree().get_nodes_in_group("players"):
+		if p != player:
+			bot = p
+	if bot == null:
+		check("waga celu: sesja testowa ma drugiego gracza (bota)", false)
+		return
+	var e := _spawn("trzosek", Vector2(FAR_X + 19000.0, -9000.0))
+	var s := _spawn("slepiec", Vector2(FAR_X + 19100.0, -9000.0))
+	e.set_physics_process(false)
+	s.set_physics_process(false)
+	player.global_position = Vector2(FAR_X + 19500.0, -9000.0)
+	bot.global_position = Vector2(FAR_X + 19000.0, -8000.0)             # daleko od człowieka: obaj odizolowani
+	var wounded0: int = player.hp
+	player.hp = 3
+	player.flashlight = false
+	player.w_firing = false
+	var base: float = e._target_weight(player)
+	check("waga celu: odizolowany człowiek ×0,9, bot ×1,3 × 0,9", is_equal_approx(base, Enemy.TARGET_ISOLATED_W) and is_equal_approx(e._target_weight(bot), Enemy.TARGET_BOT_W * Enemy.TARGET_ISOLATED_W),
+		"%.3f / %.3f" % [base, e._target_weight(bot)])
+	player.flashlight = true
+	check("waga celu: latarka obniża wagę (wróg ją woli), ślepiec jej nie widzi", is_equal_approx(e._target_weight(player), base * Enemy.TARGET_LIGHT_W) and is_equal_approx(s._target_weight(player), base))
+	player.flashlight = false
+	player.w_firing = true
+	check("waga celu: strzelający jest chętniej wybierany", is_equal_approx(e._target_weight(player), base * Enemy.TARGET_FIRING_W))
+	player.w_firing = false
+	player.hp = 1
+	check("waga celu: ranny (1 serce) jest chętniej wybierany", is_equal_approx(e._target_weight(player), base * Enemy.TARGET_WOUNDED_W))
+	player.hp = 3
+	bot.global_position = Vector2(FAR_X + 19520.0, -9000.0)           # bot tuż obok człowieka: nikt nie jest odizolowany
+	check("waga celu: razem z drużyną (nie odizolowany) bez bonusu", is_equal_approx(e._target_weight(player), 1.0) and is_equal_approx(e._target_weight(bot), Enemy.TARGET_BOT_W))
+	player.hp = wounded0
+	player.global_position = Vector2(-4000.0, -4000.0)
+	bot.global_position = Vector2(-4100.0, -4000.0)
+
+	# minimalna zapowiedź ciosu po trudności
+	check("zapowiedź: Trzosek 0,28 s — normalny bez zmian, łatwy dłuższy, trudny nie krócej niż MIN_WINDUP",
+		is_equal_approx(Enemy.windup_time(0.28, 1.0), 0.28) and Enemy.windup_time(0.28, 1.3) > 0.28 and is_equal_approx(Enemy.windup_time(0.28, 0.8), Enemy.MIN_WINDUP),
+		"%.3f / %.3f / %.3f" % [Enemy.windup_time(0.28, 1.0), Enemy.windup_time(0.28, 1.3), Enemy.windup_time(0.28, 0.8)])
+	check("zapowiedź: dłuższa zapowiedź (Wołek 0,6 s) nie jest skracana do minimum", is_equal_approx(Enemy.windup_time(0.6, 0.8), 0.48))
+	e.queue_free()
+	s.queue_free()
+	await get_tree().physics_frame
+
 
 # ---------------------------------------------------------------- lokalizacja hałasu z błędem (ENEMY_PLAN.md F3.2)
 

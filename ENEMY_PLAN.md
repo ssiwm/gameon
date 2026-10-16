@@ -1,6 +1,6 @@
 # Plan: porządki w logice wrogów pod widok 3D i mądrzejsza AI
 
-Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237), F2b zrobiona (1.7.238), F3.1a zrobiona (1.7.239), F3.1b zrobiona (1.7.240), F3.3 odrzucone po pomiarze, F3.5a zrobiona (1.7.241), F3.2 zrobiona (1.7.242), F3.4a zrobiona (1.7.243), F3.6a zrobiona (1.7.244), F3.7 zrobiona (1.7.245, gałąź `feat/director-groups`), zostają F2c, F3.1c, F3.4b, F3.5b, F3.6b, F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
+Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237), F2b zrobiona (1.7.238), F3.1a zrobiona (1.7.239), F3.1b zrobiona (1.7.240), F3.3 odrzucone po pomiarze, F3.5a zrobiona (1.7.241), F3.2 zrobiona (1.7.242), F3.4a zrobiona (1.7.243), F3.6a zrobiona (1.7.244), F3.7 zrobiona (1.7.245), F3.5b i F3.6b zrobione (1.7.246, gałąź `feat/enemy-target-weights`), zostają F2c, F3.1c, F3.4b, F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
 `stalker.gd`, `nest.gd`, `director.gd`, `nav.gd`, `noise_manager.gd`, `view3d.gd`) i na `MISSION_3D_SPIKE.md` — nie na próbnej implementacji,
 więc rozmiary faz są szacunkowe, a uwagi o błędach pochodzą z lektury kodu, nie z gry.
 
@@ -114,13 +114,13 @@ okrężnie (rodzaj ze ścieżki skryptu, błysk trafienia z koloru `modulate`, `
      atakujących zamiast krążyć w paśmie po tej samej stronie; wymaga sprawdzenia podłogi i ściany po drugiej stronie i ustalenia, czy wróg może minąć gracza (kolizje).
 5. Wybór celu z pamięcią i histerezą (świecący, hałasujący, odizolowany, ranny; bot nie jest wabikiem).
    - **F3.5a — zrobione w 1.7.241:** histereza — dotychczasowy, wciąż widoczny cel zostaje, dopóki inny gracz nie jest bliżej niż 70% (`TARGET_SWITCH_RATIO`).
-   - **F3.5b — do zrobienia (wymaga playtestu w kooperacji):** preferencje — świecący latarką / hałasujący / odizolowany / ranny; bot nie jest wabikiem dla wroga,
-     który widzi człowieka.
+   - **F3.5b — zrobione w 1.7.246 (wymaga playtestu w kooperacji):** punkty celu = odległość × `_target_weight`: bot ×1,3, latarka ×0,8 (nie dla ślepca), strzelanie ×0,85,
+     ranny (≤ 1 serce) ×0,9, odizolowany (nikt żywy w 150 px) ×0,9; histereza liczy punkty. „Hałasujący” = strzelający (`w_firing`); bieg i krzyk jeszcze nie wchodzą w wagę.
 6. Ujednolicone, uczciwe zapowiedzi ataków (minimalny czas, przerwanie, brak darmowych trafień).
    - **F3.6a — zrobione w 1.7.244:** mocne ogłuszenie (`WINDUP_INTERRUPT_STUN` 0,4 s: strzelba, szyna, harpun, maczeta) przerywa zwykły cios w zapowiedzi (`_interrupt_windup`),
      przerwa 0,6 s × `enemy_cd`; poza zakresem zapowiedzi specjalne Wołka, krzyk Podsłuchacza, przemiana Mimika. Cios przez ścianę zablokowany w F0.
-   - **F3.6b — do zrobienia, jeśli playtest pokaże potrzebę:** minimalny czas zapowiedzi po trudności (dziś Trzosek 0,28 s × 0,8 = 0,22 s na trudnym), brak nowych „darmowych”
-     trafień po przerwaniu; ujednolicenie czasu zapowiedzi między rodzajami.
+   - **F3.6b — zrobione w 1.7.246:** `MIN_WINDUP` 0,25 s (`windup_time`): zapowiedź zwykłego ciosu po trudności nie krótsza (Trzosek na trudnym: 0,22 → 0,25 s).
+     **Zostaje:** ujednolicenie czasu zapowiedzi między rodzajami — dane po playtestach.
 7. Dyrektor: kompozycja wędrowców z tabeli per misja, limit grup zamiast sztuk, uwzględnianie gorących miejsc.
    - **F3.7 — zrobione w 1.7.245:** `GROUPS` / `GROUPS_BY_MAP` / `pick_group` (zestawy jako dane, domyślnie jak dotąd), `MAX_GROUPS` 2 zamiast `MAX_ROAMERS` 3, `live_groups()`,
      sprzątanie uśpionych wędrowców po `ROAMER_IDLE_DESPAWN` 45 s poza polem widzenia (`_seen_or_close`), cel wędrowców = świeże gorące miejsce (`HOT_SPOT_R` 600 px,

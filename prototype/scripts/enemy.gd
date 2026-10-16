@@ -37,7 +37,14 @@ const SEARCH_TIME := 3.5         ## s rozglądania się po dojściu na ślad
 const GIVE_UP_TIME := 9.0        ## s bez kontaktu, po których porzuca ślad
 const HOME_SLEEP_TIME := 1.2     ## s w domu, po których znów zasypia
 const PERCEIVE_DT := 0.12        ## co tyle sprawdzamy wzrok (promień)
-const TARGET_SWITCH_RATIO := 0.7  ## nowy cel musi być bliżej niż 70% odległości do dotychczasowego, żeby wróg go zmienił (histereza)
+const TARGET_BOT_W := 1.3             ## wagi celu (F3.5b), mnożą odległość: bot mniej pożądany, latarka / ogień / ranny / odizolowany bardziej
+const TARGET_LIGHT_W := 0.8
+const TARGET_FIRING_W := 0.85
+const TARGET_WOUNDED_W := 0.9
+const TARGET_ISOLATED_W := 0.9
+const TARGET_ISOLATED_R := 150.0      ## px: nikt żywy tak blisko gracza = jest odizolowany
+const MIN_WINDUP := 0.25              ## s: najkrótsza zapowiedź zwykłego ciosu po trudności (F3.6b) — krócej gracz nie ma szans zareagować
+const TARGET_SWITCH_RATIO := 0.7 ## nowy cel musi być bliżej niż 70% odległości do dotychczasowego, żeby wróg go zmienił (histereza)
 const ALERT_COOLDOWN := 5.0      ## s: tyle po reakcji „zauważył" wróg nie staje drugi raz (cel migający w polu widzenia)
 const ALERT_JITTER := 0.15       ## ±: rozrzut czasu reakcji, żeby wataha nie ruszała w jednej klatce
 const CROUCH_SIGHT := 0.6        ## kucającego widać z mniejszej odległości
@@ -527,6 +534,10 @@ func _tick_server(delta: float) -> void:
 	if _drop_attack and is_on_floor():
 		_land_hit()
 	_send_state(delta)
+
+## Czas zapowiedzi zwykłego ciosu po trudności: `base` × mnożnik, ale nie krócej niż MIN_WINDUP (F3.6b) — Trzosek na trudnym (0,28 × 0,8 = 0,22 s) był poniżej ludzkiej reakcji.
+static func windup_time(base: float, mult: float) -> float:
+	return maxf(base * mult, MIN_WINDUP)
 
 ## Obrażenia ataku wroga po poziomie trudności (zaokrąglane, min. 1) — jedno miejsce dla zwykłego ciosu, lądowania skoczka, szarży Wołka i ćmy.
 func _scaled_damage(base: int) -> int:
@@ -1057,24 +1068,25 @@ func _perceive(delta: float) -> void:
 	_perceive_t = PERCEIVE_DT
 	var sight: float = float(_def.get("sight", 240.0)) * Difficulty.m("enemy_hear")
 	var best: Node2D = null
-	var best_d := INF
+	var best_score := INF                 # „punkty" celu: odległość × waga (`_target_weight`) — im mniej, tym bardziej pożądany
 	for p in get_tree().get_nodes_in_group("players"):
 		var pp := p as Node2D
 		if pp == null or pp.dead:
 			continue
 		var d := global_position.distance_to(pp.global_position)
-		if d >= best_d:
+		var score := d * _target_weight(pp)
+		if score >= best_score:
 			continue
 		if not omniscient:
 			if d > sight * (CROUCH_SIGHT if pp.crouching else 1.0) or not _clear_line(pp):
 				continue
 		best = pp
-		best_d = d
+		best_score = score
 	var had_target := _target != null
-	# histereza celu (F3.5): dotychczasowy cel, który wróg wciąż widzi, zostaje, dopóki inny gracz nie jest wyraźnie bliżej (TARGET_SWITCH_RATIO) —
+	# histereza celu (F3.5): dotychczasowy cel, który wróg wciąż widzi, zostaje, dopóki inny gracz nie jest wyraźnie lepszy (TARGET_SWITCH_RATIO punktów) —
 	# przy dwóch graczach w podobnej odległości wróg nie przeskakuje między nimi co 0,12 s i nie zawraca w pół kroku
 	if had_target and best != null and best != _target and is_instance_valid(_target) and not _target.dead and _can_see(_target, sight):
-		if not _prefer_new_target(global_position.distance_to(_target.global_position), best_d):
+		if not _prefer_new_target(global_position.distance_to(_target.global_position) * _target_weight(_target), best_score):
 			best = _target
 	_target = best
 	if best != null and not had_target and _ai in [Ai.INVESTIGATE, Ai.SEARCH, Ai.RETURN]:
@@ -1108,6 +1120,30 @@ func _hear_shout(pos: Vector2) -> void:
 	_lead_at(pos)
 	_begin_alert()
 
+## Waga gracza jako celu (F3.5b): mnożnik odległości, im mniejszy, tym chętniej wróg wybiera tego gracza. Człowiek bije bota (bot nie jest wabikiem),
+## przyciąga światło latarki (nie ślepca) i ogień, a łatwiejszym łupem jest ranny (≤ 1 serce) i odizolowany od drużyny (nikt żywy w TARGET_ISOLATED_R).
+func _target_weight(pp: Node2D) -> float:
+	var w := 1.0
+	if pp.is_bot:
+		w *= TARGET_BOT_W
+	if pp.flashlight and not _def.get("blind", false):
+		w *= TARGET_LIGHT_W
+	if pp.w_firing:
+		w *= TARGET_FIRING_W
+	if pp.hp <= 1:
+		w *= TARGET_WOUNDED_W
+	if _isolated(pp):
+		w *= TARGET_ISOLATED_W
+	return w
+
+## Czy poza `pp` nie ma w TARGET_ISOLATED_R żadnego żywego gracza (sam jedyny gracz też jest „odizolowany" — waga jest wtedy tylko stałym mnożnikiem).
+func _isolated(pp: Node2D) -> bool:
+	for p in get_tree().get_nodes_in_group("players"):
+		var o := p as Node2D
+		if o != null and o != pp and not o.dead and o.global_position.distance_to(pp.global_position) <= TARGET_ISOLATED_R:
+			return false
+	return true
+
 ## Czy wróg widzi gracza `pp` (promień wzroku z poprawką na kucanie + czysta linia) — ta sama reguła co w pętli `_perceive`.
 func _can_see(pp: Node2D, sight: float) -> bool:
 	if omniscient:
@@ -1115,7 +1151,8 @@ func _can_see(pp: Node2D, sight: float) -> bool:
 	var d := global_position.distance_to(pp.global_position)
 	return d <= sight * (CROUCH_SIGHT if pp.crouching else 1.0) and _clear_line(pp)
 
-## Czy przerzucić się na nowy cel: tylko gdy jest wyraźnie bliżej (o `1 − TARGET_SWITCH_RATIO`) niż dotychczasowy.
+## Czy przerzucić się na nowy cel: tylko gdy ma wyraźnie mniej punktów (o `1 − TARGET_SWITCH_RATIO`) niż dotychczasowy (punkty = odległość × waga, `_target_weight`).
+## `current_d` i `new_d` to punkty dotychczasowego i nowego celu.
 static func _prefer_new_target(current_d: float, new_d: float) -> bool:
 	return new_d < current_d * TARGET_SWITCH_RATIO
 
@@ -1414,7 +1451,7 @@ func _try_begin_attack(target: Node2D) -> void:
 	if _cd > 0.0 or _windup > 0.0:
 		return
 	if _in_reach(target, 0.0) and not _wall_between(target):
-		_windup = float(_def["windup"]) * Difficulty.m("enemy_windup")
+		_windup = windup_time(float(_def["windup"]), Difficulty.m("enemy_windup"))
 		_windup_target = target
 		winding = true
 
