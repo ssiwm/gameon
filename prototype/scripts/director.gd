@@ -166,6 +166,10 @@ const MAX_GROUPS := 2                        ## tyle grup wędrowców naraz (now
 const HOT_SPOT_R := 600.0                    ## „gorące miejsce" (niedawna strzelanina) w tym promieniu od gracza wyznacza cel wędrowców
 const HOT_SPOT_AGE := 90.0                   ## s: starsze strzelaniny się nie liczą
 const ROAMER_IDLE_DESPAWN := 45.0            ## s uśpienia poza polem widzenia, po których wędrowiec znika (żeby uśpiona grupa nie blokowała następnych)
+const PICK_TRIES := 80                       ## prób losowania punktu spawnu (kleszcze: pierwsze PINCER_TRIES tylko z przeciwnej strony)
+const PINCER_TRIES := 50
+const PINCER_R := 900.0                      ## px: wędrowcy dalej od gracza nie liczą się do „strony" kleszczy
+const PINCER_MIN_DX := 40.0                  ## px: średnia pozycja bliżej gracza niż to = brak wyraźnej strony
 
 static func groups_for(map_id: String) -> Array:
 	return GROUPS_BY_MAP.get(map_id, GROUPS)
@@ -202,11 +206,14 @@ func _pick_spot(lvl: Node, near: Vector2, humans: Array) -> Vector2:
 	var nav: AStar2D = lvl.nav
 	var ids := nav.get_point_ids()
 	var space := get_tree().root.get_world_2d().direct_space_state
-	for _try in 40:
+	var avoid := _roamer_side(lvl, near)                  # kleszcze: gdy z jednej strony już ktoś jest, nowi wychodzą z drugiej
+	for _try in PICK_TRIES:
 		var id: int = ids[randi() % ids.size()]
 		var pt := nav.get_point_position(id)
 		var d := pt.distance_to(near)
 		if d < SPAWN_DIST_MIN or d > SPAWN_DIST_MAX:
+			continue
+		if not pincer_side_ok(avoid, pt.x - near.x, _try):
 			continue
 		var visible := false
 		for p in humans:
@@ -217,6 +224,29 @@ func _pick_spot(lvl: Node, near: Vector2, humans: Array) -> Vector2:
 		if not visible:
 			return pt
 	return Vector2.ZERO
+
+## Kleszcze (F3.4): po której stronie `near` (−1 / +1) są już żywi wędrowcy z poprzedniej grupy — średnia ich pozycji w PINCER_R; 0, gdy nikogo nie ma
+## w pobliżu albo stoją pod graczem (|średnia| ≤ PINCER_MIN_DX). Nowa grupa dostaje wtedy spawn z przeciwnej strony, czyli drużyna jest atakowana z dwóch stron
+## bez przechodzenia wrogów przez gracza (wrogowie i gracze nie kolidują, więc „obejście" w walce wyglądałoby jak przenikanie).
+func _roamer_side(lvl: Node, near: Vector2) -> float:
+	var sum := 0.0
+	var n := 0
+	for rn in _roamers:
+		var e := lvl.get_node_or_null(rn) as Node2D
+		if e == null or not is_instance_valid(e) or not e.alive:
+			continue
+		if e.global_position.distance_to(near) <= PINCER_R:
+			sum += e.global_position.x - near.x
+			n += 1
+	if n == 0:
+		return 0.0
+	var mean := sum / float(n)
+	return signf(mean) if absf(mean) > PINCER_MIN_DX else 0.0
+
+## Czy punkt spawnu `dx` px od gracza (znak = strona) wolno wziąć przy próbie nr `try_i`: pierwsze PINCER_TRIES prób tylko z przeciwnej strony niż `avoid`,
+## potem dowolna (gdy po tamtej stronie nie ma miejsca, np. ściana — lepiej nie z przeciwnej niż wcale).
+static func pincer_side_ok(avoid: float, dx: float, try_i: int) -> bool:
+	return avoid == 0.0 or try_i >= PINCER_TRIES or signf(dx) != avoid
 
 @rpc("authority", "call_local", "reliable")
 func _spawn_roamer(n: String, kind: String, pos: Vector2, hunt_at: Vector2) -> void:

@@ -52,6 +52,7 @@ func run(m: Node2D) -> void:
 	await _test_pack_shout()
 	await _test_windup_interrupt()
 	await _test_director()
+	await _test_pincer()
 	_finish()
 
 func _finish() -> void:
@@ -892,4 +893,41 @@ func _test_director() -> void:
 	for n in [close, seen, awake, strip, wall]:
 		if is_instance_valid(n):
 			n.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- Dyrektor: kleszcze (ENEMY_PLAN.md F3.4)
+
+## Nowa grupa wędrowców wychodzi z przeciwnej strony niż poprzednia (drużyna atakowana z dwóch stron bez przenikania wrogów przez gracza);
+## gdy po tamtej stronie nie ma miejsca, po PINCER_TRIES próbach wolno z dowolnej.
+func _test_pincer() -> void:
+	var D := Director
+	check("kleszcze: bez poprzedniej grupy (avoid 0) wolno z każdej strony", D.pincer_side_ok(0.0, 300.0, 0) and D.pincer_side_ok(0.0, -300.0, 0))
+	check("kleszcze: poprzednia grupa z prawej (+1) → wolno tylko z lewej", D.pincer_side_ok(1.0, -300.0, 0) and not D.pincer_side_ok(1.0, 300.0, 0))
+	check("kleszcze: poprzednia grupa z lewej (−1) → wolno tylko z prawej", D.pincer_side_ok(-1.0, 300.0, 0) and not D.pincer_side_ok(-1.0, -300.0, 0))
+	check("kleszcze: po PINCER_TRIES próbach wolno z tej samej strony (brak miejsca po drugiej)", D.pincer_side_ok(1.0, 300.0, D.PINCER_TRIES) and not D.pincer_side_ok(1.0, 300.0, D.PINCER_TRIES - 1))
+
+	var y := -9500.0
+	var near := Vector2(FAR_X + 20000.0, y)
+	var r0 := D._roamers.duplicate()
+	var a := _spawn("trzosek", near + Vector2(400.0, 0.0))             # poprzednia grupa: 400 px na prawo
+	var b := _spawn("trzosek", near + Vector2(500.0, 0.0))
+	var far := _spawn("trzosek", near + Vector2(-2000.0, 0.0))         # daleko po lewej: poza PINCER_R, nie liczy się
+	var dead := _spawn("trzosek", near + Vector2(-300.0, 0.0))         # martwy: nie liczy się
+	for e in [a, b, far, dead]:
+		e.set_physics_process(false)
+	a.name = "RoamerP1"
+	b.name = "RoamerP2"
+	far.name = "RoamerP3"
+	dead.name = "RoamerP4"
+	dead.alive = false
+	D._roamers.assign(["RoamerP1", "RoamerP2", "RoamerP3", "RoamerP4"])
+	check("kleszcze: żywi wędrowcy z prawej w PINCER_R → strona +1 (daleki i martwy się nie liczą)", D._roamer_side(level, near) == 1.0, str(D._roamer_side(level, near)))
+	a.global_position = near + Vector2(10.0, 0.0)                      # tuż pod graczem: |średnia| < PINCER_MIN_DX
+	b.global_position = near + Vector2(-20.0, 0.0)
+	check("kleszcze: wędrowcy tuż pod graczem nie wyznaczają strony", D._roamer_side(level, near) == 0.0)
+	D._roamers.clear()
+	check("kleszcze: bez wędrowców strona 0", D._roamer_side(level, near) == 0.0)
+	D._roamers.assign(r0)
+	for n in [a, b, far, dead]:
+		n.queue_free()
 	await get_tree().physics_frame

@@ -1,6 +1,6 @@
 # Plan: porządki w logice wrogów pod widok 3D i mądrzejsza AI
 
-Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237), F2b zrobiona (1.7.238), F3.1a zrobiona (1.7.239), F3.1b zrobiona (1.7.240), F3.3 odrzucone po pomiarze, F3.5a zrobiona (1.7.241), F3.2 zrobiona (1.7.242), F3.4a zrobiona (1.7.243), F3.6a zrobiona (1.7.244), F3.7 zrobiona (1.7.245), F3.5b i F3.6b zrobione (1.7.246, gałąź `feat/enemy-target-weights`), zostają F2c, F3.1c, F3.4b, F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
+Status: **plan z 2026-10-16; F0 zrobiona (1.7.234), F1a zrobiona (1.7.235), F1b zrobiona (1.7.236), F2a zrobiona (1.7.237), F2b zrobiona (1.7.238), F3.1a zrobiona (1.7.239), F3.1b zrobiona (1.7.240), F3.3 odrzucone po pomiarze, F3.5a zrobiona (1.7.241), F3.2 zrobiona (1.7.242), F3.4a zrobiona (1.7.243), F3.6a zrobiona (1.7.244), F3.7 zrobiona (1.7.245), F3.5b i F3.6b zrobione (1.7.246), F3.4b odrzucone, F3.4c zrobiona (1.7.247, gałąź `feat/director-pincer`), zostają F2c, F3.1c, F4.** Oparty na przeglądzie kodu (`enemy.gd`, `enemy3d.gd`, `boss.gd`, `leech.gd`,
 `stalker.gd`, `nest.gd`, `director.gd`, `nav.gd`, `noise_manager.gd`, `view3d.gd`) i na `MISSION_3D_SPIKE.md` — nie na próbnej implementacji,
 więc rozmiary faz są szacunkowe, a uwagi o błędach pochodzą z lektury kodu, nie z gry.
 
@@ -110,8 +110,12 @@ okrężnie (rodzaj ze ścieżki skryptu, błysk trafienia z koloru `modulate`, `
 4. Współdzielona wiedza grupy z opóźnieniem; role w watasze; flankowanie trasą alternatywną po nawigacji.
    - **F3.4a — zrobione w 1.7.243:** `_shout_sighting` / `_hear_shout`: Trzosek, który po raz pierwszy zauważył gracza, daje znać kolegom z watahy w `SHARE_RADIUS` (220 px,
      ±`SHARE_DY` 40 px w pionie); aktywni i nic niewidzący (`investigate` / `search` / `return`) dostają ślad i `alert`. Cooldown 3 s. Opóźnienie daje sam `alert` (0,4 s ±15%).
-   - **F3.4b — do zrobienia (największe ryzyko, playtest):** flankowanie — wróg wstrzymany przez `_pack_hold` (≥ 2 atakujących) obchodzi gracza na stronę przeciwną do
-     atakujących zamiast krążyć w paśmie po tej samej stronie; wymaga sprawdzenia podłogi i ściany po drugiej stronie i ustalenia, czy wróg może minąć gracza (kolizje).
+   - ~~**F3.4b — flankowanie w walce** (wróg wstrzymany przez `_pack_hold` obchodzi gracza na stronę przeciwną do atakujących).~~ **Odrzucone po analizie (2026-10-16):**
+     wrogowie i gracze nie kolidują (`enemy.tscn` warstwa 4 / maska 49, `player.tscn` warstwa 2 / maska 49), więc flanker przechodziłby przez model gracza; `MAX_ATTACKERS` 2 nie
+     zmienia obrażeń, tylko stronę ataku; GDD obiecuje „atakuje po kolei"; pole z wolnymi ≥ 6 kafli po obu stronach to tylko 31% (1.3), 58% (1.1), 62% (1.2), 66% (B1) podłogi,
+     a w 1.3 dodatkowo 26% to niskie tunele.
+   - **F3.4c — zrobione w 1.7.247 (zamiast F3.4b):** kleszcze Dyrektora — nowa grupa wędrowców wychodzi z przeciwnej strony niż poprzednia żywa grupa (`_roamer_side`,
+     `pincer_side_ok`; `PINCER_R` 900 px, `PINCER_TRIES` 50 z `PICK_TRIES` 80, potem dowolna strona). Ten sam efekt „z dwóch stron" bez przenikania.
 5. Wybór celu z pamięcią i histerezą (świecący, hałasujący, odizolowany, ranny; bot nie jest wabikiem).
    - **F3.5a — zrobione w 1.7.241:** histereza — dotychczasowy, wciąż widoczny cel zostaje, dopóki inny gracz nie jest bliżej niż 70% (`TARGET_SWITCH_RATIO`).
    - **F3.5b — zrobione w 1.7.246 (wymaga playtestu w kooperacji):** punkty celu = odległość × `_target_weight`: bot ×1,3, latarka ×0,8 (nie dla ślepca), strzelanie ×0,85,
