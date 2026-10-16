@@ -214,7 +214,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 | **Wołek** | 140 | wolna | Tankuje, potężny cios; szarża po poziomie, rzut skrzynią także w górę i w dół (do ok. 10 kafli różnicy poziomów) | Unik, strzelba w plecy |
 | **Skoczek** | 40 | skok | Spada z sufitu/wysokości | Ciągły ogień w górę, FALCON |
 | **Pijawka** | 15 | pełznie | Dopada, wysysa HP, QTE (30 s) | Maczeta, strzał w twarz kolegi? (friendly fire) |
-| **Ślepiec** | 60 | węszy | **Nie widzi — słyszy.** Idzie w okolice ostatniego hałasu (z błędem lokalizacji — z daleka i przy cichych dźwiękach mniej dokładnie), po dojściu **przeszukuje okolicę** (±4 m, 6 s), a na **głośny dźwięk w 9 m** (rozgrzana M-83 i głośniejsze: strzelba, granat, krzyk) po krótkiej zapowiedzi **rzuca się** w jego stronę (0,7 s, 2,2× szybciej, z błędem celu) — kroki w błocie i oleju go nie budzą | Kucnij i przejdź; harpun |
+| **Ślepiec** | 100 | węszy | **Nie widzi — słyszy.** Idzie w okolice ostatniego hałasu (z błędem lokalizacji — z daleka i przy cichych dźwiękach mniej dokładnie), po dojściu **przeszukuje okolicę** (±4 m, 6 s), a na **głośny dźwięk w 19 m** (rozgrzana M-83 i głośniejsze: strzelba, granat, krzyk) po krótkiej zapowiedzi **szarżuje** w jego stronę (do 1,4 s, 2,4× szybciej, z błędem celu; 2 obrażenia za cios; skacze przez przeszkody) — kroki w błocie i oleju go nie budzą | Kucnij i przejdź; harpun |
 | **Podsłuchacz** | 35 | stoi | Nieruchomy „słuchacz" — krzyczy i ściąga hordę | Priorytet: zabić cicho (harpun) |
 | **Mimik** | 70 | udaje | Udaje sylwetkę/radio kolegi z drużyny | Sprawdź pingiem/kodem drużyny |
 | **Żyła** | 200 | rośnie | Splot 5–10 m, rodzi Trzoski | Ogień, WRATH-4, ładunek |

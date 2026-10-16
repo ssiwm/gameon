@@ -135,10 +135,11 @@ okrężnie (rodzaj ze ścieżki skryptu, błysk trafienia z koloru `modulate`, `
 
 - **Wołek:** rzut skrzynią w górę i w dół (`THROW_DY_MAX` 160 px; cel prawie nad / pod nim też; `_throw_clear` sprawdza ścianę; dłuższy czas lotu dla rzutu pionowego).
   Szarża dalej tylko po poziomie (`|dy| ≤ 24`). Skrzynia musi leżeć w 60 px od niego (`_find_crate`) — bez skrzyni nie rzuca; do rozważenia: szukanie skrzyni w okolicy.
-- **Ślepiec** (był „nieruchomą lalką"): `sweep` — po dojściu na ślad przeszukuje okolicę ±70 px przez `search` 6 s; `lunge` — dash na głośny dźwięk (≥ 1,0 — po playteście obniżone z 2,0, bo domyślna M-83 nigdy nie dochodziła do 2,0) w 140 px:
-  zapowiedź 0,3 s (stan `alert`), potem 0,7 s × 2,2 prędkości w stronę źródła (z błędem), cooldown 6 s; nowy stan `Ai.LUNGE`, głos `alert`. Wszystko w danych
-  (`enemy_defs.gd`), więc strojenie bez kodu. **Do playtestu:** czy jest groźny, ale uczciwy; czy kroki (nie ≥ 2,0) dalej go tylko prowadzą do gracza.
-- **Uskoki (po playteście: Ślepiec stał na wyspie za metalowym blokiem):** wrogowie, którzy nie skaczą, pokonują stopień o 1 kafel małym przeskokiem (`_is_step`, `STEP_HOP_V`), a gdy nie mogą dojść do domu, po `RETURN_STUCK_TIME` 4 s dom przenosi się na miejsce postoju. **Zostaje otwarte:** Trzosek/Skoczek/Mimik nie mają flagi `_blocked` i skaczą o ścianę bez limitu — do decyzji po playteście.
+- **Ślepiec** (był „nieruchomą lalką"): `sweep` — po dojściu na ślad przeszukuje okolicę ±70 px przez `search` 6 s; `lunge` — szarża na głośny dźwięk (≥ 1,0 — po playteście obniżone z 2,0, bo domyślna M-83 nigdy nie dochodziła do 2,0)
+  w 300 px (pierwotne 140 px po playteście okazało się za mało: gracz strzela z dalej, więc szarża praktycznie się nie odpalała): zapowiedź 0,3 s (stan `alert`), potem do 1,4 s × 2,4 prędkości w stronę źródła
+  (z błędem), cooldown 6 s; nowy stan `Ai.LUNGE`, głos `alert`. Po playteście też twardszy: 100 HP (było 60), 2 obrażenia (było 1), `leap: true`. Wszystko w danych (`enemy_defs.gd`), więc strojenie bez kodu.
+  **Do playtestu:** czy jest groźny, ale uczciwy; czy kroki (nie ≥ 2,0) dalej go tylko prowadzą do gracza.
+- **Uskoki (po playteście: Ślepiec stał na wyspie za metalowym blokiem i na krawędzi szybu):** na krawędzi zejścia (`Nav.Edge.FALL`) wróg idzie dalej, aż straci grunt (wcześniej stawał 3 px od środka węzła, czyli na samej krawędzi). Ponadto wrogowie, którzy nie skaczą, pokonują stopień o 1 kafel małym przeskokiem (`_is_step`, `STEP_HOP_V`), a gdy nie mogą dojść do domu, po `RETURN_STUCK_TIME` 4 s dom przenosi się na miejsce postoju. **Zostaje otwarte:** Trzosek/Skoczek/Mimik nie mają flagi `_blocked` i skaczą o ścianę bez limitu — do decyzji po playteście.
 
 ### F4 — nowa zawartość
 

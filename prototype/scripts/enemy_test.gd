@@ -57,6 +57,7 @@ func run(m: Node2D) -> void:
 	await _test_slepiec_mechanics()
 	await _test_slepiec_listen()
 	await _test_slepiec_step()
+	await _test_slepiec_shaft()
 	await _test_return_home_stuck()
 	_finish()
 
@@ -499,10 +500,13 @@ func _test_alert() -> void:
 	var times := {}
 	for lvl in [Difficulty.Level.EASY, Difficulty.Level.NORMAL, Difficulty.Level.HARD]:
 		Difficulty.set_level(lvl)
-		e._alert = 0.0
-		e._alert_cd = 0.0
-		e._begin_alert()
-		times[lvl] = e._alert
+		var sum := 0.0
+		for i in 30:                                                   # rozrzut ±15% — uśredniamy, żeby poziomy trudności nie zachodziły na siebie losowo
+			e._alert = 0.0
+			e._alert_cd = 0.0
+			e._begin_alert()
+			sum += e._alert
+		times[lvl] = sum / 30.0
 	Difficulty.set_level(prev)
 	check("alert: łatwy dłuższy niż normalny, normalny dłuższy niż trudny", times[Difficulty.Level.EASY] > times[Difficulty.Level.NORMAL] and times[Difficulty.Level.NORMAL] > times[Difficulty.Level.HARD], str(times))
 	check("alert: normalny w granicach 0,4 s ±15%", times[Difficulty.Level.NORMAL] >= 0.34 and times[Difficulty.Level.NORMAL] <= 0.46)
@@ -1000,8 +1004,8 @@ func _test_wolek_throw_vertical() -> void:
 func _test_slepiec_mechanics() -> void:
 	var Defs := load("res://scripts/enemy_defs.gd")
 	var cfg: Dictionary = Defs.DEFS["slepiec"]["lunge"]
-	check("Ślepiec: rzut na dźwięk — głośny i blisko tak, cichy albo daleko nie, rodzaj bez pola `lunge` nie",
-		Enemy.lunge_triggers(cfg, 3.0, 100.0) and not Enemy.lunge_triggers(cfg, 0.6, 100.0) and not Enemy.lunge_triggers(cfg, 3.0, 200.0) and not Enemy.lunge_triggers({}, 9.0, 10.0))
+	check("Ślepiec: rzut na dźwięk — głośny i blisko tak, cichy albo za daleko (> 300 px) nie, rodzaj bez pola `lunge` nie",
+		Enemy.lunge_triggers(cfg, 3.0, 100.0) and not Enemy.lunge_triggers(cfg, 0.6, 100.0) and Enemy.lunge_triggers(cfg, 3.0, 250.0) and not Enemy.lunge_triggers(cfg, 3.0, 400.0) and not Enemy.lunge_triggers({}, 9.0, 10.0))
 	var y := -10500.0
 	var strip := _floor(FAR_X + 22000.0, FAR_X + 23000.0, y)
 	var x0 := FAR_X + 22500.0
@@ -1122,6 +1126,38 @@ func _test_slepiec_step() -> void:
 		await get_tree().physics_frame
 		tt += get_physics_process_delta_time()
 	check("stopień: Ślepiec wchodzi na metalowy blok o 1 kafel i idzie dalej za ślad (nie stoi pod nim)", e.global_position.x > 56.0 * t, "x = %.0f kafli %.1f po %.1f s, blocked=%s" % [e.global_position.x, e.global_position.x / t, tt, e._blocked])
+
+## Na mapie 1.3 szyb po lewej stronie wyspy Ślepca: wróg słyszący strzał z drugiej strony szybu dochodzi do krawędzi, ale stawał na niej w miejscu (krawędź zejścia FALL
+## kończyła marsz 3 px od środka węzła, czyli dokładnie na krawędzi). Teraz schodzi w szyb i idzie dalej ścieżką.
+func _test_slepiec_shaft() -> void:
+	var Defs := load("res://scripts/enemy_defs.gd")
+	var cfg: Dictionary = Defs.DEFS["slepiec"]
+	check("Ślepiec: 100 HP, 2 obrażenia, skacze (nie jest ‚lalką do bicia’)", float(cfg["hp"]) >= 100.0 and int(cfg["damage"]) == 2 and bool(cfg["leap"]))
+	var e := level.get_node_or_null("Slepiec1") as CharacterBody2D
+	if e == null:
+		check("szyb: mapa 1.3 ma Ślepca na wyspie (Slepiec1)", false)
+		return
+	var t := float(level.TILE)
+	e.global_position = Vector2(51.0 * t + 8.0, 27.0 * t - 1.0)
+	e.velocity = Vector2.ZERO
+	e._home = e.global_position
+	e.active = false
+	await get_tree().physics_frame
+	e.take_hit({"amount": 1.0, "dir": Vector2.RIGHT, "pos": e.global_position, "shooter": 0, "type": "bullet"})
+	e._lead_at(Vector2(30.0 * t, 40.0 * t - 8.0))                            # ślad na dnie szybu, po drugiej stronie
+	var tt := 0.0
+	var y_max := 0.0
+	var x_min := e.global_position.x
+	while tt < 8.0 and y_max < 33.0 * t:
+		await get_tree().physics_frame
+		tt += get_physics_process_delta_time()
+		y_max = maxf(y_max, e.global_position.y)
+		x_min = minf(x_min, e.global_position.x)
+	check("szyb: Ślepiec słyszący strzał z tamtej strony szybu schodzi w szyb, zamiast stać na krawędzi", y_max >= 33.0 * t, "najniżej y = %.1f kafla, x_min = %.1f, po %.1f s" % [y_max / t, x_min / t, tt])
+	e.active = false
+	e.global_position = Vector2(51.0 * t + 8.0, 27.0 * t - 1.0)
+	e.velocity = Vector2.ZERO
+	await get_tree().physics_frame
 
 ## Dom, do którego nie da się dojść (wysoki mur), nie trzyma wroga obudzonego w nieskończoność: po RETURN_STUCK_TIME s bez ruchu dom przenosi się na miejsce postoju i wróg zasypia.
 func _test_return_home_stuck() -> void:

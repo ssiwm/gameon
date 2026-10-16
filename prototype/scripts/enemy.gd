@@ -1459,6 +1459,10 @@ func _steer_to(goal: Vector2, speed: float, delta: float) -> void:
 			else:
 				velocity.x = 0.0
 				_start_drop()
+		Nav.Edge.FALL:
+			# zejście z krawędzi: idzie dalej, aż straci grunt — wcześniej zatrzymywał się, gdy środek ciała był < 3 px od środka kolumny docelowej,
+			# czyli dokładnie na krawędzi (playtest: „stoi na krawędzi uskoku i się nie rusza")
+			velocity.x = (signf(sx) if absf(sx) > 0.5 else _facing) * speed
 		_:
 			velocity.x = signf(sx) * speed if absf(sx) > 3.0 else 0.0
 
