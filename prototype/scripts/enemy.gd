@@ -49,6 +49,8 @@ const ALERT_COOLDOWN := 5.0      ## s: tyle po reakcji „zauważył" wróg nie 
 const ALERT_JITTER := 0.15       ## ±: rozrzut czasu reakcji, żeby wataha nie ruszała w jednej klatce
 const CROUCH_SIGHT := 0.6        ## kucającego widać z mniejszej odległości
 const JUMP_V := -275.0           ## skok po grafie A* (42 px, tyle co gracz)
+const STEP_HOP_V := -200.0           ## przeskok na stopień o 1 kafel dla wrogów, którzy nie skaczą (Ślepiec, Wołek): szczyt ≈ 22 px nad podłogą
+const STEP_MAX_RISE := 16.5          ## px: najwyższy stopień (1 kafel)
 const PLATFORM_BIT := 5          ## warstwa kładek w masce (zeskok)
 const FIRE_BIT := 7              ## warstwa „muru ognia” (fire_patch.gd): blokuje wrogów z flagą fire_shy, drużyny nie rusza
 const DROP_TIME := 0.25
@@ -148,8 +150,11 @@ var _last_known := Vector2.ZERO
 var _lose_t := 0.0
 var _search_t := 0.0
 var _blocked_t := 0.0         ## s, od kiedy pościg stoi pod skokiem, którego wróg nie potrafi
+var _stuck_t := 0.0           ## s bez ruchu w drodze do domu (`_return_home`)
+var _stuck_x := 0.0
 var _ignore_t := 0.0          ## s, przez które wróg ignoruje graczy (porzucił nieosiągalny cel)
 const BLOCK_GIVEUP := 4.0
+const RETURN_STUCK_TIME := 4.0       ## s w miejscu w drodze do domu, po których dom przenosi się na miejsce postoju
 const IGNORE_TIME := 8.0
 var _home_t := 0.0
 var _retreat := 0.0           ## Trzosek odskakuje po ciosie (uderz i uciekaj)
@@ -1282,6 +1287,16 @@ func _return_home(speed: float, delta: float) -> void:
 			_seen_serial = NoiseMgr.noise_serial
 	else:
 		_home_t = 0.0
+		# powrót do domu, którego nie da się dojść (mur, przerwa, stopień powyżej STEP_MAX_RISE): po RETURN_STUCK_TIME s bez ruchu dom przenosi się tam, gdzie stoi —
+		# wróg zasypia na miejscu zamiast stać obudzony w nieskończoność
+		if absf(global_position.x - _stuck_x) < 2.0:
+			_stuck_t += delta
+			if _stuck_t > RETURN_STUCK_TIME:
+				_home = global_position
+				_stuck_t = 0.0
+		else:
+			_stuck_x = global_position.x
+			_stuck_t = 0.0
 		_steer_to(_home, speed * 0.6, delta)
 
 ## Pościg za widocznym graczem: na tym samym poziomie prosto (linia czysta), inaczej grafem A*.
@@ -1432,6 +1447,9 @@ func _steer_to(goal: Vector2, speed: float, delta: float) -> void:
 			elif _def["leap"]:
 				velocity.y = JUMP_V
 				velocity.x = signf(sx) * speed
+			elif _is_step(prev.pos, step.pos):
+				velocity.y = STEP_HOP_V                 # stopień o jeden kafel (metalowy blok, krawężnik): wróg, który nie skacze, przechodzi go małym przeskokiem
+				velocity.x = signf(sx) * speed
 			else:
 				_blocked = true
 				velocity.x = 0.0
@@ -1443,6 +1461,11 @@ func _steer_to(goal: Vector2, speed: float, delta: float) -> void:
 				_start_drop()
 		_:
 			velocity.x = signf(sx) * speed if absf(sx) > 3.0 else 0.0
+
+## Czy krawędź JUMP z `a` do `b` to zwykły stopień: do jednego kafla w górę i do jednego kafla w bok (nie skok przez przerwę ani na wyższą półkę).
+static func _is_step(a: Vector2, b: Vector2) -> bool:
+	var rise := a.y - b.y
+	return rise > 0.0 and rise <= STEP_MAX_RISE and absf(b.x - a.x) <= STEP_MAX_RISE + 1.0
 
 func _start_drop() -> void:
 	if _drop_t > 0.0:

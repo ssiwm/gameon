@@ -56,6 +56,8 @@ func run(m: Node2D) -> void:
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
 	await _test_slepiec_listen()
+	await _test_slepiec_step()
+	await _test_return_home_stuck()
 	_finish()
 
 func _finish() -> void:
@@ -1097,4 +1099,49 @@ func _test_slepiec_listen() -> void:
 		check("Ślepiec/słuch: strzał o głośności %.1f %s rzut (przez `_listen`)" % [th[0], "uruchamia" if th[1] else "nie uruchamia"],
 			(e._lunge_wind > 0.0) == bool(th[1]) and e._has_lead, "wind=%.2f lead=%s ai=%s" % [e._lunge_wind, e._has_lead, e.ai_name()])
 		e.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- Ślepiec uwięziony za krawędzią/stopniem (playtest: „stoi na krawędzi bez ruchu")
+
+## Na prawdziwej mapie 1.3 pierwszy Ślepiec (kol. 51, rząd 26) stoi na wyspie: po lewej szyb, po prawej metalowy blok jeden kafel wysoki (kol. 55). Wróg, który nie skacze,
+## dotąd nie pokonywał nawet takiego stopnia, więc idąc na ślad za blokiem stał w miejscu. Teraz stopień o 1 kafel pokonuje małym przeskokiem.
+func _test_slepiec_step() -> void:
+	var e := level.get_node_or_null("Slepiec1") as CharacterBody2D
+	check("stopień: mapa 1.3 ma Ślepca na wyspie (Slepiec1)", e != null and String(e.kind) == "slepiec")
+	if e == null:
+		return
+	var t := float(level.TILE)
+	var start := Vector2(51.0 * t + t * 0.5, 27.0 * t)
+	e.global_position = start
+	e.velocity = Vector2.ZERO
+	e._home = start
+	e.active = true
+	e._lead_at(Vector2(60.0 * t + t * 0.5, 27.0 * t))                  # 5 kafli za blokiem na kol. 55
+	var tt := 0.0
+	while tt < 6.0 and e.global_position.x < 57.0 * t:
+		await get_tree().physics_frame
+		tt += get_physics_process_delta_time()
+	check("stopień: Ślepiec wchodzi na metalowy blok o 1 kafel i idzie dalej za ślad (nie stoi pod nim)", e.global_position.x > 56.0 * t, "x = %.0f kafli %.1f po %.1f s, blocked=%s" % [e.global_position.x, e.global_position.x / t, tt, e._blocked])
+
+## Dom, do którego nie da się dojść (wysoki mur), nie trzyma wroga obudzonego w nieskończoność: po RETURN_STUCK_TIME s bez ruchu dom przenosi się na miejsce postoju i wróg zasypia.
+func _test_return_home_stuck() -> void:
+	var y := -11500.0
+	var strip := _floor(FAR_X + 24000.0, FAR_X + 24400.0, y)
+	var x0 := FAR_X + 24100.0
+	var wall := _block(Vector2(x0 + 22.0, y - 40.0), Vector2(6.0, 80.0))       # mur 5 kafli wysoki między wrogiem a domem
+	var e := _spawn("slepiec", Vector2(x0, y))
+	e._home = Vector2(x0 + 40.0, y)                                         # dom za murem, w zasięgu prostego marszu (|dx| < 48 → bez nawigacji po mapie gry)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	e.active = true
+	e._has_lead = false
+	e._target = null
+	var t := 0.0
+	while t < 10.0 and e.active:
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
+	check("powrót do domu: dom za wysokim murem przenosi się na miejsce postoju, a wróg zasypia (nie stoi obudzony w nieskończoność)",
+		not e.active and absf(e._home.x - x0) < 16.0, "aktywny=%s, dom Δx=%.0f po %.1f s" % [e.active, e._home.x - x0, t])
+	for n in [e, wall, strip]:
+		n.queue_free()
 	await get_tree().physics_frame
