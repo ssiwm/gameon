@@ -150,3 +150,16 @@ Kapłan, Rzeźnik, Żerca (GDD §7.2) dopiero po F2 — inaczej każdy dopisałb
 - F1 dotyka sieci (`_sync`) — trzeba przetestować hosta i klienta (`tools/test_weapons.sh` ma tryb sieciowy).
 - F3 zmienia odczucie gry — wymaga playtestu; każdy punkt osobnym PR-em, żeby dało się cofnąć.
 - Wartości z F0.4 (bufor hałasu) zmieniają, które strzały budzą wrogów — sprawdzić `--stalkertest` i `test_weapons.sh`.
+
+### F3.8 — Podsłuchacz (1.7.249, na prośbę po analizie)
+
+Analiza kodu wykazała: zapowiedź krzyku 0,9 s nie jest przerywana ogłuszeniem (celowo), brak sygnału „zauważył" w widoku, kierunek patrzenia liczony po stronie widoku (każdy peer: na własnego gracza), krzyk precyzyjny i natychmiastowy
+dla całej okolicy, powtarzany co 6 s bez limitu. Zrobione (dane w `enemy_defs.gd`: `scream`, `shield`):
+
+- **Pole ochronne** (−90%) przez 1,4 s od krzyku (zapowiedź zostaje podatna — kontra: zabić przed krzykiem); stan `Ai.SCREAM`, `view_info["shield"]`, tarcza w `view3d.gd` (`_sync_enemy_rings`), szary hitmarker, boty nie strzelają.
+- **A — testy** (`_test_listener`): zapowiedź, pole (`take_hit`, `take_bullet`), fala, zasięg 2. krzyku, limit, uspokojenie, kierunek, klient.
+- **B** — flaga `alert` na czas zapowiedzi/krzyku; kierunek patrzenia z serwera (`_listener_look`: cel > ślad > najbliższy gracz) i `_net_face` u klienta.
+- **C** — ślad z `hear_error` rodzaju, fala przywołania (`answer_alarm`: 900 px/s + do 0,2 s rozrzutu).
+- **D** — kolejne krzyki ×0,6 zasięgu, po 3 milknie (`calm` 12 s), zapowiedź ×1,3 gdy tylko usłyszał.
+- Łańcuch Podsłuchaczy: odrzucone jako problem — na mapach 1.2/1.3 stoją ≥ 416 px od siebie, a słuch to 238 px (test pilnuje).
+- Otwarte: czy limit 3 krzyków i pole 1,4 s są dobrze dobrane (playtest); klucz 3D „scream" pozostaje pozą zapowiedzi (osobna poza krzyku w modelu — F4/grafika).
