@@ -97,6 +97,7 @@ const PATROL_MAX_AGE := 90.0
 ## Podsłuchacz: krzyk to hałas (podnosi Uwagę, budzi okolicę) i wskazuje hordzie źródło.
 const SCREAM_NOISE := 14.0
 const ALARM_R := 420.0           ## wrogowie w tym promieniu dostają ślad do krzyku
+const ALARM_JITTER := 0.2        ## s losowego opóźnienia odpowiedzi na alarm (F3.8), żeby wataha nie ruszała w tej samej klatce
 const HISTORY_S := 0.5            ## historia pozycji do kompensacji opóźnienia (lag_comp.gd)
 const SCREAM_LURE_R := 400.0     ## krzyk GRACZA (voice.gd, GDD §8.2) przyciąga wrogów w 25 m
 
@@ -105,8 +106,8 @@ const SCREAM_LURE_R := 400.0     ## krzyk GRACZA (voice.gd, GDD §8.2) przyciąg
 ## Jawny stan AI (ENEMY_PLAN.md F3): to, co wróg „robi" w tej chwili. Dotąd wynikał z kolejności gałęzi w `_phys_tick`; teraz jest liczony raz na tik
 ## z tych samych flag (`_derive_ai_state`), replikowany klientom i podawany widokowi 3D (`view_info`). Na razie tylko obserwacja — decyzje wciąż
 ## podejmują stare gałęzie; kolejne kroki F3 (reakcja „zauważył", flankowanie, wybór celu) będą dopisywać stany i na nich oprzeć decyzje.
-enum Ai { DEAD, SLEEP, HANG, LISTEN, FLY, INVESTIGATE, SEARCH, CHASE, WINDUP, RETREAT, PANIC, SPECIAL, RETURN, ALERT, LUNGE }
-const AI_NAMES := ["dead", "sleep", "hang", "listen", "fly", "investigate", "search", "chase", "windup", "retreat", "panic", "special", "return", "alert", "lunge"]
+enum Ai { DEAD, SLEEP, HANG, LISTEN, FLY, INVESTIGATE, SEARCH, CHASE, WINDUP, RETREAT, PANIC, SPECIAL, RETURN, ALERT, LUNGE, SCREAM }
+const AI_NAMES := ["dead", "sleep", "hang", "listen", "fly", "investigate", "search", "chase", "windup", "retreat", "panic", "special", "return", "alert", "lunge", "scream"]
 ## Zmiana stanu AI (serwer; u klientów po `_sync`): `from_state` → `to_state` (wartości `Ai`).
 signal ai_changed(from_state: int, to_state: int)
 
@@ -196,6 +197,9 @@ var _last_attacker := 0               ## player_id ostatniego trafiającego (XP 
 var _scream_cd := 0.0         ## Podsłuchacz: przerwa między krzykami
 var _alerted := false         ## Podsłuchacz: już krzyknął (od tej pory boty go widzą jako zagrożenie)
 var _ring := 0.0              ## efekt fali krzyku (każdy peer)
+var _shield_t := 0.0          ## Podsłuchacz: s pola ochronnego, które chroni go w trakcie krzyku (obrażenia ×(1 − `shield.reduce`))
+var _screams := 0             ## Podsłuchacz: krzyki od ostatniego spokoju — kolejne mają mniejszy zasięg, a po `scream.max` milknie
+var _calm_t := 0.0            ## Podsłuchacz: s od ostatniego krzyku (po `scream.calm` bez celu licznik krzyków się zeruje)
 var _level_t := 0.0           ## s, przez które cel jest na innym poziomie (histereza: skok gracza to nie zmiana piętra)
 
 func _on_ai_changed(_from: int, to: int) -> void:
@@ -239,7 +243,7 @@ func _ready() -> void:
 
 ## Aktywny, żywy wróg = realne zagrożenie (boty strzelają tylko do takich).
 func is_threat() -> bool:
-	return alive and active and (kind != "podsluchacz" or _alerted)
+	return alive and active and (kind != "podsluchacz" or (_alerted and _shield_t <= 0.0))      # w polu ochronnym boty nie marnują amunicji
 
 func wake() -> void:
 	if not NoiseMgr.is_server() or not alive or active:
@@ -317,6 +321,9 @@ func reset_enemy() -> void:
 	_patrolled = false
 	_scream_cd = 0.0
 	_alerted = false
+	_shield_t = 0.0
+	_screams = 0
+	_calm_t = 0.0
 	_level_t = 0.0
 	_home_t = 0.0
 	_path.clear()
@@ -413,6 +420,8 @@ func _derive_ai_state() -> int:
 	if not alive:
 		return Ai.DEAD
 	if kind == "podsluchacz":
+		if _shield_t > 0.0:
+			return Ai.SCREAM
 		return Ai.WINDUP if _windup > 0.0 else Ai.LISTEN
 	if kind == "cma":
 		return Ai.FLY if active else Ai.HANG
@@ -567,16 +576,26 @@ func _scaled_damage(base: int) -> int:
 	return maxi(1, roundi(float(base) * Difficulty.m("enemy_damage")))
 
 ## Kierunek patrzenia z faktycznego ruchu (serwer, co tik fizyki) — nie zależy od warstwy animacji, więc cios w plecy działa, nawet gdy jej nie ma.
-## Podsłuchacz stoi i patrzy na lokalnego gracza, jak dotąd (w F3: na swój cel, nie na gracza hosta).
+## Podsłuchacz stoi i patrzy na swój cel (F3.8), a bez celu na ślad hałasu albo najbliższego gracza — kierunek liczy serwer i replikuje go w `_sync`
+## (wcześniej każdy peer widział go zwróconego do własnego gracza).
 func _update_facing() -> void:
 	var dx := global_position.x - _phys_x
 	_phys_x = global_position.x
 	if absf(dx) > 0.05:
 		_facing = signf(dx)
 	if kind == "podsluchacz":
-		var lp := _local_player_pos()
-		if is_finite(lp.x) and absf(lp.x - global_position.x) > 4.0:
-			_facing = signf(lp.x - global_position.x)
+		var look := _listener_look()
+		if is_finite(look.x) and absf(look.x - global_position.x) > 4.0:
+			_facing = signf(look.x - global_position.x)
+
+## Punkt, w który patrzy Podsłuchacz: cel > ślad > najbliższy gracz (INF, gdy nikogo nie ma).
+func _listener_look() -> Vector2:
+	if _target != null and is_instance_valid(_target) and not _target.dead:
+		return _target.global_position
+	if _has_lead:
+		return _last_known
+	var p := _nearest_player()
+	return p.global_position if p != null else Vector2(INF, INF)
 
 ## Mocne ogłuszenie (strzelba, szyna, harpun, maczeta) przerywa zwykły cios w trakcie zapowiedzi (F3.6) — kontra, którą gracz może zaplanować: zapowiedź
 ## daje czas na unik ALBO na ogłuszenie. Nie dotyczy zapowiedzi specjalnych Wołka (`_sp`), przemiany Mimika (bez celu ciosu) i krzyku Podsłuchacza
@@ -947,6 +966,10 @@ func _throw_crate(target: Node2D) -> void:
 func _listener_tick(delta: float) -> void:
 	active = true
 	_scream_cd = maxf(0.0, _scream_cd - delta)
+	_shield_t = maxf(0.0, _shield_t - delta)
+	_calm_t += delta
+	if _screams > 0 and _target == null and _calm_t >= float((_def.get("scream", {}) as Dictionary).get("calm", 12.0)):
+		_screams = 0                                   # uspokoił się — znów krzyknie z pełnym zasięgiem
 	velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
 	if _windup > 0.0:
 		_windup -= delta
@@ -962,28 +985,55 @@ func _listener_tick(delta: float) -> void:
 	move_and_slide()
 	_send_state(delta)
 
+## Zapowiedź krzyku. Podsłuchacz, który tylko usłyszał (nie widzi celu), zbiera się dłużej (`scream.blind`) — cichy gracz ma więcej czasu; po `scream.max`
+## krzykach z rzędu (licznik zeruje się po `scream.calm` s spokoju) milknie, bo horda i tak już idzie.
 func _begin_scream() -> void:
-	if _scream_cd > 0.0 or _windup > 0.0:
+	if _scream_cd > 0.0 or _windup > 0.0 or _shield_t > 0.0:
 		return
-	_windup = float(_def["windup"]) * Difficulty.m("enemy_windup")
+	var cfg := _def.get("scream", {}) as Dictionary
+	if _screams >= int(cfg.get("max", 99)):
+		return
+	var blind := 1.0 if _target != null else float(cfg.get("blind", 1.0))
+	_windup = float(_def["windup"]) * Difficulty.m("enemy_windup") * blind
 	winding = true
 
 func _scream() -> void:
+	var cfg := _def.get("scream", {}) as Dictionary
 	_scream_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
+	_screams += 1
+	_calm_t = 0.0
+	_shield_t = float((_def.get("shield", {}) as Dictionary).get("time", 0.0))
 	_alerted = true
 	_has_lead = false
 	NoiseMgr.add_noise(SCREAM_NOISE, global_position)
-	# ściąga hordę: wrogowie w promieniu idą do źródła krzyku (śpiących budzi)
+	# ściąga hordę: wrogowie w promieniu idą w stronę krzyku (śpiących budzi); kolejne krzyki sięgają bliżej, bo reszta już idzie
+	var radius := float(cfg.get("radius", ALARM_R)) * (float(cfg.get("repeat", 1.0)) if _screams > 1 else 1.0)
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e == self or e.get_script() != get_script() or not e.alive or e.kind == "podsluchacz":
 			continue
-		if e._sound_distance(global_position, ALARM_R) < ALARM_R:
-			e._lead_at(global_position)
-			e.wake()
+		var heard: float = e._sound_distance(global_position, radius)
+		if heard < radius:
+			e.answer_alarm(global_position, heard, radius, float(cfg.get("wave", 0.0)))
 	if NoiseMgr.has_network():
 		_scream_fx.rpc()
 	else:
 		_scream_fx()
+
+## Odpowiedź na alarm Podsłuchacza (F3.8): ślad z błędem lokalizacji jak przy każdym hałasie (`hear_error` rodzaju), a wrogowie dalej budzą się później —
+## głos niesie `wave` px/s plus rozrzut do ALARM_JITTER, więc horda nie rusza w jednej klatce, tylko falą od krzykacza.
+func answer_alarm(pos: Vector2, heard: float, radius: float, wave: float) -> void:
+	var lead := _heard_pos(pos, heard, radius, NoiseMgr.N_SCREAM)
+	var delay := (heard / wave + randf_range(0.0, ALARM_JITTER)) if wave > 0.0 else 0.0
+	if delay < 0.02:
+		_hear_alarm(lead)
+	else:
+		get_tree().create_timer(delay).timeout.connect(_hear_alarm.bind(lead))
+
+func _hear_alarm(lead: Vector2) -> void:
+	if not alive:
+		return
+	_lead_at(lead)
+	wake()
 
 ## Krzyk na każdym peerze: dźwięk, fala, lekki wstrząs kamery.
 @rpc("authority", "call_local", "reliable")
@@ -1621,6 +1671,9 @@ func take_hit(info: Dictionary) -> Dictionary:
 		if reduced < dmg * 0.7:
 			mat = 1                      # Arsenal.Mat.ARMOR: iskry i szary hitmarker
 		dmg = reduced
+	if _shield_t > 0.0:
+		dmg *= _shield_mult()
+		mat = 1                          # pole ochronne: iskry i szary hitmarker jak przy pancerzu
 	hp -= dmg
 	_flash = 0.1
 	_stagger = maxf(_stagger, 0.12 + float(info.get("stun", 0.0)))
@@ -1661,9 +1714,13 @@ func _tick_burn(delta: float) -> void:
 		return
 	_burn = maxf(0.0, _burn - delta)
 	# 8 HP/s przez czas płonięcia; wynik liczony ciągle, bez tykania co 0,1 s
-	hp -= BURN_DPS * delta
+	hp -= BURN_DPS * delta * (_shield_mult() if _shield_t > 0.0 else 1.0)
 	if hp <= 0.0 and alive:
 		_die()
+
+## Mnożnik obrażeń w polu ochronnym Podsłuchacza (`shield.reduce` 0,9 → ×0,1).
+func _shield_mult() -> float:
+	return 1.0 - clampf(float((_def.get("shield", {}) as Dictionary).get("reduce", 0.0)), 0.0, 1.0)
 
 ## Płomienie na ciele — każdy peer, na czas płonięcia.
 @rpc("authority", "call_local", "reliable")
@@ -1675,7 +1732,7 @@ func _ignite_fx(seconds: float) -> void:
 func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 	if not NoiseMgr.is_server() or not alive:
 		return
-	hp -= dmg
+	hp -= dmg * (_shield_mult() if _shield_t > 0.0 else 1.0)
 	_alert = 0.0
 	_alert_cd = ALERT_COOLDOWN
 	_lunge_wind = 0.0
@@ -1775,7 +1832,8 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 ## Klucze: kind (rodzaj modelu), alive, winding (zapowiedź ciosu), sp (stan specjalny Wołka), flash (świeże trafienie), ai (stan AI, `Ai`),
 ## alert (reakcja „zauważył cię": oczy rozżarzone, wróg stoi i patrzy na źródło).
 func view_info() -> Dictionary:
-	return {"kind": kind, "alive": alive, "winding": winding, "sp": _sp, "flash": _flash > 0.0, "ai": _ai, "alert": _ai == Ai.ALERT}
+	var listener_hot := kind == "podsluchacz" and (_ai == Ai.WINDUP or _ai == Ai.SCREAM)        # zapowiedź i krzyk Podsłuchacza: oczy żarzą się jak przy „zauważył"
+	return {"kind": kind, "alive": alive, "winding": winding, "sp": _sp, "flash": _flash > 0.0, "ai": _ai, "alert": _ai == Ai.ALERT or listener_hot, "shield": _ai == Ai.SCREAM}
 
 ## Głos gatunku dla zdarzenia (`enemy_defs.gd`: voice); gatunek bez wpisu milczy.
 func _voice(event: String) -> void:
@@ -1810,13 +1868,13 @@ func _update_sprite() -> void:
 		if face != 0.0:
 			_view_facing = signf(face)
 	if kind == "podsluchacz":
-		# stoi w miejscu — patrzy na lokalnego gracza (nasłuchuje)
-		var lp := _local_player_pos()
-		if is_finite(lp.x) and absf(lp.x - global_position.x) > 4.0:
-			_view_facing = signf(lp.x - global_position.x)
+		# stoi w miejscu — patrzy tam, gdzie serwer (F3.8): na cel, ślad albo najbliższego gracza
+		var lface := _facing if NoiseMgr.is_server() else _net_face
+		if lface != 0.0:
+			_view_facing = signf(lface)
 	var anim := "sleep"
 	if active:
-		if winding:
+		if winding or (kind == "podsluchacz" and _ai == Ai.SCREAM):        # krzyk w polu ochronnym trzyma pozę zapowiedzi (otwarte usta)
 			anim = "windup"
 		elif moving:
 			anim = "run" if (kind == "trzosek" or _ai == Ai.LUNGE) else "walk"

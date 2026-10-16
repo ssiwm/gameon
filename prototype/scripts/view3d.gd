@@ -3043,6 +3043,36 @@ func _sync_enemy_rings() -> void:
 			im.surface_set_color(col)
 			im.surface_add_vertex(c + d * (r + 0.05))
 		im.surface_end()
+	# pole ochronne Podsłuchacza w trakcie krzyku (`view_info()["shield"]`): półprzezroczysta tarcza wokół tułowia z jaśniejszym brzegiem, lekko pulsuje
+	for n in get_tree().get_nodes_in_group("enemies"):
+		if not (n is Node2D) or not n.has_method("view_info") or not (n as Node2D).is_visible_in_tree():
+			continue
+		if not bool(n.view_info().get("shield", false)):
+			continue
+		var size: Vector2 = n.get("_def")["size"]
+		var c := Level3D.px_to_m((n as Node2D).global_position + Vector2(0.0, -size.y * 0.55)) + Vector3(0.0, 0.0, 0.3)
+		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.012)
+		var r := (size.y * 0.9 + pulse * 2.0) * PX
+		var fill := Color(0.55, 0.8, 1.0, 0.10 + 0.07 * pulse)
+		var edge := Color(0.7, 0.9, 1.0, 0.55 + 0.3 * pulse)
+		im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+		for i in 49:
+			var a := TAU * float(i) / 48.0
+			var d := Vector3(cos(a), sin(a), 0.0)
+			im.surface_set_color(fill)
+			im.surface_add_vertex(c)
+			im.surface_set_color(fill)
+			im.surface_add_vertex(c + d * r)
+		im.surface_end()
+		im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+		for i in 49:
+			var a := TAU * float(i) / 48.0
+			var d := Vector3(cos(a), sin(a), 0.0)
+			im.surface_set_color(edge)
+			im.surface_add_vertex(c + d * (r - 0.04))
+			im.surface_set_color(edge)
+			im.surface_add_vertex(c + d * (r + 0.04))
+		im.surface_end()
 
 ## Pył w powietrzu wokół kadru: drobiny 3D w całej głębi sceny, widoczne tylko w świetle — snop latarki „ma objętość".
 ## Mgłę przy ziemi daje mgła wolumetryczna.

@@ -59,7 +59,134 @@ func run(m: Node2D) -> void:
 	await _test_slepiec_step()
 	await _test_slepiec_shaft()
 	await _test_return_home_stuck()
+	await _test_listener()
 	_finish()
+
+# ---------------------------------------------------------------- Podsłuchacz: pole ochronne, fala alarmu, limit krzyków (ENEMY_PLAN.md F3.8)
+
+## Krzyk Podsłuchacza: pole ochronne (−90%) przez `shield.time` od krzyku, zapowiedź nadal do zabicia, fala przywołania (dalsi budzą się później), kolejne krzyki sięgają bliżej,
+## po `scream.max` milknie, a kierunek patrzenia i flaga `alert`/`shield` idą z serwera do widoku. (Dwa Podsłuchacze na mapie 1.2 stoją 416 px od siebie — dalej niż słuch 238 px,
+## więc krzyk jednego nie uruchamia drugiego; test pilnuje tej odległości.)
+func _test_listener() -> void:
+	var Defs := load("res://scripts/enemy_defs.gd")
+	var cfg: Dictionary = Defs.DEFS["podsluchacz"]
+	check("Podsłuchacz/dane: pole ochronne pochłania 90%, krzyk ma zasięg, limit i falę", is_equal_approx(float(cfg["shield"]["reduce"]), 0.9) and float(cfg["shield"]["time"]) > 1.0 and int(cfg["scream"]["max"]) == 3 and float(cfg["scream"]["wave"]) > 0.0)
+	var y := -12500.0
+	var strip := _floor(FAR_X + 26000.0, FAR_X + 26900.0, y)
+	var x0 := FAR_X + 26400.0
+	var l := _spawn("podsluchacz", Vector2(x0, y))
+	var near := _spawn("trzosek", Vector2(x0 + 60.0, y))               # śpi, 60 px (słyszana odległość ×3 = 180)
+	var far := _spawn("trzosek", Vector2(x0 - 120.0, y))               # śpi, 120 px (360)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("Podsłuchacz/słuch: krzyk (hałas 14) nie sięga drugiego Podsłuchacza z mapy 1.2 (416 px > słuch)", l._noise_reach(14.0, 1.4) < 416.0, "%.0f px" % l._noise_reach(14.0, 1.4))
+
+	# zapowiedź: tylko usłyszał (bez celu) → dłuższa o `blind`; z celem → zwykła
+	l.set_physics_process(false)
+	l._target = null
+	l._begin_scream()
+	var blind_w: float = l._windup
+	l._windup = 0.0
+	l.winding = false
+	l._target = player
+	l._begin_scream()
+	var seen_w: float = l._windup
+	check("Podsłuchacz/zapowiedź: bez celu dłuższa o `blind` (×1,3) niż z celem", seen_w > 0.1 and absf(blind_w / seen_w - 1.3) < 0.01, "%.2f / %.2f" % [blind_w, seen_w])
+	check("Podsłuchacz/pole: przed krzykiem nie ma pola ochronnego", l._shield_t == 0.0 and not bool(l.view_info()["shield"]))
+	l._set_ai_state(l._derive_ai_state())
+	check("Podsłuchacz/widok: zapowiedź → stan windup i oczy (`alert`)", l.ai_name() == "windup" and bool(l.view_info()["alert"]), l.ai_name())
+	var hp0: float = l.hp
+	l.take_hit({"amount": 10.0, "dir": Vector2.RIGHT, "pos": l.global_position, "shooter": int(player.player_id), "type": "bullet"})
+	check("Podsłuchacz/pole: w zapowiedzi trafienie zadaje pełne obrażenia (da się zabić)", absf((hp0 - l.hp) - 10.0) < 0.01, "%.1f" % (hp0 - l.hp))
+	l.hp = l.get("_max_hp")
+	l._windup = 0.0
+	l.winding = false
+	l._target = null
+
+	# krzyk: pole, fala, zasięg
+	l._scream_cd = 0.0
+	l._scream()
+	check("Podsłuchacz/krzyk: uruchamia pole ochronne i liczy krzyk", l._shield_t > 1.0 and l._screams == 1 and l._alerted, "%.2f / %d" % [l._shield_t, l._screams])
+	l._set_ai_state(l._derive_ai_state())
+	check("Podsłuchacz/widok: w polu stan scream, `shield` i `alert` w view_info, boty nie strzelają", l.ai_name() == "scream" and bool(l.view_info()["shield"]) and bool(l.view_info()["alert"]) and not l.is_threat())
+	check("Podsłuchacz/fala: tuż po krzyku nikt jeszcze nie reaguje (głos ma czas dojść)", not near.active and not far.active)
+	hp0 = l.hp
+	var info := {"amount": 10.0, "dir": Vector2.RIGHT, "pos": l.global_position, "shooter": int(player.player_id), "type": "bullet"}
+	var res: Dictionary = l.take_hit(info.duplicate())
+	check("Podsłuchacz/pole: trafienie 10 → 1 HP (−90%) i szary hitmarker (mat 1)", absf((hp0 - l.hp) - 1.0) < 0.01 and int(res["mat"]) == 1, "%.2f mat=%s" % [hp0 - l.hp, res.get("mat")])
+	hp0 = l.hp
+	l.take_bullet(l.global_position, 10.0)
+	check("Podsłuchacz/pole: pocisk bota (take_bullet) też −90%", absf((hp0 - l.hp) - 1.0) < 0.01, "%.2f" % (hp0 - l.hp))
+	await get_tree().create_timer(0.35).timeout
+	check("Podsłuchacz/fala: bliższy wrogi budzi się pierwszy (po ≈ 0,2–0,4 s), dalszy jeszcze nie musiał", near.active and near._has_lead, "near=%s far=%s" % [near.active, far.active])
+	await get_tree().create_timer(0.9).timeout
+	check("Podsłuchacz/fala: po chwili cała okolica w zasięgu jest obudzona i idzie na krzyk", far.active and far._has_lead)
+	l.set_physics_process(true)
+	await get_tree().create_timer(1.6).timeout
+	check("Podsłuchacz/pole: po `shield.time` (1,4 s) pole znika — stan listen, boty znów strzelają", l._shield_t == 0.0 and l.ai_name() == "listen" and l.is_threat(), "%.2f %s" % [l._shield_t, l.ai_name()])
+	l.set_physics_process(false)
+	l._shield_t = 0.0
+	l._set_ai_state(l._derive_ai_state())
+	hp0 = l.hp
+	l.take_hit(info.duplicate())
+	check("Podsłuchacz/pole: bez pola trafienie 10 → 10 HP", absf((hp0 - l.hp) - 10.0) < 0.01 and l.is_threat(), "%.2f" % (hp0 - l.hp))
+
+	# kolejny krzyk: zasięg ×0,6 (420 → 252), więc dalszy (360) już nie słyszy
+	var far2 := _spawn("trzosek", Vector2(x0 - 120.0, y - 0.5))
+	var near2 := _spawn("trzosek", Vector2(x0 + 60.0, y - 0.5))
+	await get_tree().physics_frame
+	l.hp = l.get("_max_hp")
+	l._scream_cd = 0.0
+	l._scream()
+	await get_tree().create_timer(1.0).timeout
+	check("Podsłuchacz/zasięg: drugi krzyk sięga 60% promienia — bliski budzi się, dalszy (360 > 252) nie", near2.active and not far2.active and l._screams == 2, "near=%s far=%s n=%d" % [near2.active, far2.active, l._screams])
+
+	# limit krzyków
+	l._screams = 3
+	l._scream_cd = 0.0
+	l._shield_t = 0.0
+	l._windup = 0.0
+	l._begin_scream()
+	check("Podsłuchacz/limit: po 3 krzykach milknie (zapowiedź się nie zaczyna)", l._windup == 0.0 and not l.winding)
+	l._calm_t = 20.0
+	l._target = null
+	l.set_physics_process(true)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("Podsłuchacz/limit: po 12 s spokoju licznik się zeruje", l._screams == 0, str(l._screams))
+
+	# kierunek patrzenia: serwer liczy go z celu / śladu, nie z lokalnego gracza
+	l.set_physics_process(false)
+	l._target = null
+	l._has_lead = true
+	l._last_known = l.global_position + Vector2(80.0, 0.0)
+	l._update_facing()
+	var f_lead: float = l._facing
+	l._last_known = l.global_position + Vector2(-80.0, 0.0)
+	l._update_facing()
+	var f_lead2: float = l._facing
+	l._target = player
+	l._update_facing()
+	check("Podsłuchacz/patrzenie: ślad po prawej → +1, po lewej → −1, cel (gracz daleko po lewej) ma pierwszeństwo przed śladem", f_lead > 0.0 and f_lead2 < 0.0 and l._facing < 0.0, "%.0f / %.0f / %.0f" % [f_lead, f_lead2, l._facing])
+	var client := _spawn("podsluchacz", Vector2(x0 + 300.0, y))
+	client.set_physics_process(false)
+	client._sync(client.global_position, client.hp, true, true, false, 0, Enemy.Ai.SCREAM, -1.0)
+	check("Podsłuchacz/klient: stan scream z `_sync` → `shield` w widoku, kierunek z serwera", bool(client.view_info()["shield"]) and client._net_face < 0.0)
+
+	# zabity w zapowiedzi nie krzyczy (kontra: zdążyć przed krzykiem)
+	var dl := _spawn("podsluchacz", Vector2(x0 + 500.0, y))
+	var sleeper := _spawn("trzosek", Vector2(x0 + 560.0, y))
+	await get_tree().physics_frame
+	dl._windup = 0.3
+	dl.winding = true
+	dl.take_hit({"amount": 500.0, "dir": Vector2.RIGHT, "pos": dl.global_position, "shooter": int(player.player_id), "type": "bullet"})
+	await get_tree().create_timer(1.0).timeout
+	check("Podsłuchacz/zapowiedź: zabity przed krzykiem nie krzyczy (nic się nie budzi, brak pola)", not dl.alive and dl._screams == 0 and not sleeper.active and dl._shield_t == 0.0, "żywy=%s krzyki=%d budzi=%s" % [dl.alive, dl._screams, sleeper.active])
+	dl.queue_free()
+	sleeper.queue_free()
+	for n in [l, near, far, near2, far2, client, strip]:
+		n.queue_free()
+	await get_tree().physics_frame
 
 func _finish() -> void:
 	print("[ENEMY-TEST] ==== %s (%d/%d) ====" % ["PASS" if failed == 0 else "FAIL", total - failed, total])

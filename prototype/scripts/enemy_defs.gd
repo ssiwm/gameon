@@ -66,6 +66,10 @@ const DEFS := {
 		"hp": 35.0, "speed": 0.0, "damage": 0, "windup": 0.9, "reach": 0.0,
 		"cooldown": 6.0, "leap": false, "hear": 170.0, "wake_near": 0.0, "sight": 240.0,
 		"color": Color(0.58, 0.5, 0.57), "size": Vector2(12, 24), "hurt_h": 34.0, "knock": 30.0, "knock_mult": 0.5, "head": 0.28,
+		# krzyk: `radius` alarmu, `repeat` mnożnik zasięgu kolejnych krzyków, `max` krzyków do uspokojenia (`calm` s), `blind` mnożnik zapowiedzi, gdy tylko usłyszał, `wave` px/s fali
+		# przywołania; pole ochronne: `time` s od krzyku, `reduce` ułamek obrażeń pochłonięty (0,9 = 90%).
+		"scream": {"radius": 420.0, "repeat": 0.6, "max": 3, "calm": 12.0, "blind": 1.3, "wave": 900.0},
+		"shield": {"time": 1.4, "reduce": 0.9},
 		"xp": 4, "scrap": 4, "supply": 0.15, "ammo": 0.15, "voice": {"death": ["slepiec_death", 2, -4.0, 1.35]},
 	},
 	"wolek": {
