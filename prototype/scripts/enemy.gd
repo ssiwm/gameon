@@ -84,6 +84,14 @@ const SCREAM_LURE_R := 400.0     ## krzyk GRACZA (voice.gd, GDD §8.2) przyciąg
 
 @export var kind := "trzosek"
 
+## Jawny stan AI (ENEMY_PLAN.md F3): to, co wróg „robi" w tej chwili. Dotąd wynikał z kolejności gałęzi w `_phys_tick`; teraz jest liczony raz na tik
+## z tych samych flag (`_derive_ai_state`), replikowany klientom i podawany widokowi 3D (`view_info`). Na razie tylko obserwacja — decyzje wciąż
+## podejmują stare gałęzie; kolejne kroki F3 (reakcja „zauważył", flankowanie, wybór celu) będą dopisywać stany i na nich oprzeć decyzje.
+enum Ai { DEAD, SLEEP, HANG, LISTEN, FLY, INVESTIGATE, SEARCH, CHASE, WINDUP, RETREAT, PANIC, SPECIAL, RETURN }
+const AI_NAMES := ["dead", "sleep", "hang", "listen", "fly", "investigate", "search", "chase", "windup", "retreat", "panic", "special", "return"]
+## Zmiana stanu AI (serwer; u klientów po `_sync`): `from_state` → `to_state` (wartości `Ai`).
+signal ai_changed(from_state: int, to_state: int)
+
 ## Nie jest nieśmiertelny, więc boty mogą do niego strzelać, gdy jest aktywny.
 var immortal := false
 var hp := 30.0
@@ -141,6 +149,8 @@ var _flee_src := Vector2.ZERO ## od czego ucieka w panice (ZERO = od gracza)
 var _stalker_t := 0.0
 var _lure_t := 4.0            ## Mimik: odstęp między fałszywymi wołaniami
 var _sp := 0                  ## Wołek: 0 nic, 1 zapowiedź szarży, 2 szarża, 3 zapowiedź rzutu, 4 ogłuszony po uderzeniu
+var _ai: int = Ai.SLEEP       ## bieżący stan AI (patrz `Ai`)
+var _ai_t := 0.0              ## s w bieżącym stanie AI (serwer)
 var _sp_t := 0.0
 var _sp_dir := 1.0
 var _sp_crate: Node = null
@@ -269,11 +279,15 @@ func reset_enemy() -> void:
 	global_position = _home
 	_remote_pos = _home
 	_set_alive(true)
+	_ai_t = 0.0
+	_set_ai_state(_derive_ai_state())
 
 func _set_alive(a: bool) -> void:
 	alive = a
 	visible = a
 	Hurtbox.set_enabled(self, a)
+	if not a:
+		_set_ai_state(Ai.DEAD)
 
 ## Siatka przestrzenna wrogów (komórka 48 px), budowana raz na klatkę fizyki przy pierwszym zapytaniu: pętle „każdy z każdym" (separacja, budzenie
 ## watahy, blokada ataku, śmierć w watasze) przeglądają tylko sąsiednie komórki zamiast całej grupy — koszt rośnie liniowo z liczbą wrogów.
@@ -343,7 +357,46 @@ func _phys_tick(delta: float) -> void:
 		return
 	if not alive:
 		return
+	_tick_server(delta)
+	_ai_t += delta
+	_set_ai_state(_derive_ai_state())
 
+## Stan AI z flag symulacji — w kolejności, w jakiej gałęzie `_tick_server` przejmują ruch (pierwsza prawdziwa wygrywa).
+func _derive_ai_state() -> int:
+	if not alive:
+		return Ai.DEAD
+	if kind == "podsluchacz":
+		return Ai.WINDUP if _windup > 0.0 else Ai.LISTEN
+	if kind == "cma":
+		return Ai.FLY if active else Ai.HANG
+	if not active:
+		return Ai.HANG if _hanging else Ai.SLEEP
+	if _sp != 0:
+		return Ai.SPECIAL
+	if _windup > 0.0:
+		return Ai.WINDUP
+	if _panic > 0.0:
+		return Ai.PANIC
+	if _target != null:
+		return Ai.RETREAT if _retreat > 0.0 else Ai.CHASE
+	if _has_lead:
+		return Ai.SEARCH if _search_t > 0.0 else Ai.INVESTIGATE
+	return Ai.RETURN
+
+func _set_ai_state(s: int) -> void:
+	if s == _ai:
+		return
+	var from := _ai
+	_ai = s
+	_ai_t = 0.0
+	ai_changed.emit(from, s)
+
+## Nazwa stanu AI do logów i testów.
+func ai_name() -> String:
+	return AI_NAMES[_ai]
+
+## Jeden tik symulacji serwera: percepcja, decyzja, ruch (stan AI liczy `_phys_tick` po nim).
+func _tick_server(delta: float) -> void:
 	_record_history()
 	_update_facing()
 	_cd = maxf(0.0, _cd - delta)
@@ -1428,10 +1481,10 @@ func _send_state(delta: float) -> void:
 	if _net_timer > 0.0:
 		return
 	_net_timer = 0.05
-	_sync.rpc(global_position, hp, active, alive, winding, _sp)
+	_sync.rpc(global_position, hp, active, alive, winding, _sp, _ai)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_winding: bool, new_sp := 0) -> void:
+func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_winding: bool, new_sp := 0, new_ai := -1) -> void:
 	_remote_pos = pos
 	if new_hp < hp - 0.01:
 		_flash = 0.1
@@ -1446,12 +1499,14 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 	elif not alive and is_alive:
 		_set_alive(true)
 		global_position = pos
+	if new_ai >= 0:
+		_set_ai_state(new_ai)             # stan AI liczy serwer; klient go tylko odtwarza (-1 = starszy nadawca bez pola)
 
 ## Kontrakt widoku (view3d.gd: `_sync_enemies`): to, co model 3D musi wiedzieć o wrogu, podane jawnie — zamiast zgadywania z prywatnych pól
 ## (`_sp`), z koloru sprite'a (błysk trafienia) i ze ścieżki skryptu (rodzaj). Tę samą metodę mają Stalker, Żyła, Pijawka i gniazdo.
-## Klucze: kind (rodzaj modelu), alive, winding (zapowiedź ciosu), sp (stan specjalny Wołka), flash (świeże trafienie).
+## Klucze: kind (rodzaj modelu), alive, winding (zapowiedź ciosu), sp (stan specjalny Wołka), flash (świeże trafienie), ai (stan AI, `Ai`).
 func view_info() -> Dictionary:
-	return {"kind": kind, "alive": alive, "winding": winding, "sp": _sp, "flash": _flash > 0.0}
+	return {"kind": kind, "alive": alive, "winding": winding, "sp": _sp, "flash": _flash > 0.0, "ai": _ai}
 
 ## Głos gatunku dla zdarzenia (`enemy_defs.gd`: voice); gatunek bez wpisu milczy.
 func _voice(event: String) -> void:

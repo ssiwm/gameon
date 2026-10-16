@@ -44,6 +44,7 @@ func run(m: Node2D) -> void:
 	await _test_facing()
 	_test_defs()
 	await _test_boss_base()
+	await _test_ai_states()
 	_finish()
 
 func _finish() -> void:
@@ -141,6 +142,10 @@ func _spawn(kind: String, pos: Vector2) -> CharacterBody2D:
 	e.kind = kind
 	level.add_child(e)
 	e.global_position = pos
+	e._home = pos                                          # `_ready` zapamiętał pozycję sprzed przestawienia — dom to miejsce testu, nie początek układu
+	e._remote_pos = pos
+	e._phys_x = pos.x
+	e._last_x = pos.x
 	return e
 
 ## Wołek rozpędza się tylko tam, gdzie ma podłogę pod całym rozbiegiem (i ścianę sprawdzoną na pełnym dystansie).
@@ -372,4 +377,84 @@ func _test_boss_base() -> void:
 	await get_tree().physics_frame
 	check("boss: `_clear_minions` usuwa Trzoski Pijawki", level.get_node_or_null("LeechSpawnT9") == null and lc._minions.is_empty())
 	lc.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- stan AI (ENEMY_PLAN.md F3)
+
+var _ai_log: Array = []                       ## kolejne stany AI obserwowanego wroga (sygnał ai_changed)
+
+func _on_ai_changed(_from: int, to: int) -> void:
+	_ai_log.append(to)
+
+func _ai_state_name(e: Node, kind_wanted: String) -> bool:
+	return e.ai_name() == kind_wanted
+
+## Jawny stan AI: odpowiada temu, co wróg faktycznie robi. Scenariusz na własnej podłodze: sen → ślad → śledztwo → szukanie → powrót → sen;
+## potem gracz w zasięgu wzroku → pościg → zapowiedź ciosu; panika; martwy; klient dostaje stan z `_sync`.
+func _test_ai_states() -> void:
+	var y := -4500.0
+	var strip := _floor(FAR_X + 11000.0, FAR_X + 11600.0, y)
+	var e := _spawn("trzosek", Vector2(FAR_X + 11100.0, y))
+	e.ai_changed.connect(_on_ai_changed)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("stan AI: śpiący wróg → sleep", e.ai_name() == "sleep", e.ai_name())
+	e._lead_at(e.global_position + Vector2(40.0, 0.0))          # ślad tuż obok: dojdzie prosto, bez nawigacji po mapie gry
+	e.active = true
+	var t := 0.0
+	while t < 2.0 and e.ai_name() != "investigate":
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
+	check("stan AI: aktywny ze śladem i bez celu → investigate", _ai_log.has(Enemy.Ai.INVESTIGATE), str(_ai_log))
+	t = 0.0
+	while t < 3.0 and not _ai_log.has(Enemy.Ai.SEARCH):
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
+	check("stan AI: po dojściu na ślad → search (rozgląda się)", _ai_log.has(Enemy.Ai.SEARCH), str(_ai_log))
+	t = 0.0
+	while t < 9.0 and e.ai_name() != "sleep":
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
+	check("stan AI: po poszukiwaniach → return → znów sleep", _ai_log.has(Enemy.Ai.RETURN) and e.ai_name() == "sleep", str(_ai_log))
+
+	# pościg i zapowiedź ciosu: prawdziwy gracz stawiany obok wroga na podłodze testowej
+	var hp0: int = player.hp
+	player.hp = 5
+	player.global_position = Vector2(FAR_X + 11200.0, y - 2.0)
+	player.velocity = Vector2.ZERO
+	_ai_log.clear()
+	e.active = true
+	t = 0.0
+	while t < 4.0 and not (_ai_log.has(Enemy.Ai.CHASE) and _ai_log.has(Enemy.Ai.WINDUP)):
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
+	check("stan AI: gracz w zasięgu wzroku → chase, a w zasięgu ciosu → windup", _ai_log.has(Enemy.Ai.CHASE) and _ai_log.has(Enemy.Ai.WINDUP), str(_ai_log))
+	player.global_position = Vector2(-4000.0, -4000.0)             # gracz wraca poza scenę (jak w testach Stalkera)
+	player.hp = hp0
+	e._panic = 1.0
+	e._windup = 0.0
+	e._target = null
+	await get_tree().physics_frame
+	check("stan AI: panika → panic", e.ai_name() == "panic", e.ai_name())
+	var client := _spawn("trzosek", Vector2(FAR_X + 11300.0, y))
+	client._sync(e.global_position, e.hp, true, true, false, 0, Enemy.Ai.CHASE)
+	check("stan AI: klient odtwarza stan z `_sync` i podaje go w view_info", client.view_info()["ai"] == Enemy.Ai.CHASE and client.ai_name() == "chase")
+	client._sync(e.global_position, e.hp, true, true, false)
+	check("stan AI: `_sync` bez pola stanu (starszy nadawca) go nie zmienia", client.ai_name() == "chase")
+	e.take_hit({"amount": 9999.0, "dir": Vector2.RIGHT, "pos": e.global_position, "shooter": 0, "type": "bullet"})
+	check("stan AI: martwy → dead", e.ai_name() == "dead" and not e.alive)
+
+	# rodzaje o własnej pętli: ćma, podsłuchacz, skoczek wiszący
+	var moth := _spawn("cma", Vector2(FAR_X + 11400.0, y - 20.0))
+	var listener := _spawn("podsluchacz", Vector2(FAR_X + 11450.0, y))
+	var hanger := _spawn("skoczek", Vector2(FAR_X + 11500.0, y - 30.0))
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("stan AI: nieobudzona ćma i wiszący skoczek → hang, podsłuchacz → listen", moth.ai_name() == "hang" and hanger.ai_name() == "hang" and listener.ai_name() == "listen",
+		"%s / %s / %s" % [moth.ai_name(), hanger.ai_name(), listener.ai_name()])
+	moth.active = true
+	await get_tree().physics_frame
+	check("stan AI: obudzona ćma → fly", moth.ai_name() == "fly")
+	for n in [e, client, moth, listener, hanger, strip]:
+		n.queue_free()
 	await get_tree().physics_frame
