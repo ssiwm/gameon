@@ -1,4 +1,4 @@
-extends CharacterBody2D
+extends "res://scripts/boss_base.gd"
 ## Pijawka — boss misji B1 (GDD §7.1, §9 B1). Żyje pod powierzchnią zalanego basenu areny: ZANURZONA jest prawie niewrażliwa (5%)
 ## i niewidoczna — jej cień ujawnia dopiero światło (flara w promieniu LIGHT_REVEAL_R albo snop latarki), wtedy dostaje 40% obrażeń;
 ## pełne obrażenia tylko wynurzona (1.7.70).
@@ -9,15 +9,10 @@ extends CharacterBody2D
 ## Trzosków i podwójna zasadzka (faza C) dołożone później. Interfejs jak u Żyły (boss.gd): hp / max_hp / phase / died / is_alive(),
 ## więc pasek bossa w HUD-zie i mission.gd działają bez zmian. Symulacja TYLKO na serwerze; klienci dostają stan przez _sync i _event.
 
-signal died
-
 const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const Vfx := preload("res://scripts/vfx.gd")
-const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
-const NightShift := preload("res://scripts/night_shift.gd")
 
-enum State { DORMANT, AWAKE, DEAD }
 enum Mode { SUB, WIND, UP, GRAB }         ## zanurzona / zapowiedź zasadzki / wynurzona / trzyma ofiarę (QTE drużyny)
 
 const BASE_HP := 5000.0                   ## 1.7.70: 600 → 900 → 5000 (walka z 900 HP trwała ~35 s; symulacja --leechsim: duet 77 efektywnych DPS ≈ 130 s)
@@ -84,11 +79,7 @@ var active: bool:
 
 var boss_name := "THE LEECH"
 var boss_hint := "It hides under the water. Light shows its shadow (40% damage) — bait it to surface, then hit it hard"
-var state: int = State.DORMANT
-var mode: int = Mode.SUB
-var hp := BASE_HP
-var max_hp := BASE_HP
-var phase := 1
+var mode: int = Mode.SUB                   ## state, hp, max_hp, phase — w boss_base.gd
 var revealed := false                      ## cień widoczny (synchronizowane) — rysowanie i obrażenia
 var pool_x0 := 0.0                         ## zakres basenu (px), ustawia level.gd z danych mapy
 var pool_x1 := 0.0
@@ -135,6 +126,10 @@ var _hurt_cd := 0.0
 var _hide_t := -1.0                        ## > 0: po śmierci sprite jeszcze chwilę gra „death"
 var _shift := 0.0                          ## px: kompensacja skoku pozycji po puszczeniu ofiary — sprite dopływa zamiast się teleportować
 
+func _init() -> void:
+	hp = BASE_HP
+	max_hp = BASE_HP
+
 func _ready() -> void:
 	add_to_group("enemies")
 	add_to_group("boss")
@@ -157,12 +152,6 @@ func _ready() -> void:
 				l.position = Vector2(0, SPRITE_DROP)
 				l.visible = false
 
-func is_threat() -> bool:
-	return state == State.AWAKE
-
-func is_alive() -> bool:
-	return state != State.DEAD
-
 ## Kontrakt widoku (view3d.gd) — patrz enemy.gd: view_info.
 func view_info() -> Dictionary:
 	return {"kind": "leech", "alive": state != State.DEAD, "winding": mode == Mode.WIND, "sp": 0, "flash": _flash > 0.0}
@@ -177,16 +166,9 @@ func _set_hitbox(up: bool) -> void:
 
 # ---------------------------------------------------------------- misja (serwer)
 
-func _humans() -> int:
-	var n := 0
-	for p in get_tree().get_nodes_in_group("players"):
-		if not p.is_bot:
-			n += 1
-	return n
-
 ## HP bossa dla `humans` ludzi w drużynie na bieżącym poziomie trudności (EASY ×0,7, HARD ×1,4) — jedno miejsce, testowalne.
 static func hp_for(humans: int) -> float:
-	return (BASE_HP + HP_PER_EXTRA_HUMAN * float(maxi(0, humans - 1))) * Difficulty.m("boss_hp") * NightShift.hp_mult()
+	return scaled_hp(BASE_HP, HP_PER_EXTRA_HUMAN, humans)
 
 ## Mnożnik zapowiedzi i przerw bossa z poziomu trudności (HARD 0,8 = o 20% krócej).
 func _dmul() -> float:
@@ -500,26 +482,13 @@ func _spawn_minions(n: int) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _spawn_minion(n: String, pos: Vector2) -> void:
-	var lvl := get_parent()
-	if lvl.has_node(n):
-		return
-	var e := ENEMY_SCENE.instantiate()
-	e.name = n
-	e.kind = "trzosek"
-	e.omniscient = true                         # wie, gdzie są gracze — to wsparcie bossa, nie zwykła wataha
-	e.summoned = true                           # przywołany przez bossa: bez XP i dropów (enemy.gd: _die)
-	e.position = pos
-	lvl.add_child(e)
-	if NoiseMgr.is_server():
+	var e := _summon(n, pos, 0.6)
+	if e != null and NoiseMgr.is_server():
 		_minions.append(e)
-		e.wake()
-	Audio.play_variant_at("impact_flesh", 3, pos, Audio.BUS_WORLD, -6.0, 0.6)
 
 @rpc("authority", "call_local", "reliable")
 func _clear_minions() -> void:
-	for n in get_parent().get_children():
-		if String(n.name).begins_with("LeechSpawn"):
-			n.queue_free()
+	_clear_summoned("LeechSpawn")
 	_minions.clear()
 
 ## Faza 3: drugi punkt zasadzki — inny gracz w wodzie, a gdy go nie ma, punkt kilkadziesiąt px od pierwszego.
@@ -687,19 +656,12 @@ func _die() -> void:
 	state = State.DEAD
 	mode = Mode.UP
 	second_x = -1.0
-	for mn in _minions:
-		if is_instance_valid(mn) and mn.alive:
-			mn.take_bullet(global_position, 999.0)
+	_kill_summoned(_minions)
 	_minions.clear()
 	hp = 0.0
 	NoiseMgr.add_noise(N_DEATH, global_position)
 	print("[BOSS] Pijawka nie żyje")
-	var lvl := get_tree().get_first_node_in_group("level")
-	if lvl != null:
-		lvl.spawn_health(global_position + Vector2(-20, -30))
-		lvl.spawn_health(global_position + Vector2(20, -30))
-		if Scrap.enabled():
-			lvl.spawn_item("scrap", 0, global_position + Vector2(0, -30), Scrap.BOSS_VALUE)
+	_drop_boss_loot()
 	_event.rpc("death")
 	_send_state(true)
 	died.emit()
@@ -826,11 +788,6 @@ func _event(kind: String) -> void:
 			else:
 				_hide_t = DEATH_HIDE                                         # sprite jeszcze gra animację śmierci (drgawki, upadek, zanurzenie)
 			_shape.set_deferred("disabled", true)
-
-func _shake_near(amount: float) -> void:
-	for p in get_tree().get_nodes_in_group("players"):
-		if not p.is_bot and p.is_multiplayer_authority() and p.global_position.distance_to(global_position) < 400.0:
-			Feel.shake(amount)
 
 # ---------------------------------------------------------------- rysowanie
 
