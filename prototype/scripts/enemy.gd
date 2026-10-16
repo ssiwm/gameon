@@ -53,6 +53,9 @@ const MAX_ATTACKERS := 2
 const HOVER_MIN := 26.0
 const HOVER_MAX := 44.0
 const PACK_R := 220.0
+const SHARE_RADIUS := 220.0          ## px w poziomie: tyle słyszą krzyk kolegi, który zauważył gracza (F3.4a)
+const SHARE_DY := 40.0               ## px w pionie: kolega z innego piętra go nie słyszy
+const SHARE_COOLDOWN := 3.0          ## s: ten sam wróg daje znać najwyżej raz na tyle
 const FEAR_PER_DEATH := 0.34
 const FEAR_ALPHA := 0.7              ## śmierć przewodnika (najstarszy w watasze) łamie morale mocniej
 const FEAR_DECAY := 0.12             ## /s
@@ -156,6 +159,7 @@ var _ai: int = Ai.SLEEP       ## bieżący stan AI (patrz `Ai`)
 var _ai_t := 0.0              ## s w bieżącym stanie AI (serwer)
 var _alert := 0.0             ## s reakcji „zauważył cię" (stan Ai.ALERT): wróg stoi i patrzy na źródło, zanim ruszy (serwer)
 var _alert_cd := 0.0          ## s do następnej reakcji — ten sam wróg nie staje za każdym razem, gdy cel mignie na granicy wzroku
+var _share_cd := 0.0          ## s do następnego „dania znać" kolegom o zauważonym graczu (serwer)
 var _net_face := 0.0          ## kierunek patrzenia z serwera (u klientów; `_sync`) — odwrót przy reakcji „zauważył"
 var _sp_t := 0.0
 var _sp_dir := 1.0
@@ -270,6 +274,7 @@ func reset_enemy() -> void:
 	_panic = 0.0
 	_alert = 0.0
 	_alert_cd = 0.0
+	_share_cd = 0.0
 	_target = null
 	_hist.clear()
 	_has_lead = false
@@ -439,6 +444,7 @@ func _tick_server(delta: float) -> void:
 	_panic = maxf(0.0, _panic - delta)
 	_alert = maxf(0.0, _alert - delta)
 	_alert_cd = maxf(0.0, _alert_cd - delta)
+	_share_cd = maxf(0.0, _share_cd - delta)
 	_retreat = maxf(0.0, _retreat - delta)
 	_fear = maxf(0.0, _fear - FEAR_DECAY * delta)
 	_tick_drop(delta)
@@ -1060,10 +1066,34 @@ func _perceive(delta: float) -> void:
 	_target = best
 	if best != null and not had_target and _ai in [Ai.INVESTIGATE, Ai.SEARCH, Ai.RETURN]:
 		_begin_alert()                    # nowy kontakt wzrokowy po śledztwie / szukaniu / powrocie — nie przy każdym mignięciu celu (ALERT_COOLDOWN)
+	if best != null and not had_target:
+		_shout_sighting(best.global_position)
 	if best != null:
 		_lead_at(best.global_position)
 	else:
 		_lose_t += PERCEIVE_DT
+
+## Wataha dzieli się tym, co zobaczyła (F3.4a): Trzosek, który właśnie zauważył gracza, „daje znać" pobliskim kolegom — ci, którzy nic nie widzą (śledzą,
+## szukają albo wracają), dostają ślad w miejscu gracza i reakcję „zauważył", więc wataha nie atakuje po jednym, tylko schodzi się razem. Śpiących budzi
+## osobno `wake()`. Zasięg SHARE_RADIUS w poziomie (w pionie ±SHARE_DY — nie przez piętra), cooldown SHARE_COOLDOWN na krzykacza.
+func _shout_sighting(pos: Vector2) -> void:
+	if not _def.get("pack", false) or _share_cd > 0.0 or summoned or omniscient:
+		return
+	_share_cd = SHARE_COOLDOWN
+	for e in _near(global_position, SHARE_RADIUS):
+		if not is_instance_valid(e) or e == self or e.get_script() != get_script() or e.kind != kind:
+			continue
+		if absf(e.global_position.x - global_position.x) <= SHARE_RADIUS and absf(e.global_position.y - global_position.y) <= SHARE_DY:
+			e._hear_shout(pos)
+
+## Kolega dał znać, gdzie jest gracz: tylko aktywny, nic niewidzący (śledztwo / szukanie / powrót) i niebędący przywołanym bossa.
+func _hear_shout(pos: Vector2) -> void:
+	if not alive or not active or _target != null or summoned or omniscient:
+		return
+	if not (_ai in [Ai.INVESTIGATE, Ai.SEARCH, Ai.RETURN]):
+		return
+	_lead_at(pos)
+	_begin_alert()
 
 ## Czy wróg widzi gracza `pp` (promień wzroku z poprawką na kucanie + czysta linia) — ta sama reguła co w pętli `_perceive`.
 func _can_see(pp: Node2D, sight: float) -> bool:
