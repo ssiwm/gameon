@@ -1,7 +1,7 @@
 """Szkieletuje statyczny model humanoida z TRELLIS-a (comfy_gen.py model) szkieletem Mixamo (`mixamorig:*`), tak jak modele wrogów z Tripo, żeby `enemy3d.gd` mógł nim
 poruszać (IK nóg i rąk, klipy). Blender headless:
 
-    blender -b --factory-startup -P prototype/tools/rig_trellis.py -- SRC.glb DST_rig.glb [--face=-y] [--height=1.8] [--preset=humanoid|brute|crawler] [--preview=PREFIX] [--attach=PROP.glb --attach-bone=RightHand --attach-length=0.8]
+    blender -b --factory-startup -P prototype/tools/rig_trellis.py -- SRC.glb DST_rig.glb [--face=-y] [--height=1.8] [--preset=humanoid|brute|crawler] [--preview=PREFIX] [--attach=PROP.glb --attach-bone=RightHand --attach-length=0.8 --attach-handle=auto|lo|hi]
 
 Co robi: scala siatki, obraca model przodem do +X (jak modele Tripo w grze), skaluje do `--height` m i stawia stopami na z = 0; wykrywa punkty orientacyjne ciała na przekrojach siatki
 (biodra, kolana, kostki, barki, nadgarstki z skrajnych punktów rąk), buduje 23 kości Mixamo w tych punktach, liczy wagi na uproszczonej, szczelnej kopii (voxel remesh + automatyczne wagi)
@@ -228,9 +228,9 @@ def skin_by_distance(body, arm, H):
     print("WEIGHTS(distance) groups", len(groups), "unweighted", unweighted, "of", len(pts))
 
 
-def attach_prop(body, arm, L, H, path, bone, length, forward):
+def attach_prop(body, arm, L, H, path, bone, length, forward, handle="auto"):
     """Dołącza rekwizyt (np. tasak z osobnego modelu) do kości dłoni: siatka rekwizytu dostaje wagę 1 na tej kości i zostaje scalona z ciałem (jedna siatka, wiele materiałów).
-    Uchwyt = węższy koniec modelu (większy rozrzut przekroju na drugim końcu); rekwizyt celuje ostrzem w dół i do przodu (+X), uchwyt trafia w nadgarstek."""
+    Uchwyt = węższy koniec modelu (większy rozrzut przekroju na drugim końcu); rekwizyt celuje ostrzem pionowo w dół (lekko do przodu, +X), a cały uchwyt chowa się w pięści."""
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=path)
     new = [o for o in bpy.data.objects if o not in before and o.type == "MESH"]
@@ -256,11 +256,16 @@ def attach_prop(body, arm, L, H, path, bone, length, forward):
     def spread(mask):
         q = pts[mask] - c
         q = q - np.outer(q @ ax, ax)
-        return float(np.linalg.norm(q, axis=1).mean()) if mask.sum() else 0.0
+        return float(np.median(np.linalg.norm(q, axis=1))) if mask.sum() else 0.0
 
-    s_lo = spread(proj < lo + 0.12 * span)
-    s_hi = spread(proj > hi - 0.12 * span)
+    # mediana odległości od osi na 30 % długości z każdej strony: ostrze jest szerokie na całym odcinku, a uchwyt wąski — dyndający łańcuszek
+    # przy głowicy (tasak Rzeźnika) to mało wierzchołków, więc mediany nie przesuwa (średnia z samych 12 % końca myliła się właśnie przez łańcuszek)
+    s_lo = spread(proj < lo + 0.30 * span)
+    s_hi = spread(proj > hi - 0.30 * span)
     handle_at_lo = s_lo < s_hi                         # węższy koniec = uchwyt
+    if handle in ("lo", "hi"):                         # jawne nadpisanie (`--attach-handle`), gdy heurystyka się myli
+        handle_at_lo = handle == "lo"
+    print("ATTACH spread lo/hi", round(s_lo, 4), round(s_hi, 4))
     d = ax if handle_at_lo else -ax                    # kierunek uchwyt → czubek ostrza
     handle_pt = c + ax * (lo if handle_at_lo else hi)
     k = length / span
@@ -275,11 +280,22 @@ def attach_prop(body, arm, L, H, path, bone, length, forward):
         if tp.angle(-want) < tp.angle(want):
             want = -want
         rot = tp.rotation_difference(want).to_matrix() @ rot
-    grip = Vector(handle_pt) + Vector(d) * 0.18 * span   # chwyt tuż za głowicą uchwytu
+    # granica uchwyt → ostrze z profilu szerokości (mediana odległości od osi w 40 przedziałach licząc od głowicy): pierwszy przedział
+    # wyraźnie szerszy od samego uchwytu. W tym punkcie ostrze wychodzi spod pięści, a cały uchwyt chowa się w dłoni i przedramieniu.
+    t = (pts - handle_pt) @ d / span
+    q = pts - c
+    q = q - np.outer(q @ ax, ax)
+    dist = np.linalg.norm(q, axis=1)
+    bins = [np.median(dist[(t >= i / 40) & (t < (i + 1) / 40)]) if ((t >= i / 40) & (t < (i + 1) / 40)).any() else 0.0 for i in range(40)]
+    handle_w = float(np.median([b for b in bins[1:6] if b > 0])) if any(b > 0 for b in bins[1:6]) else 0.0
+    junction = next((i / 40 for i in range(4, 40) if bins[i] > 2.0 * handle_w), 0.3)
+    print("ATTACH junction", round(junction, 3), "handle_w", round(handle_w, 4))
+    grip = Vector(handle_pt) + Vector(d) * junction * span
     wrist = L[bone]
+    fist = wrist + Vector((0.02 * H, 0.0, -0.07 * H))        # dół pięści: tu ostrze wychodzi z dłoni
     for v in prop.data.vertices:
         p = rot @ ((Vector(v.co) - grip) * k)
-        v.co = p + wrist + Vector((0.03 * H, 0.0, 0.0))
+        v.co = p + fist
     prop.data.update()
     vg = prop.vertex_groups.new(name="mixamorig:" + bone)
     vg.add(list(range(len(prop.data.vertices))), 1.0, "REPLACE")
@@ -328,7 +344,8 @@ def main():
     skin(body, arm, H)
     attach = arg("--attach")
     if attach:
-        attach_prop(body, arm, L, H, attach, arg("--attach-bone", "RightHand"), float(arg("--attach-length", 0.8)), (0.6, 0.0, -0.8))
+        attach_prop(body, arm, L, H, attach, arg("--attach-bone", "RightHand"), float(arg("--attach-length", 0.8)), (0.12, 0.0, -1.0),
+                    arg("--attach-handle", "auto"))
         body = bpy.context.view_layer.objects.active
     if prefix:
         render_pose(arm, body, prefix, "rest", H)
