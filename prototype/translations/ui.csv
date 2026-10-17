@@ -290,6 +290,7 @@
 "Departing in %d…   [{restart}] cancel","Wyruszamy za %d…   [{restart}] anuluj"
 "%d / %d ready","%d / %d gotowych"
 "READY  ·  %s  ·  [{restart}] cancel","GOTOWY  ·  %s  ·  [{restart}] anuluj"
+"LAUNCH ZONE","STREFA STARTU"
 "Step into the launch zone or press [{restart}]  ·  %s","Wejdź do strefy startu albo naciśnij [{restart}]  ·  %s"
 "Departing in %d…   step out of the launch zone to cancel","Wyruszamy za %d…   wyjdź ze strefy startu, by anulować"
 "READY  ·  %s  ·  step out of the launch zone to cancel","GOTOWY  ·  %s  ·  wyjdź ze strefy startu, by anulować"

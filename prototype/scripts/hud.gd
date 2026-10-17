@@ -463,6 +463,7 @@ var _xp_t := 0.0
 var _result_xp_val: Label
 var _warn: Label
 var _warn_sub: Label
+var _hub_count: Label                ## kryjówka: duża cyfra odliczania do wyjścia na misję (pod kartą celu)
 var _center: Label
 var _center_sub: Label
 var _prompt_card: PanelContainer
@@ -548,6 +549,8 @@ func _fit() -> void:
 	_place(_warn, Vector2((w - cw) * 0.5, h * WARN_Y), Vector2(cw, 28))
 	_place(_warn_sub, Vector2((w - cw) * 0.5, h * WARN_Y + 28.0), Vector2(cw, 14))
 	_place(_note, Vector2((w - cw) * 0.5, h * WARN_Y + 46.0), Vector2(cw, 14))
+	_place(_hub_count, Vector2((w - cw) * 0.5, 82.0), Vector2(cw, 60))
+	_hub_count.pivot_offset = Vector2(cw * 0.5, 30.0)
 	_place(_center, Vector2((w - cw) * 0.5, h * CENTER_Y), Vector2(cw, 28))
 	_place(_center_sub, Vector2((w - cw) * 0.5, h * CENTER_Y + 28.0), Vector2(cw, 16))
 	_place(_controls, Vector2(MARGIN, h - 16.0), Vector2(w - 2.0 * MARGIN, 12))
@@ -1030,6 +1033,9 @@ func _build_center() -> void:
 	_note.modulate.a = 0.0
 	add_child(_note)
 	NoiseMgr.overcharge_stale.connect(func() -> void: show_note("They know this trick — move before you lure again"))
+	_hub_count = UiTheme.heading("", 56, UiTheme.OK, HORIZONTAL_ALIGNMENT_CENTER)
+	_hub_count.visible = false
+	add_child(_hub_count)
 	_center = UiTheme.heading("", 24, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_center)
 	_center_sub = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
@@ -1558,6 +1564,20 @@ func _drive_mission() -> void:
 		_ready_pips.filled = int(main_n.get("hub_ready_n"))
 		_ready_pips.custom_minimum_size = Vector2(float(total) * 11.0 - 2.0, 9.0)
 		_ready_pips.queue_redraw()
+		var cd := float(main_n.get("hub_countdown"))
+		var fl := float(main_n.get("hub_cancel_flash"))
+		_hub_count.visible = cd > 0.0 or fl > 0.05
+		if fl > 0.05:
+			_hub_count.text = "✕"
+			_hub_count.modulate = Color(UiTheme.DANGER, fl)
+			_hub_count.scale = Vector2.ONE
+		elif cd > 0.0:
+			var secs := ceili(cd)
+			_hub_count.text = str(secs)
+			_hub_count.modulate = Color.WHITE
+			_hub_count.scale = Vector2.ONE * (1.0 + 0.3 * pow(float(secs) - cd, 2.0))
+	else:
+		_hub_count.visible = false
 	_boss_row.visible = boss != null and m.phase == Mission.Phase.BOSS
 	if _boss_row.visible:
 		_boss_bar.value = boss.hp / maxf(1.0, boss.max_hp)
