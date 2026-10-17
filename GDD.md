@@ -335,7 +335,7 @@ Las, posterunek, tartak. Kolory: mgła, brąz, zieleń. Wprowadza: strzelanie, s
 
 | # | Misja | Cel główny | Cel poboczny | Nowa mechanika | Wrogowie | Czas |
 |---|-------|------------|--------------|----------------|----------|------|
-| 1.1 | **Zaginiony Patrol** | Znajdź 4 nieśmiertelniki | 2 skrytki ze złomem | Ruch, strzał, latarka. **Tutorial ciszy:** kucz i chodź — pasek Uwagi spada | Trzoski, Wołki | 8 min |
+| 1.1 | **Zaginiony Patrol** | Znajdź 5 nieśmiertelników | 2 skrytki ze złomem | Ruch, strzał, latarka. **Tutorial ciszy:** kucz i chodź — pasek Uwagi spada; obóz patrolu: wataha śpi pod zerwanym mostem, cicho tylko górą po konarach | Trzoski, Wołki | 8 min |
 | 1.2 | **Przerwa w Nadawaniu** | Uruchom 3 generatory radiostacji | Nie przekrocz 40 Uwagi | Poziom Uwagi, Podsłuchacze. **Tutorial Przesterowania:** użyj Q, żeby odciągnąć stalkera od koledów | Trzoski, Podsłuchacze, Stalker (skrypt) | 10 min |
 | 1.3 | **Gniazdo** | Spal 3 gniazda | Uratuj zwiadowcę (NPC) + **zabij stalkera w ciszy**: obniż Uwagę <30, gdy celuje w NPC | **Pierwsze pejne starcie ze stalkerem** (bez skryptu). AI towarzysz ćwiczy dźwiganie | Trzoski, Żyła, Stalker | 12 min |
 | **B1** | **PIJAWKA** | Zabij bossa | — | Flary ujawniają cień pod wodą | Pijawka, Trzoski | 6 min |

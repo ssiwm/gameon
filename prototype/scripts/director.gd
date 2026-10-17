@@ -185,7 +185,7 @@ const GROUPS := [
 	[6.0, ["zerca"], {"time": [360.0, INF], "downs": [1, INF]}],                                                 # elita: Żerca wyczuwa krew — dopiero po pierwszym upadku w misji
 ]
 const GROUPS_BY_MAP := {
-	# 1.1 Missing Patrol (samouczek: 12 T, 3 W, bez Ślepców — pierwszy raz w 1.2): same Trzoski, Wołek dopiero po 8 min
+	# 1.1 Missing Patrol (samouczek: 17 T, 3 W, bez Ślepców — pierwszy raz w 1.2): same Trzoski, Wołek dopiero po 8 min
 	"z1_m1": [
 		[60.0, ["trzosek", "trzosek"]],
 		[25.0, ["trzosek", "trzosek", "trzosek"], {"time": [150.0, INF]}],
