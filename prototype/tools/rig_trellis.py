@@ -195,6 +195,104 @@ def skin(body, arm, H):
     print("WEIGHTS body groups", len(body.vertex_groups), "unweighted verts", unweighted, "of", len(body.data.vertices))
     if unweighted > 0.03 * len(body.data.vertices):
         skin_by_distance(body, arm, H)
+    fix_hands(body, arm, H)
+    split_islands(body)
+
+
+def fix_hands(body, arm, H):
+    """Palce i pazury za nadgarstkiem w całości na kość dłoni. Szczelna kopia do wag (voxel H/90) gubi cienkie pazury, więc dostawały wagi
+    od najbliższej powierzchni — szaty, uda, biodra — i przy uniesionej ręce zostawały na dole, rozciągnięte w długie „pręty" (Kapłan).
+    Wierzchołek idzie na dłoń, gdy leży za nadgarstkiem, blisko przedłużenia kości dłoni (0,22 H) i wyraźnie bliżej niej niż kości tułowia i nóg."""
+    pts = np.array([v.co[:] for v in body.data.vertices])
+    mw = arm.matrix_world
+
+    def seg_dist(a, b):
+        ab = b - a
+        t = np.clip(((pts - a) @ ab) / max(float(ab @ ab), 1e-9), 0.0, 1.0)
+        return np.linalg.norm(pts - (a + t[:, None] * ab), axis=1)
+
+    other = []
+    for bn in arm.data.bones:
+        if not any(k in bn.name for k in ("Arm", "Hand", "Shoulder", "Root")):
+            other.append(seg_dist(np.array(mw @ bn.head_local), np.array(mw @ bn.tail_local)))
+    d_other = np.min(np.array(other), axis=0)
+    total = 0
+    for side in ("Left", "Right"):
+        hb = arm.data.bones["mixamorig:%sHand" % side]
+        head = np.array(mw @ hb.head_local)
+        dirv = np.array(mw @ hb.tail_local) - head
+        dirv = dirv / max(np.linalg.norm(dirv), 1e-9)
+        t = (pts - head) @ dirv
+        d_hand = seg_dist(head - dirv * 0.02 * H, head + dirv * 0.22 * H)
+        sel = np.where((t > -0.02 * H) & (d_hand < 0.10 * H) & (d_hand < 0.8 * d_other))[0]
+        name = "mixamorig:%sHand" % side
+        g = body.vertex_groups.get(name) or body.vertex_groups.new(name=name)
+        idx = set(int(i) for i in sel)
+        for vg in body.vertex_groups:
+            if vg.name != name:
+                vg.remove(list(idx))
+        g.add(list(idx), 1.0, "REPLACE")
+        total += len(idx)
+    print("HANDS fixed verts", total)
+
+
+def split_islands(body):
+    """Siatka z TRELLIS-a to „zupa" ponad tysiąca luźnych kawałków. Kawałek z wagami zmieszanymi między ręką a tułowiem/nogą rozciąga się przy
+    każdym ruchu ręki (pazur przyklejony do uda, strzęp szaty ciągnięty za dłonią). Każdy kawałek trafia więc w całości do jednej klasy — ręka lewa,
+    ręka prawa albo reszta ciała — tej, która ma w nim większą sumę wag; wpływy pozostałych klas są usuwane."""
+    import bmesh
+    groups = {g.index: g.name for g in body.vertex_groups}
+
+    def cls(name):
+        for side in ("Left", "Right"):
+            if any(name == "mixamorig:%s%s" % (side, b) for b in ("Arm", "ForeArm", "Hand")):
+                return side
+        return "Body"
+
+    bm = bmesh.new()
+    bm.from_mesh(body.data)
+    bm.verts.ensure_lookup_table()
+    seen = [False] * len(bm.verts)
+    fixed = 0
+    verts = body.data.vertices
+    for s0 in range(len(bm.verts)):
+        if seen[s0]:
+            continue
+        stack, comp = [s0], []
+        seen[s0] = True
+        while stack:
+            x = stack.pop()
+            comp.append(x)
+            for e in bm.verts[x].link_edges:
+                o = e.other_vert(bm.verts[x]).index
+                if not seen[o]:
+                    seen[o] = True
+                    stack.append(o)
+        sums = {"Left": 0.0, "Right": 0.0, "Body": 0.0}
+        for i in comp:
+            for g in verts[i].groups:
+                sums[cls(groups[g.group])] += g.weight
+        if sum(1 for v in sums.values() if v > 0.0) < 2 or len(comp) > 0.02 * len(bm.verts):
+            continue                                          # duży kawałek (np. ręka zrośnięta z tułowiem) zostaje z płynnymi wagami
+        keep = max(sums, key=sums.get)
+        for i in comp:
+            v = verts[i]
+            drop = [g.group for g in v.groups if cls(groups[g.group]) != keep]
+            if not drop:
+                continue
+            best = max((g for g in v.groups if cls(groups[g.group]) == keep), key=lambda g: g.weight, default=None)
+            for gi in drop:
+                body.vertex_groups[gi].remove([i])
+            if best is None:                                  # wierzchołek bez wag w wybranej klasie: dominująca kość kawałka
+                tally = {}
+                for j in comp:
+                    for g in verts[j].groups:
+                        if cls(groups[g.group]) == keep:
+                            tally[g.group] = tally.get(g.group, 0.0) + g.weight
+                body.vertex_groups[max(tally, key=tally.get)].add([i], 1.0, "REPLACE")
+            fixed += 1
+    bm.free()
+    print("ISLANDS fixed verts", fixed)
 
 
 def skin_by_distance(body, arm, H):
