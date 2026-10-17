@@ -37,8 +37,8 @@ const Captions := preload("res://scripts/captions.gd")
 const W := preload("res://scripts/ui_widgets.gd")
 const HudIcon := preload("res://scripts/hud_icon.gd")
 
-## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
-const UI_SCALE := 0.8
+## HUD o kolejne 30% mniejszy (0,8 → 0,56) po przebudowie na układ bez ramek; razem z mnożnikiem SMALL / NORMAL / LARGE (celownik ma własne CROSS_SCALE).
+const UI_SCALE := 0.56
 const MSG_SCALE := 0.8            ## komunikaty (alerty, toasty, karta tytułowa, porady, dziennik, notatki, pasek akcji) o 20% mniejsze niż reszta HUD-u
 const MARGIN := 8.0              ## odstęp kart od krawędzi (jednostki logiczne HUD)
 const CONTROLS_SHOW_S := 20.0
