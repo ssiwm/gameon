@@ -1,6 +1,6 @@
 # Plan: komunikaty w grze — jeden system zamiast kilkunastu osobnych
 
-Status: **plan, nic jeszcze nie wdrożone** (stan z 2026-10-17, wersja 1.7.268). Powstał z audytu `hud.gd`, `hints.gd`, `mission.gd`, `main.gd` i zrzutów z gry
+Status: **wdrożone w czterech PR-ach, czekają na przegląd** (stan z 2026-10-17): etap 1 — #337 (arbiter `Msg`, tokeny, test), etap 2 — #338 (notatki w trzech materiałach, ciemna paleta, pasek akcji, 1.7.269), etap 3 — #339 (alerty, toasty, karta tytułowa, 1.7.270), etap 4 — #340 (dziennik na klawiszu **N** zamiast J, bo J to strzał, porady na kanale TIP, 1.7.271). Materiał „kartka odręczna” jest gotowy w komponencie, ale nie ma jeszcze odbiorcy (ostrzeżenia i porady idą dziś ciemnymi kartami); papier w 3D (2b) niezrobiony. Dokument poniżej zachowuje pierwotny plan. Powstał z audytu `hud.gd`, `hints.gd`, `mission.gd`, `main.gd` i zrzutów z gry
 (kryjówka przy tablicy, start misji, odliczanie wyjścia, prognoza). Makiety przed i po (kadry z gry z nałożoną propozycją) oraz trzy warianty stylu notatek
 były oglądane i zaakceptowane co do kierunku; styl notatek wymaga jeszcze potwierdzenia poziomu przyciemnienia w grze (patrz „Decyzje”).
 
