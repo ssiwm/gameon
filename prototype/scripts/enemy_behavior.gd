@@ -16,6 +16,7 @@ const BEHAVIORS := {
 	"pack": "res://scripts/enemy_pack.gd",
 	"blind": "res://scripts/enemy_blind.gd",
 	"priest": "res://scripts/enemy_priest.gd",
+	"devourer": "res://scripts/enemy_devourer.gd",
 }
 
 ## Węzeł wroga (`enemy.gd`) — bez typu, bo `enemy.gd` ładuje tę klasę (cykl preload).
