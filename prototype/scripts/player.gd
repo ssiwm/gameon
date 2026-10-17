@@ -48,6 +48,7 @@ const JUMP_BUFFER := 0.10       ## skok wciśnięty tuż przed lądowaniem się 
 const JUMP_CUT := 0.45          ## puszczenie skoku skraca go (zmienna wysokość)
 const INVULN_AFTER_HIT := 0.6   ## chroni przed „serią\" trafień z kilku wrogów naraz
 const CHIP_INVULN := 0.3         ## krótsza niewrażliwość po lekkim trafieniu (głaz 0,5 HP)
+const STUN_IMMUNITY := 3.0       ## s po ogłuszeniu, w których kolejny stun nie działa (nie da się zablokować gracza w pętli)
 const KICK_DECAY := 600.0
 const DROP_TIME := 0.25         ## tyle trwa zeskok przez kładkę (dół + skok)
 const PLATFORM_LAYER_BIT := 5   ## warstwa kładek = 16 (level.gd LAYER_PLATFORM)
@@ -96,6 +97,8 @@ var player_id := 1
 var display_id := 1
 var hp := MAX_HP
 var chip := 0.0                 ## ukryte „stłuczenie” 0–0,5 (głaz Wołka, F3.9): drugie trafienie zamienia je w 1 realny HP; zeruje się przy leczeniu, powaleniu i respawnie
+var stun_t := 0.0                ## s ogłuszenia (fala krzyku Kapłana, F4): bez strzału, przeładowania, bicia, zmiany broni i skoku — chodzić można; replikowane
+var _stun_immune := 0.0
 var aim_dir := Vector2.RIGHT
 var crouching := false
 ## `dead` znaczy „down": gracz leży i wykrwawia się, ale można go podnieść.
@@ -422,10 +425,10 @@ func _setup_sync() -> void:
 	sync.replication_interval = 0.05
 	sync.delta_interval = 0.05
 	var cfg := SceneReplicationConfig.new()
-	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":kit", ":perks", ":look", ":grabbed", ":is_reviving"]:
+	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":kit", ":perks", ":look", ":grabbed", ":is_reviving"]:
 		cfg.add_property(path)
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
-	for path in [":position", ":velocity", ":hp", ":chip", ":crouching", ":dead", ":is_bot", ":display_id"]:
+	for path in [":position", ":velocity", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":is_bot", ":display_id"]:
 		cfg.property_set_spawn(path, true)
 	sync.replication_config = cfg
 	add_child(sync)
@@ -611,6 +614,8 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_invuln = maxf(0.0, _invuln - delta)
+	stun_t = maxf(0.0, stun_t - delta)
+	_stun_immune = maxf(0.0, _stun_immune - delta)
 	_ff_cd = maxf(0.0, _ff_cd - delta)
 
 	_update_flashlight(delta)
@@ -637,7 +642,7 @@ func _local_brain(delta: float) -> void:
 	is_reviving = reviving
 	var gear_busy := _gear_tick(delta)
 	var busy := reviving or pumping or gear_busy
-	weapons.tick_local(delta, busy)
+	weapons.tick_local(delta, busy or stun_t > 0.0)          # ogłuszony nie strzela, nie przeładowuje, nie bije i nie zmienia broni, ale chodzi (Kapłan, F4)
 
 	var move_x := 0.0 if (busy or grabbed or weapons.inspect_item != null) else Input.get_axis("move_left", "move_right")
 	var aim_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
@@ -696,7 +701,7 @@ func _local_brain(delta: float) -> void:
 		var g := GRAVITY * (FALL_MULT if velocity.y > 0.0 else 1.0)
 		velocity.y = minf(velocity.y + g * delta, MAX_FALL)
 
-	if _jump_buf > 0.0 and _coyote > 0.0 and not crouching and not busy and not grabbed:
+	if _jump_buf > 0.0 and _coyote > 0.0 and not crouching and not busy and not grabbed and stun_t <= 0.0:
 		velocity.y = JUMP_VELOCITY * float(surf["jump"])
 		_jump_buf = 0.0
 		_coyote = 0.0
@@ -1022,6 +1027,7 @@ func _go_down() -> void:
 	is_reviving = false
 	hp = 0
 	chip = 0.0
+	stun_t = 0.0
 	dead = true
 	bleed_left = bleed_time()
 	_down_t = 0.0
@@ -1395,7 +1401,7 @@ func _bot_brain(delta: float) -> void:
 		if los == Los.TEAMMATE and is_on_floor() and not crouching and not on_deck:
 			# kolega na linii — podskok daje czystą linię nad nim
 			_bot_wants_jump = true
-		if weapons.cd <= 0.0 and _aim_ok(d) and _bot_may_fire(d) and los == Los.CLEAR:
+		if weapons.cd <= 0.0 and _aim_ok(d) and _bot_may_fire(d) and los == Los.CLEAR and stun_t <= 0.0:
 			# Boty symulowane są tylko na serwerze; serwer gra też ich dźwięk i efekty.
 			weapons.bot_fire(aim_dir)
 
@@ -1642,6 +1648,29 @@ func apply_chip(amount: float, from_pos: Vector2) -> void:
 	Audio.play_variant("player_hurt", 2, Audio.BUS_PLAYER, -12.0)
 	if not is_bot:
 		Feel.shake(2.0)
+
+## Ogłuszenie (Kapłan, F4): `seconds` bez strzału, przeładowania, bicia, zmiany broni i skoku; ruch zostaje. Po nim STUN_IMMUNITY s niewrażliwości na kolejny stun.
+## Rozstrzyga właściciel postaci na polecenie serwera (jak `apply_hit`).
+func deliver_stun(seconds: float, source := "") -> void:
+	last_hit_source = source
+	if not NoiseMgr.has_network() or is_multiplayer_authority():
+		apply_stun(seconds)
+	else:
+		apply_stun.rpc_id(get_multiplayer_authority(), seconds)
+
+@rpc("any_peer", "call_remote", "reliable")
+func apply_stun(seconds: float) -> void:
+	if not is_multiplayer_authority() or dead or _stun_immune > 0.0 or not _from_server() or seconds <= 0.0:
+		return
+	stun_t = seconds
+	_stun_immune = seconds + STUN_IMMUNITY
+	_flash = 0.2
+	Audio.play_variant("player_hurt", 2, Audio.BUS_PLAYER, -10.0)
+	if not is_bot:
+		Feel.shake(3.0)
+
+func is_stunned() -> bool:
+	return stun_t > 0.0
 
 ## Trafienie przez kolegę: odrzut, błysk i krzyk = HAŁAS (Uwaga), zero HP.
 @rpc("any_peer", "call_remote", "reliable")

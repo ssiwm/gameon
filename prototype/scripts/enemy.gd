@@ -1326,7 +1326,7 @@ func _draw_overlay(ov: Node2D) -> void:
 	var size: Vector2 = _def["size"]
 	_beh.draw_overlay(ov)
 	# pasek HP po pierwszym trafieniu
-	if hp < _max_hp:
+	if hp < _max_hp or bool(_def.get("elite", false)):
 		var w := size.x + 4.0
 		if Sprites.newitem:
 			Vfx.draw_bar(ov, Rect2(-w * 0.5, -size.y - 7.0, w, 2.0), hp / _max_hp, Color(0.15, 0.05, 0.05, 0.9), Color(0.9, 0.25, 0.2))

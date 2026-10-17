@@ -286,3 +286,4 @@ Cel: nowe rodzaje (F4) nie dopisują `if kind ==` w rdzeniu. Wynik: `enemy.gd` 1
 - **F4f — strojenie po playtestach:** HP, przerwy, progi Dyrektora, czasy porwania i stunu.
 
 **Ryzyka:** sieć (status gracza i porwanie przechodzą przez właściciela postaci, jak chwyt Pijawki; trzeba testu host + klient); wipe (porwani gracze liczą się jako upadli, więc wipe działa jak dotąd); kolizja z chwytem Pijawki (gracz nie może być jednocześnie chwycony i zabrany); balans elit w Strefie I (która nie była pod nie projektowana — okna Dyrektora zaczynają się późno); koszt czasu F4e zależy od dostarczenia obrazów.
+**F4a — zrobione w 1.7.253:** `elite` w `enemy_defs.gd` (`is_elite`, `elite_kinds`, pasek HP elity od początku), `Director.MAX_ELITES` + klucze kontekstu `downs` / `elites` / `elite_kinds` + okno `downs` w wpisach tabel, `Player.stun_t` (`deliver_stun`, `apply_stun`, `is_stunned`, `STUN_IMMUNITY` 3 s, replikowane, HUD „STUNNED"). Testy: `_test_elite_foundation`.

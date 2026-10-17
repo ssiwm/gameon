@@ -13,6 +13,7 @@ extends Node
 ## Częstość skaluje Difficulty „dread" (łatwo ×0,6, trudno ×1,5). Wszystko serwerowe; klienci tylko czytają `tension`.
 
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
+const EnemyDefs := preload("res://scripts/enemy_defs.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 
 const PEAK_STRESS := 0.75
@@ -207,6 +208,7 @@ const GROUPS_BY_MAP := {
 		[10.0, ["wolek", "trzosek", "trzosek"], {"time": [540.0, INF], "tension": [0.15, INF]}],
 	],
 }                                            ## id mapy → tabela jak GROUPS (brak wpisu = GROUPS)
+const MAX_ELITES := 1                        ## najwyżej tyle żywych elit naraz (F4): zestawy z elitą odpadają z losowania, gdy limit zajęty
 const MAX_GROUPS := 2                        ## tyle grup wędrowców naraz (nowa dopiero, gdy któraś zginie albo zniknie)
 const HOT_SPOT_R := 600.0                    ## „gorące miejsce" (niedawna strzelanina) w tym promieniu od gracza wyznacza cel wędrowców
 const HOT_SPOT_AGE := 90.0                   ## s: starsze strzelaniny się nie liczą
@@ -219,9 +221,21 @@ const PINCER_MIN_DX := 40.0                  ## px: średnia pozycja bliżej gra
 static func groups_for(map_id: String) -> Array:
 	return GROUPS_BY_MAP.get(map_id, GROUPS)
 
-## Kontekst losowania składu grupy (F3.10): czas od startu w fazie celu × `dread`, napięcie Dyrektora i spokój od ostatniego starcia.
+## Kontekst losowania składu grupy (F3.10, F4): czas od startu w fazie celu × `dread`, napięcie Dyrektora, spokój od ostatniego starcia, liczba upadków w misji
+## (`downs`: Żerca dopiero po pierwszym) oraz żywe elity (`elites`, limit MAX_ELITES) i rodzaje elit z danych (`elite_kinds`).
 func build_ctx() -> Dictionary:
-	return {"time": _run_t * Difficulty.m("dread"), "tension": tension, "quiet": _since_enc}
+	var main := get_tree().current_scene
+	var mission = main.get("mission") if main != null else null
+	return {"time": _run_t * Difficulty.m("dread"), "tension": tension, "quiet": _since_enc, "downs": int(mission.downs) if mission != null else 0,
+		"elites": count_elites(), "elite_kinds": EnemyDefs.elite_kinds()}
+
+## Ilu żywych wrogów jest elitami (pole `elite` w danych rodzaju).
+func count_elites() -> int:
+	var n := 0
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if is_instance_valid(e) and e.get("alive") == true and EnemyDefs.is_elite(str(e.get("kind"))):
+			n += 1
+	return n
 
 ## Czynnik okna `[od, do]` dla wartości `x`: 0 przed początkiem, rośnie liniowo do 1 w `fade` jednostek od początku, a po końcu spada tak samo do 0 (`do` = INF → bez końca).
 ## Początek ≤ 0 oznacza „od zawsze".
@@ -235,13 +249,24 @@ static func window_factor(x: float, win: Array, fade: float) -> float:
 ## Waga zestawu przy danym kontekście: waga × czynnik okna czasu × czynnik okna napięcia. Wpis bez okien (albo kontekst bez danego klucza) = sama waga.
 static func entry_weight(entry: Array, ctx: Dictionary) -> float:
 	var w := float(entry[0])
-	if entry.size() < 3 or ctx.is_empty():
+	if ctx.is_empty():
+		return w
+	# elity (F4): gdy ich limit zajęty, zestawy z elitą odpadają (`elites` = żywe elity, `elite_kinds` = rodzaje elit z danych)
+	if int(ctx.get("elites", 0)) >= MAX_ELITES:
+		for k in entry[1]:
+			if (ctx.get("elite_kinds", []) as Array).has(k):
+				return 0.0
+	if entry.size() < 3:
 		return w
 	var win := entry[2] as Dictionary
 	if win.has("time") and ctx.has("time"):
 		w *= window_factor(float(ctx["time"]), win["time"], float(win.get("fade", T_FADE)))
 	if win.has("tension") and ctx.has("tension"):
 		w *= window_factor(float(ctx["tension"]), win["tension"], float(win.get("tension_fade", TENSION_FADE)))
+	if win.has("downs") and ctx.has("downs"):
+		var r := win["downs"] as Array                           # okno liczby upadłych w tej misji (całkowite, włącznie na obu końcach); Żerca dopiero po pierwszym upadku
+		if float(ctx["downs"]) < float(r[0]) or float(ctx["downs"]) > float(r[1]):
+			return 0.0
 	return w
 
 ## Szanse zestawów (procenty w kolejności wpisów) — do logu i testów.
