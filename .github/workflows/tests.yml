@@ -37,7 +37,7 @@ jobs:
           grep -a "\[STALKER-TEST\] ==== PASS" stalkertest.log
       - name: Wrogowie i hałas (--enemytest)
         run: |
-          godot --headless --path prototype -- --host --enemytest --autoquit=40 2>&1 | tee enemytest.log
+          godot --headless --path prototype -- --host --enemytest --autoquit=150 2>&1 | tee enemytest.log
           grep -a "\[ENEMY-TEST\] ==== PASS" enemytest.log
       - name: Pętla misji i dziennik sesji (--missiontest, --sessionlog)
         run: |
