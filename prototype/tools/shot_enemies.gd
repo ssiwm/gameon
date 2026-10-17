@@ -9,10 +9,13 @@ var _queue: Array = []
 var _cur := -1
 var _wait_until := 0
 var _targets := {}
+var _reveal := false                       ## --reveal: ukryty Żerca (`_sp` = 2) zrzutowany jako ujawniony
 func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--dir="):
 			_dir = a.substr(6)
+		if a == "--reveal":
+			_reveal = true
 	DirAccess.make_dir_recursive_absolute(_dir)
 	_main = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	root.add_child(_main)
@@ -37,6 +40,8 @@ func _process(_d: float) -> bool:
 				k = "nest"
 			if k != "" and not _targets.has(k):
 				_targets[k] = e
+				if _reveal and k == "zerca":
+					e._sp = 0
 		print("targets: ", _targets.keys())
 		_queue = _targets.keys()
 		_cur = -1
