@@ -9,6 +9,7 @@ extends Node
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const Enemy := preload("res://scripts/enemy.gd")
 const Bruiser := preload("res://scripts/enemy_bruiser.gd")
+const Codex := preload("res://scripts/codex.gd")
 const Blind := preload("res://scripts/enemy_blind.gd")
 const FAR_X := 30000.0                ## px: obszar testów fizycznych poza mapą
 
@@ -1146,6 +1147,17 @@ func _test_defs() -> void:
 	check("dane rodzajów: drop, XP, złom i głos bez zmian względem starych tabel", diffs.is_empty(), ", ".join(diffs))
 	check("dane rodzajów: elity mają własny krzyk (Kapłan, Żerca), ryk szarży (Rzeźnik) i ostrzeżenie Żercy",
 		Defs.voice("kaplan", "scream")[0] == "kaplan_scream" and Defs.voice("zerca", "scream")[0] == "zerca_grab" and Defs.voice("zerca", "warn")[0] == "zerca_warn" and Defs.voice("rzeznik", "attack")[0] == "rzeznik_roar")
+	var codex_missing := []
+	for k in Defs.elite_kinds():
+		var found := false
+		for row in Codex.ENEMIES:
+			if row[0] == k:
+				found = true
+				if row.size() < 8 or not ResourceLoader.exists(String(row[7])):
+					codex_missing.append("%s: brak portretu" % k)
+		if not found:
+			codex_missing.append("%s: brak wpisu w kodeksie" % k)
+	check("kodeks: każda elita ma wpis i portret z wycinka konceptu", codex_missing.is_empty(), ", ".join(codex_missing))
 	check("dane rodzajów: nieznany rodzaj nic nie daje", Defs.xp("nie_ma") == 0 and Defs.value("nie_ma", "ammo") == 0.0 and Defs.voice("nie_ma", "death").is_empty())
 	check("dane rodzajów: Enemy.KINDS to ta sama tabela (kodeks, HUD, testy)", Enemy.KINDS == Defs.DEFS)
 	check("dane rodzajów: Podsłuchacz krzyczy tylko przy śmierci, Ćma milczy", Defs.voice("podsluchacz", "attack").is_empty() and not Defs.voice("podsluchacz", "death").is_empty() and Defs.voice("cma", "death").is_empty())

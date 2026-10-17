@@ -17,7 +17,7 @@ const PX_PER_M := 16.0               ## lights.gd: 1 m projektowy = 16 px (w św
 
 # ---------------------------------------------------------------- bestiariusz
 
-## [klucz w Enemy.KINDS, arkusz, animacja, nazwa, etykieta, opis, wskazówka]
+## [klucz w Enemy.KINDS, arkusz, animacja, nazwa, etykieta, opis, wskazówka]; elity (bez arkusza 2D) mają ósmy element — ścieżkę portretu z konceptu modelu 3D.
 const ENEMIES := [
 	["trzosek", "trzosek", "idle", "CUTPURSE", "Pack hunter",
 		"Fast and cowardly alone, vicious in a pack of three to six. Sleeps until a shot or a close step wakes it. The oldest of the pack leads — when it dies, the rest panic. Flares make them curious.",
@@ -40,6 +40,18 @@ const ENEMIES := [
 	["cma", "cma", "idle", "MOTH", "Light moth",
 		"Hangs under the ceiling until light wakes it, then flies at the source. Burns up on a flare, bites at a flashlight.",
 		"Throw a flare far away and switch the flashlight off. Fragile — a few hits kill it."],
+	["kaplan", "", "idle", "THE PRIEST", "Elite — support",
+		"Never strikes. Keeps behind the pack, heals wounded Cutpurses in sight and wails when you get close: everyone caught in the wave is stunned — no shooting, jumping or melee — and every enemy nearby hears it.",
+		"Back out of the ring while the wind-up shows, or kill him before the wail ends. Without him the pack loses its nerve. Armored — heavy hits and the head work best.",
+		"res://art/portraits/kaplan.png"],
+	["rzeznik", "", "idle", "THE BUTCHER", "Elite — bruiser",
+		"A Bullock turned up to eleven. Charges harder and further, smashes through bricked-up passages and does not stagger from hits or stuns. Hurls nothing — all he needs is his cleaver.",
+		"Leave the charge line and let him run past, then shoot his back. A wall stuns him for a long moment. Armor −4 per bullet: bring heavy weapons.",
+		"res://art/portraits/rzeznik.png"],
+	["zerca", "", "idle", "THE DEVOURER", "Elite — abductor",
+		"Invisible and untouchable until he strikes. Smells a downed player from afar, sneaks up and grabs them, then drags the victim to his lair. If the victim is not freed in time, they are devoured: back to the mission start with starting gear. Shots do not slow him.",
+		"Never leave a downed teammate alone — pick them up fast. A faint breath nearby means he is already coming. Kill him while he drags and the victim is released.",
+		"res://art/portraits/zerca.png"],
 ]
 
 static func bestiary() -> Array:
@@ -60,7 +72,8 @@ static func bestiary() -> Array:
 		if float(d.get("head", 0.0)) > 0.0:
 			stats.append(["Weak spot", "head"])
 		var col: Color = (d["color"] as Color).lerp(Color(1.0, 0.85, 0.7), 0.35)
-		out.append({"title": e[3], "tag": e[4], "accent": col, "portrait": {"type": "sprite", "sheet": e[1], "anim": e[2]},
+		var portrait := {"type": "image", "path": e[7]} if e.size() > 7 else {"type": "sprite", "sheet": e[1], "anim": e[2]}
+		out.append({"title": e[3], "tag": e[4], "accent": col, "portrait": portrait,
 			"stats": stats, "text": e[5], "tip": e[6]})
 	out.append({"title": "STALKER", "tag": "Cannot be killed", "accent": Color(0.55, 0.75, 1.0),
 		"portrait": {"type": "sprite", "sheet": "stalker", "anim": "idle"},
