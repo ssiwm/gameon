@@ -4,7 +4,7 @@ Uruchomienie (z korzenia repo, Blender w PATH): python prototype/tools/prep_enem
 albo bezpośrednio: blender -b --factory-startup -P prototype/tools/prep_enemy3d.py -- SRC.glb DST.glb [--faces=6000] [--tex=1024] [--anim]
 Co robi: usuwa śmieciowe siatki (bez wag kości), upraszcza siatkę (Decimate, wagi zostają), zmniejsza tekstury do --tex px i eksportuje GLB.
 Skala zostaje natywna (pozy w `enemy3d.gd` używają stałych z tego samego modelu, co wypiek 2D w `concept/monster_tripo_bake.py`); wysokość
-dopasowuje gra w czasie działania. --anim: zachowuje animację z pliku (Trzosek — „preset:quadruped:walk").
+dopasowuje gra w czasie działania. --uvkeep: decymacja respektuje granice wysp UV (modele z TRELLIS-a; wymaga większej liczby trójkątów). --anim: zachowuje animację z pliku (Trzosek — „preset:quadruped:walk").
 """
 import glob
 import math
@@ -21,12 +21,14 @@ OUT = os.path.join(ROOT, "prototype", "art", "enemy3d")
 # rodzaj: (plik źródłowy, animacja z pliku, obrót wokół pionu dla modeli statycznych bez rigu lub None, liczba trójkątów, tekstura px)
 # Modele statyczne (Ćma, gniazdo, Żyła, Pijawka) są animowane deformacją wierzchołków w shaderze (`enemy3d.gd`), więc dostają układ jak w wypieku
 # `concept/static_tripo_bake.py`: obrót ROT_Z, postawienie na podłodze (z = 0) i wyśrodkowanie w x, y.
+UVKEEP = {"kaplan", "rzeznik", "zerca"}             ## rodzaje z atlasem z TRELLIS-a: decymacja z `--uvkeep`
+
 KINDS = {
     "wolek": ("wolek_01_rig.glb", False, None, 6000, 1024),
     # elity F4 (TRELLIS 2 → rig_trellis.py): szkieletowane statyczne siatki z art_src/enemies_f4
-    "kaplan": ("../../enemies_f4/kaplan_rig.glb", False, None, 6000, 1024),
-    "rzeznik": ("../../enemies_f4/rzeznik_rig.glb", False, None, 7000, 1024),
-    "zerca": ("../../enemies_f4/zerca_rig.glb", False, None, 6000, 1024),
+    "kaplan": ("../../enemies_f4/kaplan_rig.glb", False, None, 20000, 2048),
+    "rzeznik": ("../../enemies_f4/rzeznik_rig.glb", False, None, 30000, 2048),
+    "zerca": ("../../enemies_f4/zerca_rig.glb", False, None, 20000, 2048),
     "slepiec": ("slepiec_01_rig.glb", False, None, 6000, 1024),
     "podsluchacz": ("podsluchacz_01_rig.glb", False, None, 6000, 1024),
     "stalker": ("stalker_01_rig.glb", False, None, 6000, 1024),
@@ -47,6 +49,7 @@ def run_in_blender():
     faces = int(next((a.split("=")[1] for a in argv if a.startswith("--faces=")), 6000))
     tex = int(next((a.split("=")[1] for a in argv if a.startswith("--tex=")), 1024))
     anim = "--anim" in argv
+    uvkeep = "--uvkeep" in argv
     rot = next((float(a.split("=")[1]) for a in argv if a.startswith("--rot=")), None)      # model statyczny: obrót wokół pionu (°)
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -66,6 +69,8 @@ def run_in_blender():
 
     mod = body.modifiers.new("dec", "DECIMATE")
     mod.ratio = min(1.0, faces / max(len(body.data.polygons), 1))
+    if uvkeep:
+        mod.delimit = {"UV"}                                         # nie scalaj krawędzi na granicach wysp UV — atlas z TRELLIS-a to tysiące drobnych wysp i bez tego kolor wychodzi jak mozaika
     while body.modifiers[0] != mod:
         bpy.ops.object.modifier_move_up(modifier=mod.name)
     bpy.ops.object.modifier_apply(modifier=mod.name)
@@ -114,6 +119,8 @@ def main():
                "--faces=%d" % faces, "--tex=%d" % tex]
         if anim:
             cmd.append("--anim")
+        if k in UVKEEP:
+            cmd.append("--uvkeep")
         if rot is not None:
             cmd.append("--rot=%s" % rot)
         print(">>", k)
