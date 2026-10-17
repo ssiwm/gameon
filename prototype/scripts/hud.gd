@@ -35,6 +35,7 @@ const WorkshopUi := preload("res://scripts/workshop_ui.gd")
 const Actions := preload("res://scripts/actions.gd")
 const Captions := preload("res://scripts/captions.gd")
 const W := preload("res://scripts/ui_widgets.gd")
+const HudIcon := preload("res://scripts/hud_icon.gd")
 
 ## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.8
@@ -412,13 +413,22 @@ var _squad_rows := {}            ## instance_id gracza -> słownik wiersza
 var _gear_card: PanelContainer
 var _equip_card: PanelContainer      ## zasoby (Q / F / ALT / L) — osobna karta w prawym dolnym rogu
 var _reload_bar: Bar
-var _charges: Pips
-var _flares: Pips
 var _gren_name: Label
 var _slots: Array[PanelContainer] = []
 var _slot_labels: Array[Label] = []
-var _slot_icons: Array[GunIcon] = []
-var _gun_main: GunIcon
+var _slot_icons: Array[HudIcon] = []
+var _slot_row: Control               ## rząd miniatur broni (1–4, V): widoczny chwilę po zmianie broni
+var _slot_t := 0.0
+var _slot_sig := -1
+var _gun_main: HudIcon
+var _q_icon: HudIcon
+var _q_count: Label
+var _f_icon: HudIcon
+var _f_count: Label
+var _a_icon: HudIcon
+var _l_icon: HudIcon
+var _scrim_t: TextureRect
+var _scrim_b: TextureRect
 var _battery: Bar
 var _battery_note: Label
 var _ammo_name: Label
@@ -468,8 +478,6 @@ var _radio_key := ""
 var _brief_id := ""
 var _demo_footer: Control = null     ## stopka dema na ekranie wyniku — tylko na końcu kampanii / serii
 
-var _slot_on: StyleBoxFlat
-var _slot_off: StyleBoxFlat
 
 func _ready() -> void:
 	theme = UiTheme.get_theme()
@@ -477,6 +485,7 @@ func _ready() -> void:
 	# pełny ekran w jednostkach logicznych: viewport / UI_SCALE, skala 0.7 od lewego górnego rogu
 	set_anchors_preset(Control.PRESET_TOP_LEFT)
 	scale = Vector2(_scale_now(), _scale_now())
+	_build_scrims()
 	_build_noise_card()
 	_build_squad_card()
 	_build_gear_card()
@@ -518,6 +527,10 @@ func _fit() -> void:
 	size = get_viewport_rect().size / _scale_now()
 	var w := size.x
 	var h := size.y
+	_scrim_t.position = Vector2.ZERO
+	_scrim_t.size = Vector2(w, h * 0.22)
+	_scrim_b.size = Vector2(w, h * 0.26)
+	_scrim_b.position = Vector2(0.0, h - _scrim_b.size.y)
 	_run_card.reset_size()
 	_run_card.position = Vector2(w - MARGIN - _run_card.size.x, MARGIN)
 	_msgs.scale = Vector2.ONE * MSG_SCALE
@@ -537,12 +550,37 @@ func _place(c: Control, pos: Vector2, sz: Vector2) -> void:
 	c.position = pos
 	c.size = sz
 
-func _card(pos: Vector2) -> PanelContainer:
+func _card(pos: Vector2, flat := true) -> PanelContainer:
 	var c := PanelContainer.new()
 	c.position = pos
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if flat:
+		c.add_theme_stylebox_override("panel", StyleBoxEmpty.new())     # HUD bez ramek: czytelność robią gradienty u góry i u dołu (_build_scrims)
 	add_child(c)
 	return c
+
+## Dwa miękkie gradienty (góra i dół ekranu) pod tekstem i ikonami zamiast ramek kart; rysowane pod wszystkim innym.
+func _build_scrims() -> void:
+	for top in [true, false]:
+		var g := Gradient.new()
+		g.set_color(0, Color(0, 0, 0, 0.55 if top else 0.6))
+		g.set_color(1, Color(0, 0, 0, 0))
+		var gt := GradientTexture2D.new()
+		gt.gradient = g
+		gt.fill_from = Vector2(0, 0 if top else 1)
+		gt.fill_to = Vector2(0, 1 if top else 0)
+		gt.width = 4
+		gt.height = 64
+		var tr_ := TextureRect.new()
+		tr_.texture = gt
+		tr_.stretch_mode = TextureRect.STRETCH_SCALE
+		tr_.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(tr_)
+		move_child(tr_, 0)
+		if top:
+			_scrim_t = tr_
+		else:
+			_scrim_b = tr_
 
 ## Nagłówek karty w stylu makiety: mały mono, rozstrzelony (em = ułamek rozmiaru).
 func _cap(text: String, color: Color, spacing := 0.2, size := 7) -> Label:
@@ -624,153 +662,152 @@ func _build_squad_card() -> void:
 	_squad_box.add_theme_constant_override("separation", 5)
 	outer.add_child(_squad_box)
 
-## Dół, środek: płaski pasek broni i zasobów w jednym rzędzie (nie zasłania bossa po prawej stronie sceny):
-## [nazwa + koszt strzału] [magazynek / zapas] [stan + przeładowanie + ciepło lufy] [sloty] [wabik, flary, latarka].
+## Dół, środek: broń jako model 3D bez ramki — [miniatury slotów 1–4 (chwilę po zmianie)] / [model + magazynek i zapas] /
+## [nazwa, tryb i koszt strzału] / [stan] / [cienkie linie przeładowania i ciepła lufy]. Sprzęt (Q, F, ALT, L) — prawy dolny róg.
 func _build_gear_card() -> void:
 	_gear_card = _card(Vector2(MARGIN, MARGIN))
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 2)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	_gear_card.add_child(col)
+
+	# 0) rząd miniatur: same klawisze pod modelami, aktywny w kolorze lampy; wygasa po chwili (_drive_weapons)
+	var wr := HBoxContainer.new()
+	wr.add_theme_constant_override("separation", 13)
+	wr.alignment = BoxContainer.ALIGNMENT_CENTER
+	wr.modulate.a = 0.0
+	_slot_row = wr
+	for i in 4:
+		var sl := PanelContainer.new()
+		sl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		sl.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+		var v := VBoxContainer.new()
+		v.add_theme_constant_override("separation", 1)
+		var ic := HudIcon.new()
+		ic.custom_minimum_size = Vector2(46, 13)
+		v.add_child(ic)
+		var l := UiTheme.mono(UiTheme.label("", 6, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		v.add_child(l)
+		sl.add_child(v)
+		_slot_icons.append(ic)
+		wr.add_child(sl)
+		_slots.append(sl)
+		_slot_labels.append(l)
+	col.add_child(wr)
+
+	# 1) model aktualnej broni i magazynek / zapas drużyny
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 7)
-	row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_gear_card.add_child(row)
-
-	_slot_on = UiTheme.panel_box()
-	_slot_on.bg_color = Color(0.25, 0.18, 0.06, 0.9)
-	_slot_on.border_color = UiTheme.ACCENT
-	_slot_on.set_content_margin_all(2)
-	_slot_on.shadow_size = 0                  # cień karty na małych slotach tylko brudzi
-	_slot_off = UiTheme.panel_box()
-	_slot_off.bg_color = Color(1, 1, 1, 0.04)
-	_slot_off.set_content_margin_all(2)
-	_slot_off.shadow_size = 0
-
-	# 0) miniatura aktualnej broni na ciemnej płytce z paskiem w kolorze smugi pocisku
-	_gun_main = GunIcon.new()
-	_gun_main.plate = true
-	_gun_main.k = 0.75
-	_gun_main.custom_minimum_size = Vector2(50, 26)
+	row.add_theme_constant_override("separation", 10)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_child(row)
+	_gun_main = HudIcon.new()
+	_gun_main.custom_minimum_size = Vector2(166, 50)
 	_gun_main.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(_gun_main)
-
-	# 1) nazwa broni nad kosztem następnego strzału (ile Uwagi — GDD §8.1)
-	var name_col := VBoxContainer.new()
-	name_col.add_theme_constant_override("separation", 0)
-	name_col.custom_minimum_size = Vector2(72, 0)
-	name_col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_ammo_name = UiTheme.heading("", 14, UiTheme.TEXT)
-	name_col.add_child(_ammo_name)
-	_heat_note = _cap("", UiTheme.MUTED, 0.08)
-	name_col.add_child(_heat_note)
-	row.add_child(name_col)
-
-	# 2) magazynek (duży) i zapas drużyny
 	var nums := HBoxContainer.new()
 	nums.add_theme_constant_override("separation", 3)
-	_ammo_mag = UiTheme.heading("", 34, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
-	_ammo_mag.custom_minimum_size = Vector2(50, 0)
+	nums.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_ammo_mag = UiTheme.heading("", 36, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	_ammo_mag.custom_minimum_size = Vector2(52, 0)
 	nums.add_child(_ammo_mag)
 	_ammo_res = UiTheme.label("", 9, UiTheme.MUTED)
 	_ammo_res.size_flags_vertical = Control.SIZE_SHRINK_END
 	nums.add_child(_ammo_res)
 	row.add_child(nums)
 
-	# 3) stan (RELOADING / NO AMMO) nad paskami: przeładowanie i ciepło lufy
-	var bars := VBoxContainer.new()
-	bars.add_theme_constant_override("separation", 2)
-	bars.custom_minimum_size = Vector2(78, 0)
-	bars.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_ammo_note = UiTheme.label("", 7, UiTheme.MUTED)
-	bars.add_child(_ammo_note)
+	# 2) nazwa broni, tryb i koszt następnego strzału (ile Uwagi — GDD §8.1)
+	var nm := HBoxContainer.new()
+	nm.add_theme_constant_override("separation", 7)
+	nm.alignment = BoxContainer.ALIGNMENT_CENTER
+	_ammo_name = UiTheme.heading("", 12, UiTheme.TEXT)
+	nm.add_child(_ammo_name)
+	_heat_note = _cap("", UiTheme.MUTED, 0.14)
+	_heat_note.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	nm.add_child(_heat_note)
+	col.add_child(nm)
+
+	# 3) stan (RELOADING / NO AMMO) i dwie cienkie linie: przeładowanie i ciepło lufy
+	_ammo_note = UiTheme.label("", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	col.add_child(_ammo_note)
 	_reload_bar = Bar.new()
-	_reload_bar.custom_minimum_size = Vector2(0, 3)
+	_reload_bar.custom_minimum_size = Vector2(150, 1.6)
 	_reload_bar.fill = UiTheme.ACCENT
-	bars.add_child(_reload_bar)
+	_reload_bar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	col.add_child(_reload_bar)
 	_heat_bar = Bar.new()
-	_heat_bar.custom_minimum_size = Vector2(0, 3)
-	bars.add_child(_heat_bar)
-	row.add_child(bars)
+	_heat_bar.custom_minimum_size = Vector2(150, 1.0)
+	_heat_bar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	col.add_child(_heat_bar)
 
-	# 4) sloty: same klawisze, aktywny podświetlony
-	var wr := HBoxContainer.new()
-	wr.add_theme_constant_override("separation", 3)
-	wr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	for i in 4:
-		var sl := PanelContainer.new()
-		var ic := GunIcon.new()
-		ic.k = 0.375
-		ic.custom_minimum_size = Vector2(30, 12)
-		var l := UiTheme.label("", 6, UiTheme.TEXT)
-		l.position = Vector2(0, -2)
-		l.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR   # miniatura rysuje NEAREST; tekst ma zostać gładki
-		ic.add_child(l)                     # numer klawisza w rogu miniatury
-		sl.add_child(ic)
-		_slot_icons.append(ic)
-		wr.add_child(sl)
-		_slots.append(sl)
-		_slot_labels.append(l)
-	row.add_child(wr)
-
-	# 5) zasoby w osobnej karcie po prawej (makieta: siatka 2×2 — wabik Q, flary F, przedmiot ALT, latarka L)
+	# 4) sprzęt w prawym dolnym rogu: cztery modele 3D bez ramek, liczba przy rogu, klawisz pod spodem
 	_equip_card = _card(Vector2(MARGIN, MARGIN))
-	_equip_card.custom_minimum_size = Vector2(0, ROW_H)
-	var eq := UiTheme.panel_box()
-	eq.bg_color = Color(6.0 / 255.0, 7.0 / 255.0, 6.0 / 255.0, 0.7)
-	eq.border_color = Color("23221d")
-	_equip_card.add_theme_stylebox_override("panel", eq)
-	var res := GridContainer.new()
-	res.columns = 2
-	res.add_theme_constant_override("h_separation", 9)
-	res.add_theme_constant_override("v_separation", 5)
-	res.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var res := HBoxContainer.new()
+	res.add_theme_constant_override("separation", 12)
+	res.alignment = BoxContainer.ALIGNMENT_END
 	_equip_card.add_child(res)
-	var q := HBoxContainer.new()
-	q.add_theme_constant_override("separation", 5)
-	q.add_child(_key("Q"))
-	_charges = Pips.new()
-	_charges.shape = "diamond"
-	_charges.count = NoiseMgr.OVERCHARGE_MAX
-	_charges.on = UiTheme.ACCENT
-	_charges.u = 0.8
-	_charges.custom_minimum_size = Vector2(NoiseMgr.OVERCHARGE_MAX * 11.0 * 0.8 - 2.0, 7.2)
-	_charges.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	q.add_child(_charges)
-	res.add_child(q)
-	var f := HBoxContainer.new()
-	f.add_theme_constant_override("separation", 5)
-	f.add_child(_key("F"))
-	_flares = Pips.new()
-	_flares.shape = "diamond"
-	_flares.count = NoiseMgr.FLARE_MAX
-	_flares.on = UiTheme.ACCENT
-	_flares.u = 0.8
-	_flares.custom_minimum_size = Vector2(NoiseMgr.FLARE_MAX * 11.0 * 0.8 - 2.0, 7.2)
-	_flares.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	f.add_child(_flares)
-	res.add_child(f)
-	var tg := HBoxContainer.new()                  # przedmiot (lewy Alt użyj, X zmiana rodzaju): "FRAG ×2"
-	tg.add_theme_constant_override("separation", 5)
-	tg.add_child(_key("ALT" if OS.get_name() != "macOS" else "CMD"))
-	_gren_name = UiTheme.mono(UiTheme.label("FRAG ×0", 7, UiTheme.TEXT))
-	_gren_name.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	tg.add_child(_gren_name)
-	res.add_child(tg)
-	var lr := HBoxContainer.new()
-	lr.add_theme_constant_override("separation", 5)
-	lr.add_child(_key("L"))
+	var q := _tile("Q", "lure", true)
+	_q_icon = q["icon"]
+	_q_count = q["count"]
+	res.add_child(q["root"])
+	var f := _tile("F", "flare", true)
+	_f_icon = f["icon"]
+	_f_count = f["count"]
+	res.add_child(f["root"])
+	var a := _tile("ALT" if OS.get_name() != "macOS" else "CMD", "frag", true)      # przedmiot (lewy Alt użyj, X zmiana rodzaju)
+	_a_icon = a["icon"]
+	_gren_name = a["count"]
+	res.add_child(a["root"])
+	var lt := _tile("L", "flashlight", false)
+	_l_icon = lt["icon"]
 	_battery = Bar.new()
-	_battery.custom_minimum_size = Vector2(39, 2.5)
+	_battery.custom_minimum_size = Vector2(26, 1.6)
 	_battery.back = Color("1f1e19")
-	_battery.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	lr.add_child(_battery)
-	res.add_child(lr)
-	_battery_note = UiTheme.mono(UiTheme.label("100%", 7, UiTheme.MUTED))      # procent baterii obok paska (pasek 39 px sam nie pokazuje zużycia: 180 s pracy)
-	_battery_note.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	lr.add_child(_battery_note)
+	_battery.position = Vector2(5, 38)
+	(lt["box"] as Control).add_child(_battery)
+	_battery_note = UiTheme.mono(UiTheme.label("100%", 6, UiTheme.MUTED))                  # procent baterii obok klawisza
+	(lt["keyrow"] as Control).add_child(_battery_note)
+	res.add_child(lt["root"])
 
-## Kapsel klawisza w kartach HUD-u (jak w makiecie): ciemne tło, ramka z grubszym dołem.
+## Kafelek sprzętu: model 3D (36×40) z liczbą w prawym górnym rogu i klawiszem pod spodem (podkreślona litera).
+func _tile(key_text: String, icon_key: String, counted: bool) -> Dictionary:
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 3)
+	root.alignment = BoxContainer.ALIGNMENT_CENTER
+	var box := Control.new()
+	box.custom_minimum_size = Vector2(38, 42)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var icon := HudIcon.new()
+	icon.set_key(icon_key)
+	icon.position = Vector2(2, 1)
+	icon.size = Vector2(32, 38)
+	box.add_child(icon)
+	var count: Label = null
+	if counted:
+		count = UiTheme.mono(UiTheme.label("0", 8, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
+		count.position = Vector2(20, -1)
+		count.size = Vector2(18, 11)
+		box.add_child(count)
+	root.add_child(box)
+	var kr := HBoxContainer.new()
+	kr.add_theme_constant_override("separation", 4)
+	kr.alignment = BoxContainer.ALIGNMENT_CENTER
+	kr.add_child(_key(key_text))
+	root.add_child(kr)
+	return {"root": root, "box": box, "icon": icon, "count": count, "keyrow": kr}
+
+## Klawisz w HUD-zie: sama litera z cienkim podkreśleniem (bez kapsla — HUD jest bez ramek).
 func _key(s: String) -> Control:
-	var k := W.keycap(s, 7)
-	k.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	return k
+	var l := UiTheme.mono(UiTheme.label(s, 7, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0, 0, 0, 0)
+	sb.border_color = Color(UiTheme.TEXT, 0.45)
+	sb.border_width_bottom = 1
+	sb.content_margin_left = 3
+	sb.content_margin_right = 3
+	sb.content_margin_bottom = 1
+	l.add_theme_stylebox_override("normal", sb)
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return l
 
 # ---------------------------------------------------------------- karta drużyny
 
@@ -1330,15 +1367,20 @@ func _drive_noise() -> void:
 	if _weather_row.visible:
 		_weather_row.text = "%s  ·  %s" % [tr(Weather.name_of(wid)), tr(Weather.short_of(wid))]
 		_weather_row.add_theme_color_override("font_color", Weather.color_of(wid))
-	_charges.filled = NoiseMgr.overcharge_charges
-	_charges.queue_redraw()
-	_flares.filled = NoiseMgr.flares
-	_flares.queue_redraw()
+	var qn: int = NoiseMgr.overcharge_charges
+	_q_count.text = str(qn)
+	_q_count.add_theme_color_override("font_color", UiTheme.TEXT if qn > 0 else UiTheme.DANGER)
+	_q_icon.set_key("lure", Color.WHITE if qn > 0 else Color(1, 1, 1, 0.28))
+	var fn: int = NoiseMgr.flares
+	_f_count.text = str(fn)
+	_f_count.add_theme_color_override("font_color", UiTheme.TEXT if fn > 0 else UiTheme.DANGER)
+	_f_icon.set_key("flare", Color.WHITE if fn > 0 else Color(1, 1, 1, 0.28))
 	var gk := Arsenal.selected_throwable()
 	var gn := Arsenal.get_throwable(gk)
-	_gren_name.text = "%s ×%d" % [Throwables.KINDS[gk]["name"], gn]
-	_gren_name.tooltip_text = tr("%s switches item") % Actions.key("throw_next")
-	_gren_name.add_theme_color_override("font_color", UiTheme.TEXT if gn > 0 else UiTheme.MUTED)
+	_gren_name.text = str(gn)
+	_gren_name.tooltip_text = "%s  —  %s" % [Throwables.KINDS[gk]["name"], tr("%s switches item") % Actions.key("throw_next")]
+	_gren_name.add_theme_color_override("font_color", UiTheme.TEXT if gn > 0 else UiTheme.DANGER)
+	_a_icon.set_key(String(gk), Color.WHITE if gn > 0 else Color(1, 1, 1, 0.28))
 
 func _on_xp_gained(amount: int, _reason: String) -> void:
 	Msg.post("hud.xp", Msg.Ch.TOAST, "", {"amount": amount, "fmt": "+%d XP", "style": Msg.Style.SUCCESS, "ttl": 2.5, "prio": 20, "log": false})
@@ -1402,13 +1444,19 @@ func _drive_weapons() -> void:
 		var key := str(i + 1) if i < 3 else "V"
 		_slot_labels[i].text = key
 		var d: RefCounted = wc.def_of_slot(i) if i < 3 else Weapons.def(wc.melee_id)
-		_slot_icons[i].set_gun(int(d.gun_row), d.tracer_color, Color.WHITE if sel else Color(0.5, 0.52, 0.58, 0.9))
+		_slot_icons[i].set_key(String(GunIcon.HD_KEYS.get(int(d.gun_row), "")), Color.WHITE if sel else Color(1, 1, 1, 0.45))
 		_slots[i].tooltip_text = names[i]
-		_slots[i].add_theme_stylebox_override("panel", _slot_on if sel else _slot_off)
 		_slot_labels[i].add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.MUTED)
 	_ammo_name.text = cur.name
 	var mode_tag := "BURST" if wc.is_burst(cur) else ("AUTO" if cur.burst_size > 0 else "")
-	_gun_main.set_gun(int(cur.gun_row), cur.tracer_color, Color.WHITE)
+	_gun_main.set_key(String(GunIcon.HD_KEYS.get(int(cur.gun_row), "")))
+	# rząd miniatur pokazujemy ~2,5 s po zmianie slotu / rodzaju broni
+	var sig: int = wc.slot * 10 + (1 if wc.state == wc.State.MELEE else 0)
+	if _slot_sig >= 0 and sig != _slot_sig:
+		_slot_t = 2.5
+	_slot_sig = sig
+	_slot_t = maxf(0.0, _slot_t - get_process_delta_time())
+	_slot_row.modulate.a = clampf(_slot_t / 0.5, 0.0, 1.0)
 	var mag: int = wc.mag_of(cur.id)
 	var note := ""
 	var col := UiTheme.TEXT
@@ -1452,26 +1500,13 @@ func _drive_weapons() -> void:
 		noise_txt = "%.1f" % cur.noise(0.0)
 	_heat_note.text = mode_tag + (" · " if mode_tag != "" and noise_txt != "" else "") + noise_txt
 	_gear_card.reset_size()
-	# pasek broni: środek ekranu, ale nie na karcie drużyny; gdy się nie mieści (duży HUD) — nad kartą drużyny
+	# broń: środek dołu (nad gradientem); sprzęt: prawy dolny róg w jednej linii podstawy z bronią
 	var gw := _gear_card.size.x
 	var gh := _gear_card.size.y
-	var gx := maxf((size.x - gw) * 0.5, _squad_card.position.x + _squad_card.size.x + MARGIN)
-	var gy := size.y - BOTTOM_PAD - gh
-	if gx + gw > size.x - MARGIN:
-		gx = maxf((size.x - gw) * 0.5, MARGIN)
-		gy = _squad_card.position.y - gh - 4.0
-	_gear_card.position = Vector2(gx, gy)
-	# zasoby: prawy dolny róg w jednym rzędzie z paskiem broni; gdy rząd się nie mieści (duży HUD, wąski ekran) — nad paskiem,
-	# z naturalną wysokością (bez wspólnej wysokości rzędu, żeby nie była pusta)
-	var ew := _equip_card.get_combined_minimum_size().x
-	var in_row := gx + gw + MARGIN <= size.x - MARGIN - ew
-	_equip_card.custom_minimum_size.y = ROW_H if in_row else 0.0
+	_gear_card.position = Vector2((size.x - gw) * 0.5, size.y - BOTTOM_PAD - gh)
 	_equip_card.reset_size()
-	var ex := size.x - MARGIN - _equip_card.size.x
-	var ey := size.y - BOTTOM_PAD - _equip_card.size.y
-	if not in_row:
-		ey = gy - _equip_card.size.y - 4.0
-	_equip_card.position = Vector2(ex, ey)
+	_equip_card.position = Vector2(size.x - 2.0 * MARGIN - _equip_card.size.x, size.y - BOTTOM_PAD - _equip_card.size.y)
+	_equip_card.modulate.a = lerpf(1.0, 0.55, (1.0 - _tier_k) * 2.0)
 
 ## Ostrzeżenie przed karą (GDD §8.1): niepokój ZANIM ON się obudzi.
 func _drive_warning() -> void:
