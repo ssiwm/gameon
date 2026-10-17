@@ -2135,8 +2135,8 @@ func _gen_test() -> void:
 			lamps += 1
 	var in_cab := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "weapon" and n.has_meta("cabinet")).size()
 	var brief: Dictionary = level.briefing(after_hub)
-	check.call("kryjówka: 2 gabloty z 8 broniami, 9 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
-		cabinets == 2 and in_cab == 8 and lamps == 9 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
+	check.call("kryjówka: 2 gabloty z 8 broniami, 12 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
+		cabinets == 2 and in_cab == 8 and lamps == 12 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
 	# radiostacja (R, weather.gd): jedna w kryjówce, w kryjówce pogody misji nie ma, prognoza jest znanym rodzajem; mnożniki pogody łączą się z NightShift
 	check.call("niebo (deszcz): w kryjówce zamknięte (sufit), ustawienie efektów pogody domyślnie REDUCED (%s)" % Settings.WEATHER_FX_NAMES[Settings.weather_fx_idx],
 		not level.sky_open_at(p.global_position) and Settings.WEATHER_FX_NAMES.size() == 3)
