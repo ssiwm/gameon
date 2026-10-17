@@ -12,6 +12,7 @@ extends RefCounted
 ##   sweep   amplituda [px] przeszukiwania okolicy śladu po dojściu na miejsce hałasu (Ślepiec); search — czas szukania [s], domyślnie SEARCH_TIME
 ##   behavior  zachowanie rodzaju (enemy_behavior.gd i podklasy: listener, bruiser, moth, mimic, ambusher, pack, blind); brak = zwykły wróg bez własnych haków.
 ##             Nowy rodzaj z własną mechaniką = nowa podklasa + wpis w `enemy_behavior.gd: BEHAVIORS` i tu, bez `if kind ==` w enemy.gd
+##   elite     true = elita (GDD §7.2): pasek HP nad głową od początku spotkania, Dyrektor wypuszcza najwyżej jedną naraz (F4)
 ##   death_fx  efekty śmierci {shake, hitstop, gibs}; domyślnie ciężki wróg (3,0 / 0,09 / 11)
 ##   lunge   szarża na głośny dźwięk (Ślepiec): {noise, range, wind, mult, time, cd} — patrz enemy_blind.gd: maybe_lunge; brak = bez szarży
 ##   hear_error  błąd lokalizacji hałasu [px] na granicy zasięgu słyszenia (F3.2; domyślnie enemy.gd HEAR_ERROR = 64): ślepiec słyszy dokładniej, wołek gorzej
@@ -95,6 +96,18 @@ static func has(kind: String) -> bool:
 ## Szansa 0..1 (lub liczba) z pola `key` rodzaju; 0, gdy rodzaj albo pole nie istnieje.
 static func value(kind: String, key: String) -> float:
 	return float((DEFS.get(kind, {}) as Dictionary).get(key, 0.0))
+
+## Elita (pole `elite: true`, GDD §7.2): mocny rodzaj z paskiem HP od początku spotkania; Dyrektor wypuszcza najwyżej `Director.MAX_ELITES` naraz.
+static func is_elite(kind: String) -> bool:
+	return bool((DEFS.get(kind, {}) as Dictionary).get("elite", false))
+
+## Wszystkie rodzaje elit z danych.
+static func elite_kinds() -> Array:
+	var out: Array = []
+	for k in DEFS:
+		if is_elite(String(k)):
+			out.append(String(k))
+	return out
 
 ## XP za zabójstwo rodzaju (0 = brak wpisu: nie daje XP).
 static func xp(kind: String) -> int:

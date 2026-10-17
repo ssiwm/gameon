@@ -910,6 +910,9 @@ func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 			bar.value = p.bleed_left / maxf(0.1, p.bleed_time())
 			bar.fill = UiTheme.DANGER
 		bar.queue_redraw()
+	elif p.stun_t > 0.0:
+		txt = "STUNNED"
+		col = Color(0.95, 0.75, 0.3)
 	elif hp == 1:
 		txt = "CRITICAL"
 		col = UiTheme.DANGER.lerp(Color.WHITE, 0.3 * (0.5 + 0.5 * sin(_blink * 7.0)))
