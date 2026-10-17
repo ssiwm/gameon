@@ -3,17 +3,17 @@ extends Control
 ##
 ## Skala: cały HUD jest rysowany w 70% (UI_SCALE) — węzeł ma `scale` i logiczny rozmiar
 ## viewport / UI_SCALE (≈914×514), więc układ liczy się względem `size`, nie stałych 640×360.
-## Layout (proporcje jak w viewporcie 640×360):
-##   top-left    NOISE meter with thresholds and state (CALM / UNEASY / HUNTED) — the one gauge to watch
-##   bottom-left SQUAD card: every player (own card largest, teammates above), slot-coloured badge,
-##               hearts (gold = bonus), DOWN / REVIVING / CRITICAL state, bleed-out / revive bar
-##   bottom-centre GEAR strip (flat, one row): weapon + noise cost, big magazine / team reserve, reload and
-##               barrel-heat bars, weapon slots, LURE (Q), FLARE (F) charges, flashlight — centred and low so it never covers the boss
-##   top-centre  objective card — phase, objective, hint, boss bar
-##   top-right   session — host/client, players, mission clock
-##   centre      threat warning (something listening / HE HEARS YOU), wipe
-##   bottom      context prompt with progress (revive, extraction, bleed-out)
-##   bottom      controls strip — shown for the first seconds, F1 toggles
+## Layout — HUD bez ramek (HUD_PLAN.md): czytelność dają dwa gradienty (góra, dół), a ważne rzeczy stoją w rogach:
+##   top-left    teammates: slot-coloured diamond, name (BOT), thin life segments, DOWN / REVIVING state + bar (solo: empty)
+##   top-centre  direction strip (Compass): 5 m scale, goal / exit / teammates / downed markers with distance; under it the boss bar
+##               and the objective text, which shows for TOAST_S after the goal changes (always in the safe room, F1 recalls it)
+##   top-right   mission title, difficulty · clock, scrap; level + XP bar only for a moment after gaining XP
+##   bottom-left "me + noise": own life segments (CRITICAL / DOWN), small VU meter, one NOISE line (safe room: SAFE)
+##   bottom-centre weapon as a 3D model (art/hud, tools/bake_hud_icons.gd): magazine / team reserve, name, mode and shot cost, thin reload
+##               and barrel-heat lines; thumbnails of slots 1–4 appear for 2.5 s after a weapon change; context prompt sits above it
+##   bottom-right gear as four 3D models: LURE (Q), FLARE (F), selected item (ALT), flashlight (L, battery line); count and key under each
+##   centre      messages (message_view.gd): alerts, toasts, title card, tips; wipe
+##   bottom      controls strip — only for beginners in the first seconds (TOAST_LEVEL_MAX), F1 toggles
 ##   full screen damage vignette; result card after extraction
 ## Adaptive music and the warning sting are driven from here (GDD §13).
 
@@ -42,6 +42,8 @@ const UI_SCALE := 0.8
 const MSG_SCALE := 0.8            ## komunikaty (alerty, toasty, karta tytułowa, porady, dziennik, notatki, pasek akcji) o 20% mniejsze niż reszta HUD-u
 const MARGIN := 8.0              ## odstęp kart od krawędzi (jednostki logiczne HUD)
 const CONTROLS_SHOW_S := 20.0
+const TOAST_S := 9.0               ## s, przez które opis celu jest widoczny po zmianie celu / fazy (potem gaśnie; F1 przywołuje)
+const TOAST_LEVEL_MAX := 2           ## pasek sterowania pokazuje się sam tylko początkującym (poziom profilu do tego)
 const NOISE_COL_CALM := Color(0.62, 0.72, 0.78)
 const OBJ_W := 250.0             ## szerokość treści karty celu (zawijanie)
 const SESSION_W := 152.0         ## szerokość bloku „sesja + zegar" w prawym górnym rogu
@@ -365,6 +367,75 @@ class Swatch extends Control:
 		draw_rect(Rect2(2, 2, 5, 6), col)
 		draw_rect(Rect2(3, 3, 1, 1), Color(0.95, 0.9, 0.8))
 
+## Pasek kierunku (zamiast karty celu): cienka linia ze skalą co 5 m (przesuwa się razem ze światem), romb gracza pośrodku i romby
+## znaczników z dystansem — cel, wyjście, koledzy, powaleni. Świat to długi korytarz (oś X), więc „kompas” to pozycja na osi względem gracza;
+## znacznik poza zasięgiem (45 m) przykleja się przygaszony do krawędzi. Dystans: 16 px świata = 1 m (jak w tekstach misji).
+class Compass extends Control:
+	const HALF_RANGE := 720.0
+	var player_x := 0.0
+	var markers: Array = []              ## [{x: px świata, kind: "obj" | "exit" | "mate" | "down", label: String, col: Color}]
+	var _t := 0.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(380, 42)
+
+	func _process(delta: float) -> void:
+		_t += delta
+		queue_redraw()
+
+	func _draw() -> void:
+		var w := size.x
+		var half := w * 0.5
+		var ly := 22.0
+		var pxk := (half - 12.0) / HALF_RANGE
+		var n := 40
+		for i in n:
+			var f0 := float(i) / float(n)
+			var f1 := float(i + 1) / float(n)
+			var fade := minf(minf(f0, 1.0 - f1) * 6.0, 1.0)
+			draw_line(Vector2(f0 * w, ly), Vector2(f1 * w, ly), Color(UiTheme.TEXT, 0.7 * fade), 1.0)
+		var x := floorf((player_x - HALF_RANGE) / 80.0) * 80.0
+		while x <= player_x + HALF_RANGE:
+			var sx := half + (x - player_x) * pxk
+			var big := int(roundf(x / 80.0)) % 5 == 0
+			var fade := 1.0 - pow(clampf(absf(sx - half) / half, 0.0, 1.0), 2.0)
+			var hh := 4.0 if big else 2.0
+			draw_line(Vector2(sx, ly - hh), Vector2(sx, ly + hh), Color(UiTheme.TEXT, 0.5 * fade), 1.0)
+			x += 80.0
+		var f := UiTheme.mono_font()
+		var taken: Array = []
+		var order := markers.duplicate()
+		order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return absf(float(a["x"]) - player_x) < absf(float(b["x"]) - player_x))
+		for m in order:
+			var dx: float = float(m["x"]) - player_x
+			var edge := absf(dx) > HALF_RANGE
+			var sx := half + clampf(dx / HALF_RANGE, -1.0, 1.0) * (half - 12.0)
+			var kind := String(m["kind"])
+			var col: Color = m["col"]
+			if kind == "down" and Settings.fx_mult() > 0.0:
+				col.a = 0.55 + 0.45 * (0.5 + 0.5 * sin(_t * 6.0))
+			if edge:
+				col.a *= 0.55
+			var r := 4.5 if kind == "obj" else 3.5
+			var c := Vector2(sx, 11.0)
+			var dia := PackedVector2Array([c + Vector2(0, -r), c + Vector2(r, 0), c + Vector2(0, r), c + Vector2(-r, 0)])
+			if kind == "exit":
+				draw_polyline(PackedVector2Array([dia[0], dia[1], dia[2], dia[3], dia[0]]), col, 1.2, true)
+			else:
+				draw_colored_polygon(dia, col)
+			var txt := "%s · %d m" % [String(m["label"]), int(absf(dx) / 16.0)]
+			var tw := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 6).x
+			var x0 := sx - tw * 0.5
+			var clash := false
+			for t in taken:
+				if x0 < float(t[1]) + 4.0 and x0 + tw > float(t[0]) - 4.0:
+					clash = true
+			if not clash:
+				taken.append([x0, x0 + tw])
+				draw_string(f, Vector2(x0, ly + 13.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color(UiTheme.TEXT if kind == "obj" else UiTheme.MUTED, col.a))
+		draw_colored_polygon(PackedVector2Array([Vector2(half, ly - 4), Vector2(half + 4, ly), Vector2(half, ly + 4), Vector2(half - 4, ly)]), UiTheme.TEXT)
+
 ## Romb w kolorze slotu przed nazwą kolegi z drużyny (lista w lewym górnym rogu).
 class Diamond extends Control:
 	var col := Color.WHITE
@@ -466,6 +537,13 @@ var _obj_caption: Label
 var _obj_text: Label
 var _obj_hint: Label
 var _boss_row: VBoxContainer
+var _compass: Compass
+var _toast_box: VBoxContainer        ## opis celu (podpis, tekst, podpowiedź): pokazuje się na zmianę celu, potem gaśnie
+var _toast_t := 0.0
+var _toast_sig := ""
+var _run_title: Label
+var _xp_row: HBoxContainer
+var _xp_show_t := 0.0
 var _boss_bar: Bar
 var _boss_name: Label
 
@@ -555,7 +633,7 @@ func _fit() -> void:
 	_scrim_b.size = Vector2(w, h * 0.26)
 	_scrim_b.position = Vector2(0.0, h - _scrim_b.size.y)
 	_run_card.reset_size()
-	_run_card.position = Vector2(w - MARGIN - _run_card.size.x, MARGIN)
+	_run_card.position = Vector2(w - 2.0 * MARGIN - _run_card.size.x, 2.0 * MARGIN)
 	_msgs.scale = Vector2.ONE * MSG_SCALE
 	_msgs.position = Vector2.ZERO
 	_msgs.size = size / MSG_SCALE
@@ -967,22 +1045,38 @@ func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 
 func _build_objective_card() -> void:
 	_obj_card = _card(Vector2(MARGIN, MARGIN))
-	_obj_card.custom_minimum_size = Vector2(0, TOP_H)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
-	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 3)
+	box.alignment = BoxContainer.ALIGNMENT_BEGIN
 	_obj_card.add_child(box)
+	_compass = Compass.new()
+	box.add_child(_compass)
+	_boss_row = VBoxContainer.new()
+	_boss_row.add_theme_constant_override("separation", 2)
+	_boss_name = UiTheme.heading("THE VEIN — MOTHER OF NESTS", 8, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
+	_boss_row.add_child(_boss_name)
+	_boss_bar = Bar.new()
+	_boss_bar.custom_minimum_size = Vector2(OBJ_W, 4)
+	_boss_bar.fill = Color(0.88, 0.22, 0.2)
+	_boss_bar.seg = 4.0
+	_boss_bar.ticks = [[0.66, Color(1, 1, 1, 0.5)], [0.33, Color(1, 1, 1, 0.5)]]
+	_boss_row.add_child(_boss_bar)
+	box.add_child(_boss_row)
+	_toast_box = VBoxContainer.new()
+	_toast_box.add_theme_constant_override("separation", 2)
+	_toast_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(_toast_box)
 	_obj_caption = _cap("OBJECTIVE", UiTheme.ACCENT, 0.3)
 	_obj_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(_obj_caption)
+	_toast_box.add_child(_obj_caption)
 	_obj_text = UiTheme.heading("", 14, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	_obj_text.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_obj_text)
+	_toast_box.add_child(_obj_text)
 	_obj_hint = UiTheme.whisper(UiTheme.label("", UiTheme.T_BODY - 1, UiTheme.BONE_DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	_obj_hint.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_obj_hint)
+	_toast_box.add_child(_obj_hint)
 	# kryjówka: kwadraciki gotowości (jeden na człowieka) — widać, na kogo czeka drużyna
 	_ready_pips = Pips.new()
 	_ready_pips.shape = "ready"
@@ -991,46 +1085,38 @@ func _build_objective_card() -> void:
 	var pip_row := HBoxContainer.new()
 	pip_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	pip_row.add_child(_ready_pips)
-	box.add_child(pip_row)
-	_boss_row = VBoxContainer.new()
-	_boss_row.add_theme_constant_override("separation", 2)
-	_boss_name = UiTheme.heading("THE VEIN — MOTHER OF NESTS", 8, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
-	_boss_row.add_child(_boss_name)
-	_boss_bar = Bar.new()
-	_boss_bar.custom_minimum_size = Vector2(OBJ_W, 5)
-	_boss_bar.fill = Color(0.88, 0.22, 0.2)
-	_boss_bar.seg = 4.0
-	_boss_bar.ticks = [[0.66, Color(1, 1, 1, 0.5)], [0.33, Color(1, 1, 1, 0.5)]]
-	_boss_row.add_child(_boss_bar)
-	box.add_child(_boss_row)
+	_toast_box.add_child(pip_row)
 
 func _build_session() -> void:
-	# karta RUN w prawym górnym rogu: [RUN … trudność] / [zegar … złom] / [LV ▮ pasek XP n/m]; +XP pod kartą
+	# prawy górny róg jako sam tekst: [tytuł misji] / [trudność · zegar] / [złom]; poziom i pasek XP tylko chwilę po zdobyciu XP
 	_run_card = _card(Vector2(MARGIN, MARGIN))
-	_run_card.custom_minimum_size = Vector2(SESSION_W, TOP_H)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
-	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 3)
+	box.alignment = BoxContainer.ALIGNMENT_BEGIN
 	_run_card.add_child(box)
+	_run_title = UiTheme.heading("", 13, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	box.add_child(_run_title)
 	var head := HBoxContainer.new()
-	var cap := _cap("RUN", UiTheme.MUTED, 0.22)
-	cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(cap)
+	head.alignment = BoxContainer.ALIGNMENT_END
+	head.add_theme_constant_override("separation", 5)
 	_session = _cap("", UiTheme.MUTED, 0.14)                 # trudność; kolor wg poziomu (_drive_status)
 	head.add_child(_session)
+	head.add_child(_cap("·", UiTheme.MUTED, 0.0))
+	_clock = UiTheme.mono(UiTheme.label("", 8, UiTheme.MUTED))
+	head.add_child(_clock)
 	box.add_child(head)
 	var main := HBoxContainer.new()
-	main.add_theme_constant_override("separation", 6)
-	_clock = UiTheme.mono(UiTheme.label("", 13, UiTheme.TEXT))
-	_clock.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	main.add_child(_clock)
+	main.alignment = BoxContainer.ALIGNMENT_END
+	main.add_theme_constant_override("separation", 5)
 	_scrap_coin = Coin.new()
 	_scrap_coin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	main.add_child(_scrap_coin)
-	_scrap = UiTheme.mono(UiTheme.label("", 10, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_RIGHT))
+	_scrap = UiTheme.mono(UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_RIGHT))
 	main.add_child(_scrap)
 	box.add_child(main)
 	var xp := HBoxContainer.new()
+	_xp_row = xp
+	xp.visible = false
 	xp.add_theme_constant_override("separation", 5)
 	_lv_label = UiTheme.mono(UiTheme.label("LV 1", 7, UiTheme.TEXT))
 	var badge := StyleBoxFlat.new()
@@ -1045,7 +1131,7 @@ func _build_session() -> void:
 	_lv_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	xp.add_child(_lv_label)
 	_run_xp_bar = Bar.new()
-	_run_xp_bar.custom_minimum_size = Vector2(0, 2)
+	_run_xp_bar.custom_minimum_size = Vector2(56, 2)
 	_run_xp_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_run_xp_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_run_xp_bar.fill = UiTheme.MUTED
@@ -1416,9 +1502,11 @@ func _drive_noise() -> void:
 	_a_icon.set_key(String(gk), Color.WHITE if gn > 0 else Color(1, 1, 1, 0.28))
 
 func _on_xp_gained(amount: int, _reason: String) -> void:
+	_xp_show_t = 4.0
 	Msg.post("hud.xp", Msg.Ch.TOAST, "", {"amount": amount, "fmt": "+%d XP", "style": Msg.Style.SUCCESS, "ttl": 2.5, "prio": 20, "log": false})
 
 func _on_level_up(lv: int) -> void:
+	_xp_show_t = 6.0
 	var msg := tr("LEVEL %d") % lv
 	if Profile.SLOT_LEVELS.has(lv):
 		msg += "  —  " + tr("perk slot unlocked")
@@ -1446,8 +1534,13 @@ func _drive_status() -> void:
 	if m != null:
 		var secs := int(m.elapsed)
 		_clock.text = "%02d:%02d" % [secs / 60, secs % 60]
+	var lvl_n := get_tree().get_first_node_in_group("level")
+	_run_title.text = String(lvl_n.title) if lvl_n != null and m != null and m.kind != "hub" else ""
+	_run_title.visible = _run_title.text != ""
+	_xp_show_t = maxf(0.0, _xp_show_t - get_process_delta_time())
+	_xp_row.visible = _xp_show_t > 0.0
 	_run_card.reset_size()
-	_run_card.position = Vector2(size.x - MARGIN - _run_card.size.x, MARGIN)
+	_run_card.position = Vector2(size.x - 2.0 * MARGIN - _run_card.size.x, 2.0 * MARGIN)
 	_gear_card.visible = _player != null
 	_equip_card.visible = _player != null
 	if _player == null:
@@ -1588,9 +1681,20 @@ func _drive_mission() -> void:
 		_boss_bar.queue_redraw()
 		var bname: String = String(boss.get("boss_name")) if boss.get("boss_name") != null else "THE VEIN — MOTHER OF NESTS"
 		_boss_name.text = bname + ("   ·   ENRAGED" if boss.phase >= 2 else "")
+	_drive_strip(m)
+	# opis celu pokazuje się po zmianie celu / fazy (i w kryjówce, i na F1), potem gaśnie; pasek kierunku zostaje
+	var sig := "%s|%d|%d|%d|%d" % [m.kind, m.phase, m.goal_left, m.nests_left, m.stashes_found]
+	if sig != _toast_sig:
+		_toast_sig = sig
+		_toast_t = TOAST_S
+	var dt := get_process_delta_time()
+	_toast_t = maxf(0.0, _toast_t - dt)
+	var want := 1.0 if (in_hub or _toast_t > 0.0 or _controls_mode == 1) else 0.0
+	_toast_box.modulate.a = move_toward(_toast_box.modulate.a, want, dt * (4.0 if want > 0.0 else 1.5))
+	_toast_box.visible = _toast_box.modulate.a > 0.01
 	# karta celu: wyśrodkowana, szerokość wg treści
 	_obj_card.reset_size()
-	_obj_card.position = Vector2((size.x - _obj_card.size.x) * 0.5, MARGIN)
+	_obj_card.position = Vector2((size.x - _obj_card.size.x) * 0.5, 2.0 * MARGIN)
 	_msgs.obj_bottom = (_obj_card.position.y + _obj_card.size.y) / MSG_SCALE
 	_msgs.run_bottom = (_run_card.position.y + _run_card.size.y) / MSG_SCALE
 	_msgs.squad_top = _noise_card.position.y / MSG_SCALE
@@ -1605,6 +1709,62 @@ func _drive_mission() -> void:
 		_fill_players(m)
 	if show_result and _result_xp_val != null and is_instance_valid(_result_xp_val):
 		_drive_xp(get_process_delta_time())
+
+## Najbliższy węzeł grupy (po osi X względem gracza), który spełnia warunek; null, gdy brak.
+func _nearest(group: String, ok: Callable) -> Node2D:
+	var best: Node2D = null
+	var bd := INF
+	for n in get_tree().get_nodes_in_group(group):
+		if not (n is Node2D) or not is_instance_valid(n) or n.is_queued_for_deletion() or not bool(ok.call(n)):
+			continue
+		var d := absf((n as Node2D).global_position.x - _player.global_position.x)
+		if d < bd:
+			bd = d
+			best = n
+	return best
+
+## Znaczniki paska kierunku: cel (najbliższy), wyjście / drezyna w ekstrakcji, koledzy z drużyny, powaleni.
+func _drive_strip(m: Node) -> void:
+	_compass.visible = m.kind != "hub" and _player != null
+	if not _compass.visible:
+		return
+	_compass.player_x = _player.global_position.x
+	var mk: Array = []
+	var goal: Node2D = null
+	var label := ""
+	match m.phase:
+		Mission.Phase.OBJECTIVE:
+			match String(m.kind):
+				"tags":
+					goal = _nearest("pickups", func(n: Node) -> bool: return String(n.get("kind")) == "tag")
+					label = tr("TAG")
+				"generators":
+					goal = _nearest("generators", func(n: Node) -> bool: return not bool(n.get("running")))
+					label = tr("GEN")
+				"boss":
+					goal = _nearest("boss", func(_n: Node) -> bool: return true)
+					label = tr("BOSS")
+				_:
+					goal = _nearest("nests", func(n: Node) -> bool: return bool(n.get("alive")))
+					label = tr("NEST")
+		Mission.Phase.BOSS:
+			goal = _nearest("boss", func(_n: Node) -> bool: return true)
+			label = tr("BOSS")
+		Mission.Phase.EXTRACT:
+			var car := _nearest("handcar", func(n: Node) -> bool: return not bool(n.get("arrived")))
+			if car != null:
+				mk.append({"x": car.global_position.x, "kind": "obj", "label": tr("CAR"), "col": UiTheme.ACCENT})
+			mk.append({"x": m.exit_pos.x, "kind": "exit", "label": tr("EXIT"), "col": Color(UiTheme.TEXT, 0.8)})
+	if goal != null:
+		mk.append({"x": goal.global_position.x, "kind": "obj", "label": label, "col": UiTheme.ACCENT})
+	for node in get_tree().get_nodes_in_group("players"):
+		var pl: Node = node
+		if pl == _player or not is_instance_valid(pl) or pl.is_queued_for_deletion():
+			continue
+		var slot := ((int(pl.display_id) - 1) % 4) + 1
+		var col: Color = UiTheme.DANGER if pl.dead else (Color("8d8a7c") if pl.is_bot else SLOT_COLORS[slot - 1])
+		mk.append({"x": (pl as Node2D).global_position.x, "kind": "down" if pl.dead else "mate", "label": "P%d" % int(pl.display_id), "col": col})
+	_compass.markers = mk
 
 func _fill_result(m: Node) -> void:
 	for c in _result_stats.get_children():
@@ -2179,10 +2339,10 @@ func _drive_prompt() -> void:
 		_prompt_card.reset_size()
 		_prompt_card.scale = Vector2.ONE * MSG_SCALE
 		_prompt_card.pivot_offset = Vector2(_prompt_card.size.x * 0.5, 0.0)
-		_prompt_card.position = Vector2((size.x - _prompt_card.size.x) * 0.5, size.y * PROMPT_Y)
+		_prompt_card.position = Vector2((size.x - _prompt_card.size.x) * 0.5, _gear_card.position.y - _prompt_card.size.y * MSG_SCALE - 8.0)
 
 func _drive_controls() -> void:
-	var show := _session_t < CONTROLS_SHOW_S if _controls_mode < 0 else _controls_mode == 1
+	var show := (_session_t < CONTROLS_SHOW_S and Profile.level() <= TOAST_LEVEL_MAX) if _controls_mode < 0 else _controls_mode == 1
 	_controls.visible = show
 	_f1.visible = not show
 
