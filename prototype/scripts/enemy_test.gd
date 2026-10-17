@@ -58,6 +58,7 @@ func run(m: Node2D) -> void:
 	await _test_director_composition()
 	await _test_behaviors()
 	await _test_elite_foundation()
+	await _test_priest()
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
 	await _test_slepiec_listen()
@@ -328,7 +329,7 @@ func _test_director_composition() -> void:
 	for o in odds_late:
 		sum_late += float(o)
 	check("skład/domyślna: na starcie i w ciszy tylko pary Trzosków (100%)", float(odds_early[0]) == 100.0 and D.pick_group(D.GROUPS, 0.0, early) == ["trzosek", "trzosek"] and D.pick_group(D.GROUPS, 0.999, early) == ["trzosek", "trzosek"], str(odds_early))
-	check("skład/domyślna: po 13 min przy hałasie wszystkie zestawy możliwe (też Wołek i 2 Ślepce), szanse sumują się do 100%", absf(sum_late - 100.0) < 0.5 and D.pick_group(D.GROUPS, 0.999, late) == ["wolek", "trzosek", "trzosek"] and not odds_late.has(0.0), str(odds_late))
+	check("skład/domyślna: po 13 min przy hałasie wszystkie zestawy możliwe (też Wołek i 2 Ślepce), szanse sumują się do 100%", absf(sum_late - 100.0) < 0.5 and D.pick_group(D.GROUPS, 0.999, late) == ["kaplan", "trzosek", "trzosek"] and not odds_late.has(0.0), str(odds_late))
 	var quiet_late: Array = D.group_odds(D.GROUPS, {"time": 800.0, "tension": 0.0})
 	check("skład/napięcie: w ciszy (napięcie 0) nawet po 13 min tylko Trzoski — Ślepce i Wołek wymagają hałasu (wagi 0)", float(quiet_late[3]) == 0.0 and float(quiet_late[4]) == 0.0 and float(quiet_late[5]) == 0.0 and float(quiet_late[2]) == 0.0, str(quiet_late))
 	var mid := {"time": 300.0, "tension": 0.3}
@@ -424,7 +425,7 @@ func _test_behaviors() -> void:
 			if not Base.BEHAVIORS.has(b) or not ResourceLoader.exists(String(Base.BEHAVIORS[b])):
 				bad.append("%s→%s" % [k, b])
 	check("zachowania: każdy `behavior` z enemy_defs.gd ma klasę (BEHAVIORS)", bad.is_empty(), str(bad))
-	check("zachowania: rodzaje z własną mechaniką mają zachowanie (7 rodzajów)", kinds_with.size() == 7 and kinds_with.get("podsluchacz") == "listener" and kinds_with.get("wolek") == "bruiser" and kinds_with.get("slepiec") == "blind" and kinds_with.get("trzosek") == "pack", str(kinds_with))
+	check("zachowania: rodzaje z własną mechaniką mają zachowanie (8 rodzajów)", kinds_with.size() == 8 and kinds_with.get("podsluchacz") == "listener" and kinds_with.get("wolek") == "bruiser" and kinds_with.get("slepiec") == "blind" and kinds_with.get("trzosek") == "pack", str(kinds_with))
 	var unknown = Base.create("nie_ma_takiego", null)
 	var empty = Base.create("", null)
 	check("zachowania: pusta i nieznana nazwa → baza z domyślnymi hakami (bez błędu)", unknown != null and empty != null and unknown.damage_mult() == 1.0 and unknown.threat_ok() and not unknown.tick_special(0.1) and unknown.derive_pre() == -1 and empty.returns_home() and not empty.holds_still())
@@ -499,6 +500,119 @@ func _test_elite_foundation() -> void:
 	gt["time"] = 900.0
 	gt["tension"] = 0.5
 	check("elity: istniejące tabele bez elit działają jak dotąd przy pełnym kontekście", float(D.group_odds(D.GROUPS, gt)[0]) > 0.0 and absf(float(D.group_odds(D.GROUPS, gt).reduce(func(a, b): return a + b)) - 100.0) < 0.5)
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- F4b: Kapłan (elita wsparcia: krzyk ze stunem, leczenie Trzosków)
+
+func _test_priest() -> void:
+	var Defs := load("res://scripts/enemy_defs.gd")
+	var cfg: Dictionary = Defs.DEFS["kaplan"]
+	check("Kapłan/dane: 250 HP, elita, zachowanie priest, fala 6 m (96 px), stun 0,8 s, brak ciosu w zwarciu (damage 0)",
+		float(cfg["hp"]) == 250.0 and bool(cfg["elite"]) and cfg["behavior"] == "priest" and is_equal_approx(float(cfg["priest"]["radius"]), 96.0) and is_equal_approx(float(cfg["priest"]["stun"]), 0.8) and int(cfg["damage"]) == 0 and Defs.elite_kinds().has("kaplan"))
+	var y := -15000.0
+	var strip := _floor(FAR_X + 29000.0, FAR_X + 29600.0, y)
+	var x0 := FAR_X + 29300.0
+	var k := _spawn("kaplan", Vector2(x0, y))
+	k.set_physics_process(false)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	k.active = true
+	var keep_pos: Vector2 = player.global_position
+	var keep_dead: bool = player.dead
+	player.dead = false
+	player.stun_t = 0.0
+	player._stun_immune = 0.0
+	k._beh.scream_cd = 0.0
+	k._beh.heal_t = 99.0
+	player.global_position = Vector2(x0 + 104.0, y)                          # w polu zapowiedzi (110 px), ale poza falą (96 px)
+	check("Kapłan/zapowiedź: gracz bliżej niż 110 px → zapowiedź krzyku (stan special, oczy, pierścień o promieniu fali)",
+		not k._beh.tick_phase(0.016, player) and k._sp == 1 and k.winding and is_equal_approx(float(k.view_info()["tele"]), 96.0) and bool(k.view_info()["alert"]), "sp=%d tele=%s" % [k._sp, str(k.view_info()["tele"])])
+	check("Kapłan/zapowiedź: w trakcie stoi w miejscu, tick przejmuje ruch (true)", k._beh.tick_phase(0.016, player))
+	k._beh.tele_t = 0.0
+	k._beh.tick_phase(0.016, player)
+	check("Kapłan/krzyk: gracz poza falą (104 px > 96 px) nie jest ogłuszony, krzyk kończy zapowiedź i wchodzi w przerwę 8 s",
+		not player.is_stunned() and k._sp == 0 and not k.winding and k._beh.scream_cd > 7.0 and float(k.view_info()["tele"]) == 0.0, "stun=%s sp=%d cd=%.1f" % [player.is_stunned(), k._sp, k._beh.scream_cd])
+	k._beh.scream_cd = 0.0
+	player.global_position = Vector2(x0 + 60.0, y)
+	k._beh.tick_phase(0.016, player)
+	k._beh.tele_t = 0.0
+	k._beh.tick_phase(0.016, player)
+	check("Kapłan/krzyk: gracz w fali (60 px) dostaje stun 0,8 s", player.is_stunned() and is_equal_approx(player.stun_t, 0.8), "%.2f" % player.stun_t)
+	player.stun_t = 0.0
+	player._stun_immune = 0.0
+	k._beh.scream_cd = 5.0
+	player.global_position = Vector2(x0 + 40.0, y)
+	check("Kapłan/przerwa: w czasie przerwy krzyku nie zaczyna zapowiedzi", not k._beh.tick_phase(0.016, player) and k._sp == 0)
+	check("Kapłan/zwarcie: nie bije (może_atakować = false, brak zapowiedzi ciosu przy graczu w zasięgu ręki)", not k._beh.may_attack() and (func():
+		k._cd = 0.0
+		k._try_begin_attack(player)
+		return k._windup == 0.0 and not k.winding).call())
+	# dystans: za blisko → cofa się, w pasie stoi, dalej zostawia pościg
+	k.velocity = Vector2.ZERO
+	var near_hold: bool = k._beh.chase_hold(player, Vector2(60.0, 0.0), 42.0)
+	var back_v: float = k.velocity.x
+	k.velocity = Vector2(5.0, 0.0)
+	var mid_hold: bool = k._beh.chase_hold(player, Vector2(150.0, 0.0), 42.0)
+	var mid_v: float = k.velocity.x
+	var far_hold: bool = k._beh.chase_hold(player, Vector2(260.0, 0.0), 42.0)
+	check("Kapłan/dystans: gracz 60 px → cofa się (w lewo), 150 px → stoi, 260 px → pościg rdzenia", near_hold and back_v < 0.0 and mid_hold and mid_v == 0.0 and not far_hold, "%s %.0f / %s %.0f / %s" % [near_hold, back_v, mid_hold, mid_v, far_hold])
+
+	# leczenie Trzosków: tylko ranni, tylko Trzoski (pack), tylko w zasięgu, nie ponad maks.
+	player.global_position = Vector2(x0 + 400.0, y)
+	var hurt := _spawn("trzosek", Vector2(x0 - 60.0, y))
+	var whole := _spawn("trzosek", Vector2(x0 - 40.0, y))
+	var far_t := _spawn("trzosek", Vector2(x0 - 300.0, y))
+	var blind := _spawn("slepiec", Vector2(x0 + 50.0, y))
+	for t in [hurt, whole, far_t, blind]:
+		t.set_physics_process(false)
+		t.active = true
+	await get_tree().physics_frame
+	hurt.hp = 10.0
+	far_t.hp = 10.0
+	blind.hp = 20.0
+	k._beh.heal_t = 0.0
+	k._beh._tick_heal(0.016)
+	var max_hp: float = hurt._max_hp
+	check("Kapłan/leczenie: ranny Trzosek w zasięgu +10% maks. HP, cały bez zmian, daleki i Ślepiec nie leczeni",
+		absf(hurt.hp - (10.0 + max_hp * 0.10)) < 0.01 and whole.hp == whole._max_hp and far_t.hp == 10.0 and blind.hp == 20.0, "hurt=%.2f/%.1f far=%.1f" % [hurt.hp, max_hp, far_t.hp])
+	check("Kapłan/leczenie: wiązka do leczonego widoczna w view_info (beams, 0,6 s)", (k.view_info()["beams"] as PackedVector2Array).size() == 1 and k._heal_fx_t > 0.5)
+	hurt.hp = hurt._max_hp - 0.5
+	k._beh.heal_t = 0.0
+	k._beh._tick_heal(0.016)
+	check("Kapłan/leczenie: nie przekracza maksymalnego HP", hurt.hp == hurt._max_hp, "%.2f" % hurt.hp)
+	k._sp = 1
+	k._beh.heal_t = 0.0
+	hurt.hp = 5.0
+	k._beh.tick_phase(0.016, player)
+	check("Kapłan/leczenie: w zapowiedzi krzyku nie leczy", hurt.hp == 5.0)
+	k._sp = 0
+	k.winding = false
+
+	# śmierć: Trzoski w pobliżu tracą morale, leczenie ustaje
+	var fear0: float = whole._beh.fear
+	k._beh.on_death()
+	check("Kapłan/śmierć: Trzosek w pobliżu traci morale (+0,34), daleki nie", is_equal_approx(whole._beh.fear - fear0, 0.34) and far_t._beh.fear == 0.0, "%.2f / %.2f" % [whole._beh.fear, far_t._beh.fear])
+
+	# Dyrektor: elita w zestawie, limit jednej elity
+	var D := Director
+	check("Kapłan/Dyrektor: żywa elita liczy się do limitu — zestaw z Kapłanem odpada, bez żywej elity wraca",
+		(func():
+			var ctx: Dictionary = D.build_ctx()
+			ctx["time"] = 900.0
+			ctx["tension"] = 0.5
+			var entry: Array = []
+			for g in D.GROUPS:
+				if "kaplan" in g[1]:
+					entry = g
+			var w_with: float = D.entry_weight(entry, ctx)
+			return not entry.is_empty() and D.count_elites() == 1 and w_with == 0.0 and D.entry_weight(entry, {"time": 900.0, "tension": 0.5, "elites": 0, "elite_kinds": ["kaplan"]}) > 0.0).call())
+	check("Kapłan/mapa: litera A w mapach stawia Kapłana (znacznik i odprawa)", level.THREAT_CHARS.get("A") == "kaplan")
+	player.global_position = keep_pos
+	player.dead = keep_dead
+	player.stun_t = 0.0
+	player._stun_immune = 0.0
+	for n in [k, hurt, whole, far_t, blind, strip]:
+		n.queue_free()
 	await get_tree().physics_frame
 
 func _finish() -> void:
@@ -756,6 +870,7 @@ const GOLDEN := {
 	"slepiec": {"xp": 6, "scrap": 5, "supply": 0.1, "ammo": 0.3, "health": 0.0, "voice": ["slepiec_attack", 2, -4.0, 1.0]},
 	"podsluchacz": {"xp": 4, "scrap": 4, "supply": 0.15, "ammo": 0.15, "health": 0.0, "voice": []},
 	"wolek": {"xp": 12, "scrap": 6, "supply": 0.35, "ammo": 0.6, "health": 0.75, "voice": ["wolek_attack", 2, -3.0, 1.0]},
+	"kaplan": {"xp": 25, "scrap": 15, "supply": 0.5, "ammo": 0.5, "health": 1.0, "voice": ["slepiec_attack", 2, -3.0, 0.8]},
 }
 
 ## Jedno źródło danych rodzaju: komplet pól, wartości jak przed przeniesieniem, głosy istnieją w manifeście dźwięku, każdy rodzaj ma model 3D.

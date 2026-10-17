@@ -87,6 +87,17 @@ const DEFS := {
 		"color": Color(0.36, 0.27, 0.34), "size": Vector2(20, 26), "hurt_h": 32.0, "knock": 14.0, "knock_mult": 0.2, "head": 0.28,
 		"xp": 12, "scrap": 6, "supply": 0.35, "ammo": 0.6, "health": 0.75, "hear_error": 96.0, "voice": {"attack": ["wolek_attack", 2, -3.0, 1.0], "death": ["wolek_death", 2, -2.0, 1.0]},
 	},
+	# Kapłan (GDD §7.2, F4b): elita wspierająca — nie bije w zwarciu. Trzyma dystans za Trzoskami, leczy je, a gdy gracz podejdzie, krzyczy falą ogłuszającą.
+	# `priest`: radius px fali, trigger px (gracz bliżej niż to → zapowiedź), stun s, tele s zapowiedzi, heal_r px zasięgu leczenia, heal_pct maks. HP na tik,
+	# heal_every s, keep [min, max] px preferowanego dystansu od gracza, noise hałas krzyku; po śmierci Trzoski w pobliżu tracą morale jak po śmierci kolegi (pack). `ring_r` skala pierścienia 3D.
+	"kaplan": {
+		"hp": 250.0, "speed": 42.0, "damage": 0, "windup": 0.7, "reach": 0.0,
+		"cooldown": 8.0, "leap": false, "hear": 220.0, "wake_near": 80.0, "sight": 260.0,
+		"behavior": "priest", "elite": true, "armor": 2.0, "sheet": "podsluchacz", "ring_r": 88.0, "alert": 0.5,
+		"priest": {"radius": 96.0, "trigger": 110.0, "stun": 0.8, "tele": 0.7, "heal_r": 112.0, "heal_pct": 0.10, "heal_every": 1.0, "keep": [110.0, 190.0], "noise": 8.0},
+		"color": Color(0.55, 0.5, 0.42), "size": Vector2(12, 32), "hurt_h": 44.0, "knock": 20.0, "knock_mult": 0.3, "head": 0.22,
+		"xp": 25, "scrap": 15, "supply": 0.5, "ammo": 0.5, "health": 1.0, "hear_error": 64.0, "voice": {"attack": ["slepiec_attack", 2, -3.0, 0.8], "death": ["slepiec_death", 2, -2.0, 0.8]},
+	},
 }
 
 ## Zawartość dla rodzaju nieznanego (np. gniazdo, boss) — puste zamiast błędu.

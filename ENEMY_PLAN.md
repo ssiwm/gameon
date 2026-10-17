@@ -246,4 +246,46 @@ Cel: nowe rodzaje (F4) nie dopisują `if kind ==` w rdzeniu. Wynik: `enemy.gd` 1
 - **Nie zrobione (osobny, opcjonalny etap):** wydzielenie percepcji (`enemy_senses.gd`) i nawigacji (`enemy_steer.gd`) z rdzenia — to wspólny kod, więc zysk dla F4 niewielki, a ryzyko (setki odwołań do pól) duże; wracamy, gdy rdzeń znów urośnie.
 - **Wnioski z refaktoru:** przy mechanicznym przenoszeniu największe ryzyko to przypadkowe usunięcie sąsiednich linii przy edycji po numerach (np. zgubiony `_slide()`); wyłapały to testy ruchu (alert, śledztwo, szarża Ślepca) — przy kolejnych podziałach przeglądać `git diff` hunk po hunku.
 
+## F4 — elity: plan szczegółowy (po decyzjach z 2026-10-17)
+
+**Decyzje:** (1) Żerca = **porwanie** zamiast śmierci do końca misji (GDD §4: „kara dystansem i czasem, nie ekranem game over"); (2) stun Kapłana **częściowy** (0,8 s bez strzału, skoku i bicia, chodzić można);
+(3) rozmieszczenie: **Dyrektor + znaczniki w mapach**, max jedna elita naraz; (4) modele: **lokalny TRELLIS 2** (obraz → model; brak modelu tekst → obraz, więc potrzebne obrazy-koncepty).
+
+**Fundament (każdy rodzaj to podklasa `enemy_behavior.gd` + wpis w `enemy_defs.gd`, dokładnie po to był refaktor 1.7.252):**
+- pole `elite: true` w danych: pasek HP nad głową od pierwszego trafienia, nagroda XP/złom ×, wpis w kodeksie, **limit jednej żywej elity** (Dyrektor liczy `get_nodes_in_group("enemies")` z flagą);
+- Dyrektor: nowy klucz kontekstu `downs` (ile razy ktoś upadł w tej misji, z `mission.downs`) i wpisy tabel z oknem `"downs": [od, do]` (jak okna `time`/`tension`), żeby Żerca pojawiał się dopiero po pierwszym upadku;
+- gracz: **status ogłuszenia** (`Player.stun_t`, RPC `apply_stun(sek)` do właściciela jak `apply_hit`, serwer rozstrzyga) — blokuje strzał, skok i bicie, nie ruch; niewrażliwość na kolejny stun 3 s; wskaźnik w HUD i na modelu.
+
+**Kapłan** (`kaplan`, zachowanie `priest`, 250 HP, pancerz 2, wolny: prędkość ≈ 40):
+- trzyma dystans ≈ 140 px od graczy za plecami Trzosków, bez ciosu w zwarciu (groźny wsparciem, nie obrażeniami);
+- **krzyk:** zapowiedź 0,7 s z pierścieniem o promieniu fali (6 m ≈ 96 px; `_ring` w widoku 3D skalowany), potem stun częściowy 0,8 s wszystkich graczy w zasięgu, przerwa 8 s (× `enemy_cd`), hałas jak krzyk Podsłuchacza;
+- **leczenie:** co 1 s +10% maks. HP rannym Trzoskom w 7 m z czystą linią, wstrzymane w zapowiedzi krzyku i po jego śmierci; zielona wiązka w 3D;
+- „zabij pierwszego": śmierć Kapłana daje Trzoskom w pobliżu strach (+0,34 morale, jak śmierć kolegi z watahy) i zatrzymuje leczenie.
+
+**Rzeźnik** (`rzeznik`, 600 HP, pancerz 4, odporny na odrzut i ogłuszenie z trafień; prędkość ≈ 60, miniboss):
+- **to sparametryzowany Wołek:** `enemy_bruiser.gd` dostaje dane `charge` (zapowiedź 1,0 s, czas 1,4 s, mnożnik ×3,2, przerwa 9 s), `breaks_barricades` i `throws: false` — bez nowego kodu szarży, bo szarża już rozbija skrzynie i beczki;
+- szarża **przebija barykady** (`brick_wall.gd`: duże obrażenia przy kontakcie) i rekwizyty; **nie niszczy kafli mapy** (kafle są statyczną geometrią, runtime-owego niszczenia nie ma) — to świadome odstępstwo od „ładuje się przez ściany" w GDD, do potwierdzenia;
+- uderzenie w ścianę z kafli ogłusza go na 1,6 s (okno na strzelbę w plecy), cios w zwarciu 2 obrażenia, szarża 2 + odrzut (nie zabija z pełnego HP 3);
+- uczciwa kontra: szarża wymaga czystego rozbiegu (`_run_clear`), więc gracz na półce lub za zakrętem jest bezpieczny; pancerz 4 osłabia M-83, więc zachęca do strzelby, ognia i beczek.
+
+**Żerca** (`zerca`, zachowanie `devourer`, 300 HP, skacze, prędkość ≈ 95):
+- **wyczuwa krew:** upadłych graczy (`dead` + `bleed_left`) w 320 px po trasie, nawet bez linii wzroku; upadły jest jego celem priorytetowym (zwykły wróg pomija upadłych);
+- **porwanie:** dojście do upadłego (< 12 px) → gracz zostaje „zabrany" (mechanizm przypięcia jak chwyt Pijawki: serwer → właściciel, `grabbed` + pozycja), wykrwawianie wstrzymane, Żerca ciągnie go ze spowolnieniem ×0,6 w stronę swojego domu; **20 s od porwania** (dane `devour.time`);
+- **uratowanie:** zabić Żercę w tym czasie → gracz zostaje upuszczony jako upadły z resztą czasu wykrwawiania (min. 3 s) i można go podnieść normalnie; podniesienie w trakcie porwania niemożliwe;
+- **porażka:** po 20 s gracz wraca na start misji z pistoletem (bez wyposażenia z misji) przez istniejące `_respawn`, kodeks / profil / XP zostają — to kara dystansem i czasem, nie śmierć na stałe;
+- pojawia się tylko po pierwszym upadku w misji (okno `downs ≥ 1`) i po ≥ 6 min; boty go nie podnoszą; HUD: „P2 porwany — 17 s" + strzałka ku Żercy.
+
+**Rozmieszczenie:** wpisy tabel Dyrektora (np. Kapłan + 2 Trzoski od ≈ 9 min i napięcia ≥ 0,1; Rzeźnik solo od ≈ 12 min; Żerca po pierwszym upadku od 6 min, waga zależna od `downs`), dodatkowo nowe litery znaczników w mapach (wolne litery sprawdza `--maptest`; do testów i rzadkich stałych spotkań w 1.1–1.3). Skalowanie HP i obrażeń przez `Difficulty` od razu (lekcja z „zbyt łatwej" Pijawki i Ślepca).
+
+**Etapy (osobne PR-y, każdy z testami w `--enemytest`):**
+- **F4a — fundament:** flaga `elite` (pasek HP, limit 1), klucz `downs` w kontekście Dyrektora, status `stun` gracza (+ HUD, RPC, test: stun blokuje strzał i skok, nie ruch; niewrażliwość 3 s).
+- **F4b — Kapłan:** `enemy_priest.gd`, krzyk z pierścieniem, leczenie Trzosków, wiązka 3D; testy: stun tylko w zasięgu, leczenie nie przekracza maks. HP, śmierć zatrzymuje leczenie, strach Trzosków.
+- **F4c — Rzeźnik:** parametryzacja `enemy_bruiser.gd`, `breaks_barricades`, testy: szarża rozbija `brick_wall`, uderzenie w kafel ogłusza, odporność na odrzut, `--maptest` z nowym znacznikiem.
+- **F4d — Żerca:** `enemy_devourer.gd`, stan „zabrany" gracza + HUD, testy: priorytet upadłego, wstrzymanie wykrwawiania, uwolnienie po zabiciu, kara po 20 s, jedna elita naraz, sieć (host + klient w `test_weapons.sh`).
+- **F4e — oprawa:** modele 3D (lokalny TRELLIS 2; **blokada: potrzebne obrazy-koncepty** — dostarczasz referencje albo robię szkice w Blenderze jako wejście, z oczywistym limitem jakości), SPEC w `enemy3d.gd` (skala, klipy, poza krzyku), kodeks i tłumaczenia (`codex.gd`, `ui.csv`), dźwięki (krzyk Kapłana, ryk szarży Rzeźnika, chwyt Żercy — nagrania lokalnie, `audio_licensed/`), do tego czasu **tymczasowe** modele (skala i kolor istniejących: Podsłuchacz, Wołek, Skoczek), żeby mechanikę dało się ocenić od razu.
+- **F4f — strojenie po playtestach:** HP, przerwy, progi Dyrektora, czasy porwania i stunu.
+
+**Ryzyka:** sieć (status gracza i porwanie przechodzą przez właściciela postaci, jak chwyt Pijawki; trzeba testu host + klient); wipe (porwani gracze liczą się jako upadli, więc wipe działa jak dotąd); kolizja z chwytem Pijawki (gracz nie może być jednocześnie chwycony i zabrany); balans elit w Strefie I (która nie była pod nie projektowana — okna Dyrektora zaczynają się późno); koszt czasu F4e zależy od dostarczenia obrazów.
 **F4a — zrobione w 1.7.253:** `elite` w `enemy_defs.gd` (`is_elite`, `elite_kinds`, pasek HP elity od początku), `Director.MAX_ELITES` + klucze kontekstu `downs` / `elites` / `elite_kinds` + okno `downs` w wpisach tabel, `Player.stun_t` (`deliver_stun`, `apply_stun`, `is_stunned`, `STUN_IMMUNITY` 3 s, replikowane, HUD „STUNNED"). Testy: `_test_elite_foundation`.
+
+**F4b — Kapłan, zrobione w 1.7.254:** dane `kaplan` (`elite`, `priest`, `sheet`, `ring_r`), `enemy_priest.gd` (zapowiedź + fala ze stunem, leczenie Trzosków, dystans, strach Trzosków po śmierci), nowe haki `may_attack`, RPC `_heal_fx`, widok 3D: pierścień zapowiedzi i wiązki leczenia w `view3d.gd: _sync_enemy_rings` (+ strażnik dla węzłów bez `_def`), marker `A`, wpisy w tabelach Dyrektora, dev `--elite=RODZAJ`. Model tymczasowy (Podsłuchacz). Testy: `_test_priest`.

@@ -25,6 +25,10 @@ const SPEC := {
 	"podsluchacz": {"fit": ["height", 34.0], "frame_h": 40.0, "cycle": 1.0,
 		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}, "clips": true, "attack_kind": "scream", "walk_clip": "zombie",
 		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}},
+	# Kapłan (F4b) — do czasu własnego modelu (F4e) wzrost i poza Podsłuchacza: model pożyczony, wyższy
+	"kaplan": {"fit": ["height", 44.0], "frame_h": 52.0, "cycle": 1.0, "model": DIR + "podsluchacz.glb",
+		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}, "clips": true, "attack_kind": "scream", "walk_clip": "zombie",
+		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}},
 	"stalker": {"fit": ["height", 54.0], "frame_h": 60.0, "cycle": 1.1,
 		"prof": {"lean": 5.0, "lean_walk": 8.0, "hy": 0.42, "hz": 0.62, "stride": 0.28, "windup": "reach"}, "clips": true, "attack_kind": "grab", "walk_clip": "zombie", "attack_clip": true,
 		"death": {"dir": 1.0, "lean": 0.0, "dur": 1.0, "tilt": 88.0}},

@@ -180,6 +180,7 @@ const GROUPS := [
 	[12.0, ["slepiec", "slepiec"], {"time": [360.0, INF], "tension": [0.2, INF]}],
 	[12.0, ["wolek", "trzosek"], {"time": [360.0, INF], "tension": [0.1, INF]}],
 	[10.0, ["wolek", "trzosek", "trzosek"], {"time": [600.0, INF], "tension": [0.2, INF]}],
+	[8.0, ["kaplan", "trzosek", "trzosek"], {"time": [540.0, INF], "tension": [0.1, INF]}],                     # elita: Kapłan leczy Trzoski (max jedna elita naraz)
 ]
 const GROUPS_BY_MAP := {
 	# 1.1 Missing Patrol (samouczek: 12 T, 3 W, bez Ślepców — pierwszy raz w 1.2): same Trzoski, Wołek dopiero po 8 min
@@ -197,6 +198,7 @@ const GROUPS_BY_MAP := {
 		[16.0, ["slepiec", "slepiec"], {"time": [360.0, INF], "tension": [0.2, INF]}],
 		[12.0, ["wolek", "trzosek"], {"time": [360.0, INF], "tension": [0.1, INF]}],
 		[10.0, ["wolek", "trzosek", "trzosek"], {"time": [600.0, INF], "tension": [0.2, INF]}],
+		[8.0, ["kaplan", "trzosek", "trzosek"], {"time": [540.0, INF], "tension": [0.1, INF]}],
 	],
 	# 1.3 The Nest (las i tunele, 16 T, 4 W, 3 L): przewaga Trzosków i Wołka, mało Ślepców
 	"z1_m3": [
@@ -206,6 +208,7 @@ const GROUPS_BY_MAP := {
 		[8.0, ["slepiec"], {"time": [120.0, INF], "tension": [0.15, INF]}],
 		[18.0, ["wolek", "trzosek"], {"time": [300.0, INF]}],
 		[10.0, ["wolek", "trzosek", "trzosek"], {"time": [540.0, INF], "tension": [0.15, INF]}],
+		[10.0, ["kaplan", "trzosek", "trzosek"], {"time": [480.0, INF], "tension": [0.1, INF]}],
 	],
 }                                            ## id mapy → tabela jak GROUPS (brak wpisu = GROUPS)
 const MAX_ELITES := 1                        ## najwyżej tyle żywych elit naraz (F4): zestawy z elitą odpadają z losowania, gdy limit zajęty

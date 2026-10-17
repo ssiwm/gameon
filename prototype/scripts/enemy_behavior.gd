@@ -15,6 +15,7 @@ const BEHAVIORS := {
 	"ambusher": "res://scripts/enemy_ambusher.gd",
 	"pack": "res://scripts/enemy_pack.gd",
 	"blind": "res://scripts/enemy_blind.gd",
+	"priest": "res://scripts/enemy_priest.gd",
 }
 
 ## Węzeł wroga (`enemy.gd`) — bez typu, bo `enemy.gd` ładuje tę klasę (cykl preload).
@@ -164,3 +165,7 @@ func on_damaged() -> void:
 ## Wróg usłyszał hałas (po ustaleniu śladu `lead`, `dist` = słyszalna odległość po trasie, `amount` = głośność): szarża Ślepca.
 func on_heard_noise(_lead: Vector2, _dist: float, _amount: float) -> void:
 	pass
+
+## Czy wróg w ogóle bije w zwarciu (Kapłan jest tylko wsparciem: krzyk i leczenie).
+func may_attack() -> bool:
+	return true
