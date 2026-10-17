@@ -146,6 +146,8 @@ var _pip_flash := 0.0              ## błysk tarczy utraconej przed chwilą (rys
 var _dmg := 0.0                    ## wygładzone obrażenia 0..1 (krew na modelu, pochylenie, kapanie)
 var _dmg_sent := -1.0
 var _drip_t := 1.0
+const DRIP_G := 560.0             ## grawitacja kapiącej kropli [px/s²]
+const DRIP_V := 8.0               ## maks. prędkość początkowa kropli w dół [px/s]
 var _hp_seen := MAX_HP             ## ostatnio widziane zdrowie — do wykrycia trafienia / leczenia także u zdalnych graczy
 var _invuln := 0.0
 var _kick := 0.0
@@ -1864,7 +1866,15 @@ func _update_damage(delta: float) -> void:
 	_drip_t = lerpf(1.8, 0.45, _dmg) * randf_range(0.7, 1.3)
 	var from := global_position + Vector2(randf_range(-3.0, 3.0), randf_range(-14.0, -5.0))
 	var fx := _fx_root()
-	Vfx.burst(fx, from, Color(0.32, 0.02, 0.035), 1, 0.0, 8.0, Vector2.DOWN, 12.0, 560.0, 0.45, Vector2(1.0, 1.7))
+	# kropla to cząsteczka bez kolizji: żyje dokładnie tyle, ile spada do podłoża (stałe 0,45 s przelatywało ok. 3 m pod grunt)
+	var floor_y := global_position.y
+	if not is_on_floor():
+		var q := PhysicsRayQueryParameters2D.create(from, from + Vector2(0.0, 400.0), collision_mask, [get_rid()])
+		var hit := get_world_2d().direct_space_state.intersect_ray(q)
+		floor_y = (hit["position"] as Vector2).y if not hit.is_empty() else from.y + 400.0
+	var fall := maxf(floor_y - from.y, 1.0)
+	var life := (-DRIP_V + sqrt(DRIP_V * DRIP_V + 2.0 * DRIP_G * fall)) / DRIP_G      # czas spadku najszybszej kropli: żadna nie wpada pod grunt
+	Vfx.burst(fx, from, Color(0.32, 0.02, 0.035), 1, 0.0, DRIP_V, Vector2.DOWN, 12.0, DRIP_G, life, Vector2(1.0, 1.7))
 	if Settings.quality_idx >= 2 and is_on_floor():
 		BloodDecals.add(fx, Vector2(from.x, global_position.y - 0.5), randf_range(1.2, 2.4) * (0.7 + _dmg))
 
