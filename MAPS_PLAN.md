@@ -1,6 +1,6 @@
 # Plan: mapy misji Strefy I
 
-Status: plan z 2026-10-17. **P1 i P2 (pomiar) zrobione** w PR „Dziennik sesji: pozycje graczy i zaliczone cele”; reszta czeka.
+Status: plan z 2026-10-17. **P1 i P2 (pomiar) zrobione** w PR #348, **P3 (narzędzie)** w PR „Mapy cieplne z dziennika sesji”; reszta czeka.
 Podstawa: analiza map (lokalnie, poza repo: rzuty map z upadkami, `stats.json`) i logi sesji 1.7.211–1.7.277 (63 podejścia, 1 człowiek + bot).
 
 **Decyzje użytkownika:**
@@ -79,9 +79,10 @@ Pierwsza próbka idzie zaraz po starcie próby. Rozmiar: ok. 120 B na gracza, 2 
 `objective`: `what` (`tag` / `stash` / `generator` / `nest` / `boss`), `n` z `of`, `pos`, a przy nieśmiertelniku i skrytce `who` i `bot`. Pozwolą mierzyć czas każdego odcinka trasy z §1.1.
 CI (`--missiontest --sessionlog`) sprawdza, że w pliku są `pos` i `objective` gniazd oraz bossa.
 
-**P3: narzędzie `tools/session_heatmap.py`.**
+**P3: narzędzie `tools/session_heatmap.py` (zrobione).**
 Czyta `sessions/*.jsonl` i renderuje rzut mapy z danych `scripts/maps/<id>.gd` z trzema warstwami: mapą cieplną czasu (`pos`), trasami (linie) i upadkami (krzyżyki wg sprawcy).
-Liczy też czas odcinków między celami, z filtrem po wersji buildu i trudności. Bazą jest skrypt z tej analizy (rzut map 6 px na kafel, nakładka upadków).
+Liczy też czas odcinków między celami (mediana od startu i od poprzedniego celu) i udział czasu w pasach po 20 kolumn; filtry: `--map`, `--build`, `--difficulty`, `--mode`, `--bots`.
+Działa też na starych logach (same upadki i wyniki). Wymaga Pillow tylko do obrazów, raport tekstowy działa bez niego.
 
 **Kolejność:** P1 + P2 w jednym PR (bez zmiany gry, bez numeru wersji), potem P3, a na końcu zmiany 1.1 (M1a–M1d),
 żeby czas odcinków „przed” był zmierzony na obecnej mapie.
