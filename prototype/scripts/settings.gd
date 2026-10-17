@@ -61,6 +61,7 @@ var crouch_toggle := false             ## skradanie przełączane klawiszem zami
 var colorblind_idx := 0
 var locale_idx := 0
 var _res_dirty := false                ## gracz zmienił rozmiar okna (inaczej zostaje domyślny z projektu)
+var dev_nohud: bool = "--nohud" in OS.get_cmdline_user_args()   ## dev: ukrywa HUD, celownik i plakietki graczy (nagrania i zrzuty do materiałów promocyjnych)
 var fullscreen := false
 var seen_tips: Array = []              ## identyfikatory podpowiedzi, które gracz już widział
 var shift_best_cleared := 0            ## Nocny Dyżur: najwięcej ukończonych misji w jednej serii (rekord lokalny)

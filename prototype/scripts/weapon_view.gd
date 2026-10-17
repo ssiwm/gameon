@@ -376,7 +376,7 @@ func _draw_fx() -> void:
 	if player == null or player.dead:
 		return
 	var d := Weapons.def(player.weapon)
-	if _local:
+	if _local and not Settings.dev_nohud:
 		_draw_crosshair(d)
 
 # ---------------------------------------------------------------- celownik (tylko lokalny człowiek)

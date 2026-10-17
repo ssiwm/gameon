@@ -1837,6 +1837,8 @@ func _draw_overlay(ov: Node2D) -> void:
 	if _scream_ring > 0.0:
 		var k := 1.0 - _scream_ring / 0.6
 		ov.draw_arc(Vector2(0, -12), 6.0 + k * 52.0, 0.0, TAU, 28, Color(1.0, 0.85, 0.5, (1.0 - k) * 0.7), 1.5)
+	if Settings.dev_nohud:
+		return                                  # dev: --nohud — bez plakietek i licznika wykrwawienia
 	var col := _body_color()
 	var name_txt := "BOT" if is_bot else "P%d" % display_id
 	if dead:
