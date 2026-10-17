@@ -26,6 +26,7 @@ const Hints := preload("res://scripts/hints.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const NotePaper := preload("res://scripts/note_paper.gd")
+const MessageView := preload("res://scripts/message_view.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Codex := preload("res://scripts/codex.gd")
 const RunLog := preload("res://scripts/run_log.gd")
@@ -374,6 +375,7 @@ class Coin extends Control:
 var _player: Node = null
 var _blink := 0.0
 var _warn_was := false
+var _msgs: Control                   ## renderer kanałów komunikatów (alert, toasty, karta tytułowa): message_view.gd
 var _music_layer := -1
 var _session_t := 0.0
 ## Pasek sterowania: -1 = auto (pierwsze CONTROLS_SHOW_S s), 0 = ukryty, 1 = pokazany (F1).
@@ -411,8 +413,6 @@ var _reload_bar: Bar
 var _charges: Pips
 var _flares: Pips
 var _gren_name: Label
-var _note: Label
-var _note_t := 0.0
 var _slots: Array[PanelContainer] = []
 var _slot_labels: Array[Label] = []
 var _slot_icons: Array[GunIcon] = []
@@ -442,15 +442,7 @@ var _run_card: PanelContainer        ## karta RUN (prawy górny róg): trudnoś�
 var _run_xp_bar: Bar                  ## pasek XP w karcie RUN
 var _xp_txt: Label
 var _squad_info: Label               ## „HOST · 1/4 +1 AI” w nagłówku karty drużyny
-var _xp_feed: Label                  ## „+12 XP” — sumuje XP z ostatnich sekund i blaknie
-var _xp_acc := 0
-var _xp_t := 0.0
 var _result_xp_val: Label
-var _warn: Label
-var _warn_sub: Label
-var _hub_count: Label                ## kryjówka: duża cyfra odliczania do wyjścia na misję (pod kartą celu)
-var _center: Label
-var _center_sub: Label
 var _prompt_card: PanelContainer
 var _prompt: RichTextLabel             ## pasek akcji: tekst z klawiszami jako klawisze (UiTheme.keycaps)
 var _prompt_bar: Bar
@@ -528,15 +520,8 @@ func _fit() -> void:
 	var h := size.y
 	_run_card.reset_size()
 	_run_card.position = Vector2(w - MARGIN - _run_card.size.x, MARGIN)
-	_place(_xp_feed, Vector2(w - MARGIN - SESSION_W, MARGIN + _run_card.size.y + 3.0), Vector2(SESSION_W, 12))
-	var cw := 400.0
-	_place(_warn, Vector2((w - cw) * 0.5, h * WARN_Y), Vector2(cw, 28))
-	_place(_warn_sub, Vector2((w - cw) * 0.5, h * WARN_Y + 28.0), Vector2(cw, 14))
-	_place(_note, Vector2((w - cw) * 0.5, h * WARN_Y + 46.0), Vector2(cw, 14))
-	_place(_hub_count, Vector2((w - cw) * 0.5, 82.0), Vector2(cw, 60))
-	_hub_count.pivot_offset = Vector2(cw * 0.5, 30.0)
-	_place(_center, Vector2((w - cw) * 0.5, h * CENTER_Y), Vector2(cw, 28))
-	_place(_center_sub, Vector2((w - cw) * 0.5, h * CENTER_Y + 28.0), Vector2(cw, 16))
+	_msgs.position = Vector2.ZERO
+	_msgs.size = size
 	_place(_controls, Vector2(MARGIN, h - 16.0), Vector2(w - 2.0 * MARGIN, 12))
 	_place(_f1, Vector2(w - MARGIN - SESSION_W, h - 16.0), Vector2(SESSION_W, 12))   # dół, prawy koniec paska podpowiedzi
 
@@ -925,7 +910,7 @@ func _build_objective_card() -> void:
 	_obj_text.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_obj_text)
-	_obj_hint = UiTheme.whisper(UiTheme.label("", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	_obj_hint = UiTheme.whisper(UiTheme.label("", UiTheme.T_BODY - 1, UiTheme.BONE_DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	_obj_hint.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_obj_hint)
@@ -1000,30 +985,13 @@ func _build_session() -> void:
 	_xp_txt = UiTheme.mono(UiTheme.label("", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT))
 	xp.add_child(_xp_txt)
 	box.add_child(xp)
-	_xp_feed = UiTheme.mono(UiTheme.label("", 8, UiTheme.OK, HORIZONTAL_ALIGNMENT_RIGHT))
-	_xp_feed.modulate.a = 0.0
-	add_child(_xp_feed)
 	Profile.xp_gained.connect(_on_xp_gained)
 	Profile.leveled_up.connect(_on_level_up)
 
 func _build_center() -> void:
-	_warn = UiTheme.whisper(UiTheme.label("", 21, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER))   # szept maszynowy 34 px z makiety
-	_warn.add_theme_constant_override("outline_size", 0)
-	add_child(_warn)
-	_warn_sub = UiTheme.whisper(UiTheme.label("", 9, Color("bdb8a6"), HORIZONTAL_ALIGNMENT_CENTER))
-	add_child(_warn_sub)
-	# krótkie komunikaty (np. „wabik już nie działa tutaj")
-	_note = UiTheme.whisper(UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
-	_note.modulate.a = 0.0
-	add_child(_note)
-	NoiseMgr.overcharge_stale.connect(func() -> void: show_note("They know this trick — move before you lure again"))
-	_hub_count = UiTheme.heading("", 56, UiTheme.OK, HORIZONTAL_ALIGNMENT_CENTER)
-	_hub_count.visible = false
-	add_child(_hub_count)
-	_center = UiTheme.heading("", 24, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
-	add_child(_center)
-	_center_sub = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
-	add_child(_center_sub)
+	_msgs = MessageView.new()
+	add_child(_msgs)
+	NoiseMgr.overcharge_stale.connect(func() -> void: show_note(tr("They know this trick — move before you lure again")))
 	add_child((load("res://scripts/taken_arrow.gd") as GDScript).new())      # strzałka ku porwanemu graczowi poza kadrem (Żerca, F4d)
 
 func _build_prompt() -> void:
@@ -1229,7 +1197,7 @@ func _build_hint() -> void:
 
 func _drive_hint(delta: float) -> void:
 	# jeden komunikat naraz: ostrzeżenie o hałasie i krótkie noty mają pierwszeństwo — podpowiedź czeka (jej czas stoi)
-	var busy := _warn.text != "" or _note_t > 0.0
+	var busy := not Msg.current(Msg.Ch.ALERT).is_empty() or not Msg.toasts().is_empty()
 	var text := _hints.update(0.0 if busy else delta, _player)
 	_hint_card.visible = text != "" and not _result.visible and not busy
 	if not _hint_card.visible:
@@ -1330,16 +1298,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Krótki komunikat środkowy (znika po `secs`).
 func show_note(text: String, secs := 3.0) -> void:
-	_note.text = text
-	_note.modulate.a = 1.0
-	_note_t = secs
+	Msg.post("hud.note.%d" % text.hash(), Msg.Ch.TOAST, text, {"ttl": secs, "style": Msg.Style.WARN, "prio": 60})
 
 func _drive_noise() -> void:
 	_noise_card.visible = not NoiseMgr.safe_zone
 	_safe_chip.visible = NoiseMgr.safe_zone
-	if _note_t > 0.0:
-		_note_t -= get_process_delta_time()
-		_note.modulate.a = clampf(_note_t / 0.6, 0.0, 1.0)
 	var lvl := _dev_noise if _dev_noise >= 0.0 else NoiseMgr.level          # dev: --shotnoise=N pokazuje wskaźnik przy zadanym poziomie
 	_noise_val.text = "%d%%" % int(lvl)
 	_noise_bar.value = lvl / 100.0
@@ -1373,19 +1336,18 @@ func _drive_noise() -> void:
 	_gren_name.add_theme_color_override("font_color", UiTheme.TEXT if gn > 0 else UiTheme.MUTED)
 
 func _on_xp_gained(amount: int, _reason: String) -> void:
-	_xp_acc += amount
-	_xp_t = 2.5
+	Msg.post("hud.xp", Msg.Ch.TOAST, "", {"amount": amount, "fmt": "+%d XP", "style": Msg.Style.SUCCESS, "ttl": 2.5, "prio": 20, "log": false})
 
 func _on_level_up(lv: int) -> void:
-	var msg := "LEVEL %d" % lv
+	var msg := tr("LEVEL %d") % lv
 	if Profile.SLOT_LEVELS.has(lv):
-		msg += "  —  perk slot unlocked"
+		msg += "  —  " + tr("perk slot unlocked")
 	var names: Array = []
 	for id in Profile.Perks.unlocked_at(lv):
 		names.append(Profile.Perks.display_name(String(id)))
 	if not names.is_empty():
-		msg += "  —  new perks: " + ", ".join(names)
-	show_note(msg, 5.0)
+		msg += "  —  " + tr("new perks: ") + ", ".join(names)
+	Msg.post("hud.level", Msg.Ch.TOAST, msg, {"style": Msg.Style.SUCCESS, "ttl": 5.0, "prio": 80})
 	Audio.play("ui_confirm", Audio.BUS_UI, -6.0)
 
 func _drive_status() -> void:
@@ -1394,12 +1356,6 @@ func _drive_status() -> void:
 	_xp_txt.text = "%d/%d" % [int(lp[0]), int(lp[1])]
 	_run_xp_bar.value = float(lp[0]) / float(maxi(1, int(lp[1])))
 	_run_xp_bar.queue_redraw()
-	if _xp_t > 0.0:
-		_xp_t -= get_process_delta_time()
-		_xp_feed.text = "+%d XP" % _xp_acc
-		_xp_feed.modulate.a = clampf(_xp_t / 0.6, 0.0, 1.0)
-		if _xp_t <= 0.0:
-			_xp_acc = 0
 	_session.text = tr(Difficulty.level_name())
 	_session.add_theme_color_override("font_color", [UiTheme.OK, UiTheme.TEXT, UiTheme.DANGER][clampi(Difficulty.level, 0, 2)])
 	_squad_info.text = _net_status()
@@ -1412,7 +1368,6 @@ func _drive_status() -> void:
 		_clock.text = "%02d:%02d" % [secs / 60, secs % 60]
 	_run_card.reset_size()
 	_run_card.position = Vector2(size.x - MARGIN - _run_card.size.x, MARGIN)
-	_xp_feed.position.y = MARGIN + _run_card.size.y + 3.0
 	_gear_card.visible = _player != null
 	_equip_card.visible = _player != null
 	if _player == null:
@@ -1518,19 +1473,9 @@ func _drive_warning() -> void:
 	var awake: bool = NoiseMgr.stalker_awake
 	var uneasy: bool = (not awake) and NoiseMgr.level >= NoiseMgr.UNEASY_THRESHOLD
 	if awake:
-		_warn.text = "He hears you…"
-		_warn.add_theme_color_override("font_color", UiTheme.DANGER)
-		_warn.modulate.a = lerpf(1.0, 0.6 + 0.4 * sin(_blink * 6.0), Settings.fx_mult())
-		_warn_sub.text = "Go quiet until the noise drops below 30% — or use Q to lure him off"
+		Msg.hold("hud.noise.awake", Msg.Ch.ALERT, tr("He hears you…"), {"sub": tr("Go quiet until the noise drops below 30% — or use Q to lure him off"), "style": Msg.Style.DANGER, "prio": 60})
 	elif uneasy:
-		_warn.text = "Something is listening…"
-		_warn.add_theme_color_override("font_color", Color("e8e2c4"))
-		_warn.modulate.a = lerpf(0.85, 0.55 + 0.3 * sin(_blink * 3.0), Settings.fx_mult())
-		_warn_sub.text = "Above 60% noise he wakes up"
-	else:
-		_warn.text = ""
-		_warn_sub.text = ""
-	_warn_sub.modulate.a = _warn.modulate.a
+		Msg.hold("hud.noise.uneasy", Msg.Ch.ALERT, tr("Something is listening…"), {"sub": tr("Above 60% noise he wakes up"), "style": Msg.Style.WARN, "prio": 40})
 	if awake and not _warn_was:
 		Audio.play("warn_pulse", Audio.BUS_UI, -12.0)
 	_warn_was = awake
@@ -1559,18 +1504,11 @@ func _drive_mission() -> void:
 		_ready_pips.queue_redraw()
 		var cd := float(main_n.get("hub_countdown"))
 		var fl := float(main_n.get("hub_cancel_flash"))
-		_hub_count.visible = cd > 0.0 or fl > 0.05
 		if fl > 0.05:
-			_hub_count.text = "✕"
-			_hub_count.modulate = Color(UiTheme.DANGER, fl)
-			_hub_count.scale = Vector2.ONE
+			Msg.hold("hud.hubcancel", Msg.Ch.ALERT, "✕", {"big": true, "sub": tr("Departure cancelled"), "style": Msg.Style.DANGER, "prio": 75})
 		elif cd > 0.0:
-			var secs := ceili(cd)
-			_hub_count.text = str(secs)
-			_hub_count.modulate = Color.WHITE
-			_hub_count.scale = Vector2.ONE * (1.0 + 0.3 * pow(float(secs) - cd, 2.0))
-	else:
-		_hub_count.visible = false
+			var sub := tr("Step out of the launch zone to cancel") if bool(main_n.get("hub_in_zone")) else Actions.fmt(tr("[{restart}]  cancel"))
+			Msg.hold("hud.hubcount", Msg.Ch.ALERT, str(ceili(cd)), {"big": true, "sub": sub, "style": Msg.Style.SUCCESS, "prio": 70})
 	_boss_row.visible = boss != null and m.phase == Mission.Phase.BOSS
 	if _boss_row.visible:
 		_boss_bar.value = boss.hp / maxf(1.0, boss.max_hp)
@@ -1580,10 +1518,9 @@ func _drive_mission() -> void:
 	# karta celu: wyśrodkowana, szerokość wg treści
 	_obj_card.reset_size()
 	_obj_card.position = Vector2((size.x - _obj_card.size.x) * 0.5, MARGIN)
-	# ostrzeżenie zawsze pod kartą celu (karta bossa jest wyższa)
-	var wy := maxf(size.y * WARN_Y, _obj_card.position.y + _obj_card.size.y + 10.0)
-	_warn.position.y = wy
-	_warn_sub.position.y = wy + 28.0
+	_msgs.obj_bottom = _obj_card.position.y + _obj_card.size.y
+	_msgs.run_bottom = _run_card.position.y + _run_card.size.y
+	_msgs.squad_top = _squad_card.position.y
 
 	var show_result: bool = m.phase == Mission.Phase.SUCCESS or m.phase == Mission.Phase.FAILED
 	var just_shown: bool = show_result and not _result.visible
@@ -1842,8 +1779,8 @@ func _drive_cards() -> void:
 			board = b
 			break
 	var bc: Control = _brief["card"]
-	bc.visible = near_board
-	if near_board:
+	bc.visible = near_board and Msg.current(Msg.Ch.ALERT).is_empty()      # alert (odliczanie wyjścia) ma pierwszeństwo przed notatką
+	if bc.visible:
 		_dress_note(_brief)
 		var main := get_tree().current_scene
 		var target := String(main.get("after_hub")) if main != null else ""
@@ -1866,8 +1803,8 @@ func _drive_radio() -> void:
 			rset = rs
 			break
 	var rc: Control = _radio["card"]
-	rc.visible = near
-	if not near:
+	rc.visible = near and Msg.current(Msg.Ch.ALERT).is_empty()
+	if not rc.visible:
 		return
 	_dress_note(_radio)
 	var main := get_tree().current_scene
@@ -2027,17 +1964,40 @@ func _style_of(col: Color) -> int:
 		return Msg.Style.ACTION
 	return Msg.Style.INFO
 
+## Karta tytułowa startu misji (kanał TITLE, dolna trzecia): tytuł, linie radia i jedna linia pogody; w Nocnym Dyżurze zasady serii.
+## Cel misji zostaje w karcie celu (bez powtórzeń).
+func _post_title(m: Node) -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	var lines: Array = []
+	var head := ""
+	var kicker := ""
+	if NightShift.active:
+		head = NightShift.title()
+		lines.append(String(lvl.title) if lvl != null else "")
+		for id in NightShift.mods:
+			lines.append("%s — %s" % [NightShift.MODS[id]["name"], NightShift.MODS[id]["text"]])
+		if NightShift.stage > 1:
+			lines.append(tr("Enemies +%d%% HP") % int(round(NightShift.HP_STEP * float(NightShift.stage - 1) * 100.0)))
+		elif NightShift.mods.is_empty():
+			lines.append(tr("The first mission — no modifiers"))
+	else:
+		head = String(lvl.title) if lvl != null else ""
+		if lvl != null and not (lvl.radio as Array).is_empty():
+			kicker = tr("RADIO")
+			for rl in lvl.radio:
+				lines.append(tr(String(rl)))
+	if not NightShift.active and Weather.active_id() != "":
+		lines.append(tr("WEATHER — %s: %s") % [Weather.name_of(Weather.active_id()), Weather.text_of(Weather.active_id())])
+	Msg.hold("hud.title", Msg.Ch.TITLE, head, {"sub": "\n".join(lines), "kicker": kicker, "style": Msg.Style.DANGER, "prio": 50, "log": true})
+
 func _drive_prompt() -> void:
 	var text := ""
 	var prog := -1.0
 	var col := UiTheme.TEXT
-	_center.text = ""
-	_center_sub.text = ""
 	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	if wipe_left > 0.0:
-		_center.text = "SQUAD DOWN"
-		_center_sub.text = ("Extraction failed — the shift ends in %d" if NightShift.active else "Extraction failed — restarting the mission in %d") % ceili(wipe_left)
+		Msg.hold("hud.wipe", Msg.Ch.ALERT, tr("SQUAD DOWN"), {"sub": (tr("Extraction failed — the shift ends in %d") if NightShift.active else tr("Extraction failed — restarting the mission in %d")) % ceili(wipe_left), "style": Msg.Style.DANGER, "prio": 90})
 	var cands := _prompt_candidates()
 	for i in cands.size():
 		var c: Dictionary = cands[i]
@@ -2047,33 +2007,11 @@ func _drive_prompt() -> void:
 		text = String(cur["text"])
 		prog = float(cur["progress"])
 		col = cur.get("color", UiTheme.TEXT)
-	if wipe_left <= 0.0 and m != null and m.banner_visible() and not (_inspect.visible or bool(_brief["card"].visible) or bool(_radio["card"].visible)):
-		# tytuł misji w pierwszych sekundach; w Nocnym Dyżurze także zasady serii
-		var lvl := get_tree().get_first_node_in_group("level")
-		var lines: Array = []
-		if NightShift.active:
-			lines.append(String(lvl.title) if lvl != null else "")
-			for id in NightShift.mods:
-				lines.append("%s — %s" % [NightShift.MODS[id]["name"], NightShift.MODS[id]["text"]])
-			if NightShift.stage > 1:
-				lines.append("Enemies +%d%% HP" % int(round(NightShift.HP_STEP * float(NightShift.stage - 1) * 100.0)))
-			elif NightShift.mods.is_empty():
-				lines.append("The first mission — no modifiers")
-			_center.text = NightShift.title()
-		elif lvl != null and not (lvl.radio as Array).is_empty():
-			_center.text = String(lvl.title)
-			for rl in lvl.radio:
-				lines.append(String(rl))
-		else:
-			_center.text = String(lvl.title) if lvl != null else ""
-			lines.append(m.objective_text())
-		if not NightShift.active and Weather.active_id() != "":
-			lines.append("WEATHER — %s: %s" % [Weather.name_of(Weather.active_id()), Weather.text_of(Weather.active_id())])
-		_center_sub.text = "\n".join(lines)
+	if wipe_left <= 0.0 and m != null and m.banner_visible() and not _inspect.visible:
+		_post_title(m)
 	# ostatnia transmisja patrolu w finale misji 1.1 (zamiast baneru tytułu)
 	if wipe_left <= 0.0 and m != null and m.finale_radio_line() != "":
-		_center.text = "PATROL SEVEN — RADIO"
-		_center_sub.text = m.finale_radio_line()
+		Msg.hold("hud.finale", Msg.Ch.TITLE, tr("PATROL SEVEN — RADIO"), {"sub": m.finale_radio_line(), "kicker": tr("RADIO"), "style": Msg.Style.DANGER, "prio": 80, "log": true})
 	_prompt_card.visible = text != ""
 	if _prompt_card.visible:
 		_prompt.text = "[center]" + UiTheme.keycaps(text) + "[/center]"
