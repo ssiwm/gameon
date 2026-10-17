@@ -294,6 +294,7 @@ func _process(delta: float) -> void:
 	_sync_drawn()
 	_sync_launch_doors()
 	_sync_hub_props()
+	_sync_world_notes()
 	_sync_guns()
 	_sync_cabinets(delta)
 	_sync_fires()
@@ -1123,6 +1124,62 @@ func _build_launch_door(n: Node2D) -> Dictionary:
 		sign_l.font = font
 	root.add_child(sign_l)
 	return {"root": root, "mat": lamp_mat, "light": light, "pad": pad_mat, "curtain": curtain_mat, "spot": spot, "slots": slots, "digit": digit, "count": count, "kogut": kg}
+
+# ---------------------------------------------------------------- papier w świecie (hud.gd: _build_world_notes)
+
+var _wnotes := {}                         ## id SubViewportu notatki → {quad}
+
+## Odprawa i prognoza jako kartki w świecie: quad z teksturą z SubViewportu (grupa „world_note”) przypięty do tablicy odpraw albo do ściany nad radiostacją,
+## oświetlony lampami sceny; chowa się, gdy ta sama treść jest pokazana w karcie HUD (gracz stoi blisko).
+func _sync_world_notes() -> void:
+	for vp in get_tree().get_nodes_in_group("world_note"):
+		if not (vp is SubViewport) or _geo_key == "":
+			continue
+		var kind := String(vp.get_meta("kind", ""))
+		var anchor: Node2D = null
+		for n in get_tree().get_nodes_in_group("board" if kind == "brief" else "radio_set"):
+			anchor = n as Node2D
+			break
+		var id: int = vp.get_instance_id()
+		var d = _wnotes.get(id)
+		if anchor == null:
+			if d != null and is_instance_valid(d["quad"]):
+				(d["quad"] as Node3D).visible = false
+			continue
+		if d == null or not is_instance_valid(d["quad"]):
+			var q := MeshInstance3D.new()
+			q.name = "WorldNote_" + kind
+			q.mesh = QuadMesh.new()
+			var mat := StandardMaterial3D.new()
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			mat.albedo_texture = (vp as SubViewport).get_texture()
+			mat.roughness = 0.95
+			mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+			mat.emission_enabled = true                       # kartka czytelna także poza światłem lampy (jak kreda na tablicy wyników)
+			mat.emission_texture = (vp as SubViewport).get_texture()
+			mat.emission_energy_multiplier = 0.32
+			q.material_override = mat
+			q.layers = LAYER_WORLD
+			q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			_geo.add_child(q)
+			d = {"quad": q}
+			_wnotes[id] = d
+		var quad := d["quad"] as MeshInstance3D
+		quad.visible = not bool(vp.get_meta("hide", false)) and (vp as SubViewport).size.x > 32
+		if not quad.visible:
+			continue
+		var w := 2.3 if kind == "brief" else 2.3
+		var sv := (vp as SubViewport).size
+		(quad.mesh as QuadMesh).size = Vector2(w, w * float(sv.y) / float(maxi(1, sv.x)))
+		var base := Level3D.px_to_m(anchor.global_position)
+		if kind == "brief":
+			var zf := _model_front(anchor, "board")
+			quad.position = base + Vector3(0.0, 1.7, (-1.28 if is_nan(zf) else zf + 0.03))
+			quad.rotation = Vector3(0.0, 0.0, deg_to_rad(-1.6))
+		else:
+			quad.position = base + Vector3(0.0, 2.6, -1.78)
+			quad.rotation = Vector3(0.0, 0.0, deg_to_rad(1.2))
 
 # ---------------------------------------------------------------- rekwizyty kryjówki (hub_prop.gd)
 

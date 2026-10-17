@@ -38,6 +38,7 @@ const W := preload("res://scripts/ui_widgets.gd")
 
 ## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.8
+const MSG_SCALE := 0.8            ## komunikaty (alerty, toasty, karta tytułowa, porady, dziennik, notatki, pasek akcji) o 20% mniejsze niż reszta HUD-u
 const MARGIN := 8.0              ## odstęp kart od krawędzi (jednostki logiczne HUD)
 const CONTROLS_SHOW_S := 20.0
 const NOISE_COL_CALM := Color(0.62, 0.72, 0.78)
@@ -496,6 +497,7 @@ func _ready() -> void:
 	_brief = _make_info_card(310.0, 4, UiTheme.Note.DOSSIER)         # odprawa: akta sztabu (maszynopis, pieczątka)
 	(_brief["card"] as NotePaper).stamp = tr("CLASSIFIED")
 	_radio = _make_info_card(300.0, 2, UiTheme.Note.PRINTOUT)        # prognoza: wydruk z radia
+	_build_world_notes()
 	var wsp := WorkshopUi.new()
 	wsp.z_index = 11                                           # nad ściemnieniem (_dim, z_index 10)
 	add_child(wsp)
@@ -518,10 +520,12 @@ func _fit() -> void:
 	var h := size.y
 	_run_card.reset_size()
 	_run_card.position = Vector2(w - MARGIN - _run_card.size.x, MARGIN)
+	_msgs.scale = Vector2.ONE * MSG_SCALE
 	_msgs.position = Vector2.ZERO
-	_msgs.size = size
+	_msgs.size = size / MSG_SCALE
+	_journal.scale = Vector2.ONE * MSG_SCALE
 	_journal.position = Vector2.ZERO
-	_journal.size = size
+	_journal.size = size / MSG_SCALE
 	_place(_controls, Vector2(MARGIN, h - 16.0), Vector2(w - 2.0 * MARGIN, 12))
 	_place(_f1, Vector2(w - MARGIN - SESSION_W, h - 16.0), Vector2(SESSION_W, 12))   # dół, prawy koniec paska podpowiedzi
 
@@ -1519,9 +1523,9 @@ func _drive_mission() -> void:
 	# karta celu: wyśrodkowana, szerokość wg treści
 	_obj_card.reset_size()
 	_obj_card.position = Vector2((size.x - _obj_card.size.x) * 0.5, MARGIN)
-	_msgs.obj_bottom = _obj_card.position.y + _obj_card.size.y
-	_msgs.run_bottom = _run_card.position.y + _run_card.size.y
-	_msgs.squad_top = _squad_card.position.y
+	_msgs.obj_bottom = (_obj_card.position.y + _obj_card.size.y) / MSG_SCALE
+	_msgs.run_bottom = (_run_card.position.y + _run_card.size.y) / MSG_SCALE
+	_msgs.squad_top = _squad_card.position.y / MSG_SCALE
 
 	var show_result: bool = m.phase == Mission.Phase.SUCCESS or m.phase == Mission.Phase.FAILED
 	var just_shown: bool = show_result and not _result.visible
@@ -1738,6 +1742,76 @@ func _fill_info(c: Dictionary, title: String, tag: String, rows: Array, text: St
 			grid.add_child(gl)
 	(c["card"] as Control).reset_size()
 
+## Papier w świecie 3D (MESSAGES_PLAN.md, 2b): te same notatki (odprawa przy tablicy, prognoza nad radiostacją) rysowane do tekstury w SubViewport.
+## view3d.gd (_sync_world_notes) kładzie ją na kartce przypiętej do tablicy / ściany, oświetlonej lampami sceny. Karta HUD zostaje jako widok „czytam z bliska”
+## (papier w świecie chowa się, gdy karta HUD jest widoczna). Zawartość odświeża się tylko przy zmianie klucza (cel misji, pogoda, zużycie).
+const WORLD_NOTE_K := 2.0                         ## ostrość tekstury papieru w świecie (piksele na jednostkę HUD)
+var _wn := {}                                     ## rodzaj ("brief" / "radio") → {vp, info, key, busy}
+
+func _build_world_notes() -> void:
+	for spec in [["brief", 310.0, 4, UiTheme.Note.DOSSIER], ["radio", 300.0, 2, UiTheme.Note.PRINTOUT]]:
+		var info := _make_info_card(float(spec[1]), int(spec[2]), int(spec[3]))
+		var card := info["card"] as NotePaper
+		remove_child(card)
+		card.visible = true
+		card.tail = false                          # w świecie kartka wisi na tablicy, bez ogonka wskazującego obiekt
+		if String(spec[0]) == "brief":
+			card.stamp = tr("CLASSIFIED")
+		var vp := SubViewport.new()
+		vp.transparent_bg = true
+		vp.disable_3d = true
+		vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		vp.size = Vector2i(16, 16)
+		vp.add_to_group("world_note")
+		vp.set_meta("kind", String(spec[0]))
+		add_child(vp)
+		vp.add_child(card)
+		card.scale = Vector2.ONE * WORLD_NOTE_K
+		_wn[String(spec[0])] = {"vp": vp, "info": info, "key": "", "busy": false}
+
+func _wn_hide(kind: String, hud_visible: bool) -> void:
+	if _wn.has(kind):
+		((_wn[kind] as Dictionary)["vp"] as SubViewport).set_meta("hide", hud_visible)
+
+## Co klatkę tanio sprawdza klucze treści; przy zmianie wypełnia kartę, czeka na układ i raz renderuje teksturę.
+func _refresh_world_notes() -> void:
+	if get_tree().get_first_node_in_group("board") == null and get_tree().get_first_node_in_group("radio_set") == null:
+		return
+	var main := get_tree().current_scene
+	var target := String(main.get("after_hub")) if main != null else ""
+	var wear_i := int(clampf(float(RunLog.total_downs()) / 10.0, 0.0, 1.0) * 10.0)
+	for kind in _wn:
+		var d: Dictionary = _wn[kind]
+		var key := ("%s|%d" % [target, wear_i]) if kind == "brief" else ("%s|%s|%d" % [Weather.forecast, target, wear_i])
+		if key != String(d["key"]) and not bool(d["busy"]):
+			d["key"] = key
+			_update_world_note(String(kind), target)
+
+func _update_world_note(kind: String, target: String) -> void:
+	var d: Dictionary = _wn[kind]
+	d["busy"] = true
+	var info: Dictionary = d["info"]
+	var card := info["card"] as NotePaper
+	var lvl := get_tree().get_first_node_in_group("level")
+	if kind == "brief":
+		_fill_brief(lvl.briefing(target) if lvl != null and target != "" else {}, info)
+	else:
+		_fill_radio(info, target)
+	card.wear = clampf(float(RunLog.total_downs()) / 10.0, 0.0, 1.0)
+	card.tally = RunLog.entries.size()
+	card.scale = Vector2.ONE
+	card.reset_size()
+	await get_tree().process_frame
+	card.reset_size()
+	var pad := Vector2(14.0, 18.0)
+	var vp := d["vp"] as SubViewport
+	vp.size = Vector2i((card.size + pad * 2.0) * WORLD_NOTE_K)
+	card.scale = Vector2.ONE * WORLD_NOTE_K
+	card.position = pad * WORLD_NOTE_K
+	await get_tree().process_frame
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	d["busy"] = false
+
 ## Notatki zależą od otoczenia: w półmroku ciemniejsze (jasność z koloru ciemności mapy), a zużycie rośnie z upadkami drużyny w kampanii (RunLog).
 func _dress_note(c: Dictionary) -> void:
 	var n := c["card"] as NotePaper
@@ -1781,6 +1855,7 @@ func _drive_cards() -> void:
 			break
 	var bc: Control = _brief["card"]
 	bc.visible = near_board and Msg.current(Msg.Ch.ALERT).is_empty()      # alert (odliczanie wyjścia) ma pierwszeństwo przed notatką
+	_wn_hide("brief", bc.visible)
 	if bc.visible:
 		_dress_note(_brief)
 		var main := get_tree().current_scene
@@ -1791,10 +1866,21 @@ func _drive_cards() -> void:
 			_fill_brief(lvl.briefing(target))
 		# nad tablicą (jak karta broni), więc nie zasłania stojącego przy niej gracza
 		var btop: Vector2 = get_viewport().get_canvas_transform() * (board.global_position + Vector2(0, -46))
+		bc.scale = Vector2.ONE * MSG_SCALE
+		bc.pivot_offset = Vector2(bc.size.x * 0.5, bc.size.y)
 		bc.position = Vector2(clampf(btop.x / scale.x - bc.size.x * 0.5, 6.0, maxf(6.0, size.x - bc.size.x - 6.0)), maxf(6.0, btop.y / scale.y - bc.size.y - 12.0))
 	_drive_radio()
+	_refresh_world_notes()
 
 ## Prognoza z radiostacji (weather.gd): nazwa pogody, jej plusy i minusy, tytuł następnej misji.
+## Treść prognozy (nazwa pogody, plusy i minusy, tytuł następnej misji) do karty HUD albo papieru w świecie.
+func _fill_radio(c: Dictionary, target: String) -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	var info: Dictionary = lvl.briefing(target) if lvl != null and target != "" else {}
+	var tag := ("Next: " + String(info["title"])) if not info.is_empty() else "Next mission"
+	var id: String = Weather.forecast
+	_fill_info(c, "WEATHER FORECAST", tag, [[Weather.color_of(id), Weather.name_of(id)]], Weather.text_of(id), UiTheme.ACCENT)
+
 func _drive_radio() -> void:
 	var near := false
 	var rset: Node2D = null
@@ -1805,6 +1891,7 @@ func _drive_radio() -> void:
 			break
 	var rc: Control = _radio["card"]
 	rc.visible = near and Msg.current(Msg.Ch.ALERT).is_empty()
+	_wn_hide("radio", rc.visible)                  # papier w świecie chowa się, gdy ta sama treść jest czytelna w karcie HUD
 	if not rc.visible:
 		return
 	_dress_note(_radio)
@@ -1813,17 +1900,17 @@ func _drive_radio() -> void:
 	var key := "%s|%s" % [Weather.forecast, target]
 	if key != _radio_key:
 		_radio_key = key
-		var lvl := get_tree().get_first_node_in_group("level")
-		var info: Dictionary = lvl.briefing(target) if lvl != null and target != "" else {}
-		var tag := ("Next: " + String(info["title"])) if not info.is_empty() else "Next mission"
-		var id: String = Weather.forecast
-		_fill_info(_radio, "WEATHER FORECAST", tag, [[Weather.color_of(id), Weather.name_of(id)]], Weather.text_of(id), UiTheme.ACCENT)
+		_fill_radio(_radio, target)
 	var rtop: Vector2 = get_viewport().get_canvas_transform() * (rset.global_position + Vector2(0, -40))
+	rc.scale = Vector2.ONE * MSG_SCALE
+	rc.pivot_offset = Vector2(rc.size.x * 0.5, rc.size.y)
 	rc.position = Vector2(clampf(rtop.x / scale.x - rc.size.x * 0.5, 6.0, maxf(6.0, size.x - rc.size.x - 6.0)), maxf(6.0, rtop.y / scale.y - rc.size.y - 12.0))
 
-func _fill_brief(info: Dictionary) -> void:
+func _fill_brief(info: Dictionary, c := {}) -> void:
+	if c.is_empty():
+		c = _brief
 	if info.is_empty():
-		_fill_info(_brief, "BRIEFING", "No orders yet", [], "", UiTheme.ACCENT)
+		_fill_info(c, "BRIEFING", "No orders yet", [], "", UiTheme.ACCENT)
 		return
 	var rows: Array = []                          # [kolor znacznika, nazwa, liczba, opis]
 	var counts: Dictionary = info["counts"]
@@ -1847,7 +1934,7 @@ func _fill_brief(info: Dictionary) -> void:
 		var extra := rows.size() - (BRIEF_ROWS - 1)
 		rows = rows.slice(0, BRIEF_ROWS - 1)
 		rows.append([Color(0, 0, 0, 0), "+%d more" % extra, "", "see the bestiary (Esc)"])
-	_fill_info(_brief, "BRIEFING  ·  " + String(info["title"]), "", rows, String(info["brief"]), UiTheme.ACCENT)
+	_fill_info(c, "BRIEFING  ·  " + String(info["title"]), "", rows, String(info["brief"]), UiTheme.ACCENT)
 
 ## Czy lokalny gracz stoi przy ławie warsztatu (kryjówka) i panel jest zamknięty.
 func _near_workshop() -> bool:
@@ -2022,6 +2109,8 @@ func _drive_prompt() -> void:
 		_prompt_bar.fill = col
 		_prompt_bar.queue_redraw()
 		_prompt_card.reset_size()
+		_prompt_card.scale = Vector2.ONE * MSG_SCALE
+		_prompt_card.pivot_offset = Vector2(_prompt_card.size.x * 0.5, 0.0)
 		_prompt_card.position = Vector2((size.x - _prompt_card.size.x) * 0.5, size.y * PROMPT_Y)
 
 func _drive_controls() -> void:
