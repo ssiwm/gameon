@@ -303,4 +303,6 @@ potem `blender -b --factory-startup -P tools/prep_enemy3d.py -- X_rig.glb ../../
 
 **Kodeks elit — zrobiony w 1.7.259:** wpisy Kapłan / Rzeźnik / Żerca w bestiariuszu z portretami z wycinków konceptów (`art/portraits/`, nowy typ portretu `image`), teksty po polsku w `ui.csv`, asercja w `--enemytest`.
 
-**Zostaje:** strzałka w świecie ku ujawnionemu Żercy, test sieciowy host + klient dla porwania, strojenie po playtestach (F4f).
+**Wskazanie porwanego — zrobione w 1.7.261 (warianty A+C z makiety):** strzałka na krawędzi ekranu ku porwanemu poza kadrem (`taken_arrow.gd`, kto / sekundy / metry) i smuga krwi za ciągniętym ciałem (`view3d.gd: _sync_drag_trails`); oba czytają replikowane `taken`, więc działają u klientów. Zrzut: `tools/shot_taken.gd`.
+
+**Zostaje:** test sieciowy host + klient dla porwania, strojenie po playtestach (F4f).

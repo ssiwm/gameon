@@ -294,6 +294,7 @@ func _process(delta: float) -> void:
 	_sync_casings()
 	_sync_burning()
 	_sync_blood(delta)
+	_sync_drag_trails()
 	_sync_weather(delta)
 	_sync_mine_dust()
 	_sync_globs()
@@ -3512,7 +3513,7 @@ void fragment() {
 	ALPHA = a * mix(0.90, 0.98, thick) * fade;
 }
 """
-const BLOOD_MAX := 70                       ## limit kałuż (najstarsze znikają)
+const BLOOD_MAX := 110                      ## limit kałuż i smug ciągnięcia (najstarsze znikają)
 const BLOOD_MERGE_M := 0.45                 ## bliższe plamy zlewają się w jedną, większą kałużę
 const BLOOD_MAX_R := 0.75                   ## największy promień kałuży [m]
 
@@ -3550,6 +3551,54 @@ func mirror_blood(pos: Vector2, radius: float) -> void:
 		if is_instance_valid(old[0]):
 			(old[0] as Node).queue_free()
 
+## Smuga krwi za porwanym graczem (Żerca, ENEMY_PLAN.md F4d, wariant C): co `DRAG_STEP` px drogi ciągniętego ciała rozciągnięta plama wzdłuż
+## przesunięcia — ślad prowadzi do legowiska. Czyta replikowane `taken`, więc smugę widzi każdy peer; zasycha i znika jak zwykła krew.
+const DRAG_STEP := 16.0                     ## px świata między smugami (ok. 1 m)
+var _drag_last := {}                        ## id gracza → pozycja ostatniej smugi
+
+func _sync_drag_trails() -> void:
+	for p in get_tree().get_nodes_in_group("players"):
+		var id := p.get_instance_id()
+		if not bool(p.get("taken")):
+			_drag_last.erase(id)
+			continue
+		var pos: Vector2 = (p as Node2D).global_position
+		if not _drag_last.has(id):
+			_drag_last[id] = pos
+			continue
+		var last: Vector2 = _drag_last[id]
+		if pos.distance_to(last) >= DRAG_STEP:
+			_drag_smear(last, pos)
+			_drag_last[id] = pos
+
+## Rozciągnięta plama między `a` i `b` (px świata) — ten sam shader co kałuże, wydłużona w osi ciągnięcia.
+func _drag_smear(a: Vector2, b: Vector2) -> void:
+	var at := Level3D.px_to_m((a + b) * 0.5)
+	var length := a.distance_to(b) * PX * 1.7                    # brzeg plamy jest postrzępiony (shader) — zakładka, żeby ślad był ciągły
+	var r := 0.12
+	var mi := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(2.0, 2.0)
+	mi.mesh = pm
+	var sm := ShaderMaterial.new()
+	if _blood_shader == null:
+		_blood_shader = Shader.new()
+		_blood_shader.code = BLOOD_SHADER.replace("//COMMON", Level3D.PROP_COMMON)
+	sm.shader = _blood_shader
+	sm.set_shader_parameter("seed", randf() * 40.0)
+	mi.material_override = sm
+	mi.layers = LAYER_WORLD
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.position = Vector3(at.x, at.y + 0.015 + 0.0004 * float(_blood.size()), randf_range(0.05, 0.2))
+	mi.rotation.z = atan2(b.y - a.y, b.x - a.x) * -1.0 if absf(b.x - a.x) > 0.001 else 0.0     # zbocze: smuga leży wzdłuż drogi
+	mi.scale = Vector3(length * 0.5, 1.0, 0.30)                    # od razu pełna: ciało przesuwa się, krew się nie rozlewa
+	_geo.add_child(mi)
+	_blood.append([mi, r, r, 0.0, Vector2(length * 0.5 / r, 0.30 / (r * 0.8))])     # ok. 0,6 m w głąb: kamera patrzy prawie z boku, wąska smuga byłaby kreską
+	if _blood.size() > BLOOD_MAX:
+		var old: Array = _blood.pop_front()
+		if is_instance_valid(old[0]):
+			(old[0] as Node).queue_free()
+
 func _sync_blood(delta: float) -> void:
 	var i := 0
 	while i < _blood.size():
@@ -3560,9 +3609,10 @@ func _sync_blood(delta: float) -> void:
 		var mi := b[0] as MeshInstance3D
 		b[2] = move_toward(float(b[2]), float(b[1]), delta * maxf(0.06, (float(b[1]) - float(b[2])) * 1.4))      # rozlewanie: szybko, potem coraz wolniej
 		b[3] = float(b[3]) + delta
-		mi.scale = Vector3(float(b[2]), 1.0, float(b[2]) * 0.8)
+		var st: Vector2 = b[4] if b.size() > 4 else Vector2.ONE           # smuga ciągnięcia: rozciągnięta w osi x
+		mi.scale = Vector3(float(b[2]) * st.x, 1.0, float(b[2]) * 0.8 * st.y)
 		var sm := mi.material_override as ShaderMaterial
-		sm.set_shader_parameter("wet", 1.0 - smoothstep(25.0, 70.0, float(b[3])))
+		sm.set_shader_parameter("wet", (1.0 - smoothstep(25.0, 70.0, float(b[3]))) * (0.3 if b.size() > 4 else 1.0))   # smuga: rozmazana, mniej lśni
 		var fade := 1.0 - smoothstep(110.0, 130.0, float(b[3]))
 		sm.set_shader_parameter("fade", fade)
 		if fade <= 0.0:

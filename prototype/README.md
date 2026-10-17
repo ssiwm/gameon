@@ -239,7 +239,8 @@ xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3
 xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3 \
     --script tools/shot_game.gd -- --wait=200 --out=/tmp/game.png      # gra: host + HUD; `--menu` dodatkowo otwiera menu pauzy
 xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3 \
-    --script tools/shot_enemies.gd -- --dir=/tmp/shots                 # po jednym zrzucie przy każdym rodzaju wroga / gnieździe / bossie
+    --script tools/shot_enemies.gd -- --dir=/tmp/shots                 # po jednym zrzucie przy każdym rodzaju wroga / gnieździe / bossie (--elite=KIND, --reveal: ujawniony Żerca)
+xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3     --script tools/shot_taken.gd -- --dir=/tmp/shots                   # porwany bot: smuga krwi i strzałka na krawędzi ekranu
 ```
 
 ## Grafika — generowanie i podmiana
