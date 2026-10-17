@@ -20,6 +20,8 @@ const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Lev
 ## bez tego klucza rodzaj chodzi pozą z kodu. attack_clip: zapowiedź i cios z klipu (zestaw musi je mieć), ręce wtedy z klipu.
 const SPEC := {
 	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 1.0, "prof": {}, "clips": true, "clip_amp": 0.6, "stun": true},
+	# Rzeźnik (F4c) — do czasu własnego modelu (F4e) model Wołka, wyższy i cięższy
+	"rzeznik": {"fit": ["height", 44.0], "frame_h": 58.0, "cycle": 1.0, "model": DIR + "wolek.glb", "prof": {}, "clips": true, "clip_amp": 0.6, "stun": true},
 	"slepiec": {"fit": ["height", 27.0], "frame_h": 32.0, "cycle": 1.0, "prof": {"hy": 0.50, "hz": 0.35}, "clips": true, "attack_kind": "claw", "walk_clip": "zombie", "attack_clip": true,
 		"death": {"dir": 1.0, "lean": -8.0, "dur": 0.95, "tilt": 86.0}},
 	"podsluchacz": {"fit": ["height", 34.0], "frame_h": 40.0, "cycle": 1.0,

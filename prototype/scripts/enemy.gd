@@ -1116,9 +1116,10 @@ func take_hit(info: Dictionary) -> Dictionary:
 		mat = 1                          # pole ochronne: iskry i szary hitmarker jak przy pancerzu
 	hp -= dmg
 	_flash = 0.1
-	_stagger = maxf(_stagger, 0.12 + float(info.get("stun", 0.0)))
-	if float(info.get("stun", 0.0)) >= WINDUP_INTERRUPT_STUN:
-		_interrupt_windup()
+	if not bool(_def.get("stun_resist", false)):                       # elita (Rzeźnik) nie chwieje się od trafień i nie traci zapowiedzi od ogłuszenia
+		_stagger = maxf(_stagger, 0.12 + float(info.get("stun", 0.0)))
+		if float(info.get("stun", 0.0)) >= WINDUP_INTERRUPT_STUN:
+			_interrupt_windup()
 	velocity.x += signf(info["dir"].x) * float(info.get("knock", 0.0)) * float(_def["knock_mult"])
 	var pull: float = info.get("pull", 0.0)
 	if pull > 0.0:
@@ -1171,7 +1172,8 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 	_alert_cd = ALERT_COOLDOWN
 	_beh.on_damaged()
 	_flash = 0.1
-	_stagger = 0.12
+	if not bool(_def.get("stun_resist", false)):
+		_stagger = 0.12
 	Vfx.blood(get_parent(), global_position + Vector2(0, -8), (global_position - from_pos).normalized(), 5)
 	var knock: float = _def["knock"]
 	velocity.x += signf(global_position.x - from_pos.x) * knock

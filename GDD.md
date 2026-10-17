@@ -224,7 +224,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 | Wróg | HP | Cechy |
 |------|----|-------|
 | **Kapłan** | 250 | Elita wsparcia (pancerz 2, wolny, **nie bije w zwarciu**): trzyma dystans za Trzoskami i co sekundę **leczy** je o 10% maks. HP (7 m, z czystą linią); gdy gracz podejdzie bliżej niż 7 m, po zapowiedzi 0,7 s z pierścieniem **krzyczy** — wszyscy gracze w 6 m dostają **ogłuszenie 0,8 s** (bez strzału, skoku i bicia, chodzić można; potem 3 s niewrażliwości), przerwa 8 s. Zabity przestaje leczyć, a Trzoski w pobliżu tracą morale. Najwyżej jedna elita naraz (znacznik `A` w mapie, późne grupy Dyrektora) | Zabij pierwszego: cofnij się z pierścienia, wejdź w zasięg tuż po krzyku, strzelba i ogień |
-| **Rzeźnik** | 600 | Miniboss stref; ładuje się przez ściany, niszczy barykady |
+| **Rzeźnik** | 600 | Miniboss stref (pancerz 4, odporny na ogłuszenie i prawie na odrzut; prędkość 60): po zapowiedzi 1,0 s **szarżuje** 1,4 s ×3,2 szybciej (przerwa 9 s, 2 obrażenia) — **przebija zamurowane przejścia i barykady**, rozbija skrzynie i beczki, a o ścianę z kafli ogłusza się na 1,6 s (okno na strzał w plecy). Nie rzuca. Wymaga czystego rozbiegu 100–320 px na jednym poziomie (gracz na półce jest bezpieczny). Znacznik `U` w mapie, późne grupy Dyrektora (od ok. 11–13 min); najwyżej jedna elita naraz. Nie niszczy kafli mapy (tylko barykady) | Uskok z toru szarży, półka, beczki, strzelba i ogień (pancerz 4 osłabia M-83) |
 | **Żerca** | 300 | Zjada downed graczy — jeśli nie uratujesz w 20 s, postać ginie do końca misji |
 
 ### 7.3 Stalker — „ON" (On/To)
