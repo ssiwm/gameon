@@ -1289,7 +1289,7 @@ func _build_result() -> void:
 func _process(delta: float) -> void:
 	_drive_music()
 	var in_session := NoiseMgr.has_network()
-	visible = in_session
+	visible = in_session and not Settings.dev_nohud
 	if not in_session:
 		_session_t = 0.0
 		_last_hp = -1
