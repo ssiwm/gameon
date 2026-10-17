@@ -210,7 +210,7 @@ godot --headless --path . -- --host --stalkertest --autoquit=70
 
 # test wrogów i hałasu (ENEMY_PLAN.md F0): walidacja zgłoszeń hałasu, rozbieg Wołka, ściany przy ciosie, XP przywołanych
 # (linie [ENEMY-TEST], kod wyjścia 0 = OK, ~10 s)
-godot --headless --path . -- --host --enemytest --autoquit=40
+godot --headless --path . -- --host --enemytest --autoquit=150
 
 # test wipe: wszyscy padają → restart misji po 3 s (działa też z klientem)
 godot --headless --path . -- --host --wipetest --autoquit=8
