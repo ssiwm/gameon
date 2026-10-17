@@ -21,6 +21,8 @@ const WEAPONS := [Weapons.SPREAD12, Weapons.SRUT8, Weapons.LR7, Weapons.HKM9, We
 const ACCENTS := []
 ## Szyby między poziomami: [pierwsza, ostatnia] kolumna mapy. Meble z hub_decor.gd ich nie zastawiają.
 const SHAFTS := [[26, 31], [56, 61]]
+## Strefa startu przed drzwiami wyjścia: [pierwsza kolumna, ostatnia kolumna, wiersz podłogi]. Kto w niej stoi, jest gotowy (main.gd: _hub_zone_ids).
+const LAUNCH_ZONE := [63, 70, 22]
 ## Radio: kolejne linie pokazuje HUD w pierwszych sekundach pobytu.
 const RADIO := ["...the transmitter is still humming. Whatever listens out there heard it too.", "Restock. Swap guns at the armory. Check the board for the next job."]
 const RACKS := true                       ## broń z „g" stoi w miejscu (ekspozycja)

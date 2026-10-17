@@ -291,6 +291,7 @@ func _process(delta: float) -> void:
 	_sync_items()
 	_build_rails()
 	_sync_drawn()
+	_sync_launch_doors()
 	_sync_guns()
 	_sync_cabinets(delta)
 	_sync_fires()
@@ -898,6 +899,101 @@ func _local_xf(n: Node3D, root: Node) -> Transform3D:
 	if p == root and root is Node3D:
 		xf = (root as Node3D).transform * xf
 	return xf
+
+# ---------------------------------------------------------------- drzwi wyjścia z kryjówki
+
+const LD_STATE_COLORS := [Color(0.95, 0.16, 0.10), Color(1.0, 0.62, 0.12), Color(0.35, 1.0, 0.45)]   ## lampa ON AIR: nikt / część drużyny / wszyscy gotowi
+var _launch_doors := {}                   ## id węzła drzwi (launch_door.gd) → {root, mat, light}
+
+## Drzwi bunkrowe na końcu strefy startu: rama i skrzydło w tylnej ścianie, lampa ON AIR nad nimi (kolor = gotowość drużyny)
+## i pasy ostrzegawcze na podłodze strefy. Odtwarzane po przebudowie geometrii mapy (korzeń wisi w `_geo`).
+func _sync_launch_doors() -> void:
+	for id in _launch_doors.keys():
+		if not is_instance_valid((_launch_doors[id] as Dictionary)["root"]):
+			_launch_doors.erase(id)
+	for n in get_tree().get_nodes_in_group("launch_door"):
+		if not (n is Node2D) or _geo_key == "":
+			continue
+		var d = _launch_doors.get(n.get_instance_id())
+		if d == null:
+			d = _build_launch_door(n as Node2D)
+			_launch_doors[n.get_instance_id()] = d
+		var st := clampi(int(n.get("state")), 0, 2)
+		var col: Color = LD_STATE_COLORS[st]
+		var pulse := 0.55 + 0.45 * sin(float(Time.get_ticks_msec()) * 0.008) if st == 1 else 1.0
+		var mat := d["mat"] as StandardMaterial3D
+		mat.albedo_color = col
+		mat.emission = col
+		mat.emission_energy_multiplier = 3.0 * pulse
+		var lt := d["light"] as OmniLight3D
+		lt.light_color = col
+		lt.light_energy = 1.6 * pulse
+
+func _ld_box(root: Node3D, size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
+	var bm := BoxMesh.new()
+	bm.size = size
+	var mi := MeshInstance3D.new()
+	mi.mesh = bm
+	mi.material_override = mat
+	mi.layers = LAYER_WORLD
+	mi.position = pos
+	root.add_child(mi)
+	return mi
+
+func _build_launch_door(n: Node2D) -> Dictionary:
+	var zone: Rect2 = n.get("zone")
+	var root := Node3D.new()
+	root.name = "LaunchDoor"
+	_geo.add_child(root)
+	var foot := Level3D.px_to_m(n.global_position)
+	root.position = Vector3(foot.x, foot.y, 0.0)
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.17, 0.16, 0.15)
+	steel.metallic = 0.6
+	steel.roughness = 0.55
+	var leaf := StandardMaterial3D.new()
+	leaf.albedo_color = Color(0.21, 0.22, 0.18)
+	leaf.metallic = 0.4
+	leaf.roughness = 0.7
+	_ld_box(root, Vector3(2.1, 2.95, 0.25), Vector3(0.0, 1.475, -1.9), steel)           # rama w tylnej ścianie
+	_ld_box(root, Vector3(1.7, 2.65, 0.18), Vector3(0.0, 1.325, -1.76), leaf)           # skrzydło drzwi
+	var wheel := TorusMesh.new()
+	wheel.inner_radius = 0.17
+	wheel.outer_radius = 0.22
+	var wmi := MeshInstance3D.new()
+	wmi.mesh = wheel
+	wmi.material_override = steel
+	wmi.layers = LAYER_WORLD
+	wmi.position = Vector3(0.0, 1.35, -1.64)
+	wmi.rotation = Vector3(deg_to_rad(90.0), 0.0, 0.0)
+	root.add_child(wmi)
+	var lamp_mat := StandardMaterial3D.new()
+	lamp_mat.emission_enabled = true
+	lamp_mat.albedo_color = LD_STATE_COLORS[0]
+	lamp_mat.emission = LD_STATE_COLORS[0]
+	_ld_box(root, Vector3(0.8, 0.24, 0.1), Vector3(0.0, 3.25, -1.74), lamp_mat)         # lampa ON AIR nad drzwiami
+	var light := OmniLight3D.new()
+	light.omni_range = 5.5
+	light.light_volumetric_fog_energy = 0.8
+	light.layers = LAYER_WORLD | LAYER_ACTORS
+	light.position = Vector3(0.0, 3.0, -1.2)
+	root.add_child(light)
+	# pasy ostrzegawcze (żółto-czarne) wzdłuż przodu i tyłu strefy
+	var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
+	for y in 16:
+		for x in 16:
+			img.set_pixel(x, y, Color(0.92, 0.72, 0.10) if ((x + y) / 4) % 2 == 0 else Color(0.06, 0.06, 0.05))
+	var tex := ImageTexture.create_from_image(img)
+	var hz := StandardMaterial3D.new()
+	hz.albedo_texture = tex
+	hz.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	hz.roughness = 0.9
+	var wm := zone.size.x * PX
+	hz.uv1_scale = Vector3(wm / 0.12, 1.0, 1.0)
+	var cx := zone.get_center().x * PX - foot.x
+	for zz in [0.55, -0.55]:
+		_ld_box(root, Vector3(wm, 0.012, 0.12), Vector3(cx, 0.008, zz), hz)
+	return {"root": root, "mat": lamp_mat, "light": light}
 
 # ---------------------------------------------------------------- radiostacja i zamurowane przejścia
 
