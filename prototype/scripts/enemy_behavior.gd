@@ -170,3 +170,11 @@ func on_heard_noise(_lead: Vector2, _dist: float, _amount: float) -> void:
 ## Czy wróg w ogóle bije w zwarciu (Kapłan jest tylko wsparciem: krzyk i leczenie).
 func may_attack() -> bool:
 	return true
+
+## Koniec `_ready` węzła wroga (zachowanie może ustawić stan początkowy, np. Żerca zaczyna ukryty).
+func on_ready() -> void:
+	pass
+
+## Czy wróg jest zamaskowany: niewidoczny i nietrafialny na każdym peerze (stan musi wynikać ze stanu replikowanego, np. `_sp`). Żerca do chwili porwania.
+func is_hidden() -> bool:
+	return false

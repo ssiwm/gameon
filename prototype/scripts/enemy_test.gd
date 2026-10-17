@@ -704,13 +704,13 @@ func _test_butcher() -> void:
 			n.queue_free()
 	await get_tree().physics_frame
 
-# ---------------------------------------------------------------- F4d: Żerca (porywa leżących graczy)
+# ---------------------------------------------------------------- F4d: Żerca (zamaskowany porywacz leżących graczy)
 
 func _test_devourer() -> void:
 	var Defs := load("res://scripts/enemy_defs.gd")
 	var cfg: Dictionary = Defs.DEFS["zerca"]
-	check("Żerca/dane: 300 HP, elita, zachowanie devourer, 20 s do „zjedzenia”, wyczuwa leżących w 320 px, niesie ×0,6",
-		float(cfg["hp"]) == 300.0 and bool(cfg["elite"]) and cfg["behavior"] == "devourer" and is_equal_approx(float(cfg["devour"]["time"]), 20.0) and is_equal_approx(float(cfg["devour"]["sense"]), 320.0) and is_equal_approx(float(cfg["devour"]["carry_speed"]), 0.6) and Defs.elite_kinds().has("zerca"))
+	check("Żerca/dane: 300 HP, elita, zachowanie devourer, 20 s do „zjedzenia”, węch 520 px, niesie ×0,6",
+		float(cfg["hp"]) == 300.0 and bool(cfg["elite"]) and cfg["behavior"] == "devourer" and is_equal_approx(float(cfg["devour"]["time"]), 20.0) and is_equal_approx(float(cfg["devour"]["sense"]), 520.0) and is_equal_approx(float(cfg["devour"]["carry_speed"]), 0.6) and Defs.elite_kinds().has("zerca"))
 	var y := -17000.0
 	var strip := _floor(FAR_X + 31000.0, FAR_X + 31900.0, y)
 	var x0 := FAR_X + 31200.0
@@ -740,27 +740,44 @@ func _test_devourer() -> void:
 	player.apply_devour()
 	check("kara: bez porwania `apply_devour` nic nie robi", not player.taken and not player.dead)
 
-	# zachowanie Żercy: wyczuwa leżącego, dopada, porywa, zjada po czasie / puszcza po śmierci
+	# zamaskowany Żerca: niewidoczny, nietrafialny, nie reaguje na żywych
 	var z := _spawn("zerca", Vector2(x0 + 110.0, y))
+	await get_tree().process_frame
+	await get_tree().physics_frame
+	await get_tree().physics_frame
 	z.set_physics_process(false)
-	await get_tree().physics_frame
-	await get_tree().physics_frame
+	player.dead = false
+	player.global_position = Vector2(x0 + 100.0, y)
+	var hs = z.get_meta("hurt_shape") if z.has_meta("hurt_shape") else null
+	check("Żerca/maska: na starcie zamaskowany — niewidoczny, strefa trafień wyłączona, boty go nie widzą, nie bije, view_info.hidden",
+		z._sp == 2 and z._beh.is_hidden() and not z.visible and hs != null and bool(hs.disabled) and not z.is_threat() and not z._beh.may_attack() and bool(z.view_info()["hidden"]), "sp=%d vis=%s hurt_off=%s" % [z._sp, z.visible, str(hs.disabled) if hs != null else "?"])
 	z.active = true
+	var vx_before: float = z.velocity.x
+	check("Żerca/maska: żywy gracz tuż obok nic nie zmienia — przejmuje tik, nie ma celu ani śladu, stoi", z._beh.tick_special(0.016) and z._target == null and not z._has_lead and z._sp == 2 and absf(z.velocity.x - vx_before) < 1.0)
+
+	# wyczuwa leżącego, skrada się, porwanie = ujawnienie
 	player.dead = true
 	player.taken = false
 	player.bleed_left = 8.0
 	player.global_position = Vector2(x0 + 60.0, y)
-	var handled: bool = z._beh.tick_phase(0.016, null)
-	check("Żerca/węch: leżący gracz w pobliżu (po trasie < 320 px, w świecie testu tłumienie ×3) → Żerca idzie po niego (przejmuje ruch, ślad na ofiarę), jeszcze nie porwał", handled and z._beh.prey == null and z._has_lead and z._last_known.distance_to(player.global_position) < 2.0, "lead=%s" % str(z._last_known))
+	z._beh.scan_t = 0.0
+	var handled: bool = z._beh.tick_special(0.016)
+	check("Żerca/węch: leżący gracz w pobliżu (po trasie < 520 px, w świecie testu tłumienie ×3) → skrada się (ślad na ofiarę), nadal ukryty", handled and z._beh.prey == null and z._sp == 2 and z._has_lead and z._last_known.distance_to(player.global_position) < 2.0, "lead=%s sp=%d" % [str(z._last_known), z._sp])
 	z.global_position = Vector2(x0 + 50.0, y)
-	z._beh.tick_phase(0.016, null)
-	check("Żerca/porwanie: przy ofierze (< 14 px) porywa ją — stan special, gracz zabrany z czasem 20 s", z._beh.prey == player and player.taken and z._sp == 1 and player.taken_t > 19.0 and bool(z.view_info()["carrying"]), "taken=%s sp=%d t=%.1f" % [player.taken, z._sp, player.taken_t])
+	z._beh.scan_t = 0.0
+	z._beh.tick_special(0.016)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("Żerca/porwanie: przy ofierze (< 14 px) porywa ją i **ujawnia się** — widoczny, trafialny, stan special, ofiara zabrana z czasem 20 s",
+		z._beh.prey == player and player.taken and z._sp == 1 and not z._beh.is_hidden() and z.visible and not bool(hs.disabled) and player.taken_t > 19.0 and bool(z.view_info()["carrying"]) and not bool(z.view_info()["hidden"]) and z.is_threat(), "taken=%s sp=%d vis=%s" % [player.taken, z._sp, z.visible])
 	var bleed_before: float = player.bleed_left
 	z._home = Vector2(x0 + 400.0, y)
 	z._beh.tick_phase(1.0, null)
 	check("Żerca/niesie: ciągnie ofiarę ku domowi, wykrwawianie stoi, czas do kary maleje (20 → 19 s)", z._beh.prey == player and absf(player.bleed_left - bleed_before) < 0.01 and absf(player.taken_t - 19.0) < 0.2 and z.velocity.x > 0.0, "t=%.1f vx=%.0f" % [player.taken_t, z.velocity.x])
 	z._beh.tick_phase(30.0, null)
-	check("Żerca/kara: po 20 s ofiara wraca na start (żyje, nie zabrana), Żerca wraca do zwykłego zachowania", z._beh.prey == null and not player.taken and not player.dead and player.hp == 1 and z._sp == 0, "dead=%s sp=%d" % [player.dead, z._sp])
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("Żerca/kara: po 20 s ofiara wraca na start (żyje, nie zabrana), a Żerca po posiłku znów się chowa", z._beh.prey == null and not player.taken and not player.dead and player.hp == 1 and z._sp == 2 and not z.visible, "dead=%s sp=%d vis=%s" % [player.dead, z._sp, z.visible])
 	# ratunek: zabity Żerca puszcza ofiarę
 	player.dead = true
 	player.bleed_left = 8.0
@@ -768,16 +785,19 @@ func _test_devourer() -> void:
 	z.global_position = Vector2(x0 + 50.0, y)
 	z._beh.cand = null
 	z._beh.scan_t = 0.0
-	z._beh.tick_phase(0.016, null)
-	z._beh.tick_phase(0.016, null)
+	z._beh.tick_special(0.016)
 	var was_taken: bool = player.taken
 	z._beh.on_death()
 	check("Żerca/ratunek: zabity w trakcie porwania puszcza ofiarę (leży, ≥ 3 s do wykrwawienia)", was_taken and not player.taken and player.dead and player.bleed_left >= 3.0 - 0.001 and z._beh.prey == null, "was=%s taken=%s" % [was_taken, player.taken])
+	# trafiony w ukryciu (wybuch) — ujawnia się
+	z._beh._hide()
+	z._beh.on_hit(false)
+	check("Żerca/maska: trafiony w ukryciu (np. wybuch) ujawnia się", z._sp == 0 and not z._beh.is_hidden())
 	# żywy człowiek na nogach nie jest ofiarą
 	player.dead = false
 	z._beh.cand = null
 	z._beh.scan_t = 0.0
-	check("Żerca/węch: gracz na nogach nie jest ofiarą (tick_phase nie przejmuje ruchu)", not z._beh.tick_phase(0.016, null))
+	check("Żerca/węch: gracz na nogach nie jest ofiarą (ujawniony Żerca nie przejmuje ruchu)", not z._beh.tick_phase(0.016, null))
 
 	# Dyrektor: dopiero po pierwszym upadku
 	var entry: Array = []
