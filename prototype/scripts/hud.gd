@@ -1034,6 +1034,7 @@ func _build_center() -> void:
 	add_child(_center)
 	_center_sub = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_center_sub)
+	add_child((load("res://scripts/taken_arrow.gd") as GDScript).new())      # strzałka ku porwanemu graczowi poza kadrem (Żerca, F4d)
 
 func _build_prompt() -> void:
 	_prompt_card = _card(Vector2(MARGIN, MARGIN))
