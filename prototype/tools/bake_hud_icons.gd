@@ -1,5 +1,6 @@
 extends SceneTree
 ## Ikony HUD-u z modeli 3D gry: render ortograficzny z przezroczystym tłem, przycięty do zawartości → art/hud/<klucz>.png.
+## Duże, bo służą też kartom kodeksu (codex_portrait.gd); HUD zmniejsza je z mipmapami (import: mipmaps/generate=true).
 ## Bronie: art/char3d/gun_<klucz>.glb (lufa w prawo), sprzęt: art/items3d/<klucz>.glb (lure i flashlight: tools/make_hud_models.py).
 ##   godot --path prototype --rendering-driver opengl3 --script tools/bake_hud_icons.gd [-- --only=m83,frag]
 ## Wynik wymaga importu: godot --headless --path prototype --import
@@ -7,29 +8,29 @@ const OUT := "res://art/hud/"
 const SIZE := 1024
 ## [klucz ikony, plik, kierunek kamery, obrót wokół osi Z w stopniach, maks. dłuższy bok po przycięciu]
 const JOBS := [
-	["m83", "res://art/char3d/gun_m83.glb", Vector3(0.12, 0.30, 1.0), 0.0, 512],
-	["spread12", "res://art/char3d/gun_spread12.glb", Vector3(0.12, 0.30, 1.0), 0.0, 512],
-	["p64", "res://art/char3d/gun_p64.glb", Vector3(0.12, 0.30, 1.0), 0.0, 320],
-	["srut8", "res://art/char3d/gun_srut8.glb", Vector3(0.12, 0.30, 1.0), 0.0, 512],
-	["lr7", "res://art/char3d/gun_lr7.glb", Vector3(0.12, 0.30, 1.0), 0.0, 512],
-	["hkm9", "res://art/char3d/gun_hkm9.glb", Vector3(0.12, 0.30, 1.0), 0.0, 400],
-	["gniew4", "res://art/char3d/gun_gniew4.glb", Vector3(0.12, 0.30, 1.0), 0.0, 512],
-	["sokol6", "res://art/char3d/gun_sokol6.glb", Vector3(0.12, 0.30, 1.0), 0.0, 512],
-	["widmo1", "res://art/char3d/gun_widmo1.glb", Vector3(0.12, 0.30, 1.0), 0.0, 512],
-	["ciegno6", "res://art/char3d/gun_ciegno6.glb", Vector3(0.12, 0.30, 1.0), 0.0, 512],
-	["maczeta", "res://art/char3d/gun_maczeta.glb", Vector3(0.12, 0.30, 1.0), 0.0, 512],
-	["kilof", "res://art/char3d/gun_kilof.glb", Vector3(0.12, 0.30, 1.0), 0.0, 512],
-	["frag", "res://art/items3d/frag.glb", Vector3(0.6, 0.5, 1.0), 0.0, 256],
-	["phos", "res://art/items3d/phos.glb", Vector3(0.6, 0.5, 1.0), 0.0, 256],
-	["smoke", "res://art/items3d/smoke.glb", Vector3(0.6, 0.5, 1.0), 0.0, 256],
-	["mine", "res://art/items3d/mine.glb", Vector3(0.6, 0.6, 1.0), 0.0, 256],
-	["charge", "res://art/items3d/charge.glb", Vector3(0.6, 0.5, 1.0), 0.0, 256],
-	["medkit", "res://art/items3d/medkit.glb", Vector3(0.6, 0.5, 1.0), 0.0, 256],
-	["defib", "res://art/items3d/defib.glb", Vector3(0.6, 0.5, 1.0), 0.0, 256],
-	["scanner", "res://art/items3d/scanner.glb", Vector3(0.6, 0.4, 1.0), 0.0, 256],
-	["flare", "res://art/items3d/flare.glb", Vector3(0.6, 0.5, 1.0), 0.0, 256],
-	["lure", "res://art/items3d/lure.glb", Vector3(0.22, 0.26, 1.0), 0.0, 256],
-	["flashlight", "res://art/items3d/flashlight.glb", Vector3(0.45, 0.38, 1.0), 38.0, 256],
+	["m83", "res://art/char3d/gun_m83.glb", Vector3(0.12, 0.30, 1.0), 0.0, 768],
+	["spread12", "res://art/char3d/gun_spread12.glb", Vector3(0.12, 0.30, 1.0), 0.0, 768],
+	["p64", "res://art/char3d/gun_p64.glb", Vector3(0.12, 0.30, 1.0), 0.0, 480],
+	["srut8", "res://art/char3d/gun_srut8.glb", Vector3(0.12, 0.30, 1.0), 0.0, 768],
+	["lr7", "res://art/char3d/gun_lr7.glb", Vector3(0.12, 0.30, 1.0), 0.0, 768],
+	["hkm9", "res://art/char3d/gun_hkm9.glb", Vector3(0.12, 0.30, 1.0), 0.0, 600],
+	["gniew4", "res://art/char3d/gun_gniew4.glb", Vector3(0.12, 0.30, 1.0), 0.0, 768],
+	["sokol6", "res://art/char3d/gun_sokol6.glb", Vector3(0.12, 0.30, 1.0), 0.0, 768],
+	["widmo1", "res://art/char3d/gun_widmo1.glb", Vector3(0.12, 0.30, 1.0), 0.0, 768],
+	["ciegno6", "res://art/char3d/gun_ciegno6.glb", Vector3(0.12, 0.30, 1.0), 0.0, 768],
+	["maczeta", "res://art/char3d/gun_maczeta.glb", Vector3(0.12, 0.30, 1.0), 0.0, 768],
+	["kilof", "res://art/char3d/gun_kilof.glb", Vector3(0.12, 0.30, 1.0), 0.0, 768],
+	["frag", "res://art/items3d/frag.glb", Vector3(0.6, 0.5, 1.0), 0.0, 384],
+	["phos", "res://art/items3d/phos.glb", Vector3(0.6, 0.5, 1.0), 0.0, 384],
+	["smoke", "res://art/items3d/smoke.glb", Vector3(0.6, 0.5, 1.0), 0.0, 384],
+	["mine", "res://art/items3d/mine.glb", Vector3(0.6, 0.6, 1.0), 0.0, 384],
+	["charge", "res://art/items3d/charge.glb", Vector3(0.6, 0.5, 1.0), 0.0, 384],
+	["medkit", "res://art/items3d/medkit.glb", Vector3(0.6, 0.5, 1.0), 0.0, 384],
+	["defib", "res://art/items3d/defib.glb", Vector3(0.6, 0.5, 1.0), 0.0, 384],
+	["scanner", "res://art/items3d/scanner.glb", Vector3(0.6, 0.4, 1.0), 0.0, 384],
+	["flare", "res://art/items3d/flare.glb", Vector3(0.6, 0.5, 1.0), 0.0, 384],
+	["lure", "res://art/items3d/lure.glb", Vector3(0.22, 0.26, 1.0), 0.0, 384],
+	["flashlight", "res://art/items3d/flashlight.glb", Vector3(0.45, 0.38, 1.0), 38.0, 384],
 ]
 var _vp: SubViewport
 var _cam: Camera3D

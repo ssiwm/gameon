@@ -13,6 +13,7 @@ const ItemIcon := preload("res://scripts/item_icon.gd")
 const PerkIcon := preload("res://scripts/perk_icon.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
+const HudIcon := preload("res://scripts/hud_icon.gd")
 
 var spec := {}
 var accent := Color(1.0, 0.72, 0.28)
@@ -23,6 +24,7 @@ var _tex: Texture2D
 var _tex_glow: Texture2D
 var _pending_sheet := false                   ## arkusz czeka na wczytanie do chwili, gdy portret jest widoczny (menu zbudowane przy starcie nie trzyma kopii wszystkich potworów w pamięci wideo)
 var _gun_info := {}
+var _icon3d: Texture2D                        ## render modelu 3D broni / sprzętu (art/hud, tools/bake_hud_icons.gd); null = stary rysunek
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -35,6 +37,7 @@ func show_spec(s: Dictionary, col: Color) -> void:
 	_t = 0.0
 	_tex = null
 	_tex_glow = null
+	_icon3d = null
 	_sheet = ""
 	_pending_sheet = false
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -50,14 +53,20 @@ func show_spec(s: Dictionary, col: Color) -> void:
 			_pending_sheet = Sprites.has(_sheet)             # wynurzoną Pijawkę rysuje arkusz; bez niego zostaje rysunek z kodu
 		"gun":
 			_gun_info = GunIcon.sheet_info()
-			if UiTheme.hd_on() and Sprites.newgun:
+			_icon3d = HudIcon.texture_of(String(GunIcon.HD_KEYS.get(int(s["row"]), "")))
+			if _icon3d != null:
+				texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+			elif UiTheme.hd_on() and Sprites.newgun:
 				var gk := String(GunIcon.HD_KEYS.get(int(s["row"]), ""))
 				if gk != "" and Sprites.gun_hd(gk) != null:
 					Sprites.gun_hd_glow(gk)
 					texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		"item":
 			var ik := String(s.get("kind", "frag"))
-			if UiTheme.hd_on() and ItemsHd.has(ik):
+			_icon3d = HudIcon.texture_of(ik)
+			if _icon3d != null:
+				texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+			elif UiTheme.hd_on() and ItemsHd.has(ik):
 				ItemsHd.albedo(ik)
 				ItemsHd.glow_texture(ik)
 				texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
@@ -252,7 +261,35 @@ func _draw_gun_hd(key: String) -> bool:
 		draw_texture_rect_region(g, dst, rect)
 	return true
 
+## Broń jako render modelu 3D (to samo .glb co w ręku postaci): wpisana w kartę, z cieniem pod spodem i paskiem w kolorze smugi.
+func _draw_gun_3d() -> void:
+	var ts := _icon3d.get_size()
+	var margin := Vector2(3.0, 2.0) if thumb else Vector2(16.0, 12.0)
+	var avail := size - margin * 2.0
+	var s := minf(avail.x / ts.x, avail.y / ts.y)
+	var gs := ts * s
+	var dst := Rect2(((size - gs) * 0.5).round(), gs)
+	if not thumb:
+		draw_rect(Rect2(0, size.y - 2.0, size.x, 2.0), Color(accent.r, accent.g, accent.b, 0.8))
+		draw_rect(Rect2(dst.position.x - 10.0, dst.end.y + 8.0, gs.x + 20.0, 1.0), Color(1, 1, 1, 0.08))
+	draw_texture_rect(_icon3d, Rect2(dst.position + Vector2(0, maxf(1.0, gs.y * 0.07)), dst.size), false, Color(0, 0, 0, 0.45))
+	draw_texture_rect(_icon3d, dst, false)
+
+## Sprzęt jako render modelu 3D: stoi na podłodze karty, z elipsą cienia (jak potwory).
+func _draw_item_3d(floor_y: float) -> void:
+	var ts := _icon3d.get_size()
+	var pad := 4.0 if thumb else 14.0
+	var avail := Vector2(size.x - 2.0 * pad, floor_y - pad - (0.0 if thumb else 2.0))
+	var s := minf(avail.x / ts.x, avail.y / ts.y)
+	var w := ts * s
+	var pos := Vector2(roundf((size.x - w.x) * 0.5), floor_y - w.y)
+	_shadow(pos.x + w.x * 0.5, floor_y, minf(w.x * 1.1, size.x * 0.6))
+	draw_texture_rect(_icon3d, Rect2(pos, w), false)
+
 func _draw_gun() -> void:
+	if _icon3d != null:
+		_draw_gun_3d()
+		return
 	if UiTheme.hd_on() and Sprites.newgun:
 		var key := String(GunIcon.HD_KEYS.get(int(spec["row"]), ""))
 		if key != "" and _draw_gun_hd(key):
@@ -355,6 +392,9 @@ func _draw_leech_sprite(floor_y: float, up: float, cyc: float) -> void:
 
 ## Ekwipunek zużywalny (karta GEAR): ta sama bryła co miniatura w warsztacie (item_icon.gd), większa, z cieniem i obrysem.
 func _draw_item(floor_y: float) -> void:
+	if _icon3d != null:
+		_draw_item_3d(floor_y)
+		return
 	var kind := String(spec.get("kind", "frag"))
 	if UiTheme.hd_on() and ItemsHd.has(kind):
 		_shadow(roundf(size.x * 0.5), floor_y, minf(size.x * 0.5, size.y * 0.9))
