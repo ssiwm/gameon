@@ -2437,6 +2437,9 @@ func _map_test() -> void:
 			points.append(["Skrytka %d" % (i + 1), (level._map_items["H"] as Array)[i]])
 		for b in get_tree().get_nodes_in_group("board"):
 			points.append(["Tablica", b.global_position])
+		for grp in [["radio_set", "Radiostacja"], ["workshop", "Warsztat"], ["results_wall", "Ściana wyników"]]:       # stanowiska kryjówki (może mieć je na różnych piętrach)
+			for n in get_tree().get_nodes_in_group(grp[0]):
+				points.append([grp[1], n.global_position])
 		for n in get_tree().get_nodes_in_group("nests"):
 			points.append([String(n.name), n.global_position])
 		for e in get_tree().get_nodes_in_group("enemies"):
