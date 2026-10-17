@@ -442,6 +442,7 @@ Inny wymiar: organiczne korytarze, grawitacja się zmienia, radio mówi głosami
 - **Warsztat** — bronie i ulepszenia.
 - **Zbrojownia** — dwie gabloty po cztery broni (w prototypie od 1.7.219): [F] przy gablocie, ↑ / ↓ wybór, [E] bierze; zamknięta broń z ceną w złomie (odblokowanie w warsztacie).
 - **Szpital** — stan uratowanych NPC, bonusy fabularne (np. uratowany naukowiec daje schemat EMP).
+- **Układ (od 1.7.265, „Stacja Dead Air”)** — bunkier pod nieczynną stacją radiową, trzy poziomy połączone szybami: środek (śluza → ściana pamięci → warsztat → świetlica z izbą chorych → zbrojownia → odprawa i wyjście), góra (radiostacja nad tablicą odpraw), dół (maszynownia i magazyn ze skrytkami). Wyjście na misję: strefa startu przed drzwiami z lampą ON AIR (gotowość przez stanie w strefie albo [Enter]), odliczanie 3 s z cyframi na drzwiach, świecącym padem, kurtyną światła i polami graczy. Klimat: generator buczy i mruga w burzy, zza zamkniętych drzwi D-7 co jakiś czas ktoś puka, okno radiostacji pokazuje prognozowaną pogodę.
 - **Radiostacja** — wywiad: prognoza pogody (modyfikatory misji), tygodniowe wyzwania.
 - **Ściana pamięci** — statystyki drużyny, osiągnięcia.
 - **Tablica misji** — kampania + tryby dodatkowe.

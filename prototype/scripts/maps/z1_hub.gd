@@ -1,11 +1,13 @@
 extends RefCounted
-## Kryjówka między misjami kampanii (GDD §10.3): bez wrogów (NoiseMgr.safe_zone), ciepłe światło lamp. 128 × 44 kafli.
-## Układ w strefach od lewej, w kolejności „co robi drużyna po powrocie": wejście (dwa punkty startu) → ściana wyników (v) →
-## radiostacja (R: prognoza pogody na następną misję, weather.gd) → warsztat (h: [E] panel zakupów i ulepszeń za złom) → zbrojownia (osiem stojaków g od startowych po zablokowane: SPREAD-12,
-## PELLET-8, LR-7, HKM-9, WRATH-4, SPECTER-1, FALCON-6, SINEW-6; skrzynki z amunicją a na obu końcach) → tablica z odprawą następnej misji (n).
-## Strzelnicy już nie ma (usunięta w 1.7.196). Bez rekwizytów-skrzyń — pusta podłoga to droga. Ekwipunek i amunicja przechodzą
-## z poprzedniej misji i do następnej (main._restart_mission z carry); wyjście na misję po gotowości wszystkich ([Enter]).
-## Mapa ma jeden wiersz znaczników i jeden wiersz lamp — po zmianie uruchom `--maptest`.
+## Kryjówka między misjami kampanii (GDD §10.3): bez wrogów (NoiseMgr.safe_zone), ciepłe światło lamp. 72 × 36 kafli, trzy poziomy co 8 kafli
+## (7 kafli światła + 1 kafel stropu), projekt „Stacja Dead Air” (bunkier pod nieczynną stacją radiową).
+## ŚRODEK (wiersz podłogi 22), od lewej w kolejności „co robi drużyna po powrocie”: śluza (dwa punkty startu S) → ściana wyników (v) → warsztat
+## (h: [E] panel zakupów i ulepszeń za złom) → świetlica (meble z hub_decor.gd) → zbrojownia (a, dwie gabloty g po cztery bronie: SPREAD-12, PELLET-8,
+## LR-7, HKM-9, WRATH-4, SPECTER-1, FALCON-6, SINEW-6, a) → tablica z odprawą następnej misji (n). Nad tablicą, na GÓRZE (wiersz 14), radiostacja
+## z prognozą pogody (R, weather.gd); pod zbrojownią i warsztatem na DOLE (wiersz 30) maszynownia i magazyn ze skrytkami (H).
+## Poziomy łączą dwa szyby (SHAFTS: kraty „=” w podłogach i podesty co 2 kafle, prawy–lewy–prawy jak szyb serwisowy w 1.1); w dół zeskakuje się przez kratę (S+SPACE).
+## Ekwipunek i amunicja przechodzą z poprzedniej misji i do następnej (main._restart_mission z carry); wyjście na misję po gotowości wszystkich ([Enter]).
+## Każdy poziom ma jeden wiersz znaczników i jeden wiersz lamp — po zmianie uruchom `--maptest`.
 
 const Weapons := preload("res://scripts/weapons.gd")
 
@@ -16,8 +18,18 @@ const ENEMY_HP := 1.0
 const UNDERGROUND_ROW := 99               ## poza mapą: bez „głębi" (ambient, straszaki)
 ## Broń w gablotach („g": CABINET_SLOTS sztuk na gablotę, od lewej gabloty i od górnego rzędu): drużyna wymienia ekwipunek przed misją.
 const WEAPONS := [Weapons.SPREAD12, Weapons.SRUT8, Weapons.LR7, Weapons.HKM9, Weapons.GNIEW4, Weapons.WIDMO1, Weapons.SOKOL6, Weapons.CIEGNO6]
-## Akcenty dekoracji 3D [stopy, indeks z view3d.DECO_MODELS] za płaszczyzną gry: koksownik przy wejściu, skrzynie wojskowe między zbrojownią a tablicą.
-const ACCENTS := [[Vector2(168, 640), 11], [Vector2(968, 640), 12], [Vector2(1208, 640), 12], [Vector2(1144, 640), 17], [Vector2(1176, 640), 20], [Vector2(1192, 640), 20], [Vector2(1448, 640), 19], [Vector2(1688, 640), 18], [Vector2(1720, 640), 20], [Vector2(1848, 640), 17], [Vector2(1880, 640), 20], [Vector2(1656, 640), 21], [Vector2(1800, 640), 21], [Vector2(1768, 629), 22]]
+const ACCENTS := []
+## Szyby między poziomami: [pierwsza, ostatnia] kolumna mapy. Meble z hub_decor.gd ich nie zastawiają.
+const SHAFTS := [[26, 31], [56, 61]]
+## Strefa startu przed drzwiami wyjścia: [pierwsza kolumna, ostatnia kolumna, wiersz podłogi]. Kto w niej stoi, jest gotowy (main.gd: _hub_zone_ids).
+const LAUNCH_ZONE := [63, 70, 22]
+## Rekwizyty bez znaczników (hub_prop.gd, bryły buduje view3d.gd): [rodzaj, kolumna mapy, wiersz podłogi, parametry]. Maszynownia i magazyn na dole (wiersz 30),
+## okno z prognozą pogody w radiostacji na górze (wiersz 14; parametr = szerokość w kaflach), rury: parametr = ostatnia kolumna.
+const HUB_PROPS := [
+	["pipes", 5, 30, [26]], ["generator", 14, 30, []], ["compressor", 21, 30, []], ["barrel", 24, 30, []],
+	["crate", 35, 30, []], ["crate", 36, 30, []], ["scrap_pile", 39, 30, []], ["mil_crate", 45, 30, []], ["barrel", 48, 30, []],
+	["d7", 66, 30, []], ["window", 68, 14, [3]],
+]
 ## Radio: kolejne linie pokazuje HUD w pierwszych sekundach pobytu.
 const RADIO := ["...the transmitter is still humming. Whatever listens out there heard it too.", "Restock. Swap guns at the armory. Check the board for the next job."]
 const RACKS := true                       ## broń z „g" stoi w miejscu (ekspozycja)
@@ -26,48 +38,40 @@ const AMBIENT := Color(0.15, 0.108, 0.075, 1.0)     ## cieplejsza i jaśniejsza 
 const BRIEF := ""
 
 const MAP := [
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"########CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC#######",
-	"########CbbbbbbblbbbbbbbbbbblbbbbbbbbbbblbbbbbbbbbbblbbbbbbbbbbblbbbbbbbbbbblbbbbbbbbbbblbbbbbbbbbbblbbbbbbbbblbbbbbbbbbC#######",
-	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
-	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
-	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
-	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
-	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
-	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
-	"########CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC#######",
-	"########CbbbSbSbbbbbvbbbbbRbbbbhbbbbbbbbbbbabbbgbgbbbabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbnbbbbbbbbbbbbbbbbbbbbbbC#######",
-	"########CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC#######",
-	"################################################################################################################################",
-	"################################################################################################################################",
-	"################################################################################################################################",
+	"########################################################################",
+	"########################################################################",
+	"########################################################################",
+	"########################################################################",
+	"########################################################################",
+	"########################################################################",
+	"####################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+	"####################CbbblbbbbbbbbbbbbbbbblbbbbbbbbbbbbbbbbbbbbbbblbbbbbC",
+	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
+	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
+	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
+	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
+	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
+	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbRbbbbbbC",
+	"CCCCCCCCCCCCCCCCCCCCCCCCCC======CCCCCCCCCCCCCCCCCCCCCCCC======CCCCCCCCCC",
+	"CbbbblbbbbbblbbbbbbblbbbbbbbbbbblbbbbblbbbbbbbbbbblbbbbbbbbbbbbbblbbbbbC",
+	"Cbbbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbC",
+	"CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
+	"Cbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbC",
+	"CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
+	"Cbbbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbC",
+	"CbbbSbSbbbbbvbbbbbbbhbbbbbbbbbbbbbbbbbbbbbbbbbabgbbgbbabbbbbbbbbbnbbbbbC",
+	"CCCCCCCCCCCCCCCCCCCCCCCCCC======CCCCCCCCCCCCCCCCCCCCCCCC======CCCCCCCCCC",
+	"###CbbbbbbbbbbblbbbbbbbbbbbbbbbbbbbbbbblbbbbbbbbbbbbbbbbbbbbbbbbbbbbC###",
+	"###Cbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbC###",
+	"###CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC###",
+	"###Cbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbC###",
+	"###CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC###",
+	"###Cbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbC###",
+	"###CbbHbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbHbbbbbbbbbbbbbbbbbbbbbbbbbC###",
+	"###CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC###",
+	"########################################################################",
+	"########################################################################",
+	"########################################################################",
+	"########################################################################",
+	"########################################################################",
 ]

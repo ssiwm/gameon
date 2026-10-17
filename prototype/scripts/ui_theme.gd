@@ -23,18 +23,73 @@ const LAMP_LINE := Color("4a3414")
 const PANEL_BG := Color(0.043, 0.047, 0.043, 0.9)        ## #0B0C0B „deck” — panele należą do świata, nie do arkusza kalkulacyjnego
 const PANEL_EDGE := Color(0.33, 0.31, 0.25, 0.9)         ## przygaszona kość (dawniej mosiądz)
 const PANEL_EDGE_LOW := Color(0.22, 0.20, 0.16, 1.0)     ## dolna, grubsza krawędź (fałd materiału)
-## Materiały obiektów świata (karty zakotwiczone w kryjówce): papier z tekstem tuszem.
-const PAPER := Color(0.85, 0.78, 0.59)
-const PAPER_EDGE := Color(0.55, 0.44, 0.24)
-const INK := Color(0.17, 0.13, 0.07)
-const INK_MUTED := Color(0.42, 0.34, 0.2)
-const INK_ACCENT := Color(0.58, 0.22, 0.1)
+## Notatki przy obiektach (MESSAGES_PLAN.md §4): trzy materiały zależne od źródła informacji i ciemna paleta po zmroku (gra toczy się w nocy,
+## jasny papier świeciłby jak ekran). Luminancja tła notatki <= 0,3, tekst >= 4,5:1, duże pismo >= 3:1 — pilnuje tego tools/test_note_contrast.gd.
+const NotePalette := preload("res://scripts/note_palette.gd")
+const Note := NotePalette.Note
+static func note_palette(mat: int) -> Dictionary:
+	return NotePalette.palette(mat)
+
+const FONT_NOTE_PRINT := "res://art/fonts/VT323-Regular.ttf"
+const FONT_NOTE_HAND := "res://art/fonts/Caveat-VF.ttf"
+static var _note_fonts := {}
+
+## Krój notatki wg materiału: akta — Special Elite (maszynopis), wydruk — VT323 (matrycowy), kartka — Caveat 700 (odręczne, polskie znaki w komplecie).
+static func note_font(mat: int) -> Font:
+	if _note_fonts.has(mat):
+		return _note_fonts[mat]
+	var f: Font = null
+	match mat:
+		Note.PRINTOUT:
+			f = _file_font(FONT_NOTE_PRINT)
+		Note.SCRAWL:
+			var vf := _file_font(FONT_NOTE_HAND)
+			if vf != null:
+				var fv := FontVariation.new()
+				fv.base_font = vf
+				fv.variation_opentype = {"wght": 700}
+				f = fv
+	if f == null:
+		f = whisper_font()
+	_note_fonts[mat] = f
+	return f
+
+## Rozmiar tekstu notatki wg materiału (VT323 i Caveat są drobniejsze od maszynopisu).
+static func note_size(mat: int, base: int) -> int:
+	match mat:
+		Note.PRINTOUT:
+			return int(round(float(base) * 1.45))
+		Note.SCRAWL:
+			return int(round(float(base) * 1.3))
+	return base
+
+## Klawisze w tekście `[E]` -> klawisz z ramką (BBCode dla RichTextLabel): ciemne pole, jasna litera, jak na klawiaturze.
+static func keycaps(text: String, fg := "f0e8d4", bg := "2a211a") -> String:
+	var re := RegEx.new()
+	re.compile("\\[([A-Za-z0-9↑↓←→ +/\\-]{1,9})\\]")
+	return re.sub(text, "[bgcolor=#" + bg + "][color=#" + fg + "] $1 [/color][/bgcolor]", true)
 ## Szkic techniczny (warsztat): ciemny błękitno-zielony arkusz z jasnymi liniami rysunku.
 const BP_BG := Color(0.045, 0.085, 0.10, 0.97)
 const BP_LINE := Color(0.36, 0.62, 0.68)
 const BP_LINE_DIM := Color(0.2, 0.36, 0.40)
 const BP_TEXT := Color(0.80, 0.92, 0.92)
 const BP_MUTED := Color(0.5, 0.66, 0.70)
+## Skala typograficzna komunikatów (MESSAGES_PLAN.md §3): cztery rozmiary w jednostkach logicznych HUD zamiast 7, 8, 9, 10, 14, 16, 21, 24 i 56.
+const T_DISPLAY := 24                          ## duży alert, cyfra odliczania (cyfra: ×2)
+const T_TITLE := 16                            ## tytuł notatki, tytuł karty tytułowej
+const T_BODY := 10                             ## treść komunikatów
+const T_CAPTION := 8                           ## podpisy, stopki, znaczniki
+
+## Kolor semantyczny stylu komunikatu (Messages.Style): informacja, akcja, sukces, ostrzeżenie, groźba, lore.
+static func msg_color(style: int) -> Color:
+	match style:
+		1: return ACCENT
+		2: return OK
+		3: return WARM
+		4: return DANGER
+		5: return Color("c8664f")
+	return TEXT
+
 const HEADING_FONT := "res://art/fonts/Silkscreen-Regular.ttf"   ## pikselowa czcionka nagłówków (SIL OFL, art/fonts/OFL.txt)
 
 static var _theme: Theme
@@ -178,17 +233,6 @@ static func tile_box(state: String) -> StyleBoxFlat:
 	b.content_margin_right = 0
 	b.content_margin_top = 0
 	b.content_margin_bottom = 0
-	return b
-
-## Papier (karty broni i odprawy przy obiektach): jasna kartka z ciemną dolną krawędzią.
-static func paper_box() -> StyleBoxFlat:
-	var b := _box(PAPER, PAPER_EDGE)
-	b.set_corner_radius_all(2 if hd_on() else 0)
-	b.border_width_bottom = 3
-	b.content_margin_left = 9
-	b.content_margin_right = 9
-	b.content_margin_top = 7
-	b.content_margin_bottom = 7
 	return b
 
 static func _box(bg: Color, edge: Color, width: int = 1) -> StyleBoxFlat:

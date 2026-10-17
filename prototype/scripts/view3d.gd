@@ -21,6 +21,7 @@ const ItemsHd := preload("res://scripts/items_hd.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
+const Weather := preload("res://scripts/weather.gd")
 
 const PX := Level3D.PX
 const FOV := 40.0
@@ -291,6 +292,9 @@ func _process(delta: float) -> void:
 	_sync_items()
 	_build_rails()
 	_sync_drawn()
+	_sync_launch_doors()
+	_sync_hub_props()
+	_sync_world_notes()
 	_sync_guns()
 	_sync_cabinets(delta)
 	_sync_fires()
@@ -898,6 +902,454 @@ func _local_xf(n: Node3D, root: Node) -> Transform3D:
 	if p == root and root is Node3D:
 		xf = (root as Node3D).transform * xf
 	return xf
+
+# ---------------------------------------------------------------- drzwi wyjścia z kryjówki
+
+const LD_STATE_COLORS := [Color(0.95, 0.16, 0.10), Color(1.0, 0.62, 0.12), Color(0.35, 1.0, 0.45)]   ## lampa ON AIR: nikt / część drużyny / wszyscy gotowi
+var _launch_doors := {}                   ## id węzła drzwi (launch_door.gd) → {root, mat, light}
+
+## Drzwi bunkrowe na końcu strefy startu: rama i skrzydło w tylnej ścianie, lampa ON AIR nad nimi (kolor = gotowość drużyny)
+## i pasy ostrzegawcze na podłodze strefy. Odtwarzane po przebudowie geometrii mapy (korzeń wisi w `_geo`).
+func _sync_launch_doors() -> void:
+	for id in _launch_doors.keys():
+		if not is_instance_valid((_launch_doors[id] as Dictionary)["root"]):
+			_launch_doors.erase(id)
+	for n in get_tree().get_nodes_in_group("launch_door"):
+		if not (n is Node2D) or _geo_key == "":
+			continue
+		var d = _launch_doors.get(n.get_instance_id())
+		if d == null:
+			d = _build_launch_door(n as Node2D)
+			_launch_doors[n.get_instance_id()] = d
+		var st := clampi(int(n.get("state")), 0, 2)
+		var cancel := float(n.get("cancel"))
+		var col: Color = (LD_STATE_COLORS[st] as Color).lerp(LD_STATE_COLORS[0], clampf(cancel * 2.0, 0.0, 1.0))
+		var t := float(Time.get_ticks_msec()) * 0.001
+		var pulse := 0.55 + 0.45 * sin(t * 8.0) if st == 1 else (0.8 + 0.2 * sin(t * 6.0) if st == 2 else 1.0)
+		var mat := d["mat"] as StandardMaterial3D
+		mat.albedo_color = col
+		mat.emission = col
+		mat.emission_energy_multiplier = 3.0 * pulse
+		var lt := d["light"] as OmniLight3D
+		lt.light_color = col
+		lt.light_energy = 1.6 * pulse + 2.0 * cancel
+		# pad, kurtyna i światło nad strefą: kolor stanu, siła rośnie od pustej strefy przez część drużyny do odliczania
+		var pad_a: float = [0.10, 0.24, 0.34][st] * pulse + 0.25 * cancel
+		var k: float = [0.0, 0.5, 0.85][st] * pulse + 0.6 * cancel
+		(d["pad"] as StandardMaterial3D).albedo_color = Color(col.r, col.g, col.b, pad_a)
+		var cm := d["curtain"] as ShaderMaterial
+		cm.set_shader_parameter("col", Vector3(col.r, col.g, col.b))
+		cm.set_shader_parameter("k", k)
+		var spot := d["spot"] as SpotLight3D
+		spot.light_color = col
+		spot.light_energy = float([0.0, 1.2, 2.6][st]) * pulse + 2.0 * cancel
+		# sloty graczy: jedno pole na człowieka, zapalone u gotowych
+		var total := clampi(int(n.get("total")), 1, 4)
+		var ready_n := int(n.get("ready_n"))
+		var slots: Array = d["slots"]
+		for i in slots.size():
+			var sm: StandardMaterial3D = slots[i]["mat"]
+			var on := i < ready_n
+			(slots[i]["mi"] as MeshInstance3D).visible = i < total
+			sm.albedo_color = col if on else Color(0.16, 0.13, 0.11)
+			sm.emission = col if on else Color(0.0, 0.0, 0.0)
+			sm.emission_energy_multiplier = 2.2 if on else 0.0
+		# cyfry na drzwiach (odliczanie) albo licznik gotowych pod lampą; kogut kręci się od startu odliczania
+		var cd := float(n.get("countdown"))
+		var digit := d["digit"] as Label3D
+		var count := d["count"] as Label3D
+		digit.visible = cd > 0.0
+		count.visible = cd <= 0.0
+		if cd > 0.0:
+			var secs := ceili(cd)
+			digit.text = str(secs)
+			digit.modulate = col
+			digit.pixel_size = 0.0075 * (1.0 + 0.3 * pow(float(secs) - cd, 2.0))
+		else:
+			count.text = "%d / %d" % [ready_n, maxi(1, int(n.get("total")))]
+			count.modulate = Color(col.r, col.g, col.b, 0.85)
+		var kg := d["kogut"] as SpotLight3D
+		kg.visible = st == 2 and cancel < 0.1
+		if kg.visible:
+			var a := t * 4.2
+			kg.basis = Basis.looking_at(Vector3(cos(a), sin(a), -0.25), Vector3.FORWARD)
+
+func _ld_box(root: Node3D, size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
+	var bm := BoxMesh.new()
+	bm.size = size
+	var mi := MeshInstance3D.new()
+	mi.mesh = bm
+	mi.material_override = mat
+	mi.layers = LAYER_WORLD
+	mi.position = pos
+	root.add_child(mi)
+	return mi
+
+func _build_launch_door(n: Node2D) -> Dictionary:
+	var zone: Rect2 = n.get("zone")
+	var root := Node3D.new()
+	root.name = "LaunchDoor"
+	_geo.add_child(root)
+	var foot := Level3D.px_to_m(n.global_position)
+	root.position = Vector3(foot.x, foot.y, 0.0)
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.17, 0.16, 0.15)
+	steel.metallic = 0.6
+	steel.roughness = 0.55
+	var leaf := StandardMaterial3D.new()
+	leaf.albedo_color = Color(0.21, 0.22, 0.18)
+	leaf.metallic = 0.4
+	leaf.roughness = 0.7
+	_ld_box(root, Vector3(2.1, 2.95, 0.25), Vector3(0.0, 1.475, -1.9), steel)           # rama w tylnej ścianie
+	_ld_box(root, Vector3(1.7, 2.65, 0.18), Vector3(0.0, 1.325, -1.76), leaf)           # skrzydło drzwi
+	var wheel := TorusMesh.new()
+	wheel.inner_radius = 0.17
+	wheel.outer_radius = 0.22
+	var wmi := MeshInstance3D.new()
+	wmi.mesh = wheel
+	wmi.material_override = steel
+	wmi.layers = LAYER_WORLD
+	wmi.position = Vector3(0.0, 1.35, -1.64)
+	wmi.rotation = Vector3(deg_to_rad(90.0), 0.0, 0.0)
+	root.add_child(wmi)
+	var lamp_mat := StandardMaterial3D.new()
+	lamp_mat.emission_enabled = true
+	lamp_mat.albedo_color = LD_STATE_COLORS[0]
+	lamp_mat.emission = LD_STATE_COLORS[0]
+	_ld_box(root, Vector3(0.8, 0.24, 0.1), Vector3(0.0, 3.25, -1.74), lamp_mat)         # lampa ON AIR nad drzwiami
+	var light := OmniLight3D.new()
+	light.omni_range = 5.5
+	light.light_volumetric_fog_energy = 0.8
+	light.layers = LAYER_WORLD | LAYER_ACTORS
+	light.position = Vector3(0.0, 3.0, -1.2)
+	root.add_child(light)
+	# pasy ostrzegawcze (żółto-czarne) wzdłuż przodu i tyłu strefy
+	var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
+	for y in 16:
+		for x in 16:
+			img.set_pixel(x, y, Color(0.92, 0.72, 0.10) if ((x + y) / 4) % 2 == 0 else Color(0.06, 0.06, 0.05))
+	var tex := ImageTexture.create_from_image(img)
+	var hz := StandardMaterial3D.new()
+	hz.albedo_texture = tex
+	hz.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	hz.roughness = 0.9
+	var wm := zone.size.x * PX
+	hz.uv1_scale = Vector3(wm / 0.12, 1.0, 1.0)
+	var cx := zone.get_center().x * PX - foot.x
+	for zz in [0.55, -0.55]:
+		_ld_box(root, Vector3(wm, 0.012, 0.12), Vector3(cx, 0.008, zz), hz)
+	# pad na podłodze strefy (świecący, z krawędziami), kurtyna światła, światło z sufitu, sloty graczy, cyfry na drzwiach, kogut i napis na ścianie
+	var cxm := zone.get_center().x * PX - foot.x
+	var pad_mat := StandardMaterial3D.new()
+	pad_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	pad_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	pad_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	pad_mat.albedo_color = Color(0.9, 0.2, 0.1, 0.1)
+	var pad := _ld_box(root, Vector3(wm, 0.01, 1.3), Vector3(cxm, 0.012, 0.0), pad_mat)
+	pad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var csh := Shader.new()
+	csh.code = "shader_type spatial;\nrender_mode unshaded, blend_add, cull_disabled, depth_draw_never;\nuniform vec3 col : source_color = vec3(0.3, 1.0, 0.4);\nuniform float k = 0.0;\nvoid fragment() {\n	float v = pow(UV.y, 2.2);\n	float h = smoothstep(0.0, 0.06, UV.x) * smoothstep(1.0, 0.94, UV.x);\n	float rays = 0.7 + 0.3 * sin(UV.x * 70.0 + TIME * 1.4);\n	ALBEDO = col * k * 0.45 * v * h * rays;\n}\n"
+	var curtain_mat := ShaderMaterial.new()
+	curtain_mat.shader = csh
+	var cq := QuadMesh.new()
+	cq.size = Vector2(wm, 3.4)
+	var cmi := MeshInstance3D.new()
+	cmi.mesh = cq
+	cmi.material_override = curtain_mat
+	cmi.layers = LAYER_WORLD
+	cmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	cmi.position = Vector3(cxm, 1.7, -0.45)
+	root.add_child(cmi)
+	var spot := SpotLight3D.new()
+	spot.spot_range = 9.0
+	spot.spot_angle = 52.0
+	spot.light_volumetric_fog_energy = 1.2
+	spot.layers = LAYER_WORLD | LAYER_ACTORS
+	spot.position = Vector3(cxm, 7.8, 0.3)
+	spot.rotation = Vector3(deg_to_rad(-90.0), 0.0, 0.0)
+	root.add_child(spot)
+	var slots: Array = []
+	for i in 4:
+		var sm := StandardMaterial3D.new()
+		sm.emission_enabled = true
+		sm.albedo_color = Color(0.16, 0.13, 0.11)
+		var smi := _ld_box(root, Vector3(1.0, 0.025, 0.16), Vector3(cxm + (float(i) - 1.5) * 2.1, 0.02, 0.62), sm)
+		smi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		slots.append({"mat": sm, "mi": smi})
+	var font := UiTheme.heading_font()
+	var digit := Label3D.new()
+	digit.font_size = 200
+	digit.pixel_size = 0.0075
+	digit.shaded = false
+	digit.outline_size = 14
+	digit.outline_modulate = Color(0.0, 0.0, 0.0, 0.9)
+	digit.layers = LAYER_WORLD
+	digit.position = Vector3(0.0, 4.55, -1.72)
+	if font != null:
+		digit.font = font
+	digit.visible = false
+	root.add_child(digit)
+	var count := Label3D.new()
+	count.font_size = 72
+	count.pixel_size = 0.007
+	count.shaded = false
+	count.outline_size = 8
+	count.outline_modulate = Color(0.0, 0.0, 0.0, 0.9)
+	count.layers = LAYER_WORLD
+	count.position = Vector3(0.0, 3.85, -1.72)
+	if font != null:
+		count.font = font
+	root.add_child(count)
+	var kg := SpotLight3D.new()
+	kg.light_color = Color(0.4, 1.0, 0.5)
+	kg.light_energy = 5.0
+	kg.spot_range = 8.0
+	kg.spot_angle = 16.0
+	kg.light_volumetric_fog_energy = 2.0
+	kg.layers = LAYER_WORLD | LAYER_ACTORS
+	kg.position = Vector3(0.0, 3.25, -1.45)
+	kg.visible = false
+	root.add_child(kg)
+	var sign_l := Label3D.new()
+	sign_l.text = tr("LAUNCH ZONE")
+	sign_l.font_size = 96
+	sign_l.pixel_size = 0.008
+	sign_l.shaded = false
+	sign_l.modulate = Color(0.85, 0.66, 0.28, 0.85)
+	sign_l.outline_size = 6
+	sign_l.outline_modulate = Color(0.0, 0.0, 0.0, 0.8)
+	sign_l.layers = LAYER_WORLD
+	sign_l.position = Vector3(cxm - wm * 0.5 + 3.2, 4.3, -1.88)
+	if font != null:
+		sign_l.font = font
+	root.add_child(sign_l)
+	return {"root": root, "mat": lamp_mat, "light": light, "pad": pad_mat, "curtain": curtain_mat, "spot": spot, "slots": slots, "digit": digit, "count": count, "kogut": kg}
+
+# ---------------------------------------------------------------- papier w świecie (hud.gd: _build_world_notes)
+
+var _wnotes := {}                         ## id SubViewportu notatki → {quad}
+
+## Odprawa i prognoza jako kartki w świecie: quad z teksturą z SubViewportu (grupa „world_note”) przypięty do tablicy odpraw albo do ściany nad radiostacją,
+## oświetlony lampami sceny; chowa się, gdy ta sama treść jest pokazana w karcie HUD (gracz stoi blisko).
+func _sync_world_notes() -> void:
+	for vp in get_tree().get_nodes_in_group("world_note"):
+		if not (vp is SubViewport) or _geo_key == "":
+			continue
+		var kind := String(vp.get_meta("kind", ""))
+		var anchor: Node2D = null
+		for n in get_tree().get_nodes_in_group("board" if kind == "brief" else "radio_set"):
+			anchor = n as Node2D
+			break
+		var id: int = vp.get_instance_id()
+		var d = _wnotes.get(id)
+		if anchor == null:
+			if d != null and is_instance_valid(d["quad"]):
+				(d["quad"] as Node3D).visible = false
+			continue
+		if d == null or not is_instance_valid(d["quad"]):
+			var q := MeshInstance3D.new()
+			q.name = "WorldNote_" + kind
+			q.mesh = QuadMesh.new()
+			var mat := StandardMaterial3D.new()
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			mat.albedo_texture = (vp as SubViewport).get_texture()
+			mat.roughness = 0.95
+			mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+			mat.emission_enabled = true                       # kartka czytelna także poza światłem lampy (jak kreda na tablicy wyników)
+			mat.emission_texture = (vp as SubViewport).get_texture()
+			mat.emission_energy_multiplier = 0.32
+			q.material_override = mat
+			q.layers = LAYER_WORLD
+			q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			_geo.add_child(q)
+			d = {"quad": q}
+			_wnotes[id] = d
+		var quad := d["quad"] as MeshInstance3D
+		quad.visible = not bool(vp.get_meta("hide", false)) and (vp as SubViewport).size.x > 32
+		if not quad.visible:
+			continue
+		var w := 2.3 if kind == "brief" else 2.3
+		var sv := (vp as SubViewport).size
+		(quad.mesh as QuadMesh).size = Vector2(w, w * float(sv.y) / float(maxi(1, sv.x)))
+		var base := Level3D.px_to_m(anchor.global_position)
+		if kind == "brief":
+			var zf := _model_front(anchor, "board")
+			quad.position = base + Vector3(0.0, 1.7, (-1.28 if is_nan(zf) else zf + 0.03))
+			quad.rotation = Vector3(0.0, 0.0, deg_to_rad(-1.6))
+		else:
+			quad.position = base + Vector3(0.0, 2.6, -1.78)
+			quad.rotation = Vector3(0.0, 0.0, deg_to_rad(1.2))
+
+# ---------------------------------------------------------------- rekwizyty kryjówki (hub_prop.gd)
+
+const HUB_WINDOW_SHADER := "shader_type spatial;\nrender_mode unshaded;\nuniform int kind = 0;\nuniform float flash = 0.0;\nuniform vec3 sky_top : source_color = vec3(0.02, 0.04, 0.09);\nuniform vec3 sky_bot : source_color = vec3(0.07, 0.10, 0.16);\nvoid fragment() {\n	vec2 uv = UV;\n	vec3 col = mix(sky_top, sky_bot, uv.y);\n	if (kind == 0) {\n		float d = distance(uv, vec2(0.74, 0.3));\n		col += vec3(0.85, 0.9, 1.0) * smoothstep(0.09, 0.07, d);\n		vec2 g = floor(uv * vec2(40.0, 24.0));\n		float h = fract(sin(dot(g, vec2(12.9898, 78.233))) * 43758.5453);\n		col += vec3(0.6) * step(0.985, h) * (0.5 + 0.5 * sin(TIME * 2.0 + h * 20.0));\n	} else if (kind == 1 || kind == 2) {\n		vec2 p = vec2(uv.x * 28.0 + uv.y * 3.0, uv.y * 3.0 - TIME * (kind == 2 ? 2.6 : 2.0));\n		float cell = floor(p.x);\n		float h = fract(sin(cell * 91.3) * 437.5);\n		float y = fract(p.y + h * 5.0);\n		float streak = smoothstep(0.0, 0.05, y) * smoothstep(0.35, 0.1, y) * step(0.45, h);\n		streak *= smoothstep(0.12, 0.02, abs(fract(p.x) - 0.5));\n		col += vec3(0.55, 0.7, 0.9) * streak * 0.5;\n	} else {\n		col = mix(col, vec3(0.31, 0.33, 0.34), 0.7);\n		col += 0.04 * sin(uv.x * 6.0 + TIME * 0.3) * sin(uv.y * 4.0 - TIME * 0.2);\n	}\n	col += vec3(0.8, 0.85, 1.0) * flash;\n	ALBEDO = col;\n}\n"
+const HUB_PROP_MODELS := {"generator": 1.0, "compressor": 1.0, "barrel": 1.0, "crate": 1.0, "mil_crate": 1.0, "scrap_pile": 1.0}   ## modele z art/items3d/ i ich skala względem piksela świata
+const HUB_PROP_Z := -1.1                  ## głębia rekwizytów maszynowni (przy ścianie, za płaszczyzną gry)
+var _hub_props3d := {}                    ## id węzła hub_prop.gd → {root, kind, ...}
+
+## Rekwizyty z HUB_PROPS: modele maszynowni i magazynu, rury pod stropem, zamknięte drzwi D-7 (czerwony pas pod nimi błyska przy stukaniu)
+## i okno radiostacji, w którym widać prognozowaną pogodę (clear / rain / storm / fog). Odtwarzane po przebudowie geometrii mapy.
+func _sync_hub_props() -> void:
+	for id in _hub_props3d.keys():
+		if not is_instance_valid((_hub_props3d[id] as Dictionary)["root"]):
+			_hub_props3d.erase(id)
+	for n in get_tree().get_nodes_in_group("hub_props"):
+		if not (n is Node2D) or _geo_key == "":
+			continue
+		var d = _hub_props3d.get(n.get_instance_id())
+		if d == null:
+			d = _build_hub_prop(n as Node2D)
+			_hub_props3d[n.get_instance_id()] = d
+		var t := float(Time.get_ticks_msec()) * 0.001
+		match String(d["kind"]):
+			"generator":
+				var storm: bool = Weather.forecast == "storm"
+				var f := 0.85 + 0.15 * sin(t * 9.0) * sin(t * 3.3)
+				if storm and sin(t * 1.7) * sin(t * 0.6 + 1.0) > 0.78:
+					f = 0.15                                   # burza: lampa przy generatorze na chwilę siada
+				(d["light"] as OmniLight3D).light_energy = 2.4 * f
+			"d7":
+				var k := float(n.get("knock_flash"))
+				(d["mat"] as StandardMaterial3D).emission_energy_multiplier = 1.2 + 3.0 * k
+				(d["light"] as OmniLight3D).light_energy = 0.5 + 1.6 * k
+			"window":
+				var fc: String = Weather.forecast
+				var kind_i := 0 if fc == "clear" else (1 if fc == "rain" else (2 if fc == "storm" else 3))
+				var sm := d["mat"] as ShaderMaterial
+				var fl := 0.0
+				if fc == "storm":
+					fl = pow(maxf(0.0, sin(t * 0.9) * sin(t * 2.3 + 0.7)), 6.0)
+				sm.set_shader_parameter("kind", kind_i)
+				sm.set_shader_parameter("flash", fl * 0.9)
+				var sky_cols := {"clear": [Color(0.02, 0.04, 0.09), Color(0.07, 0.10, 0.16)], "rain": [Color(0.05, 0.06, 0.08), Color(0.10, 0.12, 0.15)],
+					"storm": [Color(0.03, 0.03, 0.05), Color(0.08, 0.09, 0.12)], "fog": [Color(0.15, 0.17, 0.18), Color(0.25, 0.27, 0.28)]}
+				var sc: Array = sky_cols.get(fc, sky_cols["clear"])
+				sm.set_shader_parameter("sky_top", sc[0])
+				sm.set_shader_parameter("sky_bot", sc[1])
+				(d["light"] as OmniLight3D).light_energy = 0.35 + 3.0 * fl
+
+func _hp_mat(col: Color, metal := 0.4, rough := 0.7) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = col
+	m.metallic = metal
+	m.roughness = rough
+	return m
+
+func _build_hub_prop(n: Node2D) -> Dictionary:
+	var kind := String(n.get("kind"))
+	var args: Array = n.get("args")
+	var root := Node3D.new()
+	root.name = "HubProp_" + kind
+	_geo.add_child(root)
+	var foot := Level3D.px_to_m(n.global_position)
+	root.position = Vector3(foot.x, foot.y, 0.0)
+	var d := {"root": root, "kind": kind}
+	if HUB_PROP_MODELS.has(kind):
+		var m := _item_model(kind)
+		if m != null:
+			var sc := float(HUB_PROP_MODELS[kind])
+			m.scale = Vector3(PX, PX, PX) * sc
+			m.position = Vector3(0.0, 0.0, HUB_PROP_Z + (0.5 if kind == "crate" or kind == "barrel" or kind == "scrap_pile" else 0.0))
+			root.add_child(m)
+		if kind == "generator":
+			var lamp := OmniLight3D.new()                      # lampa w klatce nad generatorem
+			lamp.light_color = Color(1.0, 0.82, 0.3)
+			lamp.omni_range = 7.0
+			lamp.light_energy = 2.4
+			lamp.light_volumetric_fog_energy = 1.2
+			lamp.layers = LAYER_WORLD | LAYER_ACTORS
+			lamp.position = Vector3(0.0, 3.3, -0.5)
+			root.add_child(lamp)
+			_ld_box(root, Vector3(0.3, 0.12, 0.3), Vector3(0.0, 3.45, -0.5), _hp_mat(Color(0.12, 0.12, 0.1)))
+			d["light"] = lamp
+	elif kind == "pipes":
+		var c1 := int(args[0]) if not args.is_empty() else int(n.position.x / 16.0) + 10
+		var span := float(c1 - int(n.position.x / 16.0)) * Level3D.T
+		var rust := _hp_mat(Color(0.30, 0.17, 0.10), 0.5, 0.8)
+		for yy in [4.7, 5.15]:
+			var cyl := CylinderMesh.new()
+			cyl.top_radius = 0.13
+			cyl.bottom_radius = 0.13
+			cyl.height = span
+			var mi := MeshInstance3D.new()
+			mi.mesh = cyl
+			mi.material_override = rust
+			mi.layers = LAYER_WORLD
+			mi.rotation = Vector3(0.0, 0.0, deg_to_rad(90.0))
+			mi.position = Vector3(span * 0.5, yy, -2.0)
+			root.add_child(mi)
+			for k in range(1, int(span / 3.2)):
+				_ld_box(root, Vector3(0.1, 0.36, 0.36), Vector3(float(k) * 3.2, yy, -2.0), _hp_mat(Color(0.14, 0.12, 0.10), 0.6, 0.6))
+	elif kind == "d7":
+		var plate := _hp_mat(Color(0.18, 0.17, 0.16), 0.6, 0.6)
+		_ld_box(root, Vector3(2.1, 2.95, 0.25), Vector3(0.0, 1.475, -1.9), plate)
+		_ld_box(root, Vector3(1.7, 2.65, 0.18), Vector3(0.0, 1.325, -1.76), _hp_mat(Color(0.13, 0.13, 0.12), 0.7, 0.5))
+		for sgn in [1.0, -1.0]:
+			var brace := _ld_box(root, Vector3(2.0, 0.12, 0.08), Vector3(0.0, 1.325, -1.64), plate)     # zakrzyżowane belki
+			brace.rotation = Vector3(0.0, 0.0, deg_to_rad(38.0) * sgn)
+		var pad := _item_model("padlock")
+		if pad != null:
+			pad.scale = Vector3(PX, PX, PX) * float(ITEM_SCALE.get("padlock", 0.4)) * 1.8
+			pad.position = Vector3(0.0, 1.2, -1.6)
+			root.add_child(pad)
+		var lab := Label3D.new()
+		lab.text = "D-7"
+		lab.font_size = 64
+		lab.pixel_size = 0.007
+		lab.modulate = Color(0.75, 0.74, 0.68)
+		lab.shaded = true
+		lab.position = Vector3(0.0, 3.25, -1.74)
+		lab.layers = LAYER_WORLD
+		root.add_child(lab)
+		var red := StandardMaterial3D.new()
+		red.emission_enabled = true
+		red.albedo_color = Color(0.9, 0.12, 0.08)
+		red.emission = Color(1.0, 0.12, 0.08)
+		red.emission_energy_multiplier = 1.2
+		_ld_box(root, Vector3(1.7, 0.05, 0.1), Vector3(0.0, 0.04, -1.62), red)                       # pas światła spod drzwi
+		var lt := OmniLight3D.new()
+		lt.light_color = Color(1.0, 0.14, 0.08)
+		lt.omni_range = 4.5
+		lt.light_energy = 0.5
+		lt.layers = LAYER_WORLD | LAYER_ACTORS
+		lt.position = Vector3(0.0, 0.25, -1.0)
+		root.add_child(lt)
+		d["mat"] = red
+		d["light"] = lt
+	elif kind == "window":
+		var w := (float(args[0]) if not args.is_empty() else 3.0) * Level3D.T
+		var h := 2.0
+		var y0 := 1.5
+		var frame := _hp_mat(Color(0.14, 0.12, 0.10), 0.3, 0.8)
+		_ld_box(root, Vector3(w + 0.3, h + 0.3, 0.12), Vector3(0.0, y0 + h * 0.5, -1.9), frame)
+		var qm := QuadMesh.new()
+		qm.size = Vector2(w, h)
+		var gm := ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = HUB_WINDOW_SHADER
+		gm.shader = sh
+		var gmi := MeshInstance3D.new()
+		gmi.mesh = qm
+		gmi.material_override = gm
+		gmi.layers = LAYER_WORLD
+		gmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		gmi.position = Vector3(0.0, y0 + h * 0.5, -1.83)
+		root.add_child(gmi)
+		for k in [-1, 0, 1]:
+			if k == 0:
+				_ld_box(root, Vector3(0.08, h, 0.06), Vector3(0.0, y0 + h * 0.5, -1.79), frame)     # słupek okna
+		var wl := OmniLight3D.new()                              # zimne światło z okna (błyski burzy rozświetlają pokój)
+		wl.light_color = Color(0.55, 0.7, 1.0)
+		wl.omni_range = 6.0
+		wl.light_energy = 0.35
+		wl.light_volumetric_fog_energy = 1.0
+		wl.layers = LAYER_WORLD | LAYER_ACTORS
+		wl.position = Vector3(0.0, y0 + h * 0.5, -1.2)
+		root.add_child(wl)
+		d["mat"] = gm
+		d["light"] = wl
+	return d
 
 # ---------------------------------------------------------------- radiostacja i zamurowane przejścia
 

@@ -220,10 +220,13 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 
 # ---------------------------------------------------------------- gotowość w kryjówce
 
-const HUB_COUNTDOWN := 2.0           ## tyle sekund po zgłoszeniu gotowości przez wszystkich ludzi do wyjścia na misję
+const HUB_COUNTDOWN := 3.0           ## tyle sekund po zgłoszeniu gotowości przez wszystkich ludzi do wyjścia na misję
 
 var hub_ready := {}                  ## serwer: id peera (jako tekst) -> gotowy
 var hub_mine := false                ## ten peer: czy jestem gotowy (HUD)
+var hub_cancel_flash := 0.0           ## 1 w chwili anulowania odliczania, zanika w pół sekundy (HUD i światła strefy startu)
+var _hub_cd_prev := -1.0
+var hub_in_zone := false             ## ten peer: czy stoję w strefie startu (HUD: wyjście ze strefy anuluje)
 var hub_ready_n := 0                 ## ilu ludzi gotowych / ilu w ogóle (replikowane serwerem do HUD)
 var hub_total := 0
 var hub_countdown := -1.0            ## < 0: nie odliczamy
@@ -233,17 +236,38 @@ var _hub_sync_t := 0.0
 ## drużyna rusza na misję; odznaczenie przez kogokolwiek przerywa odliczanie. Boty się nie liczą.
 func _hub_input() -> void:
 	if mission == null or mission.kind != "hub":
+		_hub_cd_prev = -1.0
 		return
+	_hub_feedback(get_physics_process_delta_time())
 	if hub_countdown > 0.0 and NoiseMgr.has_network() and not multiplayer.is_server():
 		hub_countdown = maxf(0.0, hub_countdown - get_physics_process_delta_time())     # klient odlicza sam, serwer w _hub_server_tick
+	var me: Node2D = _players.get_node_or_null(str(NoiseMgr.local_id())) as Node2D
+	hub_in_zone = me != null and level.launch_zone.has_point(me.global_position)
 	if not Input.is_action_just_pressed("restart"):
 		return
+	if hub_in_zone:
+		return                            # w strefie gotowość trzyma pozycja: żeby ją cofnąć, trzeba z niej wyjść
 	hub_mine = not hub_mine
 	Audio.play("ui_click", Audio.BUS_UI, -8.0)
 	if not NoiseMgr.has_network() or multiplayer.is_server():
 		_hub_set_ready(NoiseMgr.local_id(), hub_mine)
 	else:
 		_hub_ready_rpc.rpc_id(1, hub_mine)
+
+## Dźwięk i błysk odliczania (lokalnie u każdego peera, licznik przychodzi z serwera): tyk co sekundę o rosnącym tonie, potwierdzenie na zerze, odmowa i czerwony błysk przy anulowaniu.
+func _hub_feedback(delta: float) -> void:
+	hub_cancel_flash = maxf(0.0, hub_cancel_flash - delta * 2.0)
+	var cd := hub_countdown
+	if cd > 0.0:
+		var secs := ceili(cd)
+		if _hub_cd_prev < 0.0 or secs != ceili(_hub_cd_prev):
+			Audio.play("ui_click", Audio.BUS_UI, -4.0, 0.85 + 0.22 * float(ceili(HUB_COUNTDOWN) - secs))
+	elif cd == 0.0 and _hub_cd_prev > 0.0:
+		Audio.play("ui_confirm", Audio.BUS_UI, -3.0)
+	elif cd < 0.0 and _hub_cd_prev > 0.0 and not _departing:
+		hub_cancel_flash = 1.0
+		Audio.play("ui_deny", Audio.BUS_UI, -5.0)
+	_hub_cd_prev = cd
 
 @rpc("any_peer", "call_remote", "reliable")
 func _hub_ready_rpc(on: bool) -> void:
@@ -258,6 +282,18 @@ func _hub_set_ready(peer_id: int, on: bool) -> void:
 		hub_ready.erase(key)
 	_hub_sync_t = 0.0
 
+## Ludzie stojący w strefie startu kryjówki (level.launch_zone); serwer czyta pozycje graczy tak jak przy ich innych sprawdzeniach zasięgu.
+func _hub_zone_ids() -> Array:
+	var out := []
+	if level.launch_zone.size == Vector2.ZERO:
+		return out
+	for c in _players.get_children():
+		if c.is_queued_for_deletion() or c.is_bot or bool(c.get("dead")):
+			continue
+		if level.launch_zone.has_point((c as Node2D).global_position):
+			out.append(String(c.name))
+	return out
+
 func _hub_humans() -> Array:
 	var out := []
 	for c in _players.get_children():
@@ -270,10 +306,15 @@ func _hub_server_tick(delta: float) -> void:
 	for k in hub_ready.keys():
 		if not humans.has(k):
 			hub_ready.erase(k)                # ktoś wyszedł
+	var ready_ids: Array = hub_ready.keys()
+	for k in _hub_zone_ids():
+		if not ready_ids.has(k):
+			ready_ids.append(k)               # gotowy jest ten, kto stoi w strefie startu albo zgłosił się [Enter]em
 	var n := 0
 	for k in humans:
-		if hub_ready.has(k):
+		if ready_ids.has(k):
 			n += 1
+	hub_mine = ready_ids.has(str(NoiseMgr.local_id()))
 	var all := not humans.is_empty() and n == humans.size()
 	var was := hub_countdown
 	if not all:
@@ -295,7 +336,7 @@ func _hub_server_tick(delta: float) -> void:
 	if _hub_sync_t <= 0.0:
 		_hub_sync_t = 1.0
 		if NoiseMgr.has_network():
-			_hub_state.rpc(hub_ready.keys(), hub_total, hub_countdown)
+			_hub_state.rpc(ready_ids, hub_total, hub_countdown)
 
 @rpc("authority", "call_remote", "reliable")
 func _hub_state(ready_ids: Array, total: int, countdown: float) -> void:
@@ -2135,8 +2176,8 @@ func _gen_test() -> void:
 			lamps += 1
 	var in_cab := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "weapon" and n.has_meta("cabinet")).size()
 	var brief: Dictionary = level.briefing(after_hub)
-	check.call("kryjówka: 2 gabloty z 8 broniami, 9 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
-		cabinets == 2 and in_cab == 8 and lamps == 9 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
+	check.call("kryjówka: 2 gabloty z 8 broniami, 12 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
+		cabinets == 2 and in_cab == 8 and lamps == 12 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
 	# radiostacja (R, weather.gd): jedna w kryjówce, w kryjówce pogody misji nie ma, prognoza jest znanym rodzajem; mnożniki pogody łączą się z NightShift
 	check.call("niebo (deszcz): w kryjówce zamknięte (sufit), ustawienie efektów pogody domyślnie REDUCED (%s)" % Settings.WEATHER_FX_NAMES[Settings.weather_fx_idx],
 		not level.sky_open_at(p.global_position) and Settings.WEATHER_FX_NAMES.size() == 3)
@@ -2266,6 +2307,18 @@ func _gen_test() -> void:
 	check.call("ekwipunek i amunicja przechodzą do kryjówki", p.weapons.loadout == loadout_before and Arsenal.get_reserve(Weapons.def(loadout_before[0]).id) == ammo_before)
 	await get_tree().create_timer(2.5).timeout
 	check.call("kryjówka: bez gotowości nie ruszamy (%d/%d)" % [hub_ready_n, hub_total], level.map_id == "z1_hub" and hub_countdown < 0.0)
+	var spawn_pos: Vector2 = p.global_position
+	p.global_position = Vector2(level.launch_zone.get_center().x, level.launch_zone.end.y - 4.0)
+	p.velocity = Vector2.ZERO
+	await get_tree().create_timer(0.5).timeout
+	check.call("kryjówka: stanie w strefie startu = gotowość i odliczanie (%.1f s, %d/%d)" % [hub_countdown, hub_ready_n, hub_total], hub_in_zone and hub_mine and hub_countdown > 2.0 and hub_ready_n == hub_total)
+	var cd_alert: Dictionary = Msg.current(Msg.Ch.ALERT)
+	check.call("komunikaty: odliczanie wyjścia to alert w kanale ALERT (%s)" % str(cd_alert.get("text", "-")), String(cd_alert.get("id", "")) == "hud.hubcount" and bool(cd_alert.get("big", false)))
+	check.call("dziennik: akcja journal zarejestrowana (klawisz N), porady przez kanał TIP", InputMap.has_action("journal") and Msg.Ch.TIP == 4)
+	p.global_position = spawn_pos
+	p.velocity = Vector2.ZERO
+	await get_tree().create_timer(0.5).timeout
+	check.call("kryjówka: wyjście ze strefy anuluje odliczanie", not hub_in_zone and not hub_mine and hub_countdown < 0.0)
 	_hub_set_ready(NoiseMgr.local_id(), true)
 	await get_tree().create_timer(0.5).timeout
 	check.call("kryjówka: wszyscy ludzie gotowi → odliczanie (%.1f s, %d/%d)" % [hub_countdown, hub_ready_n, hub_total], level.map_id == "z1_hub" and hub_countdown > 0.0 and hub_ready_n == hub_total and hub_total >= 1)
@@ -2437,6 +2490,9 @@ func _map_test() -> void:
 			points.append(["Skrytka %d" % (i + 1), (level._map_items["H"] as Array)[i]])
 		for b in get_tree().get_nodes_in_group("board"):
 			points.append(["Tablica", b.global_position])
+		for grp in [["radio_set", "Radiostacja"], ["workshop", "Warsztat"], ["results_wall", "Ściana wyników"]]:       # stanowiska kryjówki (może mieć je na różnych piętrach)
+			for n in get_tree().get_nodes_in_group(grp[0]):
+				points.append([grp[1], n.global_position])
 		for n in get_tree().get_nodes_in_group("nests"):
 			points.append([String(n.name), n.global_position])
 		for e in get_tree().get_nodes_in_group("enemies"):
@@ -2615,25 +2671,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 ## Krótki komunikat na górze ekranu (poza lobby, np. w trakcie gry), znika po `secs` s.
 func _toast(text: String, secs := 5.0) -> void:
-	var l := Label.new()
-	l.text = text
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.add_theme_font_size_override("font_size", 7)
-	l.add_theme_color_override("font_color", Color(1.0, 0.9, 0.6))
-	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	l.add_theme_constant_override("outline_size", 2)
-	l.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	l.offset_left = -170.0
-	l.offset_right = 170.0
-	l.offset_top = 62.0
-	l.offset_bottom = 100.0
-	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	$UI.add_child(l)
-	var tw := create_tween()
-	tw.tween_interval(secs)
-	tw.tween_property(l, "modulate:a", 0.0, 1.0)
-	tw.tween_callback(l.queue_free)
+	Msg.post("net.%d" % text.hash(), Msg.Ch.TOAST, text, {"ttl": secs, "style": Msg.Style.WARN, "prio": 70})
 
 func _on_peer_connected(id: int) -> void:
 	print("[NET] peer connected: %d" % id)

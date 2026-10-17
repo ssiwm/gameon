@@ -25,6 +25,9 @@ const Throwables := preload("res://scripts/throwables.gd")
 const Hints := preload("res://scripts/hints.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
+const NotePaper := preload("res://scripts/note_paper.gd")
+const MessageView := preload("res://scripts/message_view.gd")
+const JournalView := preload("res://scripts/journal_view.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Codex := preload("res://scripts/codex.gd")
 const RunLog := preload("res://scripts/run_log.gd")
@@ -35,6 +38,7 @@ const W := preload("res://scripts/ui_widgets.gd")
 
 ## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.8
+const MSG_SCALE := 0.8            ## komunikaty (alerty, toasty, karta tytułowa, porady, dziennik, notatki, pasek akcji) o 20% mniejsze niż reszta HUD-u
 const MARGIN := 8.0              ## odstęp kart od krawędzi (jednostki logiczne HUD)
 const CONTROLS_SHOW_S := 20.0
 const NOISE_COL_CALM := Color(0.62, 0.72, 0.78)
@@ -42,7 +46,6 @@ const OBJ_W := 250.0             ## szerokość treści karty celu (zawijanie)
 const SESSION_W := 152.0         ## szerokość bloku „sesja + zegar" w prawym górnym rogu
 const WARN_Y := 0.255            ## wysokość ostrzeżenia nad środkiem ekranu (ułamek wysokości; 92/360)
 const CENTER_Y := 0.39           ## napis „SQUAD DOWN" (140/360)
-const HINT_Y := 0.66             ## karta podpowiedzi (nad paskiem kontekstowym)
 const BRIEF_ROWS := 5             ## ile wierszy zagrożeń pokazuje odprawa (reszta: „+N more")
 const PROMPT_Y := 0.76           ## pasek kontekstowy — nad paskiem broni (dół, środek)
 ## Układ wzorowany na koop-strzelankach (Left 4 Dead, Deep Rock Galactic, Helldivers): drużyna i zdrowie w lewym dolnym
@@ -331,22 +334,6 @@ class Ecg extends Control:
 			draw_polyline(lit, color, 1.0, true)
 
 ## Karta zakotwiczona w obiekcie świata: panel z „ogonkiem” (strzałką) pod spodem, wskazującym obiekt.
-class TailPanel extends PanelContainer:
-	var tail := false
-	var tail_color := Color.WHITE
-	var pin := false               ## czerwona pinezka na środku górnej krawędzi (kartka przypięta do tablicy)
-	func _init() -> void:
-		resized.connect(queue_redraw)
-	func _draw() -> void:
-		if pin:
-			var px := roundf(size.x * 0.5)
-			draw_circle(Vector2(px, 1.0), 3.5, Color(0.45, 0.1, 0.08))
-			draw_circle(Vector2(px, 0.0), 3.0, Color(0.82, 0.2, 0.15))
-			draw_rect(Rect2(px - 1.0, -1.0, 1.0, 1.0), Color(1.0, 0.7, 0.6))
-		if tail:
-			var cx := roundf(size.x * 0.5)
-			draw_colored_polygon(PackedVector2Array([Vector2(cx - 6.0, size.y - 3.0), Vector2(cx + 6.0, size.y - 3.0), Vector2(cx, size.y + 6.0)]), tail_color)
-
 ## Znacznik wroga w odprawie: sylwetka-kropka w kolorze rodzaju (z tabeli Enemy.KINDS).
 class Swatch extends Control:
 	var col := Color.WHITE
@@ -389,6 +376,8 @@ class Coin extends Control:
 var _player: Node = null
 var _blink := 0.0
 var _warn_was := false
+var _journal: Control                ## dziennik komunikatów i porad (klawisz akcji „journal”): journal_view.gd
+var _msgs: Control                   ## renderer kanałów komunikatów (alert, toasty, karta tytułowa): message_view.gd
 var _music_layer := -1
 var _session_t := 0.0
 ## Pasek sterowania: -1 = auto (pierwsze CONTROLS_SHOW_S s), 0 = ukryty, 1 = pokazany (F1).
@@ -426,8 +415,6 @@ var _reload_bar: Bar
 var _charges: Pips
 var _flares: Pips
 var _gren_name: Label
-var _note: Label
-var _note_t := 0.0
 var _slots: Array[PanelContainer] = []
 var _slot_labels: Array[Label] = []
 var _slot_icons: Array[GunIcon] = []
@@ -457,23 +444,14 @@ var _run_card: PanelContainer        ## karta RUN (prawy górny róg): trudnoś�
 var _run_xp_bar: Bar                  ## pasek XP w karcie RUN
 var _xp_txt: Label
 var _squad_info: Label               ## „HOST · 1/4 +1 AI” w nagłówku karty drużyny
-var _xp_feed: Label                  ## „+12 XP” — sumuje XP z ostatnich sekund i blaknie
-var _xp_acc := 0
-var _xp_t := 0.0
 var _result_xp_val: Label
-var _warn: Label
-var _warn_sub: Label
-var _center: Label
-var _center_sub: Label
 var _prompt_card: PanelContainer
-var _prompt: Label
+var _prompt: RichTextLabel             ## pasek akcji: tekst z klawiszami jako klawisze (UiTheme.keycaps)
 var _prompt_bar: Bar
 var _controls: Label
 var _f1: Label
 var _result: PanelContainer
 var _hints := Hints.new()
-var _hint_card: PanelContainer
-var _hint_label: Label
 var _result_stats: GridContainer
 var _result_prompt: Label
 var _result_title: Label
@@ -507,7 +485,6 @@ func _ready() -> void:
 	_build_center()
 	_build_prompt()
 	_build_controls()
-	_build_hint()
 	_build_captions()
 	_build_chat()
 	_build_result()
@@ -517,10 +494,10 @@ func _ready() -> void:
 			_dev_noise = float(a.substr("--shotnoise=".length()))
 	_inspect = WeaponInspect.new()
 	add_child(_inspect)
-	_brief = _make_info_card(310.0, 4, true)
-	(_brief["card"] as TailPanel).pin = true
-	_radio = _make_info_card(300.0, 2, true)
-	(_radio["card"] as TailPanel).pin = true
+	_brief = _make_info_card(310.0, 4, UiTheme.Note.DOSSIER)         # odprawa: akta sztabu (maszynopis, pieczątka)
+	(_brief["card"] as NotePaper).stamp = tr("CLASSIFIED")
+	_radio = _make_info_card(300.0, 2, UiTheme.Note.PRINTOUT)        # prognoza: wydruk z radia
+	_build_world_notes()
 	var wsp := WorkshopUi.new()
 	wsp.z_index = 11                                           # nad ściemnieniem (_dim, z_index 10)
 	add_child(wsp)
@@ -543,13 +520,12 @@ func _fit() -> void:
 	var h := size.y
 	_run_card.reset_size()
 	_run_card.position = Vector2(w - MARGIN - _run_card.size.x, MARGIN)
-	_place(_xp_feed, Vector2(w - MARGIN - SESSION_W, MARGIN + _run_card.size.y + 3.0), Vector2(SESSION_W, 12))
-	var cw := 400.0
-	_place(_warn, Vector2((w - cw) * 0.5, h * WARN_Y), Vector2(cw, 28))
-	_place(_warn_sub, Vector2((w - cw) * 0.5, h * WARN_Y + 28.0), Vector2(cw, 14))
-	_place(_note, Vector2((w - cw) * 0.5, h * WARN_Y + 46.0), Vector2(cw, 14))
-	_place(_center, Vector2((w - cw) * 0.5, h * CENTER_Y), Vector2(cw, 28))
-	_place(_center_sub, Vector2((w - cw) * 0.5, h * CENTER_Y + 28.0), Vector2(cw, 16))
+	_msgs.scale = Vector2.ONE * MSG_SCALE
+	_msgs.position = Vector2.ZERO
+	_msgs.size = size / MSG_SCALE
+	_journal.scale = Vector2.ONE * MSG_SCALE
+	_journal.position = Vector2.ZERO
+	_journal.size = size / MSG_SCALE
 	_place(_controls, Vector2(MARGIN, h - 16.0), Vector2(w - 2.0 * MARGIN, 12))
 	_place(_f1, Vector2(w - MARGIN - SESSION_W, h - 16.0), Vector2(SESSION_W, 12))   # dół, prawy koniec paska podpowiedzi
 
@@ -938,7 +914,7 @@ func _build_objective_card() -> void:
 	_obj_text.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_obj_text)
-	_obj_hint = UiTheme.whisper(UiTheme.label("", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	_obj_hint = UiTheme.whisper(UiTheme.label("", UiTheme.T_BODY - 1, UiTheme.BONE_DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	_obj_hint.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_obj_hint)
@@ -1013,35 +989,48 @@ func _build_session() -> void:
 	_xp_txt = UiTheme.mono(UiTheme.label("", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT))
 	xp.add_child(_xp_txt)
 	box.add_child(xp)
-	_xp_feed = UiTheme.mono(UiTheme.label("", 8, UiTheme.OK, HORIZONTAL_ALIGNMENT_RIGHT))
-	_xp_feed.modulate.a = 0.0
-	add_child(_xp_feed)
 	Profile.xp_gained.connect(_on_xp_gained)
 	Profile.leveled_up.connect(_on_level_up)
 
 func _build_center() -> void:
-	_warn = UiTheme.whisper(UiTheme.label("", 21, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER))   # szept maszynowy 34 px z makiety
-	_warn.add_theme_constant_override("outline_size", 0)
-	add_child(_warn)
-	_warn_sub = UiTheme.whisper(UiTheme.label("", 9, Color("bdb8a6"), HORIZONTAL_ALIGNMENT_CENTER))
-	add_child(_warn_sub)
-	# krótkie komunikaty (np. „wabik już nie działa tutaj")
-	_note = UiTheme.whisper(UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
-	_note.modulate.a = 0.0
-	add_child(_note)
-	NoiseMgr.overcharge_stale.connect(func() -> void: show_note("They know this trick — move before you lure again"))
-	_center = UiTheme.heading("", 24, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
-	add_child(_center)
-	_center_sub = UiTheme.label("", 10, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
-	add_child(_center_sub)
+	_msgs = MessageView.new()
+	add_child(_msgs)
+	_journal = JournalView.new()
+	add_child(_journal)
+	NoiseMgr.overcharge_stale.connect(func() -> void: show_note(tr("They know this trick — move before you lure again")))
 	add_child((load("res://scripts/taken_arrow.gd") as GDScript).new())      # strzałka ku porwanemu graczowi poza kadrem (Żerca, F4d)
+	if "--shotjournal" in OS.get_cmdline_user_args():
+		# dev: dziennik otwarty z kilkoma przykładowymi wpisami (zrzut: --shotjournal --shot=PLIK)
+		var tm := Timer.new()
+		tm.wait_time = 1.5
+		tm.one_shot = true
+		tm.autostart = true
+		tm.timeout.connect(func() -> void:
+			Msg.note_to_journal("1.2  RADIO SILENCE", Msg.Ch.TITLE, Msg.Style.DANGER, "WEATHER — RAIN: every noise is 25% quieter")
+			Msg.tick(3.0)
+			Msg.note_to_journal("+50 XP", Msg.Ch.TOAST, Msg.Style.SUCCESS)
+			Msg.tick(20.0)
+			Msg.note_to_journal("Something is listening…", Msg.Ch.ALERT, Msg.Style.WARN, "Above 60% noise he wakes up")
+			Msg.tick(40.0)
+			Msg.note_to_journal("LEVEL 24  —  perk slot unlocked", Msg.Ch.TOAST, Msg.Style.SUCCESS)
+			_journal.set_open(true))
+		add_child(tm)
 
 func _build_prompt() -> void:
 	_prompt_card = _card(Vector2(MARGIN, MARGIN))
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)
 	_prompt_card.add_child(box)
-	_prompt = UiTheme.label("", 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	_prompt = RichTextLabel.new()
+	_prompt.bbcode_enabled = true
+	_prompt.fit_content = true
+	_prompt.scroll_active = false
+	_prompt.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_prompt.add_theme_font_size_override("normal_font_size", UiTheme.T_BODY)
+	_prompt.add_theme_color_override("default_color", UiTheme.TEXT)
+	_prompt.add_theme_constant_override("outline_size", 2)
+	_prompt.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	box.add_child(_prompt)
 	_prompt_bar = Bar.new()
 	_prompt_bar.custom_minimum_size = Vector2(180, 3)
@@ -1211,34 +1200,12 @@ func _drive_captions(delta: float) -> void:
 		_cap_card.reset_size()
 		_cap_card.position = Vector2(size.x - _cap_card.size.x - MARGIN, size.y * 0.30)
 
-## Podpowiedź dla nowego gracza: wąska karta nad paskiem kontekstowym (hints.gd decyduje, co i kiedy).
-func _build_hint() -> void:
-	_hint_card = _card(Vector2(MARGIN, MARGIN))
-	_hint_card.visible = false
-	var hb := UiTheme.panel_box()
-	hb.border_color = Color(UiTheme.ACCENT, 0.45)
-	hb.set_content_margin_all(7)
-	_hint_card.add_theme_stylebox_override("panel", hb)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 7)
-	_hint_card.add_child(row)
-	row.add_child(UiTheme.heading("TIP", 8, UiTheme.ACCENT))
-	_hint_label = UiTheme.whisper(UiTheme.label("", 9, UiTheme.TEXT))
-	_hint_label.custom_minimum_size = Vector2(330, 0)
-	_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	row.add_child(_hint_label)
-
 func _drive_hint(delta: float) -> void:
-	# jeden komunikat naraz: ostrzeżenie o hałasie i krótkie noty mają pierwszeństwo — podpowiedź czeka (jej czas stoi)
-	var busy := _warn.text != "" or _note_t > 0.0
+	# jeden komunikat naraz: alert, toast i karta tytułowa mają pierwszeństwo — porada czeka (jej czas stoi), pokazuje się w spokojnej chwili
+	var busy := not Msg.current(Msg.Ch.ALERT).is_empty() or not Msg.toasts().is_empty() or not Msg.current(Msg.Ch.TITLE).is_empty()
 	var text := _hints.update(0.0 if busy else delta, _player)
-	_hint_card.visible = text != "" and not _result.visible and not busy
-	if not _hint_card.visible:
-		return
-	_hint_label.text = text
-	_hint_card.modulate.a = _hints.alpha
-	_hint_card.reset_size()
-	_hint_card.position = Vector2((size.x - _hint_card.size.x) * 0.5, size.y * HINT_Y)
+	if text != "" and not _result.visible and not busy:
+		Msg.hold("hud.tip", Msg.Ch.TIP, text, {"style": Msg.Style.INFO, "prio": 30, "alpha": _hints.alpha, "log": true})
 
 func _build_result() -> void:
 	_result = _card(Vector2(MARGIN, MARGIN))
@@ -1326,21 +1293,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("help"):
 		_controls_mode = 0 if _controls.visible else 1
+	elif event.is_action_pressed("journal") and NoiseMgr.has_network():
+		_journal.set_open(not _journal.open)
+		get_viewport().set_input_as_handled()
+	elif _journal.open and event.is_action_pressed("pause"):
+		_journal.set_open(false)                      # Esc zamyka dziennik (menu pauzy otwiera się jak zwykle)
 	elif Settings.STORE_URL != "" and _result.visible and _demo_footer != null and _demo_footer.visible and event.is_action_pressed("open_store"):
 		OS.shell_open(Settings.STORE_URL)
 
 ## Krótki komunikat środkowy (znika po `secs`).
 func show_note(text: String, secs := 3.0) -> void:
-	_note.text = text
-	_note.modulate.a = 1.0
-	_note_t = secs
+	Msg.post("hud.note.%d" % text.hash(), Msg.Ch.TOAST, text, {"ttl": secs, "style": Msg.Style.WARN, "prio": 60})
 
 func _drive_noise() -> void:
 	_noise_card.visible = not NoiseMgr.safe_zone
 	_safe_chip.visible = NoiseMgr.safe_zone
-	if _note_t > 0.0:
-		_note_t -= get_process_delta_time()
-		_note.modulate.a = clampf(_note_t / 0.6, 0.0, 1.0)
 	var lvl := _dev_noise if _dev_noise >= 0.0 else NoiseMgr.level          # dev: --shotnoise=N pokazuje wskaźnik przy zadanym poziomie
 	_noise_val.text = "%d%%" % int(lvl)
 	_noise_bar.value = lvl / 100.0
@@ -1374,19 +1341,18 @@ func _drive_noise() -> void:
 	_gren_name.add_theme_color_override("font_color", UiTheme.TEXT if gn > 0 else UiTheme.MUTED)
 
 func _on_xp_gained(amount: int, _reason: String) -> void:
-	_xp_acc += amount
-	_xp_t = 2.5
+	Msg.post("hud.xp", Msg.Ch.TOAST, "", {"amount": amount, "fmt": "+%d XP", "style": Msg.Style.SUCCESS, "ttl": 2.5, "prio": 20, "log": false})
 
 func _on_level_up(lv: int) -> void:
-	var msg := "LEVEL %d" % lv
+	var msg := tr("LEVEL %d") % lv
 	if Profile.SLOT_LEVELS.has(lv):
-		msg += "  —  perk slot unlocked"
+		msg += "  —  " + tr("perk slot unlocked")
 	var names: Array = []
 	for id in Profile.Perks.unlocked_at(lv):
 		names.append(Profile.Perks.display_name(String(id)))
 	if not names.is_empty():
-		msg += "  —  new perks: " + ", ".join(names)
-	show_note(msg, 5.0)
+		msg += "  —  " + tr("new perks: ") + ", ".join(names)
+	Msg.post("hud.level", Msg.Ch.TOAST, msg, {"style": Msg.Style.SUCCESS, "ttl": 5.0, "prio": 80})
 	Audio.play("ui_confirm", Audio.BUS_UI, -6.0)
 
 func _drive_status() -> void:
@@ -1395,12 +1361,6 @@ func _drive_status() -> void:
 	_xp_txt.text = "%d/%d" % [int(lp[0]), int(lp[1])]
 	_run_xp_bar.value = float(lp[0]) / float(maxi(1, int(lp[1])))
 	_run_xp_bar.queue_redraw()
-	if _xp_t > 0.0:
-		_xp_t -= get_process_delta_time()
-		_xp_feed.text = "+%d XP" % _xp_acc
-		_xp_feed.modulate.a = clampf(_xp_t / 0.6, 0.0, 1.0)
-		if _xp_t <= 0.0:
-			_xp_acc = 0
 	_session.text = tr(Difficulty.level_name())
 	_session.add_theme_color_override("font_color", [UiTheme.OK, UiTheme.TEXT, UiTheme.DANGER][clampi(Difficulty.level, 0, 2)])
 	_squad_info.text = _net_status()
@@ -1413,7 +1373,6 @@ func _drive_status() -> void:
 		_clock.text = "%02d:%02d" % [secs / 60, secs % 60]
 	_run_card.reset_size()
 	_run_card.position = Vector2(size.x - MARGIN - _run_card.size.x, MARGIN)
-	_xp_feed.position.y = MARGIN + _run_card.size.y + 3.0
 	_gear_card.visible = _player != null
 	_equip_card.visible = _player != null
 	if _player == null:
@@ -1519,19 +1478,9 @@ func _drive_warning() -> void:
 	var awake: bool = NoiseMgr.stalker_awake
 	var uneasy: bool = (not awake) and NoiseMgr.level >= NoiseMgr.UNEASY_THRESHOLD
 	if awake:
-		_warn.text = "He hears you…"
-		_warn.add_theme_color_override("font_color", UiTheme.DANGER)
-		_warn.modulate.a = lerpf(1.0, 0.6 + 0.4 * sin(_blink * 6.0), Settings.fx_mult())
-		_warn_sub.text = "Go quiet until the noise drops below 30% — or use Q to lure him off"
+		Msg.hold("hud.noise.awake", Msg.Ch.ALERT, tr("He hears you…"), {"sub": tr("Go quiet until the noise drops below 30% — or use Q to lure him off"), "style": Msg.Style.DANGER, "prio": 60})
 	elif uneasy:
-		_warn.text = "Something is listening…"
-		_warn.add_theme_color_override("font_color", Color("e8e2c4"))
-		_warn.modulate.a = lerpf(0.85, 0.55 + 0.3 * sin(_blink * 3.0), Settings.fx_mult())
-		_warn_sub.text = "Above 60% noise he wakes up"
-	else:
-		_warn.text = ""
-		_warn_sub.text = ""
-	_warn_sub.modulate.a = _warn.modulate.a
+		Msg.hold("hud.noise.uneasy", Msg.Ch.ALERT, tr("Something is listening…"), {"sub": tr("Above 60% noise he wakes up"), "style": Msg.Style.WARN, "prio": 40})
 	if awake and not _warn_was:
 		Audio.play("warn_pulse", Audio.BUS_UI, -12.0)
 	_warn_was = awake
@@ -1558,6 +1507,13 @@ func _drive_mission() -> void:
 		_ready_pips.filled = int(main_n.get("hub_ready_n"))
 		_ready_pips.custom_minimum_size = Vector2(float(total) * 11.0 - 2.0, 9.0)
 		_ready_pips.queue_redraw()
+		var cd := float(main_n.get("hub_countdown"))
+		var fl := float(main_n.get("hub_cancel_flash"))
+		if fl > 0.05:
+			Msg.hold("hud.hubcancel", Msg.Ch.ALERT, "✕", {"big": true, "sub": tr("Departure cancelled"), "style": Msg.Style.DANGER, "prio": 75})
+		elif cd > 0.0:
+			var sub := tr("Step out of the launch zone to cancel") if bool(main_n.get("hub_in_zone")) else Actions.fmt(tr("[{restart}]  cancel"))
+			Msg.hold("hud.hubcount", Msg.Ch.ALERT, str(ceili(cd)), {"big": true, "sub": sub, "style": Msg.Style.SUCCESS, "prio": 70})
 	_boss_row.visible = boss != null and m.phase == Mission.Phase.BOSS
 	if _boss_row.visible:
 		_boss_bar.value = boss.hp / maxf(1.0, boss.max_hp)
@@ -1567,10 +1523,9 @@ func _drive_mission() -> void:
 	# karta celu: wyśrodkowana, szerokość wg treści
 	_obj_card.reset_size()
 	_obj_card.position = Vector2((size.x - _obj_card.size.x) * 0.5, MARGIN)
-	# ostrzeżenie zawsze pod kartą celu (karta bossa jest wyższa)
-	var wy := maxf(size.y * WARN_Y, _obj_card.position.y + _obj_card.size.y + 10.0)
-	_warn.position.y = wy
-	_warn_sub.position.y = wy + 28.0
+	_msgs.obj_bottom = (_obj_card.position.y + _obj_card.size.y) / MSG_SCALE
+	_msgs.run_bottom = (_run_card.position.y + _run_card.size.y) / MSG_SCALE
+	_msgs.squad_top = _squad_card.position.y / MSG_SCALE
 
 	var show_result: bool = m.phase == Mission.Phase.SUCCESS or m.phase == Mission.Phase.FAILED
 	var just_shown: bool = show_result and not _result.visible
@@ -1711,17 +1666,18 @@ func _shift_result(m: Node) -> Array:
 
 ## Karta informacyjna: tytuł, podpis, siatka wierszy i opis. `cols` = liczba kolumn siatki (2 = etykieta + wartość).
 ## `paper`: karta przy obiekcie świata — papier z tekstem tuszem i ogonkiem wskazującym obiekt (zamiast ciemnego panelu HUD).
-func _make_info_card(width: float, cols: int, paper := false) -> Dictionary:
+## Karta informacyjna. `note` >= 0 to notatka-papier (NotePaper) w materiale UiTheme.Note.*: kolory i krój z palety notatki, tło rysuje komponent;
+## -1 to ciemna karta HUD. Zwraca słownik z węzłami do wypełnienia przez `_fill_info`.
+func _make_info_card(width: float, cols: int, note := -1) -> Dictionary:
+	var paper: bool = note >= 0
 	var card: PanelContainer
+	var pal: Dictionary = UiTheme.note_palette(note) if paper else {}
 	if paper:
-		var tp := TailPanel.new()
-		tp.tail = true
-		tp.tail_color = UiTheme.PAPER_EDGE
-		tp.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		tp.position = Vector2(MARGIN, MARGIN)
-		tp.add_theme_stylebox_override("panel", UiTheme.paper_box())
-		add_child(tp)
-		card = tp
+		var np := NotePaper.new()
+		np.set_kind(note)
+		np.position = Vector2(MARGIN, MARGIN)
+		add_child(np)
+		card = np
 	else:
 		card = _card(Vector2(MARGIN, MARGIN))
 	card.custom_minimum_size = Vector2(width, 0)
@@ -1729,17 +1685,18 @@ func _make_info_card(width: float, cols: int, paper := false) -> Dictionary:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
 	card.add_child(box)
-	var title := UiTheme.heading("", 16 if paper else 8, UiTheme.INK_ACCENT if paper else UiTheme.ACCENT)
+	var title := UiTheme.heading("", UiTheme.note_size(note, 11) if paper else 8, pal.get("accent", UiTheme.ACCENT))
+	var tag := UiTheme.label("", UiTheme.note_size(note, 7) if paper else UiTheme.T_CAPTION, pal.get("dim", UiTheme.MUTED))
+	var text := UiTheme.label("", UiTheme.note_size(note, 8) if paper else UiTheme.T_CAPTION, pal.get("ink", UiTheme.TEXT))
 	if paper:
-		title.add_theme_constant_override("outline_size", 0)
+		for l in [title, tag, text]:
+			(l as Label).add_theme_font_override("font", UiTheme.note_font(note))
+			(l as Label).add_theme_constant_override("outline_size", 0)
 	box.add_child(title)
-	var tag := UiTheme.label("", 8, UiTheme.INK_MUTED if paper else UiTheme.MUTED)
-	if paper:
-		tag.add_theme_constant_override("outline_size", 0)
 	box.add_child(tag)
 	if paper:
 		var r := ColorRect.new()
-		r.color = Color(UiTheme.INK, 0.35)
+		r.color = Color(pal["ink"], 0.4)
 		r.custom_minimum_size = Vector2(0, 1)
 		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		box.add_child(r)
@@ -1750,20 +1707,19 @@ func _make_info_card(width: float, cols: int, paper := false) -> Dictionary:
 	grid.add_theme_constant_override("h_separation", 14)
 	grid.add_theme_constant_override("v_separation", 1)
 	box.add_child(grid)
-	var text := UiTheme.label("", 8, UiTheme.INK if paper else UiTheme.TEXT)
-	if paper:
-		text.add_theme_constant_override("outline_size", 0)
 	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	text.custom_minimum_size = Vector2(width - 26.0, 0)
+	text.custom_minimum_size = Vector2(width - 52.0 if paper else width - 26.0, 0)
 	box.add_child(text)
-	return {"card": card, "title": title, "tag": tag, "grid": grid, "text": text, "cols": cols, "paper": paper}
+	return {"card": card, "title": title, "tag": tag, "grid": grid, "text": text, "cols": cols, "paper": paper, "mat": note}
 
 func _fill_info(c: Dictionary, title: String, tag: String, rows: Array, text: String, accent: Color) -> void:
 	var paper: bool = bool(c.get("paper", false))
+	var mat: int = int(c.get("mat", -1))
+	var pal: Dictionary = UiTheme.note_palette(mat) if paper else {}
 	(c["title"] as Label).text = title
-	(c["title"] as Label).add_theme_color_override("font_color", UiTheme.INK_ACCENT if paper else accent)
+	(c["title"] as Label).add_theme_color_override("font_color", pal["accent"] if paper else accent)
 	if paper:
-		(c["title"] as Label).add_theme_font_size_override("font_size", 16 if title.length() <= 12 else 8)   # długie tytuły (odprawa) mniejszą czcionką
+		(c["title"] as Label).add_theme_font_size_override("font_size", UiTheme.note_size(mat, 11 if title.length() <= 18 else 9))   # długie tytuły (odprawa) mniejszym krojem
 	(c["tag"] as Label).text = tag
 	(c["tag"] as Label).visible = tag != ""
 	(c["text"] as Label).text = text
@@ -1779,11 +1735,92 @@ func _fill_info(c: Dictionary, title: String, tag: String, rows: Array, text: St
 				sw.col = r[i]
 				grid.add_child(sw)
 				continue
-			var gl := UiTheme.label(String(r[i]), 9, (UiTheme.INK_MUTED if i == 0 else UiTheme.INK) if paper else (UiTheme.MUTED if i == 0 else UiTheme.TEXT))
+			var gl := UiTheme.label(String(r[i]), UiTheme.note_size(mat, 8) if paper else 9, (pal["dim"] if i == 0 else pal["ink"]) if paper else (UiTheme.MUTED if i == 0 else UiTheme.TEXT))
 			if paper:
+				gl.add_theme_font_override("font", UiTheme.note_font(mat))
 				gl.add_theme_constant_override("outline_size", 0)
 			grid.add_child(gl)
 	(c["card"] as Control).reset_size()
+
+## Papier w świecie 3D (MESSAGES_PLAN.md, 2b): te same notatki (odprawa przy tablicy, prognoza nad radiostacją) rysowane do tekstury w SubViewport.
+## view3d.gd (_sync_world_notes) kładzie ją na kartce przypiętej do tablicy / ściany, oświetlonej lampami sceny. Karta HUD zostaje jako widok „czytam z bliska”
+## (papier w świecie chowa się, gdy karta HUD jest widoczna). Zawartość odświeża się tylko przy zmianie klucza (cel misji, pogoda, zużycie).
+const WORLD_NOTE_K := 2.0                         ## ostrość tekstury papieru w świecie (piksele na jednostkę HUD)
+var _wn := {}                                     ## rodzaj ("brief" / "radio") → {vp, info, key, busy}
+
+func _build_world_notes() -> void:
+	for spec in [["brief", 310.0, 4, UiTheme.Note.DOSSIER], ["radio", 300.0, 2, UiTheme.Note.PRINTOUT]]:
+		var info := _make_info_card(float(spec[1]), int(spec[2]), int(spec[3]))
+		var card := info["card"] as NotePaper
+		remove_child(card)
+		card.visible = true
+		card.tail = false                          # w świecie kartka wisi na tablicy, bez ogonka wskazującego obiekt
+		if String(spec[0]) == "brief":
+			card.stamp = tr("CLASSIFIED")
+		var vp := SubViewport.new()
+		vp.transparent_bg = true
+		vp.disable_3d = true
+		vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		vp.size = Vector2i(16, 16)
+		vp.add_to_group("world_note")
+		vp.set_meta("kind", String(spec[0]))
+		add_child(vp)
+		vp.add_child(card)
+		card.scale = Vector2.ONE * WORLD_NOTE_K
+		_wn[String(spec[0])] = {"vp": vp, "info": info, "key": "", "busy": false}
+
+func _wn_hide(kind: String, hud_visible: bool) -> void:
+	if _wn.has(kind):
+		((_wn[kind] as Dictionary)["vp"] as SubViewport).set_meta("hide", hud_visible)
+
+## Co klatkę tanio sprawdza klucze treści; przy zmianie wypełnia kartę, czeka na układ i raz renderuje teksturę.
+func _refresh_world_notes() -> void:
+	if get_tree().get_first_node_in_group("board") == null and get_tree().get_first_node_in_group("radio_set") == null:
+		return
+	var main := get_tree().current_scene
+	var target := String(main.get("after_hub")) if main != null else ""
+	var wear_i := int(clampf(float(RunLog.total_downs()) / 10.0, 0.0, 1.0) * 10.0)
+	for kind in _wn:
+		var d: Dictionary = _wn[kind]
+		var key := ("%s|%d" % [target, wear_i]) if kind == "brief" else ("%s|%s|%d" % [Weather.forecast, target, wear_i])
+		if key != String(d["key"]) and not bool(d["busy"]):
+			d["key"] = key
+			_update_world_note(String(kind), target)
+
+func _update_world_note(kind: String, target: String) -> void:
+	var d: Dictionary = _wn[kind]
+	d["busy"] = true
+	var info: Dictionary = d["info"]
+	var card := info["card"] as NotePaper
+	var lvl := get_tree().get_first_node_in_group("level")
+	if kind == "brief":
+		_fill_brief(lvl.briefing(target) if lvl != null and target != "" else {}, info)
+	else:
+		_fill_radio(info, target)
+	card.wear = clampf(float(RunLog.total_downs()) / 10.0, 0.0, 1.0)
+	card.tally = RunLog.entries.size()
+	card.scale = Vector2.ONE
+	card.reset_size()
+	await get_tree().process_frame
+	card.reset_size()
+	var pad := Vector2(14.0, 18.0)
+	var vp := d["vp"] as SubViewport
+	vp.size = Vector2i((card.size + pad * 2.0) * WORLD_NOTE_K)
+	card.scale = Vector2.ONE * WORLD_NOTE_K
+	card.position = pad * WORLD_NOTE_K
+	await get_tree().process_frame
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	d["busy"] = false
+
+## Notatki zależą od otoczenia: w półmroku ciemniejsze (jasność z koloru ciemności mapy), a zużycie rośnie z upadkami drużyny w kampanii (RunLog).
+func _dress_note(c: Dictionary) -> void:
+	var n := c["card"] as NotePaper
+	var lvl := get_tree().get_first_node_in_group("level")
+	var amb: Color = lvl.ambient if lvl != null else Color(0.1, 0.1, 0.1)
+	var lit := clampf(0.62 + amb.get_luminance() * 1.6, 0.6, 1.0)
+	n.modulate = Color(lit, lit, lit, 1.0)
+	n.wear = clampf(float(RunLog.total_downs()) / 10.0, 0.0, 1.0)
+	n.tally = RunLog.entries.size()
 
 ## Karty: statystyki broni w zasięgu [E] (nad paskiem kontekstowym) i odprawa przy tablicy (u góry, pod kartą celu).
 func _drive_cards() -> void:
@@ -1817,8 +1854,10 @@ func _drive_cards() -> void:
 			board = b
 			break
 	var bc: Control = _brief["card"]
-	bc.visible = near_board
-	if near_board:
+	bc.visible = near_board and Msg.current(Msg.Ch.ALERT).is_empty()      # alert (odliczanie wyjścia) ma pierwszeństwo przed notatką
+	_wn_hide("brief", bc.visible)
+	if bc.visible:
+		_dress_note(_brief)
 		var main := get_tree().current_scene
 		var target := String(main.get("after_hub")) if main != null else ""
 		var lvl := get_tree().get_first_node_in_group("level")
@@ -1827,10 +1866,21 @@ func _drive_cards() -> void:
 			_fill_brief(lvl.briefing(target))
 		# nad tablicą (jak karta broni), więc nie zasłania stojącego przy niej gracza
 		var btop: Vector2 = get_viewport().get_canvas_transform() * (board.global_position + Vector2(0, -46))
+		bc.scale = Vector2.ONE * MSG_SCALE
+		bc.pivot_offset = Vector2(bc.size.x * 0.5, bc.size.y)
 		bc.position = Vector2(clampf(btop.x / scale.x - bc.size.x * 0.5, 6.0, maxf(6.0, size.x - bc.size.x - 6.0)), maxf(6.0, btop.y / scale.y - bc.size.y - 12.0))
 	_drive_radio()
+	_refresh_world_notes()
 
 ## Prognoza z radiostacji (weather.gd): nazwa pogody, jej plusy i minusy, tytuł następnej misji.
+## Treść prognozy (nazwa pogody, plusy i minusy, tytuł następnej misji) do karty HUD albo papieru w świecie.
+func _fill_radio(c: Dictionary, target: String) -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	var info: Dictionary = lvl.briefing(target) if lvl != null and target != "" else {}
+	var tag := ("Next: " + String(info["title"])) if not info.is_empty() else "Next mission"
+	var id: String = Weather.forecast
+	_fill_info(c, "WEATHER FORECAST", tag, [[Weather.color_of(id), Weather.name_of(id)]], Weather.text_of(id), UiTheme.ACCENT)
+
 func _drive_radio() -> void:
 	var near := false
 	var rset: Node2D = null
@@ -1840,25 +1890,27 @@ func _drive_radio() -> void:
 			rset = rs
 			break
 	var rc: Control = _radio["card"]
-	rc.visible = near
-	if not near:
+	rc.visible = near and Msg.current(Msg.Ch.ALERT).is_empty()
+	_wn_hide("radio", rc.visible)                  # papier w świecie chowa się, gdy ta sama treść jest czytelna w karcie HUD
+	if not rc.visible:
 		return
+	_dress_note(_radio)
 	var main := get_tree().current_scene
 	var target := String(main.get("after_hub")) if main != null else ""
 	var key := "%s|%s" % [Weather.forecast, target]
 	if key != _radio_key:
 		_radio_key = key
-		var lvl := get_tree().get_first_node_in_group("level")
-		var info: Dictionary = lvl.briefing(target) if lvl != null and target != "" else {}
-		var tag := ("Next: " + String(info["title"])) if not info.is_empty() else "Next mission"
-		var id: String = Weather.forecast
-		_fill_info(_radio, "WEATHER FORECAST", tag, [[Weather.color_of(id), Weather.name_of(id)]], Weather.text_of(id), UiTheme.ACCENT)
+		_fill_radio(_radio, target)
 	var rtop: Vector2 = get_viewport().get_canvas_transform() * (rset.global_position + Vector2(0, -40))
+	rc.scale = Vector2.ONE * MSG_SCALE
+	rc.pivot_offset = Vector2(rc.size.x * 0.5, rc.size.y)
 	rc.position = Vector2(clampf(rtop.x / scale.x - rc.size.x * 0.5, 6.0, maxf(6.0, size.x - rc.size.x - 6.0)), maxf(6.0, rtop.y / scale.y - rc.size.y - 12.0))
 
-func _fill_brief(info: Dictionary) -> void:
+func _fill_brief(info: Dictionary, c := {}) -> void:
+	if c.is_empty():
+		c = _brief
 	if info.is_empty():
-		_fill_info(_brief, "BRIEFING", "No orders yet", [], "", UiTheme.ACCENT)
+		_fill_info(c, "BRIEFING", "No orders yet", [], "", UiTheme.ACCENT)
 		return
 	var rows: Array = []                          # [kolor znacznika, nazwa, liczba, opis]
 	var counts: Dictionary = info["counts"]
@@ -1882,7 +1934,7 @@ func _fill_brief(info: Dictionary) -> void:
 		var extra := rows.size() - (BRIEF_ROWS - 1)
 		rows = rows.slice(0, BRIEF_ROWS - 1)
 		rows.append([Color(0, 0, 0, 0), "+%d more" % extra, "", "see the bestiary (Esc)"])
-	_fill_info(_brief, "BRIEFING  ·  " + String(info["title"]), "", rows, String(info["brief"]), UiTheme.ACCENT)
+	_fill_info(c, "BRIEFING  ·  " + String(info["title"]), "", rows, String(info["brief"]), UiTheme.ACCENT)
 
 ## Czy lokalny gracz stoi przy ławie warsztatu (kryjówka) i panel jest zamknięty.
 func _near_workshop() -> bool:
@@ -1914,138 +1966,151 @@ func _near_generator() -> Node:
 	return null
 
 ## Pasek kontekstowy: wipe, leżenie, podnoszenie, ekstrakcja.
-func _drive_prompt() -> void:
-	var text := ""
-	var prog := -1.0
-	var col := UiTheme.TEXT
-	_center.text = ""
-	_center_sub.text = ""
+## Kandydaci paska akcji (kanał ACTION): kolejność na liście = waga (pierwszy najważniejszy), każdy z własnym warunkiem. Arbiter (Msg) wybiera
+## najwyższą wagę — dawny łańcuch elif jako dane. Pusty tekst też bywa kandydatem: zagłusza niższe wagi (panel oględzin, wipe).
+func _prompt_candidates() -> Array:
+	var out: Array = []
+	var add := func(text: String, prog := -1.0, col := UiTheme.TEXT) -> void:
+		out.append({"text": text, "prog": prog, "col": col})
 	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	var gen := _near_generator()
 	var car := get_tree().get_first_node_in_group("handcar")
 	var grab_boss := _grab_boss()
 	var tide_boss := _tide_boss()
+	var alive: bool = _player != null and not _player.dead
 	if wipe_left > 0.0:
-		_center.text = "SQUAD DOWN"
-		_center_sub.text = ("Extraction failed — the shift ends in %d" if NightShift.active else "Extraction failed — restarting the mission in %d") % ceili(wipe_left)
-	elif grab_boss != null and _player != null and not _player.dead:
+		add.call("")                                                      # wipe: komunikat idzie kanałem alertu
+	if grab_boss != null and alive:
 		# chwyt Pijawki (QTE drużyny): ofiara i koledzy widzą ten sam pasek — ile obrażeń jeszcze brakuje do uwolnienia
 		var mine: bool = int(grab_boss.grab_victim_id) == int(_player.player_id)
-		text = ("GRABBED — shoot the leech to break free  ·  %.0fs" if mine else "Teammate grabbed — shoot the leech!  ·  %.0fs") % float(grab_boss.grab_time_left)
-		prog = float(grab_boss.grab_progress)
-		col = UiTheme.DANGER
-	elif tide_boss != null and _player != null and not _player.dead:
+		add.call((tr("GRABBED — shoot the leech to break free  ·  %.0fs") if mine else tr("Teammate grabbed — shoot the leech!  ·  %.0fs")) % float(grab_boss.grab_time_left), float(grab_boss.grab_progress), UiTheme.DANGER)
+	if tide_boss != null and alive:
 		if String(tide_boss.surge_state) == "warn":
-			text = "THE TIDE IS RISING — climb to the high catwalks!"
-			prog = clampf(float(tide_boss._surge_t) / (float(tide_boss.SURGE_WARN) * Difficulty.m("boss_tide")), 0.0, 1.0)
-			col = UiTheme.ACCENT
+			add.call(tr("THE TIDE IS RISING — climb to the high catwalks!"), clampf(float(tide_boss._surge_t) / (float(tide_boss.SURGE_WARN) * Difficulty.m("boss_tide")), 0.0, 1.0), UiTheme.ACCENT)
 		else:
-			text = "FLOODED — stay on the high catwalks"
-			col = UiTheme.DANGER
-	elif _player != null and _player.dead:
+			add.call(tr("FLOODED — stay on the high catwalks"), -1.0, UiTheme.DANGER)
+	if _player != null and _player.dead:
 		if _player.revive_progress > 0.0:
-			text = "Being revived…"
-			prog = _player.revive_progress
-			col = UiTheme.OK
+			add.call(tr("Being revived…"), _player.revive_progress, UiTheme.OK)
+		elif _player.taken:
+			add.call(tr("You were taken — your squad must kill the creature in %ds, or you return to the start without your kit") % ceili(_player.taken_t), _player.taken_t / 20.0, UiTheme.DANGER)
 		else:
-			text = "You were taken — your squad must kill the creature in %ds, or you return to the start without your kit" % ceili(_player.taken_t) if _player.taken else "You're down — a teammate can revive you (bleeding out in %ds)" % ceili(_player.bleed_left)
-			prog = _player.taken_t / 20.0 if _player.taken else _player.bleed_left / _player.bleed_time()
-			col = UiTheme.DANGER
-	elif _player != null and _player.revive_hint() != "":
-		text = _player.revive_hint()
-		col = UiTheme.OK
-	elif _player != null and _player.gear_text != "":
-		text = _player.gear_text                     # narzędzia (lewy Alt): apteczka, defibrylator, skaner — podpowiedź albo trwające użycie
-		prog = _player.gear_progress
-		col = UiTheme.OK if prog > 0.0 else UiTheme.ACCENT
-	elif car != null and car.local_state != "" and _player != null:
+			add.call(tr("You're down — a teammate can revive you (bleeding out in %ds)") % ceili(_player.bleed_left), _player.bleed_left / _player.bleed_time(), UiTheme.DANGER)
+	if _player != null and _player.revive_hint() != "":
+		add.call(_player.revive_hint(), -1.0, UiTheme.OK)
+	if _player != null and _player.gear_text != "":
+		# narzędzia (lewy Alt): apteczka, defibrylator, skaner — podpowiedź albo trwające użycie
+		add.call(_player.gear_text, _player.gear_progress, UiTheme.OK if _player.gear_progress > 0.0 else UiTheme.ACCENT)
+	if car != null and car.local_state != "" and _player != null:
 		match String(car.local_state):
 			"nopower":
-				text = "The handcar has no power — start all the generators"
-				col = UiTheme.MUTED
+				add.call(tr("The handcar has no power — start all the generators"), -1.0, UiTheme.MUTED)
 			"near":
-				text = "Step onto the handcar"
-				col = UiTheme.ACCENT
+				add.call(tr("Step onto the handcar"), -1.0, UiTheme.ACCENT)
 			"aboard":
-				text = Actions.fmt(tr("Hold [{interact}]  Pump  (you can't shoot while pumping)"))
-				col = UiTheme.ACCENT
+				add.call(Actions.fmt(tr("Hold [{interact}]  Pump  (you can't shoot while pumping)")), -1.0, UiTheme.ACCENT)
 			"pumping":
-				text = Actions.fmt(tr("Pumping…  release [{interact}] to shoot"))
-				col = UiTheme.OK
-	elif gen != null and _player != null and _player.weapons.nearby_weapon_item() == null:
+				add.call(Actions.fmt(tr("Pumping…  release [{interact}] to shoot")), -1.0, UiTheme.OK)
+	if gen != null and _player != null and _player.weapons.nearby_weapon_item() == null:
 		if gen.progress > 0.0:
-			text = "Starting the generator…"
-			prog = gen.progress
-			col = UiTheme.OK
+			add.call(tr("Starting the generator…"), gen.progress, UiTheme.OK)
 		else:
-			text = Actions.fmt(tr("Hold [{interact}]  Start the generator  (loud)"))
-			col = UiTheme.ACCENT
-	elif _near_workshop():
-		text = tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank]
-		col = UiTheme.ACCENT
-	elif _player != null and _player.weapons.inspect_item != null:
-		text = ""                                             # klawisze są w panelu oględzin
-	elif _player != null and _player.weapons.nearby_weapon_item() != null:
+			add.call(Actions.fmt(tr("Hold [{interact}]  Start the generator  (loud)")), -1.0, UiTheme.ACCENT)
+	if _near_workshop():
+		add.call(tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], -1.0, UiTheme.ACCENT)
+	if _player != null and _player.weapons.inspect_item != null:
+		add.call("")                                                      # klawisze są w panelu oględzin
+	if _player != null and _player.weapons.nearby_weapon_item() != null:
 		var it: Node2D = _player.weapons.nearby_weapon_item()
 		var nd: RefCounted = Weapons.def(it.arg)
 		var lvl_p := get_tree().get_first_node_in_group("level")
 		if lvl_p != null and lvl_p.is_locked_item(it):
-			text = tr("LOCKED  ·  %s   ·   [%s]  Inspect") % [Scrap.lock_text(it.arg), Actions.key("flare")]
-			col = UiTheme.MUTED
+			add.call(tr("LOCKED  ·  %s   ·   [%s]  Inspect") % [Scrap.lock_text(it.arg), Actions.key("flare")], -1.0, UiTheme.MUTED)
 		else:
 			var wc2: Node = _player.weapons
 			var swap_out: String = Weapons.def(wc2.loadout[wc2.slot if wc2.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc2.melee_id).name
 			var take_key := Actions.key("interact")
 			var look_key := Actions.key("flare")
-			text = tr("[%s]  Take %s  (drops %s)   ·   [%s]  Inspect") % [take_key, nd.name, swap_out, look_key] if not wc2.carries(it.arg) else tr("[%s]  Take ammo for %s   ·   [%s]  Inspect") % [take_key, nd.name, look_key]
-			col = UiTheme.ACCENT
-	elif m != null and m.phase == Mission.Phase.EXTRACT:
+			add.call(tr("[%s]  Take %s  (drops %s)   ·   [%s]  Inspect") % [take_key, nd.name, swap_out, look_key] if not wc2.carries(it.arg) else tr("[%s]  Take ammo for %s   ·   [%s]  Inspect") % [take_key, nd.name, look_key], -1.0, UiTheme.ACCENT)
+	if m != null and m.phase == Mission.Phase.EXTRACT:
 		var st: Dictionary = m.local_extract_state()
 		if st.get("inside", false):
 			if m.extract_progress > 0.0:
-				text = "EVACUATING…"
-				prog = m.extract_progress
-				col = UiTheme.OK
+				add.call(tr("EVACUATING…"), m.extract_progress, UiTheme.OK)
 			else:
-				text = "Hold here — the whole squad must reach the flare"
-				col = UiTheme.ACCENT
-	if wipe_left <= 0.0 and m != null and m.banner_visible() and not (_inspect.visible or bool(_brief["card"].visible) or bool(_radio["card"].visible)):
-		# tytuł misji w pierwszych sekundach; w Nocnym Dyżurze także zasady serii
-		var lvl := get_tree().get_first_node_in_group("level")
-		var lines: Array = []
-		if NightShift.active:
-			lines.append(String(lvl.title) if lvl != null else "")
-			for id in NightShift.mods:
-				lines.append("%s — %s" % [NightShift.MODS[id]["name"], NightShift.MODS[id]["text"]])
-			if NightShift.stage > 1:
-				lines.append("Enemies +%d%% HP" % int(round(NightShift.HP_STEP * float(NightShift.stage - 1) * 100.0)))
-			elif NightShift.mods.is_empty():
-				lines.append("The first mission — no modifiers")
-			_center.text = NightShift.title()
-		elif lvl != null and not (lvl.radio as Array).is_empty():
-			_center.text = String(lvl.title)
+				add.call(tr("Hold here — the whole squad must reach the flare"), -1.0, UiTheme.ACCENT)
+	return out
+
+## Kolor akcji -> styl komunikatu (do dziennika i spójnego wyglądu).
+func _style_of(col: Color) -> int:
+	if col == UiTheme.DANGER:
+		return Msg.Style.DANGER
+	if col == UiTheme.OK:
+		return Msg.Style.SUCCESS
+	if col == UiTheme.ACCENT:
+		return Msg.Style.ACTION
+	return Msg.Style.INFO
+
+## Karta tytułowa startu misji (kanał TITLE, dolna trzecia): tytuł, linie radia i jedna linia pogody; w Nocnym Dyżurze zasady serii.
+## Cel misji zostaje w karcie celu (bez powtórzeń).
+func _post_title(m: Node) -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	var lines: Array = []
+	var head := ""
+	var kicker := ""
+	if NightShift.active:
+		head = NightShift.title()
+		lines.append(String(lvl.title) if lvl != null else "")
+		for id in NightShift.mods:
+			lines.append("%s — %s" % [NightShift.MODS[id]["name"], NightShift.MODS[id]["text"]])
+		if NightShift.stage > 1:
+			lines.append(tr("Enemies +%d%% HP") % int(round(NightShift.HP_STEP * float(NightShift.stage - 1) * 100.0)))
+		elif NightShift.mods.is_empty():
+			lines.append(tr("The first mission — no modifiers"))
+	else:
+		head = String(lvl.title) if lvl != null else ""
+		if lvl != null and not (lvl.radio as Array).is_empty():
+			kicker = tr("RADIO")
 			for rl in lvl.radio:
-				lines.append(String(rl))
-		else:
-			_center.text = String(lvl.title) if lvl != null else ""
-			lines.append(m.objective_text())
-		if not NightShift.active and Weather.active_id() != "":
-			lines.append("WEATHER — %s: %s" % [Weather.name_of(Weather.active_id()), Weather.text_of(Weather.active_id())])
-		_center_sub.text = "\n".join(lines)
+				lines.append(tr(String(rl)))
+	if not NightShift.active and Weather.active_id() != "":
+		lines.append(tr("WEATHER — %s: %s") % [Weather.name_of(Weather.active_id()), Weather.text_of(Weather.active_id())])
+	Msg.hold("hud.title", Msg.Ch.TITLE, head, {"sub": "\n".join(lines), "kicker": kicker, "style": Msg.Style.DANGER, "prio": 50, "log": true})
+
+func _drive_prompt() -> void:
+	var text := ""
+	var prog := -1.0
+	var col := UiTheme.TEXT
+	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
+	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
+	if wipe_left > 0.0:
+		Msg.hold("hud.wipe", Msg.Ch.ALERT, tr("SQUAD DOWN"), {"sub": (tr("Extraction failed — the shift ends in %d") if NightShift.active else tr("Extraction failed — restarting the mission in %d")) % ceili(wipe_left), "style": Msg.Style.DANGER, "prio": 90})
+	var cands := _prompt_candidates()
+	for i in cands.size():
+		var c: Dictionary = cands[i]
+		Msg.hold("hud.action.%d" % i, Msg.Ch.ACTION, String(c["text"]), {"prio": 100 - i * 4, "progress": float(c["prog"]), "style": _style_of(c["col"]), "color": c["col"]})
+	var cur: Dictionary = Msg.current(Msg.Ch.ACTION)
+	if not cur.is_empty():
+		text = String(cur["text"])
+		prog = float(cur["progress"])
+		col = cur.get("color", UiTheme.TEXT)
+	if wipe_left <= 0.0 and m != null and m.banner_visible() and not _inspect.visible:
+		_post_title(m)
 	# ostatnia transmisja patrolu w finale misji 1.1 (zamiast baneru tytułu)
 	if wipe_left <= 0.0 and m != null and m.finale_radio_line() != "":
-		_center.text = "PATROL SEVEN — RADIO"
-		_center_sub.text = m.finale_radio_line()
+		Msg.hold("hud.finale", Msg.Ch.TITLE, tr("PATROL SEVEN — RADIO"), {"sub": m.finale_radio_line(), "kicker": tr("RADIO"), "style": Msg.Style.DANGER, "prio": 80, "log": true})
 	_prompt_card.visible = text != ""
 	if _prompt_card.visible:
-		_prompt.text = text
-		_prompt.add_theme_color_override("font_color", col)
+		_prompt.text = "[center]" + UiTheme.keycaps(text) + "[/center]"
+		_prompt.add_theme_color_override("default_color", col)
 		_prompt_bar.visible = prog >= 0.0
 		_prompt_bar.value = prog
 		_prompt_bar.fill = col
 		_prompt_bar.queue_redraw()
 		_prompt_card.reset_size()
+		_prompt_card.scale = Vector2.ONE * MSG_SCALE
+		_prompt_card.pivot_offset = Vector2(_prompt_card.size.x * 0.5, 0.0)
 		_prompt_card.position = Vector2((size.x - _prompt_card.size.x) * 0.5, size.y * PROMPT_Y)
 
 func _drive_controls() -> void:
