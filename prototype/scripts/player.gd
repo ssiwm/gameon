@@ -49,6 +49,7 @@ const JUMP_CUT := 0.45          ## puszczenie skoku skraca go (zmienna wysokoś�
 const INVULN_AFTER_HIT := 0.6   ## chroni przed „serią\" trafień z kilku wrogów naraz
 const CHIP_INVULN := 0.3         ## krótsza niewrażliwość po lekkim trafieniu (głaz 0,5 HP)
 const STUN_IMMUNITY := 3.0       ## s po ogłuszeniu, w których kolejny stun nie działa (nie da się zablokować gracza w pętli)
+const TAKEN_MIN_BLEED := 3.0     ## s do wykrwawienia, które porwany zachowuje po uwolnieniu (zabity Żerca)
 const KICK_DECAY := 600.0
 const DROP_TIME := 0.25         ## tyle trwa zeskok przez kładkę (dół + skok)
 const PLATFORM_LAYER_BIT := 5   ## warstwa kładek = 16 (level.gd LAYER_PLATFORM)
@@ -105,6 +106,8 @@ var crouching := false
 var dead := false
 var is_reviving := false        ## podnosi leżącego towarzysza (replikowane; kosmetyka — klęczenie widzą wszyscy, serwer niczego z tego nie liczy)
 var grabbed := false            ## chwycony przez Pijawkę (leech.gd): przypięty w miejscu, nie chodzi ani nie skacze, ale może strzelać i bić
+var taken := false               ## porwany (leżący) przez Żercę (F4d): ciągnięty z pozycją `grab_pos`, wykrwawianie wstrzymane, nie da się go podnieść; replikowane
+var taken_t := 0.0               ## s do „zjedzenia” (kary), ustawia Żerca co tik — widzi je HUD wszystkich graczy
 var grab_pos := Vector2.ZERO
 var pumping := false            ## drezyna (handcar.gd): gracz pompuje — nie chodzi, nie skacze i nie strzela
 var bleed_left := 0.0
@@ -425,7 +428,7 @@ func _setup_sync() -> void:
 	sync.replication_interval = 0.05
 	sync.delta_interval = 0.05
 	var cfg := SceneReplicationConfig.new()
-	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":kit", ":perks", ":look", ":grabbed", ":is_reviving"]:
+	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":kit", ":perks", ":look", ":grabbed", ":taken", ":taken_t", ":is_reviving"]:
 		cfg.add_property(path)
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
 	for path in [":position", ":velocity", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":is_bot", ":display_id"]:
@@ -1000,6 +1003,12 @@ func _noise_manager_request(pos: Vector2) -> void:
 
 ## Leżący gracz: wykrwawia się, spada na ziemię i czeka na pomoc.
 func _down_physics(delta: float) -> void:
+	if taken:
+		# porwany przez Żercę: pozycję narzuca Żerca (`apply_take`), wykrwawianie stoi, podnieść go nie można
+		global_position = grab_pos
+		velocity = Vector2.ZERO
+		_revive_hold = 0.0
+		return
 	bleed_left = maxf(0.0, bleed_left - delta)
 	_down_t += delta
 	if not _second_used and has_perk("second_chance") and bleed_left > 0.0 \
@@ -1028,6 +1037,7 @@ func _go_down() -> void:
 	hp = 0
 	chip = 0.0
 	stun_t = 0.0
+	taken = false
 	dead = true
 	bleed_left = bleed_time()
 	_down_t = 0.0
@@ -1045,7 +1055,7 @@ func _revive_target() -> Node2D:
 	var best_d := REVIVE_RANGE
 	for p in get_tree().get_nodes_in_group("players"):
 		var pp := p as Node2D
-		if pp == null or pp == self or not pp.dead:
+		if pp == null or pp == self or not pp.dead or pp.taken:
 			continue
 		var dx := absf(pp.global_position.x - global_position.x)
 		var dy := absf(pp.global_position.y - global_position.y)
@@ -1117,7 +1127,7 @@ func _revive_rpc() -> void:
 		_do_revive()
 
 func _do_revive() -> void:
-	if not dead:
+	if not dead or taken:                      # porwany przez Żercę nie wstaje, dopóki Żerca żyje
 		return
 	dead = false
 	hp = REVIVE_HP
@@ -1133,6 +1143,8 @@ func _respawn(hp_amount: int) -> void:
 	dead = false
 	hp = hp_amount
 	chip = 0.0
+	taken = false
+	taken_t = 0.0
 	bleed_left = 0.0
 	revive_progress = 0.0
 	global_position = _spawn_point
@@ -1756,6 +1768,46 @@ func apply_grab(on: bool, pos: Vector2) -> void:
 	if grabbed:
 		velocity = Vector2.ZERO
 
+## Porwanie przez Żercę (F4d): serwer co tik (`deliver_take(true, pos, pozostało_s)`) przypina LEŻĄCEGO gracza do pozycji Żercy i podaje czas do „zjedzenia";
+## `deliver_take(false, …)` go puszcza (Żerca zabity) z co najmniej TAKEN_MIN_BLEED s do wykrwawienia. Rozstrzyga właściciel postaci, jak chwyt Pijawki.
+func deliver_take(on: bool, pos: Vector2, remaining := 0.0) -> void:
+	if not NoiseMgr.has_network() or is_multiplayer_authority():
+		apply_take(on, pos, remaining)
+	else:
+		apply_take.rpc_id(get_multiplayer_authority(), on, pos, remaining)
+
+@rpc("any_peer", "call_remote", "reliable")
+func apply_take(on: bool, pos: Vector2, remaining := 0.0) -> void:
+	if not is_multiplayer_authority() or not _from_server():
+		return
+	if on:
+		if not dead:
+			return
+		taken = true
+		taken_t = remaining
+		grab_pos = pos
+		global_position = pos
+		velocity = Vector2.ZERO
+	elif taken:
+		taken = false
+		taken_t = 0.0
+		bleed_left = maxf(bleed_left, TAKEN_MIN_BLEED)
+
+## Kara po 20 s porwania: postać wraca na start misji z wyposażeniem początkowym (nie ginie na stałe — GDD §4: kara dystansem i czasem).
+func deliver_devour() -> void:
+	if not NoiseMgr.has_network() or is_multiplayer_authority():
+		apply_devour()
+	else:
+		apply_devour.rpc_id(get_multiplayer_authority())
+
+@rpc("any_peer", "call_remote", "reliable")
+func apply_devour() -> void:
+	if not is_multiplayer_authority() or not _from_server() or not taken:
+		return
+	_respawn(1)
+	weapons.reset()
+	Feel.shake(2.0)
+
 ## Odrzut broni popycha postać (px/s, wygasa KICK_DECAY).
 func apply_recoil_kick(v: float) -> void:
 	_kick = v
@@ -1841,7 +1893,7 @@ func _draw_overlay(ov: Node2D) -> void:
 	var name_txt := "BOT" if is_bot else "P%d" % display_id
 	if dead:
 		_center_text(ov, font, name_txt, -26.0, NAME_SIZE, col)
-		_center_text(ov, font, "%ds" % ceili(bleed_left), -18.0, NAME_SIZE, Color(0.95, 0.4, 0.4))
+		_center_text(ov, font, "%ds" % ceili(taken_t if taken else bleed_left), -18.0, NAME_SIZE, Color(1.0, 0.5, 0.25) if taken else Color(0.95, 0.4, 0.4))
 		if revive_progress > 0.0:
 			if Sprites.newitem:
 				Vfx.draw_bar(ov, Rect2(-12, -12, 24, 3), revive_progress, Color(0.1, 0.1, 0.12, 0.9), Color(0.4, 0.95, 0.5))

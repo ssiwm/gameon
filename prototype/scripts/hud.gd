@@ -899,7 +899,12 @@ func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 	if p.dead:
 		(row["root"] as Control).modulate.a = 1.0
 		bar.visible = true
-		if p.revive_progress > 0.0:
+		if p.taken:
+			txt = "TAKEN  %ds" % ceili(p.taken_t)
+			col = Color(1.0, 0.45, 0.2)
+			bar.value = p.taken_t / 20.0
+			bar.fill = Color(1.0, 0.45, 0.2)
+		elif p.revive_progress > 0.0:
 			txt = "REVIVING"
 			col = UiTheme.OK
 			bar.value = p.revive_progress
@@ -1943,8 +1948,8 @@ func _drive_prompt() -> void:
 			prog = _player.revive_progress
 			col = UiTheme.OK
 		else:
-			text = "You're down — a teammate can revive you (bleeding out in %ds)" % ceili(_player.bleed_left)
-			prog = _player.bleed_left / _player.bleed_time()
+			text = "You were taken — your squad must kill the creature in %ds, or you return to the start without your kit" % ceili(_player.taken_t) if _player.taken else "You're down — a teammate can revive you (bleeding out in %ds)" % ceili(_player.bleed_left)
+			prog = _player.taken_t / 20.0 if _player.taken else _player.bleed_left / _player.bleed_time()
 			col = UiTheme.DANGER
 	elif _player != null and _player.revive_hint() != "":
 		text = _player.revive_hint()

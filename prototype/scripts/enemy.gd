@@ -86,6 +86,7 @@ var active := false
 var alive := true
 var winding := false
 var _voiced_winding := false  ## czy zapowiedź ciosu już się odezwała (zbocze `winding`, lokalnie na każdym peerze)
+var _was_hidden := false      ## zamaskowany (np. Żerca przed porwaniem): niewidoczny i nietrafialny — stan z zachowania, na każdym peerze
 var burning := false          ## replikowane wizualnie przez RPC (_ignite_fx); logika tylko na serwerze
 
 var _def: Dictionary
@@ -188,6 +189,7 @@ func _ready() -> void:
 	if _def.get("fly", false):
 		motion_mode = CharacterBody2D.MOTION_MODE_FLOATING     # ćma lata — bez „podłogi" i grawitacji
 	_overlay = Lights.add_overlay(self)
+	_beh.on_ready()
 
 ## Aktywny, żywy wróg = realne zagrożenie (boty strzelają tylko do takich).
 func is_threat() -> bool:
@@ -259,6 +261,7 @@ func _set_alive(a: bool) -> void:
 	alive = a
 	visible = a
 	Hurtbox.set_enabled(self, a)
+	_was_hidden = false                       # ukrycie liczy `_process` od nowa (np. wstający Żerca)
 	if not a:
 		_set_ai_state(Ai.DEAD)
 
@@ -1175,7 +1178,7 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 	if not bool(_def.get("stun_resist", false)):
 		_stagger = 0.12
 	Vfx.blood(get_parent(), global_position + Vector2(0, -8), (global_position - from_pos).normalized(), 5)
-	var knock: float = _def["knock"]
+	var knock: float = _def["knock"] * (float(_def["knock_mult"]) if bool(_def.get("stun_resist", false)) else 1.0)        # elita odporna na zatrzymywanie (Rzeźnik, Żerca) prawie nie jest odrzucana
 	velocity.x += signf(global_position.x - from_pos.x) * knock
 	if not active:
 		wake()
@@ -1285,6 +1288,12 @@ func _process(delta: float) -> void:
 			_voice("attack")
 	_ring = maxf(0.0, _ring - delta)
 	_heal_fx_t = maxf(0.0, _heal_fx_t - delta)
+	var hid: bool = alive and _beh.is_hidden()
+	if hid != _was_hidden:
+		_was_hidden = hid
+		visible = alive and not hid
+		if has_meta("hurt_shape") and is_instance_valid(get_meta("hurt_shape")):
+			(get_meta("hurt_shape") as CollisionShape2D).set_deferred("disabled", hid)        # tylko strefa trafień — ciało ruchu zostaje (ukryty Żerca chodzi po podłodze)
 	if visible:
 		_update_sprite()
 		queue_redraw()
