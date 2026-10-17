@@ -6,6 +6,7 @@ var _frames := 0
 var _menu: Control
 var _tab := 2
 var _out := "/tmp/shot.png"
+var _entry := -1                          ## --entry=N: wpis zaznaczony na stronie (bestiariusz, bronie)
 
 func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -13,6 +14,8 @@ func _initialize() -> void:
 			_tab = int(a.substr(6))
 		if a.begins_with("--out="):
 			_out = a.substr(6)
+		if a.begins_with("--entry="):
+			_entry = int(a.substr(8))
 		if a == "--pad":
 			Actions.pad_mode = true            # podpowiedzi z przyciskami pada
 	var ui := CanvasLayer.new()
@@ -29,6 +32,8 @@ func _process(_d: float) -> bool:
 	if _frames == 3:
 		_menu.open()
 		_menu._show_tab(_tab)
+		if _entry >= 0:
+			_menu._pages[_tab].get_child(0).get_child(0).select(_entry)     # MarginContainer → inner → strona kodeksu
 	if _frames == 12:
 		var img := root.get_texture().get_image()
 		img.save_png(_out)

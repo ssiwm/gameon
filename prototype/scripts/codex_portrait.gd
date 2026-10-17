@@ -4,7 +4,7 @@ extends Control
 ##   thumb — mała miniatura w wierszu listy.
 ## Pixel-art jest rysowany OSTRO (NEAREST + całkowita skala ekranu, pixel_art.gd), z obrysem i warstwą świecącą.
 ##
-## spec: {type: "sprite", sheet, anim} | {type: "gun", row} | {type: "vein"} | {type: "leech"}; accent: kolor wpisu.
+## spec: {type: "sprite", sheet, anim} | {type: "image", path} (wycinek konceptu, elity) | {type: "gun", row} | {type: "vein"} | {type: "leech"}; accent: kolor wpisu.
 
 const Sprites := preload("res://scripts/sprites.gd")
 const PixelArt := preload("res://scripts/pixel_art.gd")
@@ -42,6 +42,9 @@ func show_spec(s: Dictionary, col: Color) -> void:
 		"sprite":
 			_sheet = Sprites.enemy_sheet(String(s["sheet"])) if String(s["sheet"]) != "" else ""
 			_pending_sheet = Sprites.has(_sheet)
+		"image":
+			_tex = load(String(s["path"])) as Texture2D
+			texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		"leech":
 			_sheet = Sprites.enemy_sheet("leech")
 			_pending_sheet = Sprites.has(_sheet)             # wynurzoną Pijawkę rysuje arkusz; bez niego zostaje rysunek z kodu
@@ -125,6 +128,8 @@ func _draw() -> void:
 	match spec.get("type", ""):
 		"sprite":
 			_draw_sprite(floor_y)
+		"image":
+			_draw_image(floor_y)
 		"gun":
 			_draw_gun()
 		"vein":
@@ -178,6 +183,18 @@ func _shadow(center_x: float, floor_y: float, width: float) -> void:
 	draw_circle(Vector2.ZERO, width * 0.5, Color(0, 0, 0, 0.45))
 	draw_circle(Vector2.ZERO, width * 0.32, Color(0, 0, 0, 0.35))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+## Portret z wycinka konceptu (elity): wpisany w kartę, stopami na podłodze, z cieniem.
+func _draw_image(floor_y: float) -> void:
+	if _tex == null:
+		return
+	var tsz := _tex.get_size()
+	var avail := Vector2(size.x - 6.0, floor_y - 3.0)
+	var s := minf(avail.x / tsz.x, avail.y / tsz.y)
+	var w := tsz * s
+	var pos := Vector2(roundf((size.x - w.x) * 0.5), floor_y - w.y)
+	_shadow(pos.x + w.x * 0.5, floor_y, w.x * 0.9)
+	draw_texture_rect(_tex, Rect2(pos, w), false)
 
 func _draw_sprite(floor_y: float) -> void:
 	var sheet: String = _sheet

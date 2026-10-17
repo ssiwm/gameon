@@ -301,4 +301,6 @@ Powtórka: `python tools/comfy_gen.py model art_src/enemies_f4/X.png --out art_s
 potem `blender -b --factory-startup -P tools/prep_enemy3d.py -- X_rig.glb ../../prototype/art/enemy3d/X.glb --faces=6000 --tex=1024`.
 **Dźwięki elit — zrobione w 1.7.258:** `kaplan_scream`, `rzeznik_roar`, `zerca_grab` i cichy `zerca_warn` (tropienie leżącego co 3–4,5 s, RPC `_cue_fx`); wersje syntezowane, bez nagrań z bibliotek — do odsłuchu u użytkownika.
 
-**Zostaje:** wpisy kodeksu (`codex.gd`, portrety, `ui.csv`), strzałka w świecie ku ujawnionemu Żercy, test sieciowy host + klient dla porwania, strojenie po playtestach (F4f).
+**Kodeks elit — zrobiony w 1.7.259:** wpisy Kapłan / Rzeźnik / Żerca w bestiariuszu z portretami z wycinków konceptów (`art/portraits/`, nowy typ portretu `image`), teksty po polsku w `ui.csv`, asercja w `--enemytest`.
+
+**Zostaje:** strzałka w świecie ku ujawnionemu Żercy, test sieciowy host + klient dla porwania, strojenie po playtestach (F4f).
