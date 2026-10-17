@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://voemnas4a0mg"
-path="res://.godot/imported/cot_ORM_ca54223e-ad3e-47a0-ac24-f8d601915ca6.jpg-31b5e06abbfa197ee117e342d86275e1.ctex"
+path.s3tc="res://.godot/imported/cot_ORM_ca54223e-ad3e-47a0-ac24-f8d601915ca6.jpg-31b5e06abbfa197ee117e342d86275e1.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "4fd009502938bb3feaa11834938f85a2"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/cot_ORM_ca54223e-ad3e-47a0-ac24-f8d601915ca6.jpg"
-dest_files=["res://.godot/imported/cot_ORM_ca54223e-ad3e-47a0-ac24-f8d601915ca6.jpg-31b5e06abbfa197ee117e342d86275e1.ctex"]
+dest_files=["res://.godot/imported/cot_ORM_ca54223e-ad3e-47a0-ac24-f8d601915ca6.jpg-31b5e06abbfa197ee117e342d86275e1.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

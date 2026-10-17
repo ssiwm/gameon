@@ -8,6 +8,8 @@ Co-op horror run-and-gun (retro Contra), Godot **4.7.2**, GDScript, symulacja 2D
 - Komentarze i teksty projektowe po polsku; identyfikatory po angielsku; doc-komentarze `##`.
 - Wiedza o Godocie 4.7 i konwencje kodu: skill `godot`. Blender (headless, sprite'y): skill `blender`.
 - Hook `.claude/hooks/gd-check.sh` po edycji `.gd` uruchamia projekt headless i ostrzega o błędach skryptów — traktuj ostrzeżenie poważnie.
+- Nowe albo przebudowane modele GLB (`art/*3d/`): po imporcie headless uruchom `python tools/tex_vram.py` i zaimportuj jeszcze raz — import bez edytora
+  zostawia wyciągnięte tekstury bez kompresji VRAM (ok. 4× więcej pamięci wideo); CI sprawdza to przez `tex_vram.py --check`.
 - Nowy `.gd` tworzy `.gd.uid` — commituj oba. `.godot/` i `build/` są w `.gitignore`.
 - Grafikę i audio generują skrypty Pythona w `prototype/tools/` — edytuj generatory, nie wynikowe pliki.
 - Gameplay w sieci rozstrzyga serwer (pociski, obrażenia); klient robi predykcję i rysuje. Nie dodawaj logiki bez walidacji serwera.

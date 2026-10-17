@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://boug5i6lttwq0"
-path="res://.godot/imported/handcar_lever_Color_665ae0c3-e052-48f0-ae6a-2e8cf1ba33c4.jpg-b96e5a5ea5a9c0b4155881a62aca5e24.ctex"
+path.s3tc="res://.godot/imported/handcar_lever_Color_665ae0c3-e052-48f0-ae6a-2e8cf1ba33c4.jpg-b96e5a5ea5a9c0b4155881a62aca5e24.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "59d3d7584ba69d9e71d8f392fe96a55d"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/handcar_lever_Color_665ae0c3-e052-48f0-ae6a-2e8cf1ba33c4.jpg"
-dest_files=["res://.godot/imported/handcar_lever_Color_665ae0c3-e052-48f0-ae6a-2e8cf1ba33c4.jpg-b96e5a5ea5a9c0b4155881a62aca5e24.ctex"]
+dest_files=["res://.godot/imported/handcar_lever_Color_665ae0c3-e052-48f0-ae6a-2e8cf1ba33c4.jpg-b96e5a5ea5a9c0b4155881a62aca5e24.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

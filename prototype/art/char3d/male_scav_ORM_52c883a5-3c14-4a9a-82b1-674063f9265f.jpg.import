@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bha5qn2wuqilj"
-path="res://.godot/imported/male_scav_ORM_52c883a5-3c14-4a9a-82b1-674063f9265f.jpg-9176f5bdbb8fb662d2de5aafd0f4a099.ctex"
+path.s3tc="res://.godot/imported/male_scav_ORM_52c883a5-3c14-4a9a-82b1-674063f9265f.jpg-9176f5bdbb8fb662d2de5aafd0f4a099.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "afacdc38a9cd4a9a0a4ab078e9039e2a"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/char3d/male_scav_ORM_52c883a5-3c14-4a9a-82b1-674063f9265f.jpg"
-dest_files=["res://.godot/imported/male_scav_ORM_52c883a5-3c14-4a9a-82b1-674063f9265f.jpg-9176f5bdbb8fb662d2de5aafd0f4a099.ctex"]
+dest_files=["res://.godot/imported/male_scav_ORM_52c883a5-3c14-4a9a-82b1-674063f9265f.jpg-9176f5bdbb8fb662d2de5aafd0f4a099.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

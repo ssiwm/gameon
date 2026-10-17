@@ -25,6 +25,8 @@ jobs:
           unzip -q godot.zip
           sudo mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
           godot --version
+      - name: Kompresja VRAM tekstur modeli 3D (tex_vram.py --check)
+        run: python3 prototype/tools/tex_vram.py --check
       - name: Import zasobów
         run: godot --headless --path prototype --import
       - name: Mapy (--maptest)

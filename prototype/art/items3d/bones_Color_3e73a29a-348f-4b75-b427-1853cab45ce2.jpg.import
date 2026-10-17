@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://djpk1poqjq346"
-path="res://.godot/imported/bones_Color_3e73a29a-348f-4b75-b427-1853cab45ce2.jpg-a27ba5c413042d56a8267a39dc18d782.ctex"
+path.s3tc="res://.godot/imported/bones_Color_3e73a29a-348f-4b75-b427-1853cab45ce2.jpg-a27ba5c413042d56a8267a39dc18d782.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "f1ffe279f546e6190d9b6d45096fd401"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/bones_Color_3e73a29a-348f-4b75-b427-1853cab45ce2.jpg"
-dest_files=["res://.godot/imported/bones_Color_3e73a29a-348f-4b75-b427-1853cab45ce2.jpg-a27ba5c413042d56a8267a39dc18d782.ctex"]
+dest_files=["res://.godot/imported/bones_Color_3e73a29a-348f-4b75-b427-1853cab45ce2.jpg-a27ba5c413042d56a8267a39dc18d782.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

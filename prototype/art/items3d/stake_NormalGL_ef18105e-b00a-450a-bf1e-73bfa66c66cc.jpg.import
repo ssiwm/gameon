@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cxrogvolivdg3"
-path="res://.godot/imported/stake_NormalGL_ef18105e-b00a-450a-bf1e-73bfa66c66cc.jpg-785b259e217d6142e37f8b2aeff0393d.ctex"
+path.s3tc="res://.godot/imported/stake_NormalGL_ef18105e-b00a-450a-bf1e-73bfa66c66cc.jpg-785b259e217d6142e37f8b2aeff0393d.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "30f760bc08ef18d874cbf5b50d484258"
@@ -14,17 +15,17 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/stake_NormalGL_ef18105e-b00a-450a-bf1e-73bfa66c66cc.jpg"
-dest_files=["res://.godot/imported/stake_NormalGL_ef18105e-b00a-450a-bf1e-73bfa66c66cc.jpg-785b259e217d6142e37f8b2aeff0393d.ctex"]
+dest_files=["res://.godot/imported/stake_NormalGL_ef18105e-b00a-450a-bf1e-73bfa66c66cc.jpg-785b259e217d6142e37f8b2aeff0393d.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

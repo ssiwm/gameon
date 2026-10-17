@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://d3nm5j1w7wyx2"
-path="res://.godot/imported/smoke_NormalGL_4caf6d99-d2a0-4138-83e3-dec4456ceeea.jpg-8469febb312973a2414e982de71805ab.ctex"
+path.s3tc="res://.godot/imported/smoke_NormalGL_4caf6d99-d2a0-4138-83e3-dec4456ceeea.jpg-8469febb312973a2414e982de71805ab.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "aded0a277ec866143b8d3d290190639f"
@@ -14,17 +15,17 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/smoke_NormalGL_4caf6d99-d2a0-4138-83e3-dec4456ceeea.jpg"
-dest_files=["res://.godot/imported/smoke_NormalGL_4caf6d99-d2a0-4138-83e3-dec4456ceeea.jpg-8469febb312973a2414e982de71805ab.ctex"]
+dest_files=["res://.godot/imported/smoke_NormalGL_4caf6d99-d2a0-4138-83e3-dec4456ceeea.jpg-8469febb312973a2414e982de71805ab.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

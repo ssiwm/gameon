@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://xlm2cf686v24"
-path="res://.godot/imported/jerrycan_metal_jerrycan_nor_gl_1k.jpg-ac6849e6e1e57919806a75d9e61b7197.ctex"
+path.s3tc="res://.godot/imported/jerrycan_metal_jerrycan_nor_gl_1k.jpg-ac6849e6e1e57919806a75d9e61b7197.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "a89005ffdd12b2ae07b223a16b11712f"
@@ -14,17 +15,17 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/jerrycan_metal_jerrycan_nor_gl_1k.jpg"
-dest_files=["res://.godot/imported/jerrycan_metal_jerrycan_nor_gl_1k.jpg-ac6849e6e1e57919806a75d9e61b7197.ctex"]
+dest_files=["res://.godot/imported/jerrycan_metal_jerrycan_nor_gl_1k.jpg-ac6849e6e1e57919806a75d9e61b7197.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

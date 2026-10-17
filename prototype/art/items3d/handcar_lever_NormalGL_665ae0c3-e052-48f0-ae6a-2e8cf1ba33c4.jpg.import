@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b3a840elxt1uh"
-path="res://.godot/imported/handcar_lever_NormalGL_665ae0c3-e052-48f0-ae6a-2e8cf1ba33c4.jpg-efccf988d211ef79917d85676aaa9bc6.ctex"
+path.s3tc="res://.godot/imported/handcar_lever_NormalGL_665ae0c3-e052-48f0-ae6a-2e8cf1ba33c4.jpg-efccf988d211ef79917d85676aaa9bc6.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "dd4d2c75c08e0e18513389e355a2c1b7"
@@ -14,17 +15,17 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/handcar_lever_NormalGL_665ae0c3-e052-48f0-ae6a-2e8cf1ba33c4.jpg"
-dest_files=["res://.godot/imported/handcar_lever_NormalGL_665ae0c3-e052-48f0-ae6a-2e8cf1ba33c4.jpg-efccf988d211ef79917d85676aaa9bc6.ctex"]
+dest_files=["res://.godot/imported/handcar_lever_NormalGL_665ae0c3-e052-48f0-ae6a-2e8cf1ba33c4.jpg-efccf988d211ef79917d85676aaa9bc6.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

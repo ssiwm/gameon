@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c7luajt0nwb47"
-path="res://.godot/imported/gib_gut_a_Image_2.jpg-55b2a48e6657109c61c7dba28664b5ae.ctex"
+path.s3tc="res://.godot/imported/gib_gut_a_Image_2.jpg-55b2a48e6657109c61c7dba28664b5ae.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "196e5f4c94d920198c06aca4c41450fb"
@@ -14,17 +15,17 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/gib_gut_a_Image_2.jpg"
-dest_files=["res://.godot/imported/gib_gut_a_Image_2.jpg-55b2a48e6657109c61c7dba28664b5ae.ctex"]
+dest_files=["res://.godot/imported/gib_gut_a_Image_2.jpg-55b2a48e6657109c61c7dba28664b5ae.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

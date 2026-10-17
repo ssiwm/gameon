@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://5o5unlrsolm5"
-path="res://.godot/imported/tree_spruce_c_ORM_a801feb5-bb4e-4df7-8b37-dc07db47c3c5.jpg-8cee25517c9b91d98ac7b0263282fff5.ctex"
+path.s3tc="res://.godot/imported/tree_spruce_c_ORM_a801feb5-bb4e-4df7-8b37-dc07db47c3c5.jpg-8cee25517c9b91d98ac7b0263282fff5.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "fe531b505f9f38885cbba54570352e18"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/tree_spruce_c_ORM_a801feb5-bb4e-4df7-8b37-dc07db47c3c5.jpg"
-dest_files=["res://.godot/imported/tree_spruce_c_ORM_a801feb5-bb4e-4df7-8b37-dc07db47c3c5.jpg-8cee25517c9b91d98ac7b0263282fff5.ctex"]
+dest_files=["res://.godot/imported/tree_spruce_c_ORM_a801feb5-bb4e-4df7-8b37-dc07db47c3c5.jpg-8cee25517c9b91d98ac7b0263282fff5.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

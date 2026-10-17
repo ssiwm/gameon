@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://d01g4kl0ipom6"
-path="res://.godot/imported/fence_Color_b6ad42ba-710a-472d-b346-7793c0bdb9bd.jpg-89f6128859218ee7fbf7ad3f68bf62e8.ctex"
+path.s3tc="res://.godot/imported/fence_Color_b6ad42ba-710a-472d-b346-7793c0bdb9bd.jpg-89f6128859218ee7fbf7ad3f68bf62e8.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "171c78c1e711b61103486e27d32cb7c1"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/fence_Color_b6ad42ba-710a-472d-b346-7793c0bdb9bd.jpg"
-dest_files=["res://.godot/imported/fence_Color_b6ad42ba-710a-472d-b346-7793c0bdb9bd.jpg-89f6128859218ee7fbf7ad3f68bf62e8.ctex"]
+dest_files=["res://.godot/imported/fence_Color_b6ad42ba-710a-472d-b346-7793c0bdb9bd.jpg-89f6128859218ee7fbf7ad3f68bf62e8.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0
