@@ -3,17 +3,17 @@ extends Control
 ##
 ## Skala: cały HUD jest rysowany w 70% (UI_SCALE) — węzeł ma `scale` i logiczny rozmiar
 ## viewport / UI_SCALE (≈914×514), więc układ liczy się względem `size`, nie stałych 640×360.
-## Layout (proporcje jak w viewporcie 640×360):
-##   top-left    NOISE meter with thresholds and state (CALM / UNEASY / HUNTED) — the one gauge to watch
-##   bottom-left SQUAD card: every player (own card largest, teammates above), slot-coloured badge,
-##               hearts (gold = bonus), DOWN / REVIVING / CRITICAL state, bleed-out / revive bar
-##   bottom-centre GEAR strip (flat, one row): weapon + noise cost, big magazine / team reserve, reload and
-##               barrel-heat bars, weapon slots, LURE (Q), FLARE (F) charges, flashlight — centred and low so it never covers the boss
-##   top-centre  objective card — phase, objective, hint, boss bar
-##   top-right   session — host/client, players, mission clock
-##   centre      threat warning (something listening / HE HEARS YOU), wipe
-##   bottom      context prompt with progress (revive, extraction, bleed-out)
-##   bottom      controls strip — shown for the first seconds, F1 toggles
+## Layout — HUD bez ramek (HUD_PLAN.md): czytelność dają dwa gradienty (góra, dół), a ważne rzeczy stoją w rogach:
+##   top-left    teammates: slot-coloured diamond, name (BOT), thin life segments, DOWN / REVIVING state + bar (solo: empty)
+##   top-centre  direction strip (Compass): 5 m scale, goal / exit / teammates / downed markers with distance; under it the boss bar
+##               and the objective text, which shows for TOAST_S after the goal changes (always in the safe room, F1 recalls it)
+##   top-right   mission title, difficulty · clock, scrap; level + XP bar only for a moment after gaining XP
+##   bottom-left "me + noise": own life segments (CRITICAL / DOWN), small VU meter, one NOISE line (safe room: SAFE)
+##   bottom-centre weapon as a 3D model (art/hud, tools/bake_hud_icons.gd): magazine / team reserve, name, mode and shot cost, thin reload
+##               and barrel-heat lines; thumbnails of slots 1–4 appear for 2.5 s after a weapon change; context prompt sits above it
+##   bottom-right gear as four 3D models: LURE (Q), FLARE (F), selected item (ALT), flashlight (L, battery line); count and key under each
+##   centre      messages (message_view.gd): alerts, toasts, title card, tips; wipe
+##   bottom      controls strip — only for beginners in the first seconds (TOAST_LEVEL_MAX), F1 toggles
 ##   full screen damage vignette; result card after extraction
 ## Adaptive music and the warning sting are driven from here (GDD §13).
 
@@ -35,12 +35,15 @@ const WorkshopUi := preload("res://scripts/workshop_ui.gd")
 const Actions := preload("res://scripts/actions.gd")
 const Captions := preload("res://scripts/captions.gd")
 const W := preload("res://scripts/ui_widgets.gd")
+const HudIcon := preload("res://scripts/hud_icon.gd")
 
-## HUD o 30% mniejszy niż w 1.6 (karty, paski, ikony i teksty razem; celownik ma własne CROSS_SCALE).
-const UI_SCALE := 0.8
+## HUD o kolejne 30% mniejszy (0,8 → 0,56) po przebudowie na układ bez ramek; razem z mnożnikiem SMALL / NORMAL / LARGE (celownik ma własne CROSS_SCALE).
+const UI_SCALE := 0.56
 const MSG_SCALE := 0.8            ## komunikaty (alerty, toasty, karta tytułowa, porady, dziennik, notatki, pasek akcji) o 20% mniejsze niż reszta HUD-u
 const MARGIN := 8.0              ## odstęp kart od krawędzi (jednostki logiczne HUD)
 const CONTROLS_SHOW_S := 20.0
+const TOAST_S := 9.0               ## s, przez które opis celu jest widoczny po zmianie celu / fazy (potem gaśnie; F1 przywołuje)
+const TOAST_LEVEL_MAX := 2           ## pasek sterowania pokazuje się sam tylko początkującym (poziom profilu do tego)
 const NOISE_COL_CALM := Color(0.62, 0.72, 0.78)
 const OBJ_W := 250.0             ## szerokość treści karty celu (zawijanie)
 const SESSION_W := 152.0         ## szerokość bloku „sesja + zegar" w prawym górnym rogu
@@ -190,6 +193,8 @@ class Pips extends Control:
 	func min_size() -> Vector2:
 		if shape == "drop":
 			return Vector2(count * 12.0 - 3.0, 11.0)
+		if shape == "seg":
+			return Vector2(count * 17.0 - 2.0, 2.6)
 		return Vector2(count * 11.0 * u - 2.0, 9.0 * u)
 	## Serce 9×8 pikseli: ciemny obrys (przesunięcia o 1 px) pod wypełnieniem i jasny piksel odblasku — jak sprite'y świata.
 	const HEART := ["011000110", "111101111", "111111111", "111111111", "011111110", "001111100", "000111000", "000010000"]
@@ -248,6 +253,16 @@ class Pips extends Control:
 		draw_colored_polygon(inner, c)
 		draw_colored_polygon(PackedVector2Array([o + Vector2(2.7, 4.2), o + Vector2(3.4, 3.4), o + Vector2(3.9, 4.2), o + Vector2(3.5, 5.6), o + Vector2(2.8, 5.7)]), Color(1.0, 0.75, 0.75, 0.55))
 	func _draw() -> void:
+		if shape == "seg":
+			# cienkie segmenty życia (HUD bez ramek): pełny = kolor, pusty = ledwo widoczna linia, bonus = złoty, pęknięty = ciemniejszy
+			for i in count:
+				var sc := on if i < filled else off
+				if i >= bonus_from:
+					sc = bonus
+				if i == cracked:
+					sc = sc.darkened(0.35)
+				draw_rect(Rect2(Vector2(i * 17.0, 0.0), Vector2(15.0, size.y if size.y > 0.5 else 2.6)), sc)
+			return
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(u, u))
 		for i in count:
 			var c := on if i < filled else off
@@ -352,6 +367,84 @@ class Swatch extends Control:
 		draw_rect(Rect2(2, 2, 5, 6), col)
 		draw_rect(Rect2(3, 3, 1, 1), Color(0.95, 0.9, 0.8))
 
+## Pasek kierunku (zamiast karty celu): cienka linia ze skalą co 5 m (przesuwa się razem ze światem), romb gracza pośrodku i romby
+## znaczników z dystansem — cel, wyjście, koledzy, powaleni. Świat to długi korytarz (oś X), więc „kompas” to pozycja na osi względem gracza;
+## znacznik poza zasięgiem (45 m) przykleja się przygaszony do krawędzi. Dystans: 16 px świata = 1 m (jak w tekstach misji).
+class Compass extends Control:
+	const HALF_RANGE := 720.0
+	var player_x := 0.0
+	var markers: Array = []              ## [{x: px świata, kind: "obj" | "exit" | "mate" | "down", label: String, col: Color}]
+	var _t := 0.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(380, 42)
+
+	func _process(delta: float) -> void:
+		_t += delta
+		queue_redraw()
+
+	func _draw() -> void:
+		var w := size.x
+		var half := w * 0.5
+		var ly := 22.0
+		var pxk := (half - 12.0) / HALF_RANGE
+		var n := 40
+		for i in n:
+			var f0 := float(i) / float(n)
+			var f1 := float(i + 1) / float(n)
+			var fade := minf(minf(f0, 1.0 - f1) * 6.0, 1.0)
+			draw_line(Vector2(f0 * w, ly), Vector2(f1 * w, ly), Color(UiTheme.TEXT, 0.7 * fade), 1.0)
+		var x := floorf((player_x - HALF_RANGE) / 80.0) * 80.0
+		while x <= player_x + HALF_RANGE:
+			var sx := half + (x - player_x) * pxk
+			var big := int(roundf(x / 80.0)) % 5 == 0
+			var fade := 1.0 - pow(clampf(absf(sx - half) / half, 0.0, 1.0), 2.0)
+			var hh := 4.0 if big else 2.0
+			draw_line(Vector2(sx, ly - hh), Vector2(sx, ly + hh), Color(UiTheme.TEXT, 0.5 * fade), 1.0)
+			x += 80.0
+		var f := UiTheme.mono_font()
+		var taken: Array = []
+		var order := markers.duplicate()
+		order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return absf(float(a["x"]) - player_x) < absf(float(b["x"]) - player_x))
+		for m in order:
+			var dx: float = float(m["x"]) - player_x
+			var edge := absf(dx) > HALF_RANGE
+			var sx := half + clampf(dx / HALF_RANGE, -1.0, 1.0) * (half - 12.0)
+			var kind := String(m["kind"])
+			var col: Color = m["col"]
+			if kind == "down" and Settings.fx_mult() > 0.0:
+				col.a = 0.55 + 0.45 * (0.5 + 0.5 * sin(_t * 6.0))
+			if edge:
+				col.a *= 0.55
+			var r := 4.5 if kind == "obj" else 3.5
+			var c := Vector2(sx, 11.0)
+			var dia := PackedVector2Array([c + Vector2(0, -r), c + Vector2(r, 0), c + Vector2(0, r), c + Vector2(-r, 0)])
+			if kind == "exit":
+				draw_polyline(PackedVector2Array([dia[0], dia[1], dia[2], dia[3], dia[0]]), col, 1.2, true)
+			else:
+				draw_colored_polygon(dia, col)
+			var txt := "%s · %d m" % [String(m["label"]), int(absf(dx) / 16.0)]
+			var tw := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 6).x
+			var x0 := sx - tw * 0.5
+			var clash := false
+			for t in taken:
+				if x0 < float(t[1]) + 4.0 and x0 + tw > float(t[0]) - 4.0:
+					clash = true
+			if not clash:
+				taken.append([x0, x0 + tw])
+				draw_string(f, Vector2(x0, ly + 13.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color(UiTheme.TEXT if kind == "obj" else UiTheme.MUTED, col.a))
+		draw_colored_polygon(PackedVector2Array([Vector2(half, ly - 4), Vector2(half + 4, ly), Vector2(half, ly + 4), Vector2(half - 4, ly)]), UiTheme.TEXT)
+
+## Romb w kolorze slotu przed nazwą kolegi z drużyny (lista w lewym górnym rogu).
+class Diamond extends Control:
+	var col := Color.WHITE
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(7, 7)
+	func _draw() -> void:
+		draw_colored_polygon(PackedVector2Array([Vector2(3.5, 0), Vector2(7, 3.5), Vector2(3.5, 7), Vector2(0, 3.5)]), col)
+
 ## Moneta złomu (8×8, pixel art) — obok licznika portfela.
 class Coin extends Control:
 	func _init() -> void:
@@ -406,19 +499,30 @@ var _noise_bar: VuMeter
 var _noise_val: Label
 var _noise_state: Label
 var _weather_row: Label                   ## pogoda misji i jej skutki pod miernikiem hałasu (tylko gdy jest pogoda)
-var _squad_card: PanelContainer
+var _squad_card: PanelContainer      ## koledzy z drużyny (lewy górny róg)
+var _self_box: VBoxContainer          ## własny wiersz życia: w bloku „ja + hałas” (lewy dolny róg)
+var _noise_cap: Label
 var _squad_box: VBoxContainer
 var _squad_rows := {}            ## instance_id gracza -> słownik wiersza
 var _gear_card: PanelContainer
 var _equip_card: PanelContainer      ## zasoby (Q / F / ALT / L) — osobna karta w prawym dolnym rogu
 var _reload_bar: Bar
-var _charges: Pips
-var _flares: Pips
 var _gren_name: Label
 var _slots: Array[PanelContainer] = []
 var _slot_labels: Array[Label] = []
-var _slot_icons: Array[GunIcon] = []
-var _gun_main: GunIcon
+var _slot_icons: Array[HudIcon] = []
+var _slot_row: Control               ## rząd miniatur broni (1–4, V): widoczny chwilę po zmianie broni
+var _slot_t := 0.0
+var _slot_sig := -1
+var _gun_main: HudIcon
+var _q_icon: HudIcon
+var _q_count: Label
+var _f_icon: HudIcon
+var _f_count: Label
+var _a_icon: HudIcon
+var _l_icon: HudIcon
+var _scrim_t: TextureRect
+var _scrim_b: TextureRect
 var _battery: Bar
 var _battery_note: Label
 var _ammo_name: Label
@@ -433,6 +537,13 @@ var _obj_caption: Label
 var _obj_text: Label
 var _obj_hint: Label
 var _boss_row: VBoxContainer
+var _compass: Compass
+var _toast_box: VBoxContainer        ## opis celu (podpis, tekst, podpowiedź): pokazuje się na zmianę celu, potem gaśnie
+var _toast_t := 0.0
+var _toast_sig := ""
+var _run_title: Label
+var _xp_row: HBoxContainer
+var _xp_show_t := 0.0
 var _boss_bar: Bar
 var _boss_name: Label
 
@@ -459,7 +570,7 @@ var _result_sub: Label
 var _result_box: StyleBoxFlat
 var _inspect: Control                   ## oględziny broni ([F]): rozmyte tło, model 3D i statystyki — weapon_inspect.gd
 var _noise_card: PanelContainer      ## karta hałasu (w kryjówce zastępuje ją znacznik SAFE)
-var _safe_chip: PanelContainer
+var _safe_chip: Control
 var _ready_pips: Pips              ## kwadraciki gotowości w pasku misji kryjówki
 var _scrap_coin: Coin
 var _brief: Dictionary = {}               ## karta odprawy przy tablicy w kryjówce
@@ -468,8 +579,6 @@ var _radio_key := ""
 var _brief_id := ""
 var _demo_footer: Control = null     ## stopka dema na ekranie wyniku — tylko na końcu kampanii / serii
 
-var _slot_on: StyleBoxFlat
-var _slot_off: StyleBoxFlat
 
 func _ready() -> void:
 	theme = UiTheme.get_theme()
@@ -477,6 +586,7 @@ func _ready() -> void:
 	# pełny ekran w jednostkach logicznych: viewport / UI_SCALE, skala 0.7 od lewego górnego rogu
 	set_anchors_preset(Control.PRESET_TOP_LEFT)
 	scale = Vector2(_scale_now(), _scale_now())
+	_build_scrims()
 	_build_noise_card()
 	_build_squad_card()
 	_build_gear_card()
@@ -518,8 +628,12 @@ func _fit() -> void:
 	size = get_viewport_rect().size / _scale_now()
 	var w := size.x
 	var h := size.y
+	_scrim_t.position = Vector2.ZERO
+	_scrim_t.size = Vector2(w, h * 0.22)
+	_scrim_b.size = Vector2(w, h * 0.26)
+	_scrim_b.position = Vector2(0.0, h - _scrim_b.size.y)
 	_run_card.reset_size()
-	_run_card.position = Vector2(w - MARGIN - _run_card.size.x, MARGIN)
+	_run_card.position = Vector2(w - 2.0 * MARGIN - _run_card.size.x, 2.0 * MARGIN)
 	_msgs.scale = Vector2.ONE * MSG_SCALE
 	_msgs.position = Vector2.ZERO
 	_msgs.size = size / MSG_SCALE
@@ -537,12 +651,37 @@ func _place(c: Control, pos: Vector2, sz: Vector2) -> void:
 	c.position = pos
 	c.size = sz
 
-func _card(pos: Vector2) -> PanelContainer:
+func _card(pos: Vector2, flat := true) -> PanelContainer:
 	var c := PanelContainer.new()
 	c.position = pos
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if flat:
+		c.add_theme_stylebox_override("panel", StyleBoxEmpty.new())     # HUD bez ramek: czytelność robią gradienty u góry i u dołu (_build_scrims)
 	add_child(c)
 	return c
+
+## Dwa miękkie gradienty (góra i dół ekranu) pod tekstem i ikonami zamiast ramek kart; rysowane pod wszystkim innym.
+func _build_scrims() -> void:
+	for top in [true, false]:
+		var g := Gradient.new()
+		g.set_color(0, Color(0, 0, 0, 0.55 if top else 0.6))
+		g.set_color(1, Color(0, 0, 0, 0))
+		var gt := GradientTexture2D.new()
+		gt.gradient = g
+		gt.fill_from = Vector2(0, 0 if top else 1)
+		gt.fill_to = Vector2(0, 1 if top else 0)
+		gt.width = 4
+		gt.height = 64
+		var tr_ := TextureRect.new()
+		tr_.texture = gt
+		tr_.stretch_mode = TextureRect.STRETCH_SCALE
+		tr_.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(tr_)
+		move_child(tr_, 0)
+		if top:
+			_scrim_t = tr_
+		else:
+			_scrim_b = tr_
 
 ## Nagłówek karty w stylu makiety: mały mono, rozstrzelony (em = ułamek rozmiaru).
 func _cap(text: String, color: Color, spacing := 0.2, size := 7) -> Label:
@@ -572,17 +711,18 @@ func _row(parent: Container, caption: String) -> HBoxContainer:
 	parent.add_child(r)
 	return r
 
-## Lewy górny róg: sam miernik hałasu — jedyny wskaźnik, na który trzeba patrzeć bez przerwy (filar ciszy).
+## Lewy dolny róg: „ja + hałas” — własne życie nad jedną linią stanu hałasu i mały VU-metr (filar ciszy: jedyny wskaźnik, na który
+## trzeba patrzeć bez przerwy). W kryjówce hałas nic nie mówi (zawsze 0%), więc zostaje samo życie i znacznik SAFE.
 func _build_noise_card() -> void:
 	var card := _card(Vector2(MARGIN, MARGIN))
 	_noise_card = card
-	card.custom_minimum_size = Vector2(0, TOP_H)
 	var outer := HBoxContainer.new()
-	outer.add_theme_constant_override("separation", 8)
+	outer.add_theme_constant_override("separation", 9)
+	outer.alignment = BoxContainer.ALIGNMENT_BEGIN
 	card.add_child(outer)
 	_noise_bar = VuMeter.new()                 # analogowy VU-metr; progi z NoiseMgr: 30 = zasypia, 40 = niepokój, 60 = budzi się ON
-	_noise_bar.custom_minimum_size = Vector2(70, 41)
-	_noise_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_noise_bar.custom_minimum_size = Vector2(52, 31)
+	_noise_bar.size_flags_vertical = Control.SIZE_SHRINK_END
 	_noise_bar.ticks = [
 		[NoiseMgr.SLEEP_THRESHOLD / 100.0, Color(1, 1, 1, 0.35)],
 		[NoiseMgr.UNEASY_THRESHOLD / 100.0, UiTheme.ACCENT],
@@ -590,230 +730,232 @@ func _build_noise_card() -> void:
 	]
 	outer.add_child(_noise_bar)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 1)
-	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	box.add_theme_constant_override("separation", 4)
+	box.size_flags_vertical = Control.SIZE_SHRINK_END
 	outer.add_child(box)
-	box.add_child(_cap("NOISE", UiTheme.MUTED, 0.22))
+	_self_box = VBoxContainer.new()
+	_self_box.add_theme_constant_override("separation", 2)
+	box.add_child(_self_box)
+	var nz := HBoxContainer.new()
+	nz.add_theme_constant_override("separation", 5)
+	box.add_child(nz)
+	_noise_cap = _cap("NOISE", UiTheme.MUTED, 0.22)
+	nz.add_child(_noise_cap)
 	_noise_state = _cap("", UiTheme.MUTED, 0.14)
-	box.add_child(_noise_state)
-	_noise_val = UiTheme.mono(UiTheme.label("0%", 12, UiTheme.TEXT))
-	box.add_child(_noise_val)
+	nz.add_child(_noise_state)
+	_noise_val = UiTheme.mono(UiTheme.label("0%", 8, UiTheme.TEXT))
+	nz.add_child(_noise_val)
+	_safe_chip = UiTheme.heading("SAFE", 8, UiTheme.OK)
+	_safe_chip.visible = false
+	nz.add_child(_safe_chip)
 	_weather_row = UiTheme.label("", 7, UiTheme.MUTED)
 	_weather_row.visible = false
 	box.add_child(_weather_row)
-	# w kryjówce miernik hałasu nic nie mówi (zawsze 0%) — zastępuje go mały znacznik SAFE
-	_safe_chip = _card(Vector2(MARGIN, MARGIN))
-	_safe_chip.add_child(UiTheme.heading("SAFE", 8, UiTheme.OK))
-	_safe_chip.visible = false
 
-## Lewy dolny róg: karta drużyny (L4D / DRG). Wiersze powstają dynamicznie — _drive_squad().
+## Lewy górny róg: koledzy z drużyny (L4D / DRG) — romb w kolorze slotu, nazwa, cienkie segmenty życia. Własny wiersz jest w bloku
+## „ja + hałas”. Wiersze powstają dynamicznie — _drive_squad().
 func _build_squad_card() -> void:
 	_squad_card = _card(Vector2(MARGIN, MARGIN))
-	_squad_card.custom_minimum_size = Vector2(SQUAD_W, ROW_H)
 	var outer := VBoxContainer.new()
-	outer.add_theme_constant_override("separation", 3)
+	outer.add_theme_constant_override("separation", 5)
 	_squad_card.add_child(outer)
-	var sh := HBoxContainer.new()
-	var sc := _cap("SQUAD", UiTheme.MUTED, 0.22)
-	sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sh.add_child(sc)
-	_squad_info = _cap("", UiTheme.MUTED, 0.06)
-	sh.add_child(_squad_info)
-	outer.add_child(sh)
+	_squad_info = _cap("", UiTheme.MUTED, 0.1)
+	outer.add_child(_squad_info)
 	_squad_box = VBoxContainer.new()
-	_squad_box.add_theme_constant_override("separation", 5)
+	_squad_box.add_theme_constant_override("separation", 7)
 	outer.add_child(_squad_box)
 
-## Dół, środek: płaski pasek broni i zasobów w jednym rzędzie (nie zasłania bossa po prawej stronie sceny):
-## [nazwa + koszt strzału] [magazynek / zapas] [stan + przeładowanie + ciepło lufy] [sloty] [wabik, flary, latarka].
+## Dół, środek: broń jako model 3D bez ramki — [miniatury slotów 1–4 (chwilę po zmianie)] / [model + magazynek i zapas] /
+## [nazwa, tryb i koszt strzału] / [stan] / [cienkie linie przeładowania i ciepła lufy]. Sprzęt (Q, F, ALT, L) — prawy dolny róg.
 func _build_gear_card() -> void:
 	_gear_card = _card(Vector2(MARGIN, MARGIN))
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 2)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	_gear_card.add_child(col)
+
+	# 0) rząd miniatur: same klawisze pod modelami, aktywny w kolorze lampy; wygasa po chwili (_drive_weapons)
+	var wr := HBoxContainer.new()
+	wr.add_theme_constant_override("separation", 13)
+	wr.alignment = BoxContainer.ALIGNMENT_CENTER
+	wr.modulate.a = 0.0
+	_slot_row = wr
+	for i in 4:
+		var sl := PanelContainer.new()
+		sl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		sl.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+		var v := VBoxContainer.new()
+		v.add_theme_constant_override("separation", 1)
+		var ic := HudIcon.new()
+		ic.custom_minimum_size = Vector2(46, 13)
+		v.add_child(ic)
+		var l := UiTheme.mono(UiTheme.label("", 6, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		v.add_child(l)
+		sl.add_child(v)
+		_slot_icons.append(ic)
+		wr.add_child(sl)
+		_slots.append(sl)
+		_slot_labels.append(l)
+	col.add_child(wr)
+
+	# 1) model aktualnej broni i magazynek / zapas drużyny
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 7)
-	row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_gear_card.add_child(row)
-
-	_slot_on = UiTheme.panel_box()
-	_slot_on.bg_color = Color(0.25, 0.18, 0.06, 0.9)
-	_slot_on.border_color = UiTheme.ACCENT
-	_slot_on.set_content_margin_all(2)
-	_slot_on.shadow_size = 0                  # cień karty na małych slotach tylko brudzi
-	_slot_off = UiTheme.panel_box()
-	_slot_off.bg_color = Color(1, 1, 1, 0.04)
-	_slot_off.set_content_margin_all(2)
-	_slot_off.shadow_size = 0
-
-	# 0) miniatura aktualnej broni na ciemnej płytce z paskiem w kolorze smugi pocisku
-	_gun_main = GunIcon.new()
-	_gun_main.plate = true
-	_gun_main.k = 0.75
-	_gun_main.custom_minimum_size = Vector2(50, 26)
+	row.add_theme_constant_override("separation", 10)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_child(row)
+	_gun_main = HudIcon.new()
+	_gun_main.custom_minimum_size = Vector2(166, 50)
 	_gun_main.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(_gun_main)
-
-	# 1) nazwa broni nad kosztem następnego strzału (ile Uwagi — GDD §8.1)
-	var name_col := VBoxContainer.new()
-	name_col.add_theme_constant_override("separation", 0)
-	name_col.custom_minimum_size = Vector2(72, 0)
-	name_col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_ammo_name = UiTheme.heading("", 14, UiTheme.TEXT)
-	name_col.add_child(_ammo_name)
-	_heat_note = _cap("", UiTheme.MUTED, 0.08)
-	name_col.add_child(_heat_note)
-	row.add_child(name_col)
-
-	# 2) magazynek (duży) i zapas drużyny
 	var nums := HBoxContainer.new()
 	nums.add_theme_constant_override("separation", 3)
-	_ammo_mag = UiTheme.heading("", 34, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
-	_ammo_mag.custom_minimum_size = Vector2(50, 0)
+	nums.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_ammo_mag = UiTheme.heading("", 36, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	_ammo_mag.custom_minimum_size = Vector2(52, 0)
 	nums.add_child(_ammo_mag)
 	_ammo_res = UiTheme.label("", 9, UiTheme.MUTED)
 	_ammo_res.size_flags_vertical = Control.SIZE_SHRINK_END
 	nums.add_child(_ammo_res)
 	row.add_child(nums)
 
-	# 3) stan (RELOADING / NO AMMO) nad paskami: przeładowanie i ciepło lufy
-	var bars := VBoxContainer.new()
-	bars.add_theme_constant_override("separation", 2)
-	bars.custom_minimum_size = Vector2(78, 0)
-	bars.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_ammo_note = UiTheme.label("", 7, UiTheme.MUTED)
-	bars.add_child(_ammo_note)
+	# 2) nazwa broni, tryb i koszt następnego strzału (ile Uwagi — GDD §8.1)
+	var nm := HBoxContainer.new()
+	nm.add_theme_constant_override("separation", 7)
+	nm.alignment = BoxContainer.ALIGNMENT_CENTER
+	_ammo_name = UiTheme.heading("", 12, UiTheme.TEXT)
+	nm.add_child(_ammo_name)
+	_heat_note = _cap("", UiTheme.MUTED, 0.14)
+	_heat_note.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	nm.add_child(_heat_note)
+	col.add_child(nm)
+
+	# 3) stan (RELOADING / NO AMMO) i dwie cienkie linie: przeładowanie i ciepło lufy
+	_ammo_note = UiTheme.label("", 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	col.add_child(_ammo_note)
 	_reload_bar = Bar.new()
-	_reload_bar.custom_minimum_size = Vector2(0, 3)
+	_reload_bar.custom_minimum_size = Vector2(150, 1.6)
 	_reload_bar.fill = UiTheme.ACCENT
-	bars.add_child(_reload_bar)
+	_reload_bar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	col.add_child(_reload_bar)
 	_heat_bar = Bar.new()
-	_heat_bar.custom_minimum_size = Vector2(0, 3)
-	bars.add_child(_heat_bar)
-	row.add_child(bars)
+	_heat_bar.custom_minimum_size = Vector2(150, 1.0)
+	_heat_bar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	col.add_child(_heat_bar)
 
-	# 4) sloty: same klawisze, aktywny podświetlony
-	var wr := HBoxContainer.new()
-	wr.add_theme_constant_override("separation", 3)
-	wr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	for i in 4:
-		var sl := PanelContainer.new()
-		var ic := GunIcon.new()
-		ic.k = 0.375
-		ic.custom_minimum_size = Vector2(30, 12)
-		var l := UiTheme.label("", 6, UiTheme.TEXT)
-		l.position = Vector2(0, -2)
-		l.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR   # miniatura rysuje NEAREST; tekst ma zostać gładki
-		ic.add_child(l)                     # numer klawisza w rogu miniatury
-		sl.add_child(ic)
-		_slot_icons.append(ic)
-		wr.add_child(sl)
-		_slots.append(sl)
-		_slot_labels.append(l)
-	row.add_child(wr)
-
-	# 5) zasoby w osobnej karcie po prawej (makieta: siatka 2×2 — wabik Q, flary F, przedmiot ALT, latarka L)
+	# 4) sprzęt w prawym dolnym rogu: cztery modele 3D bez ramek, liczba przy rogu, klawisz pod spodem
 	_equip_card = _card(Vector2(MARGIN, MARGIN))
-	_equip_card.custom_minimum_size = Vector2(0, ROW_H)
-	var eq := UiTheme.panel_box()
-	eq.bg_color = Color(6.0 / 255.0, 7.0 / 255.0, 6.0 / 255.0, 0.7)
-	eq.border_color = Color("23221d")
-	_equip_card.add_theme_stylebox_override("panel", eq)
-	var res := GridContainer.new()
-	res.columns = 2
-	res.add_theme_constant_override("h_separation", 9)
-	res.add_theme_constant_override("v_separation", 5)
-	res.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var res := HBoxContainer.new()
+	res.add_theme_constant_override("separation", 12)
+	res.alignment = BoxContainer.ALIGNMENT_END
 	_equip_card.add_child(res)
-	var q := HBoxContainer.new()
-	q.add_theme_constant_override("separation", 5)
-	q.add_child(_key("Q"))
-	_charges = Pips.new()
-	_charges.shape = "diamond"
-	_charges.count = NoiseMgr.OVERCHARGE_MAX
-	_charges.on = UiTheme.ACCENT
-	_charges.u = 0.8
-	_charges.custom_minimum_size = Vector2(NoiseMgr.OVERCHARGE_MAX * 11.0 * 0.8 - 2.0, 7.2)
-	_charges.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	q.add_child(_charges)
-	res.add_child(q)
-	var f := HBoxContainer.new()
-	f.add_theme_constant_override("separation", 5)
-	f.add_child(_key("F"))
-	_flares = Pips.new()
-	_flares.shape = "diamond"
-	_flares.count = NoiseMgr.FLARE_MAX
-	_flares.on = UiTheme.ACCENT
-	_flares.u = 0.8
-	_flares.custom_minimum_size = Vector2(NoiseMgr.FLARE_MAX * 11.0 * 0.8 - 2.0, 7.2)
-	_flares.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	f.add_child(_flares)
-	res.add_child(f)
-	var tg := HBoxContainer.new()                  # przedmiot (lewy Alt użyj, X zmiana rodzaju): "FRAG ×2"
-	tg.add_theme_constant_override("separation", 5)
-	tg.add_child(_key("ALT" if OS.get_name() != "macOS" else "CMD"))
-	_gren_name = UiTheme.mono(UiTheme.label("FRAG ×0", 7, UiTheme.TEXT))
-	_gren_name.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	tg.add_child(_gren_name)
-	res.add_child(tg)
-	var lr := HBoxContainer.new()
-	lr.add_theme_constant_override("separation", 5)
-	lr.add_child(_key("L"))
+	var q := _tile("Q", "lure", true)
+	_q_icon = q["icon"]
+	_q_count = q["count"]
+	res.add_child(q["root"])
+	var f := _tile("F", "flare", true)
+	_f_icon = f["icon"]
+	_f_count = f["count"]
+	res.add_child(f["root"])
+	var a := _tile("ALT" if OS.get_name() != "macOS" else "CMD", "frag", true)      # przedmiot (lewy Alt użyj, X zmiana rodzaju)
+	_a_icon = a["icon"]
+	_gren_name = a["count"]
+	res.add_child(a["root"])
+	var lt := _tile("L", "flashlight", false)
+	_l_icon = lt["icon"]
 	_battery = Bar.new()
-	_battery.custom_minimum_size = Vector2(39, 2.5)
+	_battery.custom_minimum_size = Vector2(26, 1.6)
 	_battery.back = Color("1f1e19")
-	_battery.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	lr.add_child(_battery)
-	res.add_child(lr)
-	_battery_note = UiTheme.mono(UiTheme.label("100%", 7, UiTheme.MUTED))      # procent baterii obok paska (pasek 39 px sam nie pokazuje zużycia: 180 s pracy)
-	_battery_note.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	lr.add_child(_battery_note)
+	_battery.position = Vector2(5, 38)
+	(lt["box"] as Control).add_child(_battery)
+	_battery_note = UiTheme.mono(UiTheme.label("100%", 6, UiTheme.MUTED))                  # procent baterii obok klawisza
+	(lt["keyrow"] as Control).add_child(_battery_note)
+	res.add_child(lt["root"])
 
-## Kapsel klawisza w kartach HUD-u (jak w makiecie): ciemne tło, ramka z grubszym dołem.
+## Kafelek sprzętu: model 3D (36×40) z liczbą w prawym górnym rogu i klawiszem pod spodem (podkreślona litera).
+func _tile(key_text: String, icon_key: String, counted: bool) -> Dictionary:
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 3)
+	root.alignment = BoxContainer.ALIGNMENT_CENTER
+	var box := Control.new()
+	box.custom_minimum_size = Vector2(38, 42)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var icon := HudIcon.new()
+	icon.set_key(icon_key)
+	icon.position = Vector2(2, 1)
+	icon.size = Vector2(32, 38)
+	box.add_child(icon)
+	var count: Label = null
+	if counted:
+		count = UiTheme.mono(UiTheme.label("0", 8, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
+		count.position = Vector2(20, -1)
+		count.size = Vector2(18, 11)
+		box.add_child(count)
+	root.add_child(box)
+	var kr := HBoxContainer.new()
+	kr.add_theme_constant_override("separation", 4)
+	kr.alignment = BoxContainer.ALIGNMENT_CENTER
+	kr.add_child(_key(key_text))
+	root.add_child(kr)
+	return {"root": root, "box": box, "icon": icon, "count": count, "keyrow": kr}
+
+## Klawisz w HUD-zie: sama litera z cienkim podkreśleniem (bez kapsla — HUD jest bez ramek).
 func _key(s: String) -> Control:
-	var k := W.keycap(s, 7)
-	k.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	return k
+	var l := UiTheme.mono(UiTheme.label(s, 7, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0, 0, 0, 0)
+	sb.border_color = Color(UiTheme.TEXT, 0.45)
+	sb.border_width_bottom = 1
+	sb.content_margin_left = 3
+	sb.content_margin_right = 3
+	sb.content_margin_bottom = 1
+	l.add_theme_stylebox_override("normal", sb)
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return l
 
 # ---------------------------------------------------------------- karta drużyny
 
-## Jeden wiersz: plakietka w kolorze slotu, serca (złote ponad bazę), stan (DOWN / REVIVING / CRITICAL / AI)
-## i pasek pod spodem, gdy ktoś leży (czerwony = wykrwawianie, zielony = podnoszenie).
+## Jeden wiersz: [romb w kolorze slotu] nazwa (+ BOT / YOU), stan (DOWN / REVIVING / CRITICAL), pod spodem cienkie segmenty życia
+## (złote ponad bazę) i pasek, gdy ktoś leży (czerwony = wykrwawianie, zielony = podnoszenie). Własny wiersz trafia do bloku hałasu.
 func _make_squad_row(p: Node, is_self: bool) -> Dictionary:
 	var slot := ((int(p.display_id) - 1) % 4) + 1
+	var slot_col: Color = SLOT_COLORS[slot - 1]
 	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 2)
+	root.add_theme_constant_override("separation", 3)
 	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 6)
-	# plakietka 30×30 px z makiety: lokalny gracz = kość z ciemnym tekstem, inni ludzie i boty = ciemna z tekstem w kolorze slotu / szarym
-	var badge := UiTheme.mono(UiTheme.label("AI" if p.is_bot else "P%d" % int(p.display_id), 8, Color(0.04, 0.045, 0.04), HORIZONTAL_ALIGNMENT_CENTER))
-	var bg := StyleBoxFlat.new()
-	bg.bg_color = UiTheme.TEXT if is_self else Color("1f1e19")
-	bg.set_content_margin_all(2)
-	badge.add_theme_stylebox_override("normal", bg)
-	badge.add_theme_constant_override("outline_size", 0)
+	top.add_theme_constant_override("separation", 5)
 	if not is_self:
-		badge.add_theme_color_override("font_color", Color("bdb8a6") if p.is_bot else SLOT_COLORS[slot - 1])
-	badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	badge.custom_minimum_size = Vector2(19, 19)
-	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	top.add_child(badge)
-	var pips := Pips.new()
-	pips.shape = "drop"
-	pips.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	pips.on = Color("bdb8a6") if p.is_bot else UiTheme.DANGER
-	pips.edge_off = Color("3d3a30") if p.is_bot else Color("4a1e1a")
-	top.add_child(pips)
-	if is_self:
-		var ecg := Ecg.new()
-		ecg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		top.add_child(ecg)
+		var dia := Diamond.new()
+		dia.col = Color("8d8a7c") if p.is_bot else slot_col
+		dia.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		top.add_child(dia)
+	var nm := UiTheme.mono(UiTheme.label("P%d" % int(p.display_id), 9, slot_col if is_self else UiTheme.TEXT))
+	nm.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(nm)
+	var tag := _cap(tr("YOU") if is_self else (tr("BOT") if p.is_bot else ""), UiTheme.MUTED, 0.18, 6)
+	tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(tag)
 	var status := _cap("", UiTheme.MUTED, 0.1)
 	status.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(status)
 	root.add_child(top)
+	var prow := HBoxContainer.new()
+	prow.add_theme_constant_override("separation", 7)
+	var pips := Pips.new()
+	pips.shape = "seg"
+	pips.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pips.on = UiTheme.DANGER if is_self else (Color("8d8a7c") if p.is_bot else UiTheme.TEXT)
+	pips.off = Color(1, 1, 1, 0.14)
+	prow.add_child(pips)
+	if is_self:
+		var ecg := Ecg.new()
+		ecg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		prow.add_child(ecg)
+	root.add_child(prow)
 	var bar := Bar.new()
-	bar.custom_minimum_size = Vector2(0, 3)
+	bar.custom_minimum_size = Vector2(0, 2)
 	bar.visible = false
 	root.add_child(bar)
-	_squad_box.add_child(root)
+	(_self_box if is_self else _squad_box).add_child(root)
 	return {"root": root, "pips": pips, "status": status, "bar": bar, "hp": maxi(p.hp, 0), "flash": 0.0, "self": is_self, "bot": p.is_bot}
 
 func _drive_squad(delta: float) -> void:
@@ -821,14 +963,12 @@ func _drive_squad(delta: float) -> void:
 	for p in get_tree().get_nodes_in_group("players"):
 		if is_instance_valid(p) and not p.is_queued_for_deletion():
 			list.append(p)
-	# własny wiersz u góry (makieta), potem koledzy rosnąco po slocie
-	list.sort_custom(func(a: Node, b: Node) -> bool:
-		if (a == _player) != (b == _player):
-			return a == _player
-		return a.display_id < b.display_id)
+	# koledzy rosnąco po slocie (własny wiersz trafia do bloku „ja + hałas”)
+	list.sort_custom(func(a: Node, b: Node) -> bool: return a.display_id < b.display_id)
 	var present := {}
-	for idx in list.size():
-		var p: Node = list[idx]
+	var mate_idx := 0
+	for node in list:
+		var p: Node = node
 		var id := p.get_instance_id()
 		present[id] = true
 		var is_self: bool = p == _player
@@ -838,14 +978,19 @@ func _drive_squad(delta: float) -> void:
 				(row["root"] as Node).queue_free()
 			row = _make_squad_row(p, is_self)
 			_squad_rows[id] = row
-		_squad_box.move_child(row["root"], idx)
+		if not is_self:
+			_squad_box.move_child(row["root"], mate_idx)
+			mate_idx += 1
 		_update_squad_row(p, row, delta)
 	for id in _squad_rows.keys():
 		if not present.has(id):
 			(_squad_rows[id]["root"] as Node).queue_free()
 			_squad_rows.erase(id)
+	_squad_card.visible = mate_idx > 0
 	_squad_card.reset_size()
-	_squad_card.position = Vector2(MARGIN, size.y - BOTTOM_PAD - _squad_card.size.y)
+	_squad_card.position = Vector2(2.0 * MARGIN, 2.0 * MARGIN)
+	_noise_card.reset_size()
+	_noise_card.position = Vector2(2.0 * MARGIN, size.y - BOTTOM_PAD - _noise_card.size.y)
 
 func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 	var hp := maxi(p.hp, 0)
@@ -854,10 +999,8 @@ func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 	pips.bonus_from = p.max_hp()
 	pips.filled = hp
 	pips.cracked = hp - 1 if hp > 0 and float(p.get("chip")) > 0.0 else -1        # ukryte 0,5 HP z głazu: ostatnie pełne serce pęknięte
-	if p.dead:
-		pips.on = Color(0.45, 0.17, 0.15)
-	else:
-		pips.on = Color("bdb8a6") if p.is_bot else UiTheme.DANGER
+	var base_col: Color = UiTheme.DANGER if bool(row["self"]) else (Color("8d8a7c") if p.is_bot else UiTheme.TEXT)
+	pips.on = Color(0.45, 0.17, 0.15) if p.dead else base_col
 	pips.custom_minimum_size = pips.min_size()
 	pips.queue_redraw()
 	# błysk wiersza po utracie zdrowia
@@ -902,22 +1045,38 @@ func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 
 func _build_objective_card() -> void:
 	_obj_card = _card(Vector2(MARGIN, MARGIN))
-	_obj_card.custom_minimum_size = Vector2(0, TOP_H)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
-	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 3)
+	box.alignment = BoxContainer.ALIGNMENT_BEGIN
 	_obj_card.add_child(box)
+	_compass = Compass.new()
+	box.add_child(_compass)
+	_boss_row = VBoxContainer.new()
+	_boss_row.add_theme_constant_override("separation", 2)
+	_boss_name = UiTheme.heading("THE VEIN — MOTHER OF NESTS", 8, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
+	_boss_row.add_child(_boss_name)
+	_boss_bar = Bar.new()
+	_boss_bar.custom_minimum_size = Vector2(OBJ_W, 4)
+	_boss_bar.fill = Color(0.88, 0.22, 0.2)
+	_boss_bar.seg = 4.0
+	_boss_bar.ticks = [[0.66, Color(1, 1, 1, 0.5)], [0.33, Color(1, 1, 1, 0.5)]]
+	_boss_row.add_child(_boss_bar)
+	box.add_child(_boss_row)
+	_toast_box = VBoxContainer.new()
+	_toast_box.add_theme_constant_override("separation", 2)
+	_toast_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(_toast_box)
 	_obj_caption = _cap("OBJECTIVE", UiTheme.ACCENT, 0.3)
 	_obj_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(_obj_caption)
+	_toast_box.add_child(_obj_caption)
 	_obj_text = UiTheme.heading("", 14, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	_obj_text.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_obj_text)
+	_toast_box.add_child(_obj_text)
 	_obj_hint = UiTheme.whisper(UiTheme.label("", UiTheme.T_BODY - 1, UiTheme.BONE_DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	_obj_hint.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_obj_hint)
+	_toast_box.add_child(_obj_hint)
 	# kryjówka: kwadraciki gotowości (jeden na człowieka) — widać, na kogo czeka drużyna
 	_ready_pips = Pips.new()
 	_ready_pips.shape = "ready"
@@ -926,46 +1085,38 @@ func _build_objective_card() -> void:
 	var pip_row := HBoxContainer.new()
 	pip_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	pip_row.add_child(_ready_pips)
-	box.add_child(pip_row)
-	_boss_row = VBoxContainer.new()
-	_boss_row.add_theme_constant_override("separation", 2)
-	_boss_name = UiTheme.heading("THE VEIN — MOTHER OF NESTS", 8, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
-	_boss_row.add_child(_boss_name)
-	_boss_bar = Bar.new()
-	_boss_bar.custom_minimum_size = Vector2(OBJ_W, 5)
-	_boss_bar.fill = Color(0.88, 0.22, 0.2)
-	_boss_bar.seg = 4.0
-	_boss_bar.ticks = [[0.66, Color(1, 1, 1, 0.5)], [0.33, Color(1, 1, 1, 0.5)]]
-	_boss_row.add_child(_boss_bar)
-	box.add_child(_boss_row)
+	_toast_box.add_child(pip_row)
 
 func _build_session() -> void:
-	# karta RUN w prawym górnym rogu: [RUN … trudność] / [zegar … złom] / [LV ▮ pasek XP n/m]; +XP pod kartą
+	# prawy górny róg jako sam tekst: [tytuł misji] / [trudność · zegar] / [złom]; poziom i pasek XP tylko chwilę po zdobyciu XP
 	_run_card = _card(Vector2(MARGIN, MARGIN))
-	_run_card.custom_minimum_size = Vector2(SESSION_W, TOP_H)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
-	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 3)
+	box.alignment = BoxContainer.ALIGNMENT_BEGIN
 	_run_card.add_child(box)
+	_run_title = UiTheme.heading("", 13, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	box.add_child(_run_title)
 	var head := HBoxContainer.new()
-	var cap := _cap("RUN", UiTheme.MUTED, 0.22)
-	cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(cap)
+	head.alignment = BoxContainer.ALIGNMENT_END
+	head.add_theme_constant_override("separation", 5)
 	_session = _cap("", UiTheme.MUTED, 0.14)                 # trudność; kolor wg poziomu (_drive_status)
 	head.add_child(_session)
+	head.add_child(_cap("·", UiTheme.MUTED, 0.0))
+	_clock = UiTheme.mono(UiTheme.label("", 8, UiTheme.MUTED))
+	head.add_child(_clock)
 	box.add_child(head)
 	var main := HBoxContainer.new()
-	main.add_theme_constant_override("separation", 6)
-	_clock = UiTheme.mono(UiTheme.label("", 13, UiTheme.TEXT))
-	_clock.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	main.add_child(_clock)
+	main.alignment = BoxContainer.ALIGNMENT_END
+	main.add_theme_constant_override("separation", 5)
 	_scrap_coin = Coin.new()
 	_scrap_coin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	main.add_child(_scrap_coin)
-	_scrap = UiTheme.mono(UiTheme.label("", 10, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_RIGHT))
+	_scrap = UiTheme.mono(UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_RIGHT))
 	main.add_child(_scrap)
 	box.add_child(main)
 	var xp := HBoxContainer.new()
+	_xp_row = xp
+	xp.visible = false
 	xp.add_theme_constant_override("separation", 5)
 	_lv_label = UiTheme.mono(UiTheme.label("LV 1", 7, UiTheme.TEXT))
 	var badge := StyleBoxFlat.new()
@@ -980,7 +1131,7 @@ func _build_session() -> void:
 	_lv_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	xp.add_child(_lv_label)
 	_run_xp_bar = Bar.new()
-	_run_xp_bar.custom_minimum_size = Vector2(0, 2)
+	_run_xp_bar.custom_minimum_size = Vector2(56, 2)
 	_run_xp_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_run_xp_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_run_xp_bar.fill = UiTheme.MUTED
@@ -1121,7 +1272,7 @@ func _drive_chat(delta: float) -> void:
 		if float(e["t"]) <= 0.0 and not _chat_edit.visible:
 			(e["label"] as Node).queue_free()
 			_chat_lines.remove_at(i)
-	var base_y := _squad_card.position.y - 6.0
+	var base_y := _noise_card.position.y - 6.0
 	_chat_edit.position = Vector2(MARGIN, base_y - 20.0)
 	_chat_log.reset_size()
 	_chat_log.position = Vector2(MARGIN, base_y - _chat_log.size.y - (22.0 if _chat_edit.visible else 0.0))
@@ -1136,6 +1287,7 @@ func _drive_tiers(delta: float) -> void:
 	var target := 0.5 if _calm_t > 4.0 else 1.0
 	_tier_k = lerpf(_tier_k, target, minf(1.0, delta * (1.5 if target < 1.0 else 6.0)))
 	_obj_card.modulate.a = lerpf(1.0, 0.6, (1.0 - _tier_k) * 2.0)
+	_squad_card.modulate.a = lerpf(1.0, 0.55, (1.0 - _tier_k) * 2.0)
 	_run_card.modulate.a = lerpf(1.0, 0.65, (1.0 - _tier_k) * 2.0)
 	for c in [_f1, _controls]:
 		(c as Control).self_modulate.a = lerpf(1.0, 0.45, (1.0 - _tier_k) * 2.0)
@@ -1306,8 +1458,12 @@ func show_note(text: String, secs := 3.0) -> void:
 	Msg.post("hud.note.%d" % text.hash(), Msg.Ch.TOAST, text, {"ttl": secs, "style": Msg.Style.WARN, "prio": 60})
 
 func _drive_noise() -> void:
-	_noise_card.visible = not NoiseMgr.safe_zone
-	_safe_chip.visible = NoiseMgr.safe_zone
+	var safe: bool = NoiseMgr.safe_zone
+	_noise_bar.visible = not safe
+	_noise_cap.visible = not safe
+	_noise_state.visible = not safe
+	_noise_val.visible = not safe
+	_safe_chip.visible = safe
 	var lvl := _dev_noise if _dev_noise >= 0.0 else NoiseMgr.level          # dev: --shotnoise=N pokazuje wskaźnik przy zadanym poziomie
 	_noise_val.text = "%d%%" % int(lvl)
 	_noise_bar.value = lvl / 100.0
@@ -1330,20 +1486,27 @@ func _drive_noise() -> void:
 	if _weather_row.visible:
 		_weather_row.text = "%s  ·  %s" % [tr(Weather.name_of(wid)), tr(Weather.short_of(wid))]
 		_weather_row.add_theme_color_override("font_color", Weather.color_of(wid))
-	_charges.filled = NoiseMgr.overcharge_charges
-	_charges.queue_redraw()
-	_flares.filled = NoiseMgr.flares
-	_flares.queue_redraw()
+	var qn: int = NoiseMgr.overcharge_charges
+	_q_count.text = str(qn)
+	_q_count.add_theme_color_override("font_color", UiTheme.TEXT if qn > 0 else UiTheme.DANGER)
+	_q_icon.set_key("lure", Color.WHITE if qn > 0 else Color(1, 1, 1, 0.28))
+	var fn: int = NoiseMgr.flares
+	_f_count.text = str(fn)
+	_f_count.add_theme_color_override("font_color", UiTheme.TEXT if fn > 0 else UiTheme.DANGER)
+	_f_icon.set_key("flare", Color.WHITE if fn > 0 else Color(1, 1, 1, 0.28))
 	var gk := Arsenal.selected_throwable()
 	var gn := Arsenal.get_throwable(gk)
-	_gren_name.text = "%s ×%d" % [Throwables.KINDS[gk]["name"], gn]
-	_gren_name.tooltip_text = tr("%s switches item") % Actions.key("throw_next")
-	_gren_name.add_theme_color_override("font_color", UiTheme.TEXT if gn > 0 else UiTheme.MUTED)
+	_gren_name.text = str(gn)
+	_gren_name.tooltip_text = "%s  —  %s" % [Throwables.KINDS[gk]["name"], tr("%s switches item") % Actions.key("throw_next")]
+	_gren_name.add_theme_color_override("font_color", UiTheme.TEXT if gn > 0 else UiTheme.DANGER)
+	_a_icon.set_key(String(gk), Color.WHITE if gn > 0 else Color(1, 1, 1, 0.28))
 
 func _on_xp_gained(amount: int, _reason: String) -> void:
+	_xp_show_t = 4.0
 	Msg.post("hud.xp", Msg.Ch.TOAST, "", {"amount": amount, "fmt": "+%d XP", "style": Msg.Style.SUCCESS, "ttl": 2.5, "prio": 20, "log": false})
 
 func _on_level_up(lv: int) -> void:
+	_xp_show_t = 6.0
 	var msg := tr("LEVEL %d") % lv
 	if Profile.SLOT_LEVELS.has(lv):
 		msg += "  —  " + tr("perk slot unlocked")
@@ -1371,8 +1534,13 @@ func _drive_status() -> void:
 	if m != null:
 		var secs := int(m.elapsed)
 		_clock.text = "%02d:%02d" % [secs / 60, secs % 60]
+	var lvl_n := get_tree().get_first_node_in_group("level")
+	_run_title.text = String(lvl_n.title) if lvl_n != null and m != null and m.kind != "hub" else ""
+	_run_title.visible = _run_title.text != ""
+	_xp_show_t = maxf(0.0, _xp_show_t - get_process_delta_time())
+	_xp_row.visible = _xp_show_t > 0.0
 	_run_card.reset_size()
-	_run_card.position = Vector2(size.x - MARGIN - _run_card.size.x, MARGIN)
+	_run_card.position = Vector2(size.x - 2.0 * MARGIN - _run_card.size.x, 2.0 * MARGIN)
 	_gear_card.visible = _player != null
 	_equip_card.visible = _player != null
 	if _player == null:
@@ -1402,13 +1570,19 @@ func _drive_weapons() -> void:
 		var key := str(i + 1) if i < 3 else "V"
 		_slot_labels[i].text = key
 		var d: RefCounted = wc.def_of_slot(i) if i < 3 else Weapons.def(wc.melee_id)
-		_slot_icons[i].set_gun(int(d.gun_row), d.tracer_color, Color.WHITE if sel else Color(0.5, 0.52, 0.58, 0.9))
+		_slot_icons[i].set_key(String(GunIcon.HD_KEYS.get(int(d.gun_row), "")), Color.WHITE if sel else Color(1, 1, 1, 0.45))
 		_slots[i].tooltip_text = names[i]
-		_slots[i].add_theme_stylebox_override("panel", _slot_on if sel else _slot_off)
 		_slot_labels[i].add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.MUTED)
 	_ammo_name.text = cur.name
 	var mode_tag := "BURST" if wc.is_burst(cur) else ("AUTO" if cur.burst_size > 0 else "")
-	_gun_main.set_gun(int(cur.gun_row), cur.tracer_color, Color.WHITE)
+	_gun_main.set_key(String(GunIcon.HD_KEYS.get(int(cur.gun_row), "")))
+	# rząd miniatur pokazujemy ~2,5 s po zmianie slotu / rodzaju broni
+	var sig: int = wc.slot * 10 + (1 if wc.state == wc.State.MELEE else 0)
+	if _slot_sig >= 0 and sig != _slot_sig:
+		_slot_t = 2.5
+	_slot_sig = sig
+	_slot_t = maxf(0.0, _slot_t - get_process_delta_time())
+	_slot_row.modulate.a = clampf(_slot_t / 0.5, 0.0, 1.0)
 	var mag: int = wc.mag_of(cur.id)
 	var note := ""
 	var col := UiTheme.TEXT
@@ -1452,26 +1626,13 @@ func _drive_weapons() -> void:
 		noise_txt = "%.1f" % cur.noise(0.0)
 	_heat_note.text = mode_tag + (" · " if mode_tag != "" and noise_txt != "" else "") + noise_txt
 	_gear_card.reset_size()
-	# pasek broni: środek ekranu, ale nie na karcie drużyny; gdy się nie mieści (duży HUD) — nad kartą drużyny
+	# broń: środek dołu (nad gradientem); sprzęt: prawy dolny róg w jednej linii podstawy z bronią
 	var gw := _gear_card.size.x
 	var gh := _gear_card.size.y
-	var gx := maxf((size.x - gw) * 0.5, _squad_card.position.x + _squad_card.size.x + MARGIN)
-	var gy := size.y - BOTTOM_PAD - gh
-	if gx + gw > size.x - MARGIN:
-		gx = maxf((size.x - gw) * 0.5, MARGIN)
-		gy = _squad_card.position.y - gh - 4.0
-	_gear_card.position = Vector2(gx, gy)
-	# zasoby: prawy dolny róg w jednym rzędzie z paskiem broni; gdy rząd się nie mieści (duży HUD, wąski ekran) — nad paskiem,
-	# z naturalną wysokością (bez wspólnej wysokości rzędu, żeby nie była pusta)
-	var ew := _equip_card.get_combined_minimum_size().x
-	var in_row := gx + gw + MARGIN <= size.x - MARGIN - ew
-	_equip_card.custom_minimum_size.y = ROW_H if in_row else 0.0
+	_gear_card.position = Vector2((size.x - gw) * 0.5, size.y - BOTTOM_PAD - gh)
 	_equip_card.reset_size()
-	var ex := size.x - MARGIN - _equip_card.size.x
-	var ey := size.y - BOTTOM_PAD - _equip_card.size.y
-	if not in_row:
-		ey = gy - _equip_card.size.y - 4.0
-	_equip_card.position = Vector2(ex, ey)
+	_equip_card.position = Vector2(size.x - 2.0 * MARGIN - _equip_card.size.x, size.y - BOTTOM_PAD - _equip_card.size.y)
+	_equip_card.modulate.a = lerpf(1.0, 0.55, (1.0 - _tier_k) * 2.0)
 
 ## Ostrzeżenie przed karą (GDD §8.1): niepokój ZANIM ON się obudzi.
 func _drive_warning() -> void:
@@ -1520,12 +1681,23 @@ func _drive_mission() -> void:
 		_boss_bar.queue_redraw()
 		var bname: String = String(boss.get("boss_name")) if boss.get("boss_name") != null else "THE VEIN — MOTHER OF NESTS"
 		_boss_name.text = bname + ("   ·   ENRAGED" if boss.phase >= 2 else "")
+	_drive_strip(m)
+	# opis celu pokazuje się po zmianie celu / fazy (i w kryjówce, i na F1), potem gaśnie; pasek kierunku zostaje
+	var sig := "%s|%d|%d|%d|%d" % [m.kind, m.phase, m.goal_left, m.nests_left, m.stashes_found]
+	if sig != _toast_sig:
+		_toast_sig = sig
+		_toast_t = TOAST_S
+	var dt := get_process_delta_time()
+	_toast_t = maxf(0.0, _toast_t - dt)
+	var want := 1.0 if (in_hub or _toast_t > 0.0 or _controls_mode == 1) else 0.0
+	_toast_box.modulate.a = move_toward(_toast_box.modulate.a, want, dt * (4.0 if want > 0.0 else 1.5))
+	_toast_box.visible = _toast_box.modulate.a > 0.01
 	# karta celu: wyśrodkowana, szerokość wg treści
 	_obj_card.reset_size()
-	_obj_card.position = Vector2((size.x - _obj_card.size.x) * 0.5, MARGIN)
+	_obj_card.position = Vector2((size.x - _obj_card.size.x) * 0.5, 2.0 * MARGIN)
 	_msgs.obj_bottom = (_obj_card.position.y + _obj_card.size.y) / MSG_SCALE
 	_msgs.run_bottom = (_run_card.position.y + _run_card.size.y) / MSG_SCALE
-	_msgs.squad_top = _squad_card.position.y / MSG_SCALE
+	_msgs.squad_top = _noise_card.position.y / MSG_SCALE
 
 	var show_result: bool = m.phase == Mission.Phase.SUCCESS or m.phase == Mission.Phase.FAILED
 	var just_shown: bool = show_result and not _result.visible
@@ -1537,6 +1709,62 @@ func _drive_mission() -> void:
 		_fill_players(m)
 	if show_result and _result_xp_val != null and is_instance_valid(_result_xp_val):
 		_drive_xp(get_process_delta_time())
+
+## Najbliższy węzeł grupy (po osi X względem gracza), który spełnia warunek; null, gdy brak.
+func _nearest(group: String, ok: Callable) -> Node2D:
+	var best: Node2D = null
+	var bd := INF
+	for n in get_tree().get_nodes_in_group(group):
+		if not (n is Node2D) or not is_instance_valid(n) or n.is_queued_for_deletion() or not bool(ok.call(n)):
+			continue
+		var d := absf((n as Node2D).global_position.x - _player.global_position.x)
+		if d < bd:
+			bd = d
+			best = n
+	return best
+
+## Znaczniki paska kierunku: cel (najbliższy), wyjście / drezyna w ekstrakcji, koledzy z drużyny, powaleni.
+func _drive_strip(m: Node) -> void:
+	_compass.visible = m.kind != "hub" and _player != null
+	if not _compass.visible:
+		return
+	_compass.player_x = _player.global_position.x
+	var mk: Array = []
+	var goal: Node2D = null
+	var label := ""
+	match m.phase:
+		Mission.Phase.OBJECTIVE:
+			match String(m.kind):
+				"tags":
+					goal = _nearest("pickups", func(n: Node) -> bool: return String(n.get("kind")) == "tag")
+					label = tr("TAG")
+				"generators":
+					goal = _nearest("generators", func(n: Node) -> bool: return not bool(n.get("running")))
+					label = tr("GEN")
+				"boss":
+					goal = _nearest("boss", func(_n: Node) -> bool: return true)
+					label = tr("BOSS")
+				_:
+					goal = _nearest("nests", func(n: Node) -> bool: return bool(n.get("alive")))
+					label = tr("NEST")
+		Mission.Phase.BOSS:
+			goal = _nearest("boss", func(_n: Node) -> bool: return true)
+			label = tr("BOSS")
+		Mission.Phase.EXTRACT:
+			var car := _nearest("handcar", func(n: Node) -> bool: return not bool(n.get("arrived")))
+			if car != null:
+				mk.append({"x": car.global_position.x, "kind": "obj", "label": tr("CAR"), "col": UiTheme.ACCENT})
+			mk.append({"x": m.exit_pos.x, "kind": "exit", "label": tr("EXIT"), "col": Color(UiTheme.TEXT, 0.8)})
+	if goal != null:
+		mk.append({"x": goal.global_position.x, "kind": "obj", "label": label, "col": UiTheme.ACCENT})
+	for node in get_tree().get_nodes_in_group("players"):
+		var pl: Node = node
+		if pl == _player or not is_instance_valid(pl) or pl.is_queued_for_deletion():
+			continue
+		var slot := ((int(pl.display_id) - 1) % 4) + 1
+		var col: Color = UiTheme.DANGER if pl.dead else (Color("8d8a7c") if pl.is_bot else SLOT_COLORS[slot - 1])
+		mk.append({"x": (pl as Node2D).global_position.x, "kind": "down" if pl.dead else "mate", "label": "P%d" % int(pl.display_id), "col": col})
+	_compass.markers = mk
 
 func _fill_result(m: Node) -> void:
 	for c in _result_stats.get_children():
@@ -2111,10 +2339,10 @@ func _drive_prompt() -> void:
 		_prompt_card.reset_size()
 		_prompt_card.scale = Vector2.ONE * MSG_SCALE
 		_prompt_card.pivot_offset = Vector2(_prompt_card.size.x * 0.5, 0.0)
-		_prompt_card.position = Vector2((size.x - _prompt_card.size.x) * 0.5, size.y * PROMPT_Y)
+		_prompt_card.position = Vector2((size.x - _prompt_card.size.x) * 0.5, _gear_card.position.y - _prompt_card.size.y * MSG_SCALE - 8.0)
 
 func _drive_controls() -> void:
-	var show := _session_t < CONTROLS_SHOW_S if _controls_mode < 0 else _controls_mode == 1
+	var show := (_session_t < CONTROLS_SHOW_S and Profile.level() <= TOAST_LEVEL_MAX) if _controls_mode < 0 else _controls_mode == 1
 	_controls.visible = show
 	_f1.visible = not show
 
