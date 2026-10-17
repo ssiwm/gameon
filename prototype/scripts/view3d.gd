@@ -149,6 +149,10 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_geo = Node3D.new()
 	_geo.name = "Geometry"
 	_world.add_child(_geo)
+	# szczątki wczytane z góry: przy pierwszym zabójstwie w sesji modele (z teksturami) wczytywały się synchronicznie — przestój ok. 0,3–0,4 s
+	for names in GIB_MODELS:
+		for gn in names:
+			Level3D.model_mesh(String(gn))
 	# światło tylko dla graczy (warstwa 2): prawie sama kontra (dwa światła zza postaci) — obrys czytelny w ciemności, a bryłę modeluje światło sceny
 	# (aura, latarka, flara, ognisko), więc postać nie świeci własnym światłem
 	for spec in [[Vector3(-0.35, -0.6, -0.7), Color(0.9, 0.88, 0.8), 0.14], [Vector3(0.25, -0.35, 0.9), Color(0.72, 0.82, 1.0), 0.85], [Vector3(-0.6, -0.15, 0.75), Color(0.6, 0.7, 1.0), 0.35]]:
