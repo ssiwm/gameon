@@ -28,6 +28,8 @@ var _toast_box: VBoxContainer
 var _toast_key := ""
 var _toast_msgs: Array = []
 
+var _tip: PanelContainer
+var _tip_label: Label
 var _title: PanelContainer
 var _t_head: Label
 var _t_sub: Label
@@ -73,6 +75,19 @@ func _build() -> void:
 	_toast_box.add_theme_constant_override("separation", 4)
 	_toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_toast_box)
+	_tip = PanelContainer.new()
+	_tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tip.visible = false
+	_tip.add_theme_stylebox_override("panel", _box(Color(UiTheme.ACCENT, 0.6), 3))
+	add_child(_tip)
+	var tr_row := HBoxContainer.new()
+	tr_row.add_theme_constant_override("separation", 7)
+	_tip.add_child(tr_row)
+	tr_row.add_child(UiTheme.heading(tr("TIP"), UiTheme.T_CAPTION, UiTheme.ACCENT))
+	_tip_label = UiTheme.whisper(UiTheme.label("", UiTheme.T_BODY - 1, UiTheme.TEXT))
+	_tip_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tip_label.custom_minimum_size = Vector2(TITLE_W - 56.0, 0)
+	tr_row.add_child(_tip_label)
 	_title = PanelContainer.new()
 	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_title.visible = false
@@ -107,6 +122,7 @@ func _process(delta: float) -> void:
 	_drive_alert(delta)
 	_drive_toasts()
 	_drive_title(delta)
+	_drive_tip()
 
 # ---------------------------------------------------------------- ALERT
 
@@ -205,3 +221,19 @@ func _drive_title(delta: float) -> void:
 	_title.reset_size()
 	_title.position = Vector2(MARGIN, squad_top - _title.size.y - 10.0)
 	_title.modulate.a = _t_alpha
+
+# ---------------------------------------------------------------- TIP
+
+## Porada dla nowego gracza (kanał TIP): lewy dół nad kartą drużyny; gdy trwa karta tytułowa, staje nad nią.
+func _drive_tip() -> void:
+	var m: Dictionary = Msg.current(Msg.Ch.TIP)
+	_tip.visible = not m.is_empty()
+	if not _tip.visible:
+		return
+	_tip_label.text = String(m["text"])
+	_tip.reset_size()
+	var base_y := squad_top - 10.0
+	if _title.visible:
+		base_y = _title.position.y - 6.0
+	_tip.position = Vector2(MARGIN, base_y - _tip.size.y)
+	_tip.modulate.a = float(m["alpha"])

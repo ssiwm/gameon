@@ -99,6 +99,10 @@ func tick(delta: float) -> void:
 static func life(m: Dictionary) -> float:
 	return clampf(float(m["age"]) / maxf(0.001, float(m["ttl"])), 0.0, 1.0)
 
+## Zegar sesji [s] (znaczniki czasu w dzienniku).
+func now() -> float:
+	return _clock
+
 ## Zapis do dziennika bez wyświetlania (np. linie radia, które już pokazał baner).
 func note_to_journal(text: String, ch: int, style := Style.INFO, sub := "") -> void:
 	_journal_add(text, sub, ch, style)
@@ -116,6 +120,7 @@ func _put(id: String, ch: int, text: String, o: Dictionary, lease: bool) -> void
 	m["color"] = o.get("color", Color.WHITE)
 	m["big"] = bool(o.get("big", false))           # alert: tekst jako duża cyfra / znak (odliczanie)
 	m["kicker"] = String(o.get("kicker", ""))      # karta tytułowa: mały nadtytuł (RADIO, MISSION)
+	m["alpha"] = float(o.get("alpha", 1.0))        # przezroczystość narzucona przez producenta (porada wygasza się własnym zegarem)
 	m["rows"] = o.get("rows", [])
 	m["keys"] = o.get("keys", [])
 	m["lease"] = lease

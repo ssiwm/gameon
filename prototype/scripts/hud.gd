@@ -27,6 +27,7 @@ const GunIcon := preload("res://scripts/gun_icon.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const NotePaper := preload("res://scripts/note_paper.gd")
 const MessageView := preload("res://scripts/message_view.gd")
+const JournalView := preload("res://scripts/journal_view.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Codex := preload("res://scripts/codex.gd")
 const RunLog := preload("res://scripts/run_log.gd")
@@ -44,7 +45,6 @@ const OBJ_W := 250.0             ## szerokość treści karty celu (zawijanie)
 const SESSION_W := 152.0         ## szerokość bloku „sesja + zegar" w prawym górnym rogu
 const WARN_Y := 0.255            ## wysokość ostrzeżenia nad środkiem ekranu (ułamek wysokości; 92/360)
 const CENTER_Y := 0.39           ## napis „SQUAD DOWN" (140/360)
-const HINT_Y := 0.66             ## karta podpowiedzi (nad paskiem kontekstowym)
 const BRIEF_ROWS := 5             ## ile wierszy zagrożeń pokazuje odprawa (reszta: „+N more")
 const PROMPT_Y := 0.76           ## pasek kontekstowy — nad paskiem broni (dół, środek)
 ## Układ wzorowany na koop-strzelankach (Left 4 Dead, Deep Rock Galactic, Helldivers): drużyna i zdrowie w lewym dolnym
@@ -375,6 +375,7 @@ class Coin extends Control:
 var _player: Node = null
 var _blink := 0.0
 var _warn_was := false
+var _journal: Control                ## dziennik komunikatów i porad (klawisz akcji „journal”): journal_view.gd
 var _msgs: Control                   ## renderer kanałów komunikatów (alert, toasty, karta tytułowa): message_view.gd
 var _music_layer := -1
 var _session_t := 0.0
@@ -450,8 +451,6 @@ var _controls: Label
 var _f1: Label
 var _result: PanelContainer
 var _hints := Hints.new()
-var _hint_card: PanelContainer
-var _hint_label: Label
 var _result_stats: GridContainer
 var _result_prompt: Label
 var _result_title: Label
@@ -485,7 +484,6 @@ func _ready() -> void:
 	_build_center()
 	_build_prompt()
 	_build_controls()
-	_build_hint()
 	_build_captions()
 	_build_chat()
 	_build_result()
@@ -522,6 +520,8 @@ func _fit() -> void:
 	_run_card.position = Vector2(w - MARGIN - _run_card.size.x, MARGIN)
 	_msgs.position = Vector2.ZERO
 	_msgs.size = size
+	_journal.position = Vector2.ZERO
+	_journal.size = size
 	_place(_controls, Vector2(MARGIN, h - 16.0), Vector2(w - 2.0 * MARGIN, 12))
 	_place(_f1, Vector2(w - MARGIN - SESSION_W, h - 16.0), Vector2(SESSION_W, 12))   # dół, prawy koniec paska podpowiedzi
 
@@ -991,8 +991,26 @@ func _build_session() -> void:
 func _build_center() -> void:
 	_msgs = MessageView.new()
 	add_child(_msgs)
+	_journal = JournalView.new()
+	add_child(_journal)
 	NoiseMgr.overcharge_stale.connect(func() -> void: show_note(tr("They know this trick — move before you lure again")))
 	add_child((load("res://scripts/taken_arrow.gd") as GDScript).new())      # strzałka ku porwanemu graczowi poza kadrem (Żerca, F4d)
+	if "--shotjournal" in OS.get_cmdline_user_args():
+		# dev: dziennik otwarty z kilkoma przykładowymi wpisami (zrzut: --shotjournal --shot=PLIK)
+		var tm := Timer.new()
+		tm.wait_time = 1.5
+		tm.one_shot = true
+		tm.autostart = true
+		tm.timeout.connect(func() -> void:
+			Msg.note_to_journal("1.2  RADIO SILENCE", Msg.Ch.TITLE, Msg.Style.DANGER, "WEATHER — RAIN: every noise is 25% quieter")
+			Msg.tick(3.0)
+			Msg.note_to_journal("+50 XP", Msg.Ch.TOAST, Msg.Style.SUCCESS)
+			Msg.tick(20.0)
+			Msg.note_to_journal("Something is listening…", Msg.Ch.ALERT, Msg.Style.WARN, "Above 60% noise he wakes up")
+			Msg.tick(40.0)
+			Msg.note_to_journal("LEVEL 24  —  perk slot unlocked", Msg.Ch.TOAST, Msg.Style.SUCCESS)
+			_journal.set_open(true))
+		add_child(tm)
 
 func _build_prompt() -> void:
 	_prompt_card = _card(Vector2(MARGIN, MARGIN))
@@ -1178,34 +1196,12 @@ func _drive_captions(delta: float) -> void:
 		_cap_card.reset_size()
 		_cap_card.position = Vector2(size.x - _cap_card.size.x - MARGIN, size.y * 0.30)
 
-## Podpowiedź dla nowego gracza: wąska karta nad paskiem kontekstowym (hints.gd decyduje, co i kiedy).
-func _build_hint() -> void:
-	_hint_card = _card(Vector2(MARGIN, MARGIN))
-	_hint_card.visible = false
-	var hb := UiTheme.panel_box()
-	hb.border_color = Color(UiTheme.ACCENT, 0.45)
-	hb.set_content_margin_all(7)
-	_hint_card.add_theme_stylebox_override("panel", hb)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 7)
-	_hint_card.add_child(row)
-	row.add_child(UiTheme.heading("TIP", 8, UiTheme.ACCENT))
-	_hint_label = UiTheme.whisper(UiTheme.label("", 9, UiTheme.TEXT))
-	_hint_label.custom_minimum_size = Vector2(330, 0)
-	_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	row.add_child(_hint_label)
-
 func _drive_hint(delta: float) -> void:
-	# jeden komunikat naraz: ostrzeżenie o hałasie i krótkie noty mają pierwszeństwo — podpowiedź czeka (jej czas stoi)
-	var busy := not Msg.current(Msg.Ch.ALERT).is_empty() or not Msg.toasts().is_empty()
+	# jeden komunikat naraz: alert, toast i karta tytułowa mają pierwszeństwo — porada czeka (jej czas stoi), pokazuje się w spokojnej chwili
+	var busy := not Msg.current(Msg.Ch.ALERT).is_empty() or not Msg.toasts().is_empty() or not Msg.current(Msg.Ch.TITLE).is_empty()
 	var text := _hints.update(0.0 if busy else delta, _player)
-	_hint_card.visible = text != "" and not _result.visible and not busy
-	if not _hint_card.visible:
-		return
-	_hint_label.text = text
-	_hint_card.modulate.a = _hints.alpha
-	_hint_card.reset_size()
-	_hint_card.position = Vector2((size.x - _hint_card.size.x) * 0.5, size.y * HINT_Y)
+	if text != "" and not _result.visible and not busy:
+		Msg.hold("hud.tip", Msg.Ch.TIP, text, {"style": Msg.Style.INFO, "prio": 30, "alpha": _hints.alpha, "log": true})
 
 func _build_result() -> void:
 	_result = _card(Vector2(MARGIN, MARGIN))
@@ -1293,6 +1289,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("help"):
 		_controls_mode = 0 if _controls.visible else 1
+	elif event.is_action_pressed("journal") and NoiseMgr.has_network():
+		_journal.set_open(not _journal.open)
+		get_viewport().set_input_as_handled()
+	elif _journal.open and event.is_action_pressed("pause"):
+		_journal.set_open(false)                      # Esc zamyka dziennik (menu pauzy otwiera się jak zwykle)
 	elif Settings.STORE_URL != "" and _result.visible and _demo_footer != null and _demo_footer.visible and event.is_action_pressed("open_store"):
 		OS.shell_open(Settings.STORE_URL)
 
