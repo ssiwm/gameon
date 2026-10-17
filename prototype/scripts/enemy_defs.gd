@@ -116,9 +116,9 @@ const DEFS := {
 	"zerca": {
 		"hp": 300.0, "speed": 95.0, "damage": 1, "windup": 0.4, "reach": 13.0,
 		"cooldown": 1.1, "leap": true, "hear": 240.0, "wake_near": 60.0, "sight": 280.0,
-		"behavior": "devourer", "elite": true, "fire_shy": true, "sheet": "skoczek", "ring_r": 60.0,
+		"behavior": "devourer", "elite": true, "fire_shy": true, "stun_resist": true, "sheet": "skoczek", "ring_r": 60.0,
 		"devour": {"time": 20.0, "sense": 520.0, "carry_speed": 0.6, "grab_r": 14.0, "noise": 6.0},
-		"color": Color(0.5, 0.52, 0.42), "size": Vector2(14, 22), "hurt_h": 30.0, "knock": 40.0, "knock_mult": 0.6, "head": 0.2,
+		"color": Color(0.5, 0.52, 0.42), "size": Vector2(14, 22), "hurt_h": 30.0, "knock": 40.0, "knock_mult": 0.05, "head": 0.2,
 		"xp": 30, "scrap": 20, "supply": 0.3, "ammo": 0.3, "health": 0.5, "hear_error": 64.0, "voice": {"attack": ["trzosek_attack", 3, -4.0, 0.7], "death": ["slepiec_death", 2, -2.0, 0.7]},
 	},
 }

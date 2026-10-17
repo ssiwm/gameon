@@ -1178,7 +1178,7 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 	if not bool(_def.get("stun_resist", false)):
 		_stagger = 0.12
 	Vfx.blood(get_parent(), global_position + Vector2(0, -8), (global_position - from_pos).normalized(), 5)
-	var knock: float = _def["knock"]
+	var knock: float = _def["knock"] * (float(_def["knock_mult"]) if bool(_def.get("stun_resist", false)) else 1.0)        # elita odporna na zatrzymywanie (Rzeźnik, Żerca) prawie nie jest odrzucana
 	velocity.x += signf(global_position.x - from_pos.x) * knock
 	if not active:
 		wake()

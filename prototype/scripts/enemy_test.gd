@@ -815,6 +815,15 @@ func _test_devourer() -> void:
 	z2._beh.on_death()
 	z2.queue_free()
 	player.taken = false
+	# odporność na zatrzymywanie: strzały nie blokują ruchu Żercy (brak chwiania, odrzut ×0,05)
+	var zr := _spawn("zerca", Vector2(x0 + 700.0, y))
+	zr.set_physics_process(false)
+	await get_tree().physics_frame
+	zr.velocity = Vector2(57.0, 0.0)
+	zr.take_hit({"amount": 8.0, "dir": Vector2.LEFT, "pos": zr.global_position, "shooter": int(player.player_id), "type": "bullet", "stun": 0.5, "knock": 200.0})
+	zr.take_bullet(zr.global_position + Vector2(40.0, 0.0), 8.0)
+	check("Żerca/odporność: strzały go nie zatrzymują — brak chwiania (stagger 0), odrzut ≤ 5% (dwa trafienia: prędkość 57 → > 40 px/s)", zr._stagger == 0.0 and zr.velocity.x > 40.0, "stagger=%.2f vx=%.1f" % [zr._stagger, zr.velocity.x])
+	zr.queue_free()
 	# trafiony w ukryciu (wybuch) — ujawnia się
 	z._beh._hide()
 	z._beh.on_hit(false)
