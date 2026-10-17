@@ -24,7 +24,7 @@ extends Node2D
 ##   g  broń na ziemi         a  skrzynka z amunicją
 ##   m  błoto (bagno: wolno, grząsko)   O  plama oleju (ślizg)   i  lód   s  śnieg  — kafle-podłoża z własną fizyką
 ##   L  Ślepiec (nie widzi, słyszy)   P  Podsłuchacz (stoi, krzyczy i ściąga hordę)
-##   Y  Mimik (udaje kolegę z drużyny)
+##   Y  Mimik (udaje kolegę z drużyny)   A  Kapłan (elita: leczy Trzoski, krzyczy falą ogłuszającą)
 ##   J  Skoczek (wisi pod sufitem i spada)   Z  Ćma (światłolubna, wisi pod sufitem)
 ##
 
@@ -40,6 +40,7 @@ const SoundGrid := preload("res://scripts/sound_grid.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const ART_TILES := "res://art/tiles.png"     ## 8×4: rzędy 0/2 wierzch, 1/3 wypełnienie
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
+const EnemyDefs := preload("res://scripts/enemy_defs.gd")
 const NEST_SCENE := preload("res://scenes/nest.tscn")
 const STALKER_SCENE := preload("res://scenes/stalker.tscn")
 const BOSS_SCENE := preload("res://scenes/boss.tscn")
@@ -491,7 +492,7 @@ func _exposure(c: int, r: int) -> int:
 ## na każdym peerze.
 func _spawn_entities() -> void:
 	_spawn_walls()
-	var found := {"T": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": []}
+	var found := {"T": [], "A": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -504,7 +505,7 @@ func _spawn_entities() -> void:
 				"e": exits_alt.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q": found[ch].append(p)
+				"T", "A", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -521,6 +522,12 @@ func _spawn_entities() -> void:
 		_add_enemy("Skoczek%d" % (i + 1), "skoczek", _hang_pos(found["J"][i], 14.0))
 	for i in found["Z"].size():
 		_add_enemy("Cma%d" % (i + 1), "cma", _hang_pos(found["Z"][i], 8.0))
+	for i in found["A"].size():
+		_add_enemy("Kaplan%d" % (i + 1), "kaplan", found["A"][i])
+	# dev: `--elite=KIND` stawia elitę obok pierwszego Trzoska mapy (playtest bez czekania na Dyrektora)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--elite=") and EnemyDefs.has(a.substr(8)) and not (found["T"] as Array).is_empty():
+			_add_enemy("DevElite", a.substr(8), (found["T"][0] as Vector2) + Vector2(28.0, 0.0))
 	for i in found["N"].size():
 		var n := NEST_SCENE.instantiate()
 		n.name = "Nest%d" % (i + 1)
@@ -657,7 +664,7 @@ func tag_total() -> int:
 	return (_map_items.get("F", []) as Array).size()
 
 ## Odprawa misji `id` z danych mapy (kryjówka, tablica): tytuł, cel, liczba wrogów każdego rodzaju policzona ze znaczników.
-const THREAT_CHARS := {"T": "trzosek", "W": "wolek", "L": "slepiec", "P": "podsluchacz", "Y": "mimik", "J": "skoczek", "Z": "cma"}
+const THREAT_CHARS := {"T": "trzosek", "A": "kaplan", "W": "wolek", "L": "slepiec", "P": "podsluchacz", "Y": "mimik", "J": "skoczek", "Z": "cma"}
 
 func briefing(id: String) -> Dictionary:
 	if not MAPS.has(id):

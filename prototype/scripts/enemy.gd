@@ -145,6 +145,8 @@ var _hanging := false         ## Skoczek / ćma wiszą pod sufitem, dopóki ich 
 var _patrolled := false       ## wracając do domu sprawdził już jedno gorące miejsce
 var _last_attacker := 0               ## player_id ostatniego trafiającego (XP za zabójstwo, profile.gd)
 var _ring := 0.0              ## efekt fali krzyku (każdy peer)
+var _heal_pts := PackedVector2Array()   ## punkty leczonych Trzosków (wiązki Kapłana, każdy peer; patrz `_heal_fx`)
+var _heal_fx_t := 0.0
 var _level_t := 0.0           ## s, przez które cel jest na innym poziomie (histereza: skok gracza to nie zmiana piętra)
 
 func _on_ai_changed(_from: int, to: int) -> void:
@@ -176,8 +178,8 @@ func _ready() -> void:
 	Hurtbox.add(self, float(_def.get("hurt_w", size.x)), _hurt_h())   # strefa trafień na wysokość modelu (ciało ruchu zostaje niższe)
 	# oczy i pasek HP świecą w ciemności — śpiącego wroga widać jako
 	# przygaszone oczy, a nie wcale (skradanie musi mieć informację)
-	if Sprites.has(Sprites.enemy_sheet(kind)):
-		_spr = Sprites.attach(self, Sprites.enemy_sheet(kind))
+	if Sprites.has(Sprites.enemy_sheet(String(_def.get("sheet", kind)))):        # `sheet`: rodzaj bez własnych klatek pożycza zegar animacji od innego (elity do czasu własnych modeli)
+		_spr = Sprites.attach(self, Sprites.enemy_sheet(String(_def.get("sheet", kind))))
 	_last_x = global_position.x
 	_phys_x = global_position.x
 	if _def.get("fire_shy", false):
@@ -567,6 +569,12 @@ func _crash_fx() -> void:
 	Vfx.dust(get_parent(), global_position, 1.0)
 	if _local_player_pos().distance_to(global_position) < 300.0:
 		Feel.shake(3.5)
+
+## Wiązki leczenia Kapłana (RPC musi żyć w węźle wroga): punkty leczonych Trzosków na 0,6 s dla widoku 3D (`view_info["beams"]`).
+@rpc("authority", "call_local", "unreliable")
+func _heal_fx(pts: PackedVector2Array) -> void:
+	_heal_pts = pts
+	_heal_fx_t = 0.6
 
 ## Odpowiedź na alarm Podsłuchacza (F3.8): ślad z błędem lokalizacji jak przy każdym hałasie (`hear_error` rodzaju), a wrogowie dalej budzą się później —
 ## głos niesie `wave` px/s plus rozrzut do ALARM_JITTER, więc horda nie rusza w jednej klatce, tylko falą od krzykacza.
@@ -1031,7 +1039,7 @@ func _wall_between(pp: Node2D) -> bool:
 	return not get_world_2d().direct_space_state.intersect_ray(q).is_empty()
 
 func _try_begin_attack(target: Node2D) -> void:
-	if _cd > 0.0 or _windup > 0.0:
+	if _cd > 0.0 or _windup > 0.0 or not _beh.may_attack():
 		return
 	if _in_reach(target, 0.0) and not _wall_between(target):
 		_windup = windup_time(float(_def["windup"]), Difficulty.m("enemy_windup"))
@@ -1258,7 +1266,7 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 ## Klucze: kind (rodzaj modelu), alive, winding (zapowiedź ciosu), sp (stan specjalny Wołka), flash (świeże trafienie), ai (stan AI, `Ai`),
 ## alert (reakcja „zauważył cię": oczy rozżarzone, wróg stoi i patrzy na źródło).
 func view_info() -> Dictionary:
-	var d := {"kind": kind, "alive": alive, "winding": winding, "sp": _sp, "flash": _flash > 0.0, "ai": _ai, "alert": _ai == Ai.ALERT, "shield": false}
+	var d := {"kind": kind, "alive": alive, "winding": winding, "sp": _sp, "flash": _flash > 0.0, "ai": _ai, "alert": _ai == Ai.ALERT, "shield": false, "tele": 0.0, "beams": PackedVector2Array()}
 	_beh.view_extra(d)
 	return d
 
@@ -1274,6 +1282,7 @@ func _process(delta: float) -> void:
 		if winding and alive and _ring <= 0.0:                  # krzyk demaskacji / alarmu (_scream_fx) zastępuje zapowiedź
 			_voice("attack")
 	_ring = maxf(0.0, _ring - delta)
+	_heal_fx_t = maxf(0.0, _heal_fx_t - delta)
 	if visible:
 		_update_sprite()
 		queue_redraw()

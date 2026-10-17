@@ -223,7 +223,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 
 | Wróg | HP | Cechy |
 |------|----|-------|
-| **Kapłan** | 250 | Emituje falę krzyku (AoE 6 m, stun), leczy Trzosków. Zabij pierwszego |
+| **Kapłan** | 250 | Elita wsparcia (pancerz 2, wolny, **nie bije w zwarciu**): trzyma dystans za Trzoskami i co sekundę **leczy** je o 10% maks. HP (7 m, z czystą linią); gdy gracz podejdzie bliżej niż 7 m, po zapowiedzi 0,7 s z pierścieniem **krzyczy** — wszyscy gracze w 6 m dostają **ogłuszenie 0,8 s** (bez strzału, skoku i bicia, chodzić można; potem 3 s niewrażliwości), przerwa 8 s. Zabity przestaje leczyć, a Trzoski w pobliżu tracą morale. Najwyżej jedna elita naraz (znacznik `A` w mapie, późne grupy Dyrektora) | Zabij pierwszego: cofnij się z pierścienia, wejdź w zasięg tuż po krzyku, strzelba i ogień |
 | **Rzeźnik** | 600 | Miniboss stref; ładuje się przez ściany, niszczy barykady |
 | **Żerca** | 300 | Zjada downed graczy — jeśli nie uratujesz w 20 s, postać ginie do końca misji |
 

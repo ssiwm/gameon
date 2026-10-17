@@ -3067,7 +3067,7 @@ func _sync_enemy_rings() -> void:
 		var k := 1.0 - float(rv) / 0.7
 		var size: Vector2 = n.get("_def")["size"]
 		var c := Level3D.px_to_m((n as Node2D).global_position + Vector2(0.0, -size.y * 0.7)) + Vector3(0.0, 0.0, 0.35)
-		var r := (8.0 + k * 70.0) * PX
+		var r := (8.0 + k * float((n.get("_def") as Dictionary).get("ring_r", 70.0))) * PX
 		var col := Color(1.0, 0.55, 0.35, (1.0 - k) * 0.8)
 		im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
 		for i in 49:
@@ -3082,32 +3082,78 @@ func _sync_enemy_rings() -> void:
 	for n in get_tree().get_nodes_in_group("enemies"):
 		if not (n is Node2D) or not n.has_method("view_info") or not (n as Node2D).is_visible_in_tree():
 			continue
-		if not bool(n.view_info().get("shield", false)):
-			continue
-		var size: Vector2 = n.get("_def")["size"]
-		var c := Level3D.px_to_m((n as Node2D).global_position + Vector2(0.0, -size.y * 0.55)) + Vector3(0.0, 0.0, 0.3)
-		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.012)
-		var r := (size.y * 0.9 + pulse * 2.0) * PX
-		var fill := Color(0.55, 0.8, 1.0, 0.10 + 0.07 * pulse)
-		var edge := Color(0.7, 0.9, 1.0, 0.55 + 0.3 * pulse)
-		im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
-		for i in 49:
-			var a := TAU * float(i) / 48.0
-			var d := Vector3(cos(a), sin(a), 0.0)
-			im.surface_set_color(fill)
-			im.surface_add_vertex(c)
-			im.surface_set_color(fill)
-			im.surface_add_vertex(c + d * r)
-		im.surface_end()
-		im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
-		for i in 49:
-			var a := TAU * float(i) / 48.0
-			var d := Vector3(cos(a), sin(a), 0.0)
-			im.surface_set_color(edge)
-			im.surface_add_vertex(c + d * (r - 0.04))
-			im.surface_set_color(edge)
-			im.surface_add_vertex(c + d * (r + 0.04))
-		im.surface_end()
+		var info: Dictionary = n.view_info()
+		var dfn = n.get("_def")
+		if dfn == null:
+			continue                                               # Stalker, Żyła, Pijawka i gniazda mają view_info, ale nie dane rodzaju zwykłego wroga
+		var size: Vector2 = (dfn as Dictionary)["size"]
+		if bool(info.get("shield", false)):
+			var c := Level3D.px_to_m((n as Node2D).global_position + Vector2(0.0, -size.y * 0.55)) + Vector3(0.0, 0.0, 0.3)
+			var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.012)
+			var r := (size.y * 0.9 + pulse * 2.0) * PX
+			var fill := Color(0.55, 0.8, 1.0, 0.10 + 0.07 * pulse)
+			var edge := Color(0.7, 0.9, 1.0, 0.55 + 0.3 * pulse)
+			im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+			for i in 49:
+				var a := TAU * float(i) / 48.0
+				var d := Vector3(cos(a), sin(a), 0.0)
+				im.surface_set_color(fill)
+				im.surface_add_vertex(c)
+				im.surface_set_color(fill)
+				im.surface_add_vertex(c + d * r)
+			im.surface_end()
+			im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+			for i in 49:
+				var a := TAU * float(i) / 48.0
+				var d := Vector3(cos(a), sin(a), 0.0)
+				im.surface_set_color(edge)
+				im.surface_add_vertex(c + d * (r - 0.04))
+				im.surface_set_color(edge)
+				im.surface_add_vertex(c + d * (r + 0.04))
+			im.surface_end()
+		# zapowiedź fali krzyku Kapłana (`view_info()["tele"]` = promień w px): pulsujący pierścień na całym zasięgu fali — gracz widzi, skąd się cofnąć
+		var tele := float(info.get("tele", 0.0))
+		if tele > 0.0:
+			var tc := Level3D.px_to_m((n as Node2D).global_position + Vector2(0.0, -size.y * 0.5)) + Vector3(0.0, 0.0, 0.35)
+			var tp := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.02)
+			var tr := tele * PX
+			var tfill := Color(1.0, 0.75, 0.3, 0.025 + 0.02 * tp)
+			var tedge := Color(1.0, 0.8, 0.35, 0.55 + 0.35 * tp)
+			im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+			for i in 49:
+				var ta := TAU * float(i) / 48.0
+				var td := Vector3(cos(ta), sin(ta), 0.0)
+				im.surface_set_color(tfill)
+				im.surface_add_vertex(tc)
+				im.surface_set_color(tfill)
+				im.surface_add_vertex(tc + td * tr)
+			im.surface_end()
+			im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+			for i in 49:
+				var ta2 := TAU * float(i) / 48.0
+				var td2 := Vector3(cos(ta2), sin(ta2), 0.0)
+				im.surface_set_color(tedge)
+				im.surface_add_vertex(tc + td2 * (tr - 0.05))
+				im.surface_set_color(tedge)
+				im.surface_add_vertex(tc + td2 * (tr + 0.05))
+			im.surface_end()
+		# wiązki leczenia Kapłana (`view_info()["beams"]` = punkty leczonych): zielone pasma od jego tułowia do każdego z Trzosków
+		var beams: PackedVector2Array = info.get("beams", PackedVector2Array())
+		if not beams.is_empty():
+			var from3 := Level3D.px_to_m((n as Node2D).global_position + Vector2(0.0, -size.y * 0.7)) + Vector3(0.0, 0.0, 0.35)
+			for bp in beams:
+				var to3 := Level3D.px_to_m(bp) + Vector3(0.0, 0.0, 0.35)
+				var dir3 := (to3 - from3)
+				var nrm := Vector3(-dir3.y, dir3.x, 0.0).normalized() * 0.05
+				var bc := Color(0.45, 1.0, 0.55, 0.6)
+				im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+				for t in [0.0, 1.0]:
+					var pt: Vector3 = from3.lerp(to3, t)
+					im.surface_set_color(bc)
+					im.surface_add_vertex(pt - nrm)
+					im.surface_set_color(bc)
+					im.surface_add_vertex(pt + nrm)
+				im.surface_end()
 
 ## Pył w powietrzu wokół kadru: drobiny 3D w całej głębi sceny, widoczne tylko w świetle — snop latarki „ma objętość".
 ## Mgłę przy ziemi daje mgła wolumetryczna.
