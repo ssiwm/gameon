@@ -191,6 +191,8 @@ class Pips extends Control:
 	func min_size() -> Vector2:
 		if shape == "drop":
 			return Vector2(count * 12.0 - 3.0, 11.0)
+		if shape == "seg":
+			return Vector2(count * 17.0 - 2.0, 2.6)
 		return Vector2(count * 11.0 * u - 2.0, 9.0 * u)
 	## Serce 9×8 pikseli: ciemny obrys (przesunięcia o 1 px) pod wypełnieniem i jasny piksel odblasku — jak sprite'y świata.
 	const HEART := ["011000110", "111101111", "111111111", "111111111", "011111110", "001111100", "000111000", "000010000"]
@@ -249,6 +251,16 @@ class Pips extends Control:
 		draw_colored_polygon(inner, c)
 		draw_colored_polygon(PackedVector2Array([o + Vector2(2.7, 4.2), o + Vector2(3.4, 3.4), o + Vector2(3.9, 4.2), o + Vector2(3.5, 5.6), o + Vector2(2.8, 5.7)]), Color(1.0, 0.75, 0.75, 0.55))
 	func _draw() -> void:
+		if shape == "seg":
+			# cienkie segmenty życia (HUD bez ramek): pełny = kolor, pusty = ledwo widoczna linia, bonus = złoty, pęknięty = ciemniejszy
+			for i in count:
+				var sc := on if i < filled else off
+				if i >= bonus_from:
+					sc = bonus
+				if i == cracked:
+					sc = sc.darkened(0.35)
+				draw_rect(Rect2(Vector2(i * 17.0, 0.0), Vector2(15.0, size.y if size.y > 0.5 else 2.6)), sc)
+			return
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(u, u))
 		for i in count:
 			var c := on if i < filled else off
@@ -353,6 +365,15 @@ class Swatch extends Control:
 		draw_rect(Rect2(2, 2, 5, 6), col)
 		draw_rect(Rect2(3, 3, 1, 1), Color(0.95, 0.9, 0.8))
 
+## Romb w kolorze slotu przed nazwą kolegi z drużyny (lista w lewym górnym rogu).
+class Diamond extends Control:
+	var col := Color.WHITE
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(7, 7)
+	func _draw() -> void:
+		draw_colored_polygon(PackedVector2Array([Vector2(3.5, 0), Vector2(7, 3.5), Vector2(3.5, 7), Vector2(0, 3.5)]), col)
+
 ## Moneta złomu (8×8, pixel art) — obok licznika portfela.
 class Coin extends Control:
 	func _init() -> void:
@@ -407,7 +428,9 @@ var _noise_bar: VuMeter
 var _noise_val: Label
 var _noise_state: Label
 var _weather_row: Label                   ## pogoda misji i jej skutki pod miernikiem hałasu (tylko gdy jest pogoda)
-var _squad_card: PanelContainer
+var _squad_card: PanelContainer      ## koledzy z drużyny (lewy górny róg)
+var _self_box: VBoxContainer          ## własny wiersz życia: w bloku „ja + hałas” (lewy dolny róg)
+var _noise_cap: Label
 var _squad_box: VBoxContainer
 var _squad_rows := {}            ## instance_id gracza -> słownik wiersza
 var _gear_card: PanelContainer
@@ -469,7 +492,7 @@ var _result_sub: Label
 var _result_box: StyleBoxFlat
 var _inspect: Control                   ## oględziny broni ([F]): rozmyte tło, model 3D i statystyki — weapon_inspect.gd
 var _noise_card: PanelContainer      ## karta hałasu (w kryjówce zastępuje ją znacznik SAFE)
-var _safe_chip: PanelContainer
+var _safe_chip: Control
 var _ready_pips: Pips              ## kwadraciki gotowości w pasku misji kryjówki
 var _scrap_coin: Coin
 var _brief: Dictionary = {}               ## karta odprawy przy tablicy w kryjówce
@@ -610,17 +633,18 @@ func _row(parent: Container, caption: String) -> HBoxContainer:
 	parent.add_child(r)
 	return r
 
-## Lewy górny róg: sam miernik hałasu — jedyny wskaźnik, na który trzeba patrzeć bez przerwy (filar ciszy).
+## Lewy dolny róg: „ja + hałas” — własne życie nad jedną linią stanu hałasu i mały VU-metr (filar ciszy: jedyny wskaźnik, na który
+## trzeba patrzeć bez przerwy). W kryjówce hałas nic nie mówi (zawsze 0%), więc zostaje samo życie i znacznik SAFE.
 func _build_noise_card() -> void:
 	var card := _card(Vector2(MARGIN, MARGIN))
 	_noise_card = card
-	card.custom_minimum_size = Vector2(0, TOP_H)
 	var outer := HBoxContainer.new()
-	outer.add_theme_constant_override("separation", 8)
+	outer.add_theme_constant_override("separation", 9)
+	outer.alignment = BoxContainer.ALIGNMENT_BEGIN
 	card.add_child(outer)
 	_noise_bar = VuMeter.new()                 # analogowy VU-metr; progi z NoiseMgr: 30 = zasypia, 40 = niepokój, 60 = budzi się ON
-	_noise_bar.custom_minimum_size = Vector2(70, 41)
-	_noise_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_noise_bar.custom_minimum_size = Vector2(52, 31)
+	_noise_bar.size_flags_vertical = Control.SIZE_SHRINK_END
 	_noise_bar.ticks = [
 		[NoiseMgr.SLEEP_THRESHOLD / 100.0, Color(1, 1, 1, 0.35)],
 		[NoiseMgr.UNEASY_THRESHOLD / 100.0, UiTheme.ACCENT],
@@ -628,38 +652,39 @@ func _build_noise_card() -> void:
 	]
 	outer.add_child(_noise_bar)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 1)
-	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	box.add_theme_constant_override("separation", 4)
+	box.size_flags_vertical = Control.SIZE_SHRINK_END
 	outer.add_child(box)
-	box.add_child(_cap("NOISE", UiTheme.MUTED, 0.22))
+	_self_box = VBoxContainer.new()
+	_self_box.add_theme_constant_override("separation", 2)
+	box.add_child(_self_box)
+	var nz := HBoxContainer.new()
+	nz.add_theme_constant_override("separation", 5)
+	box.add_child(nz)
+	_noise_cap = _cap("NOISE", UiTheme.MUTED, 0.22)
+	nz.add_child(_noise_cap)
 	_noise_state = _cap("", UiTheme.MUTED, 0.14)
-	box.add_child(_noise_state)
-	_noise_val = UiTheme.mono(UiTheme.label("0%", 12, UiTheme.TEXT))
-	box.add_child(_noise_val)
+	nz.add_child(_noise_state)
+	_noise_val = UiTheme.mono(UiTheme.label("0%", 8, UiTheme.TEXT))
+	nz.add_child(_noise_val)
+	_safe_chip = UiTheme.heading("SAFE", 8, UiTheme.OK)
+	_safe_chip.visible = false
+	nz.add_child(_safe_chip)
 	_weather_row = UiTheme.label("", 7, UiTheme.MUTED)
 	_weather_row.visible = false
 	box.add_child(_weather_row)
-	# w kryjówce miernik hałasu nic nie mówi (zawsze 0%) — zastępuje go mały znacznik SAFE
-	_safe_chip = _card(Vector2(MARGIN, MARGIN))
-	_safe_chip.add_child(UiTheme.heading("SAFE", 8, UiTheme.OK))
-	_safe_chip.visible = false
 
-## Lewy dolny róg: karta drużyny (L4D / DRG). Wiersze powstają dynamicznie — _drive_squad().
+## Lewy górny róg: koledzy z drużyny (L4D / DRG) — romb w kolorze slotu, nazwa, cienkie segmenty życia. Własny wiersz jest w bloku
+## „ja + hałas”. Wiersze powstają dynamicznie — _drive_squad().
 func _build_squad_card() -> void:
 	_squad_card = _card(Vector2(MARGIN, MARGIN))
-	_squad_card.custom_minimum_size = Vector2(SQUAD_W, ROW_H)
 	var outer := VBoxContainer.new()
-	outer.add_theme_constant_override("separation", 3)
+	outer.add_theme_constant_override("separation", 5)
 	_squad_card.add_child(outer)
-	var sh := HBoxContainer.new()
-	var sc := _cap("SQUAD", UiTheme.MUTED, 0.22)
-	sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sh.add_child(sc)
-	_squad_info = _cap("", UiTheme.MUTED, 0.06)
-	sh.add_child(_squad_info)
-	outer.add_child(sh)
+	_squad_info = _cap("", UiTheme.MUTED, 0.1)
+	outer.add_child(_squad_info)
 	_squad_box = VBoxContainer.new()
-	_squad_box.add_theme_constant_override("separation", 5)
+	_squad_box.add_theme_constant_override("separation", 7)
 	outer.add_child(_squad_box)
 
 ## Dół, środek: broń jako model 3D bez ramki — [miniatury slotów 1–4 (chwilę po zmianie)] / [model + magazynek i zapas] /
@@ -811,46 +836,48 @@ func _key(s: String) -> Control:
 
 # ---------------------------------------------------------------- karta drużyny
 
-## Jeden wiersz: plakietka w kolorze slotu, serca (złote ponad bazę), stan (DOWN / REVIVING / CRITICAL / AI)
-## i pasek pod spodem, gdy ktoś leży (czerwony = wykrwawianie, zielony = podnoszenie).
+## Jeden wiersz: [romb w kolorze slotu] nazwa (+ BOT / YOU), stan (DOWN / REVIVING / CRITICAL), pod spodem cienkie segmenty życia
+## (złote ponad bazę) i pasek, gdy ktoś leży (czerwony = wykrwawianie, zielony = podnoszenie). Własny wiersz trafia do bloku hałasu.
 func _make_squad_row(p: Node, is_self: bool) -> Dictionary:
 	var slot := ((int(p.display_id) - 1) % 4) + 1
+	var slot_col: Color = SLOT_COLORS[slot - 1]
 	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 2)
+	root.add_theme_constant_override("separation", 3)
 	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 6)
-	# plakietka 30×30 px z makiety: lokalny gracz = kość z ciemnym tekstem, inni ludzie i boty = ciemna z tekstem w kolorze slotu / szarym
-	var badge := UiTheme.mono(UiTheme.label("AI" if p.is_bot else "P%d" % int(p.display_id), 8, Color(0.04, 0.045, 0.04), HORIZONTAL_ALIGNMENT_CENTER))
-	var bg := StyleBoxFlat.new()
-	bg.bg_color = UiTheme.TEXT if is_self else Color("1f1e19")
-	bg.set_content_margin_all(2)
-	badge.add_theme_stylebox_override("normal", bg)
-	badge.add_theme_constant_override("outline_size", 0)
+	top.add_theme_constant_override("separation", 5)
 	if not is_self:
-		badge.add_theme_color_override("font_color", Color("bdb8a6") if p.is_bot else SLOT_COLORS[slot - 1])
-	badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	badge.custom_minimum_size = Vector2(19, 19)
-	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	top.add_child(badge)
-	var pips := Pips.new()
-	pips.shape = "drop"
-	pips.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	pips.on = Color("bdb8a6") if p.is_bot else UiTheme.DANGER
-	pips.edge_off = Color("3d3a30") if p.is_bot else Color("4a1e1a")
-	top.add_child(pips)
-	if is_self:
-		var ecg := Ecg.new()
-		ecg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		top.add_child(ecg)
+		var dia := Diamond.new()
+		dia.col = Color("8d8a7c") if p.is_bot else slot_col
+		dia.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		top.add_child(dia)
+	var nm := UiTheme.mono(UiTheme.label("P%d" % int(p.display_id), 9, slot_col if is_self else UiTheme.TEXT))
+	nm.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(nm)
+	var tag := _cap(tr("YOU") if is_self else (tr("BOT") if p.is_bot else ""), UiTheme.MUTED, 0.18, 6)
+	tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(tag)
 	var status := _cap("", UiTheme.MUTED, 0.1)
 	status.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(status)
 	root.add_child(top)
+	var prow := HBoxContainer.new()
+	prow.add_theme_constant_override("separation", 7)
+	var pips := Pips.new()
+	pips.shape = "seg"
+	pips.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pips.on = UiTheme.DANGER if is_self else (Color("8d8a7c") if p.is_bot else UiTheme.TEXT)
+	pips.off = Color(1, 1, 1, 0.14)
+	prow.add_child(pips)
+	if is_self:
+		var ecg := Ecg.new()
+		ecg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		prow.add_child(ecg)
+	root.add_child(prow)
 	var bar := Bar.new()
-	bar.custom_minimum_size = Vector2(0, 3)
+	bar.custom_minimum_size = Vector2(0, 2)
 	bar.visible = false
 	root.add_child(bar)
-	_squad_box.add_child(root)
+	(_self_box if is_self else _squad_box).add_child(root)
 	return {"root": root, "pips": pips, "status": status, "bar": bar, "hp": maxi(p.hp, 0), "flash": 0.0, "self": is_self, "bot": p.is_bot}
 
 func _drive_squad(delta: float) -> void:
@@ -858,14 +885,12 @@ func _drive_squad(delta: float) -> void:
 	for p in get_tree().get_nodes_in_group("players"):
 		if is_instance_valid(p) and not p.is_queued_for_deletion():
 			list.append(p)
-	# własny wiersz u góry (makieta), potem koledzy rosnąco po slocie
-	list.sort_custom(func(a: Node, b: Node) -> bool:
-		if (a == _player) != (b == _player):
-			return a == _player
-		return a.display_id < b.display_id)
+	# koledzy rosnąco po slocie (własny wiersz trafia do bloku „ja + hałas”)
+	list.sort_custom(func(a: Node, b: Node) -> bool: return a.display_id < b.display_id)
 	var present := {}
-	for idx in list.size():
-		var p: Node = list[idx]
+	var mate_idx := 0
+	for node in list:
+		var p: Node = node
 		var id := p.get_instance_id()
 		present[id] = true
 		var is_self: bool = p == _player
@@ -875,14 +900,19 @@ func _drive_squad(delta: float) -> void:
 				(row["root"] as Node).queue_free()
 			row = _make_squad_row(p, is_self)
 			_squad_rows[id] = row
-		_squad_box.move_child(row["root"], idx)
+		if not is_self:
+			_squad_box.move_child(row["root"], mate_idx)
+			mate_idx += 1
 		_update_squad_row(p, row, delta)
 	for id in _squad_rows.keys():
 		if not present.has(id):
 			(_squad_rows[id]["root"] as Node).queue_free()
 			_squad_rows.erase(id)
+	_squad_card.visible = mate_idx > 0
 	_squad_card.reset_size()
-	_squad_card.position = Vector2(MARGIN, size.y - BOTTOM_PAD - _squad_card.size.y)
+	_squad_card.position = Vector2(2.0 * MARGIN, 2.0 * MARGIN)
+	_noise_card.reset_size()
+	_noise_card.position = Vector2(2.0 * MARGIN, size.y - BOTTOM_PAD - _noise_card.size.y)
 
 func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 	var hp := maxi(p.hp, 0)
@@ -891,10 +921,8 @@ func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 	pips.bonus_from = p.max_hp()
 	pips.filled = hp
 	pips.cracked = hp - 1 if hp > 0 and float(p.get("chip")) > 0.0 else -1        # ukryte 0,5 HP z głazu: ostatnie pełne serce pęknięte
-	if p.dead:
-		pips.on = Color(0.45, 0.17, 0.15)
-	else:
-		pips.on = Color("bdb8a6") if p.is_bot else UiTheme.DANGER
+	var base_col: Color = UiTheme.DANGER if bool(row["self"]) else (Color("8d8a7c") if p.is_bot else UiTheme.TEXT)
+	pips.on = Color(0.45, 0.17, 0.15) if p.dead else base_col
 	pips.custom_minimum_size = pips.min_size()
 	pips.queue_redraw()
 	# błysk wiersza po utracie zdrowia
@@ -1158,7 +1186,7 @@ func _drive_chat(delta: float) -> void:
 		if float(e["t"]) <= 0.0 and not _chat_edit.visible:
 			(e["label"] as Node).queue_free()
 			_chat_lines.remove_at(i)
-	var base_y := _squad_card.position.y - 6.0
+	var base_y := _noise_card.position.y - 6.0
 	_chat_edit.position = Vector2(MARGIN, base_y - 20.0)
 	_chat_log.reset_size()
 	_chat_log.position = Vector2(MARGIN, base_y - _chat_log.size.y - (22.0 if _chat_edit.visible else 0.0))
@@ -1173,6 +1201,7 @@ func _drive_tiers(delta: float) -> void:
 	var target := 0.5 if _calm_t > 4.0 else 1.0
 	_tier_k = lerpf(_tier_k, target, minf(1.0, delta * (1.5 if target < 1.0 else 6.0)))
 	_obj_card.modulate.a = lerpf(1.0, 0.6, (1.0 - _tier_k) * 2.0)
+	_squad_card.modulate.a = lerpf(1.0, 0.55, (1.0 - _tier_k) * 2.0)
 	_run_card.modulate.a = lerpf(1.0, 0.65, (1.0 - _tier_k) * 2.0)
 	for c in [_f1, _controls]:
 		(c as Control).self_modulate.a = lerpf(1.0, 0.45, (1.0 - _tier_k) * 2.0)
@@ -1343,8 +1372,12 @@ func show_note(text: String, secs := 3.0) -> void:
 	Msg.post("hud.note.%d" % text.hash(), Msg.Ch.TOAST, text, {"ttl": secs, "style": Msg.Style.WARN, "prio": 60})
 
 func _drive_noise() -> void:
-	_noise_card.visible = not NoiseMgr.safe_zone
-	_safe_chip.visible = NoiseMgr.safe_zone
+	var safe: bool = NoiseMgr.safe_zone
+	_noise_bar.visible = not safe
+	_noise_cap.visible = not safe
+	_noise_state.visible = not safe
+	_noise_val.visible = not safe
+	_safe_chip.visible = safe
 	var lvl := _dev_noise if _dev_noise >= 0.0 else NoiseMgr.level          # dev: --shotnoise=N pokazuje wskaźnik przy zadanym poziomie
 	_noise_val.text = "%d%%" % int(lvl)
 	_noise_bar.value = lvl / 100.0
@@ -1560,7 +1593,7 @@ func _drive_mission() -> void:
 	_obj_card.position = Vector2((size.x - _obj_card.size.x) * 0.5, MARGIN)
 	_msgs.obj_bottom = (_obj_card.position.y + _obj_card.size.y) / MSG_SCALE
 	_msgs.run_bottom = (_run_card.position.y + _run_card.size.y) / MSG_SCALE
-	_msgs.squad_top = _squad_card.position.y / MSG_SCALE
+	_msgs.squad_top = _noise_card.position.y / MSG_SCALE
 
 	var show_result: bool = m.phase == Mission.Phase.SUCCESS or m.phase == Mission.Phase.FAILED
 	var just_shown: bool = show_result and not _result.visible
