@@ -2314,6 +2314,7 @@ func _gen_test() -> void:
 	check.call("kryjówka: stanie w strefie startu = gotowość i odliczanie (%.1f s, %d/%d)" % [hub_countdown, hub_ready_n, hub_total], hub_in_zone and hub_mine and hub_countdown > 2.0 and hub_ready_n == hub_total)
 	var cd_alert: Dictionary = Msg.current(Msg.Ch.ALERT)
 	check.call("komunikaty: odliczanie wyjścia to alert w kanale ALERT (%s)" % str(cd_alert.get("text", "-")), String(cd_alert.get("id", "")) == "hud.hubcount" and bool(cd_alert.get("big", false)))
+	check.call("dziennik: akcja journal zarejestrowana (klawisz N), porady przez kanał TIP", InputMap.has_action("journal") and Msg.Ch.TIP == 4)
 	p.global_position = spawn_pos
 	p.velocity = Vector2.ZERO
 	await get_tree().create_timer(0.5).timeout
