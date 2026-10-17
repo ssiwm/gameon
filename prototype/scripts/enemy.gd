@@ -20,6 +20,7 @@ const Sprites := preload("res://scripts/sprites.gd")
 const Nav := preload("res://scripts/nav.gd")
 const Surfaces := preload("res://scripts/surfaces.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
+const Behavior := preload("res://scripts/enemy_behavior.gd")
 
 const GRAVITY := 900.0
 const MAX_FALL := 620.0
@@ -57,51 +58,18 @@ const DROP_TIME := 0.25
 ## Słyszalność po trasie (1.7.4): dźwięk nie przechodzi przez ściany ani piętra — liczy się długość
 ## ścieżki po grafie nawigacji, nie linia prosta. Bez ścieżki (brak węzła) — tłumienie przez mur.
 const SOUND_MUFFLE := 3.0
-## Wataha (Trzosek): max atakujących naraz, pasmo krążenia, morale, strach przed Stalkerem.
-const MAX_ATTACKERS := 2
-const HOVER_MIN := 26.0
-const HOVER_MAX := 44.0
-const PACK_R := 220.0
 const WINDUP_INTERRUPT_STUN := 0.4   ## s ogłuszenia z trafienia, od którego przerywa się zapowiedź ciosu (strzelba, szyna, harpun, maczeta; F3.6)
 const WINDUP_INTERRUPT_CD := 0.6     ## s przerwy po przerwanym ciosie (× enemy_cd trudności)
-const SHARE_RADIUS := 220.0          ## px w poziomie: tyle słyszą krzyk kolegi, który zauważył gracza (F3.4a)
-const SHARE_DY := 40.0               ## px w pionie: kolega z innego piętra go nie słyszy
-const SHARE_COOLDOWN := 3.0          ## s: ten sam wróg daje znać najwyżej raz na tyle
-const FEAR_PER_DEATH := 0.34
-const FEAR_ALPHA := 0.7              ## śmierć przewodnika (najstarszy w watasze) łamie morale mocniej
-const FEAR_DECAY := 0.12             ## /s
-const PANIC_TIME := 2.4
-const STALKER_FEAR_R := 260.0
-## Wołek (bruiser): szarża z zapowiedzią (rozbija skrzynie i beczki, o ścianę się ogłusza) i rzut skrzynią.
-const CHARGE_WINDUP := 0.7
-const CHARGE_TIME := 0.9
-const CHARGE_MULT := 3.4
-const CHARGE_CD := 7.0
-const THROW_WINDUP := 0.8
-const THROW_CD := 6.0
-const THROW_DY_MAX := 160.0          ## px różnicy poziomów, z której Wołek jeszcze rzuca skrzynią (w górę i w dół; ok. 10 kafli)
-const CRASH_STUN := 1.3
-const RUN_CHECK_MAX := 280.0         ## px: tyle rozbiegu sprawdzamy przed szarżą (ściana i podłoga)
-const RUN_FLOOR_STEP := 16.0         ## px: co tyle sprawdzamy, czy pod rozbiegiem jest podłoga (kafel)
-const RUN_FLOOR_DEPTH := 28.0        ## px w dół od poziomu stóp: głębiej to już przepaść, nie stopień
-## Ćma i światło
-const MOTH_SEEK_R := 420.0           ## z tej odległości ćma wyczuwa światło
-const MOTH_BURN_DPS := 6.0           ## spalanie przy flarze
 const LIGHT_LURE_R := 360.0          ## ciekawość Trzosków: flara w tym promieniu (po trasie) daje im ślad
-## Skoczek: zasadzka spod sufitu
-const AMBUSH_DX := 36.0
-const AMBUSH_DY_MAX := 220.0
 ## Pamięć: wracający do domu wróg sprawdza „gorące miejsce" (gdzie ostatnio strzelano)
 const PATROL_RADIUS := 600.0
 const PATROL_MAX_AGE := 90.0
-## Podsłuchacz: krzyk to hałas (podnosi Uwagę, budzi okolicę) i wskazuje hordzie źródło.
-const SCREAM_NOISE := 14.0
-const ALARM_R := 420.0           ## wrogowie w tym promieniu dostają ślad do krzyku
 const ALARM_JITTER := 0.2        ## s losowego opóźnienia odpowiedzi na alarm (F3.8), żeby wataha nie ruszała w tej samej klatce
 const HISTORY_S := 0.5            ## historia pozycji do kompensacji opóźnienia (lag_comp.gd)
 const SCREAM_LURE_R := 400.0     ## krzyk GRACZA (voice.gd, GDD §8.2) przyciąga wrogów w 25 m
 
 @export var kind := "trzosek"
+var _beh                       ## zachowanie rodzaju (`enemy_behavior.gd` i podklasy) — haki rdzenia, patrz `enemy_behavior.gd`
 
 ## Jawny stan AI (ENEMY_PLAN.md F3): to, co wróg „robi" w tej chwili. Dotąd wynikał z kolejności gałęzi w `_phys_tick`; teraz jest liczony raz na tik
 ## z tych samych flag (`_derive_ai_state`), replikowany klientom i podawany widokowi 3D (`view_info`). Na razie tylko obserwacja — decyzje wciąż
@@ -158,7 +126,6 @@ const BLOCK_GIVEUP := 4.0
 const RETURN_STUCK_TIME := 4.0       ## s w miejscu w drodze do domu, po których dom przenosi się na miejsce postoju
 const IGNORE_TIME := 8.0
 var _home_t := 0.0
-var _retreat := 0.0           ## Trzosek odskakuje po ciosie (uderz i uciekaj)
 var _path: Array = []
 var _path_i := 0
 var _repath := 0.0
@@ -166,42 +133,18 @@ var _path_goal := Vector2.ZERO
 var _drop_t := 0.0
 var _blocked := false         ## następny krok grafu to skok, którego nie potrafi
 var _hist: Array = []         ## Vector3(czas, x, y) — pozycje z ostatnich HISTORY_S s (serwer)
-var _fear := 0.0              ## morale watahy: śmierć kolegów go podnosi, 1.0 = ucieczka
 var _flee_src := Vector2.ZERO ## od czego ucieka w panice (ZERO = od gracza)
-var _stalker_t := 0.0
-var _lure_t := 4.0            ## Mimik: odstęp między fałszywymi wołaniami
 var _sp := 0                  ## Wołek: 0 nic, 1 zapowiedź szarży, 2 szarża, 3 zapowiedź rzutu, 4 ogłuszony po uderzeniu
 var _ai: int = Ai.SLEEP       ## bieżący stan AI (patrz `Ai`)
 var _ai_t := 0.0              ## s w bieżącym stanie AI (serwer)
 var _alert := 0.0             ## s reakcji „zauważył cię" (stan Ai.ALERT): wróg stoi i patrzy na źródło, zanim ruszy (serwer)
-var _lunge_wind := 0.0        ## s zapowiedzi rzutu Ślepca na dźwięk (stan Ai.ALERT: staje, odwraca się, oczy żarzą się)
-var _lunge_t := 0.0           ## s trwania rzutu (stan Ai.LUNGE: pędzi w stronę źródła dźwięku)
-var _lunge_dir := 1.0
-var _lunge_pos := Vector2.ZERO ## dokąd (z błędem lokalizacji) leci rzut
-var _lunge_cd := 0.0
 var _sweep_dir := 1.0         ## kierunek przeszukiwania okolicy śladu (Ślepiec)
 var _alert_cd := 0.0          ## s do następnej reakcji — ten sam wróg nie staje za każdym razem, gdy cel mignie na granicy wzroku
-var _share_cd := 0.0          ## s do następnego „dania znać" kolegom o zauważonym graczu (serwer)
 var _net_face := 0.0          ## kierunek patrzenia z serwera (u klientów; `_sync`) — odwrót przy reakcji „zauważył"
-var _sp_t := 0.0
-var _sp_dir := 1.0
-var _sp_crate: Node = null
-var _sp_boulder := false      ## zapowiedź rzutu (`_sp` 3) dotyczy głazu, nie skrzyni (F3.9)
-var _boulder_cd := 2.0        ## przerwa między głazami (wg trudności, `enemy_defs.gd: boulder.cd`)
-var _charge_cd := 3.0
-var _throw_cd := 2.0
-var _charge_hit := false
 var _hanging := false         ## Skoczek / ćma wiszą pod sufitem, dopóki ich nic nie obudzi
-var _drop_attack := false     ## Skoczek spada na gracza (obrażenia przy lądowaniu)
 var _patrolled := false       ## wracając do domu sprawdził już jedno gorące miejsce
-var _t_moth := 0.0
 var _last_attacker := 0               ## player_id ostatniego trafiającego (XP za zabójstwo, profile.gd)
-var _scream_cd := 0.0         ## Podsłuchacz: przerwa między krzykami
-var _alerted := false         ## Podsłuchacz: już krzyknął (od tej pory boty go widzą jako zagrożenie)
 var _ring := 0.0              ## efekt fali krzyku (każdy peer)
-var _shield_t := 0.0          ## Podsłuchacz: s pola ochronnego, które chroni go w trakcie krzyku (obrażenia ×(1 − `shield.reduce`))
-var _screams := 0             ## Podsłuchacz: krzyki od ostatniego spokoju — kolejne mają mniejszy zasięg, a po `scream.max` milknie
-var _calm_t := 0.0            ## Podsłuchacz: s od ostatniego krzyku (po `scream.calm` bez celu licznik krzyków się zeruje)
 var _level_t := 0.0           ## s, przez które cel jest na innym poziomie (histereza: skok gracza to nie zmiana piętra)
 
 func _on_ai_changed(_from: int, to: int) -> void:
@@ -212,6 +155,7 @@ func _ready() -> void:
 	add_to_group("enemies")
 	ai_changed.connect(_on_ai_changed)
 	_def = KINDS.get(kind, KINDS["trzosek"])
+	_beh = Behavior.create(String(_def.get("behavior", "")), self)
 	for ev in ["attack", "alert", "death"]:                 # głosy rodzaju wczytane z góry: pierwszy warkot w walce nie zacina klatki
 		var vo: Array = EnemyDefs.voice(kind, ev)
 		if not vo.is_empty():
@@ -245,27 +189,13 @@ func _ready() -> void:
 
 ## Aktywny, żywy wróg = realne zagrożenie (boty strzelają tylko do takich).
 func is_threat() -> bool:
-	return alive and active and (kind != "podsluchacz" or (_alerted and _shield_t <= 0.0))      # w polu ochronnym boty nie marnują amunicji
+	return alive and active and _beh.threat_ok()
 
 func wake() -> void:
 	if not NoiseMgr.is_server() or not alive or active:
 		return
 	active = true
-	if _hanging and _def.get("hang", false):
-		# zasadzka: odczepia się od sufitu i spada (lądowanie rani, patrz _land_hit)
-		_hanging = false
-		_drop_attack = true
-		winding = true
-		velocity = Vector2(0.0, 40.0)
-	if _def.get("mimic", false):
-		# demaskacja: krzyk, fala i chwila na zmianę postaci (zapowiedź), potem normalny pościg
-		NoiseMgr.add_noise(6.0, global_position)
-		if NoiseMgr.has_network():
-			_scream_fx.rpc()
-		else:
-			_scream_fx()
-		_windup = 0.35
-		winding = true
+	_beh.on_wake()
 	if not _has_lead:
 		var p := _nearest_player()
 		if p != null:
@@ -301,33 +231,16 @@ func reset_enemy() -> void:
 	_panic = 0.0
 	_alert = 0.0
 	_alert_cd = 0.0
-	_lunge_wind = 0.0
-	_lunge_t = 0.0
-	_lunge_cd = 0.0
-	_share_cd = 0.0
 	_target = null
 	_hist.clear()
 	_has_lead = false
 	_lose_t = 0.0
 	_search_t = 0.0
-	_retreat = 0.0
-	_fear = 0.0
 	_flee_src = Vector2.ZERO
 	_sp = 0
-	_sp_crate = null
-	_sp_boulder = false
-	_boulder_cd = 2.0
-	_charge_cd = 3.0
-	_throw_cd = 2.0
-	_lure_t = 4.0
+	_beh.reset()
 	_hanging = bool(_def.get("hang", false)) or bool(_def.get("moth", false))
-	_drop_attack = false
 	_patrolled = false
-	_scream_cd = 0.0
-	_alerted = false
-	_shield_t = 0.0
-	_screams = 0
-	_calm_t = 0.0
 	_level_t = 0.0
 	_home_t = 0.0
 	_path.clear()
@@ -423,12 +336,9 @@ func _phys_tick(delta: float) -> void:
 func _derive_ai_state() -> int:
 	if not alive:
 		return Ai.DEAD
-	if kind == "podsluchacz":
-		if _shield_t > 0.0:
-			return Ai.SCREAM
-		return Ai.WINDUP if _windup > 0.0 else Ai.LISTEN
-	if kind == "cma":
-		return Ai.FLY if active else Ai.HANG
+	var pre: int = _beh.derive_pre()
+	if pre >= 0:
+		return pre
 	if not active:
 		return Ai.HANG if _hanging else Ai.SLEEP
 	if _sp != 0:
@@ -437,12 +347,13 @@ func _derive_ai_state() -> int:
 		return Ai.WINDUP
 	if _panic > 0.0:
 		return Ai.PANIC
-	if _alert > 0.0 or _lunge_wind > 0.0:
+	if _alert > 0.0:
 		return Ai.ALERT
-	if _lunge_t > 0.0:
-		return Ai.LUNGE
+	var mid: int = _beh.derive_mid()
+	if mid >= 0:
+		return mid
 	if _target != null:
-		return Ai.RETREAT if _retreat > 0.0 else Ai.CHASE
+		return _beh.chase_state()
 	if _has_lead:
 		return Ai.SEARCH if _search_t > 0.0 else Ai.INVESTIGATE
 	return Ai.RETURN
@@ -483,28 +394,19 @@ func _tick_server(delta: float) -> void:
 	_panic = maxf(0.0, _panic - delta)
 	_alert = maxf(0.0, _alert - delta)
 	_alert_cd = maxf(0.0, _alert_cd - delta)
-	_tick_lunge(delta)
-	_share_cd = maxf(0.0, _share_cd - delta)
-	_retreat = maxf(0.0, _retreat - delta)
-	_fear = maxf(0.0, _fear - FEAR_DECAY * delta)
+	_beh.tick_prelude(delta)
 	_tick_drop(delta)
 	_tick_burn(delta)
 	if not alive:
 		return
-
-	if kind == "podsluchacz":
-		_listener_tick(delta)
-		return
-	if kind == "cma":
-		_moth_tick(delta)
+	if _beh.tick_special(delta):
 		return
 
 	if not active:
 		_check_wake()
-		if kind == "mimik":
-			_mimik_lure(delta)
+		_beh.tick_asleep(delta)
 		if _hanging:
-			_check_ambush()
+			_beh.tick_hanging()
 			velocity = Vector2.ZERO          # wisi pod sufitem — bez grawitacji
 			_send_state(delta)
 			return
@@ -523,17 +425,13 @@ func _tick_server(delta: float) -> void:
 		speed *= 0.25
 	if not _def.get("fly", false):
 		speed *= _surface_speed()          # bagno, błoto i olej spowalniają też potwory — da się je tam zwabić
+	_beh.tick_awake(delta)
 
-	_stalker_t -= delta
-	if _stalker_t <= 0.0:
-		_stalker_t = 0.3
-		_check_stalker_fear()
-
-	# Wołek: szarża i rzut skrzynią przejmują ruch na czas swoich faz
-	if _def.get("bruiser", false) and _bruiser_tick(delta, target):
+	# faza specjalna rodzaju (Wołek: szarża i rzuty) przejmuje ruch na czas swoich faz
+	if _beh.tick_phase(delta, target):
 		_apply_gravity(delta)
 		_slide()
-		_after_move_bruiser()
+		_beh.after_phase_move()
 		_send_state(delta)
 		return
 
@@ -546,17 +444,11 @@ func _tick_server(delta: float) -> void:
 		# ucieczka: płonący Trzosek (HKM-9), załamane morale watahy, strach przed Stalkerem
 		var src_x := _flee_src.x if _flee_src != Vector2.ZERO else (target.global_position.x if target != null else global_position.x - _facing)
 		velocity.x = -signf(src_x - global_position.x) * speed * 0.9
-	elif _alert > 0.0 or _lunge_wind > 0.0:
-		# „zauważył cię" / zapowiedź rzutu na dźwięk: staje i patrzy na źródło, zanim ruszy (czas i odwrót w `_begin_alert` / `_start_lunge`)
+	elif _alert > 0.0 or _beh.holds_still():
+		# „zauważył cię" / zapowiedź szarży na dźwięk: staje i patrzy na źródło, zanim ruszy (czas i odwrót w `_begin_alert` / `maybe_lunge`)
 		velocity.x = move_toward(velocity.x, 0.0, 800.0 * delta)
-	elif _lunge_t > 0.0:
-		# rzut Ślepca na dźwięk: pędzi w stronę źródła (z błędem lokalizacji), nie sprawdzając drogi; kończy po czasie albo za źródłem; na styku z graczem bije
-		velocity.x = _lunge_dir * speed * float((_def.get("lunge", {}) as Dictionary).get("mult", 2.0))
-		if target != null:
-			_try_begin_attack(target)
-	elif target != null and _retreat > 0.0:
-		# uderz i uciekaj: po ciosie Trzosek odskakuje, więc wataha nie stoi w miejscu
-		velocity.x = -signf(target.global_position.x - global_position.x) * speed * 0.8
+	elif _beh.drive(delta, target, speed):
+		pass
 	elif target != null:
 		_chase(target, speed, delta)
 		_try_begin_attack(target)
@@ -567,8 +459,7 @@ func _tick_server(delta: float) -> void:
 
 	_apply_gravity(delta)
 	_slide()
-	if _drop_attack and is_on_floor():
-		_land_hit()
+	_beh.after_slide()
 	_send_state(delta)
 
 ## Czas zapowiedzi zwykłego ciosu po trudności: `base` × mnożnik, ale nie krócej niż MIN_WINDUP (F3.6b) — Trzosek na trudnym (0,28 × 0,8 = 0,22 s) był poniżej ludzkiej reakcji.
@@ -587,56 +478,21 @@ func _update_facing() -> void:
 	_phys_x = global_position.x
 	if absf(dx) > 0.05:
 		_facing = signf(dx)
-	if kind == "podsluchacz":
-		var look := _listener_look()
-		if is_finite(look.x) and absf(look.x - global_position.x) > 4.0:
-			_facing = signf(look.x - global_position.x)
+	var look: Vector2 = _beh.look_at_point()
+	if is_finite(look.x) and absf(look.x - global_position.x) > 4.0:
+		_facing = signf(look.x - global_position.x)
 
-## Punkt, w który patrzy Podsłuchacz: cel > ślad > najbliższy gracz (INF, gdy nikogo nie ma).
-func _listener_look() -> Vector2:
-	if _target != null and is_instance_valid(_target) and not _target.dead:
-		return _target.global_position
-	if _has_lead:
-		return _last_known
-	var p := _nearest_player()
-	return p.global_position if p != null else Vector2(INF, INF)
 
 ## Mocne ogłuszenie (strzelba, szyna, harpun, maczeta) przerywa zwykły cios w trakcie zapowiedzi (F3.6) — kontra, którą gracz może zaplanować: zapowiedź
 ## daje czas na unik ALBO na ogłuszenie. Nie dotyczy zapowiedzi specjalnych Wołka (`_sp`), przemiany Mimika (bez celu ciosu) i krzyku Podsłuchacza
 ## (który i tak zaczyna się od nowa po trafieniu). Po przerwaniu krótka przerwa, żeby wróg nie ponowił ciosu w tej samej chwili.
 func _interrupt_windup() -> void:
-	if _windup <= 0.0 or _windup_target == null or _sp != 0 or kind == "podsluchacz":
+	if _windup <= 0.0 or _windup_target == null or _sp != 0 or not _beh.can_interrupt_windup():
 		return
 	_windup = 0.0
 	_windup_target = null
 	winding = false
 	_cd = maxf(_cd, WINDUP_INTERRUPT_CD * Difficulty.m("enemy_cd"))
-
-## Skoczek lądujący na graczu: 2 obrażenia, łoskot (hałas) i pył.
-func _land_hit() -> void:
-	_drop_attack = false
-	winding = false
-	for p in get_tree().get_nodes_in_group("players"):
-		if not p.dead and absf(p.global_position.x - global_position.x) < 16.0 and absf(p.global_position.y - global_position.y) < 22.0:
-			p.deliver_hit(_scaled_damage(2), global_position, kind)
-	NoiseMgr.add_noise(5.0, global_position)
-	if NoiseMgr.has_network():
-		_crash_fx.rpc()
-	else:
-		_crash_fx()
-
-## Wiszący Skoczek spada, gdy ktoś stoi (prawie) pod nim i go widać (linia bez ściany).
-func _check_ambush() -> void:
-	if not _def.get("hang", false):
-		return
-	for p in get_tree().get_nodes_in_group("players"):
-		if p.dead:
-			continue
-		var dx := absf(p.global_position.x - global_position.x)
-		var dy: float = p.global_position.y - global_position.y
-		if dx < AMBUSH_DX and dy > 10.0 and dy < AMBUSH_DY_MAX and _clear_line(p):
-			wake()
-			return
 
 ## Krzyk gracza (mikrofon albo G): wróg w promieniu 25 m rusza do źródła; śpiącego budzi.
 func hear_scream(pos: Vector2) -> void:
@@ -698,373 +554,19 @@ func see_light(pos: Vector2) -> void:
 	if not active:
 		wake()
 
-## Najbliższe źródło światła dla ćmy: flara albo włączona latarka gracza (w promieniu `max_r`).
-func _nearest_light(max_r: float) -> Dictionary:
-	var best := {}
-	var best_d := max_r
-	for f in get_tree().get_nodes_in_group("flares"):
-		var d := global_position.distance_to(f.global_position)
-		if d < best_d:
-			best_d = d
-			best = {"pos": f.global_position, "kind": "flare", "node": f}
-	for fp in get_tree().get_nodes_in_group("fire_patches"):
-		var df := global_position.distance_to(fp.global_position)
-		if df < best_d:
-			best_d = df
-			best = {"pos": fp.global_position + Vector2(0, -4), "kind": "flare", "node": fp}       # ogień na podłodze spala ćmę jak flara
-	for f in Lights.active_flashes():
-		var shooter: Node = f["node"]
-		if shooter == null or not is_instance_valid(shooter):
-			continue
-		var d3 := global_position.distance_to(f["pos"])
-		if d3 < best_d:
-			best_d = d3
-			best = {"pos": f["pos"], "kind": "player", "node": shooter}                             # błysk z lufy: ćma leci na strzelca
-	for p in get_tree().get_nodes_in_group("players"):
-		if p.dead or not (p.flashlight or _beam_lit(p)):
-			continue
-		var d2 := global_position.distance_to(p.global_position)
-		if d2 < best_d:
-			best_d = d2
-			best = {"pos": p.global_position + Vector2(0, -8), "kind": "player", "node": p}
-	return best
-
-## Gracz strzela wiązką (LR-7): świeci jak latarka, ćmy lecą na tę wiązkę.
-func _beam_lit(p: Node) -> bool:
-	return bool(p.w_firing) and Weapons.def(int(p.weapon)).kind == Weapons.Kind.BEAM
-
-## Ćma: wisi (śpi), dopóki w zasięgu nie pojawi się światło; wtedy leci na nie falistym lotem.
-## Flara ją spala, latarka — kąsa gracza. Bez światła wraca pod sufit.
-func _moth_tick(delta: float) -> void:
-	_t_moth += delta
-	_cd = maxf(0.0, _cd - delta)
-	var lt := _nearest_light(MOTH_SEEK_R)
-	if not active:
-		velocity = Vector2.ZERO
-		if not lt.is_empty():
-			wake()
-		_send_state(delta)
-		return
-	var speed: float = float(_def["speed"]) * Difficulty.m("enemy_speed")
-	var want := Vector2.ZERO
-	if not lt.is_empty():
-		_lose_t = 0.0
-		var tp: Vector2 = lt["pos"]
-		var to := tp - global_position
-		var dist := to.length()
-		var dir := to / maxf(dist, 0.001)
-		want = dir * speed + Vector2(-dir.y, dir.x) * sin(_t_moth * 9.0 + float(get_instance_id() % 5)) * speed * 0.6
-		if lt["kind"] == "flare" and dist < 14.0:
-			hp -= MOTH_BURN_DPS * delta                 # krąży przy płomieniu i się spala
-			want = Vector2(-dir.y, dir.x) * speed * 0.7
-			if hp <= 0.0:
-				_die()
-				return
-		elif lt["kind"] == "player" and dist < 12.0 and _cd <= 0.0:
-			var pl: Node = lt["node"]
-			pl.deliver_hit(_scaled_damage(1), global_position, kind)
-			_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
-	else:
-		_lose_t += delta
-		want = Vector2(sin(_t_moth * 3.1), cos(_t_moth * 2.3)) * speed * 0.35
-		if _lose_t > 6.0:
-			# światło zgasło: wraca pod sufit i znów zasypia
-			var back := _home - global_position
-			want = back.normalized() * speed * 0.7
-			if back.length() < 8.0:
-				active = false
-				velocity = Vector2.ZERO
-				global_position = _home
-				_lose_t = 0.0
-	velocity = velocity.lerp(want, 0.18)
-	if is_on_wall() or is_on_ceiling():
-		velocity.y += 25.0 * (-1.0 if is_on_floor() else 1.0)
-	move_and_slide()
-	_send_state(delta)
-
 ## --- Mimik ----------------------------------------------------------------
-
-## Zamaskowany Mimik woła o pomoc głosem gracza (próbka bólu), gdy ktoś jest w zasięgu słuchu, ale jeszcze
-## nie przy nim — wabi do zasadzki. Kto podejdzie, poświeci albo strzeli, ten go demaskuje (wake()).
-func _mimik_lure(delta: float) -> void:
-	_lure_t -= delta
-	if _lure_t > 0.0:
-		return
-	var p := _nearest_player()
-	var d := p.global_position.distance_to(global_position) if p != null else INF
-	if d < 340.0 and d > 70.0:
-		_lure_t = randf_range(6.0, 10.0)
-		if NoiseMgr.has_network():
-			_mimic_call.rpc()
-		else:
-			_mimic_call()
-	else:
-		_lure_t = 1.0
 
 @rpc("authority", "call_local", "unreliable")
 func _mimic_call() -> void:
 	Audio.play_variant_at("player_hurt", 2, global_position, Audio.BUS_WORLD, -5.0, randf_range(0.95, 1.1))
 
-## --- Wołek: szarża i rzut skrzynią ------------------------------------------
-
-## Zwraca true, gdy faza specjalna przejęła ruch w tej klatce.
-func _bruiser_tick(delta: float, target: Node2D) -> bool:
-	_charge_cd = maxf(0.0, _charge_cd - delta)
-	_throw_cd = maxf(0.0, _throw_cd - delta)
-	_boulder_cd = maxf(0.0, _boulder_cd - delta)
-	match _sp:
-		0:
-			if target == null or _windup > 0.0 or _stagger > 0.0 or _panic > 0.0:
-				return false
-			var d := target.global_position - global_position
-			var level := absf(d.y) <= 24.0
-			var ax := absf(d.x)
-			if level and ax > 100.0 and ax < 280.0 and _charge_cd <= 0.0 and _run_clear(signf(d.x), ax):
-				_sp = 1
-				_sp_t = CHARGE_WINDUP * Difficulty.m("enemy_windup")
-				_sp_dir = signf(d.x)
-				_charge_hit = false
-				winding = true
-				return true
-			# rzut skrzynią także w górę i w dół (Wołek nie jest bezradny wobec gracza na półce nad nim czy w dole): do THROW_DY_MAX px różnicy
-			# poziomów, a cel prawie nad / pod nim (ax < 60) też jest w zasięgu; łuk balistyczny liczy `_throw_crate`
-			if ax < 220.0 and (ax > 60.0 or not level) and absf(d.y) <= THROW_DY_MAX:
-				var c := _find_crate()
-				if c != null:
-					if _throw_cd <= 0.0 and _throw_clear(target):
-						_sp = 3
-						_sp_t = THROW_WINDUP * Difficulty.m("enemy_windup")
-						_sp_dir = signf(d.x) if absf(d.x) > 1.0 else _facing
-						_sp_crate = c
-						_sp_boulder = false
-						winding = true
-						return true
-				elif _boulder_ready(ax) and _throw_clear(target):
-					# głaz (F3.9): zawsze pod ręką, gdy w pobliżu nie ma skrzyni — słabszy, ale częstszy; przerwa zależy od trudności
-					_sp = 3
-					_sp_t = float(_def["boulder"].get("windup", 0.6)) * Difficulty.m("enemy_windup")
-					_sp_dir = signf(d.x) if absf(d.x) > 1.0 else _facing
-					_sp_crate = null
-					_sp_boulder = true
-					winding = true
-					return true
-			return false
-		1:
-			velocity.x = 0.0
-			_sp_t -= delta
-			if _sp_t <= 0.0:
-				_sp = 2
-				_sp_t = CHARGE_TIME
-				winding = false
-			return true
-		2:
-			_sp_t -= delta
-			velocity.x = _sp_dir * float(_def["speed"]) * Difficulty.m("enemy_speed") * CHARGE_MULT
-			if _sp_t <= 0.0:
-				_end_charge()
-			return true
-		3:
-			velocity.x = 0.0
-			_sp_t -= delta
-			if _sp_t <= 0.0:
-				_throw_crate(target)
-			return true
-		4:
-			velocity.x = 0.0
-			_sp_t -= delta
-			if _sp_t <= 0.0:
-				_sp = 0
-				winding = false
-			return true
-	return false
-
-## Czy przed Wołkiem jest wolna droga na rozbieg: bez ściany na całym dystansie szarży i z podłogą pod każdym kaflem (nie rozpędza się w przepaść).
-func _run_clear(dir: float, dist: float) -> bool:
-	var space := get_world_2d().direct_space_state
-	var run := minf(dist, RUN_CHECK_MAX)
-	var from := global_position + Vector2(0, -10)
-	if not space.intersect_ray(PhysicsRayQueryParameters2D.create(from, from + Vector2(dir * run, 0), 1)).is_empty():
-		return false
-	var x := RUN_FLOOR_STEP
-	while x <= run:
-		var top := global_position + Vector2(dir * x, -4.0)
-		var fq := PhysicsRayQueryParameters2D.create(top, top + Vector2(0, RUN_FLOOR_DEPTH), 1 | (1 << (PLATFORM_BIT - 1)))
-		if space.intersect_ray(fq).is_empty():
-			return false
-		x += RUN_FLOOR_STEP
-	return true
-
-func _end_charge() -> void:
-	_sp = 0
-	winding = false
-	_charge_cd = CHARGE_CD * Difficulty.m("enemy_cd")
-
-## Po ruchu: szarża rozbija skrzynie, detonuje beczki (wybuch rani też Wołka), uderza gracza; ściana ogłusza.
-func _after_move_bruiser() -> void:
-	if _sp != 2:
-		return
-	var crashed := false
-	for i in get_slide_collision_count():
-		var c := get_slide_collision(i)
-		var col := c.get_collider() as Node
-		if col == null:
-			continue
-		if col.is_in_group("props"):
-			if col.has_method("take_bullet"):
-				col.take_bullet(global_position, 45.0)
-		elif absf(c.get_normal().x) > 0.7:
-			crashed = true
-	if not _charge_hit:
-		for p in get_tree().get_nodes_in_group("players"):
-			if not p.dead and absf(p.global_position.x - global_position.x) < 16.0 and absf(p.global_position.y - global_position.y) < 18.0:
-				p.deliver_hit(_scaled_damage(2), global_position, kind)
-				_charge_hit = true
-	if crashed:
-		_crash()
-
-func _crash() -> void:
-	_sp = 4
-	_sp_t = CRASH_STUN
-	winding = false
-	_charge_cd = CHARGE_CD * Difficulty.m("enemy_cd")
-	velocity.x = -_sp_dir * 40.0
-	NoiseMgr.add_noise(7.0, global_position)
-	if NoiseMgr.has_network():
-		_crash_fx.rpc()
-	else:
-		_crash_fx()
-
+## Efekt uderzenia Wołka o ścianę (RPC musi żyć w węźle wroga; woła go `enemy_bruiser.gd` i lądowanie Skoczka).
 @rpc("authority", "call_local", "reliable")
 func _crash_fx() -> void:
 	Audio.play_variant_at("impact_hard", 3, global_position, Audio.BUS_WORLD, 0.0, 0.5)
 	Vfx.dust(get_parent(), global_position, 1.0)
 	if _local_player_pos().distance_to(global_position) < 300.0:
 		Feel.shake(3.5)
-
-func _find_crate() -> Node:
-	var best: Node = null
-	var best_d := 60.0
-	for p in get_tree().get_nodes_in_group("props"):
-		if p.get("kind") != "crate" or p.get("exploded") or float(p.get("thrown_t")) > 0.0:
-			continue
-		var dx := absf(p.global_position.x - global_position.x)
-		if dx < best_d and absf(p.global_position.y - global_position.y) < 30.0:
-			best_d = dx
-			best = p
-	return best
-
-## Czy między wrogiem (wysokość ramienia) a celem nie ma ściany — nie zaczyna rzutu w mur (skrzynia i tak poleciałaby łukiem, ale w zamknięty strop nie ma sensu).
-func _throw_clear(target: Node2D) -> bool:
-	var from := global_position + Vector2(0, -26.0)
-	var q := PhysicsRayQueryParameters2D.create(from, target.global_position + Vector2(0, -10.0), 1)
-	return get_world_2d().direct_space_state.intersect_ray(q).is_empty()
-
-## Czy Wołek ma teraz prawo rzucić głazem: rodzaj ma wpis `boulder`, przerwa minęła, a cel jest w jego poziomym zasięgu (`range`).
-func _boulder_ready(ax: float) -> bool:
-	var cfg := _def.get("boulder", {}) as Dictionary
-	return not cfg.is_empty() and _boulder_cd <= 0.0 and ax < float(cfg.get("range", 220.0))
-
-## Przerwa po rzucie głazem wg poziomu trudności (tabela `cd` = [EASY, NORMAL, HARD] — osobne wartości, nie mnożnik `enemy_cd`).
-static func boulder_cooldown(cfg: Dictionary, level: int) -> float:
-	var cds: Array = cfg.get("cd", [5.0])
-	return float(cds[clampi(level, 0, cds.size() - 1)])
-
-## Rzut głazem: ten sam łuk balistyczny co skrzynia (grawitacja 980), ale pocisk to lekki węzeł `boulder.gd` zadający 0,5 HP i znikający po uderzeniu.
-func _throw_boulder(target: Node2D) -> void:
-	var cfg := _def.get("boulder", {}) as Dictionary
-	_sp = 0
-	_sp_boulder = false
-	winding = false
-	_boulder_cd = boulder_cooldown(cfg, Difficulty.level)
-	if target == null or not is_instance_valid(target):
-		return
-	var from := global_position + Vector2(_sp_dir * 10.0, -26.0)
-	var aim := (target.global_position + Vector2(0, -10.0)) - from
-	var t := clampf(maxf(absf(aim.x) / 360.0, absf(aim.y) / 500.0), 0.35, 0.8)
-	var vel := Vector2(clampf(aim.x / t, -420.0, 420.0), (aim.y - 0.5 * 980.0 * t * t) / t)
-	var lvl := get_tree().get_first_node_in_group("level")
-	if lvl != null and lvl.has_method("spawn_boulder"):
-		lvl.spawn_boulder(from, vel, float(cfg.get("dmg", 0.5)))
-	NoiseMgr.add_noise(float(cfg.get("noise", 2.0)), global_position)
-
-## Rzut: balistyczny łuk w gracza (grawitacja ciał fizycznych 980), skrzynia rani przy trafieniu (prop.gd).
-func _throw_crate(target: Node2D) -> void:
-	if _sp_boulder:
-		_throw_boulder(target)
-		return
-	var crate := _sp_crate
-	_sp = 0
-	winding = false
-	_throw_cd = THROW_CD * Difficulty.m("enemy_cd")
-	_sp_crate = null
-	if crate == null or not is_instance_valid(crate) or crate.exploded or target == null or not is_instance_valid(target):
-		return
-	var from := global_position + Vector2(_sp_dir * 10.0, -26.0)
-	var aim := (target.global_position + Vector2(0, -10.0)) - from
-	var t := clampf(maxf(absf(aim.x) / 300.0, absf(aim.y) / 500.0), 0.3, 0.9)        # rzut pionowy dostaje więcej czasu lotu (mniejsza prędkość początkowa)
-	var vel := Vector2(clampf(aim.x / t, -420.0, 420.0), (aim.y - 0.5 * 980.0 * t * t) / t)
-	crate.throw_to(from, vel)
-	NoiseMgr.add_noise(4.0, global_position)
-
-## --- Podsłuchacz -----------------------------------------------------------
-
-## Stoi i czuwa (zawsze „aktywny", ale się nie rusza). Zobaczy gracza albo usłyszy hałas —
-## krzyk z zapowiedzią (0,9 s); zabity po cichu (maczeta w plecy) nie krzyczy.
-func _listener_tick(delta: float) -> void:
-	active = true
-	_scream_cd = maxf(0.0, _scream_cd - delta)
-	_shield_t = maxf(0.0, _shield_t - delta)
-	_calm_t += delta
-	if _screams > 0 and _target == null and _calm_t >= float((_def.get("scream", {}) as Dictionary).get("calm", 12.0)):
-		_screams = 0                                   # uspokoił się — znów krzyknie z pełnym zasięgiem
-	velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
-	if _windup > 0.0:
-		_windup -= delta
-		if _windup <= 0.0:
-			winding = false
-			_scream()
-	else:
-		_listen()
-		_perceive(delta)
-		if _target != null or (_has_lead and _lose_t < 0.3):
-			_begin_scream()
-	_apply_gravity(delta)
-	move_and_slide()
-	_send_state(delta)
-
-## Zapowiedź krzyku. Podsłuchacz, który tylko usłyszał (nie widzi celu), zbiera się dłużej (`scream.blind`) — cichy gracz ma więcej czasu; po `scream.max`
-## krzykach z rzędu (licznik zeruje się po `scream.calm` s spokoju) milknie, bo horda i tak już idzie.
-func _begin_scream() -> void:
-	if _scream_cd > 0.0 or _windup > 0.0 or _shield_t > 0.0:
-		return
-	var cfg := _def.get("scream", {}) as Dictionary
-	if _screams >= int(cfg.get("max", 99)):
-		return
-	var blind := 1.0 if _target != null else float(cfg.get("blind", 1.0))
-	_windup = float(_def["windup"]) * Difficulty.m("enemy_windup") * blind
-	winding = true
-
-func _scream() -> void:
-	var cfg := _def.get("scream", {}) as Dictionary
-	_scream_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
-	_screams += 1
-	_calm_t = 0.0
-	_shield_t = float((_def.get("shield", {}) as Dictionary).get("time", 0.0))
-	_alerted = true
-	_has_lead = false
-	NoiseMgr.add_noise(SCREAM_NOISE, global_position)
-	# ściąga hordę: wrogowie w promieniu idą w stronę krzyku (śpiących budzi); kolejne krzyki sięgają bliżej, bo reszta już idzie
-	var radius := float(cfg.get("radius", ALARM_R)) * (float(cfg.get("repeat", 1.0)) if _screams > 1 else 1.0)
-	for e in get_tree().get_nodes_in_group("enemies"):
-		if e == self or e.get_script() != get_script() or not e.alive or e.kind == "podsluchacz":
-			continue
-		var heard: float = e._sound_distance(global_position, radius)
-		if heard < radius:
-			e.answer_alarm(global_position, heard, radius, float(cfg.get("wave", 0.0)))
-	if NoiseMgr.has_network():
-		_scream_fx.rpc()
-	else:
-		_scream_fx()
 
 ## Odpowiedź na alarm Podsłuchacza (F3.8): ślad z błędem lokalizacji jak przy każdym hałasie (`hear_error` rodzaju), a wrogowie dalej budzą się później —
 ## głos niesie `wave` px/s plus rozrzut do ALARM_JITTER, więc horda nie rusza w jednej klatce, tylko falą od krzykacza.
@@ -1086,7 +588,7 @@ func _hear_alarm(lead: Vector2) -> void:
 @rpc("authority", "call_local", "reliable")
 func _scream_fx() -> void:
 	_ring = 0.7
-	Audio.play_variant_at("podsluchacz_scream", 2, global_position, Audio.BUS_WORLD, -3.0, 0.85 if kind == "mimik" else 1.0)
+	Audio.play_variant_at("podsluchacz_scream", 2, global_position, Audio.BUS_WORLD, -3.0, _beh.scream_pitch())
 	if _local_player_pos().distance_to(global_position) < 300.0:
 		Feel.shake(2.2)
 
@@ -1112,7 +614,7 @@ func _listen() -> void:
 		if heard < reach:
 			var lead := _heard_pos(NoiseMgr.last_noise_pos, heard, reach, NoiseMgr.last_noise_amount)
 			_lead_at(lead)
-			_maybe_lunge(lead, heard, NoiseMgr.last_noise_amount)
+			_beh.on_heard_noise(lead, heard, NoiseMgr.last_noise_amount)
 
 ## Lokalizacja hałasu z niedokładnością (F3.2): wróg słyszy, że „coś hałasuje stamtąd", ale nie wskazuje punktu co do piksela — im dalej źródło
 ## (względem zasięgu słyszenia) i im ciszej, tym większy błąd. Tylko w poziomie (pomyłka o piętro wysłałaby wroga na zły poziom); z bliska prawie dokładnie.
@@ -1221,33 +723,11 @@ func _perceive(delta: float) -> void:
 	if best != null and not had_target and _ai in [Ai.INVESTIGATE, Ai.SEARCH, Ai.RETURN]:
 		_begin_alert()                    # nowy kontakt wzrokowy po śledztwie / szukaniu / powrocie — nie przy każdym mignięciu celu (ALERT_COOLDOWN)
 	if best != null and not had_target:
-		_shout_sighting(best.global_position)
+		_beh.on_sighting(best.global_position)
 	if best != null:
 		_lead_at(best.global_position)
 	else:
 		_lose_t += PERCEIVE_DT
-
-## Wataha dzieli się tym, co zobaczyła (F3.4a): Trzosek, który właśnie zauważył gracza, „daje znać" pobliskim kolegom — ci, którzy nic nie widzą (śledzą,
-## szukają albo wracają), dostają ślad w miejscu gracza i reakcję „zauważył", więc wataha nie atakuje po jednym, tylko schodzi się razem. Śpiących budzi
-## osobno `wake()`. Zasięg SHARE_RADIUS w poziomie (w pionie ±SHARE_DY — nie przez piętra), cooldown SHARE_COOLDOWN na krzykacza.
-func _shout_sighting(pos: Vector2) -> void:
-	if not _def.get("pack", false) or _share_cd > 0.0 or summoned or omniscient:
-		return
-	_share_cd = SHARE_COOLDOWN
-	for e in _near(global_position, SHARE_RADIUS):
-		if not is_instance_valid(e) or e == self or e.get_script() != get_script() or e.kind != kind:
-			continue
-		if absf(e.global_position.x - global_position.x) <= SHARE_RADIUS and absf(e.global_position.y - global_position.y) <= SHARE_DY:
-			e._hear_shout(pos)
-
-## Kolega dał znać, gdzie jest gracz: tylko aktywny, nic niewidzący (śledztwo / szukanie / powrót) i niebędący przywołanym bossa.
-func _hear_shout(pos: Vector2) -> void:
-	if not alive or not active or _target != null or summoned or omniscient:
-		return
-	if not (_ai in [Ai.INVESTIGATE, Ai.SEARCH, Ai.RETURN]):
-		return
-	_lead_at(pos)
-	_begin_alert()
 
 ## Waga gracza jako celu (F3.5b): mnożnik odległości, im mniejszy, tym chętniej wróg wybiera tego gracza. Człowiek bije bota (bot nie jest wabikiem),
 ## przyciąga światło latarki (nie ślepca) i ogień, a łatwiejszym łupem jest ranny (≤ 1 serce) i odizolowany od drużyny (nikt żywy w TARGET_ISOLATED_R).
@@ -1297,39 +777,6 @@ func _clear_line(pp: Node2D) -> bool:
 ## --- zachowanie bez widocznego celu ----------------------------------------
 
 ## Idzie na ostatni ślad, rozgląda się i rezygnuje; po dłuższym braku kontaktu wraca do domu.
-## Rzut Ślepca na dźwięk (mechanika „ślepiec słyszy"): głośne zdarzenie (≥ `lunge.noise`, np. strzał ze strzelby, granat, krzyk) w `lunge.range` px po trasie
-## sprawia, że obudzony Ślepiec staje na `lunge.wind` s (stan alert: odwraca się, oczy żarzą się, cichy warkot), a potem na `lunge.time` s pędzi
-## `lunge.mult`× szybciej w stronę źródła — z błędem lokalizacji (`hear_error`) i bez sprawdzania drogi. Kontra: po głośnym strzale zejść z miejsca
-## (rzut leci tam, gdzie był dźwięk), kucnąć albo strzelać cicho. Cooldown `lunge.cd` s; pole `lunge` w `enemy_defs.gd` (brak = rodzaj bez rzutu).
-static func lunge_triggers(cfg: Dictionary, amount: float, dist: float) -> bool:
-	return not cfg.is_empty() and amount >= float(cfg.get("noise", 2.0)) and dist <= float(cfg.get("range", 140.0))
-
-func _maybe_lunge(lead: Vector2, dist: float, amount: float) -> void:
-	var cfg := _def.get("lunge", {}) as Dictionary
-	if _target != null or not lunge_triggers(cfg, amount, dist):
-		return
-	if _lunge_cd > 0.0 or _lunge_wind > 0.0 or _lunge_t > 0.0 or _windup > 0.0 or summoned or not alive:
-		return
-	_lunge_wind = float(cfg.get("wind", 0.3)) * Difficulty.m("enemy_windup")
-	_lunge_cd = float(cfg.get("cd", 6.0)) * Difficulty.m("enemy_cd")
-	_lunge_pos = lead
-	if absf(lead.x - global_position.x) > 4.0:
-		_facing = signf(lead.x - global_position.x)
-	_set_ai_state(Ai.ALERT)                       # od razu, żeby `_sync` i głos zapowiedzi poszły w tym tiku
-
-func _tick_lunge(delta: float) -> void:
-	_lunge_cd = maxf(0.0, _lunge_cd - delta)
-	if _lunge_wind > 0.0:
-		_lunge_wind -= delta
-		if _lunge_wind <= 0.0:
-			_lunge_wind = 0.0
-			_lunge_t = float((_def.get("lunge", {}) as Dictionary).get("time", 0.7))
-			_lunge_dir = signf(_lunge_pos.x - global_position.x) if absf(_lunge_pos.x - global_position.x) > 1.0 else _facing
-	elif _lunge_t > 0.0:
-		_lunge_t -= delta
-		if (_lunge_pos.x - global_position.x) * _lunge_dir <= 0.0 or is_on_wall():
-			_lunge_t = 0.0                          # za źródłem albo przy ścianie kończy
-
 ## Przeszukiwanie okolicy śladu (Ślepiec, pole `sweep` = amplituda px): po dojściu do miejsca hałasu nie stoi jak kołek, tylko chodzi tam i z powrotem
 ## w ±`sweep` px od śladu, aż minie czas szukania (`search`). Gracz stojący na jego drodze w zasięgu dotyku (26 px) zostaje wyczuty.
 func _sweep(amp: float, speed: float) -> void:
@@ -1361,7 +808,7 @@ func _investigate(speed: float, delta: float) -> void:
 		_has_lead = false
 
 func _return_home(speed: float, delta: float) -> void:
-	if kind == "skoczek":
+	if not _beh.returns_home():
 		velocity.x = 0.0            # po zasadzce nie wraca na sufit — czatuje tam, gdzie wylądował
 		return
 	# pamięć: zanim wróci do domu, raz sprawdza „gorące miejsce" — gdzie drużyna ostatnio strzelała
@@ -1415,8 +862,7 @@ func _chase(target: Node2D, speed: float, delta: float) -> void:
 		return
 	_blocked_t = 0.0
 	_blocked = false
-	if _def.get("pack", false) and _pack_hold(target):
-		_hover(d, speed)
+	if _beh.chase_hold(target, d, speed):
 		return
 	var want := signf(d.x) * speed if absf(d.x) > 3.0 else 0.0
 	# rozsuwanie watahy: nie stają w jednym punkcie, tylko w szeregu (można strzelać po kolei)
@@ -1425,67 +871,6 @@ func _chase(target: Node2D, speed: float, delta: float) -> void:
 	velocity.x = want
 	if is_on_wall() and is_on_floor() and _def["leap"]:
 		velocity.y = -230.0
-
-## Wataha atakuje po kolei: gdy MAX_ATTACKERS kolegów już jest przy celu (zapowiedź albo w zasięgu),
-## reszta krąży w pasmie HOVER_MIN..HOVER_MAX i czeka na wolne miejsce — zamiast stać w kolejce w jednym punkcie.
-func _pack_hold(target: Node2D) -> bool:
-	var dx := absf(target.global_position.x - global_position.x)
-	if winding or dx <= float(_def["reach"]) + 6.0:
-		return false
-	var committed := 0
-	for e in _near(target.global_position, 120.0):
-		if not is_instance_valid(e) or e == self or e.get_script() != get_script() or not e.alive or not e.active or e.kind != kind:
-			continue
-		if e._target != target:
-			continue
-		if e.winding or (absf(e.global_position.x - target.global_position.x) <= float(e._def["reach"]) + 6.0 \
-				and absf(e.global_position.y - target.global_position.y) < 18.0):
-			committed += 1
-			if committed >= MAX_ATTACKERS:
-				break                                  # wynik i tak „zajęte" — nie liczymy dalej
-	return committed >= MAX_ATTACKERS
-
-func _hover(d: Vector2, speed: float) -> void:
-	var ax := absf(d.x)
-	if ax > HOVER_MAX:
-		velocity.x = signf(d.x) * speed
-	elif ax < HOVER_MIN:
-		velocity.x = -signf(d.x) * speed * 0.5
-	else:
-		velocity.x = sin(Time.get_ticks_msec() * 0.004 + float(get_instance_id() % 7)) * speed * 0.3
-
-## Morale: śmierć kolegi z watahy w PACK_R podnosi strach; przy 1.0 reszta się rozbiega (PANIC_TIME).
-func _notify_pack_death() -> void:
-	if not _def.get("pack", false):
-		return
-	var alpha := true
-	var mates: Array = []
-	for e in _near(global_position, PACK_R):
-		if not is_instance_valid(e) or e == self or e.get_script() != get_script() or not e.alive or not e.active or e.kind != kind:
-			continue
-		if e.global_position.distance_to(global_position) > PACK_R:
-			continue
-		mates.append(e)
-		if e.get_instance_id() < get_instance_id():
-			alpha = false          # przewodnik = najstarszy w watasze
-	for e in mates:
-		e._on_packmate_died(alpha, global_position)
-
-func _on_packmate_died(was_alpha: bool, pos: Vector2) -> void:
-	_fear += FEAR_ALPHA if was_alpha else FEAR_PER_DEATH
-	if _fear >= 1.0:
-		_fear = 0.0
-		_panic = maxf(_panic, PANIC_TIME)
-		_flee_src = _target.global_position if _target != null else pos
-
-## Strach przed Stalkerem: gdy ON jest aktywny i blisko, Trzoski uciekają od niego.
-func _check_stalker_fear() -> void:
-	if not _def.get("fears", false) or not NoiseMgr.stalker_awake:
-		return
-	var st := get_parent().get_node_or_null("Stalker") as Node2D
-	if st != null and global_position.distance_to(st.global_position) < STALKER_FEAR_R:
-		_panic = maxf(_panic, 1.6)
-		_flee_src = st.global_position
 
 func _separation(speed: float) -> float:
 	var push := 0.0
@@ -1658,8 +1043,7 @@ func _resolve_attack() -> void:
 	var pp := _windup_target
 	_windup_target = null
 	_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
-	if kind == "trzosek":
-		_retreat = 0.32
+	_beh.after_attack()
 	if pp != null and is_instance_valid(pp) and not pp.dead and _in_reach(pp, 6.0) and not _wall_between(pp):
 		pp.deliver_hit(_scaled_damage(int(_def["damage"])), global_position, kind)
 
@@ -1700,7 +1084,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 	var silent: bool = info.get("silent", false)
 	_alert = 0.0                                                       # trafiony nie stoi i nie patrzy — walczy (i nie dostaje reakcji przy budzeniu od tego trafienia)
 	_alert_cd = ALERT_COOLDOWN
-	_lunge_wind = 0.0
+	_beh.on_damaged()
 	_last_attacker = int(info.get("shooter", _last_attacker))          # kto dobił (też od podpalenia) dostaje XP w _die
 	if info.get("backstab", false) and (not active or _is_behind(info["dir"])):
 		dmg = maxf(dmg, hp + 1.0)
@@ -1718,8 +1102,9 @@ func take_hit(info: Dictionary) -> Dictionary:
 		if reduced < dmg * 0.7:
 			mat = 1                      # Arsenal.Mat.ARMOR: iskry i szary hitmarker
 		dmg = reduced
-	if _shield_t > 0.0:
-		dmg *= _shield_mult()
+	var shield_mult: float = _beh.damage_mult()
+	if shield_mult < 1.0:
+		dmg *= shield_mult
 		mat = 1                          # pole ochronne: iskry i szary hitmarker jak przy pancerzu
 	hp -= dmg
 	_flash = 0.1
@@ -1738,8 +1123,8 @@ func take_hit(info: Dictionary) -> Dictionary:
 	var dead := hp <= 0.0
 	if dead:
 		_die()
-	elif kind == "podsluchacz" and not silent:
-		_begin_scream()
+	else:
+		_beh.on_hit(silent)
 	return {"hit": true, "dealt": dmg, "killed": dead, "mat": mat}
 
 # ---------------------------------------------------------------- ogień
@@ -1747,9 +1132,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 func _ignite(seconds: float) -> void:
 	var fresh := _burn <= 0.0
 	_burn = maxf(_burn, seconds)
-	if kind == "trzosek":
-		_panic = maxf(_panic, 1.2)
-		_flee_src = Vector2.ZERO
+	_beh.on_ignite()
 	if fresh:
 		if NoiseMgr.has_network():
 			_ignite_fx.rpc(seconds)
@@ -1761,13 +1144,9 @@ func _tick_burn(delta: float) -> void:
 		return
 	_burn = maxf(0.0, _burn - delta)
 	# 8 HP/s przez czas płonięcia; wynik liczony ciągle, bez tykania co 0,1 s
-	hp -= BURN_DPS * delta * (_shield_mult() if _shield_t > 0.0 else 1.0)
+	hp -= BURN_DPS * delta * _beh.damage_mult()
 	if hp <= 0.0 and alive:
 		_die()
-
-## Mnożnik obrażeń w polu ochronnym Podsłuchacza (`shield.reduce` 0,9 → ×0,1).
-func _shield_mult() -> float:
-	return 1.0 - clampf(float((_def.get("shield", {}) as Dictionary).get("reduce", 0.0)), 0.0, 1.0)
 
 ## Płomienie na ciele — każdy peer, na czas płonięcia.
 @rpc("authority", "call_local", "reliable")
@@ -1779,10 +1158,10 @@ func _ignite_fx(seconds: float) -> void:
 func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 	if not NoiseMgr.is_server() or not alive:
 		return
-	hp -= dmg * (_shield_mult() if _shield_t > 0.0 else 1.0)
+	hp -= dmg * _beh.damage_mult()
 	_alert = 0.0
 	_alert_cd = ALERT_COOLDOWN
-	_lunge_wind = 0.0
+	_beh.on_damaged()
 	_flash = 0.1
 	_stagger = 0.12
 	Vfx.blood(get_parent(), global_position + Vector2(0, -8), (global_position - from_pos).normalized(), 5)
@@ -1792,8 +1171,8 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 		wake()
 	if hp <= 0.0:
 		_die()
-	elif kind == "podsluchacz":
-		_begin_scream()
+	else:
+		_beh.on_hit(false)
 
 func _die() -> void:
 	if NoiseMgr.is_server() and _last_attacker != 0 and not summoned and not String(name).begins_with("LeechSpawn") and not is_in_group("roamers"):
@@ -1817,7 +1196,7 @@ func _die() -> void:
 		var ls := get_tree().get_first_node_in_group("level")
 		if ls != null:
 			ls.spawn_item("scrap", 0, global_position + Vector2(randf_range(-6.0, 6.0), -14), int(EnemyDefs.value(kind, "scrap")))
-	_notify_pack_death()
+	_beh.on_death()
 	_set_alive(false)
 	winding = false
 	_windup = 0.0
@@ -1828,14 +1207,14 @@ func _die() -> void:
 ## Efekty śmierci na KAŻDYM peerze (serwer wywołuje wprost, klient po zmianie alive).
 func _death_fx() -> void:
 	Audio.play_variant_at("impact_flesh", 3, global_position, Audio.BUS_WORLD, -4.0, 0.8)
-	_voice("death")
 	var local := _local_player_pos()
+	var fx := _def.get("death_fx", {}) as Dictionary        # drobny wróg (Trzosek) pada ciszej: słabszy wstrząs i mniej szczątków (domyślnie ciężki)
 	if local.distance_to(global_position) < 220.0:
-		Feel.shake(1.8 if kind == "trzosek" else 3.0)
-		Feel.hitstop(0.05 if kind == "trzosek" else 0.09)
+		Feel.shake(float(fx.get("shake", 3.0)))
+		Feel.hitstop(float(fx.get("hitstop", 0.09)))
 	# szczątki (fizyczne, lokalne) + krew na podłożu; odrzut z kierunku trafienia
 	Vfx.gibs(get_parent(), global_position + Vector2(0, -6), (_def["color"] as Color).lightened(DEATH_FX_COLOR_VAR),
-		6 if kind == "trzosek" else 11, Vector2(signf(velocity.x) * 60.0, 0))
+		int(fx.get("gibs", 11)), Vector2(signf(velocity.x) * 60.0, 0))
 
 func _local_player_pos() -> Vector2:
 	for p in get_tree().get_nodes_in_group("players"):
@@ -1879,8 +1258,9 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 ## Klucze: kind (rodzaj modelu), alive, winding (zapowiedź ciosu), sp (stan specjalny Wołka), flash (świeże trafienie), ai (stan AI, `Ai`),
 ## alert (reakcja „zauważył cię": oczy rozżarzone, wróg stoi i patrzy na źródło).
 func view_info() -> Dictionary:
-	var listener_hot := kind == "podsluchacz" and (_ai == Ai.WINDUP or _ai == Ai.SCREAM)        # zapowiedź i krzyk Podsłuchacza: oczy żarzą się jak przy „zauważył"
-	return {"kind": kind, "alive": alive, "winding": winding, "sp": _sp, "flash": _flash > 0.0, "ai": _ai, "alert": _ai == Ai.ALERT or listener_hot, "shield": _ai == Ai.SCREAM}
+	var d := {"kind": kind, "alive": alive, "winding": winding, "sp": _sp, "flash": _flash > 0.0, "ai": _ai, "alert": _ai == Ai.ALERT, "shield": false}
+	_beh.view_extra(d)
+	return d
 
 ## Głos gatunku dla zdarzenia (`enemy_defs.gd`: voice); gatunek bez wpisu milczy.
 func _voice(event: String) -> void:
@@ -1914,23 +1294,20 @@ func _update_sprite() -> void:
 		var face := _facing if NoiseMgr.is_server() else _net_face
 		if face != 0.0:
 			_view_facing = signf(face)
-	if kind == "podsluchacz":
+	if _beh.server_facing():
 		# stoi w miejscu — patrzy tam, gdzie serwer (F3.8): na cel, ślad albo najbliższego gracza
 		var lface := _facing if NoiseMgr.is_server() else _net_face
 		if lface != 0.0:
 			_view_facing = signf(lface)
 	var anim := "sleep"
 	if active:
-		if winding or (kind == "podsluchacz" and _ai == Ai.SCREAM):        # krzyk w polu ochronnym trzyma pozę zapowiedzi (otwarte usta)
+		if winding:
 			anim = "windup"
 		elif moving:
-			anim = "run" if (kind == "trzosek" or _ai == Ai.LUNGE) else "walk"
+			anim = "walk"
 		else:
 			anim = "idle"
-	elif kind == "mimik":
-		anim = "idle"          # zamaskowany stoi jak żywy kolega, nie „śpi"
-	if kind == "cma" and active:
-		anim = "idle"          # trzepocze skrzydłami w locie
+	anim = _beh.anim(anim, moving)
 	Sprites.play(_spr, anim, _view_facing < 0.0)
 	var body: AnimatedSprite2D = _spr[0]
 	var m := Color.WHITE
@@ -1940,19 +1317,14 @@ func _update_sprite() -> void:
 		# zapowiedź ciosu: pulsujące czerwienienie (klatka „windup" unosi łapę)
 		var p := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.03)
 		m = Color(1.6 + 0.6 * p, 0.55, 0.5)
-	elif not active and kind != "mimik":
+	elif not active and not _beh.disguised():
 		m = Color(0.8, 0.8, 0.8)
 	body.modulate = m
 
 ## Oczy, kontur zapowiedzi ataku i HP — unshaded, widoczne w ciemności.
 func _draw_overlay(ov: Node2D) -> void:
 	var size: Vector2 = _def["size"]
-	if kind == "mimik" and not active:
-		# etykieta jak u gracza, ale bez serduszek (zdradza go) i z numerem, którego nie ma w drużynie
-		var f := ThemeDB.fallback_font
-		var txt := "P%d" % (2 + int(get_instance_id() % 3))
-		ov.draw_string(f, Vector2(-30 + 0.5, -31 + 0.5), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, 4, Color(0, 0, 0, 0.8))
-		ov.draw_string(f, Vector2(-30, -31), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, 4, Color(0.72, 0.8, 0.72))
+	_beh.draw_overlay(ov)
 	# pasek HP po pierwszym trafieniu
 	if hp < _max_hp:
 		var w := size.x + 4.0

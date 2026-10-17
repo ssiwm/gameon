@@ -10,7 +10,10 @@ extends RefCounted
 ##   ammo    szansa na skrzynkę z amunicją do broni, którą ktoś nosi
 ##   health  szansa na apteczkę (1.5) — tylko mocniejsi wrogowie
 ##   sweep   amplituda [px] przeszukiwania okolicy śladu po dojściu na miejsce hałasu (Ślepiec); search — czas szukania [s], domyślnie SEARCH_TIME
-##   lunge   rzut na głośny dźwięk (Ślepiec): {noise, range, wind, mult, time, cd} — patrz enemy.gd: _maybe_lunge; brak = bez rzutu
+##   behavior  zachowanie rodzaju (enemy_behavior.gd i podklasy: listener, bruiser, moth, mimic, ambusher, pack, blind); brak = zwykły wróg bez własnych haków.
+##             Nowy rodzaj z własną mechaniką = nowa podklasa + wpis w `enemy_behavior.gd: BEHAVIORS` i tu, bez `if kind ==` w enemy.gd
+##   death_fx  efekty śmierci {shake, hitstop, gibs}; domyślnie ciężki wróg (3,0 / 0,09 / 11)
+##   lunge   szarża na głośny dźwięk (Ślepiec): {noise, range, wind, mult, time, cd} — patrz enemy_blind.gd: maybe_lunge; brak = bez szarży
 ##   hear_error  błąd lokalizacji hałasu [px] na granicy zasięgu słyszenia (F3.2; domyślnie enemy.gd HEAR_ERROR = 64): ślepiec słyszy dokładniej, wołek gorzej
 ##   alert   s reakcji „zauważył cię" (F3.1b): wróg staje, odwraca się i rozżarza oczy, zanim ruszy do ataku; 0 / brak = bez reakcji
 ##   voice   zdarzenie → [rodzina, liczba wariantów, głośność dB, wysokość]; „attack" gra przy zapowiedzi ciosu, „alert" przy reakcji „zauważył", „death" przy śmierci;
@@ -20,7 +23,7 @@ const DEFS := {
 	"trzosek": {
 		"hp": 30.0, "speed": 88.0, "damage": 1, "windup": 0.28, "reach": 13.0,
 		"cooldown": 0.9, "leap": true, "hear": 200.0, "wake_near": 90.0, "sight": 260.0,
-		"pack": true, "fears": true, "phototaxis": true, "fire_shy": true,
+		"behavior": "pack", "death_fx": {"shake": 1.8, "hitstop": 0.05, "gibs": 6}, "fears": true, "phototaxis": true, "fire_shy": true,
 		"color": Color(0.62, 0.2, 0.22), "size": Vector2(10, 14), "knock": 70.0, "knock_mult": 1.0, "head": 0.0,
 		"xp": 2, "scrap": 2, "ammo": 0.22, "alert": 0.4, "voice": {"attack": ["trzosek_attack", 3, -6.0, 1.0], "alert": ["trzosek_attack", 3, -12.0, 1.35], "death": ["trzosek_death", 2, -4.0, 1.0]},
 	},
@@ -29,7 +32,7 @@ const DEFS := {
 	"cma": {
 		"hp": 18.0, "speed": 74.0, "damage": 1, "windup": 0.2, "reach": 10.0,
 		"cooldown": 1.2, "leap": false, "hear": 0.0, "wake_near": 0.0, "sight": 0.0,
-		"fly": true, "moth": true, "phototaxis": true,
+		"fly": true, "moth": true, "phototaxis": true, "behavior": "moth",
 		"color": Color(0.74, 0.7, 0.55), "size": Vector2(10, 8), "hurt_h": 18.0, "hurt_w": 16.0, "knock": 40.0, "knock_mult": 1.0, "head": 0.0,
 		"xp": 3, "scrap": 4,
 	},
@@ -37,7 +40,7 @@ const DEFS := {
 	"skoczek": {
 		"hp": 40.0, "speed": 84.0, "damage": 1, "windup": 0.3, "reach": 13.0,
 		"cooldown": 1.0, "leap": true, "hear": 230.0, "wake_near": 60.0, "sight": 280.0,
-		"hang": true, "fire_shy": true,
+		"hang": true, "fire_shy": true, "behavior": "ambusher",
 		"color": Color(0.62, 0.6, 0.5), "size": Vector2(12, 14), "hurt_h": 17.0, "knock": 60.0, "knock_mult": 0.9, "head": 0.0,
 		"xp": 5, "scrap": 5, "supply": 0.08, "ammo": 0.25, "voice": {"attack": ["trzosek_attack", 3, -5.0, 0.8], "death": ["trzosek_death", 2, -4.0, 0.8]},
 	},
@@ -47,7 +50,7 @@ const DEFS := {
 	"mimik": {
 		"hp": 70.0, "speed": 95.0, "damage": 2, "windup": 0.4, "reach": 14.0,
 		"cooldown": 1.2, "leap": true, "hear": 0.0, "wake_near": 46.0, "sight": 220.0,
-		"mimic": true,
+		"behavior": "mimic",
 		"color": Color(0.6, 0.72, 0.6), "size": Vector2(10, 16), "hurt_h": 22.0, "knock": 50.0, "knock_mult": 0.8, "head": 0.28,
 		"xp": 10, "scrap": 10, "supply": 0.4, "ammo": 0.3, "voice": {"attack": ["slepiec_attack", 2, -4.0, 1.2], "death": ["slepiec_death", 2, -3.0, 1.2]},
 	},
@@ -55,7 +58,7 @@ const DEFS := {
 	"slepiec": {
 		"hp": 100.0, "speed": 70.0, "damage": 2, "windup": 0.35, "reach": 14.0,
 		"cooldown": 1.1, "leap": true, "hear": 300.0, "wake_near": 36.0, "sight": 26.0,
-		"keen": true, "min_noise": 0.25, "blind": true, "fire_shy": true,
+		"behavior": "blind", "keen": true, "min_noise": 0.25, "blind": true, "fire_shy": true,
 		"color": Color(0.8, 0.78, 0.76), "size": Vector2(12, 17), "hurt_h": 27.0, "knock": 40.0, "knock_mult": 0.6, "head": 0.28,
 		"xp": 6, "scrap": 5, "supply": 0.1, "ammo": 0.3, "hear_error": 36.0, "sweep": 70.0, "search": 6.0,
 		"lunge": {"noise": 1.0, "range": 300.0, "wind": 0.3, "mult": 2.4, "time": 1.4, "cd": 6.0},
@@ -63,6 +66,7 @@ const DEFS := {
 	},
 	# Podsłuchacz (GDD §7.1): stoi nieruchomo i nasłuchuje; zobaczy albo usłyszy — krzyczy i ściąga hordę.
 	"podsluchacz": {
+		"behavior": "listener",
 		"hp": 35.0, "speed": 0.0, "damage": 0, "windup": 0.9, "reach": 0.0,
 		"cooldown": 6.0, "leap": false, "hear": 170.0, "wake_near": 0.0, "sight": 240.0,
 		"color": Color(0.58, 0.5, 0.57), "size": Vector2(12, 24), "hurt_h": 34.0, "knock": 30.0, "knock_mult": 0.5, "head": 0.28,
@@ -75,7 +79,7 @@ const DEFS := {
 	"wolek": {
 		"hp": 140.0, "speed": 36.0, "damage": 2, "windup": 0.6, "reach": 20.0,
 		"cooldown": 1.6, "leap": false, "hear": 150.0, "wake_near": 70.0, "sight": 200.0,
-		"bruiser": true, "armor": 3.0,
+		"behavior": "bruiser", "armor": 3.0,
 		# głaz (F3.9): zawsze dostępny, gdy w pobliżu brak skrzyni; `dmg` HP (0,5 = ukryte „stłuczenie", dwa trafienia = serce), `cd` s przerwy wg trudności
 		# [EASY, NORMAL, HARD], `windup` s zapowiedzi (× `enemy_windup`), `range` px poziomo, `noise` hałas rzutu
 		"boulder": {"dmg": 0.5, "cd": [8.0, 5.0, 3.2], "windup": 0.6, "range": 220.0, "noise": 2.0},

@@ -8,6 +8,8 @@ extends Node
 
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const Enemy := preload("res://scripts/enemy.gd")
+const Bruiser := preload("res://scripts/enemy_bruiser.gd")
+const Blind := preload("res://scripts/enemy_blind.gd")
 const FAR_X := 30000.0                ## px: obszar testów fizycznych poza mapą
 
 var main: Node2D
@@ -54,6 +56,7 @@ func run(m: Node2D) -> void:
 	await _test_director()
 	await _test_pincer()
 	await _test_director_composition()
+	await _test_behaviors()
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
 	await _test_slepiec_listen()
@@ -86,15 +89,15 @@ func _test_listener() -> void:
 	# zapowiedź: tylko usłyszał (bez celu) → dłuższa o `blind`; z celem → zwykła
 	l.set_physics_process(false)
 	l._target = null
-	l._begin_scream()
+	l._beh.begin_scream()
 	var blind_w: float = l._windup
 	l._windup = 0.0
 	l.winding = false
 	l._target = player
-	l._begin_scream()
+	l._beh.begin_scream()
 	var seen_w: float = l._windup
 	check("Podsłuchacz/zapowiedź: bez celu dłuższa o `blind` (×1,3) niż z celem", seen_w > 0.1 and absf(blind_w / seen_w - 1.3) < 0.01, "%.2f / %.2f" % [blind_w, seen_w])
-	check("Podsłuchacz/pole: przed krzykiem nie ma pola ochronnego", l._shield_t == 0.0 and not bool(l.view_info()["shield"]))
+	check("Podsłuchacz/pole: przed krzykiem nie ma pola ochronnego", l._beh.shield_t == 0.0 and not bool(l.view_info()["shield"]))
 	l._set_ai_state(l._derive_ai_state())
 	check("Podsłuchacz/widok: zapowiedź → stan windup i oczy (`alert`)", l.ai_name() == "windup" and bool(l.view_info()["alert"]), l.ai_name())
 	var hp0: float = l.hp
@@ -106,9 +109,9 @@ func _test_listener() -> void:
 	l._target = null
 
 	# krzyk: pole, fala, zasięg
-	l._scream_cd = 0.0
-	l._scream()
-	check("Podsłuchacz/krzyk: uruchamia pole ochronne i liczy krzyk", l._shield_t > 1.0 and l._screams == 1 and l._alerted, "%.2f / %d" % [l._shield_t, l._screams])
+	l._beh.scream_cd = 0.0
+	l._beh.scream()
+	check("Podsłuchacz/krzyk: uruchamia pole ochronne i liczy krzyk", l._beh.shield_t > 1.0 and l._beh.screams == 1 and l._beh.alerted, "%.2f / %d" % [l._beh.shield_t, l._beh.screams])
 	l._set_ai_state(l._derive_ai_state())
 	check("Podsłuchacz/widok: w polu stan scream, `shield` i `alert` w view_info, boty nie strzelają", l.ai_name() == "scream" and bool(l.view_info()["shield"]) and bool(l.view_info()["alert"]) and not l.is_threat())
 	check("Podsłuchacz/fala: tuż po krzyku nikt jeszcze nie reaguje (głos ma czas dojść)", not near.active and not far.active)
@@ -125,9 +128,9 @@ func _test_listener() -> void:
 	check("Podsłuchacz/fala: po chwili cała okolica w zasięgu jest obudzona i idzie na krzyk", far.active and far._has_lead)
 	l.set_physics_process(true)
 	await get_tree().create_timer(1.6).timeout
-	check("Podsłuchacz/pole: po `shield.time` (1,4 s) pole znika — stan listen, boty znów strzelają", l._shield_t == 0.0 and l.ai_name() == "listen" and l.is_threat(), "%.2f %s" % [l._shield_t, l.ai_name()])
+	check("Podsłuchacz/pole: po `shield.time` (1,4 s) pole znika — stan listen, boty znów strzelają", l._beh.shield_t == 0.0 and l.ai_name() == "listen" and l.is_threat(), "%.2f %s" % [l._beh.shield_t, l.ai_name()])
 	l.set_physics_process(false)
-	l._shield_t = 0.0
+	l._beh.shield_t = 0.0
 	l._set_ai_state(l._derive_ai_state())
 	hp0 = l.hp
 	l.take_hit(info.duplicate())
@@ -138,24 +141,24 @@ func _test_listener() -> void:
 	var near2 := _spawn("trzosek", Vector2(x0 + 60.0, y - 0.5))
 	await get_tree().physics_frame
 	l.hp = l.get("_max_hp")
-	l._scream_cd = 0.0
-	l._scream()
+	l._beh.scream_cd = 0.0
+	l._beh.scream()
 	await get_tree().create_timer(1.0).timeout
-	check("Podsłuchacz/zasięg: drugi krzyk sięga 60% promienia — bliski budzi się, dalszy (360 > 252) nie", near2.active and not far2.active and l._screams == 2, "near=%s far=%s n=%d" % [near2.active, far2.active, l._screams])
+	check("Podsłuchacz/zasięg: drugi krzyk sięga 60% promienia — bliski budzi się, dalszy (360 > 252) nie", near2.active and not far2.active and l._beh.screams == 2, "near=%s far=%s n=%d" % [near2.active, far2.active, l._beh.screams])
 
 	# limit krzyków
-	l._screams = 3
-	l._scream_cd = 0.0
-	l._shield_t = 0.0
+	l._beh.screams = 3
+	l._beh.scream_cd = 0.0
+	l._beh.shield_t = 0.0
 	l._windup = 0.0
-	l._begin_scream()
+	l._beh.begin_scream()
 	check("Podsłuchacz/limit: po 3 krzykach milknie (zapowiedź się nie zaczyna)", l._windup == 0.0 and not l.winding)
-	l._calm_t = 20.0
+	l._beh.calm_t = 20.0
 	l._target = null
 	l.set_physics_process(true)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	check("Podsłuchacz/limit: po 12 s spokoju licznik się zeruje", l._screams == 0, str(l._screams))
+	check("Podsłuchacz/limit: po 12 s spokoju licznik się zeruje", l._beh.screams == 0, str(l._beh.screams))
 
 	# kierunek patrzenia: serwer liczy go z celu / śladu, nie z lokalnego gracza
 	l.set_physics_process(false)
@@ -183,7 +186,7 @@ func _test_listener() -> void:
 	dl.winding = true
 	dl.take_hit({"amount": 500.0, "dir": Vector2.RIGHT, "pos": dl.global_position, "shooter": int(player.player_id), "type": "bullet"})
 	await get_tree().create_timer(1.0).timeout
-	check("Podsłuchacz/zapowiedź: zabity przed krzykiem nie krzyczy (nic się nie budzi, brak pola)", not dl.alive and dl._screams == 0 and not sleeper.active and dl._shield_t == 0.0, "żywy=%s krzyki=%d budzi=%s" % [dl.alive, dl._screams, sleeper.active])
+	check("Podsłuchacz/zapowiedź: zabity przed krzykiem nie krzyczy (nic się nie budzi, brak pola)", not dl.alive and dl._beh.screams == 0 and not sleeper.active and dl._beh.shield_t == 0.0, "żywy=%s krzyki=%d budzi=%s" % [dl.alive, dl._beh.screams, sleeper.active])
 	dl.queue_free()
 	sleeper.queue_free()
 	for n in [l, near, far, near2, far2, client, strip]:
@@ -198,7 +201,7 @@ func _test_wolek_boulder() -> void:
 	var cfg: Dictionary = Defs.DEFS["wolek"]["boulder"]
 	check("głaz/dane: 0,5 HP, trzy przerwy malejące z trudnością (łatwy > normalny > trudny)", is_equal_approx(float(cfg["dmg"]), 0.5) and cfg["cd"].size() == 3 and float(cfg["cd"][0]) > float(cfg["cd"][1]) and float(cfg["cd"][1]) > float(cfg["cd"][2]))
 	check("głaz/trudność: przerwa z tabeli dla EASY / NORMAL / HARD, poza zakresem przycięta",
-		Enemy.boulder_cooldown(cfg, Difficulty.Level.EASY) == float(cfg["cd"][0]) and Enemy.boulder_cooldown(cfg, Difficulty.Level.NORMAL) == float(cfg["cd"][1]) and Enemy.boulder_cooldown(cfg, Difficulty.Level.HARD) == float(cfg["cd"][2]) and Enemy.boulder_cooldown(cfg, 9) == float(cfg["cd"][2]))
+		Bruiser.boulder_cooldown(cfg, Difficulty.Level.EASY) == float(cfg["cd"][0]) and Bruiser.boulder_cooldown(cfg, Difficulty.Level.NORMAL) == float(cfg["cd"][1]) and Bruiser.boulder_cooldown(cfg, Difficulty.Level.HARD) == float(cfg["cd"][2]) and Bruiser.boulder_cooldown(cfg, 9) == float(cfg["cd"][2]))
 	var y := -13500.0
 	var strip := _floor(FAR_X + 27000.0, FAR_X + 27600.0, y)
 	var x0 := FAR_X + 27100.0
@@ -208,37 +211,37 @@ func _test_wolek_boulder() -> void:
 	level.add_child(dummy)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	w._charge_cd = 99.0
-	w._throw_cd = 0.0
-	w._boulder_cd = 0.0
+	w._beh.charge_cd = 99.0
+	w._beh.throw_cd = 0.0
+	w._beh.boulder_cd = 0.0
 	dummy.global_position = Vector2(x0 + 120.0, y)
-	check("głaz/wybór: brak skrzyni w pobliżu → zapowiedź rzutu głazem (nie skrzynią)", w._bruiser_tick(0.016, dummy) and w._sp == 3 and w._sp_boulder and w._sp_crate == null, "sp=%d boulder=%s" % [w._sp, w._sp_boulder])
-	check("głaz/zapowiedź: krótsza niż rzut skrzynią (0,6 s × trudność)", w._sp_t < Enemy.THROW_WINDUP * Difficulty.m("enemy_windup") and w._sp_t > 0.3, "%.2f" % w._sp_t)
+	check("głaz/wybór: brak skrzyni w pobliżu → zapowiedź rzutu głazem (nie skrzynią)", w._beh.tick_phase(0.016, dummy) and w._sp == 3 and w._beh.sp_boulder and w._beh.sp_crate == null, "sp=%d boulder=%s" % [w._sp, w._beh.sp_boulder])
+	check("głaz/zapowiedź: krótsza niż rzut skrzynią (0,6 s × trudność)", w._beh.sp_t < Bruiser.THROW_WINDUP * Difficulty.m("enemy_windup") and w._beh.sp_t > 0.3, "%.2f" % w._beh.sp_t)
 	w._sp = 0
-	w._sp_boulder = false
+	w._beh.sp_boulder = false
 	w.winding = false
-	w._boulder_cd = 3.0
-	check("głaz/cooldown: w czasie przerwy nie rzuca", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
-	w._boulder_cd = 0.0
+	w._beh.boulder_cd = 3.0
+	check("głaz/cooldown: w czasie przerwy nie rzuca", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
+	w._beh.boulder_cd = 0.0
 	dummy.global_position = Vector2(x0 + 300.0, y)
-	check("głaz/zasięg: cel dalej niż 220 px → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	check("głaz/zasięg: cel dalej niż 220 px → bez rzutu", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
 	dummy.global_position = Vector2(x0 + 120.0, y)
 	var crate := _crate_at(Vector2(x0 + 10.0, y - 7.0))
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	check("głaz/pierwszeństwo: skrzynia obok → rzut skrzynią, nie głazem", w._bruiser_tick(0.016, dummy) and w._sp == 3 and not w._sp_boulder and w._sp_crate != null, "boulder=%s" % w._sp_boulder)
+	check("głaz/pierwszeństwo: skrzynia obok → rzut skrzynią, nie głazem", w._beh.tick_phase(0.016, dummy) and w._sp == 3 and not w._beh.sp_boulder and w._beh.sp_crate != null, "boulder=%s" % w._beh.sp_boulder)
 	w._sp = 0
-	w._sp_crate = null
+	w._beh.sp_crate = null
 	w.winding = false
-	w._throw_cd = 5.0
-	check("głaz/pierwszeństwo: skrzynia obok, ale na cooldownie → nie zastępuje jej głazem", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	w._beh.throw_cd = 5.0
+	check("głaz/pierwszeństwo: skrzynia obok, ale na cooldownie → nie zastępuje jej głazem", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
 	crate.queue_free()
 	await get_tree().physics_frame
-	w._throw_cd = 0.0
+	w._beh.throw_cd = 0.0
 	var wall := _block(Vector2(x0 + 60.0, y - 30.0), Vector2(6.0, 120.0))
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	check("głaz/ściana: mur na linii rzutu → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	check("głaz/ściana: mur na linii rzutu → bez rzutu", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
 	wall.queue_free()
 	await get_tree().physics_frame
 
@@ -250,13 +253,13 @@ func _test_wolek_boulder() -> void:
 	for lvl in [Difficulty.Level.EASY, Difficulty.Level.NORMAL, Difficulty.Level.HARD]:
 		Difficulty.set_level(lvl)
 		w._sp = 3
-		w._sp_boulder = true
-		w._sp_dir = 1.0
-		w._sp_t = 0.0
-		w._boulder_cd = 0.0
-		w._bruiser_tick(0.016, dummy)
-		ok = ok and w._sp == 0 and not w._sp_boulder and is_equal_approx(w._boulder_cd, float(cfg["cd"][int(lvl)]))
-		detail += "%d: %.1f  " % [int(lvl), w._boulder_cd]
+		w._beh.sp_boulder = true
+		w._beh.sp_dir = 1.0
+		w._beh.sp_t = 0.0
+		w._beh.boulder_cd = 0.0
+		w._beh.tick_phase(0.016, dummy)
+		ok = ok and w._sp == 0 and not w._beh.sp_boulder and is_equal_approx(w._beh.boulder_cd, float(cfg["cd"][int(lvl)]))
+		detail += "%d: %.1f  " % [int(lvl), w._beh.boulder_cd]
 	Difficulty.set_level(prev)
 	check("głaz/rzut: pocisk powstaje, a przerwa po rzucie to 8 / 5 / 3,2 s dla łatwego / normalnego / trudnego", ok and get_tree().get_nodes_in_group("boulders").size() == n0 + 3, detail)
 	for b in get_tree().get_nodes_in_group("boulders"):
@@ -361,7 +364,7 @@ func _test_director_composition() -> void:
 		for g in t:
 			for k in g[1]:
 				var d: Dictionary = Defs.DEFS[String(k)]
-				if float(d["speed"]) <= 0.0 or d.get("hang", false) or d.get("moth", false) or d.get("mimic", false) or d.get("fly", false):
+				if float(d["speed"]) <= 0.0 or d.get("hang", false) or d.get("moth", false) or d.get("behavior", "") == "mimic" or d.get("fly", false):
 					not_mobile.append(String(k))
 	check("skład/tabele: w całej siatce czas × napięcie każda tabela ma z czego losować", empty_at.is_empty(), str(empty_at.slice(0, 5)))
 	check("skład/tabele: na starcie (czas 0, cisza) wszystkie tabele dają tylko pierwszy zestaw", early_extra.is_empty(), str(early_extra))
@@ -403,6 +406,50 @@ func _test_director_composition() -> void:
 	D.tension = keep_tension
 	D._run_t = keep_t
 	D.tension = keep_tension
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- podział enemy.gd na zachowania rodzajów (ENEMY_PLAN.md F2c / F3.1c)
+
+## Każdy rodzaj z `behavior` w danych ma klasę zachowania, nieznane / puste zachowanie daje bezpieczną bazę, a rdzeń (`enemy.gd`) nie rozgałęzia się już po nazwie rodzaju.
+func _test_behaviors() -> void:
+	var Defs := load("res://scripts/enemy_defs.gd")
+	var Base := load("res://scripts/enemy_behavior.gd")
+	var bad := []
+	var kinds_with := {}
+	for k in Defs.DEFS:
+		var b := String(Defs.DEFS[k].get("behavior", ""))
+		if b != "":
+			kinds_with[k] = b
+			if not Base.BEHAVIORS.has(b) or not ResourceLoader.exists(String(Base.BEHAVIORS[b])):
+				bad.append("%s→%s" % [k, b])
+	check("zachowania: każdy `behavior` z enemy_defs.gd ma klasę (BEHAVIORS)", bad.is_empty(), str(bad))
+	check("zachowania: rodzaje z własną mechaniką mają zachowanie (7 rodzajów)", kinds_with.size() == 7 and kinds_with.get("podsluchacz") == "listener" and kinds_with.get("wolek") == "bruiser" and kinds_with.get("slepiec") == "blind" and kinds_with.get("trzosek") == "pack", str(kinds_with))
+	var unknown = Base.create("nie_ma_takiego", null)
+	var empty = Base.create("", null)
+	check("zachowania: pusta i nieznana nazwa → baza z domyślnymi hakami (bez błędu)", unknown != null and empty != null and unknown.damage_mult() == 1.0 and unknown.threat_ok() and not unknown.tick_special(0.1) and unknown.derive_pre() == -1 and empty.returns_home() and not empty.holds_still())
+	var made := true
+	for b in Base.BEHAVIORS:
+		var inst = Base.create(String(b), null)
+		made = made and inst != null and inst.get_script().resource_path == String(Base.BEHAVIORS[b])
+	check("zachowania: fabryka tworzy każdą zarejestrowaną klasę", made)
+	var src := FileAccess.get_file_as_string("res://scripts/enemy.gd")
+	var branches := 0
+	for pat in ['kind == "', 'kind != "']:
+		var from := 0
+		while true:
+			var i := src.find(pat, from)
+			if i < 0:
+				break
+			branches += 1
+			from = i + 1
+	check("zachowania: rdzeń enemy.gd nie rozgałęzia się po nazwie rodzaju (żadnego `kind == \"…\"`)", branches == 0, "%d wystąpień" % branches)
+	var w := _spawn("wolek", Vector2(FAR_X + 28000.0, -14000.0))
+	var t := _spawn("trzosek", Vector2(FAR_X + 28100.0, -14000.0))
+	w.set_physics_process(false)
+	t.set_physics_process(false)
+	check("zachowania: węzeł wroga tworzy zachowanie wg danych (Wołek: bruiser, Trzosek: pack)", w._beh.get_script().resource_path.ends_with("enemy_bruiser.gd") and t._beh.get_script().resource_path.ends_with("enemy_pack.gd"))
+	w.queue_free()
+	t.queue_free()
 	await get_tree().physics_frame
 
 func _finish() -> void:
@@ -518,10 +565,10 @@ func _test_run_clear() -> void:
 	var w3 := _spawn("wolek", Vector2(FAR_X + 2040.0, y))
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	check("rozbieg Wołka: ciągła podłoga — wolno", w1._run_clear(1.0, 200.0))
-	check("rozbieg Wołka: przepaść na trasie — nie rozpędza się", not w2._run_clear(1.0, 200.0))
-	check("rozbieg Wołka: ściana dalej niż 200 px — też blokuje (pełny dystans)", not w3._run_clear(1.0, 260.0))
-	check("rozbieg Wołka: ściana poza dystansem — nie blokuje", w3._run_clear(1.0, 150.0))
+	check("rozbieg Wołka: ciągła podłoga — wolno", w1._beh._run_clear(1.0, 200.0))
+	check("rozbieg Wołka: przepaść na trasie — nie rozpędza się", not w2._beh._run_clear(1.0, 200.0))
+	check("rozbieg Wołka: ściana dalej niż 200 px — też blokuje (pełny dystans)", not w3._beh._run_clear(1.0, 260.0))
+	check("rozbieg Wołka: ściana poza dystansem — nie blokuje", w3._beh._run_clear(1.0, 150.0))
 	for n in [w1, w2, w3, full, cut, wall, strip]:
 		n.queue_free()
 
@@ -1086,20 +1133,20 @@ func _test_pack_shout() -> void:
 	busy._target = player
 	minion.summoned = true
 	var spot := Vector2(x0 + 200.0, y)
-	a._shout_sighting(spot)
+	a._beh.shout_sighting(spot)
 	check("wataha: kolega w zasięgu dostaje ślad w miejscu gracza i reakcję „zauważył”", b._has_lead and b._last_known.is_equal_approx(spot) and b.ai_name() == "alert", "lead=%s ai=%s" % [b._has_lead, b.ai_name()])
 	check("wataha: śpiący kolega nie dostaje śladu (budzi go wake())", not c._has_lead and not c.active)
 	check("wataha: inny rodzaj, inne piętro i za daleko nie słyszą", not d._has_lead and not up._has_lead and not far._has_lead)
 	check("wataha: kolega, który ma już cel, i przywołany bossa nie zmieniają śladu", not busy._has_lead and not minion._has_lead)
-	check("wataha: krzykacz ma cooldown", a._share_cd > 2.5, str(a._share_cd))
+	check("wataha: krzykacz ma cooldown", a._beh.share_cd > 2.5, str(a._beh.share_cd))
 	b._has_lead = false
 	b._ai = Enemy.Ai.RETURN
 	b._alert = 0.0
-	a._shout_sighting(spot)
+	a._beh.shout_sighting(spot)
 	check("wataha: w czasie cooldownu drugi krzyk nic nie robi", not b._has_lead)
 
 	# ścieżka percepcji: krzykacz widzi gracza po raz pierwszy → kolega poza zasięgiem wzroku (400 px od gracza) dostaje ślad
-	a._share_cd = 0.0
+	a._beh.share_cd = 0.0
 	a._ai = Enemy.Ai.RETURN
 	a._target = null
 	b._has_lead = false
@@ -1311,36 +1358,36 @@ func _test_wolek_throw_vertical() -> void:
 	level.add_child(dummy)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	w._throw_cd = 0.0
-	w._charge_cd = 99.0                                    # bez szarży — sprawdzamy sam rzut
+	w._beh.throw_cd = 0.0
+	w._beh.charge_cd = 99.0                                    # bez szarży — sprawdzamy sam rzut
 	dummy.global_position = Vector2(x0 + 120.0, y - 100.0)  # półka 100 px nad nim, 120 px w bok
-	check("Wołek: gracz na półce 100 px nad nim → zaczyna rzut skrzynią", w._bruiser_tick(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
+	check("Wołek: gracz na półce 100 px nad nim → zaczyna rzut skrzynią", w._beh.tick_phase(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
 	w._sp = 0
 	w.winding = false
-	w._throw_cd = 0.0
+	w._beh.throw_cd = 0.0
 	dummy.global_position = Vector2(x0 + 120.0, y + 100.0)  # 100 px niżej (po drugiej stronie podłogi pomiarowej — tylko pozycja, bez fizyki)
-	check("Wołek: gracz 100 px niżej (na niższym poziomie za krawędzią) → też rzut", w._bruiser_tick(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
+	check("Wołek: gracz 100 px niżej (na niższym poziomie za krawędzią) → też rzut", w._beh.tick_phase(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
 	w._sp = 0
 	w.winding = false
-	w._throw_cd = 0.0
+	w._beh.throw_cd = 0.0
 	dummy.global_position = Vector2(x0 + 20.0, y - 90.0)    # prawie nad nim (ax < 60) na półce
-	check("Wołek: gracz prawie nad nim (ax < 60) na półce → rzut", w._bruiser_tick(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
+	check("Wołek: gracz prawie nad nim (ax < 60) na półce → rzut", w._beh.tick_phase(0.016, dummy) and w._sp == 3, "sp=%d" % w._sp)
 	w._sp = 0
 	w.winding = false
-	w._throw_cd = 0.0
+	w._beh.throw_cd = 0.0
 	dummy.global_position = Vector2(x0 + 120.0, y - 300.0)  # za wysoko (> THROW_DY_MAX)
-	check("Wołek: za wysoko (300 px) → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
-	w._throw_cd = 0.0
+	check("Wołek: za wysoko (300 px) → bez rzutu", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
+	w._beh.throw_cd = 0.0
 	dummy.global_position = Vector2(x0 + 400.0, y - 60.0)   # za daleko w poziomie
-	check("Wołek: za daleko w poziomie → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
-	w._throw_cd = 5.0
+	check("Wołek: za daleko w poziomie → bez rzutu", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
+	w._beh.throw_cd = 5.0
 	dummy.global_position = Vector2(x0 + 120.0, y - 100.0)
-	check("Wołek: w czasie cooldownu rzutu nie zaczyna", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
-	w._throw_cd = 0.0
+	check("Wołek: w czasie cooldownu rzutu nie zaczyna", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
+	w._beh.throw_cd = 0.0
 	var wall := _block(Vector2(x0 + 60.0, y - 80.0), Vector2(6.0, 120.0))     # ściana na linii rzutu
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	check("Wołek: ściana na linii rzutu → bez rzutu", not w._bruiser_tick(0.016, dummy) and w._sp == 0)
+	check("Wołek: ściana na linii rzutu → bez rzutu", not w._beh.tick_phase(0.016, dummy) and w._sp == 0)
 	for n in [w, crate, dummy, wall, strip, strip2]:
 		n.queue_free()
 	await get_tree().physics_frame
@@ -1350,7 +1397,7 @@ func _test_slepiec_mechanics() -> void:
 	var Defs := load("res://scripts/enemy_defs.gd")
 	var cfg: Dictionary = Defs.DEFS["slepiec"]["lunge"]
 	check("Ślepiec: rzut na dźwięk — głośny i blisko tak, cichy albo za daleko (> 300 px) nie, rodzaj bez pola `lunge` nie",
-		Enemy.lunge_triggers(cfg, 3.0, 100.0) and not Enemy.lunge_triggers(cfg, 0.6, 100.0) and Enemy.lunge_triggers(cfg, 3.0, 250.0) and not Enemy.lunge_triggers(cfg, 3.0, 400.0) and not Enemy.lunge_triggers({}, 9.0, 10.0))
+		Blind.lunge_triggers(cfg, 3.0, 100.0) and not Blind.lunge_triggers(cfg, 0.6, 100.0) and Blind.lunge_triggers(cfg, 3.0, 250.0) and not Blind.lunge_triggers(cfg, 3.0, 400.0) and not Blind.lunge_triggers({}, 9.0, 10.0))
 	var y := -10500.0
 	var strip := _floor(FAR_X + 22000.0, FAR_X + 23000.0, y)
 	var x0 := FAR_X + 22500.0
@@ -1379,37 +1426,37 @@ func _test_slepiec_mechanics() -> void:
 	check("Ślepiec: po czasie szukania (6 s, dłuższym niż domyślne 3,5 s) rezygnuje ze śladu", not e._has_lead, "has_lead=%s po łącznie ≈ %.1f s" % [e._has_lead, 3.0 + t])
 
 	# rzut na głośny dźwięk 100 px na prawo (bez nawigacji po mapie: wołamy wprost `_maybe_lunge`)
-	e._lunge_cd = 0.0
+	e._beh.lunge_cd = 0.0
 	e._target = null
 	e.global_position.x = x0
 	var src := Vector2(x0 + 100.0, y)
 	e._lead_at(src)
-	e._maybe_lunge(src, 100.0, 3.0)
-	check("Ślepiec: głośny dźwięk 100 px obok → zapowiedź (alert) i oczy w widoku", e.ai_name() == "alert" and bool(e.view_info()["alert"]) and e._lunge_wind > 0.0, "%s / %.2f" % [e.ai_name(), e._lunge_wind])
+	e._beh.maybe_lunge(src, 100.0, 3.0)
+	check("Ślepiec: głośny dźwięk 100 px obok → zapowiedź (alert) i oczy w widoku", e.ai_name() == "alert" and bool(e.view_info()["alert"]) and e._beh.lunge_wind > 0.0, "%s / %.2f" % [e.ai_name(), e._beh.lunge_wind])
 	var x_wind: float = e.global_position.x
 	await get_tree().create_timer(0.15).timeout
 	check("Ślepiec: w zapowiedzi stoi w miejscu", absf(e.global_position.x - x_wind) < 2.0 and e.ai_name() == "alert")
 	t = 0.0
-	while t < 1.2 and e._lunge_t <= 0.0:
+	while t < 1.2 and e._beh.lunge_t <= 0.0:
 		await get_tree().physics_frame
 		t += get_physics_process_delta_time()
 	var x_start: float = e.global_position.x
-	check("Ślepiec: po zapowiedzi pędzi (stan lunge)", e.ai_name() == "lunge" and e._lunge_t > 0.0, e.ai_name())
+	check("Ślepiec: po zapowiedzi pędzi (stan lunge)", e.ai_name() == "lunge" and e._beh.lunge_t > 0.0, e.ai_name())
 	await get_tree().create_timer(0.3).timeout
 	var v: float = (e.global_position.x - x_start) / 0.3
 	check("Ślepiec: w rzucie jest szybszy niż w chodzie (> 1,5 × 70 px/s)", v > 105.0, "%.0f px/s" % v)
 	t = 0.0
-	while t < 2.0 and e._lunge_t > 0.0:
+	while t < 2.0 and e._beh.lunge_t > 0.0:
 		await get_tree().physics_frame
 		t += get_physics_process_delta_time()
-	check("Ślepiec: rzut kończy się za źródłem dźwięku i wraca do normalnego stanu", e._lunge_t <= 0.0 and e.global_position.x >= x0 + 90.0 and e.ai_name() != "lunge", "x=%.0f, %s" % [e.global_position.x, e.ai_name()])
-	e._maybe_lunge(src, 100.0, 3.0)
-	check("Ślepiec: cooldown rzutu (6 s) blokuje kolejny", e._lunge_wind == 0.0 and e._lunge_cd > 4.0, str(e._lunge_cd))
-	e._lunge_cd = 0.0
+	check("Ślepiec: rzut kończy się za źródłem dźwięku i wraca do normalnego stanu", e._beh.lunge_t <= 0.0 and e.global_position.x >= x0 + 90.0 and e.ai_name() != "lunge", "x=%.0f, %s" % [e.global_position.x, e.ai_name()])
+	e._beh.maybe_lunge(src, 100.0, 3.0)
+	check("Ślepiec: cooldown rzutu (6 s) blokuje kolejny", e._beh.lunge_wind == 0.0 and e._beh.lunge_cd > 4.0, str(e._beh.lunge_cd))
+	e._beh.lunge_cd = 0.0
 	e.take_hit({"amount": 1.0, "dir": Vector2.RIGHT, "pos": e.global_position, "shooter": int(player.player_id), "type": "bullet"})
-	e._maybe_lunge(src, 100.0, 3.0)
+	e._beh.maybe_lunge(src, 100.0, 3.0)
 	e.take_hit({"amount": 1.0, "dir": Vector2.RIGHT, "pos": e.global_position, "shooter": int(player.player_id), "type": "bullet"})
-	check("Ślepiec: trafiony w zapowiedzi rzutu nie stoi (zapowiedź przerwana)", e._lunge_wind == 0.0)
+	check("Ślepiec: trafiony w zapowiedzi rzutu nie stoi (zapowiedź przerwana)", e._beh.lunge_wind == 0.0)
 	for n in [e, strip]:
 		n.queue_free()
 	await get_tree().physics_frame
@@ -1446,7 +1493,7 @@ func _test_slepiec_listen() -> void:
 		NoiseMgr.noise_serial += 1
 		e._listen()
 		check("Ślepiec/słuch: strzał o głośności %.1f %s rzut (przez `_listen`)" % [th[0], "uruchamia" if th[1] else "nie uruchamia"],
-			(e._lunge_wind > 0.0) == bool(th[1]) and e._has_lead, "wind=%.2f lead=%s ai=%s" % [e._lunge_wind, e._has_lead, e.ai_name()])
+			(e._beh.lunge_wind > 0.0) == bool(th[1]) and e._has_lead, "wind=%.2f lead=%s ai=%s" % [e._beh.lunge_wind, e._has_lead, e.ai_name()])
 		e.queue_free()
 	await get_tree().physics_frame
 
