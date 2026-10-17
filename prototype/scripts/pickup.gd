@@ -313,7 +313,7 @@ func _try_stash() -> void:
 		Scrap.add_loot(rounds)
 		var mis := get_tree().get_first_node_in_group("mission")
 		if mis != null:
-			mis.on_stash_found()
+			mis.on_stash_found(pl, global_position)
 		var lvl := _level()
 		if lvl != null:
 			lvl.take_item(String(name))
@@ -326,7 +326,7 @@ func _try_tag() -> void:
 			continue
 		var mis := get_tree().get_first_node_in_group("mission")
 		if mis != null:
-			mis.on_tag_taken()
+			mis.on_tag_taken(p, global_position)
 		var lvl := _level()
 		if lvl != null:
 			lvl.take_item(String(name))

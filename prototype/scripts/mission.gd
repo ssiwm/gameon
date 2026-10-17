@@ -81,6 +81,7 @@ var _exit_fx: Node2D
 var _was_dead := {}          # nazwa gracza -> bool (liczenie upadków, serwer)
 var _down_at := {}           # nazwa gracza -> [czas misji, pozycja] w chwili upadku (dziennik sesji)
 var _logged_phase := -1      # ostatnia faza zapisana w dzienniku sesji
+var _pos_t := 0.0            # s do następnej próbki pozycji graczy w dzienniku sesji (SessionLog.POS_EVERY)
 var _peak_all := 0.0         # najwyższa Uwaga w całej misji (peak_noise liczy tylko do końca celu głównego)
 
 var _boss: Node = null
@@ -164,6 +165,11 @@ func _physics_process(delta: float) -> void:
 	if phase != _logged_phase:
 		_logged_phase = phase
 		SessionLog.event("phase", {"phase": SessionLog.PHASES[phase]})
+	if phase != Phase.SUCCESS and phase != Phase.FAILED:
+		_pos_t -= delta
+		if _pos_t <= 0.0:
+			_pos_t = SessionLog.POS_EVERY
+			_log_positions()
 	if phase == Phase.OBJECTIVE:
 		peak_noise = maxf(peak_noise, NoiseMgr.level)
 		_tick_boss_start(delta)
@@ -192,10 +198,11 @@ func _tick_boss_start(delta: float) -> void:
 		_broadcast()
 
 ## Ukryta skrytka znaleziona (pickup.gd, serwer) — cel poboczny misji 1.1; za komplet jest bonus złomu.
-func on_stash_found() -> void:
+func on_stash_found(by: Node2D = null, at := Vector2.ZERO) -> void:
 	if not NoiseMgr.is_server() or kind != "tags":
 		return
 	stashes_found += 1
+	_log_objective("stash", stashes_found, stash_total, at, by)
 	print("[MISSION] hidden stash found %d/%d" % [stashes_found, stash_total])
 	_event.rpc("generator")
 	_broadcast()
@@ -209,11 +216,12 @@ func side_done() -> bool:
 	return false
 
 ## Nieśmiertelnik podniesiony (pickup.gd, serwer) — misja 1.1. Po ostatnim otwiera się ekstrakcja (bez bossa).
-func on_tag_taken() -> void:
+func on_tag_taken(by: Node2D = null, at := Vector2.ZERO) -> void:
 	if not NoiseMgr.is_server() or kind != "tags" or phase != Phase.OBJECTIVE:
 		return
 	_tags_taken += 1
 	_count_goal()
+	_log_objective("tag", goal_total - goal_left, goal_total, at, by)
 	print("[MISSION] dog tag taken, left=%d/%d" % [goal_left, goal_total])
 	_event.rpc("generator")
 	if goal_left == 0:
@@ -259,10 +267,11 @@ func _tick_finale(delta: float) -> void:
 			lvl.collapse(lvl.collapse_rects)
 		_event.rpc("collapse")
 
-func _on_nest_destroyed(_nest: Node) -> void:
+func _on_nest_destroyed(nest: Node) -> void:
 	if not NoiseMgr.is_server():
 		return
 	_count_goal()
+	_log_objective("nest", nests_total - nests_left, nests_total, (nest as Node2D).global_position if nest is Node2D else Vector2.ZERO)
 	print("[MISSION] nest destroyed, left=%d/%d" % [nests_left, nests_total])
 	if _boss != null and phase == Phase.OBJECTIVE:
 		_boss.on_nest_lost(nests_left)
@@ -279,6 +288,7 @@ func _on_generator_started(_gen: Node) -> void:
 	if not NoiseMgr.is_server():
 		return
 	_count_goal()
+	_log_objective("generator", goal_total - goal_left, goal_total, _last_generator_pos(_gen))
 	print("[MISSION] generator started, left=%d/%d peak=%.0f" % [goal_left, goal_total, peak_noise])
 	_event.rpc("generator")
 	if goal_left == 0 and phase == Phase.OBJECTIVE:
@@ -305,6 +315,8 @@ func _start_boss() -> void:
 	print("[MISSION] gniazda zniszczone -> Żyła")
 
 func _on_boss_died() -> void:
+	if NoiseMgr.is_server() and _boss != null and is_instance_valid(_boss):
+		_log_objective("boss", 1, 1, (_boss as Node2D).global_position)
 	if phase == Phase.BOSS:
 		_open_extraction(false)
 		_broadcast()
@@ -431,9 +443,31 @@ func _log_up(p: Node2D) -> void:
 		who["after"] = snappedf(elapsed - float(d[0]), 0.1)
 		SessionLog.event("revive", who)
 
+## Próbka pozycji wszystkich graczy (ludzie i boty) — z niej mapy cieplne czasu i tras (MAPS_PLAN.md P1).
+func _log_positions() -> void:
+	if not SessionLog.recording():
+		return
+	var rows: Array = []
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_queued_for_deletion():
+			continue
+		rows.append({"who": "P%d" % int(p.display_id), "bot": bool(p.is_bot), "pos": SessionLog.xy(p.global_position),
+			"hp": int(p.hp), "crouch": bool(p.crouching), "dead": bool(p.dead)})
+	if not rows.is_empty():
+		SessionLog.event("pos", {"phase": SessionLog.PHASES[phase], "noise": roundi(NoiseMgr.level), "p": rows})
+
+## Zaliczony cel `what` (n-ty z `of`) w punkcie `at`; `by` = gracz, który go zebrał (nieśmiertelnik, skrytka), jeśli wiadomo (MAPS_PLAN.md P2).
+func _log_objective(what: String, n: int, of: int, at: Vector2, by: Node2D = null) -> void:
+	var row := {"what": what, "n": n, "of": of, "pos": SessionLog.xy(at if at != Vector2.ZERO or by == null else by.global_position)}
+	if by != null:
+		row["who"] = "P%d" % int(by.display_id)
+		row["bot"] = bool(by.is_bot)
+	SessionLog.event("objective", row)
+
 ## Start próby misji: wołane przy restarcie (on_restart) i raz przez main.gd, gdy host zaczyna pierwszą misję.
 func log_start() -> void:
 	_logged_phase = phase
+	_pos_t = 0.0                 # pierwsza próbka pozycji zaraz po starcie (punkt wyjścia trasy)
 	_peak_all = 0.0
 	_down_at.clear()
 	if kind == "hub":
