@@ -25,6 +25,7 @@ const Throwables := preload("res://scripts/throwables.gd")
 const Hints := preload("res://scripts/hints.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
+const NotePaper := preload("res://scripts/note_paper.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Codex := preload("res://scripts/codex.gd")
 const RunLog := preload("res://scripts/run_log.gd")
@@ -331,22 +332,6 @@ class Ecg extends Control:
 			draw_polyline(lit, color, 1.0, true)
 
 ## Karta zakotwiczona w obiekcie świata: panel z „ogonkiem” (strzałką) pod spodem, wskazującym obiekt.
-class TailPanel extends PanelContainer:
-	var tail := false
-	var tail_color := Color.WHITE
-	var pin := false               ## czerwona pinezka na środku górnej krawędzi (kartka przypięta do tablicy)
-	func _init() -> void:
-		resized.connect(queue_redraw)
-	func _draw() -> void:
-		if pin:
-			var px := roundf(size.x * 0.5)
-			draw_circle(Vector2(px, 1.0), 3.5, Color(0.45, 0.1, 0.08))
-			draw_circle(Vector2(px, 0.0), 3.0, Color(0.82, 0.2, 0.15))
-			draw_rect(Rect2(px - 1.0, -1.0, 1.0, 1.0), Color(1.0, 0.7, 0.6))
-		if tail:
-			var cx := roundf(size.x * 0.5)
-			draw_colored_polygon(PackedVector2Array([Vector2(cx - 6.0, size.y - 3.0), Vector2(cx + 6.0, size.y - 3.0), Vector2(cx, size.y + 6.0)]), tail_color)
-
 ## Znacznik wroga w odprawie: sylwetka-kropka w kolorze rodzaju (z tabeli Enemy.KINDS).
 class Swatch extends Control:
 	var col := Color.WHITE
@@ -467,7 +452,7 @@ var _hub_count: Label                ## kryjówka: duża cyfra odliczania do wyj
 var _center: Label
 var _center_sub: Label
 var _prompt_card: PanelContainer
-var _prompt: Label
+var _prompt: RichTextLabel             ## pasek akcji: tekst z klawiszami jako klawisze (UiTheme.keycaps)
 var _prompt_bar: Bar
 var _controls: Label
 var _f1: Label
@@ -518,10 +503,9 @@ func _ready() -> void:
 			_dev_noise = float(a.substr("--shotnoise=".length()))
 	_inspect = WeaponInspect.new()
 	add_child(_inspect)
-	_brief = _make_info_card(310.0, 4, true)
-	(_brief["card"] as TailPanel).pin = true
-	_radio = _make_info_card(300.0, 2, true)
-	(_radio["card"] as TailPanel).pin = true
+	_brief = _make_info_card(310.0, 4, UiTheme.Note.DOSSIER)         # odprawa: akta sztabu (maszynopis, pieczątka)
+	(_brief["card"] as NotePaper).stamp = tr("CLASSIFIED")
+	_radio = _make_info_card(300.0, 2, UiTheme.Note.PRINTOUT)        # prognoza: wydruk z radia
 	var wsp := WorkshopUi.new()
 	wsp.z_index = 11                                           # nad ściemnieniem (_dim, z_index 10)
 	add_child(wsp)
@@ -1047,7 +1031,16 @@ func _build_prompt() -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)
 	_prompt_card.add_child(box)
-	_prompt = UiTheme.label("", 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	_prompt = RichTextLabel.new()
+	_prompt.bbcode_enabled = true
+	_prompt.fit_content = true
+	_prompt.scroll_active = false
+	_prompt.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_prompt.add_theme_font_size_override("normal_font_size", UiTheme.T_BODY)
+	_prompt.add_theme_color_override("default_color", UiTheme.TEXT)
+	_prompt.add_theme_constant_override("outline_size", 2)
+	_prompt.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	box.add_child(_prompt)
 	_prompt_bar = Bar.new()
 	_prompt_bar.custom_minimum_size = Vector2(180, 3)
@@ -1731,17 +1724,18 @@ func _shift_result(m: Node) -> Array:
 
 ## Karta informacyjna: tytuł, podpis, siatka wierszy i opis. `cols` = liczba kolumn siatki (2 = etykieta + wartość).
 ## `paper`: karta przy obiekcie świata — papier z tekstem tuszem i ogonkiem wskazującym obiekt (zamiast ciemnego panelu HUD).
-func _make_info_card(width: float, cols: int, paper := false) -> Dictionary:
+## Karta informacyjna. `note` >= 0 to notatka-papier (NotePaper) w materiale UiTheme.Note.*: kolory i krój z palety notatki, tło rysuje komponent;
+## -1 to ciemna karta HUD. Zwraca słownik z węzłami do wypełnienia przez `_fill_info`.
+func _make_info_card(width: float, cols: int, note := -1) -> Dictionary:
+	var paper: bool = note >= 0
 	var card: PanelContainer
+	var pal: Dictionary = UiTheme.note_palette(note) if paper else {}
 	if paper:
-		var tp := TailPanel.new()
-		tp.tail = true
-		tp.tail_color = UiTheme.PAPER_EDGE
-		tp.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		tp.position = Vector2(MARGIN, MARGIN)
-		tp.add_theme_stylebox_override("panel", UiTheme.paper_box())
-		add_child(tp)
-		card = tp
+		var np := NotePaper.new()
+		np.set_kind(note)
+		np.position = Vector2(MARGIN, MARGIN)
+		add_child(np)
+		card = np
 	else:
 		card = _card(Vector2(MARGIN, MARGIN))
 	card.custom_minimum_size = Vector2(width, 0)
@@ -1749,17 +1743,18 @@ func _make_info_card(width: float, cols: int, paper := false) -> Dictionary:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
 	card.add_child(box)
-	var title := UiTheme.heading("", 16 if paper else 8, UiTheme.INK_ACCENT if paper else UiTheme.ACCENT)
+	var title := UiTheme.heading("", UiTheme.note_size(note, 11) if paper else 8, pal.get("accent", UiTheme.ACCENT))
+	var tag := UiTheme.label("", UiTheme.note_size(note, 7) if paper else UiTheme.T_CAPTION, pal.get("dim", UiTheme.MUTED))
+	var text := UiTheme.label("", UiTheme.note_size(note, 8) if paper else UiTheme.T_CAPTION, pal.get("ink", UiTheme.TEXT))
 	if paper:
-		title.add_theme_constant_override("outline_size", 0)
+		for l in [title, tag, text]:
+			(l as Label).add_theme_font_override("font", UiTheme.note_font(note))
+			(l as Label).add_theme_constant_override("outline_size", 0)
 	box.add_child(title)
-	var tag := UiTheme.label("", 8, UiTheme.INK_MUTED if paper else UiTheme.MUTED)
-	if paper:
-		tag.add_theme_constant_override("outline_size", 0)
 	box.add_child(tag)
 	if paper:
 		var r := ColorRect.new()
-		r.color = Color(UiTheme.INK, 0.35)
+		r.color = Color(pal["ink"], 0.4)
 		r.custom_minimum_size = Vector2(0, 1)
 		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		box.add_child(r)
@@ -1770,20 +1765,19 @@ func _make_info_card(width: float, cols: int, paper := false) -> Dictionary:
 	grid.add_theme_constant_override("h_separation", 14)
 	grid.add_theme_constant_override("v_separation", 1)
 	box.add_child(grid)
-	var text := UiTheme.label("", 8, UiTheme.INK if paper else UiTheme.TEXT)
-	if paper:
-		text.add_theme_constant_override("outline_size", 0)
 	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	text.custom_minimum_size = Vector2(width - 26.0, 0)
+	text.custom_minimum_size = Vector2(width - 52.0 if paper else width - 26.0, 0)
 	box.add_child(text)
-	return {"card": card, "title": title, "tag": tag, "grid": grid, "text": text, "cols": cols, "paper": paper}
+	return {"card": card, "title": title, "tag": tag, "grid": grid, "text": text, "cols": cols, "paper": paper, "mat": note}
 
 func _fill_info(c: Dictionary, title: String, tag: String, rows: Array, text: String, accent: Color) -> void:
 	var paper: bool = bool(c.get("paper", false))
+	var mat: int = int(c.get("mat", -1))
+	var pal: Dictionary = UiTheme.note_palette(mat) if paper else {}
 	(c["title"] as Label).text = title
-	(c["title"] as Label).add_theme_color_override("font_color", UiTheme.INK_ACCENT if paper else accent)
+	(c["title"] as Label).add_theme_color_override("font_color", pal["accent"] if paper else accent)
 	if paper:
-		(c["title"] as Label).add_theme_font_size_override("font_size", 16 if title.length() <= 12 else 8)   # długie tytuły (odprawa) mniejszą czcionką
+		(c["title"] as Label).add_theme_font_size_override("font_size", UiTheme.note_size(mat, 11 if title.length() <= 18 else 9))   # długie tytuły (odprawa) mniejszym krojem
 	(c["tag"] as Label).text = tag
 	(c["tag"] as Label).visible = tag != ""
 	(c["text"] as Label).text = text
@@ -1799,11 +1793,22 @@ func _fill_info(c: Dictionary, title: String, tag: String, rows: Array, text: St
 				sw.col = r[i]
 				grid.add_child(sw)
 				continue
-			var gl := UiTheme.label(String(r[i]), 9, (UiTheme.INK_MUTED if i == 0 else UiTheme.INK) if paper else (UiTheme.MUTED if i == 0 else UiTheme.TEXT))
+			var gl := UiTheme.label(String(r[i]), UiTheme.note_size(mat, 8) if paper else 9, (pal["dim"] if i == 0 else pal["ink"]) if paper else (UiTheme.MUTED if i == 0 else UiTheme.TEXT))
 			if paper:
+				gl.add_theme_font_override("font", UiTheme.note_font(mat))
 				gl.add_theme_constant_override("outline_size", 0)
 			grid.add_child(gl)
 	(c["card"] as Control).reset_size()
+
+## Notatki zależą od otoczenia: w półmroku ciemniejsze (jasność z koloru ciemności mapy), a zużycie rośnie z upadkami drużyny w kampanii (RunLog).
+func _dress_note(c: Dictionary) -> void:
+	var n := c["card"] as NotePaper
+	var lvl := get_tree().get_first_node_in_group("level")
+	var amb: Color = lvl.ambient if lvl != null else Color(0.1, 0.1, 0.1)
+	var lit := clampf(0.62 + amb.get_luminance() * 1.6, 0.6, 1.0)
+	n.modulate = Color(lit, lit, lit, 1.0)
+	n.wear = clampf(float(RunLog.total_downs()) / 10.0, 0.0, 1.0)
+	n.tally = RunLog.entries.size()
 
 ## Karty: statystyki broni w zasięgu [E] (nad paskiem kontekstowym) i odprawa przy tablicy (u góry, pod kartą celu).
 func _drive_cards() -> void:
@@ -1839,6 +1844,7 @@ func _drive_cards() -> void:
 	var bc: Control = _brief["card"]
 	bc.visible = near_board
 	if near_board:
+		_dress_note(_brief)
 		var main := get_tree().current_scene
 		var target := String(main.get("after_hub")) if main != null else ""
 		var lvl := get_tree().get_first_node_in_group("level")
@@ -1863,6 +1869,7 @@ func _drive_radio() -> void:
 	rc.visible = near
 	if not near:
 		return
+	_dress_note(_radio)
 	var main := get_tree().current_scene
 	var target := String(main.get("after_hub")) if main != null else ""
 	var key := "%s|%s" % [Weather.forecast, target]
@@ -1934,6 +1941,92 @@ func _near_generator() -> Node:
 	return null
 
 ## Pasek kontekstowy: wipe, leżenie, podnoszenie, ekstrakcja.
+## Kandydaci paska akcji (kanał ACTION): kolejność na liście = waga (pierwszy najważniejszy), każdy z własnym warunkiem. Arbiter (Msg) wybiera
+## najwyższą wagę — dawny łańcuch elif jako dane. Pusty tekst też bywa kandydatem: zagłusza niższe wagi (panel oględzin, wipe).
+func _prompt_candidates() -> Array:
+	var out: Array = []
+	var add := func(text: String, prog := -1.0, col := UiTheme.TEXT) -> void:
+		out.append({"text": text, "prog": prog, "col": col})
+	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
+	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
+	var gen := _near_generator()
+	var car := get_tree().get_first_node_in_group("handcar")
+	var grab_boss := _grab_boss()
+	var tide_boss := _tide_boss()
+	var alive: bool = _player != null and not _player.dead
+	if wipe_left > 0.0:
+		add.call("")                                                      # wipe: komunikat idzie kanałem alertu
+	if grab_boss != null and alive:
+		# chwyt Pijawki (QTE drużyny): ofiara i koledzy widzą ten sam pasek — ile obrażeń jeszcze brakuje do uwolnienia
+		var mine: bool = int(grab_boss.grab_victim_id) == int(_player.player_id)
+		add.call((tr("GRABBED — shoot the leech to break free  ·  %.0fs") if mine else tr("Teammate grabbed — shoot the leech!  ·  %.0fs")) % float(grab_boss.grab_time_left), float(grab_boss.grab_progress), UiTheme.DANGER)
+	if tide_boss != null and alive:
+		if String(tide_boss.surge_state) == "warn":
+			add.call(tr("THE TIDE IS RISING — climb to the high catwalks!"), clampf(float(tide_boss._surge_t) / (float(tide_boss.SURGE_WARN) * Difficulty.m("boss_tide")), 0.0, 1.0), UiTheme.ACCENT)
+		else:
+			add.call(tr("FLOODED — stay on the high catwalks"), -1.0, UiTheme.DANGER)
+	if _player != null and _player.dead:
+		if _player.revive_progress > 0.0:
+			add.call(tr("Being revived…"), _player.revive_progress, UiTheme.OK)
+		elif _player.taken:
+			add.call(tr("You were taken — your squad must kill the creature in %ds, or you return to the start without your kit") % ceili(_player.taken_t), _player.taken_t / 20.0, UiTheme.DANGER)
+		else:
+			add.call(tr("You're down — a teammate can revive you (bleeding out in %ds)") % ceili(_player.bleed_left), _player.bleed_left / _player.bleed_time(), UiTheme.DANGER)
+	if _player != null and _player.revive_hint() != "":
+		add.call(_player.revive_hint(), -1.0, UiTheme.OK)
+	if _player != null and _player.gear_text != "":
+		# narzędzia (lewy Alt): apteczka, defibrylator, skaner — podpowiedź albo trwające użycie
+		add.call(_player.gear_text, _player.gear_progress, UiTheme.OK if _player.gear_progress > 0.0 else UiTheme.ACCENT)
+	if car != null and car.local_state != "" and _player != null:
+		match String(car.local_state):
+			"nopower":
+				add.call(tr("The handcar has no power — start all the generators"), -1.0, UiTheme.MUTED)
+			"near":
+				add.call(tr("Step onto the handcar"), -1.0, UiTheme.ACCENT)
+			"aboard":
+				add.call(Actions.fmt(tr("Hold [{interact}]  Pump  (you can't shoot while pumping)")), -1.0, UiTheme.ACCENT)
+			"pumping":
+				add.call(Actions.fmt(tr("Pumping…  release [{interact}] to shoot")), -1.0, UiTheme.OK)
+	if gen != null and _player != null and _player.weapons.nearby_weapon_item() == null:
+		if gen.progress > 0.0:
+			add.call(tr("Starting the generator…"), gen.progress, UiTheme.OK)
+		else:
+			add.call(Actions.fmt(tr("Hold [{interact}]  Start the generator  (loud)")), -1.0, UiTheme.ACCENT)
+	if _near_workshop():
+		add.call(tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], -1.0, UiTheme.ACCENT)
+	if _player != null and _player.weapons.inspect_item != null:
+		add.call("")                                                      # klawisze są w panelu oględzin
+	if _player != null and _player.weapons.nearby_weapon_item() != null:
+		var it: Node2D = _player.weapons.nearby_weapon_item()
+		var nd: RefCounted = Weapons.def(it.arg)
+		var lvl_p := get_tree().get_first_node_in_group("level")
+		if lvl_p != null and lvl_p.is_locked_item(it):
+			add.call(tr("LOCKED  ·  %s   ·   [%s]  Inspect") % [Scrap.lock_text(it.arg), Actions.key("flare")], -1.0, UiTheme.MUTED)
+		else:
+			var wc2: Node = _player.weapons
+			var swap_out: String = Weapons.def(wc2.loadout[wc2.slot if wc2.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc2.melee_id).name
+			var take_key := Actions.key("interact")
+			var look_key := Actions.key("flare")
+			add.call(tr("[%s]  Take %s  (drops %s)   ·   [%s]  Inspect") % [take_key, nd.name, swap_out, look_key] if not wc2.carries(it.arg) else tr("[%s]  Take ammo for %s   ·   [%s]  Inspect") % [take_key, nd.name, look_key], -1.0, UiTheme.ACCENT)
+	if m != null and m.phase == Mission.Phase.EXTRACT:
+		var st: Dictionary = m.local_extract_state()
+		if st.get("inside", false):
+			if m.extract_progress > 0.0:
+				add.call(tr("EVACUATING…"), m.extract_progress, UiTheme.OK)
+			else:
+				add.call(tr("Hold here — the whole squad must reach the flare"), -1.0, UiTheme.ACCENT)
+	return out
+
+## Kolor akcji -> styl komunikatu (do dziennika i spójnego wyglądu).
+func _style_of(col: Color) -> int:
+	if col == UiTheme.DANGER:
+		return Msg.Style.DANGER
+	if col == UiTheme.OK:
+		return Msg.Style.SUCCESS
+	if col == UiTheme.ACCENT:
+		return Msg.Style.ACTION
+	return Msg.Style.INFO
+
 func _drive_prompt() -> void:
 	var text := ""
 	var prog := -1.0
@@ -1942,94 +2035,18 @@ func _drive_prompt() -> void:
 	_center_sub.text = ""
 	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
-	var gen := _near_generator()
-	var car := get_tree().get_first_node_in_group("handcar")
-	var grab_boss := _grab_boss()
-	var tide_boss := _tide_boss()
 	if wipe_left > 0.0:
 		_center.text = "SQUAD DOWN"
 		_center_sub.text = ("Extraction failed — the shift ends in %d" if NightShift.active else "Extraction failed — restarting the mission in %d") % ceili(wipe_left)
-	elif grab_boss != null and _player != null and not _player.dead:
-		# chwyt Pijawki (QTE drużyny): ofiara i koledzy widzą ten sam pasek — ile obrażeń jeszcze brakuje do uwolnienia
-		var mine: bool = int(grab_boss.grab_victim_id) == int(_player.player_id)
-		text = ("GRABBED — shoot the leech to break free  ·  %.0fs" if mine else "Teammate grabbed — shoot the leech!  ·  %.0fs") % float(grab_boss.grab_time_left)
-		prog = float(grab_boss.grab_progress)
-		col = UiTheme.DANGER
-	elif tide_boss != null and _player != null and not _player.dead:
-		if String(tide_boss.surge_state) == "warn":
-			text = "THE TIDE IS RISING — climb to the high catwalks!"
-			prog = clampf(float(tide_boss._surge_t) / (float(tide_boss.SURGE_WARN) * Difficulty.m("boss_tide")), 0.0, 1.0)
-			col = UiTheme.ACCENT
-		else:
-			text = "FLOODED — stay on the high catwalks"
-			col = UiTheme.DANGER
-	elif _player != null and _player.dead:
-		if _player.revive_progress > 0.0:
-			text = "Being revived…"
-			prog = _player.revive_progress
-			col = UiTheme.OK
-		else:
-			text = "You were taken — your squad must kill the creature in %ds, or you return to the start without your kit" % ceili(_player.taken_t) if _player.taken else "You're down — a teammate can revive you (bleeding out in %ds)" % ceili(_player.bleed_left)
-			prog = _player.taken_t / 20.0 if _player.taken else _player.bleed_left / _player.bleed_time()
-			col = UiTheme.DANGER
-	elif _player != null and _player.revive_hint() != "":
-		text = _player.revive_hint()
-		col = UiTheme.OK
-	elif _player != null and _player.gear_text != "":
-		text = _player.gear_text                     # narzędzia (lewy Alt): apteczka, defibrylator, skaner — podpowiedź albo trwające użycie
-		prog = _player.gear_progress
-		col = UiTheme.OK if prog > 0.0 else UiTheme.ACCENT
-	elif car != null and car.local_state != "" and _player != null:
-		match String(car.local_state):
-			"nopower":
-				text = "The handcar has no power — start all the generators"
-				col = UiTheme.MUTED
-			"near":
-				text = "Step onto the handcar"
-				col = UiTheme.ACCENT
-			"aboard":
-				text = Actions.fmt(tr("Hold [{interact}]  Pump  (you can't shoot while pumping)"))
-				col = UiTheme.ACCENT
-			"pumping":
-				text = Actions.fmt(tr("Pumping…  release [{interact}] to shoot"))
-				col = UiTheme.OK
-	elif gen != null and _player != null and _player.weapons.nearby_weapon_item() == null:
-		if gen.progress > 0.0:
-			text = "Starting the generator…"
-			prog = gen.progress
-			col = UiTheme.OK
-		else:
-			text = Actions.fmt(tr("Hold [{interact}]  Start the generator  (loud)"))
-			col = UiTheme.ACCENT
-	elif _near_workshop():
-		text = tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank]
-		col = UiTheme.ACCENT
-	elif _player != null and _player.weapons.inspect_item != null:
-		text = ""                                             # klawisze są w panelu oględzin
-	elif _player != null and _player.weapons.nearby_weapon_item() != null:
-		var it: Node2D = _player.weapons.nearby_weapon_item()
-		var nd: RefCounted = Weapons.def(it.arg)
-		var lvl_p := get_tree().get_first_node_in_group("level")
-		if lvl_p != null and lvl_p.is_locked_item(it):
-			text = tr("LOCKED  ·  %s   ·   [%s]  Inspect") % [Scrap.lock_text(it.arg), Actions.key("flare")]
-			col = UiTheme.MUTED
-		else:
-			var wc2: Node = _player.weapons
-			var swap_out: String = Weapons.def(wc2.loadout[wc2.slot if wc2.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc2.melee_id).name
-			var take_key := Actions.key("interact")
-			var look_key := Actions.key("flare")
-			text = tr("[%s]  Take %s  (drops %s)   ·   [%s]  Inspect") % [take_key, nd.name, swap_out, look_key] if not wc2.carries(it.arg) else tr("[%s]  Take ammo for %s   ·   [%s]  Inspect") % [take_key, nd.name, look_key]
-			col = UiTheme.ACCENT
-	elif m != null and m.phase == Mission.Phase.EXTRACT:
-		var st: Dictionary = m.local_extract_state()
-		if st.get("inside", false):
-			if m.extract_progress > 0.0:
-				text = "EVACUATING…"
-				prog = m.extract_progress
-				col = UiTheme.OK
-			else:
-				text = "Hold here — the whole squad must reach the flare"
-				col = UiTheme.ACCENT
+	var cands := _prompt_candidates()
+	for i in cands.size():
+		var c: Dictionary = cands[i]
+		Msg.hold("hud.action.%d" % i, Msg.Ch.ACTION, String(c["text"]), {"prio": 100 - i * 4, "progress": float(c["prog"]), "style": _style_of(c["col"]), "color": c["col"]})
+	var cur: Dictionary = Msg.current(Msg.Ch.ACTION)
+	if not cur.is_empty():
+		text = String(cur["text"])
+		prog = float(cur["progress"])
+		col = cur.get("color", UiTheme.TEXT)
 	if wipe_left <= 0.0 and m != null and m.banner_visible() and not (_inspect.visible or bool(_brief["card"].visible) or bool(_radio["card"].visible)):
 		# tytuł misji w pierwszych sekundach; w Nocnym Dyżurze także zasady serii
 		var lvl := get_tree().get_first_node_in_group("level")
@@ -2059,8 +2076,8 @@ func _drive_prompt() -> void:
 		_center_sub.text = m.finale_radio_line()
 	_prompt_card.visible = text != ""
 	if _prompt_card.visible:
-		_prompt.text = text
-		_prompt.add_theme_color_override("font_color", col)
+		_prompt.text = "[center]" + UiTheme.keycaps(text) + "[/center]"
+		_prompt.add_theme_color_override("default_color", col)
 		_prompt_bar.visible = prog >= 0.0
 		_prompt_bar.value = prog
 		_prompt_bar.fill = col

@@ -31,6 +31,7 @@ godot --headless --path prototype -s tools/test_audio_loops.gd  # pętle dźwię
 godot --headless --path prototype -s tools/test_aim_points.gd   # wylot pocisku: niezależny od animacji i zgodny z lufą modelu, ma wypisać PASS
 godot --headless --path prototype -s tools/test_proportions.gd  # hitboxy kontra modele, meble i znajdźki w naturalnej skali, anatomia postaci, ma wypisać PASS
 godot --headless --path prototype -s tools/test_messages.gd     # arbiter komunikatów (priorytet, duplikaty, czas życia, toasty, dziennik), ma wypisać PASS
+godot --headless --path prototype -s tools/test_note_contrast.gd # kontrast i jasność papieru notatek (ciemna paleta po zmroku), ma wypisać PASS
 prototype/tools/test_weapons.sh                                 # bronie + sieć (~3 min)
 ```
 
