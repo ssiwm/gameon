@@ -771,9 +771,20 @@ func _test_devourer() -> void:
 	check("Żerca/porwanie: przy ofierze (< 14 px) porywa ją i **ujawnia się** — widoczny, trafialny, stan special, ofiara zabrana z czasem 20 s",
 		z._beh.prey == player and player.taken and z._sp == 1 and not z._beh.is_hidden() and z.visible and not bool(hs.disabled) and player.taken_t > 19.0 and bool(z.view_info()["carrying"]) and not bool(z.view_info()["hidden"]) and z.is_threat(), "taken=%s sp=%d vis=%s" % [player.taken, z._sp, z.visible])
 	var bleed_before: float = player.bleed_left
-	z._home = Vector2(x0 + 400.0, y)
+	z._beh.lair = Vector2(x0 + 400.0, y)
 	z._beh.tick_phase(1.0, null)
 	check("Żerca/niesie: ciągnie ofiarę ku domowi, wykrwawianie stoi, czas do kary maleje (20 → 19 s)", z._beh.prey == player and absf(player.bleed_left - bleed_before) < 0.01 and absf(player.taken_t - 19.0) < 0.2 and z.velocity.x > 0.0, "t=%.1f vx=%.0f" % [player.taken_t, z.velocity.x])
+	# legowisko wybierane przy porwaniu: daleko od żywych (nie przy dawnym domu Żercy)
+	var keep_pos2: Vector2 = player.global_position
+	player.dead = false
+	player.global_position = Vector2(x0 - 200.0, y)
+	z.global_position = Vector2(x0, y)
+	var lair_a: Vector2 = z._beh._pick_lair()
+	player.global_position = Vector2(x0 + 200.0, y)
+	var lair_b: Vector2 = z._beh._pick_lair()
+	player.global_position = keep_pos2
+	player.dead = true
+	check("Żerca/legowisko: ciągnie ofiarę od żywego gracza (gracz po lewej → legowisko ≥ 300 px w prawo, po prawej → w lewo), nie zostaje przy domu", lair_a.x > x0 + 300.0 and lair_b.x < x0 - 300.0, "%.0f / %.0f (Żerca %.0f)" % [lair_a.x, lair_b.x, x0])
 	z._beh.tick_phase(30.0, null)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -789,6 +800,21 @@ func _test_devourer() -> void:
 	var was_taken: bool = player.taken
 	z._beh.on_death()
 	check("Żerca/ratunek: zabity w trakcie porwania puszcza ofiarę (leży, ≥ 3 s do wykrwawienia)", was_taken and not player.taken and player.dead and player.bleed_left >= 3.0 - 0.001 and z._beh.prey == null, "was=%s taken=%s" % [was_taken, player.taken])
+	# prawdziwa fizyka: porwanie i faktyczne ciągnięcie ofiary (Żerca przesuwa się, ofiara razem z nim)
+	var z2 := _spawn("zerca", Vector2(x0 - 300.0, y))
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	player.dead = true
+	player.taken = false
+	player.bleed_left = 20.0
+	player.global_position = Vector2(x0 - 290.0, y)
+	var start_x: float = z2.global_position.x
+	await get_tree().create_timer(1.6).timeout
+	check("Żerca/ciągnie: po porwaniu faktycznie się przemieszcza i zabiera ofiarę ze sobą (Δx > 40 px w 1,6 s), a nie stoi nad nią",
+		z2._beh.prey == player and player.taken and z2.global_position.x - start_x > 40.0 and absf(player.global_position.x - z2.global_position.x) < 30.0, "Δx=%.0f ofiara-Żerca=%.0f sp=%d" % [z2.global_position.x - start_x, player.global_position.x - z2.global_position.x, z2._sp])
+	z2._beh.on_death()
+	z2.queue_free()
+	player.taken = false
 	# trafiony w ukryciu (wybuch) — ujawnia się
 	z._beh._hide()
 	z._beh.on_hit(false)

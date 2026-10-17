@@ -10,6 +10,7 @@ var carry_t := 0.0           ## s od porwania
 var scan_t := 0.0
 var sync_t := 0.0
 var cand: Node2D = null      ## najbliższy leżący, ostatnio wypatrzony
+var lair := Vector2.ZERO     ## dokąd ciągnie ofiarę (wybierane przy porwaniu: daleko od żywych graczy)
 
 func cfg() -> Dictionary:
 	return e._def.get("devour", {}) as Dictionary
@@ -119,6 +120,7 @@ func _take(p: Node2D, c: Dictionary) -> void:
 	carry_t = 0.0
 	sync_t = 0.0
 	e._sp = 1
+	lair = _pick_lair()
 	e.velocity.x = 0.0
 	NoiseMgr.add_noise(float(c.get("noise", 6.0)), e.global_position)
 	if NoiseMgr.has_network():
@@ -139,8 +141,8 @@ func _carry(delta: float, c: Dictionary) -> bool:
 		_hide()                                       # po posiłku znów znika
 		return false
 	var speed: float = float(e._def["speed"]) * Difficulty.m("enemy_speed") * float(c.get("carry_speed", 0.6))
-	if absf(e._home.x - e.global_position.x) > 10.0:
-		e._steer_to(e._home, speed, delta)
+	if absf(lair.x - e.global_position.x) > 10.0:
+		e._steer_to(lair, speed, delta)
 	else:
 		e.velocity.x = 0.0
 	sync_t -= delta
@@ -154,3 +156,38 @@ func _release() -> void:
 		prey.deliver_take(false, e.global_position)
 	prey = null
 	e._sp = 0
+
+## Legowisko, do którego ciągnie ofiarę: punkt siatki nawigacji 250–700 px w poziomie od miejsca porwania (±160 px w pionie), możliwie najdalszy od żywych graczy — porwanie
+## ma ZABRAĆ ofiarę z kadru, a nie zostawić ją przy dawnym domu Żercy. Bez siatki (testy) i bez żywych: 400 px w stronę, w którą patrzy.
+func _pick_lair() -> Vector2:
+	var humans: Array = []
+	for p in e.get_tree().get_nodes_in_group("players"):
+		if not p.dead and not p.is_queued_for_deletion():
+			humans.append(p)
+	var lvl = e.get_tree().get_first_node_in_group("level")
+	var nav = lvl.get("nav") if lvl != null else null
+	var here: Vector2 = e.global_position
+	var away: float = e._facing
+	if not humans.is_empty():
+		var nearest: Node2D = humans[0]
+		for p in humans:
+			if p.global_position.distance_to(here) < nearest.global_position.distance_to(here):
+				nearest = p
+		away = -signf(nearest.global_position.x - here.x) if absf(nearest.global_position.x - here.x) > 1.0 else e._facing
+	var fallback: Vector2 = here + Vector2(away * 400.0, 0.0)
+	if nav == null or humans.is_empty():
+		return fallback
+	var best: Vector2 = fallback
+	var best_score := -1.0
+	for id in nav.get_point_ids():
+		var pt: Vector2 = nav.get_point_position(id)
+		var dx: float = absf(pt.x - here.x)
+		if dx < 250.0 or dx > 700.0 or absf(pt.y - here.y) > 160.0:
+			continue
+		var dmin: float = INF
+		for p in humans:
+			dmin = minf(dmin, pt.distance_to(p.global_position))
+		if dmin > best_score:
+			best_score = dmin
+			best = pt
+	return best
