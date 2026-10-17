@@ -421,6 +421,7 @@ func _handle_cmdline() -> void:
 	var gentest := false
 	var tagtest := false
 	var sneaktest := false
+	var passtest := false
 	var finaletest := false
 	var leechtest := false
 	var leechsim := ""
@@ -528,6 +529,8 @@ func _handle_cmdline() -> void:
 			tagtest = true
 		elif a == "--sneaktest":
 			sneaktest = true
+		elif a == "--passtest":
+			passtest = true
 		elif a == "--finaletest":
 			finaletest = true
 		elif a.begins_with("--leechsim"):
@@ -589,6 +592,8 @@ func _handle_cmdline() -> void:
 		_tag_test()
 	if sneaktest:
 		_sneak_test()
+	if passtest:
+		_pass_test()
 	if finaletest:
 		_finale_test()
 	if leechtest:
@@ -1998,6 +2003,80 @@ func _tag_test() -> void:
 	await get_tree().create_timer(0.6).timeout
 	check.call("wyjście z kryjówki → 1.2 (generatory)", level.map_id == "z1_m2" and mission.kind == "generators" and mission.goal_total == 4)
 	print("[TAG-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
+
+## Test przechodzącego Stalkera misji 1.1 (--host --mission=z1_m1 --passtest, MAPS_PLAN.md M1b): czeka poza mapą, przy Uwadze ≥ 80
+## wychodzi za plecami drużyny poza kadrem, idzie na hałas, po czasie się wycofuje i znika; przerwa i ponowne uzbrojenie dopiero po spadku
+## Uwagi; wipe go resetuje; poza fazą celu nie wychodzi; odprawa go nie zapowiada.
+func _pass_test() -> void:
+	await get_tree().create_timer(1.0).timeout
+	var fails := [0]
+	var check := func(label: String, ok: bool) -> void:
+		print("[PASS-TEST] %s  %s" % ["PASS" if ok else "FAIL", label])
+		if not ok:
+			fails[0] += 1
+	const HUNT := 1        # stalker.gd Pass.HUNT
+	const LEAVE := 2       # stalker.gd Pass.LEAVE
+	var st: Node2D = level.get_node_or_null("Stalker")
+	check.call("Stalker w trybie przechodzącym czeka poza mapą (niewidoczny, uśpiony)", st != null and st.pass_mode and not st.awake and not st.visible)
+	for e in get_tree().get_nodes_in_group("enemies"):          # sam Stalker: zwykli wrogowie budziliby się od hałasu testu
+		if e.get("kind") != null:
+			e.queue_free()
+	var p: Node2D = _players.get_node_or_null("1")
+	p.global_position = Vector2(60.0 * 16.0 + 8.0, 31.0 * 16.0)      # polana (nieśmiertelnik 1)
+	p.velocity = Vector2.ZERO
+	var shout := func(level_now: float) -> void:
+		NoiseMgr.level = level_now
+		NoiseMgr.add_noise(0.6, p.global_position)
+	await get_tree().create_timer(0.5).timeout
+	shout.call(70.0)
+	await get_tree().create_timer(0.4).timeout
+	check.call("Uwaga 70 (próg 80): nie wychodzi", not st.awake)
+	shout.call(92.0)
+	await get_tree().create_timer(0.3).timeout
+	var dx: float = st.global_position.x - p.global_position.x
+	var dy: float = st.global_position.y - p.global_position.y
+	check.call("Uwaga 92: wychodzi za plecami drużyny, poza kadrem (dx %.0f, dy %.0f)" % [dx, dy],
+		st.awake and st.visible and int(st.pass_state) == HUNT and dx <= -380.0 and dx >= -640.0 and absf(dy) <= 96.0)
+	var d0: float = st.global_position.distance_to(p.global_position)
+	for i in 4:
+		shout.call(92.0)
+		await get_tree().create_timer(0.5).timeout
+	var d1: float = st.global_position.distance_to(p.global_position)
+	check.call("idzie na hałas (%.0f → %.0f px)" % [d0, d1], d1 < d0 - 60.0)
+	st._pass_t = 0.05
+	await get_tree().create_timer(0.3).timeout
+	check.call("po czasie polowania wycofuje się tam, skąd wyszedł", int(st.pass_state) == LEAVE and st.target_pos == st._pass_from)
+	st._pass_t = 0.05
+	await get_tree().create_timer(0.3).timeout
+	check.call("znika: poza mapą, niewidoczny, przerwa %.0f s" % st._pass_cd,
+		not st.awake and not st.visible and int(st.pass_state) == 0 and st._pass_cd > 80.0 and st.global_position == st._home)
+	shout.call(95.0)
+	await get_tree().create_timer(0.4).timeout
+	check.call("w trakcie przerwy nie wychodzi", not st.awake)
+	st._pass_cd = 0.0
+	shout.call(95.0)
+	await get_tree().create_timer(0.4).timeout
+	check.call("po przerwie, ale bez spadku Uwagi poniżej progu: nie wychodzi", not st.awake)
+	NoiseMgr.level = 50.0
+	await get_tree().create_timer(0.3).timeout
+	shout.call(90.0)
+	await get_tree().create_timer(0.4).timeout
+	check.call("spadek Uwagi i nowy skok: wychodzi znowu", st.awake and int(st.pass_state) == HUNT)
+	_restart_mission(false)
+	await get_tree().create_timer(0.8).timeout
+	st = level.get_node_or_null("Stalker")
+	check.call("wipe: znów czeka poza mapą", st != null and not st.awake and int(st.pass_state) == 0 and st._pass_cd == 0.0)
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e.get("kind") != null:
+			e.queue_free()
+	mission.phase = MISSION_SCRIPT.Phase.EXTRACT
+	p.global_position = Vector2(60.0 * 16.0 + 8.0, 31.0 * 16.0)
+	shout.call(95.0)
+	await get_tree().create_timer(0.4).timeout
+	check.call("poza fazą celu (ekstrakcja, finał) nie wychodzi", not st.awake)
+	var brief: Dictionary = level.briefing("z1_m1")
+	check.call("odprawa go nie zapowiada (ostrzega alert hałasu)", not bool(brief["stalker"]))
+	print("[PASS-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
 
 ## Test samouczka ciszy misji 1.1 (--host --mission=z1_m1 --sneaktest): Trzosek śpiący na półce 4 kafle nad ścieżką nie budzi się
 ## od kucającego gracza pod nim, ale budzi się od wyprostowanego; podpowiedzi quiet i light łapią swoje warunki.

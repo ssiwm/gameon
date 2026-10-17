@@ -30,6 +30,10 @@ const ACCENTS := [[Vector2(392, 496), 12], [Vector2(536, 496), 9], [Vector2(936,
 ## Piąty nieśmiertelnik leży na zachodnim końcu dolnej galerii (za dwoma Trzoskami, obok skrzynki i skrytki) — powód, żeby zejść szybem serwisowym.
 ## Finał (mission._start_finale): po ostatnim nieśmiertelniku rampa do sali zawala się (obszary [c0, r0, c1, r1]), a wyjściem jest flara „e"
 ## przy szybie wentylacyjnym na wschodnim końcu sali (wspinaczka po podestach, Ćmy i Skoczki pod sufitem sali).
+## Przechodzący Stalker (MAPS_PLAN.md M1b, stalker.gd): mapa nie ma znacznika X — Stalker czeka poza mapą („home" = kafel nad nią)
+## i wychodzi za plecami drużyny, gdy w fazie celu Uwaga przekroczy `noise`; poluje `time` s, wycofuje się do `leave` s i znika;
+## następne przejście po `cooldown` s i dopiero po spadku Uwagi poniżej progu.
+const STALKER_PASS := {"noise": 80.0, "time": 28.0, "leave": 8.0, "cooldown": 90.0, "home": [3, 3]}
 const COLLAPSE := [[214, 33, 221, 41]]
 
 const MAP := [
