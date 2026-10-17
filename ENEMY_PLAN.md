@@ -245,3 +245,5 @@ Cel: nowe rodzaje (F4) nie dopisują `if kind ==` w rdzeniu. Wynik: `enemy.gd` 1
   (`_steer_to`, `_chase`, `_investigate`, `_return_home`, `_listen`, `_perceive`, `_sound_distance`, `_target_weight`) oraz dane przeszukiwania `sweep` (każdy rodzaj może je mieć).
 - **Nie zrobione (osobny, opcjonalny etap):** wydzielenie percepcji (`enemy_senses.gd`) i nawigacji (`enemy_steer.gd`) z rdzenia — to wspólny kod, więc zysk dla F4 niewielki, a ryzyko (setki odwołań do pól) duże; wracamy, gdy rdzeń znów urośnie.
 - **Wnioski z refaktoru:** przy mechanicznym przenoszeniu największe ryzyko to przypadkowe usunięcie sąsiednich linii przy edycji po numerach (np. zgubiony `_slide()`); wyłapały to testy ruchu (alert, śledztwo, szarża Ślepca) — przy kolejnych podziałach przeglądać `git diff` hunk po hunku.
+
+**F4a — zrobione w 1.7.253:** `elite` w `enemy_defs.gd` (`is_elite`, `elite_kinds`, pasek HP elity od początku), `Director.MAX_ELITES` + klucze kontekstu `downs` / `elites` / `elite_kinds` + okno `downs` w wpisach tabel, `Player.stun_t` (`deliver_stun`, `apply_stun`, `is_stunned`, `STUN_IMMUNITY` 3 s, replikowane, HUD „STUNNED"). Testy: `_test_elite_foundation`.

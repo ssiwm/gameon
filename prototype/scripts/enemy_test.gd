@@ -57,6 +57,7 @@ func run(m: Node2D) -> void:
 	await _test_pincer()
 	await _test_director_composition()
 	await _test_behaviors()
+	await _test_elite_foundation()
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
 	await _test_slepiec_listen()
@@ -450,6 +451,54 @@ func _test_behaviors() -> void:
 	check("zachowania: węzeł wroga tworzy zachowanie wg danych (Wołek: bruiser, Trzosek: pack)", w._beh.get_script().resource_path.ends_with("enemy_bruiser.gd") and t._beh.get_script().resource_path.ends_with("enemy_pack.gd"))
 	w.queue_free()
 	t.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- F4a: fundament elit (flaga elite, klucz downs, ogłuszenie gracza)
+
+## Ogłuszenie gracza (Kapłan): trwa zadany czas, blokuje kolejne ogłuszenie na STUN_IMMUNITY s po nim, nie działa na leżącego; Dyrektor liczy elity i okna `downs`.
+func _test_elite_foundation() -> void:
+	var keep_hp: int = player.hp
+	player.dead = false
+	player.stun_t = 0.0
+	player._stun_immune = 0.0
+	player.apply_stun(0.8)
+	check("stun gracza: ogłuszenie 0,8 s ustawia stan i niewrażliwość na kolejne (0,8 + 3 s)", player.is_stunned() and is_equal_approx(player.stun_t, 0.8) and is_equal_approx(player._stun_immune, 0.8 + player.STUN_IMMUNITY), "%.2f / %.2f" % [player.stun_t, player._stun_immune])
+	player.stun_t = 0.0
+	player.apply_stun(2.0)
+	check("stun gracza: w czasie niewrażliwości kolejny stun jest ignorowany", not player.is_stunned())
+	player._stun_immune = 0.0
+	player.dead = true
+	player.apply_stun(1.0)
+	check("stun gracza: leżącego nie ogłusza", not player.is_stunned())
+	player.dead = false
+	player._stun_immune = 0.0
+	player.apply_stun(0.0)
+	check("stun gracza: zerowy czas nic nie robi", not player.is_stunned())
+	player.stun_t = 0.0
+	player._stun_immune = 0.0
+	player.hp = keep_hp
+
+	var D := Director
+	var Defs := load("res://scripts/enemy_defs.gd")
+	var consistent := true
+	for k in Defs.elite_kinds():
+		consistent = consistent and Defs.is_elite(String(k))
+	check("elity: `elite_kinds` zwraca tylko rodzaje z flagą, zwykłe rodzaje nie są elitami", consistent and not Defs.is_elite("trzosek") and not Defs.is_elite("wolek") and not Defs.is_elite("nie_ma"))
+	var with_elite := [10.0, ["wolek", "trzosek"]]
+	var without := [10.0, ["trzosek", "trzosek"]]
+	var full := {"elites": 1, "elite_kinds": ["wolek"]}
+	var free := {"elites": 0, "elite_kinds": ["wolek"]}
+	check("elity: przy zajętym limicie zestawy z elitą odpadają (waga 0), zwykłe zostają", D.entry_weight(with_elite, full) == 0.0 and D.entry_weight(without, full) == 10.0 and D.entry_weight(with_elite, free) == 10.0 and D.MAX_ELITES == 1)
+	var after_down := [10.0, ["trzosek"], {"downs": [1, INF]}]
+	var early_only := [10.0, ["trzosek"], {"downs": [0, 1]}]
+	check("elity: okno `downs` — zestaw dopiero po pierwszym upadku, a okno [0,1] wyłącza się od drugiego",
+		D.entry_weight(after_down, {"downs": 0}) == 0.0 and D.entry_weight(after_down, {"downs": 1}) == 10.0 and D.entry_weight(after_down, {"downs": 4}) == 10.0 and D.entry_weight(early_only, {"downs": 1}) == 10.0 and D.entry_weight(early_only, {"downs": 2}) == 0.0)
+	var ctx: Dictionary = D.build_ctx()
+	check("elity: kontekst Dyrektora ma upadki, liczbę żywych elit i rodzaje elit", ctx.has("downs") and ctx.has("elites") and ctx.has("elite_kinds") and int(ctx["elites"]) == D.count_elites() and int(ctx["elites"]) == 0, str(ctx))
+	var gt := ctx.duplicate()
+	gt["time"] = 900.0
+	gt["tension"] = 0.5
+	check("elity: istniejące tabele bez elit działają jak dotąd przy pełnym kontekście", float(D.group_odds(D.GROUPS, gt)[0]) > 0.0 and absf(float(D.group_odds(D.GROUPS, gt).reduce(func(a, b): return a + b)) - 100.0) < 0.5)
 	await get_tree().physics_frame
 
 func _finish() -> void:
