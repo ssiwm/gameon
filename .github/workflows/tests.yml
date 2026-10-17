@@ -62,6 +62,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_proportions.gd 2>&1 | tee proportions.log
           grep -a "^PASS" proportions.log
+      - name: Arbiter komunikatów (test_messages.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_messages.gd 2>&1 | tee messages.log
+          grep -a "^PASS" messages.log
       - name: Bronie i sieć (test_weapons.sh)
         run: bash prototype/tools/test_weapons.sh
       - name: Obraz 3D pod xvfb (zrzut z każdej mapy)
