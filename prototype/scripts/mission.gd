@@ -693,12 +693,17 @@ func objective_hint() -> String:
 		var main := get_tree().current_scene
 		if main == null:
 			return ""
+		var in_zone: bool = bool(main.hub_in_zone)
 		if main.hub_countdown >= 0.0:
+			if in_zone:
+				return tr("Departing in %d…   step out of the launch zone to cancel") % int(ceil(main.hub_countdown))
 			return Actions.fmt(tr("Departing in %d…   [{restart}] cancel")) % int(ceil(main.hub_countdown))
 		var status := tr("%d / %d ready") % [main.hub_ready_n, main.hub_total]
 		if main.hub_mine:
+			if in_zone:
+				return tr("READY  ·  %s  ·  step out of the launch zone to cancel") % status
 			return Actions.fmt(tr("READY  ·  %s  ·  [{restart}] cancel")) % status
-		return Actions.fmt(tr("[{restart}]  Ready up  ·  %s")) % status
+		return Actions.fmt(tr("Step into the launch zone or press [{restart}]  ·  %s")) % status
 	match phase:
 		Phase.OBJECTIVE:
 			if kind == "boss":

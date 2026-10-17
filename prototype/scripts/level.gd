@@ -63,6 +63,7 @@ const LAMP := preload("res://scripts/lamp.gd")
 const BOARD := preload("res://scripts/board.gd")
 const RADIO_SET := preload("res://scripts/radio_set.gd")
 const RESULTS_WALL := preload("res://scripts/results_wall.gd")
+const LAUNCH_DOOR := preload("res://scripts/launch_door.gd")
 const WORKSHOP := preload("res://scripts/workshop.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const GibArt := preload("res://scripts/gib_art.gd")
@@ -109,6 +110,7 @@ var objective := "nests"
 var radio: Array = []             ## linie radia z danych mapy (kryjówka)
 var ambient := Color(0.0245, 0.0266, 0.0406)   ## kolor ciemności mapy (stan; obraz daje scena 3D): domyślny z lights.gd albo z AMBIENT mapy
 var _racks := false
+var launch_zone := Rect2()                ## strefa startu kryjówki w pikselach świata (LAUNCH_ZONE z danych mapy); pusta poza kryjówką
 var _shafts: Array = []                ## SHAFTS z danych mapy: [pierwsza, ostatnia] kolumna szybów między poziomami (bez mebli z hub_decor.gd)
 var _cab_slots := 0                   ## CABINET_SLOTS z danych mapy: > 0 = każde „g" to gablota na tyle broni (cabinet.gd), 0 = stojaki
 var _gun_cab: Array = []              ## Vector2i(gablota, rząd) dla kolejnych przedmiotów broni z „g" (puste bez gablot)
@@ -202,6 +204,8 @@ func _load(id: String) -> void:
 	_racks = m.RACKS
 	_cab_slots = int((m as GDScript).get_script_constant_map().get("CABINET_SLOTS", 0))
 	_shafts = ((m as GDScript).get_script_constant_map().get("SHAFTS", []) as Array).duplicate()
+	var lz: Array = (m as GDScript).get_script_constant_map().get("LAUNCH_ZONE", [])
+	launch_zone = Rect2(float(lz[0]) * TILE, float(lz[2] - 4) * TILE, float(lz[1] - lz[0] + 1) * TILE, 4.0 * TILE + 4.0) if lz.size() == 3 else Rect2()
 	ambient = m.AMBIENT if m.AMBIENT.a > 0.0 else Lights.AMBIENT      # alfa 0 = domyślna ciemność gry
 	_apply_darkness()
 	NoiseMgr.safe_zone = objective == "hub"
@@ -559,6 +563,12 @@ func _spawn_entities() -> void:
 		rs.name = "RadioSet%d" % (i + 1)
 		rs.position = found["R"][i]
 		add_child(rs)
+	if launch_zone.size != Vector2.ZERO:
+		var ld: Node2D = LAUNCH_DOOR.new()
+		ld.name = "LaunchDoor"
+		ld.zone = launch_zone
+		ld.position = Vector2(launch_zone.end.x - TILE, launch_zone.end.y - 4.0)
+		add_child(ld)
 	for i in found["v"].size():
 		var rw: Node2D = RESULTS_WALL.new()
 		rw.name = "ResultsWall%d" % (i + 1)

@@ -224,6 +224,7 @@ const HUB_COUNTDOWN := 2.0           ## tyle sekund po zgłoszeniu gotowości pr
 
 var hub_ready := {}                  ## serwer: id peera (jako tekst) -> gotowy
 var hub_mine := false                ## ten peer: czy jestem gotowy (HUD)
+var hub_in_zone := false             ## ten peer: czy stoję w strefie startu (HUD: wyjście ze strefy anuluje)
 var hub_ready_n := 0                 ## ilu ludzi gotowych / ilu w ogóle (replikowane serwerem do HUD)
 var hub_total := 0
 var hub_countdown := -1.0            ## < 0: nie odliczamy
@@ -236,8 +237,12 @@ func _hub_input() -> void:
 		return
 	if hub_countdown > 0.0 and NoiseMgr.has_network() and not multiplayer.is_server():
 		hub_countdown = maxf(0.0, hub_countdown - get_physics_process_delta_time())     # klient odlicza sam, serwer w _hub_server_tick
+	var me: Node2D = _players.get_node_or_null(str(NoiseMgr.local_id())) as Node2D
+	hub_in_zone = me != null and level.launch_zone.has_point(me.global_position)
 	if not Input.is_action_just_pressed("restart"):
 		return
+	if hub_in_zone:
+		return                            # w strefie gotowość trzyma pozycja: żeby ją cofnąć, trzeba z niej wyjść
 	hub_mine = not hub_mine
 	Audio.play("ui_click", Audio.BUS_UI, -8.0)
 	if not NoiseMgr.has_network() or multiplayer.is_server():
@@ -258,6 +263,18 @@ func _hub_set_ready(peer_id: int, on: bool) -> void:
 		hub_ready.erase(key)
 	_hub_sync_t = 0.0
 
+## Ludzie stojący w strefie startu kryjówki (level.launch_zone); serwer czyta pozycje graczy tak jak przy ich innych sprawdzeniach zasięgu.
+func _hub_zone_ids() -> Array:
+	var out := []
+	if level.launch_zone.size == Vector2.ZERO:
+		return out
+	for c in _players.get_children():
+		if c.is_queued_for_deletion() or c.is_bot or bool(c.get("dead")):
+			continue
+		if level.launch_zone.has_point((c as Node2D).global_position):
+			out.append(String(c.name))
+	return out
+
 func _hub_humans() -> Array:
 	var out := []
 	for c in _players.get_children():
@@ -270,10 +287,15 @@ func _hub_server_tick(delta: float) -> void:
 	for k in hub_ready.keys():
 		if not humans.has(k):
 			hub_ready.erase(k)                # ktoś wyszedł
+	var ready_ids: Array = hub_ready.keys()
+	for k in _hub_zone_ids():
+		if not ready_ids.has(k):
+			ready_ids.append(k)               # gotowy jest ten, kto stoi w strefie startu albo zgłosił się [Enter]em
 	var n := 0
 	for k in humans:
-		if hub_ready.has(k):
+		if ready_ids.has(k):
 			n += 1
+	hub_mine = ready_ids.has(str(NoiseMgr.local_id()))
 	var all := not humans.is_empty() and n == humans.size()
 	var was := hub_countdown
 	if not all:
@@ -295,7 +317,7 @@ func _hub_server_tick(delta: float) -> void:
 	if _hub_sync_t <= 0.0:
 		_hub_sync_t = 1.0
 		if NoiseMgr.has_network():
-			_hub_state.rpc(hub_ready.keys(), hub_total, hub_countdown)
+			_hub_state.rpc(ready_ids, hub_total, hub_countdown)
 
 @rpc("authority", "call_remote", "reliable")
 func _hub_state(ready_ids: Array, total: int, countdown: float) -> void:
@@ -2266,6 +2288,15 @@ func _gen_test() -> void:
 	check.call("ekwipunek i amunicja przechodzą do kryjówki", p.weapons.loadout == loadout_before and Arsenal.get_reserve(Weapons.def(loadout_before[0]).id) == ammo_before)
 	await get_tree().create_timer(2.5).timeout
 	check.call("kryjówka: bez gotowości nie ruszamy (%d/%d)" % [hub_ready_n, hub_total], level.map_id == "z1_hub" and hub_countdown < 0.0)
+	var spawn_pos: Vector2 = p.global_position
+	p.global_position = Vector2(level.launch_zone.get_center().x, level.launch_zone.end.y - 4.0)
+	p.velocity = Vector2.ZERO
+	await get_tree().create_timer(0.5).timeout
+	check.call("kryjówka: stanie w strefie startu = gotowość i odliczanie (%.1f s, %d/%d)" % [hub_countdown, hub_ready_n, hub_total], hub_in_zone and hub_mine and hub_countdown > 0.0 and hub_ready_n == hub_total)
+	p.global_position = spawn_pos
+	p.velocity = Vector2.ZERO
+	await get_tree().create_timer(0.5).timeout
+	check.call("kryjówka: wyjście ze strefy anuluje odliczanie", not hub_in_zone and not hub_mine and hub_countdown < 0.0)
 	_hub_set_ready(NoiseMgr.local_id(), true)
 	await get_tree().create_timer(0.5).timeout
 	check.call("kryjówka: wszyscy ludzie gotowi → odliczanie (%.1f s, %d/%d)" % [hub_countdown, hub_ready_n, hub_total], level.map_id == "z1_hub" and hub_countdown > 0.0 and hub_ready_n == hub_total and hub_total >= 1)
