@@ -35,6 +35,22 @@ const BP_LINE := Color(0.36, 0.62, 0.68)
 const BP_LINE_DIM := Color(0.2, 0.36, 0.40)
 const BP_TEXT := Color(0.80, 0.92, 0.92)
 const BP_MUTED := Color(0.5, 0.66, 0.70)
+## Skala typograficzna komunikatów (MESSAGES_PLAN.md §3): cztery rozmiary w jednostkach logicznych HUD zamiast 7, 8, 9, 10, 14, 16, 21, 24 i 56.
+const T_DISPLAY := 24                          ## duży alert, cyfra odliczania (cyfra: ×2)
+const T_TITLE := 16                            ## tytuł notatki, tytuł karty tytułowej
+const T_BODY := 10                             ## treść komunikatów
+const T_CAPTION := 8                           ## podpisy, stopki, znaczniki
+
+## Kolor semantyczny stylu komunikatu (Messages.Style): informacja, akcja, sukces, ostrzeżenie, groźba, lore.
+static func msg_color(style: int) -> Color:
+	match style:
+		1: return ACCENT
+		2: return OK
+		3: return WARM
+		4: return DANGER
+		5: return INK_ACCENT
+	return TEXT
+
 const HEADING_FONT := "res://art/fonts/Silkscreen-Regular.ttf"   ## pikselowa czcionka nagłówków (SIL OFL, art/fonts/OFL.txt)
 
 static var _theme: Theme
