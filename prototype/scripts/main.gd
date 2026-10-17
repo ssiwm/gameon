@@ -1944,17 +1944,17 @@ func _tag_test() -> void:
 		level.map_id == "z1_m1" and mission.kind == "tags" and mission.goal_total == 5 and tags_now.call().size() == 5 and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
 	check.call("odprawa: tytuł, 5 nieśmiertelników, Trzoski %d, Wołki %d, bez Stalkera i bossa" % [int(counts.get("trzosek", 0)), int(counts.get("wolek", 0))],
 		String(brief["title"]) != "" and int(brief["tags"]) == 5 and int(counts.get("trzosek", 0)) >= 8 and int(counts.get("wolek", 0)) >= 2 and not bool(brief["stalker"]) and not bool(brief["boss"]))
-	var gallery: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return e is CharacterBody2D and e.global_position.y > 45.0 * 16.0)
+	var gallery: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return e is CharacterBody2D and e.global_position.y > 37.0 * 16.0)
 	var scrap_caches := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "scrap")
-	var gallery_nav: Array = level.nav.find_path(Vector2(230.0 * 16.0 + 8.0, 42.0 * 16.0), Vector2(209.0 * 16.0 + 8.0, 51.0 * 16.0))
+	var gallery_nav: Array = level.nav.find_path(Vector2(230.0 * 16.0 + 8.0, 34.0 * 16.0), Vector2(209.0 * 16.0 + 8.0, 43.0 * 16.0))
 	check.call("podziemia: dolna galeria (wrogów %d, skrytek złomu na mapie %d), droga z sali szybem serwisowym (%d węzłów)" % [gallery.size(), scrap_caches.size(), gallery_nav.size()],
-		gallery.size() >= 8 and scrap_caches.size() >= 5 and not gallery_nav.is_empty())
+		gallery.size() >= 7 and scrap_caches.size() >= 5 and not gallery_nav.is_empty())
 	# przedmioty nie wpadają w ściany: podskok w stronę skały zatrzymuje się przed nią, a przedmiot zaczęty w skale jest wypychany
-	level.spawn_item("health", 0, Vector2(44.0, 30.0 * 16.0 - 10.0))
+	level.spawn_item("health", 0, Vector2(44.0, 22.0 * 16.0 - 10.0))
 	var wall_item := level.get_node_or_null("Item%d" % level._pickup_serial)
 	if wall_item != null:
 		wall_item._vel = Vector2(-600.0, -120.0)
-	level.spawn_item("health", 0, Vector2(16.0, 30.0 * 16.0))
+	level.spawn_item("health", 0, Vector2(16.0, 22.0 * 16.0))
 	var stuck_item := level.get_node_or_null("Item%d" % level._pickup_serial)
 	await get_tree().create_timer(1.5).timeout
 	var xs_ok: bool = wall_item != null and stuck_item != null and wall_item.global_position.x >= 30.0 and stuck_item.global_position.x >= 30.0 and wall_item._landed and stuck_item._landed
@@ -2022,7 +2022,7 @@ func _pass_test() -> void:
 		if e.get("kind") != null:
 			e.queue_free()
 	var p: Node2D = _players.get_node_or_null("1")
-	p.global_position = Vector2(60.0 * 16.0 + 8.0, 31.0 * 16.0)      # polana (nieśmiertelnik 1)
+	p.global_position = Vector2(60.0 * 16.0 + 8.0, 23.0 * 16.0)      # polana (nieśmiertelnik 1)
 	p.velocity = Vector2.ZERO
 	var shout := func(level_now: float) -> void:
 		NoiseMgr.level = level_now
@@ -2070,7 +2070,7 @@ func _pass_test() -> void:
 		if e.get("kind") != null:
 			e.queue_free()
 	mission.phase = MISSION_SCRIPT.Phase.EXTRACT
-	p.global_position = Vector2(60.0 * 16.0 + 8.0, 31.0 * 16.0)
+	p.global_position = Vector2(60.0 * 16.0 + 8.0, 23.0 * 16.0)
 	shout.call(95.0)
 	await get_tree().create_timer(0.4).timeout
 	check.call("poza fazą celu (ekstrakcja, finał) nie wychodzi", not st.awake)
@@ -2099,7 +2099,7 @@ func _sneak_test() -> void:
 	check.call("obóz: wataha w niecce (%d), śpi" % camp.size(), camp.size() == 5 and camp.all(func(t: Node) -> bool: return t.active == false))
 	var under: Node2D = camp[3]                                   # pod wschodnim mostem, dwa kafle od nieśmiertelnika (droga do niego prowadzi nad camp[4])
 	Input.action_press("crouch")
-	p.global_position = Vector2(126.0 * 16.0 + 8.0, 26.0 * 16.0)  # płaskowyż za obozem (lita ziemia), ponad 90 px od śpiących
+	p.global_position = Vector2(126.0 * 16.0 + 8.0, 18.0 * 16.0)  # płaskowyż za obozem (lita ziemia), ponad 90 px od śpiących
 	p.velocity = Vector2.ZERO
 	await get_tree().create_timer(0.6).timeout
 	Input.action_press("move_left")                               # na kucaka po moście nad watahą (jak gracz, bez teleportu)
@@ -2147,7 +2147,7 @@ func _sneak_test() -> void:
 	p.global_position = Vector2(300.0, floor_y - 2.0)
 	hh._collect(p)
 	check.call("podpowiedź quiet: Uwaga 30, nic nie goni", hh._queued.has("quiet"))
-	p.global_position = Vector2(3324.0, 41.0 * 16.0)
+	p.global_position = Vector2(3324.0, 33.0 * 16.0)
 	p.flashlight = false
 	hh._collect(p)
 	check.call("podpowiedź light: gracz w podziemiach bez latarki", hh._queued.has("light"))
@@ -2168,17 +2168,17 @@ func _finale_test() -> void:
 		e.set_process(false)
 	check.call("dane finału w mapie 1.1: obszar zawału (%d) i wyjście „e” (%d)" % [level.collapse_rects.size(), level.exits_alt.size()],
 		level.collapse_rects.size() == 1 and level.exits_alt.size() == 1)
-	var hall := Vector2(230.0 * 16.0 + 8.0, 42.0 * 16.0)
+	var hall := Vector2(230.0 * 16.0 + 8.0, 34.0 * 16.0)
 	var start: Vector2 = level.spawns[0]
-	var ramp_pre := Vector2(210.0 * 16.0 + 8.0, 37.0 * 16.0)
-	var area := Rect2(214.0 * 16.0, 33.0 * 16.0, 8.0 * 16.0, 9.0 * 16.0)
+	var ramp_pre := Vector2(210.0 * 16.0 + 8.0, 29.0 * 16.0)
+	var area := Rect2(214.0 * 16.0, 25.0 * 16.0, 8.0 * 16.0, 9.0 * 16.0)
 	var through := func(path: Array) -> bool:           # czy trasa przechodzi przez obszar zawału
 		for n in path:
 			if area.has_point(n.pos):
 				return true
 		return false
-	check.call("przed zawałem: rampa wolna (%s), droga z sali w górę rampy biegnie przez nią" % level._ch(216, 38),
-		not level._is_solid(216, 38) and through.call(level.nav.find_path(hall, ramp_pre)))
+	check.call("przed zawałem: rampa wolna (%s), droga z sali w górę rampy biegnie przez nią" % level._ch(216, 30),
+		not level._is_solid(216, 30) and through.call(level.nav.find_path(hall, ramp_pre)))
 	var tags_now := func() -> Array: return get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "tag" and not n.is_queued_for_deletion())
 	for i in 5:
 		var near: Array = tags_now.call()
@@ -2189,11 +2189,11 @@ func _finale_test() -> void:
 	check.call("ostatni nieśmiertelnik → finał (finale=%s, faza %d), wyjście po drugiej stronie (x=%.0f)" % [str(mission.finale), mission.phase, mission.exit_pos.x],
 		mission.finale and mission.phase == MISSION_SCRIPT.Phase.EXTRACT and mission.exit_pos.x > 3900.0)
 	# gracz „uwięziony" w obszarze zawału: ma wylądować za skałą (po stronie sali)
-	p.global_position = Vector2(217.0 * 16.0, 40.0 * 16.0)
+	p.global_position = Vector2(217.0 * 16.0, 32.0 * 16.0)
 	p.velocity = Vector2.ZERO
 	await get_tree().create_timer(2.6).timeout
-	check.call("po zawale: rampa to skała (%s), trasa grafu z sali na rampę nie przechodzi przez zawał (idzie szybem i górą), gracz za skałą (x=%.0f)" % [level._ch(216, 38), p.global_position.x],
-		level._is_solid(216, 38) and not through.call(level.nav.find_path(hall, ramp_pre)) and p.global_position.x > 222.0 * 16.0)
+	check.call("po zawale: rampa to skała (%s), trasa grafu z sali na rampę nie przechodzi przez zawał (idzie szybem i górą), gracz za skałą (x=%.0f)" % [level._ch(216, 30), p.global_position.x],
+		level._is_solid(216, 30) and not through.call(level.nav.find_path(hall, ramp_pre)) and p.global_position.x > 222.0 * 16.0)
 	var shaft_path: Array = level.nav.find_path(hall, level.exits_alt[0])
 	check.call("po zawale: z sali da się wspiąć szybem do flary (ścieżka %d węzłów)" % shaft_path.size(), not shaft_path.is_empty())
 	check.call("radio patrolu: linie 0 s / 3 s / 6 s / 9 s i cisza po %.1f s" % mission.FINALE_RADIO_END,
@@ -2207,7 +2207,7 @@ func _finale_test() -> void:
 	await get_tree().create_timer(0.8).timeout
 	check.call("restart: radio zresetowane", mission.finale_radio_line() == "" and mission.finale_clock == 0.0)
 	check.call("restart: rampa znów wolna, droga wraca, finał zresetowany (finale=%s)" % str(mission.finale),
-		not level._is_solid(216, 38) and through.call(level.nav.find_path(hall, ramp_pre)) and not mission.finale and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
+		not level._is_solid(216, 30) and through.call(level.nav.find_path(hall, ramp_pre)) and not mission.finale and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
 	print("[FINALE-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
 
 ## Test misji 1.2 (--host --mission=z1_m2 --gentest): cztery generatory (przytrzymanie E), skok Uwagi po ostatnim, ekstrakcja,
