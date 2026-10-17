@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://yg3lse364duw"
-path="res://.godot/imported/handcar_wheel_ORM_4ba896b5-a376-4911-bb7f-29af579ccffb.jpg-572e57ebb8cc8d263f15a28914e1e789.ctex"
+path.s3tc="res://.godot/imported/handcar_wheel_ORM_4ba896b5-a376-4911-bb7f-29af579ccffb.jpg-572e57ebb8cc8d263f15a28914e1e789.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "2213361cd42eff6a5d16449c23344e29"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/handcar_wheel_ORM_4ba896b5-a376-4911-bb7f-29af579ccffb.jpg"
-dest_files=["res://.godot/imported/handcar_wheel_ORM_4ba896b5-a376-4911-bb7f-29af579ccffb.jpg-572e57ebb8cc8d263f15a28914e1e789.ctex"]
+dest_files=["res://.godot/imported/handcar_wheel_ORM_4ba896b5-a376-4911-bb7f-29af579ccffb.jpg-572e57ebb8cc8d263f15a28914e1e789.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

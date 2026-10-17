@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bbfehpj75uj1c"
-path="res://.godot/imported/tag_Color_bafeaf59-e326-462d-96f5-fc5a89af83b0.jpg-be39c411ec7b13d56979e55596601adc.ctex"
+path.s3tc="res://.godot/imported/tag_Color_bafeaf59-e326-462d-96f5-fc5a89af83b0.jpg-be39c411ec7b13d56979e55596601adc.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "efed7af7e3fccf9de2b0b03dd71da8b2"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/tag_Color_bafeaf59-e326-462d-96f5-fc5a89af83b0.jpg"
-dest_files=["res://.godot/imported/tag_Color_bafeaf59-e326-462d-96f5-fc5a89af83b0.jpg-be39c411ec7b13d56979e55596601adc.ctex"]
+dest_files=["res://.godot/imported/tag_Color_bafeaf59-e326-462d-96f5-fc5a89af83b0.jpg-be39c411ec7b13d56979e55596601adc.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

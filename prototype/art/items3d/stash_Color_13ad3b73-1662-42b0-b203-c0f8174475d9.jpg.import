@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b3ildtw2dj6wl"
-path="res://.godot/imported/stash_Color_13ad3b73-1662-42b0-b203-c0f8174475d9.jpg-e1ce43ad9638cc623f9153ac14bae76f.ctex"
+path.s3tc="res://.godot/imported/stash_Color_13ad3b73-1662-42b0-b203-c0f8174475d9.jpg-e1ce43ad9638cc623f9153ac14bae76f.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "42e8f10b68d90874b3c2d8281629cd2e"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/stash_Color_13ad3b73-1662-42b0-b203-c0f8174475d9.jpg"
-dest_files=["res://.godot/imported/stash_Color_13ad3b73-1662-42b0-b203-c0f8174475d9.jpg-e1ce43ad9638cc623f9153ac14bae76f.ctex"]
+dest_files=["res://.godot/imported/stash_Color_13ad3b73-1662-42b0-b203-c0f8174475d9.jpg-e1ce43ad9638cc623f9153ac14bae76f.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

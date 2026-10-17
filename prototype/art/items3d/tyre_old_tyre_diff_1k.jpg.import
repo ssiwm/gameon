@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b435hgf4a4dpu"
-path="res://.godot/imported/tyre_old_tyre_diff_1k.jpg-e701a16cfc6688338af002d641ca2a4d.ctex"
+path.s3tc="res://.godot/imported/tyre_old_tyre_diff_1k.jpg-e701a16cfc6688338af002d641ca2a4d.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "09bf6b3adefe30e426655ed2269669c8"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/tyre_old_tyre_diff_1k.jpg"
-dest_files=["res://.godot/imported/tyre_old_tyre_diff_1k.jpg-e701a16cfc6688338af002d641ca2a4d.ctex"]
+dest_files=["res://.godot/imported/tyre_old_tyre_diff_1k.jpg-e701a16cfc6688338af002d641ca2a4d.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

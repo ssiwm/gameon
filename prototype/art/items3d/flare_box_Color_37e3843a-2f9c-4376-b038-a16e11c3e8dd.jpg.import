@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bik4ppdinvesk"
-path="res://.godot/imported/flare_box_Color_37e3843a-2f9c-4376-b038-a16e11c3e8dd.jpg-2986195ce479d2f6d8cb6bb9f5b17dfb.ctex"
+path.s3tc="res://.godot/imported/flare_box_Color_37e3843a-2f9c-4376-b038-a16e11c3e8dd.jpg-2986195ce479d2f6d8cb6bb9f5b17dfb.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "0b99d6b42cb3ae183bc4968ee9f8dcae"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/flare_box_Color_37e3843a-2f9c-4376-b038-a16e11c3e8dd.jpg"
-dest_files=["res://.godot/imported/flare_box_Color_37e3843a-2f9c-4376-b038-a16e11c3e8dd.jpg-2986195ce479d2f6d8cb6bb9f5b17dfb.ctex"]
+dest_files=["res://.godot/imported/flare_box_Color_37e3843a-2f9c-4376-b038-a16e11c3e8dd.jpg-2986195ce479d2f6d8cb6bb9f5b17dfb.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

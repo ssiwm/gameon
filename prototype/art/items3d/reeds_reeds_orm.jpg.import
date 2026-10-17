@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://be75tm7dpnmlh"
-path="res://.godot/imported/reeds_reeds_orm.jpg-50f4915c7b157737c1f8552b8352477b.ctex"
+path.s3tc="res://.godot/imported/reeds_reeds_orm.jpg-50f4915c7b157737c1f8552b8352477b.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "d16dadcd046adfad334bb17442a1b4a3"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/reeds_reeds_orm.jpg"
-dest_files=["res://.godot/imported/reeds_reeds_orm.jpg-50f4915c7b157737c1f8552b8352477b.ctex"]
+dest_files=["res://.godot/imported/reeds_reeds_orm.jpg-50f4915c7b157737c1f8552b8352477b.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://drp5i16nbdewm"
-path="res://.godot/imported/chair_Color_cdda9ba0-0b64-4e9a-bc5d-9699969c3c2e.jpg-5046d7da87b91a2159d6b49346f967bf.ctex"
+path.s3tc="res://.godot/imported/chair_Color_cdda9ba0-0b64-4e9a-bc5d-9699969c3c2e.jpg-5046d7da87b91a2159d6b49346f967bf.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "cc231187fed56cc3d6bc426d1ba2124b"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/chair_Color_cdda9ba0-0b64-4e9a-bc5d-9699969c3c2e.jpg"
-dest_files=["res://.godot/imported/chair_Color_cdda9ba0-0b64-4e9a-bc5d-9699969c3c2e.jpg-5046d7da87b91a2159d6b49346f967bf.ctex"]
+dest_files=["res://.godot/imported/chair_Color_cdda9ba0-0b64-4e9a-bc5d-9699969c3c2e.jpg-5046d7da87b91a2159d6b49346f967bf.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

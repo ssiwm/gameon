@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c56j2euw3llm1"
-path="res://.godot/imported/barrel_Color_41b53196-4d8f-4dbf-8a1f-099f16ee2a74.jpg-d946b29dd454a2df41aba0f6498a4577.ctex"
+path.s3tc="res://.godot/imported/barrel_Color_41b53196-4d8f-4dbf-8a1f-099f16ee2a74.jpg-d946b29dd454a2df41aba0f6498a4577.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "09be960789f97a609431098fd29ddff2"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/barrel_Color_41b53196-4d8f-4dbf-8a1f-099f16ee2a74.jpg"
-dest_files=["res://.godot/imported/barrel_Color_41b53196-4d8f-4dbf-8a1f-099f16ee2a74.jpg-d946b29dd454a2df41aba0f6498a4577.ctex"]
+dest_files=["res://.godot/imported/barrel_Color_41b53196-4d8f-4dbf-8a1f-099f16ee2a74.jpg-d946b29dd454a2df41aba0f6498a4577.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

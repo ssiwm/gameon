@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://ccpvdwlgorwtl"
-path="res://.godot/imported/crate_Color_073fbb47-2865-4378-9c27-2f44b8e4055f.jpg-a91f7c588a39046253b840fa3cab50df.ctex"
+path.s3tc="res://.godot/imported/crate_Color_073fbb47-2865-4378-9c27-2f44b8e4055f.jpg-a91f7c588a39046253b840fa3cab50df.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "d68552f2c3edeecb7cfe02362a37d57b"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/crate_Color_073fbb47-2865-4378-9c27-2f44b8e4055f.jpg"
-dest_files=["res://.godot/imported/crate_Color_073fbb47-2865-4378-9c27-2f44b8e4055f.jpg-a91f7c588a39046253b840fa3cab50df.ctex"]
+dest_files=["res://.godot/imported/crate_Color_073fbb47-2865-4378-9c27-2f44b8e4055f.jpg-a91f7c588a39046253b840fa3cab50df.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0
