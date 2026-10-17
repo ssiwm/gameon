@@ -64,6 +64,7 @@ const BOARD := preload("res://scripts/board.gd")
 const RADIO_SET := preload("res://scripts/radio_set.gd")
 const RESULTS_WALL := preload("res://scripts/results_wall.gd")
 const LAUNCH_DOOR := preload("res://scripts/launch_door.gd")
+const HUB_PROP := preload("res://scripts/hub_prop.gd")
 const WORKSHOP := preload("res://scripts/workshop.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const GibArt := preload("res://scripts/gib_art.gd")
@@ -111,6 +112,7 @@ var radio: Array = []             ## linie radia z danych mapy (kryjówka)
 var ambient := Color(0.0245, 0.0266, 0.0406)   ## kolor ciemności mapy (stan; obraz daje scena 3D): domyślny z lights.gd albo z AMBIENT mapy
 var _racks := false
 var launch_zone := Rect2()                ## strefa startu kryjówki w pikselach świata (LAUNCH_ZONE z danych mapy); pusta poza kryjówką
+var _hub_props: Array = []                ## HUB_PROPS z danych mapy: [rodzaj, kolumna, wiersz podłogi, parametry] (hub_prop.gd)
 var _shafts: Array = []                ## SHAFTS z danych mapy: [pierwsza, ostatnia] kolumna szybów między poziomami (bez mebli z hub_decor.gd)
 var _cab_slots := 0                   ## CABINET_SLOTS z danych mapy: > 0 = każde „g" to gablota na tyle broni (cabinet.gd), 0 = stojaki
 var _gun_cab: Array = []              ## Vector2i(gablota, rząd) dla kolejnych przedmiotów broni z „g" (puste bez gablot)
@@ -204,6 +206,7 @@ func _load(id: String) -> void:
 	_racks = m.RACKS
 	_cab_slots = int((m as GDScript).get_script_constant_map().get("CABINET_SLOTS", 0))
 	_shafts = ((m as GDScript).get_script_constant_map().get("SHAFTS", []) as Array).duplicate()
+	_hub_props = ((m as GDScript).get_script_constant_map().get("HUB_PROPS", []) as Array).duplicate()
 	var lz: Array = (m as GDScript).get_script_constant_map().get("LAUNCH_ZONE", [])
 	launch_zone = Rect2(float(lz[0]) * TILE, float(lz[2] - 4) * TILE, float(lz[1] - lz[0] + 1) * TILE, 4.0 * TILE + 4.0) if lz.size() == 3 else Rect2()
 	ambient = m.AMBIENT if m.AMBIENT.a > 0.0 else Lights.AMBIENT      # alfa 0 = domyślna ciemność gry
@@ -563,6 +566,13 @@ func _spawn_entities() -> void:
 		rs.name = "RadioSet%d" % (i + 1)
 		rs.position = found["R"][i]
 		add_child(rs)
+	for hp in _hub_props:
+		var pr2: Node2D = HUB_PROP.new()
+		pr2.name = "HubProp_%s_%d" % [hp[0], int(hp[1])]
+		pr2.kind = String(hp[0])
+		pr2.args = hp[3]
+		pr2.position = Vector2(float(hp[1]) * TILE + TILE * 0.5, float(hp[2]) * TILE)
+		add_child(pr2)
 	if launch_zone.size != Vector2.ZERO:
 		var ld: Node2D = LAUNCH_DOOR.new()
 		ld.name = "LaunchDoor"

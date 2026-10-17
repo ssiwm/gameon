@@ -23,6 +23,13 @@ const ACCENTS := []
 const SHAFTS := [[26, 31], [56, 61]]
 ## Strefa startu przed drzwiami wyjścia: [pierwsza kolumna, ostatnia kolumna, wiersz podłogi]. Kto w niej stoi, jest gotowy (main.gd: _hub_zone_ids).
 const LAUNCH_ZONE := [63, 70, 22]
+## Rekwizyty bez znaczników (hub_prop.gd, bryły buduje view3d.gd): [rodzaj, kolumna mapy, wiersz podłogi, parametry]. Maszynownia i magazyn na dole (wiersz 30),
+## okno z prognozą pogody w radiostacji na górze (wiersz 14; parametr = szerokość w kaflach), rury: parametr = ostatnia kolumna.
+const HUB_PROPS := [
+	["pipes", 5, 30, [26]], ["generator", 14, 30, []], ["compressor", 21, 30, []], ["barrel", 24, 30, []],
+	["crate", 35, 30, []], ["crate", 36, 30, []], ["scrap_pile", 39, 30, []], ["mil_crate", 45, 30, []], ["barrel", 48, 30, []],
+	["d7", 66, 30, []], ["window", 68, 14, [3]],
+]
 ## Radio: kolejne linie pokazuje HUD w pierwszych sekundach pobytu.
 const RADIO := ["...the transmitter is still humming. Whatever listens out there heard it too.", "Restock. Swap guns at the armory. Check the board for the next job."]
 const RACKS := true                       ## broń z „g" stoi w miejscu (ekspozycja)
