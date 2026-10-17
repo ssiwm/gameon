@@ -220,10 +220,12 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 
 # ---------------------------------------------------------------- gotowość w kryjówce
 
-const HUB_COUNTDOWN := 2.0           ## tyle sekund po zgłoszeniu gotowości przez wszystkich ludzi do wyjścia na misję
+const HUB_COUNTDOWN := 3.0           ## tyle sekund po zgłoszeniu gotowości przez wszystkich ludzi do wyjścia na misję
 
 var hub_ready := {}                  ## serwer: id peera (jako tekst) -> gotowy
 var hub_mine := false                ## ten peer: czy jestem gotowy (HUD)
+var hub_cancel_flash := 0.0           ## 1 w chwili anulowania odliczania, zanika w pół sekundy (HUD i światła strefy startu)
+var _hub_cd_prev := -1.0
 var hub_in_zone := false             ## ten peer: czy stoję w strefie startu (HUD: wyjście ze strefy anuluje)
 var hub_ready_n := 0                 ## ilu ludzi gotowych / ilu w ogóle (replikowane serwerem do HUD)
 var hub_total := 0
@@ -234,7 +236,9 @@ var _hub_sync_t := 0.0
 ## drużyna rusza na misję; odznaczenie przez kogokolwiek przerywa odliczanie. Boty się nie liczą.
 func _hub_input() -> void:
 	if mission == null or mission.kind != "hub":
+		_hub_cd_prev = -1.0
 		return
+	_hub_feedback(get_physics_process_delta_time())
 	if hub_countdown > 0.0 and NoiseMgr.has_network() and not multiplayer.is_server():
 		hub_countdown = maxf(0.0, hub_countdown - get_physics_process_delta_time())     # klient odlicza sam, serwer w _hub_server_tick
 	var me: Node2D = _players.get_node_or_null(str(NoiseMgr.local_id())) as Node2D
@@ -249,6 +253,21 @@ func _hub_input() -> void:
 		_hub_set_ready(NoiseMgr.local_id(), hub_mine)
 	else:
 		_hub_ready_rpc.rpc_id(1, hub_mine)
+
+## Dźwięk i błysk odliczania (lokalnie u każdego peera, licznik przychodzi z serwera): tyk co sekundę o rosnącym tonie, potwierdzenie na zerze, odmowa i czerwony błysk przy anulowaniu.
+func _hub_feedback(delta: float) -> void:
+	hub_cancel_flash = maxf(0.0, hub_cancel_flash - delta * 2.0)
+	var cd := hub_countdown
+	if cd > 0.0:
+		var secs := ceili(cd)
+		if _hub_cd_prev < 0.0 or secs != ceili(_hub_cd_prev):
+			Audio.play("ui_click", Audio.BUS_UI, -4.0, 0.85 + 0.22 * float(ceili(HUB_COUNTDOWN) - secs))
+	elif cd == 0.0 and _hub_cd_prev > 0.0:
+		Audio.play("ui_confirm", Audio.BUS_UI, -3.0)
+	elif cd < 0.0 and _hub_cd_prev > 0.0 and not _departing:
+		hub_cancel_flash = 1.0
+		Audio.play("ui_deny", Audio.BUS_UI, -5.0)
+	_hub_cd_prev = cd
 
 @rpc("any_peer", "call_remote", "reliable")
 func _hub_ready_rpc(on: bool) -> void:
@@ -2292,7 +2311,7 @@ func _gen_test() -> void:
 	p.global_position = Vector2(level.launch_zone.get_center().x, level.launch_zone.end.y - 4.0)
 	p.velocity = Vector2.ZERO
 	await get_tree().create_timer(0.5).timeout
-	check.call("kryjówka: stanie w strefie startu = gotowość i odliczanie (%.1f s, %d/%d)" % [hub_countdown, hub_ready_n, hub_total], hub_in_zone and hub_mine and hub_countdown > 0.0 and hub_ready_n == hub_total)
+	check.call("kryjówka: stanie w strefie startu = gotowość i odliczanie (%.1f s, %d/%d)" % [hub_countdown, hub_ready_n, hub_total], hub_in_zone and hub_mine and hub_countdown > 2.0 and hub_ready_n == hub_total)
 	p.global_position = spawn_pos
 	p.velocity = Vector2.ZERO
 	await get_tree().create_timer(0.5).timeout

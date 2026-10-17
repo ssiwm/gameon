@@ -921,15 +921,57 @@ func _sync_launch_doors() -> void:
 			d = _build_launch_door(n as Node2D)
 			_launch_doors[n.get_instance_id()] = d
 		var st := clampi(int(n.get("state")), 0, 2)
-		var col: Color = LD_STATE_COLORS[st]
-		var pulse := 0.55 + 0.45 * sin(float(Time.get_ticks_msec()) * 0.008) if st == 1 else 1.0
+		var cancel := float(n.get("cancel"))
+		var col: Color = (LD_STATE_COLORS[st] as Color).lerp(LD_STATE_COLORS[0], clampf(cancel * 2.0, 0.0, 1.0))
+		var t := float(Time.get_ticks_msec()) * 0.001
+		var pulse := 0.55 + 0.45 * sin(t * 8.0) if st == 1 else (0.8 + 0.2 * sin(t * 6.0) if st == 2 else 1.0)
 		var mat := d["mat"] as StandardMaterial3D
 		mat.albedo_color = col
 		mat.emission = col
 		mat.emission_energy_multiplier = 3.0 * pulse
 		var lt := d["light"] as OmniLight3D
 		lt.light_color = col
-		lt.light_energy = 1.6 * pulse
+		lt.light_energy = 1.6 * pulse + 2.0 * cancel
+		# pad, kurtyna i światło nad strefą: kolor stanu, siła rośnie od pustej strefy przez część drużyny do odliczania
+		var pad_a: float = [0.10, 0.24, 0.34][st] * pulse + 0.25 * cancel
+		var k: float = [0.0, 0.5, 0.85][st] * pulse + 0.6 * cancel
+		(d["pad"] as StandardMaterial3D).albedo_color = Color(col.r, col.g, col.b, pad_a)
+		var cm := d["curtain"] as ShaderMaterial
+		cm.set_shader_parameter("col", Vector3(col.r, col.g, col.b))
+		cm.set_shader_parameter("k", k)
+		var spot := d["spot"] as SpotLight3D
+		spot.light_color = col
+		spot.light_energy = float([0.0, 1.2, 2.6][st]) * pulse + 2.0 * cancel
+		# sloty graczy: jedno pole na człowieka, zapalone u gotowych
+		var total := clampi(int(n.get("total")), 1, 4)
+		var ready_n := int(n.get("ready_n"))
+		var slots: Array = d["slots"]
+		for i in slots.size():
+			var sm: StandardMaterial3D = slots[i]["mat"]
+			var on := i < ready_n
+			(slots[i]["mi"] as MeshInstance3D).visible = i < total
+			sm.albedo_color = col if on else Color(0.16, 0.13, 0.11)
+			sm.emission = col if on else Color(0.0, 0.0, 0.0)
+			sm.emission_energy_multiplier = 2.2 if on else 0.0
+		# cyfry na drzwiach (odliczanie) albo licznik gotowych pod lampą; kogut kręci się od startu odliczania
+		var cd := float(n.get("countdown"))
+		var digit := d["digit"] as Label3D
+		var count := d["count"] as Label3D
+		digit.visible = cd > 0.0
+		count.visible = cd <= 0.0
+		if cd > 0.0:
+			var secs := ceili(cd)
+			digit.text = str(secs)
+			digit.modulate = col
+			digit.pixel_size = 0.0075 * (1.0 + 0.3 * pow(float(secs) - cd, 2.0))
+		else:
+			count.text = "%d / %d" % [ready_n, maxi(1, int(n.get("total")))]
+			count.modulate = Color(col.r, col.g, col.b, 0.85)
+		var kg := d["kogut"] as SpotLight3D
+		kg.visible = st == 2 and cancel < 0.1
+		if kg.visible:
+			var a := t * 4.2
+			kg.basis = Basis.looking_at(Vector3(cos(a), sin(a), -0.25), Vector3.FORWARD)
 
 func _ld_box(root: Node3D, size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
 	var bm := BoxMesh.new()
@@ -995,7 +1037,92 @@ func _build_launch_door(n: Node2D) -> Dictionary:
 	var cx := zone.get_center().x * PX - foot.x
 	for zz in [0.55, -0.55]:
 		_ld_box(root, Vector3(wm, 0.012, 0.12), Vector3(cx, 0.008, zz), hz)
-	return {"root": root, "mat": lamp_mat, "light": light}
+	# pad na podłodze strefy (świecący, z krawędziami), kurtyna światła, światło z sufitu, sloty graczy, cyfry na drzwiach, kogut i napis na ścianie
+	var cxm := zone.get_center().x * PX - foot.x
+	var pad_mat := StandardMaterial3D.new()
+	pad_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	pad_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	pad_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	pad_mat.albedo_color = Color(0.9, 0.2, 0.1, 0.1)
+	var pad := _ld_box(root, Vector3(wm, 0.01, 1.3), Vector3(cxm, 0.012, 0.0), pad_mat)
+	pad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var csh := Shader.new()
+	csh.code = "shader_type spatial;\nrender_mode unshaded, blend_add, cull_disabled, depth_draw_never;\nuniform vec3 col : source_color = vec3(0.3, 1.0, 0.4);\nuniform float k = 0.0;\nvoid fragment() {\n	float v = pow(UV.y, 2.2);\n	float h = smoothstep(0.0, 0.06, UV.x) * smoothstep(1.0, 0.94, UV.x);\n	float rays = 0.7 + 0.3 * sin(UV.x * 70.0 + TIME * 1.4);\n	ALBEDO = col * k * 0.45 * v * h * rays;\n}\n"
+	var curtain_mat := ShaderMaterial.new()
+	curtain_mat.shader = csh
+	var cq := QuadMesh.new()
+	cq.size = Vector2(wm, 3.4)
+	var cmi := MeshInstance3D.new()
+	cmi.mesh = cq
+	cmi.material_override = curtain_mat
+	cmi.layers = LAYER_WORLD
+	cmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	cmi.position = Vector3(cxm, 1.7, -0.45)
+	root.add_child(cmi)
+	var spot := SpotLight3D.new()
+	spot.spot_range = 9.0
+	spot.spot_angle = 52.0
+	spot.light_volumetric_fog_energy = 1.2
+	spot.layers = LAYER_WORLD | LAYER_ACTORS
+	spot.position = Vector3(cxm, 7.8, 0.3)
+	spot.rotation = Vector3(deg_to_rad(-90.0), 0.0, 0.0)
+	root.add_child(spot)
+	var slots: Array = []
+	for i in 4:
+		var sm := StandardMaterial3D.new()
+		sm.emission_enabled = true
+		sm.albedo_color = Color(0.16, 0.13, 0.11)
+		var smi := _ld_box(root, Vector3(1.0, 0.025, 0.16), Vector3(cxm + (float(i) - 1.5) * 2.1, 0.02, 0.62), sm)
+		smi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		slots.append({"mat": sm, "mi": smi})
+	var font := UiTheme.heading_font()
+	var digit := Label3D.new()
+	digit.font_size = 200
+	digit.pixel_size = 0.0075
+	digit.shaded = false
+	digit.outline_size = 14
+	digit.outline_modulate = Color(0.0, 0.0, 0.0, 0.9)
+	digit.layers = LAYER_WORLD
+	digit.position = Vector3(0.0, 4.55, -1.72)
+	if font != null:
+		digit.font = font
+	digit.visible = false
+	root.add_child(digit)
+	var count := Label3D.new()
+	count.font_size = 72
+	count.pixel_size = 0.007
+	count.shaded = false
+	count.outline_size = 8
+	count.outline_modulate = Color(0.0, 0.0, 0.0, 0.9)
+	count.layers = LAYER_WORLD
+	count.position = Vector3(0.0, 3.85, -1.72)
+	if font != null:
+		count.font = font
+	root.add_child(count)
+	var kg := SpotLight3D.new()
+	kg.light_color = Color(0.4, 1.0, 0.5)
+	kg.light_energy = 5.0
+	kg.spot_range = 8.0
+	kg.spot_angle = 16.0
+	kg.light_volumetric_fog_energy = 2.0
+	kg.layers = LAYER_WORLD | LAYER_ACTORS
+	kg.position = Vector3(0.0, 3.25, -1.45)
+	kg.visible = false
+	root.add_child(kg)
+	var sign_l := Label3D.new()
+	sign_l.text = tr("LAUNCH ZONE")
+	sign_l.font_size = 96
+	sign_l.pixel_size = 0.008
+	sign_l.shaded = false
+	sign_l.modulate = Color(0.85, 0.66, 0.28, 0.85)
+	sign_l.outline_size = 6
+	sign_l.outline_modulate = Color(0.0, 0.0, 0.0, 0.8)
+	sign_l.layers = LAYER_WORLD
+	sign_l.position = Vector3(cxm - wm * 0.5 + 3.2, 4.3, -1.88)
+	if font != null:
+		sign_l.font = font
+	root.add_child(sign_l)
+	return {"root": root, "mat": lamp_mat, "light": light, "pad": pad_mat, "curtain": curtain_mat, "spot": spot, "slots": slots, "digit": digit, "count": count, "kogut": kg}
 
 # ---------------------------------------------------------------- rekwizyty kryjówki (hub_prop.gd)
 
