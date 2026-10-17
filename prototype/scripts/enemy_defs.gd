@@ -98,7 +98,7 @@ const DEFS := {
 		"behavior": "priest", "elite": true, "armor": 2.0, "sheet": "podsluchacz", "ring_r": 88.0, "alert": 0.5,
 		"priest": {"radius": 96.0, "trigger": 110.0, "stun": 0.8, "tele": 0.7, "heal_r": 112.0, "heal_pct": 0.10, "heal_every": 1.0, "keep": [110.0, 190.0], "noise": 8.0},
 		"color": Color(0.55, 0.5, 0.42), "size": Vector2(12, 32), "hurt_h": 44.0, "knock": 20.0, "knock_mult": 0.3, "head": 0.22,
-		"xp": 25, "scrap": 15, "supply": 0.5, "ammo": 0.5, "health": 1.0, "hear_error": 64.0, "voice": {"attack": ["slepiec_attack", 2, -3.0, 0.8], "death": ["slepiec_death", 2, -2.0, 0.8]},
+		"xp": 25, "scrap": 15, "supply": 0.5, "ammo": 0.5, "health": 1.0, "hear_error": 64.0, "voice": {"attack": ["slepiec_attack", 2, -3.0, 0.8], "scream": ["kaplan_scream", 2, -3.0, 1.0], "death": ["slepiec_death", 2, -2.0, 0.8]},
 	},
 	# Rzeźnik (GDD §7.2, F4c): miniboss — ten sam kod co Wołek (zachowanie bruiser) z innymi danymi: cięższa szarża (`charge`: min/max px, windup, time, mult, cd, crash_stun, damage)
 	# przebija zamurowane przejścia (`breaks_barricades`), nie rzuca (`throws: false`), nie chwieje się od trafień i ogłuszeń (`stun_resist`), ledwo odrzucany.
@@ -108,7 +108,7 @@ const DEFS := {
 		"behavior": "bruiser", "elite": true, "armor": 4.0, "stun_resist": true, "throws": false, "breaks_barricades": true, "sheet": "wolek",
 		"charge": {"min": 100.0, "max": 320.0, "windup": 1.0, "time": 1.4, "mult": 3.2, "cd": 9.0, "crash_stun": 1.6, "damage": 2},
 		"color": Color(0.5, 0.35, 0.33), "size": Vector2(26, 36), "hurt_h": 44.0, "knock": 8.0, "knock_mult": 0.05, "head": 0.2,
-		"xp": 40, "scrap": 25, "supply": 0.6, "ammo": 0.7, "health": 1.0, "hear_error": 96.0, "voice": {"attack": ["wolek_attack", 2, -1.0, 0.75], "death": ["wolek_death", 2, -1.0, 0.75]},
+		"xp": 40, "scrap": 25, "supply": 0.6, "ammo": 0.7, "health": 1.0, "hear_error": 96.0, "voice": {"attack": ["rzeznik_roar", 2, -2.0, 1.0], "death": ["wolek_death", 2, -1.0, 0.75]},
 	},
 	# Żerca (GDD §7.2, F4d): elita-porywacz, ZAMASKOWANY do porwania (niewidoczny i nietrafialny). Wyczuwa krew — leżących graczy (nie ludzi na nogach) w `devour.sense` px po trasie; skrada się, **porywa** (ujawnia się) i ciąga ze spowolnieniem
 	# (`carry_speed`) do swojego domu. Po `devour.time` s od porwania „zjada": gracz wraca na start misji z wyposażeniem początkowym (nie ginie na stałe, GDD §4).
@@ -119,7 +119,7 @@ const DEFS := {
 		"behavior": "devourer", "elite": true, "fire_shy": true, "stun_resist": true, "sheet": "skoczek", "ring_r": 60.0,
 		"devour": {"time": 20.0, "sense": 520.0, "carry_speed": 0.6, "grab_r": 14.0, "noise": 6.0},
 		"color": Color(0.5, 0.52, 0.42), "size": Vector2(14, 22), "hurt_h": 30.0, "knock": 40.0, "knock_mult": 0.05, "head": 0.2,
-		"xp": 30, "scrap": 20, "supply": 0.3, "ammo": 0.3, "health": 0.5, "hear_error": 64.0, "voice": {"attack": ["trzosek_attack", 3, -4.0, 0.7], "death": ["slepiec_death", 2, -2.0, 0.7]},
+		"xp": 30, "scrap": 20, "supply": 0.3, "ammo": 0.3, "health": 0.5, "hear_error": 64.0, "voice": {"attack": ["trzosek_attack", 3, -4.0, 0.7], "scream": ["zerca_grab", 2, -2.0, 1.0], "warn": ["zerca_warn", 1, -4.0, 1.0], "death": ["slepiec_death", 2, -2.0, 0.7]},
 	},
 }
 

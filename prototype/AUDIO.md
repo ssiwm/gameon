@@ -64,7 +64,7 @@ bez crossfade'u i bez dziury w energii.
   rozpoznać na ślepo i nie pomylić ze Stalkerem: Trzosek — niskie, psie warknięcie i skowyt (`trzosek_attack`, `trzosek_death`),
   Wołek — parsknięcie i ryk byka (`wolek_*`), Ślepiec — przyspieszające klikanie i świst oddechu (`slepiec_*`), Podsłuchacz —
   dwugłosowy, drżący wrzask alarmu (`podsluchacz_scream`), Pijawka — bulgot i syk (`leech_growl`, `leech_shriek`), Żyła — tętniący
-  pomruk i wielogłosowy ryk (`zyla_growl`, `zyla_roar`). `attack` gra przy zapowiedzi ciosu (zbocze `winding` w `enemy.gd`), `death`
+  pomruk i wielogłosowy ryk (`zyla_growl`, `zyla_roar`); elity: zawodzący krzyk Kapłana (`kaplan_scream`, zdarzenie `scream`), ryk szarży Rzeźnika (`rzeznik_roar`), chwyt Żercy (`zerca_grab`, `scream`) i jego cichy oddech przy tropieniu (`zerca_warn`, zdarzenie `warn` przez `_cue_fx`). `attack` gra przy zapowiedzi ciosu (zbocze `winding` w `enemy.gd`), `death`
   przy śmierci; tabela gatunek → rodzina: `enemy_defs.gd` (pole `voice`) (Skoczek mówi głosem Trzoska, zdemaskowany Mimik — Ślepca, Ćma milczy).
 * **Kroki** — pięta + palce, 5 wariantów × 4 powierzchnie (beton/metal modalny/ziemia z chrzęstem/woda z bąblami).
 * **Ambient** — stereo z niezależnych realizacji, okresowe; nowe emitery jednorazowe (podmuch, skrzyp, huk, zew).

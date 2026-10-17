@@ -299,4 +299,6 @@ Cel: nowe rodzaje (F4) nie dopisują `if kind ==` w rdzeniu. Wynik: `enemy.gd` 1
 **F4e — modele elit, zrobione w 1.7.257 (poza dźwiękami i kodeksem):** koncepty Flux → TRELLIS 2 (`comfy_gen.py model`) → `tools/rig_trellis.py` (szkielet Mixamo, wagi, `--attach` tasaka do prawej dłoni) → `prep_enemy3d.py` → `art/enemy3d/{kaplan,rzeznik,zerca}.glb`; SPEC bez nadpisań `model`.
 Powtórka: `python tools/comfy_gen.py model art_src/enemies_f4/X.png --out art_src/enemies_f4/X.glb`, potem `blender -b --factory-startup -P tools/rig_trellis.py -- X.glb X_rig.glb --preset=humanoid|brute|crawler [--attach=tasak.glb]`,
 potem `blender -b --factory-startup -P tools/prep_enemy3d.py -- X_rig.glb ../../prototype/art/enemy3d/X.glb --faces=6000 --tex=1024`.
-**Zostaje:** wpisy kodeksu (`codex.gd`, portrety, `ui.csv`), własne dźwięki (krzyk Kapłana, ryk szarży Rzeźnika, chwyt Żercy, cichy sygnał ostrzegawczy Żercy), strzałka w świecie ku ujawnionemu Żercy, test sieciowy host + klient dla porwania, strojenie po playtestach (F4f).
+**Dźwięki elit — zrobione w 1.7.258:** `kaplan_scream`, `rzeznik_roar`, `zerca_grab` i cichy `zerca_warn` (tropienie leżącego co 3–4,5 s, RPC `_cue_fx`); wersje syntezowane, bez nagrań z bibliotek — do odsłuchu u użytkownika.
+
+**Zostaje:** wpisy kodeksu (`codex.gd`, portrety, `ui.csv`), strzałka w świecie ku ujawnionemu Żercy, test sieciowy host + klient dla porwania, strojenie po playtestach (F4f).
