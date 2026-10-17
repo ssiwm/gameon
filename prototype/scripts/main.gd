@@ -2135,8 +2135,8 @@ func _gen_test() -> void:
 			lamps += 1
 	var in_cab := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "weapon" and n.has_meta("cabinet")).size()
 	var brief: Dictionary = level.briefing(after_hub)
-	check.call("kryjówka: 2 gabloty z 8 broniami, 9 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
-		cabinets == 2 and in_cab == 8 and lamps == 9 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
+	check.call("kryjówka: 2 gabloty z 8 broniami, 12 lamp, tablica, ciepły ambient (%.2f)" % level.ambient.r,
+		cabinets == 2 and in_cab == 8 and lamps == 12 and get_tree().get_nodes_in_group("board").size() == 1 and level.ambient.r > 0.1)
 	# radiostacja (R, weather.gd): jedna w kryjówce, w kryjówce pogody misji nie ma, prognoza jest znanym rodzajem; mnożniki pogody łączą się z NightShift
 	check.call("niebo (deszcz): w kryjówce zamknięte (sufit), ustawienie efektów pogody domyślnie REDUCED (%s)" % Settings.WEATHER_FX_NAMES[Settings.weather_fx_idx],
 		not level.sky_open_at(p.global_position) and Settings.WEATHER_FX_NAMES.size() == 3)
@@ -2437,6 +2437,9 @@ func _map_test() -> void:
 			points.append(["Skrytka %d" % (i + 1), (level._map_items["H"] as Array)[i]])
 		for b in get_tree().get_nodes_in_group("board"):
 			points.append(["Tablica", b.global_position])
+		for grp in [["radio_set", "Radiostacja"], ["workshop", "Warsztat"], ["results_wall", "Ściana wyników"]]:       # stanowiska kryjówki (może mieć je na różnych piętrach)
+			for n in get_tree().get_nodes_in_group(grp[0]):
+				points.append([grp[1], n.global_position])
 		for n in get_tree().get_nodes_in_group("nests"):
 			points.append([String(n.name), n.global_position])
 		for e in get_tree().get_nodes_in_group("enemies"):

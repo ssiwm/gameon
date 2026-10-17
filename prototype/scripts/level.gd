@@ -109,6 +109,7 @@ var objective := "nests"
 var radio: Array = []             ## linie radia z danych mapy (kryjówka)
 var ambient := Color(0.0245, 0.0266, 0.0406)   ## kolor ciemności mapy (stan; obraz daje scena 3D): domyślny z lights.gd albo z AMBIENT mapy
 var _racks := false
+var _shafts: Array = []                ## SHAFTS z danych mapy: [pierwsza, ostatnia] kolumna szybów między poziomami (bez mebli z hub_decor.gd)
 var _cab_slots := 0                   ## CABINET_SLOTS z danych mapy: > 0 = każde „g" to gablota na tyle broni (cabinet.gd), 0 = stojaki
 var _gun_cab: Array = []              ## Vector2i(gablota, rząd) dla kolejnych przedmiotów broni z „g" (puste bez gablot)
 var _gun_cab_x: Array = []            ## środek gabloty [px] dla kolejnych przedmiotów broni
@@ -200,6 +201,7 @@ func _load(id: String) -> void:
 	radio = m.RADIO
 	_racks = m.RACKS
 	_cab_slots = int((m as GDScript).get_script_constant_map().get("CABINET_SLOTS", 0))
+	_shafts = ((m as GDScript).get_script_constant_map().get("SHAFTS", []) as Array).duplicate()
 	ambient = m.AMBIENT if m.AMBIENT.a > 0.0 else Lights.AMBIENT      # alfa 0 = domyślna ciemność gry
 	_apply_darkness()
 	NoiseMgr.safe_zone = objective == "hub"
@@ -573,39 +575,54 @@ func _spawn_entities() -> void:
 		lp.position = _hang_pos(found["l"][i], 0.0)
 		add_child(lp)
 	if found["l"].size() > 0 and found["h"].size() > 0:
-		# kryjówka (mapa z warsztatem): podłoga pod pierwszą lampą → meble w tle (hub_decor.gd); lampy na innych mapach (B1) mebli nie stawiają
-		var lc := int(float((found["l"][0] as Vector2).x) / float(TILE))
-		var fr := int(float((found["l"][0] as Vector2).y) / float(TILE))
-		for rr in range(fr, _map.size()):
-			if _is_solid(lc, rr):
-				fr = rr
-				break
-		var ncols := (_map[0] as String).length()
-		var occ: Array = []
-		var quiet: Array = []
-		var wide := {}                                       # tablice (wyniki, odprawa) są szersze niż reszta znaczników
+		# kryjówka (mapa z warsztatem): meble w tle (hub_decor.gd) osobno dla każdego poziomu ze stanowiskami (v, h, n, R, g, S); lampy na innych mapach (B1) mebli nie stawiają
+		var floors := {}                                         # wiersz podłogi → [kolumny znaczników]
 		for k in found:
 			if k == "l":
-				continue                                     # lampy wiszą wysoko — nie blokują podłogi
+				continue                                         # lampy wiszą wysoko — nie blokują podłogi
 			for pos in found[k]:
 				var pc := int(float((pos as Vector2).x) / float(TILE))
-				occ.append(pc)
+				var fr := int(float((pos as Vector2).y) / float(TILE))
+				for rr in range(fr, _map.size()):
+					if _is_solid(pc, rr):
+						fr = rr
+						break
+				if not floors.has(fr):
+					floors[fr] = {"occ": [], "wide": {}, "quiet": [], "station": false}
+				var fl: Dictionary = floors[fr]
+				fl["occ"].append(pc)
+				if k in ["v", "h", "n", "R", "g", "S"]:
+					fl["station"] = true
 				if k == "v" or k == "n":
-					wide[pc] = 4.6
+					fl["wide"][pc] = 4.6                      # tablice (wyniki, odprawa) są szersze niż reszta znaczników
 				if k == "g":
-					quiet.append(pc)                         # między stojakami zostaje goła ściana — tam patrzy się na broń
+					fl["quiet"].append(pc)                    # między stojakami zostaje goła ściana — tam patrzy się na broń
 					if _cab_slots > 0:
-						wide[pc] = 2.0                           # gablota ma 1,7 m szerokości
-		var x0 := 0
-		while x0 < ncols - 1 and (_is_solid(x0, fr - 1) or not _is_solid(x0, fr)):
-			x0 += 1
-		var x1 := ncols - 1
-		while x1 > x0 and (_is_solid(x1, fr - 1) or not _is_solid(x1, fr)):
-			x1 -= 1
-		var dc: Node2D = HUB_DECOR.new()
-		dc.name = "HubDecor"
-		add_child(dc)
-		dc.setup(occ, wide, quiet, x0, x1, float(fr * TILE), float(TILE))
+						fl["wide"][pc] = 2.0                  # gablota ma 1,7 m szerokości
+		var ncols := (_map[0] as String).length()
+		var decor_n := 0
+		for fr in floors:
+			var fl: Dictionary = floors[fr]
+			if not fl["station"]:
+				continue                                         # poziom bez stanowisk (maszynownia, magazyn): bez losowych mebli
+			var x0 := 0
+			while x0 < ncols - 1 and (_is_solid(x0, fr - 1) or not _is_solid(x0, fr) and not _is_platform_cell(x0, fr)):
+				x0 += 1
+			var x1 := ncols - 1
+			while x1 > x0 and (_is_solid(x1, fr - 1) or not _is_solid(x1, fr) and not _is_platform_cell(x1, fr)):
+				x1 -= 1
+			var occ: Array = fl["occ"]
+			var quiet: Array = fl["quiet"]
+			for sh in _shafts:                                   # szyb: dwa znaczniki na brzegach i cisza między nimi
+				occ.append(int(sh[0]))
+				occ.append(int(sh[1]))
+				quiet.append(int(sh[0]))
+				quiet.append(int(sh[1]))
+			var dc: Node2D = HUB_DECOR.new()
+			dc.name = "HubDecor" if decor_n == 0 else "HubDecor%d" % (decor_n + 1)
+			decor_n += 1
+			add_child(dc)
+			dc.setup(occ, fl["wide"], quiet, x0, x1, float(fr * TILE), float(TILE))
 	var guns_at: Array = found["g"]
 	_gun_cab.clear()
 	_gun_cab_x.clear()
