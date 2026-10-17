@@ -79,6 +79,10 @@ func toasts() -> Array:
 		all.remove_at(drop)
 	return all
 
+## Żywa wiadomość o danym id (pusty słownik, gdy wygasła).
+func live(id: String) -> Dictionary:
+	return _live.get(id, {})
+
 func has(id: String) -> bool:
 	return _live.has(id)
 
@@ -110,6 +114,8 @@ func _put(id: String, ch: int, text: String, o: Dictionary, lease: bool) -> void
 	m["progress"] = float(o.get("progress", -1.0))
 	m["material"] = String(o.get("material", ""))
 	m["color"] = o.get("color", Color.WHITE)
+	m["big"] = bool(o.get("big", false))           # alert: tekst jako duża cyfra / znak (odliczanie)
+	m["kicker"] = String(o.get("kicker", ""))      # karta tytułowa: mały nadtytuł (RADIO, MISSION)
 	m["rows"] = o.get("rows", [])
 	m["keys"] = o.get("keys", [])
 	m["lease"] = lease

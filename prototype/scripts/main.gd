@@ -2312,6 +2312,8 @@ func _gen_test() -> void:
 	p.velocity = Vector2.ZERO
 	await get_tree().create_timer(0.5).timeout
 	check.call("kryjówka: stanie w strefie startu = gotowość i odliczanie (%.1f s, %d/%d)" % [hub_countdown, hub_ready_n, hub_total], hub_in_zone and hub_mine and hub_countdown > 2.0 and hub_ready_n == hub_total)
+	var cd_alert: Dictionary = Msg.current(Msg.Ch.ALERT)
+	check.call("komunikaty: odliczanie wyjścia to alert w kanale ALERT (%s)" % str(cd_alert.get("text", "-")), String(cd_alert.get("id", "")) == "hud.hubcount" and bool(cd_alert.get("big", false)))
 	p.global_position = spawn_pos
 	p.velocity = Vector2.ZERO
 	await get_tree().create_timer(0.5).timeout
@@ -2668,25 +2670,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 ## Krótki komunikat na górze ekranu (poza lobby, np. w trakcie gry), znika po `secs` s.
 func _toast(text: String, secs := 5.0) -> void:
-	var l := Label.new()
-	l.text = text
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.add_theme_font_size_override("font_size", 7)
-	l.add_theme_color_override("font_color", Color(1.0, 0.9, 0.6))
-	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	l.add_theme_constant_override("outline_size", 2)
-	l.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	l.offset_left = -170.0
-	l.offset_right = 170.0
-	l.offset_top = 62.0
-	l.offset_bottom = 100.0
-	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	$UI.add_child(l)
-	var tw := create_tween()
-	tw.tween_interval(secs)
-	tw.tween_property(l, "modulate:a", 0.0, 1.0)
-	tw.tween_callback(l.queue_free)
+	Msg.post("net.%d" % text.hash(), Msg.Ch.TOAST, text, {"ttl": secs, "style": Msg.Style.WARN, "prio": 70})
 
 func _on_peer_connected(id: int) -> void:
 	print("[NET] peer connected: %d" % id)
