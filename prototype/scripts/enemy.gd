@@ -599,9 +599,17 @@ func _hear_alarm(lead: Vector2) -> void:
 @rpc("authority", "call_local", "reliable")
 func _scream_fx() -> void:
 	_ring = 0.7
-	Audio.play_variant_at("podsluchacz_scream", 2, global_position, Audio.BUS_WORLD, -3.0, _beh.scream_pitch())
+	if EnemyDefs.voice(kind, "scream").is_empty():
+		Audio.play_variant_at("podsluchacz_scream", 2, global_position, Audio.BUS_WORLD, -3.0, _beh.scream_pitch())
+	else:
+		_voice("scream")                                       # elity mają własny krzyk (`voice.scream` w enemy_defs.gd)
 	if _local_player_pos().distance_to(global_position) < 300.0:
 		Feel.shake(2.2)
+
+## Cichy sygnał zdarzenia na każdym peerze (np. Żerca tropi leżącego: `voice.warn`) — niewiarygodny, więc bez gwarancji dostarczenia.
+@rpc("authority", "call_local", "unreliable")
+func _cue_fx(event: String) -> void:
+	_voice(event)
 
 ## --- percepcja ------------------------------------------------------------
 

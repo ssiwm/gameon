@@ -231,6 +231,14 @@
   "sfx/weapons/item_pickup",
   0
  ],
+ "kaplan_scream_1": [
+  "sfx/enemies/kaplan_scream_1",
+  0
+ ],
+ "kaplan_scream_2": [
+  "sfx/enemies/kaplan_scream_2",
+  0
+ ],
  "killmark": [
   "sfx/weapons/killmark",
   0
@@ -453,6 +461,14 @@
  ],
  "ricochet_2": [
   "sfx/weapons/ricochet_2",
+  0
+ ],
+ "rzeznik_roar_1": [
+  "sfx/enemies/rzeznik_roar_1",
+  0
+ ],
+ "rzeznik_roar_2": [
+  "sfx/enemies/rzeznik_roar_2",
   0
  ],
  "scrap_pickup": [
@@ -785,6 +801,18 @@
  ],
  "wolek_death_2": [
   "sfx/enemies/wolek_death_2",
+  0
+ ],
+ "zerca_grab_1": [
+  "sfx/enemies/zerca_grab_1",
+  0
+ ],
+ "zerca_grab_2": [
+  "sfx/enemies/zerca_grab_2",
+  0
+ ],
+ "zerca_warn_1": [
+  "sfx/enemies/zerca_warn_1",
   0
  ],
  "zyla_growl_1": [

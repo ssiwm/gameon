@@ -323,6 +323,58 @@ def build_enemies() -> None:
         x = d.mix([(v * env, 1.0), (roar, .5), (thump(.6, 80, 30, .12, .2), 1.0)], n)
         x = d.saturate(x * 1.5, 3.4)
         finalize("zyla_roar_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.3, keep_len=True), lufs=-9.5, fade_out_ms=150)
+    # --- Elity (ENEMY_PLAN.md F4). Wersje publiczne, syntezowane; nagrania z bibliotek nie są potrzebne.
+    # Kapłan: zawodzący krzyk rytuału — dwa głosy w kwincie, wolne vibrato, bez ostrości alarmu Podsłuchacza
+    for i in range(2):
+        r = Rng(0xEC00 + i * 3119)
+        n = sec(1.5)
+        T = n / SR
+        t = np.arange(n) / SR
+        f0 = d.env_pts(n, [(0, 190), (.12, 330 + 20 * i), (.8, 350), (T, 210)]) * (1.0 + .025 * np.sin(TAU * (4.6 + .6 * i) * t))
+        a = glottal(n, f0, r, jitter=.02, shimmer=.25, breath=.2)
+        b = glottal(n, f0 * 1.498, r, jitter=.025, shimmer=.25, breath=.2)
+        c = glottal(n, f0 * .5, r, jitter=.03, shimmer=.3, breath=.1)
+        v = vowel(a + .6 * b, "o", bw=7.0) + .7 * vowel(a + .6 * b, "a", bw=8.0) + .5 * vowel(c, "u", bw=6.0)
+        env = d.env_pts(n, [(0, 0), (.05, 1), (.9, .85), (T, 0)]) * (.8 + .2 * np.sin(TAU * 6.0 * t))
+        x = d.saturate(v * env * 1.3, 2.4)
+        finalize("kaplan_scream_%d" % (i + 1), d.reverb(x, ir("hall"), wet=.35, keep_len=True), lufs=-11.0, fade_out_ms=140)
+
+    # Rzeźnik: ryk przed szarżą — niski, zachrypnięty, z narastającym dudnieniem i parsknięciem (cięższy od Wołka)
+    for i in range(2):
+        r = Rng(0xED00 + i * 4261)
+        n = sec(1.2 + .1 * i)
+        T = n / SR
+        f0 = d.env_pts(n, [(0, 55 + 4 * i), (.2, 88 + 6 * i), (.7, 100), (T, 60)])
+        v = _voice(n, f0, r, (("a", 1.0), ("gutt", .9)), jitter=.05, shimmer=.45, breath=.2, rough_hz=21 + 3 * i, rough=.65, bw=6.0)
+        env = d.env_pts(n, [(0, 0), (.04, .7), (.3, 1), (.9, .9), (T, 0)])
+        snort = d.filt(d.colored(ms(300), r, .6), "bp", 520.0, 1.0) * d.env_perc(ms(300), .01, .1)
+        x = d.mix([(v * env, 1.0), (d.osc("sine", f0 * .5, n) * env, .5), (snort, .8), (thump(.5, 70, 32, .1, .16), .7, .1)], n)
+        x = d.saturate(x * 1.6, 3.0)
+        finalize("rzeznik_roar_%d" % (i + 1), d.reverb(x, ir("room"), wet=.22, keep_len=True), lufs=-11.5, fade_out_ms=100)
+
+    # Żerca: chwyt — mokre łapnięcie, chrzęst i gardłowy skrzek ujawnienia
+    for i in range(2):
+        r = Rng(0xEE00 + i * 5303)
+        n = sec(1.1)
+        T = n / SR
+        f0 = d.env_pts(n, [(0, 240), (.06, 520 + 40 * i), (.4, 400), (T, 180)])
+        v = _voice(n, f0, r, (("e", 1.0), ("gutt", .7)), jitter=.06, shimmer=.45, breath=.6, rough_hz=36.0 + 4 * i, rough=.7, bw=7.0)
+        env = d.env_pts(n, [(0, 0), (.02, 1), (.4, .7), (T, 0)])
+        grab = d.sweep(d.colored(ms(200), r, .8), "bp", d.glide_exp(1500, 450, ms(200), .05), 2.2) * d.env_perc(ms(200), .003, .05)
+        crunch = tick(r, vary(r, 2400, .15), 1.0, 40, .008) * .6
+        x = d.mix([(v * env, .9), (grab, .9), (crunch, .6, .02), (thump(.35, 90, 40, .06, .1), .6)], n)
+        x = d.saturate(x * 1.4, 2.6)
+        finalize("zerca_grab_%d" % (i + 1), d.reverb(x, ir("close"), wet=.2, keep_len=True), lufs=-11.0, fade_out_ms=100)
+
+    # Żerca ukryty: ledwo słyszalny sygnał przy tropieniu — suchy szelest i niski, mokry oddech (jeden wariant, gra cicho)
+    r = Rng(0xEF00)
+    n = sec(1.6)
+    T = n / SR
+    breath = d.filt(d.colored(n, r, .9), "bp", 700.0, .9) * d.env_pts(n, [(0, 0), (.5, .7), (.8, .15), (1.2, .6), (T, 0)])
+    rustle = d.filt(d.white(n, r), "bp", 3200.0, .7) * d.env_pts(n, [(0, 0), (.3, .25), (.6, .1), (1.0, .3), (T, 0)])
+    low = _voice(n, d.env_pts(n, [(0, 70), (T, 52)]), r, (("u", 1.0), ("gutt", .6)), jitter=.06, shimmer=.5, breath=.5, rough_hz=14.0, rough=.6, bw=6.0)
+    x = d.mix([(breath, 1.0), (rustle, .35), (low * d.env_pts(n, [(0, 0), (.6, .8), (T, 0)]), .5)], n)
+    finalize("zerca_warn_1", d.reverb(x, ir("close"), wet=.25, keep_len=True), lufs=-24.0, fade_out_ms=300)
     bake_hybrid.enemies()                                   # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
 
 

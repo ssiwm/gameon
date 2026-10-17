@@ -11,6 +11,7 @@ var scan_t := 0.0
 var sync_t := 0.0
 var cand: Node2D = null      ## najbliższy leżący, ostatnio wypatrzony
 var lair := Vector2.ZERO     ## dokąd ciągnie ofiarę (wybierane przy porwaniu: daleko od żywych graczy)
+var warn_t := 0.0            ## s do następnego cichego sygnału tropienia (`voice.warn`)
 
 func cfg() -> Dictionary:
 	return e._def.get("devour", {}) as Dictionary
@@ -20,6 +21,7 @@ func on_ready() -> void:
 
 func reset() -> void:
 	_release()
+	warn_t = 0.0
 	cand = null
 	scan_t = 0.0
 	_hide()
@@ -54,6 +56,7 @@ func tick_special(delta: float) -> bool:
 			var speed: float = float(e._def["speed"]) * Difficulty.m("enemy_speed") * e._surface_speed()
 			e._lead_at(cand.global_position)
 			e._steer_to(cand.global_position, speed, delta)
+			_warn(delta)
 	else:
 		cand = null
 		e.velocity.x = move_toward(e.velocity.x, 0.0, 400.0 * delta)
@@ -61,6 +64,17 @@ func tick_special(delta: float) -> bool:
 	e._slide()
 	e._send_state(delta)
 	return true
+
+## Ukryty Żerca tropiący co kilka sekund zdradza się ledwo słyszalnym oddechem i szelestem — jedyna zapowiedź, że do leżącego ktoś się skrada.
+func _warn(delta: float) -> void:
+	warn_t -= delta
+	if warn_t > 0.0:
+		return
+	warn_t = randf_range(3.0, 4.5)
+	if NoiseMgr.has_network():
+		e._cue_fx.rpc("warn")
+	else:
+		e._cue_fx("warn")
 
 ## Pościg za leżącym, porwanie i niesienie po ujawnieniu; true = przejął ruch.
 func tick_phase(delta: float, _target: Node2D) -> bool:

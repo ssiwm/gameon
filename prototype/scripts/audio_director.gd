@@ -103,7 +103,7 @@ const VOICE := {
 	"impact_hard": [35, 6, 25], "step_": [30, 6, 0], "ricochet": [30, 3, 60],
 	"whizz": [25, 3, 70], "amb_": [20, 3, 0], "foley_gear": [10, 2, 120], "shell_": [8, 4, 60],
 	# głosy gatunków: krzyk alarmu i bossowie jak Stalker; zwykli wrogowie niżej, z odstępem — wataha nie robi ściany dźwięku
-	"podsluchacz_scream": [88, 2, 0], "zyla_": [86, 2, 0], "leech_": [86, 2, 0],
+	"podsluchacz_scream": [88, 2, 0], "kaplan_scream": [88, 2, 0], "zerca_grab": [88, 2, 0], "rzeznik_roar": [70, 2, 0], "zerca_warn": [44, 1, 2500], "zyla_": [86, 2, 0], "leech_": [86, 2, 0],
 	"wolek_": [50, 2, 100], "slepiec_": [46, 2, 100], "trzosek_death": [44, 3, 60], "trzosek_attack": [42, 3, 80],
 }
 const DEFAULT_VOICE := [40, 6, 0]

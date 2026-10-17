@@ -1108,7 +1108,7 @@ const GOLDEN := {
 	"podsluchacz": {"xp": 4, "scrap": 4, "supply": 0.15, "ammo": 0.15, "health": 0.0, "voice": []},
 	"wolek": {"xp": 12, "scrap": 6, "supply": 0.35, "ammo": 0.6, "health": 0.75, "voice": ["wolek_attack", 2, -3.0, 1.0]},
 	"kaplan": {"xp": 25, "scrap": 15, "supply": 0.5, "ammo": 0.5, "health": 1.0, "voice": ["slepiec_attack", 2, -3.0, 0.8]},
-	"rzeznik": {"xp": 40, "scrap": 25, "supply": 0.6, "ammo": 0.7, "health": 1.0, "voice": ["wolek_attack", 2, -1.0, 0.75]},
+	"rzeznik": {"xp": 40, "scrap": 25, "supply": 0.6, "ammo": 0.7, "health": 1.0, "voice": ["rzeznik_roar", 2, -2.0, 1.0]},
 	"zerca": {"xp": 30, "scrap": 20, "supply": 0.3, "ammo": 0.3, "health": 0.5, "voice": ["trzosek_attack", 3, -4.0, 0.7]},
 }
 
@@ -1127,7 +1127,7 @@ func _test_defs() -> void:
 			problems.append("%s bez wpisu SPEC (model 3D)" % k)
 		if not GOLDEN.has(k):
 			problems.append("%s: brak wzorca w teście" % k)
-		for ev in ["attack", "alert", "death"]:
+		for ev in ["attack", "alert", "death", "scream", "warn"]:
 			var v: Array = Defs.voice(k, ev)
 			if v.is_empty():
 				continue
@@ -1144,6 +1144,8 @@ func _test_defs() -> void:
 		if g["voice"] != Defs.voice(k, "attack"):
 			diffs.append("%s.voice attack = %s (było %s)" % [k, Defs.voice(k, "attack"), g["voice"]])
 	check("dane rodzajów: drop, XP, złom i głos bez zmian względem starych tabel", diffs.is_empty(), ", ".join(diffs))
+	check("dane rodzajów: elity mają własny krzyk (Kapłan, Żerca), ryk szarży (Rzeźnik) i ostrzeżenie Żercy",
+		Defs.voice("kaplan", "scream")[0] == "kaplan_scream" and Defs.voice("zerca", "scream")[0] == "zerca_grab" and Defs.voice("zerca", "warn")[0] == "zerca_warn" and Defs.voice("rzeznik", "attack")[0] == "rzeznik_roar")
 	check("dane rodzajów: nieznany rodzaj nic nie daje", Defs.xp("nie_ma") == 0 and Defs.value("nie_ma", "ammo") == 0.0 and Defs.voice("nie_ma", "death").is_empty())
 	check("dane rodzajów: Enemy.KINDS to ta sama tabela (kodeks, HUD, testy)", Enemy.KINDS == Defs.DEFS)
 	check("dane rodzajów: Podsłuchacz krzyczy tylko przy śmierci, Ćma milczy", Defs.voice("podsluchacz", "attack").is_empty() and not Defs.voice("podsluchacz", "death").is_empty() and Defs.voice("cma", "death").is_empty())
