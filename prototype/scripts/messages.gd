@@ -109,6 +109,7 @@ func _put(id: String, ch: int, text: String, o: Dictionary, lease: bool) -> void
 	m["sub"] = String(o.get("sub", ""))
 	m["progress"] = float(o.get("progress", -1.0))
 	m["material"] = String(o.get("material", ""))
+	m["color"] = o.get("color", Color.WHITE)
 	m["rows"] = o.get("rows", [])
 	m["keys"] = o.get("keys", [])
 	m["lease"] = lease
