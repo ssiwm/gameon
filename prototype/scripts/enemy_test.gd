@@ -59,6 +59,7 @@ func run(m: Node2D) -> void:
 	await _test_behaviors()
 	await _test_elite_foundation()
 	await _test_priest()
+	await _test_butcher()
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
 	await _test_slepiec_listen()
@@ -329,7 +330,7 @@ func _test_director_composition() -> void:
 	for o in odds_late:
 		sum_late += float(o)
 	check("skład/domyślna: na starcie i w ciszy tylko pary Trzosków (100%)", float(odds_early[0]) == 100.0 and D.pick_group(D.GROUPS, 0.0, early) == ["trzosek", "trzosek"] and D.pick_group(D.GROUPS, 0.999, early) == ["trzosek", "trzosek"], str(odds_early))
-	check("skład/domyślna: po 13 min przy hałasie wszystkie zestawy możliwe (też Wołek i 2 Ślepce), szanse sumują się do 100%", absf(sum_late - 100.0) < 0.5 and D.pick_group(D.GROUPS, 0.999, late) == ["kaplan", "trzosek", "trzosek"] and not odds_late.has(0.0), str(odds_late))
+	check("skład/domyślna: po 13 min przy hałasie wszystkie zestawy możliwe (też Wołek i 2 Ślepce), szanse sumują się do 100%", absf(sum_late - 100.0) < 0.5 and D.pick_group(D.GROUPS, 0.999, late) == ["rzeznik"] and not odds_late.has(0.0), str(odds_late))
 	var quiet_late: Array = D.group_odds(D.GROUPS, {"time": 800.0, "tension": 0.0})
 	check("skład/napięcie: w ciszy (napięcie 0) nawet po 13 min tylko Trzoski — Ślepce i Wołek wymagają hałasu (wagi 0)", float(quiet_late[3]) == 0.0 and float(quiet_late[4]) == 0.0 and float(quiet_late[5]) == 0.0 and float(quiet_late[2]) == 0.0, str(quiet_late))
 	var mid := {"time": 300.0, "tension": 0.3}
@@ -425,7 +426,7 @@ func _test_behaviors() -> void:
 			if not Base.BEHAVIORS.has(b) or not ResourceLoader.exists(String(Base.BEHAVIORS[b])):
 				bad.append("%s→%s" % [k, b])
 	check("zachowania: każdy `behavior` z enemy_defs.gd ma klasę (BEHAVIORS)", bad.is_empty(), str(bad))
-	check("zachowania: rodzaje z własną mechaniką mają zachowanie (8 rodzajów)", kinds_with.size() == 8 and kinds_with.get("podsluchacz") == "listener" and kinds_with.get("wolek") == "bruiser" and kinds_with.get("slepiec") == "blind" and kinds_with.get("trzosek") == "pack", str(kinds_with))
+	check("zachowania: rodzaje z własną mechaniką mają zachowanie (9 rodzajów)", kinds_with.size() == 9 and kinds_with.get("podsluchacz") == "listener" and kinds_with.get("wolek") == "bruiser" and kinds_with.get("slepiec") == "blind" and kinds_with.get("trzosek") == "pack", str(kinds_with))
 	var unknown = Base.create("nie_ma_takiego", null)
 	var empty = Base.create("", null)
 	check("zachowania: pusta i nieznana nazwa → baza z domyślnymi hakami (bez błędu)", unknown != null and empty != null and unknown.damage_mult() == 1.0 and unknown.threat_ok() and not unknown.tick_special(0.1) and unknown.derive_pre() == -1 and empty.returns_home() and not empty.holds_still())
@@ -613,6 +614,93 @@ func _test_priest() -> void:
 	player._stun_immune = 0.0
 	for n in [k, hurt, whole, far_t, blind, strip]:
 		n.queue_free()
+	await get_tree().physics_frame
+
+# ---------------------------------------------------------------- F4c: Rzeźnik (miniboss: sparametryzowany Wołek, szarża przez barykady)
+
+func _test_butcher() -> void:
+	var Defs := load("res://scripts/enemy_defs.gd")
+	var cfg: Dictionary = Defs.DEFS["rzeznik"]
+	check("Rzeźnik/dane: 600 HP, elita, pancerz 4, szarża 1,0 s zapowiedzi / 1,4 s / ×3,2 / przerwa 9 s, bez rzutów, łamie barykady, odporny na ogłuszenie",
+		float(cfg["hp"]) == 600.0 and bool(cfg["elite"]) and float(cfg["armor"]) == 4.0 and cfg["behavior"] == "bruiser" and not bool(cfg["throws"]) and bool(cfg["breaks_barricades"]) and bool(cfg["stun_resist"])
+		and is_equal_approx(float(cfg["charge"]["windup"]), 1.0) and is_equal_approx(float(cfg["charge"]["time"]), 1.4) and is_equal_approx(float(cfg["charge"]["mult"]), 3.2) and is_equal_approx(float(cfg["charge"]["cd"]), 9.0) and Defs.elite_kinds().has("rzeznik"))
+	var y := -16000.0
+	var strip := _floor(FAR_X + 30000.0, FAR_X + 30900.0, y)
+	var x0 := FAR_X + 30100.0
+	var r := _spawn("rzeznik", Vector2(x0, y))
+	r.set_physics_process(false)
+	var dummy := Node2D.new()
+	level.add_child(dummy)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	r.active = true
+	r._beh.charge_cd = 0.0
+	r._beh.throw_cd = 0.0
+	dummy.global_position = Vector2(x0 + 200.0, y)
+	check("Rzeźnik/szarża: cel 200 px na tym samym poziomie → zapowiedź 1,0 s (stan special, winding)", r._beh.tick_phase(0.016, dummy) and r._sp == 1 and r.winding and is_equal_approx(r._beh.sp_t, 1.0 * Difficulty.m("enemy_windup")), "sp=%d t=%.2f" % [r._sp, r._beh.sp_t])
+	r._beh.sp_t = 0.0
+	r._beh.tick_phase(0.016, dummy)
+	var speed_expect: float = 60.0 * Difficulty.m("enemy_speed") * 3.2
+	check("Rzeźnik/szarża: po zapowiedzi pędzi 1,4 s z prędkością ×3,2 (dane `charge`, nie stałe Wołka)", r._sp == 2 and is_equal_approx(r._beh.sp_t, 1.4) and absf(r.velocity.x - 0.0) >= 0.0, "t=%.2f" % r._beh.sp_t)
+	r._beh.tick_phase(0.016, dummy)
+	check("Rzeźnik/szarża: prędkość w szarży = prędkość × mnożnik trudności × 3,2", absf(r.velocity.x - speed_expect) < 0.01, "%.1f vs %.1f" % [r.velocity.x, speed_expect])
+	r._beh.sp_t = 0.0
+	r._beh.tick_phase(0.016, dummy)
+	check("Rzeźnik/szarża: po niej przerwa 9 s (× trudność)", r._sp == 0 and is_equal_approx(r._beh.charge_cd, 9.0 * Difficulty.m("enemy_cd")), "%.2f" % r._beh.charge_cd)
+	# bez rzutów: skrzynia obok i cel w zasięgu rzutu, szarża zablokowana cooldownem
+	var crate := _crate_at(Vector2(x0 + 10.0, y - 7.0))
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	r._beh.charge_cd = 99.0
+	r._beh.boulder_cd = 0.0
+	dummy.global_position = Vector2(x0 + 140.0, y)
+	check("Rzeźnik/bez rzutów: skrzynia obok i cel w zasięgu rzutu — nie rzuca ani skrzynią, ani głazem", not r._beh.tick_phase(0.016, dummy) and r._sp == 0)
+	crate.queue_free()
+	# odporność na ogłuszenie i odrzut
+	r.velocity = Vector2.ZERO
+	r._windup = 0.5
+	r._windup_target = dummy
+	r.winding = true
+	r.take_hit({"amount": 1.0, "dir": Vector2.RIGHT, "pos": r.global_position, "shooter": int(player.player_id), "type": "bullet", "stun": 1.0, "knock": 200.0})
+	check("Rzeźnik/odporność: mocne ogłuszenie nie przerywa zapowiedzi i nie chwieje (stagger 0), odrzut ≤ 5% (≤ 10 px/s przy 200)", r._windup == 0.5 and r._stagger == 0.0 and absf(r.velocity.x) <= 10.0, "windup=%.2f stagger=%.2f vx=%.1f" % [r._windup, r._stagger, r.velocity.x])
+	r._windup = 0.0
+	r.winding = false
+	r._windup_target = null
+
+	# barykada: szarża przebija zamurowane przejście, Wołek o nie się rozbija
+	var wall = level.BRICK_WALL.new()
+	wall.name = "TestWallR"
+	wall.rows = 3
+	wall.position = Vector2(x0 + 400.0, y)
+	level.add_child(wall)
+	var br := _spawn("rzeznik", Vector2(x0 + 330.0, y))
+	br.active = true
+	br._sp = 2
+	br._beh.sp_dir = 1.0
+	br._beh.sp_t = 1.2
+	br._beh.charge_hit = true
+	var wall2 = level.BRICK_WALL.new()
+	wall2.name = "TestWallW"
+	wall2.rows = 3
+	wall2.position = Vector2(x0 + 800.0, y)
+	level.add_child(wall2)
+	var wk := _spawn("wolek", Vector2(x0 + 730.0, y))
+	wk.active = true
+	wk._sp = 2
+	wk._beh.sp_dir = 1.0
+	wk._beh.sp_t = 1.2
+	wk._beh.charge_hit = true
+	await get_tree().create_timer(1.0).timeout
+	check("Rzeźnik/barykada: szarża rozbija zamurowane przejście i nie ogłusza się o nie", (not is_instance_valid(wall) or wall.hp <= 0.0) and br._sp != 4, "hp=%s sp=%d" % [str(wall.hp) if is_instance_valid(wall) else "rozbita", br._sp])
+	check("Rzeźnik/barykada: zwykły Wołek o taką samą ścianę się rozbija (ogłuszony, ściana cała)", is_instance_valid(wall2) and wall2.hp == wall2.WALL_HP and wk._sp == 4, "hp=%s sp=%d" % [str(wall2.hp) if is_instance_valid(wall2) else "?", wk._sp])
+	check("Rzeźnik/mapa: litera U w mapach stawia Rzeźnika, Dyrektor ma Rzeźnika w tabelach", level.THREAT_CHARS.get("U") == "rzeznik" and (func():
+		for g in Director.GROUPS:
+			if g[1] == ["rzeznik"]:
+				return true
+		return false).call())
+	for n in [r, br, wk, dummy, wall, wall2, strip]:
+		if is_instance_valid(n):
+			n.queue_free()
 	await get_tree().physics_frame
 
 func _finish() -> void:
@@ -871,6 +959,7 @@ const GOLDEN := {
 	"podsluchacz": {"xp": 4, "scrap": 4, "supply": 0.15, "ammo": 0.15, "health": 0.0, "voice": []},
 	"wolek": {"xp": 12, "scrap": 6, "supply": 0.35, "ammo": 0.6, "health": 0.75, "voice": ["wolek_attack", 2, -3.0, 1.0]},
 	"kaplan": {"xp": 25, "scrap": 15, "supply": 0.5, "ammo": 0.5, "health": 1.0, "voice": ["slepiec_attack", 2, -3.0, 0.8]},
+	"rzeznik": {"xp": 40, "scrap": 25, "supply": 0.6, "ammo": 0.7, "health": 1.0, "voice": ["wolek_attack", 2, -1.0, 0.75]},
 }
 
 ## Jedno źródło danych rodzaju: komplet pól, wartości jak przed przeniesieniem, głosy istnieją w manifeście dźwięku, każdy rodzaj ma model 3D.

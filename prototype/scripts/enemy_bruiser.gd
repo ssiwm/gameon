@@ -1,5 +1,5 @@
 extends "res://scripts/enemy_behavior.gd"
-## Wołek (GDD §7.1, bruiser): szarża z zapowiedzią (rozbija skrzynie i beczki, o ścianę się ogłusza), rzut skrzynią także w górę i w dół oraz — gdy w pobliżu nie
+## Wołek i Rzeźnik (GDD §7.1–7.2, bruiser; Rzeźnik to te same fazy z danymi `charge`, `throws: false`, `breaks_barricades`): szarża z zapowiedzią (rozbija skrzynie i beczki, o ścianę się ogłusza), rzut skrzynią także w górę i w dół oraz — gdy w pobliżu nie
 ## ma skrzyni — rzut głazem (F3.9; 0,5 HP, przerwa wg trudności). Stan replikowany (`_sp`: 0 nic, 1 zapowiedź szarży, 2 szarża, 3 zapowiedź rzutu, 4 ogłuszony)
 ## zostaje w `enemy.gd`; tu są liczniki i logika faz. Dane w `enemy_defs.gd`: `boulder`.
 
@@ -24,6 +24,10 @@ var charge_cd := 3.0
 var throw_cd := 2.0
 var charge_hit := false
 
+## Parametr szarży z danych rodzaju (`charge`: min, max, windup, time, mult, cd, crash_stun, damage); brak wpisu = stałe Wołka. Dzięki temu Rzeźnik to ten sam kod z innymi liczbami.
+func _c(key: String, base: float) -> float:
+	return float((e._def.get("charge", {}) as Dictionary).get(key, base))
+
 func reset() -> void:
 	e._sp = 0
 	sp_crate = null
@@ -44,16 +48,16 @@ func tick_phase(delta: float, target: Node2D) -> bool:
 			var d: Vector2 = target.global_position - e.global_position
 			var level := absf(d.y) <= 24.0
 			var ax := absf(d.x)
-			if level and ax > 100.0 and ax < 280.0 and charge_cd <= 0.0 and _run_clear(signf(d.x), ax):
+			if level and ax > _c("min", 100.0) and ax < _c("max", 280.0) and charge_cd <= 0.0 and _run_clear(signf(d.x), ax):
 				e._sp = 1
-				sp_t = CHARGE_WINDUP * Difficulty.m("enemy_windup")
+				sp_t = _c("windup", CHARGE_WINDUP) * Difficulty.m("enemy_windup")
 				sp_dir = signf(d.x)
 				charge_hit = false
 				e.winding = true
 				return true
 			# rzut skrzynią także w górę i w dół (Wołek nie jest bezradny wobec gracza na półce nad nim czy w dole): do THROW_DY_MAX px różnicy
 			# poziomów, a cel prawie nad / pod nim (ax < 60) też jest w zasięgu; łuk balistyczny liczy `_throw_crate`
-			if ax < 220.0 and (ax > 60.0 or not level) and absf(d.y) <= THROW_DY_MAX:
+			if bool(e._def.get("throws", true)) and ax < 220.0 and (ax > 60.0 or not level) and absf(d.y) <= THROW_DY_MAX:
 				var c := _find_crate()
 				if c != null:
 					if throw_cd <= 0.0 and _throw_clear(target):
@@ -79,12 +83,12 @@ func tick_phase(delta: float, target: Node2D) -> bool:
 			sp_t -= delta
 			if sp_t <= 0.0:
 				e._sp = 2
-				sp_t = CHARGE_TIME
+				sp_t = _c("time", CHARGE_TIME)
 				e.winding = false
 			return true
 		2:
 			sp_t -= delta
-			e.velocity.x = sp_dir * float(e._def["speed"]) * Difficulty.m("enemy_speed") * CHARGE_MULT
+			e.velocity.x = sp_dir * float(e._def["speed"]) * Difficulty.m("enemy_speed") * _c("mult", CHARGE_MULT)
 			if sp_t <= 0.0:
 				_end_charge()
 			return true
@@ -106,7 +110,7 @@ func tick_phase(delta: float, target: Node2D) -> bool:
 ## Czy przed Wołkiem jest wolna droga na rozbieg: bez ściany na całym dystansie szarży i z podłogą pod każdym kaflem (nie rozpędza się w przepaść).
 func _run_clear(dir: float, dist: float) -> bool:
 	var space: PhysicsDirectSpaceState2D = e.get_world_2d().direct_space_state
-	var run := minf(dist, RUN_CHECK_MAX)
+	var run := minf(dist, _c("max", RUN_CHECK_MAX))
 	var from: Vector2 = e.global_position + Vector2(0, -10)
 	if not space.intersect_ray(PhysicsRayQueryParameters2D.create(from, from + Vector2(dir * run, 0), 1)).is_empty():
 		return false
@@ -122,7 +126,7 @@ func _run_clear(dir: float, dist: float) -> bool:
 func _end_charge() -> void:
 	e._sp = 0
 	e.winding = false
-	charge_cd = CHARGE_CD * Difficulty.m("enemy_cd")
+	charge_cd = _c("cd", CHARGE_CD) * Difficulty.m("enemy_cd")
 
 ## Po ruchu: szarża rozbija skrzynie, detonuje beczki (wybuch rani też Wołka), uderza gracza; ściana ogłusza.
 func after_phase_move() -> void:
@@ -137,21 +141,23 @@ func after_phase_move() -> void:
 		if col.is_in_group("props"):
 			if col.has_method("take_bullet"):
 				col.take_bullet(e.global_position, 45.0)
+		elif bool(e._def.get("breaks_barricades", false)) and col.get_parent() != null and col.get_parent().is_in_group("breakables"):
+			col.get_parent().take_hit({"type": "blast", "amount": 400.0})        # Rzeźnik przebija zamurowane przejścia (`brick_wall.gd`) zamiast się o nie ogłuszać
 		elif absf(c.get_normal().x) > 0.7:
 			crashed = true
 	if not charge_hit:
 		for p in e.get_tree().get_nodes_in_group("players"):
 			if not p.dead and absf(p.global_position.x - e.global_position.x) < 16.0 and absf(p.global_position.y - e.global_position.y) < 18.0:
-				p.deliver_hit(e._scaled_damage(2), e.global_position, e.kind)
+				p.deliver_hit(e._scaled_damage(int(_c("damage", 2.0))), e.global_position, e.kind)
 				charge_hit = true
 	if crashed:
 		_crash()
 
 func _crash() -> void:
 	e._sp = 4
-	sp_t = CRASH_STUN
+	sp_t = _c("crash_stun", CRASH_STUN)
 	e.winding = false
-	charge_cd = CHARGE_CD * Difficulty.m("enemy_cd")
+	charge_cd = _c("cd", CHARGE_CD) * Difficulty.m("enemy_cd")
 	e.velocity.x = -sp_dir * 40.0
 	NoiseMgr.add_noise(7.0, e.global_position)
 	if NoiseMgr.has_network():
