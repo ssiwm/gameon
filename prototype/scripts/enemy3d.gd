@@ -20,23 +20,23 @@ const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Lev
 ## bez tego klucza rodzaj chodzi pozą z kodu. attack_clip: zapowiedź i cios z klipu (zestaw musi je mieć), ręce wtedy z klipu.
 const SPEC := {
 	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 1.0, "prof": {}, "clips": true, "clip_amp": 0.6, "stun": true},
-	# Rzeźnik (F4c) — do czasu własnego modelu (F4e) model Wołka, wyższy i cięższy
-	"rzeznik": {"fit": ["height", 44.0], "frame_h": 58.0, "cycle": 1.0, "model": DIR + "wolek.glb", "prof": {}, "clips": true, "clip_amp": 0.6, "stun": true},
+	# Rzeźnik (F4e): model z TRELLIS-a z osobnym tasakiem przypiętym do prawej dłoni (`tools/rig_trellis.py`, art/enemy3d/rzeznik.glb)
+	"rzeznik": {"fit": ["height", 44.0], "frame_h": 58.0, "cycle": 1.0, "prof": {}, "clips": true, "clip_amp": 0.6, "stun": true},
 	"slepiec": {"fit": ["height", 27.0], "frame_h": 32.0, "cycle": 1.0, "prof": {"hy": 0.50, "hz": 0.35}, "clips": true, "attack_kind": "claw", "walk_clip": "zombie", "attack_clip": true,
 		"death": {"dir": 1.0, "lean": -8.0, "dur": 0.95, "tilt": 86.0}},
 	"podsluchacz": {"fit": ["height", 34.0], "frame_h": 40.0, "cycle": 1.0,
 		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}, "clips": true, "attack_kind": "scream", "walk_clip": "zombie",
 		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}},
-	# Kapłan (F4b) — do czasu własnego modelu (F4e) wzrost i poza Podsłuchacza: model pożyczony, wyższy
-	"kaplan": {"fit": ["height", 44.0], "frame_h": 52.0, "cycle": 1.0, "model": DIR + "podsluchacz.glb",
+	# Kapłan (F4e): model z TRELLIS-a szkieletowany `tools/rig_trellis.py` (art/enemy3d/kaplan.glb); poza i klipy jak u Podsłuchacza
+	"kaplan": {"fit": ["height", 44.0], "frame_h": 52.0, "cycle": 1.0,
 		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}, "clips": true, "attack_kind": "scream", "walk_clip": "zombie",
 		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}},
 	"stalker": {"fit": ["height", 54.0], "frame_h": 60.0, "cycle": 1.1,
 		"prof": {"lean": 5.0, "lean_walk": 8.0, "hy": 0.42, "hz": 0.62, "stride": 0.28, "windup": "reach"}, "clips": true, "attack_kind": "grab", "walk_clip": "zombie", "attack_clip": true,
 		"death": {"dir": 1.0, "lean": 0.0, "dur": 1.0, "tilt": 88.0}},
 	"skoczek": {"fit": ["height", 17.0], "frame_h": 26.0, "cycle": 0.5, "crawler": true, "clips": true},
-	# Żerca (F4d) — do czasu własnego modelu (F4e) model Skoczka, większy
-	"zerca": {"fit": ["height", 30.0], "frame_h": 40.0, "cycle": 0.5, "model": DIR + "skoczek.glb", "crawler": true, "clips": true},
+	# Żerca (F4e): model z TRELLIS-a szkieletowany `tools/rig_trellis.py` (art/enemy3d/zerca.glb)
+	"zerca": {"fit": ["height", 30.0], "frame_h": 40.0, "cycle": 0.5, "crawler": true, "clips": true},
 	"trzosek": {"fit": ["length", 21.0], "frame_h": 22.0, "cycle": 0.55, "quad": true, "yaw": -90.0, "clips": true, "idle_t": 0.0},
 	# Mimik to model gracza z kolorem „kolegi” i świecącymi oczami; pozostałe poniżej to modele statyczne animowane deformacją wierzchołków w shaderze
 	# (`DEFORM`), tak jak wypiek `concept/static_tripo_bake.py` — poza z numeru klatki sprite'a 2D (animacja idzie w tempie gry).

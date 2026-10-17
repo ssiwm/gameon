@@ -23,6 +23,10 @@ OUT = os.path.join(ROOT, "prototype", "art", "enemy3d")
 # `concept/static_tripo_bake.py`: obrót ROT_Z, postawienie na podłodze (z = 0) i wyśrodkowanie w x, y.
 KINDS = {
     "wolek": ("wolek_01_rig.glb", False, None, 6000, 1024),
+    # elity F4 (TRELLIS 2 → rig_trellis.py): szkieletowane statyczne siatki z art_src/enemies_f4
+    "kaplan": ("../../enemies_f4/kaplan_rig.glb", False, None, 6000, 1024),
+    "rzeznik": ("../../enemies_f4/rzeznik_rig.glb", False, None, 7000, 1024),
+    "zerca": ("../../enemies_f4/zerca_rig.glb", False, None, 6000, 1024),
     "slepiec": ("slepiec_01_rig.glb", False, None, 6000, 1024),
     "podsluchacz": ("podsluchacz_01_rig.glb", False, None, 6000, 1024),
     "stalker": ("stalker_01_rig.glb", False, None, 6000, 1024),
