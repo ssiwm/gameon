@@ -842,6 +842,8 @@ func _perf_sweep(secs: float, step: int) -> void:
 			# podłoga piętra: bryła pod spodem i trzy wolne kafle nad nią (miejsce na gracza)
 			if level._is_solid(c, r) and not level._is_solid(c, r - 1) and not level._is_solid(c, r - 2) and not level._is_solid(c, r - 3):
 				stops.append(Vector2i(c, r))
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)     # ponownie: Settings przy starcie przywraca własny vsync i limit klatek
+	Engine.max_fps = 0
 	var results: Array = []
 	for st in stops:
 		p.global_position = Vector2(float(st.x) * 16.0 + 8.0, float(st.y) * 16.0 - 2.0)
@@ -911,6 +913,9 @@ func _perf_run(secs: float, col: int) -> void:
 		# test obciążenia: N obudzonych wrogów (mieszanka rodzajów) w promieniu ~250 px wokół gracza
 		var pp: Node2D = _players.get_node_or_null("1")
 		var kinds := ["trzosek", "wolek", "slepiec", "trzosek", "skoczek", "trzosek"]
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--perfkinds="):
+				kinds = Array(a.substr("--perfkinds=".length()).split(","))      # np. kaplan,rzeznik,zerca — elity w teście obciążenia
 		var span := 500.0                      # --perfspan=PX: rozstaw wrogów (większy = część poza kadrem)
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("--perfspan="):
@@ -923,6 +928,8 @@ func _perf_run(secs: float, col: int) -> void:
 			var en: Node = level.get_node_or_null("PerfMob%d" % i)
 			if en != null:
 				en.wake()
+				if en.get("kind") == "zerca":
+					en.set("_sp", 0)                    # ukryty Żerca nic nie rysuje — w teście ujawniony, żeby mierzyć jego model
 		await get_tree().create_timer(1.5).timeout
 	var flares := 0
 	for a in OS.get_cmdline_user_args():
@@ -934,6 +941,18 @@ func _perf_run(secs: float, col: int) -> void:
 		for i in flares:
 			level.spawn_flare(fp.global_position + Vector2(-220.0 + 440.0 * float(i) / float(maxi(flares - 1, 1)), -30.0), Vector2.ZERO)
 		await get_tree().create_timer(1.5).timeout
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)     # ponownie: Settings przy starcie przywraca własny vsync i limit klatek
+	Engine.max_fps = 0
+	# czas renderu z liczników silnika (okno + SubViewporty widoku 3D) — niezależny od vsync, który sterownik może wymuszać mimo ustawień gry
+	var vps: Array[RID] = [get_viewport().get_viewport_rid()]
+	for n in get_tree().root.find_children("*", "SubViewport", true, false):
+		vps.append((n as SubViewport).get_viewport_rid())
+	for r in vps:
+		RenderingServer.viewport_set_measure_render_time(r, true)
+	var gpu_ms: Array[float] = []
+	var rcpu := 0.0
+	var t_start := Time.get_ticks_msec()
+	var spikes: Array = []                       ## [s od startu pomiaru, ms klatki, gpu ms] dla klatek > 40 ms — przestoje do zlokalizowania
 	var times: Array[float] = []
 	var proc_t := 0.0
 	var pairs := 0.0
@@ -948,6 +967,13 @@ func _perf_run(secs: float, col: int) -> void:
 		if a.begins_with("--perffx="):
 			fxs = a.substr("--perffx=".length())          # casing,blood,gibs,smoke — sztuczny ruch efektów walki (rzędy wielkości jak przy ogniu ciągłym)
 	var fx_acc := {"casing": 0.0, "blood": 0.0, "gibs": 0.0}
+	var drag := "--perfdrag" in OS.get_cmdline_user_args()     # smugi ciągnięcia (Żerca): 110 plam na raz, każda klatka dokłada nową
+	var v3d: Node = get_tree().get_first_node_in_group("view3d")
+	if v3d == null:
+		for n in get_tree().root.find_children("*", "", true, false):
+			if n.has_method("_drag_smear"):
+				v3d = n
+				break
 	var vfx := load("res://scripts/vfx.gd")
 	var pf: Node2D = _players.get_node_or_null("1")
 	while Time.get_ticks_msec() < t_end:
@@ -956,6 +982,9 @@ func _perf_run(secs: float, col: int) -> void:
 		times.append(float(now - last) / 1000.0)
 		var dt_s := float(now - last) / 1e6
 		last = now
+		if drag and v3d != null and pf != null:
+			var dx := randf_range(-200.0, 200.0)
+			v3d.call("_drag_smear", pf.global_position + Vector2(dx, 0.0), pf.global_position + Vector2(dx + 16.0, 0.0))
 		if fxs != "" and pf != null:
 			fx_acc["casing"] += dt_s * 12.0
 			fx_acc["blood"] += dt_s * 30.0
@@ -972,6 +1001,16 @@ func _perf_run(secs: float, col: int) -> void:
 				fx_acc["gibs"] -= 1.0
 				if "gibs" in fxs:
 					vfx.gibs(level, pf.global_position + Vector2(randf_range(40.0, 160.0), -8.0), Color(0.6, 0.45, 0.35), 9)
+		var g := 0.0
+		for r in vps:
+			g += RenderingServer.viewport_get_measured_render_time_gpu(r)
+			rcpu += RenderingServer.viewport_get_measured_render_time_cpu(r)
+		rcpu += RenderingServer.get_frame_setup_time_cpu()
+		gpu_ms.append(g)
+		if times[times.size() - 1] > 40.0:
+			spikes.append("%.2fs:%.0fms(gpu %.1f)" % [float(Time.get_ticks_msec() - t_start) / 1000.0, times[times.size() - 1], g])
+			if OS.is_stdout_verbose():
+				print("[SPIKE-MARK] %.0f ms" % times[times.size() - 1])         # z --verbose: wiersze tuż nad znacznikiem mówią, co się wczytywało
 		pairs += Performance.get_monitor(Performance.PHYSICS_2D_COLLISION_PAIRS)
 		active_o += Performance.get_monitor(Performance.PHYSICS_2D_ACTIVE_OBJECTS)
 		proc_t += Performance.get_monitor(Performance.TIME_PROCESS)
@@ -983,6 +1022,12 @@ func _perf_run(secs: float, col: int) -> void:
 	var sum := 0.0
 	for t in times:
 		sum += t
+	gpu_ms.sort()
+	var gsum := 0.0
+	for t in gpu_ms:
+		gsum += t
+	print("[PERF-SPIKES] ", ", ".join(spikes))
+	print("[PERF-GPU] gpu avg=%.2f ms p95=%.2f ms  render_cpu avg=%.2f ms  viewports=%d" % [gsum / float(maxi(gpu_ms.size(), 1)), gpu_ms[int(float(gpu_ms.size()) * 0.95)] if not gpu_ms.is_empty() else 0.0, rcpu / float(maxi(n, 1)), vps.size()])
 	print("[PERF] frames=%d avg=%.2f ms (%.0f fps) p50=%.2f p95=%.2f max=%.2f  draw_calls=%.0f prims=%.0f  nodes=%d  vram=%.1f MB  tex_mem=%.1f MB  idle=%.2f ms phys=%.2f ms  A*=%.0f/s (%.2f ms/frame) enemy_phys=%.2f ms slide=%.2f ms pairs=%.0f active=%.0f" % [
 		n, sum / float(maxi(n, 1)), 1000.0 / maxf(sum / float(maxi(n, 1)), 0.001), times[n / 2], times[int(float(n) * 0.95)], times[n - 1],
 		calls / float(maxi(n, 1)), prims / float(maxi(n, 1)), int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
