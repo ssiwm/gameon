@@ -138,6 +138,9 @@ var sound_grid: SoundGrid
 ## Zawał (misja 1.1, finał): obszary [c0, r0, c1, r1] (kafle, włącznie), które po zdarzeniu zamieniają się w skałę.
 ## Dane z mapy (const COLLAPSE); drugie wyjście po zawale to znacznik „e" (exits_alt).
 var collapse_rects: Array = []
+## FINALE_SPAWNS z danych mapy: [rodzaj, kolumna, wiersz podłogi] — śpiący wrogowie, których finał 1.1 wypuszcza na drogę powrotną („obudzony las”).
+var finale_spawns: Array = []
+var _finale_on := false
 var exits_alt: Array[Vector2] = []
 var _orig_map: Array = []
 var _blocks: Array = []          ## już zastosowane obszary (do synchronizacji dołączających i resetu)
@@ -223,6 +226,8 @@ func _load(id: String) -> void:
 	_orig_map = m.MAP
 	_map = (m.MAP as Array).duplicate()          # kopia: zawał (collapse) zmienia wiersze w trakcie misji
 	collapse_rects = ((m as GDScript).get_script_constant_map().get("COLLAPSE", []) as Array).duplicate()
+	finale_spawns = ((m as GDScript).get_script_constant_map().get("FINALE_SPAWNS", []) as Array).duplicate()
+	_finale_on = false
 	_blocks.clear()
 	_wall_cells.clear()
 	_opened_walls.clear()
@@ -344,10 +349,42 @@ func _collapse_rpc(id: String, rects: Array) -> void:
 			_blocks.append(r)
 	_apply_blocks(rects)
 
-## Dołączający gracz dostaje już zastosowane zawały (po tym, jak załadował mapę).
+## Dołączający gracz dostaje już zastosowane zawały (po tym, jak załadował mapę) i wrogów wypuszczonych przez finał.
 func send_collapse_to(peer_id: int) -> void:
 	if NoiseMgr.is_server() and NoiseMgr.has_network() and not _blocks.is_empty():
 		_collapse_rpc.rpc_id(peer_id, map_id, _blocks)
+	if NoiseMgr.is_server() and NoiseMgr.has_network() and _finale_on:
+		_finale_spawn_rpc.rpc_id(peer_id, map_id)
+
+## Serwer: finał wypuszcza śpiące grupy z FINALE_SPAWNS na drogę powrotną (u wszystkich peerów, stałe nazwy „Finale1”…).
+func spawn_finale() -> void:
+	if not NoiseMgr.is_server() or finale_spawns.is_empty():
+		return
+	if NoiseMgr.has_network():
+		_finale_spawn_rpc.rpc(map_id)
+	else:
+		_finale_spawn_rpc(map_id)
+
+@rpc("authority", "call_local", "reliable")
+func _finale_spawn_rpc(id: String) -> void:
+	if id != map_id:
+		return
+	_finale_on = true
+	for i in finale_spawns.size():
+		var f: Array = finale_spawns[i]
+		var n := "Finale%d" % (i + 1)
+		if not has_node(n):
+			_add_enemy(n, String(f[0]), Vector2(float(f[1]) * TILE + TILE * 0.5, (float(f[2]) + 1.0) * TILE))
+
+@rpc("authority", "call_local", "reliable")
+func _reset_finale_rpc(id: String) -> void:
+	if id != map_id:
+		return
+	_finale_on = false
+	for c in get_children():
+		if String(c.name).begins_with("Finale"):
+			remove_child(c)
+			c.queue_free()
 
 func _apply_blocks(rects: Array) -> void:
 	var dirty := Rect2i()
@@ -394,14 +431,16 @@ func _refresh_region(rc: Rect2i) -> void:
 	if sound_grid != null:
 		sound_grid.refresh(g, _is_solid)
 
-## Serwer: restart misji (wipe / nowa misja) — mapa wraca do stanu z danych.
+## Serwer: restart misji (wipe / nowa misja) — mapa wraca do stanu z danych, wrogowie finału znikają.
 func reset_collapse() -> void:
 	if not NoiseMgr.is_server():
 		return
 	if NoiseMgr.has_network():
 		_reset_collapse_rpc.rpc(map_id)
+		_reset_finale_rpc.rpc(map_id)
 	else:
 		_reset_collapse_rpc(map_id)
+		_reset_finale_rpc(map_id)
 
 @rpc("authority", "call_local", "reliable")
 func _reset_collapse_rpc(id: String) -> void:

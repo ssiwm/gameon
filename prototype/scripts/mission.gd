@@ -40,7 +40,7 @@ const FINALE_RADIO := [
 	[0.0, "…Seven, last transmission. If you can hear this — you found our tags."],
 	[3.0, "It was never the woods listening. It's the mine. It woke when we dug."],
 	[6.0, "Don't go back up the ramp. There's an old shaft on the east side — climb."],
-	[9.0, "Keep the light off. Stay quiet. The flare is at the top… run."],
+	[9.0, "Then back through the woods to where you came in. Everything out there is awake now… run."],
 ]
 const FINALE_RADIO_END := 12.5
 const BROADCAST_NOISE := 70.0          ## skok Uwagi po uruchomieniu ostatniego generatora
@@ -226,19 +226,22 @@ func on_tag_taken(by: Node2D = null, at := Vector2.ZERO) -> void:
 	_event.rpc("generator")
 	if goal_left == 0:
 		var lvl := get_tree().get_first_node_in_group("level")
-		if lvl != null and not lvl.collapse_rects.is_empty() and not lvl.exits_alt.is_empty():
+		if lvl != null and not lvl.collapse_rects.is_empty():
 			_start_finale(lvl)
 		else:
 			_open_extraction()
 	_broadcast()
 
-## Finał misji 1.1: kopalnia się budzi. Wstrząs i skok hałasu teraz, zawał rampy po FINALE_DELAY s, a wyjście przenosi się na drugą stronę
-## (znacznik „e"). Zawał nie rani — blokuje drogę, więc nie ma sensu cofać się po pierwszej drodze.
+## Finał misji 1.1: kopalnia się budzi. Wstrząs i skok hałasu teraz, zawał rampy po FINALE_DELAY s. Wyjście: znacznik „e", jeśli mapa go ma,
+## a bez niego najdalsze „E" (od 1.7.283: z powrotem na start przez obudzony las, MAPS_PLAN.md §1.4 W1). Las budzą grupy z FINALE_SPAWNS
+## (level.spawn_finale). Zawał nie rani — blokuje drogę, więc nie ma sensu cofać się po pierwszej drodze.
 func _start_finale(lvl: Node) -> void:
 	finale = true
 	_finale_t = FINALE_DELAY
 	_open_extraction()
-	exit_pos = lvl.exits_alt[0]
+	if not lvl.exits_alt.is_empty():
+		exit_pos = lvl.exits_alt[0]
+	lvl.spawn_finale()
 	NoiseMgr.script_spike(FINALE_NOISE, _humans_centroid())
 	_event.rpc("rumble")
 	print("[MISSION] finale: collapse in %.1fs, exit -> %s" % [FINALE_DELAY, str(exit_pos)])

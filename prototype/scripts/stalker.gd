@@ -62,7 +62,7 @@ const SEE_NONE := 160.0
 const HUNT_NOISE := 45.0
 
 ## Tryb przechodzący: domyślne wartości (mapa nadpisuje kluczami `STALKER_PASS`).
-const PASS_DEFAULTS := {"noise": 80.0, "time": 28.0, "leave": 8.0, "cooldown": 90.0, "after_goal": 0.0}
+const PASS_DEFAULTS := {"noise": 80.0, "time": 28.0, "leave": 8.0, "cooldown": 90.0, "after_goal": 0.0, "extract": 0.0}
 const PASS_DIST_MIN := 380.0          ## px od środka drużyny: poza kadrem (widok ≈ ±200 px) z zapasem — jak wędrowcy Dyrektora
 const PASS_DIST_MAX := 640.0
 const PASS_DY_MAX := 96.0             ## px w pionie: wychodzi na tym samym piętrze co drużyna (± 6 kafli)
@@ -270,7 +270,7 @@ func _tick_pass(delta: float, noise: float) -> void:
 		Pass.IDLE:
 			if noise < pass_noise():
 				_pass_armed = true
-			if _pass_armed and _pass_cd <= 0.0 and noise >= pass_noise() and _objective_phase() and _goal_ok():
+			if _pass_armed and _pass_cd <= 0.0 and noise >= pass_noise() and _phase_ok() and _goal_ok():
 				var at: Variant = pick_emerge_point()
 				if at == null:
 					_pass_cd = PASS_RETRY               # drużyna w miejscu bez zaplecza (np. przy krawędzi mapy) — spróbuje za chwilę
@@ -278,7 +278,7 @@ func _tick_pass(delta: float, noise: float) -> void:
 					_emerge(at, noise)
 		Pass.HUNT:
 			_pass_t -= delta
-			if _pass_t <= 0.0 or not _objective_phase():
+			if _pass_t <= 0.0 or not _phase_ok():
 				pass_state = Pass.LEAVE
 				_pass_t = pass_param("leave")
 				target_pos = _pass_from
@@ -292,10 +292,13 @@ func _tick_pass(delta: float, noise: float) -> void:
 			if _pass_t <= 0.0 or _arrived or _far_from_humans(PASS_GONE_R):
 				_vanish()
 
-## Czy misja jest w fazie celu (tylko wtedy wychodzi — finał i ekstrakcja mają własny rytm).
-func _objective_phase() -> bool:
+## Czy misja jest w fazie, w której wychodzi: cel, a przy `extract` > 0 także ewakuacja (1.1 od 1.7.283: powrót przez obudzony las).
+func _phase_ok() -> bool:
 	var mis := get_tree().get_first_node_in_group("mission")
-	return mis != null and int(mis.get("phase")) == 0
+	if mis == null:
+		return false
+	var ph := int(mis.get("phase"))
+	return ph == 0 or (ph == 2 and pass_param("extract") > 0.0)
 
 func _humans() -> Array:
 	return get_tree().get_nodes_in_group("players").filter(func(p: Node) -> bool: return not p.is_bot and not p.dead)
