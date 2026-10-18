@@ -11,7 +11,7 @@ extends RefCounted
 ##   down           who, bot, source (rodzaj wroga / stalker / vein / leech / acid / blast / prop), noise, weapon, pos, phase
 ##   revive         who, bot, after (s leżenia)
 ##   bleed_out      who, bot (wykrwawienie: powrót na start misji)
-##   stalker        what (awake / asleep / swing_hit / swing_miss), noise, target, bot
+##   stalker        what (awake / asleep / swing_hit / swing_miss / pass_in / pass_out — przechodzący Stalker 1.1), noise, target, bot, pos
 ##   overcharge     pos, noise, stale
 ##   pos            phase, noise, p: lista graczy [{who, bot, pos, hp, crouch, dead}] — próbka co POS_EVERY s (mapy cieplne tras, MAPS_PLAN.md P1)
 ##   objective      what (tag / stash / generator / nest / boss), n, of, pos, who, bot — zaliczony cel lub cel poboczny (czas odcinków trasy, P2)

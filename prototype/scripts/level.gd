@@ -682,6 +682,15 @@ func _spawn_entities() -> void:
 		s.name = "Stalker"
 		s.position = stalker_home
 		add_child(s)
+	elif (MAPS[map_id] as GDScript).get_script_constant_map().has("STALKER_PASS"):      # 1.1: Stalker tylko „przechodzi" przy wysokiej Uwadze (stalker.gd, tryb przechodzący)
+		var cfg: Dictionary = (MAPS[map_id] as GDScript).get_script_constant_map()["STALKER_PASS"]
+		var home: Array = cfg.get("home", [3, 3])
+		var s = STALKER_SCENE.instantiate()
+		s.name = "Stalker"
+		s.position = Vector2(int(home[0]) * TILE + TILE * 0.5, (int(home[1]) + 1) * TILE)      # poza zasięgiem drużyny (niebo nad mapą)
+		s.pass_mode = true
+		s.pass_cfg = cfg
+		add_child(s)
 	for i in found["K"].size():                   # Pijawka (misja B1): basen z danych mapy (POOL = kolumny)
 		var lc: CharacterBody2D = LEECH.new()
 		lc.name = "Boss"
