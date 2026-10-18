@@ -153,7 +153,7 @@ def export_glb(obj, name):
     bpy.context.view_layer.objects.active = obj
     path = os.path.join(OUT, name + ".glb")
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
-                              export_image_format="AUTO" if name.startswith(("tree_spruce", "tree_pine", "tree_birch")) else "JPEG", export_jpeg_quality=88, export_animations=False)
+                              export_image_format="AUTO" if name.startswith(("tree_spruce", "tree_pine", "tree_birch", "tree_snag_")) else "JPEG", export_jpeg_quality=88, export_animations=False)
     print("SAVED", name, os.path.getsize(path) // 1024, "kB", len(obj.data.polygons), "faces")
 
 
@@ -650,6 +650,110 @@ def build_birch(name, seed, lean):
     export_glb(obj, name)
 
 
+# martwe drzewa lasu (obok pnia z Tripo `tree_snag`): nazwa → (rodzaj, ziarno). Wysokość modelu 100 jednostek; skalę w grze dobiera
+# `Level3D.build_forest` (`SNAG_H`: złamana brzoza jest niska).
+SNAGS = {"tree_snag_pine": ("pine", 157), "tree_snag_spruce": ("spruce", 163), "tree_snag_birch": ("birch", 173)}
+
+
+def _plain_mat(key, rgb, rough=1.0):
+    m = bpy.data.materials.new(key)
+    m.use_nodes = True
+    bs = next(nd for nd in m.node_tree.nodes if nd.type == "BSDF_PRINCIPLED")
+    bs.inputs["Base Color"].default_value = (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0, 1.0)
+    bs.inputs["Roughness"].default_value = rough
+    bs.inputs["Metallic"].default_value = 0.0
+    return m
+
+
+def build_snag(name, kind, seed):
+    """Martwe drzewo bez igliwia: pień proceduralny z drewnem / korą z `world_forest_gen.py: dead_wood`, suche gałęzie, złamany wierzchołek
+    z drzazgami i huby. pine: martwa sosna — gruby pień złamany wysoko, kilka sterczących, połamanych konarów; spruce: szkielet świerka —
+    cienki szpic i piętra krótkich, opadających suchych gałęzi; birch: złamana brzoza — gruby, niski kikut (w grze ~45% wysokości drzewa)
+    z hubami. Wysokość 100 jednostek, stopy w z = 0."""
+    import random
+    rng = random.Random(seed)
+    obj, me, bm, quad, tube = _tree_builder(name)
+    me.materials.append(_forest_mat("birch_dead" if kind == "birch" else "snag_wood", False))
+    me.materials.append(_plain_mat("fungus", (92, 74, 56)))
+    n = 22
+    sp = _spine(rng, 100.0, rng.uniform(-1.5, 1.5), rng.uniform(-3.0, 3.0), n)
+    if kind == "pine":
+        radii = [3.4 * (1.0 - t) ** 0.6 + 1.1 for t in [i / (n - 1) for i in range(n)]]
+    elif kind == "spruce":
+        radii = [2.4 * (1.0 - t) ** 0.9 + 0.08 for t in [i / (n - 1) for i in range(n)]]
+    else:
+        radii = [3.2 * (1.0 - t) ** 0.35 + 1.6 for t in [i / (n - 1) for i in range(n)]]
+    tube(sp, radii, 9, 0, 0.0, 1.0, 1.0)
+
+    def at(t):
+        i = min(int(t * (n - 1)), n - 2)
+        f = t * (n - 1) - i
+        return sp[i].lerp(sp[i + 1], f), radii[i] + (radii[i + 1] - radii[i]) * f
+
+    def branch(t, ln, rise, r0, droop=0.0, broken=False):
+        b, rt = at(t)
+        a = rng.uniform(0, math.tau)
+        d = Vector((math.cos(a) * math.cos(rise), math.sin(a) * math.cos(rise), math.sin(rise)))
+        b = b + Vector((d.x, d.y, 0.0)).normalized() * rt * 0.7
+        k = 4 if not broken else 2
+        pts = []
+        for i in range(k):
+            q = i / (k - 1)
+            kink = Vector((rng.uniform(-0.3, 0.3), rng.uniform(-0.3, 0.3), rng.uniform(-0.2, 0.2))) * ln * 0.15 * (i > 0)
+            pts.append(b + d * ln * q + Vector((0, 0, -droop * ln * q * q)) + kink)
+        tube(pts, [r0 * (1.0 - 0.8 * i / (k - 1)) + 0.02 for i in range(k)], 3, 0, 0.6, 0.9)
+        return pts, d
+
+    if kind != "spruce":                                       # złamany wierzchołek: drzazgi wokół przełomu
+        top, rt = sp[-1], radii[-1]
+        for j in range(rng.randint(6, 9)):
+            a = math.tau * j / 8 + rng.uniform(-0.3, 0.3)
+            o = Vector((math.cos(a), math.sin(a), 0.0))
+            ln = rng.uniform(1.5, 8.0) * (1.6 if kind == "birch" else 1.0)
+            tip = top + o * rt * rng.uniform(0.3, 0.9) + Vector((0, 0, ln)) + o * rng.uniform(-0.5, 1.2)
+            tube([top + o * rt * 0.75 - Vector((0, 0, 1.5)), tip], [rt * rng.uniform(0.25, 0.45), 0.03], 3, 0, 0.95, 1.0)
+    if kind == "pine":
+        for _ in range(rng.randint(9, 14)):                    # suche konary: część połamana na kikuty
+            t = rng.uniform(0.3, 0.96)
+            broken = rng.random() < 0.45
+            branch(t, rng.uniform(3.0, 6.0) if broken else rng.uniform(9.0, 19.0), math.radians(rng.uniform(5, 40)), 0.75, 0.15, broken)
+    elif kind == "spruce":
+        for j in range(60):                                    # piętra suchych gałęzi: krótsze ku górze, opadające
+            t = 0.1 + 0.88 * (j + rng.random()) / 60
+            ln = (20.0 * (1.0 - t) ** 0.8 + 2.0) * rng.uniform(0.6, 1.1)
+            pts, d = branch(t, ln, math.radians(rng.uniform(-18, 6)), 0.38, 0.35, rng.random() < 0.25)
+            if len(pts) == 4 and ln > 5.0:
+                for k in (1, 2, 3):                            # boczne gałązki
+                    side = Vector((-d.y, d.x, 0.0)) * rng.choice((-1, 1))
+                    p0 = pts[k]
+                    tube([p0, p0 + (d * 0.4 + side).normalized() * ln * 0.32 + Vector((0, 0, -ln * 0.1))], [0.12, 0.03], 3, 0, 0.6, 0.7)
+    else:
+        for _ in range(rng.randint(2, 4)):                     # kikuty konarów
+            branch(rng.uniform(0.55, 0.92), rng.uniform(2.0, 4.5), math.radians(rng.uniform(15, 45)), 0.6, 0.0, True)
+    n_f = {"pine": rng.randint(0, 2), "spruce": 0, "birch": rng.randint(3, 6)}[kind]
+    for _ in range(n_f):                                       # huby: półkoliste, płaskie owocniki na pniu
+        t = rng.uniform(0.12, 0.85)
+        c, rt = at(t)
+        a = rng.uniform(0, math.tau)
+        o = Vector((math.cos(a), math.sin(a), 0.0))
+        s = Vector((-o.y, o.x, 0.0))
+        r = rng.uniform(2.4, 4.2) * (1.0 if kind == "birch" else 0.7)
+        th = r * 0.45
+        c = c + o * rt * 0.85
+        arc = [c + (o * math.cos(u) * 1.0 + s * math.sin(u)) * r for u in [math.radians(-85 + 170 * i / 8) for i in range(9)]]
+        top_c = bm.verts.new(c)
+        tv = [bm.verts.new(p) for p in arc]
+        bv = [bm.verts.new(p - Vector((0, 0, th)) - o * r * 0.15) for p in arc]
+        bot_c = bm.verts.new(c - Vector((0, 0, th * 0.6)))
+        for i in range(8):
+            for f in (bm.faces.new([top_c, tv[i], tv[i + 1]]), bm.faces.new([tv[i], bv[i], bv[i + 1], tv[i + 1]]), bm.faces.new([bot_c, bv[i + 1], bv[i]])):
+                f.material_index = 1
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    export_glb(obj, name)
+
+
 def _join(meshes):
     bpy.ops.object.select_all(action="DESELECT")
     for o in meshes:
@@ -775,6 +879,9 @@ def main():
     for name, spec in BIRCHES.items():
         if want(name):
             build_birch(name, *spec)
+    for name, spec in SNAGS.items():
+        if want(name):
+            build_snag(name, *spec)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
