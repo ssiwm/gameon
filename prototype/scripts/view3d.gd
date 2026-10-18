@@ -3989,6 +3989,7 @@ func _sync_weather(delta: float) -> void:
 		var fog_on := id == "fog" and k > 0.5
 		if (ff.material_override as BaseMaterial3D).disable_fog == fog_on:
 			(ff.material_override as BaseMaterial3D).disable_fog = not fog_on
+			Backdrop3D.set_fog(fog_on)                             # punkty orientacyjne tła toną w mgle razem z dnem lasu
 	var env := _cam_a.environment
 	if env != null:
 		if not env.has_meta("base_amb"):
@@ -3999,6 +4000,8 @@ func _sync_weather(delta: float) -> void:
 		env.fog_light_color = (env.get_meta("base_fog") as Color) * (1.0 + 1.6 * fogk + 3.0 * flash)       # w błysku las zostaje sylwetką na jasnym niebie (nie tonie w bieli)
 		if id == "fog":
 			env.fog_depth_begin -= 1.5 * k                        # mgła głębi podchodzi pod sam plan gry (początek ustawia co klatkę _sync_camera)
+		# w mgle bryła mgły zasłania też niebo widoczne między pniami poniżej linii lasu (bór jest prześwitujący), inaczej zostaje tam czarne
+		env.volumetric_fog_sky_affect = k if id == "fog" else 0.0
 		if env.sky != null and env.sky.sky_material is ShaderMaterial:
 			var skm := env.sky.sky_material as ShaderMaterial
 			skm.set_shader_parameter("glow", Vector3(0.016, 0.024, 0.044) * (1.0 + 14.0 * flash) * float(MOON_K.get(id, 1.0)))

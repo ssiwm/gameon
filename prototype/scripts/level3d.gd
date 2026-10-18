@@ -149,6 +149,8 @@ static func model_mesh(name: String) -> Array:
 			var msh := (found[0] as MeshInstance3D).mesh
 			for si in msh.get_surface_count():                    # karty igliwia / liści: wycinanie alfą (cienie i głębia działają), widoczne z obu stron
 				var bm := msh.surface_get_material(si) as BaseMaterial3D
+				if bm != null and name.begins_with("tree_"):
+					bm.vertex_color_use_as_albedo = true              # odcień egzemplarza lasu (kolor `MultiMesh`, `_forest_chunks`)
 				if bm != null and bm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
 					bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 					bm.alpha_scissor_threshold = 0.4
@@ -1366,7 +1368,9 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 ## w płaszczyznach z = −3,5 … −60 m nad kolumnami z otwartym niebem. Bliskie rzędy są rzadsze i wyższe (pnie w kadrze), dalekie gęste —
 ## razem z mgłą głębi i wstęgami mgły dają warstwy sylwetek zamiast pustego nieba.
 const FOREST_DIR := "res://art/world3d/forest/"
-const FOREST_KINDS := ["spruce_a", "spruce_b", "spruce_c", "snag_a", "snag_b"]
+const FOREST_KINDS := ["spruce_a", "spruce_b", "spruce_c", "snag_a", "snag_b", "pine_a", "pine_b", "birch_a"]
+const FOREST_MODELS := ["tree_snag", "tree_snag_hi", "tree_log", "tree_spruce_a", "tree_spruce_b", "tree_spruce_c", "tree_pine_a", "tree_pine_b", "tree_pine_c", "tree_birch_a", "tree_birch_b"]
+const FOREST_CHUNK := 48.0                 ## m: las dzielony na odcinki wzdłuż mapy — silnik pomija odcinki poza kadrem (wcześniej jedna siatka na całą mapę)
 
 ## Profil terenu lasu: wysokość dna lasu za bryłą gruntu, wspólna dla dna (`build_forest_floor`), drzew (`build_forest`) i wstęg mgły przy ziemi
 ## (`build_ground_fog`). Grunt kolumny to pierwsza od góry warstwa lita, która jest prawdziwym gruntem: pomija cienkie warstwy z pustką pod spodem
@@ -1559,11 +1563,16 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 	var xf := {}
 	for k in FOREST_KINDS:
 		xf[k] = []
-	# modele 3D w bliskim i środkowym pasie: świerki (pień z Tripo + gałęzie z igliwiem jako karty, `prep_items3d.py: build_spruce`), martwe pnie
-	# i powalone kłody; daleki pas zostaje płaskimi kartami (ginie we mgle)
-	var trees := {"tree_snag": [], "tree_log": [], "tree_snag_hi": [], "tree_spruce_a": [], "tree_spruce_b": [], "tree_spruce_c": []}
+	# modele 3D w bliskim i środkowym pasie: sosny i brzozy (`prep_items3d.py: build_pine / build_birch`), świerki (pień z Tripo + gałęzie
+	# z igliwiem, `build_spruce`), martwe pnie i powalone kłody; daleki pas zostaje płaskimi kartami (ginie we mgle). Bór: sosna przeważa,
+	# świerk jest drugim piętrem, brzoza rośnie pojedynczo. Każde drzewo ma lekko inny odcień (kolor egzemplarza `MultiMesh`).
+	var trees := {}                                       # model → [[Transform3D, Color], …]
+	for tk in FOREST_MODELS:
+		trees[tk] = []
 	var have_models := not model_mesh("tree_snag").is_empty()
 	var have_spruce := not model_mesh("tree_spruce_a").is_empty() and not model_mesh("tree_spruce_b").is_empty() and not model_mesh("tree_spruce_c").is_empty()
+	var have_pine := not model_mesh("tree_pine_a").is_empty() and not model_mesh("tree_pine_b").is_empty() and not model_mesh("tree_pine_c").is_empty()
+	var have_birch := not model_mesh("tree_birch_a").is_empty() and not model_mesh("tree_birch_b").is_empty()
 	var ft := forest_terrain(rows)
 	if ft.is_empty():
 		return
@@ -1580,7 +1589,7 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 		if rng.randf() < 0.07 and r0 < nrows and _ch(rows, c, r0) == "#" and not model_mesh("tree_log").is_empty():       # powalony pień na ściółce, w głębi bryły gruntu
 			var ll := rng.randf_range(2.2, 3.6)
 			var lb := Basis(Vector3.UP, rng.randf_range(-0.5, 0.5)).scaled(Vector3(ll / 100.0, ll / 100.0, ll / 100.0))
-			(trees["tree_log"] as Array).append(Transform3D(lb, Vector3((float(c) + rng.randf()) * T, -float(r0) * T - 0.06, rng.randf_range(-DEPTH_BACK + 0.5, -1.2))))
+			(trees["tree_log"] as Array).append([Transform3D(lb, Vector3((float(c) + rng.randf()) * T, -float(r0) * T - 0.06, rng.randf_range(-DEPTH_BACK + 0.5, -1.2))), Color.WHITE])
 		var bands := [[DEPTH_BACK + 1.2, 9.0, 0.28, 13.0, 21.0], [9.0, 24.0, 1.4, 11.0, 19.0], [24.0, 60.0, 2.6, 12.0, 24.0]]
 		# drzewostan zmienia się wzdłuż mapy (`forest_stand`): polany i rzadkie miejsca z martwymi pniami, gęste kępy, starsze i młodsze płaty —
 		# linia czubków dostaje rytm zamiast równego grzebienia; daleki pas zostaje ścianą lasu, tylko trochę rzednie
@@ -1599,12 +1608,29 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 				var y := forest_ground_y(ft, x, -z)
 				var roll := rng.randf()
 				var snag_p := 0.12 + 0.22 * float(stand["open"])               # na polanach i w rzadkim lesie więcej martwych pni
-				var kind: String = "snag_a" if roll < snag_p * 0.5 else ("snag_b" if roll < snag_p else ("spruce_a" if roll < 0.45 else ("spruce_b" if roll < 0.72 else "spruce_c")))
+				var kind := "snag_a" if roll < snag_p * 0.5 else "snag_b"
+				if roll >= snag_p:
+					var q := (roll - snag_p) / (1.0 - snag_p)
+					kind = "birch" if q < 0.14 else ("pine" if q < 0.6 else "spruce")
+				if kind == "pine":
+					h *= 1.12                                          # sosny wyższe, z koroną w górnej części
+				elif kind == "birch":
+					h *= 0.8
+				var v := rng.randf_range(0.82, 1.12)
+				var tint := Color(v * rng.randf_range(0.94, 1.06), v, v * rng.randf_range(0.92, 1.05))
 				var w := h * 0.5 * rng.randf_range(0.85, 1.15)
-				if have_spruce and bi < 2 and kind.begins_with("spruce"):
+				var model := ""
+				if bi < 2:
+					if kind == "spruce" and have_spruce:
+						model = "tree_spruce_" + "abc"[rng.randi() % 3]
+					elif kind == "pine" and have_pine:
+						model = "tree_pine_" + "abc"[rng.randi() % 3]
+					elif kind == "birch" and have_birch:
+						model = "tree_birch_" + "ab"[rng.randi() % 2]
+				if model != "":
 					var sw := h / 100.0 * rng.randf_range(0.9, 1.15)
 					var sb := Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3(sw, h / 100.0, sw))
-					(trees["tree_" + kind] as Array).append(Transform3D(sb, Vector3(x, y - 0.3, z)))
+					(trees[model] as Array).append([Transform3D(sb, Vector3(x, y - 0.3, z)), tint])
 					continue
 				if have_models and bi < 2 and kind.begins_with("snag"):
 					var tk := "tree_snag"
@@ -1613,12 +1639,21 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 					var tb := Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3(tw, th / 100.0, tw))
 					if bi == 0 and not model_mesh(tk + "_hi").is_empty():       # najbliższy rząd: wersja szczegółowa
 						tk += "_hi"
-					(trees[tk] as Array).append(Transform3D(tb, Vector3(x, y - 0.3, z)))
+					(trees[tk] as Array).append([Transform3D(tb, Vector3(x, y - 0.3, z)), tint])
 					continue
+				var card_kind: String = kind
+				if kind == "spruce":
+					card_kind = "spruce_" + "abc"[rng.randi() % 3]
+				elif kind == "pine":
+					card_kind = "pine_" + "ab"[rng.randi() % 2]
+				elif kind == "birch":
+					card_kind = "birch_a"
 				var b := Basis(Vector3.UP, rng.randf_range(-0.5, 0.5)).scaled(Vector3(w, h, w))
-				(xf[kind] as Array).append(Transform3D(b, Vector3(x, y - 0.3, z)))
+				(xf[card_kind] as Array).append([Transform3D(b, Vector3(x, y - 0.3, z)), tint])
 	for tk in trees:
-		_multimodel(parent, tk, trees[tk], tk == "tree_log")
+		var mdl := model_mesh(tk)
+		if not mdl.is_empty():
+			_forest_chunks(parent, mdl[0], null, trees[tk], tk == "tree_log", mdl[1])
 	# siatka: dwie skrzyżowane karty 1×1 m (podstawa w y = 0), normalne w górę i ku kamerze — karta nie gaśnie przy bocznym świetle
 	var v := PackedVector3Array()
 	var uv := PackedVector2Array()
@@ -1645,11 +1680,37 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 			continue
 		var m := _wind_mat(load(FOREST_DIR + k + ".png"), Color.WHITE, 1.0, 0.0, 0.5)       # karta kołysze się w całości
 		_wind_cards.append(m)
-		_multimesh(parent, card, xf[k], m, false)
+		_forest_chunks(parent, card, m, xf[k], false)
 	for i in range(first, parent.get_child_count()):          # las na własnej warstwie: oświetla go `MoonRim`, plan gry nie
 		var vi := parent.get_child(i) as VisualInstance3D
 		if vi != null:
 			vi.layers = 1 | LAYER_FOREST
+
+## Egzemplarze lasu (`list`: [[Transform3D, Color], …]) w odcinkach FOREST_CHUNK wzdłuż osi x — każdy odcinek to osobna `MultiMesh` z własnym
+## AABB, więc silnik rysuje tylko odcinki w kadrze. Kolor egzemplarza mnoży albedo (lekko różne odcienie drzew). `local`: przekształcenie siatki w scenie modelu.
+static func _forest_chunks(parent: Node3D, mesh: Mesh, mat: Material, list: Array, shadows: bool, local := Transform3D.IDENTITY) -> void:
+	var groups := {}
+	for e in list:
+		var key := int(floor((e[0] as Transform3D).origin.x / FOREST_CHUNK))
+		if not groups.has(key):
+			groups[key] = []
+		(groups[key] as Array).append(e)
+	for key in groups:
+		var g: Array = groups[key]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		mm.mesh = mesh
+		mm.instance_count = g.size()
+		for i in g.size():
+			mm.set_instance_transform(i, (g[i][0] as Transform3D) * local)
+			mm.set_instance_color(i, g[i][1])
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		if mat != null:
+			mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(mi)
 
 ## Wiatr w koronach: igliwie modeli drzew (`model_mesh`, powierzchnie z alfą) i karty dalekiego lasu. Wychylenie rośnie z wysokością nad podstawą
 ## drzewa, a w modelach także z odległością od pnia — nasada gałęzi stoi przy nieruchomym pniu, kołyszą się końce (nic się nie odrywa); karty
@@ -1680,7 +1741,7 @@ void vertex() {
 }
 void fragment() {
 	vec4 c = texture(tex, UV) * tint;
-	ALBEDO = c.rgb;
+	ALBEDO = c.rgb * COLOR.rgb;                            // odcień egzemplarza (`_forest_chunks`)
 	ALPHA = c.a;
 	ALPHA_SCISSOR_THRESHOLD = scissor;
 	ALPHA_ANTIALIASING_EDGE = 0.3;                         // wygładzony brzeg (alpha-to-coverage przy MSAA)

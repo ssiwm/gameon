@@ -49,6 +49,13 @@ void fragment() {
 """
 
 static var _lamp_sh: Shader
+static var _mats: Array = []                    ## materiały konstrukcji (bez mgły głębi); w pogodzie „mgła” `set_fog` ją włącza
+
+## Mgła głębi na konstrukcjach: wyłączona w noc pogodną (sylwetka na niebie), włączona w pogodzie „mgła” — wtedy toną w mgle razem z lasem
+## zamiast stać czarną sylwetką w prześwitach boru (woła `view3d._sync_weather`, tak jak dla dna lasu).
+static func set_fog(on: bool) -> void:
+	for m in _mats:
+		(m as BaseMaterial3D).disable_fog = not on
 
 ## Buduje wszystkie wpisy `entries` pod `parent`. Węzły lampek mają nazwy „BackdropLamp…” (pogoda ustawia im `vis`).
 static func build(parent: Node3D, rows: Array, entries: Array) -> void:
@@ -65,6 +72,7 @@ static func build(parent: Node3D, rows: Array, entries: Array) -> void:
 	wood.roughness = 0.95
 	wood.metallic_specular = 0.0
 	wood.disable_fog = true
+	_mats = [metal, wood]
 	for e in entries:
 		var d: Dictionary = (DEFAULTS.get(String(e.get("kind", "")), {}) as Dictionary).duplicate()
 		d.merge(e, true)
