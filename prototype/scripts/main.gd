@@ -2091,13 +2091,16 @@ func _pass_test() -> void:
 	Difficulty.level = diff_before
 	st.reset_enemy()
 	mission.phase = MISSION_SCRIPT.Phase.EXTRACT                 # 1.1 od 1.7.283: powrót przez obudzony las — wychodzi też w ewakuacji
+	mission.exit_pos = level.exits[0]                             # wyjście przy starcie (na zachód od gracza) — „za plecami” to wschód
 	p.global_position = Vector2(60.0 * 16.0 + 8.0, 23.0 * 16.0)
 	mission.on_tag_taken(p, p.global_position)
 	NoiseMgr.level = 50.0
 	await get_tree().create_timer(0.3).timeout
 	shout.call(95.0)
 	await get_tree().create_timer(0.4).timeout
-	check.call("ewakuacja (extract w STALKER_PASS): wychodzi", st.awake)
+	var ev_dx: float = st.global_position.x - p.global_position.x
+	check.call("ewakuacja (extract w STALKER_PASS): wychodzi za plecami względem wyjścia (wyjście x %.0f, gracz x %.0f, Stalker dx %.0f)" % [mission.exit_pos.x, p.global_position.x, ev_dx],
+		st.awake and signf(ev_dx) == -signf(mission.exit_pos.x - p.global_position.x) and absf(ev_dx) >= 380.0)
 	st.reset_enemy()
 	mission.phase = MISSION_SCRIPT.Phase.SUCCESS
 	NoiseMgr.level = 50.0
@@ -2150,6 +2153,32 @@ func _sneak_test() -> void:
 		t.set_physics_process(false)
 	for b in bots:
 		b.set_physics_process(true)
+	# bród (MAPS_PLAN.md §1.4 W3): Wołek na skarpie 4 kafle nad błotem — na kucaka pod nim śpi, wyprostowany go budzi
+	for b in bots:
+		b.set_physics_process(false)
+	var bank: Array = get_tree().get_nodes_in_group("enemies").filter(func(t: Node) -> bool: return t.get("kind") == "wolek" and t.global_position.x < 40.0 * 16.0)
+	check.call("bród: Wołek na skarpie (%d), śpi" % bank.size(), bank.size() == 1 and bank[0].active == false)
+	var wk: Node2D = bank[0]
+	Input.action_press("crouch")
+	p.global_position = Vector2(26.0 * 16.0 + 8.0, 23.0 * 16.0)       # płycizna, ponad 70 px od niego
+	p.velocity = Vector2.ZERO
+	await get_tree().create_timer(0.6).timeout
+	Input.action_press("move_right")
+	for i in 120:
+		if p.global_position.x >= wk.global_position.x:
+			break
+		await get_tree().create_timer(0.05).timeout
+	Input.action_release("move_right")
+	await get_tree().create_timer(0.8).timeout
+	check.call("bród: kucający w błocie pod Wołkiem (dy %.0f px, x %.0f / %.0f): śpi" % [p.global_position.y - wk.global_position.y, p.global_position.x, wk.global_position.x],
+		p.crouching and p.global_position.x >= wk.global_position.x - 4.0 and wk.active == false)
+	Input.action_release("crouch")
+	await get_tree().create_timer(1.0).timeout
+	check.call("bród: wyprostowany pod skarpą budzi Wołka", wk.active == true)
+	wk.set_process(false)
+	wk.set_physics_process(false)
+	for b in bots:
+		b.set_physics_process(true)
 	var ledge: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return e.get("kind") == "trzosek" and e.global_position.x > 2424.0 and e.global_position.x < 2724.0)
 	ledge.sort_custom(func(a: Node, b: Node) -> bool: return a.global_position.x < b.global_position.x)
 	check.call("półki: śpiący Trzosek na półce (%d), nieaktywny" % ledge.size(), ledge.size() >= 1 and ledge[0].active == false)
@@ -2190,6 +2219,11 @@ func _sneak_test() -> void:
 	hc._collect(p)
 	check.call("podpowiedź camp: na podejściu do obozu tak, na polanie nie (strefa %s)" % str(level.hint_zones.get("camp")),
 		hc._queued.has("camp") and not camp_far)
+	var hf := Hints.new()                                         # bród: porada o wodzie i błocie przy płyciźnie
+	p.global_position = Vector2(20.0 * 16.0 + 8.0, 23.0 * 16.0)
+	NoiseMgr.level = 20.0
+	hf._collect(p)
+	check.call("podpowiedź ford: przy płyciźnie (strefa %s)" % str(level.hint_zones.get("ford")), hf._queued.has("ford"))
 	var hm := Hints.new()                                         # strażnica: lekcja flary pod wieżą, póki ćmy wiszą pod dachem
 	p.global_position = Vector2(205.0 * 16.0 + 8.0, 23.0 * 16.0)
 	hm._collect(p)
