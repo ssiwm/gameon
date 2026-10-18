@@ -219,12 +219,48 @@ static func _wall_behind(rows: Array, c: int, r: int) -> bool:
 			steps += 1
 	return false
 
+## Przekrój wnętrza bryły od frontu (z = DEPTH_FRONT): poziome ciągi niewidocznych z boku kafli jako jeden czworokąt na ciąg; materiał jak bryła
+## (projekcja w świecie — tekstura przechodzi bez szwu przez front sąsiednich brył). Nocą czarny jak dotąd, ale światła mają na czym się położyć.
+static func _build_caps(parent: Node3D, cells: Array, mat: Material) -> void:
+	if cells.is_empty():
+		return
+	var v := PackedVector3Array()
+	var n := PackedVector3Array()
+	var i := 0
+	while i < cells.size():
+		var a: Vector2i = cells[i]
+		var j := i
+		while j + 1 < cells.size() and (cells[j + 1] as Vector2i).y == a.y and (cells[j + 1] as Vector2i).x == (cells[j] as Vector2i).x + 1:
+			j += 1
+		var x0 := float(a.x) * T
+		var x1 := float((cells[j] as Vector2i).x + 1) * T
+		var y0 := -float(a.y + 1) * T
+		var y1 := -float(a.y) * T
+		v.append_array(PackedVector3Array([Vector3(x0, y0, DEPTH_FRONT), Vector3(x1, y1, DEPTH_FRONT), Vector3(x1, y0, DEPTH_FRONT),
+				Vector3(x0, y0, DEPTH_FRONT), Vector3(x0, y1, DEPTH_FRONT), Vector3(x1, y1, DEPTH_FRONT)]))
+		for k in 6:
+			n.append(Vector3.BACK)
+		i = j + 1
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = v
+	arr[Mesh.ARRAY_NORMAL] = n
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var mi := MeshInstance3D.new()
+	mi.name = "Caps"
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+
 static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary:
 	var nrows := rows.size()
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
 	var box := BoxMesh.new()
 	box.size = Vector3(T, T, DEPTH_FRONT + DEPTH_BACK)
 	var groups := {"#": [], "C": [], "roof": [], "M": [], "m": [], "O": [], "~": []}
+	var caps := {"#": [], "C": [], "roof": [], "M": [], "m": [], "O": [], "~": []}
 	var walls: Array = []
 	var posts: Array = []
 	var planks: Array = []
@@ -237,8 +273,10 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 			if ch == "C" and is_roof_cell(rows, c, r):
 				ch = "roof"                                         # dach szopy: blacha falista zamiast betonu (znak mapy i kolizja bez zmian); nie „R" — to znacznik radiostacji
 			if groups.has(ch):
-				# tylko odsłonięte kafle (sąsiad z powietrzem lub tłem) — wnętrza skał nie są widoczne
+				# bryły tylko dla odsłoniętych kafli (sąsiad z powietrzem lub tłem); wnętrza skał zamyka od frontu płaski przekrój (`caps`),
+				# bez niego pod skorupą gruntu widać było pustkę zamiast ziemi (flara czy wybuch nie miały czego oświetlić)
 				if is_solid_ch(_ch(rows, c - 1, r)) and is_solid_ch(_ch(rows, c + 1, r)) and is_solid_ch(_ch(rows, c, r - 1)) and is_solid_ch(_ch(rows, c, r + 1)):
+					caps[ch].append(Vector2i(c, r))
 					continue
 				var p := cell_pos(c, r)
 				if (ch == "O" or ch == "~" or ch == "m") and _liquid_surface_col(rows, c, r, ch) and not "--noliquids" in OS.get_cmdline_user_args():
@@ -276,6 +314,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 		mats[k] = wet                                           # kafle poniżej powierzchni cieczy: mokry grunt (nad nimi leży bryła)
 	for k in groups:
 		_multimesh(parent, box, groups[k], mats[k])
+		_build_caps(parent, caps[k], mats[k])
 	var wbox := BoxMesh.new()
 	wbox.size = Vector3(T, T, 0.3)
 	_multimesh(parent, wbox, walls, make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"), false)
@@ -1786,6 +1825,96 @@ static func build_undergrowth(parent: Node3D, rows: Array) -> void:
 			mm.set_instance_custom_data(i, Color(rng.randf(), 0.0, 0.0, 1.0))
 		var mi := MultiMeshInstance3D.new()
 		mi.name = "Undergrowth_" + k
+		mi.multimesh = mm
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(mi)
+
+## Krawędź przekroju gruntu: przód bryły był idealnie prostą linią przez cały ekran (makieta w przekroju). Na odsłoniętym wierzchu gruntu pod
+## gołym niebem (te same kafle co runo): trawa przewieszona przez krawędź ku kamerze, korzenie zwisające po przekroju i rzadkie, niskie kępy tuż
+## przed bryłą. Kępy przed bryłą mają najwyżej ok. 0,35 m — z wysokości kamery zasłaniają tylko stopy postaci (rozgrywka bez zmian).
+## Ten sam shader co runo (`UNDERGROWTH_SHADER`: trawa kołysze się z wiatrem, `set_wind`); korzenie wiszą odwrócone i stoją nieruchomo.
+static func build_front_edge(parent: Node3D, rows: Array) -> void:
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 0xED6E
+	var xf := {"grass_a": [], "grass_b": [], "roots_a": [], "roots_b": []}
+	for r in nrows:
+		for c in cols:
+			if _ch(rows, c, r) != "#" or is_solid_ch(_ch(rows, c, r - 1)) or is_platform_ch(_ch(rows, c, r - 1)):
+				continue
+			var roofed := false
+			for rr in range(r - 1, -1, -1):
+				var up := _ch(rows, c, rr)
+				if up == "b" or is_solid_ch(up):
+					roofed = true
+					break
+			if roofed:
+				continue
+			var top := cell_pos(c, r) + Vector3(0.0, T * 0.5, 0.0)
+			for i in 5:                                            # trawa na krawędzi: część pochylona ku kamerze, część zwisa przed przekrojem
+				var hang := i < 3
+				var h := rng.randf_range(0.25, 0.55) if hang else rng.randf_range(0.18, 0.35)
+				var w := h * rng.randf_range(1.0, 1.4)
+				var b := Basis(Vector3.UP, rng.randf_range(-0.5, 0.5)) * Basis(Vector3.RIGHT, rng.randf_range(1.9, 2.6) if hang else rng.randf_range(0.5, 1.0))
+				var at := Vector3(top.x + rng.randf_range(-0.5, 0.5) * T, top.y - (0.06 if hang else 0.03), DEPTH_FRONT + (0.03 if hang else rng.randf_range(-0.12, 0.02)))
+				(xf["grass_a" if rng.randf() < 0.6 else "grass_b"] as Array).append(Transform3D(b * Basis.from_scale(Vector3(w, h, w)), at))
+			if rng.randf() < 0.35:                                 # niska kępa tuż przed bryłą
+				var h2 := rng.randf_range(0.12, 0.32)
+				var b2 := Basis(Vector3.UP, rng.randf_range(-0.6, 0.6)).scaled(Vector3(h2 * 1.3, h2, h2 * 1.3))
+				(xf["grass_a"] as Array).append(Transform3D(b2, Vector3(top.x + rng.randf_range(-0.5, 0.5) * T, top.y - 0.04, DEPTH_FRONT + rng.randf_range(0.05, 0.5))))
+			if rng.randf() < 0.5 and is_solid_ch(_ch(rows, c, r + 1)):      # korzenie na przekroju
+				var rh := rng.randf_range(0.8, 2.2)
+				var rw := rng.randf_range(1.0, 2.2)
+				(xf["roots_a" if rng.randf() < 0.5 else "roots_b"] as Array).append(
+					Transform3D(Basis().scaled(Vector3(rw, rh, 1.0)), Vector3(top.x + rng.randf_range(-0.4, 0.4) * T, top.y - rng.randf_range(0.02, 0.15), DEPTH_FRONT + 0.012)))
+	# siatki: skrzyżowane karty trawy (podstawa w y = 0) i płaski czworokąt korzeni wiszący w dół od y = 0 (nasada z tekstury u góry)
+	var gv := PackedVector3Array()
+	var guv := PackedVector2Array()
+	var gidx := PackedInt32Array()
+	for a in [0.0, PI * 0.5]:
+		var dx := Vector3(cos(a), 0.0, sin(a)) * 0.5
+		var base := gv.size()
+		gv.append_array(PackedVector3Array([-dx, dx, dx + Vector3.UP, -dx + Vector3.UP]))
+		guv.append_array(PackedVector2Array([Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]))
+		gidx.append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
+	var rv := PackedVector3Array([Vector3(-0.5, 0.0, 0.0), Vector3(0.5, 0.0, 0.0), Vector3(0.5, -1.0, 0.0), Vector3(-0.5, -1.0, 0.0)])
+	var ruv := PackedVector2Array([Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)])
+	var ridx := PackedInt32Array([0, 2, 1, 0, 3, 2])
+	var meshes := {}
+	for kind in [["grass", gv, guv, gidx], ["roots", rv, ruv, ridx]]:
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = kind[1]
+		arr[Mesh.ARRAY_TEX_UV] = kind[2]
+		arr[Mesh.ARRAY_INDEX] = kind[3]
+		var m := ArrayMesh.new()
+		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		meshes[kind[0]] = m
+	var sh := Shader.new()
+	sh.code = UNDERGROWTH_SHADER
+	for k in xf:
+		var list: Array = xf[k]
+		if list.is_empty() or not ResourceLoader.exists(FOREST_DIR + k + ".png"):
+			continue
+		var mat := ShaderMaterial.new()
+		mat.shader = sh
+		mat.set_shader_parameter("tex", load(FOREST_DIR + k + ".png"))
+		mat.set_shader_parameter("amp", 0.0 if k.begins_with("roots") else _wind.x)          # korzenie w ziemi nie falują
+		mat.set_shader_parameter("lean", _wind.y)
+		if not k.begins_with("roots"):
+			_wind_grass.append(mat)
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = true
+		mm.mesh = meshes["roots" if k.begins_with("roots") else "grass"]
+		mm.instance_count = list.size()
+		for i in list.size():
+			mm.set_instance_transform(i, list[i])
+			mm.set_instance_custom_data(i, Color(rng.randf() * 0.6, 0.0, 0.0, 1.0))
+		var mi := MultiMeshInstance3D.new()
+		mi.name = "FrontEdge_" + k
 		mi.multimesh = mm
 		mi.material_override = mat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
