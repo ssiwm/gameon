@@ -1988,8 +1988,8 @@ func _tag_test() -> void:
 		p.global_position = (near[0] as Node2D).global_position + Vector2(0, -4)
 		p.velocity = Vector2.ZERO
 		await get_tree().create_timer(0.8).timeout
-	check.call("6 nieśmiertelników → EXTRACT (zostało %d, faza %d), wyjście po zawale przy szybie (x=%.0f)" % [mission.goal_left, mission.phase, mission.exit_pos.x],
-		mission.goal_left == 0 and mission.phase == MISSION_SCRIPT.Phase.EXTRACT and mission.exit_pos.x > 4600.0)
+	check.call("6 nieśmiertelników → EXTRACT (zostało %d, faza %d), wyjście przy starcie (x=%.0f)" % [mission.goal_left, mission.phase, mission.exit_pos.x],
+		mission.goal_left == 0 and mission.phase == MISSION_SCRIPT.Phase.EXTRACT and mission.exit_pos.x < 400.0)
 	p.global_position = mission.exit_pos + Vector2(0, -2)
 	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
 	check.call("ekstrakcja → SUCCESS, złom: łup skrytek + bonus misji + bonus celu pobocznego (%d)" % Scrap.last_gain,
@@ -2090,11 +2090,21 @@ func _pass_test() -> void:
 	check.call("HARD, Uwaga 97: wychodzi", st.awake)
 	Difficulty.level = diff_before
 	st.reset_enemy()
-	mission.phase = MISSION_SCRIPT.Phase.EXTRACT
+	mission.phase = MISSION_SCRIPT.Phase.EXTRACT                 # 1.1 od 1.7.283: powrót przez obudzony las — wychodzi też w ewakuacji
 	p.global_position = Vector2(60.0 * 16.0 + 8.0, 23.0 * 16.0)
+	mission.on_tag_taken(p, p.global_position)
+	NoiseMgr.level = 50.0
+	await get_tree().create_timer(0.3).timeout
 	shout.call(95.0)
 	await get_tree().create_timer(0.4).timeout
-	check.call("poza fazą celu (ekstrakcja, finał) nie wychodzi", not st.awake)
+	check.call("ewakuacja (extract w STALKER_PASS): wychodzi", st.awake)
+	st.reset_enemy()
+	mission.phase = MISSION_SCRIPT.Phase.SUCCESS
+	NoiseMgr.level = 50.0
+	await get_tree().create_timer(0.3).timeout
+	shout.call(95.0)
+	await get_tree().create_timer(0.4).timeout
+	check.call("po sukcesie nie wychodzi", not st.awake)
 	var brief: Dictionary = level.briefing("z1_m1")
 	check.call("odprawa go nie zapowiada (ostrzega alert hałasu)", not bool(brief["stalker"]))
 	print("[PASS-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
@@ -2199,8 +2209,8 @@ func _finale_test() -> void:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		e.set_physics_process(false)
 		e.set_process(false)
-	check.call("dane finału w mapie 1.1: obszar zawału (%d) i wyjście „e” (%d)" % [level.collapse_rects.size(), level.exits_alt.size()],
-		level.collapse_rects.size() == 1 and level.exits_alt.size() == 1)
+	check.call("dane finału w mapie 1.1: obszar zawału (%d), bez „e” (%d), wyjście „E” przy starcie (%d), grupy finału (%d)" % [level.collapse_rects.size(), level.exits_alt.size(), level.exits.size(), level.finale_spawns.size()],
+		level.collapse_rects.size() == 1 and level.exits_alt.is_empty() and level.exits.size() == 1 and level.exits[0].x < 400.0 and not level.finale_spawns.is_empty())
 	var hall := Vector2(274.0 * 16.0 + 8.0, 34.0 * 16.0)
 	var start: Vector2 = level.spawns[0]
 	var ramp_pre := Vector2(254.0 * 16.0 + 8.0, 29.0 * 16.0)
@@ -2219,19 +2229,24 @@ func _finale_test() -> void:
 		p.global_position = (near[0] as Node2D).global_position + Vector2(0, -4)
 		p.velocity = Vector2.ZERO
 		await get_tree().create_timer(0.8).timeout
-	check.call("ostatni nieśmiertelnik → finał (finale=%s, faza %d), wyjście po drugiej stronie (x=%.0f)" % [str(mission.finale), mission.phase, mission.exit_pos.x],
-		mission.finale and mission.phase == MISSION_SCRIPT.Phase.EXTRACT and mission.exit_pos.x > 4600.0)
+	check.call("ostatni nieśmiertelnik → finał (finale=%s, faza %d), wyjście przy starcie — powrót przez las (x=%.0f)" % [str(mission.finale), mission.phase, mission.exit_pos.x],
+		mission.finale and mission.phase == MISSION_SCRIPT.Phase.EXTRACT and mission.exit_pos.x < 400.0 and level.exits_alt.is_empty())
+	var finale_foes := level.get_children().filter(func(n: Node) -> bool: return String(n.name).begins_with("Finale"))
+	check.call("obudzony las: finał wypuścił grupy na drogę powrotną (%d z %d)" % [finale_foes.size(), level.finale_spawns.size()],
+		finale_foes.size() == level.finale_spawns.size() and finale_foes.size() >= 4)
 	# gracz „uwięziony" w obszarze zawału: ma wylądować za skałą (po stronie sali)
 	p.global_position = Vector2(261.0 * 16.0, 32.0 * 16.0)
 	p.velocity = Vector2.ZERO
 	await get_tree().create_timer(2.6).timeout
 	check.call("po zawale: rampa to skała (%s), trasa grafu z sali na rampę nie przechodzi przez zawał (idzie szybem i górą), gracz za skałą (x=%.0f)" % [level._ch(260, 30), p.global_position.x],
 		level._is_solid(260, 30) and not through.call(level.nav.find_path(hall, ramp_pre)) and p.global_position.x > 266.0 * 16.0)
-	var shaft_path: Array = level.nav.find_path(hall, level.exits_alt[0])
-	check.call("po zawale: z sali da się wspiąć szybem do flary (ścieżka %d węzłów)" % shaft_path.size(), not shaft_path.is_empty())
+	var back_path: Array = level.nav.find_path(hall, mission.exit_pos)
+	var via_shaft := back_path.any(func(n: Dictionary) -> bool: return (n.pos as Vector2).x > 290.0 * 16.0)
+	check.call("po zawale: z sali szybem na powierzchnię i lasem do wyjścia przy starcie (ścieżka %d węzłów, przez szyb=%s)" % [back_path.size(), str(via_shaft)],
+		not back_path.is_empty() and via_shaft)
 	check.call("radio patrolu: linie 0 s / 3 s / 6 s / 9 s i cisza po %.1f s" % mission.FINALE_RADIO_END,
 		mission.radio_line_at(0.0).begins_with("…Seven") and mission.radio_line_at(3.5).contains("mine") and mission.radio_line_at(6.5).contains("shaft")
-		and mission.radio_line_at(9.5).contains("flare") and mission.radio_line_at(mission.FINALE_RADIO_END) == "" and mission.radio_line_at(-1.0) == "")
+		and mission.radio_line_at(9.5).contains("woods") and mission.radio_line_at(mission.FINALE_RADIO_END) == "" and mission.radio_line_at(-1.0) == "")
 	check.call("radio na HUD tylko w finale (clock %.1f, linia '%s')" % [mission.finale_clock, mission.finale_radio_line().substr(0, 20)], mission.finale and mission.finale_radio_line() != "")
 	p.global_position = mission.exit_pos + Vector2(0, -2)
 	await get_tree().create_timer(mission.EXTRACT_TIME + 1.0).timeout
@@ -2239,6 +2254,7 @@ func _finale_test() -> void:
 	_restart_mission(true)
 	await get_tree().create_timer(0.8).timeout
 	check.call("restart: radio zresetowane", mission.finale_radio_line() == "" and mission.finale_clock == 0.0)
+	check.call("restart: grupy finału zniknęły", level.get_children().filter(func(n: Node) -> bool: return String(n.name).begins_with("Finale")).is_empty())
 	check.call("restart: rampa znów wolna, droga wraca, finał zresetowany (finale=%s)" % str(mission.finale),
 		not level._is_solid(260, 30) and through.call(level.nav.find_path(hall, ramp_pre)) and not mission.finale and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
 	print("[FINALE-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])

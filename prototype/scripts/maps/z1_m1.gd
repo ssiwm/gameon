@@ -1,10 +1,10 @@
 extends RefCounted
-## Misja 1.1 „Zaginiony Patrol" (GDD §9, Strefa I): znajdź 6 nieśmiertelników zaginionego patrolu → ekstrakcja szybem za kopalnią.
+## Misja 1.1 „Zaginiony Patrol" (GDD §9, Strefa I): znajdź 6 nieśmiertelników zaginionego patrolu → szybem z kopalni i z powrotem przez obudzony las do wyjścia przy starcie.
 ## Misja wprowadzająca: ruch i strzał, cisza (kucanie), latarka. Dane mapy dla level.gd; legenda znaczników w level.gd. 308 × 48 kafli (od 1.7.282 ze strażnicą; od 1.7.280 bez 8 pustych rzędów nieba: zostaje 10 nad najwyższą skałą — zapas kamery przy najmniejszym zoomie).
 ##
 ## Cel poboczny: dwie ukryte skrytki (znacznik H): A — półka nad polaną (schodki z podestów co 2 kafle), B — wnęka w stropie jaskini nad półką z Wołkiem.
-## Wyjście `E` przy starcie to tylko zapas dla mission._open_extraction (lista wyjść nie może być pusta): ostatni nieśmiertelnik zawsze odpala finał,
-## który przenosi ekstrakcję na „e”, a pasek kierunku pokazuje wyjście dopiero w fazie EXTRACT — `E` nie jest nigdzie widoczne (MAPS_PLAN.md M1d).
+## Wyjście `E` przy starcie jest od 1.7.283 jedynym wyjściem (MAPS_PLAN.md §1.4 W1; wcześniej „e” przy szybie): po finale drużyna wychodzi szybem
+## na powierzchnię i wraca na zachód przez strażnicę, jaskinię, obóz i polanę, a las budzą FINALE_SPAWNS i przechodzący Stalker (także w EXTRACT).
 ## Układ (od zachodu): start → polana z ogniskiem (nieśmiertelnik 1, cztery Trzoski: strzelasz i słyszysz hałas) →
 ## obóz patrolu (kol. 77–140, MAPS_PLAN.md M1a; nieśmiertelnik 2): pod zerwanym mostem w niecce śpi wataha (5 Trzosków, przewodnik pod dziurą).
 ## Most stoi 5 kafli (80 px) nad nimi: na kucaka przejdziesz (budzi 45 px), wyprostowany budzisz (90 px). Dziury (8 kafli) nie da się przeskoczyć —
@@ -34,18 +34,21 @@ const WEAPONS := []
 ## Akcenty dekoracji 3D [stopy, indeks z view3d.DECO_MODELS]: porzucony obóz patrolu — skrzynia, pniak, wygasłe ognisko przy Trzoskach, powalony pień; w obozie (M1a) ognisko w niecce, pień przed zboczem, skrzynia na płaskowyżu.
 const ACCENTS := [[Vector2(392, 368), 12], [Vector2(536, 368), 9], [Vector2(936, 368), 8], [Vector2(2312, 368), 10], [Vector2(424, 368), 21], [Vector2(968, 368), 21], [Vector2(1800, 368), 8], [Vector2(1304, 368), 10], [Vector2(2040, 288), 12]]
 ## Szósty nieśmiertelnik leży na zachodnim końcu dolnej galerii (za dwoma Trzoskami, obok skrzynki i skrytki) — powód, żeby zejść szybem serwisowym.
-## Finał (mission._start_finale): po ostatnim nieśmiertelniku rampa do sali zawala się (obszary [c0, r0, c1, r1]), a wyjściem jest flara „e"
-## przy szybie wentylacyjnym na wschodnim końcu sali (wspinaczka po podestach, Ćmy i Skoczki pod sufitem sali).
+## Finał (mission._start_finale): po ostatnim nieśmiertelniku rampa do sali zawala się (obszary [c0, r0, c1, r1]); drogą na zewnątrz jest szyb
+## wentylacyjny na wschodnim końcu sali (wspinaczka po podestach, Ćmy i Skoczki pod sufitem sali), a wyjściem — „E” przy starcie.
 ## Przechodzący Stalker (MAPS_PLAN.md M1b, stalker.gd): mapa nie ma znacznika X — Stalker czeka poza mapą („home" = kafel nad nią)
 ## i wychodzi za plecami drużyny, gdy w fazie celu Uwaga przekroczy `noise`; poluje `time` s, wycofuje się do `leave` s i znika;
 ## następne przejście po `cooldown` s i dopiero po spadku Uwagi poniżej progu.
 ## Od 1.7.281: nie wychodzi przed pierwszym nieśmiertelnikiem (`after_goal`), a na HARD dopiero od Uwagi 95 (`noise_hard`, hałas rośnie tam o 25% szybciej).
-const STALKER_PASS := {"noise": 80.0, "noise_hard": 95.0, "after_goal": 1, "time": 28.0, "leave": 8.0, "cooldown": 90.0, "home": [3, 3]}
+const STALKER_PASS := {"noise": 80.0, "noise_hard": 95.0, "after_goal": 1, "extract": 1, "time": 28.0, "leave": 8.0, "cooldown": 90.0, "home": [3, 3]}
 ## Znak cichej drogi w obozie (playtest 2026-10-18: nikt nie szedł konarami): latarnia patrolu stoi na konarze A (kol. 96, nad płaskowyżem),
 ## czerwone wstążki wiszą pod konarami B, C i D [rodzaj, kolumna, wiersz, parametry] — rekwizyty jak w kryjówce (hub_prop.gd, view3d._build_hub_prop).
-const HUB_PROPS := [["lantern", 96, 16, []], ["ribbon", 100, 15, []], ["ribbon", 106, 15, []], ["ribbon", 111, 15, []]]
+const HUB_PROPS := [["lantern", 96, 16, []], ["ribbon", 100, 15, []], ["ribbon", 106, 15, []], ["ribbon", 111, 15, []], ["ribbon", 112, 17, []]]
 ## Strefy podpowiedzi [c0, r0, c1, r1] (kafle, włącznie; stopy stojącego są na górnej krawędzi rzędu podłogi, więc strefa sięga rzędu 23): „camp" na podejściu do obozu, póki wataha śpi; „moths" pod strażnicą, póki ćmy wiszą pod dachem (hints.gd).
 const HINT_ZONES := {"camp": [80, 0, 97, 23], "moths": [203, 0, 223, 23]}
+## Obudzony las (MAPS_PLAN.md §1.4 W1, od 1.7.283): finał wypuszcza na drogę powrotną śpiące grupy [rodzaj, kolumna, wiersz podłogi] —
+## dwa Trzoski nad kopalnią (pierwszy kontakt po wyjściu szybem), Wołek za strażnicą, trzy Trzoski na zachodnim skraju polany tuż przed wyjściem.
+const FINALE_SPAWNS := [["trzosek", 270, 22], ["trzosek", 274, 22], ["wolek", 236, 22], ["trzosek", 30, 22], ["trzosek", 33, 22], ["trzosek", 36, 22]]
 const COLLAPSE := [[258, 25, 265, 33]]
 
 const MAP := [
@@ -65,13 +68,13 @@ const MAP := [
 	"##.........................................................................................................u........................................###################################bbbbbbbbb...................w---.......w...................................................................................##",
 	"##..................................................................H..............................----..----.---...................................###################################bbbbbbbbb...................w..........w..........w....w...................................................................##",
 	"##................................................................-----................................w.....w.....................................................................................................w....---...w..........w....w...................................................................##",
-	"##............................................................................................----.....w.....w.............................................................................H.......................w..........w..........w....w...................................................................##",
+	"##............................................................................................----.....w.....w.--..........................................................................H.......................w..........w..........w....w...................................................................##",
 	"##.............................................................---.....................................w.....w........F........a........................................................------.....................w---.......w..........w....w...................................................................##",
 	"##...........................................................................................####--------....w...------------####..........................T...........T...........W...............................w..........w..........w....w...................................................................##",
 	"##..........................................................---............................######--.w..w.....w......w....w.--######.....................--------....--------....--------...........................w....---...w..........w....w...................................................................##",
 	"##.......................................................................................########...w..w.....w......w....w...########..............................................................................w..........w..........w....w...................................................................##",
 	"##.......................................................---...........................##########--.w..w.....w......w....w.--##########.........................---.........---.........---........................w---.......w..........w....w...................................................................##",
-	"##....S..S....E.......................a.....kk....T....T......F...T...T..u...........############...wT.w.T..Tw......T....T...############....................................................F.....u.......f.......w..........w......a...w....w..........................................................e........##",
+	"##....S..S....E.......................a.....kk....T....T......F...T...T..u...........############...wT.w.T..Tw......T....T...############....................................................F.....u.......f.......w..........w......a...w....w...................................................................##",
 	"####################################################################################################################################################################################################################################################bbbbbbbbbb##############################################bbbbb###",
 	"######################################################################################################################################################################################################################################################bbbbbbbbbb############################################---bb###",
 	"########################################################################################################################################################################################################################################################bbbbbbbbbb##########################################bbbbb###",
