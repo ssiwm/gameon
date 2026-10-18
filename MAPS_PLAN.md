@@ -1,6 +1,7 @@
 # Plan: mapy misji Strefy I
 
-Status: plan z 2026-10-17. **P1 i P2 (pomiar) zrobione** w PR „Dziennik sesji: pozycje graczy i zaliczone cele”; reszta czeka.
+Status: plan z 2026-10-17. **M1a–M1d (misja 1.1) w main**: obóz patrolu 1.7.278 (#350), przechodzący Stalker 1.7.279 (#351), gęstsza kopalnia i porządki 1.7.280 (#352).
+**P1 i P2 (pomiar)** w PR #348, P3 (narzędzie) w PR #349. Do zrobienia: playtest 1.1 z pomiarem i decyzja w sprawie B1 (§3).
 Podstawa: analiza map (lokalnie, poza repo: rzuty map z upadkami, `stats.json`) i logi sesji 1.7.211–1.7.277 (63 podejścia, 1 człowiek + bot).
 
 **Decyzje użytkownika:**

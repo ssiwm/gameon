@@ -49,6 +49,10 @@ jobs:
           grep -h '"ev":"pos"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"who":"P1"'
           grep -h '"ev":"objective"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"what":"nest"'
           grep -h '"ev":"objective"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"what":"boss"'
+      - name: Przechodzący Stalker w misji 1.1 (--passtest)
+        run: |
+          godot --headless --path prototype -- --host --mission=z1_m1 --passtest --autoquit=20 2>&1 | tee passtest.log
+          grep -a "\[PASS-TEST\] PASS (0" passtest.log
       - name: Droga dźwięku po mapie (test_sound_grid.gd)
         run: |
           godot --headless --path prototype -s tools/test_sound_grid.gd 2>&1 | tee soundgrid.log

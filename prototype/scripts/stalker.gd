@@ -12,6 +12,11 @@ extends CharacterBody2D
 ##   Trafienie go spowalnia, ale zatrzymuje najwyżej raz na STAGGER_COOLDOWN — ostrzałem nie da się go unieruchomić
 ##   Teren spowalnia go tak samo jak gracza (woda, błoto) — na każdej powierzchni zostaje wolniejszy od biegnącego
 ##   Ciało widać tylko z bliska; z daleka są same oczy
+##
+## Tryb „przechodzący" (`pass_mode`, mapa z `STALKER_PASS` zamiast znacznika X — misja 1.1, MAPS_PLAN.md M1b): nie śpi na mapie,
+## tylko czeka poza nią. Gdy w fazie celu Uwaga przekroczy próg, wychodzi z ciemności za plecami drużyny (poza kadrem), przez
+## `time` s poluje na hałas jak zwykle, potem cofa się tam, skąd przyszedł, i znika. Następne przejście dopiero po `cooldown` s
+## i po tym, jak Uwaga spadnie poniżej progu — lekcja „hałas ściąga Istotę", nie stałe zagrożenie samouczka.
 
 const Hurtbox := preload("res://scripts/hurtbox.gd")
 const HURT_H := 54.0                         ## px: wysokość strefy trafień = model (enemy3d.gd SPEC „fit")
@@ -56,8 +61,26 @@ const SEE_NONE := 160.0
 # nad tym progiem hałasu stalker poluje (szybko), poniżej — czatuje (wolno)
 const HUNT_NOISE := 45.0
 
+## Tryb przechodzący: domyślne wartości (mapa nadpisuje kluczami `STALKER_PASS`).
+const PASS_DEFAULTS := {"noise": 80.0, "time": 28.0, "leave": 8.0, "cooldown": 90.0}
+const PASS_DIST_MIN := 380.0          ## px od środka drużyny: poza kadrem (widok ≈ ±200 px) z zapasem — jak wędrowcy Dyrektora
+const PASS_DIST_MAX := 640.0
+const PASS_DY_MAX := 96.0             ## px w pionie: wychodzi na tym samym piętrze co drużyna (± 6 kafli)
+const PASS_CLEAR_R := 300.0           ## px: nie wychodzi bliżej żadnego człowieka
+const PASS_GONE_R := 420.0            ## px: wycofujący się znika, gdy jest dalej od wszystkich ludzi
+const PASS_RETRY := 1.0               ## s do kolejnej próby, gdy nie ma gdzie wyjść
+enum Pass { IDLE, HUNT, LEAVE }
+
 ## Nieśmiertelny — boty nie marnują na niego amunicji (patrz player._nearest_enemy).
 var immortal := true
+## Tryb przechodzący (ustawia level.gd przed dodaniem do sceny) i jego parametry.
+var pass_mode := false
+var pass_cfg := {}
+var pass_state: int = Pass.IDLE
+var _pass_t := 0.0                     ## s do końca polowania (HUNT) albo wycofania (LEAVE)
+var _pass_cd := 0.0                    ## s do możliwego następnego przejścia
+var _pass_armed := true                ## Uwaga spadła poniżej progu od ostatniego przejścia
+var _pass_from := Vector2.ZERO         ## skąd wyszedł — tam się wycofuje
 var awake := false
 var target_pos := Vector2.ZERO
 ## Zapowiedź ataku trwa (synchronizowane, żeby klient grał sygnał i rysował błysk)
@@ -146,6 +169,10 @@ func reset_enemy() -> void:
 	visible = false
 	_path = []
 	_path_goal = Vector2.INF
+	pass_state = Pass.IDLE
+	_pass_t = 0.0
+	_pass_cd = 0.0
+	_pass_armed = true
 
 func _physics_process(delta: float) -> void:
 	# sprawdzamy NA BIEŻĄCO: peer w _ready() to jeszcze OfflineMultiplayerPeer,
@@ -164,14 +191,16 @@ func _physics_process(delta: float) -> void:
 
 	var noise := NoiseMgr.level
 
-	if not awake and noise >= NightShift.awake_threshold(AWAKE_THRESHOLD):
+	if pass_mode:
+		_tick_pass(delta, noise)
+	elif not awake and noise >= NightShift.awake_threshold(AWAKE_THRESHOLD):
 		awake = true
 		target_pos = NoiseMgr.last_noise_pos
 		_seen_serial = NoiseMgr.noise_serial
 		_arrived = false
 		print("[STALKER] awake at noise %.0f" % noise)
 		SessionLog.event("stalker", {"what": "awake", "noise": roundi(noise)})
-	if awake and noise <= NightShift.sleep_threshold(SLEEP_THRESHOLD):
+	if awake and not pass_mode and noise <= NightShift.sleep_threshold(SLEEP_THRESHOLD):
 		awake = false
 		winding = false
 		_windup = 0.0
@@ -179,7 +208,8 @@ func _physics_process(delta: float) -> void:
 		SessionLog.event("stalker", {"what": "asleep", "noise": roundi(noise)})
 
 	_lit_cd = maxf(0.0, _lit_cd - delta)
-	if awake and _lit_cd <= 0.0:
+	var leaving := pass_mode and pass_state == Pass.LEAVE        # wycofujący się nie reaguje już na światło ani hałas
+	if awake and not leaving and _lit_cd <= 0.0:
 		# „Światło go przyciąga (latarka na wrogu = śmierć)" (GDD §7.3/§8.3):
 		# jedyny wyjątek od reguły „tylko hałas" — snop latarki na Stalkerze
 		# ściąga go na świecącego. Sprawdzamy 4×/s, nie co klatkę.
@@ -194,7 +224,7 @@ func _physics_process(delta: float) -> void:
 
 	if awake:
 		# Idzie do ostatniego NOWEGO źródła hałasu — nigdy do gracza.
-		if NoiseMgr.noise_serial != _seen_serial:
+		if NoiseMgr.noise_serial != _seen_serial and not leaving:
 			_seen_serial = NoiseMgr.noise_serial
 			if NoiseMgr.last_noise_pos.distance_to(target_pos) > 2.0:
 				target_pos = NoiseMgr.last_noise_pos
@@ -212,6 +242,122 @@ func _physics_process(delta: float) -> void:
 	_update_audio(delta, awake, noise)
 	_redraw()
 	_send_state(delta)
+
+## Parametr trybu przechodzącego (mapa albo PASS_DEFAULTS).
+func pass_param(key: String) -> float:
+	return float(pass_cfg.get(key, PASS_DEFAULTS[key]))
+
+## Tryb przechodzący (serwer): czeka poza mapą → wychodzi na hałas → poluje → wycofuje się → znika.
+func _tick_pass(delta: float, noise: float) -> void:
+	_pass_cd = maxf(0.0, _pass_cd - delta)
+	match pass_state:
+		Pass.IDLE:
+			if noise < pass_param("noise"):
+				_pass_armed = true
+			if _pass_armed and _pass_cd <= 0.0 and noise >= pass_param("noise") and _objective_phase():
+				var at: Variant = pick_emerge_point()
+				if at == null:
+					_pass_cd = PASS_RETRY               # drużyna w miejscu bez zaplecza (np. przy krawędzi mapy) — spróbuje za chwilę
+				else:
+					_emerge(at, noise)
+		Pass.HUNT:
+			_pass_t -= delta
+			if _pass_t <= 0.0 or not _objective_phase():
+				pass_state = Pass.LEAVE
+				_pass_t = pass_param("leave")
+				target_pos = _pass_from
+				_arrived = false
+				_listen = 0.0
+				winding = false
+				_windup = 0.0
+				_windup_target = null
+		Pass.LEAVE:
+			_pass_t -= delta
+			if _pass_t <= 0.0 or _arrived or _far_from_humans(PASS_GONE_R):
+				_vanish()
+
+## Czy misja jest w fazie celu (tylko wtedy wychodzi — finał i ekstrakcja mają własny rytm).
+func _objective_phase() -> bool:
+	var mis := get_tree().get_first_node_in_group("mission")
+	return mis != null and int(mis.get("phase")) == 0
+
+func _humans() -> Array:
+	return get_tree().get_nodes_in_group("players").filter(func(p: Node) -> bool: return not p.is_bot and not p.dead)
+
+func _far_from_humans(r: float) -> bool:
+	for p in _humans():
+		if (p as Node2D).global_position.distance_to(global_position) < r:
+			return false
+	return true
+
+## Punkt wyjścia: węzeł grafu nawigacji poza kadrem za plecami drużyny (od strony, z której przyszła — na zachód), na tym samym
+## piętrze, z drogą do drużyny i z dala od każdego człowieka; gdy z tyłu nie ma miejsca — z przodu. `null` = nie ma gdzie.
+func pick_emerge_point() -> Variant:
+	var lvl := get_tree().get_first_node_in_group("level")
+	var humans := _humans()
+	if lvl == null or lvl.nav == null or humans.is_empty():
+		return null
+	var nav: AStar2D = lvl.nav
+	var c := Vector2.ZERO
+	for p in humans:
+		c += (p as Node2D).global_position
+	c /= float(humans.size())
+	var goal := nav.get_closest_point(c)
+	for side: float in [-1.0, 1.0]:
+		var best: Variant = null
+		var best_score := INF
+		for id in nav.get_point_ids():
+			var pos := nav.get_point_position(id)
+			var dx := (pos.x - c.x) * side
+			var dy := absf(pos.y - c.y)
+			if dx < PASS_DIST_MIN or dx > PASS_DIST_MAX or dy > PASS_DY_MAX:
+				continue
+			var clear := true
+			for p in humans:
+				if (p as Node2D).global_position.distance_to(pos) < PASS_CLEAR_R:
+					clear = false
+					break
+			if not clear:
+				continue
+			var score := dy * 2.0 + absf(dx - (PASS_DIST_MIN + PASS_DIST_MAX) * 0.5)
+			if score < best_score and not nav.get_id_path(id, goal).is_empty():
+				best_score = score
+				best = pos
+		if best != null:
+			return best
+	return null
+
+func _emerge(at: Vector2, noise: float) -> void:
+	global_position = at
+	_pass_from = at
+	_remote_pos = at
+	awake = true
+	pass_state = Pass.HUNT
+	_pass_t = pass_param("time")
+	_pass_armed = false
+	target_pos = NoiseMgr.last_noise_pos
+	_seen_serial = NoiseMgr.noise_serial
+	_arrived = false
+	_listen = 0.0
+	_path = []
+	_path_goal = Vector2.INF
+	print("[STALKER] passing: emerges at %s (noise %.0f)" % [str(at.round()), noise])
+	SessionLog.event("stalker", {"what": "pass_in", "noise": roundi(noise), "pos": SessionLog.xy(at)})
+
+func _vanish() -> void:
+	print("[STALKER] passing: gone at %s" % str(global_position.round()))
+	SessionLog.event("stalker", {"what": "pass_out", "noise": roundi(NoiseMgr.level), "pos": SessionLog.xy(global_position)})
+	awake = false
+	winding = false
+	_windup = 0.0
+	_windup_target = null
+	pass_state = Pass.IDLE
+	_pass_cd = pass_param("cooldown")
+	global_position = _home
+	_remote_pos = _home
+	target_pos = _home
+	_path = []
+	_path_goal = Vector2.INF
 
 ## Ruch po powierzchniach poziomu: poziomo w stronę celu, wspinaczka tylko
 ## gdy jest już blisko celu w poziomie (cel na platformie). Ograniczony ścianami.
@@ -368,7 +514,7 @@ func _update_audio(delta: float, is_awake: bool, noise: float) -> void:
 	if not is_awake:
 		# Faza niepokoju (GDD §8.1): Stalker śpi, ale gracz już słyszy szept —
 		# to ostrzeżenie PRZED karą, okno na decyzję.
-		if noise >= NoiseMgr.UNEASY_THRESHOLD:
+		if noise >= NoiseMgr.UNEASY_THRESHOLD and not pass_mode:          # przechodzący czeka poza mapą — ostrzega alert hałasu w HUD
 			var t := clampf((noise - NoiseMgr.UNEASY_THRESHOLD) / (AWAKE_THRESHOLD - NoiseMgr.UNEASY_THRESHOLD), 0.0, 1.0)
 			var v := lerpf(-34.0, -20.0, t)
 			if Audio.loop_playing("stalker_whisper_loop"):
@@ -445,6 +591,8 @@ func _send_state(delta: float) -> void:
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _sync(pos: Vector2, is_awake: bool, is_winding: bool) -> void:
+	if pos.distance_to(global_position) > 200.0:
+		global_position = pos                 # przeskok (wyjście z ciemności, zniknięcie, restart): bez przelotu przez mapę
 	_remote_pos = pos
 	awake = is_awake
 	winding = is_winding
