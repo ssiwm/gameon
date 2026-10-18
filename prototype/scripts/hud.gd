@@ -4,11 +4,12 @@ extends Control
 ## Skala: cały HUD jest rysowany w 70% (UI_SCALE) — węzeł ma `scale` i logiczny rozmiar
 ## viewport / UI_SCALE (≈914×514), więc układ liczy się względem `size`, nie stałych 640×360.
 ## Layout — HUD bez ramek (HUD_PLAN.md): czytelność dają dwa gradienty (góra, dół), a ważne rzeczy stoją w rogach:
-##   top-left    teammates: slot-coloured diamond, name (BOT), thin life segments, DOWN / REVIVING state + bar (solo: empty)
+##   top-left    noise: small VU meter, one NOISE line (safe room: SAFE), mission weather under it
 ##   top-centre  direction strip (Compass): 5 m scale, goal / exit / teammates / downed markers with distance; under it the boss bar
 ##               and the objective text, which shows for TOAST_S after the goal changes (always in the safe room, F1 recalls it)
 ##   top-right   mission title, difficulty · clock, scrap; level + XP bar only for a moment after gaining XP
-##   bottom-left "me + noise": own life segments (CRITICAL / DOWN), small VU meter, one NOISE line (safe room: SAFE)
+##   bottom-left squad life: own row on top (life segments, ECG, CRITICAL / DOWN), teammates under it (slot-coloured diamond,
+##               name (BOT), thin life segments, DOWN / REVIVING state + bar)
 ##   bottom-centre weapon as a 3D model (art/hud, tools/bake_hud_icons.gd): magazine / team reserve, name, mode and shot cost, thin reload
 ##               and barrel-heat lines; thumbnails of slots 1–4 appear for 2.5 s after a weapon change; context prompt sits above it
 ##   bottom-right gear as four 3D models: LURE (Q), FLARE (F), selected item (ALT), flashlight (L, battery line); count and key under each
@@ -52,7 +53,7 @@ const CENTER_Y := 0.39           ## napis „SQUAD DOWN" (140/360)
 const BRIEF_ROWS := 5             ## ile wierszy zagrożeń pokazuje odprawa (reszta: „+N more")
 const PROMPT_Y := 0.76           ## pasek kontekstowy — nad paskiem broni (dół, środek)
 ## Układ wzorowany na koop-strzelankach (Left 4 Dead, Deep Rock Galactic, Helldivers): drużyna i zdrowie w lewym dolnym
-## rogu (własna karta największa, koledzy nad nią), broń i zasoby w płaskim pasku na środku dołu, a w lewym górnym tylko miernik hałasu.
+## rogu (własny wiersz na górze, koledzy pod nim), broń i zasoby w płaskim pasku na środku dołu, a w lewym górnym tylko miernik hałasu.
 const BOTTOM_PAD := 20.0         ## odstęp kart dolnych od krawędzi (nad paskiem sterowania)
 const SQUAD_W := 150.0
 const ROW_H := 68.0              ## dolny rząd: karty drużyny i ekwipunku (jednostki logiczne); pasek broni jest niższy (własna wysokość)
@@ -499,8 +500,8 @@ var _noise_bar: VuMeter
 var _noise_val: Label
 var _noise_state: Label
 var _weather_row: Label                   ## pogoda misji i jej skutki pod miernikiem hałasu (tylko gdy jest pogoda)
-var _squad_card: PanelContainer      ## koledzy z drużyny (lewy górny róg)
-var _self_box: VBoxContainer          ## własny wiersz życia: w bloku „ja + hałas” (lewy dolny róg)
+var _squad_card: PanelContainer      ## życie drużyny (lewy dolny róg): własny wiersz, pod nim koledzy
+var _self_box: VBoxContainer          ## własny wiersz życia (góra bloku drużyny)
 var _noise_cap: Label
 var _squad_box: VBoxContainer
 var _squad_rows := {}            ## instance_id gracza -> słownik wiersza
@@ -711,8 +712,8 @@ func _row(parent: Container, caption: String) -> HBoxContainer:
 	parent.add_child(r)
 	return r
 
-## Lewy dolny róg: „ja + hałas” — własne życie nad jedną linią stanu hałasu i mały VU-metr (filar ciszy: jedyny wskaźnik, na który
-## trzeba patrzeć bez przerwy). W kryjówce hałas nic nie mówi (zawsze 0%), więc zostaje samo życie i znacznik SAFE.
+## Lewy górny róg: mały VU-metr i jedna linia stanu hałasu (filar ciszy: jedyny wskaźnik, na który trzeba patrzeć bez przerwy),
+## pod nią pogoda misji. W kryjówce hałas nic nie mówi (zawsze 0%), więc zostaje sam znacznik SAFE.
 func _build_noise_card() -> void:
 	var card := _card(Vector2(MARGIN, MARGIN))
 	_noise_card = card
@@ -722,7 +723,7 @@ func _build_noise_card() -> void:
 	card.add_child(outer)
 	_noise_bar = VuMeter.new()                 # analogowy VU-metr; progi z NoiseMgr: 30 = zasypia, 40 = niepokój, 60 = budzi się ON
 	_noise_bar.custom_minimum_size = Vector2(52, 31)
-	_noise_bar.size_flags_vertical = Control.SIZE_SHRINK_END
+	_noise_bar.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_noise_bar.ticks = [
 		[NoiseMgr.SLEEP_THRESHOLD / 100.0, Color(1, 1, 1, 0.35)],
 		[NoiseMgr.UNEASY_THRESHOLD / 100.0, UiTheme.ACCENT],
@@ -731,11 +732,8 @@ func _build_noise_card() -> void:
 	outer.add_child(_noise_bar)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
-	box.size_flags_vertical = Control.SIZE_SHRINK_END
+	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	outer.add_child(box)
-	_self_box = VBoxContainer.new()
-	_self_box.add_theme_constant_override("separation", 2)
-	box.add_child(_self_box)
 	var nz := HBoxContainer.new()
 	nz.add_theme_constant_override("separation", 5)
 	box.add_child(nz)
@@ -752,8 +750,8 @@ func _build_noise_card() -> void:
 	_weather_row.visible = false
 	box.add_child(_weather_row)
 
-## Lewy górny róg: koledzy z drużyny (L4D / DRG) — romb w kolorze slotu, nazwa, cienkie segmenty życia. Własny wiersz jest w bloku
-## „ja + hałas”. Wiersze powstają dynamicznie — _drive_squad().
+## Lewy dolny róg: życie drużyny (L4D / DRG) — na górze własny wiersz, pod nim koledzy (romb w kolorze slotu, nazwa, cienkie
+## segmenty życia). Wiersze powstają dynamicznie — _drive_squad().
 func _build_squad_card() -> void:
 	_squad_card = _card(Vector2(MARGIN, MARGIN))
 	var outer := VBoxContainer.new()
@@ -761,6 +759,9 @@ func _build_squad_card() -> void:
 	_squad_card.add_child(outer)
 	_squad_info = _cap("", UiTheme.MUTED, 0.1)
 	outer.add_child(_squad_info)
+	_self_box = VBoxContainer.new()
+	_self_box.add_theme_constant_override("separation", 2)
+	outer.add_child(_self_box)
 	_squad_box = VBoxContainer.new()
 	_squad_box.add_theme_constant_override("separation", 7)
 	outer.add_child(_squad_box)
@@ -915,7 +916,7 @@ func _key(s: String) -> Control:
 # ---------------------------------------------------------------- karta drużyny
 
 ## Jeden wiersz: [romb w kolorze slotu] nazwa (+ BOT / YOU), stan (DOWN / REVIVING / CRITICAL), pod spodem cienkie segmenty życia
-## (złote ponad bazę) i pasek, gdy ktoś leży (czerwony = wykrwawianie, zielony = podnoszenie). Własny wiersz trafia do bloku hałasu.
+## (złote ponad bazę) i pasek, gdy ktoś leży (czerwony = wykrwawianie, zielony = podnoszenie). Własny wiersz stoi nad kolegami.
 func _make_squad_row(p: Node, is_self: bool) -> Dictionary:
 	var slot := ((int(p.display_id) - 1) % 4) + 1
 	var slot_col: Color = SLOT_COLORS[slot - 1]
@@ -963,7 +964,7 @@ func _drive_squad(delta: float) -> void:
 	for p in get_tree().get_nodes_in_group("players"):
 		if is_instance_valid(p) and not p.is_queued_for_deletion():
 			list.append(p)
-	# koledzy rosnąco po slocie (własny wiersz trafia do bloku „ja + hałas”)
+	# koledzy rosnąco po slocie (własny wiersz ma osobne pudełko nad nimi)
 	list.sort_custom(func(a: Node, b: Node) -> bool: return a.display_id < b.display_id)
 	var present := {}
 	var mate_idx := 0
@@ -986,11 +987,11 @@ func _drive_squad(delta: float) -> void:
 		if not present.has(id):
 			(_squad_rows[id]["root"] as Node).queue_free()
 			_squad_rows.erase(id)
-	_squad_card.visible = mate_idx > 0
+	_squad_box.visible = mate_idx > 0
 	_squad_card.reset_size()
-	_squad_card.position = Vector2(2.0 * MARGIN, 2.0 * MARGIN)
+	_squad_card.position = Vector2(2.0 * MARGIN, size.y - BOTTOM_PAD - _squad_card.size.y)
 	_noise_card.reset_size()
-	_noise_card.position = Vector2(2.0 * MARGIN, size.y - BOTTOM_PAD - _noise_card.size.y)
+	_noise_card.position = Vector2(2.0 * MARGIN, 2.0 * MARGIN)
 
 func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 	var hp := maxi(p.hp, 0)
@@ -1272,7 +1273,7 @@ func _drive_chat(delta: float) -> void:
 		if float(e["t"]) <= 0.0 and not _chat_edit.visible:
 			(e["label"] as Node).queue_free()
 			_chat_lines.remove_at(i)
-	var base_y := _noise_card.position.y - 6.0
+	var base_y := _squad_card.position.y - 6.0
 	_chat_edit.position = Vector2(MARGIN, base_y - 20.0)
 	_chat_log.reset_size()
 	_chat_log.position = Vector2(MARGIN, base_y - _chat_log.size.y - (22.0 if _chat_edit.visible else 0.0))
@@ -1287,7 +1288,7 @@ func _drive_tiers(delta: float) -> void:
 	var target := 0.5 if _calm_t > 4.0 else 1.0
 	_tier_k = lerpf(_tier_k, target, minf(1.0, delta * (1.5 if target < 1.0 else 6.0)))
 	_obj_card.modulate.a = lerpf(1.0, 0.6, (1.0 - _tier_k) * 2.0)
-	_squad_card.modulate.a = lerpf(1.0, 0.55, (1.0 - _tier_k) * 2.0)
+	_squad_box.modulate.a = lerpf(1.0, 0.55, (1.0 - _tier_k) * 2.0)       # koledzy przygasają; własne życie (T1) zawsze w pełni
 	_run_card.modulate.a = lerpf(1.0, 0.65, (1.0 - _tier_k) * 2.0)
 	for c in [_f1, _controls]:
 		(c as Control).self_modulate.a = lerpf(1.0, 0.45, (1.0 - _tier_k) * 2.0)
@@ -1697,7 +1698,7 @@ func _drive_mission() -> void:
 	_obj_card.position = Vector2((size.x - _obj_card.size.x) * 0.5, 2.0 * MARGIN)
 	_msgs.obj_bottom = (_obj_card.position.y + _obj_card.size.y) / MSG_SCALE
 	_msgs.run_bottom = (_run_card.position.y + _run_card.size.y) / MSG_SCALE
-	_msgs.squad_top = _noise_card.position.y / MSG_SCALE
+	_msgs.squad_top = _squad_card.position.y / MSG_SCALE
 
 	var show_result: bool = m.phase == Mission.Phase.SUCCESS or m.phase == Mission.Phase.FAILED
 	var just_shown: bool = show_result and not _result.visible
