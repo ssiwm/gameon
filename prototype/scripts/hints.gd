@@ -17,6 +17,7 @@ const TIPS := [
 	["move", "{move} to move  ·  {jump} to jump  ·  hold {crouch} to sneak — sneaking is silent"],
 	["hub", "Safe room — nothing hunts you here. Read the board, spend scrap at the workshop bench ({interact}), then press {restart} to ready up"],
 	["noise", "Every shot makes NOISE. Watch the meter in the top-left corner"],
+	["camp", "A pack sleeps under the broken bridge and the gap is too wide to jump. Follow the patrol's lantern up into the branches — or hold {crouch} on the bridge and they stay asleep"],
 	["sneak", "Something is asleep close by — hold {crouch} and walk: a crouching step is silent and wakes it from half the distance"],
 	["quiet", "Attention is up. Stop shooting — in silence the meter drains fast. Sneaking ({crouch}) is silent too"],
 	["broadcast", "The transmitter is live and HE heard it. Press {overcharge} to throw a lure and pull him away — then run for the exit"],
@@ -117,6 +118,16 @@ func _collect(p: Node) -> void:
 		elif dd < 130.0:
 			sleeper_near = true
 	_queue("sneak", sleeper_near and not p.crouching == true, false)
+	# obóz (misja 1.1, HINT_ZONES): na podejściu, póki wataha śpi — wskazuje cichą drogę konarami (MAPS_PLAN.md, playtest 2026-10-18)
+	var camp_zone = lvl_n.get("hint_zones").get("camp") if lvl_n != null and lvl_n.get("hint_zones") != null else null
+	var camp_asleep := false
+	if camp_zone is Rect2 and (camp_zone as Rect2).has_point(p.global_position):
+		for e in p.get_tree().get_nodes_in_group("enemies"):
+			var near_x: bool = e is Node2D and absf((e as Node2D).global_position.x - p.global_position.x) < 500.0
+			if near_x and e.get("alive") == true and e.get("active") == false and e.get("kind") == "trzosek":
+				camp_asleep = true
+				break
+	_queue("camp", camp_asleep, false)
 	_queue("quiet", NoiseMgr.level >= 22.0 and NoiseMgr.level < NoiseMgr.AWAKE_THRESHOLD and not threat_near, false)
 	var friend_down := false
 	for o in p.get_tree().get_nodes_in_group("players"):
