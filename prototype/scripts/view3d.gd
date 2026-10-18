@@ -446,6 +446,7 @@ func _sync_geometry() -> void:
 	_build_deco()
 	Level3D.build_fog_volumes(_geo, rows, 0.02 if hub else 0.035)
 	if not hub:
+		Level3D.build_forest_floor(_geo, rows)
 		Level3D.build_forest(_geo, rows)
 		Level3D.build_ground_fog(_geo, rows)
 
@@ -3970,6 +3971,11 @@ func _sync_weather(_delta: float) -> void:
 						gf.set_meta("base_density", gm.get_shader_parameter("density"))
 					gm.set_shader_parameter("density", float(gf.get_meta("base_density")) * lerpf(1.0, float(GROUND_FOG_K.get(id, 1.0)), k))
 		fm.emission = Color(0.092, 0.115, 0.140) * (1.1 * fogk)       # blada własna poświata mgły — czytelna także tam, gdzie nic nie świeci
+	var ff := _geo.get_node_or_null("ForestFloor") as MeshInstance3D       # dno lasu (`Level3D.build_forest_floor`) tonie w mgle głębi tylko w mgle
+	if ff != null and ff.material_override is BaseMaterial3D:
+		var fog_on := id == "fog" and k > 0.5
+		if (ff.material_override as BaseMaterial3D).disable_fog == fog_on:
+			(ff.material_override as BaseMaterial3D).disable_fog = not fog_on
 	var env := _cam_a.environment
 	if env != null:
 		if not env.has_meta("base_amb"):
