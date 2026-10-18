@@ -27,6 +27,7 @@ const TIPS := [
 	["revive", "A friend is down — stand next to them and HOLD {interact} to revive"],
 	["downed", "You are down. Stay still — a teammate can revive you before you bleed out"],
 	["light", "{flashlight} toggles the flashlight. Light is noise too — turn it off to hide"],
+	["moths", "Moths nest under the watchtower roof and fly at any light — your flashlight, even muzzle flashes. Throw a flare ({flare}) away from you: they burn in it"],
 	["flare", "{flare} throws a flare: bait that draws enemies with light instead of noise"],
 	["grenade", "{throw} uses the selected item (grenades, mine, charge, medkit, defibrillator, scanner), {throw_next} switches. A frag or a charge hurts the squad too"],
 	["pickaxe", "Swing the pickaxe ({melee}) at the cracked brick wall to break through — it is loud"],
@@ -128,6 +129,16 @@ func _collect(p: Node) -> void:
 				camp_asleep = true
 				break
 	_queue("camp", camp_asleep, false)
+	# strażnica (misja 1.1, HINT_ZONES „moths”): pod wieżą, póki ćmy wiszą pod dachem — lekcja flary
+	var moth_zone = lvl_n.get("hint_zones").get("moths") if lvl_n != null and lvl_n.get("hint_zones") != null else null
+	var moths_hang := false
+	if moth_zone is Rect2 and (moth_zone as Rect2).has_point(p.global_position):
+		for e in p.get_tree().get_nodes_in_group("enemies"):
+			var near_m: bool = e is Node2D and absf((e as Node2D).global_position.x - p.global_position.x) < 500.0
+			if near_m and e.get("alive") == true and e.get("active") == false and e.get("kind") == "cma":
+				moths_hang = true
+				break
+	_queue("moths", moths_hang, false)
 	_queue("quiet", NoiseMgr.level >= 22.0 and NoiseMgr.level < NoiseMgr.AWAKE_THRESHOLD and not threat_near, false)
 	var friend_down := false
 	for o in p.get_tree().get_nodes_in_group("players"):
