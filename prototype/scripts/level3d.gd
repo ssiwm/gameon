@@ -1321,6 +1321,179 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 ## razem z mgłą głębi i wstęgami mgły dają warstwy sylwetek zamiast pustego nieba.
 const FOREST_DIR := "res://art/world3d/forest/"
 const FOREST_KINDS := ["spruce_a", "spruce_b", "spruce_c", "snag_a", "snag_b"]
+
+## Profil terenu lasu: wysokość dna lasu za bryłą gruntu, wspólna dla dna (`build_forest_floor`), drzew (`build_forest`) i wstęg mgły przy ziemi
+## (`build_ground_fog`). Grunt kolumny to pierwsza od góry warstwa lita, która jest prawdziwym gruntem: pomija cienkie warstwy z pustką pod spodem
+## (do FOREST_THIN kafli: dachy, stropy, kładki `C`/`M`, platforma strażnicy) i nawisy z otwartym powietrzem (`.`) pod spodem; szyby i doły
+## (grunt głęboko pod powierzchnią albo brak gruntu) wycina mediana z FOREST_MEDIAN kolumn w każdą stronę. Potem filtr Gaussa tym mocniejszy,
+## im dalej w głąb (węzły FOREST_KNOTS): tuż za bryłą profil trzyma się jej wierzchu, a daleki las stoi prawie poziomo.
+const FOREST_THIN := 2
+const FOREST_MEDIAN := 16
+const FOREST_KNOTS := [DEPTH_BACK, 3.6, 5.5, 8.0, 12.0, 17.0, 24.0, 34.0, 46.0, 65.0]      ## m w głąb od płaszczyzny gry
+static var _ft_cache := {}
+
+## {"mask": PackedByteArray (1 = nad kolumną jest niebo, tu rośnie las i leży mgła), "y": [PackedFloat32Array…] (y gruntu w m na kolumnę, po jednej
+## tablicy na węzeł głębi)} albo {} gdy mapa nie ma otwartego gruntu (boss, kryjówka).
+static func forest_terrain(rows: Array) -> Dictionary:
+	var key := rows.hash()
+	if _ft_cache.has(key):
+		return _ft_cache[key]
+	if _ft_cache.size() > 4:
+		_ft_cache.clear()
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	var mask := PackedByteArray()
+	mask.resize(cols)
+	var surf := PackedFloat32Array()                      # wiersz gruntu kolumny albo -1
+	surf.resize(cols)
+	for c in cols:
+		var r := 0
+		while r < nrows and not is_solid_ch(_ch(rows, c, r)):
+			r += 1
+		mask[c] = 1 if r >= 6 else 0                       # lita od góry (brzeg mapy, wnętrze skały): bez lasu
+		surf[c] = -1.0
+		if r < 6:
+			continue
+		while r < nrows:
+			var e := r
+			while e < nrows and is_solid_ch(_ch(rows, c, e)):
+				e += 1
+			if e >= nrows or (e - r > FOREST_THIN and _ch(rows, c, e) != "."):
+				surf[c] = float(r)
+				break
+			r = e                                          # cienka warstwa albo nawis: szukaj gruntu niżej
+			while r < nrows and not is_solid_ch(_ch(rows, c, r)):
+				r += 1
+	var base := PackedFloat32Array()
+	base.resize(cols)
+	var known: Array[int] = []
+	for c in cols:
+		var win := PackedFloat32Array()
+		for k in range(maxi(0, c - FOREST_MEDIAN), mini(cols, c + FOREST_MEDIAN + 1)):
+			if surf[k] >= 0.0:
+				win.append(surf[k])
+		if win.is_empty():
+			continue
+		win.sort()
+		base[c] = -win[win.size() >> 1] * T
+		known.append(c)
+	if known.is_empty():
+		_ft_cache[key] = {}
+		return {}
+	for c in cols:                                         # kolumny bez gruntu w całym oknie: liniowo między sąsiadami, na brzegach najbliższa wartość
+		var i := known.bsearch(c)
+		if i < known.size() and known[i] == c:
+			continue
+		if i == 0 or i >= known.size():
+			base[c] = base[known[clampi(i, 0, known.size() - 1)]]
+		else:
+			var a := known[i - 1]
+			var b := known[i]
+			base[c] = lerpf(base[a], base[b], float(c - a) / float(b - a))
+	var ys: Array = []
+	for d in FOREST_KNOTS:
+		var sig := maxf(0.3, (float(d) - 2.0) * 0.45)      # kolumny: ok. 0,3 tuż za bryłą, 3 w 9 m, 10 w 24 m, 28 w 65 m
+		var rad := int(ceil(sig * 3.0))
+		var wts := PackedFloat32Array()
+		var wsum := 0.0
+		for k in range(-rad, rad + 1):
+			var w := exp(-0.5 * pow(float(k) / sig, 2.0))
+			wts.append(w)
+			wsum += w
+		var out := PackedFloat32Array()
+		out.resize(cols)
+		for c in cols:
+			var acc := 0.0
+			for k in range(-rad, rad + 1):
+				acc += wts[k + rad] * base[clampi(c + k, 0, cols - 1)]
+			out[c] = acc / wsum
+		ys.append(out)
+	var ft := {"mask": mask, "y": ys}
+	_ft_cache[key] = ft
+	return ft
+
+## y dna lasu (m) w punkcie x (m) i głębokości `d` (m w głąb, dodatnia): interpolacja między kolumnami i węzłami głębi profilu `forest_terrain`.
+static func forest_ground_y(ft: Dictionary, x: float, d: float) -> float:
+	var ys: Array = ft["y"]
+	var a: PackedFloat32Array = ys[0]
+	var u := clampf(x / T - 0.5, 0.0, float(a.size() - 1))
+	var c0 := int(u)
+	var c1 := mini(c0 + 1, a.size() - 1)
+	var fu := u - float(c0)
+	var dd := clampf(d, float(FOREST_KNOTS[0]), float(FOREST_KNOTS[FOREST_KNOTS.size() - 1]))
+	var k := 0
+	while k < FOREST_KNOTS.size() - 2 and dd > float(FOREST_KNOTS[k + 1]):
+		k += 1
+	var fk := (dd - float(FOREST_KNOTS[k])) / (float(FOREST_KNOTS[k + 1]) - float(FOREST_KNOTS[k]))
+	a = ys[k]
+	var b: PackedFloat32Array = ys[k + 1]
+	return lerpf(lerpf(a[c0], a[c1], fu), lerpf(b[c0], b[c1], fu), fk)
+
+## Dno lasu za bryłą gruntu: siatka terenu od tyłu bryły (z = −DEPTH_BACK) do ostatniego węzła FOREST_KNOTS w głąb, po profilu `forest_terrain`.
+## Materiał gruntu (`terrain`, ta sama projekcja triplanarna w świecie co wierzch bryły — tekstura przechodzi bez szwu) ciemnieje w głąb kolorem
+## wierzchołków. Przy bryle leży tuż pod jej wierzchem. Wychodzi FOREST_FLOOR_MARGIN poza brzegi mapy:
+## w perspektywie daleki pas widać szerzej niż plan gry.
+const FOREST_FLOOR_MARGIN := 30.0
+static func build_forest_floor(parent: Node3D, rows: Array) -> void:
+	var ft := forest_terrain(rows)
+	if ft.is_empty() or "--noforestfloor" in OS.get_cmdline_user_args():      # dev: bez dna lasu (porównanie)
+		return
+	var cols := (ft["y"][0] as PackedFloat32Array).size()
+	var depths := PackedFloat32Array()                    # węzły profilu i punkty w pół drogi między nimi
+	for i in FOREST_KNOTS.size():
+		depths.append(float(FOREST_KNOTS[i]))
+		if i + 1 < FOREST_KNOTS.size():
+			depths.append((float(FOREST_KNOTS[i]) + float(FOREST_KNOTS[i + 1])) * 0.5)
+	var nz := depths.size()
+	var nx := int(ceil((float(cols) * T + 2.0 * FOREST_FLOOR_MARGIN) / T)) + 1
+	var x0 := -FOREST_FLOOR_MARGIN
+	var hs := PackedFloat32Array()
+	hs.resize(nx * nz)
+	for j in nz:
+		for i in nx:
+			hs[j * nx + i] = forest_ground_y(ft, x0 + float(i) * T, depths[j]) - (0.03 if j == 0 else 0.0)
+	var verts := PackedVector3Array()
+	var nrms := PackedVector3Array()
+	var cols_c := PackedColorArray()
+	var idx := PackedInt32Array()
+	for j in nz:
+		var jm := maxi(j - 1, 0)
+		var jp := mini(j + 1, nz - 1)
+		var shade := lerpf(1.0, 0.3, smoothstep(DEPTH_BACK, 40.0, depths[j]))
+		for i in nx:
+			var im := maxi(i - 1, 0)
+			var ip := mini(i + 1, nx - 1)
+			var dydx := (hs[j * nx + ip] - hs[j * nx + im]) / (float(ip - im) * T)
+			var dydz := (hs[jp * nx + i] - hs[jm * nx + i]) / (depths[jm] - depths[jp])       # z = −głębokość
+			verts.append(Vector3(x0 + float(i) * T, hs[j * nx + i], -depths[j]))
+			nrms.append(Vector3(-dydx, 1.0, -dydz).normalized())
+			cols_c.append(Color(shade, shade, shade))
+	for j in nz - 1:
+		for i in nx - 1:
+			var a := j * nx + i                                # a, b: bliższy brzeg; c, d: dalszy (zgodnie z ruchem wskazówek zegara patrząc z góry)
+			var b := a + 1
+			var c := a + nx
+			var d := c + 1
+			idx.append_array(PackedInt32Array([a, c, b, c, d, b]))
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = nrms
+	arr[Mesh.ARRAY_COLOR] = cols_c
+	arr[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var mat := make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic").duplicate() as StandardMaterial3D
+	mat.vertex_color_use_as_albedo = true
+	# bez mgły głębi: w noc pogodną dno ma być czarne jak dawniej niebo między pniami (mgła barwiłaby pas za postaciami, GDD §8.3);
+	# w pogodzie „mgła” `view3d._sync_weather` włącza ją z powrotem, żeby dno tonęło w mgle razem z drzewami
+	mat.disable_fog = true
+	var mi := MeshInstance3D.new()
+	mi.name = "ForestFloor"
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
 static func build_forest(parent: Node3D, rows: Array) -> void:
 	var nrows := rows.size()
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
@@ -1334,18 +1507,21 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 	var trees := {"tree_snag": [], "tree_log": [], "tree_snag_hi": [], "tree_spruce_a": [], "tree_spruce_b": [], "tree_spruce_c": []}
 	var have_models := not model_mesh("tree_snag").is_empty()
 	var have_spruce := not model_mesh("tree_spruce_a").is_empty() and not model_mesh("tree_spruce_b").is_empty() and not model_mesh("tree_spruce_c").is_empty()
+	var ft := forest_terrain(rows)
+	if ft.is_empty():
+		return
+	var mask: PackedByteArray = ft["mask"]
 	for c in range(0, cols, 2):
+		if mask[c] == 0:
+			continue
 		var r0 := 0
 		while r0 < nrows and not is_solid_ch(_ch(rows, c, r0)):
 			r0 += 1
-		if r0 < 6 or r0 >= nrows:
-			continue
-		var y := -float(r0) * T
-		# trzy pasy głębi: bliski (pojedyncze wysokie drzewa), środkowy, daleki (gęsta ściana lasu)
-		if rng.randf() < 0.07 and _ch(rows, c, r0) == "#" and not model_mesh("tree_log").is_empty():       # powalony pień na ściółce, w głębi bryły gruntu
+		# trzy pasy głębi: bliski (pojedyncze wysokie drzewa), środkowy, daleki (gęsta ściana lasu); stoją na dnie lasu (`forest_ground_y`)
+		if rng.randf() < 0.07 and r0 < nrows and _ch(rows, c, r0) == "#" and not model_mesh("tree_log").is_empty():       # powalony pień na ściółce, w głębi bryły gruntu
 			var ll := rng.randf_range(2.2, 3.6)
 			var lb := Basis(Vector3.UP, rng.randf_range(-0.5, 0.5)).scaled(Vector3(ll / 100.0, ll / 100.0, ll / 100.0))
-			(trees["tree_log"] as Array).append(Transform3D(lb, Vector3((float(c) + rng.randf()) * T, y - 0.06, rng.randf_range(-DEPTH_BACK + 0.5, -1.2))))
+			(trees["tree_log"] as Array).append(Transform3D(lb, Vector3((float(c) + rng.randf()) * T, -float(r0) * T - 0.06, rng.randf_range(-DEPTH_BACK + 0.5, -1.2))))
 		var bands := [[DEPTH_BACK + 1.2, 9.0, 0.28, 13.0, 21.0], [9.0, 24.0, 1.4, 11.0, 19.0], [24.0, 60.0, 2.6, 12.0, 24.0]]
 		for bi in bands.size():
 			var band: Array = bands[bi]
@@ -1354,6 +1530,7 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 				var z := -rng.randf_range(float(band[0]), float(band[1]))
 				var h := rng.randf_range(float(band[3]), float(band[4]))
 				var x := (float(c) + rng.randf() * 2.0) * T + rng.randf_range(-1.5, 1.5)
+				var y := forest_ground_y(ft, x, -z)
 				var roll := rng.randf()
 				var kind: String = "snag_a" if roll < 0.06 else ("snag_b" if roll < 0.12 else ("spruce_a" if roll < 0.45 else ("spruce_b" if roll < 0.72 else "spruce_c")))
 				var w := h * 0.5 * rng.randf_range(0.85, 1.15)
@@ -1530,24 +1707,22 @@ void fragment() {
 	float cloud = smoothstep(0.28, 0.80, n * 0.6 + n2 * 0.6);
 	float fall = smoothstep(1.0, 0.12, h);
 	ALBEDO = tint;
-	EMISSION = tint * 0.05;
+	EMISSION = tint * 0.02;                // ledwie własna poświata: wstęgi leżą wzdłuż całego lasu, a tło na wysokości postaci ma zostać czarne (GDD §8.3)
 	ALPHA = clamp(cloud * fall * density, 0.0, 0.85) * COLOR.a;
 }
 void light() {
 	DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * ALBEDO * (LIGHT_IS_DIRECTIONAL ? 0.12 : 0.65);       // księżyc ledwie muska mgłę, flary i latarki ją barwią
 }
 """
-## Mgła przy ziemi: kilka warstw wstęg za płaszczyzną gry (z = -3 … -20 m), tylko nad kolumnami z otwartym niebem (jak las).
-## Dryfujący szum fbm, gęsta przy gruncie i rzednąca do góry; oświetlana światłami 3D (flara, ognisko, latarka podbarwiają mgłę).
+## Mgła przy ziemi: kilka warstw wstęg za płaszczyzną gry (z = -3 … -20 m) wszędzie tam, gdzie las (kolumny z otwartym niebem), leżących na dnie
+## lasu (`forest_terrain` w głębokości warstwy). Dryfujący szum fbm, gęsta przy gruncie i rzednąca do góry; oświetlana światłami 3D (flara,
+## ognisko, latarka podbarwiają mgłę).
 static func build_ground_fog(parent: Node3D, rows: Array) -> void:
-	var nrows := rows.size()
-	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
-	var ground: Array = []                                   # y gruntu kolumny (m) albo NAN gdy kolumna nie jest otwarta
-	for c in cols:
-		var r0 := 0
-		while r0 < nrows and not is_solid_ch(_ch(rows, c, r0)):
-			r0 += 1
-		ground.append(-float(r0) * T if r0 >= 28 and r0 < nrows else NAN)
+	var ft := forest_terrain(rows)
+	if ft.is_empty():
+		return
+	var mask: PackedByteArray = ft["mask"]
+	var cols := mask.size()
 	var sh := Shader.new()
 	sh.code = FOG_SHADER
 	var layers := [[-3.2, 0.55, 3.4], [-6.5, 0.5, 4.2], [-12.0, 0.45, 5.4], [-20.0, 0.4, 6.8]]       # z, gęstość, wysokość
@@ -1565,18 +1740,18 @@ static func build_ground_fog(parent: Node3D, rows: Array) -> void:
 		var idx := PackedInt32Array()
 		var c := 0
 		while c < cols:
-			if is_nan(ground[c]):
+			if mask[c] == 0:
 				c += 1
 				continue
 			var c1 := c
-			while c1 < cols and not is_nan(ground[c1]):
+			while c1 < cols and mask[c1] == 1:
 				c1 += 1
 			if c1 - c >= 2:
 				var base := verts.size()
 				for k in range(c, c1 + 1):
-					var g: float = ground[mini(k, c1 - 1)]
 					var edge := 0.0 if (k == c or k == c1) else 1.0
 					var x := float(k) * T
+					var g := forest_ground_y(ft, x, -float(spec[0]))
 					verts.append(Vector3(x, g - 0.4, 0.0))
 					verts.append(Vector3(x, g + hgt, 0.0))
 					uvs.append(Vector2(x, 0.0))
