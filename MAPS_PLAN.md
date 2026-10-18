@@ -1,7 +1,8 @@
 # Plan: mapy misji Strefy I
 
 Status: plan z 2026-10-17. **M1a–M1d (misja 1.1) w main**: obóz patrolu 1.7.278 (#350), przechodzący Stalker 1.7.279 (#351), gęstsza kopalnia i porządki 1.7.280 (#352).
-**P1–P3 (pomiar)** w main (#348, #349). **Playtest 1.1 (2026-10-18, 9 podejść)** → poprawki 1.7.281 (§1.3). Do zrobienia: kolejny playtest 1.1 i decyzja w sprawie B1 (§3).
+**P1–P3 (pomiar)** w main (#348, #349). **Playtest 1.1 (2026-10-18, 9 podejść)** → poprawki 1.7.281 (§1.3), drugi playtest potwierdził cichą drogę.
+**Do decyzji:** wydłużenie 1.1 do 5–6 min (§1.4, propozycja bez kodu) i B1 (§3).
 Podstawa: analiza map (lokalnie, poza repo: rzuty map z upadkami, `stats.json`) i logi sesji 1.7.211–1.7.277 (63 podejścia, 1 człowiek + bot).
 
 **Decyzje użytkownika:**
@@ -74,6 +75,58 @@ Skoczki i Ćmy zostają pod sufitem, ale co najmniej jeden Skoczek ma wisieć na
 - Obóz: próbki pozycji prawie wyłącznie na dnie niecki i na moście, na konarach najwyżej jedna próbka na podejście, kucanie prawie wcale. Cichej drogi nikt nie znalazł.
 - Przechodzący Stalker wyszedł w każdym podejściu (Uwaga 100 w 8 z 9). Na HARD już po 12–27 s, przy polanie, zanim gracz zebrał pierwszy nieśmiertelnik.
 - **Zmiany 1.7.281:** latarnia patrolu i wstążki na konarach, porada `camp` na podejściu, Stalker dopiero po pierwszym nieśmiertelniku, na HARD od Uwagi 95.
+
+### 1.3b Playtest 2 (1.7.281, 4 podejścia)
+
+- Cicha droga działa: trasy idą łukiem po konarach, w niecce jest najwyżej jedna próbka na podejście, obóz zajmuje 15–24 s (wcześniej 24–63 s).
+- Stalker wychodzi dopiero po pierwszym nieśmiertelniku, zwykle przy obozie (na zachodnim płaskowyżu, za plecami gracza na konarach).
+- **Misja zrobiła się krótsza:** EASY 168 s, NORMAL 140 s (wcześniej mediana 161 s). Cichy obóz jest szybszy od walki w niecce.
+- Odcinki między nieśmiertelnikami (EASY / NORMAL): start → 1: 29 / 16 s, obóz → 2: 35 / 20 s, jaskinia → 3: 34 / 34 s, sala → 4: 46 / 42 s, galeria → 5: 20 / 20 s, potem wyjście 4–8 s.
+- HARD: 1 wipe i 1 sukces po 374 s z 6 upadkami, z tego 208 s na ostatnim odcinku (Skoczki i Ćma w kopalni).
+
+### 1.4 Wydłużenie 1.1 do 5–6 min (propozycja, do decyzji, bez kodu)
+
+**Ile brakuje:** udana misja trwa 140–170 s, cel to 300–360 s, więc brakuje 130–200 s.
+Czas gry na sekundę marszu w 1.1 wynosi ok. 3 (EASY / NORMAL; HARD dużo więcej), więc samo wydłużenie trasy musiałoby dać +45–65 s marszu (+4300–6200 px).
+Tak dużo nie da się dodać jednym odcinkiem bez rozwlekania samouczka. Stąd propozycja dwóch zmian: nowego odcinka z nową lekcją i innego zakończenia.
+
+**W1. Powrót przez obudzony las (zakończenie, zalecane).** Najwięcej czasu za najmniej nowej treści.
+- Po ostatnim nieśmiertelniku zawał zostaje, ale wyjściem jest `E` przy starcie, a nie „e” za szybem: szybem na powierzchnię i powierzchnią na zachód, przez jaskinię, obóz i polanę.
+  Tak brzmiał pierwotny opis misji („ekstrakcja na początku mapy”) i tak działa `_open_extraction` (najdalsze wyjście = powrót przez obudzony teren, GDD §4).
+  Martwe dziś `E` (M1d) znów ma sens.
+- Żeby powrót nie był nudny, las się zmienia. Finał budzi grupy oznaczone nowym znacznikiem „śpi do finału”: 2–3 Trzoski na polanie, Wołek przy wylocie jaskini, wataha przechodzi z niecki na płaskowyż.
+  Przechodzący Stalker w 1.1 działa też w fazie EXTRACT (dziś tylko w fazie celu).
+- Obóz od wschodu: dziś cicha droga działa tylko na wschód (zeskok z konaru D). Na powrót trzeba dołożyć wejście na konary od wschodu (podesty z płaskowyżu co 2 kafle) albo pogodzić się z tym, że powrót przez obóz jest głośny.
+- Szacunek: ok. 240 kolumn, ok. 3900 px, ok. 41 s marszu; z walką i Stalkerem **+80–120 s**.
+- Koszt: dane mapy (zamiana „e” → `E`, nowy znacznik i rekwizyty, podesty w obozie), `mission._start_finale` (wybór wyjścia), `level.gd` (wrogowie budzeni finałem), `stalker.gd` (faza EXTRACT dla trybu przechodzącego), testy `--finaletest` i `--tagtest` (wyjście po zachodniej stronie).
+- Ryzyko: powrót tą samą drogą bywa nudny. Ograniczają to nowe grupy, Stalker i inna kolejność przejścia obozu.
+
+**W2. Strażnica nad wylotem jaskini (nowy odcinek, lekcja flary).** ok. 40–50 kolumn wstawionych między jaskinię (nieśmiertelnik 3, kol. 189) a rampę kopalni (kol. ok. 200).
+- Drewniana wieża obserwacyjna na 4–5 kondygnacji (podesty co 2 kafle jak szyby kryjówki). Szósty nieśmiertelnik leży na szczycie, w ciemności.
+- Wokół szczytu krążą 2–3 Ćmy, które ciągnie światło. Latarka ściąga je na gracza, a rzucona w bok flara (F) je odciąga. To pierwsza lekcja flary: dziś porada „flare” pojawia się dopiero po 150 s gry, bez kontekstu.
+- Pod daszkiem półpiętra wisi Skoczek: wejście po ciemku jest groźne, ale da się je przeczytać.
+- Szacunek: ok. 700 px trasy, w tym dużo w pionie, ok. 10 s marszu; ze wspinaczką i ćmami **+40–60 s**.
+- Koszt: wstawka w siatce jak przy obozie (przesunięcie kopalni, zawału i testów o ok. 45 kolumn), 6 nieśmiertelników (teksty, odprawa, testy), porada flary w strefie strażnicy (`HINT_ZONES`).
+
+**W3. Bród na rzece przed polaną (nowy odcinek, lekcja powierzchni).** ok. 30 kolumn płycizny i błota między startem a polaną (dziś 44 puste kolumny na rozbieg).
+- Woda spowalnia (×0,72) i chlapie (hałas biegu ×1,3), błoto tłumi kroki (×0,6), ale bardzo spowalnia. Na drugim brzegu śpi Wołek.
+- Szacunek: **+20–35 s**. Koszt: mały (sama siatka, bez nowej logiki).
+
+**W4. Radio patrolu (dodatkowy cel w obozie).** Za drugim nieśmiertelnikiem trzeba przytrzymać [E] przy radiu patrolu przez ok. 6 s, a to podnosi Uwagę. To zapowiedź generatorów z 1.2.
+- Szacunek: **+15–25 s**. Sam nie wystarczy, ale dobrze łączy się z W1, bo wezwanie przez radio może być pretekstem, czemu las się budzi.
+
+**Zestawy:**
+
+| Zestaw | Szacowany czas udanej misji (EASY / NORMAL) | Nowe lekcje | Koszt |
+|---|---|---|---|
+| W1 + W2 (zalecany) | ok. 260–350 s | powrót przez obudzony teren, flara i ćmy | średni |
+| W1 + W2 + W3 | ok. 280–385 s | jw. + powierzchnie | średni+ |
+| W2 + W3 + W4 (bez powrotu) | ok. 215–290 s | flara, powierzchnie, przytrzymanie [E] | średni, ale wciąż poniżej 5 min |
+| tylko W1 | ok. 220–290 s | powrót | najmniejszy |
+
+**Kolejność (jeśli zestaw zalecany):** najpierw W2 (sama treść mapy, mierzalna w heatmapie), potem W1 (logika finału).
+Po każdym etapie playtest i `tools/session_heatmap.py --map z1_m1 --build <wersja>`.
+Wątek poboczny: HARD w kopalni (6 upadków, 208 s na ostatnim odcinku) warto stroić osobno, po W1/W2.
 
 ## 2. Pomiar tras: pozycje graczy w logu sesji
 
