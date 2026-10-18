@@ -98,6 +98,7 @@ var _mine_dust_key := Vector2i(-999, -999)   ## kafel kamery, dla którego wyzna
 var _rain_open := 0.0                    ## 0..1: gracz jest nad poziomem podziemi (deszcz widać)
 var _roof_key := "?"                     ## mapa, dla której policzono wysokości dachów
 var _rain_splash: CPUParticles3D         ## plusk kropel na gruncie
+var _sky_drift := Vector2.ZERO           ## przesunięcie chmur nieba (narasta z wiatrem pogody, `SKY_WIND`)
 var _blood: Array = []                   ## kałuże krwi: [MeshInstance3D, promień docelowy, promień bieżący, wiek]
 var _blood_shader: Shader
 var _burn := {}                          ## id węzła 2D (plama ognia, płonące ciało, chmura dymu) → [węzeł, Node3D, rodzaj, koniec]
@@ -137,7 +138,7 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_cam_a.fov = FOV
 	_cam_a.near = 0.3
 	_cam_a.far = 160.0
-	_cam_a.cull_mask = LAYER_WORLD
+	_cam_a.cull_mask = LAYER_WORLD | Level3D.LAYER_FOREST       # las ma dodatkową warstwę (światło `MoonRim` tylko na nim)
 	_cam_a.current = true
 	_vp_bg.add_child(_cam_a)
 	_cam_b = Camera3D.new()
@@ -448,6 +449,7 @@ func _sync_geometry() -> void:
 	if not hub:
 		Level3D.build_forest_floor(_geo, rows)
 		Level3D.build_forest(_geo, rows)
+		Level3D.build_canopy_haze(_geo, rows)
 		Level3D.build_ground_fog(_geo, rows)
 
 # ---------------------------------------------------------------- gracze (modele 3D)
@@ -3852,12 +3854,18 @@ const RAIN_3D := {"rain": [12.0, 700, 10.5], "storm": [26.0, 1500, 13.0]}      #
 const HAZE_K := {"clear": 0.12, "rain": 0.8, "storm": 0.8, "fog": 1.0}          # zamglenie powietrza wg pogody (mnożnik gęstości bazowej)
 const GROUND_FOG_K := {"clear": 0.0, "rain": 0.5, "storm": 0.4, "fog": 1.6}    # wstęgi mgły przy ziemi wg pogody
 const MOON_K := {"clear": 1.35, "rain": 0.75, "storm": 0.55, "fog": 1.0}       # jasność księżyca wg pogody
+# niebo (`Level3D.SKY_SHADER`) wg pogody; przy słabej pogodzie (k → 0) wartości idą do domyślnych z shadera
+const SKY_COVER := {"clear": 0.22, "rain": 0.85, "storm": 0.95, "fog": 0.7}      # zachmurzenie 0..1
+const SKY_WIND := {"clear": 0.006, "rain": 0.02, "storm": 0.05, "fog": 0.003}    # dryf chmur [jedn. szumu/s]
+const SKY_STARS := {"clear": 1.0, "rain": 0.0, "storm": 0.0, "fog": 0.1}         # gwiazdy w prześwitach
+const SKY_MOON := {"clear": 1.0, "rain": 0.08, "storm": 0.0, "fog": 0.22}         # tarcza księżyca (za chmurami deszczu i w mgle blednie)
+const CANOPY_HAZE_K := {"clear": 1.15, "rain": 0.7, "storm": 0.6, "fog": 0.35}   # zamglenie koron (`Level3D.build_canopy_haze`); w mgle warstwy daje mgła głębi
 
 ## Pogoda w scenie 3D (stan z `weather_fx.gd`: siła `_k`, otwartość nieba `_sky`, rodzaj `_id`, błysk `_flash`; dźwięk zostaje tam):
 ##  - deszcz: smugi kropel w całej głębi sceny (od planu przed graczami po las), pochylone wiatrem, z podmuchami burzy, plus plusk na gruncie;
 ##  - mgła: gęstsza bryła mgły wolumetrycznej z własną bladą poświatą (światła latarki i flar rysują w niej snopy) i bliższa mgła głębi;
 ##  - burza: błyskawica to chwilowo jasny księżyc, niebo i światło otoczenia — cienie drzew i postaci na ułamek sekundy.
-func _sync_weather(_delta: float) -> void:
+func _sync_weather(delta: float) -> void:
 	var wx := get_tree().root.find_child("WeatherFx", true, false)
 	if wx == null:
 		return
@@ -3982,17 +3990,31 @@ func _sync_weather(_delta: float) -> void:
 			env.set_meta("base_amb", env.ambient_light_energy)
 			env.set_meta("base_fog", env.fog_light_color)
 		var deep = _level.get("depth_mult")                          # głębiej = ciemniej (dread.gd): pod ziemią światło otoczenia słabnie
-		env.ambient_light_energy = float(env.get_meta("base_amb")) * (float(deep) if deep != null else 1.0) + 0.55 * flash
-		env.fog_light_color = (env.get_meta("base_fog") as Color) * (1.0 + 1.6 * fogk + 9.0 * flash)
+		env.ambient_light_energy = float(env.get_meta("base_amb")) * (float(deep) if deep != null else 1.0) + 0.3 * flash
+		env.fog_light_color = (env.get_meta("base_fog") as Color) * (1.0 + 1.6 * fogk + 3.0 * flash)       # w błysku las zostaje sylwetką na jasnym niebie (nie tonie w bieli)
 		if id == "fog":
 			env.fog_depth_begin -= 1.5 * k                        # mgła głębi podchodzi pod sam plan gry (początek ustawia co klatkę _sync_camera)
 		if env.sky != null and env.sky.sky_material is ShaderMaterial:
-			(env.sky.sky_material as ShaderMaterial).set_shader_parameter("glow", Vector3(0.016, 0.024, 0.044) * (1.0 + 14.0 * flash) * float(MOON_K.get(id, 1.0)))
+			var skm := env.sky.sky_material as ShaderMaterial
+			skm.set_shader_parameter("glow", Vector3(0.016, 0.024, 0.044) * (1.0 + 14.0 * flash) * float(MOON_K.get(id, 1.0)))
+			_sky_drift.x -= lerpf(0.008, float(SKY_WIND.get(id, 0.008)), k) * delta      # wiatr z prawej (jak deszcz): chmury płyną w lewo
+			skm.set_shader_parameter("drift", _sky_drift)
+			skm.set_shader_parameter("cover", lerpf(0.6, float(SKY_COVER.get(id, 0.6)), k))
+			skm.set_shader_parameter("stars", lerpf(0.3, float(SKY_STARS.get(id, 0.3)), k))
+			skm.set_shader_parameter("moon_vis", lerpf(0.85, float(SKY_MOON.get(id, 0.85)), k))
+			skm.set_shader_parameter("flash", flash)
+	var haze_k := lerpf(1.0, float(CANOPY_HAZE_K.get(id, 1.0)), k)
+	for ch in _geo.get_children():                                 # zamglenie koron (`Level3D.build_canopy_haze`)
+		if String(ch.name).begins_with("CanopyHaze") and ch is MeshInstance3D:
+			((ch as MeshInstance3D).material_override as ShaderMaterial).set_shader_parameter("strength", haze_k)
+	var rim := _geo.get_node_or_null("MoonRim") as DirectionalLight3D
+	if rim != null:
+		rim.light_energy = Level3D.MOON_RIM * lerpf(1.0, float(MOON_K.get(id, 1.0)), k) + 1.2 * flash
 	var moon := _geo.get_node_or_null("Moon") as DirectionalLight3D
 	if moon != null:
 		if not moon.has_meta("base_e"):
 			moon.set_meta("base_e", moon.light_energy)
-		moon.light_energy = float(moon.get_meta("base_e")) * lerpf(1.0, float(MOON_K.get(id, 1.0)), k) + 2.6 * flash
+		moon.light_energy = float(moon.get_meta("base_e")) * lerpf(1.0, float(MOON_K.get(id, 1.0)), k) + 0.7 * flash       # błysk: krótkie cienie drzew i postaci, ale nie dzień
 		moon.light_color = Color(0.62, 0.72, 0.95).lerp(Color(0.9, 0.93, 1.0), clampf(flash, 0.0, 1.0))
 
 # ---------------------------------------------------------------- krew
