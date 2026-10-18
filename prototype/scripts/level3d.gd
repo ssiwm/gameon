@@ -10,6 +10,8 @@ const T := TILE * PX
 const DEPTH_FRONT := 1.1                   ## m: wysunięcie bryły przed płaszczyznę gry
 const POST_Z := -1.6                       ## m: słupy i pnie (`w`) stoją w głębi, za drogą postaci i drezyny, tuż przed ścianą tła
 const DEPTH_BACK := 2.4                    ## m: w głąb
+const LAYER_FOREST := 32                   ## warstwa wizualna lasu i jego dna (oprócz warstwy świata): tylko ją oświetla `MoonRim`
+const MOON_RIM := 0.35                     ## energia poświaty księżyca na lesie (`MoonRim`) w noc bez pogody; `view3d._sync_weather` mnoży ją wg pogody
 
 static func is_solid_ch(ch: String) -> bool:
 	return ch == "#" or ch == "C" or ch == "M" or ch == "m" or ch == "O" or ch == "~"
@@ -153,6 +155,7 @@ static func model_mesh(name: String) -> Array:
 					bm.cull_mode = BaseMaterial3D.CULL_DISABLED
 					bm.metallic_specular = 0.0
 					bm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+					_soft_cutout(bm, name.begins_with("tree_"))
 		inst.free()
 	_model_cache[name] = out
 	return out
@@ -1510,6 +1513,7 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 	var ft := forest_terrain(rows)
 	if ft.is_empty():
 		return
+	var first := parent.get_child_count()
 	var mask: PackedByteArray = ft["mask"]
 	for c in range(0, cols, 2):
 		if mask[c] == 0:
@@ -1584,13 +1588,27 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 		m.roughness = 1.0
 		m.metallic_specular = 0.0
 		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		_soft_cutout(m, true)
 		_multimesh(parent, card, xf[k], m, false)
+	for i in range(first, parent.get_child_count()):          # las na własnej warstwie: oświetla go `MoonRim`, plan gry nie
+		var vi := parent.get_child(i) as VisualInstance3D
+		if vi != null:
+			vi.layers = 1 | LAYER_FOREST
+
+## Wycinanie alfą z wygładzonym brzegiem (alpha-to-coverage przy MSAA widoków 3D): brzegi kart igliwia, pni i trawy nie migoczą
+## przy przesuwanej kamerze. `backlight`: igliwie prześwituje światłem zza drzew (`MoonRim`).
+static func _soft_cutout(m: BaseMaterial3D, backlight := false) -> void:
+	m.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE
+	m.alpha_antialiasing_edge = 0.3
+	if backlight:
+		m.backlight_enabled = true
+		m.backlight = Color(0.55, 0.62, 0.5)
 
 ## Runo: kępy trawy i paprocie na odsłoniętym wierzchu gruntu (`#`) — karty z teksturą (art/world3d/forest) kołysane wiatrem w shaderze.
 ## Gęste i wysokie w głębi bryły, niskie i rzadkie w pasie, po którym chodzą postacie (ścieżka zostaje czytelna).
 const UNDERGROWTH_SHADER := """
 shader_type spatial;
-render_mode cull_disabled, depth_draw_opaque, specular_disabled;
+render_mode cull_disabled, depth_draw_opaque, specular_disabled, alpha_to_coverage;
 uniform sampler2D tex : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
 void vertex() {
 	float k = 1.0 - UV.y;
@@ -1605,6 +1623,8 @@ void fragment() {
 	ALBEDO = c.rgb * mix(0.6, 1.5, 1.0 - UV.y) * (0.8 + 0.5 * COLOR.r);
 	ALPHA = c.a;
 	ALPHA_SCISSOR_THRESHOLD = 0.45;
+	ALPHA_ANTIALIASING_EDGE = 0.3;                         // wygładzony brzeg źdźbeł (alpha-to-coverage przy MSAA)
+	ALPHA_TEXTURE_COORDINATE = UV * vec2(textureSize(tex, 0));
 	ROUGHNESS = 1.0;
 }
 """
@@ -1780,30 +1800,141 @@ static func build_ground_fog(parent: Node3D, rows: Array) -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		parent.add_child(mi)
 
-## Niebo nocy: czarne przy horyzoncie (na wysokości graczy tło zostaje ciemne — wróg nie rysuje się sylwetką na poświacie),
-## wyżej poświata księżyca za chmurami — czubki świerków odcinają się od niej postrzępioną linią.
+## Zamglenie koron: nocą trzy pasy lasu zlewały się w jedną czarną ścianę (mgła głębi jest prawie czarna, żeby nie rozjaśniać planu gry).
+## Między pasami stoją pionowe zasłony chłodnej, księżycowej poświaty (dodawane do obrazu za nimi, `blend_add`), które rosną z wysokością nad
+## dnem lasu (`forest_terrain`): przy gruncie zero — tło za postaciami zostaje czarne (GDD §8.3) — a od kilku metrów w górę coraz więcej, więc każdy
+## dalszy rząd koron jest odrobinę jaśniejszy od bliższego i czubki układają się w plany sylwetek. Wygasają powyżej czubków lasu (nie zmieniają nieba
+## wyżej). Siłę ustawia `view3d._sync_weather` (parametr `strength`: pogoda; w mgle robotę przejmuje mgła głębi).
+const HAZE_SHADER := """
+shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+uniform vec3 tint : source_color = vec3(0.010, 0.014, 0.024);
+uniform float strength = 1.0;
+uniform float h0 = 4.0;
+uniform float h1 = 18.0;
+uniform float top = 30.0;
+void fragment() {
+	float h = UV.y;                          // m nad dnem lasu
+	float a = smoothstep(h0, h1, h) * (1.0 - smoothstep(top - 8.0, top, h));
+	ALBEDO = tint * a * strength * COLOR.a;
+}
+"""
+const HAZE_TINT := Vector3(0.008, 0.011, 0.019)              ## poświata jednej zasłony przy pełnej wysokości (liniowo, przed tonemappingiem)
+const HAZE_LAYERS := [[9.0, 0.7], [16.5, 0.85], [24.0, 1.0], [38.0, 1.1]]       ## [m w głąb, mnożnik] — zasłony na granicach pasów lasu i w środku dalekiego
+static func build_canopy_haze(parent: Node3D, rows: Array) -> void:
+	var ft := forest_terrain(rows)
+	if ft.is_empty():
+		return
+	var cols := (ft["y"][0] as PackedFloat32Array).size()
+	var sh := Shader.new()
+	sh.code = HAZE_SHADER
+	for li in HAZE_LAYERS.size():
+		var depth := float(HAZE_LAYERS[li][0])
+		var x0 := -FOREST_FLOOR_MARGIN
+		var nx := int(ceil((float(cols) * T + 2.0 * FOREST_FLOOR_MARGIN) / T)) + 1
+		var verts := PackedVector3Array()
+		var uvs := PackedVector2Array()
+		var cols_c := PackedColorArray()
+		var idx := PackedInt32Array()
+		var top := 34.0
+		for i in nx:
+			var x := x0 + float(i) * T
+			var g := forest_ground_y(ft, x, depth)
+			var edge := clampf(minf(float(i), float(nx - 1 - i)) / 6.0, 0.0, 1.0)       # brzegi wygasają (bez ostrej krawędzi poza mapą)
+			for hh in [0.0, top]:
+				verts.append(Vector3(x, g + hh, -depth))
+				uvs.append(Vector2(x, hh))
+				cols_c.append(Color(1, 1, 1, edge))
+			if i > 0:
+				var a := (i - 1) * 2
+				idx.append_array(PackedInt32Array([a, a + 1, a + 2, a + 1, a + 3, a + 2]))
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = verts
+		arr[Mesh.ARRAY_TEX_UV] = uvs
+		arr[Mesh.ARRAY_COLOR] = cols_c
+		arr[Mesh.ARRAY_INDEX] = idx
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		var mat := ShaderMaterial.new()
+		mat.shader = sh
+		mat.set_shader_parameter("tint", HAZE_TINT * float(HAZE_LAYERS[li][1]))
+		mat.set_shader_parameter("top", top)
+		var mi := MeshInstance3D.new()
+		mi.name = "CanopyHaze%d" % li
+		mi.mesh = mesh
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(mi)
+
+## Niebo nocy: czarne przy horyzoncie (na wysokości graczy tło zostaje ciemne — wróg nie rysuje się sylwetką na poświacie), wyżej pokład chmur
+## podświetlony księżycem — czubki świerków odcinają się od niego postrzępioną linią. Szum gradientowy z obrotem między oktawami (bez kanciastych
+## łat dawnego szumu wartości) i zawiniętą dziedziną (strzępy chmur); tarcza księżyca z poświatą w `MOON_DIR` (za lasem, skąd świeci też `MoonRim`
+## na korony), gwiazdy w prześwitach. Pogodę ustawia `view3d._sync_weather`: `cover` (zachmurzenie), `drift` (przesunięcie chmur wg wiatru),
+## `stars`, `moon_vis` (tarcza za chmurami deszczu / mgłą), `flash` (błysk burzy rozświetla chmury od środka).
+const MOON_DIR := Vector3(0.34, 0.215, -0.915)          ## kierunek do księżyca: za lasem, po prawej, ok. 12° nad horyzontem (w kadrze nad dalekim lasem)
 const SKY_SHADER := """
 shader_type sky;
 uniform vec3 glow : source_color = vec3(0.016, 0.024, 0.044);
 uniform vec3 base : source_color = vec3(0.003, 0.004, 0.008);
 uniform float lit = 0.0;
-float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
-float vn(vec2 p) {
-	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
-	return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+uniform vec3 moon_dir = vec3(0.34, 0.215, -0.915);
+uniform float cover = 0.6;
+uniform vec2 drift = vec2(0.0);
+uniform float stars = 0.3;
+uniform float moon_vis = 0.85;
+uniform float flash = 0.0;
+vec2 g2(vec2 p) {
+	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+	return -1.0 + 2.0 * fract(sin(p) * 43758.5453);
+}
+float gn(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p);
+	vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+	return mix(mix(dot(g2(i), f), dot(g2(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0)), u.x),
+		mix(dot(g2(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0)), dot(g2(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x), u.y);
 }
 float fbm(vec2 p) {
+	mat2 r = mat2(vec2(0.80, 0.60), vec2(-0.60, 0.80));
 	float a = 0.5; float s = 0.0;
-	for (int i = 0; i < 5; i++) { s += a * vn(p); p = p * 2.07 + vec2(11.3, 5.9); a *= 0.5; }
+	for (int i = 0; i < 5; i++) { s += a * gn(p); p = r * p * 2.03 + vec2(11.3, 5.9); a *= 0.5; }
 	return s;
 }
+float h31(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }
 void sky() {
-	float e = EYEDIR.y;
-	vec2 q = EYEDIR.xz / (abs(e) + 0.35);
-	float n = fbm(q * 2.2 + vec2(TIME * 0.004, 0.0));
+	vec3 d = EYEDIR;
+	float e = d.y;
 	float band = smoothstep(0.04, 0.24, e) * (1.0 - 0.6 * smoothstep(0.5, 0.95, e));
-	float cloud = smoothstep(0.30, 0.75, n);
-	vec3 c = base + glow * band * (0.35 + 0.95 * cloud);
+	// chmury: płaszczyzna nad lasem (perspektywa zagęszcza je ku horyzontowi), dziedzina zawinięta drugim szumem
+	vec2 q = d.xz / (max(e, 0.0) + 0.18) * 0.9 + drift;
+	vec2 w = vec2(fbm(q * 0.7 + vec2(3.1, 7.7)), fbm(q * 0.7 + vec2(8.3, 1.9)));
+	float n = fbm(q * 1.6 + w * 1.1) * 0.95 + 0.5;
+	float cloud = smoothstep(1.02 - cover, 1.32 - cover, n);
+	float thick = smoothstep(1.2 - cover, 1.7 - cover, n);                  // gęste rdzenie: ciemniejsze niż brzegi
+	// księżyc: tarcza z ciemniejszymi morzami i poświata wokół
+	vec3 m = normalize(moon_dir);
+	float ang = acos(clamp(dot(d, m), -1.0, 1.0));
+	float halo = exp(-ang * 10.0) * 0.5 + exp(-ang * 45.0) * 0.6 * moon_vis;
+	float disc = smoothstep(0.0118, 0.0100, ang);
+	vec3 mx = normalize(cross(m, vec3(0.0, 1.0, 0.0)));
+	vec2 mp = vec2(dot(d - m, mx), dot(d - m, cross(mx, m))) / 0.011;
+	float maria = gn(mp * 2.3 + 4.0) * 0.6 + gn(mp * 5.1) * 0.25;
+	vec3 moon_col = vec3(0.92, 0.94, 1.0) * (0.95 - 0.40 * smoothstep(0.0, 0.35, maria));
+	// prześwity: czarne u dołu, granat wyżej i przy księżycu; gwiazdy (stałe na ekranie — kamera się nie obraca) migoczą
+	vec3 clear_sky = base + glow * band * (0.25 + 1.6 * halo);
+	vec3 sc = d * 520.0;
+	vec3 cell = floor(sc);
+	float hs = h31(cell);
+	vec3 sp = cell + vec3(h31(cell + 7.1), h31(cell + 3.3), h31(cell + 5.9));
+	float star = step(0.9965, hs) * smoothstep(0.55, 0.0, length(sc - sp)) * (0.55 + 0.45 * sin(TIME * (1.5 + 3.0 * hs) + hs * 60.0));
+	clear_sky += vec3(0.75, 0.8, 1.0) * star * stars * smoothstep(0.06, 0.2, e) * (1.0 - smoothstep(0.0, 0.25, halo));
+	// chmury: jaśniejsze przy tarczy i na brzegach (srebrne obwódki), gęste rdzenie ciemniejsze; błysk burzy rozświetla je od środka
+	float rim = cloud * (1.0 - thick);
+	vec3 cloud_col = glow * band * (0.55 + 0.6 * (1.0 - thick) + 3.2 * halo * (0.4 + rim));
+	float bolt = flash * (0.5 + 0.8 * smoothstep(0.4, 0.9, fbm(q * 0.5 + vec2(17.0, 3.0)) + 0.5));
+	cloud_col += vec3(0.55, 0.62, 0.85) * bolt * band * (0.4 + thick);
+	vec3 c = mix(clear_sky, cloud_col, cloud);
+	c += moon_col * disc * moon_vis * moon_vis * (1.0 - 0.85 * thick) * (1.0 - 0.5 * cloud);      // za mgłą i deszczem zostaje sama rozmyta poświata
 	COLOR = mix(c, vec3(0.16, 0.19, 0.24), lit);
 }
 """
@@ -1836,6 +1967,7 @@ static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0
 	ssh.code = SKY_SHADER
 	sm.shader = ssh
 	sky.sky_material = sm
+	sm.set_shader_parameter("moon_dir", MOON_DIR.normalized())
 	env.sky = sky
 	env.background_mode = Environment.BG_SKY
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -1903,4 +2035,16 @@ static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0
 		l.light_volumetric_fog_energy = 0.3                    # smugi księżyca między pniami
 		l.layers = 3                                           # widoczne dla kamery świata i kamery graczy (Forward+ odcina światła maską warstw kamery)
 		parent.add_child(l)
+		# poświata księżyca na lesie: ten sam kierunek co tarcza na niebie (`MOON_DIR`), zza drzew ku kamerze — prześwituje przez igliwie
+		# (`backlight` kart, `model_mesh`) i obrysowuje korony na tle nieba. Maska świateł: tylko warstwa lasu (LAYER_FOREST), więc plan gry
+		# i postacie zostają w ciemności (GDD §8.3); bez cieni i bez mgły wolumetrycznej (ta nie zna masek warstw)
+		var rim := DirectionalLight3D.new()
+		rim.name = "MoonRim"
+		rim.basis = Basis.looking_at(-MOON_DIR.normalized(), Vector3.UP)
+		rim.light_color = Color(0.62, 0.72, 0.95)
+		rim.light_energy = MOON_RIM
+		rim.light_cull_mask = LAYER_FOREST
+		rim.light_volumetric_fog_energy = 0.0
+		rim.layers = 3
+		parent.add_child(rim)
 	return env
