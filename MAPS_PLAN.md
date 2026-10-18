@@ -2,7 +2,8 @@
 
 Status: plan z 2026-10-17. **M1a–M1d (misja 1.1) w main**: obóz patrolu 1.7.278 (#350), przechodzący Stalker 1.7.279 (#351), gęstsza kopalnia i porządki 1.7.280 (#352).
 **P1–P3 (pomiar)** w main (#348, #349). **Playtest 1.1 (2026-10-18, 9 podejść)** → poprawki 1.7.281 (§1.3), drugi playtest potwierdził cichą drogę.
-**Do decyzji:** wydłużenie 1.1 do 5–6 min (§1.4, propozycja bez kodu) i B1 (§3).
+**Wydłużenie 1.1 (§1.4):** W2 strażnica (1.7.282), W1 powrót przez obudzony las (1.7.283) i W3 bród (1.7.284) w grze; playtest 1.7.283 w §1.5.
+**Do decyzji:** B1 (§3); wejście do kopalni na HARD (§1.5).
 Podstawa: analiza map (lokalnie, poza repo: rzuty map z upadkami, `stats.json`) i logi sesji 1.7.211–1.7.277 (63 podejścia, 1 człowiek + bot).
 
 **Decyzje użytkownika:**
@@ -127,6 +128,14 @@ Tak dużo nie da się dodać jednym odcinkiem bez rozwlekania samouczka. Stąd p
 **Kolejność (jeśli zestaw zalecany):** najpierw W2 (sama treść mapy, mierzalna w heatmapie), potem W1 (logika finału).
 Po każdym etapie playtest i `tools/session_heatmap.py --map z1_m1 --build <wersja>`.
 Wątek poboczny: HARD w kopalni (6 upadków, 208 s na ostatnim odcinku) warto stroić osobno, po W1/W2.
+
+### 1.5 Playtest 3 (1.7.283, 5 podejść: 2 sukcesy EASY/NORMAL, 2 wipe'y HARD, 1 przerwane)
+
+- Udana misja: **268–270 s** (było 140–168 s). Do celu 300–360 s brakuje 30–90 s; bród (W3, 1.7.284) ma dołożyć 20–35 s.
+- Powrót (EXTRACT): 69–111 s, najdłużej przy polanie i wyjściu (EASY 42 s). Obóz na powrocie przechodzony dnem niecki (konar E dla drogi na zachód doszedł w tym samym wydaniu, niesprawdzony w grze).
+- Strażnica: tylko ok. 15 s między nieśmiertelnikami 3 i 4 (szacunek był 40–60 s) — wspinaczka jest szybka, ćmy nie zatrzymują.
+- **Błąd:** w ewakuacji przechodzący Stalker wychodził „za plecami” liczonymi z zachodu, czyli przed drużyną, przy wyjściu (x = 120). Poprawione w 1.7.284 (`stalker.behind_side`).
+- HARD: oba wipe'y przy wejściu do sali kopalni (Wołek pod rampą z M1c, Skoczek nad wejściem, Trzoski w sali). Do strojenia osobno, np. Wołek pod rampą tylko na EASY/NORMAL albo dalej w sali.
 
 ## 2. Pomiar tras: pozycje graczy w logu sesji
 

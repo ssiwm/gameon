@@ -309,8 +309,10 @@ func _far_from_humans(r: float) -> bool:
 			return false
 	return true
 
-## Punkt wyjścia: węzeł grafu nawigacji poza kadrem za plecami drużyny (od strony, z której przyszła — na zachód), na tym samym
-## piętrze, z drogą do drużyny i z dala od każdego człowieka; gdy z tyłu nie ma miejsca — z przodu. `null` = nie ma gdzie.
+## Punkt wyjścia: węzeł grafu nawigacji poza kadrem za plecami drużyny, na tym samym piętrze, z drogą do drużyny i z dala od każdego
+## człowieka; gdy z tyłu nie ma miejsca — z przodu. `null` = nie ma gdzie. „Za plecami" (`behind_side`): w fazie celu drużyna idzie na
+## wschód, więc z zachodu; w ewakuacji — od strony przeciwnej do wyjścia (1.1: powrót na zachód, więc ze wschodu; dotąd wychodził
+## przed drużyną, tuż przy wyjściu — playtest 1.7.283).
 func pick_emerge_point() -> Variant:
 	var lvl := get_tree().get_first_node_in_group("level")
 	var humans := _humans()
@@ -322,7 +324,8 @@ func pick_emerge_point() -> Variant:
 		c += (p as Node2D).global_position
 	c /= float(humans.size())
 	var goal := nav.get_closest_point(c)
-	for side: float in [-1.0, 1.0]:
+	var back := behind_side(c)
+	for side: float in [back, -back]:
 		var best: Variant = null
 		var best_score := INF
 		for id in nav.get_point_ids():
@@ -345,6 +348,15 @@ func pick_emerge_point() -> Variant:
 		if best != null:
 			return best
 	return null
+
+## Strona „za plecami" drużyny o środku `c`: -1 = zachód, 1 = wschód. W ewakuacji — przeciwna do kierunku na wyjście misji.
+func behind_side(c: Vector2) -> float:
+	var mis := get_tree().get_first_node_in_group("mission")
+	if mis != null and int(mis.get("phase")) == 2:
+		var ex: Vector2 = mis.get("exit_pos")
+		if ex != Vector2.ZERO and absf(ex.x - c.x) > 1.0:
+			return -signf(ex.x - c.x)
+	return -1.0
 
 func _emerge(at: Vector2, noise: float) -> void:
 	global_position = at
