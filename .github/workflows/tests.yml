@@ -46,6 +46,9 @@ jobs:
           godot --headless --path prototype -- --host --missiontest --sessionlog="$RUNNER_TEMP/sessions" --autoquit=12 2>&1 | tee missiontest.log
           grep -a "faza=SUCCESS" missiontest.log
           grep -h '"ev":"mission_end"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"result":"success"'
+          grep -h '"ev":"pos"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"who":"P1"'
+          grep -h '"ev":"objective"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"what":"nest"'
+          grep -h '"ev":"objective"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"what":"boss"'
       - name: Przechodzący Stalker w misji 1.1 (--passtest)
         run: |
           godot --headless --path prototype -- --host --mission=z1_m1 --passtest --autoquit=20 2>&1 | tee passtest.log

@@ -11,14 +11,17 @@ extends RefCounted
 ##   down           who, bot, source (rodzaj wroga / stalker / vein / leech / acid / blast / prop), noise, weapon, pos, phase
 ##   revive         who, bot, after (s leżenia)
 ##   bleed_out      who, bot (wykrwawienie: powrót na start misji)
-##   stalker        what (awake / asleep / swing_hit / swing_miss), noise, target, bot
+##   stalker        what (awake / asleep / swing_hit / swing_miss / pass_in / pass_out — przechodzący Stalker 1.1), noise, target, bot, pos
 ##   overcharge     pos, noise, stale
+##   pos            phase, noise, p: lista graczy [{who, bot, pos, hp, crouch, dead}] — próbka co POS_EVERY s (mapy cieplne tras, MAPS_PLAN.md P1)
+##   objective      what (tag / stash / generator / nest / boss), n, of, pos, who, bot — zaliczony cel lub cel poboczny (czas odcinków trasy, P2)
 ##   mission_end    result (success / failed / wipe), time, downs, attempts, peak_noise, side, players, weapons, noise
 ## Wipe w kampanii kończy próbę wierszem mission_end, po którym idzie mission_start z kolejnym numerem próby.
 ## `weapons`: klucz broni → {shots, noise, dmg, kills}; `noise`: źródło → {n, sum} (strzały pod kluczem `shot`).
 
 const DIR := "user://sessions"
 const PHASES := ["OBJECTIVE", "BOSS", "EXTRACT", "SUCCESS", "FAILED"]
+const POS_EVERY := 3.0                 ## s między próbkami pozycji graczy (zdarzenie `pos`): ok. 120 B na gracza, 10 min w duecie ≈ 50 KB
 
 static var enabled := DisplayServer.get_name() != "headless"
 static var dir := DIR                  ## katalog plików; testy podmieniają go flagą --sessionlog=
@@ -34,6 +37,10 @@ static var _build := ""
 
 static func active() -> bool:
 	return enabled and not _open_failed and NoiseMgr.is_server()
+
+## Czy zdarzenie zostałoby teraz zapisane — żeby nie składać wiersza (np. próbki pozycji) na próżno.
+static func recording() -> bool:
+	return active() and _in_mission
 
 ## Wersja buildu: `config/version` z project.godot + skrót commita. Eksport dostaje skrót z pliku `build_stamp.txt`
 ## (tools/export_build.sh), gra uruchomiona ze źródeł pyta gita. Ta sama wartość jest w stopce menu głównego.
