@@ -62,7 +62,7 @@ const SEE_NONE := 160.0
 const HUNT_NOISE := 45.0
 
 ## Tryb przechodzący: domyślne wartości (mapa nadpisuje kluczami `STALKER_PASS`).
-const PASS_DEFAULTS := {"noise": 80.0, "time": 28.0, "leave": 8.0, "cooldown": 90.0}
+const PASS_DEFAULTS := {"noise": 80.0, "time": 28.0, "leave": 8.0, "cooldown": 90.0, "after_goal": 0.0}
 const PASS_DIST_MIN := 380.0          ## px od środka drużyny: poza kadrem (widok ≈ ±200 px) z zapasem — jak wędrowcy Dyrektora
 const PASS_DIST_MAX := 640.0
 const PASS_DY_MAX := 96.0             ## px w pionie: wychodzi na tym samym piętrze co drużyna (± 6 kafli)
@@ -247,14 +247,30 @@ func _physics_process(delta: float) -> void:
 func pass_param(key: String) -> float:
 	return float(pass_cfg.get(key, PASS_DEFAULTS[key]))
 
+## Próg Uwagi, od którego wychodzi: na HARD osobny (`noise_hard`), bo hałas rośnie tam o 25% szybciej
+## (`Difficulty` „noise” ×1,25) — ten sam próg wypuszczał go już przy pierwszej strzelaninie.
+func pass_noise() -> float:
+	if Difficulty.level == Difficulty.Level.HARD and pass_cfg.has("noise_hard"):
+		return float(pass_cfg["noise_hard"])
+	return pass_param("noise")
+
+## Czy drużyna zaliczyła już `after_goal` celów misji (1.1: pierwszy nieśmiertelnik) — wcześniej nie wychodzi,
+## żeby lekcja hałasu nie przychodziła przed lekcją ruchu i strzału.
+func _goal_ok() -> bool:
+	var need := int(pass_param("after_goal"))
+	if need <= 0:
+		return true
+	var mis := get_tree().get_first_node_in_group("mission")
+	return mis != null and int(mis.get("goal_total")) - int(mis.get("goal_left")) >= need
+
 ## Tryb przechodzący (serwer): czeka poza mapą → wychodzi na hałas → poluje → wycofuje się → znika.
 func _tick_pass(delta: float, noise: float) -> void:
 	_pass_cd = maxf(0.0, _pass_cd - delta)
 	match pass_state:
 		Pass.IDLE:
-			if noise < pass_param("noise"):
+			if noise < pass_noise():
 				_pass_armed = true
-			if _pass_armed and _pass_cd <= 0.0 and noise >= pass_param("noise") and _objective_phase():
+			if _pass_armed and _pass_cd <= 0.0 and noise >= pass_noise() and _objective_phase() and _goal_ok():
 				var at: Variant = pick_emerge_point()
 				if at == null:
 					_pass_cd = PASS_RETRY               # drużyna w miejscu bez zaplecza (np. przy krawędzi mapy) — spróbuje za chwilę

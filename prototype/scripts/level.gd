@@ -112,6 +112,8 @@ var radio: Array = []             ## linie radia z danych mapy (kryjówka)
 var ambient := Color(0.0245, 0.0266, 0.0406)   ## kolor ciemności mapy (stan; obraz daje scena 3D): domyślny z lights.gd albo z AMBIENT mapy
 var _racks := false
 var launch_zone := Rect2()                ## strefa startu kryjówki w pikselach świata (LAUNCH_ZONE z danych mapy); pusta poza kryjówką
+## HINT_ZONES z danych mapy: id podpowiedzi (hints.gd) → Rect2 w pikselach świata, gdzie ta podpowiedź ma sens (1.1: podejście do obozu).
+var hint_zones: Dictionary = {}
 var _hub_props: Array = []                ## HUB_PROPS z danych mapy: [rodzaj, kolumna, wiersz podłogi, parametry] (hub_prop.gd)
 var _shafts: Array = []                ## SHAFTS z danych mapy: [pierwsza, ostatnia] kolumna szybów między poziomami (bez mebli z hub_decor.gd)
 var _cab_slots := 0                   ## CABINET_SLOTS z danych mapy: > 0 = każde „g" to gablota na tyle broni (cabinet.gd), 0 = stojaki
@@ -207,6 +209,11 @@ func _load(id: String) -> void:
 	_cab_slots = int((m as GDScript).get_script_constant_map().get("CABINET_SLOTS", 0))
 	_shafts = ((m as GDScript).get_script_constant_map().get("SHAFTS", []) as Array).duplicate()
 	_hub_props = ((m as GDScript).get_script_constant_map().get("HUB_PROPS", []) as Array).duplicate()
+	hint_zones.clear()
+	var hz: Dictionary = (m as GDScript).get_script_constant_map().get("HINT_ZONES", {})
+	for hid in hz:
+		var r: Array = hz[hid]                         # [c0, r0, c1, r1] w kaflach, włącznie
+		hint_zones[hid] = Rect2(float(r[0]) * TILE, float(r[1]) * TILE, float(r[2] - r[0] + 1) * TILE, float(r[3] - r[1] + 1) * TILE)
 	var lz: Array = (m as GDScript).get_script_constant_map().get("LAUNCH_ZONE", [])
 	launch_zone = Rect2(float(lz[0]) * TILE, float(lz[2] - 4) * TILE, float(lz[1] - lz[0] + 1) * TILE, 4.0 * TILE + 4.0) if lz.size() == 3 else Rect2()
 	ambient = m.AMBIENT if m.AMBIENT.a > 0.0 else Lights.AMBIENT      # alfa 0 = domyślna ciemność gry

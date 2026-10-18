@@ -7,7 +7,7 @@ const KNOCK_MIN := 30.0               ## odstęp między stukaniami zza drzwi D-
 const KNOCK_MAX := 80.0
 const KNOCKS := ["amb_thud_1", "amb_thud_2"]
 
-var kind := ""                        ## "generator", "compressor", "pipes", "crate", "mil_crate", "scrap_pile", "barrel", "d7", "window"
+var kind := ""                        ## "generator", "compressor", "pipes", "crate", "mil_crate", "scrap_pile", "barrel", "d7", "window"; poza kryjówką: "lantern", "ribbon" (znak cichej drogi w obozie 1.1)
 var args: Array = []                  ## parametry rodzaju: pipes [ostatnia kolumna], window [szerokość w kaflach], reszta []
 var knock_flash := 0.0                ## d7: 1 w chwili stuknięcia, zanika do 0 (view3d rozjaśnia czerwony pas pod drzwiami)
 

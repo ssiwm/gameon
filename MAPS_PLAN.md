@@ -1,7 +1,7 @@
 # Plan: mapy misji Strefy I
 
 Status: plan z 2026-10-17. **M1a–M1d (misja 1.1) w main**: obóz patrolu 1.7.278 (#350), przechodzący Stalker 1.7.279 (#351), gęstsza kopalnia i porządki 1.7.280 (#352).
-**P1 i P2 (pomiar)** w PR #348, **P3 (narzędzie)** w PR #349. Do zrobienia: playtest 1.1 z pomiarem i decyzja w sprawie B1 (§3).
+**P1–P3 (pomiar)** w main (#348, #349). **Playtest 1.1 (2026-10-18, 9 podejść)** → poprawki 1.7.281 (§1.3). Do zrobienia: kolejny playtest 1.1 i decyzja w sprawie B1 (§3).
 Podstawa: analiza map (lokalnie, poza repo: rzuty map z upadkami, `stats.json`) i logi sesji 1.7.211–1.7.277 (63 podejścia, 1 człowiek + bot).
 
 **Decyzje użytkownika:**
@@ -66,6 +66,14 @@ Skoczki i Ćmy zostają pod sufitem, ale co najmniej jeden Skoczek ma wisieć na
 - Rozważyć obcięcie 10–12 z 18 pustych rzędów nieba (kamera i `bounds`), o ile widok 3D nie potrzebuje ich na tło.
 
 **Oczekiwany wynik:** ok. 5000–5400 px trasy (55–58 s marszu) przy mnożniku ok. 5–6 daje 280–350 s. Do sprawdzenia playtestem (pomiar z §2).
+
+### 1.3 Playtest 2026-10-18 (1.7.280, 9 podejść: 4 sukcesy na EASY/NORMAL, 5 wipe'ów na HARD)
+
+- Czas udanej misji 147–208 s (mediana 161 s), wcześniej ok. 145 s. Wydłużenie o ok. 15 s, do celu 5–6 min wciąż daleko.
+- Odcinki (mediana od poprzedniego celu): nieśmiertelnik 1 po 23 s, obóz (nr 2) +34 s, jaskinia (nr 3) +30 s, sala (nr 4) +46 s, galeria (nr 5) +28 s.
+- Obóz: próbki pozycji prawie wyłącznie na dnie niecki i na moście, na konarach najwyżej jedna próbka na podejście, kucanie prawie wcale. Cichej drogi nikt nie znalazł.
+- Przechodzący Stalker wyszedł w każdym podejściu (Uwaga 100 w 8 z 9). Na HARD już po 12–27 s, przy polanie, zanim gracz zebrał pierwszy nieśmiertelnik.
+- **Zmiany 1.7.281:** latarnia patrolu i wstążki na konarach, porada `camp` na podejściu, Stalker dopiero po pierwszym nieśmiertelniku, na HARD od Uwagi 95.
 
 ## 2. Pomiar tras: pozycje graczy w logu sesji
 

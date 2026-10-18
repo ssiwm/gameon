@@ -35,7 +35,13 @@ const ACCENTS := [[Vector2(392, 368), 12], [Vector2(536, 368), 9], [Vector2(936,
 ## Przechodzący Stalker (MAPS_PLAN.md M1b, stalker.gd): mapa nie ma znacznika X — Stalker czeka poza mapą („home" = kafel nad nią)
 ## i wychodzi za plecami drużyny, gdy w fazie celu Uwaga przekroczy `noise`; poluje `time` s, wycofuje się do `leave` s i znika;
 ## następne przejście po `cooldown` s i dopiero po spadku Uwagi poniżej progu.
-const STALKER_PASS := {"noise": 80.0, "time": 28.0, "leave": 8.0, "cooldown": 90.0, "home": [3, 3]}
+## Od 1.7.281: nie wychodzi przed pierwszym nieśmiertelnikiem (`after_goal`), a na HARD dopiero od Uwagi 95 (`noise_hard`, hałas rośnie tam o 25% szybciej).
+const STALKER_PASS := {"noise": 80.0, "noise_hard": 95.0, "after_goal": 1, "time": 28.0, "leave": 8.0, "cooldown": 90.0, "home": [3, 3]}
+## Znak cichej drogi w obozie (playtest 2026-10-18: nikt nie szedł konarami): latarnia patrolu stoi na konarze A (kol. 96, nad płaskowyżem),
+## czerwone wstążki wiszą pod konarami B, C i D [rodzaj, kolumna, wiersz, parametry] — rekwizyty jak w kryjówce (hub_prop.gd, view3d._build_hub_prop).
+const HUB_PROPS := [["lantern", 96, 16, []], ["ribbon", 100, 15, []], ["ribbon", 106, 15, []], ["ribbon", 111, 15, []]]
+## Strefy podpowiedzi [c0, r0, c1, r1] (kafle, włącznie; stopy stojącego są na górnej krawędzi rzędu podłogi, więc strefa sięga rzędu 23): „camp" na podejściu do obozu, póki wataha śpi (hints.gd).
+const HINT_ZONES := {"camp": [80, 0, 97, 23]}
 const COLLAPSE := [[214, 25, 221, 33]]
 
 const MAP := [
