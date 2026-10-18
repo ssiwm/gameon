@@ -4,6 +4,7 @@ Status: **wdrożone w 1.7.273–1.7.275 (etapy 1–3 w jednym stosie PR-ów)** �
 koledzy w lewym górnym, pasek kierunku z opisem celu, tekst misji w prawym górnym rogu, wygaszanie. Stan z 2026-10-17.
 **Zmiana w 1.7.285:** rogi zamienione — hałas (VU-metr, linia NOISE, pogoda, SAFE) w lewym górnym, całe życie drużyny w lewym dolnym
 (własny wiersz na górze bloku, koledzy pod nim). Wiersz 4 tabeli poniżej opisuje układ sprzed tej zmiany.
+**Zmiana w 1.7.286:** pasek kierunku (wiersz 2) zastąpił rzut mapy `scripts/hud_minimap.gd`: okno ±38 m siatki poziomu z mgłą i tymi samymi znacznikami.
 Makieta kierunku (poza repo): `gameon/concepts/hud_minimal/index.html` w głównym checkoucie. Podstawa kodu: `prototype/scripts/hud.gd`.
 
 **Odstępstwa od planu poniżej:** przełącznik CLASSIC / MINIMAL pominięty (jeden układ, bez kosztu podwójnych testów); celownik zostaje

@@ -5,7 +5,8 @@ extends Control
 ## viewport / UI_SCALE (≈914×514), więc układ liczy się względem `size`, nie stałych 640×360.
 ## Layout — HUD bez ramek (HUD_PLAN.md): czytelność dają dwa gradienty (góra, dół), a ważne rzeczy stoją w rogach:
 ##   top-left    noise: small VU meter, one NOISE line (safe room: SAFE), mission weather under it
-##   top-centre  direction strip (Compass): 5 m scale, goal / exit / teammates / downed markers with distance; under it the boss bar
+##   top-centre  map view (hud_minimap.gd): ±38 m window of the level grid with fog (only tiles the squad has seen), goal / exit /
+##               teammates / downed markers with distance; under it the boss bar
 ##               and the objective text, which shows for TOAST_S after the goal changes (always in the safe room, F1 recalls it)
 ##   top-right   mission title, difficulty · clock, scrap; level + XP bar only for a moment after gaining XP
 ##   bottom-left squad life: own row on top (life segments, ECG, CRITICAL / DOWN), teammates under it (slot-coloured diamond,
@@ -28,6 +29,7 @@ const GunIcon := preload("res://scripts/gun_icon.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const NotePaper := preload("res://scripts/note_paper.gd")
 const MessageView := preload("res://scripts/message_view.gd")
+const MiniMap := preload("res://scripts/hud_minimap.gd")
 const JournalView := preload("res://scripts/journal_view.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Codex := preload("res://scripts/codex.gd")
@@ -368,75 +370,6 @@ class Swatch extends Control:
 		draw_rect(Rect2(2, 2, 5, 6), col)
 		draw_rect(Rect2(3, 3, 1, 1), Color(0.95, 0.9, 0.8))
 
-## Pasek kierunku (zamiast karty celu): cienka linia ze skalą co 5 m (przesuwa się razem ze światem), romb gracza pośrodku i romby
-## znaczników z dystansem — cel, wyjście, koledzy, powaleni. Świat to długi korytarz (oś X), więc „kompas” to pozycja na osi względem gracza;
-## znacznik poza zasięgiem (45 m) przykleja się przygaszony do krawędzi. Dystans: 16 px świata = 1 m (jak w tekstach misji).
-class Compass extends Control:
-	const HALF_RANGE := 720.0
-	var player_x := 0.0
-	var markers: Array = []              ## [{x: px świata, kind: "obj" | "exit" | "mate" | "down", label: String, col: Color}]
-	var _t := 0.0
-
-	func _init() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		custom_minimum_size = Vector2(380, 42)
-
-	func _process(delta: float) -> void:
-		_t += delta
-		queue_redraw()
-
-	func _draw() -> void:
-		var w := size.x
-		var half := w * 0.5
-		var ly := 22.0
-		var pxk := (half - 12.0) / HALF_RANGE
-		var n := 40
-		for i in n:
-			var f0 := float(i) / float(n)
-			var f1 := float(i + 1) / float(n)
-			var fade := minf(minf(f0, 1.0 - f1) * 6.0, 1.0)
-			draw_line(Vector2(f0 * w, ly), Vector2(f1 * w, ly), Color(UiTheme.TEXT, 0.7 * fade), 1.0)
-		var x := floorf((player_x - HALF_RANGE) / 80.0) * 80.0
-		while x <= player_x + HALF_RANGE:
-			var sx := half + (x - player_x) * pxk
-			var big := int(roundf(x / 80.0)) % 5 == 0
-			var fade := 1.0 - pow(clampf(absf(sx - half) / half, 0.0, 1.0), 2.0)
-			var hh := 4.0 if big else 2.0
-			draw_line(Vector2(sx, ly - hh), Vector2(sx, ly + hh), Color(UiTheme.TEXT, 0.5 * fade), 1.0)
-			x += 80.0
-		var f := UiTheme.mono_font()
-		var taken: Array = []
-		var order := markers.duplicate()
-		order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return absf(float(a["x"]) - player_x) < absf(float(b["x"]) - player_x))
-		for m in order:
-			var dx: float = float(m["x"]) - player_x
-			var edge := absf(dx) > HALF_RANGE
-			var sx := half + clampf(dx / HALF_RANGE, -1.0, 1.0) * (half - 12.0)
-			var kind := String(m["kind"])
-			var col: Color = m["col"]
-			if kind == "down" and Settings.fx_mult() > 0.0:
-				col.a = 0.55 + 0.45 * (0.5 + 0.5 * sin(_t * 6.0))
-			if edge:
-				col.a *= 0.55
-			var r := 4.5 if kind == "obj" else 3.5
-			var c := Vector2(sx, 11.0)
-			var dia := PackedVector2Array([c + Vector2(0, -r), c + Vector2(r, 0), c + Vector2(0, r), c + Vector2(-r, 0)])
-			if kind == "exit":
-				draw_polyline(PackedVector2Array([dia[0], dia[1], dia[2], dia[3], dia[0]]), col, 1.2, true)
-			else:
-				draw_colored_polygon(dia, col)
-			var txt := "%s · %d m" % [String(m["label"]), int(absf(dx) / 16.0)]
-			var tw := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 6).x
-			var x0 := sx - tw * 0.5
-			var clash := false
-			for t in taken:
-				if x0 < float(t[1]) + 4.0 and x0 + tw > float(t[0]) - 4.0:
-					clash = true
-			if not clash:
-				taken.append([x0, x0 + tw])
-				draw_string(f, Vector2(x0, ly + 13.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color(UiTheme.TEXT if kind == "obj" else UiTheme.MUTED, col.a))
-		draw_colored_polygon(PackedVector2Array([Vector2(half, ly - 4), Vector2(half + 4, ly), Vector2(half, ly + 4), Vector2(half - 4, ly)]), UiTheme.TEXT)
-
 ## Romb w kolorze slotu przed nazwą kolegi z drużyny (lista w lewym górnym rogu).
 class Diamond extends Control:
 	var col := Color.WHITE
@@ -538,7 +471,7 @@ var _obj_caption: Label
 var _obj_text: Label
 var _obj_hint: Label
 var _boss_row: VBoxContainer
-var _compass: Compass
+var _minimap: MiniMap                ## rzut mapy w górnym środku (zastąpił pasek kierunku)
 var _toast_box: VBoxContainer        ## opis celu (podpis, tekst, podpowiedź): pokazuje się na zmianę celu, potem gaśnie
 var _toast_t := 0.0
 var _toast_sig := ""
@@ -1050,8 +983,9 @@ func _build_objective_card() -> void:
 	box.add_theme_constant_override("separation", 3)
 	box.alignment = BoxContainer.ALIGNMENT_BEGIN
 	_obj_card.add_child(box)
-	_compass = Compass.new()
-	box.add_child(_compass)
+	_minimap = MiniMap.new()
+	_minimap.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(_minimap)
 	_boss_row = VBoxContainer.new()
 	_boss_row.add_theme_constant_override("separation", 2)
 	_boss_name = UiTheme.heading("THE VEIN — MOTHER OF NESTS", 8, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
@@ -1683,7 +1617,7 @@ func _drive_mission() -> void:
 		var bname: String = String(boss.get("boss_name")) if boss.get("boss_name") != null else "THE VEIN — MOTHER OF NESTS"
 		_boss_name.text = bname + ("   ·   ENRAGED" if boss.phase >= 2 else "")
 	_drive_strip(m)
-	# opis celu pokazuje się po zmianie celu / fazy (i w kryjówce, i na F1), potem gaśnie; pasek kierunku zostaje
+	# opis celu pokazuje się po zmianie celu / fazy (i w kryjówce, i na F1), potem gaśnie; rzut mapy zostaje
 	var sig := "%s|%d|%d|%d|%d" % [m.kind, m.phase, m.goal_left, m.nests_left, m.stashes_found]
 	if sig != _toast_sig:
 		_toast_sig = sig
@@ -1718,18 +1652,18 @@ func _nearest(group: String, ok: Callable) -> Node2D:
 	for n in get_tree().get_nodes_in_group(group):
 		if not (n is Node2D) or not is_instance_valid(n) or n.is_queued_for_deletion() or not bool(ok.call(n)):
 			continue
-		var d := absf((n as Node2D).global_position.x - _player.global_position.x)
+		var d := (n as Node2D).global_position.distance_squared_to(_player.global_position)
 		if d < bd:
 			bd = d
 			best = n
 	return best
 
-## Znaczniki paska kierunku: cel (najbliższy), wyjście / drezyna w ekstrakcji, koledzy z drużyny, powaleni.
+## Znaczniki rzutu mapy: cel (najbliższy), wyjście / drezyna w ekstrakcji, koledzy z drużyny, powaleni.
 func _drive_strip(m: Node) -> void:
-	_compass.visible = m.kind != "hub" and _player != null
-	if not _compass.visible:
+	_minimap.visible = m.kind != "hub" and _player != null
+	if not _minimap.visible:
 		return
-	_compass.player_x = _player.global_position.x
+	_minimap.player_pos = _player.global_position
 	var mk: Array = []
 	var goal: Node2D = null
 	var label := ""
@@ -1754,18 +1688,18 @@ func _drive_strip(m: Node) -> void:
 		Mission.Phase.EXTRACT:
 			var car := _nearest("handcar", func(n: Node) -> bool: return not bool(n.get("arrived")))
 			if car != null:
-				mk.append({"x": car.global_position.x, "kind": "obj", "label": tr("CAR"), "col": UiTheme.ACCENT})
-			mk.append({"x": m.exit_pos.x, "kind": "exit", "label": tr("EXIT"), "col": Color(UiTheme.TEXT, 0.8)})
+				mk.append({"pos": car.global_position, "kind": "obj", "label": tr("CAR"), "col": UiTheme.ACCENT})
+			mk.append({"pos": m.exit_pos, "kind": "exit", "label": tr("EXIT"), "col": Color(UiTheme.TEXT, 0.8)})
 	if goal != null:
-		mk.append({"x": goal.global_position.x, "kind": "obj", "label": label, "col": UiTheme.ACCENT})
+		mk.append({"pos": goal.global_position, "kind": "obj", "label": label, "col": UiTheme.ACCENT})
 	for node in get_tree().get_nodes_in_group("players"):
 		var pl: Node = node
 		if pl == _player or not is_instance_valid(pl) or pl.is_queued_for_deletion():
 			continue
 		var slot := ((int(pl.display_id) - 1) % 4) + 1
 		var col: Color = UiTheme.DANGER if pl.dead else (Color("8d8a7c") if pl.is_bot else SLOT_COLORS[slot - 1])
-		mk.append({"x": (pl as Node2D).global_position.x, "kind": "down" if pl.dead else "mate", "label": "P%d" % int(pl.display_id), "col": col})
-	_compass.markers = mk
+		mk.append({"pos": (pl as Node2D).global_position, "kind": "down" if pl.dead else "mate", "label": "P%d" % int(pl.display_id), "col": col})
+	_minimap.markers = mk
 
 func _fill_result(m: Node) -> void:
 	for c in _result_stats.get_children():
