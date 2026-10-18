@@ -156,6 +156,10 @@ static func model_mesh(name: String) -> Array:
 					bm.metallic_specular = 0.0
 					bm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 					_soft_cutout(bm, name.begins_with("tree_"))
+					if name.begins_with("tree_") and bm.albedo_texture != null:       # igliwie drzew: ten sam wygląd + wiatr (`WIND_SHADER`)
+						var wm := _wind_mat(bm.albedo_texture, bm.albedo_color, 100.0, 1.0, 0.4)
+						msh.surface_set_material(si, wm)
+						_wind_models.append(wm)
 		inst.free()
 	_model_cache[name] = out
 	return out
@@ -1415,6 +1419,17 @@ static func forest_terrain(rows: Array) -> Dictionary:
 	_ft_cache[key] = ft
 	return ft
 
+## Drzewostan w punkcie x (m) mapy: {"s": 0..1 (szum wolnozmienny, ok. 40 m na falę), "dens": mnożnik gęstości bliskiego i środkowego pasa
+## (0,12 na polanie … 1,7 w gęstwinie), "open": 0..1 (jak bardzo otwarte miejsce)}. Te same polany widać we wszystkich wywołaniach.
+static func forest_stand(x: float) -> Dictionary:
+	var s := _vn1(x / 38.0, 3.1) * 0.65 + _vn1(x / 13.0, 7.7) * 0.35
+	var k := smoothstep(0.2, 0.82, s)
+	return {"s": s, "dens": lerpf(0.12, 1.7, k), "open": 1.0 - smoothstep(0.15, 0.45, s)}
+
+## Wiek drzewostanu w punkcie x (m): mnożnik wysokości drzew 0,8 … 1,2 (płaty młodszego i starszego lasu, inny rytm niż polany).
+static func forest_age(x: float) -> float:
+	return lerpf(0.8, 1.2, _vn1(x / 24.0, 5.3))
+
 ## y dna lasu (m) w punkcie x (m) i głębokości `d` (m w głąb, dodatnia): interpolacja między kolumnami i węzłami głębi profilu `forest_terrain`.
 static func forest_ground_y(ft: Dictionary, x: float, d: float) -> float:
 	var ys: Array = ft["y"]
@@ -1514,6 +1529,7 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 	if ft.is_empty():
 		return
 	var first := parent.get_child_count()
+	_wind_cards.clear()
 	var mask: PackedByteArray = ft["mask"]
 	for c in range(0, cols, 2):
 		if mask[c] == 0:
@@ -1527,16 +1543,24 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 			var lb := Basis(Vector3.UP, rng.randf_range(-0.5, 0.5)).scaled(Vector3(ll / 100.0, ll / 100.0, ll / 100.0))
 			(trees["tree_log"] as Array).append(Transform3D(lb, Vector3((float(c) + rng.randf()) * T, -float(r0) * T - 0.06, rng.randf_range(-DEPTH_BACK + 0.5, -1.2))))
 		var bands := [[DEPTH_BACK + 1.2, 9.0, 0.28, 13.0, 21.0], [9.0, 24.0, 1.4, 11.0, 19.0], [24.0, 60.0, 2.6, 12.0, 24.0]]
+		# drzewostan zmienia się wzdłuż mapy (`forest_stand`): polany i rzadkie miejsca z martwymi pniami, gęste kępy, starsze i młodsze płaty —
+		# linia czubków dostaje rytm zamiast równego grzebienia; daleki pas zostaje ścianą lasu, tylko trochę rzednie
+		var stand := forest_stand(float(c + 1) * T)
+		var dens: float = stand["dens"]
 		for bi in bands.size():
 			var band: Array = bands[bi]
-			var n := int(float(band[2])) + (1 if rng.randf() < fmod(float(band[2]), 1.0) else 0)
+			var per := float(band[2]) * (dens if bi < 2 else lerpf(0.6, 1.3, float(stand["s"])))
+			var n := int(per) + (1 if rng.randf() < fmod(per, 1.0) else 0)
 			for i in n:
 				var z := -rng.randf_range(float(band[0]), float(band[1]))
-				var h := rng.randf_range(float(band[3]), float(band[4]))
 				var x := (float(c) + rng.randf() * 2.0) * T + rng.randf_range(-1.5, 1.5)
+				var h := rng.randf_range(float(band[3]), float(band[4])) * forest_age(x)
+				if bi > 0 and rng.randf() < 0.045:                       # pojedyncze stare drzewa wystają ponad las
+					h *= rng.randf_range(1.25, 1.45)
 				var y := forest_ground_y(ft, x, -z)
 				var roll := rng.randf()
-				var kind: String = "snag_a" if roll < 0.06 else ("snag_b" if roll < 0.12 else ("spruce_a" if roll < 0.45 else ("spruce_b" if roll < 0.72 else "spruce_c")))
+				var snag_p := 0.12 + 0.22 * float(stand["open"])               # na polanach i w rzadkim lesie więcej martwych pni
+				var kind: String = "snag_a" if roll < snag_p * 0.5 else ("snag_b" if roll < snag_p else ("spruce_a" if roll < 0.45 else ("spruce_b" if roll < 0.72 else "spruce_c")))
 				var w := h * 0.5 * rng.randf_range(0.85, 1.15)
 				if have_spruce and bi < 2 and kind.begins_with("spruce"):
 					var sw := h / 100.0 * rng.randf_range(0.9, 1.15)
@@ -1580,20 +1604,81 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 	for k in FOREST_KINDS:
 		if (xf[k] as Array).is_empty() or not ResourceLoader.exists(FOREST_DIR + k + ".png"):
 			continue
-		var m := StandardMaterial3D.new()
-		m.albedo_texture = load(FOREST_DIR + k + ".png")
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-		m.alpha_scissor_threshold = 0.5
-		m.cull_mode = BaseMaterial3D.CULL_DISABLED
-		m.roughness = 1.0
-		m.metallic_specular = 0.0
-		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
-		_soft_cutout(m, true)
+		var m := _wind_mat(load(FOREST_DIR + k + ".png"), Color.WHITE, 1.0, 0.0, 0.5)       # karta kołysze się w całości
+		_wind_cards.append(m)
 		_multimesh(parent, card, xf[k], m, false)
 	for i in range(first, parent.get_child_count()):          # las na własnej warstwie: oświetla go `MoonRim`, plan gry nie
 		var vi := parent.get_child(i) as VisualInstance3D
 		if vi != null:
 			vi.layers = 1 | LAYER_FOREST
+
+## Wiatr w koronach: igliwie modeli drzew (`model_mesh`, powierzchnie z alfą) i karty dalekiego lasu. Wychylenie rośnie z wysokością nad podstawą
+## drzewa, a w modelach także z odległością od pnia — nasada gałęzi stoi przy nieruchomym pniu, kołyszą się końce (nic się nie odrywa); karty
+## kołyszą się w całości. Każde drzewo ma własną fazę, podmuchy idą falą wzdłuż mapy. Siłę i przechył (burza) ustawia `set_wind` z pogody.
+const WIND_SHADER := """
+shader_type spatial;
+render_mode world_vertex_coords, cull_disabled, depth_draw_opaque, alpha_to_coverage, specular_disabled;
+uniform sampler2D tex : source_color, filter_linear_mipmap_anisotropic;
+uniform vec4 tint : source_color = vec4(1.0);
+uniform float unit_h = 100.0;           // wysokość drzewa w jednostkach siatki (modele: 100, karty: 1)
+uniform float radial = 1.0;             // 1: modele (wychylenie rośnie od pnia), 0: karty (cała karta)
+uniform float scissor = 0.4;
+uniform float amp = 0.5;
+uniform float lean = 0.0;
+void vertex() {
+	vec3 base = MODEL_MATRIX[3].xyz;
+	float th = max(length(MODEL_MATRIX[1].xyz) * unit_h, 0.1);
+	float hg = clamp((VERTEX.y - base.y) / th, 0.0, 1.0);
+	float rr = mix(1.0, clamp(length(VERTEX.xz - base.xz) / th * 5.0, 0.0, 1.0), radial);
+	float ph = base.x * 0.37 + base.z * 0.21;
+	float gust = 0.5 + 0.5 * sin(TIME * 0.45 - base.x * 0.031);
+	float w = (sin(TIME * 1.1 + ph) * 0.7 + sin(TIME * 2.3 + ph * 1.7) * 0.3) * (0.35 + 0.65 * gust);
+	float fl = sin(TIME * 4.7 + VERTEX.x * 2.1 + VERTEX.z * 1.7 + VERTEX.y * 0.9) * 0.35 * radial;
+	float d = (w + fl - lean) * amp * hg * hg * rr * th * 0.02;
+	VERTEX.x += d;
+	VERTEX.z += d * 0.3;
+	VERTEX.y -= abs(d) * 0.15 * rr;
+}
+void fragment() {
+	vec4 c = texture(tex, UV) * tint;
+	ALBEDO = c.rgb;
+	ALPHA = c.a;
+	ALPHA_SCISSOR_THRESHOLD = scissor;
+	ALPHA_ANTIALIASING_EDGE = 0.3;                         // wygładzony brzeg (alpha-to-coverage przy MSAA)
+	ALPHA_TEXTURE_COORDINATE = UV * vec2(textureSize(tex, 0));
+	ROUGHNESS = 1.0;
+	BACKLIGHT = vec3(0.55, 0.62, 0.5);                     // igliwie prześwituje światłem zza drzew (`MoonRim`)
+}
+"""
+static var _wind_sh: Shader
+static var _wind_models: Array = []                ## materiały igliwia modeli (żyją w pamięci podręcznej `model_mesh`)
+static var _wind_cards: Array = []                 ## materiały kart dalekiego lasu (odtwarzane z każdym `build_forest`)
+static var _wind_grass: Array = []                 ## materiały runa (odtwarzane z każdym `build_undergrowth`)
+static var _wind := Vector2(0.5, 0.0)              ## ostatnie (amp, lean) — nowe materiały startują z tym samym wiatrem
+
+static func _wind_mat(tex: Texture2D, tint: Color, unit_h: float, radial: float, scissor: float) -> ShaderMaterial:
+	if _wind_sh == null:
+		_wind_sh = Shader.new()
+		_wind_sh.code = WIND_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = _wind_sh
+	m.set_shader_parameter("tex", tex)
+	m.set_shader_parameter("tint", tint)
+	m.set_shader_parameter("unit_h", unit_h)
+	m.set_shader_parameter("radial", radial)
+	m.set_shader_parameter("scissor", scissor)
+	m.set_shader_parameter("amp", _wind.x)
+	m.set_shader_parameter("lean", _wind.y)
+	return m
+
+## Siła wiatru w koronach (`amp`: 0 cisza, ok. 0,5 lekki wiatr, 2 burza) i stały przechył w lewo (`lean`, burza) — woła `view3d._sync_weather`.
+static func set_wind(amp: float, lean: float) -> void:
+	if is_equal_approx(amp, _wind.x) and is_equal_approx(lean, _wind.y):
+		return
+	_wind = Vector2(amp, lean)
+	for m in _wind_models + _wind_cards + _wind_grass:
+		(m as ShaderMaterial).set_shader_parameter("amp", amp)
+		(m as ShaderMaterial).set_shader_parameter("lean", lean)
 
 ## Wycinanie alfą z wygładzonym brzegiem (alpha-to-coverage przy MSAA widoków 3D): brzegi kart igliwia, pni i trawy nie migoczą
 ## przy przesuwanej kamerze. `backlight`: igliwie prześwituje światłem zza drzew (`MoonRim`).
@@ -1610,11 +1695,13 @@ const UNDERGROWTH_SHADER := """
 shader_type spatial;
 render_mode cull_disabled, depth_draw_opaque, specular_disabled, alpha_to_coverage;
 uniform sampler2D tex : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
+uniform float amp = 0.5;
+uniform float lean = 0.0;
 void vertex() {
 	float k = 1.0 - UV.y;
 	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	float sway = sin(TIME * 1.1 + w.x * 0.8 + w.z * 1.9) * 0.6 + sin(TIME * 2.7 + w.x * 2.3) * 0.4;
-	VERTEX.x += sway * 0.07 * k * k;
+	VERTEX.x += (sway - lean) * 0.14 * amp * k * k;
 	NORMAL = normalize(vec3(0.0, 1.0, 0.45));
 	COLOR = INSTANCE_CUSTOM;
 }
@@ -1629,6 +1716,7 @@ void fragment() {
 }
 """
 static func build_undergrowth(parent: Node3D, rows: Array) -> void:
+	_wind_grass.clear()
 	var nrows := rows.size()
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
 	var rng := RandomNumberGenerator.new()
@@ -1685,6 +1773,9 @@ static func build_undergrowth(parent: Node3D, rows: Array) -> void:
 		var mat := ShaderMaterial.new()
 		mat.shader = sh
 		mat.set_shader_parameter("tex", load(FOREST_DIR + k + ".png"))
+		mat.set_shader_parameter("amp", _wind.x)
+		mat.set_shader_parameter("lean", _wind.y)
+		_wind_grass.append(mat)
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_custom_data = true
