@@ -22,6 +22,8 @@ const WEAPONS := [Weapons.SRUT8, Weapons.CIEGNO6, Weapons.HKM9, Weapons.GNIEW4]
 ## (8+) Poly Haven: zapora betonowa przy starcie, koksownik wartowników przed posterunkiem.
 const ACCENTS := [[Vector2(152, 416), 6], [Vector2(184, 416), 6], [Vector2(1432, 416), 7], [Vector2(2872, 416), 7], [Vector2(200, 416), 14], [Vector2(584, 416), 11], [Vector2(1864, 416), 15], [Vector2(1928, 416), 20], [Vector2(1960, 416), 16], [Vector2(2024, 416), 19], [Vector2(2072, 416), 15], [Vector2(2120, 416), 20], [Vector2(2184, 416), 16], [Vector2(2216, 416), 15], [Vector2(2248, 416), 17], [Vector2(1880, 353), 15], [Vector2(1928, 353), 17], [Vector2(2008, 353), 20], [Vector2(2056, 353), 16], [Vector2(2136, 353), 15], [Vector2(2200, 353), 20], [Vector2(2088, 416), 21], [Vector2(1896, 405), 22]]
 
+## Tło 3D (`backdrop3d.gd`, kosmetyka): ta sama linia energetyczna co w 1.2 i daleki maszt radiostacji za lasem.
+const BACKDROP := [{"kind": "power", "c0": -20, "c1": 215, "z": -82.0}, {"kind": "mast", "col": 30, "z": -170.0, "h": 110.0}]
 const MAP := [
 	"##............................................................................................................................................................................................##",
 	"##............................................................................................................................................................................................##",
