@@ -1,7 +1,7 @@
 """Tekstury drzew tła widoku 3D (`Level3D.build_forest`): świerki i martwe pnie jako karty z kanałem alfa.
 
 Wynik: prototype/art/world3d/forest/spruce_{a,b,c}.png, snag_{a,b}.png (512×1024 RGBA, pień u dołu na środku) oraz runo:
-grass_{a,b}.png i fern_a.png (256×256, kępa od dolnej krawędzi) dla `Level3D.build_undergrowth`.
+grass_{a,b}.png i fern_a.png (256×256, kępa od dolnej krawędzi) dla `Level3D.build_undergrowth`, roots_{a,b}.png (korzenie pod krawędzią bryły, `build_front_edge`).
 Kształt: pień + piętra opadających, postrzępionych gałęzi rysowanych igła po igle; jaśniejsze grzbiety gałęzi dają bryłę w świetle flary.
 
     python prototype/tools/world_forest_gen.py
@@ -9,6 +9,7 @@ Kształt: pień + piętra opadających, postrzępionych gałęzi rysowanych igł
 import math
 import os
 import random
+import sys
 
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -154,6 +155,41 @@ def grass(seed, dry=0.3, size=256):
             pts_r.append((x + w, y))
         d.polygon(pts_l + pts_r[::-1], fill=col + (255,))
         d.line(pts_l, fill=_mix(col, (0, 0, 0), 0.35) + (255,), width=SS)
+    return im.resize((size, size), Image.LANCZOS)
+
+
+def roots(seed, size=256):
+    """Korzenie na przekroju gruntu: kilka grubszych, falujących korzeni z cienkimi odrostami i grudami ziemi u nasady. Rysowane jak kępa
+    trawy (nasada przy dolnej krawędzi); gra wiesza je odwrócone pod krawędzią bryły (`Level3D.build_front_edge`)."""
+    rng = random.Random(seed)
+    S = size * SS
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    col_d, col_l, soil = (40, 30, 22), (92, 74, 56), (34, 27, 21)
+
+    def root(x0, y0, ang, ln, wid, depth):
+        pts_l, pts_r = [], []
+        x, y, a = x0, y0, ang
+        n = 14
+        for i in range(n + 1):
+            t = i / n
+            w = wid * (1.0 - t) ** 0.8 + 0.6 * SS
+            pts_l.append((x - w, y))
+            pts_r.append((x + w, y))
+            if depth > 0 and 0.2 < t < 0.85 and rng.random() < 0.22:
+                root(x, y, a + rng.choice((-1, 1)) * rng.uniform(0.5, 1.1), ln * rng.uniform(0.25, 0.45), w * 0.55, depth - 1)
+            a += rng.gauss(0, 0.16)
+            x += math.cos(a) * ln / n
+            y += math.sin(a) * ln / n
+        col = _mix(col_d, col_l, rng.uniform(0.0, 0.5))
+        d.polygon(pts_l + pts_r[::-1], fill=col + (255,))
+        d.line(pts_r, fill=_mix(col, col_l, 0.6) + (255,), width=SS)
+
+    for _ in range(rng.randint(4, 6)):
+        root(S * 0.5 + rng.gauss(0, S * 0.16), S - 2 * SS, math.radians(-90 + rng.gauss(0, 18)), S * rng.uniform(0.45, 0.95), rng.uniform(4.0, 8.0) * SS, 2)
+    for _ in range(18):                                        # grudy ziemi przy nasadzie
+        cx, cy, r = S * 0.5 + rng.gauss(0, S * 0.2), S - rng.uniform(2, 26) * SS, rng.uniform(5, 14) * SS
+        d.ellipse([cx - r, cy - r * 0.7, cx + r, cy + r * 0.7], fill=_mix(soil, col_d, rng.random()) + (255,))
     return im.resize((size, size), Image.LANCZOS)
 
 
@@ -445,6 +481,8 @@ def main():
         "grass_a": grass(3, 0.25),
         "grass_b": grass(8, 0.6),
         "fern_a": fern(4),
+        "roots_a": roots(6),
+        "roots_b": roots(13),
         "pine_a": pine_card(31),
         "pine_b": pine_card(47),
         "birch_a": birch_card(53),
@@ -455,7 +493,10 @@ def main():
         "bough_side": bough(21, True),
         "bough_top": bough(22, False),
     }
+    only = next((a[7:].split(",") for a in sys.argv[1:] if a.startswith("--only=")), None)        # --only=roots_a,roots_b: tylko te pliki
     for name, im in jobs.items():
+        if only and name not in only:
+            continue
         # lekkie zmiękczenie koloru bez rozmywania alfy (krawędź zostaje ostra dla alpha scissor)
         rgb = im.convert("RGB").filter(ImageFilter.GaussianBlur(0.6))
         out = Image.merge("RGBA", (*rgb.split(), im.split()[3]))

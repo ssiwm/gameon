@@ -445,6 +445,7 @@ func _sync_geometry() -> void:
 	_rows = rows
 	Level3D.build_decals(_geo, rows)
 	Level3D.build_undergrowth(_geo, rows)
+	Level3D.build_front_edge(_geo, rows)
 	_build_deco()
 	Level3D.build_fog_volumes(_geo, rows, 0.02 if hub else 0.035)
 	if not hub:
