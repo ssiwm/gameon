@@ -3861,6 +3861,7 @@ const SKY_COVER := {"clear": 0.22, "rain": 0.85, "storm": 0.95, "fog": 0.7}     
 const SKY_WIND := {"clear": 0.006, "rain": 0.02, "storm": 0.05, "fog": 0.003}    # dryf chmur [jedn. szumu/s]
 const SKY_STARS := {"clear": 1.0, "rain": 0.0, "storm": 0.0, "fog": 0.1}         # gwiazdy w prześwitach
 const SKY_MOON := {"clear": 1.0, "rain": 0.08, "storm": 0.0, "fog": 0.22}         # tarcza księżyca (za chmurami deszczu i w mgle blednie)
+const WIND_K := {"clear": 0.3, "rain": 0.85, "storm": 1.9, "fog": 0.12}             # wiatr w koronach i runie (`Level3D.set_wind`); bez pogody 0,5
 const BACKDROP_VIS := {"clear": 1.0, "rain": 0.55, "storm": 0.45, "fog": 0.25}     # lampki masztu i okno wieży (`backdrop3d.gd`) za deszczem i mgłą
 const CANOPY_HAZE_K := {"clear": 1.15, "rain": 0.7, "storm": 0.6, "fog": 0.35}   # zamglenie koron (`Level3D.build_canopy_haze`); w mgle warstwy daje mgła głębi
 
@@ -4010,6 +4011,8 @@ func _sync_weather(delta: float) -> void:
 	for ch in _geo.get_children():                                 # zamglenie koron (`Level3D.build_canopy_haze`)
 		if String(ch.name).begins_with("CanopyHaze") and ch is MeshInstance3D:
 			((ch as MeshInstance3D).material_override as ShaderMaterial).set_shader_parameter("strength", haze_k)
+	var gusty := 0.5 * sin(_life * 0.7) * sin(_life * 0.31) if id == "storm" else 0.0     # te same podmuchy co pochylenie deszczu
+	Level3D.set_wind(lerpf(0.5, float(WIND_K.get(id, 0.5)), k) * (1.0 + gusty), (0.55 + 0.3 * gusty) * k if id == "storm" else 0.0)
 	var bvis := lerpf(1.0, float(BACKDROP_VIS.get(id, 1.0)), k)
 	for ch in _geo.get_children():                                 # lampki punktów orientacyjnych tła (`backdrop3d.gd`)
 		if String(ch.name).begins_with("BackdropLamp") and ch is MeshInstance3D:
