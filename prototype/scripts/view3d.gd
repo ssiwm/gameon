@@ -59,6 +59,13 @@ var _geo: Node3D
 var _geo_key := ""
 var _rows: Array = []                    ## wiersze bieżącej mapy (rozbryzgi od kroków: rodzaj cieczy pod stopami)
 var _splash := {}                        ## id węzła (gracz / wróg) → CPUParticles3D rozbryzgu
+var _reeds_mat: ShaderMaterial           ## materiał trzciny przy cieczach (`Level3D.build_liquid_props`): uginanie przy przechodzących
+var _reed_push := {}                     ## id postaci / wroga → wygładzona siła uginania 0..1
+var _rustle_t := {}                      ## id → s do następnego szelestu
+var _mud_mats: Array = []                ## materiały tafli błota (`LiquidTop_m_*`): odciski stóp w uniformie `prints`
+var _prints := PackedVector4Array()      ## pierścień MUD_PRINTS odcisków: x, z (m), czas `_life` powstania, kierunek ±1
+var _print_i := 0
+var _print_last := {}                    ## id → [x ostatniego odcisku (m), strona stopy ±1]
 var _wade := {}                          ## mapa brodzenia (`Level3D.wade_map`): o ile opuścić model stojący w cieczy
 var _geo_t := 0.0
 var _cam_a: Camera3D
@@ -291,6 +298,8 @@ func _process(delta: float) -> void:
 		_sync_geometry()
 	_sync_rigs()
 	_sync_enemies(delta)
+	_sync_reeds(delta)
+	_sync_mud_prints()
 	_sync_projectiles()
 	_sync_props()
 	_sync_items()
@@ -444,6 +453,16 @@ func _sync_geometry() -> void:
 	Level3D.build_level(_geo, rows, trench)
 	Level3D.build_liquids(_geo, rows)
 	Level3D.build_liquid_props(_geo, rows)
+	var reeds := _geo.get_node_or_null("ShoreReeds") as MeshInstance3D
+	_reeds_mat = reeds.material_override as ShaderMaterial if reeds != null else null
+	_mud_mats.clear()
+	for mi in _geo.get_children():
+		if mi is MeshInstance3D and String(mi.name).begins_with("LiquidTop_m_"):
+			_mud_mats.append((mi as MeshInstance3D).material_override)
+	_prints = PackedVector4Array()
+	_prints.resize(MUD_PRINTS)
+	_print_i = 0
+	_print_last.clear()
 	Level3D.build_wade_veils(_geo, rows, LAYER_ACTORS)
 	_rows = rows
 	_wade = Level3D.wade_map(rows)
@@ -679,6 +698,103 @@ func _liquid_kind(px: Vector2) -> int:
 	return -1
 
 ## Brodzenie: głębokość zanurzenia modelu goni docelową (`Level3D.wade_at`) — wejście do wody, skok i wyjście bez szarpnięcia.
+const REED_PUSHERS := 8                  ## tyle postaci naraz ugina trzcinę (tablica w shaderze REED_SHADER)
+const REED_NEAR_X := 0.55                ## m: kępa bliżej niż tyle w poziomie od stóp — postać idzie przez trzcinę
+const REED_NEAR_Z := 0.75                ## m: …i tyle w głąb (kępy daleko za płaszczyzną gry stoją w spokoju)
+
+## Trzcina przy cieczach: przechodzący gracze i wrogowie uginają kępy (shader) i szeleszczą nimi (tylko dźwięk w świecie, bez Uwagi —
+## kosmetyka lokalna, z pozycji i prędkości już zsynchronizowanych postaci). Szelest wroga w trzcinach to wskazówka dla ucha.
+func _sync_reeds(delta: float) -> void:
+	if _reeds_mat == null or Level3D.reed_spots.is_empty():
+		return
+	var spots := Level3D.reed_spots
+	var cam_x := _cam_a.global_position.x
+	var cand: Array = []                                   # [odległość od kamery, Vector4 dla shadera]
+	var seen := {}
+	for grp in ["players", "enemies"]:
+		for n in get_tree().get_nodes_in_group(grp):
+			var b := n as Node2D
+			if b == null or not is_instance_valid(b) or not b.is_visible_in_tree() or b.get("dead") == true:
+				continue
+			var feet := Level3D.px_to_m(b.global_position)
+			if absf(feet.x - cam_x) > 30.0:
+				continue
+			var fz := 0.0 if grp == "players" else 0.3
+			var inside := false
+			for sp in spots:
+				if absf(sp.x - feet.x) < REED_NEAR_X and absf(sp.z - fz) < REED_NEAR_Z and feet.y > sp.y - 0.5 and feet.y < sp.y + 0.8:
+					inside = true
+					break
+			var id := b.get_instance_id()
+			seen[id] = true
+			var v = b.get("velocity")
+			var vx: float = absf((v as Vector2).x) if v is Vector2 else 0.0
+			var want := (0.45 + 0.55 * clampf(vx / 80.0, 0.0, 1.0)) if inside else 0.0
+			var cur := move_toward(float(_reed_push.get(id, 0.0)), want, delta * (5.0 if want > float(_reed_push.get(id, 0.0)) else 1.6))      # trzcina wraca wolniej, niż się ugina
+			_reed_push[id] = cur
+			if cur > 0.01:
+				cand.append([absf(feet.x - cam_x), Vector4(feet.x, feet.y, fz, cur)])
+			# szelest: idący przez kępę, nie częściej niż co ~0,4 s; kucający ciszej
+			var rt := float(_rustle_t.get(id, 0.0)) - delta
+			if inside and vx > 18.0 and rt <= 0.0:
+				var crouch: bool = b.get("crouching") == true
+				rt = randf_range(0.32, 0.5) * (1.6 if crouch else 1.0)
+				Audio.play_variant_at("foley_gear", 3, b.global_position, Audio.BUS_PLAYER if grp == "players" else Audio.BUS_WORLD,
+					(-19.0 if crouch else -11.0), randf_range(0.62, 0.8), 0.15)
+			_rustle_t[id] = maxf(rt, 0.0)
+	for id in _reed_push.keys():
+		if not seen.has(id):
+			_reed_push.erase(id)
+			_rustle_t.erase(id)
+	cand.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+	var arr := PackedVector4Array()
+	arr.resize(REED_PUSHERS)
+	for i in mini(cand.size(), REED_PUSHERS):
+		arr[i] = cand[i][1]
+	_reeds_mat.set_shader_parameter("pushers", arr)
+
+const MUD_PRINTS := 48                   ## tyle odcisków naraz (tablica w shaderze LIQUID_TOP); najstarszy znika pierwszy
+const MUD_STRIDE := 0.42                 ## m między kolejnymi odciskami jednej postaci
+const MUD_FOOT_Z := 0.09                 ## m: lewa / prawa stopa w głąb od osi postaci
+
+## Ślady w błocie: idący gracze i wrogowie zostawiają odciski na tafli błota (kosmetyka lokalna, zanikają po ~35–60 s). Trop wroga, który
+## przeszedł przez bagno, zostaje na chwilę widoczny w świetle latarki.
+func _sync_mud_prints() -> void:
+	if _mud_mats.is_empty():
+		return
+	var added := false
+	for grp in ["players", "enemies"]:
+		for n in get_tree().get_nodes_in_group(grp):
+			var b := n as Node2D
+			if b == null or not is_instance_valid(b) or not b.is_visible_in_tree() or b.get("dead") == true:
+				continue
+			if str(b.get("kind")) in ["cma", "nest", "vein", "leech"]:
+				continue
+			var id := b.get_instance_id()
+			if _liquid_kind(b.global_position) != 0:
+				_print_last.erase(id)
+				continue
+			var v = b.get("velocity")
+			var vel: Vector2 = v if v is Vector2 else Vector2.ZERO
+			if absf(vel.y) > 30.0:
+				continue                                     # w skoku nie ma odcisków
+			var x := Level3D.px_to_m(b.global_position).x
+			var last: Array = _print_last.get(id, [x - MUD_STRIDE, 1.0])
+			if absf(x - float(last[0])) < MUD_STRIDE:
+				continue
+			var side := -float(last[1])
+			var z := (0.0 if grp == "players" else 0.3) + side * MUD_FOOT_Z
+			var dir := signf(vel.x) if absf(vel.x) > 1.0 else 1.0
+			_prints[_print_i] = Vector4(x, z, maxf(_life, 0.01), dir)
+			_print_i = (_print_i + 1) % MUD_PRINTS
+			_print_last[id] = [x, side]
+			added = true
+	for m in _mud_mats:
+		var sm := m as ShaderMaterial
+		if added:
+			sm.set_shader_parameter("prints", _prints)
+		sm.set_shader_parameter("print_now", _life)
+
 func _wade_step(cur: float, feet_px: Vector2) -> float:
 	var want := Level3D.wade_at(_wade, feet_px)
 	return move_toward(cur, want, get_process_delta_time() * (1.6 if want > cur else 3.0))

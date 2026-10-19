@@ -24,8 +24,9 @@ const TABLE := {
 	# płycizna / bagno: grząsko — wolniej, ospały rozruch, niższy skok; chlupot głośny
 	"water": {"speed": 0.72, "accel": 0.55, "decel": 0.75, "turn": 0.6, "jump": 0.85, "noise": 1.3,
 		"step": "step_water", "db": 2.0, "pitch": 0.95, "layer": "water"},
-	# błoto z bagna: jeszcze wolniej i ciężej, ale tłumi hałas
-	"mud": {"speed": 0.58, "accel": 0.42, "decel": 0.55, "turn": 0.5, "jump": 0.8, "noise": 0.6,
+	# błoto z bagna: jeszcze wolniej i ciężej, ale tłumi hałas. Hałas liczy się na czas, a przez błoto idzie się ×1,7 dłużej, więc
+	# „tłumi” musi być mocniejsze od spowolnienia: 0,35 / 0,58 ≈ 0,6 hałasu ziemi na metr (przy 0,6 wychodziło tyle samo co na ziemi)
+	"mud": {"speed": 0.58, "accel": 0.42, "decel": 0.55, "turn": 0.5, "jump": 0.8, "noise": 0.35,
 		"step": "step_water", "db": 0.0, "pitch": 0.62, "layer": "squelch"},
 	# plama oleju: ślizg (prawie bez przyczepności), lekko wolniej
 	"oil": {"speed": 0.9, "accel": 0.14, "decel": 0.06, "turn": 0.12, "jump": 1.0, "noise": 0.8,

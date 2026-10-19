@@ -48,6 +48,7 @@ const PROP := preload("res://scripts/prop.gd")
 const PICKUP := preload("res://scripts/pickup.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const FIRE_PATCH := preload("res://scripts/fire_patch.gd")
+const Vfx := preload("res://scripts/vfx.gd")
 const BRICK_WALL := preload("res://scripts/brick_wall.gd")
 const GRENADE := preload("res://scripts/grenade.gd")
 const ACID := preload("res://scripts/acid_spit.gd")
@@ -978,17 +979,38 @@ func walls_total() -> int:
 
 const MAX_FIRE_PATCHES := 16
 const FIRE_MERGE_DIST := 18.0
+## Ogień a podłoże: woda gasi płomień (para i syk, bez żaru), błoto skraca żar, olej się zapala — pali się dłużej i ogień
+## biegnie po plamie co OIL_SPREAD_STEP px, z opóźnieniem OIL_SPREAD_DELAY s (pula MAX_FIRE_PATCHES nadal obowiązuje).
+const MUD_FIRE_MULT := 0.45
+const OIL_FIRE_LIFE := 11.0
+const OIL_SPREAD_STEP := 24.0
+const OIL_SPREAD_DELAY := 0.22
+const OIL_IGNITE_NOISE := 3.0              ## „wuff” zapłonu plamy: raz na plamę (jak granat fosforowy, GDD §6.5)
+const DOUSE_FX_EVERY := 0.35               ## s: syk i para na wodzie najwyżej tak często (miotacz zrzuca żar co chwilę)
 var _fire_serial := 0
+var _douse_t := 0.0
 
 ## Serwer: HKM-9 zostawia ogień na podłodze w `pos`. Blisko istniejącego ognia tylko go odnawia; pula jest ograniczona (najstarszy gaśnie).
-func spawn_fire_patch(pos: Vector2, weapon: int, shooter: int, life := FIRE_PATCH.FIRE_LIFE) -> void:
+func spawn_fire_patch(pos: Vector2, weapon: int, shooter: int, life := FIRE_PATCH.FIRE_LIFE, chain := false) -> void:
 	if not NoiseMgr.is_server():
 		return
-	var live: Array = get_tree().get_nodes_in_group("fire_patches").filter(func(p: Node) -> bool: return is_instance_valid(p) and not p.is_queued_for_deletion())
-	for p in live:
-		if absf(p.global_position.x - pos.x) < FIRE_MERGE_DIST and absf(p.global_position.y - pos.y) < 10.0:
-			_refresh_fire_patch(String(p.name), life)
+	match surface_at(pos):
+		"water":
+			_douse_fire(pos)
 			return
+		"mud":
+			life *= MUD_FIRE_MULT
+		"oil":
+			if not chain and _fire_near(pos) == null:
+				NoiseMgr.add_noise(OIL_IGNITE_NOISE, pos, "fire")
+			life = maxf(life, OIL_FIRE_LIFE)
+			_spread_oil_fire(pos, weapon, shooter, -1.0)
+			_spread_oil_fire(pos, weapon, shooter, 1.0)
+	var near := _fire_near(pos)
+	if near != null:
+		_refresh_fire_patch(String(near.name), life)
+		return
+	var live: Array = get_tree().get_nodes_in_group("fire_patches").filter(func(p: Node) -> bool: return is_instance_valid(p) and not p.is_queued_for_deletion())
 	if live.size() >= MAX_FIRE_PATCHES:
 		(live[0] as Node).queue_free()
 	_fire_serial += 1
@@ -997,6 +1019,40 @@ func spawn_fire_patch(pos: Vector2, weapon: int, shooter: int, life := FIRE_PATC
 		_spawn_fire_rpc.rpc(n, pos, weapon, shooter, life)
 	else:
 		_spawn_fire_rpc(n, pos, weapon, shooter, life)
+
+## Żywy ogień w zasięgu scalania od `pos` albo null.
+func _fire_near(pos: Vector2) -> Node2D:
+	for p in get_tree().get_nodes_in_group("fire_patches"):
+		if not is_instance_valid(p) or (p as Node).is_queued_for_deletion():
+			continue
+		if absf((p as Node2D).global_position.x - pos.x) < FIRE_MERGE_DIST and absf((p as Node2D).global_position.y - pos.y) < 10.0:
+			return p
+	return null
+
+## Serwer: ogień na oleju przeskakuje na sąsiedni kawałek plamy (w stronę `dir`), o ile tam też jest olej i jeszcze się nie pali.
+func _spread_oil_fire(pos: Vector2, weapon: int, shooter: int, dir: float) -> void:
+	var next := pos + Vector2(dir * OIL_SPREAD_STEP, 0.0)
+	if surface_at(next) != "oil" or _fire_near(next) != null:
+		return
+	get_tree().create_timer(OIL_SPREAD_DELAY).timeout.connect(func() -> void:
+		if is_inside_tree() and surface_at(next) == "oil" and _fire_near(next) == null:
+			spawn_fire_patch(next, weapon, shooter, OIL_FIRE_LIFE, true))
+
+## Serwer: płomień nad wodą gaśnie — u wszystkich para i syk (rzadziej niż co zrzut żaru miotacza).
+func _douse_fire(pos: Vector2) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - _douse_t < DOUSE_FX_EVERY:
+		return
+	_douse_t = now
+	if NoiseMgr.has_network():
+		_douse_fx_rpc.rpc(pos)
+	else:
+		_douse_fx_rpc(pos)
+
+@rpc("authority", "call_local", "unreliable")
+func _douse_fx_rpc(pos: Vector2) -> void:
+	Vfx.steam(self, pos)
+	Audio.play_at("flare_ignite", pos, Audio.BUS_WORLD, -14.0, 0.55)
 
 func _refresh_fire_patch(n: String, life: float) -> void:
 	if NoiseMgr.has_network():

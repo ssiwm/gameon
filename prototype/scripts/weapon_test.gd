@@ -22,6 +22,7 @@ const Sprites := preload("res://scripts/sprites.gd")
 const NightShiftMode := preload("res://scripts/night_shift.gd")
 const SmokeCloud := preload("res://scripts/smoke_cloud.gd")
 const BrickWall := preload("res://scripts/brick_wall.gd")
+const FirePatch := preload("res://scripts/fire_patch.gd")
 const WALL_HP_REF := 120.0
 const Enemy := preload("res://scripts/enemy.gd")
 const Controller := preload("res://scripts/weapon_controller.gd")
@@ -149,6 +150,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_upgrades()
 	await _t_phase3()
 	await _t_phase4()
+	await _t_liquid_fire()
 	await _t_throwables()
 	await _t_profile()
 	await _t_sweep()
@@ -1047,6 +1049,67 @@ func _t_phase4() -> void:
 	for bw in get_tree().get_nodes_in_group("breakables"):
 		bw.queue_free()
 	free_dummies()
+	await frames(2)
+
+## Ogień a podłoże (level.spawn_fire_patch): woda gasi, błoto skraca żar, olej się zapala i ogień biegnie po plamie.
+## Kafle podłogi przed graczem są na czas testu podmieniane na olej / wodę / błoto (`level._solid`), potem przywracane.
+func _t_liquid_fire() -> void:
+	var layer: TileMapLayer = level._solid
+	var feet := layer.local_to_map(layer.to_local(player.global_position + Vector2(0.0, 3.0)))
+	var saved := {}
+	var put := func(c0: int, n: int, ch: String) -> void:
+		for i in n:
+			var cell := feet + Vector2i(c0 + i, 0)
+			if not saved.has(cell):
+				saved[cell] = [layer.get_cell_source_id(cell), layer.get_cell_atlas_coords(cell), layer.get_cell_alternative_tile(cell)]
+			var ac: Vector2i = saved[cell][1]
+			layer.set_cell(cell, maxi(int(saved[cell][0]), 0), Vector2i(level.KINDS[ch][0], maxi(ac.y, 0)), maxi(int(saved[cell][2]), 0))
+	var cell_pos := func(dc: int) -> Vector2:
+		var c := feet + Vector2i(dc, 0)
+		return layer.to_global(layer.map_to_local(c)) + Vector2(0.0, -8.0 - 1.0)
+	var patches := func() -> Array:
+		return get_tree().get_nodes_in_group("fire_patches").filter(func(p: Node) -> bool: return is_instance_valid(p) and not p.is_queued_for_deletion())
+	var clear_fire := func() -> void:
+		for p in get_tree().get_nodes_in_group("fire_patches"):
+			p.queue_free()
+	clear_fire.call()
+	await frames(2)
+	put.call(6, 6, "O")
+	put.call(14, 2, "~")
+	put.call(18, 2, "m")
+	await frames(2)
+	check("ogień: kafle testowe czytane jako olej / woda / błoto", level.surface_at(cell_pos.call(7)) == "oil" and level.surface_at(cell_pos.call(14)) == "water" and level.surface_at(cell_pos.call(18)) == "mud",
+		"%s %s %s" % [level.surface_at(cell_pos.call(7)), level.surface_at(cell_pos.call(14)), level.surface_at(cell_pos.call(18))])
+	# woda: brak żaru
+	level.spawn_fire_patch(cell_pos.call(14), Weapons.HKM9, 1)
+	await frames(3)
+	check("ogień: na wodzie gaśnie (bez żaru)", patches.call().is_empty(), str(patches.call().size()))
+	# błoto: żar krótszy niż na ziemi
+	level.spawn_fire_patch(cell_pos.call(18), Weapons.HKM9, 1)
+	await frames(3)
+	var mud_life := float(patches.call()[0].life) if not patches.call().is_empty() else -1.0
+	check("ogień: w błocie żar krótszy (%.1f s < %.1f s)" % [mud_life, FirePatch.FIRE_LIFE], mud_life > 0.0 and mud_life < FirePatch.FIRE_LIFE * 0.6)
+	clear_fire.call()
+	await frames(2)
+	# olej: zapłon na skraju plamy przechodzi na całą plamę (6 kafli ≈ 96 px), pali się dłużej i daje jednorazowy hałas
+	NoiseMgr.last_noise_amount = 0.0
+	level.spawn_fire_patch(cell_pos.call(6), Weapons.HKM9, 1)
+	var ign_noise := NoiseMgr.last_noise_amount
+	await wait(1.6)
+	var ps: Array = patches.call()
+	var max_x := -INF
+	var min_life := INF
+	for p in ps:
+		max_x = maxf(max_x, (p as Node2D).global_position.x)
+		min_life = minf(min_life, float(p.life))
+	var reach: float = max_x - cell_pos.call(6).x
+	check("ogień: olej zapala się na całej plamie (%d ognisk, zasięg %.0f px z ~88)" % [ps.size(), reach], ps.size() >= 4 and reach >= 70.0)
+	check("ogień: nie wychodzi poza olej (ostatnie ognisko przed kaflem +12)", max_x < cell_pos.call(12).x - 4.0, "%.0f vs %.0f" % [max_x, cell_pos.call(12).x])
+	check("ogień: olej pali się dłużej (najkrótszy żar %.1f s > %.1f s)" % [min_life, FirePatch.FIRE_LIFE], min_life > FirePatch.FIRE_LIFE)
+	check("ogień: zapłon oleju słychać (hałas %.1f)" % ign_noise, ign_noise >= 2.5)
+	clear_fire.call()
+	for cell in saved:
+		layer.set_cell(cell, int(saved[cell][0]), saved[cell][1], int(saved[cell][2]))
 	await frames(2)
 
 ## Faza 3 przeglądu broni: tryb serii M-83, ogień na podłodze HKM-9, błysk lufy i światło broni jako sygnał.
