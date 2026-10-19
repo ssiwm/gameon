@@ -9,7 +9,8 @@ extends SceneTree
 ##     co ROOF_SPAN kafli, od końca do końca,
 ## (6) stopy ścian: ściana `C` nad otwartym parterem dostaje filar do gruntu,
 ## (7) wieże (`frame_role`): maszt to zawsze para sąsiednich kolumn od góry mapy, noga strażnicy nie jest jednocześnie pniem drzewa,
-## (8) pomosty bez słupa, ściany i bryły obok (`deck_supports`): każda noga ma oparcie — grunt lub pomost niżej, albo strop nad pomostem.
+## (8) pomosty bez słupa, ściany i bryły obok (`deck_supports`): każda noga ma oparcie — grunt lub pomost niżej, albo strop nad pomostem,
+## (9) żebra długich hal (`interior_ribs`): stoją w kolumnach samego tła `b` (z sąsiadami) między stropem a podłogą `C`.
 ## godot --headless --path prototype -s tools/test_structures.gd      → ma wypisać PASS
 var Level3D: GDScript
 var _frames := 0
@@ -85,6 +86,7 @@ func _check_map(id: String, rows: Array, radius: float) -> void:
 	print("ok    %s: %d słupów, %d przy kładkach, %d pni drzew, maszt %s, nogi wieży %s" % [id, runs.size(), touching, trees, str(roles["mast"]), str(roles["tower"])])
 	_check_roofs(id, rows)
 	_check_decks(id, rows)
+	_check_ribs(id, rows)
 
 func _check_roofs(id: String, rows: Array) -> void:
 	var roofs: Array = Level3D.roof_runs(rows)
@@ -127,3 +129,14 @@ func _check_decks(id: String, rows: Array) -> void:
 			elif kind == "hang":
 				hangs += 1
 	print("ok    %s: %d pomostów bez podpór dostało %d nóg i %d wieszaków" % [id, list.size(), stilts, hangs])
+
+func _check_ribs(id: String, rows: Array) -> void:
+	var ribs: Array = Level3D.interior_ribs(rows)
+	for rb in ribs:
+		var c: int = rb["c"]
+		_check(Level3D._ch(rows, c, int(rb["top"]) - 1) == "C" and Level3D._ch(rows, c, int(rb["bot"])) == "C", "%s kol. %d: żebro bez stropu albo podłogi" % [id, c])
+		for q in range(int(rb["top"]), int(rb["bot"])):
+			for cc in [c - 1, c, c + 1]:
+				_check(Level3D._ch(rows, cc, q) == "b", "%s kol. %d rząd %d: żebro przy znaczniku „%s”" % [id, cc, q, Level3D._ch(rows, cc, q)])
+	print("ok    %s: %d żeber hal" % [id, ribs.size()])
+
