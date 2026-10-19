@@ -1355,13 +1355,6 @@ func _sync_hub_props() -> void:
 				if storm and sin(t * 1.7) * sin(t * 0.6 + 1.0) > 0.78:
 					f = 0.15                                   # burza: lampa przy generatorze na chwilę siada
 				(d["light"] as OmniLight3D).light_energy = 2.4 * f
-			"lantern":
-				var lf := 0.9 + 0.1 * sin(t * 11.0) * sin(t * 4.1 + 0.5)          # płomień w szkle drga
-				(d["light"] as OmniLight3D).light_energy = 1.6 * lf
-				(d["mat"] as StandardMaterial3D).emission_energy_multiplier = 2.2 * lf
-			"ribbon":
-				var ph := float(n.global_position.x) * 0.37
-				(d["pivot"] as Node3D).rotation = Vector3(0.0, 0.0, 0.12 * sin(t * 1.3 + ph) + 0.05 * sin(t * 3.1 + ph))
 			"d7":
 				var k := float(n.get("knock_flash"))
 				(d["mat"] as StandardMaterial3D).emission_energy_multiplier = 1.2 + 3.0 * k
@@ -1470,43 +1463,6 @@ func _build_hub_prop(n: Node2D) -> Dictionary:
 		root.add_child(lt)
 		d["mat"] = red
 		d["light"] = lt
-	elif kind == "lantern":
-		# latarnia patrolu (1.1, obóz): stoi na pierwszym konarze cichej drogi — ciepłe światło w ciemności lasu mówi „tędy"
-		var metal := _hp_mat(Color(0.10, 0.10, 0.09), 0.7, 0.5)
-		var glass := StandardMaterial3D.new()
-		glass.albedo_color = Color(1.0, 0.78, 0.42)
-		glass.emission_enabled = true
-		glass.emission = Color(1.0, 0.68, 0.30)
-		glass.emission_energy_multiplier = 2.2
-		_ld_box(root, Vector3(0.26, 0.05, 0.26), Vector3(0.0, 0.025, -0.4), metal)            # podstawa
-		_ld_box(root, Vector3(0.18, 0.28, 0.18), Vector3(0.0, 0.19, -0.4), glass)             # szkło z płomieniem
-		_ld_box(root, Vector3(0.24, 0.05, 0.24), Vector3(0.0, 0.355, -0.4), metal)            # daszek
-		_ld_box(root, Vector3(0.03, 0.12, 0.03), Vector3(0.0, 0.44, -0.4), metal)             # uchwyt
-		var ll := OmniLight3D.new()
-		ll.light_color = Color(1.0, 0.72, 0.38)
-		ll.omni_range = 5.0
-		ll.light_energy = 1.6
-		ll.light_volumetric_fog_energy = 1.0
-		ll.layers = LAYER_WORLD | LAYER_ACTORS
-		ll.position = Vector3(0.0, 0.25, -0.15)
-		root.add_child(ll)
-		d["mat"] = glass
-		d["light"] = ll
-	elif kind == "ribbon":
-		# czerwona wstążka patrolu pod konarem: znaczy cichą drogę (lekko świeci, żeby było ją widać bez latarki)
-		var cloth := StandardMaterial3D.new()
-		cloth.albedo_color = Color(0.62, 0.08, 0.06)
-		cloth.roughness = 0.9
-		cloth.emission_enabled = true
-		cloth.emission = Color(0.55, 0.05, 0.03)
-		cloth.emission_energy_multiplier = 0.6
-		var pivot := Node3D.new()                                   # wstążka kołysze się wokół węzła pod deską
-		pivot.position = Vector3(0.0, 0.0, -0.35)
-		root.add_child(pivot)
-		_ld_box(pivot, Vector3(0.08, 0.06, 0.08), Vector3(0.0, -0.03, 0.0), cloth)             # supeł
-		_ld_box(pivot, Vector3(0.07, 0.55, 0.015), Vector3(0.02, -0.33, 0.0), cloth)
-		_ld_box(pivot, Vector3(0.06, 0.42, 0.015), Vector3(-0.03, -0.27, 0.01), cloth)
-		d["pivot"] = pivot
 	elif kind == "window":
 		var w := (float(args[0]) if not args.is_empty() else 3.0) * Level3D.T
 		var h := 2.0
