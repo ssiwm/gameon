@@ -451,6 +451,7 @@ func _sync_geometry() -> void:
 	if not span.is_empty():
 		trench = {"row": int(float(span[2]) / 16.0), "c0": int(float(span[0]) / 16.0), "c1": int(float(span[1]) / 16.0)}
 	Level3D.build_level(_geo, rows, trench)
+	Level3D.set_streams(_level.get("streams") if _level.get("streams") != null else [])
 	Level3D.build_liquids(_geo, rows)
 	Level3D.build_liquid_props(_geo, rows)
 	var reeds := _geo.get_node_or_null("ShoreReeds") as MeshInstance3D
@@ -473,6 +474,7 @@ func _sync_geometry() -> void:
 	Level3D.build_fog_volumes(_geo, rows, 0.02 if hub else 0.035)
 	if not hub:
 		Level3D.build_forest_floor(_geo, rows)
+		Level3D.build_streams(_geo, rows)
 		Level3D.build_forest(_geo, rows)
 		Level3D.build_canopy_haze(_geo, rows)
 		Backdrop3D.build(_geo, rows, _level.get("backdrop") if _level.get("backdrop") != null else [])

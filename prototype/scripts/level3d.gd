@@ -768,14 +768,222 @@ static func _liquid_profile(w: float, ns: int, d0: float, bank: float, seed: flo
 const SHORE_BACK := 0.55
 const SHORE_BANK := 0.65
 
-## z (m) linii tylnego brzegu ciągu nad pozycją x.
-static func shore_z(x: float, seed: float) -> float:
-	return -DEPTH_BACK + SHORE_BACK + 0.25 * sin(x * 0.9 + seed) + 0.12 * sin(x * 2.3 + seed * 1.7)
+## z (m) linii tylnego brzegu ciągu nad pozycją x. `back`: odległość brzegu od tyłu bryły (ciąg ze strumieniem: ujemna — brzegu nie ma).
+static func shore_z(x: float, seed: float, back := SHORE_BACK) -> float:
+	return -DEPTH_BACK + back + 0.25 * sin(x * 0.9 + seed) + 0.12 * sin(x * 2.3 + seed * 1.7)
 
 ## 0 na linii brzegu i dalej w głąb, 1 za skarpą (pełna głębokość profilu).
-static func shore_k(x: float, z: float, seed: float) -> float:
-	var zs := shore_z(x, seed)
+static func shore_k(x: float, z: float, seed: float, back := SHORE_BACK) -> float:
+	var zs := shore_z(x, seed, back)
 	return smoothstep(zs, zs + SHORE_BANK, z)
+
+## Odległość tylnego brzegu dla ciągu [x0, x0 + w]: SHORE_BACK albo — gdy ciąg zasila strumień z lasu (`streams`) — brzeg daleko za bryłą,
+## więc woda sięga tyłu bryły i łączy się z korytem (`build_streams`).
+static func run_shore_back(x0: float, w: float) -> float:
+	for st in streams:
+		if float(st["x"]) > x0 and float(st["x"]) < x0 + w:
+			return -10.0
+	return SHORE_BACK
+
+# ---------------------------------------------------------------- strumień z lasu (kosmetyka)
+
+## Strumienie z danych mapy (`level.streams`, STREAMS: [kolumna od, kolumna do] ciągu wody): {x — środek przy bryle, hw — pół szerokości przy bryle,
+## ph — faza meandrów}. Ustawia widok przed budową (`set_streams`); czytają je niecka (brak tylnego brzegu), koryto, las (omija koryto) i trzcina.
+static var streams: Array = []
+const STREAM_LEN := 30.0                   ## m w głąb od tyłu bryły; dalej koryto znika w ciemności (dno lasu też ciemnieje w głąb)
+const STREAM_HW_FAR := 1.6                 ## m: pół szerokości koryta w lesie (przy bryle — szerokość ciągu wody)
+
+static func set_streams(list: Array) -> void:
+	streams = []
+	for e in list:
+		var c0 := int(e[0])
+		var c1 := int(e[1])
+		streams.append({"x": float(c0 + c1 + 1) * 0.5 * T, "hw": float(c1 - c0 + 1) * T * 0.5, "ph": float(c0) * 0.37})
+
+## Środek koryta (x, m) na głębokości `d` (m w głąb od płaszczyzny gry, ≥ DEPTH_BACK): przy bryle prosto, dalej meandruje.
+static func stream_x(st: Dictionary, d: float) -> float:
+	var e := maxf(d - DEPTH_BACK, 0.0)
+	var ph: float = st["ph"]
+	return float(st["x"]) + 2.4 * sin(e * 0.11 + ph) * smoothstep(0.0, 10.0, e) + 1.1 * sin(e * 0.29 + ph * 2.1) * smoothstep(0.0, 6.0, e)
+
+## Pół szerokości koryta (m) na głębokości `d`: od szerokości brodu do STREAM_HW_FAR w ~12 m.
+static func stream_hw(st: Dictionary, d: float) -> float:
+	var e := maxf(d - DEPTH_BACK, 0.0)
+	return lerpf(float(st["hw"]), STREAM_HW_FAR, smoothstep(0.0, 12.0, e)) * (0.9 + 0.2 * sin(d * 0.4 + float(st["ph"])))
+
+## x przesunięty poza koryto (na bliższy brzeg, `margin` m od wody), gdy punkt (x, głębokość d) leży w korycie; inaczej bez zmian.
+static func out_of_stream(x: float, d: float, margin: float) -> float:
+	if streams.is_empty() or d > DEPTH_BACK + STREAM_LEN + 2.0 or d < DEPTH_BACK - 0.5:
+		return x
+	for st in streams:
+		var cx := stream_x(st, d)
+		var lim := stream_hw(st, d) + margin
+		if absf(x - cx) < lim:
+			return cx + (lim if x >= cx else -lim)
+	return x
+
+## Nurt: mętna woda torfowa jak w niecce (bez własnego światła, GDD §8.3), wzór i pasma piany płyną ku kamerze; po bokach mokry brzeg,
+## który przechodzi w dno lasu. Ciemnieje w głąb jak dno lasu (kolor wierzchołków), a za ~20 m gaśnie. Mgłę przyjmuje (bez niej w snopie latarki,
+## gdzie mgła wolumetryczna rozjaśnia wszystko wokół, koryto było czarną plamą).
+const STREAM_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx;
+uniform float bank = 0.22;             // część szerokości z każdej strony: mokry brzeg zamiast wody
+uniform float flow = 0.55;             // m/s: nurt ku kamerze
+uniform float fade0 = 18.0;
+uniform float fade1 = 30.0;
+varying float v_shade;
+//COMMON
+void vertex() {
+	v_shade = COLOR.r;
+}
+void fragment() {
+	float u = UV.x;                       // 0..1 w poprzek (z brzegami)
+	float v = UV.y;                       // m wzdłuż koryta od tyłu bryły
+	float edge = min(u, 1.0 - u);
+	float wob = (vn(vec2(v * 0.7, 2.0)) - 0.5) * 0.06;                   // łagodnie falisty brzeg (wcześniej poszarpany szumem w poprzek)
+	float water = smoothstep(bank - 0.03, bank + 0.03, edge + wob);
+	vec2 q = vec2(u * 7.0, v * 1.7 + TIME * flow * 1.7);
+	float r1 = vn(q) - 0.5;
+	float r2 = vn(q * 1.9 + 7.0) - 0.5;
+	vec3 n = normalize(vec3(r1 * 0.30 * water, 1.0, r2 * 0.30 * water));
+	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
+	float streak = smoothstep(0.60, 0.80, fbm(vec2(u * 9.0, v * 0.6 + TIME * flow * 0.6))) * smoothstep(0.30, 0.45, edge);
+	// ta sama woda torfowa co płycizna niecki (LIQUID_TOP przy brzegu) i mokry brzeg jaśniejszy od nurtu — w latarce koryto nie jest czarną plamą
+	vec3 wat = mix(vec3(0.105, 0.090, 0.056), vec3(0.070, 0.062, 0.040), smoothstep(0.30, 0.50, edge)) + vec3(0.10, 0.088, 0.060) * streak * 0.6;
+	vec3 mud = vec3(0.062, 0.050, 0.036) * (0.8 + 0.4 * vn(vec2(u * 24.0, v * 7.0)));
+	ALBEDO = mix(mud, wat, water) * v_shade;
+	ROUGHNESS = mix(0.55, mix(0.18, 0.5, streak), water);
+	SPECULAR = 0.6;
+	ALPHA = smoothstep(0.0, 0.12, edge + wob * 0.5) * (1.0 - smoothstep(fade0, fade1, v + DEPTH_BACK_C));
+}
+"""
+
+## Koryto strumieni: wstęga na dnie lasu od tyłu bryły w głąb (woda + mokre brzegi), kamienie w nurcie, trzcina wzdłuż brzegów.
+static func build_streams(parent: Node3D, rows: Array) -> void:
+	if streams.is_empty():
+		return
+	var ft := forest_terrain(rows)
+	if ft.is_empty():
+		return
+	var sh := Shader.new()
+	sh.code = STREAM_SHADER.replace("//COMMON", LIQUID_COMMON).replace("DEPTH_BACK_C", str(DEPTH_BACK))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 0x57E4
+	var rocks: Array = []
+	var rv := PackedVector3Array()
+	var rn := PackedVector3Array()
+	var rc := PackedColorArray()
+	var ri := PackedInt32Array()
+	for si in streams.size():
+		var st: Dictionary = streams[si]
+		var verts := PackedVector3Array()
+		var nrms := PackedVector3Array()
+		var uvs := PackedVector2Array()
+		var cols := PackedColorArray()
+		var idx := PackedInt32Array()
+		var across := 9
+		var d := DEPTH_BACK - 0.02
+		var rowc := 0
+		while d <= DEPTH_BACK + STREAM_LEN:
+			var cx := stream_x(st, d)
+			var hw := stream_hw(st, d) / (1.0 - 2.0 * 0.22)              # wstęga szersza o mokre brzegi (`bank` w shaderze)
+			var e := d - DEPTH_BACK
+			var shade := lerpf(1.0, 0.3, smoothstep(DEPTH_BACK, 40.0, d))
+			for k in across:
+				var u := float(k) / float(across - 1)
+				var x := cx + (u * 2.0 - 1.0) * hw
+				var y := forest_ground_y(ft, x, maxf(d, DEPTH_BACK)) + 0.05 - 0.07 * (1.0 - smoothstep(0.0, 2.5, e))     # przy bryle równo z taflą niecki
+				verts.append(Vector3(x, y, -d))
+				nrms.append(Vector3.UP)
+				uvs.append(Vector2(u, e))
+				cols.append(Color(shade, shade, shade))
+			rowc += 1
+			d += 0.5 + e * 0.04
+		for j in rowc - 1:
+			for k in across - 1:
+				var a := j * across + k                                   # a, b: bliżej kamery; c, d: dalej
+				var b := a + 1
+				var c := a + across
+				var dd := c + 1
+				idx.append_array(PackedInt32Array([a, c, b, c, dd, b]))
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = verts
+		arr[Mesh.ARRAY_NORMAL] = nrms
+		arr[Mesh.ARRAY_TEX_UV] = uvs
+		arr[Mesh.ARRAY_COLOR] = cols
+		arr[Mesh.ARRAY_INDEX] = idx
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		var mi := MeshInstance3D.new()
+		mi.name = "Stream_%d" % si
+		mi.mesh = am
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.layers = 1 | LAYER_FOREST
+		parent.add_child(mi)
+		# kamienie w nurcie i przy brzegach (rzadziej dalej)
+		var rd := DEPTH_BACK + 0.8
+		while rd < DEPTH_BACK + STREAM_LEN * 0.8:
+			var side := rng.randf_range(-1.0, 1.0)
+			var rx := stream_x(st, rd) + side * stream_hw(st, rd) * 0.95
+			var size := rng.randf_range(0.30, 0.75) * (1.2 if absf(side) > 0.7 else 1.0)
+			rocks.append([Vector3(rx, forest_ground_y(ft, rx, rd) - 0.06, -rd), size, rng.randf() * TAU])
+			rd += rng.randf_range(0.9, 2.2) + (rd - DEPTH_BACK) * 0.08
+		# trzcina i turzyca wzdłuż obu brzegów (bliżej gęściej)
+		var bd := DEPTH_BACK + 0.4
+		while bd < DEPTH_BACK + 20.0:
+			for sd in [-1.0, 1.0]:
+				if rng.randf() < 0.25:
+					continue
+				var bx: float = stream_x(st, bd) + sd * (stream_hw(st, bd) + rng.randf_range(-0.15, 0.45))
+				var by := forest_ground_y(ft, bx, bd)
+				for b in rng.randi_range(6, 12):
+					var base := Vector3(bx + rng.randf_range(-0.3, 0.3), by - 0.02, -bd + rng.randf_range(-0.3, 0.3))
+					var hh := rng.randf_range(0.7, 1.7)
+					var lean := Vector3(rng.randf_range(-0.25, 0.25) * hh, 0.0, rng.randf_range(-0.10, 0.10) * hh)
+					_blade(rv, rn, rc, ri, base, hh, rng.randf_range(0.022, 0.036), rng.randf() * TAU, lean,
+						Color(0.050, 0.095, 0.045), Color(0.150, 0.165, 0.080), rng.randf() < 0.18)
+			bd += rng.randf_range(0.8, 1.5) + (bd - DEPTH_BACK) * 0.05
+	var rock := model_mesh("rock")
+	if not rock.is_empty() and not rocks.is_empty():
+		var local: Transform3D = rock[1]
+		var ab := local * (rock[0] as Mesh).get_aabb()
+		var big := maxf(maxf(ab.size.x, ab.size.z), 0.001)
+		var list: Array = []
+		for r in rocks:
+			var k := float(r[1]) / big
+			var b := Basis(Vector3.UP, float(r[2])).scaled(Vector3(k, k * 0.7, k))
+			list.append([Transform3D(b, r[0]), Color(0.8, 0.8, 0.78)])
+		var first := parent.get_child_count()
+		_forest_chunks(parent, rock[0], null, list, false, local)
+		for i in range(first, parent.get_child_count()):
+			var vi := parent.get_child(i) as VisualInstance3D
+			if vi != null:
+				vi.layers = 1 | LAYER_FOREST
+	if rv.size() > 0:
+		var arr2 := []
+		arr2.resize(Mesh.ARRAY_MAX)
+		arr2[Mesh.ARRAY_VERTEX] = rv
+		arr2[Mesh.ARRAY_NORMAL] = rn
+		arr2[Mesh.ARRAY_COLOR] = rc
+		arr2[Mesh.ARRAY_INDEX] = ri
+		var am2 := ArrayMesh.new()
+		am2.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr2)
+		var rsh := Shader.new()
+		rsh.code = REED_SHADER
+		var rm := ShaderMaterial.new()
+		rm.shader = rsh
+		var reeds := MeshInstance3D.new()
+		reeds.name = "StreamReeds"
+		reeds.mesh = am2
+		reeds.material_override = rm
+		reeds.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		reeds.layers = 1 | LAYER_FOREST
+		parent.add_child(reeds)
 
 ## Tafle i bryły błota, oleju i wody (patrz opis przy `LIQUID_SINK`). Ciąg = kolejne kafle tego samego rodzaju w wierszu, nad którymi nie ma bryły.
 static func build_liquids(parent: Node3D, rows: Array) -> void:
@@ -855,9 +1063,10 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 			zrows.append(zf)
 			var nz := zrows.size()
 			var dx := w / float(ns)
+			var sback := run_shore_back(x0, w)
 			var bed_h := func(i: int, z: float) -> float:
 				var xi := clampi(i, 0, ns)
-				return y_top - prof[xi] * shore_k(x0 + dx * float(xi), z, seed)
+				return y_top - prof[xi] * shore_k(x0 + dx * float(xi), z, seed, sback)
 			var base := verts.size()
 			for i in ns + 1:
 				var x := x0 + dx * float(i)
@@ -933,7 +1142,7 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 			fmat.set_shader_parameter("x0", x0)
 			fmat.set_shader_parameter("run_w", w)
 			fmat.set_shader_parameter("sink", sink)
-			for sp in [["z_back", zb], ["shore_back", SHORE_BACK], ["shore_bank", SHORE_BANK]]:
+			for sp in [["z_back", zb], ["shore_back", sback], ["shore_bank", SHORE_BANK]]:
 				fmat.set_shader_parameter(sp[0], sp[1])
 			var fmi := MeshInstance3D.new()
 			fmi.name = "LiquidFront_%s_%d_%d" % [ch, c, r]
@@ -954,7 +1163,7 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 			sm.set_shader_parameter("x0", x0)
 			sm.set_shader_parameter("run_w", w)
 			sm.set_shader_parameter("sink", sink)
-			for sp in [["z_back", zb], ["shore_back", SHORE_BACK], ["shore_bank", SHORE_BANK]]:
+			for sp in [["z_back", zb], ["shore_back", sback], ["shore_bank", SHORE_BANK]]:
 				sm.set_shader_parameter(sp[0], sp[1])
 			sm.set_shader_parameter("seed", seed)
 			var tmi := MeshInstance3D.new()
@@ -1408,7 +1617,7 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 						continue
 					var bx := x0 + (float(xi) / float(ns)) * w
 					var by := y_top - prof[xi] + 0.02
-					var wz := rng.randf_range(maxf(zb + 1.0, shore_z(bx, float(run["seed"])) + SHORE_BANK), zf - 0.45)
+					var wz := rng.randf_range(maxf(zb + 1.0, shore_z(bx, float(run["seed"]), run_shore_back(x0, w)) + SHORE_BANK), zf - 0.45)
 					reed_spots.append(Vector3(bx, by, wz))
 					for b in rng.randi_range(4, 9):
 						var base := Vector3(bx + rng.randf_range(-0.16, 0.16), by, wz + rng.randf_range(-0.25, 0.25))
@@ -1426,7 +1635,8 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 				var p0 := Vector3(sx, ground_y + 0.015, sz)
 				_stick(v, nr, col, idx, p0, p0 + d * ln, rng.randf_range(0.012, 0.028), stick_c.lerp(Color(0.09, 0.07, 0.05), rng.randf()))
 		# tylny brzeg: pas trzciny (woda) albo turzycy (błoto) wzdłuż falistej linii brzegu — tam, gdzie staw przechodzi w dno lasu
-		if kd != 1:
+		var sback := run_shore_back(x0, w)
+		if kd != 1 and sback > 0.0:
 			var sx := x0 + rng.randf_range(0.1, 0.5)
 			while sx < x0 + w - 0.1:
 				var xi := int(clampf((sx - x0) / w * float(ns), 0.0, float(ns)))
@@ -1450,7 +1660,7 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 					continue
 				var yaw := rng.randf_range(-0.5, 0.5) + (PI * 0.5 if rng.randf() < 0.2 else 0.0)
 				var ln := rng.randf_range(0.35, 1.0)
-				var p0 := Vector3(x0 + fx, y_s + 0.012, rng.randf_range(maxf(zb + 1.0, shore_z(x0 + fx, float(run["seed"])) + SHORE_BANK), zf - 0.5))
+				var p0 := Vector3(x0 + fx, y_s + 0.012, rng.randf_range(maxf(zb + 1.0, shore_z(x0 + fx, float(run["seed"]), run_shore_back(x0, w)) + SHORE_BANK), zf - 0.5))
 				var d := Vector3(cos(yaw), 0.0, sin(yaw))
 				_stick(v, nr, col, idx, p0, p0 + d * ln, rng.randf_range(0.012, 0.024), stick_c)
 	if v.size() > 0:
@@ -1836,6 +2046,7 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 				var h := rng.randf_range(float(band[3]), float(band[4])) * forest_age(x)
 				if bi > 0 and rng.randf() < 0.045:                       # pojedyncze stare drzewa wystają ponad las
 					h *= rng.randf_range(1.25, 1.45)
+				x = out_of_stream(x, -z, 1.4)                          # koryto strumienia (`build_streams`): drzewo staje na brzegu, nie w nurcie
 				var y := forest_ground_y(ft, x, -z)
 				var roll := rng.randf()
 				var snag_p := 0.12 + 0.22 * float(stand["open"])               # na polanach i w rzadkim lesie więcej martwych pni
