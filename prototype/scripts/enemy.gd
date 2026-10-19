@@ -969,8 +969,13 @@ func _steer_to(goal: Vector2, speed: float, delta: float) -> void:
 				_start_drop()
 		Nav.Edge.FALL:
 			# zejście z krawędzi: idzie dalej, aż straci grunt — wcześniej zatrzymywał się, gdy środek ciała był < 3 px od środka kolumny docelowej,
-			# czyli dokładnie na krawędzi (playtest: „stoi na krawędzi uskoku i się nie rusza")
-			velocity.x = (signf(sx) if absf(sx) > 0.5 else _facing) * speed
+			# czyli dokładnie na krawędzi (playtest: „stoi na krawędzi uskoku i się nie rusza"). Kierunek bierze z samej krawędzi (poprzedni węzeł →
+			# węzeł niżej), nie z własnej pozycji: szeroki wróg (Wołek) stoi jeszcze na rogu kładki, gdy środek ciała minął już kolumnę węzła,
+			# i kierunek „do węzła” zmieniał się wtedy co klatkę — drżał na skraju kładki bez końca (playtest 1.7.308)
+			var fdir := signf(step.pos.x - prev.pos.x)
+			if fdir == 0.0:
+				fdir = signf(sx) if absf(sx) > 0.5 else _facing
+			velocity.x = fdir * speed
 		_:
 			velocity.x = signf(sx) * speed if absf(sx) > 3.0 else 0.0
 

@@ -11,6 +11,7 @@ const Enemy := preload("res://scripts/enemy.gd")
 const Bruiser := preload("res://scripts/enemy_bruiser.gd")
 const Codex := preload("res://scripts/codex.gd")
 const Blind := preload("res://scripts/enemy_blind.gd")
+const Nav := preload("res://scripts/nav.gd")
 const FAR_X := 30000.0                ## px: obszar testów fizycznych poza mapą
 
 var main: Node2D
@@ -70,6 +71,7 @@ func run(m: Node2D) -> void:
 	await _test_return_home_stuck()
 	await _test_listener()
 	await _test_wolek_boulder()
+	await _test_ledge_fall()
 	await _test_reed_cover()
 	_finish()
 
@@ -108,6 +110,48 @@ func _test_reed_cover() -> void:
 	await get_tree().physics_frame
 	check("trzcina: kucający w trzcinie widoczny z 0,3 zasięgu (%.2f), w niej stoi: %s" % [m_reed, str(in_r)], in_r and is_equal_approx(m_reed, Enemy.CROUCH_SIGHT * Enemy.REED_SIGHT))
 	check("trzcina: stojącego nie kryje (%.2f), kucający poza nią 0,6 (%.2f)" % [m_stand, m_crouch], is_equal_approx(m_stand, 1.0) and is_equal_approx(m_crouch, Enemy.CROUCH_SIGHT))
+
+# ---------------------------------------------------------------- zejście z krawędzi kładki (playtest 1.7.308: „Wołek zawiesza się na skraju kładki”)
+
+## Krawędź FALL z końca kładki prowadzi do węzła w sąsiedniej kolumnie niżej. Szeroki Wołek dochodzi do kolumny tego węzła, a wciąż stoi na rogu
+## kładki — sterowanie „w stronę węzła” kazało mu wtedy zawracać co klatkę (drżenie na krawędzi bez końca). Teraz idzie w kierunku krawędzi, aż spadnie.
+## Test na prawdziwej kładce mapy 1.3 (pierwsza krawędź FALL z kafla stojącego na kładce): Wołek obudzony na końcu kładki, gracz niżej, za krawędzią.
+func _test_ledge_fall() -> void:
+	var nav = level.get("nav")
+	var found := false
+	var src := Vector2i.ZERO
+	var dst := Vector2i.ZERO
+	for key in nav._edge:
+		if int(nav._edge[key]) != Nav.Edge.FALL:
+			continue
+		var a: Vector2i = nav.cell_of_id(int(key) >> 20)
+		var b: Vector2i = nav.cell_of_id(int(key) & ((1 << 20) - 1))
+		if nav._platform.call(a.x, a.y + 1) and b.y - a.y >= 2:
+			src = a
+			dst = b
+			found = true
+			break
+	check("krawędź kładki: mapa 1.3 ma zejście z kładki (FALL)", found)
+	if not found:
+		return
+	var top: Vector2 = nav.cell_floor(src)
+	var below: Vector2 = nav.cell_floor(dst)
+	var orig := player.global_position
+	player.set_physics_process(false)
+	player.global_position = below + Vector2(signf(below.x - top.x) * 40.0, -2.0)
+	var e := _spawn("wolek", top + Vector2(0.0, -0.5))
+	await get_tree().physics_frame
+	e.wake()
+	var y0: float = e.global_position.y
+	var low := y0
+	for i in 40:                                               # 4 s: dojście do końca kładki (≤ 1 kafel) i zejście
+		await get_tree().create_timer(0.1).timeout
+		low = maxf(low, e.global_position.y)
+	check("krawędź kładki: Wołek schodzi z końca kładki do gracza niżej (spadł o %.0f px, kładka → %.0f px niżej)" % [low - y0, below.y - top.y], low - y0 >= 12.0)
+	e.queue_free()
+	player.global_position = orig
+	player.set_physics_process(true)
+	await get_tree().physics_frame
 
 # ---------------------------------------------------------------- Podsłuchacz: pole ochronne, fala alarmu, limit krzyków (ENEMY_PLAN.md F3.8)
 
