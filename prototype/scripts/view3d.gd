@@ -899,7 +899,16 @@ func _make_proj(n: Node2D) -> void:
 	root.name = "Proj_%d" % n.get_instance_id()
 	var col: Color = d.tracer_color
 	var tail := float(d.tracer_len) * PX
-	if float(d.gravity) > 0.0:
+	var fast: bool = n.has_method("is_fast") and n.is_fast()
+	if fast:
+		# szybka kula: smuga (poświata + rdzeń) od ogona do głowy, rozciągana co klatkę w `_sync_projectiles`
+		var pellet := int(d.pellets) > 1
+		var halo := _trace_quad(Color(col.r, col.g, col.b, 0.5 if pellet else 0.8))
+		var core := _trace_quad(Color(1.0, 0.97, 0.85, 0.85 if pellet else 1.0))
+		root.add_child(halo)
+		root.add_child(core)
+		root.set_meta("trace", [halo, core, TRACE_W_PELLET if pellet else TRACE_W])
+	elif float(d.gravity) > 0.0:
 		_sphere(root, 0.2, Vector3.ZERO, Color(0.3, 0.32, 0.2))
 		_sphere(root, 0.09, Vector3(-0.12, 0.0, 0.0), Color(1.0, 0.7, 0.3))
 	elif n.has_method("sticks_on_hit") and n.sticks_on_hit():
@@ -938,6 +947,15 @@ func _sync_projectiles() -> void:
 			continue
 		var s2 := src as Node2D
 		var drop := float(pr[2]) * clampf(1.0 - s2.global_position.distance_to(pr[3]) * PX / WADE_SHOT_BLEND_M, 0.0, 1.0)
+		if px.has_meta("trace"):
+			var tr: Array = px.get_meta("trace")
+			var head: Vector2 = s2.global_position
+			var tail_at: Vector2 = head - (s2.get("direction") as Vector2) * float(s2.call("tracer_len_at", head))
+			var off := Vector3(0.0, -drop, 0.3)
+			var w: Vector2 = tr[2]
+			_span_quad(tr[0], Level3D.px_to_m(tail_at) + off, Level3D.px_to_m(head) + off, w.x)
+			_span_quad(tr[1], Level3D.px_to_m(tail_at) + off, Level3D.px_to_m(head) + off, w.y)
+			continue
 		px.position = Level3D.px_to_m(s2.global_position) + Vector3(0.0, -drop, 0.3)
 		px.rotation = Vector3(0.0, 0.0, -s2.global_rotation)
 
@@ -2525,6 +2543,49 @@ func mirror_streak(a: Vector2, b: Vector2, color: Color, width: float, life: flo
 	_world.add_child(core)
 	_span_quad(halo, a3, b3, width * 3.4 * PX)
 	_span_quad(core, a3, b3, maxf(width * 0.9, 1.0) * PX)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(halo.material_override, "albedo_color:a", 0.0, life)
+	tw.tween_property(core.material_override, "albedo_color:a", 0.0, life)
+	tw.chain().tween_callback(halo.queue_free)
+	tw.tween_callback(core.queue_free)
+
+## Szerokość smugi szybkiej kuli [m]: (poświata, rdzeń) — kula i śrucina.
+const TRACE_W := Vector2(0.22, 0.055)
+const TRACE_W_PELLET := Vector2(0.13, 0.034)
+static var _tracer_tex: Texture2D
+
+## Tekstura smugi: wzdłuż (u) od przezroczystego ogona do jasnej głowy z zaokrąglonym czołem, w poprzek (v) miękki profil.
+static func _tracer_texture() -> Texture2D:
+	if _tracer_tex == null:
+		var img := Image.create(64, 16, false, Image.FORMAT_RGBA8)
+		for x in 64:
+			var u := (float(x) + 0.5) / 64.0
+			var along := pow(u, 1.6) * (1.0 - smoothstep(0.9, 1.0, u) * 0.85)
+			for y in 16:
+				var v := ((float(y) + 0.5) / 16.0 - 0.5) / 0.5
+				img.set_pixel(x, y, Color(1, 1, 1, along * exp(-v * v * 3.2)))
+		_tracer_tex = ImageTexture.create_from_image(img)
+	return _tracer_tex
+
+## Pas smugi (addytywny, jak `_glow_quad`, ale z teksturą ogon → głowa; `_span_quad` kładzie oś U wzdłuż lotu).
+func _trace_quad(col: Color) -> MeshInstance3D:
+	var mi := _glow_quad(col)
+	(mi.material_override as StandardMaterial3D).albedo_texture = _tracer_texture()
+	mi.layers = LAYER_ACTORS
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return mi
+
+## Wołane z `Vfx.trace`: ostatni odcinek lotu szybkiej kuli (trafienie, ściana, koniec zasięgu) dogasa przez `life` s zamiast zniknąć w klatce.
+func mirror_trace(a: Vector2, b: Vector2, color: Color, pellet: bool, life: float) -> void:
+	var w: Vector2 = TRACE_W_PELLET if pellet else TRACE_W
+	var halo := _trace_quad(Color(color.r, color.g, color.b, 0.5 if pellet else 0.8))
+	var core := _trace_quad(Color(1.0, 0.97, 0.85, 0.85 if pellet else 1.0))
+	_world.add_child(halo)
+	_world.add_child(core)
+	var a3 := Level3D.px_to_m(a) + Vector3(0.0, 0.0, 0.3)
+	var b3 := Level3D.px_to_m(b) + Vector3(0.0, 0.0, 0.3)
+	_span_quad(halo, a3, b3, w.x)
+	_span_quad(core, a3, b3, w.y)
 	var tw := create_tween().set_parallel(true)
 	tw.tween_property(halo.material_override, "albedo_color:a", 0.0, life)
 	tw.tween_property(core.material_override, "albedo_color:a", 0.0, life)

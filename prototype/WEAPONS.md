@@ -114,7 +114,7 @@ Nazwy w HUD są ASCII (interfejs EN); GDD zostaje przy nazwach z diakrytykami.
 | Element | Realizacja |
 |---|---|
 | Rozbłysk | wielokąt-gwiazda + język ognia + jądro (bez cieniowania), światło o energii z definicji, zanikające w 55–100 ms |
-| Smuga pocisku | głowa + zanikający ogon wzdłuż toru; rakieta z żarem; granat z zapalnikiem; bełt z grotem |
+| Smuga pocisku | **od 1.7.311 broń palna strzela szybkimi kulami** (M-83 2400 px/s ≈ 200 m/s w skali świata 3D, P-64 1500, SPREAD-12 1400, PELLET-8 1300; dawniej 280–360 px/s, wolniej niż 4× bieg postaci): kula w locie to addytywna smuga 3D od ogona do jasnego czoła o długości prędkość × 0,022 s (M-83 ok. 4,3 m), nigdy dalej niż do lufy (`Projectile.is_fast` / `tracer_len_at`, `view3d.gd: _sync_projectiles`); po trafieniu, w ścianie i na końcu zasięgu ostatni odcinek dogasa 0,08 s (`Vfx.trace` → `mirror_trace`), więc kula trafiająca z bliska w pierwszej klatce też zostawia ślad. Śrucina ma cieńszą i ciemniejszą smugę. Wolne zostają rakieta FALCON-6 (z żarem), granat WRATH-4 (z zapalnikiem) i bełt SINEW-6 (z grotem) |
 | Szyna / promień | halo + rdzeń + biały środek, iskry w ścianie, światło na końcu promienia |
 | Odrzut | sprite broni cofa się wzdłuż lufy (`recoil`), kamera dostaje **kierunkowe szarpnięcie** (`Feel.kick`) przeciwnie do lufy, strzelba/granatnik/szyna popychają postać |
 | Rozrzut | bazowy + **bloom** rosnący z serią (M-83 do 4°), +0,8° w biegu, ×0,5–0,6 w kucaniu |

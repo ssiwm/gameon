@@ -161,6 +161,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_beam_origin()
 	_t_crosshair_spread()
 	await _t_mouse_aim()
+	await _t_fast_bullets()
 	await _t_homing()
 	await _t_bolt()
 	await _t_melee()
@@ -1477,6 +1478,35 @@ func _t_mouse_aim() -> void:
 	check("klawiatura w grze: bez trybu myszy „w prawo” celuje w prawo", player.aim_dir.distance_to(Vector2.RIGHT) < 0.001 and not player.aim_by_mouse)
 	player.aim_dir = before
 	await _settle_player()
+
+## Szybkie kule (1.7.311): broń palna przelatuje zasięg w ułamku sekundy i w locie jest smugą, która nie sięga za lufę;
+## rakieta, bełt i granat zostają wolnymi pociskami z własnymi bryłami.
+func _t_fast_bullets() -> void:
+	var slow := 0.0
+	for id in [Weapons.M83, Weapons.P64, Weapons.SPREAD12, Weapons.SRUT8]:
+		var d := Weapons.def(id)
+		slow = maxf(slow, d.range_px / d.speed)
+		var p := Projectile.new()
+		p.launch(id, Vector2(100, 100), Vector2.RIGHT, 1, false)
+		var near: float = p.tracer_len_at(Vector2(110, 100))
+		var far: float = p.tracer_len_at(Vector2(300, 100))
+		check("%s: szybka kula ze smugą (%.0f px/s), smuga z bliska kończy się na lufie (%.0f px), dalej %.0f px" % [d.name, d.speed, near, far],
+			p.is_fast() and absf(near - 10.0) < 0.01 and absf(far - d.speed * Projectile.TRACER_SEC) < 0.01)
+		p.free()
+	check("broń palna: cały zasięg w < 0,15 s (najwolniej %.3f s)" % slow, slow < 0.15)
+	for id in [Weapons.SOKOL6, Weapons.CIEGNO6, Weapons.GNIEW4]:
+		var p := Projectile.new()
+		p.launch(id, Vector2.ZERO, Vector2.RIGHT, 1, false)
+		check("%s: wolny pocisk z własną bryłą, bez smugi kuli" % Weapons.def(id).name, not p.is_fast())
+		p.free()
+	# z bliska kula dolatuje do celu w pierwszej klatce lotu — trafienie i tak zostaje policzone
+	await _settle_player()
+	var e := await dummy(24.0)
+	await shoot(Weapons.M83, 3, 0.15)
+	await wait(0.2)
+	check("M-83 z 24 px: 3 kule trafiają, mimo że lecą 40 px/klatkę (%.0f)" % dealt(e), dealt(e) >= 3.0 * 8.0 - 0.1)
+	free_dummies()
+	await frames(2)
 
 ## Szybki pocisk nie może przeskoczyć wąskiego wroga (przeciąganie promienia, nie przesuwany obszar).
 func _t_sweep() -> void:

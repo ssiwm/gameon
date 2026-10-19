@@ -11,6 +11,11 @@ extends RefCounted
 ## ciągły ogień drogi. Wcześniej wspólny decay 1,2/s zjadał przyrost M-83 i P-64
 ## (gain × tempo < decay), więc tylko strzelba w ogóle się rozgrzewała — patrz
 ## `--weapontest`, który pilnuje, żeby każda broń z n_min < n_max osiągała n_max.
+##
+## Prędkość kul (od 1.7.311): broń palna strzela szybko (M-83 2400 px/s ≈ 200 m/s w skali świata 3D, P-64 1500, śrut 1300–1400) —
+## kula przelatuje pół ekranu w ~0,1 s, a lot widać jako smugę (view3d.gd `_sync_projectiles`, długość `Projectile.TRACER_SEC`). To wciąż ułamek
+## prawdziwej prędkości, ale tor jest czytelny, a kula nie „płynie” wolniej, niż biegnie postać (dawniej 340 px/s przy biegu 95).
+## Wolne zostają pociski, których lot jest mechaniką: rakiety FALCON-6, bełt SINEW-6 i granat WRATH-4.
 
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
@@ -47,7 +52,7 @@ static func _table() -> Array:
 			"auto": true, "cooldown": 0.11, "draw_time": 0.28, "burst_size": 3,
 			"damage": 8.0, "crit_mult": 1.5, "knock": 55.0,
 			"jitter_deg": 0.8, "bloom_per_shot": 0.45, "bloom_max": 4.0, "bloom_decay": 9.0,
-			"speed": 340.0, "range_px": 240.0, "falloff_start": 190.0, "falloff_min": 0.5,
+			"speed": 2400.0, "range_px": 240.0, "falloff_start": 190.0, "falloff_min": 0.5,
 			"n_min": 0.6, "n_max": 1.5, "heat_gain": 0.09, "heat_decay": 0.30,
 			"mag": 30, "reserve_start": 150, "reserve_max": 270, "pickup_rounds": 30,
 			"reload_time": 1.35, "reload_empty_extra": 0.45,
@@ -60,7 +65,7 @@ static func _table() -> Array:
 			"auto": false, "cooldown": 0.26, "draw_time": 0.35,
 			"damage": 7.0, "pellets": 5, "knock": 30.0,
 			"spread_deg": 14.0, "jitter_deg": 1.5,
-			"speed": 300.0, "range_px": 135.0, "falloff_start": 40.0, "falloff_min": 0.35,
+			"speed": 1400.0, "range_px": 135.0, "falloff_start": 40.0, "falloff_min": 0.35,
 			"n_min": 3.5, "n_max": 5.0, "heat_gain": 0.40, "heat_decay": 1.2,
 			"mag": 24, "reserve_start": 48, "reserve_max": 96, "pickup_rounds": 12,
 			"reload_time": 2.0, "reload_empty_extra": 0.5,
@@ -73,7 +78,7 @@ static func _table() -> Array:
 			"auto": false, "cooldown": 0.20, "draw_time": 0.2,
 			"damage": 11.0, "crit_mult": 2.0, "knock": 60.0,
 			"jitter_deg": 0.35, "bloom_per_shot": 0.8, "bloom_max": 3.0, "bloom_decay": 10.0, "crouch_accuracy": 0.5,
-			"speed": 360.0, "range_px": 208.0, "falloff_start": 160.0, "falloff_min": 0.6,
+			"speed": 1500.0, "range_px": 208.0, "falloff_start": 160.0, "falloff_min": 0.6,
 			"n_min": 0.5, "n_max": 0.9, "heat_gain": 0.16, "heat_decay": 0.6,
 			"mag": 12, "infinite": true, "reload_time": 1.1, "reload_empty_extra": 0.3,
 			"shake": 0.5, "cam_kick": 0.4, "recoil": 2.5, "flash_size": 3.0, "flash_light": 1.2,
@@ -85,7 +90,7 @@ static func _table() -> Array:
 			"auto": false, "cooldown": 0.8, "draw_time": 0.45,
 			"damage": 10.0, "pellets": 8, "knock": 45.0, "stun": 0.5,
 			"spread_deg": 17.0, "jitter_deg": 1.0,
-			"speed": 280.0, "range_px": 100.0, "falloff_start": 20.0, "falloff_min": 0.25,
+			"speed": 1300.0, "range_px": 100.0, "falloff_start": 20.0, "falloff_min": 0.25,
 			"n_min": 4.5, "n_max": 6.0, "heat_gain": 0.5, "heat_decay": 0.4,
 			"mag": 8, "reserve_start": 24, "reserve_max": 48, "pickup_rounds": 8,
 			"reload_time": 0.45, "reload_per_round": true, "reload_sfx": "reload_shell", "reload_sfx_count": 3,

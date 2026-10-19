@@ -325,6 +325,11 @@ static func streak(parent: Node, a: Vector2, b: Vector2, color: Color, width := 
 		s.visible = false                                 # smuga w scenie 3D
 		view3d.call("mirror_streak", a, b, color, width, life)
 
+## Dogasający ślad szybkiej kuli od `a` (ogon) do `b` (głowa) — tylko w scenie 3D (view3d.gd `mirror_trace`); bez widoku 3D (headless) nic.
+static func trace(a: Vector2, b: Vector2, color: Color, pellet: bool, life: float) -> void:
+	if view3d != null and is_instance_valid(view3d):
+		view3d.call("mirror_trace", a, b, color, pellet, life)
+
 ## Fala uderzeniowa wybuchu.
 static func shock(parent: Node, pos: Vector2, radius: float) -> void:
 	if parent == null or not parent.is_inside_tree():
