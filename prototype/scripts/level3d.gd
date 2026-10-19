@@ -88,6 +88,9 @@ static func make_mat(col: Color, rough := 0.95, noise_freq := 0.06, bump := 0.6)
 	return m
 
 const PBR_DIR := "res://art/world3d/"
+## Krycie warstwy brudu wg rodzaju: organiczny (grunt, błoto, drewno) dawał na przekroju gruntu wielkie ciemne plamy jak kamuflaż — widoczne
+## w każdym świetle latarki i flary; kamień i rdza zostają pełne.
+const GRIME_ALPHA := {"organic": 0.5}
 static var _pbr_cache := {}
 
 ## Materiał PBR ze skanu / generatora (`tools/world_pbr_import.py`, `world_pbr_gen.py`): albedo + normalne + ORM (R = AO, G = roughness, B = metallic),
@@ -127,6 +130,7 @@ static func make_pbr(name: String, per_m: float, fallback: Color, rough := 0.95,
 		# razem z kaflem materiału (warstwa „detail” StandardMaterial3D w triplanarze używa siatki UV materiału bazowego)
 		var g := StandardMaterial3D.new()
 		g.albedo_texture = load(PBR_DIR + "grime_%s.png" % grime) as Texture2D
+		g.albedo_color = Color(1.0, 1.0, 1.0, float(GRIME_ALPHA.get(grime, 1.0)))
 		g.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		g.roughness = 0.95
 		g.uv1_triplanar = true
@@ -1023,6 +1027,7 @@ void fragment() {
 const DECAL_DIR := "res://art/world3d/decals/"
 ## Dekale (sprite'y z `tools/world_decals_gen.py`): [szerokość, wysokość w kaflach, powierzchnie (b tło, C beton, M metal), waga, odbicie dozwolone].
 ## Duży wariant (×1) wymaga wolnego prostokąta kafli tej samej powierzchni; gdy go nie ma, próbujemy połowy rozmiaru.
+const DECAL_SAME_GAP := 32                 ## kafle: grafiti tego samego rodzaju nie powtarza się bliżej (dwa „THEY HEAR” w jednym kadrze)
 const DECALS := {
 	"g_dont_listen": [4, 2, "bC", 1.0, false], "g_they_hear": [4, 2, "bC", 1.0, false], "g_silence": [4, 2, "bC", 0.8, false],
 	"g_no_exit": [4, 2, "bC", 0.9, false], "g_patrol7": [4, 2, "bC", 0.9, false], "g_help": [4, 2, "b", 0.8, false],
@@ -1057,6 +1062,7 @@ static func build_decals(parent: Node3D, rows: Array) -> void:
 	var names: Array = DECALS.keys()
 	var used := {}
 	var inst := {}
+	var placed := {}                                            # nazwa grafiti → kafle, w których już jest
 	var budget := 160
 	var anchors: Array = surf.keys()
 	for k in anchors:
@@ -1068,7 +1074,7 @@ static func build_decals(parent: Node3D, rows: Array) -> void:
 		var cand: Array = []
 		var tot := 0.0
 		for nm in names:
-			if (DECALS[nm][2] as String).contains(kind):
+			if (DECALS[nm][2] as String).contains(kind) and not _decal_repeats(placed, nm, k):
 				cand.append(nm)
 				tot += float(DECALS[nm][3])
 		if cand.is_empty():
@@ -1098,6 +1104,10 @@ static func build_decals(parent: Node3D, rows: Array) -> void:
 			if not inst.has(name):
 				inst[name] = []
 			inst[name].append(Transform3D(bas, ctr))
+			if name.begins_with("g_"):
+				if not placed.has(name):
+					placed[name] = []
+				(placed[name] as Array).append(k)
 			budget -= 1
 			break
 	for name in inst:
@@ -1125,6 +1135,15 @@ static func build_decals(parent: Node3D, rows: Array) -> void:
 		mi.material_override = m
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		parent.add_child(mi)
+
+## Czy grafiti `nm` stoi już w pobliżu kafla `k` (DECAL_SAME_GAP w poziomie, 16 kafli w pionie). Plamy, pęknięcia i zacieki mogą się powtarzać.
+static func _decal_repeats(placed: Dictionary, nm: String, k: Vector2i) -> bool:
+	if not placed.has(nm):
+		return false
+	for p in placed[nm]:
+		if absi((p as Vector2i).x - k.x) < DECAL_SAME_GAP and absi((p as Vector2i).y - k.y) < 16:
+			return true
+	return false
 
 static func _decal_fits(k: Vector2i, wt: int, ht: int, kind: String, surf: Dictionary, used: Dictionary) -> bool:
 	for dy in ht:
