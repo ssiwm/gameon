@@ -128,6 +128,9 @@ var _down_t := 0.0
 var kit := Vector3i(Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Weapons.START_MELEE)
 ## Celowanie myszą (swobodne) a klawiaturą (8 kierunków) — celownik rysuje się odpowiednio.
 var aim_by_mouse := false
+var mouse_aim := false                ## lokalnie: tryb celowania myszą (włącza go mysz, wyłącza spust z klawiatury i pad — `aim_mode_after`)
+const MOUSE_AIM_MOVE := 3.0           ## px ruchu myszy w jednym zdarzeniu, od których mysz przejmuje celowanie (drżenie ręki nie przełącza)
+const MOUSE_AIM_MIN := 6.0            ## px: kursor bliżej dłoni nie zmienia kierunku
 var _crouch_latched := false          ## ustawienie „Crouch: TOGGLE": skradanie włączone do kolejnego naciśnięcia
 var weapons: WeaponController
 var view: WeaponView
@@ -652,10 +655,15 @@ func _local_brain(delta: float) -> void:
 	is_reviving = reviving
 	var gear_busy := _gear_tick(delta)
 	var busy := reviving or pumping or gear_busy
+	# celowanie przed strzałem: kula tej klatki leci tam, gdzie celownik tej klatki
+	var aim_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var to_mouse := get_global_mouse_position() - _aim_origin() if mouse_aim else Vector2.ZERO
+	var aim: Array = pick_aim(aim_dir, Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down"), aim_input, mouse_aim, to_mouse)
+	aim_dir = aim[0]
+	aim_by_mouse = aim[1]
 	weapons.tick_local(delta, busy or stun_t > 0.0)          # ogłuszony nie strzela, nie przeładowuje, nie bije i nie zmienia broni, ale chodzi (Kapłan, F4)
 
 	var move_x := 0.0 if (busy or grabbed or weapons.inspect_item != null) else Input.get_axis("move_left", "move_right")
-	var aim_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	if Settings.crouch_toggle:
 		if Input.is_action_just_pressed("crouch"):
 			_crouch_latched = not _crouch_latched
@@ -663,22 +671,6 @@ func _local_brain(delta: float) -> void:
 	else:
 		_crouch_latched = false
 		crouching = Input.is_action_pressed("crouch") and is_on_floor()
-
-	var stick := Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
-	if stick != Vector2.ZERO:
-		# prawa gałka pada: swobodne celowanie 360° (celownik na kierunku, nie na kursorze)
-		aim_dir = stick.normalized()
-		aim_by_mouse = false
-	elif aim_input != Vector2.ZERO:
-		# klawiatura / lewa gałka: 8 kierunków (klasyka Contry)
-		aim_dir = _snap8(aim_input)
-		aim_by_mouse = false
-	elif Input.get_last_mouse_velocity().length() > 20.0:
-		# mysz: celowanie swobodne — snap do 8 kierunków czuje się dziwnie
-		var to_mouse := get_global_mouse_position() - _aim_origin()
-		if to_mouse.length() > 6.0:
-			aim_dir = to_mouse.normalized()
-			aim_by_mouse = true
 
 	# powierzchnia pod stopami (surfaces.gd): bagno i błoto spowalniają, olej i lód ślizgają
 	var surf: Dictionary = Surfaces.of(_floor_surface()) if is_on_floor() else Surfaces.of("dirt")
@@ -1839,6 +1831,39 @@ func _snap8(v: Vector2) -> Vector2:
 	if v == Vector2.ZERO:
 		return aim_dir
 	return Vector2.from_angle(snappedf(v.angle(), TAU / 8.0))
+
+## Kierunek celowania z wejść tej klatki → [kierunek, czy celuje mysz]. Kolejność: prawa gałka pada (360°), potem tryb myszy
+## (kierunek na kursor co klatkę — także gdy mysz stoi, a postać idzie, skacze albo dostaje odrzut), a bez niego klawiatura / lewa gałka
+## w 8 kierunkach (klasyka Contry). W trybie myszy WASD tylko porusza postacią — wcześniej ruch nadpisywał celowanie myszą,
+## a kierunek na kursor liczył się tylko, gdy mysz była w ruchu, więc kula leciała obok celownika.
+static func pick_aim(cur: Vector2, stick: Vector2, keys: Vector2, mouse: bool, to_mouse: Vector2) -> Array:
+	if stick != Vector2.ZERO:
+		return [stick.normalized(), false]
+	if mouse:
+		return [to_mouse.normalized() if to_mouse.length() > MOUSE_AIM_MIN else cur, true]   # kursor na dłoni: zostaje ostatni kierunek
+	if keys != Vector2.ZERO:
+		return [Vector2.from_angle(snappedf(keys.angle(), TAU / 8.0)), false]
+	return [cur, false]
+
+## Tryb celowania po zdarzeniu wejścia: ruch myszy albo jej przycisk włącza tryb myszy, spust z klawiatury i pad go wyłączają
+## (gracz klawiaturowy strzela klawiszem, myszowy — przyciskiem myszy, więc spust rozstrzyga, kto celuje).
+static func aim_mode_after(mouse: bool, event: InputEvent) -> bool:
+	if event is InputEventMouseMotion:
+		return true if (event as InputEventMouseMotion).relative.length() >= MOUSE_AIM_MOVE else mouse
+	if event is InputEventMouseButton:
+		return true if event.is_pressed() else mouse
+	if event is InputEventKey:
+		return false if event.is_pressed() and not event.is_echo() and event.is_action("fire") else mouse
+	if event is InputEventJoypadButton:
+		return false if event.is_pressed() else mouse
+	if event is InputEventJoypadMotion:
+		return false if absf((event as InputEventJoypadMotion).axis_value) > 0.5 else mouse
+	return mouse
+
+func _input(event: InputEvent) -> void:
+	if is_bot or not is_multiplayer_authority():
+		return
+	mouse_aim = aim_mode_after(mouse_aim, event)
 
 func _body_color() -> Color:
 	if is_bot:

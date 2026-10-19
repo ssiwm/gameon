@@ -157,6 +157,10 @@ func run_unit(m: Node2D) -> void:
 	await _t_pierce_beam_rail()
 	await _t_flame()
 	await _t_launcher()
+	await _t_blast_walls()
+	await _t_beam_origin()
+	_t_crosshair_spread()
+	await _t_mouse_aim()
 	await _t_homing()
 	await _t_bolt()
 	await _t_melee()
@@ -1301,6 +1305,178 @@ func _t_upgrades() -> void:
 	Weapons.levels.clear()
 	for k in saved:
 		Weapons.levels[k] = saved[k]
+
+## Prostokątna ściana testowa na warstwie świata (Combat.LAYER_WORLD) o środku `at` i rozmiarze `size` (px).
+func test_wall(at: Vector2, size: Vector2) -> StaticBody2D:
+	var b := StaticBody2D.new()
+	b.name = "TestWall%d" % randi()
+	b.collision_layer = Combat.LAYER_WORLD
+	b.collision_mask = 0
+	var cs := CollisionShape2D.new()
+	var r := RectangleShape2D.new()
+	r.size = size
+	cs.shape = r
+	b.add_child(cs)
+	b.global_position = at
+	level.add_child(b)
+	return b
+
+## Wybuch nie rani przez ścianę (combat.gd `blast_reaches`): wróg i gracz za murem są cali, wróg za niską przeszkodą
+## (wystaje głową) obrywa, a ten sam wybuch bez muru rani obu.
+func _t_blast_walls() -> void:
+	await _settle_player()
+	var gd := Weapons.def(Weapons.GNIEW4)
+	var open := await dummy(90.0)
+	var hidden := await dummy(150.0)
+	var c: Vector2 = Combat.center_of(open)
+	var at := Vector2(player.global_position.x + 120.0, c.y)
+	var wall := test_wall(at + Vector2(14.0, 0.0), Vector2(4.0, 120.0))
+	await frames(2)
+	Combat.explode(get_tree(), at, gd.blast_radius, gd.blast_damage, 1, Weapons.GNIEW4, true)
+	check("wybuch: wróg w otwartym polu obrywa (%.0f)" % dealt(open), dealt(open) > 0.0)
+	check("wybuch: wróg za ścianą w tej samej odległości nietknięty (%.0f)" % dealt(hidden), dealt(hidden) == 0.0)
+	wall.queue_free()
+	# niska przeszkoda: zasłania środek sylwetki, ale nie głowę
+	var feet_y: float = hidden.global_position.y
+	var low := test_wall(Vector2(at.x + 14.0, feet_y - (feet_y - c.y) * 0.55), Vector2(4.0, (feet_y - c.y) * 1.1))
+	await frames(2)
+	hidden.hp = hidden._max_hp
+	Combat.explode(get_tree(), at, gd.blast_radius, gd.blast_damage, 1, Weapons.GNIEW4, true)
+	check("wybuch: wróg za niską przeszkodą (głowa wystaje) obrywa (%.0f)" % dealt(hidden), dealt(hidden) > 0.0)
+	low.queue_free()
+	await frames(2)
+	hidden.hp = hidden._max_hp
+	Combat.explode(get_tree(), at, gd.blast_radius, gd.blast_damage, 1, Weapons.GNIEW4, true)
+	check("wybuch: bez ściany ten sam wróg obrywa (%.0f)" % dealt(hidden), dealt(hidden) > 0.0)
+	free_dummies()
+	# gracz: 1 HP od wybuchu drużyny — za ścianą nic
+	var hp0: int = player.hp
+	var pb: Vector2 = player.global_position + Vector2(30.0, -10.0)
+	var pw := test_wall(player.global_position + Vector2(15.0, -10.0), Vector2(4.0, 60.0))
+	await frames(2)
+	player._invuln = 0.0
+	Combat.explode(get_tree(), pb, gd.blast_radius, gd.blast_damage, 1, Weapons.GNIEW4, true)
+	await frames(2)
+	var behind: int = hp0 - int(player.hp)
+	pw.queue_free()
+	await frames(2)
+	player._invuln = 0.0
+	Combat.explode(get_tree(), pb, gd.blast_radius, gd.blast_damage, 1, Weapons.GNIEW4, true)
+	await frames(2)
+	var exposed: int = hp0 - int(player.hp)
+	check("wybuch: gracz za ścianą cały (−%d), bez ściany −1 HP (−%d)" % [behind, exposed], behind == 0 and exposed == 1)
+	player.hp = hp0
+	player._invuln = 0.0
+	await frames(2)
+
+## LR-7: wiązka rani od wylotu lufy (jak kule), a jej obraz kończy się tam, gdzie obrażenia. Niska przeszkoda zasłania tułów
+## (stara linia obrażeń, 9 px nad stopami), ale nie lufę (12 px) — wiązka przechodzi nad nią i rani wroga za nią.
+func _t_beam_origin() -> void:
+	await _settle_player()
+	var d := equip(Weapons.LR7)
+	var muzzle: Vector2 = wc.muzzle_pos(Vector2.RIGHT, d)
+	var body_y: float = player.global_position.y - 9.0
+	var top: float = (muzzle.y + body_y) * 0.5
+	var feet: float = player.global_position.y
+	var low := test_wall(Vector2(player.global_position.x + 26.0, (top + feet) * 0.5), Vector2(4.0, feet - top))
+	var t := await dummy(70.0)
+	await frames(2)
+	wc.sim_fire = true
+	await wait(0.4)
+	var tr: Dictionary = wc.beam_trace(d, player.aim_dir)
+	var view_end: Vector2 = player.global_position + player.view._beam_end
+	wc.sim_fire = false
+	await wait(0.15)
+	check("LR-7: wylot (y %.1f) nad przeszkodą zasłaniającą tułów (y %.1f, szczyt %.1f)" % [muzzle.y, body_y, top], muzzle.y < top and top < body_y)
+	check("LR-7: wiązka z lufy przechodzi nad niską przeszkodą i rani wroga za nią (%.0f)" % dealt(t), dealt(t) > 0.0)
+	check("LR-7: obraz wiązki kończy się w punkcie obrażeń (%s vs %s)" % [str(view_end.round()), str((tr["end"] as Vector2).round())],
+		view_end.distance_to(tr["end"]) < 1.5)
+	low.queue_free()
+	free_dummies()
+	await frames(2)
+
+## Celownik: promień ramion to prawdziwy stożek rozrzutu w odległości kursora (WeaponDef.cone_radius), zgodny z `pellet_dirs`.
+func _t_crosshair_spread() -> void:
+	const View := preload("res://scripts/weapon_view.gd")
+	var m := Weapons.def(Weapons.M83)
+	var r75 := View.spread_radius(m, 4.0, 75.0)
+	var r150 := View.spread_radius(m, 4.0, 150.0)
+	check("celownik: M-83, rozrzut 4,8°, kursor 150 px → promień %.1f px (tan · odległość)" % r150, absf(r150 - 150.0 * tan(deg_to_rad(4.8))) < 0.05)
+	check("celownik: promień rośnie z odległością kursora (75 px %.1f, 150 px %.1f)" % [r75, r150], absf(r150 - 2.0 * r75) < 0.05)
+	var far := View.spread_radius(m, 4.0, 1000.0)
+	check("celownik: dalej niż zasięg lotu (%.0f px) promień już nie rośnie (%.1f)" % [m.range_px, far], absf(far - View.spread_radius(m, 4.0, m.range_px)) < 0.01)
+	var s := Weapons.def(Weapons.SPREAD12)
+	check("celownik: śrut obejmuje rozstaw śrucin (%.1f° = %.1f° + %.1f°)" % [s.cone_half_deg(0.0), s.spread_deg, s.jitter_deg], absf(s.cone_half_deg(0.0) - (s.spread_deg + s.jitter_deg)) < 0.001)
+	var b := Weapons.def(Weapons.LR7)
+	check("celownik: wiązka bez rozrzutu — najmniejsze kółko (%.1f)" % View.spread_radius(b, 2.0, 150.0), is_equal_approx(View.spread_radius(b, 2.0, 150.0), 3.0 * View.CROSS_SCALE))
+	# stożek celownika obejmuje każdy prawdziwy kierunek strzału (i nie jest od niego dużo szerszy)
+	var ok := true
+	var worst := ""
+	for d in [m, s, Weapons.def(Weapons.P64), Weapons.def(Weapons.SRUT8)]:
+		var cone: float = d.cone_half_deg(2.0)
+		var widest := 0.0
+		for seed in 300:
+			for v in Weapons.pellet_dirs(d, Vector2.RIGHT, seed, 2.0):
+				widest = maxf(widest, absf(rad_to_deg(Vector2.RIGHT.angle_to(v))))
+		if widest > cone + 0.001 or widest < cone * 0.9:
+			ok = false
+			worst += " %s: najszerszy %.2f° vs stożek %.2f°" % [d.key, widest, cone]
+	check("celownik: stożek = rzeczywisty rozrzut pellet_dirs (4 bronie, 300 strzałów)", ok, worst)
+
+## Mysz: w trybie myszy kierunek idzie na kursor co klatkę (także gdy mysz stoi, a postać się rusza) i WASD go nie nadpisuje;
+## spust z klawiatury oddaje celowanie klawiaturze (8 kierunków).
+func _t_mouse_aim() -> void:
+	var P: GDScript = player.get_script()
+	var up_right := Vector2(1, -1).normalized()
+	var r: Array = P.pick_aim(Vector2.LEFT, Vector2.ZERO, Vector2.RIGHT, true, Vector2(50, -50))
+	check("mysz: idąc w prawo (WASD) dalej celujesz w kursor (%s)" % str((r[0] as Vector2).snapped(Vector2(0.01, 0.01))), (r[0] as Vector2).distance_to(up_right) < 0.001 and bool(r[1]))
+	r = P.pick_aim(Vector2.LEFT, Vector2.ZERO, Vector2(1, -1), false, Vector2.ZERO)
+	check("klawiatura: 8 kierunków jak dotąd (%s)" % str((r[0] as Vector2).snapped(Vector2(0.01, 0.01))), (r[0] as Vector2).distance_to(up_right) < 0.001 and not bool(r[1]))
+	r = P.pick_aim(Vector2.LEFT, Vector2(0.0, -0.7), Vector2.RIGHT, true, Vector2(50, -50))
+	check("pad: prawa gałka wygrywa z myszą", (r[0] as Vector2).distance_to(Vector2.UP) < 0.001 and not bool(r[1]))
+	r = P.pick_aim(Vector2.LEFT, Vector2.ZERO, Vector2.ZERO, true, Vector2(2, 1))
+	check("mysz: kursor na dłoni nie szarpie kierunku", (r[0] as Vector2) == Vector2.LEFT)
+	var mm := InputEventMouseMotion.new()
+	mm.relative = Vector2(5, 0)
+	var jitter := InputEventMouseMotion.new()
+	jitter.relative = Vector2(1, 0)
+	var fire_key := InputEventKey.new()
+	fire_key.keycode = KEY_J
+	fire_key.physical_keycode = KEY_J
+	fire_key.pressed = true
+	var lmb := InputEventMouseButton.new()
+	lmb.button_index = MOUSE_BUTTON_LEFT
+	lmb.pressed = true
+	var pad := InputEventJoypadButton.new()
+	pad.button_index = JOY_BUTTON_A
+	pad.pressed = true
+	check("tryb: ruch myszy i jej przycisk włączają tryb myszy, drżenie nie",
+		P.aim_mode_after(false, mm) and P.aim_mode_after(false, lmb) and not P.aim_mode_after(false, jitter))
+	check("tryb: spust z klawiatury (%s) i pad oddają celowanie klawiaturze / padowi" % OS.get_keycode_string(KEY_J),
+		InputMap.event_is_action(fire_key, "fire") and not P.aim_mode_after(true, fire_key) and not P.aim_mode_after(true, pad))
+	# w grze: tryb myszy + wciśnięte „w prawo” — kierunek na kursor, przeliczany co klatkę
+	await _settle_player()
+	var before: Vector2 = player.aim_dir
+	player.mouse_aim = true
+	Input.action_press("move_right")
+	await frames(3)
+	var want: Vector2 = (player.get_global_mouse_position() - player._aim_origin()).normalized()
+	var got: Vector2 = player.aim_dir
+	Input.action_release("move_right")
+	check("mysz w grze: WASD nie nadpisuje celowania (aim %s, na kursor %s)" % [str(got.snapped(Vector2(0.01, 0.01))), str(want.snapped(Vector2(0.01, 0.01)))],
+		got.distance_to(want) < 0.02 and player.aim_by_mouse and got.distance_to(Vector2.RIGHT) > 0.1)
+	player.aim_dir = -want                                       # mysz stoi (zero ruchu): stary kod zostawiał kierunek, jaki był
+	await frames(2)
+	want = (player.get_global_mouse_position() - player._aim_origin()).normalized()
+	check("mysz w grze: kierunek wraca na kursor co klatkę, także gdy mysz stoi", player.aim_dir.distance_to(want) < 0.03,
+		"aim %s, na kursor %s" % [str(player.aim_dir.snapped(Vector2(0.01, 0.01))), str(want.snapped(Vector2(0.01, 0.01)))])
+	player.mouse_aim = false
+	Input.action_press("move_right")
+	await frames(2)
+	Input.action_release("move_right")
+	check("klawiatura w grze: bez trybu myszy „w prawo” celuje w prawo", player.aim_dir.distance_to(Vector2.RIGHT) < 0.001 and not player.aim_by_mouse)
+	player.aim_dir = before
+	await _settle_player()
 
 ## Szybki pocisk nie może przeskoczyć wąskiego wroga (przeciąganie promienia, nie przesuwany obszar).
 func _t_sweep() -> void:

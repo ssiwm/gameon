@@ -347,8 +347,7 @@ func _update_continuous(d: WeaponDef, delta: float) -> void:
 		flame_vmax = d.range_px * 2.1
 		flame_spread = d.arc_deg * 0.75
 	if firing and d.kind == WeaponDef.Kind.BEAM:
-		var origin := player.global_position + muzzle_local(d)
-		var tr := Combat.trace(player.get_world_2d().direct_space_state, origin, player.aim_dir, d.range_px, int(d.pierce), 0.0, [player.get_rid()])
+		var tr: Dictionary = ctrl.beam_trace(d, player.aim_dir)        # ten sam ślad co obrażenia na serwerze
 		_beam_end = tr["end"] - player.global_position
 		_beam_wall = bool(tr["wall"])
 		_beam_normal = tr["wall_normal"]
@@ -385,13 +384,19 @@ func _aim_world() -> Vector2:
 	if player.aim_by_mouse:
 		return player.get_global_mouse_position()
 	var d := Weapons.def(player.weapon)
-	return player.global_position + muzzle_local(d) + player.aim_dir * CROSS_DIST
+	return ctrl.muzzle_pos(player.aim_dir, d) + player.aim_dir * CROSS_DIST       # na torze pocisku (wylot rozgrywki), nie od animowanej lufy
+
+## Promień ramion celownika (px świata): prawdziwy stożek rozrzutu w odległości celownika od wylotu (`WeaponDef.cone_radius`),
+## nie mniej niż odstęp, w którym widać kropkę środka. Wcześniej promień był stały (3 + 1,1 px na stopień), więc z kursorem daleko
+## celownik obiecywał 2× ciaśniejsze skupienie niż prawdziwe, a tuż przy postaci — szersze.
+static func spread_radius(d: WeaponDef, extra_deg: float, dist: float, scale := CROSS_SCALE) -> float:
+	return maxf(3.0 * scale, d.cone_radius(extra_deg, dist))
 
 func _draw_crosshair(d: WeaponDef) -> void:
 	var k := CROSS_SCALE
-	var at := _aim_world() - player.global_position
-	var extra: float = ctrl.spread_extra(d) + d.jitter_deg
-	var r := (3.0 + extra * 1.1) * k
+	var aim_w := _aim_world()
+	var at := aim_w - player.global_position
+	var r := spread_radius(d, ctrl.spread_extra(d), ctrl.muzzle_pos(player.aim_dir, d).distance_to(aim_w), k)
 	var w := maxf(1.0 * k, 0.8)            ## grubość linii nie schodzi poniżej ~1 px sprite'a
 	var col := Color(1, 1, 1, 0.85)
 	var mag: int = ctrl.mag_of(d.id)

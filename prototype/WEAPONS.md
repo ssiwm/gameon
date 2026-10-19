@@ -79,7 +79,7 @@ Wartości domyślne z `weapons.gd`; DPS = pełne trafienie, bez krytyków i spad
 | 4 | **PELLET-8** | ciężka strzelba 8×10, pompka | 80 na strzał z bliska (zabija Mimika i Skoczka jednym), odrzut, ogłuszenie 0,5 s; ładowanie po 1 naboju (przerywane strzałem); śrucina 10 mało traci na pancerzu Wołka |
 | 5 | **LR-7** | promień ciągły, przebija 2 | 60 DPS na 2 cele, zasięg 11 m i wiązka słabnie z dystansem (do 55%); **hałas rośnie z rozgrzaniem** (0,25 → 0,8 na tyk), bateria 60 kończy się w 6 s; promień **świeci** i **przyciąga ćmy** oraz Stalkera |
 | 6 | **HKM-9** | miotacz ognia | 4 m, podpala (8 HP/s), **Trzoski uciekają w panice** |
-| 7 | **WRATH-4** | granatnik po łuku | AoE 3 m, 80 dmg; niszczy gniazda; wybuch = +15 Uwagi; rani drużynę |
+| 7 | **WRATH-4** | granatnik po łuku | AoE 3 m, 80 dmg; niszczy gniazda; wybuch = +15 Uwagi; rani drużynę; **ściana zasłania** przed wybuchem (od 1.7.310, `Combat.blast_reaches`) |
 | 8 | **FALCON-6** | mikrorakiety naprowadzane (10 dmg) | Same dochodzą do celu poza osią i **wolą cele trudne do trafienia**: ćmę, skoczka, podsłuchacza |
 | 9 | **SPECTER-1** | szyna, ładowanie 1,2 s | 150 dmg przez wszystkich; **najgłośniejsza** (14 Uwagi); puszczenie przed końcem anuluje |
 | 10 | **SINEW-6** | kusza, bełt do odzysku | **Cicha** (0,08); bełt zostaje w świecie jako skrzynka z 1 nabojem |
@@ -120,7 +120,7 @@ Nazwy w HUD są ASCII (interfejs EN); GDD zostaje przy nazwach z diakrytykami.
 | Rozrzut | bazowy + **bloom** rosnący z serią (M-83 do 4°), +0,8° w biegu, ×0,5–0,6 w kucaniu |
 | Uderzenie | wg materiału: krew (krytyk = złoty błysk), iskry + rykoszet (blacha/pancerz), drzazgi (skrzynia), pył/odłamki/rozbryzg (ściana wg kafla) |
 | Hitmarker | biały / złoty (krytyk) / czerwony większy (zabójstwo) / szary (pancerz) + dźwięk potwierdzenia w UI |
-| Celownik | kursor systemowy ukryty; **30% mniejszy niż w 1.6** (`CROSS_SCALE` = 0,7 skaluje wszystko razem); 4 ramiona rozchodzą się z rozrzutem, **łuk ciepła lufy** (biały → czerwony), pierścień przeładowania/ładowania, czerwony X przy pustym magazynku, miganie przy niskim stanie |
+| Celownik | kursor systemowy ukryty; **30% mniejszy niż w 1.6** (`CROSS_SCALE` = 0,7 skaluje wszystko razem); 4 ramiona rozchodzą się z rozrzutem — **od 1.7.310 to prawdziwy stożek strzału w odległości celownika od wylotu** (`WeaponDef.cone_radius`: rozrzut + bloom + bieg, u śrutu też rozstaw śrucin; nie dalej niż zasięg lotu), wiązka i szyna mają najmniejsze kółko, **łuk ciepła lufy** (biały → czerwony), pierścień przeładowania/ładowania, czerwony X przy pustym magazynku, miganie przy niskim stanie |
 | Animacje broni | dobycie (broń „wchodzi” z dołu), przeładowanie (opadanie i powrót), ładowanie szyny (drżenie), cios (zamach przez łuk z pchnięciem) |
 | Przeładowanie | tryb taktyczny: z nabojem w komorze szybciej niż pusty (+0,4–0,5 s); automatycznie po „kliku” na pustym i po wzięciu pustej broni |
 | HUD | (cały HUD 70% — `UI_SCALE` w `hud.gd`) nazwa, `magazynek / zapas drużyny`, status (RELOADING %, CHARGING %, NO AMMO), **pasek lufy z kosztem następnego strzału** (`SHOT 0,8 → 1,5`) |

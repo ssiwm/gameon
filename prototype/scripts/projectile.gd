@@ -279,9 +279,11 @@ func _expire() -> void:
 	_finish(global_position)
 
 ## Wybuch (granat): serwer liczy obrażenia i hałas, efekt przychodzi do wszystkich przez Arsenal.
-func _detonate(at: Vector2, _normal: Vector2) -> void:
+func _detonate(at: Vector2, normal: Vector2) -> void:
 	if authoritative:
-		Combat.explode(get_tree(), at, float(_def.blast_radius), float(_def.blast_damage), shooter_id, weapon)
+		# środek wybuchu 2 px przed powierzchnią: linia wzroku do celów (combat.gd `blast_reaches`) nie zaczyna się w murze
+		var c := at + (normal.normalized() * 2.0 if normal.length() > 0.1 else Vector2.ZERO)
+		Combat.explode(get_tree(), c, float(_def.blast_radius), float(_def.blast_damage), shooter_id, weapon)
 		if int(_def.cluster) > 0:
 			_scatter_cluster(at)
 	_finish(at)

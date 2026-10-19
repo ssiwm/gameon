@@ -162,6 +162,17 @@ func full_reload_time() -> float:
 		return reload_time * float(mag)
 	return reload_time + reload_empty_extra
 
+## Połowa kąta stożka, w który lecą pociski tego strzału (°): rozrzut losowy + dokładany przez strzelca (`extra_deg`: bloom, bieg,
+## kucanie), a dla śrutu jeszcze rozstaw śrucin — jak w `Weapons.pellet_dirs`. Wiązka, szyna, płomień i cios lecą dokładnie w cel (0).
+func cone_half_deg(extra_deg: float) -> float:
+	if kind != Kind.BULLET and kind != Kind.LAUNCHER:
+		return 0.0
+	return jitter_deg + maxf(extra_deg, 0.0) + (spread_deg if pellets > 1 else 0.0)
+
+## Promień tego stożka (px) w odległości `dist` px od wylotu; dalej niż zasięg lotu pocisk nie leci, więc odległość jest przycięta do zasięgu.
+func cone_radius(extra_deg: float, dist: float) -> float:
+	return clampf(dist, 0.0, range_px) * tan(deg_to_rad(minf(cone_half_deg(extra_deg), 80.0)))
+
 ## Mnożnik obrażeń po przebyciu `dist` px (spadek liniowy od falloff_start do zasięgu).
 func falloff(dist: float) -> float:
 	if falloff_min >= 1.0 or dist <= falloff_start:

@@ -653,18 +653,18 @@ func _physics_process(delta: float) -> void:
 	_srv_tick += d.cooldown
 	if _srv_tick < 0.0:
 		_srv_tick = 0.0
-	var origin := player.global_position + Vector2(0, -9)
 	var dir: Vector2 = player.aim_dir
+	var origin := muzzle_pos(dir, d)                     # ten sam wylot co kule (poza nominalna, lufa nie wychodzi za ścianę)
 	var space := player.get_world_2d().direct_space_state
 	var report := _srv_fx_t <= 0.0
 	if report:
 		_srv_fx_t = FX_REPORT_EVERY
 	if d.kind == WeaponDef.Kind.BEAM:
-		var tr := Combat.trace(space, origin + dir * 6.0, dir, d.range_px, int(d.pierce), 0.0, [player.get_rid()])
+		var tr := beam_trace(d, dir)
 		for h in tr["hits"]:
 			_continuous_hit(d, h["collider"], h["pos"], dir, "beam", report, d.damage * d.falloff(float(h["dist"])))   # wiązka słabnie z dystansem
 	else:
-		for t in Combat.in_cone(get_tree(), space, origin + dir * 4.0, dir, d.range_px, d.arc_deg):
+		for t in Combat.in_cone(get_tree(), space, origin, dir, d.range_px, d.arc_deg):
 			var c := Combat.center_of(t)
 			var dist := c.distance_to(origin)
 			var info_amount := d.damage * d.falloff(dist)
@@ -673,6 +673,11 @@ func _physics_process(delta: float) -> void:
 		if _srv_patch_t >= FIRE_PATCH_EVERY:
 			_srv_patch_t = 0.0
 			_drop_fire_patch(d, space, origin, dir)
+
+## Ślad wiązki (LR-7) od wylotu lufy — jeden dla obrażeń (serwer) i obrazu (weapon_view.gd), więc promień kończy się tam,
+## gdzie naprawdę rani. Wcześniej serwer liczył go od środka tułowia, a obraz od animowanej lufy modelu.
+func beam_trace(d: WeaponDef, dir: Vector2) -> Dictionary:
+	return Combat.trace(player.get_world_2d().direct_space_state, muzzle_pos(dir, d), dir, d.range_px, int(d.pierce), 0.0, [player.get_rid()])
 
 ## Koniec płomienia (albo mur, w który uderza) rzutowany w dół na podłogę — tam zostaje ogień.
 func _drop_fire_patch(d: WeaponDef, space: PhysicsDirectSpaceState2D, origin: Vector2, dir: Vector2) -> void:
