@@ -451,6 +451,7 @@ func _sync_geometry() -> void:
 	if not span.is_empty():
 		trench = {"row": int(float(span[2]) / 16.0), "c0": int(float(span[0]) / 16.0), "c1": int(float(span[1]) / 16.0)}
 	Level3D.build_level(_geo, rows, trench)
+	Backdrop3D.build_frames(_geo, rows)
 	Level3D.set_streams(_level.get("streams") if _level.get("streams") != null else [])
 	Level3D.build_liquids(_geo, rows)
 	Level3D.build_liquid_props(_geo, rows)

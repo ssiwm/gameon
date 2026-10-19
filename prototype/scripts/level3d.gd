@@ -254,6 +254,20 @@ static func is_post_cell(rows: Array, c: int, r: int) -> bool:
 		return _ch(rows, c, r + 1) == "w" or (_is_marker(_ch(rows, c, r + 1)) and _ch(rows, c, r + 2) == "w")
 	return false
 
+## Rola ciągu słupa w konstrukcji, którą rysuje `Backdrop3D.build_frames` zamiast modelu słupa:
+##  - "mast": maszt — dwie sąsiednie kolumny `w` od samej góry mapy (maszt z generatorem w 1.2) → kratownica stalowa z lampami przeszkodowymi;
+##  - "tower": noga wieży — nad ciągiem leży blacha/skrzynia `M` (podłoga albo dach strażnicy w 1.1) → drewniane nogi z przodu i z tyłu ze stężeniami;
+##  - "" — zwykły słup (`build_level`).
+static func frame_role(rows: Array, run: Dictionary) -> String:
+	var c: int = run["c"]
+	var r0: int = run["r0"]
+	var r1: int = run["r1"]
+	if r0 == 0 and r1 - r0 >= 12 and (_ch(rows, c - 1, 1) == "w" or _ch(rows, c + 1, 1) == "w"):
+		return "mast"
+	if _ch(rows, c, r0 - 1) == "M":
+		return "tower"
+	return ""
+
 ## Promień słupa (m) z modelu `post` w skali POST_K; bez modelu — walec zastępczy.
 static func post_radius() -> float:
 	var mm := model_mesh("post")
@@ -596,13 +610,15 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 			continue
 		if bool(run["roof"]):
 			continue
+		var framed := frame_role(rows, run) != ""                 # maszt i nogi strażnicy: `Backdrop3D.build_frames` (belki pod kładkami zostają)
 		var n := int(ceil(float(r1 - r0) / 4.0))
 		var seg := float(r1 - r0) * T / float(n)
-		for i in n:
+		for i in (0 if framed else n):
 			var bottom := cell_pos(c, r1 - 1) + Vector3(0.0, -T * 0.5 + seg * float(i), z)
 			beams.append(Transform3D(Basis().scaled(Vector3(POST_K, seg / 100.0, POST_K)), bottom))
 		for k in range(r0, r1):
-			posts.append(Transform3D(Basis.IDENTITY, cell_pos(c, k) + Vector3(0.0, 0.0, z)))
+			if not framed:
+				posts.append(Transform3D(Basis.IDENTITY, cell_pos(c, k) + Vector3(0.0, 0.0, z)))
 			for dir in [-1, 1]:
 				# kładka dochodzi do słupa z boku: belka pod jej końcem, od osi słupa pod pokład (za płaszczyzną gry)
 				var dk := _ch(rows, c + dir, k)
