@@ -17,7 +17,7 @@ const TIPS := [
 	["move", "{move} to move  ·  {jump} to jump  ·  hold {crouch} to sneak — sneaking is silent"],
 	["hub", "Safe room — nothing hunts you here. Read the board, spend scrap at the workshop bench ({interact}), then press {restart} to ready up"],
 	["noise", "Every shot makes NOISE. Watch the meter in the top-left corner"],
-	["ford", "Water slows you and splashes — running through it is loud. Mud muffles your steps but drags you down. Something big sleeps on the bank: hold {crouch} under it"],
+	["ford", "Water slows you and splashes — running through it is loud. Mud muffles your steps but drags you down. Something big sleeps on the bank: hold {crouch} under it. Crouched in the reeds, eyes slide past you"],
 	["camp", "A pack sleeps under the broken bridge and the gap is too wide to jump. Follow the patrol's lantern up into the branches — or hold {crouch} on the bridge and they stay asleep"],
 	["sneak", "Something is asleep close by — hold {crouch} and walk: a crouching step is silent and wakes it from half the distance"],
 	["quiet", "Attention is up. Stop shooting — in silence the meter drains fast. Sneaking ({crouch}) is silent too"],
