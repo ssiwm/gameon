@@ -82,7 +82,7 @@ static func _table() -> Array:
 			"n_min": 0.5, "n_max": 0.9, "heat_gain": 0.16, "heat_decay": 0.6,
 			"mag": 12, "infinite": true, "reload_time": 1.1, "reload_empty_extra": 0.3,
 			"shake": 0.5, "cam_kick": 0.4, "recoil": 2.5, "flash_size": 3.0, "flash_light": 1.2,
-			"tracer_len": 9.0, "casing": 1, "gun_len": 7.0, "gun_row": 2,
+			"tracer_len": 9.0, "casing": 1, "eject_frac": 0.45, "gun_len": 7.0, "gun_row": 2,
 			"sfx": "p64_shot", "sfx_count": 4, "sfx_vol": -8.0,
 		},
 		{
@@ -128,7 +128,7 @@ static func _table() -> Array:
 			"key": "gniew4", "name": "WRATH-4", "slot": Slot.PRIMARY, "kind": Kind.LAUNCHER,
 			"auto": false, "cooldown": 1.2, "draw_time": 0.55,
 			"damage": 25.0, "knock": 160.0, "stun": 0.5,
-			"jitter_deg": 0.5, "speed": 280.0, "range_px": 330.0, "gravity": 300.0,
+			"jitter_deg": 0.5, "speed": 368.0, "range_px": 330.0, "gravity": 520.0,      # grawitacja jak granat ręczny i flara (grenade.gd); prędkość tak, by v²/g (kształt łuku) został jak przy 280 / 300
 			"blast_radius": 48.0, "blast_damage": 80.0, "fuse": 1.6,
 			"n_min": 3.0, "n_max": 3.0, "heat_gain": 0.0,
 			"mag": 6, "reserve_start": 12, "reserve_max": 24, "pickup_rounds": 6,
@@ -272,7 +272,10 @@ static func pellet_dirs(d: WeaponDef, dir: Vector2, seed: int, extra_deg: float)
 	for i in d.pellets:
 		var off := rng.randf_range(-jitter, jitter)
 		if d.pellets > 1:
-			off += lerpf(-d.spread_deg, d.spread_deg, float(i) / float(d.pellets - 1))
+			# każda śrucina w losowym miejscu własnego wycinka stożka (od 1.7.312): pokrycie równe jak w dawnym wachlarzu, kąt skrajny ten sam
+			# (±spread_deg + rozrzut, `WeaponDef.cone_half_deg`), ale bez „grzebienia” śrucin w równych odstępach, który przy smugach od razu widać
+			var w := 2.0 * d.spread_deg / float(d.pellets)
+			off += -d.spread_deg + w * (float(i) + rng.randf())
 		out.append(dir.rotated(deg_to_rad(off)))
 	return out
 

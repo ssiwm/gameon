@@ -162,6 +162,7 @@ func run_unit(m: Node2D) -> void:
 	_t_crosshair_spread()
 	await _t_mouse_aim()
 	await _t_fast_bullets()
+	await _t_weapon_realism()
 	await _t_homing()
 	await _t_bolt()
 	await _t_melee()
@@ -1508,6 +1509,57 @@ func _t_fast_bullets() -> void:
 	free_dummies()
 	await frames(2)
 
+## Realia lotu i broni (1.7.312): granat WRATH-4 spada jak granat ręczny, śrut bez równego wachlarza, łuska z okna wyrzutowego,
+## świst cudzej kuli koło ucha.
+func _t_weapon_realism() -> void:
+	const Grenade := preload("res://scripts/grenade.gd")
+	var g := Weapons.def(Weapons.GNIEW4)
+	check("WRATH-4: grawitacja jak granat ręczny i flara (%.0f = %.0f), kształt łuku v²/g jak dawniej (%.0f ≈ 261)" % [g.gravity, Grenade.GRAVITY, g.speed * g.speed / g.gravity],
+		is_equal_approx(g.gravity, Grenade.GRAVITY) and absf(g.speed * g.speed / g.gravity - 261.3) < 3.0)
+	# śrut: każda śrucina we własnym wycinku stożka, w losowym miejscu
+	var s := Weapons.def(Weapons.SPREAD12)
+	var w := 2.0 * s.spread_deg / float(s.pellets)
+	var in_sector := true
+	var first: Array = []
+	for seed in 300:
+		var dirs := Weapons.pellet_dirs(s, Vector2.RIGHT, seed, 0.0)
+		for i in dirs.size():
+			var off := rad_to_deg(Vector2.RIGHT.angle_to(dirs[i]))
+			var lo := -s.spread_deg + w * i - s.jitter_deg - 0.001
+			var hi := -s.spread_deg + w * (i + 1) + s.jitter_deg + 0.001
+			in_sector = in_sector and off >= lo and off <= hi
+		first.append(rad_to_deg(Vector2.RIGHT.angle_to(dirs[0])))
+	var mean := 0.0
+	for o in first:
+		mean += float(o) / first.size()
+	var dev := 0.0
+	for o in first:
+		dev += pow(float(o) - mean, 2.0) / first.size()
+	check("SPREAD-12: śruciny we własnych wycinkach stożka, rozrzucone losowo (odchylenie skrajnej %.2f°, wycinek %.1f°)" % [sqrt(dev), w],
+		in_sector and sqrt(dev) > w * 0.2)
+	# łuska: okno wyrzutowe na osi broni między chwytem a wylotem
+	for id in [Weapons.M83, Weapons.P64, Weapons.SRUT8]:
+		var d := Weapons.def(id)
+		var ht: Array = wc._hand_tip(Vector2.RIGHT, d)
+		var ej: Vector2 = wc.eject_pos(Vector2.RIGHT, d)
+		var want: Vector2 = (ht[0] as Vector2).lerp(ht[1], d.eject_frac)
+		check("%s: łuska z okna wyrzutowego (%.1f px za wylotem, ułamek %.2f od chwytu)" % [d.name, ej.distance_to(ht[1]), d.eject_frac],
+			ej.distance_to(want) < 0.01 and ej.distance_to(ht[1]) < (ht[0] as Vector2).distance_to(ht[1]))
+	# świst: kula bota przelatuje nad głową gracza — świst; ta sama kula gracza — nie
+	await _settle_player()
+	var heard := []
+	for shooter in [99, player.player_id]:
+		var n0 := Projectile.whizz_count
+		var p := Projectile.new()
+		p.launch(Weapons.M83, player.global_position + Vector2(60.0, -16.0), Vector2.LEFT, shooter, false)          # z prawej, w mur przy starcie za graczem
+		get_tree().current_scene.add_child(p)
+		await frames(4)
+		heard.append(Projectile.whizz_count > n0)
+		if is_instance_valid(p):
+			p.queue_free()
+	check("świst: cudza kula nad głową świszczy (%s), własna nie (%s)" % [str(heard[0]), str(heard[1])], heard[0] and not heard[1])
+	await frames(2)
+
 ## Szybki pocisk nie może przeskoczyć wąskiego wroga (przeciąganie promienia, nie przesuwany obszar).
 func _t_sweep() -> void:
 	var e := await dummy(200.0)
@@ -1964,6 +2016,21 @@ func run_shots(m: Node2D, out_dir: String) -> void:
 	await wait(0.55)
 	await _snap(out_dir, "12_sokol_rockets", 0)
 	wc.sim_fire = false
+	await wait(1.5)
+	# 11. ślady po kulach w gruncie i osmalenie po granacie (1.7.312)
+	free_dummies()
+	d = equip(Weapons.M83)
+	for i in 8:
+		player.aim_dir = Vector2.from_angle(deg_to_rad(52.0 + 3.0 * i))          # suchy grunt tuż przed postacią (dalej w prawo leży bagno — w cieczy śladów nie ma)
+		wc.cd = 0.0
+		wc._fire_shot(d)
+		await wait(0.12)
+	d = equip(Weapons.GNIEW4)
+	player.aim_dir = Vector2.from_angle(deg_to_rad(40.0))
+	wc._fire_shot(d)
+	await wait(1.6)
+	player.aim_dir = Vector2.RIGHT
+	await _snap(out_dir, "13_marks", 2)
 	print("[WTEST] zrzuty zapisane w %s" % out_dir)
 	get_tree().quit(0)
 
