@@ -199,6 +199,9 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 - **Maczeta** zabija natychmiast i po cichu wroga śpiącego **albo odwróconego plecami**.
 - **HKM-9** podpala (8 HP/s), płonące Trzoski uciekają w panice. **WRATH-4** liczy się jako wabik (+15 Uwagi) i rani drużynę.
 - Zasięgi to zasięg *lotu* pocisku; efektywny (bez spadku obrażeń) jest krótszy (M-83 12 m, SPREAD-12 2,5 m).
+- **Realia (1.7.316):** nabój w komorze (M-83 30+1, P-83 8+1, strzelby), P-83 strzela poddźwiękowo (9×18 mm), granat WRATH-4 uzbraja się
+  dopiero po ok. 5 m lotu (bliżej tylko uderza — strzał pod nogi nie rani), rakiety FALCON-6 rozpędzają się jak Gyrojet (z bliska słabe),
+  strzał w locie ma większy rozrzut, a ulepszenia lufy i spustu dają celność zamiast obrażeń. Dalsza rozbudowa: `GUNSMITH_PLAN.md`.
 - Doszły później (patrz `prototype/WEAPONS.md` §7–§9 i `scripts/throwables.gd`): ulepszenia 3-poziomowe, granaty, miny, ładunki, flary
   i zakup w kryjówce. Poza zakresem prototypu zostaje wyważanie drzwi.
 

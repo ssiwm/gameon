@@ -16,6 +16,11 @@ extends RefCounted
 ## kula przelatuje pół ekranu w ~0,1 s, a lot widać jako smugę (view3d.gd `_sync_projectiles`, długość `Projectile.TRACER_SEC`). To wciąż ułamek
 ## prawdziwej prędkości, ale tor jest czytelny, a kula nie „płynie” wolniej, niż biegnie postać (dawniej 340 px/s przy biegu 95).
 ## Wolne zostają pociski, których lot jest mechaniką: rakiety FALCON-6, bełt SINEW-6 i granat WRATH-4.
+##
+## Realia (1.7.316): P-83 strzela poddźwiękowo (9×18 mm ≈ 315 m/s → 1070 px/s, poniżej `SOUND_PX`), broń z zamkiem zamkniętym mieści nabój
+## w komorze (`chamber`: M-83 30+1, P-83 8+1, strzelby), granat WRATH-4 uzbraja się dopiero po `arm_dist` lotu, rakieta FALCON-6 (Gyrojet)
+## wychodzi z lufy wolno i rozpędza się (`speed_start` → `speed` w `accel_time`), a strzał w locie ma większy rozrzut (`air_spread`).
+## Przelicznik prędkości: px/s ≈ m/s × 3,4 (M-83: 715 m/s → 2400 px/s).
 
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
@@ -33,6 +38,9 @@ const CIEGNO6 := 9
 const MACZETA := 10
 const KILOF := 11
 const COUNT := 12
+
+## Prędkość dźwięku (343 m/s) w skali prędkości kul gry (px/s ≈ m/s × 3,4): kula wolniejsza nie trzaska naddźwiękowo.
+const SOUND_PX := 1165.0
 
 const Kind := WeaponDef.Kind
 const Slot := WeaponDef.Slot
@@ -55,7 +63,7 @@ static func _table() -> Array:
 			"jitter_deg": 0.8, "bloom_per_shot": 0.45, "bloom_max": 4.0, "bloom_decay": 9.0,
 			"speed": 2400.0, "range_px": 240.0, "falloff_start": 190.0, "falloff_min": 0.5,
 			"n_min": 0.6, "n_max": 1.5, "heat_gain": 0.09, "heat_decay": 0.30,
-			"mag": 30, "reserve_start": 150, "reserve_max": 270, "pickup_rounds": 30,
+			"mag": 30, "reserve_start": 150, "reserve_max": 270, "pickup_rounds": 30, "chamber": true,
 			"reload_time": 1.35, "reload_empty_extra": 0.45,
 			"shake": 0.7, "cam_kick": 0.5, "recoil": 2.5, "flash_size": 3.5, "flash_light": 1.3,
 			"tracer_len": 12.0, "casing": 1, "gun_len": 12.0, "gun_row": 0,
@@ -68,7 +76,7 @@ static func _table() -> Array:
 			"spread_deg": 14.0, "jitter_deg": 1.5,
 			"speed": 1400.0, "range_px": 135.0, "falloff_start": 40.0, "falloff_min": 0.35,
 			"n_min": 3.5, "n_max": 5.0, "heat_gain": 0.40, "heat_decay": 1.2,
-			"mag": 25, "reserve_start": 50, "reserve_max": 100, "pickup_rounds": 12,
+			"mag": 25, "reserve_start": 50, "reserve_max": 100, "pickup_rounds": 12, "chamber": true,
 			"reload_time": 2.0, "reload_empty_extra": 0.5,
 			"shake": 2.4, "cam_kick": 2.6, "recoil": 5.0, "flash_size": 6.0, "flash_light": 1.7,
 			"tracer_len": 7.0, "casing": 2, "gun_len": 12.0, "gun_row": 1,
@@ -79,9 +87,9 @@ static func _table() -> Array:
 			"auto": false, "cooldown": 0.20, "draw_time": 0.2,
 			"damage": 11.0, "crit_mult": 2.0, "knock": 60.0,
 			"jitter_deg": 0.35, "bloom_per_shot": 0.8, "bloom_max": 3.0, "bloom_decay": 10.0, "crouch_accuracy": 0.5,
-			"speed": 1500.0, "range_px": 208.0, "falloff_start": 160.0, "falloff_min": 0.6,
+			"speed": 1070.0, "range_px": 208.0, "falloff_start": 160.0, "falloff_min": 0.6,     # 9×18 mm ≈ 315 m/s — poddźwiękowy (próg Weapons.SOUND_PX)
 			"n_min": 0.5, "n_max": 0.9, "heat_gain": 0.16, "heat_decay": 0.6,
-			"mag": 8, "infinite": true, "reload_time": 1.1, "reload_empty_extra": 0.3,
+			"mag": 8, "chamber": true, "infinite": true, "reload_time": 1.1, "reload_empty_extra": 0.3,
 			"shake": 0.5, "cam_kick": 0.4, "recoil": 2.5, "flash_size": 3.0, "flash_light": 1.2,
 			"tracer_len": 9.0, "casing": 1, "eject_frac": 0.45, "gun_len": 7.0, "gun_row": 2,
 			"sfx": "p64_shot", "sfx_count": 4, "sfx_vol": -8.0,
@@ -93,7 +101,7 @@ static func _table() -> Array:
 			"spread_deg": 17.0, "jitter_deg": 1.0,
 			"speed": 1300.0, "range_px": 100.0, "falloff_start": 20.0, "falloff_min": 0.25,
 			"n_min": 4.5, "n_max": 6.0, "heat_gain": 0.5, "heat_decay": 0.4,
-			"mag": 8, "reserve_start": 24, "reserve_max": 48, "pickup_rounds": 8,
+			"mag": 8, "reserve_start": 24, "reserve_max": 48, "pickup_rounds": 8, "chamber": true,
 			"reload_time": 0.45, "reload_per_round": true, "reload_sfx": "reload_shell", "reload_sfx_count": 3,
 			"shake": 4.0, "cam_kick": 4.5, "recoil": 7.0, "flash_size": 8.0, "flash_light": 2.0,
 			"tracer_len": 6.0, "casing": 2, "gun_len": 12.0, "gun_row": 3,
@@ -130,7 +138,7 @@ static func _table() -> Array:
 			"auto": false, "cooldown": 1.2, "draw_time": 0.55,
 			"damage": 25.0, "knock": 160.0, "stun": 0.5,
 			"jitter_deg": 0.5, "speed": 368.0, "range_px": 330.0, "gravity": 520.0,      # grawitacja jak granat ręczny i flara (grenade.gd); prędkość tak, by v²/g (kształt łuku) został jak przy 280 / 300
-			"blast_radius": 48.0, "blast_damage": 80.0, "fuse": 1.6,
+			"blast_radius": 48.0, "blast_damage": 80.0, "fuse": 1.6, "arm_dist": 80.0,     # zapalnik uzbraja się po ok. 6,5 m lotu (prawdziwy 40 mm: 14–27 m, VOG-25 10–40 m — skrócone do skali ekranu)
 			"n_min": 3.0, "n_max": 3.0, "heat_gain": 0.0,
 			"mag": 6, "reserve_start": 12, "reserve_max": 24, "pickup_rounds": 6,
 			"reload_time": 0.7, "reload_per_round": true, "reload_sfx": "reload_launcher", "reload_sfx_count": 1,
@@ -142,7 +150,7 @@ static func _table() -> Array:
 			"key": "sokol6", "name": "FALCON-6", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
 			"auto": true, "cooldown": 0.2, "draw_time": 0.35,
 			"damage": 10.0, "knock": 25.0,
-			"jitter_deg": 5.0, "speed": 170.0, "range_px": 210.0,
+			"jitter_deg": 5.0, "speed": 300.0, "speed_start": 60.0, "accel_time": 0.25, "range_px": 210.0,     # Gyrojet: z lufy wychodzi wolno i rozpędza się silnikiem
 			"homing": 4.5, "homing_cone": 60.0, "homing_range": 190.0,
 			"n_min": 1.2, "n_max": 2.4, "heat_gain": 0.10, "heat_decay": 0.3,
 			"mag": 40, "reserve_start": 80, "reserve_max": 160, "pickup_rounds": 40,
@@ -298,6 +306,12 @@ static func validate() -> Array:
 			errs.append("%s: brak prędkości pocisku" % d.key)
 		if d.kind == Kind.RAIL and d.charge_time <= 0.0:
 			errs.append("%s: RAIL bez czasu ładowania" % d.key)
+		if d.accel_time > 0.0 and (d.speed_start <= 0.0 or d.speed_start >= d.speed):
+			errs.append("%s: pocisk z silnikiem bez rozpędzania (speed_start %.0f, speed %.0f)" % [d.key, d.speed_start, d.speed])
+		if d.arm_dist > 0.0 and (d.blast_radius <= 0.0 or d.arm_dist >= d.range_px):
+			errs.append("%s: odległość uzbrojenia bez wybuchu albo dalej niż zasięg" % d.key)
+		if d.chamber and (d.kind == Kind.MELEE or not d.uses_ammo()):
+			errs.append("%s: nabój w komorze w broni bez amunicji" % d.key)
 		if d.kind == Kind.LAUNCHER and d.blast_radius <= 0.0:
 			errs.append("%s: LAUNCHER bez promienia wybuchu" % d.key)
 		if d.sfx == "":

@@ -51,6 +51,7 @@ var _done := false
 var _whizzed := false
 var _seg_from := Vector2.INF          ## początek odcinka lotu bieżącej klatki (świst sprawdzany też, gdy kula kończy lot w tej klatce)
 static var whizz_count := 0           ## licznik świstów (testy headless)
+static var dud_count := 0             ## licznik nieuzbrojonych granatów, które trafiły bez wybuchu (testy headless)
 var lag := 0.0                      ## s kompensacji opóźnienia (serwer, strzał klienta) — patrz lag_comp.gd
 var _comp_rids: Array[RID] = []     ## wrogowie z historią: w trakcie dogonienia pomijamy ich ciała fizyczne
 
@@ -64,7 +65,7 @@ func launch(w: int, from: Vector2, dir: Vector2, shooter: int, auth: bool, lag_s
 	direction = dir.normalized()
 	position = from
 	origin = from
-	_vel = direction * float(_def.speed)
+	_vel = direction * float(_def.speed_at(0.0))         # rakieta z silnikiem (FALCON-6) startuje wolno i rozpędza się w locie (`_boost`)
 	_pierce_left = int(_def.pierce)
 
 func _ready() -> void:
@@ -87,6 +88,7 @@ func _physics_process(delta: float) -> void:
 	if _done:
 		return
 	_age += delta
+	_boost()
 	if float(_def.homing) > 0.0 and _age > HOMING_DELAY:
 		_steer(delta)
 	if float(_def.gravity) > 0.0:
@@ -102,7 +104,7 @@ func _physics_process(delta: float) -> void:
 	_dist += travelled
 	rotation = _vel.angle()
 	var fuse := float(_def.fuse)
-	if fuse > 0.0 and _age >= fuse:
+	if fuse > 0.0 and _age >= fuse and is_armed():
 		_detonate(global_position, Vector2.UP)
 		return
 	if _dist >= float(_def.range_px):
@@ -120,6 +122,7 @@ func _catch_up(lag_s: float) -> void:
 	while elapsed < lag_s and not _done:
 		var dt := minf(LagComp.STEP, lag_s - elapsed)
 		_age += dt
+		_boost()
 		if float(_def.homing) > 0.0 and _age > HOMING_DELAY:
 			_steer(dt)
 		if float(_def.gravity) > 0.0:
@@ -132,7 +135,7 @@ func _catch_up(lag_s: float) -> void:
 		_dist += step.length()
 		rotation = _vel.angle()
 		var fuse := float(_def.fuse)
-		if fuse > 0.0 and _age >= fuse:
+		if fuse > 0.0 and _age >= fuse and is_armed():
 			_detonate(global_position, Vector2.UP)
 			return
 		if _dist >= float(_def.range_px):
@@ -193,7 +196,10 @@ func _sweep(from: Vector2, to: Vector2, rewind := -1.0) -> bool:
 				if sticks_on_hit():
 					_stick(p)
 				if _def.blast_radius > 0.0:
-					_detonate(p, -direction)
+					if is_armed(at_dist):
+						_detonate(p, -direction)
+					else:
+						_dud(p)
 					return true
 				if _pierce_left > 0:
 					_pierce_left -= 1
@@ -216,7 +222,7 @@ func sticks_on_hit() -> bool:
 	return bool(_def.sticks)
 
 func _hit_target(node: Node, p: Vector2, at_dist: float) -> Dictionary:
-	var dmg: float = float(_def.damage) * float(_def.falloff(at_dist))
+	var dmg: float = float(_def.damage) * float(_def.falloff(at_dist)) * float(_def.boost_damage(_vel.length()))
 	var info := Combat.make_info(weapon, dmg, p, direction, shooter_id, "bullet")
 	var res := Combat.apply(node, info)
 	Combat.report(info, res)
@@ -231,7 +237,10 @@ func _world_hit(p: Vector2, n: Vector2) -> void:
 	if authoritative and sticks_on_hit():
 		_stick(p)
 	if _def.blast_radius > 0.0:
-		_detonate(p, n)
+		if is_armed(_dist + global_position.distance_to(p)):
+			_detonate(p, n)
+		else:
+			_dud(p)
 		return
 	_finish(p)
 
@@ -264,7 +273,7 @@ func _check_origin() -> void:
 				if sticks_on_hit():
 					_stick(global_position)
 				if _def.blast_radius > 0.0:
-					_detonate(global_position, -direction)
+					_dud(global_position)                       # przy wylocie zapalnik nigdy nie jest uzbrojony
 					return
 				if _pierce_left > 0:
 					_pierce_left -= 1
@@ -316,10 +325,30 @@ func _finish(at: Vector2) -> void:
 func _expire() -> void:
 	if authoritative and sticks_on_hit():
 		_stick(global_position)
-	if authoritative and _def.blast_radius > 0.0:
+	if authoritative and _def.blast_radius > 0.0 and is_armed():
 		_detonate(global_position, Vector2.UP)
 		return
 	_finish(global_position)
+
+## Zapalnik uzbrojony: granat przeleciał `arm_dist` (domyślnie do bieżącego punktu lotu). Broń bez odległości uzbrojenia — zawsze.
+func is_armed(at_dist := -1.0) -> bool:
+	return (_dist if at_dist < 0.0 else at_dist) >= float(_def.arm_dist)
+
+## Granat trafił, zanim zapalnik się uzbroił: tępe uderzenie bez wybuchu i bez hałasu detonacji (trafiony wróg dostał już obrażenia
+## i ogłuszenie samego pocisku w `_hit_target`). Jak prawdziwy granat 40 mm — strzał pod nogi nie rani strzelca.
+func _dud(at: Vector2) -> void:
+	if authoritative:
+		dud_count += 1
+	Audio.play_variant_at("impact_hard", 3, at, Audio.BUS_WORLD, -8.0, 0.7)
+	_finish(at)
+
+## Silnik rakiety (FALCON-6 = Gyrojet): prędkość rośnie z czasem lotu do `speed`; kierunek bez zmian (skręca `_steer`).
+func _boost() -> void:
+	if float(_def.accel_time) <= 0.0:
+		return
+	var v := float(_def.speed_at(_age))
+	if _vel.length() < v:
+		_vel = _vel.normalized() * v
 
 ## Wybuch (granat): serwer liczy obrażenia i hałas, efekt przychodzi do wszystkich przez Arsenal.
 func _detonate(at: Vector2, normal: Vector2) -> void:

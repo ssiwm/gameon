@@ -232,7 +232,7 @@ func deposit(w: int, n: int) -> void:
 func _deposit_rpc(w: int, n: int) -> void:
 	if not NoiseMgr.is_server() or not Weapons.is_valid(w) or not _is_human_peer(multiplayer.get_remote_sender_id()):
 		return
-	add_reserve(w, clampi(n, 0, Weapons.def(w).mag))
+	add_reserve(w, clampi(n, 0, Weapons.def(w).capacity(true)))       # magazynek z nabojem w komorze (30+1)
 
 ## Czy `peer_id` to żywy człowiek w tej sesji (serwer nie przyjmuje zwrotów naboi od obcych).
 func _is_human_peer(peer_id: int) -> bool:
