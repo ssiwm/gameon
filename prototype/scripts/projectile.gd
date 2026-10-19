@@ -73,7 +73,7 @@ func _ready() -> void:
 	material = Lights.unshaded()
 	z_index = 3
 	rotation = _vel.angle()
-	if float(_def.homing) > 0.0 or float(_def.gravity) > 0.0:
+	if float(_def.homing) > 0.0 or float(_def.blast_radius) > 0.0:          # żar rakiety i zapalnik granatu (bełt nie świeci, choć też opada)
 		_light = Lights.make_light(Lights.radial(), 1.8, _def.flash_color, 0.7, false)
 		add_child(_light)
 	if float(_def.homing) > 0.0:

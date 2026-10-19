@@ -366,7 +366,7 @@ func _hurt_teammate_near(who: Node2D) -> bool:
 	return false
 
 ## Amunicja: bierze ją każdy człowiek w zasięgu, ale tylko jeśli ktoś z ludzi nosi
-## tę broń (P-64 ma nieskończoną amunicję — jej skrzynek nie ma) i zapas nie jest pełny.
+## tę broń (P-83 ma nieskończoną amunicję — jej skrzynek nie ma) i zapas nie jest pełny.
 func _try_ammo() -> void:
 	if Arsenal.is_full(arg):
 		return

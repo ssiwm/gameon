@@ -36,7 +36,7 @@ Flaga działa tylko z oknem (w trybie headless gra używa sprite'ów, więc `--m
 - `tools/prep_char3d.py` (Blender) robi lekkie GLB postaci: 6 tys. ścian, sama tekstura koloru (≈0,5 MB zamiast 13 MB).
 - Bronie buduje `tools/gun_proc.py` (wszystkie naraz: `tools/gun_proc_all.sh`, ok. 3 min): bryły z fazami + materiały proceduralne wypieczone
   w Cycles do koloru, normalnych, ORM i emisji 2048² (2–11 tys. trójkątów, ok. 1 MB na broń). Projekty wzorowane na prawdziwych konstrukcjach,
-  długości naturalne względem postaci 1,8 m (P-64 0,18 m, M-83 0,88 m, SPECTER-1 1,15 m). Początek układu modelu = nadgarstek dłoni tylnej.
+  długości naturalne względem postaci 1,8 m (P-83 0,19 m, M-83 0,88 m, SPECTER-1 1,15 m). Początek układu modelu = nadgarstek dłoni tylnej.
   Stara droga (`prep_gun3d.py`, tabela w `prep_char3d_all.py --guns`) przycinała modele z Tripo do 2,5 tys. trójkątów.
 - Stal broni ma pełną metaliczność: w rękach odbija niewidoczne „niebo odbić" warstwy graczy (`view3d.gd`, `ACTOR_REFLECT`), na stojakach
   kryjówki — sondę odbić z dwoma ekranami (`_add_rack_probe`); oglądana broń kołysze się i ma dwa własne reflektory.
@@ -58,7 +58,7 @@ blender -b --factory-startup -P prototype/tools/gun_proc.py -- m83 prototype/art
   `tools/test_aim_points.gd` (CI) sprawdza niezależność od animacji, symetrię stron i odchylenie wylotu od lufy modelu w spokojnej pozie (próg 1,5 px
   świata, jest 0,8). Tryb headless nie ma postaci 3D — serwer dedykowany liczy wylot po staremu, od korpusu (`MUZZLE_TOLERANCE` 40 px to przykrywa).
 - **Broń trzyma się pozy nominalnej.** Początek układu broni liczymy od barku nominalnego, a odchylenie barku modelu od niego przechodzi na broń
-  w części `GUN_FOLLOW` (0,5; P-64 0,8; broń biała 1): ciało pracuje pod bronią, ręce to wybierają. Kąt broni modelu goni kąt celowania sprężyną
+  w części `GUN_FOLLOW` (0,5; P-83 0,8; broń biała 1): ciało pracuje pod bronią, ręce to wybierają. Kąt broni modelu goni kąt celowania sprężyną
   (`AIM_SPRING`, tłumienie 0,78): obrót o 45° trwa ok. 0,1 s z drobnym wybiegiem, a strzał dociąga broń na linię celowania od razu.
 - **Dłonie z geometrii.** Kości dłoni z Tripo mają przypadkowe osie, inne w każdym modelu i w każdej dłoni, więc `_measure_hands` wyznacza układ dłoni
   z wierzchołków przypisanych do kości: palce = od nadgarstka do środka ciężkości, grzbiet = najcieńszy wymiar bryły po stronie, przy której kciuk
@@ -75,7 +75,7 @@ blender -b --factory-startup -P prototype/tools/gun_proc.py -- m83 prototype/art
   poza nominalna jest zawsze liczona jak dla zwrotu w prawo i odbijana, a stałe przesunięcie barków od zwrotu tułowia (ok. 0,18 m) wybierają ręce —
   broń modelu zostaje przy wylocie rozgrywki (`test_aim_points.gd`: 0,6 px w obie strony). `muzzle_px` / `grip_px` liczy `_to_px` tak jak widok 3D
   (aktor w pozycji gracza, obrócony o `model_yaw`). Podgląd obrotu: `tools/shot_hands3d.gd -- --guns=m83 --views=game --size=2.1 --turn=-2,2,4,6,8,10,20`.
-- **P-64** oburącz na wyprostowanych rękach, lewa dłoń podpiera stopkę chwytu; przy przeładowaniu schodzi do pasa i wraca. **Broń biała** w spoczynku
+- **P-83** (klucz `p64`) oburącz na wyprostowanych rękach, lewa dłoń podpiera stopkę chwytu; przy przeładowaniu schodzi do pasa i wraca. **Broń biała** w spoczynku
   stoi w gardzie (`MELEE_GUARD`), cios wychodzi z gardy i do niej wraca; kilof jest zawsze trzymany oburącz.
 - Klipy z paczek CC0 do walki wręcz (`Sword_Regular_A/B/C`, `Sword_Attack`, `Melee_Hook`) obejrzane na stykówce i odrzucone: to cięcia z obrotem całego
   ciała, w widoku z boku postać odwraca się plecami do kamery (ten sam powód co przy `OverhandThrow`). Klipy pistoletowe (`Pistol_*`) nic nie dają, dopóki

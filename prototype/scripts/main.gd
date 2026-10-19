@@ -1103,7 +1103,7 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		ppm._show_tab(4)
 		(ppm._pages[4]).select(3)
 	if _has_arg_prefix("--shotweapons"):
-		var wpm: Node = $UI.get_node("PauseMenu")           # --shotweapons[=N]: karta WEAPONS kodeksu (wpis N, domyślnie P-64)
+		var wpm: Node = $UI.get_node("PauseMenu")           # --shotweapons[=N]: karta WEAPONS kodeksu (wpis N, domyślnie P-83)
 		wpm.open()
 		wpm._show_tab(2)
 		var wi := 2

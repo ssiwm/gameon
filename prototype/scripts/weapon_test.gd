@@ -163,6 +163,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_mouse_aim()
 	await _t_fast_bullets()
 	await _t_weapon_realism()
+	await _t_weapon_realism2()
 	await _t_homing()
 	await _t_bolt()
 	await _t_melee()
@@ -1558,6 +1559,39 @@ func _t_weapon_realism() -> void:
 		if is_instance_valid(p):
 			p.queue_free()
 	check("świst: cudza kula nad głową świszczy (%s), własna nie (%s)" % [str(heard[0]), str(heard[1])], heard[0] and not heard[1])
+	await frames(2)
+
+## Realia broni (1.7.313): P-83 z magazynkiem 8, SPREAD-12 jako półautomat z bębnem (bez pompki w pozie), opadający bełt SINEW-6 krótszy od karabinu,
+## żadna broń nie przesuwa strzelca.
+func _t_weapon_realism2() -> void:
+	const Char3D := preload("res://scripts/char3d.gd")
+	var pd := Weapons.def(Weapons.P64)
+	check("sidearm to P-83 z magazynkiem 8 (%s, %d)" % [pd.name, pd.mag], pd.name == "P-83" and pd.mag == 8 and pd.key == "p64")
+	var sd := Weapons.def(Weapons.SPREAD12)
+	var pose: Dictionary = Char3D.WEAPON_POSE["spread12"]
+	check("SPREAD-12: półautomat z bębnem 25, bez cyklu pompki w pozie postaci (%d, cykl „%s”)" % [sd.mag, str(pose.get("cycle", ""))],
+		sd.mag == 25 and sd.sfx_cycle == "" and not pose.has("cycle") and not sd.reload_per_round)
+	var bd := Weapons.def(Weapons.CIEGNO6)
+	var md := Weapons.def(Weapons.M83)
+	check("SINEW-6: bełt opada z prawdziwym g (%.0f px/s² ≈ %.1f m/s²), zasięg krótszy niż M-83 (%.0f < %.0f)" % [bd.gravity, bd.gravity * 0.082, bd.range_px, md.range_px],
+		absf(bd.gravity * 0.082 - 9.81) < 0.3 and bd.range_px < md.range_px)
+	var kicks: Array = []
+	for d in Weapons.defs():
+		if d.kick > 0.0:
+			kicks.append(d.key)
+	check("żadna broń nie przesuwa strzelca (kick > 0: %s)" % str(kicks), kicks.is_empty())
+	# bełt w locie: opada, nie świeci jak granat
+	await _settle_player()
+	var b := Projectile.new()
+	b.launch(Weapons.CIEGNO6, player.global_position + Vector2(-20.0, -60.0), Vector2.RIGHT, 99, false)
+	get_tree().current_scene.add_child(b)
+	var y0: float = b.global_position.y
+	await frames(12)
+	var dropped := is_instance_valid(b) and b.global_position.y > y0 + 1.0
+	var lit := is_instance_valid(b) and b._light != null
+	check("SINEW-6: bełt w locie opada (%s) i nie ma światła granatu (%s)" % [str(dropped), str(lit)], dropped and not lit)
+	if is_instance_valid(b):
+		b.queue_free()
 	await frames(2)
 
 ## Szybki pocisk nie może przeskoczyć wąskiego wroga (przeciąganie promienia, nie przesuwany obszar).

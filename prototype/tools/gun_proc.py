@@ -3,7 +3,7 @@ Bronie (klucze jak w weapon_def): m83, spread12, p64, srut8, lr7, hkm9, gniew4, 
 
 Uruchomienie (z korzenia repo):
     blender -b --factory-startup -P prototype/tools/gun_proc.py -- p64 prototype/art/char3d/gun_p64.glb [--length=M] [--tex=2048] [--samples=48] [--dust=1] [--nobake]
-    --length = długość broni w metrach; domyślnie naturalna względem postaci 1,8 m (np. p64 0,18, spread12 1,0); --nobake = sama siatka z szarym
+    --length = długość broni w metrach; domyślnie naturalna względem postaci 1,8 m (np. p64 = P-83 0,19, spread12 1,0); --nobake = sama siatka z szarym
     materiałem (szybki podgląd brył). Wszystkie naraz: tools/gun_proc_all.sh.
 Model powstaje w milimetrach (lufa w +X, góra w +Z, lewa strona broni w +Y), na końcu jest skalowany do --length i przesuwany tak, by początek układu
 wypadł w nadgarstku dłoni tylnej — jak w prep_gun3d.py (char3d.gd ustawia dłoń wzdłuż osi „góra" broni, sięga od nadgarstka ok. 0,2 m).
@@ -870,71 +870,72 @@ def stencil_text(body, size, x, z, left, ppm=10.0, pad=1.5):
     return img, x + lo[0], x + hi[0], z + lo[1], z + hi[1], -1.0
 
 
-# ---------------------------------------------------------------- P-64
+# ---------------------------------------------------------------- P-83 (klucz techniczny p64)
 
-def build_p64():
-    """P-64 w milimetrach: zamek 152 mm, wysokość 107 mm ze szczerbinką; stopka magazynka na z = 0, tył zamka na x = 0."""
+def build_p83():
+    """P-83 Wanad w milimetrach (od 1.7.313 zamiast P-64): zamek 166 mm o płaskim grzbiecie, wysokość ok. 122 mm ze szczerbinką, magazynek na 8 naboi
+    z płaską stopką; stopka magazynka na z = 0, tył zamka na x = 0. Okładziny z czarnego tworzywa z kratką, zaokrąglony kabłąk, kurek z ostrogą."""
     WEAR_MM[0] = 0.9
     if NOBAKE:
         blued = small = bright = bore = grip_m = screw_m = hammer_m = None
     else:
-        blued = steel("p64_blued", grooves=[("x", 2.1, 6.0, 31.0, 80.5, 97.0, 0.4, True)], engrave=[(62.0, 119.0, 81.5, 92.0), (95.0, 146.0, 81.5, 92.0)],
-                      muzzle=(118.0, 152.0))
-        small = steel("p64_small", wear_k=0.35)                                           # drobne części: bez rowków, słabsze przetarcia
-        hammer_m = steel("p64_hammer", grooves=[("z", 1.3, -9.0, -1.0, 88.0, 99.0, 0.25, False)])
-        bright = steel("p64_bright", tone="bright")
-        screw_m = steel("p64_screw", slot=(21.0, 38.0, 25.0), wear_k=0.35)
-        bore = plain("p64_bore", rgb(0.008, 0.008, 0.008), 0.7, 1.0)
-        grip_m = bakelite("p64_grip", checker=(1.45, 101.0), screw=(21.0, 38.0, 4.6))
+        blued = steel("p83_blued", blue=BLACKOX, r0=0.4, grooves=[("x", 3.0, 7.0, 36.0, 89.0, 113.0, 0.55, True)],
+                      engrave=[(66.0, 128.0, 90.0, 101.0), (100.0, 160.0, 90.0, 101.0)], muzzle=(130.0, 166.0))
+        small = steel("p83_small", blue=BLACKOX, r0=0.4, wear_k=0.35)
+        hammer_m = steel("p83_hammer", blue=BLACKOX, grooves=[("z", 1.3, -10.0, -1.0, 96.0, 108.0, 0.25, False)])
+        bright = steel("p83_bright", tone="bright")
+        screw_m = steel("p83_screw", blue=BLACKOX, slot=(22.0, 40.0, 25.0), wear_k=0.35)
+        bore = plain("p83_bore", rgb(0.008, 0.008, 0.008), 0.7, 1.0)
+        grip_m = bakelite("p83_grip", checker=(1.3, 101.0), screw=(22.0, 40.0, 4.8), tone=BLACK)
         mark = plain("marker", rgb(0.0, 0.0, 0.0), 1.0, 0.0)
-        marker_text("9 mm  P-64", 6.0, 116.0, 83.2, 11.93, mark)
-        marker_text("AP 01987", 6.0, 98.0, 83.2, -11.93, mark)
-    # zamek: przekrój z płaskimi bokami i wypukłym grzbietem, okno wyrzutowe po prawej (−Y), otwór lufy z przodu
-    sec = lambda: dome_sec(12.0, 78.0, 95.0, 9.0)
-    slide = loft("slide", [(0.0, sec()), (60.0, sec()), (110.0, sec()), (152.0, sec())], blued)
-    cut(slide, prism("cut_port", fillet([(64.0, 93.0, 2.0), (90.0, 93.0, 2.0), (90.0, 115.0), (64.0, 115.0)]), -20.0, 2.5, None, bv=None, part=False))
-    cut(slide, revolve("cut_bore", [(138.0, 0.0), (138.0, 5.2), (160.0, 5.2), (160.0, 0.0)], (0.0, 91.0), None, seg=24, bv=None, part=False))
+        marker_text("9 mm  P-83", 6.0, 126.0, 91.5, 12.43, mark)
+        marker_text("WA 03187", 6.0, 104.0, 91.5, -12.43, mark)
+    # zamek: płaskie boki i spłaszczony grzbiet (wyższy i bardziej kanciasty niż w P-64), przód lekko zwężony, okno wyrzutowe po prawej (−Y)
+    sec = lambda w, zb, zs, rt: dome_sec(w, zb, zs, rt)
+    slide = loft("slide", [(0.0, sec(12.5, 86.0, 112.0, 4.0)), (70.0, sec(12.5, 86.0, 112.0, 4.0)), (140.0, sec(12.5, 86.0, 112.0, 4.0)),
+                           (158.0, sec(11.8, 87.0, 111.0, 3.8)), (166.0, sec(10.8, 88.0, 110.0, 3.4))], blued)
+    cut(slide, prism("cut_port", fillet([(70.0, 103.0, 2.0), (99.0, 103.0, 2.0), (99.0, 125.0), (70.0, 125.0)]), -20.0, 2.5, None, bv=None, part=False))
+    cut(slide, revolve("cut_bore", [(150.0, 0.0), (150.0, 5.6), (172.0, 5.6), (172.0, 0.0)], (0.0, 101.0), None, seg=24, bv=None, part=False))
     bevel(slide, 0.7, 2)
-    revolve("chamber", [(64.6, 0.0), (64.6, 9.8), (89.4, 9.8), (89.4, 0.0)], (0.0, 91.0), bright, seg=28, bv=0.0)
-    barrel = revolve("barrel", [(146.0, 0.0), (146.0, 6.3), (153.5, 6.3), (153.5, 4.6), (140.0, 4.6), (140.0, 0.0)], (0.0, 91.0), blued, seg=24, bv=0.35, bseg=1)
+    revolve("chamber", [(70.6, 0.0), (70.6, 10.2), (98.4, 10.2), (98.4, 0.0)], (0.0, 101.0), bright, seg=28, bv=0.0)
+    barrel = revolve("barrel", [(158.0, 0.0), (158.0, 6.5), (166.5, 6.5), (166.5, 4.6), (152.0, 4.6), (152.0, 0.0)], (0.0, 101.0), blued, seg=24, bv=0.35, bseg=1)
     if not NOBAKE:
         barrel.data.materials.append(bore)
         for p in barrel.data.polygons:
-            if p.center.x < 153.2 and math.hypot(p.center.y, p.center.z - 91.0) < 4.7:
+            if p.center.x < 166.2 and math.hypot(p.center.y, p.center.z - 101.0) < 4.7:
                 p.material_index = 1
-    prism("extractor", fillet([(50.0, 90.4), (64.0, 90.4), (64.0, 93.0), (50.0, 93.0, 1.0)]), -12.5, -11.0, small, bv=0.25, seg=1)
-    prism("sight_front", fillet([(141.0, 102.8), (149.5, 102.8), (148.6, 106.8, 0.6), (144.0, 106.8, 1.2)]), -1.1, 1.1, small, bv=0.2, seg=1)
-    prism("sight_base", fillet([(4.5, 102.0), (15.5, 102.0), (14.0, 105.4, 0.6), (4.5, 105.4, 0.6)]), -6.6, 6.6, small, bv=0.3, seg=1)
-    for s in (-1.0, 1.0):
-        prism("sight_post", fillet([(5.0, 105.0), (13.0, 105.0), (11.6, 107.5, 0.4), (5.0, 107.5, 0.4)]), s * 1.5, s * 6.4, small, bv=0.2, seg=1)
-    # bezpiecznik po lewej (+Y) i jego oś widoczna po prawej
-    prism("safety", hull(circle(15.0, 92.5, 3.7) + circle(27.0, 90.5, 2.3)), 11.6, 14.3, small, bv=0.45, seg=1)
-    revolve("safety_axis", [(-12.5, 0.0), (-12.5, 2.7), (12.0, 2.7), (12.0, 0.0)], (15.0, 92.5), small, axis="Y", seg=16, bv=0.25)
-    # szkielet: osłona pod zamkiem, wnęka spustu, chwyt
-    prism("frame", fillet([(-1.0, 79.0, 0.5), (120.0, 79.0), (123.5, 75.0, 2.5), (120.0, 69.0, 3.0), (100.0, 68.5), (95.0, 66.5, 2.0), (58.0, 66.5, 3.0),
-                           (52.5, 62.0, 4.0), (39.0, 3.0, 2.0), (-7.0, 4.0, 3.0), (2.5, 60.0, 14.0), (-3.5, 72.0, 4.0), (-4.5, 76.5, 1.5)]),
-          -11.2, 11.2, blued, bv=0.6, seg=2)
-    guard = spline([(101.0, 71.0), (103.0, 60.0), (101.0, 50.0), (94.0, 43.5), (81.0, 41.5), (67.0, 43.0), (58.0, 48.5), (53.5, 56.0), (51.0, 62.5)], 6)
-    prism("guard", strip(guard, 4.0), -5.5, 5.5, blued, bv=0.9, seg=2)
-    prism("trigger", strip(spline([(66.0, 69.0), (67.5, 61.0), (70.0, 54.0), (73.5, 48.8)], 5), lambda t: 5.2 - 2.4 * t), -3.3, 3.3, blued, bv=0.8, seg=2)
-    prism("hammer", fillet([(6.0, 79.0), (-2.5, 80.5, 2.0), (-8.0, 89.0, 3.0), (-7.5, 96.0, 3.0), (-3.0, 99.5, 2.5), (3.0, 97.0, 2.0), (6.0, 90.0)]),
-          -3.8, 3.8, hammer_m, bv=0.5, seg=2)
-    revolve("chamber_pin", [(-1.2, 0.0), (-1.2, 1.3), (3.0, 1.3), (3.0, 0.0)], (0.0, 100.3), bright, seg=10, bv=0.2)      # wskaźnik naboju w komorze
-    for cx, cz, r in ((102.0, 73.5, 1.9), (66.0, 72.5, 1.5)):
-        revolve("pin", [(-11.6, 0.0), (-11.6, r), (11.6, r), (11.6, 0.0)], (cx, cz), small, axis="Y", seg=14, bv=0.2)
-    # okładzina (jedna, owija grzbiet), śruba, magazynek z ostrogą pod mały palec, zaczep magazynka w stopce
-    prism("grip", fillet([(50.0, 61.0, 4.0), (37.5, 6.5, 4.0), (-8.5, 7.0, 4.5), (1.0, 60.0, 14.0), (-4.0, 69.5, 3.5), (2.0, 74.5, 3.5),
-                          (28.0, 75.0, 5.0), (41.0, 71.0, 6.0)]), -14.0, 14.0, grip_m, bv=2.2, seg=3)      # promienie naroży > faza, inaczej faza się zapada
-    revolve("screw", [(-14.5, 0.0), (-14.5, 3.3), (14.5, 3.3), (14.5, 0.0)], (21.0, 38.0), screw_m, axis="Y", seg=18, bv=0.3)
-    prism("mag_plate", fillet([(-7.5, 0.0, 1.0), (38.0, 0.0), (38.0, 3.6), (-7.8, 3.6, 1.0)]), -10.5, 10.5, blued, bv=0.4, seg=1)
-    prism("mag_rest", fillet([(36.0, 0.0), (46.5, 0.0, 2.5), (52.0, 6.0, 2.5), (50.5, 10.0, 1.5), (46.0, 8.0, 3.0), (41.0, 7.6, 1.0), (39.5, 3.0)]),
-          -9.0, 9.0, grip_m, bv=0.8, seg=2)
-    prism("mag_catch", fillet([(-11.0, 2.0, 1.0), (-6.0, 2.0), (-5.0, 9.0), (-10.0, 9.0, 1.5)]), -5.0, 5.0, blued, bv=0.5, seg=1)
-    # nadgarstek pod chwytem: dłoń postaci (ok. 0,2 m od nadgarstka w górę) kończy się wtedy na wysokości grzbietu zamka, nie wystaje nad broń
-    return {"rear": Vector((14.0, 0.0, -75.0)), "fore": None, "muzzle": Vector((153.5, 0.0, 91.0)), "hands": 1, "length": 0.18, "grip": Vector((18.0, 0.0, 44.0))}
+    prism("extractor", fillet([(55.0, 100.4), (70.0, 100.4), (70.0, 103.0), (55.0, 103.0, 1.0)]), -13.0, -11.5, small, bv=0.25, seg=1)
+    # przyrządy: muszka z przodu, szczerbinka w jaskółczym ogonie z tyłu
+    prism("sight_front", fillet([(152.0, 115.0), (161.0, 115.0), (160.0, 120.5, 0.6), (155.0, 120.5, 1.2)]), -1.3, 1.3, small, bv=0.2, seg=1)
+    prism("sight_base", fillet([(6.0, 114.5), (18.0, 114.5), (16.5, 118.0, 0.6), (6.0, 118.0, 0.6)]), -7.0, 7.0, small, bv=0.3, seg=1)
+    for sgn in (-1.0, 1.0):
+        prism("sight_post", fillet([(6.5, 117.5), (15.5, 117.5), (14.0, 121.5, 0.4), (6.5, 121.5, 0.4)]), sgn * 1.7, sgn * 6.8, small, bv=0.2, seg=1)
+    # bezpiecznik z zwalniaczem kurka po lewej (+Y), jego oś widoczna po prawej
+    prism("safety", hull(circle(16.0, 101.0, 4.0) + circle(29.0, 98.5, 2.4)), 12.1, 15.0, small, bv=0.45, seg=1)
+    revolve("safety_axis", [(-13.0, 0.0), (-13.0, 2.8), (12.5, 2.8), (12.5, 0.0)], (16.0, 101.0), small, axis="Y", seg=16, bv=0.25)
+    # szkielet: osłona pod zamkiem, zaokrąglony kabłąk, chwyt na magazynek 8-nabojowy (dłuższy niż w P-64)
+    prism("frame", fillet([(-1.0, 87.0, 0.5), (134.0, 87.0), (137.5, 83.0, 2.5), (134.0, 77.0, 3.0), (112.0, 76.5), (106.0, 74.5, 2.0), (63.0, 74.5, 3.0),
+                           (57.0, 69.0, 4.0), (43.0, 3.0, 2.0), (-8.0, 4.0, 3.0), (1.5, 64.0, 14.0), (-4.5, 79.0, 4.0), (-5.5, 84.5, 1.5)]),
+          -11.7, 11.7, blued, bv=0.6, seg=2)
+    guard = spline([(112.0, 79.0), (115.0, 66.0), (112.0, 54.0), (103.0, 46.5), (88.0, 44.5), (73.0, 46.5), (63.5, 53.0), (58.5, 62.0), (56.0, 70.0)], 6)
+    prism("guard", strip(guard, 4.2), -5.6, 5.6, blued, bv=0.9, seg=2)
+    prism("trigger", strip(spline([(73.0, 77.0), (74.5, 68.0), (77.0, 60.0), (81.0, 54.0)], 5), lambda t: 5.4 - 2.4 * t), -3.4, 3.4, blued, bv=0.8, seg=2)
+    prism("hammer", fillet([(6.0, 87.0), (-2.5, 88.5, 2.0), (-9.0, 97.0, 3.0), (-9.5, 105.0, 3.0), (-4.0, 109.0, 2.5), (3.0, 106.0, 2.0), (6.0, 98.0)]),
+          -3.9, 3.9, hammer_m, bv=0.5, seg=2)
+    revolve("chamber_pin", [(-1.2, 0.0), (-1.2, 1.3), (3.0, 1.3), (3.0, 0.0)], (0.0, 110.5), bright, seg=10, bv=0.2)      # wskaźnik naboju w komorze
+    for cx, cz, r in ((114.0, 81.5, 2.0), (73.0, 80.5, 1.6)):
+        revolve("pin", [(-12.1, 0.0), (-12.1, r), (12.1, r), (12.1, 0.0)], (cx, cz), small, axis="Y", seg=14, bv=0.2)
+    # okładzina z czarnego tworzywa (owija grzbiet), śruba, płaska stopka magazynka, zaczep magazynka w stopce chwytu
+    prism("grip", fillet([(55.0, 66.0, 4.0), (41.5, 6.5, 4.0), (-9.5, 7.0, 4.5), (0.0, 63.0, 14.0), (-5.0, 77.0, 3.5), (1.5, 82.5, 3.5),
+                          (30.0, 83.0, 5.0), (45.0, 78.5, 6.0)]), -14.5, 14.5, grip_m, bv=2.2, seg=3)          # promienie naroży > faza, inaczej faza się zapada
+    revolve("screw", [(-15.0, 0.0), (-15.0, 3.4), (15.0, 3.4), (15.0, 0.0)], (22.0, 40.0), screw_m, axis="Y", seg=18, bv=0.3)
+    prism("mag_plate", fillet([(-8.5, 0.0, 1.2), (42.0, 0.0, 1.2), (42.0, 3.8), (-8.8, 3.8, 1.0)]), -10.8, 10.8, blued, bv=0.4, seg=1)
+    prism("mag_catch", fillet([(-12.0, 2.0, 1.0), (-7.0, 2.0), (-6.0, 9.5), (-11.0, 9.5, 1.5)]), -5.0, 5.0, blued, bv=0.5, seg=1)
+    # nadgarstek pod chwytem: od nadgarstka do grzbietu zamka ok. 0,21 m, jak w P-64 — dłoń kończy się na wysokości zamka
+    return {"rear": Vector((16.0, 0.0, -65.0)), "fore": None, "muzzle": Vector((166.5, 0.0, 101.0)), "hands": 1, "length": 0.19, "grip": Vector((19.0, 0.0, 47.0))}
 
 
-# ---------------------------------------------------------------- strzelby: SPREAD-12, PELLET-8
+# ---------------------------------------------------------------- strzelba pump-action: PELLET-8
 
 def shell(name, c, z0, red, brass, axis="Z"):
     """Nabój śrutowy kal. 12 (mosiężne dno + czerwona łuska) o osi Z albo X; c = dwie pozostałe współrzędne, z0 = początek na osi."""
@@ -943,7 +944,7 @@ def shell(name, c, z0, red, brass, axis="Z"):
 
 
 def _shotgun(v):
-    """Strzelba pump-action kal. 12 z magazynkiem rurowym. Oś lufy na z = 0, stopka kolby na x = 0. v = parametry odmiany (patrz build_spread12)."""
+    """Strzelba pump-action kal. 12 z magazynkiem rurowym. Oś lufy na z = 0, stopka kolby na x = 0. v = parametry odmiany (patrz build_srut8)."""
     pre, tip, mag_end = v["pre"], v["muzzle"], v["mag_end"]
     blued = M(steel, pre + "_blued", blue=v["steel"], engrave=[(498.0, 584.0, -17.0, 1.0), (478.0, 552.0, -40.0, -24.0)], muzzle=(tip - 110.0, tip))
     small = M(steel, pre + "_small", blue=v["steel"], wear_k=0.35)
@@ -997,13 +998,6 @@ def _shotgun(v):
     # nadgarstki pod szyjką kolby i pod czółenkiem (dłonie sięgają od nich ok. 0,2 m w górę)
     return {"rear": Vector((335.0, 0.0, -120.0)), "fore": Vector((742.0, 0.0, -116.0)), "muzzle": Vector((tip, 0.0, 0.0)), "hands": 2, "length": v["length"],
             "grip": Vector((332.0, 0.0, -42.0)), "hold": Vector((742.0, 0.0, -50.0))}
-
-
-def build_spread12():
-    """SPREAD-12: strzelba pump-action, niebieska oksyda i jasny orzech, lufa do x = 1010 mm."""
-    return _shotgun({"pre": "s12", "steel": ((0.035, 0.055, 0.12), (0.065, 0.09, 0.165)),       # oksyda wyraźnie niebieska — znak rozpoznawczy tej broni
-                     "wood": ((0.028, 0.011, 0.005), (0.125, 0.05, 0.02)), "muzzle": 1010.0, "mag_end": 904.0, "length": 1.0,
-                     "text_l": "SPREAD-12", "text_r": "PN 04512"})
 
 
 def build_srut8():
@@ -1102,6 +1096,73 @@ def build_m83():
     cyl("rod", 742.0, 846.0, 2.4, (0.0, -12.5), bright, seg=8, bv=0.0)
     return {"rear": Vector((350.0, 0.0, -140.0)), "fore": Vector((655.0, 0.0, -118.0)), "muzzle": Vector((880.0, 0.0, 0.0)), "hands": 2, "length": 0.88,
             "grip": Vector((342.0, 0.0, -83.0)), "hold": Vector((650.0, 0.0, -29.0))}
+
+
+# ---------------------------------------------------------------- SPREAD-12
+
+def build_spread12():
+    """SPREAD-12 (od 1.7.313): samopowtarzalna strzelba kal. 12 na komorze wzoru AK z bębnem na 25 naboi — jak radzieckie strzelby na mechanizmie
+    Kałasznikowa. Niebieska oksyda (znak rozpoznawczy tej broni) i jasny orzech, bęben lakierowany na czarno z kluczem naciągu sprężyny.
+    Oś lufy na z = 0, stopka kolby na x = 0, wylot z dławikiem na x = 960 mm."""
+    X = 300.0
+    BLUE = ((0.035, 0.055, 0.12), (0.065, 0.09, 0.165))
+    WALNUT = ((0.028, 0.011, 0.005), (0.125, 0.05, 0.02))
+    st = M(steel, "s12_steel", blue=BLUE, engrave=[(X + 198.0, X + 258.0, -24.0, -10.0), (X + 28.0, X + 84.0, -31.0, -13.0)], muzzle=(880.0, 960.0),
+           feats=ak_feats(X), grooves=[("x", 21.0, X + 24.0, X + 150.0, 7.5, 12.0, 0.5, False)])
+    small = M(steel, "s12_small", blue=BLUE, wear_k=0.4)
+    bright = M(steel, "s12_bright", tone="bright")
+    bore = M(plain, "s12_bore", rgb(0.008, 0.008, 0.008), 0.7, 1.0)
+    choke = M(steel, "s12_choke", blue=BLUE, grooves=[("x", 6.0, 912.0, 952.0, -20.0, 20.0, 0.8, False)])
+    wood_m = M(wood, "s12_wood", checker=(3.0, 12.0, 160.0, 250.0, -70.0, -30.0), tone=WALNUT)
+    fore_m = M(wood, "s12_fore", grooves=[("x", 14.0, 612.0, 742.0, -40.0, -10.0, 1.2, False)], tone=WALNUT)
+    grip_m = M(bakelite, "s12_grip", checker=(2.2, 100.0), tone=BLACK)
+    cx, cz, R = X + 200.0, -186.0, 98.0                                             # bęben przed kabłąkiem: dłoń na chwycie go nie dotyka
+    drum_m = M(steel, "s12_drum", tone="paint", blue=((0.012, 0.012, 0.014), (0.03, 0.03, 0.034)), r0=0.6,
+               engrave=[(cx - 27.0, cx + 27.0, cz - 56.0, cz - 41.0)], eng_style=STENCIL)
+    mark = M(plain, "marker", rgb(0.0, 0.0, 0.0), 1.0, 0.0)
+    marker_text("SPREAD-12", 9.5, X + 256.0, -22.0, 16.43, mark)
+    marker_text("12 / 76", 7.5, X + 30.0, -27.0, -16.43, mark)
+    marker_text("12x25", 11.0, cx + 23.0, cz - 54.0, 37.93, mark)            # na lewym deklu, między żebrami
+
+    ak_receiver(X, st, small, bright)
+    # kolba z orzecha ze stalową stopką, chwyt z czarnego tworzywa, kabłąk
+    prism("stock", fillet([(X + 2.0, 3.0, 4.0), (X + 2.0, -36.0, 4.0), (200.0, -54.0, 20.0), (14.0, -110.0, 8.0), (14.0, -22.0, 8.0)]), -15.0, 15.0, wood_m, bv=3.0, seg=2)
+    box("butt", 0.0, 16.0, -112.0, -20.0, 15.5, small, bv=1.0, seg=1, r=3.0)
+    box("stock_tang", X - 46.0, X + 4.0, 1.0, 5.5, 8.0, st, bv=0.6, seg=1)
+    swivel(118.0, -95.0, small)
+    pgrip("grip", X + 72.0, -38.0, grip_m)
+    trig("trigger", X + 74.0, X + 132.0, -38.0, st, small)
+    # gniazdo i wieżyczka podająca bębna, bęben (oś w poprzek broni): płaszcz, dekle z żebrami, klucz naciągu sprężyny po lewej (+Y)
+    box("feed_tower", X + 150.0, X + 228.0, -104.0, -36.0, 14.5, drum_m, bv=1.2, seg=2, r=4.0)
+    revolve("drum", [(-38.0, 0.0), (-38.0, R - 6.0), (-35.5, R), (35.5, R), (38.0, R - 6.0), (38.0, 0.0)], (cx, cz), drum_m, axis="Y", seg=48, bv=0.6)
+    for sy in (-1.0, 1.0):
+        for rr in (34.0, 62.0, 84.0):
+            revolve("drum_rib", [(sy * 38.0, rr - 3.0), (sy * 39.6, rr - 2.0), (sy * 39.6, rr + 2.0), (sy * 38.0, rr + 3.0)], (cx, cz), drum_m, axis="Y", seg=48, bv=0.0)
+    revolve("drum_hub", [(37.0, 0.0), (37.0, 20.0), (44.0, 19.0), (46.0, 15.0), (46.0, 0.0)], (cx, cz), small, axis="Y", seg=24, bv=0.4)
+    box("drum_key", cx - 26.0, cx + 26.0, cz - 5.5, cz + 5.5, 4.0, small, bv=0.8, seg=2, r=4.0, y=50.0)
+    revolve("drum_hub_r", [(-46.0, 0.0), (-46.0, 15.0), (-44.0, 19.0), (-37.0, 20.0), (-37.0, 0.0)], (cx, cz), small, axis="Y", seg=24, bv=0.4)
+    # przednia wkładka z celownikiem, rura gazowa, łoże z orzecha, obejma
+    box("sight_base", 560.0, 604.0, 12.0, 38.0, 12.5, st, bv=1.0, r=3.0)
+    prism("sight_leaf", [(566.0, 37.0), (622.0, 40.0), (622.0, 44.0), (566.0, 42.5)], -5.5, 5.5, small, bv=0.5, seg=1)
+    box("sight_slider", 604.0, 613.0, 39.0, 46.5, 7.5, small, bv=0.6, seg=1)
+    cyl("barrel", 560.0, 912.0, 11.4, (0.0, 0.0), st, seg=20, bv=0.0)
+    cyl("gas_tube", 562.0, 762.0, 7.4, (0.0, 27.0), st, seg=16, bv=0.0)
+    cyl("hg_upper", 606.0, 748.0, 15.5, (0.0, 26.0), fore_m, seg=18, bv=1.2)
+    prism("hg_lower", fillet([(566.0, 10.0), (750.0, 10.0), (750.0, -24.0, 6.0), (660.0, -36.0, 34.0), (566.0, -33.0, 9.0)]), -18.5, 18.5, fore_m, bv=2.5, seg=2)
+    box("hg_cap", 749.0, 760.0, -28.0, 14.0, 19.0, st, bv=0.8, r=3.0)
+    # blok gazowy z regulatorem, muszka w osłonie, strzemiączko, dławik wylotowy z nacięciami
+    prism("gas_block", fillet([(758.0, -12.0), (798.0, -12.0), (798.0, 13.0, 2.0), (782.0, 37.0, 3.0), (758.0, 37.0, 2.0)]), -12.0, 12.0, st, bv=1.0, seg=2)
+    revolve("gas_plug", [(798.0, 0.0), (798.0, 8.5), (812.0, 8.5), (814.0, 6.0), (814.0, 0.0)], (0.0, 27.0), small, seg=16, bv=0.4)
+    swivel(776.0, -31.0, small, 7.0)
+    box("fs_base", 862.0, 892.0, -13.0, 13.0, 12.5, st, bv=1.0, r=3.0)
+    prism("fs_tower", [(865.0, 9.0), (889.0, 9.0), (886.0, 34.0), (868.0, 34.0)], -4.0, 4.0, st, bv=0.6, seg=1)
+    for sy in (-1.0, 1.0):
+        prism("fs_ear", fillet([(868.0, 32.0), (886.0, 32.0), (884.0, 50.0, 2.0), (870.0, 50.0, 2.0)]), sy * 3.0, sy * 5.8, st, bv=0.4, seg=1)
+    revolve("fs_post", [(32.0, 0.0), (32.0, 1.3), (47.0, 1.3), (47.0, 0.0)], (877.0, 0.0), small, axis="Z", seg=8, bv=0.0)
+    barrel("choke", 910.0, 960.0, 14.6, 9.25, (0.0, 0.0), choke, bore, depth=40.0, seg=24)
+    # dłoń tylna na chwycie pistoletowym, przednia pod łożem
+    return {"rear": Vector((350.0, 0.0, -140.0)), "fore": Vector((665.0, 0.0, -124.0)), "muzzle": Vector((960.0, 0.0, 0.0)), "hands": 2, "length": 1.0,
+            "grip": Vector((342.0, 0.0, -83.0)), "hold": Vector((660.0, 0.0, -36.0))}
 
 
 # ---------------------------------------------------------------- LR-7
@@ -1507,7 +1568,7 @@ def build_kilof():
     return {"rear": Vector((150.0, 0.0, -85.0)), "fore": None, "muzzle": Vector((606.0, 0.0, 212.0)), "hands": 1, "length": 0.72, "grip": Vector((150.0, 0.0, 0.0))}
 
 
-BUILDERS = {"m83": build_m83, "spread12": build_spread12, "p64": build_p64, "srut8": build_srut8, "lr7": build_lr7, "hkm9": build_hkm9, "gniew4": build_gniew4,
+BUILDERS = {"m83": build_m83, "spread12": build_spread12, "p64": build_p83, "srut8": build_srut8, "lr7": build_lr7, "hkm9": build_hkm9, "gniew4": build_gniew4,
             "sokol6": build_sokol6, "widmo1": build_widmo1, "ciegno6": build_ciegno6, "maczeta": build_maczeta, "kilof": build_kilof}
 
 

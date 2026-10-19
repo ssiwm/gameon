@@ -1811,7 +1811,7 @@ func apply_devour() -> void:
 func apply_recoil_kick(v: float) -> void:
 	_kick = v
 
-## Czy gracz nosi daną broń (zestaw replikowany w `kit`; sidearm P-64 ma każdy).
+## Czy gracz nosi daną broń (zestaw replikowany w `kit`; sidearm P-83 ma każdy).
 func carries(w: int) -> bool:
 	return w == Weapons.P64 or w == kit.x or w == kit.y
 

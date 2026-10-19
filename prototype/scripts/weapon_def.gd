@@ -95,7 +95,7 @@ var reload_per_round := false ## ładowanie nabój po naboju (strzelba) — moż
 # --- czucie (feel)
 var shake := 0.7              ## drżenie kamery
 var cam_kick := 0.0           ## szarpnięcie kamery przeciwnie do lufy (px)
-var kick := 0.0               ## odrzut postaci (px/s)
+var kick := 0.0               ## odrzut postaci (px/s); od 1.7.313 żadna broń palna nie przesuwa strzelca (zostaje szarpnięcie kamery i poza)
 var recoil := 3.0             ## cofnięcie sprite'a broni (px)
 var flash_size := 4.0         ## promień rozbłysku (px)
 var flash_light := 1.4        ## energia światła rozbłysku

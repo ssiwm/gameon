@@ -115,7 +115,7 @@ Ping drużyny i radio z pierwotnego projektu nie są zaimplementowane.
 ## 6. SYSTEM BRONI — pełna lista
 
 ### Zasady ogólne
-- Gracz nosi **2 bronie główne** + **sidearm** (P-64, nieskończona amunicja) + **broń białą**.
+- Gracz nosi **2 bronie główne** + **sidearm** (P-83 Wanad, nieskończona amunicja) + **broń białą**.
 - Bronie główne wypadają z pickupów w misji i są odblokowywane na stałe przez zakup w Kryjówce.
 - Amunicja jest **współdzielona w drużynie** (jeden typ na broń) — ekonomia zespołowa.
 - Każda broń ma 3 poziomy ulepszeń kupowane za złom.
@@ -126,19 +126,19 @@ Ping drużyny i radio z pierwotnego projektu nie są zaimplementowane.
 | # | Broń | Typ | Dmg | RPM | Mag. | Zasięg | Hałas | Cechy |
 |---|------|-----|-----|-----|------|--------|-------|-------|
 | 1 | **M-83 „Krótki"** | SMG (start) | 8 | 600 | 30 | 12 m | 3 / 6 m | Wszechstronny, szybki reload |
-| 2 | **SPREAD-12 „Rozrzut"** | Karabin rozrzutowy | 4×5 | 240 | 24 | 8 m | 3 / 7 m | Klasyk Contry, szeroki stożek, cięższy odrzut |
+| 2 | **SPREAD-12 „Rozrzut"** | Strzelba samopowtarzalna (komora AK, bęben) | 4×5 | 240 | 25 | 8 m | 3 / 7 m | Klasyk Contry, szeroki stożek, silne szarpnięcie kamery |
 | 3 | **LR-7 „Promień"** | Laser ciągły | 12/tyk | — | Bateria 100 | 14 m | 2 / 4 m | Przebija 3 wrogów; cichy, ale świeci w ciemności (przyciąga wzrok wrogów) |
 | 4 | **HKM-9 „Miotacz"** | Miotacz ognia | 15/s DoT | — | Paliwo 80 | 4 m | 1 / 3 m | Podpala teren; **UV +3 Uwagi** (światło); strach wśród Trzosków |
 | 5 | **WRATH-4** | Granatnik | 80 AoE 3 m | 40 | 6 | 10 m | 4 / 18 m | Niszczy Gniazda i Żyły; friendly fire 100% |
 | 6 | **FALCON-6** | Naprowadzane mikro-rakietki | 6 | 300 | 40 | 10 m | 3 / 7 m | Auto-namierzanie, słabe, dobre na Skoczków |
 | 7 | **PELLET-8** | Strzelba | 7×8 | 75 | 8 | 6 m | 4 / 12 m | Odrzut wrogów, door-breacher |
 | 8 | **SPECTER-1** | Railgun | 150 przebicie | 12 (charge 1,2 s) | 5 | 30 m | 5 / 25 m | Najgłośniejsza broń w grze — używasz jej, budzisz wszystko |
-| 9 | **SINEW-6** | Harpun (kusza) | 45 | 60 | 1 (bełt do odzysku) | 15 m | **1 / 1 m** | **Jedyna cicha broń główna**; przybija Trzoski do ścian; bełty można odzyskać |
+| 9 | **SINEW-6** | Harpun (kusza) | 45 | 60 | 1 (bełt do odzysku) | 12 m, bełt opada | **1 / 1 m** | **Jedyna cicha broń główna**; przybija Trzoski do ścian; bełty można odzyskać |
 
 ### 6.2 Sidearm
 | Broń | Dmg | RPM | Ammo | Hałas | Uwagi |
 |------|-----|-----|------|-------|-------|
-| **P-64 „Igła"** | 10 | 300 | ∞ (rezerwa) | 2 / 4 m | Nigdy się nie kończy; ratunek w sytuacjach awaryjnych |
+| **P-83 „Wanad"** | 10 | 300 | ∞ (rezerwa, magazynek 8) | 2 / 4 m | Nigdy się nie kończy; ratunek w sytuacjach awaryjnych |
 
 ### 6.3 Broń biała
 | Broń | Dmg | Szybkość | Hałas | Uwagi |
@@ -187,15 +187,15 @@ Ping drużyny i radio z pierwotnego projektu nie są zaimplementowane.
 ### 6.7 Stan implementacji w prototypie (1.6)
 
 Pełna analiza i architektura: `prototype/WEAPONS.md`. W prototypie działa **12 pozycji**: M-83, SPREAD-12,
-P-64, PELLET-8, LR-7, HKM-9, WRATH-4, FALCON-6, SPECTER-1, SINEW-6, maczeta, kilof (w HUD nazwy ASCII). Różnice
+P-83, PELLET-8, LR-7, HKM-9, WRATH-4, FALCON-6, SPECTER-1, SINEW-6, maczeta, kilof (w HUD nazwy ASCII). Różnice
 względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapons.gd`, testy `--weapontest`):
 
 - **Amunicja:** magazynki i przeładowanie (tryb taktyczny: z nabojem w komorze szybciej), **wspólny zapas drużyny**
   autorytatywny na serwerze; sidearm ∞. Wrogowie upuszczają amunicję tylko do broni, którą ktoś nosi; skrzynie
   z mapy zasilają wszystkie noszone bronie główne.
 - **Hałas:** każda broń ma własny `heat_gain`/`heat_decay` (wcześniej wspólny decay sprawiał, że rozgrzewała się
-  tylko strzelba). P-64 jest **cichsza** od M-83 (0,5→0,9 vs 0,6→1,5), zgodnie z tabelą §6.2.
-- **Krytyk w głowę:** tylko cele wysokie (Wołek: górne 28% sylwetki; Trzosek nie ma słabego punktu). P-64 i SINEW ×2, M-83 ×1,5.
+  tylko strzelba). P-83 jest **cichszy** od M-83 (0,5→0,9 vs 0,6→1,5), zgodnie z tabelą §6.2.
+- **Krytyk w głowę:** tylko cele wysokie (Wołek: górne 28% sylwetki; Trzosek nie ma słabego punktu). P-83 i SINEW ×2, M-83 ×1,5.
 - **Maczeta** zabija natychmiast i po cichu wroga śpiącego **albo odwróconego plecami**.
 - **HKM-9** podpala (8 HP/s), płonące Trzoski uciekają w panice. **WRATH-4** liczy się jako wabik (+15 Uwagi) i rani drużynę.
 - Zasięgi to zasięg *lotu* pocisku; efektywny (bez spadku obrażeń) jest krótszy (M-83 12 m, SPREAD-12 2,5 m).
@@ -259,7 +259,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 | Krok (bieg) | +0,5/s na gracza |
 | Krok (chód / kucanie) | +0 (kucanie = 0) |
 | Strzał z broni cichej (harpun, maczeta) | +1 |
-| Strzał z P-64 | +1,0 → +1,6 (rozgrzanie) |
+| Strzał z P-83 | +1,0 → +1,6 (rozgrzanie) |
 | Strzał z broni głównej | **zależny od rozgrzania lufy** — patrz „Model rozgrzania" niżej (SMG: +0,6 → +2,6 / strzał; strzelba: +3,5 → +5) |
 | Granat/ładunek | +15 |
 | Krzyk do mikrofonu (VAD > progu) | +20 (jednorazowo) |
@@ -701,7 +701,7 @@ Prototyp w `dead-air-87/prototype/` jest vertical slice'em, nie grą. Poniższe 
 | Broń | Odblokowanie | Cena | Rola |
 |------|--------------|------|------|
 | M-83 „Krótki" | start | — | Domyślna, wszechstronna |
-| P-64 „Igła" | start | — | Sidearm, ∞ ammo |
+| P-83 „Wanad" | start | — | Sidearm, ∞ ammo |
 | Maczeta | start | — | Cicha, backstab |
 | SPREAD-12 | Strefa I | 400 zł | Szeroki ostrzał |
 | PELLET-8 | Strefa I | 500 zł | Bliski zasięg, odrzut |
@@ -738,11 +738,11 @@ Filar 7 (§2): nowa zawartość dopiero, gdy podstawy są przyjemne. Poniższe w
 | Broń | Rytm | Obrażenia | Hałas (zimna → gorąca lufa) | Feel |
 |---|---|---|---|---|
 | M-83 (auto) | 0,11 s | 8 (×1,5 w głowę) | 0,6 → 1,5 | shake 0,7, kick kamery 0,5, bloom do 4° |
-| SPREAD-12 | 0,26 s, 5 śrucin ±14° | 5×7, spadek do 35% | 3,5 → 5,0 | shake 2,4, odrzut gracza 55 |
-| P-64 | 0,20 s | 11 (×2 w głowę) | 0,5 → 0,9 | shake 0,5 |
+| SPREAD-12 | 0,26 s, 5 śrucin ±14° | 5×7, spadek do 35% | 3,5 → 5,0 | shake 2,4, szarpnięcie kamery 2,6 (od 1.7.313 broń nie przesuwa strzelca) |
+| P-83 | 0,20 s | 11 (×2 w głowę) | 0,5 → 0,9 | shake 0,5 |
 | PELLET-8 | 0,8 s, 8 śrucin ±17° | 8×7, spadek do 25% | 4,5 → 6,0 | shake 4,0, odrzut 130, ogłuszenie 0,2 s |
 
-- Lufa grzeje się z każdym strzałem i stygnie z **własną prędkością broni** (M-83 0,30/s, SPREAD-12 1,2/s, P-64 0,6/s…): krótka seria jest tania, ciągły ogień drogi (§8.1). Pełny roster i liczby: §6.7 i `prototype/WEAPONS.md`.
+- Lufa grzeje się z każdym strzałem i stygnie z **własną prędkością broni** (M-83 0,30/s, SPREAD-12 1,2/s, P-83 0,6/s…): krótka seria jest tania, ciągły ogień drogi (§8.1). Pełny roster i liczby: §6.7 i `prototype/WEAPONS.md`.
 - Trafienie wroga: biały błysk 0,1 s, ogłuszenie 0,12 s, odrzut (Trzosek 70, Wołek 14).
 - **Hitstop:** zabójstwo Trzoska 50 ms, Wołka 90 ms, własne trafienie 70 ms; cooldown 250 ms (przy 8 strz./s hitstop na każde trafienie zamroziłby grę). **Na hoście z podłączonymi klientami hitstop jest wyłączony** — `Engine.time_scale` spowalniałby symulację wszystkim; zostaje shake.
 - Shake jest lokalny (kamera każdego peera), wygaszany czasem rzeczywistym.
