@@ -550,6 +550,70 @@ static func _build_wall_feet(parent: Node3D, rows: Array, mat: Material) -> void
 		xf.append(Transform3D(Basis().scaled(Vector3(WALL_FOOT_W, top - bot, d)), Vector3(x, (top + bot) * 0.5, -DEPTH_BACK + d * 0.5)))
 	_multimesh(parent, BoxMesh.new(), xf, mat)
 
+## Skrzynie `M` poza konstrukcjami (na gruncie, na dachu Składu, w podziemnych halach 1.3): prostokątne bloki sąsiednich kafli `M`, które nie leżą
+## w ciągu nad nogami wieży (`tower_slabs`) — [{"c0", "c1", "r0", "r1"} (włącznie)]. W 3D były pudłami głębokimi na całą bryłę (3,5 m), teraz to
+## skrzynie z modelu `crate` (ta sama co skrzynie fizyczne `k`), głębokie jak szerokie (najwyżej CRATE_DEPTH).
+const CRATE_DEPTH := 2.4
+static func crate_blocks(rows: Array) -> Array:
+	var skip := {}
+	for s in tower_slabs(rows):
+		for k in range(int(s["c0"]), int(s["c1"]) + 1):
+			skip[Vector2i(k, int(s["r"]))] = true
+	var out: Array = []
+	var seen := {}
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	for r in nrows:
+		for c in cols:
+			var key := Vector2i(c, r)
+			if _ch(rows, c, r) != "M" or seen.has(key) or skip.has(key):
+				continue
+			var c1 := c
+			while _ch(rows, c1 + 1, r) == "M" and not skip.has(Vector2i(c1 + 1, r)):
+				c1 += 1
+			var r1 := r
+			var full := true
+			while full:                                         # blok rośnie w dół, póki cały wiersz pod nim to `M`
+				for k in range(c, c1 + 1):
+					if _ch(rows, k, r1 + 1) != "M" or skip.has(Vector2i(k, r1 + 1)):
+						full = false
+				if full:
+					r1 += 1
+			for k in range(c, c1 + 1):
+				for q in range(r, r1 + 1):
+					seen[Vector2i(k, q)] = true
+			out.append({"c0": c, "c1": c1, "r0": r, "r1": r1})
+	return out
+
+static func _build_crates(parent: Node3D, rows: Array) -> bool:
+	var mm := model_mesh("crate")
+	if mm.is_empty():
+		return false
+	var bb: AABB = (mm[1] as Transform3D) * (mm[0] as Mesh).get_aabb()
+	var xf: Array = []
+	var walls: Array = []
+	for g in crate_blocks(rows):
+		var inside := _ch(rows, int(g["c0"]) - 1, int(g["r0"])) == "b" or _ch(rows, int(g["c1"]) + 1, int(g["r0"])) == "b" or _ch(rows, int(g["c0"]), int(g["r0"]) - 1) == "b"
+		if inside:                                          # w hali skrzynia jest płytsza niż dawne pudło — za nią musi stać ściana tła
+			for k in range(int(g["c0"]), int(g["c1"]) + 1):
+				for q in range(int(g["r0"]), int(g["r1"]) + 1):
+					walls.append(Transform3D(Basis().scaled(Vector3(T, T, 0.3)), cell_pos(k, q) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
+		var w := float(int(g["c1"]) - int(g["c0"]) + 1) * T
+		var h := float(int(g["r1"]) - int(g["r0"]) + 1) * T
+		var d := minf(w, CRATE_DEPTH)
+		var s := Vector3(w / bb.size.x, h / bb.size.y, d / bb.size.z)
+		var centre := Vector3(float(int(g["c0"])) * T + w * 0.5, -float(int(g["r1"]) + 1) * T, -0.15)
+		var off := Vector3((bb.position.x + bb.size.x * 0.5) * s.x, bb.position.y * s.y, (bb.position.z + bb.size.z * 0.5) * s.z)
+		xf.append(Transform3D(Basis().scaled(s), centre - off))
+	_multimesh(parent, BoxMesh.new(), walls, make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"), false)
+	if xf.is_empty():
+		return true
+	var out: Array = []
+	for x in xf:
+		out.append((x as Transform3D) * (mm[1] as Transform3D))
+	_multimesh(parent, mm[0], out, null)
+	return true
+
 ## Martwe drzewo w miejscu pnia z mapy (kolumna `c`, kafle r0..r1−1): podstawa na dole ciągu, złamany wierzchołek TRUNK_OVER ponad jego górą.
 ## Odmiana, obrót i odcień z ziarna kolumny (każdy peer widzi to samo). false — brak modeli (zostaje słup).
 static func _trunk_add(trunks: Dictionary, c: int, r0: int, r1: int) -> bool:
@@ -584,6 +648,11 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	var planks: Array = []
 	var grates: Array = []
 	var marks := {"F": [], "E": [], "l": [], "k": []}
+	var crate_cells := {}
+	for g in crate_blocks(rows):
+		for k in range(int(g["c0"]), int(g["c1"]) + 1):
+			for q in range(int(g["r0"]), int(g["r1"]) + 1):
+				crate_cells[Vector2i(k, q)] = true
 	var slabs := {}
 	for s in tower_slabs(rows):
 		for k in range(int(s["c0"]), int(s["c1"]) + 1):
@@ -596,10 +665,14 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				continue                                            # dach z blachy na wiązarach zamiast pudła kafla (`_build_roofs`); znak mapy i kolizja bez zmian
 			if ch == "M" and slabs.has(Vector2i(c, r)):
 				continue                                            # dach / podłoga strażnicy: `_build_roofs` (kolizja kafla bez zmian)
+			if ch == "M" and crate_cells.has(Vector2i(c, r)):
+				continue                                            # skrzynia z modelu (`_build_crates`); kolizja kafla bez zmian
 			if groups.has(ch):
 				# bryły tylko dla odsłoniętych kafli (sąsiad z powietrzem lub tłem); wnętrza skał zamyka od frontu płaski przekrój (`caps`),
 				# bez niego pod skorupą gruntu widać było pustkę zamiast ziemi (flara czy wybuch nie miały czego oświetlić)
-				if is_solid_ch(_ch(rows, c - 1, r)) and is_solid_ch(_ch(rows, c + 1, r)) and is_solid_ch(_ch(rows, c, r - 1)) and is_solid_ch(_ch(rows, c, r + 1)):
+				# sąsiad-skrzynia (`_build_crates`, płytsza niż kafel) nie zasłania już ścian bryły — kafel obok niej jest odsłonięty
+				var hidden := func(cc: int, rr: int) -> bool: return is_solid_ch(_ch(rows, cc, rr)) and not crate_cells.has(Vector2i(cc, rr))
+				if hidden.call(c - 1, r) and hidden.call(c + 1, r) and hidden.call(c, r - 1) and hidden.call(c, r + 1):
 					caps[ch].append(Vector2i(c, r))
 					continue
 				var p := cell_pos(c, r)
@@ -691,6 +764,8 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	_build_roofs(parent, rows, mats["roof"], make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"),
 			make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic"), make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"))
 	_build_wall_feet(parent, rows, mats["C"])
+	if not crate_cells.is_empty() and not _build_crates(parent, rows):
+		push_warning("Level3D: brak modelu skrzyni — bloki M bez geometrii")
 	var plb := BoxMesh.new()
 	plb.size = Vector3(T, 0.22, 1.3)
 	# kładki z modeli: poziome ciągi kafli dzielone na równe odcinki (deski: 1 kafel, krata: ok. 3 kafle), co drugi obrócony o 180° dla odmiany;
