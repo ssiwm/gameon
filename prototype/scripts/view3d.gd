@@ -45,6 +45,7 @@ const AURA_WORLD := 1.0                    ## mnożnik energii aury gracza dla t
 const AURA_ACTOR := 0.55                    ## mnożnik energii aury gracza dla modeli graczy
 const FOG_BEGIN_M := 2.0                    ## mgła głębi: początek za płaszczyzną gry [m]
 const FOG_END_M := 62.0                     ## mgła głębi: pełna gęstość [m za płaszczyzną gry]
+const WADE_SHOT_BLEND_M := 3.0              ## m: na tym odcinku lotu smuga pocisku brodzącego strzelca wraca z wysokości lufy modelu na tor symulacji
 const EYE_UP_M := 2.2                       ## wysokość oka kamery ponad środkiem kadru [m] (punkt zbiegu nad głowami postaci)
 const Z_BG := -60
 const Z_FG := 1
@@ -58,6 +59,7 @@ var _geo: Node3D
 var _geo_key := ""
 var _rows: Array = []                    ## wiersze bieżącej mapy (rozbryzgi od kroków: rodzaj cieczy pod stopami)
 var _splash := {}                        ## id węzła (gracz / wróg) → CPUParticles3D rozbryzgu
+var _wade := {}                          ## mapa brodzenia (`Level3D.wade_map`): o ile opuścić model stojący w cieczy
 var _geo_t := 0.0
 var _cam_a: Camera3D
 var _cam_b: Camera3D
@@ -442,7 +444,9 @@ func _sync_geometry() -> void:
 	Level3D.build_level(_geo, rows, trench)
 	Level3D.build_liquids(_geo, rows)
 	Level3D.build_liquid_props(_geo, rows)
+	Level3D.build_wade_veils(_geo, rows, LAYER_ACTORS)
 	_rows = rows
+	_wade = Level3D.wade_map(rows)
 	Level3D.build_decals(_geo, rows)
 	Level3D.build_undergrowth(_geo, rows)
 	Level3D.build_front_edge(_geo, rows)
@@ -494,8 +498,9 @@ func _sync_rigs() -> void:
 			if hc.aboard(p):
 				want_lift = TRACK_ZC
 		rig["lift"] = lerpf(float(rig.get("lift", 0.0)), want_lift, 0.25)
-		actor.position = Level3D.px_to_m(p.global_position) + Vector3(0.0, -float(c3.sink_m), float(rig["lift"]))
-		_splash_update(actor, p.global_position, absf(float(p.get("velocity").x)) if p.get("velocity") != null else 0.0, LAYER_ACTORS)
+		rig["wade"] = _wade_step(float(rig.get("wade", 0.0)), p.global_position)
+		actor.position = Level3D.px_to_m(p.global_position) + Vector3(0.0, -float(c3.sink_m) - float(rig["wade"]), float(rig["lift"]))
+		_splash_update(actor, p.global_position, absf(float(p.get("velocity").x)) if p.get("velocity") != null else 0.0, LAYER_ACTORS, float(rig["wade"]))
 		actor.basis = Basis(Vector3.UP, float(c3.model_yaw))         # zwrot postaci: obrót z animacją (Char3D.TURN_TIME), nie odbicie lustrzane
 		c3._on_screen = true                       # poza liczymy zawsze (bez powiadomień o ekranie 2D)
 	for p in _rigs.keys():
@@ -630,10 +635,12 @@ func _sync_enemies(delta: float) -> void:
 		e.visible = show and near and not (not alive and bool(e.get("finished")))
 		if not e.visible:
 			continue
-		e.position = pos + Vector3(0.0, 0.0, 0.3)
 		var sp_v2 = float(st.get("vx", 0.0))
-		if not ["cma", "nest", "vein", "leech"].has(String(e.get("kind"))):
-			_splash_update(e, src.global_position, sp_v2, LAYER_WORLD)
+		var wades: bool = not ["cma", "nest", "vein", "leech"].has(String(e.get("kind")))
+		st["wade"] = _wade_step(float(st.get("wade", 0.0)), src.global_position) if wades else 0.0
+		e.position = pos + Vector3(0.0, -float(st["wade"]), 0.3)          # brodzenie: tafla (warstwa świata) sama zakrywa zanurzone nogi
+		if wades:
+			_splash_update(e, src.global_position, sp_v2, LAYER_WORLD, float(st["wade"]))
 		var sf := body.sprite_frames
 		var anim := body.animation
 		var nfr := sf.get_frame_count(anim) if sf != null and sf.has_animation(anim) else 1
@@ -671,8 +678,13 @@ func _liquid_kind(px: Vector2) -> int:
 			return {"m": 0, "O": 1, "~": 2}[ch]
 	return -1
 
-## Rozbryzg od kroków w błocie / oleju / wodzie: strumień kropel z poziomu stóp (węzeł `host` to model postaci lub wroga).
-func _splash_update(host: Node3D, feet_px: Vector2, speed_px: float, layer: int) -> void:
+## Brodzenie: głębokość zanurzenia modelu goni docelową (`Level3D.wade_at`) — wejście do wody, skok i wyjście bez szarpnięcia.
+func _wade_step(cur: float, feet_px: Vector2) -> float:
+	var want := Level3D.wade_at(_wade, feet_px)
+	return move_toward(cur, want, get_process_delta_time() * (1.6 if want > cur else 3.0))
+
+## Rozbryzg od kroków w błocie / oleju / wodzie: strumień kropel z poziomu tafli (węzeł `host` to model postaci lub wroga, opuszczony o `wade`).
+func _splash_update(host: Node3D, feet_px: Vector2, speed_px: float, layer: int, wade := 0.0) -> void:
 	var id := host.get_instance_id()
 	var kind := _liquid_kind(feet_px)
 	var sp: CPUParticles3D = _splash.get(id)
@@ -701,9 +713,9 @@ func _splash_update(host: Node3D, feet_px: Vector2, speed_px: float, layer: int)
 		dm.height = 1.0
 		dm.radial_segments = 6
 		dm.rings = 3
-		var mat := StandardMaterial3D.new()
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		var mat := StandardMaterial3D.new()                   # cieniowane: krople widać w świetle sceny, w ciemności nie świecą (GDD §8.3)
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.roughness = 0.15
 		dm.material = mat
 		sp.mesh = dm
 		sp.scale_amount_min = 0.025
@@ -717,7 +729,8 @@ func _splash_update(host: Node3D, feet_px: Vector2, speed_px: float, layer: int)
 	if int(sp.get_meta("kind")) != kind:
 		sp.set_meta("kind", kind)
 		var m := (sp.mesh as SphereMesh).material as StandardMaterial3D
-		m.albedo_color = [Color(0.20, 0.14, 0.09, 0.9), Color(0.09, 0.09, 0.12, 0.95), Color(0.35, 0.55, 0.60, 0.85)][kind]
+		m.albedo_color = [Color(0.075, 0.056, 0.040, 0.95), Color(0.03, 0.03, 0.036, 0.95), Color(0.20, 0.18, 0.12, 0.8)][kind]
+	sp.position.y = wade - 0.03
 	sp.emitting = speed_px > 22.0
 
 func _set_layer(root: Node, layer: int) -> void:
@@ -783,7 +796,13 @@ func _make_proj(n: Node2D) -> void:
 		_box(root, Vector3(0.2, 0.06, 0.06), Vector3(0.04, 0.0, 0.0), Color(1.0, 0.97, 0.85))
 	_world.add_child(root)
 	n.self_modulate = Color(1, 1, 1, 0)
-	_proj[n.get_instance_id()] = [n, root]
+	# strzał gracza brodzącego w cieczy: jego model (i lufa) stoi niżej niż w symulacji — smuga wychodzi z widocznej lufy i na pierwszych
+	# metrach lotu wraca na prawdziwy tor (trafienia liczy serwer z toru symulacji)
+	var drop := 0.0
+	for p in _rigs.keys():
+		if is_instance_valid(p) and (p as Node2D).global_position.distance_to(n.global_position) < 40.0:
+			drop = maxf(drop, float(_rigs[p].get("wade", 0.0)))
+	_proj[n.get_instance_id()] = [n, root, drop, n.global_position]
 
 func _sync_projectiles() -> void:
 	for n in get_tree().get_nodes_in_group("projectiles"):
@@ -799,7 +818,8 @@ func _sync_projectiles() -> void:
 			_proj.erase(id)
 			continue
 		var s2 := src as Node2D
-		px.position = Level3D.px_to_m(s2.global_position) + Vector3(0.0, 0.0, 0.3)
+		var drop := float(pr[2]) * clampf(1.0 - s2.global_position.distance_to(pr[3]) * PX / WADE_SHOT_BLEND_M, 0.0, 1.0)
+		px.position = Level3D.px_to_m(s2.global_position) + Vector3(0.0, -drop, 0.3)
 		px.rotation = Vector3(0.0, 0.0, -s2.global_rotation)
 
 ## Wołane z `Vfx.burst_fx`: jednorazowy wybuch cząsteczek w scenie (billboardy, rozrzut w płaszczyźnie gry); opis w `cfg` — patrz vfx.gd.
@@ -825,7 +845,8 @@ func spawn_burst(pos: Vector2, cfg: Dictionary) -> void:
 	var q := QuadMesh.new()
 	q.size = Vector2(8.0, 8.0) * PX
 	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	if not bool(cfg.get("shaded", false)):
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.vertex_color_use_as_albedo = true
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED

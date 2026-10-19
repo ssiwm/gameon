@@ -381,8 +381,11 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 ##  - tafla (`LIQUID_TOP`): siatka z falami i przemieszczeniem wierzchołków, piana tam, gdzie ciecz jest płytka, tęczowa błona oleju, bryłki błota;
 ##  - grube zacieki po froncie sąsiedniego gruntu przy obu brzegach (`LIQUID_DRIP`) z kroplą na końcu i mokrym zaciemnieniem.
 ## Profil (głębokość pod krawędzią gruntu co ok. 0,12 m) trafia do shaderów jako tekstura `prof` (RH), więc tafla i przekrój używają tego samego kształtu.
-const LIQUID_SINK := 0.14                  ## m: tafla oleju / wody leży tyle poniżej krawędzi gruntu (gracz „stoi” tuż nad nią)
+const LIQUID_SINK := 0.04                  ## m: tafla oleju / wody leży tyle poniżej krawędzi gruntu (niecka pełna po brzegi; postacie w niej brodzą — `WADE`)
 const LIQUID_SINK_MUD := 0.05              ## m: powierzchnia błota
+## Brodzenie (tylko widok): o tyle pod taflę schodzą stopy postaci i wrogów stojących w cieczy — błoto do kostek, olej, woda do kolan.
+## Fizyka zostaje na krawędzi kafla; model opuszcza widok (`wade_at`), a przy brzegu stopy idą po dnie niecki, więc wchodzi się stopniowo.
+const WADE := [0.12, 0.34, 0.42]
 const LIQUID_COMMON := """
 float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float vn(vec2 p) {
@@ -395,18 +398,12 @@ float fbm(vec2 p) {
 	return s;
 }
 """
-const LIQUID_TOP := """
-shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx;
-uniform int kind = 0;                  // 0 błoto, 1 olej, 2 woda
+## Profil niecki i wysokość powierzchni (fale wody, grudy błota) — wspólne dla tafli i górnej krawędzi przekroju, żeby się schodziły.
+const LIQUID_SURF := """
 uniform sampler2D prof : filter_linear, repeat_disable;
 uniform float x0 = 0.0;                // początek ciągu (m, świat)
 uniform float run_w = 2.6;             // szerokość ciągu (m)
-uniform float sink = 0.14;
-uniform float seed = 0.0;
-varying vec2 v_w;
-varying float v_wd;
-//COMMON
+uniform float sink = 0.04;
 float depth_at(float x) {
 	return texture(prof, vec2(clamp((x - x0) / run_w, 0.0, 1.0), 0.5)).r;
 }
@@ -415,7 +412,8 @@ float surf_h(vec2 w, float wd) {
 	if (kind == 0) {
 		float rut = 0.5 + 0.5 * sin(w.x * 4.4 + fbm(w * 1.1 + seed) * 7.0);
 		float lump = fbm(w * 2.3 + seed);
-		return bank * (0.080 * lump + 0.050 * rut * smoothstep(0.35, 0.75, vn(w * vec2(0.5, 1.4) + seed)) - 0.015);
+		float grit = vn(w * 7.5 + seed) - 0.5;                        // drobna nierówność: odciski, grudki
+		return bank * (0.080 * lump + 0.050 * rut * smoothstep(0.35, 0.75, vn(w * vec2(0.5, 1.4) + seed)) + 0.030 * grit - 0.015);
 	}
 	float wave = 0.0;
 	if (kind == 2) {
@@ -425,6 +423,17 @@ float surf_h(vec2 w, float wd) {
 	}
 	return wave * bank;
 }
+"""
+## Tafla bez własnego światła (ciemność to mechanika, GDD §8.3): nocą widać ją tylko w świetle sceny — latarka, flara, ogień dają połysk.
+const LIQUID_TOP := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx;
+uniform int kind = 0;                  // 0 błoto, 1 olej, 2 woda
+uniform float seed = 0.0;
+varying vec2 v_w;
+varying float v_wd;
+//COMMON
+//SURF
 void vertex() {
 	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_w = wp.xz;
@@ -448,19 +457,20 @@ void fragment() {
 	float r2 = vn(q * 1.9 - flow * 1.3 + 7.0) - 0.5;
 	float amp = (kind == 0) ? 0.22 : ((kind == 1) ? 0.05 : 0.16);
 	n = normalize(n + vec3(r1, 0.0, r2) * amp);
+	if (kind == 0) {                                                       // błoto: drobne grudki i odciski w normalnych
+		n = normalize(n + vec3(vn(p * 38.0) - 0.5, 0.0, vn(p * 41.0 + 3.0) - 0.5) * 0.45);
+	}
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
-	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
-	vec3 sky = mix(vec3(0.020, 0.032, 0.060), vec3(0.060, 0.090, 0.160), clamp(n.x * 2.0 + 0.5 + r1 * 0.8, 0.0, 1.0));
-	float edge = 1.0 - smoothstep(0.0, 0.35, wd);                          // przy brzegu ciecz jest płytka: piana, jaśniejsza woda, grubsza błona
+	float edge = 1.0 - smoothstep(0.0, 0.35, wd);                          // przy brzegu ciecz jest płytka: piana, grubsza błona, widać dno
 	if (kind == 0) {
-		float wetn = smoothstep(0.50, 0.66, fbm(p * 1.7 + seed * 2.0));
-		vec3 dry = mix(vec3(0.052, 0.038, 0.027), vec3(0.125, 0.090, 0.058), fbm(p * 3.2));
-		vec3 mud = mix(dry, vec3(0.030, 0.023, 0.017), wetn * 0.80) * (0.75 + 0.5 * vn(p * 22.0));
-		float crust = smoothstep(0.55, 0.8, fbm(p * 5.0 + seed)) * edge;
-		ALBEDO = mix(mud, vec3(0.160, 0.115, 0.075), crust * 0.7);
-		ROUGHNESS = mix(0.80, 0.10, wetn);
-		SPECULAR = 0.55;
-		EMISSION = sky * 0.25 * smoothstep(0.55, 0.9, fbm(p * 1.7 + seed * 2.0)) * (0.35 + 1.4 * fres);
+		// mokre, ciemne błoto: placki rozmokłe (gładsze, ale matowe — bez lustrzanych białych plam), skorupa tylko przy brzegu i stonowana
+		float wetn = smoothstep(0.52, 0.70, fbm(p * 1.7 + seed * 2.0));
+		vec3 dry = mix(vec3(0.036, 0.027, 0.019), vec3(0.060, 0.045, 0.031), fbm(p * 3.2));
+		vec3 mud = mix(dry, vec3(0.020, 0.015, 0.011), wetn * 0.85) * (0.80 + 0.35 * vn(p * 22.0));
+		float crust = smoothstep(0.60, 0.85, fbm(p * 5.0 + seed)) * edge;
+		ALBEDO = mix(mud, vec3(0.072, 0.055, 0.039), crust * 0.5);
+		ROUGHNESS = mix(0.86, 0.48, wetn);
+		SPECULAR = 0.32;
 		ALPHA = smoothstep(-0.01, 0.06, v_wd);
 	} else if (kind == 1) {
 		float film = fbm(p * 1.4 + seed);
@@ -469,17 +479,16 @@ void fragment() {
 		ALBEDO = vec3(0.010, 0.010, 0.013) + irid * 0.050 * (0.35 + edge * 1.2);
 		ROUGHNESS = 0.045;
 		SPECULAR = 1.0;
-		EMISSION = sky * (0.35 + 1.6 * fres);
 		ALPHA = 0.97 * smoothstep(-0.01, 0.05, v_wd);
 	} else {
-		float foam = edge * smoothstep(0.36, 0.60, fbm(p * 7.0 + vec2(TIME * 0.18, 0.0)));
-		float depthc = smoothstep(0.1, 0.9, wd);
-		vec3 wat = mix(vec3(0.060, 0.19, 0.19), vec3(0.010, 0.060, 0.080), depthc) + vec3(0.55) * foam;
+		// mętna woda torfowa (herbaciano-oliwkowa), przy brzegu przejaśnia ją dno, piana brudna; połysk daje tylko światło sceny
+		float foam = edge * smoothstep(0.42, 0.66, fbm(p * 7.0 + vec2(TIME * 0.18, 0.0)));
+		float depthc = smoothstep(0.05, 0.6, wd);
+		vec3 wat = mix(vec3(0.105, 0.090, 0.056), vec3(0.042, 0.038, 0.025), depthc) + vec3(0.10, 0.088, 0.060) * foam;
 		ALBEDO = wat;
-		ROUGHNESS = mix(0.03, 0.7, foam);
-		SPECULAR = 0.9;
-		EMISSION = sky * (0.35 + 1.6 * fres);
-		ALPHA = clamp(0.80 + foam * 0.2, 0.0, 1.0) * smoothstep(-0.01, 0.05, v_wd);
+		ROUGHNESS = mix(0.16, 0.6, foam);
+		SPECULAR = 0.6;
+		ALPHA = clamp(0.92 + foam * 0.08, 0.0, 1.0) * smoothstep(-0.01, 0.05, v_wd);
 	}
 }
 """
@@ -491,38 +500,46 @@ uniform float y_s = 0.0;               // poziom tafli (m, świat)
 uniform float seed = 0.0;
 varying vec3 v_w;
 //COMMON
+//SURF
 void vertex() {
 	v_w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	if (abs(v_w.y - y_s) < 0.002) {                            // górna krawędź przekroju idzie za falą / grudami tafli (bez prostej „deski”)
+		float h = surf_h(v_w.xz, max(depth_at(v_w.x) - sink, 0.0));
+		VERTEX.y += h;
+		v_w.y += h;
+	}
 }
 void fragment() {
 	float d = max(y_s - v_w.y, 0.0);                          // głębokość pod taflą (m)
-	float t = 1.0 - exp(-d * 1.1);
-	float cau = fbm(vec2(v_w.x * 2.6 + TIME * 0.18, v_w.y * 3.0 - TIME * 0.12));
-	cau = smoothstep(0.55, 0.85, cau) * (1.0 - t * 0.7);
-	float line = 1.0 - smoothstep(0.0, 0.03, d);               // jasna linia tafli
+	float line = 1.0 - smoothstep(0.0, 0.03, d);               // linia tafli
 	if (kind == 2) {
-		vec3 top = vec3(0.10, 0.30, 0.30);
-		vec3 deep = vec3(0.020, 0.090, 0.120);
-		ALBEDO = mix(top, deep, t) + vec3(0.18, 0.35, 0.33) * cau * 0.55 + vec3(0.35, 0.50, 0.52) * line;
-		EMISSION = vec3(0.012, 0.035, 0.045) * (1.0 - t * 0.6);
-		ALPHA = mix(0.55, 0.88, t);
-		ROUGHNESS = 0.06;
+		// mętna woda torfowa: szybko gęstnieje w głąb, zawiesina zamiast kaustyk (te wymagałyby słońca)
+		float t = 1.0 - exp(-d * 2.6);
+		float silt = fbm(vec2(v_w.x * 3.1 + seed, v_w.y * 4.0 - TIME * 0.02));
+		ALBEDO = mix(vec3(0.052, 0.044, 0.026), vec3(0.010, 0.009, 0.006), t) * (0.75 + 0.5 * silt) + vec3(0.060, 0.055, 0.040) * line;
+		ALPHA = mix(0.80, 0.97, t);
+		ROUGHNESS = 0.12;
 	} else if (kind == 1) {
+		float t = 1.0 - exp(-d * 1.1);
 		float sheen = smoothstep(0.30, 0.70, fbm(vec2(v_w.x * 1.6 + TIME * 0.03, v_w.y * 2.2)));
-		ALBEDO = mix(vec3(0.030, 0.030, 0.038), vec3(0.008, 0.008, 0.012), t) + vec3(0.05, 0.04, 0.08) * (cau * 0.5 + sheen * 0.6) * (1.0 - t * 0.5) + vec3(0.10, 0.11, 0.14) * line;
-		EMISSION = vec3(0.010, 0.013, 0.028) * (1.0 - t * 0.7) * (0.5 + sheen);
+		ALBEDO = mix(vec3(0.030, 0.030, 0.038), vec3(0.008, 0.008, 0.012), t) + vec3(0.05, 0.04, 0.08) * sheen * 0.6 * (1.0 - t * 0.5) + vec3(0.10, 0.11, 0.14) * line;
 		ALPHA = 0.96;
 		ROUGHNESS = 0.07;
 	} else {
-		// błoto: skorupa wyschnięta u góry, mokra warstwa głębiej, żyłki
-		float crust = 1.0 - smoothstep(0.0, 0.14, d + (fbm(vec2(v_w.x * 5.0, 0.7)) - 0.5) * 0.1);
+		// błoto: mokre i ciemne, płytka przeschnięta warstwa u góry (stonowana), żyłki i grudki w przekroju
+		float t = 1.0 - exp(-d * 1.1);
+		float crust = 1.0 - smoothstep(0.0, 0.10, d + (fbm(vec2(v_w.x * 5.0, 0.7)) - 0.5) * 0.1);
 		float vein = smoothstep(0.55, 0.75, fbm(vec2(v_w.x * 3.0 + seed, v_w.y * 6.0)));
-		vec3 wetc = mix(vec3(0.060, 0.042, 0.029), vec3(0.022, 0.016, 0.012), t);
-		ALBEDO = mix(wetc, vec3(0.170, 0.122, 0.078), crust * 0.8) * (0.8 + 0.3 * vein);
-		ALPHA = 1.0;
-		ROUGHNESS = mix(0.18, 0.7, crust);
+		float grit = vn(vec2(v_w.x * 24.0, v_w.y * 24.0) + seed);
+		float mott = fbm(vec2(v_w.x * 7.0 + seed, v_w.y * 12.0));                // smugi rozmokłego i gęstszego błota
+		vec3 wetc = mix(vec3(0.040, 0.030, 0.021), vec3(0.016, 0.012, 0.009), t);
+		ALBEDO = mix(wetc, vec3(0.068, 0.052, 0.037), crust * 0.6) * (0.8 + 0.3 * vein) * (0.85 + 0.3 * grit) * (0.6 + 0.7 * mott);
+		// dół warstwy przechodzi w ziemię pod niecką (bez ostrej krawędzi „deski”)
+		float above_bed = v_w.y - (y_s + sink - depth_at(v_w.x));
+		ALPHA = smoothstep(0.0, 0.14, above_bed + (vn(vec2(v_w.x * 9.0, seed)) - 0.5) * 0.06);
+		ROUGHNESS = mix(0.36, 0.78, crust) + 0.2 * (1.0 - mott);
 	}
-	SPECULAR = 0.8;
+	SPECULAR = 0.6;
 }
 """
 const LIQUID_DRIP := """
@@ -561,13 +578,12 @@ void fragment() {
 	float rough_v;
 	if (kind == 0) { base = vec3(0.050, 0.035, 0.024); rough_v = 0.22; }
 	else if (kind == 1) { base = vec3(0.016, 0.016, 0.020); rough_v = 0.05; }
-	else { base = vec3(0.030, 0.058, 0.064); rough_v = 0.1; }
+	else { base = vec3(0.034, 0.029, 0.019); rough_v = 0.1; }
 	ALBEDO = base * (0.8 + 0.4 * vn(vec2(mx * 28.0, my * 11.0)));
 	ALPHA = clamp(a, 0.0, 1.0) * ((kind == 2) ? 0.7 : 1.0);
 	ROUGHNESS = rough_v;
 	SPECULAR = 0.9;
-	ALBEDO += vec3(0.07) * bulb * ((kind == 0) ? 0.5 : 1.0);
-	EMISSION = vec3(0.020, 0.030, 0.055) * ((kind == 0) ? 0.35 : 1.0) * (0.55 + 0.45 * lane) * drip;
+	ALBEDO += vec3(0.04) * bulb * ((kind == 0) ? 0.5 : 1.0);
 }
 """
 const DECAL_DIR := "res://art/world3d/decals/"
@@ -722,9 +738,9 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
 	var kinds := {"m": 0, "O": 1, "~": 2}
 	var top_sh := Shader.new()
-	top_sh.code = LIQUID_TOP.replace("//COMMON", LIQUID_COMMON)
+	top_sh.code = LIQUID_TOP.replace("//COMMON", LIQUID_COMMON).replace("//SURF", LIQUID_SURF)
 	var front_sh := Shader.new()
-	front_sh.code = LIQUID_FRONT.replace("//COMMON", LIQUID_COMMON)
+	front_sh.code = LIQUID_FRONT.replace("//COMMON", LIQUID_COMMON).replace("//SURF", LIQUID_SURF)
 	var drip_sh := Shader.new()
 	drip_sh.code = LIQUID_DRIP.replace("//COMMON", LIQUID_COMMON)
 	var wet := make_pbr("terrain", 0.30, Color(0.12, 0.10, 0.08), 1.0, 1.0, 1.0, false, "organic")
@@ -856,6 +872,10 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 			fmat.set_shader_parameter("kind", kd)
 			fmat.set_shader_parameter("y_s", y_s)
 			fmat.set_shader_parameter("seed", seed)
+			fmat.set_shader_parameter("prof", ptex)
+			fmat.set_shader_parameter("x0", x0)
+			fmat.set_shader_parameter("run_w", w)
+			fmat.set_shader_parameter("sink", sink)
 			var fmi := MeshInstance3D.new()
 			fmi.name = "LiquidFront_%s_%d_%d" % [ch, c, r]
 			fmi.mesh = fm
@@ -922,7 +942,7 @@ float fbm(vec2 p) {
 	return s;
 }
 """
-## Kałuża: nieregularny owal z niskim roughness — światła sceny (flary, latarka, lampy) dają w niej prawdziwe błyski, dodatkowo fresnel odbijający niebo.
+## Kałuża: nieregularny owal z niskim roughness — światła sceny (flary, latarka, lampy) dają w niej prawdziwe błyski; bez własnej poświaty (GDD §8.3).
 const PUDDLE_SHADER := """
 shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
@@ -944,12 +964,9 @@ void fragment() {
 	vec2 q = p * 3.5 + vec2(v_seed);
 	vec3 n = normalize(vec3((vn(q + vec2(t, 0.0)) - 0.5) * 0.10, 1.0, (vn(q * 1.7 - vec2(0.0, t)) - 0.5) * 0.10));
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
-	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
-	vec3 sky = mix(vec3(0.018, 0.030, 0.058), vec3(0.060, 0.090, 0.165), clamp(0.5 + n.x * 3.0, 0.0, 1.0));
-	ALBEDO = vec3(0.012, 0.014, 0.018);
+	ALBEDO = vec3(0.013, 0.012, 0.010);
 	ROUGHNESS = 0.035;
 	SPECULAR = 1.0;
-	EMISSION = sky * (0.55 + 2.6 * fres) * smoothstep(0.0, 0.5, a);
 	ALPHA = a * 0.90;
 }
 """
@@ -983,12 +1000,11 @@ void fragment() {
 	float dot_ = 1.0 - smoothstep(rad * 0.6, rad, length(d));
 	float a = dot_ * on;
 	if (a < 0.02) { discard; }
-	vec3 base = (kind == 0) ? vec3(0.052, 0.036, 0.025) : ((kind == 1) ? vec3(0.014, 0.014, 0.018) : vec3(0.030, 0.058, 0.064));
+	vec3 base = (kind == 0) ? vec3(0.040, 0.029, 0.020) : ((kind == 1) ? vec3(0.014, 0.014, 0.018) : vec3(0.034, 0.029, 0.019));
 	ALBEDO = base;
 	ALPHA = a * ((kind == 2) ? 0.65 : 0.95);
 	ROUGHNESS = 0.08;
 	SPECULAR = 0.9;
-	EMISSION = vec3(0.015, 0.022, 0.040) * a;
 }
 """
 ## Trzcina, patyki: cienkie wstęgi i pryzmy z kolorem wierzchołkowym; alfa koloru = waga kołysania (u podstawy 0, na końcu 1).
@@ -1005,7 +1021,6 @@ void fragment() {
 	ALBEDO = COLOR.rgb;
 	ROUGHNESS = 0.88;
 	SPECULAR = 0.25;
-	EMISSION = vec3(0.012, 0.018, 0.034) * (0.4 + COLOR.a);                  // chłodny blask księżyca na wstęgach
 }
 """
 
@@ -1050,6 +1065,102 @@ static func _run_profile(run: Dictionary) -> PackedFloat32Array:
 	var d0 := clampf(0.50 + 0.065 * w, 0.70, 1.20) if kd > 0 else clampf(0.26 + 0.030 * w, 0.34, 0.60)
 	var bank := 0.75 if kd > 0 else 0.55
 	return _liquid_profile(w, ns, d0, bank, float(run["seed"]), cap)
+
+## Mapa brodzenia: wiersz kafli → ciągi cieczy w nim [{x0, w, kd, prof}] (patrz `WADE`, `wade_at`).
+static func wade_map(rows: Array) -> Dictionary:
+	var out := {}
+	for run in _liquid_runs(rows):
+		var r: int = run["r"]
+		if not out.has(r):
+			out[r] = []
+		(out[r] as Array).append({"x0": run["x0"], "w": run["w"], "kd": run["kd"], "prof": _run_profile(run)})
+	return out
+
+## O ile opuścić model (m), którego stopy stoją w `feet_px` (px świata): stopy schodzą po dnie niecki, najwyżej `WADE` pod taflę; 0 poza cieczą.
+static func wade_at(wmap: Dictionary, feet_px: Vector2) -> float:
+	var r := int(floor((feet_px.y + 1.0) / TILE))
+	if not wmap.has(r):
+		return 0.0
+	var xm := feet_px.x * PX
+	for run in wmap[r]:
+		var x0: float = run["x0"]
+		var w: float = run["w"]
+		if xm < x0 or xm > x0 + w:
+			continue
+		var prof: PackedFloat32Array = run["prof"]
+		var ns := prof.size() - 1
+		var f := clampf((xm - x0) / w, 0.0, 1.0) * float(ns)
+		var i := mini(int(f), ns - 1)
+		var depth := lerpf(prof[i], prof[i + 1], f - float(i))
+		var kd: int = run["kd"]
+		return minf(depth, (LIQUID_SINK_MUD if kd == 0 else LIQUID_SINK) + float(WADE[kd]))
+	return 0.0
+
+## Zasłona brodzenia dla warstwy graczy (rysowanej osobną kamerą na wierzchu świata, więc tafla ich nie zakrywa): pudło z wierzchem na poziomie
+## tafli i frontem przekroju. Mnoży (blend_mul) tylko piksele, na których już jest postać: z bufora głębi odtwarza punkt modelu za zasłoną
+## i im głębiej pod taflą, tym mniej go widać (mętna woda, nieprzejrzyste błoto i olej). Puste piksele warstwy (alfa 0) zostają puste.
+const WADE_VEIL_SHADER := """
+shader_type spatial;
+render_mode blend_mul, unshaded, depth_draw_never, cull_disabled, fog_disabled, shadows_disabled;
+uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
+uniform float y_s = 0.0;               // poziom tafli (m, świat)
+uniform vec3 tint = vec3(0.6, 0.55, 0.4);
+uniform float keep = 0.3;              // ile widać tuż pod taflą
+uniform float fade = 6.0;              // zanik widoczności w głąb (1/m)
+void fragment() {
+	float z = texture(depth_tex, SCREEN_UV).r;
+	vec4 v = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, z, 1.0);
+	vec3 wp = (INV_VIEW_MATRIX * vec4(v.xyz / v.w, 1.0)).xyz;
+	float under = y_s - wp.y;
+	float vis = mix(1.0, keep * exp(-max(under, 0.0) * fade), smoothstep(-0.005, 0.03, under));
+	ALBEDO = mix(tint, vec3(1.0), vis);
+	ALPHA = vis;
+}
+"""
+static func build_wade_veils(parent: Node3D, rows: Array, layer: int) -> void:
+	if "--noliquids" in OS.get_cmdline_user_args():
+		return
+	var sh := Shader.new()
+	sh.code = WADE_VEIL_SHADER
+	var zf := DEPTH_FRONT + 0.02
+	var zb := -0.9                                             # za modelami graczy (płaszczyzna gry z = 0, drezyna wysuwa ich ku kamerze)
+	# [odcień, widoczność tuż pod taflą, zanik] wg rodzaju: błoto, olej, woda
+	var look := [[Color(0.35, 0.27, 0.20), 0.10, 14.0], [Color(0.25, 0.25, 0.28), 0.12, 12.0], [Color(0.62, 0.56, 0.40), 0.40, 5.5]]
+	for run in _liquid_runs(rows):
+		var kd: int = run["kd"]
+		var y_s: float = float(run["y_top"]) - (LIQUID_SINK_MUD if kd == 0 else LIQUID_SINK)
+		var prof := _run_profile(run)
+		var deep := 0.0
+		for d in prof:
+			deep = maxf(deep, d)
+		var x0: float = run["x0"]
+		var w: float = run["w"]
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.set_shader_parameter("y_s", y_s)
+		var lk: Array = look[kd]
+		var tc: Color = lk[0]
+		m.set_shader_parameter("tint", Vector3(tc.r, tc.g, tc.b))
+		m.set_shader_parameter("keep", float(lk[1]))
+		m.set_shader_parameter("fade", float(lk[2]))
+		var top := MeshInstance3D.new()
+		top.name = "WadeVeilTop_%d_%d" % [int(run["c"]), int(run["r"])]
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(w, zf - zb)
+		top.mesh = pm
+		top.position = Vector3(x0 + w * 0.5, y_s, (zf + zb) * 0.5)
+		var front := MeshInstance3D.new()
+		front.name = "WadeVeilFront_%d_%d" % [int(run["c"]), int(run["r"])]
+		var qm := QuadMesh.new()
+		var hgt := deep - (float(run["y_top"]) - y_s) + 0.1        # od tafli do najgłębszego miejsca niecki
+		qm.size = Vector2(w, hgt)
+		front.mesh = qm
+		front.position = Vector3(x0 + w * 0.5, y_s - hgt * 0.5, zf)
+		for mi in [top, front]:
+			(mi as MeshInstance3D).material_override = m
+			(mi as MeshInstance3D).layers = layer
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			parent.add_child(mi)
 
 static func _blade(v: PackedVector3Array, nrm: PackedVector3Array, col: PackedColorArray, idx: PackedInt32Array, base: Vector3, h: float, wid: float,
 		yaw: float, lean: Vector3, c_base: Color, c_tip: Color, cattail: bool) -> void:
@@ -1301,26 +1412,33 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 					mi.position = Vector3(edge + float(sd) * qsz.x * 0.5, ground_y + 0.004, (zf + zb) * 0.5 + 0.2)
 				parent.add_child(mi)
 
-	# ---------------- bąble gazu: olej (z dna niecki) i błoto (pęcherze przy powierzchni)
+	# ---------------- bąble gazu: olej (z dna niecki, w przekroju) i błoto (pęcherze na wierzchu — nie na froncie gruntu)
+	# bez emisji: ciemne i błyszczące, widać je dopiero w świetle sceny (GDD §8.3)
 	var bmesh := SphereMesh.new()
 	bmesh.radius = 0.5
 	bmesh.height = 1.0
 	bmesh.radial_segments = 8
 	bmesh.rings = 4
-	var bmat := StandardMaterial3D.new()
-	bmat.albedo_color = Color(0.20, 0.30, 0.46, 0.70)
-	bmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	bmat.roughness = 0.04
-	bmat.metallic_specular = 1.0
-	bmat.emission_enabled = true
-	bmat.emission = Color(0.09, 0.15, 0.27)
-	bmat.rim_enabled = true
-	bmat.rim = 0.8
+	var bmat_oil := StandardMaterial3D.new()
+	bmat_oil.albedo_color = Color(0.030, 0.030, 0.036, 0.85)
+	bmat_oil.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bmat_oil.roughness = 0.05
+	bmat_oil.metallic_specular = 1.0
+	bmat_oil.rim_enabled = true
+	bmat_oil.rim = 0.3
+	var bmat_mud := StandardMaterial3D.new()
+	bmat_mud.albedo_color = Color(0.030, 0.023, 0.016)
+	bmat_mud.roughness = 0.22
+	bmat_mud.metallic_specular = 0.6
 	var bcurve := Curve.new()
 	bcurve.add_point(Vector2(0.0, 0.5))
 	bcurve.add_point(Vector2(0.15, 1.0))
 	bcurve.add_point(Vector2(0.88, 1.0))
 	bcurve.add_point(Vector2(1.0, 0.0))
+	var blister := Curve.new()                                     # pęcherz błota: powoli rośnie, pęka
+	blister.add_point(Vector2(0.0, 0.2))
+	blister.add_point(Vector2(0.85, 1.0))
+	blister.add_point(Vector2(1.0, 0.0))
 	for run in runs:
 		var kd: int = run["kd"]
 		if kd == 2:
@@ -1339,28 +1457,40 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 			var d := prof[xi] - sink
 			if d < 0.18:
 				continue
-			var y_start := y_s - d * (0.85 if kd == 1 else 0.20)
-			var rise := y_s - y_start
-			var speed := rng.randf_range(0.22, 0.38) if kd == 1 else 0.10
 			var bp := CPUParticles3D.new()
 			bp.name = "Bubbles_%d_%d" % [int(run["c"]), k]
 			bp.mesh = bmesh
-			bp.material_override = bmat
-			bp.amount = 7 if kd == 1 else 4
-			bp.lifetime = rise / speed + 0.25
-			bp.preprocess = bp.lifetime
 			bp.local_coords = false
 			bp.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-			bp.emission_box_extents = Vector3(0.12, 0.01, 0.01)
 			bp.direction = Vector3.UP
 			bp.spread = 6.0
-			bp.initial_velocity_min = speed * 0.85
-			bp.initial_velocity_max = speed * 1.2
 			bp.gravity = Vector3.ZERO
-			bp.scale_amount_min = 0.07 if kd == 1 else 0.04
-			bp.scale_amount_max = 0.20 if kd == 1 else 0.10
-			bp.scale_amount_curve = bcurve
-			bp.position = Vector3(x0 + w * float(xi) / float(ns), y_start, DEPTH_FRONT + 0.03)
+			var bx := x0 + w * float(xi) / float(ns)
+			if kd == 1:
+				var y_start := y_s - d * 0.85
+				var speed := rng.randf_range(0.22, 0.38)
+				bp.material_override = bmat_oil
+				bp.amount = 7
+				bp.lifetime = (y_s - y_start) / speed + 0.25
+				bp.emission_box_extents = Vector3(0.12, 0.01, 0.01)
+				bp.initial_velocity_min = speed * 0.85
+				bp.initial_velocity_max = speed * 1.2
+				bp.scale_amount_min = 0.07
+				bp.scale_amount_max = 0.20
+				bp.scale_amount_curve = bcurve
+				bp.position = Vector3(bx, y_start, DEPTH_FRONT + 0.03)
+			else:
+				bp.material_override = bmat_mud
+				bp.amount = 3
+				bp.lifetime = 2.4
+				bp.emission_box_extents = Vector3(0.35, 0.0, 0.6)
+				bp.initial_velocity_min = 0.008
+				bp.initial_velocity_max = 0.02
+				bp.scale_amount_min = 0.05
+				bp.scale_amount_max = 0.12
+				bp.scale_amount_curve = blister
+				bp.position = Vector3(bx, y_s + 0.02, rng.randf_range(zb + 1.4, zf - 1.0))
+			bp.preprocess = bp.lifetime
 			bp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			parent.add_child(bp)
 
