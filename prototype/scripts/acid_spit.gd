@@ -46,6 +46,6 @@ func _physics_process(delta: float) -> void:
 				return
 
 func _splash() -> void:
-	Vfx.splash(get_parent(), global_position, 0.8)
+	Vfx.splash(get_parent(), global_position, 0.8, false)
 	Audio.play_variant_at("step_water", 3, global_position, Audio.BUS_WORLD, -4.0, 1.6)
 	queue_free()

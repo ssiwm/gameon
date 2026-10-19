@@ -54,13 +54,14 @@ static func blob_texture() -> Texture2D:
 
 ## Jednorazowy wybuch cząsteczek (krew, iskry, kurz, dym): parametry idą wprost do sceny 3D (view3d.gd: spawn_burst) — żadnego węzła 2D.
 ## Prędkości i grawitacja w px świata / s; `amount` skaluje ustawienie jakości efektów. Bez widoku 3D (tryb headless) nic się nie dzieje.
+## `shaded`: krople cieczy (woda, błoto, olej) widać tylko w świetle sceny — nocą nie świecą (GDD §8.3).
 static func burst(parent: Node, pos: Vector2, color: Color, amount: int, vmin: float, vmax: float,
 		dir := Vector2.UP, spread := 60.0, gravity := 500.0, life := 0.5, size := Vector2(1.0, 2.0),
-		_unshaded := false) -> void:
+		_unshaded := false, shaded := false) -> void:
 	if parent == null or not parent.is_inside_tree():
 		return
 	burst_fx(pos, {"color": color, "amount": maxi(1, int(round(float(amount) * Settings.vfx_mult()))), "life": life, "dir": dir, "spread": spread,
-		"vmin": vmin, "vmax": vmax, "gravity": Vector2(0.0, gravity), "smin": size.x, "smax": size.y})
+		"vmin": vmin, "vmax": vmax, "gravity": Vector2(0.0, gravity), "smin": size.x, "smax": size.y, "shaded": shaded})
 
 ## Wybuch cząsteczek z gotowego opisu: color, amount, life, explosiveness (domyślnie 0,95), dir, spread, vmin, vmax, gravity (Vector2), smin, smax.
 static func burst_fx(pos: Vector2, cfg: Dictionary) -> void:
@@ -76,10 +77,10 @@ static func dust(parent: Node, pos: Vector2, strength := 1.0) -> void:
 static func sparks(parent: Node, pos: Vector2, dir: Vector2) -> void:
 	burst(parent, pos, Color(1.0, 0.85, 0.45), 8, 40.0, 130.0, -dir, 55.0, 380.0, 0.25, Vector2(0.8, 1.4), true)
 
-## Rozbryzg wody (tartak).
-static func splash(parent: Node, pos: Vector2, strength := 1.0) -> void:
-	burst(parent, pos + Vector2(0, -1), Color(0.55, 0.78, 0.9, 0.85), int(8 + 8 * strength), 25.0, 70.0 * strength,
-		Vector2.UP, 40.0, 420.0, 0.55, Vector2(0.8, 1.8))
+## Rozbryzg wody: mętne krople, cieniowane (w ciemności nie świecą). `water = false`: inna ciecz (kwas) — jasne krople widoczne zawsze.
+static func splash(parent: Node, pos: Vector2, strength := 1.0, water := true) -> void:
+	burst(parent, pos + Vector2(0, -1), Color(0.42, 0.40, 0.32, 0.85) if water else Color(0.55, 0.78, 0.9, 0.85), int(8 + 8 * strength), 25.0, 70.0 * strength,
+		Vector2.UP, 40.0, 420.0, 0.55, Vector2(0.8, 1.8), false, water)
 
 ## Krew przy trafieniu.
 static func blood(parent: Node, pos: Vector2, dir: Vector2, amount := 8) -> void:
@@ -274,6 +275,17 @@ static func impact(parent: Node, pos: Vector2, normal: Vector2, surface: String,
 	match surface:
 		"water":
 			splash(parent, pos, 0.6)
+			if snd:
+				Audio.play_variant_at("step_water", 5, pos, Audio.BUS_WORLD, -11.0, 1.45, 0.12)          # plusk kuli
+		"mud":                                                    # błoto połyka kulę: grudy i chlupnięcie, bez iskier i rykoszetu
+			burst(parent, pos, Color(0.16, 0.12, 0.08, 0.95), 7, 20.0, 65.0, out, 50.0, 520.0, 0.4, Vector2(1.0, 2.2), false, true)
+			if snd:
+				Audio.play_variant_at("step_water", 5, pos, Audio.BUS_WORLD, -12.0, 0.62, 0.1)
+				Audio.play_variant_at("impact_flesh", 3, pos, Audio.BUS_WORLD, -16.0, 0.5, 0.08)
+		"oil":                                                    # gęsta ciecz: ciemne krople, głuche pacnięcie
+			burst(parent, pos, Color(0.05, 0.05, 0.06, 0.95), 6, 20.0, 60.0, out, 45.0, 480.0, 0.45, Vector2(0.9, 1.8), false, true)
+			if snd:
+				Audio.play_variant_at("step_water", 5, pos, Audio.BUS_WORLD, -12.0, 0.8, 0.1)
 		"dirt":
 			burst(parent, pos, Color(0.5, 0.4, 0.28, 0.8), 6, 20.0, 70.0, out, 60.0, 380.0, 0.35, Vector2(1.0, 2.0))
 			if snd:
