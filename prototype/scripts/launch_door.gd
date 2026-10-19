@@ -6,7 +6,7 @@ var zone := Rect2()                   ## strefa startu w pikselach świata (leve
 var state := 0                        ## stan lampy ON AIR, liczony co klatkę z gotowości w main.gd
 var ready_n := 0                      ## ilu ludzi gotowych (sloty na podłodze strefy)
 var total := 0                        ## ilu ludzi w drużynie
-var countdown := -1.0                 ## pozostały czas odliczania [s], < 0: brak (cyfry na drzwiach, pas światła)
+var countdown := -1.0                 ## pozostały czas odliczania [s], < 0: brak (cyfra w HUD)
 var cancel := 0.0                     ## 1 w chwili anulowania odliczania, zanika (czerwony błysk)
 
 func _ready() -> void:
