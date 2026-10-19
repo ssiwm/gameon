@@ -540,6 +540,11 @@ func _push_props(_delta: float) -> void:
 		if b != null and b.is_in_group("props") and absf(col.get_normal().x) > 0.6:
 			b.push(-signf(col.get_normal().x))
 
+## Czy stoi w trzcinie przy cieczy (`level.in_reeds`) — kucającego tam wrogowie widzą z mniejszej odległości (enemy.gd `_sight_mult`).
+func in_reeds() -> bool:
+	var lvl := get_tree().get_first_node_in_group("level")
+	return lvl != null and lvl.has_method("in_reeds") and bool(lvl.in_reeds(global_position))
+
 ## Nazwa powierzchni pod stopami (kafel), np. "dirt", "water", "oil".
 func _floor_surface() -> String:
 	var lvl := get_tree().get_first_node_in_group("level")

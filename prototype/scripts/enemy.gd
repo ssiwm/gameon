@@ -49,6 +49,7 @@ const TARGET_SWITCH_RATIO := 0.7 ## nowy cel musi być bliżej niż 70% odległo
 const ALERT_COOLDOWN := 5.0      ## s: tyle po reakcji „zauważył" wróg nie staje drugi raz (cel migający w polu widzenia)
 const ALERT_JITTER := 0.15       ## ±: rozrzut czasu reakcji, żeby wataha nie ruszała w jednej klatce
 const CROUCH_SIGHT := 0.6        ## kucającego widać z mniejszej odległości
+const REED_SIGHT := 0.5          ## kucający w trzcinie przy cieczy (`level.in_reeds`): jeszcze ×0,5 — razem 0,3 zasięgu wzroku (od 1.7.306)
 const JUMP_V := -275.0           ## skok po grafie A* (42 px, tyle co gracz)
 const STEP_HOP_V := -200.0           ## przeskok na stopień o 1 kafel dla wrogów, którzy nie skaczą (Ślepiec, Wołek): szczyt ≈ 22 px nad podłogą
 const STEP_MAX_RISE := 16.5          ## px: najwyższy stopień (1 kafel)
@@ -728,7 +729,7 @@ func _perceive(delta: float) -> void:
 		if score >= best_score:
 			continue
 		if not omniscient:
-			if d > sight * (CROUCH_SIGHT if pp.crouching else 1.0) or not _clear_line(pp):
+			if d > sight * _sight_mult(pp) or not _clear_line(pp):
 				continue
 		best = pp
 		best_score = score
@@ -777,7 +778,13 @@ func _can_see(pp: Node2D, sight: float) -> bool:
 	if omniscient:
 		return true
 	var d := global_position.distance_to(pp.global_position)
-	return d <= sight * (CROUCH_SIGHT if pp.crouching else 1.0) and _clear_line(pp)
+	return d <= sight * _sight_mult(pp) and _clear_line(pp)
+
+## Mnożnik zasięgu wzroku wobec gracza `pp`: kucanie (CROUCH_SIGHT), a kucanie w trzcinie przy cieczy jeszcze REED_SIGHT. Stojącego trzcina nie kryje.
+func _sight_mult(pp: Node2D) -> float:
+	if not pp.crouching:
+		return 1.0
+	return CROUCH_SIGHT * (REED_SIGHT if pp.has_method("in_reeds") and pp.in_reeds() else 1.0)
 
 ## Czy przerzucić się na nowy cel: tylko gdy ma wyraźnie mniej punktów (o `1 − TARGET_SWITCH_RATIO`) niż dotychczasowy (punkty = odległość × waga, `_target_weight`).
 ## `current_d` i `new_d` to punkty dotychczasowego i nowego celu.

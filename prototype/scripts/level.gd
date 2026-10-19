@@ -266,6 +266,7 @@ func _build_map() -> void:
 		for c in cols:
 			_place_cell(c, r)
 	_place_deco()
+	_build_reed_cells()
 
 ## Ciemność to sam stan (`depth_mult` z głębi podziemi, `weather_tint` i `weather_flash` z pogody): czyta go widok 3D
 ## (view3d.gd: _sync_weather — światło otoczenia sceny). Węzła CanvasModulate już nie ma.
@@ -520,6 +521,36 @@ class HdChunk extends Node2D:
 				draw_texture_rect_region(it[0], it[1], it[2])
 
 const HD_CHUNK := 16                    ## kafli na bok fragmentu (16×16 kafli = 256×256 px świata; kadr gry to ok. 400×225 px)
+
+## Trzcina przy cieczach jako kryjówka (od 1.7.306): komórki [kolumna, wiersz kafla pod stopami], w których rośnie trzcina brzegowa — kafel brzegu
+## i pierwszy kafel cieczy przy każdym brzegu ciągu (woda, błoto, olej), który graniczy z bryłą. To te same miejsca, w których widok stawia kępy
+## (`Level3D.build_liquid_props`). Kucającego w nich wrogowie widzą z mniejszej odległości (`enemy.gd` REED_SIGHT); rozstrzyga serwer.
+var _reed_cells := {}
+
+func _build_reed_cells() -> void:
+	_reed_cells.clear()
+	var cols: int = (_map[0] as String).length()
+	for r in _map.size():
+		var c := 0
+		while c < cols:
+			var ch := _ch(c, r)
+			if not "~mO".contains(ch) or _is_solid(c, r - 1):
+				c += 1
+				continue
+			var c1 := c
+			while c1 < cols and _ch(c1, r) == ch and not _is_solid(c1, r - 1):
+				c1 += 1
+			if _is_solid(c - 1, r):
+				_reed_cells[Vector2i(c - 1, r)] = true
+				_reed_cells[Vector2i(c, r)] = true
+			if _is_solid(c1, r):
+				_reed_cells[Vector2i(c1, r)] = true
+				_reed_cells[Vector2i(c1 - 1, r)] = true
+			c = c1
+
+## Czy stopy w `pos` stoją w trzcinie brzegowej (kafel pod stopami jak w `surface_at`).
+func in_reeds(pos: Vector2) -> bool:
+	return _reed_cells.has(_solid.local_to_map(_solid.to_local(pos + Vector2(0, 3))))
 
 func _is_solid(c: int, r: int) -> bool:
 	# poza mapą = bryła (krawędzie mapy nie świecą)
