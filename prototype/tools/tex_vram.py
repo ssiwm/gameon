@@ -62,6 +62,7 @@ def main():
     os.chdir(ROOT)
     changed = 0
     bad = []
+    stale = []
     for d in DIRS:
         normals = normal_files(d)
         for f in sorted(glob.glob(os.path.join(d, "*.import"))):
@@ -84,11 +85,19 @@ def main():
                     with open(f, "w", encoding="utf-8", newline="\n") as fh:
                         fh.write(want)
                     changed += 1
+            elif "\ncompress/mode=2\n" in s and '"vram_texture": false' in s:
+                # parametry już VRAM, ale [remap] z importu sprzed zmiany (ścieżka do .ctex bez kompresji): import i tak przepisze plik, a cofnięcie
+                # tej zmiany zostawia grę bez tekstury („Unable to open file … .ctex”) — po imporcie trzeba zatwierdzić przepisany .import
+                stale.append(f.replace("\\", "/"))
     if check:
         for b in bad:
             print("bez kompresji VRAM:", b)
-        print("tekstur do poprawy: %d" % len(bad))
-        sys.exit(1 if bad else 0)
+        for b in stale:
+            print("nieaktualny [remap] (zaimportuj i zatwierdź .import):", b)
+        print("tekstur do poprawy: %d" % (len(bad) + len(stale)))
+        sys.exit(1 if bad or stale else 0)
+    for b in stale:
+        print("nieaktualny [remap] — po imporcie zatwierdź:", b)
     print("zmienione pliki .import: %d (teraz: godot --headless --path . --import)" % changed)
 
 

@@ -27,6 +27,8 @@ jobs:
           godot --version
       - name: Kompresja VRAM tekstur modeli 3D (tex_vram.py --check)
         run: python3 prototype/tools/tex_vram.py --check
+      - name: Wagi rękawic postaci MPFB (glb_glove_weights.py --check)
+        run: python3 prototype/tools/glb_glove_weights.py prototype/art/char3d/mpfb/*.glb --check
       - name: Import zasobów
         run: godot --headless --path prototype --import
       - name: Mapy (--maptest)

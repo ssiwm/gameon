@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://i8ib2pmnspbp"
-path="res://.godot/imported/tree_birch_b_birch_leaves.png-5234ac3e5ce80524f7c4d720e4969aa4.ctex"
+path.s3tc="res://.godot/imported/tree_birch_b_birch_leaves.png-5234ac3e5ce80524f7c4d720e4969aa4.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "05f468e9cf4f8ba4a610a87fdf2ad852"
@@ -14,7 +15,7 @@ generator_parameters={
 [deps]
 
 source_file="res://art/items3d/tree_birch_b_birch_leaves.png"
-dest_files=["res://.godot/imported/tree_birch_b_birch_leaves.png-5234ac3e5ce80524f7c4d720e4969aa4.ctex"]
+dest_files=["res://.godot/imported/tree_birch_b_birch_leaves.png-5234ac3e5ce80524f7c4d720e4969aa4.s3tc.ctex"]
 
 [params]
 
