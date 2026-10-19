@@ -164,6 +164,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_fast_bullets()
 	await _t_weapon_realism()
 	await _t_weapon_realism2()
+	await _t_realia_e0()
 	await _t_homing()
 	await _t_bolt()
 	await _t_melee()
@@ -1495,7 +1496,7 @@ func _t_fast_bullets() -> void:
 		check("%s: szybka kula ze smugą (%.0f px/s), smuga z bliska kończy się na lufie (%.0f px), dalej %.0f px" % [d.name, d.speed, near, far],
 			p.is_fast() and absf(near - 10.0) < 0.01 and absf(far - d.speed * Projectile.TRACER_SEC) < 0.01)
 		p.free()
-	check("broń palna: cały zasięg w < 0,15 s (najwolniej %.3f s)" % slow, slow < 0.15)
+	check("broń palna: cały zasięg w < 0,2 s (najwolniej %.3f s — poddźwiękowy P-83)" % slow, slow < 0.2)
 	for id in [Weapons.SOKOL6, Weapons.CIEGNO6, Weapons.GNIEW4]:
 		var p := Projectile.new()
 		p.launch(id, Vector2.ZERO, Vector2.RIGHT, 1, false)
@@ -1593,6 +1594,103 @@ func _t_weapon_realism2() -> void:
 	if is_instance_valid(b):
 		b.queue_free()
 	await frames(2)
+
+## Realia, etap 0 (1.7.316, GUNSMITH_PLAN.md): ulepszenia lufy i spustu bez „+obrażeń”, P-83 poddźwiękowy, nabój w komorze, granat WRATH-4
+## z odległością uzbrojenia, rakieta FALCON-6 rozpędzająca się jak Gyrojet, strzał w locie mniej celny.
+func _t_realia_e0() -> void:
+	# ulepszenia: lufa, dławik, spust i pompka nie dodają obrażeń (obrażenia daje amunicja)
+	var bad: Array = []
+	for k in Upgrades.TIERS:
+		for t in Upgrades.TIERS[k]:
+			var nm := String(t["name"]).to_lower()
+			if nm.contains("barrel") or nm.contains("choke") or nm.contains("trigger") or nm.contains("pump") or nm.contains("action"):
+				for m in t["mods"]:
+					if String(m[0]) == "damage":
+						bad.append("%s/%s" % [k, t["name"]])
+	check("ulepszenia lufy / dławika / spustu nie zmieniają obrażeń (%s)" % str(bad), bad.is_empty())
+	var m2 := Weapons.def_at(Weapons.M83, 2)
+	var m0 := Weapons.base_def(Weapons.M83)
+	check("M-83 T2 lufa RPK: ciaśniej (%.2f < %.2f), obrażenia bez zmian, magazynek RPK 40" % [m2.jitter_deg, m0.jitter_deg],
+		m2.jitter_deg < m0.jitter_deg and is_equal_approx(m2.damage, m0.damage) and m2.mag == 40)
+	# P-83: 9×18 mm jest poddźwiękowy, kule karabinu i strzelb — naddźwiękowe
+	var pd := Weapons.def(Weapons.P64)
+	check("P-83 poddźwiękowy (%.0f < %.0f px/s), M-83 i śrut naddźwiękowe" % [pd.speed, Weapons.SOUND_PX],
+		pd.speed < Weapons.SOUND_PX and Weapons.def(Weapons.M83).speed > Weapons.SOUND_PX and Weapons.def(Weapons.SRUT8).speed > Weapons.SOUND_PX)
+	# nabój w komorze: broń z zamkiem zamkniętym mieści mag + 1 tylko przy przeładowaniu z nabojem w komorze
+	check("nabój w komorze: M-83 30+1, P-83 8+1, pusta broń bez, LR-7 i WRATH-4 bez komory",
+		m0.capacity(true) == 31 and m0.capacity(false) == 30 and pd.capacity(true) == 9 and Weapons.def(Weapons.LR7).capacity(true) == Weapons.def(Weapons.LR7).mag
+		and Weapons.def(Weapons.GNIEW4).capacity(true) == Weapons.def(Weapons.GNIEW4).mag)
+	var p := equip(Weapons.P64, false)
+	wc.loadout[2] = Weapons.P64
+	wc.slot = 2
+	wc.mags[p.id] = 3
+	wc.state = Controller.State.READY
+	wc.try_reload()
+	await wait(p.reload_time + 0.4)
+	var tac: int = wc.mag_of(p.id)
+	wc.mags[p.id] = 0
+	wc.try_reload()
+	await wait(p.full_reload_time() + 0.4)
+	check("P-83: przeładowanie taktyczne 8+1 (%d), z pustej 8 (%d)" % [tac, wc.mag_of(p.id)], tac == 9 and wc.mag_of(p.id) == 8)
+	wc.mags[p.id] = 9
+	check("pełna broń z nabojem w komorze nie przeładowuje się", not wc.try_reload())
+	wc.slot = 0
+	# WRATH-4: trafienie przed uzbrojeniem zapalnika = tępe uderzenie, bez wybuchu i bez hałasu detonacji
+	await _settle_player()
+	var g := Weapons.def(Weapons.GNIEW4)
+	var close := await dummy(30.0)
+	var side := await dummy(60.0)
+	NoiseMgr.calm()
+	var duds0 := Projectile.dud_count
+	var gr := Projectile.new()
+	gr.launch(Weapons.GNIEW4, player.global_position + Vector2(8, -6), Vector2.RIGHT, 1, true)
+	get_tree().current_scene.add_child(gr)
+	await wait(0.4)
+	check("WRATH-4 z 30 px: bez wybuchu (uderzenie %.0f ≤ %.0f, sąsiad %.0f, Uwaga %.1f, nieuzbrojone +%d)" % [dealt(close), g.damage, dealt(side), NoiseMgr.level, Projectile.dud_count - duds0],
+		dealt(close) > 0.0 and dealt(close) <= g.damage + 0.1 and dealt(side) == 0.0 and NoiseMgr.level < 5.0 and Projectile.dud_count == duds0 + 1)
+	free_dummies()
+	await frames(2)
+	# granat w ziemię pod nogami też nie wybucha (strzelec cały)
+	NoiseMgr.calm()
+	duds0 = Projectile.dud_count
+	var hp0: int = player.hp
+	gr = Projectile.new()
+	gr.launch(Weapons.GNIEW4, player.global_position + Vector2(8, -6), Vector2.from_angle(deg_to_rad(70.0)), 1, true)
+	get_tree().current_scene.add_child(gr)
+	await wait(0.5)
+	check("WRATH-4 pod nogi: nieuzbrojony, strzelec bez obrażeń (%d → %d)" % [hp0, player.hp], Projectile.dud_count == duds0 + 1 and player.hp == hp0 and NoiseMgr.level < 5.0)
+	await frames(2)
+	# FALCON-6 (Gyrojet): z lufy wolno, rozpędza się; z bliska słaby
+	var f := Weapons.def(Weapons.SOKOL6)
+	check("FALCON-6: start %.0f px/s, po rozpędzeniu %.0f; obrażenia przy wylocie ×%.2f" % [f.speed_at(0.0), f.speed_at(f.accel_time), f.boost_damage(f.speed_start)],
+		f.speed_at(0.0) < f.speed * 0.3 and is_equal_approx(f.speed_at(1.0), f.speed) and f.boost_damage(f.speed_start) < 0.5 and is_equal_approx(f.boost_damage(f.speed), 1.0))
+	var near := await dummy(16.0)
+	var rk := Projectile.new()
+	rk.launch(Weapons.SOKOL6, player.global_position + Vector2(8, -6), Vector2.RIGHT, 1, true)
+	get_tree().current_scene.add_child(rk)
+	await wait(0.4)
+	var near_dmg := dealt(near)
+	free_dummies()
+	await frames(2)
+	var far := await dummy(150.0)
+	rk = Projectile.new()
+	rk.launch(Weapons.SOKOL6, player.global_position + Vector2(8, -6), Vector2.RIGHT, 1, true)
+	get_tree().current_scene.add_child(rk)
+	await wait(0.9)
+	check("FALCON-6: z bliska słabo (%.1f), z daleka pełne obrażenia (%.1f)" % [near_dmg, dealt(far)], near_dmg > 0.0 and near_dmg < f.damage * 0.6 and dealt(far) >= f.damage * 0.95)
+	free_dummies()
+	await frames(2)
+	# strzał w locie: większy rozrzut niż z ziemi
+	var md := equip(Weapons.M83)
+	await _settle_player()
+	var ground: float = wc.spread_extra(md)
+	player.global_position += Vector2(0.0, -60.0)
+	player.velocity = Vector2.ZERO
+	await frames(3)
+	var in_air: bool = not player.is_on_floor()
+	var air: float = wc.spread_extra(md)
+	check("strzał w locie: rozrzut +%.1f° (ziemia %.2f, w powietrzu %.2f)" % [md.air_spread, ground, air], in_air and air >= ground + md.air_spread - 0.01)
+	await _settle_player()
 
 ## Szybki pocisk nie może przeskoczyć wąskiego wroga (przeciąganie promienia, nie przesuwany obszar).
 func _t_sweep() -> void:
@@ -1788,7 +1886,7 @@ func _t_ammo_reload() -> void:
 	var r1 := Arsenal.get_reserve(d.id)
 	wc.try_reload()
 	await wait(d.reload_time + 0.4)
-	check("przeładowanie częściowe zabiera tylko brakujące 5", wc.mag_of(d.id) == 30 and Arsenal.get_reserve(d.id) == r1 - 5)
+	check("przeładowanie częściowe: brakujące 5 + nabój w komorze (31, zapas −6)", wc.mag_of(d.id) == 31 and Arsenal.get_reserve(d.id) == r1 - 6, "mag %d zapas %d→%d" % [wc.mag_of(d.id), r1, Arsenal.get_reserve(d.id)])
 	# brak zapasu
 	Arsenal.reserve[d.id] = 0
 	for i in 3:
@@ -1796,13 +1894,13 @@ func _t_ammo_reload() -> void:
 		wc._fire_shot(d)
 	var started: bool = wc.try_reload()
 	check("brak zapasu: przeładowanie się nie zaczyna", not started and wc.state == Controller.State.READY)
-	# anulowanie zmianą broni nie kosztuje naboi
+	# anulowanie zmianą broni nie kosztuje naboi (magazynek: 31 = 30 + nabój w komorze, minus 3 strzały = 28)
 	Arsenal.reserve[d.id] = 100
 	wc.try_reload()
 	await wait(0.4)
 	wc.select_slot(2)
 	await wait(0.2)
-	check("zmiana broni w trakcie przeładowania anuluje je bez kosztu", Arsenal.get_reserve(d.id) == 100 and wc.mag_of(d.id) == 27, "zapas %d mag %d" % [Arsenal.get_reserve(d.id), wc.mag_of(d.id)])
+	check("zmiana broni w trakcie przeładowania anuluje je bez kosztu", Arsenal.get_reserve(d.id) == 100 and wc.mag_of(d.id) == 28, "zapas %d mag %d" % [Arsenal.get_reserve(d.id), wc.mag_of(d.id)])
 	wc.select_slot(0)
 	await wait(0.6)
 	# strzelba: nabój po naboju, przerywane strzałem
@@ -2060,7 +2158,7 @@ func run_shots(m: Node2D, out_dir: String) -> void:
 		wc._fire_shot(d)
 		await wait(0.12)
 	d = equip(Weapons.GNIEW4)
-	player.aim_dir = Vector2.from_angle(deg_to_rad(40.0))
+	player.aim_dir = Vector2.from_angle(deg_to_rad(-6.0))          # granat musi przelecieć odległość uzbrojenia (od 1.7.316), zanim spadnie na grunt
 	wc._fire_shot(d)
 	await wait(1.6)
 	player.aim_dir = Vector2.RIGHT

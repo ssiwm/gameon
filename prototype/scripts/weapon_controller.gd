@@ -76,6 +76,7 @@ var _rl_total := 0.0
 var _rl_left := 0.0
 var _rl_req := false
 var _rl_pending := 0
+var _rl_cap := 0                  ## ile naboi zmieści broń po tym przeładowaniu (WeaponDef.capacity: z nabojem w komorze o jeden więcej)
 var _rl_wait := 0.0
 var _melee_pending := false
 var _cycle_t := -1.0              ## s do dźwięku/łuski po strzale (pompka)
@@ -149,10 +150,12 @@ func reload_progress() -> float:
 func kit() -> Vector3i:
 	return Vector3i(loadout[0], loadout[1], melee_id)
 
-## Rozrzut dokładany do bazowego: seria (bloom), bieg, kucanie.
+## Rozrzut dokładany do bazowego: seria (bloom), bieg, strzał w locie, kucanie.
 func spread_extra(d: WeaponDef) -> float:
 	var e := bloom
-	if absf(player.velocity.x) > 60.0 and player.is_on_floor():
+	if not player.is_on_floor():
+		e += d.air_spread                  # skok, spadanie: bez oparcia nóg strzał nie jest celny jak z ziemi (od 1.7.316)
+	elif absf(player.velocity.x) > 60.0:
 		e += 0.8
 	if player.crouching:
 		e *= float(d.crouch_accuracy)
@@ -719,7 +722,8 @@ func try_reload(auto := false) -> bool:
 	var d := cur()
 	if not d.uses_ammo() or state != State.READY:
 		return false
-	if mag_of(d.id) >= d.mag:
+	var cap := d.capacity(mag_of(d.id) > 0)           # nabój w komorze: z pełnym magazynkiem można jeszcze dołożyć jeden (30+1)
+	if mag_of(d.id) >= cap:
 		return false
 	if not d.infinite and Arsenal.get_reserve(d.id) <= 0 and ammo_enabled:
 		if not auto:
@@ -731,6 +735,7 @@ func try_reload(auto := false) -> bool:
 	_rl_req = false
 	_rl_pending = 0
 	_rl_wait = 0.0
+	_rl_cap = cap
 	if d.reload_per_round:
 		_begin_round(d)
 	else:
@@ -772,8 +777,8 @@ func _tick_reload(delta: float) -> void:
 	if d.reload_per_round:
 		if _rl_pending > 0:
 			_rl_pending -= 1
-			mags[d.id] = mini(d.mag, mag_of(d.id) + 1)
-		if mag_of(d.id) < d.mag and (_rl_req or _rl_pending > 0 or d.infinite or Arsenal.get_reserve(d.id) > 0):
+			mags[d.id] = mini(_rl_cap, mag_of(d.id) + 1)
+		if mag_of(d.id) < _rl_cap and (_rl_req or _rl_pending > 0 or d.infinite or Arsenal.get_reserve(d.id) > 0):
 			_begin_round(d)
 		elif not _rl_req:
 			_finish_reload()
@@ -781,7 +786,7 @@ func _tick_reload(delta: float) -> void:
 	if not _rl_req:
 		_rl_req = true
 		_rl_wait = 0.0
-		var want := d.mag - mag_of(d.id)
+		var want := _rl_cap - mag_of(d.id)
 		if d.infinite or not ammo_enabled:
 			_on_rounds_granted(d.id, want)
 		else:
@@ -797,7 +802,7 @@ func _cancel_reload() -> void:
 	var d := cur()
 	# naboje już przyznane, a jeszcze niewsunięte (strzelba), lądują w magazynku
 	if _rl_pending > 0:
-		mags[d.id] = mini(d.mag, mag_of(d.id) + _rl_pending)
+		mags[d.id] = mini(maxi(_rl_cap, d.mag), mag_of(d.id) + _rl_pending)
 	_finish_reload()
 
 func _on_rounds_granted(w: int, n: int) -> void:
@@ -806,7 +811,7 @@ func _on_rounds_granted(w: int, n: int) -> void:
 	var d := Weapons.def(w)
 	var reloading := state == State.RELOAD and cur().id == w
 	if reloading and not d.reload_per_round:
-		mags[w] = mini(d.mag, mag_of(w) + n)
+		mags[w] = mini(_rl_cap, mag_of(w) + n)
 		_finish_reload()
 		return
 	if reloading and d.reload_per_round:
@@ -815,7 +820,7 @@ func _on_rounds_granted(w: int, n: int) -> void:
 		return
 	# przeładowanie przerwane, zanim przyszła odpowiedź — wsuń do magazynka, nadmiar oddaj
 	if n > 0 and loadout.has(w):
-		var room := d.mag - mag_of(w)
+		var room := maxi(0, d.capacity(mag_of(w) > 0) - mag_of(w))
 		var put := mini(room, n)
 		mags[w] = mag_of(w) + put
 		if n > put:

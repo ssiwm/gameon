@@ -57,9 +57,13 @@ var bloom_per_shot := 0.0     ## o tyle stopni rośnie rozrzut na strzał…
 var bloom_max := 0.0          ## …do tego maksimum…
 var bloom_decay := 8.0        ## …i wraca z taką prędkością (°/s)
 var crouch_accuracy := 0.6    ## mnożnik rozrzutu przy kucaniu
+var air_spread := 1.5         ## ° rozrzutu dokładane w locie (skok, spadanie); od 1.7.316 — strzał w powietrzu nie jest celny jak z ziemi
 
 # --- pocisk
-var speed := 320.0
+var speed := 320.0             ## px/s; przy `accel_time` > 0 — prędkość po rozpędzeniu
+var speed_start := 0.0        ## px/s przy wylocie dla pocisku z silnikiem (FALCON-6 = Gyrojet): rakieta przyspiesza od niej do `speed`…
+var accel_time := 0.0         ## …w tym czasie (s); 0 = pocisk leci od razu z `speed`. Obrażenia rosną z prędkością (`boost_damage`)
+var boost_min_dmg := 0.3      ## ułamek obrażeń rakiety trafiającej z prędkością `speed_start` (Gyrojet z bliska jest słaby)
 var range_px := 224.0         ## maks. zasięg lotu
 var falloff_start := 0.0      ## px, od których spada obrażenie…
 var falloff_min := 1.0        ## …do tego mnożnika na końcu zasięgu
@@ -70,6 +74,7 @@ var homing_range := 200.0
 var blast_radius := 0.0       ## px; >0 = wybuch przy trafieniu / po zapalniku
 var blast_damage := 0.0       ## obrażenia w środku (spadek do 50% na brzegu)
 var fuse := 0.0               ## s do samodetonacji (0 = tylko kontakt)
+var arm_dist := 0.0           ## px lotu do uzbrojenia zapalnika (granat 40 mm); trafienie bliżej = tępe uderzenie bez wybuchu
 var sticks := false           ## wbija się (bełt) i zostawia się do podniesienia
 var reach := 0.0              ## MELEE: zasięg w px
 var arc_deg := 0.0            ## MELEE: połowa łuku
@@ -91,6 +96,7 @@ var infinite := false         ## bez zapasu (sidearm) — magazynek się przeła
 var reload_time := 1.5
 var reload_empty_extra := 0.4 ## pusty magazynek przeładowuje się dłużej (nie ma „nabitej” komory)
 var reload_per_round := false ## ładowanie nabój po naboju (strzelba) — można przerwać strzałem
+var chamber := false          ## zamek zamknięty: przeładowanie z nabojem w komorze mieści mag + 1 (AKM 30+1, P-83 8+1); pusta broń — tylko mag
 
 # --- czucie (feel)
 var shake := 0.7              ## drżenie kamery
@@ -156,6 +162,22 @@ func dps() -> float:
 
 func range_m() -> float:
 	return (reach if kind == Kind.MELEE else range_px) / 16.0
+
+## Ile naboi mieści broń po przeładowaniu: z nabojem w komorze (`chambered`) o jeden więcej niż magazynek, jeśli broń ma zamek zamknięty.
+func capacity(chambered: bool) -> int:
+	return mag + (1 if chamber and chambered else 0)
+
+## Prędkość rakiety z silnikiem po `t` s lotu (bez silnika: stała `speed`).
+func speed_at(t: float) -> float:
+	if accel_time <= 0.0:
+		return speed
+	return lerpf(speed_start, speed, clampf(t / accel_time, 0.0, 1.0))
+
+## Mnożnik obrażeń pocisku z silnikiem lecącego z prędkością `v`: od `boost_min_dmg` przy wylocie do 1 po rozpędzeniu.
+func boost_damage(v: float) -> float:
+	if accel_time <= 0.0 or speed <= speed_start:
+		return 1.0
+	return lerpf(boost_min_dmg, 1.0, clampf((v - speed_start) / (speed - speed_start), 0.0, 1.0))
 
 ## Czas jednego pełnego przeładowania pustej broni.
 func full_reload_time() -> float:

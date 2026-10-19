@@ -5,6 +5,9 @@ extends RefCounted
 ##
 ## Modyfikator: [pole WeaponDef, "mul"|"add", wartość]. Pola całkowite (mag, pierce, rezerwa) zostają całkowite.
 ## Poziomy kumulują się: poziom 2 = modyfikatory poziomu 1 + 2.
+##
+## Realia (1.7.316): lufa i spust nie dodają obrażeń — lufa daje celność (rozrzut, skupienie śrutu, dłuższy zasięg pełnych obrażeń), mechanizm
+## szybszy cykl; obrażenia daje amunicja. Magazynki mają prawdziwe pojemności (RPK 40, przedłużka P-83 +2, przedłużka rury PELLET-8 +2).
 
 const MAX_LEVEL := 3
 const COSTS := [60, 120, 220]            ## bazowa cena poziomu 1, 2, 3 — mnożona przez klasę broni (COST_MULT), patrz cost()
@@ -18,23 +21,23 @@ const COST_MULT := {
 ## klucz broni (weapons.gd) → trzy poziomy {name, desc, mods}
 const TIERS := {
 	"m83": [
-		{"name": "Extended magazine", "desc": "+10 rounds per magazine, bigger reserve", "mods": [["mag", "add", 10], ["reserve_max", "add", 30]]},
-		{"name": "Tuned action", "desc": "+15% damage, 15% faster reload", "mods": [["damage", "mul", 1.15], ["reload_time", "mul", 0.85]]},
+		{"name": "RPK magazine", "desc": "40-round magazine from the RPK, bigger reserve", "mods": [["mag", "add", 10], ["reserve_max", "add", 30]]},
+		{"name": "RPK barrel", "desc": "Longer barrel: tighter grouping (spread −30%, bloom −20%), hits hard farther out; heavier to draw", "mods": [["jitter_deg", "mul", 0.7], ["bloom_max", "mul", 0.8], ["falloff_start", "add", 30.0], ["draw_time", "add", 0.05]]},
 		{"name": "Suppressor", "desc": "Much quieter: noise −40% / −30%", "mods": [["n_min", "mul", 0.6], ["n_max", "mul", 0.7]]},
 	],
 	"p64": [
-		{"name": "Extended magazine", "desc": "+4 rounds per magazine", "mods": [["mag", "add", 4]]},
-		{"name": "Match barrel", "desc": "+20% damage", "mods": [["damage", "mul", 1.2]]},
+		{"name": "Magazine extension", "desc": "+2 rounds per magazine (extended base plate)", "mods": [["mag", "add", 2]]},
+		{"name": "Match barrel", "desc": "Tighter grouping: spread −40%, bloom per shot −25%", "mods": [["jitter_deg", "mul", 0.6], ["bloom_per_shot", "mul", 0.75]]},
 		{"name": "Suppressor", "desc": "Quieter: noise −30%", "mods": [["n_min", "mul", 0.7], ["n_max", "mul", 0.7]]},
 	],
 	"spread12": [
 		{"name": "Extended drum", "desc": "+5 shells per drum, bigger reserve", "mods": [["mag", "add", 5], ["reserve_max", "add", 25]]},
-		{"name": "Choke", "desc": "Tighter spread (−20%), +15% damage", "mods": [["spread_deg", "mul", 0.8], ["damage", "mul", 1.15]]},
+		{"name": "Choke", "desc": "Pattern 20% tighter: more pellets on target, lethal a little farther out", "mods": [["spread_deg", "mul", 0.8], ["falloff_start", "add", 15.0]]},
 		{"name": "Incendiary shells", "desc": "Every pellet sets the target on fire (2 s)", "mods": [["ignite", "add", 2.0]]},
 	],
 	"srut8": [
-		{"name": "Shell pouch", "desc": "+4 shells per magazine, bigger reserve", "mods": [["mag", "add", 4], ["reserve_max", "add", 16]]},
-		{"name": "Hair trigger", "desc": "+15% damage, 12% faster cycling", "mods": [["damage", "mul", 1.15], ["cooldown", "mul", 0.88]]},
+		{"name": "Magazine tube extension", "desc": "+2 shells in the tube, bigger reserve", "mods": [["mag", "add", 2], ["reserve_max", "add", 16]]},
+		{"name": "Slick pump, recoil pad", "desc": "12% faster pump cycling, camera kick −25%", "mods": [["cooldown", "mul", 0.88], ["cam_kick", "mul", 0.75]]},
 		{"name": "Concussion shells", "desc": "Stun up to 1.5 s, +30% knock-back", "mods": [["stun", "add", 1.0], ["knock", "mul", 1.3]]},
 	],
 	"lr7": [
