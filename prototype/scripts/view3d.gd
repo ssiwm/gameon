@@ -1100,25 +1100,10 @@ func _sync_launch_doors() -> void:
 			sm.albedo_color = col if on else Color(0.16, 0.13, 0.11)
 			sm.emission = col if on else Color(0.0, 0.0, 0.0)
 			sm.emission_energy_multiplier = 2.2 if on else 0.0
-		# cyfry na drzwiach (odliczanie) albo licznik gotowych pod lampą; kogut kręci się od startu odliczania
-		var cd := float(n.get("countdown"))
-		var digit := d["digit"] as Label3D
+		# licznik gotowych pod lampą; odliczanie pokazuje tylko HUD (cyfra na drzwiach i kogut usunięte w 1.7.307 — dublowały HUD)
 		var count := d["count"] as Label3D
-		digit.visible = cd > 0.0
-		count.visible = cd <= 0.0
-		if cd > 0.0:
-			var secs := ceili(cd)
-			digit.text = str(secs)
-			digit.modulate = col
-			digit.pixel_size = 0.0075 * (1.0 + 0.3 * pow(float(secs) - cd, 2.0))
-		else:
-			count.text = "%d / %d" % [ready_n, maxi(1, int(n.get("total")))]
-			count.modulate = Color(col.r, col.g, col.b, 0.85)
-		var kg := d["kogut"] as SpotLight3D
-		kg.visible = st == 2 and cancel < 0.1
-		if kg.visible:
-			var a := t * 4.2
-			kg.basis = Basis.looking_at(Vector3(cos(a), sin(a), -0.25), Vector3.FORWARD)
+		count.text = "%d / %d" % [ready_n, maxi(1, int(n.get("total")))]
+		count.modulate = Color(col.r, col.g, col.b, 0.85)
 
 func _ld_box(root: Node3D, size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
 	var bm := BoxMesh.new()
@@ -1184,7 +1169,7 @@ func _build_launch_door(n: Node2D) -> Dictionary:
 	var cx := zone.get_center().x * PX - foot.x
 	for zz in [0.55, -0.55]:
 		_ld_box(root, Vector3(wm, 0.012, 0.12), Vector3(cx, 0.008, zz), hz)
-	# pad na podłodze strefy (świecący, z krawędziami), kurtyna światła, światło z sufitu, sloty graczy, cyfry na drzwiach, kogut i napis na ścianie
+	# pad na podłodze strefy (świecący, z krawędziami), kurtyna światła, światło z sufitu, sloty graczy i napis na ścianie
 	var cxm := zone.get_center().x * PX - foot.x
 	var pad_mat := StandardMaterial3D.new()
 	pad_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -1194,7 +1179,9 @@ func _build_launch_door(n: Node2D) -> Dictionary:
 	var pad := _ld_box(root, Vector3(wm, 0.01, 1.3), Vector3(cxm, 0.012, 0.0), pad_mat)
 	pad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var csh := Shader.new()
-	csh.code = "shader_type spatial;\nrender_mode unshaded, blend_add, cull_disabled, depth_draw_never;\nuniform vec3 col : source_color = vec3(0.3, 1.0, 0.4);\nuniform float k = 0.0;\nvoid fragment() {\n	float v = pow(UV.y, 2.2);\n	float h = smoothstep(0.0, 0.06, UV.x) * smoothstep(1.0, 0.94, UV.x);\n	float rays = 0.7 + 0.3 * sin(UV.x * 70.0 + TIME * 1.4);\n	ALBEDO = col * k * 0.45 * v * h * rays;\n}\n"
+	# kurtyna: poświata od padu w górę, gaśnie do zera na 2 m nad podłogą (jasność z wysokości, nie z UV: dawniej świeciła też górna krawędź
+	# quada — biały pas nad głowami na całą szerokość strefy, prześwietlony przez glow; usunięty w 1.7.307)
+	csh.code = "shader_type spatial;\nrender_mode unshaded, blend_add, cull_disabled, depth_draw_never;\nuniform vec3 col : source_color = vec3(0.3, 1.0, 0.4);\nuniform float k = 0.0;\nuniform float half_h = 1.7;\nvarying float v_h;\nvoid vertex() {\n	v_h = VERTEX.y + half_h;\n}\nvoid fragment() {\n	float v = pow(clamp(1.0 - v_h / 2.0, 0.0, 1.0), 2.0);\n	float h = smoothstep(0.0, 0.06, UV.x) * smoothstep(1.0, 0.94, UV.x);\n	float rays = 0.7 + 0.3 * sin(UV.x * 70.0 + TIME * 1.4);\n	ALBEDO = col * k * 0.45 * v * h * rays;\n}\n"
 	var curtain_mat := ShaderMaterial.new()
 	curtain_mat.shader = csh
 	var cq := QuadMesh.new()
@@ -1223,18 +1210,6 @@ func _build_launch_door(n: Node2D) -> Dictionary:
 		smi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		slots.append({"mat": sm, "mi": smi})
 	var font := UiTheme.heading_font()
-	var digit := Label3D.new()
-	digit.font_size = 200
-	digit.pixel_size = 0.0075
-	digit.shaded = false
-	digit.outline_size = 14
-	digit.outline_modulate = Color(0.0, 0.0, 0.0, 0.9)
-	digit.layers = LAYER_WORLD
-	digit.position = Vector3(0.0, 4.55, -1.72)
-	if font != null:
-		digit.font = font
-	digit.visible = false
-	root.add_child(digit)
 	var count := Label3D.new()
 	count.font_size = 72
 	count.pixel_size = 0.007
@@ -1246,16 +1221,6 @@ func _build_launch_door(n: Node2D) -> Dictionary:
 	if font != null:
 		count.font = font
 	root.add_child(count)
-	var kg := SpotLight3D.new()
-	kg.light_color = Color(0.4, 1.0, 0.5)
-	kg.light_energy = 5.0
-	kg.spot_range = 8.0
-	kg.spot_angle = 16.0
-	kg.light_volumetric_fog_energy = 2.0
-	kg.layers = LAYER_WORLD | LAYER_ACTORS
-	kg.position = Vector3(0.0, 3.25, -1.45)
-	kg.visible = false
-	root.add_child(kg)
 	var sign_l := Label3D.new()
 	sign_l.text = tr("LAUNCH ZONE")
 	sign_l.font_size = 96
@@ -1269,7 +1234,7 @@ func _build_launch_door(n: Node2D) -> Dictionary:
 	if font != null:
 		sign_l.font = font
 	root.add_child(sign_l)
-	return {"root": root, "mat": lamp_mat, "light": light, "pad": pad_mat, "curtain": curtain_mat, "spot": spot, "slots": slots, "digit": digit, "count": count, "kogut": kg}
+	return {"root": root, "mat": lamp_mat, "light": light, "pad": pad_mat, "curtain": curtain_mat, "spot": spot, "slots": slots, "count": count}
 
 # ---------------------------------------------------------------- papier w świecie (hud.gd: _build_world_notes)
 
