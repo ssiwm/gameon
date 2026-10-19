@@ -1499,8 +1499,12 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 ## razem z mgłą głębi i wstęgami mgły dają warstwy sylwetek zamiast pustego nieba.
 const FOREST_DIR := "res://art/world3d/forest/"
 const FOREST_KINDS := ["spruce_a", "spruce_b", "spruce_c", "snag_a", "snag_b", "pine_a", "pine_b", "birch_a"]
-const FOREST_MODELS := ["tree_snag", "tree_snag_hi", "tree_log", "tree_spruce_a", "tree_spruce_b", "tree_spruce_c", "tree_pine_a", "tree_pine_b", "tree_pine_c", "tree_birch_a", "tree_birch_b"]
-const FOREST_CHUNK := 48.0                 ## m: las dzielony na odcinki wzdłuż mapy — silnik pomija odcinki poza kadrem (wcześniej jedna siatka na całą mapę)
+const FOREST_MODELS := ["tree_snag", "tree_snag_hi", "tree_snag_pine", "tree_snag_spruce", "tree_snag_birch", "tree_log", "tree_spruce_a", "tree_spruce_b", "tree_spruce_c", "tree_pine_a", "tree_pine_b", "tree_pine_c", "tree_birch_a", "tree_birch_b"]
+## martwe drzewa (`prep_items3d.py: build_snag`) obok pnia z Tripo: wysokość względem drzewa w tym miejscu (złamana brzoza to niski kikut)
+const SNAG_H := {"tree_snag": 0.8, "tree_snag_pine": 0.85, "tree_snag_spruce": 0.9, "tree_snag_birch": 0.42}
+const FOREST_CHUNK := 96.0                 ## m: las dzielony na odcinki wzdłuż mapy — silnik pomija odcinki poza kadrem (wcześniej jedna siatka na całą mapę).
+## Pomiar 2026-10-19 (RTX 3080, 1920×1080): czas GPU bez mierzalnej różnicy między 1 odcinkiem, 96 i 48 m (las to ok. 25 tys. prymitywów, koszt robią
+## karty z alfą), a 48 m dokładało ok. 25 wywołań rysowania więcej niż 96 m.
 
 ## Profil terenu lasu: wysokość dna lasu za bryłą gruntu, wspólna dla dna (`build_forest_floor`), drzew (`build_forest`) i wstęg mgły przy ziemi
 ## (`build_ground_fog`). Grunt kolumny to pierwsza od góry warstwa lita, która jest prawdziwym gruntem: pomija cienkie warstwy z pustką pod spodem
@@ -1763,11 +1767,17 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 					(trees[model] as Array).append([Transform3D(sb, Vector3(x, y - 0.3, z)), tint])
 					continue
 				if have_models and bi < 2 and kind.begins_with("snag"):
+					# odmiany martwych drzew: pień z Tripo co trzeci raz, reszta proceduralna — sąsiednie pnie nie są już kopiami tego samego modelu
 					var tk := "tree_snag"
-					var th := h * 0.8
+					var sr := rng.randf()
+					if sr < 0.62:
+						var alt: String = ["tree_snag_pine", "tree_snag_spruce", "tree_snag_birch"][int(sr / 0.62 * 3.0) % 3]
+						if not model_mesh(alt).is_empty():
+							tk = alt
+					var th := h * float(SNAG_H[tk])
 					var tw := th / 100.0 * rng.randf_range(0.9, 1.2)
 					var tb := Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3(tw, th / 100.0, tw))
-					if bi == 0 and not model_mesh(tk + "_hi").is_empty():       # najbliższy rząd: wersja szczegółowa
+					if tk == "tree_snag" and bi == 0 and not model_mesh(tk + "_hi").is_empty():       # najbliższy rząd: wersja szczegółowa
 						tk += "_hi"
 					(trees[tk] as Array).append([Transform3D(tb, Vector3(x, y - 0.3, z)), tint])
 					continue
