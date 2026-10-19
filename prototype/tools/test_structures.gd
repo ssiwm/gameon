@@ -4,7 +4,8 @@ extends SceneTree
 ## (2) podstawa: dolny koniec słupa stoi na bryle, kładce albo krawędzi mapy — nie wisi nad powietrzem, tłem ani znacznikiem,
 ## (3) styk: słup przy kładce dotyka tylnej krawędzi jej pokładu (wchodzi w nią najwyżej POST_BITE) i nie wychodzi przed nią, więc nie zasłania
 ##     postaci; pozostałe słupy stoją w głębi na POST_Z,
-## (4) pnie: ciąg z gołym niebem nad sobą i bez kładki jest drzewem (martwe drzewo z modeli lasu zamiast słupa z okuciami); słup przy kładce — nigdy.
+## (4) pnie: ciąg z gołym niebem nad sobą i bez kładki jest drzewem (martwe drzewo z modeli lasu zamiast słupa z okuciami); słup przy kładce — nigdy,
+## (5) wieże (`frame_role`): maszt to zawsze para sąsiednich kolumn od góry mapy, noga strażnicy nie jest jednocześnie pniem drzewa.
 ## godot --headless --path prototype -s tools/test_structures.gd      → ma wypisać PASS
 var Level3D: GDScript
 var _frames := 0
@@ -40,6 +41,7 @@ func _check_map(id: String, rows: Array, radius: float) -> void:
 	var by_col := {}
 	var touching := 0
 	var trees := 0
+	var roles := {"mast": [], "tower": []}
 	for run in runs:
 		var c: int = run["c"]
 		var r0: int = run["r0"]
@@ -56,6 +58,10 @@ func _check_map(id: String, rows: Array, radius: float) -> void:
 		_check(bool(run["tree"]) == (deck == "" and sky), "%s: pień rozpoznany źle (tree = %s, kładka „%s”, niebo nad = %s)" % [where, str(run["tree"]), deck, str(sky)])
 		if bool(run["tree"]):
 			trees += 1
+		var role: String = Level3D.frame_role(rows, run)
+		if role != "":
+			(roles[role] as Array).append(c)
+			_check(not bool(run["tree"]), "%s: %s i pień jednocześnie" % [where, role])
 		if deck == "":
 			_check(is_equal_approx(z, Level3D.POST_Z), "%s: słup bez kładki poza POST_Z (z = %.2f)" % [where, z])
 			continue
@@ -70,4 +76,6 @@ func _check_map(id: String, rows: Array, radius: float) -> void:
 			var gap_r: int = list[i - 1]["r1"]
 			if int(list[i]["r0"]) == gap_r + 1 and not Level3D.is_solid_ch(Level3D._ch(rows, c, gap_r)):      # przez bryłę (podłoga wieży) słup idzie ukryty
 				_check(false, "%s kol. %d: słup przerwany w rzędzie %d („%s”)" % [id, c, gap_r, Level3D._ch(rows, c, gap_r)])
-	print("ok    %s: %d słupów, %d przy kładkach, %d pni drzew" % [id, runs.size(), touching, trees])
+	for mc in roles["mast"]:
+		_check((roles["mast"] as Array).has(int(mc) - 1) or (roles["mast"] as Array).has(int(mc) + 1), "%s kol. %d: maszt bez drugiej kolumny" % [id, mc])
+	print("ok    %s: %d słupów, %d przy kładkach, %d pni drzew, maszt %s, nogi wieży %s" % [id, runs.size(), touching, trees, str(roles["mast"]), str(roles["tower"])])

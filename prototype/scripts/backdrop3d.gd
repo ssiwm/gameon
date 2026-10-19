@@ -84,6 +84,114 @@ static func build(parent: Node3D, rows: Array, entries: Array) -> void:
 			"tower":
 				_build_tower(parent, ft, d, wood)
 
+# ---------------------------------------------------------------- konstrukcje w planie gry
+
+const FRAME_SEG := 2.6                      ## m: wysokość przęsła stężeń strażnicy i kratownicy masztu
+const TOWER_LEG := 0.3                      ## m: przekrój drewnianej nogi strażnicy
+const TOWER_BRACE := 0.13                   ## m: przekrój stężeń strażnicy
+const TOWER_FRONT_Z := 0.8                  ## m: przednie nogi strażnicy (za krawędzią bryły; skrajne kolumny wieży, nie jej wnętrze)
+const MAST_LEG := 0.16                      ## m: pas kratownicy masztu
+const MAST_BRACE := 0.08                    ## m: krzyżulce masztu
+const MAST_Z := [-0.64, -2.1]               ## m: przednia (tuż za kratą pomostu z generatorem) i tylna płaszczyzna masztu
+
+## Maszt i strażnica z kolumn `w` mapy (`Level3D.frame_role`) — wcześniej grube słupy z okuciami: maszt w 1.2 to były dwa drewniane pnie
+## obok kratowego masztu w tle, a strażnica w 1.1 stała na dwóch nogach z tyłu, bez stężeń. Tylko widok (kolizja kafli bez zmian), cienie włączone,
+## warstwa świata (bez poświaty `MoonRim`). Lampy przeszkodowe masztu to sama emisja (jak w tle) — ciemność przy postaciach się nie zmienia.
+static func build_frames(parent: Node3D, rows: Array) -> void:
+	var runs: Array = Level3D.post_runs(rows)
+	var masts := {}
+	var legs: Array = []
+	for run in runs:
+		match Level3D.frame_role(rows, run):
+			"mast":
+				masts[int(run["c"])] = run
+			"tower":
+				legs.append(run)
+	var wv := PackedVector3Array()
+	var wn := PackedVector3Array()
+	for leg in legs:
+		var x := (float(leg["c"]) + 0.5) * T
+		var zb: float = leg["z"]
+		var y0 := -float(leg["r1"]) * T - (0.15 if Level3D.is_solid_ch(Level3D._ch(rows, int(leg["c"]), int(leg["r1"]))) else 0.0)
+		var y1 := -float(leg["r0"]) * T
+		_beam(wv, wn, Vector3(x, y0, zb), Vector3(x, y1, zb), TOWER_LEG)
+		_beam(wv, wn, Vector3(x, y0, TOWER_FRONT_Z), Vector3(x, y1, TOWER_FRONT_Z), TOWER_LEG)
+		var nseg := maxi(int(round((y1 - y0) / FRAME_SEG)), 1)
+		var h := (y1 - y0) / float(nseg)
+		for s in nseg:                                       # stężenia boczne: poziom i przekątna między nogą przednią i tylną
+			var ya := y0 + h * float(s)
+			var yb := ya + h
+			_beam(wv, wn, Vector3(x, yb, zb), Vector3(x, yb, TOWER_FRONT_Z), TOWER_BRACE)
+			_beam(wv, wn, Vector3(x, ya if s % 2 == 0 else yb, zb), Vector3(x, yb if s % 2 == 0 else ya, TOWER_FRONT_Z), TOWER_BRACE)
+		for other in legs:                                   # stężenia krzyżowe w tylnej płaszczyźnie między nogami tej samej wieży
+			var dc := int(other["c"]) - int(leg["c"])
+			if dc <= 0 or dc > 16 or int(other["r0"]) != int(leg["r0"]) or int(other["r1"]) != int(leg["r1"]):
+				continue
+			var x2 := (float(other["c"]) + 0.5) * T
+			var z2: float = other["z"]
+			# przęsła możliwie kwadratowe (płaskie krzyże przez całą szerokość wieży wyglądały jak gęsta sieć linii): krzyż na całą wysokość odcinka,
+			# a niski odcinek (kabina pod dachem) dzielony na kilka krzyży w poziomie; poziomice na górze i na dole
+			var nx := maxi(int(round((x2 - x) / (y1 - y0))), 1)
+			var bw := (x2 - x) / float(nx)
+			_beam(wv, wn, Vector3(x, y1 - 0.2, zb), Vector3(x2, y1 - 0.2, z2), TOWER_BRACE)
+			_beam(wv, wn, Vector3(x, y0 + 0.4, zb), Vector3(x2, y0 + 0.4, z2), TOWER_BRACE)
+			for i in nx:
+				var xa := x + bw * float(i)
+				var za := lerpf(zb, z2, float(i) / float(nx))
+				var zc := lerpf(zb, z2, float(i + 1) / float(nx))
+				_beam(wv, wn, Vector3(xa, y0 + 0.4, za), Vector3(xa + bw, y1 - 0.2, zc), TOWER_BRACE)
+				_beam(wv, wn, Vector3(xa + bw, y0 + 0.4, zc), Vector3(xa, y1 - 0.2, za), TOWER_BRACE)
+	var mv := PackedVector3Array()
+	var mn := PackedVector3Array()
+	var lamps: Array = []
+	for c in masts:
+		if not masts.has(int(c) + 1):
+			continue                                         # maszt to para kolumn — rysuje go lewa
+		var a: Dictionary = masts[c]
+		var b2: Dictionary = masts[int(c) + 1]
+		var x0 := float(c) * T + 0.25
+		var x1 := float(int(c) + 2) * T - 0.25
+		var y0 := -float(maxi(int(a["r1"]), int(b2["r1"]))) * T - 0.15
+		var y1 := 0.0
+		var corners := [Vector2(x0, MAST_Z[0]), Vector2(x1, MAST_Z[0]), Vector2(x1, MAST_Z[1]), Vector2(x0, MAST_Z[1])]
+		var nseg := maxi(int(round((y1 - y0) / FRAME_SEG)), 1)
+		var h := (y1 - y0) / float(nseg)
+		for s in nseg:
+			var ya := y0 + h * float(s)
+			var yb := ya + h
+			for i in 4:
+				var p: Vector2 = corners[i]
+				var q: Vector2 = corners[(i + 1) % 4]
+				_beam(mv, mn, Vector3(p.x, ya, p.y), Vector3(p.x, yb, p.y), MAST_LEG)
+				_beam(mv, mn, Vector3(p.x, yb, p.y), Vector3(q.x, yb, q.y), MAST_BRACE)
+				if s % 2 == 0:
+					_beam(mv, mn, Vector3(p.x, ya, p.y), Vector3(q.x, yb, q.y), MAST_BRACE)
+				else:
+					_beam(mv, mn, Vector3(q.x, ya, q.y), Vector3(p.x, yb, p.y), MAST_BRACE)
+		var top := Vector3((x0 + x1) * 0.5, y1, (MAST_Z[0] + MAST_Z[1]) * 0.5)
+		_beam(mv, mn, top, top + Vector3(0.0, 6.0, 0.0), 0.12)              # antena
+		lamps.append([top + Vector3(0.0, 6.2, 0.0), 2])
+		var ly := y1 - 1.0
+		while ly > y0 + 8.0:
+			lamps.append([Vector3(x1 + 0.1, ly, MAST_Z[0]), 0])
+			ly -= LAMP_SPACING
+	var wood := Level3D.make_pbr("post", 0.9, Color(0.20, 0.14, 0.09), 1.0, 1.0, 1.0, false, "organic").duplicate() as StandardMaterial3D
+	wood.albedo_color = Color(0.45, 0.40, 0.36)
+	var steel := Level3D.make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust")
+	_add_frame(parent, "TowerFrame", wv, wn, wood)
+	_add_frame(parent, "MastFrame", mv, mn, steel)
+	for i in lamps.size():
+		_lamp(parent, "BackdropLampMast%d" % i, lamps[i][0], 1.2 if i == 0 else 0.8, Color(1.0, 0.10, 0.04), 3.0 if i == 0 else 1.6, int(lamps[i][1]))
+
+## Siatka konstrukcji w planie gry: warstwa świata, z cieniami (w odróżnieniu od tła na warstwie lasu).
+static func _add_frame(parent: Node3D, name: String, v: PackedVector3Array, n: PackedVector3Array, mat: Material) -> void:
+	if v.is_empty():
+		return
+	_add_mesh(parent, name, v, n, mat)
+	var mi := parent.get_node(name) as MeshInstance3D
+	mi.layers = 1
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
 ## y gruntu pod punktem (x, z): profil dna lasu; za jego końcem (65 m) — wartość z ostatniego węzła (daleki grunt jest i tak zasłonięty lasem).
 static func _ground(ft: Dictionary, x: float, z: float) -> float:
 	if ft.is_empty():
