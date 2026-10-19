@@ -27,11 +27,15 @@ const CLUSTER_RADIUS := 0.6         ## bomba kasetowa: ułamek promienia główn
 const CLUSTER_DAMAGE := 0.5         ## …i jego obrażeń
 const CLUSTER_SPREAD := 24.0        ## px od punktu wybuchu w bok
 const MAX_SEGMENTS := 6             ## ile trafień (przebić, pomijanych kolegów) na jedną klatkę
+const FAST_PX := 900.0              ## px/s: od tej prędkości kula w locie to smuga (view3d.gd), a koniec lotu zostawia dogasający ślad
+const TRACER_SEC := 0.022           ## s lotu, które obejmuje smuga (długość = prędkość × to; M-83 ok. 53 px ≈ 4,3 m)
+const TRACE_LIFE := 0.08            ## s dogasania śladu po trafieniu / końcu zasięgu
 
 var weapon := 0
 var shooter_id := 1
 var authoritative := true
 var direction := Vector2.RIGHT
+var origin := Vector2.ZERO          ## punkt wylotu (smuga nie sięga za lufę)
 
 var _def: RefCounted
 var _vel := Vector2.ZERO
@@ -54,6 +58,7 @@ func launch(w: int, from: Vector2, dir: Vector2, shooter: int, auth: bool, lag_s
 	authoritative = auth
 	direction = dir.normalized()
 	position = from
+	origin = from
 	_vel = direction * float(_def.speed)
 	_pierce_left = int(_def.pierce)
 
@@ -265,7 +270,20 @@ func _check_origin() -> void:
 
 # ---------------------------------------------------------------- koniec lotu
 
-func _finish(_at: Vector2) -> void:
+## Szybka kula (broń palna): w locie smuga, nie widoczny pocisk. Rakieta, bełt i granat mają własne bryły (view3d.gd `_make_proj`).
+func is_fast() -> bool:
+	return float(_def.speed) >= FAST_PX and float(_def.homing) <= 0.0 and float(_def.gravity) <= 0.0 and not bool(_def.sticks)
+
+## Długość smugi w punkcie `at` (px): prędkość × TRACER_SEC, ale nie dalej niż do wylotu.
+func tracer_len_at(at: Vector2) -> float:
+	return minf(float(_def.speed) * TRACER_SEC, at.distance_to(origin))
+
+func _finish(at: Vector2) -> void:
+	if is_fast() and not _done:
+		# ostatni odcinek lotu dogasa: kula trafiająca w pierwszej klatce (z bliska) też zostawia widoczny tor od lufy
+		var tail := tracer_len_at(at)
+		if tail > 1.0:
+			Vfx.trace(at - direction * tail, at, _def.tracer_color, _def.pellets > 1, TRACE_LIFE)
 	_done = true
 	set_physics_process(false)
 	queue_free()
