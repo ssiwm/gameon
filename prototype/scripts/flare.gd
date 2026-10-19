@@ -9,6 +9,7 @@ extends Node2D
 const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
+const Weapons := preload("res://scripts/weapons.gd")
 
 const SHADOW_FLARES := 2            ## tyle flar naraz rzuca cienie (kolejne świecą bez nich)
 const FLARE_LIFE := 25.0
@@ -46,12 +47,18 @@ func _ready() -> void:
 		_lie = (1.0 if randf() < 0.5 else -1.0) * randf_range(1.35, 1.75)
 	Audio.play_at("flare_ignite", global_position, Audio.BUS_WORLD, -4.0)
 
-## Wylądowała na kaflu wody: dopala się tylko WATER_LIFE s (dym i plusk).
+## Wylądowała na kaflu wody: dopala się tylko WATER_LIFE s (dym i plusk). Na oleju zapala plamę (serwer, `level.spawn_fire_patch`).
 func _check_water() -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
-	if lvl != null and lvl.has_method("surface_at") and lvl.surface_at(global_position) == "water":
-		life = minf(life, WATER_LIFE)
-		Audio.play_variant_at("step_water", 3, global_position, Audio.BUS_WORLD, -6.0, 1.4)
+	if lvl == null or not lvl.has_method("surface_at"):
+		return
+	match String(lvl.surface_at(global_position)):
+		"water":
+			life = minf(life, WATER_LIFE)
+			Audio.play_variant_at("step_water", 3, global_position, Audio.BUS_WORLD, -6.0, 1.4)
+		"oil":
+			if NoiseMgr.is_server() and lvl.has_method("spawn_fire_patch"):
+				lvl.spawn_fire_patch(global_position + Vector2(0.0, -1.0), Weapons.HKM9, 0)
 
 func _physics_process(delta: float) -> void:
 	life -= delta

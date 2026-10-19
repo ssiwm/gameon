@@ -82,6 +82,11 @@ static func splash(parent: Node, pos: Vector2, strength := 1.0, water := true) -
 	burst(parent, pos + Vector2(0, -1), Color(0.42, 0.40, 0.32, 0.85) if water else Color(0.55, 0.78, 0.9, 0.85), int(8 + 8 * strength), 25.0, 70.0 * strength,
 		Vector2.UP, 40.0, 420.0, 0.55, Vector2(0.8, 1.8), false, water)
 
+## Para z wody gaszącej płomień: blady, cieniowany kłąb unoszący się powoli (w ciemności widać go tylko w świetle sceny).
+static func steam(parent: Node, pos: Vector2) -> void:
+	burst(parent, pos + Vector2(0, -2), Color(0.62, 0.62, 0.60, 0.35), 10, 6.0, 26.0, Vector2.UP, 35.0, -30.0, 1.4, Vector2(2.0, 4.0), false, true)
+	splash(parent, pos, 0.3)
+
 ## Krew przy trafieniu.
 static func blood(parent: Node, pos: Vector2, dir: Vector2, amount := 8) -> void:
 	burst(parent, pos, Color(0.45, 0.04, 0.06), amount, 30.0, 110.0, dir, 45.0, 520.0, 0.5, Vector2(1.0, 2.0))

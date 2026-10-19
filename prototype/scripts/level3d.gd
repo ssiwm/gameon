@@ -404,8 +404,18 @@ uniform sampler2D prof : filter_linear, repeat_disable;
 uniform float x0 = 0.0;                // początek ciągu (m, świat)
 uniform float run_w = 2.6;             // szerokość ciągu (m)
 uniform float sink = 0.04;
+uniform float z_back = -2.4;           // tył bryły (m) — tylny brzeg niecki: `shore_z` / `shore_k` (te same wzory w GDScript)
+uniform float shore_back = 0.55;
+uniform float shore_bank = 0.65;
 float depth_at(float x) {
 	return texture(prof, vec2(clamp((x - x0) / run_w, 0.0, 1.0), 0.5)).r;
+}
+float shore_k(vec2 w) {
+	float zs = z_back + shore_back + 0.25 * sin(w.x * 0.9 + seed) + 0.12 * sin(w.x * 2.3 + seed * 1.7);
+	return smoothstep(zs, zs + shore_bank, w.y);
+}
+float depth_xz(vec2 w) {
+	return depth_at(w.x) * shore_k(w);
 }
 float surf_h(vec2 w, float wd) {
 	float bank = smoothstep(0.0, 0.40, wd);
@@ -430,21 +440,41 @@ shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx;
 uniform int kind = 0;                  // 0 błoto, 1 olej, 2 woda
 uniform float seed = 0.0;
+uniform vec4 prints[48];               // błoto: odciski stóp (view3d._sync_mud_prints) — x, z, czas powstania, kierunek ±1; „teraz” w print_now
+uniform float print_now = 0.0;
 varying vec2 v_w;
-varying float v_wd;
 //COMMON
 //SURF
+// Odcisk stopy w błocie: x = wnętrze (wgłębienie), y = obwódka wypchniętego błota; ślad znika po 35–60 s
+vec2 mud_print(vec2 p) {
+	float inside = 0.0;
+	float rim = 0.0;
+	for (int i = 0; i < 48; i++) {
+		vec4 pr = prints[i];
+		float age = print_now - pr.z;
+		if (pr.z <= 0.0 || age < 0.0 || age > 60.0) { continue; }
+		vec2 d = p - pr.xy;
+		d.x *= pr.w;
+		float fade = 1.0 - smoothstep(35.0, 60.0, age);
+		float waist = 1.0 - 0.35 * exp(-d.x * d.x / 0.0015);              // węższe śródstopie między piętą a palcami
+		float e = length(vec2(d.x / 0.13, d.y / (0.052 * waist)));
+		inside = max(inside, (1.0 - smoothstep(0.80, 1.0, e)) * fade);
+		rim = max(rim, smoothstep(0.85, 1.0, e) * (1.0 - smoothstep(1.0, 1.35, e)) * fade);
+	}
+	return vec2(inside, rim);
+}
 void vertex() {
 	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_w = wp.xz;
 	v_w.x = wp.x;
-	v_wd = depth_at(wp.x) - sink;
-	VERTEX.y += surf_h(vec2(wp.x, wp.z), max(v_wd, 0.0));
+	float vwd = depth_xz(wp.xz) - sink;
+	VERTEX.y += surf_h(vec2(wp.x, wp.z), max(vwd, 0.0));
 }
 void fragment() {
-	if (v_wd < -0.01) { discard; }
 	vec2 p = vec2(v_w.x, v_w.y);
-	float wd = max(v_wd, 0.0);
+	float wd_f = depth_xz(p) - sink;                                       // per piksel: linia tylnego brzegu bez schodków siatki
+	if (wd_f < -0.01) { discard; }
+	float wd = max(wd_f, 0.0);
 	float e0 = 0.035;
 	float h0 = surf_h(p, wd);
 	float hx = surf_h(p + vec2(e0, 0.0), wd);
@@ -468,10 +498,12 @@ void fragment() {
 		vec3 dry = mix(vec3(0.036, 0.027, 0.019), vec3(0.060, 0.045, 0.031), fbm(p * 3.2));
 		vec3 mud = mix(dry, vec3(0.020, 0.015, 0.011), wetn * 0.85) * (0.80 + 0.35 * vn(p * 22.0));
 		float crust = smoothstep(0.60, 0.85, fbm(p * 5.0 + seed)) * edge;
-		ALBEDO = mix(mud, vec3(0.072, 0.055, 0.039), crust * 0.5);
-		ROUGHNESS = mix(0.86, 0.48, wetn);
+		vec2 fp = mud_print(p);
+		ALBEDO = mix(mud, vec3(0.072, 0.055, 0.039), crust * 0.5) * (1.0 - 0.35 * fp.x) * (1.0 + 0.25 * fp.y);
+		ROUGHNESS = mix(mix(0.86, 0.48, wetn), 0.22, fp.x);                   // woda zbiera się w odcisku: błyszczy w świetle latarki
+		NORMAL = normalize(mix(NORMAL, (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz, fp.x * 0.8));
 		SPECULAR = 0.32;
-		ALPHA = smoothstep(-0.01, 0.06, v_wd);
+		ALPHA = smoothstep(-0.01, 0.06, wd_f);
 	} else if (kind == 1) {
 		float film = fbm(p * 1.4 + seed);
 		float ph = film * 11.0 + TIME * 0.04;
@@ -479,7 +511,7 @@ void fragment() {
 		ALBEDO = vec3(0.010, 0.010, 0.013) + irid * 0.050 * (0.35 + edge * 1.2);
 		ROUGHNESS = 0.045;
 		SPECULAR = 1.0;
-		ALPHA = 0.97 * smoothstep(-0.01, 0.05, v_wd);
+		ALPHA = 0.97 * smoothstep(-0.01, 0.05, wd_f);
 	} else {
 		// mętna woda torfowa (herbaciano-oliwkowa), przy brzegu przejaśnia ją dno, piana brudna; połysk daje tylko światło sceny
 		float foam = edge * smoothstep(0.42, 0.66, fbm(p * 7.0 + vec2(TIME * 0.18, 0.0)));
@@ -488,7 +520,7 @@ void fragment() {
 		ALBEDO = wat;
 		ROUGHNESS = mix(0.16, 0.6, foam);
 		SPECULAR = 0.6;
-		ALPHA = clamp(0.92 + foam * 0.08, 0.0, 1.0) * smoothstep(-0.01, 0.05, v_wd);
+		ALPHA = clamp(0.92 + foam * 0.08, 0.0, 1.0) * smoothstep(-0.01, 0.05, wd_f);
 	}
 }
 """
@@ -730,6 +762,20 @@ static func _liquid_profile(w: float, ns: int, d0: float, bank: float, seed: flo
 		out[i] = minf(d0 * shape * wob, cap[i])
 	return out
 
+## Tylny brzeg niecki: zamiast prostej krawędzi na tyle bryły ciecz kończy się falistą linią `shore_z` (średnio SHORE_BACK m przed tyłem bryły),
+## za którą dno podnosi się skarpą szerokości SHORE_BANK do poziomu gruntu. Te same wzory liczą shadery (`LIQUID_SURF`: shore_k, depth_xz).
+const SHORE_BACK := 0.55
+const SHORE_BANK := 0.65
+
+## z (m) linii tylnego brzegu ciągu nad pozycją x.
+static func shore_z(x: float, seed: float) -> float:
+	return -DEPTH_BACK + SHORE_BACK + 0.25 * sin(x * 0.9 + seed) + 0.12 * sin(x * 2.3 + seed * 1.7)
+
+## 0 na linii brzegu i dalej w głąb, 1 za skarpą (pełna głębokość profilu).
+static func shore_k(x: float, z: float, seed: float) -> float:
+	var zs := shore_z(x, seed)
+	return smoothstep(zs, zs + SHORE_BANK, z)
+
 ## Tafle i bryły błota, oleju i wody (patrz opis przy `LIQUID_SINK`). Ciąg = kolejne kafle tego samego rodzaju w wierszu, nad którymi nie ma bryły.
 static func build_liquids(parent: Node3D, rows: Array) -> void:
 	if "--noliquids" in OS.get_cmdline_user_args():
@@ -799,23 +845,33 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 			for i in ns:
 				var a := i * 2
 				idx.append_array(PackedInt32Array([a, a + 2, a + 3, a, a + 3, a + 1]))      # w Godocie front = zgodnie z ruchem wskazówek
+			# dno: siatka x × z — w głąb profil wypłyca się skarpą tylnego brzegu (`shore_k`), gęściej przy samej skarpie
+			var zrows: Array = []
+			var zz := zb
+			while zz < zb + SHORE_BACK + 0.37 + SHORE_BANK:
+				zrows.append(zz)
+				zz += 0.12
+			zrows.append(zf)
+			var nz := zrows.size()
+			var dx := w / float(ns)
+			var bed_h := func(i: int, z: float) -> float:
+				var xi := clampi(i, 0, ns)
+				return y_top - prof[xi] * shore_k(x0 + dx * float(xi), z, seed)
 			var base := verts.size()
 			for i in ns + 1:
-				var x := x0 + w * float(i) / float(ns)
-				var yt := y_top - prof[i]
-				var slope := 0.0
-				if i < ns:
-					slope = (prof[i + 1] - prof[i]) / (w / float(ns))
-				else:
-					slope = (prof[i] - prof[i - 1]) / (w / float(ns))
-				var nn := Vector3(slope, 1.0, 0.0).normalized()      # powierzchnia opada ku środkowi niecki
-				verts.append(Vector3(x, yt, zf))
-				verts.append(Vector3(x, yt, zb))
-				norms.append(nn)
-				norms.append(nn)
+				var x := x0 + dx * float(i)
+				for j in nz:
+					var z: float = zrows[j]
+					var dz := 0.06
+					var hx := (float(bed_h.call(i + 1, z)) - float(bed_h.call(i - 1, z))) / (dx * float(mini(i + 1, ns) - maxi(i - 1, 0)))
+					var hz := (float(bed_h.call(i, z + dz)) - float(bed_h.call(i, z - dz))) / (2.0 * dz)
+					verts.append(Vector3(x, bed_h.call(i, z), z))
+					norms.append(Vector3(-hx, 1.0, -hz).normalized())   # powierzchnia opada ku środkowi niecki i od tylnego brzegu
 			for i in ns:
-				var a := base + i * 2
-				idx.append_array(PackedInt32Array([a + 1, a + 3, a + 2, a + 1, a + 2, a]))
+				for j in nz - 1:
+					var g0 := base + i * nz + j                         # (x_i, z_j) — z_j bliżej tyłu niż z_(j+1)
+					var g1 := base + (i + 1) * nz + j
+					idx.append_array(PackedInt32Array([g0, g1, g1 + 1, g0, g1 + 1, g0 + 1]))
 			# boki ciągu (widoczne, gdy obok jest powietrze): pionowe ściany od profilu w dół na pełną głębokość
 			for sidec in [0, 1]:
 				var xi := 0 if sidec == 0 else ns
@@ -876,6 +932,8 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 			fmat.set_shader_parameter("x0", x0)
 			fmat.set_shader_parameter("run_w", w)
 			fmat.set_shader_parameter("sink", sink)
+			for sp in [["z_back", zb], ["shore_back", SHORE_BACK], ["shore_bank", SHORE_BANK]]:
+				fmat.set_shader_parameter(sp[0], sp[1])
 			var fmi := MeshInstance3D.new()
 			fmi.name = "LiquidFront_%s_%d_%d" % [ch, c, r]
 			fmi.mesh = fm
@@ -895,6 +953,8 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 			sm.set_shader_parameter("x0", x0)
 			sm.set_shader_parameter("run_w", w)
 			sm.set_shader_parameter("sink", sink)
+			for sp in [["z_back", zb], ["shore_back", SHORE_BACK], ["shore_bank", SHORE_BANK]]:
+				sm.set_shader_parameter(sp[0], sp[1])
 			sm.set_shader_parameter("seed", seed)
 			var tmi := MeshInstance3D.new()
 			tmi.name = "LiquidTop_%s_%d_%d" % [ch, c, r]
@@ -1012,10 +1072,22 @@ const REED_SHADER := """
 shader_type spatial;
 render_mode cull_disabled, specular_schlick_ggx;
 uniform float sway = 0.045;
+uniform vec4 pushers[8];               // przechodzący (view3d._sync_reeds): x, y stóp, z, siła 0..1 — kępy rozchylają się na boki i lekko kładą
 void vertex() {
 	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	float k = COLOR.a;
 	VERTEX.x += (sin(TIME * 1.25 + wp.x * 2.3 + wp.z * 1.7) * 0.7 + sin(TIME * 2.9 + wp.x * 5.0) * 0.3) * sway * k * k;
+	for (int i = 0; i < 8; i++) {
+		vec4 pu = pushers[i];
+		if (pu.w <= 0.0) { continue; }
+		float dxp = wp.x - pu.x;
+		float dzp = wp.z - pu.z;
+		float f = exp(-dxp * dxp / 0.09) * (1.0 - smoothstep(0.30, 0.75, abs(dzp))) * step(pu.y - 0.4, wp.y) * step(wp.y, pu.y + 2.4);
+		float s = pu.w * f * k * k;
+		VERTEX.x += sign(dxp) * 0.32 * s;
+		VERTEX.z += sign(dzp) * 0.10 * s;
+		VERTEX.y -= 0.14 * s;
+	}
 }
 void fragment() {
 	ALBEDO = COLOR.rgb;
@@ -1169,17 +1241,18 @@ static func _blade(v: PackedVector3Array, nrm: PackedVector3Array, col: PackedCo
 	var ts: Array = [0.0, 0.3, 0.6, 0.82, 1.0]
 	var ws: Array = [1.0, 0.85, 0.62, 0.38, 0.0]
 	if cattail:
-		ts = [0.0, 0.3, 0.6, 0.70, 0.73, 0.82, 0.94, 1.0]
-		ws = [1.0, 0.80, 0.55, 0.40, 2.7, 3.0, 2.2, 0.0]
+		# pałka: brązowy kłos ~0,15–0,25 m i ok. 2–3 cm grubości, nad nim cienki szpic (wcześniej czarna łopata szeroka na ~20 cm)
+		ts = [0.0, 0.3, 0.6, 0.77, 0.79, 0.84, 0.89, 0.91, 1.0]
+		ws = [0.9, 0.70, 0.50, 0.32, 0.85, 0.95, 0.85, 0.12, 0.0]
 	var b0 := v.size()
 	for i in ts.size():
 		var t: float = ts[i]
 		var p := base + Vector3(0.0, h * t, 0.0) + lean * (t * t)
 		var wv := wid * float(ws[i])
-		var is_head := cattail and t >= 0.72
+		var is_head := cattail and t >= 0.78 and t <= 0.90
 		var c := c_base.lerp(c_tip, t)
 		if is_head:
-			c = Color(0.050, 0.030, 0.020)
+			c = Color(0.092, 0.055, 0.030).lerp(Color(0.060, 0.036, 0.020), absf(t - 0.84) * 12.0)
 		c.a = t
 		v.append(p - right * wv)
 		v.append(p + right * wv)
@@ -1220,7 +1293,11 @@ static func _stick(v: PackedVector3Array, nrm: PackedVector3Array, col: PackedCo
 		var a1 := b0 + k2 * 2
 		idx.append_array(PackedInt32Array([a0, a1, a1 + 1, a0, a1 + 1, a0 + 1]))
 
+## Środki kęp trzciny (m, świat; y = podstawa) z ostatniego `build_liquid_props` — widok ugina je przy przechodzących i odtwarza szelest (`view3d._reeds_update`).
+static var reed_spots := PackedVector3Array()
+
 static func build_liquid_props(parent: Node3D, rows: Array) -> void:
+	reed_spots = PackedVector3Array()
 	if "--noliquidprops" in OS.get_cmdline_user_args():
 		return
 	var nrows := rows.size()
@@ -1315,6 +1392,7 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 				var cx := edge + float(sd) * rng.randf_range(0.12, 1.1)
 				var cz := rng.randf_range(zb + 0.9, zf - 0.25)
 				var nb := rng.randi_range(5, 12)
+				reed_spots.append(Vector3(cx, ground_y, cz))
 				for b in nb:
 					var base := Vector3(cx + rng.randf_range(-0.22, 0.22), ground_y - 0.02, cz + rng.randf_range(-0.18, 0.18))
 					var hh := rng.randf_range(0.55, 1.55)
@@ -1329,8 +1407,10 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 						continue
 					var bx := x0 + (float(xi) / float(ns)) * w
 					var by := y_top - prof[xi] + 0.02
+					var wz := rng.randf_range(maxf(zb + 1.0, shore_z(bx, float(run["seed"])) + SHORE_BANK), zf - 0.45)
+					reed_spots.append(Vector3(bx, by, wz))
 					for b in rng.randi_range(4, 9):
-						var base := Vector3(bx + rng.randf_range(-0.16, 0.16), by, rng.randf_range(zb + 1.0, zf - 0.45))
+						var base := Vector3(bx + rng.randf_range(-0.16, 0.16), by, wz + rng.randf_range(-0.25, 0.25))
 						var hh := rng.randf_range(0.6, 1.4) + prof[xi]
 						var lean := Vector3(rng.randf_range(-0.25, 0.25) * hh, 0.0, rng.randf_range(-0.10, 0.10) * hh)
 						_blade(v, nr, col, idx, base, hh, rng.randf_range(0.020, 0.034), rng.randf() * TAU, lean, cb, ct, rng.randf() < 0.28)
@@ -1344,6 +1424,22 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 				var d := Vector3(cos(yaw) * cos(tilt), sin(tilt), sin(yaw) * cos(tilt))
 				var p0 := Vector3(sx, ground_y + 0.015, sz)
 				_stick(v, nr, col, idx, p0, p0 + d * ln, rng.randf_range(0.012, 0.028), stick_c.lerp(Color(0.09, 0.07, 0.05), rng.randf()))
+		# tylny brzeg: pas trzciny (woda) albo turzycy (błoto) wzdłuż falistej linii brzegu — tam, gdzie staw przechodzi w dno lasu
+		if kd != 1:
+			var sx := x0 + rng.randf_range(0.1, 0.5)
+			while sx < x0 + w - 0.1:
+				var xi := int(clampf((sx - x0) / w * float(ns), 0.0, float(ns)))
+				var zs := shore_z(sx, float(run["seed"]))
+				var cz := zs + rng.randf_range(-0.20, 0.30)
+				var by := y_top - prof[xi] * shore_k(sx, cz, float(run["seed"]))
+				var tall := 1.0 if kd == 2 else 0.6
+				reed_spots.append(Vector3(sx, by, cz))
+				for b in rng.randi_range(7, 14):
+					var base := Vector3(sx + rng.randf_range(-0.28, 0.28), by - 0.02, cz + rng.randf_range(-0.22, 0.22))
+					var hh := rng.randf_range(0.7, 1.8) * tall
+					var lean := Vector3(rng.randf_range(-0.25, 0.25) * hh, 0.0, rng.randf_range(-0.10, 0.10) * hh)
+					_blade(v, nr, col, idx, base, hh, rng.randf_range(0.022, 0.038), rng.randf() * TAU, lean, cb, ct, kd == 2 and rng.randf() < 0.18)
+				sx += rng.randf_range(0.45, 0.95)
 		# patyki i kępy pływające / wystające z cieczy
 		if kd > 0 and w >= 2.0:
 			for k in rng.randi_range(1, 3):
@@ -1353,7 +1449,7 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 					continue
 				var yaw := rng.randf_range(-0.5, 0.5) + (PI * 0.5 if rng.randf() < 0.2 else 0.0)
 				var ln := rng.randf_range(0.35, 1.0)
-				var p0 := Vector3(x0 + fx, y_s + 0.012, rng.randf_range(zb + 1.0, zf - 0.5))
+				var p0 := Vector3(x0 + fx, y_s + 0.012, rng.randf_range(maxf(zb + 1.0, shore_z(x0 + fx, float(run["seed"])) + SHORE_BANK), zf - 0.5))
 				var d := Vector3(cos(yaw), 0.0, sin(yaw))
 				_stick(v, nr, col, idx, p0, p0 + d * ln, rng.randf_range(0.012, 0.024), stick_c)
 	if v.size() > 0:
