@@ -719,7 +719,112 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 		_multimesh(parent, plb, planks, make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic"))
 	if not _multimodel(parent, "walkway_grate", decks["="]):
 		_multimesh(parent, plb, grates, make_pbr("grate", 0.5, Color(0.28, 0.30, 0.34), 0.5, 1.0, 0.7, true))
+	_build_deck_supports(parent, rows, make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic"),
+			make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"))
 	return marks
+
+const DECK_LEG_EVERY := 4                  ## kafli: najwyżej tyle między nogami pomostu
+const DECK_LEG_REACH := 9                  ## kafli: najdalej tyle w dół do gruntu / pomostu (noga) albo w górę do stropu (wieszak)
+const DECK_LEG_W := {"-": 0.16, "=": 0.12} ## m: przekrój nogi (drewno pod deskami, stal pod kratą)
+const DECK_ROD_W := 0.04                   ## m: pręt wieszaka
+
+## Pomost bez żadnej podpory: oba końce w powietrzu, bez ściany (`b`, bryła) obok, nad ani pod nim i bez słupa `w` przy nim.
+static func deck_is_free(rows: Array, ch: String, r: int, c0: int, c1: int) -> bool:
+	for e in [_ch(rows, c0 - 1, r), _ch(rows, c1 + 1, r)]:
+		if is_solid_ch(e) or e == "b" or e == "w":
+			return false
+	for k in range(c0 - 1, c1 + 2):
+		if _ch(rows, k, r - 1) == "w" or _ch(rows, k, r + 1) == "w":
+			return false
+		if k >= c0 and k <= c1 and (_ch(rows, k, r - 1) == "b" or _ch(rows, k, r + 1) == "b"):
+			return false
+	return true
+
+## Podpory pomostów, które wisiały w powietrzu (schodki z pomostów, podesty w kopalni i w lesie): [{"r", "c0", "c1" (włącznie), "ch", "legs":
+## [{"c", "x" (m), "kind": "stilt" — noga do gruntu / pomostu niżej w wierszu "to", "hang" — pręt do stropu w wierszu "to", "" — brak oparcia}]}].
+## Nogi na końcach (0,3 m od krawędzi) i co najwyżej DECK_LEG_EVERY kafli; najpierw szukamy oparcia w dół, dopiero potem stropu nad pomostem.
+static func deck_supports(rows: Array) -> Array:
+	var out: Array = []
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	for r in nrows:
+		var c := 0
+		while c < cols:
+			var ch := _ch(rows, c, r)
+			if not is_platform_ch(ch):
+				c += 1
+				continue
+			var c1 := c
+			while c1 + 1 < cols and _ch(rows, c1 + 1, r) == ch:
+				c1 += 1
+			if deck_is_free(rows, ch, r, c, c1):
+				var cols_at: Array = [c]
+				var span := c1 - c
+				var nseg := int(ceil(float(span) / float(DECK_LEG_EVERY)))
+				for i in range(1, nseg):
+					cols_at.append(c + int(round(float(span) * float(i) / float(nseg))))
+				if c1 != c:
+					cols_at.append(c1)
+				var legs: Array = []
+				for k in cols_at:
+					var x := (float(k) + 0.5) * T
+					if k == c and c1 != c:
+						x = float(c) * T + 0.3
+					elif k == c1 and c1 != c:
+						x = float(c1 + 1) * T - 0.3
+					var leg := {"c": k, "x": x, "kind": "", "to": -1}
+					var g := r + 1
+					while g < nrows and g - r <= DECK_LEG_REACH and not is_solid_ch(_ch(rows, k, g)) and not is_platform_ch(_ch(rows, k, g)):
+						g += 1
+					if g < nrows and g - r <= DECK_LEG_REACH:
+						leg["kind"] = "stilt"
+						leg["to"] = g
+					else:
+						var q := r - 1
+						while q >= 0 and r - q <= DECK_LEG_REACH and not is_solid_ch(_ch(rows, k, q)):
+							q -= 1
+						if q >= 0 and r - q <= DECK_LEG_REACH:
+							leg["kind"] = "hang"
+							leg["to"] = q
+					legs.append(leg)
+				out.append({"r": r, "c0": c, "c1": c1, "ch": ch, "legs": legs})
+			c = c1 + 1
+	return out
+
+## Nogi i wieszaki pomostów z `deck_supports` (wcześniej pomosty wisiały w powietrzu). Noga stoi tuż za tylną krawędzią pokładu (jak słup przy kładce),
+## pod pokładem wspornik w poprzek do przedniej krawędzi, a przy dłuższej nodze zastrzał pod pokład. Drewno pod deskami `-`, stal pod kratą `=`.
+## Tylko widok — kolizja kładki bez zmian.
+static func _build_deck_supports(parent: Node3D, rows: Array, wood: Material, steel: Material) -> void:
+	var parts := {"-": [], "=": []}
+	for d in deck_supports(rows):
+		var ch: String = d["ch"]
+		var r: int = d["r"]
+		var dh := deck_half(ch)
+		var w: float = DECK_LEG_W[ch]
+		var z := -(dh + w * 0.5) + POST_BITE
+		var under: float = -float(r) * T - float(DECK_H[ch]) * T + 0.01
+		var x_lo := float(int(d["c0"])) * T
+		var x_hi := float(int(d["c1"]) + 1) * T
+		var list: Array = parts[ch]
+		for leg in d["legs"]:
+			var x: float = leg["x"]
+			var kind: String = leg["kind"]
+			if kind == "":
+				continue
+			list.append(_span_box(Vector3(x - w * 0.5, under - w, z - w * 0.5), Vector3(x + w * 0.5, under, dh - 0.05)))        # wspornik pod pokładem
+			if kind == "stilt":
+				var to: int = leg["to"]
+				var foot := -float(to) * T - (0.1 if is_solid_ch(_ch(rows, int(leg["c"]), to)) else 0.0)
+				list.append(_span_box(Vector3(x - w * 0.5, foot, z - w * 0.5), Vector3(x + w * 0.5, under, z + w * 0.5)))
+				if under - foot > 1.2:
+					var dir := 1.0 if x < (x_lo + x_hi) * 0.5 else -1.0           # zastrzał w stronę środka pomostu
+					list.append(_strut(Vector3(x, under - 0.6, z), Vector3(x + dir * 0.6, under - w * 0.5, z), w * 0.7))
+			else:
+				var top := -float(int(leg["to"]) + 1) * T
+				list.append(_span_box(Vector3(x - DECK_ROD_W * 0.5, under - w, z - DECK_ROD_W * 0.5), Vector3(x + DECK_ROD_W * 0.5, top, z + DECK_ROD_W * 0.5)))
+	var box := BoxMesh.new()
+	_multimesh(parent, box, parts["-"], wood)
+	_multimesh(parent, box, parts["="], steel)
 
 ## Ciecze i błoto jako zagłębienia o profilu przekroju, a nie prostokątne kafle o innym kolorze. Dla ciągu kafli powstaje:
 ##  - bryła gruntu pod nieckę (siatka z profilem: łagodnie opadające brzegi, nierówne dno), jej front z kamery widać jako przekrój;
