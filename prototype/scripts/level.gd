@@ -147,6 +147,9 @@ var _finale_on := false
 var exits_alt: Array[Vector2] = []
 var _orig_map: Array = []
 var _blocks: Array = []          ## już zastosowane obszary (do synchronizacji dołączających i resetu)
+var _nav_after: Nav = null              ## graf nawigacji po zawale z danych mapy, zbudowany przy wczytaniu (zawał tylko go podstawia — bez ok. 0,15 s przestoju)
+var _nav_after_rows: Array = []
+var _nav_after_walls := 0                ## skrót zamurowanych przejść w chwili budowy (rozbita ściana = graf nieaktualny, budujemy od nowa)
 var _wall_cells: Dictionary = {}  ## Vector2i → nazwa ściany: kafle zajęte przez zamurowane przejścia (marker „q")
 var _opened_walls: Array = []    ## nazwy już rozbitych ścian (synchronizacja dołączających)
 
@@ -243,6 +246,7 @@ func _load(id: String) -> void:
 	_register_walls()
 	nav = Nav.new()
 	nav.build((_map[0] as String).length(), _map.size(), _is_solid, _is_platform_cell)
+	_prepare_collapse_nav()
 	sound_grid = SoundGrid.new()
 	sound_grid.build((_map[0] as String).length(), _map.size(), _is_solid)
 	_spawn_entities()
@@ -392,21 +396,46 @@ func _reset_finale_rpc(id: String) -> void:
 			remove_child(c)
 			c.queue_free()
 
+## Wiersze mapy po zawałach `rects` (bez zmiany `rows`): powietrze, znaczniki, tło i kładki w prostokątach stają się skałą.
+static func blocked_rows(rows: Array, rects: Array) -> Array:
+	var out := rows.duplicate()
+	for rc in rects:
+		for r in range(int(rc[1]), int(rc[3]) + 1):
+			var row: String = out[r]
+			for c in range(int(rc[0]), int(rc[2]) + 1):
+				var ch := row[c]
+				if not KINDS.has(ch) or KINDS[ch][2] != 0:
+					row = row.substr(0, c) + "#" + row.substr(c + 1)
+			out[r] = row
+	return out
+
+## Wiersze bieżącej mapy po zawałach `rects` — widok 3D buduje z nich geometrię „po zawale” z góry (view3d.gd `_sync_geometry`).
+func rows_after(rects: Array) -> Array:
+	return blocked_rows(_map, rects)
+
+## Graf nawigacji po zawale z danych mapy, policzony przy wczytaniu (na czas budowy `_map` to wiersze po zawale; `_is_solid` czyta je przez `_ch`).
+func _prepare_collapse_nav() -> void:
+	_nav_after = null
+	_nav_after_rows = []
+	if collapse_rects.is_empty() or not _blocks.is_empty():
+		return
+	var keep := _map
+	_map = blocked_rows(keep, collapse_rects)
+	_nav_after = Nav.new()
+	_nav_after.build((_map[0] as String).length(), _map.size(), _is_solid, _is_platform_cell)
+	_nav_after_rows = _map
+	_map = keep
+	_nav_after_walls = _wall_cells.hash()
+
 func _apply_blocks(rects: Array) -> void:
 	var dirty := Rect2i()
 	var first := true
+	_map = blocked_rows(_map, rects)
 	for rc in rects:
 		var c0 := int(rc[0])
 		var r0 := int(rc[1])
 		var c1 := int(rc[2])
 		var r1 := int(rc[3])
-		for r in range(r0, r1 + 1):
-			var row: String = _map[r]
-			for c in range(c0, c1 + 1):
-				var ch := row[c]
-				if not KINDS.has(ch) or KINDS[ch][2] != 0:         # powietrze, znaczniki, tło i kładki → skała
-					row = row.substr(0, c) + "#" + row.substr(c + 1)
-			_map[r] = row
 		var rr := Rect2i(c0, r0, c1 - c0 + 1, r1 - r0 + 1)
 		dirty = rr if first else dirty.merge(rr)
 		first = false
@@ -432,8 +461,12 @@ func _refresh_region(rc: Rect2i) -> void:
 			_back.erase_cell(Vector2i(c, r))
 			_solid.erase_cell(Vector2i(c, r))
 			_place_cell(c, r)
-	nav = Nav.new()
-	nav.build(cols, _map.size(), _is_solid, _is_platform_cell)
+	if _nav_after != null and _map == _nav_after_rows and _wall_cells.hash() == _nav_after_walls:
+		nav = _nav_after                                          # zawał z danych mapy: graf policzony przy wczytaniu
+		_nav_after = null
+	else:
+		nav = Nav.new()
+		nav.build(cols, _map.size(), _is_solid, _is_platform_cell)
 	if sound_grid != null:
 		sound_grid.refresh(g, _is_solid)
 
@@ -461,6 +494,7 @@ func _reset_collapse_rpc(id: String) -> void:
 	_blocks.clear()
 	_map = _orig_map.duplicate()
 	_refresh_region(dirty)
+	_prepare_collapse_nav()                                   # następny zawał tej mapy znów bez przestoju
 
 ## Rząd atlasu: wierzch/wypełnienie + wariant (deterministyczny z pozycji).
 func _row(c: int, r: int, top: bool) -> int:

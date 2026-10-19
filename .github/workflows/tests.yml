@@ -35,6 +35,10 @@ jobs:
         run: |
           godot --headless --path prototype -- --maptest --autoquit=4 2>&1 | tee maptest.log
           grep -a "\[MAPTEST\] PASS" maptest.log
+      - name: Finał misji 1.1 (--finaletest — zawał, graf nawigacji przygotowany z góry)
+        run: |
+          godot --headless --path prototype -- --host --mission=z1_m1 --finaletest --autoquit=40 2>&1 | tee finale.log
+          grep -a "\[FINALE-TEST\] PASS (0" finale.log
       - name: Stalker (--stalkertest)
         run: |
           godot --headless --path prototype -- --host --stalkertest --autoquit=70 2>&1 | tee stalkertest.log

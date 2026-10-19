@@ -57,6 +57,9 @@ var _vp_fg: SubViewport
 var _world: Node3D
 var _geo: Node3D
 var _geo_key := ""
+var _geo_alt: Node3D = null                 ## ukryta geometria mapy po zawale (budowana razem z mapą; zawał tylko ją podmienia — bez ok. 0,6 s przestoju)
+var _geo_alt_key := ""
+var _geo_alt_state := {}
 var _rows: Array = []                    ## wiersze bieżącej mapy (rozbryzgi od kroków: rodzaj cieczy pod stopami)
 var _splash := {}                        ## id węzła (gracz / wróg) → CPUParticles3D rozbryzgu
 var _reeds_mat: ShaderMaterial           ## materiał trzciny przy cieczach (`Level3D.build_liquid_props`): uginanie przy przechodzących
@@ -426,6 +429,16 @@ func _sync_geometry() -> void:
 	_span_map = ""
 	for ch in _geo.get_children():
 		ch.queue_free()
+	if _geo_alt != null and is_instance_valid(_geo_alt) and key == _geo_alt_key:
+		# zawał (finał 1.1): gotowa geometria „po zawale” przechodzi do sceny; środowisko i kamery zostają
+		for ch in _geo_alt.get_children():
+			ch.reparent(_geo, false)
+		_geo_alt.queue_free()
+		_geo_alt = null
+		_set_static_lists(_geo_alt_state["lists"])
+		_apply_geo_state(_geo_alt_state)
+		return
+	_drop_geo_alt()
 	var amb: Color = _level.get("ambient") if _level.get("ambient") != null else Color(0.0245, 0.0266, 0.0406)
 	var hub := String(_level.get("objective")) == "hub"
 	Level3D.build_environment(_geo, amb, not hub, Settings.quality_idx)
@@ -446,40 +459,86 @@ func _sync_geometry() -> void:
 	env_b.ambient_light_energy = ACTOR_AMBIENT
 	env_b.fog_enabled = false
 	_cam_b.environment = env_b
+	_apply_geo_state(_build_world(_geo, rows, hub))
+	# mapa z zawałem w danych (finał 1.1): geometria „po zawale” od razu, w czasie wczytywania (ukryta, bez przetwarzania)
+	var cr = _level.get("collapse_rects")
+	if cr is Array and not (cr as Array).is_empty() and (_level.get("_blocks") as Array).is_empty() and _level.has_method("rows_after"):
+		var after: Array = _level.call("rows_after", cr)
+		if after != rows:
+			_geo_alt = Node3D.new()
+			_geo_alt.name = "GeometryAfterCollapse"
+			_geo_alt.visible = false
+			_geo_alt.process_mode = Node.PROCESS_MODE_DISABLED
+			_world.add_child(_geo_alt)
+			var keep := _static_lists()                      # builders zapisują materiały wiatru / mgły i trzciny statycznie — widoczna mapa zostaje przy swoich
+			_geo_alt_state = _build_world(_geo_alt, after, hub)
+			_geo_alt_state["lists"] = _static_lists()
+			_set_static_lists(keep)
+			_geo_alt_key = "%s:%d:%s" % [String(_level.get("map_id")), str(after).hash(), str(get_tree().get_first_node_in_group("handcar") != null)]
+
+## Statyczne listy builders (materiały wiatru kart lasu i runa, materiały konstrukcji tła pod mgłę, punkty trzcin) — należą do jednej geometrii naraz.
+func _static_lists() -> Dictionary:
+	return {"cards": Level3D._wind_cards.duplicate(), "grass": Level3D._wind_grass.duplicate(), "reeds": Level3D.reed_spots, "bd": Backdrop3D._mats.duplicate()}
+
+func _set_static_lists(l: Dictionary) -> void:
+	Level3D._wind_cards = l["cards"]
+	Level3D._wind_grass = l["grass"]
+	Level3D.reed_spots = l["reeds"]
+	Backdrop3D._mats = l["bd"]
+	for m in Level3D._wind_cards + Level3D._wind_grass:                 # wiatr mógł się zmienić od zbudowania tej geometrii
+		(m as ShaderMaterial).set_shader_parameter("amp", Level3D._wind.x)
+		(m as ShaderMaterial).set_shader_parameter("lean", Level3D._wind.y)
+
+func _drop_geo_alt() -> void:
+	if _geo_alt != null and is_instance_valid(_geo_alt):
+		_geo_alt.queue_free()
+	_geo_alt = null
+	_geo_alt_key = ""
+	_geo_alt_state = {}
+
+## Geometria mapy z wierszy `rows` pod węzłem `root` (teren, kładki, ciecze, dekale, runo, dekoracje, las, tło, mgła); zwraca stan widoku z niej
+## wyliczony (`_apply_geo_state`). Bez środowiska i kamer — te ustawia `_sync_geometry` raz na mapę.
+func _build_world(root: Node3D, rows: Array, hub: bool) -> Dictionary:
 	var span := _rail_span()
 	var trench := {}
 	if not span.is_empty():
 		trench = {"row": int(float(span[2]) / 16.0), "c0": int(float(span[0]) / 16.0), "c1": int(float(span[1]) / 16.0)}
-	Level3D.build_level(_geo, rows, trench)
-	Backdrop3D.build_frames(_geo, rows)
+	Level3D.build_level(root, rows, trench)
+	Backdrop3D.build_frames(root, rows)
 	Level3D.set_streams(_level.get("streams") if _level.get("streams") != null else [])
-	Level3D.build_liquids(_geo, rows)
-	Level3D.build_liquid_props(_geo, rows)
-	var reeds := _geo.get_node_or_null("ShoreReeds") as MeshInstance3D
-	_reeds_mat = reeds.material_override as ShaderMaterial if reeds != null else null
-	_mud_mats.clear()
-	for mi in _geo.get_children():
+	Level3D.build_liquids(root, rows)
+	Level3D.build_liquid_props(root, rows)
+	Level3D.build_wade_veils(root, rows, LAYER_ACTORS)
+	Level3D.build_decals(root, rows)
+	Level3D.build_undergrowth(root, rows)
+	Level3D.build_front_edge(root, rows)
+	_build_deco(root)
+	Level3D.build_fog_volumes(root, rows, 0.02 if hub else 0.035)
+	if not hub:
+		Level3D.build_forest_floor(root, rows)
+		Level3D.build_streams(root, rows)
+		Level3D.build_forest(root, rows)
+		Level3D.build_canopy_haze(root, rows)
+		Backdrop3D.build(root, rows, _level.get("backdrop") if _level.get("backdrop") != null else [])
+		Level3D.build_ground_fog(root, rows)
+	var mud: Array = []
+	for mi in root.get_children():
 		if mi is MeshInstance3D and String(mi.name).begins_with("LiquidTop_m_"):
-			_mud_mats.append((mi as MeshInstance3D).material_override)
+			mud.append((mi as MeshInstance3D).material_override)
+	var reeds := root.get_node_or_null("ShoreReeds") as MeshInstance3D
+	return {"rows": rows, "reeds": reeds.material_override as ShaderMaterial if reeds != null else null, "mud": mud}
+
+## Stan widoku zależny od zbudowanej geometrii (materiały trzcin i błota, ślady stóp w błocie, mapa brodzenia).
+func _apply_geo_state(st: Dictionary) -> void:
+	_reeds_mat = st.get("reeds")
+	_mud_mats.clear()
+	_mud_mats.append_array(st.get("mud", []))
 	_prints = PackedVector4Array()
 	_prints.resize(MUD_PRINTS)
 	_print_i = 0
 	_print_last.clear()
-	Level3D.build_wade_veils(_geo, rows, LAYER_ACTORS)
-	_rows = rows
-	_wade = Level3D.wade_map(rows)
-	Level3D.build_decals(_geo, rows)
-	Level3D.build_undergrowth(_geo, rows)
-	Level3D.build_front_edge(_geo, rows)
-	_build_deco()
-	Level3D.build_fog_volumes(_geo, rows, 0.02 if hub else 0.035)
-	if not hub:
-		Level3D.build_forest_floor(_geo, rows)
-		Level3D.build_streams(_geo, rows)
-		Level3D.build_forest(_geo, rows)
-		Level3D.build_canopy_haze(_geo, rows)
-		Backdrop3D.build(_geo, rows, _level.get("backdrop") if _level.get("backdrop") != null else [])
-		Level3D.build_ground_fog(_geo, rows)
+	_rows = st.get("rows", [])
+	_wade = Level3D.wade_map(_rows)
 
 # ---------------------------------------------------------------- gracze (modele 3D)
 
@@ -1011,7 +1070,9 @@ const DECO_Z := {6: -0.9, 7: -0.9, 8: -0.8, 9: -1.3, 10: -1.9, 11: -0.95, 12: -1
 
 ## Dekoracje z listy poziomu (`level.gd: _deco_list` — te same miejsca co w 2D) jako modele 3D w `MultiMesh`: kamienie i kości rozrzucone w głąb
 ## bryły gruntu, płoty, kłody i akcenty map tuż za płaszczyzną gry. Trzciny (5) mają własne bryły przy cieczach (`Level3D.build_liquid_props`).
-func _build_deco() -> void:
+func _build_deco(root: Node3D = null) -> void:
+	if root == null:
+		root = _geo
 	var list = _level.get("_deco_list")
 	if list == null:
 		return
@@ -1055,7 +1116,7 @@ func _build_deco() -> void:
 		mmi.name = "Deco_" + String(mname)
 		mmi.multimesh = mm
 		mmi.layers = LAYER_WORLD
-		_geo.add_child(mmi)
+		root.add_child(mmi)
 		inst.free()
 
 ## Przekształcenie węzła względem korzenia sceny, która nie jest jeszcze w drzewie.
