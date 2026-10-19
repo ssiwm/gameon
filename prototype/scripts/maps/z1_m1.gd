@@ -43,9 +43,6 @@ const ACCENTS := [[Vector2(392, 368), 12], [Vector2(536, 368), 9], [Vector2(936,
 ## następne przejście po `cooldown` s i dopiero po spadku Uwagi poniżej progu.
 ## Od 1.7.281: nie wychodzi przed pierwszym nieśmiertelnikiem (`after_goal`), a na HARD dopiero od Uwagi 95 (`noise_hard`, hałas rośnie tam o 25% szybciej).
 const STALKER_PASS := {"noise": 80.0, "noise_hard": 95.0, "after_goal": 1, "extract": 1, "time": 28.0, "leave": 8.0, "cooldown": 90.0, "home": [3, 3]}
-## Znak cichej drogi w obozie (playtest 2026-10-18: nikt nie szedł konarami): latarnia patrolu stoi na konarze A (kol. 96, nad płaskowyżem),
-## czerwone wstążki wiszą pod konarami B, C i D [rodzaj, kolumna, wiersz, parametry] — rekwizyty jak w kryjówce (hub_prop.gd, view3d._build_hub_prop).
-const HUB_PROPS := [["lantern", 96, 16, []], ["ribbon", 100, 15, []], ["ribbon", 106, 15, []], ["ribbon", 111, 15, []], ["ribbon", 112, 17, []]]
 ## Strefy podpowiedzi [c0, r0, c1, r1] (kafle, włącznie; stopy stojącego są na górnej krawędzi rzędu podłogi, więc strefa sięga rzędu 23): „camp" na podejściu do obozu, póki wataha śpi; „moths" pod strażnicą, póki ćmy wiszą pod dachem (hints.gd).
 const HINT_ZONES := {"ford": [14, 0, 37, 23], "camp": [80, 0, 97, 23], "moths": [203, 0, 223, 23]}
 ## Obudzony las (MAPS_PLAN.md §1.4 W1, od 1.7.283): finał wypuszcza na drogę powrotną śpiące grupy [rodzaj, kolumna, wiersz podłogi] —

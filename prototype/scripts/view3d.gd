@@ -1100,25 +1100,10 @@ func _sync_launch_doors() -> void:
 			sm.albedo_color = col if on else Color(0.16, 0.13, 0.11)
 			sm.emission = col if on else Color(0.0, 0.0, 0.0)
 			sm.emission_energy_multiplier = 2.2 if on else 0.0
-		# cyfry na drzwiach (odliczanie) albo licznik gotowych pod lampą; kogut kręci się od startu odliczania
-		var cd := float(n.get("countdown"))
-		var digit := d["digit"] as Label3D
+		# licznik gotowych pod lampą; odliczanie pokazuje tylko HUD (cyfra na drzwiach i kogut usunięte w 1.7.307 — dublowały HUD)
 		var count := d["count"] as Label3D
-		digit.visible = cd > 0.0
-		count.visible = cd <= 0.0
-		if cd > 0.0:
-			var secs := ceili(cd)
-			digit.text = str(secs)
-			digit.modulate = col
-			digit.pixel_size = 0.0075 * (1.0 + 0.3 * pow(float(secs) - cd, 2.0))
-		else:
-			count.text = "%d / %d" % [ready_n, maxi(1, int(n.get("total")))]
-			count.modulate = Color(col.r, col.g, col.b, 0.85)
-		var kg := d["kogut"] as SpotLight3D
-		kg.visible = st == 2 and cancel < 0.1
-		if kg.visible:
-			var a := t * 4.2
-			kg.basis = Basis.looking_at(Vector3(cos(a), sin(a), -0.25), Vector3.FORWARD)
+		count.text = "%d / %d" % [ready_n, maxi(1, int(n.get("total")))]
+		count.modulate = Color(col.r, col.g, col.b, 0.85)
 
 func _ld_box(root: Node3D, size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
 	var bm := BoxMesh.new()
@@ -1184,7 +1169,7 @@ func _build_launch_door(n: Node2D) -> Dictionary:
 	var cx := zone.get_center().x * PX - foot.x
 	for zz in [0.55, -0.55]:
 		_ld_box(root, Vector3(wm, 0.012, 0.12), Vector3(cx, 0.008, zz), hz)
-	# pad na podłodze strefy (świecący, z krawędziami), kurtyna światła, światło z sufitu, sloty graczy, cyfry na drzwiach, kogut i napis na ścianie
+	# pad na podłodze strefy (świecący, z krawędziami), kurtyna światła, światło z sufitu, sloty graczy i napis na ścianie
 	var cxm := zone.get_center().x * PX - foot.x
 	var pad_mat := StandardMaterial3D.new()
 	pad_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -1194,7 +1179,9 @@ func _build_launch_door(n: Node2D) -> Dictionary:
 	var pad := _ld_box(root, Vector3(wm, 0.01, 1.3), Vector3(cxm, 0.012, 0.0), pad_mat)
 	pad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var csh := Shader.new()
-	csh.code = "shader_type spatial;\nrender_mode unshaded, blend_add, cull_disabled, depth_draw_never;\nuniform vec3 col : source_color = vec3(0.3, 1.0, 0.4);\nuniform float k = 0.0;\nvoid fragment() {\n	float v = pow(UV.y, 2.2);\n	float h = smoothstep(0.0, 0.06, UV.x) * smoothstep(1.0, 0.94, UV.x);\n	float rays = 0.7 + 0.3 * sin(UV.x * 70.0 + TIME * 1.4);\n	ALBEDO = col * k * 0.45 * v * h * rays;\n}\n"
+	# kurtyna: poświata od padu w górę, gaśnie do zera na 2 m nad podłogą (jasność z wysokości, nie z UV: dawniej świeciła też górna krawędź
+	# quada — biały pas nad głowami na całą szerokość strefy, prześwietlony przez glow; usunięty w 1.7.307)
+	csh.code = "shader_type spatial;\nrender_mode unshaded, blend_add, cull_disabled, depth_draw_never;\nuniform vec3 col : source_color = vec3(0.3, 1.0, 0.4);\nuniform float k = 0.0;\nuniform float half_h = 1.7;\nvarying float v_h;\nvoid vertex() {\n	v_h = VERTEX.y + half_h;\n}\nvoid fragment() {\n	float v = pow(clamp(1.0 - v_h / 2.0, 0.0, 1.0), 2.0);\n	float h = smoothstep(0.0, 0.06, UV.x) * smoothstep(1.0, 0.94, UV.x);\n	float rays = 0.7 + 0.3 * sin(UV.x * 70.0 + TIME * 1.4);\n	ALBEDO = col * k * 0.45 * v * h * rays;\n}\n"
 	var curtain_mat := ShaderMaterial.new()
 	curtain_mat.shader = csh
 	var cq := QuadMesh.new()
@@ -1223,18 +1210,6 @@ func _build_launch_door(n: Node2D) -> Dictionary:
 		smi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		slots.append({"mat": sm, "mi": smi})
 	var font := UiTheme.heading_font()
-	var digit := Label3D.new()
-	digit.font_size = 200
-	digit.pixel_size = 0.0075
-	digit.shaded = false
-	digit.outline_size = 14
-	digit.outline_modulate = Color(0.0, 0.0, 0.0, 0.9)
-	digit.layers = LAYER_WORLD
-	digit.position = Vector3(0.0, 4.55, -1.72)
-	if font != null:
-		digit.font = font
-	digit.visible = false
-	root.add_child(digit)
 	var count := Label3D.new()
 	count.font_size = 72
 	count.pixel_size = 0.007
@@ -1246,16 +1221,6 @@ func _build_launch_door(n: Node2D) -> Dictionary:
 	if font != null:
 		count.font = font
 	root.add_child(count)
-	var kg := SpotLight3D.new()
-	kg.light_color = Color(0.4, 1.0, 0.5)
-	kg.light_energy = 5.0
-	kg.spot_range = 8.0
-	kg.spot_angle = 16.0
-	kg.light_volumetric_fog_energy = 2.0
-	kg.layers = LAYER_WORLD | LAYER_ACTORS
-	kg.position = Vector3(0.0, 3.25, -1.45)
-	kg.visible = false
-	root.add_child(kg)
 	var sign_l := Label3D.new()
 	sign_l.text = tr("LAUNCH ZONE")
 	sign_l.font_size = 96
@@ -1269,7 +1234,7 @@ func _build_launch_door(n: Node2D) -> Dictionary:
 	if font != null:
 		sign_l.font = font
 	root.add_child(sign_l)
-	return {"root": root, "mat": lamp_mat, "light": light, "pad": pad_mat, "curtain": curtain_mat, "spot": spot, "slots": slots, "digit": digit, "count": count, "kogut": kg}
+	return {"root": root, "mat": lamp_mat, "light": light, "pad": pad_mat, "curtain": curtain_mat, "spot": spot, "slots": slots, "count": count}
 
 # ---------------------------------------------------------------- papier w świecie (hud.gd: _build_world_notes)
 
@@ -1355,13 +1320,6 @@ func _sync_hub_props() -> void:
 				if storm and sin(t * 1.7) * sin(t * 0.6 + 1.0) > 0.78:
 					f = 0.15                                   # burza: lampa przy generatorze na chwilę siada
 				(d["light"] as OmniLight3D).light_energy = 2.4 * f
-			"lantern":
-				var lf := 0.9 + 0.1 * sin(t * 11.0) * sin(t * 4.1 + 0.5)          # płomień w szkle drga
-				(d["light"] as OmniLight3D).light_energy = 1.6 * lf
-				(d["mat"] as StandardMaterial3D).emission_energy_multiplier = 2.2 * lf
-			"ribbon":
-				var ph := float(n.global_position.x) * 0.37
-				(d["pivot"] as Node3D).rotation = Vector3(0.0, 0.0, 0.12 * sin(t * 1.3 + ph) + 0.05 * sin(t * 3.1 + ph))
 			"d7":
 				var k := float(n.get("knock_flash"))
 				(d["mat"] as StandardMaterial3D).emission_energy_multiplier = 1.2 + 3.0 * k
@@ -1470,43 +1428,6 @@ func _build_hub_prop(n: Node2D) -> Dictionary:
 		root.add_child(lt)
 		d["mat"] = red
 		d["light"] = lt
-	elif kind == "lantern":
-		# latarnia patrolu (1.1, obóz): stoi na pierwszym konarze cichej drogi — ciepłe światło w ciemności lasu mówi „tędy"
-		var metal := _hp_mat(Color(0.10, 0.10, 0.09), 0.7, 0.5)
-		var glass := StandardMaterial3D.new()
-		glass.albedo_color = Color(1.0, 0.78, 0.42)
-		glass.emission_enabled = true
-		glass.emission = Color(1.0, 0.68, 0.30)
-		glass.emission_energy_multiplier = 2.2
-		_ld_box(root, Vector3(0.26, 0.05, 0.26), Vector3(0.0, 0.025, -0.4), metal)            # podstawa
-		_ld_box(root, Vector3(0.18, 0.28, 0.18), Vector3(0.0, 0.19, -0.4), glass)             # szkło z płomieniem
-		_ld_box(root, Vector3(0.24, 0.05, 0.24), Vector3(0.0, 0.355, -0.4), metal)            # daszek
-		_ld_box(root, Vector3(0.03, 0.12, 0.03), Vector3(0.0, 0.44, -0.4), metal)             # uchwyt
-		var ll := OmniLight3D.new()
-		ll.light_color = Color(1.0, 0.72, 0.38)
-		ll.omni_range = 5.0
-		ll.light_energy = 1.6
-		ll.light_volumetric_fog_energy = 1.0
-		ll.layers = LAYER_WORLD | LAYER_ACTORS
-		ll.position = Vector3(0.0, 0.25, -0.15)
-		root.add_child(ll)
-		d["mat"] = glass
-		d["light"] = ll
-	elif kind == "ribbon":
-		# czerwona wstążka patrolu pod konarem: znaczy cichą drogę (lekko świeci, żeby było ją widać bez latarki)
-		var cloth := StandardMaterial3D.new()
-		cloth.albedo_color = Color(0.62, 0.08, 0.06)
-		cloth.roughness = 0.9
-		cloth.emission_enabled = true
-		cloth.emission = Color(0.55, 0.05, 0.03)
-		cloth.emission_energy_multiplier = 0.6
-		var pivot := Node3D.new()                                   # wstążka kołysze się wokół węzła pod deską
-		pivot.position = Vector3(0.0, 0.0, -0.35)
-		root.add_child(pivot)
-		_ld_box(pivot, Vector3(0.08, 0.06, 0.08), Vector3(0.0, -0.03, 0.0), cloth)             # supeł
-		_ld_box(pivot, Vector3(0.07, 0.55, 0.015), Vector3(0.02, -0.33, 0.0), cloth)
-		_ld_box(pivot, Vector3(0.06, 0.42, 0.015), Vector3(-0.03, -0.27, 0.01), cloth)
-		d["pivot"] = pivot
 	elif kind == "window":
 		var w := (float(args[0]) if not args.is_empty() else 3.0) * Level3D.T
 		var h := 2.0
