@@ -69,6 +69,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_proportions.gd 2>&1 | tee proportions.log
           grep -a "^PASS" proportions.log
+      - name: Konstrukcje 3D (test_structures.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_structures.gd 2>&1 | tee structures.log
+          grep -a "^PASS" structures.log
       - name: Arbiter komunikatów (test_messages.gd)
         run: |
           godot --headless --path prototype -s tools/test_messages.gd 2>&1 | tee messages.log

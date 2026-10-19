@@ -8,7 +8,10 @@ const PX := 1.8 / 22.0
 const TILE := 16.0
 const T := TILE * PX
 const DEPTH_FRONT := 1.1                   ## m: wysunięcie bryły przed płaszczyznę gry
-const POST_Z := -1.6                       ## m: słupy i pnie (`w`) stoją w głębi, za drogą postaci i drezyny, tuż przed ścianą tła
+const POST_Z := -1.6                       ## m: słupy i pnie (`w`) bez styku z pomostem stoją w głębi, za drogą postaci i drezyny, tuż przed ścianą tła
+const POST_K := 0.036                      ## skala przekroju modelu słupa `post` (100 jednostek wysokości; promień ok. 0,43 m)
+const DECK_H := {"-": 0.176, "=": 0.24}       ## grubość pokładu kładki w kaflach (deski: 17,6 jednostki modelu na odcinek 1 kafla, krata: 8 na 3 kafle)
+const POST_BITE := 0.02                    ## m: o tyle słup przy pomoście wchodzi w tylną krawędź pomostu (styk bez szczeliny)
 const DEPTH_BACK := 2.4                    ## m: w głąb
 const LAYER_FOREST := 32                   ## warstwa wizualna lasu i jego dna (oprócz warstwy świata): tylko ją oświetla `MoonRim`
 const MOON_RIM := 0.35                     ## energia poświaty księżyca na lesie (`MoonRim`) w noc bez pogody; `view3d._sync_weather` mnoży ją wg pogody
@@ -221,6 +224,71 @@ static func _wall_behind(rows: Array, c: int, r: int) -> bool:
 			steps += 1
 	return false
 
+## Znacznik mapy (wróg, przedmiot, start…): komórka bez własnej geometrii — nie bryła, kładka, tło ani powietrze.
+static func _is_marker(ch: String) -> bool:
+	return not (ch == "" or ch == "." or ch == "b" or ch == "w" or ch == "i" or ch == "s" or is_solid_ch(ch) or is_platform_ch(ch))
+
+## Czy komórka należy do słupa w widoku 3D. Poza kaflami `w` także:
+##  - znacznik z `w` nad albo pod sobą (ta sama reguła co `level.gd: _marker_back_char` w 2D) — wróg u podstawy słupa nie skraca go o kafel,
+##    więc słup nie wisi nad ziemią;
+##  - kafel kładki z `w` pod sobą — słup przechodzi przez pomost (bez dziury o wysokości kafla pod deskami) albo kończy się równo z jego pokładem.
+static func is_post_cell(rows: Array, c: int, r: int) -> bool:
+	var ch := _ch(rows, c, r)
+	if ch == "w":
+		return true
+	if _is_marker(ch):
+		return _ch(rows, c, r - 1) == "w" or _ch(rows, c, r + 1) == "w"
+	if is_platform_ch(ch):
+		return _ch(rows, c, r + 1) == "w" or (_is_marker(_ch(rows, c, r + 1)) and _ch(rows, c, r + 2) == "w")
+	return false
+
+## Promień słupa (m) z modelu `post` w skali POST_K; bez modelu — walec zastępczy.
+static func post_radius() -> float:
+	var mm := model_mesh("post")
+	if mm.is_empty():
+		return 0.5
+	var bb: AABB = (mm[1] as Transform3D) * (mm[0] as Mesh).get_aabb()
+	return maxf(bb.size.x, bb.size.z) * 0.5 * POST_K
+
+## Pół głębokości pokładu kładki (m): deski `-` mają głębokość kafla, krata `=` ramę ok. 0,27 kafla na trzy kafle długości (`build_level`).
+static func deck_half(ch: String) -> float:
+	var per := 1.0 if ch == "-" else 3.0
+	var mm := model_mesh("walkway_plank" if ch == "-" else "walkway_grate")
+	if mm.is_empty():
+		return 0.65
+	var bb: AABB = (mm[1] as Transform3D) * (mm[0] as Mesh).get_aabb()
+	return maxf(-bb.position.z, bb.end.z) * per * T / 100.0
+
+## Pionowe ciągi słupów: [{"c", "r0", "r1" (wyłącznie), "z" — oś słupa w głąb, "deck" — znak kładki, której dotyka, albo ""}].
+## Słup dotyka kładki, gdy przez nią przechodzi, kończy się na jej pokładzie, stoi na niej albo kładka dochodzi do niego z boku.
+## Taki słup stoi tuż za tylną krawędzią pokładu (`deck_half` + promień − POST_BITE), więc pomost na nim leży; nadal za płaszczyzną gry
+## i za postaciami. Pozostałe (stemple pod stropem, pnie) zostają w głębi na POST_Z.
+static func post_runs(rows: Array, radius := -1.0) -> Array:
+	var r_post := post_radius() if radius < 0.0 else radius
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	var out: Array = []
+	for c in cols:
+		var r := 0
+		while r < nrows:
+			if _ch(rows, c, r) != "w" and not (is_post_cell(rows, c, r) and _ch(rows, c, r + 1) == "w"):
+				r += 1                                  # ciąg zaczyna się od `w` albo od kafla, który wchodzi w słup od góry (kładka, znacznik)
+				continue
+			var r1 := r
+			while r1 < nrows and is_post_cell(rows, c, r1):
+				r1 += 1
+			var deck := ""
+			for k in range(r, r1 + 1):                  # kładki w ciągu, pod jego dolnym końcem i obok
+				for cc in [c - 1, c, c + 1]:
+					var n := _ch(rows, cc, k)
+					if is_platform_ch(n) and (cc == c or k < r1):
+						if deck == "" or deck_half(n) > deck_half(deck):
+							deck = n
+			var z := POST_Z if deck == "" else -(deck_half(deck) + r_post - POST_BITE)
+			out.append({"c": c, "r0": r, "r1": r1, "z": z, "deck": deck})
+			r = r1
+	return out
+
 ## Przekrój wnętrza bryły od frontu (z = DEPTH_FRONT): poziome ciągi niewidocznych z boku kafli jako jeden czworokąt na ciąg; materiał jak bryła
 ## (projekcja w świecie — tekstura przechodzi bez szwu przez front sąsiednich brył). Nocą czarny jak dotąd, ale światła mają na czym się położyć.
 static func _build_caps(parent: Node3D, cells: Array, mat: Material) -> void:
@@ -264,7 +332,6 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	var groups := {"#": [], "C": [], "roof": [], "M": [], "m": [], "O": [], "~": []}
 	var caps := {"#": [], "C": [], "roof": [], "M": [], "m": [], "O": [], "~": []}
 	var walls: Array = []
-	var posts: Array = []
 	var planks: Array = []
 	var grates: Array = []
 	var marks := {"F": [], "E": [], "l": [], "k": []}
@@ -295,8 +362,6 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				walls.append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
 			if ch == "b":
 				pass
-			elif ch == "w":
-				posts.append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, POST_Z)))
 			elif is_platform_ch(ch):
 				(grates if ch == "=" else planks).append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, T * 0.5 - 0.1, 0.0)))
 			elif ch == "F" or ch == "l" or ch == "k":
@@ -325,26 +390,39 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	pc.bottom_radius = 0.5
 	pc.height = T
 	pc.radial_segments = 10
-	# słupy: pionowe ciągi kafli `w` jako belki z modelu (odcinki do 4 kafli, okucia na końcach kryją łączenia); bez modelu — walce z kafli
+	# słupy: pionowe ciągi (`post_runs`: `w` razem ze znacznikiem u podstawy i kładką, przez którą przechodzą) jako belki z modelu (odcinki do
+	# 4 kafli, okucia na końcach kryją łączenia); bez modelu — walce z kafli. Słup przy kładce stoi tuż za jej pokładem.
 	var beams: Array = []
-	for c in cols:
-		var r := 0
-		while r < nrows:
-			if _ch(rows, c, r) != "w":
-				r += 1
-				continue
-			var r1 := r
-			while r1 < nrows and _ch(rows, c, r1) == "w":
-				r1 += 1
-			var run := r1 - r
-			var n := int(ceil(float(run) / 4.0))
-			var seg := float(run) * T / float(n)
-			for i in n:
-				var bottom := cell_pos(c, r1 - 1) + Vector3(0.0, -T * 0.5 + seg * float(i), POST_Z)
-				beams.append(Transform3D(Basis().scaled(Vector3(0.036, seg / 100.0, 0.036)), bottom))
-			r = r1
+	var posts: Array = []
+	var ledgers: Array = []
+	for run in post_runs(rows):
+		var c: int = run["c"]
+		var r0: int = run["r0"]
+		var r1: int = run["r1"]
+		var z: float = run["z"]
+		var n := int(ceil(float(r1 - r0) / 4.0))
+		var seg := float(r1 - r0) * T / float(n)
+		for i in n:
+			var bottom := cell_pos(c, r1 - 1) + Vector3(0.0, -T * 0.5 + seg * float(i), z)
+			beams.append(Transform3D(Basis().scaled(Vector3(POST_K, seg / 100.0, POST_K)), bottom))
+		for k in range(r0, r1):
+			posts.append(Transform3D(Basis.IDENTITY, cell_pos(c, k) + Vector3(0.0, 0.0, z)))
+			for dir in [-1, 1]:
+				# kładka dochodzi do słupa z boku: belka pod jej końcem, od osi słupa pod pokład (za płaszczyzną gry)
+				var dk := _ch(rows, c + dir, k)
+				if not is_platform_ch(dk) or is_post_cell(rows, c + dir, k) or is_platform_ch(_ch(rows, c, k)):     # przez kładkę słup przechodzi sam
+					continue
+				var dh := deck_half(dk)
+				var under: float = -float(k) * T - float(DECK_H[dk]) * T + 0.01
+				var z0 := -dh + 0.12
+				var len_x := T * 0.5 + 0.45
+				var xc := cell_pos(c, k).x + float(dir) * len_x * 0.5
+				ledgers.append(Transform3D(Basis().scaled(Vector3(len_x, 0.16, absf(z - z0))), Vector3(xc, under - 0.08, (z + z0) * 0.5)))
 	if not _multimodel(parent, "post", beams):
 		_multimesh(parent, pc, posts, make_pbr("post", 0.9, Color(0.20, 0.14, 0.09), 1.0, 1.0, 1.0, false, "organic"))
+	var lm := make_pbr("post", 0.9, Color(0.20, 0.14, 0.09), 1.0, 1.0, 1.0, false, "organic").duplicate() as StandardMaterial3D
+	lm.albedo_color = Color(0.45, 0.40, 0.36)                  # belki pod kładkami ciemne jak model słupa (tekstura „post" jest jaśniejsza od modelu z Tripo)
+	_multimesh(parent, BoxMesh.new(), ledgers, lm)
 	var plb := BoxMesh.new()
 	plb.size = Vector3(T, 0.22, 1.3)
 	# kładki z modeli: poziome ciągi kafli dzielone na równe odcinki (deski: 1 kafel, krata: ok. 3 kafle), co drugi obrócony o 180° dla odmiany;
@@ -363,7 +441,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 			var per := 1.0 if ch == "-" else 3.0
 			var n := maxi(1, int(round(float(c1 - c) / per)))
 			var seg := float(c1 - c) * T / float(n)
-			var hgt := (17.6 if ch == "-" else 8.0) / 100.0 * per * T
+			var hgt: float = DECK_H[ch] * T
 			for i in n:
 				var x := float(c) * T + seg * (float(i) + 0.5)
 				var b := Basis(Vector3.UP, PI if (i + c + r) % 2 == 1 else 0.0).scaled(Vector3(seg / 100.0, per * T / 100.0, per * T / 100.0))
