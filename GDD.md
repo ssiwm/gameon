@@ -88,7 +88,7 @@ Misja → złom + wroga wiedza + próbki → Ulepszenia broni / Perki / Bezpiecz
 
 | Akcja | Klawiatura | Pad |
 |-------|------------|-----|
-| Ruch / celowanie 8 kier. | WASD / strzałki | Lewy drążek (ruch) / prawy (aim) |
+| Ruch / celowanie 8 kier. | WASD / strzałki (mysz: celowanie swobodne, wtedy WASD tylko porusza) | Lewy drążek (ruch) / prawy (aim) |
 | Strzał | LPM / J | RT |
 | Skok | Spacja | A |
 | Kucanie (cisza) | Shift | L3 |

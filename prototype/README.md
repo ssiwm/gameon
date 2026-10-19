@@ -149,7 +149,7 @@ Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP =
 | Akcja | Klawisz | Pad |
 |---|---|---|
 | Ruch | WASD lub strzałki | lewy drążek |
-| Celowanie | 8 kierunków wg ruchu / mysz | prawy drążek (swobodnie 360°) |
+| Celowanie | 8 kierunków wg ruchu / mysz (gdy celujesz myszą, WASD tylko porusza; spust z klawiatury wraca do 8 kierunków) | prawy drążek (swobodnie 360°) |
 | Skok | SPACJA | A |
 | Strzał | J lub LPM | RT |
 | Skradanie (cisza) | SHIFT | L3 |

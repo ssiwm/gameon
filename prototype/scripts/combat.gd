@@ -224,6 +224,8 @@ static func in_cone(tree: SceneTree, space: PhysicsDirectSpaceState2D, origin: V
 ## Wybuch obszarowy (serwer). Wrogowie i obiekty: obrażenia malejące do brzegu (BLAST_EDGE),
 ## drużyna: 1 HP w promieniu (GDD §6: „friendly fire 100%"; żadna broń palna nie rani kolegów,
 ## ale wybuch tak — filar 3). Hałas = N_GRENADE, więc granat jest też wabikiem.
+## Ściana (warstwa świata) zasłania przed wybuchem wrogów i graczy — jak przed ciosem i płomieniem (`in_cone`);
+## zamurowane przejścia (`breakables`) są same przeszkodą i obrywają bez sprawdzania linii.
 static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float, shooter: int, w: int,
 		silent_for_noise := false) -> void:
 	if not NoiseMgr.is_server():
@@ -232,6 +234,7 @@ static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float,
 		NoiseMgr.add_noise(NoiseMgr.N_GRENADE, pos, "explosive")
 	Arsenal.broadcast_explosion(pos, radius)
 	var d: RefCounted = Weapons.def(w)
+	var space: PhysicsDirectSpaceState2D = null
 	for e in tree.get_nodes_in_group("enemies"):
 		var n := e as Node2D
 		if n == null or not is_instance_valid(n):
@@ -239,6 +242,10 @@ static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float,
 		var c := center_of(n)
 		var dist := c.distance_to(pos)
 		if dist > radius:
+			continue
+		if space == null:
+			space = n.get_world_2d().direct_space_state
+		if not blast_reaches(space, pos, n):
 			continue
 		var f := lerpf(1.0, BLAST_EDGE, dist / radius)
 		var away := (c - pos)
@@ -261,5 +268,17 @@ static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float,
 	for p in tree.get_nodes_in_group("players"):
 		if p.dead:
 			continue
-		if p.hurt_point(pos).distance_to(pos) <= radius * 0.9:
+		var hp: Vector2 = p.hurt_point(pos)
+		if hp.distance_to(pos) <= radius * 0.9 and clear_line((p as Node2D).get_world_2d().direct_space_state, pos, hp):
 			p.deliver_hit(1, pos, "blast")
+
+## Czy wybuch w `pos` sięga wroga `n`: ściana nie może stać między wybuchem a środkiem sylwetki albo jej górą
+## (wróg za niską przeszkodą, wystający głową, nadal obrywa).
+static func blast_reaches(space: PhysicsDirectSpaceState2D, pos: Vector2, n: Node2D) -> bool:
+	var c := center_of(n)
+	if clear_line(space, pos, c):
+		return true
+	var top := Vector2(c.x, c.y - (n.global_position.y - c.y) * 0.8)
+	if n.has_method("_hurt_h"):
+		top.y = n.global_position.y - float(n.call("_hurt_h")) * 0.9          # strefa trafień (wysokość modelu), tuż pod czubkiem głowy
+	return top.y < c.y - 0.5 and clear_line(space, pos, top)
