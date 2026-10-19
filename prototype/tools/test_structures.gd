@@ -8,7 +8,8 @@ extends SceneTree
 ## (5) dachy z blachy: skrzynie stojące na dachu nie dzielą go na łaty (za skrzynią dach biegnie dalej), a szopa bez ścian ma podpory najwyżej
 ##     co ROOF_SPAN kafli, od końca do końca,
 ## (6) stopy ścian: ściana `C` nad otwartym parterem dostaje filar do gruntu,
-## (7) wieże (`frame_role`): maszt to zawsze para sąsiednich kolumn od góry mapy, noga strażnicy nie jest jednocześnie pniem drzewa.
+## (7) wieże (`frame_role`): maszt to zawsze para sąsiednich kolumn od góry mapy, noga strażnicy nie jest jednocześnie pniem drzewa,
+## (8) pomosty bez słupa, ściany i bryły obok (`deck_supports`): każda noga ma oparcie — grunt lub pomost niżej, albo strop nad pomostem.
 ## godot --headless --path prototype -s tools/test_structures.gd      → ma wypisać PASS
 var Level3D: GDScript
 var _frames := 0
@@ -83,6 +84,7 @@ func _check_map(id: String, rows: Array, radius: float) -> void:
 		_check((roles["mast"] as Array).has(int(mc) - 1) or (roles["mast"] as Array).has(int(mc) + 1), "%s kol. %d: maszt bez drugiej kolumny" % [id, mc])
 	print("ok    %s: %d słupów, %d przy kładkach, %d pni drzew, maszt %s, nogi wieży %s" % [id, runs.size(), touching, trees, str(roles["mast"]), str(roles["tower"])])
 	_check_roofs(id, rows)
+	_check_decks(id, rows)
 
 func _check_roofs(id: String, rows: Array) -> void:
 	var roofs: Array = Level3D.roof_runs(rows)
@@ -109,3 +111,19 @@ func _check_roofs(id: String, rows: Array) -> void:
 	for f in feet:
 		_check(Level3D.is_solid_ch(Level3D._ch(rows, int(f["c"]), int(f["g"]))), "%s kol. %d: filar ściany nie stoi na gruncie" % [id, int(f["c"])])
 	print("ok    %s: %d dachów z blachy (%d szop), %d filarów pod ścianami" % [id, roofs.size(), sheds, feet.size()])
+
+func _check_decks(id: String, rows: Array) -> void:
+	var list: Array = Level3D.deck_supports(rows)
+	var stilts := 0
+	var hangs := 0
+	for d in list:
+		for leg in d["legs"]:
+			var kind: String = leg["kind"]
+			_check(kind != "", "%s pomost rząd %d kol. %d–%d: noga w kol. %d bez oparcia" % [id, int(d["r"]), int(d["c0"]), int(d["c1"]), int(leg["c"])])
+			if kind == "stilt":
+				stilts += 1
+				var to: String = Level3D._ch(rows, int(leg["c"]), int(leg["to"]))
+				_check(Level3D.is_solid_ch(to) or Level3D.is_platform_ch(to), "%s kol. %d: noga pomostu nie stoi na gruncie ani pomoście" % [id, int(leg["c"])])
+			elif kind == "hang":
+				hangs += 1
+	print("ok    %s: %d pomostów bez podpór dostało %d nóg i %d wieszaków" % [id, list.size(), stilts, hangs])
