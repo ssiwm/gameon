@@ -217,7 +217,7 @@ z dodatkiem MPFB2 i paczkami zasobów MakeHuman (instrukcja w nagłówku skryptu
   noga 0,42–0,52 H, barki 0,18–0,26 H, głowa z nakryciem od karku ≤ 0,22 H.
 
 Ograniczenia: ubrania MakeHuman mają prostsze tekstury niż stroje Tripo (kombinezon damski hazmat ma smugi po napisach oryginału);
-palce są w szkielecie, ale chwyt broni ich jeszcze nie zgina (CHARACTER_PLAN E4); klipy ruchu to nadal Quaternius UAL (mocap — E3).
+od 1.7.314 palce zginają się na chwycie (`_measure_fingers` / `_apply_fingers`: oś zgięcia członu = grzbiet dłoni × kierunek członu w spoczynku; zacisk 1 na chwycie i rękojeści, 0,7 pod łożem, 0,25 w luźnej dłoni), a prawa rękawica nie ma już wierzchołków przypiętych do obojczyka (`glb_glove_weights.py`, w generatorze `fix_glove_weights`; w pozie z bronią rozciągały się w „pręty” do bioder); klipy ruchu to nadal Quaternius UAL (mocap — E3).
 
 ## Ograniczenia / dalsze kroki
 
@@ -225,7 +225,7 @@ palce są w szkielecie, ale chwyt broni ich jeszcze nie zgina (CHARACTER_PLAN E4
 - Celowanie w dół wysuwa broń ku kamerze (inaczej chowa się za tułowiem). Przy celowaniu w górę tułów odchyla się do tyłu (`SPINE_AIM_UP`), a broń odsuwa się od barku (`UP_REACH`); przy celowaniu pionowo w górę ręce i tak przechodzą przed twarzą (bark postaci jest na wysokości brody).
 - Oświetlenie: drugi przebieg renderu (kopie siatek na warstwie 2, shader wypisuje normalne widokowe) daje mapę normalnych, więc latarka i flara dają relief jak na sprite'ach HD (odbicie `flip_h` odwraca X normalnych w shaderze). Kosztuje ok. +50% renderu postaci; `--char3d-lq` go wyłącza.
 - Kucanie / skradanie to **przysiad** (biodra 0,48 m niżej, tułów niemal pionowo — wysokość ok. 0,75 stojącej); przesunięcia bioder liczy `_move_global` w przestrzeni szkieletu (osie lokalne kości Mixamo są obrócone, wcześniej przesunięcie ruszało biodra w bok, a nie w dół).
-- Poza postojem, biegiem, kucaniem, upadkiem i reanimacją (klipy, patrz wyżej) pozy to proste funkcje sin/cos, nie animacje artysty; dłonie nie obejmują palcami chwytu — modele mają 23 kości, bez palców, więc rękawica jest sztywna i otwarta (leży na chwycie, ale go nie zamyka). Zamknięcie dłoni wymaga dorobienia kości palców w modelach.
+- Poza postojem, biegiem, kucaniem, upadkiem i reanimacją (klipy, patrz wyżej) pozy to proste funkcje sin/cos, nie animacje artysty; dawne modele Tripo (23 kości, bez palców) mają sztywną, otwartą rękawicę — zgięcie palców działa tylko w postaciach MPFB, które mają kości palców.
 - Przy zmianie kierunku tułów zwraca się ku kamerze w obie strony (`BODY_YAW` ze znakiem `_cam_c`) — to nie jest anatomiczna postawa praworęcznego strzelca, ale przy anatomicznej postać zwrócona w lewo pokazywała głównie plecak.
 - Broń biała ma jedną, uproszczoną pozę zamachu. SPECTER-1 używa swojego modelu `widmo1_01` (cewka, ten sam co w sprite'ach HD); `widmo1_02` (szyny + cewki, olive) to nieużywana alternatywa.
 - Wrogowie nadal sprite'y HD — styl postaci gracza (3D) i wrogów trzeba będzie zestroić.

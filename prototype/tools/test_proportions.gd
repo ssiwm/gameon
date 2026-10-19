@@ -45,6 +45,7 @@ func _size(path: String) -> Vector3:
 	return acc.size
 
 var _dummy: Node2D
+var _hc: Node2D                              ## postać 3D do sprawdzenia dłoni (_hands)
 
 func _process(_d: float) -> bool:
 	_frames += 1
@@ -59,12 +60,76 @@ func _process(_d: float) -> bool:
 		_dummy.set("kind", "slepiec")
 		_dummy.position = Vector2(5000.0, 5000.0)
 		root.add_child(_dummy)
+		_hc = Char3D.new()
+		root.add_child(_hc)
+		_hc.setup("male_scav", "m83")
 	elif _frames == 8:
+		_hands()
 		_rays()
 		print("PASS" if _fail == 0 else "FAIL (%d)" % _fail)
 		quit(0 if _fail == 0 else 1)
 		return true
 	return false
+
+## (5) dłonie z bronią: żaden wierzchołek dłoni, palców i rękawicy nie odstaje od kości dłoni dalej niż dłoń jest długa (rękawice MPFB miały w prawej
+## rękawicy wierzchołki przypięte do obojczyka — w pozie z bronią rozciągały się w „pręty” do bioder; tools/glb_glove_weights.py), a palce dłoni na chwycie
+## są zgięte (char3d.gd `_apply_fingers`; w spoczynku modelu są wyprostowane). Skinning liczony na CPU z wag siatki i póz kości.
+func _hands() -> void:
+	if _hc == null or not _hc.ready_ok:
+		_check(false, "dłonie: brak postaci 3D")
+		return
+	_hc._set_on_screen(true)
+	for look in ["male_scav", "female_scav", "male_hazmat", "female_hazmat"]:
+		if not _hc.set_look(look):
+			continue
+		for gun in ["m83", "spread12", "p64"]:
+			_hc.set_gun(gun)
+			for i in 40:
+				_hc.update(1.0 / 60.0, "idle", 1.0, Vector2(1.0, -0.2).normalized(), 0.0)
+			var sk: Skeleton3D = _hc._sk
+			var worst := 0.0
+			var worst_at := ""
+			for n in _hc._char_node.find_children("*", "MeshInstance3D", true, false):
+				var mi := n as MeshInstance3D
+				if mi.skin == null or mi.mesh == null:
+					continue
+				var xf := Char3D._xf_under(sk, _hc._char_node).affine_inverse() * Char3D._xf_under(mi, _hc._char_node)
+				for si in mi.mesh.get_surface_count():
+					var arr := mi.mesh.surface_get_arrays(si)
+					if arr[Mesh.ARRAY_BONES] == null:
+						continue
+					var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+					var bs: PackedInt32Array = arr[Mesh.ARRAY_BONES]
+					var ws: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
+					var per := bs.size() / vs.size()
+					for v in vs.size():
+						var pos := Vector3.ZERO
+						var top := -1
+						var topw := 0.0
+						for k in per:
+							var w := ws[v * per + k]
+							if w <= 0.0:
+								continue
+							var bone := mi.skin.get_bind_bone(bs[v * per + k])
+							if bone < 0:
+								bone = sk.find_bone(mi.skin.get_bind_name(bs[v * per + k]))
+							pos += (sk.get_bone_global_pose(bone) * mi.skin.get_bind_pose(bs[v * per + k]) * (xf * vs[v])) * w
+							if w > topw:
+								topw = w
+								top = bone
+						var bn := sk.get_bone_name(top)
+						if not ("Hand" in bn):
+							continue
+						var side := "Left" if "Left" in bn else "Right"
+						var d := pos.distance_to(sk.get_bone_global_pose(sk.find_bone("mixamorig_" + side + "Hand")).origin)
+						if d > worst:
+							worst = d
+							worst_at = "%s/%s" % [mi.name, bn.trim_prefix("mixamorig_")]
+			_check(worst <= 0.25, "%s + %s: wierzchołki dłoni najwyżej %.2f m od kości dłoni (≤ 0,25; najdalej %s)" % [look, gun, worst, worst_at])
+			var idx: int = sk.find_bone("mixamorig_RightHandIndex1")
+			if idx >= 0:
+				var bend := rad_to_deg(sk.get_bone_rest(idx).basis.get_rotation_quaternion().angle_to(sk.get_bone_pose_rotation(idx)))
+				_check(bend > 50.0, "%s + %s: palce prawej dłoni zgięte na chwycie (palec wskazujący %.0f°)" % [look, gun, bend])
 
 ## (4) promień poziomy na wysokości głowy wysokiego wroga trafia go (strefa trafień, hurtbox.gd), a nad modelem — nie.
 func _rays() -> void:
