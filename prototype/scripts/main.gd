@@ -2271,7 +2271,14 @@ func _finale_test() -> void:
 	# gracz „uwięziony" w obszarze zawału: ma wylądować za skałą (po stronie sali)
 	p.global_position = Vector2(261.0 * 16.0, 32.0 * 16.0)
 	p.velocity = Vector2.ZERO
+	var prepared = level._nav_after                       # graf „po zawale” policzony przy wczytaniu mapy (zawał bez przestoju)
 	await get_tree().create_timer(2.6).timeout
+	var fresh := NavGraph.new()
+	fresh.build((level._map[0] as String).length(), level._map.size(), level._is_solid, level._is_platform_cell)
+	var p_now: Array = level.nav.find_path(hall, mission.exit_pos)
+	var p_fresh: Array = fresh.find_path(hall, mission.exit_pos)
+	check.call("zawał: graf nawigacji gotowy z wczytania mapy (%s), trasa jak w grafie zbudowanym od nowa (%d / %d węzłów)" % [str(prepared != null and level.nav == prepared), p_now.size(), p_fresh.size()],
+		prepared != null and level.nav == prepared and p_now.size() == p_fresh.size() and not p_now.is_empty())
 	check.call("po zawale: rampa to skała (%s), trasa grafu z sali na rampę nie przechodzi przez zawał (idzie szybem i górą), gracz za skałą (x=%.0f)" % [level._ch(260, 30), p.global_position.x],
 		level._is_solid(260, 30) and not through.call(level.nav.find_path(hall, ramp_pre)) and p.global_position.x > 266.0 * 16.0)
 	var back_path: Array = level.nav.find_path(hall, mission.exit_pos)
@@ -2291,6 +2298,7 @@ func _finale_test() -> void:
 	check.call("restart: grupy finału zniknęły", level.get_children().filter(func(n: Node) -> bool: return String(n.name).begins_with("Finale")).is_empty())
 	check.call("restart: rampa znów wolna, droga wraca, finał zresetowany (finale=%s)" % str(mission.finale),
 		not level._is_solid(260, 30) and through.call(level.nav.find_path(hall, ramp_pre)) and not mission.finale and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
+	check.call("restart: graf „po zawale” przygotowany znowu (następny zawał też bez przestoju)", level._nav_after != null)
 	print("[FINALE-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
 
 ## Test misji 1.2 (--host --mission=z1_m2 --gentest): cztery generatory (przytrzymanie E), skok Uwagi po ostatnim, ekstrakcja,
