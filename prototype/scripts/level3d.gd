@@ -17,8 +17,9 @@ const TRUNK_MODELS := [["tree_snag", 0.42], ["tree_snag_spruce", 0.48]]
 const TRUNK_Z := -1.9                      ## m: pień w głębi, za drogą postaci; gałęzie zgniecione w osi z (`TRUNK_DEPTH`), żeby nie wychodziły przed bryłę
 const TRUNK_DEPTH := 0.55                  ## przekrój w głąb względem szerokości (gałęzie rosną głównie w bok)
 const TRUNK_OVER := [1.6, 3.4]             ## m: o tyle złamany wierzchołek wystaje ponad ostatni kafel pnia
-const POST_THIN := 0.5                     ## przekrój słupa niosącego kładkę na otwartej przestrzeni (rusztowanie, most, bród) względem pełnego
-                                           ## (ok. 0,43 zamiast 0,87 m średnicy); stemple we wnętrzach (tunel, hala) zostają grube
+const POST_THIN := 0.5                     ## przekrój słupa niosącego kładkę na otwartej przestrzeni (rusztowanie, most, bród) względem modelu
+                                           ## (ok. 0,43 zamiast 0,87 m średnicy)
+const POST_PROP := 0.65                    ## przekrój pozostałych słupów — stempli we wnętrzach (tunel drezyny, hale): ok. 0,56 m, grubsze od żerdzi
 const POST_BITE := 0.02                    ## m: o tyle słup przy pomoście wchodzi w tylną krawędź pomostu (styk bez szczeliny)
 const DEPTH_BACK := 2.4                    ## m: w głąb
 const LAYER_FOREST := 32                   ## warstwa wizualna lasu i jego dna (oprócz warstwy świata): tylko ją oświetla `MoonRim`
@@ -293,7 +294,7 @@ static func deck_half(ch: String) -> float:
 
 ## Pionowe ciągi słupów: [{"c", "r0", "r1" (wyłącznie), "z" — oś słupa w głąb, "deck" — znak kładki, której dotyka, albo "", "tree" — pień drzewa}].
 ## Pień (`tree`): ciąg z gołym niebem nad sobą, którego nie dotyka żadna kładka — w 2D to były drzewa; w 3D stoi tu martwe drzewo (`TRUNK_MODELS`).
-## "k": mnożnik przekroju (POST_THIN dla słupa kładki pod gołym niebem, inaczej 1).
+## "k": mnożnik przekroju modelu (POST_THIN dla słupa kładki pod gołym niebem, inaczej POST_PROP).
 ## Podpora dachu (`roof`): ciąg tuż pod dachem z blachy — rysuje go `_build_roofs` razem z resztą konstrukcji szopy.
 ## Słup dotyka kładki, gdy przez nią przechodzi, kończy się na jej pokładzie, stoi na niej albo kładka dochodzi do niego z boku.
 ## Taki słup stoi tuż za tylną krawędzią pokładu (`deck_half` + promień − POST_BITE), więc pomost na nim leży; nadal za płaszczyzną gry
@@ -320,7 +321,7 @@ static func post_runs(rows: Array, radius := -1.0) -> Array:
 						if deck == "" or deck_half(n) > deck_half(deck):
 							deck = n
 			# słup kładki pod gołym niebem to żerdź rusztowania / pal mostu — cieńszy niż stempel pod stropem (wcześniej wszystko miało 0,87 m)
-			var k := POST_THIN if deck != "" and _open_above(rows, c, r) else 1.0
+			var k := POST_THIN if deck != "" and _open_above(rows, c, r) else POST_PROP
 			var z := POST_Z if deck == "" else -(deck_half(deck) + r_post * k - POST_BITE)
 			var tree := deck == "" and _ch(rows, c, r - 1) == "."       # pień z 2D: nad nim tylko niebo i nic się o niego nie opiera
 			var roof := is_roof_cell(rows, c, r - 1)                    # podpora dachu szopy: belka jak reszta konstrukcji dachu (`_build_roofs`)

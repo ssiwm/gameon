@@ -71,7 +71,7 @@ func _check_map(id: String, rows: Array, radius: float) -> void:
 			_check(is_equal_approx(z, Level3D.POST_Z), "%s: słup bez kładki poza POST_Z (z = %.2f)" % [where, z])
 			continue
 		touching += 1
-		if float(run["k"]) < 1.0:
+		if is_equal_approx(float(run["k"]), Level3D.POST_THIN):
 			thin += 1
 		var front := z + radius * float(run["k"])
 		var back_edge: float = -Level3D.deck_half(deck)
