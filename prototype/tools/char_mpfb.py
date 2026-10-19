@@ -1168,6 +1168,31 @@ def tighten_cuffs(rig, body):
         print("CUFFS", o.name, n)
 
 
+def fix_glove_weights(rig):
+    """Rękawice MPFB („toigo_gloves_short”) mają w prawej rękawicy kilkanaście wierzchołków przypiętych do obojczyka (RightShoulder, 0,7 m od nich):
+    w pozie z bronią rozciągały się w „pręty” od dłoni do bioder. Wagi z kości spoza ręki przechodzą na dłoń tej strony (strona = kość ręki o największej
+    wadze w wierzchołku). Gotowe GLB poprawia tak samo `glb_glove_weights.py` (bez przebudowy postaci)."""
+    arm = ("Hand", "ForeArm", "Arm")
+    for o in [o for o in rig.children if o.type == "MESH" and "gloves" in o.name]:
+        names = {g.index: g.name for g in o.vertex_groups}
+        hand = {s: o.vertex_groups.get("mixamorig:" + s + "Hand") or o.vertex_groups.new(name="mixamorig:" + s + "Hand") for s in ("Left", "Right")}
+        n = 0
+        for v in o.data.vertices:
+            side, best = "", -1.0
+            for g in v.groups:
+                nm = names.get(g.group, "")
+                if g.weight > best and any(a in nm for a in arm) and ("Left" in nm or "Right" in nm):
+                    best, side = g.weight, "Left" if "Left" in nm else "Right"
+            stray = [(g.group, g.weight) for g in v.groups if g.weight > 0.0 and not any(a in names.get(g.group, "") for a in arm)]
+            if not side or not stray:
+                continue
+            for gi, w in stray:
+                o.vertex_groups[gi].remove([v.index])
+                hand[side].add([v.index], w, "ADD")
+            n += 1
+        print("GLOVES", o.name, n)
+
+
 def _uv_overlap(o, res=256):
     """Udział nakładających się tekseli w UV (lustrzane połówki ubrań MPFB dzielą teksturę)."""
     uv = o.data.uv_layers.active.data
@@ -1424,6 +1449,7 @@ def build(name, spec):
     if body.data.shape_keys:
         bpy.ops.object.shape_key_remove(all=True, apply_mix=True)
     tighten_cuffs(rig, body)
+    fix_glove_weights(rig)
     # wzrost ciała mierzony przed ukryciem stóp pod butami (grupa „body” bez brył pomocniczych)
     gi = body.vertex_groups["body"].index
     zs = [(body.matrix_world @ v.co).z for v in body.data.vertices if any(g.group == gi and g.weight > 0.5 for g in v.groups)]

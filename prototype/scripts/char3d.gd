@@ -185,6 +185,8 @@ var _arm_len := {}                           ## długości [ramię, przedramię]
 var _arm_hinge := {}                         ## strona → [oś zgięcia łokcia w układzie kości ramienia, … przedramienia] (z pozy spoczynkowej); brak = ręka prosta w spoczynku
 var _hand_rel := {}                          ## strona → orientacja dłoni względem przedramienia w spoczynku (do podziału skrętu nadgarstka)
 var _hand := {}                              ## strona → {"fix": Basis, "len": m, "thick": m}: układ anatomiczny dłoni zmierzony z siatki (_measure_hands)
+var _fing := {}                              ## strona → [[kość, obrót spoczynkowy, oś zgięcia w układzie kości, człon 1–3, kciuk?], …] (_measure_fingers)
+var _curl := {"Left": 0.0, "Right": 0.0}     ## zacisk palców w tej klatce (0 = jak w spoczynku, 1 = pełny chwyt); ustawiają go pozy rąk
 static var _hand_cache := {}                 ## nazwa modelu → to samo (pomiar raz na model)
 var _face := 1.0                             ## −1..1: zwrot w trakcie obrotu (1 = w prawo, −1 = w lewo); w połowie postać stoi przodem do kamery
 var _cam_c := 1.0                            ## −1..1: po której stronie modelu jest kamera (+1 = +Z, prawy bok); przy obrocie przechodzi płynnie przez 0
@@ -242,6 +244,11 @@ const WEAPON_POSE := {
 	"kilof": {"wrist": -50.0},
 }
 const PALM_AT := 0.45                        ## środek dłoni: ułamek długości dłoni od nadgarstka (tam leży chwyt)
+const FINGERS := ["Index", "Middle", "Ring", "Pinky"]
+const FINGER_CURL := [75.0, 85.0, 55.0]      ## ° zgięcia członów palca (u nasady, środkowego, końcowego) przy pełnym chwycie
+const THUMB_CURL := [15.0, 30.0, 25.0]       ## ° zgięcia członów kciuka przy pełnym chwycie
+const CURL_RELAX := 0.25                     ## luźna dłoń: palce lekko zgięte (w spoczynku modelu są wyprostowane i rozczapierzone)
+const CURL_HOLD := 0.7                       ## dłoń przednia pod łożem (szersze niż chwyt) i podpierająca pistolet
 const GRIP_HALF := 0.013                     ## pół grubości chwytu / rękojeści (m): o tyle dłoń leży obok jego osi
 const GUN_FOLLOW := 0.5                      ## ile ruchu barku względem pozy nominalnej przechodzi na broń (1 = broń sztywno przy barku, 0 = nieruchoma w pozie nominalnej)
 const AIM_SPRING := 34.0                     ## 1/s: sztywność sprężyny, którą broń MODELU goni kierunek celowania (rozgrywka celuje od razu)
@@ -650,6 +657,7 @@ func set_look(char_name: String) -> bool:
 	_stance.clear()
 	_posed = false
 	_measure_hands(scene)
+	_measure_fingers()
 	_clips = CharClips.build(_sk, char_name, clips_raw)
 	if _clips != null:
 		_sk.get_parent().add_child(_clips)
@@ -935,6 +943,45 @@ func _measure_hands(scene: Node) -> void:
 	_hand_cache[_char_name] = out
 	_hand = out
 
+## Kości palców (modele MPFB mają po trzy człony na palec i kciuk; modele bez palców — pusta lista). Oś zgięcia członu: grzbiet dłoni × kierunek członu
+## w spoczynku, więc dodatni kąt prowadzi opuszkę ku wnętrzu dłoni niezależnie od osi kości w modelu. Bez tego palce zostawały wyprostowane jak w pozie A
+## i przy chwycie sterczały kilkanaście centymetrów za broń.
+func _measure_fingers() -> void:
+	_fing.clear()
+	for side in ["Left", "Right"]:
+		var list: Array = []
+		if _hand.has(side):
+			var back: Vector3 = _hand[side]["b"]
+			for f in FINGERS + ["Thumb"]:
+				var prev := -1
+				for seg in [1, 2, 3]:
+					var i := _sk.find_bone(PRE + side + "Hand" + f + str(seg))
+					if i < 0:
+						break
+					var g := _sk.get_bone_global_rest(i)
+					var nxt := _sk.find_bone(PRE + side + "Hand" + f + str(seg + 1))
+					var dir := Vector3.ZERO
+					if nxt >= 0:
+						dir = _sk.get_bone_global_rest(nxt).origin - g.origin
+					elif prev >= 0:
+						dir = g.origin - _sk.get_bone_global_rest(prev).origin       # człon końcowy: kierunek jak poprzedni
+					var ax := back.cross(dir)
+					if dir.length() < 0.001 or ax.length() < 0.0001:
+						prev = i
+						continue
+					var axb := (g.basis.orthonormalized().inverse() * ax.normalized()).normalized()
+					list.append([i, _sk.get_bone_rest(i).basis.get_rotation_quaternion(), axb, seg, f == "Thumb"])
+					prev = i
+		_fing[side] = list
+
+## Zgięcie palców wg `_curl` (po pozach rąk, w każdej klatce — `reset_bone_poses` wraca do spoczynku).
+func _apply_fingers() -> void:
+	for side in _fing:
+		var k: float = clampf(float(_curl.get(side, CURL_RELAX)), 0.0, 1.0)
+		for e in _fing[side]:
+			var deg: float = (THUMB_CURL if bool(e[4]) else FINGER_CURL)[int(e[3]) - 1]
+			_sk.set_bone_pose_rotation(int(e[0]), (e[1] as Quaternion) * Quaternion(e[2] as Vector3, deg_to_rad(deg) * k))
+
 ## Transformacja węzła względem przodka `top` (bez drzewa sceny — model bywa mierzony, zanim do niego trafi).
 static func _xf_under(n: Node, top: Node) -> Transform3D:
 	var xf := Transform3D.IDENTITY
@@ -1147,12 +1194,15 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 	_last_recoil = recoil_px
 	if armed and _down < 0.2 and _clip_arms < 0.5:
 		_rest_clavicles()
+	_curl["Left"] = CURL_RELAX
+	_curl["Right"] = CURL_RELAX
 	if throw_t >= 0.0 and armed and _down < 0.2:
 		_pose_throw(theta)
 	elif holding:
 		_pose_arms(_vis_aim)
 	else:
 		_pose_arms_relaxed(_clip_down < 0.5 and _clip_arms < 0.5)   # z klipem upadku albo klęczenia ręce zostają z klipu
+	_apply_fingers()
 	if _gun != null:
 		_gun.visible = holding
 		if _gun_n != null:
@@ -1478,6 +1528,7 @@ func _pose_arms(theta: float) -> void:
 	_reach_clavicle("Right", rh.origin, 0.22)
 	_arm_ik("Right", rh.origin, Vector3(-0.35, -1.0, 0.55))
 	_set_hand("Right", rh.basis)
+	_curl["Right"] = 1.0                                          # dłoń tylna obejmuje chwyt / rękojeść
 	if swinging or _gun_key == "kilof":
 		_pose_left_melee(gx, "chop" if _gun_key == "kilof" else "slash")
 	elif two:
@@ -1512,6 +1563,7 @@ func _pose_arms(theta: float) -> void:
 		_reach_clavicle("Left", lh.origin, 0.22)
 		_arm_ik("Left", lh.origin, Vector3(-0.25, -1.0, -0.4))
 		_set_hand("Left", lh.basis, keep)
+		_curl["Left"] = lerpf(0.45, CURL_HOLD, keep)              # w drodze po magazynek / naboje palce trzymają go luźniej
 	else:
 		_pose_left_relaxed()
 	muzzle_px = _to_px(gx * (_gun_info["muzzle"] as Vector3))
@@ -1633,6 +1685,7 @@ func _pose_left_melee(gx: Transform3D, style: String) -> void:
 		var lh := _hand_target("Left", gx, (_gun_info["grip"] as Vector3) + Vector3(0.2, 0.0, 0.0), _wrist_dir(WEAPON_POSE.get(_gun_key, {})), Vector3.FORWARD, GRIP_HALF)
 		_arm_ik("Left", lh.origin, Vector3(-0.25, -1.0, -0.4))
 		_set_hand("Left", lh.basis)
+		_curl["Left"] = 1.0                                       # kilof oburącz: druga dłoń też obejmuje trzonek
 		return
 	var sl := _gp(_b["LeftArm"]).origin
 	var reach: float = float(_arm_len["Left"][0]) + float(_arm_len["Left"][1])
