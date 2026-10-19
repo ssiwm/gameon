@@ -11,6 +11,12 @@ const DEPTH_FRONT := 1.1                   ## m: wysunięcie bryły przed płasz
 const POST_Z := -1.6                       ## m: słupy i pnie (`w`) bez styku z pomostem stoją w głębi, za drogą postaci i drezyny, tuż przed ścianą tła
 const POST_K := 0.036                      ## skala przekroju modelu słupa `post` (100 jednostek wysokości; promień ok. 0,43 m)
 const DECK_H := {"-": 0.176, "=": 0.24}       ## grubość pokładu kładki w kaflach (deski: 17,6 jednostki modelu na odcinek 1 kafla, krata: 8 na 3 kafle)
+## Pnie z mapy (`post_runs`: „tree") jako martwe drzewa z modeli lasu: [model, mnożnik przekroju]. Pień z Tripo i szkielet świerka mają gałęzie
+## krótkie i gęste (nie przypominają kładek, po których się chodzi); martwa sosna z długimi konarami i niski kikut brzozy tu nie pasują.
+const TRUNK_MODELS := [["tree_snag", 0.42], ["tree_snag_spruce", 0.48]]
+const TRUNK_Z := -1.9                      ## m: pień w głębi, za drogą postaci; gałęzie zgniecione w osi z (`TRUNK_DEPTH`), żeby nie wychodziły przed bryłę
+const TRUNK_DEPTH := 0.55                  ## przekrój w głąb względem szerokości (gałęzie rosną głównie w bok)
+const TRUNK_OVER := [1.6, 3.4]             ## m: o tyle złamany wierzchołek wystaje ponad ostatni kafel pnia
 const POST_BITE := 0.02                    ## m: o tyle słup przy pomoście wchodzi w tylną krawędź pomostu (styk bez szczeliny)
 const DEPTH_BACK := 2.4                    ## m: w głąb
 const LAYER_FOREST := 32                   ## warstwa wizualna lasu i jego dna (oprócz warstwy świata): tylko ją oświetla `MoonRim`
@@ -259,7 +265,8 @@ static func deck_half(ch: String) -> float:
 	var bb: AABB = (mm[1] as Transform3D) * (mm[0] as Mesh).get_aabb()
 	return maxf(-bb.position.z, bb.end.z) * per * T / 100.0
 
-## Pionowe ciągi słupów: [{"c", "r0", "r1" (wyłącznie), "z" — oś słupa w głąb, "deck" — znak kładki, której dotyka, albo ""}].
+## Pionowe ciągi słupów: [{"c", "r0", "r1" (wyłącznie), "z" — oś słupa w głąb, "deck" — znak kładki, której dotyka, albo "", "tree" — pień drzewa}].
+## Pień (`tree`): ciąg z gołym niebem nad sobą, którego nie dotyka żadna kładka — w 2D to były drzewa; w 3D stoi tu martwe drzewo (`TRUNK_MODELS`).
 ## Słup dotyka kładki, gdy przez nią przechodzi, kończy się na jej pokładzie, stoi na niej albo kładka dochodzi do niego z boku.
 ## Taki słup stoi tuż za tylną krawędzią pokładu (`deck_half` + promień − POST_BITE), więc pomost na nim leży; nadal za płaszczyzną gry
 ## i za postaciami. Pozostałe (stemple pod stropem, pnie) zostają w głębi na POST_Z.
@@ -285,7 +292,8 @@ static func post_runs(rows: Array, radius := -1.0) -> Array:
 						if deck == "" or deck_half(n) > deck_half(deck):
 							deck = n
 			var z := POST_Z if deck == "" else -(deck_half(deck) + r_post - POST_BITE)
-			out.append({"c": c, "r0": r, "r1": r1, "z": z, "deck": deck})
+			var tree := deck == "" and _ch(rows, c, r - 1) == "."       # pień z 2D: nad nim tylko niebo i nic się o niego nie opiera
+			out.append({"c": c, "r0": r, "r1": r1, "z": z, "deck": deck, "tree": tree})
 			r = r1
 	return out
 
@@ -323,6 +331,29 @@ static func _build_caps(parent: Node3D, cells: Array, mat: Material) -> void:
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
+
+## Martwe drzewo w miejscu pnia z mapy (kolumna `c`, kafle r0..r1−1): podstawa na dole ciągu, złamany wierzchołek TRUNK_OVER ponad jego górą.
+## Odmiana, obrót i odcień z ziarna kolumny (każdy peer widzi to samo). false — brak modeli (zostaje słup).
+static func _trunk_add(trunks: Dictionary, c: int, r0: int, r1: int) -> bool:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(c * 7919 + r0)
+	var pick: Array = TRUNK_MODELS[rng.randi() % TRUNK_MODELS.size()]
+	var tk: String = pick[0]
+	if model_mesh(tk).is_empty():
+		tk = "tree_snag"
+		pick = TRUNK_MODELS[0]
+		if model_mesh(tk).is_empty():
+			return false
+	var h := float(r1 - r0) * T + rng.randf_range(TRUNK_OVER[0], TRUNK_OVER[1])
+	var sw := h / 100.0 * float(pick[1]) * rng.randf_range(0.9, 1.1)
+	var basis := Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3(sw, h / 100.0, sw))
+	basis = Basis().scaled(Vector3(1.0, 1.0, TRUNK_DEPTH)) * basis
+	var foot := cell_pos(c, r1 - 1) + Vector3(0.0, -T * 0.5 - 0.15, TRUNK_Z)        # 0,15 m w ziemi: korzenie nie wiszą nad krawędzią kafla
+	var v := rng.randf_range(0.85, 1.05)
+	if not trunks.has(tk):
+		trunks[tk] = []
+	(trunks[tk] as Array).append([Transform3D(basis, foot), Color(v, v * 0.98, v * 0.95)])
+	return true
 
 static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary:
 	var nrows := rows.size()
@@ -395,11 +426,14 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	var beams: Array = []
 	var posts: Array = []
 	var ledgers: Array = []
+	var trunks := {}                                       # model → [[Transform3D, Color], …]
 	for run in post_runs(rows):
 		var c: int = run["c"]
 		var r0: int = run["r0"]
 		var r1: int = run["r1"]
 		var z: float = run["z"]
+		if bool(run["tree"]) and _trunk_add(trunks, c, r0, r1):
+			continue
 		var n := int(ceil(float(r1 - r0) / 4.0))
 		var seg := float(r1 - r0) * T / float(n)
 		for i in n:
@@ -418,6 +452,9 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				var len_x := T * 0.5 + 0.45
 				var xc := cell_pos(c, k).x + float(dir) * len_x * 0.5
 				ledgers.append(Transform3D(Basis().scaled(Vector3(len_x, 0.16, absf(z - z0))), Vector3(xc, under - 0.08, (z + z0) * 0.5)))
+	for tk in trunks:
+		var tm := model_mesh(tk)
+		_forest_chunks(parent, tm[0], null, trunks[tk], true, tm[1])
 	if not _multimodel(parent, "post", beams):
 		_multimesh(parent, pc, posts, make_pbr("post", 0.9, Color(0.20, 0.14, 0.09), 1.0, 1.0, 1.0, false, "organic"))
 	var lm := make_pbr("post", 0.9, Color(0.20, 0.14, 0.09), 1.0, 1.0, 1.0, false, "organic").duplicate() as StandardMaterial3D
