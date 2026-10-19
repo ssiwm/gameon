@@ -28,12 +28,18 @@ static func is_solid_ch(ch: String) -> bool:
 static func is_platform_ch(ch: String) -> bool:
 	return ch == "-" or ch == "="
 
-## Dach szopy: samotna warstwa betonu `C` z niebem nad sobą (kolumna bez bryły, kładki i słupa aż do góry mapy) i pustką pod spodem. Dostaje blachę
-## falistą (materiał „roof"); stropy międzypiętrowe mają nad sobą wnętrze, a podłogi i skały sąsiadują z bryłą, więc zostają betonowe.
+## Dach szopy: samotna warstwa betonu `C` z niebem nad sobą (kolumna bez bryły, kładki i słupa aż do góry mapy) i pustką pod spodem. W 3D to dach
+## z blachy na wiązarach (`_build_roofs`); stropy międzypiętrowe mają nad sobą wnętrze, a podłogi i skały sąsiadują z bryłą, więc zostają betonowe.
+## Skrzynie `M` stojące na dachu go nie przerywają (wcześniej pod każdą skrzynią zostawał kafel betonu wśród blachy).
 static func is_roof_cell(rows: Array, c: int, r: int) -> bool:
-	if _ch(rows, c, r) != "C" or is_solid_ch(_ch(rows, c, r + 1)) or is_solid_ch(_ch(rows, c, r - 1)):
+	if _ch(rows, c, r) != "C" or is_solid_ch(_ch(rows, c, r + 1)):
 		return false
-	for k in range(r - 1, -1, -1):
+	var top := r - 1
+	while _ch(rows, c, top) == "M" and top > 0:
+		top -= 1
+	if top < r - 1 and _ch(rows, c, top) != ".":
+		return false                                            # skrzynie tylko na otwartym dachu (pod nimi nie ma piętra ani stropu)
+	for k in range(top, -1, -1):
 		var n := _ch(rows, c, k)
 		if is_solid_ch(n) or is_platform_ch(n) or n == "w":
 			return false
@@ -267,6 +273,7 @@ static func deck_half(ch: String) -> float:
 
 ## Pionowe ciągi słupów: [{"c", "r0", "r1" (wyłącznie), "z" — oś słupa w głąb, "deck" — znak kładki, której dotyka, albo "", "tree" — pień drzewa}].
 ## Pień (`tree`): ciąg z gołym niebem nad sobą, którego nie dotyka żadna kładka — w 2D to były drzewa; w 3D stoi tu martwe drzewo (`TRUNK_MODELS`).
+## Podpora dachu (`roof`): ciąg tuż pod dachem z blachy — rysuje go `_build_roofs` razem z resztą konstrukcji szopy.
 ## Słup dotyka kładki, gdy przez nią przechodzi, kończy się na jej pokładzie, stoi na niej albo kładka dochodzi do niego z boku.
 ## Taki słup stoi tuż za tylną krawędzią pokładu (`deck_half` + promień − POST_BITE), więc pomost na nim leży; nadal za płaszczyzną gry
 ## i za postaciami. Pozostałe (stemple pod stropem, pnie) zostają w głębi na POST_Z.
@@ -293,7 +300,8 @@ static func post_runs(rows: Array, radius := -1.0) -> Array:
 							deck = n
 			var z := POST_Z if deck == "" else -(deck_half(deck) + r_post - POST_BITE)
 			var tree := deck == "" and _ch(rows, c, r - 1) == "."       # pień z 2D: nad nim tylko niebo i nic się o niego nie opiera
-			out.append({"c": c, "r0": r, "r1": r1, "z": z, "deck": deck, "tree": tree})
+			var roof := is_roof_cell(rows, c, r - 1)                    # podpora dachu szopy: belka jak reszta konstrukcji dachu (`_build_roofs`)
+			out.append({"c": c, "r0": r, "r1": r1, "z": z, "deck": deck, "tree": tree, "roof": roof})
 			r = r1
 	return out
 
@@ -332,6 +340,158 @@ static func _build_caps(parent: Node3D, cells: Array, mat: Material) -> void:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
 
+const ROOF_SHEET := 0.05                   ## m: grubość arkusza blachy (góra arkusza = góra kafla, po której się chodzi)
+const ROOF_EAVE := 0.35                    ## m: okap ku kamerze przed przednią krawędzią bryły; z boków (wolne końce szopy) — tyle samo
+const ROOF_PURLIN_Z := [-2.05, -0.65, 0.8] ## m: płatwie pod blachą wzdłuż dachu
+const ROOF_TRUSS := 2                      ## co tyle kafli wiązar (pas dolny w poprzek dachu + słupki pod płatwiami)
+const ROOF_SPAN := 5                       ## szopa: najwyżej tyle kafli między podporami
+const ROOF_POST := 0.26                    ## m: przekrój drewnianego słupa szopy
+const ROOF_KNEE := 0.75                    ## m: zastrzał szopy — od słupa tyle w dół i tyle w bok pod pas dolny wiązara
+const ROOF_POST_FRONT := 0.82              ## m: przednie słupy szopy pod płatwią przy okapie (za krawędzią bryły)
+
+## Dachy z blachy (`is_roof_cell`): poziome ciągi kafli dachu [{"r", "c0", "c1" (włącznie), "steel" — oparty o ściany `C` (wiązary stalowe; inaczej
+## drewniana szopa), "posts" — kolumny podpór szopy: słupy mapy pod dachem i dodane co najwyżej ROOF_SPAN kafli, gdzie pod dachem do gruntu jest pusto}].
+static func roof_runs(rows: Array) -> Array:
+	var out: Array = []
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	for r in nrows:
+		var c := 0
+		while c < cols:
+			if not is_roof_cell(rows, c, r):
+				c += 1
+				continue
+			var c1 := c
+			while c1 + 1 < cols and is_roof_cell(rows, c1 + 1, r):
+				c1 += 1
+			var steel := _ch(rows, c - 1, r) == "C" or _ch(rows, c1 + 1, r) == "C"
+			var posts: Array = []
+			if not steel:
+				var last := c - ROOF_SPAN                       # pierwsza podpora najpóźniej przy lewym końcu
+				for k in range(c, c1 + 1):
+					var mapped := _ch(rows, k, r + 1) == "w"
+					var due := k - last >= ROOF_SPAN or k == c1
+					if mapped or (due and roof_ground(rows, k, r) > 0):
+						posts.append(k)
+						last = k
+			out.append({"r": r, "c0": c, "c1": c1, "steel": steel, "posts": posts})
+			c = c1 + 1
+	return out
+
+## Wiersz gruntu pod dachem w kolumnie `c` (pierwszy lity kafel pod `r`), gdy po drodze nie ma bryły ani kładki; −1, gdy kolumna nie nadaje się na słup.
+static func roof_ground(rows: Array, c: int, r: int) -> int:
+	for k in range(r + 1, rows.size()):
+		var n := _ch(rows, c, k)
+		if is_solid_ch(n):
+			return k if k > r + 1 else -1
+		if is_platform_ch(n) or n == "b":
+			return -1
+	return -1
+
+## Pudło od rogu a do rogu b (przekształcenie pudła 1×1×1).
+static func _span_box(a: Vector3, b2: Vector3) -> Transform3D:
+	return Transform3D(Basis().scaled((b2 - a).abs()), (a + b2) * 0.5)
+
+## Belka od punktu a do b (przekrój `w` × `w`), jako przekształcenie pudła 1×1×1.
+static func _strut(a: Vector3, b2: Vector3, w: float) -> Transform3D:
+	var d := b2 - a
+	var up := d.normalized()
+	var side := Vector3.RIGHT if absf(up.dot(Vector3.RIGHT)) < 0.9 else Vector3.BACK
+	var zx := side.cross(up).normalized()
+	var xx := up.cross(zx).normalized()
+	return Transform3D(Basis(xx * w, up * d.length(), zx * w), (a + b2) * 0.5)
+
+## Dach z blachy zamiast pudła kafla grubości 1,3 m: arkusz z okapem i blendą na górze kafla, pod nim płatwie, co ROOF_TRUSS kafli wiązar
+## (pas dolny na dolnej krawędzi kafla — Skoczek dalej wisi „pod sufitem", słupki pod płatwiami). W budynkach ze ścianami `C` konstrukcja
+## stalowa, a tylna ściana sięga pod blachę (bez niej przez wiązary prześwitywał las); w szopie drewniana, z podporami z tyłu (POST_Z) i z przodu
+## (ROOF_POST_FRONT) i zastrzałami pod wiązarem. Tylko widok — kolizja to nadal pełny kafel.
+static func _build_roofs(parent: Node3D, rows: Array, sheet_mat: Material, steel_mat: Material, wood_mat: Material, wall_mat: Material) -> void:
+	var sheets: Array = []
+	var walls: Array = []
+	var frame := {true: [], false: []}
+	for run in roof_runs(rows):
+		var r: int = run["r"]
+		var c0: int = run["c0"]
+		var c1: int = run["c1"]
+		var steel: bool = run["steel"]
+		var y_top := -float(r) * T
+		var y_bot := -float(r + 1) * T
+		var x0 := float(c0) * T - (0.0 if is_solid_ch(_ch(rows, c0 - 1, r)) else ROOF_EAVE)
+		var x1 := float(c1 + 1) * T + (0.0 if is_solid_ch(_ch(rows, c1 + 1, r)) else ROOF_EAVE)
+		var z0 := -DEPTH_BACK
+		var z1 := DEPTH_FRONT + ROOF_EAVE
+		sheets.append(_span_box(Vector3(x0, y_top - ROOF_SHEET, z0), Vector3(x1, y_top, z1)))
+		sheets.append(_span_box(Vector3(x0, y_top - 0.24, z1 - 0.04), Vector3(x1, y_top - ROOF_SHEET, z1)))     # blenda okapu od strony kamery
+		var bar := 0.16 if steel else 0.18
+		var under := y_top - ROOF_SHEET
+		var fr: Array = frame[steel]
+		for pz in ROOF_PURLIN_Z:
+			fr.append(_span_box(Vector3(x0 + 0.05, under - bar, float(pz) - bar * 0.5), Vector3(x1 - 0.05, under, float(pz) + bar * 0.5)))
+		var trusses: Array = []
+		for k in range(c0, c1 + 1, ROOF_TRUSS):
+			trusses.append(float(k) * T + 0.15)
+		trusses.append(float(c1 + 1) * T - 0.15)
+		for tx in trusses:
+			fr.append(_span_box(Vector3(tx - bar * 0.5, y_bot, z0 + 0.05), Vector3(tx + bar * 0.5, y_bot + bar * 1.4, DEPTH_FRONT)))   # pas dolny
+			for pz in ROOF_PURLIN_Z:
+				fr.append(_span_box(Vector3(tx - bar * 0.4, y_bot + bar, float(pz) - bar * 0.4), Vector3(tx + bar * 0.4, under - bar, float(pz) + bar * 0.4)))
+		if steel:
+			for k in range(c0, c1 + 1):                         # tylna ściana budynku pod samą blachę
+				if _ch(rows, k, r + 1) == "b":
+					walls.append(_span_box(Vector3(float(k) * T, y_bot, -DEPTH_BACK), Vector3(float(k + 1) * T, under, -DEPTH_BACK + 0.3)))
+		for k in run["posts"]:
+			var g := roof_ground(rows, int(k), r)
+			if g < 0:
+				continue
+			var px := (float(k) + 0.5) * T
+			for pz in [POST_Z, ROOF_POST_FRONT]:
+				fr.append(_span_box(Vector3(px - ROOF_POST * 0.5, -float(g) * T - 0.1, float(pz) - ROOF_POST * 0.5), Vector3(px + ROOF_POST * 0.5, y_bot, float(pz) + ROOF_POST * 0.5)))
+				for dx in [-1.0, 1.0]:                          # zastrzały w stronę dachu (nie poza jego koniec)
+					var ex: float = px + float(dx) * ROOF_KNEE
+					if ex > x0 + 0.1 and ex < x1 - 0.1:
+						fr.append(_strut(Vector3(px, y_bot - ROOF_KNEE, float(pz)), Vector3(ex, y_bot + bar * 0.7, float(pz)), ROOF_POST * 0.55))
+	var box := BoxMesh.new()
+	_multimesh(parent, box, walls, wall_mat, false)
+	_multimesh(parent, box, sheets, sheet_mat)
+	_multimesh(parent, box, frame[true], steel_mat)
+	_multimesh(parent, box, frame[false], wood_mat)
+
+## Stopy ścian: ściana `C` (co najmniej dwa kafle w pionie), która kończy się nad otwartym parterem (wejście do chaty radiowej, pompowni, Składu),
+## wisiała w powietrzu. Od jej dołu do gruntu stoi filar z betonu w głębi (od tyłu bryły do WALL_FOOT_Z, za drogą postaci) — wejście zostaje otwarte.
+## [{"c", "r" — pierwszy wiersz pod ścianą, "g" — wiersz gruntu}].
+const WALL_FOOT_Z := -0.9
+const WALL_FOOT_W := 0.6
+static func wall_feet(rows: Array) -> Array:
+	var out: Array = []
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	for c in cols:
+		for r in range(1, nrows - 1):
+			if _ch(rows, c, r) != "C" or _ch(rows, c, r - 1) != "C" or is_solid_ch(_ch(rows, c, r + 1)) or is_roof_cell(rows, c, r):
+				continue
+			if _ch(rows, c - 1, r) == "C" and _ch(rows, c + 1, r) == "C":
+				continue                                            # strop (poziomy pas betonu), nie ściana
+			var g := r + 1
+			var open_air := true                                    # pod ścianą zewnętrzne powietrze; nad przejściem we wnętrzu (tło `b`, zamurowanie `q`) beton to nadproże
+			while g < nrows and not is_solid_ch(_ch(rows, c, g)) and g - r <= 8:
+				var n := _ch(rows, c, g)
+				if not (n == "." or _is_marker(n)) or n == "q":
+					open_air = false
+				g += 1
+			if open_air and g < nrows and is_solid_ch(_ch(rows, c, g)) and g - r <= 8:
+				out.append({"c": c, "r": r + 1, "g": g})
+	return out
+
+static func _build_wall_feet(parent: Node3D, rows: Array, mat: Material) -> void:
+	var xf: Array = []
+	for f in wall_feet(rows):
+		var x := (float(f["c"]) + 0.5) * T
+		var top := -float(f["r"]) * T
+		var bot := -float(f["g"]) * T
+		var d := WALL_FOOT_Z + DEPTH_BACK
+		xf.append(Transform3D(Basis().scaled(Vector3(WALL_FOOT_W, top - bot, d)), Vector3(x, (top + bot) * 0.5, -DEPTH_BACK + d * 0.5)))
+	_multimesh(parent, BoxMesh.new(), xf, mat)
+
 ## Martwe drzewo w miejscu pnia z mapy (kolumna `c`, kafle r0..r1−1): podstawa na dole ciągu, złamany wierzchołek TRUNK_OVER ponad jego górą.
 ## Odmiana, obrót i odcień z ziarna kolumny (każdy peer widzi to samo). false — brak modeli (zostaje słup).
 static func _trunk_add(trunks: Dictionary, c: int, r0: int, r1: int) -> bool:
@@ -360,8 +520,8 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
 	var box := BoxMesh.new()
 	box.size = Vector3(T, T, DEPTH_FRONT + DEPTH_BACK)
-	var groups := {"#": [], "C": [], "roof": [], "M": [], "m": [], "O": [], "~": []}
-	var caps := {"#": [], "C": [], "roof": [], "M": [], "m": [], "O": [], "~": []}
+	var groups := {"#": [], "C": [], "M": [], "m": [], "O": [], "~": []}
+	var caps := {"#": [], "C": [], "M": [], "m": [], "O": [], "~": []}
 	var walls: Array = []
 	var planks: Array = []
 	var grates: Array = []
@@ -371,7 +531,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 		for c in cols:
 			var ch := _ch(rows, c, r)
 			if ch == "C" and is_roof_cell(rows, c, r):
-				ch = "roof"                                         # dach szopy: blacha falista zamiast betonu (znak mapy i kolizja bez zmian); nie „R" — to znacznik radiostacji
+				continue                                            # dach z blachy na wiązarach zamiast pudła kafla (`_build_roofs`); znak mapy i kolizja bez zmian
 			if groups.has(ch):
 				# bryły tylko dla odsłoniętych kafli (sąsiad z powietrzem lub tłem); wnętrza skał zamyka od frontu płaski przekrój (`caps`),
 				# bez niego pod skorupą gruntu widać było pustkę zamiast ziemi (flara czy wybuch nie miały czego oświetlić)
@@ -434,6 +594,8 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 		var z: float = run["z"]
 		if bool(run["tree"]) and _trunk_add(trunks, c, r0, r1):
 			continue
+		if bool(run["roof"]):
+			continue
 		var n := int(ceil(float(r1 - r0) / 4.0))
 		var seg := float(r1 - r0) * T / float(n)
 		for i in n:
@@ -460,6 +622,9 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	var lm := make_pbr("post", 0.9, Color(0.20, 0.14, 0.09), 1.0, 1.0, 1.0, false, "organic").duplicate() as StandardMaterial3D
 	lm.albedo_color = Color(0.45, 0.40, 0.36)                  # belki pod kładkami ciemne jak model słupa (tekstura „post" jest jaśniejsza od modelu z Tripo)
 	_multimesh(parent, BoxMesh.new(), ledgers, lm)
+	_build_roofs(parent, rows, mats["roof"], make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"),
+			make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic"), make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"))
+	_build_wall_feet(parent, rows, mats["C"])
 	var plb := BoxMesh.new()
 	plb.size = Vector3(T, 0.22, 1.3)
 	# kładki z modeli: poziome ciągi kafli dzielone na równe odcinki (deski: 1 kafel, krata: ok. 3 kafle), co drugi obrócony o 180° dla odmiany;
@@ -761,7 +926,7 @@ static func build_decals(parent: Node3D, rows: Array) -> void:
 			var ch := _ch(rows, c, r)
 			if ch == "b":
 				surf[Vector2i(c, r)] = "b"
-			elif ch == "C" or ch == "M":
+			elif (ch == "C" and not is_roof_cell(rows, c, r)) or ch == "M":       # na blasze dachu (cienki arkusz na wiązarach) dekal by wisiał
 				if not (is_solid_ch(_ch(rows, c - 1, r)) and is_solid_ch(_ch(rows, c + 1, r)) and is_solid_ch(_ch(rows, c, r - 1)) and is_solid_ch(_ch(rows, c, r + 1))):
 					surf[Vector2i(c, r)] = ch
 	if surf.is_empty():

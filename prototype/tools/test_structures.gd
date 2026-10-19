@@ -4,7 +4,10 @@ extends SceneTree
 ## (2) podstawa: dolny koniec słupa stoi na bryle, kładce albo krawędzi mapy — nie wisi nad powietrzem, tłem ani znacznikiem,
 ## (3) styk: słup przy kładce dotyka tylnej krawędzi jej pokładu (wchodzi w nią najwyżej POST_BITE) i nie wychodzi przed nią, więc nie zasłania
 ##     postaci; pozostałe słupy stoją w głębi na POST_Z,
-## (4) pnie: ciąg z gołym niebem nad sobą i bez kładki jest drzewem (martwe drzewo z modeli lasu zamiast słupa z okuciami); słup przy kładce — nigdy.
+## (4) pnie: ciąg z gołym niebem nad sobą i bez kładki jest drzewem (martwe drzewo z modeli lasu zamiast słupa z okuciami); słup przy kładce — nigdy,
+## (5) dachy z blachy: skrzynie stojące na dachu nie dzielą go na łaty (za skrzynią dach biegnie dalej), a szopa bez ścian ma podpory najwyżej
+##     co ROOF_SPAN kafli, od końca do końca,
+## (6) stopy ścian: ściana `C` nad otwartym parterem dostaje filar do gruntu.
 ## godot --headless --path prototype -s tools/test_structures.gd      → ma wypisać PASS
 var Level3D: GDScript
 var _frames := 0
@@ -71,3 +74,30 @@ func _check_map(id: String, rows: Array, radius: float) -> void:
 			if int(list[i]["r0"]) == gap_r + 1 and not Level3D.is_solid_ch(Level3D._ch(rows, c, gap_r)):      # przez bryłę (podłoga wieży) słup idzie ukryty
 				_check(false, "%s kol. %d: słup przerwany w rzędzie %d („%s”)" % [id, c, gap_r, Level3D._ch(rows, c, gap_r)])
 	print("ok    %s: %d słupów, %d przy kładkach, %d pni drzew" % [id, runs.size(), touching, trees])
+	_check_roofs(id, rows)
+
+func _check_roofs(id: String, rows: Array) -> void:
+	var roofs: Array = Level3D.roof_runs(rows)
+	var sheds := 0
+	for run in roofs:
+		var r: int = run["r"]
+		var c0: int = run["c0"]
+		var c1: int = run["c1"]
+		var where := "%s dach rząd %d kol. %d–%d" % [id, r, c0, c1]
+		for side in [c0 - 1, c1 + 1]:                           # dach nie urywa się na skrzyni: za nią nie ma dalszego dachu w tym rzędzie
+			if Level3D._ch(rows, side, r) == "C" and Level3D._ch(rows, side, r - 1) == "M":
+				_check(false, "%s: dach przerwany pod skrzynią w kol. %d" % [where, side])
+		if bool(run["steel"]):
+			continue
+		sheds += 1
+		var posts: Array = run["posts"]
+		_check(not posts.is_empty(), "%s: szopa bez podpór" % where)
+		if posts.is_empty():
+			continue
+		_check(int(posts[0]) - c0 < Level3D.ROOF_SPAN and c1 - int(posts[-1]) < Level3D.ROOF_SPAN, "%s: koniec szopy dalej niż %d kafli od podpory" % [where, Level3D.ROOF_SPAN])
+		for i in range(1, posts.size()):
+			_check(int(posts[i]) - int(posts[i - 1]) <= Level3D.ROOF_SPAN, "%s: %d kafli między podporami %d i %d" % [where, int(posts[i]) - int(posts[i - 1]), posts[i - 1], posts[i]])
+	var feet: Array = Level3D.wall_feet(rows)
+	for f in feet:
+		_check(Level3D.is_solid_ch(Level3D._ch(rows, int(f["c"]), int(f["g"]))), "%s kol. %d: filar ściany nie stoi na gruncie" % [id, int(f["c"])])
+	print("ok    %s: %d dachów z blachy (%d szop), %d filarów pod ścianami" % [id, roofs.size(), sheds, feet.size()])
