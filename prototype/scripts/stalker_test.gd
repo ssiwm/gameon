@@ -10,8 +10,8 @@ extends Node
 ## Mapa 1.3 (ma Stalkera, długi pas wody i błoto). Zwykli wrogowie i gniazda są usuwani, bot i Dyrektor grozy stoją —
 ## każdy obcy hałas zmieniłby cel Stalkera. Wynik: linie [STALKER-TEST] i kod wyjścia (0 = OK) — nadaje się do CI.
 
-const HIT_EVERY := 0.6                ## s między trafieniami w pomiarze ostrzału (rytm spokojnego ognia z P-64)
-const HIT_NOISE := 0.5                ## Uwaga jednego takiego strzału (zimna lufa P-64)
+const HIT_EVERY := 0.6                ## s między trafieniami w pomiarze ostrzału (rytm spokojnego ognia z P-83)
+const HIT_NOISE := 0.5                ## Uwaga jednego takiego strzału (zimna lufa P-83)
 const FIRE_TIME := 12.0
 const FIRE_DIST := 200.0              ## px między Stalkerem a strzelcem na starcie
 const CONTROL_TIME := 2.0

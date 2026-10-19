@@ -908,13 +908,13 @@ func _make_proj(n: Node2D) -> void:
 		root.add_child(halo)
 		root.add_child(core)
 		root.set_meta("trace", [halo, core, TRACE_W_PELLET if pellet else TRACE_W])
-	elif float(d.gravity) > 0.0:
-		# granat 40 mm: ok. 2× naturalnej średnicy (8 cm), żeby był czytelny z kamery bocznej — wcześniej kula 40 cm; żar zapalnika z tyłu
-		_sphere(root, 0.04, Vector3.ZERO, Color(0.3, 0.32, 0.2))
-		_sphere(root, 0.028, Vector3(-0.045, 0.0, 0.0), Color(1.0, 0.7, 0.3))
 	elif n.has_method("sticks_on_hit") and n.sticks_on_hit():
 		_box(root, Vector3(maxf(tail, 0.5), 0.035, 0.035), Vector3(-maxf(tail, 0.5) * 0.5, 0.0, 0.0), Color(0.62, 0.5, 0.34))
 		_box(root, Vector3(0.3, 0.06, 0.06), Vector3(0.22, 0.0, 0.0), Color(0.85, 0.85, 0.9))
+	elif float(d.blast_radius) > 0.0:
+		# granat 40 mm: ok. 2× naturalnej średnicy (8 cm), żeby był czytelny z kamery bocznej — wcześniej kula 40 cm; żar zapalnika z tyłu
+		_sphere(root, 0.04, Vector3.ZERO, Color(0.3, 0.32, 0.2))
+		_sphere(root, 0.028, Vector3(-0.045, 0.0, 0.0), Color(1.0, 0.7, 0.3))
 	elif float(d.homing) > 0.0:
 		# rakieta (FALCON-6): kadłub 12 cm (wcześniej 32 cm) i smuga wylotowa za nim
 		_box(root, Vector3(tail, 0.07, 0.07), Vector3(-tail * 0.5, 0.0, 0.0), Color(col.r, col.g, col.b, 0.25))
@@ -1554,7 +1554,7 @@ const RACK_SCALE := 0.42                    ## stojak w 3D względem sprite'a 2D
 const RACK_UP_PX := 9.0                     ## dół stojaka nad podłogą [px świata]
 const RACK_Z := -1.80                       ## oś stojaka: plecy deski przy ścianie tła
 const RACK_SHELF_PX := 5.3                  ## góra półki w jednostkach modelu stojaka
-const LOOT_MIN_M := 0.35                    ## m: najkrótsza broń leżąca na ziemi (P-64 ma 0,18 m — w naturalnej skali ginąłby pod stopami)
+const LOOT_MIN_M := 0.35                    ## m: najkrótsza broń leżąca na ziemi (P-83 ma 0,19 m — w naturalnej skali ginąłby pod stopami)
 const RACK_MIN_M := 0.25                    ## m: najkrótsza broń na stojaku (oglądana z bliska, więc mniejsze minimum)
 const RACK_GUN_Z := -1.70                   ## broń leży na półce, tuż przed deską
 const RACK_PLATE_Z := -1.50                 ## front półki: tabliczka z ceną
@@ -1919,7 +1919,7 @@ func _build_cabinet(n: Node2D) -> Dictionary:
 			gh.visible = false
 			root.add_child(gh)
 		ghosts.append(gh)
-	# półka: pistolet P-64, cztery magazynki, skrzynka amunicji (dekoracja, jak na zdjęciu-wzorze)
+	# półka: pistolet P-83, cztery magazynki, skrzynka amunicji (dekoracja, jak na zdjęciu-wzorze)
 	_cab_box(root, Vector3(W - 0.1, 0.025, D - 0.08), Vector3(0.0, CAB_SHELF_Y, -D * 0.5 - 0.02), steel)
 	var p64 := _cab_gun("p64")
 	if p64 != null:

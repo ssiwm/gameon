@@ -12,7 +12,7 @@ extends RefCounted
 ## (gain × tempo < decay), więc tylko strzelba w ogóle się rozgrzewała — patrz
 ## `--weapontest`, który pilnuje, żeby każda broń z n_min < n_max osiągała n_max.
 ##
-## Prędkość kul (od 1.7.311): broń palna strzela szybko (M-83 2400 px/s ≈ 200 m/s w skali świata 3D, P-64 1500, śrut 1300–1400) —
+## Prędkość kul (od 1.7.311): broń palna strzela szybko (M-83 2400 px/s ≈ 200 m/s w skali świata 3D, P-83 1500, śrut 1300–1400) —
 ## kula przelatuje pół ekranu w ~0,1 s, a lot widać jako smugę (view3d.gd `_sync_projectiles`, długość `Projectile.TRACER_SEC`). To wciąż ułamek
 ## prawdziwej prędkości, ale tor jest czytelny, a kula nie „płynie” wolniej, niż biegnie postać (dawniej 340 px/s przy biegu 95).
 ## Wolne zostają pociski, których lot jest mechaniką: rakiety FALCON-6, bełt SINEW-6 i granat WRATH-4.
@@ -22,7 +22,7 @@ const Upgrades := preload("res://scripts/upgrades.gd")
 
 const M83 := 0
 const SPREAD12 := 1
-const P64 := 2
+const P64 := 2                 ## P-83 Wanad (klucz techniczny „p64” — patrz niżej)
 const SRUT8 := 3
 const LR7 := 4
 const HKM9 := 5
@@ -38,6 +38,7 @@ const Kind := WeaponDef.Kind
 const Slot := WeaponDef.Slot
 
 ## Domyślny zestaw na starcie: dwie bronie główne + sidearm, broń biała osobno (GDD §6 „Zasady ogólne").
+## Klucz techniczny sidearmu zostaje „p64” (pliki modelu, dźwięki, ikony, zapisy), choć od 1.7.313 broń to P-83 Wanad (magazynek 8).
 const START_PRIMARY_A := M83
 const START_PRIMARY_B := SPREAD12
 const START_SIDEARM := P64
@@ -67,20 +68,20 @@ static func _table() -> Array:
 			"spread_deg": 14.0, "jitter_deg": 1.5,
 			"speed": 1400.0, "range_px": 135.0, "falloff_start": 40.0, "falloff_min": 0.35,
 			"n_min": 3.5, "n_max": 5.0, "heat_gain": 0.40, "heat_decay": 1.2,
-			"mag": 24, "reserve_start": 48, "reserve_max": 96, "pickup_rounds": 12,
+			"mag": 25, "reserve_start": 50, "reserve_max": 100, "pickup_rounds": 12,
 			"reload_time": 2.0, "reload_empty_extra": 0.5,
-			"shake": 2.4, "cam_kick": 2.6, "kick": 55.0, "recoil": 5.0, "flash_size": 6.0, "flash_light": 1.7,
+			"shake": 2.4, "cam_kick": 2.6, "recoil": 5.0, "flash_size": 6.0, "flash_light": 1.7,
 			"tracer_len": 7.0, "casing": 2, "gun_len": 12.0, "gun_row": 1,
 			"sfx": "spread12_shot", "sfx_count": 3, "sfx_vol": -3.0,
 		},
 		{
-			"key": "p64", "name": "P-64", "slot": Slot.SIDEARM, "kind": Kind.BULLET,
+			"key": "p64", "name": "P-83", "slot": Slot.SIDEARM, "kind": Kind.BULLET,
 			"auto": false, "cooldown": 0.20, "draw_time": 0.2,
 			"damage": 11.0, "crit_mult": 2.0, "knock": 60.0,
 			"jitter_deg": 0.35, "bloom_per_shot": 0.8, "bloom_max": 3.0, "bloom_decay": 10.0, "crouch_accuracy": 0.5,
 			"speed": 1500.0, "range_px": 208.0, "falloff_start": 160.0, "falloff_min": 0.6,
 			"n_min": 0.5, "n_max": 0.9, "heat_gain": 0.16, "heat_decay": 0.6,
-			"mag": 12, "infinite": true, "reload_time": 1.1, "reload_empty_extra": 0.3,
+			"mag": 8, "infinite": true, "reload_time": 1.1, "reload_empty_extra": 0.3,
 			"shake": 0.5, "cam_kick": 0.4, "recoil": 2.5, "flash_size": 3.0, "flash_light": 1.2,
 			"tracer_len": 9.0, "casing": 1, "eject_frac": 0.45, "gun_len": 7.0, "gun_row": 2,
 			"sfx": "p64_shot", "sfx_count": 4, "sfx_vol": -8.0,
@@ -94,7 +95,7 @@ static func _table() -> Array:
 			"n_min": 4.5, "n_max": 6.0, "heat_gain": 0.5, "heat_decay": 0.4,
 			"mag": 8, "reserve_start": 24, "reserve_max": 48, "pickup_rounds": 8,
 			"reload_time": 0.45, "reload_per_round": true, "reload_sfx": "reload_shell", "reload_sfx_count": 3,
-			"shake": 4.0, "cam_kick": 4.5, "kick": 130.0, "recoil": 7.0, "flash_size": 8.0, "flash_light": 2.0,
+			"shake": 4.0, "cam_kick": 4.5, "recoil": 7.0, "flash_size": 8.0, "flash_light": 2.0,
 			"tracer_len": 6.0, "casing": 2, "gun_len": 12.0, "gun_row": 3,
 			"sfx": "srut8_shot", "sfx_count": 3, "sfx_vol": -2.0, "sfx_cycle": "srut8_pump", "sfx_cycle_count": 2,
 		},
@@ -133,7 +134,7 @@ static func _table() -> Array:
 			"n_min": 3.0, "n_max": 3.0, "heat_gain": 0.0,
 			"mag": 6, "reserve_start": 12, "reserve_max": 24, "pickup_rounds": 6,
 			"reload_time": 0.7, "reload_per_round": true, "reload_sfx": "reload_launcher", "reload_sfx_count": 1,
-			"shake": 3.0, "cam_kick": 5.0, "kick": 120.0, "recoil": 8.0, "flash_size": 7.0, "flash_light": 1.8,
+			"shake": 3.0, "cam_kick": 5.0, "recoil": 8.0, "flash_size": 7.0, "flash_light": 1.8,
 			"tracer_color": Color(0.7, 0.75, 0.45), "tracer_len": 8.0, "casing": 0, "gun_len": 10.0, "gun_row": 6,
 			"sfx": "gniew4_shot", "sfx_count": 2, "sfx_vol": -2.0,
 		},
@@ -159,7 +160,7 @@ static func _table() -> Array:
 			"n_min": 14.0, "n_max": 14.0, "heat_gain": 0.0,
 			"mag": 5, "reserve_start": 10, "reserve_max": 20, "pickup_rounds": 5,
 			"reload_time": 2.8, "reload_empty_extra": 0.5, "reload_sfx": "reload_rail", "reload_sfx_count": 1,
-			"shake": 6.0, "cam_kick": 7.0, "kick": 170.0, "recoil": 9.0, "flash_size": 10.0, "flash_light": 2.4,
+			"shake": 6.0, "cam_kick": 7.0, "recoil": 9.0, "flash_size": 10.0, "flash_light": 2.4,
 			"flash_color": Color(0.7, 0.9, 1.0), "tracer_color": Color(0.65, 0.92, 1.0), "tracer_len": 40.0,
 			"casing": 0, "gun_len": 12.0, "gun_row": 8,
 			"sfx": "widmo1_shot", "sfx_count": 2, "sfx_vol": 0.0, "sfx_loop": "widmo1_charge",
@@ -168,7 +169,7 @@ static func _table() -> Array:
 			"key": "ciegno6", "name": "SINEW-6", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
 			"auto": false, "cooldown": 0.8, "draw_time": 0.4,
 			"damage": 45.0, "crit_mult": 2.0, "knock": 150.0, "stun": 0.8, "sticks": true,
-			"jitter_deg": 0.2, "speed": 400.0, "range_px": 300.0,
+			"jitter_deg": 0.2, "speed": 400.0, "range_px": 200.0, "gravity": 120.0,     # bełt kuszy podwodnej (~33 m/s) opada z prawdziwym g (9,8 m/s² w skali świata 3D), zasięg krótszy niż karabinu
 			"n_min": 0.08, "n_max": 0.08, "heat_gain": 0.0,
 			"mag": 1, "reserve_start": 6, "reserve_max": 12, "pickup_rounds": 3,
 			"reload_time": 1.5, "reload_empty_extra": 0.0, "reload_sfx": "reload_bolt", "reload_sfx_count": 1,

@@ -74,15 +74,15 @@ Wartości domyślne z `weapons.gd`; DPS = pełne trafienie, bez krytyków i spad
 | # | Broń | Rodzaj | Rola / pytanie, które zadaje graczowi |
 |---|------|--------|----------------------------------------|
 | 1 | **M-83** | SMG, auto | Wszechstronna. Krótka seria cicha, ciągły ogień głośny (0,6 → 1,5 Uwagi/strzał) |
-| 2 | **SPREAD-12** | rozrzut 5×7, półauto | Klasyk Contry; dobra z bliska, spadek obrażeń z dystansem |
-| 3 | **P-64** | sidearm, ∞ amunicji | Cichsza od M-83, celna, **krytyk ×2** — ratunek i broń „na cicho” |
+| 2 | **SPREAD-12** | rozrzut 5×7, półautomat na komorze AK z bębnem na 25 naboi (od 1.7.313; wcześniej model pompki przy mechanice półautomatu) | Klasyk Contry; dobra z bliska, spadek obrażeń z dystansem |
+| 3 | **P-83** (od 1.7.313; klucz techniczny `p64`) | sidearm, ∞ amunicji, magazynek 8 jak w prawdziwym P-83 Wanad (dawny P-64 miał tu 12, prawdziwy 6) | Cichsza od M-83, celna, **krytyk ×2** — ratunek i broń „na cicho” |
 | 4 | **PELLET-8** | ciężka strzelba 8×10, pompka | 80 na strzał z bliska (zabija Mimika i Skoczka jednym), odrzut, ogłuszenie 0,5 s; ładowanie po 1 naboju (przerywane strzałem); śrucina 10 mało traci na pancerzu Wołka |
 | 5 | **LR-7** | promień ciągły, przebija 2 | 60 DPS na 2 cele, zasięg 11 m i wiązka słabnie z dystansem (do 55%); **hałas rośnie z rozgrzaniem** (0,25 → 0,8 na tyk), bateria 60 kończy się w 6 s; promień **świeci** i **przyciąga ćmy** oraz Stalkera |
 | 6 | **HKM-9** | miotacz ognia | 4 m, podpala (8 HP/s), **Trzoski uciekają w panice** |
 | 7 | **WRATH-4** | granatnik po łuku (od 1.7.312 grawitacja 520 jak granat ręczny i flara, prędkość 368 — ten sam kształt toru co dawniej 280 / 300) | AoE 3 m, 80 dmg; niszczy gniazda; wybuch = +15 Uwagi; rani drużynę; **ściana zasłania** przed wybuchem (od 1.7.310, `Combat.blast_reaches`) |
 | 8 | **FALCON-6** | mikrorakiety naprowadzane (10 dmg) | Same dochodzą do celu poza osią i **wolą cele trudne do trafienia**: ćmę, skoczka, podsłuchacza |
 | 9 | **SPECTER-1** | szyna, ładowanie 1,2 s | 150 dmg przez wszystkich; **najgłośniejsza** (14 Uwagi); puszczenie przed końcem anuluje |
-| 10 | **SINEW-6** | kusza, bełt do odzysku | **Cicha** (0,08); bełt zostaje w świecie jako skrzynka z 1 nabojem |
+| 10 | **SINEW-6** | kusza, bełt do odzysku; od 1.7.313 zasięg 200 px (krótszy niż M-83) i bełt opada z prawdziwym g (120 px/s² ≈ 9,8 m/s²) | **Cicha** (0,08); bełt zostaje w świecie jako skrzynka z 1 nabojem |
 | 11 | **Maczeta** | melee | 30 dmg, cisza; **zabija śpiącego lub odwróconego plecami natychmiast** i bez hałasu |
 | 12 | **Kilof** | melee | 55 dmg, ogłusza (1,2 s), odrzut, hałas 0,8 |
 
@@ -95,8 +95,8 @@ bez spadku obrażeń z dystansu.
 | Broń | RPM | DPS | Magazynek | Pełne przeładowanie | Hałas/s (seria 12 s) | TTK Trzosek (30) | TTK Wołek (140) |
 |---|---|---|---|---|---|---|---|
 | M-83 | 545 | 72.7 | 30 | 1.80s | 12.8 | 0.41s | 1.92s |
-| SPREAD-12 | 231 | 134.6 | 24 | 2.50s | 17.4 | 0.22s | 1.04s |
-| P-64 | 300 | 55.0 | 12 | 1.40s | 3.9 | 0.55s | 2.55s |
+| SPREAD-12 | 231 | 134.6 | 25 | 2.50s | 17.4 | 0.22s | 1.04s |
+| P-83 | 300 | 55.0 | 8 | 1.40s | 3.9 | 0.55s | 2.55s |
 | PELLET-8 | 75 | 100.0 | 8 | 3.60s | 7.2 | 0.30s | 1.40s |
 | LR-7 | 600 | 60.0 | 60 | 2.60s | 6.4 | 0.50s | 2.33s |
 | HKM-9 | 600 | 30.0 | 80 | 2.60s | 3.0 | 1.00s | 4.67s |
@@ -114,13 +114,13 @@ Nazwy w HUD są ASCII (interfejs EN); GDD zostaje przy nazwach z diakrytykami.
 | Element | Realizacja |
 |---|---|
 | Rozbłysk | wielokąt-gwiazda + język ognia + jądro (bez cieniowania), światło o energii z definicji, zanikające w 55–100 ms |
-| Smuga pocisku | **od 1.7.311 broń palna strzela szybkimi kulami** (M-83 2400 px/s ≈ 200 m/s w skali świata 3D, P-64 1500, SPREAD-12 1400, PELLET-8 1300; dawniej 280–360 px/s, wolniej niż 4× bieg postaci): kula w locie to addytywna smuga 3D od ogona do jasnego czoła o długości prędkość × 0,022 s (M-83 ok. 4,3 m), nigdy dalej niż do lufy (`Projectile.is_fast` / `tracer_len_at`, `view3d.gd: _sync_projectiles`); po trafieniu, w ścianie i na końcu zasięgu ostatni odcinek dogasa 0,08 s (`Vfx.trace` → `mirror_trace`), więc kula trafiająca z bliska w pierwszej klatce też zostawia ślad. Śrucina ma cieńszą i ciemniejszą smugę. Wolne zostają rakieta FALCON-6 (z żarem), granat WRATH-4 (z zapalnikiem) i bełt SINEW-6 (z grotem) |
+| Smuga pocisku | **od 1.7.311 broń palna strzela szybkimi kulami** (M-83 2400 px/s ≈ 200 m/s w skali świata 3D, P-83 1500, SPREAD-12 1400, PELLET-8 1300; dawniej 280–360 px/s, wolniej niż 4× bieg postaci): kula w locie to addytywna smuga 3D od ogona do jasnego czoła o długości prędkość × 0,022 s (M-83 ok. 4,3 m), nigdy dalej niż do lufy (`Projectile.is_fast` / `tracer_len_at`, `view3d.gd: _sync_projectiles`); po trafieniu, w ścianie i na końcu zasięgu ostatni odcinek dogasa 0,08 s (`Vfx.trace` → `mirror_trace`), więc kula trafiająca z bliska w pierwszej klatce też zostawia ślad. Śrucina ma cieńszą i ciemniejszą smugę. Wolne zostają rakieta FALCON-6 (z żarem), granat WRATH-4 (z zapalnikiem) i bełt SINEW-6 (z grotem) |
 | Szyna / promień | halo + rdzeń + biały środek, iskry w ścianie, światło na końcu promienia |
-| Odrzut | sprite broni cofa się wzdłuż lufy (`recoil`), kamera dostaje **kierunkowe szarpnięcie** (`Feel.kick`) przeciwnie do lufy, strzelba/granatnik/szyna popychają postać |
+| Odrzut | sprite broni cofa się wzdłuż lufy (`recoil`), kamera dostaje **kierunkowe szarpnięcie** (`Feel.kick`) przeciwnie do lufy, od 1.7.313 **żadna broń nie przesuwa strzelca** (dawniej strzelby, granatnik i szyna popychały postać — prawdziwy odrzut nie przestawia stojącego człowieka); zostają szarpnięcie kamery, wznos lufy i cofnięcie ciała w pozie |
 | Rozrzut | bazowy + **bloom** rosnący z serią (M-83 do 4°), +0,8° w biegu, ×0,5–0,6 w kucaniu; śrut (od 1.7.312): każda śrucina w losowym miejscu własnego wycinka stożka ±`spread_deg` — pokrycie i kąt skrajny jak w dawnym równym wachlarzu, bez „grzebienia” |
 | Uderzenie | wg materiału: krew (krytyk = złoty błysk), iskry + rykoszet (blacha/pancerz), drzazgi (skrzynia), pył/odłamki/rozbryzg (ściana wg kafla); od 1.7.312 **ślad po kuli** (decal 3D 9 cm na gruncie i murze, bez cieczy; najstarsze ponad 160 znikają) i **osmalenie** gruntu pod wybuchem (ok. 2 m dla WRATH-4, do 24 naraz) — `view3d.gd: mark_hit / mark_scorch` |
 | Świst kul | od 1.7.312: cudza kula (kolega, bot) przelatująca do ok. 1,5 m od głowy lokalnego gracza gra `whizz` w punkcie przelotu (raz na kulę; strzelec go nie słyszy) — `projectile.gd: _near_miss` |
-| Łuski | wylatują z okna wyrzutowego: punkt na osi broni między chwytem a wylotem (`eject_frac`: karabin i strzelba 0,2, P-64 0,45), u pompki w chwili przeładowania; wcześniej zawsze 0,5 m za wylotem |
+| Łuski | wylatują z okna wyrzutowego: punkt na osi broni między chwytem a wylotem (`eject_frac`: karabin i strzelba 0,2, P-83 0,45), u pompki w chwili przeładowania; wcześniej zawsze 0,5 m za wylotem |
 | Hitmarker | biały / złoty (krytyk) / czerwony większy (zabójstwo) / szary (pancerz) + dźwięk potwierdzenia w UI |
 | Celownik | kursor systemowy ukryty; **30% mniejszy niż w 1.6** (`CROSS_SCALE` = 0,7 skaluje wszystko razem); 4 ramiona rozchodzą się z rozrzutem — **od 1.7.310 to prawdziwy stożek strzału w odległości celownika od wylotu** (`WeaponDef.cone_radius`: rozrzut + bloom + bieg, u śrutu też rozstaw śrucin; nie dalej niż zasięg lotu), wiązka i szyna mają najmniejsze kółko, **łuk ciepła lufy** (biały → czerwony), pierścień przeładowania/ładowania, czerwony X przy pustym magazynku, miganie przy niskim stanie |
 | Animacje broni | dobycie (broń „wchodzi” z dołu), przeładowanie (opadanie i powrót), ładowanie szyny (drżenie), cios (zamach przez łuk z pchnięciem) |
@@ -198,7 +198,7 @@ krytyk i pancerz prawie martwe) i zmiany tylko w danych:
 | LR-7 | bazowe przebicie 2 → 1 (trafia 2 cele; poziom 3 dokłada +1); ćmy lecą na wiązkę jak na latarkę — światło ma cenę |
 | PELLET-8 | 7 → 10 na śrucinę (80 na strzał), ogłuszenie 0,2 → 0,5 s |
 | FALCON-6 | 7 → 10 na rakietę; naprowadzanie premiuje ćmę, skoczka i podsłuchacza (`EVASIVE_KINDS`) |
-| Strefy głowy | Ślepiec, Podsłuchacz i Mimik (28% sylwetki) obok Wołka — krytyk P-64 / SINEW / M-83 ma sens |
+| Strefy głowy | Ślepiec, Podsłuchacz i Mimik (28% sylwetki) obok Wołka — krytyk P-83 / SINEW / M-83 ma sens |
 | Pancerz Wołka | −3 na trafienie kulą i wiązką (min. 40% obrażeń); ogień, wybuchy, szyna i broń biała bez zmian; trafienie osłabione ≥ 30% ma znacznik ARMOR |
 
 `--weapontest` pilnuje teraz: pancerza, stref głowy, naprowadzania na cele trudne, ćmy a wiązki, źródeł SPECTER-1 / WRATH-4 oraz
@@ -212,7 +212,7 @@ Poziom 1 to zwykle pojemność, poziom 2 statystyka, **poziom 3 to zmiana zachow
 | Broń | Poziom 1 | Poziom 2 | Poziom 3 (zmiana zachowania) |
 |---|---|---|---|
 | M-83 | +10 magazynek | +15% obrażeń, szybszy reload | Tłumik (cichszy) |
-| P-64 | +4 magazynek | +20% obrażeń | Tłumik |
+| P-83 | +4 magazynek | +20% obrażeń | Tłumik |
 | SPREAD-12 | +6 magazynek | ciaśniejszy rozrzut, +15% | **Podpalająca amunicja** (2 s) |
 | PELLET-8 | +4 magazynek | +15%, szybszy cykl | **Pociski ogłuszające** (do 1,5 s) |
 | LR-7 | +20 ładunku | +20% | Soczewka: przebija +1 cel |
@@ -224,7 +224,7 @@ Poziom 1 to zwykle pojemność, poziom 2 statystyka, **poziom 3 to zmiana zachow
 | Maczeta | +20% obrażeń | +50% łuku, +6 px zasięgu | **Executioner**: dobija wroga < 35% HP |
 | Kilof | +15%, szybszy zamach | ogłuszenie +0,6 s, odrzut | **Szeroki łuk** (+60%) i ogłuszenie +0,8 s |
 
-Cena poziomu = bazowa (60 / 120 / 220) × klasa broni, zaokrąglona do 5: P-64 i broń biała ×0,8, PELLET-8 / LR-7 / HKM-9 ×1,2,
+Cena poziomu = bazowa (60 / 120 / 220) × klasa broni, zaokrąglona do 5: P-83 i broń biała ×0,8, PELLET-8 / LR-7 / HKM-9 ×1,2,
 FALCON-6 ×1,3, WRATH-4 i SINEW-6 ×1,5, SPECTER-1 ×1,7 (M-83 i SPREAD-12 bez zmian).
 
 ## 8. Faza 3 przeglądu broni (1.7.59): nowe mechaniki

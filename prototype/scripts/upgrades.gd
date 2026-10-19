@@ -28,7 +28,7 @@ const TIERS := {
 		{"name": "Suppressor", "desc": "Quieter: noise −30%", "mods": [["n_min", "mul", 0.7], ["n_max", "mul", 0.7]]},
 	],
 	"spread12": [
-		{"name": "Shell pouch", "desc": "+6 shells per magazine, bigger reserve", "mods": [["mag", "add", 6], ["reserve_max", "add", 24]]},
+		{"name": "Extended drum", "desc": "+5 shells per drum, bigger reserve", "mods": [["mag", "add", 5], ["reserve_max", "add", 25]]},
 		{"name": "Choke", "desc": "Tighter spread (−20%), +15% damage", "mods": [["spread_deg", "mul", 0.8], ["damage", "mul", 1.15]]},
 		{"name": "Incendiary shells", "desc": "Every pellet sets the target on fire (2 s)", "mods": [["ignite", "add", 2.0]]},
 	],

@@ -231,7 +231,7 @@ const WEAPON_POSE := {
 	"m83": {"reload": "mag", "radial": 0.30, "perp": 0.11, "climb": 1.0, "body": 1.0},
 	"sokol6": {"reload": "mag", "radial": 0.31, "perp": 0.11, "climb": 1.0, "body": 1.0},
 	"p64": {"reload": "pistol", "follow": 0.8, "radial": 0.56, "perp": 0.16, "side": -0.21, "wrist": -4.0, "grip_dy": -0.04, "climb": 1.6, "body": 0.6},
-	"spread12": {"reload": "mag", "cycle": "pump", "radial": 0.29, "perp": 0.11, "climb": 1.2, "body": 1.3, "wrist": -8.0},
+	"spread12": {"reload": "mag", "radial": 0.30, "perp": 0.11, "climb": 1.2, "body": 1.3},      # od 1.7.313 półautomat na komorze AK z bębnem: chwyt pistoletowy, bez pompki
 	"srut8": {"reload": "shell", "cycle": "pump", "radial": 0.28, "perp": 0.10, "climb": 1.4, "body": 1.7, "lean": -2.0, "wrist": -8.0},
 	"lr7": {"reload": "cell", "radial": 0.30, "perp": 0.11, "climb": 0.5, "body": 0.5},
 	"hkm9": {"reload": "cell", "radial": 0.24, "perp": 0.20, "climb": 0.3, "body": 0.5, "lean": 3.0, "wrist": -8.0},
