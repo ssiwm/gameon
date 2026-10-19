@@ -8,9 +8,10 @@ extends SceneTree
 ## (5) dachy z blachy: skrzynie stojące na dachu nie dzielą go na łaty (za skrzynią dach biegnie dalej), a szopa bez ścian ma podpory najwyżej
 ##     co ROOF_SPAN kafli, od końca do końca,
 ## (6) stopy ścian: ściana `C` nad otwartym parterem dostaje filar do gruntu,
-## (7) wieże (`frame_role`): maszt to zawsze para sąsiednich kolumn od góry mapy, noga strażnicy nie jest jednocześnie pniem drzewa,
+## (7) wieże (`frame_role`): maszt to zawsze para sąsiednich kolumn od góry mapy, noga strażnicy nie jest jednocześnie pniem drzewa, a dach i podłoga wieży (`tower_slabs`) to same skrzynie `M` (dach z niebem nad sobą),
 ## (8) pomosty bez słupa, ściany i bryły obok (`deck_supports`): każda noga ma oparcie — grunt lub pomost niżej, albo strop nad pomostem,
-## (9) żebra długich hal (`interior_ribs`): stoją w kolumnach samego tła `b` (z sąsiadami) między stropem a podłogą `C`.
+## (9) żebra długich hal (`interior_ribs`): stoją w kolumnach samego tła `b` (z sąsiadami) między stropem a podłogą `C`,
+## (10) skrzynie `M` poza wieżą (`crate_blocks`) to pełne prostokąty `M` i żadna nie leży w dachu ani podłodze wieży.
 ## godot --headless --path prototype -s tools/test_structures.gd      → ma wypisać PASS
 var Level3D: GDScript
 var _frames := 0
@@ -84,8 +85,16 @@ func _check_map(id: String, rows: Array, radius: float) -> void:
 	for mc in roles["mast"]:
 		_check((roles["mast"] as Array).has(int(mc) - 1) or (roles["mast"] as Array).has(int(mc) + 1), "%s kol. %d: maszt bez drugiej kolumny" % [id, mc])
 	print("ok    %s: %d słupów, %d przy kładkach, %d pni drzew, maszt %s, nogi wieży %s" % [id, runs.size(), touching, trees, str(roles["mast"]), str(roles["tower"])])
+	var slabs: Array = Level3D.tower_slabs(rows)
+	for s in slabs:
+		for k in range(int(s["c0"]), int(s["c1"]) + 1):
+			_check(Level3D._ch(rows, k, int(s["r"])) == "M", "%s kol. %d rząd %d: płyta wieży poza skrzynią M" % [id, k, int(s["r"])])
+			if bool(s["roof"]):
+				_check(Level3D._ch(rows, k, int(s["r"]) - 1) == ".", "%s kol. %d: dach wieży bez nieba nad sobą" % [id, k])
+	_check(roles["tower"].is_empty() == slabs.is_empty(), "%s: nogi wieży bez dachu i podłogi (albo odwrotnie)" % id)
 	_check_roofs(id, rows)
 	_check_decks(id, rows)
+	_check_crates(id, rows)
 	_check_ribs(id, rows)
 
 func _check_roofs(id: String, rows: Array) -> void:
@@ -129,6 +138,19 @@ func _check_decks(id: String, rows: Array) -> void:
 			elif kind == "hang":
 				hangs += 1
 	print("ok    %s: %d pomostów bez podpór dostało %d nóg i %d wieszaków" % [id, list.size(), stilts, hangs])
+
+func _check_crates(id: String, rows: Array) -> void:
+	var tower := {}
+	for s in Level3D.tower_slabs(rows):
+		for k in range(int(s["c0"]), int(s["c1"]) + 1):
+			tower[Vector2i(k, int(s["r"]))] = true
+	var blocks: Array = Level3D.crate_blocks(rows)
+	for g in blocks:
+		for k in range(int(g["c0"]), int(g["c1"]) + 1):
+			for q in range(int(g["r0"]), int(g["r1"]) + 1):
+				_check(Level3D._ch(rows, k, q) == "M", "%s kol. %d rząd %d: skrzynia poza kaflem M" % [id, k, q])
+				_check(not tower.has(Vector2i(k, q)), "%s kol. %d rząd %d: skrzynia w dachu / podłodze wieży" % [id, k, q])
+	print("ok    %s: %d bloków skrzyń" % [id, blocks.size()])
 
 func _check_ribs(id: String, rows: Array) -> void:
 	var ribs: Array = Level3D.interior_ribs(rows)
