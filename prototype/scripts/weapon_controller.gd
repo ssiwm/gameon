@@ -162,6 +162,19 @@ func spread_extra(d: WeaponDef) -> float:
 ## Lufa nie wychodzi za ścianę: gdy między dłonią a wylotem jest przeszkoda, wylot stoi tuż przed nią
 ## (długa broń nie strzela przez cienką ścianę, gdy stoisz przy niej).
 func muzzle_pos(dir: Vector2, d: WeaponDef) -> Vector2:
+	var ht := _hand_tip(dir, d)
+	var hand: Vector2 = ht[0]
+	var tip: Vector2 = ht[1]
+	if not player.is_inside_tree():
+		return tip
+	var q := PhysicsRayQueryParameters2D.create(hand, tip, Combat.LAYER_WORLD)
+	var hit := player.get_world_2d().direct_space_state.intersect_ray(q)
+	if not hit.is_empty():
+		return hit["position"] - dir * 1.0
+	return tip
+
+## Chwyt (dłoń / nadgarstek) i wylot lufy w świecie, bez sprawdzania ścian.
+func _hand_tip(dir: Vector2, d: WeaponDef) -> Array:
 	var side := signf(dir.x) if absf(dir.x) > 0.1 else 1.0
 	var hand := player.global_position + Vector2(side, -8.0 if player.crouching else -12.0)
 	var tip := hand + dir * d.gun_len
@@ -172,13 +185,13 @@ func muzzle_pos(dir: Vector2, d: WeaponDef) -> Vector2:
 		var ap: Array = c3d.aim_points(dir, side, bool(player.get("crouching")), String(d.key))
 		hand = player.global_position + (ap[0] as Vector2)
 		tip = player.global_position + (ap[1] as Vector2)
-	if not player.is_inside_tree():
-		return tip
-	var q := PhysicsRayQueryParameters2D.create(hand, tip, Combat.LAYER_WORLD)
-	var hit := player.get_world_2d().direct_space_state.intersect_ray(q)
-	if not hit.is_empty():
-		return hit["position"] - dir * 1.0
-	return tip
+	return [hand, tip]
+
+## Okno wyrzutowe łusek: punkt na osi broni między chwytem a wylotem (`WeaponDef.eject_frac`). Wcześniej łuska wylatywała zawsze 6 px
+## (ok. 0,5 m) za wylotem — przy pistolecie długości 0,18 m to okolice barku.
+func eject_pos(dir: Vector2, d: WeaponDef) -> Vector2:
+	var ht := _hand_tip(dir, d)
+	return (ht[0] as Vector2).lerp(ht[1], d.eject_frac)
 
 # ---------------------------------------------------------------- reset / zestaw
 
@@ -513,7 +526,7 @@ func _remote_shot_fx(d: WeaponDef, muzzle: Vector2, dir: Vector2) -> void:
 func _cosmetic_fx(d: WeaponDef, muzzle: Vector2, dir: Vector2, eject_now: bool) -> void:
 	var parent: Node = player._fx_root()
 	if eject_now and d.casing > 0:
-		Vfx.casing(parent, muzzle - dir * 6.0, dir, d.casing >= 2)
+		Vfx.casing(parent, eject_pos(dir, d), dir, d.casing >= 2)
 	Vfx.smoke(parent, muzzle, dir)
 
 func _schedule_cycle(d: WeaponDef, muzzle: Vector2, dir: Vector2) -> void:
@@ -531,7 +544,7 @@ func _cycle_fx() -> void:
 		else:
 			Audio.play_variant_at(d.sfx_cycle, d.sfx_cycle_count, _cycle_muzzle, Audio.BUS_WEAPONS, d.sfx_vol - 8.0, 1.0)
 	if d.casing > 0:
-		Vfx.casing(player._fx_root(), player.global_position + Vector2(0, -9), _cycle_dir, d.casing >= 2)
+		Vfx.casing(player._fx_root(), eject_pos(_cycle_dir, d), _cycle_dir, d.casing >= 2)          # pompka: okno wyrzutowe w chwili przeładowania
 
 # ---------------------------------------------------------------- strzał: serwer i sieć
 

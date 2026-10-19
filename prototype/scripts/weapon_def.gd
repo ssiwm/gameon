@@ -103,6 +103,7 @@ var flash_color := Color(1.0, 0.82, 0.45)
 var tracer_color := Color(1.0, 0.85, 0.35)
 var tracer_len := 10.0        ## długość smugi (px)
 var casing := 1               ## 0 brak, 1 mała, 2 duża (łuska)
+var eject_frac := 0.2         ## okno wyrzutowe łuski: ułamek drogi od chwytu do wylotu (karabin i strzelba tuż przed chwytem, pistolet nad nim)
 var gun_len := 12.0           ## px od dłoni do wylotu lufy
 var gun_row := 0              ## wiersz w art/sprites/guns.png
 

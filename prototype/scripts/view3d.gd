@@ -909,15 +909,17 @@ func _make_proj(n: Node2D) -> void:
 		root.add_child(core)
 		root.set_meta("trace", [halo, core, TRACE_W_PELLET if pellet else TRACE_W])
 	elif float(d.gravity) > 0.0:
-		_sphere(root, 0.2, Vector3.ZERO, Color(0.3, 0.32, 0.2))
-		_sphere(root, 0.09, Vector3(-0.12, 0.0, 0.0), Color(1.0, 0.7, 0.3))
+		# granat 40 mm: ok. 2× naturalnej średnicy (8 cm), żeby był czytelny z kamery bocznej — wcześniej kula 40 cm; żar zapalnika z tyłu
+		_sphere(root, 0.04, Vector3.ZERO, Color(0.3, 0.32, 0.2))
+		_sphere(root, 0.028, Vector3(-0.045, 0.0, 0.0), Color(1.0, 0.7, 0.3))
 	elif n.has_method("sticks_on_hit") and n.sticks_on_hit():
 		_box(root, Vector3(maxf(tail, 0.5), 0.035, 0.035), Vector3(-maxf(tail, 0.5) * 0.5, 0.0, 0.0), Color(0.62, 0.5, 0.34))
 		_box(root, Vector3(0.3, 0.06, 0.06), Vector3(0.22, 0.0, 0.0), Color(0.85, 0.85, 0.9))
 	elif float(d.homing) > 0.0:
-		_box(root, Vector3(tail, 0.12, 0.12), Vector3(-tail * 0.5, 0.0, 0.0), Color(col.r, col.g, col.b, 0.25))
-		_box(root, Vector3(tail * 0.6, 0.06, 0.06), Vector3(-tail * 0.3, 0.0, 0.0), Color(col.r, col.g, col.b, 0.7))
-		_box(root, Vector3(0.32, 0.16, 0.16), Vector3.ZERO, Color(0.9, 0.9, 0.92))
+		# rakieta (FALCON-6): kadłub 12 cm (wcześniej 32 cm) i smuga wylotowa za nim
+		_box(root, Vector3(tail, 0.07, 0.07), Vector3(-tail * 0.5, 0.0, 0.0), Color(col.r, col.g, col.b, 0.25))
+		_box(root, Vector3(tail * 0.6, 0.035, 0.035), Vector3(-tail * 0.3, 0.0, 0.0), Color(col.r, col.g, col.b, 0.7))
+		_box(root, Vector3(0.12, 0.035, 0.035), Vector3.ZERO, Color(0.9, 0.9, 0.92))
 	else:
 		_box(root, Vector3(maxf(tail, 0.1), 0.05, 0.05), Vector3(-tail * 0.5, 0.0, 0.0), Color(col.r, col.g, col.b, 0.22))
 		_box(root, Vector3(maxf(tail * 0.5, 0.05), 0.07, 0.07), Vector3(-tail * 0.25, 0.0, 0.0), Color(col.r, col.g, col.b, 0.7))
@@ -2591,6 +2593,82 @@ func mirror_trace(a: Vector2, b: Vector2, color: Color, pellet: bool, life: floa
 	tw.tween_property(core.material_override, "albedo_color:a", 0.0, life)
 	tw.chain().tween_callback(halo.queue_free)
 	tw.tween_callback(core.queue_free)
+
+# ---------------------------------------------------------------- ślady po kulach i osmalenia (od 1.7.312)
+
+const MAX_HOLES := 160                      ## najstarsze ślady po kulach znikają ponad ten limit
+const MAX_SCORCH := 24
+const HOLE_M := 0.09                        ## średnica śladu po kuli [m]
+const MARK_Z := 0.3                         ## głębokość płaszczyzny lotu kul w scenie (jak smugi)
+var _holes: Array = []
+var _scorches: Array = []
+static var _hole_tex: Texture2D
+static var _scorch_tex: Texture2D
+
+## Tekstura śladu po kuli: ciemny otwór, poszarpany jaśniejszy pierścień odprysku, miękki brzeg.
+static func _make_mark_tex(scorch: bool) -> Texture2D:
+	var n := 64
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 87 if scorch else 7
+	var bumps: Array = []
+	for i in 16:
+		bumps.append(rng.randf_range(0.82, 1.18))
+	for y in n:
+		for x in n:
+			var v := Vector2((x + 0.5) / n - 0.5, (y + 0.5) / n - 0.5) * 2.0
+			var r := v.length()
+			var a := fposmod(v.angle() / TAU, 1.0) * 16.0
+			var j := lerpf(bumps[int(a) % 16], bumps[(int(a) + 1) % 16], a - floorf(a))
+			var rr := r / j
+			var c: Color
+			if scorch:
+				var k := clampf(1.0 - rr, 0.0, 1.0)
+				c = Color(0.02, 0.018, 0.015, clampf(pow(k, 0.45) * 1.15, 0.0, 0.95) * (0.8 + 0.2 * rng.randf()))     # sadza: gęsta w środku, postrzępiony brzeg
+			elif rr < 0.28:
+				c = Color(0.02, 0.02, 0.02, 1.0)
+			elif rr < 0.62:
+				c = Color(0.55, 0.52, 0.48, (1.0 - (rr - 0.28) / 0.34) * 0.55)
+			else:
+				c = Color(0.1, 0.09, 0.08, clampf((1.0 - rr) / 0.38, 0.0, 1.0) * 0.25)
+			img.set_pixel(x, y, c)
+	return ImageTexture.create_from_image(img)
+
+## Decal 3D w punkcie `pos` (px) na powierzchni o normalnej `normal` (2D): rzut wzdłuż −normalnej, tylko na geometrię świata.
+func _mark(pos: Vector2, normal: Vector2, size_m: float, tex: Texture2D, depth: float) -> Decal:
+	var dcl := Decal.new()
+	dcl.texture_albedo = tex
+	dcl.size = Vector3(size_m, depth, size_m)
+	dcl.cull_mask = LAYER_WORLD
+	dcl.upper_fade = 0.0
+	dcl.lower_fade = 0.0
+	var up := Vector3(normal.x, -normal.y, 0.0).normalized()
+	var side := up.cross(Vector3(0, 0, 1)).normalized()
+	dcl.basis = Basis(side, up, side.cross(up)).orthonormalized().rotated(up, randf() * TAU)
+	dcl.position = Level3D.px_to_m(pos) + Vector3(0.0, 0.0, MARK_Z)
+	_world.add_child(dcl)
+	return dcl
+
+## Wołane z `Vfx.impact`: ślad po kuli w murze, gruncie, blasze (ciecze bez śladu — Vfx tego pilnuje).
+func mark_hit(pos: Vector2, normal: Vector2, _surface: String) -> void:
+	if _hole_tex == null:
+		_hole_tex = _make_mark_tex(false)
+	_holes.append(_mark(pos, normal, HOLE_M * randf_range(0.8, 1.2), _hole_tex, 0.12))
+	while _holes.size() > MAX_HOLES:
+		var old = _holes.pop_front()
+		if is_instance_valid(old):
+			(old as Node).queue_free()
+
+## Wołane z `Vfx.explosion`: osmalenie gruntu pod wybuchem, średnica wg zasięgu fali (`radius_px`).
+func mark_scorch(pos: Vector2, radius_px: float) -> void:
+	if _scorch_tex == null:
+		_scorch_tex = _make_mark_tex(true)
+	var d := _mark(pos, Vector2.UP, clampf(radius_px * PX * 0.5, 0.6, 2.5), _scorch_tex, 0.5)        # WRATH-4 (48 px): ok. 2 m
+	_scorches.append(d)
+	while _scorches.size() > MAX_SCORCH:
+		var old = _scorches.pop_front()
+		if is_instance_valid(old):
+			(old as Node).queue_free()
 
 ## Wołane z `Vfx.casing`: łuska jako mosiężny (śrutowa: czerwony) walec 3D podążający za ciałem fizycznym 2D; rysunek 2D jest chowany.
 ## Wymiary naturalne względem broni (ta ma od 1.7.213 naturalną skalę): łuska karabinowa ok. 42 × 13 mm, śrutowa kal. 12 ok. 72 × 21 mm.

@@ -30,6 +30,8 @@ const MAX_SEGMENTS := 6             ## ile trafień (przebić, pomijanych koleg�
 const FAST_PX := 900.0              ## px/s: od tej prędkości kula w locie to smuga (view3d.gd), a koniec lotu zostawia dogasający ślad
 const TRACER_SEC := 0.022           ## s lotu, które obejmuje smuga (długość = prędkość × to; M-83 ok. 53 px ≈ 4,3 m)
 const TRACE_LIFE := 0.08            ## s dogasania śladu po trafieniu / końcu zasięgu
+const WHIZZ_PX := 18.0              ## px (ok. 1,5 m): kula przelatująca tak blisko głowy gracza świszczy mu koło ucha
+const WHIZZ_MIN_FLIGHT := 30.0      ## px lotu, poniżej których świstu nie ma (stoisz przy lufie — słychać wystrzał)
 
 var weapon := 0
 var shooter_id := 1
@@ -46,6 +48,9 @@ var _skip: Array[RID] = []
 var _target: Node2D = null
 var _light: Lights.GameLight
 var _done := false
+var _whizzed := false
+var _seg_from := Vector2.INF          ## początek odcinka lotu bieżącej klatki (świst sprawdzany też, gdy kula kończy lot w tej klatce)
+static var whizz_count := 0           ## licznik świstów (testy headless)
 var lag := 0.0                      ## s kompensacji opóźnienia (serwer, strzał klienta) — patrz lag_comp.gd
 var _comp_rids: Array[RID] = []     ## wrogowie z historią: w trakcie dogonienia pomijamy ich ciała fizyczne
 
@@ -90,8 +95,10 @@ func _physics_process(delta: float) -> void:
 	var from := global_position
 	var to := from + step
 	var travelled := step.length()
+	_seg_from = from
 	if _sweep(from, to):
 		return
+	_near_miss(from, global_position)
 	_dist += travelled
 	rotation = _vel.angle()
 	var fuse := float(_def.fuse)
@@ -270,6 +277,22 @@ func _check_origin() -> void:
 
 # ---------------------------------------------------------------- koniec lotu
 
+## Świst koło ucha (od 1.7.312): kula cudzego strzału (kolega, bot) przelatuje w odległości WHIZZ_PX od głowy lokalnego gracza.
+## Każdy peer ma jedną kopię pocisku (autorytatywną albo kosmetyczną), więc każdy słyszy świst przy własnej postaci; strzelec — nigdy.
+func _near_miss(a: Vector2, b: Vector2) -> void:
+	if _whizzed or not is_fast() or _dist + a.distance_to(b) < WHIZZ_MIN_FLIGHT:
+		return
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot or not p.is_multiplayer_authority() or int(p.player_id) == shooter_id or p.dead:
+			continue
+		var ear: Vector2 = (p as Node2D).global_position + Vector2(0.0, -16.0)
+		var c := Geometry2D.get_closest_point_to_segment(ear, a, b)
+		if c.distance_to(ear) <= WHIZZ_PX:
+			_whizzed = true
+			whizz_count += 1
+			Audio.play_variant_at("whizz", 3, c, Audio.BUS_WORLD, -8.0, 1.0, 0.12)
+		return
+
 ## Szybka kula (broń palna): w locie smuga, nie widoczny pocisk. Rakieta, bełt i granat mają własne bryły (view3d.gd `_make_proj`).
 func is_fast() -> bool:
 	return float(_def.speed) >= FAST_PX and float(_def.homing) <= 0.0 and float(_def.gravity) <= 0.0 and not bool(_def.sticks)
@@ -279,6 +302,8 @@ func tracer_len_at(at: Vector2) -> float:
 	return minf(float(_def.speed) * TRACER_SEC, at.distance_to(origin))
 
 func _finish(at: Vector2) -> void:
+	if not _done and _seg_from != Vector2.INF:
+		_near_miss(_seg_from, at)               # kula minęła ucho i w tej samej klatce trafiła w mur za graczem
 	if is_fast() and not _done:
 		# ostatni odcinek lotu dogasa: kula trafiająca w pierwszej klatce (z bliska) też zostawia widoczny tor od lufy
 		var tail := tracer_len_at(at)

@@ -273,6 +273,8 @@ static func impact(parent: Node, pos: Vector2, normal: Vector2, surface: String,
 	if parent == null or not parent.is_inside_tree():
 		return
 	var out := normal if normal.length() > 0.1 else Vector2.UP
+	if view3d != null and is_instance_valid(view3d) and not (surface in ["water", "mud", "oil"]):
+		view3d.call("mark_hit", pos, out, surface)                 # ślad po kuli w scenie 3D (ciecze go nie trzymają)
 	var now := Time.get_ticks_msec()
 	var snd := heavy or now - _impact_snd_ms > 45
 	if snd:
@@ -349,6 +351,12 @@ static func shock(parent: Node, pos: Vector2, radius: float) -> void:
 static func explosion(parent: Node, pos: Vector2, radius: float) -> void:
 	if parent == null or not parent.is_inside_tree():
 		return
+	if view3d != null and is_instance_valid(view3d) and parent is Node2D:
+		# osmalenie: grunt pod wybuchem, jeśli leży w zasięgu fali (wybuch w powietrzu nie zostawia śladu)
+		var q := PhysicsRayQueryParameters2D.create(pos + Vector2(0, -2), pos + Vector2(0, radius * 0.7), 1 | 16)
+		var g := (parent as Node2D).get_world_2d().direct_space_state.intersect_ray(q)
+		if not g.is_empty():
+			view3d.call("mark_scorch", g["position"], radius * (1.0 - (g["position"] as Vector2).distance_to(pos) / radius * 0.6))
 	var k := clampf(radius / 64.0, 0.4, 2.0)
 	Audio.play_variant_at("explosion", 2, pos, Audio.BUS_WORLD, 2.0, 1.0 / maxf(k * 0.5 + 0.55, 0.7))
 	burst(parent, pos, Color(1.0, 0.6, 0.2), int(30.0 * k), 60.0, 220.0 * k, Vector2.UP, 180.0, 200.0, 0.5, Vector2(1.5, 3.0), true)
