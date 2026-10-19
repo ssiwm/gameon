@@ -624,6 +624,69 @@ static func _build_crates(parent: Node3D, rows: Array) -> bool:
 	_multimesh(parent, mm[0], out, null)
 	return true
 
+## Żebra długich hal (kryjówka): pilaster przy ścianie tła i belka pod stropem w poprzek, co RIB_EVERY kafli — strop z betonu na 50–70 m
+## nie wisiał wtedy na niczym. Hala = ciąg tła `b` pod stropem `C` i nad podłogą `C` (wysokość ≥ RIB_MIN_H kafli, długość ≥ RIB_MIN_LEN);
+## hale ze stemplami `w` (tunel drezyny) pomijamy; żebro staje tylko tam, gdzie cała kolumna hali i jej sąsiedzi to tło (bez lamp, szybów, znaczników, słupów) — nie wchodzi w meble ani
+## w rekwizyty przy ścianie (plecy stojaków na z = −1,8 m, pilaster kończy się na RIB_Z). [{"c", "top" (pierwszy wiersz pod stropem), "bot" (wiersz podłogi)}]
+const RIB_EVERY := 8
+const RIB_MIN_H := 5
+const RIB_MIN_LEN := 20
+const RIB_Z := -1.88
+static func interior_ribs(rows: Array) -> Array:
+	var out: Array = []
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	var col_ok := func(c: int, top: int, bot: int) -> bool:
+		if _ch(rows, c, top - 1) != "C" or _ch(rows, c, bot) != "C":
+			return false
+		for q in range(top, bot):
+			if _ch(rows, c, q) != "b":
+				return false
+		return true
+	for top in range(1, nrows):
+		var c := 0
+		while c < cols:
+			var bot := top
+			while bot < nrows and _ch(rows, c, bot) == "b":
+				bot += 1
+			if _ch(rows, c, top - 1) != "C" or bot - top < RIB_MIN_H or bot >= nrows or _ch(rows, c, bot) != "C" or _ch(rows, c, top) != "b":
+				c += 1
+				continue
+			var c1 := c                                         # ciąg kolumn hali tej samej wysokości (z przerwami na znaczniki w środku)
+			while c1 + 1 < cols and _ch(rows, c1 + 1, top - 1) == "C" and _ch(rows, c1 + 1, bot) == "C" and _ch(rows, c1 + 1, top) != "C" and _ch(rows, c1 + 1, bot - 1) != "C":
+				c1 += 1
+			var propped := false                              # hala ze stemplami mapy (`w`, tunel drezyny) ma już konstrukcję
+			for kk in range(c, c1 + 1):
+				for q in range(top, bot):
+					if _ch(rows, kk, q) == "w":
+						propped = true
+			if c1 - c + 1 >= RIB_MIN_LEN and not propped:
+				var k := c + RIB_EVERY / 2
+				while k <= c1 - 2:
+					var best := -1
+					for dk in [0, 1, -1, 2, -2]:                    # najbliższa wolna kolumna (z sąsiadami) w pobliżu rytmu żeber
+						var kk: int = k + dk
+						if kk > c and kk < c1 and col_ok.call(kk, top, bot) and col_ok.call(kk - 1, top, bot) and col_ok.call(kk + 1, top, bot):
+							best = kk
+							break
+					if best >= 0:
+						out.append({"c": best, "top": top, "bot": bot})
+					k += RIB_EVERY
+			c = c1 + 1
+	return out
+
+static func _build_ribs(parent: Node3D, rows: Array, mat: Material) -> void:
+	var xf: Array = []
+	for rb in interior_ribs(rows):
+		var x := (float(int(rb["c"])) + 0.5) * T
+		var y_top := -float(int(rb["top"])) * T
+		var y_bot := -float(int(rb["bot"])) * T
+		xf.append(_span_box(Vector3(x - 0.3, y_bot, -DEPTH_BACK + 0.3), Vector3(x + 0.3, y_top, RIB_Z)))               # pilaster przy ścianie
+		xf.append(_span_box(Vector3(x - 0.25, y_top - 0.42, -DEPTH_BACK + 0.3), Vector3(x + 0.25, y_top, DEPTH_FRONT)))  # belka pod stropem
+		for sx in [-1.0, 1.0]:                                  # skosy (wuty) między pilastrem a belką
+			xf.append(_strut(Vector3(x + sx * 0.3, y_top - 1.0, (-DEPTH_BACK + 0.3 + RIB_Z) * 0.5), Vector3(x + sx * 0.75, y_top - 0.42, (-DEPTH_BACK + 0.3 + RIB_Z) * 0.5), 0.22))
+	_multimesh(parent, BoxMesh.new(), xf, mat)
+
 ## Martwe drzewo w miejscu pnia z mapy (kolumna `c`, kafle r0..r1−1): podstawa na dole ciągu, złamany wierzchołek TRUNK_OVER ponad jego górą.
 ## Odmiana, obrót i odcień z ziarna kolumny (każdy peer widzi to samo). false — brak modeli (zostaje słup).
 static func _trunk_add(trunks: Dictionary, c: int, r0: int, r1: int) -> bool:
@@ -777,6 +840,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	_build_wall_feet(parent, rows, mats["C"])
 	if not crate_cells.is_empty() and not _build_crates(parent, rows):
 		push_warning("Level3D: brak modelu skrzyni — bloki M bez geometrii")
+	_build_ribs(parent, rows, mats["C"])
 	var plb := BoxMesh.new()
 	plb.size = Vector3(T, 0.22, 1.3)
 	# kładki z modeli: poziome ciągi kafli dzielone na równe odcinki (deski: 1 kafel, krata: ok. 3 kafle), co drugi obrócony o 180° dla odmiany;
