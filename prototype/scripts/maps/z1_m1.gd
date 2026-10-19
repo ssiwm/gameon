@@ -53,6 +53,10 @@ const HINT_ZONES := {"ford": [14, 0, 37, 23], "camp": [80, 0, 97, 23], "moths": 
 const FINALE_SPAWNS := [["trzosek", 270, 22], ["trzosek", 274, 22], ["wolek", 236, 22], ["trzosek", 30, 22], ["trzosek", 33, 22], ["trzosek", 36, 22]]
 const COLLAPSE := [[258, 25, 265, 33]]
 
+## Strumień (kosmetyka, `Level3D.build_streams`): bród jest przejściem przez strumień, który wypływa z lasu w głębi i przecina płaszczyznę
+## gry — [kolumna od, kolumna do] ciągu wody na płaszczyźnie gry; tam niecka nie ma tylnego brzegu, a las i dno lasu robią miejsce korytu.
+const STREAMS := [[18, 26]]
+
 ## Tło 3D (`backdrop3d.gd`, kosmetyka): wieża przeciwpożarowa za obozem z tlącym się oknem i daleki maszt radiostacji z 1.2 nad lasem.
 const BACKDROP := [{"kind": "tower", "col": 64, "lit": true}, {"kind": "mast", "col": 215}]
 const MAP := [

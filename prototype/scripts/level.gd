@@ -142,6 +142,7 @@ var collapse_rects: Array = []
 ## FINALE_SPAWNS z danych mapy: [rodzaj, kolumna, wiersz podłogi] — śpiący wrogowie, których finał 1.1 wypuszcza na drogę powrotną („obudzony las”).
 var finale_spawns: Array = []
 var backdrop: Array = []                  ## BACKDROP z danych mapy: dalekie punkty orientacyjne tła 3D (`backdrop3d.gd`); czysta kosmetyka
+var streams: Array = []                   ## STREAMS z danych mapy: [kolumna od, kolumna do] — strumień z lasu przez ciąg wody (`Level3D.build_streams`); kosmetyka
 var _finale_on := false
 var exits_alt: Array[Vector2] = []
 var _orig_map: Array = []
@@ -230,6 +231,7 @@ func _load(id: String) -> void:
 	collapse_rects = ((m as GDScript).get_script_constant_map().get("COLLAPSE", []) as Array).duplicate()
 	finale_spawns = ((m as GDScript).get_script_constant_map().get("FINALE_SPAWNS", []) as Array).duplicate()
 	backdrop = ((m as GDScript).get_script_constant_map().get("BACKDROP", []) as Array).duplicate()
+	streams = ((m as GDScript).get_script_constant_map().get("STREAMS", []) as Array).duplicate()
 	_finale_on = false
 	_blocks.clear()
 	_wall_cells.clear()
