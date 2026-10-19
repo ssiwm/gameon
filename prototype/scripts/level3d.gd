@@ -440,12 +440,13 @@ shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx;
 uniform int kind = 0;                  // 0 błoto, 1 olej, 2 woda
 uniform float seed = 0.0;
-uniform vec4 prints[48];               // błoto: odciski stóp (view3d._sync_mud_prints) — x, z, czas powstania, kierunek ±1; „teraz” w print_now
+uniform vec4 prints[48];               // błoto: kroki przechodzących (view3d._sync_mud_prints) — x, z, czas powstania, kierunek ±1; „teraz” w print_now
 uniform float print_now = 0.0;
 varying vec2 v_w;
 //COMMON
 //SURF
-// Odcisk stopy w błocie: x = wnętrze (wgłębienie), y = obwódka wypchniętego błota; ślad znika po 35–60 s
+// Rozdeptany pas błota wzdłuż drogi przechodzących: x = rozmiękłe, mokre błoto, y = wypchnięta obwódka; znika po 35–60 s.
+// Pojedynczy odcisk stopy (~0,1 m w głąb) z bocznej kamery zajmuje ok. 1 px wysokości — widać dopiero pas szerokości ~0,5 m.
 vec2 mud_print(vec2 p) {
 	float inside = 0.0;
 	float rim = 0.0;
@@ -456,10 +457,10 @@ vec2 mud_print(vec2 p) {
 		vec2 d = p - pr.xy;
 		d.x *= pr.w;
 		float fade = 1.0 - smoothstep(35.0, 60.0, age);
-		float waist = 1.0 - 0.35 * exp(-d.x * d.x / 0.0015);              // węższe śródstopie między piętą a palcami
-		float e = length(vec2(d.x / 0.13, d.y / (0.052 * waist)));
-		inside = max(inside, (1.0 - smoothstep(0.80, 1.0, e)) * fade);
-		rim = max(rim, smoothstep(0.85, 1.0, e) * (1.0 - smoothstep(1.0, 1.35, e)) * fade);
+		float brk = 0.82 + 0.36 * vn(p * 9.0 + pr.xy);                      // poszarpany brzeg zamiast gładkiej elipsy
+		float e = length(vec2(d.x / 0.34, d.y / 0.24)) / brk;
+		inside = max(inside, (1.0 - smoothstep(0.65, 1.0, e)) * fade);
+		rim = max(rim, smoothstep(0.85, 1.0, e) * (1.0 - smoothstep(1.0, 1.3, e)) * fade);
 	}
 	return vec2(inside, rim);
 }
@@ -499,8 +500,8 @@ void fragment() {
 		vec3 mud = mix(dry, vec3(0.020, 0.015, 0.011), wetn * 0.85) * (0.80 + 0.35 * vn(p * 22.0));
 		float crust = smoothstep(0.60, 0.85, fbm(p * 5.0 + seed)) * edge;
 		vec2 fp = mud_print(p);
-		ALBEDO = mix(mud, vec3(0.072, 0.055, 0.039), crust * 0.5) * (1.0 - 0.35 * fp.x) * (1.0 + 0.25 * fp.y);
-		ROUGHNESS = mix(mix(0.86, 0.48, wetn), 0.22, fp.x);                   // woda zbiera się w odcisku: błyszczy w świetle latarki
+		ALBEDO = mix(mud, vec3(0.072, 0.055, 0.039), crust * 0.5 * (1.0 - fp.x)) * (1.0 - 0.45 * fp.x) * (1.0 + 0.25 * fp.y);
+		ROUGHNESS = mix(mix(0.86, 0.48, wetn), 0.14, fp.x);                   // woda wyciśnięta w rozdeptanym pasie: błyszczy w świetle latarki
 		NORMAL = normalize(mix(NORMAL, (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz, fp.x * 0.8));
 		SPECULAR = 0.32;
 		ALPHA = smoothstep(-0.01, 0.06, wd_f);
