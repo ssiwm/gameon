@@ -45,6 +45,7 @@ func _check_map(id: String, rows: Array, radius: float) -> void:
 	var by_col := {}
 	var touching := 0
 	var trees := 0
+	var thin := 0
 	var roles := {"mast": [], "tower": []}
 	for run in runs:
 		var c: int = run["c"]
@@ -70,7 +71,9 @@ func _check_map(id: String, rows: Array, radius: float) -> void:
 			_check(is_equal_approx(z, Level3D.POST_Z), "%s: słup bez kładki poza POST_Z (z = %.2f)" % [where, z])
 			continue
 		touching += 1
-		var front := z + radius
+		if float(run["k"]) < 1.0:
+			thin += 1
+		var front := z + radius * float(run["k"])
 		var back_edge: float = -Level3D.deck_half(deck)
 		_check(front >= back_edge - 0.005, "%s: szczelina %.2f m między słupem a pokładem „%s”" % [where, back_edge - front, deck])
 		_check(front <= back_edge + Level3D.POST_BITE + 0.005, "%s: słup wchodzi %.2f m w pokład „%s” (zasłania drogę postaci)" % [where, front - back_edge, deck])
@@ -82,7 +85,7 @@ func _check_map(id: String, rows: Array, radius: float) -> void:
 				_check(false, "%s kol. %d: słup przerwany w rzędzie %d („%s”)" % [id, c, gap_r, Level3D._ch(rows, c, gap_r)])
 	for mc in roles["mast"]:
 		_check((roles["mast"] as Array).has(int(mc) - 1) or (roles["mast"] as Array).has(int(mc) + 1), "%s kol. %d: maszt bez drugiej kolumny" % [id, mc])
-	print("ok    %s: %d słupów, %d przy kładkach, %d pni drzew, maszt %s, nogi wieży %s" % [id, runs.size(), touching, trees, str(roles["mast"]), str(roles["tower"])])
+	print("ok    %s: %d słupów, %d przy kładkach (%d cieńszych), %d pni drzew, maszt %s, nogi wieży %s" % [id, runs.size(), touching, thin, trees, str(roles["mast"]), str(roles["tower"])])
 	_check_roofs(id, rows)
 	_check_decks(id, rows)
 
