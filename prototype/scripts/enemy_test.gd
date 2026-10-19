@@ -70,7 +70,44 @@ func run(m: Node2D) -> void:
 	await _test_return_home_stuck()
 	await _test_listener()
 	await _test_wolek_boulder()
+	await _test_reed_cover()
 	_finish()
+
+# ---------------------------------------------------------------- trzcina jako kryjówka (od 1.7.297)
+
+## Kucający w trzcinie przy cieczy (`level.in_reeds`) jest widoczny z 0,3 zasięgu wzroku (CROUCH_SIGHT × REED_SIGHT), kucający poza nią z 0,6,
+## stojący — w trzcinie czy nie — z pełnego. Strefy trzcin leżą na brzegach ciągów cieczy mapy 1.3 (te same miejsca co kępy w widoku 3D).
+func _test_reed_cover() -> void:
+	var cells: Dictionary = level._reed_cells
+	check("trzcina: mapa 1.3 ma strefy trzcin przy cieczach", cells.size() >= 4, "%d komórek" % cells.size())
+	if cells.is_empty():
+		return
+	var cell: Vector2i = cells.keys()[0]
+	var reed_pos := Vector2(float(cell.x) * 16.0 + 8.0, float(cell.y) * 16.0 - 1.0)
+	var e := _spawn("trzosek", Vector2(FAR_X + 27500.0, -13000.0))
+	e.set_physics_process(false)
+	var orig := player.global_position
+	var orig_crouch: bool = player.crouching
+	player.set_physics_process(false)
+	var outside := orig
+	if level.in_reeds(outside):
+		outside = Vector2(FAR_X + 27000.0, -13000.0)
+	player.global_position = reed_pos
+	player.crouching = true
+	var m_reed: float = e._sight_mult(player)
+	var in_r: bool = player.in_reeds()
+	player.crouching = false
+	var m_stand: float = e._sight_mult(player)
+	player.global_position = outside
+	player.crouching = true
+	var m_crouch: float = e._sight_mult(player)
+	player.crouching = orig_crouch
+	player.global_position = orig
+	player.set_physics_process(true)
+	e.queue_free()
+	await get_tree().physics_frame
+	check("trzcina: kucający w trzcinie widoczny z 0,3 zasięgu (%.2f), w niej stoi: %s" % [m_reed, str(in_r)], in_r and is_equal_approx(m_reed, Enemy.CROUCH_SIGHT * Enemy.REED_SIGHT))
+	check("trzcina: stojącego nie kryje (%.2f), kucający poza nią 0,6 (%.2f)" % [m_stand, m_crouch], is_equal_approx(m_stand, 1.0) and is_equal_approx(m_crouch, Enemy.CROUCH_SIGHT))
 
 # ---------------------------------------------------------------- Podsłuchacz: pole ochronne, fala alarmu, limit krzyków (ENEMY_PLAN.md F3.8)
 
