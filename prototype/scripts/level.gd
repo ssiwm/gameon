@@ -469,7 +469,8 @@ func _row(c: int, r: int, top: bool) -> int:
 	return base + (2 if (c * 7 + r * 13) % 3 == 0 else 0)
 
 ## Dekoracje z art/props.png na wierzchach brył — deterministycznie z pozycji.
-## Indeksy jak w bake_sprites.PROPS: grass_a, grass_b, fern, rock, bones, reeds, fence, logs.
+## Indeksy jak w bake_sprites.PROPS: grass_a, grass_b, fern, rock, bones, reeds, fence, logs. Trzciny (5) nie są już losowane: przy cieczach
+## stawia je widok 3D (`Level3D.build_liquid_props`).
 func _place_deco() -> void:
 	for r in _map.size():
 		var row: String = _map[r]
@@ -490,12 +491,6 @@ func _place_deco() -> void:
 				"C":
 					if roll < 12:
 						pick = [4, 3][absi(h >> 3) % 2]
-				"~":
-					if roll < 30:
-						pick = 5
-				"m":
-					if roll < 40:
-						pick = 5
 			if pick >= 0:
 				_deco_list.append([feet, pick, (h >> 5) & 1 == 1])
 	# akcenty ręczne z danych mapy (płot, kłody…)
