@@ -12,8 +12,12 @@ const Weapons := preload("res://scripts/weapons.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Actions := preload("res://scripts/actions.gd")
 const FpArms := preload("res://scripts/range3d/fp_arms.gd")
+const FpRig := preload("res://scripts/range3d/fp_rig.gd")
+const GUN_BASIS := Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))   ## układ broni (x lufa, y góra, z prawo) → kamera (−z w przód)
 
 const FOV := 74.0
+const VM_FOV := 58.0                          ## ° — kąt kamery rąk i broni (węższy: bez rozciągania na brzegach, jak w grach FPP)
+const LAYER_VM := 2                           ## warstwa rąk i broni: rysuje je tylko kamera rąk, zawsze nad tunelem (bez wchodzenia w ławę)
 const TEX := "res://art/world3d/"
 const HIP := Vector3(0.15, -0.2, -0.3)        ## m — chwyt broni w układzie kamery (od biodra, broń poniżej i z prawej)
 const HIP_YAW := 1.5                          ## ° — broń przy biodrze lekko zwrócona do środka kadru
@@ -21,7 +25,12 @@ const ADS_GRIP_Z := -0.27                     ## m — chwyt karabinu przed okie
 const ADS_GRIP_Z_PISTOL := -0.55             ## m — pistolet w wyciągniętych rękach
 const SIGHT_CLEAR := 0.003                    ## m — linia celownicza tuż nad najwyższym punktem broni (wierzch muszki i szczerbinki);
                                               ## dokładne punkty przyrządów z gun_proc.py — etap 2
-const KICK_DECAY := 9.0                       ## 1/s — powrót broni po odrzucie
+const SWAY_LAG := 0.022                       ## s — broń zostaje za obrotem kamery (kąt = prędkość kątowa × opóźnienie)
+const SWAY_MAX := 0.07                        ## rad — najwięcej kołysania
+const SWAY_RATE := 11.0                       ## 1/s — powrót kołysania
+const REC_K := 320.0                          ## sprężyna odrzutu (sztywność, 1/s²)
+const REC_C := 30.0                           ## … tłumienie (1/s)
+const REC_IMPULSE := Vector3(0.6, 1.0, 0.25)  ## prędkość po strzale: cofnięcie (m/s), uniesienie (rad/s), skręt (± rad/s); × WEAPON_POSE body / climb
 const HOLES_MAX := 90
 const SLEEVE := Color(0.1, 0.11, 0.08)
 const GLOVE := Color(0.05, 0.045, 0.04)
@@ -29,6 +38,8 @@ const GLOVE := Color(0.05, 0.045, 0.04)
 var fp: Node                                  ## fp_mode.gd
 var _vp: SubViewport
 var _screen: TextureRect                      ## obraz SubViewportu na cały ekran (w jednostkach interfejsu)
+var _vp_vm: SubViewport                       ## ręce i broń: ten sam świat 3D, przezroczyste tło, własna kamera (VM_FOV)
+var _cam_vm: Camera3D
 var _world: Node3D
 var _cam: Camera3D
 var _vm: Node3D                               ## broń w rękach (dziecko kamery)
@@ -38,14 +49,22 @@ var _info := {}                               ## Char3D.gun_info z częściami
 var _top_y := 0.1                             ## m — najwyższy punkt modelu broni (układ broni)
 var _rear_x := -0.3                           ## m — tył broni (stopka kolby)
 var _arms: Array = []                         ## zapas bez modelu postaci: [rękaw P, rękawica P, rękaw L, rękawica L]
-var _fp_arms: Node3D                          ## ręce z modelu postaci gracza (fp_arms.gd)
+var _fp_arms: Node3D                          ## ręce z modelu postaci gracza (fp_arms.gd) — broń bez ułożonego chwytu
+var _rig: Node3D                              ## ręce FPP z zasobu z ułożonym chwytem (fp_rig.gd); broń jest wtedy jego dzieckiem
+var _gun_xf := Transform3D.IDENTITY           ## broń w układzie kamery (bieżąca klatka)
+var _rl_was := false                          ## przeładowanie w poprzedniej klatce (początek: czy z pustego)
+var _rl_empty := false
 var _pivots: Array = []                       ## zawiasy blach (Node3D)
 var _falls: Array = []                        ## 0 stoi … 1 leży (kosmetyka)
 var _board: Label3D
 var _flash: OmniLight3D
 var _flash_mesh: MeshInstance3D
 var _flash_t := 0.0
-var _kick := 0.0
+var _sway := Vector2.ZERO                     ## rad — kołysanie (odchylenie, pochylenie)
+var _last_look := Vector2.ZERO
+var _rec := Vector3.ZERO                      ## odrzut: cofnięcie (m), uniesienie (rad), skręt (rad)
+var _rec_v := Vector3.ZERO
+var _life := 0.0
 var _holes: Array = []
 var _hole_i := 0
 var _hole_mat: StandardMaterial3D
@@ -81,6 +100,19 @@ func _ready() -> void:
 	_screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_screen.texture = _vp.get_texture()
 	add_child(_screen)
+	_vp_vm = SubViewport.new()
+	_vp_vm.world_3d = _vp.find_world_3d()
+	_vp_vm.transparent_bg = true
+	_vp_vm.msaa_3d = Viewport.MSAA_4X
+	_vp_vm.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(_vp_vm)
+	var vm_screen := TextureRect.new()
+	vm_screen.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vm_screen.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	vm_screen.stretch_mode = TextureRect.STRETCH_SCALE
+	vm_screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vm_screen.texture = _vp_vm.get_texture()
+	add_child(vm_screen)
 	_fit_viewport()
 	_world = Node3D.new()
 	_world.name = "Range"
@@ -95,7 +127,15 @@ func _ready() -> void:
 	_cam.near = 0.02
 	_cam.far = 80.0
 	_cam.current = true
+	_cam.cull_mask = 0xFFFFF & ~(1 << (LAYER_VM - 1))
 	_world.add_child(_cam)
+	_cam_vm = Camera3D.new()
+	_cam_vm.fov = VM_FOV
+	_cam_vm.near = 0.1                                            # bliżej jest tylko bark (karczek kurtki) i kolba za okiem — nie zasłaniają kadru
+	_cam_vm.far = 4.0
+	_cam_vm.cull_mask = 1 << (LAYER_VM - 1)
+	_cam_vm.current = true
+	_vp_vm.add_child(_cam_vm)
 	_vm = Node3D.new()
 	_vm.name = "Viewmodel"
 	_cam.add_child(_vm)
@@ -118,6 +158,12 @@ func _ready() -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_cam.add_child(mi)
 		_arms.append(mi)
+	_rig = FpRig.new()
+	_rig.name = "FpRig"
+	_cam.add_child(_rig)
+	if not _rig.setup():
+		_rig.queue_free()
+		_rig = null
 	_fp_arms = FpArms.new()
 	_fp_arms.name = "FpArms"
 	_cam.add_child(_fp_arms)
@@ -132,6 +178,7 @@ func _ready() -> void:
 	_flash.light_color = Color(1.0, 0.75, 0.42)
 	_flash.omni_range = 7.0
 	_flash.light_energy = 0.0
+	_flash.layers = 1 | (1 << (LAYER_VM - 1))
 	_cam.add_child(_flash)
 	_flash_mesh = MeshInstance3D.new()
 	var fq := QuadMesh.new()
@@ -196,8 +243,10 @@ func _process(delta: float) -> void:
 		return
 	_fit_viewport()
 	_cam.transform = Transform3D(fp.view_basis(), fp.eye())
+	_cam_vm.global_transform = _cam.global_transform
 	_sync_gun()
 	_pose_gun(delta)
+	_vm_layers(_cam)
 	for i in _pivots.size():
 		var down: bool = fp.sim.plates[i]["down"]
 		_falls[i] = move_toward(float(_falls[i]), 1.0 if down else 0.0, delta * (7.0 if down else 2.2))
@@ -218,6 +267,7 @@ func _fit_viewport() -> void:
 	var want := Vector2i(maxi(int(px.x * rs), 64), maxi(int(px.y * rs), 36))
 	if _vp.size != want:
 		_vp.size = want
+		_vp_vm.size = want
 
 ## Model broni zgodny z trzymaną bronią (części i nacięcia gracza); przebudowa przy zmianie.
 func _sync_gun() -> void:
@@ -237,7 +287,7 @@ func _sync_gun() -> void:
 		return
 	var ids := Parts.decode(key, fit)
 	_info = Char3D.info_with(key, ids)
-	_gun = GunModel.build(key, ids, Char3D.gun_info(key)["muzzle"], notch % 16, notch / 16)
+	_gun = GunModel.build(key, ids, Char3D.gun_info(key)["muzzle"], notch % 16, notch / 16, Char3D.DIR + "fp/")   # tekstury 4K, jeśli są
 	for mi in _gun.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_vm.add_child(_gun)
@@ -253,7 +303,9 @@ func _sync_gun() -> void:
 		_top_y = maxf(_top_y, bb.end.y)
 		_rear_x = minf(_rear_x, bb.position.x)
 	# układ broni: x wzdłuż lufy, y w górę, z w prawo → kamera patrzy w −z
-	_gun.basis = Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))
+	_gun.basis = GUN_BASIS
+	if _rig != null:
+		_rig.set_weapon(key, _gun)                                 # z ułożonym chwytem broń przechodzi na rękę (gunref)
 
 ## Położenie broni w kadrze: biodro albo przyrządy, odrzut, przeładowanie i usuwanie zacięcia (proste ruchy do szpica).
 func _pose_gun(delta: float) -> void:
@@ -262,12 +314,23 @@ func _pose_gun(delta: float) -> void:
 			(a as Node3D).visible = false
 		return
 	var wc = fp.player.weapons
-	_kick = maxf(0.0, _kick - KICK_DECAY * delta * _kick - delta)
+	_life += delta
+	# kołysanie: broń zostaje za obrotem kamery i wraca sprężyście; przy przyrządach słabiej
+	var look := Vector2(float(fp.yaw), float(fp.pitch))
+	var w := (look - _last_look) / maxf(delta, 0.001)
+	_last_look = look
+	var k_ads := 1.0 - 0.65 * float(fp.ads_t)
+	var tgt := (-w * SWAY_LAG * k_ads).limit_length(SWAY_MAX)
+	_sway = _sway.lerp(tgt, 1.0 - exp(-SWAY_RATE * delta))
+	# odrzut: sprężyna z tłumieniem (cofnięcie, uniesienie, skręt)
+	_rec_v += (-REC_K * _rec - REC_C * _rec_v) * delta
+	_rec += _rec_v * delta
+	var breath := sin(_life * 1.45) * (1.0 - 0.85 * float(fp.ads_t))
 	var grip: Vector3 = _info.get("grip", Vector3.ZERO)
 	var muzzle: Vector3 = _info.get("muzzle", Vector3(0.6, 0.1, 0.0))
 	var sight := Vector3(grip.x, _top_y + SIGHT_CLEAR, 0.0)
 	var pistol := float(_info.get("length", 1.0)) < 0.45
-	var gb := _gun.basis
+	var gb := GUN_BASIS
 	var t := float(fp.ads_t)
 	t = t * t * (3.0 - 2.0 * t)
 	var hip_o := HIP - gb * grip
@@ -276,14 +339,34 @@ func _pose_gun(delta: float) -> void:
 	var rot := Basis(Vector3.UP, deg_to_rad(HIP_YAW) * (1.0 - t))
 	var dip := 0.0
 	var roll := 0.0
-	if wc.is_reloading():
+	var rl: bool = wc.is_reloading()
+	if rl and not _rl_was:
+		_rl_empty = wc.mag_of(wc.cur().id) <= 0
+	_rl_was = rl
+	var clip_rl: bool = rl and not wc.clearing and _rig != null and String(_rig.key) != ""
+	var show := 0.0                              # przeładowanie z klipem: broń uniesiona, przechylona i przybliżona — widać gniazdo magazynka
+	if rl:
 		var s := sin(clampf(wc.reload_progress(), 0.0, 1.0) * PI)
-		dip = s
-		roll = (-0.5 if wc.clearing else 0.45) * s
-	rot = rot * Basis(Vector3.FORWARD, roll) * Basis(Vector3.RIGHT, deg_to_rad(5.0) * _kick - 0.35 * dip)
-	_vm.transform = Transform3D(rot, Vector3(0.0, -0.13 * dip, 0.055 * _kick) + rot * o)
+		if clip_rl:
+			show = smoothstep(0.0, 0.25, s) * smoothstep(0.0, 0.25, s)
+			roll = -0.32 * show
+		else:
+			dip = s
+			roll = (-0.5 if wc.clearing else 0.45) * s
+	rot = Basis(Vector3.UP, _sway.x + _rec.z) * rot * Basis(Vector3.FORWARD, roll + _rec.z * 0.6) * Basis(Vector3.RIGHT, _sway.y + _rec.y - 0.35 * dip + 0.06 * show + breath * 0.004)
+	_vm.transform = Transform3D(rot, Vector3(-0.02 * show, -0.13 * dip + 0.02 * show + breath * 0.0018, _rec.x) + rot * o)
 	# rękawice na chwycie i pod łożem, rękawy do krawędzi kadru
-	var xf := _vm.transform * _gun.transform
+	var xf := _vm.transform * Transform3D(GUN_BASIS, Vector3.ZERO)
+	_gun_xf = xf
+	var rigged := _rig != null and String(_rig.key) != ""
+	if _fp_arms != null:
+		_fp_arms.visible = not rigged
+	if rigged:
+		_rig.animate(clip_rl, _rl_empty, wc.reload_progress())
+		_rig.transform = xf * _rig.gun_in_rig().affine_inverse()   # całe ręce tak, by broń stała w zadanym miejscu kadru
+		for a in _arms:
+			(a as Node3D).visible = false
+		return
 	if _fp_arms != null:
 		_fp_arms.pose(xf, String(wc.cur().key), _info, _rear_x, wc.reload_progress() if wc.is_reloading() else -1.0, bool(wc.clearing))
 		return
@@ -297,6 +380,13 @@ func _pose_gun(delta: float) -> void:
 	if not one_hand:
 		_limb(_arms[2], lh + Vector3(-0.01, -0.03, 0.03), lh + Vector3(-0.3, -0.3, 0.14))
 		_hand(_arms[3], lh, xf.basis)
+
+## Ręce, broń i błysk (dzieci kamery tunelu) tylko na warstwie kamery rąk. Nowe węzły (zmiana broni, części) — co klatkę, tanio.
+func _vm_layers(n: Node) -> void:
+	for c in n.get_children():
+		if c is VisualInstance3D and not c is Light3D:              # światło błysku zostaje dla obu kamer (oświetla tunel)
+			(c as VisualInstance3D).layers = 1 << (LAYER_VM - 1)
+		_vm_layers(c)
 
 func _limb(mi: MeshInstance3D, a: Vector3, b: Vector3) -> void:
 	mi.visible = true
@@ -324,10 +414,12 @@ func _draw_dot() -> void:
 # ---------------------------------------------------------------- zdarzenia
 
 func on_shot(d: WeaponDef, hits: Array) -> void:
-	_kick = 1.0
+	var wp: Dictionary = Char3D.WEAPON_POSE.get(String(d.key), {})
+	var kb := float(wp.get("body", 1.0)) * (0.55 if fp.braced() else 1.0)
+	_rec_v += Vector3(REC_IMPULSE.x * kb, REC_IMPULSE.y * float(wp.get("climb", 1.0)) * (0.5 if fp.braced() else 1.0), randf_range(-REC_IMPULSE.z, REC_IMPULSE.z))
 	_flash_t = 0.05 if d.suppressor <= 0.0 else 0.02
 	if _gun != null:
-		var m := _vm.transform * _gun.transform * (_info.get("muzzle", Vector3(0.6, 0.1, 0.0)) as Vector3)
+		var m := _gun_xf * (_info.get("muzzle", Vector3(0.6, 0.1, 0.0)) as Vector3)
 		_flash.position = m
 		_flash_mesh.position = m + Vector3(0.0, 0.0, -0.04)
 	for h in hits:
@@ -424,7 +516,7 @@ func _build_tunnel() -> void:
 
 func _build_lights() -> void:
 	# lampy pod stropem nad torem i jedna nad stanowiskami; cienie tylko w trzech (koszt)
-	var spots := [[0.6, 1.3, false], [-3.0, 1.0, false], [-9.0, 1.0, true], [-14.0, 1.2, true], [-20.0, 1.1, true], [-26.0, 0.7, false]]
+	var spots := [[0.9, 0.55, false], [-3.0, 1.0, false], [-9.0, 1.0, true], [-14.0, 1.2, true], [-20.0, 1.1, true], [-26.0, 0.7, false]]
 	for s in spots:
 		var z := float(s[0])
 		var sl := SpotLight3D.new()
@@ -436,6 +528,7 @@ func _build_lights() -> void:
 		sl.light_energy = 3.2 * float(s[1])
 		sl.light_color = Color(1.0, 0.88, 0.68)
 		sl.shadow_enabled = bool(s[2])
+		sl.layers = 1 | (1 << (LAYER_VM - 1))                       # światło widzą obie kamery (tunel i ręce)
 		_world.add_child(sl)
 		var lamp := _box(Vector3(0.5, 0.06, 0.18), Vector3(0.0, RangeSim.LANE_H - 0.05, z), _glow(Color(1.0, 0.9, 0.72), 2.5))
 		lamp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

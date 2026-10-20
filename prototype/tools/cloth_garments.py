@@ -2,6 +2,7 @@
 
 Uruchomienie (z korzenia repo; Blender z dodatkiem MPFB2, jak `char_mpfb.py`):
     blender -b -P prototype/tools/cloth_garments.py -- male_scav [male_medic male_hazmat | --all] [--stage=shell|sim|all] [--tex=2048]
+    blender -b -P prototype/tools/cloth_garments.py -- male_scav --only=m65 --fp [--fp-tris=36000]   # same rękawy do widoku z oczu
 
 Zamiast gotowych ubrań z paczek MakeHuman, dla każdego stroju z tabeli WARDROBE (od warstwy spodniej do wierzchniej):
 1. Ciało z tabeli OUTFITS w `char_mpfb.py` (ten sam fenotyp, A-poza MPFB, przód −Y, góra +Z, przed skalowaniem do wzrostu) i buty /
@@ -43,6 +44,8 @@ OUT = os.path.join(REPO, "art_src", "clothes")
 STAGE = arg("stage", "all")
 VOXEL = float(arg("voxel", "0.011"))        # gęstość siatki symulacji (m)
 TEX = int(arg("tex", "2048"))
+FP = "--fp" in argv                         # wersja do widoku z oczu (strzelnica FPP, fp_arms.py): same rękawy kurtki, gęsta siatka, własne UV
+FP_TRIS = int(arg("fp-tris", "36000"))      # budżet obu rękawów w wersji FPP (gra: cała kurtka ok. 5 tys.)
 
 ARMS = {"LeftArm", "LeftForeArm", "RightArm", "RightForeArm"}
 COLLIDE = ("boots", "shoes", "gloves")      # części paczek MPFB, o które opiera się tkanina (nogawki na butach, mankiety na rękawicach)
@@ -1168,6 +1171,8 @@ def build_boots(outfit, gname, base, rig, body, dom, L):
     bake_maps(low, high, look, TEX)
     for o in high:
         o.hide_render = True
+    if FP:                                                             # wersja FPP: buty tylko jako przeszkoda, plik bez zmian
+        return low
     os.makedirs(OUT, exist_ok=True)
     dst = os.path.join(OUT, "%s_%s.glb" % (outfit, gname))
     C._only(low)
@@ -1221,6 +1226,40 @@ def _labels(ob, body, dom, kind, seam_z=None):
                 new[i] = best
         lab = new
     return lab
+
+
+def mirror_sleeve(ob, body, dom, kind, seam_z=None):
+    """Prawy rękaw = odbicie lewego (ciało MPFB jest symetryczne, a w symulacji prawy mankiet potrafi podjechać do połowy przedramienia).
+    Na wersji do gry i na szczegółowej (wypiek musi widzieć ten sam rękaw)."""
+    lab = _labels(ob, body, dom, kind, seam_z)
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bm.faces.ensure_lookup_table()
+    left = [f for f in bm.faces if lab[f.index] == "sleeve_Left"]
+    right = [f for f in bm.faces if lab[f.index] == "sleeve_Right"]
+    dup = bmesh.ops.duplicate(bm, geom=left)
+    for v in [g for g in dup["geom"] if isinstance(g, bmesh.types.BMVert)]:
+        v.co.x = -v.co.x
+    bmesh.ops.reverse_faces(bm, faces=[g for g in dup["geom"] if isinstance(g, bmesh.types.BMFace)])
+    bmesh.ops.delete(bm, geom=right, context="FACES")
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    bm.to_mesh(ob.data)
+    bm.free()
+
+
+def keep_sleeves(ob, rig, body, dom, kind, seam_z=None):
+    """Wersja FPP: rękawy (elementy wykroju jak w `_labels`) i karczek — barki i góra torsu do 12 cm pod stawem barkowym, żeby
+    z oczu nie było widać otwartego końca rękawa; cała tekstura idzie na te części."""
+    lab = _labels(ob, body, dom, kind, seam_z)
+    yoke = min(P(rig, "LeftArm").z, P(rig, "RightArm").z) - 0.12
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bm.faces.ensure_lookup_table()
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if not lab[f.index].startswith("sleeve") and f.calc_center_median().z < yoke], context="FACES")
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    bm.to_mesh(ob.data)
+    bm.free()
+    print("FP sleeves", len(ob.data.polygons), "faces")
 
 
 def unwrap_pieces(ob, rig, body, dom, kind, seam_z=None):
@@ -1647,7 +1686,13 @@ def build(outfit):
         hi = _hi_copy(ob)
         high = [hi] + ([collar] if collar else []) + det
         shot(os.path.join(WORK, "%s_%s_hi.png" % (outfit, gname)), [body, *obst, *high], views=("front", "q", "back"))
-        low = make_low(ob, collar, look["low_tris"], "%s_%s" % (outfit, gname))
+        if FP:
+            low = make_low(ob, None, FP_TRIS, "%s_%s_fp" % (outfit, gname))
+            mirror_sleeve(low, body, dom, look["kind"], look["waist_z"])
+            keep_sleeves(low, rig, body, dom, look["kind"], look["waist_z"])
+            mirror_sleeve(hi, body, dom, look["kind"], look["waist_z"])
+        else:
+            low = make_low(ob, collar, look["low_tris"], "%s_%s" % (outfit, gname))
         unwrap_pieces(low, rig, body, dom, look["kind"], look["waist_z"])
         ob.hide_render = True                                          # siatka symulacji pokrywa się z wersją szczegółową (okluzja w prążki)
         bake_maps(low, high, look, TEX)
@@ -1655,7 +1700,7 @@ def build(outfit):
             o.hide_render = True
         ob.hide_render = True
         os.makedirs(OUT, exist_ok=True)
-        dst = os.path.join(OUT, "%s_%s.glb" % (outfit, gname))
+        dst = os.path.join(OUT, "%s_%s%s.glb" % (outfit, gname, "_fp" if FP else ""))
         C._only(low)
         bpy.ops.export_scene.gltf(filepath=dst, export_format="GLB", use_selection=True, export_image_format="WEBP",
                                   export_image_quality=90, export_animations=False, export_apply=True)

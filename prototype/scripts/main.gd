@@ -1110,6 +1110,12 @@ func _dev_range3d() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--rangeslot="):
 			p.weapons.select_slot(int(a.substr("--rangeslot=".length())))      # broń ze slotu N (0, 1 — długie, 2 — pistolet)
+		elif a.begins_with("--rangereload="):                  # --rangereload=S[,empty]: przeładowanie po S s (z pustego magazynka z „,empty”)
+			var rr := a.substr("--rangereload=".length()).split(",")
+			get_tree().create_timer(float(rr[0])).timeout.connect(func() -> void:
+				if rr.size() > 1 and rr[1] == "empty":
+					p.weapons.mags[p.weapons.cur().id] = 0
+				p.weapons.try_reload())
 		elif a == "--rangeads":
 			fp.dev_ads = true                                   # przyrządy bez PPM (zrzuty)
 		elif a.begins_with("--rangelook="):                    # --rangelook=YAW,PITCH (°): kierunek patrzenia

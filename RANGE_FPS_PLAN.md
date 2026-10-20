@@ -111,3 +111,18 @@ Test: `godot --headless --path prototype -- --host --rangetest --autoquit=60` (2
 | Czego nie ma | wejścia z kryjówki, zapisu rekordu, sieci (wynik tylko lokalnie), broni ciągłych i WRATH-4 (strzelają, ale bez obrazu w tunelu), łusek i dymu w 3D, opcji FOV i czułości, pada poza rozglądaniem. |
 
 **Bramka etapu 0** (ocena użytkownika): czy widok z oczu i broń wyglądają dobrze, czy podrzut i przyrządy dają sensowne strzelanie. Jeśli tak — etap 1 zaczyna się od rąk FPP.
+
+## 8. Etap 0b — ręce FPP klasy AAA (2026-10-21, 1.7.336, gałąź `feat/range-fps-arms`)
+
+Decyzje użytkownika: rękawice skórzane + rękaw M65, MPFB + nasz pipeline (bez Meshy), najpierw M-83 w pełnej jakości.
+
+| Element | Jak | Stan |
+|---|---|---|
+| Ręce | `tools/fp_arms.py` → `art/char3d/fp/fp_arms_scav.glb` (66 tys. trójkątów: rękawice 49 tys., rękawy z karczkiem 15 tys., zegarek) | zrobione; rękawice za jasne w ciepłym świetle tunelu |
+| Rękaw | `cloth_garments.py --fp` → `art_src/clothes/male_scav_m65_fp.glb` (same rękawy + karczek, własne UV 2K; prawy = odbicie lewego, bo w symulacji prawy mankiet podjeżdża) | zrobione |
+| Chwyt | `tools/fp_grip.py`: układy dłoni, IK z biegunem łokcia, podział skrętu, palce do kontaktu (BVH), klip `grip_m83` + `gunref_m83` | prawa dłoń na chwycie z palcami na powierzchni; lewa pod łożem, palce z luzem 20–25 mm |
+| Przeładowanie | klatki kluczowe lewej dłoni (IK w każdej), `reload_m83` 1,35 s i `reload_empty_m83` 1,8 s, momenty magazynka w `fp_arms_scav.json` | zrobione; ruch między klatkami to zwykła interpolacja |
+| W grze | `fp_rig.gd` (broń dzieckiem dłoni), `range_view.gd`: osobna kamera rąk 58°, kołysanie, oddech, odrzut na sprężynie, broń 4K | zrobione, 60 FPS |
+
+Do poziomu AAA brakuje jeszcze: kalibracji materiałów i światła na rękach (rękawice wyglądają na jasną skórę, rękawy przepalone ciepłym światłem),
+domknięcia lewej dłoni na łożu, płynniejszego przeładowania (więcej klatek, ruch broni w klipie), łusek i dymu w 3D, chwytów dla pozostałych broni.
