@@ -171,6 +171,8 @@ func _fill(wid: int, gun_key: String, hand: int, lock_text: String) -> void:
 	_tag.text = Codex._slot_name(d)
 	if Settings.reliability_mult() > 0.0 and not d.is_melee():
 		_tag.text += tr("  ·  CONDITION %d%%") % int(Profile.condition(String(d.key)))     # stan techniczny (etap 4a): poniżej 70 % broń się zacina
+	if Profile.mastery_level(String(d.key)) > 0:
+		_tag.text += tr("  ·  MASTERY %s") % ["0", "I", "II", "III", "IV", "V"][Profile.mastery_level(String(d.key))]     # wprawa (etap 5a)
 	_lock.text = tr("LOCKED  ·  %s") % lock_text if _locked else ""
 	_lock.visible = _locked
 	var notes: Array = Codex.WEAPON_TEXT.get(String(d.key), ["", ""])

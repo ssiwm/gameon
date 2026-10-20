@@ -86,6 +86,13 @@ const FAULT_TICK := 0.1           ## LR-7: szansa przegrzania ogniwa na tik wią
 const ARC_MULT := 5.0             ## SPECTER-1: szansa przebicia kondensatora na strzał = szansa zacięcia × to (strzałów jest mało)
 const OVERHEAT_PAUSE := 1.0       ## s — przegrzane ogniwo LR-7 stygnie
 const ARC_SHOW := 1.5             ## s — komunikat o przebiciu kondensatora
+## Wprawa (GUNSMITH_PLAN §7.3, etap 5a, od 1.7.330): trafienia i zabójstwa z danej broni dają punkty (Profile.mastery, osobno dla gracza
+## i broni), 5 stopni. Każdy stopień: −2 % czasu przeładowania, dobycia i podrzutu (narastania rozrzutu), −4 % usuwania zacięcia —
+## na piątym −10 % / −20 %. Wyszkolenie, nie supermoc; działa tylko u człowieka (boty bez wprawy).
+const MASTERY_PTS := {0: 1, 1: 2, 2: 5, 3: 1}     ## Arsenal.Confirm → punkty: HIT 1, CRIT 2, KILL 5, ARMOR 1
+const MASTERY_STEP := 0.02
+const MASTERY_CLEAR_STEP := 0.04
+const ROMAN := ["0", "I", "II", "III", "IV", "V"]
 
 signal shot(w: int)
 signal jam_started(w: int, kind: String)        ## „misfire” | „stovepipe” | „double”
@@ -171,7 +178,28 @@ var _prev_w := -1
 func _ready() -> void:
 	player = get_parent() as CharacterBody2D
 	Arsenal.rounds_granted.connect(_on_rounds_granted)
+	Arsenal.weapon_hit.connect(_on_weapon_hit)
 	reset()
+
+## Stopień wprawy gracza z bronią `w` (0..5; bot — 0).
+func mastery_of(w: int) -> int:
+	if player == null or player.is_bot or not Weapons.is_valid(w):
+		return 0
+	return Profile.mastery_level(String(Weapons.def(w).key))
+
+## Mnożnik czasów (przeładowanie, dobycie) i podrzutu z wprawy: 1 − 0,02 × stopień.
+func mastery_mult(w: int) -> float:
+	return 1.0 - MASTERY_STEP * float(mastery_of(w))
+
+## Trafienie lokalnego strzelca (Arsenal.weapon_hit): punkty wprawy dla broni, z której padł strzał; awans — komunikat.
+func _on_weapon_hit(kind: int, w: int) -> void:
+	if player == null or player.is_bot or not is_owner() or not Weapons.is_valid(w):
+		return
+	var key := String(Weapons.def(w).key)
+	var lvl := Profile.add_mastery(key, int(MASTERY_PTS.get(kind, 1)))
+	if lvl > 0:
+		Msg.post("mastery.%s" % key, Msg.Ch.TOAST, tr("%s  ·  MASTERY %s") % [String(Weapons.def(w).name), ROMAN[lvl]],
+			{"sub": tr("Reload, draw and recoil −%d%%") % int(round(MASTERY_STEP * 100.0 * float(lvl))), "style": Msg.Style.SUCCESS, "ttl": 5.0, "prio": 75})
 
 # ---------------------------------------------------------------- dostęp
 
@@ -373,7 +401,7 @@ func _start_clear(d: WeaponDef) -> void:
 	_rl_out = -1.0
 	_rl_req = false
 	_rl_pending = 0
-	_rl_total = CLEAR_TIME + (DOUBLE_FEED_EXTRA if jammed(d.id) == "double" else 0.0)
+	_rl_total = (CLEAR_TIME + (DOUBLE_FEED_EXTRA if jammed(d.id) == "double" else 0.0)) * (1.0 - MASTERY_CLEAR_STEP * float(mastery_of(d.id)))
 	_rl_left = _rl_total
 	NoiseMgr.add_noise(NOISE_CLEAR, player.global_position, "reload")
 	if is_owner():
@@ -676,7 +704,7 @@ func select_slot(i: int) -> void:
 	slot = i
 	var d := cur()
 	state = State.DRAW
-	state_t = d.draw_time
+	state_t = d.draw_time * mastery_mult(d.id)
 	cd = maxf(cd, 0.0)
 	_dry_latch = false
 	Audio.play_variant("foley_gear", 3, Audio.BUS_PLAYER, -14.0, 1.0 + 0.1 * float(i))
@@ -825,7 +853,7 @@ func _fire_shot(d: WeaponDef) -> void:
 	NoiseMgr.add_noise(d.noise(heat) * (d.burst_quiet if bursting else 1.0) * hot_can_mult(d), player.global_position, "shot:" + d.key)
 	_heat[d.id] = minf(1.0, heat + d.heat_gain * (d.burst_heat if bursting else 1.0))
 	_heat_barrel(d)
-	var kick := (d.burst_bloom if bursting else 1.0) * (BRACE_CLIMB if braced else 1.0)
+	var kick := (d.burst_bloom if bursting else 1.0) * (BRACE_CLIMB if braced else 1.0) * mastery_mult(d.id)
 	if climb_mode():
 		# podrzut: lufa idzie w górę o przewidywalną wartość, rozrzut serii nie rośnie (mysz kompensuje)
 		var g := d.bloom_per_shot * CLIMB_K * kick * (CLIMB_CROUCH if player.crouching else 1.0) * (1.0 + randf_range(-CLIMB_JITTER, CLIMB_JITTER))
@@ -1132,7 +1160,7 @@ func try_reload(auto := false) -> bool:
 	if d.reload_per_round:
 		_begin_round(d)
 	else:
-		_rl_total = d.reload_time + (d.reload_empty_extra if mag_of(d.id) <= 0 else 0.0)
+		_rl_total = (d.reload_time + (d.reload_empty_extra if mag_of(d.id) <= 0 else 0.0)) * mastery_mult(d.id)
 		_rl_left = _rl_total
 		_reload_sfx(d)
 	NoiseMgr.add_noise(NOISE_RELOAD, player.global_position, "reload")
@@ -1146,7 +1174,7 @@ func _reload_sfx(d: WeaponDef) -> void:
 		Audio.play_variant(d.reload_sfx, d.reload_sfx_count, Audio.BUS_WEAPONS, -8.0, 1.0)
 
 func _begin_round(d: WeaponDef) -> void:
-	_rl_total = d.reload_time
+	_rl_total = d.reload_time * mastery_mult(d.id)
 	_rl_left = _rl_total
 	_rl_wait = 0.0
 	_rl_req = true
@@ -1204,8 +1232,8 @@ func _mag_out(d: WeaponDef) -> void:
 	var left := mag_of(d.id) - keep
 	if left > 0 and reload_held:
 		tactical = true
-		_rl_left += TAC_EXTRA
-		_rl_total += TAC_EXTRA
+		_rl_left += TAC_EXTRA * mastery_mult(d.id)
+		_rl_total += TAC_EXTRA * mastery_mult(d.id)
 		return
 	mags[d.id] = keep
 	var n := left if (ammo_enabled and not d.infinite) else 0
@@ -1447,7 +1475,7 @@ func grant_weapon(w: int) -> void:
 	_drop(old)
 	if target == slot:
 		state = State.DRAW
-		state_t = d.draw_time
+		state_t = d.draw_time * mastery_mult(d.id)
 	Audio.play("weapon_pickup", Audio.BUS_UI, -8.0)
 	_sync_player()          # pusty magazynek nowej broni ładuje się sam po dobyciu
 

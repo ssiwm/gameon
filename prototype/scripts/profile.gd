@@ -36,6 +36,9 @@ var look := 0                                 ## wygląd (Look.code): płeć × 
 var equipped: Array = ["", ""]                ## id perków w slotach 0–1 ("" = pusty)
 var fits: Dictionary = {}                     ## klucz broni → {gniazdo: id części | "" (fabryczny)}; brak wpisu = pierwsza odblokowana część (parts.gd)
 var cond: Dictionary = {}                     ## klucz broni → stan techniczny 0..100 % (GUNSMITH_PLAN §6, od 1.7.328); brak wpisu = 100
+var mastery: Dictionary = {}                  ## klucz broni → punkty wprawy (GUNSMITH_PLAN §7.3, od 1.7.330): trafienia i zabójstwa tym graczem z tej broni
+## Progi stopni wprawy 0..5 (punkty: trafienie 1, krytyk 2, zabójstwo 5 — weapon_controller.gd). Pierwszy stopień po jednej misji, piąty po kilkunastu.
+const MASTERY_XP := [0, 60, 200, 450, 850, 1500]
 var _cond_dirty := false
 var _cond_save_t := 0.0
 const COND_SAVE_EVERY := 30.0                 ## s — stan zmienia się co strzał, więc zapis najwyżej co tyle (i przy wyjściu z gry)
@@ -218,6 +221,29 @@ func restore(key: String, amount: float) -> void:
 	_cond_dirty = true
 	changed.emit()
 
+## Punkty wprawy z bronią `key`.
+func mastery_points(key: String) -> int:
+	return int(mastery.get(key, 0))
+
+## Stopień wprawy 0..5.
+func mastery_level(key: String) -> int:
+	var p := mastery_points(key)
+	var lvl := 0
+	for i in MASTERY_XP.size():
+		if p >= int(MASTERY_XP[i]):
+			lvl = i
+	return lvl
+
+## Dolicza punkty wprawy; zwraca nowy stopień, gdy właśnie awansował, inaczej −1. Zapis jak stanu broni (co COND_SAVE_EVERY s).
+func add_mastery(key: String, n: int) -> int:
+	if n <= 0:
+		return -1
+	var before := mastery_level(key)
+	mastery[key] = mastery_points(key) + n
+	_cond_dirty = true
+	var after := mastery_level(key)
+	return after if after > before else -1
+
 ## Czyszczenie przy ławie: broń jak nowa.
 func clean(key: String) -> void:
 	cond.erase(key)
@@ -280,6 +306,7 @@ func save_to(path: String) -> void:
 	cfg.set_value("profile", "look", look)
 	cfg.set_value("profile", "fits", fits)
 	cfg.set_value("profile", "cond", cond)
+	cfg.set_value("profile", "mastery", mastery)
 	cfg.save(path)
 
 func load_from(path: String) -> void:
@@ -301,6 +328,10 @@ func load_from(path: String) -> void:
 	var cd_in := cfg.get_value("profile", "cond", {}) as Dictionary
 	for k in cd_in:
 		cond[String(k)] = clampf(float(cd_in[k]), 0.0, 100.0)
+	mastery = {}
+	var ms_in := cfg.get_value("profile", "mastery", {}) as Dictionary
+	for k in ms_in:
+		mastery[String(k)] = maxi(0, int(ms_in[k]))
 	look = int(cfg.get_value("profile", "look", Look.DEFAULT))
 	if not Look.is_unlocked(look, level()):
 		look = Look.DEFAULT
@@ -321,6 +352,7 @@ func reset_for_test() -> void:
 	equipped = ["", ""]
 	fits = {}
 	cond = {}
+	mastery = {}
 	_cond_dirty = false
 	last_mission_xp = 0
 	last_mission_rows = []

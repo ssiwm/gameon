@@ -838,3 +838,7 @@
 "Hold [%s]  Clean the %s  (+%d%%, %d s)","Trzymaj [%s]  Wyczyść: %s  (+%d%%, %d s)"
 "Cleaning the %s…","Czyszczenie: %s…"
 "Condition","Stan"
+"%s  ·  MASTERY %s","%s  ·  WPRAWA %s"
+"Reload, draw and recoil −%d%%","Przeładowanie, dobycie i podrzut −%d%%"
+"  ·  MASTERY %s  (%d / %d)","  ·  WPRAWA %s  (%d / %d)"
+"  ·  MASTERY %s","  ·  WPRAWA %s"

@@ -201,6 +201,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_two_reloads()
 	await _t_condition_jams()
 	await _t_condition_4b()
+	await _t_mastery()
 	await _t_penetration()
 	await _t_homing()
 	await _t_bolt()
@@ -2282,6 +2283,72 @@ func _t_condition_4b() -> void:
 	wc.jams.clear()
 	Profile.cond = cond0
 	Settings.reliability_idx = rel0
+	equip(Weapons.M83)
+	await _settle_player()
+
+## Wprawa, etap 5a (1.7.330, GUNSMITH_PLAN.md §7.3): punkty za trafienia (1), krytyki (2) i zabójstwa (5) z danej broni — tylko żywe cele,
+## nie skrzynie; 5 stopni (progi Profile.MASTERY_XP); każdy stopień −2 % przeładowania, dobycia i podrzutu, −4 % usuwania zacięcia.
+func _t_mastery() -> void:
+	var ms0: Dictionary = Profile.mastery.duplicate()
+	Profile.mastery = {}
+	var md := equip(Weapons.M83)
+	await _settle_player()
+	var lv_a: int = Profile.add_mastery("m83", int(Profile.MASTERY_XP[1]) - 1)
+	var lv_b: int = Profile.add_mastery("m83", 1)
+	check("wprawa: progi (%d pkt — stopień %d, +1 — awans na %d)" % [int(Profile.MASTERY_XP[1]) - 1, lv_a, lv_b], lv_a == -1 and lv_b == 1 and Profile.mastery_level("m83") == 1)
+	Profile.mastery = {}
+	# punkty z prawdziwego strzału: zabójstwo manekina z M-83, trafienie skrzyni nic nie daje
+	var dm: Node = await dummy(60.0, 1.0)
+	_shoot_line(Weapons.M83)
+	await wait(0.3)
+	var after_kill: int = Profile.mastery_points("m83")
+	free_dummies()
+	await frames(2)
+	var cr: RigidBody2D = (load("res://scripts/prop.gd") as GDScript).new()
+	cr.kind = "crate"
+	cr.position = player.global_position + Vector2(40.0, -1.0)
+	cr.freeze = true
+	get_tree().current_scene.add_child(cr)
+	await frames(3)
+	_shoot_line(Weapons.P64)
+	await wait(0.3)
+	var after_crate: int = Profile.mastery_points("p64")
+	cr.queue_free()
+	await frames(2)
+	check("wprawa: zabójstwo z M-83 = %d pkt (%d), trafienie skrzyni z P-83 — nic (%d)" % [int(Controller.MASTERY_PTS[Arsenal.Confirm.KILL]), after_kill, after_crate],
+		after_kill == int(Controller.MASTERY_PTS[Arsenal.Confirm.KILL]) and after_crate == 0)
+	# efekty piątego stopnia
+	Profile.mastery["m83"] = int(Profile.MASTERY_XP[5])
+	var mm: float = wc.mastery_mult(md.id)
+	wc.mags[md.id] = 10
+	Arsenal.set_reserve(md.id, 100)
+	wc.sim_reload_hold = true
+	wc.try_reload()
+	var rl: float = wc._rl_total
+	wc._cancel_reload()
+	wc.sim_reload_hold = false
+	wc.cool()
+	player.aim_by_mouse = false
+	wc._fire_shot(md)
+	var bl: float = wc.bloom
+	wc.cool()
+	wc.jams[md.id] = "stovepipe"
+	wc.try_reload()
+	var cl: float = wc._rl_total
+	wc._finish_reload()
+	wc.jams.clear()
+	check("wprawa V: przeładowanie ×%.2f (%.2f s), narastanie rozrzutu ×%.2f (%.2f°), usuwanie zacięcia ×%.2f (%.2f s)" % [mm, rl, mm, bl, 1.0 - 5.0 * Controller.MASTERY_CLEAR_STEP, cl],
+		absf(mm - 0.9) < 0.0001 and absf(rl - md.reload_time * 0.9) < 0.001 and absf(bl - md.bloom_per_shot * 0.9) < 0.001 and absf(cl - Controller.CLEAR_TIME * 0.8) < 0.001)
+	wc.select_slot(1)
+	await frames(1)
+	var d2: RefCounted = wc.cur()
+	var draw_other: float = wc.state_t
+	wc.select_slot(0)
+	await frames(1)
+	var draw_m83: float = wc.state_t
+	check("wprawa V: dobycie M-83 ×0,9 (%.3f s z %.3f), inna broń bez zmian (%.3f s z %.3f)" % [draw_m83, md.draw_time, draw_other, d2.draw_time],
+		draw_m83 <= md.draw_time * 0.9 + 0.001 and draw_m83 > md.draw_time * 0.9 - 0.04 and draw_other > d2.draw_time - 0.04)
+	Profile.mastery = ms0
 	equip(Weapons.M83)
 	await _settle_player()
 
