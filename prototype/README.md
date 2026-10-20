@@ -215,6 +215,10 @@ godot --headless --path . -- --host --stalkertest --autoquit=70
 # (linie [ENEMY-TEST], kod wyjścia 0 = OK, ~10 s)
 godot --headless --path . -- --host --enemytest --autoquit=150
 
+# strzelnica FPP (RANGE_FPS_PLAN.md, szpic): blachy przez kontroler broni, podrzut, amunicja ćwiczebna, oparcie przy ławie, wyjście
+# (kryjówka; linie [RANGE-TEST], kod wyjścia 0 = OK, ~25 s)
+godot --headless --path . -- --host --rangetest --autoquit=60
+
 # test wipe: wszyscy padają → restart misji po 3 s (działa też z klientem)
 godot --headless --path . -- --host --wipetest --autoquit=8
 
@@ -222,7 +226,7 @@ godot --headless --path . -- --host --wipetest --autoquit=8
 godot --headless --path . -- --host --missiontest --autoquit=9
 ```
 
-Flagi: `--mission=ID` (mapa startowa), `--maptest`, `--gentest`, `--ridetest`, `--ridehost`, `--rideclient`, `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--nightshift` (tryb Nocny Dyżur), `--shifttest`, `--stalkertest`, `--enemytest`, `--elite=RODZAJ` (dev: elita obok pierwszego Trzoska mapy, np. `--elite=kaplan`), `--sessionlog=KATALOG`, `--noclips` (postacie bez klipów animacji, same pozy z kodu), `--charset=tripo` (stare stylizowane modele postaci z Tripo zamiast realistycznych), `--shotrun` (gracz 1 biegnie w prawo podczas `--shot`), `--nohud` (dev: bez HUD-u, celownika i plakietek graczy — czyste ujęcia do zrzutów i nagrań traileru), `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--shot=PLIK.png [--shotat=KOLUMNA]` (zapis obrazu z gry), `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
+Flagi: `--mission=ID` (mapa startowa), `--maptest`, `--gentest`, `--ridetest`, `--ridehost`, `--rideclient`, `--host`, `--steam-host`, `--steam-join=ID`, `--difficulty=easy|normal|hard`, `--nightshift` (tryb Nocny Dyżur), `--shifttest`, `--stalkertest`, `--enemytest`, `--rangetest`, `--range3d` (szpic strzelnicy FPP: gracz od razu w tunelu; `--rangeads` przyrządy bez PPM, `--rangelook=YAW,PITCH` kierunek patrzenia w °, `--rangefire=S` spust przez S s od 1 s — do zrzutów), `--elite=RODZAJ` (dev: elita obok pierwszego Trzoska mapy, np. `--elite=kaplan`), `--sessionlog=KATALOG`, `--noclips` (postacie bez klipów animacji, same pozy z kodu), `--charset=tripo` (stare stylizowane modele postaci z Tripo zamiast realistycznych), `--shotrun` (gracz 1 biegnie w prawo podczas `--shot`), `--nohud` (dev: bez HUD-u, celownika i plakietek graczy — czyste ujęcia do zrzutów i nagrań traileru), `--join=IP`, `--port=N` (domyślnie 8910; np. testy przy otwartym oknie gry), `--autoquit=N`, `--shot=PLIK.png [--shotat=KOLUMNA]` (zapis obrazu z gry), `--stealthtest[=N]`, `--wipetest[=OPÓŹNIENIE]`, `--missiontest`, `--weapontest`, `--weaptestnet`, `--weaptestclient`.
 
 **Renderer:** Forward+ (`project.godot`); bez Vulkana / D3D12 silnik wraca do OpenGL, a `--rendering-driver opengl3` wymusza tryb zgodności (zrzuty pod xvfb). W trybie zgodności widok 3D działa bez SSAO, SSIL i mgły wolumetrycznej.
 

@@ -5,6 +5,8 @@ Co-op horror run-and-gun (retro Contra), Godot **4.7.2**, GDScript, symulacja 2D
 ## Zasady
 
 - **Tylko 3D.** Wszystko, co widać w świecie gry, robimy w 3D: modele, światła, cząsteczki, ogień, dym, krew, pociski, efekty. Nie dodawaj nowych elementów rysowanych w 2D (`_draw`, `Sprite2D`, `CPUParticles2D`, `PointLight2D`) nałożonych na scenę 3D; istniejące zastępuj odpowiednikami 3D, gdy ich dotykasz. Wyjątek: interfejs (HUD, menu, celownik, etykiety i paski nad postaciami). Symulacja (fizyka, AI, sieć) zostaje 2D.
+  Jedyny wyjątek od symulacji 2D: strzelnica FPP (`scripts/range3d/`, `RANGE_FPS_PLAN.md`) — tunel i cele liczone analitycznie (promień kontra
+  proste bryły), bez fizyki 3D; broń strzela tym samym `weapon_controller.gd` co na misji (`range_sink`).
 - Komentarze i teksty projektowe po polsku; identyfikatory po angielsku; doc-komentarze `##`.
 - Wiedza o Godocie 4.7 i konwencje kodu: skill `godot`. Blender (headless, sprite'y): skill `blender`.
 - Hook `.claude/hooks/gd-check.sh` po edycji `.gd` uruchamia projekt headless i ostrzega o błędach skryptów — traktuj ostrzeżenie poważnie.
@@ -33,6 +35,7 @@ godot --headless --path prototype -s tools/test_proportions.gd  # hitboxy kontra
 godot --headless --path prototype -s tools/test_structures.gd   # słupy widoku 3D: ciągłość przez kładki i znaczniki, podstawa, styk z pokładem, ma wypisać PASS
 godot --headless --path prototype -s tools/test_messages.gd     # arbiter komunikatów (priorytet, duplikaty, czas życia, toasty, dziennik), ma wypisać PASS
 godot --headless --path prototype -s tools/test_note_contrast.gd # kontrast i jasność papieru notatek (ciemna paleta po zmroku), ma wypisać PASS
+godot --headless --path prototype -- --host --rangetest --autoquit=60   # strzelnica FPP: blachy, podrzut, amunicja ćwiczebna, oparcie, wyjście (~25 s), ma wypisać PASS
 prototype/tools/test_weapons.sh                                 # bronie + sieć (~3 min)
 ```
 

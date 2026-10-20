@@ -43,6 +43,10 @@ jobs:
         run: |
           godot --headless --path prototype -- --host --stalkertest --autoquit=70 2>&1 | tee stalkertest.log
           grep -a "\[STALKER-TEST\] ==== PASS" stalkertest.log
+      - name: Strzelnica FPP (--rangetest)
+        run: |
+          godot --headless --path prototype -- --host --rangetest --autoquit=60 2>&1 | tee rangetest.log
+          grep -a "\[RANGE-TEST\] ==== PASS" rangetest.log
       - name: Wrogowie i hałas (--enemytest)
         run: |
           godot --headless --path prototype -- --host --enemytest --autoquit=150 2>&1 | tee enemytest.log

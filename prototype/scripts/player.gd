@@ -140,6 +140,7 @@ const MOUSE_AIM_MOVE := 3.0           ## px ruchu myszy w jednym zdarzeniu, od k
 const MOUSE_AIM_MIN := 6.0            ## px: kursor bliżej dłoni nie zmienia kierunku
 var _crouch_latched := false          ## ustawienie „Crouch: TOGGLE": skradanie włączone do kolejnego naciśnięcia
 var weapons: WeaponController
+var fp: Node = null                   ## lokalnie: strzelnica FPP (scripts/range3d/fp_mode.gd) — postać stoi, gracz patrzy z oczu w tunelu
 var view: WeaponView
 ## Postęp podnoszenia widoczny TYLKO lokalnie u podnoszącego (rysowany nad leżącym).
 var revive_progress := 0.0
@@ -659,7 +660,28 @@ func _physics_process(delta: float) -> void:
 		_bot_brain(delta)
 		return
 
+	if fp != null:
+		_range_brain(delta)
+		return
 	_local_brain(delta)
+
+## Strzelnica FPP: postać stoi w miejscu, celuje tam, gdzie patrzy kamera (pochylenie), broń działa jak zwykle (podrzut, przeładowania,
+## zacięcia); ruch, skok i celowanie 2D należą do fp_mode.gd.
+func _range_brain(delta: float) -> void:
+	fp.tick(delta)
+	if fp == null:
+		return
+	is_reviving = false
+	crouching = false
+	aim_by_mouse = true                                      # podrzut jak przy myszy (ściąganie lufy), także z padem
+	aim_dir = Vector2.RIGHT.rotated(-float(fp.pitch))
+	weapons.tick_local(delta, false)
+	_run_vx = 0.0
+	_kick = 0.0
+	velocity.x = 0.0
+	if not is_on_floor():
+		velocity.y = minf(velocity.y + GRAVITY * delta, MAX_FALL)
+	move_and_slide()
 
 # ---------------------------------------------------------------- local input
 
