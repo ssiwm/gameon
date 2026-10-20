@@ -21,6 +21,7 @@ const Vfx := preload("res://scripts/vfx.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Projectile := preload("res://scripts/projectile.gd")
 const Ammo := preload("res://scripts/ammo.gd")
+const Parts := preload("res://scripts/parts.gd")
 
 enum State { READY, DRAW, RELOAD, CHARGE, MELEE }
 
@@ -72,6 +73,7 @@ var sim_fire := false
 var sim_press := false
 ## Licznik strzałów przyjętych przez serwer (test limitu tempa).
 var srv_shots := 0
+var srv_last_build := -1          ## kod `build` ostatniego strzału przyjętego przez serwer od tego gracza (po sanityzacji części) — test sieci
 
 var _heat: Dictionary = {}
 var _buf_t := 0.0
@@ -102,10 +104,19 @@ func _ready() -> void:
 
 # ---------------------------------------------------------------- dostęp
 
-## Trzymana broń z typem naboju, który jest w magazynku (ulepszenia + amunicja).
+## Trzymana broń: zamontowane części gracza i typ naboju w magazynku (Weapons.def_build).
 func cur() -> WeaponDef:
-	var w: int = loadout[slot]
-	return Weapons.def_ammo(w, ammo_of(w))
+	return def_of(loadout[slot])
+
+## Broń `w` tego gracza (części + nabój w magazynku).
+func def_of(w: int) -> WeaponDef:
+	return Weapons.def_build(w, Weapons.build_of(ammo_of(w), fit_of(w)))
+
+## Kod części broni `w` tego gracza (player.fits — replikowane od właściciela; boty i brak wpisu = fabryczna).
+func fit_of(w: int) -> int:
+	if player == null or player.is_bot or w < 0 or w >= player.fits.size():
+		return 0
+	return int(player.fits[w])
 
 ## Typ naboju w magazynku broni `w` (0 = zwykły).
 func ammo_of(w: int) -> int:
@@ -154,7 +165,7 @@ func toggle_fire_mode() -> void:
 	fire_mode_changed.emit(d.id, bool(burst_on[d.id]))
 
 func def_of_slot(i: int) -> WeaponDef:
-	return Weapons.def_ammo(loadout[i], ammo_of(loadout[i]))
+	return def_of(loadout[i])
 
 func mag_of(w: int) -> int:
 	return int(mags.get(w, 0))
@@ -247,7 +258,7 @@ func reset() -> void:
 	loaded.clear()
 	want_ammo.clear()
 	for w in loadout:
-		mags[w] = Weapons.def(w).mag
+		mags[w] = def_of(w).mag
 	_heat.clear()
 	bloom = 0.0
 	recoil = 0.0
@@ -520,10 +531,10 @@ func _fire_shot(d: WeaponDef) -> void:
 		state = State.READY
 	_own_shot_fx(d, muzzle, dir)
 	if NoiseMgr.is_server():
-		_server_fire(muzzle, dir, d.id, seed, extra, player.player_id, true, 0.0, d.ammo)
+		_server_fire(muzzle, dir, d.id, seed, extra, player.player_id, true, 0.0, d.build)
 	else:
 		_predict(d, muzzle, dir, seed, extra)
-		_fire_request.rpc_id(1, muzzle, dir, d.id, seed, extra, d.ammo)
+		_fire_request.rpc_id(1, muzzle, dir, d.id, seed, extra, d.build)
 	shot.emit(d.id)
 	if d.sfx_cycle != "":
 		_schedule_cycle(d, muzzle, dir)
@@ -605,17 +616,20 @@ func _spawn_projectiles(d: WeaponDef, muzzle: Vector2, dir: Vector2, seed: int, 
 	var scene := get_tree().current_scene
 	for dd in Weapons.pellet_dirs(d, dir, seed, extra):
 		var p := Projectile.new()
-		p.launch(d.id, muzzle, dd, shooter, auth, lag, d.ammo)
+		p.launch(d.id, muzzle, dd, shooter, auth, lag, d.build)
 		scene.add_child(p)
 
 ## Serwer: waliduje (tempo, wylot) i wykonuje strzał; resztę peerów informuje o kosmetyce.
 @rpc("any_peer", "call_remote", "reliable")
-func _fire_request(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, ammo: int) -> void:
+func _fire_request(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, build: int) -> void:
 	if not NoiseMgr.is_server() or player == null or player.dead:
 		return
 	if multiplayer.get_remote_sender_id() != player.player_id or not Weapons.is_valid(w):
 		return
-	var d := Weapons.def_ammo(w, ammo)              # nieznany typ kalibru = nabój zwykły (Weapons.def_ammo)
+	# części tylko odblokowane przez drużynę (reszta = fabryczne), nieznany typ naboju = zwykły (Weapons.def_build)
+	var fit := Parts.sanitize(String(Weapons.def(w).key), Weapons.fit_of_build(build), Scrap.parts)
+	var d := Weapons.def_build(w, Weapons.build_of(Weapons.ammo_of_build(build), fit))
+	srv_last_build = d.build
 	if d.is_melee() or d.is_continuous():
 		return
 	# tempo: token bucket — lag może skumulować kilka strzałów, ale nie więcej niż RATE_CAP
@@ -630,11 +644,11 @@ func _fire_request(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: floa
 		muzzle = expect
 	# kompensacja opóźnienia: serwer sam mierzy RTT strzelca (lag_comp.gd), klient niczego nie deklaruje
 	var lag := LagComp.rewind_for(player.player_id)
-	_server_fire(muzzle, dir.normalized(), w, seed, clampf(extra, 0.0, 12.0), player.player_id, false, lag, d.ammo)
+	_server_fire(muzzle, dir.normalized(), w, seed, clampf(extra, 0.0, 12.0), player.player_id, false, lag, d.build)
 
-## Autorytatywny strzał (serwer). `own_fx_done` = strzelec (host) już zagrał swoje efekty. `ammo` = typ naboju (ammo.gd).
-func _server_fire(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, shooter: int, own_fx_done: bool, lag := 0.0, ammo := 0) -> void:
-	var d := Weapons.def_ammo(w, ammo)
+## Autorytatywny strzał (serwer). `own_fx_done` = strzelec (host) już zagrał swoje efekty. `build` = części i typ naboju (Weapons.build_of).
+func _server_fire(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, shooter: int, own_fx_done: bool, lag := 0.0, build := 0) -> void:
+	var d := Weapons.def_build(w, build)
 	srv_shots += 1
 	Lights.add_flash(muzzle, d.flash_light, player)
 	match d.kind:
@@ -647,14 +661,14 @@ func _server_fire(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float
 	if NoiseMgr.has_network():
 		for peer in multiplayer.get_peers():
 			if peer != shooter:
-				_fire_remote.rpc_id(peer, muzzle, dir, w, seed, extra, shooter, d.ammo)
+				_fire_remote.rpc_id(peer, muzzle, dir, w, seed, extra, shooter, d.build)
 
 ## Kosmetyka cudzego strzału u klientów (serwer wywołuje na węźle należącym do KLIENTA).
 @rpc("any_peer", "call_remote", "unreliable")
-func _fire_remote(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, shooter: int, ammo: int) -> void:
+func _fire_remote(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, shooter: int, build: int) -> void:
 	if NoiseMgr.is_server() or multiplayer.get_remote_sender_id() != 1 or not Weapons.is_valid(w):
 		return
-	var d := Weapons.def_ammo(w, ammo)
+	var d := Weapons.def_build(w, build)
 	if d.kind != WeaponDef.Kind.RAIL:
 		_spawn_projectiles(d, muzzle, dir, seed, extra, shooter, false)
 	_remote_shot_fx(d, muzzle, dir)
@@ -666,7 +680,7 @@ func _server_rail(d: WeaponDef, muzzle: Vector2, dir: Vector2, shooter: int, lag
 	# lag > 0: trafiamy wrogów w pozycjach sprzed `lag` s (szyna jest natychmiastowa — jeden test w przeszłość)
 	var tr := Combat.trace(space, muzzle, dir, d.range_px, int(d.pierce), d.wall_pierce, [player.get_rid()], LagComp.now() - lag if lag > 0.0 else -1.0)
 	for h in tr["hits"]:
-		var info := Combat.make_info(d.id, d.damage, h["pos"], dir, shooter, "rail")
+		var info := Combat.make_info(d.id, d.damage, h["pos"], dir, shooter, "rail", d.build)
 		info["heavy"] = true
 		Combat.apply_and_report(h["collider"], info)
 	_rail_visual(d, muzzle, tr["end"], tr)
@@ -751,7 +765,7 @@ func _drop_fire_patch(d: WeaponDef, space: PhysicsDirectSpaceState2D, origin: Ve
 	lvl.spawn_fire_patch((floor_hit["position"] as Vector2) + Vector2(0.0, -1.0), d.id, player.player_id)
 
 func _continuous_hit(d: WeaponDef, target: Node, pos: Vector2, dir: Vector2, type: String, report: bool, amount := -1.0) -> void:
-	var info := Combat.make_info(d.id, d.damage if amount < 0.0 else amount, pos, dir, player.player_id, type)
+	var info := Combat.make_info(d.id, d.damage if amount < 0.0 else amount, pos, dir, player.player_id, type, d.build)
 	info["heavy"] = false
 	var res := Combat.apply(target, info)
 	if report:
@@ -861,7 +875,7 @@ func _cancel_reload() -> void:
 func _on_rounds_granted(w: int, n: int) -> void:
 	if player == null or not is_owner() or player.is_bot:
 		return
-	var d := Weapons.def(w)
+	var d := def_of(w)
 	var reloading := state == State.RELOAD and cur().id == w
 	if reloading and not d.reload_per_round:
 		mags[w] = mini(_rl_cap, mag_of(w) + n)
@@ -886,7 +900,7 @@ func _on_rounds_granted(w: int, n: int) -> void:
 func try_melee() -> void:
 	if player.dead or state == State.MELEE:
 		return
-	var md := Weapons.def(melee_id)
+	var md := def_of(melee_id)
 	_cancel_actions()
 	state = State.MELEE
 	melee_total = md.cooldown
@@ -918,12 +932,12 @@ func _melee_request(origin: Vector2, dir: Vector2, w: int) -> void:
 	_server_melee(origin, dir.normalized(), w, player.player_id)
 
 func _server_melee(origin: Vector2, dir: Vector2, w: int, shooter: int) -> void:
-	var d := Weapons.def(w)
+	var d := def_of(w)
 	var space := player.get_world_2d().direct_space_state
 	var hit_any := false
 	for t in Combat.in_cone(get_tree(), space, origin, dir, d.reach, d.arc_deg):
 		var c := Combat.center_of(t)
-		var info := Combat.make_info(w, d.damage, c, dir, shooter, "melee")
+		var info := Combat.make_info(w, d.damage, c, dir, shooter, "melee", d.build)
 		info["backstab"] = d.key == "maczeta"
 		info["heavy"] = d.damage >= 50.0
 		var res := Combat.apply(t, info)

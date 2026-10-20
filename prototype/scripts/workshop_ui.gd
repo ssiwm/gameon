@@ -9,7 +9,7 @@ extends Control
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Codex := preload("res://scripts/codex.gd")
-const Upgrades := preload("res://scripts/upgrades.gd")
+const Parts := preload("res://scripts/parts.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const ItemIcon := preload("res://scripts/item_icon.gd")
 const PerkIcon := preload("res://scripts/perk_icon.gd")
@@ -51,13 +51,14 @@ class Coin extends Control:
 
 ## Trzy kwadraciki poziomu ulepszeń.
 class TierBar extends Control:
-	var level := 0
+	var level := 0                ## odblokowane części broni
+	var total := 3                ## wszystkie części broni (parts.gd)
 	var maxed := false
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		custom_minimum_size = Vector2(26, 7)
 	func _draw() -> void:
-		for i in 3:
+		for i in total:
 			var r := Rect2(float(i) * 9.0, 0, 7, 7)
 			if i < level:
 				var fc := Color(0.45, 1.0, 0.55) if maxed else Color(1.0, 0.72, 0.28)
@@ -287,6 +288,7 @@ var _p_stats: GridContainer
 var _p_text: Label
 var _p_action: Button
 var _sel := 0
+var _opt := 0                         ## kursor części w szczegółach broni (indeks w `_options`): klawisze 1 / 2 albo kliknięcie wiersza
 var _prev_mouse := Input.MOUSE_MODE_VISIBLE
 var _card: PanelContainer
 var _wallet: Label
@@ -370,6 +372,7 @@ func _ready() -> void:
 	Scrap.changed.connect(_refresh)
 	Scrap.purchase_result.connect(_on_result)
 	Scrap.supply_result.connect(_on_supply_result)
+	Scrap.part_result.connect(_on_part_result)
 	Profile.changed.connect(_refresh)
 	Arsenal.stock_changed.connect(_refresh)
 
@@ -915,6 +918,7 @@ func open() -> void:
 	_msg.text = ""
 	_hint.text = _controls_hint()
 	_sel = 0
+	_opt = _first_part_opt()
 	_page = 0
 	Settings.block_game_input(true)
 	_prev_mouse = Input.mouse_mode
@@ -958,8 +962,8 @@ func _exit_tree() -> void:
 func _controls_hint() -> String:
 	var pad := Actions.pad_mode
 	var nav := "D-PAD" if pad else Actions.cluster(["menu_up", "menu_left", "menu_down", "menu_right"]).to_upper()
-	return tr("%s select   ·   %s buy / upgrade / equip   ·   %s arms / supplies / perks / look   ·   %s close   ·   or click") % [
-		nav, _menu_key("menu_accept", pad), _menu_key("menu_tab", pad), _menu_key("menu_back", pad)]
+	return tr("%s select   ·   %s / %s part   ·   %s buy / fit / equip   ·   %s arms / supplies / perks / look   ·   %s close   ·   or click") % [
+		nav, _menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_tab", pad), _menu_key("menu_back", pad)]
 
 func _menu_key(id: String, pad: bool) -> String:
 	return Actions.text(id, true, Actions.DEV_PAD if pad else Actions.DEV_KEY).to_upper()
@@ -1019,33 +1023,81 @@ func _input(event: InputEvent) -> void:
 			close()
 	elif step != 0:
 		_move(step)
+	elif event.is_action_pressed("menu_slot_1") or event.is_action_pressed("menu_slot_2"):
+		_move_opt(-1 if event.is_action_pressed("menu_slot_1") else 1)
 	elif accept:
 		_act()
 	elif back:
 		close()
 	get_viewport().set_input_as_handled()
 
+## Opcje części broni `w` w kolejności gniazd: [{slot, id}] — id "" to element fabryczny gniazda.
+func _options(w: int) -> Array:
+	var key := String(Weapons.def(w).key)
+	var out: Array = []
+	for s in Parts.slots_of(key):
+		out.append({"slot": s, "id": ""})
+		for p in Parts.in_slot(key, String(s)):
+			out.append({"slot": s, "id": String(p["id"])})
+	return out
+
+func _move_opt(d: int) -> void:
+	var n := _options(int(LIST[_sel])).size()
+	if n == 0:
+		return
+	_opt = posmod(_opt + d, n)
+	Audio.play("ui_click", Audio.BUS_UI, -14.0)
+	_refresh()
+
+func _pick_opt(i: int) -> void:
+	if i != _opt:
+		Audio.play("ui_click", Audio.BUS_UI, -14.0)
+	_opt = i
+	_refresh()
+
 func _move(d: int) -> void:
 	var n := _sel + d
 	if n < 0 or n >= LIST.size():
 		return
 	_sel = n
+	_opt = _first_part_opt()
 	Audio.play("ui_click", Audio.BUS_UI, -14.0)
 	_refresh()
 
 func _select(i: int) -> void:
 	if i != _sel:
 		Audio.play("ui_click", Audio.BUS_UI, -14.0)
-	_sel = i
+		_sel = i
+		_opt = _first_part_opt()
 	_refresh()
 
-## Akcja na wybranej broni: kup (zablokowana) albo kolejny poziom (odblokowana).
+## Kursor na pierwszej części (nie na elemencie fabrycznym) — po wyborze broni widać od razu, co można kupić.
+func _first_part_opt() -> int:
+	var ops := _options(int(LIST[_sel]))
+	for i in ops.size():
+		if String(ops[i]["id"]) != "":
+			return i
+	return 0
+
+## Akcja na wybranej broni: kup broń (zablokowana), a odblokowanej — kup część pod kursorem, zamontuj ją albo wróć do fabrycznej.
 func _act() -> void:
 	var w: int = LIST[_sel]
-	if Scrap.is_unlocked(w):
-		Scrap.request_upgrade(w)
-	else:
+	if not Scrap.is_unlocked(w):
 		Scrap.request_buy(w)
+		return
+	var ops := _options(w)
+	if ops.is_empty():
+		return
+	var o: Dictionary = ops[clampi(_opt, 0, ops.size() - 1)]
+	var key := String(Weapons.def(w).key)
+	var id := String(o["id"])
+	if id != "" and not Scrap.has_part(id):
+		Scrap.request_part(id)
+	elif Profile.fitted(key, String(o["slot"])) != id:
+		Profile.set_fit(key, String(o["slot"]), id)
+		Audio.play("ui_confirm", Audio.BUS_UI, -6.0)
+		_say(tr("Fitted: %s.") % (tr(Parts.get_part(id)["name"]) if id != "" else tr("factory part")), UiTheme.OK)
+		_refresh()
 
 func _on_result(w: int, ok: bool, reason: String) -> void:
 	if not _open:
@@ -1063,15 +1115,24 @@ func _on_result(w: int, ok: bool, reason: String) -> void:
 			_say("Not available yet — a later zone.", UiTheme.BP_MUTED)
 		"reward":
 			_say("Defeat the Leech to unlock it.", UiTheme.BP_MUTED)
-		"up_ok":
-			_say(tr("%s upgraded to tier %d.") % [name, Scrap.level_of(w)], UiTheme.OK)
+		_:
+			_say("Cannot do that.", UiTheme.DANGER)
+	_refresh()
+
+func _on_part_result(id: String, ok: bool, reason: String) -> void:
+	if not _open:
+		return
+	var nm := tr(String(Parts.get_part(id).get("name", id)))
+	match reason:
+		"ok":
+			_say(tr("%s unlocked for the squad and fitted to your gun.") % nm, UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
-		"up_poor":
-			_say(tr("Not enough scrap (%d needed).") % Scrap.tier_cost(String(Weapons.base_def(w).key), Scrap.level_of(w) + 1), UiTheme.DANGER)
-		"up_max":
-			_say(tr("%s is fully upgraded.") % name, UiTheme.BP_MUTED)
-		"up_locked":
-			_say(tr("Unlock %s first.") % name, UiTheme.BP_MUTED)
+		"poor":
+			_say(tr("Not enough scrap (%d needed).") % Scrap.part_cost(id), UiTheme.DANGER)
+		"owned":
+			_say(tr("The squad already has %s.") % nm, UiTheme.BP_MUTED)
+		"locked":
+			_say("Unlock the weapon first.", UiTheme.BP_MUTED)
 		_:
 			_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
@@ -1198,9 +1259,11 @@ func _refresh_tile(t: Tile, selected: bool) -> void:
 	t.price_label.visible = not unlocked and not later
 	t.state_label.visible = later
 	if unlocked:
-		var lv := Scrap.level_of(w)
-		t.bar.level = lv
-		t.bar.maxed = lv >= Upgrades.MAX_LEVEL
+		var total := Parts.of(String(Weapons.def(w).key)).size()
+		var owned := Scrap.parts_owned(w)
+		t.bar.level = owned
+		t.bar.total = total
+		t.bar.maxed = owned >= total
 		t.bar.queue_redraw()
 	elif later:
 		t.state_label.text = "BOSS REWARD" if Scrap.is_gated(w) else "LATER ZONE"
@@ -1211,61 +1274,100 @@ func _refresh_tile(t: Tile, selected: bool) -> void:
 
 func _refresh_detail(w: int) -> void:
 	var base: RefCounted = Weapons.base_def(w)
-	var lv := Scrap.level_of(w)
+	var key := String(base.key)
 	var unlocked := Scrap.is_unlocked(w)
-	var cur: RefCounted = Weapons.def_at(w, lv)
-	var has_tiers := Upgrades.has_tiers(String(base.key))
-	var next_lv := lv + 1
-	var can_next := unlocked and has_tiers and lv < Upgrades.MAX_LEVEL
+	var ops := _options(w)
+	_opt = clampi(_opt, 0, maxi(ops.size() - 1, 0))
+	var mine := Profile.fit_code(w)
+	var cur: RefCounted = Weapons.def_build(w, Weapons.build_of(0, mine))
+	# podgląd: broń z częścią spod kursora zamontowaną w jej gnieździe (reszta jak teraz)
+	var preview: RefCounted = null
+	var o: Dictionary = ops[_opt] if not ops.is_empty() else {}
+	if unlocked and not o.is_empty():
+		var choice := {}
+		for s in Parts.slots_of(key):
+			choice[s] = Profile.fitted(key, String(s))
+		choice[String(o["slot"])] = String(o["id"])
+		var pv_code := Parts.encode(key, choice)
+		if pv_code != mine:
+			preview = Weapons.def_build(w, Weapons.build_of(0, pv_code))
 	(_d_icon as GunIcon).set_gun(int(base.gun_row), base.tracer_color, Color.WHITE if unlocked else Color(0.5, 0.55, 0.6))
 	_d_title.text = String(base.name)
 	var tag := Codex._slot_name(base)
-	if has_tiers and unlocked:
-		tag += "  ·  TIER %d / %d" % [lv, Upgrades.MAX_LEVEL]
+	if unlocked and not Parts.of(key).is_empty():
+		tag += tr("  ·  PARTS %d / %d") % [Scrap.parts_owned(w), Parts.of(key).size()]
 	elif not unlocked:
 		tag += "  ·  LOCKED"
 	_d_tag.text = tag
-	# statystyki: teraz, a jeśli jest następny poziom — także wartość po zakupie (zielona, gdy się zmienia)
+	# statystyki: broń, jaką masz teraz, i ta sama z częścią spod kursora (zielone — lepiej, czerwone — gorzej niż teraz)
 	for ch in _d_stats.get_children():
 		_d_stats.remove_child(ch)
 		ch.free()
 	var now_rows: Array = Codex._weapon_stats(cur)
-	var next_rows: Array = Codex._weapon_stats(Weapons.def_at(w, next_lv)) if can_next else []
+	var next_rows: Array = Codex._weapon_stats(preview) if preview != null else []
 	for i in now_rows.size():
 		var r: Array = now_rows[i]
 		_d_stats.add_child(UiTheme.label(String(r[0]), 9, UiTheme.BP_MUTED))
 		_d_stats.add_child(UiTheme.label(String(r[1]), 9, UiTheme.BP_TEXT))
 		var nv := ""
-		var changed := false
 		if i < next_rows.size() and String(next_rows[i][1]) != String(r[1]):
 			nv = "» %s" % String(next_rows[i][1])
-			changed = true
-		_d_stats.add_child(UiTheme.label(nv, 9, UiTheme.OK if changed else UiTheme.BP_MUTED))
-	# poziomy ulepszeń
+		_d_stats.add_child(UiTheme.label(nv, 9, GOLD))
+	# części w gniazdach: nagłówek gniazda, element fabryczny i części (zamontowana — zielona, odblokowana — jasna, do kupienia — z ceną)
 	for ch in _d_tiers.get_children():
 		_d_tiers.remove_child(ch)
 		ch.free()
-	if has_tiers:
-		for i in range(1, Upgrades.MAX_LEVEL + 1):
-			var t := Upgrades.tier(String(base.key), i)
-			var state := 0 if (unlocked and i <= lv) else (1 if (unlocked and i == lv + 1) else 2)
-			var col: Color = UiTheme.OK if state == 0 else (GOLD if state == 1 else UiTheme.BP_MUTED)
-			var tail := tr("installed") if state == 0 else "%d" % Scrap.tier_cost(String(base.key), i)
-			var l := UiTheme.label("T%d  %s — %s  [%s]" % [i, tr(t["name"]), tr(t["desc"]), tail], 8, col)
-			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			l.custom_minimum_size = Vector2(DETAIL_W, 0)
-			_d_tiers.add_child(l)
-	var notes: Array = Codex.WEAPON_TEXT.get(String(base.key), ["", ""])
-	_d_text.text = String(notes[0])
+	var last_slot := ""
+	for i in ops.size():
+		var op: Dictionary = ops[i]
+		var slot := String(op["slot"])
+		if slot != last_slot:
+			last_slot = slot
+			_d_tiers.add_child(UiTheme.label(tr(Parts.SLOT_NAMES[slot]).to_upper(), 7, UiTheme.BP_MUTED))
+		var id := String(op["id"])
+		var fitted := Profile.fitted(key, slot) == id
+		var owned := id == "" or Scrap.has_part(id)
+		var nm := tr("Factory") if id == "" else tr(String(Parts.get_part(id)["name"]))
+		var tail := tr("fitted") if fitted else ("" if id == "" else (tr("owned") if owned else tr("%d scrap") % Scrap.part_cost(id)))
+		var col: Color = UiTheme.OK if fitted else (UiTheme.BP_TEXT if owned else GOLD)
+		var b := Button.new()
+		b.flat = true
+		b.focus_mode = Control.FOCUS_NONE
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.add_theme_font_size_override("font_size", 8)
+		b.add_theme_color_override("font_color", UiTheme.ACCENT if i == _opt else col)
+		b.add_theme_color_override("font_hover_color", UiTheme.ACCENT)
+		b.text = ("%s %s   [%s]" % ["»" if i == _opt else " ", nm, tail]) if tail != "" else ("%s %s" % ["»" if i == _opt else " ", nm])
+		b.custom_minimum_size = Vector2(DETAIL_W, 0)
+		for st in ["normal", "hover", "pressed", "focus"]:
+			var sb := StyleBoxEmpty.new()                  # wiersz bez marginesów przycisku — lista części mieści się w karcie
+			sb.content_margin_top = 1.0
+			sb.content_margin_bottom = 1.0
+			b.add_theme_stylebox_override(st, sb)
+		b.pressed.connect(_pick_opt.bind(i))
+		_d_tiers.add_child(b)
+	var notes: Array = Codex.WEAPON_TEXT.get(key, ["", ""])
+	var desc := String(notes[0])
+	if unlocked and not o.is_empty() and String(o["id"]) != "":
+		desc = tr(String(Parts.get_part(String(o["id"]))["desc"]))
+	elif unlocked and not o.is_empty():
+		desc = tr("Factory part: no gain, no cost.")
+	_d_text.text = desc
 	# przycisk akcji
 	if not unlocked and Scrap.is_later(w):
 		_action.text = "Reward for the Leech" if Scrap.is_gated(w) else "Available in a later zone"
 	elif not unlocked:
 		_action.text = tr("Buy  ·  %d scrap") % Scrap.price_of(w)
-	elif can_next:
-		_action.text = tr("Upgrade to tier %d  ·  %d scrap") % [next_lv, Scrap.tier_cost(String(base.key), next_lv)]
+	elif o.is_empty():
+		_action.text = "No parts for this weapon"
 	else:
-		_action.text = "Fully upgraded"
+		var id2 := String(o["id"])
+		if id2 != "" and not Scrap.has_part(id2):
+			_action.text = tr("Buy part  ·  %d scrap") % Scrap.part_cost(id2)
+		elif Profile.fitted(key, String(o["slot"])) == id2:
+			_action.text = "Fitted"
+		else:
+			_action.text = "Fit to my gun" if id2 != "" else "Fit the factory part"
 	_card.reset_size()
 
 func _rule() -> ColorRect:

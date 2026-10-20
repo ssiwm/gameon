@@ -1391,17 +1391,22 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		Scrap.persist = false
 		Scrap.bank = 480
 		Scrap.unlocked[Weapons.LR7] = true
-		Scrap.levels[Weapons.M83] = 2
-		Scrap.levels[Weapons.LR7] = 1
+		for pid in ["m83_rpk40", "m83_rpkbar", "lr7_cell"]:
+			Scrap.parts[pid] = true                  # podgląd: kilka odblokowanych części
 		var wp: Node2D = _players.get_node_or_null("1")
-		if wp != null:
-			wp.global_position = Vector2(31.0 * 16.0 + 8.0, 39.0 * 16.0)
+		var bench := get_tree().get_first_node_in_group("workshop") as Node2D
+		if wp != null and bench != null:
+			wp.global_position = bench.global_position + Vector2(0.0, -2.0)      # przy ławie (panel zamyka się, gdy gracz jest poza jej zasięgiem)
 		await get_tree().create_timer(0.5).timeout
 		var wui := get_tree().get_first_node_in_group("workshop_ui")
 		if wui != null:
 			wui.open()
 			if "--shotsup" in OS.get_cmdline_user_args():
 				wui._set_page(1)                     # --shotsup: zakładka SUPPLIES panelu warsztatu
+			for sa in OS.get_cmdline_user_args():
+				if sa.begins_with("--shotwsopt="):          # --shotwsopt=N: kursor na N-tej opcji części broni z kafla 0 (M-83)
+					wui._opt = int(sa.substr("--shotwsopt=".length()))
+					wui._refresh()
 			if "--shotperks" in OS.get_cmdline_user_args():
 				Profile.reset_for_test()             # --shotperks: zakładka PERKS z przykładowym profilem (L4, Smith w slocie 1)
 				Profile.add_xp(800, "demo")
@@ -2472,32 +2477,40 @@ func _gen_test() -> void:
 	Profile.reset_for_test()
 	wui.close()
 	check.call("panel warsztatu: otwiera się przy ławie, 12 kafli, kliknięcie kafla wybiera broń (sel %d), mysz widoczna; po zamknięciu zamknięty" % wui._sel, opened_ok and not wui.is_open())
-	# faza C: ulepszenia
-	results.clear()
+	# części broni (parts.gd, 1.7.319): zakup wspólny dla drużyny, montaż prywatny gracza
+	Scrap.purchase_result.disconnect(cb)
+	var presults: Array = []
+	var pcb := func(id: String, ok: bool, reason: String) -> void: presults.append(reason)
+	Scrap.part_result.connect(pcb)
 	var base_mag: int = Weapons.base_def(Weapons.M83).mag
 	var base_dmg: float = Weapons.base_def(Weapons.M83).damage
-	var base_nmax: float = Weapons.base_def(Weapons.M83).n_max
+	Profile.reset_for_test()
 	Scrap.bank = 10
-	Scrap.request_upgrade(Weapons.M83)                 # poor
-	Scrap.request_upgrade(Weapons.HKM9)                # locked (nie kupiona)
-	Scrap.request_upgrade(Weapons.COUNT)               # invalid (nieistniejąca broń)
+	Scrap.request_part("m83_rpk40")                    # poor
+	Scrap.request_part("hkm_tank")                     # locked (broń nie kupiona)
+	Scrap.request_part("nie_ma_takiej")                # invalid
 	Scrap.bank = 1000
-	for i in 4:
-		Scrap.request_upgrade(Weapons.M83)             # 3 × ok, potem max
-	Scrap.purchase_result.disconnect(cb)
-	var rs := results.map(func(r: Array) -> String: return String(r[2]))
-	var ed: RefCounted = Weapons.def(Weapons.M83)
-	check.call("ulepszenia: poor / locked / invalid / 3×ok / max: %s, portfel %d" % [str(rs), Scrap.bank],
-		rs == ["up_poor", "up_locked", "up_invalid", "up_ok", "up_ok", "up_ok", "up_max"] and Scrap.bank == 1000 - 60 - 120 - 220 and Scrap.level_of(Weapons.M83) == 3)
-	check.call("ulepszenia: M-83 T3 = magazynek %d→%d, rozrzut %.2f→%.2f, obrażenia bez zmian (%.1f), hałas %.2f→%.2f; baza nietknięta" % [base_mag, ed.mag, Weapons.base_def(Weapons.M83).jitter_deg, ed.jitter_deg, ed.damage, base_nmax, ed.n_max],
-		ed.mag == base_mag + 10 and is_equal_approx(ed.damage, base_dmg) and ed.jitter_deg < Weapons.base_def(Weapons.M83).jitter_deg and is_equal_approx(ed.n_max, base_nmax * 0.7)
-		and Weapons.base_def(Weapons.M83).mag == base_mag and Weapons.def(Weapons.SPREAD12) == Weapons.base_def(Weapons.SPREAD12))
+	for pid in ["m83_rpk40", "m83_rpkbar", "m83_pbs1", "m83_pbs1"]:
+		Scrap.request_part(pid)                        # 3 × ok, potem owned
+	Scrap.request_part("m83_drum75")                   # alternatywa w tym samym gnieździe: kupiona i zamontowana zamiast RPK 40
+	Scrap.part_result.disconnect(pcb)
+	var ed: RefCounted = Weapons.def_build(Weapons.M83, Weapons.build_of(0, Profile.fit_code(Weapons.M83)))
+	check.call("części: poor / locked / invalid / 3×ok / owned / ok: %s, portfel %d" % [str(presults), Scrap.bank],
+		presults == ["poor", "locked", "invalid", "ok", "ok", "ok", "owned", "ok"] and Scrap.bank == 1000 - 60 - 120 - 220 - 160 and Scrap.parts_owned(Weapons.M83) == 4)
+	check.call("montaż: kupiona część montuje się kupującemu — bęben 75 zamiast RPK 40 (magazynek %d), lufa RPK, PBS-1; obrażenia bez zmian, baza nietknięta" % ed.mag,
+		ed.mag == base_mag + 45 and is_equal_approx(ed.damage, base_dmg) and ed.suppressor > 0.0 and ed.jitter_deg < Weapons.base_def(Weapons.M83).jitter_deg
+		and Weapons.def(Weapons.M83).mag == base_mag and Profile.fitted("m83", "feed") == "m83_drum75")
+	Profile.set_fit("m83", "feed", "")
+	check.call("montaż: element fabryczny w gnieździe zasilania (magazynek %d)" % Weapons.def_build(Weapons.M83, Weapons.build_of(0, Profile.fit_code(Weapons.M83))).mag,
+		Weapons.def_build(Weapons.M83, Weapons.build_of(0, Profile.fit_code(Weapons.M83))).mag == base_mag)
 	var cat := Codex.weapon_entry(Weapons.M83)
 	var cat_lr := Codex.weapon_entry(Weapons.SOKOL6)
 	var tier_states := (cat["tiers"] as Array).map(func(t: Dictionary) -> int: return int(t["state"]))
-	check.call("katalog broni: M-83 pokazuje 3 poziomy (stany %s, tag '%s'), zablokowana broń ma informację o dostępie ('%s')" % [str(tier_states), cat["tag"], (cat_lr["access"] as String)],
-		tier_states == [0, 0, 0] and (cat["tag"] as String).contains("TIER 3 / 3") and (cat_lr["access"] as String).begins_with("Locked"))
-	Scrap.levels.clear()
+	check.call("katalog broni: M-83 pokazuje części (stany %s, tag '%s'), zablokowana broń ma informację o dostępie ('%s')" % [str(tier_states), cat["tag"], (cat_lr["access"] as String)],
+		tier_states.size() == Weapons.Parts.of("m83").size() and tier_states.count(0) == 2 and tier_states.count(1) == 2 and (cat["tag"] as String).contains("PARTS 4 /")
+		and (cat_lr["access"] as String).begins_with("Locked"))
+	Profile.reset_for_test()
+	Scrap.parts.clear()
 	Scrap.unlocked.clear()
 	Scrap.bank = saved_bank
 	var wall_nodes := get_tree().get_nodes_in_group("results_wall")

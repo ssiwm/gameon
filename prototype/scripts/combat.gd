@@ -27,14 +27,14 @@ const LAYER_TARGET := 4 | 32      ## wrogowie, gniazda, boss, Stalker (4) i obie
 ## Obrażenia wybuchu rosną do środka: na brzegu zostaje ta część.
 const BLAST_EDGE := 0.5
 
-## `ammo` = typ naboju (ammo.gd): niesie podpalenie, ogłuszenie, odrzut i przebicie pancerza (`ap`) amunicji specjalnej.
-static func make_info(w: int, amount: float, pos: Vector2, dir: Vector2, shooter: int, type: String, ammo := 0) -> Dictionary:
-	var d: RefCounted = Weapons.def_ammo(w, ammo)
+## `build` = części strzelca i typ naboju (Weapons.build_of): niosą podpalenie, ogłuszenie, odrzut, krytyk i przebicie pancerza (`ap`).
+static func make_info(w: int, amount: float, pos: Vector2, dir: Vector2, shooter: int, type: String, build := 0) -> Dictionary:
+	var d: RefCounted = Weapons.def_build(w, build)
 	return {
 		"w": w, "amount": amount, "pos": pos, "dir": dir, "shooter": shooter, "type": type,
 		"knock": d.knock, "stun": d.stun, "ignite": d.ignite, "crit_mult": d.crit_mult,
 		"backstab": false, "heavy": d.pellets >= 5 or d.kind == Weapons.Kind.RAIL,
-		"silent": false, "crit": false, "execute": d.execute_frac, "pull": d.pull, "ap": d.armor_pen, "ammo": ammo,
+		"silent": false, "crit": false, "execute": d.execute_frac, "pull": d.pull, "ap": d.armor_pen, "build": build,
 	}
 
 ## Zadaje obrażenia celowi (serwer). Zwraca {hit, dealt, killed, mat, crit}.

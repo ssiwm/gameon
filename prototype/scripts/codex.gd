@@ -8,7 +8,7 @@ const Enemy := preload("res://scripts/enemy.gd")
 const Leech := preload("res://scripts/leech.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const Weapons := preload("res://scripts/weapons.gd")
-const Upgrades := preload("res://scripts/upgrades.gd")
+const Parts := preload("res://scripts/parts.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
@@ -204,23 +204,27 @@ static func arsenal() -> Array:
 		out.append(weapon_entry(d.id))
 	return out
 
-## Wpis katalogu dla broni `id` — liczony świeżo (statystyki z ulepszeniami drużyny, poziomy, dostęp), bo zmieniają się w kryjówce.
+## Wpis katalogu dla broni `id` — liczony świeżo (statystyki z częściami zamontowanymi przez TEGO gracza, części, dostęp),
+## bo zmieniają się w kryjówce.
 static func weapon_entry(id: int) -> Dictionary:
 	var base: WeaponDef = Weapons.base_def(id)
-	var d: WeaponDef = Weapons.def(id)
+	var d: WeaponDef = Weapons.def_build(id, Weapons.build_of(0, Profile.fit_code(id)))
 	var notes: Array = WEAPON_TEXT.get(d.key, ["", ""])
 	var tag := TranslationServer.translate(_slot_name(d))
 	var tiers: Array = []
 	var access := ""
 	if not Scrap.is_unlocked(id):
 		access = TranslationServer.translate("Locked — ") + Scrap.lock_text(id)
-	if Upgrades.has_tiers(String(d.key)):
-		var lv := Scrap.level_of(id)
-		tag += TranslationServer.translate("  ·  TIER %d / %d") % [lv, Upgrades.MAX_LEVEL] if Scrap.is_unlocked(id) else ""
-		for i in range(1, Upgrades.MAX_LEVEL + 1):
-			var t := Upgrades.tier(String(d.key), i)
-			var state := 0 if i <= lv else (1 if i == lv + 1 else 2)      # 0 zainstalowany, 1 następny, 2 dalszy
-			tiers.append({"head": "T%d  %s" % [i, TranslationServer.translate(t["name"])], "desc": TranslationServer.translate(t["desc"]), "cost": Scrap.tier_cost(String(d.key), i), "state": state})
+	var key := String(d.key)
+	if not Parts.of(key).is_empty():
+		if Scrap.is_unlocked(id):
+			tag += TranslationServer.translate("  ·  PARTS %d / %d") % [Scrap.parts_owned(id), Parts.of(key).size()]
+		for s in Parts.slots_of(key):
+			for p in Parts.in_slot(key, String(s)):
+				var pid := String(p["id"])
+				var state := 0 if Profile.fitted(key, String(s)) == pid else (1 if Scrap.has_part(pid) else 2)      # 0 zamontowana, 1 odblokowana, 2 do kupienia
+				tiers.append({"head": "%s  %s" % [TranslationServer.translate(Parts.SLOT_NAMES[s]).to_upper(), TranslationServer.translate(p["name"])],
+					"desc": TranslationServer.translate(p["desc"]), "cost": Scrap.part_cost(pid), "state": state})
 	return {"title": base.name, "tag": tag, "accent": base.tracer_color, "portrait": {"type": "gun", "row": base.gun_row, "color": base.tracer_color},
 		"stats": _weapon_stats(d), "text": notes[0], "tip": notes[1], "weapon_id": id, "tiers": tiers, "access": access}
 

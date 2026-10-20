@@ -131,11 +131,11 @@ func select(i: int) -> void:
 		c.queue_free()
 	var tiers: Array = e.get("tiers", [])
 	if not tiers.is_empty():
-		_tiers.add_child(UiTheme.label("UPGRADES", 8, UiTheme.MUTED))
+		_tiers.add_child(UiTheme.label("PARTS", 8, UiTheme.MUTED))
 		for t in tiers:
 			var st := int(t["state"])
 			var col: Color = UiTheme.OK if st == 0 else (Color(0.95, 0.8, 0.4) if st == 1 else UiTheme.MUTED)
-			var tail := tr("installed") if st == 0 else tr("%d scrap") % int(t["cost"])
+			var tail := tr("fitted") if st == 0 else (tr("owned") if st == 1 else tr("%d scrap") % int(t["cost"]))
 			var l := UiTheme.label("%s  —  %s   [%s]" % [t["head"], t["desc"], tail], 8, col)
 			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			l.custom_minimum_size = Vector2(DETAIL_W, 0)

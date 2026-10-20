@@ -18,6 +18,7 @@ const Vfx := preload("res://scripts/vfx.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Ammo := preload("res://scripts/ammo.gd")
+const Parts := preload("res://scripts/parts.gd")
 
 ## Materiał trafionego celu — dobiera efekt i dźwięk uderzenia.
 enum Mat { FLESH, ARMOR, WOOD, METAL, WORLD }
@@ -295,7 +296,7 @@ func _deposit_rpc(w: int, n: int, t: int) -> void:
 		return
 	if not Ammo.valid(String(Weapons.def(w).caliber), t):
 		return
-	add_reserve(w, clampi(n, 0, Weapons.def(w).capacity(true)), t)       # magazynek z nabojem w komorze (30+1)
+	add_reserve(w, clampi(n, 0, Parts.max_capacity(Weapons.def(w))), t)       # magazynek z nabojem w komorze (30+1)
 
 ## Czy `peer_id` to żywy człowiek w tej sesji (serwer nie przyjmuje zwrotów naboi od obcych).
 func _is_human_peer(peer_id: int) -> bool:
@@ -310,7 +311,7 @@ func _req_rounds(w: int, want: int, t: int) -> void:
 		return
 	var got := 0
 	if Ammo.valid(String(Weapons.def(w).caliber), t):
-		got = take_rounds(w, clampi(want, 0, Weapons.def(w).capacity(true)), t)
+		got = take_rounds(w, clampi(want, 0, Parts.max_capacity(Weapons.def(w))), t)
 	_grant.rpc_id(multiplayer.get_remote_sender_id(), w, got)
 
 @rpc("authority", "call_remote", "reliable")

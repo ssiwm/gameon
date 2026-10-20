@@ -23,7 +23,7 @@ extends RefCounted
 ## Przelicznik prędkości: px/s ≈ m/s × 3,4 (M-83: 715 m/s → 2400 px/s).
 
 const WeaponDef := preload("res://scripts/weapon_def.gd")
-const Upgrades := preload("res://scripts/upgrades.gd")
+const Parts := preload("res://scripts/parts.gd")
 const Ammo := preload("res://scripts/ammo.gd")
 
 const M83 := 0
@@ -211,49 +211,59 @@ static func defs() -> Array:
 			_defs.append(WeaponDef.make(i, t[i]))
 	return _defs
 
-## Poziomy ulepszeń (id broni → 0..3). Ten sam słownik ma Scrap.levels (scrap.gd wskazuje go tutaj i zmienia go tylko w miejscu),
-## więc każdy peer widzi te same statystyki. Bez wpisu = broń bazowa.
-static var levels: Dictionary = {}
-static var _upgraded: Dictionary = {}          ## id * 10 + poziom → zbudowana definicja
-
-## Definicja broni z uwzględnieniem ulepszeń drużyny. Wszystkie systemy czytają ją przez tę funkcję.
+## Definicja FABRYCZNA broni (bez części i amunicji specjalnej). Od 1.7.319 nie ma ulepszeń wspólnych dla drużyny: każdy gracz składa
+## własną broń z części (parts.gd), więc strzał, pocisk i obrażenia czytają `def_build` z kodem konfiguracji strzelca.
+## `def(id)` zostaje dla rzeczy niezależnych od konfiguracji (zapas drużyny, łup, karty stojaków, boty).
 static func def(id: int) -> WeaponDef:
-	var i := clampi(id, 0, COUNT - 1)
-	return def_at(i, int(levels.get(i, 0)))
+	return defs()[clampi(id, 0, COUNT - 1)]
 
-## Definicja broni na podanym poziomie ulepszeń (0 = baza) — też do podglądu „po zakupie” w warsztacie.
-static func def_at(id: int, lv: int) -> WeaponDef:
-	var i := clampi(id, 0, COUNT - 1)
-	if lv <= 0:
-		return defs()[i]
-	var k := i * 10 + lv
-	if not _upgraded.has(k):
-		var d: WeaponDef = WeaponDef.make(i, _table()[i])
-		Upgrades.apply(d, lv)
-		_upgraded[k] = d
-	return _upgraded[k]
+## Typ naboju w kodzie `build` (4 najmłodsze bity) i kod części (`fit`, reszta).
+const BUILD_AMMO_BITS := 4
+static func build_of(ammo: int, fit: int) -> int:
+	return (ammo & 15) | (fit << BUILD_AMMO_BITS)
 
-static var _ammo_defs: Dictionary = {}       ## (id * 10 + poziom) * 16 + typ naboju → definicja z ulepszeniami i amunicją
+static func ammo_of_build(build: int) -> int:
+	return build & 15
 
-## Definicja broni z ulepszeniami drużyny i typem naboju `t` (ammo.gd). Typ 0 (zwykły) = `def(id)`. Pocisk, kontroler i obrażenia
-## czytają ją dla strzału nabojem danego typu; nieznany typ kalibru traktujemy jak zwykły.
-static func def_ammo(id: int, t: int) -> WeaponDef:
+static func fit_of_build(build: int) -> int:
+	return build >> BUILD_AMMO_BITS
+
+static var _built: Dictionary = {}           ## id * 1 000 000 + build → definicja z częściami i amunicją
+
+## Definicja broni z częściami i typem naboju (kod `build` = Weapons.build_of(typ, fit)). 0 = fabryczna z nabojem zwykłym.
+## Nieznany typ naboju kalibru traktujemy jak zwykły, nieznane części — jak fabryczne.
+static func def_build(id: int, build: int) -> WeaponDef:
 	var i := clampi(id, 0, COUNT - 1)
-	var lv := int(levels.get(i, 0))
-	var base := def_at(i, lv)
-	if t <= 0 or not Ammo.valid(String(base.caliber), t):
+	var base: WeaponDef = defs()[i]
+	var t := ammo_of_build(build)
+	if not Ammo.valid(String(base.caliber), t):
+		t = 0
+	var fit := fit_of_build(build)
+	if t == 0 and fit == 0:
 		return base
-	var k := (i * 10 + lv) * 16 + t
-	if not _ammo_defs.has(k):
+	var k := i * 1000000 + build_of(t, fit)
+	if not _built.has(k):
 		var d: WeaponDef = WeaponDef.make(i, _table()[i])
-		Upgrades.apply(d, lv)
+		Parts.apply(d, fit)
 		Ammo.apply(d, t)
-		_ammo_defs[k] = d
-	return _ammo_defs[k]
+		d.build = build_of(t, fit)
+		_built[k] = d
+	return _built[k]
+
+## Fabryczna broń z typem naboju `t` (testy i narzędzia; strzał gracza bierze też jego części — `def_build`).
+static func def_ammo(id: int, t: int) -> WeaponDef:
+	return def_build(id, build_of(t, 0))
 
 ## Definicja bazowa (bez ulepszeń) — podgląd „przed" w warsztacie.
 static func base_def(id: int) -> WeaponDef:
 	return defs()[clampi(id, 0, COUNT - 1)]
+
+## Id broni po kluczu technicznym (-1 = nie ma).
+static func index_of(key: String) -> int:
+	for d in defs():
+		if String(d.key) == key:
+			return int(d.id)
+	return -1
 
 static func is_valid(id: int) -> bool:
 	return id >= 0 and id < COUNT

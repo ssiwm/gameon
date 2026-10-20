@@ -9,6 +9,8 @@ extends Node
 const Perks := preload("res://scripts/perks.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Look := preload("res://scripts/look.gd")
+const Weapons := preload("res://scripts/weapons.gd")
+const Parts := preload("res://scripts/parts.gd")
 
 signal xp_gained(amount: int, reason: String)
 signal leveled_up(level: int)
@@ -32,6 +34,7 @@ var xp := 0
 var completed: Dictionary = {}                ## id misji → true (pierwsze ukończenie daje bonus)
 var look := 0                                 ## wygląd (Look.code): płeć × strój; kosmetyka, odblokowywana poziomem
 var equipped: Array = ["", ""]                ## id perków w slotach 0–1 ("" = pusty)
+var fits: Dictionary = {}                     ## klucz broni → {gniazdo: id części | "" (fabryczny)}; brak wpisu = pierwsza odblokowana część (parts.gd)
 var last_mission_xp := 0                      ## XP z ostatniej misji (karta wyniku)
 var last_mission_rows: Array = []             ## [[etykieta, XP], …] z ostatniej misji
 var persist := DisplayServer.get_name() != "headless"      ## testy headless nie ruszają prawdziwego profilu
@@ -196,12 +199,40 @@ func save() -> void:
 	if persist:
 		save_to(SAVE_PATH)
 
+## Wybór części w gnieździe broni `key` (montaż prywatny gracza). `id` = "" — element fabryczny.
+func set_fit(key: String, slot: String, id: String) -> void:
+	var f: Dictionary = (fits.get(key, {}) as Dictionary).duplicate()
+	f[slot] = id
+	fits[key] = f
+	save()
+	changed.emit()
+
+## Część zamontowana w gnieździe: wybór gracza (o ile drużyna ją ma), a bez wyboru — pierwsza odblokowana z listy gniazda.
+func fitted(key: String, slot: String) -> String:
+	var f: Dictionary = fits.get(key, {}) as Dictionary
+	if f.has(slot):
+		var id := String(f[slot])
+		return id if id == "" or Scrap.has_part(id) else ""
+	for p in Parts.in_slot(key, slot):
+		if Scrap.has_part(String(p["id"])):
+			return String(p["id"])
+	return ""
+
+## Kod części (`fit`) broni `w` dla tego gracza — replikowany jako player.fits i wysyłany ze strzałem.
+func fit_code(w: int) -> int:
+	var key := String(Weapons.def(w).key)
+	var choice := {}
+	for s in Parts.slots_of(key):
+		choice[s] = fitted(key, String(s))
+	return Parts.encode(key, choice)
+
 func save_to(path: String) -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("profile", "xp", xp)
 	cfg.set_value("profile", "completed", completed.keys())
 	cfg.set_value("profile", "equipped", equipped)
 	cfg.set_value("profile", "look", look)
+	cfg.set_value("profile", "fits", fits)
 	cfg.save(path)
 
 func load_from(path: String) -> void:
@@ -218,6 +249,7 @@ func load_from(path: String) -> void:
 		var id := String(eq[i])
 		if Perks.is_valid(id):
 			equipped[i] = id
+	fits = (cfg.get_value("profile", "fits", {}) as Dictionary).duplicate(true)
 	look = int(cfg.get_value("profile", "look", Look.DEFAULT))
 	if not Look.is_unlocked(look, level()):
 		look = Look.DEFAULT
@@ -236,5 +268,6 @@ func reset_for_test() -> void:
 	xp = 0
 	completed.clear()
 	equipped = ["", ""]
+	fits = {}
 	last_mission_xp = 0
 	last_mission_rows = []
