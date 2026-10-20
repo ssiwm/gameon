@@ -198,7 +198,8 @@ Pełna analiza i architektura: `prototype/WEAPONS.md`. W prototypie działa **12
 P-83, PELLET-8, LR-7, HKM-9, WRATH-4, FALCON-6, SPECTER-1, SINEW-6, maczeta, kilof (w HUD nazwy ASCII). Różnice
 względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapons.gd`, testy `--weapontest`):
 
-- **Amunicja:** magazynki i przeładowanie (tryb taktyczny: z nabojem w komorze szybciej), **wspólny zapas drużyny**
+- **Amunicja:** magazynki i przeładowanie (tryb taktyczny: z nabojem w komorze szybciej), **wspólny zapas drużyny**. Od 1.7.326 (M-83, SPREAD-12):
+  krótkie [R] to szybkie przeładowanie — magazynek z resztkami spada na ziemię i trzeba po niego kucnąć; przytrzymane [R] — wolniejsze, resztki zostają
   autorytatywny na serwerze; sidearm ∞. Wrogowie upuszczają amunicję tylko do broni, którą ktoś nosi; skrzynie
   z mapy zasilają wszystkie noszone bronie główne.
 - **Hałas:** każda broń ma własny `heat_gain`/`heat_decay` (wcześniej wspólny decay sprawiał, że rozgrzewała się

@@ -64,7 +64,7 @@ static func _table() -> Array:
 			"jitter_deg": 0.8, "bloom_per_shot": 0.45, "bloom_max": 4.0, "bloom_decay": 9.0,
 			"speed": 2400.0, "range_px": 240.0, "falloff_start": 190.0, "falloff_min": 0.5,
 			"n_min": 0.6, "n_max": 1.5, "heat_gain": 0.09, "heat_decay": 0.30, "barrel_heat": 1.0 / 60.0,   # dwa magazynki ciągłym ogniem = gorąca lufa
-			"mag": 30, "reserve_start": 150, "reserve_max": 270, "pickup_rounds": 30, "chamber": true,
+			"mag": 30, "reserve_start": 150, "reserve_max": 270, "pickup_rounds": 30, "chamber": true, "mag_drop": true,
 			"reload_time": 1.35, "reload_empty_extra": 0.45,
 			"shake": 0.7, "cam_kick": 0.5, "recoil": 2.5, "flash_size": 3.5, "flash_light": 1.3,
 			"tracer_len": 12.0, "casing": 1, "gun_len": 12.0, "gun_row": 0,
@@ -77,7 +77,7 @@ static func _table() -> Array:
 			"spread_deg": 14.0, "jitter_deg": 1.5,
 			"speed": 1400.0, "range_px": 135.0, "falloff_start": 40.0, "falloff_min": 0.35,
 			"n_min": 3.5, "n_max": 5.0, "heat_gain": 0.40, "heat_decay": 1.2, "barrel_heat": 1.0 / 24.0,
-			"mag": 25, "reserve_start": 50, "reserve_max": 100, "pickup_rounds": 12, "chamber": true,
+			"mag": 25, "reserve_start": 50, "reserve_max": 100, "pickup_rounds": 12, "chamber": true, "mag_drop": true,
 			"reload_time": 2.0, "reload_empty_extra": 0.5,
 			"shake": 2.4, "cam_kick": 2.6, "recoil": 5.0, "flash_size": 6.0, "flash_light": 1.7,
 			"tracer_len": 7.0, "casing": 2, "gun_len": 12.0, "gun_row": 1,

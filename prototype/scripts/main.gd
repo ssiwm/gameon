@@ -1465,6 +1465,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 	for sa in OS.get_cmdline_user_args():
 		if sa.begins_with("--shotplayer="):               # dev: --shotplayer=hit|down|revive — zdarzenie gracza 1 po 1 s (podgląd animacji postaci 3D)
 			get_tree().create_timer(1.0).timeout.connect(_dev_player.bind(sa.substr("--shotplayer=".length())))
+	if "--shotmag" in OS.get_cmdline_user_args():
+		var mp1: Node2D = _players.get_node_or_null("1")     # dev: --shotmag — gracz 1 upuszcza magazynek M-83 z 17 nabojami i pusty SPREAD-12 (podgląd)
+		if mp1 != null:
+			mp1.weapons._spawn_mag(Weapons.M83, 17, 0)
+			mp1.weapons._spawn_mag(Weapons.SPREAD12, 0, 0)
 	if "--shothot" in OS.get_cmdline_user_args():
 		var hp1: Node2D = _players.get_node_or_null("1")     # dev: --shothot — rozgrzana lufa broni gracza 1 (dym i falowanie powietrza nad lufą)
 		if hp1 != null:

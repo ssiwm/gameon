@@ -1616,6 +1616,7 @@ const RACK_UP_PX := 9.0                     ## dół stojaka nad podłogą [px �
 const RACK_Z := -1.80                       ## oś stojaka: plecy deski przy ścianie tła
 const RACK_SHELF_PX := 5.3                  ## góra półki w jednostkach modelu stojaka
 const LOOT_MIN_M := 0.35                    ## m: najkrótsza broń leżąca na ziemi (P-83 ma 0,19 m — w naturalnej skali ginąłby pod stopami)
+const MAG_LOOT_K := 1.6                     ## upuszczony magazynek (pickup „mag”, podzespół `__mag` modelu broni): ×1,6 naturalnej — czytelny przy stopach
 const RACK_MIN_M := 0.25                    ## m: najkrótsza broń na stojaku (oglądana z bliska, więc mniejsze minimum)
 const RACK_GUN_Z := -1.70                   ## broń leży na półce, tuż przed deską
 const RACK_PLATE_Z := -1.50                 ## front półki: tabliczka z ceną
@@ -1733,6 +1734,12 @@ func _sync_guns() -> void:
 		if spr == null:
 			continue
 		var model := (load(path) as PackedScene).instantiate() as Node3D
+		var is_mag := String(n.get("kind")) == "mag"
+		if is_mag:                                                 # upuszczony magazynek: z modelu broni zostaje tylko podzespół `__mag`
+			for mn in model.find_children("*", "MeshInstance3D", true, false):
+				if not String(mn.name).ends_with("__mag"):
+					mn.get_parent().remove_child(mn)
+					mn.free()
 		var box := AABB()
 		var first := true
 		for mn in model.find_children("*", "MeshInstance3D", true, false):
@@ -1758,6 +1765,13 @@ func _sync_guns() -> void:
 		var pivot := Node3D.new()
 		_world.add_child(pivot)
 		pivot.add_child(model)
+		if is_mag:
+			# magazynek leży: pudełkowy na boku (obrót o 90° w płaszczyźnie broni), bęben płasko na denku (obrót wokół osi poziomej)
+			k = MAG_LOOT_K
+			var drum := box.size.y > 0.0 and absf(box.size.x - box.size.y) < 0.3 * maxf(box.size.x, box.size.y)
+			var lay := Basis(Vector3(1.0, 0.0, 0.0), PI * 0.5) if drum else Basis(Vector3(0.0, 0.0, 1.0), PI * 0.5)
+			model.basis = lay
+			box = Transform3D(lay, Vector3.ZERO) * box
 		model.scale = Vector3(k, k, k)
 		model.position = Vector3(-box.get_center().x * k, -box.position.y * k, -box.get_center().z * k)
 		var lock: Node3D = null
