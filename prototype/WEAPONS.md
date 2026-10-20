@@ -407,3 +407,13 @@ trzecia para gum, grot z dwoma zadziorami i obejmą linki (`tip`); maczeta: dłu
 ciężka głowa i głowa sejsmiczna z obuchem (`head`). Bez modelu zostają części bez widocznej zmiany (mechanizm, mieszanka, głowice granatów,
 dławik, szlif). Test `--weapontest` sprawdza, że każdy zastępowany podzespół istnieje w modelu bazowym.
 
+## 19. Ława rusznikarska w 3D, etap 2c (1.7.323)
+
+Szczegóły broni w zakładce ARMS warsztatu pokazują zamiast płaskiej ikony broń w małej scenie 3D (`gun_stage.gd`): ciepła lampa nad ławą,
+chłodna kontra, broń leży bokiem i lekko się kołysze, przeciągnięcie myszą obraca ją (po 2 s wraca bokiem). Na ławie leży broń z częścią spod
+kursora listy — ta sama, której statystyki panel porównuje z obecnymi — złożona przez `GunModel.build`, czyli dokładnie tak, jak wygląda potem
+w dłoniach postaci. Część pod kursorem świeci (poświata krawędzi) i wysuwa się ze swojego gniazda w stronę, w którą się ją zdejmuje: magazynek
+w dół, lufa i tłumik do przodu, kolba do tyłu, celownik do góry. Na elemencie fabrycznym świecą fabryczne podzespoły, które części tego gniazda
+zastępują. Kadr liczy się z broni fabrycznej (część nie przesuwa broni, długi tłumik po prostu wystaje), scena renderuje się w pikselach ekranu.
+Broń zablokowana leży w półmroku z czerwoną kontrą. Dev: `--shotws --shotwssel=N --shotwsopt=N` (kafel broni i opcja części).
+

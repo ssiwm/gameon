@@ -1411,7 +1411,10 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			if "--shotsup" in OS.get_cmdline_user_args():
 				wui._set_page(1)                     # --shotsup: zakładka SUPPLIES panelu warsztatu
 			for sa in OS.get_cmdline_user_args():
-				if sa.begins_with("--shotwsopt="):          # --shotwsopt=N: kursor na N-tej opcji części broni z kafla 0 (M-83)
+				if sa.begins_with("--shotwssel="):          # --shotwssel=N: wybrany N-ty kafel broni (ława 3D pokazuje tę broń)
+					wui._select(int(sa.substr("--shotwssel=".length())))
+			for sa in OS.get_cmdline_user_args():
+				if sa.begins_with("--shotwsopt="):          # --shotwsopt=N: kursor na N-tej opcji części wybranej broni (domyślnie kafel 0, M-83)
 					wui._opt = int(sa.substr("--shotwsopt=".length()))
 					wui._refresh()
 			if "--shotperks" in OS.get_cmdline_user_args():

@@ -1827,6 +1827,23 @@ func _t_ammo_calibers() -> void:
 			(rows[2] as Button).pressed.emit()
 			clicked = wui._opt == 2 and is_instance_valid(rows[2]) and wui._d_tiers.get_children().filter(func(n: Node) -> bool: return n is Button).size() == rows.size()
 		check("warsztat ARMS: kliknięcie wiersza części wybiera ją i przebudowuje listę (kursor %d, wierszy %d)" % [wui._opt, rows.size()], clicked)
+		# ława 3D (1.7.323): broń z częścią spod kursora, ta część świeci i wysuwa się z gniazda; na elemencie fabrycznym świecą fabryczne podzespoły.
+		# Bez czekania na klatki — gracz testu nie stoi przy ławie, więc panel sam by się zamknął; klatkę ławy wołamy ręcznie.
+		var ops: Array = wui._options(Weapons.M83)
+		var st = wui._d_stage
+		wui._opt = ops.find({"slot": "muzzle", "id": "m83_pbs1"})
+		wui._refresh()
+		st._process(0.5)
+		var hl_names: Array = st._hl.map(func(h: Dictionary) -> String: return String((h["node"] as Node).name))
+		var pulled: bool = not st._hl.is_empty() and ((st._hl[0]["node"] as Node3D).position - (st._hl[0]["base"] as Vector3)).x > 0.01
+		check("ława 3D: M-83 z tłumikiem spod kursora, tłumik świeci i wysuwa się do przodu (%s)" % str(hl_names),
+			st._model != null and hl_names.size() == 1 and String(hl_names[0]).begins_with("gunpart_m83_pbs1") and pulled)
+		wui._opt = ops.find({"slot": "muzzle", "id": ""})
+		wui._refresh()
+		hl_names = st._hl.map(func(h: Dictionary) -> String: return String((h["node"] as Node).name))
+		var no_part: bool = st._model.find_children("gunpart_*", "", false, false).filter(func(n: Node) -> bool: return String(n.name).contains("pbs1")).is_empty()
+		check("ława 3D: fabryczny wylot spod kursora — świeci podzespół __muzzle, tłumika nie ma (%s)" % str(hl_names),
+			hl_names.size() > 0 and hl_names.all(func(n: String) -> bool: return n.ends_with("__muzzle")) and no_part)
 		wui.close()
 	check("warsztat SUPPLIES: pudełka amunicji w sklepie (%s)" % ui_info, ui_ok)
 	Scrap.bank = bank0
