@@ -27,6 +27,7 @@ const GLOVE := Color(0.05, 0.045, 0.04)
 
 var fp: Node                                  ## fp_mode.gd
 var _vp: SubViewport
+var _screen: TextureRect                      ## obraz SubViewportu na cały ekran (w jednostkach interfejsu)
 var _world: Node3D
 var _cam: Camera3D
 var _vm: Node3D                               ## broń w rękach (dziecko kamery)
@@ -63,16 +64,21 @@ func _ready() -> void:
 		if c != null:
 			idx = mini(idx, c.get_index())
 	parent.move_child(self, idx)                               # nad światem, pod pogodą, winietą i HUD-em
-	var box := SubViewportContainer.new()
-	box.stretch = true
-	box.set_anchors_preset(Control.PRESET_FULL_RECT)
-	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(box)
+	# render w pikselach okna (_fit_viewport), a nie w pikselach interfejsu: płótno ma 640×360 i jest skalowane do okna, więc
+	# SubViewportContainer ze `stretch` renderowałby świat w 640×360 i rozciągał go (rozmyty obraz)
 	_vp = SubViewport.new()
 	_vp.own_world_3d = true
 	_vp.msaa_3d = Viewport.MSAA_4X
 	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	box.add_child(_vp)
+	add_child(_vp)
+	_screen = TextureRect.new()
+	_screen.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_screen.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_screen.stretch_mode = TextureRect.STRETCH_SCALE
+	_screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_screen.texture = _vp.get_texture()
+	add_child(_screen)
+	_fit_viewport()
 	_world = Node3D.new()
 	_world.name = "Range"
 	_vp.add_child(_world)
@@ -173,6 +179,7 @@ func _hide_hub(on: bool) -> void:
 func _process(delta: float) -> void:
 	if fp == null or not is_instance_valid(fp):
 		return
+	_fit_viewport()
 	_cam.transform = Transform3D(fp.view_basis(), fp.eye())
 	_sync_gun()
 	_pose_gun(delta)
@@ -187,6 +194,15 @@ func _process(delta: float) -> void:
 	_msg_t = maxf(0.0, _msg_t - delta)
 	_update_board()
 	_dot.queue_redraw()
+
+## Rozmiar renderu = piksele okna zajęte przez interfejs (640×360 × skala okna) × skala „Effects quality” (jak view3d._res_scale).
+func _fit_viewport() -> void:
+	var vp := get_viewport()
+	var px := vp.get_visible_rect().size * vp.get_final_transform().get_scale()
+	var rs := 0.5 if Settings.quality_idx == 0 else (0.75 if Settings.quality_idx == 1 else 1.0)
+	var want := Vector2i(maxi(int(px.x * rs), 64), maxi(int(px.y * rs), 36))
+	if _vp.size != want:
+		_vp.size = want
 
 ## Model broni zgodny z trzymaną bronią (części i nacięcia gracza); przebudowa przy zmianie.
 func _sync_gun() -> void:
