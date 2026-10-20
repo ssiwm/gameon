@@ -11,13 +11,14 @@ const Parts := preload("res://scripts/parts.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Actions := preload("res://scripts/actions.gd")
+const FpArms := preload("res://scripts/range3d/fp_arms.gd")
 
 const FOV := 74.0
 const TEX := "res://art/world3d/"
 const HIP := Vector3(0.15, -0.2, -0.3)        ## m — chwyt broni w układzie kamery (od biodra, broń poniżej i z prawej)
 const HIP_YAW := 1.5                          ## ° — broń przy biodrze lekko zwrócona do środka kadru
 const ADS_GRIP_Z := -0.27                     ## m — chwyt karabinu przed okiem przy celowaniu (policzek na kolbie)
-const ADS_GRIP_Z_PISTOL := -0.42             ## m — pistolet w wyciągniętych rękach
+const ADS_GRIP_Z_PISTOL := -0.55             ## m — pistolet w wyciągniętych rękach
 const SIGHT_CLEAR := 0.003                    ## m — linia celownicza tuż nad najwyższym punktem broni (wierzch muszki i szczerbinki);
                                               ## dokładne punkty przyrządów z gun_proc.py — etap 2
 const KICK_DECAY := 9.0                       ## 1/s — powrót broni po odrzucie
@@ -35,7 +36,9 @@ var _gun: Node3D
 var _gun_sig := ""                            ## klucz:części:nacięcia zbudowanego modelu
 var _info := {}                               ## Char3D.gun_info z częściami
 var _top_y := 0.1                             ## m — najwyższy punkt modelu broni (układ broni)
-var _arms: Array = []                         ## [rękaw P, rękawica P, rękaw L, rękawica L]
+var _rear_x := -0.3                           ## m — tył broni (stopka kolby)
+var _arms: Array = []                         ## zapas bez modelu postaci: [rękaw P, rękawica P, rękaw L, rękawica L]
+var _fp_arms: Node3D                          ## ręce z modelu postaci gracza (fp_arms.gd)
 var _pivots: Array = []                       ## zawiasy blach (Node3D)
 var _falls: Array = []                        ## 0 stoi … 1 leży (kosmetyka)
 var _board: Label3D
@@ -115,6 +118,16 @@ func _ready() -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_cam.add_child(mi)
 		_arms.append(mi)
+	_fp_arms = FpArms.new()
+	_fp_arms.name = "FpArms"
+	_cam.add_child(_fp_arms)
+	var c3 = fp.player.get("c3d")
+	var look := String(c3._char_name) if c3 != null and is_instance_valid(c3) else Char3D.DEFAULT_CHAR
+	if not _fp_arms.setup(self, look, int(c3._palette) if c3 != null and is_instance_valid(c3) else 0):
+		_fp_arms.queue_free()
+		_fp_arms = null
+	for a in _arms:
+		(a as Node3D).visible = _fp_arms == null
 	_flash = OmniLight3D.new()
 	_flash.light_color = Color(1.0, 0.75, 0.42)
 	_flash.omni_range = 7.0
@@ -161,6 +174,8 @@ func _ready() -> void:
 ## Koniec strzelnicy: widok kryjówki wraca.
 func release() -> void:
 	_hide_hub(false)
+	if _fp_arms != null:
+		_fp_arms.release()
 	queue_free()
 
 func _hide_hub(on: bool) -> void:
@@ -227,13 +242,16 @@ func _sync_gun() -> void:
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_vm.add_child(_gun)
 	_top_y = -1.0
+	_rear_x = 0.0
 	for mi in _gun.find_children("*", "MeshInstance3D", true, false):
 		var xf := (mi as Node3D).transform
 		var par := (mi as Node).get_parent()
 		while par != _gun and par is Node3D:
 			xf = (par as Node3D).transform * xf
 			par = par.get_parent()
-		_top_y = maxf(_top_y, (xf * (mi as MeshInstance3D).get_aabb()).end.y)
+		var bb := xf * (mi as MeshInstance3D).get_aabb()
+		_top_y = maxf(_top_y, bb.end.y)
+		_rear_x = minf(_rear_x, bb.position.x)
 	# układ broni: x wzdłuż lufy, y w górę, z w prawo → kamera patrzy w −z
 	_gun.basis = Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))
 
@@ -266,6 +284,9 @@ func _pose_gun(delta: float) -> void:
 	_vm.transform = Transform3D(rot, Vector3(0.0, -0.13 * dip, 0.055 * _kick) + rot * o)
 	# rękawice na chwycie i pod łożem, rękawy do krawędzi kadru
 	var xf := _vm.transform * _gun.transform
+	if _fp_arms != null:
+		_fp_arms.pose(xf, String(wc.cur().key), _info, _rear_x, wc.reload_progress() if wc.is_reloading() else -1.0, bool(wc.clearing))
+		return
 	var rh := xf * (grip + Vector3(0.0, -0.01, 0.0))
 	var lh := xf * (_info.get("hold", grip + Vector3(0.3, 0.05, 0.0)) as Vector3 + Vector3(0.0, -0.035, 0.0))
 	var one_hand := int(_info.get("hands", 2)) < 2

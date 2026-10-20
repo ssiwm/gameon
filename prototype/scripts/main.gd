@@ -1108,7 +1108,9 @@ func _dev_range3d() -> void:
 		return
 	var fp: Node = FP_RANGE.enter(p)
 	for a in OS.get_cmdline_user_args():
-		if a == "--rangeads":
+		if a.begins_with("--rangeslot="):
+			p.weapons.select_slot(int(a.substr("--rangeslot=".length())))      # broń ze slotu N (0, 1 — długie, 2 — pistolet)
+		elif a == "--rangeads":
 			fp.dev_ads = true                                   # przyrządy bez PPM (zrzuty)
 		elif a.begins_with("--rangelook="):                    # --rangelook=YAW,PITCH (°): kierunek patrzenia
 			var lk := a.substr("--rangelook=".length()).split(",")

@@ -95,7 +95,7 @@ Szacunek: etap 0 to jedna sesja, etap 1 to 2–3 PR-y, etap 2 to 1–2 PR-y.
 ## 7. Wyniki etapu 0 (2026-10-20, 1.7.335)
 
 Uruchomienie: `godot --path prototype -- --host --range3d` (gra startuje w kryjówce, gracz od razu na strzelnicy; [E] wraca do kryjówki).
-Test: `godot --headless --path prototype -- --host --rangetest --autoquit=60` (20/20). Zrzuty: `concepts/range3d_hip.jpg`, `concepts/range3d_ads.jpg`.
+Test: `godot --headless --path prototype -- --host --rangetest --autoquit=60` (20/20). Zrzuty: `concepts/range3d_hip.jpg`, `concepts/range3d_ads.jpg`, `concepts/range3d_pistol.jpg`.
 
 | Element | Wynik |
 |---|---|
@@ -103,9 +103,10 @@ Test: `godot --headless --path prototype -- --host --rangetest --autoquit=60` (2
 | Podrzut | Uniesienie kamery czuć: seria 5 strzałów z M-83 bez ściągania myszą idzie ok. 1,3 m w górę na 30 m (`wc.climb` do ~2,4°). Strzał bierze podrzut sprzed siebie (jak `player._local_brain` w 2D) — pierwsza wersja liczyła go podwójnie i chybiała. |
 | Rozrzut | Stożek 3D o kącie `jitter_deg` z gry. **Wniosek do strojenia:** M-83 ma 0,8° (≈ 28 MOA) — na 7–13 m każda kula trafia blachę ⌀ 30 cm, na 16 m już 2 strzały, na 20 m 4 (test). To dużo jak na karabin z pierwszego strzału; w grze 2D nie było tego widać. P-83 ma 0,35°, czyli celniej niż M-83. Do decyzji przy etapie 2 (grupa na papierze pokaże to w cm). |
 | Przyrządy | Linia celownicza liczona z najwyższego punktu modelu broni (wierzch muszki i szczerbinki) — obraz poprawny dla M-83 (pokrywa zamka, szczerbinka i muszka w osi). Kolba widoczna w dole kadru. Dokładne punkty `sight` z `gun_proc.py` zostają w etapie 2. |
-| Ręce | **Nie próbowałem rąk z `char3d.gd`**: poza jest budowana pod widok z boku (tułów obrócony do kamery o 22°, celowanie w płaszczyźnie postaci, model w `view3d` przenoszony między światami) — przeróbka na widok z oczu to osobna praca. W szpicu są proste rękawy i rękawice (walce i kapsuły) — czytelne, ale wyglądają jak rury; do zrobienia porządnie (model rąk FPP albo `char3d` w trybie FPP) przed etapem 1. |
+| Ręce | **Model postaci gracza** (`fp_arms.gd`): osobna instancja `char3d.gd` (ten sam wygląd i strój co w grze) bez podglądu 2D, siatki postaci i ubrania przycięte do trójkątów z wagą ≥ 0,5 na kościach rąk (tułów i głowa weszłyby w kamerę), IK z `char3d` (`_arm_ik`, `_hand_target`, `_left_hold`, `_set_hand`, palce). Model wisi na broni, nie na oczach: zagłębienie prawego barku na stopce kolby, tułów obrócony o 32° (inaczej lewa ręka nie sięgała łoża); pistolet — postawa równoramienna, barki 15 cm pod linią wzroku, ręce na ok. 55 cm. Przeładowanie prowadzi lewą dłoń torem z `char3d._left_path`. Do poprawy: dłonie gołe (taki strój postaci), przy biodrze lewa dłoń częściowo za bronią, cięcie rękawa przy barku widać przy skrajnym obrocie w lewo. Walce i kapsuły zostały jako zapas, gdy model postaci się nie wczyta. |
 | Świat | Zamiast tunelu za tylną ścianą magazynu (§2.1) strzelnica ma **własny świat 3D** w SubViewport — prościej i bez wpływu na oświetlenie kryjówki; widok kryjówki jest wtedy schowany i nie renderuje się. Wejście przez drzwi z przejściem kamery zostaje w etapie 1. |
-| Wydajność | 60 FPS przy vsync, 4K, RTX 3080 (`--print-fps`, seria ognia); 6 lamp, 3 z cieniami. |
+| Rozdzielczość | Pierwsza wersja renderowała tunel w 640×360 (rozmiar płótna interfejsu, `SubViewportContainer.stretch`) i rozciągała do okna. Teraz SubViewport ma rozmiar okna × skala „Effects quality” (jak `view3d`). |
+| Wydajność | 60 FPS przy vsync, 4K, RTX 3080 (`--print-fps`, seria ognia, z rękami); 6 lamp, 3 z cieniami. |
 | Dźwięk | Strzał i przeładowanie z gry; blacha dzwoni niepozycyjnie z głośnością od odległości. |
 | Czego nie ma | wejścia z kryjówki, zapisu rekordu, sieci (wynik tylko lokalnie), broni ciągłych i WRATH-4 (strzelają, ale bez obrazu w tunelu), łusek i dymu w 3D, opcji FOV i czułości, pada poza rozglądaniem. |
 
