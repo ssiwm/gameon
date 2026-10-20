@@ -210,6 +210,8 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
   i podrzutu, szybsze usuwanie zacięć
 - **Historia broni (od 1.7.331):** broń liczy zabójstwa, a za każdą elitę i bossa ma rysę na kolbie (za bossa głęboką) — widać je na modelu
   w rękach, na ławie i w oględzinach
+- **Części jako znaleziska (od 1.7.333):** skrytki misji zawierają części broni, a elity czasem je zostawiają; znaleziona część jest odblokowana
+  dla drużyny po udanej ewakuacji (wipe ją zabiera), za darmo — kupowanie za złom zostaje
   autorytatywny na serwerze; sidearm ∞. Wrogowie upuszczają amunicję tylko do broni, którą ktoś nosi; skrzynie
   z mapy zasilają wszystkie noszone bronie główne.
 - **Hałas:** każda broń ma własny `heat_gain`/`heat_decay` (wcześniej wspólny decay sprawiał, że rozgrzewała się

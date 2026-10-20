@@ -186,6 +186,14 @@ static func get_part(id: String) -> Dictionary:
 static func is_valid(id: String) -> bool:
 	return not get_part(id).is_empty()
 
+## Wszystkie id części w stałej kolejności (indeks = `arg` znajdźki „part” — ten sam u serwera i klientów).
+static func all_ids() -> Array:
+	var out: Array = []
+	for k in PARTS:
+		for p in PARTS[k]:
+			out.append(String(p["id"]))
+	return out
+
 static func of(key: String) -> Array:
 	return PARTS.get(key, []) as Array
 

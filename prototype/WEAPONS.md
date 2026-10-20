@@ -544,3 +544,15 @@ pokazuje warsztat (szczegóły broni), stopień — oględziny [F]. Kod: `weapon
 Dev: `--shotnotch=N` (każda broń z N nacięciami, w tym jednym głębokim, i 120 zabójstwami; profil bez zapisu). Nie zrobione z §7.4: zużycie
 widoczne na broni (przetarta oksyda) i własna nazwa broni.
 
+## 28. Części jako znaleziska, etap 5c (1.7.333)
+
+Części można dalej kupować w warsztacie za złom, ale można je też **znaleźć** — wtedy są za darmo.
+
+| Element | Jak działa | Kod |
+|---|---|---|
+| **Skrytki** | ukryta skrytka misji (cel poboczny 1.1) poza złomem zawiera część: losową część z modelem dla broni, którą drużyna ma, jeszcze nieodblokowaną | `pickup.gd` (`_try_stash`), `scrap.gd` (`pick_find`) |
+| **Elity** | Kapłan, Rzeźnik i Żerca w 30 % zostawiają część na ziemi — jej własny model (`gunpart_<id>.glb`) z poświatą; bierze ją człowiek, który do niej podejdzie | `enemy.gd` (`_die`), `pickup.gd` (`_try_part`), `view3d.gd` (`_sync_guns`) |
+| **Do ekstrakcji** | znaleziona część czeka w `Scrap.found` (replikowane) jak łup złomu: po udanej ekstrakcji jest odblokowana dla drużyny (toast „… unlocked for the squad”), wipe ją zabiera. Toast przy znalezieniu, w warsztacie wiersz części ma dopisek „found — extract” | `scrap.gd` (`find_part`, `bank_loot`, `reset_loot`), `workshop_ui.gd` |
+
+Dev: `--shotpart` (PBS-1 i bęben RPK przy graczu 1).
+

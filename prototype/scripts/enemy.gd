@@ -1232,6 +1232,11 @@ func _die() -> void:
 		var ak := Arsenal.pick_special_drop()                     # elita: pudełko amunicji specjalnej do noszonej broni (US, breneka, kartacz…)
 		if lam != null and ak != "":
 			lam.spawn_item("supply", Throwables.SHOP_ORDER.find(ak), global_position + Vector2(randf_range(-6.0, 6.0), -14))
+	if NoiseMgr.is_server() and not summoned and Scrap.enabled() and EnemyDefs.is_elite(kind) and randf() < Scrap.ELITE_PART_DROP:
+		var pid := Scrap.pick_find()                              # elita: rzadko część broni drużyny (odblokowanie po ekstrakcji, §7.1)
+		var lpt := get_tree().get_first_node_in_group("level")
+		if pid != "" and lpt != null:
+			lpt.spawn_item("part", Scrap.part_index(pid), global_position + Vector2(randf_range(-6.0, 6.0), -14))
 	if NoiseMgr.is_server() and not summoned and Scrap.enabled() and EnemyDefs.value(kind, "scrap") > 0.0 and randf() < Scrap.DROP_CHANCE:
 		var ls := get_tree().get_first_node_in_group("level")
 		if ls != null:

@@ -1310,7 +1310,7 @@ func take_item(n: String, quiet := false) -> void:
 ## Dźwięk podniesienia wg rodzaju przedmiotu (pickup.gd: kind); reszta (flary, zaopatrzenie) gra „item_pickup”.
 const PICKUP_SOUND := {
 	"ammo": "ammo_pickup", "cache": "ammo_pickup", "weapon": "weapon_pickup", "health": "medkit_pickup",
-	"scrap": "scrap_pickup", "stash": "scrap_pickup", "tag": "tag_pickup", "mag": "ammo_pickup",
+	"scrap": "scrap_pickup", "stash": "scrap_pickup", "tag": "tag_pickup", "mag": "ammo_pickup", "part": "weapon_pickup",
 }
 
 @rpc("authority", "call_local", "reliable")

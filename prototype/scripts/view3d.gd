@@ -1732,6 +1732,8 @@ func _sync_guns() -> void:
 		var key := String(n.get("_hd_gun")) if n.get("_hd_gun") != null else ""
 		var hd = n.get("_hd")
 		var path := GUN_DIR + "gun_%s.glb" % key
+		if String(n.get("kind")) == "part":
+			path = GUN_DIR + "gunpart_%s.glb" % String(n.get("_hd_part"))       # część zostawiona przez elitę: jej własny model (gun_proc.py --part)
 		if key == "" or hd == null or not is_instance_valid(hd) or not ResourceLoader.exists(path):
 			continue
 		var on_rack := bool(n.get("static_display"))

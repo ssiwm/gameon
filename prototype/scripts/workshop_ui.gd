@@ -1381,7 +1381,7 @@ func _refresh_detail(w: int) -> void:
 		var fitted := Profile.fitted(key, slot) == id
 		var owned := id == "" or Scrap.has_part(id)
 		var nm := tr("Factory") if id == "" else tr(String(Parts.get_part(id)["name"]))
-		var tail := tr("fitted") if fitted else ("" if id == "" else (tr("owned") if owned else tr("%d scrap") % Scrap.part_cost(id)))
+		var tail := tr("fitted") if fitted else ("" if id == "" else (tr("owned") if owned else (tr("found — extract") if Scrap.found.has(id) else tr("%d scrap") % Scrap.part_cost(id))))
 		var col: Color = UiTheme.OK if fitted else (UiTheme.BP_TEXT if owned else GOLD)
 		var b := Button.new()
 		b.flat = true
