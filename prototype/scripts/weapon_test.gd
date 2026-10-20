@@ -205,6 +205,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_condition_4b()
 	await _t_mastery()
 	await _t_history()
+	await _t_part_finds()
 	await _t_penetration()
 	await _t_homing()
 	await _t_bolt()
@@ -2389,6 +2390,47 @@ func _t_history() -> void:
 	check("historia: model ma %d rys (5 × 2 boki), głęboka wyższa (%.3f > %.3f); gracz niesie nacięcia (%d)" % [marks.size(), tall, short, player.notches],
 		marks.size() == 10 and tall > short and player.notches == 4 + 16 * 1)
 	Profile.history = hi0
+	await _settle_player()
+
+## Części jako znaleziska, etap 5c (1.7.333, GUNSMITH_PLAN.md §7.1): skrytka zawiera część, elita czasem ją zostawia na ziemi; znaleziona część
+## czeka w Scrap.found do ekstrakcji (bank_loot) i dopiero wtedy jest odblokowana dla drużyny; wipe (reset_loot) ją zabiera.
+func _t_part_finds() -> void:
+	var parts0: Dictionary = Scrap.parts.duplicate()
+	var found0: Dictionary = Scrap.found.duplicate()
+	var loot0: int = Scrap.loot
+	var bank0: int = Scrap.bank
+	Scrap.parts = {}
+	Scrap.found = {}
+	await _settle_player()
+	var pid: String = Scrap.pick_find()
+	var pw := Weapons.index_of(String(Parts.get_part(pid).get("weapon", ""))) if pid != "" else -1
+	check("znaleziska: losowa część z modelem dla broni drużyny (%s)" % pid, pid != "" and GunModel.has_model(pid) and pw >= 0 and Scrap.is_unlocked(pw))
+	Scrap.find_part(pid)
+	var waiting: bool = Scrap.found.has(pid) and not Scrap.has_part(pid)
+	var again: bool = Scrap.find_part(pid)
+	Scrap.reset_loot()
+	var wiped: bool = Scrap.found.is_empty()
+	Scrap.find_part(pid)
+	Scrap.bank_loot(0)
+	check("znaleziska: część czeka do ekstrakcji (%s), drugi raz nie (%s), wipe ją zabiera (%s), ekstrakcja odblokowuje (%s)" % [str(waiting), str(not again), str(wiped), str(Scrap.has_part(pid))],
+		waiting and not again and wiped and Scrap.has_part(pid) and Scrap.found.is_empty())
+	Scrap.parts = {}
+	# skrytka: złom i część
+	level.spawn_item("stash", 0, player.global_position + Vector2(0.0, -4.0), Scrap.STASH_VALUE)
+	await wait(0.6)
+	check("znaleziska: skrytka daje część (%s)" % str(Scrap.found.keys()), Scrap.found.size() == 1)
+	Scrap.found = {}
+	# część na ziemi (łup elity): podchodzisz — znaleziona
+	var drop_id := "m83_pbs1"
+	level.spawn_item("part", Scrap.part_index(drop_id), player.global_position + Vector2(0.0, -4.0))
+	await wait(0.6)
+	var left: Array = get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.get("kind") == "part" and not n.is_queued_for_deletion())
+	check("znaleziska: część zostawiona przez elitę — podniesiona (%s), znajdźka znika (%d)" % [str(Scrap.found.has(drop_id)), left.size()], Scrap.found.has(drop_id) and left.is_empty())
+	Scrap.parts = parts0
+	Scrap.found = found0
+	Scrap.loot = loot0
+	Scrap.bank = bank0
+	free_dummies()
 	await _settle_player()
 
 ## Amunicja według kalibru (1.7.317, GUNSMITH_PLAN.md etap 1): wspólna pula 12/70, typy naboi (US, BZ, breneka, zapalające, gumowe),

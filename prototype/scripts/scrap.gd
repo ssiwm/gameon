@@ -13,6 +13,7 @@ signal supply_result(kind: String, ok: bool, reason: String)    ## zakup zaopatr
 signal purchase_result(weapon: int, ok: bool, reason: String)    ## kody zakupu broni: ok/poor/owned/later/invalid
 signal part_result(id: String, ok: bool, reason: String)         ## zakup części (parts.gd): ok/poor/owned/locked/invalid
 signal clean_result(weapon: int, ok: bool, reason: String)        ## czyszczenie broni przy ławie: ok/poor/invalid
+signal part_found(id: String)                                     ## część znaleziona w misji (u wszystkich) — czeka na ekstrakcję
 const CLEAN_MAX := 10             ## czyszczenie kosztuje 1 złom za każde rozpoczęte 10 % zużycia (najwyżej tyle)
 
 const NightShift := preload("res://scripts/night_shift.gd")
@@ -20,6 +21,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const Parts := preload("res://scripts/parts.gd")
 const Perks := preload("res://scripts/perks.gd")
 const Throwables := preload("res://scripts/throwables.gd")
+const GunModel := preload("res://scripts/gun_model.gd")
 
 const SAVE_PATH := "user://progress.cfg"
 
@@ -31,6 +33,9 @@ const STASH_VALUE := 20               ## ukryta skrytka (cel poboczny misji 1.1)
 const BONUS_CLEAR := 30               ## za ukończenie misji
 const BONUS_SIDE := 15                ## za cel poboczny
 const BONUS_NO_DOWNS := 10            ## za misję bez upadków
+## Części jako znaleziska (GUNSMITH_PLAN §7.1, od 1.7.333): skrytka misji zawiera część, elita czasem ją zostawia. Znaleziona część czeka
+## w `found` do ekstrakcji (jak łup złomu) i dopiero wtedy jest odblokowana dla drużyny; wipe ją zabiera.
+const ELITE_PART_DROP := 0.3
 
 ## Warsztat (faza B): ceny broni z kryjówki. Broń spoza tej tabeli i spoza LATER jest odblokowana od początku (M-83, SPREAD-12, P-83, maczeta).
 const PRICES := {Weapons.LR7: 150, Weapons.HKM9: 200, Weapons.SRUT8: 250, Weapons.GNIEW4: 300, Weapons.WIDMO1: 400}
@@ -41,6 +46,7 @@ const REWARDS := {Weapons.WIDMO1: "z1_b1"}
 var bank := 0
 var loot := 0
 var parts: Dictionary = {}            ## id części (parts.gd) → true: odblokowane przez drużynę (zapis u hosta); montaż — Profile.fits
+var found: Dictionary = {}            ## id części → true: znalezione w tej misji, odblokowane dopiero po ekstrakcji
 var unlocked: Dictionary = {}         ## id broni → true: kupione w warsztacie (zapis u hosta)
 var trophies: Dictionary = {}         ## id misji (boss) → true: ukończona, odblokowuje broń-trofeum (zapis u hosta)
 var last_gain := 0                    ## ile trafiło do banku po ostatniej misji (karta wyniku, ściana wyników)
@@ -65,7 +71,7 @@ func add_loot(n: int) -> void:
 	loot += n
 	_push()
 
-## Ekstrakcja udana: łup + bonusy do banku, zapis na dysk. Zwraca ile weszło.
+## Ekstrakcja udana: łup + bonusy do banku, znalezione części do odblokowań drużyny, zapis na dysk. Zwraca ile złomu weszło.
 func bank_loot(bonus: int) -> int:
 	if not NoiseMgr.is_server() or not enabled():
 		return 0
@@ -73,17 +79,67 @@ func bank_loot(bonus: int) -> int:
 	bank += gain
 	last_gain = gain
 	loot = 0
+	var newp: Array = found.keys()
+	for id in newp:
+		parts[id] = true
+	found.clear()
 	save_progress()
 	_push()
+	if not newp.is_empty():
+		if NoiseMgr.has_network():
+			_banked_rpc.rpc(newp)
+		else:
+			_banked_rpc(newp)
 	return gain
 
-## Wipe / restart: łup przepada, bank zostaje.
+## Wipe / restart: łup i znalezione części przepadają, bank zostaje.
 func reset_loot() -> void:
 	if not NoiseMgr.is_server():
 		return
-	if loot != 0:
+	if loot != 0 or not found.is_empty():
 		loot = 0
+		found.clear()
 		_push()
+
+## Część do znalezienia: losowa część z modelem (leży na ziemi albo w skrytce) dla broni, którą drużyna ma, jeszcze nieodblokowana
+## i nieznaleziona w tej misji; "" — wszystko już jest.
+func pick_find() -> String:
+	var pool: Array = []
+	for id in Parts.all_ids():
+		var w := Weapons.index_of(String(Parts.get_part(id)["weapon"]))
+		if w < 0 or not is_unlocked(w) or parts.has(id) or found.has(id) or not GunModel.has_model(id):
+			continue
+		pool.append(id)
+	return "" if pool.is_empty() else String(pool[randi() % pool.size()])
+
+## Indeks części w Parts.all_ids() (arg znajdźki „part”).
+func part_index(id: String) -> int:
+	return Parts.all_ids().find(id)
+
+## Serwer: drużyna znalazła część — czeka do ekstrakcji. false: nieznana, już odblokowana albo już znaleziona.
+func find_part(id: String) -> bool:
+	if not NoiseMgr.is_server() or not enabled() or not Parts.is_valid(id) or parts.has(id) or found.has(id):
+		return false
+	found[id] = true
+	_push()
+	if NoiseMgr.has_network():
+		_found_rpc.rpc(id)
+	else:
+		_found_rpc(id)
+	return true
+
+@rpc("authority", "call_local", "reliable")
+func _found_rpc(id: String) -> void:
+	part_found.emit(id)
+	Msg.post("find.%s" % id, Msg.Ch.TOAST, tr("Found: %s") % tr(String(Parts.get_part(id).get("name", id))),
+		{"sub": tr("The squad gets it after extraction"), "style": Msg.Style.SUCCESS, "ttl": 5.0, "prio": 75})
+	Audio.play("weapon_pickup", Audio.BUS_UI, -8.0)
+
+@rpc("authority", "call_local", "reliable")
+func _banked_rpc(ids: Array) -> void:
+	for id in ids:
+		Msg.post("banked.%s" % id, Msg.Ch.TOAST, tr("%s unlocked for the squad") % tr(String(Parts.get_part(String(id)).get("name", id))),
+			{"style": Msg.Style.SUCCESS, "ttl": 6.0, "prio": 70})
 
 ## Wydatek z banku (warsztat, faza B). false = za mało.
 func spend(n: int) -> bool:
@@ -321,13 +377,16 @@ func _part_done(id: String, reason: String) -> void:
 func _push() -> void:
 	changed.emit()
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys())
+		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys())
 
 @rpc("authority", "call_remote", "reliable")
-func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array) -> void:
+func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array, fnd: Array = []) -> void:
 	bank = b
 	loot = l
 	last_gain = g
+	found.clear()
+	for f in fnd:
+		found[String(f)] = true
 	unlocked.clear()
 	for w in unl:
 		unlocked[int(w)] = true

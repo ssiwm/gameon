@@ -1471,6 +1471,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 	for sa in OS.get_cmdline_user_args():
 		if sa.begins_with("--shotplayer="):               # dev: --shotplayer=hit|down|revive — zdarzenie gracza 1 po 1 s (podgląd animacji postaci 3D)
 			get_tree().create_timer(1.0).timeout.connect(_dev_player.bind(sa.substr("--shotplayer=".length())))
+	if "--shotpart" in OS.get_cmdline_user_args():
+		var pp1: Node2D = _players.get_node_or_null("1")     # dev: --shotpart — części zostawione przez elitę przy graczu 1 (PBS-1 i bęben RPK)
+		if pp1 != null:
+			level.spawn_item("part", Scrap.part_index("m83_pbs1"), pp1.global_position + Vector2(-22.0, -14.0))
+			level.spawn_item("part", Scrap.part_index("m83_drum75"), pp1.global_position + Vector2(24.0, -14.0))
 	if "--shotjam" in OS.get_cmdline_user_args():
 		var jp1: Node2D = _players.get_node_or_null("1")     # dev: --shotjam — broń gracza 1 brudna (35 %) i zacięta (podgląd HUD, warsztatu, oględzin); profil bez zapisu
 		if jp1 != null:

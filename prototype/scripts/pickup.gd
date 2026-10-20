@@ -19,6 +19,7 @@ extends Node2D
 const Sprites := preload("res://scripts/sprites.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const Parts := preload("res://scripts/parts.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 
@@ -39,6 +40,7 @@ const GLOW := {
 	"flares": Color(1.0, 0.45, 0.22),
 	"supply": Color(0.7, 0.85, 0.6),       # zastępowany kolorem zawartości (Throwables.KINDS), patrz _glow_color
 	"mag": Color(1.0, 0.78, 0.3),
+	"part": Color(0.5, 0.85, 1.0),
 }
 const MAG_EMPTY_LIFE := 30.0      ## s — pusty magazynek (nic do podniesienia) potem znika
 
@@ -61,6 +63,7 @@ var _glow: Lights.GameLight
 ## Grafika HD (Sprites.newitem): korzeń z bujaniem, sprite oświetlany, kopia „unshaded" (widać w ciemności) i nakładka (plakietka, kłódka).
 var _hd: Node2D
 var _hd_gun := ""
+var _hd_part := ""                ## znajdźka „part”: id części (model gunpart_<id>.glb w view3d.gd)
 var _hd_gun_rect := Rect2()
 static var _bbox := {}            ## wiersz arkusza broni → prostokąt nieprzezroczystych pikseli w klatce (do wyśrodkowania na stojaku)
 
@@ -199,6 +202,9 @@ func _setup_hd() -> void:
 			return
 	elif kind == "mag":
 		gun_key = String(Weapons.def(arg & 255).key)          # magazynek: podzespół `__mag` modelu broni (view3d.gd: _sync_guns)
+	elif kind == "part":
+		_hd_part = String(Parts.all_ids()[clampi(arg, 0, Parts.all_ids().size() - 1)])
+		gun_key = String(Parts.get_part(_hd_part).get("weapon", ""))     # część: jej własny model (view3d.gd: _sync_guns)
 		if Sprites.gun_hd(gun_key) == null:
 			return
 	var nm := _hd_name()
@@ -265,6 +271,8 @@ func _try_pickup() -> void:
 			_try_stash()
 		"mag":
 			_try_mag()
+		"part":
+			_try_part()
 		"flares":
 			_try_flares()
 		"supply":
@@ -324,6 +332,9 @@ func _try_stash() -> void:
 		if pl.dead or not _near(pl):
 			continue
 		Scrap.add_loot(rounds)
+		var pid := Scrap.pick_find()
+		if pid != "":
+			Scrap.find_part(pid)                              # skrytka patrolu: w środku część (odblokowanie po ekstrakcji, §7.1)
 		var mis := get_tree().get_first_node_in_group("mission")
 		if mis != null:
 			mis.on_stash_found(pl, global_position)
@@ -396,6 +407,15 @@ func _try_ammo() -> void:
 		var got := Arsenal.add_reserve(arg, rounds)
 		if got > 0:
 			_level().take_item(name)
+
+## Część zostawiona przez elitę (§7.1): bierze ją człowiek, który do niej podejdzie — odblokowanie dla drużyny po ekstrakcji.
+func _try_part() -> void:
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot or p.dead or not _near(p):
+			continue
+		Scrap.find_part(_hd_part)
+		_level().take_item(name)
+		return
 
 ## Upuszczony magazynek (szybkie przeładowanie): resztki wracają do wspólnego zapasu, gdy człowiek kucnie nad nim — samo przejście nie wystarczy,
 ## więc szybkie przeładowanie naprawdę kosztuje naboje, dopóki ktoś po nie nie wróci.
