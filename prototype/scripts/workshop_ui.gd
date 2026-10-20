@@ -19,6 +19,7 @@ const Look := preload("res://scripts/look.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const Char3D := preload("res://scripts/char3d.gd")
 const Actions := preload("res://scripts/actions.gd")
+const Ammo := preload("res://scripts/ammo.gd")
 
 const GOLD := Color(0.95, 0.8, 0.4)
 const COLS := 2
@@ -414,7 +415,7 @@ func _make_supply_tile(kd: String, idx: int) -> SupplyTile:
 	t.price_label.position = Vector2(76, 23)
 	t.add_child(t.price_label)
 	t.bar = StockBar.new()
-	t.bar.maxn = int(data["max"])
+	t.bar.maxn = Throwables.units(kd, int(data["max"]))        # amunicja: w pudełkach
 	t.bar.position = Vector2(150.0 - 6.0 - float(t.bar.maxn) * 9.0 + 2.0, 27)
 	t.add_child(t.bar)
 	t.pressed.connect(_select_supply.bind(idx))
@@ -820,10 +821,10 @@ func _select_supply(i: int) -> void:
 func _buy_selected_supply() -> void:
 	Scrap.request_buy_supply(String(_supply_kinds()[_sup_sel]))
 
-## Rodzaje do kupienia (z ceną) w kolejności karuzeli.
+## Rodzaje do kupienia (z ceną) w kolejności karuzeli: przedmioty, potem amunicja specjalna.
 func _supply_kinds() -> Array:
 	var out: Array = []
-	for k in Throwables.ORDER:
+	for k in Throwables.SHOP_ORDER:
 		if Throwables.price_of(String(k)) > 0:
 			out.append(k)
 	return out
@@ -1123,7 +1124,7 @@ func _refresh_supplies() -> void:
 		(t.icon_node as ItemIcon).set_item(k, Color.WHITE if have > 0 or Scrap.bank >= price else Color(0.6, 0.64, 0.68))
 		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.BP_TEXT)
 		t.price_label.add_theme_color_override("font_color", GOLD if Scrap.bank >= price else UiTheme.DANGER)
-		t.bar.have = have
+		t.bar.have = Throwables.units(k, have)
 		t.bar.queue_redraw()
 	var k2 := String(kinds[_sup_sel])
 	var d: Dictionary = Throwables.KINDS[k2]
@@ -1131,13 +1132,20 @@ func _refresh_supplies() -> void:
 	var maxn := int(d["max"])
 	_s_icon.set_item(k2, Color.WHITE)
 	_s_title.text = String(d["name"])
-	var mode: String = {"throw": "Throwable", "place": "Placed", "use": "Tool"}[String(d["mode"])]
+	var mode: String = {"throw": "Throwable", "place": "Placed", "use": "Tool", "ammo": "Ammunition"}[String(d["mode"])]
 	_s_tag.text = "%s  ·  %s" % [String(d["full"]), mode]
 	for ch in _s_stats.get_children():
 		_s_stats.remove_child(ch)
 		ch.free()
 	var rows: Array = [["Carried", "%d / %d" % [have2, maxn]], ["Issued free", "%d per mission" % int(d["issue"]) if int(d["issue"]) > 0 else "—"]]
-	if d.has("noise"):
+	if Throwables.is_ammo(k2):
+		var ct := Ammo.from_kind(k2)
+		var users: Array = []
+		for wd in Weapons.defs():
+			if String(wd.caliber) == String(ct.get("cal", "")):
+				users.append(String(wd.name))
+		rows = [["Carried", tr("%d / %d rounds") % [have2, maxn]], ["Box", tr("%d rounds") % Throwables.box_of(k2)], ["Fits", ", ".join(users)]]
+	elif d.has("noise"):
 		rows.append(["Noise", "%.0f" % float(d["noise"])])
 	elif k2 in ["frag", "charge"]:
 		rows.append(["Noise", "explosion"])
@@ -1145,7 +1153,9 @@ func _refresh_supplies() -> void:
 		_s_stats.add_child(UiTheme.label(String(r[0]), 9, UiTheme.BP_MUTED))
 		_s_stats.add_child(UiTheme.label(String(r[1]), 9, UiTheme.BP_TEXT))
 		_s_stats.add_child(Control.new())
-	_s_text.text = String(d["note"])
+	_s_text.text = tr(String(d["note"]))
+	if Throwables.is_ammo(k2):
+		_s_text.text += "\n" + tr("[%s] in the field picks the ammo type for the next magazine.") % Actions.key("ammo_type")
 	var price2 := Throwables.price_of(k2)
 	_s_action.disabled = have2 >= maxn or not Scrap.enabled()
 	if not Scrap.enabled():
@@ -1153,7 +1163,7 @@ func _refresh_supplies() -> void:
 	elif have2 >= maxn:
 		_s_action.text = "The squad is carrying the maximum"
 	else:
-		_s_action.text = tr("Buy +1  ·  %d scrap") % price2
+		_s_action.text = (tr("Buy a box  ·  %d scrap") % price2) if Throwables.is_ammo(k2) else (tr("Buy +1  ·  %d scrap") % price2)
 
 func _on_supply_result(kind: String, ok: bool, reason: String) -> void:
 	if not _open:

@@ -41,6 +41,7 @@ const DEFS := {
 	"flashlight": {"keys": [KEY_L], "pad": [JOY_BUTTON_DPAD_LEFT]},
 	"reload": {"keys": [KEY_R], "pad": [JOY_BUTTON_RIGHT_STICK]},
 	"firemode": {"keys": [KEY_B], "pad": [JOY_BUTTON_DPAD_DOWN]},
+	"ammo_type": {"keys": [KEY_Z]},                    # typ naboju na następny magazynek (ammo.gd); pad: bez domyślnego przycisku, można przypisać
 	# użycie przedmiotu: lewy Alt (na macOS lewy Cmd pierwszy, lewy Alt też działa); prawy Alt / Cmd zostaje wolny
 	"throw": {"keys": [{"key": KEY_ALT, "left": true}], "keys_macos": [{"key": KEY_META, "left": true}, {"key": KEY_ALT, "left": true}], "pad": [JOY_BUTTON_RIGHT_SHOULDER]},
 	"throw_next": {"keys": [KEY_X], "pad": [JOY_BUTTON_DPAD_UP]},
@@ -73,7 +74,7 @@ const DEFS := {
 ## `menu_*` mają stałe wiązania.)
 const LABELS := {
 	"move_left": "Move left", "move_right": "Move right", "move_up": "Aim / move up", "move_down": "Aim down / drop",
-	"jump": "Jump", "fire": "Fire", "reload": "Reload", "firemode": "Fire mode", "melee": "Melee",
+	"jump": "Jump", "fire": "Fire", "reload": "Reload", "firemode": "Fire mode", "ammo_type": "Ammo type", "melee": "Melee",
 	"weapon_1": "Weapon 1", "weapon_2": "Weapon 2", "weapon_3": "Weapon 3", "weapon_next": "Next weapon", "weapon_prev": "Previous weapon",
 	"crouch": "Sneak", "overcharge": "Overcharge (lure)", "scream": "Scream", "flare": "Flare", "flashlight": "Flashlight",
 	"interact": "Interact / revive", "throw": "Use item", "throw_next": "Switch item", "restart": "Confirm / ready up",

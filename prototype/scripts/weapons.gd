@@ -24,6 +24,7 @@ extends RefCounted
 
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
+const Ammo := preload("res://scripts/ammo.gd")
 
 const M83 := 0
 const SPREAD12 := 1
@@ -57,7 +58,7 @@ static var _defs: Array = []
 static func _table() -> Array:
 	return [
 		{
-			"key": "m83", "name": "M-83", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
+			"key": "m83", "name": "M-83", "slot": Slot.PRIMARY, "kind": Kind.BULLET, "caliber": "762",
 			"auto": true, "cooldown": 0.11, "draw_time": 0.28, "burst_size": 3,
 			"damage": 8.0, "crit_mult": 1.5, "knock": 55.0,
 			"jitter_deg": 0.8, "bloom_per_shot": 0.45, "bloom_max": 4.0, "bloom_decay": 9.0,
@@ -70,7 +71,7 @@ static func _table() -> Array:
 			"sfx": "m83_shot", "sfx_count": 6, "sfx_vol": -7.0,
 		},
 		{
-			"key": "spread12", "name": "SPREAD-12", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
+			"key": "spread12", "name": "SPREAD-12", "slot": Slot.PRIMARY, "kind": Kind.BULLET, "caliber": "12g",
 			"auto": false, "cooldown": 0.26, "draw_time": 0.35,
 			"damage": 7.0, "pellets": 5, "knock": 30.0,
 			"spread_deg": 14.0, "jitter_deg": 1.5,
@@ -83,7 +84,7 @@ static func _table() -> Array:
 			"sfx": "spread12_shot", "sfx_count": 3, "sfx_vol": -3.0,
 		},
 		{
-			"key": "p64", "name": "P-83", "slot": Slot.SIDEARM, "kind": Kind.BULLET,
+			"key": "p64", "name": "P-83", "slot": Slot.SIDEARM, "kind": Kind.BULLET, "caliber": "918",
 			"auto": false, "cooldown": 0.20, "draw_time": 0.2,
 			"damage": 11.0, "crit_mult": 2.0, "knock": 60.0,
 			"jitter_deg": 0.35, "bloom_per_shot": 0.8, "bloom_max": 3.0, "bloom_decay": 10.0, "crouch_accuracy": 0.5,
@@ -95,7 +96,7 @@ static func _table() -> Array:
 			"sfx": "p64_shot", "sfx_count": 4, "sfx_vol": -8.0,
 		},
 		{
-			"key": "srut8", "name": "PELLET-8", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
+			"key": "srut8", "name": "PELLET-8", "slot": Slot.PRIMARY, "kind": Kind.BULLET, "caliber": "12g",
 			"auto": false, "cooldown": 0.8, "draw_time": 0.45,
 			"damage": 10.0, "pellets": 8, "knock": 45.0, "stun": 0.5,
 			"spread_deg": 17.0, "jitter_deg": 1.0,
@@ -231,6 +232,24 @@ static func def_at(id: int, lv: int) -> WeaponDef:
 		Upgrades.apply(d, lv)
 		_upgraded[k] = d
 	return _upgraded[k]
+
+static var _ammo_defs: Dictionary = {}       ## (id * 10 + poziom) * 16 + typ naboju → definicja z ulepszeniami i amunicją
+
+## Definicja broni z ulepszeniami drużyny i typem naboju `t` (ammo.gd). Typ 0 (zwykły) = `def(id)`. Pocisk, kontroler i obrażenia
+## czytają ją dla strzału nabojem danego typu; nieznany typ kalibru traktujemy jak zwykły.
+static func def_ammo(id: int, t: int) -> WeaponDef:
+	var i := clampi(id, 0, COUNT - 1)
+	var lv := int(levels.get(i, 0))
+	var base := def_at(i, lv)
+	if t <= 0 or not Ammo.valid(String(base.caliber), t):
+		return base
+	var k := (i * 10 + lv) * 16 + t
+	if not _ammo_defs.has(k):
+		var d: WeaponDef = WeaponDef.make(i, _table()[i])
+		Upgrades.apply(d, lv)
+		Ammo.apply(d, t)
+		_ammo_defs[k] = d
+	return _ammo_defs[k]
 
 ## Definicja bazowa (bez ulepszeń) — podgląd „przed" w warsztacie.
 static func base_def(id: int) -> WeaponDef:

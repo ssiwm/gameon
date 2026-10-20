@@ -24,6 +24,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const Mission := preload("res://scripts/mission.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Throwables := preload("res://scripts/throwables.gd")
+const Ammo := preload("res://scripts/ammo.gd")
 const Hints := preload("res://scripts/hints.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
@@ -1528,9 +1529,16 @@ func _drive_weapons() -> void:
 		_ammo_mag.text = str(mag)
 		_ammo_res.text = "/ ∞"
 	else:
-		var res := Arsenal.get_reserve(cur.id)
+		var t_next: int = wc.next_ammo_of(cur.id)
+		var res := Arsenal.get_reserve(cur.id, t_next)
 		_ammo_mag.text = str(mag)
 		_ammo_res.text = "/ %d" % res
+		if Ammo.count(String(cur.caliber)) > 1:
+			# typ naboju w magazynku; wybrany inny na następny magazynek — strzałka (zapas pokazuje ten następny typ)
+			var cal := String(cur.caliber)
+			_ammo_res.text += "  " + Ammo.short_of(cal, int(cur.ammo))
+			if t_next != int(cur.ammo):
+				_ammo_res.text += "→" + Ammo.short_of(cal, t_next)
 		if mag <= 0 and res <= 0:
 			col = UiTheme.DANGER
 			note = "NO AMMO"

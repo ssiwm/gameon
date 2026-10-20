@@ -102,6 +102,16 @@ static func draw_glyph(ci: CanvasItem, kd: String, cx: float, y: float, s: float
 			r.call(-6, -8, 12, 4, Color(0.1, 0.12, 0.14))
 			ci.draw_polyline(PackedVector2Array([Vector2(cx - 4.0 * s, y - 6.0 * s), Vector2(cx - s, y - 6.0 * s), Vector2(cx, y - 8.0 * s), Vector2(cx + s, y - 4.0 * s), Vector2(cx + 4.0 * s, y - 6.0 * s)]), f.call(c), maxf(1.0, s * 0.7))
 			r.call(-6, -2, 3, 1, Color(0.5, 0.5, 0.5))
+		"ammo_us", "ammo_bz", "ammo_slug", "ammo_inc", "ammo_rub":
+			# pudełko amunicji z naklejką w kolorze typu i trzema nabojami na wierzchu (łuski mosiężne, łuski 12/70 z papieru)
+			var shell := kd in ["ammo_slug", "ammo_inc", "ammo_rub"]
+			r.call(-8, -7, 16, 7, Color(0.36, 0.33, 0.24))
+			r.call(-8, -7, 16, 1, Color(0.48, 0.44, 0.32))
+			r.call(-5, -5, 10, 3, c)
+			for i in 3:
+				var x := -5.0 + float(i) * 4.0
+				r.call(x, -12 if not shell else -11, 2 if not shell else 3, 5 if not shell else 4, Color(0.78, 0.62, 0.3) if not shell else c.darkened(0.2))
+				r.call(x, -13 if not shell else -11, 2 if not shell else 3, 1, Color(0.55, 0.5, 0.45) if not shell else Color(0.78, 0.62, 0.3))
 		"scanner":
 			r.call(-6, -10, 12, 10, Color(0.25, 0.27, 0.22))
 			ci.draw_circle(Vector2(cx, y - 5.0 * s), 3.5 * s, f.call(Color(0.08, 0.12, 0.08)))

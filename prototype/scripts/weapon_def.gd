@@ -22,6 +22,8 @@ var key := ""                 ## klucz techniczny (audio, sprite, logi)
 var name := ""
 var slot := Slot.PRIMARY
 var kind := Kind.BULLET
+var caliber := ""             ## kaliber (ammo.gd): bronie tego samego kalibru dzielą zapas naboi i typy amunicji; "" = zapas tylko tej broni
+var ammo := 0                 ## typ naboju naniesiony na tę definicję (Ammo.apply; 0 = zwykły) — Weapons.def_ammo
 
 # --- rytm ognia
 var auto := false             ## przytrzymanie = ogień ciągły
@@ -44,6 +46,7 @@ var knock := 0.0              ## odrzut wroga (px/s) na trafienie, mnożony prze
 var stun := 0.0               ## ogłuszenie wroga (s)
 var ignite := 0.0             ## podpalenie (s); wróg płonie i panikuje
 var pierce := 0               ## ile DODATKOWYCH wrogów przebija
+var armor_pen := 0.0          ## ułamek pancerza wroga, który pocisk ignoruje (amunicja BZ, breneka)
 var wall_pierce := 0.0        ## ile px ściany przebija (RAIL, ulepszenie)
 var pull := 0.0               ## ulepszenie (SINEW-6): linka — trafiony wróg jest szarpany ku strzelcowi z taką prędkością (px/s, × knock_mult wroga)
 var breaks_walls := false     ## MELEE (kilof): rozbija zamurowane przejścia (brick_wall.gd)
@@ -85,6 +88,7 @@ var n_max := 1.5
 var heat_gain := 0.1
 var heat_decay := 1.2         ## /s
 var n_extra := 0.0            ## hałas stały zdarzenia (np. detonacja granatu)
+var suppressor := 0.0         ## > 0: tłumik na lufie (ulepszenie) — nabój poddźwiękowy jest wtedy naprawdę cichy (Ammo.SUBSONIC_SUPPRESSED)
 
 # --- amunicja
 var mag := 30                 ## pojemność magazynka

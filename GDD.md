@@ -96,6 +96,7 @@ Misja → złom + wroga wiedza + próbki → Ulepszenia broni / Perki / Bezpiecz
 | Zmiana broni | 1 / 2 / 3, kółko myszy | Y (następna) |
 | Przeładowanie | R | R3 |
 | Tryb ognia (seria M-83) | B | D-pad ↓ |
+| Rodzaj amunicji (następny magazynek) | Z | — (do przypisania) |
 | Cios (maczeta / kilof) | V / PPM | X |
 | Przedmiot (granat, mina, apteczka…) / zmiana przedmiotu | lewy Alt / X | RB / D-pad ↑ |
 | Flara | F | D-pad → |
@@ -117,7 +118,9 @@ Ping drużyny i radio z pierwotnego projektu nie są zaimplementowane.
 ### Zasady ogólne
 - Gracz nosi **2 bronie główne** + **sidearm** (P-83 Wanad, nieskończona amunicja) + **broń białą**.
 - Bronie główne wypadają z pickupów w misji i są odblokowywane na stałe przez zakup w Kryjówce.
-- Amunicja jest **współdzielona w drużynie** (jeden typ na broń) — ekonomia zespołowa.
+- Amunicja jest **współdzielona w drużynie** — ekonomia zespołowa. Od 1.7.317 zapas liczy się **po kalibrze** (SPREAD-12 i PELLET-8 biorą
+  12/70 z jednej puli), a kaliber ma **typy naboi**: zwykłe (zapas misji, łup) i specjalne kupowane w warsztacie (7,62 US poddźwiękowe,
+  7,62 BZ przeciwpancerno-zapalające, 12/70 breneka, zapalające, gumowe). Typ wybiera się klawiszem Z na następny magazynek.
 - Każda broń ma 3 poziomy ulepszeń kupowane za złom.
 - **Hałas** = promień w metrach, który wrzuca punkty do Poziomu Uwagi. Jest to pełnoprawny statystyk.
 

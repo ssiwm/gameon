@@ -20,6 +20,7 @@ const Combat := preload("res://scripts/combat.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Projectile := preload("res://scripts/projectile.gd")
+const Ammo := preload("res://scripts/ammo.gd")
 
 enum State { READY, DRAW, RELOAD, CHARGE, MELEE }
 
@@ -40,6 +41,7 @@ signal dry_fired(w: int)
 signal weapon_changed(w: int)
 signal fire_mode_changed(w: int, burst: bool)
 signal melee_swung(w: int)
+signal ammo_changed(w: int, t: int)        ## gracz wybrał typ naboju na następny magazynek (klawisz Z)
 
 var player: CharacterBody2D
 
@@ -51,6 +53,8 @@ var inspect_item: Node2D               ## lokalnie: broń w oględzinach ([F]; w
 var _inspect_hp := 0.0                 ## zdrowie w chwili otwarcia oględzin (spadek je zamyka)
 var mags: Dictionary = {}
 var burst_on: Dictionary = {}     ## id broni → true: wybrany tryb serii (klawisz B; lokalnie, serwer go nie potrzebuje)
+var loaded: Dictionary = {}       ## id broni → typ naboju w magazynku (ammo.gd; brak wpisu = zwykły) — właściciel magazynka, jak `mags`
+var want_ammo: Dictionary = {}    ## id broni → typ wybrany na NASTĘPNY magazynek (klawisz Z); wymiana zachodzi przy przeładowaniu
 
 # --- stan
 var state: int = State.READY
@@ -98,8 +102,41 @@ func _ready() -> void:
 
 # ---------------------------------------------------------------- dostęp
 
+## Trzymana broń z typem naboju, który jest w magazynku (ulepszenia + amunicja).
 func cur() -> WeaponDef:
-	return Weapons.def(loadout[slot])
+	var w: int = loadout[slot]
+	return Weapons.def_ammo(w, ammo_of(w))
+
+## Typ naboju w magazynku broni `w` (0 = zwykły).
+func ammo_of(w: int) -> int:
+	return int(loaded.get(w, 0))
+
+## Typ wybrany na następny magazynek broni `w`.
+func next_ammo_of(w: int) -> int:
+	return int(want_ammo.get(w, ammo_of(w)))
+
+## Klawisz Z: następny typ naboju kalibru trzymanej broni, który drużyna ma w zapasie (zwykły jest zawsze). Typ wchodzi z nowym
+## magazynkiem — gotowa broń od razu się przeładowuje (stary magazynek wraca do zapasu swojego typu, także nabój z komory).
+func cycle_ammo() -> void:
+	var d := cur()
+	var n := Ammo.count(String(d.caliber))
+	if n <= 1 or not d.uses_ammo() or d.infinite:
+		return
+	var from := next_ammo_of(d.id)
+	var pick := from
+	for i in range(1, n + 1):
+		var t := (from + i) % n
+		if t == 0 or Arsenal.get_reserve(d.id, t) > 0:
+			pick = t
+			break
+	if pick == from:
+		return
+	want_ammo[d.id] = pick
+	if not player.is_bot:
+		Audio.play("ui_click", Audio.BUS_UI, -10.0, 1.1)
+	ammo_changed.emit(d.id, pick)
+	if pick != ammo_of(d.id) and state == State.READY:
+		try_reload()
 
 ## Czy `d` strzela teraz serią (broń ma tryb serii i gracz go wybrał).
 func is_burst(d: WeaponDef) -> bool:
@@ -117,7 +154,7 @@ func toggle_fire_mode() -> void:
 	fire_mode_changed.emit(d.id, bool(burst_on[d.id]))
 
 func def_of_slot(i: int) -> WeaponDef:
-	return Weapons.def(loadout[i])
+	return Weapons.def_ammo(loadout[i], ammo_of(loadout[i]))
 
 func mag_of(w: int) -> int:
 	return int(mags.get(w, 0))
@@ -207,6 +244,8 @@ func reset() -> void:
 	melee_id = Weapons.START_MELEE
 	slot = 0
 	mags.clear()
+	loaded.clear()
+	want_ammo.clear()
 	for w in loadout:
 		mags[w] = Weapons.def(w).mag
 	_heat.clear()
@@ -269,6 +308,8 @@ func tick_local(delta: float, reviving: bool) -> void:
 		try_melee()
 	if Input.is_action_just_pressed("reload"):
 		try_reload()
+	if Input.is_action_just_pressed("ammo_type"):
+		cycle_ammo()
 	var held := Input.is_action_pressed("fire") or sim_fire
 	var pressed := Input.is_action_just_pressed("fire") or sim_press
 	sim_press = false
@@ -479,10 +520,10 @@ func _fire_shot(d: WeaponDef) -> void:
 		state = State.READY
 	_own_shot_fx(d, muzzle, dir)
 	if NoiseMgr.is_server():
-		_server_fire(muzzle, dir, d.id, seed, extra, player.player_id, true)
+		_server_fire(muzzle, dir, d.id, seed, extra, player.player_id, true, 0.0, d.ammo)
 	else:
 		_predict(d, muzzle, dir, seed, extra)
-		_fire_request.rpc_id(1, muzzle, dir, d.id, seed, extra)
+		_fire_request.rpc_id(1, muzzle, dir, d.id, seed, extra, d.ammo)
 	shot.emit(d.id)
 	if d.sfx_cycle != "":
 		_schedule_cycle(d, muzzle, dir)
@@ -564,17 +605,17 @@ func _spawn_projectiles(d: WeaponDef, muzzle: Vector2, dir: Vector2, seed: int, 
 	var scene := get_tree().current_scene
 	for dd in Weapons.pellet_dirs(d, dir, seed, extra):
 		var p := Projectile.new()
-		p.launch(d.id, muzzle, dd, shooter, auth, lag)
+		p.launch(d.id, muzzle, dd, shooter, auth, lag, d.ammo)
 		scene.add_child(p)
 
 ## Serwer: waliduje (tempo, wylot) i wykonuje strzał; resztę peerów informuje o kosmetyce.
 @rpc("any_peer", "call_remote", "reliable")
-func _fire_request(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float) -> void:
+func _fire_request(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, ammo: int) -> void:
 	if not NoiseMgr.is_server() or player == null or player.dead:
 		return
 	if multiplayer.get_remote_sender_id() != player.player_id or not Weapons.is_valid(w):
 		return
-	var d := Weapons.def(w)
+	var d := Weapons.def_ammo(w, ammo)              # nieznany typ kalibru = nabój zwykły (Weapons.def_ammo)
 	if d.is_melee() or d.is_continuous():
 		return
 	# tempo: token bucket — lag może skumulować kilka strzałów, ale nie więcej niż RATE_CAP
@@ -589,11 +630,11 @@ func _fire_request(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: floa
 		muzzle = expect
 	# kompensacja opóźnienia: serwer sam mierzy RTT strzelca (lag_comp.gd), klient niczego nie deklaruje
 	var lag := LagComp.rewind_for(player.player_id)
-	_server_fire(muzzle, dir.normalized(), w, seed, clampf(extra, 0.0, 12.0), player.player_id, false, lag)
+	_server_fire(muzzle, dir.normalized(), w, seed, clampf(extra, 0.0, 12.0), player.player_id, false, lag, d.ammo)
 
-## Autorytatywny strzał (serwer). `own_fx_done` = strzelec (host) już zagrał swoje efekty.
-func _server_fire(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, shooter: int, own_fx_done: bool, lag := 0.0) -> void:
-	var d := Weapons.def(w)
+## Autorytatywny strzał (serwer). `own_fx_done` = strzelec (host) już zagrał swoje efekty. `ammo` = typ naboju (ammo.gd).
+func _server_fire(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, shooter: int, own_fx_done: bool, lag := 0.0, ammo := 0) -> void:
+	var d := Weapons.def_ammo(w, ammo)
 	srv_shots += 1
 	Lights.add_flash(muzzle, d.flash_light, player)
 	match d.kind:
@@ -606,14 +647,14 @@ func _server_fire(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float
 	if NoiseMgr.has_network():
 		for peer in multiplayer.get_peers():
 			if peer != shooter:
-				_fire_remote.rpc_id(peer, muzzle, dir, w, seed, extra, shooter)
+				_fire_remote.rpc_id(peer, muzzle, dir, w, seed, extra, shooter, d.ammo)
 
 ## Kosmetyka cudzego strzału u klientów (serwer wywołuje na węźle należącym do KLIENTA).
 @rpc("any_peer", "call_remote", "unreliable")
-func _fire_remote(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, shooter: int) -> void:
+func _fire_remote(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, shooter: int, ammo: int) -> void:
 	if NoiseMgr.is_server() or multiplayer.get_remote_sender_id() != 1 or not Weapons.is_valid(w):
 		return
-	var d := Weapons.def(w)
+	var d := Weapons.def_ammo(w, ammo)
 	if d.kind != WeaponDef.Kind.RAIL:
 		_spawn_projectiles(d, muzzle, dir, seed, extra, shooter, false)
 	_remote_shot_fx(d, muzzle, dir)
@@ -722,13 +763,25 @@ func try_reload(auto := false) -> bool:
 	var d := cur()
 	if not d.uses_ammo() or state != State.READY:
 		return false
+	var t := next_ammo_of(d.id)
+	var swap := t != ammo_of(d.id)                     # inny typ naboju: cały magazynek (z komorą) wraca do zapasu, ładujemy nowy
 	var cap := d.capacity(mag_of(d.id) > 0)           # nabój w komorze: z pełnym magazynkiem można jeszcze dołożyć jeden (30+1)
-	if mag_of(d.id) >= cap:
+	if mag_of(d.id) >= cap and not swap:
 		return false
-	if not d.infinite and Arsenal.get_reserve(d.id) <= 0 and ammo_enabled:
+	if not d.infinite and Arsenal.get_reserve(d.id, t) <= 0 and ammo_enabled:
+		if swap:
+			want_ammo[d.id] = ammo_of(d.id)                # wybranego typu już nie ma — zostaje to, co jest w magazynku
+			ammo_changed.emit(d.id, ammo_of(d.id))
 		if not auto:
 			Audio.play("dry_fire", Audio.BUS_WEAPONS, -10.0, 0.8)
 		return false
+	if swap:
+		if mag_of(d.id) > 0 and ammo_enabled:
+			Arsenal.deposit(d.id, mag_of(d.id), ammo_of(d.id))
+		mags[d.id] = 0
+		loaded[d.id] = t
+		d = cur()
+		cap = d.capacity(false)
 	firing = false
 	_burst_left = 0
 	state = State.RELOAD
@@ -761,7 +814,7 @@ func _begin_round(d: WeaponDef) -> void:
 		_rl_req = false
 		_rl_pending += 1
 	else:
-		Arsenal.request_rounds(d.id, 1)
+		Arsenal.request_rounds(d.id, 1, ammo_of(d.id))
 	_reload_sfx(d)
 
 func _tick_reload(delta: float) -> void:
@@ -778,7 +831,7 @@ func _tick_reload(delta: float) -> void:
 		if _rl_pending > 0:
 			_rl_pending -= 1
 			mags[d.id] = mini(_rl_cap, mag_of(d.id) + 1)
-		if mag_of(d.id) < _rl_cap and (_rl_req or _rl_pending > 0 or d.infinite or Arsenal.get_reserve(d.id) > 0):
+		if mag_of(d.id) < _rl_cap and (_rl_req or _rl_pending > 0 or d.infinite or Arsenal.get_reserve(d.id, ammo_of(d.id)) > 0):
 			_begin_round(d)
 		elif not _rl_req:
 			_finish_reload()
@@ -790,7 +843,7 @@ func _tick_reload(delta: float) -> void:
 		if d.infinite or not ammo_enabled:
 			_on_rounds_granted(d.id, want)
 		else:
-			Arsenal.request_rounds(d.id, want)
+			Arsenal.request_rounds(d.id, want, ammo_of(d.id))
 
 func _finish_reload() -> void:
 	state = State.READY
@@ -824,9 +877,9 @@ func _on_rounds_granted(w: int, n: int) -> void:
 		var put := mini(room, n)
 		mags[w] = mag_of(w) + put
 		if n > put:
-			Arsenal.deposit(w, n - put)
+			Arsenal.deposit(w, n - put, ammo_of(w))
 	elif n > 0:
-		Arsenal.deposit(w, n)
+		Arsenal.deposit(w, n, ammo_of(w))
 
 # ---------------------------------------------------------------- broń biała
 
@@ -987,8 +1040,10 @@ func grant_weapon(w: int) -> void:
 	var old := loadout[target]
 	_cancel_actions()
 	if mag_of(old) > 0:
-		Arsenal.deposit(old, mag_of(old))
+		Arsenal.deposit(old, mag_of(old), ammo_of(old))
 	mags.erase(old)
+	loaded.erase(old)
+	want_ammo.erase(old)
 	loadout[target] = w
 	mags[w] = 0
 	_drop(old)
