@@ -41,6 +41,11 @@ const ACTOR_LIGHT := 1.0                   ## mnożnik świateł pomocniczych gr
 const AURA_RANGE_M := 2.6                   ## zasięg aury gracza na terenie w widoku 3D [m] (w 2D: 6 m)
 const PROP_Z := 0.0                         ## oś skrzyń i beczek: płaszczyzna gry (postacie stoją na nich i przez nie skaczą)
 const FLASH_UP_PX := 15.5                   ## wysokość źródła latarki nad stopami gracza w widoku 3D [px świata] (bark / broń)
+## Poświata znajdźki (pickup.gd, światło 2D 8 px nad podłogą): w 3D wisi tuż przed przedmiotem i nad nim (przedmiot stoi na z −0,2), a nie 1 m
+## przed płaszczyzną gry jak zwykłe światło — kamera patrzy lekko z góry, więc plama na ziemi bliżej kamery wypadała na ekranie POD przedmiotem
+## (przedmiot oświetlony od dołu-przodu, cień w górę ściany). Zasięg bez minimum 3 m świateł omni — poświata ma otulać przedmiot, nie teren.
+const PICKUP_GLOW_Z := 0.05
+const PICKUP_GLOW_RANGE := Vector2(1.2, 4.0)
 const AURA_WORLD := 1.0                    ## mnożnik energii aury gracza dla terenu (zwykłe światło omni: 4)
 const AURA_ACTOR := 0.55                    ## mnożnik energii aury gracza dla modeli graczy
 const FOG_BEGIN_M := 2.0                    ## mgła głębi: początek za płaszczyzną gry [m]
@@ -5129,6 +5134,7 @@ func _scan_lights() -> void:
 		if li.get_parent() != null and li.get_parent().get("static_display") == true and _item_scene("lamp") != null:
 			continue                                      # broń na stojaku: oświetla ją lampa nad stojakiem, nie kolorowa poświata pickupu
 		var is_aura: bool = li.get_parent() is CharacterBody2D and not li.is_cone and (li.get_parent() as Node).is_in_group("players")
+		var is_pickup: bool = li.get_parent() != null and (li.get_parent() as Node).is_in_group("pickups")
 		var id := li.get_instance_id()
 		keep[id] = true
 		n += 1
@@ -5162,7 +5168,7 @@ func _scan_lights() -> void:
 				l3a.layers = LAYER_WORLD | LAYER_ACTORS
 				_world.add_child(l3a)
 			_world.add_child(l3)
-			_lights[id] = [li, l3, l3a, is_aura]
+			_lights[id] = [li, l3, l3a, is_aura, is_pickup]
 	for id in _lights.keys():
 		if not keep.has(id):
 			var pair: Array = _lights[id]
@@ -5187,14 +5193,17 @@ func _sync_lights() -> void:
 		l3.visible = true
 		var rng_px := li.range_px
 		var gp := li.global_position
+		var pick := pair.size() > 4 and bool(pair[4])
+		var lz := PICKUP_GLOW_Z if pick else 1.0
+		var lrange := clampf(rng_px * PX, PICKUP_GLOW_RANGE.x, PICKUP_GLOW_RANGE.y) if pick else clampf(rng_px * PX, 3.0, 24.0)
 		l3.light_color = li.color
 		if l3a != null and is_instance_valid(l3a):
 			var la := l3a as OmniLight3D
 			la.visible = true
 			la.light_color = li.color
-			la.position = Level3D.px_to_m(gp) + Vector3(0.0, 0.0, 1.0)
+			la.position = Level3D.px_to_m(gp) + Vector3(0.0, 0.0, lz)
 			la.light_energy = li.energy * (AURA_ACTOR if pair[3] else 4.0)
-			la.omni_range = clampf(rng_px * PX, 3.0, 24.0)
+			la.omni_range = lrange
 		if l3 is SpotLight3D:
 			var a := li.global_rotation
 			var d := Vector3(cos(a), -sin(a), 0.0)
@@ -5214,7 +5223,7 @@ func _sync_lights() -> void:
 			l3.light_energy = li.energy * 13.0
 			(l3 as SpotLight3D).spot_range = clampf(rng_px * PX * 1.35, 8.0, 30.0)
 		else:
-			l3.position = Level3D.px_to_m(gp) + Vector3(0.0, 0.0, 1.0)
+			l3.position = Level3D.px_to_m(gp) + Vector3(0.0, 0.0, lz)
 			l3.light_energy = li.energy * (AURA_WORLD if pair[3] else 4.0)
 			# aura gracza: mała plama pod nogami (AURA_RANGE_M), żeby nie potknąć się o własne stopy — drogę i wrogów pokazuje latarka
-			(l3 as OmniLight3D).omni_range = AURA_RANGE_M if pair[3] else clampf(rng_px * PX, 3.0, 24.0)
+			(l3 as OmniLight3D).omni_range = AURA_RANGE_M if pair[3] else lrange
