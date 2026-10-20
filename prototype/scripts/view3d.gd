@@ -315,6 +315,7 @@ func _process(delta: float) -> void:
 	_sync_drawn()
 	_sync_launch_doors()
 	_sync_hub_props()
+	_sync_range()
 	_sync_world_notes()
 	_sync_guns()
 	_sync_cabinets(delta)
@@ -1387,6 +1388,92 @@ var _hub_props3d := {}                    ## id węzła hub_prop.gd → {root, k
 
 ## Rekwizyty z HUB_PROPS: modele maszynowni i magazynu, rury pod stropem, zamknięte drzwi D-7 (czerwony pas pod nimi błyska przy stukaniu)
 ## i okno radiostacji, w którym widać prognozowaną pogodę (clear / rain / storm / fog). Odtwarzane po przebudowie geometrii mapy.
+var _range3d := {}                         ## id węzła tarczy / przebiegu strzelnicy → bryły 3D
+
+## Strzelnica w kryjówce (range_target.gd, range_course.gd): stalowa blacha na słupku przewraca się do tyłu na zawiasie u dołu blachy,
+## tabliczka nad torem pokazuje ostatni przebieg i rekord drużyny.
+func _sync_range() -> void:
+	for id in _range3d.keys():
+		var e: Dictionary = _range3d[id]
+		if not is_instance_valid(e["node"]) or (e["node"] as Node).is_queued_for_deletion():
+			if is_instance_valid(e["root"]):
+				(e["root"] as Node).queue_free()
+			_range3d.erase(id)
+	for n in get_tree().get_nodes_in_group("range_targets"):
+		var id := n.get_instance_id()
+		if not _range3d.has(id):
+			var root := Node3D.new()
+			_world.add_child(root)
+			var h := float(n.get("height")) * PX
+			var steel := _hp_mat(Color(0.36, 0.37, 0.36), 0.7, 0.45)
+			_ld_box(root, Vector3(0.05, h - 0.33, 0.05), Vector3(0.0, (h - 0.33) * 0.5, -0.2), _hp_mat(Color(0.18, 0.17, 0.15), 0.6, 0.6))   # słupek
+			_ld_box(root, Vector3(0.5, 0.06, 0.4), Vector3(0.0, 0.03, -0.2), _hp_mat(Color(0.15, 0.14, 0.12), 0.6, 0.7))                   # stopa
+			var hinge := Node3D.new()
+			hinge.position = Vector3(0.0, h - 0.33, -0.2)
+			root.add_child(hinge)
+			var disc := MeshInstance3D.new()
+			var cm := CylinderMesh.new()
+			cm.top_radius = 0.33
+			cm.bottom_radius = 0.33
+			cm.height = 0.02
+			cm.radial_segments = 24
+			disc.mesh = cm
+			disc.rotation.x = PI * 0.5
+			disc.position = Vector3(0.0, 0.33, 0.0)
+			var paint := _hp_mat(Color(0.85, 0.82, 0.74), 0.2, 0.6)
+			disc.material_override = paint
+			disc.layers = LAYER_WORLD
+			hinge.add_child(disc)
+			var dot := MeshInstance3D.new()                    # czerwony środek tarczy
+			var dm := CylinderMesh.new()
+			dm.top_radius = 0.09
+			dm.bottom_radius = 0.09
+			dm.height = 0.024
+			dot.mesh = dm
+			dot.rotation.x = PI * 0.5
+			dot.position = Vector3(0.0, 0.33, 0.0)
+			dot.material_override = _hp_mat(Color(0.6, 0.08, 0.06), 0.1, 0.7)
+			dot.layers = LAYER_WORLD
+			hinge.add_child(dot)
+			var foot := Level3D.px_to_m((n as Node2D).global_position)
+			root.position = Vector3(foot.x, foot.y, 0.0)
+			_range3d[id] = {"node": n, "root": root, "hinge": hinge}
+		var e2: Dictionary = _range3d[id]
+		(e2["hinge"] as Node3D).rotation.x = -PI * 0.47 * ease(float(n.get("fall")), 0.6)      # przewraca się do tyłu
+	for c in get_tree().get_nodes_in_group("range_course"):
+		var cid := c.get_instance_id()
+		if not _range3d.has(cid):
+			var lbl := Label3D.new()
+			lbl.font = UiTheme.display_font(700)
+			lbl.font_size = 64
+			lbl.pixel_size = 0.0045
+			lbl.modulate = Color(0.95, 0.85, 0.6)
+			lbl.outline_size = 8
+			lbl.outline_modulate = Color(0.05, 0.04, 0.03)
+			lbl.layers = LAYER_WORLD
+			_world.add_child(lbl)
+			var sp := Level3D.px_to_m(c.get("sign_pos"))
+			lbl.position = Vector3(sp.x, sp.y + 4.6, -1.2)
+			# tor strzelnicy oświetlony: dwie lampy warsztatowe w kloszach nad tarczami (magazyn poza tym tonie w mroku)
+			for dx in [-3.2, 3.2]:
+				var lamp := OmniLight3D.new()
+				lamp.light_color = Color(1.0, 0.86, 0.62)
+				lamp.omni_range = 7.5
+				lamp.light_energy = 2.6
+				lamp.light_volumetric_fog_energy = 0.8
+				lamp.shadow_enabled = true
+				lamp.layers = LAYER_WORLD | LAYER_ACTORS
+				lamp.position = Vector3(sp.x + dx, sp.y + 3.4, 0.2)
+				lbl.add_child(lamp)
+				lamp.global_position = Vector3(sp.x + dx, sp.y + 3.4, 0.2)
+				var shade := _ld_box(lbl, Vector3(0.36, 0.14, 0.36), Vector3.ZERO, _hp_mat(Color(0.14, 0.15, 0.12), 0.6, 0.6))
+				shade.global_position = Vector3(sp.x + dx, sp.y + 3.55, 0.2)
+			_range3d[cid] = {"node": c, "root": lbl, "label": lbl}
+		var b := float(c.get("best"))
+		var lt := float(c.get("last_time"))
+		(_range3d[cid]["label"] as Label3D).text = tr("RANGE  ·  5 PLATES") + "\n" + (tr("LAST %.2f s") % lt if lt >= 0.0 else tr("SHOOT THE FIRST PLATE TO START")) \
+			+ ("   ·   " + tr("RECORD %.2f s") % b if b >= 0.0 else "")
+
 func _sync_hub_props() -> void:
 	for id in _hub_props3d.keys():
 		if not is_instance_valid((_hub_props3d[id] as Dictionary)["root"]):

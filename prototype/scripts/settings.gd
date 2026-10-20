@@ -70,6 +70,7 @@ var dev_nohud: bool = "--nohud" in OS.get_cmdline_user_args()   ## dev: ukrywa H
 var fullscreen := false
 var seen_tips: Array = []              ## identyfikatory podpowiedzi, które gracz już widział
 var shift_best_cleared := 0            ## Nocny Dyżur: najwięcej ukończonych misji w jednej serii (rekord lokalny)
+var range_best := -1.0                 ## strzelnica w kryjówce: rekord drużyny w s (−1: jeszcze nie ma), trzyma go host (range_course.gd)
 var shift_best_time := 0.0             ## Nocny Dyżur: najkrótszy czas pełnej serii w s (0 = jeszcze nikt nie ukończył)
 
 var _base_db := {}                     ## szyna → głośność z układu szyn (bez ustawień gracza)
@@ -264,6 +265,12 @@ func _apply_window() -> void:
 	DisplayServer.window_set_vsync_mode(VSYNC_MODES[vsync_idx])
 	Engine.max_fps = FPS_LIST[fps_idx]
 
+## Zapis rekordu strzelnicy (range_course.gd). Testy bez okna nie nadpisują prawdziwych ustawień gracza.
+func save_range_best() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	_commit()
+
 func _commit() -> void:
 	_save()
 	changed.emit()
@@ -334,6 +341,7 @@ func _load() -> void:
 	Actions.load_from(cf)
 	shift_best_cleared = int(cf.get_value("shift", "best_cleared", 0))
 	shift_best_time = float(cf.get_value("shift", "best_time", 0.0))
+	range_best = float(cf.get_value("range", "best", -1.0))
 
 func _save() -> void:
 	var cf := ConfigFile.new()
@@ -363,4 +371,5 @@ func _save() -> void:
 	Actions.save_to(cf)
 	cf.set_value("shift", "best_cleared", shift_best_cleared)
 	cf.set_value("shift", "best_time", shift_best_time)
+	cf.set_value("range", "best", range_best)
 	cf.save(SAVE_PATH)

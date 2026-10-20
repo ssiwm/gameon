@@ -206,6 +206,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_mastery()
 	await _t_history()
 	await _t_part_finds()
+	await _t_range()
 	await _t_penetration()
 	await _t_homing()
 	await _t_bolt()
@@ -2431,6 +2432,45 @@ func _t_part_finds() -> void:
 	Scrap.loot = loot0
 	Scrap.bank = bank0
 	free_dummies()
+	await _settle_player()
+
+## Strzelnica w kryjówce, etap 5d (1.7.334, GUNSMITH_PLAN.md §7.5): stalowe tarcze przewracają się od kuli (zatrzymują ją), pierwsza trafiona
+## uruchamia stoper, ostatnia daje wynik i rekord; po RESET_T s tarcze wstają; tarcze nie dają wprawy.
+func _t_range() -> void:
+	free_dummies()
+	await _settle_player()
+	var best0: float = Settings.range_best
+	Settings.range_best = -1.0
+	var ms0: Dictionary = Profile.mastery.duplicate()
+	Profile.mastery = {}
+	var rc: Node2D = (load("res://scripts/range_course.gd") as GDScript).new()
+	rc.name = "TestRange"
+	var fy: float = player.global_position.y
+	for dx in [40.0, 70.0, 100.0]:
+		rc.spots.append([player.global_position.x + dx, fy, 12.0])
+	level.add_child(rc)
+	await frames(3)
+	var tg: Array = rc.targets()
+	var hit_before: bool = tg.size() == 3 and not tg[0].down
+	_shoot_line(Weapons.M83)
+	await wait(0.25)
+	var first_down: bool = tg[0].down and not tg[1].down
+	var running: bool = rc.running
+	_shoot_line(Weapons.M83)
+	await wait(0.25)
+	_shoot_line(Weapons.M83)
+	await wait(0.25)
+	check("strzelnica: kula przewraca najbliższą tarczę i na niej staje (%s), stoper rusza (%s), trzy strzały — przebieg %.2f s, rekord %.2f s" % [str(first_down), str(running), rc.last_time, rc.best],
+		hit_before and first_down and running and rc.runs == 1 and not rc.running and rc.last_time > 0.0 and absf(rc.best - rc.last_time) < 0.0001 and absf(Settings.range_best - rc.best) < 0.0001)
+	check("strzelnica: tarcze nie dają wprawy (%d pkt)" % Profile.mastery_points("m83"), Profile.mastery_points("m83") == 0)
+	await wait(rc.RESET_T + 0.3)
+	var all_up: bool = tg.all(func(t: Node) -> bool: return not t.down)
+	check("strzelnica: po %.0f s tarcze wstają (%s)" % [rc.RESET_T, str(all_up)], all_up)
+	for t in tg:
+		t.queue_free()
+	rc.queue_free()
+	Settings.range_best = best0
+	Profile.mastery = ms0
 	await _settle_player()
 
 ## Amunicja według kalibru (1.7.317, GUNSMITH_PLAN.md etap 1): wspólna pula 12/70, typy naboi (US, BZ, breneka, zapalające, gumowe),

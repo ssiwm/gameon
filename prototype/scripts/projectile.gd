@@ -267,6 +267,8 @@ func _pass_through(node: Node) -> bool:
 
 ## Ile energii przebicia zabiera cel: skrzynia (drewno), beczka (stal), ciało.
 static func pen_cost(node: Node) -> float:
+	if node.has_method("pen_cost"):
+		return float(node.call("pen_cost"))                   # cel z własną odpornością (stalowa tarcza strzelnicy)
 	if node.is_in_group("props"):
 		return PEN_CRATE if String(node.get("kind")) == "crate" else PEN_BARREL
 	return PEN_BODY

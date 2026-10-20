@@ -4,7 +4,8 @@ extends RefCounted
 ## ŚRODEK (wiersz podłogi 22), od lewej w kolejności „co robi drużyna po powrocie”: śluza (dwa punkty startu S) → ściana wyników (v) → warsztat
 ## (h: [E] panel zakupów i ulepszeń za złom) → świetlica (meble z hub_decor.gd) → zbrojownia (a, dwie gabloty g po cztery bronie: SPREAD-12, PELLET-8,
 ## LR-7, HKM-9, WRATH-4, SPECTER-1, FALCON-6, SINEW-6, a) → tablica z odprawą następnej misji (n). Nad tablicą, na GÓRZE (wiersz 14), radiostacja
-## z prognozą pogody (R, weather.gd); pod zbrojownią i warsztatem na DOLE (wiersz 30) maszynownia i magazyn ze skrytkami (H).
+## z prognozą pogody (R, weather.gd); pod zbrojownią i warsztatem na DOLE (wiersz 30) maszynownia i magazyn ze skrytkami (H), a za magazynem
+## strzelnica (RANGE: stalowe tarcze, przebieg na czas, od 1.7.334).
 ## Poziomy łączą dwa szyby (SHAFTS: kraty „=” w podłogach i podesty co 2 kafle, prawy–lewy–prawy jak szyb serwisowy w 1.1); w dół zeskakuje się przez kratę (S+SPACE).
 ## Ekwipunek i amunicja przechodzą z poprzedniej misji i do następnej (main._restart_mission z carry); wyjście na misję po gotowości wszystkich ([Enter]).
 ## Każdy poziom ma jeden wiersz znaczników i jeden wiersz lamp — po zmianie uruchom `--maptest`.
@@ -27,9 +28,12 @@ const LAUNCH_ZONE := [63, 70, 22]
 ## okno z prognozą pogody w radiostacji na górze (wiersz 14; parametr = szerokość w kaflach), rury: parametr = ostatnia kolumna.
 const HUB_PROPS := [
 	["pipes", 5, 30, [26]], ["generator", 14, 30, []], ["compressor", 21, 30, []], ["barrel", 24, 30, []],
-	["crate", 35, 30, []], ["crate", 36, 30, []], ["scrap_pile", 39, 30, []], ["mil_crate", 45, 30, []], ["barrel", 48, 30, []],
+	["crate", 35, 30, []], ["crate", 36, 30, []], ["scrap_pile", 39, 30, []], ["mil_crate", 45, 30, []], ["barrel", 37, 30, []],
 	["d7", 66, 30, []], ["window", 68, 14, [3]],
 ]
+## Strzelnica w magazynie na dole (GUNSMITH_PLAN §7.5, range_course.gd): stalowe tarcze [kolumna, wysokość środka blachy w px nad podłogą]
+## na podłodze wiersza `floor`, tabliczka z wynikiem nad kolumną `sign`. Strzela się z magazynu (kolumny ok. 40–50) w prawo, 10–27 m.
+const RANGE := {"floor": 30, "targets": [[52, 11], [55, 17], [58, 13], [62, 19], [65, 14]], "sign": 58}
 ## Radio: kolejne linie pokazuje HUD w pierwszych sekundach pobytu.
 const RADIO := ["...the transmitter is still humming. Whatever listens out there heard it too.", "Restock. Swap guns at the armory. Check the board for the next job."]
 const RACKS := true                       ## broń z „g" stoi w miejscu (ekspozycja)

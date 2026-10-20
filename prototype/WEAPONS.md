@@ -556,3 +556,12 @@ Części można dalej kupować w warsztacie za złom, ale można je też **znale
 
 Dev: `--shotpart` (PBS-1 i bęben RPK przy graczu 1).
 
+## 29. Strzelnica w kryjówce, etap 5d (1.7.334)
+
+W magazynie na dolnym poziomie kryjówki (prawa część, kolumny 52–65) stoi pięć stalowych tarcz-popperów na słupkach, na różnych wysokościach,
+10–27 m od magazynu; tor oświetlają dwie lampy warsztatowe. Pierwsza trafiona tarcza uruchamia stoper, ostatnia go zatrzymuje: toast
+„Range: 5 plates in 4.21 s” i tabliczka nad torem (ostatni przebieg i rekord drużyny). Po 3 s tarcze wstają, przebieg bez trafienia przez 12 s
+przepada. Blacha zatrzymuje każdą kulę (`pen_cost` 99) i nie daje wprawy ani zabójstw. Trafienia rozstrzyga serwer, stan tarcz i wynik idą do
+wszystkich; rekord trzyma host (`Settings.range_best`). Dobre miejsce do sprawdzenia podrzutu, oparcia, gorącej lufy i typów naboi przed misją.
+Kod: `range_target.gd`, `range_course.gd`, `level.gd` (RANGE z danych mapy), `view3d.gd` (`_sync_range`), `maps/z1_hub.gd` (`RANGE`).
+
