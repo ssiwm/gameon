@@ -2484,8 +2484,29 @@ func _span_quad(mi: MeshInstance3D, a: Vector3, b: Vector3, w: float) -> void:
 	mi.position = (a + b) * 0.5
 	mi.basis = Basis(d / len * len, Vector3(-d.y, d.x, 0.0).normalized() * w, Vector3(0, 0, 1))
 
-## Rozbłysk wylotowy, ładowanie broni energetycznej, promień LR-7 i płomień miotacza w scenie 3D — przy wylocie lufy modelu broni.
-## Stan czytany z `weapon_view.gd` gracza (`_flash_t`, `w_state`, `w_firing`, `_beam_end`, `flame_on`).
+## Falowanie powietrza nad gorącą lufą (GUNSMITH_PLAN §5.5): pas nad lufą przesuwa obraz za sobą (tekstura ekranu) drobną, płynącą falą.
+## UV.y = 0 u góry pasa, 1 przy lufie; `k` = siła (0..1) z temperatury lufy.
+const HAZE_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled, fog_disabled;
+uniform sampler2D screen : hint_screen_texture, filter_linear_mipmap;
+uniform float k = 0.0;
+void fragment() {
+	float fx = smoothstep(0.0, 0.2, UV.x) * smoothstep(1.0, 0.8, UV.x);
+	float fy = smoothstep(0.0, 0.55, UV.y) * smoothstep(1.0, 0.85, UV.y);
+	float a = fx * fy * k;
+	float t = TIME;
+	vec2 off = vec2(sin(UV.y * 40.0 + t * 11.0 + sin(UV.x * 17.0 - t * 2.0) * 2.0), sin(UV.x * 29.0 + UV.y * 21.0 + t * 8.0)) * 0.0035 * a;
+	ALBEDO = texture(screen, SCREEN_UV + off).rgb;
+	ALPHA = clamp(a * 4.0, 0.0, 1.0);
+}
+"""
+const HAZE_H := 0.18                       ## m — wysokość pasa falowania nad lufą
+const HAZE_LIFT := 0.035                   ## m — pas zaczyna się tyle nad osią lufy (nie zniekształca samej broni)
+
+## Rozbłysk wylotowy, ładowanie broni energetycznej, promień LR-7, płomień miotacza oraz dym i falowanie powietrza nad gorącą lufą
+## w scenie 3D — przy lufie modelu broni. Stan czytany z `weapon_view.gd` gracza (`_flash_t`, `w_state`, `w_firing`, `_beam_end`, `flame_on`)
+## i z gracza (`w_hot` — temperatura lufy, replikowana).
 func _sync_weapon_fx() -> void:
 	for p in _rigs.keys():
 		if not is_instance_valid(p):
@@ -2533,7 +2554,56 @@ func _sync_weapon_fx() -> void:
 			flame.layers = LAYER_ACTORS
 			flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			root.add_child(flame)
-			rig["wfx"] = {"root": root, "star": star, "tongue": tongue, "cross": cross, "charge": charge, "beam_a": beam_a, "beam_b": beam_b, "beam_hit": beam_hit, "flame": flame}
+			# gorąca lufa: smużki dymu z całej lufy (spalany smar) i falujące nad nią powietrze
+			var hsmoke := CPUParticles3D.new()
+			hsmoke.emitting = false
+			hsmoke.amount = 30
+			hsmoke.lifetime = 1.8
+			hsmoke.local_coords = false
+			hsmoke.emission_shape = CPUParticles3D.EMISSION_SHAPE_POINTS
+			var hq := QuadMesh.new()
+			hq.size = Vector2(0.08, 0.08)
+			var hm := StandardMaterial3D.new()
+			hm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			hm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			hm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+			hm.billboard_keep_scale = true
+			hm.vertex_color_use_as_albedo = true
+			hm.albedo_texture = _soft()
+			hq.material = hm
+			hsmoke.mesh = hq
+			hsmoke.direction = Vector3(0.0, 1.0, 0.0)
+			hsmoke.spread = 14.0
+			hsmoke.initial_velocity_min = 0.1
+			hsmoke.initial_velocity_max = 0.28
+			hsmoke.gravity = Vector3(0.04, 0.14, 0.0)
+			var hsc := Curve.new()
+			hsc.add_point(Vector2(0.0, 0.5))
+			hsc.add_point(Vector2(1.0, 2.6))
+			hsmoke.scale_amount_curve = hsc
+			var hgr := Gradient.new()
+			hgr.set_color(0, Color(0.5, 0.5, 0.52, 0.0))
+			hgr.add_point(0.15, Color(0.5, 0.5, 0.52, 0.2))
+			hgr.set_color(hgr.get_point_count() - 1, Color(0.42, 0.42, 0.45, 0.0))
+			hsmoke.color_ramp = hgr
+			hsmoke.layers = LAYER_ACTORS
+			hsmoke.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			root.add_child(hsmoke)
+			var haze := MeshInstance3D.new()
+			var hzq := QuadMesh.new()
+			hzq.size = Vector2.ONE
+			haze.mesh = hzq
+			var hsh := Shader.new()
+			hsh.code = HAZE_SHADER
+			var hzm := ShaderMaterial.new()
+			hzm.shader = hsh
+			haze.material_override = hzm
+			haze.layers = LAYER_ACTORS
+			haze.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			haze.visible = false
+			root.add_child(haze)
+			rig["wfx"] = {"root": root, "star": star, "tongue": tongue, "cross": cross, "charge": charge, "beam_a": beam_a, "beam_b": beam_b, "beam_hit": beam_hit,
+				"flame": flame, "hsmoke": hsmoke, "haze": haze}
 		var fx: Dictionary = rig["wfx"]
 		var gun := rig["gun"] as Node3D
 		var dead := bool(p.get("dead"))
@@ -2595,6 +2665,31 @@ func _sync_weapon_fx() -> void:
 			flame3.initial_velocity_min = 80.0 * PX
 			flame3.initial_velocity_max = float(wv.get("flame_vmax")) * PX
 			flame3.lifetime = 0.5
+		# gorąca lufa: dym od HOT_SMOKE, falowanie powietrza od HOT_HAZE (efekty zależne od jakości; bez nich przy LOW)
+		var hot := float(p.get("w_hot")) if p.get("w_hot") != null else 0.0
+		var hsm := fx["hsmoke"] as CPUParticles3D
+		var haze := fx["haze"] as MeshInstance3D
+		var show_hot := not dead and gun.visible and Settings.quality_idx >= 1
+		var smoking := show_hot and hot > float(wv.Controller.HOT_SMOKE)
+		hsm.emitting = smoking
+		var rear: Vector3 = gun.global_transform * (c3._gun_info["rear"] as Vector3)
+		if smoking:
+			var s := clampf((hot - float(wv.Controller.HOT_SMOKE)) / (1.0 - float(wv.Controller.HOT_SMOKE)), 0.0, 1.0)
+			hsm.position = muzzle
+			var pts := PackedVector3Array()
+			for t in [0.0, 0.2, 0.4, 0.55]:
+				pts.append((rear - muzzle) * float(t))         # przód lufy (od wylotu do połowy broni) — tam lufa nie jest zakryta łożem
+			hsm.emission_points = pts
+			hsm.color = Color(1.0, 1.0, 1.0, 0.35 + 0.65 * s)
+		var hazing := show_hot and hot > float(wv.Controller.HOT_HAZE)
+		haze.visible = hazing
+		if hazing:
+			var hk := clampf((hot - float(wv.Controller.HOT_HAZE)) / (1.0 - float(wv.Controller.HOT_HAZE)), 0.0, 1.0)
+			var a3 := rear.lerp(muzzle, 0.35)
+			var dv := muzzle - a3
+			haze.position = (a3 + muzzle) * 0.5 + Vector3(0.0, HAZE_LIFT + HAZE_H * 0.5, 0.0)
+			haze.basis = Basis(Vector3(dv.x, dv.y, 0.0), Vector3(0.0, HAZE_H, 0.0), Vector3(0.0, 0.0, 1.0))
+			(haze.material_override as ShaderMaterial).set_shader_parameter("k", 0.35 + 0.65 * hk)
 
 ## Wołane z `Vfx.streak`: smuga pocisku / szyny jako dwa addytywne pasy (poświata i rdzeń), gasnące przez `life` s.
 func mirror_streak(a: Vector2, b: Vector2, color: Color, width: float, life: float) -> void:

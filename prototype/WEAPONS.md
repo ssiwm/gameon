@@ -378,7 +378,7 @@ Trzy liniowe poziomy ulepszeń (dawne `upgrades.gd`) zastąpił katalog części
 | Element | Jak działa | Kod |
 |---|---|---|
 | **Gniazda i części** | każda broń ma 2–4 gniazda (`feed`, `barrel`, `muzzle`, `action`, `stock`, `optic`, `edge`, `head`, `special`), w gnieździe element fabryczny i 1–3 części; części jednego gniazda się wykluczają (np. bęben 75 albo magazynek RPK, ciężka albo kasetowa głowica WRATH-4, ciężka albo sejsmiczna głowa kilofa). **Każda część ma koszt** — co najmniej jeden modyfikator na minus (`Parts.validate`, `is_cost`), np. magazynek RPK +0,15 s przeładowania, PBS-1 +0,05 s dobycia, lufa RPK +0,05 s dobycia | `parts.gd` (`PARTS`, `SLOT_ORDER`) |
-| **Nowe alternatywy** | M-83: bęben RPK 75 (+45, przeładowanie +1,2 s), krótka lufa (dobycie ×0,7, rozrzut ×1,3, zasięg ×0,85, głośniej), płomieniotłumik (błysk ×0,35, szarpnięcie +15%), kolba składana AKMS (dobycie ×0,8, podrzut +15%, szarpnięcie +25%); SPREAD-12: magazynek pudełkowy na 8 (przeładowanie ×0,6). Dawne poziomy zostały częściami z tymi samymi cenami (WRATH-4 „Bandolier” → szybkoładowacz, SINEW-6 „Waxed quiver” → podwójne gumy, bo zapas drużyny nie zależy już od części) | `parts.gd` |
+| **Nowe alternatywy** | M-83: bęben RPK 75 (+45, przeładowanie +1,2 s), krótka lufa (dobycie ×0,7, rozrzut ×1,3, zasięg ×0,85, głośniej, od 1.7.325 grzeje się o 25% szybciej), płomieniotłumik (błysk ×0,35, szarpnięcie +15%), kolba składana AKMS (dobycie ×0,8, podrzut +15%, szarpnięcie +25%); SPREAD-12: magazynek pudełkowy na 8 (przeładowanie ×0,6). Dawne poziomy zostały częściami z tymi samymi cenami (WRATH-4 „Bandolier” → szybkoładowacz, SINEW-6 „Waxed quiver” → podwójne gumy, bo zapas drużyny nie zależy już od części) | `parts.gd` |
 | **Zakup dla drużyny** | warsztat, zakładka ARMS: klawisze 1 / 2 (pad X / Y) albo kliknięcie przesuwają kursor po częściach broni, akcja kupuje część (cena z perkiem Kowal), montuje ją albo wraca do elementu fabrycznego. Serwer sprawdza broń i portfel (`Scrap.request_part` → `_part_server`), części trafiają do `Scrap.parts` (zapis u hosta, synchronizacja) | `scrap.gd`, `workshop_ui.gd` |
 | **Montaż gracza** | `Profile.fits` (profil gracza): gniazdo → id części albo "" (fabryczny); gniazdo bez wyboru montuje pierwszą odblokowaną część z listy, kupiona część montuje się kupującemu. `Profile.fit_code(w)` = kod `fit` (2 bity na gniazdo) | `profile.gd` |
 | **Sieć** | lokalny gracz publikuje `player.fits` (replikowane jak perki); kontroler buduje broń `Weapons.def_build(w, build)`, gdzie `build` = typ naboju \| fit << 4. Kod leci ze strzałem (`_fire_request` / `_server_fire` / `_fire_remote`), pocisk i `Combat.make_info` liczą z niego obrażenia; serwer wycina części, których drużyna nie ma (`Parts.sanitize`), a prośby o naboje ogranicza największym magazynkiem z części (`Parts.max_capacity`). `Weapons.def(w)` to od teraz broń fabryczna (zapas drużyny, łup, boty) | `weapons.gd`, `weapon_controller.gd`, `player.gd`, `arsenal.gd` |
@@ -433,4 +433,20 @@ Ustawienie **Weapon handling** (Ustawienia → Rozgrywka): **REALISTIC** (domyś
 
 Postać nie kładzie jeszcze broni na krawędzi (poza bez zmian — karabin wisi ok. 3 px nad skrzynią). Dev: `--shotbrace` (skrzynia przed
 graczem 1).
+
+## 21. Gorąca lufa, etap 3b (1.7.325)
+
+Temperatura lufy (0..1) jest osobna dla każdej broni i różni się od „ciepła” hałasu: tamto mierzy ciągłość ognia i opada w kilka sekund,
+lufa grzeje się długim ogniem i stygnie powoli. Działa w obsłudze REALISTIC (ustawienie z §20); w CLASSIC temperatura liczy się, ale nie
+zmienia rozrzutu ani hałasu.
+
+| Element | Jak działa | Kod |
+|---|---|---|
+| **Nagrzewanie** | `WeaponDef.barrel_heat` na strzał: M-83 1/60 (dwa magazynki ciągłym ogniem), P-83 1/35 (cienka lufa pistoletu), SPREAD-12 i PELLET-8 1/24. Wiązka, płomień, szyna, granatnik, rakiety, łuk i broń biała się nie grzeją. Lufa RPK grzeje się o 30% wolniej (cięższa), krótka o 25% szybciej | `weapons.gd`, `parts.gd` |
+| **Stygnięcie** | z pełnej do zimnej w 45 s (`BARREL_COOL`), także schowana broń | `weapon_controller.gd` (`_barrel`, `barrel_of`) |
+| **Rozrzut** | cały stożek (bazowy + seria + bieg…) × (1 + 0,4·t²) — przy połowie temperatury tylko +10%, przy pełnej +40% | `spread_extra` |
+| **Tłumik** | hałas × (1 + 0,5·t) — rozgrzana puszka głośnieje | `hot_can_mult` |
+| **Widać** | od t > 0,5 z przodu lufy unoszą się smużki dymu (spalany smar), od t > 0,6 nad lufą faluje powietrze (pas zniekształcający obraz za sobą, `HAZE_SHADER`); przy jakości efektów LOW bez nich. Temperaturę trzymanej broni niesie gracz (`w_hot`, replikowane), więc widzą to wszyscy | `view3d.gd` (`_sync_weapon_fx`), `player.gd` |
+
+Zostaje na etap 4 (§6): szybsze zużycie przy pełnej temperaturze i ogniu ciągłym. Dev: `--shothot` (rozgrzana lufa gracza 1).
 

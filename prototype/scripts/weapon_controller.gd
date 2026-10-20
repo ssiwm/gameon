@@ -49,6 +49,12 @@ const BRACE_SPREAD := 0.6
 const BRACE_PROBE := [0.45, 0.75, 1.0, 1.4]   ## gdzie wzdłuż broni szukamy krawędzi podparcia (0 = chwyt, 1 = wylot; łoże, wylot i tuż za nim)
 const BRACE_DEPTH := [1.5, 3.0, 4.5, 6.0]   ## px pod linią lufy, w których krawędź jeszcze podpiera broń
 const BRACE_MASK := 1 | 16 | 32             ## bryły, kładki, skrzynie i beczki (prop.gd)
+## Gorąca lufa (§5.5, etap 3b, od 1.7.325; też tylko w obsłudze realistycznej): temperatura z WeaponDef.barrel_heat, stygnie z pełnej w 45 s.
+const BARREL_COOL := 1.0 / 45.0
+const HOT_SPREAD := 0.4           ## rozrzut (bazowy + dodatkowy) × (1 + 0,4·t²) — czuć dopiero przy długim ogniu
+const HOT_CAN := 0.5              ## tłumik: hałas × (1 + 0,5·t) — rozgrzana puszka głośnieje
+const HOT_SMOKE := 0.5            ## od tej temperatury z lufy idzie dym (view3d.gd), od HOT_HAZE — falowanie powietrza
+const HOT_HAZE := 0.6
 
 signal shot(w: int)
 signal reload_started(w: int)
@@ -92,6 +98,7 @@ var srv_shots := 0
 var srv_last_build := -1          ## kod `build` ostatniego strzału przyjętego przez serwer od tego gracza (po sanityzacji części) — test sieci
 
 var _heat: Dictionary = {}
+var _barrel: Dictionary = {}      ## id broni → temperatura lufy 0..1 (każda broń swoja; schowana stygnie tak samo)
 var _buf_t := 0.0
 var _dry_latch := false
 var _rl_total := 0.0
@@ -189,6 +196,15 @@ func mag_of(w: int) -> int:
 func heat_of(w: int) -> float:
 	return float(_heat.get(w, 0.0))
 
+## Temperatura lufy broni `w` (0..1).
+func barrel_of(w: int) -> float:
+	return float(_barrel.get(w, 0.0))
+
+## Rozgrzewa lufę jednym strzałem.
+func _heat_barrel(d: WeaponDef) -> void:
+	if d.barrel_heat > 0.0:
+		_barrel[d.id] = minf(1.0, barrel_of(d.id) + d.barrel_heat)
+
 func carries(w: int) -> bool:
 	return loadout.has(w) or w == melee_id
 
@@ -225,7 +241,16 @@ func spread_extra(d: WeaponDef) -> float:
 		e *= float(d.crouch_accuracy)
 	if braced:
 		e *= BRACE_SPREAD
+	if Settings.realistic_handling:
+		var t := barrel_of(d.id)
+		e += (d.jitter_deg + e) * HOT_SPREAD * t * t        # gorąca lufa rozrzuca: rośnie cały stożek, także bazowy
 	return e
+
+## Mnożnik hałasu od temperatury lufy: rozgrzany tłumik głośnieje.
+func hot_can_mult(d: WeaponDef) -> float:
+	if not Settings.realistic_handling or d.suppressor <= 0.0:
+		return 1.0
+	return 1.0 + HOT_CAN * barrel_of(d.id)
 
 ## Podrzut zamiast narastania rozrzutu: obsługa realistyczna i celowanie myszą (tylko mysz pozwala ściągać lufę w dół).
 func climb_mode() -> bool:
@@ -319,6 +344,7 @@ func reset() -> void:
 	for w in loadout:
 		mags[w] = def_of(w).mag
 	_heat.clear()
+	_barrel.clear()
 	bloom = 0.0
 	climb = 0.0
 	recoil = 0.0
@@ -342,6 +368,7 @@ func on_down() -> void:
 ## Zimne lufy i zerowy rozrzut (po wykrwawieniu, bez utraty zestawu).
 func cool() -> void:
 	_heat.clear()
+	_barrel.clear()
 	bloom = 0.0
 	climb = 0.0
 	cd = 0.0
@@ -353,6 +380,7 @@ func _sync_player() -> void:
 	player.w_state = state
 	player.w_charge = charge
 	player.w_firing = firing
+	player.w_hot = barrel_of(player.weapon)
 	player.kit = kit()
 	if _prev_w != player.weapon:
 		_prev_w = player.weapon
@@ -397,6 +425,8 @@ func tick_bot(delta: float) -> void:
 func _tick_common(delta: float) -> void:
 	for w in _heat.keys():
 		_heat[w] = maxf(0.0, float(_heat[w]) - Weapons.def(w).heat_decay * delta)
+	for w in _barrel.keys():
+		_barrel[w] = maxf(0.0, float(_barrel[w]) - BARREL_COOL * delta)
 	bloom = maxf(0.0, bloom - cur().bloom_decay * delta)
 	climb = maxf(0.0, climb - cur().bloom_decay * CLIMB_RECOVER_K * delta)
 	recoil = maxf(0.0, recoil - delta * 9.0)
@@ -576,8 +606,9 @@ func _fire_shot(d: WeaponDef) -> void:
 		mags[d.id] = mag_of(d.id) - d.ammo_per_shot
 	var heat := heat_of(d.id)
 	var bursting := is_burst(d)
-	NoiseMgr.add_noise(d.noise(heat) * (d.burst_quiet if bursting else 1.0), player.global_position, "shot:" + d.key)
+	NoiseMgr.add_noise(d.noise(heat) * (d.burst_quiet if bursting else 1.0) * hot_can_mult(d), player.global_position, "shot:" + d.key)
 	_heat[d.id] = minf(1.0, heat + d.heat_gain * (d.burst_heat if bursting else 1.0))
+	_heat_barrel(d)
 	var kick := (d.burst_bloom if bursting else 1.0) * (BRACE_CLIMB if braced else 1.0)
 	if climb_mode():
 		# podrzut: lufa idzie w górę o przewidywalną wartość, rozrzut serii nie rośnie (mysz kompensuje)
@@ -618,6 +649,7 @@ func bot_fire(dir: Vector2) -> bool:
 	var heat := heat_of(d.id)
 	NoiseMgr.add_noise(d.noise(heat), player.global_position, "shot:" + d.key)
 	_heat[d.id] = minf(1.0, heat + d.heat_gain)
+	_heat_barrel(d)
 	cd += d.cooldown * 1.8
 	recoil = maxf(recoil, 0.6)
 	player.weapon = d.id
