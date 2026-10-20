@@ -31,6 +31,7 @@ const SIBLING_WAKE_RADIUS := 140.0
 const DEATH_FX_COLOR_VAR := 0.15
 const BURN_DPS := 8.0
 const ARMOR_MIN_FRAC := 0.4           ## pancerz nigdy nie zbija trafienia poniżej tego ułamka
+const ELITE_AMMO_DROP := 0.6          ## szansa, że elita upuści pudełko amunicji specjalnej do noszonej broni (× mnożnik trudności „drops”; od 1.7.318)
 ## Percepcja (1.7): wróg goni tylko to, co widzi (promień wzroku + linia bez ściany), albo idzie
 ## na ostatni znany ślad (hałas, ostatnia pozycja gracza), rozgląda się, a po dłuższym braku
 ## kontaktu wraca do domu i zasypia. Wcześniej obudzony wróg znał położenie gracza na całej mapie.
@@ -1226,6 +1227,11 @@ func _die() -> void:
 		if lsup != null:
 			var sk := Throwables.drop_kind()                     # skrzynka zaopatrzenia: granat, apteczka, mina… do wspólnego zapasu
 			lsup.spawn_item("supply", Throwables.ORDER.find(sk), global_position + Vector2(randf_range(-6.0, 6.0), -14))
+	if NoiseMgr.is_server() and not summoned and not NightShift.active and EnemyDefs.is_elite(kind) and randf() < minf(1.0, ELITE_AMMO_DROP * Difficulty.m("drops")):
+		var lam := get_tree().get_first_node_in_group("level")
+		var ak := Arsenal.pick_special_drop()                     # elita: pudełko amunicji specjalnej do noszonej broni (US, breneka, kartacz…)
+		if lam != null and ak != "":
+			lam.spawn_item("supply", Throwables.SHOP_ORDER.find(ak), global_position + Vector2(randf_range(-6.0, 6.0), -14))
 	if NoiseMgr.is_server() and not summoned and Scrap.enabled() and EnemyDefs.value(kind, "scrap") > 0.0 and randf() < Scrap.DROP_CHANCE:
 		var ls := get_tree().get_first_node_in_group("level")
 		if ls != null:

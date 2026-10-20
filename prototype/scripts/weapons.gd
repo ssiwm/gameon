@@ -135,7 +135,7 @@ static func _table() -> Array:
 			"sfx": "hkm9_ignite", "sfx_count": 1, "sfx_vol": -7.0, "sfx_loop": "hkm9_flame_loop",
 		},
 		{
-			"key": "gniew4", "name": "WRATH-4", "slot": Slot.PRIMARY, "kind": Kind.LAUNCHER,
+			"key": "gniew4", "name": "WRATH-4", "slot": Slot.PRIMARY, "kind": Kind.LAUNCHER, "caliber": "40mm",
 			"auto": false, "cooldown": 1.2, "draw_time": 0.55,
 			"damage": 25.0, "knock": 160.0, "stun": 0.5,
 			"jitter_deg": 0.5, "speed": 368.0, "range_px": 330.0, "gravity": 520.0,      # grawitacja jak granat ręczny i flara (grenade.gd); prędkość tak, by v²/g (kształt łuku) został jak przy 280 / 300

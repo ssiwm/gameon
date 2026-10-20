@@ -330,6 +330,21 @@ func pick_drop_weapon() -> int:
 				cands.append(w)
 	return -1 if cands.is_empty() else int(cands.pick_random())
 
+## Amunicja specjalna do upuszczenia przez elitę (od 1.7.318): losowy typ kalibru, z którego strzela broń noszona przez żywego człowieka,
+## o ile zapas tego typu nie jest pełny. "" = nic nie potrzeba.
+func pick_special_drop() -> String:
+	var cands: Array = []
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot or p.dead:
+			continue
+		for w in p.kit_primaries():
+			var cal := String(Weapons.def(w).caliber)
+			for t in range(1, Ammo.count(cal)):
+				var sk := Ammo.kind_of(cal, t)
+				if sk != "" and not cands.has(sk) and get_throwable(sk) < int(Throwables.KINDS[sk]["max"]):
+					cands.append(sk)
+	return "" if cands.is_empty() else String(cands.pick_random())
+
 # ---------------------------------------------------------------- zdarzenia walki
 
 ## Serwer: efekt trafienia widoczny i słyszalny u wszystkich peerów.

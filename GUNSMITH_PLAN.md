@@ -331,7 +331,7 @@ Sieć: zestaw (≤ 16 bajtów na broń) replikowany przy zmianie, nie na strzał
 | Etap | Zakres | Ryzyko dla czucia gry | Przed playtestem? |
 |---|---|---|---|
 | **0. Poprawki realiów** ✅ 1.7.316 | U3 (opisy i efekty bez „+obrażeń z lufy”), B6 P-83 1070 px/s, B7 uzbrojenie WRATH-4, B8 Gyrojet, B11 strzał w locie, komora +1 | małe | tak — mały PR |
-| **1. Amunicja wg kalibru** ✅ 1.7.317 (część) | §3: kalibry, typy naboi, klawisz Z (T zajmuje czat), dzisiejsze „poziomy 3” → typy naboi. Wdrożone: pula 12/70, 7,62 US / BZ, 12/70 breneka / zapalające / gumowe, sklep pudełek. Zostało: 40 mm (kartacz, oświetlający, dymny, kasetowy), wspólne ogniwa NiCd, T-45, amunicja specjalna z elit | średnie (ekonomia amunicji) | tak, jeśli playtest ma sprawdzić stealth |
+| **1. Amunicja wg kalibru** ✅ 1.7.317 (część) | §3: kalibry, typy naboi, klawisz Z (T zajmuje czat), dzisiejsze „poziomy 3” → typy naboi. Wdrożone: pula 12/70, 7,62 US / BZ, 12/70 breneka / zapalające / gumowe, sklep pudełek (1.7.317); 40 mm kartacz / oświetlający / dymny i łup z elit (1.7.318). Zostało: wspólne ogniwa NiCd. Świadomie pominięte: T-45 (w grze każda kula ma smugę — konwencja z 1.7.311) i kasetowy jako nabój (zostaje ulepszeniem WRATH-4) | średnie (ekonomia amunicji) | tak, jeśli playtest ma sprawdzić stealth |
 | **2. Części w gniazdach** | §4 + widoczne na modelu + konfiguracja per gracz + ława | średnie (UI) | po playteście |
 | **3. Obsługa** | §5.1–5.3, 5.5, 5.7: podrzut, oparcie, dwa przeładowania, gorąca lufa, przebijalność | **duże** — zmienia strzelanie; tylko z odsłuchem/ogrywaniem | po playteście, A/B |
 | **4. Stan i zacięcia** | §6, z ustawieniem trudności | duże dla nastroju | po playteście, domyślnie „standard” |

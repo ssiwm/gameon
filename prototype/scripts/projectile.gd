@@ -17,6 +17,7 @@ const Combat := preload("res://scripts/combat.gd")
 const Hurtbox := preload("res://scripts/hurtbox.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Lights := preload("res://scripts/lights.gd")
+const Throwables := preload("res://scripts/throwables.gd")
 
 const MASK_AUTH := Combat.LAYER_WORLD | Combat.LAYER_PLAYER | Combat.LAYER_TARGET
 const MASK_COSMETIC := Combat.LAYER_WORLD | Combat.LAYER_TARGET
@@ -105,6 +106,9 @@ func _physics_process(delta: float) -> void:
 	_near_miss(from, global_position)
 	_dist += travelled
 	rotation = _vel.angle()
+	if String(_def.payload) == "illum" and _age > 0.15 and _vel.y >= 0.0:
+		_release(global_position)                 # szczyt toru: nabój oświetlający wyrzuca flarę na spadochronie
+		return
 	var fuse := float(_def.fuse)
 	if fuse > 0.0 and _age >= fuse and is_armed():
 		_detonate(global_position, Vector2.UP)
@@ -197,6 +201,9 @@ func _sweep(from: Vector2, to: Vector2, rewind := -1.0) -> bool:
 					continue
 				if sticks_on_hit():
 					_stick(p)
+				if String(_def.payload) != "":
+					_release(p)
+					return true
 				if _def.blast_radius > 0.0:
 					if is_armed(at_dist):
 						_detonate(p, -direction)
@@ -238,6 +245,9 @@ func _world_hit(p: Vector2, n: Vector2) -> void:
 	Vfx.impact(lvl if lvl != null else get_parent(), p, n, surface, _def.pellets >= 5)
 	if authoritative and sticks_on_hit():
 		_stick(p)
+	if String(_def.payload) != "":
+		_release(p + n * 2.0)
+		return
 	if _def.blast_radius > 0.0:
 		if is_armed(_dist + global_position.distance_to(p)):
 			_detonate(p, n)
@@ -274,6 +284,9 @@ func _check_origin() -> void:
 					continue
 				if sticks_on_hit():
 					_stick(global_position)
+				if String(_def.payload) != "":
+					_release(global_position)
+					return
 				if _def.blast_radius > 0.0:
 					_dud(global_position)                       # przy wylocie zapalnik nigdy nie jest uzbrojony
 					return
@@ -325,6 +338,9 @@ func _finish(at: Vector2) -> void:
 	queue_free()
 
 func _expire() -> void:
+	if String(_def.payload) != "":
+		_release(global_position)
+		return
 	if authoritative and sticks_on_hit():
 		_stick(global_position)
 	if authoritative and _def.blast_radius > 0.0 and is_armed():
@@ -342,6 +358,19 @@ func _dud(at: Vector2) -> void:
 	if authoritative:
 		dud_count += 1
 	Audio.play_variant_at("impact_hard", 3, at, Audio.BUS_WORLD, -8.0, 0.7)
+	_finish(at)
+
+## Ładunek naboju 40 mm bez wybuchu (`WeaponDef.payload`): serwer tworzy flarę na spadochronie albo chmurę dymu u wszystkich peerów
+## (level.gd RPC); kopie kosmetyczne tylko znikają.
+func _release(at: Vector2) -> void:
+	if authoritative and not _done:
+		var lvl := get_tree().get_first_node_in_group("level")
+		if lvl != null:
+			match String(_def.payload):
+				"illum":
+					lvl.spawn_flare(at, Vector2(_vel.x * 0.15, 0.0), true)
+				"smoke":
+					lvl.spawn_smoke(at + Vector2(0.0, -6.0), float(Throwables.KINDS["smoke"]["cloud_life"]))
 	_finish(at)
 
 ## Silnik rakiety (FALCON-6 = Gyrojet): prędkość rośnie z czasem lotu do `speed`; kierunek bez zmian (skręca `_steer`).

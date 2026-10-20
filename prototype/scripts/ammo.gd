@@ -17,12 +17,13 @@ const SUBSONIC_NOISE := 0.85
 const SUBSONIC_SUPPRESSED := 0.5
 
 ## Kolejność kalibrów (indeks wchodzi do klucza zapasu, patrz `pool_key`).
-const ORDER := ["762", "918", "12g"]
+const ORDER := ["762", "918", "12g", "40mm"]
 
 const CALIBERS := {
 	"762": {"name": "7.62×39"},
 	"918": {"name": "9×18"},
 	"12g": {"name": "12/70"},
+	"40mm": {"name": "40 mm"},
 }
 
 ## kaliber → typy; `kind` = wpis zaopatrzenia (throwables.gd), z którego bierze się amunicję specjalną.
@@ -53,6 +54,24 @@ const TYPES := {
 		{"id": "rub", "short": "RUB", "name": "Rubber shells", "kind": "ammo_rub",
 			"mods": [["damage", "mul", 0.25], ["stun", "add", 1.0], ["knock", "mul", 1.3], ["crit_mult", "set", 1.0]],
 			"note": "Less-lethal rubber balls (like the KS-23 Volna-R): stun up to 1.5 s and knock back, barely wound."},
+	],
+	# granaty 40 mm (od 1.7.318): wzorowane na M576 (kartacz), M583 (flara na spadochronie) i granacie dymnym; kasetowy zostaje ulepszeniem WRATH-4
+	"40mm": [
+		{"id": "he", "short": "HE", "name": "HE grenade", "mods": [],
+			"note": "High-explosive grenade. The fuze arms after about 5 m of flight."},
+		{"id": "buck", "short": "BUCK", "name": "Buckshot round", "kind": "ammo_40buck",
+			"mods": [["blast_radius", "set", 0.0], ["blast_damage", "set", 0.0], ["arm_dist", "set", 0.0], ["fuse", "set", 0.0], ["cluster", "set", 0],
+				["gravity", "set", 0.0], ["speed", "set", 950.0], ["pellets", "set", 10], ["damage", "set", 8.0], ["spread_deg", "set", 10.0],
+				["range_px", "set", 140.0], ["falloff_start", "set", 40.0], ["falloff_min", "set", 0.3], ["knock", "set", 45.0], ["stun", "set", 0.3]],
+			"note": "A can of buckshot: a wide cone of pellets, deadly up close where a grenade would not even arm. No blast."},
+		{"id": "illum", "short": "ILLUM", "name": "Illumination round", "kind": "ammo_40illum", "payload": "illum",
+			"mods": [["blast_radius", "set", 0.0], ["blast_damage", "set", 0.0], ["arm_dist", "set", 0.0], ["fuse", "set", 0.0], ["cluster", "set", 0],
+				["damage", "set", 5.0], ["knock", "set", 40.0], ["stun", "set", 0.0], ["speed", "mul", 1.15]],
+			"note": "At the top of its arc it pops a parachute flare that drifts down and lights the area for about 40 s. Light draws enemies."},
+		{"id": "smoke", "short": "SMOKE", "name": "Smoke round", "kind": "ammo_40smoke", "payload": "smoke",
+			"mods": [["blast_radius", "set", 0.0], ["blast_damage", "set", 0.0], ["arm_dist", "set", 0.0], ["fuse", "set", 0.0], ["cluster", "set", 0],
+				["damage", "set", 5.0], ["knock", "set", 40.0], ["stun", "set", 0.0]],
+			"note": "Bursts into a smoke cloud where it lands: enemies cannot see through it. Sound still carries."},
 	],
 }
 
@@ -115,6 +134,8 @@ static func apply(d: RefCounted, t: int) -> void:
 		d.set("range_px", float(d.range_px) * 2.0)
 		d.set("falloff_start", float(d.range_px) * 0.5)
 		d.set("falloff_min", 0.6)
+	if ty.has("payload"):
+		d.set("payload", String(ty["payload"]))
 	for m in ty.get("mods", []):
 		var cur: Variant = d.get(String(m[0]))
 		var out: float

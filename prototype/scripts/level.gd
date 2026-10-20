@@ -931,24 +931,26 @@ func _add_map_item(n: String, kind: String, arg: int, pos: Vector2, value := 0) 
 var _flare_serial := 0
 
 ## Serwer: flara rzucona przez gracza (NoiseMgr.request_flare) — powstaje u wszystkich peerów.
-func spawn_flare(pos: Vector2, vel: Vector2) -> void:
+## `chute` = flara na spadochronie z naboju oświetlającego 40 mm (flare.gd: wolne opadanie, 40 s, jaśniej).
+func spawn_flare(pos: Vector2, vel: Vector2, chute := false) -> void:
 	if not NoiseMgr.is_server():
 		return
 	_flare_serial += 1
 	var n := "Flare%d" % _flare_serial
 	if NoiseMgr.has_network():
-		_spawn_flare_rpc.rpc(n, pos, vel)
+		_spawn_flare_rpc.rpc(n, pos, vel, chute)
 	else:
-		_spawn_flare_rpc(n, pos, vel)
+		_spawn_flare_rpc(n, pos, vel, chute)
 
 @rpc("authority", "call_local", "reliable")
-func _spawn_flare_rpc(n: String, pos: Vector2, vel: Vector2) -> void:
+func _spawn_flare_rpc(n: String, pos: Vector2, vel: Vector2, chute: bool) -> void:
 	if has_node(n):
 		return
 	var f: Node2D = FLARE.new()
 	f.name = n
 	f.position = pos
 	f.vel = vel
+	f.chute = chute
 	add_child(f)
 
 # ---------------------------------------------------------------- zamurowane przejścia

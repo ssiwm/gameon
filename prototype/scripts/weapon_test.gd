@@ -169,6 +169,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_weapon_realism2()
 	await _t_realia_e0()
 	await _t_ammo_calibers()
+	await _t_ammo_40mm()
 	await _t_homing()
 	await _t_bolt()
 	await _t_melee()
@@ -1803,6 +1804,92 @@ func _t_ammo_calibers() -> void:
 	for k in Throwables.AMMO_ORDER:
 		Arsenal.stock[k] = 0
 	equip(Weapons.M83)
+
+## Naboje 40 mm (1.7.318): kartacz działa z bliska bez uzbrajania, oświetlający wyrzuca flarę na spadochronie, dymny stawia chmurę;
+## elita upuszcza pudełko amunicji specjalnej do noszonej broni, a zrzut zaopatrzenia z amunicją dokłada całe pudełko.
+func _t_ammo_40mm() -> void:
+	var he := Weapons.def_ammo(Weapons.GNIEW4, 0)
+	var bk := Weapons.def_ammo(Weapons.GNIEW4, 1)
+	var il := Weapons.def_ammo(Weapons.GNIEW4, 2)
+	var sm := Weapons.def_ammo(Weapons.GNIEW4, 3)
+	check("40 mm: HE z wybuchem, kartacz %d śrucin bez wybuchu, oświetlający i dymny z ładunkiem (%s, %s)" % [bk.pellets, il.payload, sm.payload],
+		he.blast_radius > 0.0 and bk.blast_radius == 0.0 and bk.pellets == 10 and bk.gravity == 0.0 and il.payload == "illum" and sm.payload == "smoke"
+		and il.blast_radius == 0.0 and String(he.payload) == "")
+	await _settle_player()
+	# kartacz z 30 px: rani bez uzbrajania, bez wybuchu i bez hałasu detonacji
+	var close := await dummy(30.0)
+	NoiseMgr.calm()
+	var duds0 := Projectile.dud_count
+	var p0 := player.global_position + Vector2(8, -6)
+	for dd in Weapons.pellet_dirs(bk, Vector2.RIGHT, 7, 0.0):
+		var pb := Projectile.new()
+		pb.launch(Weapons.GNIEW4, p0, dd, 1, true, 0.0, 1)
+		get_tree().current_scene.add_child(pb)
+	await wait(0.3)
+	check("kartacz z 30 px: %.0f obrażeń, bez wybuchu (Uwaga %.1f) i bez „nieuzbrojonego”" % [dealt(close), NoiseMgr.level],
+		dealt(close) >= 40.0 and NoiseMgr.level < 5.0 and Projectile.dud_count == duds0)
+	free_dummies()
+	await frames(2)
+	# oświetlający stromo w górę: w szczycie toru flara na spadochronie, która opada powoli
+	var fl0 := get_tree().get_nodes_in_group("flares").size()
+	var pi := Projectile.new()
+	pi.launch(Weapons.GNIEW4, p0, Vector2.from_angle(deg_to_rad(-80.0)), 1, true, 0.0, 2)
+	get_tree().current_scene.add_child(pi)
+	await wait(0.9)
+	var chutes: Array = get_tree().get_nodes_in_group("flares").filter(func(f: Node) -> bool: return bool(f.get("chute")))
+	var ok_ill := chutes.size() > 0 and get_tree().get_nodes_in_group("flares").size() > fl0
+	var fall := 0.0
+	var high := false
+	if ok_ill:
+		var f: Node2D = chutes[0]
+		high = f.global_position.y < p0.y - 60.0
+		var y0 := f.global_position.y
+		await wait(1.0)
+		fall = f.global_position.y - y0 if is_instance_valid(f) else 999.0
+	check("oświetlający: flara na spadochronie w szczycie toru (wysoko: %s), opada %.0f px/s (≤ 30)" % [str(high), fall],
+		ok_ill and high and fall > 0.0 and fall <= 30.0)
+	for f in get_tree().get_nodes_in_group("flares"):
+		if bool(f.get("chute")):
+			f.queue_free()
+	# dymny pod nogi: chmura dymu, bez wybuchu
+	var sm0 := get_tree().get_nodes_in_group("smoke_clouds").size()
+	NoiseMgr.calm()
+	var ps := Projectile.new()
+	ps.launch(Weapons.GNIEW4, p0, Vector2.from_angle(deg_to_rad(60.0)), 1, true, 0.0, 3)
+	get_tree().current_scene.add_child(ps)
+	await wait(0.5)
+	check("dymny: chmura dymu w miejscu upadku (%d → %d), bez wybuchu (Uwaga %.1f)" % [sm0, get_tree().get_nodes_in_group("smoke_clouds").size(), NoiseMgr.level],
+		get_tree().get_nodes_in_group("smoke_clouds").size() > sm0 and NoiseMgr.level < 5.0)
+	for c in get_tree().get_nodes_in_group("smoke_clouds"):
+		c.queue_free()
+	await frames(2)
+	# łup z elit: pudełko amunicji specjalnej do broni, którą ktoś nosi (M-83 → US albo BZ)
+	equip(Weapons.M83)
+	for k in Throwables.AMMO_ORDER:
+		Arsenal.stock[k] = 0
+	var picks := {}
+	for i in 40:
+		picks[Arsenal.pick_special_drop()] = true
+	var only762 := true
+	for k in picks:
+		only762 = only762 and String(k) in ["ammo_us", "ammo_bz", "ammo_slug", "ammo_inc", "ammo_rub", "ammo_40buck", "ammo_40illum", "ammo_40smoke"]
+	var carried := []
+	for w in player.kit_primaries():
+		carried.append(String(Weapons.def(w).caliber))
+	var cal_ok := true
+	for k in picks:
+		cal_ok = cal_ok and carried.has(String(Ammo.from_kind(String(k)).get("cal", "?")))
+	check("łup z elit: tylko amunicja specjalna do noszonych kalibrów (%s; noszone %s)" % [str(picks.keys()), str(carried)], only762 and cal_ok and picks.has("ammo_us"))
+	var idx := Throwables.SHOP_ORDER.find("ammo_us")
+	level.spawn_item("supply", idx, player.global_position + Vector2(0, -8))
+	await wait(0.9)
+	await _step_on_item("supply", idx)
+	await wait(0.5)
+	check("zrzut z amunicją US: +%d naboi (pudełko)" % Arsenal.get_throwable("ammo_us"), Arsenal.get_throwable("ammo_us") == Throwables.box_of("ammo_us"))
+	for k in Throwables.AMMO_ORDER:
+		Arsenal.stock[k] = 0
+	free_dummies()
+	await frames(2)
 
 ## Szybki pocisk nie może przeskoczyć wąskiego wroga (przeciąganie promienia, nie przesuwany obszar).
 func _t_sweep() -> void:

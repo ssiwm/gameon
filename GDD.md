@@ -120,7 +120,8 @@ Ping drużyny i radio z pierwotnego projektu nie są zaimplementowane.
 - Bronie główne wypadają z pickupów w misji i są odblokowywane na stałe przez zakup w Kryjówce.
 - Amunicja jest **współdzielona w drużynie** — ekonomia zespołowa. Od 1.7.317 zapas liczy się **po kalibrze** (SPREAD-12 i PELLET-8 biorą
   12/70 z jednej puli), a kaliber ma **typy naboi**: zwykłe (zapas misji, łup) i specjalne kupowane w warsztacie (7,62 US poddźwiękowe,
-  7,62 BZ przeciwpancerno-zapalające, 12/70 breneka, zapalające, gumowe). Typ wybiera się klawiszem Z na następny magazynek.
+  7,62 BZ przeciwpancerno-zapalające, 12/70 breneka, zapalające, gumowe; od 1.7.318 granaty 40 mm: kartaczowy, oświetlający z flarą na
+  spadochronie, dymny). Typ wybiera się klawiszem Z na następny magazynek. Elity upuszczają pudełka amunicji specjalnej do noszonej broni.
 - Każda broń ma 3 poziomy ulepszeń kupowane za złom.
 - **Hałas** = promień w metrach, który wrzuca punkty do Poziomu Uwagi. Jest to pełnoprawny statystyk.
 

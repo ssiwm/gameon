@@ -16,9 +16,14 @@ const FLARE_LIFE := 25.0
 const GRAVITY := 520.0
 const LURE_EVERY := 0.5
 const WATER_LIFE := 8.0           ## flara, która spadła do wody (basen areny Pijawki), gaśnie po tylu s — cień trzeba oświetlać stale
+## Flara na spadochronie (nabój oświetlający 40 mm, jak M583): opada powoli, świeci jaśniej i dłużej, przyciąga wrogów jak zwykła.
+const CHUTE_LIFE := 40.0
+const CHUTE_FALL := 24.0          ## px/s opadania na spadochronie (≈ 2 m/s w skali świata 3D)
+const CHUTE_DRIFT_DAMP := 0.6     ## /s wygaszania prędkości poziomej
 
 var vel := Vector2.ZERO
 var life := FLARE_LIFE
+var chute := false                ## ustawiane przed dodaniem do drzewa (level.spawn_flare)
 
 var _landed := false
 var _light: Lights.GameLight
@@ -36,7 +41,10 @@ func _ready() -> void:
 	material = Lights.unshaded()
 	# cienie tylko od dwóch najnowszych flar naraz: każde światło z cieniami wymusza dodatkowe rysowanie wszystkich sprite'ów w zasięgu
 	# (zmierzone: 5 flar ≈ +0,7 ms przy 40 wrogach), a z daleka różnicy nie widać
-	_light = Lights.make_light(Lights.radial(), 8.0, Color(1.0, 0.42, 0.2), 1.5, get_tree().get_nodes_in_group("flares").size() <= SHADOW_FLARES)
+	if chute:
+		life = CHUTE_LIFE
+	_light = Lights.make_light(Lights.radial(), 13.0 if chute else 8.0, Color(1.0, 0.82, 0.62) if chute else Color(1.0, 0.42, 0.2), 1.8 if chute else 1.5,
+		get_tree().get_nodes_in_group("flares").size() <= SHADOW_FLARES)
 	add_child(_light)
 	if Sprites.newitem and ItemsHd.has("flare"):
 		_pv = Node2D.new()
@@ -66,8 +74,12 @@ func _physics_process(delta: float) -> void:
 		queue_free()
 		return
 	_t += delta
-	if not _landed:
+	if not _landed and chute:
+		vel.y = minf(vel.y + GRAVITY * delta, CHUTE_FALL)
+		vel.x *= maxf(0.0, 1.0 - CHUTE_DRIFT_DAMP * delta)
+	if not _landed and not chute:
 		vel.y += GRAVITY * delta
+	if not _landed:
 		var from := global_position
 		var to := from + vel * delta
 		var q := PhysicsRayQueryParameters2D.create(from, to, 1 | 16)
