@@ -206,6 +206,8 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
   (niewypał, zacięta łuska, podwójne podanie) — krótkie [R] przeładowuje rączką, P-83 strzela przy drugim pociągnięciu spustu. Brudną broń
   czyści się przy ławie w warsztacie za kilka złomu albo w misji zestawem do czyszczenia (od 1.7.329: 6 s, +40 %). Brodzenie w wodzie
   i błocie oraz upadek też zużywają broń; zużyte LR-7 przegrzewa ogniwo, a SPECTER-1 przebija kondensator
+- **Wprawa (od 1.7.330):** trafienia i zabójstwa z danej broni podnoszą wprawę gracza z nią (5 stopni): do −10 % czasu przeładowania, dobycia
+  i podrzutu, szybsze usuwanie zacięć
   autorytatywny na serwerze; sidearm ∞. Wrogowie upuszczają amunicję tylko do broni, którą ktoś nosi; skrzynie
   z mapy zasilają wszystkie noszone bronie główne.
 - **Hałas:** każda broń ma własny `heat_gain`/`heat_decay` (wcześniej wspólny decay sprawiał, że rozgrzewała się

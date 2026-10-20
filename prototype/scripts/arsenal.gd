@@ -27,6 +27,7 @@ enum Confirm { HIT, CRIT, KILL, ARMOR }
 
 signal reserve_changed
 signal hit_confirmed(kind: int, pos: Vector2)
+signal weapon_hit(kind: int, weapon: int)          ## trafienie lokalnego strzelca z bronią (wprawa, GUNSMITH_PLAN §7.3); tylko żywe cele, bez skrzyń
 signal rounds_granted(weapon: int, count: int)
 
 var reserve: Dictionary = {}
@@ -389,18 +390,24 @@ func _explosion_fx(pos: Vector2, radius: float) -> void:
 	var parent: Node = lvl if lvl != null else get_tree().current_scene
 	Vfx.explosion(parent, pos, radius)
 
-## Serwer: hitmarker dla strzelca (człowiek — przez sieć, host — lokalnie, bot — nic).
-func confirm(shooter_id: int, kind: int, pos: Vector2) -> void:
+## Serwer: hitmarker dla strzelca (człowiek — przez sieć, host — lokalnie, bot — nic). `w` — broń trafienia w żywy cel (−1: skrzynia, beczka).
+func confirm(shooter_id: int, kind: int, pos: Vector2, w := -1) -> void:
 	if not NoiseMgr.has_network():
 		hit_confirmed.emit(kind, pos)
+		if shooter_id == NoiseMgr.local_id() and w >= 0:
+			weapon_hit.emit(kind, w)
 	elif shooter_id == NoiseMgr.local_id():
 		hit_confirmed.emit(kind, pos)
+		if w >= 0:
+			weapon_hit.emit(kind, w)
 	elif multiplayer.get_peers().has(shooter_id):
-		_confirm_rpc.rpc_id(shooter_id, kind, pos)
+		_confirm_rpc.rpc_id(shooter_id, kind, pos, w)
 
 @rpc("authority", "call_remote", "unreliable")
-func _confirm_rpc(kind: int, pos: Vector2) -> void:
+func _confirm_rpc(kind: int, pos: Vector2, w := -1) -> void:
 	hit_confirmed.emit(kind, pos)
+	if w >= 0:
+		weapon_hit.emit(kind, w)
 
 # ---------------------------------------------------------------- narzędzia (apteczka, defibrylator, skaner)
 

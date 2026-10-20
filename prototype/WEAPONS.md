@@ -515,3 +515,21 @@ i zacięta, profil bez zapisu).
 
 `WeaponDef.fault`: "overheat" (LR-7), "arc" (SPECTER-1). Zostaje: brud i łuska w oknie widoczne na modelu broni.
 
+## 26. Wprawa, etap 5a (1.7.330)
+
+Wprawa jest osobna dla gracza i broni (`Profile.mastery`: klucz broni → punkty, zapis razem ze stanem broni). Punkty daje każde trafienie żywego
+celu z tej broni: trafienie i trafienie w pancerz 1, krytyk 2, zabójstwo 5; skrzynie i beczki nic. Serwer dołącza numer broni do potwierdzenia
+trafienia (`Arsenal.confirm` → sygnał `weapon_hit` tylko u strzelca).
+
+| Stopień | Punkty | Efekt (narasta co stopień) |
+|---|---|---|
+| I | 60 | −2 % czasu przeładowania i dobycia, −2 % podrzutu i narastania rozrzutu, −4 % usuwania zacięcia |
+| II | 200 | −4 % / −8 % |
+| III | 450 | −6 % / −12 % |
+| IV | 850 | −8 % / −16 % |
+| V | 1500 | −10 % / −20 % |
+
+Małe liczby — wyszkolenie, nie supermoc; boty bez wprawy. Awans — komunikat (toast) „M-83 · MASTERY II”; stopień i punkty do następnego
+pokazuje warsztat (szczegóły broni), stopień — oględziny [F]. Kod: `weapon_controller.gd` (`mastery_of`, `mastery_mult`, `_on_weapon_hit`),
+`profile.gd` (`MASTERY_XP`, `add_mastery`), `combat.gd`, `arsenal.gd`.
+

@@ -89,7 +89,8 @@ static func report(info: Dictionary, res: Dictionary) -> void:
 		kind = Arsenal.Confirm.CRIT
 	elif int(res.get("mat", 0)) == Arsenal.Mat.ARMOR:
 		kind = Arsenal.Confirm.ARMOR
-	Arsenal.confirm(int(info.get("shooter", 0)), kind, info["pos"])
+	var live := int(res.get("mat", 0)) in [Arsenal.Mat.FLESH, Arsenal.Mat.ARMOR]        # wprawa tylko za żywe cele, nie za skrzynie i beczki
+	Arsenal.confirm(int(info.get("shooter", 0)), kind, info["pos"], int(info.get("w", -1)) if live else -1)
 
 static func apply_and_report(target: Node, info: Dictionary) -> Dictionary:
 	var res := apply(target, info)

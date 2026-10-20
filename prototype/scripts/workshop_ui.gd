@@ -1322,6 +1322,14 @@ func _refresh_detail(w: int) -> void:
 		tag += tr("  ·  PARTS %d / %d") % [Scrap.parts_owned(w), Parts.of(key).size()]
 	elif not unlocked:
 		tag += "  ·  LOCKED"
+	if unlocked:
+		# wprawa (etap 5a): stopień i punkty do następnego
+		var ml := Profile.mastery_level(key)
+		var mp := Profile.mastery_points(key)
+		if ml < Profile.MASTERY_XP.size() - 1:
+			tag += tr("  ·  MASTERY %s  (%d / %d)") % [["0", "I", "II", "III", "IV", "V"][ml], mp, int(Profile.MASTERY_XP[ml + 1])]
+		else:
+			tag += tr("  ·  MASTERY %s") % ["0", "I", "II", "III", "IV", "V"][ml]
 	_d_tag.text = tag
 	# statystyki: broń, jaką masz teraz, i ta sama z częścią spod kursora (zielone — lepiej, czerwone — gorzej niż teraz)
 	for ch in _d_stats.get_children():
