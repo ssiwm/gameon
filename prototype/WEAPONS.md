@@ -353,3 +353,21 @@ Drugi etap `GUNSMITH_PLAN.md`. Dane i reguły w `scripts/ammo.gd`, zapas w `arse
 
 Poza tym etapem (patrz `GUNSMITH_PLAN.md` §10): naboje 40 mm (kartacz, oświetlający, dymny, kasetowy), wspólne ogniwa NiCd LR-7 / SPECTER-1,
 smugacze T-45 i amunicja specjalna w łupie z elit.
+
+## 16. Naboje 40 mm i łup z elit (1.7.318)
+
+Ciąg dalszy etapu 1 `GUNSMITH_PLAN.md`. WRATH-4 dostał kaliber `40mm` (pula 103) i trzy typy amunicji specjalnej:
+
+| Typ | Wzór | Jak działa | Kod |
+|---|---|---|---|
+| **Kartaczowy** (`ammo_40buck`, 6 szt. / 90 złomu) | M576 | 10 śrucin po 8, rozrzut ±10°, 950 px/s bez opadania, zasięg 140 px; **bez wybuchu i bez uzbrajania** — działa z bliska, gdzie granat odłamkowy tylko uderza | `ammo.gd` (modyfikatory `set`) |
+| **Oświetlający** (`ammo_40illum`, 4 / 80) | M583 | w szczycie toru (prędkość pionowa ≥ 0 po 0,15 s), przy trafieniu albo na końcu zasięgu wyrzuca **flarę na spadochronie**: opada 24 px/s, świeci jaśniej (zasięg 13 zamiast 8) i 40 s, przyciąga wrogów jak zwykła flara | `WeaponDef.payload`, `projectile._release`, `flare.gd` (`chute`), `level.spawn_flare(…, chute)` |
+| **Dymny** (`ammo_40smoke`, 4 / 60) | — | w miejscu upadku chmura dymu jak granat dymny (`cloud_life`), bez wybuchu | `projectile._release`, `level.spawn_smoke` |
+
+Kasetowy zostaje ulepszeniem WRATH-4 (poziom 3), a smugacze T-45 nie wchodzą — w grze każda kula broni palnej ma smugę od 1.7.311.
+
+**Łup z elit:** zabita elita (Kapłan, Rzeźnik, Żerca) z szansą 60% × mnożnik trudności „drops” upuszcza pudełko amunicji specjalnej do kalibru,
+z którego strzela broń noszona przez żywego człowieka, o ile ten zapas nie jest pełny (`Arsenal.pick_special_drop`, `enemy._die`, poza Nocnym
+Dyżurem). Pudełko to zrzut zaopatrzenia (`pickup` „supply”), którego indeks liczy się teraz w `Throwables.SHOP_ORDER` (przedmioty mają
+te same indeksy co dawniej); podniesienie dokłada całe pudełko naboi, a w świecie wygląda jak skrzynka amunicji.
+

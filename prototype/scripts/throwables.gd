@@ -13,7 +13,7 @@ const Actions := preload("res://scripts/actions.gd")
 const ORDER := ["frag", "phos", "smoke", "mine", "charge", "medkit", "defib", "scanner"]
 ## Amunicja specjalna (ammo.gd, od 1.7.317): sklep i zapas jak przedmioty, ale `mode` = "ammo" — nie ma jej w wyborze [X], zapas liczy
 ## się w NABOJACH (`max`), a zakup dokłada pudełko (`box`). Broń bierze ją przy przeładowaniu, gdy gracz wybierze typ klawiszem [Z].
-const AMMO_ORDER := ["ammo_us", "ammo_bz", "ammo_slug", "ammo_inc", "ammo_rub"]
+const AMMO_ORDER := ["ammo_us", "ammo_bz", "ammo_slug", "ammo_inc", "ammo_rub", "ammo_40buck", "ammo_40illum", "ammo_40smoke"]
 ## Kolejność w zakładce SUPPLIES warsztatu.
 const SHOP_ORDER := ORDER + AMMO_ORDER
 
@@ -82,6 +82,21 @@ const KINDS := {
 		"mode": "ammo", "name": "12 RUB", "full": "12/70 rubber shells", "issue": 0, "price": 40, "max": 30, "box": 10,
 		"color": Color(0.45, 0.5, 0.45),
 		"note": "Box of 10 less-lethal rubber shells for both shotguns: stun and knock back, barely wound.",
+	},
+	"ammo_40buck": {
+		"mode": "ammo", "name": "40 BUCK", "full": "40 mm buckshot round", "issue": 0, "price": 90, "max": 12, "box": 6,
+		"color": Color(0.75, 0.7, 0.5),
+		"note": "Six buckshot rounds for the WRATH-4: a wide cone of pellets, deadly up close where a grenade would not arm. No blast.",
+	},
+	"ammo_40illum": {
+		"mode": "ammo", "name": "40 ILLUM", "full": "40 mm parachute flare", "issue": 0, "price": 80, "max": 8, "box": 4,
+		"color": Color(1.0, 0.9, 0.7),
+		"note": "Four illumination rounds for the WRATH-4: a parachute flare at the top of the arc lights the area for about 40 s. Light draws enemies.",
+	},
+	"ammo_40smoke": {
+		"mode": "ammo", "name": "40 SMOKE", "full": "40 mm smoke round", "issue": 0, "price": 60, "max": 8, "box": 4,
+		"color": Color(0.7, 0.72, 0.75),
+		"note": "Four smoke rounds for the WRATH-4: a smoke cloud where the round lands, enemies cannot see through it.",
 	},
 	"scanner": {
 		"mode": "use", "name": "OWL", "full": "Motion scanner (Owl)", "issue": 0, "price": 120, "max": 3, "time": 10.0, "range": 240.0, "noise": 1.0,

@@ -102,6 +102,13 @@ static func draw_glyph(ci: CanvasItem, kd: String, cx: float, y: float, s: float
 			r.call(-6, -8, 12, 4, Color(0.1, 0.12, 0.14))
 			ci.draw_polyline(PackedVector2Array([Vector2(cx - 4.0 * s, y - 6.0 * s), Vector2(cx - s, y - 6.0 * s), Vector2(cx, y - 8.0 * s), Vector2(cx + s, y - 4.0 * s), Vector2(cx + 4.0 * s, y - 6.0 * s)]), f.call(c), maxf(1.0, s * 0.7))
 			r.call(-6, -2, 3, 1, Color(0.5, 0.5, 0.5))
+		"ammo_40buck", "ammo_40illum", "ammo_40smoke":
+			# dwa granaty 40 mm: łuska z mosiądzu i głowica w kolorze typu
+			for i in 2:
+				var x := -6.0 + float(i) * 7.0
+				r.call(x, -6, 5, 6, Color(0.72, 0.6, 0.32))
+				r.call(x, -11, 5, 5, c)
+				r.call(x + 1.0, -12, 3, 1, c.lightened(0.25))
 		"ammo_us", "ammo_bz", "ammo_slug", "ammo_inc", "ammo_rub":
 			# pudełko amunicji z naklejką w kolorze typu i trzema nabojami na wierzchu (łuski mosiężne, łuski 12/70 z papieru)
 			var shell := kd in ["ammo_slug", "ammo_inc", "ammo_rub"]

@@ -970,7 +970,7 @@ func _make_proj(n: Node2D) -> void:
 	elif n.has_method("sticks_on_hit") and n.sticks_on_hit():
 		_box(root, Vector3(maxf(tail, 0.5), 0.035, 0.035), Vector3(-maxf(tail, 0.5) * 0.5, 0.0, 0.0), Color(0.62, 0.5, 0.34))
 		_box(root, Vector3(0.3, 0.06, 0.06), Vector3(0.22, 0.0, 0.0), Color(0.85, 0.85, 0.9))
-	elif float(d.blast_radius) > 0.0:
+	elif float(d.blast_radius) > 0.0 or String(d.get("payload")) != "":
 		# granat 40 mm: ok. 2× naturalnej średnicy (8 cm), żeby był czytelny z kamery bocznej — wcześniej kula 40 cm; żar zapalnika z tyłu
 		_sphere(root, 0.04, Vector3.ZERO, Color(0.3, 0.32, 0.2))
 		_sphere(root, 0.028, Vector3(-0.045, 0.0, 0.0), Color(1.0, 0.7, 0.3))

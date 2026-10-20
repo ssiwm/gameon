@@ -164,7 +164,7 @@ func _hd_name() -> String:
 	match kind:
 		"health": return "medkit"
 		"flares": return "flare_box"
-		"supply": return _supply_kind()
+		"supply": return "ammo" if Throwables.is_ammo(_supply_kind()) else _supply_kind()        # pudełko amunicji specjalnej = model skrzynki amunicji
 		"stash": return "stash"
 		"tag": return "tag"
 		"scrap": return "scrap_pile"
@@ -281,9 +281,9 @@ func _try_flares() -> void:
 			lvl.take_item(String(name))
 		return
 
-## Rodzaj przedmiotu w zrzucie zaopatrzenia (arg = indeks w Throwables.ORDER).
+## Rodzaj przedmiotu w zrzucie zaopatrzenia (arg = indeks w Throwables.SHOP_ORDER: przedmioty jak dawniej, za nimi amunicja specjalna z elit).
 func _supply_kind() -> String:
-	return String(Throwables.ORDER[clampi(arg, 0, Throwables.ORDER.size() - 1)])
+	return String(Throwables.SHOP_ORDER[clampi(arg, 0, Throwables.SHOP_ORDER.size() - 1)])
 
 ## Kolor poświaty: zrzut zaopatrzenia świeci kolorem swojej zawartości (jak ikona w HUD), reszta wg rodzaju znajdźki.
 func _glow_color() -> Color:
@@ -299,7 +299,7 @@ func _try_supply() -> void:
 	for pl in get_tree().get_nodes_in_group("players"):
 		if pl.dead or pl.is_bot or not _near(pl):
 			continue
-		Arsenal.add_throwable(kind_s, 1)
+		Arsenal.add_throwable(kind_s, Throwables.box_of(kind_s))        # przedmiot albo pudełko naboi
 		var lvl := _level()
 		if lvl != null:
 			lvl.take_item(String(name))
