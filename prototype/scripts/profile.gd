@@ -210,6 +210,14 @@ func wear(key: String, amount: float) -> void:
 	cond[key] = maxf(0.0, condition(key) - amount)
 	_cond_dirty = true
 
+## Zestaw do czyszczenia w misji: stan broni `key` w górę o `amount` punktów.
+func restore(key: String, amount: float) -> void:
+	cond[key] = minf(100.0, condition(key) + amount)
+	if cond[key] >= 100.0:
+		cond.erase(key)
+	_cond_dirty = true
+	changed.emit()
+
 ## Czyszczenie przy ławie: broń jak nowa.
 func clean(key: String) -> void:
 	cond.erase(key)

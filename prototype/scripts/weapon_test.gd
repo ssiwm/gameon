@@ -200,6 +200,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_hot_barrel()
 	await _t_two_reloads()
 	await _t_condition_jams()
+	await _t_condition_4b()
 	await _t_penetration()
 	await _t_homing()
 	await _t_bolt()
@@ -817,8 +818,8 @@ func _t_chat() -> void:
 
 ## Faza A2: dym, mina, ładunek wyburzeniowy, apteczka, defibrylator, skaner.
 func _t_gear() -> void:
-	var data_ok := Throwables.ORDER.size() == 8 and Throwables.ORDER.all(func(k: String) -> bool: return Throwables.KINDS.has(k) and ["throw", "place", "use"].has(Throwables.mode_of(k)))
-	check("tabela przedmiotów: 8 rodzajów (3 rzucane, 2 stawiane, 3 narzędzia)", data_ok)
+	var data_ok := Throwables.ORDER.size() == 9 and Throwables.ORDER.all(func(k: String) -> bool: return Throwables.KINDS.has(k) and ["throw", "place", "use"].has(Throwables.mode_of(k)))
+	check("tabela przedmiotów: 9 rodzajów (3 rzucane, 2 stawiane, 4 narzędzia — od 1.7.329 zestaw do czyszczenia)", data_ok)
 	# --- dym
 	var watcher := await dummy(130.0)
 	var a: Vector2 = watcher.global_position + Vector2(0, -8)
@@ -2206,6 +2207,79 @@ func _t_condition_jams() -> void:
 	check("czyszczenie: stan 55 %% kosztuje %d złomu, potem 100 %% (%.0f), bank %d" % [cost, Profile.condition("m83"), Scrap.bank],
 		cost == 5 and Profile.condition("m83") == 100.0 and Scrap.bank == 95 and Scrap.clean_cost(Weapons.M83) == 0)
 	Scrap.bank = bank0
+	Profile.cond = cond0
+	Settings.reliability_idx = rel0
+	equip(Weapons.M83)
+	await _settle_player()
+
+## Stan techniczny, etap 4b (1.7.329, GUNSMITH_PLAN.md §6.1–6.3): zestaw do czyszczenia w misji (+40 %, usuwa zacięcie, zapas zdejmuje serwer),
+## zużycie od wody i błota (raz na WADE_GAP s na rodzaj, cały zestaw) i od upadku (broń w rękach), awarie broni eksperymentalnej:
+## przegrzanie ogniwa LR-7 (wiązka gaśnie na 1 s) i przebicie kondensatora SPECTER-1 (ładowanie od nowa) — mijają same, [R] ich nie usuwa.
+func _t_condition_4b() -> void:
+	var rel0: int = Settings.reliability_idx
+	var cond0: Dictionary = Profile.cond.duplicate()
+	Settings.reliability_idx = 1
+	Profile.cond = {}
+	var md := equip(Weapons.M83)
+	await _settle_player()
+	# zestaw do czyszczenia
+	Profile.cond["m83"] = 30.0
+	wc.jams[md.id] = "stovepipe"
+	var kit0: int = Arsenal.get_throwable("cleankit")
+	Arsenal.stock["cleankit"] = 1
+	var started: bool = player._tick_cleankit(1.0, true)
+	player._tick_cleankit(float(Throwables.KINDS["cleankit"]["time"]), true)
+	await frames(2)
+	check("zestaw do czyszczenia: trzymanie %d s (blokuje ręce: %s) — stan 30 → %.0f %%, zacięcie usunięte (%s), zapas −1 (%d)" % [int(Throwables.KINDS["cleankit"]["time"]), str(started), Profile.condition("m83"), str(wc.jammed(md.id) == ""), Arsenal.get_throwable("cleankit")],
+		started and absf(Profile.condition("m83") - 70.0) < 0.001 and wc.jammed(md.id) == "" and Arsenal.get_throwable("cleankit") == 0)
+	Arsenal.stock["cleankit"] = kit0
+	# woda, błoto, upadek
+	Profile.cond = {}
+	wc._wade_t.clear()
+	var side_key := String(Weapons.def(int(wc.loadout[1])).key)
+	wc.wade("water")
+	var w1: float = Profile.condition("m83")
+	var s1: float = Profile.condition(side_key)
+	wc.wade("water")
+	var w2: float = Profile.condition("m83")
+	wc.wade("mud")
+	var w3: float = Profile.condition("m83")
+	check("brodzenie: woda −%.0f %% całej broni (M-83 %.0f, %s %.0f), drugi raz zaraz potem nic (%.0f), błoto −%.0f %% (%.0f)" % [Controller.WEAR_WATER, w1, side_key, s1, w2, Controller.WEAR_MUD, w3],
+		w1 == 100.0 - Controller.WEAR_WATER and s1 == w1 and w2 == w1 and w3 == w1 - Controller.WEAR_MUD)
+	wc.wear_carried(Controller.WEAR_DOWN, true)
+	check("upadek: broń w rękach −%.0f %% (%.0f), reszta bez zmian (%.0f)" % [Controller.WEAR_DOWN, Profile.condition("m83"), Profile.condition(side_key)],
+		Profile.condition("m83") == w3 - Controller.WEAR_DOWN and Profile.condition(side_key) == s1 - Controller.WEAR_MUD)
+	Profile.cond = {}
+	# LR-7: przegrzanie ogniwa
+	var ld := equip(Weapons.LR7)
+	await frames(2)
+	Profile.cond["lr7"] = 20.0
+	var lr_chance: float = wc.fault_chance(ld)
+	wc.sim_fault = "overheat"
+	wc.cd = 0.0
+	wc._handle_continuous(ld, true)
+	var hot: bool = wc.jammed(ld.id) == "overheat" and not wc.firing
+	wc.cd = 0.0
+	wc._handle_continuous(ld, true)
+	var still_off: bool = not wc.firing
+	var r_refused: bool = not wc.try_reload()
+	wc._tick_common(Controller.OVERHEAT_PAUSE + 0.05)
+	check("LR-7: zużyte ogniwo się przegrzewa (szansa %.4f/tik), wiązka gaśnie (%s, %s), [R] nic (%s), po %.0f s znowu działa (%s)" % [lr_chance * Controller.FAULT_TICK, str(hot), str(still_off), str(r_refused), Controller.OVERHEAT_PAUSE, str(wc.jammed(ld.id) == "")],
+		lr_chance > 0.0 and hot and still_off and r_refused and wc.jammed(ld.id) == "" and wc.fault_chance(md) == 0.0)
+	# SPECTER-1: przebicie kondensatora
+	var sd := equip(Weapons.WIDMO1)
+	await frames(2)
+	var shots0: int = wc.srv_shots
+	wc.sim_fault = "arc"
+	wc.cd = 0.0
+	wc.state = Controller.State.CHARGE
+	wc.charge = 1.0
+	wc._handle_rail(sd, false, 0.016)
+	await frames(2)
+	check("SPECTER-1: przebity kondensator — bez strzału (%d), ładunek 0 (%.1f), komunikat (%s)" % [wc.srv_shots - shots0, wc.charge, wc.jammed(sd.id)],
+		wc.srv_shots == shots0 and wc.charge == 0.0 and wc.state == Controller.State.READY and wc.jammed(sd.id) == "arc")
+	wc._tick_common(Controller.ARC_SHOW + 0.05)
+	wc.jams.clear()
 	Profile.cond = cond0
 	Settings.reliability_idx = rel0
 	equip(Weapons.M83)

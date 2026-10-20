@@ -143,6 +143,8 @@ const GEAR_TEXT := {
 		"Place it, then get out of range. Plan the noise before you use it."],
 	"medkit": ["Hold the item key for 5 s next to a wounded teammate (or yourself): +1 heart. You cannot move or shoot meanwhile, and taking damage cancels it.",
 		"Use it in cover or behind smoke. The AI companion will use the squad's medkits on you too."],
+	"cleankit": ["Hold the item key for 6 s: you strip and clean the gun in your hands, +40% condition, and a jam is cleared. You cannot move or shoot meanwhile, and taking damage cancels it.",
+		"A dirty gun jams. One kit is issued every mission — use it in a quiet moment, not in the middle of a fight."],
 	"defib": ["Hold the item key for 1.5 s: revives a downed teammate up to 10 m away in line of sight. One is issued every mission and it cannot be bought.",
 		"Faster and safer than walking to a downed friend under fire. The AI companion uses it on you."],
 	"scanner": ["The Owl motion scanner: for 10 s you see enemy silhouettes through walls within 15 m (red = awake). It emits 1 noise per second.",
@@ -191,6 +193,8 @@ static func gear() -> Array:
 				stats.append_array([["Use time", "%.0f s" % float(d["time"])], ["Heals", "+1 heart"]])
 			"defib":
 				stats.append_array([["Use time", "%.1f s" % float(d["time"])], ["Range", "%d m" % int(float(d["range"]) / PX_PER_M)]])
+			"cleankit":
+				stats.append_array([["Use time", "%.0f s" % float(d["time"])], ["Condition", "+%d%%" % int(d["restore"])]])
 			"scanner":
 				stats.append_array([["Duration", "%d s" % int(d["time"])], ["Range", "%d m" % int(float(d["range"]) / PX_PER_M)]])
 		stats.append(["Noise", "%.0f" % float(d["noise"]) if d.has("noise") else ("explosion" if k in ["frag", "charge"] else "—")])

@@ -99,6 +99,7 @@ var pen := 0.0
 
 # --- stan techniczny (GUNSMITH_PLAN.md §6, od 1.7.328): zużycie na strzał × wear (AKM i P-83 najwolniej, broń eksperymentalna najszybciej)
 var wear := 1.0
+var fault := ""                ## awaria broni eksperymentalnej przy zużyciu: "overheat" (LR-7: ogniwo, 1 s przerwy) | "arc" (SPECTER-1: kondensator, ładowanie od nowa)
 
 ## Czy broń się zacina (niewypał, zacięcie łuski, podwójne podanie): broń palna na naboje 7,62, 9×18 i 12/70.
 func can_jam() -> bool:

@@ -130,6 +130,9 @@ var _down_t := 0.0
 var kit := Vector3i(Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Weapons.START_MELEE)
 ## Celowanie myszą (swobodne) a klawiaturą (8 kierunków) — celownik rysuje się odpowiednio.
 var aim_by_mouse := false
+var _clean_hold := 0.0               ## s trzymania klawisza z zestawem do czyszczenia
+var _clean_hp := 0
+var _wade_surface := ""               ## powierzchnia pod stopami w poprzedniej klatce (zużycie broni przy wejściu w wodę / błoto)
 var _climb_rot := 0.0                 ## lokalnie: o ile (rad) podrzut obrócił aim_dir w tej klatce — cofany przed wyborem kierunku w następnej
 var mouse_aim := false                ## lokalnie: tryb celowania myszą (włącza go mysz, wyłącza spust z klawiatury i pad — `aim_mode_after`)
 const MOUSE_AIM_MOVE := 3.0           ## px ruchu myszy w jednym zdarzeniu, od których mysz przejmuje celowanie (drżenie ręki nie przełącza)
@@ -676,6 +679,11 @@ func _local_brain(delta: float) -> void:
 		var raw := aim_dir
 		aim_dir = weapons.apply_climb(aim_dir)               # podrzut unosi lufę (i ręce postaci); celownik pokazuje, gdzie poleci kula
 		_climb_rot = raw.angle_to(aim_dir)
+	if is_on_floor():
+		var sfc := _floor_surface()
+		if sfc != _wade_surface:
+			_wade_surface = sfc
+			weapons.wade(sfc)                                 # woda i błoto zużywają broń (etap 4b)
 	weapons.tick_local(delta, busy or stun_t > 0.0)          # ogłuszony nie strzela, nie przeładowuje, nie bije i nie zmienia broni, ale chodzi (Kapłan, F4)
 
 	var move_x := 0.0 if (busy or grabbed or weapons.inspect_item != null) else Input.get_axis("move_left", "move_right")
@@ -846,6 +854,8 @@ func _gear_tick(delta: float) -> bool:
 					return _tick_medkit(delta, Input.is_action_pressed("throw"))
 				"defib":
 					return _tick_defib(delta, Input.is_action_pressed("throw"))
+				"cleankit":
+					return _tick_cleankit(delta, Input.is_action_pressed("throw"))
 				"scanner":
 					_gear_cancel()
 					if Input.is_action_just_pressed("throw"):
@@ -855,6 +865,7 @@ func _gear_tick(delta: float) -> bool:
 	return false
 
 func _gear_cancel() -> void:
+	_clean_hold = 0.0
 	if _med_hold > 0.0:
 		_med_hold = 0.0
 	if _defib_hold > 0.0 or _defib_ref != null:
@@ -894,6 +905,36 @@ func _medkit_target() -> Node2D:
 	if best == null and hp < max_hp():
 		return self
 	return best
+
+## Zestaw do czyszczenia (etap 4b): trzymany klawisz przedmiotu przez `time` s czyści broń w rękach (+40 %, zacięcie usunięte);
+## obrażenia przerywają, w trakcie bez ruchu i strzału (jak apteczka). Zapas zdejmuje serwer, efekt nakłada nasz kontroler (cleankit_done).
+func _tick_cleankit(delta: float, held: bool) -> bool:
+	var data: Dictionary = Throwables.KINDS["cleankit"]
+	var wd: RefCounted = weapons.cur()
+	var key := String(wd.key)
+	if Arsenal.get_throwable("cleankit") <= 0 or wd.is_melee() or Settings.reliability_mult() <= 0.0:
+		_clean_hold = 0.0
+		return false
+	if Profile.condition(key) >= 99.5 and weapons.jammed(wd.id) == "":
+		_clean_hold = 0.0
+		gear_text = tr("Clean kit — the %s is clean") % String(wd.name)
+		return false
+	if not held:
+		_clean_hold = 0.0
+		gear_text = tr("Hold [%s]  Clean the %s  (+%d%%, %d s)") % [Throwables.key_name(), String(wd.name), int(data["restore"]), int(data["time"])]
+		return false
+	if _clean_hold <= 0.0:
+		_clean_hp = hp
+	elif hp < _clean_hp:
+		_clean_hold = 0.0
+		return false
+	_clean_hold += delta
+	gear_text = tr("Cleaning the %s…") % String(wd.name)
+	gear_progress = clampf(_clean_hold / float(data["time"]), 0.0, 1.0)
+	if _clean_hold >= float(data["time"]):
+		_clean_hold = 0.0
+		Arsenal.request_use("cleankit", int(player_id))
+	return true
 
 func _tick_medkit(delta: float, held: bool) -> bool:
 	var data: Dictionary = Throwables.KINDS["medkit"]
