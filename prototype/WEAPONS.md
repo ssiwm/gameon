@@ -344,7 +344,7 @@ Drugi etap `GUNSMITH_PLAN.md`. Dane i reguły w `scripts/ammo.gd`, zapas w `arse
 | Element | Jak działa | Kod |
 |---|---|---|
 | **Kalibry** | `WeaponDef.caliber`: M-83 `762`, P-83 `918`, SPREAD-12 i PELLET-8 `12g`; reszta broni bez kalibru (zapas tylko dla siebie). Pula naboi zwykłych ma klucz `Ammo.pool_key` (100 + indeks kalibru; broń bez kalibru — własne id), sufit = największy `reserve_max` broni tego kalibru (`Arsenal.pool_max`). **12/70 jest wspólne dla obu strzelb** | `ammo.gd`, `Arsenal.pool` |
-| **Typy naboi** | indeks 0 = zwykły; specjalne: **7,62 US** (poddźwiękowy: prędkość ×0,42 ≈ 1000 px/s, obrażenia ×0,75, hałas ×0,85, a z tłumikiem ×0,5), **7,62 BZ** (`armor_pen` 0,7, +1 przebicie, podpalenie 1 s), **12/70 breneka** (śrut → jeden pocisk: 85% snopa, bez rozrzutu, zasięg ×2, +1 przebicie, `armor_pen` 0,3), **12/70 zapalające** (podpalenie 2 s, ×0,7), **12/70 gumowe** (×0,25, ogłuszenie +1 s, odrzut ×1,3, bez krytyka). Typ nakłada się na definicję jak ulepszenie: `Weapons.def_ammo(id, t)` (pamięć podręczna po broni, poziomie i typie) | `Ammo.apply`, `weapons.gd` |
+| **Typy naboi** | indeks 0 = zwykły; specjalne: **7,62 US** (poddźwiękowy: prędkość ×0,42 ≈ 1000 px/s, obrażenia ×0,75, hałas ×0,85, a z tłumikiem ×0,5), **7,62 BZ** (`armor_pen` 0,7, od 1.7.327 podwójna energia przebicia — §23, podpalenie 1 s), **12/70 breneka** (śrut → jeden pocisk: 85% snopa, bez rozrzutu, zasięg ×2, energia przebicia 1,3, `armor_pen` 0,3), **12/70 zapalające** (podpalenie 2 s, ×0,7), **12/70 gumowe** (×0,25, ogłuszenie +1 s, odrzut ×1,3, bez krytyka). Typ nakłada się na definicję jak ulepszenie: `Weapons.def_ammo(id, t)` (pamięć podręczna po broni, poziomie i typie) | `Ammo.apply`, `weapons.gd` |
 | **Pancerz** | `Combat.make_info` niesie `ap` z definicji naboju; `enemy.take_hit` mnoży pancerz przez (1 − ap): Wołek traci od PS 3 na trafienie, od BZ 0,9 | `combat.gd`, `enemy.gd` |
 | **Wybór [Z]** | akcja `ammo_type` (pad: do przypisania): następny typ kalibru, który drużyna ma w zapasie (zwykły zawsze). Typ wchodzi z następnym magazynkiem — gotowa broń od razu się przeładowuje, stary magazynek (z nabojem w komorze) wraca do zapasu swojego typu; nowy ładuje się bez komory. HUD: `30 / 150 PS`, przy wybranym innym typie `PS→US` (zapas pokazuje następny typ) | `cycle_ammo`, `loaded` / `want_ammo`, `hud.gd` |
 | **Sieć** | typ leci z żądaniem strzału (`_fire_request`, `_server_fire`, `_fire_remote`) i z prośbą o naboje (`_req_rounds`, `_deposit_rpc`); serwer sprawdza `Ammo.valid`, nieznany typ = zwykły. Magazynek i typ w nim należą do gracza jak dotąd, zapas — do serwera | `weapon_controller.gd`, `arsenal.gd` |
@@ -465,4 +465,23 @@ z gniazda i wtedy rozstrzyga się, czy [R] jest wciąż wciśnięte.
 
 CLASSIC: dawne dopełnianie bez upuszczania. Nie zrobione: zatrzymanie zamka P-83 po ostatnim naboju (model pistoletu nie ma osobnego zamka).
 Dev: `--shotmag` (magazynek M-83 z 17 nabojami i pusty bęben SPREAD-12 przy graczu 1).
+
+## 23. Przebijalność i rykoszet, etap 3d (1.7.327)
+
+Kula ma **energię przebicia** (`WeaponDef.pen`, typ naboju ją zmienia); każda przeszkoda zabiera swoją część, a obrażenia za nią maleją
+w proporcji do energii, która została. Zastępuje dawne `pierce` (liczbę ciał) dla kul; promień LR-7, szyna i bełt SINEW-6 liczą ciała jak dotąd.
+
+| Przeszkoda (koszt) | 9×18 PM (0,5) | 7,62 PS (1,2) | 7,62 US (0,72) | 7,62 BZ (2,4) | breneka (1,3) | śrucina (0,3) |
+|---|---|---|---|---|---|---|
+| skrzynia, drewno (0,6) | zostaje | przechodzi (50%) | przechodzi (17%) | przechodzi (75%) | przechodzi (54%) | zostaje |
+| beczka, stal (1,5) | zostaje | zostaje | zostaje | przechodzi (38%) | zostaje | zostaje |
+| ciało (1,0) | zostaje | 1 ciało, drugi cel 17% | zostaje | 2 ciała (58%, 17%) | 1 ciało, drugi cel 23% | zostaje |
+| ściana z kafli | zostaje | zostaje | zostaje | zostaje | zostaje | zostaje (szyna z ulepszeniem przebija cienką warstwę) |
+
+Liczby w nawiasach — obrażenia za przeszkodą względem pełnych. Kopia kosmetyczna kuli u klienta przechodzi tam, gdzie kula serwera.
+
+**Rykoszet:** kula (bez wybuchu, ładunku, wbijania i naprowadzania) uderzająca w kafel blachy pod kątem ostrzejszym niż 20° odbija się raz:
+połowa obrażeń i energii przebicia, prędkość ×0,6, odchylenie do ±6° liczone z punktu odbicia (ten sam wynik u serwera i klientów), iskry
+i dźwięk rykoszetu. Beton i ziemia nie odbijają. Kolega trafiony rykoszetem krzyczy (hałas), nie traci zdrowia — jak przy każdym trafieniu kolegi.
+Kod: `projectile.gd` (`PEN_*`, `_pass_through`, `pen_cost`, `_ricochet`), `weapons.gd`, `ammo.gd`.
 

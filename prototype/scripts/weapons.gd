@@ -65,6 +65,7 @@ static func _table() -> Array:
 			"speed": 2400.0, "range_px": 240.0, "falloff_start": 190.0, "falloff_min": 0.5,
 			"n_min": 0.6, "n_max": 1.5, "heat_gain": 0.09, "heat_decay": 0.30, "barrel_heat": 1.0 / 60.0,   # dwa magazynki ciągłym ogniem = gorąca lufa
 			"mag": 30, "reserve_start": 150, "reserve_max": 270, "pickup_rounds": 30, "chamber": true, "mag_drop": true,
+			"pen": 1.2,                       # 7,62 PS ze stalowym rdzeniem: przez skrzynię albo jedno ciało
 			"reload_time": 1.35, "reload_empty_extra": 0.45,
 			"shake": 0.7, "cam_kick": 0.5, "recoil": 2.5, "flash_size": 3.5, "flash_light": 1.3,
 			"tracer_len": 12.0, "casing": 1, "gun_len": 12.0, "gun_row": 0,
@@ -78,6 +79,7 @@ static func _table() -> Array:
 			"speed": 1400.0, "range_px": 135.0, "falloff_start": 40.0, "falloff_min": 0.35,
 			"n_min": 3.5, "n_max": 5.0, "heat_gain": 0.40, "heat_decay": 1.2, "barrel_heat": 1.0 / 24.0,
 			"mag": 25, "reserve_start": 50, "reserve_max": 100, "pickup_rounds": 12, "chamber": true, "mag_drop": true,
+			"pen": 0.3,                       # śrucina grzęźnie w pierwszej przeszkodzie
 			"reload_time": 2.0, "reload_empty_extra": 0.5,
 			"shake": 2.4, "cam_kick": 2.6, "recoil": 5.0, "flash_size": 6.0, "flash_light": 1.7,
 			"tracer_len": 7.0, "casing": 2, "gun_len": 12.0, "gun_row": 1,
@@ -91,6 +93,7 @@ static func _table() -> Array:
 			"speed": 1070.0, "range_px": 208.0, "falloff_start": 160.0, "falloff_min": 0.6,     # 9×18 mm ≈ 315 m/s — poddźwiękowy (próg Weapons.SOUND_PX)
 			"n_min": 0.5, "n_max": 0.9, "heat_gain": 0.16, "heat_decay": 0.6, "barrel_heat": 1.0 / 35.0,     # cienka lufa pistoletu
 			"mag": 8, "chamber": true, "infinite": true, "reload_time": 1.1, "reload_empty_extra": 0.3,
+			"pen": 0.5,                       # 9×18 — miękka kula pistoletowa: zostaje w pierwszym celu
 			"shake": 0.5, "cam_kick": 0.4, "recoil": 2.5, "flash_size": 3.0, "flash_light": 1.2,
 			"tracer_len": 9.0, "casing": 1, "eject_frac": 0.45, "gun_len": 7.0, "gun_row": 2,
 			"sfx": "p64_shot", "sfx_count": 4, "sfx_vol": -8.0,
@@ -102,7 +105,7 @@ static func _table() -> Array:
 			"spread_deg": 17.0, "jitter_deg": 1.0,
 			"speed": 1300.0, "range_px": 100.0, "falloff_start": 20.0, "falloff_min": 0.25,
 			"n_min": 4.5, "n_max": 6.0, "heat_gain": 0.5, "heat_decay": 0.4, "barrel_heat": 1.0 / 24.0,
-			"mag": 8, "reserve_start": 24, "reserve_max": 48, "pickup_rounds": 8, "chamber": true,
+			"mag": 8, "reserve_start": 24, "reserve_max": 48, "pickup_rounds": 8, "chamber": true, "pen": 0.3,
 			"reload_time": 0.45, "reload_per_round": true, "reload_sfx": "reload_shell", "reload_sfx_count": 3,
 			"shake": 4.0, "cam_kick": 4.5, "recoil": 7.0, "flash_size": 8.0, "flash_light": 2.0,
 			"tracer_len": 6.0, "casing": 2, "gun_len": 12.0, "gun_row": 3,

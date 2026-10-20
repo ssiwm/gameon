@@ -199,6 +199,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_handling_climb()
 	await _t_hot_barrel()
 	await _t_two_reloads()
+	await _t_penetration()
 	await _t_homing()
 	await _t_bolt()
 	await _t_melee()
@@ -2004,6 +2005,97 @@ func _t_two_reloads() -> void:
 	equip(Weapons.M83)
 	await _settle_player()
 
+## Kula z broni `w` (typ naboju `t`) wystrzelona z serwera w prawo z wysokości dłoni gracza.
+func _shoot_line(w: int, t := 0, from_off := Vector2(6.0, -12.0), dir := Vector2.RIGHT) -> Node:
+	var pr := Projectile.new()
+	pr.launch(w, player.global_position + from_off, dir, 1, true, 0.0, Weapons.build_of(t, 0))
+	get_tree().current_scene.add_child(pr)
+	return pr
+
+## Przebijalność i rykoszet, etap 3d (1.7.327, GUNSMITH_PLAN.md §5.7): energia przebicia kuli (WeaponDef.pen) maleje na każdej przeszkodzie
+## (ciało 1, skrzynia 0,6, beczka 1,5), obrażenia za przeszkodą — z resztą energii. 9×18 zostaje w pierwszym celu, PS przechodzi przez jedno ciało
+## albo skrzynię, BZ przez dwa ciała albo beczkę, breneka przez jedno ciało, śrut nie przebija. Kula od metalu pod kątem < 20° odbija się raz.
+func _t_penetration() -> void:
+	free_dummies()
+	await _settle_player()
+	var ps := Weapons.def(Weapons.M83)
+	# rząd trzech manekinów: ile trafiła kula i ile zadała za pierwszym
+	var row := func(w: int, t: int) -> Array:
+		var a: Node = await dummy(40.0)
+		var b: Node = await dummy(70.0)
+		var c: Node = await dummy(100.0)
+		_shoot_line(w, t)
+		await wait(0.3)
+		var out := [dealt(a), dealt(b), dealt(c)]
+		free_dummies()
+		await frames(2)
+		return out
+	var r_ps: Array = await row.call(Weapons.M83, 0)
+	check("PS: przez jedno ciało, drugi cel słabiej (%.1f → %.1f), trzeci nietknięty (%.1f)" % [r_ps[0], r_ps[1], r_ps[2]],
+		r_ps[0] > 0.0 and r_ps[1] > 0.0 and r_ps[1] < r_ps[0] * 0.3 and r_ps[2] == 0.0)
+	var r_bz: Array = await row.call(Weapons.M83, 2)
+	check("BZ: przez dwa ciała (%.1f, %.1f, %.1f)" % [r_bz[0], r_bz[1], r_bz[2]], r_bz[0] > 0.0 and r_bz[1] > r_bz[2] and r_bz[2] > 0.0)
+	var r_pm: Array = await row.call(Weapons.P64, 0)
+	check("9×18: zostaje w pierwszym celu (%.1f, %.1f)" % [r_pm[0], r_pm[1]], r_pm[0] > 0.0 and r_pm[1] == 0.0)
+	var r_slug: Array = await row.call(Weapons.SRUT8, 1)
+	check("breneka: przez jedno ciało (%.1f, %.1f, %.1f)" % [r_slug[0], r_slug[1], r_slug[2]], r_slug[0] > 0.0 and r_slug[1] > 0.0 and r_slug[2] == 0.0)
+	# skrzynia i beczka przed celem
+	var cover := func(w: int, t: int, kind: String) -> float:
+		var pr: RigidBody2D = (load("res://scripts/prop.gd") as GDScript).new()
+		pr.kind = kind
+		pr.position = player.global_position + Vector2(30.0, -1.0)
+		pr.freeze = true
+		get_tree().current_scene.add_child(pr)
+		var tgt: Node = await dummy(70.0)
+		await frames(3)
+		_shoot_line(w, t)
+		await wait(0.3)
+		var got := dealt(tgt)
+		pr.queue_free()
+		free_dummies()
+		await frames(2)
+		return got
+	var crate_ps: float = await cover.call(Weapons.M83, 0, "crate")
+	var crate_pm: float = await cover.call(Weapons.P64, 0, "crate")
+	var barrel_ps: float = await cover.call(Weapons.M83, 0, "barrel")
+	var barrel_bz: float = await cover.call(Weapons.M83, 2, "barrel")
+	check("skrzynia: PS przechodzi (cel za nią %.1f, ok. połowa), 9×18 nie (%.1f)" % [crate_ps, crate_pm],
+		crate_ps > ps.damage * 0.3 and crate_ps < ps.damage * 0.7 and crate_pm == 0.0)
+	check("beczka: PS zostaje (%.1f), BZ przechodzi (%.1f)" % [barrel_ps, barrel_bz], barrel_ps == 0.0 and barrel_bz > 0.0)
+	# rykoszet: kafel blachy w powietrzu przed graczem; kula pod ostrym kątem w jego wierzch odbija się w górę, pod stromym — nie
+	var cell: Vector2i = level._solid.local_to_map(level._solid.to_local(player.global_position + Vector2(64.0, -72.0)))
+	var free_cell: bool = level._solid.get_cell_source_id(cell) == -1 and level._solid.get_cell_source_id(cell + Vector2i(0, -1)) == -1
+	level._solid.set_cell(cell, 0, Vector2i(2, 0))
+	await frames(3)
+	var top: Vector2 = level._solid.to_global(level._solid.map_to_local(cell)) + Vector2(0.0, -8.0)
+	var shoot_at := func(deg: float) -> Node:
+		var d := Vector2(cos(deg_to_rad(deg)), sin(deg_to_rad(deg)))
+		var from := top - d * 40.0
+		var pr := Projectile.new()
+		pr.launch(Weapons.M83, from, d, 1, true, 0.0, 0)
+		get_tree().current_scene.add_child(pr)
+		return pr
+	var rc0: int = Projectile.ricochet_count
+	var graze: Node = shoot_at.call(10.0)
+	await frames(3)
+	var bounced: bool = Projectile.ricochet_count == rc0 + 1 and is_instance_valid(graze) and (graze.direction as Vector2).y < 0.0
+	var rc1: int = Projectile.ricochet_count
+	shoot_at.call(55.0)
+	await frames(3)
+	var steep_none: bool = Projectile.ricochet_count == rc1
+	level._solid.set_cell(cell, 0, Vector2i(1, 0))          # beton
+	await frames(3)
+	var rc2: int = Projectile.ricochet_count
+	shoot_at.call(10.0)
+	await frames(3)
+	var concrete_none: bool = Projectile.ricochet_count == rc2
+	level._solid.erase_cell(cell)
+	await frames(2)
+	check("rykoszet: od blachy pod 10° kula odbija się w górę (%s), pod 55° nie (%s), od betonu nie (%s) [kafel wolny: %s]" % [str(bounced), str(steep_none), str(concrete_none), str(free_cell)],
+		free_cell and bounced and steep_none and concrete_none)
+	free_dummies()
+	await _settle_player()
+
 ## Amunicja według kalibru (1.7.317, GUNSMITH_PLAN.md etap 1): wspólna pula 12/70, typy naboi (US, BZ, breneka, zapalające, gumowe),
 ## wymiana typu klawiszem Z przy przeładowaniu, przebicie pancerza, sklep pudełek, amunicja specjalna przeżywa reset misji.
 func _t_ammo_calibers() -> void:
@@ -2029,7 +2121,7 @@ func _t_ammo_calibers() -> void:
 	check("7.62 US: poddźwiękowy (%.0f px/s), słabszy (%.1f < %.1f), sam trochę ciszej (%.2f < %.2f)" % [us.speed, us.damage, ps.damage, us.n_max, ps.n_max],
 		us.speed < Ammo.SOUND_PX and us.damage < ps.damage and us.n_max < ps.n_max and us.ammo == 1)
 	check("7.62 US z tłumikiem: hałas %.2f wobec PS z tłumikiem %.2f (≤ 60%%)" % [us_s.n_max, ps_s.n_max], us_s.suppressor > 0.0 and us_s.n_max <= ps_s.n_max * 0.6)
-	check("7.62 BZ: przebija 70% pancerza, +1 cel, podpala", absf(bz.armor_pen - 0.7) < 0.01 and bz.pierce == ps.pierce + 1 and bz.ignite > 0.0)
+	check("7.62 BZ: przebija 70%% pancerza, dwa razy więcej energii przebicia (%.1f wobec %.1f), podpala" % [bz.pen, ps.pen], absf(bz.armor_pen - 0.7) < 0.01 and absf(bz.pen - ps.pen * 2.0) < 0.001 and bz.ignite > 0.0)
 	var buck := Weapons.def_ammo(Weapons.SRUT8, 0)
 	var slug := Weapons.def_ammo(Weapons.SRUT8, 1)
 	var rub := Weapons.def_ammo(Weapons.SRUT8, 3)

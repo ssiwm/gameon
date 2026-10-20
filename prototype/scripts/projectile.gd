@@ -33,6 +33,18 @@ const TRACER_SEC := 0.022           ## s lotu, które obejmuje smuga (długość
 const TRACE_LIFE := 0.08            ## s dogasania śladu po trafieniu / końcu zasięgu
 const WHIZZ_PX := 18.0              ## px (ok. 1,5 m): kula przelatująca tak blisko głowy gracza świszczy mu koło ucha
 const WHIZZ_MIN_FLIGHT := 30.0      ## px lotu, poniżej których świstu nie ma (stoisz przy lufie — słychać wystrzał)
+## Przebijalność (GUNSMITH_PLAN.md §5.7, od 1.7.327): ile energii przebicia (WeaponDef.pen) zabiera przeszkoda. Ściany z kafli zatrzymują każdą kulę
+## (tylko szyna z ulepszeniem przebija cienką warstwę — Combat.trace).
+const PEN_BODY := 1.0               ## ciało wroga
+const PEN_CRATE := 0.6              ## drewniana skrzynia (prop.gd)
+const PEN_BARREL := 1.5             ## stalowa beczka
+const PEN_MIN := 0.05               ## mniej energii — kula zostaje w przeszkodzie
+## Rykoszet: kula uderzająca w metal pod kątem ostrzejszym niż RICOCHET_DEG odbija się raz z połową energii (obrażenia i przebicie),
+## wolniej i z lekkim, deterministycznym odchyleniem (ten sam u serwera i klientów). Kolega trafiony rykoszetem krzyczy, nie traci zdrowia.
+const RICOCHET_DEG := 20.0
+const RICOCHET_KEEP := 0.5
+const RICOCHET_SPEED := 0.6
+const RICOCHET_JITTER := 6.0        ## ° odchylenia odbicia
 
 var weapon := 0
 var ammo := 0                        ## typ naboju (ammo.gd) — ta sama kula u serwera i klientów
@@ -47,6 +59,10 @@ var _vel := Vector2.ZERO
 var _dist := 0.0
 var _age := 0.0
 var _pierce_left := 0
+var _pen_left := 0.0                ## energia przebicia, która jeszcze została
+var _energy := 1.0                  ## mnożnik obrażeń (maleje za przeszkodami i po rykoszecie)
+var ricochets := 0
+static var ricochet_count := 0      ## licznik rykoszetów (testy headless)
 var _skip: Array[RID] = []
 var _target: Node2D = null
 var _light: Lights.GameLight
@@ -72,6 +88,7 @@ func launch(w: int, from: Vector2, dir: Vector2, shooter: int, auth: bool, lag_s
 	origin = from
 	_vel = direction * float(_def.speed_at(0.0))         # rakieta z silnikiem (FALCON-6) startuje wolno i rozpędza się w locie (`_boost`)
 	_pierce_left = int(_def.pierce)
+	_pen_left = float(_def.pen)
 
 func _ready() -> void:
 	add_to_group("projectiles")            # widok 3D (view3d.gd) odzwierciedla pociski jako smugi 3D
@@ -193,6 +210,10 @@ func _sweep(from: Vector2, to: Vector2, rewind := -1.0) -> bool:
 			continue
 		if node != null and node.is_in_group("enemies"):
 			if not authoritative:
+				if _def.pen > 0.0 and _def.blast_radius <= 0.0 and _pass_through(node):
+					_skip.append(hit["rid"])                 # kopia kosmetyczna leci dalej tam, gdzie kula serwera przebija
+					cur = p
+					continue
 				_finish(p)
 				return true
 			var res := _hit_target(node, p, at_dist)
@@ -212,7 +233,12 @@ func _sweep(from: Vector2, to: Vector2, rewind := -1.0) -> bool:
 					else:
 						_dud(p)
 					return true
-				if _pierce_left > 0:
+				if _def.pen > 0.0:
+					if _pass_through(node):
+						_skip.append(hit["rid"])
+						cur = p
+						continue
+				elif _pierce_left > 0:
 					_pierce_left -= 1
 					_skip.append(hit["rid"])
 					cur = p
@@ -223,17 +249,61 @@ func _sweep(from: Vector2, to: Vector2, rewind := -1.0) -> bool:
 			_skip.append(hit["rid"])
 			cur = p
 			continue
-		# ściana
+		# ściana (metal pod ostrym kątem — rykoszet: kula leci dalej odbita)
+		if _ricochet(p, n):
+			return false
 		_world_hit(p, n)
 		return true
 	global_position = to
 	return false
 
+## Energia przebicia: przeszkoda zabiera swoją część; zostało dość — kula leci dalej słabsza (true), inaczej zostaje w przeszkodzie.
+func _pass_through(node: Node) -> bool:
+	_pen_left -= pen_cost(node)
+	if _pen_left <= PEN_MIN:
+		return false
+	_energy = minf(_energy, _pen_left / float(_def.pen))
+	return true
+
+## Ile energii przebicia zabiera cel: skrzynia (drewno), beczka (stal), ciało.
+static func pen_cost(node: Node) -> float:
+	if node.is_in_group("props"):
+		return PEN_CRATE if String(node.get("kind")) == "crate" else PEN_BARREL
+	return PEN_BODY
+
+## Rykoszet od metalu (kafle „metal”) pod kątem ostrzejszym niż RICOCHET_DEG: tylko kula (bez wybuchu, ładunku, wbijania), raz.
+## Pocisk zostaje w punkcie odbicia z nowym kierunkiem; ten sam wynik u serwera i u klienta (powierzchnia, normalna i odchylenie z punktu).
+func _ricochet(p: Vector2, n: Vector2) -> bool:
+	if ricochets > 0 or _def.blast_radius > 0.0 or String(_def.payload) != "" or sticks_on_hit() or float(_def.homing) > 0.0 or n.length() < 0.5:
+		return false
+	if absf(direction.dot(n)) > sin(deg_to_rad(RICOCHET_DEG)):
+		return false
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null or lvl.surface_at_hit(p, n) != "metal":
+		return false
+	var h := float(hash(p.snapped(Vector2(0.5, 0.5)))) / 4294967295.0      # 0..1, deterministycznie z punktu
+	var out := direction.bounce(n).rotated(deg_to_rad((h - 0.5) * 2.0 * RICOCHET_JITTER))
+	if out.dot(n) < 0.05:
+		out = (out + n * 0.1).normalized()                     # odbicie zawsze od ściany, nie w nią
+	ricochets += 1
+	ricochet_count += 1
+	_energy *= RICOCHET_KEEP
+	_pen_left *= RICOCHET_KEEP
+	direction = out
+	_vel = out * _vel.length() * RICOCHET_SPEED
+	global_position = p + n * 0.5
+	origin = global_position                                    # smuga nie sięga za punkt odbicia
+	rotation = _vel.angle()
+	_skip.clear()
+	Vfx.sparks(lvl, p, out)
+	Audio.play_variant_at("ricochet", 2, p, Audio.BUS_WORLD, -9.0, 1.0, 0.12)
+	return true
+
 func sticks_on_hit() -> bool:
 	return bool(_def.sticks)
 
 func _hit_target(node: Node, p: Vector2, at_dist: float) -> Dictionary:
-	var dmg: float = float(_def.damage) * float(_def.falloff(at_dist)) * float(_def.boost_damage(_vel.length()))
+	var dmg: float = float(_def.damage) * float(_def.falloff(at_dist)) * float(_def.boost_damage(_vel.length())) * _energy
 	var info := Combat.make_info(weapon, dmg, p, direction, shooter_id, "bullet", build)
 	var res := Combat.apply(node, info)
 	Combat.report(info, res)
@@ -292,7 +362,10 @@ func _check_origin() -> void:
 				if _def.blast_radius > 0.0:
 					_dud(global_position)                       # przy wylocie zapalnik nigdy nie jest uzbrojony
 					return
-				if _pierce_left > 0:
+				if _def.pen > 0.0:
+					if _pass_through(node):
+						continue
+				elif _pierce_left > 0:
 					_pierce_left -= 1
 					continue
 				_finish(global_position)

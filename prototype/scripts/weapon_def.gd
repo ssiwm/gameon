@@ -93,6 +93,10 @@ var heat_decay := 1.2         ## /s
 var n_extra := 0.0            ## hałas stały zdarzenia (np. detonacja granatu)
 var suppressor := 0.0         ## > 0: tłumik na lufie (ulepszenie) — nabój poddźwiękowy jest wtedy naprawdę cichy (Ammo.SUBSONIC_SUPPRESSED)
 
+# --- przebijalność (GUNSMITH_PLAN.md §5.7, od 1.7.327): energia przebicia kuli; każda przeszkoda zabiera część (Projectile.PEN_COST),
+## obrażenia za przeszkodą maleją z resztą energii. 0 = dawne `pierce` (liczba ciał: promień, szyna, bełt)
+var pen := 0.0
+
 # --- przeładowanie (GUNSMITH_PLAN.md §5.3, od 1.7.326)
 var mag_drop := false         ## wymienny magazynek: szybkie przeładowanie ([R] krótko) upuszcza go z resztkami, przytrzymane [R] — taktyczne
 
