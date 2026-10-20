@@ -180,6 +180,7 @@ var _gun_key := ""
 var _gun_fit := 0                              ## kod części trzymanej broni (parts.gd) — model z częściami (gun_model.gd)
 var _hands := 2
 var _gun_len := 1.2
+var _gun_notch := 0                    ## nacięcia na kolbie zbudowanej broni (n + 16 × głębokie)
 var _gun_info := {"rear": Vector3.ZERO, "fore": Vector3(0.4, 0.03, 0.0), "muzzle": Vector3(0.9, 0.08, 0.0)}   ## dane trzymanej broni (gun_info): układ Godota (x, y w górę, z do kamery)
 static var _gun_infos := {}                  ## klucz broni → dane z gun_<klucz>.json (raz na sesję)
 var _b := {}                                 ## nazwa kości → indeks
@@ -685,15 +686,16 @@ func _place_cameras() -> void:
 ## Wymiana broni (klucz z weapon_def: m83, p64, maczeta…). Brak modelu → karabin M-83.
 ## Broń w dłoniach: klucz i kod zamontowanych części (`fit`, parts.gd) — części z modelem są widoczne (gun_model.gd), a wylot pocisku
 ## i błysku liczy się z założonej lufy i tłumika.
-func set_gun(key: String, fit := 0) -> void:
-	if key == _gun_key and fit == _gun_fit and _gun != null:
+func set_gun(key: String, fit := 0, notch := 0) -> void:
+	if key == _gun_key and fit == _gun_fit and notch == _gun_notch and _gun != null:
 		return
 	var path := DIR + "gun_%s.glb" % key
 	if not ResourceLoader.exists(path):
 		key = DEFAULT_GUN
 		path = DIR + "gun_%s.glb" % key
 		fit = 0
-		if key == _gun_key and fit == _gun_fit and _gun != null:
+		notch = 0
+		if key == _gun_key and fit == _gun_fit and notch == _gun_notch and _gun != null:
 			return
 	if _gun != null:
 		_gun.queue_free()
@@ -702,12 +704,12 @@ func set_gun(key: String, fit := 0) -> void:
 		_gun_n = null
 	var ids := Parts.decode(key, fit)
 	var base_muzzle: Vector3 = gun_info(key)["muzzle"]
-	_gun = GunModel.build(key, ids, base_muzzle)
+	_gun = GunModel.build(key, ids, base_muzzle, notch % 16, notch / 16)
 	_gun.visible = false                                     # do pierwszej pozy (update ustawia transformację i widoczność) — bez błysku w zerze świata
 	_root3d.add_child(_gun)
 	_tune_gun_materials(_gun)
 	if _camn != null:                                        # kopia broni na warstwie 2 (osobny egzemplarz sceny, ta sama transformacja)
-		_gun_n = GunModel.build(key, ids, base_muzzle)
+		_gun_n = GunModel.build(key, ids, base_muzzle, notch % 16, notch / 16)
 		_gun_n.visible = false
 		_root3d.add_child(_gun_n)
 		for mi in _gun_n.find_children("*", "MeshInstance3D", true, false):
@@ -715,6 +717,7 @@ func set_gun(key: String, fit := 0) -> void:
 			(mi as MeshInstance3D).material_override = _normal_mat
 	_gun_key = key
 	_gun_fit = fit
+	_gun_notch = notch
 	_gun_info = info_with(key, ids)
 	_hands = int(_gun_info["hands"])
 	_gun_len = float(_gun_info["length"])

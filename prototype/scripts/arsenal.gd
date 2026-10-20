@@ -27,7 +27,7 @@ enum Confirm { HIT, CRIT, KILL, ARMOR }
 
 signal reserve_changed
 signal hit_confirmed(kind: int, pos: Vector2)
-signal weapon_hit(kind: int, weapon: int)          ## trafienie lokalnego strzelca z bronią (wprawa, GUNSMITH_PLAN §7.3); tylko żywe cele, bez skrzyń
+signal weapon_hit(kind: int, weapon: int, rank: int)    ## trafienie lokalnego strzelca z bronią (wprawa §7.3, historia §7.4); tylko żywe cele; rank: 1 elita, 2 boss
 signal rounds_granted(weapon: int, count: int)
 
 var reserve: Dictionary = {}
@@ -391,23 +391,32 @@ func _explosion_fx(pos: Vector2, radius: float) -> void:
 	Vfx.explosion(parent, pos, radius)
 
 ## Serwer: hitmarker dla strzelca (człowiek — przez sieć, host — lokalnie, bot — nic). `w` — broń trafienia w żywy cel (−1: skrzynia, beczka).
-func confirm(shooter_id: int, kind: int, pos: Vector2, w := -1) -> void:
+func confirm(shooter_id: int, kind: int, pos: Vector2, w := -1, rank := 0) -> void:
 	if not NoiseMgr.has_network():
 		hit_confirmed.emit(kind, pos)
 		if shooter_id == NoiseMgr.local_id() and w >= 0:
-			weapon_hit.emit(kind, w)
+			weapon_hit.emit(kind, w, rank)
 	elif shooter_id == NoiseMgr.local_id():
 		hit_confirmed.emit(kind, pos)
 		if w >= 0:
-			weapon_hit.emit(kind, w)
+			weapon_hit.emit(kind, w, rank)
 	elif multiplayer.get_peers().has(shooter_id):
-		_confirm_rpc.rpc_id(shooter_id, kind, pos, w)
+		if rank > 0:
+			_confirm_rank_rpc.rpc_id(shooter_id, kind, pos, w, rank)      # zabicie elity / bossa nie może zginąć w sieci (nacięcie)
+		else:
+			_confirm_rpc.rpc_id(shooter_id, kind, pos, w)
 
 @rpc("authority", "call_remote", "unreliable")
 func _confirm_rpc(kind: int, pos: Vector2, w := -1) -> void:
 	hit_confirmed.emit(kind, pos)
 	if w >= 0:
-		weapon_hit.emit(kind, w)
+		weapon_hit.emit(kind, w, 0)
+
+@rpc("authority", "call_remote", "reliable")
+func _confirm_rank_rpc(kind: int, pos: Vector2, w: int, rank: int) -> void:
+	hit_confirmed.emit(kind, pos)
+	if w >= 0:
+		weapon_hit.emit(kind, w, rank)
 
 # ---------------------------------------------------------------- narzędzia (apteczka, defibrylator, skaner)
 

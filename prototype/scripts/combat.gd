@@ -16,6 +16,7 @@ extends RefCounted
 ##   pull     linka (ulepszenie SINEW-6): px/s, z jaką trafiony wróg leci ku strzelcowi
 ##   execute  ułamek HP, poniżej którego cios białą bronią zabija na miejscu (ulepszenie maczety)
 
+const EnemyDefs := preload("res://scripts/enemy_defs.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 
@@ -64,6 +65,9 @@ static func apply(target: Node, info: Dictionary) -> Dictionary:
 	res["crit"] = bool(info.get("crit", false)) and bool(res["hit"])
 	if float(info.get("pull", 0.0)) > 0.0 and bool(res["hit"]):
 		_tether_fx(target, info)
+	if bool(res["killed"]):
+		# historia broni (GUNSMITH_PLAN §7.4): boss = 2, elita = 1 — nacięcie na kolbie broni strzelca
+		res["rank"] = 2 if target.is_in_group("boss") else (1 if EnemyDefs.is_elite(String(target.get("kind")) if target.get("kind") != null else "") else 0)
 	if bool(res["hit"]):
 		var w := int(info.get("w", -1))
 		SessionLog.note_damage(int(info.get("shooter", -1)), String(Weapons.base_def(w).key) if Weapons.is_valid(w) else "other", float(res["dealt"]), bool(res["killed"]))
@@ -90,7 +94,7 @@ static func report(info: Dictionary, res: Dictionary) -> void:
 	elif int(res.get("mat", 0)) == Arsenal.Mat.ARMOR:
 		kind = Arsenal.Confirm.ARMOR
 	var live := int(res.get("mat", 0)) in [Arsenal.Mat.FLESH, Arsenal.Mat.ARMOR]        # wprawa tylko za żywe cele, nie za skrzynie i beczki
-	Arsenal.confirm(int(info.get("shooter", 0)), kind, info["pos"], int(info.get("w", -1)) if live else -1)
+	Arsenal.confirm(int(info.get("shooter", 0)), kind, info["pos"], int(info.get("w", -1)) if live else -1, int(res.get("rank", 0)))
 
 static func apply_and_report(target: Node, info: Dictionary) -> Dictionary:
 	var res := apply(target, info)

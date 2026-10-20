@@ -118,6 +118,7 @@ var last_hit_source := ""       ## serwer: źródło ostatniego ciosu (deliver_h
 var w_state := 0
 var w_charge := 0.0
 var w_firing := false
+var notches := 0                      ## nacięcia na kolbie trzymanej broni (n + 16 × głębokie) — historia broni, replikowane
 var w_hot := 0.0                       ## temperatura lufy trzymanej broni 0..1 (weapon_controller.barrel_of) — dym i falowanie powietrza w view3d u wszystkich
 ## Założone perki jako indeksy z `Perks.ORDER` (-1 = pusty slot); replikowane, ustawia je właściciel z lokalnego profilu.
 var perks := Vector2i(-1, -1)
@@ -439,7 +440,7 @@ func _setup_sync() -> void:
 	sync.replication_interval = 0.05
 	sync.delta_interval = 0.05
 	var cfg := SceneReplicationConfig.new()
-	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":w_hot", ":kit", ":perks", ":fits", ":look", ":grabbed", ":taken", ":taken_t", ":is_reviving"]:
+	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":w_hot", ":notches", ":kit", ":perks", ":fits", ":look", ":grabbed", ":taken", ":taken_t", ":is_reviving"]:
 		cfg.add_property(path)
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
 	for path in [":position", ":velocity", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":is_bot", ":display_id"]:

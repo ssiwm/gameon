@@ -533,3 +533,14 @@ Małe liczby — wyszkolenie, nie supermoc; boty bez wprawy. Awans — komunikat
 pokazuje warsztat (szczegóły broni), stopień — oględziny [F]. Kod: `weapon_controller.gd` (`mastery_of`, `mastery_mult`, `_on_weapon_hit`),
 `profile.gd` (`MASTERY_XP`, `add_mastery`), `combat.gd`, `arsenal.gd`.
 
+## 27. Historia broni, etap 5b (1.7.331)
+
+| Element | Jak działa | Kod |
+|---|---|---|
+| **Zabójstwa** | każde zabójstwo żywego celu z danej broni trafia do historii gracza (`Profile.history`: klucz broni → zabójstwa, elity, bossowie); oględziny [F] i warsztat pokazują „KILLS” | `profile.gd` (`add_kill`, `kills`) |
+| **Nacięcia** | za każdą elitę (Kapłan, Rzeźnik, Żerca) i bossa — rysa nożem na kolbie (pistolet: z tyłu zamka), najwyżej 12; za bossa głęboka (×1,6). Serwer rozpoznaje rangę zabitego (`Combat.apply`: `rank` 1 elita, 2 boss) i dokleja ją do potwierdzenia trafienia — przy randze przez sieć niezawodnie. Toast „A notch on the M-83” | `combat.gd`, `arsenal.gd` (`weapon_hit(kind, weapon, rank)`), `weapon_controller.gd` |
+| **Na modelu** | `GunModel.build(…, notches, deep)`: rysy po obu bokach od tyłu broni, każda na prawdziwej powierzchni — promienie z boku w siatkę trójkątów modelu (górna krawędź kolby, potem bok na wysokości środka rysy). Widać je w dłoniach postaci (u wszystkich graczy — `player.notches`, replikowane), na ławie w warsztacie i w oględzinach | `gun_model.gd` (`add_notches`), `char3d.gd`, `gun_stage.gd`, `weapon_inspect.gd` |
+
+Dev: `--shotnotch=N` (każda broń z N nacięciami, w tym jednym głębokim, i 120 zabójstwami; profil bez zapisu). Nie zrobione z §7.4: zużycie
+widoczne na broni (przetarta oksyda) i własna nazwa broni.
+

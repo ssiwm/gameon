@@ -109,7 +109,9 @@ func _ready() -> void:
 ## fabrycznym — świecą fabryczne podzespoły tego gniazda). `locked` = broń niekupiona (półmrok, czerwona kontra).
 func show_gun(w: int, ids: Array, hl_part: String, hl_slot: String, locked: bool) -> void:
 	var key := String(Weapons.def(w).key) if Weapons.is_valid(w) else ""
-	var sig := "%s|%s|%s|%s|%s" % [key, ",".join(ids), hl_part, hl_slot, str(locked)]
+	var nt := Profile.notches(key) if key != "" else 0
+	var deep := Profile.boss_notches(key) if key != "" else 0
+	var sig := "%s|%s|%s|%s|%s|%d|%d" % [key, ",".join(ids), hl_part, hl_slot, str(locked), nt, deep]
 	if sig == _sig:
 		return
 	var same_gun := _sig.get_slice("|", 0) == key
@@ -122,7 +124,7 @@ func show_gun(w: int, ids: Array, hl_part: String, hl_slot: String, locked: bool
 	if key == "" or not ResourceLoader.exists(GunModel.DIR + "gun_%s.glb" % key):
 		return
 	var bm: Vector3 = Char3D.gun_info(key)["muzzle"]
-	_model = GunModel.build(key, ids, bm)
+	_model = GunModel.build(key, ids, bm, nt, deep)          # nacięcia na kolbie (historia broni)
 	_pivot.add_child(_model)
 	_place()
 	# podświetlenie: węzeł części albo fabryczne podzespoły, które części tego gniazda zastępują

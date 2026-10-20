@@ -17,6 +17,8 @@ const Projectile := preload("res://scripts/projectile.gd")
 const Parts := preload("res://scripts/parts.gd")
 const Ammo := preload("res://scripts/ammo.gd")
 const GunModel := preload("res://scripts/gun_model.gd")
+const EnemyDefs := preload("res://scripts/enemy_defs.gd")
+const Char3D := preload("res://scripts/char3d.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
@@ -202,6 +204,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_condition_jams()
 	await _t_condition_4b()
 	await _t_mastery()
+	await _t_history()
 	await _t_penetration()
 	await _t_homing()
 	await _t_bolt()
@@ -2350,6 +2353,42 @@ func _t_mastery() -> void:
 		draw_m83 <= md.draw_time * 0.9 + 0.001 and draw_m83 > md.draw_time * 0.9 - 0.04 and draw_other > d2.draw_time - 0.04)
 	Profile.mastery = ms0
 	equip(Weapons.M83)
+	await _settle_player()
+
+## Historia broni, etap 5b (1.7.331, GUNSMITH_PLAN.md §7.4): zabójstwa z danej broni w profilu, za elitę i bossa nacięcie na kolbie (serwer
+## dokleja rangę zabitego do potwierdzenia trafienia); nacięcia siedzą na powierzchni modelu po obu bokach, liczbę trzymanej broni niesie gracz.
+func _t_history() -> void:
+	var hi0: Dictionary = Profile.history.duplicate(true)
+	Profile.history = {}
+	var md := equip(Weapons.M83)
+	await _settle_player()
+	Arsenal.weapon_hit.emit(Arsenal.Confirm.HIT, Weapons.M83, 0)
+	Arsenal.weapon_hit.emit(Arsenal.Confirm.KILL, Weapons.M83, 0)
+	Arsenal.weapon_hit.emit(Arsenal.Confirm.KILL, Weapons.M83, 1)
+	Arsenal.weapon_hit.emit(Arsenal.Confirm.KILL, Weapons.M83, 2)
+	check("historia: 3 zabójstwa (%d), nacięcia za elitę i bossa (%d, głębokie %d), trafienie się nie liczy" % [Profile.kills("m83"), Profile.notches("m83"), Profile.boss_notches("m83")],
+		Profile.kills("m83") == 3 and Profile.notches("m83") == 2 and Profile.boss_notches("m83") == 1)
+	# prawdziwe zabójstwo elity z M-83: serwer dokleja rangę
+	Profile.history = {}
+	var elite_kind := String(EnemyDefs.elite_kinds()[0])
+	var el: Node = await dummy(60.0, 1.0, elite_kind)
+	_shoot_line(Weapons.M83)
+	await wait(0.3)
+	var elite_notch: int = Profile.notches("m83")
+	free_dummies()
+	await frames(2)
+	check("historia: zabicie elity (%s) z M-83 — nacięcie (%d), zabójstwo (%d)" % [elite_kind, elite_notch, Profile.kills("m83")], elite_notch == 1 and Profile.kills("m83") == 1)
+	# model: rysy po obu bokach, głęboka wyższa; gracz niesie liczbę nacięć trzymanej broni
+	var gm := GunModel.build("m83", [], Char3D.gun_info("m83")["muzzle"], 5, 1)
+	var marks: Array = gm.get_children().filter(func(n: Node) -> bool: return n is MeshInstance3D and (n as MeshInstance3D).mesh is BoxMesh)
+	var tall: float = (marks[0] as Node3D).scale.y if marks.size() > 0 else 0.0
+	var short: float = (marks[1] as Node3D).scale.y if marks.size() > 1 else 0.0
+	gm.free()
+	Profile.history = {"m83": {"k": 10, "e": 3, "b": 1}}
+	wc._sync_player()
+	check("historia: model ma %d rys (5 × 2 boki), głęboka wyższa (%.3f > %.3f); gracz niesie nacięcia (%d)" % [marks.size(), tall, short, player.notches],
+		marks.size() == 10 and tall > short and player.notches == 4 + 16 * 1)
+	Profile.history = hi0
 	await _settle_player()
 
 ## Amunicja według kalibru (1.7.317, GUNSMITH_PLAN.md etap 1): wspólna pula 12/70, typy naboi (US, BZ, breneka, zapalające, gumowe),
