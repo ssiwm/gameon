@@ -30,11 +30,11 @@ const PARTS := {
 			"desc": "75-round drum: +45 rounds, but a slow, fiddly reload (+1.2 s) and a heavier gun to draw (+0.1 s)",
 			"mods": [["mag", "add", 45], ["reload_time", "add", 1.2], ["draw_time", "add", 0.1]]},
 		{"id": "m83_rpkbar", "slot": "barrel", "tier": 2, "cost": 120, "name": "RPK barrel",
-			"desc": "Longer barrel: tighter grouping (spread −30%, bloom −20%), hits hard farther out; heavier to draw (+0.05 s)",
-			"mods": [["jitter_deg", "mul", 0.7], ["bloom_max", "mul", 0.8], ["falloff_start", "add", 30.0], ["draw_time", "add", 0.05]]},
+			"desc": "Longer, heavier barrel: tighter grouping (spread −30%, bloom −20%), hits hard farther out and heats up 30% slower; heavier to draw (+0.05 s)",
+			"mods": [["jitter_deg", "mul", 0.7], ["bloom_max", "mul", 0.8], ["falloff_start", "add", 30.0], ["barrel_heat", "mul", 0.7], ["draw_time", "add", 0.05]]},
 		{"id": "m83_short", "slot": "barrel", "cost": 90, "name": "Short barrel",
-			"desc": "Cut-down barrel: draws 30% faster, but spread +30%, range −15% and a louder, brighter muzzle blast",
-			"mods": [["draw_time", "mul", 0.7], ["jitter_deg", "mul", 1.3], ["range_px", "mul", 0.85], ["n_min", "mul", 1.15], ["n_max", "mul", 1.15], ["flash_size", "mul", 1.4]]},
+			"desc": "Cut-down barrel: draws 30% faster, but spread +30%, range −15%, a louder, brighter muzzle blast and it heats up 25% faster",
+			"mods": [["draw_time", "mul", 0.7], ["jitter_deg", "mul", 1.3], ["range_px", "mul", 0.85], ["n_min", "mul", 1.15], ["n_max", "mul", 1.15], ["flash_size", "mul", 1.4], ["barrel_heat", "mul", 1.25]]},
 		{"id": "m83_pbs1", "slot": "muzzle", "tier": 3, "cost": 220, "name": "PBS-1 suppressor",
 			"desc": "Much quieter: noise −40% / −30%, flash almost gone; with subsonic US rounds the shot barely carries. Longer and heavier (+0.05 s draw)",
 			"mods": [["n_min", "mul", 0.6], ["n_max", "mul", 0.7], ["suppressor", "add", 1.0], ["flash_size", "mul", 0.3], ["flash_light", "mul", 0.3], ["draw_time", "add", 0.05]]},
@@ -288,7 +288,7 @@ static func from_level(key: String, level: int) -> Array:
 
 ## Czy modyfikator pogarsza broń (koszt części). Kierunek „lepiej” zależy od pola.
 const LOWER_IS_BETTER := ["draw_time", "reload_time", "cooldown", "jitter_deg", "bloom_per_shot", "bloom_max", "cam_kick", "shake",
-	"n_min", "n_max", "heat_gain", "charge_time", "arm_dist", "flash_size", "flash_light", "spread_deg"]
+	"n_min", "n_max", "heat_gain", "charge_time", "arm_dist", "flash_size", "flash_light", "spread_deg", "barrel_heat"]
 static func is_cost(m: Array, base: RefCounted) -> bool:
 	var f := String(m[0])
 	var cur := float(base.get(f))

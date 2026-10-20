@@ -93,6 +93,10 @@ var heat_decay := 1.2         ## /s
 var n_extra := 0.0            ## hałas stały zdarzenia (np. detonacja granatu)
 var suppressor := 0.0         ## > 0: tłumik na lufie (ulepszenie) — nabój poddźwiękowy jest wtedy naprawdę cichy (Ammo.SUBSONIC_SUPPRESSED)
 
+# --- gorąca lufa (GUNSMITH_PLAN.md §5.5, od 1.7.325): temperatura lufy 0..1 rośnie o barrel_heat na strzał i stygnie powoli
+## (Controller.BARREL_COOL) — w przeciwieństwie do `heat` hałasu, który mierzy ciągłość ognia i opada w kilka sekund
+var barrel_heat := 0.0        ## ile lufy grzeje jeden strzał; 0 = broń bez lufy, która się grzeje (wiązka, płomień, szyna, łuk, rakiety, granatnik)
+
 # --- amunicja
 var mag := 30                 ## pojemność magazynka
 var reserve_start := 120      ## zapas drużyny na starcie misji

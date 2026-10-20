@@ -1465,6 +1465,10 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 	for sa in OS.get_cmdline_user_args():
 		if sa.begins_with("--shotplayer="):               # dev: --shotplayer=hit|down|revive — zdarzenie gracza 1 po 1 s (podgląd animacji postaci 3D)
 			get_tree().create_timer(1.0).timeout.connect(_dev_player.bind(sa.substr("--shotplayer=".length())))
+	if "--shothot" in OS.get_cmdline_user_args():
+		var hp1: Node2D = _players.get_node_or_null("1")     # dev: --shothot — rozgrzana lufa broni gracza 1 (dym i falowanie powietrza nad lufą)
+		if hp1 != null:
+			hp1.weapons._barrel[int(hp1.weapon)] = 1.0
 	if "--shotbrace" in OS.get_cmdline_user_args():
 		var bp: Node2D = _players.get_node_or_null("1")      # dev: --shotbrace — skrzynia tuż przed graczem 1: broń oparta, podpórka pod celownikiem
 		if bp != null:

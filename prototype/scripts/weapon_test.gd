@@ -197,6 +197,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_ammo_40mm()
 	await _t_parts()
 	await _t_handling_climb()
+	await _t_hot_barrel()
 	await _t_homing()
 	await _t_bolt()
 	await _t_melee()
@@ -1855,6 +1856,62 @@ func _t_handling_climb() -> void:
 	wc.braced = false
 	wc.cool()
 	player.aim_by_mouse = false
+	Settings.realistic_handling = real0
+	equip(Weapons.M83)
+	await _settle_player()
+
+## Gorąca lufa, etap 3b (1.7.325, GUNSMITH_PLAN.md §5.5): temperatura lufy rośnie z każdym strzałem (M-83: dwa magazynki ciągłym ogniem)
+## i stygnie w 45 s; gorąca lufa rozrzuca (×(1 + 0,4·t²)), gorący tłumik głośnieje (×(1 + 0,5·t)); lufa RPK grzeje się wolniej, krótka szybciej;
+## temperatura trzymanej broni idzie do gracza (`w_hot`, replikowane — dym i falowanie w view3d). CLASSIC: bez wpływu na rozrzut i hałas.
+func _t_hot_barrel() -> void:
+	var real0: bool = Settings.realistic_handling
+	Settings.realistic_handling = true
+	var md := equip(Weapons.M83)
+	await _settle_player()
+	wc.cool()
+	wc.braced = false
+	player.aim_by_mouse = false
+	var shots_full := int(ceil(1.0 / md.barrel_heat))
+	for i in shots_full:
+		wc._fire_shot(md)
+		wc.mags[md.id] = md.mag
+	var full: float = wc.barrel_of(md.id)
+	wc._sync_player()
+	check("gorąca lufa: M-83 po %d strzałach ma pełną temperaturę (%.2f), gracz ją niesie (w_hot %.2f)" % [shots_full, full, player.w_hot],
+		absf(full - 1.0) < 0.001 and absf(player.w_hot - full) < 0.001)
+	wc._tick_common(9.0)
+	check("gorąca lufa: stygnie %.3f/s (po 9 s %.2f)" % [Controller.BARREL_COOL, wc.barrel_of(md.id)], absf(wc.barrel_of(md.id) - (1.0 - 9.0 * Controller.BARREL_COOL)) < 0.001)
+	wc.cool()
+	wc.bloom = 1.0
+	var cold: float = wc.spread_extra(md)
+	wc._barrel[md.id] = 1.0
+	wc.bloom = 1.0
+	var hot: float = wc.spread_extra(md)
+	var want := (md.jitter_deg + cold) * Controller.HOT_SPREAD
+	Settings.realistic_handling = false
+	var hot_classic: float = wc.spread_extra(md)
+	Settings.realistic_handling = true
+	check("gorąca lufa: rozrzut +%.2f° przy pełnej temperaturze (%.2f → %.2f), w CLASSIC bez zmian (%.2f)" % [want, cold, hot, hot_classic],
+		absf(hot - cold - want) < 0.001 and absf(hot_classic - cold) < 0.001)
+	wc._barrel[md.id] = 0.5
+	var half: float = wc.spread_extra(md)
+	check("gorąca lufa: rośnie z kwadratem temperatury — przy 0,5 tylko ćwierć (%.2f°)" % (half - cold), absf(half - cold - want * 0.25) < 0.001)
+	# tłumik: rozgrzana puszka głośnieje; bez tłumika hałas nie zależy od temperatury lufy
+	var sup := Weapons.def_build(Weapons.M83, Weapons.build_of(0, Parts.encode_ids("m83", ["m83_pbs1"])))
+	wc._barrel[Weapons.M83] = 1.0
+	check("gorąca lufa: tłumik ×%.1f przy pełnej temperaturze (%.2f), goła lufa ×%.1f" % [1.0 + Controller.HOT_CAN, wc.hot_can_mult(sup), wc.hot_can_mult(md)],
+		absf(wc.hot_can_mult(sup) - (1.0 + Controller.HOT_CAN)) < 0.001 and wc.hot_can_mult(md) == 1.0)
+	# części: cięższa lufa RPK grzeje się wolniej, skrócona — szybciej
+	var rpk := Weapons.def_build(Weapons.M83, Weapons.build_of(0, Parts.encode_ids("m83", ["m83_rpkbar"])))
+	var short := Weapons.def_build(Weapons.M83, Weapons.build_of(0, Parts.encode_ids("m83", ["m83_short"])))
+	check("gorąca lufa: lufa RPK grzeje się wolniej (%.4f), krótka szybciej (%.4f) niż fabryczna (%.4f)" % [rpk.barrel_heat, short.barrel_heat, md.barrel_heat],
+		rpk.barrel_heat < md.barrel_heat and short.barrel_heat > md.barrel_heat)
+	var no_barrel: Array = []
+	for w in [Weapons.LR7, Weapons.HKM9, Weapons.WIDMO1, Weapons.MACZETA]:
+		if Weapons.def(w).barrel_heat != 0.0:
+			no_barrel.append(String(Weapons.def(w).key))
+	check("gorąca lufa: wiązka, płomień, szyna i broń biała się nie grzeją (%s)" % str(no_barrel), no_barrel.is_empty())
+	wc.cool()
 	Settings.realistic_handling = real0
 	equip(Weapons.M83)
 	await _settle_player()

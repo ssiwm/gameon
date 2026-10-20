@@ -211,7 +211,8 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
   dopiero po ok. 5 m lotu (bliżej tylko uderza — strzał pod nogi nie rani), rakiety FALCON-6 rozpędzają się jak Gyrojet (z bliska słabe),
   strzał w locie ma większy rozrzut, a ulepszenia lufy i spustu dają celność zamiast obrażeń. Od 1.7.324 (ustawienie „Weapon handling”,
   domyślnie REALISTIC): przy myszy seria unosi lufę (podrzut do ściągania), a broń oparta o krawędź skrzyni czy murku mniej podskakuje
-  i mniej rozrzuca. Dalsza rozbudowa: `GUNSMITH_PLAN.md`.
+  i mniej rozrzuca. Od 1.7.325 długi ogień grzeje lufę: gorąca lufa rozrzuca szerzej, rozgrzany tłumik głośnieje, a z lufy idzie dym
+  i nad nią faluje powietrze; lufa stygnie ok. 45 s. Dalsza rozbudowa: `GUNSMITH_PLAN.md`.
 - Doszły później (patrz `prototype/WEAPONS.md` §7–§9 i `scripts/throwables.gd`): ulepszenia 3-poziomowe, granaty, miny, ładunki, flary
   i zakup w kryjówce. Poza zakresem prototypu zostaje wyważanie drzwi.
 
