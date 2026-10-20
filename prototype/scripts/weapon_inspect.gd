@@ -147,6 +147,8 @@ func show_weapon(wid: int, gun_key: String, hand: int, lock_text: String, foot: 
 	_cabinet = cabinet
 	var key := "%d|%d|%s|%s|%d|%d" % [wid, hand, lock_text, gun_key, Profile.fit_code(wid) if Weapons.is_valid(wid) else 0,
 		int(Profile.condition(String(Weapons.def(wid).key))) if Weapons.is_valid(wid) else 100]
+	if Weapons.is_valid(wid):
+		key += "|%d" % Profile.kills(String(Weapons.def(wid).key))
 	if key != _key:
 		_key = key
 		_fill(wid, gun_key, hand, lock_text)
@@ -171,6 +173,10 @@ func _fill(wid: int, gun_key: String, hand: int, lock_text: String) -> void:
 	_tag.text = Codex._slot_name(d)
 	if Settings.reliability_mult() > 0.0 and not d.is_melee():
 		_tag.text += tr("  ·  CONDITION %d%%") % int(Profile.condition(String(d.key)))     # stan techniczny (etap 4a): poniżej 70 % broń się zacina
+	if Profile.kills(String(d.key)) > 0:
+		_tag.text += tr("  ·  KILLS %d") % Profile.kills(String(d.key))           # historia broni (etap 5b)
+		if Profile.notches(String(d.key)) > 0:
+			_tag.text += tr("  ·  NOTCHES %d") % Profile.notches(String(d.key))
 	if Profile.mastery_level(String(d.key)) > 0:
 		_tag.text += tr("  ·  MASTERY %s") % ["0", "I", "II", "III", "IV", "V"][Profile.mastery_level(String(d.key))]     # wprawa (etap 5a)
 	_lock.text = tr("LOCKED  ·  %s") % lock_text if _locked else ""
@@ -198,7 +204,8 @@ func _fill(wid: int, gun_key: String, hand: int, lock_text: String) -> void:
 	_model = null
 	var path := GUN_DIR + "gun_%s.glb" % gun_key
 	if gun_key != "" and ResourceLoader.exists(path):
-		_model = GunModel.build(gun_key, Parts.decode(gun_key, fit if String(d.key) == gun_key else 0), Char3D.gun_info(gun_key)["muzzle"])
+		_model = GunModel.build(gun_key, Parts.decode(gun_key, fit if String(d.key) == gun_key else 0), Char3D.gun_info(gun_key)["muzzle"],
+			Profile.notches(gun_key), Profile.boss_notches(gun_key))
 	if _model != null:
 		_pivot.add_child(_model)
 		var box := AABB()

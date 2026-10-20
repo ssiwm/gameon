@@ -191,11 +191,25 @@ func mastery_of(w: int) -> int:
 func mastery_mult(w: int) -> float:
 	return 1.0 - MASTERY_STEP * float(mastery_of(w))
 
-## Trafienie lokalnego strzelca (Arsenal.weapon_hit): punkty wprawy dla broni, z której padł strzał; awans — komunikat.
-func _on_weapon_hit(kind: int, w: int) -> void:
+## Nacięcia broni `w` do pokazania na modelu: n + 16 × głębokie (bossowie). Swój gracz — z profilu, cudzy — z replikowanego `player.notches`
+## (tylko trzymana broń).
+func notches_of(w: int) -> int:
+	if player == null or player.is_bot or not Weapons.is_valid(w):
+		return 0
+	if is_owner():
+		var key := String(Weapons.def(w).key)
+		return Profile.notches(key) + 16 * Profile.boss_notches(key)
+	return int(player.get("notches")) if int(player.weapon) == w else 0
+
+## Trafienie lokalnego strzelca (Arsenal.weapon_hit): punkty wprawy dla broni, z której padł strzał; awans — komunikat. Zabójstwo — do historii
+## broni (§7.4); elita albo boss — nacięcie na kolbie.
+func _on_weapon_hit(kind: int, w: int, rank := 0) -> void:
 	if player == null or player.is_bot or not is_owner() or not Weapons.is_valid(w):
 		return
 	var key := String(Weapons.def(w).key)
+	if kind == Arsenal.Confirm.KILL and Profile.add_kill(key, rank):
+		Msg.post("notch.%s" % key, Msg.Ch.TOAST, tr("A notch on the %s") % String(Weapons.def(w).name),
+			{"sub": tr("%d on the stock") % Profile.notches(key), "style": Msg.Style.SUCCESS, "ttl": 4.0, "prio": 70})
 	var lvl := Profile.add_mastery(key, int(MASTERY_PTS.get(kind, 1)))
 	if lvl > 0:
 		Msg.post("mastery.%s" % key, Msg.Ch.TOAST, tr("%s  ·  MASTERY %s") % [String(Weapons.def(w).name), ROMAN[lvl]],
@@ -592,6 +606,8 @@ func _sync_player() -> void:
 	player.w_charge = charge
 	player.w_firing = firing
 	player.w_hot = barrel_of(player.weapon)
+	if is_owner() and not player.is_bot:
+		player.notches = notches_of(player.weapon)          # nacięcia trzymanej broni widzą wszyscy
 	player.kit = kit()
 	if _prev_w != player.weapon:
 		_prev_w = player.weapon

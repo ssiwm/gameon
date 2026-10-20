@@ -1322,6 +1322,8 @@ func _refresh_detail(w: int) -> void:
 		tag += tr("  ·  PARTS %d / %d") % [Scrap.parts_owned(w), Parts.of(key).size()]
 	elif not unlocked:
 		tag += "  ·  LOCKED"
+	if unlocked and Profile.kills(key) > 0:
+		tag += tr("  ·  KILLS %d") % Profile.kills(key)                    # historia broni (etap 5b)
 	if unlocked:
 		# wprawa (etap 5a): stopień i punkty do następnego
 		var ml := Profile.mastery_level(key)

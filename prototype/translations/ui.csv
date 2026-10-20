@@ -842,3 +842,7 @@
 "Reload, draw and recoil −%d%%","Przeładowanie, dobycie i podrzut −%d%%"
 "  ·  MASTERY %s  (%d / %d)","  ·  WPRAWA %s  (%d / %d)"
 "  ·  MASTERY %s","  ·  WPRAWA %s"
+"A notch on the %s","Nacięcie na kolbie: %s"
+"%d on the stock","na kolbie: %d"
+"  ·  KILLS %d","  ·  ZABÓJSTWA %d"
+"  ·  NOTCHES %d","  ·  NACIĘCIA %d"

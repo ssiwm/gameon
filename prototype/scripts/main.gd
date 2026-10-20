@@ -1167,6 +1167,12 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				if not pp.is_empty():
 					Scrap.parts[pid] = true
 					Profile.set_fit(String(pp["weapon"]), String(pp["slot"]), pid)
+	for na in OS.get_cmdline_user_args():
+		if na.begins_with("--shotnotch="):                     # dev: --shotnotch=N — każda broń ma N nacięć (w tym jedno głębokie, boss) i 120 zabójstw; profil bez zapisu
+			Profile.persist = false
+			var nn := int(na.substr("--shotnotch=".length()))
+			for wk in Weapons.COUNT:
+				Profile.history[String(Weapons.def(wk).key)] = {"k": 120, "e": maxi(0, nn - 1), "b": 1 if nn > 0 else 0}
 	for ia in OS.get_cmdline_user_args():
 		if ia.begins_with("--shotinspect"):                   # dev: --shotinspect[=N] — gracz przy N-tym stojaku (od lewej) z otwartymi oględzinami broni
 			var ip: Node2D = _players.get_node_or_null("1")

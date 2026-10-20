@@ -208,6 +208,8 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
   i błocie oraz upadek też zużywają broń; zużyte LR-7 przegrzewa ogniwo, a SPECTER-1 przebija kondensator
 - **Wprawa (od 1.7.330):** trafienia i zabójstwa z danej broni podnoszą wprawę gracza z nią (5 stopni): do −10 % czasu przeładowania, dobycia
   i podrzutu, szybsze usuwanie zacięć
+- **Historia broni (od 1.7.331):** broń liczy zabójstwa, a za każdą elitę i bossa ma rysę na kolbie (za bossa głęboką) — widać je na modelu
+  w rękach, na ławie i w oględzinach
   autorytatywny na serwerze; sidearm ∞. Wrogowie upuszczają amunicję tylko do broni, którą ktoś nosi; skrzynie
   z mapy zasilają wszystkie noszone bronie główne.
 - **Hałas:** każda broń ma własny `heat_gain`/`heat_decay` (wcześniej wspólny decay sprawiał, że rozgrzewała się

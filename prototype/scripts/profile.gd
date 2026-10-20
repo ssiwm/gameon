@@ -37,6 +37,8 @@ var equipped: Array = ["", ""]                ## id perków w slotach 0–1 ("" 
 var fits: Dictionary = {}                     ## klucz broni → {gniazdo: id części | "" (fabryczny)}; brak wpisu = pierwsza odblokowana część (parts.gd)
 var cond: Dictionary = {}                     ## klucz broni → stan techniczny 0..100 % (GUNSMITH_PLAN §6, od 1.7.328); brak wpisu = 100
 var mastery: Dictionary = {}                  ## klucz broni → punkty wprawy (GUNSMITH_PLAN §7.3, od 1.7.330): trafienia i zabójstwa tym graczem z tej broni
+var history: Dictionary = {}                  ## klucz broni → {"k": zabójstwa, "e": elity, "b": bossowie} (GUNSMITH_PLAN §7.4, od 1.7.331)
+const NOTCH_MAX := 12                         ## tyle nacięć najwyżej mieści się na kolbie
 ## Progi stopni wprawy 0..5 (punkty: trafienie 1, krytyk 2, zabójstwo 5 — weapon_controller.gd). Pierwszy stopień po jednej misji, piąty po kilkunastu.
 const MASTERY_XP := [0, 60, 200, 450, 850, 1500]
 var _cond_dirty := false
@@ -244,6 +246,29 @@ func add_mastery(key: String, n: int) -> int:
 	var after := mastery_level(key)
 	return after if after > before else -1
 
+## Zabójstwo z broni `key`; `rank` 1 — elita, 2 — boss (nacięcie na kolbie). Zwraca true, gdy przybyło nacięcie.
+func add_kill(key: String, rank := 0) -> bool:
+	var h: Dictionary = (history.get(key, {}) as Dictionary).duplicate()
+	h["k"] = int(h.get("k", 0)) + 1
+	if rank == 1:
+		h["e"] = int(h.get("e", 0)) + 1
+	elif rank >= 2:
+		h["b"] = int(h.get("b", 0)) + 1
+	history[key] = h
+	_cond_dirty = true
+	return rank > 0 and notches(key) <= NOTCH_MAX
+
+func kills(key: String) -> int:
+	return int((history.get(key, {}) as Dictionary).get("k", 0))
+
+## Nacięcia na kolbie broni `key`: po jednym za elitę i bossa, najwyżej NOTCH_MAX; bossowie liczą się pierwsi (głębokie nacięcia).
+func notches(key: String) -> int:
+	var h: Dictionary = history.get(key, {}) as Dictionary
+	return mini(NOTCH_MAX, int(h.get("e", 0)) + int(h.get("b", 0)))
+
+func boss_notches(key: String) -> int:
+	return mini(NOTCH_MAX, int((history.get(key, {}) as Dictionary).get("b", 0)))
+
 ## Czyszczenie przy ławie: broń jak nowa.
 func clean(key: String) -> void:
 	cond.erase(key)
@@ -307,6 +332,7 @@ func save_to(path: String) -> void:
 	cfg.set_value("profile", "fits", fits)
 	cfg.set_value("profile", "cond", cond)
 	cfg.set_value("profile", "mastery", mastery)
+	cfg.set_value("profile", "history", history)
 	cfg.save(path)
 
 func load_from(path: String) -> void:
@@ -332,6 +358,12 @@ func load_from(path: String) -> void:
 	var ms_in := cfg.get_value("profile", "mastery", {}) as Dictionary
 	for k in ms_in:
 		mastery[String(k)] = maxi(0, int(ms_in[k]))
+	history = {}
+	var hi_in := cfg.get_value("profile", "history", {}) as Dictionary
+	for k in hi_in:
+		if hi_in[k] is Dictionary:
+			var hd: Dictionary = hi_in[k]
+			history[String(k)] = {"k": maxi(0, int(hd.get("k", 0))), "e": maxi(0, int(hd.get("e", 0))), "b": maxi(0, int(hd.get("b", 0)))}
 	look = int(cfg.get_value("profile", "look", Look.DEFAULT))
 	if not Look.is_unlocked(look, level()):
 		look = Look.DEFAULT
@@ -353,6 +385,7 @@ func reset_for_test() -> void:
 	fits = {}
 	cond = {}
 	mastery = {}
+	history = {}
 	_cond_dirty = false
 	last_mission_xp = 0
 	last_mission_rows = []
