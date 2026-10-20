@@ -345,7 +345,7 @@ scripts/
   # misje i kryjówka:
   generator.gd      # generator radiostacji (misja 1.2), handcar.gd — drezyna ucieczki po generatorach
   brick_wall.gd     # zamurowane przejście (marker q) ze skrytką; board.gd, results_wall.gd, run_log.gd — tablica odprawy i ściana wyników w kryjówce
-  workshop_ui.gd    # panel warsztatu (złom), upgrades.gd — ulepszenia broni
+  workshop_ui.gd    # panel warsztatu (złom), parts.gd — części broni w gniazdach (zakup drużyny, montaż gracza)
   profile.gd        # autoload Profile: lokalny profil (XP, poziom, perki), perk_icon.gd — miniatury perków
   throwables.gd     # granaty, miny, ładunki; smoke_cloud.gd — dym, fire_patch.gd — ogień HKM-9
   # Pijawka (boss B1): leech.gd (symulacja i animacje), acid_spit.gd — kwas, tide_water.gd — fala przypływu

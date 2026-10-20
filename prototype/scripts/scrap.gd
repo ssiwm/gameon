@@ -10,11 +10,12 @@ extends Node
 signal changed
 ## Wynik zakupu w warsztacie (u kupującego): id broni, powodzenie, kod: "ok" | "poor" | "owned" | "later" | "invalid".
 signal supply_result(kind: String, ok: bool, reason: String)    ## zakup zaopatrzenia: ok / poor / full / invalid / off
-signal purchase_result(weapon: int, ok: bool, reason: String)    ## kody zakupu: ok/poor/owned/later/invalid; ulepszenia z prefiksem up_ (+ locked, max)
+signal purchase_result(weapon: int, ok: bool, reason: String)    ## kody zakupu broni: ok/poor/owned/later/invalid
+signal part_result(id: String, ok: bool, reason: String)         ## zakup części (parts.gd): ok/poor/owned/locked/invalid
 
 const NightShift := preload("res://scripts/night_shift.gd")
 const Weapons := preload("res://scripts/weapons.gd")
-const Upgrades := preload("res://scripts/upgrades.gd")
+const Parts := preload("res://scripts/parts.gd")
 const Perks := preload("res://scripts/perks.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 
@@ -37,7 +38,7 @@ const REWARDS := {Weapons.WIDMO1: "z1_b1"}
 
 var bank := 0
 var loot := 0
-var levels: Dictionary = Weapons.levels      ## id broni → poziom ulepszenia 0..3 (TEN SAM słownik co Weapons.levels; zmieniamy go tylko w miejscu)
+var parts: Dictionary = {}            ## id części (parts.gd) → true: odblokowane przez drużynę (zapis u hosta); montaż — Profile.fits
 var unlocked: Dictionary = {}         ## id broni → true: kupione w warsztacie (zapis u hosta)
 var trophies: Dictionary = {}         ## id misji (boss) → true: ukończona, odblokowuje broń-trofeum (zapis u hosta)
 var last_gain := 0                    ## ile trafiło do banku po ostatniej misji (karta wyniku, ściana wyników)
@@ -47,7 +48,7 @@ func _ready() -> void:
 	load_progress()
 	multiplayer.peer_connected.connect(func(id: int) -> void:
 		if NoiseMgr.is_server():
-			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), levels, trophies.keys()))
+			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys()))
 
 ## Złom nie obowiązuje w Nocnym Dyżurze (osobna seria z własnymi zasadami).
 func enabled() -> bool:
@@ -93,14 +94,19 @@ func spend(n: int) -> bool:
 
 # ---------------------------------------------------------------- warsztat: odblokowanie broni
 
-## Podmienia poziomy ulepszeń w miejscu (słownik jest współdzielony z Weapons.levels).
-func _set_levels(src: Dictionary) -> void:
-	levels.clear()
-	for k in src:
-		levels[int(k)] = int(src[k])
+func _set_parts(ids: Array) -> void:
+	parts.clear()
+	for id in ids:
+		if Parts.is_valid(String(id)):
+			parts[String(id)] = true
 
-func level_of(w: int) -> int:
-	return int(levels.get(w, 0))
+## Ile części broni `w` drużyna odblokowała (kafel warsztatu, kodeks).
+func parts_owned(w: int) -> int:
+	var n := 0
+	for p in Parts.of(String(Weapons.def(w).key)):
+		if parts.has(String(p["id"])):
+			n += 1
+	return n
 
 ## Broń-trofeum, której misja jeszcze nie jest ukończona.
 func is_gated(w: int) -> bool:
@@ -208,28 +214,27 @@ func _buy_supply_server(kind: String, peer_id: int) -> void:
 func _supply_result_rpc(kind: String, reason: String) -> void:
 	supply_result.emit(kind, reason == "ok", reason)
 
-## Gracz prosi o kolejny poziom ulepszenia broni. Serwer sprawdza odblokowanie, limit poziomów i portfel.
-func request_upgrade(w: int) -> void:
+## Gracz prosi o odblokowanie części broni (parts.gd) — zakup za złom drużyny, część dostaje cała drużyna; montuje ją każdy sam.
+func request_part(id: String) -> void:
 	if not NoiseMgr.has_network() or NoiseMgr.is_server():
-		_upgrade_server(w, NoiseMgr.local_id())
+		_part_server(id, NoiseMgr.local_id())
 	else:
-		_upgrade_rpc.rpc_id(1, w)
+		_part_rpc.rpc_id(1, id)
 
 @rpc("any_peer", "call_remote", "reliable")
-func _upgrade_rpc(w: int) -> void:
+func _part_rpc(id: String) -> void:
 	if NoiseMgr.is_server():
-		_upgrade_server(w, multiplayer.get_remote_sender_id())
+		_part_server(id, multiplayer.get_remote_sender_id())
 
-## Cena następnego poziomu broni `w` dla kupującego `peer_id` (perk „Smith"). Lokalnego czytamy z profilu, zdalnego z replikowanych perków.
-func upgrade_cost(w: int, peer_id: int) -> int:
-	return tier_cost(String(Weapons.base_def(w).key), level_of(w) + 1, peer_id)
-
-## Cena poziomu `level` broni `key` dla `peer_id` (domyślnie lokalnego gracza) — z perkiem „Smith"; pokazują ją warsztat i kodeks.
-func tier_cost(key: String, level: int, peer_id := -1) -> int:
+## Cena części `id` dla `peer_id` (domyślnie lokalnego gracza) — z perkiem „Smith”; pokazują ją warsztat i kodeks.
+func part_cost(id: String, peer_id := -1) -> int:
 	var mult := 1.0
 	if _perks_of(NoiseMgr.local_id() if peer_id < 0 else peer_id).has("smith"):
 		mult = Perks.param("smith", "upgrade_cost_mult", 1.0)
-	return Upgrades.cost(key, level, mult)
+	return Parts.cost(id, mult)
+
+func has_part(id: String) -> bool:
+	return parts.has(id)
 
 func _perks_of(peer_id: int) -> Array:
 	if peer_id == NoiseMgr.local_id():
@@ -239,32 +244,45 @@ func _perks_of(peer_id: int) -> Array:
 			return Perks.ids_of(p.perks)
 	return []
 
-func _upgrade_server(w: int, peer_id: int) -> void:
+func _part_server(id: String, peer_id: int) -> void:
 	var reason := "ok"
-	if not Weapons.is_valid(w) or not Upgrades.has_tiers(String(Weapons.base_def(w).key)):
+	var p := Parts.get_part(id)
+	var w := Weapons.index_of(String(p.get("weapon", "")))
+	if p.is_empty() or w < 0:
 		reason = "invalid"
 	elif not is_unlocked(w):
 		reason = "locked"
-	elif level_of(w) >= Upgrades.MAX_LEVEL:
-		reason = "max"
-	elif not spend(upgrade_cost(w, peer_id)):
+	elif parts.has(id):
+		reason = "owned"
+	elif not spend(part_cost(id, peer_id)):
 		reason = "poor"
 	else:
-		levels[w] = level_of(w) + 1
+		parts[id] = true
 		save_progress()
 		_push()
 	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
-		purchase_result.emit(w, reason == "ok", "up_" + reason)
+		_part_done(id, reason)
 	else:
-		_result_rpc.rpc_id(peer_id, w, "up_" + reason)
+		_part_result_rpc.rpc_id(peer_id, id, reason)
+
+@rpc("authority", "call_remote", "reliable")
+func _part_result_rpc(id: String, reason: String) -> void:
+	_part_done(id, reason)
+
+## U kupującego: kupioną część od razu montuje w swojej broni (inni gracze zostają przy swoim wyborze).
+func _part_done(id: String, reason: String) -> void:
+	if reason == "ok":
+		var p := Parts.get_part(id)
+		Profile.set_fit(String(p["weapon"]), String(p["slot"]), id)
+	part_result.emit(id, reason == "ok", reason)
 
 func _push() -> void:
 	changed.emit()
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_sync.rpc(bank, loot, last_gain, unlocked.keys(), levels, trophies.keys())
+		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys())
 
 @rpc("authority", "call_remote", "reliable")
-func _sync(b: int, l: int, g: int, unl: Array, lv: Dictionary, tro: Array) -> void:
+func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array) -> void:
 	bank = b
 	loot = l
 	last_gain = g
@@ -274,7 +292,7 @@ func _sync(b: int, l: int, g: int, unl: Array, lv: Dictionary, tro: Array) -> vo
 	trophies.clear()
 	for m in tro:
 		trophies[String(m)] = true
-	_set_levels(lv)
+	_set_parts(pts)
 	changed.emit()
 
 # ---------------------------------------------------------------- zapis (host)
@@ -285,17 +303,27 @@ func load_progress() -> void:
 	bank = int(cfg.get_value("scrap", "bank", 0)) if ok else 0
 	unlocked.clear()
 	trophies.clear()
-	levels.clear()
+	parts.clear()
 	if ok:
 		for w in Array(cfg.get_value("workshop", "unlocked", [])):
 			unlocked[int(w)] = true
 		for m in Array(cfg.get_value("workshop", "trophies", [])):
 			trophies[String(m)] = true
 		Arsenal.load_gear(cfg.get_value("gear", "stock", {}) as Dictionary)       # zapas zaopatrzenia z poprzednich sesji
-		_set_levels(cfg.get_value("workshop", "levels", {}) as Dictionary)
+		_set_parts(Array(cfg.get_value("workshop", "parts", [])))
+		migrate_levels(cfg.get_value("workshop", "levels", {}) as Dictionary)
 	loot = 0
 	last_gain = 0
 	changed.emit()
+
+## Zapis sprzed 1.7.319: poziomy ulepszeń (id broni → 0..3) → części tych poziomów. Gniazdo bez wyboru gracza montuje je samo
+## (Profile.fitted), więc broń zostaje taka, jaka była — z kosztami, które części dostały w 1.7.319.
+func migrate_levels(old_levels: Dictionary) -> void:
+	for k in old_levels:
+		var w := int(k)
+		if Weapons.is_valid(w):
+			for id in Parts.from_level(String(Weapons.def(w).key), int(old_levels[k])):
+				parts[String(id)] = true
 
 func save_progress() -> void:
 	if not persist or not NoiseMgr.is_server():
@@ -306,5 +334,7 @@ func save_progress() -> void:
 	cfg.set_value("workshop", "unlocked", unlocked.keys())
 	cfg.set_value("workshop", "trophies", trophies.keys())
 	cfg.set_value("gear", "stock", Arsenal.stock)
-	cfg.set_value("workshop", "levels", levels)
+	cfg.set_value("workshop", "parts", parts.keys())
+	if cfg.has_section_key("workshop", "levels"):
+		cfg.erase_section_key("workshop", "levels")             # przeniesione do części (migracja w load_progress)
 	cfg.save(SAVE_PATH)

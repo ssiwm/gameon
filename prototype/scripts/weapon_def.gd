@@ -23,7 +23,9 @@ var name := ""
 var slot := Slot.PRIMARY
 var kind := Kind.BULLET
 var caliber := ""             ## kaliber (ammo.gd): bronie tego samego kalibru dzielą zapas naboi i typy amunicji; "" = zapas tylko tej broni
-var ammo := 0                 ## typ naboju naniesiony na tę definicję (Ammo.apply; 0 = zwykły) — Weapons.def_ammo
+var ammo := 0                 ## typ naboju naniesiony na tę definicję (Ammo.apply; 0 = zwykły)
+var fit := 0                  ## kod zamontowanych części (Parts.apply; 0 = fabryczna)
+var build := 0                ## typ naboju i części razem (Weapons.build_of) — płynie przez sieć ze strzałem; Weapons.def_build
 
 # --- rytm ognia
 var auto := false             ## przytrzymanie = ogień ciągły
@@ -129,8 +131,6 @@ var reload_sfx_count := 3
 var sfx_cycle := ""           ## dźwięk po strzale (przeładowanie zamka, pompka)
 var sfx_cycle_count := 0
 
-# --- ulepszenia (GDD §6.4) — poziomy kupowane w Kryjówce; tu tylko miejsce na modyfikatory
-var tier_notes := ""
 
 ## Buduje definicję ze słownika; literówka w kluczu = natychmiastowy błąd,
 ## nie cicho ignorowane pole (tabele mają ~40 kluczy).

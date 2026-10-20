@@ -371,3 +371,19 @@ z którego strzela broń noszona przez żywego człowieka, o ile ten zapas nie j
 Dyżurem). Pudełko to zrzut zaopatrzenia (`pickup` „supply”), którego indeks liczy się teraz w `Throwables.SHOP_ORDER` (przedmioty mają
 te same indeksy co dawniej); podniesienie dokłada całe pudełko naboi, a w świecie wygląda jak skrzynka amunicji.
 
+## 17. Części w gniazdach, etap 2a (1.7.319)
+
+Trzy liniowe poziomy ulepszeń (dawne `upgrades.gd`) zastąpił katalog części `scripts/parts.gd` (`GUNSMITH_PLAN.md` §4).
+
+| Element | Jak działa | Kod |
+|---|---|---|
+| **Gniazda i części** | każda broń ma 2–4 gniazda (`feed`, `barrel`, `muzzle`, `action`, `stock`, `optic`, `edge`, `head`, `special`), w gnieździe element fabryczny i 1–3 części; części jednego gniazda się wykluczają (np. bęben 75 albo magazynek RPK, ciężka albo kasetowa głowica WRATH-4, ciężka albo sejsmiczna głowa kilofa). **Każda część ma koszt** — co najmniej jeden modyfikator na minus (`Parts.validate`, `is_cost`), np. magazynek RPK +0,15 s przeładowania, PBS-1 +0,05 s dobycia, lufa RPK +0,05 s dobycia | `parts.gd` (`PARTS`, `SLOT_ORDER`) |
+| **Nowe alternatywy** | M-83: bęben RPK 75 (+45, przeładowanie +1,2 s), krótka lufa (dobycie ×0,7, rozrzut ×1,3, zasięg ×0,85, głośniej), płomieniotłumik (błysk ×0,35, szarpnięcie +15%), kolba składana AKMS (dobycie ×0,8, podrzut +15%, szarpnięcie +25%); SPREAD-12: magazynek pudełkowy na 8 (przeładowanie ×0,6). Dawne poziomy zostały częściami z tymi samymi cenami (WRATH-4 „Bandolier” → szybkoładowacz, SINEW-6 „Waxed quiver” → podwójne gumy, bo zapas drużyny nie zależy już od części) | `parts.gd` |
+| **Zakup dla drużyny** | warsztat, zakładka ARMS: klawisze 1 / 2 (pad X / Y) albo kliknięcie przesuwają kursor po częściach broni, akcja kupuje część (cena z perkiem Kowal), montuje ją albo wraca do elementu fabrycznego. Serwer sprawdza broń i portfel (`Scrap.request_part` → `_part_server`), części trafiają do `Scrap.parts` (zapis u hosta, synchronizacja) | `scrap.gd`, `workshop_ui.gd` |
+| **Montaż gracza** | `Profile.fits` (profil gracza): gniazdo → id części albo "" (fabryczny); gniazdo bez wyboru montuje pierwszą odblokowaną część z listy, kupiona część montuje się kupującemu. `Profile.fit_code(w)` = kod `fit` (2 bity na gniazdo) | `profile.gd` |
+| **Sieć** | lokalny gracz publikuje `player.fits` (replikowane jak perki); kontroler buduje broń `Weapons.def_build(w, build)`, gdzie `build` = typ naboju \| fit << 4. Kod leci ze strzałem (`_fire_request` / `_server_fire` / `_fire_remote`), pocisk i `Combat.make_info` liczą z niego obrażenia; serwer wycina części, których drużyna nie ma (`Parts.sanitize`), a prośby o naboje ogranicza największym magazynkiem z części (`Parts.max_capacity`). `Weapons.def(w)` to od teraz broń fabryczna (zapas drużyny, łup, boty) | `weapons.gd`, `weapon_controller.gd`, `player.gd`, `arsenal.gd` |
+| **Migracja zapisów** | zapis sprzed 1.7.319 z poziomami (`workshop/levels`) odblokowuje części tych poziomów (`Scrap.migrate_levels`), a samomontaż daje tę samą broń co wcześniej (z kosztami części) | `scrap.gd` |
+| **Kodeks** | karta broni pokazuje części (zamontowana / odblokowana / cena) i statystyki broni tego gracza | `codex.gd`, `codex_page.gd` |
+
+Poza etapem 2a: części widoczne na modelu 3D (2b), ława rusznikarska w 3D (2c) i więcej alternatyw dla pozostałych broni.
+

@@ -14,7 +14,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Projectile := preload("res://scripts/projectile.gd")
-const Upgrades := preload("res://scripts/upgrades.gd")
+const Parts := preload("res://scripts/parts.gd")
 const Ammo := preload("res://scripts/ammo.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Throwables := preload("res://scripts/throwables.gd")
@@ -134,6 +134,30 @@ func equip(w: int, full_reserve := true) -> WeaponDef:
 	player.aim_dir = Vector2.RIGHT
 	return d
 
+## Kod `build` broni z listą części (parts.gd) i typem naboju — dla Projectile.launch, Combat.make_info, Weapons.def_build.
+func bld(w: int, ids: Array, ammo := 0) -> int:
+	return Weapons.build_of(ammo, Parts.encode_ids(String(Weapons.def(w).key), ids))
+
+## Definicja broni z listą części (bez montażu u gracza).
+func pdef(w: int, ids: Array) -> WeaponDef:
+	return Weapons.def_build(w, bld(w, ids))
+
+## Montaż części w broni testowego gracza tą samą drogą co w grze: drużyna je ma (Scrap.parts), gracz wybiera (Profile.set_fit),
+## a player.fits odświeża się z profilu (to też trafia do sieci).
+func fit_player(w: int, ids: Array) -> void:
+	var key := String(Weapons.def(w).key)
+	for id in ids:
+		Scrap.parts[String(id)] = true
+		Profile.set_fit(key, String(Parts.get_part(String(id))["slot"]), String(id))
+	player._sync_perks()
+	await frames(1)
+
+func clear_fits() -> void:
+	Scrap.parts.clear()
+	Profile.fits = {}
+	player._sync_perks()
+	await frames(1)
+
 func shoot(w: int, shots: int, gap := 0.15) -> void:
 	var d := equip(w)
 	for i in shots:
@@ -170,6 +194,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_realia_e0()
 	await _t_ammo_calibers()
 	await _t_ammo_40mm()
+	await _t_parts()
 	await _t_homing()
 	await _t_bolt()
 	await _t_melee()
@@ -184,10 +209,10 @@ func run_unit(m: Node2D) -> void:
 func _t_data() -> void:
 	var errs := Weapons.validate()
 	check("tabele broni spójne (validate)", errs.is_empty(), "; ".join(errs))
-	var uerrs := Upgrades.validate(Weapons.defs())
-	check("tabela ulepszeń spójna: 12 broni × 3 poziomy, pola istnieją (%d wpisów)" % Upgrades.TIERS.size(), uerrs.is_empty() and Upgrades.TIERS.size() == Weapons.COUNT, "; ".join(uerrs))
-	check("ceny ulepszeń skalowane klasą broni (M-83 60/120/220, P-64 T3 %d, SPECTER-1 T3 %d)" % [Upgrades.cost("p64", 3), Upgrades.cost("widmo1", 3)],
-		Upgrades.cost("m83", 1) == 60 and Upgrades.cost("m83", 2) == 120 and Upgrades.cost("m83", 3) == 220 and Upgrades.cost("p64", 3) < 220 and Upgrades.cost("widmo1", 3) > 220)
+	var perrs := Parts.validate(Weapons.defs())
+	check("katalog części spójny: %d broni, każda część ma koszt (minus), pola istnieją" % Parts.PARTS.size(), perrs.is_empty() and Parts.PARTS.size() == Weapons.COUNT, "; ".join(perrs))
+	check("ceny części jak dawnych poziomów (M-83 60/120/220, tłumik P-83 %d, szyny SPECTER-1 %d)" % [Parts.cost("p64_supp"), Parts.cost("w1_rails")],
+		Parts.cost("m83_rpk40") == 60 and Parts.cost("m83_rpkbar") == 120 and Parts.cost("m83_pbs1") == 220 and Parts.cost("p64_supp") < 220 and Parts.cost("w1_rails") > 220)
 	print("[WTEST] %-9s %5s %6s %5s %7s %9s %9s %8s" % ["broń", "rpm", "dps", "mag", "reload", "szum/s@12s", "TTK trz.", "TTK wołek"])
 	for d in Weapons.defs():
 		var sim := Weapons.simulate_heat(d.id, 12.0)
@@ -387,10 +412,10 @@ func _t_profile() -> void:
 	player._sync_perks()
 	var rep_ok: bool = player.has_perk("smith") and player.has_perk("second_chance") and not player.has_perk("veteran") and Perks.ids_of(player.perks) == ["smith", "second_chance"]
 	check("perki: gracz publikuje założone perki (indeksy %s → %s)" % [str(player.perks), str(Perks.ids_of(player.perks))], rep_ok)
-	var plain: int = Upgrades.cost("m83", 2)
-	var smithed: int = Scrap.tier_cost("m83", 2)
-	check("Kowal: M-83 T2 %d → %d scrap (−20%%, zaokrąglone do 5), bez perka %d" % [plain, smithed, Scrap.tier_cost("m83", 2, 99)],
-		smithed == Upgrades.cost("m83", 2, 0.8) and smithed < plain and Scrap.tier_cost("m83", 2, 99) == plain)
+	var plain: int = Parts.cost("m83_rpkbar")
+	var smithed: int = Scrap.part_cost("m83_rpkbar")
+	check("Kowal: lufa RPK %d → %d scrap (−20%%, zaokrąglone do 5), bez perka %d" % [plain, smithed, Scrap.part_cost("m83_rpkbar", 99)],
+		smithed == Parts.cost("m83_rpkbar", 0.8) and smithed < plain and Scrap.part_cost("m83_rpkbar", 99) == plain)
 	var bf_before: float = player._revive_time()
 	player.perks = Perks.to_indexes(["blood_flow", "veteran"])
 	check("Krwiobieg: podnoszenie %.1f s zamiast %.1f s" % [player._revive_time(), bf_before], is_equal_approx(player._revive_time(), 2.5 * Difficulty.m("revive")) and player._revive_time() < bf_before)
@@ -979,24 +1004,20 @@ func _t_economy() -> void:
 		bot2.queue_free()
 ## Dodatki po fazie 3: linka SINEW-6, zamurowane przejście i kilof, ogień jako mur dla tchórzliwych wrogów.
 func _t_phase4() -> void:
-	# --- linka SINEW-6 (poziom 3): trafiony wróg leci ku strzelcowi, bez ulepszenia odlatuje
-	var saved: Dictionary = Weapons.levels.duplicate()
+	# --- linka SINEW-6 (część „Barbed tether”): trafiony wróg leci ku strzelcowi, bez niej odlatuje
 	var plain_t := await dummy(80.0)
 	var info0 := Combat.make_info(Weapons.CIEGNO6, 45.0, plain_t.global_position, Vector2.RIGHT, 1, "bullet")
 	Combat.apply(plain_t, info0)
 	var plain_v: float = plain_t.velocity.x
-	Weapons.levels[Weapons.CIEGNO6] = 3
+	var tb := bld(Weapons.CIEGNO6, ["c6_tether"])
 	var teth := await dummy(120.0)
 	var tank := await dummy(160.0, 100000.0, "wolek")
-	var info1 := Combat.make_info(Weapons.CIEGNO6, 45.0, teth.global_position, Vector2.RIGHT, 1, "bullet")
+	var info1 := Combat.make_info(Weapons.CIEGNO6, 45.0, teth.global_position, Vector2.RIGHT, 1, "bullet", tb)
 	Combat.apply(teth, info1)
-	var info2 := Combat.make_info(Weapons.CIEGNO6, 45.0, tank.global_position, Vector2.RIGHT, 1, "bullet")
+	var info2 := Combat.make_info(Weapons.CIEGNO6, 45.0, tank.global_position, Vector2.RIGHT, 1, "bullet", tb)
 	Combat.apply(tank, info2)
 	check("linka SINEW-6 (T3): trafiony Trzosek leci ku strzelcowi (%.0f px/s), bez ulepszenia odlatuje (%.0f)" % [teth.velocity.x, plain_v], teth.velocity.x < -150.0 and plain_v > 0.0)
 	check("linka: Wołek (knock_mult 0,2) szarpnięty słabiej (%.0f px/s)" % tank.velocity.x, tank.velocity.x < 0.0 and absf(tank.velocity.x) < absf(teth.velocity.x) * 0.5)
-	Weapons.levels.clear()
-	for k in saved:
-		Weapons.levels[k] = saved[k]
 	free_dummies()
 	await frames(2)
 	# --- zamurowane przejście
@@ -1234,18 +1255,18 @@ func _t_phase3() -> void:
 	player.w_firing = false
 	check("światło broni: wiązka LR-7 i płomień HKM-9 są widoczne dla Stalkera, strzał z M-83 nie", seen_beam == player and seen_flame == player and seen_gun == null)
 
-## Faza 2 przeglądu broni: ulepszenia poziomu 3 zmieniają zachowanie broni (kasetowe, salwa, podpalenie, dobicie, przebicie ścian).
+## Części zmieniające zachowanie broni (dawne poziomy 3: kasetowe, salwa, dobicie, przebicie ścian) — od 1.7.319 części w gniazdach.
 func _t_upgrades() -> void:
-	var saved: Dictionary = Weapons.levels.duplicate()
-	for w in [Weapons.GNIEW4, Weapons.SOKOL6, Weapons.WIDMO1, Weapons.CIEGNO6, Weapons.MACZETA, Weapons.KILOF, Weapons.SPREAD12, Weapons.SRUT8]:
-		Weapons.levels[w] = 3
-	var g := Weapons.def(Weapons.GNIEW4)
-	check("WRATH-4 T3: bomby kasetowe (%d), wybuch %.0f / promień %.0f px" % [g.cluster, g.blast_damage, g.blast_radius], g.cluster == 2 and absf(g.blast_damage - 100.0) < 0.01 and absf(g.blast_radius - 54.0) < 0.5)
+	var g := pdef(Weapons.GNIEW4, ["g4_cluster"])
+	var gh := pdef(Weapons.GNIEW4, ["g4_heavy"])
+	check("WRATH-4: głowice kasetowe (%d bomby, wybuch %.0f) albo ciężka (wybuch %.0f / promień %.0f px, uzbrojenie %.0f) — jedno gniazdo" % [g.cluster, g.blast_damage, gh.blast_damage, gh.blast_radius, gh.arm_dist],
+		g.cluster == 2 and g.blast_damage < 80.0 and absf(gh.blast_damage - 100.0) < 0.01 and absf(gh.blast_radius - 53.76) < 0.5 and gh.cluster == 0 and gh.arm_dist > g.arm_dist
+		and Parts.get_part("g4_heavy")["slot"] == Parts.get_part("g4_cluster")["slot"])
 	# bomby kasetowe naprawdę ranią cele po bokach punktu wybuchu
 	var left := await dummy(76.0)
 	var right := await dummy(124.0)
 	var rk := Projectile.new()
-	rk.launch(Weapons.GNIEW4, player.global_position + Vector2(10, -4), Vector2.RIGHT, 1, true)
+	rk.launch(Weapons.GNIEW4, player.global_position + Vector2(10, -4), Vector2.RIGHT, 1, true, 0.0, bld(Weapons.GNIEW4, ["g4_cluster"]))
 	get_tree().current_scene.add_child(rk)
 	rk.set_physics_process(false)                       # sam rakieta stoi w miejscu — sprawdzamy tylko bomby kasetowe
 	rk._scatter_cluster(player.global_position + Vector2(100.0, 0.0))
@@ -1255,28 +1276,33 @@ func _t_upgrades() -> void:
 		rk.queue_free()
 	free_dummies()
 	await frames(2)
-	var f := Weapons.def(Weapons.SOKOL6)
-	check("FALCON-6 T3: salwa 3 rakiet za 2 naboje (pellets %d, koszt %d, magazynek %d)" % [f.pellets, f.ammo_per_shot, f.mag], f.pellets == 3 and f.ammo_per_shot == 2 and f.mag == 60 and f.mag >= f.ammo_per_shot)
-	check("SPECTER-1 T3: przebija jedną warstwę ściany, ładuje się szybciej (%.2f s)" % Weapons.def(Weapons.WIDMO1).charge_time, Weapons.def(Weapons.WIDMO1).wall_pierce >= 24.0 and Weapons.def(Weapons.WIDMO1).charge_time < Weapons.base_def(Weapons.WIDMO1).charge_time * 0.75)
-	var sn := Weapons.def(Weapons.CIEGNO6)
-	check("SINEW-6 T3: bełt przebija 1 cel, magazynek 2", sn.pierce == 1 and sn.mag == 2 and sn.damage > Weapons.base_def(Weapons.CIEGNO6).damage)
-	var sp := Weapons.def(Weapons.SPREAD12)
-	check("SPREAD-12 T3: lufa z portami — mniejsze szarpnięcie, trochę głośniej (kamera %.2f, hałas %.2f)" % [sp.cam_kick, sp.n_max],
+	var f := pdef(Weapons.SOKOL6, ["f6_belt", "f6_salvo"])
+	check("FALCON-6 salwa: 3 rakiety za 2 naboje (pellets %d, koszt %d, magazynek %d)" % [f.pellets, f.ammo_per_shot, f.mag], f.pellets == 3 and f.ammo_per_shot == 2 and f.mag == 60 and f.mag >= f.ammo_per_shot)
+	var wd := pdef(Weapons.WIDMO1, ["w1_fast", "w1_rails"])
+	check("SPECTER-1: szyny przebijają jedną warstwę ściany, szybki kondensator ładuje szybciej (%.2f s)" % wd.charge_time, wd.wall_pierce >= 24.0 and wd.charge_time < Weapons.base_def(Weapons.WIDMO1).charge_time * 0.75)
+	var sn := pdef(Weapons.CIEGNO6, ["c6_twin", "c6_tether"])
+	check("SINEW-6: bełt z linką przebija 1 cel, dwa bełty w magazynku", sn.pierce == 1 and sn.mag == 2 and sn.damage > Weapons.base_def(Weapons.CIEGNO6).damage)
+	var sp := pdef(Weapons.SPREAD12, ["sp12_ported"])
+	check("SPREAD-12: lufa z portami — mniejsze szarpnięcie, trochę głośniej (kamera %.2f, hałas %.2f)" % [sp.cam_kick, sp.n_max],
 		sp.cam_kick < Weapons.base_def(Weapons.SPREAD12).cam_kick * 0.7 and sp.n_max > Weapons.base_def(Weapons.SPREAD12).n_max and sp.ignite == 0.0)
-	var pe := Weapons.def(Weapons.SRUT8)
-	check("PELLET-8 T3: ładownica — szybsze ładowanie łusek (%.2f s), bez ogłuszenia z ulepszenia (%.2f)" % [pe.reload_time, pe.stun],
+	var pe := pdef(Weapons.SRUT8, ["s8_carrier"])
+	check("PELLET-8: ładownica — szybsze ładowanie łusek (%.2f s), bez ogłuszenia (%.2f)" % [pe.reload_time, pe.stun],
 		pe.reload_time < Weapons.base_def(Weapons.SRUT8).reload_time and absf(pe.stun - Weapons.base_def(Weapons.SRUT8).stun) < 0.01)
-	var ki := Weapons.def(Weapons.KILOF)
-	check("KILOF T3: szerszy łuk i dłuższe ogłuszenie (%.0f°, %.1f s)" % [ki.arc_deg, ki.stun], ki.arc_deg > Weapons.base_def(Weapons.KILOF).arc_deg * 1.5 and ki.stun >= 2.0)
-	# salwa FALCON-6 T3 w kontrolerze: jeden strzał = 3 rakiety i −2 naboje
-	var fd := equip(Weapons.SOKOL6)
+	var ki := pdef(Weapons.KILOF, ["kf_seismic"])
+	check("KILOF: głowa sejsmiczna — szerszy łuk i dłuższe ogłuszenie (%.0f°, %.1f s), wolniejszy zamach" % [ki.arc_deg, ki.stun],
+		ki.arc_deg > Weapons.base_def(Weapons.KILOF).arc_deg * 1.5 and ki.stun >= 2.0 and ki.cooldown > Weapons.base_def(Weapons.KILOF).cooldown)
+	# salwa FALCON-6 w kontrolerze (części zamontowane przez gracza): jeden strzał = 3 rakiety i −2 naboje
+	await fit_player(Weapons.SOKOL6, ["f6_belt", "f6_salvo"])
+	equip(Weapons.SOKOL6)
+	var fd: WeaponDef = wc.cur()
 	var mag_f: int = wc.mag_of(fd.id)
 	var proj_before := get_tree().current_scene.get_children().filter(func(n: Node) -> bool: return n is Projectile).size()
 	wc.cd = 0.0
 	wc._fire_shot(fd)
 	await frames(2)
 	var proj_after := get_tree().current_scene.get_children().filter(func(n: Node) -> bool: return n is Projectile).size()
-	check("FALCON-6 T3: jeden strzał = 3 rakiety (%d → %d) i −2 naboje (%d → %d)" % [proj_before, proj_after, mag_f, wc.mag_of(fd.id)], proj_after - proj_before == 3 and mag_f - wc.mag_of(fd.id) == 2)
+	check("FALCON-6 salwa z broni gracza: jeden strzał = 3 rakiety (%d → %d) i −2 naboje (%d → %d)" % [proj_before, proj_after, mag_f, wc.mag_of(fd.id)], proj_after - proj_before == 3 and mag_f - wc.mag_of(fd.id) == 2)
+	await clear_fits()
 	free_dummies()
 	await frames(2)
 	# SPECTER-1 T3 przez prawdziwą ścianę (10 px): bez ulepszenia stop na murze, z ulepszeniem trafia cel za nim
@@ -1294,28 +1320,26 @@ func _t_upgrades() -> void:
 	var space := player.get_world_2d().direct_space_state
 	var org := player.global_position + Vector2(0, -9)
 	var plain := Combat.trace(space, org, Vector2.RIGHT, 300.0, 99, 0.0, [player.get_rid()])
-	var rail_d := Weapons.def(Weapons.WIDMO1)
+	var rail_d := pdef(Weapons.WIDMO1, ["w1_rails"])
 	var pierced := Combat.trace(space, org, Vector2.RIGHT, 300.0, 99, rail_d.wall_pierce, [player.get_rid()])
-	check("SPECTER-1 T3: szyna bez przebicia staje na murze, z ulepszeniem trafia cel za ścianą", bool(plain["wall"]) and (plain["hits"] as Array).is_empty() and (pierced["hits"] as Array).size() == 1,
+	check("SPECTER-1: szyna bez przebicia staje na murze, z hartowanymi szynami trafia cel za ścianą", bool(plain["wall"]) and (plain["hits"] as Array).is_empty() and (pierced["hits"] as Array).size() == 1,
 		"bez: ściana %s trafień %d, z: trafień %d" % [str(plain["wall"]), (plain["hits"] as Array).size(), (pierced["hits"] as Array).size()])
 	wall.queue_free()
 	free_dummies()
 	await frames(2)
-	# maczeta T3: dobija wroga poniżej 35% HP, wyżej zadaje zwykłe obrażenia
-	var mz := Weapons.def(Weapons.MACZETA)
-	check("MACZETA T3: dobicie poniżej %.0f%% HP, zasięg %.0f px" % [mz.execute_frac * 100.0, mz.reach], absf(mz.execute_frac - 0.35) < 0.001 and mz.reach > Weapons.base_def(Weapons.MACZETA).reach)
+	# maczeta (długi chwyt + kat): dobija wroga poniżej 35% HP, wyżej zadaje zwykłe obrażenia
+	var mb := bld(Weapons.MACZETA, ["mc_long", "mc_exec"])
+	var mz := Weapons.def_build(Weapons.MACZETA, mb)
+	check("MACZETA: dobicie poniżej %.0f%% HP, zasięg %.0f px" % [mz.execute_frac * 100.0, mz.reach], absf(mz.execute_frac - 0.35) < 0.001 and mz.reach > Weapons.base_def(Weapons.MACZETA).reach)
 	var hi := await dummy(40.0, 100.0)
 	hi.hp = 50.0
-	var r_hi := Combat.apply(hi, Combat.make_info(Weapons.MACZETA, mz.damage, hi.global_position, Vector2.RIGHT, 1, "melee"))
+	var r_hi := Combat.apply(hi, Combat.make_info(Weapons.MACZETA, mz.damage, hi.global_position, Vector2.RIGHT, 1, "melee", mb))
 	var lo := await dummy(60.0, 100.0)
 	lo.hp = 30.0
-	var r_lo := Combat.apply(lo, Combat.make_info(Weapons.MACZETA, mz.damage, lo.global_position, Vector2.RIGHT, 1, "melee"))
-	check("MACZETA T3: wróg na 50% HP dostaje zwykły cios, na 30% ginie od razu", not bool(r_hi["killed"]) and bool(r_lo["killed"]), "50%%: %s, 30%%: %s" % [str(r_hi["killed"]), str(r_lo["killed"])])
+	var r_lo := Combat.apply(lo, Combat.make_info(Weapons.MACZETA, mz.damage, lo.global_position, Vector2.RIGHT, 1, "melee", mb))
+	check("MACZETA: wróg na 50% HP dostaje zwykły cios, na 30% ginie od razu", not bool(r_hi["killed"]) and bool(r_lo["killed"]), "50%%: %s, 30%%: %s" % [str(r_hi["killed"]), str(r_lo["killed"])])
 	free_dummies()
 	await frames(2)
-	Weapons.levels.clear()
-	for k in saved:
-		Weapons.levels[k] = saved[k]
 
 ## Prostokątna ściana testowa na warstwie świata (Combat.LAYER_WORLD) o środku `at` i rozmiarze `size` (px).
 func test_wall(at: Vector2, size: Vector2) -> StaticBody2D:
@@ -1607,15 +1631,15 @@ func _t_weapon_realism2() -> void:
 func _t_realia_e0() -> void:
 	# ulepszenia: lufa, dławik, spust i pompka nie dodają obrażeń (obrażenia daje amunicja)
 	var bad: Array = []
-	for k in Upgrades.TIERS:
-		for t in Upgrades.TIERS[k]:
+	for k in Parts.PARTS:
+		for t in Parts.PARTS[k]:
 			var nm := String(t["name"]).to_lower()
 			if nm.contains("barrel") or nm.contains("choke") or nm.contains("trigger") or nm.contains("pump") or nm.contains("action"):
 				for m in t["mods"]:
 					if String(m[0]) == "damage":
 						bad.append("%s/%s" % [k, t["name"]])
 	check("ulepszenia lufy / dławika / spustu nie zmieniają obrażeń (%s)" % str(bad), bad.is_empty())
-	var m2 := Weapons.def_at(Weapons.M83, 2)
+	var m2 := pdef(Weapons.M83, ["m83_rpk40", "m83_rpkbar"])
 	var m0 := Weapons.base_def(Weapons.M83)
 	check("M-83 T2 lufa RPK: ciaśniej (%.2f < %.2f), obrażenia bez zmian, magazynek RPK 40" % [m2.jitter_deg, m0.jitter_deg],
 		m2.jitter_deg < m0.jitter_deg and is_equal_approx(m2.damage, m0.damage) and m2.mag == 40)
@@ -1716,17 +1740,11 @@ func _t_ammo_calibers() -> void:
 		Arsenal.get_reserve(Weapons.SRUT8) == 30 and Arsenal.pool(Weapons.SRUT8) == Arsenal.pool(Weapons.SPREAD12) and Arsenal.pool(Weapons.M83) != Arsenal.pool(Weapons.SRUT8)
 		and Arsenal.pool_max(Weapons.SRUT8) == maxi(Weapons.def(Weapons.SPREAD12).reserve_max, Weapons.def(Weapons.SRUT8).reserve_max))
 	# definicje z amunicją
-	var saved: Dictionary = Weapons.levels.duplicate()
-	Weapons.levels.erase(Weapons.M83)
 	var ps := Weapons.def_ammo(Weapons.M83, 0)
 	var us := Weapons.def_ammo(Weapons.M83, 1)
 	var bz := Weapons.def_ammo(Weapons.M83, 2)
-	Weapons.levels[Weapons.M83] = 3
-	var ps_s := Weapons.def_ammo(Weapons.M83, 0)
-	var us_s := Weapons.def_ammo(Weapons.M83, 1)
-	Weapons.levels.clear()
-	for k in saved:
-		Weapons.levels[k] = saved[k]
+	var ps_s := Weapons.def_build(Weapons.M83, bld(Weapons.M83, ["m83_pbs1"], 0))
+	var us_s := Weapons.def_build(Weapons.M83, bld(Weapons.M83, ["m83_pbs1"], 1))
 	check("7.62 US: poddźwiękowy (%.0f px/s), słabszy (%.1f < %.1f), sam trochę ciszej (%.2f < %.2f)" % [us.speed, us.damage, ps.damage, us.n_max, ps.n_max],
 		us.speed < Ammo.SOUND_PX and us.damage < ps.damage and us.n_max < ps.n_max and us.ammo == 1)
 	check("7.62 US z tłumikiem: hałas %.2f wobec PS z tłumikiem %.2f (≤ 60%%)" % [us_s.n_max, ps_s.n_max], us_s.suppressor > 0.0 and us_s.n_max <= ps_s.n_max * 0.6)
@@ -1890,6 +1908,58 @@ func _t_ammo_40mm() -> void:
 		Arsenal.stock[k] = 0
 	free_dummies()
 	await frames(2)
+
+## Części broni (1.7.319, GUNSMITH_PLAN.md etap 2a): kod `fit` w obie strony, montaż gracza (wybór, samomontaż, element fabryczny),
+## broń gracza w kontrolerze i w sieci (player.fits), serwer odrzuca części, których drużyna nie ma, migracja starych poziomów ulepszeń.
+func _t_parts() -> void:
+	await clear_fits()
+	var key := "m83"
+	var code := Parts.encode_ids(key, ["m83_drum75", "m83_short", "m83_pbs1", "m83_akms"])
+	var back := Parts.decode(key, code)
+	check("kod części: w obie strony (%s)" % str(back), back.size() == 4 and back.has("m83_drum75") and back.has("m83_short") and back.has("m83_pbs1") and back.has("m83_akms"))
+	check("kod części: dwie części w jednym gnieździe — zostaje jedna (ostatnia)", Parts.decode(key, Parts.encode_ids(key, ["m83_rpk40", "m83_drum75"])) == ["m83_drum75"])
+	var owned := {"m83_pbs1": true}
+	check("serwer: części, których drużyna nie ma, wypadają z kodu (%s)" % str(Parts.decode(key, Parts.sanitize(key, code, owned))), Parts.decode(key, Parts.sanitize(key, code, owned)) == ["m83_pbs1"])
+	check("każda broń mieści się w kodzie (≤ %d gniazd po 2 bity, ≤ %d części w gnieździe)" % [8, Parts.MAX_PER_SLOT],
+		Parts.PARTS.keys().all(func(k: String) -> bool: return Parts.slots_of(k).size() <= 8))
+	# montaż: samomontaż pierwszej odblokowanej części, wybór gracza, element fabryczny
+	Scrap.parts["m83_rpk40"] = true
+	Scrap.parts["m83_drum75"] = true
+	check("samomontaż: gniazdo bez wyboru bierze pierwszą odblokowaną część (%s)" % Profile.fitted(key, "feed"), Profile.fitted(key, "feed") == "m83_rpk40")
+	Profile.set_fit(key, "feed", "m83_drum75")
+	check("wybór gracza: bęben 75 (%s)" % Profile.fitted(key, "feed"), Profile.fitted(key, "feed") == "m83_drum75")
+	Profile.set_fit(key, "feed", "")
+	check("element fabryczny wybrany świadomie wygrywa z samomontażem", Profile.fitted(key, "feed") == "")
+	Scrap.parts.erase("m83_drum75")
+	Profile.set_fit(key, "feed", "m83_drum75")
+	check("część, której drużyna nie ma, nie montuje się (%s)" % Profile.fitted(key, "feed"), Profile.fitted(key, "feed") == "")
+	await clear_fits()
+	# broń gracza: kontroler buduje definicję z player.fits, magazynek po przeładowaniu ma pojemność z części
+	await fit_player(Weapons.M83, ["m83_drum75", "m83_pbs1"])
+	var d := equip(Weapons.M83, false)
+	check("player.fits niesie montaż (kod %d) i kontroler go używa (magazynek %d, tłumik %s)" % [player.fits[Weapons.M83], wc.cur().mag, str(wc.cur().suppressor > 0.0)],
+		player.fits[Weapons.M83] == Profile.fit_code(Weapons.M83) and wc.cur().mag == 75 and wc.cur().suppressor > 0.0 and wc.cur().build == Weapons.build_of(0, Profile.fit_code(Weapons.M83)))
+	Arsenal.set_reserve(d.id, 200)
+	wc.mags[d.id] = 0
+	wc.try_reload()
+	await wait(wc.cur().full_reload_time() + 0.4)
+	check("przeładowanie bębna: 75 naboi (%d), serwer przyjął prośbę większą niż fabryczny magazynek" % wc.mag_of(d.id), wc.mag_of(d.id) == 75)
+	var before: int = NoiseMgr.level
+	wc.cd = 0.0
+	wc._fire_shot(wc.cur())
+	var shots := get_tree().current_scene.get_children().filter(func(n: Node) -> bool: return n is Projectile and n.weapon == Weapons.M83)
+	check("strzał niesie części gracza: pocisk z kodem build (%d)" % (shots.back().build if not shots.is_empty() else -1),
+		not shots.is_empty() and Weapons.fit_of_build(int(shots.back().build)) == Profile.fit_code(Weapons.M83))
+	await clear_fits()
+	equip(Weapons.M83)
+	check("bez części broń gracza jest fabryczna (magazynek %d)" % wc.cur().mag, wc.cur().mag == Weapons.def(Weapons.M83).mag and player.fits[Weapons.M83] == 0)
+	# migracja zapisu sprzed 1.7.319: poziom 2 M-83 = magazynek RPK i lufa RPK, samomontaż daje tę samą broń co dawniej
+	Scrap.migrate_levels({Weapons.M83: 2, Weapons.P64: 3})
+	var mig := Weapons.def_build(Weapons.M83, Weapons.build_of(0, Profile.fit_code(Weapons.M83)))
+	check("migracja poziomów: M-83 poz. 2 → RPK 40 + lufa RPK (magazynek %d), P-83 poz. 3 → 3 części (%d)" % [mig.mag, Scrap.parts_owned(Weapons.P64)],
+		Scrap.has_part("m83_rpk40") and Scrap.has_part("m83_rpkbar") and not Scrap.has_part("m83_pbs1") and mig.mag == 40 and Scrap.parts_owned(Weapons.P64) == 3)
+	await clear_fits()
+	equip(Weapons.M83)
 
 ## Szybki pocisk nie może przeskoczyć wąskiego wroga (przeciąganie promienia, nie przesuwany obszar).
 func _t_sweep() -> void:
@@ -2397,6 +2467,10 @@ func run_net_host(m: Node2D) -> void:
 		e.set("collision_layer", 0)
 		e.visible = false
 	player = cp
+	# części (1.7.319): drużyna ma tłumik PBS-1 — klient nic nie wybiera, więc gniazdo wylotu montuje go samo, a jego player.fits dociera do hosta
+	Scrap.parts["m83_pbs1"] = true
+	Scrap._push()
+	var pbs_code := Parts.encode_ids("m83", ["m83_pbs1"])
 	await wait(0.5)
 	var e := await dummy(80.0)
 	print("[WTEST] host: manekin %s przed klientem (%s)" % [e.name, str(cp.global_position.round())])
@@ -2406,8 +2480,8 @@ func run_net_host(m: Node2D) -> void:
 		await wait(0.2)
 		pw += 0.2
 	check("sieć: host widzi perki klienta (%s)" % str(Perks.ids_of(cp.perks)), Perks.ids_of(cp.perks) == ["veteran", "smith"])
-	check("sieć: serce Weterana klienta liczy serwer (max %d), a cena Kowala dla peera klienta %d zamiast %d" % [cp.max_hp(), Scrap.tier_cost("m83", 2, cid), Upgrades.cost("m83", 2)],
-		cp.max_hp() == cp.MAX_HP + 1 and Scrap.tier_cost("m83", 2, cid) == Upgrades.cost("m83", 2, 0.8) and Scrap.tier_cost("m83", 2) == Upgrades.cost("m83", 2))
+	check("sieć: serce Weterana klienta liczy serwer (max %d), a cena Kowala dla peera klienta %d zamiast %d" % [cp.max_hp(), Scrap.part_cost("m83_rpkbar", cid), Parts.cost("m83_rpkbar")],
+		cp.max_hp() == cp.MAX_HP + 1 and Scrap.part_cost("m83_rpkbar", cid) == Parts.cost("m83_rpkbar", 0.8) and Scrap.part_cost("m83_rpkbar") == Parts.cost("m83_rpkbar"))
 	# czat: host zbiera linie rozesłane przez serwer (klient wysyła jedną wiadomość i serię 10 „flood")
 	var chat_lines: Array = []
 	var chat_node: Node = m.get_node("Chat")
@@ -2415,6 +2489,8 @@ func run_net_host(m: Node2D) -> void:
 	# podglądamy serwerowy licznik przyjętych strzałów i obrażenia, dopóki klient jest połączony
 	var legit_dmg := -1.0
 	var accepted := 0
+	var seen_fits := PackedInt32Array()
+	var seen_build := -1
 	var t := 0.0
 	while t < 14.0 and is_instance_valid(cp):
 		await wait(0.1)
@@ -2422,6 +2498,8 @@ func run_net_host(m: Node2D) -> void:
 		if not is_instance_valid(cp):
 			break
 		accepted = maxi(accepted, int(cp.weapons.srv_shots))
+		seen_fits = cp.fits.duplicate()                  # klient zaraz się rozłączy — zapamiętaj montaż i ostatni strzał
+		seen_build = int(cp.weapons.srv_last_build)
 		if legit_dmg < 0.0 and cp.weapons.srv_shots >= 10:
 			await wait(0.5)                      # niech ostatnia kula doleci
 			legit_dmg = dealt(e)
@@ -2431,8 +2509,12 @@ func run_net_host(m: Node2D) -> void:
 			break
 	await wait(0.8)
 	check("zdalny strzelec: 10 legalnych strzałów M-83 klienta zadaje obrażenia na serwerze", legit_dmg >= 0.6 * 80.0 and legit_dmg <= 80.1, "%.1f / 80" % legit_dmg)
-	check("limiter tempa: 20 sfałszowanych żądań naraz przyjęte ≤ 4× (zapas 2,5 + lag)", accepted <= 10 + 4, "przyjęto łącznie %d (10 legalnych + ≤4)" % accepted)
+	check("limiter tempa: 20 sfałszowanych żądań naraz przyjęte ≤ 4× (zapas 2,5 + lag), ale coś przyjęte (RPC dochodzi)", accepted <= 10 + 4 and accepted > 10, "przyjęto łącznie %d (10 legalnych + ≤4)" % accepted)
 	check("serwer odrzucił większość ataku (≥ 14 z 20)", accepted <= 10 + 6, "przyjęto %d" % accepted)
+	var fits_ok: bool = seen_fits.size() > Weapons.M83 and int(seen_fits[Weapons.M83]) == pbs_code
+	var last_fit := Weapons.fit_of_build(seen_build) if seen_build >= 0 else -1
+	check("sieć: host widzi montaż klienta (fits %s), a serwer liczy strzał z jego częściami i wycina te, których drużyna nie ma (fit %d = %d)" % [str(seen_fits), last_fit, pbs_code],
+		fits_ok and last_fit == pbs_code)
 	var hi := chat_lines.filter(func(l: Array) -> bool: return String(l[1]) == "hi from client")
 	var flood := chat_lines.filter(func(l: Array) -> bool: return String(l[1]).begins_with("flood"))
 	check("czat sieciowy: wiadomość klienta dociera z etykietą nadawcy (%s), seria 10 „flood” przepuszczona ≤ 2× (%d)" % [str(hi), flood.size()],
@@ -2468,7 +2550,7 @@ func run_net_client(m: Node2D) -> void:
 	await wait(0.8)
 	for i in 10:
 		chat_client.send("flood %d" % i)                     # klient nie ogranicza — tempo pilnuje serwer
-	var d := Weapons.def(Weapons.M83)
+	var d: WeaponDef = wc.cur()                   # broń gracza: tłumik PBS-1 zamontował się sam (drużyna go ma)
 	var predicted_before := get_tree().current_scene.get_child_count()
 	for i in 10:
 		wc.cd = 0.0
@@ -2476,10 +2558,11 @@ func run_net_client(m: Node2D) -> void:
 		await wait(0.15)
 	print("[WTEST] klient: wystrzelił 10×, magazynek %d" % wc.mag_of(d.id))
 	await wait(1.0)
-	# atak: 20 żądań naraz z prawidłowym wylotem
+	# atak: 20 żądań naraz z prawidłowym wylotem i sfałszowanym bębnem 75, którego drużyna nie ma (serwer go wytnie)
 	var muzzle: Vector2 = wc.muzzle_pos(Vector2.RIGHT, d)
+	var forged := Weapons.build_of(0, Parts.encode_ids("m83", ["m83_drum75", "m83_pbs1"]))
 	for i in 20:
-		wc._fire_request.rpc_id(1, muzzle, Vector2.RIGHT, Weapons.M83, randi(), 0.0)
+		wc._fire_request.rpc_id(1, muzzle, Vector2.RIGHT, Weapons.M83, randi(), 0.0, forged)
 	await wait(2.0)
 	print("[WTEST] klient: koniec")
 	get_tree().quit(0)
