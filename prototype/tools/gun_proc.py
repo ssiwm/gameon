@@ -10,6 +10,12 @@ wypadł w nadgarstku dłoni tylnej — jak w prep_gun3d.py (char3d.gd ustawia d�
 Obok GLB powstaje <nazwa>.json: {"hands", "length", "rear", "fore", "muzzle", "grip", "hold"[, "hold_v"]}; `rear` / `fore` to nadgarstki pod chwytem
 i łożem (stary układ dłoni), `grip` = środek chwytu, który obejmuje dłoń tylna, `hold` = punkt na spodzie łoża, pod który podchodzi dłoń przednia
 (`hold_v` = chwyt przedni pionowy, obejmowany z boku). --json-only przelicza sam plik .json (bez wypieku i bez zapisu GLB).
+Podzespoły i części (od 1.7.320, GUNSMITH_PLAN.md etap 2b): bryły zbudowane w `with comp("mag"):` (magazynek, kolba, przód z lufą, urządzenie
+wylotowe…) trafiają do osobnych węzłów GLB `gun_<klucz>__<podzespół>` — ten sam wypiek i materiał, ale gra może je ukryć, gdy część je zastępuje.
+    blender -b --factory-startup -P prototype/tools/gun_proc.py -- m83 prototype/art/char3d/gunpart_m83_pbs1.glb --part=m83_pbs1 [--tex=1024]
+buduje część (PART_BUILDERS) w układzie broni (mocowanie „frame”) albo względem wylotu (mocowanie „muzzle”: tłumik, płomieniotłumik — siedzą na
+końcu takiej lufy, jaka jest założona). Obok GLB powstaje .json {"mount", "hides", "muzzle" (nowy wylot lufy), "muzzle_add" (o ile część
+wydłuża broń za wylotem, m)}; skala i początek układu są te same co broni bazowej. Wszystkie części: tools/gun_parts_all.sh.
 Tekstury (kolor, normalne, ORM) wypieka Cycles z węzłów: przetarcia oksydy na wypukłych krawędziach (AO „do środka"), brud we wnękach (AO), rysy,
 słoje drewna, rowki, kratka i grawerowane napisy jako wypukłości w mapie normalnych; broń energetyczna dostaje też mapę emisji (ogniwa, cewki,
 płomyk). Siatka zostaje lekka — detal siedzi w teksturach. Stal jest malowana pod pełną metaliczność (kolor bazowy = barwa odbicia): w grze odbija
@@ -19,6 +25,7 @@ rozjaśnione krawędzie, przyciemnione wnęki), a wszystko — kurz, plamy i zac
 import json
 import math
 import sys
+from contextlib import contextmanager
 
 import bmesh
 import bpy
@@ -38,6 +45,7 @@ TEX = _opt("tex", 2048, int)
 SAMPLES = _opt("samples", 48, int)
 NOBAKE = "--nobake" in argv
 JSON_ONLY = "--json-only" in argv
+PART = _opt("part", "", str)                 # id części (parts.gd) — budujemy ją zamiast broni
 DUST = _opt("dust", 1.0, float)              # siła kurzu i brudu (0 = broń prosto z magazynu)
 
 OBJS = []          # części modelu (po zbudowaniu łączone w jedną siatkę)
@@ -45,6 +53,20 @@ CUTTERS = []       # bryły pomocnicze do wycięć (usuwane)
 MATS = {}          # nazwa materiału → gniazda i węzły przebiegów wypieku
 GLOW = []          # niepuste, gdy któryś materiał świeci (wtedy wypiekana jest mapa emisji)
 WEAR_MM = [1.6]    # zasięg przetarcia krawędzi stali w mm (mała broń ustawia mniejszy)
+COMP = ["body"]    # bieżący podzespół (with comp(...)) — bryły dostają go jako atrybut ścian i trafiają do osobnego węzła GLB
+COMP_NAMES = ["body"]
+
+
+@contextmanager
+def comp(name):
+    """Bryły zbudowane w tym bloku należą do podzespołu `name` (osobny węzeł GLB, gra może go ukryć albo przesunąć)."""
+    if name not in COMP_NAMES:
+        COMP_NAMES.append(name)
+    COMP.append(name)
+    try:
+        yield
+    finally:
+        COMP.pop()
 
 
 # ---------------------------------------------------------------- krzywe i obrysy (płaszczyzna XZ)
@@ -183,6 +205,7 @@ def _mk(name, verts, faces, mat, part=True):
     bpy.context.scene.collection.objects.link(ob)
     if mat is not None:
         me.materials.append(mat)
+    ob["comp"] = COMP[-1]
     (OBJS if part else CUTTERS).append(ob)
     return ob
 
@@ -830,6 +853,7 @@ def marker_text(body, size, x, z, y, mat):
     ob = bpy.data.objects.new("marker", me)
     bpy.context.scene.collection.objects.link(ob)
     me.materials.append(mat)
+    ob["comp"] = COMP[-1]
     OBJS.append(ob)
     return ob
 
@@ -1046,83 +1070,152 @@ def ak_receiver(x0, st, small, bright):
 
 # ---------------------------------------------------------------- M-83
 
+
+M83_MATS = {}
+
+
+def m83_mats():
+    """Materiały M-83 (raz na przebieg) — części budują się z tych samych co broń."""
+    if not M83_MATS:
+        X = 300.0
+        M83_MATS.update({
+            "st": M(steel, "m83_steel", blue=BLACKOX, r0=0.42, engrave=[(X + 198.0, X + 258.0, -24.0, -10.0), (X + 28.0, X + 84.0, -31.0, -13.0)],
+                    muzzle=(800.0, 880.0), feats=ak_feats(X), grooves=[("x", 21.0, X + 24.0, X + 150.0, 7.5, 12.0, 0.5, False)]),
+            "small": M(steel, "m83_small", blue=BLACKOX, r0=0.42, wear_k=0.4),
+            "bright": M(steel, "m83_bright", tone="bright"),
+            "bore": M(plain, "m83_bore", rgb(0.008, 0.008, 0.008), 0.7, 1.0, None),
+            "lam": M(wood, "m83_lam", laminate=True, tone=LAMINATE),
+            "grip": M(bakelite, "m83_grip", checker=(2.2, 100.0), tone=REDBAKE),
+            "mag": M(bakelite, "m83_mag", tone=ORANGEBAKE, mottle=0.7),
+        })
+    return M83_MATS
+
+
+def m83_mag(mag_m, small, extra=0.0):
+    """Magazynek łukowy z bakelitu ze stalową stopką; `extra` mm dłuższy (RPK 40 = +55 mm, bardziej zakrzywiony)."""
+    k = extra / 55.0
+    mag_path = spline([(455.0, -30.0), (460.0, -80.0), (472.0 + 2.0 * k, -128.0 - 18.0 * k), (492.0 + 14.0 * k, -172.0 - 45.0 * k)], 6)
+    prism("mag", strip(mag_path, 42.0), -11.5, 11.5, mag_m, bv=1.5, seg=2)
+    prism("mag_floor", strip(mag_path[-3:], 46.0), -12.5, 12.5, small, bv=0.8, seg=1)
+    prism("mag_lug", strip(mag_path[:5], 44.5), -6.0, 6.0, small, bv=0.5, seg=1)
+
+
+def m83_front(st, small, bright, lam, hg_end=746.0, muzzle_end=880.0, heavy=0.0, bayonet=True):
+    """Przód M-83: lufa, rura gazowa, łoże i nakładka, komora gazowa, muszka, osada bagnetu, wycior. `hg_end` = koniec łoża, `muzzle_end` = wylot
+    (urządzenie wylotowe 30 mm buduje m83_muzzle), `heavy` = grubsza lufa (RPK). Dla wartości domyślnych — dokładnie fabryczny AKM."""
+    h, e = hg_end, muzzle_end
+    cyl("barrel", 560.0, e - 30.0, 7.6 + heavy, (0.0, 0.0), st, seg=16, bv=0.0)
+    cyl("gas_tube", 562.0, h - 4.0, 6.2, (0.0, 23.0), st, seg=14, bv=0.0)
+    cyl("hg_upper", 606.0, h - 12.0, 13.5, (0.0, 22.0), lam, seg=16, bv=1.2)
+    mid = 566.0 + (h - 10.0 - 566.0) * (84.0 / 170.0)
+    prism("hg_lower", fillet([(566.0, 8.0), (h - 10.0, 8.0), (h - 10.0, -20.0, 5.0), (mid, -30.0, 30.0), (566.0, -28.0, 8.0)]), -15.5, 15.5, lam, bv=2.5, seg=2)
+    box("hg_cap", h - 11.0, h, -24.0, 12.0, 16.0, st, bv=0.8, r=3.0)
+    prism("gas_block", fillet([(h - 6.0, -9.0), (h + 26.0, -9.0), (h + 26.0, 10.0, 2.0), (h + 11.0, 31.0, 3.0), (h - 6.0, 31.0, 2.0)]), -9.0, 9.0, st, bv=1.0, seg=2)
+    swivel(h + 10.0, -27.0, small, 7.0)
+    box("fs_base", e - 82.0, e - 52.0, -9.5, 9.5, 9.5, st, bv=1.0, r=3.0)
+    prism("fs_tower", [(e - 79.0, 6.0), (e - 55.0, 6.0), (e - 58.0, 30.0), (e - 76.0, 30.0)], -4.0, 4.0, st, bv=0.6, seg=1)
+    for sy in (-1.0, 1.0):
+        prism("fs_ear", fillet([(e - 76.0, 28.0), (e - 58.0, 28.0), (e - 60.0, 46.0, 2.0), (e - 74.0, 46.0, 2.0)]), sy * 3.0, sy * 5.6, st, bv=0.4, seg=1)
+    revolve("fs_post", [(28.0, 0.0), (28.0, 1.3), (43.0, 1.3), (43.0, 0.0)], (e - 67.0, 0.0), small, axis="Z", seg=8, bv=0.0)
+    if bayonet:
+        box("bayonet_lug", e - 104.0, e - 86.0, -16.0, -8.0, 4.0, st, bv=0.6, seg=1)
+    if e - 34.0 > h + 2.0:
+        cyl("rod", h - 4.0, e - 34.0, 2.4, (0.0, -12.5), bright, seg=8, bv=0.0)
+
+
+def m83_muzzle(st, bore, muzzle_end=880.0):
+    """Gwint i skośny kompensator AKM (podzespół „muzzle” — gra przesuwa go na koniec założonej lufy)."""
+    cyl("thread_ring", muzzle_end - 34.0, muzzle_end - 29.0, 10.4, (0.0, 0.0), st, seg=16, bv=0.4)
+    barrel("muzzle", muzzle_end - 30.0, muzzle_end, 9.6, 4.2, (0.0, 0.0), st, bore, depth=24.0, seg=16)
+
+
 def build_m83():
     """M-83: karabinek wzoru AKM — tłoczona komora z nitami, kolba i łoże z klejonki, bakelitowy chwyt i magazynek. Oś lufy na z = 0, wylot na x = 880 mm."""
     X = 300.0
-    st = M(steel, "m83_steel", blue=BLACKOX, r0=0.42, engrave=[(X + 198.0, X + 258.0, -24.0, -10.0), (X + 28.0, X + 84.0, -31.0, -13.0)], muzzle=(800.0, 880.0),
-           feats=ak_feats(X), grooves=[("x", 21.0, X + 24.0, X + 150.0, 7.5, 12.0, 0.5, False)])
-    small = M(steel, "m83_small", blue=BLACKOX, r0=0.42, wear_k=0.4)
-    bright = M(steel, "m83_bright", tone="bright")
-    bore = M(plain, "m83_bore", rgb(0.008, 0.008, 0.008), 0.7, 1.0, None)
-    lam = M(wood, "m83_lam", laminate=True, tone=LAMINATE)
-    grip_m = M(bakelite, "m83_grip", checker=(2.2, 100.0), tone=REDBAKE)
-    mag_m = M(bakelite, "m83_mag", tone=ORANGEBAKE, mottle=0.7)
+    mm = m83_mats()
+    st, small, bright, bore, lam, grip_m, mag_m = mm["st"], mm["small"], mm["bright"], mm["bore"], mm["lam"], mm["grip"], mm["mag"]
     mark = M(plain, "marker", rgb(0.0, 0.0, 0.0), 1.0, 0.0)
     marker_text("M-83", 9.5, X + 256.0, -22.0, 16.43, mark)
     marker_text("KR 4471", 7.5, X + 30.0, -27.0, -16.43, mark)
 
     ak_receiver(X, st, small, bright)
-    # kolba z klejonki ze stalową stopką i strzemiączkiem, chwyt, kabłąk, magazynek łukowy ze stalową stopką
-    prism("stock", fillet([(X + 2.0, 3.0, 4.0), (X + 2.0, -34.0, 4.0), (200.0, -50.0, 20.0), (14.0, -104.0, 8.0), (14.0, -22.0, 8.0)]), -14.0, 14.0, lam, bv=3.0, seg=2)
-    box("butt", 0.0, 16.0, -106.0, -20.0, 14.5, small, bv=1.0, seg=1, r=3.0)
+    # kolba z klejonki ze stalową stopką i strzemiączkiem (podzespół „stock” — kolba składana AKMS go zastępuje)
+    with comp("stock"):
+        prism("stock", fillet([(X + 2.0, 3.0, 4.0), (X + 2.0, -34.0, 4.0), (200.0, -50.0, 20.0), (14.0, -104.0, 8.0), (14.0, -22.0, 8.0)]), -14.0, 14.0, lam, bv=3.0, seg=2)
+        box("butt", 0.0, 16.0, -106.0, -20.0, 14.5, small, bv=1.0, seg=1, r=3.0)
+        swivel(118.0, -89.0, small)
     box("stock_tang", X - 46.0, X + 4.0, 1.0, 5.5, 8.0, st, bv=0.6, seg=1)
-    swivel(118.0, -89.0, small)
     pgrip("grip", X + 72.0, -38.0, grip_m)
     trig("trigger", X + 74.0, X + 132.0, -38.0, st, small)
-    mag_path = spline([(455.0, -30.0), (460.0, -80.0), (472.0, -128.0), (492.0, -172.0)], 6)
-    prism("mag", strip(mag_path, 42.0), -11.5, 11.5, mag_m, bv=1.5, seg=2)
-    prism("mag_floor", strip(mag_path[-3:], 46.0), -12.5, 12.5, small, bv=0.8, seg=1)
-    prism("mag_lug", strip(mag_path[:5], 44.5), -6.0, 6.0, small, bv=0.5, seg=1)
-    # przednia wkładka z celownikiem krzywkowym, rura gazowa, nakładka i łoże z klejonki, obejma łoża
+    with comp("mag"):
+        m83_mag(mag_m, small)
+    # przednia wkładka z celownikiem krzywkowym (komora), przód z lufą i łożem („front”), urządzenie wylotowe („muzzle”)
     box("sight_base", 560.0, 604.0, 10.0, 34.0, 10.5, st, bv=1.0, r=3.0)
     prism("sight_leaf", [(566.0, 33.0), (622.0, 36.0), (622.0, 40.0), (566.0, 38.5)], -5.0, 5.0, small, bv=0.5, seg=1)
     box("sight_slider", 604.0, 613.0, 35.0, 42.5, 7.0, small, bv=0.6, seg=1)
-    cyl("barrel", 560.0, 850.0, 7.6, (0.0, 0.0), st, seg=16, bv=0.0)
-    cyl("gas_tube", 562.0, 742.0, 6.2, (0.0, 23.0), st, seg=14, bv=0.0)
-    cyl("hg_upper", 606.0, 734.0, 13.5, (0.0, 22.0), lam, seg=16, bv=1.2)
-    prism("hg_lower", fillet([(566.0, 8.0), (736.0, 8.0), (736.0, -20.0, 5.0), (650.0, -30.0, 30.0), (566.0, -28.0, 8.0)]), -15.5, 15.5, lam, bv=2.5, seg=2)
-    box("hg_cap", 735.0, 746.0, -24.0, 12.0, 16.0, st, bv=0.8, r=3.0)
-    # komora gazowa ze strzemiączkiem, podstawa muszki z osłoną, osada bagnetu, urządzenie wylotowe, wycior
-    prism("gas_block", fillet([(740.0, -9.0), (772.0, -9.0), (772.0, 10.0, 2.0), (757.0, 31.0, 3.0), (740.0, 31.0, 2.0)]), -9.0, 9.0, st, bv=1.0, seg=2)
-    swivel(756.0, -27.0, small, 7.0)
-    box("fs_base", 798.0, 828.0, -9.5, 9.5, 9.5, st, bv=1.0, r=3.0)
-    prism("fs_tower", [(801.0, 6.0), (825.0, 6.0), (822.0, 30.0), (804.0, 30.0)], -4.0, 4.0, st, bv=0.6, seg=1)
-    for sy in (-1.0, 1.0):
-        prism("fs_ear", fillet([(804.0, 28.0), (822.0, 28.0), (820.0, 46.0, 2.0), (806.0, 46.0, 2.0)]), sy * 3.0, sy * 5.6, st, bv=0.4, seg=1)
-    revolve("fs_post", [(28.0, 0.0), (28.0, 1.3), (43.0, 1.3), (43.0, 0.0)], (813.0, 0.0), small, axis="Z", seg=8, bv=0.0)
-    box("bayonet_lug", 776.0, 794.0, -16.0, -8.0, 4.0, st, bv=0.6, seg=1)
-    cyl("thread_ring", 846.0, 851.0, 10.4, (0.0, 0.0), st, seg=16, bv=0.4)
-    barrel("muzzle", 850.0, 880.0, 9.6, 4.2, (0.0, 0.0), st, bore, depth=24.0, seg=16)
-    cyl("rod", 742.0, 846.0, 2.4, (0.0, -12.5), bright, seg=8, bv=0.0)
+    with comp("front"):
+        m83_front(st, small, bright, lam)
+    with comp("muzzle"):
+        m83_muzzle(st, bore)
     return {"rear": Vector((350.0, 0.0, -140.0)), "fore": Vector((655.0, 0.0, -118.0)), "muzzle": Vector((880.0, 0.0, 0.0)), "hands": 2, "length": 0.88,
             "grip": Vector((342.0, 0.0, -83.0)), "hold": Vector((650.0, 0.0, -29.0))}
 
 
 # ---------------------------------------------------------------- SPREAD-12
 
+
+S12_MATS = {}
+S12_DRUM = (500.0, -186.0, 98.0)        # środek (x, z) i promień bębna 25 — przed kabłąkiem, dłoń na chwycie go nie dotyka
+
+
+def s12_mats():
+    if not S12_MATS:
+        X = 300.0
+        BLUE = ((0.035, 0.055, 0.12), (0.065, 0.09, 0.165))
+        WALNUT = ((0.028, 0.011, 0.005), (0.125, 0.05, 0.02))
+        cx, cz, _r = S12_DRUM
+        S12_MATS.update({
+            "st": M(steel, "s12_steel", blue=BLUE, engrave=[(X + 198.0, X + 258.0, -24.0, -10.0), (X + 28.0, X + 84.0, -31.0, -13.0)], muzzle=(880.0, 960.0),
+                    feats=ak_feats(X), grooves=[("x", 21.0, X + 24.0, X + 150.0, 7.5, 12.0, 0.5, False)]),
+            "small": M(steel, "s12_small", blue=BLUE, wear_k=0.4),
+            "bright": M(steel, "s12_bright", tone="bright"),
+            "bore": M(plain, "s12_bore", rgb(0.008, 0.008, 0.008), 0.7, 1.0),
+            "choke": M(steel, "s12_choke", blue=BLUE, grooves=[("x", 6.0, 912.0, 952.0, -20.0, 20.0, 0.8, False)]),
+            "wood": M(wood, "s12_wood", checker=(3.0, 12.0, 160.0, 250.0, -70.0, -30.0), tone=WALNUT),
+            "fore": M(wood, "s12_fore", grooves=[("x", 14.0, 612.0, 742.0, -40.0, -10.0, 1.2, False)], tone=WALNUT),
+            "grip": M(bakelite, "s12_grip", checker=(2.2, 100.0), tone=BLACK),
+            "drum": M(steel, "s12_drum", tone="paint", blue=((0.012, 0.012, 0.014), (0.03, 0.03, 0.034)), r0=0.6,
+                      engrave=[(cx - 27.0, cx + 27.0, cz - 56.0, cz - 41.0)], eng_style=STENCIL),
+            "box": M(steel, "s12_box", blue=PARK, r0=0.5, wear_k=0.6),
+        })
+    return S12_MATS
+
+
+def s12_drum(cx, cz, R, hw, drum_m, small):
+    """Bęben (oś w poprzek broni): płaszcz, dekle z żebrami, piasta i klucz naciągu sprężyny po lewej (+Y); hw = połowa szerokości."""
+    revolve("drum", [(-hw, 0.0), (-hw, R - 6.0), (-hw + 2.5, R), (hw - 2.5, R), (hw, R - 6.0), (hw, 0.0)], (cx, cz), drum_m, axis="Y", seg=48, bv=0.6)
+    for sy in (-1.0, 1.0):
+        for rr in (R * 0.35, R * 0.63, R * 0.86):
+            revolve("drum_rib", [(sy * hw, rr - 3.0), (sy * (hw + 1.6), rr - 2.0), (sy * (hw + 1.6), rr + 2.0), (sy * hw, rr + 3.0)], (cx, cz), drum_m, axis="Y",
+                    seg=48, bv=0.0)
+    revolve("drum_hub", [(hw - 1.0, 0.0), (hw - 1.0, 20.0), (hw + 6.0, 19.0), (hw + 8.0, 15.0), (hw + 8.0, 0.0)], (cx, cz), small, axis="Y", seg=24, bv=0.4)
+    box("drum_key", cx - 26.0, cx + 26.0, cz - 5.5, cz + 5.5, 4.0, small, bv=0.8, seg=2, r=4.0, y=hw + 12.0)
+    revolve("drum_hub_r", [(-hw - 8.0, 0.0), (-hw - 8.0, 15.0), (-hw - 6.0, 19.0), (-hw + 1.0, 20.0), (-hw + 1.0, 0.0)], (cx, cz), small, axis="Y", seg=24, bv=0.4)
+
+
 def build_spread12():
     """SPREAD-12 (od 1.7.313): samopowtarzalna strzelba kal. 12 na komorze wzoru AK z bębnem na 25 naboi — jak radzieckie strzelby na mechanizmie
     Kałasznikowa. Niebieska oksyda (znak rozpoznawczy tej broni) i jasny orzech, bęben lakierowany na czarno z kluczem naciągu sprężyny.
     Oś lufy na z = 0, stopka kolby na x = 0, wylot z dławikiem na x = 960 mm."""
     X = 300.0
-    BLUE = ((0.035, 0.055, 0.12), (0.065, 0.09, 0.165))
-    WALNUT = ((0.028, 0.011, 0.005), (0.125, 0.05, 0.02))
-    st = M(steel, "s12_steel", blue=BLUE, engrave=[(X + 198.0, X + 258.0, -24.0, -10.0), (X + 28.0, X + 84.0, -31.0, -13.0)], muzzle=(880.0, 960.0),
-           feats=ak_feats(X), grooves=[("x", 21.0, X + 24.0, X + 150.0, 7.5, 12.0, 0.5, False)])
-    small = M(steel, "s12_small", blue=BLUE, wear_k=0.4)
-    bright = M(steel, "s12_bright", tone="bright")
-    bore = M(plain, "s12_bore", rgb(0.008, 0.008, 0.008), 0.7, 1.0)
-    choke = M(steel, "s12_choke", blue=BLUE, grooves=[("x", 6.0, 912.0, 952.0, -20.0, 20.0, 0.8, False)])
-    wood_m = M(wood, "s12_wood", checker=(3.0, 12.0, 160.0, 250.0, -70.0, -30.0), tone=WALNUT)
-    fore_m = M(wood, "s12_fore", grooves=[("x", 14.0, 612.0, 742.0, -40.0, -10.0, 1.2, False)], tone=WALNUT)
-    grip_m = M(bakelite, "s12_grip", checker=(2.2, 100.0), tone=BLACK)
-    cx, cz, R = X + 200.0, -186.0, 98.0                                             # bęben przed kabłąkiem: dłoń na chwycie go nie dotyka
-    drum_m = M(steel, "s12_drum", tone="paint", blue=((0.012, 0.012, 0.014), (0.03, 0.03, 0.034)), r0=0.6,
-               engrave=[(cx - 27.0, cx + 27.0, cz - 56.0, cz - 41.0)], eng_style=STENCIL)
+    mm = s12_mats()
+    st, small, bright, bore, choke, wood_m, fore_m, grip_m, drum_m = (mm[k] for k in ("st", "small", "bright", "bore", "choke", "wood", "fore", "grip", "drum"))
+    cx, cz, R = S12_DRUM
     mark = M(plain, "marker", rgb(0.0, 0.0, 0.0), 1.0, 0.0)
     marker_text("SPREAD-12", 9.5, X + 256.0, -22.0, 16.43, mark)
     marker_text("12 / 76", 7.5, X + 30.0, -27.0, -16.43, mark)
-    marker_text("12x25", 11.0, cx + 23.0, cz - 54.0, 37.93, mark)            # na lewym deklu, między żebrami
+    with comp("mag"):
+        marker_text("12x25", 11.0, cx + 23.0, cz - 54.0, 37.93, mark)            # na lewym deklu, między żebrami
 
     ak_receiver(X, st, small, bright)
     # kolba z orzecha ze stalową stopką, chwyt z czarnego tworzywa, kabłąk
@@ -1132,15 +1225,10 @@ def build_spread12():
     swivel(118.0, -95.0, small)
     pgrip("grip", X + 72.0, -38.0, grip_m)
     trig("trigger", X + 74.0, X + 132.0, -38.0, st, small)
-    # gniazdo i wieżyczka podająca bębna, bęben (oś w poprzek broni): płaszcz, dekle z żebrami, klucz naciągu sprężyny po lewej (+Y)
-    box("feed_tower", X + 150.0, X + 228.0, -104.0, -36.0, 14.5, drum_m, bv=1.2, seg=2, r=4.0)
-    revolve("drum", [(-38.0, 0.0), (-38.0, R - 6.0), (-35.5, R), (35.5, R), (38.0, R - 6.0), (38.0, 0.0)], (cx, cz), drum_m, axis="Y", seg=48, bv=0.6)
-    for sy in (-1.0, 1.0):
-        for rr in (34.0, 62.0, 84.0):
-            revolve("drum_rib", [(sy * 38.0, rr - 3.0), (sy * 39.6, rr - 2.0), (sy * 39.6, rr + 2.0), (sy * 38.0, rr + 3.0)], (cx, cz), drum_m, axis="Y", seg=48, bv=0.0)
-    revolve("drum_hub", [(37.0, 0.0), (37.0, 20.0), (44.0, 19.0), (46.0, 15.0), (46.0, 0.0)], (cx, cz), small, axis="Y", seg=24, bv=0.4)
-    box("drum_key", cx - 26.0, cx + 26.0, cz - 5.5, cz + 5.5, 4.0, small, bv=0.8, seg=2, r=4.0, y=50.0)
-    revolve("drum_hub_r", [(-46.0, 0.0), (-46.0, 15.0), (-44.0, 19.0), (-37.0, 20.0), (-37.0, 0.0)], (cx, cz), small, axis="Y", seg=24, bv=0.4)
+    # gniazdo i wieżyczka podająca bębna, bęben (oś w poprzek broni) — podzespół „mag” (bęben 30 i magazynek pudełkowy go zastępują)
+    with comp("mag"):
+        box("feed_tower", X + 150.0, X + 228.0, -104.0, -36.0, 14.5, drum_m, bv=1.2, seg=2, r=4.0)
+        s12_drum(cx, cz, R, 38.0, drum_m, small)
     # przednia wkładka z celownikiem, rura gazowa, łoże z orzecha, obejma
     box("sight_base", 560.0, 604.0, 12.0, 38.0, 12.5, st, bv=1.0, r=3.0)
     prism("sight_leaf", [(566.0, 37.0), (622.0, 40.0), (622.0, 44.0), (566.0, 42.5)], -5.5, 5.5, small, bv=0.5, seg=1)
@@ -1159,7 +1247,8 @@ def build_spread12():
     for sy in (-1.0, 1.0):
         prism("fs_ear", fillet([(868.0, 32.0), (886.0, 32.0), (884.0, 50.0, 2.0), (870.0, 50.0, 2.0)]), sy * 3.0, sy * 5.8, st, bv=0.4, seg=1)
     revolve("fs_post", [(32.0, 0.0), (32.0, 1.3), (47.0, 1.3), (47.0, 0.0)], (877.0, 0.0), small, axis="Z", seg=8, bv=0.0)
-    barrel("choke", 910.0, 960.0, 14.6, 9.25, (0.0, 0.0), choke, bore, depth=40.0, seg=24)
+    with comp("muzzle"):
+        barrel("choke", 910.0, 960.0, 14.6, 9.25, (0.0, 0.0), choke, bore, depth=40.0, seg=24)
     # dłoń tylna na chwycie pistoletowym, przednia pod łożem
     return {"rear": Vector((350.0, 0.0, -140.0)), "fore": Vector((665.0, 0.0, -124.0)), "muzzle": Vector((960.0, 0.0, 0.0)), "hands": 2, "length": 1.0,
             "grip": Vector((342.0, 0.0, -83.0)), "hold": Vector((660.0, 0.0, -36.0))}
@@ -1574,8 +1663,125 @@ BUILDERS = {"m83": build_m83, "spread12": build_spread12, "p64": build_p83, "sru
 
 # ---------------------------------------------------------------- siatka końcowa, UV, wypiek, eksport
 
-def merge_parts():
-    """Stosuje modyfikatory, trianguluje (z zachowaniem normalnych) i łączy części w jeden obiekt."""
+
+# ---------------------------------------------------------------- części broni (parts.gd, etap 2b): bryły w układzie broni w mm
+
+def part_m83_rpk40(spec):
+    mm = m83_mats()
+    m83_mag(mm["mag"], mm["small"], extra=55.0)
+    return {"mount": "frame", "hides": ["mag"]}
+
+
+def part_m83_drum75(spec):
+    """Bęben RPK na 75 naboi: szyjka w gnieździe magazynka, bęben o osi w poprzek broni przed kabłąkiem, piasta z kluczem."""
+    mm = m83_mats()
+    drum_m = M(steel, "m83_drum", tone="paint", blue=((0.012, 0.012, 0.014), (0.03, 0.03, 0.034)), r0=0.6)
+    prism("drum_neck", fillet([(452.0, -28.0), (498.0, -28.0), (502.0, -84.0, 4.0), (452.0, -84.0, 4.0)]), -12.0, 12.0, mm["mag"], bv=1.2, seg=2)
+    s12_drum(500.0, -128.0, 72.0, 34.0, drum_m, mm["small"])
+    return {"mount": "frame", "hides": ["mag"]}
+
+
+def part_m83_rpkbar(spec):
+    mm = m83_mats()
+    m83_front(mm["st"], mm["small"], mm["bright"], mm["lam"], hg_end=746.0, muzzle_end=1000.0, heavy=1.4)
+    return {"mount": "frame", "hides": ["front"], "muzzle": Vector((1000.0, 0.0, 0.0))}
+
+
+def part_m83_short(spec):
+    mm = m83_mats()
+    m83_front(mm["st"], mm["small"], mm["bright"], mm["lam"], hg_end=660.0, muzzle_end=760.0, bayonet=False)
+    return {"mount": "frame", "hides": ["front"], "muzzle": Vector((760.0, 0.0, 0.0))}
+
+
+def part_m83_pbs1(spec):
+    """Tłumik PBS-1: gwint, dwa człony puszki (tylny grubszy z przegrodami, przedni z gumową zatyczką), kanał od czoła."""
+    mm = m83_mats()
+    e = 880.0
+    cyl("thread_ring", e - 34.0, e - 29.0, 10.4, (0.0, 0.0), mm["st"], seg=16, bv=0.4)
+    cyl("can_rear", e - 30.0, e + 92.0, 17.5, (0.0, 0.0), mm["st"], seg=24, bv=0.8)
+    cyl("can_joint", e + 92.0, e + 100.0, 18.6, (0.0, 0.0), mm["small"], seg=24, bv=0.5)
+    barrel("can_front", e + 100.0, e + 166.0, 16.0, 4.6, (0.0, 0.0), mm["st"], mm["bore"], depth=30.0, seg=24)
+    return {"mount": "muzzle", "hides": ["muzzle"], "muzzle_add": 166.0}
+
+
+def part_m83_hider(spec):
+    """Płomieniotłumik szczelinowy: walec z czterema szczelinami na końcu (zamiast skośnego kompensatora)."""
+    mm = m83_mats()
+    e = 880.0
+    cyl("thread_ring", e - 34.0, e - 29.0, 10.4, (0.0, 0.0), mm["st"], seg=16, bv=0.4)
+    hid = barrel("hider", e - 30.0, e + 18.0, 10.8, 7.0, (0.0, 0.0), mm["st"], mm["bore"], depth=34.0, seg=24)
+    for ang in (0.0, 90.0):
+        c = prism("cut_slot", [(e - 8.0, -2.2), (e + 20.0, -2.2), (e + 20.0, 2.2), (e - 8.0, 2.2)], -16.0, 16.0, None, bv=None, part=False)
+        c.rotation_euler = (math.radians(ang), 0.0, 0.0)
+        cut(hid, c)
+    return {"mount": "muzzle", "hides": ["muzzle"], "muzzle_add": 18.0}
+
+
+def part_m83_akms(spec):
+    """Kolba składana AKMS (rozłożona): dwa tłoczone ramiona od zawiasu przy komorze do stopki i stalowa stopka."""
+    mm = m83_mats()
+    X = 300.0
+    for sy in (-1.0, 1.0):
+        arm = strip(spline([(X + 4.0, -14.0), (220.0, -30.0), (110.0, -48.0), (34.0, -62.0)], 6), 13.0)
+        prism("akms_arm", arm, sy * 9.5, sy * 12.5, mm["small"], bv=0.6, seg=1)
+    prism("akms_plate", fillet([(16.0, -22.0, 4.0), (40.0, -30.0, 6.0), (40.0, -98.0, 6.0), (16.0, -104.0, 4.0)]), -12.5, 12.5, mm["small"], bv=1.2, seg=2)
+    box("akms_butt", 6.0, 18.0, -104.0, -22.0, 13.0, mm["small"], bv=1.0, seg=1, r=3.0)
+    revolve("akms_hinge", [(-14.0, 0.0), (-14.0, 6.0), (14.0, 6.0), (14.0, 0.0)], (X + 2.0, -14.0), mm["small"], axis="Y", seg=16, bv=0.4)
+    return {"mount": "frame", "hides": ["stock"]}
+
+
+def part_p64_supp(spec):
+    """Tłumik P-83 na gwintowanej lufie: tuleja gwintu i puszka z kanałem od czoła (oś lufy na z = 101 mm)."""
+    blued = M(steel, "p83supp_blued", blue=BLACKOX, r0=0.4)
+    bore = M(plain, "p83supp_bore", rgb(0.008, 0.008, 0.008), 0.7, 1.0)
+    cyl("thread", 160.0, 176.0, 6.3, (0.0, 101.0), blued, seg=20, bv=0.3)
+    barrel("can", 174.0, 300.0, 13.5, 3.2, (0.0, 101.0), blued, bore, depth=20.0, seg=24)
+    return {"mount": "muzzle", "hides": [], "muzzle_add": 133.5}
+
+
+def part_sp12_drum30(spec):
+    mm = s12_mats()
+    X = 300.0
+    box("feed_tower", X + 150.0, X + 228.0, -104.0, -36.0, 14.5, mm["drum"], bv=1.2, seg=2, r=4.0)
+    s12_drum(505.0, -198.0, 110.0, 44.0, mm["drum"], mm["small"])
+    return {"mount": "frame", "hides": ["mag"]}
+
+
+def part_sp12_box8(spec):
+    """Magazynek pudełkowy na 8 naboi kal. 12 (stal fosforanowana): prosty, lekko pochylony do przodu, stopka i zatrzask."""
+    mm = s12_mats()
+    X = 300.0
+    prism("box_mag", fillet([(X + 152.0, -34.0), (X + 226.0, -34.0), (X + 238.0, -176.0, 6.0), (X + 162.0, -180.0, 6.0)]), -14.0, 14.0, mm["box"], bv=1.4, seg=2)
+    prism("box_floor", fillet([(X + 158.0, -176.0, 2.0), (X + 242.0, -172.0, 2.0), (X + 242.0, -186.0, 3.0), (X + 158.0, -190.0, 3.0)]), -15.5, 15.5, mm["small"],
+          bv=0.8, seg=1)
+    for zz in (-70.0, -110.0, -150.0):
+        prism("box_rib", [(X + 156.0, zz - 3.0), (X + 230.0, zz - 3.0), (X + 230.0, zz + 3.0), (X + 156.0, zz + 3.0)], -14.8, -14.0, mm["box"], bv=0.3, seg=1)
+    return {"mount": "frame", "hides": ["mag"]}
+
+
+def part_sp12_ported(spec):
+    """Lufa z portami: dławik z rzędem owalnych portów gazowych na górze (zamiast gładkiego dławika)."""
+    mm = s12_mats()
+    ch = barrel("choke", 910.0, 960.0, 14.6, 9.25, (0.0, 0.0), mm["choke"], mm["bore"], depth=40.0, seg=24)
+    for i in range(4):
+        x = 918.0 + i * 10.0
+        c = prism("cut_port", fillet([(x, -2.8, 1.2), (x + 6.0, -2.8, 1.2), (x + 6.0, 2.8, 1.2), (x, 2.8, 1.2)]), -3.0, 3.0, None, bv=None, part=False)
+        c.rotation_euler = (math.radians(90.0), 0.0, 0.0)
+        c.location = (0.0, 0.0, 14.0)
+        cut(ch, c)
+    return {"mount": "muzzle", "hides": ["muzzle"], "muzzle_add": 0.0}
+
+
+PART_BUILDERS = {
+    "m83_rpk40": part_m83_rpk40, "m83_drum75": part_m83_drum75, "m83_rpkbar": part_m83_rpkbar, "m83_short": part_m83_short,
+    "m83_pbs1": part_m83_pbs1, "m83_hider": part_m83_hider, "m83_akms": part_m83_akms,
+    "p64_supp": part_p64_supp,
+    "sp12_drum30": part_sp12_drum30, "sp12_box8": part_sp12_box8, "sp12_ported": part_sp12_ported,
+}
+
+
+def merge_parts(name=None):
+    """Stosuje modyfikatory, trianguluje (z zachowaniem normalnych) i łączy części w jeden obiekt. Ściany niosą atrybut „comp” (indeks w COMP_NAMES)."""
     for ob in OBJS:
         tri = ob.modifiers.new("tri", "TRIANGULATE")
         tri.keep_custom_normals = True
@@ -1586,6 +1792,8 @@ def merge_parts():
         me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
         o2 = bpy.data.objects.new(ob.name, me)
         bpy.context.scene.collection.objects.link(o2)
+        at = me.attributes.new("comp", "INT", "FACE")
+        at.data.foreach_set("value", [COMP_NAMES.index(ob.get("comp", "body"))] * len(me.polygons))
         done.append(o2)
     for ob in OBJS + CUTTERS:
         bpy.data.objects.remove(ob, do_unlink=True)
@@ -1594,8 +1802,40 @@ def merge_parts():
     bpy.context.view_layer.objects.active = done[0]
     bpy.ops.object.join()
     ob = bpy.context.view_layer.objects.active
-    ob.name = ob.data.name = "gun_" + KEY
+    ob.name = ob.data.name = name or ("gun_" + KEY)
     return ob
+
+
+def split_comps(ob):
+    """Po wypieku: ściany każdego podzespołu (poza „body”) do osobnego obiektu `<nazwa>__<podzespół>` — ten sam materiał i UV, osobny węzeł GLB."""
+    if ob.data.attributes.get("comp") is None:
+        return
+    for idx, cname in enumerate(COMP_NAMES):
+        vals = [0] * len(ob.data.polygons)
+        ob.data.attributes["comp"].data.foreach_get("value", vals)
+        if idx == 0 or idx not in vals:
+            continue
+        for o in bpy.context.scene.objects:
+            o.select_set(False)
+        ob.select_set(True)
+        bpy.context.view_layer.objects.active = ob
+        bpy.context.tool_settings.mesh_select_mode = (False, False, True)
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="DESELECT")
+        bpy.ops.object.mode_set(mode="OBJECT")
+        at = ob.data.attributes.get("comp")
+        at.data.foreach_get("value", vals)
+        for p in ob.data.polygons:
+            p.select = vals[p.index] == idx
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.separate(type="SELECTED")
+        bpy.ops.object.mode_set(mode="OBJECT")
+        for o in bpy.context.selected_objects:
+            if o != ob:
+                o.name = o.data.name = ob.name + "__" + cname
+    for o in bpy.context.scene.objects:
+        if o.type == "MESH" and o.data.attributes.get("comp") is not None:
+            o.data.attributes.remove(o.data.attributes["comp"])
 
 
 def drop_markers(ob):
@@ -1681,7 +1921,7 @@ def bake(ob):
 
 def export_material(ob, imgs):
     """Jeden materiał z wypieczonymi teksturami w układzie, który eksporter glTF zapisuje jako kolor + ORM + normalne."""
-    m = bpy.data.materials.new("gun_" + KEY)
+    m = bpy.data.materials.new(ob.name)
     m.use_nodes = True
     nt = m.node_tree
     nt.nodes.clear()
@@ -1722,7 +1962,44 @@ def export_material(ob, imgs):
         p.material_index = 0
 
 
+def main_part():
+    """Część broni (PART_BUILDERS): skala i początek układu z broni bazowej, potem tylko bryły części — wypiek, eksport, .json z mocowaniem."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    spec = BUILDERS[KEY]()
+    base = merge_parts()
+    xs = [v.co.x for v in base.data.vertices]
+    sc = (LENGTH or spec["length"]) / (max(xs) - min(xs))
+    bpy.data.objects.remove(base, do_unlink=True)
+    OBJS.clear()
+    CUTTERS.clear()
+    del COMP_NAMES[1:]
+    ps = PART_BUILDERS[PART](spec)
+    ob = merge_parts("gunpart_" + PART)
+    imgs = None
+    if not NOBAKE:
+        unwrap(ob)
+        imgs = bake(ob)
+        drop_markers(ob)
+    print("TRIS", len(ob.data.polygons))
+    export_material(ob, imgs)
+    origin = spec["rear"] if ps["mount"] == "frame" else spec["muzzle"]
+    ob.data.transform(Matrix.Translation(-origin))
+    ob.data.transform(Matrix.Scale(sc, 4))
+    ob.data.update()
+    if not JSON_ONLY:
+        bpy.ops.export_scene.gltf(filepath=DST, export_format="GLB", export_image_format="JPEG", export_jpeg_quality=95, export_animations=False)
+    info = {"weapon": KEY, "mount": ps["mount"], "hides": ps.get("hides", []), "muzzle_add": round(ps.get("muzzle_add", 0.0) * sc, 4)}
+    if ps.get("muzzle") is not None:
+        info["muzzle"] = [round(c, 4) for c in (ps["muzzle"] - spec["rear"]) * sc]
+    with open(DST.rsplit(".", 1)[0] + ".json", "w") as f:
+        json.dump(info, f, indent=1)
+    print("OK", DST, info)
+
+
 def main():
+    if PART:
+        main_part()
+        return
     bpy.ops.wm.read_factory_settings(use_empty=True)
     spec = BUILDERS[KEY]()
     rear, muzzle, length = spec["rear"], spec["muzzle"], LENGTH or spec["length"]
@@ -1739,6 +2016,7 @@ def main():
     ob.data.transform(Matrix.Translation(-rear))
     ob.data.transform(Matrix.Scale(sc, 4))
     ob.data.update()
+    split_comps(ob)
     if not JSON_ONLY:
         bpy.ops.export_scene.gltf(filepath=DST, export_format="GLB", export_image_format="JPEG", export_jpeg_quality=95, export_animations=False)
     rel = lambda v: [round(c, 4) for c in (v - rear) * sc]

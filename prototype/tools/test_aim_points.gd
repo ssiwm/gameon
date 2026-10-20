@@ -4,6 +4,8 @@ extends SceneTree
 ## wychodził z lufy, którą widać. Wypisuje też średnie odchylenie barku modelu od nominalnego (stoi / kuca).
 ## godot --headless --path prototype -s tools/test_aim_points.gd      → ma wypisać PASS
 const Char3D := preload("res://scripts/char3d.gd")
+const Parts := preload("res://scripts/parts.gd")
+const GunModel := preload("res://scripts/gun_model.gd")
 const GUNS := ["m83", "spread12", "p64", "srut8", "lr7", "hkm9", "gniew4", "sokol6", "widmo1", "ciegno6"]
 const LOOKS := ["male_scav", "female_scav", "male_hazmat", "female_medic"]
 const AIMS := [-80, -45, -15, 0, 20, 50, 85]
@@ -71,6 +73,28 @@ func _process(_d: float) -> bool:
 						if absf((apm[1] as Vector2).x + (ap[1] as Vector2).x) > 0.001 or absf((apm[1] as Vector2).y - (ap[1] as Vector2).y) > 0.001:
 							_fail += 1
 							print("FAIL: strona lewa nie jest odbiciem prawej: %s %s %d°" % [look, gun, deg])
+	# części z modelem (1.7.320): wylot rozgrywki z tłumikiem / dłuższą lub krótszą lufą = wylot modelu z tymi częściami
+	_c.set_look("male_scav")
+	for pc in [["m83", ["m83_pbs1"], 1], ["m83", ["m83_rpkbar", "m83_pbs1"], 1], ["m83", ["m83_short"], -1], ["p64", ["p64_supp"], 1], ["spread12", ["sp12_ported"], 0]]:
+		var key := String(pc[0])
+		var fit := Parts.encode_ids(key, pc[1])
+		_c.set_gun(key, fit)
+		var aim := _aim(0.0, 1.0)
+		_c.gun_kick_px = 0.0
+		_c.recoil_px = 0.0
+		_c.reload_t = -1.0
+		_c.hit_t = -1.0
+		_settle("idle", aim, 1.0)
+		var ap: Array = _c.aim_points(aim, 1.0, false, key, fit)
+		var ap0: Array = _c.aim_points(aim, 1.0, false, key, 0)
+		var dev := (_c.muzzle_px as Vector2).distance_to(ap[1])
+		var dx := (ap[1] as Vector2).x - (ap0[1] as Vector2).x
+		var dir_ok := (dx > 0.5) if int(pc[2]) > 0 else ((dx < -0.5) if int(pc[2]) < 0 else absf(dx) < 0.01)
+		print("części %s %s: wylot modelu − rozgrywki %.2f px, wylot przesunięty o %.1f px" % [key, str(pc[1]), dev, dx])
+		if dev > MAX_REST_PX or not dir_ok:
+			_fail += 1
+			print("FAIL: wylot z częściami %s %s (odchylenie %.2f px, przesunięcie %.1f px)" % [key, str(pc[1]), dev, dx])
+	_c.set_gun("m83")
 	for i in 2:
 		var m: Vector3 = sum[i] / maxf(float(cnt[i]), 1.0)
 		print("bark modelu − bark nominalny (%s): (%.3f, %.3f, %.3f) m" % ["kuca" if i == 1 else "stoi", m.x, m.y, m.z])

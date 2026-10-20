@@ -16,6 +16,7 @@ const Combat := preload("res://scripts/combat.gd")
 const Projectile := preload("res://scripts/projectile.gd")
 const Parts := preload("res://scripts/parts.gd")
 const Ammo := preload("res://scripts/ammo.gd")
+const GunModel := preload("res://scripts/gun_model.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
@@ -1960,6 +1961,28 @@ func _t_parts() -> void:
 		Scrap.has_part("m83_rpk40") and Scrap.has_part("m83_rpkbar") and not Scrap.has_part("m83_pbs1") and mig.mag == 40 and Scrap.parts_owned(Weapons.P64) == 3)
 	await clear_fits()
 	equip(Weapons.M83)
+	# model 3D z częściami (1.7.320, gun_model.gd): zastąpione podzespoły znikają, tłumik siedzi na końcu założonej lufy
+	const Char3D := preload("res://scripts/char3d.gd")
+	var with_model := ["m83_rpk40", "m83_drum75", "m83_rpkbar", "m83_short", "m83_pbs1", "m83_hider", "m83_akms", "p64_supp", "sp12_drum30", "sp12_box8", "sp12_ported"]
+	var missing: Array = with_model.filter(func(id: String) -> bool: return not GunModel.has_model(id))
+	check("modele części: %d części ma GLB i opis mocowania (brak: %s)" % [with_model.size(), str(missing)], missing.is_empty())
+	var bm: Vector3 = Char3D.gun_info("m83")["muzzle"]
+	var ids := ["m83_drum75", "m83_rpkbar", "m83_pbs1", "m83_akms"]
+	var gm := GunModel.build("m83", ids, bm)
+	var names: Array = gm.find_children("*", "MeshInstance3D", true, false).map(func(n: Node) -> String: return String(n.name))
+	var gone := not names.any(func(n: String) -> bool: return n.ends_with("__mag") or n.ends_with("__front") or n.ends_with("__muzzle") or n.ends_with("__stock"))
+	var pbs: Node3D = null
+	for n in gm.get_children():
+		if String(n.name).begins_with("gunpart_m83_pbs1"):
+			pbs = n
+	var at_barrel := pbs != null and pbs.position.is_equal_approx(GunModel.barrel_muzzle(bm, ids)) and GunModel.barrel_muzzle(bm, ids).x > bm.x + 0.05
+	check("model M-83 z bębnem, lufą RPK, PBS-1 i kolbą AKMS: fabryczne podzespoły zniknęły (%s), PBS-1 na końcu lufy RPK (%s), wylot pocisku %.2f m dalej" % [str(gone), str(at_barrel), GunModel.muzzle(bm, ids).x - bm.x],
+		gone and at_barrel and GunModel.muzzle(bm, ids).x > GunModel.barrel_muzzle(bm, ids).x)
+	var plain := GunModel.build("m83", [], bm)
+	var pn: Array = plain.find_children("*__*", "MeshInstance3D", true, false).map(func(n: Node) -> String: return String(n.name).get_slice("__", 1))
+	check("model fabryczny M-83 ma podzespoły do podmiany (%s)" % str(pn), pn.has("mag") and pn.has("front") and pn.has("muzzle") and pn.has("stock"))
+	gm.free()
+	plain.free()
 
 ## Szybki pocisk nie może przeskoczyć wąskiego wroga (przeciąganie promienia, nie przesuwany obszar).
 func _t_sweep() -> void:

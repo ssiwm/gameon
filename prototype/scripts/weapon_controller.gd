@@ -233,7 +233,7 @@ func _hand_tip(dir: Vector2, d: WeaponDef) -> Array:
 	if c3d != null and c3d.ready_ok and not bool(player.get("dead")):
 		# postać 3D: chwyt i wylot z pozy nominalnej (Char3D.aim_points) — pocisk wychodzi z lufy, a klatka animacji (bieg, odrzut, obrót modelu,
 		# przeładowanie) nie przesuwa jego toru; ten sam stan gracza daje ten sam punkt u każdego peera
-		var ap: Array = c3d.aim_points(dir, side, bool(player.get("crouching")), String(d.key))
+		var ap: Array = c3d.aim_points(dir, side, bool(player.get("crouching")), String(d.key), d.fit)
 		hand = player.global_position + (ap[0] as Vector2)
 		tip = player.global_position + (ap[1] as Vector2)
 	return [hand, tip]
