@@ -35,6 +35,10 @@ var completed: Dictionary = {}                ## id misji → true (pierwsze uko
 var look := 0                                 ## wygląd (Look.code): płeć × strój; kosmetyka, odblokowywana poziomem
 var equipped: Array = ["", ""]                ## id perków w slotach 0–1 ("" = pusty)
 var fits: Dictionary = {}                     ## klucz broni → {gniazdo: id części | "" (fabryczny)}; brak wpisu = pierwsza odblokowana część (parts.gd)
+var cond: Dictionary = {}                     ## klucz broni → stan techniczny 0..100 % (GUNSMITH_PLAN §6, od 1.7.328); brak wpisu = 100
+var _cond_dirty := false
+var _cond_save_t := 0.0
+const COND_SAVE_EVERY := 30.0                 ## s — stan zmienia się co strzał, więc zapis najwyżej co tyle (i przy wyjściu z gry)
 var last_mission_xp := 0                      ## XP z ostatniej misji (karta wyniku)
 var last_mission_rows: Array = []             ## [[etykieta, XP], …] z ostatniej misji
 var persist := DisplayServer.get_name() != "headless"      ## testy headless nie ruszają prawdziwego profilu
@@ -193,6 +197,40 @@ func unequip(slot: int) -> void:
 		changed.emit()
 		save()
 
+# ---------------------------------------------------------------- stan techniczny broni
+
+## Stan broni `key` (0..100 %).
+func condition(key: String) -> float:
+	return float(cond.get(key, 100.0))
+
+## Zużycie broni `key` o `amount` punktów procentowych (strzały, gorąca lufa, tłumik).
+func wear(key: String, amount: float) -> void:
+	if amount <= 0.0:
+		return
+	cond[key] = maxf(0.0, condition(key) - amount)
+	_cond_dirty = true
+
+## Czyszczenie przy ławie: broń jak nowa.
+func clean(key: String) -> void:
+	cond.erase(key)
+	save()
+	changed.emit()
+
+func _process(delta: float) -> void:
+	if not _cond_dirty:
+		return
+	_cond_save_t += delta
+	if _cond_save_t >= COND_SAVE_EVERY:
+		_cond_save_t = 0.0
+		_cond_dirty = false
+		save()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
+		if _cond_dirty:
+			_cond_dirty = false
+			save()
+
 # ---------------------------------------------------------------- zapis
 
 func save() -> void:
@@ -233,6 +271,7 @@ func save_to(path: String) -> void:
 	cfg.set_value("profile", "equipped", equipped)
 	cfg.set_value("profile", "look", look)
 	cfg.set_value("profile", "fits", fits)
+	cfg.set_value("profile", "cond", cond)
 	cfg.save(path)
 
 func load_from(path: String) -> void:
@@ -250,6 +289,10 @@ func load_from(path: String) -> void:
 		if Perks.is_valid(id):
 			equipped[i] = id
 	fits = (cfg.get_value("profile", "fits", {}) as Dictionary).duplicate(true)
+	cond = {}
+	var cd_in := cfg.get_value("profile", "cond", {}) as Dictionary
+	for k in cd_in:
+		cond[String(k)] = clampf(float(cd_in[k]), 0.0, 100.0)
 	look = int(cfg.get_value("profile", "look", Look.DEFAULT))
 	if not Look.is_unlocked(look, level()):
 		look = Look.DEFAULT
@@ -269,5 +312,7 @@ func reset_for_test() -> void:
 	completed.clear()
 	equipped = ["", ""]
 	fits = {}
+	cond = {}
+	_cond_dirty = false
 	last_mission_xp = 0
 	last_mission_rows = []

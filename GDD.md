@@ -202,6 +202,9 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
   krótkie [R] to szybkie przeładowanie — magazynek z resztkami spada na ziemię i trzeba po niego kucnąć; przytrzymane [R] — wolniejsze, resztki zostają
 - **Przebijalność (od 1.7.327):** kula 7,62 przechodzi przez skrzynię albo jedno ciało (słabsza za nim), BZ przez dwa ciała albo stalową beczkę,
   9×18 i śrut zostają w pierwszym celu; kula od blachy pod ostrym kątem odbija się (rykoszet z połową siły)
+- **Stan broni (od 1.7.328, ustawienie „Weapon reliability”):** każdy strzał trochę zużywa broń; poniżej 70 % stanu broń palna czasem się zacina
+  (niewypał, zacięta łuska, podwójne podanie) — krótkie [R] przeładowuje rączką, P-83 strzela przy drugim pociągnięciu spustu. Brudną broń
+  czyści się przy ławie w warsztacie za kilka złomu
   autorytatywny na serwerze; sidearm ∞. Wrogowie upuszczają amunicję tylko do broni, którą ktoś nosi; skrzynie
   z mapy zasilają wszystkie noszone bronie główne.
 - **Hałas:** każda broń ma własny `heat_gain`/`heat_decay` (wcześniej wspólny decay sprawiał, że rozgrzewała się

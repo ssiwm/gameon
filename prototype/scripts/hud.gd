@@ -1544,12 +1544,20 @@ func _drive_weapons() -> void:
 			note = "NO AMMO"
 		elif mag <= maxi(1, int(cur.mag * 0.25)):
 			col = UiTheme.ACCENT if mag > 0 else UiTheme.DANGER
-	if wc.state == wc.State.RELOAD:
+	var jam: String = wc.jammed(cur.id)
+	if wc.state == wc.State.RELOAD and wc.clearing:
+		note = tr("CLEARING %d%%") % int(wc.reload_progress() * 100.0)
+	elif jam != "":
+		col = UiTheme.DANGER
+		note = tr("MISFIRE — PULL AGAIN") if (jam == "misfire" and String(cur.key) == "p64") else tr("JAMMED — [%s] CLEAR") % Actions.key("reload")
+	elif wc.state == wc.State.RELOAD:
 		note = tr("RELOADING %d%%") % int(wc.reload_progress() * 100.0)
 	elif wc.state == wc.State.CHARGE:
 		note = tr("CHARGING %d%%") % int(wc.charge * 100.0)
 	elif note == "" and cur.uses_ammo() and mag <= 0 and wc.ammo_enabled:
 		note = tr("[%s] RELOAD") % Actions.key("reload")
+	elif note == "" and Settings.reliability_mult() > 0.0 and not cur.is_melee() and wc.condition_of(cur.id) < wc.DIRTY_AT:
+		note = tr("DIRTY %d%%") % int(wc.condition_of(cur.id))           # brudna broń zacina się częściej — wyczyść ją przy ławie
 	_ammo_mag.add_theme_color_override("font_color", col)
 	_ammo_note.text = note
 	# pasek przeładowania / ładowania szyny pod liczbami

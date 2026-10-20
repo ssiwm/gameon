@@ -199,6 +199,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_handling_climb()
 	await _t_hot_barrel()
 	await _t_two_reloads()
+	await _t_condition_jams()
 	await _t_penetration()
 	await _t_homing()
 	await _t_bolt()
@@ -2094,6 +2095,120 @@ func _t_penetration() -> void:
 	check("rykoszet: od blachy pod 10° kula odbija się w górę (%s), pod 55° nie (%s), od betonu nie (%s) [kafel wolny: %s]" % [str(bounced), str(steep_none), str(concrete_none), str(free_cell)],
 		free_cell and bounced and steep_none and concrete_none)
 	free_dummies()
+	await _settle_player()
+
+## Stan techniczny i zacięcia, etap 4a (1.7.328, GUNSMITH_PLAN.md §6): zużycie na strzał (×wear broni, ×3 przy gorącej lufie, ×1,5 z tłumikiem,
+## ×ustawienie), szansa zacięcia od 70 % stanu w dół, bezpieczne pierwsze strzały magazynka i przerwa między zacięciami; zacięcie łuski,
+## niewypał (P-83: drugie pociągnięcie spustu) i podwójne podanie usuwa [R]; czyszczenie przy ławie za złom.
+func _t_condition_jams() -> void:
+	var rel0: int = Settings.reliability_idx
+	var cond0: Dictionary = Profile.cond.duplicate()
+	Settings.reliability_idx = 1
+	Profile.cond = {}
+	var md := equip(Weapons.M83)
+	await _settle_player()
+	wc.cool()
+	for i in 10:
+		wc.cd = 0.0
+		wc._fire_shot(md)
+	var c10: float = Profile.condition("m83")
+	check("zużycie: 10 strzałów z M-83 = −%.2f %% (%.2f)" % [10.0 * Controller.WEAR_SHOT * md.wear, c10], absf(100.0 - c10 - 10.0 * Controller.WEAR_SHOT * md.wear) < 0.001)
+	wc._barrel[md.id] = 1.0
+	var sup := Weapons.def_build(Weapons.M83, bld(Weapons.M83, ["m83_pbs1"], 0))
+	var before: float = Profile.condition("m83")
+	wc._fire_shot(sup)
+	var hot_sup: float = before - Profile.condition("m83")
+	check("zużycie: gorąca lufa ×%.0f i tłumik ×%.1f (%.4f %% na strzał)" % [Controller.WEAR_HOT, Controller.WEAR_CAN, hot_sup],
+		absf(hot_sup - Controller.WEAR_SHOT * md.wear * Controller.WEAR_HOT * Controller.WEAR_CAN) < 0.0001)
+	Settings.reliability_idx = 0
+	before = Profile.condition("m83")
+	wc._fire_shot(md)
+	check("niezawodność OFF: bez zużycia i zacięć (%.3f, szansa %.4f)" % [before - Profile.condition("m83"), wc.jam_chance(md)], Profile.condition("m83") == before and wc.jam_chance(md) == 0.0)
+	Settings.reliability_idx = 1
+	wc.cool()
+	# szansa zacięcia ze stanu
+	var ch := func(c: float) -> float:
+		Profile.cond["m83"] = c
+		return wc.jam_chance(md)
+	var c100: float = ch.call(100.0)
+	var c70: float = ch.call(70.0)
+	var c30: float = ch.call(30.0)
+	var c0: float = ch.call(0.0)
+	Settings.reliability_idx = 2
+	var vet30: float = ch.call(30.0)
+	Settings.reliability_idx = 1
+	check("szansa zacięcia: 100 %% i 70 %% — 0, 30 %% — 1/%.0f, 0 %% — 1/%.0f, WETERAN ×2 (1/%.0f); LR-7 się nie zacina" % [1.0 / c30, 1.0 / c0, 1.0 / vet30],
+		c100 == 0.0 and c70 == 0.0 and absf(c30 - 1.0 / 150.0) < 0.00001 and c0 > c30 and absf(vet30 - 2.0 * c30) < 0.00001 and wc.jam_chance(Weapons.def(Weapons.LR7)) == 0.0)
+	wc._shots_mag[md.id] = 0
+	var safe_first: bool = wc._roll_jam(md) == ""
+	wc._shots_mag[md.id] = 10
+	wc._last_jam_ms = Time.get_ticks_msec()
+	var safe_gap: bool = wc._roll_jam(md) == ""
+	wc._last_jam_ms = -100000
+	check("zacięcie nigdy w pierwszych %d strzałach magazynka (%s) ani dwa razy w 10 s (%s)" % [Controller.JAM_SAFE_SHOTS, str(safe_first), str(safe_gap)], safe_first and safe_gap)
+	Profile.cond = {}
+	# zacięcie łuski: strzał wychodzi, następny — klik; [R] przeładowuje rączką (0,6 s), naboje bez straty
+	wc.mags[md.id] = 20
+	wc.sim_jam = "stovepipe"
+	wc.cd = 0.0
+	wc._handle_shot(md, true)
+	var after_jam: int = wc.mag_of(md.id)
+	wc.cd = 0.0
+	wc._dry_latch = false
+	wc._handle_shot(md, true)
+	var clicked: bool = wc.mag_of(md.id) == after_jam and wc.jammed(md.id) == "stovepipe"
+	wc._dry_latch = false
+	var started: bool = wc.try_reload()
+	var clearing: bool = wc.state == Controller.State.RELOAD and wc.clearing
+	wc._tick_reload(Controller.CLEAR_TIME + 0.05)
+	check("zacięcie łuski: strzał wyszedł (%d), potem klik (%s), [R] — przeładowanie rączką (%s), po %.1f s gotowa, bez straty naboju (%d)" % [after_jam, str(clicked), str(started and clearing), Controller.CLEAR_TIME, wc.mag_of(md.id)],
+		after_jam == 19 and clicked and started and clearing and wc.state == Controller.State.READY and wc.jammed(md.id) == "" and wc.mag_of(md.id) == 19)
+	# niewypał: strzału nie ma, [R] wyrzuca nabój
+	wc.sim_jam = "misfire"
+	wc.cd = 0.0
+	wc._handle_shot(md, true)
+	var mis_mag: int = wc.mag_of(md.id)
+	wc._dry_latch = false
+	wc.try_reload()
+	wc._tick_reload(Controller.CLEAR_TIME + 0.05)
+	check("niewypał: bez strzału (%d), [R] wyrzuca nabój (%d)" % [mis_mag, wc.mag_of(md.id)], mis_mag == 19 and wc.mag_of(md.id) == 18 and wc.jammed(md.id) == "")
+	# podwójne podanie: dłuższe usuwanie, jeden nabój stracony
+	wc.sim_jam = "double"
+	wc.cd = 0.0
+	wc._handle_shot(md, true)
+	wc._dry_latch = false
+	wc.try_reload()
+	wc._tick_reload(Controller.CLEAR_TIME + 0.05)
+	var still: bool = wc.state == Controller.State.RELOAD
+	wc._tick_reload(Controller.DOUBLE_FEED_EXTRA)
+	check("podwójne podanie: usuwanie %.1f s (po %.1f s jeszcze trwa: %s), jeden nabój stracony (%d)" % [Controller.CLEAR_TIME + Controller.DOUBLE_FEED_EXTRA, Controller.CLEAR_TIME, str(still), wc.mag_of(md.id)],
+		still and wc.state == Controller.State.READY and wc.mag_of(md.id) == 16 and wc.jammed(md.id) == "")
+	# P-83: niewypał usuwa drugie pociągnięcie spustu (podwójne działanie)
+	var pd := equip(Weapons.P64)
+	await frames(2)
+	wc.sim_jam = "misfire"
+	wc.cd = 0.0
+	wc._buf_t = 0.1
+	wc._handle_shot(pd, false)
+	var p_mag: int = wc.mag_of(pd.id)
+	wc._dry_latch = false
+	wc._buf_t = 0.1
+	wc.cd = 0.0
+	wc._handle_shot(pd, false)
+	check("P-83: niewypał (%d), drugie pociągnięcie strzela (%d), bez [R]" % [p_mag, wc.mag_of(pd.id)], p_mag == pd.mag and wc.mag_of(pd.id) == pd.mag - 1 and wc.jammed(pd.id) == "")
+	# czyszczenie przy ławie: 1 złom za każde rozpoczęte 10 % zużycia
+	var bank0: int = Scrap.bank
+	Scrap.bank = 100
+	Profile.cond["m83"] = 55.0
+	var cost: int = Scrap.clean_cost(Weapons.M83)
+	Scrap.request_clean(Weapons.M83)
+	await frames(2)
+	check("czyszczenie: stan 55 %% kosztuje %d złomu, potem 100 %% (%.0f), bank %d" % [cost, Profile.condition("m83"), Scrap.bank],
+		cost == 5 and Profile.condition("m83") == 100.0 and Scrap.bank == 95 and Scrap.clean_cost(Weapons.M83) == 0)
+	Scrap.bank = bank0
+	Profile.cond = cond0
+	Settings.reliability_idx = rel0
+	equip(Weapons.M83)
 	await _settle_player()
 
 ## Amunicja według kalibru (1.7.317, GUNSMITH_PLAN.md etap 1): wspólna pula 12/70, typy naboi (US, BZ, breneka, zapalające, gumowe),

@@ -61,8 +61,24 @@ const MAG_OUT_AT := 0.25          ## s od początku przeładowania: magazynek wy
 const TAC_EXTRA := 0.4
 const MAG_DROP_NOISE := 0.15      ## magazynek uderza o ziemię
 const MAG_MAX := 16               ## tyle magazynków najwyżej leży na mapie (serwer usuwa najstarsze)
+## Stan techniczny i zacięcia (§6, etap 4a, od 1.7.328; ustawienie „Weapon reliability”, Settings.reliability_mult): broń gracza zużywa się
+## z każdym strzałem (Profile.cond), a poniżej JAM_FROM % zaczyna się zacinać. Zacięcie to chwila napięcia, nie kara: zawsze usuwa je [R].
+const WEAR_SHOT := 0.02           ## % stanu na strzał (× WeaponDef.wear × ustawienie)
+const WEAR_HOT := 3.0             ## lufa gorętsza niż HOT_WEAR_AT — zużycie ×3
+const HOT_WEAR_AT := 0.8
+const WEAR_CAN := 1.5             ## tłumik: gazy cofają się do mechanizmu
+const JAM_FROM := 70.0            ## % stanu, poniżej którego broń zaczyna się zacinać…
+const JAM_SPAN := 40.0            ## …a przy JAM_FROM − JAM_SPAN (30 %) zacina się raz na JAM_ODDS strzałów
+const JAM_ODDS := 150.0
+const JAM_SAFE_SHOTS := 3         ## nigdy w pierwszych strzałach magazynka
+const JAM_GAP_MS := 10000         ## nigdy dwa razy w 10 s
+const CLEAR_TIME := 0.6           ## s — przeładowanie rączką (niewypał, zacięcie łuski)
+const DOUBLE_FEED_EXTRA := 1.0    ## s — podwójne podanie: magazynek wyjąć, przeładować rączką, włożyć
+const NOISE_CLEAR := 0.18
+const DIRTY_AT := 40.0            ## % — HUD ostrzega, że broń jest brudna
 
 signal shot(w: int)
+signal jam_started(w: int, kind: String)        ## „misfire” | „stovepipe” | „double”
 signal reload_started(w: int)
 signal dry_fired(w: int)
 signal weapon_changed(w: int)
@@ -96,6 +112,12 @@ var sim_reload_hold := false
 var tactical := false             ## bieżące przeładowanie jest taktyczne (resztki zostają)
 var dropped_mags := 0             ## ile magazynków z resztkami gracz upuścił (podpowiedź o podnoszeniu)
 var _rl_out := -1.0               ## s do wyjęcia magazynka (< 0 — rozstrzygnięte albo nie dotyczy)
+var jams: Dictionary = {}         ## id broni → zacięcie czekające na usunięcie: "misfire" | "stovepipe" | "double"
+var sim_jam := ""                 ## testy: następna próba strzału kończy się tym zacięciem
+var jam_count := 0                ## ile zacięć miał gracz (podpowiedź)
+var clearing := false             ## trwa usuwanie zacięcia (stan RELOAD)
+var _shots_mag: Dictionary = {}   ## id broni → strzały od ostatniego przeładowania
+var _last_jam_ms := -100000
 var recoil := 0.0                 ## 0..1 — wizualne cofnięcie broni (widok)
 var cd := 0.0
 var melee_total := 0.35
@@ -210,6 +232,79 @@ func heat_of(w: int) -> float:
 ## Temperatura lufy broni `w` (0..1).
 func barrel_of(w: int) -> float:
 	return float(_barrel.get(w, 0.0))
+
+## Stan techniczny broni `w` tego gracza (0..100 %).
+func condition_of(w: int) -> float:
+	return Profile.condition(String(Weapons.def(w).key))
+
+## Zacięcie broni `w` czekające na usunięcie ("" — brak).
+func jammed(w: int) -> String:
+	return String(jams.get(w, ""))
+
+## Szansa zacięcia na strzał: 0 powyżej JAM_FROM % stanu, potem rośnie (1/150 przy 30 %, ok. 1/86 przy 0 %); ustawienie ją mnoży.
+func jam_chance(d: WeaponDef) -> float:
+	var m := Settings.reliability_mult()
+	if m <= 0.0 or not d.can_jam():
+		return 0.0
+	return clampf((JAM_FROM - condition_of(d.id)) / JAM_SPAN, 0.0, 1.75) / JAM_ODDS * m
+
+## Zużycie broni strzałem (tylko człowiek, właściciel — stan siedzi w jego profilu).
+func _wear_shot(d: WeaponDef) -> void:
+	if player == null or player.is_bot or not is_owner():
+		return
+	var a := WEAR_SHOT * d.wear * Settings.reliability_mult()
+	if barrel_of(d.id) >= HOT_WEAR_AT:
+		a *= WEAR_HOT
+	if d.suppressor > 0.0:
+		a *= WEAR_CAN
+	Profile.wear(String(d.key), a)
+
+## Losuje zacięcie przy próbie strzału: niewypał (połowa), zacięcie łuski, rzadko podwójne podanie. Nigdy w pierwszych strzałach
+## magazynka i nigdy dwa razy w JAM_GAP_MS.
+func _roll_jam(d: WeaponDef) -> String:
+	if sim_jam != "":
+		var j := sim_jam
+		sim_jam = ""
+		return j
+	if player.is_bot or int(_shots_mag.get(d.id, 0)) < JAM_SAFE_SHOTS or Time.get_ticks_msec() - _last_jam_ms < JAM_GAP_MS:
+		return ""
+	if randf() >= jam_chance(d):
+		return ""
+	var r := randf()
+	return "misfire" if r < 0.5 else ("stovepipe" if r < 0.9 else "double")
+
+func _start_jam(d: WeaponDef, kind: String) -> void:
+	jams[d.id] = kind
+	_last_jam_ms = Time.get_ticks_msec()
+	jam_count += 1
+	_burst_left = 0
+	jam_started.emit(d.id, kind)
+
+## Spust przy zaciętej broni: klik (jak na pustym), bez automatycznego przeładowania.
+func _jam_click(d: WeaponDef) -> void:
+	_buf_t = 0.0
+	if _dry_latch:
+		return
+	_dry_latch = true
+	Audio.play("dry_fire", Audio.BUS_WEAPONS, -8.0, 0.9)
+	NoiseMgr.add_noise(NOISE_DRY, player.global_position, "dry")
+	dry_fired.emit(d.id)
+
+## [R] przy zaciętej broni: przeładowanie rączką (0,6 s, mały hałas); podwójne podanie — z wyjęciem magazynka (+1 s).
+func _start_clear(d: WeaponDef) -> void:
+	firing = false
+	_burst_left = 0
+	state = State.RELOAD
+	clearing = true
+	tactical = false
+	_rl_out = -1.0
+	_rl_req = false
+	_rl_pending = 0
+	_rl_total = CLEAR_TIME + (DOUBLE_FEED_EXTRA if jammed(d.id) == "double" else 0.0)
+	_rl_left = _rl_total
+	NoiseMgr.add_noise(NOISE_CLEAR, player.global_position, "reload")
+	if is_owner():
+		Audio.play_variant("reload_bolt", 1, Audio.BUS_WEAPONS, -8.0, 1.05)
 
 ## Rozgrzewa lufę jednym strzałem.
 func _heat_barrel(d: WeaponDef) -> void:
@@ -356,6 +451,9 @@ func reset() -> void:
 		mags[w] = def_of(w).mag
 	_heat.clear()
 	_barrel.clear()
+	jams.clear()
+	_shots_mag.clear()
+	clearing = false
 	bloom = 0.0
 	climb = 0.0
 	recoil = 0.0
@@ -541,10 +639,25 @@ func _handle_shot(d: WeaponDef, held: bool) -> void:
 		_cancel_reload()
 	if state != State.READY or cd > 0.0:
 		return
+	var jam := jammed(d.id)
+	if jam != "":
+		if jam == "misfire" and d.key == "p64" and _buf_t > 0.0 and not _dry_latch:
+			jams.erase(d.id)                               # P-83 (podwójne działanie): drugie pociągnięcie spustu uderza kurkiem jeszcze raz
+		else:
+			_jam_click(d)
+			return
 	if not _has_ammo(d):
 		_burst_left = 0
 		_dry_fire(d)
 		return
+	if jam == "":
+		var j := _roll_jam(d)
+		if j != "":
+			_start_jam(d, j)
+			if j == "misfire":
+				_jam_click(d)                              # niewypał: kurek uderzył, strzału nie ma
+				return
+			# zacięcie łuski / podwójne podanie: ten strzał wychodzi, następny już nie
 	_buf_t = 0.0
 	_fire_shot(d)
 
@@ -616,6 +729,8 @@ func _fire_shot(d: WeaponDef) -> void:
 	var seed := randi()
 	if ammo_enabled and d.uses_ammo():
 		mags[d.id] = mag_of(d.id) - d.ammo_per_shot
+	_shots_mag[d.id] = int(_shots_mag.get(d.id, 0)) + 1
+	_wear_shot(d)
 	var heat := heat_of(d.id)
 	var bursting := is_burst(d)
 	NoiseMgr.add_noise(d.noise(heat) * (d.burst_quiet if bursting else 1.0) * hot_can_mult(d), player.global_position, "shot:" + d.key)
@@ -890,6 +1005,11 @@ func try_reload(auto := false) -> bool:
 	var d := cur()
 	if not d.uses_ammo() or state != State.READY:
 		return false
+	if jammed(d.id) != "":
+		if not auto:
+			_start_clear(d)                                # [R] przy zacięciu: najpierw usunąć zacięcie
+		return not auto
+	_shots_mag[d.id] = 0
 	var t := next_ammo_of(d.id)
 	var swap := t != ammo_of(d.id)                     # inny typ naboju: cały magazynek (z komorą) wraca do zapasu, ładujemy nowy
 	var cap := d.capacity(mag_of(d.id) > 0)           # nabój w komorze: z pełnym magazynkiem można jeszcze dołożyć jeden (30+1)
@@ -948,6 +1068,14 @@ func _begin_round(d: WeaponDef) -> void:
 
 func _tick_reload(delta: float) -> void:
 	var d := cur()
+	if clearing:
+		_rl_left -= delta
+		if _rl_left <= 0.0:
+			if jammed(d.id) in ["misfire", "double"]:
+				mags[d.id] = maxi(0, mag_of(d.id) - 1)          # nabój z komory wylatuje na ziemię
+			jams.erase(d.id)
+			_finish_reload()
+		return
 	if _rl_out >= 0.0:
 		_rl_out -= delta
 		if _rl_out < 0.0:
@@ -1028,6 +1156,7 @@ func _finish_reload() -> void:
 	_rl_pending = 0
 	_rl_left = 0.0
 	_rl_out = -1.0
+	clearing = false
 
 func _cancel_reload() -> void:
 	var d := cur()
