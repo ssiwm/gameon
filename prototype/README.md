@@ -34,7 +34,7 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7 (Forward+). Rozgrywka to sym
   (drugi klik w 3 s). Pomijany w headless i przy starcie z `--host` / `--join` / `--steam-*`. **Esc / Start** otwiera menu ustawień także
   przed grą; w sesji **LEAVE SESSION** wraca do ekranu startowego (`Main.leave_session`).
 - **Esc / P / Start** — menu pauzy: głośność (suwaki: ogólna, muzyka, otoczenie, efekty), wstrząsy kamery (FULL / HALF / OFF), klawisz
-  skradania (HOLD / TOGGLE), podpowiedzi, mikrofon (krzyk), **obraz bez restartu** (rozmiar okna, V-Sync, limit klatek, jakość efektów
+  skradania (HOLD / TOGGLE), obsługa broni (REALISTIC — podrzut przy myszy i oparcie, CLASSIC — dawny rozrzut serii; `WEAPONS.md` §20), podpowiedzi, mikrofon (krzyk), **obraz bez restartu** (rozmiar okna, V-Sync, limit klatek, jakość efektów
   LOW / MEDIUM / HIGH, efekty pogody), pełny ekran (też F11), **dostępność** („Reduce effects” — bez wstrząsów, aberracji, pulsu
   tętna i migotania; napisy dźwięków; filtr widzenia barw: protanopia / deuteranopia / tritanopia) i **język** (ENGLISH / POLSKI).
   Ustawienia zapisują się w `user://settings.cfg`. W trybie solo gra jest zatrzymana; w kooperacji świat idzie dalej (menu to mówi)

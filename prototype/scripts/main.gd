@@ -1465,6 +1465,13 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 	for sa in OS.get_cmdline_user_args():
 		if sa.begins_with("--shotplayer="):               # dev: --shotplayer=hit|down|revive — zdarzenie gracza 1 po 1 s (podgląd animacji postaci 3D)
 			get_tree().create_timer(1.0).timeout.connect(_dev_player.bind(sa.substr("--shotplayer=".length())))
+	if "--shotbrace" in OS.get_cmdline_user_args():
+		var bp: Node2D = _players.get_node_or_null("1")      # dev: --shotbrace — skrzynia tuż przed graczem 1: broń oparta, podpórka pod celownikiem
+		if bp != null:
+			var cr: RigidBody2D = (load("res://scripts/prop.gd") as GDScript).new()
+			cr.kind = "crate"
+			cr.position = bp.global_position + Vector2(12.5, -1.0)
+			level.add_child(cr)
 	if flicker:
 		Lights.flicker_until_ms = Time.get_ticks_msec() + int(delay * 1000.0) + 3000      # podgląd efektu migotania świateł (dread.gd)
 	await get_tree().create_timer(delay).timeout

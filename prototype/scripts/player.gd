@@ -129,6 +129,7 @@ var _down_t := 0.0
 var kit := Vector3i(Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Weapons.START_MELEE)
 ## Celowanie myszą (swobodne) a klawiaturą (8 kierunków) — celownik rysuje się odpowiednio.
 var aim_by_mouse := false
+var _climb_rot := 0.0                 ## lokalnie: o ile (rad) podrzut obrócił aim_dir w tej klatce — cofany przed wyborem kierunku w następnej
 var mouse_aim := false                ## lokalnie: tryb celowania myszą (włącza go mysz, wyłącza spust z klawiatury i pad — `aim_mode_after`)
 const MOUSE_AIM_MOVE := 3.0           ## px ruchu myszy w jednym zdarzeniu, od których mysz przejmuje celowanie (drżenie ręki nie przełącza)
 const MOUSE_AIM_MIN := 6.0            ## px: kursor bliżej dłoni nie zmienia kierunku
@@ -665,9 +666,15 @@ func _local_brain(delta: float) -> void:
 	# celowanie przed strzałem: kula tej klatki leci tam, gdzie celownik tej klatki
 	var aim_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	var to_mouse := get_global_mouse_position() - _aim_origin() if mouse_aim else Vector2.ZERO
-	var aim: Array = pick_aim(aim_dir, Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down"), aim_input, mouse_aim, to_mouse)
+	# bez podrzutu z poprzedniej klatki (kursor na dłoni zostawia stary kierunek — podrzut nie może się na nim kumulować)
+	var aim: Array = pick_aim(aim_dir.rotated(-_climb_rot), Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down"), aim_input, mouse_aim, to_mouse)
 	aim_dir = aim[0]
 	aim_by_mouse = aim[1]
+	_climb_rot = 0.0
+	if weapons.climb_mode():
+		var raw := aim_dir
+		aim_dir = weapons.apply_climb(aim_dir)               # podrzut unosi lufę (i ręce postaci); celownik pokazuje, gdzie poleci kula
+		_climb_rot = raw.angle_to(aim_dir)
 	weapons.tick_local(delta, busy or stun_t > 0.0)          # ogłuszony nie strzela, nie przeładowuje, nie bije i nie zmienia broni, ale chodzi (Kapłan, F4)
 
 	var move_x := 0.0 if (busy or grabbed or weapons.inspect_item != null) else Input.get_axis("move_left", "move_right")

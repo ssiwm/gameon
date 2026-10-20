@@ -395,6 +395,11 @@ static func spread_radius(d: WeaponDef, extra_deg: float, dist: float, scale := 
 func _draw_crosshair(d: WeaponDef) -> void:
 	var k := CROSS_SCALE
 	var aim_w := _aim_world()
+	var cursor := aim_w
+	if player.aim_by_mouse and ctrl.climb > 0.05:
+		# podrzut: celownik na torze uniesionej lufy (tam poleci kula), kursor zostaje — widać, ile ściągnąć w dół
+		var mz: Vector2 = ctrl.muzzle_pos(player.aim_dir, d)
+		aim_w = mz + player.aim_dir * mz.distance_to(cursor)
 	var at := aim_w - player.global_position
 	var r := spread_radius(d, ctrl.spread_extra(d), ctrl.muzzle_pos(player.aim_dir, d).distance_to(aim_w), k)
 	var w := maxf(1.0 * k, 0.8)            ## grubość linii nie schodzi poniżej ~1 px sprite'a
@@ -409,6 +414,15 @@ func _draw_crosshair(d: WeaponDef) -> void:
 	for dir in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
 		_fx.draw_line(at + dir * r, at + dir * (r + 2.6 * k), col, w)
 	_fx.draw_circle(at, 0.7 * k, col)
+	if cursor.distance_to(aim_w) > 1.5 * k:
+		_fx.draw_circle(cursor - player.global_position, 0.6 * k, Color(col, col.a * 0.45))
+	if ctrl.braced:
+		# oparcie: podpórka pod celownikiem (półka z dwiema nóżkami)
+		var by := r + 3.5 * k
+		var bc := Color(0.7, 1.0, 0.75, col.a)
+		_fx.draw_line(at + Vector2(-3.0 * k, by), at + Vector2(3.0 * k, by), bc, w)
+		_fx.draw_line(at + Vector2(-3.0 * k, by), at + Vector2(-3.0 * k, by + 1.6 * k), bc, w)
+		_fx.draw_line(at + Vector2(3.0 * k, by), at + Vector2(3.0 * k, by + 1.6 * k), bc, w)
 	# pasek ciepła lufy (hałas rośnie z ciepłem): łuk wokół celownika
 	var heat: float = ctrl.heat_of(d.id)
 	if d.n_max > d.n_min:
