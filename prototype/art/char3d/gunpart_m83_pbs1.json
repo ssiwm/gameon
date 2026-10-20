@@ -1,0 +1,8 @@
+{
+ "weapon": "m83",
+ "mount": "muzzle",
+ "hides": [
+  "muzzle"
+ ],
+ "muzzle_add": 0.166
+}

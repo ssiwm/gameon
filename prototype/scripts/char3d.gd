@@ -13,6 +13,8 @@ extends Node2D
 ## Zwrot w lewo: w widoku 3D model obraca się wokół pionu (`model_yaw`, obrót przodem do kamery w TURN_TIME) — broń zostaje w prawej
 ## ręce, więc patrząc w lewo postać pokazuje lewy bok; w podglądzie 2D (sprite) to dalej odbicie flip_h.
 
+const GunModel := preload("res://scripts/gun_model.gd")
+const Parts := preload("res://scripts/parts.gd")
 const CHAR_H_M := 1.8                       ## wysokość postaci odniesienia (m)
 const CHAR_H_WP := 22.0                     ## ... w pikselach świata
 const WP_PER_M := CHAR_H_WP / CHAR_H_M
@@ -175,6 +177,7 @@ var _char_name := ""
 var _sk: Skeleton3D
 var _gun: Node3D
 var _gun_key := ""
+var _gun_fit := 0                              ## kod części trzymanej broni (parts.gd) — model z częściami (gun_model.gd)
 var _hands := 2
 var _gun_len := 1.2
 var _gun_info := {"rear": Vector3.ZERO, "fore": Vector3(0.4, 0.03, 0.0), "muzzle": Vector3(0.9, 0.08, 0.0)}   ## dane trzymanej broni (gun_info): układ Godota (x, y w górę, z do kamery)
@@ -680,33 +683,39 @@ func _place_cameras() -> void:
 		_camn.transform = xf
 
 ## Wymiana broni (klucz z weapon_def: m83, p64, maczeta…). Brak modelu → karabin M-83.
-func set_gun(key: String) -> void:
-	if key == _gun_key and _gun != null:
+## Broń w dłoniach: klucz i kod zamontowanych części (`fit`, parts.gd) — części z modelem są widoczne (gun_model.gd), a wylot pocisku
+## i błysku liczy się z założonej lufy i tłumika.
+func set_gun(key: String, fit := 0) -> void:
+	if key == _gun_key and fit == _gun_fit and _gun != null:
 		return
 	var path := DIR + "gun_%s.glb" % key
 	if not ResourceLoader.exists(path):
 		key = DEFAULT_GUN
 		path = DIR + "gun_%s.glb" % key
-		if key == _gun_key and _gun != null:
+		fit = 0
+		if key == _gun_key and fit == _gun_fit and _gun != null:
 			return
 	if _gun != null:
 		_gun.queue_free()
 	if _gun_n != null:
 		_gun_n.queue_free()
 		_gun_n = null
-	_gun = (load(path) as PackedScene).instantiate()
+	var ids := Parts.decode(key, fit)
+	var base_muzzle: Vector3 = gun_info(key)["muzzle"]
+	_gun = GunModel.build(key, ids, base_muzzle)
 	_gun.visible = false                                     # do pierwszej pozy (update ustawia transformację i widoczność) — bez błysku w zerze świata
 	_root3d.add_child(_gun)
 	_tune_gun_materials(_gun)
 	if _camn != null:                                        # kopia broni na warstwie 2 (osobny egzemplarz sceny, ta sama transformacja)
-		_gun_n = (load(path) as PackedScene).instantiate()
+		_gun_n = GunModel.build(key, ids, base_muzzle)
 		_gun_n.visible = false
 		_root3d.add_child(_gun_n)
 		for mi in _gun_n.find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).layers = 2
 			(mi as MeshInstance3D).material_override = _normal_mat
 	_gun_key = key
-	_gun_info = gun_info(key)
+	_gun_fit = fit
+	_gun_info = info_with(key, ids)
 	_hands = int(_gun_info["hands"])
 	_gun_len = float(_gun_info["length"])
 
@@ -729,6 +738,15 @@ func _tune_gun_materials(root: Node) -> void:
 
 ## Dane broni z `gun_<klucz>.json` w układzie Godota (x wzdłuż lufy, y w górę, z ku prawej stronie postaci), raz na sesję: rear = początek układu modelu,
 ## grip = środek chwytu (dłoń tylna), hold = spód łoża (dłoń przednia; hold_v = chwyt przedni pionowy), fore = stary punkt dłoni przedniej, muzzle = wylot.
+## Dane broni z częściami `ids`: jak gun_info, ale wylot z założonej lufy i tłumika (GunModel.muzzle).
+static func info_with(key: String, ids: Array) -> Dictionary:
+	var o := gun_info(key)
+	if ids.is_empty():
+		return o
+	o = o.duplicate()
+	o["muzzle"] = GunModel.muzzle(o["muzzle"], ids)
+	return o
+
 static func gun_info(key: String) -> Dictionary:
 	if _gun_infos.has(key):
 		return _gun_infos[key]
@@ -1124,10 +1142,11 @@ func _nominal_shoulders(theta: float, crouching: bool, wp: Dictionary, cam := 1.
 ## postawy i broni `gun_key`. Liczone z pozy nominalnej, więc nie zależą od klatki animacji: bieg, odrzut, trafienie, przeładowanie ani obrót modelu
 ## nie przesuwają toru pocisków, a każdy peer dostaje ten sam wynik dla tego samego stanu. Strona jest od razu docelowa — obrót modelu
 ## (TURN_TIME) jest samym widokiem. Do efektów (błysk, wiązka) służą `muzzle_px` / `grip_px`.
-func aim_points(aim: Vector2, side: float, crouching: bool, gun_key: String) -> Array:
+func aim_points(aim: Vector2, side: float, crouching: bool, gun_key: String, fit := 0) -> Array:
 	if not ResourceLoader.exists(DIR + "gun_%s.glb" % gun_key):
 		gun_key = DEFAULT_GUN
-	var info := gun_info(gun_key)
+		fit = 0
+	var info := info_with(gun_key, Parts.decode(gun_key, fit))
 	var wp: Dictionary = WEAPON_POSE.get(gun_key, {})
 	var theta := _aim_theta(aim)
 	var sh := _nominal_shoulders(theta, crouching, wp)

@@ -8,6 +8,9 @@ extends Control
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Codex := preload("res://scripts/codex.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const GunModel := preload("res://scripts/gun_model.gd")
+const Parts := preload("res://scripts/parts.gd")
+const Char3D := preload("res://scripts/char3d.gd")
 
 const GUN_DIR := "res://art/char3d/"
 const VIEW_PX := Vector2i(1280, 800)          ## rozdzielczość warstwy z bronią
@@ -142,7 +145,7 @@ func _ready() -> void:
 ## `cabinet`: broń z gabloty — kamera patrzy na samą gablotę (view3d.gd), więc bez rozmycia tła i bez broni unoszącej się przed oczami.
 func show_weapon(wid: int, gun_key: String, hand: int, lock_text: String, foot: String, cabinet := false) -> void:
 	_cabinet = cabinet
-	var key := "%d|%d|%s|%s" % [wid, hand, lock_text, gun_key]
+	var key := "%d|%d|%s|%s|%d" % [wid, hand, lock_text, gun_key, Profile.fit_code(wid) if Weapons.is_valid(wid) else 0]
 	if key != _key:
 		_key = key
 		_fill(wid, gun_key, hand, lock_text)
@@ -157,8 +160,10 @@ func show_weapon(wid: int, gun_key: String, hand: int, lock_text: String, foot: 
 func close() -> void:
 	_open = false
 
+## Broń w oględzinach pokazujemy taką, jaką ma ten gracz: z jego częściami (statystyki i model — gun_model.gd).
 func _fill(wid: int, gun_key: String, hand: int, lock_text: String) -> void:
-	var d: RefCounted = Weapons.def(wid)
+	var fit: int = Profile.fit_code(wid) if Weapons.is_valid(wid) else 0
+	var d: RefCounted = Weapons.def_build(wid, Weapons.build_of(0, fit))
 	_locked = lock_text != ""
 	_title.text = String(d.name)
 	_title.add_theme_color_override("font_color", UiTheme.MUTED if _locked else UiTheme.WARM)
@@ -173,7 +178,7 @@ func _fill(wid: int, gun_key: String, hand: int, lock_text: String) -> void:
 	var other := {}
 	var compare := hand >= 0 and hand != wid and Weapons.is_valid(hand)
 	if compare:
-		for r in Codex._weapon_stats(Weapons.def(hand)):
+		for r in Codex._weapon_stats(Weapons.def_build(hand, Weapons.build_of(0, Profile.fit_code(hand)))):
 			other[String(r[0])] = String(r[1])
 		_grid.add_child(UiTheme.label("", 6, UiTheme.MUTED))
 		_grid.add_child(UiTheme.label("", 6, UiTheme.MUTED))
@@ -188,9 +193,7 @@ func _fill(wid: int, gun_key: String, hand: int, lock_text: String) -> void:
 	_model = null
 	var path := GUN_DIR + "gun_%s.glb" % gun_key
 	if gun_key != "" and ResourceLoader.exists(path):
-		var ps := load(path) as PackedScene
-		if ps != null:
-			_model = ps.instantiate() as Node3D
+		_model = GunModel.build(gun_key, Parts.decode(gun_key, fit if String(d.key) == gun_key else 0), Char3D.gun_info(gun_key)["muzzle"])
 	if _model != null:
 		_pivot.add_child(_model)
 		var box := AABB()

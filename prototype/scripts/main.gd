@@ -1160,6 +1160,13 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		Input.action_press("move_right")                      # --shotrun: gracz 1 biegnie w prawo przez cały podgląd (ocena animacji biegu)
 	if "--shotcrouch" in OS.get_cmdline_user_args():
 		Input.action_press("crouch")                          # --shotcrouch: gracz 1 skrada się przez cały podgląd
+	for fa in OS.get_cmdline_user_args():
+		if fa.begins_with("--shotfit="):                       # dev: --shotfit=id,id… — drużyna ma te części, gracz je montuje (podgląd modelu z częściami, parts.gd)
+			for pid in fa.substr("--shotfit=".length()).split(","):
+				var pp: Dictionary = Weapons.Parts.get_part(pid)
+				if not pp.is_empty():
+					Scrap.parts[pid] = true
+					Profile.set_fit(String(pp["weapon"]), String(pp["slot"]), pid)
 	for ia in OS.get_cmdline_user_args():
 		if ia.begins_with("--shotinspect"):                   # dev: --shotinspect[=N] — gracz przy N-tym stojaku (od lewej) z otwartymi oględzinami broni
 			var ip: Node2D = _players.get_node_or_null("1")

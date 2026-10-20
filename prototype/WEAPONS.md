@@ -387,3 +387,15 @@ Trzy liniowe poziomy ulepszeń (dawne `upgrades.gd`) zastąpił katalog części
 
 Poza etapem 2a: części widoczne na modelu 3D (2b), ława rusznikarska w 3D (2c) i więcej alternatyw dla pozostałych broni.
 
+## 18. Części widoczne na modelu, etap 2b (1.7.320)
+
+| Element | Jak działa | Kod |
+|---|---|---|
+| **Podzespoły broni bazowej** | generator buduje bryły w `with comp("mag"):` itd.; ściany niosą atrybut podzespołu, a po wypieku (jeden wypiek, ta sama tekstura) trafiają do osobnych węzłów GLB `gun_<klucz>__<podzespół>`. M-83: `mag`, `stock`, `front` (lufa, łoże, komora gazowa, muszka), `muzzle` (kompensator); SPREAD-12: `mag` (bęben z wieżyczką), `muzzle` (dławik). Przód i wylot M-83 to funkcje z parametrami (`m83_front`, `m83_muzzle`) — dla wartości domyślnych dają fabryczny AKM | `tools/gun_proc.py` (`comp`, `split_comps`) |
+| **Modele części** | `gun_proc.py <broń> gunpart_<id>.glb --part=<id>` buduje część z tych samych materiałów w układzie broni i w tej samej skali; `.json` = mocowanie (`frame` — magazynek, kolba, przód z lufą; `muzzle` — tłumik, płomieniotłumik, lufa z portami siedzą na wylocie założonej lufy), `hides` (zastępowane podzespoły), `muzzle` (nowy wylot lufy) i `muzzle_add` (wydłużenie za wylotem). Wszystkie: `tools/gun_parts_all.sh` (ok. 1,5 min na RTX 3080) | `gun_proc.py` (`PART_BUILDERS`) |
+| **Zestaw w tym etapie** | M-83: magazynek RPK 40, bęben RPK 75, lufa RPK (wylot +120 mm), krótka lufa (−120 mm, łoże krótsze, bez osady bagnetu), PBS-1 (+166 mm), płomieniotłumik szczelinowy, kolba składana AKMS; P-83: tłumik na gwintowanej lufie; SPREAD-12: bęben 30, magazynek pudełkowy na 8, dławik z portami. Części bez modelu (np. dławik, mechanizm) nie zmieniają wyglądu | `art/char3d/gunpart_*.glb` |
+| **Składanie w grze** | `GunModel.build(klucz, części, wylot fabryczny)`: zastąpione podzespoły znikają, części „muzzle” stają na wylocie założonej lufy, fabryczny kompensator jedzie razem z wylotem. Postać trzyma broń z częściami swojego gracza (`char3d.set_gun(klucz, fit)` z `player.fits` — widzą to wszyscy), oględziny pokazują broń i statystyki z częściami tego gracza | `gun_model.gd`, `char3d.gd`, `weapon_view.gd`, `weapon_inspect.gd` |
+| **Wylot pocisku** | `Char3D.aim_points(…, fit)` i błysk liczą wylot z założonej lufy i tłumika (`info_with` → `GunModel.muzzle`): PBS-1 przesuwa wylot o ok. 2 px świata, lufa RPK z PBS-1 o 3,5 px, krótka lufa cofa go o 1,5 px. `tools/test_aim_points.gd` sprawdza, że wylot rozgrywki zgadza się z modelem z częściami | `char3d.gd`, `weapon_controller.gd`, `player.gd` |
+
+Stojaki, gabloty i łup pokazują broń fabryczną. Dev: `--shotfit=id,id…` (drużyna ma części, gracz je montuje) z `--shotgunid=N` / `--shotzoom=N` / `--shotinspect=N`.
+

@@ -1831,7 +1831,7 @@ func kit_primaries() -> Array:
 func _aim_origin() -> Vector2:
 	var side := signf(aim_dir.x) if absf(aim_dir.x) > 0.1 else 1.0
 	if c3d != null and c3d.ready_ok and not dead:
-		return global_position + (c3d.aim_points(aim_dir, side, crouching, String(Weapons.def(weapon).key))[0] as Vector2)
+		return global_position + (c3d.aim_points(aim_dir, side, crouching, String(Weapons.def(weapon).key), weapons.fit_of(weapon))[0] as Vector2)
 	return global_position + Vector2(side, -8.0 if crouching else -12.0)
 
 func _snap8(v: Vector2) -> Vector2:
