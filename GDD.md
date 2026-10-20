@@ -200,6 +200,8 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 
 - **Amunicja:** magazynki i przeładowanie (tryb taktyczny: z nabojem w komorze szybciej), **wspólny zapas drużyny**. Od 1.7.326 (M-83, SPREAD-12):
   krótkie [R] to szybkie przeładowanie — magazynek z resztkami spada na ziemię i trzeba po niego kucnąć; przytrzymane [R] — wolniejsze, resztki zostają
+- **Przebijalność (od 1.7.327):** kula 7,62 przechodzi przez skrzynię albo jedno ciało (słabsza za nim), BZ przez dwa ciała albo stalową beczkę,
+  9×18 i śrut zostają w pierwszym celu; kula od blachy pod ostrym kątem odbija się (rykoszet z połową siły)
   autorytatywny na serwerze; sidearm ∞. Wrogowie upuszczają amunicję tylko do broni, którą ktoś nosi; skrzynie
   z mapy zasilają wszystkie noszone bronie główne.
 - **Hałas:** każda broń ma własny `heat_gain`/`heat_decay` (wcześniej wspólny decay sprawiał, że rozgrzewała się

@@ -30,13 +30,13 @@ const CALIBERS := {
 const TYPES := {
 	"762": [
 		{"id": "ps", "short": "PS", "name": "PS ball", "mods": [],
-			"note": "Standard steel-core ball round. Supersonic: the bullet cracks."},
+			"note": "Standard steel-core ball round. Supersonic: the bullet cracks. Goes through a crate or one body, weaker behind it."},
 		{"id": "us", "short": "US", "name": "US subsonic", "kind": "ammo_us", "subsonic": true,
-			"mods": [["speed", "mul", 0.42], ["damage", "mul", 0.75], ["falloff_start", "mul", 0.6], ["cam_kick", "mul", 0.7]],
+			"mods": [["speed", "mul", 0.42], ["damage", "mul", 0.75], ["falloff_start", "mul", 0.6], ["cam_kick", "mul", 0.7], ["pen", "mul", 0.6]],
 			"note": "Heavy subsonic bullet. Weaker and slower, no supersonic crack: a little quieter on its own, very quiet with a suppressor."},
 		{"id": "bz", "short": "BZ", "name": "BZ armour-piercing incendiary", "kind": "ammo_bz",
-			"mods": [["armor_pen", "add", 0.7], ["ignite", "add", 1.0], ["pierce", "add", 1]],
-			"note": "Hardened core with an incendiary charge: ignores most armour, passes through one body, sets the target alight briefly."},
+			"mods": [["armor_pen", "add", 0.7], ["ignite", "add", 1.0], ["pen", "mul", 2.0]],
+			"note": "Hardened core with an incendiary charge: ignores most armour, passes through two bodies or a steel barrel, sets the target alight briefly."},
 	],
 	"918": [
 		{"id": "pm", "short": "PM", "name": "9×18 ball", "mods": [], "subsonic": true,
@@ -46,7 +46,7 @@ const TYPES := {
 		{"id": "buck", "short": "BUCK", "name": "Buckshot", "mods": [],
 			"note": "Standard buckshot: a cone of pellets, deadly up close, weak at range."},
 		{"id": "slug", "short": "SLUG", "name": "Brenneke slug", "kind": "ammo_slug", "slug": true,
-			"mods": [["knock", "mul", 1.5], ["pierce", "add", 1], ["armor_pen", "add", 0.3], ["cam_kick", "mul", 1.2]],
+			"mods": [["knock", "mul", 1.5], ["pen", "set", 1.3], ["armor_pen", "add", 0.3], ["cam_kick", "mul", 1.2]],
 			"note": "One heavy lead slug instead of a pellet cone: no spread, twice the range, passes through one body. You have to aim."},
 		{"id": "inc", "short": "INC", "name": "Incendiary shells", "kind": "ammo_inc",
 			"mods": [["ignite", "add", 2.0], ["damage", "mul", 0.7]],
