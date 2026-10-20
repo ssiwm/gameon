@@ -1316,7 +1316,7 @@ func _refresh_detail(w: int) -> void:
 	# części w gniazdach: nagłówek gniazda, element fabryczny i części (zamontowana — zielona, odblokowana — jasna, do kupienia — z ceną)
 	for ch in _d_tiers.get_children():
 		_d_tiers.remove_child(ch)
-		ch.free()
+		ch.queue_free()                  # wiersz może właśnie obsługiwać swoje kliknięcie (_pick_opt) — natychmiastowe free() jest wtedy błędem
 	var last_slot := ""
 	for i in ops.size():
 		var op: Dictionary = ops[i]

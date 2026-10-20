@@ -1817,6 +1817,16 @@ func _t_ammo_calibers() -> void:
 		var tile = wui._sup_tiles[wui._sup_sel]
 		ui_info = "%d kafli, przycisk '%s', pasek %d/%d" % [wui._sup_tiles.size(), wui._s_action.text, tile.bar.have, tile.bar.maxn]
 		ui_ok = wui._sup_tiles.size() == kinds.size() and kinds.has("ammo_us") and not wui._s_action.text.contains("+1") and wui._s_action.text.contains(str(Throwables.price_of("ammo_slug"))) and tile.bar.have == 1 and tile.bar.maxn == 4
+		# zakładka ARMS: kliknięcie wiersza części (sygnał pressed) przebudowuje listę, w tym kliknięty wiersz — bez zwalniania go w trakcie sygnału
+		wui._set_page(0)
+		wui._sel = 0
+		wui._refresh()
+		var rows: Array = wui._d_tiers.get_children().filter(func(n: Node) -> bool: return n is Button)
+		var clicked := false
+		if rows.size() > 2:
+			(rows[2] as Button).pressed.emit()
+			clicked = wui._opt == 2 and is_instance_valid(rows[2]) and wui._d_tiers.get_children().filter(func(n: Node) -> bool: return n is Button).size() == rows.size()
+		check("warsztat ARMS: kliknięcie wiersza części wybiera ją i przebudowuje listę (kursor %d, wierszy %d)" % [wui._opt, rows.size()], clicked)
 		wui.close()
 	check("warsztat SUPPLIES: pudełka amunicji w sklepie (%s)" % ui_info, ui_ok)
 	Scrap.bank = bank0
