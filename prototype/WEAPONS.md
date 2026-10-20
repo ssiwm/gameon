@@ -117,7 +117,7 @@ Nazwy w HUD są ASCII (interfejs EN); GDD zostaje przy nazwach z diakrytykami.
 | Smuga pocisku | **od 1.7.311 broń palna strzela szybkimi kulami** (M-83 2400 px/s ≈ 200 m/s w skali świata 3D, P-83 1500, SPREAD-12 1400, PELLET-8 1300; dawniej 280–360 px/s, wolniej niż 4× bieg postaci): kula w locie to addytywna smuga 3D od ogona do jasnego czoła o długości prędkość × 0,022 s (M-83 ok. 4,3 m), nigdy dalej niż do lufy (`Projectile.is_fast` / `tracer_len_at`, `view3d.gd: _sync_projectiles`); po trafieniu, w ścianie i na końcu zasięgu ostatni odcinek dogasa 0,08 s (`Vfx.trace` → `mirror_trace`), więc kula trafiająca z bliska w pierwszej klatce też zostawia ślad. Śrucina ma cieńszą i ciemniejszą smugę. Wolne zostają rakieta FALCON-6 (z żarem), granat WRATH-4 (z zapalnikiem) i bełt SINEW-6 (z grotem) |
 | Szyna / promień | halo + rdzeń + biały środek, iskry w ścianie, światło na końcu promienia |
 | Odrzut | sprite broni cofa się wzdłuż lufy (`recoil`), kamera dostaje **kierunkowe szarpnięcie** (`Feel.kick`) przeciwnie do lufy, od 1.7.313 **żadna broń nie przesuwa strzelca** (dawniej strzelby, granatnik i szyna popychały postać — prawdziwy odrzut nie przestawia stojącego człowieka); zostają szarpnięcie kamery, wznos lufy i cofnięcie ciała w pozie |
-| Rozrzut | bazowy + **bloom** rosnący z serią (M-83 do 4°), +0,8° w biegu, +1,5° w locie (skok, spadanie; od 1.7.316, `air_spread`), ×0,5–0,6 w kucaniu; śrut (od 1.7.312): każda śrucina w losowym miejscu własnego wycinka stożka ±`spread_deg` — pokrycie i kąt skrajny jak w dawnym równym wachlarzu, bez „grzebienia” |
+| Rozrzut | bazowy + **bloom** rosnący z serią (M-83 do 4°; od 1.7.324 przy myszy zamiast niego podrzut — §20), +0,8° w biegu, +1,5° w locie (skok, spadanie; od 1.7.316, `air_spread`), ×0,5–0,6 w kucaniu; śrut (od 1.7.312): każda śrucina w losowym miejscu własnego wycinka stożka ±`spread_deg` — pokrycie i kąt skrajny jak w dawnym równym wachlarzu, bez „grzebienia” |
 | Uderzenie | wg materiału: krew (krytyk = złoty błysk), iskry + rykoszet (blacha/pancerz), drzazgi (skrzynia), pył/odłamki/rozbryzg (ściana wg kafla); od 1.7.312 **ślad po kuli** (decal 3D 9 cm na gruncie i murze, bez cieczy; najstarsze ponad 160 znikają) i **osmalenie** gruntu pod wybuchem (ok. 2 m dla WRATH-4, do 24 naraz) — `view3d.gd: mark_hit / mark_scorch` |
 | Świst kul | od 1.7.312: cudza kula (kolega, bot) przelatująca do ok. 1,5 m od głowy lokalnego gracza gra `whizz` w punkcie przelotu (raz na kulę; strzelec go nie słyszy) — `projectile.gd: _near_miss` |
 | Łuski | wylatują z okna wyrzutowego: punkt na osi broni między chwytem a wylotem (`eject_frac`: karabin i strzelba 0,2, P-83 0,45), u pompki w chwili przeładowania; wcześniej zawsze 0,5 m za wylotem |
@@ -414,6 +414,23 @@ chłodna kontra, broń leży bokiem i lekko się kołysze, przeciągnięcie mysz
 kursora listy — ta sama, której statystyki panel porównuje z obecnymi — złożona przez `GunModel.build`, czyli dokładnie tak, jak wygląda potem
 w dłoniach postaci. Część pod kursorem świeci (poświata krawędzi) i wysuwa się ze swojego gniazda w stronę, w którą się ją zdejmuje: magazynek
 w dół, lufa i tłumik do przodu, kolba do tyłu, celownik do góry. Na elemencie fabrycznym świecą fabryczne podzespoły, które części tego gniazda
-zastępują. Kadr liczy się z broni fabrycznej (część nie przesuwa broni, długi tłumik po prostu wystaje), scena renderuje się w pikselach ekranu.
+zastępują. Kadr liczy się z broni fabrycznej i każdej jej części z modelem (nic nie wychodzi poza ławę, kadr nie skacze przy zmianie części), scena
+renderuje się w pikselach ekranu.
 Broń zablokowana leży w półmroku z czerwoną kontrą. Dev: `--shotws --shotwssel=N --shotwsopt=N` (kafel broni i opcja części).
+
+## 20. Podrzut i oparcie, etap 3a (1.7.324)
+
+Ustawienie **Weapon handling** (Ustawienia → Rozgrywka): **REALISTIC** (domyślnie) albo **CLASSIC** — dawne zachowanie, do porównania na playteście.
+
+| Element | Jak działa | Kod |
+|---|---|---|
+| **Podrzut** (mysz) | każdy strzał unosi lufę o `bloom_per_shot × 2,2`° (±25%), najwyżej `bloom_max × 2`, lufa wraca `bloom_decay × 0,6`°/s. Rozrzut serii (bloom) przy myszy nie rośnie — strzał leci tam, gdzie lufa, a gracz ściąga mysz w dół. M-83: ok. 1° na strzał, do 8°, powrót 5,4°/s — seria z biodra wędruje w górę, krótkie serie trzymają się celu. Części, które zmniejszają bloom (lufa RPK, lufa wyborowa P-83), zmniejszają też podrzut | `weapon_controller.gd` (`climb`, `apply_climb`, `climb_mode`), `player.gd` |
+| **Klawiatura, pad, boty** | bez podrzutu — 8 kierunków nie da się ściągać, więc zostaje rozrzut serii jak dotąd (GUNSMITH_PLAN §11, decyzja 3) | |
+| **Kucanie** | podrzut ×0,6 (rozrzut jak dotąd ×`crouch_accuracy`) | |
+| **Oparcie** | broń leży na górnej krawędzi przeszkody: pod łożem albo wylotem (0,45–1,4 długości broni od chwytu) jest krawędź bryły, kładki, skrzyni albo beczki 1,5–6 px pod linią broni, a sama linia nad nią jest wolna; na ziemi, bez biegu, lufa najwyżej lekko w dół, krawędź wyżej niż stopy. Podrzut (i narastanie rozrzutu) ×0,4, rozrzut ×0,6. Lufa stojącej postaci jest na 17–18 px, skrzynia ma 14 px, stopień z kafla 16 px: **na stojąco** opierasz broń o skrzynię i murek, **kucając** chowasz się za nimi (przeszkoda zasłania lufę) | `check_brace` |
+| **Celownik** | przy podrzucie celownik stoi na torze uniesionej lufy (tam poleci kula), a kursor zostaje jako blada kropka — widać, ile ściągnąć; oparcie = zielona podpórka pod celownikiem | `weapon_view.gd` |
+| **Sieć** | kierunek z podrzutem i rozrzut liczy strzelec, serwer przycina rozrzut (0–12°) jak dotąd; `aim_dir` z podrzutem jest replikowany, więc inni widzą unoszącą się broń | |
+
+Postać nie kładzie jeszcze broni na krawędzi (poza bez zmian — karabin wisi ok. 3 px nad skrzynią). Dev: `--shotbrace` (skrzynia przed
+graczem 1).
 

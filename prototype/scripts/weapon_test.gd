@@ -196,6 +196,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_ammo_calibers()
 	await _t_ammo_40mm()
 	await _t_parts()
+	await _t_handling_climb()
 	await _t_homing()
 	await _t_bolt()
 	await _t_melee()
@@ -1722,6 +1723,140 @@ func _t_realia_e0() -> void:
 	var in_air: bool = not player.is_on_floor()
 	var air: float = wc.spread_extra(md)
 	check("strzał w locie: rozrzut +%.1f° (ziemia %.2f, w powietrzu %.2f)" % [md.air_spread, ground, air], in_air and air >= ground + md.air_spread - 0.01)
+	await _settle_player()
+
+## Obsługa broni, etap 3a (1.7.324, GUNSMITH_PLAN.md §5.1–5.2): przy myszy strzał unosi lufę (podrzut) zamiast poszerzać stożek, lufa wraca;
+## kucanie i oparcie zmniejszają podrzut; oparcie = krawędź przeszkody tuż pod linią lufy (ściana przed lufą to nie oparcie). Ustawienie CLASSIC
+## przywraca sam rozrzut serii. Wszystko synchronicznie: klatka gracza (_local_brain) ustawia tryb celowania od nowa.
+func _t_handling_climb() -> void:
+	var real0: bool = Settings.realistic_handling
+	Settings.realistic_handling = true
+	var md := equip(Weapons.M83)
+	await _settle_player()
+	wc.cool()
+	wc.braced = false
+	player.aim_by_mouse = true
+	var dirs_up: bool = (wc.apply_climb(Vector2.RIGHT) == Vector2.RIGHT)
+	wc.climb = 3.0
+	var r_up: Vector2 = wc.apply_climb(Vector2.RIGHT)
+	var l_up: Vector2 = wc.apply_climb(Vector2.LEFT)
+	dirs_up = dirs_up and r_up.y < -0.04 and r_up.x > 0.0 and l_up.y < -0.04 and l_up.x < 0.0
+	check("podrzut: lufa idzie w górę ekranu w obie strony (prawo %s, lewo %s)" % [str(r_up.snapped(Vector2(0.001, 0.001))), str(l_up.snapped(Vector2(0.001, 0.001)))], dirs_up)
+	wc.cool()
+	player.crouching = false
+	var per := md.bloom_per_shot * Controller.CLIMB_K
+	wc._fire_shot(md)
+	var c1: float = wc.climb
+	check("podrzut (mysz): strzał unosi lufę o ok. %.2f° (%.2f°), rozrzut serii nie rośnie (%.2f)" % [per, c1, wc.bloom],
+		c1 >= per * 0.74 and c1 <= per * 1.26 and wc.bloom == 0.0)
+	for i in 40:
+		wc._fire_shot(md)
+	check("podrzut: najwyżej %.1f° (%.2f°)" % [md.bloom_max * Controller.CLIMB_MAX_K, wc.climb], absf(wc.climb - md.bloom_max * Controller.CLIMB_MAX_K) < 0.001)
+	var before: float = wc.climb
+	wc._tick_common(0.5)
+	check("podrzut: lufa wraca %.1f°/s (%.2f → %.2f po 0,5 s)" % [md.bloom_decay * Controller.CLIMB_RECOVER_K, before, wc.climb],
+		absf(before - wc.climb - md.bloom_decay * Controller.CLIMB_RECOVER_K * 0.5) < 0.01)
+	wc.cool()
+	player.crouching = true
+	wc._fire_shot(md)
+	var cc: float = wc.climb
+	player.crouching = false
+	check("podrzut: kucanie ×%.1f (%.2f°)" % [Controller.CLIMB_CROUCH, cc], cc <= per * Controller.CLIMB_CROUCH * 1.26 and cc >= per * Controller.CLIMB_CROUCH * 0.74)
+	# klawiatura / pad: podrzut zostaje rozrzutem serii (nie da się go ściągać)
+	wc.cool()
+	player.aim_by_mouse = false
+	wc._fire_shot(md)
+	check("klawiatura: zamiast podrzutu rozrzut serii (%.2f°, podrzut %.2f°)" % [wc.bloom, wc.climb], wc.climb == 0.0 and absf(wc.bloom - md.bloom_per_shot) < 0.001)
+	# CLASSIC: także z myszą sam rozrzut, bez oparcia
+	Settings.realistic_handling = false
+	wc.cool()
+	player.aim_by_mouse = true
+	wc._fire_shot(md)
+	check("ustawienie CLASSIC: z myszą dawny rozrzut serii (%.2f°, podrzut %.2f°)" % [wc.bloom, wc.climb], wc.climb == 0.0 and wc.bloom > 0.0)
+	Settings.realistic_handling = true
+	wc.cool()
+	await _settle_player()
+	# oparcie: krawędź bryły tuż pod linią lufy przed chwytem
+	var ht: Array = wc._hand_tip(Vector2.RIGHT, md)
+	var hand: Vector2 = ht[0]
+	var line_y: float = hand.lerp(ht[1], 0.75).y          # wysokość łoża nad krawędzią
+	var line_top: float = minf(hand.y, (ht[1] as Vector2).y)
+	var line_bot: float = maxf(hand.y, (ht[1] as Vector2).y)
+	var ledge := StaticBody2D.new()
+	ledge.collision_layer = 1
+	var cs := CollisionShape2D.new()
+	var rs := RectangleShape2D.new()
+	cs.shape = rs
+	ledge.add_child(cs)
+	get_tree().current_scene.add_child(ledge)
+	var place := func(top: float) -> void:
+		var x0 := hand.x + 2.0
+		var bottom := player.global_position.y - 0.5
+		rs.size = Vector2(18.0, bottom - top)
+		ledge.global_position = Vector2(x0 + 9.0, (top + bottom) * 0.5)
+	wc.bloom = 2.0
+	wc.braced = false
+	var spread_free: float = wc.spread_extra(md)
+	place.call(line_y + 2.5)
+	await frames(2)
+	var on_ledge: bool = wc.check_brace(md)
+	place.call(line_top - 4.0)
+	await frames(2)
+	var wall: bool = wc.check_brace(md)
+	place.call(line_bot + 9.0)
+	await frames(2)
+	var low: bool = wc.check_brace(md)
+	Settings.realistic_handling = false
+	place.call(line_y + 2.5)
+	await frames(2)
+	var classic: bool = wc.check_brace(md)
+	Settings.realistic_handling = true
+	check("oparcie: krawędź 2,5 px pod łożem podpiera broń (%s); nie przy ścianie zasłaniającej lufę (%s), nie przy niskiej przeszkodzie (%s), nie w CLASSIC (%s)" % [str(on_ledge), str(wall), str(low), str(classic)],
+		on_ledge and not wall and not low and not classic)
+	wc.bloom = 2.0
+	wc.braced = true
+	var spread_braced: float = wc.spread_extra(md)
+	check("oparcie: rozrzut ×%.1f (%.2f → %.2f)" % [Controller.BRACE_SPREAD, spread_free, spread_braced], absf(spread_braced - spread_free * Controller.BRACE_SPREAD) < 0.001)
+	player.aim_by_mouse = true
+	wc._fire_shot(md)
+	var cb: float = wc.climb
+	check("oparcie: podrzut ×%.1f (%.2f°)" % [Controller.BRACE_CLIMB, cb], cb <= per * Controller.BRACE_CLIMB * 1.26 and cb >= per * Controller.BRACE_CLIMB * 0.74)
+	wc.braced = false
+	wc.cool()
+	ledge.queue_free()
+	await frames(2)
+	# prawdziwa skrzynia (14 px): na stojąco broń leży na niej, kucając — skrzynia zasłania lufę. Chwyt i wylot z postaci 3D (w grze zawsze jest;
+	# bez niej — headless — zostaje przybliżenie 2D z ręką na 12 px, niższe niż skrzynia)
+	var c3_own := false
+	if player.c3d == null:
+		var c3: Node2D = (load("res://scripts/char3d.gd") as GDScript).new()
+		player.add_child(c3)
+		if c3.setup("male_scav"):
+			player.c3d = c3
+			c3_own = true
+		else:
+			c3.queue_free()
+	var crate: RigidBody2D = (load("res://scripts/prop.gd") as GDScript).new()
+	crate.kind = "crate"
+	crate.position = player.global_position + Vector2(12.5, -1.0)
+	get_tree().current_scene.add_child(crate)
+	await wait(0.4)
+	var crate_stand: bool = wc.check_brace(md)
+	player.crouching = true
+	var crate_crouch: bool = wc.check_brace(md)
+	player.crouching = false
+	check("oparcie: na stojąco o skrzynię tak (%s), kucając nie — skrzynia zasłania lufę (%s)" % [str(crate_stand), str(crate_crouch)], crate_stand and not crate_crouch)
+	crate.queue_free()
+	if c3_own:
+		player.c3d.queue_free()
+		player.c3d = null
+	await frames(2)
+	check("oparcie: nie na otwartej podłodze (%s)" % str(wc.check_brace(md)), not wc.check_brace(md))
+	wc.braced = false
+	wc.cool()
+	player.aim_by_mouse = false
+	Settings.realistic_handling = real0
+	equip(Weapons.M83)
 	await _settle_player()
 
 ## Amunicja według kalibru (1.7.317, GUNSMITH_PLAN.md etap 1): wspólna pula 12/70, typy naboi (US, BZ, breneka, zapalające, gumowe),

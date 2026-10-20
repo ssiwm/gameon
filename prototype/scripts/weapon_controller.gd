@@ -35,6 +35,20 @@ const NOISE_RELOAD := 0.25
 const NOISE_DRY := 0.12
 const FIRE_PATCH_EVERY := 0.5     ## s ciągłego płomienia (HKM-9) między kolejnymi ogniami na podłodze
 const FIRE_DROP_MAX := 40.0       ## px w dół od końca płomienia, w których szukamy podłogi
+## Obsługa broni (GUNSMITH_PLAN.md etap 3a, od 1.7.324; ustawienie „Weapon handling”, Settings.realistic_handling).
+## Podrzut: przy celowaniu myszą każdy strzał unosi lufę (a z nią celownik) zamiast losowo poszerzać stożek — gracz może ją ściągać w dół.
+## Wielkość z danych rozrzutu broni (części, które zmniejszają rozrzut serii, zmniejszają też podrzut). Klawiatura, pad i boty zostają przy rozrzucie.
+const CLIMB_K := 2.2              ## podrzut na strzał = bloom_per_shot × K (°)
+const CLIMB_MAX_K := 2.0          ## górna granica podrzutu = bloom_max × K
+const CLIMB_RECOVER_K := 0.6      ## powrót lufy = bloom_decay × K (°/s)
+const CLIMB_JITTER := 0.25        ## ± tyle (ułamek) zmienia się podrzut kolejnych strzałów — przewidywalny, ale nie mechaniczny
+const CLIMB_CROUCH := 0.6         ## kucanie: mniejszy podrzut
+## Oparcie (§5.2): broń leży na krawędzi skrzyni, murku, kładki tuż przed dłonią — mniejszy podrzut (i narastanie rozrzutu) oraz rozrzut.
+const BRACE_CLIMB := 0.4
+const BRACE_SPREAD := 0.6
+const BRACE_PROBE := [0.45, 0.75, 1.0, 1.4]   ## gdzie wzdłuż broni szukamy krawędzi podparcia (0 = chwyt, 1 = wylot; łoże, wylot i tuż za nim)
+const BRACE_DEPTH := [1.5, 3.0, 4.5, 6.0]   ## px pod linią lufy, w których krawędź jeszcze podpiera broń
+const BRACE_MASK := 1 | 16 | 32             ## bryły, kładki, skrzynie i beczki (prop.gd)
 
 signal shot(w: int)
 signal reload_started(w: int)
@@ -63,6 +77,8 @@ var state_t := 0.0
 var charge := 0.0                 ## 0..1 (szyna)
 var firing := false               ## promień/płomień w toku
 var bloom := 0.0                  ## ° dodatkowego rozrzutu od serii
+var climb := 0.0                  ## ° uniesienia lufy od odrzutu (podrzut; tylko celowanie myszą i obsługa realistyczna)
+var braced := false               ## broń oparta o krawędź przeszkody (lokalnie, co klatkę — check_brace)
 var recoil := 0.0                 ## 0..1 — wizualne cofnięcie broni (widok)
 var cd := 0.0
 var melee_total := 0.35
@@ -198,7 +214,7 @@ func reload_progress() -> float:
 func kit() -> Vector3i:
 	return Vector3i(loadout[0], loadout[1], melee_id)
 
-## Rozrzut dokładany do bazowego: seria (bloom), bieg, strzał w locie, kucanie.
+## Rozrzut dokładany do bazowego: seria (bloom), bieg, strzał w locie, kucanie, oparcie.
 func spread_extra(d: WeaponDef) -> float:
 	var e := bloom
 	if not player.is_on_floor():
@@ -207,7 +223,50 @@ func spread_extra(d: WeaponDef) -> float:
 		e += 0.8
 	if player.crouching:
 		e *= float(d.crouch_accuracy)
+	if braced:
+		e *= BRACE_SPREAD
 	return e
+
+## Podrzut zamiast narastania rozrzutu: obsługa realistyczna i celowanie myszą (tylko mysz pozwala ściągać lufę w dół).
+func climb_mode() -> bool:
+	return Settings.realistic_handling and player != null and bool(player.get("aim_by_mouse"))
+
+## Kierunek celowania uniesiony o podrzut (w górę ekranu niezależnie od strony, w którą patrzy postać).
+func apply_climb(dir: Vector2) -> Vector2:
+	if climb <= 0.0:
+		return dir
+	return dir.rotated(deg_to_rad(climb) * (-1.0 if dir.x >= 0.0 else 1.0))
+
+## Oparcie (GUNSMITH_PLAN.md §5.2): pod łożem albo wylotem broni jest górna krawędź skrzyni, murku, progu albo kładki, a sama broń
+## nad nią jest wolna — broń leży na krawędzi. Lufa stojącej postaci jest na 17–18 px, skrzynia ma 14 px, stopień z jednego kafla 16 px:
+## na stojąco opierasz się o skrzynię i murek, kucając chowasz się za nimi. Na ziemi, bez biegu, lufa najwyżej lekko w dół; krawędź musi
+## być wyżej niż stopy (podłoga, na której stoisz, nie podpiera broni).
+func check_brace(d: WeaponDef) -> bool:
+	if not Settings.realistic_handling or player == null or not player.is_inside_tree() or d.is_melee() or d.is_continuous():
+		return false
+	if not player.is_on_floor() or absf(player.velocity.x) > 40.0:
+		return false
+	var dir: Vector2 = player.aim_dir
+	if absf(dir.x) < 0.5 or dir.y > 0.25:
+		return false
+	var ht := _hand_tip(dir, d)
+	var hand: Vector2 = ht[0]
+	var tip: Vector2 = ht[1]
+	var space := player.get_world_2d().direct_space_state
+	var q := PhysicsPointQueryParameters2D.new()
+	q.collision_mask = BRACE_MASK
+	q.exclude = [player.get_rid()]
+	var feet: float = player.global_position.y - 3.0
+	for t in BRACE_PROBE:
+		var p := hand.lerp(tip, float(t))
+		q.position = p + Vector2(0.0, -1.5)
+		if not space.intersect_point(q, 1).is_empty():
+			return false                                   # linia lufy zasłonięta — to ściana, nie krawędź
+		for dy in BRACE_DEPTH:
+			q.position = p + Vector2(0.0, float(dy))
+			if q.position.y < feet and not space.intersect_point(q, 1).is_empty():
+				return true
+	return false
 
 ## Wylot lufy w świecie: dłoń (jak w widoku broni) + długość lufy wzdłuż celowania (postać 3D: wylot z modelu broni).
 ## Lufa nie wychodzi za ścianę: gdy między dłonią a wylotem jest przeszkoda, wylot stoi tuż przed nią
@@ -261,6 +320,7 @@ func reset() -> void:
 		mags[w] = def_of(w).mag
 	_heat.clear()
 	bloom = 0.0
+	climb = 0.0
 	recoil = 0.0
 	cd = 0.0
 	charge = 0.0
@@ -283,6 +343,7 @@ func on_down() -> void:
 func cool() -> void:
 	_heat.clear()
 	bloom = 0.0
+	climb = 0.0
 	cd = 0.0
 
 func _sync_player() -> void:
@@ -302,6 +363,7 @@ func _sync_player() -> void:
 ## Wołane z player.gd co klatkę fizyki (człowiek, żywy). `reviving` blokuje strzał.
 func tick_local(delta: float, reviving: bool) -> void:
 	_tick_common(delta)
+	braced = check_brace(cur())
 	if reviving:
 		_cancel_actions()
 		_sync_player()
@@ -336,6 +398,7 @@ func _tick_common(delta: float) -> void:
 	for w in _heat.keys():
 		_heat[w] = maxf(0.0, float(_heat[w]) - Weapons.def(w).heat_decay * delta)
 	bloom = maxf(0.0, bloom - cur().bloom_decay * delta)
+	climb = maxf(0.0, climb - cur().bloom_decay * CLIMB_RECOVER_K * delta)
 	recoil = maxf(0.0, recoil - delta * 9.0)
 	cd = maxf(cd - delta, -delta)
 	_buf_t = maxf(0.0, _buf_t - delta)
@@ -515,7 +578,13 @@ func _fire_shot(d: WeaponDef) -> void:
 	var bursting := is_burst(d)
 	NoiseMgr.add_noise(d.noise(heat) * (d.burst_quiet if bursting else 1.0), player.global_position, "shot:" + d.key)
 	_heat[d.id] = minf(1.0, heat + d.heat_gain * (d.burst_heat if bursting else 1.0))
-	bloom = minf(bloom + d.bloom_per_shot * (d.burst_bloom if bursting else 1.0), d.bloom_max)
+	var kick := (d.burst_bloom if bursting else 1.0) * (BRACE_CLIMB if braced else 1.0)
+	if climb_mode():
+		# podrzut: lufa idzie w górę o przewidywalną wartość, rozrzut serii nie rośnie (mysz kompensuje)
+		var g := d.bloom_per_shot * CLIMB_K * kick * (CLIMB_CROUCH if player.crouching else 1.0) * (1.0 + randf_range(-CLIMB_JITTER, CLIMB_JITTER))
+		climb = minf(climb + g, d.bloom_max * CLIMB_MAX_K)
+	else:
+		bloom = minf(bloom + d.bloom_per_shot * kick, d.bloom_max)
 	if bursting:
 		# pierwszy strzał otwiera serię (zostaje burst_size − 1), kolejne ją dokańczają; po ostatnim — dłuższa przerwa
 		if _burst_left > 0:

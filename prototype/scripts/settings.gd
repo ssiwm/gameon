@@ -58,6 +58,7 @@ var mono_audio := false                ## bez panoramy w dźwięku pozycyjnym (o
 var captions := false                  ## napisy dla dźwięków (HUD, captions.gd)
 var reduce_fx := false                 ## „Reduce Effects": bez wstrząsów, aberracji, pulsu zdrowia, błysku burzy i migotania
 var crouch_toggle := false             ## skradanie przełączane klawiszem zamiast trzymania
+var realistic_handling := true         ## obsługa broni: podrzut przy myszy i oparcie o krawędź (REALISTIC) albo dawny sam rozrzut serii (CLASSIC) — GUNSMITH_PLAN etap 3
 var colorblind_idx := 0
 var locale_idx := 0
 var _res_dirty := false                ## gracz zmienił rozmiar okna (inaczej zostaje domyślny z projektu)
@@ -179,6 +180,10 @@ func toggle_reduce_fx() -> void:
 
 func toggle_crouch_mode() -> void:
 	crouch_toggle = not crouch_toggle
+	_commit()
+
+func toggle_realistic_handling() -> void:
+	realistic_handling = not realistic_handling
 	_commit()
 
 func cycle_locale() -> void:
@@ -310,6 +315,7 @@ func _load() -> void:
 	captions = bool(cf.get_value("game", "captions", false))
 	mono_audio = bool(cf.get_value("game", "mono_audio", false))
 	crouch_toggle = bool(cf.get_value("game", "crouch_toggle", false))
+	realistic_handling = bool(cf.get_value("game", "realistic_handling", true))
 	colorblind_idx = clampi(int(cf.get_value("game", "colorblind", 0)), 0, COLORBLIND_NAMES.size() - 1)
 	locale_idx = clampi(int(cf.get_value("game", "locale", 0)), 0, LOCALES.size() - 1)
 	seen_tips = Array(cf.get_value("game", "seen_tips", []))
@@ -337,6 +343,7 @@ func _save() -> void:
 	cf.set_value("game", "captions", captions)
 	cf.set_value("game", "mono_audio", mono_audio)
 	cf.set_value("game", "crouch_toggle", crouch_toggle)
+	cf.set_value("game", "realistic_handling", realistic_handling)
 	cf.set_value("game", "colorblind", colorblind_idx)
 	cf.set_value("game", "locale", locale_idx)
 	cf.set_value("game", "seen_tips", seen_tips)
