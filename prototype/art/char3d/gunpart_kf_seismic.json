@@ -1,0 +1,8 @@
+{
+ "weapon": "kilof",
+ "mount": "frame",
+ "hides": [
+  "head"
+ ],
+ "muzzle_add": 0.0
+}

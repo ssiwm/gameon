@@ -967,6 +967,17 @@ def shell(name, c, z0, red, brass, axis="Z"):
     revolve(name, [(z0 + 9.0, 0.0), (z0 + 9.0, 10.3), (z0 + 62.0, 10.3), (z0 + 64.0, 8.0), (z0 + 64.0, 0.0)], c, red, axis=axis, seg=12, bv=0.0)
 
 
+def sg_tube(mag_end, blued, small, cap_m):
+    """Magazynek rurowy strzelby z nakrętką, obejmą i strzemiączkiem pasa przy nakrętce (podzespół „tube”)."""
+    cyl("mag_tube", 588.0, mag_end + 2.0, 12.6, (0.0, -27.0), blued, seg=20, bv=0.0)
+    revolve("mag_cap", [(mag_end, 0.0), (mag_end, 14.2), (mag_end + 23.0, 14.2), (mag_end + 27.0, 11.0), (mag_end + 27.0, 0.0)], (0.0, -27.0), cap_m,
+            seg=20, bv=0.5, bseg=1)
+    ring = hull(circle(0.0, 0.0, 13.4, 24) + circle(0.0, -27.0, 14.6, 24))
+    bevel(loft("band", [(mag_end - 16.0, ring), (mag_end - 2.0, ring)], blued), 0.6, 1)
+    loop = [(mag_end - 9.0 + 8.0 * math.sin(math.radians(a)), -50.5 + 8.0 * math.cos(math.radians(a))) for a in range(20, 341, 20)]
+    prism("swivel", strip(loop, 2.6), -1.7, 1.7, small, bv=0.5, seg=1)
+
+
 def _shotgun(v):
     """Strzelba pump-action kal. 12 z magazynkiem rurowym. Oś lufy na z = 0, stopka kolby na x = 0. v = parametry odmiany (patrz build_srut8)."""
     pre, tip, mag_end = v["pre"], v["muzzle"], v["mag_end"]
@@ -996,11 +1007,8 @@ def _shotgun(v):
 
     # lufa, magazynek rurowy z nakrętką, obejma, muszka, listwy czółenka
     barrel("barrel", 586.0, tip, 11.4, 9.25, (0.0, 0.0), blued, bore, depth=35.0, seg=24)
-    cyl("mag_tube", 588.0, mag_end + 2.0, 12.6, (0.0, -27.0), blued, seg=20, bv=0.0)
-    revolve("mag_cap", [(mag_end, 0.0), (mag_end, 14.2), (mag_end + 23.0, 14.2), (mag_end + 27.0, 11.0), (mag_end + 27.0, 0.0)], (0.0, -27.0), cap_m,
-            seg=20, bv=0.5, bseg=1)
-    ring = hull(circle(0.0, 0.0, 13.4, 24) + circle(0.0, -27.0, 14.6, 24))
-    bevel(loft("band", [(mag_end - 16.0, ring), (mag_end - 2.0, ring)], blued), 0.6, 1)
+    with comp("tube"):
+        sg_tube(mag_end, blued, small, cap_m)
     revolve("bead", [(-1.6, 0.0), (-1.6, 2.0), (1.6, 2.0), (1.6, 0.0)], (tip - 9.0, 11.6), brass, axis="Y", seg=12, bv=0.4, bseg=1)
     for sy in (-1.0, 1.0):
         prism("action_bar", [(580.0, -31.0), (650.0, -31.0), (650.0, -23.0), (580.0, -23.0)], sy * 13.4, sy * 15.2, small, bv=0.3, seg=1)
@@ -1014,14 +1022,20 @@ def _shotgun(v):
     pad = lambda k: oval_sec(21.0 * k, 0.5 * (top(22.0) + bot(22.0)), 0.5 * (top(22.0) - bot(22.0)) * k)
     bevel(loft("pad", [(0.0, pad(0.93)), (5.0, pad(1.02)), (23.0, pad(1.02))], rubber), 1.5, 2)
     # strzemiączka pasa: pod kolbą i pod obejmą lufy
-    for cx, cz in ((96.0, -167.0), (mag_end - 9.0, -50.5)):
-        loop = [(cx + 8.0 * math.sin(math.radians(a)), cz + 8.0 * math.cos(math.radians(a))) for a in range(20, 341, 20)]
-        prism("swivel", strip(loop, 2.6), -1.7, 1.7, small, bv=0.5, seg=1)
+    loop = [(96.0 + 8.0 * math.sin(math.radians(a)), -167.0 + 8.0 * math.cos(math.radians(a))) for a in range(20, 341, 20)]
+    prism("swivel", strip(loop, 2.6), -1.7, 1.7, small, bv=0.5, seg=1)
     if v.get("extras"):
         v["extras"](blued, small, brass, top, bot)
     # nadgarstki pod szyjką kolby i pod czółenkiem (dłonie sięgają od nich ok. 0,2 m w górę)
     return {"rear": Vector((335.0, 0.0, -120.0)), "fore": Vector((742.0, 0.0, -116.0)), "muzzle": Vector((tip, 0.0, 0.0)), "hands": 2, "length": v["length"],
             "grip": Vector((332.0, 0.0, -42.0)), "hold": Vector((742.0, 0.0, -50.0))}
+
+
+def p8_saddle(n, cuff, red, brass):
+    """Ładownica na lewym boku komory PELLET-8 z `n` nabojami (podzespół „saddle”)."""
+    box("saddle", 428.0, 428.0 + 26.8 * n, -40.0, 4.0, 2.2, cuff, bv=0.6, seg=1, y=18.6)
+    for i in range(n):
+        shell("shell_l", (445.0 + i * 25.0, 30.0), -46.0, red, brass)
 
 
 def build_srut8():
@@ -1035,9 +1049,8 @@ def build_srut8():
         ring_m = M(steel, "p8_brake", blue=GREY, grooves=[("x", 7.0, 1078.0, 1118.0, -20.0, 20.0, 1.0, False)])
         revolve("brake", [(1074.0, 11.0), (1074.0, 14.8), (1099.0, 14.8), (1099.0, 11.0), (1074.0, 11.0)], (0.0, 0.0), ring_m, seg=22, bv=0.8)   # tuleja: nie zasłania kanału
         # naboje: ładownica na lewym boku komory i opaska na kolbie (widoczna z prawej)
-        box("saddle", 428.0, 562.0, -40.0, 4.0, 2.2, cuff, bv=0.6, seg=1, y=18.6)
-        for i in range(5):
-            shell("shell_l", (445.0 + i * 25.0, 30.0), -46.0, red, brass)
+        with comp("saddle"):
+            p8_saddle(5, cuff, red, brass)
         box("cuff", 158.0, 248.0, bot(203.0) - 3.0, top(203.0) + 3.0, 23.0, cuff, bv=2.0, r=8.0)
         for i in range(4):
             shell("shell_r", (-33.0, -50.0 - i * 23.0), 170.0, red, brass, axis="X")
@@ -1256,6 +1269,17 @@ def build_spread12():
 
 # ---------------------------------------------------------------- LR-7
 
+def lr7_pack(extra, pack, win, warn, rubber):
+    """Zasobnik kondensatorów LR-7 w gnieździe magazynka (okienka naładowania, tabliczki ostrzegawcze) i przewód spiralny do głowicy; `extra` mm
+    dłuższy w dół (powiększone ogniwo). Podzespół „mag”."""
+    zb = -150.0 - extra
+    prism("pack", fillet([(440.0, -34.0), (512.0, -34.0), (520.0 + 0.07 * extra, zb, 5.0), (446.0 + 0.05 * extra, zb, 5.0)]), -12.5, 12.5, pack, bv=1.5, seg=2)
+    for sy in (-1.0, 1.0):
+        box("pack_win", 500.0, 507.0, -104.0 - extra, -60.0, 0.5, win, bv=0.0, seg=1, y=sy * 12.6)
+        box("pack_warn", 448.0, 510.0, -132.0 - extra, -114.0 - extra, 0.5, warn, bv=0.2, seg=1, y=sy * 12.8)
+    pipe("cable", helix((518.0 + 0.07 * extra, 0.0, -122.0 - extra), (596.0, 0.0, -28.0), 7.0, 9.0 + extra / 12.0), 2.0, rubber, seg=6, smooth=0)
+
+
 def build_lr7():
     """LR-7: laser impulsowy zabudowany na komorze kbk AK (jak prototypy z lat 80.): żebrowana głowica z prętem i lampą błyskową, ekspander wiązki
     z dużym obiektywem, zasobnik kondensatorów w gnieździe magazynka połączony przewodem spiralnym, celownik optyczny. Obiektyw do x = 900 mm."""
@@ -1291,17 +1315,16 @@ def build_lr7():
     pgrip("grip", X + 72.0, -38.0, grip_m)
     trig("trigger", X + 74.0, X + 132.0, -38.0, st, small)
     # zasobnik kondensatorów w gnieździe magazynka: okienko naładowania, tabliczka ostrzegawcza
-    prism("pack", fillet([(440.0, -34.0), (512.0, -34.0), (520.0, -150.0, 5.0), (446.0, -150.0, 5.0)]), -12.5, 12.5, pack, bv=1.5, seg=2)
-    for sy in (-1.0, 1.0):
-        box("pack_win", 500.0, 507.0, -104.0, -60.0, 0.5, win, bv=0.0, seg=1, y=sy * 12.6)
-        box("pack_warn", 448.0, 510.0, -132.0, -114.0, 0.5, warn, bv=0.2, seg=1, y=sy * 12.8)
+    with comp("mag"):
+        lr7_pack(0.0, pack, win, warn, rubber)
     # głowica: żebrowany korpus między pokrywami na wsporniku, ekspander wiązki, oprawa obiektywu ze szkłem
     box("bracket", 560.0, 602.0, -12.0, 26.0, 12.0, st, bv=1.0, r=3.0)
     cyl("head", 584.0, 772.0, 28.0, (0.0, 6.0), alu, seg=24, bv=0.0)
     cyl("cap_rear", 566.0, 588.0, 31.0, (0.0, 6.0), st, seg=24, bv=1.0)
     cyl("cap_front", 768.0, 790.0, 31.0, (0.0, 6.0), st, seg=24, bv=1.0)
     revolve("expander", [(788.0, 0.0), (788.0, 17.0), (848.0, 27.0), (848.0, 0.0)], (0.0, 6.0), small, seg=24, bv=0.0)
-    barrel("objective", 846.0, 900.0, 31.0, 26.5, (0.0, 6.0), small, glass, depth=12.0, seg=24)
+    with comp("muzzle"):
+        barrel("objective", 846.0, 900.0, 31.0, 26.5, (0.0, 6.0), small, glass, depth=12.0, seg=24)
     prism("hg_lower", fillet([(566.0, -18.0), (742.0, -18.0), (742.0, -42.0, 6.0), (650.0, -52.0, 30.0), (566.0, -48.0, 8.0)]), -15.5, 15.5, lam, bv=2.5, seg=2)
     # celownik optyczny na wsporniku: tubus, obiektyw, muszla oczna, pokrętło nastaw
     box("mount", 404.0, 470.0, 9.0, 36.0, 7.0, st, bv=0.8, r=2.0)
@@ -1309,13 +1332,45 @@ def build_lr7():
     barrel("scope_obj", 504.0, 548.0, 15.0, 12.5, (0.0, 46.0), small, glass2, depth=8.0, seg=16)
     cyl("eyecup", 350.0, 376.0, 13.5, (0.0, 46.0), rubber, seg=16, bv=1.0)
     revolve("turret", [(56.0, 0.0), (56.0, 6.5), (67.0, 6.5), (67.0, 0.0)], (440.0, 0.0), small, axis="Z", seg=12, bv=0.5)
-    # przewód spiralny z zasobnika do głowicy
-    pipe("cable", helix((518.0, 0.0, -122.0), (596.0, 0.0, -28.0), 7.0, 9.0), 2.0, rubber, seg=6, smooth=0)
     return {"rear": Vector((350.0, 0.0, -140.0)), "fore": Vector((655.0, 0.0, -142.0)), "muzzle": Vector((900.0, 0.0, 6.0)), "hands": 2, "length": 0.9,
             "grip": Vector((342.0, 0.0, -83.0)), "hold": Vector((654.0, 0.0, -51.0))}
 
 
 # ---------------------------------------------------------------- HKM-9
+
+def hkm_front(e, st, jacket, heat, bore, small, red, brass, pilot):
+    """Lufa, osłona perforowana, dysza odbarwiona żarem, naboje zapłonowe i płomyk dyżurny HKM-9; `e` = wylot dyszy (fabrycznie 1000 mm).
+    Podzespół „front”."""
+    d = e - 1000.0
+    cyl("barrel", 478.0, 962.0 + d, 10.0, (0.0, 0.0), st, seg=16, bv=0.0)
+    cyl("jacket", 824.0, 936.0 + d, 15.0, (0.0, 0.0), jacket, seg=18, bv=0.6)
+    barrel("nozzle", 950.0 + d, e, 13.5, 9.0, (0.0, 0.0), heat, bore, depth=34.0, seg=18)
+    box("igniter_plate", 938.0 + d, 946.0 + d, -30.0, 14.0, 20.0, small, bv=0.6, r=4.0)
+    for deg in (210.0, 270.0, 330.0):
+        a = math.radians(deg)
+        cyl("igniter", 940.0 + d, 994.0 + d, 6.5, (19.0 * math.cos(a), 19.0 * math.sin(a)), red, seg=10, bv=0.5)
+    cyl("pilot_tube", 900.0, 990.0 + d, 2.6, (0.0, 17.5), brass, seg=8, bv=0.0)
+    cyl("pilot_tip", 988.0 + d, 997.0 + d, 3.4, (0.0, 17.5), pilot, seg=8, bv=0.0)
+
+
+def hkm_tank(x1, r, tank_m, small, brass, dial, red, hose):
+    """Zbiornik mieszanki pod lufą (wypukłe dna, obejmy z wieszakami, wlew, manometr, zawór z pokrętłem, wąż w oplocie) od x = 500 do `x1`, promień `r`
+    (fabrycznie 726 i 38 mm). Podzespół „tank”."""
+    zc = -54.0 - (r - 38.0)
+    revolve("tank", [(500.0, 0.0), (500.0, r - 18.0), (512.0, r - 4.0), (526.0, r), (x1 - 26.0, r), (x1 - 12.0, r - 4.0), (x1, r - 18.0), (x1, 0.0)], (0.0, zc),
+            tank_m, seg=24, bv=0.0)
+    for cx in (540.0, x1 - 38.0):
+        cyl("band", cx - 5.0, cx + 5.0, r + 1.4, (0.0, zc), small, seg=24, bv=0.5)
+        box("hanger", cx - 5.0, cx + 5.0, -20.0, 6.0, 6.0, small, bv=0.5, seg=1)
+    cyl("filler", 484.0, 502.0, 12.0, (0.0, zc), brass, seg=14, bv=0.8)
+    box("filler_wing", 480.0, 486.0, zc - 14.0, zc + 14.0, 2.5, brass, bv=0.5, seg=1)
+    revolve("gauge", [(-r - 12.0, 0.0), (-r - 12.0, 13.0), (-r + 2.0, 13.0), (-r + 2.0, 0.0)], (632.0, zc), brass, axis="Y", seg=18, bv=0.6)
+    revolve("gauge_dial", [(-r - 12.6, 0.0), (-r - 12.6, 10.5), (-r - 11.8, 10.5), (-r - 11.8, 0.0)], (632.0, zc), dial, axis="Y", seg=18, bv=0.0)
+    box("gauge_needle", 626.0, 633.0, zc + 7.0, zc + 8.4, 0.3, small, bv=0.0, seg=1, y=-r - 12.9)
+    cyl("valve", x1 - 2.0, x1 + 26.0, 9.0, (0.0, zc), brass, seg=12, bv=0.6)
+    revolve("valve_wheel", [(-26.0, 0.0), (-26.0, 4.0), (-24.0, 15.0), (-20.0, 15.0), (-18.0, 4.0), (-18.0, 0.0)], (x1 + 14.0, zc), red, axis="Y", seg=14, bv=0.6)
+    pipe("hose", [(x1 + 24.0, 0.0, zc), (min(x1 + 64.0, 800.0), 0.0, zc - 3.0), (814.0, 0.0, -38.0), (806.0, 0.0, -9.0)], 5.0, hose)
+
 
 def build_hkm9():
     """HKM-9: miotacz ognia w układzie karabinowym (jak radzieckie ROKS-3 i LPO-50): drewniana kolba, korpus zaworu ze spustem, zbiornik mieszanki
@@ -1351,29 +1406,11 @@ def build_hkm9():
     prism("valve_lever", fillet([(430.0, 8.0), (468.0, 8.0), (468.0, 14.0, 2.0), (400.0, 32.0, 2.0), (396.0, 26.0, 2.0)]), -4.0, 4.0, small, bv=0.6, seg=1)
     pins("pin", ((352.0, -24.0), (448.0, 2.0)), 15.0, small, 2.4)
     # lufa, osłona perforowana, dysza odbarwiona żarem, trzy naboje zapłonowe na obejmie, płomyk dyżurny
-    cyl("barrel", 478.0, 962.0, 10.0, (0.0, 0.0), st, seg=16, bv=0.0)
-    cyl("jacket", 824.0, 936.0, 15.0, (0.0, 0.0), jacket, seg=18, bv=0.6)
-    barrel("nozzle", 950.0, 1000.0, 13.5, 9.0, (0.0, 0.0), heat, bore, depth=34.0, seg=18)
-    box("igniter_plate", 938.0, 946.0, -30.0, 14.0, 20.0, small, bv=0.6, r=4.0)
-    for deg in (210.0, 270.0, 330.0):
-        a = math.radians(deg)
-        cyl("igniter", 940.0, 994.0, 6.5, (19.0 * math.cos(a), 19.0 * math.sin(a)), red, seg=10, bv=0.5)
-    cyl("pilot_tube", 900.0, 990.0, 2.6, (0.0, 17.5), brass, seg=8, bv=0.0)
-    cyl("pilot_tip", 988.0, 997.0, 3.4, (0.0, 17.5), pilot, seg=8, bv=0.0)
+    with comp("front"):
+        hkm_front(1000.0, st, jacket, heat, bore, small, red, brass, pilot)
     # zbiornik mieszanki pod lufą: wypukłe dna, obejmy z wieszakami, wlew, manometr, zawór z czerwonym pokrętłem, wąż w oplocie
-    revolve("tank", [(500.0, 0.0), (500.0, 20.0), (512.0, 34.0), (526.0, 38.0), (700.0, 38.0), (714.0, 34.0), (726.0, 20.0), (726.0, 0.0)], (0.0, -54.0), tank_m,
-            seg=24, bv=0.0)
-    for cx in (540.0, 688.0):
-        cyl("band", cx - 5.0, cx + 5.0, 39.4, (0.0, -54.0), small, seg=24, bv=0.5)
-        box("hanger", cx - 5.0, cx + 5.0, -20.0, 6.0, 6.0, small, bv=0.5, seg=1)
-    cyl("filler", 484.0, 502.0, 12.0, (0.0, -54.0), brass, seg=14, bv=0.8)
-    box("filler_wing", 480.0, 486.0, -68.0, -40.0, 2.5, brass, bv=0.5, seg=1)
-    revolve("gauge", [(-50.0, 0.0), (-50.0, 13.0), (-36.0, 13.0), (-36.0, 0.0)], (632.0, -54.0), brass, axis="Y", seg=18, bv=0.6)
-    revolve("gauge_dial", [(-50.6, 0.0), (-50.6, 10.5), (-49.8, 10.5), (-49.8, 0.0)], (632.0, -54.0), dial, axis="Y", seg=18, bv=0.0)
-    box("gauge_needle", 626.0, 633.0, -47.0, -45.6, 0.3, small, bv=0.0, seg=1, y=-50.9)
-    cyl("valve", 724.0, 752.0, 9.0, (0.0, -54.0), brass, seg=12, bv=0.6)
-    revolve("valve_wheel", [(-26.0, 0.0), (-26.0, 4.0), (-24.0, 15.0), (-20.0, 15.0), (-18.0, 4.0), (-18.0, 0.0)], (740.0, -54.0), red, axis="Y", seg=14, bv=0.6)
-    pipe("hose", [(750.0, 0.0, -54.0), (790.0, 0.0, -57.0), (814.0, 0.0, -38.0), (806.0, 0.0, -9.0)], 5.0, hose)
+    with comp("tank"):
+        hkm_tank(726.0, 38.0, tank_m, small, brass, dial, red, hose)
     return {"rear": Vector((338.0, 0.0, -120.0)), "fore": Vector((618.0, 0.0, -172.0)), "muzzle": Vector((1000.0, 0.0, 0.0)), "hands": 2, "length": 1.0,
             "grip": Vector((305.0, 0.0, -34.0)), "hold": Vector((615.0, 0.0, -92.0))}
 
@@ -1429,6 +1466,26 @@ def build_gniew4():
 
 # ---------------------------------------------------------------- FALCON-6
 
+def fa_drum(R, hw, drum_m, small):
+    """Bęben taśmy FALCON-6 z gardzielą i kluczem sprężyny; promień `R`, połowa szerokości `hw` (fabrycznie 58 i 17 mm). Podzespół „mag”."""
+    cz = -54.0 - R
+    prism("mag_throat", fillet([(444.0, -34.0), (502.0, -34.0), (500.0, -70.0), (450.0, -70.0)]), -11.5, 11.5, drum_m, bv=1.0, seg=1)
+    revolve("drum", [(-hw, 0.0), (-hw, R - 4.0), (-hw + 3.0, R), (hw - 3.0, R), (hw, R - 4.0), (hw, 0.0)], (476.0, cz), drum_m, axis="Y", seg=28, bv=0.0)
+    revolve("drum_hub", [(-hw - 4.0, 0.0), (-hw - 4.0, 9.0), (hw + 4.0, 9.0), (hw + 4.0, 0.0)], (476.0, cz), small, axis="Y", seg=14, bv=0.6)
+    box("drum_key", 476.0 - 0.31 * R, 476.0 + 0.31 * R, cz - 3.0, cz + 3.0, 1.5, small, bv=0.4, seg=1, y=-hw - 5.5)
+
+
+def fa_optic(r_obj, r_ir, navy, small, glass, rubber, ir):
+    """Celownik noktowizyjny FALCON-6 z reflektorem podczerwieni: tubus, obiektyw o promieniu `r_obj`, muszla, baterie, reflektor o promieniu `r_ir`
+    (fabrycznie 29 i 14 mm). Podzespół „optic”."""
+    cyl("nsp", 392.0, 548.0, 23.0, (0.0, 58.0), navy, seg=22, bv=1.0)
+    barrel("nsp_obj", 540.0, 600.0 + (r_obj - 29.0), r_obj, r_obj - 5.0, (0.0, 58.0), navy, glass, depth=16.0, seg=22)
+    cyl("nsp_eye", 354.0, 394.0, 15.0, (0.0, 58.0), rubber, seg=16, bv=1.0)
+    box("nsp_batt", 418.0, 500.0, 78.0, 96.0, 12.0, navy, bv=1.0, r=3.0)
+    zl = 83.0 + r_ir
+    barrel("ir_lamp", 500.0, 546.0 + 2.0 * (r_ir - 14.0), r_ir, r_ir - 2.5, (0.0, zl), small, ir, depth=6.0, seg=16)
+
+
 def build_sokol6():
     """FALCON-6: karabinek na mikrorakiety (idea Gyrojeta) na komorze AK: prowadnica w osłonie ze szczelinami na gazy, magazynek bębnowy, kolba RPK,
     złożony dwójnóg, celownik noktowizyjny z reflektorem podczerwieni w szaroniebieskiej emalii. Wylot na x = 950 mm."""
@@ -1460,10 +1517,8 @@ def build_sokol6():
     pgrip("grip", X + 72.0, -38.0, grip_m)
     trig("trigger", X + 74.0, X + 132.0, -38.0, st, small)
     # magazynek bębnowy z gardzielą i kluczem sprężyny
-    prism("mag_throat", fillet([(444.0, -34.0), (502.0, -34.0), (500.0, -70.0), (450.0, -70.0)]), -11.5, 11.5, drum_m, bv=1.0, seg=1)
-    revolve("drum", [(-17.0, 0.0), (-17.0, 54.0), (-14.0, 58.0), (14.0, 58.0), (17.0, 54.0), (17.0, 0.0)], (476.0, -112.0), drum_m, axis="Y", seg=28, bv=0.0)
-    revolve("drum_hub", [(-21.0, 0.0), (-21.0, 9.0), (21.0, 9.0), (21.0, 0.0)], (476.0, -112.0), small, axis="Y", seg=14, bv=0.6)
-    box("drum_key", 458.0, 494.0, -115.0, -109.0, 1.5, small, bv=0.4, seg=1, y=-22.5)
+    with comp("mag"):
+        fa_drum(58.0, 17.0, drum_m, small)
     # przednia wkładka z celownikiem, prowadnica w osłonie ze szczelinami, podstawa muszki, nasadka wylotowa
     box("trunnion", 550.0, 580.0, -14.0, 22.0, 12.0, st, bv=1.0, r=3.0)
     prism("sight_leaf", [(556.0, 21.0), (604.0, 24.0), (604.0, 28.0), (556.0, 26.5)], -5.0, 5.0, small, bv=0.5, seg=1)
@@ -1481,16 +1536,21 @@ def build_sokol6():
     box("leg_clip", 664.0, 672.0, -34.0, -18.0, 11.5, small, bv=0.4, seg=1)
     # celownik noktowizyjny: tubus, obiektyw, muszla oczna, pojemnik baterii, reflektor podczerwieni
     box("mount", 398.0, 482.0, 9.0, 37.0, 8.0, st, bv=0.8, r=2.0)
-    cyl("nsp", 392.0, 548.0, 23.0, (0.0, 58.0), navy, seg=22, bv=1.0)
-    barrel("nsp_obj", 540.0, 600.0, 29.0, 24.0, (0.0, 58.0), navy, glass, depth=16.0, seg=22)
-    cyl("nsp_eye", 354.0, 394.0, 15.0, (0.0, 58.0), rubber, seg=16, bv=1.0)
-    box("nsp_batt", 418.0, 500.0, 78.0, 96.0, 12.0, navy, bv=1.0, r=3.0)
-    barrel("ir_lamp", 500.0, 546.0, 14.0, 11.5, (0.0, 97.0), small, ir, depth=6.0, seg=16)
+    with comp("optic"):
+        fa_optic(29.0, 14.0, navy, small, glass, rubber, ir)
     return {"rear": Vector((340.0, 0.0, -140.0)), "fore": Vector((650.0, 0.0, -128.0)), "muzzle": Vector((950.0, 0.0, 0.0)), "hands": 2, "length": 0.95,
             "grip": Vector((332.0, 0.0, -83.0)), "hold": Vector((650.0, 0.0, -18.0))}
 
 
 # ---------------------------------------------------------------- SPECTER-1
+
+def sp_bank(r, zb, small, can):
+    """Bateria pięciu kondensatorów SPECTER-1 w korytku z opaską: promień puszki `r`, spód na z = `zb` (fabrycznie 16,5 i −104 mm). Podzespół „mag”."""
+    box("tray", 476.0, 676.0, -52.0, -40.0, r + 2.5, small, bv=1.0)
+    for i in range(5):
+        revolve("can", [(zb, 0.0), (zb, r), (-46.0, r), (-46.0, 0.0)], (500.0 + i * 38.0, 0.0), can, axis="Z", seg=14, bv=0.8)
+    box("can_strap", 480.0, 672.0, zb + 20.0, zb + 26.0, r + 0.9, small, bv=0.4, seg=1)
+
 
 def build_widmo1():
     """SPECTER-1: karabin elektromagnetyczny cewkowy — osiem uzwojeń miedzianych na rurze z tekstolitu z modułami łączników i lampkami, szyny
@@ -1532,10 +1592,8 @@ def build_widmo1():
     pgrip("grip", 384.0, -40.0, grip_m)
     trig("trigger", 386.0, 446.0, -40.0, body, small)
     # bateria kondensatorów: pięć puszek w korytku z opaską
-    box("tray", 476.0, 676.0, -52.0, -40.0, 19.0, small, bv=1.0)
-    for i in range(5):
-        revolve("can", [(-104.0, 0.0), (-104.0, 16.5), (-46.0, 16.5), (-46.0, 0.0)], (500.0 + i * 38.0, 0.0), can, axis="Z", seg=14, bv=0.8)
-    box("can_strap", 480.0, 672.0, -84.0, -78.0, 17.4, small, bv=0.4, seg=1)
+    with comp("mag"):
+        sp_bank(16.5, -104.0, small, can)
     # lufa: rura z tekstolitu, osiem uzwojeń z podkładkami, moduły łączników z lampkami, szyny zbiorcze
     box("breech", 556.0, 592.0, -26.0, 26.0, 18.0, body, bv=1.0, r=4.0)
     cyl("tube", 560.0, 1100.0, 13.0, (0.0, 0.0), phen, seg=16, bv=0.0)
@@ -1594,8 +1652,9 @@ def build_ciegno6():
     cyl("shaft", 392.0, 1070.0, 3.6, (0.0, 13.0), inox, seg=10, bv=0.0)
     for cx in (470.0, 524.0):
         prism("fin", [(cx, 16.0), (cx + 11.0, 16.0), (cx + 3.5, 23.0)], -1.0, 1.0, inox, bv=0.2, seg=1)
-    revolve("tip", [(1066.0, 0.0), (1066.0, 5.2), (1080.0, 5.2), (1110.0, 0.6), (1110.0, 0.0)], (0.0, 13.0), inox, seg=8, bv=0.0)
-    prism("barb", [(1078.0, 17.5), (1044.0, 31.0), (1039.0, 28.0), (1060.0, 17.5)], -2.2, 2.2, inox, bv=0.4, seg=1)
+    with comp("tip"):
+        revolve("tip", [(1066.0, 0.0), (1066.0, 5.2), (1080.0, 5.2), (1110.0, 0.6), (1110.0, 0.0)], (0.0, 13.0), inox, seg=8, bv=0.0)
+        prism("barb", [(1078.0, 17.5), (1044.0, 31.0), (1039.0, 28.0), (1060.0, 17.5)], -2.2, 2.2, inox, bv=0.4, seg=1)
     box("muzzle", 938.0, 972.0, -18.0, 26.0, 14.5, inox, bv=1.0, r=5.0)
     # cięgna: dwie pary gum od głowicy do zaczepów z linki na płetwach
     for sy in (-1.0, 1.0):
@@ -1617,6 +1676,34 @@ def build_ciegno6():
 
 # ---------------------------------------------------------------- broń biała: maczeta, kilof
 
+def mc_blade(k, half_t, flats, grind):
+    """Głownia maczety o klinowym przekroju (ciemne płazy, jasny szlif): `k` = współczynnik szerokości, `half_t` = połowa grubości grzbietu
+    (fabrycznie 1 i 1,7 mm). Podzespół „blade”."""
+    top = curve_fn([(148.0, 17.0), (300.0, 21.0 * k), (480.0, 25.0 * k), (560.0, 22.0 * k), (598.0, 7.0)])
+    bot = curve_fn([(148.0, -17.0), (250.0, -24.0 * k), (400.0, -32.0 * k), (520.0, -33.0 * k), (575.0, -18.0 * k), (598.0, 3.0)])
+    secs = []
+    for i in range(22):
+        xs = 150.0 + (598.0 - 150.0) * i / 21
+        zt, zb = top(xs), bot(xs)
+        zm = zb + 0.38 * (zt - zb)
+        secs.append((xs, [(-half_t, zt), (half_t, zt), (half_t, zm), (0.08, zb), (-0.08, zb), (-half_t, zm)]))
+    blade = bevel(loft("blade", secs, flats), 0.0)
+    if grind is not None:
+        blade.data.materials.append(grind)
+        for q in blade.data.polygons:
+            if -0.5 < q.normal.z < -0.02:
+                q.material_index = 1
+
+
+def mc_handle(ext, wd, brass):
+    """Rękojeść maczety z drewnianymi okładzinami na mosiężnych nitach; `ext` mm dłuższa do tyłu (fabrycznie 0). Podzespół „grip”."""
+    x0 = -ext
+    oval_loft("handle", x0, 142.0, curve_fn([(x0, 19.0), (x0 + 20.0, 17.0), (70.0, 15.5), (120.0, 16.5), (142.0, 17.0)]),
+              curve_fn([(x0, -26.0), (x0 + 18.0, -21.0), (70.0, -16.0), (120.0, -17.0), (142.0, -17.0)]), curve_fn([(x0, 11.5), (70.0, 10.5), (142.0, 10.5)]),
+              wd, n=12)
+    pins("rivet", tuple([(30.0 - ext, 0.0)] + ([(30.0 - ext * 0.5, 0.0)] if ext > 0.0 else []) + [(72.0, 0.0), (114.0, 0.5)]), 10.8, brass, 3.2)
+
+
 def build_maczeta():
     """Maczeta: głownia o klinowym przekroju (ciemne płazy, jasny szlif), drewniane okładziny na mosiężnych nitach. Sztych na x = 598 mm."""
     flats = M(steel, "mc_flats", blue=((0.08, 0.08, 0.085), (0.14, 0.135, 0.128)), wear_k=0.8)
@@ -1624,25 +1711,19 @@ def build_maczeta():
     st = M(steel, "mc_steel", blue=GREY, wear_k=0.7)
     wd = M(wood, "mc_wood", tone=((0.07, 0.04, 0.014), (0.26, 0.16, 0.06)))
     brass = M(plain, "mc_brass", rgb(0.55, 0.38, 0.1), 0.35, 1.0)
-    top = curve_fn([(148.0, 17.0), (300.0, 21.0), (480.0, 25.0), (560.0, 22.0), (598.0, 7.0)])
-    bot = curve_fn([(148.0, -17.0), (250.0, -24.0), (400.0, -32.0), (520.0, -33.0), (575.0, -18.0), (598.0, 3.0)])
-    secs = []
-    for i in range(22):
-        xs = 150.0 + (598.0 - 150.0) * i / 21
-        zt, zb = top(xs), bot(xs)
-        zm = zb + 0.38 * (zt - zb)
-        secs.append((xs, [(-1.7, zt), (1.7, zt), (1.7, zm), (0.08, zb), (-0.08, zb), (-1.7, zm)]))
-    blade = bevel(loft("blade", secs, flats), 0.0)
-    if grind is not None:
-        blade.data.materials.append(grind)
-        for q in blade.data.polygons:
-            if -0.5 < q.normal.z < -0.02:
-                q.material_index = 1
+    with comp("blade"):
+        mc_blade(1.0, 1.7, flats, grind)
     box("guard", 140.0, 152.0, -25.0, 25.0, 7.0, st, bv=1.0, r=3.0)
-    oval_loft("handle", 0.0, 142.0, curve_fn([(0.0, 19.0), (20.0, 17.0), (70.0, 15.5), (120.0, 16.5), (142.0, 17.0)]),
-              curve_fn([(0.0, -26.0), (18.0, -21.0), (70.0, -16.0), (120.0, -17.0), (142.0, -17.0)]), curve_fn([(0.0, 11.5), (70.0, 10.5), (142.0, 10.5)]), wd, n=12)
-    pins("rivet", ((30.0, 0.0), (72.0, 0.0), (114.0, 0.5)), 10.8, brass, 3.2)
+    with comp("grip"):
+        mc_handle(0.0, wd, brass)
     return {"rear": Vector((72.0, 0.0, -85.0)), "fore": None, "muzzle": Vector((598.0, 0.0, 5.0)), "hands": 1, "length": 0.6, "grip": Vector((72.0, 0.0, 0.0))}
+
+
+def kf_head(k, head):
+    """Dwustronne ostrze kilofa z oczkiem; `k` = grubość i masywność (fabrycznie 1). Podzespół „head”."""
+    prism("pick", strip(spline([(606.0, 212.0), (652.0, 136.0), (681.0, 62.0), (690.0, 0.0), (681.0, -62.0), (652.0, -136.0), (606.0, -212.0)], 5),
+                        lambda t: 9.0 * k + 36.0 * k * (1.0 - abs(2.0 * t - 1.0)) ** 0.8), -13.0 * k, 13.0 * k, head, bv=2.5, seg=2)
+    box("eye", 660.0 - 6.0 * (k - 1.0) * 10.0, 720.0 + 4.0 * (k - 1.0) * 10.0, -30.0 * k, 30.0 * k, 20.0 * k, head, bv=1.5, r=6.0)
 
 
 def build_kilof():
@@ -1651,9 +1732,8 @@ def build_kilof():
     wd = M(wood, "kf_wood", tone=((0.06, 0.032, 0.012), (0.24, 0.14, 0.055)))
     oval_loft("handle", 0.0, 702.0, curve_fn([(0.0, 24.0), (40.0, 20.0), (350.0, 18.0), (640.0, 20.0), (702.0, 21.0)]),
               curve_fn([(0.0, -24.0), (40.0, -20.0), (350.0, -18.0), (640.0, -20.0), (702.0, -21.0)]), curve_fn([(0.0, 16.0), (350.0, 14.0), (702.0, 15.0)]), wd, n=16)
-    prism("pick", strip(spline([(606.0, 212.0), (652.0, 136.0), (681.0, 62.0), (690.0, 0.0), (681.0, -62.0), (652.0, -136.0), (606.0, -212.0)], 5),
-                        lambda t: 9.0 + 36.0 * (1.0 - abs(2.0 * t - 1.0)) ** 0.8), -13.0, 13.0, head, bv=2.5, seg=2)
-    box("eye", 660.0, 720.0, -30.0, 30.0, 20.0, head, bv=1.5, r=6.0)
+    with comp("head"):
+        kf_head(1.0, head)
     return {"rear": Vector((150.0, 0.0, -85.0)), "fore": None, "muzzle": Vector((606.0, 0.0, 212.0)), "hands": 1, "length": 0.72, "grip": Vector((150.0, 0.0, 0.0))}
 
 
@@ -1772,11 +1852,140 @@ def part_sp12_ported(spec):
     return {"mount": "muzzle", "hides": ["muzzle"], "muzzle_add": 0.0}
 
 
+def mat(name):
+    """Materiał zbudowany przez broń bazową (część w trybie --part buduje się po niej) — po nazwie; None przy --nobake."""
+    return None if NOBAKE else bpy.data.materials.get(name)
+
+
+def part_s8_tube(spec):
+    sg_tube(1070.0, mat("p8_blued"), mat("p8_small"), M(steel, "p8_cap_ext", blue=GREY, grooves=[("z", 2.4, 1069.0, 1091.0, -45.0, -9.0, 0.35, False)]))
+    return {"mount": "frame", "hides": ["tube"]}
+
+
+def part_s8_carrier(spec):
+    p8_saddle(6, mat("p8_cuff"), mat("p8_red"), mat("p8_brass"))
+    return {"mount": "frame", "hides": ["saddle"]}
+
+
+def part_lr7_cell(spec):
+    lr7_pack(40.0, mat("lr7_pack"), mat("lr7_win"), mat("lr7_warn"), mat("lr7_rubber"))
+    return {"mount": "frame", "hides": ["mag"]}
+
+
+def part_lr7_lens(spec):
+    """Soczewka skupiająca: większy obiektyw w dłuższej oprawie z osłoną przeciwsłoneczną."""
+    barrel("objective", 846.0, 912.0, 33.0, 28.5, (0.0, 6.0), mat("lr7_small"), mat("lr7_glass"), depth=22.0, seg=24)
+    barrel("hood", 908.0, 936.0, 35.0, 31.5, (0.0, 6.0), mat("lr7_small"), mat("lr7_small"), depth=24.0, seg=24)
+    return {"mount": "muzzle", "hides": ["muzzle"], "muzzle_add": 36.0}
+
+
+def part_hkm_tank(spec):
+    hkm_tank(750.0, 44.0, mat("hkm_tank"), mat("hkm_small"), mat("hkm_brass"), mat("hkm_dial"), mat("hkm_red"), mat("hkm_hose"))
+    return {"mount": "frame", "hides": ["tank"]}
+
+
+def part_hkm_nozzle(spec):
+    hkm_front(1120.0, mat("hkm_steel"), mat("hkm_jacket"), mat("hkm_heat"), mat("hkm_bore"), mat("hkm_small"), mat("hkm_red"), mat("hkm_brass"), mat("hkm_pilot"))
+    return {"mount": "frame", "hides": ["front"], "muzzle": Vector((1120.0, 0.0, 0.0))}
+
+
+def part_g4_loader(spec):
+    """Szybkoładowacz WRATH-4: zasobnik na dwa granaty pod lufą przed bębnem, z żółtymi wierzchołkami granatów odłamkowych."""
+    olive = mat("wr_tube")
+    box("loader", 482.0, 548.0, -62.0, -30.0, 22.0, olive, bv=1.5, r=4.0)
+    for sy in (-1.0, 1.0):
+        revolve("loader_nose", [(548.0, 0.0), (548.0, 9.5), (556.0, 9.0), (562.0, 5.0), (564.0, 0.0)], (sy * 11.0, -46.0), mat("wr_yellow"), seg=16, bv=0.0)
+    box("loader_clip", 486.0, 544.0, -30.0, -26.0, 8.0, mat("wr_small"), bv=0.5, seg=1)
+    return {"mount": "frame", "hides": []}
+
+
+def part_f6_belt(spec):
+    fa_drum(70.0, 22.0, mat("fa_drum"), mat("fa_small"))
+    return {"mount": "frame", "hides": ["mag"]}
+
+
+def part_f6_seeker(spec):
+    fa_optic(34.0, 19.0, mat("fa_navy"), mat("fa_small"), mat("fa_glass"), mat("fa_rubber"), mat("fa_ir"))
+    return {"mount": "frame", "hides": ["optic"]}
+
+
+def part_w1_cap(spec):
+    sp_bank(19.5, -122.0, mat("sp_small"), mat("sp_can"))
+    return {"mount": "frame", "hides": ["mag"]}
+
+
+def part_w1_fast(spec):
+    """Szybki kondensator: aluminiowe żeberka chłodzące na każdym uzwojeniu (cewki grzeją się przy szybkim ładowaniu)."""
+    alu = M(steel, "sp_fins", blue=((0.05, 0.052, 0.056), (0.085, 0.087, 0.09)), r0=0.45, wear_k=0.5)
+    for i in range(8):
+        cx = 628.0 + i * 60.0
+        for dx in (-9.0, 0.0, 9.0):
+            revolve("fin", [(cx + dx - 0.9, 25.5), (cx + dx - 0.9, 32.5), (cx + dx + 0.9, 32.5), (cx + dx + 0.9, 25.5)], (0.0, 0.0), alu, seg=24, bv=0.0)
+    return {"mount": "frame", "hides": []}
+
+
+def part_c6_twin(spec):
+    """Drugi harpun w zaczepach na lewym boku belki."""
+    inox, small = mat("sn_inox"), mat("sn_small")
+    cyl("spare_shaft", 430.0, 990.0, 3.6, (19.5, -14.0), inox, seg=10, bv=0.0)
+    revolve("spare_tip", [(986.0, 0.0), (986.0, 5.2), (1000.0, 5.2), (1030.0, 0.6), (1030.0, 0.0)], (19.5, -14.0), inox, seg=8, bv=0.0)
+    for cx in (520.0, 820.0):
+        box("spare_clip", cx, cx + 14.0, -21.0, -7.0, 2.4, small, bv=0.4, seg=1, y=17.0)
+    return {"mount": "frame", "hides": []}
+
+
+def part_c6_bands(spec):
+    """Trzecia para lateksowych cięgien nad harpunem."""
+    for sy in (-1.0, 1.0):
+        pipe("band3", [(954.0, sy * 14.0, 24.0), (800.0, sy * 14.5, 27.0), (650.0, sy * 11.0, 26.0), (570.0, sy * 6.0, 20.0)], 4.6, mat("sn_latex"))
+    return {"mount": "frame", "hides": []}
+
+
+def part_c6_tether(spec):
+    """Grot z hakami: dwa ruchome zadziory (góra i dół) i obejma linki."""
+    inox = mat("sn_inox")
+    revolve("tip", [(1066.0, 0.0), (1066.0, 5.6), (1080.0, 5.6), (1110.0, 0.6), (1110.0, 0.0)], (0.0, 13.0), inox, seg=8, bv=0.0)
+    prism("barb", [(1078.0, 17.5), (1044.0, 31.0), (1039.0, 28.0), (1060.0, 17.5)], -2.2, 2.2, inox, bv=0.4, seg=1)
+    prism("barb2", [(1078.0, 8.5), (1044.0, -5.0), (1039.0, -2.0), (1060.0, 8.5)], -2.2, 2.2, inox, bv=0.4, seg=1)
+    cyl("line_clamp", 1000.0, 1012.0, 5.5, (0.0, 13.0), mat("sn_brass"), seg=12, bv=0.5)
+    return {"mount": "frame", "hides": ["tip"]}
+
+
+def part_mc_long(spec):
+    mc_handle(60.0, mat("mc_wood"), mat("mc_brass"))
+    return {"mount": "frame", "hides": ["grip"]}
+
+
+def part_mc_exec(spec):
+    mc_blade(1.25, 2.4, mat("mc_flats"), mat("mc_grind"))
+    return {"mount": "frame", "hides": ["blade"]}
+
+
+def part_kf_heavy(spec):
+    kf_head(1.25, mat("kf_head"))
+    return {"mount": "frame", "hides": ["head"]}
+
+
+def part_kf_seismic(spec):
+    """Głowa sejsmiczna: z jednej strony szpic, z drugiej płaski obuch z żebrami (szerszy łuk i ogłuszenie, cięższy zamach)."""
+    head = mat("kf_head")
+    prism("pick", strip(spline([(606.0, 212.0), (652.0, 136.0), (681.0, 62.0), (690.0, 0.0)], 5), lambda t: 9.0 + 34.0 * t ** 0.8), -14.0, 14.0, head, bv=2.5, seg=2)
+    prism("sledge", fillet([(652.0, 0.0, 6.0), (728.0, 0.0, 6.0), (734.0, -96.0, 4.0), (646.0, -96.0, 4.0)]), -24.0, 24.0, head, bv=2.5, seg=2)
+    for zz in (-30.0, -54.0, -78.0):
+        box("sledge_rib", 644.0, 736.0, zz - 3.0, zz + 3.0, 26.0, head, bv=0.8, seg=1)
+    box("eye", 654.0, 724.0, -32.0, 32.0, 22.0, head, bv=1.5, r=6.0)
+    return {"mount": "frame", "hides": ["head"]}
+
+
 PART_BUILDERS = {
     "m83_rpk40": part_m83_rpk40, "m83_drum75": part_m83_drum75, "m83_rpkbar": part_m83_rpkbar, "m83_short": part_m83_short,
     "m83_pbs1": part_m83_pbs1, "m83_hider": part_m83_hider, "m83_akms": part_m83_akms,
     "p64_supp": part_p64_supp,
     "sp12_drum30": part_sp12_drum30, "sp12_box8": part_sp12_box8, "sp12_ported": part_sp12_ported,
+    "s8_tube": part_s8_tube, "s8_carrier": part_s8_carrier, "lr7_cell": part_lr7_cell, "lr7_lens": part_lr7_lens,
+    "hkm_tank": part_hkm_tank, "hkm_nozzle": part_hkm_nozzle, "g4_loader": part_g4_loader, "f6_belt": part_f6_belt, "f6_seeker": part_f6_seeker,
+    "w1_cap": part_w1_cap, "w1_fast": part_w1_fast, "c6_twin": part_c6_twin, "c6_bands": part_c6_bands, "c6_tether": part_c6_tether,
+    "mc_long": part_mc_long, "mc_exec": part_mc_exec, "kf_heavy": part_kf_heavy, "kf_seismic": part_kf_seismic,
 }
 
 

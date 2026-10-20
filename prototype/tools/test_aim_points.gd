@@ -75,7 +75,7 @@ func _process(_d: float) -> bool:
 							print("FAIL: strona lewa nie jest odbiciem prawej: %s %s %d°" % [look, gun, deg])
 	# części z modelem (1.7.320): wylot rozgrywki z tłumikiem / dłuższą lub krótszą lufą = wylot modelu z tymi częściami
 	_c.set_look("male_scav")
-	for pc in [["m83", ["m83_pbs1"], 1], ["m83", ["m83_rpkbar", "m83_pbs1"], 1], ["m83", ["m83_short"], -1], ["p64", ["p64_supp"], 1], ["spread12", ["sp12_ported"], 0]]:
+	for pc in [["m83", ["m83_pbs1"], 1], ["m83", ["m83_rpkbar", "m83_pbs1"], 1], ["m83", ["m83_short"], -1], ["p64", ["p64_supp"], 1], ["spread12", ["sp12_ported"], 0], ["hkm9", ["hkm_nozzle"], 1], ["lr7", ["lr7_lens"], 1], ["srut8", ["s8_tube"], 0]]:
 		var key := String(pc[0])
 		var fit := Parts.encode_ids(key, pc[1])
 		_c.set_gun(key, fit)
@@ -89,7 +89,7 @@ func _process(_d: float) -> bool:
 		var ap0: Array = _c.aim_points(aim, 1.0, false, key, 0)
 		var dev := (_c.muzzle_px as Vector2).distance_to(ap[1])
 		var dx := (ap[1] as Vector2).x - (ap0[1] as Vector2).x
-		var dir_ok := (dx > 0.5) if int(pc[2]) > 0 else ((dx < -0.5) if int(pc[2]) < 0 else absf(dx) < 0.01)
+		var dir_ok := (dx > 0.2) if int(pc[2]) > 0 else ((dx < -0.2) if int(pc[2]) < 0 else absf(dx) < 0.01)      # obiektyw LR-7 (+36 mm) to ok. 0,4 px
 		print("części %s %s: wylot modelu − rozgrywki %.2f px, wylot przesunięty o %.1f px" % [key, str(pc[1]), dev, dx])
 		if dev > MAX_REST_PX or not dir_ok:
 			_fail += 1

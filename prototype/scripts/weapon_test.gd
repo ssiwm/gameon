@@ -1963,7 +1963,20 @@ func _t_parts() -> void:
 	equip(Weapons.M83)
 	# model 3D z częściami (1.7.320, gun_model.gd): zastąpione podzespoły znikają, tłumik siedzi na końcu założonej lufy
 	const Char3D := preload("res://scripts/char3d.gd")
-	var with_model := ["m83_rpk40", "m83_drum75", "m83_rpkbar", "m83_short", "m83_pbs1", "m83_hider", "m83_akms", "p64_supp", "sp12_drum30", "sp12_box8", "sp12_ported"]
+	var with_model := ["m83_rpk40", "m83_drum75", "m83_rpkbar", "m83_short", "m83_pbs1", "m83_hider", "m83_akms", "p64_supp", "sp12_drum30", "sp12_box8", "sp12_ported",
+		"s8_tube", "s8_carrier", "lr7_cell", "lr7_lens", "hkm_tank", "hkm_nozzle", "g4_loader", "f6_belt", "f6_seeker", "w1_cap", "w1_fast", "c6_twin", "c6_bands",
+		"c6_tether", "mc_long", "mc_exec", "kf_heavy", "kf_seismic"]
+	# każdy podzespół, który część zastępuje, istnieje w modelu broni bazowej (inaczej część nałożyłaby się na fabryczny element)
+	var bad_hides: Array = []
+	for pid in with_model:
+		var wkey := String(Parts.get_part(pid)["weapon"])
+		var base_n := GunModel.build(wkey, [], Vector3.ZERO)
+		var comps: Array = base_n.find_children("*__*", "MeshInstance3D", true, false).map(func(n: Node) -> String: return String(n.name).get_slice("__", 1))
+		for h in GunModel.part_info(pid).get("hides", []):
+			if not comps.has(String(h)):
+				bad_hides.append("%s→%s" % [pid, h])
+		base_n.free()
+	check("części zastępują istniejące podzespoły broni bazowej (%s)" % str(bad_hides), bad_hides.is_empty())
 	var missing: Array = with_model.filter(func(id: String) -> bool: return not GunModel.has_model(id))
 	check("modele części: %d części ma GLB i opis mocowania (brak: %s)" % [with_model.size(), str(missing)], missing.is_empty())
 	var bm: Vector3 = Char3D.gun_info("m83")["muzzle"]
