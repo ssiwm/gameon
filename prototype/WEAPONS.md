@@ -399,3 +399,11 @@ Poza etapem 2a: części widoczne na modelu 3D (2b), ława rusznikarska w 3D (2c
 
 Stojaki, gabloty i łup pokazują broń fabryczną. Dev: `--shotfit=id,id…` (drużyna ma części, gracz je montuje) z `--shotgunid=N` / `--shotzoom=N` / `--shotinspect=N`.
 
+**Pozostałe bronie (1.7.321):** podzespoły i 18 modeli części — PELLET-8: dłuższa rura magazynka (`tube`), ładownica na 6 nabojów (`saddle`);
+LR-7: większy zasobnik ogniw z przewodem (`mag`), obiektyw z osłoną (mocowanie na wylocie, +36 mm); HKM-9: większy zbiornik (`tank`), dłuższa
+dysza z lufą i osłoną (`front`, wylot +120 mm); WRATH-4: szybkoładowacz z dwoma granatami pod lufą; FALCON-6: większy bęben taśmy (`mag`), większy
+obiektyw i reflektor IR (`optic`); SPECTER-1: większe kondensatory (`mag`), żeberka chłodzące na cewkach; SINEW-6: zapasowy harpun na boku belki,
+trzecia para gum, grot z dwoma zadziorami i obejmą linki (`tip`); maczeta: długi chwyt (`grip`), cięższa i szersza głownia (`blade`); kilof:
+ciężka głowa i głowa sejsmiczna z obuchem (`head`). Bez modelu zostają części bez widocznej zmiany (mechanizm, mieszanka, głowice granatów,
+dławik, szlif). Test `--weapontest` sprawdza, że każdy zastępowany podzespół istnieje w modelu bazowym.
+

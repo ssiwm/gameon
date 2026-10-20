@@ -1,0 +1,13 @@
+{
+ "weapon": "hkm9",
+ "mount": "frame",
+ "hides": [
+  "front"
+ ],
+ "muzzle_add": 0.0,
+ "muzzle": [
+  0.782,
+  0.0,
+  0.12
+ ]
+}
