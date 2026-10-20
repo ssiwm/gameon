@@ -15,6 +15,7 @@ const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Projectile := preload("res://scripts/projectile.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
+const Ammo := preload("res://scripts/ammo.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
@@ -118,6 +119,8 @@ func equip(w: int, full_reserve := true) -> WeaponDef:
 	wc.loadout[0] = w
 	wc.slot = 0
 	wc.mags[w] = d.mag
+	wc.loaded.erase(w)                     # nabój zwykły w magazynku (ammo.gd)
+	wc.want_ammo.erase(w)
 	wc._heat.clear()
 	wc.bloom = 0.0
 	wc.cd = 0.0
@@ -127,7 +130,7 @@ func equip(w: int, full_reserve := true) -> WeaponDef:
 	wc.charge = 0.0
 	if full_reserve:
 		Arsenal.reserve_changed.emit()
-		Arsenal.reserve[w] = d.reserve_max if not d.infinite else 0
+		Arsenal.set_reserve(w, Arsenal.pool_max(w) if not d.infinite else 0)
 	player.aim_dir = Vector2.RIGHT
 	return d
 
@@ -165,6 +168,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_weapon_realism()
 	await _t_weapon_realism2()
 	await _t_realia_e0()
+	await _t_ammo_calibers()
 	await _t_homing()
 	await _t_bolt()
 	await _t_melee()
@@ -1256,9 +1260,11 @@ func _t_upgrades() -> void:
 	var sn := Weapons.def(Weapons.CIEGNO6)
 	check("SINEW-6 T3: bełt przebija 1 cel, magazynek 2", sn.pierce == 1 and sn.mag == 2 and sn.damage > Weapons.base_def(Weapons.CIEGNO6).damage)
 	var sp := Weapons.def(Weapons.SPREAD12)
-	check("SPREAD-12 T3: pociski podpalają (%.1f s)" % sp.ignite, sp.ignite >= 2.0)
+	check("SPREAD-12 T3: lufa z portami — mniejsze szarpnięcie, trochę głośniej (kamera %.2f, hałas %.2f)" % [sp.cam_kick, sp.n_max],
+		sp.cam_kick < Weapons.base_def(Weapons.SPREAD12).cam_kick * 0.7 and sp.n_max > Weapons.base_def(Weapons.SPREAD12).n_max and sp.ignite == 0.0)
 	var pe := Weapons.def(Weapons.SRUT8)
-	check("PELLET-8 T3: ogłuszenie do 1,5 s (%.2f)" % pe.stun, absf(pe.stun - 1.5) < 0.01)
+	check("PELLET-8 T3: ładownica — szybsze ładowanie łusek (%.2f s), bez ogłuszenia z ulepszenia (%.2f)" % [pe.reload_time, pe.stun],
+		pe.reload_time < Weapons.base_def(Weapons.SRUT8).reload_time and absf(pe.stun - Weapons.base_def(Weapons.SRUT8).stun) < 0.01)
 	var ki := Weapons.def(Weapons.KILOF)
 	check("KILOF T3: szerszy łuk i dłuższe ogłuszenie (%.0f°, %.1f s)" % [ki.arc_deg, ki.stun], ki.arc_deg > Weapons.base_def(Weapons.KILOF).arc_deg * 1.5 and ki.stun >= 2.0)
 	# salwa FALCON-6 T3 w kontrolerze: jeden strzał = 3 rakiety i −2 naboje
@@ -1692,6 +1698,112 @@ func _t_realia_e0() -> void:
 	check("strzał w locie: rozrzut +%.1f° (ziemia %.2f, w powietrzu %.2f)" % [md.air_spread, ground, air], in_air and air >= ground + md.air_spread - 0.01)
 	await _settle_player()
 
+## Amunicja według kalibru (1.7.317, GUNSMITH_PLAN.md etap 1): wspólna pula 12/70, typy naboi (US, BZ, breneka, zapalające, gumowe),
+## wymiana typu klawiszem Z przy przeładowaniu, przebicie pancerza, sklep pudełek, amunicja specjalna przeżywa reset misji.
+func _t_ammo_calibers() -> void:
+	var errs := Ammo.validate(Weapons.defs(), Throwables.KINDS)
+	check("kalibry i typy naboi spójne (%s)" % "; ".join(errs), errs.is_empty())
+	var amm_in_x := false
+	for k in Throwables.ORDER:
+		amm_in_x = amm_in_x or Throwables.is_ammo(String(k))
+	check("amunicja nie trafia do wyboru przedmiotu [X]", not amm_in_x and Throwables.SHOP_ORDER.size() == Throwables.ORDER.size() + Throwables.AMMO_ORDER.size())
+	Arsenal.reset_mission()
+	await frames(2)
+	# wspólna pula 12/70
+	Arsenal.set_reserve(Weapons.SPREAD12, 30)
+	check("12/70: SPREAD-12 i PELLET-8 dzielą zapas (%d = %d), M-83 ma własny" % [Arsenal.get_reserve(Weapons.SRUT8), Arsenal.get_reserve(Weapons.SPREAD12)],
+		Arsenal.get_reserve(Weapons.SRUT8) == 30 and Arsenal.pool(Weapons.SRUT8) == Arsenal.pool(Weapons.SPREAD12) and Arsenal.pool(Weapons.M83) != Arsenal.pool(Weapons.SRUT8)
+		and Arsenal.pool_max(Weapons.SRUT8) == maxi(Weapons.def(Weapons.SPREAD12).reserve_max, Weapons.def(Weapons.SRUT8).reserve_max))
+	# definicje z amunicją
+	var saved: Dictionary = Weapons.levels.duplicate()
+	Weapons.levels.erase(Weapons.M83)
+	var ps := Weapons.def_ammo(Weapons.M83, 0)
+	var us := Weapons.def_ammo(Weapons.M83, 1)
+	var bz := Weapons.def_ammo(Weapons.M83, 2)
+	Weapons.levels[Weapons.M83] = 3
+	var ps_s := Weapons.def_ammo(Weapons.M83, 0)
+	var us_s := Weapons.def_ammo(Weapons.M83, 1)
+	Weapons.levels.clear()
+	for k in saved:
+		Weapons.levels[k] = saved[k]
+	check("7.62 US: poddźwiękowy (%.0f px/s), słabszy (%.1f < %.1f), sam trochę ciszej (%.2f < %.2f)" % [us.speed, us.damage, ps.damage, us.n_max, ps.n_max],
+		us.speed < Ammo.SOUND_PX and us.damage < ps.damage and us.n_max < ps.n_max and us.ammo == 1)
+	check("7.62 US z tłumikiem: hałas %.2f wobec PS z tłumikiem %.2f (≤ 60%%)" % [us_s.n_max, ps_s.n_max], us_s.suppressor > 0.0 and us_s.n_max <= ps_s.n_max * 0.6)
+	check("7.62 BZ: przebija 70% pancerza, +1 cel, podpala", absf(bz.armor_pen - 0.7) < 0.01 and bz.pierce == ps.pierce + 1 and bz.ignite > 0.0)
+	var buck := Weapons.def_ammo(Weapons.SRUT8, 0)
+	var slug := Weapons.def_ammo(Weapons.SRUT8, 1)
+	var rub := Weapons.def_ammo(Weapons.SRUT8, 3)
+	check("breneka: 1 pocisk %.0f (≈ 85%% snopa %.0f), bez rozrzutu, zasięg ×2 (%.0f)" % [slug.damage, buck.damage * buck.pellets, slug.range_px],
+		slug.pellets == 1 and absf(slug.damage - buck.damage * buck.pellets * 0.85) < 0.01 and slug.spread_deg == 0.0 and absf(slug.range_px - buck.range_px * 2.0) < 0.01)
+	check("gumowe: ogłuszają (%.1f s), ranią ćwierć (%.1f), bez krytyka" % [rub.stun, rub.damage], rub.stun >= buck.stun + 1.0 and rub.damage < buck.damage * 0.3 and rub.crit_mult == 1.0)
+	check("nieznany typ kalibru = nabój zwykły", Weapons.def_ammo(Weapons.M83, 9) == Weapons.def(Weapons.M83) and Weapons.def_ammo(Weapons.HKM9, 1) == Weapons.def(Weapons.HKM9))
+	# BZ przez pancerz Wołka: PS traci 3 na trafienie, BZ tylko 0,9
+	await _settle_player()
+	var wolek := await dummy(60.0, 100000.0, "wolek")
+	var k0 := Projectile.new()
+	k0.launch(Weapons.M83, player.global_position + Vector2(8, -6), Vector2.RIGHT, 1, true, 0.0, 0)
+	get_tree().current_scene.add_child(k0)
+	await wait(0.2)
+	var d_ps := dealt(wolek)
+	var k2 := Projectile.new()
+	k2.launch(Weapons.M83, player.global_position + Vector2(8, -6), Vector2.RIGHT, 1, true, 0.0, 2)
+	get_tree().current_scene.add_child(k2)
+	await wait(0.2)
+	var d_bz := dealt(wolek) - d_ps
+	check("pancerz Wołka: PS %.1f, BZ %.1f (BZ traci tylko 30%% pancerza)" % [d_ps, d_bz], d_ps > 0.0 and d_bz > d_ps + 1.5)
+	free_dummies()
+	await frames(2)
+	# wymiana typu klawiszem Z: stary magazynek (z komorą) wraca do zapasu, ładujemy 30 US
+	var d := equip(Weapons.M83, false)
+	wc.mags[d.id] = 31
+	Arsenal.set_reserve(d.id, 100)
+	Arsenal.set_reserve(d.id, 50, 1)
+	Arsenal.set_reserve(d.id, 0, 2)
+	wc.cycle_ammo()
+	check("Z: wybór US uruchamia przeładowanie", wc.next_ammo_of(d.id) == 1 and wc.state == Controller.State.RELOAD and wc.mag_of(d.id) == 0)
+	await wait(d.full_reload_time() + 0.4)
+	check("wymiana na US: 30 US w magazynku (%d, typ %d), zapas US 50 → %d, PS wrócił (100 → %d)" % [wc.mag_of(d.id), wc.ammo_of(d.id), Arsenal.get_reserve(d.id, 1), Arsenal.get_reserve(d.id)],
+		wc.mag_of(d.id) == 30 and wc.ammo_of(d.id) == 1 and Arsenal.get_reserve(d.id, 1) == 20 and Arsenal.get_reserve(d.id) == 131 and wc.cur().ammo == 1)
+	var before := get_tree().current_scene.get_children().filter(func(n: Node) -> bool: return n is Projectile).size()
+	wc.cd = 0.0
+	wc._fire_shot(wc.cur())
+	var shots := get_tree().current_scene.get_children().filter(func(n: Node) -> bool: return n is Projectile and n.ammo == 1)
+	check("strzał nabojem US: pocisk niesie typ i prędkość poddźwiękową", shots.size() > 0 and shots.size() > before - 1 and float(shots[0]._def.speed) < Ammo.SOUND_PX)
+	wc.cycle_ammo()                       # BZ pusty → pomijany, wraca PS
+	check("Z pomija pusty typ (BZ 0) i wraca do PS", wc.next_ammo_of(d.id) == 0)
+	await wait(d.full_reload_time() + 0.4)
+	wc.state = Controller.State.READY
+	# sklep: pudełko breneki dla obu strzelb, amunicja specjalna przeżywa reset misji
+	var bank0: int = Scrap.bank
+	Scrap.bank = 1000
+	Arsenal.set_reserve(Weapons.SRUT8, 0, 1)
+	Scrap.request_buy_supply("ammo_slug")
+	await frames(2)
+	var bought := Arsenal.get_reserve(Weapons.SRUT8, 1)
+	Arsenal.reset_mission()
+	await frames(2)
+	check("sklep: pudełko breneki = %d (PELLET-8 i SPREAD-12: %d), po resecie misji zostaje (%d)" % [bought, Arsenal.get_reserve(Weapons.SPREAD12, 1), Arsenal.get_reserve(Weapons.SRUT8, 1)],
+		bought == Throwables.box_of("ammo_slug") and Arsenal.get_reserve(Weapons.SPREAD12, 1) == bought and Arsenal.get_reserve(Weapons.SRUT8, 1) == bought and Scrap.bank == 1000 - Throwables.price_of("ammo_slug"))
+	# warsztat, zakładka SUPPLIES: kafle przedmiotów i pudełek amunicji, przycisk „kup pudełko”, zapas w pudełkach
+	var wui := get_tree().get_first_node_in_group("workshop_ui")
+	var ui_ok := false
+	var ui_info := "brak panelu"
+	if wui != null:
+		wui.open()
+		wui._set_page(1)
+		var kinds: Array = wui._supply_kinds()
+		wui._sup_sel = kinds.find("ammo_slug")
+		wui._refresh()
+		var tile = wui._sup_tiles[wui._sup_sel]
+		ui_info = "%d kafli, przycisk '%s', pasek %d/%d" % [wui._sup_tiles.size(), wui._s_action.text, tile.bar.have, tile.bar.maxn]
+		ui_ok = wui._sup_tiles.size() == kinds.size() and kinds.has("ammo_us") and not wui._s_action.text.contains("+1") and wui._s_action.text.contains(str(Throwables.price_of("ammo_slug"))) and tile.bar.have == 1 and tile.bar.maxn == 4
+		wui.close()
+	check("warsztat SUPPLIES: pudełka amunicji w sklepie (%s)" % ui_info, ui_ok)
+	Scrap.bank = bank0
+	for k in Throwables.AMMO_ORDER:
+		Arsenal.stock[k] = 0
+	equip(Weapons.M83)
+
 ## Szybki pocisk nie może przeskoczyć wąskiego wroga (przeciąganie promienia, nie przesuwany obszar).
 func _t_sweep() -> void:
 	var e := await dummy(200.0)
@@ -1888,14 +2000,14 @@ func _t_ammo_reload() -> void:
 	await wait(d.reload_time + 0.4)
 	check("przeładowanie częściowe: brakujące 5 + nabój w komorze (31, zapas −6)", wc.mag_of(d.id) == 31 and Arsenal.get_reserve(d.id) == r1 - 6, "mag %d zapas %d→%d" % [wc.mag_of(d.id), r1, Arsenal.get_reserve(d.id)])
 	# brak zapasu
-	Arsenal.reserve[d.id] = 0
+	Arsenal.set_reserve(d.id, 0)
 	for i in 3:
 		wc.cd = 0.0
 		wc._fire_shot(d)
 	var started: bool = wc.try_reload()
 	check("brak zapasu: przeładowanie się nie zaczyna", not started and wc.state == Controller.State.READY)
 	# anulowanie zmianą broni nie kosztuje naboi (magazynek: 31 = 30 + nabój w komorze, minus 3 strzały = 28)
-	Arsenal.reserve[d.id] = 100
+	Arsenal.set_reserve(d.id, 100)
 	wc.try_reload()
 	await wait(0.4)
 	wc.select_slot(2)
@@ -1906,7 +2018,7 @@ func _t_ammo_reload() -> void:
 	# strzelba: nabój po naboju, przerywane strzałem
 	var s := equip(Weapons.SRUT8, false)
 	wc.mags[s.id] = 2
-	Arsenal.reserve[s.id] = 24
+	Arsenal.set_reserve(s.id, 24)
 	wc.try_reload()
 	await wait(s.reload_time * 3.0 + 0.3)
 	check("PELLET-8: ładowanie po 1 naboju (2→5 po ~3 krokach)", wc.mag_of(s.id) >= 4 and wc.mag_of(s.id) <= 6, "mag %d" % wc.mag_of(s.id))
@@ -1984,7 +2096,7 @@ func _t_pickups() -> void:
 	await frames(2)
 	free_dummies()
 	var d := equip(Weapons.M83, false)
-	Arsenal.reserve[d.id] = 50
+	Arsenal.set_reserve(d.id, 50)
 	level.spawn_item("ammo", d.id, player.global_position + Vector2(0, -8), 10)
 	await wait(0.9)
 	await _step_on_item("ammo", d.id)       # upuszczona skrzynka ma losowy znos — wejdź na nią
@@ -2002,7 +2114,7 @@ func _t_pickups() -> void:
 	free_dummies()
 	# podniesienie broni (E): wymiana głównej, stara spada na ziemię
 	var old: int = wc.loadout[0]
-	Arsenal.reserve[Weapons.SRUT8] = 0
+	Arsenal.set_reserve(Weapons.SRUT8, 0)
 	level.spawn_item("weapon", Weapons.SRUT8, player.global_position + Vector2(0, -2))
 	await wait(0.9)
 	await _step_on_item("weapon", Weapons.SRUT8)

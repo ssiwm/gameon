@@ -11,6 +11,11 @@ extends RefCounted
 const Actions := preload("res://scripts/actions.gd")
 
 const ORDER := ["frag", "phos", "smoke", "mine", "charge", "medkit", "defib", "scanner"]
+## Amunicja specjalna (ammo.gd, od 1.7.317): sklep i zapas jak przedmioty, ale `mode` = "ammo" — nie ma jej w wyborze [X], zapas liczy
+## się w NABOJACH (`max`), a zakup dokłada pudełko (`box`). Broń bierze ją przy przeładowaniu, gdy gracz wybierze typ klawiszem [Z].
+const AMMO_ORDER := ["ammo_us", "ammo_bz", "ammo_slug", "ammo_inc", "ammo_rub"]
+## Kolejność w zakładce SUPPLIES warsztatu.
+const SHOP_ORDER := ORDER + AMMO_ORDER
 
 const KINDS := {
 	"frag": {
@@ -53,6 +58,31 @@ const KINDS := {
 		"color": Color(0.5, 0.85, 1.0),
 		"note": "Hold the item key (L-Alt / L-Cmd) for 1.5 s: revives a downed teammate up to 10 m away in line of sight. One per mission.",
 	},
+	"ammo_us": {
+		"mode": "ammo", "name": "7.62 US", "full": "7.62×39 US subsonic", "issue": 0, "price": 60, "max": 120, "box": 30,
+		"color": Color(0.55, 0.75, 0.95),
+		"note": "Box of 30 subsonic rounds for the M-83. Slower and weaker, no supersonic crack — with the suppressor the shot barely carries.",
+	},
+	"ammo_bz": {
+		"mode": "ammo", "name": "7.62 BZ", "full": "7.62×39 BZ armour-piercing incendiary", "issue": 0, "price": 120, "max": 90, "box": 30,
+		"color": Color(0.95, 0.4, 0.3),
+		"note": "Box of 30 rounds for the M-83: ignore most armour, pass through one body, set the target alight.",
+	},
+	"ammo_slug": {
+		"mode": "ammo", "name": "12 SLUG", "full": "12/70 Brenneke slug", "issue": 0, "price": 50, "max": 40, "box": 10,
+		"color": Color(0.8, 0.8, 0.85),
+		"note": "Box of 10 slugs for both shotguns: one heavy projectile, no spread, twice the range.",
+	},
+	"ammo_inc": {
+		"mode": "ammo", "name": "12 INC", "full": "12/70 incendiary shells", "issue": 0, "price": 60, "max": 30, "box": 10,
+		"color": Color(1.0, 0.55, 0.2),
+		"note": "Box of 10 incendiary shells for both shotguns: every pellet sets the target on fire for 2 s.",
+	},
+	"ammo_rub": {
+		"mode": "ammo", "name": "12 RUB", "full": "12/70 rubber shells", "issue": 0, "price": 40, "max": 30, "box": 10,
+		"color": Color(0.45, 0.5, 0.45),
+		"note": "Box of 10 less-lethal rubber shells for both shotguns: stun and knock back, barely wound.",
+	},
 	"scanner": {
 		"mode": "use", "name": "OWL", "full": "Motion scanner (Owl)", "issue": 0, "price": 120, "max": 3, "time": 10.0, "range": 240.0, "noise": 1.0,
 		"color": Color(0.9, 0.9, 0.5),
@@ -76,6 +106,19 @@ static func issue_stock() -> Dictionary:
 	for k in ORDER:
 		out[k] = int(KINDS[k]["issue"])
 	return out
+
+## Amunicja specjalna (wpis `ammo_*`)?
+static func is_ammo(kind: String) -> bool:
+	return mode_of(kind) == "ammo"
+
+## Ile sztuk dokłada jeden zakup: pudełko naboi albo jeden przedmiot.
+static func box_of(kind: String) -> int:
+	return int(KINDS[kind].get("box", 1)) if KINDS.has(kind) else 1
+
+## Zapas pokazany w warsztacie w sztukach zakupu (pudełka amunicji zaokrąglone w górę, przedmioty jak są).
+static func units(kind: String, have: int) -> int:
+	var b := box_of(kind)
+	return (have + b - 1) / b
 
 static func price_of(kind: String) -> int:
 	return int(KINDS[kind].get("price", 0)) if KINDS.has(kind) else 0

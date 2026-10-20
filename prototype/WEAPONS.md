@@ -336,3 +336,20 @@ bez nowych systemów:
 
 Kule nadal lecą bez opadania: realnie 7,62×39 opada o kilka centymetrów na 30 m, czego w grze nie widać. Kolejne etapy (amunicja według kalibru,
 części z kompromisami widoczne na modelu, obsługa broni, stan techniczny) — patrz `GUNSMITH_PLAN.md` §10.
+
+## 15. Amunicja według kalibru, etap 1 (1.7.317)
+
+Drugi etap `GUNSMITH_PLAN.md`. Dane i reguły w `scripts/ammo.gd`, zapas w `arsenal.gd`, wybór w `weapon_controller.gd`.
+
+| Element | Jak działa | Kod |
+|---|---|---|
+| **Kalibry** | `WeaponDef.caliber`: M-83 `762`, P-83 `918`, SPREAD-12 i PELLET-8 `12g`; reszta broni bez kalibru (zapas tylko dla siebie). Pula naboi zwykłych ma klucz `Ammo.pool_key` (100 + indeks kalibru; broń bez kalibru — własne id), sufit = największy `reserve_max` broni tego kalibru (`Arsenal.pool_max`). **12/70 jest wspólne dla obu strzelb** | `ammo.gd`, `Arsenal.pool` |
+| **Typy naboi** | indeks 0 = zwykły; specjalne: **7,62 US** (poddźwiękowy: prędkość ×0,42 ≈ 1000 px/s, obrażenia ×0,75, hałas ×0,85, a z tłumikiem ×0,5), **7,62 BZ** (`armor_pen` 0,7, +1 przebicie, podpalenie 1 s), **12/70 breneka** (śrut → jeden pocisk: 85% snopa, bez rozrzutu, zasięg ×2, +1 przebicie, `armor_pen` 0,3), **12/70 zapalające** (podpalenie 2 s, ×0,7), **12/70 gumowe** (×0,25, ogłuszenie +1 s, odrzut ×1,3, bez krytyka). Typ nakłada się na definicję jak ulepszenie: `Weapons.def_ammo(id, t)` (pamięć podręczna po broni, poziomie i typie) | `Ammo.apply`, `weapons.gd` |
+| **Pancerz** | `Combat.make_info` niesie `ap` z definicji naboju; `enemy.take_hit` mnoży pancerz przez (1 − ap): Wołek traci od PS 3 na trafienie, od BZ 0,9 | `combat.gd`, `enemy.gd` |
+| **Wybór [Z]** | akcja `ammo_type` (pad: do przypisania): następny typ kalibru, który drużyna ma w zapasie (zwykły zawsze). Typ wchodzi z następnym magazynkiem — gotowa broń od razu się przeładowuje, stary magazynek (z nabojem w komorze) wraca do zapasu swojego typu; nowy ładuje się bez komory. HUD: `30 / 150 PS`, przy wybranym innym typie `PS→US` (zapas pokazuje następny typ) | `cycle_ammo`, `loaded` / `want_ammo`, `hud.gd` |
+| **Sieć** | typ leci z żądaniem strzału (`_fire_request`, `_server_fire`, `_fire_remote`) i z prośbą o naboje (`_req_rounds`, `_deposit_rpc`); serwer sprawdza `Ammo.valid`, nieznany typ = zwykły. Magazynek i typ w nim należą do gracza jak dotąd, zapas — do serwera | `weapon_controller.gd`, `arsenal.gd` |
+| **Skąd amunicja specjalna** | warsztat, zakładka SUPPLIES: pudełka (`ammo_*` w `throwables.gd`, `mode` = "ammo"; US 30 szt. / 60 złomu, BZ 30 / 120, breneka 10 / 50, zapalające 10 / 60, gumowe 10 / 40). Zapas leży w `Arsenal.stock` w nabojach, więc przechodzi między misjami, wraca po wipe i zapisuje się u hosta jak granaty; reset misji go nie zeruje. Nie ma jej w wyborze przedmiotu [X]. Nocny Dyżur: bez amunicji specjalnej | `throwables.gd`, `scrap.gd`, `workshop_ui.gd`, `item_icon.gd` |
+| **Ulepszenia** | dawne poziomy 3 strzelb to dziś typy naboi; w ich miejsce: SPREAD-12 T3 **lufa z portami gazowymi** (szarpnięcie kamery −35%, drżenie −30%, hałas +10%), PELLET-8 T3 **ładownica na komorze** (ładowanie łuski −25%). Tłumik M-83 i P-83 ustawia `suppressor`, z którego korzysta nabój poddźwiękowy | `upgrades.gd` |
+
+Poza tym etapem (patrz `GUNSMITH_PLAN.md` §10): naboje 40 mm (kartacz, oświetlający, dymny, kasetowy), wspólne ogniwa NiCd LR-7 / SPECTER-1,
+smugacze T-45 i amunicja specjalna w łupie z elit.

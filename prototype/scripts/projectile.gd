@@ -34,6 +34,7 @@ const WHIZZ_PX := 18.0              ## px (ok. 1,5 m): kula przelatująca tak bl
 const WHIZZ_MIN_FLIGHT := 30.0      ## px lotu, poniżej których świstu nie ma (stoisz przy lufie — słychać wystrzał)
 
 var weapon := 0
+var ammo := 0                        ## typ naboju (ammo.gd) — ta sama kula u serwera i klientów
 var shooter_id := 1
 var authoritative := true
 var direction := Vector2.RIGHT
@@ -56,10 +57,11 @@ var lag := 0.0                      ## s kompensacji opóźnienia (serwer, strza
 var _comp_rids: Array[RID] = []     ## wrogowie z historią: w trakcie dogonienia pomijamy ich ciała fizyczne
 
 ## Ustawia pocisk przed add_child. `auth` = serwer rozstrzyga trafienia.
-func launch(w: int, from: Vector2, dir: Vector2, shooter: int, auth: bool, lag_s := 0.0) -> void:
+func launch(w: int, from: Vector2, dir: Vector2, shooter: int, auth: bool, lag_s := 0.0, ammo_t := 0) -> void:
 	lag = lag_s
 	weapon = w
-	_def = Weapons.def(w)
+	ammo = ammo_t
+	_def = Weapons.def_ammo(w, ammo_t)
 	shooter_id = shooter
 	authoritative = auth
 	direction = dir.normalized()
@@ -223,7 +225,7 @@ func sticks_on_hit() -> bool:
 
 func _hit_target(node: Node, p: Vector2, at_dist: float) -> Dictionary:
 	var dmg: float = float(_def.damage) * float(_def.falloff(at_dist)) * float(_def.boost_damage(_vel.length()))
-	var info := Combat.make_info(weapon, dmg, p, direction, shooter_id, "bullet")
+	var info := Combat.make_info(weapon, dmg, p, direction, shooter_id, "bullet", ammo)
 	var res := Combat.apply(node, info)
 	Combat.report(info, res)
 	return res

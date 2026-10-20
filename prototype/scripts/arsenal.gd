@@ -7,11 +7,17 @@ extends Node
 ## (request_rounds), serwer zdejmuje je z zapasu i odsyła przyznaną liczbę.
 ## Dzięki temu dwóch graczy z tą samą bronią nie wyda tych samych naboi dwa razy,
 ## a anulowane przeładowanie nic nie kosztuje.
+##
+## Kalibry (od 1.7.317, ammo.gd): zapas naboi zwykłych leży pod kluczem kalibru (`Ammo.pool_key`) — SPREAD-12 i PELLET-8 biorą 12/70
+## z jednej puli, a jej sufit to największy sufit broni tego kalibru. Amunicja specjalna (typ > 0) nie jest w `reserve`, tylko
+## w zapasie zaopatrzenia `stock` pod wpisem `ammo_*` (w nabojach): przechodzi między misjami, wraca po wipe i zapisuje się u hosta
+## jak granaty. Funkcje zapasu przyjmują id broni i typ naboju `t` (0 = zwykły).
 
 const Weapons := preload("res://scripts/weapons.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Throwables := preload("res://scripts/throwables.gd")
+const Ammo := preload("res://scripts/ammo.gd")
 
 ## Materiał trafionego celu — dobiera efekt i dźwięk uderzenia.
 enum Mat { FLESH, ARMOR, WOOD, METAL, WORLD }
@@ -32,13 +38,36 @@ func _ready() -> void:
 	multiplayer.peer_connected.connect(_on_peer_connected)
 
 func _reset_local() -> void:
+	var special := {}                       # amunicja specjalna nie wraca do zestawu startowego (kupiona — zostaje)
+	for k in Throwables.AMMO_ORDER:
+		if not NightShift.active and stock.has(k):
+			special[k] = stock[k]
 	stock = Throwables.issue_stock()
+	stock.merge(special)
 	stock_changed.emit()
 	reserve.clear()
 	for d in Weapons.defs():
 		if d.uses_ammo() and not d.infinite:
-			reserve[d.id] = int(d.reserve_start * NightShift.ammo_mult())
+			var key := pool(d.id)
+			reserve[key] = maxi(int(reserve.get(key, 0)), int(d.reserve_start * NightShift.ammo_mult()))
 	reserve_changed.emit()
+
+## Klucz puli naboi zwykłych broni `w` (wspólny dla broni jednego kalibru).
+func pool(w: int) -> int:
+	return Ammo.pool_key(w, String(Weapons.def(w).caliber))
+
+## Sufit puli: największy sufit broni, które z niej biorą (z ulepszeniami drużyny).
+func pool_max(w: int) -> int:
+	var key := pool(w)
+	var m := 0
+	for d in Weapons.defs():
+		if pool(d.id) == key:
+			m = maxi(m, Weapons.def(d.id).reserve_max)
+	return m
+
+## Wpis zaopatrzenia z amunicją specjalną typu `t` dla broni `w` ("" = nabój zwykły z puli misji).
+func special_kind(w: int, t: int) -> String:
+	return Ammo.kind_of(String(Weapons.def(w).caliber), t)
 
 ## Granaty i inne rzucane przedmioty wracają do zapasu startowego przy każdej misji i próbie (też z carry z kryjówki — jak flary).
 func reset_throwables() -> void:
@@ -69,7 +98,7 @@ func begin_mission(new_run: bool) -> void:
 func load_gear(saved: Dictionary) -> void:
 	if saved.is_empty():
 		return
-	for k in Throwables.ORDER:
+	for k in Throwables.SHOP_ORDER:
 		if saved.has(k):
 			stock[k] = clampi(int(saved[k]), 0, int(Throwables.KINDS[k]["max"]))
 	_snapshot = stock.duplicate()
@@ -82,43 +111,75 @@ func reset_mission() -> void:
 	_reset_local()
 	_push()
 
-func get_reserve(w: int) -> int:
+func get_reserve(w: int, t := 0) -> int:
 	var d := Weapons.def(w)
+	if t > 0:
+		var sk := special_kind(w, t)
+		return get_throwable(sk) if sk != "" else 0
 	if d.infinite:
 		return 9999
-	return int(reserve.get(w, 0))
+	return int(reserve.get(pool(w), 0))
 
-func is_full(w: int) -> bool:
+func is_full(w: int, t := 0) -> bool:
 	var d := Weapons.def(w)
-	return d.infinite or get_reserve(w) >= d.reserve_max
+	if t > 0:
+		var sk := special_kind(w, t)
+		return sk == "" or get_throwable(sk) >= int(Throwables.KINDS[sk]["max"])
+	return d.infinite or get_reserve(w) >= pool_max(w)
+
+## Ustawia zapas (serwer; testy i narzędzia) — pula kalibru albo amunicja specjalna.
+func set_reserve(w: int, n: int, t := 0) -> void:
+	if t > 0:
+		var sk := special_kind(w, t)
+		if sk != "":
+			stock[sk] = maxi(0, n)
+			_push_stock()
+		return
+	reserve[pool(w)] = maxi(0, n)
+	_push()
 
 # ---------------------------------------------------------------- zapas (serwer)
 
 ## Dodaje naboje do zapasu (skrzynka, znaleziona broń, zwrot z porzuconego magazynka).
 ## Zwraca ile faktycznie weszło (zapas ma sufit).
-func add_reserve(w: int, n: int) -> int:
+func add_reserve(w: int, n: int, t := 0) -> int:
 	if not NoiseMgr.is_server():
 		return 0
 	var d := Weapons.def(w)
-	if d.infinite or not d.uses_ammo():
+	if not d.uses_ammo():
 		return 0
-	var before := int(reserve.get(w, 0))
+	if t > 0:
+		var sk := special_kind(w, t)
+		return add_throwable(sk, n) if sk != "" and n > 0 else 0          # zwrot amunicji specjalnej (wymiana typu, porzucona broń)
+	if d.infinite:
+		return 0
+	var key := pool(w)
+	var before := int(reserve.get(key, 0))
 	var gained := n if n <= 0 else maxi(1, int(round(n * NightShift.ammo_mult())))     # AMMO FAMINE: połowa naboi
-	var after := mini(d.reserve_max, before + gained)
-	reserve[w] = after
+	var after := mini(pool_max(w), before + gained)
+	reserve[key] = after
 	_push()
 	return after - before
 
-func take_rounds(w: int, want: int) -> int:
+func take_rounds(w: int, want: int, t := 0) -> int:
 	if not NoiseMgr.is_server():
 		return 0
 	var d := Weapons.def(w)
+	if t > 0:
+		var sk := special_kind(w, t)
+		var have_s := get_throwable(sk) if sk != "" else 0
+		var got_s := mini(have_s, want)
+		if got_s > 0:
+			stock[sk] = have_s - got_s
+			_push_stock()
+		return got_s
 	if d.infinite:
 		return want
-	var have := int(reserve.get(w, 0))
+	var key := pool(w)
+	var have := int(reserve.get(key, 0))
 	var got := mini(have, want)
 	if got > 0:
-		reserve[w] = have - got
+		reserve[key] = have - got
 		_push()
 	return got
 
@@ -184,7 +245,7 @@ func _throw_request(kind: String, pos: Vector2, vel: Vector2) -> void:
 		_throw_server(kind, pos, vel, multiplayer.get_remote_sender_id())
 
 func _throw_server(kind: String, pos: Vector2, vel: Vector2, shooter: int) -> void:
-	if not Throwables.is_valid(kind) or get_throwable(kind) <= 0 or Throwables.mode_of(kind) == "use":
+	if not Throwables.is_valid(kind) or get_throwable(kind) <= 0 or Throwables.mode_of(kind) in ["use", "ammo"]:
 		return
 	for p in get_tree().get_nodes_in_group("players"):
 		if int(p.player_id) == shooter:
@@ -213,26 +274,28 @@ func _sync_reserve(data: Dictionary) -> void:
 
 ## Gracz (właściciel magazynka) prosi o `want` naboi na koniec przeładowania.
 ## Wołane lokalnie na serwerze albo przez sieć z klienta; odpowiedź = rounds_granted.
-func request_rounds(w: int, want: int) -> void:
+func request_rounds(w: int, want: int, t := 0) -> void:
 	if not NoiseMgr.has_network() or NoiseMgr.is_server():
-		rounds_granted.emit(w, take_rounds(w, want))
+		rounds_granted.emit(w, take_rounds(w, want, t))
 	else:
-		_req_rounds.rpc_id(1, w, want)
+		_req_rounds.rpc_id(1, w, want, t)
 
-## Zwrot / porzucenie naboi do wspólnego zapasu (porzucona broń, nadmiar z przerwanego przeładowania).
-func deposit(w: int, n: int) -> void:
+## Zwrot / porzucenie naboi do wspólnego zapasu (porzucona broń, nadmiar z przerwanego przeładowania, wymiana typu naboju).
+func deposit(w: int, n: int, t := 0) -> void:
 	if n <= 0:
 		return
 	if not NoiseMgr.has_network() or NoiseMgr.is_server():
-		add_reserve(w, n)
+		add_reserve(w, n, t)
 	else:
-		_deposit_rpc.rpc_id(1, w, n)
+		_deposit_rpc.rpc_id(1, w, n, t)
 
 @rpc("any_peer", "call_remote", "reliable")
-func _deposit_rpc(w: int, n: int) -> void:
+func _deposit_rpc(w: int, n: int, t: int) -> void:
 	if not NoiseMgr.is_server() or not Weapons.is_valid(w) or not _is_human_peer(multiplayer.get_remote_sender_id()):
 		return
-	add_reserve(w, clampi(n, 0, Weapons.def(w).capacity(true)))       # magazynek z nabojem w komorze (30+1)
+	if not Ammo.valid(String(Weapons.def(w).caliber), t):
+		return
+	add_reserve(w, clampi(n, 0, Weapons.def(w).capacity(true)), t)       # magazynek z nabojem w komorze (30+1)
 
 ## Czy `peer_id` to żywy człowiek w tej sesji (serwer nie przyjmuje zwrotów naboi od obcych).
 func _is_human_peer(peer_id: int) -> bool:
@@ -242,10 +305,12 @@ func _is_human_peer(peer_id: int) -> bool:
 	return false
 
 @rpc("any_peer", "call_remote", "reliable")
-func _req_rounds(w: int, want: int) -> void:
+func _req_rounds(w: int, want: int, t: int) -> void:
 	if not NoiseMgr.is_server() or not Weapons.is_valid(w):
 		return
-	var got := take_rounds(w, clampi(want, 0, Weapons.def(w).mag))
+	var got := 0
+	if Ammo.valid(String(Weapons.def(w).caliber), t):
+		got = take_rounds(w, clampi(want, 0, Weapons.def(w).capacity(true)), t)
 	_grant.rpc_id(multiplayer.get_remote_sender_id(), w, got)
 
 @rpc("authority", "call_remote", "reliable")
@@ -261,7 +326,7 @@ func pick_drop_weapon() -> int:
 			continue
 		for w in p.kit_primaries():
 			var d := Weapons.def(w)
-			if not d.infinite and get_reserve(w) < int(d.reserve_max * 0.8) and not cands.has(w):
+			if not d.infinite and get_reserve(w) < int(pool_max(w) * 0.8) and not cands.has(w):
 				cands.append(w)
 	return -1 if cands.is_empty() else int(cands.pick_random())
 

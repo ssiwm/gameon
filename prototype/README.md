@@ -160,6 +160,7 @@ Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP =
 | Cios (maczeta / kilof) | V lub PPM | X |
 | Użycie przedmiotu / zmiana przedmiotu | lewy Alt (macOS: lewy Cmd) / X | RB / D-pad ↑ |
 | Tryb ognia | B | D-pad ↓ |
+| Rodzaj amunicji (następny magazynek; od 1.7.317) | Z | — (do przypisania) |
 | Latarka | L | D-pad ← |
 | Flara (rzut łukiem w stronę celowania) | F | D-pad → |
 | **Krzyk** (także mikrofon, jeśli włączony w lobby) | G | LT |

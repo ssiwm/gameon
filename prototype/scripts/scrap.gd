@@ -197,7 +197,7 @@ func _buy_supply_server(kind: String, peer_id: int) -> void:
 	elif not spend(price):
 		reason = "poor"
 	else:
-		Arsenal.add_throwable(kind, 1)
+		Arsenal.add_throwable(kind, Throwables.box_of(kind))        # amunicja specjalna: całe pudełko naboi (sufit w nabojach)
 		save_progress()
 	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
 		supply_result.emit(kind, reason == "ok", reason)
