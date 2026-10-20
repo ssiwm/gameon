@@ -124,7 +124,7 @@ Nazwy w HUD są ASCII (interfejs EN); GDD zostaje przy nazwach z diakrytykami.
 | Hitmarker | biały / złoty (krytyk) / czerwony większy (zabójstwo) / szary (pancerz) + dźwięk potwierdzenia w UI |
 | Celownik | kursor systemowy ukryty; **30% mniejszy niż w 1.6** (`CROSS_SCALE` = 0,7 skaluje wszystko razem); 4 ramiona rozchodzą się z rozrzutem — **od 1.7.310 to prawdziwy stożek strzału w odległości celownika od wylotu** (`WeaponDef.cone_radius`: rozrzut + bloom + bieg, u śrutu też rozstaw śrucin; nie dalej niż zasięg lotu), wiązka i szyna mają najmniejsze kółko, **łuk ciepła lufy** (biały → czerwony), pierścień przeładowania/ładowania, czerwony X przy pustym magazynku, miganie przy niskim stanie |
 | Animacje broni | dobycie (broń „wchodzi” z dołu), przeładowanie (opadanie i powrót), ładowanie szyny (drżenie), cios (zamach przez łuk z pchnięciem) |
-| Przeładowanie | tryb taktyczny: z nabojem w komorze szybciej niż pusty (+0,4–0,5 s), a broń z zamkiem zamkniętym (`chamber`: M-83, P-83, SPREAD-12, PELLET-8) mieści wtedy jeszcze nabój w komorze (30+1, 8+1; od 1.7.316); automatycznie po „kliku” na pustym i po wzięciu pustej broni |
+| Przeładowanie | tryb taktyczny: z nabojem w komorze szybciej niż pusty (+0,4–0,5 s), a broń z zamkiem zamkniętym (`chamber`: M-83, P-83, SPREAD-12, PELLET-8) mieści wtedy jeszcze nabój w komorze (30+1, 8+1; od 1.7.316); automatycznie po „kliku” na pustym i po wzięciu pustej broni. Od 1.7.326 (M-83, SPREAD-12): krótkie [R] — szybkie, magazynek spada z resztkami, przytrzymane [R] — taktyczne (§22) |
 | HUD | (cały HUD 70% — `UI_SCALE` w `hud.gd`) nazwa, `magazynek / zapas drużyny`, status (RELOADING %, CHARGING %, NO AMMO), **pasek lufy z kosztem następnego strzału** (`SHOT 0,8 → 1,5`) |
 
 ### Grafika broni (1.6.1)
@@ -449,4 +449,20 @@ zmienia rozrzutu ani hałasu.
 | **Widać** | od t > 0,5 z przodu lufy unoszą się smużki dymu (spalany smar), od t > 0,6 nad lufą faluje powietrze (pas zniekształcający obraz za sobą, `HAZE_SHADER`); przy jakości efektów LOW bez nich. Temperaturę trzymanej broni niesie gracz (`w_hot`, replikowane), więc widzą to wszyscy | `view3d.gd` (`_sync_weapon_fx`), `player.gd` |
 
 Zostaje na etap 4 (§6): szybsze zużycie przy pełnej temperaturze i ogniu ciągłym. Dev: `--shothot` (rozgrzana lufa gracza 1).
+
+## 22. Dwa przeładowania, etap 3c (1.7.326)
+
+Broń z wymiennym magazynkiem (`WeaponDef.mag_drop`: M-83, SPREAD-12) w obsłudze REALISTIC. 0,25 s po rozpoczęciu przeładowania magazynek wychodzi
+z gniazda i wtedy rozstrzyga się, czy [R] jest wciąż wciśnięte.
+
+| Element | Jak działa | Kod |
+|---|---|---|
+| **Szybkie** ([R] krótko) | magazynek leci na ziemię z nabojami, które w nim zostały; w broni zostaje tylko nabój w komorze, z zapasu przychodzi pełny magazynek (M-83: 1 + 30). Czas jak dotąd | `weapon_controller.gd` (`_mag_out`, `_spawn_mag`) |
+| **Taktyczne** ([R] przytrzymane) | resztki zostają (dawne dopełnianie), przeładowanie trwa o 0,4 s dłużej (`TAC_EXTRA`) | |
+| **Magazynek na ziemi** | znajdźka `mag` (arg = broń \| typ naboju << 8, rounds = naboje): model to podzespół `__mag` broni (bęben leży płasko, magazynek pudełkowy na boku, ×1,6), stuk o ziemię (dźwięk i mały hałas 0,15). Resztki wracają do wspólnego zapasu, gdy człowiek **kucnie** nad magazynkiem — samo przejście nie wystarczy. Pusty magazynek nie świeci i znika po 30 s; na mapie leży najwyżej 16 magazynków (najstarsze znikają bez dźwięku) | `pickup.gd` (`_try_mag`), `view3d.gd` (`_sync_guns`), `level.gd` |
+| **Sieć** | klient zgłasza upuszczenie (`_drop_mag_rpc`), serwer sprawdza nadawcę, broń, typ naboju i liczbę (najwyżej pełny magazynek z komorą) i stawia znajdźkę pod ręką gracza | |
+| **Podpowiedź** | po pierwszym magazynku z nabojami: krótkie [R] wyrzuca magazynek, kucnij nad nim; przytrzymane [R] zachowuje naboje | `hints.gd` (`magdrop`) |
+
+CLASSIC: dawne dopełnianie bez upuszczania. Nie zrobione: zatrzymanie zamka P-83 po ostatnim naboju (model pistoletu nie ma osobnego zamka).
+Dev: `--shotmag` (magazynek M-83 z 17 nabojami i pusty bęben SPREAD-12 przy graczu 1).
 

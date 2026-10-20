@@ -198,6 +198,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_parts()
 	await _t_handling_climb()
 	await _t_hot_barrel()
+	await _t_two_reloads()
 	await _t_homing()
 	await _t_bolt()
 	await _t_melee()
@@ -1916,6 +1917,93 @@ func _t_hot_barrel() -> void:
 	equip(Weapons.M83)
 	await _settle_player()
 
+## Magazynki „mag” leżące na mapie.
+func _mags_on_map() -> Array:
+	return get_tree().get_nodes_in_group("pickups").filter(func(it: Node) -> bool: return it.get("kind") == "mag" and not it.is_queued_for_deletion())
+
+## Dwa przeładowania, etap 3c (1.7.326, GUNSMITH_PLAN.md §5.3): krótkie [R] — szybkie, magazynek leci na ziemię z resztkami (w broni zostaje nabój
+## w komorze), resztki wracają do zapasu dopiero, gdy ktoś kucnie nad magazynkiem; przytrzymane [R] — taktyczne, +0,4 s, resztki zostają. Pusty
+## magazynek też spada (nic do podniesienia, znika po 30 s); CLASSIC — dawne dopełnianie; na mapie najwyżej MAG_MAX magazynków.
+func _t_two_reloads() -> void:
+	var real0: bool = Settings.realistic_handling
+	Settings.realistic_handling = true
+	for m in _mags_on_map():
+		m.queue_free()
+	var d := equip(Weapons.M83)
+	await _settle_player()
+	Arsenal.set_reserve(d.id, 100)
+	wc.sim_reload_hold = false
+	for i in 6:
+		wc.cd = 0.0
+		wc._fire_shot(d)
+	var left: int = wc.mag_of(d.id) - 1                         # bez naboju w komorze
+	wc.try_reload()
+	await wait(d.reload_time + 0.5)
+	var mags: Array = _mags_on_map()
+	var mg: Node2D = mags[0] if mags.size() == 1 else null
+	check("szybkie przeładowanie: magazynek z %d nabojami na ziemi (%s), w broni 1 + 30 (%d), zapas −30 (%d)" % [left, str(mg.rounds) if mg != null else "brak", wc.mag_of(d.id), Arsenal.get_reserve(d.id)],
+		mg != null and mg.rounds == left and (mg.arg & 255) == Weapons.M83 and wc.mag_of(d.id) == 31 and Arsenal.get_reserve(d.id) == 70 and not wc.tactical)
+	# podniesienie: stojąc nad magazynkiem nic się nie dzieje, kucnięcie zwraca resztki do zapasu
+	await wait(0.6)
+	if mg != null and is_instance_valid(mg):
+		player.global_position = mg.global_position
+		player.velocity = Vector2.ZERO
+	await frames(8)
+	var standing_ok: bool = mg != null and is_instance_valid(mg) and not mg.is_queued_for_deletion() and Arsenal.get_reserve(d.id) == 70
+	Input.action_press("crouch")
+	await frames(8)
+	Input.action_release("crouch")
+	await frames(2)
+	check("magazynek: stojąc nie podnosisz (%s), kucając — resztki wracają do zapasu (zapas %d)" % [str(standing_ok), Arsenal.get_reserve(d.id)],
+		standing_ok and Arsenal.get_reserve(d.id) == 70 + left and _mags_on_map().is_empty())
+	await _settle_player()
+	# taktyczne: przytrzymane [R] — resztki zostają, przeładowanie dłuższe o TAC_EXTRA, nic nie spada
+	wc.sim_reload_hold = true
+	for i in 6:
+		wc.cd = 0.0
+		wc._fire_shot(d)
+	var r0: int = Arsenal.get_reserve(d.id)
+	wc.try_reload()
+	await wait(d.reload_time + 0.1)
+	var still: bool = wc.state == Controller.State.RELOAD
+	await wait(Controller.TAC_EXTRA + 0.3)
+	check("taktyczne przeładowanie: dłuższe o %.1f s (%s), resztki zostają (31, zapas −6: %d), nic nie spada (%d)" % [Controller.TAC_EXTRA, str(still), r0 - Arsenal.get_reserve(d.id), _mags_on_map().size()],
+		still and wc.tactical and wc.mag_of(d.id) == 31 and Arsenal.get_reserve(d.id) == r0 - 6 and _mags_on_map().is_empty())
+	wc.sim_reload_hold = false
+	# pusty magazynek: przeładowanie z pustą bronią — magazynek spada pusty, bez poświaty i do podniesienia nie ma nic
+	for i in 31:
+		wc.cd = 0.0
+		wc._fire_shot(d)
+	wc.try_reload()
+	await wait(d.full_reload_time() + 0.4)
+	mags = _mags_on_map()
+	check("pusty magazynek też spada (%d, naboi %s), bez poświaty" % [mags.size(), str(mags[0].rounds) if mags.size() > 0 else "-"],
+		mags.size() == 1 and mags[0].rounds == 0 and mags[0].get("_glow") == null and wc.mag_of(d.id) == 30)
+	for m in mags:
+		m.queue_free()
+	# CLASSIC: dawne dopełnianie magazynka, nic nie spada
+	Settings.realistic_handling = false
+	for i in 6:
+		wc.cd = 0.0
+		wc._fire_shot(d)
+	var rc: int = Arsenal.get_reserve(d.id)
+	var need: int = d.capacity(true) - wc.mag_of(d.id)
+	wc.try_reload()
+	await wait(d.reload_time + 0.4)
+	check("CLASSIC: dopełnienie bez upuszczania (zapas −%d: %d, magazynków %d)" % [need, rc - Arsenal.get_reserve(d.id), _mags_on_map().size()],
+		Arsenal.get_reserve(d.id) == rc - need and _mags_on_map().is_empty())
+	Settings.realistic_handling = true
+	# limit magazynków na mapie
+	for i in Controller.MAG_MAX + 4:
+		wc._spawn_mag(Weapons.M83, 0, 0)
+	await frames(2)
+	check("na mapie najwyżej %d magazynków (%d)" % [Controller.MAG_MAX, _mags_on_map().size()], _mags_on_map().size() == Controller.MAG_MAX)
+	for m in _mags_on_map():
+		m.queue_free()
+	Settings.realistic_handling = real0
+	equip(Weapons.M83)
+	await _settle_player()
+
 ## Amunicja według kalibru (1.7.317, GUNSMITH_PLAN.md etap 1): wspólna pula 12/70, typy naboi (US, BZ, breneka, zapalające, gumowe),
 ## wymiana typu klawiszem Z przy przeładowaniu, przebicie pancerza, sklep pudełek, amunicja specjalna przeżywa reset misji.
 func _t_ammo_calibers() -> void:
@@ -2403,13 +2491,14 @@ func _t_ammo_reload() -> void:
 	check("pusty magazynek: kliknięcie uruchamia przeładowanie", wc.state == Controller.State.RELOAD)
 	await wait(d.full_reload_time() + 0.4)
 	check("przeładowanie M-83: magazynek pełny, zapas −30", wc.mag_of(d.id) == 30 and Arsenal.get_reserve(d.id) == reserve0 - 30, "mag %d zapas %d→%d" % [wc.mag_of(d.id), reserve0, Arsenal.get_reserve(d.id)])
-	# częściowe: bierze tylko brakujące
+	# częściowe: bierze tylko brakujące (przytrzymane [R] — przeładowanie taktyczne, od 1.7.326 krótkie [R] upuszcza magazynek z resztkami)
+	wc.sim_reload_hold = true
 	for i in 5:
 		wc.cd = 0.0
 		wc._fire_shot(d)
 	var r1 := Arsenal.get_reserve(d.id)
 	wc.try_reload()
-	await wait(d.reload_time + 0.4)
+	await wait(d.reload_time + Controller.TAC_EXTRA + 0.4)
 	check("przeładowanie częściowe: brakujące 5 + nabój w komorze (31, zapas −6)", wc.mag_of(d.id) == 31 and Arsenal.get_reserve(d.id) == r1 - 6, "mag %d zapas %d→%d" % [wc.mag_of(d.id), r1, Arsenal.get_reserve(d.id)])
 	# brak zapasu
 	Arsenal.set_reserve(d.id, 0)
@@ -2425,6 +2514,7 @@ func _t_ammo_reload() -> void:
 	wc.select_slot(2)
 	await wait(0.2)
 	check("zmiana broni w trakcie przeładowania anuluje je bez kosztu", Arsenal.get_reserve(d.id) == 100 and wc.mag_of(d.id) == 28, "zapas %d mag %d" % [Arsenal.get_reserve(d.id), wc.mag_of(d.id)])
+	wc.sim_reload_hold = false
 	wc.select_slot(0)
 	await wait(0.6)
 	# strzelba: nabój po naboju, przerywane strzałem

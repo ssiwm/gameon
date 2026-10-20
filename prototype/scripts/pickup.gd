@@ -38,7 +38,9 @@ const GLOW := {
 	"stash": Color(0.95, 0.75, 0.35),
 	"flares": Color(1.0, 0.45, 0.22),
 	"supply": Color(0.7, 0.85, 0.6),       # zastępowany kolorem zawartości (Throwables.KINDS), patrz _glow_color
+	"mag": Color(1.0, 0.78, 0.3),
 }
+const MAG_EMPTY_LIFE := 30.0      ## s — pusty magazynek (nic do podniesienia) potem znika
 
 ## Zrzut zaopatrzenia leży na ziemi jako sam przedmiot (granat, mina, skaner…), nie w torbie — rodzaj ma być widoczny od razu, a nie
 ## tylko po kolorze tabliczki. Skala sprite'a na rodzaj: modele znajdziek mają w view3d.gd (ITEM_SCALE) skalę ok. 1,5–2× naturalnej,
@@ -47,7 +49,7 @@ const SUPPLY_SCALE := {"frag": 1.4, "phos": 1.2, "smoke": 0.85, "mine": 0.9, "me
 
 var kind := "health"
 var arg := 0                      ## ammo/weapon: id broni
-var rounds := 0                   ## ammo: ile naboi
+var rounds := 0                   ## ammo / mag: ile naboi (mag: arg = broń | typ naboju << 8)
 var static_display := false       ## broń na stojaku (kryjówka): stoi w miejscu — bez podskoku przy spawnie i bez bujania
 
 var _vel := Vector2.ZERO
@@ -78,10 +80,11 @@ func _ready() -> void:
 	if kind != "health" and _hd == null:
 		material = Lights.unshaded()          # skrzynkę i broń widać w ciemności
 		modulate = Color(0.88, 0.88, 0.88)
-	# poświata — przedmiot widać w ciemności, ale nie oświetla okolicy
-	_glow = Lights.make_light(Lights.radial(), 0.9 if kind == "stash" else 1.6, _glow_color(), 0.6, false)      # skrytka świeci słabo — trzeba ją znaleźć
-	_glow.position = Vector2(0, -8)
-	add_child(_glow)
+	# poświata — przedmiot widać w ciemności, ale nie oświetla okolicy (pusty magazynek nie świeci — nie ma po co po niego iść)
+	if not (kind == "mag" and rounds <= 0):
+		_glow = Lights.make_light(Lights.radial(), 0.9 if kind in ["stash", "mag"] else 1.6, _glow_color(), 0.6, false)      # skrytka i magazynek świecą słabo
+		_glow.position = Vector2(0, -8)
+		add_child(_glow)
 	if static_display:
 		Scrap.changed.connect(queue_redraw)     # zakup w warsztacie odblokowuje stojak
 		_landed = true                  # wisi na stojaku: bez spadania i bujania
@@ -136,11 +139,13 @@ func _physics_process(delta: float) -> void:
 			if not fh.is_empty():
 				global_position = Vector2(roundf(next.x), fh["position"].y)         # lądowanie na pełnym pikselu
 				_landed = true
+				if kind == "mag":
+					Audio.play_variant_at("step_metal", 5, global_position, Audio.BUS_WORLD, -12.0, 1.45)        # stuk magazynka o ziemię
 			else:
 				global_position = next
 		else:
 			global_position = next
-	var bob := 0.0 if (not _landed or static_display) else sin(_t * 3.0) * 1.5 - 1.5
+	var bob := 0.0 if (not _landed or static_display or kind == "mag") else sin(_t * 3.0) * 1.5 - 1.5         # magazynek leży, nie unosi się jak łup
 	if _hd != null:
 		_hd.position.y = roundf(bob) if static_display else bob
 	elif not _spr.is_empty():
@@ -154,6 +159,8 @@ func _physics_process(delta: float) -> void:
 		_glow.energy = 0.5 + 0.2 * sin(_t * 4.0)
 	if _landed and NoiseMgr.is_server():
 		_try_pickup()
+		if kind == "mag" and rounds <= 0 and _t > MAG_EMPTY_LIFE and not is_queued_for_deletion():
+			_level().take_item(name, true)
 
 # ---------------------------------------------------------------- rysowanie (ammo / broń)
 
@@ -190,6 +197,10 @@ func _setup_hd() -> void:
 		gun_key = String(Weapons.def(arg).key)
 		if Sprites.gun_hd(gun_key) == null:
 			return
+	elif kind == "mag":
+		gun_key = String(Weapons.def(arg & 255).key)          # magazynek: podzespół `__mag` modelu broni (view3d.gd: _sync_guns)
+		if Sprites.gun_hd(gun_key) == null:
+			return
 	var nm := _hd_name()
 	if gun_key == "" and (not Sprites.newitem or nm == "" or not ItemsHd.has(nm)):
 		return
@@ -201,7 +212,7 @@ func _setup_hd() -> void:
 		# znacznik położenia broni: model na stojaku / na ziemi, kłódkę i tabliczkę z ceną stawia widok 3D (view3d.gd: _sync_guns)
 		var sp := Node2D.new()
 		sp.name = "GunMark"
-		sp.position = Vector2(0.0, _shelf_y() if static_display else -4.0)
+		sp.position = Vector2(0.0, _shelf_y() if static_display else (0.0 if kind == "mag" else -4.0))
 		_hd.add_child(sp)
 		return
 	var sc := _hd_scale()
@@ -252,6 +263,8 @@ func _try_pickup() -> void:
 			_try_tag()
 		"stash":
 			_try_stash()
+		"mag":
+			_try_mag()
 		"flares":
 			_try_flares()
 		"supply":
@@ -383,6 +396,22 @@ func _try_ammo() -> void:
 		var got := Arsenal.add_reserve(arg, rounds)
 		if got > 0:
 			_level().take_item(name)
+
+## Upuszczony magazynek (szybkie przeładowanie): resztki wracają do wspólnego zapasu, gdy człowiek kucnie nad nim — samo przejście nie wystarczy,
+## więc szybkie przeładowanie naprawdę kosztuje naboje, dopóki ktoś po nie nie wróci.
+func _try_mag() -> void:
+	if rounds <= 0:
+		return
+	var w := arg & 255
+	var t := arg >> 8
+	if not Weapons.is_valid(w) or Arsenal.is_full(w, t):
+		return
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot or p.dead or not bool(p.crouching) or not _near(p):
+			continue
+		if Arsenal.add_reserve(w, rounds, t) > 0:
+			_level().take_item(name)
+		return
 
 ## Skrzynia z mapy: uzupełnia zapas każdej broni głównej, którą drużyna nosi; zostaje,
 ## dopóki cokolwiek się mieści (nic się nie marnuje).

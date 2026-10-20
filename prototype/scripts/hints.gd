@@ -33,6 +33,7 @@ const TIPS := [
 	["grenade", "{throw} uses the selected item (grenades, mine, charge, medkit, defibrillator, scanner), {throw_next} switches. A frag or a charge hurts the squad too"],
 	["pickaxe", "Swing the pickaxe ({melee}) at the cracked brick wall to break through — it is loud"],
 	["firemode", "{firemode} switches the M-83 between full auto and a quiet 3-round burst"],
+	["magdrop", "A quick tap of {reload} drops the magazine with the rounds still in it — crouch ({crouch}) over it to get them back. Hold {reload} for a slower reload that keeps them"],
 ]
 
 var current := ""                    ## tekst w tej chwili
@@ -104,6 +105,7 @@ func _collect(p: Node) -> void:
 	_queue("grenade", _session > 120.0, true)
 	_queue("pickaxe", wall_near and p.weapons != null and Weapons.def(p.weapons.melee_id).breaks_walls, false)
 	_queue("firemode", _session > 90.0 and p.weapons != null and p.weapons.cur().burst_size > 0, true)
+	_queue("magdrop", p.weapons != null and int(p.weapons.dropped_mags) > 0, true)          # szybkie przeładowanie upuściło magazynek z nabojami (etap 3c)
 	# chwilowe: gdy sytuacja minie, zanim przyjdzie kolej, podpowiedź przepada
 	_queue("uneasy", NoiseMgr.level >= NoiseMgr.UNEASY_THRESHOLD or NoiseMgr.stalker_awake, false)
 	_queue("downed", bool(p.dead), false)

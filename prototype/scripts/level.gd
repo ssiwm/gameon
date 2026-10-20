@@ -1300,25 +1300,26 @@ func _spawn_item_rpc(n: String, kind: String, arg: int, rounds: int, pos: Vector
 	h.position = pos
 	add_child(h)
 
-## Serwer: przedmiot podniesiony — znika u wszystkich.
-func take_item(n: String) -> void:
+## Serwer: przedmiot podniesiony — znika u wszystkich. `quiet` — bez dźwięku podniesienia (np. stary magazynek sprzątany z mapy).
+func take_item(n: String, quiet := false) -> void:
 	if NoiseMgr.has_network():
-		_take_item_rpc.rpc(n)
+		_take_item_rpc.rpc(n, quiet)
 	else:
-		_take_item_rpc(n)
+		_take_item_rpc(n, quiet)
 
 ## Dźwięk podniesienia wg rodzaju przedmiotu (pickup.gd: kind); reszta (flary, zaopatrzenie) gra „item_pickup”.
 const PICKUP_SOUND := {
 	"ammo": "ammo_pickup", "cache": "ammo_pickup", "weapon": "weapon_pickup", "health": "medkit_pickup",
-	"scrap": "scrap_pickup", "stash": "scrap_pickup", "tag": "tag_pickup",
+	"scrap": "scrap_pickup", "stash": "scrap_pickup", "tag": "tag_pickup", "mag": "ammo_pickup",
 }
 
 @rpc("authority", "call_local", "reliable")
-func _take_item_rpc(n: String) -> void:
+func _take_item_rpc(n: String, quiet := false) -> void:
 	var h := get_node_or_null(n)
 	if h == null:
 		return
-	Audio.play_at(String(PICKUP_SOUND.get(h.kind, "item_pickup")), h.global_position, Audio.BUS_WORLD, -8.0)
+	if not quiet:
+		Audio.play_at(String(PICKUP_SOUND.get(h.kind, "item_pickup")), h.global_position, Audio.BUS_WORLD, -8.0)
 	h.queue_free()
 
 ## Serwer: restart misji czyści przedmioty.

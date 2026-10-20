@@ -809,3 +809,4 @@
 "%s select   ·   %s / %s part   ·   %s buy / fit / equip   ·   %s arms / supplies / perks / look   ·   %s close   ·   or click","%s wybór   ·   %s / %s część   ·   %s kup / zamontuj / załóż   ·   %s broń / zaopatrzenie / perki / wygląd   ·   %s zamknij   ·   albo kliknij"
 "Weapon handling","Obsługa broni"
 "REALISTIC","REALISTYCZNA"
+"A quick tap of {reload} drops the magazine with the rounds still in it — crouch ({crouch}) over it to get them back. Hold {reload} for a slower reload that keeps them","Krótkie {reload} wyrzuca magazynek z nabojami, które w nim zostały — kucnij ({crouch}) nad nim, żeby je odzyskać. Przytrzymane {reload} to wolniejsze przeładowanie, które je zachowuje"

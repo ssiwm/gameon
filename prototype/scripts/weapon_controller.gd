@@ -55,6 +55,12 @@ const HOT_SPREAD := 0.4           ## rozrzut (bazowy + dodatkowy) × (1 + 0,4·t
 const HOT_CAN := 0.5              ## tłumik: hałas × (1 + 0,5·t) — rozgrzana puszka głośnieje
 const HOT_SMOKE := 0.5            ## od tej temperatury z lufy idzie dym (view3d.gd), od HOT_HAZE — falowanie powietrza
 const HOT_HAZE := 0.6
+## Dwa przeładowania (§5.3, etap 3c, od 1.7.326; obsługa realistyczna, broń z WeaponDef.mag_drop): [R] krótko — szybkie: magazynek leci na ziemię
+## z resztkami (wracają do zapasu dopiero po podniesieniu — kucnij nad nim); [R] przytrzymane — taktyczne: +0,4 s, resztki zostają w zapasie.
+const MAG_OUT_AT := 0.25          ## s od początku przeładowania: magazynek wychodzi z gniazda — wtedy rozstrzyga się, czy [R] jest wciąż wciśnięte
+const TAC_EXTRA := 0.4
+const MAG_DROP_NOISE := 0.15      ## magazynek uderza o ziemię
+const MAG_MAX := 16               ## tyle magazynków najwyżej leży na mapie (serwer usuwa najstarsze)
 
 signal shot(w: int)
 signal reload_started(w: int)
@@ -85,6 +91,11 @@ var firing := false               ## promień/płomień w toku
 var bloom := 0.0                  ## ° dodatkowego rozrzutu od serii
 var climb := 0.0                  ## ° uniesienia lufy od odrzutu (podrzut; tylko celowanie myszą i obsługa realistyczna)
 var braced := false               ## broń oparta o krawędź przeszkody (lokalnie, co klatkę — check_brace)
+var reload_held := false          ## [R] wciśnięte (lokalnie, co klatkę; testy ustawiają sim_reload_hold)
+var sim_reload_hold := false
+var tactical := false             ## bieżące przeładowanie jest taktyczne (resztki zostają)
+var dropped_mags := 0             ## ile magazynków z resztkami gracz upuścił (podpowiedź o podnoszeniu)
+var _rl_out := -1.0               ## s do wyjęcia magazynka (< 0 — rozstrzygnięte albo nie dotyczy)
 var recoil := 0.0                 ## 0..1 — wizualne cofnięcie broni (widok)
 var cd := 0.0
 var melee_total := 0.35
@@ -392,6 +403,7 @@ func _sync_player() -> void:
 func tick_local(delta: float, reviving: bool) -> void:
 	_tick_common(delta)
 	braced = check_brace(cur())
+	reload_held = Input.is_action_pressed("reload") or sim_reload_hold
 	if reviving:
 		_cancel_actions()
 		_sync_player()
@@ -904,6 +916,8 @@ func try_reload(auto := false) -> bool:
 	_rl_pending = 0
 	_rl_wait = 0.0
 	_rl_cap = cap
+	tactical = false
+	_rl_out = MAG_OUT_AT if (d.mag_drop and Settings.realistic_handling and not swap) else -1.0
 	if d.reload_per_round:
 		_begin_round(d)
 	else:
@@ -934,6 +948,10 @@ func _begin_round(d: WeaponDef) -> void:
 
 func _tick_reload(delta: float) -> void:
 	var d := cur()
+	if _rl_out >= 0.0:
+		_rl_out -= delta
+		if _rl_out < 0.0:
+			_mag_out(d)
 	if _rl_req and _rl_left <= 0.0:
 		_rl_wait += delta
 		if _rl_wait > GRANT_TIMEOUT:
@@ -960,11 +978,56 @@ func _tick_reload(delta: float) -> void:
 		else:
 			Arsenal.request_rounds(d.id, want, ammo_of(d.id))
 
+## Magazynek wychodzi z gniazda: [R] wciąż wciśnięte i są w nim naboje — przeładowanie taktyczne (dłuższe, resztki zostają);
+## inaczej magazynek leci na ziemię z resztkami (w broni zostaje tylko nabój w komorze).
+func _mag_out(d: WeaponDef) -> void:
+	var keep := 1 if (d.chamber and mag_of(d.id) > 0) else 0
+	var left := mag_of(d.id) - keep
+	if left > 0 and reload_held:
+		tactical = true
+		_rl_left += TAC_EXTRA
+		_rl_total += TAC_EXTRA
+		return
+	mags[d.id] = keep
+	var n := left if (ammo_enabled and not d.infinite) else 0
+	if n > 0:
+		dropped_mags += 1
+	if NoiseMgr.is_server():
+		_spawn_mag(d.id, n, ammo_of(d.id))
+	else:
+		_drop_mag_rpc.rpc_id(1, d.id, n, ammo_of(d.id))
+
+## Klient: upuściłem magazynek (`n` naboi typu `t`). Serwer sprawdza nadawcę, broń i liczbę (najwyżej pełny magazynek) — jak przy zwrocie naboi.
+@rpc("any_peer", "call_remote", "reliable")
+func _drop_mag_rpc(w: int, n: int, t: int) -> void:
+	if not NoiseMgr.is_server() or player == null or player.dead or multiplayer.get_remote_sender_id() != player.player_id:
+		return
+	if not Weapons.is_valid(w) or not Weapons.def(w).mag_drop or not Ammo.valid(String(Weapons.def(w).caliber), t):
+		return
+	_spawn_mag(w, clampi(n, 0, Parts.max_capacity(Weapons.def(w))), t)
+
+## Serwer: magazynek na ziemi pod ręką gracza (znajdźka „mag”: arg = broń | typ naboju << 8, rounds = naboje), stuk o ziemię (hałas);
+## na mapie leży najwyżej MAG_MAX magazynków — najstarsze znikają.
+func _spawn_mag(w: int, n: int, t: int) -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null:
+		return
+	var side := signf(player.aim_dir.x) if absf(player.aim_dir.x) > 0.1 else 1.0
+	var pos := player.global_position + Vector2(side * 3.0, -10.0)
+	lvl.spawn_item("mag", w | (t << 8), pos, n)
+	NoiseMgr.add_noise(MAG_DROP_NOISE, pos, "mag_drop")
+	var mags_on_map: Array = get_tree().get_nodes_in_group("pickups").filter(func(it: Node) -> bool: return it.get("kind") == "mag" and not it.is_queued_for_deletion())
+	if mags_on_map.size() > MAG_MAX:
+		mags_on_map.sort_custom(func(a: Node, b: Node) -> bool: return String(a.name).naturalnocasecmp_to(String(b.name)) < 0)
+		for i in mags_on_map.size() - MAG_MAX:
+			lvl.take_item(mags_on_map[i].name, true)
+
 func _finish_reload() -> void:
 	state = State.READY
 	_rl_req = false
 	_rl_pending = 0
 	_rl_left = 0.0
+	_rl_out = -1.0
 
 func _cancel_reload() -> void:
 	var d := cur()
