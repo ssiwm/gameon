@@ -66,6 +66,7 @@ static func _table() -> Array:
 			"n_min": 0.6, "n_max": 1.5, "heat_gain": 0.09, "heat_decay": 0.30, "barrel_heat": 1.0 / 60.0,   # dwa magazynki ciągłym ogniem = gorąca lufa
 			"mag": 30, "reserve_start": 150, "reserve_max": 270, "pickup_rounds": 30, "chamber": true, "mag_drop": true,
 			"pen": 1.2,                       # 7,62 PS ze stalowym rdzeniem: przez skrzynię albo jedno ciało
+			"wear": 0.7,                      # AKM — najmniej wybredna broń świata
 			"reload_time": 1.35, "reload_empty_extra": 0.45,
 			"shake": 0.7, "cam_kick": 0.5, "recoil": 2.5, "flash_size": 3.5, "flash_light": 1.3,
 			"tracer_len": 12.0, "casing": 1, "gun_len": 12.0, "gun_row": 0,
@@ -94,6 +95,7 @@ static func _table() -> Array:
 			"n_min": 0.5, "n_max": 0.9, "heat_gain": 0.16, "heat_decay": 0.6, "barrel_heat": 1.0 / 35.0,     # cienka lufa pistoletu
 			"mag": 8, "chamber": true, "infinite": true, "reload_time": 1.1, "reload_empty_extra": 0.3,
 			"pen": 0.5,                       # 9×18 — miękka kula pistoletowa: zostaje w pierwszym celu
+			"wear": 0.7,
 			"shake": 0.5, "cam_kick": 0.4, "recoil": 2.5, "flash_size": 3.0, "flash_light": 1.2,
 			"tracer_len": 9.0, "casing": 1, "eject_frac": 0.45, "gun_len": 7.0, "gun_row": 2,
 			"sfx": "p64_shot", "sfx_count": 4, "sfx_vol": -8.0,
@@ -113,7 +115,7 @@ static func _table() -> Array:
 		},
 		{
 			"key": "lr7", "name": "LR-7", "slot": Slot.PRIMARY, "kind": Kind.BEAM,
-			"auto": true, "cooldown": 0.1, "draw_time": 0.4,
+			"auto": true, "cooldown": 0.1, "draw_time": 0.4, "wear": 2.0,
 			"damage": 6.0, "pierce": 1, "knock": 8.0,
 			"range_px": 176.0, "falloff_start": 80.0, "falloff_min": 0.55,
 			"n_min": 0.25, "n_max": 0.8, "heat_gain": 0.04, "heat_decay": 0.25,
@@ -152,7 +154,7 @@ static func _table() -> Array:
 		},
 		{
 			"key": "sokol6", "name": "FALCON-6", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
-			"auto": true, "cooldown": 0.2, "draw_time": 0.35,
+			"auto": true, "cooldown": 0.2, "draw_time": 0.35, "wear": 2.0,
 			"damage": 10.0, "knock": 25.0,
 			"jitter_deg": 5.0, "speed": 300.0, "speed_start": 60.0, "accel_time": 0.25, "range_px": 210.0,     # Gyrojet: z lufy wychodzi wolno i rozpędza się silnikiem
 			"homing": 4.5, "homing_cone": 60.0, "homing_range": 190.0,
@@ -166,7 +168,7 @@ static func _table() -> Array:
 		},
 		{
 			"key": "widmo1", "name": "SPECTER-1", "slot": Slot.PRIMARY, "kind": Kind.RAIL,
-			"auto": false, "cooldown": 0.9, "draw_time": 0.6, "charge_time": 1.2,
+			"auto": false, "cooldown": 0.9, "draw_time": 0.6, "charge_time": 1.2, "wear": 2.0,
 			"damage": 150.0, "pierce": 99, "knock": 200.0, "stun": 0.6,
 			"range_px": 480.0,
 			"n_min": 14.0, "n_max": 14.0, "heat_gain": 0.0,

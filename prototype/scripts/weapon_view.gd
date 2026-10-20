@@ -436,7 +436,7 @@ func _draw_crosshair(d: WeaponDef) -> void:
 		_fx.draw_arc(at, r + 9.0 * k, -PI * 0.5, -PI * 0.5 + TAU * prog, 28, Color(0.7, 0.9, 1.0, 0.9), 1.4 * k)
 	elif player.w_state == Controller.State.CHARGE:
 		_fx.draw_arc(at, r + 9.0 * k, -PI * 0.5, -PI * 0.5 + TAU * player.w_charge, 28, d.tracer_color, 1.6 * k)
-	if mag <= 0 and d.uses_ammo() and ctrl.ammo_enabled and player.w_state == Controller.State.READY:
+	if ((mag <= 0 and d.uses_ammo() and ctrl.ammo_enabled) or ctrl.jammed(d.id) != "") and player.w_state == Controller.State.READY:      # pusty albo zacięty
 		var xr := 3.0 * k
 		_fx.draw_line(at + Vector2(-xr, -xr), at + Vector2(xr, xr), Color(1.0, 0.3, 0.25, 0.95), w)
 		_fx.draw_line(at + Vector2(-xr, xr), at + Vector2(xr, -xr), Color(1.0, 0.3, 0.25, 0.95), w)

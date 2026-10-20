@@ -1465,6 +1465,16 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 	for sa in OS.get_cmdline_user_args():
 		if sa.begins_with("--shotplayer="):               # dev: --shotplayer=hit|down|revive — zdarzenie gracza 1 po 1 s (podgląd animacji postaci 3D)
 			get_tree().create_timer(1.0).timeout.connect(_dev_player.bind(sa.substr("--shotplayer=".length())))
+	if "--shotjam" in OS.get_cmdline_user_args():
+		var jp1: Node2D = _players.get_node_or_null("1")     # dev: --shotjam — broń gracza 1 brudna (35 %) i zacięta (podgląd HUD, warsztatu, oględzin); profil bez zapisu
+		if jp1 != null:
+			Profile.persist = false
+			for jw in jp1.weapons.loadout:
+				Profile.cond[String(Weapons.def(int(jw)).key)] = 35.0
+			jp1.weapons.jams[int(jp1.weapon)] = "stovepipe"
+			var jwui := get_tree().get_first_node_in_group("workshop_ui")
+			if jwui != null and bool(jwui.get("_open")):
+				jwui._refresh()
 	if "--shotmag" in OS.get_cmdline_user_args():
 		var mp1: Node2D = _players.get_node_or_null("1")     # dev: --shotmag — gracz 1 upuszcza magazynek M-83 z 17 nabojami i pusty SPREAD-12 (podgląd)
 		if mp1 != null:

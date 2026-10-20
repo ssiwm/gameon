@@ -34,7 +34,7 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7 (Forward+). Rozgrywka to sym
   (drugi klik w 3 s). Pomijany w headless i przy starcie z `--host` / `--join` / `--steam-*`. **Esc / Start** otwiera menu ustawień także
   przed grą; w sesji **LEAVE SESSION** wraca do ekranu startowego (`Main.leave_session`).
 - **Esc / P / Start** — menu pauzy: głośność (suwaki: ogólna, muzyka, otoczenie, efekty), wstrząsy kamery (FULL / HALF / OFF), klawisz
-  skradania (HOLD / TOGGLE), obsługa broni (REALISTIC — podrzut przy myszy, oparcie, gorąca lufa i dwa przeładowania, CLASSIC — dawny rozrzut serii i dopełnianie magazynka; `WEAPONS.md` §20–22), podpowiedzi, mikrofon (krzyk), **obraz bez restartu** (rozmiar okna, V-Sync, limit klatek, jakość efektów
+  skradania (HOLD / TOGGLE), obsługa broni (REALISTIC — podrzut przy myszy, oparcie, gorąca lufa i dwa przeładowania, CLASSIC — dawny rozrzut serii i dopełnianie magazynka; `WEAPONS.md` §20–22), niezawodność broni (OFF / STANDARD / VETERAN — zużycie i zacięcia, `WEAPONS.md` §24), podpowiedzi, mikrofon (krzyk), **obraz bez restartu** (rozmiar okna, V-Sync, limit klatek, jakość efektów
   LOW / MEDIUM / HIGH, efekty pogody), pełny ekran (też F11), **dostępność** („Reduce effects” — bez wstrząsów, aberracji, pulsu
   tętna i migotania; napisy dźwięków; filtr widzenia barw: protanopia / deuteranopia / tritanopia) i **język** (ENGLISH / POLSKI).
   Ustawienia zapisują się w `user://settings.cfg`. W trybie solo gra jest zatrzymana; w kooperacji świat idzie dalej (menu to mówi)
@@ -156,7 +156,7 @@ Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP =
 | **Przesterowanie** | **Q** | LB |
 | Podnieś kolegę (przytrzymaj) / podnieś broń | E | B |
 | Broń (2 główne + sidearm) | 1 / 2 / 3, kółko myszy | Y (następna) |
-| Przeładowanie (krótko — szybkie, magazynek spada; przytrzymane — taktyczne) | R | R3 |
+| Przeładowanie (krótko — szybkie, magazynek spada; przytrzymane — taktyczne; przy zacięciu — przeładowanie rączką) | R | R3 |
 | Cios (maczeta / kilof) | V lub PPM | X |
 | Użycie przedmiotu / zmiana przedmiotu | lewy Alt (macOS: lewy Cmd) / X | RB / D-pad ↑ |
 | Tryb ognia | B | D-pad ↓ |

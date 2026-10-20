@@ -12,6 +12,8 @@ signal changed
 signal supply_result(kind: String, ok: bool, reason: String)    ## zakup zaopatrzenia: ok / poor / full / invalid / off
 signal purchase_result(weapon: int, ok: bool, reason: String)    ## kody zakupu broni: ok/poor/owned/later/invalid
 signal part_result(id: String, ok: bool, reason: String)         ## zakup części (parts.gd): ok/poor/owned/locked/invalid
+signal clean_result(weapon: int, ok: bool, reason: String)        ## czyszczenie broni przy ławie: ok/poor/invalid
+const CLEAN_MAX := 10             ## czyszczenie kosztuje 1 złom za każde rozpoczęte 10 % zużycia (najwyżej tyle)
 
 const NightShift := preload("res://scripts/night_shift.gd")
 const Weapons := preload("res://scripts/weapons.gd")
@@ -213,6 +215,46 @@ func _buy_supply_server(kind: String, peer_id: int) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _supply_result_rpc(kind: String, reason: String) -> void:
 	supply_result.emit(kind, reason == "ok", reason)
+
+## Koszt czyszczenia broni `w` lokalnego gracza przy ławie (0 — czysta): 1 złom za każde rozpoczęte 10 % zużycia.
+func clean_cost(w: int) -> int:
+	var c := Profile.condition(String(Weapons.def(w).key))
+	return 0 if c >= 99.5 else mini(CLEAN_MAX, int(ceil((100.0 - c) / 10.0)))
+
+## Gracz czyści broń przy ławie (stan siedzi w jego profilu; serwer pobiera tylko złom drużyny — najwyżej CLEAN_MAX).
+func request_clean(w: int) -> void:
+	var cost := clean_cost(w)
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_clean_server(w, cost, NoiseMgr.local_id())
+	else:
+		_clean_rpc.rpc_id(1, w, cost)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _clean_rpc(w: int, cost: int) -> void:
+	if NoiseMgr.is_server():
+		_clean_server(w, cost, multiplayer.get_remote_sender_id())
+
+func _clean_server(w: int, cost: int, peer_id: int) -> void:
+	var reason := "ok"
+	if not Weapons.is_valid(w) or cost < 1 or cost > CLEAN_MAX:
+		reason = "invalid"
+	elif not spend(cost):
+		reason = "poor"
+	else:
+		save_progress()
+	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
+		_clean_done(w, reason)
+	else:
+		_clean_result_rpc.rpc_id(peer_id, w, reason)
+
+@rpc("authority", "call_remote", "reliable")
+func _clean_result_rpc(w: int, reason: String) -> void:
+	_clean_done(w, reason)
+
+func _clean_done(w: int, reason: String) -> void:
+	if reason == "ok":
+		Profile.clean(String(Weapons.def(w).key))
+	clean_result.emit(w, reason == "ok", reason)
 
 ## Gracz prosi o odblokowanie części broni (parts.gd) — zakup za złom drużyny, część dostaje cała drużyna; montuje ją każdy sam.
 func request_part(id: String) -> void:

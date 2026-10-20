@@ -485,3 +485,22 @@ połowa obrażeń i energii przebicia, prędkość ×0,6, odchylenie do ±6° li
 i dźwięk rykoszetu. Beton i ziemia nie odbijają. Kolega trafiony rykoszetem krzyczy (hałas), nie traci zdrowia — jak przy każdym trafieniu kolegi.
 Kod: `projectile.gd` (`PEN_*`, `_pass_through`, `pen_cost`, `_ricochet`), `weapons.gd`, `ammo.gd`.
 
+## 24. Stan techniczny i zacięcia, etap 4a (1.7.328)
+
+Ustawienie **Weapon reliability** (Ustawienia → Rozgrywka): OFF (bez zużycia i zacięć), **STANDARD** (domyślnie), VETERAN (zużycie i szansa
+zacięcia ×2). Stan każdej broni gracza (0–100 %) siedzi w jego profilu (`Profile.cond`, zapis co 30 s i przy wyjściu).
+
+| Element | Jak działa | Kod |
+|---|---|---|
+| **Zużycie** | 0,02 % na strzał × `WeaponDef.wear` (M-83 i P-83 0,7, LR-7, FALCON-6, SPECTER-1 2,0, reszta 1) × 3 przy lufie gorętszej niż 0,8 × 1,5 z tłumikiem × ustawienie. M-83 traci ok. 1 % na 70 strzałów | `weapon_controller.gd` (`_wear_shot`), `profile.gd` |
+| **Szansa zacięcia** | broń palna (7,62, 9×18, 12/70; `can_jam`): 0 powyżej 70 % stanu, 1 na 150 strzałów przy 30 %, ok. 1 na 86 przy 0 %. Nigdy w pierwszych 3 strzałach magazynka i nigdy dwa razy w 10 s | `jam_chance`, `_roll_jam` |
+| **Niewypał** (50 %) | kurek uderza, strzału nie ma (klik). [R] — przeładowanie rączką 0,6 s, nabój wylatuje. **P-83** (podwójne działanie): drugie pociągnięcie spustu strzela | `_handle_shot`, `_start_clear` |
+| **Zacięcie łuski** (40 %) | strzał wychodzi, następny — klik. [R] — przeładowanie rączką 0,6 s, bez straty naboju | |
+| **Podwójne podanie** (10 %) | strzał wychodzi, następny — klik. [R] — wyjęcie magazynka i przeładowanie rączką 1,6 s, jeden nabój stracony | |
+| **Widać** | HUD pod licznikiem: „JAMMED — [R] CLEAR” (P-83: „MISFIRE — PULL AGAIN”), w trakcie „CLEARING”, poniżej 40 % stanu „DIRTY”; celownik — czerwony X; oględziny [F] — „CONDITION”; podpowiedź po pierwszym zacięciu | `hud.gd`, `weapon_view.gd`, `weapon_inspect.gd`, `hints.gd` |
+| **Czyszczenie** | warsztat, zakładka ARMS: wiersz „SERVICE · Clean” pod częściami — 1 złom za każde rozpoczęte 10 % zużycia (najwyżej 10), broń wraca do 100 %; złom pobiera serwer | `workshop_ui.gd`, `scrap.gd` (`request_clean`) |
+
+Boty się nie zacinają. Zacięcie dotyczy broni, nie gracza — zostaje po zmianie broni i wraca z nią. Dev: `--shotjam` (broń gracza 1 brudna
+i zacięta, profil bez zapisu). Zostaje na etap 4b: zestaw do czyszczenia w misji, zużycie od brodzenia i upadku, awarie broni eksperymentalnej
+(przegrzanie ogniwa LR-7, przebicie kondensatora SPECTER-1), brud i łuska w oknie widoczne na modelu.
+

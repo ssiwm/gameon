@@ -145,7 +145,8 @@ func _ready() -> void:
 ## `cabinet`: broń z gabloty — kamera patrzy na samą gablotę (view3d.gd), więc bez rozmycia tła i bez broni unoszącej się przed oczami.
 func show_weapon(wid: int, gun_key: String, hand: int, lock_text: String, foot: String, cabinet := false) -> void:
 	_cabinet = cabinet
-	var key := "%d|%d|%s|%s|%d" % [wid, hand, lock_text, gun_key, Profile.fit_code(wid) if Weapons.is_valid(wid) else 0]
+	var key := "%d|%d|%s|%s|%d|%d" % [wid, hand, lock_text, gun_key, Profile.fit_code(wid) if Weapons.is_valid(wid) else 0,
+		int(Profile.condition(String(Weapons.def(wid).key))) if Weapons.is_valid(wid) else 100]
 	if key != _key:
 		_key = key
 		_fill(wid, gun_key, hand, lock_text)
@@ -168,6 +169,8 @@ func _fill(wid: int, gun_key: String, hand: int, lock_text: String) -> void:
 	_title.text = String(d.name)
 	_title.add_theme_color_override("font_color", UiTheme.MUTED if _locked else UiTheme.WARM)
 	_tag.text = Codex._slot_name(d)
+	if Settings.reliability_mult() > 0.0 and not d.is_melee():
+		_tag.text += tr("  ·  CONDITION %d%%") % int(Profile.condition(String(d.key)))     # stan techniczny (etap 4a): poniżej 70 % broń się zacina
 	_lock.text = tr("LOCKED  ·  %s") % lock_text if _locked else ""
 	_lock.visible = _locked
 	var notes: Array = Codex.WEAPON_TEXT.get(String(d.key), ["", ""])

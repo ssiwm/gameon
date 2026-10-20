@@ -374,6 +374,7 @@ func _ready() -> void:
 	Scrap.purchase_result.connect(_on_result)
 	Scrap.supply_result.connect(_on_supply_result)
 	Scrap.part_result.connect(_on_part_result)
+	Scrap.clean_result.connect(_on_clean_result)
 	Profile.changed.connect(_refresh)
 	Arsenal.stock_changed.connect(_refresh)
 
@@ -1030,7 +1031,8 @@ func _input(event: InputEvent) -> void:
 		close()
 	get_viewport().set_input_as_handled()
 
-## Opcje części broni `w` w kolejności gniazd: [{slot, id}] — id "" to element fabryczny gniazda.
+## Opcje części broni `w` w kolejności gniazd: [{slot, id}] — id "" to element fabryczny gniazda. Na końcu „SERVICE / clean”: czyszczenie
+## broni przy ławie (etap 4a GUNSMITH_PLAN — stan techniczny), gdy broń jest kupiona, strzela i niezawodność nie jest wyłączona.
 func _options(w: int) -> Array:
 	var key := String(Weapons.def(w).key)
 	var out: Array = []
@@ -1038,6 +1040,8 @@ func _options(w: int) -> Array:
 		out.append({"slot": s, "id": ""})
 		for p in Parts.in_slot(key, String(s)):
 			out.append({"slot": s, "id": String(p["id"])})
+	if Scrap.is_unlocked(w) and not Weapons.def(w).is_melee() and Settings.reliability_mult() > 0.0:
+		out.append({"slot": "service", "id": "clean"})
 	return out
 
 func _move_opt(d: int) -> void:
@@ -1090,6 +1094,12 @@ func _act() -> void:
 	var o: Dictionary = ops[clampi(_opt, 0, ops.size() - 1)]
 	var key := String(Weapons.def(w).key)
 	var id := String(o["id"])
+	if String(o["slot"]) == "service":
+		if Scrap.clean_cost(w) <= 0:
+			_say(tr("Already clean."), UiTheme.BP_MUTED)
+		else:
+			Scrap.request_clean(w)
+		return
 	if id != "" and not Scrap.has_part(id):
 		Scrap.request_part(id)
 	elif Profile.fitted(key, String(o["slot"])) != id:
@@ -1114,6 +1124,19 @@ func _on_result(w: int, ok: bool, reason: String) -> void:
 			_say("Not available yet — a later zone.", UiTheme.BP_MUTED)
 		"reward":
 			_say("Defeat the Leech to unlock it.", UiTheme.BP_MUTED)
+		_:
+			_say("Cannot do that.", UiTheme.DANGER)
+	_refresh()
+
+func _on_clean_result(w: int, ok: bool, reason: String) -> void:
+	if not _open:
+		return
+	match reason:
+		"ok":
+			_say(tr("%s stripped and cleaned — condition 100%%.") % String(Weapons.def(w).name), UiTheme.OK)
+			Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.0)
+		"poor":
+			_say(tr("Not enough scrap (%d needed).") % Scrap.clean_cost(w), UiTheme.DANGER)
 		_:
 			_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
@@ -1324,7 +1347,26 @@ func _refresh_detail(w: int) -> void:
 		var slot := String(op["slot"])
 		if slot != last_slot:
 			last_slot = slot
-			_d_tiers.add_child(UiTheme.label(tr(Parts.SLOT_NAMES[slot]).to_upper(), 7, UiTheme.BP_MUTED))
+			_d_tiers.add_child(UiTheme.label((tr("Service") if slot == "service" else tr(Parts.SLOT_NAMES[slot])).to_upper(), 7, UiTheme.BP_MUTED))
+		if slot == "service":
+			var cc := Scrap.clean_cost(w)
+			var cb := Button.new()
+			cb.flat = true
+			cb.focus_mode = Control.FOCUS_NONE
+			cb.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			cb.add_theme_font_size_override("font_size", 8)
+			cb.add_theme_color_override("font_color", UiTheme.ACCENT if i == _opt else (GOLD if cc > 0 else UiTheme.OK))
+			cb.add_theme_color_override("font_hover_color", UiTheme.ACCENT)
+			cb.text = "%s %s   [%s]" % ["»" if i == _opt else " ", tr("Clean  ·  condition %d%%") % int(Profile.condition(key)), tr("%d scrap") % cc if cc > 0 else tr("clean")]
+			cb.custom_minimum_size = Vector2(DETAIL_W, 0)
+			for st in ["normal", "hover", "pressed", "focus"]:
+				var csb := StyleBoxEmpty.new()
+				csb.content_margin_top = 1.0
+				csb.content_margin_bottom = 1.0
+				cb.add_theme_stylebox_override(st, csb)
+			cb.pressed.connect(_pick_opt.bind(i))
+			_d_tiers.add_child(cb)
+			continue
 		var id := String(op["id"])
 		var fitted := Profile.fitted(key, slot) == id
 		var owned := id == "" or Scrap.has_part(id)
@@ -1349,7 +1391,9 @@ func _refresh_detail(w: int) -> void:
 		_d_tiers.add_child(b)
 	var notes: Array = Codex.WEAPON_TEXT.get(key, ["", ""])
 	var desc := String(notes[0])
-	if unlocked and not o.is_empty() and String(o["id"]) != "":
+	if unlocked and not o.is_empty() and String(o["slot"]) == "service":
+		desc = tr("Strip and clean the gun at the bench: condition back to 100%. Below 70% a gun starts to jam, and every shot wears it a little — faster with a hot barrel or a suppressor.")
+	elif unlocked and not o.is_empty() and String(o["id"]) != "":
 		desc = tr(String(Parts.get_part(String(o["id"]))["desc"]))
 	elif unlocked and not o.is_empty():
 		desc = tr("Factory part: no gain, no cost.")
@@ -1361,6 +1405,9 @@ func _refresh_detail(w: int) -> void:
 		_action.text = tr("Buy  ·  %d scrap") % Scrap.price_of(w)
 	elif o.is_empty():
 		_action.text = "No parts for this weapon"
+	elif String(o["slot"]) == "service":
+		var ccost := Scrap.clean_cost(w)
+		_action.text = tr("Clean  ·  %d scrap") % ccost if ccost > 0 else tr("Already clean")
 	else:
 		var id2 := String(o["id"])
 		if id2 != "" and not Scrap.has_part(id2):

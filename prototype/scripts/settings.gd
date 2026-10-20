@@ -58,6 +58,10 @@ var mono_audio := false                ## bez panoramy w dźwięku pozycyjnym (o
 var captions := false                  ## napisy dla dźwięków (HUD, captions.gd)
 var reduce_fx := false                 ## „Reduce Effects": bez wstrząsów, aberracji, pulsu zdrowia, błysku burzy i migotania
 var crouch_toggle := false             ## skradanie przełączane klawiszem zamiast trzymania
+## Niezawodność broni (GUNSMITH_PLAN §6): OFF — bez zużycia i zacięć, STANDARD, VETERAN — zużycie i szansa zacięcia ×2.
+const RELIABILITY_NAMES := ["OFF", "STANDARD", "VETERAN"]
+const RELIABILITY_MULT := [0.0, 1.0, 2.0]
+var reliability_idx := 1
 var realistic_handling := true         ## obsługa broni: podrzut przy myszy, oparcie o krawędź, gorąca lufa i dwa przeładowania (REALISTIC) albo dawne zachowanie (CLASSIC) — GUNSMITH_PLAN etap 3
 var colorblind_idx := 0
 var locale_idx := 0
@@ -180,6 +184,13 @@ func toggle_reduce_fx() -> void:
 
 func toggle_crouch_mode() -> void:
 	crouch_toggle = not crouch_toggle
+	_commit()
+
+func reliability_mult() -> float:
+	return float(RELIABILITY_MULT[clampi(reliability_idx, 0, RELIABILITY_MULT.size() - 1)])
+
+func set_reliability(i: int) -> void:
+	reliability_idx = clampi(i, 0, RELIABILITY_NAMES.size() - 1)
 	_commit()
 
 func toggle_realistic_handling() -> void:
@@ -316,6 +327,7 @@ func _load() -> void:
 	mono_audio = bool(cf.get_value("game", "mono_audio", false))
 	crouch_toggle = bool(cf.get_value("game", "crouch_toggle", false))
 	realistic_handling = bool(cf.get_value("game", "realistic_handling", true))
+	reliability_idx = clampi(int(cf.get_value("game", "reliability", 1)), 0, RELIABILITY_NAMES.size() - 1)
 	colorblind_idx = clampi(int(cf.get_value("game", "colorblind", 0)), 0, COLORBLIND_NAMES.size() - 1)
 	locale_idx = clampi(int(cf.get_value("game", "locale", 0)), 0, LOCALES.size() - 1)
 	seen_tips = Array(cf.get_value("game", "seen_tips", []))
@@ -344,6 +356,7 @@ func _save() -> void:
 	cf.set_value("game", "mono_audio", mono_audio)
 	cf.set_value("game", "crouch_toggle", crouch_toggle)
 	cf.set_value("game", "realistic_handling", realistic_handling)
+	cf.set_value("game", "reliability", reliability_idx)
 	cf.set_value("game", "colorblind", colorblind_idx)
 	cf.set_value("game", "locale", locale_idx)
 	cf.set_value("game", "seen_tips", seen_tips)

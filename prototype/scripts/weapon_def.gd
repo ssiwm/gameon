@@ -97,6 +97,13 @@ var suppressor := 0.0         ## > 0: tłumik na lufie (ulepszenie) — nabój p
 ## obrażenia za przeszkodą maleją z resztą energii. 0 = dawne `pierce` (liczba ciał: promień, szyna, bełt)
 var pen := 0.0
 
+# --- stan techniczny (GUNSMITH_PLAN.md §6, od 1.7.328): zużycie na strzał × wear (AKM i P-83 najwolniej, broń eksperymentalna najszybciej)
+var wear := 1.0
+
+## Czy broń się zacina (niewypał, zacięcie łuski, podwójne podanie): broń palna na naboje 7,62, 9×18 i 12/70.
+func can_jam() -> bool:
+	return String(caliber) in ["762", "918", "12g"]
+
 # --- przeładowanie (GUNSMITH_PLAN.md §5.3, od 1.7.326)
 var mag_drop := false         ## wymienny magazynek: szybkie przeładowanie ([R] krótko) upuszcza go z resztkami, przytrzymane [R] — taktyczne
 

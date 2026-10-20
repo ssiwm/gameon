@@ -229,6 +229,7 @@ func _build_settings(scroll: ScrollContainer) -> void:
 		func(i: int) -> void:
 			if (i == 0) != Settings.realistic_handling:
 				Settings.toggle_realistic_handling())
+	_seg(left, tr("Weapon reliability"), Settings.RELIABILITY_NAMES, func() -> int: return Settings.reliability_idx, Settings.set_reliability)
 	left.add_child(_gap())
 	left.add_child(W.section(tr("SYSTEM")))
 	_seg(left, tr("Language"), Settings.LOCALE_NAMES, func() -> int: return Settings.locale_idx,
