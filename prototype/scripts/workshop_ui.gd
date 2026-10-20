@@ -15,6 +15,7 @@ const ItemIcon := preload("res://scripts/item_icon.gd")
 const PerkIcon := preload("res://scripts/perk_icon.gd")
 const Perks := preload("res://scripts/perks.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
+const GunStage := preload("res://scripts/gun_stage.gd")
 const Look := preload("res://scripts/look.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const Char3D := preload("res://scripts/char3d.gd")
@@ -293,7 +294,7 @@ var _prev_mouse := Input.MOUSE_MODE_VISIBLE
 var _card: PanelContainer
 var _wallet: Label
 var _tiles: Array = []
-var _d_icon: Control
+var _d_stage: Control                 ## ława 3D: wybrana broń z częściami, część spod kursora świeci i wysuwa się z gniazda (gun_stage.gd)
 var _d_title: Label
 var _d_tag: Label
 var _d_stats: GridContainer
@@ -876,11 +877,9 @@ func _build_detail() -> Control:
 	var v := VBoxContainer.new()
 	v.custom_minimum_size = Vector2(DETAIL_W, 0)
 	v.add_theme_constant_override("separation", 4)
-	_d_icon = GunIcon.new()
-	(_d_icon as GunIcon).plate = true
-	(_d_icon as GunIcon).k = 0.62
-	_d_icon.custom_minimum_size = Vector2(0, 58)
-	v.add_child(_d_icon)
+	_d_stage = GunStage.new()
+	_d_stage.custom_minimum_size = Vector2(0, 76)
+	v.add_child(_d_stage)
 	_d_title = UiTheme.heading("", 16, UiTheme.ACCENT)
 	v.add_child(_d_title)
 	_d_tag = UiTheme.label("", 8, UiTheme.BP_MUTED)
@@ -1283,15 +1282,17 @@ func _refresh_detail(w: int) -> void:
 	# podgląd: broń z częścią spod kursora zamontowaną w jej gnieździe (reszta jak teraz)
 	var preview: RefCounted = null
 	var o: Dictionary = ops[_opt] if not ops.is_empty() else {}
+	var pv_code := mine
 	if unlocked and not o.is_empty():
 		var choice := {}
 		for s in Parts.slots_of(key):
 			choice[s] = Profile.fitted(key, String(s))
 		choice[String(o["slot"])] = String(o["id"])
-		var pv_code := Parts.encode(key, choice)
+		pv_code = Parts.encode(key, choice)
 		if pv_code != mine:
 			preview = Weapons.def_build(w, Weapons.build_of(0, pv_code))
-	(_d_icon as GunIcon).set_gun(int(base.gun_row), base.tracer_color, Color.WHITE if unlocked else Color(0.5, 0.55, 0.6))
+	# na ławie broń już z częścią spod kursora; ona (albo fabryczny element gniazda) świeci i jest wysunięta
+	(_d_stage as GunStage).show_gun(w, Parts.decode(key, pv_code), String(o.get("id", "")) if unlocked else "", String(o.get("slot", "")) if unlocked else "", not unlocked)
 	_d_title.text = String(base.name)
 	var tag := Codex._slot_name(base)
 	if unlocked and not Parts.of(key).is_empty():
