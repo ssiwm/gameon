@@ -10,7 +10,7 @@ extends RefCounted
 
 const Actions := preload("res://scripts/actions.gd")
 
-const ORDER := ["frag", "phos", "smoke", "mine", "charge", "medkit", "defib", "scanner"]
+const ORDER := ["frag", "phos", "smoke", "mine", "charge", "medkit", "defib", "scanner", "cleankit"]
 ## Amunicja specjalna (ammo.gd, od 1.7.317): sklep i zapas jak przedmioty, ale `mode` = "ammo" — nie ma jej w wyborze [X], zapas liczy
 ## się w NABOJACH (`max`), a zakup dokłada pudełko (`box`). Broń bierze ją przy przeładowaniu, gdy gracz wybierze typ klawiszem [Z].
 const AMMO_ORDER := ["ammo_us", "ammo_bz", "ammo_slug", "ammo_inc", "ammo_rub", "ammo_40buck", "ammo_40illum", "ammo_40smoke"]
@@ -52,6 +52,11 @@ const KINDS := {
 		"mode": "use", "name": "MEDKIT", "full": "Medkit", "issue": 1, "price": 70, "max": 3, "time": 5.0, "range": 36.0,
 		"color": Color(0.4, 1.0, 0.5),
 		"note": "Hold the item key (L-Alt / L-Cmd) for 5 s next to a wounded teammate (or yourself): +1 heart. Damage interrupts it.",
+	},
+	"cleankit": {                       # zestaw do czyszczenia broni (GUNSMITH_PLAN §6.3, od 1.7.329): stan trzymanej broni +40 %, usuwa zacięcie
+		"mode": "use", "name": "CLEAN KIT", "full": "Cleaning kit", "issue": 1, "price": 50, "max": 2, "time": 6.0, "restore": 40.0,
+		"color": Color(0.85, 0.72, 0.42),
+		"note": "Hold the item key (L-Alt / L-Cmd) for 6 s: strip and clean the gun in your hands — +40% condition and any jam cleared. Quiet; damage interrupts it.",
 	},
 	"defib": {
 		"mode": "use", "name": "DEFIB", "full": "Defibrillator", "issue": 1, "price": 0, "max": 1, "time": 1.5, "range": 160.0,

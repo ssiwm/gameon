@@ -97,6 +97,14 @@ static func draw_glyph(ci: CanvasItem, kd: String, cx: float, y: float, s: float
 			r.call(-8, -10, 16, 1, Color(1.0, 1.0, 0.97))
 			r.call(-2, -9, 4, 8, Color(0.8, 0.15, 0.15))
 			r.call(-5, -6, 10, 2, Color(0.8, 0.15, 0.15))
+		"cleankit":
+			# płócienny futerał z wyciorem i oliwiarką (zestaw do czyszczenia AKM)
+			r.call(-8, -7, 16, 7, Color(0.42, 0.4, 0.26))
+			r.call(-8, -7, 16, 1, Color(0.55, 0.52, 0.34))
+			r.call(-7, -11, 13, 1, Color(0.6, 0.6, 0.62))
+			r.call(5, -12, 2, 3, Color(0.6, 0.6, 0.62))
+			r.call(-4, -5, 4, 4, c)
+			r.call(2, -6, 3, 5, Color(0.22, 0.24, 0.22))
 		"defib":
 			r.call(-8, -10, 16, 10, Color(0.22, 0.26, 0.3))
 			r.call(-6, -8, 12, 4, Color(0.1, 0.12, 0.14))

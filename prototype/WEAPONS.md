@@ -501,6 +501,17 @@ zacięcia ×2). Stan każdej broni gracza (0–100 %) siedzi w jego profilu (`Pr
 | **Czyszczenie** | warsztat, zakładka ARMS: wiersz „SERVICE · Clean” pod częściami — 1 złom za każde rozpoczęte 10 % zużycia (najwyżej 10), broń wraca do 100 %; złom pobiera serwer | `workshop_ui.gd`, `scrap.gd` (`request_clean`) |
 
 Boty się nie zacinają. Zacięcie dotyczy broni, nie gracza — zostaje po zmianie broni i wraca z nią. Dev: `--shotjam` (broń gracza 1 brudna
-i zacięta, profil bez zapisu). Zostaje na etap 4b: zestaw do czyszczenia w misji, zużycie od brodzenia i upadku, awarie broni eksperymentalnej
-(przegrzanie ogniwa LR-7, przebicie kondensatora SPECTER-1), brud i łuska w oknie widoczne na modelu.
+i zacięta, profil bez zapisu).
+
+## 25. Stan techniczny, etap 4b (1.7.329)
+
+| Element | Jak działa | Kod |
+|---|---|---|
+| **Zestaw do czyszczenia** | nowy przedmiot „use” (CLEAN KIT, `cleankit`): 1 sztuka w zestawie na misję, w sklepie 50 złomu, najwyżej 2. Trzymany klawisz przedmiotu przez 6 s czyści broń w rękach: +40 % stanu, zacięcie usunięte; cicho, w trakcie bez ruchu i strzału, obrażenia przerywają (jak apteczka). Zapas zdejmuje serwer, efekt nakłada klient właściciela (`cleankit_done`) | `throwables.gd`, `player.gd` (`_tick_cleankit`), `arsenal.gd`, `weapon_controller.gd` |
+| **Woda i błoto** | wejście na kafel wody: −5 % całej noszonej broni, błota: −10 %; ta sama powierzchnia najwyżej raz na 20 s (brnięcie tam i z powrotem to jedno zamoczenie) | `wade`, `wear_carried` |
+| **Upadek** | gracz leży: broń w rękach −3 % | `on_down` |
+| **LR-7: przegrzanie ogniwa** | zużyte LR-7 (ta sama krzywa co zacięcia, ×0,1 na tik wiązki): wiązka gaśnie na 1 s, HUD „CELL OVERHEATED”; mija samo, [R] nic nie robi | `fault_chance`, `_start_fault` |
+| **SPECTER-1: przebicie kondensatora** | zużyty SPECTER-1 (krzywa zacięć ×5 na strzał): po naładowaniu zamiast strzału iskra — ładunek przepada, ładowanie od nowa, HUD „CAPACITOR ARCED” | `_handle_rail` |
+
+`WeaponDef.fault`: "overheat" (LR-7), "arc" (SPECTER-1). Zostaje: brud i łuska w oknie widoczne na modelu broni.
 

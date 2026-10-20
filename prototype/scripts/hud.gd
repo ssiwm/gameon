@@ -1547,6 +1547,12 @@ func _drive_weapons() -> void:
 	var jam: String = wc.jammed(cur.id)
 	if wc.state == wc.State.RELOAD and wc.clearing:
 		note = tr("CLEARING %d%%") % int(wc.reload_progress() * 100.0)
+	elif jam == "overheat":
+		col = UiTheme.DANGER
+		note = tr("CELL OVERHEATED")
+	elif jam == "arc":
+		col = UiTheme.DANGER
+		note = tr("CAPACITOR ARCED — RECHARGE")
 	elif jam != "":
 		col = UiTheme.DANGER
 		note = tr("MISFIRE — PULL AGAIN") if (jam == "misfire" and String(cur.key) == "p64") else tr("JAMMED — [%s] CLEAR") % Actions.key("reload")

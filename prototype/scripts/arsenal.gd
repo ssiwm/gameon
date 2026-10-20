@@ -449,6 +449,12 @@ func _use_server(kind: String, target_id: int, user_id: int) -> void:
 				t2.request_revive()
 		"scanner":
 			ok = true
+		"cleankit":
+			ok = true                                       # stan broni siedzi w profilu użytkownika — efekt nakłada jego klient
+			if NoiseMgr.has_network() and user_id != NoiseMgr.local_id():
+				user.weapons.cleankit_done.rpc_id(user_id)
+			else:
+				user.weapons.cleankit_done()
 	if ok:
 		stock[kind] = get_throwable(kind) - 1
 		_push_stock()

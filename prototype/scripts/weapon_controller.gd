@@ -22,6 +22,7 @@ const Lights := preload("res://scripts/lights.gd")
 const Projectile := preload("res://scripts/projectile.gd")
 const Ammo := preload("res://scripts/ammo.gd")
 const Parts := preload("res://scripts/parts.gd")
+const Throwables := preload("res://scripts/throwables.gd")
 
 enum State { READY, DRAW, RELOAD, CHARGE, MELEE }
 
@@ -76,6 +77,15 @@ const CLEAR_TIME := 0.6           ## s — przeładowanie rączką (niewypał, z
 const DOUBLE_FEED_EXTRA := 1.0    ## s — podwójne podanie: magazynek wyjąć, przeładować rączką, włożyć
 const NOISE_CLEAR := 0.18
 const DIRTY_AT := 40.0            ## % — HUD ostrzega, że broń jest brudna
+## Etap 4b (od 1.7.329): zużycie od otoczenia i upadku, awarie broni eksperymentalnej.
+const WEAR_WATER := 5.0           ## % — wejście w wodę (brodzenie) moczy całą noszoną broń…
+const WEAR_MUD := 10.0            ## …a błoto ją zapycha
+const WEAR_DOWN := 3.0            ## % — upadek (gracz leży) z bronią w rękach
+const WADE_GAP := 20.0            ## s — ta sama powierzchnia zużywa broń najwyżej raz na tyle (brnięcie tam i z powrotem to jedno zamoczenie)
+const FAULT_TICK := 0.1           ## LR-7: szansa przegrzania ogniwa na tik wiązki = szansa zacięcia × to (10 tików na sekundę)
+const ARC_MULT := 5.0             ## SPECTER-1: szansa przebicia kondensatora na strzał = szansa zacięcia × to (strzałów jest mało)
+const OVERHEAT_PAUSE := 1.0       ## s — przegrzane ogniwo LR-7 stygnie
+const ARC_SHOW := 1.5             ## s — komunikat o przebiciu kondensatora
 
 signal shot(w: int)
 signal jam_started(w: int, kind: String)        ## „misfire” | „stovepipe” | „double”
@@ -118,6 +128,11 @@ var jam_count := 0                ## ile zacięć miał gracz (podpowiedź)
 var clearing := false             ## trwa usuwanie zacięcia (stan RELOAD)
 var _shots_mag: Dictionary = {}   ## id broni → strzały od ostatniego przeładowania
 var _last_jam_ms := -100000
+var fault_count := 0              ## awarie broni eksperymentalnej (testy)
+var sim_fault := ""               ## testy: następny tik / strzał broni eksperymentalnej kończy się tą awarią
+var _fault_t := 0.0               ## s do końca przerwy po awarii (wpis „overheat” / „arc” w `jams` znika razem z nią)
+var _fault_w := -1
+var _wade_t: Dictionary = {}      ## powierzchnia → s do ponownego zużycia od niej
 var recoil := 0.0                 ## 0..1 — wizualne cofnięcie broni (widok)
 var cd := 0.0
 var melee_total := 0.35
@@ -240,6 +255,64 @@ func condition_of(w: int) -> float:
 ## Zacięcie broni `w` czekające na usunięcie ("" — brak).
 func jammed(w: int) -> String:
 	return String(jams.get(w, ""))
+
+## Szansa awarii broni eksperymentalnej (WeaponDef.fault) — ta sama krzywa co zacięcie broni palnej.
+func fault_chance(d: WeaponDef) -> float:
+	var m := Settings.reliability_mult()
+	if m <= 0.0 or String(d.fault) == "":
+		return 0.0
+	return clampf((JAM_FROM - condition_of(d.id)) / JAM_SPAN, 0.0, 1.75) / JAM_ODDS * m
+
+func _take_sim_fault(kind: String) -> bool:
+	if sim_fault != kind:
+		return false
+	sim_fault = ""
+	return true
+
+func _start_fault(d: WeaponDef, kind: String, t: float) -> void:
+	jams[d.id] = kind
+	_fault_t = t
+	_fault_w = d.id
+	fault_count += 1
+	firing = false
+	jam_started.emit(d.id, kind)
+	Audio.play_variant("reload_cell" if kind == "overheat" else "reload_rail", 2 if kind == "overheat" else 1, Audio.BUS_WEAPONS, -8.0, 0.7)
+
+## Zużycie noszonej broni (otoczenie, upadek): cały zestaw albo tylko broń w rękach. Tylko człowiek, właściciel.
+func wear_carried(amount: float, held_only := false) -> void:
+	if player == null or player.is_bot or not is_owner():
+		return
+	var m := Settings.reliability_mult()
+	if m <= 0.0:
+		return
+	var ws: Array = [cur().id] if held_only else loadout
+	for w in ws:
+		var wd := Weapons.def(int(w))
+		if not wd.is_melee():
+			Profile.wear(String(wd.key), amount * m)
+
+## Wejście na powierzchnię (player.gd, co klatkę): woda i błoto zużywają broń, najwyżej raz na WADE_GAP s na rodzaj.
+func wade(surface: String) -> void:
+	var amt := WEAR_WATER if surface == "water" else (WEAR_MUD if surface == "mud" else 0.0)
+	if amt <= 0.0 or float(_wade_t.get(surface, 0.0)) > 0.0:
+		return
+	_wade_t[surface] = WADE_GAP
+	wear_carried(amt)
+
+## Serwer potwierdził zużycie zestawu do czyszczenia (arsenal.gd): broń w rękach +40 %, zacięcie usunięte.
+@rpc("any_peer", "call_remote", "reliable")
+func cleankit_done() -> void:
+	if NoiseMgr.has_network() and multiplayer.get_remote_sender_id() not in [0, 1]:
+		return
+	if player == null or player.is_bot:
+		return
+	var d := cur()
+	if d.is_melee():
+		return
+	Profile.restore(String(d.key), float(Throwables.KINDS["cleankit"]["restore"]))
+	if jammed(d.id) in ["misfire", "stovepipe", "double"]:
+		jams.erase(d.id)
+	Audio.play_variant("reload_bolt", 1, Audio.BUS_WEAPONS, -10.0, 0.9)
 
 ## Szansa zacięcia na strzał: 0 powyżej JAM_FROM % stanu, potem rośnie (1/150 przy 30 %, ok. 1/86 przy 0 %); ustawienie ją mnoży.
 func jam_chance(d: WeaponDef) -> float:
@@ -472,6 +545,7 @@ func reset() -> void:
 func on_down() -> void:
 	_cancel_actions()
 	firing = false
+	wear_carried(WEAR_DOWN, true)                         # broń upada razem z graczem
 	_sync_player()
 
 ## Zimne lufy i zerowy rozrzut (po wykrwawieniu, bez utraty zestawu).
@@ -537,6 +611,14 @@ func _tick_common(delta: float) -> void:
 		_heat[w] = maxf(0.0, float(_heat[w]) - Weapons.def(w).heat_decay * delta)
 	for w in _barrel.keys():
 		_barrel[w] = maxf(0.0, float(_barrel[w]) - BARREL_COOL * delta)
+	for sfc in _wade_t.keys():
+		_wade_t[sfc] = maxf(0.0, float(_wade_t[sfc]) - delta)
+	if _fault_t > 0.0:
+		_fault_t -= delta
+		if _fault_t <= 0.0:
+			if jammed(_fault_w) in ["overheat", "arc"]:
+				jams.erase(_fault_w)
+			_fault_w = -1
 	bloom = maxf(0.0, bloom - cur().bloom_decay * delta)
 	climb = maxf(0.0, climb - cur().bloom_decay * CLIMB_RECOVER_K * delta)
 	recoil = maxf(0.0, recoil - delta * 9.0)
@@ -672,7 +754,7 @@ func _dry_fire(d: WeaponDef) -> void:
 	try_reload(true)
 
 func _handle_continuous(d: WeaponDef, held: bool) -> void:
-	if not held or state != State.READY:
+	if not held or state != State.READY or jammed(d.id) == "overheat":
 		firing = false
 		return
 	if not _has_ammo(d):
@@ -690,6 +772,9 @@ func _handle_continuous(d: WeaponDef, held: bool) -> void:
 		var heat := heat_of(d.id)
 		NoiseMgr.add_noise(d.noise(heat), player.global_position, "shot:" + d.key)       # wiązka się grzeje: hałas rośnie z czasem ciągłego ognia (LR-7)
 		_heat[d.id] = minf(1.0, heat + d.heat_gain)
+		_wear_shot(d)
+		if String(d.fault) == "overheat" and (_take_sim_fault("overheat") or randf() < fault_chance(d) * FAULT_TICK):
+			_start_fault(d, "overheat", OVERHEAT_PAUSE)       # zużyte ogniwo przegrzewa się: wiązka gaśnie na chwilę
 		recoil = maxf(recoil, 0.25)
 		Feel.shake(d.shake)
 		shot.emit(d.id)
@@ -709,6 +794,10 @@ func _handle_rail(d: WeaponDef, held: bool, delta: float) -> void:
 		charge = minf(1.0, charge + delta / d.charge_time)
 		Feel.shake(0.15 + 0.5 * charge * charge)
 	elif charge >= 1.0:
+		if String(d.fault) == "arc" and (_take_sim_fault("arc") or randf() < fault_chance(d) * ARC_MULT):
+			_cancel_charge()                                  # zużyty kondensator przebija: ładunek uchodzi iskrą, ładowanie od nowa
+			_start_fault(d, "arc", ARC_SHOW)
+			return
 		_fire_shot(d)
 	else:
 		_cancel_charge()
@@ -1005,6 +1094,8 @@ func try_reload(auto := false) -> bool:
 	var d := cur()
 	if not d.uses_ammo() or state != State.READY:
 		return false
+	if jammed(d.id) in ["overheat", "arc"]:
+		return false                                       # awaria broni eksperymentalnej mija sama
 	if jammed(d.id) != "":
 		if not auto:
 			_start_clear(d)                                # [R] przy zacięciu: najpierw usunąć zacięcie

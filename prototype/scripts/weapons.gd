@@ -115,7 +115,7 @@ static func _table() -> Array:
 		},
 		{
 			"key": "lr7", "name": "LR-7", "slot": Slot.PRIMARY, "kind": Kind.BEAM,
-			"auto": true, "cooldown": 0.1, "draw_time": 0.4, "wear": 2.0,
+			"auto": true, "cooldown": 0.1, "draw_time": 0.4, "wear": 2.0, "fault": "overheat",
 			"damage": 6.0, "pierce": 1, "knock": 8.0,
 			"range_px": 176.0, "falloff_start": 80.0, "falloff_min": 0.55,
 			"n_min": 0.25, "n_max": 0.8, "heat_gain": 0.04, "heat_decay": 0.25,
@@ -168,7 +168,7 @@ static func _table() -> Array:
 		},
 		{
 			"key": "widmo1", "name": "SPECTER-1", "slot": Slot.PRIMARY, "kind": Kind.RAIL,
-			"auto": false, "cooldown": 0.9, "draw_time": 0.6, "charge_time": 1.2, "wear": 2.0,
+			"auto": false, "cooldown": 0.9, "draw_time": 0.6, "charge_time": 1.2, "wear": 2.0, "fault": "arc",
 			"damage": 150.0, "pierce": 99, "knock": 200.0, "stun": 0.6,
 			"range_px": 480.0,
 			"n_min": 14.0, "n_max": 14.0, "heat_gain": 0.0,
