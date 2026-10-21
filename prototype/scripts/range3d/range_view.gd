@@ -20,7 +20,8 @@ const VM_FOV := 58.0                          ## ° — kąt kamery rąk i broni
 const LAYER_VM := 2                           ## warstwa rąk i broni: rysuje je tylko kamera rąk, zawsze nad tunelem (bez wchodzenia w ławę)
 const TEX := "res://art/world3d/"
 const HIP := Vector3(0.15, -0.2, -0.3)        ## m — chwyt broni w układzie kamery (od biodra, broń poniżej i z prawej)
-const HIP_YAW := 1.5                          ## ° — broń przy biodrze lekko zwrócona do środka kadru
+const HIP_PISTOL := Vector3(0.12, -0.15, -0.42)  ## m — pistolet od biodra: niżej, bliżej środka i dalej niż karabin (ręce wyciągnięte przed siebie)
+const HIP_YAW := 1.5                         ## ° — broń przy biodrze lekko zwrócona do środka kadru
 const ADS_GRIP_Z := -0.27                     ## m — chwyt karabinu przed okiem przy celowaniu (policzek na kolbie)
 const ADS_GRIP_Z_PISTOL := -0.55             ## m — pistolet w wyciągniętych rękach
 const SIGHT_CLEAR := 0.003                    ## m — linia celownicza tuż nad najwyższym punktem broni (wierzch muszki i szczerbinki);
@@ -436,8 +437,11 @@ func _pose_gun(delta: float) -> void:
 	var gb := GUN_BASIS
 	var t := float(fp.ads_t)
 	t = t * t * (3.0 - 2.0 * t)
-	var hip_o := HIP - gb * grip
-	var ads_o := Vector3(0.0, 0.0, ADS_GRIP_Z_PISTOL if pistol else ADS_GRIP_Z) - gb * sight
+	var ads_z := ADS_GRIP_Z_PISTOL if pistol else ADS_GRIP_Z
+	if pistol and _rig != null and String(_rig.key) != "":
+		ads_z = -(sight.x - _rig.eye_in_gun().x)                  # pistolet w rękach z zasobu: szczerbinka tak daleko od oka jak w ułożonej postawie
+	var hip_o := (HIP_PISTOL if pistol else HIP) - gb * grip
+	var ads_o := Vector3(0.0, 0.0, ads_z) - gb * sight
 	var o := hip_o.lerp(ads_o, t)
 	var rot := Basis(Vector3.UP, deg_to_rad(HIP_YAW) * (1.0 - t))
 	var dip := 0.0
@@ -565,7 +569,8 @@ func _eject(d: WeaponDef) -> void:
 		return
 	var grip: Vector3 = _info.get("grip", Vector3.ZERO)
 	var muzzle: Vector3 = _info.get("muzzle", Vector3(0.6, 0.1, 0.0))
-	var port := Vector3(grip.x + 0.11, muzzle.y - 0.012, 0.02)
+	var pistol := float(_info.get("length", 1.0)) < 0.45
+	var port := Vector3(grip.x + (0.07 if pistol else 0.11), muzzle.y - 0.012, 0.02)     # okno wyrzutowe pistoletu tuż przed chwytem
 	var cam := _cam.global_transform
 	var v := _gun_xf.basis * Vector3(randf_range(-0.9, -0.4), randf_range(1.0, 1.6), randf_range(2.2, 3.0))
 	_fx.eject(cam * _vm_to_cam(_gun_xf * port), cam.basis * v, d.casing >= 2)

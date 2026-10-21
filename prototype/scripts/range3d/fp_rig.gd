@@ -9,7 +9,10 @@ const PATH := "res://art/char3d/fp/fp_arms_scav.glb"
 const CYCLE_BACK := 0.025               ## s — suwadło w tył po strzale
 const CYCLE_FWD := 0.035                ## s — i z powrotem
 const TRIGGER_PULL := 12.0              ## ° — ściągnięcie języka spustu
-const TRIGGER_PIVOT := Vector3(0.0588, 0.104, 0.0)   ## nasada języka spustu M-83 w układzie broni (gun_proc: trig x0+74…x0+132, z −38)
+const TRIGGER_PIVOT := Vector3(0.0588, 0.104, 0.0)   ## nasada języka spustu M-83 w układzie broni (gun_proc: trig x0+74…x0+132, z −38); inne
+                                                      ## bronie biorą ją z gun_<klucz>.json („trigger”)
+const Char3D := preload("res://scripts/char3d.gd")
+const EYE_OFF := Vector3(0.09, 0.085, 0.0)   ## m — oczy względem nasady kości głowy (szkielet MPFB: do przodu i w górę)
 const ADS_SWITCH := 0.3                 ## część wejścia w przyrządy, w której lewa dłoń zmienia chwyt (krótko: pozy pośrednie odrywają dłoń od łoża)
 const META := "res://art/char3d/fp/fp_arms_scav.json"   ## momenty przeładowań z fp_grip.py: {broń: {klip: {secs, mag_out, mag_in}}}
 
@@ -29,6 +32,8 @@ var _bolt: Node3D                       ## suwadło z rączką (węzeł „…__
 var _bolt_rest := Transform3D.IDENTITY
 var _trig: Node3D                       ## język spustu („…__trigger”)
 var _trig_rest := Transform3D.IDENTITY
+var _trig_pivot := TRIGGER_PIVOT
+var _travel := 0.08                     ## m — skok suwadła / zamka bieżącej broni
 var _cycle_t := 1.0                     ## s od ostatniego strzału (cykl suwadła)
 var _trig_t := 0.0                      ## 0..1 ściągnięcie spustu
 var _rl_bolt := 0.0                     ## 0..1 suwadło odciągnięte ręką (klip przeładowania)
@@ -84,6 +89,9 @@ func set_weapon(k: String, gun: Node3D) -> bool:
 		_bolt_rest = _bolt.transform
 	if _trig != null:
 		_trig_rest = _trig.transform
+	var info := Char3D.gun_info(k)
+	_trig_pivot = info.get("trigger", TRIGGER_PIVOT)
+	_travel = float(_meta.get(k, {}).get("reload_empty", {}).get("bolt_travel", info.get("slide", 0.08)))
 	visible = true
 	return true
 
@@ -131,10 +139,7 @@ func shot() -> void:
 func tick_parts(delta: float, held: bool) -> void:
 	_cycle_t += delta
 	_trig_t = move_toward(_trig_t, 1.0 if held else 0.0, delta * 14.0)
-	var travel := 0.08
-	var mk: Dictionary = _meta.get(key, {}).get("reload_empty", {})
-	if mk.has("bolt_travel"):
-		travel = float(mk["bolt_travel"])
+	var travel := _travel
 	var c := 0.0
 	if _cycle_t < CYCLE_BACK:
 		c = _cycle_t / CYCLE_BACK
@@ -143,7 +148,7 @@ func tick_parts(delta: float, held: bool) -> void:
 	if _bolt != null:
 		_bolt.transform = _bolt_rest.translated_local(Vector3(-travel * maxf(c, _rl_bolt), 0.0, 0.0))
 	if _trig != null:                                            # język spustu obraca się wokół nasady (pod komorą) w tył
-		var piv := TRIGGER_PIVOT
+		var piv := _trig_pivot
 		_trig.transform = _trig_rest * Transform3D(Basis(Vector3.BACK, deg_to_rad(-TRIGGER_PULL) * _trig_t), piv - Basis(Vector3.BACK, deg_to_rad(-TRIGGER_PULL) * _trig_t) * piv)
 
 ## Zdarzenia dźwiękowe klipu przeładowania (`[[u, klucz], …]` z fp_grip.py), puste — brak.
@@ -189,6 +194,24 @@ func hand_global(side: String) -> Transform3D:
 ## w klipie przeładowania (przechył, podbicie, szarpnięcie suwadła) jest widoczny, a nie znoszony.
 func anchor() -> Transform3D:
 	return _anchor if _anchor_ok else gun_in_rig()
+
+## Oko w układzie broni w pozie chwytu: kość głowy szkieletu + EYE_OFF (do przodu i w górę, układ rigu — postać patrzy w +x). Pistolet
+## przy przyrządach staje tak daleko od kamery, jak w ułożonej postawie od oczu (inaczej całe ciało idzie za bronią i ramiona wchodzą w kadr).
+func eye_in_gun() -> Vector3:
+	var hi := _skel.find_bone("mixamorig_Head")
+	if hi < 0:
+		return Vector3(-0.4, 0.05, 0.0)
+	var head_rig := gun_in_rig().affine_inverse() * (_skel_in_rig() * (_skel.get_bone_global_pose(hi).origin + EYE_OFF))
+	return head_rig
+
+func _skel_in_rig() -> Transform3D:
+	var xf := Transform3D.IDENTITY
+	var n: Node = _skel
+	while n != null and n != self:
+		if n is Node3D:
+			xf = (n as Node3D).transform * xf
+		n = n.get_parent()
+	return xf
 
 ## Broń w układzie tego węzła (z bieżącej pozy szkieletu) — do ustawienia całych rąk tak, by broń stała w zadanym miejscu kadru.
 func gun_in_rig() -> Transform3D:

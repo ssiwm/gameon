@@ -69,5 +69,68 @@
     0.8
    ]
   }
+ },
+ "p64": {
+  "reload": {
+   "secs": 1.1,
+   "mag_out": 0.18,
+   "mag_in": 0.78,
+   "bolt_travel": 0.0554,
+   "events": [
+    [
+     0.18,
+     "mech_mag_release"
+    ],
+    [
+     0.45,
+     "foley_gear"
+    ],
+    [
+     0.78,
+     "mech_mag_in"
+    ],
+    [
+     0.88,
+     "mech_regrip"
+    ]
+   ]
+  },
+  "reload_empty": {
+   "secs": 1.4,
+   "mag_out": 0.14,
+   "mag_in": 0.61,
+   "bolt_travel": 0.0554,
+   "events": [
+    [
+     0.14,
+     "mech_mag_release"
+    ],
+    [
+     0.36,
+     "foley_gear"
+    ],
+    [
+     0.61,
+     "mech_mag_in"
+    ],
+    [
+     0.74,
+     "mech_bolt_back"
+    ],
+    [
+     0.85,
+     "mech_bolt_fwd"
+    ],
+    [
+     0.92,
+     "mech_regrip"
+    ]
+   ],
+   "bolt": [
+    0.74,
+    0.8,
+    0.85
+   ]
+  }
  }
 }
