@@ -6,9 +6,10 @@ Uruchomienie (z korzenia repo; Blender z dodatkiem MPFB2, jak `char_mpfb.py`; na
 
 Ciało z tabeli OUTFITS w `char_mpfb.py` (ten sam fenotyp, szkielet „mixamo” z palcami), ale bez upraszczania — z bliska widać każdy
 staw palca. Z ciała powstają:
-- rękawice: ściany dłoni i palców (wagi kości dłoni) i mankiet do 7,5 cm nad nadgarstkiem, odsunięte od skóry o grubość skóry
-  rękawicy (mankiet rozszerza się jak w rękawicy z mankietem), zaokrąglone podziałem i pogrubione; materiał proceduralny (ziarno
-  skóry, zmarszczki, przetarcia na wypukłościach, szew wzdłuż palców) wypiekany w Cycles do tekstur;
+- rękawice taktyczne (jak w viewmodelach CS): ściany dłoni i palców (wagi kości dłoni) i mankiet do 7,5 cm nad nadgarstkiem,
+  odsunięte od skóry, zaokrąglone podziałem i pogrubione; panele z pozy spoczynkowej (grzbiet z cordury, wnętrze z zamszu, mankiet
+  z neoprenu, szwy na granicach) — materiał proceduralny wypiekany w Cycles do tekstur; twarde nakładki z gumy (zaokrąglone
+  klocki) nad kostkami i na pierwszych członach palców, przypięte do kości dłoni i palców;
 - rękawy kurtki M65 z symulacji tkaniny (`art_src/clothes/<strój>_m65_fp.glb`), wagi kości z ciała;
 - zegarek na lewym nadgarstku (koperta, szkło, pasek), przypięty do przedramienia.
 Samo ciało nie trafia do pliku (rękawice i rękawy zakrywają je w całości). Orientacja jak `char_mpfb.py`: przód +X, góra +Z, stopy
@@ -21,7 +22,8 @@ import sys
 import bmesh
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Matrix, Vector
+from mathutils.bvhtree import BVHTree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
@@ -51,8 +53,15 @@ GLOVE_CUFF = 0.075           # m — mankiet nad nadgarstkiem
 GLOVE_FLARE = 0.0065         # m — rozszerzenie mankietu na końcu
 GLOVE_THICK = 0.0012         # m — grubość skóry (widoczna na krawędzi mankietu)
 SLEEVE_THICK = 0.0018        # m — grubość tkaniny rękawa
-LEATHER = (0.10, 0.068, 0.046)      # skóra rękawicy (brąz wojskowy, ciemny)
-LEATHER_WORN = (0.20, 0.14, 0.095)  # przetarcia na kłykciach i opuszkach
+# rękawice taktyczne (jak w viewmodelach CS): grzbiet z cordury, wnętrze z syntetycznego zamszu, mankiet z neoprenu, twarde nakładki
+GLOVE_FABRIC = (0.030, 0.032, 0.027)    # cordura grzbietu (grafit z zielenią)
+GLOVE_PALM = (0.052, 0.047, 0.039)      # zamsz wnętrza dłoni i opuszek
+GLOVE_NEOPRENE = (0.026, 0.026, 0.026)  # mankiet
+GLOVE_STITCH = (0.020, 0.020, 0.018)    # szwy na granicy paneli
+PAD_RUBBER = (0.020, 0.020, 0.021)      # nakładki na kostkach i palcach (guma / TPU)
+KNUCKLE_PAD = (0.016, 0.019, 0.0045)    # m — nakładka nad stawem śródręczno-paliczkowym: długość (wzdłuż dłoni), szerokość, grubość
+FINGER_PAD = (0.017, 0.0135, 0.003)     # m — poduszka na pierwszym członie palca: długość, szerokość, grubość
+PAD_GAP = 0.0008                        # m — nakładka nad tkaniną
 
 
 def _bone_head(rig, n):
@@ -178,66 +187,245 @@ def make_gloves(rig, body):
     return g
 
 
-def leather_material(name):
-    """Skóra rękawicy: ziarno, zmarszczki, przetarcia na wypukłościach (Pointiness w Cycles), połysk zależny od zużycia."""
+def _hand_rest(rig):
+    """Układ każdej dłoni w pozie spoczynkowej: nadgarstek, f (ku palcom), a (linia kostek, mały → wskazujący), b (grzbiet), oś
+    przedramienia (ku dłoni), linia stawów śródręczno-paliczkowych i pierwsze człony palców (nasada → staw międzypaliczkowy)."""
+    out = {}
+    for side in ("Left", "Right"):
+        w, m = _bone_head(rig, side + "Hand"), _bone_head(rig, side + "HandMiddle1")
+        f = (m - w).normalized()
+        a = _bone_head(rig, side + "HandIndex1") - _bone_head(rig, side + "HandPinky1")
+        a = (a - f * a.dot(f)).normalized()
+        b = (f.cross(a) if side == "Right" else a.cross(f)).normalized()
+        fa = (w - _bone_head(rig, side + "ForeArm")).normalized()
+        segs = [(_bone_head(rig, side + "Hand%s1" % fg), _bone_head(rig, side + "Hand%s2" % fg)) for fg in ("Index", "Middle", "Ring", "Pinky")]
+        out[side] = {"w": w, "f": f, "a": a, "b": b, "fa": fa, "mcp": (segs[0][0], segs[3][0]), "segs": segs}
+    return out
+
+
+def _seg_dist(p, p0, p1):
+    """Odległość punktu od odcinka i parametr rzutu 0..1."""
+    d = p1 - p0
+    t = max(0.0, min(1.0, (p - p0).dot(d) / d.length_squared))
+    return (p - (p0 + d * t)).length, t
+
+
+def _vert_side(w):
+    """Strona ręki wierzchołka z wag kości (MPFB: grupy „mixamorig:Left…” / „…Right…”)."""
+    l = sum(x for n, x in w.items() if n.startswith(PRE + "Left"))
+    r = sum(x for n, x in w.items() if n.startswith(PRE + "Right"))
+    return "Left" if l >= r else "Right"
+
+
+def glove_zones(g, rig):
+    """Atrybut „zone” rękawicy (R — grzbiet 0..1, B — mankiet 0..1) z pozy spoczynkowej: grzbiet po normalnej względem grzbietu dłoni
+    (dla kciuka grzbiet obrócony ku stronie promieniowej — paznokieć kciuka patrzy w bok), mankiet powyżej nadgarstka."""
+    H = _hand_rest(rig)
+    W = _weights(g)
+    mw = g.matrix_world
+    nm = mw.to_3x3()
+    col = g.data.color_attributes.new("zone", "FLOAT_COLOR", "POINT")
+    vals = []
+    for v, w in zip(g.data.vertices, W):
+        h = H[_vert_side(w)]
+        p, n = mw @ v.co, (nm @ v.normal).normalized()
+        thumb = sum(x for k, x in w.items() if "Thumb" in k) > 0.4
+        bd = (h["b"] + h["a"] * 0.9).normalized() if thumb else h["b"]
+        d = n.dot(bd)
+        back = min(max((d + 0.15) / 0.3, 0.0), 1.0)
+        su = (p - h["w"]).dot(h["fa"])                                # < 0 — w stronę łokcia
+        cuff = min(max((-su - 0.012) / 0.008, 0.0), 1.0)
+        vals += [back, 0.0, cuff, 1.0]
+    col.data.foreach_set("color", vals)
+
+
+def tactical_material(name):
+    """Rękawica taktyczna: grzbiet z cordury (splot), wnętrze z zamszu (drobny meszek), mankiet z neoprenu w prążki, szwy na granicy
+    grzbietu i wnętrza, drobne plamy. Panele z atrybutu „zone” (glove_zones). Bez jaśniejszych przetarć na wypukłościach — na ciemnej
+    cordurze wyglądały jak dziury na kostkach."""
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     nt = m.node_tree
     nt.nodes.clear()
+    L = nt.links.new
     out = nt.nodes.new("ShaderNodeOutputMaterial")
     bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
-    nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    L(bsdf.outputs["BSDF"], out.inputs["Surface"])
     tc = nt.nodes.new("ShaderNodeTexCoord")
-    grain = nt.nodes.new("ShaderNodeTexNoise")
-    grain.inputs["Scale"].default_value = 380.0                # ziarno ok. 1–2 mm — przy teksturze 2K na dwie rękawice jeszcze czytelne z oka
-    grain.inputs["Detail"].default_value = 6.0
-    nt.links.new(tc.outputs["Object"], grain.inputs["Vector"])
-    crease = nt.nodes.new("ShaderNodeTexVoronoi")
-    crease.feature = "DISTANCE_TO_EDGE"
-    crease.inputs["Scale"].default_value = 170.0                # drobne zmarszczki skóry (ok. 6 mm; przy 55 grudy ~18 mm — dłoń jak z gliny)
-    nt.links.new(tc.outputs["Object"], crease.inputs["Vector"])
-    mottle = nt.nodes.new("ShaderNodeTexNoise")
-    mottle.inputs["Scale"].default_value = 45.0
-    mottle.inputs["Detail"].default_value = 4.0
-    nt.links.new(tc.outputs["Object"], mottle.inputs["Vector"])
-    geo = nt.nodes.new("ShaderNodeNewGeometry")
-    wear = nt.nodes.new("ShaderNodeMapRange")                 # wypukłe (kłykcie, opuszki, krawędź mankietu) → przetarte
-    wear.inputs["From Min"].default_value = 0.52
-    wear.inputs["From Max"].default_value = 0.62
-    nt.links.new(geo.outputs["Pointiness"], wear.inputs["Value"])
-    wmix = nt.nodes.new("ShaderNodeMath")
-    wmix.operation = "MULTIPLY"
-    nt.links.new(wear.outputs["Result"], wmix.inputs[0])
-    nt.links.new(mottle.outputs["Fac"], wmix.inputs[1])
-    col = nt.nodes.new("ShaderNodeMix")
-    col.data_type = "RGBA"
-    col.inputs["A"].default_value = LEATHER + (1.0,)
-    col.inputs["B"].default_value = LEATHER_WORN + (1.0,)
-    nt.links.new(wmix.outputs["Value"], col.inputs["Factor"])
-    tint = nt.nodes.new("ShaderNodeMix")                      # drobne plamy (pot, olej)
+    zone = nt.nodes.new("ShaderNodeAttribute")
+    zone.attribute_name = "zone"
+    sep = nt.nodes.new("ShaderNodeSeparateColor")
+    L(zone.outputs["Color"], sep.inputs["Color"])
+    back, cuff = sep.outputs["Red"], sep.outputs["Blue"]
+
+    def math_node(op, a, b=None, clamp=False):
+        n = nt.nodes.new("ShaderNodeMath")
+        n.operation = op
+        n.use_clamp = clamp
+        for i, x in enumerate((a, b)):
+            if x is None:
+                continue
+            if isinstance(x, (int, float)):
+                n.inputs[i].default_value = x
+            else:
+                L(x, n.inputs[i])
+        return n.outputs[0]
+
+    def wave(scale, axis):
+        n = nt.nodes.new("ShaderNodeTexWave")
+        n.wave_type = "BANDS"
+        n.bands_direction = axis
+        n.inputs["Scale"].default_value = scale
+        n.inputs["Distortion"].default_value = 0.6
+        L(tc.outputs["Object"], n.inputs["Vector"])
+        return n.outputs["Fac"]
+
+    def noise(scale, detail=3.0):
+        n = nt.nodes.new("ShaderNodeTexNoise")
+        n.inputs["Scale"].default_value = scale
+        n.inputs["Detail"].default_value = detail
+        L(tc.outputs["Object"], n.inputs["Vector"])
+        return n.outputs["Fac"]
+
+    def mix(fac, a, b):
+        n = nt.nodes.new("ShaderNodeMix")
+        n.data_type = "FLOAT"
+        L(fac, n.inputs["Factor"])
+        for sock, x in ((n.inputs["A"], a), (n.inputs["B"], b)):
+            if isinstance(x, (int, float)):
+                sock.default_value = x
+            else:
+                L(x, sock)
+        return n.outputs["Result"]
+
+    def mixc(fac, a, b, blend="MIX"):
+        n = nt.nodes.new("ShaderNodeMix")
+        n.data_type = "RGBA"
+        n.blend_type = blend
+        L(fac, n.inputs["Factor"])
+        for sock, x in ((n.inputs["A"], a), (n.inputs["B"], b)):
+            if isinstance(x, tuple):
+                sock.default_value = x + (1.0,)
+            else:
+                L(x, sock)
+        return n.outputs["Result"]
+
+    weave = math_node("MULTIPLY", wave(520.0, "X"), wave(520.0, "Y"))      # splot cordury (ok. 2 mm)
+    suede = noise(900.0, 4.0)                                             # meszek zamszu
+    ribs = wave(140.0, "Z")                                               # prążki neoprenu
+    seam = math_node("SUBTRACT", 1.0, math_node("MULTIPLY", math_node("ABSOLUTE", math_node("SUBTRACT", back, 0.5)), 9.0), True)
+    h = mix(back, math_node("MULTIPLY", suede, 0.6), weave)
+    h = mix(cuff, h, ribs)
+    h = math_node("SUBTRACT", h, math_node("MULTIPLY", seam, 1.2))       # rowek szwu
+    bump = nt.nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.7
+    bump.inputs["Distance"].default_value = 0.0004
+    L(h, bump.inputs["Height"])
+    L(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    c = mixc(back, GLOVE_PALM, GLOVE_FABRIC)
+    c = mixc(cuff, c, GLOVE_NEOPRENE)
+    c = mixc(math_node("MULTIPLY", seam, 0.8), c, GLOVE_STITCH)
+    tint = nt.nodes.new("ShaderNodeMix")                                  # drobne plamy (kurz, olej)
     tint.data_type = "RGBA"
     tint.blend_type = "MULTIPLY"
-    tint.inputs["Factor"].default_value = 0.35
-    nt.links.new(col.outputs["Result"], tint.inputs["A"])
-    nt.links.new(mottle.outputs["Color"], tint.inputs["B"])
-    nt.links.new(tint.outputs["Result"], bsdf.inputs["Base Color"])
-    rough = nt.nodes.new("ShaderNodeMapRange")
-    rough.inputs["To Min"].default_value = 0.70
-    rough.inputs["To Max"].default_value = 0.40
-    nt.links.new(wmix.outputs["Value"], rough.inputs["Value"])
-    nt.links.new(rough.outputs["Result"], bsdf.inputs["Roughness"])
-    b1 = nt.nodes.new("ShaderNodeBump")
-    b1.inputs["Strength"].default_value = 1.0
-    b1.inputs["Distance"].default_value = 0.0003
-    nt.links.new(grain.outputs["Fac"], b1.inputs["Height"])
-    b2 = nt.nodes.new("ShaderNodeBump")
-    b2.inputs["Strength"].default_value = 1.0
-    b2.inputs["Distance"].default_value = 0.0005
-    b2.invert = True
-    nt.links.new(crease.outputs["Distance"], b2.inputs["Height"])
-    nt.links.new(b1.outputs["Normal"], b2.inputs["Normal"])
-    nt.links.new(b2.outputs["Normal"], bsdf.inputs["Normal"])
+    tint.inputs["Factor"].default_value = 0.25
+    L(c, tint.inputs["A"])
+    mot = nt.nodes.new("ShaderNodeTexNoise")
+    mot.inputs["Scale"].default_value = 35.0
+    L(tc.outputs["Object"], mot.inputs["Vector"])
+    L(mot.outputs["Color"], tint.inputs["B"])
+    L(tint.outputs["Result"], bsdf.inputs["Base Color"])
+    r = mix(back, 0.74, 0.9)
+    r = mix(cuff, r, 0.82)
+    L(r, bsdf.inputs["Roughness"])
     return m
+
+
+def pad_material(name):
+    """Guma / TPU nakładek: ciemna, półmatowa, drobne ziarno formy."""
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = PAD_RUBBER + (1.0,)
+    bsdf.inputs["Roughness"].default_value = 0.58
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    n = nt.nodes.new("ShaderNodeTexNoise")
+    n.inputs["Scale"].default_value = 700.0
+    nt.links.new(tc.outputs["Object"], n.inputs["Vector"])
+    bump = nt.nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.3
+    bump.inputs["Distance"].default_value = 0.0002
+    nt.links.new(n.outputs["Fac"], bump.inputs["Height"])
+    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    return m
+
+
+def _rounded_box(name, center, axes, size, bevel=None):
+    """Nakładka formowana: klocek `size` (długość, szerokość, grubość) mocno zaokrąglony w rzucie (krawędzie pionowe — prawie owal)
+    i łagodnie na obwodzie górnej i dolnej ściany; osie `axes` (3 wektory: długość, szerokość, grubość), środek `center`."""
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    for v in bm.verts:
+        v.co = Vector((v.co.x * size[0], v.co.y * size[1], v.co.z * size[2]))
+    vert = [e for e in bm.edges if abs((e.verts[0].co - e.verts[1].co).normalized().z) > 0.9]
+    bmesh.ops.bevel(bm, geom=vert, offset=min(size[0], size[1]) * 0.42, segments=6, affect="EDGES", profile=0.5)
+    rim = [e for e in bm.edges if abs(e.verts[0].co.z - e.verts[1].co.z) < 1e-6 and abs(abs(e.verts[0].co.z) - size[2] * 0.5) < 1e-6]
+    bmesh.ops.bevel(bm, geom=rim, offset=size[2] * 0.42, segments=3, affect="EDGES", profile=0.5)
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    m = Matrix((axes[0], axes[1], axes[2])).transposed().to_4x4()
+    m.translation = center
+    me.transform(m)
+    for poly in me.polygons:
+        poly.use_smooth = True
+    return ob
+
+
+def make_pads(rig, gloves):
+    """Twarde nakładki rękawic taktycznych (guma / TPU): zaokrąglone klocki nad stawami śródręczno-paliczkowymi (przypięte do kości
+    dłoni) i poduszki na pierwszych członach palców (przypięte do członu) — bez kciuka. Każda leży tuż nad grzbietem rękawicy (promień
+    z punktu stawu wzdłuż grzbietu do powierzchni rękawicy w pozie spoczynkowej). Wcięcie z siatki rękawicy dawało postrzępione brzegi."""
+    H = _hand_rest(rig)
+    dg = bpy.context.evaluated_depsgraph_get()
+    bvh = BVHTree.FromObject(gloves, dg)
+    inv = gloves.matrix_world.inverted()
+
+    def surface(p, d):
+        hit = bvh.ray_cast(inv @ p, (inv.to_3x3() @ d).normalized(), 0.06)
+        return gloves.matrix_world @ hit[0] if hit[0] is not None else p + d * 0.012
+
+    parts = []
+    for side, h in H.items():
+        for (p0, p1), fg in zip(h["segs"], ("Index", "Middle", "Ring", "Pinky")):
+            d = (p1 - p0).normalized()
+            bf = (h["b"] - d * h["b"].dot(d)).normalized()
+            for name, at, size, ax_f, bone in (
+                    ("knuckle", p0, KNUCKLE_PAD, (h["f"] - h["b"] * h["f"].dot(h["b"])).normalized(), side + "Hand"),
+                    ("finger", p0.lerp(p1, 0.55), FINGER_PAD, d, side + "Hand%s1" % fg)):
+                up = h["b"] if name == "knuckle" else bf
+                sd = up.cross(ax_f).normalized()
+                c = surface(at, up) + up * (PAD_GAP + size[2] * 0.5)
+                ob = _rounded_box("pad_%s_%s_%s" % (side, fg, name), c, (ax_f, sd, up), size)
+                vg = ob.vertex_groups.new(name=PRE + bone)
+                vg.add(list(range(len(ob.data.vertices))), 1.0, "REPLACE")
+                parts.append(ob)
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in parts:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = parts[0]
+    bpy.ops.object.join()
+    pads = bpy.context.active_object
+    pads.name = "glove_pads"
+    pads.parent = rig
+    pads.matrix_parent_inverse = rig.matrix_world.inverted()
+    am = pads.modifiers.new("Armature", "ARMATURE")
+    am.object = rig
+    print("PADS", len(pads.data.polygons), "faces")
+    return pads
 
 
 def bake_object(ob, size, prefix):
@@ -391,13 +579,18 @@ def build(outfit):
         bpy.ops.object.modifier_apply(modifier=so.name)
     gloves = make_gloves(rig, body)
     gloves.parent = rig
+    glove_zones(gloves, rig)
+    pads = make_pads(rig, gloves)
     C._cycles(SAMPLES)
     gloves.data.materials.clear()
-    gloves.data.materials.append(leather_material("glove_leather"))
+    gloves.data.materials.append(tactical_material("glove_tactical"))
     bake_object(gloves, TEX, "glove")
+    pads.data.materials.clear()
+    pads.data.materials.append(pad_material("glove_pad_rubber"))
+    bake_object(pads, 1024, "glovepad")
     watch = make_watch(rig, gloves)
     bpy.data.objects.remove(body)
-    for o in [o for o in rig.children if o.type == "MESH" and o.name not in ("gloves", "sleeves", "watch")]:
+    for o in [o for o in rig.children if o.type == "MESH" and o.name not in ("gloves", "glove_pads", "sleeves", "watch")]:
         bpy.data.objects.remove(o)
     # orientacja i skala jak char_mpfb.build (przód +X, wzrost, stopy na z = 0)
     rig.location.z -= floor

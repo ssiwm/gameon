@@ -15,7 +15,7 @@ Dla każdej broni z tabeli GRIPS:
    stoi tam, gdzie ten węzeł (BoneAttachment3D), więc broń i dłonie zgadzają się co do milimetra.
 Podglądy (Eevee): `<shots>/grip_<klucz>_eye.png` (z oka nad przyrządami) i `_side.png`.
 Strojenie: `--quick=1` — sama poza chwytu i zbliżenia dłoni (bez klipów przeładowania i eksportu); zmienne środowiska FPGRIP_LEFT /
-FPGRIP_RIGHT (JSON nadpisujący pola chwytu dłoni z GRIPS), FPGRIP_SINK (JSON `[cofnięcie, uniesienie]`), FPGRIP_TWIST (udział
+FPGRIP_RIGHT / FPGRIP_LEFT_ADS (JSON nadpisujący pola chwytu dłoni z GRIPS), FPGRIP_SINK (JSON `[cofnięcie, uniesienie]`), FPGRIP_TWIST (udział
 przedramienia w skręcie nadgarstka).
 """
 import json
@@ -74,8 +74,8 @@ GRIPS = {
         # dłoń z kciukiem w górę)
         "left": {"at": "hold", "mcp": (0.30, 0.036, 0.165), "push": (0.0, 0.0, 0.0), "up": (-1.0, 0.0, 0.0), "back": (0.0, 1.0, -0.25),
                  "off": 0.012, "roll": 30, "tilt": 25, "flex": 0.0, "dev": 15.0, "screen": 30.0,
-                 "thumb_side": -0.015, "thumb_band": 0.02, "thumb_top": 0.105, "thumb_front": 0.39, "thumb_dir": (1.0, -0.4, 0.0),
-                 "thumb_hug": 3.0, "thumb_range": (96, 80)},
+                 "thumb_side": -0.015, "thumb_band": 0.02, "thumb_bottom": 0.09, "thumb_top": 0.108, "thumb_front": 0.39,
+                 "thumb_dir": (1.0, -0.2, 0.1), "thumb_hug": 3.0, "thumb_range": (40, 32)},
         # lewa przy celowaniu (klip grip_ads_…, fp_rig.gd miesza go z chwytem wg ads_t): podparcie od spodu, kciuk płasko na lewej
         # ściance, palce po prawej poniżej osłony — nic nie wchodzi w linię celowania
         "left_ads": {"at": "hold", "mcp": (0.28, -0.026, 0.104), "push": (0.0, 0.012, -0.03), "up": (1.0, 0.0, 0.0),
@@ -771,8 +771,8 @@ def build(outfit, keys):
     os.makedirs(SHOTS, exist_ok=True)
     for key in keys:
         conf = GRIPS[key]
-        for side in ("left", "right"):              # strojenie: FPGRIP_LEFT / FPGRIP_RIGHT = JSON nadpisujący pola chwytu dłoni
-            if os.environ.get("FPGRIP_" + side.upper()):
+        for side in ("left", "right", "left_ads"):  # strojenie: FPGRIP_LEFT / FPGRIP_RIGHT / FPGRIP_LEFT_ADS = JSON nadpisujący pola chwytu dłoni
+            if os.environ.get("FPGRIP_" + side.upper()) and side in conf:
                 conf[side] = dict(conf[side], **json.loads(os.environ["FPGRIP_" + side.upper()]))
         info = json.load(open(os.path.join(ART, "gun_%s.json" % key)))
         root, meshes = gun_object(key)
