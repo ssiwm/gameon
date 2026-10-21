@@ -14,6 +14,7 @@ const Actions := preload("res://scripts/actions.gd")
 const FpArms := preload("res://scripts/range3d/fp_arms.gd")
 const FpRig := preload("res://scripts/range3d/fp_rig.gd")
 const RangeFx := preload("res://scripts/range3d/range_fx.gd")
+const RangeSpecial := preload("res://scripts/range3d/range_special.gd")
 const GUN_BASIS := Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))   ## układ broni (x lufa, y góra, z prawo) → kamera (−z w przód)
 
 const VM_FOV := 58.0                          ## ° — kąt kamery rąk i broni (węższy: bez rozciągania na brzegach, jak w grach FPP)
@@ -72,6 +73,8 @@ var _rec := Vector3.ZERO                      ## odrzut: cofnięcie (m), uniesie
 var _rec_v := Vector3.ZERO
 var _life := 0.0
 var _fx: Node3D                               ## łuski i dym w świecie tunelu (range_fx.gd)
+var _spec: Node3D                             ## obraz broni specjalnych: pociski w locie, wybuchy, szyna, promień, płomień (range_special.gd)
+var _plate_mats: Array = []                   ## materiał tarczy każdej blachy (żar od promienia i płomienia)
 enum Phase { IN, TUNNEL, OUT, BACK }
 const IN_T := 0.55                            ## s — najazd kamery kryjówki na drzwi (view3d.RP_TIME), ostatnie FADE_T to ściemnienie
 const FADE_T := 0.25                          ## s — wyłanianie się z czerni i gaśnięcie
@@ -143,6 +146,11 @@ func _ready() -> void:
 	_fx = RangeFx.new()
 	_fx.name = "Fx"
 	_world.add_child(_fx)
+	_spec = RangeSpecial.new()
+	_spec.name = "Special"
+	_spec.setup(self, fp.sim)
+	_spec.plate_mats = _plate_mats
+	_world.add_child(_spec)
 	_vp.audio_listener_enable_3d = true                          # słuchacz 3D = bieżąca kamera tunelu (dźwięki blach i ścian, _play3d)
 	for i in VOICES:
 		var v := AudioStreamPlayer3D.new()
@@ -358,6 +366,7 @@ func _process(delta: float) -> void:
 	if _gun != null and is_instance_valid(_gun):              # smużki z gorącej lufy
 		var wc = fp.player.weapons
 		_fx.barrel_smoke(_cam.global_transform * _vm_to_cam(_gun_xf * (_info.get("muzzle", Vector3(0.6, 0.1, 0.0)) as Vector3)), float(wc.barrel_of(wc.cur().id)))
+	_spec.tick(delta, muzzle_world(), -_cam.global_transform.basis.z)
 	_flash.light_energy = 6.0 * (_flash_t / 0.05)
 	_flash_mesh.visible = _flash_t > 0.02
 	_msg_t = maxf(0.0, _msg_t - delta)
@@ -531,7 +540,13 @@ func _draw_dot() -> void:
 
 # ---------------------------------------------------------------- zdarzenia
 
+## Wylot lufy trzymanej broni w świecie tunelu (z kamery rąk przeliczony na kamerę tunelu).
+func muzzle_world() -> Vector3:
+	return _cam.global_transform * _vm_to_cam(_gun_xf * (_info.get("muzzle", Vector3(0.6, 0.1, 0.0)) as Vector3))
+
 func on_shot(d: WeaponDef, hits: Array) -> void:
+	if d.is_continuous():
+		return                                                   # promień / płomień: obraz co klatkę z range_sim (range_special.gd), bez odrzutu i błysku na krok
 	var wp: Dictionary = Char3D.WEAPON_POSE.get(String(d.key), {})
 	var kb := float(wp.get("body", 1.0)) * (0.55 if fp.braced() else 1.0)
 	_rec_v += Vector3(REC_IMPULSE.x * kb, REC_IMPULSE.y * float(wp.get("climb", 1.0)) * (0.5 if fp.braced() else 1.0), randf_range(-REC_IMPULSE.z, REC_IMPULSE.z))
@@ -548,6 +563,8 @@ func on_shot(d: WeaponDef, hits: Array) -> void:
 				_eject(d)
 			else:
 				get_tree().create_timer(0.38).timeout.connect(_eject.bind(d))     # pompka: łuska wylatuje przy przeładowaniu
+	if d.kind == WeaponDef.Kind.RAIL and not hits.is_empty():
+		_spec.rail(muzzle_world(), hits.back()["pos"])
 	for h in hits:
 		var kind := String(h["kind"])
 		var pos: Vector3 = h["pos"]
@@ -740,7 +757,9 @@ func _build_plates() -> void:
 		dm.height = 0.012
 		dm.radial_segments = 32
 		disc.mesh = dm
-		disc.material_override = steel
+		var face := steel.duplicate() as StandardMaterial3D        # własny materiał tarczy: żar od promienia i płomienia (range_special.gd)
+		_plate_mats.append(face)
+		disc.material_override = face
 		disc.rotation.x = PI * 0.5
 		disc.position = Vector3(0.0, RangeSim.PLATE_R + 0.03, 0.0)
 		pivot.add_child(disc)

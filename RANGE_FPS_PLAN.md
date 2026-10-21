@@ -70,7 +70,7 @@ Papier przestrzeliwuje się na wylot, a blacha zatrzymuje kulę. Strzelby dają 
 | **0 — szpic za flagą `--range3d`** | Scena tunelu (tylko obraz i oświetlenie), kamera FPP, M-83 przez `fire_sink`, 3 blachy liczone analitycznie, podrzut jako uniesienie kamery. Próba rąk z `char3d` obróconego w osi y; jeśli wygląda źle — sam model broni z prostymi rękawicami. | nowe `scripts/range3d/range_sim.gd`, `range_view.gd`, `fp_mode.gd`; `weapon_controller.gd` (hak), `view3d.gd` (przełączenie kamery) | zrzuty i ocena użytkownika: czy ręce i broń wyglądają dobrze, 60 FPS, podrzut czuć |
 | **1 — MVP** | Drzwi i tablica w hubie zamiast blach 2D, parkowanie gracza (`player.in_range`: bez ruchu i celowania 2D, `wc.tick_local` dalej działa), wejście i wyjście z przejściem kamery, wszystkie bronie kulowe i strzelby, ćwiczenie „blachy na czas” (logika z `range_course.gd`), amunicja ćwiczebna, wynik do serwera i tablica drużyny, opcje FOV i czułości, akcje w kontekście `range` w `actions.gd`, dźwięk blach przez rzut na pozycję 2D przy graczu. Test `--rangetest` (wejście, strzały `sim_fire`, trafienia, stoper, rekord, zapas niezmieniony po wyjściu, odrzucenie niewiarygodnego wyniku na serwerze). | j.w. + `player.gd`, `z1_hub.gd`, `level.gd`, `settings.gd`, `actions.gd`, `ui.csv`, `CLAUDE.md` (wyjątek), README / GDD / CHANGELOG | testy zielone; ogranie z użytkownikiem |
 | **2 — pomiar** | Celowanie przez przyrządy (punkty `sight` z `gun_proc.py` → `.json`, przebudowa GLB), tarcza papierowa z przestrzelinami i miarą grupy, oparcie przy ławie, ćwiczenie „przeładowanie”, rekordy osobiste per broń. | `tools/gun_proc.py`, `art/char3d/gun_*.json`, `range_sim.gd`, `range_view.gd` | da się porównać grupę REALISTIC i CLASSIC, zimną i gorącą lufę, z oparciem i bez |
-| **3 — reszta broni i co-op** | WRATH-4 (tor łukowy, odległość uzbrojenia), Gyrojet (przyspieszanie), LR-7 / SPECTER-1 / HKM-9 (promień, szyna, płomień — uproszczone cele), seria, ruchomy cel, widok innych graczy na sąsiednich stanowiskach (synchronizacja pozy). | j.w. | po playteście |
+| **3 — reszta broni i co-op** | WRATH-4 (tor łukowy, odległość uzbrojenia), Gyrojet (przyspieszanie), LR-7 / SPECTER-1 / HKM-9 (promień, szyna, płomień — uproszczone cele) — **zrobione w 1.7.341 (§10)**; seria, ruchomy cel, widok innych graczy na sąsiednich stanowiskach (synchronizacja pozy). | j.w. | bronie specjalne zrobione, reszta po playteście |
 
 Szacunek: etap 0 to jedna sesja, etap 1 to 2–3 PR-y, etap 2 to 1–2 PR-y.
 
@@ -160,3 +160,24 @@ Część druga (1.7.339, gałąź `feat/range-mvp-2`):
 
 Poza etapem 1: inne bronie bez klipów rąk (§8). Rekordy trzyma host pod etykietą „P1”–„P4” (numer slotu w tej sesji, nie
 profil gracza) — imiona z profilu, gdy pojawią się w grze.
+
+## 10. Etap 3 — bronie specjalne (2026-10-22, 1.7.341, gałąź `feat/range-special`)
+
+Skale świata gry 2D → tunel (`range_sim.gd`): długości przez `PX_PER_M` 12,3 (bełt SINEW-6, zapalnik WRATH-4 „ok. 6,5 m”), prędkości przez
+`SPEED_PX` 3,4 (jak kule: dźwięk 1165 px/s ≈ 343 m/s), czas naprowadzania i rozpędu przez `TIME_K = PX_PER_M / SPEED_PX` (tor rakiety ma w tunelu
+ten sam kształt co w grze), grawitacja prawdziwa (w grze przesadzona dla czytelności łuku na ekranie).
+
+| Broń | W tunelu | Liczy | Obraz (`range_special.gd`) |
+|---|---|---|---|
+| WRATH-4 | granat 108 m/s z prawdziwym g (strzał w poziomie opada ok. 0,4 m na 30 m), zapalnik uzbraja się po 6,5 m lotu; uzbrojony wybucha — fala przewraca blachy w połowie promienia wybuchu (3,9 m), bliżej — niewypał (tępe uderzenie, blacha od trafienia pada) | `_launch` (tor krokami 1/240 s), trafienie w chwili uderzenia (`_pending`, `tick` → `_resolve`) | granat w locie, błysk, kula ognia, iskry, dym po błysku, okopcenie, huk 3D |
+| FALCON-6 | rakieta startuje wolno i rozpędza się (`speed_at`), po chwili skręca na stojącą blachę w stożku `homing_cone` i zasięgu `homing_range` | `_launch` + `_homing_target` | żarzący się silnik ze światłem, smuga dymu |
+| SPECTER-1 | szyna przebija wszystkie blachy na linii aż do bryły tunelu (po pełnym naładowaniu) | `_pierce` | jasny ślad szyny gasnący w 0,45 s, błysk na końcu |
+| LR-7 | promień ciągły do 14,3 m (`range_px`), przebija jedną blachę; blacha grzeje się obrażeniami kroku ze spadkiem z odległością i pada po `PLATE_HEAT` (z bliska ok. 0,7 s) | `_beam` (każdy krok ognia przez `range_sink`) | promień od wylotu, światło i iskry na końcu, żarząca się blacha |
+| HKM-9 | płomień do 5,2 m w stożku `arc_deg` — najbliższa blacha (7 m) jest poza zasięgiem; koniec płomienia zostawia ogień na podłodze (co 0,5 s, 3,5 s) | `_flame` | stożek cząstek ognia, światło, plamy ognia na podłodze z okopceniem |
+
+Kontroler broni: ogień ciągły na strzelnicy oddaje każdy krok do tunelu (`range_sink.range_shot` w `_handle_continuous`), a serwer nie liczy
+promienia i płomienia w kryjówce za gracza z `in_range` (wcześniej płomień zostawiał ogień przy zaparkowanej postaci). Tablica drużyny:
+granat i szyna mogą położyć kilka blach jednym strzałem (`RangeDoor.plausible`). Dev: `--rangeweapon=KLUCZ`, `--rangefire` naciska też spust
+broni półautomatycznej. Test `--rangetest` 49/49.
+
+Zostaje z etapu 3: seria na papier, ruchomy cel, widok innych graczy na sąsiednich stanowiskach, bełt SINEW-6 z łukiem (dziś prosto jak kula).

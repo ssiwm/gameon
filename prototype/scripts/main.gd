@@ -1122,6 +1122,14 @@ func _dev_range3d() -> void:
 				if rr.size() > 1 and rr[1] == "empty":
 					p.weapons.mags[p.weapons.cur().id] = 0
 				p.weapons.try_reload())
+		elif a.begins_with("--rangeweapon="):                  # --rangeweapon=KLUCZ: ta broń w slocie 1, pełny magazynek (zrzuty broni specjalnych)
+			var wkey := a.substr("--rangeweapon=".length())
+			for wi in Weapons.COUNT:
+				if String(Weapons.def(wi).key) == wkey:
+					p.weapons.loadout[0] = wi
+					p.weapons.mags[wi] = Weapons.def(wi).mag
+					p.weapons.select_slot(1)
+					p.weapons.select_slot(0)
 		elif a.begins_with("--rangeleave="):                   # --rangeleave=S: wyjście ze strzelnicy po S s (nagranie przejścia do kryjówki)
 			get_tree().create_timer(float(a.substr("--rangeleave=".length()))).timeout.connect(func() -> void:
 				if is_instance_valid(fp):
@@ -1136,7 +1144,9 @@ func _dev_range3d() -> void:
 			fp.pitch = deg_to_rad(float(lk[1])) if lk.size() > 1 else 0.0
 		elif a.begins_with("--rangefire="):                    # --rangefire=S: spust wciśnięty przez S s od 1 s (seria do zrzutu)
 			var hold := float(a.substr("--rangefire=".length()))
-			get_tree().create_timer(1.0).timeout.connect(func() -> void: p.weapons.sim_fire = true)
+			get_tree().create_timer(1.0).timeout.connect(func() -> void:
+				p.weapons.sim_fire = true
+				p.weapons.sim_press = true)                          # broń półautomatyczna strzela z naciśnięcia, nie z trzymania
 			get_tree().create_timer(1.0 + hold).timeout.connect(func() -> void: p.weapons.sim_fire = false)
 
 func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false, workshop := false, result := false, boss := false, codex := false) -> void:

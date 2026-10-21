@@ -60,13 +60,15 @@ func best() -> float:
 	return float((board[0] as Dictionary)["t"]) if not board.is_empty() else -1.0
 
 ## Czy przebieg w `t` s z broni `w` jest możliwy: pierwsza blacha pada przy pierwszym strzale, ostatnia najwcześniej przy strzale nr `min_shots`
-## (strzelba: śrut może położyć dwie blachy naraz), a między strzałami musi minąć `cooldown` broni.
+## (strzelba: śrut może położyć dwie blachy naraz; granat i szyna — wszystkie jednym strzałem), a między strzałami musi minąć `cooldown`.
 static func plausible(t: float, shots: int, w: int) -> bool:
 	if w < 0 or w >= Weapons.COUNT or not is_finite(t) or t <= 0.0:
 		return false
 	var d = Weapons.def(w)
 	var plates := RangeSim.PLATES.size()
 	var min_shots := plates if int(d.pellets) <= 1 else ceili(float(plates) / 2.0)
+	if float(d.blast_radius) > 0.0 or int(d.pierce) > 1:
+		min_shots = 1                                        # wybuch (WRATH-4) i szyna (SPECTER-1) mogą położyć kilka blach jednym strzałem
 	return shots >= min_shots and t >= float(min_shots - 1) * float(d.cooldown) * RATE_SLACK
 
 # ---------------------------------------------------------------- wynik

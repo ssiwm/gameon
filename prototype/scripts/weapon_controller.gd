@@ -825,6 +825,8 @@ func _handle_continuous(d: WeaponDef, held: bool) -> void:
 			_start_fault(d, "overheat", OVERHEAT_PAUSE)       # zużyte ogniwo przegrzewa się: wiązka gaśnie na chwilę
 		recoil = maxf(recoil, 0.25)
 		Feel.shake(d.shake)
+		if range_sink != null:                                   # strzelnica: krok promienia / płomienia w tunelu 3D (range_sim.gd)
+			range_sink.range_shot(d, randi(), 0.0)
 		shot.emit(d.id)
 
 func _handle_rail(d: WeaponDef, held: bool, delta: float) -> void:
@@ -1090,8 +1092,8 @@ func _physics_process(delta: float) -> void:
 		_srv_patch_t = 0.0
 		return
 	var d := Weapons.def(player.weapon)
-	if not d.is_continuous():
-		return
+	if not d.is_continuous() or bool(player.get("in_range")):
+		return                                                   # na strzelnicy promień i płomień są w tunelu, nie w kryjówce (bez ognia przy drzwiach)
 	_srv_tick -= delta
 	_srv_fx_t -= delta
 	if _srv_tick > 0.0:
