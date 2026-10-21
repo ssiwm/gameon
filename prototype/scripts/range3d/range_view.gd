@@ -32,7 +32,9 @@ const SWAY_RATE := 11.0                       ## 1/s — powrót kołysania
 const REC_K := 320.0                          ## sprężyna odrzutu (sztywność, 1/s²)
 const REC_C := 30.0                           ## … tłumienie (1/s)
 const REC_IMPULSE := Vector3(0.6, 1.0, 0.25)  ## prędkość po strzale: cofnięcie (m/s), uniesienie (rad/s), skręt (± rad/s); × WEAPON_POSE body / climb
-const ARMS_FALLBACK := false                  ## ręce dla broni bez ułożonego chwytu (fp_arms.gd, walce) — rozjeżdżały się (SPREAD-12: rękaw
+const ARMS_RIG := false                       ## ręce FPP z zasobu (fp_rig.gd, chwyty z fp_grip.py) — wyłączone: animacje dłoni za słabej jakości,
+                                              ## wrócą z lepszymi narzędziami (RANGE_FPS_PLAN.md §8); broń jest w kadrze sama
+const ARMS_FALLBACK := false                 ## ręce dla broni bez ułożonego chwytu (fp_arms.gd, walce) — rozjeżdżały się (SPREAD-12: rękaw
                                               ## przez pół kadru, P-83: bez rąk); do czasu klipów z fp_grip.py taka broń jest sama w kadrze
 const HOLES_MAX := 90
 const SLEEVE := Color(0.1, 0.11, 0.08)
@@ -188,12 +190,11 @@ func _ready() -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_cam.add_child(mi)
 		_arms.append(mi)
-	_rig = FpRig.new()
+	_rig = FpRig.new()                                          # bez rąk (ARMS_RIG) tylko ruchome części broni: zamek przy strzale, spust
 	_rig.name = "FpRig"
 	_cam.add_child(_rig)
-	if not _rig.setup():
-		_rig.queue_free()
-		_rig = null
+	if ARMS_RIG:
+		_rig.setup()
 	if ARMS_FALLBACK:
 		_fp_arms = FpArms.new()
 		_fp_arms.name = "FpArms"
@@ -408,8 +409,8 @@ func _sync_gun() -> void:
 		_rear_x = minf(_rear_x, bb.position.x)
 	# układ broni: x wzdłuż lufy, y w górę, z w prawo → kamera patrzy w −z
 	_gun.basis = GUN_BASIS
-	if _rig != null:
-		_rig.set_weapon(key, _gun)                                 # z ułożonym chwytem broń przechodzi na rękę (gunref)
+	if _rig != null and not _rig.set_weapon(key, _gun):          # z ułożonym chwytem broń przechodzi na rękę (gunref)
+		_rig.bind_parts(key, _gun)
 
 ## Położenie broni w kadrze: biodro albo przyrządy, odrzut, przeładowanie i usuwanie zacięcia (proste ruchy do szpica).
 func _pose_gun(delta: float) -> void:
@@ -478,6 +479,8 @@ func _pose_gun(delta: float) -> void:
 		for a in _arms:
 			(a as Node3D).visible = false
 		return
+	if _rig != null:                                             # broń bez rąk: zamek przy strzale i spust dalej się ruszają
+		_rig.tick_parts(delta, bool(wc.firing) or (Input.is_action_pressed("fire") and not wc.is_reloading()))
 	if not ARMS_FALLBACK:
 		for a in _arms:
 			(a as Node3D).visible = false
@@ -533,7 +536,7 @@ func on_shot(d: WeaponDef, hits: Array) -> void:
 	var kb := float(wp.get("body", 1.0)) * (0.55 if fp.braced() else 1.0)
 	_rec_v += Vector3(REC_IMPULSE.x * kb, REC_IMPULSE.y * float(wp.get("climb", 1.0)) * (0.5 if fp.braced() else 1.0), randf_range(-REC_IMPULSE.z, REC_IMPULSE.z))
 	_flash_t = 0.05 if d.suppressor <= 0.0 else 0.02
-	if _rig != null and String(_rig.key) != "":
+	if _rig != null:                                             # zamek / suwadło w tył i spust — z rękami i bez
 		_rig.shot()
 	if _gun != null:
 		var m := _gun_xf * (_info.get("muzzle", Vector3(0.6, 0.1, 0.0)) as Vector3)

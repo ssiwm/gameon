@@ -83,6 +83,19 @@ func set_weapon(k: String, gun: Node3D) -> bool:
 		_mag = n as Node3D
 		_mag_rest = _mag.transform
 		break
+	_bind(k, gun)
+	visible = true
+	return true
+
+## Same ruchome części broni, bez rąk (range_view.ARMS_RIG wyłączone albo broń bez chwytu): zamek / suwadło przy strzale i spust —
+## `tick_parts` i `shot` działają tak samo, broń zostaje tam, gdzie jest.
+func bind_parts(k: String, gun: Node3D) -> void:
+	key = ""
+	_mag = null
+	_rl_bolt = 0.0
+	_bind(k, gun)
+
+func _bind(k: String, gun: Node3D) -> void:
 	_bolt = gun.find_children("*__bolt", "Node3D", true, false).front() if not gun.find_children("*__bolt", "Node3D", true, false).is_empty() else null
 	_trig = gun.find_children("*__trigger", "Node3D", true, false).front() if not gun.find_children("*__trigger", "Node3D", true, false).is_empty() else null
 	if _bolt != null:
@@ -92,8 +105,6 @@ func set_weapon(k: String, gun: Node3D) -> bool:
 	var info := Char3D.gun_info(k)
 	_trig_pivot = info.get("trigger", TRIGGER_PIVOT)
 	_travel = float(_meta.get(k, {}).get("reload_empty", {}).get("bolt_travel", info.get("slide", 0.08)))
-	visible = true
-	return true
 
 ## Poza w danej chwili: chwyt albo przeładowanie (`empty` — z pustego, z odciągnięciem suwadła) w postępie `u` 0..1 (WeaponController.reload_progress).
 ## Magazynek przechodzi do lewej dłoni od `mag_out` do `mag_in` klipu. `ads` 0..1 — celowanie: lewa ręka przechodzi z chwytu z boku
