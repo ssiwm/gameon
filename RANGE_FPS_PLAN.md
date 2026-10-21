@@ -118,11 +118,11 @@ Decyzje użytkownika: rękawice skórzane + rękaw M65, MPFB + nasz pipeline (be
 
 | Element | Jak | Stan |
 |---|---|---|
-| Ręce | `tools/fp_arms.py` → `art/char3d/fp/fp_arms_scav.glb` (66 tys. trójkątów: rękawice 49 tys., rękawy z karczkiem 15 tys., zegarek) | zrobione; rękawice za jasne w ciepłym świetle tunelu |
+| Ręce | `tools/fp_arms.py` → `art/char3d/fp/fp_arms_scav.glb` (66 tys. trójkątów: rękawice 49 tys., rękawy z karczkiem 15 tys., zegarek) | zrobione; skóra rękawic z wyraźnym ziarnem i zmarszczkami (wypukłości ×2–3 po pierwszej próbie) |
+| Światło | AgX (ekspozycja 1,3), lampy ok. 3800 K (×0,8), lampa nad dłońmi przeniesiona za plecy, wypełnienie 0,8 tylko dla warstwy rąk; pomiar: albedo rękawic 0,026, rękawów 0,04 (liniowo) — przepalenie dawało światło, nie tekstury | zrobione |
 | Rękaw | `cloth_garments.py --fp` → `art_src/clothes/male_scav_m65_fp.glb` (same rękawy + karczek, własne UV 2K; prawy = odbicie lewego, bo w symulacji prawy mankiet podjeżdża) | zrobione |
-| Chwyt | `tools/fp_grip.py`: układy dłoni, IK z biegunem łokcia, podział skrętu, palce do kontaktu (BVH), klip `grip_m83` + `gunref_m83` | prawa dłoń na chwycie z palcami na powierzchni; lewa pod łożem, palce z luzem 20–25 mm |
+| Chwyt | `tools/fp_grip.py`: układy dłoni, IK z biegunem łokcia, podział skrętu, osadzenie dłoni (wnętrze dłoni dosuwane do broni), palce do kontaktu (BVH, do 125°), klip `grip_m83` + `gunref_m83` | obie dłonie na broni: palce prawej na chwycie, lewa obejmuje łoże (luz 0–0,5 mm) |
 | Przeładowanie | klatki kluczowe lewej dłoni (IK w każdej), `reload_m83` 1,35 s i `reload_empty_m83` 1,8 s, momenty magazynka w `fp_arms_scav.json` | zrobione; ruch między klatkami to zwykła interpolacja |
 | W grze | `fp_rig.gd` (broń dzieckiem dłoni), `range_view.gd`: osobna kamera rąk 58°, kołysanie, oddech, odrzut na sprężynie, broń 4K | zrobione, 60 FPS |
 
-Do poziomu AAA brakuje jeszcze: kalibracji materiałów i światła na rękach (rękawice wyglądają na jasną skórę, rękawy przepalone ciepłym światłem),
-domknięcia lewej dłoni na łożu, płynniejszego przeładowania (więcej klatek, ruch broni w klipie), łusek i dymu w 3D, chwytów dla pozostałych broni.
+Do poziomu AAA brakuje jeszcze: płynniejszego przeładowania (więcej klatek, ruch broni w klipie), łusek i dymu w 3D, chwytów dla pozostałych broni.

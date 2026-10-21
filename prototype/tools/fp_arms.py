@@ -50,7 +50,7 @@ GLOVE_GAP = 0.0016           # m — skóra rękawicy nad skórą dłoni
 GLOVE_CUFF = 0.075           # m — mankiet nad nadgarstkiem
 GLOVE_FLARE = 0.0065         # m — rozszerzenie mankietu na końcu
 GLOVE_THICK = 0.0012         # m — grubość skóry (widoczna na krawędzi mankietu)
-LEATHER = (0.085, 0.058, 0.040)     # skóra rękawicy (brąz wojskowy, ciemny)
+LEATHER = (0.10, 0.068, 0.046)      # skóra rękawicy (brąz wojskowy, ciemny)
 LEATHER_WORN = (0.20, 0.14, 0.095)  # przetarcia na kłykciach i opuszkach
 
 
@@ -160,12 +160,12 @@ def leather_material(name):
     nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
     tc = nt.nodes.new("ShaderNodeTexCoord")
     grain = nt.nodes.new("ShaderNodeTexNoise")
-    grain.inputs["Scale"].default_value = 900.0
+    grain.inputs["Scale"].default_value = 380.0                # ziarno ok. 1–2 mm — przy teksturze 2K na dwie rękawice jeszcze czytelne z oka
     grain.inputs["Detail"].default_value = 6.0
     nt.links.new(tc.outputs["Object"], grain.inputs["Vector"])
     crease = nt.nodes.new("ShaderNodeTexVoronoi")
     crease.feature = "DISTANCE_TO_EDGE"
-    crease.inputs["Scale"].default_value = 140.0
+    crease.inputs["Scale"].default_value = 55.0                 # zmarszczki skóry (stawy, grzbiet dłoni)
     nt.links.new(tc.outputs["Object"], crease.inputs["Vector"])
     mottle = nt.nodes.new("ShaderNodeTexNoise")
     mottle.inputs["Scale"].default_value = 45.0
@@ -193,17 +193,17 @@ def leather_material(name):
     nt.links.new(mottle.outputs["Color"], tint.inputs["B"])
     nt.links.new(tint.outputs["Result"], bsdf.inputs["Base Color"])
     rough = nt.nodes.new("ShaderNodeMapRange")
-    rough.inputs["To Min"].default_value = 0.62
-    rough.inputs["To Max"].default_value = 0.38
+    rough.inputs["To Min"].default_value = 0.70
+    rough.inputs["To Max"].default_value = 0.40
     nt.links.new(wmix.outputs["Value"], rough.inputs["Value"])
     nt.links.new(rough.outputs["Result"], bsdf.inputs["Roughness"])
     b1 = nt.nodes.new("ShaderNodeBump")
-    b1.inputs["Strength"].default_value = 0.35
-    b1.inputs["Distance"].default_value = 0.0003
+    b1.inputs["Strength"].default_value = 1.0
+    b1.inputs["Distance"].default_value = 0.0012
     nt.links.new(grain.outputs["Fac"], b1.inputs["Height"])
     b2 = nt.nodes.new("ShaderNodeBump")
-    b2.inputs["Strength"].default_value = 0.5
-    b2.inputs["Distance"].default_value = 0.0006
+    b2.inputs["Strength"].default_value = 1.0
+    b2.inputs["Distance"].default_value = 0.003
     b2.invert = True
     nt.links.new(crease.outputs["Distance"], b2.inputs["Height"])
     nt.links.new(b1.outputs["Normal"], b2.inputs["Normal"])

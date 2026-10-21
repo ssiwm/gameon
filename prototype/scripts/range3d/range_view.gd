@@ -174,6 +174,15 @@ func _ready() -> void:
 		_fp_arms = null
 	for a in _arms:
 		(a as Node3D).visible = _fp_arms == null
+	# słabe wypełnienie tylko dla rąk i broni (z przodu z lewej, chłodne): skóra rękawic i tkanina mają rysunek, a nie płaską plamę w cieniu
+	var fill := OmniLight3D.new()
+	fill.position = Vector3(-0.45, 0.25, -0.35)
+	fill.omni_range = 1.8
+	fill.light_energy = 0.8
+	fill.light_color = Color(0.9, 0.93, 1.0)
+	fill.light_cull_mask = 1 << (LAYER_VM - 1)
+	fill.layers = 1 << (LAYER_VM - 1)
+	_cam.add_child(fill)
 	_flash = OmniLight3D.new()
 	_flash.light_color = Color(1.0, 0.75, 0.42)
 	_flash.omni_range = 7.0
@@ -461,10 +470,10 @@ func _build_env() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.015, 0.015, 0.018)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.36, 0.31, 0.26)
-	env.ambient_light_energy = 0.32
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 1.05
+	env.ambient_light_color = Color(0.30, 0.29, 0.28)
+	env.ambient_light_energy = 0.3
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX                # AgX: jasne partie (podłoga pod lampą, rękawy) bez przepalenia do bieli
+	env.tonemap_exposure = 1.3
 	env.glow_enabled = true
 	env.glow_intensity = 0.5
 	env.glow_bloom = 0.04
@@ -516,7 +525,7 @@ func _build_tunnel() -> void:
 
 func _build_lights() -> void:
 	# lampy pod stropem nad torem i jedna nad stanowiskami; cienie tylko w trzech (koszt)
-	var spots := [[0.9, 0.55, false], [-3.0, 1.0, false], [-9.0, 1.0, true], [-14.0, 1.2, true], [-20.0, 1.1, true], [-26.0, 0.7, false]]
+	var spots := [[1.5, 0.3, false], [-3.0, 1.0, false], [-9.0, 1.0, true], [-14.0, 1.2, true], [-20.0, 1.1, true], [-26.0, 0.7, false]]
 	for s in spots:
 		var z := float(s[0])
 		var sl := SpotLight3D.new()
@@ -525,12 +534,12 @@ func _build_lights() -> void:
 		sl.spot_angle = 62.0
 		sl.spot_range = 12.0
 		sl.spot_attenuation = 0.8
-		sl.light_energy = 3.2 * float(s[1])
-		sl.light_color = Color(1.0, 0.88, 0.68)
+		sl.light_energy = 2.6 * float(s[1])
+		sl.light_color = Color(1.0, 0.93, 0.82)                      # ok. 3800 K (świetlówka w osłonie), nie pomarańcz
 		sl.shadow_enabled = bool(s[2])
 		sl.layers = 1 | (1 << (LAYER_VM - 1))                       # światło widzą obie kamery (tunel i ręce)
 		_world.add_child(sl)
-		var lamp := _box(Vector3(0.5, 0.06, 0.18), Vector3(0.0, RangeSim.LANE_H - 0.05, z), _glow(Color(1.0, 0.9, 0.72), 2.5))
+		var lamp := _box(Vector3(0.5, 0.06, 0.18), Vector3(0.0, RangeSim.LANE_H - 0.05, z), _glow(Color(1.0, 0.95, 0.86), 2.5))
 		lamp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 func _build_plates() -> void:

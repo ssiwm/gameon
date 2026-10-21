@@ -39,7 +39,8 @@ FINGERS = ("Index", "Middle", "Ring", "Pinky")
 SEG_R = (0.0105, 0.0095, 0.0085)        # m — promień kapsuły członu palca w rękawicy (nasada, środek, opuszka)
 THUMB_R = (0.0125, 0.011, 0.0095)
 STEP = math.radians(2.0)
-CURL_MAX = math.radians(100.0)
+CURL_MAX = math.radians(125.0)
+PALM_R = 0.019                         # m — pół grubości dłoni w rękawicy (od osi kości do wnętrza dłoni)
 
 # Chwyty: yaw — obrót broni względem tułowia (°, + = w lewo), right / left — dłoń: punkt broni (układ Blendera broni: x lufa, y lewo,
 # z góra), „up” — kierunek linii kostek (od małego do wskazującego), „back” — strona grzbietu dłoni, `off` — środek dłoni od punktu
@@ -48,7 +49,7 @@ GRIPS = {
     "m83": {
         "yaw": 35.0, "butt_dz": 0.02, "clav": (6.0, 12.0),
         "right": {"at": "grip", "push": (-0.03, -0.004, 0.0), "up": (0.34, 0.0, 0.94), "back": (-0.25, -0.97, 0.0), "off": 0.022},
-        "left": {"at": "hold", "push": (0.0, 0.02, -0.036), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.25, -0.97), "off": 0.012},
+        "left": {"at": "hold", "push": (0.0, 0.042, -0.03), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.25, -0.97), "off": 0.012},
     },
 }
 
@@ -95,7 +96,7 @@ def frame_matrix(f, a, b):
     return Matrix((f, a, b)).transposed()          # kolumny f, a, b
 
 
-def place_hand(rig, side, gun_m, info, conf):
+def place_hand(rig, side, gun_m, info, conf, seat=Vector()):
     """Cel nadgarstka i obrót dłoni: linia kostek wzdłuż `up`, grzbiet ku `back` (w układzie broni), wnętrze dłoni na punkcie broni."""
     gr = gun_m.to_3x3().normalized()
     up = (gr @ Vector(conf["up"])).normalized()
@@ -108,7 +109,7 @@ def place_hand(rig, side, gun_m, info, conf):
     f, a, b, pc = hand_frame(rig, side)
     R = frame_matrix(ft, up, back) @ frame_matrix(f, a, b).inverted()
     w = P(rig, side + "Hand")
-    target_pc = gun_m @ (Vector(info[conf["at"]]) + Vector(conf["push"])) + back * conf["off"]
+    target_pc = gun_m @ (Vector(info[conf["at"]]) + Vector(conf["push"])) + back * conf["off"] + seat
     wrist = target_pc - R @ (pc - w)
     hw = (rig.matrix_world @ rig.pose.bones[PRE + side + "Hand"].matrix).to_3x3().normalized()
     return wrist, (R @ hw).normalized()        # docelowy obrót kości dłoni w świecie
@@ -170,6 +171,30 @@ def share_twist(rig, side, hand_rot, share=0.6):
     pb_h.matrix = Matrix.Translation(head) @ (rig.matrix_world.inverted().to_3x3() @ hand_rot).to_4x4()
     update()
     print("TWIST %s %.0f deg (forearm %.0f)" % (side, math.degrees(tw), math.degrees(tw * share)))
+
+
+def palm_gap(rig, side, bvh):
+    """Luz (m) między wnętrzem dłoni a bronią: próbki wzdłuż osi dłoni (nadgarstek → nasada środkowego), promień PALM_R."""
+    w, m = P(rig, side + "Hand"), P(rig, side + "HandMiddle1")
+    best = 1.0
+    for k in range(4):
+        hit = bvh.find_nearest(w.lerp(m, 0.35 + 0.2 * k))
+        if hit[0] is not None:
+            best = min(best, hit[3] - PALM_R)
+    return best
+
+
+def seat_hand(rig, side, G, info, c, bvh, pole):
+    """Osadzenie dłoni: cel przesuwany wzdłuż grzbietu dłoni, aż wnętrze dłoni dotknie broni (bez wchodzenia w nią), IK po każdym kroku."""
+    seat = Vector()
+    for it in range(8):
+        wrist, R = place_hand(rig, side, G, info, c, seat)
+        solve_arm(rig, side, wrist, R, pole)
+        gap = palm_gap(rig, side, bvh)
+        if abs(gap) < 0.0015:
+            break
+        seat -= hand_frame(rig, side)[2] * gap * 0.9
+    print("SEAT %s palm gap %.1f mm (shift %.1f mm)" % (side, gap * 1000.0, seat.length * 1000.0))
 
 
 def rotate_world(rig, name, axis_w, ang):
@@ -408,8 +433,7 @@ def build(outfit, keys):
         bvh = gun_bvh(meshes)
         for side, pole in (("Right", Vector((-0.1, -0.9, 0.5))), ("Left", Vector((0.2, 0.9, 0.4)))):
             c = conf[side.lower()]
-            wrist, R = place_hand(rig, side, G, info, c)
-            solve_arm(rig, side, wrist, R, P(rig, side + "Arm") + pole)
+            seat_hand(rig, side, G, info, c, bvh, P(rig, side + "Arm") + pole)
             f2, a2, b2, pc2 = hand_frame(rig, side)
             gr = G.to_3x3().normalized()
             want_pc = G @ (Vector(info[c["at"]]) + Vector(c["push"]))
