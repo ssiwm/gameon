@@ -59,16 +59,18 @@ PALM_R = 0.019                         # m — pół grubości dłoni w rękawic
 # ustawiana linią kostek na przedniej krawędzi chwytu, nasada dłoni obejmuje go od tyłu; lewa na łożu — kostki przy prawej dolnej
 # krawędzi, wnętrze dłoni pod łożem, palce w górę po prawej ściance (podparcie od spodu jak w viewmodelach FPS).
 # `thumb_side` — koniuszek kciuka po drugiej stronie broni (m od osi; aim_thumb: kciuk obejmuje chwyt i przylega do niego),
-# `thumb_front` — granica w przód dla koniuszka kciuka (m wzdłuż lufy; dalej zahaczałby się o przód chwytu).
+# `thumb_front` — granica w przód dla koniuszka kciuka (m wzdłuż lufy; dalej zahaczałby się o przód chwytu), `thumb_top` — granica
+# w górę, `thumb_dir` — kierunek ostatniego członu kciuka (układ broni), `tip_top` — granica w górę dla koniuszków palców (m, z broni).
 GRIPS = {
     "m83": {
         "yaw": 35.0, "butt_dz": 0.02, "clav": (6.0, 12.0), "sink": (0.03, 0.05), "trigger": (0.068, 0.0, 0.086),
         "right": {"at": "grip", "mcp": (0.022, -0.026, 0.05), "push": (-0.022, -0.004, 0.008), "up": (0.34, 0.0, 0.94),
                   "back": (-0.25, -0.97, 0.0), "off": 0.022, "roll": 30, "tilt": 15,
                   "thumb_side": 0.024, "thumb_front": 0.03},
-        "left": {"at": "hold", "mcp": (0.36, -0.022, 0.104), "push": (0.0, 0.012, -0.03), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.35, -0.94), "off": 0.012,
+        "left": {"at": "hold", "mcp": (0.32, -0.022, 0.104), "push": (0.0, 0.012, -0.03), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.35, -0.94), "off": 0.012,
                  "roll": 25, "tilt": 20, "flex": -10.0, "dev": 22.0, "screen": 70.0,
-                 "thumb_side": 0.026, "thumb_top": 0.175, "thumb_straight": 0.0001},
+                 "thumb_side": 0.026, "thumb_top": 0.15, "thumb_straight": 0.0001, "thumb_dir": (1.0, 0.0, 0.45), "thumb_hug": 3.0,
+                 "tip_top": 0.16},
     },
 }
 
@@ -428,14 +430,16 @@ def aim_thumb(rig, side, bvh, G, c):
     kostek — kciuk przechodzi na drugą stronę chwytu — i odwiedzenie wokół grzbietu), dalsze człony się zginają. Przegląd siatki liczony
     analitycznie; wybór, w którym dalsze człony przylegają do broni, koniuszek leży po drugiej stronie chwytu (`thumb_side`, m od osi
     broni), nie wysuwa się przed `thumb_front` (zahaczałby o przód chwytu) ani ponad `thumb_top` (lewy: nad łoże, w kadr przy
-    przyrządach), bez wchodzenia członów w broń. Owijanie jak palce (jedna oś
-    zgięcia) chowało kciuk w chwycie, a punkt docelowy na ściance był nieosiągalny bez przejścia przez chwyt."""
+    przyrządach), ostatni człon blisko kierunku `thumb_dir` (układ broni; lewy: w przód wzdłuż łoża, nie „kciuk w górę”), bez
+    wchodzenia członów w broń. Owijanie jak palce (jedna oś zgięcia) chowało kciuk w chwycie, a punkt docelowy na ściance był
+    nieosiągalny bez przejścia przez chwyt."""
     names = [side + "HandThumb" + str(i) for i in (1, 2, 3)]
     f, a, back, _ = hand_frame(rig, side)
     gr = G.to_3x3().normalized()
     fwd, across, o = (gr @ Vector((1.0, 0.0, 0.0))).normalized(), (gr @ Vector((0.0, 1.0, 0.0))).normalized(), G.to_translation()
     front, want_y, top = c.get("thumb_front", 1.0), c.get("thumb_side", 0.02), c.get("thumb_top", 1.0)
     upg = (gr @ Vector((0.0, 0.0, 1.0))).normalized()
+    tdir = (gr @ Vector(c["thumb_dir"])).normalized() if "thumb_dir" in c else None
     K = P(rig, names[0])
     L = [(T(rig, n) - P(rig, n)).length for n in names]
     d0 = [(T(rig, n) - P(rig, n)).normalized() for n in names]
@@ -457,10 +461,13 @@ def aim_thumb(rig, side, bvh, G, c):
                     ty = (p3 - o).dot(across)               # koniuszek po drugiej stronie, ale przy broni (nie odstaje w bok)
                     pre = 1.5 * (max(0.0, want_y - ty) + max(0.0, ty - want_y - 0.012)) + 1.0 * max(0.0, (p3 - o).dot(fwd) - front) \
                         + 1.5 * max(0.0, (p3 - o).dot(upg) - top) + 0.00002 * (abs(al) + abs(be)) + c.get("thumb_straight", 0.00002) * (a2 + a3)
+                    if tdir is not None:
+                        pre += 0.03 * (1.0 - d3.dot(tdir))
                     if best is not None and pre >= best[0]:
                         continue
                     g = _capsule_gaps([(K, p1, ds[0]), (p1, p2, d2), (p2, p3, d3)], THUMB_R, bvh)
-                    cost = pre + 30.0 * max(0.0, -min(g) - 0.002) + max(0.0, g[1] - 0.002) + 2.0 * max(0.0, g[2] - 0.002)
+                    hw = c.get("thumb_hug", 1.0)            # przyleganie dalszych członów (lewy: kciuk leży na ściance łoża, nie odstaje)
+                    cost = pre + 30.0 * max(0.0, -min(g) - 0.002) + hw * (max(0.0, g[1] - 0.002) + 2.0 * max(0.0, g[2] - 0.002))
                     if best is None or cost < best[0]:
                         best = (cost, al, be, a2, a3, ax, (p3 - o).dot(across), g)
     _, al, be, a2, a3, ax, tip_y, g = best
@@ -476,10 +483,11 @@ def aim_thumb(rig, side, bvh, G, c):
                                                                             [round(x * 1000, 1) for x in g]))
 
 
-def wrap_finger(rig, side, finger, bvh, back):
+def wrap_finger(rig, side, finger, bvh, back, cap=None):
     """Palec owinięty na broni: przegląd siatki (rozchylenie, zgięcie nasady, dalszych członów 1 : 0,7) — jak największe zgięcie
     bez wchodzenia w broń, z opuszką przy powierzchni. Zastępuje zginanie do pierwszego kontaktu, które stawało od razu, gdy palec
-    już na starcie dotykał kabłąka albo magazynka (prawe palce sterczały prosto w przód)."""
+    już na starcie dotykał kabłąka albo magazynka (prawe palce sterczały prosto w przód). `cap` = (punkt, kierunek, wysokość):
+    koniuszek nie wyżej (lewa dłoń: palce nie wystają nad broń i nie wchodzą w obraz przyrządów)."""
     names = [side + "Hand" + finger + str(i) for i in (1, 2, 3)]
     radii = THUMB_R if finger == "Thumb" else SEG_R
     K = P(rig, names[0])
@@ -501,6 +509,8 @@ def wrap_finger(rig, side, finger, bvh, back):
                 hug = sum(max(0.0, x - 0.003) for x in g) * (1.0 if finger == "Thumb" else 1.5)   # przylega całą długością (nie hak)
                 cost = pen * 30.0 + max(0.0, g[2] - 0.002) * 3.0 + hug - (a1 + 1.7 * a2) * 0.0003 + abs(s - s0) * 0.0001 \
                     + abs(a1 - 0.8 * a2) * 0.0001
+                if cap is not None:
+                    cost += 3.0 * max(0.0, (pts[2][1] - cap[0]).dot(cap[1]) - cap[2])
                 if best is None or cost < best[0]:
                     best = (cost, s, a1, a2, ax, g)
     _, s, a1, a2, ax, g = best
@@ -787,7 +797,9 @@ def build(outfit, keys):
                 elif fg == "Thumb" and "thumb_side" in c:
                     aim_thumb(rig, side, bvh, G, c)
                 else:
-                    wrap_finger(rig, side, fg, bvh, back)
+                    cap = (G.to_translation(), (G.to_3x3().normalized() @ Vector((0.0, 0.0, 1.0))).normalized(), c["tip_top"]) \
+                        if "tip_top" in c else None
+                    wrap_finger(rig, side, fg, bvh, back, cap)
         # klip pozy i punkt odniesienia broni na kości prawej dłoni
         act = bpy.data.actions.new("grip_" + key)
         rig.animation_data_create()
