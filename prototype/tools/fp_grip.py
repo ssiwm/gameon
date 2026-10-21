@@ -517,14 +517,14 @@ def wrap_finger(rig, side, finger, bvh, back, cap=None):
         dp, fp = d0[0] - back * d0[0].dot(back), f - back * f.dot(back)
         s0 = 0.85 * math.degrees(math.atan2(back.dot(dp.cross(fp)), dp.dot(fp)))
     for s in [s0 + x for x in spread]:
-        for a1 in range(0, 91, 5):
+        for a1 in range(-20, 91, 5):            # od lekkiego przeprostu (palec przy ściance, nie w niej)
             for a2 in range(0, 101, 5):
                 pts, ax = _finger_fk(K, L, d0, back, s, (a1, a1 + a2, a1 + 1.7 * a2))
                 g = _capsule_gaps(pts, radii, bvh)
                 pen = max(0.0, -min(g) - SKIN)
                 hug = sum(max(0.0, x - 0.003) for x in g) * (1.0 if finger == "Thumb" else 1.5)   # przylega całą długością (nie hak)
                 cost = pen * 30.0 + max(0.0, g[2] - 0.002) * 3.0 + hug - (a1 + 1.7 * a2) * 0.0003 + abs(s - s0) * 0.0001 \
-                    + abs(a1 - 0.8 * a2) * 0.0001
+                    + abs(a1 - 0.8 * a2) * 0.0001 + max(0.0, -a1) * 0.0004
                 if cap is not None:
                     top = max((q - cap[0]).dot(cap[1]) + r for (_, q, _), r in zip(pts, radii))   # wierzch palca (staw + promień)
                     cost += 20.0 * max(0.0, top - cap[2])

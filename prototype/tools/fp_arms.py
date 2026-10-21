@@ -337,7 +337,7 @@ def make_watch(rig, gloves):
     glass.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(back)
     bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
 
-    def mat(name, rgb, rough, metal=0.0, emit=None):
+    def mat(name, rgb, rough, metal=0.0, emit=None, emit_strength=0.6):
         m = bpy.data.materials.new(name)
         m.use_nodes = True
         b = m.node_tree.nodes["Principled BSDF"]
@@ -346,11 +346,12 @@ def make_watch(rig, gloves):
         b.inputs["Metallic"].default_value = metal
         if emit:
             b.inputs["Emission Color"].default_value = emit + (1.0,)
-            b.inputs["Emission Strength"].default_value = 0.6
+            b.inputs["Emission Strength"].default_value = emit_strength
         return m
     strap.data.materials.append(mat("watch_strap", (0.10, 0.11, 0.07), 0.9))
     case.data.materials.append(mat("watch_case", (0.55, 0.55, 0.52), 0.35, 1.0))
-    glass.data.materials.append(mat("watch_face", (0.02, 0.025, 0.02), 0.08, 0.0, (0.25, 0.55, 0.3)))   # tarcza z fosforem pod szkłem
+    glass.data.materials.append(mat("watch_face", (0.02, 0.025, 0.02), 0.08, 0.0, (0.25, 0.55, 0.3), 0.05))   # ciemna tarcza, ślad fosforu
+    # (przy 0,6 cała tarcza świeciła jak zielony krążek tuż przy kamerze)
     bpy.ops.object.select_all(action="DESELECT")
     for o in (strap, case, glass):
         o.select_set(True)

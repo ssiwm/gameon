@@ -1118,6 +1118,8 @@ func _dev_range3d() -> void:
 				p.weapons.try_reload())
 		elif a == "--rangeads":
 			fp.dev_ads = true                                   # przyrządy bez PPM (zrzuty)
+		elif a.begins_with("--rangeads="):                     # --rangeads=T: stały postęp przyrządów 0..1 (zrzuty przejścia)
+			fp.dev_ads_t = clampf(float(a.substr("--rangeads=".length())), 0.0, 1.0)
 		elif a.begins_with("--rangelook="):                    # --rangelook=YAW,PITCH (°): kierunek patrzenia
 			var lk := a.substr("--rangelook=".length()).split(",")
 			fp.yaw = deg_to_rad(float(lk[0]))

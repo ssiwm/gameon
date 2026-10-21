@@ -10,6 +10,7 @@ const CYCLE_BACK := 0.025               ## s — suwadło w tył po strzale
 const CYCLE_FWD := 0.035                ## s — i z powrotem
 const TRIGGER_PULL := 12.0              ## ° — ściągnięcie języka spustu
 const TRIGGER_PIVOT := Vector3(0.0588, 0.104, 0.0)   ## nasada języka spustu M-83 w układzie broni (gun_proc: trig x0+74…x0+132, z −38)
+const ADS_SWITCH := 0.3                 ## część wejścia w przyrządy, w której lewa dłoń zmienia chwyt (krótko: pozy pośrednie odrywają dłoń od łoża)
 const META := "res://art/char3d/fp/fp_arms_scav.json"   ## momenty przeładowań z fp_grip.py: {broń: {klip: {secs, mag_out, mag_in}}}
 
 var ok := false
@@ -96,9 +97,10 @@ func animate(reloading: bool, empty: bool, u: float, ads := 0.0) -> void:
 	if not reloading or not _anim.has_animation(clip):
 		_release_mag()
 		_pose("grip_" + key, 0.0)
-		if ads > 0.0:
+		var w := smoothstep(0.0, ADS_SWITCH, ads)
+		if w > 0.0:
 			for bi in _ads_rot:
-				_skel.set_bone_pose_rotation(bi, _skel.get_bone_pose_rotation(bi).slerp(_ads_rot[bi], ads))
+				_skel.set_bone_pose_rotation(bi, _skel.get_bone_pose_rotation(bi).slerp(_ads_rot[bi], w))
 		_anchor = gun_in_rig()
 		_anchor_ok = true
 		return
