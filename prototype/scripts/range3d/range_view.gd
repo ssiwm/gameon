@@ -377,7 +377,7 @@ func _pose_gun(delta: float) -> void:
 	if _fp_arms != null:
 		_fp_arms.visible = not rigged
 	if rigged:
-		_rig.animate(clip_rl, _rl_empty, wc.reload_progress())
+		_rig.animate(clip_rl, _rl_empty, wc.reload_progress(), t)
 		_rig.tick_parts(delta, bool(wc.firing) or (Input.is_action_pressed("fire") and not wc.is_reloading()))
 		if clip_rl:                                              # dźwięki mechaniki w klatkach klipu (zatrzask, magazynek, suwadło)
 			var u: float = wc.reload_progress()

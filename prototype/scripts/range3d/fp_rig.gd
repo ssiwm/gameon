@@ -33,6 +33,7 @@ var _trig_t := 0.0                      ## 0..1 ściągnięcie spustu
 var _rl_bolt := 0.0                     ## 0..1 suwadło odciągnięte ręką (klip przeładowania)
 var _anchor := Transform3D.IDENTITY     ## broń w układzie rąk w pozie chwytu — kotwica kadru (przeładowanie rusza bronią względem niej)
 var _anchor_ok := false
+var _ads_rot := {}                      ## kość lewej ręki → obrót z klipu `grip_ads_<broń>` (podparcie łoża przy celowaniu)
 
 func setup() -> bool:
 	if not ResourceLoader.exists(PATH):
@@ -65,6 +66,7 @@ func set_weapon(k: String, gun: Node3D) -> bool:
 	_anchor_ok = false
 	_mag_held = false
 	_pose("grip_" + k, 0.0)
+	_ads_rot = _clip_rotations("grip_ads_" + k, "Left")
 	_ref = _scene.find_child("gunref_" + k, true, false) as Node3D
 	if gun.get_parent() != null:
 		gun.get_parent().remove_child(gun)
@@ -85,14 +87,18 @@ func set_weapon(k: String, gun: Node3D) -> bool:
 	return true
 
 ## Poza w danej chwili: chwyt albo przeładowanie (`empty` — z pustego, z odciągnięciem suwadła) w postępie `u` 0..1 (WeaponController.reload_progress).
-## Magazynek przechodzi do lewej dłoni od `mag_out` do `mag_in` klipu.
-func animate(reloading: bool, empty: bool, u: float) -> void:
+## Magazynek przechodzi do lewej dłoni od `mag_out` do `mag_in` klipu. `ads` 0..1 — celowanie: lewa ręka przechodzi z chwytu z boku
+## łoża (od biodra, jak w CS) do podparcia od spodu (palce na wierzchu osłony zasłaniałyby muszkę); prawa i broń bez zmian.
+func animate(reloading: bool, empty: bool, u: float, ads := 0.0) -> void:
 	if key == "":
 		return
 	var clip := ("reload_empty_" if empty else "reload_") + key
 	if not reloading or not _anim.has_animation(clip):
 		_release_mag()
 		_pose("grip_" + key, 0.0)
+		if ads > 0.0:
+			for bi in _ads_rot:
+				_skel.set_bone_pose_rotation(bi, _skel.get_bone_pose_rotation(bi).slerp(_ads_rot[bi], ads))
 		_anchor = gun_in_rig()
 		_anchor_ok = true
 		return
@@ -150,6 +156,21 @@ func _release_mag() -> void:
 	if _mag != null and _mag_held:
 		_mag.transform = _mag_rest
 	_mag_held = false
+
+## Obroty kości strony `side` z pierwszej klatki klipu (kość → kwaternion); pusty słownik — brak klipu.
+func _clip_rotations(clip: String, side: String) -> Dictionary:
+	var out := {}
+	if not _anim.has_animation(clip):
+		return out
+	var a := _anim.get_animation(clip)
+	for i in a.get_track_count():
+		if a.track_get_type(i) != Animation.TYPE_ROTATION_3D:
+			continue
+		var bone := String(a.track_get_path(i).get_subname(0))
+		var bi := _skel.find_bone(bone)
+		if bone.contains(side) and bi >= 0:
+			out[bi] = a.rotation_track_interpolate(i, 0.0)
+	return out
 
 func _pose(clip: String, t: float) -> void:
 	if clip != _clip:
