@@ -3,12 +3,71 @@
   "reload": {
    "secs": 1.35,
    "mag_out": 0.16,
-   "mag_in": 0.74
+   "mag_in": 0.74,
+   "bolt_travel": 0.08,
+   "events": [
+    [
+     0.16,
+     "mech_mag_release"
+    ],
+    [
+     0.24,
+     "mech_mag_out"
+    ],
+    [
+     0.44,
+     "foley_gear"
+    ],
+    [
+     0.74,
+     "mech_mag_in"
+    ],
+    [
+     0.82,
+     "mech_regrip"
+    ]
+   ]
   },
   "reload_empty": {
    "secs": 1.8,
    "mag_out": 0.12,
-   "mag_in": 0.56
+   "mag_in": 0.56,
+   "bolt_travel": 0.08,
+   "events": [
+    [
+     0.12,
+     "mech_mag_release"
+    ],
+    [
+     0.18,
+     "mech_mag_out"
+    ],
+    [
+     0.33,
+     "foley_gear"
+    ],
+    [
+     0.56,
+     "mech_mag_in"
+    ],
+    [
+     0.7,
+     "mech_bolt_back"
+    ],
+    [
+     0.8,
+     "mech_bolt_fwd"
+    ],
+    [
+     0.88,
+     "mech_regrip"
+    ]
+   ],
+   "bolt": [
+    0.7,
+    0.76,
+    0.8
+   ]
   }
  }
 }

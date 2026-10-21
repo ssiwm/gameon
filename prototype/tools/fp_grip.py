@@ -59,7 +59,7 @@ GRIPS = {
 # pod kadrem, handle / pulled — dłoń na suwadle i suwadło odciągnięte. Magazynek jedzie z dłonią od pierwszego `grab` do ostatniego
 # (`mag_out` / `mag_in` w .json; w grze przypina go range_view.gd), więc ten sam magazynek wychodzi i wraca.
 RELOADS = {
-    "m83": {"handle": (0.17, -0.032, 0.118), "clips": [
+    "m83": {"handle": (0.186, -0.028, 0.142), "bolt": 0.08, "clips": [      # rączka suwadła (gun_proc: x0+236 mm, prawa strona), skok suwadła
         # (ułamek klipu, poza lewej dłoni, poza broni)
         ("reload", 1.35, [(0.0, "grip", "rest"), (0.08, "reach", "tilt"), (0.16, "grab", "show"), (0.24, "rock", "show"),
                           (0.32, "out", "show"), (0.44, "pouch", "show"), (0.56, "back", "show"), (0.66, "hook", "show"),
@@ -88,6 +88,9 @@ FINGER_SETS = {
     "release": ((18.0, 22.0, 14.0), (6.0, 8.0, 6.0)),
 }
 FPS = 30
+# Dźwięki mechaniki w klatkach klipu (audio/sfx/weapons/mech_*, bake_weapons.py): poza dłoni → klucz (gra w chwili tej klatki).
+SOUNDS = {"grab": "mech_mag_release", "rock": "mech_mag_out", "pouch": "foley_gear", "seat": "mech_mag_in", "handle": "mech_bolt_back",
+          "release": "mech_bolt_fwd", "leave": "mech_regrip"}
 
 
 def P(rig, n):
@@ -350,7 +353,7 @@ def author_reloads(rig, key, G, info, conf, meshes, root):
         # suwadło od dołu: dłoń pod komorą wnętrzem do góry, palce hakiem na rączce z prawej (z góry przedramię zasłaniało cały kadr)
         "hreach": (hp + Vector((0.05, 0.0, -0.07)), (1.0, 0.0, 0.0), (0.0, 0.3, -0.95), 0.02, "open"),
         "handle": (hp + Vector((0.0, -0.012, -0.045)), (1.0, 0.0, 0.0), (0.0, 0.3, -0.95), 0.010, "hook"),
-        "pulled": (hp + Vector((-0.11, -0.012, -0.045)), (1.0, 0.0, 0.0), (0.0, 0.3, -0.95), 0.010, "hook"),
+        "pulled": (hp + Vector((-spec["bolt"], -0.012, -0.045)), (1.0, 0.0, 0.0), (0.0, 0.3, -0.95), 0.010, "hook"),
         "release": (hp + Vector((-0.09, 0.01, -0.09)), (1.0, 0.0, 0.0), (0.0, 0.4, -0.92), 0.02, "release"),
     }
     poses = {}
@@ -436,7 +439,11 @@ def author_reloads(rig, key, G, info, conf, meshes, root):
                 kp.handle_right_type = "AUTO_CLAMPED"
         grabs = [t for t, h, _g in keys if h == "grab"]
         seats = [t for t, h, _g in keys if h == "seat"]
-        meta[clip] = {"secs": secs, "mag_out": grabs[0], "mag_in": seats[-1]}
+        meta[clip] = {"secs": secs, "mag_out": grabs[0], "mag_in": seats[-1], "bolt_travel": spec["bolt"],
+                      "events": [[t, SOUNDS[h]] for t, h, _g in keys if h in SOUNDS]}
+        tb = {h: t for t, h, _g in keys}
+        if "pulled" in tb:                                           # suwadło: od chwytu rączki do odciągnięcia w tył, puszczone — wraca
+            meta[clip]["bolt"] = [tb["handle"], tb["pulled"], tb["release"]]
         print("CLIP", act.name, last + 1, "frames", meta[clip])
     _pose_set(rig, grip_pose)
     return meta

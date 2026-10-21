@@ -1204,6 +1204,8 @@ func _free_ammo(d: WeaponDef) -> bool:
 func _reload_sfx(d: WeaponDef) -> void:
 	if d.reload_sfx == "":
 		return
+	if range_sink != null and bool(range_sink.call("clip_sounds", d)):
+		return                                             # strzelnica FPP: dźwięki mechaniki grają w klatkach klipu
 	if is_owner():
 		Audio.play_variant(d.reload_sfx, d.reload_sfx_count, Audio.BUS_WEAPONS, -8.0, 1.0)
 

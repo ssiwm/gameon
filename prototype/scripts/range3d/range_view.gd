@@ -55,6 +55,7 @@ var _rig: Node3D                              ## ręce FPP z zasobu z ułożonym
 var _gun_xf := Transform3D.IDENTITY           ## broń w układzie kamery (bieżąca klatka)
 var _rl_was := false                          ## przeładowanie w poprzedniej klatce (początek: czy z pustego)
 var _rl_empty := false
+var _rl_u := 0.0                              ## postęp przeładowania w poprzedniej klatce (dźwięki klipu w swoich chwilach)
 var _pivots: Array = []                       ## zawiasy blach (Node3D)
 var _falls: Array = []                        ## 0 stoi … 1 leży (kosmetyka)
 var _board: Label3D
@@ -359,6 +360,7 @@ func _pose_gun(delta: float) -> void:
 	var rl: bool = wc.is_reloading()
 	if rl and not _rl_was:
 		_rl_empty = wc.mag_of(wc.cur().id) <= 0
+		_rl_u = 0.0
 	_rl_was = rl
 	var clip_rl: bool = rl and not wc.clearing and _rig != null and String(_rig.key) != ""
 	if rl:
@@ -376,6 +378,13 @@ func _pose_gun(delta: float) -> void:
 		_fp_arms.visible = not rigged
 	if rigged:
 		_rig.animate(clip_rl, _rl_empty, wc.reload_progress())
+		_rig.tick_parts(delta, bool(wc.firing) or (Input.is_action_pressed("fire") and not wc.is_reloading()))
+		if clip_rl:                                              # dźwięki mechaniki w klatkach klipu (zatrzask, magazynek, suwadło)
+			var u: float = wc.reload_progress()
+			for e in _rig.events(_rl_empty):
+				if float(e[0]) > _rl_u and float(e[0]) <= u:
+					Audio.play_variant(String(e[1]), 3, Audio.BUS_WEAPONS, -6.0, randf_range(0.97, 1.03))
+			_rl_u = u
 		_rig.transform = xf * _rig.anchor().affine_inverse()       # całe ręce tak, by broń z pozy chwytu stała w zadanym miejscu kadru
 		for a in _arms:
 			(a as Node3D).visible = false
@@ -431,6 +440,8 @@ func on_shot(d: WeaponDef, hits: Array) -> void:
 	var kb := float(wp.get("body", 1.0)) * (0.55 if fp.braced() else 1.0)
 	_rec_v += Vector3(REC_IMPULSE.x * kb, REC_IMPULSE.y * float(wp.get("climb", 1.0)) * (0.5 if fp.braced() else 1.0), randf_range(-REC_IMPULSE.z, REC_IMPULSE.z))
 	_flash_t = 0.05 if d.suppressor <= 0.0 else 0.02
+	if _rig != null and String(_rig.key) != "":
+		_rig.shot()
 	if _gun != null:
 		var m := _gun_xf * (_info.get("muzzle", Vector3(0.6, 0.1, 0.0)) as Vector3)
 		_flash.position = _vm_to_cam(m)                          # światło w świecie, błysk na warstwie rąk
@@ -468,6 +479,10 @@ func _eject(d: WeaponDef) -> void:
 	var cam := _cam.global_transform
 	var v := _gun_xf.basis * Vector3(randf_range(-0.9, -0.4), randf_range(1.0, 1.6), randf_range(2.2, 3.0))
 	_fx.eject(cam * _vm_to_cam(_gun_xf * port), cam.basis * v, d.casing >= 2)
+
+## Klip przeładowania z dźwiękami mechaniki dla tej broni (fp_rig.gd)?
+func has_reload_clip(k: String) -> bool:
+	return _rig != null and _rig.has_reload_clip(k)
 
 func _on_plate_down(_i: int) -> void:
 	pass

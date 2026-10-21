@@ -6,6 +6,10 @@ extends Node3D
 ## Broń bez ułożonego chwytu (`has_grip`) zostaje przy rękach z modelu postaci (fp_arms.gd).
 
 const PATH := "res://art/char3d/fp/fp_arms_scav.glb"
+const CYCLE_BACK := 0.025               ## s — suwadło w tył po strzale
+const CYCLE_FWD := 0.035                ## s — i z powrotem
+const TRIGGER_PULL := 12.0              ## ° — ściągnięcie języka spustu
+const TRIGGER_PIVOT := Vector3(0.0588, 0.104, 0.0)   ## nasada języka spustu M-83 w układzie broni (gun_proc: trig x0+74…x0+132, z −38)
 const META := "res://art/char3d/fp/fp_arms_scav.json"   ## momenty przeładowań z fp_grip.py: {broń: {klip: {secs, mag_out, mag_in}}}
 
 var ok := false
@@ -20,6 +24,13 @@ var _mag: Node3D                        ## magazynek modelu broni (węzeł „�
 var _mag_rest := Transform3D.IDENTITY
 var _mag_off := Transform3D.IDENTITY    ## magazynek względem lewej dłoni (z chwili chwytu)
 var _mag_held := false
+var _bolt: Node3D                       ## suwadło z rączką (węzeł „…__bolt”, gun_proc.py) — cofa się przy strzale i przy odciąganiu
+var _bolt_rest := Transform3D.IDENTITY
+var _trig: Node3D                       ## język spustu („…__trigger”)
+var _trig_rest := Transform3D.IDENTITY
+var _cycle_t := 1.0                     ## s od ostatniego strzału (cykl suwadła)
+var _trig_t := 0.0                      ## 0..1 ściągnięcie spustu
+var _rl_bolt := 0.0                     ## 0..1 suwadło odciągnięte ręką (klip przeładowania)
 var _anchor := Transform3D.IDENTITY     ## broń w układzie rąk w pozie chwytu — kotwica kadru (przeładowanie rusza bronią względem niej)
 var _anchor_ok := false
 
@@ -64,6 +75,12 @@ func set_weapon(k: String, gun: Node3D) -> bool:
 		_mag = n as Node3D
 		_mag_rest = _mag.transform
 		break
+	_bolt = gun.find_children("*__bolt", "Node3D", true, false).front() if not gun.find_children("*__bolt", "Node3D", true, false).is_empty() else null
+	_trig = gun.find_children("*__trigger", "Node3D", true, false).front() if not gun.find_children("*__trigger", "Node3D", true, false).is_empty() else null
+	if _bolt != null:
+		_bolt_rest = _bolt.transform
+	if _trig != null:
+		_trig_rest = _trig.transform
 	visible = true
 	return true
 
@@ -81,6 +98,11 @@ func animate(reloading: bool, empty: bool, u: float) -> void:
 		return
 	_pose(clip, u * _anim.get_animation(clip).length)
 	var m: Dictionary = _meta.get(key, {}).get(clip.trim_suffix("_" + key), {})
+	_rl_bolt = 0.0
+	if m.has("bolt"):                                            # suwadło za rączką: chwyt → odciągnięcie (tor dłoni), puszczenie → powrót
+		var b: Array = m["bolt"]
+		if u >= float(b[0]) and u < float(b[2]):
+			_rl_bolt = smoothstep(float(b[0]), float(b[1]), u)
 	if _mag == null or m.is_empty():
 		return
 	var held := u >= float(m["mag_out"]) and u < float(m["mag_in"])
@@ -91,6 +113,38 @@ func animate(reloading: bool, empty: bool, u: float) -> void:
 		_release_mag()
 	if _mag_held:
 		_mag.global_transform = hand_global("Left") * _mag_off
+
+## Strzał: suwadło rusza w tył i wraca (ok. 60 ms), spust ściągnięty.
+func shot() -> void:
+	_cycle_t = 0.0
+	_trig_t = 1.0
+
+## Co klatkę: cykl suwadła po strzale albo odciągnięcie z klipu (większe wygrywa), spust (`held` — palec na spuście).
+func tick_parts(delta: float, held: bool) -> void:
+	_cycle_t += delta
+	_trig_t = move_toward(_trig_t, 1.0 if held else 0.0, delta * 14.0)
+	var travel := 0.08
+	var mk: Dictionary = _meta.get(key, {}).get("reload_empty", {})
+	if mk.has("bolt_travel"):
+		travel = float(mk["bolt_travel"])
+	var c := 0.0
+	if _cycle_t < CYCLE_BACK:
+		c = _cycle_t / CYCLE_BACK
+	elif _cycle_t < CYCLE_BACK + CYCLE_FWD:
+		c = 1.0 - (_cycle_t - CYCLE_BACK) / CYCLE_FWD
+	if _bolt != null:
+		_bolt.transform = _bolt_rest.translated_local(Vector3(-travel * maxf(c, _rl_bolt), 0.0, 0.0))
+	if _trig != null:                                            # język spustu obraca się wokół nasady (pod komorą) w tył
+		var piv := TRIGGER_PIVOT
+		_trig.transform = _trig_rest * Transform3D(Basis(Vector3.BACK, deg_to_rad(-TRIGGER_PULL) * _trig_t), piv - Basis(Vector3.BACK, deg_to_rad(-TRIGGER_PULL) * _trig_t) * piv)
+
+## Zdarzenia dźwiękowe klipu przeładowania (`[[u, klucz], …]` z fp_grip.py), puste — brak.
+func events(empty: bool) -> Array:
+	return _meta.get(key, {}).get("reload_empty" if empty else "reload", {}).get("events", [])
+
+## Czy przeładowanie tej broni ma klip z własnymi dźwiękami mechaniki (wtedy ogólny dźwięk „reload” milczy).
+func has_reload_clip(k: String) -> bool:
+	return ok and _anim.has_animation("reload_" + k)
 
 func _release_mag() -> void:
 	if _mag != null and _mag_held:

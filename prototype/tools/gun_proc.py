@@ -351,13 +351,14 @@ def pgrip(name, xt, zt, mat, h=92.0, rake=20.0, d=36.0, w=13.0):
 
 
 def trig(name, x0, x1, z, mat, mat_s, depth=30.0):
-    """Kabłąk od x0 do x1 pod linią z i język spustu."""
+    """Kabłąk od x0 do x1 pod linią z i język spustu (język — osobny podzespół „trigger”: strzelnica FPP go ściąga)."""
     path = spline([(x0, z + 3.0), (x0 + 2.0, z - depth * 0.55), (x0 + 12.0, z - depth), ((x0 + x1) * 0.5, z - depth - 2.0), (x1 - 10.0, z - depth),
                    (x1, z - depth * 0.5), (x1 + 1.0, z + 3.0)], 5)
     prism(name + "_guard", strip(path, 3.6), -5.5, 5.5, mat, bv=0.9, seg=2)
     xm = x0 + (x1 - x0) * 0.6
-    prism(name, strip(spline([(xm, z + 2.0), (xm + 1.0, z - depth * 0.35), (xm + 4.0, z - depth * 0.62), (xm + 8.5, z - depth * 0.8)], 5),
-                      lambda t: 5.0 - 2.4 * t), -3.0, 3.0, mat_s, bv=0.8, seg=2)
+    with comp("trigger"):
+        prism(name, strip(spline([(xm, z + 2.0), (xm + 1.0, z - depth * 0.35), (xm + 4.0, z - depth * 0.62), (xm + 8.5, z - depth * 0.8)], 5),
+                          lambda t: 5.0 - 2.4 * t), -3.0, 3.0, mat_s, bv=0.8, seg=2)
 
 
 def pins(name, pts, w, mat, r=2.5):
@@ -1073,8 +1074,9 @@ def ak_receiver(x0, st, small, bright):
     """Komora tłoczona wzoru AK (262 mm od x0): pokrywa, suwadło z rączką po prawej (−Y), skrzydełko przełącznika, osie, zatrzask magazynka."""
     rc = dome_sec(16.5, -38.0, 2.0, 9.0)
     bevel(loft("receiver", [(x0, rc), (x0 + 130.0, rc), (x0 + 262.0, rc)], st), 0.8, 2)
-    box("carrier", x0 + 168.0, x0 + 248.0, -3.0, 7.0, 0.9, bright, bv=0.3, seg=1, y=-16.9)
-    revolve("handle", [(-31.0, 0.0), (-31.0, 4.2), (-16.0, 4.2), (-16.0, 0.0)], (x0 + 236.0, 2.0), small, axis="Y", seg=12, bv=0.6)
+    with comp("bolt"):                                      # suwadło z rączką: osobny węzeł — strzelnica FPP przesuwa je przy strzale i odciąganiu
+        box("carrier", x0 + 168.0, x0 + 248.0, -3.0, 7.0, 0.9, bright, bv=0.3, seg=1, y=-16.9)
+        revolve("handle", [(-31.0, 0.0), (-31.0, 4.2), (-16.0, 4.2), (-16.0, 0.0)], (x0 + 236.0, 2.0), small, axis="Y", seg=12, bv=0.6)
     prism("selector", hull(circle(x0 + 102.0, -20.0, 6.0, 12) + circle(x0 + 200.0, -13.0, 3.5, 10)), -18.2, -16.6, small, bv=0.35, seg=1)
     prism("selector_tab", [(x0 + 196.0, -17.0), (x0 + 207.0, -17.0), (x0 + 207.0, -9.0), (x0 + 196.0, -9.0)], -21.5, -16.6, small, bv=0.3, seg=1)
     pins("pin", ((x0 + 30.0, -10.0), (x0 + 155.0, -28.0), (x0 + 172.0, -18.0)), 16.5, small, 2.2)

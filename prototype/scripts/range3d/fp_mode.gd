@@ -155,5 +155,9 @@ func range_shot(d: WeaponDef, seed: int, extra: float) -> void:
 	if view != null and is_instance_valid(view):
 		view.on_shot(d, hits)
 
+## Czy przeładowanie tej broni ma w widoku klip z własnymi dźwiękami mechaniki (weapon_controller._reload_sfx wtedy milczy).
+func clip_sounds(d: WeaponDef) -> bool:
+	return view != null and is_instance_valid(view) and bool(view.call("has_reload_clip", String(d.key)))
+
 func braced() -> bool:
 	return braced_pose and brace_t > 0.9
