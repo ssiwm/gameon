@@ -16,7 +16,6 @@ const FpRig := preload("res://scripts/range3d/fp_rig.gd")
 const RangeFx := preload("res://scripts/range3d/range_fx.gd")
 const GUN_BASIS := Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))   ## układ broni (x lufa, y góra, z prawo) → kamera (−z w przód)
 
-const FOV := 74.0
 const VM_FOV := 58.0                          ## ° — kąt kamery rąk i broni (węższy: bez rozciągania na brzegach, jak w grach FPP)
 const LAYER_VM := 2                           ## warstwa rąk i broni: rysuje je tylko kamera rąk, zawsze nad tunelem (bez wchodzenia w ławę)
 const TEX := "res://art/world3d/"
@@ -70,6 +69,16 @@ var _rec := Vector3.ZERO                      ## odrzut: cofnięcie (m), uniesie
 var _rec_v := Vector3.ZERO
 var _life := 0.0
 var _fx: Node3D                               ## łuski i dym w świecie tunelu (range_fx.gd)
+enum Phase { IN, TUNNEL, OUT, BACK }
+const IN_T := 0.55                            ## s — najazd kamery kryjówki na drzwi (view3d.RP_TIME), ostatnie FADE_T to ściemnienie
+const FADE_T := 0.25                          ## s — wyłanianie się z czerni i gaśnięcie
+var _phase := Phase.IN
+var _pt := 0.0
+var _black: ColorRect                         ## czerń przejścia (nad światem, pod HUD-em)
+var _vm_screen: TextureRect
+const VOICES := 8
+var _voices: Array = []                       ## głosy 3D w tunelu (_play3d)
+var _voice_i := 0
 var _holes: Array = []
 var _hole_i := 0
 var _hole_mat: StandardMaterial3D
@@ -112,6 +121,7 @@ func _ready() -> void:
 	_vp_vm.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(_vp_vm)
 	var vm_screen := TextureRect.new()
+	_vm_screen = vm_screen
 	vm_screen.set_anchors_preset(Control.PRESET_FULL_RECT)
 	vm_screen.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	vm_screen.stretch_mode = TextureRect.STRETCH_SCALE
@@ -130,8 +140,19 @@ func _ready() -> void:
 	_fx = RangeFx.new()
 	_fx.name = "Fx"
 	_world.add_child(_fx)
+	_vp.audio_listener_enable_3d = true                          # słuchacz 3D = bieżąca kamera tunelu (dźwięki blach i ścian, _play3d)
+	for i in VOICES:
+		var v := AudioStreamPlayer3D.new()
+		v.bus = Audio.BUS_WEAPONS
+		v.unit_size = 4.0                                         # pełna głośność do ~4 m, dalej spada (blacha na 20 m o ok. 14 dB ciszej)
+		v.max_distance = 60.0
+		v.attenuation_filter_cutoff_hz = 9000.0                   # dalekie trafienia lekko stłumione (powietrze, tunel)
+		v.attenuation_filter_db = -8.0
+		v.doppler_tracking = AudioStreamPlayer3D.DOPPLER_TRACKING_DISABLED
+		_world.add_child(v)
+		_voices.append(v)
 	_cam = Camera3D.new()
-	_cam.fov = FOV
+	_cam.fov = Settings.fp_fov()
 	_cam.near = 0.02
 	_cam.far = 80.0
 	_cam.current = true
@@ -230,22 +251,79 @@ func _ready() -> void:
 	_hint.add_theme_color_override("font_color", Color(0.85, 0.82, 0.7, 0.75))
 	_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	_hint.add_theme_constant_override("outline_size", 2)
-	_hint.text = tr("RANGE  ·  %s/%s station  ·  hold %s brace on the bench  ·  %s sights  ·  %s leave") % [
-		Actions.key("move_left"), Actions.key("move_right"), Actions.key("crouch"), Actions.key("aim_sights"), Actions.key("interact")]
+	_hint.text = Actions.range_line()
+	Settings.bindings_changed.connect(func() -> void: _hint.text = Actions.range_line())       # przypisanie klawisza w menu pauzy
+	InputSetup.device_changed.connect(func(_pad: bool) -> void: _hint.text = Actions.range_line())
 	add_child(_hint)
 	fp.sim.plate_down.connect(_on_plate_down)
 	fp.sim.finished.connect(_on_finished)
-	_hide_hub(true)
+	add_to_group("range_view")                                  # hud.gd: karty kryjówki schowane, dopóki tunel gaśnie
+	_black = ColorRect.new()
+	_black.color = Color(0, 0, 0, 0)
+	_black.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_black.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_black)
+	_hub = get_tree().current_scene.get_node_or_null("View3D")
+	if _hub != null and (_hub as CanvasItem).visible:
+		_show_tunnel(false)                                     # najpierw najazd na drzwi w kryjówce (view3d._rp), potem czerń i tunel
+	else:
+		_phase = Phase.TUNNEL
+		_hide_hub(true)
 
-## Koniec strzelnicy: widok kryjówki wraca.
+## Koniec strzelnicy: tunel gaśnie do czerni, z niej wraca kryjówka (kamera odjeżdża od drzwi — view3d._rp), potem węzeł znika.
 func release() -> void:
-	_hide_hub(false)
+	if _phase >= Phase.OUT:
+		return
 	if _fp_arms != null:
 		_fp_arms.release()
-	queue_free()
+		_fp_arms = null
+	fp = null
+	_phase = Phase.OUT
+	_pt = 0.0
+
+## Tunel gaśnie po wyjściu (kryjówka jeszcze schowana).
+func fading_out() -> bool:
+	return _phase == Phase.OUT
+
+## Obraz tunelu (świat, ręce, celownik, podpowiedź) albo nic — wtedy pod spodem widać kryjówkę.
+func _show_tunnel(on: bool) -> void:
+	for c in [_screen, _vm_screen, _dot, _hint]:
+		(c as CanvasItem).visible = on
+
+## Przejście kryjówka ↔ tunel: IN najazd na drzwi (ostatnie FADE_T to ściemnienie), TUNNEL wyłania się z czerni, OUT gaśnie, BACK
+## kryjówka wyłania się z czerni. Zwraca true, gdy węzeł kończy (BACK minął).
+func _drive_phase(delta: float) -> bool:
+	_pt += delta
+	match _phase:
+		Phase.IN:
+			_black.color.a = clampf((_pt - (IN_T - FADE_T)) / FADE_T, 0.0, 1.0)
+			if _pt >= IN_T:
+				_hide_hub(true)
+				_show_tunnel(true)
+				_phase = Phase.TUNNEL
+				_pt = 0.0
+		Phase.TUNNEL:
+			_black.color.a = clampf(1.0 - _pt / FADE_T, 0.0, 1.0)
+		Phase.OUT:
+			_black.color.a = clampf(_pt / FADE_T, 0.0, 1.0)
+			if _pt >= FADE_T:
+				_show_tunnel(false)
+				_hide_hub(false)
+				_phase = Phase.BACK
+				_pt = 0.0
+		Phase.BACK:
+			_black.color.a = clampf(1.0 - _pt / FADE_T, 0.0, 1.0)
+			if _pt >= FADE_T:
+				queue_free()
+				return true
+	return false
+
+func _exit_tree() -> void:
+	if _phase != Phase.BACK and _hub != null and is_instance_valid(_hub) and not (_hub as CanvasItem).visible:
+		_hide_hub(false)                                        # zwolniony w pół przejścia (zmiana sceny): kryjówka nie może zostać schowana
 
 func _hide_hub(on: bool) -> void:
-	if on:
+	if on and (_hub == null or not is_instance_valid(_hub)):
 		_hub = get_tree().current_scene.get_node_or_null("View3D")
 	if _hub == null or not is_instance_valid(_hub):
 		return
@@ -258,9 +336,12 @@ func _hide_hub(on: bool) -> void:
 # ---------------------------------------------------------------- klatka
 
 func _process(delta: float) -> void:
+	if _drive_phase(delta) or _phase >= Phase.OUT:
+		return
 	if fp == null or not is_instance_valid(fp):
 		return
 	_fit_viewport()
+	_cam.fov = Settings.fp_fov()                                  # kąt widzenia tunelu z ustawień (menu pauzy w trakcie strzelania); ręce mają stały VM_FOV
 	_cam.transform = Transform3D(fp.view_basis(), fp.eye())
 	_cam_vm.global_transform = _cam.global_transform
 	_sync_gun()
@@ -466,15 +547,16 @@ func on_shot(d: WeaponDef, hits: Array) -> void:
 		var n: Vector3 = h["normal"]
 		if kind == "plate":
 			_burst(pos + n * 0.01, n, Color(1.0, 0.72, 0.3), 14, 3.5)
-			Audio.play_variant("impact_hard", 3, Audio.BUS_WEAPONS, lerpf(-6.0, -16.0, clampf(-pos.z / 20.0, 0.0, 1.0)), 2.1, 0.06)
+			_play3d("plate_ring", 4, pos, 0.0, 0.05)
 		else:
 			_hole(pos, n)
 			_burst(pos + n * 0.02, n, Color(0.5, 0.46, 0.4), 8, 1.4)
+			_play3d("impact_hard", 3, pos, -12.0 if kind == "backstop" else -8.0, 0.08)
 
 ## Punkt z kamery rąk (VM_FOV) do kamery tunelu (FOV) tak, żeby na ekranie wypadł w tym samym miejscu: obie kamery stoją tak samo,
 ## różnią się kątem widzenia, więc wystarczy przeskalować x i y o stosunek tangensów połówek kątów.
 func _vm_to_cam(p: Vector3) -> Vector3:
-	var k := tan(deg_to_rad(FOV) * 0.5) / tan(deg_to_rad(VM_FOV) * 0.5)
+	var k := tan(deg_to_rad(_cam.fov) * 0.5) / tan(deg_to_rad(VM_FOV) * 0.5)
 	return Vector3(p.x * k, p.y * k, p.z)
 
 ## Łuska z okna wyrzutowego (prawa strona komory, za chwytem): w prawo, w górę i lekko w tył, z rozrzutem.
@@ -492,8 +574,30 @@ func _eject(d: WeaponDef) -> void:
 func has_reload_clip(k: String) -> bool:
 	return _rig != null and _rig.has_reload_clip(k)
 
-func _on_plate_down(_i: int) -> void:
-	pass
+## Przewrócona blacha uderza w ogranicznik zawiasu, kiedy obraz kończy upadek (_falls: 7/s).
+func _on_plate_down(i: int) -> void:
+	var at: Vector3 = fp.sim.plates[i]["pos"]
+	get_tree().create_timer(0.16).timeout.connect(func() -> void:
+		if is_instance_valid(self):
+			_play3d("plate_fall", 2, at + Vector3(0.0, -0.25, 0.0), -3.0, 0.06))
+
+## Dźwięk w świecie tunelu: głos 3D (słuchaczem jest kamera tunelu — SubViewport z `audio_listener_enable_3d`), więc blacha na 20 m
+## z lewej brzmi z lewej i ciszej. Strzał i mechanika broni zostają niepozycyjne (przy uchu). Najstarszy głos ustępuje nowemu.
+func _play3d(base: String, count: int, pos: Vector3, vol_db: float, jitter: float) -> void:
+	if Audio.variant(base, count) < 0:
+		return
+	var s := Audio.stream(Audio.pick(base, count))
+	if s == null:
+		return
+	var p: AudioStreamPlayer3D = _voices[_voice_i]
+	_voice_i = (_voice_i + 1) % _voices.size()
+	p.stop()
+	p.stream = s
+	p.position = pos
+	p.volume_db = vol_db + randf_range(-1.0, 1.0)
+	p.pitch_scale = 1.0 + randf_range(-jitter, jitter)
+	p.panning_strength = 0.0 if Settings.mono_audio else 1.0          # ustawienie „Mono audio”
+	p.play()
 
 ## Koniec przebiegu: czas na tablicy w tunelu; rekord osobisty z tej wizyty (wynik drużyny rozstrzyga serwer — toast z range_door.gd).
 func _on_finished(t: float, best: float, record: bool) -> void:

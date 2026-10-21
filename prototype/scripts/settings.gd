@@ -29,6 +29,11 @@ const RES_LIST := [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080
 const VSYNC_NAMES := ["ON", "OFF", "ADAPTIVE"]
 const VSYNC_MODES := [DisplayServer.VSYNC_ENABLED, DisplayServer.VSYNC_DISABLED, DisplayServer.VSYNC_ADAPTIVE]
 const FPS_LIST := [0, 30, 60, 120, 144, 240]                       ## 0 = bez limitu
+## Widok z oczu (strzelnica FPP, scripts/range3d/): kąt widzenia w pionie (°) i mnożnik czułości myszy i drążka.
+const FP_FOV_LIST := [60, 65, 70, 74, 80, 85, 90, 100]
+const FP_FOV_DEFAULT := 3                                          ## 74° — tunel jak w szpicu (RANGE_FPS_PLAN.md §7)
+const FP_SENS_LIST := [0.4, 0.6, 0.8, 1.0, 1.25, 1.5, 2.0, 2.5]
+const FP_SENS_DEFAULT := 3
 const QUALITY_NAMES := ["LOW", "MEDIUM", "HIGH"]
 const VFX_MULT := [0.4, 0.7, 1.0]                                  ## ile cząsteczek i szczątków (Vfx.burst / gibs)
 const POST_MULT := [0.0, 0.6, 1.0]                                 ## siła aberracji (horror_fx.gd)
@@ -53,6 +58,9 @@ var hints_on := true
 var res_idx := 0                       ## rozmiar okna z RES_LIST (tylko tryb okienkowy)
 var vsync_idx := 0
 var fps_idx := 0
+var fp_fov_idx := FP_FOV_DEFAULT       ## widok z oczu: indeks FP_FOV_LIST
+var fp_sens_idx := FP_SENS_DEFAULT     ## widok z oczu: indeks FP_SENS_LIST
+var fp_invert_y := false               ## widok z oczu: ruch myszy / drążka w górę pochyla w dół
 var quality_idx := 2                   ## LOW / MEDIUM / HIGH — cząsteczki, aberracja, efekty pogody
 var mono_audio := false                ## bez panoramy w dźwięku pozycyjnym (osoby z jednostronnym słuchem)
 var captions := false                  ## napisy dla dźwięków (HUD, captions.gd)
@@ -161,6 +169,26 @@ func cycle_vsync() -> void:
 func cycle_fps() -> void:
 	fps_idx = (fps_idx + 1) % FPS_LIST.size()
 	_apply_window()
+	_commit()
+
+## Widok z oczu: kąt widzenia w pionie (°).
+func fp_fov() -> float:
+	return float(FP_FOV_LIST[fp_fov_idx])
+
+## Widok z oczu: mnożnik czułości (mysz i drążek).
+func fp_sens() -> float:
+	return float(FP_SENS_LIST[fp_sens_idx])
+
+func cycle_fp_fov() -> void:
+	fp_fov_idx = (fp_fov_idx + 1) % FP_FOV_LIST.size()
+	_commit()
+
+func cycle_fp_sens() -> void:
+	fp_sens_idx = (fp_sens_idx + 1) % FP_SENS_LIST.size()
+	_commit()
+
+func toggle_fp_invert_y() -> void:
+	fp_invert_y = not fp_invert_y
 	_commit()
 
 func cycle_quality() -> void:
@@ -329,6 +357,9 @@ func _load() -> void:
 	_res_dirty = cf.has_section_key("game", "res")
 	vsync_idx = clampi(int(cf.get_value("game", "vsync", 0)), 0, VSYNC_NAMES.size() - 1)
 	fps_idx = clampi(int(cf.get_value("game", "fps", 0)), 0, FPS_LIST.size() - 1)
+	fp_fov_idx = clampi(int(cf.get_value("fp", "fov", FP_FOV_DEFAULT)), 0, FP_FOV_LIST.size() - 1)
+	fp_sens_idx = clampi(int(cf.get_value("fp", "sens", FP_SENS_DEFAULT)), 0, FP_SENS_LIST.size() - 1)
+	fp_invert_y = bool(cf.get_value("fp", "invert_y", false))
 	quality_idx = clampi(int(cf.get_value("game", "quality", 2)), 0, QUALITY_NAMES.size() - 1)
 	reduce_fx = bool(cf.get_value("game", "reduce_fx", false))
 	captions = bool(cf.get_value("game", "captions", false))
@@ -360,6 +391,9 @@ func _save() -> void:
 		cf.set_value("game", "res", res_idx)
 	cf.set_value("game", "vsync", vsync_idx)
 	cf.set_value("game", "fps", fps_idx)
+	cf.set_value("fp", "fov", fp_fov_idx)
+	cf.set_value("fp", "sens", fp_sens_idx)
+	cf.set_value("fp", "invert_y", fp_invert_y)
 	cf.set_value("game", "quality", quality_idx)
 	cf.set_value("game", "reduce_fx", reduce_fx)
 	cf.set_value("game", "captions", captions)

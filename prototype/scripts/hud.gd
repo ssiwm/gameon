@@ -495,6 +495,7 @@ var _prompt_card: PanelContainer
 var _prompt: RichTextLabel             ## pasek akcji: tekst z klawiszami jako klawisze (UiTheme.keycaps)
 var _prompt_bar: Bar
 var _controls: Label
+var _controls_range := false            ## pasek sterowania pokazuje ściągę strzelnicy (kontekst „range”)
 var _f1: Label
 var _result: PanelContainer
 var _hints := Hints.new()
@@ -1128,7 +1129,7 @@ func _build_controls() -> void:
 	add_child(_controls)
 	_f1 = UiTheme.label(tr("%s  controls") % Actions.key("help"), 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
 	var refresh_keys := func() -> void:        # klawiatura ↔ pad albo zmiana przypisań: podpowiedzi pokazują właściwe klawisze
-		_controls.text = Actions.hud_line()
+		_controls.text = Actions.range_hud_line() if _controls_range else Actions.hud_line()
 		_f1.text = tr("%s  controls") % Actions.key("help")
 	InputSetup.device_changed.connect(func(_pad: bool) -> void: refresh_keys.call())
 	Settings.bindings_changed.connect(refresh_keys)
@@ -2318,10 +2319,17 @@ func _near_range_door() -> Node:
 
 ## Lokalny gracz jest na strzelnicy FPP (scripts/range3d/fp_mode.gd).
 func _in_range() -> bool:
-	return _player != null and is_instance_valid(_player) and _player.get("fp") != null
+	if _player != null and is_instance_valid(_player) and _player.get("fp") != null:
+		return true
+	var rv := get_tree().get_first_node_in_group("range_view")     # wyjście: tunel jeszcze gaśnie (range_view.gd, faza OUT)
+	return rv != null and bool(rv.call("fading_out"))
 
 func _drive_controls() -> void:
 	var show := (_session_t < CONTROLS_SHOW_S and Profile.level() <= TOAST_LEVEL_MAX) if _controls_mode < 0 else _controls_mode == 1
+	var range_ctx := _in_range()
+	if range_ctx != _controls_range or (show and not _controls.visible):     # kontekst „range”: ściąga strzelnicy (Actions.RANGE_SHEET)
+		_controls_range = range_ctx
+		_controls.text = Actions.range_hud_line() if range_ctx else Actions.hud_line()
 	_controls.visible = show
 	_f1.visible = not show
 

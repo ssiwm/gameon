@@ -1122,6 +1122,10 @@ func _dev_range3d() -> void:
 				if rr.size() > 1 and rr[1] == "empty":
 					p.weapons.mags[p.weapons.cur().id] = 0
 				p.weapons.try_reload())
+		elif a.begins_with("--rangeleave="):                   # --rangeleave=S: wyjście ze strzelnicy po S s (nagranie przejścia do kryjówki)
+			get_tree().create_timer(float(a.substr("--rangeleave=".length()))).timeout.connect(func() -> void:
+				if is_instance_valid(fp):
+					fp.leave())
 		elif a == "--rangeads":
 			fp.dev_ads = true                                   # przyrządy bez PPM (zrzuty)
 		elif a.begins_with("--rangeads="):                     # --rangeads=T: stały postęp przyrządów 0..1 (zrzuty przejścia)

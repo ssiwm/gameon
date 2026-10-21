@@ -46,9 +46,9 @@ const DEFS := {
 	"throw": {"keys": [{"key": KEY_ALT, "left": true}], "keys_macos": [{"key": KEY_META, "left": true}, {"key": KEY_ALT, "left": true}], "pad": [JOY_BUTTON_RIGHT_SHOULDER]},
 	"throw_next": {"keys": [KEY_X], "pad": [JOY_BUTTON_DPAD_UP]},
 	"melee": {"keys": [KEY_V], "mouse": [MOUSE_BUTTON_RIGHT], "pad": [JOY_BUTTON_X]},
-	# strzelnica FPP (scripts/range3d/fp_mode.gd): celowanie przez przyrządy — ten sam PPM co cios, który na strzelnicy jest wyłączony;
-	# bez wpisu w LABELS (stałe wiązanie do czasu etapu 1 RANGE_FPS_PLAN.md)
-	"aim_sights": {"mouse": [MOUSE_BUTTON_RIGHT]},
+	# strzelnica FPP (scripts/range3d/fp_mode.gd): celowanie przez przyrządy — ten sam PPM co cios i ten sam lewy spust co krzyk, bo na
+	# strzelnicy cios i krzyk są wyłączone, a poza nią przyrządów nie ma (kontekst „range”: RANGE_SHEET)
+	"aim_sights": {"mouse": [MOUSE_BUTTON_RIGHT], "axis": [[JOY_AXIS_TRIGGER_LEFT, 1.0]]},
 	"help": {"keys": [KEY_F1]},
 	"chat": {"keys": [KEY_T]},
 	"journal": {"keys": [KEY_N]},                       # dziennik komunikatów i porad (MESSAGES_PLAN.md); pad: bez domyślnego przycisku, można przypisać
@@ -80,6 +80,7 @@ const LABELS := {
 	"jump": "Jump", "fire": "Fire", "reload": "Reload", "firemode": "Fire mode", "ammo_type": "Ammo type", "melee": "Melee",
 	"weapon_1": "Weapon 1", "weapon_2": "Weapon 2", "weapon_3": "Weapon 3", "weapon_next": "Next weapon", "weapon_prev": "Previous weapon",
 	"crouch": "Sneak", "overcharge": "Overcharge (lure)", "scream": "Scream", "flare": "Flare", "flashlight": "Flashlight",
+	"aim_sights": "Aim down sights (range)",
 	"interact": "Interact / revive", "throw": "Use item", "throw_next": "Switch item", "restart": "Confirm / ready up",
 	"help": "Controls overlay", "chat": "Team chat", "journal": "Journal", "pause": "Pause menu", "steam_invite": "Steam invite", "fullscreen": "Fullscreen",
 }
@@ -348,6 +349,41 @@ static func sheet() -> Array:
 		[text("journal"), "Journal (messages and tips)"],
 		[text("steam_invite"), "Steam invite (host)"],
 	]
+
+## Kontekst „range” (strzelnica FPP, scripts/range3d/fp_mode.gd): te same akcje co w grze, inne znaczenie — A/D stanowisko, skradanie
+## to przyklęk z oparciem na ławie, PPM przyrządy (zamiast ciosu), interakcja wychodzi. Ruch, skok, krzyk, przynęta, raca, latarka
+## i przedmioty na strzelnicy nic nie robią (player._range_brain ich nie czyta). [akcje, opis] w kolejności ściągi.
+const RANGE_SHEET := [
+	[["move_left", "move_right"], "Change station"],
+	[["crouch"], "Hold: brace on the bench"],
+	[["aim_sights"], "Aim down sights"],
+	[["fire"], "Fire"],
+	[["reload"], "Reload (hold: tactical)"],
+	[["firemode"], "Fire mode"],
+	[["ammo_type"], "Ammo type (free here)"],
+	[["weapon_1", "weapon_2", "weapon_3"], "Switch weapon"],
+	[["interact"], "Leave the range"],
+]
+
+## Ściąga strzelnicy [klawisze, opis] — wiersze jak `sheet()`.
+static func range_sheet() -> Array:
+	var out: Array = []
+	for r in RANGE_SHEET:
+		var ids: Array = r[0]
+		out.append([cluster(ids, "/", true) if ids.size() > 1 else text(String(ids[0]), true), String(r[1])])
+	return out
+
+## Pasek sterowania w dole HUD na strzelnicy (F1 przełącza; zamiast `hud_line()`).
+static func range_hud_line() -> String:
+	var items: Array = []
+	for r in range_sheet():
+		items.append("%s %s" % [String(r[0]).to_upper(), TranslationServer.translate(String(r[1])).to_lower()])
+	return " · ".join(items)
+
+## Jednowierszowa podpowiedź u góry obrazu strzelnicy (range_view.gd) — tylko to, czego nie ma w zwykłej grze.
+static func range_line() -> String:
+	return TranslationServer.translate("RANGE  ·  %s/%s station  ·  hold %s brace on the bench  ·  %s sights  ·  %s leave") % [
+		key("move_left"), key("move_right"), key("crouch"), key("aim_sights"), key("interact")]
 
 ## Jednowierszowy pasek sterowania w dole HUD (F1 przełącza).
 static func hud_line() -> String:

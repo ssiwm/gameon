@@ -16,6 +16,7 @@ extends Node
 const RangeDoor := preload("res://scripts/range3d/range_door.gd")
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 var main: Node2D
 var player: CharacterBody2D
@@ -45,6 +46,7 @@ func run(m: Node2D) -> void:
 	door.board = []                                              # tablica z ustawień gracza (Settings.range_board) nie miesza się do testu
 	await _t_static()
 	await _t_door()
+	await _t_options()
 	await _t_plates()
 	await _t_server()
 	await _t_climb()
@@ -109,6 +111,40 @@ func _t_door() -> void:
 	await _frames(2)
 	check("wyjście: in_range zgaszone", not player.in_range and player.fp == null)
 
+## Ustawienia widoku z oczu (czułość, oś Y, kąt widzenia), akcje w kontekście „range” i dźwięki blach w manifeście.
+func _t_options() -> void:
+	var sens0: int = Settings.fp_sens_idx
+	var inv0: bool = Settings.fp_invert_y
+	var fp: Node = _enter()
+	await _frames(2)
+	fp.yaw = 0.0
+	fp.pitch = 0.0
+	Settings.fp_sens_idx = Settings.FP_SENS_DEFAULT
+	Settings.fp_invert_y = false
+	fp.mouse_look(Vector2(0.0, -20.0))
+	var up1: float = fp.pitch
+	fp.pitch = 0.0
+	Settings.fp_sens_idx = Settings.FP_SENS_LIST.find(2.0)
+	fp.mouse_look(Vector2(0.0, -20.0))
+	var up2: float = fp.pitch
+	fp.pitch = 0.0
+	Settings.fp_invert_y = true
+	fp.mouse_look(Vector2(0.0, -20.0))
+	var up3: float = fp.pitch
+	check("czułość ×2 podwaja obrót (%.4f → %.4f rad), mysz w górę patrzy w górę" % [up1, up2], up1 > 0.0 and is_equal_approx(up2, up1 * 2.0))
+	check("odwrócona oś Y: mysz w górę patrzy w dół (%.4f)" % up3, up3 < 0.0)
+	Settings.fp_sens_idx = sens0
+	Settings.fp_invert_y = inv0
+	check("kąt widzenia z ustawień: domyślnie %d°" % int(Settings.FP_FOV_LIST[Settings.FP_FOV_DEFAULT]), int(Settings.FP_FOV_LIST[Settings.FP_FOV_DEFAULT]) == 74)
+	fp.leave()
+	await _frames(2)
+	var rows: Array = Actions.range_sheet()
+	var keyed := rows.filter(func(r: Array) -> bool: return String(r[0]) != "" and String(r[0]) != "—")
+	check("ściąga strzelnicy: %d wierszy, każdy z klawiszem" % rows.size(), rows.size() == Actions.RANGE_SHEET.size() and keyed.size() == rows.size())
+	check("przyrządy do przypisania (CONTROLS) i na padzie", Actions.rebindable().has("aim_sights") and Actions.pad_rebindable("aim_sights"))
+	check("pasek sterowania strzelnicy: %s" % Actions.range_hud_line().substr(0, 40), Actions.range_hud_line().contains(Actions.key("aim_sights")))
+	check("dźwięki blach w manifeście (plate_ring ×4, plate_fall ×2)", Audio.variant("plate_ring", 4) >= 0 and Audio.variant("plate_fall", 2) >= 0)
+
 ## Serwer: tablica drużyny przyjmuje tylko wiarygodne wyniki gracza ze strzelnicy, jeden wiersz na gracza i broń.
 func _t_server() -> void:
 	var d := Weapons.def(Weapons.M83)
@@ -139,10 +175,13 @@ func _shoot_at(fp: Node, i: int) -> void:
 	var dir: Vector3 = fp.sim.aim_at(fp.eye(), i)
 	fp.yaw = atan2(-dir.x, -dir.z)
 	fp.pitch = asin(dir.y)
+	var wait := 0
+	while wc.cd > 0.0 and wait < 60:                             # odstęp między strzałami jak w grze: czas przebiegu musi przejść walidację serwera
+		await get_tree().physics_frame                           # (RangeDoor.plausible) — wyzerowany `cd` dawał przebieg szybszy niż broń strzela
+		wait += 1
 	wc.climb = 0.0
 	wc.bloom = 0.0
-	wc.cd = 0.0
-	wc.sim_fire = true                                          # M-83 jest automatyczny: strzela przytrzymany spust — jedna klatka = jeden strzał
+	wc.sim_fire = true                                         # M-83 jest automatyczny: strzela przytrzymany spust — jedna klatka = jeden strzał
 	await _frames(2)
 	wc.sim_fire = false
 	await _frames(2)
