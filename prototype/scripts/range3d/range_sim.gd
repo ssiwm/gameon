@@ -19,7 +19,7 @@ const EYE_Z := 0.0                    ## m — oczy nad linią ognia
 const STATIONS := [-1.6, 0.0, 1.6]    ## m — x stanowisk na linii ognia
 const DIVIDERS := [-0.8, 0.8]         ## m — x przegród między stanowiskami (obraz: range_view.gd, łuski: range_fx.gd)
 const DIVIDER_Z := Vector2(-0.6, 0.5) ## m — zasięg przegrody wzdłuż toru
-const DIVIDER_Y := Vector2(0.1, 2.0)  ## m — wysokość przegrody
+const DIVIDER_Y := Vector2(0.1, 1.45) ## m — wysokość przegrody: do barków, nad nią widać głowę i broń gracza na sąsiednim stanowisku (co-op)
 const PLATE_R := 0.15                 ## m — promień blachy (popper ⌀ 30 cm)
 const PLATE_Y := 1.2                  ## m — wysokość środka blachy
 const PLATES := [[-1.2, 7.0], [0.9, 10.0], [-0.5, 13.0], [1.4, 16.0], [-1.5, 20.0]]   ## [x m, odległość m] — od najbliższej
@@ -46,6 +46,18 @@ const HEAT_COOL := 12.0               ## 1/s — stygnięcie blachy
 const FIRE_T := 3.5                   ## s — ogień na podłodze po płomieniu (HKM-9)
 const FIRE_EVERY := 0.5               ## s — co tyle płomień zostawia nową plamę ognia
 const FIRE_MAX := 12
+# Papierowa tarcza (seria, grupa): przestrzeliwuje się na wylot, przestrzeliny zostają do następnej serii (PAPER_GAP s bez trafienia).
+const PAPER := Vector3(0.55, 1.25, -25.0)  ## środek arkusza
+const PAPER_SIZE := Vector2(0.45, 0.6)     ## m — szerokość, wysokość
+const PAPER_GAP := 3.0                     ## s bez trafienia w papier — następne trafienie zaczyna nową serię (czysty arkusz)
+const PAPER_MAX := 60
+# Ruchomy cel: blacha na wózku jeżdżącym w poprzek tunelu (wyprzedzenie, czas lotu kuli); po trafieniu wstaje po MOVER_RESET s.
+const MOVER_Z := -22.0
+const MOVER_Y := 1.2
+const MOVER_X := 2.2                       ## m — połowa drogi wózka (od −X do +X)
+const MOVER_SPEED := 1.6                   ## m/s
+const MOVER_RESET := 1.5
+const MOVER_NEAR := 1.2                    ## m — strzał przechodzący tyle od blachy wózka liczy się jako próba (bełt bez wyprzedzenia mija o ok. 1 m)
 
 signal plate_down(index: int)
 signal plates_up
@@ -55,6 +67,16 @@ signal impact(pos: Vector3, normal: Vector3, kind: String, index: int)     ## ki
 signal flight(points: PackedVector3Array, secs: float, key: String)
 ## Uderzenie pocisku z lotu, `exploded` — wybuch uzbrojonego granatu (promień `radius` m), inaczej uderzenie / niewypał.
 signal landed(pos: Vector3, normal: Vector3, kind: String, key: String, exploded: bool, radius: float)
+signal paper_hole(local: Vector2)            ## przestrzelina w papierze (m od środka arkusza, x w prawo, y w górę)
+signal paper_cleared
+signal mover_hit
+
+var paper_holes: Array = []           ## przestrzeliny bieżącej serii (Vector2, m od środka arkusza)
+var _paper_t := -100.0
+var mover_down := false
+var mover_hits := 0
+var mover_tries := 0                  ## strzały, które przeszły przy wózku (MOVER_NEAR) albo go trafiły
+var _mover_up_at := -1.0
 
 var plates: Array = []                ## [{pos: Vector3 (środek blachy), down: bool}, …]
 var running := false
@@ -95,6 +117,8 @@ func tick(delta: float) -> void:
 	for p in plates:
 		p["heat"] = maxf(0.0, float(p["heat"]) - HEAT_COOL * delta)
 	fires = fires.filter(func(f: Dictionary) -> bool: return float(f["until"]) > clock)
+	if mover_down and clock >= _mover_up_at:
+		mover_down = false
 	if running:
 		_since_hit += delta
 		if _since_hit > ABANDON_T:
@@ -124,26 +148,40 @@ func shoot(origin: Vector3, basis: Basis, d: WeaponDef, seed: int, extra: float)
 			return []
 		WeaponDef.Kind.RAIL:
 			return _pierce(origin, pellet_dirs3(d, basis, seed, extra)[0])
-	if d.kind == WeaponDef.Kind.LAUNCHER or float(d.accel_time) > 0.0 or float(d.homing) > 0.0:
+	if d.kind == WeaponDef.Kind.LAUNCHER or float(d.accel_time) > 0.0 or float(d.homing) > 0.0 or float(d.gravity) > 0.0:
 		for dir in pellet_dirs3(d, basis, seed, extra):
 			_launch(origin, dir, d)
 		return []
 	var out: Array = []
+	var spd := float(d.speed) / SPEED_PX                     # kula leci: wózek przejeżdża w czasie lotu (wyprzedzenie)
+	var tried := false
 	for dir in pellet_dirs3(d, basis, seed, extra):
-		var h := trace(origin, dir)
+		var h := trace(origin, dir, MAX_DIST, true, spd)
 		if h.is_empty():
 			continue
+		_paper_ray(origin, dir, float(h["t"]))
+		if not tried and _mover_try(origin, dir, float(h["t"]), spd):
+			tried = true
+			mover_tries += 1
 		out.append(h)
 		impact.emit(h["pos"], h["normal"], h["kind"], int(h["index"]))
 		if h["kind"] == "plate" and not plates[int(h["index"])]["down"]:
 			_knock(int(h["index"]))
+		elif h["kind"] == "mover" and not mover_down:
+			_hit_mover()
 	return out
 
 ## Najbliższe przecięcie promienia ze stojącą blachą albo bryłą tunelu do odległości `max_t` (m; „t” w wyniku); pusty słownik, gdy nic.
 ## `with_plates` false — sama bryła tunelu (szyna i promień liczą blachy osobno, `_plates_on_ray`).
-func trace(origin: Vector3, dir: Vector3, max_t := MAX_DIST, with_plates := true) -> Dictionary:
+## Blacha wózka biegnie, gdy kula leci: `speed_m` (m/s, 0 — natychmiast) albo `at` (chwila przelotu, pociski z lotem) wyznacza jej położenie.
+func trace(origin: Vector3, dir: Vector3, max_t := MAX_DIST, with_plates := true, speed_m := 0.0, at := -1.0) -> Dictionary:
 	var best_t := max_t
 	var hit := {}
+	if with_plates and not mover_down:
+		var mc := _mover_cross(origin, dir, best_t, speed_m, at)
+		if not mc.is_empty() and bool(mc["hit"]):
+			best_t = float(mc["t"])
+			hit = {"pos": mc["pos"], "normal": Vector3(0, 0, 1), "kind": "mover", "index": -2}
 	# blachy: koło na płaszczyźnie z = const, twarzą do strzelca
 	for i in plates.size():
 		if plates[i]["down"] or not with_plates:
@@ -184,6 +222,70 @@ func trace(origin: Vector3, dir: Vector3, max_t := MAX_DIST, with_plates := true
 		hit["t"] = best_t
 	return hit
 
+## Wózek z blachą w chwili `time` (jeździ tam i z powrotem, także gdy blacha leży).
+static func mover_x(time: float) -> float:
+	var period := 4.0 * MOVER_X / MOVER_SPEED
+	var u := fposmod(time, period) / period
+	return MOVER_X * (4.0 * absf(u - 0.5) - 1.0)
+
+## Przelot promienia przez płaszczyznę wózka przed `max_t`: {t, pos, off (m od środka blachy w tej chwili), hit}; pusty — nie dolatuje.
+func _mover_cross(origin: Vector3, dir: Vector3, max_t: float, speed_m := 0.0, at := -1.0) -> Dictionary:
+	if absf(dir.z) < 1e-5:
+		return {}
+	var t := (MOVER_Z - origin.z) / dir.z
+	if t <= 0.0 or t >= max_t:
+		return {}
+	var when := at if at >= 0.0 else clock + (t / speed_m if speed_m > 0.0 else 0.0)
+	var p := origin + dir * t
+	var off := Vector2(p.x - mover_x(when), p.y - MOVER_Y).length()
+	return {"t": t, "pos": p, "off": off, "hit": off <= PLATE_R}
+
+## Strzał przy wózku liczy się jako próba (raz na strzał): trafienie albo przelot bliżej niż MOVER_NEAR, nie zasłonięty niczym wcześniej.
+func _mover_try(origin: Vector3, dir: Vector3, stop_t: float, speed_m: float) -> bool:
+	var mc := _mover_cross(origin, dir, stop_t + 0.001, speed_m)
+	return not mc.is_empty() and float(mc["off"]) <= MOVER_NEAR
+
+func _hit_mover() -> void:
+	mover_down = true
+	mover_hits += 1
+	_mover_up_at = clock + MOVER_RESET
+	mover_hit.emit()
+
+## Przelot promienia przez papier przed `max_t` (papier nie zatrzymuje kuli): przestrzelina, a po PAPER_GAP s przerwy — nowa seria.
+func _paper_ray(origin: Vector3, dir: Vector3, max_t: float) -> void:
+	if dir.z >= -1e-5:
+		return
+	var t := (PAPER.z - origin.z) / dir.z
+	if t <= 0.0 or t >= max_t + 0.01:
+		return
+	var p := origin + dir * t
+	var l := Vector2(p.x - PAPER.x, p.y - PAPER.y)
+	if absf(l.x) > PAPER_SIZE.x * 0.5 or absf(l.y) > PAPER_SIZE.y * 0.5:
+		return
+	if clock - _paper_t > PAPER_GAP and not paper_holes.is_empty():
+		paper_holes.clear()
+		paper_cleared.emit()
+	_paper_t = clock
+	paper_holes.append(l)
+	if paper_holes.size() > PAPER_MAX:
+		paper_holes.pop_front()
+	paper_hole.emit(l)
+
+## Grupa bieżącej serii na papierze: liczba przestrzelin, rozrzut (największa odległość dwóch przestrzelin, m), rozciągnięcie w pionie (m)
+## i rozrzut kątowy w MOA (minuty kątowe z odległości tarczy).
+func paper_group() -> Dictionary:
+	var spread := 0.0
+	var lo := INF
+	var hi := -INF
+	for i in paper_holes.size():
+		var a: Vector2 = paper_holes[i]
+		lo = minf(lo, a.y)
+		hi = maxf(hi, a.y)
+		for j in range(i + 1, paper_holes.size()):
+			spread = maxf(spread, a.distance_to(paper_holes[j]))
+	return {"n": paper_holes.size(), "spread": spread, "vertical": hi - lo if paper_holes.size() > 1 else 0.0,
+		"moa": rad_to_deg(atan(spread / -PAPER.z)) * 60.0}
+
 ## Stojące blachy, przez które przechodzi promień do odległości `max_t`, od najbliższej: [{t, index, pos}].
 func _plates_on_ray(origin: Vector3, dir: Vector3, max_t: float) -> Array:
 	var out: Array = []
@@ -207,6 +309,13 @@ func _pierce(origin: Vector3, dir: Vector3) -> Array:
 	var end := trace(origin, dir, MAX_DIST, false)
 	var end_t := float(end.get("t", MAX_DIST))
 	var out: Array = []
+	_paper_ray(origin, dir, end_t)
+	var mc := _mover_cross(origin, dir, end_t)
+	if not mc.is_empty() and float(mc["off"]) <= MOVER_NEAR:
+		mover_tries += 1
+		if bool(mc["hit"]) and not mover_down:
+			out.append({"pos": mc["pos"], "normal": Vector3(0, 0, 1), "kind": "mover", "index": -2, "t": float(mc["t"])})
+			_hit_mover()
 	for p in _plates_on_ray(origin, dir, end_t):
 		var h := {"pos": p["pos"], "normal": Vector3(0, 0, 1), "kind": "plate", "index": int(p["index"]), "t": float(p["t"])}
 		out.append(h)
@@ -274,12 +383,16 @@ func _flame(origin: Vector3, dir: Vector3, d: WeaponDef) -> void:
 ## w stożku `homing_cone`). Tor liczony od razu krokami FLIGHT_DT (blachy stoją, póki pocisk leci), trafienie rozstrzyga `tick`
 ## w chwili uderzenia; obraz dostaje tor (sygnał `flight`).
 func _launch(origin: Vector3, dir: Vector3, d: WeaponDef) -> void:
-	var vel := dir * float(d.speed_at(0.0)) / SPEED_PX
+	# bełt (SINEW-6, `sticks`): prędkość i opad w skali świata gry (400 px/s ≈ 33 m/s, 120 px/s² ≈ prawdziwe g — tak opisuje go WeaponDef);
+	# granat i rakieta: prędkość jak kule (SPEED_PX), granat z prawdziwym g
+	var bolt := bool(d.sticks)
+	var vel := dir * float(d.speed_at(0.0)) / (PX_PER_M if bolt else SPEED_PX)
 	var p := origin
 	var t := 0.0
 	var dist := 0.0
 	var pts := PackedVector3Array([p])
-	var g := G if float(d.gravity) > 0.0 else 0.0
+	var g := (float(d.gravity) / PX_PER_M if bolt else G) if float(d.gravity) > 0.0 else 0.0
+	var tried := false
 	var homing := float(d.homing)
 	var hit := {}
 	var k := 0
@@ -297,7 +410,15 @@ func _launch(origin: Vector3, dir: Vector3, d: WeaponDef) -> void:
 					vel = vel.rotated(axis, minf(ang, homing * TIME_K * FLIGHT_DT))
 		vel.y -= g * FLIGHT_DT
 		var step := vel * FLIGHT_DT
-		var h := trace(p, step.normalized(), step.length())
+		var sd := step.normalized()
+		var h := trace(p, sd, step.length(), true, 0.0, clock + t)
+		var seg_t := float(h.get("t", step.length()))
+		_paper_ray(p, sd, seg_t)                               # papier nie zatrzymuje pocisku — tylko przestrzelina
+		if not tried:
+			var mc := _mover_cross(p, sd, seg_t + 0.001, 0.0, clock + t)
+			if not mc.is_empty() and float(mc["off"]) <= MOVER_NEAR:
+				tried = true
+				mover_tries += 1
 		if not h.is_empty():
 			t += FLIGHT_DT * (float(h["t"]) / step.length() - 1.0)
 			dist += float(h["t"])
@@ -339,7 +460,11 @@ func _resolve(e: Dictionary) -> void:
 	impact.emit(h["pos"], h["normal"], h["kind"], int(h["index"]))
 	if h["kind"] == "plate" and not plates[int(h["index"])]["down"]:
 		_knock(int(h["index"]))
+	elif h["kind"] == "mover" and not mover_down:
+		_hit_mover()
 	if blast > 0.0:
+		if not mover_down and Vector3(mover_x(clock), MOVER_Y, MOVER_Z).distance_to(h["pos"]) <= blast * BLAST_KNOCK:
+			_hit_mover()
 		for i in plates.size():
 			if not plates[i]["down"] and ((plates[i]["pos"] as Vector3) - (h["pos"] as Vector3)).length() <= blast * BLAST_KNOCK:
 				_knock(i)
@@ -351,7 +476,7 @@ func _resolve(e: Dictionary) -> void:
 static func pellet_dirs3(d: WeaponDef, basis: Basis, seed: int, extra_deg: float) -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
-	var jitter: float = d.jitter_deg + maxf(extra_deg, 0.0)
+	var jitter: float = maxf(d.jitter_deg + extra_deg, 0.0)          # gra daje dodatek ≥ 0 (WeaponController.spread_extra); ujemny — test bez rozrzutu
 	var out: Array = []
 	for i in d.pellets:
 		var r := jitter * sqrt(rng.randf())
