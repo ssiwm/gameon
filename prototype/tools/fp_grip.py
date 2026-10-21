@@ -48,12 +48,17 @@ PALM_R = 0.019                         # m — pół grubości dłoni w rękawic
 # (wzdłuż −back: wnętrze dłoni dotyka broni), `push` — przesunięcie punktu. `sink` — broń cofnięta (m, kolba chowa się w barku poza
 # kadrem) i podniesiona względem barków: obie ręce zgięte, przedramiona wchodzą w kadr od dołu (skrót jak w viewmodelach FPS; z pełną
 # długością lewa ręka szła prosto i poziomo przez kadr). `trigger` — punkt na przedniej ściance języka spustu (układ broni), do którego
-# sięga opuszka wskazującego.
+# sięga opuszka wskazującego. `roll` / `tilt` / `pole` — zakresy przeglądu obrotu dłoni i łokcia (orient_hand), `flex` — docelowe
+# zgięcie nadgarstka (°, < 0 — lekki wyprost), `dev` — dopuszczalne odchylenie nadgarstka (°; przy podparciu łoża łokciowe jest
+# naturalne), `screen` — kąt przedramienia w kadrze od pionu (lewe wchodzi ukośnie od lewego dołu, jak w viewmodelach FPS). `mcp` (zamiast `at` / `push` / `off`) — punkt kostki środkowego palca: dłoń na chwycie pistoletowym
+# ustawiana linią kostek na przedniej krawędzi chwytu, nasada dłoni obejmuje go od tyłu.
 GRIPS = {
     "m83": {
         "yaw": 35.0, "butt_dz": 0.02, "clav": (6.0, 12.0), "sink": (0.06, 0.07), "trigger": (0.068, 0.0, 0.086),
-        "right": {"at": "grip", "push": (-0.022, -0.004, 0.008), "up": (0.34, 0.0, 0.94), "back": (-0.25, -0.97, 0.0), "off": 0.022},
-        "left": {"at": "hold", "push": (0.0, 0.042, -0.03), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.6, -0.8), "off": 0.012},
+        "right": {"at": "grip", "mcp": (0.014, -0.026, 0.056), "push": (-0.022, -0.004, 0.008), "up": (0.34, 0.0, 0.94),
+                  "back": (-0.25, -0.97, 0.0), "off": 0.022, "roll": 30, "tilt": 15},
+        "left": {"at": "hold", "push": (0.0, 0.042, -0.03), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.6, -0.8), "off": 0.012,
+                 "roll": 60, "tilt": 20, "flex": -15.0, "dev": 22.0, "screen": 60.0},
     },
 }
 
@@ -141,13 +146,17 @@ def place_hand(rig, side, gun_m, info, conf, seat=Vector()):
     f, a, b, pc = hand_frame(rig, side)
     R = frame_matrix(ft, up, back) @ frame_matrix(f, a, b).inverted()
     w = P(rig, side + "Hand")
-    target_pc = gun_m @ (Vector(info[conf["at"]]) + Vector(conf["push"])) + back * conf["off"] + seat
+    if "mcp" in conf:                               # punkt kostki środkowego palca (chwyt pistoletowy: przednia krawędź chwytu)
+        half = (P(rig, side + "HandMiddle1") - P(rig, side + "Hand")).length * 0.5
+        target_pc = gun_m @ Vector(conf["mcp"]) - ft.normalized() * half + seat
+    else:
+        target_pc = gun_m @ (Vector(info[conf["at"]]) + Vector(conf["push"])) + back * conf["off"] + seat
     wrist = target_pc - R @ (pc - w)
     hw = (rig.matrix_world @ rig.pose.bones[PRE + side + "Hand"].matrix).to_3x3().normalized()
     return wrist, (R @ hw).normalized()        # docelowy obrót kości dłoni w świecie
 
 
-def solve_arm(rig, side, wrist, hand_rot, pole):
+def solve_arm(rig, side, wrist, hand_rot, pole, quiet=False):
     """IK ramienia (przedramię do nadgarstka, biegun łokcia), potem obrót dłoni — ograniczenia zapieczone w pozę."""
     pb_f = rig.pose.bones[PRE + side + "ForeArm"]
     pb_h = rig.pose.bones[PRE + side + "Hand"]
@@ -180,12 +189,22 @@ def solve_arm(rig, side, wrist, hand_rot, pole):
     for o in (tgt, pol, rot):
         bpy.data.objects.remove(o)
     update()
-    share_twist(rig, side, hand_rot)
+    tw = share_twist(rig, side, hand_rot, quiet=quiet)
     err = (P(rig, side + "Hand") - wrist).length
-    print("IK %s wrist error %.1f mm" % (side, err * 1000.0))
+    if not quiet:
+        print("IK %s wrist error %.1f mm" % (side, err * 1000.0))
+    return tw
 
 
-def share_twist(rig, side, hand_rot, share=0.6):
+def wrist_bend(rig, side):
+    """Zgięcie nadgarstka (°): `flex` — zgięcie / wyprost (w płaszczyźnie palce–grzbiet), `dev` — odchylenie promieniowe / łokciowe
+    (w płaszczyźnie palce–kostki). Oś przedramienia w układzie dłoni."""
+    f, a, b, _ = hand_frame(rig, side)
+    d = (P(rig, side + "Hand") - P(rig, side + "ForeArm")).normalized()
+    return math.degrees(math.atan2(d.dot(b), d.dot(f))), math.degrees(math.atan2(d.dot(a), d.dot(f)))
+
+
+def share_twist(rig, side, hand_rot, share=0.6, quiet=False):
     """Skręt nadgarstka dzielony z przedramieniem (szkielet nie ma kości skrętu): cały obrót dłoni wokół osi przedramienia w jednym
     stawie zwija skórę rękawicy jak papierek od cukierka. Przedramię bierze `share` skrętu, dłoń wraca do zadanego obrotu."""
     pb_f = rig.pose.bones[PRE + side + "ForeArm"]
@@ -202,7 +221,9 @@ def share_twist(rig, side, hand_rot, share=0.6):
     head = rig.matrix_world.inverted() @ P(rig, side + "Hand")
     pb_h.matrix = Matrix.Translation(head) @ (rig.matrix_world.inverted().to_3x3() @ hand_rot).to_4x4()
     update()
-    print("TWIST %s %.0f deg (forearm %.0f)" % (side, math.degrees(tw), math.degrees(tw * share)))
+    if not quiet:
+        print("TWIST %s %.0f deg (forearm %.0f)" % (side, math.degrees(tw), math.degrees(tw * share)))
+    return math.degrees(tw)
 
 
 def palm_gap(rig, side, bvh):
@@ -227,6 +248,40 @@ def seat_hand(rig, side, G, info, c, bvh, pole):
             break
         seat -= hand_frame(rig, side)[2] * gap * 0.9
     print("SEAT %s palm gap %.1f mm (shift %.1f mm)" % (side, gap * 1000.0, seat.length * 1000.0))
+
+
+def orient_hand(rig, side, G, info, c, pole):
+    """Obrót dłoni na broni i łokieć dobrane pod nadgarstek: przegląd przetoczenia wokół linii kostek (`up`, dłoń toczy się po łożu /
+    chwycie), odchylenia w płaszczyźnie dłoni (wokół `back`) i obrotu bieguna łokcia wokół osi bark–nadgarstek; wybór z najmniejszym
+    zgięciem nadgarstka po IK. Sztywne `up` / `back` z GRIPS dawały dłoń płasko na łożu i przedramię z innego kierunku — nadgarstek
+    zgięty o ~100° („złamany”). Zwraca (nowy `c`, biegun)."""
+    base = _pose_get(rig)
+    up0, back0 = Vector(c["up"]).normalized(), Vector(c["back"]).normalized()
+    lim_r, lim_t, lim_p = c.get("roll", 90), c.get("tilt", 60), c.get("pole", 60)
+    sh = P(rig, side + "Arm")
+    best = None
+    for roll in range(-lim_r, lim_r + 1, 15):
+        for tilt in range(-lim_t, lim_t + 1, 15):
+            R = Matrix.Rotation(math.radians(roll), 3, up0) @ Matrix.Rotation(math.radians(tilt), 3, back0)
+            cc = dict(c, up=tuple(R @ up0), back=tuple(R @ back0))
+            for pa in range(-lim_p, lim_p + 1, 20):
+                _pose_set(rig, base)
+                wrist, hr = place_hand(rig, side, G, info, cc)
+                pl = sh + Matrix.Rotation(math.radians(pa), 3, (wrist - sh).normalized()) @ (pole - sh)
+                tw = solve_arm(rig, side, wrist, hr, pl, quiet=True)
+                flex, dev = wrist_bend(rig, side)
+                el = math.degrees((P(rig, side + "ForeArm") - sh).angle(P(rig, side + "Hand") - P(rig, side + "ForeArm")))
+                fa = G.to_3x3().normalized().inverted() @ (P(rig, side + "Hand") - P(rig, side + "ForeArm"))
+                scr = math.degrees(math.atan2(-fa.y if side == "Left" else fa.y, fa.z))   # przedramię w kadrze: 0 = pionowo od dołu
+                cost = max(0.0, abs(flex - c.get("flex", 0.0)) - 10.0) ** 2 + 2.0 * max(0.0, abs(dev) - c.get("dev", 8.0)) ** 2 \
+                    + 0.5 * max(0.0, abs(tw) - 100.0) ** 2 + 0.2 * max(0.0, 20.0 - el) ** 2 + 0.015 * (roll * roll + tilt * tilt + pa * pa) \
+                    + (max(0.0, abs(scr - c["screen"]) - 10.0) ** 2 if "screen" in c else 0.0)
+                if best is None or cost < best[0]:
+                    best = (cost, roll, tilt, pa, cc, pl, flex, dev, tw, el, scr)
+    _pose_set(rig, base)
+    _, roll, tilt, pa, cc, pl, flex, dev, tw, el, scr = best
+    print("ORIENT %s roll %d tilt %d pole %d -> flex %.0f dev %.0f twist %.0f elbow %.0f screen %.0f" % (side, roll, tilt, pa, flex, dev, tw, el, scr))
+    return cc, pl
 
 
 def rotate_world(rig, name, axis_w, ang):
@@ -326,7 +381,7 @@ def _apply_finger(rig, names, back, ax, s, a1, a2, a3):
 SKIN = 0.0025       # m — o tyle kapsuła członu może wejść w broń (pełne kapsuły; skóra rękawicy i palca się ugina)
 
 
-def aim_index(rig, side, bvh, back, target):
+def aim_index(rig, side, bvh, back, target, across):
     """Wskazujący na spuście: przegląd siatki kątów (rozchylenie, zgięcie nasady, zgięcie dalszych członów 1 : 0,6) liczony
     analitycznie, wybór pozy z opuszką najbliżej `target` bez wchodzenia w broń (kabłąk), potem zapis w kości. Zwraca odległość (m)."""
     names = [side + "HandIndex" + str(i) for i in (1, 2, 3)]
@@ -336,11 +391,13 @@ def aim_index(rig, side, bvh, back, target):
     best = None
     for s in range(-36, 37, 4):
         for a1 in range(0, 91, 3):
-            for a2 in range(0, 101, 4):
+            for a2 in range(0, 111, 4):
                 pts, ax = _finger_fk(K, L, d0, back, s, (a1, a1 + a2, a1 + 1.6 * a2))
                 p3, q3, d3 = pts[2]
                 pad = p3.lerp(q3, 0.5) + ax.cross(d3).normalized() * SEG_R[2]
                 dist = (pad - target).length
+                over = max(0.0, (q3 - target).dot(across) - 0.003)     # koniuszek (koniec kości; opuszka sięga ~1 cm dalej) nie wystaje za spust
+                dist += over * 2.0
                 if best is not None and dist >= best[0]:
                     continue
                 pen = max(0.0, -min(_capsule_gaps(pts, SEG_R, bvh)) - SKIN)
@@ -363,19 +420,26 @@ def wrap_finger(rig, side, finger, bvh, back):
     L = [(T(rig, n) - P(rig, n)).length for n in names]
     d0 = [(T(rig, n) - P(rig, n)).normalized() for n in names]
     best = None
-    spread = range(-15, 16, 5) if finger != "Thumb" else range(-30, 31, 6)
-    for s in spread:
+    spread = {"Index": range(-8, 5, 4), "Thumb": range(-30, 31, 6)}.get(finger, range(-4, 5, 4))
+    s0 = 0.0
+    if finger != "Thumb":                   # palce razem: poza spoczynkowa MPFB ma je rozcapierzone — najpierw równolegle do osi dłoni
+        f = hand_frame(rig, side)[0]
+        dp, fp = d0[0] - back * d0[0].dot(back), f - back * f.dot(back)
+        s0 = 0.85 * math.degrees(math.atan2(back.dot(dp.cross(fp)), dp.dot(fp)))
+    for s in [s0 + x for x in spread]:
         for a1 in range(0, 91, 5):
             for a2 in range(0, 101, 5):
                 pts, ax = _finger_fk(K, L, d0, back, s, (a1, a1 + a2, a1 + 1.7 * a2))
                 g = _capsule_gaps(pts, radii, bvh)
                 pen = max(0.0, -min(g) - SKIN)
-                cost = pen * 30.0 + max(0.0, g[2] - 0.002) * 3.0 - (a1 + 1.7 * a2) * 0.0003 + abs(s) * 0.0001
+                hug = sum(max(0.0, x - 0.003) for x in g) * (1.0 if finger == "Thumb" else 1.5)   # przylega całą długością (nie hak)
+                cost = pen * 30.0 + max(0.0, g[2] - 0.002) * 3.0 + hug - (a1 + 1.7 * a2) * 0.0003 + abs(s - s0) * 0.0001 \
+                    + abs(a1 - 0.8 * a2) * 0.0001
                 if best is None or cost < best[0]:
                     best = (cost, s, a1, a2, ax, g)
     _, s, a1, a2, ax, g = best
     _apply_finger(rig, names, back, ax, s, a1, a2, 0.7 * a2)
-    print("WRAP %s %s spread %d curl %d/%d gaps %s mm" % (side, finger, s, a1, a2, [round(x * 1000, 1) for x in g]))
+    print("WRAP %s %s spread %.0f curl %d/%d gaps %s mm" % (side, finger, s, a1, a2, [round(x * 1000, 1) for x in g]))
 
 
 def _pose_get(rig):
@@ -469,7 +533,7 @@ def author_reloads(rig, key, G, info, conf, meshes, root):
         mag_bvh = gun_bvh([mag]) if mag is not None else bvh
         _pose_set(rig, grip_pose)
         if gname != "rest":                                          # prawa ręka za bronią: dłoń osadzona na chwycie, palce jak w chwycie
-            seat_hand(rig, "Right", Gk, info, conf["right"], bvh, P(rig, "RightArm") + POLES["Right"])
+            seat_hand(rig, "Right", Gk, info, conf["right"], bvh, P(rig, "RightArm") + conf.get("right_pole", POLES["Right"]))
             for n, q in right_fingers.items():
                 rig.pose.bones[n].rotation_quaternion = q
             update()
@@ -479,7 +543,7 @@ def author_reloads(rig, key, G, info, conf, meshes, root):
             print("RHCHK %s/%s rot %.1f deg pos %.1f mm" % (hname, gname, math.degrees(d.to_quaternion().angle), d.translation.length * 1000))
         if hname == "grip":
             if gname != "rest":
-                seat_hand(rig, "Left", Gk, info, conf["left"], bvh, P(rig, "LeftArm") + POLES["Left"])
+                seat_hand(rig, "Left", Gk, info, conf["left"], bvh, P(rig, "LeftArm") + conf.get("left_pole", POLES["Left"]))
                 for n in _hand_bones(rig, "Left"):
                     rig.pose.bones[n].rotation_quaternion = grip_pose[n]
                 update()
@@ -491,7 +555,7 @@ def author_reloads(rig, key, G, info, conf, meshes, root):
         update()
         c = {"at": "p", "push": (0.0, 0.0, 0.0), "up": up, "back": back, "off": off}
         wrist, hrot = place_hand(rig, "Left", Gk, {"p": tuple(p)}, c)
-        solve_arm(rig, "Left", wrist, hrot, P(rig, "LeftArm") + POLES["Left"])
+        solve_arm(rig, "Left", wrist, hrot, P(rig, "LeftArm") + conf.get("left_pole", POLES["Left"]))
         bk = hand_frame(rig, "Left")[2]
         if fingers == "mag":
             for fg in FINGERS + ("Thumb",):
@@ -636,18 +700,21 @@ def build(outfit, keys):
         update()
         bvh = gun_bvh(meshes)
         for side, pole in POLES.items():
+            conf[side.lower()], pl = orient_hand(rig, side, G, info, conf[side.lower()], P(rig, side + "Arm") + pole)
+            conf[side.lower() + "_pole"] = pl - P(rig, side + "Arm")
             c = conf[side.lower()]
-            seat_hand(rig, side, G, info, c, bvh, P(rig, side + "Arm") + pole)
+            seat_hand(rig, side, G, info, c, bvh, pl)
             f2, a2, b2, pc2 = hand_frame(rig, side)
             gr = G.to_3x3().normalized()
             want_pc = G @ (Vector(info[c["at"]]) + Vector(c["push"]))
             print("HAND %s f %s a %s b %s | want up %s back %s | palm-point %.1f mm" % (side, tuple(round(x, 2) for x in f2), tuple(round(x, 2) for x in a2),
                   tuple(round(x, 2) for x in b2), tuple(round(x, 2) for x in (gr @ Vector(c["up"])).normalized()), tuple(round(x, 2) for x in (gr @ Vector(c["back"])).normalized()),
                   (pc2 - want_pc).length * 1000))
+            print("WRIST %s flex %.0f dev %.0f deg" % ((side,) + wrist_bend(rig, side)))
             back = hand_frame(rig, side)[2]
             for fg in FINGERS + ("Thumb",):
                 if side == "Right" and fg == "Index" and "trigger" in conf:
-                    aim_index(rig, side, bvh, back, G @ Vector(conf["trigger"]))
+                    aim_index(rig, side, bvh, back, G @ Vector(conf["trigger"]), (G.to_3x3() @ Vector((0.0, 1.0, 0.0))).normalized())
                 else:
                     wrap_finger(rig, side, fg, bvh, back)
         # klip pozy i punkt odniesienia broni na kości prawej dłoni
@@ -681,6 +748,9 @@ def build(outfit, keys):
             gx = G.to_3x3().normalized()
             for nm, off in (("rr", (0.0, -0.45, 0.0)), ("rl", (0.0, 0.45, 0.0)), ("rb", (0.05, -0.15, -0.4)), ("rf", (0.45, -0.12, 0.0))):
                 render(os.path.join(SHOTS, "grip_%s_%s.png" % (key, nm)), look(gp + gx @ Vector(off), gp), 50.0)
+            hp = G @ Vector(info["hold"])
+            for nm, off in (("lt", (0.0, 0.05, 0.4)), ("ll", (0.0, 0.4, -0.05)), ("lb", (0.0, 0.1, -0.4)), ("lr", (0.0, -0.4, 0.0))):
+                render(os.path.join(SHOTS, "grip_%s_%s.png" % (key, nm)), look(hp + gx @ Vector(off), hp), 50.0)
         if key in RELOADS and not QUICK:
             reload_meta[key] = author_reloads(rig, key, G, info, conf, meshes, root)
             rig.animation_data.action = act

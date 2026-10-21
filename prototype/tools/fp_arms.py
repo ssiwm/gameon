@@ -194,7 +194,7 @@ def leather_material(name):
     nt.links.new(tc.outputs["Object"], grain.inputs["Vector"])
     crease = nt.nodes.new("ShaderNodeTexVoronoi")
     crease.feature = "DISTANCE_TO_EDGE"
-    crease.inputs["Scale"].default_value = 55.0                 # zmarszczki skóry (stawy, grzbiet dłoni)
+    crease.inputs["Scale"].default_value = 170.0                # drobne zmarszczki skóry (ok. 6 mm; przy 55 grudy ~18 mm — dłoń jak z gliny)
     nt.links.new(tc.outputs["Object"], crease.inputs["Vector"])
     mottle = nt.nodes.new("ShaderNodeTexNoise")
     mottle.inputs["Scale"].default_value = 45.0
@@ -228,11 +228,11 @@ def leather_material(name):
     nt.links.new(rough.outputs["Result"], bsdf.inputs["Roughness"])
     b1 = nt.nodes.new("ShaderNodeBump")
     b1.inputs["Strength"].default_value = 1.0
-    b1.inputs["Distance"].default_value = 0.0012
+    b1.inputs["Distance"].default_value = 0.0003
     nt.links.new(grain.outputs["Fac"], b1.inputs["Height"])
     b2 = nt.nodes.new("ShaderNodeBump")
     b2.inputs["Strength"].default_value = 1.0
-    b2.inputs["Distance"].default_value = 0.003
+    b2.inputs["Distance"].default_value = 0.0005
     b2.invert = True
     nt.links.new(crease.outputs["Distance"], b2.inputs["Height"])
     nt.links.new(b1.outputs["Normal"], b2.inputs["Normal"])
