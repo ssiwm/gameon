@@ -133,3 +133,6 @@ Decyzje użytkownika: rękawice skórzane + rękaw M65, MPFB + nasz pipeline (be
 | W grze | `fp_rig.gd` (broń dzieckiem dłoni), `range_view.gd`: osobna kamera rąk 58°, kołysanie, oddech, odrzut na sprężynie, broń 4K | zrobione, 60 FPS |
 
 Do poziomu AAA brakuje jeszcze: chwytów, przeładowań i mechaniki dla pozostałych broni; łusek wyrzucanych z faktycznego okna każdej broni (dziś jedno przybliżenie od chwytu).
+Do tego czasu broń bez klipu `grip_<broń>` jest w kadrze sama (1.7.337, `range_view.ARMS_FALLBACK = false`): ręce z modelu postaci (`fp_arms.gd`)
+rozjeżdżały się — SPREAD-12 miał rękaw przez pół kadru, P-83 nie miał rąk. Na strzelnicy HUD chowa kartę celu i opis kryjówki, baner, podpowiedzi
+akcji kryjówki i karty tablicy i radia (`hud._in_range`).

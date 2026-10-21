@@ -3,7 +3,7 @@ extends Node3D
 ## z karczkiem, zegarek; szkielet postaci) i `tools/fp_grip.py` (klip `grip_<broń>` — dłonie i palce ułożone na modelu broni do kontaktu,
 ## oraz węzeł `gunref_<broń>` na kości prawej dłoni). Model broni gry (gun_model.gd — części i nacięcia gracza) jest dzieckiem tego
 ## węzła, więc broń i dłonie poruszają się jako jedna bryła: chwyt jest taki, jak ułożony w Blenderze, co do milimetra.
-## Broń bez ułożonego chwytu (`has_grip`) zostaje przy rękach z modelu postaci (fp_arms.gd).
+## Broń bez ułożonego chwytu (`has_grip`) jest w kadrze sama (range_view.ARMS_FALLBACK; zapas — ręce z modelu postaci, fp_arms.gd).
 
 const PATH := "res://art/char3d/fp/fp_arms_scav.glb"
 const CYCLE_BACK := 0.025               ## s — suwadło w tył po strzale

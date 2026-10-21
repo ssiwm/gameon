@@ -32,6 +32,8 @@ const SWAY_RATE := 11.0                       ## 1/s — powrót kołysania
 const REC_K := 320.0                          ## sprężyna odrzutu (sztywność, 1/s²)
 const REC_C := 30.0                           ## … tłumienie (1/s)
 const REC_IMPULSE := Vector3(0.6, 1.0, 0.25)  ## prędkość po strzale: cofnięcie (m/s), uniesienie (rad/s), skręt (± rad/s); × WEAPON_POSE body / climb
+const ARMS_FALLBACK := false                  ## ręce dla broni bez ułożonego chwytu (fp_arms.gd, walce) — rozjeżdżały się (SPREAD-12: rękaw
+                                              ## przez pół kadru, P-83: bez rąk); do czasu klipów z fp_grip.py taka broń jest sama w kadrze
 const HOLES_MAX := 90
 const SLEEVE := Color(0.1, 0.11, 0.08)
 const GLOVE := Color(0.05, 0.045, 0.04)
@@ -170,16 +172,17 @@ func _ready() -> void:
 	if not _rig.setup():
 		_rig.queue_free()
 		_rig = null
-	_fp_arms = FpArms.new()
-	_fp_arms.name = "FpArms"
-	_cam.add_child(_fp_arms)
-	var c3 = fp.player.get("c3d")
-	var look := String(c3._char_name) if c3 != null and is_instance_valid(c3) else Char3D.DEFAULT_CHAR
-	if not _fp_arms.setup(self, look, int(c3._palette) if c3 != null and is_instance_valid(c3) else 0):
-		_fp_arms.queue_free()
-		_fp_arms = null
+	if ARMS_FALLBACK:
+		_fp_arms = FpArms.new()
+		_fp_arms.name = "FpArms"
+		_cam.add_child(_fp_arms)
+		var c3 = fp.player.get("c3d")
+		var look := String(c3._char_name) if c3 != null and is_instance_valid(c3) else Char3D.DEFAULT_CHAR
+		if not _fp_arms.setup(self, look, int(c3._palette) if c3 != null and is_instance_valid(c3) else 0):
+			_fp_arms.queue_free()
+			_fp_arms = null
 	for a in _arms:
-		(a as Node3D).visible = _fp_arms == null
+		(a as Node3D).visible = ARMS_FALLBACK and _fp_arms == null
 	# słabe wypełnienie tylko dla rąk i broni (z przodu z lewej, chłodne): skóra rękawic i tkanina mają rysunek, a nie płaską plamę w cieniu
 	var fill := OmniLight3D.new()
 	fill.position = Vector3(-0.45, 0.25, -0.35)
@@ -218,8 +221,9 @@ func _ready() -> void:
 	_dot.draw.connect(_draw_dot)
 	add_child(_dot)
 	_hint = Label.new()
-	_hint.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_hint.position = Vector2(-200, -78)                          # interfejs ma 640×360 (skalowany): nad paskiem broni
+	_hint.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_hint.position = Vector2(-200, 10)                           # interfejs ma 640×360 (skalowany): u góry, gdzie w kryjówce stoi karta celu (hud.gd chowa ją
+	                                                             # na strzelnicy) — na dole wchodził w rząd miniatur broni po zmianie broni
 	_hint.size = Vector2(400, 12)
 	_hint.add_theme_font_size_override("font_size", 7)
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -386,6 +390,10 @@ func _pose_gun(delta: float) -> void:
 					Audio.play_variant(String(e[1]), 3, Audio.BUS_WEAPONS, -6.0, randf_range(0.97, 1.03))
 			_rl_u = u
 		_rig.transform = xf * _rig.anchor().affine_inverse()       # całe ręce tak, by broń z pozy chwytu stała w zadanym miejscu kadru
+		for a in _arms:
+			(a as Node3D).visible = false
+		return
+	if not ARMS_FALLBACK:
 		for a in _arms:
 			(a as Node3D).visible = false
 		return

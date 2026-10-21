@@ -1610,7 +1610,8 @@ func _drive_mission() -> void:
 		_result.visible = false
 		return
 	var boss := get_tree().get_first_node_in_group("boss")
-	_obj_card.visible = m.phase != Mission.Phase.SUCCESS and m.phase != Mission.Phase.FAILED
+	var in_range := _in_range()                      # strzelnica FPP: cel kryjówki i jej opis zasłaniałyby tunel i tablicę wyników
+	_obj_card.visible = m.phase != Mission.Phase.SUCCESS and m.phase != Mission.Phase.FAILED and not in_range
 	_obj_caption.text = m.objective_caption()
 	_obj_caption.add_theme_color_override("font_color", UiTheme.DANGER if m.phase == Mission.Phase.BOSS else (UiTheme.OK if m.phase == Mission.Phase.EXTRACT else UiTheme.ACCENT))
 	_obj_text.text = m.objective_text()
@@ -1646,7 +1647,7 @@ func _drive_mission() -> void:
 		_toast_t = TOAST_S
 	var dt := get_process_delta_time()
 	_toast_t = maxf(0.0, _toast_t - dt)
-	var want := 1.0 if (in_hub or _toast_t > 0.0 or _controls_mode == 1) else 0.0
+	var want := 1.0 if (in_hub or _toast_t > 0.0 or _controls_mode == 1) and not in_range else 0.0
 	_toast_box.modulate.a = move_toward(_toast_box.modulate.a, want, dt * (4.0 if want > 0.0 else 1.5))
 	_toast_box.visible = _toast_box.modulate.a > 0.01
 	# karta celu: wyśrodkowana, szerokość wg treści
@@ -2009,6 +2010,11 @@ func _dress_note(c: Dictionary) -> void:
 
 ## Karty: statystyki broni w zasięgu [E] (nad paskiem kontekstowym) i odprawa przy tablicy (u góry, pod kartą celu).
 func _drive_cards() -> void:
+	if _in_range():                                  # strzelnica FPP: postać stoi zaparkowana w kryjówce — jej tablica i radio nie dotyczą tunelu
+		_inspect.close()
+		(_brief["card"] as Control).visible = false
+		(_radio["card"] as Control).visible = false
+		return
 	# --- oględziny broni ([F] przy stojaku albo broni na ziemi): ekran z rozmytym tłem, bronią i panelem statystyk; gra się nie zatrzymuje
 	var it: Node2D = null
 	if _player != null and not _player.dead and _player.weapons.inspect_item != null and is_instance_valid(_player.weapons.inspect_item):
@@ -2271,7 +2277,8 @@ func _drive_prompt() -> void:
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	if wipe_left > 0.0:
 		Msg.hold("hud.wipe", Msg.Ch.ALERT, tr("SQUAD DOWN"), {"sub": (tr("Extraction failed — the shift ends in %d") if NightShift.active else tr("Extraction failed — restarting the mission in %d")) % ceili(wipe_left), "style": Msg.Style.DANGER, "prio": 90})
-	var cands := _prompt_candidates()
+	var in_range := _in_range()
+	var cands := [] if in_range else _prompt_candidates()
 	for i in cands.size():
 		var c: Dictionary = cands[i]
 		Msg.hold("hud.action.%d" % i, Msg.Ch.ACTION, String(c["text"]), {"prio": 100 - i * 4, "progress": float(c["prog"]), "style": _style_of(c["col"]), "color": c["col"]})
@@ -2280,7 +2287,7 @@ func _drive_prompt() -> void:
 		text = String(cur["text"])
 		prog = float(cur["progress"])
 		col = cur.get("color", UiTheme.TEXT)
-	if wipe_left <= 0.0 and m != null and m.banner_visible() and not _inspect.visible:
+	if wipe_left <= 0.0 and m != null and m.banner_visible() and not _inspect.visible and not in_range:
 		_post_title(m)
 	# ostatnia transmisja patrolu w finale misji 1.1 (zamiast baneru tytułu)
 	if wipe_left <= 0.0 and m != null and m.finale_radio_line() != "":
@@ -2297,6 +2304,10 @@ func _drive_prompt() -> void:
 		_prompt_card.scale = Vector2.ONE * MSG_SCALE
 		_prompt_card.pivot_offset = Vector2(_prompt_card.size.x * 0.5, 0.0)
 		_prompt_card.position = Vector2((size.x - _prompt_card.size.x) * 0.5, _gear_card.position.y - _prompt_card.size.y * MSG_SCALE - 8.0)
+
+## Lokalny gracz jest na strzelnicy FPP (scripts/range3d/fp_mode.gd).
+func _in_range() -> bool:
+	return _player != null and is_instance_valid(_player) and _player.get("fp") != null
 
 func _drive_controls() -> void:
 	var show := (_session_t < CONTROLS_SHOW_S and Profile.level() <= TOAST_LEVEL_MAX) if _controls_mode < 0 else _controls_mode == 1
