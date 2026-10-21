@@ -55,22 +55,25 @@ PALM_R = 0.019                         # m — pół grubości dłoni w rękawic
 # długością lewa ręka szła prosto i poziomo przez kadr). `trigger` — punkt na przedniej ściance języka spustu (układ broni), do którego
 # sięga opuszka wskazującego. `roll` / `tilt` / `pole` — zakresy przeglądu obrotu dłoni i łokcia (orient_hand), `flex` — docelowe
 # zgięcie nadgarstka (°, < 0 — lekki wyprost), `dev` — dopuszczalne odchylenie nadgarstka (°; przy podparciu łoża łokciowe jest
-# naturalne), `screen` — kąt przedramienia w kadrze od pionu (lewe wchodzi ukośnie od lewego dołu, jak w viewmodelach FPS). `mcp` (zamiast `at` / `push` / `off`) — punkt kostki środkowego palca: dłoń na chwycie pistoletowym
-# ustawiana linią kostek na przedniej krawędzi chwytu, nasada dłoni obejmuje go od tyłu; lewa na łożu — kostki przy prawej dolnej
+# naturalne), `screen` — kąt przedramienia w kadrze od pionu (lewe wchodzi ukośnie od lewego dołu, jak w viewmodelach FPS).
+# `mcp` (zamiast `at` / `push` / `off`) — punkt kostki środkowego palca: dłoń na chwycie pistoletowym ustawiana linią kostek na przedniej krawędzi chwytu, nasada dłoni obejmuje go od tyłu; lewa na łożu — kostki przy prawej dolnej
 # krawędzi, wnętrze dłoni pod łożem, palce w górę po prawej ściance (podparcie od spodu jak w viewmodelach FPS).
 # `thumb_side` — koniuszek kciuka po drugiej stronie broni (m od osi; aim_thumb: kciuk obejmuje chwyt i przylega do niego),
 # `thumb_front` — granica w przód dla koniuszka kciuka (m wzdłuż lufy; dalej zahaczałby się o przód chwytu), `thumb_top` — granica
-# w górę, `thumb_dir` — kierunek ostatniego członu kciuka (układ broni), `tip_top` — granica w górę dla koniuszków palców (m, z broni).
+# w górę, `thumb_bottom` — granica w dół dla dwóch dalszych członów (lewy: na ściance łoża, nie pod nim), `thumb_band` — szerokość pasa
+# koniuszka przy ściance, `thumb_dir` — kierunek ostatniego członu kciuka (układ broni), `thumb_range` — zakres przeglądu nasady (°),
+# `tip_top` — granica w górę dla koniuszków palców (m, z broni). Lewa dłoń 8 cm za przednią krawędzią łoża: dłużej kciuk nie mieści
+# się na łożu (wychodził przed nie albo chował się pod spód).
 GRIPS = {
     "m83": {
         "yaw": 35.0, "butt_dz": 0.02, "clav": (6.0, 12.0), "sink": (0.03, 0.05), "trigger": (0.068, 0.0, 0.086),
         "right": {"at": "grip", "mcp": (0.022, -0.026, 0.05), "push": (-0.022, -0.004, 0.008), "up": (0.34, 0.0, 0.94),
                   "back": (-0.25, -0.97, 0.0), "off": 0.022, "roll": 30, "tilt": 15,
                   "thumb_side": 0.024, "thumb_front": 0.03},
-        "left": {"at": "hold", "mcp": (0.32, -0.022, 0.104), "push": (0.0, 0.012, -0.03), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.35, -0.94), "off": 0.012,
-                 "roll": 25, "tilt": 20, "flex": -10.0, "dev": 22.0, "screen": 70.0,
-                 "thumb_side": 0.026, "thumb_top": 0.15, "thumb_straight": 0.0001, "thumb_dir": (1.0, 0.0, 0.45), "thumb_hug": 3.0,
-                 "tip_top": 0.16},
+        "left": {"at": "hold", "mcp": (0.28, -0.026, 0.104), "push": (0.0, 0.012, -0.03), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.35, -0.94),
+                 "off": 0.012, "roll": 25, "tilt": 20, "flex": -10.0, "dev": 22.0, "screen": 70.0, "tip_top": 0.16,
+                 "thumb_side": 0.026, "thumb_band": 0.006, "thumb_bottom": 0.124, "thumb_top": 0.15, "thumb_front": 0.39,
+                 "thumb_dir": (1.0, 0.0, 0.3), "thumb_hug": 3.0, "thumb_straight": 0.0001, "thumb_range": (96, 80)},
     },
 }
 
@@ -438,6 +441,7 @@ def aim_thumb(rig, side, bvh, G, c):
     gr = G.to_3x3().normalized()
     fwd, across, o = (gr @ Vector((1.0, 0.0, 0.0))).normalized(), (gr @ Vector((0.0, 1.0, 0.0))).normalized(), G.to_translation()
     front, want_y, top = c.get("thumb_front", 1.0), c.get("thumb_side", 0.02), c.get("thumb_top", 1.0)
+    bottom = c.get("thumb_bottom", -1.0)      # lewy: staw i koniuszek kciuka na ściance łoża, nie pod nim
     upg = (gr @ Vector((0.0, 0.0, 1.0))).normalized()
     tdir = (gr @ Vector(c["thumb_dir"])).normalized() if "thumb_dir" in c else None
     K = P(rig, names[0])
@@ -445,9 +449,10 @@ def aim_thumb(rig, side, bvh, G, c):
     d0 = [(T(rig, n) - P(rig, n)).normalized() for n in names]
     ax0 = back.cross(d0[1]).normalized()
     best = None
-    for al in range(-64, 65, 8):
+    ra, rb = c.get("thumb_range", (64, 48))     # zakres przeglądu nasady kciuka (°): przeciwstawienie, odwiedzenie
+    for al in range(-ra, ra + 1, 8):
         Ra = Matrix.Rotation(math.radians(al), 3, a)
-        for be in range(-48, 49, 8):
+        for be in range(-rb, rb + 1, 8):
             R = Ra @ Matrix.Rotation(math.radians(be), 3, back)
             ds = [R @ d for d in d0]
             ax = (R @ ax0).normalized()
@@ -459,8 +464,10 @@ def aim_thumb(rig, side, bvh, G, c):
                     d3 = Matrix.Rotation(math.radians(a2 + a3), 3, ax) @ ds[2]
                     p3 = p2 + d3 * L[2]
                     ty = (p3 - o).dot(across)               # koniuszek po drugiej stronie, ale przy broni (nie odstaje w bok)
-                    pre = 1.5 * (max(0.0, want_y - ty) + max(0.0, ty - want_y - 0.012)) + 1.0 * max(0.0, (p3 - o).dot(fwd) - front) \
-                        + 1.5 * max(0.0, (p3 - o).dot(upg) - top) + 0.00002 * (abs(al) + abs(be)) + c.get("thumb_straight", 0.00002) * (a2 + a3)
+                    pre = 1.5 * (max(0.0, want_y - ty) + max(0.0, ty - want_y - c.get("thumb_band", 0.012))) + 1.0 * max(0.0, (p3 - o).dot(fwd) - front) \
+                        + 1.5 * max(0.0, (p3 - o).dot(upg) - top) \
+                        + 1.5 * (max(0.0, bottom - (p3 - o).dot(upg)) + max(0.0, bottom - (p2 - o).dot(upg))) \
+                        + 0.00002 * (abs(al) + abs(be)) + c.get("thumb_straight", 0.00002) * (a2 + a3)
                     if tdir is not None:
                         pre += 0.03 * (1.0 - d3.dot(tdir))
                     if best is not None and pre >= best[0]:
