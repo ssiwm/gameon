@@ -3,12 +3,12 @@
   "reload": {
    "secs": 1.35,
    "mag_out": 0.16,
-   "mag_in": 0.76
+   "mag_in": 0.74
   },
   "reload_empty": {
    "secs": 1.8,
    "mag_out": 0.12,
-   "mag_in": 0.58
+   "mag_in": 0.56
   }
  }
 }

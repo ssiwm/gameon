@@ -20,6 +20,8 @@ var _mag: Node3D                        ## magazynek modelu broni (węzeł „�
 var _mag_rest := Transform3D.IDENTITY
 var _mag_off := Transform3D.IDENTITY    ## magazynek względem lewej dłoni (z chwili chwytu)
 var _mag_held := false
+var _anchor := Transform3D.IDENTITY     ## broń w układzie rąk w pozie chwytu — kotwica kadru (przeładowanie rusza bronią względem niej)
+var _anchor_ok := false
 
 func setup() -> bool:
 	if not ResourceLoader.exists(PATH):
@@ -49,6 +51,7 @@ func set_weapon(k: String, gun: Node3D) -> bool:
 		return false
 	key = k
 	_clip = ""
+	_anchor_ok = false
 	_mag_held = false
 	_pose("grip_" + k, 0.0)
 	_ref = _scene.find_child("gunref_" + k, true, false) as Node3D
@@ -73,6 +76,8 @@ func animate(reloading: bool, empty: bool, u: float) -> void:
 	if not reloading or not _anim.has_animation(clip):
 		_release_mag()
 		_pose("grip_" + key, 0.0)
+		_anchor = gun_in_rig()
+		_anchor_ok = true
 		return
 	_pose(clip, u * _anim.get_animation(clip).length)
 	var m: Dictionary = _meta.get(key, {}).get(clip.trim_suffix("_" + key), {})
@@ -102,6 +107,11 @@ func _pose(clip: String, t: float) -> void:
 ## Kość dłoni w świecie (po bieżącej pozie).
 func hand_global(side: String) -> Transform3D:
 	return _skel.global_transform * _skel.get_bone_global_pose(_skel.find_bone("mixamorig_%sHand" % side))
+
+## Kotwica kadru: broń w układzie rąk z pozy chwytu. Kadr ustawia ręce tak, żeby TA broń stała w zadanym miejscu, więc ruch broni
+## w klipie przeładowania (przechył, podbicie, szarpnięcie suwadła) jest widoczny, a nie znoszony.
+func anchor() -> Transform3D:
+	return _anchor if _anchor_ok else gun_in_rig()
 
 ## Broń w układzie tego węzła (z bieżącej pozy szkieletu) — do ustawienia całych rąk tak, by broń stała w zadanym miejscu kadru.
 func gun_in_rig() -> Transform3D:

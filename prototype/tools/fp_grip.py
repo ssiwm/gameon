@@ -60,10 +60,32 @@ GRIPS = {
 # (`mag_out` / `mag_in` w .json; w grze przypina go range_view.gd), więc ten sam magazynek wychodzi i wraca.
 RELOADS = {
     "m83": {"handle": (0.17, -0.032, 0.118), "clips": [
-        ("reload", 1.35, [(0.0, "grip"), (0.16, "grab"), (0.30, "rock"), (0.46, "pouch"), (0.62, "rock"), (0.76, "grab"), (1.0, "grip")]),
-        ("reload_empty", 1.8, [(0.0, "grip"), (0.12, "grab"), (0.23, "rock"), (0.36, "pouch"), (0.48, "rock"), (0.58, "grab"),
-                               (0.70, "handle"), (0.80, "pulled"), (1.0, "grip")]),
+        # (ułamek klipu, poza lewej dłoni, poza broni)
+        ("reload", 1.35, [(0.0, "grip", "rest"), (0.08, "reach", "tilt"), (0.16, "grab", "show"), (0.24, "rock", "show"),
+                          (0.32, "out", "show"), (0.44, "pouch", "show"), (0.56, "back", "show"), (0.66, "hook", "show"),
+                          (0.74, "seat", "slap"), (0.82, "leave", "tilt"), (1.0, "grip", "rest")]),
+        ("reload_empty", 1.8, [(0.0, "grip", "rest"), (0.06, "reach", "tilt"), (0.12, "grab", "show"), (0.18, "rock", "show"),
+                               (0.24, "out", "show"), (0.33, "pouch", "show"), (0.42, "back", "show"), (0.50, "hook", "show"),
+                               (0.56, "seat", "slap"), (0.63, "hreach", "lcant"), (0.70, "handle", "lcant"), (0.76, "pulled", "jerk"),
+                               (0.80, "release", "slam"), (0.88, "leave", "tilt"), (1.0, "grip", "rest")]),
     ]},
+}
+# Pozy broni w klipie (względem chwytu prawej dłoni): przechył (°, + = górą w prawo — gniazdo magazynka do lewej dłoni), uniesienie
+# lufy (°), podniesienie (m), cofnięcie (m). Prawa ręka idzie za bronią przez IK.
+GUN_POSES = {
+    "rest": (0.0, 0.0, 0.0, 0.0),
+    "tilt": (5.0, 1.0, 0.0, -0.01),
+    "show": (10.0, 2.0, 0.0, -0.035),
+    "slap": (8.0, 1.0, 0.009, -0.035),      # zatrzaśnięcie: broń podbita od dołu
+    "lcant": (-8.0, 1.5, 0.0, -0.01),     # suwadło po prawej: broń przechylona w lewo, rączka na widoku
+    "jerk": (-9.0, 1.0, 0.0, 0.004),    # odciągnięcie suwadła szarpie broń w tył
+    "slam": (-6.0, 2.5, 0.006, -0.014),  # zamek wraca: broń podbija w górę i w przód
+}
+# Ułożenia palców bez kontaktu (zgięcie członów 1–3 w °; kciuk osobno): rozwarta dłoń w drodze, hak na rączce suwadła, puszczenie.
+FINGER_SETS = {
+    "open": ((22.0, 28.0, 18.0), (8.0, 10.0, 8.0)),
+    "hook": ((58.0, 78.0, 52.0), (12.0, 22.0, 14.0)),
+    "release": ((18.0, 22.0, 14.0), (6.0, 8.0, 6.0)),
 }
 FPS = 30
 
@@ -268,8 +290,33 @@ def _pose_set(rig, pose):
     update()
 
 
-def author_reloads(rig, key, G, info, conf, meshes):
-    """Klipy przeładowania: lewa dłoń po klatkach kluczowych (IK + podział skrętu jak w chwycie), palce na magazynku do kontaktu."""
+def gun_pose(G, info, name):
+    """Broń w pozie klipu: obroty wokół punktu chwytu (prawa dłoń), potem podniesienie i cofnięcie w układzie broni."""
+    roll, pitch, lift, back = GUN_POSES[name]
+    piv = Vector(info["grip"])
+    M = Matrix.Translation(piv) @ Matrix.Rotation(math.radians(-pitch), 4, "Y") @ Matrix.Rotation(math.radians(roll), 4, "X") @ Matrix.Translation(-piv)
+    return G @ Matrix.Translation(Vector((-back, 0.0, lift))) @ M
+
+
+def curl_fixed(rig, side, finger, back, angles):
+    """Palec zgięty o stałe kąty członów (°) wokół osi zgięcia (grzbiet dłoni × kierunek członu)."""
+    for i, deg in enumerate(angles):
+        n = side + "Hand" + finger + str(i + 1)
+        if PRE + n not in rig.pose.bones:
+            continue
+        d = (T(rig, n) - P(rig, n)).normalized()
+        rotate_world(rig, PRE + n, back.cross(d).normalized(), math.radians(deg))
+        update()
+
+
+def _hand_bones(rig, side):
+    return [pb.name for pb in rig.pose.bones if pb.name.startswith(PRE + side + "Hand") and pb.name != PRE + side + "Hand"]
+
+
+def author_reloads(rig, key, G, info, conf, meshes, root):
+    """Klipy przeładowania: klatki kluczowe obu rąk. Broń ma w każdej klatce własną pozę (GUN_POSES) — prawa ręka idzie za nią przez IK
+    z osadzeniem dłoni i palcami jak w chwycie; lewa dłoń po swoich pozach (IK + podział skrętu), palce na magazynku do kontaktu albo
+    w ułożeniach FINGER_SETS. Magazynek jedzie z lewą dłonią od pierwszego `grab` do `seat` (`mag_out` / `mag_in` w .json)."""
     spec = RELOADS[key]
     grip_pose = _pose_get(rig)
     rig.animation_data.action = None                                # bez klipu: render nie nadpisuje układanej pozy
@@ -282,63 +329,114 @@ def author_reloads(rig, key, G, info, conf, meshes):
     lo = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
     hi = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
     grab_p = Vector(((lo.x + hi.x) * 0.5, hi.y, lo.z + (hi.z - lo.z) * 0.45))
-    mag_bvh = gun_bvh([mag]) if mag is not None else gun_bvh(meshes)
-    gun_full = gun_bvh(meshes)
-    left_names = [pb.name for pb in rig.pose.bones if pb.name.startswith(PRE + "Left") and "UpLeg" not in pb.name and "Leg" not in pb.name and "Foot" not in pb.name and "Toe" not in pb.name]
-    poses = {"grip": grip_pose}
+    hp = Vector(spec["handle"])
+    right_fingers = {n: grip_pose[n] for n in _hand_bones(rig, "Right")}
+    hand_grip = rig.matrix_world @ rig.pose.bones[PRE + "RightHand"].matrix
+    hold = Vector(info["hold"]) + Vector(conf["left"]["push"])
+    up_mag = (0.2, 0.0, 0.98)
+    bk_mag = (0.0, 1.0, 0.0)
+    # lewa dłoń: punkt w układzie broni, linia kostek, grzbiet, odstęp, palce ("mag" — do kontaktu z magazynkiem, "held" — jak przy
+    # chwycie magazynka, albo nazwa z FINGER_SETS)
     targets = {
-        "grab": (grab_p, (0.2, 0.0, 0.98), (0.0, 1.0, 0.0), 0.012, mag_bvh),
-        "rock": (grab_p + Vector((0.05, 0.01, -0.09)), (0.55, 0.0, 0.83), (0.0, 1.0, 0.0), 0.012, None),
-        "pouch": (grab_p + Vector((-0.08, 0.22, -0.42)), (0.1, 0.25, 0.96), (-0.3, 0.95, 0.0), 0.012, None),
-        # suwadło od dołu: dłoń pod komorą wnętrzem do góry, palce zahaczają rączkę z prawej (z góry przedramię zasłaniało cały kadr)
-        "handle": (Vector(spec["handle"]) + Vector((0.0, -0.012, -0.045)), (1.0, 0.0, 0.0), (0.0, 0.3, -0.95), 0.010, gun_full),
-        "pulled": (Vector(spec["handle"]) + Vector((-0.11, -0.012, -0.045)), (1.0, 0.0, 0.0), (0.0, 0.3, -0.95), 0.010, None),
+        "reach": (hold.lerp(grab_p, 0.5) + Vector((0.0, 0.03, -0.03)), (0.6, 0.0, 0.8), (0.0, 0.8, -0.6), 0.02, "open"),
+        "grab": (grab_p, up_mag, bk_mag, 0.012, "mag"),
+        "rock": (grab_p + Vector((0.03, 0.005, -0.05)), (0.45, 0.0, 0.89), bk_mag, 0.012, "held"),
+        "out": (grab_p + Vector((0.02, 0.05, -0.16)), (0.3, 0.2, 0.93), (-0.1, 0.99, 0.0), 0.012, "held"),
+        "pouch": (grab_p + Vector((-0.08, 0.22, -0.42)), (0.1, 0.25, 0.96), (-0.3, 0.95, 0.0), 0.012, "held"),
+        "back": (grab_p + Vector((0.03, 0.04, -0.14)), (0.35, 0.15, 0.92), (-0.05, 0.99, 0.0), 0.012, "held"),
+        "hook": (grab_p + Vector((0.022, 0.0, -0.028)), (0.42, 0.0, 0.91), bk_mag, 0.012, "held"),
+        "seat": (grab_p, up_mag, bk_mag, 0.012, "held"),
+        "leave": (hold.lerp(grab_p, 0.35) + Vector((0.0, 0.02, -0.035)), (0.8, 0.0, 0.6), (0.0, 0.6, -0.8), 0.02, "open"),
+        # suwadło od dołu: dłoń pod komorą wnętrzem do góry, palce hakiem na rączce z prawej (z góry przedramię zasłaniało cały kadr)
+        "hreach": (hp + Vector((0.05, 0.0, -0.07)), (1.0, 0.0, 0.0), (0.0, 0.3, -0.95), 0.02, "open"),
+        "handle": (hp + Vector((0.0, -0.012, -0.045)), (1.0, 0.0, 0.0), (0.0, 0.3, -0.95), 0.010, "hook"),
+        "pulled": (hp + Vector((-0.11, -0.012, -0.045)), (1.0, 0.0, 0.0), (0.0, 0.3, -0.95), 0.010, "hook"),
+        "release": (hp + Vector((-0.09, 0.01, -0.09)), (1.0, 0.0, 0.0), (0.0, 0.4, -0.92), 0.02, "release"),
     }
-    grab_fingers = None
-    handle_fingers = None
-    for name in ("grab", "rock", "pouch", "handle", "pulled"):
-        p, up, back, off, bvh = targets[name]
+    poses = {}
+    held_fingers = None
+    order = []
+    for _c, _s, keys in spec["clips"]:
+        for _t, h, g in keys:
+            if (h, g) not in order:
+                order.append((h, g))
+    order.sort(key=lambda hg: 0 if hg[0] == "grab" else 1)           # najpierw chwyt magazynka (palce „held” biorą się z niego)
+    for hname, gname in order:
+        Gk = gun_pose(G, info, gname)
+        root.matrix_world = Gk
+        update()
+        bvh = gun_bvh(meshes)
+        mag_bvh = gun_bvh([mag]) if mag is not None else bvh
         _pose_set(rig, grip_pose)
-        for n in left_names:                                        # palce lewej dłoni od spoczynku (rozwarta dłoń)
-            if "Hand" in n and n != PRE + "LeftHand":
-                rig.pose.bones[n].rotation_quaternion = Quaternion()
+        if gname != "rest":                                          # prawa ręka za bronią: dłoń osadzona na chwycie, palce jak w chwycie
+            seat_hand(rig, "Right", Gk, info, conf["right"], bvh, P(rig, "RightArm") + Vector((-0.1, -0.9, 0.5)))
+            for n, q in right_fingers.items():
+                rig.pose.bones[n].rotation_quaternion = q
+            update()
+            hk = rig.matrix_world @ rig.pose.bones[PRE + "RightHand"].matrix
+            implied = hk @ hand_grip.inverted() @ G
+            d = implied.inverted() @ Gk
+            print("RHCHK %s/%s rot %.1f deg pos %.1f mm" % (hname, gname, math.degrees(d.to_quaternion().angle), d.translation.length * 1000))
+        if hname == "grip":
+            if gname != "rest":
+                seat_hand(rig, "Left", Gk, info, conf["left"], bvh, P(rig, "LeftArm") + Vector((0.2, 0.9, 0.4)))
+                for n in _hand_bones(rig, "Left"):
+                    rig.pose.bones[n].rotation_quaternion = grip_pose[n]
+                update()
+            poses[(hname, gname)] = _pose_get(rig)
+            continue
+        p, up, back, off, fingers = targets[hname]
+        for n in _hand_bones(rig, "Left"):                           # palce lewej dłoni od spoczynku (rozwarta dłoń)
+            rig.pose.bones[n].rotation_quaternion = Quaternion()
         update()
         c = {"at": "p", "push": (0.0, 0.0, 0.0), "up": up, "back": back, "off": off}
-        wrist, hrot = place_hand(rig, "Left", G, {"p": tuple(p)}, c)
+        wrist, hrot = place_hand(rig, "Left", Gk, {"p": tuple(p)}, c)
         solve_arm(rig, "Left", wrist, hrot, P(rig, "LeftArm") + Vector((0.2, 0.9, 0.4)))
         bk = hand_frame(rig, "Left")[2]
-        if name == "pulled" and handle_fingers is not None:
-            for n, q in handle_fingers.items():
-                rig.pose.bones[n].rotation_quaternion = q
-            update()
-        elif name in ("rock", "pouch") and grab_fingers is not None:
-            for n, q in grab_fingers.items():
-                rig.pose.bones[n].rotation_quaternion = q
-            update()
-        elif bvh is not None:
+        if fingers == "mag":
             for fg in FINGERS + ("Thumb",):
-                curl_finger(rig, "Left", fg, bvh, bk)
-        if name == "handle":
-            handle_fingers = {n: rig.pose.bones[n].rotation_quaternion.copy() for n in left_names if "Hand" in n and n != PRE + "LeftHand"}
-        if name == "grab":
-            grab_fingers = {n: rig.pose.bones[n].rotation_quaternion.copy() for n in left_names if "Hand" in n and n != PRE + "LeftHand"}
-        poses[name] = _pose_get(rig)
-        print("RELOAD %s %s pose, right hand %s" % (key, name, tuple(round(x, 3) for x in P(rig, "RightHand"))))
-        mid = G @ Vector((0.1, 0.0, 0.0))
-        render(os.path.join(SHOTS, "reload_%s_%s.png" % (key, name)), look(mid + Vector((0.25, 0.85, -0.05)), mid), 32.0)
+                curl_finger(rig, "Left", fg, mag_bvh, bk)
+            held_fingers = {n: rig.pose.bones[n].rotation_quaternion.copy() for n in _hand_bones(rig, "Left")}
+        elif fingers == "held" and held_fingers is not None:
+            for n, q in held_fingers.items():
+                rig.pose.bones[n].rotation_quaternion = q
+            update()
+        elif fingers in FINGER_SETS:
+            fa, ta = FINGER_SETS[fingers]
+            for fg in FINGERS:
+                curl_fixed(rig, "Left", fg, bk, fa)
+            curl_fixed(rig, "Left", "Thumb", bk, ta)
+        poses[(hname, gname)] = _pose_get(rig)
+        print("RELOAD %s %s/%s" % (key, hname, gname))
+    # podglądy wybranych klatek (z lewej strony, nad bronią)
+    for hname, gname in (("grab", "show"), ("out", "show"), ("hook", "show"), ("handle", "lcant"), ("pulled", "jerk")):
+        if (hname, gname) in poses:
+            Gk = gun_pose(G, info, gname)
+            root.matrix_world = Gk
+            _pose_set(rig, poses[(hname, gname)])
+            mid = Gk @ Vector((0.1, 0.0, 0.0))
+            render(os.path.join(SHOTS, "reload_%s_%s.png" % (key, hname)), look(mid + Vector((0.25, 0.85, 0.1)), mid), 32.0)
+    root.matrix_world = G
+    update()
     meta = {}
     for clip, secs, keys in spec["clips"]:
         act = bpy.data.actions.new("%s_%s" % (clip, key))
         rig.animation_data.action = act
         last = max(1, round(secs * FPS))
-        for t, name in keys:
-            _pose_set(rig, poses[name])
+        for t, hname, gname in keys:
+            _pose_set(rig, poses[(hname, gname)])
             fr = 1 + round(t * last)
             for pb in rig.pose.bones:
                 pb.keyframe_insert("rotation_quaternion", frame=fr)
                 pb.keyframe_insert("location", frame=fr)
-        grabs = [t for t, n in keys if n == "grab"]
-        meta[clip] = {"secs": secs, "mag_out": grabs[0], "mag_in": grabs[-1]}
+        for fc in getattr(act, "fcurves", []):                       # łagodne wejścia i wyjścia z klatek (bez szarpnięć interpolacji)
+            for kp in fc.keyframe_points:
+                kp.interpolation = "BEZIER"
+                kp.handle_left_type = "AUTO_CLAMPED"
+                kp.handle_right_type = "AUTO_CLAMPED"
+        grabs = [t for t, h, _g in keys if h == "grab"]
+        seats = [t for t, h, _g in keys if h == "seat"]
+        meta[clip] = {"secs": secs, "mag_out": grabs[0], "mag_in": seats[-1]}
         print("CLIP", act.name, last + 1, "frames", meta[clip])
     _pose_set(rig, grip_pose)
     return meta
@@ -470,7 +568,7 @@ def build(outfit, keys):
         render(os.path.join(SHOTS, "grip_%s_wide.png" % key), look(body_c + Vector((0.9, -1.4, 0.35)), body_c + Vector((0.35, 0.0, -0.1))), 30.0)
         render(os.path.join(SHOTS, "grip_%s_top.png" % key), look(body_c + Vector((0.35, -0.05, 1.6)), body_c + Vector((0.35, 0.0, -0.1))), 30.0)
         if key in RELOADS:
-            reload_meta[key] = author_reloads(rig, key, G, info, conf, meshes)
+            reload_meta[key] = author_reloads(rig, key, G, info, conf, meshes, root)
             rig.animation_data.action = act
             update()
         root.hide_render = True

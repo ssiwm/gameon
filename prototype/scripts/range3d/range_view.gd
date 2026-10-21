@@ -13,6 +13,7 @@ const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Actions := preload("res://scripts/actions.gd")
 const FpArms := preload("res://scripts/range3d/fp_arms.gd")
 const FpRig := preload("res://scripts/range3d/fp_rig.gd")
+const RangeFx := preload("res://scripts/range3d/range_fx.gd")
 const GUN_BASIS := Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))   ## układ broni (x lufa, y góra, z prawo) → kamera (−z w przód)
 
 const FOV := 74.0
@@ -65,6 +66,7 @@ var _last_look := Vector2.ZERO
 var _rec := Vector3.ZERO                      ## odrzut: cofnięcie (m), uniesienie (rad), skręt (rad)
 var _rec_v := Vector3.ZERO
 var _life := 0.0
+var _fx: Node3D                               ## łuski i dym w świecie tunelu (range_fx.gd)
 var _holes: Array = []
 var _hole_i := 0
 var _hole_mat: StandardMaterial3D
@@ -122,6 +124,9 @@ func _ready() -> void:
 	_build_lights()
 	_build_plates()
 	_build_board()
+	_fx = RangeFx.new()
+	_fx.name = "Fx"
+	_world.add_child(_fx)
 	_cam = Camera3D.new()
 	_cam.fov = FOV
 	_cam.near = 0.02
@@ -191,7 +196,7 @@ func _ready() -> void:
 	_cam.add_child(_flash)
 	_flash_mesh = MeshInstance3D.new()
 	var fq := QuadMesh.new()
-	fq.size = Vector2(0.16, 0.16)
+	fq.size = Vector2(0.085, 0.085)
 	_flash_mesh.mesh = fq
 	var fm := StandardMaterial3D.new()
 	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -262,6 +267,9 @@ func _process(delta: float) -> void:
 		var f := float(_falls[i])
 		(_pivots[i] as Node3D).rotation.x = -1.42 * (f * f * (3.0 - 2.0 * f))
 	_flash_t = maxf(0.0, _flash_t - delta)
+	if _gun != null and is_instance_valid(_gun):              # smużki z gorącej lufy
+		var wc = fp.player.weapons
+		_fx.barrel_smoke(_cam.global_transform * _vm_to_cam(_gun_xf * (_info.get("muzzle", Vector3(0.6, 0.1, 0.0)) as Vector3)), float(wc.barrel_of(wc.cur().id)))
 	_flash.light_energy = 6.0 * (_flash_t / 0.05)
 	_flash_mesh.visible = _flash_t > 0.02
 	_msg_t = maxf(0.0, _msg_t - delta)
@@ -353,17 +361,13 @@ func _pose_gun(delta: float) -> void:
 		_rl_empty = wc.mag_of(wc.cur().id) <= 0
 	_rl_was = rl
 	var clip_rl: bool = rl and not wc.clearing and _rig != null and String(_rig.key) != ""
-	var show := 0.0                              # przeładowanie z klipem: broń uniesiona, przechylona i przybliżona — widać gniazdo magazynka
 	if rl:
 		var s := sin(clampf(wc.reload_progress(), 0.0, 1.0) * PI)
-		if clip_rl:
-			show = smoothstep(0.0, 0.25, s) * smoothstep(0.0, 0.25, s)
-			roll = -0.32 * show
-		else:
+		if not clip_rl:                          # klip przeładowania sam porusza bronią (fp_grip.py GUN_POSES)
 			dip = s
 			roll = (-0.5 if wc.clearing else 0.45) * s
-	rot = Basis(Vector3.UP, _sway.x + _rec.z) * rot * Basis(Vector3.FORWARD, roll + _rec.z * 0.6) * Basis(Vector3.RIGHT, _sway.y + _rec.y - 0.35 * dip + 0.06 * show + breath * 0.004)
-	_vm.transform = Transform3D(rot, Vector3(-0.02 * show, -0.13 * dip + 0.02 * show + breath * 0.0018, _rec.x) + rot * o)
+	rot = Basis(Vector3.UP, _sway.x + _rec.z) * rot * Basis(Vector3.FORWARD, roll + _rec.z * 0.6) * Basis(Vector3.RIGHT, _sway.y + _rec.y - 0.35 * dip + breath * 0.004)
+	_vm.transform = Transform3D(rot, Vector3(0.0, -0.13 * dip + breath * 0.0018, _rec.x) + rot * o)
 	# rękawice na chwycie i pod łożem, rękawy do krawędzi kadru
 	var xf := _vm.transform * Transform3D(GUN_BASIS, Vector3.ZERO)
 	_gun_xf = xf
@@ -372,7 +376,7 @@ func _pose_gun(delta: float) -> void:
 		_fp_arms.visible = not rigged
 	if rigged:
 		_rig.animate(clip_rl, _rl_empty, wc.reload_progress())
-		_rig.transform = xf * _rig.gun_in_rig().affine_inverse()   # całe ręce tak, by broń stała w zadanym miejscu kadru
+		_rig.transform = xf * _rig.anchor().affine_inverse()       # całe ręce tak, by broń z pozy chwytu stała w zadanym miejscu kadru
 		for a in _arms:
 			(a as Node3D).visible = false
 		return
@@ -429,8 +433,14 @@ func on_shot(d: WeaponDef, hits: Array) -> void:
 	_flash_t = 0.05 if d.suppressor <= 0.0 else 0.02
 	if _gun != null:
 		var m := _gun_xf * (_info.get("muzzle", Vector3(0.6, 0.1, 0.0)) as Vector3)
-		_flash.position = m
+		_flash.position = _vm_to_cam(m)                          # światło w świecie, błysk na warstwie rąk
 		_flash_mesh.position = m + Vector3(0.0, 0.0, -0.04)
+		_fx.puff(_cam.global_transform * _vm_to_cam(m), _cam.global_transform.basis * _gun_xf.basis.x.normalized(), 1.4 if d.suppressor > 0.0 else 1.0)
+		if d.casing > 0:
+			if d.sfx_cycle == "":
+				_eject(d)
+			else:
+				get_tree().create_timer(0.38).timeout.connect(_eject.bind(d))     # pompka: łuska wylatuje przy przeładowaniu
 	for h in hits:
 		var kind := String(h["kind"])
 		var pos: Vector3 = h["pos"]
@@ -441,6 +451,23 @@ func on_shot(d: WeaponDef, hits: Array) -> void:
 		else:
 			_hole(pos, n)
 			_burst(pos + n * 0.02, n, Color(0.5, 0.46, 0.4), 8, 1.4)
+
+## Punkt z kamery rąk (VM_FOV) do kamery tunelu (FOV) tak, żeby na ekranie wypadł w tym samym miejscu: obie kamery stoją tak samo,
+## różnią się kątem widzenia, więc wystarczy przeskalować x i y o stosunek tangensów połówek kątów.
+func _vm_to_cam(p: Vector3) -> Vector3:
+	var k := tan(deg_to_rad(FOV) * 0.5) / tan(deg_to_rad(VM_FOV) * 0.5)
+	return Vector3(p.x * k, p.y * k, p.z)
+
+## Łuska z okna wyrzutowego (prawa strona komory, za chwytem): w prawo, w górę i lekko w tył, z rozrzutem.
+func _eject(d: WeaponDef) -> void:
+	if _gun == null or not is_instance_valid(_gun):
+		return
+	var grip: Vector3 = _info.get("grip", Vector3.ZERO)
+	var muzzle: Vector3 = _info.get("muzzle", Vector3(0.6, 0.1, 0.0))
+	var port := Vector3(grip.x + 0.11, muzzle.y - 0.012, 0.02)
+	var cam := _cam.global_transform
+	var v := _gun_xf.basis * Vector3(randf_range(-0.9, -0.4), randf_range(1.0, 1.6), randf_range(2.2, 3.0))
+	_fx.eject(cam * _vm_to_cam(_gun_xf * port), cam.basis * v, d.casing >= 2)
 
 func _on_plate_down(_i: int) -> void:
 	pass
@@ -517,8 +544,10 @@ func _build_tunnel() -> void:
 	# ława stanowiska i przegrody między stanowiskami
 	_box(Vector3(w, 0.06, -RangeSim.BENCH_Z), Vector3(0, RangeSim.BENCH_H - 0.03, RangeSim.BENCH_Z * 0.5), plank)
 	_box(Vector3(w, RangeSim.BENCH_H - 0.06, 0.04), Vector3(0, (RangeSim.BENCH_H - 0.06) * 0.5, RangeSim.BENCH_Z + 0.04), plank)
-	for x in [-0.8, 0.8]:
-		_box(Vector3(0.05, 1.9, 1.1), Vector3(x, 0.95 + 0.1, -0.05), plank)
+	var dz := RangeSim.DIVIDER_Z
+	var dy := RangeSim.DIVIDER_Y
+	for x in RangeSim.DIVIDERS:
+		_box(Vector3(0.05, dy.y - dy.x, dz.y - dz.x), Vector3(x, (dy.x + dy.y) * 0.5, (dz.x + dz.y) * 0.5), plank)
 	# żółta linia ognia na podłodze
 	var line := _box(Vector3(w, 0.005, 0.08), Vector3(0, 0.003, RangeSim.BENCH_Z - 0.06), _flat(Color(0.75, 0.6, 0.1), 0.7))
 	line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
