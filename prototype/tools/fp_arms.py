@@ -50,6 +50,7 @@ GLOVE_GAP = 0.0016           # m — skóra rękawicy nad skórą dłoni
 GLOVE_CUFF = 0.075           # m — mankiet nad nadgarstkiem
 GLOVE_FLARE = 0.0065         # m — rozszerzenie mankietu na końcu
 GLOVE_THICK = 0.0012         # m — grubość skóry (widoczna na krawędzi mankietu)
+SLEEVE_THICK = 0.0018        # m — grubość tkaniny rękawa
 LEATHER = (0.10, 0.068, 0.046)      # skóra rękawicy (brąz wojskowy, ciemny)
 LEATHER_WORN = (0.20, 0.14, 0.095)  # przetarcia na kłykciach i opuszkach
 
@@ -91,44 +92,72 @@ def _weights(ob):
 
 
 def make_gloves(rig, body):
-    """Rękawice z ciała: dłoń, palce i mankiet; odsunięcie od skóry, rozszerzony mankiet, podział, grubość."""
-    g = body.copy()
-    g.data = body.data.copy()
+    """Rękawice z ciała: dla każdej ręki cała dłoń i przedramię do GLOVE_CUFF nad nadgarstkiem, odcięte jedną płaszczyzną prostopadłą do
+    przedramienia (równy, okrągły mankiet; bez progów wag — wcześniej wybór ścian po wagach dziurawił grzbiet dłoni i rwał palce).
+    Ściany ręki: każda, której choć jeden wierzchołek ma wagę kości tej ręki (ramię, przedramię, dłoń, palce) — bez nóg i tułowia.
+    Potem odsunięcie od skóry (mankiet rozszerza się), podział i grubość skóry."""
+    parts = []
+    for side in ("Left", "Right"):
+        g = body.copy()
+        g.data = body.data.copy()
+        g.name = "glove_" + side
+        bpy.context.scene.collection.objects.link(g)
+        for m in list(g.modifiers):
+            if m.type != "ARMATURE":
+                g.modifiers.remove(m)
+        W = _weights(g)
+        wr = _bone_head(rig, side + "Hand")
+        el = _bone_head(rig, side + "ForeArm")
+        d = (wr - el).normalized()                                  # od łokcia do nadgarstka
+        arm = []
+        for w in W:
+            a_w = sum(x for n, x in w.items() if n.startswith(PRE + side) and ("Arm" in n or "Hand" in n))
+            arm.append(w.get("body", 0.0) > 0.5 and a_w > 0.05)
+        bm = bmesh.new()
+        bm.from_mesh(g.data)
+        bm.verts.ensure_lookup_table()
+        bmesh.ops.delete(bm, geom=[f for f in bm.faces if not any(arm[v.index] for v in f.verts)], context="FACES")
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+        cut = wr - d * GLOVE_CUFF
+        geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
+        bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-5, plane_co=cut, plane_no=d, clear_inner=True)     # zostaje strona dłoni
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+        # luźne kawałki (resztki tułowia za płaszczyzną) precz: zostaje największa spójna część
+        seen = set()
+        comps = []
+        for f in bm.faces:
+            if f.index in seen:
+                continue
+            stack = [f]
+            comp = []
+            seen.add(f.index)
+            while stack:
+                x = stack.pop()
+                comp.append(x)
+                for e in x.edges:
+                    for y in e.link_faces:
+                        if y.index not in seen:
+                            seen.add(y.index)
+                            stack.append(y)
+            comps.append(comp)
+        comps.sort(key=len, reverse=True)
+        bmesh.ops.delete(bm, geom=[f for c in comps[1:] for f in c], context="FACES")
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+        bm.normal_update()
+        for v in bm.verts:
+            s_up = (wr - v.co).dot(d)                               # > 0: od nadgarstka w stronę łokcia
+            t = min(max((s_up - 0.03) / (GLOVE_CUFF - 0.03), 0.0), 1.0) if s_up > 0 else 0.0
+            v.co += v.normal * (GLOVE_GAP + GLOVE_FLARE * t * t * (3 - 2 * t))
+        bm.to_mesh(g.data)
+        bm.free()
+        parts.append(g)
+    bpy.ops.object.select_all(action="DESELECT")
+    for g in parts:
+        g.select_set(True)
+    bpy.context.view_layer.objects.active = parts[0]
+    bpy.ops.object.join()
+    g = bpy.context.active_object
     g.name = "gloves"
-    bpy.context.scene.collection.objects.link(g)
-    for m in list(g.modifiers):
-        if m.type != "ARMATURE":
-            g.modifiers.remove(m)
-    W = _weights(g)
-    in_body = [w.get("body", 0.0) > 0.5 for w in W]
-    arms = {}
-    for s in ("Left", "Right"):
-        wr = _bone_head(rig, s + "Hand")
-        el = _bone_head(rig, s + "ForeArm")
-        arms[s] = (wr, (wr - el).normalized())
-    keep = []
-    flare = []
-    for i, v in enumerate(g.data.vertices):
-        w = W[i]
-        hand = sum(x for n, x in w.items() if n.startswith(PRE) and "Hand" in n)
-        side = "Left" if v.co.x > 0 else "Right"            # MPFB: przód −Y, lewa ręka postaci po +X
-        wr, d = arms[side]
-        s_up = (wr - v.co).dot(d)                           # > 0: w stronę łokcia od nadgarstka
-        arm = sum(x for n, x in w.items() if n.startswith(PRE + side) and ("Arm" in n or "Hand" in n))
-        cuff = arm > 0.5 and -0.06 <= s_up <= GLOVE_CUFF and (v.co - (wr - d * s_up)).length < 0.07   # od dłoni (pas za nadgarstkiem) do końca mankietu
-        keep.append(in_body[i] and (hand > 0.35 or cuff))
-        t = min(max((s_up - 0.03) / (GLOVE_CUFF - 0.03), 0.0), 1.0) if s_up > 0 else 0.0
-        flare.append(t * t * (3 - 2 * t))
-    bm = bmesh.new()
-    bm.from_mesh(g.data)
-    bm.verts.ensure_lookup_table()
-    bmesh.ops.delete(bm, geom=[f for f in bm.faces if not all(keep[v.index] for v in f.verts)], context="FACES")
-    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
-    bm.normal_update()
-    for v in bm.verts:
-        v.co += v.normal * (GLOVE_GAP + GLOVE_FLARE * flare[v.index])
-    bm.to_mesh(g.data)
-    bm.free()
     C._only(g)
     ss = g.modifiers.new("ss", "SUBSURF")
     ss.levels = 1
@@ -233,7 +262,7 @@ def bake_object(ob, size, prefix):
     # okluzja wmnożona w kolor (głębokie zgięcia palców, wnętrze mankietu)
     a = np.array(imgs["albedo"].pixels[:]).reshape(-1, 4)
     o = np.array(imgs["ao"].pixels[:]).reshape(-1, 4)
-    a[:, :3] *= 0.35 + 0.65 * o[:, :3]
+    a[:, :3] *= 0.7 + 0.3 * o[:, :3]                               # łagodnie: mocna okluzja dawała ciemne plamy na grzbiecie dłoni
     imgs["albedo"].pixels.foreach_set(a.astype(np.float32).ravel())
     m = bpy.data.materials.new(prefix)
     m.use_nodes = True
@@ -349,6 +378,16 @@ def build(outfit):
     k = spec["height"] / (max(zs) - min(zs))
     floor = min(zs)
     sleeves = C.add_sewn(rig, body, spec, {"sleeves": {"file": "%s_m65_fp.glb" % outfit}})
+    sl = bpy.data.objects.get("sleeves")
+    if sl is not None:                                         # grubość tkaniny: z oka widać krawędź mankietu (bez niej — prześwit i „szarpana” krawędź)
+        C._only(sl)
+        so = sl.modifiers.new("so", "SOLIDIFY")
+        so.thickness = SLEEVE_THICK
+        so.offset = -1.0
+        so.use_rim = True
+        while sl.modifiers[0] != so:
+            bpy.ops.object.modifier_move_up(modifier=so.name)
+        bpy.ops.object.modifier_apply(modifier=so.name)
     gloves = make_gloves(rig, body)
     gloves.parent = rig
     C._cycles(SAMPLES)
