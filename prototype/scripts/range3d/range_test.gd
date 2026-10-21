@@ -150,14 +150,18 @@ func _t_climb() -> void:
 			ys.append(pos.y))
 	wc.sim_fire = true
 	var t := 0.0
-	while ys.size() < 5 and t < 3.0:
+	while ys.size() < 6 and t < 3.0:
 		wc.jams.clear()
 		await get_tree().physics_frame
 		t += get_physics_process_delta_time()
 	wc.sim_fire = false
-	check("seria 5 strzałów do kulochwytu (%d)" % ys.size(), ys.size() >= 5)
-	if ys.size() >= 5:
-		check("podrzut: 5. strzał %.2f m wyżej niż 1. (climb %.2f°)" % [float(ys[4]) - float(ys[0]), wc.climb], float(ys[4]) > float(ys[0]) + 0.2)
+	check("seria 6 strzałów do kulochwytu (%d)" % ys.size(), ys.size() >= 6)
+	if ys.size() >= 6:
+		# średnie, nie pojedyncze trafienia: rozrzut (0,8° + narastający w serii) na 30 m jest rzędu podrzutu z 4 strzałów; dłuższa seria
+		# (ok. 4°) idzie już w strop tunelu
+		var first := (float(ys[0]) + float(ys[1])) / 2.0
+		var last := (float(ys[4]) + float(ys[5])) / 2.0
+		check("podrzut: strzały 5–6 średnio %.2f m wyżej niż 1–2 (climb %.2f°)" % [last - first, wc.climb], last > first + 0.15 and wc.climb > 1.5)
 	fp.leave()
 	await _frames(2)
 

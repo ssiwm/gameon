@@ -34,6 +34,7 @@ var ads_t := 0.0
 var x := 0.0                          ## m — bieżące położenie oczu w poprzek tunelu (goni stanowisko)
 var shots_fired := 0
 var dev_ads := false                  ## dev `--rangeads`: przyrządy bez PPM (zrzuty)
+var dev_ads_t := -1.0                 ## dev `--rangeads=T`: stały postęp przyrządów 0..1 (zrzuty przejścia), < 0 — wyłączone
 var shot_climb := 0.0                 ## ° — podrzut z początku kroku: strzał leci tam, gdzie celownik tej klatki (jak player._local_brain w grze 2D),
                                       ## a nie z podrzutem doliczonym już za ten sam strzał
 
@@ -128,6 +129,8 @@ func tick(delta: float) -> void:
 	brace_t = move_toward(brace_t, 1.0 if braced_pose else 0.0, BRACE_SPEED * delta)
 	ads = Input.is_action_pressed("aim_sights") or dev_ads
 	ads_t = move_toward(ads_t, 1.0 if ads else 0.0, ADS_SPEED * delta)
+	if dev_ads_t >= 0.0:
+		ads_t = dev_ads_t
 	if Input.is_action_just_pressed("interact"):
 		leave.call_deferred()
 
