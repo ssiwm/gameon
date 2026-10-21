@@ -51,7 +51,8 @@ PALM_R = 0.019                         # m — pół grubości dłoni w rękawic
 # sięga opuszka wskazującego. `roll` / `tilt` / `pole` — zakresy przeglądu obrotu dłoni i łokcia (orient_hand), `flex` — docelowe
 # zgięcie nadgarstka (°, < 0 — lekki wyprost), `dev` — dopuszczalne odchylenie nadgarstka (°; przy podparciu łoża łokciowe jest
 # naturalne), `screen` — kąt przedramienia w kadrze od pionu (lewe wchodzi ukośnie od lewego dołu, jak w viewmodelach FPS). `mcp` (zamiast `at` / `push` / `off`) — punkt kostki środkowego palca: dłoń na chwycie pistoletowym
-# ustawiana linią kostek na przedniej krawędzi chwytu, nasada dłoni obejmuje go od tyłu.
+# ustawiana linią kostek na przedniej krawędzi chwytu, nasada dłoni obejmuje go od tyłu; lewa na łożu — kostki przy prawej dolnej
+# krawędzi, wnętrze dłoni pod łożem, palce w górę po prawej ściance (podparcie od spodu jak w viewmodelach FPS).
 # `thumb_side` — koniuszek kciuka po drugiej stronie broni (m od osi; aim_thumb: kciuk obejmuje chwyt i przylega do niego),
 # `thumb_front` — granica w przód dla koniuszka kciuka (m wzdłuż lufy; dalej zahaczałby się o przód chwytu).
 GRIPS = {
@@ -60,8 +61,8 @@ GRIPS = {
         "right": {"at": "grip", "mcp": (0.022, -0.026, 0.05), "push": (-0.022, -0.004, 0.008), "up": (0.34, 0.0, 0.94),
                   "back": (-0.25, -0.97, 0.0), "off": 0.022, "roll": 30, "tilt": 15,
                   "thumb_side": 0.024, "thumb_front": 0.03},
-        "left": {"at": "hold", "push": (0.0, 0.042, -0.03), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.6, -0.8), "off": 0.012,
-                 "roll": 60, "tilt": 20, "flex": -15.0, "dev": 22.0, "screen": 60.0},
+        "left": {"at": "hold", "mcp": (0.30, -0.022, 0.102), "push": (0.0, 0.012, -0.03), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.35, -0.94), "off": 0.012,
+                 "roll": 20, "tilt": 20, "flex": -35.0, "dev": 22.0, "screen": 40.0},
     },
 }
 
