@@ -1,6 +1,7 @@
 # Plan: strzelnica FPS 3D w kryjówce
 
-Status: **etap 0 (szpic `--range3d`) zrobiony — 1.7.335, gałąź `feat/range-fps`**; wyniki i decyzje w §7. Zastępuje strzelnicę boczną z PR #413
+Status: **etap 0 (szpic `--range3d`) zrobiony — 1.7.335**; wyniki i decyzje w §7. Ręce FPP (0b) — §8. **Etap 1 w toku (1.7.338, `feat/range-mvp`):**
+drzwi, parkowanie, wynik na serwerze i tablica drużyny zrobione — §9. Zastępuje strzelnicę boczną z PR #413
 (wstrzymany, nie scalać). Przyjęte decyzje z §6: #413 wstrzymany, stanowiska na linii ognia, amunicja ćwiczebna, każdy gracz osobno.
 
 ## 0. Dlaczego obecna forma nie ma sensu
@@ -136,3 +137,17 @@ Do poziomu AAA brakuje jeszcze: chwytów, przeładowań i mechaniki dla pozosta�
 Do tego czasu broń bez klipu `grip_<broń>` jest w kadrze sama (1.7.337, `range_view.ARMS_FALLBACK = false`): ręce z modelu postaci (`fp_arms.gd`)
 rozjeżdżały się — SPREAD-12 miał rękaw przez pół kadru, P-83 nie miał rąk. Na strzelnicy HUD chowa kartę celu i opis kryjówki, baner, podpowiedzi
 akcji kryjówki i karty tablicy i radia (`hud._in_range`).
+
+## 9. Etap 1 — MVP, część pierwsza (2026-10-21, 1.7.338, gałąź `feat/range-mvp`)
+
+| Element | Jak | Stan |
+|---|---|---|
+| Drzwi w kryjówce | `RANGE_DOOR := [54, 30]` w `z1_hub.gd` (dolny poziom, za magazynem) → `level.gd` stawia `range3d/range_door.gd` (`RangeDoor`, grupa `range_door`); [E] przy drzwiach (`local_in_range`, podpowiedź w HUD z rekordem drużyny) wchodzi do tunelu; obraz w `view3d._sync_range_doors`: stalowe skrzydło z wizjerem i pochwytem, lampa w koszu, napis RANGE, czerwona lampa „w użyciu” (ktoś ma `in_range`) | zrobione |
+| Parkowanie | `player.in_range` (replikowane w MultiplayerSynchronizer): postać stoi przy drzwiach (`_range_brain` — bez ruchu), plakietka „P2 · RANGE”; `fp_mode` ustawia i gasi flagę także w `_exit_tree`, zamyka obraz tunelu, gdy drzwi znikną z mapą; to samo naciśnięcie [E] przy wejściu nie wychodzi (`_enter_frame`) | zrobione |
+| Wynik na serwerze | `range_sim.run_shots` / `run_w` → `fp_mode._on_finished` → `range_door.submit` → RPC `_submit_rpc` (host: wprost `_accept`). Serwer przyjmuje tylko od gracza z `in_range`, z bronią w ręku (`player.weapon`), i wiarygodny wynik (`plausible`: co najmniej 5 strzałów, strzelba 3, czas ≥ (n−1) × `cooldown` × 0,75) | zrobione |
+| Tablica drużyny | `range_door.board` — 5 najlepszych, jeden wiersz na gracza i broń; trzyma ją host (`Settings.range_board`, zapis w ustawieniach, nie w headless), rozsyła `_board_rpc` z toastem wyniku; dołączający prosi `_request_rpc`. W kryjówce czarna płyta w ramie obok drzwi (czcionka o stałej szerokości), w tunelu wiersz „squad”. Dev `--shotrangeboard` | zrobione |
+| Test | `--rangetest` 33/33: [E] przy drzwiach, parkowanie, tablica po przebiegu, `plausible`, odrzucenia (spoza strzelnicy, za szybko, inna broń), brak dubli wiersza | zrobione |
+
+Zostało z etapu 1: opcje FOV i czułości myszy, akcje w kontekście `range` w `actions.gd`, dźwięk blach z rzutu na pozycję 2D, przejście kamery
+z kryjówki do tunelu (dziś cięcie), inne bronie bez klipów rąk (§8). Rekordy trzyma host pod etykietą „P1”–„P4” (numer slotu w tej sesji, nie
+profil gracza) — imiona z profilu, gdy pojawią się w grze.

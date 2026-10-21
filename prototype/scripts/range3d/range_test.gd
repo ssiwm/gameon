@@ -9,14 +9,17 @@ extends Node
 ## 3. Amunicja ćwiczebna: przeładowanie nie zmienia zapasu, strzały nie zużywają broni; magazynek ubywa jak w grze.
 ## 4. Oparcie przy ławie (przyklęk) to `wc.braced` — jak oparcie o krawędź w grze.
 ## 5. Wyjście przywraca zwykłe strzelanie (range_sink, practice, player.fp).
+## 6. Etap 1: drzwi w kryjówce (range_door.gd) — [E] przy drzwiach wchodzi, postać zaparkowana (`in_range`), wynik przebiegu trafia
+##    na tablicę drużyny przez serwer; serwer odrzuca wynik niewiarygodny, z innej broni i od gracza spoza strzelnicy.
 ## Wynik: linie [RANGE-TEST] i kod wyjścia (0 = OK).
 
-const FpMode := preload("res://scripts/range3d/fp_mode.gd")
+const RangeDoor := preload("res://scripts/range3d/range_door.gd")
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 
 var main: Node2D
 var player: CharacterBody2D
+var door: Node2D
 var failed := 0
 var total := 0
 
@@ -34,12 +37,16 @@ func run(m: Node2D) -> void:
 	Profile.persist = false
 	await get_tree().create_timer(1.5).timeout
 	player = m.get_node("Players").get_node_or_null("1")
-	check("kryjówka i gracz", player != null)
-	if player == null:
+	door = get_tree().get_first_node_in_group("range_door") as Node2D
+	check("kryjówka, gracz i drzwi strzelnicy", player != null and door != null)
+	if player == null or door == null:
 		_finish()
 		return
+	door.board = []                                              # tablica z ustawień gracza (Settings.range_board) nie miesza się do testu
 	await _t_static()
+	await _t_door()
 	await _t_plates()
+	await _t_server()
 	await _t_climb()
 	await _t_practice()
 	await _t_brace()
@@ -77,6 +84,55 @@ func _t_static() -> void:
 		wide = maxf(wide, rad_to_deg((v as Vector3).angle_to(Vector3.FORWARD)))
 	check("SPREAD-12: %d śrucin, najdalsza %.1f° ≤ %.1f°" % [dirs.size(), wide, sg.cone_half_deg(0.0)], dirs.size() == sg.pellets and wide <= sg.cone_half_deg(0.0) + 0.01)
 
+## Wejście przez drzwi (jak [E]), bez podchodzenia.
+func _enter() -> Node:
+	return door.enter(player)
+
+## [E] przy drzwiach: wejście, parkowanie postaci, to samo naciśnięcie nie wychodzi od razu; [E] w tunelu wychodzi.
+func _t_door() -> void:
+	player.global_position = door.global_position + Vector2(0.0, -8.0)
+	player.velocity = Vector2.ZERO
+	await _frames(30)                                            # opada na podłogę przy drzwiach
+	check("przy drzwiach: podpowiedź [E] (local_in_range)", bool(door.local_in_range))
+	var pos0 := player.global_position
+	Input.action_press("interact")
+	await _frames(1)
+	Input.action_release("interact")
+	await _frames(3)
+	var fp: Node = player.fp
+	check("[E] przy drzwiach: strzelnica (fp.door, in_range)", fp != null and fp.door == door and player.in_range)
+	check("drzwi nie podpowiadają [E], gdy gracz jest w tunelu", not bool(door.local_in_range))
+	await _frames(20)
+	check("postać zaparkowana przy drzwiach (przesunięcie %.1f px)" % player.global_position.distance_to(pos0), player.global_position.distance_to(pos0) < 4.0 and fp != null and is_instance_valid(fp))
+	if fp != null and is_instance_valid(fp):
+		fp.leave()
+	await _frames(2)
+	check("wyjście: in_range zgaszone", not player.in_range and player.fp == null)
+
+## Serwer: tablica drużyny przyjmuje tylko wiarygodne wyniki gracza ze strzelnicy, jeden wiersz na gracza i broń.
+func _t_server() -> void:
+	var d := Weapons.def(Weapons.M83)
+	var t_min := 4.0 * d.cooldown
+	check("plausible: M-83 5 blach w %.2f s tak, w 0,05 s nie" % t_min, RangeDoor.plausible(t_min, 5, Weapons.M83) and not RangeDoor.plausible(0.05, 5, Weapons.M83))
+	check("plausible: mniej niż 5 strzałów z M-83 nie", not RangeDoor.plausible(5.0, 4, Weapons.M83))
+	check("plausible: strzelba (śrut) 3 strzały wystarczą", RangeDoor.plausible(3.0, 3, Weapons.SPREAD12) and not RangeDoor.plausible(3.0, 2, Weapons.SPREAD12))
+	var n0: int = (door.board as Array).size()
+	var best0: float = door.best()
+	var rej0: int = door.rejected
+	door._accept(1, 0.9, 5, Weapons.M83)                         # gracz poza strzelnicą
+	check("odrzucony: gracz nie stoi na strzelnicy", door.rejected == rej0 + 1 and (door.board as Array).size() == n0)
+	var fp: Node = _enter()
+	await _frames(3)
+	door._accept(1, 0.05, 5, Weapons.M83)
+	door._accept(1, 2.0, 5, Weapons.SPREAD12 if int(player.weapon) != Weapons.SPREAD12 else Weapons.M83)
+	check("odrzucone: za szybki przebieg i inna broń niż w ręku (%d)" % (door.rejected - rej0), door.rejected == rej0 + 3 and door.best() == best0)
+	door._accept(1, best0 + 5.0, 5, Weapons.M83)
+	var mine := (door.board as Array).filter(func(e: Dictionary) -> bool: return String(e["who"]) == "P1" and int(e["w"]) == Weapons.M83)
+	check("wolniejszy przebieg nie dubluje wiersza ani nie psuje rekordu (%d, %.2f s)" % [mine.size(), door.best()], mine.size() == 1 and door.best() == best0)
+	check("tablica w Settings (bez zapisu do pliku w headless)", (Settings.range_board as Array).size() == (door.board as Array).size())
+	fp.leave()
+	await _frames(2)
+
 ## Strzał przez kontroler broni w środek blachy `i` (bez podrzutu i rozrzutu z serii).
 func _shoot_at(fp: Node, i: int) -> void:
 	var wc = player.weapons
@@ -101,7 +157,7 @@ func _t_plates() -> void:
 	await get_tree().create_timer(1.0).timeout                  # dobycie broni
 	wc.mags[Weapons.M83] = 30
 	wc.jams.clear()
-	var fp: Node = FpMode.enter(player)
+	var fp: Node = _enter()
 	await _frames(2)
 	check("wejście: player.fp, range_sink i amunicja ćwiczebna", player.fp == fp and wc.range_sink == fp and wc.practice)
 	var mag0: int = wc.mag_of(Weapons.M83)
@@ -122,6 +178,11 @@ func _t_plates() -> void:
 			down += 1
 	check("blachy: %d/5 leży" % down, down == 5)
 	check("przebieg ukończony, czas %.2f s" % fp.sim.last_time, fp.sim.runs == 1 and fp.sim.last_time > 0.0 and fp.sim.best == fp.sim.last_time)
+	await _frames(2)
+	var top: Dictionary = (door.board as Array)[0] if not (door.board as Array).is_empty() else {}
+	check("tablica drużyny: %s (strzały przebiegu %d)" % [str(top), fp.sim.run_shots],
+		String(top.get("who", "")) == "P1" and int(top.get("w", -1)) == Weapons.M83 and is_equal_approx(float(top.get("t", -1.0)), fp.sim.last_time)
+		and bool(door.last.get("record", false)) and fp.sim.run_shots >= 5)
 	check("magazynek: %d → %d po %d strzałach (jak w grze)" % [mag0, wc.mag_of(Weapons.M83), fp.shots_fired], wc.mag_of(Weapons.M83) == mag0 - fp.shots_fired)
 	check("strzały nie zużywają broni (%.2f → %.2f)" % [cond0, wc.condition_of(Weapons.M83)], is_equal_approx(cond0, wc.condition_of(Weapons.M83)))
 	await get_tree().create_timer(RangeSim.RESET_T + 0.3).timeout
@@ -136,7 +197,7 @@ func _t_climb() -> void:
 	if not wc.climb_mode() and not Settings.realistic_handling:
 		info("obsługa CLASSIC — pomijam podrzut")
 		return
-	var fp: Node = FpMode.enter(player)
+	var fp: Node = _enter()
 	await _frames(2)
 	fp.yaw = 0.0
 	fp.pitch = 0.0
@@ -167,7 +228,7 @@ func _t_climb() -> void:
 
 func _t_practice() -> void:
 	var wc = player.weapons
-	var fp: Node = FpMode.enter(player)
+	var fp: Node = _enter()
 	await _frames(2)
 	wc.mags[Weapons.M83] = 3
 	wc.jams.clear()
@@ -183,7 +244,7 @@ func _t_practice() -> void:
 
 func _t_brace() -> void:
 	var wc = player.weapons
-	var fp: Node = FpMode.enter(player)
+	var fp: Node = _enter()
 	await _frames(2)
 	Input.action_press("crouch")
 	await get_tree().create_timer(0.6).timeout
@@ -196,10 +257,10 @@ func _t_brace() -> void:
 
 func _t_leave() -> void:
 	var wc = player.weapons
-	var fp: Node = FpMode.enter(player)
+	var fp: Node = _enter()
 	await _frames(2)
 	Input.action_press("interact")
 	await _frames(2)
 	Input.action_release("interact")
 	await _frames(3)
-	check("[E] wychodzi: zwykłe strzelanie wraca", player.fp == null and wc.range_sink == null and not wc.practice and not is_instance_valid(fp))
+	check("[E] wychodzi: zwykłe strzelanie wraca", player.fp == null and wc.range_sink == null and not wc.practice and not is_instance_valid(fp) and not player.in_range)

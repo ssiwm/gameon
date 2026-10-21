@@ -4,7 +4,8 @@ extends RefCounted
 ## ŚRODEK (wiersz podłogi 22), od lewej w kolejności „co robi drużyna po powrocie”: śluza (dwa punkty startu S) → ściana wyników (v) → warsztat
 ## (h: [E] panel zakupów i ulepszeń za złom) → świetlica (meble z hub_decor.gd) → zbrojownia (a, dwie gabloty g po cztery bronie: SPREAD-12, PELLET-8,
 ## LR-7, HKM-9, WRATH-4, SPECTER-1, FALCON-6, SINEW-6, a) → tablica z odprawą następnej misji (n). Nad tablicą, na GÓRZE (wiersz 14), radiostacja
-## z prognozą pogody (R, weather.gd); pod zbrojownią i warsztatem na DOLE (wiersz 30) maszynownia i magazyn ze skrytkami (H).
+## z prognozą pogody (R, weather.gd); pod zbrojownią i warsztatem na DOLE (wiersz 30) maszynownia i magazyn ze skrytkami (H), a za magazynem
+## drzwi strzelnicy FPP z tablicą rekordów (RANGE_DOOR).
 ## Poziomy łączą dwa szyby (SHAFTS: kraty „=” w podłogach i podesty co 2 kafle, prawy–lewy–prawy jak szyb serwisowy w 1.1); w dół zeskakuje się przez kratę (S+SPACE).
 ## Ekwipunek i amunicja przechodzą z poprzedniej misji i do następnej (main._restart_mission z carry); wyjście na misję po gotowości wszystkich ([Enter]).
 ## Każdy poziom ma jeden wiersz znaczników i jeden wiersz lamp — po zmianie uruchom `--maptest`.
@@ -30,6 +31,9 @@ const HUB_PROPS := [
 	["crate", 35, 30, []], ["crate", 36, 30, []], ["scrap_pile", 39, 30, []], ["mil_crate", 45, 30, []], ["barrel", 48, 30, []],
 	["d7", 66, 30, []], ["window", 68, 14, [3]],
 ]
+## Drzwi strzelnicy FPP (RANGE_FPS_PLAN.md, range_door.gd): [kolumna, wiersz podłogi] w tylnej ścianie magazynu na dole, tablica rekordów
+## drużyny na ścianie obok (view3d.gd). [E] przy drzwiach przenosi gracza do tunelu strzelnicy.
+const RANGE_DOOR := [54, 30]
 ## Radio: kolejne linie pokazuje HUD w pierwszych sekundach pobytu.
 const RADIO := ["...the transmitter is still humming. Whatever listens out there heard it too.", "Restock. Swap guns at the armory. Check the board for the next job."]
 const RACKS := true                       ## broń z „g" stoi w miejscu (ekspozycja)

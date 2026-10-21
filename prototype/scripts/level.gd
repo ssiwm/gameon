@@ -65,6 +65,7 @@ const BOARD := preload("res://scripts/board.gd")
 const RADIO_SET := preload("res://scripts/radio_set.gd")
 const RESULTS_WALL := preload("res://scripts/results_wall.gd")
 const LAUNCH_DOOR := preload("res://scripts/launch_door.gd")
+const RANGE_DOOR := preload("res://scripts/range3d/range_door.gd")
 const HUB_PROP := preload("res://scripts/hub_prop.gd")
 const WORKSHOP := preload("res://scripts/workshop.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
@@ -115,6 +116,7 @@ var _racks := false
 var launch_zone := Rect2()                ## strefa startu kryjówki w pikselach świata (LAUNCH_ZONE z danych mapy); pusta poza kryjówką
 ## HINT_ZONES z danych mapy: id podpowiedzi (hints.gd) → Rect2 w pikselach świata, gdzie ta podpowiedź ma sens (1.1: podejście do obozu).
 var hint_zones: Dictionary = {}
+var _range_door: Array = []               ## RANGE_DOOR z danych mapy: [kolumna, wiersz podłogi] drzwi strzelnicy FPP (range_door.gd); puste poza kryjówką
 var _hub_props: Array = []                ## HUB_PROPS z danych mapy: [rodzaj, kolumna, wiersz podłogi, parametry] (hub_prop.gd)
 var _shafts: Array = []                ## SHAFTS z danych mapy: [pierwsza, ostatnia] kolumna szybów między poziomami (bez mebli z hub_decor.gd)
 var _cab_slots := 0                   ## CABINET_SLOTS z danych mapy: > 0 = każde „g" to gablota na tyle broni (cabinet.gd), 0 = stojaki
@@ -218,6 +220,7 @@ func _load(id: String) -> void:
 	_cab_slots = int((m as GDScript).get_script_constant_map().get("CABINET_SLOTS", 0))
 	_shafts = ((m as GDScript).get_script_constant_map().get("SHAFTS", []) as Array).duplicate()
 	_hub_props = ((m as GDScript).get_script_constant_map().get("HUB_PROPS", []) as Array).duplicate()
+	_range_door = ((m as GDScript).get_script_constant_map().get("RANGE_DOOR", []) as Array).duplicate()
 	hint_zones.clear()
 	var hz: Dictionary = (m as GDScript).get_script_constant_map().get("HINT_ZONES", {})
 	for hid in hz:
@@ -684,6 +687,11 @@ func _spawn_entities() -> void:
 		pr2.args = hp[3]
 		pr2.position = Vector2(float(hp[1]) * TILE + TILE * 0.5, float(hp[2]) * TILE)
 		add_child(pr2)
+	if _range_door.size() == 2:
+		var rd: Node2D = RANGE_DOOR.new()
+		rd.name = "RangeDoor"
+		rd.position = Vector2(float(_range_door[0]) * TILE + TILE * 0.5, float(_range_door[1]) * TILE)
+		add_child(rd)
 	if launch_zone.size != Vector2.ZERO:
 		var ld: Node2D = LAUNCH_DOOR.new()
 		ld.name = "LaunchDoor"

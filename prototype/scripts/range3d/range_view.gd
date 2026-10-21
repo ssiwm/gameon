@@ -495,8 +495,9 @@ func has_reload_clip(k: String) -> bool:
 func _on_plate_down(_i: int) -> void:
 	pass
 
+## Koniec przebiegu: czas na tablicy w tunelu; rekord osobisty z tej wizyty (wynik drużyny rozstrzyga serwer — toast z range_door.gd).
 func _on_finished(t: float, best: float, record: bool) -> void:
-	_msg = tr("%.2f s — new record!") % t if record else tr("%.2f s  (record %.2f s)") % [t, best]
+	_msg = tr("%.2f s — best this visit") % t if record else tr("%.2f s  (this visit %.2f s)") % [t, best]
 	_msg_t = 5.0
 	Audio.play("ui_click", Audio.BUS_UI, -4.0, 0.8)
 
@@ -509,7 +510,14 @@ func _update_board() -> void:
 	elif _msg_t > 0.0:
 		lines.append(_msg)
 	else:
-		lines.append(tr("last %s   best %s") % ["%.2f s" % sim.last_time if sim.last_time >= 0.0 else "—", "%.2f s" % sim.best if sim.best >= 0.0 else "—"])
+		var door = fp.door if fp.door != null and is_instance_valid(fp.door) else null
+		var sb := ""                                              # rekord drużyny z tablicy serwera (range_door.gd), bez drzwi — sesji
+		if door != null and not (door.board as Array).is_empty():
+			var e: Dictionary = door.board[0]
+			sb = "%.2f s %s" % [float(e["t"]), String(e["who"])]
+		elif door == null and sim.best >= 0.0:
+			sb = "%.2f s" % sim.best
+		lines.append(tr("last %s   squad %s") % ["%.2f s" % sim.last_time if sim.last_time >= 0.0 else "—", sb if sb != "" else "—"])
 	lines.append(tr("shots %d   hits %d") % [sim.shots, sim.hits])
 	_board.text = "\n".join(lines)
 

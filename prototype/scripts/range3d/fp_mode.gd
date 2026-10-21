@@ -1,6 +1,7 @@
 extends Node
-## Strzelnica FPP — tryb z oczu gracza (RANGE_FPS_PLAN.md, etap 0, flaga `--range3d`). Węzeł siedzi w graczu (`player.fp`): postać 2D stoi
-## w kryjówce, a gracz patrzy z oczu w tunelu strzelnicy (range_view.gd) i strzela tym samym kontrolerem broni co na misji —
+## Strzelnica FPP — tryb z oczu gracza (RANGE_FPS_PLAN.md; wejście [E] przy drzwiach w kryjówce, range_door.gd, dev `--range3d`). Węzeł siedzi
+## w graczu (`player.fp`): postać 2D stoi zaparkowana przy drzwiach (`player.in_range`), a gracz patrzy z oczu w tunelu strzelnicy
+## (range_view.gd) i strzela tym samym kontrolerem broni co na misji —
 ## `weapon_controller.range_sink` oddaje strzał tutaj (promień w range_sim.gd zamiast pocisku 2D), `practice` daje amunicję ćwiczebną.
 ##
 ## Sterowanie: mysz (albo prawy drążek) rozgląda się, A/D przechodzą między stanowiskami, przytrzymany [Shift] to przyklęk z bronią na blacie
@@ -35,7 +36,10 @@ var x := 0.0                          ## m — bieżące położenie oczu w popr
 var shots_fired := 0
 var dev_ads := false                  ## dev `--rangeads`: przyrządy bez PPM (zrzuty)
 var dev_ads_t := -1.0                 ## dev `--rangeads=T`: stały postęp przyrządów 0..1 (zrzuty przejścia), < 0 — wyłączone
-var shot_climb := 0.0                 ## ° — podrzut z początku kroku: strzał leci tam, gdzie celownik tej klatki (jak player._local_brain w grze 2D),
+var door: Node = null                 ## range_door.gd, przez które gracz wszedł: wynik przebiegu idzie przez nie do serwera; zniknięcie drzwi
+                                      ## (inna mapa) kończy strzelnicę
+var _enter_frame := -1                ## krok fizyki wejścia (to samo naciśnięcie [E] przy drzwiach nie może od razu wyjść)
+var shot_climb := 0.0               ## ° — podrzut z początku kroku: strzał leci tam, gdzie celownik tej klatki (jak player._local_brain w grze 2D),
                                       ## a nie z podrzutem doliczonym już za ten sam strzał
 
 ## Gracz `p` wchodzi na strzelnicę (lokalny człowiek). Zwraca węzeł trybu.
@@ -50,10 +54,13 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS                    # pauza zwalnia mysz, a powrót znowu ją łapie
 	sim = RangeSim.new()
 	x = float(RangeSim.STATIONS[station])
+	_enter_frame = Engine.get_physics_frames()
 	player.fp = self
+	player.in_range = true                                    # replikowane: postać stoi zaparkowana, inni widzą „RANGE” na plakietce
 	var wc = player.weapons
 	wc.range_sink = self
 	wc.practice = true
+	sim.finished.connect(_on_finished)
 	if DisplayServer.get_name() != "headless":
 		view = RangeView.new()
 		view.name = "RangeView"
@@ -70,17 +77,29 @@ func leave() -> void:
 	wc.climb = 0.0
 	if player.fp == self:
 		player.fp = null
+		player.in_range = false
 	if view != null and is_instance_valid(view):
 		view.release()
+	view = null
 	_capture(false)
 	left_range.emit()
 	queue_free()
 
+## Tryb znika bez `leave` (gracz usunięty przy restarcie mapy, rozłączenie): broń i obraz kryjówki i tak wracają.
 func _exit_tree() -> void:
 	if player != null and is_instance_valid(player) and player.fp == self:
 		player.fp = null
+		player.in_range = false
 		player.weapons.range_sink = null
 		player.weapons.practice = false
+	if view != null and is_instance_valid(view):
+		view.release()
+		view = null
+
+## Przebieg ukończony: wynik do serwera przez drzwi (tablica drużyny).
+func _on_finished(t: float, _best: float, _record: bool) -> void:
+	if door != null and is_instance_valid(door):
+		door.submit(t, sim.run_shots, sim.run_w)
 
 func _capture(on: bool) -> void:
 	if DisplayServer.get_name() == "headless":
@@ -113,6 +132,9 @@ func look(dyaw: float, dpitch: float) -> void:
 
 ## Wołane przez gracza co krok fizyki zamiast zwykłego sterowania (player._range_brain).
 func tick(delta: float) -> void:
+	if door != null and not is_instance_valid(door):
+		leave.call_deferred()                                  # drzwi zniknęły z mapą (wyjście z kryjówki, restart)
+		return
 	sim.tick(delta)
 	shot_climb = float(player.weapons.climb)
 	if _blocked():
@@ -131,7 +153,7 @@ func tick(delta: float) -> void:
 	ads_t = move_toward(ads_t, 1.0 if ads else 0.0, ADS_SPEED * delta)
 	if dev_ads_t >= 0.0:
 		ads_t = dev_ads_t
-	if Input.is_action_just_pressed("interact"):
+	if Input.is_action_just_pressed("interact") and Engine.get_physics_frames() != _enter_frame:   # [E] wejścia przy drzwiach nie wychodzi od razu
 		leave.call_deferred()
 
 ## Oko w świecie strzelnicy (m).

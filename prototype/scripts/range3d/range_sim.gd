@@ -40,6 +40,9 @@ var runs := 0
 var shots := 0                        ## strzały (każda śrucina osobno nie — jeden strzał broni)
 var hits := 0                         ## trafione blachy
 var clock := 0.0                      ## s — czas symulacji (tick); stoper liczy z niego, nie z zegara systemu
+var run_shots := 0                    ## strzały bieżącego / ostatniego przebiegu (od tego, który przewrócił pierwszą blachę)
+var run_w := -1                       ## broń, z której padła pierwsza blacha przebiegu (wynik na tablicy drużyny, range_door.gd)
+var _shot_w := -1
 
 var _t0 := 0.0
 var _left := 0
@@ -69,6 +72,9 @@ func tick(delta: float) -> void:
 ## Zwraca listę trafień {pos, normal, kind, index}.
 func shoot(origin: Vector3, basis: Basis, d: WeaponDef, seed: int, extra: float) -> Array:
 	shots += 1
+	_shot_w = int(d.id)
+	if running:
+		run_shots += 1                                       # strzał, który zaczyna przebieg, liczy _knock
 	var out: Array = []
 	for dir in pellet_dirs3(d, basis, seed, extra):
 		var h := trace(origin, dir)
@@ -156,6 +162,8 @@ func _knock(i: int) -> void:
 		running = true
 		_t0 = clock
 		_left = plates.size()
+		run_shots = 1
+		run_w = _shot_w
 	_left -= 1
 	_since_hit = 0.0
 	if _left > 0:
