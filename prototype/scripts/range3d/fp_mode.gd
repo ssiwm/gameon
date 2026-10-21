@@ -123,8 +123,15 @@ func _process(_delta: float) -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		var rel := (event as InputEventMouseMotion).relative
-		look(-rel.x * SENS, -rel.y * SENS)
+		mouse_look((event as InputEventMouseMotion).relative)
+
+## Ruch myszy o `rel` pikseli: czułość i odwrócona oś Y z ustawień (menu pauzy → FIRST PERSON).
+func mouse_look(rel: Vector2) -> void:
+	look(-rel.x * SENS * Settings.fp_sens(), -rel.y * SENS * Settings.fp_sens() * _y_sign())
+
+## Odwrócona oś Y z ustawień (Settings.fp_invert_y): ruch w górę pochyla w dół.
+func _y_sign() -> float:
+	return -1.0 if Settings.fp_invert_y else 1.0
 
 func look(dyaw: float, dpitch: float) -> void:
 	yaw = clampf(yaw + dyaw, -YAW_MAX, YAW_MAX)
@@ -141,7 +148,7 @@ func tick(delta: float) -> void:
 		return
 	var stick := Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
 	if stick.length() > 0.0:
-		look(-stick.x * PAD_SENS * delta, -stick.y * PAD_SENS * delta)
+		look(-stick.x * PAD_SENS * Settings.fp_sens() * delta, -stick.y * PAD_SENS * Settings.fp_sens() * _y_sign() * delta)
 	if Input.is_action_just_pressed("move_left"):
 		station = maxi(0, station - 1)
 	if Input.is_action_just_pressed("move_right"):

@@ -231,6 +231,11 @@ func _build_settings(scroll: ScrollContainer) -> void:
 				Settings.toggle_realistic_handling())
 	_seg(left, tr("Weapon reliability"), Settings.RELIABILITY_NAMES, func() -> int: return Settings.reliability_idx, Settings.set_reliability)
 	left.add_child(_gap())
+	left.add_child(W.section(tr("FIRST PERSON (RANGE)")))
+	_drop(left, tr("Field of view"), func() -> String: return "%d°" % int(Settings.fp_fov()), Settings.cycle_fp_fov)
+	_drop(left, tr("Look sensitivity"), func() -> String: return "×%.2f" % Settings.fp_sens(), Settings.cycle_fp_sens)
+	_toggle(left, tr("Invert look Y"), func() -> bool: return Settings.fp_invert_y, Settings.toggle_fp_invert_y)
+	left.add_child(_gap())
 	left.add_child(W.section(tr("SYSTEM")))
 	_seg(left, tr("Language"), Settings.LOCALE_NAMES, func() -> int: return Settings.locale_idx,
 		func(i: int) -> void: _to_idx(func() -> int: return Settings.locale_idx, Settings.cycle_locale, i, 2))

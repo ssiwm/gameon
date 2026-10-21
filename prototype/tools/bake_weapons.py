@@ -189,6 +189,23 @@ def _build_core_weapons() -> None:
         tap = d.mix([(thump(.05, vary(r, 170, .1), 90, .01, .02), .7), (tick(r, 1200, 1.0, 10, .003), .3)], ms(80))
         finalize("mech_regrip_%d" % (i + 1), d.reverb(d.mix([(grab, 1.0), (tap, 1.0, .01)], ms(140)), ir("close"), wet=.12), peak=-12.0)
 
+    # Stalowa blacha strzelnicy (popper ⌀ 30 cm, strzelnica FPP): trzask uderzenia kuli i dzwonienie płyty — mody drgań płaskiej tarczy są
+    # nieharmoniczne (≈ 1 : 2,3 : 3,8 : 5,6), najniższy ginie najdłużej; każdy wariant to trochę inna blacha (wysokość ±6%, czasy)
+    for i in range(4):
+        r = Rng(0x31D0 + i * 5113)
+        f0 = vary(r, 640, .06)
+        hit = d.mix([(tick(r, vary(r, 4200, .1), 1.2, 10, .0015), 1.0), (thump(.04, vary(r, 900, .1), 400, .006, .01), .5)], ms(60))
+        steel = ring(r, [f0, f0 * 2.29, f0 * 3.83, f0 * 5.65, f0 * 8.1], [vary(r, .95, .1), .7, .45, .3, .18],
+                     amps=[1.0, .75, .55, .4, .25], dur=1.3)
+        x = d.mix([(hit, 1.0, 0.0), (steel, .8, .001)], ms(1300))
+        finalize("plate_ring_%d" % (i + 1), d.reverb(x, ir("close"), wet=.18), lufs=-17.0, fade_out_ms=200)
+    # …i stuk, gdy przewrócona blacha uderza w ogranicznik zawiasu (ok. 0,2 s po trafieniu): głuchy, krótki, bez dzwonienia
+    for i in range(2):
+        r = Rng(0x31E0 + i * 3209)
+        x = d.mix([(thump(.12, vary(r, 210, .08), 95, .02, .035), 1.0), (tick(r, vary(r, 1500, .1), 1.0, 14, .004), .6),
+                   (ring(r, [vary(r, 420, .05), vary(r, 1130, .05)], [.08, .05], dur=.2), .25, .002)], ms(260))
+        finalize("plate_fall_%d" % (i + 1), d.reverb(x, ir("close"), wet=.14), peak=-6.0)
+
     # Suchy strzał (pusty magazyn) — sam bijak
     r = Rng(0x41)
     x = d.mix([(tick(r, 2800, 1.6, 14, .004), 1.0),

@@ -1,7 +1,7 @@
 # Plan: strzelnica FPS 3D w kryjówce
 
-Status: **etap 0 (szpic `--range3d`) zrobiony — 1.7.335**; wyniki i decyzje w §7. Ręce FPP (0b) — §8. **Etap 1 w toku (1.7.338, `feat/range-mvp`):**
-drzwi, parkowanie, wynik na serwerze i tablica drużyny zrobione — §9. Zastępuje strzelnicę boczną z PR #413
+Status: **etap 0 (szpic `--range3d`) zrobiony — 1.7.335**; wyniki i decyzje w §7. Ręce FPP (0b) — §8. **Etap 1 zrobiony (1.7.338–1.7.339):** drzwi, parkowanie,
+wynik na serwerze, tablica drużyny, opcje widoku z oczu, akcje „range”, dźwięk blach 3D i przejście kamery — §9. Zastępuje strzelnicę boczną z PR #413
 (wstrzymany, nie scalać). Przyjęte decyzje z §6: #413 wstrzymany, stanowiska na linii ognia, amunicja ćwiczebna, każdy gracz osobno.
 
 ## 0. Dlaczego obecna forma nie ma sensu
@@ -148,6 +148,14 @@ akcji kryjówki i karty tablicy i radia (`hud._in_range`).
 | Tablica drużyny | `range_door.board` — 5 najlepszych, jeden wiersz na gracza i broń; trzyma ją host (`Settings.range_board`, zapis w ustawieniach, nie w headless), rozsyła `_board_rpc` z toastem wyniku; dołączający prosi `_request_rpc`. W kryjówce czarna płyta w ramie obok drzwi (czcionka o stałej szerokości), w tunelu wiersz „squad”. Dev `--shotrangeboard` | zrobione |
 | Test | `--rangetest` 33/33: [E] przy drzwiach, parkowanie, tablica po przebiegu, `plausible`, odrzucenia (spoza strzelnicy, za szybko, inna broń), brak dubli wiersza | zrobione |
 
-Zostało z etapu 1: opcje FOV i czułości myszy, akcje w kontekście `range` w `actions.gd`, dźwięk blach z rzutu na pozycję 2D, przejście kamery
-z kryjówki do tunelu (dziś cięcie), inne bronie bez klipów rąk (§8). Rekordy trzyma host pod etykietą „P1”–„P4” (numer slotu w tej sesji, nie
+Część druga (1.7.339, gałąź `feat/range-mvp-2`):
+
+| Element | Jak | Stan |
+|---|---|---|
+| Opcje widoku z oczu | Menu pauzy → FIRST PERSON (RANGE): kąt widzenia 60–100° (domyślnie 74°), czułość ×0,4–×2,5 (mysz i drążek), odwrócona oś Y (`Settings.fp_fov` / `fp_sens` / `fp_invert_y`, sekcja „fp” w ustawieniach); ręce i broń mają stały kąt kamery rąk (`VM_FOV`), łuski i dym przeliczane z bieżącego kąta tunelu | zrobione |
+| Akcje w kontekście „range” | `Actions.RANGE_SHEET` (stanowisko, oparcie, przyrządy, strzał, przeładowanie, tryb ognia, typ naboju, broń, wyjście) → `range_sheet()`, `range_hud_line()` (pasek F1 na strzelnicy), `range_line()` (podpowiedź u góry, odświeżana po przypisaniu klawisza); `aim_sights` do przypisania w CONTROLS, na padzie lewy spust (krzyk na strzelnicy nie działa) | zrobione |
+| Dźwięk blach | Zamiast rzutu na pozycję 2D — głosy 3D w świecie tunelu (`range_view._play3d`, słuchacz = kamera tunelu, `audio_listener_enable_3d`): `plate_ring` (4 warianty: trzask + nieharmoniczne dzwonienie stalowej tarczy, `bake_weapons.py`), `plate_fall` (stuk o ogranicznik zawiasu 0,16 s po trafieniu), trafienia w ściany i kulochwyt `impact_hard`; strzał i mechanika broni zostają przy uchu | zrobione |
+| Przejście kamery | Wejście: kamera kryjówki najeżdża na drzwi na wysokości oczu (`view3d._rp`, 0,6 s, model gracza znika), ostatnie 0,25 s to czerń, z niej wyłania się tunel. Wyjście: tunel gaśnie do czerni, kryjówka wraca przy drzwiach i kamera odjeżdża (`range_view` fazy IN / TUNNEL / OUT / BACK); karty HUD kryjówki wracają dopiero po zgaśnięciu tunelu. Dev `--rangeleave=S` | zrobione |
+
+Poza etapem 1: inne bronie bez klipów rąk (§8). Rekordy trzyma host pod etykietą „P1”–„P4” (numer slotu w tej sesji, nie
 profil gracza) — imiona z profilu, gdy pojawią się w grze.

@@ -98,6 +98,11 @@ var _fp := 0.0                           ## 0..1: przejście kamery do widoku z 
 var _fp_hidden: Node3D                   ## model gracza schowany na czas oględzin (do przywrócenia)
 var _fp_last: Node2D                     ## ostatni gracz w oględzinach (kamera wraca od jego oczu)
 var _fp_player: Node2D                   ## lokalny gracz w oględzinach (jego model jest wtedy schowany)
+var _rp := 0.0                           ## 0..1: najazd kamery na drzwi strzelnicy (wejście do tunelu FPP i wyjście z niego)
+var _rp_door: Node2D                     ## drzwi strzelnicy, na które najeżdża kamera (range_door.gd)
+var _rp_player: Node2D                   ## lokalny gracz na strzelnicy (jego model znika, gdy kamera przez niego przechodzi)
+const RP_TIME := 0.6                     ## s — najazd na drzwi (range_view.IN_T kończy go czernią)
+const RP_Z := 1.1                        ## m — oko przed płaszczyzną gry: drzwi w tylnej ścianie wypełniają kadr
 var _fp_item: Node                       ## broń na stojaku oglądana teraz albo przed chwilą (obraca się i ma własne światła)
 var _fp_lights: Array = []               ## światło kluczowe i kontra oględzin (SpotLight3D)
 var _rack_probe: ReflectionProbe         ## sonda odbić przy stojakach kryjówki
@@ -340,6 +345,8 @@ func _process(delta: float) -> void:
 	var hide_me: Node3D = null
 	if _fp > 0.35 and _fp_last != null and is_instance_valid(_fp_last) and _rigs.has(_fp_last):
 		hide_me = _rigs[_fp_last].get("actor") as Node3D
+	elif _rp > 0.35 and _rp_player != null and is_instance_valid(_rp_player) and _rigs.has(_rp_player):
+		hide_me = _rigs[_rp_player].get("actor") as Node3D          # najazd na drzwi strzelnicy: kamera przechodzi przez miejsce postaci
 	if _fp_hidden != null and is_instance_valid(_fp_hidden) and _fp_hidden != hide_me:
 		_fp_hidden.visible = true
 	_fp_hidden = hide_me
@@ -400,9 +407,30 @@ func _sync_camera() -> void:
 		dist = lerpf(dist, FP_Z + 0.5, fe)
 		fsize = 2.0 * near * tan(deg_to_rad(lerpf(FOV, FP_FOV, fe) * 0.5))
 		foff *= 1.0 - fe
+	# strzelnica FPP (range_door.gd, range_view.gd): lokalny gracz wchodzi do tunelu — kamera najeżdża na drzwi na wysokości oczu, a obraz
+	# tunelu wyłania się z czerni; przy wyjściu odjeżdża od drzwi z powrotem do kadru gry
+	var in_range := false
+	for p in _rigs.keys():
+		if is_instance_valid(p) and p.get("is_bot") == false and (p as Node).is_multiplayer_authority() and p.get("fp") != null:
+			in_range = true
+			_rp_player = p
+			var best := INF
+			for dn in get_tree().get_nodes_in_group("range_door"):
+				var dd := (dn as Node2D).global_position.distance_squared_to((p as Node2D).global_position)
+				if dd < best:
+					best = dd
+					_rp_door = dn
+	_rp = move_toward(_rp, 1.0 if in_range else 0.0, get_process_delta_time() / RP_TIME)
+	var re := smoothstep(0.0, 1.0, _rp)
+	if re > 0.0 and _rp_door != null and is_instance_valid(_rp_door):
+		xf.origin = xf.origin.lerp(Level3D.px_to_m(_rp_door.global_position) + Vector3(0.0, FP_EYE_M, RP_Z), re)
+		dist = lerpf(dist, RP_Z + 1.8, re)
+		fsize = 2.0 * near * tan(deg_to_rad(lerpf(FOV, FP_FOV, re) * 0.5))
+		foff *= 1.0 - re
+	var hide_2d := maxf(fe, re)
 	for ci in [_level, _players]:                              # etykiety i paski 2D nad postaciami nie pasują do widoku z oczu — gasną
-		if ci is CanvasItem and absf((ci as CanvasItem).modulate.a - (1.0 - fe)) > 0.001:
-			(ci as CanvasItem).modulate.a = 1.0 - fe
+		if ci is CanvasItem and absf((ci as CanvasItem).modulate.a - (1.0 - hide_2d)) > 0.001:
+			(ci as CanvasItem).modulate.a = 1.0 - hide_2d
 	_cam_a.set_frustum(fsize, foff, near, 160.0)
 	_cam_b.set_frustum(fsize, foff, near, 160.0)
 	_cam_a.global_transform = xf
