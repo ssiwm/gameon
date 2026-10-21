@@ -52,11 +52,14 @@ PALM_R = 0.019                         # m — pół grubości dłoni w rękawic
 # zgięcie nadgarstka (°, < 0 — lekki wyprost), `dev` — dopuszczalne odchylenie nadgarstka (°; przy podparciu łoża łokciowe jest
 # naturalne), `screen` — kąt przedramienia w kadrze od pionu (lewe wchodzi ukośnie od lewego dołu, jak w viewmodelach FPS). `mcp` (zamiast `at` / `push` / `off`) — punkt kostki środkowego palca: dłoń na chwycie pistoletowym
 # ustawiana linią kostek na przedniej krawędzi chwytu, nasada dłoni obejmuje go od tyłu.
+# `thumb_side` — koniuszek kciuka po drugiej stronie broni (m od osi; aim_thumb: kciuk obejmuje chwyt i przylega do niego),
+# `thumb_front` — granica w przód dla koniuszka kciuka (m wzdłuż lufy; dalej zahaczałby się o przód chwytu).
 GRIPS = {
     "m83": {
         "yaw": 35.0, "butt_dz": 0.02, "clav": (6.0, 12.0), "sink": (0.06, 0.07), "trigger": (0.068, 0.0, 0.086),
-        "right": {"at": "grip", "mcp": (0.014, -0.026, 0.056), "push": (-0.022, -0.004, 0.008), "up": (0.34, 0.0, 0.94),
-                  "back": (-0.25, -0.97, 0.0), "off": 0.022, "roll": 30, "tilt": 15},
+        "right": {"at": "grip", "mcp": (0.022, -0.026, 0.05), "push": (-0.022, -0.004, 0.008), "up": (0.34, 0.0, 0.94),
+                  "back": (-0.25, -0.97, 0.0), "off": 0.022, "roll": 30, "tilt": 15,
+                  "thumb_side": 0.024, "thumb_front": 0.03},
         "left": {"at": "hold", "push": (0.0, 0.042, -0.03), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.6, -0.8), "off": 0.012,
                  "roll": 60, "tilt": 20, "flex": -15.0, "dev": 22.0, "screen": 60.0},
     },
@@ -410,6 +413,57 @@ def aim_index(rig, side, bvh, back, target, across):
     return dist
 
 
+def aim_thumb(rig, side, bvh, G, c):
+    """Kciuk trzymający broń: nasada (Thumb1 — kość śródręcza) obraca się w dwóch stopniach swobody (przeciwstawienie wokół linii
+    kostek — kciuk przechodzi na drugą stronę chwytu — i odwiedzenie wokół grzbietu), dalsze człony się zginają. Przegląd siatki liczony
+    analitycznie; wybór, w którym dalsze człony przylegają do broni, koniuszek leży po drugiej stronie chwytu (`thumb_side`, m od osi
+    broni) i nie wysuwa się przed `thumb_front` (zahaczałby o przód chwytu), bez wchodzenia członów w broń. Owijanie jak palce (jedna oś
+    zgięcia) chowało kciuk w chwycie, a punkt docelowy na ściance był nieosiągalny bez przejścia przez chwyt."""
+    names = [side + "HandThumb" + str(i) for i in (1, 2, 3)]
+    f, a, back, _ = hand_frame(rig, side)
+    gr = G.to_3x3().normalized()
+    fwd, across, o = (gr @ Vector((1.0, 0.0, 0.0))).normalized(), (gr @ Vector((0.0, 1.0, 0.0))).normalized(), G.to_translation()
+    front, want_y = c.get("thumb_front", 1.0), c.get("thumb_side", 0.02)
+    K = P(rig, names[0])
+    L = [(T(rig, n) - P(rig, n)).length for n in names]
+    d0 = [(T(rig, n) - P(rig, n)).normalized() for n in names]
+    ax0 = back.cross(d0[1]).normalized()
+    best = None
+    for al in range(-64, 65, 8):
+        Ra = Matrix.Rotation(math.radians(al), 3, a)
+        for be in range(-48, 49, 8):
+            R = Ra @ Matrix.Rotation(math.radians(be), 3, back)
+            ds = [R @ d for d in d0]
+            ax = (R @ ax0).normalized()
+            p1 = K + ds[0] * L[0]
+            for a2 in range(0, 81, 8):
+                d2 = Matrix.Rotation(math.radians(a2), 3, ax) @ ds[1]
+                p2 = p1 + d2 * L[1]
+                for a3 in range(0, 81, 10):
+                    d3 = Matrix.Rotation(math.radians(a2 + a3), 3, ax) @ ds[2]
+                    p3 = p2 + d3 * L[2]
+                    ty = (p3 - o).dot(across)               # koniuszek po drugiej stronie, ale przy broni (nie odstaje w bok)
+                    pre = 1.5 * (max(0.0, want_y - ty) + max(0.0, ty - want_y - 0.012)) + 1.0 * max(0.0, (p3 - o).dot(fwd) - front) \
+                        + 0.00002 * (abs(al) + abs(be) + a2 + a3)
+                    if best is not None and pre >= best[0]:
+                        continue
+                    g = _capsule_gaps([(K, p1, ds[0]), (p1, p2, d2), (p2, p3, d3)], THUMB_R, bvh)
+                    cost = pre + 30.0 * max(0.0, -min(g) - 0.002) + max(0.0, g[1] - 0.002) + 2.0 * max(0.0, g[2] - 0.002)
+                    if best is None or cost < best[0]:
+                        best = (cost, al, be, a2, a3, ax, (p3 - o).dot(across), g)
+    _, al, be, a2, a3, ax, tip_y, g = best
+    rotate_world(rig, PRE + names[0], back, math.radians(be))
+    update()
+    rotate_world(rig, PRE + names[0], a, math.radians(al))
+    update()
+    rotate_world(rig, PRE + names[1], ax, math.radians(a2))
+    update()
+    rotate_world(rig, PRE + names[2], ax, math.radians(a3))
+    update()
+    print("THUMB %s opp %d abd %d curl %d/%d tip side %.1f mm gaps %s mm" % (side, al, be, a2, a3, tip_y * 1000.0,
+                                                                            [round(x * 1000, 1) for x in g]))
+
+
 def wrap_finger(rig, side, finger, bvh, back):
     """Palec owinięty na broni: przegląd siatki (rozchylenie, zgięcie nasady, dalszych członów 1 : 0,7) — jak największe zgięcie
     bez wchodzenia w broń, z opuszką przy powierzchni. Zastępuje zginanie do pierwszego kontaktu, które stawało od razu, gdy palec
@@ -715,6 +769,8 @@ def build(outfit, keys):
             for fg in FINGERS + ("Thumb",):
                 if side == "Right" and fg == "Index" and "trigger" in conf:
                     aim_index(rig, side, bvh, back, G @ Vector(conf["trigger"]), (G.to_3x3() @ Vector((0.0, 1.0, 0.0))).normalized())
+                elif fg == "Thumb" and "thumb_side" in c:
+                    aim_thumb(rig, side, bvh, G, c)
                 else:
                     wrap_finger(rig, side, fg, bvh, back)
         # klip pozy i punkt odniesienia broni na kości prawej dłoni
@@ -744,13 +800,19 @@ def build(outfit, keys):
         render(os.path.join(SHOTS, "grip_%s_wide.png" % key), look(body_c + Vector((0.9, -1.4, 0.35)), body_c + Vector((0.35, 0.0, -0.1))), 30.0)
         render(os.path.join(SHOTS, "grip_%s_top.png" % key), look(body_c + Vector((0.35, -0.05, 1.6)), body_c + Vector((0.35, 0.0, -0.1))), 30.0)
         if QUICK:                                                   # zbliżenia prawej dłoni na chwycie (strojenie)
+            sl = bpy.data.objects.get("sleeves")
+            if sl is not None:
+                sl.hide_render = True
             gp = G @ Vector((0.03, 0.0, 0.07))
             gx = G.to_3x3().normalized()
-            for nm, off in (("rr", (0.0, -0.45, 0.0)), ("rl", (0.0, 0.45, 0.0)), ("rb", (0.05, -0.15, -0.4)), ("rf", (0.45, -0.12, 0.0))):
+            for nm, off in (("rr", (0.0, -0.45, 0.0)), ("rl", (0.0, 0.45, 0.0)), ("rb", (0.05, -0.15, -0.4)), ("rf", (0.45, -0.12, 0.0)),
+                            ("rt", (-0.05, 0.3, 0.3)), ("rk", (-0.35, 0.25, 0.1))):
                 render(os.path.join(SHOTS, "grip_%s_%s.png" % (key, nm)), look(gp + gx @ Vector(off), gp), 50.0)
             hp = G @ Vector(info["hold"])
             for nm, off in (("lt", (0.0, 0.05, 0.4)), ("ll", (0.0, 0.4, -0.05)), ("lb", (0.0, 0.1, -0.4)), ("lr", (0.0, -0.4, 0.0))):
                 render(os.path.join(SHOTS, "grip_%s_%s.png" % (key, nm)), look(hp + gx @ Vector(off), hp), 50.0)
+            if sl is not None:
+                sl.hide_render = False
         if key in RELOADS and not QUICK:
             reload_meta[key] = author_reloads(rig, key, G, info, conf, meshes, root)
             rig.animation_data.action = act
