@@ -319,6 +319,62 @@
   "sfx/weapons/maczeta_2",
   0
  ],
+ "mech_bolt_back_1": [
+  "sfx/weapons/mech_bolt_back_1",
+  0
+ ],
+ "mech_bolt_back_2": [
+  "sfx/weapons/mech_bolt_back_2",
+  0
+ ],
+ "mech_bolt_fwd_1": [
+  "sfx/weapons/mech_bolt_fwd_1",
+  0
+ ],
+ "mech_bolt_fwd_2": [
+  "sfx/weapons/mech_bolt_fwd_2",
+  0
+ ],
+ "mech_bolt_fwd_3": [
+  "sfx/weapons/mech_bolt_fwd_3",
+  0
+ ],
+ "mech_mag_in_1": [
+  "sfx/weapons/mech_mag_in_1",
+  0
+ ],
+ "mech_mag_in_2": [
+  "sfx/weapons/mech_mag_in_2",
+  0
+ ],
+ "mech_mag_in_3": [
+  "sfx/weapons/mech_mag_in_3",
+  0
+ ],
+ "mech_mag_out_1": [
+  "sfx/weapons/mech_mag_out_1",
+  0
+ ],
+ "mech_mag_out_2": [
+  "sfx/weapons/mech_mag_out_2",
+  0
+ ],
+ "mech_mag_release_1": [
+  "sfx/weapons/mech_mag_release_1",
+  0
+ ],
+ "mech_mag_release_2": [
+  "sfx/weapons/mech_mag_release_2",
+  0
+ ],
+ "mech_regrip_1": [
+  "sfx/weapons/mech_regrip_1",
+  0
+ ],
+ "mech_regrip_2": [
+  "sfx/weapons/mech_regrip_2",
+  0
+ ],
  "medkit_pickup": [
   "sfx/weapons/medkit_pickup",
   0

@@ -48,9 +48,11 @@ static func muzzle(base_muzzle: Vector3, ids: Array) -> Vector3:
 	return barrel_muzzle(base_muzzle, ids) + Vector3(add, 0.0, 0.0)
 
 ## Składa model broni `key` z częściami `ids` (Parts.decode). `base_muzzle` = wylot fabryczny (Char3D.gun_info). `notches` — nacięcia na kolbie
-## (historia broni, GUNSMITH_PLAN §7.4), z czego `deep` głębokich (bossowie). Zwraca nowy węzeł (do dodania przez wołającego).
-static func build(key: String, ids: Array, base_muzzle: Vector3, notches := 0, deep := 0) -> Node3D:
-	var root := (load(DIR + "gun_%s.glb" % key) as PackedScene).instantiate() as Node3D
+## (historia broni, GUNSMITH_PLAN §7.4), z czego `deep` głębokich (bossowie). `src_dir` — katalog modelu bazowego (strzelnica FPP: `fp/` z
+## teksturami 4K; brak pliku — model z gry). Zwraca nowy węzeł (do dodania przez wołającego).
+static func build(key: String, ids: Array, base_muzzle: Vector3, notches := 0, deep := 0, src_dir := DIR) -> Node3D:
+	var path := src_dir + "gun_%s.glb" % key
+	var root := (load(path if ResourceLoader.exists(path) else DIR + "gun_%s.glb" % key) as PackedScene).instantiate() as Node3D
 	var hide := {}
 	for id in ids:
 		for h in part_info(String(id)).get("hides", []):

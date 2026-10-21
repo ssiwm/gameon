@@ -23,6 +23,8 @@ const SessionLog := preload("res://scripts/session_log.gd")
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
 const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
 const STALKER_TEST := preload("res://scripts/stalker_test.gd")
+const RANGE_TEST := preload("res://scripts/range3d/range_test.gd")
+const FP_RANGE := preload("res://scripts/range3d/fp_mode.gd")
 const ENEMY_TEST := preload("res://scripts/enemy_test.gd")
 const DREAD := preload("res://scripts/dread.gd")
 const STEAM_NET := preload("res://scripts/steam_net.gd")
@@ -412,6 +414,8 @@ func _handle_cmdline() -> void:
 	var wipetest := -1.0
 	var missiontest := false
 	var stalkertest := false
+	var rangetest := false
+	var range3d := false
 	var enemytest := false
 	var shifttest := false
 	var maptest := false
@@ -487,6 +491,8 @@ func _handle_cmdline() -> void:
 	if hd_world:
 		Sprites.newworld = true
 	# testy headless zakładają mapę 1.3 (gniazda, boss), chyba że flaga --mission wskaże inną
+	if _start_map == "" and (args.has("--range3d") or args.has("--rangetest")):
+		_start_map = "z1_hub"                       # strzelnica FPP (RANGE_FPS_PLAN.md): szpic startuje w kryjówce
 	if _start_map == "":
 		for a in args:
 			if a.begins_with("--stealthtest") or a.begins_with("--wipetest") or a == "--missiontest" or a == "--shifttest" \
@@ -517,6 +523,10 @@ func _handle_cmdline() -> void:
 			missiontest = true
 		elif a == "--stalkertest":
 			stalkertest = true
+		elif a == "--rangetest":
+			rangetest = true
+		elif a == "--range3d":
+			range3d = true
 		elif a == "--enemytest":
 			enemytest = true
 		elif a == "--shifttest":
@@ -623,6 +633,13 @@ func _handle_cmdline() -> void:
 		_ride_host_test()
 	if rideclient:
 		_ride_client_test()
+	if rangetest:
+		var rt := RANGE_TEST.new()
+		rt.name = "RangeTest"
+		add_child(rt)
+		rt.run(self)
+	if range3d:
+		_dev_range3d()
 	if stalkertest:
 		var st := STALKER_TEST.new()
 		st.name = "StalkerTest"
@@ -1080,6 +1097,35 @@ func _perf_run(secs: float, col: int) -> void:
 		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0,
 		proc_t / float(maxi(n, 1)) * 1000.0, phys_t / float(maxi(n, 1)) * 1000.0, float(NavGraph.stat_calls) / secs, float(NavGraph.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_slide_usec) / 1000.0 / float(maxi(n, 1)), pairs / float(maxi(n, 1)), active_o / float(maxi(n, 1))])
 	get_tree().quit()
+
+## Dev `--range3d` (RANGE_FPS_PLAN.md, etap 0): lokalny gracz od razu na strzelnicy FPP; [E] wraca do kryjówki.
+func _dev_range3d() -> void:
+	await get_tree().create_timer(1.2).timeout
+	var p: Node = _players.get_node_or_null(str(multiplayer.get_unique_id())) if NoiseMgr.has_network() else _players.get_node_or_null("1")
+	if p == null:
+		p = _players.get_node_or_null("1")
+	if p == null or p.get("fp") != null:
+		return
+	var fp: Node = FP_RANGE.enter(p)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--rangeslot="):
+			p.weapons.select_slot(int(a.substr("--rangeslot=".length())))      # broń ze slotu N (0, 1 — długie, 2 — pistolet)
+		elif a.begins_with("--rangereload="):                  # --rangereload=S[,empty]: przeładowanie po S s (z pustego magazynka z „,empty”)
+			var rr := a.substr("--rangereload=".length()).split(",")
+			get_tree().create_timer(float(rr[0])).timeout.connect(func() -> void:
+				if rr.size() > 1 and rr[1] == "empty":
+					p.weapons.mags[p.weapons.cur().id] = 0
+				p.weapons.try_reload())
+		elif a == "--rangeads":
+			fp.dev_ads = true                                   # przyrządy bez PPM (zrzuty)
+		elif a.begins_with("--rangelook="):                    # --rangelook=YAW,PITCH (°): kierunek patrzenia
+			var lk := a.substr("--rangelook=".length()).split(",")
+			fp.yaw = deg_to_rad(float(lk[0]))
+			fp.pitch = deg_to_rad(float(lk[1])) if lk.size() > 1 else 0.0
+		elif a.begins_with("--rangefire="):                    # --rangefire=S: spust wciśnięty przez S s od 1 s (seria do zrzutu)
+			var hold := float(a.substr("--rangefire=".length()))
+			get_tree().create_timer(1.0).timeout.connect(func() -> void: p.weapons.sim_fire = true)
+			get_tree().create_timer(1.0 + hold).timeout.connect(func() -> void: p.weapons.sim_fire = false)
 
 func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false, workshop := false, result := false, boss := false, codex := false) -> void:
 	Profile.persist = false              # zrzuty dev nie zapisują profilu gracza (XP z podglądu karty wyniku itp.)

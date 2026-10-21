@@ -2,6 +2,7 @@
 
 Uruchomienie (z korzenia repo; Blender z dodatkiem MPFB2, jak `char_mpfb.py`):
     blender -b -P prototype/tools/cloth_garments.py -- male_scav [male_medic male_hazmat | --all] [--stage=shell|sim|all] [--tex=2048]
+    blender -b -P prototype/tools/cloth_garments.py -- male_scav --only=m65 --fp [--fp-tris=36000]   # same rękawy do widoku z oczu
 
 Zamiast gotowych ubrań z paczek MakeHuman, dla każdego stroju z tabeli WARDROBE (od warstwy spodniej do wierzchniej):
 1. Ciało z tabeli OUTFITS w `char_mpfb.py` (ten sam fenotyp, A-poza MPFB, przód −Y, góra +Z, przed skalowaniem do wzrostu) i buty /
@@ -43,6 +44,8 @@ OUT = os.path.join(REPO, "art_src", "clothes")
 STAGE = arg("stage", "all")
 VOXEL = float(arg("voxel", "0.011"))        # gęstość siatki symulacji (m)
 TEX = int(arg("tex", "2048"))
+FP = "--fp" in argv                         # wersja do widoku z oczu (strzelnica FPP, fp_arms.py): same rękawy kurtki, gęsta siatka, własne UV
+FP_TRIS = int(arg("fp-tris", "36000"))      # budżet obu rękawów w wersji FPP (gra: cała kurtka ok. 5 tys.)
 
 ARMS = {"LeftArm", "LeftForeArm", "RightArm", "RightForeArm"}
 COLLIDE = ("boots", "shoes", "gloves")      # części paczek MPFB, o które opiera się tkanina (nogawki na butach, mankiety na rękawicach)
@@ -1168,6 +1171,8 @@ def build_boots(outfit, gname, base, rig, body, dom, L):
     bake_maps(low, high, look, TEX)
     for o in high:
         o.hide_render = True
+    if FP:                                                             # wersja FPP: buty tylko jako przeszkoda, plik bez zmian
+        return low
     os.makedirs(OUT, exist_ok=True)
     dst = os.path.join(OUT, "%s_%s.glb" % (outfit, gname))
     C._only(low)
@@ -1221,6 +1226,125 @@ def _labels(ob, body, dom, kind, seam_z=None):
                 new[i] = best
         lab = new
     return lab
+
+
+def mirror_half(ob):
+    """Wersja FPP: prawa połowa = odbicie lewej (ciało MPFB jest symetryczne, a w symulacji prawy mankiet podjeżdża do połowy
+    przedramienia). Cięcie płaszczyzną x = 0, kopia lewej połowy odbita, szew na środku zszyty — bez dziur i schodków na granicy."""
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
+    bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-5, plane_co=(0.0, 0.0, 0.0), plane_no=(1.0, 0.0, 0.0), clear_inner=True)
+    half = bm.verts[:] + bm.edges[:] + bm.faces[:]
+    dup = bmesh.ops.duplicate(bm, geom=half)
+    for v in [g for g in dup["geom"] if isinstance(g, bmesh.types.BMVert)]:
+        v.co.x = -v.co.x
+    bmesh.ops.reverse_faces(bm, faces=[g for g in dup["geom"] if isinstance(g, bmesh.types.BMFace)])
+    bmesh.ops.remove_doubles(bm, verts=[v for v in bm.verts if abs(v.co.x) < 2e-4], dist=2e-4)
+    bm.normal_update()
+    bm.to_mesh(ob.data)
+    bm.free()
+
+
+def keep_sleeves(ob, rig, body, dom, kind, seam_z=None):
+    """Wersja FPP: rękawy (elementy wykroju jak w `_labels`) i karczek — barki i góra torsu do 12 cm pod stawem barkowym, żeby
+    z oczu nie było widać otwartego końca rękawa; cała tekstura idzie na te części."""
+    yoke = min(P(rig, "LeftArm").z, P(rig, "RightArm").z) - 0.12
+    bm = bmesh.new()                                     # równe cięcie karczka płaszczyzną (zamiast schodków po ścianach)
+    bm.from_mesh(ob.data)
+    bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], dist=1e-5, plane_co=(0.0, 0.0, yoke), plane_no=(0.0, 0.0, 1.0))
+    bm.to_mesh(ob.data)
+    bm.free()
+    lab = _labels(ob, body, dom, kind, seam_z)
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bm.faces.ensure_lookup_table()
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if not lab[f.index].startswith("sleeve") and f.calc_center_median().z < yoke], context="FACES")
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    bm.to_mesh(ob.data)
+    bm.free()
+    print("FP sleeves", len(ob.data.polygons), "faces")
+
+
+def smooth_cuffs(ob, yoke_z, reach=0.07, iters=12):
+    """Wersja FPP: mankiety wygładzone — ściągacz z symulacji gniecie tkaninę w ostre trójkąty, które z oka (przedramię 30 cm od kamery)
+    wyglądają jak poszarpane. Wierzchołki do `reach` od brzegu mankietu (brzeg siatki poniżej karczka) wygładzane razem z brzegiem."""
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    edge = [v for v in bm.verts if v.is_boundary and v.co.z < yoke_z - 0.15]
+    if not edge:
+        bm.free()
+        return
+    from mathutils.kdtree import KDTree
+    kd = KDTree(len(edge))
+    for i, v in enumerate(edge):
+        kd.insert(v.co, i)
+    kd.balance()
+    near = [v for v in bm.verts if v.co.z < yoke_z - 0.1 and kd.find(v.co)[2] < reach]
+    for _ in range(iters):
+        bmesh.ops.smooth_vert(bm, verts=near, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+    bm.normal_update()
+    bm.to_mesh(ob.data)
+    bm.free()
+    print("FP cuffs smoothed", len(near), "verts")
+
+
+def unwrap_fp(ob, rig, body, dom, kind, seam_z=None):
+    """UV wersji FPP jak wykrój rękawa: każdy rękaw to jedna wyspa przecięta wzdłuż wewnętrznej strony ręki (od pachy do mankietu —
+    z oka niewidocznej), karczek osobno. Oś rękawa łamana w łokciu (ramię, przedramię), więc cięcie biegnie po wewnętrznej stronie na
+    całej długości. Rozwinięcie z minimalnym rozciąganiem + wyrównana skala wysp: równa gęstość tekstury od barku po mankiet (wykrój
+    z unwrap_pieces ściskał przedramię ok. 20×, smart project ciął tubę na wiele wysp i plamy kamuflażu rwały się na szwach)."""
+    lab = _labels(ob, body, dom, kind, seam_z)
+    segs = {}
+    for side in ("Left", "Right"):
+        sh, el, wr = P(rig, side + "Arm"), P(rig, side + "ForeArm"), P(rig, side + "Hand")
+        segs[side] = [(sh, el), (el, wr + (wr - el) * 0.3)]
+
+    def phi(c, side):                                    # kąt wokół osi rękawa; 0 = strona ku tułowiowi (wewnętrzna)
+        best = None
+        for p0, p1 in segs[side]:
+            d = p1 - p0
+            t = max(0.0, min(1.0, (c - p0).dot(d) / d.length_squared))
+            q = p0 + d * t
+            dist = (c - q).length
+            if best is None or dist < best[0]:
+                best = (dist, d.normalized(), q)
+        _, ax, q = best
+        inner = Vector((-1.0 if side == "Left" else 1.0, 0.0, 0.0))     # MPFB: lewa ręka po +X, tułów w stronę x = 0
+        e1 = (inner - ax * inner.dot(ax)).normalized()
+        e2 = ax.cross(e1)
+        r = c - q
+        return math.atan2(r.dot(e2), r.dot(e1))
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bm.faces.ensure_lookup_table()
+    for e in bm.edges:
+        e.seam = False
+        fs = e.link_faces
+        if len(fs) != 2:
+            continue
+        la, lb = lab[fs[0].index], lab[fs[1].index]
+        if la.startswith("sleeve") != lb.startswith("sleeve") or (la.startswith("sleeve") and lb.startswith("sleeve") and la != lb):
+            e.seam = True                                # rękaw | karczek
+            continue
+        if la.startswith("sleeve"):
+            side = la.split("_")[1]
+            pa, pb = phi(fs[0].calc_center_median(), side), phi(fs[1].calc_center_median(), side)
+            e.seam = pa * pb < 0 and abs(pa) < 1.2 and abs(pb) < 1.2       # przejście przez 0 po stronie wewnętrznej
+    bm.to_mesh(ob.data)
+    bm.free()
+    C._only(ob)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    try:
+        bpy.ops.uv.unwrap(method="MINIMUM_STRETCH", margin=0.004)
+    except TypeError:
+        bpy.ops.uv.unwrap(method="CONFORMAL", margin=0.004)
+    bpy.ops.uv.select_all(action="SELECT")
+    bpy.ops.uv.average_islands_scale()
+    bpy.ops.uv.pack_islands(rotate=True, margin=0.004)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    print("FP unwrap seams", sum(1 for e in ob.data.edges if e.use_seam))
 
 
 def unwrap_pieces(ob, rig, body, dom, kind, seam_z=None):
@@ -1391,6 +1515,63 @@ def bake_maps(low, high_objs, look, size):
     _final_material(low, mat, alb, nrm, look)
 
 
+def _bake_positions(low, size):
+    """Położenie (m, przestrzeń obiektu) każdego teksela tkaniny: wypiek EMIT z węzła Geometry → Position do obrazu float.
+    Margines wypieku przedłuża położenia za brzeg wysp, więc wzór liczony z nich nie ma szwów."""
+    img = bpy.data.images.new(low.name + "_pos", size, size, float_buffer=True)
+    tmp = bpy.data.materials.new("posbake")
+    tmp.use_nodes = True
+    nt = tmp.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    em = nt.nodes.new("ShaderNodeEmission")
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    nt.links.new(geo.outputs["Position"], em.inputs["Color"])
+    nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    nt.nodes.active = tex
+    saved = list(low.data.materials)
+    for i in range(len(low.data.materials)):
+        low.data.materials[i] = tmp
+    if not saved:
+        low.data.materials.append(tmp)
+    C._only(low)
+    C._bake(type="EMIT")
+    for i, m in enumerate(saved):
+        low.data.materials[i] = m
+    pos = np.array(img.pixels[:], np.float32).reshape(-1, 4)[:, :3]
+    bpy.data.images.remove(img)
+    bpy.data.materials.remove(tmp)
+    return pos
+
+
+def _noise3(pos, cell, seed):
+    """Gładki szum 3D 0..1 w punktach `pos` (N×3, m): szum wartości na siatce o boku `cell` (interpolacja trójliniowa z wygładzeniem)
+    + oktawa ×3 (strzępiaste brzegi plam jak w kamuflażu leśnym)."""
+    out = np.zeros(len(pos), np.float32)
+    for k, amp in ((1.0, 0.7), (3.0, 0.3)):
+        q = pos / (cell / k) + seed * 17.3
+        b = np.floor(q)
+        f = q - b
+        f = f * f * (3.0 - 2.0 * f)
+        b = b.astype(np.int64)
+
+        def h(dx, dy, dz):
+            x = (b[:, 0] + dx) * 73856093 ^ (b[:, 1] + dy) * 19349663 ^ (b[:, 2] + dz) * 83492791 ^ (seed * 2654435761)
+            x = (x ^ (x >> 13)) * 1274126177
+            return ((x ^ (x >> 16)) & 0xFFFF).astype(np.float32) / 65535.0
+
+        c00 = h(0, 0, 0) + (h(1, 0, 0) - h(0, 0, 0)) * f[:, 0]
+        c10 = h(0, 1, 0) + (h(1, 1, 0) - h(0, 1, 0)) * f[:, 0]
+        c01 = h(0, 0, 1) + (h(1, 0, 1) - h(0, 0, 1)) * f[:, 0]
+        c11 = h(0, 1, 1) + (h(1, 1, 1) - h(0, 1, 1)) * f[:, 0]
+        c0 = c00 + (c10 - c00) * f[:, 1]
+        c1 = c01 + (c11 - c01) * f[:, 1]
+        out += amp * (c0 + (c1 - c0) * f[:, 2])
+    return out
+
+
 def _paint_cloth(low, ao, look, size):
     """Kolor tkaniny: wzór (kamuflaż / jednolity) w przestrzeni UV — plamy tej samej wielkości na każdym elemencie — × okluzja, przeszycia."""
     m_per_uv = _uv_scale(low)
@@ -1398,8 +1579,12 @@ def _paint_cloth(low, ao, look, size):
     cells = max(2, int(round(m_per_uv / look.get("camo_blotch", 0.055))))
     col = np.tile(np.array(look.get("base", cm["base"]), np.float32), (size * size, 1))
     cover = look.get("camo_cover", (0.24, 0.30, 0.12))                  # udział plam (brąz, zieleń, czerń): progi z kwantyli, nie stałe
+    pos = _bake_positions(low, size) if FP else None                  # FPP: plamy z szumu 3D — ciągłe przez cięcia UV (smart project)
     for i, (c, thr) in enumerate(cm["spots"]):
-        fld = C.smooth_noise(size, size, cells, look.get("camo_seed", 3) * 10 + i).ravel()
+        if pos is not None:
+            fld = _noise3(pos, look.get("camo_blotch", 0.055), look.get("camo_seed", 3) * 10 + i)
+        else:
+            fld = C.smooth_noise(size, size, cells, look.get("camo_seed", 3) * 10 + i).ravel()
         q = np.quantile(fld, 1.0 - cover[i]) if i < len(cover) else thr
         col[fld > q] = np.array(c, np.float32)
     fiber = C.smooth_noise(size, size, cells * 12, 99).ravel()            # nierówność barwienia
@@ -1647,15 +1832,28 @@ def build(outfit):
         hi = _hi_copy(ob)
         high = [hi] + ([collar] if collar else []) + det
         shot(os.path.join(WORK, "%s_%s_hi.png" % (outfit, gname)), [body, *obst, *high], views=("front", "q", "back"))
-        low = make_low(ob, collar, look["low_tris"], "%s_%s" % (outfit, gname))
-        unwrap_pieces(low, rig, body, dom, look["kind"], look["waist_z"])
+        if FP:
+            low = make_low(ob, None, FP_TRIS, "%s_%s_fp" % (outfit, gname))
+            mirror_half(low)
+            keep_sleeves(low, rig, body, dom, look["kind"], look["waist_z"])
+            for o in [hi] + det + ([collar] if collar else []):      # wypiek musi widzieć tę samą (odbitą) kurtkę
+                mirror_half(o)
+            yz = min(P(rig, "LeftArm").z, P(rig, "RightArm").z) - 0.12
+            smooth_cuffs(low, yz)
+            smooth_cuffs(hi, yz)
+        else:
+            low = make_low(ob, collar, look["low_tris"], "%s_%s" % (outfit, gname))
+        if FP:
+            unwrap_fp(low, rig, body, dom, look["kind"], look["waist_z"])
+        else:
+            unwrap_pieces(low, rig, body, dom, look["kind"], look["waist_z"])
         ob.hide_render = True                                          # siatka symulacji pokrywa się z wersją szczegółową (okluzja w prążki)
         bake_maps(low, high, look, TEX)
         for o in high:                                                 # wersja szczegółowa tylko do wypieku
             o.hide_render = True
         ob.hide_render = True
         os.makedirs(OUT, exist_ok=True)
-        dst = os.path.join(OUT, "%s_%s.glb" % (outfit, gname))
+        dst = os.path.join(OUT, "%s_%s%s.glb" % (outfit, gname, "_fp" if FP else ""))
         C._only(low)
         bpy.ops.export_scene.gltf(filepath=dst, export_format="GLB", use_selection=True, export_image_format="WEBP",
                                   export_image_quality=90, export_animations=False, export_apply=True)

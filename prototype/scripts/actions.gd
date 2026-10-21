@@ -46,6 +46,9 @@ const DEFS := {
 	"throw": {"keys": [{"key": KEY_ALT, "left": true}], "keys_macos": [{"key": KEY_META, "left": true}, {"key": KEY_ALT, "left": true}], "pad": [JOY_BUTTON_RIGHT_SHOULDER]},
 	"throw_next": {"keys": [KEY_X], "pad": [JOY_BUTTON_DPAD_UP]},
 	"melee": {"keys": [KEY_V], "mouse": [MOUSE_BUTTON_RIGHT], "pad": [JOY_BUTTON_X]},
+	# strzelnica FPP (scripts/range3d/fp_mode.gd): celowanie przez przyrządy — ten sam PPM co cios, który na strzelnicy jest wyłączony;
+	# bez wpisu w LABELS (stałe wiązanie do czasu etapu 1 RANGE_FPS_PLAN.md)
+	"aim_sights": {"mouse": [MOUSE_BUTTON_RIGHT]},
 	"help": {"keys": [KEY_F1]},
 	"chat": {"keys": [KEY_T]},
 	"journal": {"keys": [KEY_N]},                       # dziennik komunikatów i porad (MESSAGES_PLAN.md); pad: bez domyślnego przycisku, można przypisać

@@ -157,6 +157,38 @@ def _build_core_weapons() -> None:
         x = d.reverb(x, ir("close"), wet=.14, dry=1.0)
         finalize("reload_%d" % (i + 1), x, peak=-3.0)
 
+    # Mechanika przeładowania osobno (strzelnica FPP: każdy dźwięk w swojej klatce klipu, range_view.gd) — te same składniki co
+    # „reload” wyżej, rozłożone na zdarzenia: zatrzask magazynka, wysunięcie, wsunięcie, odciągnięcie i powrót suwadła, chwyt łoża
+    for i in range(2):
+        r = Rng(0x3180 + i * 7907)
+        f0 = vary(r, 2600, .1)
+        x = d.mix([(tick(r, f0, 2.5, 14, .003), 1.0), (ring(r, [f0 * .5, f0 * .93], [.02, .015], dur=.08), .5)], ms(120))
+        finalize("mech_mag_release_%d" % (i + 1), d.reverb(x, ir("close"), wet=.12), peak=-8.0)
+        slide = d.filt(d.white(ms(170), r), "bp", vary(r, 1400, .1), 1.2) * d.env_curve(ms(170), 0, 1, 1.5) * d.env_exp(ms(170), .09)
+        scrape = d.filt(d.white(ms(170), r), "bp", vary(r, 3200, .1), 2.0) * d.env_perc(ms(170), .01, .05) * .4
+        finalize("mech_mag_out_%d" % (i + 1), d.reverb(d.mix([(slide, 1.0), (scrape, 1.0, .02)], ms(200)), ir("close"), wet=.12), peak=-9.0)
+    for i in range(3):
+        r = Rng(0x3190 + i * 6151)
+        seat = d.mix([(thump(.09, vary(r, 220, .08), 90, .02, .03), 1.0), (tick(r, vary(r, 1800, .08), 1.4, 20, .004), .8)], ms(140))
+        click = d.mix([(ring(r, [vary(r, 3600, .06), vary(r, 5300, .06)], [.03, .02], dur=.10), 1.0), (tick(r, 3000, 2, 10, .002), 1.0)], ms(140))
+        x = d.mix([(seat, 1.0, 0.0), (click, 0.8, vary(r, .05, .2))], ms(220))
+        finalize("mech_mag_in_%d" % (i + 1), d.reverb(x, ir("close"), wet=.14), peak=-5.0)
+    for i in range(2):
+        r = Rng(0x31A0 + i * 4421)
+        back = d.filt(d.white(ms(130), r), "bp", vary(r, 900, .08), 1.4) * d.env_perc(ms(130), .004, .05)
+        stop = d.mix([(tick(r, vary(r, 1700, .08), 1.6, 12, .003), .8), (thump(.05, 240, 140, .01, .015), .4)], ms(80))
+        finalize("mech_bolt_back_%d" % (i + 1), d.reverb(d.mix([(back, 1.0, 0.0), (stop, 1.0, .07)], ms(170)), ir("close"), wet=.12), peak=-6.0)
+    for i in range(3):
+        r = Rng(0x31B0 + i * 3571)
+        snap = d.mix([(tick(r, vary(r, 2200, .08), 1.5, 14, .004), 1.0), (thump(.07, vary(r, 260, .08), 120, .015, .02), .6),
+                      (ring(r, [vary(r, 1250, .05), vary(r, 2900, .05)], [.05, .03], dur=.14), .35)], ms(180))
+        finalize("mech_bolt_fwd_%d" % (i + 1), d.reverb(snap, ir("close"), wet=.14), peak=-4.0)
+    for i in range(2):
+        r = Rng(0x31C0 + i * 2731)
+        grab = d.filt(d.colored(ms(120), r, .6), "bp", vary(r, 700, .15), 0.8) * d.env_perc(ms(120), .006, .04) * .8
+        tap = d.mix([(thump(.05, vary(r, 170, .1), 90, .01, .02), .7), (tick(r, 1200, 1.0, 10, .003), .3)], ms(80))
+        finalize("mech_regrip_%d" % (i + 1), d.reverb(d.mix([(grab, 1.0), (tap, 1.0, .01)], ms(140)), ir("close"), wet=.12), peak=-12.0)
+
     # Suchy strzał (pusty magazyn) — sam bijak
     r = Rng(0x41)
     x = d.mix([(tick(r, 2800, 1.6, 14, .004), 1.0),

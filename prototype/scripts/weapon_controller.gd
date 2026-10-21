@@ -144,6 +144,10 @@ var recoil := 0.0                 ## 0..1 — wizualne cofnięcie broni (widok)
 var cd := 0.0
 var melee_total := 0.35
 var ammo_enabled := true          ## boty mają nieskończoną amunicję
+## Strzelnica FPP (RANGE_FPS_PLAN.md, scripts/range3d/fp_mode.gd): obiekt z `range_shot(d, seed, extra)` i `braced()` — przejmuje strzał
+## (zamiast pocisku 2D promień w tunelu 3D) i oparcie. Cała reszta (magazynek, przeładowania, zacięcia, lufa, podrzut) liczy się jak na misji.
+var range_sink: Object = null
+var practice := false             ## amunicja ćwiczebna (strzelnica): przeładowanie nie bierze naboi z zapasu, strzał nie zużywa broni
 
 ## Hooki testów headless (--weapontest): symulowany spust. W grze zawsze false.
 var sim_fire := false
@@ -250,7 +254,7 @@ func cycle_ammo() -> void:
 	var pick := from
 	for i in range(1, n + 1):
 		var t := (from + i) % n
-		if t == 0 or Arsenal.get_reserve(d.id, t) > 0:
+		if t == 0 or practice or Arsenal.get_reserve(d.id, t) > 0:
 			pick = t
 			break
 	if pick == from:
@@ -618,7 +622,7 @@ func _sync_player() -> void:
 ## Wołane z player.gd co klatkę fizyki (człowiek, żywy). `reviving` blokuje strzał.
 func tick_local(delta: float, reviving: bool) -> void:
 	_tick_common(delta)
-	braced = check_brace(cur())
+	braced = bool(range_sink.braced()) if range_sink != null else check_brace(cur())
 	reload_held = Input.is_action_pressed("reload") or sim_reload_hold
 	if reviving:
 		_cancel_actions()
@@ -633,7 +637,7 @@ func tick_local(delta: float, reviving: bool) -> void:
 	_handle_switch_input()
 	if Input.is_action_just_pressed("firemode"):
 		toggle_fire_mode()
-	if Input.is_action_just_pressed("melee"):
+	if Input.is_action_just_pressed("melee") and range_sink == null:      # strzelnica: PPM celuje przez przyrządy (fp_mode.gd)
 		try_melee()
 	if Input.is_action_just_pressed("reload"):
 		try_reload()
@@ -863,7 +867,8 @@ func _fire_shot(d: WeaponDef) -> void:
 	if ammo_enabled and d.uses_ammo():
 		mags[d.id] = mag_of(d.id) - d.ammo_per_shot
 	_shots_mag[d.id] = int(_shots_mag.get(d.id, 0)) + 1
-	_wear_shot(d)
+	if not practice:
+		_wear_shot(d)
 	var heat := heat_of(d.id)
 	var bursting := is_burst(d)
 	NoiseMgr.add_noise(d.noise(heat) * (d.burst_quiet if bursting else 1.0) * hot_can_mult(d), player.global_position, "shot:" + d.key)
@@ -889,6 +894,15 @@ func _fire_shot(d: WeaponDef) -> void:
 		Audio.stop_loop(d.sfx_loop)
 		charge = 0.0
 		state = State.READY
+	if range_sink != null:
+		# strzelnica: dźwięk i odrzut modelu jak zwykle, kula leci w tunelu 3D (bez pocisku 2D, efektów w kryjówce i pchnięcia postaci)
+		recoil = 1.0
+		Audio.play_variant(d.sfx, d.sfx_count, Audio.BUS_WEAPONS, d.sfx_vol, d.sfx_pitch)
+		range_sink.range_shot(d, seed, extra)
+		shot.emit(d.id)
+		if d.sfx_cycle != "":
+			_schedule_cycle(d, muzzle, dir)
+		return
 	_own_shot_fx(d, muzzle, dir)
 	if NoiseMgr.is_server():
 		_server_fire(muzzle, dir, d.id, seed, extra, player.player_id, true, 0.0, d.build)
@@ -1150,7 +1164,7 @@ func try_reload(auto := false) -> bool:
 	var cap := d.capacity(mag_of(d.id) > 0)           # nabój w komorze: z pełnym magazynkiem można jeszcze dołożyć jeden (30+1)
 	if mag_of(d.id) >= cap and not swap:
 		return false
-	if not d.infinite and Arsenal.get_reserve(d.id, t) <= 0 and ammo_enabled:
+	if not _free_ammo(d) and Arsenal.get_reserve(d.id, t) <= 0 and ammo_enabled:
 		if swap:
 			want_ammo[d.id] = ammo_of(d.id)                # wybranego typu już nie ma — zostaje to, co jest w magazynku
 			ammo_changed.emit(d.id, ammo_of(d.id))
@@ -1183,9 +1197,15 @@ func try_reload(auto := false) -> bool:
 	reload_started.emit(d.id)
 	return true
 
+## Naboje bez zapasu: broń o nieskończonej amunicji albo strzelnica (amunicja ćwiczebna).
+func _free_ammo(d: WeaponDef) -> bool:
+	return d.infinite or practice
+
 func _reload_sfx(d: WeaponDef) -> void:
 	if d.reload_sfx == "":
 		return
+	if range_sink != null and bool(range_sink.call("clip_sounds", d)):
+		return                                             # strzelnica FPP: dźwięki mechaniki grają w klatkach klipu
 	if is_owner():
 		Audio.play_variant(d.reload_sfx, d.reload_sfx_count, Audio.BUS_WEAPONS, -8.0, 1.0)
 
@@ -1194,7 +1214,7 @@ func _begin_round(d: WeaponDef) -> void:
 	_rl_left = _rl_total
 	_rl_wait = 0.0
 	_rl_req = true
-	if d.infinite:
+	if _free_ammo(d):
 		_rl_req = false
 		_rl_pending += 1
 	else:
@@ -1227,7 +1247,7 @@ func _tick_reload(delta: float) -> void:
 		if _rl_pending > 0:
 			_rl_pending -= 1
 			mags[d.id] = mini(_rl_cap, mag_of(d.id) + 1)
-		if mag_of(d.id) < _rl_cap and (_rl_req or _rl_pending > 0 or d.infinite or Arsenal.get_reserve(d.id, ammo_of(d.id)) > 0):
+		if mag_of(d.id) < _rl_cap and (_rl_req or _rl_pending > 0 or _free_ammo(d) or Arsenal.get_reserve(d.id, ammo_of(d.id)) > 0):
 			_begin_round(d)
 		elif not _rl_req:
 			_finish_reload()
@@ -1236,7 +1256,7 @@ func _tick_reload(delta: float) -> void:
 		_rl_req = true
 		_rl_wait = 0.0
 		var want := _rl_cap - mag_of(d.id)
-		if d.infinite or not ammo_enabled:
+		if _free_ammo(d) or not ammo_enabled:
 			_on_rounds_granted(d.id, want)
 		else:
 			Arsenal.request_rounds(d.id, want, ammo_of(d.id))
@@ -1252,6 +1272,8 @@ func _mag_out(d: WeaponDef) -> void:
 		_rl_total += TAC_EXTRA * mastery_mult(d.id)
 		return
 	mags[d.id] = keep
+	if practice:
+		return                                             # strzelnica: magazynek z resztkami nie ląduje na podłodze kryjówki
 	var n := left if (ammo_enabled and not d.infinite) else 0
 	if n > 0:
 		dropped_mags += 1

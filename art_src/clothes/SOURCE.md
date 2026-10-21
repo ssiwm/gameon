@@ -10,6 +10,7 @@ w mapę normalnych i okluzję; UV jak wykrój, przeszycia w kolorze.
 |---|---|---|---|
 | `<strój>_boots.glb` | wszystkie sześć | buty wojskowe (scav, medyk) wg zdjęć: cholewka do połowy łydki z wyściełanym brzegiem, nosek i zapiętek, sznurowanie z oczkami i hakami, zamek od środka, pasek z klamrą, podeszwa z bieżnikiem i wcięciem pod śródstopiem; hazmat — wysokie gumowe. Bez symulacji (sztywna skóra), kolor wypiekany z materiałów części | ok. 4–5 tys. |
 | `male_scav_m65.glb` | `male_scav` | kurtka polowa M65 w kamuflażu leśnym: stójka, cztery kieszenie z patkami, listwa z napami, pagony, ściągacz w talii | ok. 6,4 tys. |
+| `male_scav_m65_fp.glb` | ręce FPP (strzelnica, `fp_arms.py`) | rękawy M65 z karczkiem w wersji do widoku z oczu (`--fp`): gęsta siatka, własne UV 2K, prawy rękaw odbiciem lewego | ok. 15 tys. |
 | `male_scav_bdu.glb` | `male_scav` | spodnie polowe BDU w kamuflażu leśnym: pas ze szlufkami, rozporek, kieszenie boczne miechowe i tylne z patkami, nakolanniki, nogawki na cholewkach | 4 tys. |
 | `male_medic_emt_jacket.glb` | `male_medic` | kurtka ratownika w granacie: niska stójka, kieszenie piersiowe, listwa z napami, pagony | ok. 5,8 tys. |
 | `male_medic_emt_trousers.glb` | `male_medic` | spodnie ratownika w granacie: kieszenie boczne i tylne, nogawki na butach | 4 tys. |
