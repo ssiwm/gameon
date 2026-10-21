@@ -20,7 +20,8 @@ const VM_FOV := 58.0                          ## ° — kąt kamery rąk i broni
 const LAYER_VM := 2                           ## warstwa rąk i broni: rysuje je tylko kamera rąk, zawsze nad tunelem (bez wchodzenia w ławę)
 const TEX := "res://art/world3d/"
 const HIP := Vector3(0.15, -0.2, -0.3)        ## m — chwyt broni w układzie kamery (od biodra, broń poniżej i z prawej)
-const HIP_YAW := 1.5                          ## ° — broń przy biodrze lekko zwrócona do środka kadru
+const HIP_PISTOL := Vector3(0.12, -0.15, -0.42)  ## m — pistolet od biodra: niżej, bliżej środka i dalej niż karabin (ręce wyciągnięte przed siebie)
+const HIP_YAW := 1.5                         ## ° — broń przy biodrze lekko zwrócona do środka kadru
 const ADS_GRIP_Z := -0.27                     ## m — chwyt karabinu przed okiem przy celowaniu (policzek na kolbie)
 const ADS_GRIP_Z_PISTOL := -0.55             ## m — pistolet w wyciągniętych rękach
 const SIGHT_CLEAR := 0.003                    ## m — linia celownicza tuż nad najwyższym punktem broni (wierzch muszki i szczerbinki);
@@ -31,7 +32,9 @@ const SWAY_RATE := 11.0                       ## 1/s — powrót kołysania
 const REC_K := 320.0                          ## sprężyna odrzutu (sztywność, 1/s²)
 const REC_C := 30.0                           ## … tłumienie (1/s)
 const REC_IMPULSE := Vector3(0.6, 1.0, 0.25)  ## prędkość po strzale: cofnięcie (m/s), uniesienie (rad/s), skręt (± rad/s); × WEAPON_POSE body / climb
-const ARMS_FALLBACK := false                  ## ręce dla broni bez ułożonego chwytu (fp_arms.gd, walce) — rozjeżdżały się (SPREAD-12: rękaw
+const ARMS_RIG := false                       ## ręce FPP z zasobu (fp_rig.gd, chwyty z fp_grip.py) — wyłączone: animacje dłoni za słabej jakości,
+                                              ## wrócą z lepszymi narzędziami (RANGE_FPS_PLAN.md §8); broń jest w kadrze sama
+const ARMS_FALLBACK := false                 ## ręce dla broni bez ułożonego chwytu (fp_arms.gd, walce) — rozjeżdżały się (SPREAD-12: rękaw
                                               ## przez pół kadru, P-83: bez rąk); do czasu klipów z fp_grip.py taka broń jest sama w kadrze
 const HOLES_MAX := 90
 const SLEEVE := Color(0.1, 0.11, 0.08)
@@ -187,12 +190,11 @@ func _ready() -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_cam.add_child(mi)
 		_arms.append(mi)
-	_rig = FpRig.new()
+	_rig = FpRig.new()                                          # bez rąk (ARMS_RIG) tylko ruchome części broni: zamek przy strzale, spust
 	_rig.name = "FpRig"
 	_cam.add_child(_rig)
-	if not _rig.setup():
-		_rig.queue_free()
-		_rig = null
+	if ARMS_RIG:
+		_rig.setup()
 	if ARMS_FALLBACK:
 		_fp_arms = FpArms.new()
 		_fp_arms.name = "FpArms"
@@ -407,8 +409,8 @@ func _sync_gun() -> void:
 		_rear_x = minf(_rear_x, bb.position.x)
 	# układ broni: x wzdłuż lufy, y w górę, z w prawo → kamera patrzy w −z
 	_gun.basis = GUN_BASIS
-	if _rig != null:
-		_rig.set_weapon(key, _gun)                                 # z ułożonym chwytem broń przechodzi na rękę (gunref)
+	if _rig != null and not _rig.set_weapon(key, _gun):          # z ułożonym chwytem broń przechodzi na rękę (gunref)
+		_rig.bind_parts(key, _gun)
 
 ## Położenie broni w kadrze: biodro albo przyrządy, odrzut, przeładowanie i usuwanie zacięcia (proste ruchy do szpica).
 func _pose_gun(delta: float) -> void:
@@ -436,8 +438,11 @@ func _pose_gun(delta: float) -> void:
 	var gb := GUN_BASIS
 	var t := float(fp.ads_t)
 	t = t * t * (3.0 - 2.0 * t)
-	var hip_o := HIP - gb * grip
-	var ads_o := Vector3(0.0, 0.0, ADS_GRIP_Z_PISTOL if pistol else ADS_GRIP_Z) - gb * sight
+	var ads_z := ADS_GRIP_Z_PISTOL if pistol else ADS_GRIP_Z
+	if pistol and _rig != null and String(_rig.key) != "":
+		ads_z = -(sight.x - _rig.eye_in_gun().x)                  # pistolet w rękach z zasobu: szczerbinka tak daleko od oka jak w ułożonej postawie
+	var hip_o := (HIP_PISTOL if pistol else HIP) - gb * grip
+	var ads_o := Vector3(0.0, 0.0, ads_z) - gb * sight
 	var o := hip_o.lerp(ads_o, t)
 	var rot := Basis(Vector3.UP, deg_to_rad(HIP_YAW) * (1.0 - t))
 	var dip := 0.0
@@ -474,6 +479,8 @@ func _pose_gun(delta: float) -> void:
 		for a in _arms:
 			(a as Node3D).visible = false
 		return
+	if _rig != null:                                             # broń bez rąk: zamek przy strzale i spust dalej się ruszają
+		_rig.tick_parts(delta, bool(wc.firing) or (Input.is_action_pressed("fire") and not wc.is_reloading()))
 	if not ARMS_FALLBACK:
 		for a in _arms:
 			(a as Node3D).visible = false
@@ -529,7 +536,7 @@ func on_shot(d: WeaponDef, hits: Array) -> void:
 	var kb := float(wp.get("body", 1.0)) * (0.55 if fp.braced() else 1.0)
 	_rec_v += Vector3(REC_IMPULSE.x * kb, REC_IMPULSE.y * float(wp.get("climb", 1.0)) * (0.5 if fp.braced() else 1.0), randf_range(-REC_IMPULSE.z, REC_IMPULSE.z))
 	_flash_t = 0.05 if d.suppressor <= 0.0 else 0.02
-	if _rig != null and String(_rig.key) != "":
+	if _rig != null:                                             # zamek / suwadło w tył i spust — z rękami i bez
 		_rig.shot()
 	if _gun != null:
 		var m := _gun_xf * (_info.get("muzzle", Vector3(0.6, 0.1, 0.0)) as Vector3)
@@ -565,7 +572,8 @@ func _eject(d: WeaponDef) -> void:
 		return
 	var grip: Vector3 = _info.get("grip", Vector3.ZERO)
 	var muzzle: Vector3 = _info.get("muzzle", Vector3(0.6, 0.1, 0.0))
-	var port := Vector3(grip.x + 0.11, muzzle.y - 0.012, 0.02)
+	var pistol := float(_info.get("length", 1.0)) < 0.45
+	var port := Vector3(grip.x + (0.07 if pistol else 0.11), muzzle.y - 0.012, 0.02)     # okno wyrzutowe pistoletu tuż przed chwytem
 	var cam := _cam.global_transform
 	var v := _gun_xf.basis * Vector3(randf_range(-0.9, -0.4), randf_range(1.0, 1.6), randf_range(2.2, 3.0))
 	_fx.eject(cam * _vm_to_cam(_gun_xf * port), cam.basis * v, d.casing >= 2)

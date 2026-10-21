@@ -917,11 +917,19 @@ def build_p83():
         marker_text("WA 03187", 6.0, 104.0, 91.5, -12.43, mark)
     # zamek: płaskie boki i spłaszczony grzbiet (wyższy i bardziej kanciasty niż w P-64), przód lekko zwężony, okno wyrzutowe po prawej (−Y)
     sec = lambda w, zb, zs, rt: dome_sec(w, zb, zs, rt)
-    slide = loft("slide", [(0.0, sec(12.5, 86.0, 112.0, 4.0)), (70.0, sec(12.5, 86.0, 112.0, 4.0)), (140.0, sec(12.5, 86.0, 112.0, 4.0)),
-                           (158.0, sec(11.8, 87.0, 111.0, 3.8)), (166.0, sec(10.8, 88.0, 110.0, 3.4))], blued)
-    cut(slide, prism("cut_port", fillet([(70.0, 103.0, 2.0), (99.0, 103.0, 2.0), (99.0, 125.0), (70.0, 125.0)]), -20.0, 2.5, None, bv=None, part=False))
-    cut(slide, revolve("cut_bore", [(150.0, 0.0), (150.0, 5.6), (172.0, 5.6), (172.0, 0.0)], (0.0, 101.0), None, seg=24, bv=None, part=False))
-    bevel(slide, 0.7, 2)
+    with comp("bolt"):                                      # zamek z przyrządami: osobny węzeł — strzelnica FPP cofa go przy strzale i przeładowaniu
+        slide = loft("slide", [(0.0, sec(12.5, 86.0, 112.0, 4.0)), (70.0, sec(12.5, 86.0, 112.0, 4.0)), (140.0, sec(12.5, 86.0, 112.0, 4.0)),
+                               (158.0, sec(11.8, 87.0, 111.0, 3.8)), (166.0, sec(10.8, 88.0, 110.0, 3.4))], blued)
+        cut(slide, prism("cut_port", fillet([(70.0, 103.0, 2.0), (99.0, 103.0, 2.0), (99.0, 125.0), (70.0, 125.0)]), -20.0, 2.5, None, bv=None, part=False))
+        cut(slide, revolve("cut_bore", [(150.0, 0.0), (150.0, 5.6), (172.0, 5.6), (172.0, 0.0)], (0.0, 101.0), None, seg=24, bv=None, part=False))
+        bevel(slide, 0.7, 2)
+        prism("extractor", fillet([(55.0, 100.4), (70.0, 100.4), (70.0, 103.0), (55.0, 103.0, 1.0)]), -13.0, -11.5, small, bv=0.25, seg=1)
+        # przyrządy: muszka z przodu, szczerbinka w jaskółczym ogonie z tyłu
+        prism("sight_front", fillet([(152.0, 115.0), (161.0, 115.0), (160.0, 120.5, 0.6), (155.0, 120.5, 1.2)]), -1.3, 1.3, small, bv=0.2, seg=1)
+        prism("sight_base", fillet([(6.0, 114.5), (18.0, 114.5), (16.5, 118.0, 0.6), (6.0, 118.0, 0.6)]), -7.0, 7.0, small, bv=0.3, seg=1)
+        for sgn in (-1.0, 1.0):
+            prism("sight_post", fillet([(6.5, 117.5), (15.5, 117.5), (14.0, 121.5, 0.4), (6.5, 121.5, 0.4)]), sgn * 1.7, sgn * 6.8, small, bv=0.2, seg=1)
+        revolve("chamber_pin", [(-1.2, 0.0), (-1.2, 1.3), (3.0, 1.3), (3.0, 0.0)], (0.0, 110.5), bright, seg=10, bv=0.2)      # wskaźnik naboju w komorze
     revolve("chamber", [(70.6, 0.0), (70.6, 10.2), (98.4, 10.2), (98.4, 0.0)], (0.0, 101.0), bright, seg=28, bv=0.0)
     barrel = revolve("barrel", [(158.0, 0.0), (158.0, 6.5), (166.5, 6.5), (166.5, 4.6), (152.0, 4.6), (152.0, 0.0)], (0.0, 101.0), blued, seg=24, bv=0.35, bseg=1)
     if not NOBAKE:
@@ -929,12 +937,6 @@ def build_p83():
         for p in barrel.data.polygons:
             if p.center.x < 166.2 and math.hypot(p.center.y, p.center.z - 101.0) < 4.7:
                 p.material_index = 1
-    prism("extractor", fillet([(55.0, 100.4), (70.0, 100.4), (70.0, 103.0), (55.0, 103.0, 1.0)]), -13.0, -11.5, small, bv=0.25, seg=1)
-    # przyrządy: muszka z przodu, szczerbinka w jaskółczym ogonie z tyłu
-    prism("sight_front", fillet([(152.0, 115.0), (161.0, 115.0), (160.0, 120.5, 0.6), (155.0, 120.5, 1.2)]), -1.3, 1.3, small, bv=0.2, seg=1)
-    prism("sight_base", fillet([(6.0, 114.5), (18.0, 114.5), (16.5, 118.0, 0.6), (6.0, 118.0, 0.6)]), -7.0, 7.0, small, bv=0.3, seg=1)
-    for sgn in (-1.0, 1.0):
-        prism("sight_post", fillet([(6.5, 117.5), (15.5, 117.5), (14.0, 121.5, 0.4), (6.5, 121.5, 0.4)]), sgn * 1.7, sgn * 6.8, small, bv=0.2, seg=1)
     # bezpiecznik z zwalniaczem kurka po lewej (+Y), jego oś widoczna po prawej
     prism("safety", hull(circle(16.0, 101.0, 4.0) + circle(29.0, 98.5, 2.4)), 12.1, 15.0, small, bv=0.45, seg=1)
     revolve("safety_axis", [(-13.0, 0.0), (-13.0, 2.8), (12.5, 2.8), (12.5, 0.0)], (16.0, 101.0), small, axis="Y", seg=16, bv=0.25)
@@ -944,20 +946,24 @@ def build_p83():
           -11.7, 11.7, blued, bv=0.6, seg=2)
     guard = spline([(112.0, 79.0), (115.0, 66.0), (112.0, 54.0), (103.0, 46.5), (88.0, 44.5), (73.0, 46.5), (63.5, 53.0), (58.5, 62.0), (56.0, 70.0)], 6)
     prism("guard", strip(guard, 4.2), -5.6, 5.6, blued, bv=0.9, seg=2)
-    prism("trigger", strip(spline([(73.0, 77.0), (74.5, 68.0), (77.0, 60.0), (81.0, 54.0)], 5), lambda t: 5.4 - 2.4 * t), -3.4, 3.4, blued, bv=0.8, seg=2)
+    with comp("trigger"):
+        prism("trigger", strip(spline([(73.0, 77.0), (74.5, 68.0), (77.0, 60.0), (81.0, 54.0)], 5), lambda t: 5.4 - 2.4 * t), -3.4, 3.4, blued, bv=0.8, seg=2)
     prism("hammer", fillet([(6.0, 87.0), (-2.5, 88.5, 2.0), (-9.0, 97.0, 3.0), (-9.5, 105.0, 3.0), (-4.0, 109.0, 2.5), (3.0, 106.0, 2.0), (6.0, 98.0)]),
           -3.9, 3.9, hammer_m, bv=0.5, seg=2)
-    revolve("chamber_pin", [(-1.2, 0.0), (-1.2, 1.3), (3.0, 1.3), (3.0, 0.0)], (0.0, 110.5), bright, seg=10, bv=0.2)      # wskaźnik naboju w komorze
     for cx, cz, r in ((114.0, 81.5, 2.0), (73.0, 80.5, 1.6)):
         revolve("pin", [(-12.1, 0.0), (-12.1, r), (12.1, r), (12.1, 0.0)], (cx, cz), small, axis="Y", seg=14, bv=0.2)
     # okładzina z czarnego tworzywa (owija grzbiet), śruba, płaska stopka magazynka, zaczep magazynka w stopce chwytu
     prism("grip", fillet([(55.0, 66.0, 4.0), (41.5, 6.5, 4.0), (-9.5, 7.0, 4.5), (0.0, 63.0, 14.0), (-5.0, 77.0, 3.5), (1.5, 82.5, 3.5),
                           (30.0, 83.0, 5.0), (45.0, 78.5, 6.0)]), -14.5, 14.5, grip_m, bv=2.2, seg=3)          # promienie naroży > faza, inaczej faza się zapada
     revolve("screw", [(-15.0, 0.0), (-15.0, 3.4), (15.0, 3.4), (15.0, 0.0)], (22.0, 40.0), screw_m, axis="Y", seg=18, bv=0.3)
-    prism("mag_plate", fillet([(-8.5, 0.0, 1.2), (42.0, 0.0, 1.2), (42.0, 3.8), (-8.8, 3.8, 1.0)]), -10.8, 10.8, blued, bv=0.4, seg=1)
+    with comp("mag"):                                       # magazynek: stopka i korpus w chwycie (schowany — widać go, gdy lewa dłoń go wyciąga)
+        prism("mag_plate", fillet([(-8.5, 0.0, 1.2), (42.0, 0.0, 1.2), (42.0, 3.8), (-8.8, 3.8, 1.0)]), -10.8, 10.8, blued, bv=0.4, seg=1)
+        prism("mag_body", fillet([(-4.0, 3.5, 1.0), (36.5, 3.5, 1.0), (49.0, 60.0, 2.0), (8.0, 60.0, 2.0)]), -5.6, 5.6, blued, bv=0.4, seg=1)
     prism("mag_catch", fillet([(-12.0, 2.0, 1.0), (-7.0, 2.0), (-6.0, 9.5), (-11.0, 9.5, 1.5)]), -5.0, 5.0, blued, bv=0.5, seg=1)
     # nadgarstek pod chwytem: od nadgarstka do grzbietu zamka ok. 0,21 m, jak w P-64 — dłoń kończy się na wysokości zamka
-    return {"rear": Vector((16.0, 0.0, -65.0)), "fore": None, "muzzle": Vector((166.5, 0.0, 101.0)), "hands": 1, "length": 0.19, "grip": Vector((19.0, 0.0, 47.0))}
+    # trigger — nasada języka spustu (oś obrotu), trigger_pad — przód języka pod opuszkę wskazującego, slide — skok zamka (mm)
+    return {"rear": Vector((16.0, 0.0, -65.0)), "fore": None, "muzzle": Vector((166.5, 0.0, 101.0)), "hands": 1, "length": 0.19, "grip": Vector((19.0, 0.0, 47.0)),
+            "trigger": Vector((73.0, 0.0, 77.0)), "trigger_pad": Vector((79.0, 0.0, 63.0)), "slide": 52.0}
 
 
 # ---------------------------------------------------------------- strzelba pump-action: PELLET-8
@@ -2233,9 +2239,11 @@ def main():
     rel = lambda v: [round(c, 4) for c in (v - rear) * sc]
     info = {"hands": spec["hands"], "length": length, "rear": [0.0, 0.0, 0.0], "fore": rel(spec["fore"]) if spec["fore"] is not None else [0.0, 0.0, 0.0],
             "muzzle": rel(muzzle)}
-    for k in ("grip", "hold"):
+    for k in ("grip", "hold", "trigger", "trigger_pad"):
         if spec.get(k) is not None:
             info[k] = rel(spec[k])
+    if spec.get("slide") is not None:                               # skok zamka / suwadła (m po skalowaniu; strzelnica FPP)
+        info["slide"] = round(spec["slide"] * sc, 4)
     if spec.get("hold_v"):
         info["hold_v"] = True
     with open(DST.rsplit(".", 1)[0] + ".json", "w") as f:
