@@ -48,6 +48,8 @@ func run(m: Node2D) -> void:
 	await _t_door()
 	await _t_options()
 	await _t_plates()
+	_t_special_sim()
+	await _t_special_hook()
 	await _t_server()
 	await _t_climb()
 	await _t_practice()
@@ -85,6 +87,112 @@ func _t_static() -> void:
 	for v in dirs:
 		wide = maxf(wide, rad_to_deg((v as Vector3).angle_to(Vector3.FORWARD)))
 	check("SPREAD-12: %d śrucin, najdalsza %.1f° ≤ %.1f°" % [dirs.size(), wide, sg.cone_half_deg(0.0)], dirs.size() == sg.pellets and wide <= sg.cone_half_deg(0.0) + 0.01)
+
+## Sim z ustawionym zegarem przewijany krokami fizyki (pociski w locie rozstrzyga `tick`).
+func _run_sim(sim: RangeSim, secs: float) -> void:
+	var t := 0.0
+	while t < secs:
+		sim.tick(1.0 / 60.0)
+		t += 1.0 / 60.0
+
+## Bazę kierunku z oka na punkt (−z bazy = kierunek strzału).
+func _aim_basis(eye: Vector3, to: Vector3) -> Basis:
+	var dir := (to - eye).normalized()
+	return Basis.looking_at(dir, Vector3.UP)
+
+## Etap 3: bronie specjalne w samej symulacji tunelu (bez gracza).
+func _t_special_sim() -> void:
+	var eye := Vector3(0.0, RangeSim.EYE_STAND, 0.0)
+	# WRATH-4: granat leci (blacha stoi zaraz po strzale), uzbrojony wybucha przy blasze 13 m; z bliska (ława, < 6,5 m) — niewypał
+	var sim := RangeSim.new()
+	var g4 := Weapons.def(Weapons.GNIEW4)
+	var landed: Array = []
+	sim.landed.connect(func(_p: Vector3, _n: Vector3, kind: String, _k: String, exploded: bool, _r: float) -> void: landed.append([kind, exploded]))
+	var flights: Array = []
+	sim.flight.connect(func(pts: PackedVector3Array, secs: float, _k: String) -> void: flights.append([pts.size(), secs]))
+	sim.shoot(eye, _aim_basis(eye, sim.plates[2]["pos"]), g4, 1, 0.0)
+	var up_now: bool = not sim.plates[2]["down"]
+	_run_sim(sim, 0.6)
+	check("WRATH-4: lot %.2f s (%d pkt toru), blacha 13 m stoi do uderzenia, potem wybuch i leży" % [float(flights[0][1]) if not flights.is_empty() else -1.0, int(flights[0][0]) if not flights.is_empty() else 0],
+		up_now and not flights.is_empty() and float(flights[0][1]) > 0.08 and sim.plates[2]["down"] and landed.size() == 1 and bool(landed[0][1]))
+	var drop_y: float = (sim.trace(eye, Vector3(0, 0, -1)).get("pos", Vector3.ZERO) as Vector3).y
+	landed.clear()
+	sim.shoot(eye, _aim_basis(eye, Vector3(0.0, RangeSim.BENCH_H, -2.0)), g4, 2, 0.0)
+	_run_sim(sim, 0.4)
+	check("WRATH-4: trafienie przed uzbrojeniem (2 m) — niewypał %s" % str(landed), landed.size() == 1 and not bool(landed[0][1]))
+	# łuk: granat w poziomie opada (prawdziwe g), kula nie
+	var ends: Array = []                                         # tablica, bo lambda nie zmienia zmiennych z zewnątrz
+	var sim2 := RangeSim.new()
+	sim2.flight.connect(func(pts: PackedVector3Array, _s: float, _k: String) -> void: ends.append(pts[pts.size() - 1]))
+	sim2.shoot(eye, Basis.looking_at(Vector3(0, 0, -1), Vector3.UP), g4, 3, -g4.jitter_deg)
+	var end_y: float = (ends[0] as Vector3).y if not ends.is_empty() else eye.y
+	check("WRATH-4: tor łukowy — strzał w poziomie kończy się %.2f m niżej (kula: %.2f m)" % [eye.y - end_y, eye.y - drop_y], eye.y - end_y > 0.15 and is_equal_approx(drop_y, eye.y))
+	# FALCON-6: rakieta celowana obok blachy 7 m skręca na nią (naprowadzanie), bez naprowadzania by chybiła
+	var sim3 := RangeSim.new()
+	var f6 := Weapons.def(Weapons.SOKOL6)
+	var off: Vector3 = (sim3.plates[0]["pos"] as Vector3) + Vector3(0.9, 0.0, 0.0)
+	var straight := sim3.trace(eye, (off - eye).normalized())
+	sim3.shoot(eye, _aim_basis(eye, off), f6, 0, -f6.jitter_deg)                     # bez rozrzutu: sam tor naprowadzania
+	_run_sim(sim3, 1.0)
+	check("FALCON-6: celowana 0,9 m obok blachy 7 m (prosto: %s) — skręca i ją przewraca" % straight.get("kind", "?"),
+		straight.get("kind", "") != "plate" and sim3.plates[0]["down"])
+	# SPECTER-1: szyna na linii dwóch blach przewraca obie jednym strzałem
+	var sim4 := RangeSim.new()
+	var a: Vector3 = sim4.plates[0]["pos"]
+	var b: Vector3 = sim4.plates[2]["pos"]
+	var dir := (b - a).normalized()
+	var hits := sim4.shoot(a - dir * 2.0, Basis.looking_at(dir, Vector3.UP), Weapons.def(Weapons.WIDMO1), 0, -Weapons.def(Weapons.WIDMO1).jitter_deg)
+	check("SPECTER-1: przebija — dwie blachy na linii leżą (%d trafień)" % hits.size(), sim4.plates[0]["down"] and sim4.plates[2]["down"] and hits.size() >= 3)
+	# LR-7: promień grzeje blachę 7 m, aż padnie (kilka kroków); blachy 20 m nie sięga (zasięg ok. 14 m)
+	var sim5 := RangeSim.new()
+	var lr := Weapons.def(Weapons.LR7)
+	var n := 0
+	while not sim5.plates[0]["down"] and n < 20:
+		sim5.shoot(eye, _aim_basis(eye, sim5.plates[0]["pos"]), lr, n, 0.0)
+		sim5.tick(lr.cooldown)
+		n += 1
+	check("LR-7: blacha 7 m pada po %d krokach promienia (nie od pierwszego)" % n, sim5.plates[0]["down"] and n >= 3 and n <= 8)
+	for i in 20:
+		sim5.shoot(eye, _aim_basis(eye, sim5.plates[4]["pos"]), lr, i, 0.0)
+		sim5.tick(lr.cooldown)
+	var reach := sim5.beam_to.distance_to(eye)
+	check("LR-7: blacha 20 m poza zasięgiem — stoi, promień kończy się po %.1f m" % reach, not sim5.plates[4]["down"] and reach < 15.0 and reach > 13.0)
+	# HKM-9: płomień nie sięga najbliższej blachy (7 m), zostawia ogień na podłodze
+	var sim6 := RangeSim.new()
+	var hk := Weapons.def(Weapons.HKM9)
+	for i in 20:
+		sim6.shoot(eye, _aim_basis(eye, sim6.plates[0]["pos"]), hk, i, 0.0)
+		sim6.tick(hk.cooldown)
+	check("HKM-9: zasięg %.1f m — blacha 7 m stoi, ogień na podłodze (%d)" % [sim6.flame_reach, sim6.fires.size()],
+		not sim6.plates[0]["down"] and sim6.flame_reach < 6.0 and sim6.fires.size() >= 2)
+
+## Etap 3 przez kontroler broni: płomień HKM-9 idzie krokami do tunelu, a serwer nie liczy go w kryjówce (bez ognia przy drzwiach).
+func _t_special_hook() -> void:
+	var wc = player.weapons
+	var keep: int = wc.loadout[0]
+	wc.loadout[0] = Weapons.HKM9
+	wc.mags[Weapons.HKM9] = 80                                   # przed dobyciem: z pustym zbiornikiem dobycie zaczyna przeładowanie (2,6 s)
+	wc.select_slot(1)
+	await _frames(2)
+	wc.select_slot(0)
+	await get_tree().create_timer(0.8).timeout                  # dobycie
+	var fp: Node = _enter()
+	await _frames(2)
+	var fires0 := get_tree().get_nodes_in_group("fire_patches").size()
+	wc.sim_fire = true
+	await get_tree().create_timer(1.2).timeout
+	wc.sim_fire = false
+	await _frames(3)
+	var fires1 := get_tree().get_nodes_in_group("fire_patches").size()
+	check("HKM-9 na strzelnicy (%s): płomień w tunelu (zasięg %.1f m, ogień %d), w kryjówce bez ognia (%d → %d)" % [String(wc.cur().key), fp.sim.flame_reach, fp.sim.fires.size(), fires0, fires1],
+		fp.sim.flame_at > 0.0 and fp.sim.fires.size() >= 1 and fires1 == fires0)
+	fp.leave()
+	await _frames(2)
+	wc.loadout[0] = keep
+	wc.select_slot(1)
+	await _frames(2)
+	wc.select_slot(0)
+	await get_tree().create_timer(0.8).timeout
 
 ## Wejście przez drzwi (jak [E]), bez podchodzenia.
 func _enter() -> Node:
