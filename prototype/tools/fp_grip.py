@@ -7,11 +7,16 @@ Dla każdej broni z tabeli GRIPS:
 1. Broń (`art/char3d/gun_<klucz>.glb`) w postawie strzeleckiej: stopka kolby w zagłębieniu prawego barku, lufa obrócona o `yaw`
    względem tułowia (tułów bokiem do celu) — pistolet: przed twarzą na wyciągniętych rękach.
 2. Dłonie z układów zmierzonych na szkielecie (kierunek palców, linia kostek, grzbiet): prawa na chwycie (kostki wzdłuż chwytu,
-   grzbiet na zewnątrz), lewa pod łożem (wnętrzem do góry). Ramiona IK z biegunem łokcia, obojczyki lekko w przód.
-3. Palce zginane człon po członie, aż kapsuła członu dotknie siatki broni (BVH) — palce leżą na chwycie, łożu i spuście, nie w nich.
+   grzbiet na zewnątrz), lewa pod łożem (wnętrzem do góry). Obrót dłoni i biegun łokcia dobierane przeglądem pod prosty nadgarstek
+   (orient_hand), ramiona IK, obojczyki lekko w przód.
+3. Palce, wskazujący na spuście i kciuki dobierane przeglądem póz liczonym analitycznie (kapsuły członów kontra siatka broni, BVH) —
+   palce leżą na chwycie, łożu i spuście, nie w nich.
 4. Poza zapisana jako klip `grip_<klucz>` (jedna klatka) i pusty węzeł `gunref_<klucz>` przypięty do kości prawej dłoni: w grze broń
    stoi tam, gdzie ten węzeł (BoneAttachment3D), więc broń i dłonie zgadzają się co do milimetra.
 Podglądy (Eevee): `<shots>/grip_<klucz>_eye.png` (z oka nad przyrządami) i `_side.png`.
+Strojenie: `--quick=1` — sama poza chwytu i zbliżenia dłoni (bez klipów przeładowania i eksportu); zmienne środowiska FPGRIP_LEFT /
+FPGRIP_RIGHT (JSON nadpisujący pola chwytu dłoni z GRIPS), FPGRIP_SINK (JSON `[cofnięcie, uniesienie]`), FPGRIP_TWIST (udział
+przedramienia w skręcie nadgarstka).
 """
 import json
 import math
@@ -57,12 +62,13 @@ PALM_R = 0.019                         # m — pół grubości dłoni w rękawic
 # `thumb_front` — granica w przód dla koniuszka kciuka (m wzdłuż lufy; dalej zahaczałby się o przód chwytu).
 GRIPS = {
     "m83": {
-        "yaw": 35.0, "butt_dz": 0.02, "clav": (6.0, 12.0), "sink": (0.06, 0.07), "trigger": (0.068, 0.0, 0.086),
+        "yaw": 35.0, "butt_dz": 0.02, "clav": (6.0, 12.0), "sink": (0.03, 0.05), "trigger": (0.068, 0.0, 0.086),
         "right": {"at": "grip", "mcp": (0.022, -0.026, 0.05), "push": (-0.022, -0.004, 0.008), "up": (0.34, 0.0, 0.94),
                   "back": (-0.25, -0.97, 0.0), "off": 0.022, "roll": 30, "tilt": 15,
                   "thumb_side": 0.024, "thumb_front": 0.03},
-        "left": {"at": "hold", "mcp": (0.30, -0.022, 0.102), "push": (0.0, 0.012, -0.03), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.35, -0.94), "off": 0.012,
-                 "roll": 20, "tilt": 20, "flex": -35.0, "dev": 22.0, "screen": 40.0},
+        "left": {"at": "hold", "mcp": (0.36, -0.022, 0.104), "push": (0.0, 0.012, -0.03), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.35, -0.94), "off": 0.012,
+                 "roll": 25, "tilt": 20, "flex": -10.0, "dev": 22.0, "screen": 70.0,
+                 "thumb_side": 0.026, "thumb_top": 0.175, "thumb_straight": 0.0001},
     },
 }
 
@@ -107,6 +113,9 @@ POLES = {"Right": Vector((-0.35, -0.45, -0.8)), "Left": Vector((0.2, 0.7, -0.7))
 # Dźwięki mechaniki w klatkach klipu (audio/sfx/weapons/mech_*, bake_weapons.py): poza dłoni → klucz (gra w chwili tej klatki).
 SOUNDS = {"grab": "mech_mag_release", "rock": "mech_mag_out", "pouch": "foley_gear", "seat": "mech_mag_in", "handle": "mech_bolt_back",
           "release": "mech_bolt_fwd", "leave": "mech_regrip"}
+
+
+TWIST_SHARE = float(os.environ.get("FPGRIP_TWIST", "0.6"))
 
 
 def P(rig, n):
@@ -208,7 +217,7 @@ def wrist_bend(rig, side):
     return math.degrees(math.atan2(d.dot(b), d.dot(f))), math.degrees(math.atan2(d.dot(a), d.dot(f)))
 
 
-def share_twist(rig, side, hand_rot, share=0.6, quiet=False):
+def share_twist(rig, side, hand_rot, share=TWIST_SHARE, quiet=False):
     """Skręt nadgarstka dzielony z przedramieniem (szkielet nie ma kości skrętu): cały obrót dłoni wokół osi przedramienia w jednym
     stawie zwija skórę rękawicy jak papierek od cukierka. Przedramię bierze `share` skrętu, dłoń wraca do zadanego obrotu."""
     pb_f = rig.pose.bones[PRE + side + "ForeArm"]
@@ -418,13 +427,15 @@ def aim_thumb(rig, side, bvh, G, c):
     """Kciuk trzymający broń: nasada (Thumb1 — kość śródręcza) obraca się w dwóch stopniach swobody (przeciwstawienie wokół linii
     kostek — kciuk przechodzi na drugą stronę chwytu — i odwiedzenie wokół grzbietu), dalsze człony się zginają. Przegląd siatki liczony
     analitycznie; wybór, w którym dalsze człony przylegają do broni, koniuszek leży po drugiej stronie chwytu (`thumb_side`, m od osi
-    broni) i nie wysuwa się przed `thumb_front` (zahaczałby o przód chwytu), bez wchodzenia członów w broń. Owijanie jak palce (jedna oś
+    broni), nie wysuwa się przed `thumb_front` (zahaczałby o przód chwytu) ani ponad `thumb_top` (lewy: nad łoże, w kadr przy
+    przyrządach), bez wchodzenia członów w broń. Owijanie jak palce (jedna oś
     zgięcia) chowało kciuk w chwycie, a punkt docelowy na ściance był nieosiągalny bez przejścia przez chwyt."""
     names = [side + "HandThumb" + str(i) for i in (1, 2, 3)]
     f, a, back, _ = hand_frame(rig, side)
     gr = G.to_3x3().normalized()
     fwd, across, o = (gr @ Vector((1.0, 0.0, 0.0))).normalized(), (gr @ Vector((0.0, 1.0, 0.0))).normalized(), G.to_translation()
-    front, want_y = c.get("thumb_front", 1.0), c.get("thumb_side", 0.02)
+    front, want_y, top = c.get("thumb_front", 1.0), c.get("thumb_side", 0.02), c.get("thumb_top", 1.0)
+    upg = (gr @ Vector((0.0, 0.0, 1.0))).normalized()
     K = P(rig, names[0])
     L = [(T(rig, n) - P(rig, n)).length for n in names]
     d0 = [(T(rig, n) - P(rig, n)).normalized() for n in names]
@@ -445,7 +456,7 @@ def aim_thumb(rig, side, bvh, G, c):
                     p3 = p2 + d3 * L[2]
                     ty = (p3 - o).dot(across)               # koniuszek po drugiej stronie, ale przy broni (nie odstaje w bok)
                     pre = 1.5 * (max(0.0, want_y - ty) + max(0.0, ty - want_y - 0.012)) + 1.0 * max(0.0, (p3 - o).dot(fwd) - front) \
-                        + 0.00002 * (abs(al) + abs(be) + a2 + a3)
+                        + 1.5 * max(0.0, (p3 - o).dot(upg) - top) + 0.00002 * (abs(al) + abs(be)) + c.get("thumb_straight", 0.00002) * (a2 + a3)
                     if best is not None and pre >= best[0]:
                         continue
                     g = _capsule_gaps([(K, p1, ds[0]), (p1, p2, d2), (p2, p3, d3)], THUMB_R, bvh)
@@ -733,6 +744,9 @@ def build(outfit, keys):
     os.makedirs(SHOTS, exist_ok=True)
     for key in keys:
         conf = GRIPS[key]
+        for side in ("left", "right"):              # strojenie: FPGRIP_LEFT / FPGRIP_RIGHT = JSON nadpisujący pola chwytu dłoni
+            if os.environ.get("FPGRIP_" + side.upper()):
+                conf[side] = dict(conf[side], **json.loads(os.environ["FPGRIP_" + side.upper()]))
         info = json.load(open(os.path.join(ART, "gun_%s.json" % key)))
         root, meshes = gun_object(key)
         update()
@@ -748,7 +762,7 @@ def build(outfit, keys):
         update()
         pocket = P(rig, "RightArm") + Vector((0.03, 0.06, -0.05))
         butt = Vector((lo + 0.03, 0.0, info["grip"][2] + conf["butt_dz"]))
-        sk = conf.get("sink", (0.0, 0.0))
+        sk = json.loads(os.environ["FPGRIP_SINK"]) if os.environ.get("FPGRIP_SINK") else conf.get("sink", (0.0, 0.0))
         butt += Vector((sk[0], 0.0, -sk[1]))
         G = Matrix.Translation(pocket) @ Matrix.Rotation(math.radians(conf["yaw"]), 4, "Z") @ Matrix.Translation(-butt)
         root.matrix_world = G
@@ -812,6 +826,9 @@ def build(outfit, keys):
             hp = G @ Vector(info["hold"])
             for nm, off in (("lt", (0.0, 0.05, 0.4)), ("ll", (0.0, 0.4, -0.05)), ("lb", (0.0, 0.1, -0.4)), ("lr", (0.0, -0.4, 0.0))):
                 render(os.path.join(SHOTS, "grip_%s_%s.png" % (key, nm)), look(hp + gx @ Vector(off), hp), 50.0)
+            wp = P(rig, "LeftHand")
+            for nm, off in (("wl", (0.05, 0.3, -0.1)), ("wb", (0.1, 0.1, -0.3))):
+                render(os.path.join(SHOTS, "grip_%s_%s.png" % (key, nm)), look(wp + gx @ Vector(off), wp), 50.0)
             if sl is not None:
                 sl.hide_render = False
         if key in RELOADS and not QUICK:
