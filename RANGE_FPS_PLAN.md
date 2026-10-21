@@ -180,4 +180,14 @@ promienia i płomienia w kryjówce za gracza z `in_range` (wcześniej płomień 
 granat i szyna mogą położyć kilka blach jednym strzałem (`RangeDoor.plausible`). Dev: `--rangeweapon=KLUCZ`, `--rangefire` naciska też spust
 broni półautomatycznej. Test `--rangetest` 49/49.
 
-Zostaje z etapu 3: seria na papier, ruchomy cel, widok innych graczy na sąsiednich stanowiskach, bełt SINEW-6 z łukiem (dziś prosto jak kula).
+Ciąg dalszy (1.7.342, gałąź `feat/range-extras`):
+
+| Element | Jak | Stan |
+|---|---|---|
+| Papier (seria, grupa) | arkusz 45 × 60 cm na 25 m (`PAPER`, z tarczą z pierścieniami) przestrzeliwuje się na wylot — kule, śrut, szyna, bełt i pociski z lotem zostawiają przestrzeliny (`_paper_ray`); po `PAPER_GAP` 3 s bez trafienia następna kula zaczyna nową serię (czysty arkusz). `paper_group`: liczba, rozrzut (cm i MOA), rozciągnięcie w pionie — seria ogniem ciągłym ciągnie grupę w górę. Wyniki na tabliczce przy papierze i na tablicy nad linią ognia | zrobione |
+| Ruchomy cel | wózek na szynie w poprzek tunelu na 22 m (`MOVER_*`, 1,6 m/s tam i z powrotem) z pomarańczową blachą; kula trafia tam, gdzie wózek jest w chwili jej przylotu (`trace` z `speed_m` / `at`, czas lotu z `SPEED_PX`), więc wolny pocisk wymaga wyprzedzenia (bełt: ok. 1,1 m). Trafienia i próby (`MOVER_NEAR` 1,2 m), blacha wstaje po 1,5 s | zrobione |
+| Inni gracze na sąsiednich stanowiskach | replikowane `player.range_pose` (stanowisko, odchylenie, pochylenie z podrzutem, przyklęk) i `range_shots`; `range_others.gd` — osobny char3d (wygląd i kolory gracza, jego broń) na jego stanowisku albo najbliższym wolnym, celuje i klęka jak on, strzał: błysk, światło, dźwięk 3D. Przegrody obniżone do 1,45 m — nad nimi widać sąsiada | zrobione |
+| Bełt SINEW-6 | lot z opadem w skali świata gry (400 px/s ≈ 33 m/s, 120 px/s² ≈ 9,8 m/s²): na 13 m opada ok. 0,8 m, lot 0,5 s; w locie pręt, wbija się w ściany i kulochwyt (8 ostatnich zostaje) | zrobione |
+
+Poprawka dev: `--range3d` na kliencie (`--join`) czeka na własnego gracza — wcześniej brał gracza hosta („1”) i sterował nim (błędy NaN w pozie postaci).
+Test `--rangetest` 54/54. Zostaje: ręce FPP (lepsze narzędzia, §8), etap 2 (przyrządy z `gun_proc.py`, rekordy per broń).

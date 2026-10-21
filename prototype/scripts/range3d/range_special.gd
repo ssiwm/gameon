@@ -30,6 +30,9 @@ var _beam_light: OmniLight3D
 var _beam_seen := -1.0
 var _flame: CPUParticles3D
 var _flame_light: OmniLight3D
+const STUCK_MAX := 8
+var _stuck: Array = []                 ## wbite bełty SINEW-6
+var _bolt_dir := Vector3.FORWARD       ## kierunek ostatniego odcinka toru bełtu (wbicie)
 
 func setup(v: Node, s: RangeSim) -> void:
 	view = v
@@ -157,6 +160,10 @@ func _on_flight(points: PackedVector3Array, _secs: float, key: String) -> void:
 		smoke.spread = 180.0
 		add_child(smoke)
 		smoke.emitting = true
+	elif key == "ciegno6":                                    # bełt kuszy podwodnej: cienki stalowy pręt (50 cm) wzdłuż toru
+		node.add_child(_bolt_mesh())
+		if points.size() > 1:
+			_bolt_dir = (points[points.size() - 1] - points[points.size() - 2]).normalized()
 	else:                                                     # granat 40 mm: ciemny walec z mosiężnym dnem
 		var body := MeshInstance3D.new()
 		var cy := CylinderMesh.new()
@@ -216,9 +223,22 @@ func _on_landed(pos: Vector3, normal: Vector3, kind: String, key: String, explod
 			_scorch_at(pos, normal, minf(radius * 0.45, 1.6))
 		view._play3d("explosion", 2, pos, 2.0, 0.05)
 		return
+	if kind == "mover":
+		return                                                    # iskry i dzwonienie wózka: range_targets.gd
 	if kind == "plate":
 		view._burst(pos + normal * 0.01, normal, Color(1.0, 0.72, 0.3), 14, 3.5)
 		view._play3d("plate_ring", 4, pos, 0.0, 0.05)
+	elif key == "ciegno6":                                    # bełt wbija się w beton / piasek i zostaje (STUCK_MAX ostatnich)
+		var b := Node3D.new()
+		b.add_child(_bolt_mesh())
+		add_child(b)
+		b.global_position = pos - _bolt_dir * 0.1                 # grot (0,15 m przed węzłem) wchodzi ok. 5 cm w cel
+		b.look_at(pos + _bolt_dir, Vector3.UP if absf(_bolt_dir.y) < 0.95 else Vector3.FORWARD)
+		_stuck.append(b)
+		while _stuck.size() > STUCK_MAX:
+			(_stuck.pop_front() as Node).queue_free()
+		view._burst(pos + normal * 0.02, normal, Color(0.5, 0.46, 0.4), 6, 1.2)
+		view._play3d("impact_hard", 3, pos, -12.0, 0.1)
 	else:
 		view._hole(pos, normal)
 		view._burst(pos + normal * 0.02, normal, Color(0.5, 0.46, 0.4), 10 if key == "gniew4" else 8, 1.6)
@@ -271,6 +291,20 @@ func _fireball(pos: Vector3, n: Vector3, radius: float) -> void:
 	get_tree().create_timer(3.4).timeout.connect(func() -> void:
 		fire.queue_free()
 		smoke.queue_free())
+
+## Bełt: pręt wzdłuż −z węzła (look_at), grot z przodu.
+func _bolt_mesh() -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var cy := CylinderMesh.new()
+	cy.top_radius = 0.0035
+	cy.bottom_radius = 0.0035
+	cy.height = 0.5
+	cy.radial_segments = 6
+	mi.mesh = cy
+	mi.material_override = view._flat(Color(0.6, 0.6, 0.58), 0.35, 0.9)
+	mi.rotation.x = PI * 0.5
+	mi.position = Vector3(0.0, 0.0, 0.1)
+	return mi
 
 func _scorch_at(pos: Vector3, n: Vector3, size: float) -> void:
 	var mi: MeshInstance3D

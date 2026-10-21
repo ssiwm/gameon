@@ -1101,8 +1101,13 @@ func _perf_run(secs: float, col: int) -> void:
 ## Dev `--range3d` (RANGE_FPS_PLAN.md, etap 0): lokalny gracz od razu na strzelnicy FPP; [E] wraca do kryjówki.
 func _dev_range3d() -> void:
 	await get_tree().create_timer(1.2).timeout
-	var p: Node = _players.get_node_or_null(str(multiplayer.get_unique_id())) if NoiseMgr.has_network() else _players.get_node_or_null("1")
-	if p == null:
+	var p: Node = null
+	for i in 50:                                                # klient (--join): własny gracz pojawia się dopiero po połączeniu
+		p = _players.get_node_or_null(str(multiplayer.get_unique_id())) if NoiseMgr.has_network() else _players.get_node_or_null("1")
+		if p != null:
+			break
+		await get_tree().create_timer(0.2).timeout
+	if p == null and not NoiseMgr.has_network():
 		p = _players.get_node_or_null("1")
 	if p == null or p.get("fp") != null:
 		return

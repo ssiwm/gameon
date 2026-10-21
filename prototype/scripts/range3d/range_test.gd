@@ -49,7 +49,9 @@ func run(m: Node2D) -> void:
 	await _t_options()
 	await _t_plates()
 	_t_special_sim()
+	_t_extras_sim()
 	await _t_special_hook()
+	await _t_coop_pose()
 	await _t_server()
 	await _t_climb()
 	await _t_practice()
@@ -165,6 +167,79 @@ func _t_special_sim() -> void:
 		sim6.tick(hk.cooldown)
 	check("HKM-9: zasięg %.1f m — blacha 7 m stoi, ogień na podłodze (%d)" % [sim6.flame_reach, sim6.fires.size()],
 		not sim6.plates[0]["down"] and sim6.flame_reach < 6.0 and sim6.fires.size() >= 2)
+
+## Etap 3, ciąg dalszy: łuk bełtu SINEW-6, papier (seria i grupa), ruchomy cel (czas lotu kuli).
+func _t_extras_sim() -> void:
+	var eye := Vector3(0.0, RangeSim.EYE_STAND, 0.0)
+	var c6 := Weapons.def(Weapons.CIEGNO6)
+	var v := float(c6.speed) / RangeSim.PX_PER_M
+	var g := float(c6.gravity) / RangeSim.PX_PER_M
+	# bełt w środek blachy 13 m przelatuje pod nią (opad), z poprawką na opad ją przewraca
+	var sim := RangeSim.new()
+	var secs: Array = []
+	sim.flight.connect(func(_pts: PackedVector3Array, s: float, _k: String) -> void: secs.append(s))
+	var tgt: Vector3 = sim.plates[2]["pos"]
+	sim.shoot(eye, _aim_basis(eye, tgt), c6, 0, -c6.jitter_deg)
+	_run_sim(sim, 1.0)
+	var low_miss: bool = not sim.plates[2]["down"]
+	var dist := eye.distance_to(tgt)
+	var hold := 0.5 * g * pow(dist / v, 2.0)
+	sim.shoot(eye, _aim_basis(eye, tgt + Vector3(0.0, hold, 0.0)), c6, 1, -c6.jitter_deg)
+	_run_sim(sim, 1.0)
+	check("SINEW-6: bełt %.0f m/s leci %.2f s, w środek blachy 13 m — pod nią, z poprawką %.2f m — trafia" % [v, float(secs[0]) if not secs.is_empty() else -1.0, hold],
+		low_miss and sim.plates[2]["down"] and not secs.is_empty() and float(secs[0]) > 0.3)
+	# papier 25 m: seria M-83 zostawia przestrzeliny, grupa w cm i MOA; po przerwie PAPER_GAP następny strzał zaczyna nową serię
+	var sp := RangeSim.new()
+	var m83 := Weapons.def(Weapons.M83)
+	for i in 5:
+		sp.shoot(eye, _aim_basis(eye, RangeSim.PAPER), m83, 100 + i, -0.4)        # rozrzut 0,4° — przy 0,8° (ok. 35 cm na 25 m) kule wychodzą poza arkusz
+		sp.tick(0.2)
+	var grp := sp.paper_group()
+	var max_moa := (m83.jitter_deg - 0.4) * 2.0 * 60.0 * 1.05
+	check("papier: %d / 5 przestrzelin, grupa %.1f cm (%.1f MOA ≤ %.0f), pion %.1f cm" % [int(grp["n"]), float(grp["spread"]) * 100.0, float(grp["moa"]), max_moa, float(grp["vertical"]) * 100.0],
+		int(grp["n"]) >= 3 and float(grp["spread"]) > 0.0 and float(grp["moa"]) <= max_moa)
+	_run_sim(sp, RangeSim.PAPER_GAP + 0.2)
+	sp.shoot(eye, _aim_basis(eye, RangeSim.PAPER), m83, 200, 0.0)
+	check("papier: po %.0f s przerwy nowa seria (%d przestrzelina)" % [RangeSim.PAPER_GAP, sp.paper_holes.size()], sp.paper_holes.size() == 1)
+	# wózek 22 m: szybka kula w blachę wózka trafia; bełt bez wyprzedzenia (lot ok. 0,7 s) mija — próba liczy się w obu
+	var sm := RangeSim.new()
+	var mp := Vector3(RangeSim.mover_x(sm.clock), RangeSim.MOVER_Y, RangeSim.MOVER_Z)
+	sm.shoot(eye, _aim_basis(eye, mp), m83, 0, -m83.jitter_deg)
+	var fast_hit: bool = sm.mover_down and sm.mover_hits == 1
+	_run_sim(sm, RangeSim.MOVER_RESET + 0.1)
+	var up_again: bool = not sm.mover_down
+	mp = Vector3(RangeSim.mover_x(sm.clock), RangeSim.MOVER_Y, RangeSim.MOVER_Z)
+	var bd := eye.distance_to(mp)
+	sm.shoot(eye, _aim_basis(eye, mp + Vector3(0.0, 0.5 * g * pow(bd / v, 2.0), 0.0)), c6, 0, -c6.jitter_deg)
+	_run_sim(sm, 1.2)
+	check("wózek: kula M-83 trafia (%s), blacha wstaje po %.1f s (%s), bełt bez wyprzedzenia mija — trafienia %d / próby %d" % [str(fast_hit), RangeSim.MOVER_RESET, str(up_again), sm.mover_hits, sm.mover_tries],
+		fast_hit and up_again and sm.mover_hits == 1 and sm.mover_tries == 2)
+	var lead := RangeSim.MOVER_SPEED * bd / v
+	info("wyprzedzenie bełtu na wózek %.0f m: %.2f m (lot %.2f s)" % [-RangeSim.MOVER_Z, lead, bd / v])
+
+## Strzelnica w co-op: lokalny gracz publikuje stanowisko, kierunek patrzenia, przyklęk i licznik strzałów (replikowane) — z tego inni
+## gracze rysują jego postać na sąsiednim stanowisku (range_others.gd).
+func _t_coop_pose() -> void:
+	var wc = player.weapons
+	var fp: Node = _enter()
+	await _frames(2)
+	fp.yaw = 0.3
+	fp.pitch = -0.1
+	await _frames(3)
+	var pose: Vector4 = player.range_pose
+	var s0: int = player.range_shots
+	wc.mags[wc.cur().id] = 30
+	wc.jams.clear()
+	wc.cd = 0.0
+	wc.sim_fire = true
+	wc.sim_press = true
+	await _frames(2)
+	wc.sim_fire = false
+	await _frames(2)
+	check("co-op: poza na strzelnicy (stanowisko %d, odchylenie %.2f, pochylenie %.2f), licznik strzałów %d → %d" % [int(pose.x), pose.y, pose.z, s0, player.range_shots],
+		int(pose.x) == int(fp.station) and is_equal_approx(pose.y, 0.3) and absf(pose.z - (-0.1 + fp.climb_rad())) < 0.05 and player.range_shots > s0)
+	fp.leave()
+	await _frames(2)
 
 ## Etap 3 przez kontroler broni: płomień HKM-9 idzie krokami do tunelu, a serwer nie liczy go w kryjówce (bez ognia przy drzwiach).
 func _t_special_hook() -> void:

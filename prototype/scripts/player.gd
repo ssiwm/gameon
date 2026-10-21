@@ -142,6 +142,9 @@ var _crouch_latched := false          ## ustawienie „Crouch: TOGGLE": skradani
 var weapons: WeaponController
 var fp: Node = null                   ## lokalnie: strzelnica FPP (scripts/range3d/fp_mode.gd) — postać stoi, gracz patrzy z oczu w tunelu
 var in_range := false                 ## na strzelnicy FPP (replikowane): postać zaparkowana przy drzwiach, plakietka „RANGE”, serwer przyjmuje wynik (range_door.gd)
+var range_pose := Vector4.ZERO        ## strzelnica (replikowane): stanowisko, odchylenie, pochylenie z podrzutem (rad), przyklęk 0..1 — inni widzą
+                                      ## postać na sąsiednim stanowisku (range_others.gd)
+var range_shots := 0                  ## strzelnica (replikowane): licznik strzałów — inni widzą błysk i słyszą strzał
 var view: WeaponView
 ## Postęp podnoszenia widoczny TYLKO lokalnie u podnoszącego (rysowany nad leżącym).
 var revive_progress := 0.0
@@ -442,7 +445,7 @@ func _setup_sync() -> void:
 	sync.replication_interval = 0.05
 	sync.delta_interval = 0.05
 	var cfg := SceneReplicationConfig.new()
-	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":w_hot", ":notches", ":kit", ":perks", ":fits", ":look", ":grabbed", ":taken", ":taken_t", ":is_reviving", ":in_range"]:
+	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":w_hot", ":notches", ":kit", ":perks", ":fits", ":look", ":grabbed", ":taken", ":taken_t", ":is_reviving", ":in_range", ":range_pose", ":range_shots"]:
 		cfg.add_property(path)
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
 	for path in [":position", ":velocity", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":is_bot", ":display_id"]:

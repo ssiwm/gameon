@@ -160,6 +160,7 @@ func tick(delta: float) -> void:
 	ads_t = move_toward(ads_t, 1.0 if ads else 0.0, ADS_SPEED * delta)
 	if dev_ads_t >= 0.0:
 		ads_t = dev_ads_t
+	player.range_pose = Vector4(float(station), yaw, pitch + climb_rad(), brace_t)     # replikowane: postać na stanowisku u innych graczy
 	if Input.is_action_just_pressed("interact") and Engine.get_physics_frames() != _enter_frame:   # [E] wejścia przy drzwiach nie wychodzi od razu
 		leave.call_deferred()
 
@@ -183,6 +184,7 @@ func shot_basis() -> Basis:
 
 func range_shot(d: WeaponDef, seed: int, extra: float) -> void:
 	shots_fired += 1
+	player.range_shots += 1                                       # replikowane: błysk i strzał u innych graczy na strzelnicy
 	var hits := sim.shoot(eye(), shot_basis(), d, seed, extra)
 	if view != null and is_instance_valid(view):
 		view.on_shot(d, hits)

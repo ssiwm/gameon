@@ -15,6 +15,8 @@ const FpArms := preload("res://scripts/range3d/fp_arms.gd")
 const FpRig := preload("res://scripts/range3d/fp_rig.gd")
 const RangeFx := preload("res://scripts/range3d/range_fx.gd")
 const RangeSpecial := preload("res://scripts/range3d/range_special.gd")
+const RangeTargets := preload("res://scripts/range3d/range_targets.gd")
+const RangeOthers := preload("res://scripts/range3d/range_others.gd")
 const GUN_BASIS := Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))   ## układ broni (x lufa, y góra, z prawo) → kamera (−z w przód)
 
 const VM_FOV := 58.0                          ## ° — kąt kamery rąk i broni (węższy: bez rozciągania na brzegach, jak w grach FPP)
@@ -75,6 +77,8 @@ var _life := 0.0
 var _fx: Node3D                               ## łuski i dym w świecie tunelu (range_fx.gd)
 var _spec: Node3D                             ## obraz broni specjalnych: pociski w locie, wybuchy, szyna, promień, płomień (range_special.gd)
 var _plate_mats: Array = []                   ## materiał tarczy każdej blachy (żar od promienia i płomienia)
+var _targets: Node3D                          ## papierowa tarcza i ruchomy cel (range_targets.gd)
+var _others: Node3D                           ## inni gracze na sąsiednich stanowiskach (range_others.gd)
 enum Phase { IN, TUNNEL, OUT, BACK }
 const IN_T := 0.55                            ## s — najazd kamery kryjówki na drzwi (view3d.RP_TIME), ostatnie FADE_T to ściemnienie
 const FADE_T := 0.25                          ## s — wyłanianie się z czerni i gaśnięcie
@@ -151,6 +155,14 @@ func _ready() -> void:
 	_spec.setup(self, fp.sim)
 	_spec.plate_mats = _plate_mats
 	_world.add_child(_spec)
+	_targets = RangeTargets.new()
+	_targets.name = "Targets"
+	_targets.setup(self, fp.sim)
+	_world.add_child(_targets)
+	_others = RangeOthers.new()
+	_others.name = "Others"
+	_others.setup(self, fp)
+	_world.add_child(_others)
 	_vp.audio_listener_enable_3d = true                          # słuchacz 3D = bieżąca kamera tunelu (dźwięki blach i ścian, _play3d)
 	for i in VOICES:
 		var v := AudioStreamPlayer3D.new()
@@ -367,6 +379,8 @@ func _process(delta: float) -> void:
 		var wc = fp.player.weapons
 		_fx.barrel_smoke(_cam.global_transform * _vm_to_cam(_gun_xf * (_info.get("muzzle", Vector3(0.6, 0.1, 0.0)) as Vector3)), float(wc.barrel_of(wc.cur().id)))
 	_spec.tick(delta, muzzle_world(), -_cam.global_transform.basis.z)
+	_targets.tick(delta)
+	_others.tick(delta)
 	_flash.light_energy = 6.0 * (_flash_t / 0.05)
 	_flash_mesh.visible = _flash_t > 0.02
 	_msg_t = maxf(0.0, _msg_t - delta)
@@ -569,6 +583,8 @@ func on_shot(d: WeaponDef, hits: Array) -> void:
 		var kind := String(h["kind"])
 		var pos: Vector3 = h["pos"]
 		var n: Vector3 = h["normal"]
+		if kind == "mover":
+			continue                                             # iskry i dzwonienie wózka: range_targets.gd (sygnał mover_hit)
 		if kind == "plate":
 			_burst(pos + n * 0.01, n, Color(1.0, 0.72, 0.3), 14, 3.5)
 			_play3d("plate_ring", 4, pos, 0.0, 0.05)
@@ -648,6 +664,7 @@ func _update_board() -> void:
 			sb = "%.2f s" % sim.best
 		lines.append(tr("last %s   squad %s") % ["%.2f s" % sim.last_time if sim.last_time >= 0.0 else "—", sb if sb != "" else "—"])
 	lines.append(tr("shots %d   hits %d") % [sim.shots, sim.hits])
+	lines.append_array(_targets.board_lines())                   # papier (grupa) i wózek (trafienia / próby)
 	_board.text = "\n".join(lines)
 
 # ---------------------------------------------------------------- budowa sceny
@@ -777,7 +794,7 @@ func _build_plates() -> void:
 		_world.add_child(lbl)
 
 func _build_board() -> void:
-	var panel := _box(Vector3(1.8, 0.62, 0.05), Vector3(0.0, RangeSim.LANE_H - 0.62, -4.2), _flat(Color(0.05, 0.05, 0.045), 0.9))
+	var panel := _box(Vector3(1.8, 0.9, 0.05), Vector3(0.0, RangeSim.LANE_H - 0.62, -4.2), _flat(Color(0.05, 0.05, 0.045), 0.9))   # 5 wierszy: blachy + papier + wózek
 	panel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_board = Label3D.new()
 	_board.font_size = 64
