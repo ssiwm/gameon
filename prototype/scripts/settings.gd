@@ -71,6 +71,7 @@ var fullscreen := false
 var seen_tips: Array = []              ## identyfikatory podpowiedzi, które gracz już widział
 var shift_best_cleared := 0            ## Nocny Dyżur: najwięcej ukończonych misji w jednej serii (rekord lokalny)
 var shift_best_time := 0.0             ## Nocny Dyżur: najkrótszy czas pełnej serii w s (0 = jeszcze nikt nie ukończył)
+var range_board: Array = []            ## strzelnica FPP: tablica drużyny [{who, t, w}, …] rosnąco po czasie; trzyma ją host (range_door.gd)
 
 var _base_db := {}                     ## szyna → głośność z układu szyn (bez ustawień gracza)
 var _stash := {}                       ## akcja → zdarzenia schowane na czas menu
@@ -301,6 +302,13 @@ func record_shift(cleared: int, secs: float, completed: bool) -> bool:
 		_save()
 	return better
 
+## Zapis tablicy strzelnicy (host, range_door.gd). Testy bez okna nie nadpisują prawdziwych ustawień gracza.
+func save_range_board(board: Array) -> void:
+	range_board = board.duplicate(true)
+	if DisplayServer.get_name() == "headless":
+		return
+	_save()
+
 # ---------------------------------------------------------------- zapis
 
 func _load() -> void:
@@ -334,6 +342,8 @@ func _load() -> void:
 	Actions.load_from(cf)
 	shift_best_cleared = int(cf.get_value("shift", "best_cleared", 0))
 	shift_best_time = float(cf.get_value("shift", "best_time", 0.0))
+	var rb = cf.get_value("range", "board", [])
+	range_board = rb if rb is Array else []
 
 func _save() -> void:
 	var cf := ConfigFile.new()
@@ -363,4 +373,5 @@ func _save() -> void:
 	Actions.save_to(cf)
 	cf.set_value("shift", "best_cleared", shift_best_cleared)
 	cf.set_value("shift", "best_time", shift_best_time)
+	cf.set_value("range", "board", range_board)
 	cf.save(SAVE_PATH)

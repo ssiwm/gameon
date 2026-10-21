@@ -1106,7 +1106,13 @@ func _dev_range3d() -> void:
 		p = _players.get_node_or_null("1")
 	if p == null or p.get("fp") != null:
 		return
-	var fp: Node = FP_RANGE.enter(p)
+	var door := get_tree().get_first_node_in_group("range_door") as Node2D
+	var fp: Node
+	if door != null:
+		p.global_position = door.global_position + Vector2(0.0, -8.0)      # postać zaparkowana przy drzwiach, jak po [E]
+		fp = door.enter(p)
+	else:
+		fp = FP_RANGE.enter(p)
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--rangeslot="):
 			p.weapons.select_slot(int(a.substr("--rangeslot=".length())))      # broń ze slotu N (0, 1 — długie, 2 — pistolet)

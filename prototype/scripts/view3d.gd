@@ -314,6 +314,7 @@ func _process(delta: float) -> void:
 	_build_rails()
 	_sync_drawn()
 	_sync_launch_doors()
+	_sync_range_doors()
 	_sync_hub_props()
 	_sync_world_notes()
 	_sync_guns()
@@ -1321,6 +1322,135 @@ func _build_launch_door(n: Node2D) -> Dictionary:
 		sign_l.font = font
 	root.add_child(sign_l)
 	return {"root": root, "mat": lamp_mat, "light": light, "pad": pad_mat, "curtain": curtain_mat, "spot": spot, "slots": slots, "count": count}
+
+# ---------------------------------------------------------------- strzelnica FPP (range_door.gd)
+
+var _range_doors := {}                    ## id węzła drzwi strzelnicy → {root, lamp, light, rows}
+
+## Drzwi strzelnicy w tylnej ścianie magazynu: stalowe skrzydło z wizjerem i pochwytem, napis RANGE, czerwona lampa „w użyciu” (ktoś z drużyny
+## jest w tunelu — `player.in_range`) i tablica rekordów drużyny na ścianie obok (najlepsze czasy z serwera, `board`).
+func _sync_range_doors() -> void:
+	for id in _range_doors.keys():
+		if not is_instance_valid((_range_doors[id] as Dictionary)["root"]):
+			_range_doors.erase(id)
+	for n in get_tree().get_nodes_in_group("range_door"):
+		if not (n is Node2D) or _geo_key == "":
+			continue
+		var d = _range_doors.get(n.get_instance_id())
+		if d == null:
+			d = _build_range_door(n as Node2D)
+			_range_doors[n.get_instance_id()] = d
+		var busy := false
+		for p in get_tree().get_nodes_in_group("players"):
+			if bool(p.get("in_range")):
+				busy = true
+				break
+		var t := float(Time.get_ticks_msec()) * 0.001
+		var k := (0.75 + 0.25 * sin(t * 5.0)) if busy else 0.0
+		(d["lamp"] as StandardMaterial3D).emission_energy_multiplier = 0.02 + 3.0 * k
+		(d["light"] as OmniLight3D).light_energy = 1.2 * k
+		var lines := PackedStringArray()
+		var b: Array = n.get("board")
+		for i in BOARD_ROWS:
+			# wiersze równej długości (czcionka o stałej szerokości): Label3D centruje blok, więc kolumny stoją równo także przy pustych wierszach
+			if i < b.size():
+				var e: Dictionary = b[i]
+				lines.append("%d  %-3s %7s  %-9s" % [i + 1, String(e["who"]), "%.2f s" % float(e["t"]), Weapons.def(int(e["w"])).name])
+			else:
+				lines.append("%d  %-3s %7s  %-9s" % [i + 1, "—", "", ""])
+		(d["rows"] as Label3D).text = "\n".join(lines)
+
+const BOARD_ROWS := 5
+
+func _build_range_door(n: Node2D) -> Dictionary:
+	var root := Node3D.new()
+	root.name = "RangeDoor"
+	_geo.add_child(root)
+	var foot := Level3D.px_to_m(n.global_position)
+	root.position = Vector3(foot.x, foot.y, 0.0)
+	var steel := _hp_mat(Color(0.17, 0.16, 0.15), 0.6, 0.55)
+	var leaf := _hp_mat(Color(0.24, 0.22, 0.17), 0.45, 0.65)
+	_ld_box(root, Vector3(1.6, 2.6, 0.25), Vector3(0.0, 1.3, -1.9), steel)                      # rama w tylnej ścianie
+	_ld_box(root, Vector3(1.25, 2.35, 0.14), Vector3(0.0, 1.175, -1.78), leaf)                 # skrzydło
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.02, 0.025, 0.03)
+	glass.metallic = 0.2
+	glass.roughness = 0.15
+	_ld_box(root, Vector3(0.16, 0.5, 0.02), Vector3(0.0, 1.75, -1.705), glass)                # wizjer
+	_ld_box(root, Vector3(0.9, 0.06, 0.08), Vector3(0.0, 1.05, -1.66), steel)                 # pochwyt
+	for sx in [-0.4, 0.4]:
+		_ld_box(root, Vector3(0.06, 0.06, 0.1), Vector3(sx, 1.05, -1.69), steel)
+	for yy in [0.35, 2.0]:
+		_ld_box(root, Vector3(0.08, 0.22, 0.05), Vector3(-0.6, yy, -1.69), steel)             # zawiasy
+	var font := UiTheme.heading_font()
+	var sign_l := Label3D.new()
+	sign_l.text = tr("RANGE")
+	sign_l.font_size = 72
+	sign_l.pixel_size = 0.0065
+	sign_l.shaded = true
+	sign_l.modulate = Color(0.86, 0.8, 0.66)
+	sign_l.layers = LAYER_WORLD
+	sign_l.position = Vector3(0.0, 2.95, -1.76)
+	if font != null:
+		sign_l.font = font
+	root.add_child(sign_l)
+	var lamp := StandardMaterial3D.new()
+	lamp.emission_enabled = true
+	lamp.albedo_color = Color(0.16, 0.03, 0.02)                    # zgaszona: ciemne szkło
+	lamp.emission = Color(1.0, 0.12, 0.06)
+	_ld_box(root, Vector3(0.16, 0.16, 0.12), Vector3(0.98, 2.35, -1.8), lamp)               # lampa „w użyciu”
+	_ld_box(root, Vector3(0.34, 0.1, 0.22), Vector3(0.0, 3.45, -1.7), steel)                 # lampa w koszu nad drzwiami
+	var bulb := OmniLight3D.new()
+	bulb.light_color = Color(1.0, 0.8, 0.55)
+	bulb.omni_range = 4.0
+	bulb.light_energy = 1.6
+	bulb.shadow_enabled = true
+	bulb.light_volumetric_fog_energy = 0.8
+	bulb.layers = LAYER_WORLD | LAYER_ACTORS
+	bulb.position = Vector3(0.0, 3.3, -1.25)
+	root.add_child(bulb)
+	var light := OmniLight3D.new()
+	light.light_color = Color(1.0, 0.16, 0.08)
+	light.omni_range = 3.0
+	light.light_energy = 0.0
+	light.layers = LAYER_WORLD | LAYER_ACTORS
+	light.position = Vector3(0.98, 2.3, -1.4)
+	root.add_child(light)
+	# tablica rekordów: czarna płyta w drewnianej ramie, kreda (jak ściana wyników), lampka nad nią
+	var bx := 2.3
+	_ld_box(root, Vector3(2.15, 1.45, 0.06), Vector3(bx, 1.75, -1.86), _hp_mat(Color(0.25, 0.16, 0.09), 0.0, 0.8))
+	_ld_box(root, Vector3(2.0, 1.3, 0.04), Vector3(bx, 1.75, -1.82), _hp_mat(Color(0.045, 0.05, 0.045), 0.0, 0.9))
+	var title := Label3D.new()
+	title.text = tr("RANGE · 5 PLATES · SQUAD")
+	title.font_size = 48
+	title.pixel_size = 0.0045
+	title.modulate = Color(0.93, 0.82, 0.5)
+	title.shaded = true
+	title.layers = LAYER_WORLD
+	title.position = Vector3(bx, 2.25, -1.795)
+	if font != null:
+		title.font = font
+	root.add_child(title)
+	var rows := Label3D.new()
+	rows.font_size = 30
+	rows.pixel_size = 0.0045
+	rows.modulate = Color(0.86, 0.87, 0.82)
+	rows.shaded = true
+	rows.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	rows.layers = LAYER_WORLD
+	rows.position = Vector3(bx - 0.88, 1.6, -1.795)                 # wyrównanie do lewej zaczyna tekst w punkcie węzła: lewy brzeg płyty
+	var mono := UiTheme.mono_font()                               # stała szerokość: kolumny czasów równo pod sobą
+	if mono != null:
+		rows.font = mono
+	root.add_child(rows)
+	var bl := OmniLight3D.new()
+	bl.light_color = Color(1.0, 0.85, 0.6)
+	bl.omni_range = 2.6
+	bl.light_energy = 0.9
+	bl.layers = LAYER_WORLD
+	bl.position = Vector3(bx, 2.75, -1.2)
+	root.add_child(bl)
+	return {"root": root, "lamp": lamp, "light": light, "rows": rows}
 
 # ---------------------------------------------------------------- papier w świecie (hud.gd: _build_world_notes)
 

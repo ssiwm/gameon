@@ -2210,6 +2210,10 @@ func _prompt_candidates() -> Array:
 			add.call(Actions.fmt(tr("Hold [{interact}]  Start the generator  (loud)")), -1.0, UiTheme.ACCENT)
 	if _near_workshop():
 		add.call(tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], -1.0, UiTheme.ACCENT)
+	var rdoor := _near_range_door()
+	if rdoor != null:
+		var rb := float(rdoor.best())
+		add.call((tr("[%s]  Shooting range  ·  squad record %.2f s") % [Actions.key("interact"), rb]) if rb >= 0.0 else tr("[%s]  Shooting range") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
 	if _player != null and _player.weapons.inspect_item != null:
 		add.call("")                                                      # klawisze są w panelu oględzin
 	if _player != null and _player.weapons.nearby_weapon_item() != null:
@@ -2304,6 +2308,13 @@ func _drive_prompt() -> void:
 		_prompt_card.scale = Vector2.ONE * MSG_SCALE
 		_prompt_card.pivot_offset = Vector2(_prompt_card.size.x * 0.5, 0.0)
 		_prompt_card.position = Vector2((size.x - _prompt_card.size.x) * 0.5, _gear_card.position.y - _prompt_card.size.y * MSG_SCALE - 8.0)
+
+## Drzwi strzelnicy FPP, przy których stoi lokalny gracz (range_door.gd), albo null.
+func _near_range_door() -> Node:
+	for d in get_tree().get_nodes_in_group("range_door"):
+		if bool(d.local_in_range):
+			return d
+	return null
 
 ## Lokalny gracz jest na strzelnicy FPP (scripts/range3d/fp_mode.gd).
 func _in_range() -> bool:

@@ -141,6 +141,7 @@ const MOUSE_AIM_MIN := 6.0            ## px: kursor bliżej dłoni nie zmienia k
 var _crouch_latched := false          ## ustawienie „Crouch: TOGGLE": skradanie włączone do kolejnego naciśnięcia
 var weapons: WeaponController
 var fp: Node = null                   ## lokalnie: strzelnica FPP (scripts/range3d/fp_mode.gd) — postać stoi, gracz patrzy z oczu w tunelu
+var in_range := false                 ## na strzelnicy FPP (replikowane): postać zaparkowana przy drzwiach, plakietka „RANGE”, serwer przyjmuje wynik (range_door.gd)
 var view: WeaponView
 ## Postęp podnoszenia widoczny TYLKO lokalnie u podnoszącego (rysowany nad leżącym).
 var revive_progress := 0.0
@@ -441,7 +442,7 @@ func _setup_sync() -> void:
 	sync.replication_interval = 0.05
 	sync.delta_interval = 0.05
 	var cfg := SceneReplicationConfig.new()
-	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":w_hot", ":notches", ":kit", ":perks", ":fits", ":look", ":grabbed", ":taken", ":taken_t", ":is_reviving"]:
+	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_charge", ":w_firing", ":w_hot", ":notches", ":kit", ":perks", ":fits", ":look", ":grabbed", ":taken", ":taken_t", ":is_reviving", ":in_range"]:
 		cfg.add_property(path)
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
 	for path in [":position", ":velocity", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":is_bot", ":display_id"]:
@@ -2012,6 +2013,8 @@ func _draw_overlay(ov: Node2D) -> void:
 		return                                  # dev: --nohud — bez plakietek i licznika wykrwawienia
 	var col := _body_color()
 	var name_txt := "BOT" if is_bot else "P%d" % display_id
+	if in_range:
+		name_txt += "  ·  " + tr("RANGE")               # zaparkowany przy drzwiach strzelnicy (gra z oczu w tunelu)
 	if dead:
 		_center_text(ov, font, name_txt, -26.0, NAME_SIZE, col)
 		_center_text(ov, font, "%ds" % ceili(taken_t if taken else bleed_left), -18.0, NAME_SIZE, Color(1.0, 0.5, 0.25) if taken else Color(0.95, 0.4, 0.4))
