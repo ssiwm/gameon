@@ -2417,7 +2417,10 @@ func _t_part_finds() -> void:
 	Scrap.parts = {}
 	# skrytka: złom i część
 	level.spawn_item("stash", 0, player.global_position + Vector2(0.0, -4.0), Scrap.STASH_VALUE)
-	await wait(0.6)
+	var waited := 0.0
+	while Scrap.found.is_empty() and waited < 4.0:             # czeka na podniesienie, nie stały czas — na wolnym CI 0,6 s bywało za mało
+		await wait(0.1)
+		waited += 0.1
 	check("znaleziska: skrytka daje część (%s)" % str(Scrap.found.keys()), Scrap.found.size() == 1)
 	Scrap.found = {}
 	# część na ziemi (łup elity): podchodzisz — znaleziona
