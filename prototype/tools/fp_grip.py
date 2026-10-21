@@ -34,6 +34,7 @@ def arg(name, default=None):
 
 WORK = arg("work", os.path.join(REPO, "build", "fp"))
 SHOTS = arg("shots", WORK)
+QUICK = arg("quick") is not None          # --quick=1: tylko poza chwytu i podglądy (bez klipów przeładowania i eksportu)
 PRE = "mixamorig:"
 FINGERS = ("Index", "Middle", "Ring", "Pinky")
 SEG_R = (0.0105, 0.0095, 0.0085)        # m — promień kapsuły członu palca w rękawicy (nasada, środek, opuszka)
@@ -44,12 +45,15 @@ PALM_R = 0.019                         # m — pół grubości dłoni w rękawic
 
 # Chwyty: yaw — obrót broni względem tułowia (°, + = w lewo), right / left — dłoń: punkt broni (układ Blendera broni: x lufa, y lewo,
 # z góra), „up” — kierunek linii kostek (od małego do wskazującego), „back” — strona grzbietu dłoni, `off` — środek dłoni od punktu
-# (wzdłuż −back: wnętrze dłoni dotyka broni), `push` — przesunięcie punktu. Pierwszy człon wskazującego może zostać prosty (`index`).
+# (wzdłuż −back: wnętrze dłoni dotyka broni), `push` — przesunięcie punktu. `sink` — broń cofnięta (m, kolba chowa się w barku poza
+# kadrem) i podniesiona względem barków: obie ręce zgięte, przedramiona wchodzą w kadr od dołu (skrót jak w viewmodelach FPS; z pełną
+# długością lewa ręka szła prosto i poziomo przez kadr). `trigger` — punkt na przedniej ściance języka spustu (układ broni), do którego
+# sięga opuszka wskazującego.
 GRIPS = {
     "m83": {
-        "yaw": 35.0, "butt_dz": 0.02, "clav": (6.0, 12.0),
-        "right": {"at": "grip", "push": (-0.03, -0.004, 0.0), "up": (0.34, 0.0, 0.94), "back": (-0.25, -0.97, 0.0), "off": 0.022},
-        "left": {"at": "hold", "push": (0.0, 0.042, -0.03), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.25, -0.97), "off": 0.012},
+        "yaw": 35.0, "butt_dz": 0.02, "clav": (6.0, 12.0), "sink": (0.06, 0.07), "trigger": (0.068, 0.0, 0.086),
+        "right": {"at": "grip", "push": (-0.022, -0.004, 0.008), "up": (0.34, 0.0, 0.94), "back": (-0.25, -0.97, 0.0), "off": 0.022},
+        "left": {"at": "hold", "push": (0.0, 0.042, -0.03), "up": (1.0, 0.0, 0.0), "back": (0.0, 0.6, -0.8), "off": 0.012},
     },
 }
 
@@ -88,6 +92,9 @@ FINGER_SETS = {
     "release": ((18.0, 22.0, 14.0), (6.0, 8.0, 6.0)),
 }
 FPS = 30
+# Bieguny łokci (od głowy ramienia): w dół i lekko na zewnątrz — przedramiona wchodzą w kadr od dołu, łokcie pod bronią i poza kadrem
+# (bieguny w górę dawały „kurze skrzydło”: lewe przedramię szło poziomo przez kadr, a rękaw łamał się na wystającym łokciu).
+POLES = {"Right": Vector((-0.35, -0.45, -0.8)), "Left": Vector((0.2, 0.7, -0.7))}
 # Dźwięki mechaniki w klatkach klipu (audio/sfx/weapons/mech_*, bake_weapons.py): poza dłoni → klucz (gra w chwili tej klatki).
 SOUNDS = {"grab": "mech_mag_release", "rock": "mech_mag_out", "pouch": "foley_gear", "seat": "mech_mag_in", "handle": "mech_bolt_back",
           "release": "mech_bolt_fwd", "leave": "mech_regrip"}
@@ -281,6 +288,96 @@ def curl_finger(rig, side, finger, bvh, back):
     print("CURL %s %s gap %.1f mm" % (side, finger, _touch(rig, names, radii, bvh) * 1000.0))
 
 
+def _finger_fk(K, L, d0, back, s, angs):
+    """Człony palca po rozchyleniu `s` (° wokół grzbietu) i zgięciu (narastające kąty członów, ° wokół wspólnej osi zgięcia)."""
+    Rs = Matrix.Rotation(math.radians(s), 3, back)
+    ds = [Rs @ d for d in d0]
+    ax = back.cross(ds[0]).normalized()
+    pts, p = [], K.copy()
+    for i in range(3):
+        d = Matrix.Rotation(math.radians(angs[i]), 3, ax) @ ds[i]
+        q = p + d * L[i]
+        pts.append((p, q, d))
+        p = q
+    return pts, ax
+
+
+def _capsule_gaps(pts, radii, bvh):
+    """Luz każdego członu do broni (m, < 0 — w broni)."""
+    out = []
+    for (h, t, _), r in zip(pts, radii):
+        g = 1.0
+        for k in range(5):
+            hit = bvh.find_nearest(h.lerp(t, k / 4.0))
+            if hit[0] is not None:
+                g = min(g, hit[3] - r)
+        out.append(g)
+    return out
+
+
+def _apply_finger(rig, names, back, ax, s, a1, a2, a3):
+    rotate_world(rig, PRE + names[0], back, math.radians(s))
+    update()
+    for n, a in zip(names, (a1, a2, a3)):
+        rotate_world(rig, PRE + n, ax, math.radians(a))
+        update()
+
+
+SKIN = 0.0025       # m — o tyle kapsuła członu może wejść w broń (pełne kapsuły; skóra rękawicy i palca się ugina)
+
+
+def aim_index(rig, side, bvh, back, target):
+    """Wskazujący na spuście: przegląd siatki kątów (rozchylenie, zgięcie nasady, zgięcie dalszych członów 1 : 0,6) liczony
+    analitycznie, wybór pozy z opuszką najbliżej `target` bez wchodzenia w broń (kabłąk), potem zapis w kości. Zwraca odległość (m)."""
+    names = [side + "HandIndex" + str(i) for i in (1, 2, 3)]
+    K = P(rig, names[0])
+    L = [(T(rig, n) - P(rig, n)).length for n in names]
+    d0 = [(T(rig, n) - P(rig, n)).normalized() for n in names]
+    best = None
+    for s in range(-36, 37, 4):
+        for a1 in range(0, 91, 3):
+            for a2 in range(0, 101, 4):
+                pts, ax = _finger_fk(K, L, d0, back, s, (a1, a1 + a2, a1 + 1.6 * a2))
+                p3, q3, d3 = pts[2]
+                pad = p3.lerp(q3, 0.5) + ax.cross(d3).normalized() * SEG_R[2]
+                dist = (pad - target).length
+                if best is not None and dist >= best[0]:
+                    continue
+                pen = max(0.0, -min(_capsule_gaps(pts, SEG_R, bvh)) - SKIN)
+                cost = dist + pen * 6.0
+                if best is None or cost < best[0]:
+                    best = (cost, s, a1, a2, ax, dist)
+    _, s, a1, a2, ax, dist = best
+    _apply_finger(rig, names, back, ax, s, a1, a2, 0.6 * a2)
+    print("INDEX %s spread %d curl %d/%d pad-trigger %.1f mm" % (side, s, a1, a2, dist * 1000.0))
+    return dist
+
+
+def wrap_finger(rig, side, finger, bvh, back):
+    """Palec owinięty na broni: przegląd siatki (rozchylenie, zgięcie nasady, dalszych członów 1 : 0,7) — jak największe zgięcie
+    bez wchodzenia w broń, z opuszką przy powierzchni. Zastępuje zginanie do pierwszego kontaktu, które stawało od razu, gdy palec
+    już na starcie dotykał kabłąka albo magazynka (prawe palce sterczały prosto w przód)."""
+    names = [side + "Hand" + finger + str(i) for i in (1, 2, 3)]
+    radii = THUMB_R if finger == "Thumb" else SEG_R
+    K = P(rig, names[0])
+    L = [(T(rig, n) - P(rig, n)).length for n in names]
+    d0 = [(T(rig, n) - P(rig, n)).normalized() for n in names]
+    best = None
+    spread = range(-15, 16, 5) if finger != "Thumb" else range(-30, 31, 6)
+    for s in spread:
+        for a1 in range(0, 91, 5):
+            for a2 in range(0, 101, 5):
+                pts, ax = _finger_fk(K, L, d0, back, s, (a1, a1 + a2, a1 + 1.7 * a2))
+                g = _capsule_gaps(pts, radii, bvh)
+                pen = max(0.0, -min(g) - SKIN)
+                cost = pen * 30.0 + max(0.0, g[2] - 0.002) * 3.0 - (a1 + 1.7 * a2) * 0.0003 + abs(s) * 0.0001
+                if best is None or cost < best[0]:
+                    best = (cost, s, a1, a2, ax, g)
+    _, s, a1, a2, ax, g = best
+    _apply_finger(rig, names, back, ax, s, a1, a2, 0.7 * a2)
+    print("WRAP %s %s spread %d curl %d/%d gaps %s mm" % (side, finger, s, a1, a2, [round(x * 1000, 1) for x in g]))
+
+
 def _pose_get(rig):
     return {pb.name: pb.rotation_quaternion.copy() for pb in rig.pose.bones}
 
@@ -372,7 +469,7 @@ def author_reloads(rig, key, G, info, conf, meshes, root):
         mag_bvh = gun_bvh([mag]) if mag is not None else bvh
         _pose_set(rig, grip_pose)
         if gname != "rest":                                          # prawa ręka za bronią: dłoń osadzona na chwycie, palce jak w chwycie
-            seat_hand(rig, "Right", Gk, info, conf["right"], bvh, P(rig, "RightArm") + Vector((-0.1, -0.9, 0.5)))
+            seat_hand(rig, "Right", Gk, info, conf["right"], bvh, P(rig, "RightArm") + POLES["Right"])
             for n, q in right_fingers.items():
                 rig.pose.bones[n].rotation_quaternion = q
             update()
@@ -382,7 +479,7 @@ def author_reloads(rig, key, G, info, conf, meshes, root):
             print("RHCHK %s/%s rot %.1f deg pos %.1f mm" % (hname, gname, math.degrees(d.to_quaternion().angle), d.translation.length * 1000))
         if hname == "grip":
             if gname != "rest":
-                seat_hand(rig, "Left", Gk, info, conf["left"], bvh, P(rig, "LeftArm") + Vector((0.2, 0.9, 0.4)))
+                seat_hand(rig, "Left", Gk, info, conf["left"], bvh, P(rig, "LeftArm") + POLES["Left"])
                 for n in _hand_bones(rig, "Left"):
                     rig.pose.bones[n].rotation_quaternion = grip_pose[n]
                 update()
@@ -394,7 +491,7 @@ def author_reloads(rig, key, G, info, conf, meshes, root):
         update()
         c = {"at": "p", "push": (0.0, 0.0, 0.0), "up": up, "back": back, "off": off}
         wrist, hrot = place_hand(rig, "Left", Gk, {"p": tuple(p)}, c)
-        solve_arm(rig, "Left", wrist, hrot, P(rig, "LeftArm") + Vector((0.2, 0.9, 0.4)))
+        solve_arm(rig, "Left", wrist, hrot, P(rig, "LeftArm") + POLES["Left"])
         bk = hand_frame(rig, "Left")[2]
         if fingers == "mag":
             for fg in FINGERS + ("Thumb",):
@@ -532,11 +629,13 @@ def build(outfit, keys):
         update()
         pocket = P(rig, "RightArm") + Vector((0.03, 0.06, -0.05))
         butt = Vector((lo + 0.03, 0.0, info["grip"][2] + conf["butt_dz"]))
+        sk = conf.get("sink", (0.0, 0.0))
+        butt += Vector((sk[0], 0.0, -sk[1]))
         G = Matrix.Translation(pocket) @ Matrix.Rotation(math.radians(conf["yaw"]), 4, "Z") @ Matrix.Translation(-butt)
         root.matrix_world = G
         update()
         bvh = gun_bvh(meshes)
-        for side, pole in (("Right", Vector((-0.1, -0.9, 0.5))), ("Left", Vector((0.2, 0.9, 0.4)))):
+        for side, pole in POLES.items():
             c = conf[side.lower()]
             seat_hand(rig, side, G, info, c, bvh, P(rig, side + "Arm") + pole)
             f2, a2, b2, pc2 = hand_frame(rig, side)
@@ -547,7 +646,10 @@ def build(outfit, keys):
                   (pc2 - want_pc).length * 1000))
             back = hand_frame(rig, side)[2]
             for fg in FINGERS + ("Thumb",):
-                curl_finger(rig, side, fg, bvh, back)
+                if side == "Right" and fg == "Index" and "trigger" in conf:
+                    aim_index(rig, side, bvh, back, G @ Vector(conf["trigger"]))
+                else:
+                    wrap_finger(rig, side, fg, bvh, back)
         # klip pozy i punkt odniesienia broni na kości prawej dłoni
         act = bpy.data.actions.new("grip_" + key)
         rig.animation_data_create()
@@ -574,7 +676,12 @@ def build(outfit, keys):
         body_c = P(rig, "Spine2")
         render(os.path.join(SHOTS, "grip_%s_wide.png" % key), look(body_c + Vector((0.9, -1.4, 0.35)), body_c + Vector((0.35, 0.0, -0.1))), 30.0)
         render(os.path.join(SHOTS, "grip_%s_top.png" % key), look(body_c + Vector((0.35, -0.05, 1.6)), body_c + Vector((0.35, 0.0, -0.1))), 30.0)
-        if key in RELOADS:
+        if QUICK:                                                   # zbliżenia prawej dłoni na chwycie (strojenie)
+            gp = G @ Vector((0.03, 0.0, 0.07))
+            gx = G.to_3x3().normalized()
+            for nm, off in (("rr", (0.0, -0.45, 0.0)), ("rl", (0.0, 0.45, 0.0)), ("rb", (0.05, -0.15, -0.4)), ("rf", (0.45, -0.12, 0.0))):
+                render(os.path.join(SHOTS, "grip_%s_%s.png" % (key, nm)), look(gp + gx @ Vector(off), gp), 50.0)
+        if key in RELOADS and not QUICK:
             reload_meta[key] = author_reloads(rig, key, G, info, conf, meshes, root)
             rig.animation_data.action = act
             update()
@@ -583,6 +690,8 @@ def build(outfit, keys):
         for o in meshes:
             o.hide_render = True
             o.hide_viewport = True
+    if QUICK:
+        return
     # eksport: ręce, szkielet, klipy chwytów, punkty odniesienia broni (bez modeli broni)
     for o in list(bpy.data.objects):
         if o.name.startswith("gun_") or (o.type == "MESH" and o.parent is not None and o.parent.name.startswith("gun_")) or o.type in ("LIGHT", "CAMERA"):
