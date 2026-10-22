@@ -1,0 +1,13 @@
+{
+ "task": "01a164ad-91f6-764f-b77a-c851997aefa9",
+ "ai_model": "latest",
+ "geometry_resolution": "standard",
+ "texture_resolution": "2k",
+ "source_image": "ammo_shelf_source.png",
+ "credits": 30,
+ "remesh": {
+  "task": "01a164bf-9252-73f3-b9ed-58de1ad4cb9d",
+  "target_polycount": 40000,
+  "credits": 5
+ }
+}

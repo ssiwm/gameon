@@ -117,6 +117,11 @@ TRIPO_MODELS = {
     "bench_grinder": ("../meshy/bench_grinder.glb", "-Y", 10.0, 6000),
     "lathe_cart": (["../polyhaven/tool_cart.glb", "../polyhaven/bench_vice_01.glb"], "-Y", 15.6, 9000),
     "drill_chest": (["../polyhaven/metal_tool_chest.glb", "../polyhaven/old_drill_press.glb"], "-Y", 8.4, 9000),
+    # prasa elaboracyjna (ten sam potok): stół z prasą jednostopniową, dozownikiem prochu i blokami łusek 1,3 m (blat 0,86 m), regał z puszkami amunicji
+    # 1,76 m (tyle samo wysoki; źródło po retopologii Meshy — `meshy_prop.py remesh`), taboret 0,45 m (Poly Haven).
+    "reload_bench": ("../meshy/reload_bench.glb", "-Y", 15.9, 12000),
+    "ammo_shelf": ("../meshy/ammo_shelf.glb", "-Y", 21.5, 40000),
+    "stool_metal": ("../polyhaven/metal_stool_02.glb", "-Y", 5.5, 2500),
     "barrel_n": ("../polyhaven/barrel_03.glb", "-Y", 7.75, 2500, 11.4),
     "jerrycan": ("../polyhaven/metal_jerrycan.glb", "-Y", 4.3, 3000, 5.6),                    # kanister 35 × 46 cm w naturalnej skali
     "gas_mask": ("../polyhaven/old_gas_mask.glb", "-Y", 2.6, 5000, 13.8),                     # maska z wężem i filtrem (1,13 m): wisi na ścianie za głowicę
@@ -830,9 +835,21 @@ def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False
     else:
         me.transform(Matrix.Scale(k, 4))
     if len(me.polygons) > faces:
+        # import glTF zostawia wierzchołki rozcięte na szwach UV (Meshy: tysiące wysp) — bez zszycia upraszczanie rwie siatkę na strzępy;
+        # UV siedzą w narożnikach ścian, więc zszycie ich nie rusza, a cieniowanie liczymy potem od nowa (gładkie do 35°)
+        import bmesh
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-4)
+        bm.to_mesh(me)
+        bm.free()
+        if me.has_custom_normals:
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.mesh.customdata_custom_splitnormals_clear()
         dec = obj.modifiers.new("dec", "DECIMATE")
         dec.ratio = faces / float(len(me.polygons))
         bpy.ops.object.modifier_apply(modifier="dec")
+        bpy.ops.object.shade_smooth_by_angle(angle=math.radians(35.0))
     for m in bpy.data.materials:                                 # mapy normalnych z Tripo są ostre — w bliskim świetle latarki dawały „pogniecioną” powierzchnię
         if m.node_tree:
             for nd in m.node_tree.nodes:

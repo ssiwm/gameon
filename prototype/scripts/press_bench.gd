@@ -10,14 +10,24 @@ const REACH_X := 32.0
 const REACH_Y := 40.0
 const TILE := 16.0
 ## Wyposażenie: stół (prasa, wagi) i skrzynki z łuskami obok — [nazwa przedmiotu HD, przesunięcie w kaflach]
-const PROPS := [["table", 0.0], ["ammo", 1.3], ["ammo", 1.9], ["crate", -1.6]]
+const PROPS := [["table", 0.0], ["ammo", 1.3], ["ammo", 1.9], ["crate", -1.6]]   ## zapas, gdy brak modeli 3D stanowiska
+## Modele 3D stanowiska (view3d.gd, grupa „station_props”; źródła: Meshy — stół elaboracyjny z prasą i regał z amunicją, Poly Haven CC0 —
+## taboret; `tools/prep_items3d.py`): [model z art/items3d/, przesunięcie x w pikselach świata, głębia z w m]. Skrzynie magazynu stoją
+## 32–48 px na prawo od znacznika (HUB_PROPS): stół tuż przed nimi (gracz przy znaczniku go nie zasłania), regał w lewo.
+const MODELS := [["reload_bench", 12.0, -1.0], ["ammo_shelf", -15.0, -1.3], ["stool_metal", 6.0, -0.5]]
+const MODEL_CHECK := "res://art/items3d/reload_bench.glb"
+
+var station_props: Array = []
 
 var local_in_range := false
 
 func _ready() -> void:
 	add_to_group("press_bench")
 	z_index = 0
-	if Sprites.newitem:
+	if ResourceLoader.exists(MODEL_CHECK):
+		station_props = MODELS                                # modele 3D (view3d) zamiast przedmiotów HD
+		add_to_group("station_props")
+	elif Sprites.newitem:
 		for pr in PROPS:
 			if not ItemsHd.has(String(pr[0])):
 				continue

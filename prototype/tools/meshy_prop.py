@@ -9,6 +9,7 @@ commitujemy ani nie wypisujemy). Koszt (cennik API z 10.2026): ok. 30 kredytów 
 
     python prototype/tools/meshy_prop.py balance
     python prototype/tools/meshy_prop.py make OBRAZ.png --name lathe [--geo standard] [--texture 2k] [--dry-run]
+    python prototype/tools/meshy_prop.py remesh --name ammo_shelf [--polycount 30000]   # retopologia gęstego wyniku (ok. 5 kredytów)
 """
 import argparse
 import base64
@@ -117,6 +118,46 @@ def make(image, name, key, geo="standard", texture="2k", dry=False):
     print("OK %s (%.1f MB, %.0f s)" % (dest, os.path.getsize(dest) / 1e6, time.time() - t0))
 
 
+def _wait(path, tid, key):
+    t0 = time.time()
+    while True:
+        task = _req("GET", path + tid, key)
+        st = (task.get("status") or "").upper()
+        sys.stdout.write("\r  %s %3s%%  %4.0f s" % (st, task.get("progress", 0), time.time() - t0))
+        sys.stdout.flush()
+        if st in ("SUCCEEDED", "FAILED", "CANCELED", "EXPIRED"):
+            print()
+            return task, st, time.time() - t0
+        if time.time() - t0 > 1800:
+            sys.exit("\nMeshy: przekroczony czas (zadanie %s)." % tid)
+        time.sleep(6)
+
+
+def remesh(name, key, polycount=30000, dry=False):
+    """Retopologia po stronie Meshy dla gęstych modeli z wieloma drobnymi bryłami (regał pełen puszek): lokalne upraszczanie
+    w `prep_items3d.py` rwie je na strzępy albo rozmywa UV. Wynik zastępuje <nazwa>.glb, zadanie trafia do <nazwa>.json."""
+    meta_path = os.path.join(OUT_DIR, name + ".json")
+    meta = json.load(open(meta_path, encoding="utf-8"))
+    print("Meshy remesh: %s (zadanie %s) → %d trójkątów, ok. 5 kredytów" % (name, meta["task"], polycount))
+    if dry:
+        print("(dry run — nic nie wysłano)")
+        return
+    tid = _req("POST", "/openapi/v1/remesh", key, {"input_task_id": meta["task"], "target_formats": ["glb"],
+                                                   "topology": "triangle", "target_polycount": polycount}).get("result")
+    if not tid:
+        sys.exit("Meshy nie zwróciło id zadania.")
+    task, st, dt = _wait("/openapi/v1/remesh/", tid, key)
+    if st != "SUCCEEDED":
+        sys.exit("Meshy: zadanie %s — %s %s" % (tid, st, (task.get("task_error") or {}).get("message", "")))
+    dest = os.path.join(OUT_DIR, name + ".glb")
+    with urllib.request.urlopen(urllib.request.Request(task["model_urls"]["glb"]), timeout=300) as r, open(dest, "wb") as f:
+        shutil.copyfileobj(r, f, 1 << 18)
+    meta.pop("note", None)
+    meta["remesh"] = {"task": tid, "target_polycount": polycount, "credits": task.get("consumed_credits")}
+    json.dump(meta, open(meta_path, "w", encoding="utf-8"), indent=1, ensure_ascii=False)
+    print("OK %s (%.1f MB, %.0f s, %s kredytów)" % (dest, os.path.getsize(dest) / 1e6, dt, task.get("consumed_credits")))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--key-file", default=DEFAULT_KEY_FILE)
@@ -128,11 +169,17 @@ def main():
     m.add_argument("--geo", default="standard", choices=["standard", "2k", "4k"])
     m.add_argument("--texture", default="2k", choices=["2k", "4k", "8k"])
     m.add_argument("--dry-run", action="store_true")
+    r = sub.add_parser("remesh")
+    r.add_argument("--name", required=True)
+    r.add_argument("--polycount", type=int, default=30000)
+    r.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     key = _key(a.key_file)
     if a.cmd == "balance":
         b = _req("GET", "/openapi/v1/balance", key)
         print("Meshy: %s kredytów" % b.get("balance"))
+    elif a.cmd == "remesh":
+        remesh(a.name, key, a.polycount, a.dry_run)
     else:
         make(a.image, a.name, key, a.geo, a.texture, a.dry_run)
 

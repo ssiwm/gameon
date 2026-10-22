@@ -27,6 +27,7 @@ Większość modeli w tym katalogu powstaje z Tripo albo z brył proceduralnych 
 | gas_mask | old_gas_mask | maska wisząca na ścianie (1.2, 1.3, B1, kryjówka) |
 | lathe_cart | tool_cart + bench_vice_01 | wózek-stół z imadłem przy tokarce (kryjówka) |
 | drill_chest | metal_tool_chest + old_drill_press | skrzynia narzędziowa z wiertarką stołową przy tokarce (kryjówka) |
+| stool_metal | metal_stool_02 | taboret przy prasie elaboracyjnej (kryjówka) |
 
 ## Modele z Meshy (image-to-3D)
 
@@ -38,3 +39,5 @@ w `art_src/world/meshy/`; `tools/prep_items3d.py` upraszcza siatki i ustawia nat
 |---|---|---|
 | lathe | `art_src/world/meshy/lathe.glb` (tokarka w stylu TUR-50) | tokarka i szlifierka (kryjówka) |
 | bench_grinder | `art_src/world/meshy/bench_grinder.glb` (szlifierka stołowa na kolumnie) | tokarka i szlifierka (kryjówka) |
+| reload_bench | `art_src/world/meshy/reload_bench.glb` (stół elaboracyjny z prasą jednostopniową) | prasa elaboracyjna (kryjówka) |
+| ammo_shelf | `art_src/world/meshy/ammo_shelf.glb` (stalowy regał z puszkami i skrzynkami amunicji) | prasa elaboracyjna (kryjówka) |
