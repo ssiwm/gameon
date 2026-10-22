@@ -1061,6 +1061,11 @@ def build_srut8():
         box("cuff", 158.0, 248.0, bot(203.0) - 3.0, top(203.0) + 3.0, 23.0, cuff, bv=2.0, r=8.0)
         for i in range(4):
             shell("shell_r", (-33.0, -50.0 - i * 23.0), 170.0, red, brass, axis="X")
+        # przyrządy (strzelnica FPP): osłona zasłania kulkę na wylocie, więc szczerbinka z osłonami na komorze i muszka na końcu osłony lufy
+        box("sight_base", 500.0, 524.0, 12.0, 22.0, 6.0, blued, bv=0.8, r=2.0)
+        for sy in (-1.0, 1.0):
+            box("sight_post", 506.0, 518.0, 21.0, 29.0, 1.3, blued, bv=0.3, seg=1, y=sy * 4.0)
+        prism("fs_post", fillet([(988.0, 12.0), (1004.0, 12.0), (999.0, 24.0, 1.2), (993.0, 24.0, 1.2)]), -1.6, 1.6, small, bv=0.3, seg=1)
     return _shotgun({"pre": "p8", "steel": GREY, "wood": ((0.014, 0.006, 0.004), (0.06, 0.024, 0.011)), "muzzle": 1100.0, "mag_end": 1040.0,
                      "length": 1.1, "text_l": "PELLET-8", "text_r": "HD 8 / 70", "extras": extras})
 
@@ -1656,6 +1661,11 @@ def build_ciegno6():
     box("mech", 372.0, 454.0, -10.0, 12.0, 16.2, inox, bv=0.8, r=2.5)
     trig("trigger", 388.0, 448.0, -35.0, inox, small)
     revolve("safety", [(-17.5, 0.0), (-17.5, 3.5), (17.5, 3.5), (17.5, 0.0)], (364.0, -12.0), brass, axis="Y", seg=12, bv=0.4)
+    # przyrządy (strzelnica FPP): wieżyczka ze szczerbinką na mechanizmie i muszka na głowicy — linia nad płetwami harpuna i cięgnami
+    box("sight_base", 372.0, 390.0, 11.0, 27.0, 5.0, inox, bv=0.6, r=2.0)
+    for sy in (-1.0, 1.0):
+        box("sight_post", 377.0, 387.0, 26.0, 33.0, 1.2, inox, bv=0.3, seg=1, y=sy * 3.6)
+    prism("fs_post", fillet([(948.0, 24.0), (962.0, 24.0), (958.0, 31.0, 1.2), (952.0, 31.0, 1.2)]), -1.5, 1.5, inox, bv=0.3, seg=1)
     # harpun: pręt z płetwami zaczepów, ostrze i ruchomy zadzior; głowica z otworami cięgien
     cyl("shaft", 392.0, 1070.0, 3.6, (0.0, 13.0), inox, seg=10, bv=0.0)
     for cx in (470.0, 524.0):
