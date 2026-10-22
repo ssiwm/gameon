@@ -34,7 +34,6 @@ const RATE_CAP := 2.5             ## „zapas” strzałów po lagu sieci (token
 const FX_REPORT_EVERY := 0.2      ## efekt trafienia promieniem/płomieniem nie częściej niż co tyle
 const NOISE_RELOAD := 0.25
 const NOISE_DRY := 0.12
-const FIRE_PATCH_EVERY := 0.5     ## s ciągłego płomienia (HKM-9) między kolejnymi ogniami na podłodze
 const FIRE_DROP_MAX := 40.0       ## px w dół od końca płomienia, w których szukamy podłogi
 ## Obsługa broni (GUNSMITH_PLAN.md etap 3a, od 1.7.324; ustawienie „Weapon handling”, Settings.realistic_handling).
 ## Podrzut: przy celowaniu myszą każdy strzał unosi lufę (a z nią celownik) zamiast losowo poszerzać stożek — gracz może ją ściągać w dół.
@@ -231,6 +230,11 @@ func _on_weapon_hit(kind: int, w: int, rank := 0) -> void:
 ## Trzymana broń: zamontowane części gracza i typ naboju w magazynku (Weapons.def_build).
 func cur() -> WeaponDef:
 	return def_of(loadout[slot])
+
+## Serwer: broń `w` tego gracza do ognia ciągłego i ciosów — części gracza (player.fits), ale tylko te, które drużyna odblokowała (Scrap.parts).
+## Do 1.7.350 ogień ciągły brał tu fabryczną broń, więc części LR-7 i HKM-9 nie zmieniały obrażeń ani zasięgu; kule niosą kod części w strzale.
+func server_def(w: int) -> WeaponDef:
+	return Weapons.def_build(w, Weapons.build_of(0, Parts.sanitize(String(Weapons.def(w).key), fit_of(w), Scrap.parts)))
 
 ## Broń `w` tego gracza (części + nabój w magazynku).
 func def_of(w: int) -> WeaponDef:
@@ -1113,7 +1117,7 @@ func _physics_process(delta: float) -> void:
 		_srv_tick = 0.0
 		_srv_patch_t = 0.0
 		return
-	var d := Weapons.def(player.weapon)
+	var d := server_def(player.weapon)
 	if not d.is_continuous() or bool(player.get("in_range")):
 		return                                                   # na strzelnicy promień i płomień są w tunelu, nie w kryjówce (bez ognia przy drzwiach)
 	_srv_tick -= delta
@@ -1140,7 +1144,7 @@ func _physics_process(delta: float) -> void:
 			var info_amount := d.damage * d.falloff(dist)
 			_continuous_hit(d, t, c, dir, "fire", report, info_amount)
 		_srv_patch_t += d.cooldown
-		if _srv_patch_t >= FIRE_PATCH_EVERY:
+		if _srv_patch_t >= d.patch_every:
 			_srv_patch_t = 0.0
 			_drop_fire_patch(d, space, origin, dir)
 
@@ -1161,7 +1165,7 @@ func _drop_fire_patch(d: WeaponDef, space: PhysicsDirectSpaceState2D, origin: Ve
 	var floor_hit := space.intersect_ray(PhysicsRayQueryParameters2D.create(tip, tip + Vector2(0.0, FIRE_DROP_MAX), 1 | 16))
 	if floor_hit.is_empty():
 		return
-	lvl.spawn_fire_patch((floor_hit["position"] as Vector2) + Vector2(0.0, -1.0), d.id, player.player_id)
+	lvl.spawn_fire_patch((floor_hit["position"] as Vector2) + Vector2(0.0, -1.0), d.id, player.player_id, d.patch_life)
 
 func _continuous_hit(d: WeaponDef, target: Node, pos: Vector2, dir: Vector2, type: String, report: bool, amount := -1.0) -> void:
 	var info := Combat.make_info(d.id, d.damage if amount < 0.0 else amount, pos, dir, player.player_id, type, d.build)
@@ -1406,7 +1410,7 @@ func _melee_request(origin: Vector2, dir: Vector2, w: int) -> void:
 	_server_melee(origin, dir.normalized(), w, player.player_id)
 
 func _server_melee(origin: Vector2, dir: Vector2, w: int, shooter: int) -> void:
-	var d := def_of(w)
+	var d := server_def(w)                                      # części gracza, ale tylko odblokowane przez drużynę
 	var space := player.get_world_2d().direct_space_state
 	var hit_any := false
 	for t in Combat.in_cone(get_tree(), space, origin, dir, d.reach, d.arc_deg):
