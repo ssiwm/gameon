@@ -131,6 +131,10 @@ TRIPO_MODELS = {
     # gablota z preparatami w formalinie (źródło po retopologii Meshy) 1,64 m z otwartymi skrzydłami, wysoka na 1,9 m.
     "lab_desk": ("../meshy/lab_desk.glb", "-Y", 17.8, 14000),
     "specimen_case": ("../meshy/specimen_case.glb", "-Y", 20.0, 34000),
+    # stół konserwacji: drewniany stół rusznikarza z blatem z blachy, rozłożonym karabinem na płótnie, wyciorami, olejami i skrzynką luf
+    # 1,75 m (blat ok. 0,77 m), szafka z szufladkami na drobne części na nóżkach 0,8 m (wysoka na 1,4 m; źródło po retopologii Meshy).
+    "clean_bench": ("../meshy/clean_bench.glb", "-Y", 21.4, 14000),
+    "parts_cabinet": ("../meshy/parts_cabinet.glb", "-Y", 9.8, 30000),
     "barrel_n": ("../polyhaven/barrel_03.glb", "-Y", 7.75, 2500, 11.4),
     "jerrycan": ("../polyhaven/metal_jerrycan.glb", "-Y", 4.3, 3000, 5.6),                    # kanister 35 × 46 cm w naturalnej skali
     "gas_mask": ("../polyhaven/old_gas_mask.glb", "-Y", 2.6, 5000, 13.8),                     # maska z wężem i filtrem (1,13 m): wisi na ścianie za głowicę

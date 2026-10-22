@@ -9,13 +9,24 @@ const ItemsHd := preload("res://scripts/items_hd.gd")
 const REACH_X := 18.0                   ## węższy niż ława (44 px) — stoją 4 kafle od siebie i zasięgi nie mogą się nakładać
 const REACH_Y := 40.0
 const TILE := 16.0
+## Modele 3D stanowiska (view3d.gd, grupa „station_props”; źródła: Meshy — stół rusznikarza z rozłożonym karabinem i szafka na drobne
+## części, Poly Haven CC0 — taboret; `tools/prep_items3d.py`): [model z art/items3d/, przesunięcie x w pikselach świata, głębia z w m].
+## Na lewo od znacznika wisi tablica wyników, na prawo (od ok. 42 px) stoi ława: stół i szafka mieszczą się między nimi, stół tuż na
+## prawo od znacznika (gracz przy [E] go nie zasłania). Bez modeli: stół i taboret z przedmiotów HD.
+const MODELS := [["clean_bench", 15.0, -1.0], ["parts_cabinet", 33.0, -1.2], ["stool_metal", 7.0, -0.45]]
+const MODEL_CHECK := "res://art/items3d/clean_bench.glb"
+
+var station_props: Array = []
 
 var local_in_range := false
 
 func _ready() -> void:
 	add_to_group("service_bench")
 	z_index = 0
-	if Sprites.newitem and ItemsHd.has("table"):
+	if ResourceLoader.exists(MODEL_CHECK):
+		station_props = MODELS                                # modele 3D (view3d) zamiast przedmiotów HD
+		add_to_group("station_props")
+	elif Sprites.newitem and ItemsHd.has("table"):
 		ItemsHd.make("table", self)                          # widok 3D zamienia przedmiot HD na model art/items3d/table.glb
 		if ItemsHd.has("stool"):
 			var st := Node2D.new()

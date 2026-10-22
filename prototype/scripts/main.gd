@@ -2683,6 +2683,9 @@ func _gen_test() -> void:
 		p.global_position = lk_pos
 		await get_tree().create_timer(0.5).timeout
 	check.call("stół konserwacji: %d w kryjówce, zasięg osobno od ławy (%s)" % [svc_nodes.size(), str(svc_ok)], svc_nodes.size() == 1 and svc_ok)
+	var smodels: Array = svc_nodes[0].get("station_props") if svc_nodes.size() == 1 else []
+	check.call("stół konserwacji: modele 3D stanowiska %s (art/items3d)" % str(smodels.map(func(e: Array) -> String: return String(e[0]))),
+		smodels.size() == 3 and smodels.all(func(e: Array) -> bool: return ResourceLoader.exists("res://art/items3d/%s.glb" % String(e[0]))))
 	var press_nodes := get_tree().get_nodes_in_group("press_bench")
 	check.call("prasa elaboracyjna: %d w kryjówce (dół, kol. 33)" % press_nodes.size(), press_nodes.size() == 1 and int((press_nodes[0] as Node2D).global_position.x / 16.0) == 33)
 	var pmodels: Array = press_nodes[0].get("station_props") if press_nodes.size() == 1 else []
