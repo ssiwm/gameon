@@ -1,0 +1,55 @@
+name: Godot i zasoby gry
+description: Pliki LFS gry (z cache), Godot i import zasobów (z cache .godot/). Wymaga wcześniejszego actions/checkout z lfs false.
+
+inputs:
+  godot-version:
+    description: Wersja Godota (stable)
+    required: true
+  checks:
+    description: "'true': kontrole zasobów (tex_vram, wagi rękawic) — przed importem, bo import headless przepisuje pliki .import"
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    # LFS: obiekty z cache zamiast pobierania ~200 MB przy każdym przebiegu (transfer LFS liczy się do limitu konta, także w repo publicznym).
+    # Klucz to lista identyfikatorów obiektów: nowy albo zmieniony model daje nowy klucz, a restore-keys przywraca resztę — pobiera się tylko różnica.
+    - name: Lista obiektów LFS gry
+      shell: bash
+      run: git lfs ls-files -l --include="prototype/**" | cut -d' ' -f1 | sort > .lfs-ids      # w workspace: hashFiles nie widzi plików spoza niego
+    - name: Cache obiektów LFS
+      uses: actions/cache@v4
+      with:
+        path: .git/lfs/objects
+        key: lfs-${{ hashFiles('.lfs-ids') }}
+        restore-keys: lfs-
+    - name: Pliki LFS gry (prototype/)
+      shell: bash
+      run: git lfs pull --include="prototype/**"
+    - name: Kompresja VRAM tekstur modeli 3D (tex_vram.py --check)
+      if: inputs.checks == 'true'
+      shell: bash
+      run: python3 prototype/tools/tex_vram.py --check
+    - name: Wagi rękawic postaci MPFB (glb_glove_weights.py --check)
+      if: inputs.checks == 'true'
+      shell: bash
+      run: python3 prototype/tools/glb_glove_weights.py prototype/art/char3d/mpfb/*.glb --check
+    - name: Godot ${{ inputs.godot-version }}
+      shell: bash
+      run: |
+        curl -fsSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${{ inputs.godot-version }}-stable/Godot_v${{ inputs.godot-version }}-stable_linux.x86_64.zip"
+        unzip -q godot.zip
+        sudo mv "Godot_v${{ inputs.godot-version }}-stable_linux.x86_64" /usr/local/bin/godot
+        rm godot.zip
+        godot --version
+    # Import: .godot/ z poprzedniego przebiegu. Godot porównuje czas i md5 źródła z zapisanym przy imporcie, więc zmienione zasoby importuje
+    # od nowa, a resztę bierze z cache (pełny import ok. 2 min). Klucz z listy LFS i plików .import — inny klucz i tak przywraca najbliższy cache.
+    - name: Cache importu (.godot/)
+      uses: actions/cache@v4
+      with:
+        path: prototype/.godot
+        key: godot-import-${{ inputs.godot-version }}-${{ hashFiles('.lfs-ids', 'prototype/**/*.import', 'prototype/project.godot') }}
+        restore-keys: godot-import-${{ inputs.godot-version }}-
+    - name: Import zasobów
+      shell: bash
+      run: godot --headless --path prototype --import
