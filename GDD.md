@@ -484,7 +484,7 @@ Inny wymiar: organiczne korytarze, grawitacja się zmienia, radio mówi głosami
 | **Kampania** | 18 misji + 6 bossów, 15–20 h | Postęp fabularny |
 | **Nocny Dyżur** (endless) | 5 losowych misji pod rząd, wipe kończy serię. **W prototypie od 1.7.23** (HP +12%/misję, modyfikatory), ranking tylko lokalny | Cotygodniowy ranking |
 | **Koszmar Tygodnia** | Misja + 3 losowe modyfikatory (np. blackout, podwójne hordy, alway-on Stalker) | Skiny, złom ×3 |
-| **Strzelnica** | Test broni, tutorial. **W prototypie od 1.7.338:** drzwi na dolnym poziomie kryjówki prowadzą do tunelu FPP (5 blach na czas i ćwiczenie z przeładowaniem, papierowa tarcza z miarą grupy, ruchomy cel, amunicja ćwiczebna, ta sama obsługa broni co na misji, celowanie przez przyrządy z modelu broni); wynik sprawdza serwer, tablica rekordów drużyny wisi obok drzwi, rekordy osobiste per broń zapisuje profil (od 1.7.343) | — |
+| **Strzelnica** | Test broni, tutorial. **W prototypie od 1.7.338:** drzwi na dolnym poziomie kryjówki prowadzą do tunelu FPP (5 blach na czas i ćwiczenie z przeładowaniem, papierowa tarcza z miarą grupy, ruchomy cel, amunicja ćwiczebna, ta sama obsługa broni co na misji, celowanie przez przyrządy z modelu broni); wynik sprawdza serwer, tablica rekordów drużyny wisi obok drzwi, rekordy osobiste per broń zapisuje profil (od 1.7.343); szafa z bronią daje na strzelnicy każdą broń palną bez kosztów, a przy wyjściu wraca zestaw z wejścia (od 1.7.346) | — |
 
 ### Modyfikatory (losowane / tygodniowe)
 Cisza radiowa (brak minimapy), Przeciążenie (Uwaga 50 start), Głód amunicji (−50% amunicji), Oczy w ciemności (wrogowie widzą w ciemności), Wyciek (Stalker zawsze aktywny), Podwójna horda, Delikatni (1 HP), Bunt maszyn (turret-y w każdej strefie).

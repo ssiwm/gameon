@@ -16,6 +16,7 @@ const FpRig := preload("res://scripts/range3d/fp_rig.gd")
 const RangeFx := preload("res://scripts/range3d/range_fx.gd")
 const RangeSpecial := preload("res://scripts/range3d/range_special.gd")
 const RangeTargets := preload("res://scripts/range3d/range_targets.gd")
+const RangeLocker := preload("res://scripts/range3d/range_locker.gd")
 const RangeOthers := preload("res://scripts/range3d/range_others.gd")
 const RangeOptic := preload("res://scripts/range3d/range_optic.gd")
 const OPTIC_IN := Vector2(0.8, 0.97)          ## postęp przyrządów, w którym model broni z optyką gaśnie, a nakładka optyki wchodzi (range_optic.gd)
@@ -80,6 +81,7 @@ var _fx: Node3D                               ## łuski i dym w świecie tunelu 
 var _spec: Node3D                             ## obraz broni specjalnych: pociski w locie, wybuchy, szyna, promień, płomień (range_special.gd)
 var _plate_mats: Array = []                   ## materiał tarczy każdej blachy (żar od promienia i płomienia)
 var _targets: Node3D                          ## papierowa tarcza i ruchomy cel (range_targets.gd)
+var _locker: Node3D                           ## szafa z bronią: stojak w tunelu i lista na ekranie (range_locker.gd)
 var _others: Node3D                           ## inni gracze na sąsiednich stanowiskach (range_others.gd)
 enum Phase { IN, TUNNEL, OUT, BACK }
 const IN_T := 0.55                            ## s — najazd kamery kryjówki na drzwi (view3d.RP_TIME), ostatnie FADE_T to ściemnienie
@@ -162,6 +164,10 @@ func _ready() -> void:
 	_targets.name = "Targets"
 	_targets.setup(self, fp.sim)
 	_world.add_child(_targets)
+	_locker = RangeLocker.new()
+	_locker.name = "Locker"
+	_locker.setup(self, fp)
+	_world.add_child(_locker)
 	_others = RangeOthers.new()
 	_others.name = "Others"
 	_others.setup(self, fp)
@@ -301,6 +307,7 @@ func _ready() -> void:
 func release() -> void:
 	if _phase >= Phase.OUT:
 		return
+	_locker.hide_ui()
 	if _fp_arms != null:
 		_fp_arms.release()
 		_fp_arms = null
@@ -387,6 +394,7 @@ func _process(delta: float) -> void:
 		_fx.barrel_smoke(_cam.global_transform * _vm_to_cam(_gun_xf * (_info.get("muzzle", Vector3(0.6, 0.1, 0.0)) as Vector3)), float(wc.barrel_of(wc.cur().id)))
 	_spec.tick(delta, muzzle_world(), -_cam.global_transform.basis.z)
 	_targets.tick(delta)
+	_locker.tick()
 	_others.tick(delta)
 	_flash.light_energy = 6.0 * (_flash_t / 0.05)
 	_flash_mesh.visible = _flash_t > 0.02

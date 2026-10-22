@@ -679,7 +679,7 @@ func _range_brain(delta: float) -> void:
 	crouching = false
 	aim_by_mouse = true                                      # podrzut jak przy myszy (ściąganie lufy), także z padem
 	aim_dir = Vector2.RIGHT.rotated(-float(fp.pitch))
-	weapons.tick_local(delta, false)
+	weapons.tick_local(delta, bool(fp.locker_open))                # otwarta szafa strzelnicy: ręce zajęte, klik myszą nie strzela
 	_run_vx = 0.0
 	_kick = 0.0
 	velocity.x = 0.0

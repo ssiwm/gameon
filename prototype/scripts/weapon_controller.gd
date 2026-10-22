@@ -1482,6 +1482,62 @@ func _try_pickup(target: Node2D = null) -> void:
 		return
 	lvl.request_weapon_pickup(it.name)
 
+## Strzelnica FPP (fp_mode.gd): zestaw w chwili wejścia — bronie, magazynki, typy naboi, zacięcia, temperatury. Przy wyjściu `range_restore`
+## przywraca go w całości: broń z szafy strzelnicy i strzały ćwiczebne nie zmieniają sprzętu, z którym gracz wraca do kryjówki.
+func range_snapshot() -> Dictionary:
+	return {"loadout": loadout.duplicate(), "slot": slot, "mags": mags.duplicate(), "loaded": loaded.duplicate(), "want_ammo": want_ammo.duplicate(),
+		"jams": jams.duplicate(), "burst_on": burst_on.duplicate(), "heat": _heat.duplicate(), "barrel": _barrel.duplicate(),
+		"shots_mag": _shots_mag.duplicate()}
+
+func range_restore(s: Dictionary) -> void:
+	if s.is_empty():
+		return
+	_cancel_actions()
+	loadout.assign(s["loadout"])
+	slot = int(s["slot"])
+	mags = (s["mags"] as Dictionary).duplicate()
+	loaded = (s["loaded"] as Dictionary).duplicate()
+	want_ammo = (s["want_ammo"] as Dictionary).duplicate()
+	jams = (s["jams"] as Dictionary).duplicate()
+	burst_on = (s["burst_on"] as Dictionary).duplicate()
+	_heat = (s["heat"] as Dictionary).duplicate()
+	_barrel = (s["barrel"] as Dictionary).duplicate()
+	_shots_mag = (s["shots_mag"] as Dictionary).duplicate()
+	state = State.READY
+	state_t = 0.0
+	clearing = false
+	climb = 0.0
+	bloom = 0.0
+	cd = 0.0
+	_sync_player()
+
+## Szafa strzelnicy (fp_mode.gd): broń `w` do ręki na czas strzelnicy — z pełnym magazynkiem, bez zapasu, bez porzucania własnej (zestaw z wejścia
+## wraca przez `range_restore`). Broń, którą gracz już niesie, tylko się dobywa; długa zastępuje trzymaną długą (albo pierwszą, gdy w ręku pistolet).
+func range_take(w: int) -> void:
+	if not Weapons.is_valid(w):
+		return
+	var d := Weapons.def(w)
+	if d.slot == Weapons.Slot.MELEE:
+		return
+	var have := loadout.find(w)
+	if have >= 0:
+		select_slot(have)
+		return
+	var target := 2 if d.slot == Weapons.Slot.SIDEARM else (slot if slot < 2 else 0)
+	_cancel_actions()
+	loadout[target] = w
+	mags[w] = d.mag
+	jams.erase(w)
+	loaded.erase(w)
+	want_ammo.erase(w)
+	if target == slot:
+		state = State.DRAW
+		state_t = d.draw_time * mastery_mult(d.id)
+		Audio.play_variant("foley_gear", 3, Audio.BUS_PLAYER, -14.0, 1.0)
+		_sync_player()
+	else:
+		select_slot(target)
+
 ## Serwer przyznał broń (po sprawdzeniu odległości). Zastępuje bieżącą główną, jeśli nie masz
 ## już tej samej; porzucona broń leży pod stopami, jej magazynek wraca do wspólnego zapasu.
 @rpc("any_peer", "call_remote", "reliable")
