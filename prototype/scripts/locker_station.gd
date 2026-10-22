@@ -10,13 +10,24 @@ const REACH_X := 40.0
 const REACH_Y := 40.0
 const LOCKERS := [-1.0, 0.0, 1.0]       ## szafki w rzędzie: przesunięcie w kaflach od znacznika (po jednej na gracza drużyny… i jedna zapasowa)
 const TILE := 16.0
+## Modele 3D stanowiska (view3d.gd, grupa „station_props”; źródła: Meshy — rząd trzech szafek z otwartą środkową (kurtka, hełm, zdjęcia,
+## buty) i ławka szatniowa; `tools/prep_items3d.py`): [model z art/items3d/, przesunięcie x w pikselach świata, głębia z w m].
+## Szafki stoją trochę na prawo od znacznika, żeby gracz przy [E] nie zasłaniał otwartej, ławka po lewej — dalej polowe łóżko i krzesło
+## świetlicy. Bez modeli: trzy szafki z przedmiotów HD (LOCKERS).
+const MODELS := [["locker_row", 8.0, -1.1], ["locker_bench", -15.0, -0.6]]
+const MODEL_CHECK := "res://art/items3d/locker_row.glb"
+
+var station_props: Array = []
 
 var local_in_range := false
 
 func _ready() -> void:
 	add_to_group("locker_station")
 	z_index = 0
-	if Sprites.newitem and ItemsHd.has("locker"):
+	if ResourceLoader.exists(MODEL_CHECK):
+		station_props = MODELS                                # modele 3D (view3d) zamiast przedmiotów HD
+		add_to_group("station_props")
+	elif Sprites.newitem and ItemsHd.has("locker"):
 		for dx in LOCKERS:
 			var holder := Node2D.new()
 			holder.position = Vector2(float(dx) * TILE * 0.9, 0.0)

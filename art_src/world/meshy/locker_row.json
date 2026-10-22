@@ -1,0 +1,8 @@
+{
+ "task": "01a16508-0be1-7647-8750-f6221c4f22c8",
+ "ai_model": "latest",
+ "geometry_resolution": "standard",
+ "texture_resolution": "2k",
+ "source_image": "locker_row_source.png",
+ "credits": 30
+}

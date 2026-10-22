@@ -48,3 +48,5 @@ w `art_src/world/meshy/`; `tools/prep_items3d.py` upraszcza siatki i ustawia nat
 | specimen_case | `art_src/world/meshy/specimen_case.glb` (gablota z preparatami w formalinie; po retopologii Meshy) | pracownia (kryjówka) |
 | clean_bench | `art_src/world/meshy/clean_bench.glb` (stół rusznikarza z rozłożonym karabinem, wyciorami i olejami) | stół konserwacji (kryjówka) |
 | parts_cabinet | `art_src/world/meshy/parts_cabinet.glb` (szafka z szufladkami na drobne części; po retopologii Meshy) | stół konserwacji (kryjówka) |
+| locker_row | `art_src/world/meshy/locker_row.glb` (trzy szafki wojskowe, środkowa otwarta: kurtka, hełm, zdjęcia, buty) | szafki osobiste (kryjówka) |
+| locker_bench | `art_src/world/meshy/locker_bench.glb` (ławka szatniowa z ręcznikiem i butami) | szafki osobiste (kryjówka) |
