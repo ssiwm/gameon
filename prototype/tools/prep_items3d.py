@@ -138,6 +138,10 @@ TRIPO_MODELS = {
     # szafki osobiste: rząd trzech szafek wojskowych 1,43 m (wysokie na 1,85 m) z otwartą środkową, ławka szatniowa z butami 1,2 m
     "locker_row": ("../meshy/locker_row.glb", "-Y", 17.5, 14000),
     "locker_bench": ("../meshy/locker_bench.glb", "-Y", 14.7, 6000),
+    # ława: ciężki stół rusznikarza z blatem ze stali, karabinem w imadle i skrzynkami części pod blatem 1,55 m (blat ok. 0,99 m), wózek
+    # na złom z otwartą klapą 0,9 m (wysoki z klapą na 1,1 m; źródło po retopologii Meshy)
+    "gunsmith_bench": ("../meshy/gunsmith_bench.glb", "-Y", 19.0, 14000),
+    "scrap_bin": ("../meshy/scrap_bin.glb", "-Y", 11.0, 24000),
     "barrel_n": ("../polyhaven/barrel_03.glb", "-Y", 7.75, 2500, 11.4),
     "jerrycan": ("../polyhaven/metal_jerrycan.glb", "-Y", 4.3, 3000, 5.6),                    # kanister 35 × 46 cm w naturalnej skali
     "gas_mask": ("../polyhaven/old_gas_mask.glb", "-Y", 2.6, 5000, 13.8),                     # maska z wężem i filtrem (1,13 m): wisi na ścianie za głowicę

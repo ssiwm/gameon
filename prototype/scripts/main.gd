@@ -2641,6 +2641,9 @@ func _gen_test() -> void:
 	check.call("warsztat: kupiony stojak się odblokował (zablokowane %d)" % locked_after, locked_after == 6)
 	# panel warsztatu (UI faza 3): otwarcie przy ławie, siatka 12 broni, wybór myszą (kafel), zamknięcie przywraca mysz
 	var wk_node: Node2D = get_tree().get_first_node_in_group("workshop")
+	var wmodels: Array = wk_node.get("station_props")
+	check.call("ława: modele 3D stanowiska %s (art/items3d)" % str(wmodels.map(func(e: Array) -> String: return String(e[0]))),
+		wmodels.size() == 2 and wmodels.all(func(e: Array) -> bool: return ResourceLoader.exists("res://art/items3d/%s.glb" % String(e[0]))))
 	p.global_position = wk_node.global_position + Vector2(0, -2)
 	p.velocity = Vector2.ZERO
 	await get_tree().create_timer(0.5).timeout

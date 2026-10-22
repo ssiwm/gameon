@@ -1,0 +1,8 @@
+{
+ "task": "01a16508-0c76-715b-b2bd-b80ed90beb9c",
+ "ai_model": "latest",
+ "geometry_resolution": "standard",
+ "texture_resolution": "2k",
+ "source_image": "gunsmith_bench_source.png",
+ "credits": 30
+}
