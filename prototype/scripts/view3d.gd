@@ -1729,7 +1729,7 @@ func _sync_drawn() -> void:
 		(n as CanvasItem).modulate = Color(1, 1, 1, 0)
 		_drawn[n.get_instance_id()] = [n, m]
 	# warsztat w kryjówce: lampa wisząca nad ławą i ścianą z narzędziami (jak nad stojakami; odtwarzana po przebudowie geometrii mapy)
-	for n in get_tree().get_nodes_in_group("workshop") + get_tree().get_nodes_in_group("service_bench") + get_tree().get_nodes_in_group("press_bench") + get_tree().get_nodes_in_group("pyro_bench"):     # ława, stół konserwacji, prasa, pirotechnika
+	for n in get_tree().get_nodes_in_group("workshop") + get_tree().get_nodes_in_group("service_bench") + get_tree().get_nodes_in_group("press_bench") + get_tree().get_nodes_in_group("pyro_bench") + get_tree().get_nodes_in_group("lab_bench"):     # ława, konserwacja, prasa, pirotechnika, pracownia
 		if not (n is Node2D) or _geo_key == "":
 			continue
 		var wl = _ws_lamps.get(n.get_instance_id())

@@ -81,3 +81,4 @@ func _drop_boss_loot() -> void:
 	lvl.spawn_health(global_position + Vector2(20, -30))
 	if Scrap.enabled():
 		lvl.spawn_item("scrap", 0, global_position + Vector2(0, -30), Scrap.BOSS_VALUE)
+		Scrap.add_samples(Scrap.SAMPLE_BOSS)                         # boss: próbki do pracowni (W6a)
