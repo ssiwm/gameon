@@ -492,13 +492,13 @@ zacięcia ×2). Stan każdej broni gracza (0–100 %) siedzi w jego profilu (`Pr
 
 | Element | Jak działa | Kod |
 |---|---|---|
-| **Zużycie** | 0,02 % na strzał × `WeaponDef.wear` (M-83 i P-83 0,7, LR-7, FALCON-6, SPECTER-1 2,0, reszta 1) × 3 przy lufie gorętszej niż 0,8 × 1,5 z tłumikiem × ustawienie. M-83 traci ok. 1 % na 70 strzałów | `weapon_controller.gd` (`_wear_shot`), `profile.gd` |
+| **Zużycie** | 0,06 % na strzał (od 1.7.347; wcześniej 0,02) × `WeaponDef.wear` (M-83 i P-83 0,7, LR-7, FALCON-6, SPECTER-1 2,0, reszta 1) × 3 przy lufie gorętszej niż 0,8 × 1,5 z tłumikiem × ustawienie. M-83 traci ok. 1 % na 24 strzały, ok. 15 % na misję | `weapon_controller.gd` (`_wear_shot`), `profile.gd` |
 | **Szansa zacięcia** | broń palna (7,62, 9×18, 12/70; `can_jam`): 0 powyżej 70 % stanu, 1 na 150 strzałów przy 30 %, ok. 1 na 86 przy 0 %. Nigdy w pierwszych 3 strzałach magazynka i nigdy dwa razy w 10 s | `jam_chance`, `_roll_jam` |
 | **Niewypał** (50 %) | kurek uderza, strzału nie ma (klik). [R] — przeładowanie rączką 0,6 s, nabój wylatuje. **P-83** (podwójne działanie): drugie pociągnięcie spustu strzela | `_handle_shot`, `_start_clear` |
 | **Zacięcie łuski** (40 %) | strzał wychodzi, następny — klik. [R] — przeładowanie rączką 0,6 s, bez straty naboju | |
 | **Podwójne podanie** (10 %) | strzał wychodzi, następny — klik. [R] — wyjęcie magazynka i przeładowanie rączką 1,6 s, jeden nabój stracony | |
 | **Widać** | HUD pod licznikiem: „JAMMED — [R] CLEAR” (P-83: „MISFIRE — PULL AGAIN”), w trakcie „CLEARING”, poniżej 40 % stanu „DIRTY”; celownik — czerwony X; oględziny [F] — „CONDITION”; podpowiedź po pierwszym zacięciu | `hud.gd`, `weapon_view.gd`, `weapon_inspect.gd`, `hints.gd` |
-| **Czyszczenie** | warsztat, zakładka ARMS: wiersz „SERVICE · Clean” pod częściami — 1 złom za każde rozpoczęte 10 % zużycia (najwyżej 10), broń wraca do 100 %; złom pobiera serwer | `workshop_ui.gd`, `scrap.gd` (`request_clean`) |
+| **Czyszczenie** | warsztat, zakładka ARMS: wiersz „SERVICE · Clean” pod częściami — od 1.7.347 bez złomu: 1,5 s przy ławie za każde rozpoczęte 10 % zużycia (`Profile.CLEAN_STEP`), broń wraca do 100 %; odejście od ławy, zmiana broni albo ponowne [E] przerywa. Stan siedzi w profilu gracza, więc serwer nie bierze udziału | `workshop_ui.gd` (`_start_clean`, `tick_clean`), `profile.gd` (`clean_time`) |
 
 Boty się nie zacinają. Zacięcie dotyczy broni, nie gracza — zostaje po zmianie broni i wraca z nią. Dev: `--shotjam` (broń gracza 1 brudna
 i zacięta, profil bez zapisu).
@@ -556,3 +556,15 @@ Części można dalej kupować w warsztacie za złom, ale można je też **znale
 
 Dev: `--shotpart` (PBS-1 i bęben RPK przy graczu 1).
 
+## 29. Zużycie i czyszczenie po przeglądzie warsztatu (1.7.347)
+
+`WORKSHOP_PLAN.md` etap W0. Przed zmianą M-83 tracił ok. 5 % stanu na misję, a zacięcia zaczynają się poniżej 70 % — pierwsze pojawiało się po
+mniej więcej sześciu misjach, a czyszczenie kosztowało najwyżej 10 złomu. Teraz:
+
+| Co | Jak | Gdzie |
+|---|---|---|
+| **Zużycie ×3** | `WEAR_SHOT` 0,06 % na strzał (× `wear`, gorąca lufa, tłumik, ustawienie jak dotąd): M-83 ok. 15 % na misję; zaniedbany po dwóch misjach zaczyna się zacinać, a woda, błoto i długi ogień potrafią zejść poniżej 70 % w jednej misji — zestaw do czyszczenia ma znaczenie | `weapon_controller.gd` |
+| **Czyszczenie za czas** | przy ławie bez złomu: `Profile.CLEAN_STEP` 1,5 s za każde rozpoczęte 10 % zużycia (od 55 % — 7,5 s); przycisk pokazuje postęp, ponowne [E], zmiana broni albo odejście przerywa i trzeba zacząć od nowa. Stan siedzi w profilu gracza, więc RPC czyszczenia (`Scrap.request_clean`) usunięte | `workshop_ui.gd` (`_start_clean`, `tick_clean`), `profile.gd` (`clean_time`) |
+| **Złom w dzienniku sesji** | `mission_end.scrap` = {dropped — złom, który wypadł z wrogów i bossa, loot — zebrany łup, bonus — premia}; do strojenia cen (ceny części bez zmian: szacunek z map w `WORKSHOP_PLAN.md` §1.1 daje 1–1,5 misji na część) | `session_log.gd`, `level.spawn_item`, `mission.scrap_bonus` |
+
+Test: `_t_condition_jams` (czyszczenie: przerwane bez zmian, pełne do 100 %, bank nietknięty); CI sprawdza pole `scrap` w `mission_end` testu misji.

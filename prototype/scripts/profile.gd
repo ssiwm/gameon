@@ -45,6 +45,7 @@ const MASTERY_XP := [0, 60, 200, 450, 850, 1500]
 var _cond_dirty := false
 var _cond_save_t := 0.0
 const COND_SAVE_EVERY := 30.0                 ## s — stan zmienia się co strzał, więc zapis najwyżej co tyle (i przy wyjściu z gry)
+const CLEAN_STEP := 1.5                       ## s czyszczenia przy ławie za każde rozpoczęte 10 % zużycia (od 1.7.347 zamiast złomu: koszt to czas w kryjówce)
 var last_mission_xp := 0                      ## XP z ostatniej misji (karta wyniku)
 var last_mission_rows: Array = []             ## [[etykieta, XP], …] z ostatniej misji
 var persist := DisplayServer.get_name() != "headless"      ## testy headless nie ruszają prawdziwego profilu
@@ -283,6 +284,11 @@ func range_record(ex: String, key: String, value: float) -> bool:
 ## Rekord osobisty (−1: brak).
 func range_best_of(ex: String, key: String) -> float:
 	return float(range_best.get("%s:%s" % [ex, key], -1.0))
+
+## Ile sekund zajmie czyszczenie broni `key` przy ławie (0 — czysta): CLEAN_STEP za każde rozpoczęte 10 % zużycia.
+func clean_time(key: String) -> float:
+	var c := condition(key)
+	return 0.0 if c >= 99.5 else CLEAN_STEP * ceilf((100.0 - c) / 10.0)
 
 ## Czyszczenie przy ławie: broń jak nowa.
 func clean(key: String) -> void:

@@ -2105,7 +2105,7 @@ func _t_penetration() -> void:
 
 ## Stan techniczny i zacięcia, etap 4a (1.7.328, GUNSMITH_PLAN.md §6): zużycie na strzał (×wear broni, ×3 przy gorącej lufie, ×1,5 z tłumikiem,
 ## ×ustawienie), szansa zacięcia od 70 % stanu w dół, bezpieczne pierwsze strzały magazynka i przerwa między zacięciami; zacięcie łuski,
-## niewypał (P-83: drugie pociągnięcie spustu) i podwójne podanie usuwa [R]; czyszczenie przy ławie za złom.
+## niewypał (P-83: drugie pociągnięcie spustu) i podwójne podanie usuwa [R]; czyszczenie przy ławie (od 1.7.347 czas zamiast złomu).
 func _t_condition_jams() -> void:
 	var rel0: int = Settings.reliability_idx
 	var cond0: Dictionary = Profile.cond.duplicate()
@@ -2202,16 +2202,30 @@ func _t_condition_jams() -> void:
 	wc.cd = 0.0
 	wc._handle_shot(pd, false)
 	check("P-83: niewypał (%d), drugie pociągnięcie strzela (%d), bez [R]" % [p_mag, wc.mag_of(pd.id)], p_mag == pd.mag and wc.mag_of(pd.id) == pd.mag - 1 and wc.jammed(pd.id) == "")
-	# czyszczenie przy ławie: 1 złom za każde rozpoczęte 10 % zużycia
+	# czyszczenie przy ławie (1.7.347): bez złomu, Profile.CLEAN_STEP s za każde rozpoczęte 10 % zużycia; przerwane trzeba zacząć od nowa.
+	# Bez czekania na klatki — gracz testu nie stoi przy ławie, więc panel sam by się zamknął; klatkę czyszczenia wołamy ręcznie.
 	var bank0: int = Scrap.bank
-	Scrap.bank = 100
 	Profile.cond["m83"] = 55.0
-	var cost: int = Scrap.clean_cost(Weapons.M83)
-	Scrap.request_clean(Weapons.M83)
-	await frames(2)
-	check("czyszczenie: stan 55 %% kosztuje %d złomu, potem 100 %% (%.0f), bank %d" % [cost, Profile.condition("m83"), Scrap.bank],
-		cost == 5 and Profile.condition("m83") == 100.0 and Scrap.bank == 95 and Scrap.clean_cost(Weapons.M83) == 0)
-	Scrap.bank = bank0
+	var ctime: float = Profile.clean_time("m83")
+	var wui := get_tree().get_first_node_in_group("workshop_ui")
+	var clean_ok := false
+	var clean_info := "brak panelu"
+	if wui != null:
+		wui.open()
+		wui._start_clean(Weapons.M83)
+		wui.tick_clean(ctime * 0.5)
+		var half: float = Profile.condition("m83")
+		wui._stop_clean()                                     # przerwane (np. odejście od ławy) — stan bez zmian
+		wui.tick_clean(ctime)
+		var stopped: float = Profile.condition("m83")
+		wui._start_clean(Weapons.M83)
+		wui.tick_clean(ctime * 0.6)
+		wui.tick_clean(ctime * 0.6)
+		clean_info = "w połowie %.0f, po przerwaniu %.0f, na końcu %.0f, bank %d → %d" % [half, stopped, Profile.condition("m83"), bank0, Scrap.bank]
+		clean_ok = half == 55.0 and stopped == 55.0 and Profile.condition("m83") == 100.0 and Scrap.bank == bank0 and wui._clean_w == -1
+		wui.close()
+	check("czyszczenie: stan 55 %% trwa %.1f s, bez złomu (%s)" % [ctime, clean_info],
+		is_equal_approx(ctime, 5.0 * Profile.CLEAN_STEP) and clean_ok and Profile.clean_time("m83") == 0.0)
 	Profile.cond = cond0
 	Settings.reliability_idx = rel0
 	equip(Weapons.M83)

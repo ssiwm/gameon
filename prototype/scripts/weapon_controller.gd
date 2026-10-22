@@ -64,7 +64,7 @@ const MAG_DROP_NOISE := 0.15      ## magazynek uderza o ziemię
 const MAG_MAX := 16               ## tyle magazynków najwyżej leży na mapie (serwer usuwa najstarsze)
 ## Stan techniczny i zacięcia (§6, etap 4a, od 1.7.328; ustawienie „Weapon reliability”, Settings.reliability_mult): broń gracza zużywa się
 ## z każdym strzałem (Profile.cond), a poniżej JAM_FROM % zaczyna się zacinać. Zacięcie to chwila napięcia, nie kara: zawsze usuwa je [R].
-const WEAR_SHOT := 0.02           ## % stanu na strzał (× WeaponDef.wear × ustawienie)
+const WEAR_SHOT := 0.06           ## % stanu na strzał (× WeaponDef.wear × ustawienie); od 1.7.347 ×3 — M-83 traci ok. 15 % na misję, zaniedbany zaczyna się zacinać
 const WEAR_HOT := 3.0             ## lufa gorętsza niż HOT_WEAR_AT — zużycie ×3
 const HOT_WEAR_AT := 0.8
 const WEAR_CAN := 1.5             ## tłumik: gazy cofają się do mechanizmu

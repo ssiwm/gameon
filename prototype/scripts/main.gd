@@ -1506,6 +1506,13 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				if sa.begins_with("--shotwsopt="):          # --shotwsopt=N: kursor na N-tej opcji części wybranej broni (domyślnie kafel 0, M-83)
 					wui._opt = int(sa.substr("--shotwsopt=".length()))
 					wui._refresh()
+			if "--shotclean" in OS.get_cmdline_user_args():
+				Profile.persist = false              # --shotclean: M-83 w stanie 55 % w trakcie czyszczenia przy ławie (bez zapisu profilu)
+				Profile.cond["m83"] = 55.0
+				var cops: Array = wui._options(Weapons.M83)
+				wui._opt = cops.size() - 1
+				wui._start_clean(Weapons.M83)
+				wui.tick_clean(2.0)
 			if "--shotperks" in OS.get_cmdline_user_args():
 				Profile.reset_for_test()             # --shotperks: zakładka PERKS z przykładowym profilem (L4, Smith w slocie 1)
 				Profile.add_xp(800, "demo")

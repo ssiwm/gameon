@@ -290,6 +290,9 @@ var _p_text: Label
 var _p_action: Button
 var _sel := 0
 var _opt := 0                         ## kursor części w szczegółach broni (indeks w `_options`): klawisze 1 / 2 albo kliknięcie wiersza
+var _clean_w := -1                    ## broń czyszczona teraz przy ławie (-1 — żadna); od 1.7.347 czyszczenie kosztuje czas, nie złom
+var _clean_t := 0.0                   ## s od początku czyszczenia
+var _clean_total := 0.0               ## s potrzebne na całe czyszczenie (Profile.clean_time w chwili startu)
 var _prev_mouse := Input.MOUSE_MODE_VISIBLE
 var _card: PanelContainer
 var _wallet: Label
@@ -374,7 +377,6 @@ func _ready() -> void:
 	Scrap.purchase_result.connect(_on_result)
 	Scrap.supply_result.connect(_on_supply_result)
 	Scrap.part_result.connect(_on_part_result)
-	Scrap.clean_result.connect(_on_clean_result)
 	Profile.changed.connect(_refresh)
 	Arsenal.stock_changed.connect(_refresh)
 
@@ -929,6 +931,7 @@ func open() -> void:
 func close() -> void:
 	if not _open:
 		return
+	_stop_clean()
 	_open = false
 	visible = false
 	Settings.block_game_input(false)
@@ -941,11 +944,12 @@ func _process(delta: float) -> void:
 	_msg_t = maxf(0.0, _msg_t - delta)
 	if _msg_t <= 0.0:
 		_msg.text = ""
-	# panel zamyka się, gdy gracz odejdzie od ławy / zginie / misja się zmieni
+	# panel zamyka się, gdy gracz odejdzie od ławy / zginie / misja się zmieni (przerwane czyszczenie trzeba zacząć od nowa)
 	var wk := get_tree().get_first_node_in_group("workshop")
 	if wk == null or not wk.local_in_range or not NoiseMgr.safe_zone:
 		close()
 		return
+	tick_clean(delta)
 	var hud := get_parent() as Control
 	if hud != null:
 		size = hud.size
@@ -1062,6 +1066,7 @@ func _move(d: int) -> void:
 	var n := _sel + d
 	if n < 0 or n >= LIST.size():
 		return
+	_stop_clean()
 	_sel = n
 	_opt = _first_part_opt()
 	Audio.play("ui_click", Audio.BUS_UI, -14.0)
@@ -1070,6 +1075,7 @@ func _move(d: int) -> void:
 func _select(i: int) -> void:
 	if i != _sel:
 		Audio.play("ui_click", Audio.BUS_UI, -14.0)
+		_stop_clean()
 		_sel = i
 		_opt = _first_part_opt()
 	_refresh()
@@ -1095,10 +1101,14 @@ func _act() -> void:
 	var key := String(Weapons.def(w).key)
 	var id := String(o["id"])
 	if String(o["slot"]) == "service":
-		if Scrap.clean_cost(w) <= 0:
+		if _clean_w == w:
+			_stop_clean()
+			_say(tr("Cleaning stopped."), UiTheme.BP_MUTED)
+			_refresh()
+		elif Profile.clean_time(key) <= 0.0:
 			_say(tr("Already clean."), UiTheme.BP_MUTED)
 		else:
-			Scrap.request_clean(w)
+			_start_clean(w)
 		return
 	if id != "" and not Scrap.has_part(id):
 		Scrap.request_part(id)
@@ -1128,17 +1138,33 @@ func _on_result(w: int, ok: bool, reason: String) -> void:
 			_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
 
-func _on_clean_result(w: int, ok: bool, reason: String) -> void:
-	if not _open:
+## Czyszczenie przy ławie (stan siedzi w profilu gracza, więc serwer nie bierze udziału): trwa Profile.clean_time, panel musi zostać
+## otwarty, a gracz przy ławie — odejście, zmiana broni albo ponowne [E] przerywa i trzeba zacząć od nowa.
+func _start_clean(w: int) -> void:
+	_clean_w = w
+	_clean_t = 0.0
+	_clean_total = Profile.clean_time(String(Weapons.def(w).key))
+	Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -8.0, 0.85)
+	_say(tr("Stripping the %s…") % String(Weapons.def(w).name), UiTheme.BP_TEXT)
+	_refresh()
+
+func _stop_clean() -> void:
+	_clean_w = -1
+	_clean_t = 0.0
+
+## Klatka czyszczenia (z `_process`; testy wołają ją ręcznie).
+func tick_clean(delta: float) -> void:
+	if _clean_w < 0:
 		return
-	match reason:
-		"ok":
-			_say(tr("%s stripped and cleaned — condition 100%%.") % String(Weapons.def(w).name), UiTheme.OK)
-			Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.0)
-		"poor":
-			_say(tr("Not enough scrap (%d needed).") % Scrap.clean_cost(w), UiTheme.DANGER)
-		_:
-			_say("Cannot do that.", UiTheme.DANGER)
+	_clean_t += delta
+	if _clean_t < _clean_total:
+		_action.text = tr("Cleaning…  %d%%  (again to stop)") % int(100.0 * _clean_t / _clean_total)
+		return
+	var w := _clean_w
+	_stop_clean()
+	Profile.clean(String(Weapons.def(w).key))
+	_say(tr("%s stripped and cleaned — condition 100%%.") % String(Weapons.def(w).name), UiTheme.OK)
+	Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.0)
 	_refresh()
 
 func _on_part_result(id: String, ok: bool, reason: String) -> void:
@@ -1359,7 +1385,7 @@ func _refresh_detail(w: int) -> void:
 			last_slot = slot
 			_d_tiers.add_child(UiTheme.label((tr("Service") if slot == "service" else tr(Parts.SLOT_NAMES[slot])).to_upper(), 7, UiTheme.BP_MUTED))
 		if slot == "service":
-			var cc := Scrap.clean_cost(w)
+			var cc := Profile.clean_time(key)
 			var cb := Button.new()
 			cb.flat = true
 			cb.focus_mode = Control.FOCUS_NONE
@@ -1367,7 +1393,7 @@ func _refresh_detail(w: int) -> void:
 			cb.add_theme_font_size_override("font_size", 8)
 			cb.add_theme_color_override("font_color", UiTheme.ACCENT if i == _opt else (GOLD if cc > 0 else UiTheme.OK))
 			cb.add_theme_color_override("font_hover_color", UiTheme.ACCENT)
-			cb.text = "%s %s   [%s]" % ["»" if i == _opt else " ", tr("Clean  ·  condition %d%%") % int(Profile.condition(key)), tr("%d scrap") % cc if cc > 0 else tr("clean")]
+			cb.text = "%s %s   [%s]" % ["»" if i == _opt else " ", tr("Clean  ·  condition %d%%") % int(Profile.condition(key)), tr("%d s") % ceili(cc) if cc > 0.0 else tr("clean")]
 			cb.custom_minimum_size = Vector2(DETAIL_W, 0)
 			for st in ["normal", "hover", "pressed", "focus"]:
 				var csb := StyleBoxEmpty.new()
@@ -1402,7 +1428,7 @@ func _refresh_detail(w: int) -> void:
 	var notes: Array = Codex.WEAPON_TEXT.get(key, ["", ""])
 	var desc := String(notes[0])
 	if unlocked and not o.is_empty() and String(o["slot"]) == "service":
-		desc = tr("Strip and clean the gun at the bench: condition back to 100%. Below 70% a gun starts to jam, and every shot wears it a little — faster with a hot barrel or a suppressor.")
+		desc = tr("Strip and clean the gun at the bench: condition back to 100%. It costs no scrap, only time at the bench — the dirtier the gun, the longer. Below 70% a gun starts to jam, and every shot wears it — faster with a hot barrel or a suppressor.")
 	elif unlocked and not o.is_empty() and String(o["id"]) != "":
 		desc = tr(String(Parts.get_part(String(o["id"]))["desc"]))
 	elif unlocked and not o.is_empty():
@@ -1416,8 +1442,11 @@ func _refresh_detail(w: int) -> void:
 	elif o.is_empty():
 		_action.text = "No parts for this weapon"
 	elif String(o["slot"]) == "service":
-		var ccost := Scrap.clean_cost(w)
-		_action.text = tr("Clean  ·  %d scrap") % ccost if ccost > 0 else tr("Already clean")
+		var ctime := Profile.clean_time(key)
+		if _clean_w == w:
+			_action.text = tr("Cleaning…  %d%%  (again to stop)") % int(100.0 * _clean_t / maxf(0.01, _clean_total))
+		else:
+			_action.text = tr("Clean  ·  %d s") % ceili(ctime) if ctime > 0.0 else tr("Already clean")
 	else:
 		var id2 := String(o["id"])
 		if id2 != "" and not Scrap.has_part(id2):
