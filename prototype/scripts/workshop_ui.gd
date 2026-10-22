@@ -253,8 +253,9 @@ var _page := 0                        ## 0 = ARMS (bronie i ulepszenia), 1 = SUP
 var _mode := "bench"                  ## „bench" — ława (ARMS, SUPPLIES), „locker" — szafki osobiste (PERKS, LOOK); od 1.7.349, WORKSHOP_PLAN.md W1
 ## „service" — stół konserwacji (od 1.7.350, W2): zakładka ARMS bez części i zestawów, tylko czyszczenie i części eksploatacyjne broni
 ## „press" — prasa elaboracyjna (od 1.7.354, W4): zakładka SUPPLIES z samą amunicją specjalną, zamówienia zamiast zakupu (Scrap.request_order)
-const MODE_PAGES := {"bench": [0, 1], "locker": [2, 3], "service": [0], "press": [1]}
-const MODE_GROUP := {"bench": "workshop", "locker": "locker_station", "service": "service_bench", "press": "press_bench"}      ## grupa stanowiska: panel zamyka się, gdy gracz od niego odejdzie
+## „pyro" — stół pirotechniczny (od 1.7.355, W4b): granaty, miny, ładunki i naboje 40 mm, klawisze 1 / 2 zmieniają zapalnik (ustawienie drużyny)
+const MODE_PAGES := {"bench": [0, 1], "locker": [2, 3], "service": [0], "press": [1], "pyro": [1]}
+const MODE_GROUP := {"bench": "workshop", "locker": "locker_station", "service": "service_bench", "press": "press_bench", "pyro": "pyro_bench"}      ## grupa stanowiska: panel zamyka się, gdy gracz od niego odejdzie
 const SERVICE_IDS := ["clean", "barrel", "springs"]
 var _title: Label
 var _sup_sel := 0
@@ -846,9 +847,35 @@ func _sup_list() -> Array:
 	var out: Array = []
 	var kinds := _supply_kinds()
 	for i in kinds.size():
-		if Throwables.is_ammo(String(kinds[i])) == (_mode == "press"):
+		if _sup_in_mode(String(kinds[i])):
 			out.append(i)
 	return out
+
+## Czy rodzaj `k` należy do stanowiska: prasa — amunicja specjalna bez 40 mm, pirotechnika — granaty, miny, ładunki i 40 mm, ława — narzędzia.
+func _sup_in_mode(k: String) -> bool:
+	var m := String(Throwables.KINDS[k]["mode"])
+	var forty := Throwables.is_ammo(k) and String(Ammo.from_kind(k).get("cal", "")) == "40mm"
+	match _mode:
+		"press":
+			return Throwables.is_ammo(k) and not forty
+		"pyro":
+			return m == "throw" or m == "place" or forty
+		_:
+			return m == "use"
+
+## Stół pirotechniczny: krótszy (−1) albo dłuższy (+1) zapalnik zaznaczonego przedmiotu — dla całej drużyny (serwer).
+func _step_fuse(d: int) -> void:
+	var k := String(_supply_kinds()[_sup_sel])
+	var opts: Array = Throwables.FUSES.get(k, []) as Array
+	if opts.is_empty():
+		return
+	var ni := clampi(Scrap.fuse_index(k) + d, 0, opts.size() - 1)
+	if ni == Scrap.fuse_index(k):
+		return
+	Scrap.request_fuse(k, ni)
+	Audio.play("ui_click", Audio.BUS_UI, -10.0, 1.2)
+	_say(tr("%s fuse: %.1f s — for the whole squad.") % [String(Throwables.KINDS[k]["name"]), float(opts[ni])], UiTheme.OK)
+	_refresh()
 
 ## Cena kafla: przedmiot — sklep ławy, amunicja — partia w prasie.
 func _sup_price(k: String) -> int:
@@ -965,7 +992,7 @@ func open(mode := "bench") -> void:
 	_open = true
 	visible = true
 	_mode = mode if MODE_PAGES.has(mode) else "bench"
-	_title.text = {"locker": tr("LOCKER"), "service": tr("MAINTENANCE"), "press": tr("RELOADING PRESS")}.get(_mode, tr("WORKSHOP"))
+	_title.text = {"locker": tr("LOCKER"), "service": tr("MAINTENANCE"), "press": tr("RELOADING PRESS"), "pyro": tr("PYROTECHNICS")}.get(_mode, tr("WORKSHOP"))
 	for pi in _page_btns.size():
 		(_page_btns[pi] as Button).visible = (MODE_PAGES[_mode] as Array).has(pi) and (MODE_PAGES[_mode] as Array).size() > 1
 	_msg.text = ""
@@ -1022,6 +1049,9 @@ func _controls_hint() -> String:
 	var nav := "D-PAD" if pad else Actions.cluster(["menu_up", "menu_left", "menu_down", "menu_right"]).to_upper()
 	if _mode == "press":
 		return tr("%s select   ·   %s order a batch   ·   %s close   ·   or click") % [nav, _menu_key("menu_accept", pad), _menu_key("menu_back", pad)]
+	if _mode == "pyro":
+		return tr("%s select   ·   %s / %s fuse   ·   %s buy / order   ·   %s close   ·   or click") % [
+			nav, _menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_back", pad)]
 	if _mode == "service":
 		return tr("%s select   ·   %s / %s job   ·   %s clean / replace   ·   %s close   ·   or click") % [
 			nav, _menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_back", pad)]
@@ -1086,6 +1116,8 @@ func _input(event: InputEvent) -> void:
 			_sup_sel = int(vis[np])
 			Audio.play("ui_click", Audio.BUS_UI, -14.0)
 			_refresh()
+		elif _mode == "pyro" and (event.is_action_pressed("menu_slot_1") or event.is_action_pressed("menu_slot_2")):
+			_step_fuse(-1 if event.is_action_pressed("menu_slot_1") else 1)
 		elif accept:
 			_buy_selected_supply()
 		elif back:
@@ -1371,7 +1403,7 @@ func _refresh_supplies() -> void:
 		t.add_theme_stylebox_override("pressed", sbox)
 		t.add_theme_stylebox_override("focus", sbox)
 		var k := String(kinds[i])
-		t.visible = Throwables.is_ammo(k) == (_mode == "press")
+		t.visible = _sup_in_mode(k)
 		var have := Arsenal.get_throwable(k)
 		var price := _sup_price(k)
 		t.price_label.text = ("%d" % price) + (("  +%d" % Scrap.ordered(k)) if Scrap.ordered(k) > 0 else "")
@@ -1404,6 +1436,10 @@ func _refresh_supplies() -> void:
 		rows.append(["Noise", "%.0f" % float(d["noise"])])
 	elif k2 in ["frag", "charge"]:
 		rows.append(["Noise", "explosion"])
+	if Throwables.FUSES.has(k2):
+		var fo: Array = Throwables.FUSES[k2]
+		var fi := Scrap.fuse_index(k2)
+		rows.append(["Fuse", tr("%.1f s  (%d of %d)") % [float(fo[fi]), fi + 1, fo.size()] + ((tr("  ·  %s / %s change") % [_menu_key("menu_slot_1", Actions.pad_mode), _menu_key("menu_slot_2", Actions.pad_mode)]) if _mode == "pyro" else "")])
 	for r in rows:
 		_s_stats.add_child(UiTheme.label(String(r[0]), 9, UiTheme.BP_MUTED))
 		_s_stats.add_child(UiTheme.label(String(r[1]), 9, UiTheme.BP_TEXT))

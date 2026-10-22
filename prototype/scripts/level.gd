@@ -76,6 +76,7 @@ const HUB_DECOR := preload("res://scripts/hub_decor.gd")
 const LOCKER_STATION := preload("res://scripts/locker_station.gd")
 const SERVICE_BENCH := preload("res://scripts/service_bench.gd")
 const PRESS_BENCH := preload("res://scripts/press_bench.gd")
+const PYRO_BENCH := preload("res://scripts/pyro_bench.gd")
 
 ## Mapy misji (scripts/maps/): każda niesie MAP, ID, TITLE, OBJECTIVE, UNDERGROUND_ROW, WEAPONS, ACCENTS.
 const MAPS := {
@@ -619,7 +620,7 @@ func _exposure(c: int, r: int) -> int:
 ## na każdym peerze.
 func _spawn_entities() -> void:
 	_spawn_walls()
-	var found := {"T": [], "A": [], "U": [], "V": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": [], "p": [], "j": [], "x": []}
+	var found := {"T": [], "A": [], "U": [], "V": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": [], "p": [], "j": [], "x": [], "z": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -632,7 +633,7 @@ func _spawn_entities() -> void:
 				"e": exits_alt.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "A", "U", "V", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q", "p", "j", "x": found[ch].append(p)
+				"T", "A", "U", "V", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q", "p", "j", "x", "z": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -727,6 +728,11 @@ func _spawn_entities() -> void:
 		pb.name = "PressBench%d" % (i + 1)
 		pb.position = found["x"][i]
 		add_child(pb)
+	for i in found["z"].size():
+		var py: Node2D = PYRO_BENCH.new()                     # stół pirotechniczny: granaty, miny, ładunki, 40 mm i zapalniki (WORKSHOP_PLAN.md, stanowisko 4)
+		py.name = "PyroBench%d" % (i + 1)
+		py.position = found["z"][i]
+		add_child(py)
 	for i in found["l"].size():
 		var lp: Node2D = LAMP.new()
 		lp.name = "Lamp%d" % (i + 1)

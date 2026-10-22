@@ -2670,14 +2670,22 @@ func _t_ammo_calibers() -> void:
 		var vis_n: int = wui._sup_tiles.filter(func(t: Control) -> bool: return t.visible).size()
 		var press_page: int = wui._page
 		ui_info = "%d widocznych kafli, przycisk '%s', pasek %d/%d" % [vis_n, wui._s_action.text, tile.bar.have, tile.bar.maxn]
-		ui_ok = vis_n == Throwables.AMMO_ORDER.size() and press_page == 1 and wui._s_action.text.contains(str(Scrap.press_price("ammo_slug"))) and tile.bar.have == 1 and tile.bar.maxn == 4
+		var forty: int = Throwables.AMMO_ORDER.filter(func(k: String) -> bool: return String(Ammo.from_kind(k).get("cal", "")) == "40mm").size()
+		ui_ok = vis_n == Throwables.AMMO_ORDER.size() - forty and press_page == 1 and wui._s_action.text.contains(str(Scrap.press_price("ammo_slug"))) and tile.bar.have == 1 and tile.bar.maxn == 4
+		wui.close()
+		# stół pirotechniczny (1.7.355): granaty, miny, ładunki i 40 mm; ława — same narzędzia
+		wui.open("pyro")
+		var pyro_kinds: Array = wui._sup_list().map(func(i: int) -> String: return String(wui._supply_kinds()[i]))
 		wui.close()
 		wui.open("bench")
 		wui._set_page(1)
 		wui._refresh()
+		var bench_kinds: Array = wui._sup_list().map(func(i: int) -> String: return String(wui._supply_kinds()[i]))
 		var bench_vis: Array = wui._sup_tiles.filter(func(t: Control) -> bool: return t.visible)
-		ui_info += ", ława %d kafli" % bench_vis.size()
-		ui_ok = ui_ok and bench_vis.size() == wui._supply_kinds().size() - Throwables.AMMO_ORDER.size() and not Throwables.is_ammo(String(wui._supply_kinds()[wui._sup_sel]))
+		ui_info += ", pirotechnika %s, ława %s" % [str(pyro_kinds), str(bench_kinds)]
+		ui_ok = ui_ok and pyro_kinds.has("frag") and pyro_kinds.has("mine") and pyro_kinds.has("charge") and pyro_kinds.has("ammo_40buck") and not pyro_kinds.has("ammo_slug")
+		ui_ok = ui_ok and bench_vis.size() == bench_kinds.size() and bench_kinds.all(func(k: String) -> bool: return String(Throwables.KINDS[k]["mode"]) == "use")
+		ui_ok = ui_ok and bench_kinds.has("medkit") and bench_kinds.has(String(wui._supply_kinds()[wui._sup_sel]))
 		# zakładka ARMS: kliknięcie wiersza części (sygnał pressed) przebudowuje listę, w tym kliknięty wiersz — bez zwalniania go w trakcie sygnału
 		wui._set_page(0)
 		wui._sel = 0
@@ -2706,7 +2714,28 @@ func _t_ammo_calibers() -> void:
 		check("ława 3D: fabryczny wylot spod kursora — świeci podzespół __muzzle, tłumika nie ma (%s)" % str(hl_names),
 			hl_names.size() > 0 and hl_names.all(func(n: String) -> bool: return n.ends_with("__muzzle")) and no_part)
 		wui.close()
-	check("prasa i ława: amunicja tylko w prasie, przedmioty tylko na ławie (%s)" % ui_info, ui_ok)
+	check("prasa, pirotechnika i ława: każde stanowisko ma swoje zaopatrzenie (%s)" % ui_info, ui_ok)
+	# zapalniki (stół pirotechniczny): ustawienie drużyny, granat i ładunek biorą wybraną długość
+	var fuses0: Dictionary = Scrap.fuses.duplicate()
+	Scrap.request_fuse("frag", 0)
+	Scrap.request_fuse("charge", 2)
+	Scrap.request_fuse("smoke", 1)                                  # dymny nie ma wyboru — bez zmian
+	Scrap.request_fuse("frag", 9)                                   # poza listą — odrzucone
+	var gl := get_tree().get_first_node_in_group("level")
+	var g_fuse := -1.0
+	if gl != null:
+		gl.spawn_grenade("frag", player.global_position + Vector2(0, -40), Vector2.ZERO, player.player_id)
+		await frames(2)
+		for g in gl.get_children():
+			if g.get_script() != null and String(g.get_script().resource_path).ends_with("/grenade.gd") and String(g.kind) == "frag":
+				g_fuse = float(g._data["fuse"])
+				g.queue_free()
+	check("zapalniki: odłamkowy %.1f s (granat w świecie %.1f s), ładunek %.1f s, dymny bez wyboru %.1f s, wybór drużyny %s" % [Scrap.fuse_of("frag"), g_fuse, Scrap.fuse_of("charge"), Scrap.fuse_of("smoke"), str(Scrap.fuses)],
+		Scrap.fuse_of("frag") == 1.0 and is_equal_approx(g_fuse, 1.0) and Scrap.fuse_of("charge") == 15.0 and is_equal_approx(Scrap.fuse_of("smoke"), float(Throwables.KINDS["smoke"]["fuse"]))
+		and not Scrap.fuses.has("smoke"))
+	Scrap.request_fuse("frag", Throwables.fuse_default("frag"))
+	check("zapalniki: powrót do fabrycznego zdejmuje wpis (%s)" % str(Scrap.fuses), not Scrap.fuses.has("frag") and Scrap.fuse_of("frag") == float(Throwables.KINDS["frag"]["fuse"]))
+	Scrap.fuses = fuses0
 	Scrap.bank = bank0
 	Scrap.loot = loot0
 	Scrap.orders = orders0

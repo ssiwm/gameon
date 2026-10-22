@@ -2136,6 +2136,14 @@ func _near_workshop() -> bool:
 			return ui == null or not ui.is_open()
 	return false
 
+## Czy lokalny gracz stoi przy stole pirotechnicznym (kryjówka) i panel jest zamknięty.
+func _near_pyro() -> bool:
+	for w in get_tree().get_nodes_in_group("pyro_bench"):
+		if w.local_in_range:
+			var ui := get_tree().get_first_node_in_group("workshop_ui")
+			return ui == null or not ui.is_open()
+	return false
+
 ## Czy lokalny gracz stoi przy prasie elaboracyjnej (kryjówka, zamówienia amunicji specjalnej) i panel jest zamknięty.
 func _near_press() -> bool:
 	for w in get_tree().get_nodes_in_group("press_bench"):
@@ -2235,6 +2243,8 @@ func _prompt_candidates() -> Array:
 			add.call(Actions.fmt(tr("Hold [{interact}]  Start the generator  (loud)")), -1.0, UiTheme.ACCENT)
 	if _near_workshop():
 		add.call(tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], -1.0, UiTheme.ACCENT)
+	if _near_pyro():
+		add.call(tr("[%s]  Pyrotechnics  ·  grenades, mines, fuses") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
 	if _near_press():
 		add.call(tr("[%s]  Reloading press  ·  %d / %d batches ordered") % [Actions.key("interact"), Scrap.orders.size(), Scrap.PRESS_SLOTS], -1.0, UiTheme.ACCENT)
 	if _near_service():

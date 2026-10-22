@@ -1535,6 +1535,16 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				wui.open("press")
 				wui._sup_sel = wui._supply_kinds().find("ammo_slug")
 				wui._refresh()
+			if "--shotpyro" in OS.get_cmdline_user_args():
+				wui.close()                          # --shotpyro: panel stołu pirotechnicznego z granatem odłamkowym pod kursorem (bez zapisu)
+				Scrap.persist = false
+				var pyb := get_tree().get_first_node_in_group("pyro_bench") as Node2D
+				if wp != null and pyb != null:
+					wp.global_position = pyb.global_position + Vector2(0.0, -2.0)
+				await get_tree().create_timer(0.3).timeout
+				wui.open("pyro")
+				wui._sup_sel = wui._supply_kinds().find("frag")
+				wui._refresh()
 			if "--shotperks" in OS.get_cmdline_user_args() or "--shotlook" in OS.get_cmdline_user_args():
 				wui.close()                          # perki i wygląd są w szafkach osobistych (1.7.349): gracz staje przy nich
 				var lks := get_tree().get_first_node_in_group("locker_station") as Node2D
@@ -2649,6 +2659,8 @@ func _gen_test() -> void:
 	check.call("stół konserwacji: %d w kryjówce, zasięg osobno od ławy (%s)" % [svc_nodes.size(), str(svc_ok)], svc_nodes.size() == 1 and svc_ok)
 	var press_nodes := get_tree().get_nodes_in_group("press_bench")
 	check.call("prasa elaboracyjna: %d w kryjówce (dół, kol. 33)" % press_nodes.size(), press_nodes.size() == 1 and int((press_nodes[0] as Node2D).global_position.x / 16.0) == 33)
+	var pyro_nodes := get_tree().get_nodes_in_group("pyro_bench")
+	check.call("stół pirotechniczny: %d w kryjówce (dół, kol. 46)" % pyro_nodes.size(), pyro_nodes.size() == 1 and int((pyro_nodes[0] as Node2D).global_position.x / 16.0) == 46)
 	wui.open("locker")
 	await get_tree().create_timer(0.1).timeout
 	var locker_tabs: Array = wui._page_btns.filter(func(b: Button) -> bool: return b.visible).map(func(b: Button) -> String: return b.text)
