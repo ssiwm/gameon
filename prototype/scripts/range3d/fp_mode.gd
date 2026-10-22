@@ -43,6 +43,10 @@ var _enter_frame := -1                ## krok fizyki wejścia (to samo naciśni�
 var pb_new := false                   ## ostatni ukończony przebieg to nowy rekord osobisty tej broni (tablica w tunelu)
 var paper_pb_new := false             ## ostatnia pełna grupa na papierze to nowy rekord osobisty
 var paper_pb_at := -100.0             ## sim.clock tej grupy
+var paper_cond := {}                  ## warunki bieżącej serii na papierze: {w (−2 — kilka broni), real (REALISTIC), heat0, heat1 (lufa 0..1
+                                      ## przy pierwszej i ostatniej przestrzelinie), braced (przestrzeliny z oparciem), n}
+var paper_prev := {}                  ## poprzednia seria do porównania: {g: grupa (sim.paper_last), c: warunki}
+var _paper_sig := ""                  ## broń i obsługa: zmiana zaczyna nową serię (sim.paper_break)
 var shot_climb := 0.0               ## ° — podrzut z początku kroku: strzał leci tam, gdzie celownik tej klatki (jak player._local_brain w grze 2D),
                                       ## a nie z podrzutem doliczonym już za ten sam strzał
 
@@ -66,6 +70,7 @@ func _ready() -> void:
 	wc.practice = true
 	sim.finished.connect(_on_finished)
 	sim.paper_hole.connect(_on_paper_hole)
+	sim.paper_cleared.connect(_on_paper_cleared)
 	if DisplayServer.get_name() != "headless":
 		view = RangeView.new()
 		view.name = "RangeView"
@@ -110,10 +115,26 @@ func _on_finished(t: float, _best: float, _record: bool) -> void:
 
 ## Przestrzelina w papierze: piąta z serii zamyka grupę — rekord osobisty broni (MOA, mniej = lepiej).
 func _on_paper_hole(_local: Vector2) -> void:
+	var w := sim._shot_w
+	var heat := float(player.weapons.barrel_of(w)) if w >= 0 else 0.0
+	if paper_cond.is_empty():
+		paper_cond = {"w": w, "real": Settings.realistic_handling, "heat0": heat, "heat1": heat, "braced": 0, "n": 0}
+	elif int(paper_cond["w"]) != w:
+		paper_cond["w"] = -2
+	paper_cond["heat1"] = heat
+	paper_cond["n"] = int(paper_cond["n"]) + 1
+	if braced():
+		paper_cond["braced"] = int(paper_cond["braced"]) + 1
 	var g: Dictionary = sim.paper_group()
 	if int(g["n"]) == RangeSim.PAPER_PB_SHOTS and sim._shot_w >= 0:
 		paper_pb_new = Profile.range_record(RangeSim.EX_PAPER, String(Weapons.def(sim._shot_w).key), float(g["moa"]))
 		paper_pb_at = sim.clock
+
+## Nowa seria na papierze: zamknięta grupa z jej warunkami idzie do porównania (tablica PAPIER w tunelu, range_targets.gd).
+func _on_paper_cleared() -> void:
+	if not paper_cond.is_empty():
+		paper_prev = {"g": sim.paper_last, "c": paper_cond}
+	paper_cond = {}
 
 ## Ćwiczenie z przeładowaniem: przed startem przebiegu magazynek trzymanej broni ma najwyżej RangeSim.drill_load naboi (przeładowanie przed
 ## pierwszą blachą nic nie daje — nadmiar znika). Od pierwszej blachy liczy się już zwykły magazynek.
@@ -183,6 +204,10 @@ func tick(delta: float) -> void:
 	if Input.is_action_just_pressed("range_exercise"):
 		sim.set_exercise(sim.next_exercise())                  # w trakcie przebiegu nic (set_exercise sam pilnuje)
 	_arm_drill()
+	var sig := "%d:%s" % [int(player.weapons.cur().id), Settings.realistic_handling]
+	if sig != _paper_sig:
+		_paper_sig = sig
+		sim.paper_break()                                      # inna broń albo obsługa — następna przestrzelina to nowa seria
 	x = move_toward(x, float(RangeSim.STATIONS[station]), STATION_SPEED * delta)
 	braced_pose = Input.is_action_pressed("crouch") and is_equal_approx(x, float(RangeSim.STATIONS[station]))
 	brace_t = move_toward(brace_t, 1.0 if braced_pose else 0.0, BRACE_SPEED * delta)

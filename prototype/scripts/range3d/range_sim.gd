@@ -83,6 +83,11 @@ var exercise := EX_PLATES
 var _session := {}                    ## ćwiczenie → [last_time, best] odłożone przy zmianie ćwiczenia (rekord wizyty osobno dla każdego)
 var paper_holes: Array = []           ## przestrzeliny bieżącej serii (Vector2, m od środka arkusza)
 var _paper_t := -100.0
+var paper_last := {}                  ## grupa poprzedniej serii (paper_group w chwili, gdy następne trafienie zaczęło nową)
+
+## Następne trafienie w papier zaczyna nową serię bez czekania PAPER_GAP (zmiana broni albo obsługi — fp_mode.gd: serie się nie mieszają).
+func paper_break() -> void:
+	_paper_t = -100.0
 var mover_down := false
 var mover_hits := 0
 var mover_tries := 0                  ## strzały, które przeszły przy wózku (MOVER_NEAR) albo go trafiły
@@ -304,6 +309,7 @@ func _paper_ray(origin: Vector3, dir: Vector3, max_t: float) -> void:
 	if absf(l.x) > PAPER_SIZE.x * 0.5 or absf(l.y) > PAPER_SIZE.y * 0.5:
 		return
 	if clock - _paper_t > PAPER_GAP and not paper_holes.is_empty():
+		paper_last = paper_group()                             # zamknięta seria — do porównania z następną (fp_mode.paper_prev)
 		paper_holes.clear()
 		paper_cleared.emit()
 	_paper_t = clock

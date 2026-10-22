@@ -2,9 +2,16 @@ extends Node3D
 ## Strzelnica FPP — obraz tarczy papierowej i ruchomego celu (RANGE_FPS_PLAN.md, etap 3). Papier (range_sim.PAPER) na stelażu z listew:
 ## tarcza z pierścieniami, przestrzeliny bieżącej serii i tabliczka z miarą grupy (rozrzut w cm i MOA, rozciągnięcie w pionie — seria
 ## ogniem ciągłym ciągnie grupę w górę). Wózek (range_sim.mover_x) jeździ po szynie w poprzek tunelu z blachą na zawiasie; tabliczka
-## z trafieniami i próbami. Liczy range_sim.gd, tu tylko obraz i dźwięk (range_view.gd woła `tick` co klatkę).
+## z trafieniami i próbami. Tablica PAPIER obok tablicy ćwiczeń nad linią ognia porównuje bieżącą serię z poprzednią: grupa i warunki
+## (broń, obsługa REALISTIC / CLASSIC, temperatura lufy, oparcie — fp_mode.paper_cond / paper_prev). Liczy range_sim.gd, tu tylko obraz
+## i dźwięk (range_view.gd woła `tick` co klatkę).
 
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
+const Weapons := preload("res://scripts/weapons.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+const CMP_POS := Vector3(2.05, RangeSim.LANE_H - 0.75, -4.2)   ## środek tablicy porównania grup (na prawo od tablicy ćwiczeń)
+const CMP_SIZE := Vector2(1.8, 1.3)
+const CMP_ROW := "%-9s %-13s %s"                               ## wiersz tabeli porównania: nazwa, teraz, przedtem (czcionka o stałej szerokości)
 const HOLE := 0.009                   ## m — średnica przestrzeliny 9 mm (obraz; kaliber nie zmienia)
 
 var view: Node                        ## range_view.gd
@@ -17,6 +24,7 @@ var _cart: Node3D
 var _pivot: Node3D
 var _fall := 0.0
 var _mover_lbl: Label3D
+var _cmp_lbl: Label3D
 
 func setup(v: Node, s: RangeSim) -> void:
 	view = v
@@ -28,6 +36,7 @@ func setup(v: Node, s: RangeSim) -> void:
 func _ready() -> void:
 	_build_paper()
 	_build_mover()
+	_build_compare()
 	var lamp := SpotLight3D.new()                             # lampa nad papierem i wózkiem: koniec tunelu był ciemny
 	lamp.light_color = Color(1.0, 0.86, 0.68)
 	lamp.light_energy = 3.0
@@ -38,22 +47,39 @@ func _ready() -> void:
 	add_child(lamp)
 	view._box(Vector3(0.5, 0.08, 0.2), lamp.position + Vector3(0.0, 0.06, 0.0), view._glow(Color(1.0, 0.9, 0.75), 2.0))
 
-## Wyniki papieru i wózka do tablicy nad linią ognia (range_view._update_board) — tabliczki przy celach są z 25 m nieczytelne.
+## Wynik wózka do tablicy ćwiczeń nad linią ognia (range_view._update_board) — tabliczki przy celach są z 25 m nieczytelne; papier ma
+## własną tablicę porównania obok (`compare_lines`).
 func board_lines() -> PackedStringArray:
-	var out := PackedStringArray()
-	var g := sim.paper_group()
-	if int(g["n"]) >= 2:
-		out.append(tr("paper %d · %.1f cm (%.1f MOA) · ↕ %.1f cm") % [int(g["n"]), float(g["spread"]) * 100.0, float(g["moa"]), float(g["vertical"]) * 100.0])
-	elif int(g["n"]) == 1:
-		out.append(tr("paper 1"))
-	var pb := Profile.range_best_of(RangeSim.EX_PAPER, String(view.fp.player.weapons.cur().key))   # rekord osobisty grupy 5 strzałów tą bronią
-	if pb >= 0.0:
-		var s := tr("best %d-shot group %.1f MOA") % [RangeSim.PAPER_PB_SHOTS, pb]
-		if view.fp.paper_pb_new and sim.clock - view.fp.paper_pb_at < 5.0:
-			s += "  ·  " + tr("PERSONAL BEST")
-		out.append(s)
-	out.append(tr("mover %d / %d") % [sim.mover_hits, sim.mover_tries])
+	return PackedStringArray([tr("mover %d / %d") % [sim.mover_hits, sim.mover_tries]])
+
+## Tablica porównania grup na papierze: tabela z kolumnami TERAZ (bieżąca seria `g` z warunkami `c`) i PRZEDTEM (`prev` = {g, c},
+## fp_mode.paper_prev) — grupa (rozrzut w MOA, przestrzeliny, rozciągnięcie w pionie) i warunki (broń, obsługa, lufa przy pierwszej →
+## ostatniej przestrzelinie, oparcie); pod spodem różnica rozrzutu (ujemna — bieżąca grupa ciaśniejsza). Czcionka o stałej szerokości.
+static func compare_lines(g: Dictionary, c: Dictionary, prev: Dictionary) -> PackedStringArray:
+	var now := _column(g, c) if int(g.get("n", 0)) > 0 and not c.is_empty() else []
+	var pg: Dictionary = prev.get("g", {})
+	var before := _column(pg, prev.get("c", {})) if not prev.is_empty() else []
+	var out := PackedStringArray([TranslationServer.translate("PAPER %d m  ·  GROUPS") % int(round(-RangeSim.PAPER.z)),
+		CMP_ROW % [TranslationServer.translate("series"), TranslationServer.translate("NOW"), TranslationServer.translate("BEFORE")]])   # bez pustej
+		                                                                 # pierwszej komórki — Label3D obcina spacje na początku wiersza
+	var labels := ["group", "holes", "vertical", "weapon", "handling", "barrel", "brace"]
+	for i in labels.size():
+		out.append(CMP_ROW % [TranslationServer.translate(labels[i]), now[i] if not now.is_empty() else "—", before[i] if not before.is_empty() else "—"])
+	if int(g.get("n", 0)) >= 2 and int(pg.get("n", 0)) >= 2 and not c.is_empty():
+		out.append(TranslationServer.translate("difference %+.1f MOA") % (float(g["moa"]) - float(pg["moa"])))
 	return out
+
+## Kolumna serii: wartości w kolejności wierszy `compare_lines`.
+static func _column(g: Dictionary, c: Dictionary) -> Array:
+	var n := int(g.get("n", 0))
+	var w := int(c.get("w", -1))
+	var b := int(c.get("braced", 0))
+	var br := "braced" if b >= int(c.get("n", 0)) else ("standing" if b == 0 else "partly")
+	return ["%.1f MOA" % float(g["moa"]) if n >= 2 else "—", str(n), "%.1f cm" % (float(g["vertical"]) * 100.0) if n >= 2 else "—",
+		TranslationServer.translate("several") if w < 0 else String(Weapons.def(w).name),
+		TranslationServer.translate("REALISTIC" if bool(c.get("real", true)) else "CLASSIC"),
+		"%d→%d%%" % [roundi(float(c.get("heat0", 0.0)) * 100.0), roundi(float(c.get("heat1", 0.0)) * 100.0)],
+		TranslationServer.translate(br)]
 
 func tick(delta: float) -> void:
 	var x := RangeSim.mover_x(sim.clock)
@@ -68,10 +94,38 @@ func tick(delta: float) -> void:
 		pl.append(tr("%d holes · group %.1f cm (%.1f MOA)") % [int(g["n"]), float(g["spread"]) * 100.0, float(g["moa"])])
 		pl.append(tr("vertical %.1f cm") % (float(g["vertical"]) * 100.0))
 	_paper_lbl.text = "\n".join(pl)
+	var cl := compare_lines(g, view.fp.paper_cond, view.fp.paper_prev)
+	var pb := Profile.range_best_of(RangeSim.EX_PAPER, String(view.fp.player.weapons.cur().key))   # rekord osobisty grupy 5 strzałów tą bronią
+	if pb >= 0.0:
+		var s := tr("best %d-shot group %.1f MOA") % [RangeSim.PAPER_PB_SHOTS, pb]
+		if view.fp.paper_pb_new and sim.clock - view.fp.paper_pb_at < 5.0:
+			s += "  ·  " + tr("PERSONAL BEST")
+		cl.append(s)
+	_cmp_lbl.text = "\n".join(cl)
 	_mover_lbl.text = "\n".join(PackedStringArray([tr("MOVER  %d m · %.1f m/s") % [int(round(-RangeSim.MOVER_Z)), RangeSim.MOVER_SPEED],
 		tr("hits %d / %d") % [sim.mover_hits, sim.mover_tries]]))
 
 # ---------------------------------------------------------------- papier
+
+## Tablica porównania grup: ciemna płyta na prawo od tablicy ćwiczeń, tekst czcionką o stałej szerokości (kolumny serii równo).
+func _build_compare() -> void:
+	var pivot := Node3D.new()                                  # równolegle do linii ognia jak tablica ćwiczeń: obrócona do stanowiska dawała
+	pivot.position = CMP_POS                                   # skośne wiersze przy patrzeniu w tunel
+	add_child(pivot)
+	var panel: MeshInstance3D = view._box(Vector3(CMP_SIZE.x, CMP_SIZE.y, 0.05), Vector3.ZERO, view._flat(Color(0.05, 0.05, 0.045), 0.9), pivot)
+	panel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_cmp_lbl = Label3D.new()
+	_cmp_lbl.font_size = 26
+	_cmp_lbl.pixel_size = 0.0035
+	_cmp_lbl.modulate = Color(0.95, 0.75, 0.3)
+	_cmp_lbl.outline_size = 0
+	_cmp_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT         # tekst zaczyna się w punkcie węzła: lewy brzeg płyty
+	_cmp_lbl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	_cmp_lbl.position = Vector3(-CMP_SIZE.x * 0.5 + 0.06, CMP_SIZE.y * 0.5 - 0.06, 0.03)
+	var mono := UiTheme.mono_font()
+	if mono != null:
+		_cmp_lbl.font = mono
+	pivot.add_child(_cmp_lbl)
 
 func _build_paper() -> void:
 	var c := RangeSim.PAPER

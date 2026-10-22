@@ -1141,6 +1141,10 @@ func _dev_range3d() -> void:
 					fp.leave())
 		elif a.begins_with("--rangeex="):                      # --rangeex=reload: ćwiczenie na starcie (plates / reload)
 			fp.sim.set_exercise(a.substr("--rangeex=".length()))
+		elif a == "--shotrangeboard":                          # przykładowe serie na papierze do zrzutu tablicy porównania grup
+			fp.sim.paper_holes = [Vector2(0.01, 0.0), Vector2(-0.02, 0.03), Vector2(0.03, 0.05), Vector2(0.0, 0.08), Vector2(0.02, 0.11)]
+			fp.paper_cond = {"w": Weapons.M83, "real": true, "heat0": 0.08, "heat1": 0.41, "braced": 0, "n": 5}
+			fp.paper_prev = {"g": {"n": 5, "moa": 6.2, "vertical": 0.035}, "c": {"w": Weapons.M83, "real": true, "heat0": 0.05, "heat1": 0.3, "braced": 5, "n": 5}}
 		elif a == "--rangeads":
 			fp.dev_ads = true                                   # przyrządy bez PPM (zrzuty)
 		elif a.begins_with("--rangeads="):                     # --rangeads=T: stały postęp przyrządów 0..1 (zrzuty przejścia)
