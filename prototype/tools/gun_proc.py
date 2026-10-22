@@ -2213,12 +2213,57 @@ def main_part():
     print("OK", DST, info)
 
 
+def sight_line():
+    """Linia przyrządów (strzelnica FPP, celowanie przez przyrządy) z brył przed scaleniem: (tył, przód, optyka) w mm albo None, gdy broń ich nie ma.
+    Optyka: "" — przyrządy mechaniczne, "dot" — kolimator, "nv" — celownik noktowizyjny (gra pokazuje przy pełnym celowaniu obraz przez optykę).
+    Noktowizor (`nsp`, zasłania szczerbinkę i muszkę): oś tubusu od muszli ocznej do obiektywu. Kolimator (`sight_tube`): oś tuby. Inaczej przód = wierzch muszki (`fs_post` / `sight_front` / `front_sight`, w ostateczności `fs_tower`),
+    tył = dno wcięcia szczerbinki: między słupkami (`sight_post`) — wierzch podstawy (`sight_base`), na celowniku przerzutowym (`sight_leaf`) —
+    najwyższy punkt krawędzi (wcięcie ok. 1,5 mm niżej)."""
+    boxes = {}
+    for o in bpy.data.objects:
+        if o.type != "MESH":
+            continue
+        base = o.name.split(".")[0]
+        pts = [o.matrix_world @ Vector(c) for c in o.bound_box]
+        lo = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
+        hi = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
+        if base in boxes:
+            a, b = boxes[base]
+            lo = Vector((min(lo.x, a.x), min(lo.y, a.y), min(lo.z, a.z)))
+            hi = Vector((max(hi.x, b.x), max(hi.y, b.y), max(hi.z, b.z)))
+        boxes[base] = (lo, hi)
+    if "nsp" in boxes:
+        lo, hi = boxes["nsp"]
+        cz = (lo.z + hi.z) * 0.5
+        x0 = boxes["nsp_eye"][0].x if "nsp_eye" in boxes else lo.x
+        x1 = boxes["nsp_obj"][1].x if "nsp_obj" in boxes else hi.x
+        return Vector((x0, 0.0, cz)), Vector((x1, 0.0, cz)), "nv"
+    if "sight_tube" in boxes:
+        lo, hi = boxes["sight_tube"]
+        cz = (lo.z + hi.z) * 0.5
+        return Vector((lo.x, 0.0, cz)), Vector((hi.x, 0.0, cz)), "dot"
+    front = next((boxes[n] for n in ("fs_post", "sight_front", "front_sight", "fs_tower") if n in boxes), None)
+    if front is None:
+        return None
+    f = Vector(((front[0].x + front[1].x) * 0.5, 0.0, front[1].z))
+    if "sight_post" in boxes and "sight_base" in boxes:
+        lo, hi = boxes["sight_post"]
+        r = Vector(((lo.x + hi.x) * 0.5, 0.0, boxes["sight_base"][1].z))
+    elif "sight_leaf" in boxes:
+        lo, hi = boxes["sight_leaf"]
+        r = Vector((hi.x, 0.0, hi.z - 1.5))
+    else:
+        return None
+    return r, f, ""
+
+
 def main():
     if PART:
         main_part()
         return
     bpy.ops.wm.read_factory_settings(use_empty=True)
     spec = BUILDERS[KEY]()
+    sights = sight_line()
     rear, muzzle, length = spec["rear"], spec["muzzle"], LENGTH or spec["length"]
     ob = merge_parts()
     imgs = None
@@ -2244,6 +2289,10 @@ def main():
             info[k] = rel(spec[k])
     if spec.get("slide") is not None:                               # skok zamka / suwadła (m po skalowaniu; strzelnica FPP)
         info["slide"] = round(spec["slide"] * sc, 4)
+    if sights is not None:                                          # linia przyrządów: dno szczerbinki → wierzch muszki (sight_line)
+        info["sight_rear"], info["sight_front"] = rel(sights[0]), rel(sights[1])
+        if sights[2]:
+            info["sight_optic"] = sights[2]
     if spec.get("hold_v"):
         info["hold_v"] = True
     with open(DST.rsplit(".", 1)[0] + ".json", "w") as f:

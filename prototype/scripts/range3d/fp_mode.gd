@@ -11,6 +11,7 @@ extends Node
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
 const RangeView := preload("res://scripts/range3d/range_view.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
+const Weapons := preload("res://scripts/weapons.gd")
 
 const SENS := 0.0022                  ## rad na piksel ruchu myszy
 const PAD_SENS := 2.4                 ## rad/s przy wychyleniu drążka do końca
@@ -39,6 +40,9 @@ var dev_ads_t := -1.0                 ## dev `--rangeads=T`: stały postęp przy
 var door: Node = null                 ## range_door.gd, przez które gracz wszedł: wynik przebiegu idzie przez nie do serwera; zniknięcie drzwi
                                       ## (inna mapa) kończy strzelnicę
 var _enter_frame := -1                ## krok fizyki wejścia (to samo naciśnięcie [E] przy drzwiach nie może od razu wyjść)
+var pb_new := false                   ## ostatni ukończony przebieg to nowy rekord osobisty tej broni (tablica w tunelu)
+var paper_pb_new := false             ## ostatnia pełna grupa na papierze to nowy rekord osobisty
+var paper_pb_at := -100.0             ## sim.clock tej grupy
 var shot_climb := 0.0               ## ° — podrzut z początku kroku: strzał leci tam, gdzie celownik tej klatki (jak player._local_brain w grze 2D),
                                       ## a nie z podrzutem doliczonym już za ten sam strzał
 
@@ -61,6 +65,7 @@ func _ready() -> void:
 	wc.range_sink = self
 	wc.practice = true
 	sim.finished.connect(_on_finished)
+	sim.paper_hole.connect(_on_paper_hole)
 	if DisplayServer.get_name() != "headless":
 		view = RangeView.new()
 		view.name = "RangeView"
@@ -96,10 +101,32 @@ func _exit_tree() -> void:
 		view.release()
 		view = null
 
-## Przebieg ukończony: wynik do serwera przez drzwi (tablica drużyny).
+## Przebieg ukończony: rekord osobisty broni w profilu, wynik do serwera przez drzwi (tablica drużyny).
 func _on_finished(t: float, _best: float, _record: bool) -> void:
+	if sim.run_w >= 0:
+		pb_new = Profile.range_record(sim.exercise, String(Weapons.def(sim.run_w).key), t)
 	if door != null and is_instance_valid(door):
-		door.submit(t, sim.run_shots, sim.run_w)
+		door.submit(t, sim.run_shots, sim.run_w, sim.exercise)
+
+## Przestrzelina w papierze: piąta z serii zamyka grupę — rekord osobisty broni (MOA, mniej = lepiej).
+func _on_paper_hole(_local: Vector2) -> void:
+	var g: Dictionary = sim.paper_group()
+	if int(g["n"]) == RangeSim.PAPER_PB_SHOTS and sim._shot_w >= 0:
+		paper_pb_new = Profile.range_record(RangeSim.EX_PAPER, String(Weapons.def(sim._shot_w).key), float(g["moa"]))
+		paper_pb_at = sim.clock
+
+## Ćwiczenie z przeładowaniem: przed startem przebiegu magazynek trzymanej broni ma najwyżej RangeSim.drill_load naboi (przeładowanie przed
+## pierwszą blachą nic nie daje — nadmiar znika). Od pierwszej blachy liczy się już zwykły magazynek.
+func _arm_drill() -> void:
+	if sim.exercise != RangeSim.EX_RELOAD or sim.running:
+		return
+	var wc = player.weapons
+	var d: WeaponDef = wc.cur()
+	if not d.uses_ammo() or wc.is_reloading():
+		return
+	var cap := RangeSim.drill_load(d)
+	if wc.mag_of(d.id) > cap:
+		wc.mags[d.id] = cap
 
 func _capture(on: bool) -> void:
 	if DisplayServer.get_name() == "headless":
@@ -153,6 +180,9 @@ func tick(delta: float) -> void:
 		station = maxi(0, station - 1)
 	if Input.is_action_just_pressed("move_right"):
 		station = mini(RangeSim.STATIONS.size() - 1, station + 1)
+	if Input.is_action_just_pressed("range_exercise"):
+		sim.set_exercise(sim.next_exercise())                  # w trakcie przebiegu nic (set_exercise sam pilnuje)
+	_arm_drill()
 	x = move_toward(x, float(RangeSim.STATIONS[station]), STATION_SPEED * delta)
 	braced_pose = Input.is_action_pressed("crouch") and is_equal_approx(x, float(RangeSim.STATIONS[station]))
 	brace_t = move_toward(brace_t, 1.0 if braced_pose else 0.0, BRACE_SPEED * delta)

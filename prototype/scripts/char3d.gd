@@ -757,7 +757,7 @@ static func gun_info(key: String) -> Dictionary:
 	var path := DIR + "gun_%s.json" % key
 	if FileAccess.file_exists(path):
 		var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
-		for k in ["rear", "fore", "muzzle", "grip", "hold", "trigger"]:          # trigger — nasada języka spustu (strzelnica FPP, fp_rig.gd)
+		for k in ["rear", "fore", "muzzle", "grip", "hold", "trigger", "sight_rear", "sight_front"]:          # trigger — nasada języka spustu (strzelnica FPP, fp_rig.gd)
 			if d.has(k):
 				var a: Array = d[k]
 				o[k] = Vector3(float(a[0]), float(a[2]), -float(a[1]))      # Blender (x, y, z) → Godot (x, z, −y)
@@ -766,6 +766,8 @@ static func gun_info(key: String) -> Dictionary:
 		o["hold_v"] = bool(d.get("hold_v", false))
 		if d.has("slide"):
 			o["slide"] = float(d["slide"])                                 # skok zamka / suwadła (m)
+		if d.has("sight_optic"):
+			o["sight_optic"] = String(d["sight_optic"])                    # optyka na linii przyrządów: "dot" kolimator, "nv" noktowizor (strzelnica FPP)
 	if not o.has("grip"):                                         # stary plik bez punktów chwytu: przybliżenie z punktów nadgarstków
 		o["grip"] = (o["rear"] as Vector3) + Vector3(0.0, 0.06, 0.0)
 	if not o.has("hold"):

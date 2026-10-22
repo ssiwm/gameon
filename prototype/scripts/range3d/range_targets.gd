@@ -46,6 +46,12 @@ func board_lines() -> PackedStringArray:
 		out.append(tr("paper %d · %.1f cm (%.1f MOA) · ↕ %.1f cm") % [int(g["n"]), float(g["spread"]) * 100.0, float(g["moa"]), float(g["vertical"]) * 100.0])
 	elif int(g["n"]) == 1:
 		out.append(tr("paper 1"))
+	var pb := Profile.range_best_of(RangeSim.EX_PAPER, String(view.fp.player.weapons.cur().key))   # rekord osobisty grupy 5 strzałów tą bronią
+	if pb >= 0.0:
+		var s := tr("best %d-shot group %.1f MOA") % [RangeSim.PAPER_PB_SHOTS, pb]
+		if view.fp.paper_pb_new and sim.clock - view.fp.paper_pb_at < 5.0:
+			s += "  ·  " + tr("PERSONAL BEST")
+		out.append(s)
 	out.append(tr("mover %d / %d") % [sim.mover_hits, sim.mover_tries])
 	return out
 

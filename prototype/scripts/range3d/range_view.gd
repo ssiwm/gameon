@@ -17,6 +17,8 @@ const RangeFx := preload("res://scripts/range3d/range_fx.gd")
 const RangeSpecial := preload("res://scripts/range3d/range_special.gd")
 const RangeTargets := preload("res://scripts/range3d/range_targets.gd")
 const RangeOthers := preload("res://scripts/range3d/range_others.gd")
+const RangeOptic := preload("res://scripts/range3d/range_optic.gd")
+const OPTIC_IN := Vector2(0.8, 0.97)          ## postęp przyrządów, w którym model broni z optyką gaśnie, a nakładka optyki wchodzi (range_optic.gd)
 const GUN_BASIS := Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))   ## układ broni (x lufa, y góra, z prawo) → kamera (−z w przód)
 
 const VM_FOV := 58.0                          ## ° — kąt kamery rąk i broni (węższy: bez rozciągania na brzegach, jak w grach FPP)
@@ -93,6 +95,7 @@ var _holes: Array = []
 var _hole_i := 0
 var _hole_mat: StandardMaterial3D
 var _dot: Control
+var _optic: RangeOptic                         ## obraz przez kolimator / noktowizor przy pełnym celowaniu
 var _hint: Label
 var _hub: Node                                ## schowany View3D
 var _msg := ""
@@ -258,6 +261,8 @@ func _ready() -> void:
 	_hole_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_hole_mat.albedo_texture = _radial(Color(0.02, 0.02, 0.02, 0.95), Color(0.1, 0.09, 0.08, 0.0))
 	_hole_mat.roughness = 1.0
+	_optic = RangeOptic.new()
+	add_child(_optic)
 	_dot = Control.new()
 	_dot.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -311,6 +316,8 @@ func fading_out() -> bool:
 func _show_tunnel(on: bool) -> void:
 	for c in [_screen, _vm_screen, _dot, _hint]:
 		(c as CanvasItem).visible = on
+	if not on:
+		_optic.visible = false
 
 ## Przejście kryjówka ↔ tunel: IN najazd na drzwi (ostatnie FADE_T to ściemnienie), TUNNEL wyłania się z czerni, OUT gaśnie, BACK
 ## kryjówka wyłania się z czerni. Zwraca true, gdy węzeł kończy (BACK minął).
@@ -440,6 +447,8 @@ func _pose_gun(delta: float) -> void:
 	if _gun == null:
 		for a in _arms:
 			(a as Node3D).visible = false
+		_optic.visible = false
+		_vm_screen.modulate.a = 1.0
 		return
 	var wc = fp.player.weapons
 	_life += delta
@@ -465,8 +474,14 @@ func _pose_gun(delta: float) -> void:
 	if pistol and _rig != null and String(_rig.key) != "":
 		ads_z = -(sight.x - _rig.eye_in_gun().x)                  # pistolet w rękach z zasobu: szczerbinka tak daleko od oka jak w ułożonej postawie
 	var hip_o := (HIP_PISTOL if pistol else HIP) - gb * grip
-	var ads_o := Vector3(0.0, 0.0, ads_z) - gb * sight
+	var ap := ads_pose(_info, _top_y, ads_z)
+	var ads_o: Vector3 = ap[0]
+	var tilt: float = ap[1]
 	var o := hip_o.lerp(ads_o, t)
+	var optic := String(_info.get("sight_optic", ""))
+	var ko := smoothstep(OPTIC_IN.x, OPTIC_IN.y, float(fp.ads_t)) if optic != "" else 0.0
+	_vm_screen.modulate.a = 1.0 - ko                              # zamknięta tuba z bliska zasłoniłaby cel: obraz przez optykę zamiast modelu
+	_optic.show_optic(optic, ko)
 	var rot := Basis(Vector3.UP, deg_to_rad(HIP_YAW) * (1.0 - t))
 	var dip := 0.0
 	var roll := 0.0
@@ -481,7 +496,8 @@ func _pose_gun(delta: float) -> void:
 		if not clip_rl:                          # klip przeładowania sam porusza bronią (fp_grip.py GUN_POSES)
 			dip = s
 			roll = (-0.5 if wc.clearing else 0.45) * s
-	rot = Basis(Vector3.UP, _sway.x + _rec.z) * rot * Basis(Vector3.FORWARD, roll + _rec.z * 0.6) * Basis(Vector3.RIGHT, _sway.y + _rec.y - 0.35 * dip + breath * 0.004)
+	rot = Basis(Vector3.UP, _sway.x + _rec.z) * rot * Basis(Vector3.FORWARD, roll + _rec.z * 0.6) * Basis(Vector3.RIGHT, _sway.y + _rec.y - 0.35 * dip + breath * 0.004) \
+		* Basis(Vector3.RIGHT, -tilt * t)                         # przy przyrządach linia szczerbinka → muszka w osi kamery (ads_pose)
 	_vm.transform = Transform3D(rot, Vector3(0.0, -0.13 * dip + breath * 0.0018, _rec.x) + rot * o)
 	# rękawice na chwycie i pod łożem, rękawy do krawędzi kadru
 	var xf := _vm.transform * Transform3D(GUN_BASIS, Vector3.ZERO)
@@ -553,6 +569,20 @@ func _draw_dot() -> void:
 	_dot.draw_circle(c, 0.5, Color(0.9, 0.95, 0.85, 0.85))
 
 # ---------------------------------------------------------------- zdarzenia
+
+## Broń przy przyrządach: [przesunięcie (układ kamery, przed obrotem broni), pochylenie (rad, obrót wokół osi x kamery: −pochylenie)] tak, by
+## linia szczerbinka → muszka (gun_<klucz>.json: `sight_rear` / `sight_front`, z gun_proc.py) leżała w osi kamery, a jej punkt nad chwytem
+## w odległości `ads_z` (ta sama odległość co dotąd — policzek na kolbie). Broń bez punktów przyrządów — linia nad najwyższym punktem modelu.
+static func ads_pose(info: Dictionary, top_y: float, ads_z: float) -> Array:
+	var grip: Vector3 = info.get("grip", Vector3.ZERO)
+	if info.has("sight_rear") and info.has("sight_front"):
+		var r: Vector3 = info["sight_rear"]
+		var f: Vector3 = info["sight_front"]
+		if absf(f.x - r.x) > 0.01:
+			var tilt := atan2(f.y - r.y, f.x - r.x)
+			var a := r + (f - r) * ((grip.x - r.x) / (f.x - r.x))
+			return [Basis(Vector3.RIGHT, -tilt).inverse() * Vector3(0.0, 0.0, ads_z) - GUN_BASIS * a, tilt]
+	return [Vector3(0.0, 0.0, ads_z) - GUN_BASIS * Vector3(grip.x, top_y + SIGHT_CLEAR, 0.0), 0.0]
 
 ## Wylot lufy trzymanej broni w świecie tunelu (z kamery rąk przeliczony na kamerę tunelu).
 func muzzle_world() -> Vector3:
@@ -643,13 +673,16 @@ func _play3d(base: String, count: int, pos: Vector3, vol_db: float, jitter: floa
 ## Koniec przebiegu: czas na tablicy w tunelu; rekord osobisty z tej wizyty (wynik drużyny rozstrzyga serwer — toast z range_door.gd).
 func _on_finished(t: float, best: float, record: bool) -> void:
 	_msg = tr("%.2f s — best this visit") % t if record else tr("%.2f s  (this visit %.2f s)") % [t, best]
+	if fp.pb_new:
+		_msg += "  ·  " + tr("PERSONAL BEST")
 	_msg_t = 5.0
 	Audio.play("ui_click", Audio.BUS_UI, -4.0, 0.8)
 
 func _update_board() -> void:
 	var sim = fp.sim
 	var lines := PackedStringArray()
-	lines.append(tr("5 PLATES"))
+	var head := tr("RELOAD DRILL  ·  %d plates, %d rounds") % [RangeSim.DRILL_PLATES, RangeSim.DRILL_LOAD] if sim.exercise == RangeSim.EX_RELOAD else tr("5 PLATES")
+	lines.append(head + "   [%s]" % Actions.key("range_exercise"))
 	if sim.running:
 		lines.append("%.2f s" % (sim.clock - sim._t0))
 	elif _msg_t > 0.0:
@@ -657,12 +690,16 @@ func _update_board() -> void:
 	else:
 		var door = fp.door if fp.door != null and is_instance_valid(fp.door) else null
 		var sb := ""                                              # rekord drużyny z tablicy serwera (range_door.gd), bez drzwi — sesji
-		if door != null and not (door.board as Array).is_empty():
-			var e: Dictionary = door.board[0]
+		var top: Array = door.rows(sim.exercise) if door != null else []
+		if not top.is_empty():
+			var e: Dictionary = top[0]
 			sb = "%.2f s %s" % [float(e["t"]), String(e["who"])]
 		elif door == null and sim.best >= 0.0:
 			sb = "%.2f s" % sim.best
 		lines.append(tr("last %s   squad %s") % ["%.2f s" % sim.last_time if sim.last_time >= 0.0 else "—", sb if sb != "" else "—"])
+	var key := String(fp.player.weapons.cur().key)                # rekord osobisty trzymanej broni (Profile.range_best)
+	var pb := Profile.range_best_of(sim.exercise, key)
+	lines.append(tr("personal best %s") % ("%.2f s" % pb if pb >= 0.0 else "—"))
 	lines.append(tr("shots %d   hits %d") % [sim.shots, sim.hits])
 	lines.append_array(_targets.board_lines())                   # papier (grupa) i wózek (trafienia / próby)
 	_board.text = "\n".join(lines)
@@ -794,7 +831,7 @@ func _build_plates() -> void:
 		_world.add_child(lbl)
 
 func _build_board() -> void:
-	var panel := _box(Vector3(1.8, 0.9, 0.05), Vector3(0.0, RangeSim.LANE_H - 0.62, -4.2), _flat(Color(0.05, 0.05, 0.045), 0.9))   # 5 wierszy: blachy + papier + wózek
+	var panel := _box(Vector3(1.8, 1.15, 0.05), Vector3(0.0, RangeSim.LANE_H - 0.62, -4.2), _flat(Color(0.05, 0.05, 0.045), 0.9))   # 7 wierszy: ćwiczenie, wynik, rekord osobisty, strzały, papier (+ rekord), wózek
 	panel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_board = Label3D.new()
 	_board.font_size = 64

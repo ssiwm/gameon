@@ -1139,6 +1139,8 @@ func _dev_range3d() -> void:
 			get_tree().create_timer(float(a.substr("--rangeleave=".length()))).timeout.connect(func() -> void:
 				if is_instance_valid(fp):
 					fp.leave())
+		elif a.begins_with("--rangeex="):                      # --rangeex=reload: ćwiczenie na starcie (plates / reload)
+			fp.sim.set_exercise(a.substr("--rangeex=".length()))
 		elif a == "--rangeads":
 			fp.dev_ads = true                                   # przyrządy bez PPM (zrzuty)
 		elif a.begins_with("--rangeads="):                     # --rangeads=T: stały postęp przyrządów 0..1 (zrzuty przejścia)

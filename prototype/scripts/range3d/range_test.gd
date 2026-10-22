@@ -11,12 +11,16 @@ extends Node
 ## 5. Wyjście przywraca zwykłe strzelanie (range_sink, practice, player.fp).
 ## 6. Etap 1: drzwi w kryjówce (range_door.gd) — [E] przy drzwiach wchodzi, postać zaparkowana (`in_range`), wynik przebiegu trafia
 ##    na tablicę drużyny przez serwer; serwer odrzuca wynik niewiarygodny, z innej broni i od gracza spoza strzelnicy.
+## 7. Etap 2: przyrządy z modelu (gun_proc.py → sight_rear / sight_front) leżą w osi kamery przy celowaniu, ćwiczenie z przeładowaniem
+##    (4 blachy, 2 naboje w magazynku, wynik z przeładowaniem na osobnej części tablicy), rekordy osobiste broni w profilu (czas, grupa).
 ## Wynik: linie [RANGE-TEST] i kod wyjścia (0 = OK).
 
 const RangeDoor := preload("res://scripts/range3d/range_door.gd")
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Actions := preload("res://scripts/actions.gd")
+const RangeView := preload("res://scripts/range3d/range_view.gd")
+const Char3D := preload("res://scripts/char3d.gd")
 
 var main: Node2D
 var player: CharacterBody2D
@@ -36,6 +40,7 @@ func info(label: String) -> void:
 func run(m: Node2D) -> void:
 	main = m
 	Profile.persist = false
+	Profile.range_best = {}                                    # rekordy osobiste z prawdziwego profilu nie mieszają się do testu
 	await get_tree().create_timer(1.5).timeout
 	player = m.get_node("Players").get_node_or_null("1")
 	door = get_tree().get_first_node_in_group("range_door") as Node2D
@@ -45,6 +50,8 @@ func run(m: Node2D) -> void:
 		return
 	door.board = []                                              # tablica z ustawień gracza (Settings.range_board) nie miesza się do testu
 	await _t_static()
+	_t_sights()
+	_t_records()
 	await _t_door()
 	await _t_options()
 	await _t_plates()
@@ -53,6 +60,7 @@ func run(m: Node2D) -> void:
 	await _t_special_hook()
 	await _t_coop_pose()
 	await _t_server()
+	await _t_drill()
 	await _t_climb()
 	await _t_practice()
 	await _t_brace()
@@ -89,6 +97,50 @@ func _t_static() -> void:
 	for v in dirs:
 		wide = maxf(wide, rad_to_deg((v as Vector3).angle_to(Vector3.FORWARD)))
 	check("SPREAD-12: %d śrucin, najdalsza %.1f° ≤ %.1f°" % [dirs.size(), wide, sg.cone_half_deg(0.0)], dirs.size() == sg.pellets and wide <= sg.cone_half_deg(0.0) + 0.01)
+
+## Przyrządy celownicze: przy pełnym celowaniu szczerbinka i muszka modelu (gun_<klucz>.json z gun_proc.py) leżą na osi kamery (x = y = 0,
+## przed okiem, muszka dalej) — linia przyrządów to linia strzału ze środka ekranu.
+func _t_sights() -> void:
+	var bad := PackedStringArray()
+	var n := 0
+	for key in ["m83", "spread12", "p64", "sokol6", "gniew4"]:
+		var inf: Dictionary = Char3D.gun_info(key)
+		if not inf.has("sight_rear") or not inf.has("sight_front"):
+			bad.append("%s: brak punktów" % key)
+			continue
+		var ap: Array = RangeView.ads_pose(inf, 0.0, RangeView.ADS_GRIP_Z)
+		var rot := Basis(Vector3.RIGHT, -float(ap[1]))
+		var o: Vector3 = ap[0]
+		var pr := rot * (o + RangeView.GUN_BASIS * (inf["sight_rear"] as Vector3))
+		var pf := rot * (o + RangeView.GUN_BASIS * (inf["sight_front"] as Vector3))
+		var off := maxf(Vector2(pr.x, pr.y).length(), Vector2(pf.x, pf.y).length())
+		if off > 0.0005 or not (pf.z < pr.z and pr.z < 0.0):
+			bad.append("%s: odchyłka %.1f mm, z %.3f / %.3f" % [key, off * 1000.0, pr.z, pf.z])
+		n += 1
+	check("przyrządy z modelu w osi kamery przy celowaniu (%d broni)%s" % [n, (": " + ", ".join(bad)) if not bad.is_empty() else ""], bad.is_empty() and n == 5)
+	var opt := [String(Char3D.gun_info("gniew4").get("sight_optic", "")), String(Char3D.gun_info("sokol6").get("sight_optic", "")),
+		String(Char3D.gun_info("m83").get("sight_optic", ""))]
+	check("optyka na linii przyrządów: WRATH-4 %s, FALCON-6 %s (noktowizor zasłania szczerbinkę), M-83 bez (%s)" % opt, opt == ["dot", "nv", ""])
+	var lr: Dictionary = Char3D.gun_info("lr7")
+	check("broń bez przyrządów (LR-7): linia nad modelem, bez pochylenia", not lr.has("sight_rear") and float(RangeView.ads_pose(lr, 0.1, RangeView.ADS_GRIP_Z)[1]) == 0.0)
+
+## Rekordy osobiste w profilu (bez zapisu do pliku w headless): mniej = lepiej, gorszy wynik nie nadpisuje, ćwiczenia i bronie osobno.
+func _t_records() -> void:
+	var a := Profile.range_record("plates", "test_gun", 5.0)
+	var b := Profile.range_record("plates", "test_gun", 6.0)
+	var c := Profile.range_record("plates", "test_gun", 4.5)
+	var r := Profile.range_record("reload", "test_gun", 9.0)
+	check("rekord osobisty: pierwszy %s, gorszy %s, lepszy %s → %.1f s; przeładowanie osobno %.1f s" % [a, b, c, Profile.range_best_of("plates", "test_gun"), Profile.range_best_of("reload", "test_gun")],
+		a and not b and c and Profile.range_best_of("plates", "test_gun") == 4.5 and r and Profile.range_best_of("reload", "test_gun") == 9.0
+		and Profile.range_best_of("plates", "other_gun") < 0.0)
+	var path := "user://range_test_profile.cfg"
+	Profile.save_to(path)
+	Profile.range_best.clear()
+	Profile.load_from(path)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	check("rekordy osobiste zapisane w profilu i wczytane (%.1f s)" % Profile.range_best_of("plates", "test_gun"), Profile.range_best_of("plates", "test_gun") == 4.5)
+	Profile.range_best.erase("plates:test_gun")
+	Profile.range_best.erase("reload:test_gun")
 
 ## Sim z ustawionym zegarem przewijany krokami fizyki (pociski w locie rozstrzyga `tick`).
 func _run_sim(sim: RangeSim, secs: float) -> void:
@@ -352,6 +404,81 @@ func _t_server() -> void:
 	fp.leave()
 	await _frames(2)
 
+## Ćwiczenie z przeładowaniem: 4 blachy (piąta leży), magazynek przycięty do 2 naboi przed startem, przebieg z przeładowaniem trafia na
+## osobną część tablicy drużyny i do rekordu osobistego; rekord wizyty osobno dla każdego ćwiczenia; walidacja serwera liczy przeładowanie.
+func _t_drill() -> void:
+	var d := Weapons.def(Weapons.M83)
+	var t_fast := 3.0 * d.cooldown                                # 4 strzały bez przeładowania
+	var t_ok := 3.0 * d.cooldown + d.reload_time
+	check("plausible: przeładowanie M-83 w %.2f s nie (bez przeładowania), w %.2f s tak; 5 blach w %.2f s nadal tak" % [t_fast, t_ok, 4.0 * d.cooldown],
+		not RangeDoor.plausible(t_fast, 4, Weapons.M83, RangeSim.EX_RELOAD) and RangeDoor.plausible(t_ok, 4, Weapons.M83, RangeSim.EX_RELOAD)
+		and RangeDoor.plausible(4.0 * d.cooldown, 5, Weapons.M83) and not RangeDoor.plausible(t_ok, 4, Weapons.M83, "bogus"))
+	var s0 := RangeSim.new()
+	s0.set_exercise(RangeSim.EX_RELOAD)
+	var lying: Array = s0.plates.map(func(p: Dictionary) -> bool: return p["down"])
+	check("ćwiczenie z przeładowaniem: %d blachy stoją, reszta leży %s" % [s0.targets(), str(lying)], s0.targets() == 4 and lying == [false, false, false, false, true])
+	s0.best = 7.0
+	s0.set_exercise(RangeSim.EX_PLATES)
+	var b_pl := s0.best
+	s0.set_exercise(RangeSim.EX_RELOAD)
+	check("rekord wizyty osobno dla ćwiczeń (5 blach %.1f, przeładowanie %.1f)" % [b_pl, s0.best], b_pl < 0.0 and s0.best == 7.0 and s0.next_exercise() == RangeSim.EX_PLATES)
+	var wc = player.weapons
+	if int(wc.cur().id) != Weapons.M83:
+		wc.loadout[0] = Weapons.M83
+		wc.select_slot(0)
+		await get_tree().create_timer(1.0).timeout
+	wc.mags[Weapons.M83] = 30
+	wc.jams.clear()
+	var fp: Node = _enter()
+	await _frames(2)
+	Input.action_press("range_exercise")                          # klawisz zmiany ćwiczenia (actions.gd)
+	await _frames(2)
+	Input.action_release("range_exercise")
+	await _frames(2)
+	var cap := RangeSim.drill_load(d)
+	check("[%s] zmienia ćwiczenie na przeładowanie, magazynek przycięty 30 → %d" % [Actions.key("range_exercise"), wc.mag_of(Weapons.M83)],
+		fp.sim.exercise == RangeSim.EX_RELOAD and wc.mag_of(Weapons.M83) == cap)
+	wc.try_reload()
+	await get_tree().create_timer(d.full_reload_time() + 0.5).timeout
+	check("przeładowanie przed startem nic nie daje (%d)" % wc.mag_of(Weapons.M83), wc.mag_of(Weapons.M83) == cap)
+	var reloads := 0
+	for i in RangeSim.DRILL_PLATES:
+		var n := 0
+		while not fp.sim.plates[i]["down"] and n < 12:
+			if wc.mag_of(Weapons.M83) <= 0:
+				if not wc.is_reloading():
+					wc.try_reload()
+					reloads += 1
+				var w := 0
+				while wc.is_reloading() and w < 300:
+					await get_tree().physics_frame
+					w += 1
+			await _shoot_at(fp, i)
+			wc.jams.clear()
+			n += 1
+	await _frames(2)
+	var rows: Array = door.rows(RangeSim.EX_RELOAD)
+	var top: Dictionary = rows[0] if not rows.is_empty() else {}
+	check("przebieg z przeładowaniem (%d) w %.2f s: tablica przeładowania %s, 5 blach bez zmian, piąta blacha leży" % [reloads, fp.sim.last_time, str(top)],
+		reloads >= 1 and fp.sim.runs == 1 and RangeDoor.ex_of(top) == RangeSim.EX_RELOAD and is_equal_approx(float(top.get("t", -1.0)), fp.sim.last_time)
+		and door.best(RangeSim.EX_RELOAD) == fp.sim.last_time and door.rows(RangeSim.EX_PLATES).all(func(e: Dictionary) -> bool: return RangeDoor.ex_of(e) == RangeSim.EX_PLATES)
+		and fp.sim.plates[4]["down"])
+	check("rekord osobisty przeładowania M-83: %.2f s (nowy: %s)" % [Profile.range_best_of(RangeSim.EX_RELOAD, "m83"), fp.pb_new],
+		fp.pb_new and Profile.range_best_of(RangeSim.EX_RELOAD, "m83") == fp.sim.last_time)
+	# papier: piąta przestrzelina serii zamyka grupę — rekord osobisty w MOA
+	fp.sim.paper_holes = [Vector2(0.0, 0.0), Vector2(0.02, 0.01), Vector2(-0.01, 0.02), Vector2(0.01, -0.02), Vector2(0.0, 0.03)]
+	fp.sim._shot_w = Weapons.M83
+	fp._on_paper_hole(Vector2.ZERO)
+	var moa := float(fp.sim.paper_group()["moa"])
+	check("rekord osobisty grupy 5 strzałów M-83: %.1f MOA" % Profile.range_best_of(RangeSim.EX_PAPER, "m83"),
+		fp.paper_pb_new and is_equal_approx(Profile.range_best_of(RangeSim.EX_PAPER, "m83"), moa))
+	fp.sim.paper_holes.clear()
+	fp.sim._reset_in = -1.0
+	fp.sim.set_exercise(RangeSim.EX_PLATES)
+	fp.leave()
+	await _frames(2)
+	wc.mags[Weapons.M83] = 30
+
 ## Strzał przez kontroler broni w środek blachy `i` (bez podrzutu i rozrzutu z serii).
 func _shoot_at(fp: Node, i: int) -> void:
 	var wc = player.weapons
@@ -400,6 +527,7 @@ func _t_plates() -> void:
 			down += 1
 	check("blachy: %d/5 leży" % down, down == 5)
 	check("przebieg ukończony, czas %.2f s" % fp.sim.last_time, fp.sim.runs == 1 and fp.sim.last_time > 0.0 and fp.sim.best == fp.sim.last_time)
+	check("rekord osobisty 5 blach M-83 w profilu (%.2f s)" % Profile.range_best_of(RangeSim.EX_PLATES, "m83"), fp.pb_new and Profile.range_best_of(RangeSim.EX_PLATES, "m83") == fp.sim.last_time)
 	await _frames(2)
 	var top: Dictionary = (door.board as Array)[0] if not (door.board as Array).is_empty() else {}
 	check("tablica drużyny: %s (strzały przebiegu %d)" % [str(top), fp.sim.run_shots],

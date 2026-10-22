@@ -23,6 +23,14 @@ const DIVIDER_Y := Vector2(0.1, 1.45) ## m — wysokość przegrody: do barków,
 const PLATE_R := 0.15                 ## m — promień blachy (popper ⌀ 30 cm)
 const PLATE_Y := 1.2                  ## m — wysokość środka blachy
 const PLATES := [[-1.2, 7.0], [0.9, 10.0], [-0.5, 13.0], [1.4, 16.0], [-1.5, 20.0]]   ## [x m, odległość m] — od najbliższej
+## Ćwiczenia: „plates” — 5 blach na czas; „reload” — 2 naboje w magazynku, 4 blachy (7–16 m), więc w środku przeładowanie (blacha 20 m leży).
+const EX_PLATES := "plates"
+const EX_RELOAD := "reload"
+const EXERCISES := [EX_PLATES, EX_RELOAD]
+const EX_PAPER := "paper"             ## rekord osobisty grupy na papierze (Profile.range_best; nie ćwiczenie na czas, fp_mode.gd)
+const PAPER_PB_SHOTS := 5             ## grupa z tylu przestrzelin serii liczy się do rekordu osobistego
+const DRILL_PLATES := 4               ## blachy ćwiczenia z przeładowaniem (od najbliższej)
+const DRILL_LOAD := 2                 ## naboje w magazynku na starcie ćwiczenia z przeładowaniem (fp_mode.gd)
 const RESET_T := 3.0
 const ABANDON_T := 12.0
 const MAX_DIST := 60.0                ## m — dalej promień nie leci (tunel ma 30 m, z zapasem na skos)
@@ -71,6 +79,8 @@ signal paper_hole(local: Vector2)            ## przestrzelina w papierze (m od �
 signal paper_cleared
 signal mover_hit
 
+var exercise := EX_PLATES
+var _session := {}                    ## ćwiczenie → [last_time, best] odłożone przy zmianie ćwiczenia (rekord wizyty osobno dla każdego)
 var paper_holes: Array = []           ## przestrzeliny bieżącej serii (Vector2, m od środka arkusza)
 var _paper_t := -100.0
 var mover_down := false
@@ -128,10 +138,41 @@ func tick(delta: float) -> void:
 		_reset_in -= delta
 		if _reset_in <= 0.0:
 			_reset_in = -1.0
-			for p in plates:
-				p["down"] = false
-				p["heat"] = 0.0
-			plates_up.emit()
+			_raise()
+
+## Blachy wstają: wszystkie albo — w ćwiczeniu z przeładowaniem — DRILL_PLATES najbliższych (reszta leży, poza ćwiczeniem).
+func _raise() -> void:
+	for i in plates.size():
+		plates[i]["down"] = exercise == EX_RELOAD and i >= DRILL_PLATES
+		plates[i]["heat"] = 0.0
+	plates_up.emit()
+
+## Zmiana ćwiczenia (tylko poza przebiegiem): blachy wstają od nowa.
+func set_exercise(ex: String) -> void:
+	if running or not EXERCISES.has(ex):
+		return
+	_session[exercise] = [last_time, best]
+	exercise = ex
+	var s: Array = _session.get(ex, [-1.0, -1.0])
+	last_time = float(s[0])
+	best = float(s[1])
+	_reset_in = -1.0
+	_raise()
+
+## Następne ćwiczenie z listy (klawisz `range_exercise`, fp_mode.gd).
+func next_exercise() -> String:
+	return EXERCISES[(EXERCISES.find(exercise) + 1) % EXERCISES.size()]
+
+## Naboje w magazynku broni `d` przed startem ćwiczenia z przeładowaniem (fp_mode.gd przycina magazynek, range_door.gd liczy z tego
+## najmniejszą liczbę przeładowań): DRILL_LOAD strzałów, broń ciągła — piąta część zbiornika.
+static func drill_load(d: WeaponDef) -> int:
+	if d.is_continuous():
+		return maxi(1, d.mag / 5)
+	return mini(DRILL_LOAD * maxi(1, d.ammo_per_shot), d.mag)
+
+## Ile blach liczy bieżące ćwiczenie.
+func targets() -> int:
+	return DRILL_PLATES if exercise == EX_RELOAD else plates.size()
 
 ## Strzał z oka `origin` (linia przyrządów = linia strzału) w kierunku `-basis.z`: każda śrucina to osobny promień.
 ## Zwraca listę trafień {pos, normal, kind, index}.
@@ -503,7 +544,7 @@ func _knock(i: int) -> void:
 	if not running:
 		running = true
 		_t0 = clock
-		_left = plates.size()
+		_left = targets()
 		run_shots = 1
 		run_w = _shot_w
 	_left -= 1
