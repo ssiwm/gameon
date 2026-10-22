@@ -1,0 +1,8 @@
+{
+ "task": "01a1649c-0472-7202-93d6-e320e534512a",
+ "ai_model": "latest",
+ "geometry_resolution": "standard",
+ "texture_resolution": "2k",
+ "source_image": "bench_grinder_source.png",
+ "credits": 30
+}
