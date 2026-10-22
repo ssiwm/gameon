@@ -33,7 +33,7 @@ const TIPS := [
 	["grenade", "{throw} uses the selected item (grenades, mine, charge, medkit, defibrillator, scanner), {throw_next} switches. A frag or a charge hurts the squad too"],
 	["pickaxe", "Swing the pickaxe ({melee}) at the cracked brick wall to break through — it is loud"],
 	["firemode", "{firemode} switches the M-83 between full auto and a quiet 3-round burst"],
-	["jam", "Jammed! Tap {reload} to clear it. A dirty gun jams more often — clean it at the workshop bench"],
+	["jam", "Jammed! Tap {reload} to clear it. A dirty gun jams more often — clean it at the maintenance table in the safe room"],
 	["magdrop", "A quick tap of {reload} drops the magazine with the rounds still in it — crouch ({crouch}) over it to get them back. Hold {reload} for a slower reload that keeps them"],
 ]
 

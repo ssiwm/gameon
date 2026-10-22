@@ -38,6 +38,11 @@ var fits: Dictionary = {}                     ## klucz broni → {gniazdo: id cz
 var presets: Dictionary = {}                  ## klucz broni → [PRESETS × {gniazdo: id części | ""}] — zapisane zestawy części (WORKSHOP_PLAN.md U6, od 1.7.349); {} = pusty
 const PRESETS := 3                            ## tyle zestawów na broń
 var cond: Dictionary = {}                     ## klucz broni → stan techniczny 0..100 % (GUNSMITH_PLAN §6, od 1.7.328); brak wpisu = 100
+var worn: Dictionary = {}                     ## klucz broni → {część eksploatacyjna: zużycie 0..100 %} (WORKSHOP_PLAN.md W2, od 1.7.350); brak wpisu = nowa
+## Części eksploatacyjne broni palnej (stół konserwacji): lufa — zużyta rozrzuca (weapon_controller.BARREL_SPREAD), sprężyny (powrotna, iglicy) —
+## zużyte nie dają się doczyścić: czyszczenie przywraca stan najwyżej do clean_cap. Wymiana za złom (Scrap.SERVICE_COST).
+const WEAR_PARTS := ["barrel", "springs"]
+const SPRINGS_CAP := 0.5                      ## górna granica stanu po czyszczeniu = 100 − 0,5 × zużycie sprężyn (60 % zużycia → 70 %, próg zacięć)
 var mastery: Dictionary = {}                  ## klucz broni → punkty wprawy (GUNSMITH_PLAN §7.3, od 1.7.330): trafienia i zabójstwa tym graczem z tej broni
 var history: Dictionary = {}                  ## klucz broni → {"k": zabójstwa, "e": elity, "b": bossowie} (GUNSMITH_PLAN §7.4, od 1.7.331)
 var range_best: Dictionary = {}               ## strzelnica FPP, rekordy osobiste: "<ćwiczenie>:<klucz broni>" → wynik (czas w s; papier — grupa w MOA), mniej = lepiej
@@ -219,9 +224,37 @@ func wear(key: String, amount: float) -> void:
 	cond[key] = maxf(0.0, condition(key) - amount)
 	_cond_dirty = true
 
-## Zestaw do czyszczenia w misji: stan broni `key` w górę o `amount` punktów.
+## Zużycie części eksploatacyjnej `part` broni `key` (0..100 %).
+func part_wear(key: String, part: String) -> float:
+	return float((worn.get(key, {}) as Dictionary).get(part, 0.0))
+
+## Zużycie części `part` broni `key` o `amount` punktów (strzał — weapon_controller._wear_shot).
+func wear_part(key: String, part: String, amount: float) -> void:
+	if amount <= 0.0:
+		return
+	var w: Dictionary = (worn.get(key, {}) as Dictionary).duplicate()
+	w[part] = minf(100.0, float(w.get(part, 0.0)) + amount)
+	worn[key] = w
+	_cond_dirty = true
+
+## Nowa część `part` w broni `key` (stół konserwacji, po opłaceniu złomem przez serwer).
+func replace_part(key: String, part: String) -> void:
+	var w: Dictionary = (worn.get(key, {}) as Dictionary).duplicate()
+	w.erase(part)
+	if w.is_empty():
+		worn.erase(key)
+	else:
+		worn[key] = w
+	save()
+	changed.emit()
+
+## Najwyższy stan, do którego da się doczyścić broń `key` — ogranicza go zużycie sprężyn.
+func clean_cap(key: String) -> float:
+	return clampf(100.0 - SPRINGS_CAP * part_wear(key, "springs"), 0.0, 100.0)
+
+## Zestaw do czyszczenia w misji: stan broni `key` w górę o `amount` punktów (najwyżej do clean_cap).
 func restore(key: String, amount: float) -> void:
-	cond[key] = minf(100.0, condition(key) + amount)
+	cond[key] = minf(maxf(clean_cap(key), condition(key)), condition(key) + amount)
 	if cond[key] >= 100.0:
 		cond.erase(key)
 	_cond_dirty = true
@@ -290,11 +323,16 @@ func range_best_of(ex: String, key: String) -> float:
 ## Ile sekund zajmie czyszczenie broni `key` przy ławie (0 — czysta): CLEAN_STEP za każde rozpoczęte 10 % zużycia.
 func clean_time(key: String) -> float:
 	var c := condition(key)
-	return 0.0 if c >= 99.5 else CLEAN_STEP * ceilf((100.0 - c) / 10.0)
+	var cap := clean_cap(key)
+	return 0.0 if c >= cap - 0.5 else CLEAN_STEP * ceilf((cap - c) / 10.0)
 
-## Czyszczenie przy ławie: broń jak nowa.
+## Czyszczenie przy stole konserwacji: stan do clean_cap (nowe sprężyny — broń jak nowa).
 func clean(key: String) -> void:
-	cond.erase(key)
+	var cap := clean_cap(key)
+	if cap >= 99.5:
+		cond.erase(key)
+	else:
+		cond[key] = maxf(condition(key), cap)
 	save()
 	changed.emit()
 
@@ -403,6 +441,7 @@ func save_to(path: String) -> void:
 	cfg.set_value("profile", "fits", fits)
 	cfg.set_value("profile", "presets", presets)
 	cfg.set_value("profile", "cond", cond)
+	cfg.set_value("profile", "worn", worn)
 	cfg.set_value("profile", "mastery", mastery)
 	cfg.set_value("profile", "history", history)
 	cfg.set_value("profile", "range_best", range_best)
@@ -424,6 +463,15 @@ func load_from(path: String) -> void:
 			equipped[i] = id
 	fits = (cfg.get_value("profile", "fits", {}) as Dictionary).duplicate(true)
 	presets = (cfg.get_value("profile", "presets", {}) as Dictionary).duplicate(true)
+	worn = {}
+	var wn_in := cfg.get_value("profile", "worn", {}) as Dictionary
+	for k in wn_in:
+		if wn_in[k] is Dictionary:
+			var wd := {}
+			for pt in wn_in[k]:
+				if String(pt) in WEAR_PARTS:
+					wd[String(pt)] = clampf(float(wn_in[k][pt]), 0.0, 100.0)
+			worn[String(k)] = wd
 	cond = {}
 	var cd_in := cfg.get_value("profile", "cond", {}) as Dictionary
 	for k in cd_in:
@@ -463,6 +511,7 @@ func reset_for_test() -> void:
 	equipped = ["", ""]
 	fits = {}
 	presets = {}
+	worn = {}
 	cond = {}
 	mastery = {}
 	history = {}

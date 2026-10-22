@@ -13,6 +13,9 @@ signal supply_result(kind: String, ok: bool, reason: String)    ## zakup zaopatr
 signal purchase_result(weapon: int, ok: bool, reason: String)    ## kody zakupu broni: ok/poor/owned/later/invalid
 signal part_result(id: String, ok: bool, reason: String)         ## zakup części (parts.gd): ok/poor/owned/locked/invalid
 signal part_found(id: String)                                     ## część znaleziona w misji (u wszystkich) — czeka na ekstrakcję
+signal service_result(weapon: int, part: String, ok: bool, reason: String)   ## wymiana części eksploatacyjnej: ok / poor / invalid / off
+## Stół konserwacji (WORKSHOP_PLAN.md W2, od 1.7.350): cena nowej części eksploatacyjnej (Profile.WEAR_PARTS) w złomie drużyny.
+const SERVICE_COST := {"barrel": 40, "springs": 20}
 
 const NightShift := preload("res://scripts/night_shift.gd")
 const Weapons := preload("res://scripts/weapons.gd")
@@ -269,6 +272,42 @@ func _buy_supply_server(kind: String, peer_id: int) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _supply_result_rpc(kind: String, reason: String) -> void:
 	supply_result.emit(kind, reason == "ok", reason)
+
+## Gracz wymienia część eksploatacyjną `part` broni `w` przy stole konserwacji: złom płaci drużyna (serwer), zużycie siedzi w profilu gracza.
+func request_service(w: int, part: String) -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_service_server(w, part, NoiseMgr.local_id())
+	else:
+		_service_rpc.rpc_id(1, w, part)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _service_rpc(w: int, part: String) -> void:
+	if NoiseMgr.is_server():
+		_service_server(w, part, multiplayer.get_remote_sender_id())
+
+func _service_server(w: int, part: String, peer_id: int) -> void:
+	var reason := "ok"
+	if not Weapons.is_valid(w) or not SERVICE_COST.has(part) or not Weapons.def(w).can_jam():
+		reason = "invalid"
+	elif not enabled():
+		reason = "off"
+	elif not spend(int(SERVICE_COST[part])):
+		reason = "poor"
+	else:
+		save_progress()
+	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
+		_service_done(w, part, reason)
+	else:
+		_service_result_rpc.rpc_id(peer_id, w, part, reason)
+
+@rpc("authority", "call_remote", "reliable")
+func _service_result_rpc(w: int, part: String, reason: String) -> void:
+	_service_done(w, part, reason)
+
+func _service_done(w: int, part: String, reason: String) -> void:
+	if reason == "ok":
+		Profile.replace_part(String(Weapons.def(w).key), part)
+	service_result.emit(w, part, reason == "ok", reason)
 
 ## Gracz prosi o odblokowanie części broni (parts.gd) — zakup za złom drużyny, część dostaje cała drużyna; montuje ją każdy sam.
 func request_part(id: String) -> void:

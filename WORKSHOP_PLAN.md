@@ -47,7 +47,7 @@ Meble `hub_decor.gd` same rozsuwają się przy nowych znacznikach. Zlecenia w cz
 | # | Stanowisko | Miejsce (orientacyjnie) | Co robi | Etap |
 |---|---|---|---|---|
 | 1 | Ława rusznikarska | środek, kol. 20 (jest) | montaż części, zestawy, nazwa broni, oględziny; oddaje PERKS/LOOK szafkom, SUPPLIES stanowiskom 3–4 | W1 |
-| 2 | Stół konserwacji | środek, kol. ~16 | rozkładanie broni z podzespołów `gun_proc`, części eksploatacyjne, żywotność lufy, brud na modelu | W2 |
+| 2 | Stół konserwacji | środek, kol. 16 | rozkładanie broni z podzespołów `gun_proc`, części eksploatacyjne, żywotność lufy, brud na modelu | W2 |
 | 3 | Prasa elaboracyjna | dół, kol. ~34 | naboje specjalne z łupu + prochu, własne ładunki słaby / gorący, chronograf na strzelnicy | W4 |
 | 4 | Stół pirotechniczny | dół, kol. ~46 | granaty, miny, ładunki, 40 mm z komponentów, warianty zapalnika | W4 |
 | 5 | Pracownia elektroniki i próbek | góra, kol. ~45 | ogniwa NiCd (LR-7, SPECTER-1, FALCON-6), ładowanie między misjami, próbki z elit → schematy | W6 |
@@ -61,7 +61,7 @@ Meble `hub_decor.gd` same rozsuwają się przy nowych znacznikach. Zlecenia w cz
 | W0 | Złom w dzienniku sesji, zużycie ×3, czyszczenie za czas (U3 pomiar, U4) | ✅ 1.7.347 |
 | W0b | Próba części na strzelnicy (U5) | ✅ 1.7.348 |
 | W1 | Szafki osobiste (7), odchudzona ława (1), zestawy (U6) | ✅ 1.7.349 — zestawy z nazwą z listy części (bez wpisywania), na razie tylko przy ławie |
-| W2 | Stół konserwacji (2) | |
+| W2 | Stół konserwacji (2) | ✅ 1.7.350 — stanowisko kol. 16, lufa i sprężyny, rozłożona i brudna broń na ławie 3D; brud widać tylko na ławie (nie na broni w rękach) |
 | W3 | Alternatywy w gniazdach (U2), po jednym PR na broń | |
 | W4 | Prasa (3) i pirotechnika (4), przejęcie SUPPLIES | |
 | W5 | Masa jako koszt (U1), A/B | |

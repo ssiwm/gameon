@@ -68,6 +68,11 @@ const WEAR_SHOT := 0.06           ## % stanu na strzał (× WeaponDef.wear × us
 const WEAR_HOT := 3.0             ## lufa gorętsza niż HOT_WEAR_AT — zużycie ×3
 const HOT_WEAR_AT := 0.8
 const WEAR_CAN := 1.5             ## tłumik: gazy cofają się do mechanizmu
+## Części eksploatacyjne (WORKSHOP_PLAN.md W2, od 1.7.350): % zużycia na strzał × WeaponDef.wear × ustawienie; lufę gorąca lufa zużywa ×WEAR_HOT.
+## M-83: lufa ok. 5 % na misję (~20 misji, szybciej przy długim ogniu), sprężyny ok. 6 % (po ~10 misjach czyszczenie nie dobija do 70 %).
+const WEAR_BARREL := 0.02
+const WEAR_SPRINGS := 0.025
+const BARREL_SPREAD := 0.6        ## zużyta lufa: rozrzut (bazowy + dodatkowy) × (1 + 0,6·z²), z = zużycie 0..1 — przy 50 % ×1,15, przy 100 % ×1,6
 const JAM_FROM := 70.0            ## % stanu, poniżej którego broń zaczyna się zacinać…
 const JAM_SPAN := 40.0            ## …a przy JAM_FROM − JAM_SPAN (30 %) zacina się raz na JAM_ODDS strzałów
 const JAM_ODDS := 150.0
@@ -381,6 +386,10 @@ func _wear_shot(d: WeaponDef) -> void:
 	if d.suppressor > 0.0:
 		a *= WEAR_CAN
 	Profile.wear(String(d.key), a)
+	if d.can_jam():                                        # broń na naboje: lufa i sprężyny (stół konserwacji)
+		var m := d.wear * Settings.reliability_mult()
+		Profile.wear_part(String(d.key), "barrel", WEAR_BARREL * m * (WEAR_HOT if barrel_of(d.id) >= HOT_WEAR_AT else 1.0))
+		Profile.wear_part(String(d.key), "springs", WEAR_SPRINGS * m)
 
 ## Losuje zacięcie przy próbie strzału: niewypał (połowa), zacięcie łuski, rzadko podwójne podanie. Nigdy w pierwszych strzałach
 ## magazynka i nigdy dwa razy w JAM_GAP_MS.
@@ -473,7 +482,16 @@ func spread_extra(d: WeaponDef) -> float:
 	if Settings.realistic_handling:
 		var t := barrel_of(d.id)
 		e += (d.jitter_deg + e) * HOT_SPREAD * t * t        # gorąca lufa rozrzuca: rośnie cały stożek, także bazowy
+	var z := barrel_wear_of(d)
+	if z > 0.0:
+		e += (d.jitter_deg + e) * BARREL_SPREAD * z * z     # wyrobiona lufa (W2): stożek rośnie, póki gracz jej nie wymieni
 	return e
+
+## Zużycie lufy broni `d` tego gracza 0..1 (profil właściciela; boty, inni gracze i broń bez naboi — 0; niezawodność OFF — 0).
+func barrel_wear_of(d: WeaponDef) -> float:
+	if player == null or player.is_bot or not is_owner() or not d.can_jam() or Settings.reliability_mult() <= 0.0:
+		return 0.0
+	return Profile.part_wear(String(d.key), "barrel") / 100.0
 
 ## Mnożnik hałasu od temperatury lufy: rozgrzany tłumik głośnieje.
 func hot_can_mult(d: WeaponDef) -> float:

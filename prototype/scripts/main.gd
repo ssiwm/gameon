@@ -1512,10 +1512,16 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					wui._opt = int(sa.substr("--shotwsopt=".length()))
 					wui._refresh()
 			if "--shotclean" in OS.get_cmdline_user_args():
-				Profile.persist = false              # --shotclean: M-83 w stanie 55 % w trakcie czyszczenia przy ławie (bez zapisu profilu)
+				Profile.persist = false              # --shotclean: M-83 w stanie 55 % w trakcie czyszczenia przy stole konserwacji (bez zapisu profilu)
+				wui.close()
+				var svb := get_tree().get_first_node_in_group("service_bench") as Node2D
+				if wp != null and svb != null:
+					wp.global_position = svb.global_position + Vector2(0.0, -2.0)
+				await get_tree().create_timer(0.3).timeout
+				wui.open("service")
 				Profile.cond["m83"] = 55.0
-				var cops: Array = wui._options(Weapons.M83)
-				wui._opt = cops.size() - 1
+				Profile.worn["m83"] = {"barrel": 35.0, "springs": 30.0}
+				wui._opt = 0                         # wiersz czyszczenia (pod nim lufa i sprężyny)
 				wui._start_clean(Weapons.M83)
 				wui.tick_clean(2.0)
 			if "--shotperks" in OS.get_cmdline_user_args() or "--shotlook" in OS.get_cmdline_user_args():
@@ -2615,6 +2621,21 @@ func _gen_test() -> void:
 		p.velocity = Vector2.ZERO
 		await get_tree().create_timer(0.5).timeout
 		lk_ok = bool(lockers[0].local_in_range) and not bool(wk_node.local_in_range)
+	# stół konserwacji (W2): znacznik „j" obok ławy, zasięgi stołu i ławy się nie nakładają
+	var svc_nodes := get_tree().get_nodes_in_group("service_bench")
+	var svc_ok := false
+	if svc_nodes.size() == 1:
+		var lk_pos := p.global_position
+		p.global_position = (svc_nodes[0] as Node2D).global_position + Vector2(0, -2)
+		p.velocity = Vector2.ZERO
+		await get_tree().create_timer(0.5).timeout
+		svc_ok = bool(svc_nodes[0].local_in_range) and not bool(wk_node.local_in_range)
+		p.global_position = wk_node.global_position + Vector2(0, -2)
+		await get_tree().create_timer(0.5).timeout
+		svc_ok = svc_ok and not bool(svc_nodes[0].local_in_range) and bool(wk_node.local_in_range)
+		p.global_position = lk_pos
+		await get_tree().create_timer(0.5).timeout
+	check.call("stół konserwacji: %d w kryjówce, zasięg osobno od ławy (%s)" % [svc_nodes.size(), str(svc_ok)], svc_nodes.size() == 1 and svc_ok)
 	wui.open("locker")
 	await get_tree().create_timer(0.1).timeout
 	var locker_tabs: Array = wui._page_btns.filter(func(b: Button) -> bool: return b.visible).map(func(b: Button) -> String: return b.text)

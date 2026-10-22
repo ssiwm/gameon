@@ -203,6 +203,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_two_reloads()
 	await _t_condition_jams()
 	await _t_condition_4b()
+	await _t_maintenance()
 	await _t_mastery()
 	await _t_history()
 	await _t_part_finds()
@@ -2205,6 +2206,8 @@ func _t_condition_jams() -> void:
 	# czyszczenie przy ławie (1.7.347): bez złomu, Profile.CLEAN_STEP s za każde rozpoczęte 10 % zużycia; przerwane trzeba zacząć od nowa.
 	# Bez czekania na klatki — gracz testu nie stoi przy ławie, więc panel sam by się zamknął; klatkę czyszczenia wołamy ręcznie.
 	var bank0: int = Scrap.bank
+	var worn_j: Dictionary = Profile.worn.duplicate(true)
+	Profile.worn = {}                                             # same czyszczenie: nowe sprężyny (strzały wyżej trochę je zmęczyły — W2)
 	Profile.cond["m83"] = 55.0
 	var ctime: float = Profile.clean_time("m83")
 	var wui := get_tree().get_first_node_in_group("workshop_ui")
@@ -2226,7 +2229,93 @@ func _t_condition_jams() -> void:
 		wui.close()
 	check("czyszczenie: stan 55 %% trwa %.1f s, bez złomu (%s)" % [ctime, clean_info],
 		is_equal_approx(ctime, 5.0 * Profile.CLEAN_STEP) and clean_ok and Profile.clean_time("m83") == 0.0)
+	Profile.worn = worn_j
 	Profile.cond = cond0
+	Settings.reliability_idx = rel0
+	equip(Weapons.M83)
+	await _settle_player()
+
+## Stół konserwacji (WORKSHOP_PLAN.md W2, 1.7.350): lufa i sprężyny zużywają się strzałem (gorąca lufa ×3), zużyta lufa rozrzuca, zmęczone
+## sprężyny ograniczają czyszczenie (i zestaw do czyszczenia), wymiana za złom drużyny przez serwer, panel w trybie „service".
+func _t_maintenance() -> void:
+	var rel0: int = Settings.reliability_idx
+	var cond0: Dictionary = Profile.cond.duplicate()
+	var worn0: Dictionary = Profile.worn.duplicate(true)
+	var bank0: int = Scrap.bank
+	Settings.reliability_idx = 1
+	Profile.cond = {}
+	Profile.worn = {}
+	var md := equip(Weapons.M83)
+	await _settle_player()
+	wc.cool()
+	for i in 10:
+		wc.cd = 0.0
+		wc._fire_shot(md)
+	var bw: float = Profile.part_wear("m83", "barrel")
+	var sw: float = Profile.part_wear("m83", "springs")
+	check("konserwacja: 10 strzałów z M-83 — lufa %.3f %%, sprężyny %.3f %%" % [bw, sw],
+		absf(bw - 10.0 * Controller.WEAR_BARREL * md.wear) < 0.0001 and absf(sw - 10.0 * Controller.WEAR_SPRINGS * md.wear) < 0.0001)
+	wc._barrel[md.id] = 1.0
+	wc._fire_shot(md)
+	var hot_b: float = Profile.part_wear("m83", "barrel") - bw
+	check("konserwacja: gorąca lufa zużywa lufę ×%.0f (%.4f %% na strzał)" % [Controller.WEAR_HOT, hot_b], absf(hot_b - Controller.WEAR_BARREL * md.wear * Controller.WEAR_HOT) < 0.0001)
+	wc._barrel[md.id] = 0.0
+	wc.bloom = 0.0
+	Profile.worn = {}
+	var e0: float = wc.spread_extra(md)
+	Profile.worn = {"m83": {"barrel": 100.0}}
+	var e1: float = wc.spread_extra(md)
+	check("konserwacja: lufa zużyta w 100 %% rozrzuca o %.2f° więcej (stożek ×%.1f)" % [e1 - e0, 1.0 + Controller.BARREL_SPREAD],
+		absf((e1 - e0) - (md.jitter_deg + e0) * Controller.BARREL_SPREAD) < 0.0001)
+	# zmęczone sprężyny: czyszczenie najwyżej do 100 − 0,5 × zużycie, zestaw do czyszczenia też
+	Profile.worn = {"m83": {"springs": 60.0}}
+	Profile.cond["m83"] = 40.0
+	var cap: float = Profile.clean_cap("m83")
+	var ct: float = Profile.clean_time("m83")
+	Profile.clean("m83")
+	var after_clean: float = Profile.condition("m83")
+	Profile.cond["m83"] = 65.0
+	Profile.restore("m83", 40.0)
+	check("konserwacja: sprężyny zużyte w 60 %% — czyszczenie do %.0f %% (%.1f s, po nim %.0f), zestaw w misji też najwyżej do %.0f" % [cap, ct, after_clean, Profile.condition("m83")],
+		cap == 70.0 and is_equal_approx(ct, 3.0 * Profile.CLEAN_STEP) and after_clean == 70.0 and Profile.condition("m83") == 70.0)
+	# wymiana za złom drużyny (serwer)
+	var res: Array = []
+	var cb := func(w: int, part: String, ok: bool, reason: String) -> void: res.append(reason)
+	Scrap.service_result.connect(cb)
+	Scrap.bank = 30
+	Scrap.request_service(Weapons.M83, "springs")
+	Scrap.request_service(Weapons.M83, "barrel")                 # 40 złomu, w banku 10 — za mało
+	Scrap.request_service(Weapons.LR7, "barrel")                  # broń bez naboi — nie ma lufy do wymiany
+	Scrap.request_service(Weapons.M83, "trigger")                 # nie ma takiej części
+	await frames(2)
+	Scrap.service_result.disconnect(cb)
+	check("konserwacja: wymiana sprężyn za %d złomu (ok), lufa za mało złomu, LR-7 i nieznana część odrzucone: %s; bank %d, sprężyny %.0f %%, czyszczenie znowu do %.0f %%" % [
+		int(Scrap.SERVICE_COST["springs"]), str(res), Scrap.bank, Profile.part_wear("m83", "springs"), Profile.clean_cap("m83")],
+		res == ["ok", "poor", "invalid", "invalid"] and Scrap.bank == 30 - int(Scrap.SERVICE_COST["springs"]) and Profile.part_wear("m83", "springs") == 0.0 and Profile.clean_cap("m83") == 100.0)
+	# panel: stół konserwacji ma tylko czyszczenie, lufę i sprężyny (broń energetyczna — samo czyszczenie), ława już nie czyści
+	var wui := get_tree().get_first_node_in_group("workshop_ui")
+	var ui_ok := false
+	var ui_info := "brak panelu"
+	if wui != null:
+		var had_lr := Scrap.is_unlocked(Weapons.LR7)
+		Scrap.unlocked[Weapons.LR7] = true
+		wui.open("service")
+		var svc: Array = wui._options(Weapons.M83).map(func(o: Dictionary) -> String: return String(o["id"]))
+		var svc_lr: Array = wui._options(Weapons.LR7).map(func(o: Dictionary) -> String: return String(o["id"]))
+		var tabs_vis: int = wui._page_btns.filter(func(b: Button) -> bool: return b.visible).size()
+		var title: String = wui._title.text
+		wui.close()
+		wui.open("bench")
+		var bench_svc: int = wui._options(Weapons.M83).filter(func(o: Dictionary) -> bool: return String(o["slot"]) == "service").size()
+		wui.close()
+		if not had_lr:
+			Scrap.unlocked.erase(Weapons.LR7)
+		ui_info = "M-83 %s, LR-7 %s, zakładek %d, tytuł %s, ława %d wierszy serwisu" % [str(svc), str(svc_lr), tabs_vis, title, bench_svc]
+		ui_ok = svc == ["clean", "barrel", "springs"] and svc_lr == ["clean"] and tabs_vis == 0 and title == tr("MAINTENANCE") and bench_svc == 0
+	check("konserwacja: panel stołu (%s)" % ui_info, ui_ok)
+	Scrap.bank = bank0
+	Profile.cond = cond0
+	Profile.worn = worn0
 	Settings.reliability_idx = rel0
 	equip(Weapons.M83)
 	await _settle_player()

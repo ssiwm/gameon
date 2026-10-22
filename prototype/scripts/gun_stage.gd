@@ -27,6 +27,34 @@ void fragment() {
 	ALBEDO = glow_color * strength * (0.12 + 0.9 * rim);
 }
 """
+## Brud i nagar (WORKSHOP_PLAN.md W2, od 1.7.350): nakładka mnożąca kolor w plamach z szumu w układzie modelu; `amount` = 1 − stan broni.
+const DIRT_SHADER := """
+shader_type spatial;
+render_mode unshaded, blend_mul, depth_draw_never, cull_back;
+uniform float amount = 0.0;
+varying vec3 p;
+void vertex() {
+	p = VERTEX;
+}
+float h(vec3 q) {
+	return fract(sin(dot(q, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+}
+float n3(vec3 q) {
+	vec3 i = floor(q);
+	vec3 f = fract(q);
+	f = f * f * (3.0 - 2.0 * f);
+	float a = mix(mix(h(i), h(i + vec3(1, 0, 0)), f.x), mix(h(i + vec3(0, 1, 0)), h(i + vec3(1, 1, 0)), f.x), f.y);
+	float b = mix(mix(h(i + vec3(0, 0, 1)), h(i + vec3(1, 0, 1)), f.x), mix(h(i + vec3(0, 1, 1)), h(i + vec3(1, 1, 1)), f.x), f.y);
+	return mix(a, b, f.z);
+}
+void fragment() {
+	float g = n3(p * 38.0) * 0.6 + n3(p * 140.0) * 0.4;
+	float d = smoothstep(0.62 - 0.4 * amount, 0.9, g) * clamp(amount * 1.4, 0.0, 1.0);
+	ALBEDO = mix(vec3(1.0), vec3(0.42, 0.37, 0.3), d);
+}
+"""
+const STRIP_M := 0.13                         ## o ile metrów (w skali broni) rozjeżdżają się podzespoły rozłożonej broni (czyszczenie)
+
 ## kierunek zdejmowania części z gniazda (układ broni: x wzdłuż lufy, y w górę)
 const PULL_DIR := {
 	"feed": Vector3(0.0, -1.0, 0.0), "barrel": Vector3(1.0, 0.0, 0.0), "muzzle": Vector3(1.0, 0.0, 0.0), "action": Vector3(0.0, 1.0, 0.0),
@@ -53,6 +81,11 @@ var _t := 0.0
 var _yaw := 0.0
 var _pitch := 0.0
 var _idle := 9.0
+var _dirt: ShaderMaterial
+var _dirt_amount := 0.0
+var _strip_target := 0.0                     ## 1 — broń rozłożona na podzespoły (czyszczenie przy stole konserwacji)
+var _strip := 0.0
+var _comps: Array = []                        ## [{node, base, dir}] — podzespoły i części modelu do rozłożenia
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -104,6 +137,19 @@ func _ready() -> void:
 	sh.code = GLOW_SHADER
 	_glow = ShaderMaterial.new()                             # nakładka na część pod kursorem (material_overlay)
 	_glow.shader = sh
+	var dsh := Shader.new()
+	dsh.code = DIRT_SHADER
+	_dirt = ShaderMaterial.new()                             # brud: nakładka na resztę broni
+	_dirt.shader = dsh
+
+## Brud na broni: 0 — czysta, 1 — zaniedbana (stan 0 %).
+func set_dirt(x: float) -> void:
+	_dirt_amount = clampf(x, 0.0, 1.0)
+	_dirt.set_shader_parameter("amount", _dirt_amount)
+
+## Rozłożenie broni na podzespoły (`on`) albo złożenie z powrotem — płynnie, w _process.
+func set_strip(on: bool) -> void:
+	_strip_target = 1.0 if on else 0.0
 
 ## Pokazuje broń `w` z częściami `ids` (Parts.decode). `hl_part` = id części do podświetlenia, `hl_slot` = gniazdo (gdy kursor stoi na elemencie
 ## fabrycznym — świecą fabryczne podzespoły tego gniazda). `locked` = broń niekupiona (półmrok, czerwona kontra).
@@ -127,6 +173,9 @@ func show_gun(w: int, ids: Array, hl_part: String, hl_slot: String, locked: bool
 	_model = GunModel.build(key, ids, bm, nt, deep)          # nacięcia na kolbie (historia broni)
 	_pivot.add_child(_model)
 	_place()
+	for mi in _model.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).material_overlay = _dirt
+	_collect_comps()
 	# podświetlenie: węzeł części albo fabryczne podzespoły, które części tego gniazda zastępują
 	var targets: Array = []
 	if hl_part != "" and GunModel.has_model(hl_part):
@@ -145,6 +194,10 @@ func show_gun(w: int, ids: Array, hl_part: String, hl_slot: String, locked: bool
 		_hl.append({"node": n, "base": (n as Node3D).position})
 		for mi in ([n] if n is MeshInstance3D else []) + n.find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).material_overlay = _glow
+	for c in _comps:
+		for h in _hl:
+			if h["node"] == c["node"]:
+				c["hl"] = true
 	var slot := hl_slot if hl_slot != "" else String(Parts.get_part(hl_part).get("slot", ""))
 	_hl_dir = PULL_DIR.get(slot, Vector3.ZERO)
 	_pull = 0.0
@@ -152,6 +205,34 @@ func show_gun(w: int, ids: Array, hl_part: String, hl_slot: String, locked: bool
 		_yaw = 0.0
 		_pitch = 0.0
 		_idle = 9.0
+
+## Podzespoły do rozłożenia: węzły „…__<podzespół>” i części; kierunek = od środka broni do środka podzespołu (głównie w górę/dół i wzdłuż lufy).
+func _collect_comps() -> void:
+	_comps.clear()
+	var nodes: Array = _model.find_children("*__*", "MeshInstance3D", true, false)
+	for n in _model.get_children():
+		if String(n.name).begins_with("gunpart_"):
+			nodes.append(n)
+	if nodes.is_empty():
+		return
+	var inv := _model.global_transform.affine_inverse()
+	var centers := []
+	var sum := Vector3.ZERO
+	for n in nodes:
+		var c := Vector3.ZERO
+		var cnt := 0
+		for mi in ([n] if n is MeshInstance3D else []) + (n as Node).find_children("*", "MeshInstance3D", true, false):
+			c += inv * ((mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb().get_center())
+			cnt += 1
+		c = c / float(maxi(cnt, 1))
+		centers.append(c)
+		sum += c
+	var mid := sum / float(nodes.size())
+	for i in nodes.size():
+		var dv: Vector3 = (centers[i] as Vector3) - mid
+		dv.z = 0.0
+		var dir := dv.normalized() if dv.length() > 0.001 else Vector3.UP
+		_comps.append({"node": nodes[i], "base": (nodes[i] as Node3D).position, "dir": dir, "hl": false})
 
 ## Kadr broni: skala i środek z obrysu broni fabrycznej i każdej jej części z modelem (z zapasem na wysunięcie), więc żadna część — także długi
 ## tłumik — nie wychodzi poza ławę, a kadr nie skacze przy zmianie części. Broń leży bokiem, więc mieści się długością (x) w szerokości kadru
@@ -225,6 +306,15 @@ func _process(delta: float) -> void:
 		var n: Node3D = h["node"]
 		if is_instance_valid(n):
 			n.position = (h["base"] as Vector3) + off
+	# rozłożona broń (czyszczenie): podzespoły odjeżdżają od środka; podświetlony dostaje to samo przesunięcie do swojego wysunięcia
+	_strip = move_toward(_strip, _strip_target, delta * 1.6)
+	var k := STRIP_M * ease(_strip, -1.8)
+	for c in _comps:
+		var cn: Node3D = c["node"]
+		if not is_instance_valid(cn):
+			continue
+		var so: Vector3 = (c["dir"] as Vector3) * k
+		cn.position = (cn.position + so) if bool(c["hl"]) else ((c["base"] as Vector3) + so)
 	_glow.set_shader_parameter("strength", 0.6 + 0.4 * sin(_t * 4.0))
 	_view.modulate = Color(0.42, 0.46, 0.52) if _locked else Color.WHITE
 	_lamp.light_energy = 2.5 if _locked else 5.0

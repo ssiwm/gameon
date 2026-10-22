@@ -1,7 +1,7 @@
 extends RefCounted
 ## Kryjówka między misjami kampanii (GDD §10.3): bez wrogów (NoiseMgr.safe_zone), ciepłe światło lamp. 72 × 36 kafli, trzy poziomy co 8 kafli
 ## (7 kafli światła + 1 kafel stropu), projekt „Stacja Dead Air” (bunkier pod nieczynną stacją radiową).
-## ŚRODEK (wiersz podłogi 22), od lewej w kolejności „co robi drużyna po powrocie”: śluza (dwa punkty startu S) → ściana wyników (v) → warsztat
+## ŚRODEK (wiersz podłogi 22), od lewej w kolejności „co robi drużyna po powrocie”: śluza (dwa punkty startu S) → ściana wyników (v) → stół konserwacji (j: [E] czyszczenie i części eksploatacyjne) → warsztat
 ## (h: [E] panel broni, części i zaopatrzenia za złom) → świetlica (meble z hub_decor.gd, szafki osobiste p: [E] perki i wygląd) → zbrojownia (a, dwie gabloty g po cztery bronie: SPREAD-12, PELLET-8,
 ## LR-7, HKM-9, WRATH-4, SPECTER-1, FALCON-6, SINEW-6, a) → tablica z odprawą następnej misji (n). Nad tablicą, na GÓRZE (wiersz 14), radiostacja
 ## z prognozą pogody (R, weather.gd); pod zbrojownią i warsztatem na DOLE (wiersz 30) maszynownia i magazyn ze skrytkami (H), a za magazynem
@@ -63,7 +63,7 @@ const MAP := [
 	"Cbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbC",
 	"CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
 	"Cbbbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbC",
-	"CbbbSbSbbbbbvbbbbbbbhbbbbbbbbbbbbbbbbpbbbbbbbbabgbbgbbabbbbbbbbbbnbbbbbC",
+	"CbbbSbSbbbbbvbbbjbbbhbbbbbbbbbbbbbbbbpbbbbbbbbabgbbgbbabbbbbbbbbbnbbbbbC",
 	"CCCCCCCCCCCCCCCCCCCCCCCCCC======CCCCCCCCCCCCCCCCCCCCCCCC======CCCCCCCCCC",
 	"###CbbbbbbbbbbblbbbbbbbbbbbbbbbbbbbbbbblbbbbbbbbbbbbbbbbbbbbbbbbbbbbC###",
 	"###Cbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbC###",
