@@ -77,6 +77,7 @@ const LOCKER_STATION := preload("res://scripts/locker_station.gd")
 const SERVICE_BENCH := preload("res://scripts/service_bench.gd")
 const PRESS_BENCH := preload("res://scripts/press_bench.gd")
 const PYRO_BENCH := preload("res://scripts/pyro_bench.gd")
+const LAB_BENCH := preload("res://scripts/lab_bench.gd")
 
 ## Mapy misji (scripts/maps/): każda niesie MAP, ID, TITLE, OBJECTIVE, UNDERGROUND_ROW, WEAPONS, ACCENTS.
 const MAPS := {
@@ -620,7 +621,7 @@ func _exposure(c: int, r: int) -> int:
 ## na każdym peerze.
 func _spawn_entities() -> void:
 	_spawn_walls()
-	var found := {"T": [], "A": [], "U": [], "V": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": [], "p": [], "j": [], "x": [], "z": []}
+	var found := {"T": [], "A": [], "U": [], "V": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": [], "p": [], "j": [], "x": [], "z": [], "c": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -633,7 +634,7 @@ func _spawn_entities() -> void:
 				"e": exits_alt.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "A", "U", "V", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q", "p", "j", "x", "z": found[ch].append(p)
+				"T", "A", "U", "V", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q", "p", "j", "x", "z", "c": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -733,6 +734,11 @@ func _spawn_entities() -> void:
 		py.name = "PyroBench%d" % (i + 1)
 		py.position = found["z"][i]
 		add_child(py)
+	for i in found["c"].size():
+		var lb: Node2D = LAB_BENCH.new()                      # pracownia elektroniki i próbek: badania części broni specjalnych (WORKSHOP_PLAN.md, stanowisko 5)
+		lb.name = "LabBench%d" % (i + 1)
+		lb.position = found["c"][i]
+		add_child(lb)
 	for i in found["l"].size():
 		var lp: Node2D = LAMP.new()
 		lp.name = "Lamp%d" % (i + 1)

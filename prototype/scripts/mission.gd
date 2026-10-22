@@ -371,6 +371,8 @@ func _success() -> void:
 	log_end("success")
 	if kind != "hub" and Scrap.enabled():
 		var bonus := scrap_bonus()
+		if side_done():
+			Scrap.add_samples(Scrap.SAMPLE_SIDE)                  # cel poboczny: próbka do pracowni (W6a)
 		var gain := Scrap.bank_loot(bonus)
 		print("[SCRAP] mission banked +%d (bonus %d), wallet %d" % [gain, bonus, Scrap.bank])
 		if kind == "boss":
@@ -501,7 +503,7 @@ func log_end(result: String) -> void:
 	var players := {}
 	for id in player_stats:
 		players[id] = (player_stats[id] as Dictionary).duplicate()
-	var scrap := {"loot": Scrap.loot, "bonus": scrap_bonus() if result == "success" and kind != "hub" and Scrap.enabled() else 0}
+	var scrap := {"loot": Scrap.loot, "samples": Scrap.samples_loot, "bonus": scrap_bonus() if result == "success" and kind != "hub" and Scrap.enabled() else 0}
 	SessionLog.mission_end({"result": result, "time": snappedf(elapsed, 0.1), "downs": downs, "attempts": attempts,
 		"peak_noise": roundi(_peak_all), "peak_noise_objective": roundi(peak_noise), "side": side_done(), "players": players, "scrap": scrap})
 

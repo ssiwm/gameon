@@ -667,3 +667,18 @@ WRATH-4 −0,6, kabura-kolba P-83 +0,5) — `mass` jest na liście „mniej = le
 
 Uwaga do strojenia: w błocie gracz biegnie 55 px/s, Stalker 51 px/s (`--stalkertest`); ekwipunek cięższy o ponad ~6 kg od startowego
 zbija tempo poniżej Stalkera — w błocie już mu nie ucieknie. Test `_t_mass`.
+
+## 36. Pracownia elektroniki i próbek (1.7.357)
+
+`WORKSHOP_PLAN.md` etap W6a (stanowisko 5, decyzja 2: schematy tylko dla broni specjalnych). Nowe stanowisko na górze kryjówki, pod
+radiostacją (znacznik „c”, kol. 45, z lampą): [E] otwiera panel PRACOWNIA (`workshop_ui.open("lab")`, zakładka ARMS z samymi częściami
+broni specjalnych).
+
+| Co | Jak | Gdzie |
+|---|---|---|
+| **Próbki** | nowa waluta (GDD §10.1): elita +1, boss +2, cel poboczny udanej misji +1. Trafiają do łupu misji (`samples_loot`), do banku po udanej misji, wipe je zabiera; komunikat „Próbka pobrana” u wszystkich. Dziennik sesji zapisuje `samples` w `mission_end.scrap` | `scrap.gd` (`add_samples`), `enemy.gd`, `boss_base.gd`, `mission.gd` |
+| **Części broni specjalnych** | LR-7, HKM-9, WRATH-4, SPECTER-1, FALCON-6, SINEW-6 (`Scrap.LAB_WEAPONS`): ława ich nie sprzedaje (serwer: `"lab"`), znaleziska nadal odblokowują | `scrap.gd` (`is_lab_part`, `_part_server`) |
+| **Badanie** | koszt: 1 / 2 / 3 próbki (część do 150 / 250 / droższa) i połowa ceny części w złomie (`research_cost`); jedno badanie naraz (`LAB_SLOTS`), broń musi być kupiona; gotowe po następnej udanej misji (`bank_loot`), komunikat „Badanie skończone” | `scrap.gd` (`request_research`, `research`) |
+
+Zapis u hosta (`samples`, `research`) i synchronizacja w `_sync`. Test `_t_research`, `--gentest` (pracownia w kryjówce). Dev: `--shotlab`.
+Ogniwa NiCd i tokarka (wykonanie części ze schematów, ostrzenie broni białej) — W6b.

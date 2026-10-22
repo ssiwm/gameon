@@ -14,6 +14,14 @@ signal purchase_result(weapon: int, ok: bool, reason: String)    ## kody zakupu 
 signal part_result(id: String, ok: bool, reason: String)         ## zakup części (parts.gd): ok/poor/owned/locked/invalid
 signal part_found(id: String)                                     ## część znaleziona w misji (u wszystkich) — czeka na ekstrakcję
 signal service_result(weapon: int, part: String, ok: bool, reason: String)   ## wymiana części eksploatacyjnej: ok / poor / invalid / off
+signal research_result(id: String, ok: bool, reason: String)       ## badanie w pracowni: ok / samples / poor / busy / owned / locked / invalid / off
+## Pracownia elektroniki i próbek (WORKSHOP_PLAN.md W6a, od 1.7.357): części broni specjalnych (LAB_WEAPONS) nie kupuje się na ławie —
+## bada się je za próbki (z elit i bossów, do banku po udanej misji) i połowę ceny w złomie; wynik jest gotowy po następnej udanej misji.
+const LAB_WEAPONS := ["lr7", "hkm9", "gniew4", "widmo1", "sokol6", "ciegno6"]
+const LAB_SLOTS := 1                  ## badań naraz (jedno na misję)
+const SAMPLE_ELITE := 1               ## próbek z elity (enemy.gd) …
+const SAMPLE_BOSS := 2                ## … z bossa (boss_base.gd) …
+const SAMPLE_SIDE := 1                ## … i za cel poboczny udanej misji (mission.gd; GDD §10.1)
 signal order_result(kind: String, ok: bool, reason: String)        ## zamówienie w prasie: ok / poor / busy / full / invalid / off
 signal orders_delivered(kinds: Array)                              ## partie z prasy gotowe po misji (u wszystkich)
 ## Prasa elaboracyjna (WORKSHOP_PLAN.md W4, od 1.7.354): amunicję specjalną się zamawia, a nie kupuje od ręki — partia (pudełko) jest
@@ -55,6 +63,9 @@ var loot := 0
 var parts: Dictionary = {}            ## id części (parts.gd) → true: odblokowane przez drużynę (zapis u hosta); montaż — Profile.fits
 var found: Dictionary = {}            ## id części → true: znalezione w tej misji, odblokowane dopiero po ekstrakcji
 var fuses: Dictionary = {}           ## stół pirotechniczny: rodzaj przedmiotu → indeks długości zapalnika (Throwables.FUSES); brak — fabryczny
+var samples := 0                     ## próbki w banku drużyny (zapis u hosta)
+var samples_loot := 0                 ## próbki zebrane w tej misji — do banku po ekstrakcji, wipe je zabiera
+var research: Array = []              ## pracownia: badane części (id z parts.gd), gotowe po udanej misji (zapis u hosta)
 var orders: Array = []                ## prasa: zamówione partie (wpisy `ammo_*` z throwables.gd), dostawa po udanej misji (zapis u hosta)
 var unlocked: Dictionary = {}         ## id broni → true: kupione w warsztacie (zapis u hosta)
 var trophies: Dictionary = {}         ## id misji (boss) → true: ukończona, odblokowuje broń-trofeum (zapis u hosta)
@@ -65,7 +76,7 @@ func _ready() -> void:
 	load_progress()
 	multiplayer.peer_connected.connect(func(id: int) -> void:
 		if NoiseMgr.is_server():
-			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses))
+			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research))
 
 ## Złom nie obowiązuje w Nocnym Dyżurze (osobna seria z własnymi zasadami).
 func enabled() -> bool:
@@ -92,6 +103,12 @@ func bank_loot(bonus: int) -> int:
 	for id in newp:
 		parts[id] = true
 	found.clear()
+	samples += samples_loot
+	samples_loot = 0
+	var learned: Array = research.duplicate()
+	for id in learned:
+		parts[String(id)] = true                                      # badanie skończone: część odblokowana dla drużyny
+	research.clear()
 	var done: Array = orders.duplicate()
 	for k in done:
 		Arsenal.add_throwable(String(k), Throwables.box_of(String(k)))     # partie z prasy: pudełka do wspólnego zapasu
@@ -108,15 +125,21 @@ func bank_loot(bonus: int) -> int:
 			_delivered_rpc.rpc(done)
 		else:
 			_delivered_rpc(done)
+	if not learned.is_empty():
+		if NoiseMgr.has_network():
+			_learned_rpc.rpc(learned)
+		else:
+			_learned_rpc(learned)
 	return gain
 
 ## Wipe / restart: łup i znalezione części przepadają, bank zostaje.
 func reset_loot() -> void:
 	if not NoiseMgr.is_server():
 		return
-	if loot != 0 or not found.is_empty():
+	if loot != 0 or not found.is_empty() or samples_loot != 0:
 		loot = 0
 		found.clear()
+		samples_loot = 0
 		_push()
 
 ## Część do znalezienia: losowa część z modelem (leży na ziemi albo w skrytce) dla broni, którą drużyna ma, jeszcze nieodblokowana
@@ -324,6 +347,81 @@ func _fuse_server(kind: String, idx: int) -> void:
 	save_progress()
 	_push()
 
+## Czy część `id` należy do broni specjalnej (badanie w pracowni zamiast zakupu na ławie).
+func is_lab_part(id: String) -> bool:
+	return String(Parts.get_part(id).get("weapon", "")) in LAB_WEAPONS
+
+## Koszt badania części `id`: x — próbki (1 / 2 / 3 wg ceny części), y — złom (połowa ceny części, zaokrąglona do 5).
+func research_cost(id: String) -> Vector2i:
+	var c := int(Parts.get_part(id).get("cost", 0))
+	return Vector2i(1 if c <= 150 else (2 if c <= 250 else 3), int(roundf(float(c) * 0.5 / 5.0)) * 5)
+
+## Serwer: próbki z elity / bossa trafiają do łupu misji (bank dopiero po udanej misji).
+func add_samples(n: int) -> void:
+	if not NoiseMgr.is_server() or n <= 0 or not enabled():
+		return
+	samples_loot += n
+	_push()
+	if NoiseMgr.has_network():
+		_sample_rpc.rpc(n)
+	else:
+		_sample_rpc(n)
+
+@rpc("authority", "call_local", "reliable")
+func _sample_rpc(n: int) -> void:
+	Msg.post("sample.%d" % samples_loot, Msg.Ch.TOAST, tr("Sample taken (+%d)") % n,
+		{"sub": tr("The lab gets it after extraction"), "style": Msg.Style.SUCCESS, "ttl": 4.0, "prio": 60})
+
+@rpc("authority", "call_local", "reliable")
+func _learned_rpc(ids: Array) -> void:
+	for id in ids:
+		Msg.post("learned.%s" % id, Msg.Ch.TOAST, tr("Research done: %s unlocked") % tr(String(Parts.get_part(String(id)).get("name", id))),
+			{"style": Msg.Style.SUCCESS, "ttl": 6.0, "prio": 70})
+
+## Badanie części `id` w pracowni (próbki i złom drużyny, serwer).
+func request_research(id: String) -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_research_server(id, NoiseMgr.local_id())
+	else:
+		_research_rpc.rpc_id(1, id)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _research_rpc(id: String) -> void:
+	if NoiseMgr.is_server():
+		_research_server(id, multiplayer.get_remote_sender_id())
+
+func _research_server(id: String, peer_id: int) -> void:
+	var reason := "ok"
+	var w := Weapons.index_of(String(Parts.get_part(id).get("weapon", "")))
+	var cost := research_cost(id)
+	if Parts.get_part(id).is_empty() or w < 0 or not is_lab_part(id):
+		reason = "invalid"
+	elif not enabled():
+		reason = "off"
+	elif not is_unlocked(w):
+		reason = "locked"
+	elif parts.has(id) or research.has(id):
+		reason = "owned"
+	elif research.size() >= LAB_SLOTS:
+		reason = "busy"
+	elif samples < cost.x:
+		reason = "samples"
+	elif not spend(cost.y):
+		reason = "poor"
+	else:
+		samples -= cost.x
+		research.append(id)
+		save_progress()
+		_push()
+	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
+		research_result.emit(id, reason == "ok", reason)
+	else:
+		_research_result_rpc.rpc_id(peer_id, id, reason)
+
+@rpc("authority", "call_remote", "reliable")
+func _research_result_rpc(id: String, reason: String) -> void:
+	research_result.emit(id, reason == "ok", reason)
+
 ## Cena partii `kind` w prasie (zaokrąglona do 5).
 func press_price(kind: String) -> int:
 	return int(roundf(float(Throwables.price_of(kind)) * PRESS_PRICE / 5.0)) * 5
@@ -453,6 +551,8 @@ func _part_server(id: String, peer_id: int) -> void:
 		reason = "locked"
 	elif parts.has(id):
 		reason = "owned"
+	elif is_lab_part(id):
+		reason = "lab"                                                # część broni specjalnej: badanie w pracowni (W6a)
 	elif not spend(part_cost(id, peer_id)):
 		reason = "poor"
 	else:
@@ -478,10 +578,14 @@ func _part_done(id: String, reason: String) -> void:
 func _push() -> void:
 	changed.emit()
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses)
+		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research)
 
 @rpc("authority", "call_remote", "reliable")
-func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array, fnd: Array = [], ord: Array = [], fz: Dictionary = {}) -> void:
+func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array, fnd: Array = [], ord: Array = [], fz: Dictionary = {},
+		smp: int = 0, smp_l: int = 0, res: Array = []) -> void:
+	samples = smp
+	samples_loot = smp_l
+	research = res.duplicate()
 	orders = ord.duplicate()
 	fuses = fz.duplicate()
 	bank = b
@@ -510,7 +614,14 @@ func load_progress() -> void:
 	parts.clear()
 	orders.clear()
 	fuses.clear()
+	research.clear()
+	samples = 0
+	samples_loot = 0
 	if ok:
+		samples = maxi(0, int(cfg.get_value("workshop", "samples", 0)))
+		for id in Array(cfg.get_value("workshop", "research", [])):
+			if Parts.is_valid(String(id)):
+				research.append(String(id))
 		var fz_in := cfg.get_value("workshop", "fuses", {}) as Dictionary
 		for k in fz_in:
 			if Throwables.FUSES.has(String(k)):
@@ -550,6 +661,8 @@ func save_progress() -> void:
 	cfg.set_value("workshop", "parts", parts.keys())
 	cfg.set_value("workshop", "orders", orders)
 	cfg.set_value("workshop", "fuses", fuses)
+	cfg.set_value("workshop", "samples", samples)
+	cfg.set_value("workshop", "research", research)
 	if cfg.has_section_key("workshop", "levels"):
 		cfg.erase_section_key("workshop", "levels")             # przeniesione do części (migracja w load_progress)
 	cfg.save(SAVE_PATH)

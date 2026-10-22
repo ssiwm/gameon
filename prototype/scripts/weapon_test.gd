@@ -200,6 +200,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_parts()
 	await _t_parts_alt()
 	await _t_mass()
+	await _t_research()
 	await _t_handling_climb()
 	await _t_hot_barrel()
 	await _t_two_reloads()
@@ -2829,6 +2830,78 @@ func _t_ammo_40mm() -> void:
 		Arsenal.stock[k] = 0
 	free_dummies()
 	await frames(2)
+
+## Pracownia (WORKSHOP_PLAN.md W6a, 1.7.357): próbki do łupu misji (wipe zabiera, ekstrakcja do banku), części broni specjalnych tylko z badań
+## (ława odmawia), badanie za próbki i złom, jedno na misję, gotowe po udanej misji; panel pracowni.
+func _t_research() -> void:
+	var bank0: int = Scrap.bank
+	var loot0: int = Scrap.loot
+	var smp0: int = Scrap.samples
+	var res0: Array = Scrap.research.duplicate()
+	var unl0: Dictionary = Scrap.unlocked.duplicate()
+	var parts0: Dictionary = Scrap.parts.duplicate()
+	Scrap.bank = 1000
+	Scrap.loot = 0
+	Scrap.samples = 0
+	Scrap.samples_loot = 0
+	Scrap.research.clear()
+	Scrap.unlocked[Weapons.LR7] = true
+	Scrap.unlocked.erase(Weapons.HKM9)
+	for id in Parts.all_ids():
+		if String(id).begins_with("lr7_"):
+			Scrap.parts.erase(id)
+	var pres: Array = []
+	var pcb := func(id: String, ok: bool, reason: String) -> void: pres.append(reason)
+	Scrap.part_result.connect(pcb)
+	Scrap.request_part("lr7_cell")                                 # ława: część broni specjalnej — tylko z pracowni
+	Scrap.part_result.disconnect(pcb)
+	Scrap.add_samples(1)
+	var in_loot: int = Scrap.samples_loot
+	Scrap.reset_loot()                                             # wipe: próbki z misji przepadają
+	var after_wipe: int = Scrap.samples_loot
+	Scrap.add_samples(3)
+	Scrap.bank_loot(0)
+	await frames(2)
+	check("pracownia: ława odmawia części LR-7 (%s); próbka w łupie %d, po wipe %d, po udanej misji w banku %d" % [str(pres), in_loot, after_wipe, Scrap.samples],
+		pres == ["lab"] and in_loot == 1 and after_wipe == 0 and Scrap.samples == 3 and Scrap.samples_loot == 0)
+	var rres: Array = []
+	var rcb := func(id: String, ok: bool, reason: String) -> void: rres.append(reason)
+	Scrap.research_result.connect(rcb)
+	var lc: Vector2i = Scrap.research_cost("lr7_lens")
+	var bank1: int = Scrap.bank
+	Scrap.request_research("lr7_lens")
+	Scrap.request_research("lr7_cell")                             # pracownia zajęta (jedno badanie na misję)
+	Scrap.request_research("m83_pbs1")                             # nie broń specjalna
+	Scrap.request_research("hkm_tank")                             # broń niekupiona
+	var queued: bool = Scrap.research.has("lr7_lens") and not Scrap.has_part("lr7_lens")
+	Scrap.bank_loot(0)
+	await frames(2)
+	Scrap.request_research("lr7_coil")                             # próbek już nie ma
+	Scrap.research_result.disconnect(rcb)
+	check("pracownia: badanie soczewki LR-7 za %d próbki i %d złomu (%s), czeka do misji (%s), po udanej misji odblokowana (%s); bank %d → %d, próbki %d" % [
+		lc.x, lc.y, str(rres), str(queued), str(Scrap.has_part("lr7_lens")), bank1, Scrap.bank, Scrap.samples],
+		rres == ["ok", "busy", "invalid", "locked", "samples"] and queued and Scrap.has_part("lr7_lens") and Scrap.research.is_empty()
+		and Scrap.samples == 3 - lc.x and Scrap.bank == bank1 - lc.y and lc.x == 3)
+	# panel pracowni: same części broni specjalnej, M-83 bez badań
+	var wui := get_tree().get_first_node_in_group("workshop_ui")
+	var ui_ok := false
+	var ui_info := "brak panelu"
+	if wui != null:
+		wui.open("lab")
+		var lr: Array = wui._options(Weapons.LR7).map(func(o: Dictionary) -> String: return String(o["id"]))
+		var m83: Array = wui._options(Weapons.M83)
+		var title: String = wui._title.text
+		wui.close()
+		ui_info = "LR-7 %s, M-83 %d, tytuł %s" % [str(lr), m83.size(), title]
+		ui_ok = lr.size() == Parts.of("lr7").size() and not lr.has("") and m83.is_empty() and title == tr("LAB")
+	check("pracownia: panel (%s)" % ui_info, ui_ok)
+	Scrap.bank = bank0
+	Scrap.loot = loot0
+	Scrap.samples = smp0
+	Scrap.samples_loot = 0
+	Scrap.research = res0
+	Scrap.unlocked = unl0
+	Scrap.parts = parts0
 
 ## Masa ekwipunku (WORKSHOP_PLAN.md W5, 1.7.356): masa broni z częściami, zestaw startowy = punkt odniesienia (mnożniki 1), ciężki zestaw biegnie
 ## głośniej i wolniej, części zmieniają masę, obsługa klasyczna i boty bez zmian.

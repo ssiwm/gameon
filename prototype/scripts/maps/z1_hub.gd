@@ -4,7 +4,7 @@ extends RefCounted
 ## ŚRODEK (wiersz podłogi 22), od lewej w kolejności „co robi drużyna po powrocie”: śluza (dwa punkty startu S) → ściana wyników (v) → stół konserwacji (j: [E] czyszczenie i części eksploatacyjne) → warsztat
 ## (h: [E] panel broni, części i zaopatrzenia za złom) → świetlica (meble z hub_decor.gd, szafki osobiste p: [E] perki i wygląd) → zbrojownia (a, dwie gabloty g po cztery bronie: SPREAD-12, PELLET-8,
 ## LR-7, HKM-9, WRATH-4, SPECTER-1, FALCON-6, SINEW-6, a) → tablica z odprawą następnej misji (n). Nad tablicą, na GÓRZE (wiersz 14), radiostacja
-## z prognozą pogody (R, weather.gd); pod zbrojownią i warsztatem na DOLE (wiersz 30) maszynownia i magazyn ze skrytkami (H) i prasą elaboracyjną (x: [E] zamówienia amunicji specjalnej) i stołem pirotechnicznym (z: [E] granaty, miny, ładunki, 40 mm, zapalniki), a za magazynem
+## z prognozą pogody (R, weather.gd) i pracownią elektroniki i próbek (c: [E] badania części broni specjalnych); pod zbrojownią i warsztatem na DOLE (wiersz 30) maszynownia i magazyn ze skrytkami (H) i prasą elaboracyjną (x: [E] zamówienia amunicji specjalnej) i stołem pirotechnicznym (z: [E] granaty, miny, ładunki, 40 mm, zapalniki), a za magazynem
 ## drzwi strzelnicy FPP z tablicą rekordów (RANGE_DOOR).
 ## Poziomy łączą dwa szyby (SHAFTS: kraty „=” w podłogach i podesty co 2 kafle, prawy–lewy–prawy jak szyb serwisowy w 1.1); w dół zeskakuje się przez kratę (S+SPACE).
 ## Ekwipunek i amunicja przechodzą z poprzedniej misji i do następnej (main._restart_mission z carry); wyjście na misję po gotowości wszystkich ([Enter]).
@@ -55,7 +55,7 @@ const MAP := [
 	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
 	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
 	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
-	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbRbbbbbbC",
+	"####################CbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbbRbbbbbbC",
 	"CCCCCCCCCCCCCCCCCCCCCCCCCC======CCCCCCCCCCCCCCCCCCCCCCCC======CCCCCCCCCC",
 	"CbbbblbbbbbblbbbbbbblbbbbbbbbbbblbbbbblbbbbbbbbbbblbbbbbbbbbbbbbblbbbbbC",
 	"Cbbbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbC",
