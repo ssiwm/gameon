@@ -2697,6 +2697,9 @@ func _gen_test() -> void:
 	check.call("pracownia: %d w kryjówce (góra, kol. 45)" % lab_nodes.size(), lab_nodes.size() == 1 and int((lab_nodes[0] as Node2D).global_position.x / 16.0) == 45)
 	var pyro_nodes := get_tree().get_nodes_in_group("pyro_bench")
 	check.call("stół pirotechniczny: %d w kryjówce (dół, kol. 46)" % pyro_nodes.size(), pyro_nodes.size() == 1 and int((pyro_nodes[0] as Node2D).global_position.x / 16.0) == 46)
+	var zmodels: Array = pyro_nodes[0].get("station_props") if pyro_nodes.size() == 1 else []
+	check.call("pirotechnika: modele 3D stanowiska %s (art/items3d)" % str(zmodels.map(func(e: Array) -> String: return String(e[0]))),
+		zmodels.size() == 4 and zmodels.all(func(e: Array) -> bool: return ResourceLoader.exists("res://art/items3d/%s.glb" % String(e[0]))))
 	wui.open("locker")
 	await get_tree().create_timer(0.1).timeout
 	var locker_tabs: Array = wui._page_btns.filter(func(b: Button) -> bool: return b.visible).map(func(b: Button) -> String: return b.text)
