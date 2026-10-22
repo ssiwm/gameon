@@ -55,6 +55,12 @@ const PARTS := {
 		{"id": "p64_supp", "slot": "muzzle", "tier": 3, "cost": 175, "name": "Suppressor",
 			"desc": "Quieter: noise −30% (the 9×18 round is subsonic, so it works well), flash almost gone. Longer pistol (+0.05 s draw)",
 			"mods": [["n_min", "mul", 0.7], ["n_max", "mul", 0.7], ["suppressor", "add", 1.0], ["flash_size", "mul", 0.3], ["flash_light", "mul", 0.3], ["draw_time", "add", 0.05]]},
+		{"id": "p64_long", "slot": "barrel", "cost": 85, "name": "Long barrel",
+			"desc": "A longer barrel: the 9×18 keeps its punch 25% farther out and flies 20% farther; it no longer fits the holster (+0.15 s draw)",
+			"mods": [["falloff_start", "add", 40.0], ["range_px", "mul", 1.2], ["draw_time", "add", 0.15]]},
+		{"id": "p64_stock", "slot": "stock", "cost": 110, "name": "Holster stock",
+			"desc": "A wooden holster clipped to the grip as a shoulder stock: the pistol climbs and wanders far less (bloom per shot −45%, camera kick −40%, spread −25%) — with endless ammo it becomes a steady backup carbine. Clipping it on takes time (+0.35 s draw)",
+			"mods": [["bloom_per_shot", "mul", 0.55], ["cam_kick", "mul", 0.6], ["jitter_deg", "mul", 0.75], ["draw_time", "add", 0.35]]},
 	],
 	"spread12": [
 		{"id": "sp12_drum30", "slot": "feed", "tier": 1, "cost": 60, "name": "Extended drum",
@@ -91,6 +97,9 @@ const PARTS := {
 		{"id": "lr7_lens", "slot": "muzzle", "tier": 3, "cost": 265, "name": "Focusing lens",
 			"desc": "The beam pierces one more target; the hotter focus heats the emitter 20% faster",
 			"mods": [["pierce", "add", 1], ["heat_gain", "mul", 1.2]]},
+		{"id": "lr7_diffuser", "slot": "muzzle", "cost": 120, "name": "Diffuser lens",
+			"desc": "Fans the beam out: it passes through two more targets — good against a pack in a corridor — but reaches only 60% as far and burns 15% weaker",
+			"mods": [["pierce", "add", 2], ["range_px", "mul", 0.6], ["damage", "mul", 0.85]]},
 	],
 	"hkm9": [
 		{"id": "hkm_tank", "slot": "feed", "tier": 1, "cost": 70, "name": "Extended tank",
@@ -102,6 +111,9 @@ const PARTS := {
 		{"id": "hkm_nozzle", "slot": "muzzle", "tier": 3, "cost": 265, "name": "Long nozzle",
 			"desc": "+30% flame range, but a narrower jet (arc −20%) and a longer gun (+0.05 s draw)",
 			"mods": [["range_px", "mul", 1.3], ["arc_deg", "mul", 0.8], ["draw_time", "add", 0.05]]},
+		{"id": "hkm_gel", "slot": "muzzle", "cost": 150, "name": "Gel nozzle",
+			"desc": "Thickened fuel clings where it lands: ground fire twice as often and burning 2.5× longer — a wall the shy ones won't cross. The heavy gel flies 25% shorter",
+			"mods": [["patch_life", "mul", 2.5], ["patch_every", "mul", 0.5], ["range_px", "mul", 0.75]]},
 	],
 	"gniew4": [
 		{"id": "g4_loader", "slot": "feed", "tier": 1, "cost": 90, "name": "Speed loader",
@@ -295,7 +307,7 @@ static func from_level(key: String, level: int) -> Array:
 	return out
 
 ## Czy modyfikator pogarsza broń (koszt części). Kierunek „lepiej” zależy od pola.
-const LOWER_IS_BETTER := ["draw_time", "reload_time", "cooldown", "jitter_deg", "bloom_per_shot", "bloom_max", "cam_kick", "shake",
+const LOWER_IS_BETTER := ["draw_time", "reload_time", "cooldown", "jitter_deg", "bloom_per_shot", "bloom_max", "cam_kick", "shake", "patch_every",
 	"n_min", "n_max", "heat_gain", "charge_time", "arm_dist", "flash_size", "flash_light", "spread_deg", "barrel_heat"]
 static func is_cost(m: Array, base: RefCounted) -> bool:
 	var f := String(m[0])

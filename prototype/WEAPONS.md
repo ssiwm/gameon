@@ -584,3 +584,22 @@ panel KONSERWACJA (`workshop_ui.open("service")`). Czyszczenie przeniesione tu z
 
 Test `_t_maintenance` (zużycie, gorąca lufa, rozrzut, granica czyszczenia, wymiana przez serwer, panel), `--gentest` (stół w kryjówce,
 zasięg osobno od ławy). Dev: `--shotclean` (z `--mission=z1_hub --shotws`).
+
+## 31. Alternatywy w gniazdach, część 1 (1.7.351)
+
+`WORKSHOP_PLAN.md` etap W3 (U2). Najpierw błąd: serwer liczył ogień ciągły (LR-7, HKM-9) z fabrycznej broni (`Weapons.def(player.weapon)`),
+więc części tych broni zmieniały tylko obraz po stronie gracza — obrażeń, zasięgu, przebić i podpalenia nie. Ciosy broni białej brały
+części gracza bez sprawdzenia, czy drużyna je ma. Teraz oba przypadki idą przez `weapon_controller.server_def(w)`: części z `player.fits`
+przefiltrowane przez `Parts.sanitize` z odblokowaniami drużyny (jak kod części, który kule niosą w strzale).
+
+Nowe części (wybór w gnieździe zamiast „fabryczna albo jedna”):
+
+| Broń | Gniazdo | Część | Zmiana | Koszt |
+|---|---|---|---|---|
+| P-83 | lufa | Długa lufa | spadek obrażeń od +40 px, zasięg ×1,2; dobycie +0,15 s | 85 |
+| P-83 | kolba (nowe gniazdo) | Kabura-kolba | rozrzut serii ×0,55, szarpnięcie kamery ×0,6, rozrzut ×0,75 — z nieskończoną amunicją pewny zapasowy karabinek; dobycie +0,35 s | 110 |
+| LR-7 | wylot | Soczewka rozpraszająca | przebija +2 cele, zasięg ×0,6, obrażenia ×0,85 — na watahę w korytarzu | 120 |
+| HKM-9 | wylot | Dysza żelowa | ogień na podłodze co 0,25 s zamiast 0,5 s i pali się 10 s zamiast 4 s (`WeaponDef.patch_every`, `patch_life`) — mur dla płochliwych; zasięg ×0,75 | 150 |
+
+Części dopisane na końcu list gniazd — kody `fit` dotychczasowych części się nie zmieniają. Bez modeli 3D (jak mechanizmy i mieszanka).
+Test `_t_parts_alt` (serwer z częściami, część nieodblokowana nie działa, dłuższy ogień z dyszy, nowe gniazdo P-83).

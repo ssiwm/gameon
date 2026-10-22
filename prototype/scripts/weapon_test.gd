@@ -198,6 +198,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_ammo_calibers()
 	await _t_ammo_40mm()
 	await _t_parts()
+	await _t_parts_alt()
 	await _t_handling_climb()
 	await _t_hot_barrel()
 	await _t_two_reloads()
@@ -2751,6 +2752,51 @@ func _t_ammo_40mm() -> void:
 		Arsenal.stock[k] = 0
 	free_dummies()
 	await frames(2)
+
+## Alternatywy w gniazdach (WORKSHOP_PLAN.md W3, 1.7.351): serwer liczy ogień ciągły i ciosy z częściami gracza odblokowanymi przez drużynę
+## (wcześniej ogień ciągły brał fabryczną broń), nowe części P-83, LR-7 i HKM-9 zmieniają zachowanie, dysza żelowa zostawia dłuższy ogień.
+func _t_parts_alt() -> void:
+	await clear_fits()
+	var h0 := Weapons.base_def(Weapons.HKM9)
+	await fit_player(Weapons.HKM9, ["hkm_mix", "hkm_gel"])
+	var sd: WeaponDef = wc.server_def(Weapons.HKM9)
+	check("serwer: HKM-9 z częściami gracza — obrażenia ×%.2f (gorąca mieszanka), ogień na podłodze %.1f s co %.2f s, zasięg ×%.2f (dysza żelowa)" % [
+		sd.damage / h0.damage, sd.patch_life, sd.patch_every, sd.range_px / h0.range_px],
+		is_equal_approx(sd.damage, h0.damage * 1.25) and is_equal_approx(sd.patch_life, h0.patch_life * 2.5) and is_equal_approx(sd.patch_every, h0.patch_every * 0.5)
+		and is_equal_approx(sd.range_px, h0.range_px * 0.75))
+	Scrap.parts.erase("hkm_mix")                                       # gracz ma ją w montażu, ale drużyna jej nie ma (np. inny host)
+	var sd2: WeaponDef = wc.server_def(Weapons.HKM9)
+	check("serwer: część, której drużyna nie ma, nie działa (obrażenia %.1f = fabryczne %.1f)" % [sd2.damage, h0.damage], is_equal_approx(sd2.damage, h0.damage) and is_equal_approx(sd2.patch_life, h0.patch_life * 2.5))
+	# dysza żelowa: ogień na podłodze z płomienia pali się dłużej
+	var lvl := get_tree().get_first_node_in_group("level")
+	var patch_ok := false
+	var patch_info := "brak poziomu"
+	if lvl != null:
+		for fp in get_tree().get_nodes_in_group("fire_patches"):
+			fp.queue_free()
+		await frames(1)
+		var space: PhysicsDirectSpaceState2D = player.get_world_2d().direct_space_state
+		wc._drop_fire_patch(sd2, space, player.global_position + Vector2(0, -10), Vector2(1, 0))
+		await frames(2)
+		var patches: Array = get_tree().get_nodes_in_group("fire_patches").filter(func(p: Node) -> bool: return not p.is_queued_for_deletion())
+		patch_info = "%d ognia, życie %s" % [patches.size(), str(patches.map(func(p: Node) -> float: return float(p.life)))]
+		patch_ok = patches.size() == 1 and absf(float(patches[0].life) - h0.patch_life * 2.5) < 0.5          # życie może już odliczać
+		for fp in patches:
+			fp.queue_free()
+	check("dysza żelowa: ogień na podłodze pali się %.0f s (%s)" % [h0.patch_life * 2.5, patch_info], patch_ok)
+	# LR-7: rozpraszacz — więcej przebić, krótsza i słabsza wiązka; P-83: długa lufa i kabura-kolba w nowym gnieździe
+	var l0 := Weapons.base_def(Weapons.LR7)
+	var ld := pdef(Weapons.LR7, ["lr7_diffuser"])
+	var p0 := Weapons.base_def(Weapons.P64)
+	var ps := pdef(Weapons.P64, ["p64_stock", "p64_long"])
+	check("LR-7 rozpraszacz: przebija %d (było %d), zasięg ×%.1f; P-83 kabura-kolba i długa lufa: gniazda %s, podrzut ×%.2f, dobycie +%.2f s, spadek obrażeń od %.0f px" % [
+		ld.pierce, l0.pierce, ld.range_px / l0.range_px, str(Parts.slots_of("p64")), ps.bloom_per_shot / p0.bloom_per_shot, ps.draw_time - p0.draw_time, ps.falloff_start],
+		ld.pierce == l0.pierce + 2 and is_equal_approx(ld.range_px, l0.range_px * 0.6) and Parts.slots_of("p64") == ["feed", "barrel", "muzzle", "stock"]
+		and is_equal_approx(ps.bloom_per_shot, p0.bloom_per_shot * 0.55) and is_equal_approx(ps.draw_time - p0.draw_time, 0.5) and ps.falloff_start == p0.falloff_start + 40.0)
+	# wybór w gnieździe: wylot LR-7 i HKM-9 ma teraz dwie części, lufa P-83 — dwie
+	check("wybór w gniazdach: LR-7 wylot %d, HKM-9 wylot %d, P-83 lufa %d części" % [Parts.in_slot("lr7", "muzzle").size(), Parts.in_slot("hkm9", "muzzle").size(), Parts.in_slot("p64", "barrel").size()],
+		Parts.in_slot("lr7", "muzzle").size() == 2 and Parts.in_slot("hkm9", "muzzle").size() == 2 and Parts.in_slot("p64", "barrel").size() == 2)
+	await clear_fits()
 
 ## Części broni (1.7.319, GUNSMITH_PLAN.md etap 2a): kod `fit` w obie strony, montaż gracza (wybór, samomontaż, element fabryczny),
 ## broń gracza w kontrolerze i w sieci (player.fits), serwer odrzuca części, których drużyna nie ma, migracja starych poziomów ulepszeń.
