@@ -2711,6 +2711,9 @@ func _gen_test() -> void:
 	var locker_tabs: Array = wui._page_btns.filter(func(b: Button) -> bool: return b.visible).map(func(b: Button) -> String: return b.text)
 	check.call("szafki osobiste: %d w kryjówce, gracz przy nich (%s), panel LOCKER otwarty na PERKS (%d), zakładki %s" % [lockers.size(), str(lk_ok), wui._page, str(locker_tabs)],
 		lockers.size() == 1 and lk_ok and wui.is_open() and wui._page == 2 and locker_tabs == ["PERKS", "LOOK"] and wui._title.text == tr("LOCKER"))
+	var kmodels: Array = lockers[0].get("station_props") if lockers.size() == 1 else []
+	check.call("szafki: modele 3D stanowiska %s (art/items3d)" % str(kmodels.map(func(e: Array) -> String: return String(e[0]))),
+		kmodels.size() == 2 and kmodels.all(func(e: Array) -> bool: return ResourceLoader.exists("res://art/items3d/%s.glb" % String(e[0]))))
 	# zakładka PERKS (B2): 8 kafli, zakładanie / zdejmowanie perku przez panel, zablokowany perk nie wchodzi, Tab przechodzi przez 3 zakładki
 	Profile.reset_for_test()
 	Profile.add_xp(800, "test")                                        # L4: 2 sloty, perki do L4
