@@ -2609,30 +2609,75 @@ func _t_ammo_calibers() -> void:
 	check("Z pomija pusty typ (BZ 0) i wraca do PS", wc.next_ammo_of(d.id) == 0)
 	await wait(d.full_reload_time() + 0.4)
 	wc.state = Controller.State.READY
-	# sklep: pudełko breneki dla obu strzelb, amunicja specjalna przeżywa reset misji
+	# prasa elaboracyjna (1.7.354): breneka się zamawia (taniej), partia przychodzi po udanej misji — ława amunicji już nie sprzedaje; amunicja
+	# specjalna przeżywa reset misji
 	var bank0: int = Scrap.bank
+	var loot0: int = Scrap.loot
+	var orders0: Array = Scrap.orders.duplicate()
 	Scrap.bank = 1000
+	Scrap.loot = 0
+	Scrap.orders.clear()
 	Arsenal.set_reserve(Weapons.SRUT8, 0, 1)
-	Scrap.request_buy_supply("ammo_slug")
+	var ores: Array = []
+	var ocb := func(k: String, ok: bool, reason: String) -> void: ores.append(reason)
+	Scrap.order_result.connect(ocb)
+	Scrap.request_buy_supply("ammo_slug")                          # ława: odmowa (invalid), złom bez zmian
+	Scrap.request_order("ammo_slug")
+	await frames(2)
+	var waiting := Arsenal.get_reserve(Weapons.SRUT8, 1)
+	var bank_after := Scrap.bank
+	Scrap.bank_loot(0)                                             # udana misja: partia z prasy trafia do zapasu
 	await frames(2)
 	var bought := Arsenal.get_reserve(Weapons.SRUT8, 1)
 	Arsenal.reset_mission()
 	await frames(2)
-	check("sklep: pudełko breneki = %d (PELLET-8 i SPREAD-12: %d), po resecie misji zostaje (%d)" % [bought, Arsenal.get_reserve(Weapons.SPREAD12, 1), Arsenal.get_reserve(Weapons.SRUT8, 1)],
-		bought == Throwables.box_of("ammo_slug") and Arsenal.get_reserve(Weapons.SPREAD12, 1) == bought and Arsenal.get_reserve(Weapons.SRUT8, 1) == bought and Scrap.bank == 1000 - Throwables.price_of("ammo_slug"))
-	# warsztat, zakładka SUPPLIES: kafle przedmiotów i pudełek amunicji, przycisk „kup pudełko”, zapas w pudełkach
+	check("prasa: breneka zamówiona za %d (sklep %d), przed misją w zapasie %d, po udanej misji %d (PELLET-8 i SPREAD-12: %d), kolejka pusta, po resecie zostaje (%d)" % [
+		Scrap.press_price("ammo_slug"), Throwables.price_of("ammo_slug"), waiting, bought, Arsenal.get_reserve(Weapons.SPREAD12, 1), Arsenal.get_reserve(Weapons.SRUT8, 1)],
+		ores == ["ok"] and waiting == 0 and bank_after == 1000 - Scrap.press_price("ammo_slug") and Scrap.press_price("ammo_slug") < Throwables.price_of("ammo_slug")
+		and bought == Throwables.box_of("ammo_slug") and Arsenal.get_reserve(Weapons.SPREAD12, 1) == bought and Arsenal.get_reserve(Weapons.SRUT8, 1) == bought and Scrap.orders.is_empty())
+	ores.clear()
+	for i in Scrap.PRESS_SLOTS:
+		Scrap.request_order("ammo_slug")                          # 10 + 3 × 10 = 40 = max
+	Scrap.request_order("ammo_mag12")                              # prasa pełna
+	await frames(2)
+	check("prasa: %d partie naraz, kolejna odrzucona (%s)" % [Scrap.PRESS_SLOTS, str(ores)], ores == ["ok", "ok", "ok", "busy"] and Scrap.orders.size() == Scrap.PRESS_SLOTS)
+	Scrap.orders.clear()
+	ores.clear()
+	Arsenal.set_reserve(Weapons.SRUT8, 0, 1)
+	Arsenal.stock["ammo_slug"] = 40
+	Scrap.request_order("ammo_slug")                               # zapas pełny — nie ma gdzie przyjąć partii
+	await frames(2)
+	Scrap.order_result.disconnect(ocb)
+	check("prasa: przy pełnym zapasie zamówienie odrzucone (%s)" % str(ores), ores == ["full"])
+	Arsenal.stock["ammo_slug"] = Throwables.box_of("ammo_slug")
+	# ładunki gorące z prasy: mocniej, broń zużywa się dwa razy szybciej
+	var m0d := Weapons.def_build(Weapons.M83, Weapons.build_of(0, 0))
+	var mhot := Weapons.def_build(Weapons.M83, Weapons.build_of(Ammo.from_kind("ammo_hot762")["t"], 0))
+	var s0d := Weapons.def_build(Weapons.SRUT8, Weapons.build_of(0, 0))
+	var smag := Weapons.def_build(Weapons.SRUT8, Weapons.build_of(Ammo.from_kind("ammo_mag12")["t"], 0))
+	check("prasa: 7.62 HOT obrażenia ×%.2f, zużycie ×%.1f; 12/70 MAG obrażenia ×%.2f, zużycie ×%.1f" % [mhot.damage / m0d.damage, mhot.wear / m0d.wear, smag.damage / s0d.damage, smag.wear / s0d.wear],
+		is_equal_approx(mhot.damage, m0d.damage * 1.12) and is_equal_approx(mhot.wear, m0d.wear * 2.0) and is_equal_approx(smag.damage, s0d.damage * 1.15) and is_equal_approx(smag.wear, s0d.wear * 2.0))
+	# panel prasy: same kafle amunicji specjalnej, przycisk „zamów partię” z ceną prasy, zapas w pudełkach; ława — same przedmioty
 	var wui := get_tree().get_first_node_in_group("workshop_ui")
 	var ui_ok := false
 	var ui_info := "brak panelu"
 	if wui != null:
-		wui.open()
-		wui._set_page(1)
+		wui.open("press")
 		var kinds: Array = wui._supply_kinds()
 		wui._sup_sel = kinds.find("ammo_slug")
 		wui._refresh()
 		var tile = wui._sup_tiles[wui._sup_sel]
-		ui_info = "%d kafli, przycisk '%s', pasek %d/%d" % [wui._sup_tiles.size(), wui._s_action.text, tile.bar.have, tile.bar.maxn]
-		ui_ok = wui._sup_tiles.size() == kinds.size() and kinds.has("ammo_us") and not wui._s_action.text.contains("+1") and wui._s_action.text.contains(str(Throwables.price_of("ammo_slug"))) and tile.bar.have == 1 and tile.bar.maxn == 4
+		var vis_n: int = wui._sup_tiles.filter(func(t: Control) -> bool: return t.visible).size()
+		var press_page: int = wui._page
+		ui_info = "%d widocznych kafli, przycisk '%s', pasek %d/%d" % [vis_n, wui._s_action.text, tile.bar.have, tile.bar.maxn]
+		ui_ok = vis_n == Throwables.AMMO_ORDER.size() and press_page == 1 and wui._s_action.text.contains(str(Scrap.press_price("ammo_slug"))) and tile.bar.have == 1 and tile.bar.maxn == 4
+		wui.close()
+		wui.open("bench")
+		wui._set_page(1)
+		wui._refresh()
+		var bench_vis: Array = wui._sup_tiles.filter(func(t: Control) -> bool: return t.visible)
+		ui_info += ", ława %d kafli" % bench_vis.size()
+		ui_ok = ui_ok and bench_vis.size() == wui._supply_kinds().size() - Throwables.AMMO_ORDER.size() and not Throwables.is_ammo(String(wui._supply_kinds()[wui._sup_sel]))
 		# zakładka ARMS: kliknięcie wiersza części (sygnał pressed) przebudowuje listę, w tym kliknięty wiersz — bez zwalniania go w trakcie sygnału
 		wui._set_page(0)
 		wui._sel = 0
@@ -2661,8 +2706,10 @@ func _t_ammo_calibers() -> void:
 		check("ława 3D: fabryczny wylot spod kursora — świeci podzespół __muzzle, tłumika nie ma (%s)" % str(hl_names),
 			hl_names.size() > 0 and hl_names.all(func(n: String) -> bool: return n.ends_with("__muzzle")) and no_part)
 		wui.close()
-	check("warsztat SUPPLIES: pudełka amunicji w sklepie (%s)" % ui_info, ui_ok)
+	check("prasa i ława: amunicja tylko w prasie, przedmioty tylko na ławie (%s)" % ui_info, ui_ok)
 	Scrap.bank = bank0
+	Scrap.loot = loot0
+	Scrap.orders = orders0
 	for k in Throwables.AMMO_ORDER:
 		Arsenal.stock[k] = 0
 	equip(Weapons.M83)

@@ -37,6 +37,10 @@ const TYPES := {
 		{"id": "bz", "short": "BZ", "name": "BZ armour-piercing incendiary", "kind": "ammo_bz",
 			"mods": [["armor_pen", "add", 0.7], ["ignite", "add", 1.0], ["pen", "mul", 2.0]],
 			"note": "Hardened core with an incendiary charge: ignores most armour, passes through two bodies or a steel barrel, sets the target alight briefly."},
+		# ładunki z prasy elaboracyjnej (WORKSHOP_PLAN.md W4, od 1.7.354): gorący — mocniej, ale broń zużywa się dwa razy szybciej
+		{"id": "hot", "short": "HOT", "name": "7.62 hot load", "kind": "ammo_hot762", "press": true,
+			"mods": [["speed", "mul", 1.12], ["damage", "mul", 1.12], ["pen", "mul", 1.2], ["cam_kick", "mul", 1.15], ["wear", "mul", 2.0]],
+			"note": "Hand-loaded with more powder: faster and harder-hitting (+12%), goes through more, but kicks more and wears the gun twice as fast — it jams sooner."},
 	],
 	"918": [
 		{"id": "pm", "short": "PM", "name": "9×18 ball", "mods": [], "subsonic": true,
@@ -54,6 +58,9 @@ const TYPES := {
 		{"id": "rub", "short": "RUB", "name": "Rubber shells", "kind": "ammo_rub",
 			"mods": [["damage", "mul", 0.25], ["stun", "add", 1.0], ["knock", "mul", 1.3], ["crit_mult", "set", 1.0]],
 			"note": "Less-lethal rubber balls (like the KS-23 Volna-R): stun up to 1.5 s and knock back, barely wound."},
+		{"id": "mag", "short": "MAG", "name": "Magnum buckshot", "kind": "ammo_mag12", "press": true,
+			"mods": [["damage", "mul", 1.15], ["falloff_start", "add", 10.0], ["cam_kick", "mul", 1.3], ["wear", "mul", 2.0]],
+			"note": "Hand-loaded heavy shells: +15% per pellet and deadly a little farther, but a brutal kick and twice the wear on the gun."},
 	],
 	# granaty 40 mm (od 1.7.318): wzorowane na M576 (kartacz), M583 (flara na spadochronie) i granacie dymnym; kasetowy zostaje ulepszeniem WRATH-4
 	"40mm": [
@@ -97,6 +104,10 @@ static func short_of(cal: String, t: int) -> String:
 
 static func name_of(cal: String, t: int) -> String:
 	return String(type_of(cal, t).get("name", ""))
+
+## Ładunek elaborowany w prasie (`press`) — tylko z prasy, nie wypada z wrogów.
+static func is_press_only(cal: String, t: int) -> bool:
+	return bool(type_of(cal, t).get("press", false))
 
 ## Wpis zaopatrzenia z amunicją specjalną typu `t` ("" = nabój zwykły, z zapasu misji).
 static func kind_of(cal: String, t: int) -> String:

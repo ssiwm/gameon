@@ -252,8 +252,9 @@ var _open := false
 var _page := 0                        ## 0 = ARMS (bronie i ulepszenia), 1 = SUPPLIES (granaty, miny, narzędzia), 2 = PERKS, 3 = LOOK
 var _mode := "bench"                  ## „bench" — ława (ARMS, SUPPLIES), „locker" — szafki osobiste (PERKS, LOOK); od 1.7.349, WORKSHOP_PLAN.md W1
 ## „service" — stół konserwacji (od 1.7.350, W2): zakładka ARMS bez części i zestawów, tylko czyszczenie i części eksploatacyjne broni
-const MODE_PAGES := {"bench": [0, 1], "locker": [2, 3], "service": [0]}
-const MODE_GROUP := {"bench": "workshop", "locker": "locker_station", "service": "service_bench"}      ## grupa stanowiska: panel zamyka się, gdy gracz od niego odejdzie
+## „press" — prasa elaboracyjna (od 1.7.354, W4): zakładka SUPPLIES z samą amunicją specjalną, zamówienia zamiast zakupu (Scrap.request_order)
+const MODE_PAGES := {"bench": [0, 1], "locker": [2, 3], "service": [0], "press": [1]}
+const MODE_GROUP := {"bench": "workshop", "locker": "locker_station", "service": "service_bench", "press": "press_bench"}      ## grupa stanowiska: panel zamyka się, gdy gracz od niego odejdzie
 const SERVICE_IDS := ["clean", "barrel", "springs"]
 var _title: Label
 var _sup_sel := 0
@@ -384,6 +385,7 @@ func _ready() -> void:
 	Scrap.supply_result.connect(_on_supply_result)
 	Scrap.part_result.connect(_on_part_result)
 	Scrap.service_result.connect(_on_service_result)
+	Scrap.order_result.connect(_on_order_result)
 	Profile.changed.connect(_refresh)
 	Arsenal.stock_changed.connect(_refresh)
 
@@ -833,7 +835,44 @@ func _select_supply(i: int) -> void:
 	_refresh()
 
 func _buy_selected_supply() -> void:
-	Scrap.request_buy_supply(String(_supply_kinds()[_sup_sel]))
+	var k := String(_supply_kinds()[_sup_sel])
+	if Throwables.is_ammo(k):
+		Scrap.request_order(k)                                   # amunicja: zamówienie w prasie (gotowe po misji)
+	else:
+		Scrap.request_buy_supply(k)
+
+## Indeksy kafli zaopatrzenia (w _supply_kinds) widoczne w tym trybie: ława — przedmioty, prasa — amunicja specjalna.
+func _sup_list() -> Array:
+	var out: Array = []
+	var kinds := _supply_kinds()
+	for i in kinds.size():
+		if Throwables.is_ammo(String(kinds[i])) == (_mode == "press"):
+			out.append(i)
+	return out
+
+## Cena kafla: przedmiot — sklep ławy, amunicja — partia w prasie.
+func _sup_price(k: String) -> int:
+	return Scrap.press_price(k) if Throwables.is_ammo(k) else Throwables.price_of(k)
+
+func _on_order_result(kind: String, ok: bool, reason: String) -> void:
+	if not _open:
+		return
+	var nm := String(Throwables.KINDS[kind]["name"]) if Throwables.is_valid(kind) else kind
+	match reason:
+		"ok":
+			_say(tr("%s ordered — ready after the next mission (%d / %d batches in the press).") % [nm, Scrap.orders.size(), Scrap.PRESS_SLOTS], UiTheme.OK)
+			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
+		"poor":
+			_say(tr("Not enough scrap (%d needed).") % Scrap.press_price(kind), UiTheme.DANGER)
+		"busy":
+			_say(tr("The press is full — %d batches per mission.") % Scrap.PRESS_SLOTS, UiTheme.BP_MUTED)
+		"full":
+			_say(tr("The squad cannot carry more %s.") % nm, UiTheme.BP_MUTED)
+		"off":
+			_say("No scrap in this mode.", UiTheme.BP_MUTED)
+		_:
+			_say("Cannot do that.", UiTheme.DANGER)
+	_refresh()
 
 ## Rodzaje do kupienia (z ceną) w kolejności karuzeli: przedmioty, potem amunicja specjalna.
 func _supply_kinds() -> Array:
@@ -926,7 +965,7 @@ func open(mode := "bench") -> void:
 	_open = true
 	visible = true
 	_mode = mode if MODE_PAGES.has(mode) else "bench"
-	_title.text = tr("LOCKER") if _mode == "locker" else (tr("MAINTENANCE") if _mode == "service" else tr("WORKSHOP"))
+	_title.text = {"locker": tr("LOCKER"), "service": tr("MAINTENANCE"), "press": tr("RELOADING PRESS")}.get(_mode, tr("WORKSHOP"))
 	for pi in _page_btns.size():
 		(_page_btns[pi] as Button).visible = (MODE_PAGES[_mode] as Array).has(pi) and (MODE_PAGES[_mode] as Array).size() > 1
 	_msg.text = ""
@@ -934,6 +973,9 @@ func open(mode := "bench") -> void:
 	_sel = 0
 	_opt = _first_part_opt()
 	_page = int((MODE_PAGES[_mode] as Array)[0])
+	var allowed := _sup_list()
+	if not allowed.has(_sup_sel) and not allowed.is_empty():
+		_sup_sel = int(allowed[0])
 	Settings.block_game_input(true)
 	_prev_mouse = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE            # w grze celownik zastępuje kursor; panel potrzebuje myszy
@@ -978,6 +1020,8 @@ func _exit_tree() -> void:
 func _controls_hint() -> String:
 	var pad := Actions.pad_mode
 	var nav := "D-PAD" if pad else Actions.cluster(["menu_up", "menu_left", "menu_down", "menu_right"]).to_upper()
+	if _mode == "press":
+		return tr("%s select   ·   %s order a batch   ·   %s close   ·   or click") % [nav, _menu_key("menu_accept", pad), _menu_key("menu_back", pad)]
 	if _mode == "service":
 		return tr("%s select   ·   %s / %s job   ·   %s clean / replace   ·   %s close   ·   or click") % [
 			nav, _menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_back", pad)]
@@ -1036,8 +1080,10 @@ func _input(event: InputEvent) -> void:
 		elif back:
 			close()
 	elif _page == 1:
-		if step != 0 and _sup_sel + step >= 0 and _sup_sel + step < _supply_kinds().size():
-			_sup_sel += step
+		var vis := _sup_list()
+		var np := vis.find(_sup_sel) + step
+		if step != 0 and np >= 0 and np < vis.size():
+			_sup_sel = int(vis[np])
 			Audio.play("ui_click", Audio.BUS_UI, -14.0)
 			_refresh()
 		elif accept:
@@ -1325,8 +1371,10 @@ func _refresh_supplies() -> void:
 		t.add_theme_stylebox_override("pressed", sbox)
 		t.add_theme_stylebox_override("focus", sbox)
 		var k := String(kinds[i])
+		t.visible = Throwables.is_ammo(k) == (_mode == "press")
 		var have := Arsenal.get_throwable(k)
-		var price := Throwables.price_of(k)
+		var price := _sup_price(k)
+		t.price_label.text = ("%d" % price) + (("  +%d" % Scrap.ordered(k)) if Scrap.ordered(k) > 0 else "")
 		(t.icon_node as ItemIcon).set_item(k, Color.WHITE if have > 0 or Scrap.bank >= price else Color(0.6, 0.64, 0.68))
 		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.BP_TEXT)
 		t.price_label.add_theme_color_override("font_color", GOLD if Scrap.bank >= price else UiTheme.DANGER)
@@ -1350,7 +1398,8 @@ func _refresh_supplies() -> void:
 		for wd in Weapons.defs():
 			if String(wd.caliber) == String(ct.get("cal", "")):
 				users.append(String(wd.name))
-		rows = [["Carried", tr("%d / %d rounds") % [have2, maxn]], ["Box", tr("%d rounds") % Throwables.box_of(k2)], ["Fits", ", ".join(users)]]
+		rows = [["Carried", tr("%d / %d rounds") % [have2, maxn]], ["Box", tr("%d rounds") % Throwables.box_of(k2)], ["Fits", ", ".join(users)],
+			["In the press", tr("%d of %d batches") % [Scrap.orders.size(), Scrap.PRESS_SLOTS]]]
 	elif d.has("noise"):
 		rows.append(["Noise", "%.0f" % float(d["noise"])])
 	elif k2 in ["frag", "charge"]:
@@ -1362,12 +1411,17 @@ func _refresh_supplies() -> void:
 	_s_text.text = tr(String(d["note"]))
 	if Throwables.is_ammo(k2):
 		_s_text.text += "\n" + tr("[%s] in the field picks the ammo type for the next magazine.") % Actions.key("ammo_type")
-	var price2 := Throwables.price_of(k2)
-	_s_action.disabled = have2 >= maxn or not Scrap.enabled()
+	var price2 := _sup_price(k2)
+	var queued := Scrap.ordered(k2) * Throwables.box_of(k2)
+	_s_action.disabled = have2 + queued >= maxn or not Scrap.enabled()
 	if not Scrap.enabled():
 		_s_action.text = "No scrap in this mode"
-	elif have2 >= maxn:
+	elif have2 + queued >= maxn:
 		_s_action.text = "The squad is carrying the maximum"
+	elif Throwables.is_ammo(k2) and Scrap.orders.size() >= Scrap.PRESS_SLOTS:
+		_s_action.text = tr("The press is full — %d batches per mission") % Scrap.PRESS_SLOTS
+	elif Throwables.is_ammo(k2):
+		_s_action.text = tr("Order a batch  ·  %d scrap  ·  ready after the mission") % price2
 	else:
 		_s_action.text = (tr("Buy a box  ·  %d scrap") % price2) if Throwables.is_ammo(k2) else (tr("Buy +1  ·  %d scrap") % price2)
 

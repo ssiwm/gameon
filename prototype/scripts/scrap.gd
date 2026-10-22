@@ -14,6 +14,12 @@ signal purchase_result(weapon: int, ok: bool, reason: String)    ## kody zakupu 
 signal part_result(id: String, ok: bool, reason: String)         ## zakup części (parts.gd): ok/poor/owned/locked/invalid
 signal part_found(id: String)                                     ## część znaleziona w misji (u wszystkich) — czeka na ekstrakcję
 signal service_result(weapon: int, part: String, ok: bool, reason: String)   ## wymiana części eksploatacyjnej: ok / poor / invalid / off
+signal order_result(kind: String, ok: bool, reason: String)        ## zamówienie w prasie: ok / poor / busy / full / invalid / off
+signal orders_delivered(kinds: Array)                              ## partie z prasy gotowe po misji (u wszystkich)
+## Prasa elaboracyjna (WORKSHOP_PLAN.md W4, od 1.7.354): amunicję specjalną się zamawia, a nie kupuje od ręki — partia (pudełko) jest
+## gotowa po następnej udanej misji (bank_loot). Najwyżej PRESS_SLOTS partii naraz, cena PRESS_PRICE × cena dawnego sklepu.
+const PRESS_SLOTS := 3
+const PRESS_PRICE := 0.75
 ## Stół konserwacji (WORKSHOP_PLAN.md W2, od 1.7.350): cena nowej części eksploatacyjnej (Profile.WEAR_PARTS) w złomie drużyny.
 const SERVICE_COST := {"barrel": 40, "springs": 20}
 
@@ -48,6 +54,7 @@ var bank := 0
 var loot := 0
 var parts: Dictionary = {}            ## id części (parts.gd) → true: odblokowane przez drużynę (zapis u hosta); montaż — Profile.fits
 var found: Dictionary = {}            ## id części → true: znalezione w tej misji, odblokowane dopiero po ekstrakcji
+var orders: Array = []                ## prasa: zamówione partie (wpisy `ammo_*` z throwables.gd), dostawa po udanej misji (zapis u hosta)
 var unlocked: Dictionary = {}         ## id broni → true: kupione w warsztacie (zapis u hosta)
 var trophies: Dictionary = {}         ## id misji (boss) → true: ukończona, odblokowuje broń-trofeum (zapis u hosta)
 var last_gain := 0                    ## ile trafiło do banku po ostatniej misji (karta wyniku, ściana wyników)
@@ -57,7 +64,7 @@ func _ready() -> void:
 	load_progress()
 	multiplayer.peer_connected.connect(func(id: int) -> void:
 		if NoiseMgr.is_server():
-			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys()))
+			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders))
 
 ## Złom nie obowiązuje w Nocnym Dyżurze (osobna seria z własnymi zasadami).
 func enabled() -> bool:
@@ -84,6 +91,10 @@ func bank_loot(bonus: int) -> int:
 	for id in newp:
 		parts[id] = true
 	found.clear()
+	var done: Array = orders.duplicate()
+	for k in done:
+		Arsenal.add_throwable(String(k), Throwables.box_of(String(k)))     # partie z prasy: pudełka do wspólnego zapasu
+	orders.clear()
 	save_progress()
 	_push()
 	if not newp.is_empty():
@@ -91,6 +102,11 @@ func bank_loot(bonus: int) -> int:
 			_banked_rpc.rpc(newp)
 		else:
 			_banked_rpc(newp)
+	if not done.is_empty():
+		if NoiseMgr.has_network():
+			_delivered_rpc.rpc(done)
+		else:
+			_delivered_rpc(done)
 	return gain
 
 ## Wipe / restart: łup i znalezione części przepadają, bank zostaje.
@@ -253,7 +269,7 @@ func _buy_supply_rpc(kind: String) -> void:
 func _buy_supply_server(kind: String, peer_id: int) -> void:
 	var reason := "ok"
 	var price := Throwables.price_of(kind)
-	if not Throwables.is_valid(kind) or price <= 0:
+	if not Throwables.is_valid(kind) or price <= 0 or String(Throwables.KINDS[kind]["mode"]) == "ammo":     # amunicja: tylko prasa (1.7.354)
 		reason = "invalid"
 	elif not enabled():
 		reason = "off"
@@ -272,6 +288,59 @@ func _buy_supply_server(kind: String, peer_id: int) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _supply_result_rpc(kind: String, reason: String) -> void:
 	supply_result.emit(kind, reason == "ok", reason)
+
+## Cena partii `kind` w prasie (zaokrąglona do 5).
+func press_price(kind: String) -> int:
+	return int(roundf(float(Throwables.price_of(kind)) * PRESS_PRICE / 5.0)) * 5
+
+## Ile partii `kind` czeka w prasie.
+func ordered(kind: String) -> int:
+	return orders.count(kind)
+
+## Zamówienie partii amunicji specjalnej `kind` w prasie (złom drużyny, serwer).
+func request_order(kind: String) -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_order_server(kind, NoiseMgr.local_id())
+	else:
+		_order_rpc.rpc_id(1, kind)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _order_rpc(kind: String) -> void:
+	if NoiseMgr.is_server():
+		_order_server(kind, multiplayer.get_remote_sender_id())
+
+func _order_server(kind: String, peer_id: int) -> void:
+	var reason := "ok"
+	if not Throwables.is_valid(kind) or String(Throwables.KINDS[kind]["mode"]) != "ammo":
+		reason = "invalid"
+	elif not enabled():
+		reason = "off"
+	elif orders.size() >= PRESS_SLOTS:
+		reason = "busy"
+	elif Arsenal.get_throwable(kind) + (ordered(kind) + 1) * Throwables.box_of(kind) > int(Throwables.KINDS[kind]["max"]):
+		reason = "full"
+	elif not spend(press_price(kind)):
+		reason = "poor"
+	else:
+		orders.append(kind)
+		save_progress()
+		_push()
+	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
+		order_result.emit(kind, reason == "ok", reason)
+	else:
+		_order_result_rpc.rpc_id(peer_id, kind, reason)
+
+@rpc("authority", "call_remote", "reliable")
+func _order_result_rpc(kind: String, reason: String) -> void:
+	order_result.emit(kind, reason == "ok", reason)
+
+@rpc("authority", "call_local", "reliable")
+func _delivered_rpc(kinds: Array) -> void:
+	orders_delivered.emit(kinds)
+	var names: Array = []
+	for k in kinds:
+		names.append(tr(String(Throwables.KINDS.get(String(k), {}).get("name", k))))
+	Msg.post("press.ready", Msg.Ch.TOAST, tr("Reloading press: %s ready") % ", ".join(names), {"style": Msg.Style.SUCCESS, "ttl": 6.0, "prio": 65})
 
 ## Gracz wymienia część eksploatacyjną `part` broni `w` przy stole konserwacji: złom płaci drużyna (serwer), zużycie siedzi w profilu gracza.
 func request_service(w: int, part: String) -> void:
@@ -374,10 +443,11 @@ func _part_done(id: String, reason: String) -> void:
 func _push() -> void:
 	changed.emit()
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys())
+		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders)
 
 @rpc("authority", "call_remote", "reliable")
-func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array, fnd: Array = []) -> void:
+func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array, fnd: Array = [], ord: Array = []) -> void:
+	orders = ord.duplicate()
 	bank = b
 	loot = l
 	last_gain = g
@@ -402,7 +472,11 @@ func load_progress() -> void:
 	unlocked.clear()
 	trophies.clear()
 	parts.clear()
+	orders.clear()
 	if ok:
+		for k in Array(cfg.get_value("workshop", "orders", [])):
+			if Throwables.is_valid(String(k)):
+				orders.append(String(k))
 		for w in Array(cfg.get_value("workshop", "unlocked", [])):
 			unlocked[int(w)] = true
 		for m in Array(cfg.get_value("workshop", "trophies", [])):
@@ -433,6 +507,7 @@ func save_progress() -> void:
 	cfg.set_value("workshop", "trophies", trophies.keys())
 	cfg.set_value("gear", "stock", Arsenal.stock)
 	cfg.set_value("workshop", "parts", parts.keys())
+	cfg.set_value("workshop", "orders", orders)
 	if cfg.has_section_key("workshop", "levels"):
 		cfg.erase_section_key("workshop", "levels")             # przeniesione do części (migracja w load_progress)
 	cfg.save(SAVE_PATH)
