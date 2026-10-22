@@ -2796,6 +2796,20 @@ func _t_parts_alt() -> void:
 	# wybór w gnieździe: wylot LR-7 i HKM-9 ma teraz dwie części, lufa P-83 — dwie
 	check("wybór w gniazdach: LR-7 wylot %d, HKM-9 wylot %d, P-83 lufa %d części" % [Parts.in_slot("lr7", "muzzle").size(), Parts.in_slot("hkm9", "muzzle").size(), Parts.in_slot("p64", "barrel").size()],
 		Parts.in_slot("lr7", "muzzle").size() == 2 and Parts.in_slot("hkm9", "muzzle").size() == 2 and Parts.in_slot("p64", "barrel").size() == 2)
+	# część 2 (1.7.352): slam-fire robi z PELLET-8 broń automatyczną (pole bool przez "set"), nowe gniazda lufy PELLET-8 i WRATH-4, obcięta lufa SPREAD-12
+	var s0 := Weapons.base_def(Weapons.SRUT8)
+	var ss := pdef(Weapons.SRUT8, ["s8_slam", "s8_long"])
+	var sw0 := Weapons.base_def(Weapons.SPREAD12)
+	var sw := pdef(Weapons.SPREAD12, ["sp12_sawn"])
+	var g0 := Weapons.base_def(Weapons.GNIEW4)
+	var gs := pdef(Weapons.GNIEW4, ["g4_short"])
+	var r0 := Weapons.base_def(Weapons.WIDMO1)
+	var ro := pdef(Weapons.WIDMO1, ["w1_over"])
+	check("część 2: PELLET-8 slam-fire auto %s (fabryczny %s), rytm ×%.2f, gniazda %s; SPREAD-12 obcięta lufa stożek ×%.2f; WRATH-4 krótka rura dobycie ×%.2f, gniazda %s; SPECTER-1 przeładowanie ×%.2f obrażeń" % [
+		str(ss.auto), str(s0.auto), ss.cooldown / s0.cooldown, str(Parts.slots_of("srut8")), sw.spread_deg / sw0.spread_deg, gs.draw_time / g0.draw_time, str(Parts.slots_of("gniew4")), ro.damage / r0.damage],
+		ss.auto and not s0.auto and is_equal_approx(ss.cooldown, s0.cooldown * 0.7) and ss.spread_deg < s0.spread_deg and Parts.slots_of("srut8") == ["feed", "barrel", "action", "stock"]
+		and is_equal_approx(sw.spread_deg, sw0.spread_deg * 1.35) and is_equal_approx(gs.draw_time, g0.draw_time * 0.7) and Parts.slots_of("gniew4") == ["feed", "barrel", "special"]
+		and is_equal_approx(ro.damage, r0.damage * 1.3) and ro.charge_time > r0.charge_time and not Weapons.base_def(Weapons.SRUT8).auto)
 	await clear_fits()
 
 ## Części broni (1.7.319, GUNSMITH_PLAN.md etap 2a): kod `fit` w obie strony, montaż gracza (wybór, samomontaż, element fabryczny),

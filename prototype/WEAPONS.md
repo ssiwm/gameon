@@ -603,3 +603,19 @@ Nowe części (wybór w gnieździe zamiast „fabryczna albo jedna”):
 
 Części dopisane na końcu list gniazd — kody `fit` dotychczasowych części się nie zmieniają. Bez modeli 3D (jak mechanizmy i mieszanka).
 Test `_t_parts_alt` (serwer z częściami, część nieodblokowana nie działa, dłuższy ogień z dyszy, nowe gniazdo P-83).
+
+## 32. Alternatywy w gniazdach, część 2 (1.7.352)
+
+`WORKSHOP_PLAN.md` W3. Gniazd z wyborem dwóch lub więcej części w broniach strefy 1: 13 z 32 (przed W3 — 6); katalog liczy 51 części.
+
+| Broń | Gniazdo | Część | Zmiana | Koszt |
+|---|---|---|---|---|
+| SPREAD-12 | lufa | Obcięta lufa | snop ×1,35, dobycie ×0,75; zasięg ×0,8, spadek obrażeń 10 px wcześniej — przeciwieństwo dławika | 70 |
+| PELLET-8 | mechanizm | Mechanizm slam-fire | **ogień przy trzymanym spuście** (`auto`), rytm ×0,7; szarpnięcie ×1,3, rozrzut ×1,25 | 130 |
+| PELLET-8 | lufa (nowe gniazdo) | Długa lufa | snop ×0,85, spadek obrażeń od +20 px; dobycie +0,08 s | 110 |
+| WRATH-4 | lufa (nowe gniazdo) | Skrócona rura | dobycie ×0,7; granat wolniejszy ×0,85 (wcześniej opada) | 120 |
+| SPECTER-1 | mechanizm | Kondensator przeładowania | obrażenia ×1,3; ładowanie ×1,35, hałas ×1,15 | 240 |
+| Maczeta | rękojeść | Krótki chwyt | cios ×0,85 czasu; łuk ×0,8, zasięg −4 px | 60 |
+
+`Parts.apply` obsługuje pola bool (`"set"` 1 włącza, 0 wyłącza) — slam-fire przełącza `auto`. Nowe gniazda lufy PELLET-8 i WRATH-4
+zmieniają układ bitów kodu `fit` tych broni (wybór w profilu zapisany jest po gniazdach, więc przetrwa). Test: `_t_parts_alt` (część 2).
