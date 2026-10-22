@@ -1,6 +1,6 @@
 # DEAD AIR '87 — Game Design Document
 
-**Wersja:** 1.7.211 — numer gry z `prototype/project.godot` (`config/version`); historia zmian: [`CHANGELOG.md`](CHANGELOG.md). Zręby dokumentu pochodzą z 1.6.0 (analiza „wciągająca, przyjemna gra”: game feel, Stalker, down/revive, zakres; patrz §23)
+**Wersja:** 1.7.366 — numer gry z `prototype/project.godot` (`config/version`); historia zmian: [`CHANGELOG.md`](CHANGELOG.md). Zręby dokumentu pochodzą z 1.6.0 (analiza „wciągająca, przyjemna gra”: game feel, Stalker, down/revive, zakres; patrz §23)
 **Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
 **Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
 **Silnik:** Godot 4.7 (renderer Forward+) + GodotSteam
@@ -563,15 +563,32 @@ Cisza radiowa (brak minimapy), Przeciążenie (Uwaga 50 start), Głód amunicji 
 ### 16.0 Strategia zakresu — demo najpierw (v1.3)
 Budżet z §16.4 (10–16 mies. do EA) jest ryzykiem, dopóki nie wiemy, że rdzeń bawi. Dlatego kolejność jest odwrócona:
 1. **Pionowy wycinek = jedna misja w całości** (ręcznie zbudowana mapa, cel, ekstrakcja, 1 boss), 2 bronie, 2 wrogowie + Stalker. To jest **demo na Steam** i materiał do pierwszych playtestów ze znajomymi.
-2. **Playtest „kiedy się nudziłeś, a kiedy się bałeś"** (3–5 osób, nagrany gameplay) — przed jakąkolwiek nową zawartością. Wyniki decydują o priorytetach (§23).
+2. **Playtest „kiedy się nudziłeś, a kiedy się bałeś"** (3–5 osób, nagrany gameplay) — przed jakąkolwiek nową zawartością. Wyniki decydują o priorytetach (§23). **Stan (1.7.366):** sesje z osobami z zewnątrz w toku, wpisy trafią do §23.3; dotychczasowe pomiary map (`MAPS_PLAN.md`) to sesje autora z botem.
 3. **Dopiero potem** pozostałe misje Strefy I, losowe pokoje i EA. Losowość pokoi odkładamy, dopóki pętla na jednej mapie nie jest przyjemna po 20 powtórkach.
-4. **Progresja w EA — wersja minimalna:** jedna waluta (złom), 3 bronie do kupienia, 2–3 perki, bez Kryjówki-huba i bez Taśm/Próbek. Pełna tabela §10 to cel 1.0, nie EA.
+4. ~~**Progresja w EA — wersja minimalna:** jedna waluta (złom), 3 bronie do kupienia, 2–3 perki, bez Kryjówki-huba i bez Taśm/Próbek.~~ Zastąpione korektą zakresu z §16.0a.
 5. **Nawigacja:** pełne A* dla Stalkera i botów po zbudowaniu poziomu na tilemapie (do tego czasu: ruch po powierzchniach, patrz §8.5).
+
+### 16.0a Korekta zakresu (1.7.366, 2026-10-22)
+Pkt 4 z §16.0 przestał opisywać grę: między 1.7.316 a 1.7.365 (ok. 50 wydań, `GUNSMITH_PLAN.md`, `RANGE_FPS_PLAN.md`, `WORKSHOP_PLAN.md`)
+powstały pełne rusznikarstwo, Kryjówka-hub ze stanowiskami i strzelnica FPP — przed playtestem z pkt 2. Nie cofamy tego; zakres EA to teraz:
+- **Bronie:** wszystkie 9 głównych z §6.1, P-83, maczeta i kilof (zamiast 3 do kupienia), z częściami w gniazdach zamiast poziomów ulepszeń.
+- **Waluty:** złom (wszystko) i próbki (tylko badania części broni specjalnych w pracowni). Wroga wiedza i Taśmy zostają celem 1.0.
+- **Kryjówka:** hub z §10.3 — ława, szafki osobiste, stół konserwacji, prasa elaboracyjna, stół pirotechniczny, pracownia, tokarka, zbrojownia,
+  strzelnica FPP. Szpital, wyzwania tygodniowe i osiągnięcia na ścianie pamięci zostają poza EA.
+- **Głębia obsługi broni jest opcjonalna:** zużycie i zacięcia wyłącza ustawienie „Weapon reliability” (OFF / STANDARD / VETERAN), podrzut,
+  oparcie, gorącą lufę, dwa przeładowania i masę ekwipunku — „Weapon handling” = CLASSIC. Nowy gracz ma grać rdzeń (Uwaga, Stalker, co-op)
+  bez nauki warsztatu.
+
+Zasady na czas do Gate 0 (§16.5):
+1. Systemy warsztatu weryfikuje playtest (§23.3): jeśli gracze z zewnątrz ich nie używają albo gubią się w Kryjówce, upraszczamy i chowamy,
+   a nie rozbudowujemy.
+2. Bez nowych stanowisk, walut i warstw zużycia, dopóki §23.3 nie ma wpisów z co najmniej 3 sesji z osobami z zewnątrz.
+3. Czas idzie najpierw w brakujące punkty §16.1: AI towarzysz pełnej drużyny, stabilność sesji 4-osobowej, demo.
 
 ### 16.1 MVP — co musi działać w premierze EA
 - [ ] Online 1–4 (Steam P2P) + **AI towarzysz wypełniający puste sloty** (nie opcjonalne — patrz 16.3)
 - [x] Strefa I kompletna (3 misje + boss) jako „vertical slice" nośny — **w prototypie: 1.1, 1.2, 1.3 i boss B1 Pijawka (od 1.7.54)**
-- [x] 3 bronie główne, sidearm, maczeta, Wabik (funkcjonalny od EA — to infrastruktura Przesterowania)
+- [x] 3 bronie główne, sidearm, maczeta, Wabik (funkcjonalny od EA — to infrastruktura Przesterowania) — **w prototypie więcej: 9 głównych, części w gniazdach, warsztat (§16.0a)**
 - [x] 4 typy wrogów + Stalker w wersji z §8.1/§8.5 (mniej, ale poprawnie zbalansowanych)
 - [x] System Uwagi, Przesterowanie (Q), ładunek i regeneracja, system światła
 - [x] Serwerowe pociski z lag compensation (nie per-peer symulacja — patrz 18.2)
@@ -579,7 +596,8 @@ Budżet z §16.4 (10–16 mies. do EA) jest ryzykiem, dopóki nie wiemy, że rdz
 - [ ] Demo
 
 ### 16.2 Czego świadomie NIE ma w EA
-Strefy II–VI, większość broni, Bliźniak/Kolekcjoner, Wyzwania tygodniowe, mod support, konsola. To świadome odcięcie — patrz 16.5.
+Strefy II–VI, Bliźniak/Kolekcjoner, Wyzwania tygodniowe, Szpital, Wroga wiedza i Taśmy, mod support, konsola. To świadome odcięcie — patrz 16.5.
+(Do 1.7.365 lista obejmowała też „większość broni” — weszły do EA, patrz §16.0a.)
 
 ### 16.3 AI towarzysz — dlaczego nie może być „opcjonalne w 1.0"
 Multiplayer jest najsilniejszym czynnikiem sukcesu w tej niszy (10x hit rate vs singleplayer), ale zakłada, że **gracz ma kogo zaprosić**. Realnie to połowa dostępnej publiczności: nie każdy ma znajomego w grze, a multiplayer o 3 w nocy jest pusty. Hot-join do botów musi działać bez gadżetu sieciowego (Peer-to-peer LAN feel) — inaczej „gra co-op" staje się „gra, w której potrzebujesz znajomego".
@@ -594,9 +612,10 @@ Dane rynkowe: mediana przychodu gry na Steam ~$250–300; mediana kosztu develop
 | Netcode + synchronizacja serwerowa (16.1) | 200–300 | Największe ryzyko techniczne; zrobić w pierwszej kolejności |
 | AI towarzysz (16.3) | 150–250 | Zależne od istniejącego AI stalkera |
 | Strefa I (3 misje + boss) + tilesety | 250–400 | Audio jako filar grozy — nie zaniedbywać |
-| Broń + pociski + pociski serwerowe | 120–200 | 3 bronie, nie 9 |
+| Broń + pociski + pociski serwerowe | 120–200 | Zakładało 3 bronie; w grze jest 9 (§16.0a) |
 | System Uwagi + Przesterowanie | 60–100 | Prototyp już ma serwerowy rdzeń |
-| UI/HUD, Kryjówka, Endless | 120–180 | |
+| UI/HUD, Kryjówka, Endless | 120–180 | Zakładało Kryjówkę minimalną |
+| Rusznikarstwo, stanowiska Kryjówki, strzelnica FPP | poza pierwotnym budżetem | Zrobione w 1.7.316–1.7.365 (§16.0a); utrzymanie i strojenie dalej kosztują |
 | Marketing / wishlisty / demo / VOD | 80–150 | Równolegle, nie na końcu |
 | **RAZEM do EA (Strefa I)** | **~1000–1600 h** | Przy ~25 h/tydz. na osobę: **~10–16 mies. pracy własnej**; przy 2 osobach ~6–10 mies. |
 | Pełna kampania (Strefy II–VI) | +2500–4000 h | Dopiero po przejściu gate'u w 16.5 |
@@ -612,7 +631,7 @@ Twarde progi, żeby nie palić miesięcy pracy na „a może się uda".
 ### 16.6 Roadmapa (post gate)
 | Etap | Warunek | Zawartość |
 |------|------|-----------|
-| **EA launch** | Gate 0 | Strefa I, Endless, AI towarzysz |
+| **EA launch** | Gate 0 | Strefa I, Endless, AI towarzysz, Kryjówka z warsztatem (§16.0a) |
 | Update 1 | Gate 1 ✓ | Strefa II + Przesterowanie loadouty + Koszmar Tygodnia |
 | Update 2 | sprzedaż ≥12k | Strefa III + drugi typ stalkera |
 | Update 3 | sprzedaż ≥20k | Strefy IV–VI + finał + 3 zakończenia |
@@ -660,6 +679,7 @@ Pierwotny GDD ustawiał $12.99 na podstawie „$10–20 daje 1,9x lift". To był
 | Przesycenie co-op horroru | średnia | średni | Hook: retro side-scroll + mikrofon + aktywne Przesterowanie; cena $9.99 |
 | Stalker irytuje zamiast straszyć | średnia | średni | Reguły z 8.5 (dwie prędkości, cofnięcie po ciosie), okna oddechu, playtesty |
 | Zasięg EA zbyt duży, Gate 1 nieosiągalny | średnia | wysoki | Warunkowa roadmapa (16.6); Strefa I jako jedyny nośnik EA |
+| **Głębia warsztatu przytłacza nowych graczy, rozmywa pitch „hałas i Stalker”** | średnia | wysoki | Ustawienia CLASSIC / reliability OFF (§16.0a); playtest (§23.3) rozstrzyga, co chowamy; bez nowych systemów warsztatu do Gate 0 |
 
 ---
 
