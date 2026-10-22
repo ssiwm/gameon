@@ -10,14 +10,24 @@ const REACH_X := 32.0
 const REACH_Y := 40.0
 const TILE := 16.0
 ## Wyposażenie: ława z imadłem i tokarką, skrzynka z prętami — [nazwa przedmiotu HD, przesunięcie w kaflach]
-const PROPS := [["workshop", 0.0], ["crate", -1.8]]       ## skrzynka po lewej — po prawej stoi generator (HUB_PROPS, kol. 14)
+const PROPS := [["workshop", 0.0], ["crate", -1.8]]       ## zapas, gdy brak modeli 3D stanowiska (skrzynka po lewej — po prawej generator)
+## Modele 3D stanowiska (view3d.gd, grupa „station_props”; źródła: Meshy — tokarka i szlifierka, Poly Haven CC0 — wózek z imadłem, skrzynia
+## z wiertarką stołową; `tools/prep_items3d.py`): [model z art/items3d/, przesunięcie x w pikselach świata, głębia z w m]. Generator stoi
+## 22 px na prawo od znacznika: tokarka (19,6 px) stoi tuż przed nim, reszta ciasno w lewo, żeby zmieścić się w kręgu lampy stanowiska.
+const MODELS := [["lathe", 8.3, -1.0], ["lathe_cart", -10.7, -1.05], ["bench_grinder", -25.0, -0.85], ["drill_chest", -36.0, -1.1]]
+const MODEL_CHECK := "res://art/items3d/lathe.glb"
+
+var station_props: Array = []
 
 var local_in_range := false
 
 func _ready() -> void:
 	add_to_group("lathe_bench")
 	z_index = 0
-	if Sprites.newitem:
+	if ResourceLoader.exists(MODEL_CHECK):
+		station_props = MODELS                                # modele 3D (view3d) zamiast przedmiotów HD
+		add_to_group("station_props")
+	elif Sprites.newitem:
 		for pr in PROPS:
 			if not ItemsHd.has(String(pr[0])):
 				continue

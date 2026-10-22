@@ -25,3 +25,16 @@ Większość modeli w tym katalogu powstaje z Tripo albo z brył proceduralnych 
 | barrel_n | barrel_03 | beczki we wnętrzach (1.2, 1.3) |
 | jerrycan | metal_jerrycan | kanistry (1.1, 1.2, 1.3, B1, kryjówka) |
 | gas_mask | old_gas_mask | maska wisząca na ścianie (1.2, 1.3, B1, kryjówka) |
+| lathe_cart | tool_cart + bench_vice_01 | wózek-stół z imadłem przy tokarce (kryjówka) |
+| drill_chest | metal_tool_chest + old_drill_press | skrzynia narzędziowa z wiertarką stołową przy tokarce (kryjówka) |
+
+## Modele z Meshy (image-to-3D)
+
+Maszyny, których nie ma w bibliotekach CC0: obraz wejściowy z FLUX.1 schnell (lokalnie, `tools/comfy_gen.py image --flux`), model z Meshy
+(`tools/meshy_prop.py`, płatne kredyty konta autora gry — wyniki planu płatnego należą do autora). Źródła, obrazy wejściowe i parametry zadań
+w `art_src/world/meshy/`; `tools/prep_items3d.py` upraszcza siatki i ustawia naturalną skalę.
+
+| Model w grze | Źródło | Gdzie |
+|---|---|---|
+| lathe | `art_src/world/meshy/lathe.glb` (tokarka w stylu TUR-50) | tokarka i szlifierka (kryjówka) |
+| bench_grinder | `art_src/world/meshy/bench_grinder.glb` (szlifierka stołowa na kolumnie) | tokarka i szlifierka (kryjówka) |

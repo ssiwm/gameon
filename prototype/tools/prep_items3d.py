@@ -110,6 +110,13 @@ TRIPO_MODELS = {
     "pipes": ("../polyhaven/modular_industrial_pipes_01.glb", "-Y", 17.1, 7000, 23.9),         # zestaw rur ułożony w panel 1,4 × 1,95 m
     "compressor": ("../polyhaven/old_military_compressor.glb", "+X", 20.5, 8000, 14.4),       # model leży wzdłuż osi Y: bokiem do kamery
     "cart": ("../polyhaven/industrial_storage_cart.glb", "-Y", 19.6, 5000, 16.8),
+    # stanowisko tokarki i szlifierki (WORKSHOP_PLAN.md, pilot assetów stanowisk, 2026-10-22): maszyny z Meshy (obraz z Flux → image-to-3D,
+    # tools/meshy_prop.py, źródła i parametry w art_src/world/meshy/), wyposażenie z Poly Haven. Szerokości w naturalnej skali (1 px = 0,082 m):
+    # tokarka TUR-50 1,6 m, szlifierka na kolumnie 0,82 m, wózek-stół 1,27 m z imadłem, skrzynia narzędziowa 0,69 m z wiertarką stołową.
+    "lathe": ("../meshy/lathe.glb", "-Y", 19.6, 12000),
+    "bench_grinder": ("../meshy/bench_grinder.glb", "-Y", 10.0, 6000),
+    "lathe_cart": (["../polyhaven/tool_cart.glb", "../polyhaven/bench_vice_01.glb"], "-Y", 15.6, 9000),
+    "drill_chest": (["../polyhaven/metal_tool_chest.glb", "../polyhaven/old_drill_press.glb"], "-Y", 8.4, 9000),
     "barrel_n": ("../polyhaven/barrel_03.glb", "-Y", 7.75, 2500, 11.4),
     "jerrycan": ("../polyhaven/metal_jerrycan.glb", "-Y", 4.3, 3000, 5.6),                    # kanister 35 × 46 cm w naturalnej skali
     "gas_mask": ("../polyhaven/old_gas_mask.glb", "-Y", 2.6, 5000, 13.8),                     # maska z wężem i filtrem (1,13 m): wisi na ścianie za głowicę

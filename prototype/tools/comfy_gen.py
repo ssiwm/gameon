@@ -88,6 +88,31 @@ def image(prompt_text, out, seed=1, neg="", size=1024, steps=28):
     print("OK obraz %s (%.0f s)" % (out, dt))
 
 
+FLUX_CKPT = "flux1-schnell-fp8.safetensors"
+
+
+def image_flux(prompt_text, out, seed=1, width=1024, height=1024):
+    """Opis → obraz przez FLUX.1 schnell (4 kroki, cfg 1, euler/simple; negatyw = ConditioningZeroOut) — wierniejszy opisowi niż SDXL,
+    dlatego służy do konceptów i obrazów wejściowych dla image-to-3D (Meshy, TRELLIS). Bez doklejanego stylu SDXL (STYLE / NEG)."""
+    prefix = "da87_" + os.path.splitext(os.path.basename(out))[0]
+    p = {
+        "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": FLUX_CKPT}},
+        "5": {"class_type": "EmptySD3LatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
+        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt_text, "clip": ["4", 1]}},
+        "7": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["6", 0]}},
+        "3": {"class_type": "KSampler", "inputs": {"seed": seed, "steps": 4, "cfg": 1.0, "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0,
+                                                   "model": ["4", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0]}},
+        "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
+        "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": prefix, "images": ["8", 0]}},
+    }
+    t0 = time.time()
+    _, dt = _run(p, 600)
+    src = _newest(os.path.join(OUTPUT, prefix + "_*.png"), t0)
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    shutil.copy(src, out)
+    print("OK obraz (flux) %s (%.0f s)" % (out, dt))
+
+
 AUDIO_CKPT = {"medium": "stable_audio_3_medium.safetensors", "sfx": "stable_audio_3_small_sfx.safetensors"}
 AUDIO_CLIP = "t5gemma_b_b_ul2.safetensors"
 
@@ -203,6 +228,7 @@ def main():
     i.add_argument("--out", required=True)
     i.add_argument("--seed", type=int, default=1)
     i.add_argument("--neg", default="")
+    i.add_argument("--flux", action="store_true", help="FLUX.1 schnell zamiast SDXL (koncepty, wejście image-to-3D)")
     m = sub.add_parser("model")
     m.add_argument("image")
     m.add_argument("--out", required=True)
@@ -229,7 +255,10 @@ def main():
     except Exception:
         sys.exit("ComfyUI nie odpowiada na %s — uruchom Comfy Desktop." % HOST)
     if a.cmd == "image":
-        image(a.prompt, a.out, a.seed, a.neg)
+        if a.flux:
+            image_flux(a.prompt, a.out, a.seed)
+        else:
+            image(a.prompt, a.out, a.seed, a.neg)
     elif a.cmd == "model":
         model(a.image, a.out, a.faces, a.tex)
     elif a.cmd == "audio":

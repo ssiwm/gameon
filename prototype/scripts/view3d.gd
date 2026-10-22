@@ -323,6 +323,7 @@ func _process(delta: float) -> void:
 	_sync_launch_doors()
 	_sync_range_doors()
 	_sync_hub_props()
+	_sync_station_props()
 	_sync_world_notes()
 	_sync_guns()
 	_sync_cabinets(delta)
@@ -1589,6 +1590,32 @@ func _sync_hub_props() -> void:
 				sm.set_shader_parameter("sky_top", sc[0])
 				sm.set_shader_parameter("sky_bot", sc[1])
 				(d["light"] as OmniLight3D).light_energy = 0.35 + 3.0 * fl
+
+## Wyposażenie stanowisk warsztatu (grupa „station_props”, np. lathe_bench.gd): węzeł niesie `station_props` — listę
+## [model z art/items3d/, przesunięcie x w pikselach świata, głębia z w m] — a widok stawia modele w skali 1 jednostka = 1 piksel świata,
+## stopami na podłodze przy węźle, tak jak rekwizyty maszynowni. Budowane raz na węzeł (stanowisko się nie rusza).
+var _station_props3d := {}                  ## id węzła → korzeń Node3D
+
+func _sync_station_props() -> void:
+	for id in _station_props3d.keys():
+		if not is_instance_valid(_station_props3d[id]):
+			_station_props3d.erase(id)
+	for n in get_tree().get_nodes_in_group("station_props"):
+		if not (n is Node2D) or _geo_key == "" or _station_props3d.has(n.get_instance_id()):
+			continue
+		var root := Node3D.new()
+		root.name = "StationProps_" + String(n.name)
+		_geo.add_child(root)
+		var foot := Level3D.px_to_m((n as Node2D).global_position)
+		root.position = Vector3(foot.x, foot.y, 0.0)
+		for e in n.get("station_props"):
+			var m := _item_model(String(e[0]))
+			if m == null:
+				continue
+			m.scale = Vector3(PX, PX, PX)
+			m.position = Vector3(float(e[1]) * PX, 0.0, float(e[2]))
+			root.add_child(m)
+		_station_props3d[n.get_instance_id()] = root
 
 func _hp_mat(col: Color, metal := 0.4, rough := 0.7) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()

@@ -1,0 +1,8 @@
+{
+ "task": "01a1649c-039d-7467-9f30-3d78ef37eafd",
+ "ai_model": "latest",
+ "geometry_resolution": "standard",
+ "texture_resolution": "2k",
+ "source_image": "lathe_source.png",
+ "credits": 30
+}
