@@ -35,6 +35,8 @@ var completed: Dictionary = {}                ## id misji → true (pierwsze uko
 var look := 0                                 ## wygląd (Look.code): płeć × strój; kosmetyka, odblokowywana poziomem
 var equipped: Array = ["", ""]                ## id perków w slotach 0–1 ("" = pusty)
 var fits: Dictionary = {}                     ## klucz broni → {gniazdo: id części | "" (fabryczny)}; brak wpisu = pierwsza odblokowana część (parts.gd)
+var presets: Dictionary = {}                  ## klucz broni → [PRESETS × {gniazdo: id części | ""}] — zapisane zestawy części (WORKSHOP_PLAN.md U6, od 1.7.349); {} = pusty
+const PRESETS := 3                            ## tyle zestawów na broń
 var cond: Dictionary = {}                     ## klucz broni → stan techniczny 0..100 % (GUNSMITH_PLAN §6, od 1.7.328); brak wpisu = 100
 var mastery: Dictionary = {}                  ## klucz broni → punkty wprawy (GUNSMITH_PLAN §7.3, od 1.7.330): trafienia i zabójstwa tym graczem z tej broni
 var history: Dictionary = {}                  ## klucz broni → {"k": zabójstwa, "e": elity, "b": bossowie} (GUNSMITH_PLAN §7.4, od 1.7.331)
@@ -336,6 +338,54 @@ func fitted(key: String, slot: String) -> String:
 			return String(p["id"])
 	return ""
 
+## Zestaw `i` broni `key` ({} — pusty): {gniazdo: id części | ""}.
+func preset(key: String, i: int) -> Dictionary:
+	var arr: Array = presets.get(key, []) as Array
+	return (arr[i] as Dictionary) if i >= 0 and i < arr.size() and arr[i] is Dictionary else {}
+
+## Zapisuje bieżący montaż broni `key` jako zestaw `i` (każde gniazdo, także fabryczne).
+func save_preset(key: String, i: int) -> void:
+	if i < 0 or i >= PRESETS:
+		return
+	var arr: Array = (presets.get(key, []) as Array).duplicate()
+	while arr.size() < PRESETS:
+		arr.append({})
+	var f := {}
+	for s in Parts.slots_of(key):
+		f[s] = fitted(key, String(s))
+	arr[i] = f
+	presets[key] = arr
+	save()
+	changed.emit()
+
+## Montuje zestaw `i` broni `key`. Część, której drużyna już nie ma (np. inny host), zostaje w gnieździe jak była. Zwraca liczbę pominiętych części.
+func load_preset(key: String, i: int) -> int:
+	var p := preset(key, i)
+	if p.is_empty():
+		return 0
+	var f: Dictionary = (fits.get(key, {}) as Dictionary).duplicate()
+	var skipped := 0
+	for s in Parts.slots_of(key):
+		var id := String(p.get(s, ""))
+		if id == "" or Scrap.has_part(id):
+			f[s] = id
+		else:
+			skipped += 1
+	fits[key] = f
+	save()
+	changed.emit()
+	return skipped
+
+## Czy montaż broni `key` jest dokładnie zestawem `i`.
+func is_preset_fitted(key: String, i: int) -> bool:
+	var p := preset(key, i)
+	if p.is_empty():
+		return false
+	for s in Parts.slots_of(key):
+		if String(p.get(s, "")) != fitted(key, String(s)):
+			return false
+	return true
+
 ## Kod części (`fit`) broni `w` dla tego gracza — replikowany jako player.fits i wysyłany ze strzałem.
 func fit_code(w: int) -> int:
 	var key := String(Weapons.def(w).key)
@@ -351,6 +401,7 @@ func save_to(path: String) -> void:
 	cfg.set_value("profile", "equipped", equipped)
 	cfg.set_value("profile", "look", look)
 	cfg.set_value("profile", "fits", fits)
+	cfg.set_value("profile", "presets", presets)
 	cfg.set_value("profile", "cond", cond)
 	cfg.set_value("profile", "mastery", mastery)
 	cfg.set_value("profile", "history", history)
@@ -372,6 +423,7 @@ func load_from(path: String) -> void:
 		if Perks.is_valid(id):
 			equipped[i] = id
 	fits = (cfg.get_value("profile", "fits", {}) as Dictionary).duplicate(true)
+	presets = (cfg.get_value("profile", "presets", {}) as Dictionary).duplicate(true)
 	cond = {}
 	var cd_in := cfg.get_value("profile", "cond", {}) as Dictionary
 	for k in cd_in:
@@ -410,6 +462,7 @@ func reset_for_test() -> void:
 	completed.clear()
 	equipped = ["", ""]
 	fits = {}
+	presets = {}
 	cond = {}
 	mastery = {}
 	history = {}

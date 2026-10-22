@@ -467,7 +467,8 @@ Inny wymiar: organiczne korytarze, grawitacja się zmienia, radio mówi głosami
 | Weteran | +1 serce (i +1 do sufitu kumulacji apteczek) |
 
 ### 10.3 Kryjówka (hub)
-- **Warsztat** — bronie i części broni (zakup dla drużyny, montaż we własnej broni); wybrana broń leży na ławie 3D z częścią spod kursora.
+- **Warsztat** — bronie i części broni (zakup dla drużyny, montaż we własnej broni), trzy zapisane zestawy części na broń (każdy gracz osobno), czyszczenie broni i zaopatrzenie; wybrana broń leży na ławie 3D z częścią spod kursora.
+- **Szafki osobiste** (świetlica, od 1.7.349) — perki i wygląd postaci (wcześniej zakładki warsztatu). Kolejne stanowiska warsztatu: `WORKSHOP_PLAN.md`.
 - **Zbrojownia** — dwie gabloty po cztery broni (w prototypie od 1.7.219): [F] przy gablocie, ↑ / ↓ wybór, [E] bierze; zamknięta broń z ceną w złomie (odblokowanie w warsztacie).
 - **Szpital** — stan uratowanych NPC, bonusy fabularne (np. uratowany naukowiec daje schemat EMP).
 - **Układ (od 1.7.265, „Stacja Dead Air”)** — bunkier pod nieczynną stacją radiową, trzy poziomy połączone szybami: środek (śluza → ściana pamięci → warsztat → świetlica z izbą chorych → zbrojownia → odprawa i wyjście), góra (radiostacja nad tablicą odpraw), dół (maszynownia i magazyn ze skrytkami). Wyjście na misję: strefa startu przed drzwiami z lampą ON AIR (gotowość przez stanie w strefie albo [Enter]), odliczanie 3 s (cyfra w HUD) ze świecącym padem, poświatą przy podłodze i polami graczy. Klimat: generator buczy i mruga w burzy, zza zamkniętych drzwi D-7 co jakiś czas ktoś puka, okno radiostacji pokazuje prognozowaną pogodę.

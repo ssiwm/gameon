@@ -249,7 +249,11 @@ class SupplyTile extends Button:
 		custom_minimum_size = Vector2(150.0, 46.0)
 
 var _open := false
-var _page := 0                        ## 0 = ARMS (bronie i ulepszenia), 1 = SUPPLIES (granaty, miny, narzędzia)
+var _page := 0                        ## 0 = ARMS (bronie i ulepszenia), 1 = SUPPLIES (granaty, miny, narzędzia), 2 = PERKS, 3 = LOOK
+var _mode := "bench"                  ## „bench" — ława (ARMS, SUPPLIES), „locker" — szafki osobiste (PERKS, LOOK); od 1.7.349, WORKSHOP_PLAN.md W1
+const MODE_PAGES := {"bench": [0, 1], "locker": [2, 3]}
+const MODE_GROUP := {"bench": "workshop", "locker": "locker_station"}      ## grupa stanowiska: panel zamyka się, gdy gracz od niego odejdzie
+var _title: Label
 var _sup_sel := 0
 var _arms_body: HBoxContainer
 var _sup_body: HBoxContainer
@@ -321,9 +325,9 @@ func _ready() -> void:
 	_card.add_child(root)
 	# nagłówek: tytuł, portfel
 	var head := HBoxContainer.new()
-	var title := UiTheme.heading("WORKSHOP", 16, UiTheme.ACCENT)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(title)
+	_title = UiTheme.heading("WORKSHOP", 16, UiTheme.ACCENT)
+	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(_title)
 	for pi in 4:
 		var pb := Button.new()                                 # zakładki ARMS / SUPPLIES / PERKS / LOOK (Tab przełącza)
 		pb.text = ["ARMS", "SUPPLIES", "PERKS", "LOOK"][pi]
@@ -912,16 +916,21 @@ func _build_detail() -> Control:
 func is_open() -> bool:
 	return _open
 
-func open() -> void:
+## `mode`: „bench" — ława warsztatu (bronie, części, zaopatrzenie), „locker" — szafki osobiste (perki, wygląd). Zakładki spoza trybu są ukryte.
+func open(mode := "bench") -> void:
 	if _open:
 		return
 	_open = true
 	visible = true
+	_mode = mode if MODE_PAGES.has(mode) else "bench"
+	_title.text = tr("LOCKER") if _mode == "locker" else tr("WORKSHOP")
+	for pi in _page_btns.size():
+		(_page_btns[pi] as Button).visible = (MODE_PAGES[_mode] as Array).has(pi)
 	_msg.text = ""
 	_hint.text = _controls_hint()
 	_sel = 0
 	_opt = _first_part_opt()
-	_page = 0
+	_page = int((MODE_PAGES[_mode] as Array)[0])
 	Settings.block_game_input(true)
 	_prev_mouse = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE            # w grze celownik zastępuje kursor; panel potrzebuje myszy
@@ -945,7 +954,7 @@ func _process(delta: float) -> void:
 	if _msg_t <= 0.0:
 		_msg.text = ""
 	# panel zamyka się, gdy gracz odejdzie od ławy / zginie / misja się zmieni (przerwane czyszczenie trzeba zacząć od nowa)
-	var wk := get_tree().get_first_node_in_group("workshop")
+	var wk := get_tree().get_first_node_in_group(String(MODE_GROUP[_mode]))
 	if wk == null or not wk.local_in_range or not NoiseMgr.safe_zone:
 		close()
 		return
@@ -966,8 +975,11 @@ func _exit_tree() -> void:
 func _controls_hint() -> String:
 	var pad := Actions.pad_mode
 	var nav := "D-PAD" if pad else Actions.cluster(["menu_up", "menu_left", "menu_down", "menu_right"]).to_upper()
-	return tr("%s select   ·   %s / %s part   ·   %s buy / fit / equip   ·   %s arms / supplies / perks / look   ·   %s close   ·   or click") % [
-		nav, _menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_tab", pad), _menu_key("menu_back", pad)]
+	if _mode == "locker":
+		return tr("%s select   ·   %s / %s perk slot   ·   %s equip   ·   %s perks / look   ·   %s close   ·   or click") % [
+			nav, _menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_tab", pad), _menu_key("menu_back", pad)]
+	return tr("%s select   ·   %s / %s part   ·   %s buy / fit   ·   %s save set   ·   %s arms / supplies   ·   %s close   ·   or click") % [
+		nav, _menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_alt", pad), _menu_key("menu_tab", pad), _menu_key("menu_back", pad)]
 
 func _menu_key(id: String, pad: bool) -> String:
 	return Actions.text(id, true, Actions.DEV_PAD if pad else Actions.DEV_KEY).to_upper()
@@ -988,7 +1000,8 @@ func _input(event: InputEvent) -> void:
 	if not _open or not (event is InputEventKey or event is InputEventJoypadButton) or not event.is_pressed() or event.is_echo():
 		return
 	if event.is_action_pressed("menu_tab"):
-		_set_page((_page + 1) % 4)
+		var pages: Array = MODE_PAGES[_mode]
+		_set_page(int(pages[(pages.find(_page) + 1) % pages.size()]))
 		get_viewport().set_input_as_handled()
 		return
 	var step := _nav_step(event)
@@ -1029,6 +1042,8 @@ func _input(event: InputEvent) -> void:
 		_move(step)
 	elif event.is_action_pressed("menu_slot_1") or event.is_action_pressed("menu_slot_2"):
 		_move_opt(-1 if event.is_action_pressed("menu_slot_1") else 1)
+	elif event.is_action_pressed("menu_alt"):
+		_save_preset()
 	elif accept:
 		_act()
 	elif back:
@@ -1044,6 +1059,9 @@ func _options(w: int) -> Array:
 		out.append({"slot": s, "id": ""})
 		for p in Parts.in_slot(key, String(s)):
 			out.append({"slot": s, "id": String(p["id"])})
+	if Scrap.is_unlocked(w) and not Parts.slots_of(key).is_empty():
+		for i in Profile.PRESETS:
+			out.append({"slot": "preset", "id": str(i)})       # zestawy części gracza (WORKSHOP_PLAN.md U6)
 	if Scrap.is_unlocked(w) and not Weapons.def(w).is_melee() and Settings.reliability_mult() > 0.0:
 		out.append({"slot": "service", "id": "clean"})
 	return out
@@ -1100,6 +1118,19 @@ func _act() -> void:
 	var o: Dictionary = ops[clampi(_opt, 0, ops.size() - 1)]
 	var key := String(Weapons.def(w).key)
 	var id := String(o["id"])
+	if String(o["slot"]) == "preset":
+		var pi := int(o["id"])
+		if Profile.preset(key, pi).is_empty():
+			_save_preset()
+		elif Profile.is_preset_fitted(key, pi):
+			_say(tr("Set %d is already fitted.") % (pi + 1), UiTheme.BP_MUTED)
+		else:
+			var skipped := Profile.load_preset(key, pi)
+			Audio.play("ui_confirm", Audio.BUS_UI, -6.0)
+			_say((tr("Fitted set %d.") % (pi + 1)) if skipped == 0 else (tr("Fitted set %d — %d parts the squad no longer has stay as they were.") % [pi + 1, skipped]),
+				UiTheme.OK if skipped == 0 else UiTheme.BP_MUTED)
+			_refresh()
+		return
 	if String(o["slot"]) == "service":
 		if _clean_w == w:
 			_stop_clean()
@@ -1137,6 +1168,35 @@ func _on_result(w: int, ok: bool, reason: String) -> void:
 		_:
 			_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
+
+## Zestaw pod kursorem: zapisuje bieżący montaż broni (nadpisuje). Poza wierszem zestawu nic nie robi.
+func _save_preset() -> void:
+	if _page != 0:
+		return
+	var w: int = LIST[_sel]
+	var ops := _options(w)
+	if ops.is_empty():
+		return
+	var o: Dictionary = ops[clampi(_opt, 0, ops.size() - 1)]
+	if String(o["slot"]) != "preset":
+		return
+	Profile.save_preset(String(Weapons.def(w).key), int(o["id"]))
+	Audio.play("ui_confirm", Audio.BUS_UI, -6.0)
+	_say(tr("Current fit saved as set %d.") % (int(o["id"]) + 1), UiTheme.OK)
+	_refresh()
+
+## Krótki opis zestawu: nazwy części (bez fabrycznych), „factory", gdy same fabryczne, „—" dla pustego.
+func _preset_summary(key: String, i: int) -> String:
+	var p := Profile.preset(key, i)
+	if p.is_empty():
+		return "—"
+	var names: Array = []
+	for s in Parts.slots_of(key):
+		var id := String(p.get(s, ""))
+		if id != "":
+			names.append(tr(String(Parts.get_part(id)["name"])))
+	var txt := ", ".join(names) if not names.is_empty() else tr("factory")
+	return txt if txt.length() <= 30 else txt.substr(0, 29) + "…"
 
 ## Czyszczenie przy ławie (stan siedzi w profilu gracza, więc serwer nie bierze udziału): trwa Profile.clean_time, panel musi zostać
 ## otwarty, a gracz przy ławie — odejście, zmiana broni albo ponowne [E] przerywa i trzeba zacząć od nowa.
@@ -1336,12 +1396,19 @@ func _refresh_detail(w: int) -> void:
 		var choice := {}
 		for s in Parts.slots_of(key):
 			choice[s] = Profile.fitted(key, String(s))
-		choice[String(o["slot"])] = String(o["id"])
+		if String(o["slot"]) == "preset":                      # zestaw: cała broń z tym zestawem (części, których drużyna nie ma, zostają jak są)
+			var pset := Profile.preset(key, int(o["id"]))
+			for s in pset:
+				if String(pset[s]) == "" or Scrap.has_part(String(pset[s])):
+					choice[s] = String(pset[s])
+		else:
+			choice[String(o["slot"])] = String(o["id"])
 		pv_code = Parts.encode(key, choice)
 		if pv_code != mine:
 			preview = Weapons.def_build(w, Weapons.build_of(0, pv_code))
 	# na ławie broń już z częścią spod kursora; ona (albo fabryczny element gniazda) świeci i jest wysunięta
-	(_d_stage as GunStage).show_gun(w, Parts.decode(key, pv_code), String(o.get("id", "")) if unlocked else "", String(o.get("slot", "")) if unlocked else "", not unlocked)
+	var hl_part := unlocked and not o.is_empty() and String(o["slot"]) != "preset"
+	(_d_stage as GunStage).show_gun(w, Parts.decode(key, pv_code), String(o.get("id", "")) if hl_part else "", String(o.get("slot", "")) if hl_part else "", not unlocked)
 	_d_title.text = String(base.name)
 	var tag := Codex._slot_name(base)
 	if unlocked and not Parts.of(key).is_empty():
@@ -1383,7 +1450,29 @@ func _refresh_detail(w: int) -> void:
 		var slot := String(op["slot"])
 		if slot != last_slot:
 			last_slot = slot
-			_d_tiers.add_child(UiTheme.label((tr("Service") if slot == "service" else tr(Parts.SLOT_NAMES[slot])).to_upper(), 7, UiTheme.BP_MUTED))
+			var head_txt := tr("Service") if slot == "service" else (tr("Sets") if slot == "preset" else tr(Parts.SLOT_NAMES[slot]))
+			_d_tiers.add_child(UiTheme.label(head_txt.to_upper(), 7, UiTheme.BP_MUTED))
+		if slot == "preset":
+			var pi := int(op["id"])
+			var pb := Button.new()
+			pb.flat = true
+			pb.focus_mode = Control.FOCUS_NONE
+			pb.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			pb.add_theme_font_size_override("font_size", 8)
+			var pfit := Profile.is_preset_fitted(key, pi)
+			pb.add_theme_color_override("font_color", UiTheme.ACCENT if i == _opt else (UiTheme.OK if pfit else UiTheme.BP_TEXT))
+			pb.add_theme_color_override("font_hover_color", UiTheme.ACCENT)
+			pb.text = "%s %s   [%s]" % ["»" if i == _opt else " ", tr("Set %d  ·  %s") % [pi + 1, _preset_summary(key, pi)],
+				tr("empty") if Profile.preset(key, pi).is_empty() else (tr("fitted") if pfit else tr("saved"))]
+			pb.custom_minimum_size = Vector2(DETAIL_W, 0)
+			for st in ["normal", "hover", "pressed", "focus"]:
+				var psb := StyleBoxEmpty.new()
+				psb.content_margin_top = 1.0
+				psb.content_margin_bottom = 1.0
+				pb.add_theme_stylebox_override(st, psb)
+			pb.pressed.connect(_pick_opt.bind(i))
+			_d_tiers.add_child(pb)
+			continue
 		if slot == "service":
 			var cc := Profile.clean_time(key)
 			var cb := Button.new()
@@ -1427,7 +1516,10 @@ func _refresh_detail(w: int) -> void:
 		_d_tiers.add_child(b)
 	var notes: Array = Codex.WEAPON_TEXT.get(key, ["", ""])
 	var desc := String(notes[0])
-	if unlocked and not o.is_empty() and String(o["slot"]) == "service":
+	if unlocked and not o.is_empty() and String(o["slot"]) == "preset":
+		desc = tr("Your saved sets of parts for this gun (only yours — the squad shares the unlocks, not the build). %s fits the set, %s saves your current fit over it.") % [
+			_menu_key("menu_accept", Actions.pad_mode), _menu_key("menu_alt", Actions.pad_mode)]
+	elif unlocked and not o.is_empty() and String(o["slot"]) == "service":
 		desc = tr("Strip and clean the gun at the bench: condition back to 100%. It costs no scrap, only time at the bench — the dirtier the gun, the longer. Below 70% a gun starts to jam, and every shot wears it — faster with a hot barrel or a suppressor.")
 	elif unlocked and not o.is_empty() and String(o["id"]) != "":
 		desc = tr(String(Parts.get_part(String(o["id"]))["desc"]))
@@ -1441,6 +1533,14 @@ func _refresh_detail(w: int) -> void:
 		_action.text = tr("Buy  ·  %d scrap") % Scrap.price_of(w)
 	elif o.is_empty():
 		_action.text = "No parts for this weapon"
+	elif String(o["slot"]) == "preset":
+		var api := int(o["id"])
+		if Profile.preset(key, api).is_empty():
+			_action.text = tr("Save current fit as set %d") % (api + 1)
+		elif Profile.is_preset_fitted(key, api):
+			_action.text = tr("Set %d fitted  ·  %s overwrite") % [api + 1, _menu_key("menu_alt", Actions.pad_mode)]
+		else:
+			_action.text = tr("Fit set %d  ·  %s overwrite") % [api + 1, _menu_key("menu_alt", Actions.pad_mode)]
 	elif String(o["slot"]) == "service":
 		var ctime := Profile.clean_time(key)
 		if _clean_w == w:

@@ -1,6 +1,6 @@
 extends Node2D
 ## Warsztat w kryjówce (znacznik „h"): ława z imadłem, kowadłem i skrzynką na złom. Gdy lokalny gracz stoi przy niej,
-## HUD podpowiada [E]; naciśnięcie otwiera panel zakupów (workshop_ui.gd) — odblokowanie broni ze stojaków za złom.
+## HUD podpowiada [E]; naciśnięcie otwiera panel warsztatu w trybie „bench" (workshop_ui.gd): bronie, części, czyszczenie i zaopatrzenie za złom.
 
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
@@ -35,4 +35,4 @@ func _physics_process(_delta: float) -> void:
 	if local_in_range and Input.is_action_just_pressed("interact"):
 		var ui := get_tree().get_first_node_in_group("workshop_ui")
 		if ui != null and not ui.is_open():
-			ui.open()
+			ui.open("bench")

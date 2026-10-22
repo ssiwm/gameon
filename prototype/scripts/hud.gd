@@ -2136,6 +2136,14 @@ func _near_workshop() -> bool:
 			return ui == null or not ui.is_open()
 	return false
 
+## Czy lokalny gracz stoi przy szafkach osobistych (kryjówka, perki i wygląd) i panel jest zamknięty.
+func _near_lockers() -> bool:
+	for w in get_tree().get_nodes_in_group("locker_station"):
+		if w.local_in_range:
+			var ui := get_tree().get_first_node_in_group("workshop_ui")
+			return ui == null or not ui.is_open()
+	return false
+
 ## Pijawka trzymająca teraz kogoś (chwyt, QTE) albo null.
 ## Boss z trwającą falą przypływu (zapowiedź albo wysoka woda) — pasek ostrzeżenia w HUD.
 func _tide_boss() -> Node:
@@ -2211,6 +2219,8 @@ func _prompt_candidates() -> Array:
 			add.call(Actions.fmt(tr("Hold [{interact}]  Start the generator  (loud)")), -1.0, UiTheme.ACCENT)
 	if _near_workshop():
 		add.call(tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], -1.0, UiTheme.ACCENT)
+	if _near_lockers():
+		add.call(tr("[%s]  Locker  ·  perks and look") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
 	var rdoor := _near_range_door()
 	if rdoor != null:
 		var rb := float(rdoor.best())

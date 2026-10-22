@@ -1518,6 +1518,13 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				wui._opt = cops.size() - 1
 				wui._start_clean(Weapons.M83)
 				wui.tick_clean(2.0)
+			if "--shotperks" in OS.get_cmdline_user_args() or "--shotlook" in OS.get_cmdline_user_args():
+				wui.close()                          # perki i wygląd są w szafkach osobistych (1.7.349): gracz staje przy nich
+				var lks := get_tree().get_first_node_in_group("locker_station") as Node2D
+				if wp != null and lks != null:
+					wp.global_position = lks.global_position + Vector2(0.0, -2.0)
+				await get_tree().create_timer(0.3).timeout
+				wui.open("locker")
 			if "--shotperks" in OS.get_cmdline_user_args():
 				Profile.reset_for_test()             # --shotperks: zakładka PERKS z przykładowym profilem (L4, Smith w slocie 1)
 				Profile.add_xp(800, "demo")
@@ -2590,6 +2597,29 @@ func _gen_test() -> void:
 	var tiles: Array = wui._tiles
 	(tiles[3] as Button).pressed.emit()
 	var opened_ok: bool = wui.is_open() and tiles.size() == 12 and wui._sel == 3 and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE
+	var bench_tabs: Array = wui._page_btns.filter(func(b: Button) -> bool: return b.visible).map(func(b: Button) -> String: return b.text)
+	var tab_ev := InputEventKey.new()
+	tab_ev.physical_keycode = KEY_TAB
+	tab_ev.pressed = true
+	wui._input(tab_ev)
+	var bench_tab1: int = wui._page
+	wui._input(tab_ev)
+	check.call("ława (1.7.349): zakładki %s, Tab ARMS → SUPPLIES → ARMS (%d, %d)" % [str(bench_tabs), bench_tab1, wui._page],
+		bench_tabs == ["ARMS", "SUPPLIES"] and bench_tab1 == 1 and wui._page == 0)
+	wui.close()
+	# szafki osobiste (WORKSHOP_PLAN.md W1): znacznik „p" w świetlicy, [E] otwiera panel z zakładkami PERKS i LOOK
+	var lockers := get_tree().get_nodes_in_group("locker_station")
+	var lk_ok := false
+	if lockers.size() == 1:
+		p.global_position = (lockers[0] as Node2D).global_position + Vector2(0, -2)
+		p.velocity = Vector2.ZERO
+		await get_tree().create_timer(0.5).timeout
+		lk_ok = bool(lockers[0].local_in_range) and not bool(wk_node.local_in_range)
+	wui.open("locker")
+	await get_tree().create_timer(0.1).timeout
+	var locker_tabs: Array = wui._page_btns.filter(func(b: Button) -> bool: return b.visible).map(func(b: Button) -> String: return b.text)
+	check.call("szafki osobiste: %d w kryjówce, gracz przy nich (%s), panel LOCKER otwarty na PERKS (%d), zakładki %s" % [lockers.size(), str(lk_ok), wui._page, str(locker_tabs)],
+		lockers.size() == 1 and lk_ok and wui.is_open() and wui._page == 2 and locker_tabs == ["PERKS", "LOOK"] and wui._title.text == tr("LOCKER"))
 	# zakładka PERKS (B2): 8 kafli, zakładanie / zdejmowanie perku przez panel, zablokowany perk nie wchodzi, Tab przechodzi przez 3 zakładki
 	Profile.reset_for_test()
 	Profile.add_xp(800, "test")                                        # L4: 2 sloty, perki do L4
@@ -2605,20 +2635,18 @@ func _gen_test() -> void:
 	wui._perk_sel = 7                                                  # Veteran (L6) przy L4
 	wui._act_perk()
 	var perk_locked: bool = not Profile.equipped.has("veteran")
-	var tab_ev := InputEventKey.new()
-	tab_ev.physical_keycode = KEY_TAB
-	tab_ev.pressed = true
 	wui._input(tab_ev)
 	var tab_to_look: bool = wui._page == 3                              # 2 → 3 (LOOK)
 	wui._input(tab_ev)
-	var tab_wrapped: bool = tab_to_look and wui._page == 0              # 3 → 0
-	wui._set_page(0)
+	var tab_wrapped: bool = tab_to_look and wui._page == 2              # 3 → 2 (szafki mają tylko PERKS i LOOK)
 	var pm_node: Node = $UI.get_node("PauseMenu")
-	check.call("zakładka PERKS: %d kafli, załóż → %s, zdejmij → %s, perk L6 przy L4 zablokowany → %s, Tab przechodzi PERKS → LOOK → ARMS → %s; menu pauzy ma %d kart, kodeks %d perków" % [perk_tiles_n, str(perk_on), str(perk_off), str(perk_locked), str(tab_wrapped), pm_node._pages.size(), Codex.perks().size()],
+	check.call("zakładka PERKS: %d kafli, załóż → %s, zdejmij → %s, perk L6 przy L4 zablokowany → %s, Tab przechodzi PERKS → LOOK → PERKS → %s; menu pauzy ma %d kart, kodeks %d perków" % [perk_tiles_n, str(perk_on), str(perk_off), str(perk_locked), str(tab_wrapped), pm_node._pages.size(), Codex.perks().size()],
 		perk_tiles_n == 8 and perk_on and perk_off and perk_locked and tab_wrapped and pm_node._pages.size() == 6 and Codex.perks().size() == 8)
 	Profile.reset_for_test()
 	wui.close()
 	check.call("panel warsztatu: otwiera się przy ławie, 12 kafli, kliknięcie kafla wybiera broń (sel %d), mysz widoczna; po zamknięciu zamknięty" % wui._sel, opened_ok and not wui.is_open())
+	p.global_position = wk_node.global_position + Vector2(0, -2)        # z powrotem przy ławie (dalsze testy warsztatu)
+	p.velocity = Vector2.ZERO
 	# części broni (parts.gd, 1.7.319): zakup wspólny dla drużyny, montaż prywatny gracza
 	Scrap.purchase_result.disconnect(cb)
 	var presults: Array = []
@@ -2645,6 +2673,33 @@ func _gen_test() -> void:
 	Profile.set_fit("m83", "feed", "")
 	check.call("montaż: element fabryczny w gnieździe zasilania (magazynek %d)" % Weapons.def_build(Weapons.M83, Weapons.build_of(0, Profile.fit_code(Weapons.M83))).mag,
 		Weapons.def_build(Weapons.M83, Weapons.build_of(0, Profile.fit_code(Weapons.M83))).mag == base_mag)
+	# zestawy części (WORKSHOP_PLAN.md U6, 1.7.349): zapis bieżącego montażu, montaż zestawu jednym ruchem, część, której drużyna nie ma, zostaje jak była
+	Profile.save_preset("m83", 0)                                    # fabryczne zasilanie, lufa RPK, PBS-1
+	Profile.set_fit("m83", "feed", "m83_drum75")
+	Profile.set_fit("m83", "muzzle", "")
+	Profile.save_preset("m83", 1)                                    # bęben, lufa RPK, fabryczny wylot
+	var sk0 := Profile.load_preset("m83", 0)
+	var set0_ok: bool = sk0 == 0 and Profile.fitted("m83", "feed") == "" and Profile.fitted("m83", "muzzle") == "m83_pbs1" and Profile.is_preset_fitted("m83", 0) and not Profile.is_preset_fitted("m83", 1)
+	Scrap.parts.erase("m83_drum75")                                  # np. inny host: bębna nie ma
+	var sk1 := Profile.load_preset("m83", 1)
+	Scrap.parts["m83_drum75"] = true                                 # dalsze testy (katalog) liczą kupione części
+	check.call("zestawy: zapis i montaż zestawu 1 (%s), zestaw 2 bez bębna, którego drużyna nie ma — pominięty %d, zasilanie zostaje (%s), wylot fabryczny" % [str(set0_ok), sk1, Profile.fitted("m83", "feed")],
+		set0_ok and sk1 == 1 and Profile.fitted("m83", "feed") == "" and Profile.fitted("m83", "muzzle") == "" and Profile.preset("m83", 2).is_empty())
+	wui.open("bench")
+	var pops: Array = wui._options(Weapons.M83)
+	wui._sel = 0
+	wui._opt = pops.find({"slot": "preset", "id": "2"})
+	wui._refresh()
+	var empty_txt: String = wui._action.text
+	var r_ev := InputEventKey.new()
+	r_ev.physical_keycode = KEY_R
+	r_ev.pressed = true
+	wui._input(r_ev)                                                  # R = menu_alt: zapis bieżącego montażu do zestawu 3
+	check.call("panel: wiersze zestawów (%d), pusty zestaw '%s', [R] zapisuje zestaw 3 (%s)" % [pops.filter(func(o: Dictionary) -> bool: return o["slot"] == "preset").size(), empty_txt, str(not Profile.preset("m83", 2).is_empty())],
+		pops.filter(func(o: Dictionary) -> bool: return o["slot"] == "preset").size() == Profile.PRESETS and empty_txt == tr("Save current fit as set %d") % 3
+		and Profile.is_preset_fitted("m83", 2))
+	wui.close()
+	Profile.load_preset("m83", 0)                                    # montaż sprzed testu zestawów (katalog niżej go sprawdza)
 	var cat := Codex.weapon_entry(Weapons.M83)
 	var cat_lr := Codex.weapon_entry(Weapons.SOKOL6)
 	var tier_states := (cat["tiers"] as Array).map(func(t: Dictionary) -> int: return int(t["state"]))
