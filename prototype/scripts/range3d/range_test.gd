@@ -448,9 +448,10 @@ func _t_drill() -> void:
 	await get_tree().create_timer(d.full_reload_time() + 0.5).timeout
 	check("przeładowanie przed startem nic nie daje (%d)" % wc.mag_of(Weapons.M83), wc.mag_of(Weapons.M83) == cap)
 	var reloads := 0
+	wc.range_fit[Weapons.M83] = Parts.encode_ids("m83", ["m83_rpkbar"])   # ciaśniejszy stożek, jak w _t_plates — test przebiegu, nie celności
 	for i in RangeSim.DRILL_PLATES:
 		var n := 0
-		while not fp.sim.plates[i]["down"] and n < 12:
+		while not fp.sim.plates[i]["down"] and n < 20:
 			if wc.mag_of(Weapons.M83) <= 0:
 				if not wc.is_reloading():
 					wc.try_reload()
@@ -673,11 +674,14 @@ func _t_plates() -> void:
 	check("wejście: player.fp, range_sink i amunicja ćwiczebna", player.fp == fp and wc.range_sink == fp and wc.practice)
 	var mag0: int = wc.mag_of(Weapons.M83)
 	var cond0: float = wc.condition_of(Weapons.M83)
-	# do skutku, jak gracz: na 16–20 m stożek M-83 (0,8°) jest szerszy niż blacha (⌀ 30 cm), więc część kul chybia
+	# do skutku, jak gracz: na 16–20 m stożek M-83 (0,8°) jest szerszy niż blacha (⌀ 30 cm), więc część kul chybia — na 20 m trafia średnio
+	# co 4–5 strzał, a 12 pudeł z rzędu zdarzało się w kilku procentach przebiegów (niestabilny test). Ten test sprawdza przebieg ćwiczenia,
+	# nie celność, więc M-83 dostaje próbną lufę RPK (stożek ×0,7, przymierzanie części z szafy) i do 20 strzałów na blachę (magazynek 30).
+	wc.range_fit[Weapons.M83] = Parts.encode_ids("m83", ["m83_rpkbar"])
 	var tries: Array = []
 	for i in fp.sim.plates.size():
 		var n := 0
-		while not fp.sim.plates[i]["down"] and n < 12:
+		while not fp.sim.plates[i]["down"] and n < 20:
 			await _shoot_at(fp, i)
 			wc.jams.clear()
 			n += 1
