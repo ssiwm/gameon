@@ -1,0 +1,13 @@
+{
+ "task": "01a164d8-6af2-72f1-9920-49f972eef2b3",
+ "ai_model": "latest",
+ "geometry_resolution": "standard",
+ "texture_resolution": "2k",
+ "source_image": "parts_cabinet_source.png",
+ "credits": 30,
+ "remesh": {
+  "task": "01a164df-7a8a-760b-8fb3-00c046e5dee9",
+  "target_polycount": 40000,
+  "credits": 5
+ }
+}

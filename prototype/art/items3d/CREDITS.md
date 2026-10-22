@@ -27,7 +27,7 @@ Większość modeli w tym katalogu powstaje z Tripo albo z brył proceduralnych 
 | gas_mask | old_gas_mask | maska wisząca na ścianie (1.2, 1.3, B1, kryjówka) |
 | lathe_cart | tool_cart + bench_vice_01 | wózek-stół z imadłem przy tokarce (kryjówka) |
 | drill_chest | metal_tool_chest + old_drill_press | skrzynia narzędziowa z wiertarką stołową przy tokarce (kryjówka) |
-| stool_metal | metal_stool_02 | taboret przy prasie elaboracyjnej, stole pirotechnicznym i w pracowni (kryjówka) |
+| stool_metal | metal_stool_02 | taboret przy prasie elaboracyjnej, stole pirotechnicznym, w pracowni i przy stole konserwacji (kryjówka) |
 | pyro_ext | korean_fire_extinguisher_01 | gaśnica przy stole pirotechnicznym (kryjówka) |
 
 ## Modele z Meshy (image-to-3D)
@@ -46,3 +46,5 @@ w `art_src/world/meshy/`; `tools/prep_items3d.py` upraszcza siatki i ustawia nat
 | expl_locker | `art_src/world/meshy/expl_locker.glb` (czerwona szafa na materiały wybuchowe) | stół pirotechniczny (kryjówka) |
 | lab_desk | `art_src/world/meshy/lab_desk.glb` (biurko z oscyloskopem, miernikami, rozebranym radiem i mikroskopem) | pracownia (kryjówka) |
 | specimen_case | `art_src/world/meshy/specimen_case.glb` (gablota z preparatami w formalinie; po retopologii Meshy) | pracownia (kryjówka) |
+| clean_bench | `art_src/world/meshy/clean_bench.glb` (stół rusznikarza z rozłożonym karabinem, wyciorami i olejami) | stół konserwacji (kryjówka) |
+| parts_cabinet | `art_src/world/meshy/parts_cabinet.glb` (szafka z szufladkami na drobne części; po retopologii Meshy) | stół konserwacji (kryjówka) |
