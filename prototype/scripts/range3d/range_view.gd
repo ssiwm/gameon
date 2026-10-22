@@ -831,10 +831,10 @@ func _build_plates() -> void:
 		_world.add_child(lbl)
 
 func _build_board() -> void:
-	var panel := _box(Vector3(1.8, 1.15, 0.05), Vector3(0.0, RangeSim.LANE_H - 0.62, -4.2), _flat(Color(0.05, 0.05, 0.045), 0.9))   # 7 wierszy: ćwiczenie, wynik, rekord osobisty, strzały, papier (+ rekord), wózek
+	var panel := _box(Vector3(1.8, 1.15, 0.05), Vector3(0.0, RangeSim.LANE_H - 0.62, -4.2), _flat(Color(0.05, 0.05, 0.045), 0.9))   # ćwiczenie, wynik, rekord osobisty, strzały, wózek (papier: range_targets — tablica porównania)
 	panel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_board = Label3D.new()
-	_board.font_size = 64
+	_board.font_size = 58
 	_board.pixel_size = 0.0035
 	_board.modulate = Color(0.95, 0.75, 0.3)
 	_board.outline_size = 0

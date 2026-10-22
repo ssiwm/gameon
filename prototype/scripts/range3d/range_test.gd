@@ -12,7 +12,8 @@ extends Node
 ## 6. Etap 1: drzwi w kryjówce (range_door.gd) — [E] przy drzwiach wchodzi, postać zaparkowana (`in_range`), wynik przebiegu trafia
 ##    na tablicę drużyny przez serwer; serwer odrzuca wynik niewiarygodny, z innej broni i od gracza spoza strzelnicy.
 ## 7. Etap 2: przyrządy z modelu (gun_proc.py → sight_rear / sight_front) leżą w osi kamery przy celowaniu, ćwiczenie z przeładowaniem
-##    (4 blachy, 2 naboje w magazynku, wynik z przeładowaniem na osobnej części tablicy), rekordy osobiste broni w profilu (czas, grupa).
+##    (4 blachy, 2 naboje w magazynku, wynik z przeładowaniem na osobnej części tablicy), rekordy osobiste broni w profilu (czas, grupa),
+##    porównanie dwóch ostatnich grup na papierze z warunkami serii (obsługa, lufa, oparcie).
 ## Wynik: linie [RANGE-TEST] i kod wyjścia (0 = OK).
 
 const RangeDoor := preload("res://scripts/range3d/range_door.gd")
@@ -21,6 +22,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const Actions := preload("res://scripts/actions.gd")
 const RangeView := preload("res://scripts/range3d/range_view.gd")
 const Char3D := preload("res://scripts/char3d.gd")
+const RangeTargets := preload("res://scripts/range3d/range_targets.gd")
 
 var main: Node2D
 var player: CharacterBody2D
@@ -61,6 +63,7 @@ func run(m: Node2D) -> void:
 	await _t_coop_pose()
 	await _t_server()
 	await _t_drill()
+	await _t_compare()
 	await _t_climb()
 	await _t_practice()
 	await _t_brace()
@@ -478,6 +481,49 @@ func _t_drill() -> void:
 	fp.leave()
 	await _frames(2)
 	wc.mags[Weapons.M83] = 30
+
+## Porównanie grup: seria z oparciem w REALISTIC przy ciepłej lufie, potem — bez przerwy PAPER_GAP — przełączenie na CLASSIC (nowa seria
+## od razu, sim.paper_break) bez oparcia przy gorącej lufie; tablica PAPIER pokazuje obie grupy z warunkami i różnicę.
+func _t_compare() -> void:
+	var wc = player.weapons
+	var real0: bool = Settings.realistic_handling
+	var fp: Node = _enter()
+	await _frames(3)
+	var m83 := Weapons.def(Weapons.M83)
+	var extra := -m83.jitter_deg + 0.2                              # stożek 0,2° — na 25 m wszystkie kule w arkuszu
+	Settings.realistic_handling = true
+	await _frames(2)
+	fp.braced_pose = true
+	fp.brace_t = 1.0
+	wc._barrel[Weapons.M83] = 0.2
+	for i in 3:
+		fp.sim.shoot(fp.eye(), _aim_basis(fp.eye(), RangeSim.PAPER), m83, 300 + i, extra)
+	Settings.realistic_handling = false
+	await _frames(2)                                                # fp.tick: inna obsługa — następna przestrzelina zaczyna serię
+	wc._barrel[Weapons.M83] = 0.6
+	for i in 3:
+		fp.sim.shoot(fp.eye(), _aim_basis(fp.eye(), RangeSim.PAPER), m83, 400 + i, extra)
+	var pc: Dictionary = fp.paper_prev.get("c", {})
+	var pg: Dictionary = fp.paper_prev.get("g", {})
+	var cc: Dictionary = fp.paper_cond
+	check("porównanie grup: poprzednia seria %d (REALISTIC %s, oparcie %d/%d, lufa %.0f%%), bieżąca %d (REALISTIC %s, oparcie %d, lufa %.0f%%)" % [
+		int(pg.get("n", 0)), pc.get("real"), int(pc.get("braced", -1)), int(pc.get("n", -1)), float(pc.get("heat0", -1.0)) * 100.0,
+		fp.sim.paper_holes.size(), cc.get("real"), int(cc.get("braced", -1)), float(cc.get("heat0", -1.0)) * 100.0],
+		int(pg.get("n", 0)) == 3 and fp.sim.paper_holes.size() == 3 and bool(pc.get("real", false)) and int(pc.get("braced", 0)) == 3
+		and is_equal_approx(float(pc.get("heat0", 0.0)), 0.2) and not bool(cc.get("real", true)) and int(cc.get("braced", -1)) == 0
+		and is_equal_approx(float(cc.get("heat1", 0.0)), 0.6) and int(cc.get("w", -1)) == Weapons.M83)
+	var lines := RangeTargets.compare_lines(fp.sim.paper_group(), fp.paper_cond, fp.paper_prev)
+	var txt := "\n".join(lines)
+	check("tablica PAPIER: %d wierszy, obie obsługi, lufa, oparcie i różnica" % lines.size(),
+		lines.size() == 10 and txt.contains(TranslationServer.translate("REALISTIC")) and txt.contains(TranslationServer.translate("CLASSIC"))
+		and txt.contains("60→60%") and txt.contains("20→20%") and txt.contains(TranslationServer.translate("braced"))
+		and txt.contains(TranslationServer.translate("difference %+.1f MOA") % (float(fp.sim.paper_group()["moa"]) - float(pg.get("moa", 0.0)))))
+	info(txt.replace("\n", "  |  "))
+	Settings.realistic_handling = real0
+	wc._barrel[Weapons.M83] = 0.0
+	fp.sim.paper_holes.clear()
+	fp.leave()
+	await _frames(2)
 
 ## Strzał przez kontroler broni w środek blachy `i` (bez podrzutu i rozrzutu z serii).
 func _shoot_at(fp: Node, i: int) -> void:

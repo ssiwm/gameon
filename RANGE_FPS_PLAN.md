@@ -207,3 +207,19 @@ Dev: `--rangeex=reload` (ćwiczenie na starcie `--range3d`). Test `--rangetest` 
 FALCON-6, rekordy w profilu i ich zapis, ćwiczenie z przeładowaniem: blachy, przycięty magazynek, przebieg z przeładowaniem na tablicy
 przeładowania, walidacja serwera, rekord grupy). Zostaje: ręce FPP (lepsze narzędzia, §8); przyrządy broni, które ich nie mają w modelu
 (SINEW-6, PELLET-8) — do dodania w `gun_proc.py` przy ich przebudowie.
+
+## 12. Bramka etapu 2 — porównanie grup (2026-10-22, 1.7.344, gałąź `feat/range-compare`)
+
+Bramka etapu 2 brzmiała: „da się porównać grupę REALISTIC i CLASSIC, zimną i gorącą lufę, z oparciem i bez”. Papier, oparcie i grzanie lufy
+już były, brakowało zestawienia dwóch serii z warunkami.
+
+| Element | Jak | Stan |
+|---|---|---|
+| Warunki serii | `fp_mode.paper_cond` przy każdej przestrzelinie: broń (−2 — kilka), obsługa (`Settings.realistic_handling`), lufa przy pierwszej i ostatniej przestrzelinie (`barrel_of`), przestrzeliny z oparciem (`braced()`). Nowa seria (`paper_cleared`) przenosi zamkniętą grupę (`sim.paper_last`) i jej warunki do `paper_prev` | zrobione |
+| Serie się nie mieszają | zmiana broni albo obsługi woła `sim.paper_break()` — następne trafienie zaczyna nową serię bez czekania `PAPER_GAP` | zrobione |
+| Tablica PAPIER | płyta na prawo od tablicy ćwiczeń (`range_targets.CMP_POS`), tabela czcionką o stałej szerokości: wiersze grupa (MOA), strzały, pion, broń, obsługa, lufa (np. 8→41%), oparcie (tak / nie / częściowo), kolumny TERAZ i PRZEDTEM, pod spodem różnica rozrzutu i rekord osobisty grupy 5 strzałów. Tablica ćwiczeń ma już tylko ćwiczenie, czasy, rekord i wózek | zrobione |
+
+Pułapki: Label3D obcina spacje na początku wiersza (pusta pierwsza komórka tabeli przesuwała nagłówek) — każda kolumna z treścią; płyta
+obrócona do stanowiska dawała skośne wiersze przy patrzeniu w tunel — stoi równolegle do linii ognia. Dev: `--shotrangeboard` wypełnia też
+przykładowe serie na papierze. Test `--rangetest` 70/70 (dwie serie: REALISTIC z oparciem przy ciepłej lufie, potem CLASSIC bez oparcia przy
+gorącej — nowa seria od razu po zmianie obsługi, warunki i wiersze tablicy).
