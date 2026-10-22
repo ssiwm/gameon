@@ -16,6 +16,10 @@ extends RefCounted
 ##   pos            phase, noise, p: lista graczy [{who, bot, pos, hp, crouch, dead}] — próbka co POS_EVERY s (mapy cieplne tras, MAPS_PLAN.md P1)
 ##   objective      what (tag / stash / generator / nest / boss), n, of, pos, who, bot — zaliczony cel lub cel poboczny (czas odcinków trasy, P2)
 ##   mission_end    result (success / failed / wipe), time, downs, attempts, peak_noise, side, players, weapons, noise, scrap
+##   system         gpu, gpu_vendor, cpu, threads, ram_gb, os, screen, window, fullscreen, quality, vsync, fps_cap — raz na plik, przy jego otwarciu
+##   perf           map, fps, avg, p50, p95, max (ms klatki), spikes (klatki > PERF_SPIKE_MS), gpu (ms GPU viewportów widoku 3D), up (s od startu gry)
+##                  — próbka co PERF_EVERY s, także w kryjówce i u klienta (od 1.7.367): klient pisze własny plik z samymi wierszami system i perf,
+##                  bo wydajność jest jego sprzętu, a reszta dziennika to symulacja hosta
 ## Wipe w kampanii kończy próbę wierszem mission_end, po którym idzie mission_start z kolejnym numerem próby.
 ## `weapons`: klucz broni → {shots, noise, dmg, kills}; `noise`: źródło → {n, sum} (strzały pod kluczem `shot`).
 ## `scrap` (od 1.7.347, strojenie ekonomii warsztatu): {dropped — złom, który wypadł z wrogów i bossa w tej próbie, loot — zebrany łup,
@@ -24,6 +28,8 @@ extends RefCounted
 const DIR := "user://sessions"
 const PHASES := ["OBJECTIVE", "BOSS", "EXTRACT", "SUCCESS", "FAILED"]
 const POS_EVERY := 3.0                 ## s między próbkami pozycji graczy (zdarzenie `pos`): ok. 120 B na gracza, 10 min w duecie ≈ 50 KB
+const PERF_EVERY := 10.0               ## s między próbkami wydajności (zdarzenie `perf`): ok. 130 B, godzina gry ≈ 47 KB
+const PERF_SPIKE_MS := 50.0            ## klatka dłuższa niż tyle ms to przestój (zacięcie widoczne przy 60 kl./s)
 
 static var enabled := DisplayServer.get_name() != "headless"
 static var dir := DIR                  ## katalog plików; testy podmieniają go flagą --sessionlog=
@@ -37,6 +43,10 @@ static var _weapons := {}              ## klucz broni → {shots, noise, dmg, ki
 static var _dmg_by := {}               ## id gracza → {klucz broni → obrażenia}
 static var _scrap_drop := 0            ## złom wyrzucony przez wrogów i bossa w tej próbie (podniesiony czy nie)
 static var _build := ""
+static var _ft := PackedFloat32Array()  ## ms klatek od ostatniej próbki `perf`
+static var _gpu := 0.0                 ## suma ms GPU obserwowanych viewportów od ostatniej próbki
+static var _perf_t := 0.0
+static var _gpu_vps: Array = []        ## viewporty widoku 3D z pomiarem czasu GPU (watch_viewports)
 
 static func active() -> bool:
 	return enabled and not _open_failed and NoiseMgr.is_server()
@@ -72,6 +82,13 @@ static func _open() -> bool:
 		push_warning("Session log: cannot write %s" % path)
 		return false
 	print("[SESSION] log: %s" % ProjectSettings.globalize_path(path))
+	var mem := OS.get_memory_info()
+	var row := {"t": 0.0, "ev": "system", "build": build(), "gpu": RenderingServer.get_video_adapter_name(), "gpu_vendor": RenderingServer.get_video_adapter_vendor(),
+		"cpu": OS.get_processor_name(), "threads": OS.get_processor_count(), "ram_gb": snappedf(float(mem.get("physical", 0)) / 1073741824.0, 0.1),
+		"os": OS.get_name(), "screen": xy(Vector2(DisplayServer.screen_get_size())), "window": xy(Vector2(DisplayServer.window_get_size())),
+		"fullscreen": Settings.fullscreen, "quality": Settings.QUALITY_NAMES[Settings.quality_idx], "vsync": Settings.VSYNC_NAMES[Settings.vsync_idx],
+		"fps_cap": Settings.FPS_LIST[Settings.fps_idx]}
+	_file.store_line(JSON.stringify(row))
 	return true
 
 ## Zdarzenie w trakcie misji. Poza misją (kryjówka, menu) nic nie zapisuje.
@@ -170,6 +187,42 @@ static func note_scrap_drop(n: int) -> void:
 	if not active() or not _in_mission or n <= 0:
 		return
 	_scrap_drop += n
+
+# ---------------------------------------------------------------- wydajność (host i klient)
+
+## Viewporty, których czas GPU trafia do próbek `perf` (view3d.setup: świat i warstwa graczy); zastępuje poprzednią listę.
+static func watch_viewports(vps: Array) -> void:
+	_gpu_vps = vps
+	for v in vps:
+		RenderingServer.viewport_set_measure_render_time((v as Viewport).get_viewport_rid(), true)
+
+## Co klatkę obrazu (view3d._process): czas klatki do próbki `perf`, zapis co PERF_EVERY s. Pisze każdy peer do własnego pliku.
+static func frame(delta: float, map_id: String) -> void:
+	if not enabled or _open_failed:
+		return
+	_ft.append(delta * 1000.0)
+	for v in _gpu_vps:
+		if is_instance_valid(v):
+			_gpu += RenderingServer.viewport_get_measured_render_time_gpu((v as Viewport).get_viewport_rid())
+	_perf_t += delta
+	if _perf_t < PERF_EVERY:
+		return
+	var n := _ft.size()
+	var s := _ft.duplicate()
+	s.sort()
+	var sum := 0.0
+	var spikes := 0
+	for t in s:
+		sum += t
+		if t > PERF_SPIKE_MS:
+			spikes += 1
+	var row := {"map": map_id, "fps": roundi(float(n) / _perf_t), "avg": snappedf(sum / float(n), 0.01), "p50": snappedf(s[n / 2], 0.01),
+		"p95": snappedf(s[mini(n - 1, int(float(n) * 0.95))], 0.01), "max": snappedf(s[n - 1], 0.1), "spikes": spikes,
+		"gpu": snappedf(_gpu / float(n), 0.01), "up": snappedf(float(Time.get_ticks_msec()) / 1000.0, 1.0)}
+	_ft.clear()
+	_gpu = 0.0
+	_perf_t = 0.0
+	_write("perf", row)
 
 ## Testy: stan jak po starcie gry (nowy plik przy następnym zdarzeniu).
 static func reset_for_test() -> void:

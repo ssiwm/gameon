@@ -20,6 +20,8 @@ const Enemy3D := preload("res://scripts/enemy3d.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
+const GunModel := preload("res://scripts/gun_model.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Backdrop3D := preload("res://scripts/backdrop3d.gd")
@@ -91,6 +93,7 @@ var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D pr
 var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
 var _cabinets := {}                      ## id gabloty (cabinet.gd) → {node, root, door, ghosts: [Node3D], open}
 var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
+var _gun_warm_t := 0.0                   ## s do następnego przeglądu ekwipunku graczy (_warm_loadouts)
 var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D, MeshInstance3D, losowe odchylenie]
 var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
 var _ws_lamps := {}                      ## id warsztatu → lampa nad nim (Node3D w geometrii mapy)
@@ -156,6 +159,7 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_vp_fg.world_3d = _vp_bg.world_3d                     # ten sam świat 3D: wspólne światła i cienie
 	_vp_fg.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(_vp_fg)
+	SessionLog.watch_viewports([_vp_bg, _vp_fg])              # czas GPU świata i graczy w próbkach `perf` dziennika sesji
 	_world = Node3D.new()
 	_world.name = "World"
 	_vp_bg.add_child(_world)
@@ -303,6 +307,13 @@ func _process(delta: float) -> void:
 func _tick(delta: float) -> void:
 	if _level == null or not is_instance_valid(_level):
 		return
+	SessionLog.frame(delta, String(_level.get("map_id")))
+	_gun_warm_t -= delta
+	if _gun_warm_t <= 0.0:
+		_gun_warm_t = 1.0
+		_warm_loadouts()
+	if GunModel.pending():
+		GunModel.poll()
 	_life += delta
 	if _life > 3.0 and "--view3dtoggle" in OS.get_cmdline_user_args():
 		release()                                       # dev: sprawdzenie, że wyłączenie przywraca obraz 2D
@@ -1940,7 +1951,7 @@ func _sync_guns() -> void:
 		var spr := (hd as Node).get_node_or_null("GunMark") as Node2D
 		if spr == null:
 			continue
-		var model := (load(path) as PackedScene).instantiate() as Node3D
+		var model := GunModel.scene(path).instantiate() as Node3D
 		var is_mag := String(n.get("kind")) == "mag"
 		if is_mag:                                                 # upuszczony magazynek: z modelu broni zostaje tylko podzespół `__mag`
 			for mn in model.find_children("*", "MeshInstance3D", true, false):
@@ -2108,12 +2119,24 @@ func _cab_box(parent: Node3D, size: Vector3, pos: Vector3, m: Material) -> MeshI
 	parent.add_child(mi)
 	return mi
 
+## Broń z ekwipunku każdego gracza (główne, boczna, biała) wczytywana w tle, zanim trafi do ręki (GunModel.warm).
+func _warm_loadouts() -> void:
+	for p in get_tree().get_nodes_in_group("players"):
+		var wc = p.get("weapons")
+		if wc == null:
+			continue
+		var ids: Array = (wc.get("loadout") as Array).duplicate() if wc.get("loadout") != null else []
+		ids.append(int(wc.get("melee_id")) if wc.get("melee_id") != null else -1)
+		for id in ids:
+			if int(id) >= 0 and int(id) < Weapons.defs().size():
+				GunModel.warm(GUN_DIR + "gun_%s.glb" % String(Weapons.def(int(id)).key))
+
 ## Model broni do gabloty (pistolet na półce, ślad pustego haka): naturalna długość z gun_proc.py, środek bryły w (0, 0, 0).
 func _cab_gun(key: String) -> Node3D:
 	var path := GUN_DIR + "gun_%s.glb" % key
 	if not ResourceLoader.exists(path):
 		return null
-	var g := (load(path) as PackedScene).instantiate() as Node3D
+	var g := GunModel.scene(path).instantiate() as Node3D
 	var box := AABB()
 	var first := true
 	for n in g.find_children("*", "MeshInstance3D", true, false):
