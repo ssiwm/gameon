@@ -204,7 +204,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
   9×18 i śrut zostają w pierwszym celu; kula od blachy pod ostrym kątem odbija się (rykoszet z połową siły)
 - **Stan broni (od 1.7.328, ustawienie „Weapon reliability”):** każdy strzał trochę zużywa broń; poniżej 70 % stanu broń palna czasem się zacina
   (niewypał, zacięta łuska, podwójne podanie) — krótkie [R] przeładowuje rączką, P-83 strzela przy drugim pociągnięciu spustu. Brudną broń
-  czyści się przy ławie w warsztacie za kilka złomu albo w misji zestawem do czyszczenia (od 1.7.329: 6 s, +40 %). Brodzenie w wodzie
+  czyści się przy ławie w warsztacie (od 1.7.347 bez złomu, za to kilka sekund przy ławie: 1,5 s na każde 10 % zużycia) albo w misji zestawem do czyszczenia (od 1.7.329: 6 s, +40 %). Brodzenie w wodzie
   i błocie oraz upadek też zużywają broń; zużyte LR-7 przegrzewa ogniwo, a SPECTER-1 przebija kondensator
 - **Wprawa (od 1.7.330):** trafienia i zabójstwa z danej broni podnoszą wprawę gracza z nią (5 stopni): do −10 % czasu przeładowania, dobycia
   i podrzutu, szybsze usuwanie zacięć

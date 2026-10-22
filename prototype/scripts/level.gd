@@ -49,6 +49,7 @@ const PICKUP := preload("res://scripts/pickup.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const FIRE_PATCH := preload("res://scripts/fire_patch.gd")
 const Vfx := preload("res://scripts/vfx.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 const BRICK_WALL := preload("res://scripts/brick_wall.gd")
 const GRENADE := preload("res://scripts/grenade.gd")
 const ACID := preload("res://scripts/acid_spit.gd")
@@ -1289,6 +1290,8 @@ func spawn_health(pos: Vector2) -> void:
 func spawn_item(kind: String, arg: int, pos: Vector2, rounds := 0) -> void:
 	if not NoiseMgr.is_server():
 		return
+	if kind == "scrap":
+		SessionLog.note_scrap_drop(rounds)              # złom z trupów i bossa (dziennik: ile wypadło, ile drużyna zebrała)
 	_pickup_serial += 1
 	var n := "Item%d" % _pickup_serial
 	if NoiseMgr.has_network():

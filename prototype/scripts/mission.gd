@@ -370,8 +370,7 @@ func _success() -> void:
 	print("[MISSION] SUCCESS time=%.1fs downs=%d attempts=%d" % [elapsed, downs, attempts])
 	log_end("success")
 	if kind != "hub" and Scrap.enabled():
-		var side_ok := side_done()
-		var bonus := Scrap.BONUS_CLEAR + (Scrap.BONUS_SIDE if side_ok else 0) + (Scrap.BONUS_NO_DOWNS if downs == 0 else 0)
+		var bonus := scrap_bonus()
 		var gain := Scrap.bank_loot(bonus)
 		print("[SCRAP] mission banked +%d (bonus %d), wallet %d" % [gain, bonus, Scrap.bank])
 		if kind == "boss":
@@ -502,8 +501,13 @@ func log_end(result: String) -> void:
 	var players := {}
 	for id in player_stats:
 		players[id] = (player_stats[id] as Dictionary).duplicate()
+	var scrap := {"loot": Scrap.loot, "bonus": scrap_bonus() if result == "success" and kind != "hub" and Scrap.enabled() else 0}
 	SessionLog.mission_end({"result": result, "time": snappedf(elapsed, 0.1), "downs": downs, "attempts": attempts,
-		"peak_noise": roundi(_peak_all), "peak_noise_objective": roundi(peak_noise), "side": side_done(), "players": players})
+		"peak_noise": roundi(_peak_all), "peak_noise_objective": roundi(peak_noise), "side": side_done(), "players": players, "scrap": scrap})
+
+## Premia złomu za udaną misję: ukończenie, cel poboczny, bez upadków.
+func scrap_bonus() -> int:
+	return Scrap.BONUS_CLEAR + (Scrap.BONUS_SIDE if side_done() else 0) + (Scrap.BONUS_NO_DOWNS if downs == 0 else 0)
 
 func _stat(p: Node) -> Dictionary:
 	var id := int(p.player_id)

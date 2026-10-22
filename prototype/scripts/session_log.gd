@@ -15,9 +15,11 @@ extends RefCounted
 ##   overcharge     pos, noise, stale
 ##   pos            phase, noise, p: lista graczy [{who, bot, pos, hp, crouch, dead}] — próbka co POS_EVERY s (mapy cieplne tras, MAPS_PLAN.md P1)
 ##   objective      what (tag / stash / generator / nest / boss), n, of, pos, who, bot — zaliczony cel lub cel poboczny (czas odcinków trasy, P2)
-##   mission_end    result (success / failed / wipe), time, downs, attempts, peak_noise, side, players, weapons, noise
+##   mission_end    result (success / failed / wipe), time, downs, attempts, peak_noise, side, players, weapons, noise, scrap
 ## Wipe w kampanii kończy próbę wierszem mission_end, po którym idzie mission_start z kolejnym numerem próby.
 ## `weapons`: klucz broni → {shots, noise, dmg, kills}; `noise`: źródło → {n, sum} (strzały pod kluczem `shot`).
+## `scrap` (od 1.7.347, strojenie ekonomii warsztatu): {dropped — złom, który wypadł z wrogów i bossa w tej próbie, loot — zebrany łup,
+## bonus — premia za misję (0 przy wipe)}; do banku trafia loot + bonus, tylko przy sukcesie.
 
 const DIR := "user://sessions"
 const PHASES := ["OBJECTIVE", "BOSS", "EXTRACT", "SUCCESS", "FAILED"]
@@ -33,6 +35,7 @@ static var _t0 := 0                    ## ms zegara silnika w chwili startu misj
 static var _noise := {}                ## źródło → [liczba zdarzeń, suma Uwagi]
 static var _weapons := {}              ## klucz broni → {shots, noise, dmg, kills}
 static var _dmg_by := {}               ## id gracza → {klucz broni → obrażenia}
+static var _scrap_drop := 0            ## złom wyrzucony przez wrogów i bossa w tej próbie (podniesiony czy nie)
 static var _build := ""
 
 static func active() -> bool:
@@ -94,6 +97,7 @@ static func mission_start(data: Dictionary) -> void:
 	_noise = {}
 	_weapons = {}
 	_dmg_by = {}
+	_scrap_drop = 0
 	row.merge(data)
 	_write("mission_start", row)
 
@@ -117,6 +121,9 @@ static func mission_end(data: Dictionary) -> void:
 			for k in _dmg_by[id]:
 				by[k] = roundi(float(_dmg_by[id][k]))
 			(players[id] as Dictionary)["dmg"] = by
+	var scrap: Dictionary = row.get("scrap", {})
+	scrap["dropped"] = _scrap_drop
+	row["scrap"] = scrap
 	_write("mission_end", row)
 	_in_mission = false
 
@@ -157,6 +164,12 @@ static func note_damage(shooter: int, key: String, dealt: float, killed: bool) -
 	if not _dmg_by.has(shooter):
 		_dmg_by[shooter] = {}
 	_dmg_by[shooter][key] = float((_dmg_by[shooter] as Dictionary).get(key, 0.0)) + dealt
+
+## Złom `n`, który wypadł z wroga albo bossa (enemy.gd, boss_base.gd; serwer).
+static func note_scrap_drop(n: int) -> void:
+	if not active() or not _in_mission or n <= 0:
+		return
+	_scrap_drop += n
 
 ## Testy: stan jak po starcie gry (nowy plik przy następnym zdarzeniu).
 static func reset_for_test() -> void:
