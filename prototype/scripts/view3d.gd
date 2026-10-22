@@ -23,6 +23,8 @@ const Weapons := preload("res://scripts/weapons.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Backdrop3D := preload("res://scripts/backdrop3d.gd")
+const RangeSim := preload("res://scripts/range3d/range_sim.gd")
+const RangeDoor := preload("res://scripts/range3d/range_door.gd")
 
 const PX := Level3D.PX
 const FOV := 40.0
@@ -1378,17 +1380,19 @@ func _sync_range_doors() -> void:
 		(d["lamp"] as StandardMaterial3D).emission_energy_multiplier = 0.02 + 3.0 * k
 		(d["light"] as OmniLight3D).light_energy = 1.2 * k
 		var lines := PackedStringArray()
-		var b: Array = n.get("board")
-		for i in BOARD_ROWS:
-			# wiersze równej długości (czcionka o stałej szerokości): Label3D centruje blok, więc kolumny stoją równo także przy pustych wierszach
-			if i < b.size():
-				var e: Dictionary = b[i]
-				lines.append("%d  %-3s %7s  %-9s" % [i + 1, String(e["who"]), "%.2f s" % float(e["t"]), Weapons.def(int(e["w"])).name])
-			else:
-				lines.append("%d  %-3s %7s  %-9s" % [i + 1, "—", "", ""])
+		for ex in RangeSim.EXERCISES:                                     # każde ćwiczenie ma swoją część tablicy (range_door.rows)
+			var b: Array = n.call("rows", ex)
+			lines.append(RangeDoor.exercise_name(ex).to_upper())
+			for i in BOARD_ROWS:
+				# wiersze równej długości (czcionka o stałej szerokości): kolumny stoją równo także przy pustych wierszach
+				if i < b.size():
+					var e: Dictionary = b[i]
+					lines.append("%d  %-3s %7s  %-9s" % [i + 1, String(e["who"]), "%.2f s" % float(e["t"]), Weapons.def(int(e["w"])).name])
+				else:
+					lines.append("%d  %-3s %7s  %-9s" % [i + 1, "—", "", ""])
 		(d["rows"] as Label3D).text = "\n".join(lines)
 
-const BOARD_ROWS := 5
+const BOARD_ROWS := 3                     ## wierszy tablicy rekordów przy drzwiach strzelnicy na ćwiczenie
 
 func _build_range_door(n: Node2D) -> Dictionary:
 	var root := Node3D.new()
@@ -1449,7 +1453,7 @@ func _build_range_door(n: Node2D) -> Dictionary:
 	_ld_box(root, Vector3(2.15, 1.45, 0.06), Vector3(bx, 1.75, -1.86), _hp_mat(Color(0.25, 0.16, 0.09), 0.0, 0.8))
 	_ld_box(root, Vector3(2.0, 1.3, 0.04), Vector3(bx, 1.75, -1.82), _hp_mat(Color(0.045, 0.05, 0.045), 0.0, 0.9))
 	var title := Label3D.new()
-	title.text = tr("RANGE · 5 PLATES · SQUAD")
+	title.text = tr("RANGE · SQUAD")
 	title.font_size = 48
 	title.pixel_size = 0.0045
 	title.modulate = Color(0.93, 0.82, 0.5)
@@ -1460,13 +1464,15 @@ func _build_range_door(n: Node2D) -> Dictionary:
 		title.font = font
 	root.add_child(title)
 	var rows := Label3D.new()
-	rows.font_size = 30
+	rows.font_size = 26
+	rows.line_spacing = -4.0
+	rows.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	rows.pixel_size = 0.0045
 	rows.modulate = Color(0.86, 0.87, 0.82)
 	rows.shaded = true
 	rows.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	rows.layers = LAYER_WORLD
-	rows.position = Vector3(bx - 0.88, 1.6, -1.795)                 # wyrównanie do lewej zaczyna tekst w punkcie węzła: lewy brzeg płyty
+	rows.position = Vector3(bx - 0.88, 2.12, -1.795)                # wyrównanie do lewej zaczyna tekst w punkcie węzła: lewy brzeg płyty
 	var mono := UiTheme.mono_font()                               # stała szerokość: kolumny czasów równo pod sobą
 	if mono != null:
 		rows.font = mono

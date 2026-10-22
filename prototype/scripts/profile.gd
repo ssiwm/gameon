@@ -38,6 +38,7 @@ var fits: Dictionary = {}                     ## klucz broni → {gniazdo: id cz
 var cond: Dictionary = {}                     ## klucz broni → stan techniczny 0..100 % (GUNSMITH_PLAN §6, od 1.7.328); brak wpisu = 100
 var mastery: Dictionary = {}                  ## klucz broni → punkty wprawy (GUNSMITH_PLAN §7.3, od 1.7.330): trafienia i zabójstwa tym graczem z tej broni
 var history: Dictionary = {}                  ## klucz broni → {"k": zabójstwa, "e": elity, "b": bossowie} (GUNSMITH_PLAN §7.4, od 1.7.331)
+var range_best: Dictionary = {}               ## strzelnica FPP, rekordy osobiste: "<ćwiczenie>:<klucz broni>" → wynik (czas w s; papier — grupa w MOA), mniej = lepiej
 const NOTCH_MAX := 12                         ## tyle nacięć najwyżej mieści się na kolbie
 ## Progi stopni wprawy 0..5 (punkty: trafienie 1, krytyk 2, zabójstwo 5 — weapon_controller.gd). Pierwszy stopień po jednej misji, piąty po kilkunastu.
 const MASTERY_XP := [0, 60, 200, 450, 850, 1500]
@@ -269,6 +270,20 @@ func notches(key: String) -> int:
 func boss_notches(key: String) -> int:
 	return mini(NOTCH_MAX, int((history.get(key, {}) as Dictionary).get("b", 0)))
 
+## Rekord osobisty na strzelnicy: ćwiczenie `ex` (plates / reload / paper) z bronią `key`; `value` — czas w s albo grupa w MOA (mniej = lepiej).
+## Zwraca true, gdy to nowy rekord (zapis od razu).
+func range_record(ex: String, key: String, value: float) -> bool:
+	var k := "%s:%s" % [ex, key]
+	if range_best.has(k) and float(range_best[k]) <= value:
+		return false
+	range_best[k] = value
+	save()
+	return true
+
+## Rekord osobisty (−1: brak).
+func range_best_of(ex: String, key: String) -> float:
+	return float(range_best.get("%s:%s" % [ex, key], -1.0))
+
 ## Czyszczenie przy ławie: broń jak nowa.
 func clean(key: String) -> void:
 	cond.erase(key)
@@ -333,6 +348,7 @@ func save_to(path: String) -> void:
 	cfg.set_value("profile", "cond", cond)
 	cfg.set_value("profile", "mastery", mastery)
 	cfg.set_value("profile", "history", history)
+	cfg.set_value("profile", "range_best", range_best)
 	cfg.save(path)
 
 func load_from(path: String) -> void:
@@ -364,6 +380,11 @@ func load_from(path: String) -> void:
 		if hi_in[k] is Dictionary:
 			var hd: Dictionary = hi_in[k]
 			history[String(k)] = {"k": maxi(0, int(hd.get("k", 0))), "e": maxi(0, int(hd.get("e", 0))), "b": maxi(0, int(hd.get("b", 0)))}
+	range_best = {}
+	var rb_in := cfg.get_value("profile", "range_best", {}) as Dictionary
+	for k in rb_in:
+		if float(rb_in[k]) > 0.0:
+			range_best[String(k)] = float(rb_in[k])
 	look = int(cfg.get_value("profile", "look", Look.DEFAULT))
 	if not Look.is_unlocked(look, level()):
 		look = Look.DEFAULT
@@ -386,6 +407,7 @@ func reset_for_test() -> void:
 	cond = {}
 	mastery = {}
 	history = {}
+	range_best = {}
 	_cond_dirty = false
 	last_mission_xp = 0
 	last_mission_rows = []

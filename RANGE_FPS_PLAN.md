@@ -190,4 +190,20 @@ Ciąg dalszy (1.7.342, gałąź `feat/range-extras`):
 | Bełt SINEW-6 | lot z opadem w skali świata gry (400 px/s ≈ 33 m/s, 120 px/s² ≈ 9,8 m/s²): na 13 m opada ok. 0,8 m, lot 0,5 s; w locie pręt, wbija się w ściany i kulochwyt (8 ostatnich zostaje) | zrobione |
 
 Poprawka dev: `--range3d` na kliencie (`--join`) czeka na własnego gracza — wcześniej brał gracza hosta („1”) i sterował nim (błędy NaN w pozie postaci).
-Test `--rangetest` 54/54. Zostaje: ręce FPP (lepsze narzędzia, §8), etap 2 (przyrządy z `gun_proc.py`, rekordy per broń).
+Test `--rangetest` 54/54. Zostaje: ręce FPP (lepsze narzędzia, §8), etap 2 (przyrządy z `gun_proc.py`, rekordy per broń) — zrobione w §11.
+
+## 11. Etap 2 — przyrządy, przeładowanie, rekordy osobiste (2026-10-22, 1.7.343, gałąź `feat/range-stage2`)
+
+| Element | Jak | Stan |
+|---|---|---|
+| Linia przyrządów z modelu | `gun_proc.py` `sight_line()` czyta bryły przed scaleniem: przód — wierzch muszki (`fs_post` / `sight_front` / `front_sight`, w ostateczności `fs_tower`), tył — dno szczerbinki (między słupkami `sight_post` wierzch `sight_base`, na celowniku przerzutowym `sight_leaf` krawędź 1,5 mm niżej); kolimator (`sight_tube`) — oś tuby, noktowizor FALCON-6 (`nsp`, zasłania szczerbinkę) — oś od muszli ocznej do obiektywu. Zapis w `gun_<klucz>.json`: `sight_rear`, `sight_front`, `sight_optic` (`dot` / `nv`); `--json-only --nobake` odświeża same `.json` bez przebudowy GLB. Mają je M-83, SPREAD-12, P-83, FALCON-6, WRATH-4; LR-7, HKM-9, SPECTER-1, SINEW-6 i PELLET-8 nie mają przyrządów w modelu — zostaje linia nad najwyższym punktem | zrobione |
+| Broń przy przyrządach | `range_view.ads_pose`: przesunięcie i pochylenie broni takie, że linia szczerbinka → muszka leży w osi kamery (punkt linii nad chwytem w tej samej odległości od oka co dotąd); obrót wchodzi razem z postępem celowania | zrobione |
+| Obraz przez optykę | tuby kolimatora i noktowizora są w modelu zamknięte — z bliska zasłaniały cel. Przy postępie celowania 0,8–0,97 model broni gaśnie, a `range_optic.gd` (nakładka interfejsu z shaderem) pokazuje okrągłe pole widzenia: kolimator — czerwona kropka z poświatą, noktowizor — zielony ziarnisty obraz ze wzmocnioną jasnością, słupek i poziome kreski | zrobione |
+| Ćwiczenie „przeładowanie” | [X] / D-pad ↑ (`range_exercise`, poza przebiegiem) przełącza 5 blach ↔ przeładowanie. Przeładowanie: 4 najbliższe blachy (piąta leży), magazynek trzymanej broni przed startem przycięty do `drill_load` (2 strzały; broń ciągła — 1/5 zbiornika), także po przeładowaniu przed pierwszą blachą; od pierwszej blachy zwykły magazynek. Rekord wizyty osobno dla każdego ćwiczenia | zrobione |
+| Tablica drużyny | wynik z ćwiczeniem (`ex`), `plausible` dla przeładowania dolicza przeładowania (amunicja ponad tę z magazynka na starcie: magazynkami albo nabój po naboju × `reload_time` × 0,6). Do 5 wierszy na ćwiczenie; tablica przy drzwiach ma dwie części po 3 wiersze, toast podaje ćwiczenie; zapis sprzed 1.7.343 (bez `ex`) to „5 blach” | zrobione |
+| Rekordy osobiste | `Profile.range_best` (`<ćwiczenie>:<klucz broni>` → wynik, mniej = lepiej): czas 5 blach i przeładowania z każdej broni, grupa 5 strzałów na papierze w MOA (`paper`). Tablica w tunelu: rekord trzymanej broni w bieżącym ćwiczeniu, najlepsza grupa przy wierszu papieru, „REKORD OSOBISTY” przy nowym | zrobione |
+
+Dev: `--rangeex=reload` (ćwiczenie na starcie `--range3d`). Test `--rangetest` 68/68 (przyrządy w osi kamery dla 5 broni, optyka WRATH-4 /
+FALCON-6, rekordy w profilu i ich zapis, ćwiczenie z przeładowaniem: blachy, przycięty magazynek, przebieg z przeładowaniem na tablicy
+przeładowania, walidacja serwera, rekord grupy). Zostaje: ręce FPP (lepsze narzędzia, §8); przyrządy broni, które ich nie mają w modelu
+(SINEW-6, PELLET-8) — do dodania w `gun_proc.py` przy ich przebudowie.

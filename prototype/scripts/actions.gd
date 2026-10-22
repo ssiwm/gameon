@@ -49,6 +49,8 @@ const DEFS := {
 	# strzelnica FPP (scripts/range3d/fp_mode.gd): celowanie przez przyrządy — ten sam PPM co cios i ten sam lewy spust co krzyk, bo na
 	# strzelnicy cios i krzyk są wyłączone, a poza nią przyrządów nie ma (kontekst „range”: RANGE_SHEET)
 	"aim_sights": {"mouse": [MOUSE_BUTTON_RIGHT], "axis": [[JOY_AXIS_TRIGGER_LEFT, 1.0]]},
+	# strzelnica: zmiana ćwiczenia (5 blach / przeładowanie) — ten sam klawisz co wybór rzucanego (throw_next), który na strzelnicy nic nie robi
+	"range_exercise": {"keys": [KEY_X], "pad": [JOY_BUTTON_DPAD_UP]},
 	"help": {"keys": [KEY_F1]},
 	"chat": {"keys": [KEY_T]},
 	"journal": {"keys": [KEY_N]},                       # dziennik komunikatów i porad (MESSAGES_PLAN.md); pad: bez domyślnego przycisku, można przypisać
@@ -80,7 +82,7 @@ const LABELS := {
 	"jump": "Jump", "fire": "Fire", "reload": "Reload", "firemode": "Fire mode", "ammo_type": "Ammo type", "melee": "Melee",
 	"weapon_1": "Weapon 1", "weapon_2": "Weapon 2", "weapon_3": "Weapon 3", "weapon_next": "Next weapon", "weapon_prev": "Previous weapon",
 	"crouch": "Sneak", "overcharge": "Overcharge (lure)", "scream": "Scream", "flare": "Flare", "flashlight": "Flashlight",
-	"aim_sights": "Aim down sights (range)",
+	"aim_sights": "Aim down sights (range)", "range_exercise": "Change exercise (range)",
 	"interact": "Interact / revive", "throw": "Use item", "throw_next": "Switch item", "restart": "Confirm / ready up",
 	"help": "Controls overlay", "chat": "Team chat", "journal": "Journal", "pause": "Pause menu", "steam_invite": "Steam invite", "fullscreen": "Fullscreen",
 }
@@ -362,6 +364,7 @@ const RANGE_SHEET := [
 	[["firemode"], "Fire mode"],
 	[["ammo_type"], "Ammo type (free here)"],
 	[["weapon_1", "weapon_2", "weapon_3"], "Switch weapon"],
+	[["range_exercise"], "Change exercise"],
 	[["interact"], "Leave the range"],
 ]
 
@@ -382,8 +385,8 @@ static func range_hud_line() -> String:
 
 ## Jednowierszowa podpowiedź u góry obrazu strzelnicy (range_view.gd) — tylko to, czego nie ma w zwykłej grze.
 static func range_line() -> String:
-	return TranslationServer.translate("RANGE  ·  %s/%s station  ·  hold %s brace on the bench  ·  %s sights  ·  %s leave") % [
-		key("move_left"), key("move_right"), key("crouch"), key("aim_sights"), key("interact")]
+	return TranslationServer.translate("RANGE  ·  %s/%s station  ·  hold %s brace on the bench  ·  %s sights  ·  %s exercise  ·  %s leave") % [
+		key("move_left"), key("move_right"), key("crouch"), key("aim_sights"), key("range_exercise"), key("interact")]
 
 ## Jednowierszowy pasek sterowania w dole HUD (F1 przełącza).
 static func hud_line() -> String:
