@@ -148,6 +148,8 @@ var ammo_enabled := true          ## boty mają nieskończoną amunicję
 ## (zamiast pocisku 2D promień w tunelu 3D) i oparcie. Cała reszta (magazynek, przeładowania, zacięcia, lufa, podrzut) liczy się jak na misji.
 var range_sink: Object = null
 var practice := false             ## amunicja ćwiczebna (strzelnica): przeładowanie nie bierze naboi z zapasu, strzał nie zużywa broni
+var range_fit := {}               ## strzelnica: próbny montaż części (id broni → kod fit), także części jeszcze nieodblokowanych; tylko lokalnie
+                                  ## (strzał idzie do range_sink, nie do serwera) i znika przy wyjściu (range_restore)
 
 ## Hooki testów headless (--weapontest): symulowany spust. W grze zawsze false.
 var sim_fire := false
@@ -231,6 +233,8 @@ func def_of(w: int) -> WeaponDef:
 
 ## Kod części broni `w` tego gracza (player.fits — replikowane od właściciela; boty i brak wpisu = fabryczna).
 func fit_of(w: int) -> int:
+	if range_sink != null and range_fit.has(w):
+		return int(range_fit[w])                                # strzelnica: próba części z szafy (fp_mode.gd)
 	if player == null or player.is_bot or w < 0 or w >= player.fits.size():
 		return 0
 	return int(player.fits[w])
@@ -1490,6 +1494,7 @@ func range_snapshot() -> Dictionary:
 		"shots_mag": _shots_mag.duplicate()}
 
 func range_restore(s: Dictionary) -> void:
+	range_fit.clear()                                           # próbne części zostają w szafie strzelnicy
 	if s.is_empty():
 		return
 	_cancel_actions()
@@ -1537,6 +1542,32 @@ func range_take(w: int) -> void:
 		_sync_player()
 	else:
 		select_slot(target)
+
+## Szafa strzelnicy, próba części (WORKSHOP_PLAN.md U5): broń `w` z kodem części `code` do ręki — z pełnym magazynkiem, bo część może go zmienić.
+## Działa tylko na strzelnicy; zestaw z wejścia wraca przez `range_restore`.
+func range_try(w: int, code: int) -> void:
+	if range_sink == null or not Weapons.is_valid(w):
+		return
+	range_fit[w] = code
+	if carries(w):
+		_cancel_actions()
+		mags[w] = def_of(w).mag
+		jams.erase(w)
+		if loadout[slot] == w:
+			state = State.READY
+			_sync_player()
+			return
+	range_take(w)
+	mags[w] = def_of(w).mag
+
+## Czy broń `w` ma na strzelnicy próbną część, której drużyna jeszcze nie ma.
+func range_trial(w: int) -> bool:
+	if not range_fit.has(w):
+		return false
+	for id in Parts.decode(String(Weapons.def(w).key), int(range_fit[w])):
+		if not Scrap.has_part(String(id)):
+			return true
+	return false
 
 ## Serwer przyznał broń (po sprawdzeniu odległości). Zastępuje bieżącą główną, jeśli nie masz
 ## już tej samej; porzucona broń leży pod stopami, jej magazynek wraca do wspólnego zapasu.

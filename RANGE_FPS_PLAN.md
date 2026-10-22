@@ -242,3 +242,13 @@ bronią i amunicją.
 
 Dev: `--rangelocker` (szafa otwarta na starcie `--range3d`). Test `--rangetest` 75/75: lista bez broni białej, otwarta szafa (spust, Enter, [E]),
 HKM-9 z pełnym zbiornikiem, WRATH-4 na jego miejsce, własny pistolet, wyjście — zestaw, slot, magazynek i lufa jak przy wejściu.
+
+### 13.1 Próba części (1.7.348, `WORKSHOP_PLAN.md` U5)
+
+W szafie → (D-pad →) na wierszu broni z częściami otwiera jej gniazda: W/S gniazdo, A/D część — każda część gry, także jeszcze nieodblokowana
+(„próba”), pod listą opis części; spacja / Enter bierze broń z tym montażem i pełnym magazynkiem (część może go zmienić), [E] wraca do listy,
+klik w wiersz zmienia część. Montaż próbny siedzi tylko w kontrolerze (`weapon_controller.range_fit`, `fit_of` czyta go, gdy jest `range_sink`)
+— strzał na strzelnicy idzie do `range_sink`, nie do serwera, więc niczego nie trzeba walidować; `player.fits` i montaż w profilu się nie zmieniają,
+a `range_restore` przy wyjściu czyści próbę. Na padzie D-pad → to też klawisz szafy — przy otwartej szafie wygrywa ruch w prawo, zamyka B.
+Dev: `--rangeparts` (szafa w gniazdach M-83 z PBS-1). Test `--rangetest` 77/77: PBS-1 i bęben 75 bez zakupu (tłumik, magazynek 75), montaż gracza
+bez zmian, po wyjściu fit jak przed wejściem.
