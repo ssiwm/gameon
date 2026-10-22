@@ -291,7 +291,16 @@ func release() -> void:
 	_estate.clear()
 	queue_free()
 
+## Dev (--perf): łączny czas `_process` widoku 3D w µs — synchronizacja świata 3D z symulacją 2D to praca wątku głównego, której nie ma
+## w trybie headless (main.gd zeruje i dzieli przez liczbę klatek w wierszu [PERF]).
+static var stat_usec := 0
+
 func _process(delta: float) -> void:
+	var t0 := Time.get_ticks_usec()
+	_tick(delta)
+	stat_usec += Time.get_ticks_usec() - t0
+
+func _tick(delta: float) -> void:
 	if _level == null or not is_instance_valid(_level):
 		return
 	_life += delta

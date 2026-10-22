@@ -1025,6 +1025,12 @@ func _perf_run(secs: float, col: int) -> void:
 	var phys_t := 0.0
 	var calls := 0.0
 	var prims := 0.0
+	# liczniki skryptów od startu pomiaru (dotąd zawierały też rozgrzewkę i wczytywanie mapy)
+	ENEMY.stat_usec = 0
+	ENEMY.stat_slide_usec = 0
+	NavGraph.stat_calls = 0
+	NavGraph.stat_usec = 0
+	VIEW3D.stat_usec = 0
 	var t_end := Time.get_ticks_msec() + int(secs * 1000.0)
 	var last := Time.get_ticks_usec()
 	var fxs := ""
@@ -1093,11 +1099,11 @@ func _perf_run(secs: float, col: int) -> void:
 		gsum += t
 	print("[PERF-SPIKES] ", ", ".join(spikes))
 	print("[PERF-GPU] gpu avg=%.2f ms p95=%.2f ms  render_cpu avg=%.2f ms  viewports=%d" % [gsum / float(maxi(gpu_ms.size(), 1)), gpu_ms[int(float(gpu_ms.size()) * 0.95)] if not gpu_ms.is_empty() else 0.0, rcpu / float(maxi(n, 1)), vps.size()])
-	print("[PERF] frames=%d avg=%.2f ms (%.0f fps) p50=%.2f p95=%.2f max=%.2f  draw_calls=%.0f prims=%.0f  nodes=%d  vram=%.1f MB  tex_mem=%.1f MB  proc_max=%.2f ms phys_max=%.2f ms  A*=%.0f/s (%.2f ms/frame) enemy_phys=%.2f ms slide=%.2f ms pairs=%.0f active=%.0f" % [
+	print("[PERF] frames=%d avg=%.2f ms (%.0f fps) p50=%.2f p95=%.2f max=%.2f  draw_calls=%.0f prims=%.0f  nodes=%d  vram=%.1f MB  tex_mem=%.1f MB  proc_max=%.2f ms phys_max=%.2f ms  A*=%.0f/s (%.2f ms/frame) enemy_phys=%.2f ms slide=%.2f ms view3d=%.2f ms pairs=%.0f active=%.0f" % [
 		n, sum / float(maxi(n, 1)), 1000.0 / maxf(sum / float(maxi(n, 1)), 0.001), times[n / 2], times[int(float(n) * 0.95)], times[n - 1],
 		calls / float(maxi(n, 1)), prims / float(maxi(n, 1)), int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
 		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0,
-		proc_t / float(maxi(n, 1)) * 1000.0, phys_t / float(maxi(n, 1)) * 1000.0, float(NavGraph.stat_calls) / secs, float(NavGraph.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_slide_usec) / 1000.0 / float(maxi(n, 1)), pairs / float(maxi(n, 1)), active_o / float(maxi(n, 1))])
+		proc_t / float(maxi(n, 1)) * 1000.0, phys_t / float(maxi(n, 1)) * 1000.0, float(NavGraph.stat_calls) / secs, float(NavGraph.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_slide_usec) / 1000.0 / float(maxi(n, 1)), float(VIEW3D.stat_usec) / 1000.0 / float(maxi(n, 1)), pairs / float(maxi(n, 1)), active_o / float(maxi(n, 1))])
 	if "--perfreport" in OS.get_cmdline_user_args():
 		await _perf_report(vps, v3d)
 	get_tree().quit()
@@ -1209,31 +1215,41 @@ func _perf_report(vps: Array[RID], v3d: Node) -> void:
 			if (ln as Node).name == &"Moon":
 				moon = ln as DirectionalLight3D
 		var forest: Array = vp_w.find_children("*", "MultiMeshInstance3D", true, false)
-		var exps := [
-			["cień księżyca wyłączony", func(on: bool) -> void:
-				if moon != null: moon.shadow_enabled = not on],
-			["księżyc: 2 kaskady zamiast 4", func(on: bool) -> void:
-				if moon != null: moon.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if on else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS],
-			["las (multisiatki) bez cienia", func(on: bool) -> void:
-				for f in forest:
-					(f as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON],
-			["MSAA 3D wyłączone", func(on: bool) -> void:
-				vp_w.msaa_3d = Viewport.MSAA_DISABLED if on else Viewport.MSAA_2X
-				vp_a.msaa_3d = Viewport.MSAA_DISABLED if on else Viewport.MSAA_2X],
-			["SSIL wyłączone", func(on: bool) -> void:
-				env.ssil_enabled = not on],
-			["SSAO wyłączone", func(on: bool) -> void:
-				env.ssao_enabled = not on],
-			["mgła wolumetryczna wyłączona", func(on: bool) -> void:
-				env.volumetric_fog_enabled = not on],
-			["glow wyłączony", func(on: bool) -> void:
-				env.glow_enabled = not on],
-			["świat w skali 0,75 (FSR 1)", func(on: bool) -> void:
-				vp_w.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if on else Viewport.SCALING_3D_MODE_BILINEAR
-				vp_w.scaling_3d_scale = 0.75 if on else 1.0],
-		]
 		var ssil0 := env.ssil_enabled
 		var vol0 := env.volumetric_fog_enabled
+		# stan sprzed eksperymentów — każda zmiana wraca do niego, a nie do „włączone” (inaczej np. wyłączony w grze cień wracałby włączony)
+		var moon_sh0 := moon.shadow_enabled if moon != null else false
+		var moon_mode0 := moon.directional_shadow_mode if moon != null else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+		var forest_sh0: Array = forest.map(func(f) -> int: return (f as GeometryInstance3D).cast_shadow)
+		var msaa_w0 := vp_w.msaa_3d
+		var msaa_a0 := vp_a.msaa_3d
+		var ssao0 := env.ssao_enabled
+		var glow0 := env.glow_enabled
+		var scale_mode0 := vp_w.scaling_3d_mode
+		var scale0 := vp_w.scaling_3d_scale
+		var exps := [
+			["cień księżyca wyłączony", func(on: bool) -> void:
+				if moon != null: moon.shadow_enabled = false if on else moon_sh0],
+			["księżyc: 2 kaskady zamiast 4", func(on: bool) -> void:
+				if moon != null: moon.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if on else moon_mode0],
+			["las (multisiatki) bez cienia", func(on: bool) -> void:
+				for i in forest.size():
+					(forest[i] as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if on else forest_sh0[i]],
+			["MSAA 3D wyłączone", func(on: bool) -> void:
+				vp_w.msaa_3d = Viewport.MSAA_DISABLED if on else msaa_w0
+				vp_a.msaa_3d = Viewport.MSAA_DISABLED if on else msaa_a0],
+			["SSIL wyłączone", func(on: bool) -> void:
+				env.ssil_enabled = false if on else ssil0],
+			["SSAO wyłączone", func(on: bool) -> void:
+				env.ssao_enabled = false if on else ssao0],
+			["mgła wolumetryczna wyłączona", func(on: bool) -> void:
+				env.volumetric_fog_enabled = false if on else vol0],
+			["glow wyłączony", func(on: bool) -> void:
+				env.glow_enabled = false if on else glow0],
+			["świat w skali 0,75 (FSR 1)", func(on: bool) -> void:
+				vp_w.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if on else scale_mode0
+				vp_w.scaling_3d_scale = 0.75 if on else scale0],
+		]
 		var base_g := await _perf_gpu_avg(vp_nodes, 60)
 		print("[PERF-EXP] GPU wszystkich viewportów: %.2f ms (SSIL %s, mgła wolumetryczna %s)" % [base_g, str(ssil0), str(vol0)])
 		var shots := ""                                         # --perfshots=KATALOG: zrzut okna z każdą zmianą (porównanie wyglądu z kosztem)
