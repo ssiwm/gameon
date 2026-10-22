@@ -10,6 +10,7 @@ const Char3D := preload("res://scripts/char3d.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Actions := preload("res://scripts/actions.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
+const Parts := preload("res://scripts/parts.gd")
 
 const POS := Vector3(-2.78, 0.0, -1.55)       ## środek podstawy szafy (przy lewej ścianie, przed ławą — widać ją po obrocie w lewo)
 const SIZE := Vector3(0.42, 2.0, 1.5)         ## głębokość (x), wysokość, szerokość (wzdłuż tunelu)
@@ -23,6 +24,9 @@ var _guns := {}                               ## id broni → model na stojaku
 var _ui: Control
 var _rows: Array = []                         ## [{bg: ColorRect, name: Label, info: Label}]
 var _foot: Label
+var _title: Label
+var _sub: Label
+var _desc: Label                              ## opis części w zaznaczonym gnieździe (widok gniazd)
 
 func setup(v: Node, f: Node) -> void:
 	view = v
@@ -116,21 +120,25 @@ func _build_ui() -> void:
 	panel.size = Vector2(w, h)
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	_ui.add_child(panel)
-	var title := _label(tr("WEAPON LOCKER"), UiTheme.T_BODY, UiTheme.ACCENT)
-	title.position = Vector2(10.0, 5.0)
+	_title = _label(tr("WEAPON LOCKER"), UiTheme.T_BODY, UiTheme.ACCENT)
+	_title.position = Vector2(10.0, 5.0)
 	if UiTheme.heading_font() != null:
-		title.add_theme_font_override("font", UiTheme.heading_font())
-	panel.add_child(title)
-	var sub := _label(tr("Range only · free · back in the locker when you leave"), UiTheme.T_CAPTION - 1, UiTheme.MUTED)
-	sub.position = Vector2(10.0, 18.0)
-	panel.add_child(sub)
+		_title.add_theme_font_override("font", UiTheme.heading_font())
+	panel.add_child(_title)
+	_sub = _label(tr("Range only · free · back in the locker when you leave"), UiTheme.T_CAPTION - 1, UiTheme.MUTED)
+	_sub.position = Vector2(10.0, 18.0)
+	panel.add_child(_sub)
 	for i in ids.size():
 		var bg := ColorRect.new()
 		bg.position = Vector2(6.0, 30.0 + ROW_H * float(i))
 		bg.size = Vector2(w - 12.0, ROW_H - 1.0)
 		bg.mouse_filter = Control.MOUSE_FILTER_STOP
 		bg.gui_input.connect(_on_row_input.bind(i))
-		bg.mouse_entered.connect(func() -> void: fp.locker_sel = i)
+		bg.mouse_entered.connect(func() -> void:
+			if fp.locker_parts:
+				fp.locker_slot = i
+			else:
+				fp.locker_sel = i)
 		panel.add_child(bg)
 		var nm := _label("", UiTheme.T_CAPTION, UiTheme.TEXT)
 		nm.position = Vector2(6.0, 1.0)
@@ -142,6 +150,10 @@ func _build_ui() -> void:
 	_foot = _label("", UiTheme.T_CAPTION - 1, UiTheme.MUTED)
 	_foot.position = Vector2(10.0, h - 13.0)
 	panel.add_child(_foot)
+	_desc = _label("", UiTheme.T_CAPTION - 1, UiTheme.TEXT)
+	_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_desc.size = Vector2(w - 20.0, 0.0)
+	panel.add_child(_desc)
 
 func _label(t: String, size: int, c: Color) -> Label:
 	var l := Label.new()
@@ -157,7 +169,11 @@ func hide_ui() -> void:
 
 func _on_row_input(ev: InputEvent, i: int) -> void:
 	if ev is InputEventMouseButton and (ev as InputEventMouseButton).pressed and (ev as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
-		fp.locker_pick(i)
+		if fp.locker_parts:
+			fp.locker_slot = i                                  # widok gniazd: klik zmienia część w gnieździe
+			fp.locker_cycle(1)
+		else:
+			fp.locker_pick(i)
 
 ## Co klatkę (range_view._process): bronie z szafy w rękach gracza znikają ze stojaka; lista z zaznaczeniem, gdy szafa otwarta.
 func tick() -> void:
@@ -168,16 +184,50 @@ func tick() -> void:
 	_ui.visible = bool(fp.locker_open)
 	if not _ui.visible:
 		return
+	if fp.locker_parts:
+		_tick_parts()
+		return
+	_title.text = tr("WEAPON LOCKER")
+	_sub.text = tr("Range only · free · back in the locker when you leave")
+	_desc.visible = false
 	var held := int(wc.cur().id)
 	for i in _rows.size():
 		var r: Dictionary = _rows[i]
+		(r["bg"] as ColorRect).visible = true
 		var w := int(r["w"])
 		var d = Weapons.def(w)
 		(r["bg"] as ColorRect).color = Color(UiTheme.ACCENT, 0.28) if i == int(fp.locker_sel) else Color(0.0, 0.0, 0.0, 0.0)
 		(r["name"] as Label).text = String(d.name)
 		var info := tr("in hand") if w == held else (tr("yours") if own.has(w) else "")
 		(r["info"] as Label).text = ("%s  ·  %s" % [_kind(d), info]) if info != "" else _kind(d)
-	_foot.text = tr("%s/%s choose  ·  %s take  ·  %s close") % [Actions.key("menu_up"), Actions.key("menu_down"), Actions.key("menu_accept"), Actions.key("range_locker")]
+	_foot.text = tr("%s/%s choose  ·  %s take  ·  %s parts  ·  %s close") % [Actions.key("menu_up"), Actions.key("menu_down"), Actions.key("menu_accept"),
+		Actions.key("menu_right"), Actions.key("range_locker")]
+
+## Widok gniazd (próba części, WORKSHOP_PLAN.md U5): wiersz = gniazdo z wybraną częścią i jej stanem (fabryczna / twoja / próba), pod listą opis części.
+func _tick_parts() -> void:
+	var key := String(Weapons.def(int(fp.locker_w)).key)
+	var slots := Parts.slots_of(key)
+	_title.text = String(Weapons.def(int(fp.locker_w)).name)
+	_sub.text = tr("Try any part · nothing to buy here · the bench sells them")
+	for i in _rows.size():
+		var r: Dictionary = _rows[i]
+		var on := i < slots.size()
+		(r["bg"] as ColorRect).visible = on
+		if not on:
+			continue
+		var s := String(slots[i])
+		var id := String(fp.locker_choice.get(s, ""))
+		(r["bg"] as ColorRect).color = Color(UiTheme.ACCENT, 0.28) if i == int(fp.locker_slot) else Color(0.0, 0.0, 0.0, 0.0)
+		(r["name"] as Label).text = tr(String(Parts.SLOT_NAMES[s]))
+		var nm := tr("Factory") if id == "" else tr(String(Parts.get_part(id)["name"]))
+		var tag := "" if id == "" else (tr("yours") if Scrap.has_part(id) else tr("trial"))
+		(r["info"] as Label).text = ("‹ %s ›  ·  %s" % [nm, tag]) if tag != "" else "‹ %s ›" % nm
+	var sel := String(fp.locker_choice.get(String(slots[clampi(int(fp.locker_slot), 0, slots.size() - 1)]), ""))
+	_desc.visible = true
+	_desc.position = Vector2(10.0, 32.0 + ROW_H * float(slots.size()))
+	_desc.text = tr("Factory part: no gain, no cost.") if sel == "" else tr(String(Parts.get_part(sel)["desc"]))
+	_foot.text = tr("%s/%s slot  ·  %s/%s part  ·  %s take  ·  %s back") % [Actions.key("menu_up"), Actions.key("menu_down"), Actions.key("menu_left"),
+		Actions.key("menu_right"), Actions.key("menu_accept"), Actions.key("interact")]          # [E] = menu_back (Esc to pauza)
 
 ## Krótki opis broni w wierszu: kaliber i magazynek albo rodzaj broni specjalnej.
 func _kind(d) -> String:

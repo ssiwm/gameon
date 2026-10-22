@@ -20,6 +20,7 @@ extends Node
 const RangeDoor := preload("res://scripts/range3d/range_door.gd")
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const Parts := preload("res://scripts/parts.gd")
 const Actions := preload("res://scripts/actions.gd")
 const RangeView := preload("res://scripts/range3d/range_view.gd")
 const Char3D := preload("res://scripts/char3d.gd")
@@ -576,6 +577,33 @@ func _t_locker() -> void:
 	fp.locker_pick(ids.find(int(kit0[2])))
 	await _frames(3)
 	check("szafa: własny pistolet tylko się dobywa (slot %d)" % wc.slot, wc.slot == 2 and wc.loadout.has(Weapons.GNIEW4))
+	# próba części (WORKSHOP_PLAN.md U5): → w szafie otwiera gniazda broni, A/D zmienia część — także nieodblokowaną; montaż tylko na strzelnicy
+	var had_pbs: bool = Scrap.parts.has("m83_pbs1")
+	var had_drum: bool = Scrap.parts.has("m83_drum75")
+	Scrap.parts.erase("m83_pbs1")
+	Scrap.parts.erase("m83_drum75")
+	var fits0: int = int(player.fits[Weapons.M83]) if Weapons.M83 < player.fits.size() else 0
+	fp.toggle_locker()
+	fp.locker_sel = ids.find(Weapons.M83)
+	Input.action_press("menu_right")
+	await _frames(2)
+	Input.action_release("menu_right")
+	var parts_open: bool = fp.locker_parts and int(fp.locker_w) == Weapons.M83
+	var slots: Array = Parts.slots_of("m83")
+	fp.locker_slot = slots.find("muzzle")
+	fp.locker_cycle(1)                                           # wylot: fabryczny → PBS-1
+	fp.locker_slot = slots.find("feed")
+	while String(fp.locker_choice.get("feed", "")) != "m83_drum75":
+		fp.locker_cycle(1)
+	Input.action_press("menu_accept")
+	await _frames(2)
+	Input.action_release("menu_accept")
+	await _frames(2)
+	var td = wc.cur()
+	check("próba części: → otwiera gniazda M-83 (%s), PBS-1 i bęben 75 bez zakupu — tłumik %.1f, magazynek %d, próba %s, montaż gracza bez zmian" % [parts_open,
+		float(td.suppressor), wc.mag_of(Weapons.M83), wc.range_trial(Weapons.M83)],
+		parts_open and int(td.id) == Weapons.M83 and float(td.suppressor) > 0.0 and wc.mag_of(Weapons.M83) == Weapons.def(Weapons.M83).mag + 45
+		and wc.range_trial(Weapons.M83) and not fp.locker_open and int(player.fits[Weapons.M83]) == fits0 and not Scrap.has_part("m83_pbs1"))
 	wc.mags[Weapons.GNIEW4] = 1
 	fp.leave()
 	await _frames(3)
@@ -583,6 +611,12 @@ func _t_locker() -> void:
 		wc.barrel_of(Weapons.M83) * 100.0, str(player.kit)],
 		wc.loadout == kit0 and wc.slot == slot0 and wc.mag_of(Weapons.M83) == 17 and absf(wc.barrel_of(Weapons.M83) - 0.3) < 0.03
 		and int(player.weapon) == int(kit0[slot0]) and player.kit == wc.kit() and not wc.carries(Weapons.GNIEW4))
+	check("wyjście: próbne części zostają w szafie (fit M-83 %d, montaż gracza %d)" % [wc.fit_of(Weapons.M83), fits0],
+		wc.range_fit.is_empty() and wc.fit_of(Weapons.M83) == fits0 and float(wc.def_of(Weapons.M83).suppressor) == float(Weapons.def_build(Weapons.M83, Weapons.build_of(0, fits0)).suppressor))
+	if had_pbs:
+		Scrap.parts["m83_pbs1"] = true
+	if had_drum:
+		Scrap.parts["m83_drum75"] = true
 	wc._barrel[Weapons.M83] = 0.0
 	wc.mags[Weapons.M83] = 30
 

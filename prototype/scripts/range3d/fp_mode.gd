@@ -15,6 +15,7 @@ const RangeSim := preload("res://scripts/range3d/range_sim.gd")
 const RangeView := preload("res://scripts/range3d/range_view.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const Parts := preload("res://scripts/parts.gd")
 
 const SENS := 0.0022                  ## rad na piksel ruchu myszy
 const PAD_SENS := 2.4                 ## rad/s przy wychyleniu drążka do końca
@@ -52,6 +53,10 @@ var paper_prev := {}                  ## poprzednia seria do porównania: {g: gr
 var _paper_sig := ""
 var locker_open := false              ## otwarta szafa z bronią (obraz: range_locker.gd; mysz wolna, broń nie strzela — player._range_brain)
 var locker_sel := 0                   ## zaznaczony wiersz szafy (indeks w `locker_weapons()`)
+var locker_parts := false             ## szafa pokazuje gniazda broni `locker_w` (próba części, WORKSHOP_PLAN.md U5) zamiast listy broni
+var locker_w := -1                    ## broń, której części gracz przymierza
+var locker_slot := 0                  ## zaznaczone gniazdo (indeks w Parts.slots_of)
+var locker_choice := {}               ## gniazdo → id części ("" — fabryczna) wybrane w szafie
 var _kit := {}                        ## zestaw z wejścia (weapon_controller.range_snapshot), wraca przy wyjściu                  ## broń i obsługa: zmiana zaczyna nową serię (sim.paper_break)
 var shot_climb := 0.0               ## ° — podrzut z początku kroku: strzał leci tam, gdzie celownik tej klatki (jak player._local_brain w grze 2D),
                                       ## a nie z podrzutem doliczonym już za ten sam strzał
@@ -94,6 +99,7 @@ func leave() -> void:
 	wc.range_restore(_kit)                                     # sprzęt z wejścia: broń z szafy wraca na miejsce
 	_kit = {}
 	locker_open = false
+	locker_parts = false
 	if player.fp == self:
 		player.fp = null
 		player.in_range = false
@@ -185,6 +191,7 @@ static func locker_weapons() -> Array:
 ## [F] otwiera / zamyka szafę; zaznaczenie startuje na trzymanej broni.
 func toggle_locker() -> void:
 	locker_open = not locker_open
+	locker_parts = false
 	if locker_open:
 		locker_sel = maxi(0, locker_weapons().find(int(player.weapons.cur().id)))
 		player.weapons.sim_fire = false
@@ -198,17 +205,90 @@ func locker_pick(i: int) -> void:
 	player.weapons.range_take(int(ids[i]))
 	locker_open = false
 
-## Sterowanie otwartą szafą: W/S (D-pad) wybór, spacja (A) bierze, [F] albo [E] / Esc (B) zamyka. Myszą — klik w wiersz (range_locker.gd).
+## Próba części (WORKSHOP_PLAN.md U5): gniazda broni z wiersza `i` szafy, z częściami, które ma teraz w ręku (albo z montażu gracza).
+## Broń bez części zostaje na liście.
+func locker_open_parts(i: int) -> void:
+	var ids := locker_weapons()
+	if i < 0 or i >= ids.size():
+		return
+	var w := int(ids[i])
+	var key := String(Weapons.def(w).key)
+	if Parts.slots_of(key).is_empty():
+		return
+	locker_sel = i
+	locker_w = w
+	locker_slot = 0
+	locker_choice = {}
+	var fitted := Parts.decode(key, int(player.weapons.fit_of(w)))
+	for s in Parts.slots_of(key):
+		locker_choice[s] = ""
+		for p in Parts.in_slot(key, String(s)):
+			if fitted.has(String(p["id"])):
+				locker_choice[s] = String(p["id"])
+	locker_parts = true
+
+## Opcje gniazda `slot` broni `locker_w`: "" (fabryczna) i wszystkie części gniazda — odblokowane czy nie.
+func locker_slot_options(slot: String) -> Array:
+	var out := [""]
+	for p in Parts.in_slot(String(Weapons.def(locker_w).key), slot):
+		out.append(String(p["id"]))
+	return out
+
+## Następna (`d` = 1) albo poprzednia (−1) część w zaznaczonym gnieździe.
+func locker_cycle(d: int) -> void:
+	var slots := Parts.slots_of(String(Weapons.def(locker_w).key))
+	if slots.is_empty():
+		return
+	var s := String(slots[clampi(locker_slot, 0, slots.size() - 1)])
+	var ops := locker_slot_options(s)
+	locker_choice[s] = ops[posmod(ops.find(String(locker_choice.get(s, ""))) + d, ops.size())]
+
+## Broń z wybranymi częściami do ręki (weapon_controller.range_try) i szafa się zamyka.
+func locker_try() -> void:
+	player.weapons.range_try(locker_w, Parts.encode(String(Weapons.def(locker_w).key), locker_choice))
+	locker_parts = false
+	locker_open = false
+
+## Sterowanie otwartą szafą: W/S (D-pad) wybór, spacja (A) bierze, → (D-pad) części broni, [F] albo [E] / Esc (B) zamyka. Myszą — klik w wiersz
+## (range_locker.gd). W gniazdach: W/S gniazdo, A/D część, spacja bierze broń z tymi częściami, [E] / Esc wraca do listy broni.
 func _tick_locker() -> void:
+	if locker_parts:
+		_tick_locker_parts()
+		return
 	var n := locker_weapons().size()
-	if Input.is_action_just_pressed("range_locker") or (Input.is_action_just_pressed("menu_back") and not Input.is_action_just_pressed("pause")):   # Esc to pauza
+	if _locker_key() or (Input.is_action_just_pressed("menu_back") and not Input.is_action_just_pressed("pause")):   # Esc to pauza
 		locker_open = false
 	elif Input.is_action_just_pressed("menu_up"):
 		locker_sel = (locker_sel - 1 + n) % n
 	elif Input.is_action_just_pressed("menu_down"):
 		locker_sel = (locker_sel + 1) % n
+	elif Input.is_action_just_pressed("menu_right"):
+		locker_open_parts(locker_sel)
 	elif Input.is_action_just_pressed("menu_accept"):
 		locker_pick(locker_sel)
+
+## [F] zamyka szafę. Na padzie szafa siedzi pod D-pad →, który jest też `menu_right` (części, następna część) — wtedy wygrywa ruch w prawo,
+## a pad zamyka szafę przyciskiem B.
+func _locker_key() -> bool:
+	return Input.is_action_just_pressed("range_locker") and not Input.is_action_just_pressed("menu_right")
+
+func _tick_locker_parts() -> void:
+	var n := Parts.slots_of(String(Weapons.def(locker_w).key)).size()
+	if _locker_key():
+		locker_parts = false
+		locker_open = false
+	elif Input.is_action_just_pressed("menu_back") and not Input.is_action_just_pressed("pause"):
+		locker_parts = false
+	elif Input.is_action_just_pressed("menu_up"):
+		locker_slot = (locker_slot - 1 + n) % n
+	elif Input.is_action_just_pressed("menu_down"):
+		locker_slot = (locker_slot + 1) % n
+	elif Input.is_action_just_pressed("menu_left"):
+		locker_cycle(-1)
+	elif Input.is_action_just_pressed("menu_right"):
+		locker_cycle(1)
+	elif Input.is_action_just_pressed("menu_accept"):
+		locker_try()
 
 func _process(_delta: float) -> void:
 	var want := not _blocked()

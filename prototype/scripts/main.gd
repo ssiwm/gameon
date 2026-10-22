@@ -1149,6 +1149,11 @@ func _dev_range3d() -> void:
 			fp.paper_prev = {"g": {"n": 5, "moa": 6.2, "vertical": 0.035}, "c": {"w": Weapons.M83, "real": true, "heat0": 0.05, "heat1": 0.3, "braced": 5, "n": 5}}
 		elif a == "--rangelocker":                             # otwarta szafa z bronią (zrzut listy)
 			fp.toggle_locker.call_deferred()
+		elif a == "--rangeparts":                              # szafa w widoku gniazd M-83 z PBS-1 na wylocie (zrzut próby części)
+			fp.toggle_locker.call_deferred()
+			fp.locker_open_parts.call_deferred(fp.locker_weapons().find(Weapons.M83))
+			fp.set_deferred("locker_slot", 2)
+			fp.set_deferred("locker_choice", {"feed": "", "barrel": "", "muzzle": "m83_pbs1", "stock": ""})
 		elif a == "--rangeads":
 			fp.dev_ads = true                                   # przyrządy bez PPM (zrzuty)
 		elif a.begins_with("--rangeads="):                     # --rangeads=T: stały postęp przyrządów 0..1 (zrzuty przejścia)
