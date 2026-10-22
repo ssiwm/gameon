@@ -38,6 +38,12 @@ var fits: Dictionary = {}                     ## klucz broni → {gniazdo: id cz
 var presets: Dictionary = {}                  ## klucz broni → [PRESETS × {gniazdo: id części | ""}] — zapisane zestawy części (WORKSHOP_PLAN.md U6, od 1.7.349); {} = pusty
 const PRESETS := 3                            ## tyle zestawów na broń
 var cond: Dictionary = {}                     ## klucz broni → stan techniczny 0..100 % (GUNSMITH_PLAN §6, od 1.7.328); brak wpisu = 100
+var edge: Dictionary = {}                     ## klucz broni białej → stan ostrza 0..100 % (WORKSHOP_PLAN.md W6b, od 1.7.358); brak wpisu = 100
+## Ostrze broni białej (szlifierka przy tokarce): każdy zamach tępi o EDGE_WEAR % (× ustawienie niezawodności), tępe ostrze rani słabiej —
+## obrażenia × (EDGE_MIN + (1 − EDGE_MIN) × ostrze). Ostrzenie bez złomu: EDGE_STEP s za każde rozpoczęte 10 %.
+const EDGE_WEAR := 1.0
+const EDGE_MIN := 0.7
+const EDGE_STEP := 1.0
 var worn: Dictionary = {}                     ## klucz broni → {część eksploatacyjna: zużycie 0..100 %} (WORKSHOP_PLAN.md W2, od 1.7.350); brak wpisu = nowa
 ## Części eksploatacyjne broni palnej (stół konserwacji): lufa — zużyta rozrzuca (weapon_controller.BARREL_SPREAD), sprężyny (powrotna, iglicy) —
 ## zużyte nie dają się doczyścić: czyszczenie przywraca stan najwyżej do clean_cap. Wymiana za złom (Scrap.SERVICE_COST).
@@ -223,6 +229,32 @@ func wear(key: String, amount: float) -> void:
 		return
 	cond[key] = maxf(0.0, condition(key) - amount)
 	_cond_dirty = true
+
+## Stan ostrza broni białej `key` (0..100 %).
+func edge_of(key: String) -> float:
+	return float(edge.get(key, 100.0))
+
+## Zamach bronią białą `key`: ostrze tępieje o `amount` punktów.
+func wear_edge(key: String, amount: float) -> void:
+	if amount <= 0.0:
+		return
+	edge[key] = maxf(0.0, edge_of(key) - amount)
+	_cond_dirty = true
+
+## Mnożnik obrażeń od ostrza (1 — ostre, EDGE_MIN — całkiem tępe).
+static func edge_mult(e: float) -> float:
+	return EDGE_MIN + (1.0 - EDGE_MIN) * clampf(e, 0.0, 100.0) / 100.0
+
+## Ile sekund zajmie ostrzenie `key` na szlifierce (0 — ostre).
+func sharpen_time(key: String) -> float:
+	var e := edge_of(key)
+	return 0.0 if e >= 99.5 else EDGE_STEP * ceilf((100.0 - e) / 10.0)
+
+## Szlifierka: ostrze jak nowe.
+func sharpen(key: String) -> void:
+	edge.erase(key)
+	save()
+	changed.emit()
 
 ## Zużycie części eksploatacyjnej `part` broni `key` (0..100 %).
 func part_wear(key: String, part: String) -> float:
@@ -442,6 +474,7 @@ func save_to(path: String) -> void:
 	cfg.set_value("profile", "presets", presets)
 	cfg.set_value("profile", "cond", cond)
 	cfg.set_value("profile", "worn", worn)
+	cfg.set_value("profile", "edge", edge)
 	cfg.set_value("profile", "mastery", mastery)
 	cfg.set_value("profile", "history", history)
 	cfg.set_value("profile", "range_best", range_best)
@@ -463,6 +496,10 @@ func load_from(path: String) -> void:
 			equipped[i] = id
 	fits = (cfg.get_value("profile", "fits", {}) as Dictionary).duplicate(true)
 	presets = (cfg.get_value("profile", "presets", {}) as Dictionary).duplicate(true)
+	edge = {}
+	var ed_in := cfg.get_value("profile", "edge", {}) as Dictionary
+	for k in ed_in:
+		edge[String(k)] = clampf(float(ed_in[k]), 0.0, 100.0)
 	worn = {}
 	var wn_in := cfg.get_value("profile", "worn", {}) as Dictionary
 	for k in wn_in:
@@ -512,6 +549,7 @@ func reset_for_test() -> void:
 	fits = {}
 	presets = {}
 	worn = {}
+	edge = {}
 	cond = {}
 	mastery = {}
 	history = {}

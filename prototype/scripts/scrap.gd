@@ -16,9 +16,13 @@ signal part_found(id: String)                                     ## część zn
 signal service_result(weapon: int, part: String, ok: bool, reason: String)   ## wymiana części eksploatacyjnej: ok / poor / invalid / off
 signal research_result(id: String, ok: bool, reason: String)       ## badanie w pracowni: ok / samples / poor / busy / owned / locked / invalid / off
 ## Pracownia elektroniki i próbek (WORKSHOP_PLAN.md W6a, od 1.7.357): części broni specjalnych (LAB_WEAPONS) nie kupuje się na ławie —
-## bada się je za próbki (z elit i bossów, do banku po udanej misji) i połowę ceny w złomie; wynik jest gotowy po następnej udanej misji.
+## bada się je za próbki (z elit i bossów, do banku po udanej misji) i połowę ceny w złomie. Od 1.7.358 (W6b) badanie daje SCHEMAT
+## (`schematics`), a część wykonuje tokarka (`request_machining`, MACHINE_PRICE ceny części) — każde po jednej udanej misji.
 const LAB_WEAPONS := ["lr7", "hkm9", "gniew4", "widmo1", "sokol6", "ciegno6"]
 const LAB_SLOTS := 1                  ## badań naraz (jedno na misję)
+signal machining_result(id: String, ok: bool, reason: String)     ## zlecenie na tokarce: ok / poor / busy / owned / noschem / invalid / off
+const LATHE_SLOTS := 1                ## zleceń na tokarce naraz
+const MACHINE_PRICE := 0.25           ## materiał na tokarce: ćwierć ceny części (zaokrąglone do 5)
 const SAMPLE_ELITE := 1               ## próbek z elity (enemy.gd) …
 const SAMPLE_BOSS := 2                ## … z bossa (boss_base.gd) …
 const SAMPLE_SIDE := 1                ## … i za cel poboczny udanej misji (mission.gd; GDD §10.1)
@@ -65,6 +69,8 @@ var found: Dictionary = {}            ## id części → true: znalezione w tej 
 var fuses: Dictionary = {}           ## stół pirotechniczny: rodzaj przedmiotu → indeks długości zapalnika (Throwables.FUSES); brak — fabryczny
 var samples := 0                     ## próbki w banku drużyny (zapis u hosta)
 var samples_loot := 0                 ## próbki zebrane w tej misji — do banku po ekstrakcji, wipe je zabiera
+var schematics: Dictionary = {}      ## id części → true: schemat z pracowni, czeka na tokarkę (zapis u hosta)
+var lathe: Array = []                 ## tokarka: wykonywane części (id), gotowe po udanej misji (zapis u hosta)
 var research: Array = []              ## pracownia: badane części (id z parts.gd), gotowe po udanej misji (zapis u hosta)
 var orders: Array = []                ## prasa: zamówione partie (wpisy `ammo_*` z throwables.gd), dostawa po udanej misji (zapis u hosta)
 var unlocked: Dictionary = {}         ## id broni → true: kupione w warsztacie (zapis u hosta)
@@ -76,7 +82,7 @@ func _ready() -> void:
 	load_progress()
 	multiplayer.peer_connected.connect(func(id: int) -> void:
 		if NoiseMgr.is_server():
-			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research))
+			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe))
 
 ## Złom nie obowiązuje w Nocnym Dyżurze (osobna seria z własnymi zasadami).
 func enabled() -> bool:
@@ -107,8 +113,13 @@ func bank_loot(bonus: int) -> int:
 	samples_loot = 0
 	var learned: Array = research.duplicate()
 	for id in learned:
-		parts[String(id)] = true                                      # badanie skończone: część odblokowana dla drużyny
+		schematics[String(id)] = true                                 # badanie skończone: schemat dla tokarki (W6b)
 	research.clear()
+	var machined: Array = lathe.duplicate()
+	for id in machined:
+		parts[String(id)] = true                                      # tokarka: część gotowa, odblokowana dla drużyny
+		schematics.erase(String(id))
+	lathe.clear()
 	var done: Array = orders.duplicate()
 	for k in done:
 		Arsenal.add_throwable(String(k), Throwables.box_of(String(k)))     # partie z prasy: pudełka do wspólnego zapasu
@@ -130,6 +141,11 @@ func bank_loot(bonus: int) -> int:
 			_learned_rpc.rpc(learned)
 		else:
 			_learned_rpc(learned)
+	if not machined.is_empty():
+		if NoiseMgr.has_network():
+			_machined_rpc.rpc(machined)
+		else:
+			_machined_rpc(machined)
 	return gain
 
 ## Wipe / restart: łup i znalezione części przepadają, bank zostaje.
@@ -375,8 +391,57 @@ func _sample_rpc(n: int) -> void:
 @rpc("authority", "call_local", "reliable")
 func _learned_rpc(ids: Array) -> void:
 	for id in ids:
-		Msg.post("learned.%s" % id, Msg.Ch.TOAST, tr("Research done: %s unlocked") % tr(String(Parts.get_part(String(id)).get("name", id))),
+		Msg.post("learned.%s" % id, Msg.Ch.TOAST, tr("Schematic ready: %s") % tr(String(Parts.get_part(String(id)).get("name", id))),
+			{"sub": tr("Make it on the lathe"), "style": Msg.Style.SUCCESS, "ttl": 6.0, "prio": 70})
+
+@rpc("authority", "call_local", "reliable")
+func _machined_rpc(ids: Array) -> void:
+	for id in ids:
+		Msg.post("machined.%s" % id, Msg.Ch.TOAST, tr("%s machined — unlocked for the squad") % tr(String(Parts.get_part(String(id)).get("name", id))),
 			{"style": Msg.Style.SUCCESS, "ttl": 6.0, "prio": 70})
+
+## Cena materiału na tokarce dla części `id`.
+func machine_price(id: String) -> int:
+	return int(roundf(float(Parts.get_part(id).get("cost", 0)) * MACHINE_PRICE / 5.0)) * 5
+
+## Zlecenie na tokarce: część `id` ze schematu (złom drużyny, serwer).
+func request_machining(id: String) -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_machining_server(id, NoiseMgr.local_id())
+	else:
+		_machining_rpc.rpc_id(1, id)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _machining_rpc(id: String) -> void:
+	if NoiseMgr.is_server():
+		_machining_server(id, multiplayer.get_remote_sender_id())
+
+func _machining_server(id: String, peer_id: int) -> void:
+	var reason := "ok"
+	if Parts.get_part(id).is_empty():
+		reason = "invalid"
+	elif not enabled():
+		reason = "off"
+	elif parts.has(id) or lathe.has(id):
+		reason = "owned"
+	elif not schematics.has(id):
+		reason = "noschem"
+	elif lathe.size() >= LATHE_SLOTS:
+		reason = "busy"
+	elif not spend(machine_price(id)):
+		reason = "poor"
+	else:
+		lathe.append(id)
+		save_progress()
+		_push()
+	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
+		machining_result.emit(id, reason == "ok", reason)
+	else:
+		_machining_result_rpc.rpc_id(peer_id, id, reason)
+
+@rpc("authority", "call_remote", "reliable")
+func _machining_result_rpc(id: String, reason: String) -> void:
+	machining_result.emit(id, reason == "ok", reason)
 
 ## Badanie części `id` w pracowni (próbki i złom drużyny, serwer).
 func request_research(id: String) -> void:
@@ -400,7 +465,7 @@ func _research_server(id: String, peer_id: int) -> void:
 		reason = "off"
 	elif not is_unlocked(w):
 		reason = "locked"
-	elif parts.has(id) or research.has(id):
+	elif parts.has(id) or research.has(id) or schematics.has(id) or lathe.has(id):
 		reason = "owned"
 	elif research.size() >= LAB_SLOTS:
 		reason = "busy"
@@ -578,11 +643,15 @@ func _part_done(id: String, reason: String) -> void:
 func _push() -> void:
 	changed.emit()
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research)
+		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe)
 
 @rpc("authority", "call_remote", "reliable")
 func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array, fnd: Array = [], ord: Array = [], fz: Dictionary = {},
-		smp: int = 0, smp_l: int = 0, res: Array = []) -> void:
+		smp: int = 0, smp_l: int = 0, res: Array = [], sch: Array = [], lth: Array = []) -> void:
+	schematics.clear()
+	for id in sch:
+		schematics[String(id)] = true
+	lathe = lth.duplicate()
 	samples = smp
 	samples_loot = smp_l
 	research = res.duplicate()
@@ -615,9 +684,17 @@ func load_progress() -> void:
 	orders.clear()
 	fuses.clear()
 	research.clear()
+	schematics.clear()
+	lathe.clear()
 	samples = 0
 	samples_loot = 0
 	if ok:
+		for id in Array(cfg.get_value("workshop", "schematics", [])):
+			if Parts.is_valid(String(id)):
+				schematics[String(id)] = true
+		for id in Array(cfg.get_value("workshop", "lathe", [])):
+			if Parts.is_valid(String(id)):
+				lathe.append(String(id))
 		samples = maxi(0, int(cfg.get_value("workshop", "samples", 0)))
 		for id in Array(cfg.get_value("workshop", "research", [])):
 			if Parts.is_valid(String(id)):
@@ -663,6 +740,8 @@ func save_progress() -> void:
 	cfg.set_value("workshop", "fuses", fuses)
 	cfg.set_value("workshop", "samples", samples)
 	cfg.set_value("workshop", "research", research)
+	cfg.set_value("workshop", "schematics", schematics.keys())
+	cfg.set_value("workshop", "lathe", lathe)
 	if cfg.has_section_key("workshop", "levels"):
 		cfg.erase_section_key("workshop", "levels")             # przeniesione do części (migracja w load_progress)
 	cfg.save(SAVE_PATH)

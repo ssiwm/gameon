@@ -1434,13 +1434,17 @@ func try_melee() -> void:
 func _melee_resolve() -> void:
 	var origin := player.global_position + Vector2(0, -9)
 	var dir: Vector2 = player.aim_dir
+	var key := String(Weapons.def(melee_id).key)
+	var e := 100.0 if player.is_bot else Profile.edge_of(key)              # ostrze siedzi w profilu gracza — idzie z ciosem (serwer przycina)
+	if not player.is_bot and Settings.reliability_mult() > 0.0:
+		Profile.wear_edge(key, Profile.EDGE_WEAR * Settings.reliability_mult())
 	if NoiseMgr.is_server():
-		_server_melee(origin, dir, melee_id, player.player_id)
+		_server_melee(origin, dir, melee_id, player.player_id, e)
 	else:
-		_melee_request.rpc_id(1, origin, dir, melee_id)
+		_melee_request.rpc_id(1, origin, dir, melee_id, e)
 
 @rpc("any_peer", "call_remote", "reliable")
-func _melee_request(origin: Vector2, dir: Vector2, w: int) -> void:
+func _melee_request(origin: Vector2, dir: Vector2, w: int, e: float = 100.0) -> void:
 	if not NoiseMgr.is_server() or player == null or player.dead:
 		return
 	if multiplayer.get_remote_sender_id() != player.player_id or not Weapons.is_valid(w) or not Weapons.def(w).is_melee():
@@ -1448,10 +1452,11 @@ func _melee_request(origin: Vector2, dir: Vector2, w: int) -> void:
 	var expect := player.global_position + Vector2(0, -9)
 	if origin.distance_to(expect) > MUZZLE_TOLERANCE:
 		origin = expect
-	_server_melee(origin, dir.normalized(), w, player.player_id)
+	_server_melee(origin, dir.normalized(), w, player.player_id, clampf(e, 0.0, 100.0))
 
-func _server_melee(origin: Vector2, dir: Vector2, w: int, shooter: int) -> void:
+func _server_melee(origin: Vector2, dir: Vector2, w: int, shooter: int, e: float = 100.0) -> void:
 	var d := server_def(w)                                      # części gracza, ale tylko odblokowane przez drużynę
+	d.damage *= Profile.edge_mult(e) if Settings.reliability_mult() > 0.0 else 1.0     # tępe ostrze rani słabiej (W6b; niezawodność OFF — bez)
 	var space := player.get_world_2d().direct_space_state
 	var hit_any := false
 	for t in Combat.in_cone(get_tree(), space, origin, dir, d.reach, d.arc_deg):

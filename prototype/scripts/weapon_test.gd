@@ -2878,10 +2878,29 @@ func _t_research() -> void:
 	await frames(2)
 	Scrap.request_research("lr7_coil")                             # próbek już nie ma
 	Scrap.research_result.disconnect(rcb)
-	check("pracownia: badanie soczewki LR-7 za %d próbki i %d złomu (%s), czeka do misji (%s), po udanej misji odblokowana (%s); bank %d → %d, próbki %d" % [
-		lc.x, lc.y, str(rres), str(queued), str(Scrap.has_part("lr7_lens")), bank1, Scrap.bank, Scrap.samples],
-		rres == ["ok", "busy", "invalid", "locked", "samples"] and queued and Scrap.has_part("lr7_lens") and Scrap.research.is_empty()
+	check("pracownia: badanie soczewki LR-7 za %d próbki i %d złomu (%s), czeka do misji (%s), po udanej misji schemat (%s), część jeszcze nie (%s); bank %d → %d, próbki %d" % [
+		lc.x, lc.y, str(rres), str(queued), str(Scrap.schematics.has("lr7_lens")), str(Scrap.has_part("lr7_lens")), bank1, Scrap.bank, Scrap.samples],
+		rres == ["ok", "busy", "invalid", "locked", "samples"] and queued and Scrap.schematics.has("lr7_lens") and not Scrap.has_part("lr7_lens") and Scrap.research.is_empty()
 		and Scrap.samples == 3 - lc.x and Scrap.bank == bank1 - lc.y and lc.x == 3)
+	# tokarka (W6b, 1.7.358): schemat → część po udanej misji; bez schematu odmowa, jedno zlecenie naraz
+	var mres: Array = []
+	var mcb := func(id: String, ok: bool, reason: String) -> void: mres.append(reason)
+	Scrap.machining_result.connect(mcb)
+	Scrap.schematics["lr7_cell"] = true
+	var bank2: int = Scrap.bank
+	Scrap.request_machining("lr7_coil")                            # brak schematu
+	Scrap.request_machining("lr7_lens")
+	Scrap.request_machining("lr7_cell")                            # tokarka zajęta
+	var on_lathe: bool = Scrap.lathe.has("lr7_lens") and not Scrap.has_part("lr7_lens")
+	Scrap.bank_loot(0)
+	await frames(2)
+	Scrap.request_machining("lr7_lens")                            # już zrobiona
+	Scrap.machining_result.disconnect(mcb)
+	check("tokarka: soczewka ze schematu za %d złomu (%s), na tokarce do misji (%s), po misji odblokowana i schemat zużyty (%s, %s)" % [
+		Scrap.machine_price("lr7_lens"), str(mres), str(on_lathe), str(Scrap.has_part("lr7_lens")), str(not Scrap.schematics.has("lr7_lens"))],
+		mres == ["noschem", "ok", "busy", "owned"] and on_lathe and Scrap.has_part("lr7_lens") and not Scrap.schematics.has("lr7_lens") and Scrap.lathe.is_empty()
+		and Scrap.bank == bank2 - Scrap.machine_price("lr7_lens") and Scrap.schematics.has("lr7_cell"))
+	Scrap.schematics.clear()
 	# panel pracowni: same części broni specjalnej, M-83 bez badań
 	var wui := get_tree().get_first_node_in_group("workshop_ui")
 	var ui_ok := false
@@ -2902,6 +2921,32 @@ func _t_research() -> void:
 	Scrap.research = res0
 	Scrap.unlocked = unl0
 	Scrap.parts = parts0
+	# ostrze broni białej (szlifierka, W6b): zamach tępi, tępe rani słabiej (serwer), ostrzenie za czas bez złomu, panel tokarki
+	var edge0: Dictionary = Profile.edge.duplicate()
+	var rel0: int = Settings.reliability_idx
+	Settings.reliability_idx = 1
+	Profile.edge = {}
+	wc.melee_id = Weapons.MACZETA
+	wc._melee_resolve()
+	var after_swing: float = Profile.edge_of("maczeta")
+	Profile.edge["maczeta"] = 0.0
+	var st: float = Profile.sharpen_time("maczeta")
+	var lt_ok := false
+	var lt_info := "brak panelu"
+	if wui != null:
+		wui.open("lathe")
+		var lm: Array = wui._options(Weapons.MACZETA).map(func(o: Dictionary) -> String: return String(o["id"]))
+		var ll: Array = wui._options(Weapons.LR7).map(func(o: Dictionary) -> String: return String(o["id"]))
+		wui._start_clean(Weapons.MACZETA)
+		wui.tick_clean(st + 0.1)
+		lt_info = "maczeta %s, LR-7 %d części, ostrze po szlifierce %.0f %%" % [str(lm), ll.size(), Profile.edge_of("maczeta")]
+		lt_ok = lm == ["sharpen"] and ll.size() == Parts.of("lr7").size() and Profile.edge_of("maczeta") == 100.0
+		wui.close()
+	check("ostrze: zamach −%.1f %% (%.1f), tępa maczeta rani ×%.2f, ostrzenie %.0f s (%s)" % [Profile.EDGE_WEAR, after_swing, Profile.edge_mult(0.0), st, lt_info],
+		is_equal_approx(after_swing, 100.0 - Profile.EDGE_WEAR) and is_equal_approx(Profile.edge_mult(0.0), Profile.EDGE_MIN) and Profile.edge_mult(100.0) == 1.0
+		and is_equal_approx(st, 10.0 * Profile.EDGE_STEP) and lt_ok)
+	Profile.edge = edge0
+	Settings.reliability_idx = rel0
 
 ## Masa ekwipunku (WORKSHOP_PLAN.md W5, 1.7.356): masa broni z częściami, zestaw startowy = punkt odniesienia (mnożniki 1), ciężki zestaw biegnie
 ## głośniej i wolniej, części zmieniają masę, obsługa klasyczna i boty bez zmian.
