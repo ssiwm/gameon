@@ -724,7 +724,7 @@ func _local_brain(delta: float) -> void:
 
 	# powierzchnia pod stopami (surfaces.gd): bagno i błoto spowalniają, olej i lód ślizgają
 	var surf: Dictionary = Surfaces.of(_floor_surface()) if is_on_floor() else Surfaces.of("dirt")
-	var speed := (CROUCH_SPEED if crouching else SPEED) * float(surf["speed"])
+	var speed := (CROUCH_SPEED if crouching else SPEED) * float(surf["speed"]) * (weapons.mass_speed_mult() if weapons != null else 1.0)   # masa ekwipunku (W5)
 	_kick = move_toward(_kick, 0.0, KICK_DECAY * delta)
 	var target := move_x * speed
 	var rate := AIR_ACCEL
@@ -787,7 +787,8 @@ func _local_brain(delta: float) -> void:
 		_run_noise_tick += delta
 		if _run_noise_tick >= 0.5:
 			_run_noise_tick = 0.0
-			NoiseMgr.add_noise(NoiseMgr.N_RUN_PER_SEC * 0.5 * float(surf["noise"]) * perk_param("quiet_steps", "run_noise_mult", 1.0), global_position, "run")
+			NoiseMgr.add_noise(NoiseMgr.N_RUN_PER_SEC * 0.5 * float(surf["noise"]) * perk_param("quiet_steps", "run_noise_mult", 1.0)
+				* (weapons.mass_noise_mult() if weapons != null else 1.0), global_position, "run")      # cięższy ekwipunek — głośniejszy bieg (W5)
 
 	if Input.is_action_just_pressed("overcharge"):
 		_try_overcharge()

@@ -71,6 +71,13 @@ const WEAR_CAN := 1.5             ## tłumik: gazy cofają się do mechanizmu
 ## M-83: lufa ok. 5 % na misję (~20 misji, szybciej przy długim ogniu), sprężyny ok. 6 % (po ~10 misjach czyszczenie nie dobija do 70 %).
 const WEAR_BARREL := 0.02
 const WEAR_SPRINGS := 0.025
+## Masa ekwipunku (WORKSHOP_PLAN.md W5, od 1.7.356; tylko obsługa realistyczna): suma mas noszonej broni z częściami gracza (dwie główne,
+## pistolet, broń biała) względem fabrycznego zestawu startowego (mass_ref, ok. 10 kg — z nim nic się nie zmienia). Każdy kilogram ponad to:
+## bieg +5 % hałasu i −1,2 % tempa; lżej — odwrotnie.
+const MASS_NOISE := 0.05
+const MASS_SPEED := 0.012
+const MASS_NOISE_RANGE := Vector2(0.8, 1.5)
+const MASS_SPEED_RANGE := Vector2(0.9, 1.05)
 const BARREL_SPREAD := 0.6        ## zużyta lufa: rozrzut (bazowy + dodatkowy) × (1 + 0,6·z²), z = zużycie 0..1 — przy 50 % ×1,15, przy 100 % ×1,6
 const JAM_FROM := 70.0            ## % stanu, poniżej którego broń zaczyna się zacinać…
 const JAM_SPAN := 40.0            ## …a przy JAM_FROM − JAM_SPAN (30 %) zacina się raz na JAM_ODDS strzałów
@@ -152,6 +159,8 @@ var ammo_enabled := true          ## boty mają nieskończoną amunicję
 ## (zamiast pocisku 2D promień w tunelu 3D) i oparcie. Cała reszta (magazynek, przeładowania, zacięcia, lufa, podrzut) liczy się jak na misji.
 var range_sink: Object = null
 var practice := false             ## amunicja ćwiczebna (strzelnica): przeładowanie nie bierze naboi z zapasu, strzał nie zużywa broni
+var _mass_sig := ""               ## podpis ekwipunku, dla którego policzono `_mass` (kit_mass)
+var _mass := 0.0
 var range_fit := {}               ## strzelnica: próbny montaż części (id broni → kod fit), także części jeszcze nieodblokowanych; tylko lokalnie
                                   ## (strzał idzie do range_sink, nie do serwera) i znika przy wyjściu (range_restore)
 
@@ -490,6 +499,38 @@ func spread_extra(d: WeaponDef) -> float:
 	if z > 0.0:
 		e += (d.jitter_deg + e) * BARREL_SPREAD * z * z     # wyrobiona lufa (W2): stożek rośnie, póki gracz jej nie wymieni
 	return e
+
+## Masa noszonego ekwipunku w kg (części gracza wliczone). Liczona od nowa tylko po zmianie broni albo montażu.
+func kit_mass() -> float:
+	var sig := "%s|%d|%s" % [str(loadout), melee_id, str(player.fits) if player != null else ""]
+	if sig != _mass_sig:
+		_mass_sig = sig
+		_mass = 0.0
+		for w in loadout:
+			if Weapons.is_valid(int(w)):
+				_mass += def_of(int(w)).mass
+		if Weapons.is_valid(melee_id):
+			_mass += def_of(melee_id).mass
+	return _mass
+
+## Mnożnik hałasu biegu od masy ekwipunku (1 w obsłudze klasycznej, dla botów i poza strzelnicą — jak niżej).
+func mass_noise_mult() -> float:
+	if not _mass_applies():
+		return 1.0
+	return clampf(1.0 + MASS_NOISE * (kit_mass() - mass_ref()), MASS_NOISE_RANGE.x, MASS_NOISE_RANGE.y)
+
+## Mnożnik tempa biegu od masy ekwipunku.
+func mass_speed_mult() -> float:
+	if not _mass_applies():
+		return 1.0
+	return clampf(1.0 - MASS_SPEED * (kit_mass() - mass_ref()), MASS_SPEED_RANGE.x, MASS_SPEED_RANGE.y)
+
+## Masa fabrycznego zestawu startowego (bez części) — punkt odniesienia masy ekwipunku.
+static func mass_ref() -> float:
+	return Weapons.def(Weapons.START_PRIMARY_A).mass + Weapons.def(Weapons.START_PRIMARY_B).mass + Weapons.def(Weapons.START_SIDEARM).mass + Weapons.def(Weapons.START_MELEE).mass
+
+func _mass_applies() -> bool:
+	return Settings.realistic_handling and player != null and not player.is_bot
 
 ## Zużycie lufy broni `d` tego gracza 0..1 (profil właściciela; boty, inni gracze i broń bez naboi — 0; niezawodność OFF — 0).
 func barrel_wear_of(d: WeaponDef) -> float:

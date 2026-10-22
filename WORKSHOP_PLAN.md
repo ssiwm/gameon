@@ -64,7 +64,7 @@ Meble `hub_decor.gd` same rozsuwają się przy nowych znacznikach. Zlecenia w cz
 | W2 | Stół konserwacji (2) | ✅ 1.7.350 — stanowisko kol. 16, lufa i sprężyny, rozłożona i brudna broń na ławie 3D; brud widać tylko na ławie (nie na broni w rękach) |
 | W3 | Alternatywy w gniazdach (U2), po jednym PR na broń | część 1 ✅ 1.7.351: naprawa części ognia ciągłego i broni białej na serwerze, P-83 (długa lufa, kabura-kolba), LR-7 (rozpraszacz), HKM-9 (dysza żelowa); część 2 ✅ 1.7.352: SPREAD-12 (obcięta lufa), PELLET-8 (slam-fire, długa lufa), WRATH-4 (skrócona rura), SPECTER-1 (kondensator przeładowania), maczeta (krótki chwyt) — 13 z 32 gniazd z wyborem; zostaje bełt-wabik SINEW-6 (broń z późniejszej strefy) |
 | W4 | Prasa (3) i pirotechnika (4), przejęcie SUPPLIES | W4a ✅ 1.7.354 prasa: zamówienia amunicji specjalnej gotowe po misji, ładunki gorące 7.62 HOT i 12/70 MAG; W4b ✅ 1.7.355 stół pirotechniczny: granaty, miny, ładunki, 40 mm, zapalniki dla drużyny |
-| W5 | Masa jako koszt (U1), A/B | |
+| W5 | Masa jako koszt (U1), A/B | ✅ 1.7.356 — masa ekwipunku zmienia hałas i tempo biegu (tylko REALISTIC); masa trzymanej broni (dobycie, podrzut) nadal przez pola części |
 | W6 | Elektronika i próbki (5), tokarka (6) | |
 
 ## 5. Decyzje (przyjęte 2026-10-22)

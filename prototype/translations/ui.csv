@@ -1003,3 +1003,6 @@
 "%.1f s  (%d of %d)","%.1f s  (%d z %d)"
 "  ·  %s / %s change","  ·  %s / %s zmień"
 "[%s]  Pyrotechnics  ·  grenades, mines, fuses","[%s]  Pirotechnika  ·  granaty, miny, zapalniki"
+"Mass","Masa"
+"%.2f kg","%.2f kg"
+"  ·  KIT %.1f kg  (run noise %+d%%)","  ·  EKWIPUNEK %.1f kg  (hałas biegu %+d%%)"

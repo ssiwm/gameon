@@ -263,4 +263,6 @@ static func _weapon_stats(d: WeaponDef) -> Array:
 	out.append(["Noise", noise if d.n_max > 0.0 else "silent"])
 	if d.kind == WeaponDef.Kind.MELEE:
 		out.append(["DPS", "%d" % int(round(d.dps()))])
+	if d.mass > 0.0:
+		out.append(["Mass", "%.2f kg" % d.mass])                       # masa z częściami (W5): suma ekwipunku zmienia bieg
 	return out
