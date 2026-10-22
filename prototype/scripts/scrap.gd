@@ -54,6 +54,7 @@ var bank := 0
 var loot := 0
 var parts: Dictionary = {}            ## id części (parts.gd) → true: odblokowane przez drużynę (zapis u hosta); montaż — Profile.fits
 var found: Dictionary = {}            ## id części → true: znalezione w tej misji, odblokowane dopiero po ekstrakcji
+var fuses: Dictionary = {}           ## stół pirotechniczny: rodzaj przedmiotu → indeks długości zapalnika (Throwables.FUSES); brak — fabryczny
 var orders: Array = []                ## prasa: zamówione partie (wpisy `ammo_*` z throwables.gd), dostawa po udanej misji (zapis u hosta)
 var unlocked: Dictionary = {}         ## id broni → true: kupione w warsztacie (zapis u hosta)
 var trophies: Dictionary = {}         ## id misji (boss) → true: ukończona, odblokowuje broń-trofeum (zapis u hosta)
@@ -64,7 +65,7 @@ func _ready() -> void:
 	load_progress()
 	multiplayer.peer_connected.connect(func(id: int) -> void:
 		if NoiseMgr.is_server():
-			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders))
+			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses))
 
 ## Złom nie obowiązuje w Nocnym Dyżurze (osobna seria z własnymi zasadami).
 func enabled() -> bool:
@@ -289,6 +290,40 @@ func _buy_supply_server(kind: String, peer_id: int) -> void:
 func _supply_result_rpc(kind: String, reason: String) -> void:
 	supply_result.emit(kind, reason == "ok", reason)
 
+## Zapalnik przedmiotu `kind` w sekundach: wybór drużyny przy stole pirotechnicznym albo fabryczny (grenade.gd, placed.gd — u wszystkich ten sam).
+func fuse_of(kind: String) -> float:
+	var opts: Array = Throwables.FUSES.get(kind, []) as Array
+	if opts.is_empty():
+		return float(Throwables.KINDS.get(kind, {}).get("fuse", 0.0))
+	return float(opts[clampi(int(fuses.get(kind, Throwables.fuse_default(kind))), 0, opts.size() - 1)])
+
+## Indeks wybranego zapalnika `kind`.
+func fuse_index(kind: String) -> int:
+	return int(fuses.get(kind, Throwables.fuse_default(kind)))
+
+## Gracz przy stole pirotechnicznym zmienia zapalnik `kind` na `idx` (ustawienie drużyny — serwer zapisuje i rozsyła).
+func request_fuse(kind: String, idx: int) -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_fuse_server(kind, idx)
+	else:
+		_fuse_rpc.rpc_id(1, kind, idx)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _fuse_rpc(kind: String, idx: int) -> void:
+	if NoiseMgr.is_server():
+		_fuse_server(kind, idx)
+
+func _fuse_server(kind: String, idx: int) -> void:
+	var opts: Array = Throwables.FUSES.get(kind, []) as Array
+	if opts.is_empty() or idx < 0 or idx >= opts.size():
+		return
+	if idx == Throwables.fuse_default(kind):
+		fuses.erase(kind)
+	else:
+		fuses[kind] = idx
+	save_progress()
+	_push()
+
 ## Cena partii `kind` w prasie (zaokrąglona do 5).
 func press_price(kind: String) -> int:
 	return int(roundf(float(Throwables.price_of(kind)) * PRESS_PRICE / 5.0)) * 5
@@ -443,11 +478,12 @@ func _part_done(id: String, reason: String) -> void:
 func _push() -> void:
 	changed.emit()
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders)
+		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses)
 
 @rpc("authority", "call_remote", "reliable")
-func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array, fnd: Array = [], ord: Array = []) -> void:
+func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array, fnd: Array = [], ord: Array = [], fz: Dictionary = {}) -> void:
 	orders = ord.duplicate()
+	fuses = fz.duplicate()
 	bank = b
 	loot = l
 	last_gain = g
@@ -473,7 +509,12 @@ func load_progress() -> void:
 	trophies.clear()
 	parts.clear()
 	orders.clear()
+	fuses.clear()
 	if ok:
+		var fz_in := cfg.get_value("workshop", "fuses", {}) as Dictionary
+		for k in fz_in:
+			if Throwables.FUSES.has(String(k)):
+				fuses[String(k)] = clampi(int(fz_in[k]), 0, (Throwables.FUSES[String(k)] as Array).size() - 1)
 		for k in Array(cfg.get_value("workshop", "orders", [])):
 			if Throwables.is_valid(String(k)):
 				orders.append(String(k))
@@ -508,6 +549,7 @@ func save_progress() -> void:
 	cfg.set_value("gear", "stock", Arsenal.stock)
 	cfg.set_value("workshop", "parts", parts.keys())
 	cfg.set_value("workshop", "orders", orders)
+	cfg.set_value("workshop", "fuses", fuses)
 	if cfg.has_section_key("workshop", "levels"):
 		cfg.erase_section_key("workshop", "levels")             # przeniesione do części (migracja w load_progress)
 	cfg.save(SAVE_PATH)

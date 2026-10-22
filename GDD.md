@@ -467,7 +467,8 @@ Inny wymiar: organiczne korytarze, grawitacja się zmienia, radio mówi głosami
 | Weteran | +1 serce (i +1 do sufitu kumulacji apteczek) |
 
 ### 10.3 Kryjówka (hub)
-- **Warsztat** — bronie i części broni (zakup dla drużyny, montaż we własnej broni), trzy zapisane zestawy części na broń (każdy gracz osobno) i zaopatrzenie (granaty, miny, narzędzia; amunicja — w prasie); wybrana broń leży na ławie 3D z częścią spod kursora.
+- **Warsztat** — bronie i części broni (zakup dla drużyny, montaż we własnej broni), trzy zapisane zestawy części na broń (każdy gracz osobno) i narzędzia (apteczka, skaner, zestaw do czyszczenia; granaty i miny — na stole pirotechnicznym, amunicja — w prasie); wybrana broń leży na ławie 3D z częścią spod kursora.
+- **Stół pirotechniczny** (magazyn na dole, od 1.7.355) — granaty, miny, ładunki i naboje 40 mm; wybór długości zapalnika dla drużyny (odłamkowy 1,0–3,0 s, fosforowy 0,8–2,5 s, ładunek 4–15 s).
 - **Prasa elaboracyjna** (magazyn na dole, od 1.7.354) — amunicję specjalną się zamawia (taniej niż dawny sklep, najwyżej 3 partie), partia jest gotowa po następnej udanej misji; tylko tu powstają ładunki gorące (7.62 HOT, 12/70 MAG: mocniej, ale broń zużywa się dwa razy szybciej).
 - **Stół konserwacji** (od 1.7.350) — czyszczenie broni (bez złomu, za czas; broń rozłożona na ławie 3D) i wymiana części eksploatacyjnych: lufa (zużyta rozrzuca) i sprężyny (zmęczone nie pozwalają doczyścić broni do 100 %) za złom drużyny.
 - **Szafki osobiste** (świetlica, od 1.7.349) — perki i wygląd postaci (wcześniej zakładki warsztatu). Kolejne stanowiska warsztatu: `WORKSHOP_PLAN.md`.

@@ -25,7 +25,8 @@ var _hd := false
 
 func _ready() -> void:
 	add_to_group("grenades")
-	_data = Throwables.KINDS[kind]
+	_data = (Throwables.KINDS[kind] as Dictionary).duplicate()
+	_data["fuse"] = Scrap.fuse_of(kind)                       # zapalnik wybrany przy stole pirotechnicznym (ustawienie drużyny, u wszystkich ten sam)
 	z_index = 2
 	material = Lights.unshaded()
 	_light = Lights.make_light(Lights.radial(), 1.6, _data["color"], 0.0, false)

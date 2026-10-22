@@ -27,7 +27,9 @@ var _beeping := false        ## uzbrojona mina piszczy (pętla pozycyjna, lokaln
 
 func _ready() -> void:
 	add_to_group("placed")
-	_data = Throwables.KINDS[kind]
+	_data = (Throwables.KINDS[kind] as Dictionary).duplicate()
+	if _data.has("fuse"):
+		_data["fuse"] = Scrap.fuse_of(kind)                   # ładunek: zapalnik czasowy wybrany przy stole pirotechnicznym
 	z_index = 2
 	material = Lights.unshaded()
 	if Sprites.newitem and ItemsHd.has(kind):

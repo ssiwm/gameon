@@ -14,6 +14,13 @@ const ORDER := ["frag", "phos", "smoke", "mine", "charge", "medkit", "defib", "s
 ## Amunicja specjalna (ammo.gd, od 1.7.317): sklep i zapas jak przedmioty, ale `mode` = "ammo" — nie ma jej w wyborze [X], zapas liczy
 ## się w NABOJACH (`max`), a zakup dokłada pudełko (`box`). Broń bierze ją przy przeładowaniu, gdy gracz wybierze typ klawiszem [Z].
 const AMMO_ORDER := ["ammo_us", "ammo_bz", "ammo_hot762", "ammo_slug", "ammo_inc", "ammo_rub", "ammo_mag12", "ammo_40buck", "ammo_40illum", "ammo_40smoke"]
+## Stół pirotechniczny (WORKSHOP_PLAN.md W4b, od 1.7.355): długości zapalnika do wyboru dla drużyny (Scrap.fuses); środkowa = fabryczna `fuse`.
+const FUSES := {"frag": [1.0, 1.8, 3.0], "phos": [0.8, 1.3, 2.5], "charge": [4.0, 8.0, 15.0]}
+
+## Indeks fabrycznej długości zapalnika `kind` w FUSES.
+static func fuse_default(kind: String) -> int:
+	return maxi(0, (FUSES.get(kind, []) as Array).find(float(KINDS.get(kind, {}).get("fuse", 0.0))))
+
 ## Kolejność w zakładce SUPPLIES warsztatu.
 const SHOP_ORDER := ORDER + AMMO_ORDER
 

@@ -634,3 +634,19 @@ serwer odrzuca zakup amunicji przez `request_buy_supply`.
 
 Test: `weapon_test` (zamówienie i dostawa, pełna prasa, pełny zapas, ładunki gorące, panel prasy i ławy), `--gentest` (prasa w kryjówce).
 Dev: `--shotpress` (z `--mission=z1_hub --shotws`). Chronograf na strzelnicy — później.
+
+## 34. Stół pirotechniczny (1.7.355)
+
+`WORKSHOP_PLAN.md` etap W4b (stanowisko 4). Nowe stanowisko na dole kryjówki (znacznik „z”, kol. 46, między skrzyniami, z lampą): [E] otwiera
+panel PIROTECHNIKA (`workshop_ui.open("pyro")`). Zaopatrzenie rozdzielone między stanowiska (`workshop_ui._sup_in_mode`): **pirotechnika** —
+granaty (odłamkowy, fosforowy, dymny), mina, ładunek i naboje 40 mm (te zamawia się jak w prasie, gotowe po misji); **prasa** — amunicja
+specjalna bez 40 mm; **ława** — narzędzia (apteczka, skaner, zestaw do czyszczenia).
+
+| Co | Jak | Gdzie |
+|---|---|---|
+| **Zapalniki** | klawisze 1 / 2 przy stole zmieniają długość zapalnika dla całej drużyny: odłamkowy 1,0 / **1,8** / 3,0 s, fosforowy 0,8 / **1,3** / 2,5 s, ładunek 4 / **8** / 15 s (pogrubione — fabryczne) | `throwables.gd` (`FUSES`, `fuse_default`) |
+| **Serwer i sieć** | ustawienie drużyny w `Scrap.fuses` (zapis u hosta, synchronizacja w `_sync`); granat i ładunek biorą `Scrap.fuse_of(kind)` przy powstaniu — u wszystkich ten sam czas wybuchu | `scrap.gd` (`request_fuse`, `fuse_of`), `grenade.gd`, `placed.gd` |
+
+Krótki zapalnik — granat wybucha, zanim wróg ucieknie (albo w ręku pechowca, który go za długo trzymał w zasięgu); długi — granat
+toczy się dalej, a ładunek daje czas na odwrót. Test: `weapon_test` (podział zaopatrzenia, zapalniki, granat w świecie), `--gentest`.
+Dev: `--shotpyro` (z `--mission=z1_hub --shotws`).
