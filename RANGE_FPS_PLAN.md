@@ -252,3 +252,5 @@ klik w wiersz zmienia część. Montaż próbny siedzi tylko w kontrolerze (`wea
 a `range_restore` przy wyjściu czyści próbę. Na padzie D-pad → to też klawisz szafy — przy otwartej szafie wygrywa ruch w prawo, zamyka B.
 Dev: `--rangeparts` (szafa w gniazdach M-83 z PBS-1). Test `--rangetest` 77/77: PBS-1 i bęben 75 bez zakupu (tłumik, magazynek 75), montaż gracza
 bez zmian, po wyjściu fit jak przed wejściem.
+Od 1.7.353 w gniazdach [R] (lewa gałka pada, akcja `menu_alt`) wczytuje kolejny zapisany zestaw gracza tej broni (`Profile.presets`, ława
+warsztatu; pusty pomija, w kółko) — także z częściami, których drużyna nie ma; ręczna zmiana części kasuje wskazanie zestawu (`fp.locker_preset`).

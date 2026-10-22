@@ -57,6 +57,7 @@ var locker_parts := false             ## szafa pokazuje gniazda broni `locker_w`
 var locker_w := -1                    ## broń, której części gracz przymierza
 var locker_slot := 0                  ## zaznaczone gniazdo (indeks w Parts.slots_of)
 var locker_choice := {}               ## gniazdo → id części ("" — fabryczna) wybrane w szafie
+var locker_preset := -1               ## zestaw gracza (Profile.presets) wczytany do szafy klawiszem [R]; −1 — montaż ręczny
 var _kit := {}                        ## zestaw z wejścia (weapon_controller.range_snapshot), wraca przy wyjściu                  ## broń i obsługa: zmiana zaczyna nową serię (sim.paper_break)
 var shot_climb := 0.0               ## ° — podrzut z początku kroku: strzał leci tam, gdzie celownik tej klatki (jak player._local_brain w grze 2D),
                                       ## a nie z podrzutem doliczonym już za ten sam strzał
@@ -219,6 +220,7 @@ func locker_open_parts(i: int) -> void:
 	locker_w = w
 	locker_slot = 0
 	locker_choice = {}
+	locker_preset = -1
 	var fitted := Parts.decode(key, int(player.weapons.fit_of(w)))
 	for s in Parts.slots_of(key):
 		locker_choice[s] = ""
@@ -234,6 +236,20 @@ func locker_slot_options(slot: String) -> Array:
 		out.append(String(p["id"]))
 	return out
 
+## [R] w gniazdach: następny zapisany zestaw gracza tej broni (Profile.presets, ława warsztatu) — także z częściami, których drużyna nie ma
+## (na strzelnicy to tylko próba). Bez zapisanych zestawów nic się nie dzieje.
+func locker_next_preset() -> void:
+	var key := String(Weapons.def(locker_w).key)
+	for k in range(1, Profile.PRESETS + 1):
+		var i := posmod(locker_preset + k, Profile.PRESETS)       # od −1 (ręczny montaż): 0, 1, 2; od zestawu n — następne po nim, w kółko
+		var p := Profile.preset(key, i)
+		if p.is_empty():
+			continue
+		for s in Parts.slots_of(key):
+			locker_choice[s] = String(p.get(s, ""))
+		locker_preset = i
+		return
+
 ## Następna (`d` = 1) albo poprzednia (−1) część w zaznaczonym gnieździe.
 func locker_cycle(d: int) -> void:
 	var slots := Parts.slots_of(String(Weapons.def(locker_w).key))
@@ -242,6 +258,7 @@ func locker_cycle(d: int) -> void:
 	var s := String(slots[clampi(locker_slot, 0, slots.size() - 1)])
 	var ops := locker_slot_options(s)
 	locker_choice[s] = ops[posmod(ops.find(String(locker_choice.get(s, ""))) + d, ops.size())]
+	locker_preset = -1
 
 ## Broń z wybranymi częściami do ręki (weapon_controller.range_try) i szafa się zamyka.
 func locker_try() -> void:
@@ -287,6 +304,8 @@ func _tick_locker_parts() -> void:
 		locker_cycle(-1)
 	elif Input.is_action_just_pressed("menu_right"):
 		locker_cycle(1)
+	elif Input.is_action_just_pressed("menu_alt"):
+		locker_next_preset()
 	elif Input.is_action_just_pressed("menu_accept"):
 		locker_try()
 

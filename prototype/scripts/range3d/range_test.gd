@@ -604,6 +604,27 @@ func _t_locker() -> void:
 		float(td.suppressor), wc.mag_of(Weapons.M83), wc.range_trial(Weapons.M83)],
 		parts_open and int(td.id) == Weapons.M83 and float(td.suppressor) > 0.0 and wc.mag_of(Weapons.M83) == Weapons.def(Weapons.M83).mag + 45
 		and wc.range_trial(Weapons.M83) and not fp.locker_open and int(player.fits[Weapons.M83]) == fits0 and not Scrap.has_part("m83_pbs1"))
+	# zestawy gracza w szafie (1.7.353): [R] w gniazdach wczytuje kolejny zapisany zestaw (pusty pomija), w kółko
+	var presets0: Dictionary = Profile.presets.duplicate(true)
+	Profile.presets["m83"] = [{"feed": "m83_drum75", "barrel": "", "muzzle": "m83_pbs1", "stock": ""}, {}, {"feed": "", "barrel": "m83_short", "muzzle": "", "stock": "m83_akms"}]
+	fp.toggle_locker()
+	fp.locker_open_parts(ids.find(Weapons.M83))
+	Input.action_press("menu_alt")
+	await _frames(2)
+	Input.action_release("menu_alt")
+	var first: Dictionary = fp.locker_choice.duplicate()
+	var p_first: int = fp.locker_preset
+	fp.locker_next_preset()
+	var p_second: int = fp.locker_preset
+	var second_ok: bool = String(fp.locker_choice["barrel"]) == "m83_short" and String(fp.locker_choice["muzzle"]) == ""
+	fp.locker_next_preset()
+	check("szafa: [%s] wczytuje zestawy gracza — 1 (%s), potem 3 z pominięciem pustego 2 (%d, %s), potem znów 1 (%d)" % [Actions.key("menu_alt"), str(first), p_second + 1, str(second_ok), fp.locker_preset + 1],
+		p_first == 0 and String(first["feed"]) == "m83_drum75" and String(first["muzzle"]) == "m83_pbs1" and p_second == 2 and second_ok and fp.locker_preset == 0)
+	fp.locker_cycle(1)
+	check("szafa: ręczna zmiana części kasuje wskazanie zestawu (%d)" % fp.locker_preset, fp.locker_preset == -1)
+	fp.locker_open = false
+	fp.locker_parts = false
+	Profile.presets = presets0
 	wc.mags[Weapons.GNIEW4] = 1
 	fp.leave()
 	await _frames(3)
