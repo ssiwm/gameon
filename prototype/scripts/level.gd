@@ -74,6 +74,7 @@ const GibArt := preload("res://scripts/gib_art.gd")
 const LEECH := preload("res://scripts/leech.gd")
 const HUB_DECOR := preload("res://scripts/hub_decor.gd")
 const LOCKER_STATION := preload("res://scripts/locker_station.gd")
+const SERVICE_BENCH := preload("res://scripts/service_bench.gd")
 
 ## Mapy misji (scripts/maps/): każda niesie MAP, ID, TITLE, OBJECTIVE, UNDERGROUND_ROW, WEAPONS, ACCENTS.
 const MAPS := {
@@ -617,7 +618,7 @@ func _exposure(c: int, r: int) -> int:
 ## na każdym peerze.
 func _spawn_entities() -> void:
 	_spawn_walls()
-	var found := {"T": [], "A": [], "U": [], "V": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": [], "p": []}
+	var found := {"T": [], "A": [], "U": [], "V": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": [], "p": [], "j": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -630,7 +631,7 @@ func _spawn_entities() -> void:
 				"e": exits_alt.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "A", "U", "V", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q", "p": found[ch].append(p)
+				"T", "A", "U", "V", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q", "p", "j": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -715,6 +716,11 @@ func _spawn_entities() -> void:
 		lk.name = "LockerStation%d" % (i + 1)
 		lk.position = found["p"][i]
 		add_child(lk)
+	for i in found["j"].size():
+		var sv: Node2D = SERVICE_BENCH.new()                  # stół konserwacji: czyszczenie i części eksploatacyjne (WORKSHOP_PLAN.md, stanowisko 2)
+		sv.name = "ServiceBench%d" % (i + 1)
+		sv.position = found["j"][i]
+		add_child(sv)
 	for i in found["l"].size():
 		var lp: Node2D = LAMP.new()
 		lp.name = "Lamp%d" % (i + 1)
@@ -737,7 +743,7 @@ func _spawn_entities() -> void:
 					floors[fr] = {"occ": [], "wide": {}, "quiet": [], "station": false}
 				var fl: Dictionary = floors[fr]
 				fl["occ"].append(pc)
-				if k in ["v", "h", "n", "R", "g", "S", "p"]:
+				if k in ["v", "h", "n", "R", "g", "S", "p", "j"]:
 					fl["station"] = true
 				if k == "v" or k == "n":
 					fl["wide"][pc] = 4.6                      # tablice (wyniki, odprawa) są szersze niż reszta znaczników

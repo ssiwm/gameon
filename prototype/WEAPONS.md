@@ -568,3 +568,19 @@ mniej więcej sześciu misjach, a czyszczenie kosztowało najwyżej 10 złomu. T
 | **Złom w dzienniku sesji** | `mission_end.scrap` = {dropped — złom, który wypadł z wrogów i bossa, loot — zebrany łup, bonus — premia}; do strojenia cen (ceny części bez zmian: szacunek z map w `WORKSHOP_PLAN.md` §1.1 daje 1–1,5 misji na część) | `session_log.gd`, `level.spawn_item`, `mission.scrap_bonus` |
 
 Test: `_t_condition_jams` (czyszczenie: przerwane bez zmian, pełne do 100 %, bank nietknięty); CI sprawdza pole `scrap` w `mission_end` testu misji.
+
+## 30. Stół konserwacji (1.7.350)
+
+`WORKSHOP_PLAN.md` etap W2. Nowe stanowisko w kryjówce (znacznik „j”, kol. 16, między ścianą wyników a ławą, z własną lampą): [E] otwiera
+panel KONSERWACJA (`workshop_ui.open("service")`). Czyszczenie przeniesione tu z ławy; doszły dwie części eksploatacyjne broni na naboje
+(`WeaponDef.can_jam`: 7,62, 9×18, 12/70).
+
+| Co | Jak | Gdzie |
+|---|---|---|
+| **Lufa** | `WEAR_BARREL` 0,02 % na strzał × `wear` × ustawienie, ×3 przy gorącej lufie; M-83 ok. 5 % na misję. Zużyta rozrzuca: stożek (bazowy + dodatkowy) × (1 + 0,6·z²) — przy 50 % ×1,15, przy 100 % ×1,6 (`BARREL_SPREAD`). Tylko właściciel, tylko przy niezawodności ≠ OFF | `weapon_controller.gd` (`_wear_shot`, `spread_extra`, `barrel_wear_of`) |
+| **Sprężyny** | `WEAR_SPRINGS` 0,025 % na strzał × `wear` × ustawienie. Zmęczone ograniczają czyszczenie: stan najwyżej 100 − 0,5 × zużycie (`Profile.clean_cap`; 60 % zużycia → 70 %, próg zacięć) — także zestaw do czyszczenia w misji | `profile.gd` (`worn`, `part_wear`, `wear_part`, `clean_cap`) |
+| **Wymiana** | lufa 40, sprężyny 20 złomu drużyny (`Scrap.SERVICE_COST`); serwer pobiera złom (`request_service`, odrzuca broń bez naboi i nieznaną część), zużycie zeruje profil gracza (`Profile.replace_part`) | `scrap.gd`, `workshop_ui.gd` |
+| **Ława 3D** | brud i nagar wg stanu (nakładka `DIRT_SHADER`, plamy z szumu w układzie modelu), w trakcie czyszczenia broń rozkłada się na podzespoły (`set_strip`, kierunek od środka broni) i brud z niej schodzi; na wierszu lufy świeci lufa | `gun_stage.gd` |
+
+Test `_t_maintenance` (zużycie, gorąca lufa, rozrzut, granica czyszczenia, wymiana przez serwer, panel), `--gentest` (stół w kryjówce,
+zasięg osobno od ławy). Dev: `--shotclean` (z `--mission=z1_hub --shotws`).

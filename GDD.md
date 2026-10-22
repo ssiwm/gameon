@@ -204,7 +204,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
   9×18 i śrut zostają w pierwszym celu; kula od blachy pod ostrym kątem odbija się (rykoszet z połową siły)
 - **Stan broni (od 1.7.328, ustawienie „Weapon reliability”):** każdy strzał trochę zużywa broń; poniżej 70 % stanu broń palna czasem się zacina
   (niewypał, zacięta łuska, podwójne podanie) — krótkie [R] przeładowuje rączką, P-83 strzela przy drugim pociągnięciu spustu. Brudną broń
-  czyści się przy ławie w warsztacie (od 1.7.347 bez złomu, za to kilka sekund przy ławie: 1,5 s na każde 10 % zużycia) albo w misji zestawem do czyszczenia (od 1.7.329: 6 s, +40 %). Brodzenie w wodzie
+  czyści się przy stole konserwacji w kryjówce (od 1.7.347 bez złomu, za to kilka sekund: 1,5 s na każde 10 % zużycia; od 1.7.350 zmęczone sprężyny ograniczają stan po czyszczeniu, a zużyta lufa rozrzuca — obie części wymienia się za złom) albo w misji zestawem do czyszczenia (od 1.7.329: 6 s, +40 %). Brodzenie w wodzie
   i błocie oraz upadek też zużywają broń; zużyte LR-7 przegrzewa ogniwo, a SPECTER-1 przebija kondensator
 - **Wprawa (od 1.7.330):** trafienia i zabójstwa z danej broni podnoszą wprawę gracza z nią (5 stopni): do −10 % czasu przeładowania, dobycia
   i podrzutu, szybsze usuwanie zacięć
@@ -467,7 +467,8 @@ Inny wymiar: organiczne korytarze, grawitacja się zmienia, radio mówi głosami
 | Weteran | +1 serce (i +1 do sufitu kumulacji apteczek) |
 
 ### 10.3 Kryjówka (hub)
-- **Warsztat** — bronie i części broni (zakup dla drużyny, montaż we własnej broni), trzy zapisane zestawy części na broń (każdy gracz osobno), czyszczenie broni i zaopatrzenie; wybrana broń leży na ławie 3D z częścią spod kursora.
+- **Warsztat** — bronie i części broni (zakup dla drużyny, montaż we własnej broni), trzy zapisane zestawy części na broń (każdy gracz osobno) i zaopatrzenie; wybrana broń leży na ławie 3D z częścią spod kursora.
+- **Stół konserwacji** (od 1.7.350) — czyszczenie broni (bez złomu, za czas; broń rozłożona na ławie 3D) i wymiana części eksploatacyjnych: lufa (zużyta rozrzuca) i sprężyny (zmęczone nie pozwalają doczyścić broni do 100 %) za złom drużyny.
 - **Szafki osobiste** (świetlica, od 1.7.349) — perki i wygląd postaci (wcześniej zakładki warsztatu). Kolejne stanowiska warsztatu: `WORKSHOP_PLAN.md`.
 - **Zbrojownia** — dwie gabloty po cztery broni (w prototypie od 1.7.219): [F] przy gablocie, ↑ / ↓ wybór, [E] bierze; zamknięta broń z ceną w złomie (odblokowanie w warsztacie).
 - **Szpital** — stan uratowanych NPC, bonusy fabularne (np. uratowany naukowiec daje schemat EMP).

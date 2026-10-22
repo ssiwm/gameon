@@ -251,8 +251,10 @@ class SupplyTile extends Button:
 var _open := false
 var _page := 0                        ## 0 = ARMS (bronie i ulepszenia), 1 = SUPPLIES (granaty, miny, narzędzia), 2 = PERKS, 3 = LOOK
 var _mode := "bench"                  ## „bench" — ława (ARMS, SUPPLIES), „locker" — szafki osobiste (PERKS, LOOK); od 1.7.349, WORKSHOP_PLAN.md W1
-const MODE_PAGES := {"bench": [0, 1], "locker": [2, 3]}
-const MODE_GROUP := {"bench": "workshop", "locker": "locker_station"}      ## grupa stanowiska: panel zamyka się, gdy gracz od niego odejdzie
+## „service" — stół konserwacji (od 1.7.350, W2): zakładka ARMS bez części i zestawów, tylko czyszczenie i części eksploatacyjne broni
+const MODE_PAGES := {"bench": [0, 1], "locker": [2, 3], "service": [0]}
+const MODE_GROUP := {"bench": "workshop", "locker": "locker_station", "service": "service_bench"}      ## grupa stanowiska: panel zamyka się, gdy gracz od niego odejdzie
+const SERVICE_IDS := ["clean", "barrel", "springs"]
 var _title: Label
 var _sup_sel := 0
 var _arms_body: HBoxContainer
@@ -381,6 +383,7 @@ func _ready() -> void:
 	Scrap.purchase_result.connect(_on_result)
 	Scrap.supply_result.connect(_on_supply_result)
 	Scrap.part_result.connect(_on_part_result)
+	Scrap.service_result.connect(_on_service_result)
 	Profile.changed.connect(_refresh)
 	Arsenal.stock_changed.connect(_refresh)
 
@@ -923,9 +926,9 @@ func open(mode := "bench") -> void:
 	_open = true
 	visible = true
 	_mode = mode if MODE_PAGES.has(mode) else "bench"
-	_title.text = tr("LOCKER") if _mode == "locker" else tr("WORKSHOP")
+	_title.text = tr("LOCKER") if _mode == "locker" else (tr("MAINTENANCE") if _mode == "service" else tr("WORKSHOP"))
 	for pi in _page_btns.size():
-		(_page_btns[pi] as Button).visible = (MODE_PAGES[_mode] as Array).has(pi)
+		(_page_btns[pi] as Button).visible = (MODE_PAGES[_mode] as Array).has(pi) and (MODE_PAGES[_mode] as Array).size() > 1
 	_msg.text = ""
 	_hint.text = _controls_hint()
 	_sel = 0
@@ -975,6 +978,9 @@ func _exit_tree() -> void:
 func _controls_hint() -> String:
 	var pad := Actions.pad_mode
 	var nav := "D-PAD" if pad else Actions.cluster(["menu_up", "menu_left", "menu_down", "menu_right"]).to_upper()
+	if _mode == "service":
+		return tr("%s select   ·   %s / %s job   ·   %s clean / replace   ·   %s close   ·   or click") % [
+			nav, _menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_back", pad)]
 	if _mode == "locker":
 		return tr("%s select   ·   %s / %s perk slot   ·   %s equip   ·   %s perks / look   ·   %s close   ·   or click") % [
 			nav, _menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_tab", pad), _menu_key("menu_back", pad)]
@@ -1055,6 +1061,14 @@ func _input(event: InputEvent) -> void:
 func _options(w: int) -> Array:
 	var key := String(Weapons.def(w).key)
 	var out: Array = []
+	if _mode == "service":
+		var d := Weapons.def(w)
+		if Scrap.is_unlocked(w) and not d.is_melee() and Settings.reliability_mult() > 0.0:
+			out.append({"slot": "service", "id": "clean"})
+			if d.can_jam():                                      # broń na naboje: lufa i sprężyny (energetyczna ma swoje usterki — WeaponDef.fault)
+				out.append({"slot": "service", "id": "barrel"})
+				out.append({"slot": "service", "id": "springs"})
+		return out
 	for s in Parts.slots_of(key):
 		out.append({"slot": s, "id": ""})
 		for p in Parts.in_slot(key, String(s)):
@@ -1062,8 +1076,6 @@ func _options(w: int) -> Array:
 	if Scrap.is_unlocked(w) and not Parts.slots_of(key).is_empty():
 		for i in Profile.PRESETS:
 			out.append({"slot": "preset", "id": str(i)})       # zestawy części gracza (WORKSHOP_PLAN.md U6)
-	if Scrap.is_unlocked(w) and not Weapons.def(w).is_melee() and Settings.reliability_mult() > 0.0:
-		out.append({"slot": "service", "id": "clean"})
 	return out
 
 func _move_opt(d: int) -> void:
@@ -1110,7 +1122,10 @@ func _first_part_opt() -> int:
 func _act() -> void:
 	var w: int = LIST[_sel]
 	if not Scrap.is_unlocked(w):
-		Scrap.request_buy(w)
+		if _mode == "service":
+			_say(tr("Buy it at the workshop bench first."), UiTheme.BP_MUTED)
+		else:
+			Scrap.request_buy(w)
 		return
 	var ops := _options(w)
 	if ops.is_empty():
@@ -1130,6 +1145,12 @@ func _act() -> void:
 			_say((tr("Fitted set %d.") % (pi + 1)) if skipped == 0 else (tr("Fitted set %d — %d parts the squad no longer has stay as they were.") % [pi + 1, skipped]),
 				UiTheme.OK if skipped == 0 else UiTheme.BP_MUTED)
 			_refresh()
+		return
+	if String(o["slot"]) == "service" and id != "clean":
+		if Profile.part_wear(key, id) < 0.5:
+			_say(tr("Still like new — nothing to replace."), UiTheme.BP_MUTED)
+		else:
+			Scrap.request_service(w, id)
 		return
 	if String(o["slot"]) == "service":
 		if _clean_w == w:
@@ -1217,14 +1238,30 @@ func tick_clean(delta: float) -> void:
 	if _clean_w < 0:
 		return
 	_clean_t += delta
+	var ck := String(Weapons.def(_clean_w).key)
 	if _clean_t < _clean_total:
 		_action.text = tr("Cleaning…  %d%%  (again to stop)") % int(100.0 * _clean_t / _clean_total)
+		var c0 := Profile.condition(ck)                     # brud schodzi z broni w trakcie (ława 3D)
+		(_d_stage as GunStage).set_dirt(1.0 - lerpf(c0, Profile.clean_cap(ck), _clean_t / _clean_total) / 100.0)
 		return
 	var w := _clean_w
 	_stop_clean()
-	Profile.clean(String(Weapons.def(w).key))
-	_say(tr("%s stripped and cleaned — condition 100%%.") % String(Weapons.def(w).name), UiTheme.OK)
+	Profile.clean(ck)
+	_say(tr("%s stripped and cleaned — condition %d%%.") % [String(Weapons.def(w).name), int(Profile.condition(ck))], UiTheme.OK)
 	Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.0)
+	_refresh()
+
+func _on_service_result(w: int, part: String, ok: bool, reason: String) -> void:
+	if not _open:
+		return
+	match reason:
+		"ok":
+			_say((tr("New barrel in the %s.") if part == "barrel" else tr("New springs in the %s.")) % String(Weapons.def(w).name), UiTheme.OK)
+			Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.1)
+		"poor":
+			_say(tr("Not enough scrap (%d needed).") % int(Scrap.SERVICE_COST.get(part, 0)), UiTheme.DANGER)
+		_:
+			_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
 
 func _on_part_result(id: String, ok: bool, reason: String) -> void:
@@ -1407,8 +1444,11 @@ func _refresh_detail(w: int) -> void:
 		if pv_code != mine:
 			preview = Weapons.def_build(w, Weapons.build_of(0, pv_code))
 	# na ławie broń już z częścią spod kursora; ona (albo fabryczny element gniazda) świeci i jest wysunięta
-	var hl_part := unlocked and not o.is_empty() and String(o["slot"]) != "preset"
-	(_d_stage as GunStage).show_gun(w, Parts.decode(key, pv_code), String(o.get("id", "")) if hl_part else "", String(o.get("slot", "")) if hl_part else "", not unlocked)
+	var hl_part := unlocked and not o.is_empty() and String(o["slot"]) != "preset" and String(o["slot"]) != "service"
+	var hl_slot := String(o.get("slot", "")) if hl_part else ("barrel" if unlocked and not o.is_empty() and String(o["id"]) == "barrel" else "")
+	(_d_stage as GunStage).show_gun(w, Parts.decode(key, pv_code), String(o.get("id", "")) if hl_part else "", hl_slot, not unlocked)
+	(_d_stage as GunStage).set_dirt((1.0 - Profile.condition(key) / 100.0) if unlocked and not base.is_melee() else 0.0)   # brud wg stanu broni (W2)
+	(_d_stage as GunStage).set_strip(_clean_w == w)
 	_d_title.text = String(base.name)
 	var tag := Codex._slot_name(base)
 	if unlocked and not Parts.of(key).is_empty():
@@ -1475,14 +1515,23 @@ func _refresh_detail(w: int) -> void:
 			continue
 		if slot == "service":
 			var cc := Profile.clean_time(key)
+			var sid := String(op["id"])
+			var pw := Profile.part_wear(key, sid) if sid != "clean" else 0.0
 			var cb := Button.new()
 			cb.flat = true
 			cb.focus_mode = Control.FOCUS_NONE
 			cb.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			cb.add_theme_font_size_override("font_size", 8)
-			cb.add_theme_color_override("font_color", UiTheme.ACCENT if i == _opt else (GOLD if cc > 0 else UiTheme.OK))
+			var due := (cc > 0.0) if sid == "clean" else (pw >= 0.5)
+			cb.add_theme_color_override("font_color", UiTheme.ACCENT if i == _opt else (GOLD if due else UiTheme.OK))
 			cb.add_theme_color_override("font_hover_color", UiTheme.ACCENT)
-			cb.text = "%s %s   [%s]" % ["»" if i == _opt else " ", tr("Clean  ·  condition %d%%") % int(Profile.condition(key)), tr("%d s") % ceili(cc) if cc > 0.0 else tr("clean")]
+			var cap := Profile.clean_cap(key)
+			if sid == "clean":
+				var ctxt := (tr("Clean  ·  condition %d%%") % int(Profile.condition(key))) if cap >= 99.5 else (tr("Clean  ·  condition %d%% (max %d%%)") % [int(Profile.condition(key)), int(cap)])
+				cb.text = "%s %s   [%s]" % ["»" if i == _opt else " ", ctxt, tr("%d s") % ceili(cc) if cc > 0.0 else tr("clean")]
+			else:
+				var pname := tr("Barrel") if sid == "barrel" else tr("Springs")
+				cb.text = "%s %s   [%s]" % ["»" if i == _opt else " ", tr("%s  ·  worn %d%%") % [pname, int(pw)], tr("%d scrap") % int(Scrap.SERVICE_COST[sid]) if due else tr("like new")]
 			cb.custom_minimum_size = Vector2(DETAIL_W, 0)
 			for st in ["normal", "hover", "pressed", "focus"]:
 				var csb := StyleBoxEmpty.new()
@@ -1519,8 +1568,12 @@ func _refresh_detail(w: int) -> void:
 	if unlocked and not o.is_empty() and String(o["slot"]) == "preset":
 		desc = tr("Your saved sets of parts for this gun (only yours — the squad shares the unlocks, not the build). %s fits the set, %s saves your current fit over it.") % [
 			_menu_key("menu_accept", Actions.pad_mode), _menu_key("menu_alt", Actions.pad_mode)]
+	elif unlocked and not o.is_empty() and String(o["slot"]) == "service" and String(o["id"]) == "barrel":
+		desc = tr("Every shot wears the bore, a hot barrel three times faster. A worn barrel throws the shots wider (at 100%% wear the cone is 60%% wider). A new one costs %d scrap from the squad.") % int(Scrap.SERVICE_COST["barrel"])
+	elif unlocked and not o.is_empty() and String(o["slot"]) == "service" and String(o["id"]) == "springs":
+		desc = tr("Recoil and firing-pin springs tire with every shot. Tired springs feed badly: cleaning can no longer bring the gun back to 100%%, only to 100 − half the spring wear. New springs cost %d scrap.") % int(Scrap.SERVICE_COST["springs"])
 	elif unlocked and not o.is_empty() and String(o["slot"]) == "service":
-		desc = tr("Strip and clean the gun at the bench: condition back to 100%. It costs no scrap, only time at the bench — the dirtier the gun, the longer. Below 70% a gun starts to jam, and every shot wears it — faster with a hot barrel or a suppressor.")
+		desc = tr("Strip and clean the gun on the table: condition back to 100% (less with tired springs). It costs no scrap, only time — the dirtier the gun, the longer. Below 70% a gun starts to jam, and every shot wears it — faster with a hot barrel or a suppressor.")
 	elif unlocked and not o.is_empty() and String(o["id"]) != "":
 		desc = tr(String(Parts.get_part(String(o["id"]))["desc"]))
 	elif unlocked and not o.is_empty():
@@ -1530,9 +1583,9 @@ func _refresh_detail(w: int) -> void:
 	if not unlocked and Scrap.is_later(w):
 		_action.text = "Reward for the Leech" if Scrap.is_gated(w) else "Available in a later zone"
 	elif not unlocked:
-		_action.text = tr("Buy  ·  %d scrap") % Scrap.price_of(w)
+		_action.text = tr("Buy it at the workshop bench") if _mode == "service" else tr("Buy  ·  %d scrap") % Scrap.price_of(w)
 	elif o.is_empty():
-		_action.text = "No parts for this weapon"
+		_action.text = tr("Nothing to service") if _mode == "service" else "No parts for this weapon"
 	elif String(o["slot"]) == "preset":
 		var api := int(o["id"])
 		if Profile.preset(key, api).is_empty():
@@ -1541,6 +1594,9 @@ func _refresh_detail(w: int) -> void:
 			_action.text = tr("Set %d fitted  ·  %s overwrite") % [api + 1, _menu_key("menu_alt", Actions.pad_mode)]
 		else:
 			_action.text = tr("Fit set %d  ·  %s overwrite") % [api + 1, _menu_key("menu_alt", Actions.pad_mode)]
+	elif String(o["slot"]) == "service" and String(o["id"]) != "clean":
+		var sid2 := String(o["id"])
+		_action.text = (tr("Replace  ·  %d scrap") % int(Scrap.SERVICE_COST[sid2])) if Profile.part_wear(key, sid2) >= 0.5 else tr("Like new")
 	elif String(o["slot"]) == "service":
 		var ctime := Profile.clean_time(key)
 		if _clean_w == w:
