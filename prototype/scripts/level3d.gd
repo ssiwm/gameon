@@ -3346,7 +3346,9 @@ static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0
 	env.ssao_intensity = 2.4
 	env.ssao_power = 1.6
 	env.ssao_light_affect = 0.35
-	env.ssil_enabled = quality >= 2
+	# odbite światło tylko we wnętrzach (kryjówka, `moon` = false): w nocy na mapach otoczenie ma energię 0,03 i SSIL nie zmienia kadru,
+	# a kosztował 1,2–1,6 ms GPU w 4K (--perfreport 2026-10-23, RTX 3080); w kryjówce daje ciepły odblask lamp na ścianach
+	env.ssil_enabled = quality >= 2 and not moon
 	env.ssil_radius = 4.0
 	env.ssil_intensity = 1.2
 	env.volumetric_fog_enabled = quality >= 1
@@ -3378,9 +3380,9 @@ static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0
 		l.basis = Basis.looking_at(Vector3(0.55, -0.7, -0.45), Vector3.UP)
 		l.light_color = Color(0.62, 0.72, 0.95)
 		l.light_energy = 0.06                                  # księżyc tylko muska krawędzie — nie oświetla drogi
-		l.shadow_enabled = true
-		l.directional_shadow_max_distance = 60.0
-		l.shadow_bias = 0.04
+		# bez cienia: przy energii 0,06 cień drzew był widoczny tylko jako ciemniejszy pas gruntu w głębi, a cztery kaskady z lasem
+		# (ok. 1 mln trójkątów rzucających cień) kosztowały 0,7–1,2 ms GPU w 4K (--perfreport 2026-10-23, RTX 3080)
+		l.shadow_enabled = false
 		l.light_volumetric_fog_energy = 0.3                    # smugi księżyca między pniami
 		l.layers = 3                                           # widoczne dla kamery świata i kamery graczy (Forward+ odcina światła maską warstw kamery)
 		parent.add_child(l)

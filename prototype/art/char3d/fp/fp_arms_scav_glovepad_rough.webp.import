@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://donmmq1qq1ygx"
-path="res://.godot/imported/fp_arms_scav_glovepad_rough.webp-1f578420bb199a08424d48e6bb2f9804.ctex"
+path.bptc="res://.godot/imported/fp_arms_scav_glovepad_rough.webp-1f578420bb199a08424d48e6bb2f9804.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "ce73a774c2aea9f24b1b91d1aa19ab89"
@@ -14,12 +15,12 @@ generator_parameters={
 [deps]
 
 source_file="res://art/char3d/fp/fp_arms_scav_glovepad_rough.webp"
-dest_files=["res://.godot/imported/fp_arms_scav_glovepad_rough.webp-1f578420bb199a08424d48e6bb2f9804.ctex"]
+dest_files=["res://.godot/imported/fp_arms_scav_glovepad_rough.webp-1f578420bb199a08424d48e6bb2f9804.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

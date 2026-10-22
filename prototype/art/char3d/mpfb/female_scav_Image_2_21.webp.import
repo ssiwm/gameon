@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dhc4wo0asv043"
-path="res://.godot/imported/female_scav_Image_2_21.webp-e5b2822169b2e2de8e1b1c52107d9401.ctex"
+path.s3tc="res://.godot/imported/female_scav_Image_2_21.webp-e5b2822169b2e2de8e1b1c52107d9401.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "8655839423229844e009a005f501cdc6"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/char3d/mpfb/female_scav_Image_2_21.webp"
-dest_files=["res://.godot/imported/female_scav_Image_2_21.webp-e5b2822169b2e2de8e1b1c52107d9401.ctex"]
+dest_files=["res://.godot/imported/female_scav_Image_2_21.webp-e5b2822169b2e2de8e1b1c52107d9401.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

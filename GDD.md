@@ -514,7 +514,7 @@ Cisza radiowa (brak minimapy), Przeciążenie (Uwaga 50 start), Głód amunicji 
 
 ### Grafika
 - **2.5D:** rozgrywka jest symulacją 2D (fizyka kafli, AI, sieć, celowanie), a obraz domyślnie powstaje w 3D — kamera perspektywiczna patrzy z boku na płaszczyznę gry (`view3d.gd`, `level3d.gd`). Geometria świata powstaje z tej samej mapy ASCII co kolizje.
-- **Renderer:** Godot Forward+ (Vulkan / D3D12): światła i cienie 3D, SSAO, SSIL, mgła wolumetryczna, mgła głębi, glow, tonemapping filmic. Bez Vulkana silnik wraca do OpenGL (tryb zgodności, bez SSAO / SSIL / mgły wolumetrycznej).
+- **Renderer:** Godot Forward+ (Vulkan / D3D12): światła i cienie 3D, SSAO, SSIL (tylko kryjówka), mgła wolumetryczna, mgła głębi, glow, tonemapping filmic. Bez Vulkana silnik wraca do OpenGL (tryb zgodności, bez SSAO / SSIL / mgły wolumetrycznej).
 - **Ciemność jest mechaniką, nie tylko nastrojem** (§8.3): noc jest czarna, a widoczność dają światła sceny — aura gracza, latarka, flary, ogniska, lampy, błysk lufy. Tło i mgła nie mogą rozjaśniać poziomu, na którym stoją postacie; daleki wróg ma być tak samo słabo widoczny w 3D i w 2D.
 - **Materiały i zasoby:** świat w PBR (skany CC0 + proceduralne, `art/world3d/`), dekale zniszczeń, ciecze z przekrojem, bór sosnowy ze świerkami, brzozami i martwymi pniami, runo; kamienie, pnie i rekwizyty tła ze skanów Poly Haven (CC0, `art/items3d/CREDITS.md`) stawiane przez akcenty map (`ACCENTS`); postacie graczy i wrogowie jako modele 3D (rig + IK, `char3d.gd`, `enemy3d.gd`); przedmioty HD jako karty z mapą normalnych oświetlane światłem 3D. Grafikę generują skrypty w `prototype/tools/`.
 - **Palety stref:** kolor niosą materiały i światła, nie filtr na całym kadrze (Bór: brąz ściółki i zieleń runa w ciepłym świetle ognia; Obiekt 86: stal i cyjan; Martwa Cisza: czerń i magenta).
@@ -554,7 +554,7 @@ Cisza radiowa (brak minimapy), Przeciążenie (Uwaga 50 start), Głód amunicji 
 - Model: premium, **zero MTX**.
 - DLC po 1.0: kosmetyki (skiny oddziału, retro filtry), soundtrack, artbook. Nigdy nie dzielimy map ani broni.
 - Demo: Strefa I (bez zapisu postępu) — konwersja na wishlistę.
-- Wymagania: karta z Vulkanem albo D3D12 dla pełnego obrazu 3D; na słabszym sprzęcie „Effects quality: LOW” (widoku 2D już nie ma). Minimalna konfiguracja nie jest jeszcze zmierzona (pomiar tylko na RTX 3080).
+- Wymagania: karta z Vulkanem albo D3D12 dla pełnego obrazu 3D; na słabszym sprzęcie „Render scale” 75 % lub mniej (FSR 1, od 1.7.368) albo „Effects quality: LOW” (widoku 2D już nie ma). Minimalna konfiguracja nie jest jeszcze zmierzona (pomiar tylko na RTX 3080).
 
 ---
 

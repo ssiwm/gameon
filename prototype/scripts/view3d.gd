@@ -160,6 +160,8 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_vp_fg.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(_vp_fg)
 	SessionLog.watch_viewports([_vp_bg, _vp_fg])              # czas GPU świata i graczy w próbkach `perf` dziennika sesji
+	_apply_render_scale()
+	Settings.changed.connect(_apply_render_scale)
 	_world = Node3D.new()
 	_world.name = "World"
 	_vp_bg.add_child(_world)
@@ -2130,6 +2132,15 @@ func _warm_loadouts() -> void:
 		for id in ids:
 			if int(id) >= 0 and int(id) < Weapons.defs().size():
 				GunModel.warm(GUN_DIR + "gun_%s.glb" % String(Weapons.def(int(id)).key))
+
+## Skala renderu świata z ustawień (Settings.RENDER_SCALE_LIST): poniżej 100% viewport świata skaluje FSR 1. Warstwa graczy zostaje
+## w pełnej rozdzielczości — postacie są małe na ekranie i rozmyłyby się pierwsze, a kosztują ok. 0,7 ms GPU w 4K.
+func _apply_render_scale() -> void:
+	if _vp_bg == null:
+		return
+	var sc := Settings.render_scale()
+	_vp_bg.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if sc < 0.999 else Viewport.SCALING_3D_MODE_BILINEAR
+	_vp_bg.scaling_3d_scale = sc
 
 ## Model broni do gabloty (pistolet na półce, ślad pustego haka): naturalna długość z gun_proc.py, środek bryły w (0, 0, 0).
 func _cab_gun(key: String) -> Node3D:

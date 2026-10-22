@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dimaf3v3h2d5x"
-path="res://.godot/imported/male_hazmat_uvn_toigo_ankle_boots_male.webp-2669ff23014ce2f4c11c868d1fe5011e.ctex"
+path.s3tc="res://.godot/imported/male_hazmat_uvn_toigo_ankle_boots_male.webp-2669ff23014ce2f4c11c868d1fe5011e.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "74009f5aa0b18bc1e8070c74fd7ef71f"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/char3d/mpfb/male_hazmat_uvn_toigo_ankle_boots_male.webp"
-dest_files=["res://.godot/imported/male_hazmat_uvn_toigo_ankle_boots_male.webp-2669ff23014ce2f4c11c868d1fe5011e.ctex"]
+dest_files=["res://.godot/imported/male_hazmat_uvn_toigo_ankle_boots_male.webp-2669ff23014ce2f4c11c868d1fe5011e.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

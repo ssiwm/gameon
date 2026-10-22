@@ -16,7 +16,7 @@ extends RefCounted
 ##   pos            phase, noise, p: lista graczy [{who, bot, pos, hp, crouch, dead}] — próbka co POS_EVERY s (mapy cieplne tras, MAPS_PLAN.md P1)
 ##   objective      what (tag / stash / generator / nest / boss), n, of, pos, who, bot — zaliczony cel lub cel poboczny (czas odcinków trasy, P2)
 ##   mission_end    result (success / failed / wipe), time, downs, attempts, peak_noise, side, players, weapons, noise, scrap
-##   system         gpu, gpu_vendor, cpu, threads, ram_gb, os, screen, window, fullscreen, quality, vsync, fps_cap — raz na plik, przy jego otwarciu
+##   system         gpu, gpu_vendor, cpu, threads, ram_gb, os, screen, window, fullscreen, quality, render_scale, vsync, fps_cap — raz na plik, przy jego otwarciu
 ##   perf           map, fps, avg, p50, p95, max (ms klatki), spikes (klatki > PERF_SPIKE_MS), gpu (ms GPU viewportów widoku 3D), up (s od startu gry)
 ##                  — próbka co PERF_EVERY s, także w kryjówce i u klienta (od 1.7.367): klient pisze własny plik z samymi wierszami system i perf,
 ##                  bo wydajność jest jego sprzętu, a reszta dziennika to symulacja hosta
@@ -86,7 +86,7 @@ static func _open() -> bool:
 	var row := {"t": 0.0, "ev": "system", "build": build(), "gpu": RenderingServer.get_video_adapter_name(), "gpu_vendor": RenderingServer.get_video_adapter_vendor(),
 		"cpu": OS.get_processor_name(), "threads": OS.get_processor_count(), "ram_gb": snappedf(float(mem.get("physical", 0)) / 1073741824.0, 0.1),
 		"os": OS.get_name(), "screen": xy(Vector2(DisplayServer.screen_get_size())), "window": xy(Vector2(DisplayServer.window_get_size())),
-		"fullscreen": Settings.fullscreen, "quality": Settings.QUALITY_NAMES[Settings.quality_idx], "vsync": Settings.VSYNC_NAMES[Settings.vsync_idx],
+		"fullscreen": Settings.fullscreen, "quality": Settings.QUALITY_NAMES[Settings.quality_idx], "render_scale": Settings.render_scale(), "vsync": Settings.VSYNC_NAMES[Settings.vsync_idx],
 		"fps_cap": Settings.FPS_LIST[Settings.fps_idx]}
 	_file.store_line(JSON.stringify(row))
 	return true
