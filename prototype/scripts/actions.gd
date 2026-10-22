@@ -75,6 +75,7 @@ const DEFS := {
 	"menu_tab_prev": {"pad": [JOY_BUTTON_LEFT_SHOULDER], "menu": true},
 	"menu_slot_1": {"keys": [KEY_1], "pad": [JOY_BUTTON_X], "menu": true},
 	"menu_slot_2": {"keys": [KEY_2], "pad": [JOY_BUTTON_Y], "menu": true},
+	"menu_alt": {"keys": [KEY_R], "pad": [JOY_BUTTON_LEFT_STICK], "menu": true},          # warsztat: zapisz bieżący montaż do zestawu (nadpisz)
 }
 
 ## Akcje, które gracz może przypisywać, w kolejności ekranu CONTROLS: id → etykieta. (Celowanie prawym drążkiem i akcje
