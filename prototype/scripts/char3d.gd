@@ -256,6 +256,7 @@ const CURL_HOLD := 0.7                       ## dłoń przednia pod łożem (sze
 const GRIP_HALF := 0.013                     ## pół grubości chwytu / rękojeści (m): o tyle dłoń leży obok jego osi
 const GUN_FOLLOW := 0.5                      ## ile ruchu barku względem pozy nominalnej przechodzi na broń (1 = broń sztywno przy barku, 0 = nieruchoma w pozie nominalnej)
 const AIM_SPRING := 34.0                     ## 1/s: sztywność sprężyny, którą broń MODELU goni kierunek celowania (rozgrywka celuje od razu)
+const AIM_STEP := 1.0 / 120.0                ## s: najdłuższy krok całkowania tej sprężyny (dłuższa klatka dzieli się na podkroki)
 const MELEE_GUARD := 0.95                    ## rad: uniesienie ostrza w gardzie (broń biała w spoczynku)
 const TURN_TIME := 0.16                      ## s: obrót postaci przy zmianie kierunku (przodem do kamery)
 const UP_REACH := 0.16                       ## m: o tyle dalej od barku jest broń przy celowaniu pionowo w górę
@@ -1211,12 +1212,17 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 	var holding := armed and _down < 0.2 and throw_t < 0.0 and _clip_arms < 0.5
 	# bezwładność broni: kąt broni modelu goni kąt celowania sprężyną lekko niedotłumioną (obrót o 45° trwa ok. 0,1 s i kończy się drobnym wybiegiem);
 	# strzał dociąga broń na linię celowania od razu, żeby błysk wylotowy nie rozjechał się z torem pocisku
-	if is_nan(_vis_aim) or not holding or recoil_px > _last_recoil + 0.05 or delta > 0.1:
+	if not is_finite(_vis_aim) or not is_finite(_vis_vel) or not holding or recoil_px > _last_recoil + 0.05 or delta > 0.1:
 		_vis_aim = theta
 		_vis_vel = 0.0
 	else:
-		_vis_vel += ((theta - _vis_aim) * AIM_SPRING * AIM_SPRING - _vis_vel * 2.0 * 0.78 * AIM_SPRING) * delta
-		_vis_aim += _vis_vel * delta
+		# podkroki: krok Eulera tej sprężyny jest stabilny tylko do ok. 29 ms — przy niższym FPS (np. 4K, ciężka scena) wahania rosły,
+		# broń wirowała w dłoniach i kończyło się na NaN w pozie rąk; krok ≤ 1/120 s jest stabilny przy każdej długości klatki
+		var steps := ceili(delta / AIM_STEP)
+		var h := delta / float(maxi(steps, 1))
+		for i in steps:
+			_vis_vel += ((theta - _vis_aim) * AIM_SPRING * AIM_SPRING - _vis_vel * 2.0 * 0.78 * AIM_SPRING) * h
+			_vis_aim += _vis_vel * h
 	_last_recoil = recoil_px
 	if armed and _down < 0.2 and _clip_arms < 0.5:
 		_rest_clavicles()
