@@ -1,0 +1,13 @@
+{
+ "task": "01a164d8-6a9c-7265-a6e3-c5537ed1d4ba",
+ "ai_model": "latest",
+ "geometry_resolution": "standard",
+ "texture_resolution": "2k",
+ "source_image": "specimen_case_source.png",
+ "credits": 30,
+ "remesh": {
+  "task": "01a164df-7afb-77aa-8b51-8cc078773d3b",
+  "target_polycount": 40000,
+  "credits": 5
+ }
+}

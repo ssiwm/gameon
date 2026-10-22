@@ -722,9 +722,13 @@ func _t_climb() -> void:
 	wc.mags[Weapons.M83] = 30
 	wc.jams.clear()
 	var ys: Array = []
-	fp.sim.impact.connect(func(pos: Vector3, _n: Vector3, kind: String, _i: int) -> void:
-		if kind == "backstop":
-			ys.append(pos.y))
+	var eye: Vector3 = fp.eye()
+	# wysokość strzału w płaszczyźnie kulochwytu, liczona z promienia oko → trafienie: strop jest tylko ok. 3° nad linią oczu, więc
+	# rozrzut w serii z podrzutem potrafi położyć strzał w stropie (albo w ścianie) zamiast w kulochwycie — liczy się każdy strzał
+	fp.sim.impact.connect(func(pos: Vector3, _n: Vector3, _kind: String, _i: int) -> void:
+		var dz := eye.z - pos.z
+		if dz > 0.5:
+			ys.append(eye.y + (pos.y - eye.y) * RangeSim.LANE_L / dz))
 	wc.sim_fire = true
 	var t := 0.0
 	while ys.size() < 6 and t < 3.0:
@@ -732,7 +736,7 @@ func _t_climb() -> void:
 		await get_tree().physics_frame
 		t += get_physics_process_delta_time()
 	wc.sim_fire = false
-	check("seria 6 strzałów do kulochwytu (%d)" % ys.size(), ys.size() >= 6)
+	check("seria 6 strzałów w głąb tunelu (%d)" % ys.size(), ys.size() >= 6)
 	if ys.size() >= 6:
 		# średnie, nie pojedyncze trafienia: rozrzut (0,8° + narastający w serii) na 30 m jest rzędu podrzutu z 4 strzałów; dłuższa seria
 		# (ok. 4°) idzie już w strop tunelu

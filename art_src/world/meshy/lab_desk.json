@@ -1,0 +1,8 @@
+{
+ "task": "01a164d8-6a97-75ba-b944-49f8c87f1f86",
+ "ai_model": "latest",
+ "geometry_resolution": "standard",
+ "texture_resolution": "2k",
+ "source_image": "lab_desk_source.png",
+ "credits": 30
+}

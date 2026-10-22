@@ -127,6 +127,10 @@ TRIPO_MODELS = {
     "pyro_bench": ("../meshy/pyro_bench.glb", "-Y", 19.6, 12000),
     "expl_locker": ("../meshy/expl_locker.glb", "-Y", 14.0, 10000),
     "pyro_ext": ("../polyhaven/korean_fire_extinguisher_01.glb", "-Y", 3.4, 3000),
+    # pracownia elektroniki i próbek: stalowe biurko z oscyloskopem, miernikami, rozebranym radiem i mikroskopem 1,46 m (blat 0,75 m),
+    # gablota z preparatami w formalinie (źródło po retopologii Meshy) 1,64 m z otwartymi skrzydłami, wysoka na 1,9 m.
+    "lab_desk": ("../meshy/lab_desk.glb", "-Y", 17.8, 14000),
+    "specimen_case": ("../meshy/specimen_case.glb", "-Y", 20.0, 34000),
     "barrel_n": ("../polyhaven/barrel_03.glb", "-Y", 7.75, 2500, 11.4),
     "jerrycan": ("../polyhaven/metal_jerrycan.glb", "-Y", 4.3, 3000, 5.6),                    # kanister 35 × 46 cm w naturalnej skali
     "gas_mask": ("../polyhaven/old_gas_mask.glb", "-Y", 2.6, 5000, 13.8),                     # maska z wężem i filtrem (1,13 m): wisi na ścianie za głowicę

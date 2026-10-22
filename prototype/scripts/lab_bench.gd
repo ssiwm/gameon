@@ -10,14 +10,25 @@ const REACH_X := 32.0
 const REACH_Y := 40.0
 const TILE := 16.0
 ## Wyposażenie: stół z aparaturą, regał z częściami, skaner na stole — [nazwa przedmiotu HD, przesunięcie w kaflach]
-const PROPS := [["table", 0.0], ["shelf", 1.6], ["scanner", -0.2]]
+const PROPS := [["table", 0.0], ["shelf", 1.6], ["scanner", -0.2]]   ## zapas, gdy brak modeli 3D stanowiska
+## Modele 3D stanowiska (view3d.gd, grupa „station_props”; źródła: Meshy — stół z aparaturą i gablota z preparatami, Poly Haven CC0 —
+## taboret; `tools/prep_items3d.py`): [model z art/items3d/, przesunięcie x w pikselach świata, głębia z w m]. Na lewo od znacznika stoi
+## filar piętra (ok. 32–40 px), na prawo krzesło dekoracji (ok. 50 px): stół tuż na prawo od znacznika (gracz przy [E] go nie zasłania),
+## gablota między filarem a znacznikiem — oba w kręgu lampy.
+const MODELS := [["lab_desk", 14.0, -1.0], ["specimen_case", -17.0, -1.25], ["stool_metal", 9.0, -0.45]]
+const MODEL_CHECK := "res://art/items3d/lab_desk.glb"
+
+var station_props: Array = []
 
 var local_in_range := false
 
 func _ready() -> void:
 	add_to_group("lab_bench")
 	z_index = 0
-	if Sprites.newitem:
+	if ResourceLoader.exists(MODEL_CHECK):
+		station_props = MODELS                                # modele 3D (view3d) zamiast przedmiotów HD
+		add_to_group("station_props")
+	elif Sprites.newitem:
 		for pr in PROPS:
 			if not ItemsHd.has(String(pr[0])):
 				continue
