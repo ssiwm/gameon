@@ -206,7 +206,7 @@ Test `--rangetest` 54/54. Zostaje: ręce FPP (lepsze narzędzia, §8), etap 2 (p
 Dev: `--rangeex=reload` (ćwiczenie na starcie `--range3d`). Test `--rangetest` 68/68 (przyrządy w osi kamery dla 5 broni, optyka WRATH-4 /
 FALCON-6, rekordy w profilu i ich zapis, ćwiczenie z przeładowaniem: blachy, przycięty magazynek, przebieg z przeładowaniem na tablicy
 przeładowania, walidacja serwera, rekord grupy). Zostaje: ręce FPP (lepsze narzędzia, §8); przyrządy broni, które ich nie mają w modelu
-(SINEW-6, PELLET-8) — do dodania w `gun_proc.py` przy ich przebudowie.
+(SINEW-6, PELLET-8) — do dodania w `gun_proc.py` przy ich przebudowie (zrobione w 1.7.345).
 
 ## 12. Bramka etapu 2 — porównanie grup (2026-10-22, 1.7.344, gałąź `feat/range-compare`)
 
@@ -223,3 +223,7 @@ Pułapki: Label3D obcina spacje na początku wiersza (pusta pierwsza komórka ta
 obrócona do stanowiska dawała skośne wiersze przy patrzeniu w tunel — stoi równolegle do linii ognia. Dev: `--shotrangeboard` wypełnia też
 przykładowe serie na papierze. Test `--rangetest` 70/70 (dwie serie: REALISTIC z oparciem przy ciepłej lufie, potem CLASSIC bez oparcia przy
 gorącej — nowa seria od razu po zmianie obsługi, warunki i wiersze tablicy).
+
+Ciąg dalszy (1.7.345, gałąź `feat/range-sights2`): przyrządy SINEW-6 i PELLET-8 w `gun_proc.py` (PELLET-8: `sight_base` + `sight_post` na komorze,
+`fs_post` na końcu osłony lufy; SINEW-6: wieżyczka `sight_base` + `sight_post` na mechanizmie, `fs_post` na głowicy), modele przebudowane.
+Przyrządy z modelu ma teraz 7 broni; bez nich zostają LR-7, HKM-9 i SPECTER-1 (promień, płomień, szyna — linia nad modelem).

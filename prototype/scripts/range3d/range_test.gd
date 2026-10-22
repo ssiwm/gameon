@@ -106,7 +106,7 @@ func _t_static() -> void:
 func _t_sights() -> void:
 	var bad := PackedStringArray()
 	var n := 0
-	for key in ["m83", "spread12", "p64", "sokol6", "gniew4"]:
+	for key in ["m83", "spread12", "p64", "sokol6", "gniew4", "srut8", "ciegno6"]:
 		var inf: Dictionary = Char3D.gun_info(key)
 		if not inf.has("sight_rear") or not inf.has("sight_front"):
 			bad.append("%s: brak punktów" % key)
@@ -120,7 +120,7 @@ func _t_sights() -> void:
 		if off > 0.0005 or not (pf.z < pr.z and pr.z < 0.0):
 			bad.append("%s: odchyłka %.1f mm, z %.3f / %.3f" % [key, off * 1000.0, pr.z, pf.z])
 		n += 1
-	check("przyrządy z modelu w osi kamery przy celowaniu (%d broni)%s" % [n, (": " + ", ".join(bad)) if not bad.is_empty() else ""], bad.is_empty() and n == 5)
+	check("przyrządy z modelu w osi kamery przy celowaniu (%d broni)%s" % [n, (": " + ", ".join(bad)) if not bad.is_empty() else ""], bad.is_empty() and n == 7)
 	var opt := [String(Char3D.gun_info("gniew4").get("sight_optic", "")), String(Char3D.gun_info("sokol6").get("sight_optic", "")),
 		String(Char3D.gun_info("m83").get("sight_optic", ""))]
 	check("optyka na linii przyrządów: WRATH-4 %s, FALCON-6 %s (noktowizor zasłania szczerbinkę), M-83 bez (%s)" % opt, opt == ["dot", "nv", ""])
