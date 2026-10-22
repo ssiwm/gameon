@@ -208,7 +208,7 @@ func _tick_parts() -> void:
 	var key := String(Weapons.def(int(fp.locker_w)).key)
 	var slots := Parts.slots_of(key)
 	_title.text = String(Weapons.def(int(fp.locker_w)).name)
-	_sub.text = tr("Try any part · nothing to buy here · the bench sells them")
+	_sub.text = (tr("Set %d · try any part · the bench sells them") % (int(fp.locker_preset) + 1)) if int(fp.locker_preset) >= 0 else tr("Try any part · nothing to buy here · the bench sells them")
 	for i in _rows.size():
 		var r: Dictionary = _rows[i]
 		var on := i < slots.size()
@@ -226,8 +226,8 @@ func _tick_parts() -> void:
 	_desc.visible = true
 	_desc.position = Vector2(10.0, 32.0 + ROW_H * float(slots.size()))
 	_desc.text = tr("Factory part: no gain, no cost.") if sel == "" else tr(String(Parts.get_part(sel)["desc"]))
-	_foot.text = tr("%s/%s slot  ·  %s/%s part  ·  %s take  ·  %s back") % [Actions.key("menu_up"), Actions.key("menu_down"), Actions.key("menu_left"),
-		Actions.key("menu_right"), Actions.key("menu_accept"), Actions.key("interact")]          # [E] = menu_back (Esc to pauza)
+	_foot.text = tr("%s/%s slot  ·  %s/%s part  ·  %s set  ·  %s take  ·  %s back") % [Actions.key("menu_up"), Actions.key("menu_down"), Actions.key("menu_left"),
+		Actions.key("menu_right"), Actions.key("menu_alt"), Actions.key("menu_accept"), Actions.key("interact")]          # [E] = menu_back (Esc to pauza)
 
 ## Krótki opis broni w wierszu: kaliber i magazynek albo rodzaj broni specjalnej.
 func _kind(d) -> String:

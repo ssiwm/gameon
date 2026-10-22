@@ -37,7 +37,7 @@ cel z §6 („jedna część co 1–2 misje”) obecne ceny już spełniają. W 
 - **U3 ekonomia** — cel: jedna część co 1–2 udane misje; zob. §1.1 (W0: pomiar).
 - **U4 zużycie, które da się poczuć** — zużycie ×3, czyszczenie przy ławie za czas zamiast złomu (W0 ✅ 1.7.347).
 - **U5 próba części na strzelnicy** — każda część gry do przymierzenia w szafie strzelnicy, bez zakupu (W0b ✅ 1.7.348).
-- **U6 zestawy** — 3 zapisane konfiguracje na broń w profilu gracza (`Profile.presets`); Enter montuje, [R] zapisuje bieżący montaż (W1 ✅ 1.7.349). Nazwa to lista części — wpisywanie własnej nazwy i zestawy w szafie strzelnicy zostają na później.
+- **U6 zestawy** — 3 zapisane konfiguracje na broń w profilu gracza (`Profile.presets`); Enter montuje, [R] zapisuje bieżący montaż (W1 ✅ 1.7.349). Nazwa to lista części — wpisywanie własnej nazwy zostaje na później; w szafie strzelnicy od 1.7.353.
 
 ## 3. Stanowiska w kryjówce
 
@@ -60,7 +60,7 @@ Meble `hub_decor.gd` same rozsuwają się przy nowych znacznikach. Zlecenia w cz
 |---|---|---|
 | W0 | Złom w dzienniku sesji, zużycie ×3, czyszczenie za czas (U3 pomiar, U4) | ✅ 1.7.347 |
 | W0b | Próba części na strzelnicy (U5) | ✅ 1.7.348 |
-| W1 | Szafki osobiste (7), odchudzona ława (1), zestawy (U6) | ✅ 1.7.349 — zestawy z nazwą z listy części (bez wpisywania), na razie tylko przy ławie |
+| W1 | Szafki osobiste (7), odchudzona ława (1), zestawy (U6) | ✅ 1.7.349 — zestawy z nazwą z listy części (bez wpisywania), od 1.7.353 także w szafie strzelnicy ([R] w gniazdach) |
 | W2 | Stół konserwacji (2) | ✅ 1.7.350 — stanowisko kol. 16, lufa i sprężyny, rozłożona i brudna broń na ławie 3D; brud widać tylko na ławie (nie na broni w rękach) |
 | W3 | Alternatywy w gniazdach (U2), po jednym PR na broń | część 1 ✅ 1.7.351: naprawa części ognia ciągłego i broni białej na serwerze, P-83 (długa lufa, kabura-kolba), LR-7 (rozpraszacz), HKM-9 (dysza żelowa); część 2 ✅ 1.7.352: SPREAD-12 (obcięta lufa), PELLET-8 (slam-fire, długa lufa), WRATH-4 (skrócona rura), SPECTER-1 (kondensator przeładowania), maczeta (krótki chwyt) — 13 z 32 gniazd z wyborem; zostaje bełt-wabik SINEW-6 (broń z późniejszej strefy) |
 | W4 | Prasa (3) i pirotechnika (4), przejęcie SUPPLIES | |
