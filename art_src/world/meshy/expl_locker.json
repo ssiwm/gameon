@@ -1,0 +1,8 @@
+{
+ "task": "01a164ad-91c2-75d1-93a9-a31b6bbb7d98",
+ "ai_model": "latest",
+ "geometry_resolution": "standard",
+ "texture_resolution": "2k",
+ "source_image": "expl_locker_source.png",
+ "credits": 30
+}

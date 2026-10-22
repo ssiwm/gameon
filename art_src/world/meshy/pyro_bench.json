@@ -1,0 +1,8 @@
+{
+ "task": "01a164ad-920a-7387-8426-735e1e66660b",
+ "ai_model": "latest",
+ "geometry_resolution": "standard",
+ "texture_resolution": "2k",
+ "source_image": "pyro_bench_source.png",
+ "credits": 30
+}

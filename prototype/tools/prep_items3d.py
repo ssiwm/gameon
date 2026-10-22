@@ -122,6 +122,11 @@ TRIPO_MODELS = {
     "reload_bench": ("../meshy/reload_bench.glb", "-Y", 15.9, 12000),
     "ammo_shelf": ("../meshy/ammo_shelf.glb", "-Y", 21.5, 40000),
     "stool_metal": ("../polyhaven/metal_stool_02.glb", "-Y", 5.5, 2500),
+    # stół pirotechniczny: stalowy stół z osłoną przeciwodłamkową, szpulą lontu, lampką i tackami granatów 1,6 m (blat ok. 0,75 m), szafa na
+    # materiały wybuchowe 1,15 m z otwartym skrzydłem (wysoka na 1,8 m), gaśnica 0,28 m i taboret (Poly Haven).
+    "pyro_bench": ("../meshy/pyro_bench.glb", "-Y", 19.6, 12000),
+    "expl_locker": ("../meshy/expl_locker.glb", "-Y", 14.0, 10000),
+    "pyro_ext": ("../polyhaven/korean_fire_extinguisher_01.glb", "-Y", 3.4, 3000),
     "barrel_n": ("../polyhaven/barrel_03.glb", "-Y", 7.75, 2500, 11.4),
     "jerrycan": ("../polyhaven/metal_jerrycan.glb", "-Y", 4.3, 3000, 5.6),                    # kanister 35 × 46 cm w naturalnej skali
     "gas_mask": ("../polyhaven/old_gas_mask.glb", "-Y", 2.6, 5000, 13.8),                     # maska z wężem i filtrem (1,13 m): wisi na ścianie za głowicę

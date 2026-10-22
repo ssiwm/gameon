@@ -10,14 +10,25 @@ const REACH_X := 32.0
 const REACH_Y := 40.0
 const TILE := 16.0
 ## Wyposażenie: stół z zapalnikami, skrzynki z korpusami granatów — [nazwa przedmiotu HD, przesunięcie w kaflach]
-const PROPS := [["table", 0.0], ["crate", 1.5], ["crate", -1.5]]
+const PROPS := [["table", 0.0], ["crate", 1.5], ["crate", -1.5]]       ## zapas, gdy brak modeli 3D stanowiska
+## Modele 3D stanowiska (view3d.gd, grupa „station_props”; źródła: Meshy — stół pirotechniczny z osłoną i szafa na materiały wybuchowe,
+## Poly Haven CC0 — gaśnica i taboret; `tools/prep_items3d.py`): [model z art/items3d/, przesunięcie x w pikselach świata, głębia z w m].
+## Wojskowa skrzynia magazynu stoi 16 px na lewo od znacznika, beczka 32 px na prawo (HUB_PROPS): stół między znacznikiem a beczką (gracz
+## przy [E] go nie zasłania), szafa pod ścianą za skrzynią — dalej w lewo stoi już filar.
+const MODELS := [["pyro_bench", 12.0, -1.0], ["expl_locker", -26.0, -1.35], ["pyro_ext", 24.0, -0.9], ["stool_metal", 8.0, -0.45]]
+const MODEL_CHECK := "res://art/items3d/pyro_bench.glb"
+
+var station_props: Array = []
 
 var local_in_range := false
 
 func _ready() -> void:
 	add_to_group("pyro_bench")
 	z_index = 0
-	if Sprites.newitem:
+	if ResourceLoader.exists(MODEL_CHECK):
+		station_props = MODELS                                # modele 3D (view3d) zamiast przedmiotów HD
+		add_to_group("station_props")
+	elif Sprites.newitem:
 		for pr in PROPS:
 			if not ItemsHd.has(String(pr[0])):
 				continue
