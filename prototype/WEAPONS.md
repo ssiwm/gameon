@@ -682,3 +682,18 @@ broni specjalnych).
 
 Zapis u hosta (`samples`, `research`) i synchronizacja w `_sync`. Test `_t_research`, `--gentest` (pracownia w kryjówce). Dev: `--shotlab`.
 Ogniwa NiCd i tokarka (wykonanie części ze schematów, ostrzenie broni białej) — W6b.
+
+## 37. Tokarka i szlifierka (1.7.358)
+
+`WORKSHOP_PLAN.md` etap W6b (stanowisko 6, decyzja 2). Nowe stanowisko w maszynowni na dole (znacznik „d”, kol. 11, obok generatora,
+z lampą): [E] otwiera panel TOKARKA (`workshop_ui.open("lathe")`).
+
+| Co | Jak | Gdzie |
+|---|---|---|
+| **Schematy** | badanie w pracowni daje teraz schemat (`Scrap.schematics`), a nie gotową część — po udanej misji komunikat „Schemat gotowy” | `scrap.gd` (`bank_loot`, `_learned_rpc`) |
+| **Tokarka** | ze schematu część za ćwierć ceny w złomie (`machine_price`, materiał), jedno zlecenie naraz (`LATHE_SLOTS`), gotowa po następnej udanej misji; schemat się zużywa. Znaleziska nadal odblokowują od razu | `scrap.gd` (`request_machining`, `lathe`) |
+| **Ostrze** | broń biała ma stan ostrza (`Profile.edge`): każdy zamach −1 % (× niezawodność), obrażenia × (0,7 + 0,3 × ostrze) — tępa maczeta rani 70 %. Stan idzie z ciosem do serwera (`_melee_request`, przycinany 0–100), boty zawsze ostre, niezawodność OFF — bez wpływu | `profile.gd` (`edge_of`, `wear_edge`, `edge_mult`), `weapon_controller.gd` |
+| **Szlifierka** | ostrzenie bez złomu, 1 s za każde rozpoczęte 10 % (`sharpen_time`), jak czyszczenie: postęp na przycisku, przerwanie odejściem | `workshop_ui.gd` (`_start_clean` / `tick_clean` dla broni białej) |
+
+Test `_t_research` (schemat → tokarka, odmowy), ostrze i szlifierka; `--gentest` (tokarka w kryjówce). Dev: `--shotlathe`.
+Ogniwa NiCd wspólne dla broni energetycznych zostają poza W6 — wymagają decyzji o amunicji LR-7 i SPECTER-1.

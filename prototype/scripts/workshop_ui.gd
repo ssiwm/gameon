@@ -255,8 +255,10 @@ var _mode := "bench"                  ## „bench" — ława (ARMS, SUPPLIES), �
 ## „press" — prasa elaboracyjna (od 1.7.354, W4): zakładka SUPPLIES z samą amunicją specjalną, zamówienia zamiast zakupu (Scrap.request_order)
 ## „pyro" — stół pirotechniczny (od 1.7.355, W4b): granaty, miny, ładunki i naboje 40 mm, klawisze 1 / 2 zmieniają zapalnik (ustawienie drużyny)
 ## „lab" — pracownia elektroniki i próbek (od 1.7.357, W6a): zakładka ARMS z samymi częściami broni specjalnych do zbadania (Scrap.request_research)
-const MODE_PAGES := {"bench": [0, 1], "locker": [2, 3], "service": [0], "press": [1], "pyro": [1], "lab": [0]}
-const MODE_GROUP := {"bench": "workshop", "locker": "locker_station", "service": "service_bench", "press": "press_bench", "pyro": "pyro_bench", "lab": "lab_bench"}      ## grupa stanowiska: panel zamyka się, gdy gracz od niego odejdzie
+## „lathe" — tokarka i szlifierka (od 1.7.358, W6b): części broni specjalnych ze schematów (Scrap.request_machining) i ostrzenie broni białej
+const MODE_PAGES := {"bench": [0, 1], "locker": [2, 3], "service": [0], "press": [1], "pyro": [1], "lab": [0], "lathe": [0]}
+const MODE_GROUP := {"bench": "workshop", "locker": "locker_station", "service": "service_bench", "press": "press_bench", "pyro": "pyro_bench", "lab": "lab_bench",
+	"lathe": "lathe_bench"}      ## grupa stanowiska: panel zamyka się, gdy gracz od niego odejdzie
 const SERVICE_IDS := ["clean", "barrel", "springs"]
 var _title: Label
 var _sup_sel := 0
@@ -389,6 +391,7 @@ func _ready() -> void:
 	Scrap.service_result.connect(_on_service_result)
 	Scrap.order_result.connect(_on_order_result)
 	Scrap.research_result.connect(_on_research_result)
+	Scrap.machining_result.connect(_on_machining_result)
 	Profile.changed.connect(_refresh)
 	Arsenal.stock_changed.connect(_refresh)
 
@@ -994,7 +997,7 @@ func open(mode := "bench") -> void:
 	_open = true
 	visible = true
 	_mode = mode if MODE_PAGES.has(mode) else "bench"
-	_title.text = {"locker": tr("LOCKER"), "service": tr("MAINTENANCE"), "press": tr("RELOADING PRESS"), "pyro": tr("PYROTECHNICS"), "lab": tr("LAB")}.get(_mode, tr("WORKSHOP"))
+	_title.text = {"locker": tr("LOCKER"), "service": tr("MAINTENANCE"), "press": tr("RELOADING PRESS"), "pyro": tr("PYROTECHNICS"), "lab": tr("LAB"), "lathe": tr("LATHE")}.get(_mode, tr("WORKSHOP"))
 	for pi in _page_btns.size():
 		(_page_btns[pi] as Button).visible = (MODE_PAGES[_mode] as Array).has(pi) and (MODE_PAGES[_mode] as Array).size() > 1
 	_msg.text = ""
@@ -1049,6 +1052,9 @@ func _exit_tree() -> void:
 func _controls_hint() -> String:
 	var pad := Actions.pad_mode
 	var nav := "D-PAD" if pad else Actions.cluster(["menu_up", "menu_left", "menu_down", "menu_right"]).to_upper()
+	if _mode == "lathe":
+		return tr("%s select   ·   %s / %s job   ·   %s machine / sharpen   ·   %s close   ·   or click") % [
+			nav, _menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_back", pad)]
 	if _mode == "lab":
 		return tr("%s select   ·   %s / %s part   ·   %s research   ·   %s close   ·   or click") % [
 			nav, _menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_back", pad)]
@@ -1144,6 +1150,14 @@ func _input(event: InputEvent) -> void:
 func _options(w: int) -> Array:
 	var key := String(Weapons.def(w).key)
 	var out: Array = []
+	if _mode == "lathe":
+		if Scrap.is_unlocked(w) and Weapons.def(w).is_melee() and Settings.reliability_mult() > 0.0:
+			out.append({"slot": "service", "id": "sharpen"})        # szlifierka: ostrze broni białej
+		elif key in Scrap.LAB_WEAPONS:
+			for s in Parts.slots_of(key):
+				for p in Parts.in_slot(key, String(s)):
+					out.append({"slot": s, "id": String(p["id"])})
+		return out
 	if _mode == "lab":
 		if key in Scrap.LAB_WEAPONS:
 			for s in Parts.slots_of(key):
@@ -1211,7 +1225,7 @@ func _first_part_opt() -> int:
 func _act() -> void:
 	var w: int = LIST[_sel]
 	if not Scrap.is_unlocked(w):
-		if _mode in ["service", "lab"]:
+		if _mode in ["service", "lab", "lathe"]:
 			_say(tr("Buy it at the workshop bench first."), UiTheme.BP_MUTED)
 		else:
 			Scrap.request_buy(w)
@@ -1235,7 +1249,7 @@ func _act() -> void:
 				UiTheme.OK if skipped == 0 else UiTheme.BP_MUTED)
 			_refresh()
 		return
-	if String(o["slot"]) == "service" and id != "clean":
+	if String(o["slot"]) == "service" and id in Profile.WEAR_PARTS:
 		if Profile.part_wear(key, id) < 0.5:
 			_say(tr("Still like new — nothing to replace."), UiTheme.BP_MUTED)
 		else:
@@ -1246,12 +1260,27 @@ func _act() -> void:
 			_stop_clean()
 			_say(tr("Cleaning stopped."), UiTheme.BP_MUTED)
 			_refresh()
-		elif Profile.clean_time(key) <= 0.0:
+		elif id == "sharpen" and Profile.sharpen_time(key) <= 0.0:
+			_say(tr("Already sharp."), UiTheme.BP_MUTED)
+		elif id != "sharpen" and Profile.clean_time(key) <= 0.0:
 			_say(tr("Already clean."), UiTheme.BP_MUTED)
 		else:
 			_start_clean(w)
 		return
+	if _mode == "lathe" and String(o["slot"]) != "service":
+		if Scrap.has_part(id):
+			_say(tr("Already made — fit it at the workshop bench."), UiTheme.BP_MUTED)
+		elif Scrap.lathe.has(id):
+			_say(tr("On the lathe — ready after the next mission."), UiTheme.BP_MUTED)
+		elif Scrap.schematics.has(id):
+			Scrap.request_machining(id)
+		else:
+			_say(tr("No schematic — research it at the lab first."), UiTheme.BP_MUTED)
+		return
 	if _mode == "lab":
+		if Scrap.schematics.has(id) or Scrap.lathe.has(id):
+			_say(tr("Already researched — make it on the lathe downstairs."), UiTheme.BP_MUTED)
+			return
 		if Scrap.has_part(id):
 			_say(tr("Already known — fit it at the workshop bench."), UiTheme.BP_MUTED)
 		elif Scrap.research.has(id):
@@ -1335,9 +1364,10 @@ func _preset_summary(key: String, i: int) -> String:
 func _start_clean(w: int) -> void:
 	_clean_w = w
 	_clean_t = 0.0
-	_clean_total = Profile.clean_time(String(Weapons.def(w).key))
+	var melee := Weapons.def(w).is_melee()
+	_clean_total = Profile.sharpen_time(String(Weapons.def(w).key)) if melee else Profile.clean_time(String(Weapons.def(w).key))
 	Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -8.0, 0.85)
-	_say(tr("Stripping the %s…") % String(Weapons.def(w).name), UiTheme.BP_TEXT)
+	_say((tr("Sharpening the %s…") if melee else tr("Stripping the %s…")) % String(Weapons.def(w).name), UiTheme.BP_TEXT)
 	_refresh()
 
 func _stop_clean() -> void:
@@ -1350,16 +1380,46 @@ func tick_clean(delta: float) -> void:
 		return
 	_clean_t += delta
 	var ck := String(Weapons.def(_clean_w).key)
+	var melee := Weapons.def(_clean_w).is_melee()
 	if _clean_t < _clean_total:
-		_action.text = tr("Cleaning…  %d%%  (again to stop)") % int(100.0 * _clean_t / _clean_total)
-		var c0 := Profile.condition(ck)                     # brud schodzi z broni w trakcie (ława 3D)
-		(_d_stage as GunStage).set_dirt(1.0 - lerpf(c0, Profile.clean_cap(ck), _clean_t / _clean_total) / 100.0)
+		_action.text = (tr("Sharpening…  %d%%  (again to stop)") if melee else tr("Cleaning…  %d%%  (again to stop)")) % int(100.0 * _clean_t / _clean_total)
+		if not melee:
+			var c0 := Profile.condition(ck)                 # brud schodzi z broni w trakcie (ława 3D)
+			(_d_stage as GunStage).set_dirt(1.0 - lerpf(c0, Profile.clean_cap(ck), _clean_t / _clean_total) / 100.0)
 		return
 	var w := _clean_w
 	_stop_clean()
+	if melee:
+		Profile.sharpen(ck)                                 # szlifierka (W6b)
+		_say(tr("%s sharpened — edge 100%%.") % String(Weapons.def(w).name), UiTheme.OK)
+		Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.3)
+		_refresh()
+		return
 	Profile.clean(ck)
 	_say(tr("%s stripped and cleaned — condition %d%%.") % [String(Weapons.def(w).name), int(Profile.condition(ck))], UiTheme.OK)
 	Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.0)
+	_refresh()
+
+func _on_machining_result(id: String, ok: bool, reason: String) -> void:
+	if not _open:
+		return
+	var nm := tr(String(Parts.get_part(id).get("name", id)))
+	match reason:
+		"ok":
+			_say(tr("%s on the lathe — ready after the next mission.") % nm, UiTheme.OK)
+			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
+		"poor":
+			_say(tr("Not enough scrap (%d needed).") % Scrap.machine_price(id), UiTheme.DANGER)
+		"busy":
+			_say(tr("The lathe is busy — %d job per mission.") % Scrap.LATHE_SLOTS, UiTheme.BP_MUTED)
+		"noschem":
+			_say(tr("No schematic — research it at the lab first."), UiTheme.BP_MUTED)
+		"owned":
+			_say(tr("Already made."), UiTheme.BP_MUTED)
+		"off":
+			_say("No scrap in this mode.", UiTheme.BP_MUTED)
+		_:
+			_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
 
 func _on_service_result(w: int, part: String, ok: bool, reason: String) -> void:
@@ -1681,7 +1741,11 @@ func _refresh_detail(w: int) -> void:
 			cb.add_theme_color_override("font_color", UiTheme.ACCENT if i == _opt else (GOLD if due else UiTheme.OK))
 			cb.add_theme_color_override("font_hover_color", UiTheme.ACCENT)
 			var cap := Profile.clean_cap(key)
-			if sid == "clean":
+			if sid == "sharpen":
+				var st := Profile.sharpen_time(key)
+				cb.add_theme_color_override("font_color", UiTheme.ACCENT if i == _opt else (GOLD if st > 0.0 else UiTheme.OK))
+				cb.text = "%s %s   [%s]" % ["»" if i == _opt else " ", tr("Sharpen  ·  edge %d%%") % int(Profile.edge_of(key)), tr("%d s") % ceili(st) if st > 0.0 else tr("sharp")]
+			elif sid == "clean":
 				var ctxt := (tr("Clean  ·  condition %d%%") % int(Profile.condition(key))) if cap >= 99.5 else (tr("Clean  ·  condition %d%% (max %d%%)") % [int(Profile.condition(key)), int(cap)])
 				cb.text = "%s %s   [%s]" % ["»" if i == _opt else " ", ctxt, tr("%d s") % ceili(cc) if cc > 0.0 else tr("clean")]
 			else:
@@ -1703,9 +1767,18 @@ func _refresh_detail(w: int) -> void:
 		var tail := tr("fitted") if fitted else ("" if id == "" else (tr("owned") if owned else (tr("found — extract") if Scrap.found.has(id) else tr("%d scrap") % Scrap.part_cost(id))))
 		if id != "" and not owned and not Scrap.found.has(id) and Scrap.is_lab_part(id):
 			var rc := Scrap.research_cost(id)
-			tail = tr("researching") if Scrap.research.has(id) else ((tr("%s · %d scrap") % [_samples_text(rc.x), rc.y]) if _mode == "lab" else tr("lab"))
-		elif _mode == "lab" and owned:
-			tail = tr("known")
+			if Scrap.lathe.has(id):
+				tail = tr("on the lathe")
+			elif Scrap.schematics.has(id):
+				tail = (tr("%d scrap") % Scrap.machine_price(id)) if _mode == "lathe" else tr("schematic")
+			elif Scrap.research.has(id):
+				tail = tr("researching")
+			elif _mode == "lab":
+				tail = tr("%s · %d scrap") % [_samples_text(rc.x), rc.y]
+			else:
+				tail = tr("no schematic") if _mode == "lathe" else tr("lab")
+		elif (_mode == "lab" or _mode == "lathe") and owned:
+			tail = tr("known") if _mode == "lab" else tr("made")
 		var col: Color = UiTheme.OK if fitted else (UiTheme.BP_TEXT if owned else GOLD)
 		var b := Button.new()
 		b.flat = true
@@ -1730,6 +1803,8 @@ func _refresh_detail(w: int) -> void:
 			_menu_key("menu_accept", Actions.pad_mode), _menu_key("menu_alt", Actions.pad_mode)]
 	elif unlocked and not o.is_empty() and String(o["slot"]) == "service" and String(o["id"]) == "barrel":
 		desc = tr("Every shot wears the bore, a hot barrel three times faster. A worn barrel throws the shots wider (at 100%% wear the cone is 60%% wider). A new one costs %d scrap from the squad.") % int(Scrap.SERVICE_COST["barrel"])
+	elif unlocked and not o.is_empty() and String(o["slot"]) == "service" and String(o["id"]) == "sharpen":
+		desc = tr("Every swing dulls the edge a little. A dull blade hurts less — down to %d%% damage when fully blunt. Sharpening costs no scrap, only time at the grinder.") % int(Profile.EDGE_MIN * 100.0)
 	elif unlocked and not o.is_empty() and String(o["slot"]) == "service" and String(o["id"]) == "springs":
 		desc = tr("Recoil and firing-pin springs tire with every shot. Tired springs feed badly: cleaning can no longer bring the gun back to 100%%, only to 100 − half the spring wear. New springs cost %d scrap.") % int(Scrap.SERVICE_COST["springs"])
 	elif unlocked and not o.is_empty() and String(o["slot"]) == "service":
@@ -1743,9 +1818,9 @@ func _refresh_detail(w: int) -> void:
 	if not unlocked and Scrap.is_later(w):
 		_action.text = "Reward for the Leech" if Scrap.is_gated(w) else "Available in a later zone"
 	elif not unlocked:
-		_action.text = tr("Buy it at the workshop bench") if _mode in ["service", "lab"] else tr("Buy  ·  %d scrap") % Scrap.price_of(w)
+		_action.text = tr("Buy it at the workshop bench") if _mode in ["service", "lab", "lathe"] else tr("Buy  ·  %d scrap") % Scrap.price_of(w)
 	elif o.is_empty():
-		_action.text = tr("Nothing to service") if _mode == "service" else (tr("Nothing to research — not a special weapon") if _mode == "lab" else "No parts for this weapon")
+		_action.text = tr("Nothing to service") if _mode == "service" else (tr("Nothing to research — not a special weapon") if _mode == "lab" else (tr("Nothing for the lathe") if _mode == "lathe" else "No parts for this weapon"))
 	elif String(o["slot"]) == "preset":
 		var api := int(o["id"])
 		if Profile.preset(key, api).is_empty():
@@ -1754,7 +1829,13 @@ func _refresh_detail(w: int) -> void:
 			_action.text = tr("Set %d fitted  ·  %s overwrite") % [api + 1, _menu_key("menu_alt", Actions.pad_mode)]
 		else:
 			_action.text = tr("Fit set %d  ·  %s overwrite") % [api + 1, _menu_key("menu_alt", Actions.pad_mode)]
-	elif String(o["slot"]) == "service" and String(o["id"]) != "clean":
+	elif String(o["slot"]) == "service" and String(o["id"]) == "sharpen":
+		var stime := Profile.sharpen_time(key)
+		if _clean_w == w:
+			_action.text = tr("Sharpening…  %d%%  (again to stop)") % int(100.0 * _clean_t / maxf(0.01, _clean_total))
+		else:
+			_action.text = tr("Sharpen  ·  %d s") % ceili(stime) if stime > 0.0 else tr("Already sharp")
+	elif String(o["slot"]) == "service" and String(o["id"]) in Profile.WEAR_PARTS:
 		var sid2 := String(o["id"])
 		_action.text = (tr("Replace  ·  %d scrap") % int(Scrap.SERVICE_COST[sid2])) if Profile.part_wear(key, sid2) >= 0.5 else tr("Like new")
 	elif String(o["slot"]) == "service":
@@ -1765,9 +1846,22 @@ func _refresh_detail(w: int) -> void:
 			_action.text = tr("Clean  ·  %d s") % ceili(ctime) if ctime > 0.0 else tr("Already clean")
 	else:
 		var id2 := String(o["id"])
-		if _mode == "lab":
-			var rc2 := Scrap.research_cost(id2)
+		if _mode == "lathe":
 			if Scrap.has_part(id2):
+				_action.text = tr("Made  ·  fit it at the bench")
+			elif Scrap.lathe.has(id2):
+				_action.text = tr("On the lathe  ·  ready after the mission")
+			elif not Scrap.schematics.has(id2):
+				_action.text = tr("No schematic  ·  research it at the lab")
+			elif Scrap.lathe.size() >= Scrap.LATHE_SLOTS:
+				_action.text = tr("The lathe is busy  ·  1 job per mission")
+			else:
+				_action.text = tr("Machine  ·  %d scrap  ·  ready after the mission") % Scrap.machine_price(id2)
+		elif _mode == "lab":
+			var rc2 := Scrap.research_cost(id2)
+			if Scrap.schematics.has(id2) or Scrap.lathe.has(id2):
+				_action.text = tr("Researched  ·  make it on the lathe")
+			elif Scrap.has_part(id2):
 				_action.text = tr("Known  ·  fit it at the bench")
 			elif Scrap.research.has(id2):
 				_action.text = tr("Researching  ·  ready after the mission")

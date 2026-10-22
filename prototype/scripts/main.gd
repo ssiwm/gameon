@@ -1536,6 +1536,18 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				wui.open("press")
 				wui._sup_sel = wui._supply_kinds().find("ammo_slug")
 				wui._refresh()
+			if "--shotlathe" in OS.get_cmdline_user_args():
+				wui.close()                          # --shotlathe: tokarka z LR-7 (schemat soczewki), kursor na niej (bez zapisu)
+				Scrap.persist = false
+				var ltb := get_tree().get_first_node_in_group("lathe_bench") as Node2D
+				if wp != null and ltb != null:
+					wp.global_position = ltb.global_position + Vector2(0.0, -2.0)
+				await get_tree().create_timer(0.3).timeout
+				Scrap.schematics = {"lr7_lens": true}
+				wui.open("lathe")
+				wui._select(wui.LIST.find(Weapons.LR7))
+				wui._opt = wui._options(Weapons.LR7).find({"slot": "muzzle", "id": "lr7_lens"})
+				wui._refresh()
 			if "--shotlab" in OS.get_cmdline_user_args():
 				wui.close()                          # --shotlab: pracownia z LR-7 (4 próbki w banku, 1 z misji), soczewka pod kursorem (bez zapisu)
 				Scrap.persist = false
@@ -2673,6 +2685,8 @@ func _gen_test() -> void:
 	check.call("stół konserwacji: %d w kryjówce, zasięg osobno od ławy (%s)" % [svc_nodes.size(), str(svc_ok)], svc_nodes.size() == 1 and svc_ok)
 	var press_nodes := get_tree().get_nodes_in_group("press_bench")
 	check.call("prasa elaboracyjna: %d w kryjówce (dół, kol. 33)" % press_nodes.size(), press_nodes.size() == 1 and int((press_nodes[0] as Node2D).global_position.x / 16.0) == 33)
+	var lathe_nodes := get_tree().get_nodes_in_group("lathe_bench")
+	check.call("tokarka: %d w kryjówce (dół, kol. 11)" % lathe_nodes.size(), lathe_nodes.size() == 1 and int((lathe_nodes[0] as Node2D).global_position.x / 16.0) == 11)
 	var lab_nodes := get_tree().get_nodes_in_group("lab_bench")
 	check.call("pracownia: %d w kryjówce (góra, kol. 45)" % lab_nodes.size(), lab_nodes.size() == 1 and int((lab_nodes[0] as Node2D).global_position.x / 16.0) == 45)
 	var pyro_nodes := get_tree().get_nodes_in_group("pyro_bench")
