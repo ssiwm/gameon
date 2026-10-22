@@ -343,6 +343,8 @@ func pick_special_drop() -> String:
 			var cal := String(Weapons.def(w).caliber)
 			for t in range(1, Ammo.count(cal)):
 				var sk := Ammo.kind_of(cal, t)
+				if Ammo.is_press_only(cal, t):
+					continue                                     # ładunki z prasy (W4) robi się w kryjówce, nie znajduje
 				if sk != "" and not cands.has(sk) and get_throwable(sk) < int(Throwables.KINDS[sk]["max"]):
 					cands.append(sk)
 	return "" if cands.is_empty() else String(cands.pick_random())

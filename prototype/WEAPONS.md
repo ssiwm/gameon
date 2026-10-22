@@ -619,3 +619,18 @@ Test `_t_parts_alt` (serwer z częściami, część nieodblokowana nie działa, 
 
 `Parts.apply` obsługuje pola bool (`"set"` 1 włącza, 0 wyłącza) — slam-fire przełącza `auto`. Nowe gniazda lufy PELLET-8 i WRATH-4
 zmieniają układ bitów kodu `fit` tych broni (wybór w profilu zapisany jest po gniazdach, więc przetrwa). Test: `_t_parts_alt` (część 2).
+
+## 33. Prasa elaboracyjna (1.7.354)
+
+`WORKSHOP_PLAN.md` etap W4a (stanowisko 3). Nowe stanowisko na dole kryjówki, w magazynie (znacznik „x”, kol. 33, z lampą): [E] otwiera
+panel PRASA ELABORACYJNA (`workshop_ui.open("press")`, zakładka SUPPLIES z samą amunicją specjalną). Ława sprzedaje już tylko przedmioty —
+serwer odrzuca zakup amunicji przez `request_buy_supply`.
+
+| Co | Jak | Gdzie |
+|---|---|---|
+| **Zamówienie** | partia = pudełko (`Throwables.box_of`) za 75 % dawnej ceny sklepu (`Scrap.PRESS_PRICE`, zaokrąglone do 5); najwyżej 3 partie naraz (`PRESS_SLOTS`), zapas + zamówione nie może przekroczyć sufitu; złom pobiera serwer | `scrap.gd` (`request_order`, `orders`, `press_price`, `ordered`) |
+| **Dostawa** | po następnej **udanej** misji (`bank_loot`): pudełka do wspólnego zapasu, kolejka pusta, komunikat „Prasa: gotowe …” u wszystkich; wipe nic nie dostarcza. Kolejka zapisuje się u hosta i jest synchronizowana do klientów | `scrap.gd` (`_delivered_rpc`, `_sync`, `save_progress`) |
+| **Ładunki gorące** | nowe typy tylko z prasy (`press: true` — nie wypadają z elit): 7.62 HOT (obrażenia i prędkość ×1,12, przebicie ×1,2, szarpnięcie ×1,15) i 12/70 MAG (obrażenia ×1,15, spadek od +10 px, szarpnięcie ×1,3) — oba **zużywają broń ×2** (`wear`), więc wcześniej przychodzą zacięcia i wymiana lufy | `ammo.gd`, `throwables.gd`, `arsenal.pick_special_drop` |
+
+Test: `weapon_test` (zamówienie i dostawa, pełna prasa, pełny zapas, ładunki gorące, panel prasy i ławy), `--gentest` (prasa w kryjówce).
+Dev: `--shotpress` (z `--mission=z1_hub --shotws`). Chronograf na strzelnicy — później.

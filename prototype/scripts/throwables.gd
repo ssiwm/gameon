@@ -13,7 +13,7 @@ const Actions := preload("res://scripts/actions.gd")
 const ORDER := ["frag", "phos", "smoke", "mine", "charge", "medkit", "defib", "scanner", "cleankit"]
 ## Amunicja specjalna (ammo.gd, od 1.7.317): sklep i zapas jak przedmioty, ale `mode` = "ammo" — nie ma jej w wyborze [X], zapas liczy
 ## się w NABOJACH (`max`), a zakup dokłada pudełko (`box`). Broń bierze ją przy przeładowaniu, gdy gracz wybierze typ klawiszem [Z].
-const AMMO_ORDER := ["ammo_us", "ammo_bz", "ammo_slug", "ammo_inc", "ammo_rub", "ammo_40buck", "ammo_40illum", "ammo_40smoke"]
+const AMMO_ORDER := ["ammo_us", "ammo_bz", "ammo_hot762", "ammo_slug", "ammo_inc", "ammo_rub", "ammo_mag12", "ammo_40buck", "ammo_40illum", "ammo_40smoke"]
 ## Kolejność w zakładce SUPPLIES warsztatu.
 const SHOP_ORDER := ORDER + AMMO_ORDER
 
@@ -72,6 +72,16 @@ const KINDS := {
 		"mode": "ammo", "name": "7.62 BZ", "full": "7.62×39 BZ armour-piercing incendiary", "issue": 0, "price": 120, "max": 90, "box": 30,
 		"color": Color(0.95, 0.4, 0.3),
 		"note": "Box of 30 rounds for the M-83: ignore most armour, pass through one body, set the target alight.",
+	},
+	"ammo_hot762": {                    # prasa elaboracyjna (W4, od 1.7.354) — tylko z prasy, jak cała amunicja specjalna
+		"mode": "ammo", "name": "7.62 HOT", "full": "7.62×39 hot load", "issue": 0, "price": 100, "max": 90, "box": 30,
+		"color": Color(1.0, 0.62, 0.25),
+		"note": "Batch of 30 hot-loaded rounds for the M-83: +12% damage and speed, goes through more — but the gun wears twice as fast.",
+	},
+	"ammo_mag12": {
+		"mode": "ammo", "name": "12 MAG", "full": "12/70 magnum buckshot", "issue": 0, "price": 60, "max": 40, "box": 10,
+		"color": Color(0.9, 0.5, 0.35),
+		"note": "Batch of 10 heavy shells for both shotguns: +15% per pellet, a brutal kick, twice the wear on the gun.",
 	},
 	"ammo_slug": {
 		"mode": "ammo", "name": "12 SLUG", "full": "12/70 Brenneke slug", "issue": 0, "price": 50, "max": 40, "box": 10,

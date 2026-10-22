@@ -117,9 +117,9 @@ static func draw_glyph(ci: CanvasItem, kd: String, cx: float, y: float, s: float
 				r.call(x, -6, 5, 6, Color(0.72, 0.6, 0.32))
 				r.call(x, -11, 5, 5, c)
 				r.call(x + 1.0, -12, 3, 1, c.lightened(0.25))
-		"ammo_us", "ammo_bz", "ammo_slug", "ammo_inc", "ammo_rub":
+		"ammo_us", "ammo_bz", "ammo_slug", "ammo_inc", "ammo_rub", "ammo_hot762", "ammo_mag12":
 			# pudełko amunicji z naklejką w kolorze typu i trzema nabojami na wierzchu (łuski mosiężne, łuski 12/70 z papieru)
-			var shell := kd in ["ammo_slug", "ammo_inc", "ammo_rub"]
+			var shell := kd in ["ammo_slug", "ammo_inc", "ammo_rub", "ammo_mag12"]
 			r.call(-8, -7, 16, 7, Color(0.36, 0.33, 0.24))
 			r.call(-8, -7, 16, 1, Color(0.48, 0.44, 0.32))
 			r.call(-5, -5, 10, 3, c)

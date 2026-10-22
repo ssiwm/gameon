@@ -1524,6 +1524,17 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				wui._opt = 0                         # wiersz czyszczenia (pod nim lufa i sprężyny)
 				wui._start_clean(Weapons.M83)
 				wui.tick_clean(2.0)
+			if "--shotpress" in OS.get_cmdline_user_args():
+				wui.close()                          # --shotpress: panel prasy elaboracyjnej z breneką pod kursorem i jedną partią w kolejce (bez zapisu)
+				Scrap.persist = false
+				var prb := get_tree().get_first_node_in_group("press_bench") as Node2D
+				if wp != null and prb != null:
+					wp.global_position = prb.global_position + Vector2(0.0, -2.0)
+				await get_tree().create_timer(0.3).timeout
+				Scrap.orders = ["ammo_hot762"]
+				wui.open("press")
+				wui._sup_sel = wui._supply_kinds().find("ammo_slug")
+				wui._refresh()
 			if "--shotperks" in OS.get_cmdline_user_args() or "--shotlook" in OS.get_cmdline_user_args():
 				wui.close()                          # perki i wygląd są w szafkach osobistych (1.7.349): gracz staje przy nich
 				var lks := get_tree().get_first_node_in_group("locker_station") as Node2D
@@ -2636,6 +2647,8 @@ func _gen_test() -> void:
 		p.global_position = lk_pos
 		await get_tree().create_timer(0.5).timeout
 	check.call("stół konserwacji: %d w kryjówce, zasięg osobno od ławy (%s)" % [svc_nodes.size(), str(svc_ok)], svc_nodes.size() == 1 and svc_ok)
+	var press_nodes := get_tree().get_nodes_in_group("press_bench")
+	check.call("prasa elaboracyjna: %d w kryjówce (dół, kol. 33)" % press_nodes.size(), press_nodes.size() == 1 and int((press_nodes[0] as Node2D).global_position.x / 16.0) == 33)
 	wui.open("locker")
 	await get_tree().create_timer(0.1).timeout
 	var locker_tabs: Array = wui._page_btns.filter(func(b: Button) -> bool: return b.visible).map(func(b: Button) -> String: return b.text)
