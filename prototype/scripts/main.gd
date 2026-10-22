@@ -1494,6 +1494,7 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		Scrap.unlocked[Weapons.LR7] = true
 		for pid in ["m83_rpk40", "m83_rpkbar", "lr7_cell"]:
 			Scrap.parts[pid] = true                  # podgląd: kilka odblokowanych części
+		Scrap.changed.emit()                         # montaż gracza (player.fits) jak po zakupie w grze
 		var wp: Node2D = _players.get_node_or_null("1")
 		var bench := get_tree().get_first_node_in_group("workshop") as Node2D
 		if wp != null and bench != null:

@@ -31,6 +31,7 @@ var build := 0                ## typ naboju i części razem (Weapons.build_of) 
 var auto := false             ## przytrzymanie = ogień ciągły
 var cooldown := 0.12          ## s między strzałami / tyknięciami
 var draw_time := 0.3          ## s dobycia (po zmianie broni)
+var mass := 0.0               ## kg gotowej do strzału broni z częściami (WORKSHOP_PLAN.md W5, od 1.7.356): suma ekwipunku zmienia hałas i tempo biegu
 var charge_time := 0.0        ## s ładowania (RAIL); puszczenie przed końcem anuluje
 # --- tryb serii (klawisz B; tylko broń z burst_size > 0): jedno naciśnięcie = seria, cichsza i celniejsza niż ogień ciągły
 var burst_size := 0           ## strzałów w serii (0 = broń bez trybu serii)

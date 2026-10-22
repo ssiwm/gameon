@@ -650,3 +650,20 @@ specjalna bez 40 mm; **ława** — narzędzia (apteczka, skaner, zestaw do czysz
 Krótki zapalnik — granat wybucha, zanim wróg ucieknie (albo w ręku pechowca, który go za długo trzymał w zasięgu); długi — granat
 toczy się dalej, a ładunek daje czas na odwrót. Test: `weapon_test` (podział zaopatrzenia, zapalniki, granat w świecie), `--gentest`.
 Dev: `--shotpyro` (z `--mission=z1_hub --shotws`).
+
+## 35. Masa broni i ekwipunku (1.7.356)
+
+`WORKSHOP_PLAN.md` etap W5 (U1). Każda broń ma masę gotowej do strzału (`WeaponDef.mass`, kg z magazynkiem / zbiornikiem): M-83 3,6,
+SPREAD-12 5,2, P-83 0,8, PELLET-8 3,5, LR-7 6,0, HKM-9 8,5, WRATH-4 5,5, FALCON-6 4,8, SPECTER-1 7,0, SINEW-6 3,2, maczeta 0,7, kilof 2,6.
+Części zmieniają ją modyfikatorem `mass` (np. bęben RPK +1,6 kg, lufa RPK +1,0, PBS-1 +0,45, obcięta lufa SPREAD-12 −0,5, skrócona rura
+WRATH-4 −0,6, kabura-kolba P-83 +0,5) — `mass` jest na liście „mniej = lepiej”, więc lżejsza część liczy się jako zysk.
+
+| Co | Jak | Gdzie |
+|---|---|---|
+| **Masa ekwipunku** | suma mas dwóch broni głównych, pistoletu i broni białej z częściami gracza (`kit_mass`, przeliczana po zmianie broni albo montażu) | `weapon_controller.gd` |
+| **Punkt odniesienia** | fabryczny zestaw startowy M-83 + SPREAD-12 + P-83 + maczeta = 10,3 kg (`mass_ref`) — z nim nic się nie zmienia | `weapon_controller.gd` |
+| **Skutek** (tylko obsługa REALISTIC) | każdy kilogram ponad: hałas biegu +5 % (0,8–1,5×), tempo biegu −1,2 % (0,9–1,05×); lżej — odwrotnie. HKM-9 + LR-7 (16 kg): bieg ×1,28 głośniej i ×0,93 wolniej | `player.gd` (prędkość, hałas „run”) |
+| **Na ławie** | wiersz „Masa” w statystykach (z podglądem części spod kursora) i w kodeksie; w nagłówku ARMS masa ekwipunku i jej wpływ na hałas biegu | `codex.gd`, `workshop_ui.gd` |
+
+Uwaga do strojenia: w błocie gracz biegnie 55 px/s, Stalker 51 px/s (`--stalkertest`); ekwipunek cięższy o ponad ~6 kg od startowego
+zbija tempo poniżej Stalkera — w błocie już mu nie ucieknie. Test `_t_mass`.

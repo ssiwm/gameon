@@ -199,6 +199,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_ammo_40mm()
 	await _t_parts()
 	await _t_parts_alt()
+	await _t_mass()
 	await _t_handling_climb()
 	await _t_hot_barrel()
 	await _t_two_reloads()
@@ -2828,6 +2829,37 @@ func _t_ammo_40mm() -> void:
 		Arsenal.stock[k] = 0
 	free_dummies()
 	await frames(2)
+
+## Masa ekwipunku (WORKSHOP_PLAN.md W5, 1.7.356): masa broni z częściami, zestaw startowy = punkt odniesienia (mnożniki 1), ciężki zestaw biegnie
+## głośniej i wolniej, części zmieniają masę, obsługa klasyczna i boty bez zmian.
+func _t_mass() -> void:
+	var real0: bool = Settings.realistic_handling
+	var lo0: Array = wc.loadout.duplicate()
+	var mel0: int = wc.melee_id
+	Settings.realistic_handling = true
+	await clear_fits()
+	wc.loadout.assign([Weapons.M83, Weapons.SPREAD12, Weapons.P64])
+	wc.melee_id = Weapons.MACZETA
+	var ref: float = Controller.mass_ref()
+	var start_ok: bool = is_equal_approx(wc.kit_mass(), ref) and is_equal_approx(wc.mass_noise_mult(), 1.0) and is_equal_approx(wc.mass_speed_mult(), 1.0)
+	check("masa: zestaw startowy %.2f kg = punkt odniesienia (hałas biegu ×%.2f, tempo ×%.2f)" % [wc.kit_mass(), wc.mass_noise_mult(), wc.mass_speed_mult()], start_ok and ref > 8.0 and ref < 12.0)
+	await fit_player(Weapons.M83, ["m83_drum75"])
+	var with_drum: float = wc.kit_mass()
+	check("masa: bęben RPK dokłada %.2f kg do ekwipunku (masa M-83 %.2f kg)" % [with_drum - ref, wc.def_of(Weapons.M83).mass], is_equal_approx(with_drum - ref, 1.6))
+	await clear_fits()
+	wc.loadout.assign([Weapons.HKM9, Weapons.LR7, Weapons.P64])
+	var heavy: float = wc.kit_mass()
+	var hn: float = wc.mass_noise_mult()
+	var hs: float = wc.mass_speed_mult()
+	check("masa: HKM-9 + LR-7 = %.1f kg — bieg głośniej ×%.2f i wolniej ×%.2f" % [heavy, hn, hs],
+		is_equal_approx(hn, clampf(1.0 + Controller.MASS_NOISE * (heavy - ref), 0.8, 1.5)) and hn > 1.2 and hs < 0.95 and hs >= Controller.MASS_SPEED_RANGE.x)
+	Settings.realistic_handling = false
+	check("masa: obsługa klasyczna — bez wpływu (×%.2f, ×%.2f)" % [wc.mass_noise_mult(), wc.mass_speed_mult()], wc.mass_noise_mult() == 1.0 and wc.mass_speed_mult() == 1.0)
+	Settings.realistic_handling = real0
+	wc.loadout.assign(lo0)
+	wc.melee_id = mel0
+	equip(Weapons.M83)
+	await _settle_player()
 
 ## Alternatywy w gniazdach (WORKSHOP_PLAN.md W3, 1.7.351): serwer liczy ogień ciągły i ciosy z częściami gracza odblokowanymi przez drużynę
 ## (wcześniej ogień ciągły brał fabryczną broń), nowe części P-83, LR-7 i HKM-9 zmieniają zachowanie, dysza żelowa zostawia dłuższy ogień.

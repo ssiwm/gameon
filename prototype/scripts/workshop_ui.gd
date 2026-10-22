@@ -1284,6 +1284,13 @@ func _save_preset() -> void:
 	_say(tr("Current fit saved as set %d.") % (int(o["id"]) + 1), UiTheme.OK)
 	_refresh()
 
+## Kontroler broni lokalnego gracza (masa ekwipunku w nagłówku ławy) albo null.
+func _local_wc() -> Node:
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and p.is_multiplayer_authority():
+			return p.weapons
+	return null
+
 ## Krótki opis zestawu: nazwy części (bez fabrycznych), „factory", gdy same fabryczne, „—" dla pustego.
 func _preset_summary(key: String, i: int) -> String:
 	var p := Profile.preset(key, i)
@@ -1555,6 +1562,11 @@ func _refresh_detail(w: int) -> void:
 			tag += tr("  ·  MASTERY %s  (%d / %d)") % [["0", "I", "II", "III", "IV", "V"][ml], mp, int(Profile.MASTERY_XP[ml + 1])]
 		else:
 			tag += tr("  ·  MASTERY %s") % ["0", "I", "II", "III", "IV", "V"][ml]
+	if _mode == "bench" and Settings.realistic_handling:
+		var lp := _local_wc()
+		if lp != null:
+			var km: float = lp.kit_mass()
+			tag += tr("  ·  KIT %.1f kg  (run noise %+d%%)") % [km, int(round((lp.mass_noise_mult() - 1.0) * 100.0))]   # masa ekwipunku (W5)
 	_d_tag.text = tag
 	# statystyki: broń, jaką masz teraz, i ta sama z częścią spod kursora (zielone — lepiej, czerwone — gorzej niż teraz)
 	for ch in _d_stats.get_children():

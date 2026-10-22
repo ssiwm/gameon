@@ -58,7 +58,7 @@ static var _defs: Array = []
 static func _table() -> Array:
 	return [
 		{
-			"key": "m83", "name": "M-83", "slot": Slot.PRIMARY, "kind": Kind.BULLET, "caliber": "762",
+			"key": "m83", "mass": 3.6, "name": "M-83", "slot": Slot.PRIMARY, "kind": Kind.BULLET, "caliber": "762",
 			"auto": true, "cooldown": 0.11, "draw_time": 0.28, "burst_size": 3,
 			"damage": 8.0, "crit_mult": 1.5, "knock": 55.0,
 			"jitter_deg": 0.8, "bloom_per_shot": 0.45, "bloom_max": 4.0, "bloom_decay": 9.0,
@@ -73,7 +73,7 @@ static func _table() -> Array:
 			"sfx": "m83_shot", "sfx_count": 6, "sfx_vol": -7.0,
 		},
 		{
-			"key": "spread12", "name": "SPREAD-12", "slot": Slot.PRIMARY, "kind": Kind.BULLET, "caliber": "12g",
+			"key": "spread12", "mass": 5.2, "name": "SPREAD-12", "slot": Slot.PRIMARY, "kind": Kind.BULLET, "caliber": "12g",
 			"auto": false, "cooldown": 0.26, "draw_time": 0.35,
 			"damage": 7.0, "pellets": 5, "knock": 30.0,
 			"spread_deg": 14.0, "jitter_deg": 1.5,
@@ -87,7 +87,7 @@ static func _table() -> Array:
 			"sfx": "spread12_shot", "sfx_count": 3, "sfx_vol": -3.0,
 		},
 		{
-			"key": "p64", "name": "P-83", "slot": Slot.SIDEARM, "kind": Kind.BULLET, "caliber": "918",
+			"key": "p64", "mass": 0.8, "name": "P-83", "slot": Slot.SIDEARM, "kind": Kind.BULLET, "caliber": "918",
 			"auto": false, "cooldown": 0.20, "draw_time": 0.2,
 			"damage": 11.0, "crit_mult": 2.0, "knock": 60.0,
 			"jitter_deg": 0.35, "bloom_per_shot": 0.8, "bloom_max": 3.0, "bloom_decay": 10.0, "crouch_accuracy": 0.5,
@@ -101,7 +101,7 @@ static func _table() -> Array:
 			"sfx": "p64_shot", "sfx_count": 4, "sfx_vol": -8.0,
 		},
 		{
-			"key": "srut8", "name": "PELLET-8", "slot": Slot.PRIMARY, "kind": Kind.BULLET, "caliber": "12g",
+			"key": "srut8", "mass": 3.5, "name": "PELLET-8", "slot": Slot.PRIMARY, "kind": Kind.BULLET, "caliber": "12g",
 			"auto": false, "cooldown": 0.8, "draw_time": 0.45,
 			"damage": 10.0, "pellets": 8, "knock": 45.0, "stun": 0.5,
 			"spread_deg": 17.0, "jitter_deg": 1.0,
@@ -114,7 +114,7 @@ static func _table() -> Array:
 			"sfx": "srut8_shot", "sfx_count": 3, "sfx_vol": -2.0, "sfx_cycle": "srut8_pump", "sfx_cycle_count": 2,
 		},
 		{
-			"key": "lr7", "name": "LR-7", "slot": Slot.PRIMARY, "kind": Kind.BEAM,
+			"key": "lr7", "mass": 6.0, "name": "LR-7", "slot": Slot.PRIMARY, "kind": Kind.BEAM,
 			"auto": true, "cooldown": 0.1, "draw_time": 0.4, "wear": 2.0, "fault": "overheat",
 			"damage": 6.0, "pierce": 1, "knock": 8.0,
 			"range_px": 176.0, "falloff_start": 80.0, "falloff_min": 0.55,
@@ -127,7 +127,7 @@ static func _table() -> Array:
 			"sfx": "lr7_start", "sfx_count": 1, "sfx_vol": -9.0, "sfx_loop": "lr7_beam_loop",
 		},
 		{
-			"key": "hkm9", "name": "HKM-9", "slot": Slot.PRIMARY, "kind": Kind.FLAME,
+			"key": "hkm9", "mass": 8.5, "name": "HKM-9", "slot": Slot.PRIMARY, "kind": Kind.FLAME,
 			"auto": true, "cooldown": 0.1, "draw_time": 0.45,
 			"damage": 3.0, "ignite": 3.0, "knock": 12.0,
 			"range_px": 64.0, "arc_deg": 20.0, "falloff_start": 30.0, "falloff_min": 0.5,
@@ -140,7 +140,7 @@ static func _table() -> Array:
 			"sfx": "hkm9_ignite", "sfx_count": 1, "sfx_vol": -7.0, "sfx_loop": "hkm9_flame_loop",
 		},
 		{
-			"key": "gniew4", "name": "WRATH-4", "slot": Slot.PRIMARY, "kind": Kind.LAUNCHER, "caliber": "40mm",
+			"key": "gniew4", "mass": 5.5, "name": "WRATH-4", "slot": Slot.PRIMARY, "kind": Kind.LAUNCHER, "caliber": "40mm",
 			"auto": false, "cooldown": 1.2, "draw_time": 0.55,
 			"damage": 25.0, "knock": 160.0, "stun": 0.5,
 			"jitter_deg": 0.5, "speed": 368.0, "range_px": 330.0, "gravity": 520.0,      # grawitacja jak granat ręczny i flara (grenade.gd); prędkość tak, by v²/g (kształt łuku) został jak przy 280 / 300
@@ -153,7 +153,7 @@ static func _table() -> Array:
 			"sfx": "gniew4_shot", "sfx_count": 2, "sfx_vol": -2.0,
 		},
 		{
-			"key": "sokol6", "name": "FALCON-6", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
+			"key": "sokol6", "mass": 4.8, "name": "FALCON-6", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
 			"auto": true, "cooldown": 0.2, "draw_time": 0.35, "wear": 2.0,
 			"damage": 10.0, "knock": 25.0,
 			"jitter_deg": 5.0, "speed": 300.0, "speed_start": 60.0, "accel_time": 0.25, "range_px": 210.0,     # Gyrojet: z lufy wychodzi wolno i rozpędza się silnikiem
@@ -167,7 +167,7 @@ static func _table() -> Array:
 			"sfx": "sokol6_shot", "sfx_count": 3, "sfx_vol": -8.0,
 		},
 		{
-			"key": "widmo1", "name": "SPECTER-1", "slot": Slot.PRIMARY, "kind": Kind.RAIL,
+			"key": "widmo1", "mass": 7.0, "name": "SPECTER-1", "slot": Slot.PRIMARY, "kind": Kind.RAIL,
 			"auto": false, "cooldown": 0.9, "draw_time": 0.6, "charge_time": 1.2, "wear": 2.0, "fault": "arc",
 			"damage": 150.0, "pierce": 99, "knock": 200.0, "stun": 0.6,
 			"range_px": 480.0,
@@ -180,7 +180,7 @@ static func _table() -> Array:
 			"sfx": "widmo1_shot", "sfx_count": 2, "sfx_vol": 0.0, "sfx_loop": "widmo1_charge",
 		},
 		{
-			"key": "ciegno6", "name": "SINEW-6", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
+			"key": "ciegno6", "mass": 3.2, "name": "SINEW-6", "slot": Slot.PRIMARY, "kind": Kind.BULLET,
 			"auto": false, "cooldown": 0.8, "draw_time": 0.4,
 			"damage": 45.0, "crit_mult": 2.0, "knock": 150.0, "stun": 0.8, "sticks": true,
 			"jitter_deg": 0.2, "speed": 400.0, "range_px": 200.0, "gravity": 120.0,     # bełt kuszy podwodnej (~33 m/s) opada z prawdziwym g (9,8 m/s² w skali świata 3D), zasięg krótszy niż karabinu
@@ -192,7 +192,7 @@ static func _table() -> Array:
 			"sfx": "ciegno6_shot", "sfx_count": 2, "sfx_vol": -6.0,
 		},
 		{
-			"key": "maczeta", "name": "MACHETE", "slot": Slot.MELEE, "kind": Kind.MELEE,
+			"key": "maczeta", "mass": 0.7, "name": "MACHETE", "slot": Slot.MELEE, "kind": Kind.MELEE,
 			"auto": false, "cooldown": 0.42, "draw_time": 0.2,
 			"damage": 30.0, "knock": 60.0, "reach": 22.0, "arc_deg": 60.0,
 			"n_min": 0.0, "n_max": 0.0, "mag": 0, "infinite": true,
@@ -200,7 +200,7 @@ static func _table() -> Array:
 			"gun_len": 13.0, "gun_row": 10, "sfx": "maczeta", "sfx_count": 2, "sfx_vol": -6.0,
 		},
 		{
-			"key": "kilof", "name": "PICKAXE", "slot": Slot.MELEE, "kind": Kind.MELEE,
+			"key": "kilof", "mass": 2.6, "name": "PICKAXE", "slot": Slot.MELEE, "kind": Kind.MELEE,
 			"auto": false, "cooldown": 0.9, "draw_time": 0.3,
 			"damage": 55.0, "knock": 160.0, "stun": 1.2, "reach": 24.0, "arc_deg": 50.0, "breaks_walls": true,
 			"n_min": 0.8, "n_max": 0.8, "mag": 0, "infinite": true,
