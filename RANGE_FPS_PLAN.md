@@ -227,3 +227,18 @@ gorącej — nowa seria od razu po zmianie obsługi, warunki i wiersze tablicy).
 Ciąg dalszy (1.7.345, gałąź `feat/range-sights2`): przyrządy SINEW-6 i PELLET-8 w `gun_proc.py` (PELLET-8: `sight_base` + `sight_post` na komorze,
 `fs_post` na końcu osłony lufy; SINEW-6: wieżyczka `sight_base` + `sight_post` na mechanizmie, `fs_post` na głowicy), modele przebudowane.
 Przyrządy z modelu ma teraz 7 broni; bez nich zostają LR-7, HKM-9 i SPECTER-1 (promień, płomień, szyna — linia nad modelem).
+
+## 13. Szafa z bronią (2026-10-22, 1.7.346, gałąź `feat/range-locker`)
+
+Prośba użytkownika: wszystkie bronie dostępne bez kosztów, tylko do użycia na strzelnicy; gracz wchodzi i wychodzi z tym samym sprzętem,
+bronią i amunicją.
+
+| Element | Jak | Stan |
+|---|---|---|
+| Zestaw z wejścia | `weapon_controller.range_snapshot()` przy wejściu (`fp_mode._kit`): bronie, slot, magazynki, typy naboi (`loaded`, `want_ammo`), zacięcia, tryb serii, rozgrzanie i lufy, licznik strzałów magazynka. `range_restore` przy wyjściu (także gdy tryb znika bez `leave`) przywraca je w całości i stan READY — strzały ćwiczebne z własnej broni też nie zmieniają magazynka | zrobione |
+| Szafa w tunelu | `range_locker.gd`: stalowa szafa przy lewej ścianie przed ławą (`POS`), otwarte drzwi, szuflady, półka 0,78 m (niżej broń chowa się za przegrodą stanowiska), świetlówka w środku i lampa, szyld z klawiszem; każda broń palna kolbą w dół, ustawiona po obrysie modelu (początek modelu nie leży przy kolbie). Broń wzięta z szafy znika ze stojaka | zrobione |
+| Wybór | [F] / D-pad → (`range_locker`, na strzelnicy flara nic nie robi): lista na ekranie (nazwa, kaliber i magazynek albo rodzaj, „w ręku” / „twoja”), W/S wybór, spacja / Enter bierze, klik myszą, [F] albo [E] zamyka (Esc to pauza). `range_take`: pełny magazynek, długa zastępuje trzymaną długą (albo pierwszą, gdy w ręku pistolet), własna broń tylko się dobywa; bez zapasu i bez porzucania własnej. Broń biała poza szafą (PPM na strzelnicy to przyrządy) | zrobione |
+| Otwarta szafa | mysz wolna, rozglądanie wstrzymane, `player._range_brain` woła `tick_local(…, true)` — spust nie strzela; Enter na strzelnicy nie przełącza gotowości do misji w kryjówce (`main._hub_input`) | zrobione |
+
+Dev: `--rangelocker` (szafa otwarta na starcie `--range3d`). Test `--rangetest` 75/75: lista bez broni białej, otwarta szafa (spust, Enter, [E]),
+HKM-9 z pełnym zbiornikiem, WRATH-4 na jego miejsce, własny pistolet, wyjście — zestaw, slot, magazynek i lufa jak przy wejściu.

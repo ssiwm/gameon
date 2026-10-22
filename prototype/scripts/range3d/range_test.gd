@@ -14,6 +14,7 @@ extends Node
 ## 7. Etap 2: przyrządy z modelu (gun_proc.py → sight_rear / sight_front) leżą w osi kamery przy celowaniu, ćwiczenie z przeładowaniem
 ##    (4 blachy, 2 naboje w magazynku, wynik z przeładowaniem na osobnej części tablicy), rekordy osobiste broni w profilu (czas, grupa),
 ##    porównanie dwóch ostatnich grup na papierze z warunkami serii (obsługa, lufa, oparcie).
+## 8. Szafa z bronią: każda broń palna do ręki na strzelnicy, przy wyjściu wraca zestaw z wejścia (bronie, magazynki, lufa).
 ## Wynik: linie [RANGE-TEST] i kod wyjścia (0 = OK).
 
 const RangeDoor := preload("res://scripts/range3d/range_door.gd")
@@ -64,6 +65,7 @@ func run(m: Node2D) -> void:
 	await _t_server()
 	await _t_drill()
 	await _t_compare()
+	await _t_locker()
 	await _t_climb()
 	await _t_practice()
 	await _t_brace()
@@ -524,6 +526,65 @@ func _t_compare() -> void:
 	fp.sim.paper_holes.clear()
 	fp.leave()
 	await _frames(2)
+
+## Szafa z bronią: [F] otwiera listę (broń nie strzela, [E] zamyka szafę zamiast wychodzić, Enter nie zgłasza gotowości do misji), wybór daje broń
+## z pełnym magazynkiem w miejsce trzymanej długiej, własny pistolet tylko się dobywa; wyjście przywraca zestaw z wejścia.
+func _t_locker() -> void:
+	var wc = player.weapons
+	if int(wc.cur().id) != Weapons.M83:
+		wc.loadout[0] = Weapons.M83
+		wc.select_slot(0)
+		await get_tree().create_timer(1.0).timeout
+	wc.mags[Weapons.M83] = 17
+	wc._barrel[Weapons.M83] = 0.3
+	var kit0: Array = wc.loadout.duplicate()
+	var slot0: int = wc.slot
+	var fp: Node = _enter()
+	await _frames(3)
+	var ids: Array = fp.locker_weapons()
+	check("szafa: %d broni palnych (bez broni białej)" % ids.size(), ids.size() == Weapons.COUNT - 2 and not ids.has(Weapons.MACZETA))
+	Input.action_press("range_locker")
+	await _frames(2)
+	Input.action_release("range_locker")
+	var opened: bool = fp.locker_open
+	var shots0: int = fp.shots_fired
+	wc.sim_fire = true
+	await _frames(6)
+	wc.sim_fire = false
+	var hub0: bool = main.hub_mine
+	Input.action_press("restart")
+	await _frames(2)
+	Input.action_release("restart")
+	await _frames(1)
+	var hub1: bool = main.hub_mine
+	Input.action_press("interact")                                # [E] to także menu_back (actions.gd) — w grze oba naraz
+	Input.action_press("menu_back")
+	await _frames(2)
+	Input.action_release("interact")
+	Input.action_release("menu_back")
+	await _frames(2)
+	check("szafa otwarta [%s]: spust nie strzela (%d → %d), Enter nie zgłasza gotowości, [E] zamyka szafę, a nie strzelnicę" % [Actions.key("range_locker"), shots0, fp.shots_fired],
+		opened and fp.shots_fired == shots0 and hub0 == hub1 and not fp.locker_open and is_instance_valid(fp) and player.fp == fp)
+	fp.toggle_locker()
+	fp.locker_pick(ids.find(Weapons.HKM9))
+	await _frames(3)
+	var hk_ok: bool = int(wc.cur().id) == Weapons.HKM9 and wc.mag_of(Weapons.HKM9) == Weapons.def(Weapons.HKM9).mag and int(player.weapon) == Weapons.HKM9
+	fp.locker_pick(ids.find(Weapons.GNIEW4))
+	await _frames(3)
+	check("szafa: HKM-9 do ręki z pełnym zbiornikiem (%s), potem WRATH-4 na jego miejsce (zestaw %s)" % [hk_ok, str(wc.loadout)],
+		hk_ok and int(wc.cur().id) == Weapons.GNIEW4 and not wc.loadout.has(Weapons.HKM9) and not fp.locker_open)
+	fp.locker_pick(ids.find(int(kit0[2])))
+	await _frames(3)
+	check("szafa: własny pistolet tylko się dobywa (slot %d)" % wc.slot, wc.slot == 2 and wc.loadout.has(Weapons.GNIEW4))
+	wc.mags[Weapons.GNIEW4] = 1
+	fp.leave()
+	await _frames(3)
+	check("wyjście: zestaw z wejścia %s (był %s), slot %d, magazynek M-83 %d, lufa %.0f%%, kit %s" % [str(wc.loadout), str(kit0), wc.slot, wc.mag_of(Weapons.M83),
+		wc.barrel_of(Weapons.M83) * 100.0, str(player.kit)],
+		wc.loadout == kit0 and wc.slot == slot0 and wc.mag_of(Weapons.M83) == 17 and absf(wc.barrel_of(Weapons.M83) - 0.3) < 0.03
+		and int(player.weapon) == int(kit0[slot0]) and player.kit == wc.kit() and not wc.carries(Weapons.GNIEW4))
+	wc._barrel[Weapons.M83] = 0.0
+	wc.mags[Weapons.M83] = 30
 
 ## Strzał przez kontroler broni w środek blachy `i` (bez podrzutu i rozrzutu z serii).
 func _shoot_at(fp: Node, i: int) -> void:

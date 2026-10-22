@@ -247,6 +247,8 @@ func _hub_input() -> void:
 	hub_in_zone = me != null and level.launch_zone.has_point(me.global_position)
 	if not Input.is_action_just_pressed("restart"):
 		return
+	if me != null and bool(me.get("in_range")):
+		return                            # strzelnica FPP: Enter wybiera broń w szafie (fp_mode.gd), nie zgłasza gotowości do misji
 	if hub_in_zone:
 		return                            # w strefie gotowość trzyma pozycja: żeby ją cofnąć, trzeba z niej wyjść
 	hub_mine = not hub_mine
@@ -1145,6 +1147,8 @@ func _dev_range3d() -> void:
 			fp.sim.paper_holes = [Vector2(0.01, 0.0), Vector2(-0.02, 0.03), Vector2(0.03, 0.05), Vector2(0.0, 0.08), Vector2(0.02, 0.11)]
 			fp.paper_cond = {"w": Weapons.M83, "real": true, "heat0": 0.08, "heat1": 0.41, "braced": 0, "n": 5}
 			fp.paper_prev = {"g": {"n": 5, "moa": 6.2, "vertical": 0.035}, "c": {"w": Weapons.M83, "real": true, "heat0": 0.05, "heat1": 0.3, "braced": 5, "n": 5}}
+		elif a == "--rangelocker":                             # otwarta szafa z bronią (zrzut listy)
+			fp.toggle_locker.call_deferred()
 		elif a == "--rangeads":
 			fp.dev_ads = true                                   # przyrządy bez PPM (zrzuty)
 		elif a.begins_with("--rangeads="):                     # --rangeads=T: stały postęp przyrządów 0..1 (zrzuty przejścia)

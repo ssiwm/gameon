@@ -7,6 +7,9 @@ extends Node
 ## Sterowanie: mysz (albo prawy drążek) rozgląda się, A/D przechodzą między stanowiskami, przytrzymany [Shift] to przyklęk z bronią na blacie
 ## ławy (oparcie: mniejszy podrzut i rozrzut jak w grze), PPM celuje przez przyrządy (tylko obraz — linia strzału to zawsze środek ekranu),
 ## [E] wychodzi. Podrzut broni (`wc.climb`, w °) unosi kamerę; ściąga się go myszą jak w grze.
+##
+## Szafa z bronią ([F], `range_locker`): każda broń palna gry do ręki bez kosztów, tylko na strzelnicy. Zestaw z wejścia (bronie, magazynki, typy
+## naboi, zacięcia, lufy) zapisuje `weapon_controller.range_snapshot` i przy wyjściu przywraca go `range_restore` — gracz wychodzi z tym, z czym wszedł.
 
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
 const RangeView := preload("res://scripts/range3d/range_view.gd")
@@ -46,7 +49,10 @@ var paper_pb_at := -100.0             ## sim.clock tej grupy
 var paper_cond := {}                  ## warunki bieżącej serii na papierze: {w (−2 — kilka broni), real (REALISTIC), heat0, heat1 (lufa 0..1
                                       ## przy pierwszej i ostatniej przestrzelinie), braced (przestrzeliny z oparciem), n}
 var paper_prev := {}                  ## poprzednia seria do porównania: {g: grupa (sim.paper_last), c: warunki}
-var _paper_sig := ""                  ## broń i obsługa: zmiana zaczyna nową serię (sim.paper_break)
+var _paper_sig := ""
+var locker_open := false              ## otwarta szafa z bronią (obraz: range_locker.gd; mysz wolna, broń nie strzela — player._range_brain)
+var locker_sel := 0                   ## zaznaczony wiersz szafy (indeks w `locker_weapons()`)
+var _kit := {}                        ## zestaw z wejścia (weapon_controller.range_snapshot), wraca przy wyjściu                  ## broń i obsługa: zmiana zaczyna nową serię (sim.paper_break)
 var shot_climb := 0.0               ## ° — podrzut z początku kroku: strzał leci tam, gdzie celownik tej klatki (jak player._local_brain w grze 2D),
                                       ## a nie z podrzutem doliczonym już za ten sam strzał
 
@@ -66,6 +72,7 @@ func _ready() -> void:
 	player.fp = self
 	player.in_range = true                                    # replikowane: postać stoi zaparkowana, inni widzą „RANGE” na plakietce
 	var wc = player.weapons
+	_kit = wc.range_snapshot()
 	wc.range_sink = self
 	wc.practice = true
 	sim.finished.connect(_on_finished)
@@ -84,7 +91,9 @@ func leave() -> void:
 	if wc.range_sink == self:
 		wc.range_sink = null
 	wc.practice = false
-	wc.climb = 0.0
+	wc.range_restore(_kit)                                     # sprzęt z wejścia: broń z szafy wraca na miejsce
+	_kit = {}
+	locker_open = false
 	if player.fp == self:
 		player.fp = null
 		player.in_range = false
@@ -102,6 +111,7 @@ func _exit_tree() -> void:
 		player.in_range = false
 		player.weapons.range_sink = null
 		player.weapons.practice = false
+		player.weapons.range_restore(_kit)
 	if view != null and is_instance_valid(view):
 		view.release()
 		view = null
@@ -154,11 +164,51 @@ func _capture(on: bool) -> void:
 		return
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if on else Input.MOUSE_MODE_HIDDEN
 
+## Mysz wolna, rozglądanie wstrzymane: pauza albo otwarta szafa.
 func _blocked() -> bool:
+	return _paused() or locker_open
+
+func _paused() -> bool:
 	if get_tree().paused:
 		return true
 	var pm := get_tree().current_scene.get_node_or_null("UI/PauseMenu")
 	return pm != null and bool(pm.get("_open"))
+
+## Bronie w szafie: każda broń palna gry (bez broni białej — na strzelnicy PPM to przyrządy), w kolejności rejestru broni.
+static func locker_weapons() -> Array:
+	var out := []
+	for w in Weapons.COUNT:
+		if Weapons.def(w).slot != Weapons.Slot.MELEE:
+			out.append(w)
+	return out
+
+## [F] otwiera / zamyka szafę; zaznaczenie startuje na trzymanej broni.
+func toggle_locker() -> void:
+	locker_open = not locker_open
+	if locker_open:
+		locker_sel = maxi(0, locker_weapons().find(int(player.weapons.cur().id)))
+		player.weapons.sim_fire = false
+
+## Broń z wiersza `i` szafy do ręki (weapon_controller.range_take) i szafa się zamyka.
+func locker_pick(i: int) -> void:
+	var ids := locker_weapons()
+	if i < 0 or i >= ids.size():
+		return
+	locker_sel = i
+	player.weapons.range_take(int(ids[i]))
+	locker_open = false
+
+## Sterowanie otwartą szafą: W/S (D-pad) wybór, spacja (A) bierze, [F] albo [E] / Esc (B) zamyka. Myszą — klik w wiersz (range_locker.gd).
+func _tick_locker() -> void:
+	var n := locker_weapons().size()
+	if Input.is_action_just_pressed("range_locker") or (Input.is_action_just_pressed("menu_back") and not Input.is_action_just_pressed("pause")):   # Esc to pauza
+		locker_open = false
+	elif Input.is_action_just_pressed("menu_up"):
+		locker_sel = (locker_sel - 1 + n) % n
+	elif Input.is_action_just_pressed("menu_down"):
+		locker_sel = (locker_sel + 1) % n
+	elif Input.is_action_just_pressed("menu_accept"):
+		locker_pick(locker_sel)
 
 func _process(_delta: float) -> void:
 	var want := not _blocked()
@@ -192,7 +242,13 @@ func tick(delta: float) -> void:
 		return
 	sim.tick(delta)
 	shot_climb = float(player.weapons.climb)
-	if _blocked():
+	if _paused():
+		return
+	if locker_open:
+		_tick_locker()
+		return
+	if Input.is_action_just_pressed("range_locker") and Engine.get_physics_frames() != _enter_frame:
+		toggle_locker()
 		return
 	var stick := Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
 	if stick.length() > 0.0:
