@@ -62,7 +62,7 @@ Meble `hub_decor.gd` same rozsuwają się przy nowych znacznikach. Zlecenia w cz
 | W0b | Próba części na strzelnicy (U5) | ✅ 1.7.348 |
 | W1 | Szafki osobiste (7), odchudzona ława (1), zestawy (U6) | ✅ 1.7.349 — zestawy z nazwą z listy części (bez wpisywania), na razie tylko przy ławie |
 | W2 | Stół konserwacji (2) | ✅ 1.7.350 — stanowisko kol. 16, lufa i sprężyny, rozłożona i brudna broń na ławie 3D; brud widać tylko na ławie (nie na broni w rękach) |
-| W3 | Alternatywy w gniazdach (U2), po jednym PR na broń | część 1 ✅ 1.7.351: naprawa części ognia ciągłego i broni białej na serwerze, P-83 (długa lufa, kabura-kolba), LR-7 (rozpraszacz), HKM-9 (dysza żelowa); dalej SPREAD-12, PELLET-8, WRATH-4, SPECTER-1 i bełt-wabik SINEW-6 |
+| W3 | Alternatywy w gniazdach (U2), po jednym PR na broń | część 1 ✅ 1.7.351: naprawa części ognia ciągłego i broni białej na serwerze, P-83 (długa lufa, kabura-kolba), LR-7 (rozpraszacz), HKM-9 (dysza żelowa); część 2 ✅ 1.7.352: SPREAD-12 (obcięta lufa), PELLET-8 (slam-fire, długa lufa), WRATH-4 (skrócona rura), SPECTER-1 (kondensator przeładowania), maczeta (krótki chwyt) — 13 z 32 gniazd z wyborem; zostaje bełt-wabik SINEW-6 (broń z późniejszej strefy) |
 | W4 | Prasa (3) i pirotechnika (4), przejęcie SUPPLIES | |
 | W5 | Masa jako koszt (U1), A/B | |
 | W6 | Elektronika i próbki (5), tokarka (6) | |

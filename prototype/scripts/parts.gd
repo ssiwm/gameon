@@ -75,6 +75,9 @@ const PARTS := {
 		{"id": "sp12_ported", "slot": "muzzle", "tier": 3, "cost": 220, "name": "Ported barrel",
 			"desc": "Gas ports tame the kick: camera kick −35%, shake −30%; the shot is a little louder (+10%)",
 			"mods": [["cam_kick", "mul", 0.65], ["shake", "mul", 0.7], ["n_min", "mul", 1.1], ["n_max", "mul", 1.1]]},
+		{"id": "sp12_sawn", "slot": "barrel", "cost": 70, "name": "Sawn-off barrel",
+			"desc": "Cut down for the tunnels: the pattern opens 35% wider (more pellets land on whatever is in your face) and the gun draws 25% faster, but the shot dies 20% sooner",
+			"mods": [["spread_deg", "mul", 1.35], ["draw_time", "mul", 0.75], ["range_px", "mul", 0.8], ["falloff_start", "add", -10.0]]},
 	],
 	"srut8": [
 		{"id": "s8_tube", "slot": "feed", "tier": 1, "cost": 70, "name": "Magazine tube extension",
@@ -86,6 +89,12 @@ const PARTS := {
 		{"id": "s8_carrier", "slot": "stock", "tier": 3, "cost": 265, "name": "Shell carrier",
 			"desc": "Shells strapped to the receiver: loading each shell 25% faster; a heavier gun (+0.05 s draw)",
 			"mods": [["reload_time", "mul", 0.75], ["draw_time", "add", 0.05]]},
+		{"id": "s8_slam", "slot": "action", "cost": 130, "name": "Slam-fire action",
+			"desc": "No trigger disconnector: hold the trigger and every pump fires — 30% faster follow-ups, but hurried shots kick harder (+30%) and stray wider (+25%)",
+			"mods": [["auto", "set", 1.0], ["cooldown", "mul", 0.7], ["jitter_deg", "mul", 1.25], ["cam_kick", "mul", 1.3]]},
+		{"id": "s8_long", "slot": "barrel", "cost": 110, "name": "Long barrel",
+			"desc": "A longer barrel: a 15% tighter pattern that stays deadly 20 px farther; heavier at the front (+0.08 s draw)",
+			"mods": [["spread_deg", "mul", 0.85], ["falloff_start", "add", 20.0], ["draw_time", "add", 0.08]]},
 	],
 	"lr7": [
 		{"id": "lr7_cell", "slot": "feed", "tier": 1, "cost": 70, "name": "Extended cell",
@@ -125,6 +134,9 @@ const PARTS := {
 		{"id": "g4_cluster", "slot": "special", "tier": 3, "cost": 330, "name": "Cluster warheads",
 			"desc": "Two bomblets scatter after the blast (half damage each, no extra noise); the main blast is 10% weaker",
 			"mods": [["cluster", "add", 2], ["blast_damage", "mul", 0.9]]},
+		{"id": "g4_short", "slot": "barrel", "cost": 120, "name": "Cut-down tube",
+			"desc": "A short tube and a pistol grip: draws 30% faster and comes up in a tight corner, but the grenade leaves slower (−15%), so it drops sooner",
+			"mods": [["draw_time", "mul", 0.7], ["speed", "mul", 0.85]]},
 	],
 	"sokol6": [
 		{"id": "f6_belt", "slot": "feed", "tier": 1, "cost": 80, "name": "Extended belt",
@@ -147,6 +159,9 @@ const PARTS := {
 		{"id": "w1_rails", "slot": "barrel", "tier": 3, "cost": 375, "name": "Hardened rails",
 			"desc": "The slug passes through one layer of wall; heavier rails slow it a little (−10% damage)",
 			"mods": [["wall_pierce", "add", 24.0], ["damage", "mul", 0.9]]},
+		{"id": "w1_over", "slot": "action", "cost": 240, "name": "Overcharge capacitor",
+			"desc": "Dumps the whole bank into one slug: +30% damage, but the charge takes 35% longer and the coils scream (+15% noise)",
+			"mods": [["damage", "mul", 1.3], ["charge_time", "mul", 1.35], ["n_min", "mul", 1.15], ["n_max", "mul", 1.15]]},
 	],
 	"ciegno6": [
 		{"id": "c6_twin", "slot": "feed", "tier": 1, "cost": 90, "name": "Twin bolt",
@@ -169,6 +184,9 @@ const PARTS := {
 		{"id": "mc_exec", "slot": "special", "tier": 3, "cost": 175, "name": "Executioner",
 			"desc": "Kills any enemy below 35% HP outright; the heavier blade swings 10% slower",
 			"mods": [["execute_frac", "add", 0.35], ["cooldown", "mul", 1.1]]},
+		{"id": "mc_short", "slot": "stock", "cost": 60, "name": "Short grip",
+			"desc": "A cut-down handle for close work: swings 15% faster, but a narrower arc (−20%) and 4 px less reach",
+			"mods": [["cooldown", "mul", 0.85], ["arc_deg", "mul", 0.8], ["reach", "add", -4.0]]},
 	],
 	"kilof": [
 		{"id": "kf_sharp", "slot": "edge", "tier": 1, "cost": 50, "name": "Sharpened pick",
@@ -283,7 +301,10 @@ static func apply(d: RefCounted, code: int) -> void:
 					out = float(m[2])
 				_:
 					out = float(cur) + float(m[2])
-			d.set(String(m[0]), int(roundf(out)) if typeof(cur) == TYPE_INT else out)
+			if typeof(cur) == TYPE_BOOL:
+				d.set(String(m[0]), out != 0.0)                  # przełącznik (np. `auto`): "set" 1 włącza, 0 wyłącza
+			else:
+				d.set(String(m[0]), int(roundf(out)) if typeof(cur) == TYPE_INT else out)
 
 ## Największy magazynek, jaki broń może mieć z częściami (serwer ogranicza nim prośby o naboje i zwroty) — z nabojem w komorze.
 static func max_capacity(d: RefCounted) -> int:
