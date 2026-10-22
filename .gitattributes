@@ -2,3 +2,6 @@
 art_src/audio_gen/** filter=lfs diff=lfs merge=lfs -text
 # Godot zapisuje pliki .import z LF; bez tego przy core.autocrlf=true każdy import oznacza je w git status jako zmienione
 *.import text eol=lf
+# to samo dla zasobów tekstowych, które Godot przepisuje przy imporcie i zapisie (np. default_bus_layout.tres)
+*.tres text eol=lf
+*.tscn text eol=lf
