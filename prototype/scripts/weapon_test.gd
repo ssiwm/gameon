@@ -986,11 +986,11 @@ func _t_economy() -> void:
 		Arsenal.get_throwable("frag") == int(Throwables.KINDS["frag"]["max"]) and Arsenal.get_throwable("mine") == 2 and not Arsenal.stock.has("bogus"))
 	# skrzynka zaopatrzenia z wroga: podnoszona, gdy zapas nie jest pełny
 	give_gear(0, 0, 0, 0, 0, 0, 0, 0)
-	level.spawn_item("supply", Throwables.ORDER.find("scanner"), player.global_position + Vector2(0, -4))
+	_drop_still("supply", Throwables.ORDER.find("scanner"), player.global_position + Vector2(0, -4))
 	await wait(1.4)
 	check("skrzynka zaopatrzenia: podniesiona, +1 skaner (zapas %d)" % Arsenal.get_throwable("scanner"), Arsenal.get_throwable("scanner") == 1)
 	Arsenal.stock["scanner"] = int(Throwables.KINDS["scanner"]["max"])
-	level.spawn_item("supply", Throwables.ORDER.find("scanner"), player.global_position + Vector2(0, -4))
+	_drop_still("supply", Throwables.ORDER.find("scanner"), player.global_position + Vector2(0, -4))     # pod nogami: zostaje przez pełny zapas, nie przez znos
 	await wait(1.4)
 	var left := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "supply").size()
 	check("skrzynka zaopatrzenia: przy pełnym zapasie zostaje na ziemi (%d)" % left, left == 1 and Arsenal.get_throwable("scanner") == int(Throwables.KINDS["scanner"]["max"]))
@@ -2522,16 +2522,16 @@ func _t_part_finds() -> void:
 		waiting and not again and wiped and Scrap.has_part(pid) and Scrap.found.is_empty())
 	Scrap.parts = {}
 	# skrytka: złom i część
-	level.spawn_item("stash", 0, player.global_position + Vector2(0.0, -4.0), Scrap.STASH_VALUE)
+	_drop_still("stash", 0, player.global_position + Vector2(0.0, -4.0), Scrap.STASH_VALUE)
 	var waited := 0.0
-	while Scrap.found.is_empty() and waited < 4.0:             # czeka na podniesienie, nie stały czas — na wolnym CI 0,6 s bywało za mało
+	while Scrap.found.is_empty() and waited < 4.0:             # czeka na podniesienie, nie stały czas
 		await wait(0.1)
 		waited += 0.1
 	check("znaleziska: skrytka daje część (%s)" % str(Scrap.found.keys()), Scrap.found.size() == 1)
 	Scrap.found = {}
 	# część na ziemi (łup elity): podchodzisz — znaleziona
 	var drop_id := "m83_pbs1"
-	level.spawn_item("part", Scrap.part_index(drop_id), player.global_position + Vector2(0.0, -4.0))
+	_drop_still("part", Scrap.part_index(drop_id), player.global_position + Vector2(0.0, -4.0))
 	await wait(0.6)
 	var left: Array = get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.get("kind") == "part" and not n.is_queued_for_deletion())
 	check("znaleziska: część zostawiona przez elitę — podniesiona (%s), znajdźka znika (%d)" % [str(Scrap.found.has(drop_id)), left.size()], Scrap.found.has(drop_id) and left.is_empty())
@@ -3384,6 +3384,14 @@ func _t_heat_noise() -> void:
 	check("lufa stygnie po przerwie", wc.heat_of(d.id) < heat_peak * 0.5, "heat %.2f" % wc.heat_of(d.id))
 
 ## Przenosi gracza na ostatnio upuszczony przedmiot danego rodzaju (drop ma losowy znos ±20 px).
+## Znajdźka pod nogami gracza bez losowego podskoku: znos w bok (±40 px/s przez ok. 0,5 s, losowany z nazwy węzła, czyli z licznika
+## wcześniejszych przedmiotów) sięga 20 px, a promień podniesienia to 18 px — test, który czeka na samo podniesienie, padał losowo.
+func _drop_still(kind: String, arg: int, pos: Vector2, rounds := 0) -> void:
+	level.spawn_item(kind, arg, pos, rounds)
+	var item := level.get_node_or_null("Item%d" % level._pickup_serial)
+	if item != null:
+		item._vel = Vector2.ZERO
+
 func _step_on_item(kind: String, arg: int) -> void:
 	for p in get_tree().get_nodes_in_group("pickups"):
 		if p.kind == kind and p.arg == arg and not p.is_queued_for_deletion():

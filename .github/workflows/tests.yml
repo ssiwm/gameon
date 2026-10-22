@@ -1,6 +1,7 @@
 name: tests
 
-# Testy headless z CLAUDE.md: mapy (--maptest) oraz bronie + sieć (tools/test_weapons.sh). Odpalane na każdym PR i na pushu do main.
+# Testy z CLAUDE.md w trzech równoległych zadaniach: testy headless (godot), bronie + sieć (weapons) i zrzuty 3D pod xvfb (shots).
+# Odpalane na każdym PR i na pushu do main. Wspólne przygotowanie (pliki LFS i import z cache): .github/actions/godot-setup.
 on:
   pull_request:
   push:
@@ -12,25 +13,15 @@ env:
 jobs:
   godot:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: false                       # art_src/ (~560 MB modeli .glb) nie jest potrzebny; limit transferu LFS jest mały
-      - name: Pliki LFS gry (prototype/)
-        run: git lfs pull --include="prototype/**"
-      - name: Godot ${{ env.GODOT_VERSION }}
-        run: |
-          curl -fsSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
-          unzip -q godot.zip
-          sudo mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
-          godot --version
-      - name: Kompresja VRAM tekstur modeli 3D (tex_vram.py --check)
-        run: python3 prototype/tools/tex_vram.py --check
-      - name: Wagi rękawic postaci MPFB (glb_glove_weights.py --check)
-        run: python3 prototype/tools/glb_glove_weights.py prototype/art/char3d/mpfb/*.glb --check
-      - name: Import zasobów
-        run: godot --headless --path prototype --import
+          lfs: false                       # art_src/ (~560 MB modeli .glb) nie jest potrzebny; pliki gry pobiera godot-setup (z cache)
+      - uses: ./.github/actions/godot-setup
+        with:
+          godot-version: ${{ env.GODOT_VERSION }}
+          checks: "true"                   # tex_vram i wagi rękawic: tylko w jednym zadaniu
       - name: Mapy (--maptest)
         run: |
           godot --headless --path prototype -- --maptest --autoquit=4 2>&1 | tee maptest.log
@@ -91,14 +82,50 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_note_contrast.gd 2>&1 | tee notecontrast.log
           grep -a "^PASS" notecontrast.log
+      - name: Logi testów
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logi-testow
+          path: "*.log"
+          if-no-files-found: ignore
+
+  weapons:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: ./.github/actions/godot-setup
+        with:
+          godot-version: ${{ env.GODOT_VERSION }}
       - name: Bronie i sieć (test_weapons.sh)
         run: bash prototype/tools/test_weapons.sh
+      - name: Logi testów broni
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logi-testow-broni
+          path: /tmp/dead_air_weapon_tests/
+          if-no-files-found: ignore
+
+  shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: ./.github/actions/godot-setup
+        with:
+          godot-version: ${{ env.GODOT_VERSION }}
       - name: Obraz 3D pod xvfb (zrzut z każdej mapy)
         # Jedyny krok, który wykonuje kod widoku 3D (view3d.gd, level3d.gd, enemy3d.gd, char3d.gd) — testy headless nic nie rysują.
         # Na razie nie blokuje PR-ów: krok nie był jeszcze uruchomiony na runnerze (REVIEW_PLAN.md R7).
         continue-on-error: true
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+          command -v xvfb-run >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq xvfb; }      # obraz runnera zwykle ma już xvfb
           mkdir -p shots
           rc=0
           for m in z1_m1 z1_m2 z1_m3 z1_b1 z1_hub; do

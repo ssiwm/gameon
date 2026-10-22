@@ -1,42 +1,41 @@
-[gd_resource type="AudioBusLayout" load_steps=12 format=3]
+[gd_resource type="AudioBusLayout" format=3 uid="uid://bc56t8vbol54v"]
 
 [sub_resource type="AudioEffectHardLimiter" id="Limiter_master"]
 ceiling_db = -0.5
-pre_gain_db = 0.0
-release = 0.1
 
 [sub_resource type="AudioEffectCompressor" id="Duck_music"]
 threshold = -20.0
 ratio = 2.2
-gain = 0.0
 attack_us = 8000.0
 release_ms = 450.0
-mix = 1.0
 sidechain = &"SFX"
 
 [sub_resource type="AudioEffectLowPassFilter" id="Deaf_music"]
 cutoff_hz = 20500.0
-resonance = 0.5
 db = 1
+
+[sub_resource type="AudioEffectLowPassFilter" id="Occ_heavy"]
+cutoff_hz = 1300.0
+db = 1
+
+[sub_resource type="AudioEffectLowPassFilter" id="Occ_blocked"]
+cutoff_hz = 480.0
+db = 2
 
 [sub_resource type="AudioEffectReverb" id="Reverb_amb"]
 room_size = 0.85
 damping = 0.2
-dry = 1.0
 wet = 0.06
 
 [sub_resource type="AudioEffectCompressor" id="Duck_amb"]
 threshold = -22.0
 ratio = 2.0
-gain = 0.0
 attack_us = 10000.0
 release_ms = 600.0
-mix = 1.0
 sidechain = &"Weapons"
 
 [sub_resource type="AudioEffectLowPassFilter" id="Deaf_amb"]
 cutoff_hz = 20500.0
-resonance = 0.5
 db = 1
 
 [sub_resource type="AudioEffectReverb" id="Reverb_env"]
@@ -44,38 +43,18 @@ predelay_msec = 12.0
 predelay_feedback = 0.0
 room_size = 0.45
 damping = 0.6
-spread = 1.0
 hipass = 0.08
-dry = 1.0
 wet = 0.08
 
 [sub_resource type="AudioEffectLowPassFilter" id="Deaf_sfx"]
 cutoff_hz = 20500.0
-resonance = 0.5
 db = 1
 
 [sub_resource type="AudioEffectLowPassFilter" id="Occ_light"]
 cutoff_hz = 3400.0
-resonance = 0.5
 db = 1
-
-[sub_resource type="AudioEffectLowPassFilter" id="Occ_heavy"]
-cutoff_hz = 1300.0
-resonance = 0.5
-db = 1
-
-[sub_resource type="AudioEffectLowPassFilter" id="Occ_blocked"]
-cutoff_hz = 480.0
-resonance = 0.5
-db = 2
 
 [resource]
-bus/0/name = &"Master"
-bus/0/solo = false
-bus/0/mute = false
-bus/0/bypass_fx = false
-bus/0/volume_db = 0.0
-bus/0/send = &""
 bus/0/effect/0/effect = SubResource("Limiter_master")
 bus/0/effect/0/enabled = true
 bus/1/name = &"Music"
