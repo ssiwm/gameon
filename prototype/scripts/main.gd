@@ -1025,6 +1025,12 @@ func _perf_run(secs: float, col: int) -> void:
 	var phys_t := 0.0
 	var calls := 0.0
 	var prims := 0.0
+	# liczniki skryptów od startu pomiaru (dotąd zawierały też rozgrzewkę i wczytywanie mapy)
+	ENEMY.stat_usec = 0
+	ENEMY.stat_slide_usec = 0
+	NavGraph.stat_calls = 0
+	NavGraph.stat_usec = 0
+	VIEW3D.stat_usec = 0
 	var t_end := Time.get_ticks_msec() + int(secs * 1000.0)
 	var last := Time.get_ticks_usec()
 	var fxs := ""
@@ -1093,12 +1099,291 @@ func _perf_run(secs: float, col: int) -> void:
 		gsum += t
 	print("[PERF-SPIKES] ", ", ".join(spikes))
 	print("[PERF-GPU] gpu avg=%.2f ms p95=%.2f ms  render_cpu avg=%.2f ms  viewports=%d" % [gsum / float(maxi(gpu_ms.size(), 1)), gpu_ms[int(float(gpu_ms.size()) * 0.95)] if not gpu_ms.is_empty() else 0.0, rcpu / float(maxi(n, 1)), vps.size()])
-	print("[PERF] frames=%d avg=%.2f ms (%.0f fps) p50=%.2f p95=%.2f max=%.2f  draw_calls=%.0f prims=%.0f  nodes=%d  vram=%.1f MB  tex_mem=%.1f MB  idle=%.2f ms phys=%.2f ms  A*=%.0f/s (%.2f ms/frame) enemy_phys=%.2f ms slide=%.2f ms pairs=%.0f active=%.0f" % [
+	print("[PERF] frames=%d avg=%.2f ms (%.0f fps) p50=%.2f p95=%.2f max=%.2f  draw_calls=%.0f prims=%.0f  nodes=%d  vram=%.1f MB  tex_mem=%.1f MB  proc_max=%.2f ms phys_max=%.2f ms  A*=%.0f/s (%.2f ms/frame) enemy_phys=%.2f ms slide=%.2f ms view3d=%.2f ms pairs=%.0f active=%.0f" % [
 		n, sum / float(maxi(n, 1)), 1000.0 / maxf(sum / float(maxi(n, 1)), 0.001), times[n / 2], times[int(float(n) * 0.95)], times[n - 1],
 		calls / float(maxi(n, 1)), prims / float(maxi(n, 1)), int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
 		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0,
-		proc_t / float(maxi(n, 1)) * 1000.0, phys_t / float(maxi(n, 1)) * 1000.0, float(NavGraph.stat_calls) / secs, float(NavGraph.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_slide_usec) / 1000.0 / float(maxi(n, 1)), pairs / float(maxi(n, 1)), active_o / float(maxi(n, 1))])
+		proc_t / float(maxi(n, 1)) * 1000.0, phys_t / float(maxi(n, 1)) * 1000.0, float(NavGraph.stat_calls) / secs, float(NavGraph.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_slide_usec) / 1000.0 / float(maxi(n, 1)), float(VIEW3D.stat_usec) / 1000.0 / float(maxi(n, 1)), pairs / float(maxi(n, 1)), active_o / float(maxi(n, 1))])
+	if "--perfreport" in OS.get_cmdline_user_args():
+		await _perf_report(vps, v3d)
 	get_tree().quit()
+
+## Dev (--perf=SEK --perfreport): po pomiarze rozbicie kosztu klatki — czas GPU każdego viewportu, najcięższe siatki w kadrze każdej kamery
+## widoku 3D (prymitywy wg nazwy węzła, cienie), światła z cieniami w kadrze, największe tekstury materiałów sceny (szacunek pamięci z wymiarów
+## i formatu importu) i czas fizyki przy kolejno wyłączanych grupach węzłów (wg skryptu). Wynik: wiersze [PERF-VP], [PERF-MESH], [PERF-LIGHT],
+## [PERF-TEX], [PERF-PHYS].
+func _perf_report(vps: Array[RID], v3d: Node) -> void:
+	# GPU na viewport (pomiar włączony w _perf_run)
+	var vp_nodes: Array = [get_viewport()]
+	vp_nodes.append_array(get_tree().root.find_children("*", "SubViewport", true, false))
+	var vp_gpu := {}
+	for i in 90:
+		await get_tree().process_frame
+		for vp in vp_nodes:
+			var r: RID = (vp as Viewport).get_viewport_rid()
+			vp_gpu[r] = float(vp_gpu.get(r, 0.0)) + RenderingServer.viewport_get_measured_render_time_gpu(r)
+	for vp in vp_nodes:
+		var v := vp as Viewport
+		var sz: Vector2i = (v as SubViewport).size if v is SubViewport else get_viewport().size
+		var upd := String(["DISABLED", "ONCE", "WHEN_VISIBLE", "WHEN_PARENT_VISIBLE", "ALWAYS"][(v as SubViewport).render_target_update_mode]) if v is SubViewport else "ROOT"
+		print("[PERF-VP] %-18s %5dx%-5d %-8s gpu %.2f ms  msaa3d=%d  3d=%s" % [v.name, sz.x, sz.y, upd, float(vp_gpu.get(v.get_viewport_rid(), 0.0)) / 90.0, v.msaa_3d, str(not v.disable_3d)])
+	# siatki w kadrze kamer widoku 3D
+	if v3d != null:
+		for cam_name in ["_cam_a", "_cam_b"]:
+			var cam := v3d.get(cam_name) as Camera3D
+			if cam == null:
+				continue
+			var planes: Array[Plane] = cam.get_frustum()
+			var groups := {}
+			var tot := 0
+			var tot_shadow := 0
+			for gi in cam.get_viewport().find_children("*", "GeometryInstance3D", true, false):
+				var g := gi as GeometryInstance3D
+				if not g.is_visible_in_tree() or (g.layers & cam.cull_mask) == 0:
+					continue
+				var tris := _perf_tris(g)
+				if tris <= 0 or not _perf_in_frustum(g.global_transform * g.get_aabb(), planes):
+					continue
+				var key := "%s/%s" % [String(g.get_parent().name).rstrip("0123456789"), String(g.name).rstrip("0123456789_")]
+				var e: Array = groups.get(key, [0, 0, 0])
+				e[0] += tris
+				e[1] += 1
+				if g.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+					e[2] += tris
+					tot_shadow += tris
+				groups[key] = e
+				tot += tris
+			var keys := groups.keys()
+			keys.sort_custom(func(a, b) -> bool: return groups[a][0] > groups[b][0])
+			print("[PERF-MESH] %s: %d trójkątów w kadrze (bez LOD), w tym rzucających cień %d, grup %d" % [cam_name, tot, tot_shadow, keys.size()])
+			for k in keys.slice(0, 15):
+				print("[PERF-MESH]   %9d tri  ×%-4d cień %9d  %s" % [groups[k][0], groups[k][1], groups[k][2], k])
+			var lights := 0
+			var shadowed := 0
+			var omni_sh := 0
+			for ln in cam.get_viewport().find_children("*", "Light3D", true, false):
+				var l := ln as Light3D
+				if not l.is_visible_in_tree() or l.light_energy <= 0.0:
+					continue
+				if l is OmniLight3D or l is SpotLight3D:
+					var rng := float(l.get("omni_range") if l is OmniLight3D else l.get("spot_range"))
+					if not _perf_in_frustum(AABB(l.global_position - Vector3.ONE * rng, Vector3.ONE * rng * 2.0), planes):
+						continue
+				lights += 1
+				if l.shadow_enabled:
+					shadowed += 1
+					if l is OmniLight3D:
+						omni_sh += 1
+			print("[PERF-LIGHT] %s: świateł w kadrze %d, z cieniem %d (omni z cieniem %d — każde to do 6 przebiegów cienia)" % [cam_name, lights, shadowed, omni_sh])
+	# tekstury materiałów sceny
+	var texs := {}
+	for gi in get_tree().root.find_children("*", "GeometryInstance3D", true, false):
+		var g := gi as GeometryInstance3D
+		var mats: Array = [g.material_override, g.material_overlay]
+		var mesh: Mesh = null
+		if g is MeshInstance3D:
+			mesh = (g as MeshInstance3D).mesh
+			for s in (g as MeshInstance3D).get_surface_override_material_count():
+				mats.append((g as MeshInstance3D).get_surface_override_material(s))
+		elif g is MultiMeshInstance3D and (g as MultiMeshInstance3D).multimesh != null:
+			mesh = (g as MultiMeshInstance3D).multimesh.mesh
+		if mesh != null:
+			for s in mesh.get_surface_count():
+				mats.append(mesh.surface_get_material(s))
+		for m in mats:
+			_perf_collect_textures(m as Material, texs)
+	var tex_list := texs.values()
+	tex_list.sort_custom(func(a, b) -> bool: return a[0] > b[0])
+	var tex_tot := 0.0
+	var raw_tot := 0.0
+	for t in tex_list:
+		tex_tot += t[0]
+		if not t[2]:
+			raw_tot += t[0]
+	print("[PERF-TEX] tekstur w materiałach sceny %d, ok. %.0f MB (z mipmapami), w tym bez kompresji VRAM %.0f MB" % [tex_list.size(), tex_tot, raw_tot])
+	for t in tex_list.slice(0, 20):
+		print("[PERF-TEX]   %7.1f MB  %s  %s" % [t[0], "VRAM" if t[2] else "RGBA", t[1]])
+	# eksperymenty: jedna zmiana naraz na 60 klatek, czas GPU wszystkich viewportów przed i po (zmiana cofana)
+	if v3d != null:
+		var cam_a := v3d.get("_cam_a") as Camera3D
+		var cam_b := v3d.get("_cam_b") as Camera3D
+		var env: Environment = cam_a.environment
+		var vp_w := cam_a.get_viewport() as SubViewport
+		var vp_a := cam_b.get_viewport() as SubViewport
+		var moon: DirectionalLight3D = null
+		for ln in vp_w.find_children("*", "DirectionalLight3D", true, false):
+			if (ln as Node).name == &"Moon":
+				moon = ln as DirectionalLight3D
+		var forest: Array = vp_w.find_children("*", "MultiMeshInstance3D", true, false)
+		var ssil0 := env.ssil_enabled
+		var vol0 := env.volumetric_fog_enabled
+		# stan sprzed eksperymentów — każda zmiana wraca do niego, a nie do „włączone” (inaczej np. wyłączony w grze cień wracałby włączony)
+		var moon_sh0 := moon.shadow_enabled if moon != null else false
+		var moon_mode0 := moon.directional_shadow_mode if moon != null else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+		var forest_sh0: Array = forest.map(func(f) -> int: return (f as GeometryInstance3D).cast_shadow)
+		var msaa_w0 := vp_w.msaa_3d
+		var msaa_a0 := vp_a.msaa_3d
+		var ssao0 := env.ssao_enabled
+		var glow0 := env.glow_enabled
+		var scale_mode0 := vp_w.scaling_3d_mode
+		var scale0 := vp_w.scaling_3d_scale
+		var exps := [
+			["cień księżyca wyłączony", func(on: bool) -> void:
+				if moon != null: moon.shadow_enabled = false if on else moon_sh0],
+			["księżyc: 2 kaskady zamiast 4", func(on: bool) -> void:
+				if moon != null: moon.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if on else moon_mode0],
+			["las (multisiatki) bez cienia", func(on: bool) -> void:
+				for i in forest.size():
+					(forest[i] as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if on else forest_sh0[i]],
+			["MSAA 3D wyłączone", func(on: bool) -> void:
+				vp_w.msaa_3d = Viewport.MSAA_DISABLED if on else msaa_w0
+				vp_a.msaa_3d = Viewport.MSAA_DISABLED if on else msaa_a0],
+			["SSIL wyłączone", func(on: bool) -> void:
+				env.ssil_enabled = false if on else ssil0],
+			["SSAO wyłączone", func(on: bool) -> void:
+				env.ssao_enabled = false if on else ssao0],
+			["mgła wolumetryczna wyłączona", func(on: bool) -> void:
+				env.volumetric_fog_enabled = false if on else vol0],
+			["glow wyłączony", func(on: bool) -> void:
+				env.glow_enabled = false if on else glow0],
+			["świat w skali 0,75 (FSR 1)", func(on: bool) -> void:
+				vp_w.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if on else scale_mode0
+				vp_w.scaling_3d_scale = 0.75 if on else scale0],
+		]
+		var base_g := await _perf_gpu_avg(vp_nodes, 60)
+		print("[PERF-EXP] GPU wszystkich viewportów: %.2f ms (SSIL %s, mgła wolumetryczna %s)" % [base_g, str(ssil0), str(vol0)])
+		var shots := ""                                         # --perfshots=KATALOG: zrzut okna z każdą zmianą (porównanie wyglądu z kosztem)
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--perfshots="):
+				shots = a.substr("--perfshots=".length())
+		if shots != "":
+			DirAccess.make_dir_recursive_absolute(shots)
+			get_viewport().get_texture().get_image().save_png(shots.path_join("%s_00_base.png" % level.map_id))
+		for ei in exps.size():
+			var e: Array = exps[ei]
+			if (e[0] == "SSIL wyłączone" and not ssil0) or (e[0] == "mgła wolumetryczna wyłączona" and not vol0):
+				continue
+			(e[1] as Callable).call(true)
+			for i in 10:
+				await get_tree().process_frame
+			var g := await _perf_gpu_avg(vp_nodes, 60)
+			if shots != "":
+				get_viewport().get_texture().get_image().save_png(shots.path_join("%s_%02d.png" % [level.map_id, ei + 1]))
+			(e[1] as Callable).call(false)
+			for i in 10:
+				await get_tree().process_frame
+			if shots != "":
+				get_viewport().get_texture().get_image().save_png(shots.path_join("%s_%02d_ref.png" % [level.map_id, ei + 1]))
+			var g0 := await _perf_gpu_avg(vp_nodes, 60)
+			print("[PERF-EXP]   %-32s %.2f → %.2f ms (%+.2f)" % [e[0], g0, g, g - g0])
+	# fizyka: grupy węzłów wg skryptu, każda wyłączona na chwilę
+	var by_script := {}
+	for nd in get_tree().root.find_children("*", "", true, false):
+		if nd.is_physics_processing() and nd.get_script() != null:
+			var sp := String((nd.get_script() as Script).resource_path).get_file()
+			if not by_script.has(sp):
+				by_script[sp] = []
+			by_script[sp].append(nd)
+	# Performance.TIME_PHYSICS_PROCESS to maksimum z ostatniej sekundy (silnik odświeża je raz na sekundę) — do porównań się nie nadaje.
+	# Miarą jest średni czas klatki bez limitu klatek: miarodajny w trybie --headless (bez GPU i vsync), w oknie wyznacza go zwykle GPU.
+	Engine.max_fps = 0
+	var base := await _perf_frame_avg(0.5)
+	print("[PERF-PHYS] średni czas klatki %.2f ms (CPU, jeśli --headless); grupy z _physics_process: %d" % [base, by_script.size()])
+	# każda grupa: przed, bez niej, po — zysk względem średniej z przed i po, szum = różnica przed/po
+	var rows: Array = []
+	for sp in by_script:
+		var nodes: Array = by_script[sp]
+		var before := await _perf_frame_avg(0.6)
+		for nd in nodes:
+			if is_instance_valid(nd):
+				(nd as Node).set_physics_process(false)
+		var t := await _perf_frame_avg(0.6)
+		for nd in nodes:
+			if is_instance_valid(nd):
+				(nd as Node).set_physics_process(true)
+		var after := await _perf_frame_avg(0.6)
+		rows.append([(before + after) * 0.5 - t, sp, nodes.size(), absf(before - after)])
+	rows.sort_custom(func(a, b) -> bool: return a[0] > b[0])
+	for r in rows.slice(0, 15):
+		print("[PERF-PHYS]   %6.2f ms  ×%-4d %-24s (szum przed/po %.2f ms)" % [r[0], r[2], r[1], r[3]])
+
+## Średni łączny czas GPU (ms) viewportów z N kolejnych klatek.
+func _perf_gpu_avg(vp_nodes: Array, n: int) -> float:
+	var s := 0.0
+	for i in n:
+		await get_tree().process_frame
+		for vp in vp_nodes:
+			if is_instance_valid(vp):
+				s += RenderingServer.viewport_get_measured_render_time_gpu((vp as Viewport).get_viewport_rid())
+	return s / float(n)
+
+## Średni czas klatki (ms) przez `secs` sekund.
+func _perf_frame_avg(secs: float) -> float:
+	await get_tree().process_frame
+	var t0 := Time.get_ticks_usec()
+	var n := 0
+	while Time.get_ticks_usec() - t0 < int(secs * 1e6):
+		await get_tree().process_frame
+		n += 1
+	return float(Time.get_ticks_usec() - t0) / 1000.0 / float(maxi(n, 1))
+
+## Trójkąty geometrii (bez LOD): siatka × liczba instancji multisiatki; 0, gdy brak danych (np. cząsteczki).
+func _perf_tris(g: GeometryInstance3D) -> int:
+	var mesh: Mesh = null
+	var count := 1
+	if g is MeshInstance3D:
+		mesh = (g as MeshInstance3D).mesh
+	elif g is MultiMeshInstance3D and (g as MultiMeshInstance3D).multimesh != null:
+		var mm := (g as MultiMeshInstance3D).multimesh
+		mesh = mm.mesh
+		count = mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count
+	if mesh == null:
+		return 0
+	var tris := 0
+	if mesh is ArrayMesh:
+		var am := mesh as ArrayMesh
+		for s in am.get_surface_count():
+			var il := am.surface_get_array_index_len(s)
+			tris += (il if il > 0 else am.surface_get_array_len(s)) / 3
+	else:
+		var arr := mesh.surface_get_arrays(0) if mesh.get_surface_count() > 0 else []
+		if arr.size() > Mesh.ARRAY_INDEX and arr[Mesh.ARRAY_INDEX] != null:
+			tris = (arr[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+		elif arr.size() > 0 and arr[Mesh.ARRAY_VERTEX] != null:
+			tris = (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() / 3
+	return tris * count
+
+## AABB przecina bryłę widzenia (płaszczyzny Camera3D.get_frustum: normalne na zewnątrz).
+func _perf_in_frustum(box: AABB, planes: Array[Plane]) -> bool:
+	for pl in planes:
+		var far := Vector3(box.end.x if pl.normal.x < 0.0 else box.position.x, box.end.y if pl.normal.y < 0.0 else box.position.y, box.end.z if pl.normal.z < 0.0 else box.position.z)
+		if pl.is_point_over(far):
+			return false
+	return true
+
+## Tekstury materiału do słownika RID → [MB z mipmapami, ścieżka, kompresja VRAM]; szacunek z wymiarów i pliku importu (.s3tc/.bptc/.etc2 = VRAM).
+func _perf_collect_textures(m: Material, out: Dictionary) -> void:
+	if m == null:
+		return
+	var vals: Array = []
+	if m is ShaderMaterial and (m as ShaderMaterial).shader != null:
+		for u in (m as ShaderMaterial).shader.get_shader_uniform_list():
+			vals.append((m as ShaderMaterial).get_shader_parameter(String(u["name"])))
+	else:
+		for p in m.get_property_list():
+			if int(p["type"]) == TYPE_OBJECT:
+				vals.append(m.get(String(p["name"])))
+	if m.next_pass != null:
+		_perf_collect_textures(m.next_pass, out)
+	for v in vals:
+		if not (v is Texture2D) or out.has((v as Texture2D).get_rid()):
+			continue
+		var t := v as Texture2D
+		var lp := String(t.get("load_path")) if t is CompressedTexture2D else ""
+		var vram := lp.contains(".s3tc.") or lp.contains(".bptc.") or lp.contains(".etc2.") or lp.contains(".astc.")
+		var bpp := 1.0 if vram else 4.0
+		var path := t.resource_path if t.resource_path != "" else ("(%s)" % t.get_class())
+		out[t.get_rid()] = [float(t.get_width() * t.get_height()) * bpp * 1.33 / 1048576.0, path, vram]
 
 ## Dev `--range3d` (RANGE_FPS_PLAN.md, etap 0): lokalny gracz od razu na strzelnicy FPP; [E] wraca do kryjówki.
 func _dev_range3d() -> void:
