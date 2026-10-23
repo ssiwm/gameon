@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cwnlphfgchiu1"
-path="res://.godot/imported/female_scav_uv_mindfront_helmet_kz45.webp-8a0c59738f6b9ae4ff8ffe4f36d86a7e.ctex"
+path.s3tc="res://.godot/imported/female_scav_uv_mindfront_helmet_kz45.webp-8a0c59738f6b9ae4ff8ffe4f36d86a7e.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "a9b14ad5c62582d3941198908d43c60b"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/char3d/mpfb/female_scav_uv_mindfront_helmet_kz45.webp"
-dest_files=["res://.godot/imported/female_scav_uv_mindfront_helmet_kz45.webp-8a0c59738f6b9ae4ff8ffe4f36d86a7e.ctex"]
+dest_files=["res://.godot/imported/female_scav_uv_mindfront_helmet_kz45.webp-8a0c59738f6b9ae4ff8ffe4f36d86a7e.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

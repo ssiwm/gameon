@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c726ipxi40bo5"
-path="res://.godot/imported/male_medic_uv_elvs_emt_uniform_pants_male.webp-763ee3575b7dc8321202715551a061f4.ctex"
+path.s3tc="res://.godot/imported/male_medic_uv_elvs_emt_uniform_pants_male.webp-763ee3575b7dc8321202715551a061f4.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "a2f8ec74408592bde0cede784d430f5e"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/char3d/mpfb/male_medic_uv_elvs_emt_uniform_pants_male.webp"
-dest_files=["res://.godot/imported/male_medic_uv_elvs_emt_uniform_pants_male.webp-763ee3575b7dc8321202715551a061f4.ctex"]
+dest_files=["res://.godot/imported/male_medic_uv_elvs_emt_uniform_pants_male.webp-763ee3575b7dc8321202715551a061f4.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

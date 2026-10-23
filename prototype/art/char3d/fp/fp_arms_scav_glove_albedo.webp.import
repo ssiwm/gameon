@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dpis58b5ybrvs"
-path="res://.godot/imported/fp_arms_scav_glove_albedo.webp-1ce7bb7be0be7a41d1d8f64ae1432b51.ctex"
+path.bptc="res://.godot/imported/fp_arms_scav_glove_albedo.webp-1ce7bb7be0be7a41d1d8f64ae1432b51.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "3ce448a9fc277a28c2330519ab7a1d40"
@@ -14,12 +15,12 @@ generator_parameters={
 [deps]
 
 source_file="res://art/char3d/fp/fp_arms_scav_glove_albedo.webp"
-dest_files=["res://.godot/imported/fp_arms_scav_glove_albedo.webp-1ce7bb7be0be7a41d1d8f64ae1432b51.ctex"]
+dest_files=["res://.godot/imported/fp_arms_scav_glove_albedo.webp-1ce7bb7be0be7a41d1d8f64ae1432b51.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

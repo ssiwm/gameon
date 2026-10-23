@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cyfohqgt6nv2n"
-path="res://.godot/imported/female_medic_female_medic_boots_albedo.webp-f5c4e12dc28babfc1db5483791c4b393.ctex"
+path.s3tc="res://.godot/imported/female_medic_female_medic_boots_albedo.webp-f5c4e12dc28babfc1db5483791c4b393.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "fcbb5f83a816394e6cd7fb1a0599e7e9"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/char3d/mpfb/female_medic_female_medic_boots_albedo.webp"
-dest_files=["res://.godot/imported/female_medic_female_medic_boots_albedo.webp-f5c4e12dc28babfc1db5483791c4b393.ctex"]
+dest_files=["res://.godot/imported/female_medic_female_medic_boots_albedo.webp-f5c4e12dc28babfc1db5483791c4b393.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

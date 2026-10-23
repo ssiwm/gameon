@@ -47,12 +47,48 @@ static func muzzle(base_muzzle: Vector3, ids: Array) -> Vector3:
 		add += float(part_info(String(id)).get("muzzle_add", 0.0))
 	return barrel_muzzle(base_muzzle, ids) + Vector3(add, 0.0, 0.0)
 
+## Model bazowy broni: wczytany raz na sesję i trzymany. Dawniej po wipe nowa postać wczytywała broń od nowa (stara zwolniła ostatnią
+## referencję, więc model wypadał z cache'u zasobów) — przestój do 110 ms w chwili odrodzenia (pomiar --perf 2026-10-23: gun_ciegno6, gun_kilof).
+## Trzymane są tylko bronie użyte w sesji (najwyżej 12 modeli). Broń z ekwipunku graczy wczytuje się w tle (`warm`, view3d co sekundę),
+## zanim pierwszy raz trafi do ręki — maczeta przy pierwszym cięciu w misji to był przestój 50 ms (pomiar --perf 2026-10-23, z1_m3).
+static var _scenes := {}
+static var _pending := {}            ## ścieżka → true: zlecenie ResourceLoader.load_threaded_request czeka na odbiór
+
+static func scene(path: String) -> PackedScene:
+	if not _scenes.has(path):
+		if _pending.has(path):
+			_pending.erase(path)
+			_scenes[path] = ResourceLoader.load_threaded_get(path) as PackedScene       # czeka na wątek, jeśli jeszcze wczytuje
+		if _scenes.get(path) == null:
+			_scenes[path] = load(path) as PackedScene
+	return _scenes[path]
+
+## Zleca wczytanie modelu w tle (nic, jeśli już jest albo jest w drodze).
+static func warm(path: String) -> void:
+	if _scenes.has(path) or _pending.has(path) or not ResourceLoader.exists(path):
+		return
+	if ResourceLoader.load_threaded_request(path) == OK:
+		_pending[path] = true
+
+## Odbiera gotowe modele z wczytywania w tle; nieudane zlecenie znika (scene() wczyta model zwykłym load()).
+static func poll() -> void:
+	for path in _pending.keys():
+		var st := ResourceLoader.load_threaded_get_status(String(path))
+		if st == ResourceLoader.THREAD_LOAD_LOADED:
+			_pending.erase(path)
+			_scenes[path] = ResourceLoader.load_threaded_get(String(path)) as PackedScene
+		elif st != ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			_pending.erase(path)
+
+static func pending() -> bool:
+	return not _pending.is_empty()
+
 ## Składa model broni `key` z częściami `ids` (Parts.decode). `base_muzzle` = wylot fabryczny (Char3D.gun_info). `notches` — nacięcia na kolbie
 ## (historia broni, GUNSMITH_PLAN §7.4), z czego `deep` głębokich (bossowie). `src_dir` — katalog modelu bazowego (strzelnica FPP: `fp/` z
 ## teksturami 4K; brak pliku — model z gry). Zwraca nowy węzeł (do dodania przez wołającego).
 static func build(key: String, ids: Array, base_muzzle: Vector3, notches := 0, deep := 0, src_dir := DIR) -> Node3D:
 	var path := src_dir + "gun_%s.glb" % key
-	var root := (load(path if ResourceLoader.exists(path) else DIR + "gun_%s.glb" % key) as PackedScene).instantiate() as Node3D
+	var root := scene(path if ResourceLoader.exists(path) else DIR + "gun_%s.glb" % key).instantiate() as Node3D
 	var hide := {}
 	for id in ids:
 		for h in part_info(String(id)).get("hides", []):

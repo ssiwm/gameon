@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b5w1ygcqfeewc"
-path="res://.godot/imported/female_scav_uv_elvs_emt_uniform_jacket_female.webp-c73c8ab4bebf85a2b6ef73aeb31b1024.ctex"
+path.s3tc="res://.godot/imported/female_scav_uv_elvs_emt_uniform_jacket_female.webp-c73c8ab4bebf85a2b6ef73aeb31b1024.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "7f11d824c38caedb79f3f43511999fea"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/char3d/mpfb/female_scav_uv_elvs_emt_uniform_jacket_female.webp"
-dest_files=["res://.godot/imported/female_scav_uv_elvs_emt_uniform_jacket_female.webp-c73c8ab4bebf85a2b6ef73aeb31b1024.ctex"]
+dest_files=["res://.godot/imported/female_scav_uv_elvs_emt_uniform_jacket_female.webp-c73c8ab4bebf85a2b6ef73aeb31b1024.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0
