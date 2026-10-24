@@ -30,6 +30,7 @@ const FirePatch := preload("res://scripts/fire_patch.gd")
 const WALL_HP_REF := 120.0
 const Enemy := preload("res://scripts/enemy.gd")
 const Controller := preload("res://scripts/weapon_controller.gd")
+const Motion := preload("res://scripts/weapon_motion.gd")
 
 var main: Node2D
 var level: Node2D
@@ -998,7 +999,9 @@ func _t_economy() -> void:
 	Scrap.request_buy_supply("defib")                      # nie na sprzedaż
 	_station_move("pyro_bench")
 	for i in 4:
-		await wait(0.36)                                  # kolejne świadome zakupy, poza limitem duplikatów
+		var purchase_start := Time.get_ticks_msec()
+		while Time.get_ticks_msec() - purchase_start < 450:
+			await frames(1) # limiter używa czasu rzeczywistego, timer gry może nadrobić długą klatkę
 		Scrap.request_buy_supply("frag")                   # 1 w zestawie + 3 kupione = sufit 4, czwarty „full”
 	Scrap.supply_result.disconnect(cb)
 	var reasons := res.map(func(r: Array) -> String: return String(r[1]))
@@ -3745,6 +3748,27 @@ func run_net_host(m: Node2D) -> void:
 	check("czat sieciowy: wiadomość klienta dociera z etykietą nadawcy (%s), seria 10 „flood” przepuszczona ≤ 2× (%d)" % [str(hi), flood.size()],
 		hi.size() == 1 and String(hi[0][0]).begins_with("P") and String(hi[0][0]) != "P?" and flood.size() <= 2)
 	check("sieć: zakupy klienta poza kryjówką nie obciążają banku ani kolejek", Scrap.bank == 1000 and not Scrap.has_part("m83_rpk40") and Scrap.orders.is_empty())
+	# Snapshot akcji dociera przed trafieniem, a przeładowanie rośnie do końca bez sinusoidy.
+	_net_motion_phase.rpc_id(cid)
+	var motion := Motion.new()
+	var first_melee := 1.0
+	var reload_samples := 0
+	var previous_phase := -1.0
+	var previous_id := -1
+	var backwards := false
+	for i in 210:
+		await wait(1.0 / 60.0)
+		motion.sample(cp.w_action, cp.w_action_clock, 1.0 / 60.0)
+		if motion.action.y == Motion.MELEE and motion.phase >= 0.0:
+			first_melee = minf(first_melee, motion.phase)
+		if motion.action.y == Motion.RELOAD and motion.phase >= 0.0:
+			reload_samples += 1
+			if motion.action.x == previous_id and motion.phase < previous_phase:
+				backwards = true
+			previous_phase = motion.phase
+			previous_id = motion.action.x
+	check("sieć: zamach kilofa dociera przed trafieniem 45%", first_melee < 0.25, "pierwsza faza %.3f" % first_melee)
+	check("sieć: przeładowanie ma rosnącą fazę i rzeczywisty czas", reload_samples > 30 and not backwards)
 	# Rzeczywisty zdalny człowiek, przy każdym właściwym stanowisku; lokalny host stoi poza ławą.
 	main._set_map("z1_hub")
 	await frames(3)
@@ -3823,6 +3847,19 @@ func run_net_client(m: Node2D) -> void:
 	check("sieć: klient zakończył operacje warsztatu", _net_shop_finished)
 	print("[WTEST] klient: koniec")
 	get_tree().quit(1 if failed else 0)
+
+## Prawdziwy klient publikuje zamach i przeładowanie; host obserwuje normalną replikację.
+@rpc("authority", "call_remote", "reliable")
+func _net_motion_phase() -> void:
+	wc.melee_id = Weapons.KILOF
+	wc.try_melee()
+	await wait(1.0)
+	wc.practice = true
+	wc.mags[wc.cur().id] = 1
+	wc.try_reload()
+	await wait(2.3)
+	wc._cancel_actions()
+	wc.practice = false
 
 ## Host zleca dodatkową fazę istniejącego testu sieci; wszystkie zakupy nadal idą normalnymi RPC Scrap.
 @rpc("authority", "call_remote", "reliable")

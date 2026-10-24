@@ -15,6 +15,7 @@ const Combat := preload("res://scripts/combat.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
+const Motion := preload("res://scripts/weapon_motion.gd")
 
 const HAND := Vector2(13, 14)         ## dłoń w klatce broni 72×28 w pikselach arkusza (obrót wokół niej; y = środek klatki, więc flip_v nie przesuwa); zgodne z tools/gun_icons_hd.py
 const FLASH_TIME := 0.055
@@ -58,6 +59,13 @@ var _facing := 1.0
 var _sq := 1.0
 var _sheet_ok := false
 var _local := false
+var _motion := Motion.new()
+var _reload_t := -1.0
+var _reload_variant := Motion.TACTICAL
+var _shot_elapsed := -1.0
+var _shot_key := ""
+var _shot_strength := 1.0
+var _cycle_duration := 0.1
 
 func setup(p: CharacterBody2D, c: Node) -> void:
 	player = p
@@ -123,6 +131,10 @@ func _exit_tree() -> void:
 func _on_shot(w: int) -> void:
 	var d := Weapons.def(w)
 	_cyc_t = 0.0
+	_cycle_duration = maxf(ctrl.def_of(w).cooldown, 0.1)
+	_shot_elapsed = 0.0
+	_shot_key = String(d.key)
+	_shot_strength = 0.65 if player.crouching else 1.0
 	if d.flash_size > 0.0:
 		_flash_t = FLASH_TIME * (1.0 + d.flash_size / 12.0)
 		_flash_seed = randf() * TAU
@@ -130,8 +142,7 @@ func _on_shot(w: int) -> void:
 		_flash_light.energy = d.flash_light
 
 func _on_swing(w: int) -> void:
-	_swing_t = 0.0
-	_swing_w = w
+	_swing_w = w # fazę bierze wspólny zegar, nie sygnał z klatki trafienia
 
 func _on_confirm(kind: int, _pos: Vector2) -> void:
 	_hit_t = HIT_TIME
@@ -167,10 +178,27 @@ func update(delta: float, tint: Color, facing: float, squash_y: float) -> void:
 		_draw_anim = 1.0
 	_prev_state = player.w_state
 	_draw_anim = maxf(0.0, _draw_anim - delta / maxf(d.draw_time, 0.1))
-	if _swing_t >= 0.0:
-		_swing_t += delta / maxf(Weapons.def(_swing_w).cooldown, 0.1)
-		if _swing_t >= 1.0:
-			_swing_t = -1.0
+	_motion.sample(player.w_action, player.w_action_clock, 0.0 if ctrl.is_owner() else delta)
+	_swing_t = _motion.phase if _motion.action.y == Motion.MELEE and _motion.phase < 1.0 else -1.0
+	_reload_t = _motion.phase if _motion.action.y == Motion.RELOAD else -1.0
+	_reload_variant = _motion.action.w
+	if _swing_t >= 0.0 and Weapons.is_valid(_motion.action.z):
+		_swing_w = _motion.action.z
+		if _motion.started and not ctrl.is_owner():
+			var md := Weapons.def(_swing_w)
+			Audio.play_variant_at(md.sfx, md.sfx_count, player.global_position, Audio.BUS_WEAPONS, md.sfx_vol - 2.0, 1.0)
+	if player.dead:
+		_swing_t = -1.0
+		_reload_t = -1.0
+		_shot_elapsed = -1.0
+	if _shot_elapsed >= 0.0:
+		_shot_elapsed += delta
+		if _shot_elapsed > 0.6 or _shot_key != String(d.key):
+			_shot_elapsed = -1.0
+	if _cyc_t >= 0.0:
+		_cyc_t += delta / _cycle_duration
+		if _cyc_t >= 1.0:
+			_cyc_t = -1.0
 	_update_gun(d)
 	_update_flash_light(d)
 	_update_continuous(d, delta)
@@ -214,7 +242,7 @@ func _update_gun(d: WeaponDef) -> void:
 		kick = ctrl.recoil * d.recoil
 		match player.w_state:
 			Controller.State.RELOAD:
-				var prog: float = ctrl.reload_progress() if ctrl.is_owner() else 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
+				var prog: float = maxf(_reload_t, 0.0)
 				# magazynek: broń opada, kołysze się i wraca
 				extra = sgn * (0.85 * sin(prog * PI)) * 0.9
 				pos.y += 2.0 * sin(prog * PI)
@@ -264,20 +292,21 @@ func _update_gun3d(d: WeaponDef) -> void:
 		kick = ctrl.recoil * d.recoil
 		match player.w_state:
 			Controller.State.RELOAD:
-				var prog: float = ctrl.reload_progress() if ctrl.is_owner() else 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
+				var prog: float = maxf(_reload_t, 0.0)
 				v = 0.85 * sin(prog * PI) * 0.9
 				rl = prog
 			Controller.State.CHARGE:
 				kick = -player.w_charge * 1.2
 		if _draw_anim > 0.0:
 			v = 1.1 * ease(_draw_anim, 2.2)
-	if _cyc_t >= 0.0:
-		_cyc_t += get_process_delta_time() / maxf(d.cooldown, 0.1)
-		if _cyc_t >= 1.0:
-			_cyc_t = -1.0
+	var recoil_pose := Motion.recoil_at(_shot_key, _shot_elapsed, _shot_strength)
+	c3d.gun_recoil_m = recoil_pose.x
+	c3d.gun_recoil_rad = recoil_pose.y
+	c3d.fire_t = _shot_elapsed
+	c3d.reload_variant = _reload_variant
 	c3d.gun_extra = v
-	c3d.gun_kick_px = kick
-	c3d.recoil_px = kick if not swinging else 0.0
+	c3d.gun_kick_px = kick if player.w_state == Controller.State.CHARGE else 0.0
+	c3d.recoil_px = 0.0
 	c3d.charge_t = clampf(player.w_charge, 0.0, 1.0) if player.w_state == Controller.State.CHARGE else 0.0
 	c3d.cycle_t = _cyc_t if (not swinging and rl < 0.0) else -1.0
 	c3d.reload_t = rl

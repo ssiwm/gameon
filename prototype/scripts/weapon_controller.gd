@@ -23,6 +23,7 @@ const Projectile := preload("res://scripts/projectile.gd")
 const Ammo := preload("res://scripts/ammo.gd")
 const Parts := preload("res://scripts/parts.gd")
 const Throwables := preload("res://scripts/throwables.gd")
+const Motion := preload("res://scripts/weapon_motion.gd")
 
 enum State { READY, DRAW, RELOAD, CHARGE, MELEE }
 
@@ -193,6 +194,34 @@ var _srv_tick := 0.0
 var _srv_fx_t := 0.0
 var _srv_patch_t := 0.0              ## HKM-9: ile płomienia upłynęło od ostatniego ognia na podłodze
 var _prev_w := -1
+var _action_seq := 0
+var _action := Vector4i.ZERO
+var _action_duration := 0.0
+var _action_elapsed := 0.0
+var _action_progress := 0.0
+
+## Zegar wizualny nie zadaje obrażeń; właściciel publikuje go razem ze stanem, serwer nadal liczy trafienie.
+func _begin_motion(kind: int, w: int, duration: float, variant := 0) -> void:
+	_action_seq += 1
+	_action = Vector4i(_action_seq, kind, w, variant)
+	_action_duration = maxf(duration, 0.05)
+	_action_elapsed = 0.0
+	_action_progress = 0.0
+	_sync_player()
+
+func _sync_motion() -> void:
+	if state == State.MELEE:
+		_action_duration = melee_total
+		_action_elapsed = clampf(melee_total - state_t, 0.0, melee_total)
+	elif state == State.RELOAD:
+		# Przeładowanie taktyczne może wydłużyć akcję: faza nie wraca do poprzedniej pozy.
+		_action_progress = maxf(_action_progress, reload_progress())
+		_action_duration = maxf(_rl_total, 0.05)
+		_action_elapsed = _action_progress * _action_duration
+	else:
+		_action.y = Motion.NONE
+	player.w_action = _action
+	player.w_action_clock = Vector2(_action_duration, _action_elapsed)
 
 func _ready() -> void:
 	player = get_parent() as CharacterBody2D
@@ -447,6 +476,7 @@ func _start_clear(d: WeaponDef) -> void:
 	_rl_pending = 0
 	_rl_total = (CLEAR_TIME + (DOUBLE_FEED_EXTRA if jammed(d.id) == "double" else 0.0)) * (1.0 - MASTERY_CLEAR_STEP * float(mastery_of(d.id)))
 	_rl_left = _rl_total
+	_begin_motion(Motion.RELOAD, d.id, _rl_total, Motion.CLEAR)
 	NoiseMgr.add_noise(NOISE_CLEAR, player.global_position, "reload")
 	if is_owner():
 		Audio.play_variant("reload_bolt", 1, Audio.BUS_WEAPONS, -8.0, 1.05)
@@ -674,6 +704,7 @@ func _sync_player() -> void:
 		return
 	player.weapon = loadout[slot]
 	player.w_state = state
+	_sync_motion()
 	player.w_charge = charge
 	player.w_firing = firing
 	player.w_hot = barrel_of(player.weapon)
@@ -768,7 +799,9 @@ func _cancel_actions() -> void:
 		_cancel_charge()
 	if state == State.MELEE:
 		state = State.READY
+		_melee_pending = false
 	firing = false
+	_sync_player()
 
 # ---------------------------------------------------------------- zmiana broni
 
@@ -1262,6 +1295,7 @@ func try_reload(auto := false) -> bool:
 		_rl_total = (d.reload_time + (d.reload_empty_extra if mag_of(d.id) <= 0 else 0.0)) * mastery_mult(d.id)
 		_rl_left = _rl_total
 		_reload_sfx(d)
+		_begin_motion(Motion.RELOAD, d.id, _rl_total, Motion.EMPTY if mag_of(d.id) <= 0 else Motion.TACTICAL)
 	NoiseMgr.add_noise(NOISE_RELOAD, player.global_position, "reload")
 	reload_started.emit(d.id)
 	return true
@@ -1282,6 +1316,7 @@ func _begin_round(d: WeaponDef) -> void:
 	_rl_total = d.reload_time * mastery_mult(d.id)
 	_rl_left = _rl_total
 	_rl_wait = 0.0
+	_begin_motion(Motion.RELOAD, d.id, _rl_total, Motion.ROUND)
 	_rl_req = true
 	if _free_ammo(d):
 		_rl_req = false
@@ -1383,6 +1418,7 @@ func _finish_reload() -> void:
 	_rl_left = 0.0
 	_rl_out = -1.0
 	clearing = false
+	_sync_player()
 
 func _cancel_reload() -> void:
 	var d := cur()
@@ -1448,6 +1484,7 @@ func try_melee() -> void:
 	NoiseMgr.add_noise(md.noise(0.0), player.global_position, "shot:" + md.key)
 	Audio.play_variant(md.sfx, md.sfx_count, Audio.BUS_WEAPONS, md.sfx_vol, 1.0)
 	Feel.shake(md.shake * 0.5)
+	_begin_motion(Motion.MELEE, melee_id, melee_total)
 	melee_swung.emit(melee_id)
 
 func _melee_resolve() -> void:
@@ -1491,22 +1528,6 @@ func _server_melee(origin: Vector2, dir: Vector2, w: int, shooter: int, e: float
 		var wall := space.intersect_ray(q)
 		if not wall.is_empty():
 			Arsenal.broadcast_hit(wall["position"], -dir, Arsenal.Mat.METAL, false, d.damage >= 50.0)
-	if NoiseMgr.has_network():
-		for peer in multiplayer.get_peers():
-			if peer != shooter:
-				_melee_remote.rpc_id(peer, origin, dir, w)
-	if shooter != NoiseMgr.local_id() or player.is_bot:
-		_remote_melee_fx(d, origin)
-
-@rpc("any_peer", "call_remote", "unreliable")
-func _melee_remote(origin: Vector2, _dir: Vector2, w: int) -> void:
-	if NoiseMgr.is_server() or multiplayer.get_remote_sender_id() != 1 or not Weapons.is_valid(w):
-		return
-	_remote_melee_fx(Weapons.def(w), origin)
-
-func _remote_melee_fx(d: WeaponDef, origin: Vector2) -> void:
-	Audio.play_variant_at(d.sfx, d.sfx_count, origin, Audio.BUS_WEAPONS, d.sfx_vol - 2.0, 1.0)
-	melee_swung.emit(d.id)
 
 # ---------------------------------------------------------------- podnoszenie i zamiana broni
 

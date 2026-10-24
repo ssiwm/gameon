@@ -72,6 +72,7 @@ static func build(key: String, ids: Array, base_muzzle: Vector3, notches := 0, d
 		var pn := (load(DIR + "gunpart_%s.glb" % id) as PackedScene).instantiate() as Node3D
 		if String(pi["mount"]) == "muzzle":
 			pn.position = bm
+		pn.set_meta("replaces", pi.get("hides", []))
 		root.add_child(pn)
 	if notches > 0:
 		add_notches(root, notches, deep)

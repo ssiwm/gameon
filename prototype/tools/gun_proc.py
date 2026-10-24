@@ -1007,7 +1007,8 @@ def _shotgun(v):
                              (590.0, rc(4.0, 12.0))], blued)
     cut(recv, prism("cut_port", fillet([(500.0, -9.0, 3.0), (578.0, -9.0, 3.0), (578.0, 9.0, 3.0), (500.0, 9.0, 3.0)]), -30.0, -4.0, None, bv=None, part=False))
     bevel(recv, 0.9, 2)
-    cyl("bolt", 499.0, 579.0, 9.5, (0.0, 0.0), bright, seg=24, bv=0.0)
+    with comp("bolt"):
+        cyl("bolt", 499.0, 579.0, 9.5, (0.0, 0.0), bright, seg=24, bv=0.0)
     trig("trigger", 396.0, 472.0, -46.0, blued, small)
     revolve("safety", [(-9.0, 0.0), (-9.0, 3.3), (9.0, 3.3), (9.0, 0.0)], (404.0, -53.0), small, axis="Y", seg=14, bv=0.3)
     pins("pin", ((418.0, -22.0), (452.0, -30.0)), 16.5, small, 2.6)
@@ -1017,11 +1018,13 @@ def _shotgun(v):
     with comp("tube"):
         sg_tube(mag_end, blued, small, cap_m)
     revolve("bead", [(-1.6, 0.0), (-1.6, 2.0), (1.6, 2.0), (1.6, 0.0)], (tip - 9.0, 11.6), brass, axis="Y", seg=12, bv=0.4, bseg=1)
-    for sy in (-1.0, 1.0):
-        prism("action_bar", [(580.0, -31.0), (650.0, -31.0), (650.0, -23.0), (580.0, -23.0)], sy * 13.4, sy * 15.2, small, bv=0.3, seg=1)
+    with comp("pump"):
+        for sy in (-1.0, 1.0):
+            prism("action_bar", [(580.0, -31.0), (650.0, -31.0), (650.0, -23.0), (580.0, -23.0)], sy * 13.4, sy * 15.2, small, bv=0.3, seg=1)
 
     # czółenko (drewno, rowki w mapie normalnych) i kolba: owalne przekroje wzdłuż gładkich linii grzbietu, spodu i szerokości
-    revolve("forend", [(640.0, 0.0), (640.0, 18.5), (647.0, 23.0), (833.0, 23.0), (840.0, 18.5), (840.0, 0.0)], (0.0, -27.0), fore_m, seg=24, bv=1.2, bseg=2)
+    with comp("pump"):
+        revolve("forend", [(640.0, 0.0), (640.0, 18.5), (647.0, 23.0), (833.0, 23.0), (840.0, 18.5), (840.0, 0.0)], (0.0, -27.0), fore_m, seg=24, bv=1.2, bseg=2)
     top = curve_fn([(22.0, -50.0), (150.0, -39.0), (270.0, -27.0), (305.0, -23.0), (335.0, -19.0), (358.0, -9.0), (374.0, -1.0)])
     bot = curve_fn([(22.0, -178.0), (120.0, -150.0), (200.0, -122.0), (262.0, -103.0), (292.0, -90.0), (318.0, -70.0), (345.0, -53.0), (374.0, -45.0)])
     wid = curve_fn([(22.0, 21.0), (150.0, 21.5), (260.0, 20.0), (300.0, 17.5), (340.0, 15.8), (374.0, 15.4)])    # węższa od komory — bez współpłaszczyzn
