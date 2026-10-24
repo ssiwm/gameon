@@ -22,6 +22,7 @@ const RunLog := preload("res://scripts/run_log.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
 const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
+const WORKSHOP_TEST := preload("res://scripts/workshop_test.gd")
 const STALKER_TEST := preload("res://scripts/stalker_test.gd")
 const RANGE_TEST := preload("res://scripts/range3d/range_test.gd")
 const FP_RANGE := preload("res://scripts/range3d/fp_mode.gd")
@@ -395,6 +396,9 @@ func _set_map(id: String) -> void:
 @rpc("authority", "call_local", "reliable")
 func _load_map_rpc(id: String) -> void:
 	level.load_map(id)
+	if NoiseMgr.is_server():
+		Scrap._action_at.clear()
+		Scrap._serviced.clear()          # nowy pobyt w kryjówce, także po nieudanej misji
 	mission.rebind()
 	if level.objective == "hub" and NoiseMgr.is_server():
 		Weather.forecast = Weather.roll()            # start w kryjówce (lobby / nowa kampania): prognoza od razu; klienci dostają ją z mission._sync
@@ -493,7 +497,7 @@ func _handle_cmdline() -> void:
 	if hd_world:
 		Sprites.newworld = true
 	# testy headless zakładają mapę 1.3 (gniazda, boss), chyba że flaga --mission wskaże inną
-	if _start_map == "" and (args.has("--range3d") or args.has("--rangetest")):
+	if _start_map == "" and (args.has("--range3d") or args.has("--rangetest") or args.has("--workshoptest")):
 		_start_map = "z1_hub"                       # strzelnica FPP (RANGE_FPS_PLAN.md): szpic startuje w kryjówce
 	if _start_map == "":
 		for a in args:
@@ -640,6 +644,11 @@ func _handle_cmdline() -> void:
 		rt.name = "RangeTest"
 		add_child(rt)
 		rt.run(self)
+	if args.has("--workshoptest"):
+		var wt := WORKSHOP_TEST.new()
+		wt.name = "WorkshopTest"
+		add_child(wt)
+		wt.run(self)
 	if range3d:
 		_dev_range3d()
 	if stalkertest:
@@ -2905,6 +2914,9 @@ func _gen_test() -> void:
 	var live_foes: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return not (e is RigidBody2D))
 
 	# warsztat (faza B złomu): ława, panel, zablokowane stojaki, zakup
+	var purchase_bench := get_tree().get_first_node_in_group("workshop") as Node2D
+	p.global_position = purchase_bench.global_position + Vector2(0, -2)  # dodatni test zakupu wymaga właściwego stanowiska
+	p.velocity = Vector2.ZERO
 	var racks_w := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "weapon" and n.static_display)
 	var locked_n := racks_w.filter(func(n: Node) -> bool: return level.is_locked_item(n)).size()
 	check.call("warsztat: ława + panel, stojaki zablokowane (%d z %d)" % [locked_n, racks_w.size()],

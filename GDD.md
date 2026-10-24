@@ -808,3 +808,9 @@ Wypełniane po playteście „kiedy się nudziłeś, a kiedy się bałeś" (§16
 | Data | Osoby | Nuda (moment) | Strach (moment) | Wniosek → zmiana |
 |---|---|---|---|---|
 | — | — | — | — | — |
+
+## Doprecyzowanie istniejącego warsztatu — 1.7.367
+
+Odblokowane części są własnością drużyny, a montaż należy do konkretnego gracza. Nowe odblokowanie nie zmienia samoczynnie jego broni; stare zapisane konfiguracje zachowuje jednorazowa migracja profilu. Operacje ekonomiczne i zapalniki wymagają żywego gracza przy właściwym stanowisku w kryjówce i są sprawdzane na serwerze. Zmiana magazynka zachowuje naboje, opłacona nieprzyjęta dostawa czeka na odbiór, a części w kolejce badań lub produkcji nie zajmują także puli znalezisk.
+
+Do oceny w trzech zewnętrznych sesjach: czas przygotowań drużyny (`mission_start.hub_seconds`), wybory zestawów (`equipment`), zużycie złomu i kolejki (`workshop`) oraz późniejsze użycie broni, hałas i wynik misji (`mission_end`). Zmiana nie dodaje stanowisk, walut ani nowych poziomów ulepszeń. Szczegóły: `prototype/WEAPONS.md`, regresje: `prototype/scripts/workshop_test.gd`.

@@ -372,3 +372,18 @@ tools/
 - hitbox wynurzonej Pijawki nie podąża za wychyleniem głowy w ataku; arkusze HD potworów mają warstwę glow tylko u Mimika i Trzoska
 - pozycje zdalnych graczy ufane (OK dla kooperacji, blokuje host migration)
 - relay tylko przez Steam (wymaga wtyczki GodotSteam, patrz wyżej); bez niej tylko ENet P2P/LAN
+
+## Warsztat 1.7.367 — weryfikacja i zasady
+
+Odblokowania są wspólne, a montaż prywatny i jawny. Zakup części montuje ją kupującemu; kolegom nie zmienia zestawu. Starszy profil jednorazowo utrwala poprzedni automatyczny montaż. Serwer sprawdza nadawcę, życie, kryjówkę i rzeczywisty zasięg odpowiedniego stanowiska; samo otwarcie panelu nie daje prawa do operacji. Powtórzenia zakupów mają limit 350 ms, a wymiana konkretnej części eksploatacyjnej jest możliwa raz podczas jednego pobytu w kryjówce.
+
+Nieprzyjęta reszta opłaconych nabojów pozostaje w zapisanej dostawie: odbiór przy prasie, a dla 40 mm przy pirotechnice. Zmiana magazynka nie usuwa ani nie dodaje nabojów. Panel filtruje bronie, pamięta wybór, pokazuje kolejki i rzeczywiste porównanie zestawu; długie treści można przewijać.
+
+```bash
+godot --headless --path prototype --import
+godot --headless --path prototype -- --host --port=8952 --workshoptest --autoquit=60
+bash prototype/tools/test_weapons.sh
+godot --headless --path prototype -- --host --rangetest --autoquit=75
+```
+
+Test warsztatu obejmuje autoryzację, duplikaty, amunicję podczas zmiany części i zestawu, opóźnione przeładowanie, cofanie tymczasowego zwrotu amunicji po wipe, migrację profilu, badania/tokarkę, częściowe dostawy, zapis, snapshot dołączającego oraz UI. Poza podsumowaniem PASS log nie może zawierać `SCRIPT ERROR` ani `Parse Error`. W dzienniku sesji `mission_start` ma `hub_seconds` (czas przygotowań), `equipment` (broń, kody części, masa każdego człowieka) i `workshop` (stan ekonomii/kolejek na wyjściu). Dane zostają w lokalnym dzienniku hosta; pozwalają zestawić przygotowania z obrażeniami, zabójstwami i hałasem w `mission_end`.
