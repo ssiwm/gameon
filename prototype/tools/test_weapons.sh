@@ -19,10 +19,19 @@ godot --headless --path . -- --host --port=8951 --weaptestnet --autoquit=60 >"$L
 HOST=$!
 sleep 4
 godot --headless --path . -- --join=127.0.0.1 --port=8951 --weaptestclient --autoquit=40 >"$LOG/net_client.log" 2>&1
+client_status=$?
 wait $HOST
 n=$?
+[ $client_status -ne 0 ] && rc=1
 grep -a "\[WTEST\]" "$LOG/net_host.log" | grep -a -E "FAIL|====" || true
 [ $n -ne 0 ] && rc=1
+
+# Błąd GDScript może przerwać pojedynczą korutynę bez niezerowego kodu procesu.
+for test_log in "$LOG/unit.log" "$LOG/net_host.log" "$LOG/net_client.log"; do
+  if grep -a -E "SCRIPT ERROR|Parse Error|\[WTEST\] FAIL" "$test_log"; then rc=1; fi
+done
+grep -a -q "\[WTEST\] ==== " "$LOG/unit.log" || rc=1
+grep -a -q "\[WTEST\] ==== sieć:" "$LOG/net_host.log" || rc=1
 
 [ $rc -eq 0 ] && echo "WSZYSTKO OK" || echo "BŁĘDY — logi w $LOG"
 exit $rc

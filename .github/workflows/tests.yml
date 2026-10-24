@@ -100,6 +100,12 @@ jobs:
       - uses: ./.github/actions/godot-setup
         with:
           godot-version: ${{ env.GODOT_VERSION }}
+      - name: Warsztat — autoryzacja, magazynki, migracja i dostawy
+        run: |
+          set -o pipefail
+          godot --headless --path prototype -- --host --port=8952 --workshoptest --autoquit=60 2>&1 | tee workshop.log
+          ! rg -a "SCRIPT ERROR|Parse Error" workshop.log
+          rg -a "\[WORKSHOP-TEST\] ==== .*błędów: 0" workshop.log
       - name: Bronie i sieć (test_weapons.sh)
         run: bash prototype/tools/test_weapons.sh
       - name: Logi testów broni

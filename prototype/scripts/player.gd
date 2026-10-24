@@ -488,7 +488,11 @@ func _sync_perks() -> void:
 	for w in Weapons.COUNT:
 		f.append(Profile.fit_code(w))
 	if f != fits:
+		if weapons != null:
+			weapons._cancel_actions()     # kończymy przeładowanie według poprzedniej konfiguracji
 		fits = f                        # montaż części broni (parts.gd) — kontroler buduje z niego definicję strzału
+		if weapons != null:
+			weapons.configuration_changed()
 	var before := max_hp()
 	perks = Perks.to_indexes(Profile.equipped)
 	var after := max_hp()

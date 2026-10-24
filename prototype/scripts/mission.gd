@@ -81,6 +81,7 @@ var _exit_fx: Node2D
 var _was_dead := {}          # nazwa gracza -> bool (liczenie upadków, serwer)
 var _down_at := {}           # nazwa gracza -> [czas misji, pozycja] w chwili upadku (dziennik sesji)
 var _logged_phase := -1      # ostatnia faza zapisana w dzienniku sesji
+var _hub_at := -1             ## początek przygotowań drużyny, do pomiarów warsztatu
 var _pos_t := 0.0            # s do następnej próbki pozycji graczy w dzienniku sesji (SessionLog.POS_EVERY)
 var _peak_all := 0.0         # najwyższa Uwaga w całej misji (peak_noise liczy tylko do końca celu głównego)
 
@@ -475,10 +476,12 @@ func log_start() -> void:
 	_peak_all = 0.0
 	_down_at.clear()
 	if kind == "hub":
+		_hub_at = Time.get_ticks_msec()
 		SessionLog.leave_mission()
 		return
 	var humans := 0
 	var bots := 0
+	var equipment: Array = []
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.is_queued_for_deletion():
 			continue
@@ -486,6 +489,7 @@ func log_start() -> void:
 			bots += 1
 		else:
 			humans += 1
+			equipment.append({"who": int(p.display_id), "kit": p.weapons.kit(), "fits": Array(p.fits), "mass": snappedf(p.weapons.kit_mass(), 0.01)})
 	var lvl := get_tree().get_first_node_in_group("level")
 	var row := {"audio": Audio.source_set(), "map": String(lvl.map_id) if lvl != null else "", "kind": kind,
 		"difficulty": Difficulty.level_name(), "mode": "night_shift" if NightShift.active else "campaign", "attempt": attempts,
@@ -493,6 +497,11 @@ func log_start() -> void:
 	if NightShift.active:
 		row["stage"] = NightShift.stage
 		row["mods"] = NightShift.mods
+	row["equipment"] = equipment
+	row["workshop"] = {"bank": Scrap.bank, "samples": Scrap.samples, "orders": Scrap.orders.duplicate(), "research": Scrap.research.duplicate(), "lathe": Scrap.lathe.duplicate(), "deliveries": Scrap.deliveries.duplicate()}
+	if _hub_at >= 0:
+		row["hub_seconds"] = snappedf(float(Time.get_ticks_msec() - _hub_at) / 1000.0, 0.1)
+		_hub_at = -1
 	SessionLog.mission_start(row)
 
 ## Koniec próby: "success", "failed" (Nocny Dyżur) albo "wipe" (kampania: zaraz po nim nowa próba tej samej misji).

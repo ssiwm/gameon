@@ -31,6 +31,7 @@ signal weapon_hit(kind: int, weapon: int, rank: int)    ## trafienie lokalnego s
 signal rounds_granted(weapon: int, count: int)
 
 var reserve: Dictionary = {}
+var returned: Dictionary = {}            ## zwykłe naboje zwrócone przy pełnej puli; zużywane przed zapasem, bez mnożnika znajdziek
 var stock: Dictionary = {}               ## rzucane przedmioty (throwables.gd): rodzaj → liczba, wspólny zapas drużyny
 var throw_sel := 0                       ## wybrany rodzaj u TEGO gracza (indeks w Throwables.ORDER), nie replikowany
 signal stock_changed
@@ -48,6 +49,7 @@ func _reset_local() -> void:
 	stock.merge(special)
 	stock_changed.emit()
 	reserve.clear()
+	returned.clear()
 	for d in Weapons.defs():
 		if d.uses_ammo() and not d.infinite:
 			var key := pool(d.id)
@@ -95,6 +97,7 @@ func begin_mission(new_run: bool) -> void:
 		stock = _snapshot.duplicate()
 	_snapshot = stock.duplicate()
 	_push_stock()
+	Scrap.delivery_checkpoint(new_run)       # zwroty z nieudanej misji nie mogą podwoić zachowanego zapasu
 
 ## Zapas wczytany z zapisu hosta (scrap.gd) — tylko znane rodzaje, w granicach maksimum.
 func load_gear(saved: Dictionary) -> void:
@@ -120,7 +123,7 @@ func get_reserve(w: int, t := 0) -> int:
 		return get_throwable(sk) if sk != "" else 0
 	if d.infinite:
 		return 9999
-	return int(reserve.get(pool(w), 0))
+	return int(reserve.get(pool(w), 0)) + int(returned.get(pool(w), 0))
 
 func is_full(w: int, t := 0) -> bool:
 	var d := Weapons.def(w)
@@ -138,6 +141,7 @@ func set_reserve(w: int, n: int, t := 0) -> void:
 			_push_stock()
 		return
 	reserve[pool(w)] = maxi(0, n)
+	returned.erase(pool(w))
 	_push()
 
 # ---------------------------------------------------------------- zapas (serwer)
@@ -178,21 +182,25 @@ func take_rounds(w: int, want: int, t := 0) -> int:
 	if d.infinite:
 		return want
 	var key := pool(w)
+	var held := int(returned.get(key, 0))
+	var from_return := mini(held, maxi(0, want))
+	if from_return > 0:
+		returned[key] = held - from_return
 	var have := int(reserve.get(key, 0))
-	var got := mini(have, want)
-	if got > 0:
+	var got := mini(have, maxi(0, want - from_return))
+	if got > 0 or from_return > 0:
 		reserve[key] = have - got
 		_push()
-	return got
+	return got + from_return
 
 func _push() -> void:
 	reserve_changed.emit()
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_sync_reserve.rpc(reserve)
+		_sync_reserve.rpc(reserve, returned)
 
 func _on_peer_connected(id: int) -> void:
 	if NoiseMgr.is_server():
-		_sync_reserve.rpc_id(id, reserve)
+		_sync_reserve.rpc_id(id, reserve, returned)
 		_sync_stock.rpc_id(id, stock)
 
 # ---------------------------------------------------------------- rzucane przedmioty
@@ -270,8 +278,9 @@ func _throw_server(kind: String, pos: Vector2, vel: Vector2, shooter: int) -> vo
 			pass
 
 @rpc("authority", "call_remote", "reliable")
-func _sync_reserve(data: Dictionary) -> void:
+func _sync_reserve(data: Dictionary, overflow: Dictionary = {}) -> void:
 	reserve = data
+	returned = overflow
 	reserve_changed.emit()
 
 ## Gracz (właściciel magazynka) prosi o `want` naboi na koniec przeładowania.
@@ -287,7 +296,7 @@ func deposit(w: int, n: int, t := 0) -> void:
 	if n <= 0:
 		return
 	if not NoiseMgr.has_network() or NoiseMgr.is_server():
-		add_reserve(w, n, t)
+		_return_rounds(w, n, t)
 	else:
 		_deposit_rpc.rpc_id(1, w, n, t)
 
@@ -297,7 +306,30 @@ func _deposit_rpc(w: int, n: int, t: int) -> void:
 		return
 	if not Ammo.valid(String(Weapons.def(w).caliber), t):
 		return
-	add_reserve(w, clampi(n, 0, Parts.max_capacity(Weapons.def(w))), t)       # magazynek z nabojem w komorze (30+1)
+	_return_rounds(w, clampi(n, 0, Parts.max_capacity(Weapons.def(w))), t)       # magazynek z nabojem w komorze (30+1)
+
+## Zwrot własnych nabojów nie jest znaleziskiem: pełna pula i AMMO FAMINE nie mogą ich skasować.
+func _return_rounds(w: int, n: int, t: int) -> void:
+	if not NoiseMgr.is_server() or not Weapons.is_valid(w) or n <= 0:
+		return
+	var d := Weapons.def(w)
+	if not d.uses_ammo() or d.infinite or not Ammo.valid(String(d.caliber), t):
+		return
+	if t > 0:
+		var kind := special_kind(w, t)
+		var accepted := add_throwable(kind, n)
+		if accepted < n:
+			Scrap.deliveries[kind] = int(Scrap.deliveries.get(kind, 0)) + n - accepted
+			if NoiseMgr.safe_zone:
+				Scrap.save_progress()      # w misji zwrot jest tymczasowy, jak reszta zaopatrzenia
+			Scrap._push()
+		return
+	var key := pool(w)
+	var put := mini(n, maxi(0, pool_max(w) - int(reserve.get(key, 0))))
+	reserve[key] = int(reserve.get(key, 0)) + put
+	if put < n:
+		returned[key] = int(returned.get(key, 0)) + n - put
+	_push()
 
 ## Czy `peer_id` to żywy człowiek w tej sesji (serwer nie przyjmuje zwrotów naboi od obcych).
 func _is_human_peer(peer_id: int) -> bool:

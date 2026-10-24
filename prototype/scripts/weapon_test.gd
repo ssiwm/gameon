@@ -38,6 +38,7 @@ var wc: Node
 var failed := 0
 var total := 0
 var _dummy_serial := 0
+var _net_shop_finished := false
 
 # ---------------------------------------------------------------- narzędzia
 
@@ -167,6 +168,35 @@ func shoot(w: int, shots: int, gap := 0.15) -> void:
 		wc.cd = 0.0
 		wc._fire_shot(d)
 		await wait(gap)
+
+## Dodatnie testy zakupów używają prawdziwej kryjówki i stanowisk; nie obchodzą walidatora serwera.
+func _station_begin(group: String) -> Dictionary:
+	var saved := {"map": level.map_id, "pos": player.global_position, "process": player.process_mode}
+	if level.map_id != "z1_hub":
+		main._set_map("z1_hub")
+		await frames(3)
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+	_station_move(group)
+	return saved
+
+func _station_move(group: String) -> void:
+	var station := get_tree().get_first_node_in_group(group)
+	assert(station != null)
+	player.global_position = station.global_position + Vector2(0, -2)
+	player.velocity = Vector2.ZERO
+
+func _station_end(saved: Dictionary) -> void:
+	if level.map_id != String(saved["map"]):
+		main._set_map(String(saved["map"]))
+		await frames(3)
+	for e in get_tree().get_nodes_in_group("enemies"):
+		e.process_mode = Node.PROCESS_MODE_DISABLED
+		e.set("collision_layer", 0)
+		e.visible = false
+	player.global_position = saved["pos"]
+	player.velocity = Vector2.ZERO
+	player.process_mode = int(saved["process"])
+	NoiseMgr.calm()
 
 # ---------------------------------------------------------------- scenariusze
 
@@ -954,6 +984,7 @@ func _t_economy() -> void:
 	check("ekonomia: ładunek droższy od miny, mina od granatu odłamkowego (%d > %d > %d)" % [Throwables.price_of("charge"), Throwables.price_of("mine"), Throwables.price_of("frag")],
 		Throwables.price_of("charge") > Throwables.price_of("mine") and Throwables.price_of("mine") > Throwables.price_of("frag"))
 	# zakup
+	var station_state := await _station_begin("pyro_bench")
 	var saved_bank := Scrap.bank
 	var res: Array = []
 	var cb := func(kind: String, ok: bool, reason: String) -> void: res.append([kind, reason])
@@ -963,8 +994,11 @@ func _t_economy() -> void:
 	Scrap.request_buy_supply("mine")                       # za mało
 	Scrap.bank = 500
 	Scrap.request_buy_supply("mine")                       # ok
+	_station_move("workshop")
 	Scrap.request_buy_supply("defib")                      # nie na sprzedaż
+	_station_move("pyro_bench")
 	for i in 4:
+		await wait(0.36)                                  # kolejne świadome zakupy, poza limitem duplikatów
 		Scrap.request_buy_supply("frag")                   # 1 w zestawie + 3 kupione = sufit 4, czwarty „full”
 	Scrap.supply_result.disconnect(cb)
 	var reasons := res.map(func(r: Array) -> String: return String(r[1]))
@@ -972,6 +1006,7 @@ func _t_economy() -> void:
 	check("zakup zaopatrzenia: %s, portfel −%d, zapas mina %d frag %d" % [str(reasons), spent, Arsenal.get_throwable("mine"), Arsenal.get_throwable("frag")],
 		reasons == ["poor", "ok", "invalid", "ok", "ok", "ok", "full"] and spent == Throwables.price_of("mine") + 3 * Throwables.price_of("frag") and Arsenal.get_throwable("mine") == 1 and Arsenal.get_throwable("frag") == 4)
 	Scrap.bank = saved_bank
+	await _station_end(station_state)
 	# zapas przechodzi do następnej misji, wipe wraca do stanu z początku misji
 	give_gear(3, 0, 2, 1, 0, 0, 0, 0)
 	Arsenal.begin_mission(true)
@@ -2282,6 +2317,7 @@ func _t_maintenance() -> void:
 	check("konserwacja: sprężyny zużyte w 60 %% — czyszczenie do %.0f %% (%.1f s, po nim %.0f), zestaw w misji też najwyżej do %.0f" % [cap, ct, after_clean, Profile.condition("m83")],
 		cap == 70.0 and is_equal_approx(ct, 3.0 * Profile.CLEAN_STEP) and after_clean == 70.0 and Profile.condition("m83") == 70.0)
 	# wymiana za złom drużyny (serwer)
+	var station_state := await _station_begin("service_bench")
 	var res: Array = []
 	var cb := func(w: int, part: String, ok: bool, reason: String) -> void: res.append(reason)
 	Scrap.service_result.connect(cb)
@@ -2320,6 +2356,7 @@ func _t_maintenance() -> void:
 	Profile.cond = cond0
 	Profile.worn = worn0
 	Settings.reliability_idx = rel0
+	await _station_end(station_state)
 	equip(Weapons.M83)
 	await _settle_player()
 
@@ -2616,6 +2653,7 @@ func _t_ammo_calibers() -> void:
 	var bank0: int = Scrap.bank
 	var loot0: int = Scrap.loot
 	var orders0: Array = Scrap.orders.duplicate()
+	var station_state := await _station_begin("press_bench")
 	Scrap.bank = 1000
 	Scrap.loot = 0
 	Scrap.orders.clear()
@@ -2639,6 +2677,7 @@ func _t_ammo_calibers() -> void:
 		and bought == Throwables.box_of("ammo_slug") and Arsenal.get_reserve(Weapons.SPREAD12, 1) == bought and Arsenal.get_reserve(Weapons.SRUT8, 1) == bought and Scrap.orders.is_empty())
 	ores.clear()
 	for i in Scrap.PRESS_SLOTS:
+		await wait(0.36)
 		Scrap.request_order("ammo_slug")                          # 10 + 3 × 10 = 40 = max
 	Scrap.request_order("ammo_mag12")                              # prasa pełna
 	await frames(2)
@@ -2719,6 +2758,7 @@ func _t_ammo_calibers() -> void:
 	check("prasa, pirotechnika i ława: każde stanowisko ma swoje zaopatrzenie (%s)" % ui_info, ui_ok)
 	# zapalniki (stół pirotechniczny): ustawienie drużyny, granat i ładunek biorą wybraną długość
 	var fuses0: Dictionary = Scrap.fuses.duplicate()
+	_station_move("pyro_bench")
 	Scrap.request_fuse("frag", 0)
 	Scrap.request_fuse("charge", 2)
 	Scrap.request_fuse("smoke", 1)                                  # dymny nie ma wyboru — bez zmian
@@ -2746,6 +2786,9 @@ func _t_ammo_calibers() -> void:
 	equip(Weapons.M83)
 
 ## Naboje 40 mm (1.7.318): kartacz działa z bliska bez uzbrajania, oświetlający wyrzuca flarę na spadochronie, dymny stawia chmurę;
+	await _station_end(station_state)
+
+
 ## elita upuszcza pudełko amunicji specjalnej do noszonej broni, a zrzut zaopatrzenia z amunicją dokłada całe pudełko.
 func _t_ammo_40mm() -> void:
 	var he := Weapons.def_ammo(Weapons.GNIEW4, 0)
@@ -2834,6 +2877,7 @@ func _t_ammo_40mm() -> void:
 ## Pracownia (WORKSHOP_PLAN.md W6a, 1.7.357): próbki do łupu misji (wipe zabiera, ekstrakcja do banku), części broni specjalnych tylko z badań
 ## (ława odmawia), badanie za próbki i złom, jedno na misję, gotowe po udanej misji; panel pracowni.
 func _t_research() -> void:
+	var station_state := await _station_begin("workshop")
 	var bank0: int = Scrap.bank
 	var loot0: int = Scrap.loot
 	var smp0: int = Scrap.samples
@@ -2869,6 +2913,7 @@ func _t_research() -> void:
 	Scrap.research_result.connect(rcb)
 	var lc: Vector2i = Scrap.research_cost("lr7_lens")
 	var bank1: int = Scrap.bank
+	_station_move("lab_bench")
 	Scrap.request_research("lr7_lens")
 	Scrap.request_research("lr7_cell")                             # pracownia zajęta (jedno badanie na misję)
 	Scrap.request_research("m83_pbs1")                             # nie broń specjalna
@@ -2888,6 +2933,7 @@ func _t_research() -> void:
 	Scrap.machining_result.connect(mcb)
 	Scrap.schematics["lr7_cell"] = true
 	var bank2: int = Scrap.bank
+	_station_move("lathe_bench")
 	Scrap.request_machining("lr7_coil")                            # brak schematu
 	Scrap.request_machining("lr7_lens")
 	Scrap.request_machining("lr7_cell")                            # tokarka zajęta
@@ -2949,6 +2995,9 @@ func _t_research() -> void:
 	Settings.reliability_idx = rel0
 
 ## Masa ekwipunku (WORKSHOP_PLAN.md W5, 1.7.356): masa broni z częściami, zestaw startowy = punkt odniesienia (mnożniki 1), ciężki zestaw biegnie
+	await _station_end(station_state)
+
+
 ## głośniej i wolniej, części zmieniają masę, obsługa klasyczna i boty bez zmian.
 func _t_mass() -> void:
 	var real0: bool = Settings.realistic_handling
@@ -3054,7 +3103,7 @@ func _t_parts() -> void:
 	# montaż: samomontaż pierwszej odblokowanej części, wybór gracza, element fabryczny
 	Scrap.parts["m83_rpk40"] = true
 	Scrap.parts["m83_drum75"] = true
-	check("samomontaż: gniazdo bez wyboru bierze pierwszą odblokowaną część (%s)" % Profile.fitted(key, "feed"), Profile.fitted(key, "feed") == "m83_rpk40")
+	check("nowe odblokowanie nie montuje się bez wyboru gracza", Profile.fitted(key, "feed") == "")
 	Profile.set_fit(key, "feed", "m83_drum75")
 	check("wybór gracza: bęben 75 (%s)" % Profile.fitted(key, "feed"), Profile.fitted(key, "feed") == "m83_drum75")
 	Profile.set_fit(key, "feed", "")
@@ -3084,6 +3133,7 @@ func _t_parts() -> void:
 	check("bez części broń gracza jest fabryczna (magazynek %d)" % wc.cur().mag, wc.cur().mag == Weapons.def(Weapons.M83).mag and player.fits[Weapons.M83] == 0)
 	# migracja zapisu sprzed 1.7.319: poziom 2 M-83 = magazynek RPK i lufa RPK, samomontaż daje tę samą broń co dawniej
 	Scrap.migrate_levels({Weapons.M83: 2, Weapons.P64: 3})
+	Profile.migrate_fits()
 	var mig := Weapons.def_build(Weapons.M83, Weapons.build_of(0, Profile.fit_code(Weapons.M83)))
 	check("migracja poziomów: M-83 poz. 2 → RPK 40 + lufa RPK (magazynek %d), P-83 poz. 3 → 3 części (%d)" % [mig.mag, Scrap.parts_owned(Weapons.P64)],
 		Scrap.has_part("m83_rpk40") and Scrap.has_part("m83_rpkbar") and not Scrap.has_part("m83_pbs1") and mig.mag == 40 and Scrap.parts_owned(Weapons.P64) == 3)
@@ -3642,6 +3692,7 @@ func run_net_host(m: Node2D) -> void:
 		e.visible = false
 	player = cp
 	# części (1.7.319): drużyna ma tłumik PBS-1 — klient nic nie wybiera, więc gniazdo wylotu montuje go samo, a jego player.fits dociera do hosta
+	Scrap.bank = 1000
 	Scrap.parts["m83_pbs1"] = true
 	Scrap._push()
 	var pbs_code := Parts.encode_ids("m83", ["m83_pbs1"])
@@ -3693,7 +3744,28 @@ func run_net_host(m: Node2D) -> void:
 	var flood := chat_lines.filter(func(l: Array) -> bool: return String(l[1]).begins_with("flood"))
 	check("czat sieciowy: wiadomość klienta dociera z etykietą nadawcy (%s), seria 10 „flood” przepuszczona ≤ 2× (%d)" % [str(hi), flood.size()],
 		hi.size() == 1 and String(hi[0][0]).begins_with("P") and String(hi[0][0]) != "P?" and flood.size() <= 2)
+	check("sieć: zakupy klienta poza kryjówką nie obciążają banku ani kolejek", Scrap.bank == 1000 and not Scrap.has_part("m83_rpk40") and Scrap.orders.is_empty())
+	# Rzeczywisty zdalny człowiek, przy każdym właściwym stanowisku; lokalny host stoi poza ławą.
+	main._set_map("z1_hub")
+	await frames(3)
+	for actor in main._players.get_children():
+		if not actor.is_bot and actor.is_multiplayer_authority():
+			actor.global_position = level.spawn_for(1)
+	Scrap.unlocked[Weapons.LR7] = true
+	Scrap.samples = 10
+	Scrap.deliveries["ammo_slug"] = 5
+	Arsenal.stock["ammo_slug"] = 0
+	Scrap._push()
+	var cost := Scrap.part_cost("m83_rpk40", cid) + Scrap.press_price("ammo_slug") + int(Scrap.SERVICE_COST["barrel"]) + Scrap.research_cost("lr7_lens").y
+	_net_shop_phase.rpc_id(cid)
+	var shop_wait := 0.0
+	while not _net_shop_finished and shop_wait < 20.0:
+		await wait(0.2)
+		shop_wait += 0.2
+	check("sieć: zdalny gracz kupuje i bada przy właściwych stanowiskach", _net_shop_finished and Scrap.has_part("m83_rpk40") and Scrap.research == ["lr7_lens"] and Scrap.orders == ["ammo_slug"] and Scrap.bank == 1000 - cost)
+	check("sieć: zdalny odbiór dostawy i jego duplikat zachowują naboje", Arsenal.get_throwable("ammo_slug") == 5 and not Scrap.deliveries.has("ammo_slug") and Scrap.fuse_index("frag") == 0)
 	print("[WTEST] ==== sieć: %d/%d OK ====" % [total - failed, total])
+	await wait(0.5)                    # klient kończy po potwierdzeniu; nie odpinamy mu peera podczas rysowania HUD/audio
 	get_tree().quit(1 if failed > 0 else 0)
 
 ## Klient: strzela 10 razy (legalnie, z rytmem), potem próbuje „zalać” serwer żądaniami.
@@ -3710,6 +3782,7 @@ func run_net_client(m: Node2D) -> void:
 	if me == null:
 		get_tree().quit(1)
 		return
+	Profile.fits = {}
 	Profile.add_xp(1800, "test")                  # L6: oba sloty i Weteran
 	Profile.equip(0, "veteran")
 	Profile.equip(1, "smith")
@@ -3724,7 +3797,12 @@ func run_net_client(m: Node2D) -> void:
 	await wait(0.8)
 	for i in 10:
 		chat_client.send("flood %d" % i)                     # klient nie ogranicza — tempo pilnuje serwer
-	var d: WeaponDef = wc.cur()                   # broń gracza: tłumik PBS-1 zamontował się sam (drużyna go ma)
+	check("sieć: odblokowanie drużyny nie zmienia montażu klienta", wc.fit_of(Weapons.M83) == 0)
+	Profile.set_fit("m83", "muzzle", "m83_pbs1")
+	Scrap.request_part("m83_rpk40")                  # próba zakupu poza kryjówką: serwer musi odrzucić
+	Scrap.request_order("ammo_slug")
+	Scrap.request_service(Weapons.M83, "barrel")
+	var d: WeaponDef = wc.cur()                   # tłumik zamontowany świadomie przez klienta
 	var predicted_before := get_tree().current_scene.get_child_count()
 	for i in 10:
 		wc.cd = 0.0
@@ -3738,5 +3816,55 @@ func run_net_client(m: Node2D) -> void:
 	for i in 20:
 		wc._fire_request.rpc_id(1, muzzle, Vector2.RIGHT, Weapons.M83, randi(), 0.0, forged)
 	await wait(2.0)
+	var shop_wait := 0.0
+	while not _net_shop_finished and shop_wait < 30.0:
+		await wait(0.2)
+		shop_wait += 0.2
+	check("sieć: klient zakończył operacje warsztatu", _net_shop_finished)
 	print("[WTEST] klient: koniec")
-	get_tree().quit(0)
+	get_tree().quit(1 if failed else 0)
+
+## Host zleca dodatkową fazę istniejącego testu sieci; wszystkie zakupy nadal idą normalnymi RPC Scrap.
+@rpc("authority", "call_remote", "reliable")
+func _net_shop_phase() -> void:
+	var map_wait := 0.0
+	while main.level.map_id != "z1_hub" and map_wait < 10.0:
+		await wait(0.2)
+		map_wait += 0.2
+	if main.level.map_id != "z1_hub":
+		return
+	player.set_physics_process(false)
+	_station_move("workshop")
+	await wait(0.4)                              # replikacja pozycji do hosta
+	Scrap.request_part("m83_rpk40")
+	Scrap.request_part("m83_rpk40")              # powtórzenie bez drugiej opłaty
+	await wait(0.4)
+	_station_move("press_bench")
+	await wait(0.4)
+	check("sieć: klient otrzymał snapshot gotowej dostawy", int(Scrap.deliveries.get("ammo_slug", 0)) == 5)
+	Scrap.request_order("ammo_slug")
+	Scrap.request_claim("ammo_slug")
+	Scrap.request_claim("ammo_slug")
+	await wait(0.4)
+	_station_move("service_bench")
+	await wait(0.4)
+	Profile.worn = {"m83": {"barrel": 80.0}}
+	Scrap.request_service(Weapons.M83, "barrel")
+	Scrap.request_service(Weapons.M83, "barrel")
+	await wait(0.4)
+	_station_move("pyro_bench")
+	await wait(0.4)
+	Scrap.request_fuse("frag", 0)
+	_station_move("lab_bench")
+	await wait(0.4)
+	Scrap.request_research("lr7_lens")
+	await wait(0.4)
+	check("sieć: tylko kupujący montuje część i dostaje wymianę lufy", Profile.fitted("m83", "feed") == "m83_rpk40" and Profile.part_wear("m83", "barrel") == 0.0)
+	player.set_physics_process(true)
+	_net_shop_ack.rpc_id(1)
+	_net_shop_finished = true
+
+@rpc("any_peer", "call_remote", "reliable")
+func _net_shop_ack() -> void:
+	if NoiseMgr.is_server() and multiplayer.get_peers().has(multiplayer.get_remote_sender_id()):
+		_net_shop_finished = true

@@ -1388,8 +1388,24 @@ func _cancel_reload() -> void:
 	var d := cur()
 	# naboje już przyznane, a jeszcze niewsunięte (strzelba), lądują w magazynku
 	if _rl_pending > 0:
-		mags[d.id] = mini(maxi(_rl_cap, d.mag), mag_of(d.id) + _rl_pending)
+		var put := mini(_rl_pending, maxi(0, maxi(_rl_cap, d.mag) - mag_of(d.id)))
+		mags[d.id] = mag_of(d.id) + put
+		if _rl_pending > put and range_sink == null:
+			Arsenal.deposit(d.id, _rl_pending - put, ammo_of(d.id))
 	_finish_reload()
+
+## Zmiana części lub zestawu: zachowuje rodzaj nabojów i komorę, oddaje nadmiar; większy magazynek nie daje nabojów.
+func configuration_changed() -> void:
+	_mass_sig = ""
+	if player == null or not is_owner() or player.is_bot or range_sink != null:
+		return
+	for w in mags.keys():
+		var n := mag_of(int(w))
+		var cap: int = def_of(int(w)).capacity(n > 0)
+		if n > cap:
+			mags[w] = cap
+			Arsenal.deposit(int(w), n - cap, ammo_of(int(w)))
+	_sync_player()
 
 func _on_rounds_granted(w: int, n: int) -> void:
 	if player == null or not is_owner() or player.is_bot:
@@ -1397,7 +1413,10 @@ func _on_rounds_granted(w: int, n: int) -> void:
 	var d := def_of(w)
 	var reloading := state == State.RELOAD and cur().id == w
 	if reloading and not d.reload_per_round:
-		mags[w] = mini(_rl_cap, mag_of(w) + n)
+		var put := mini(n, maxi(0, _rl_cap - mag_of(w)))
+		mags[w] = mag_of(w) + put
+		if n > put and range_sink == null:
+			Arsenal.deposit(w, n - put, ammo_of(w))
 		_finish_reload()
 		return
 	if reloading and d.reload_per_round:

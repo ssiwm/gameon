@@ -1,7 +1,8 @@
 extends Control
-## Panel warsztatu (złom, fazy B i C; wygląd — UI faza 3): szkic techniczny z siatką broni po lewej (miniatura, nazwa, poziom
-## ulepszeń albo cena) i szczegółami po prawej: duża miniatura, statystyki „teraz → po zakupie”, lista trzech poziomów
-## i przycisk akcji (kup / ulepsz). Wspólny złom drużyny; zakup rozstrzyga serwer (scrap.gd).
+const Controller := preload("res://scripts/weapon_controller.gd")
+## Wspólny panel siedmiu stanowisk: broń i części, konserwacja, prasa, pirotechnika, pracownia, tokarka oraz szafki.
+## Lista broni odpowiada operacjom stanowiska; szczegóły porównują bieżący montaż z podglądem i pokazują pracę drużyny.
+## Odblokowania i złom są wspólne, montaż prywatny; zakupy i dostawy rozstrzyga serwer (scrap.gd).
 ## Otwiera go workshop.gd ([E] przy ławie). Na czas panelu akcje gry są wycięte z InputMap (Settings.block_game_input), więc panel
 ## czyta własne akcje menu z rejestru (actions.gd: menu_left/right/up/down, menu_accept, menu_back, menu_tab, menu_slot_1/2 —
 ## klawiatura i D-pad / A / B / RB). Mysz: kafel wybiera, przycisk kupuje.
@@ -299,6 +300,8 @@ var _p_tag: Label
 var _p_stats: GridContainer
 var _p_text: Label
 var _p_action: Button
+var _remembered: Dictionary = {}      ## osobny wybór broni dla każdego stanowiska
+var _claiming := false
 var _sel := 0
 var _opt := 0                         ## kursor części w szczegółach broni (indeks w `_options`): klawisze 1 / 2 albo kliknięcie wiersza
 var _clean_w := -1                    ## broń czyszczona teraz przy ławie (-1 — żadna); od 1.7.347 czyszczenie kosztuje czas, nie złom
@@ -358,16 +361,19 @@ func _ready() -> void:
 	# korpus: siatka broni | szczegóły
 	var body := HBoxContainer.new()
 	body.add_theme_constant_override("separation", 12)
-	root.add_child(body)
+	root.add_child(_scroll_body(body))
 	_arms_body = body
 	_sup_body = _build_supplies()
-	root.add_child(_sup_body)
+	root.add_child(_scroll_body(_sup_body))
+	_sup_body.get_parent().visible = false
 	_sup_body.visible = false
 	_perk_body = _build_perks()
-	root.add_child(_perk_body)
+	root.add_child(_scroll_body(_perk_body))
+	_perk_body.get_parent().visible = false
 	_perk_body.visible = false
 	_look_body = _build_look()
-	root.add_child(_look_body)
+	root.add_child(_scroll_body(_look_body))
+	_look_body.get_parent().visible = false
 	_look_body.visible = false
 	var grid := GridContainer.new()
 	grid.columns = COLS
@@ -379,6 +385,10 @@ func _ready() -> void:
 		grid.add_child(t)
 		_tiles.append(t)
 	body.add_child(_build_detail())
+	# Główna akcja zawsze pod ręką; przewija się treść, nie przycisk zakupu/montażu/odbioru.
+	_action.reparent(root)
+	_s_action.reparent(root)
+	_s_action.visible = false
 	root.add_child(_rule())
 	_msg = UiTheme.label("", 9, UiTheme.BP_TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	root.add_child(_msg)
@@ -842,7 +852,11 @@ func _select_supply(i: int) -> void:
 
 func _buy_selected_supply() -> void:
 	var k := String(_supply_kinds()[_sup_sel])
-	if Throwables.is_ammo(k):
+	if int(Scrap.deliveries.get(k, 0)) > 0:
+		_claiming = true
+		Scrap.request_claim(k)
+	elif Throwables.is_ammo(k):
+		_claiming = false
 		Scrap.request_order(k)                                   # amunicja: zamówienie w prasie (gotowe po misji)
 	else:
 		Scrap.request_buy_supply(k)
@@ -891,8 +905,14 @@ func _on_order_result(kind: String, ok: bool, reason: String) -> void:
 		return
 	var nm := String(Throwables.KINDS[kind]["name"]) if Throwables.is_valid(kind) else kind
 	match reason:
+		"station":
+			_say(tr("Approach the correct station in the hideout."), UiTheme.BP_MUTED)
+		"repeat":
+			_say(tr("Please wait before repeating this action."), UiTheme.BP_MUTED)
+		"serviced":
+			_say(tr("This part was already replaced during this visit."), UiTheme.BP_MUTED)
 		"ok":
-			_say(tr("%s ordered — ready after the next mission (%d / %d batches in the press).") % [nm, Scrap.orders.size(), Scrap.PRESS_SLOTS], UiTheme.OK)
+			_say(tr("%s collected. Remaining delivery: %d rounds.") % [nm, int(Scrap.deliveries.get(kind, 0))] if _claiming else tr("%s ordered — ready after the next mission (%d / %d batches in the press).") % [nm, Scrap.orders.size(), Scrap.PRESS_SLOTS], UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 		"poor":
 			_say(tr("Not enough scrap (%d needed).") % Scrap.press_price(kind), UiTheme.DANGER)
@@ -921,6 +941,15 @@ func _set_page(p: int) -> void:
 	_page = p
 	Audio.play("ui_click", Audio.BUS_UI, -12.0, 1.1)
 	_refresh()
+
+## Długie porównania i kolejki pozostają dostępne także w bazowej rozdzielczości 640×360.
+func _scroll_body(body: Control) -> ScrollContainer:
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(TILE_W * COLS + DETAIL_W + 36.0, 250.0)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(body)
+	return scroll
 
 func _make_tile(w: int, idx: int) -> Tile:
 	var t := Tile.new()
@@ -1002,7 +1031,7 @@ func open(mode := "bench") -> void:
 		(_page_btns[pi] as Button).visible = (MODE_PAGES[_mode] as Array).has(pi) and (MODE_PAGES[_mode] as Array).size() > 1
 	_msg.text = ""
 	_hint.text = _controls_hint()
-	_sel = 0
+	_sel = _initial_selection()
 	_opt = _first_part_opt()
 	_page = int((MODE_PAGES[_mode] as Array)[0])
 	var allowed := _sup_list()
@@ -1017,6 +1046,7 @@ func open(mode := "bench") -> void:
 func close() -> void:
 	if not _open:
 		return
+	_remembered[_mode] = _sel
 	_stop_clean()
 	_open = false
 	visible = false
@@ -1039,6 +1069,8 @@ func _process(delta: float) -> void:
 	var hud := get_parent() as Control
 	if hud != null:
 		size = hud.size
+	for body in [_arms_body, _sup_body, _perk_body, _look_body]:
+		(body.get_parent() as ScrollContainer).custom_minimum_size.y = clampf(size.y - 132.0, 150.0, 520.0)
 	_card.position = ((size - _card.size) * 0.5).round()
 
 func _exit_tree() -> void:
@@ -1188,32 +1220,117 @@ func _move_opt(d: int) -> void:
 	_opt = posmod(_opt + d, n)
 	Audio.play("ui_click", Audio.BUS_UI, -14.0)
 	_refresh()
+	_reveal_option()
 
 func _pick_opt(i: int) -> void:
 	if i != _opt:
 		Audio.play("ui_click", Audio.BUS_UI, -14.0)
 	_opt = i
 	_refresh()
+	_reveal_option()
+
+## Nawigacja klawiszami/padem nie zostawia wybranej operacji poza przewijanym kadrem.
+func _reveal_option() -> void:
+	var buttons := _d_tiers.get_children().filter(func(c: Node) -> bool: return c is Button)
+	if _opt >= 0 and _opt < buttons.size():
+		_arms_body.get_parent().call_deferred("ensure_control_visible", buttons[_opt])
 
 func _move(d: int) -> void:
-	var n := _sel + d
+	var choices := _arms_list()
+	var pos := choices.find(_sel)
+	var next := pos + d
+	if next < 0 or next >= choices.size():
+		return
+	var n := int(choices[next])
 	if n < 0 or n >= LIST.size():
 		return
 	_stop_clean()
 	_sel = n
+	(_arms_body.get_parent() as ScrollContainer).scroll_vertical = 0
 	_opt = _first_part_opt()
 	Audio.play("ui_click", Audio.BUS_UI, -14.0)
 	_refresh()
 
 func _select(i: int) -> void:
+	if not _arms_list().has(i):
+		return
 	if i != _sel:
 		Audio.play("ui_click", Audio.BUS_UI, -14.0)
 		_stop_clean()
 		_sel = i
+		(_arms_body.get_parent() as ScrollContainer).scroll_vertical = 0
 		_opt = _first_part_opt()
 	_refresh()
 
 ## Kursor na pierwszej części (nie na elemencie fabrycznym) — po wyborze broni widać od razu, co można kupić.
+## Siatka i nawigacja korzystają z tej samej listy rzeczywistych opcji stanowiska.
+func _arms_list() -> Array:
+	var out: Array = []
+	for i in LIST.size():
+		var w := int(LIST[i])
+		if _mode == "bench" or _mode == "locker" or not _options(w).is_empty():
+			out.append(i)
+	return out
+
+func _initial_selection() -> int:
+	var choices := _arms_list()
+	if choices.is_empty():
+		return 0
+	var jobs: Array = Scrap.lathe if _mode == "lathe" else (Scrap.research if _mode == "lab" else [])
+	if _mode == "lathe" and jobs.is_empty():
+		jobs = Scrap.schematics.keys()
+	for id in jobs:
+		var w := Weapons.index_of(String(Parts.get_part(String(id)).get("weapon", "")))
+		var i := LIST.find(w)
+		if choices.has(i):
+			return i
+	var remembered := int(_remembered.get(_mode, -1))
+	if choices.has(remembered):
+		return remembered
+	var controller := _local_wc()
+	if controller != null:
+		var i := LIST.find(controller.cur().id)
+		if choices.has(i):
+			return i
+	for i in choices:
+		if Scrap.is_unlocked(int(LIST[int(i)])):
+			return int(i)
+	return int(choices[0])
+
+## Stan wspólnej pracy, także gdy panel pokazuje inną broń.
+func _queue_summary() -> String:
+	var lines: Array[String] = []
+	for entry in [[tr("Research"), Scrap.research], [tr("Machining"), Scrap.lathe]]:
+		for id in entry[1]:
+			lines.append(tr("%s: %s — after a successful mission") % [String(entry[0]), tr(String(Parts.get_part(String(id)).get("name", id)))])
+	for id in Scrap.schematics:
+		if not Scrap.lathe.has(id):
+			lines.append(tr("Schematic: %s — take to the lathe") % tr(String(Parts.get_part(String(id)).get("name", id))))
+	for kind in Scrap.orders:
+		lines.append(tr("Batch: %s — after a successful mission") % tr(String(Throwables.KINDS[String(kind)]["name"])))
+	for kind in Scrap.deliveries:
+		var station := tr("PYROTECHNICS") if Scrap.supply_station(String(kind)) == "pyro_bench" else tr("RELOADING PRESS")
+		lines.append(tr("Ready: %s · %d rounds — collect at %s") % [tr(String(Throwables.KINDS[String(kind)]["name"])), int(Scrap.deliveries[kind]), station])
+	return "\n".join(lines)
+
+## Te same dane broni dla obu kolumn; porównanie nie zakłada naboju standardowego.
+func _comparison_rows(d: RefCounted) -> Array:
+	var rows: Array = Codex._weapon_stats(d)
+	for row in rows:
+		if String(row[0]) == "Magazine":
+			row[1] = "%d%s" % [d.mag, "+1" if d.chamber else ""]
+	if d.uses_ammo():
+		rows.append([tr("Shared reserve"), "∞" if d.infinite else "%d" % Arsenal.get_reserve(d.id, d.ammo)])
+	rows.append([tr("Draw"), tr("%.2f s") % d.draw_time])
+	if not d.is_melee():
+		rows.append([tr("Spread"), "±%.2f°" % d.jitter_deg + (" / ±%.2f°" % d.spread_deg if d.pellets > 1 else "")])
+		rows.append([tr("Bloom"), "+%.2f° / %.2f°" % [d.bloom_per_shot, d.bloom_max]])
+		rows.append([tr("Recoil"), "%.2f / %.2f" % [d.cam_kick, d.recoil]])
+		rows.append([tr("Penetration"), "%.2f / %d" % [d.pen, d.pierce]])
+		rows.append([tr("Armour bypass"), "%d%%" % int(d.armor_pen * 100.0)])
+		rows.append([tr("Heating"), "%.1f%% / %.1f%%" % [d.barrel_heat * 100.0, d.heat_gain * 100.0]])
+	return rows
+
 func _first_part_opt() -> int:
 	var ops := _options(int(LIST[_sel]))
 	for i in ops.size():
@@ -1304,6 +1421,12 @@ func _on_result(w: int, ok: bool, reason: String) -> void:
 		return
 	var name := String(Weapons.def(w).name)
 	match reason:
+		"station":
+			_say(tr("Approach the correct station in the hideout."), UiTheme.BP_MUTED)
+		"repeat":
+			_say(tr("Please wait before repeating this action."), UiTheme.BP_MUTED)
+		"serviced":
+			_say(tr("This part was already replaced during this visit."), UiTheme.BP_MUTED)
 		"ok":
 			_say(tr("%s unlocked — take it from the rack.") % name, UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
@@ -1405,6 +1528,12 @@ func _on_machining_result(id: String, ok: bool, reason: String) -> void:
 		return
 	var nm := tr(String(Parts.get_part(id).get("name", id)))
 	match reason:
+		"station":
+			_say(tr("Approach the correct station in the hideout."), UiTheme.BP_MUTED)
+		"repeat":
+			_say(tr("Please wait before repeating this action."), UiTheme.BP_MUTED)
+		"serviced":
+			_say(tr("This part was already replaced during this visit."), UiTheme.BP_MUTED)
 		"ok":
 			_say(tr("%s on the lathe — ready after the next mission.") % nm, UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
@@ -1426,6 +1555,12 @@ func _on_service_result(w: int, part: String, ok: bool, reason: String) -> void:
 	if not _open:
 		return
 	match reason:
+		"station":
+			_say(tr("Approach the correct station in the hideout."), UiTheme.BP_MUTED)
+		"repeat":
+			_say(tr("Please wait before repeating this action."), UiTheme.BP_MUTED)
+		"serviced":
+			_say(tr("This part was already replaced during this visit."), UiTheme.BP_MUTED)
 		"ok":
 			_say((tr("New barrel in the %s.") if part == "barrel" else tr("New springs in the %s.")) % String(Weapons.def(w).name), UiTheme.OK)
 			Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.1)
@@ -1441,6 +1576,12 @@ func _on_research_result(id: String, ok: bool, reason: String) -> void:
 	var nm := tr(String(Parts.get_part(id).get("name", id)))
 	var cost := Scrap.research_cost(id)
 	match reason:
+		"station":
+			_say(tr("Approach the correct station in the hideout."), UiTheme.BP_MUTED)
+		"repeat":
+			_say(tr("Please wait before repeating this action."), UiTheme.BP_MUTED)
+		"serviced":
+			_say(tr("This part was already replaced during this visit."), UiTheme.BP_MUTED)
 		"ok":
 			_say(tr("%s: research started — ready after the next mission.") % nm, UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
@@ -1465,6 +1606,12 @@ func _on_part_result(id: String, ok: bool, reason: String) -> void:
 		return
 	var nm := tr(String(Parts.get_part(id).get("name", id)))
 	match reason:
+		"station":
+			_say(tr("Approach the correct station in the hideout."), UiTheme.BP_MUTED)
+		"repeat":
+			_say(tr("Please wait before repeating this action."), UiTheme.BP_MUTED)
+		"serviced":
+			_say(tr("This part was already replaced during this visit."), UiTheme.BP_MUTED)
 		"ok":
 			_say(tr("%s unlocked for the squad and fitted to your gun.") % nm, UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
@@ -1495,6 +1642,10 @@ func _refresh() -> void:
 	_sup_body.visible = _page == 1
 	_perk_body.visible = _page == 2
 	_look_body.visible = _page == 3
+	_action.visible = _page == 0
+	_s_action.visible = _page == 1
+	for body in [_arms_body, _sup_body, _perk_body, _look_body]:
+		body.get_parent().visible = body.visible
 	if _page == 3:
 		_refresh_look()
 		_card.reset_size()
@@ -1507,7 +1658,11 @@ func _refresh() -> void:
 		_refresh_supplies()
 		_card.reset_size()
 		return
+	var arms := _arms_list()
+	if not arms.is_empty() and not arms.has(_sel):
+		_sel = _initial_selection()
 	for i in _tiles.size():
+		(_tiles[i] as Tile).visible = arms.has(i)
 		_refresh_tile(_tiles[i] as Tile, i == _sel)
 	_refresh_detail(int(LIST[_sel]))
 
@@ -1563,13 +1718,19 @@ func _refresh_supplies() -> void:
 		_s_stats.add_child(UiTheme.label(String(r[1]), 9, UiTheme.BP_TEXT))
 		_s_stats.add_child(Control.new())
 	_s_text.text = tr(String(d["note"]))
+	var summary := _queue_summary()
+	if summary != "":
+		_s_text.text += "\n\n" + summary
 	if Throwables.is_ammo(k2):
 		_s_text.text += "\n" + tr("[%s] in the field picks the ammo type for the next magazine.") % Actions.key("ammo_type")
 	var price2 := _sup_price(k2)
-	var queued := Scrap.ordered(k2) * Throwables.box_of(k2)
+	var queued := Scrap.ordered(k2) * Throwables.box_of(k2) + int(Scrap.deliveries.get(k2, 0))
 	_s_action.disabled = have2 + queued >= maxn or not Scrap.enabled()
 	if not Scrap.enabled():
 		_s_action.text = "No scrap in this mode"
+	elif int(Scrap.deliveries.get(k2, 0)) > 0:
+		_s_action.disabled = have2 >= maxn
+		_s_action.text = tr("Collect ready delivery · %d rounds") % int(Scrap.deliveries[k2])
 	elif have2 + queued >= maxn:
 		_s_action.text = "The squad is carrying the maximum"
 	elif Throwables.is_ammo(k2) and Scrap.orders.size() >= Scrap.PRESS_SLOTS:
@@ -1584,6 +1745,12 @@ func _on_supply_result(kind: String, ok: bool, reason: String) -> void:
 		return
 	var nm := String(Throwables.KINDS[kind]["name"]) if Throwables.is_valid(kind) else kind
 	match reason:
+		"station":
+			_say(tr("Approach the correct station in the hideout."), UiTheme.BP_MUTED)
+		"repeat":
+			_say(tr("Please wait before repeating this action."), UiTheme.BP_MUTED)
+		"serviced":
+			_say(tr("This part was already replaced during this visit."), UiTheme.BP_MUTED)
 		"ok":
 			_say(tr("%s bought — the squad now carries %d.") % [nm, Arsenal.get_throwable(kind)], UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
@@ -1616,6 +1783,8 @@ func _refresh_tile(t: Tile, selected: bool) -> void:
 		var owned := Scrap.parts_owned(w)
 		t.bar.level = owned
 		t.bar.total = total
+		t.bar.custom_minimum_size.x = maxf(26.0, total * 9.0 - 2.0)
+		t.tooltip_text = tr("Unlocked parts: %d / %d. Equipment is chosen separately.") % [owned, total]
 		t.bar.maxed = owned >= total
 		t.bar.queue_redraw()
 	elif later:
@@ -1632,7 +1801,9 @@ func _refresh_detail(w: int) -> void:
 	var ops := _options(w)
 	_opt = clampi(_opt, 0, maxi(ops.size() - 1, 0))
 	var mine := Profile.fit_code(w)
-	var cur: RefCounted = Weapons.def_build(w, Weapons.build_of(0, mine))
+	var controller := _local_wc()
+	var ammo_type: int = controller.ammo_of(w) if controller != null else 0
+	var cur: RefCounted = Weapons.def_build(w, Weapons.build_of(ammo_type, mine))
 	# podgląd: broń z częścią spod kursora zamontowaną w jej gnieździe (reszta jak teraz)
 	var preview: RefCounted = null
 	var o: Dictionary = ops[_opt] if not ops.is_empty() else {}
@@ -1650,7 +1821,7 @@ func _refresh_detail(w: int) -> void:
 			choice[String(o["slot"])] = String(o["id"])
 		pv_code = Parts.encode(key, choice)
 		if pv_code != mine:
-			preview = Weapons.def_build(w, Weapons.build_of(0, pv_code))
+			preview = Weapons.def_build(w, Weapons.build_of(ammo_type, pv_code))
 	# na ławie broń już z częścią spod kursora; ona (albo fabryczny element gniazda) świeci i jest wysunięta
 	var hl_part := unlocked and not o.is_empty() and String(o["slot"]) != "preset" and String(o["slot"]) != "service"
 	var hl_slot := String(o.get("slot", "")) if hl_part else ("barrel" if unlocked and not o.is_empty() and String(o["id"]) == "barrel" else "")
@@ -1660,7 +1831,8 @@ func _refresh_detail(w: int) -> void:
 	_d_title.text = String(base.name)
 	var tag := Codex._slot_name(base)
 	if unlocked and not Parts.of(key).is_empty():
-		tag += tr("  ·  PARTS %d / %d") % [Scrap.parts_owned(w), Parts.of(key).size()]
+		tag += tr("  ·  UNLOCKED %d / %d") % [Scrap.parts_owned(w), Parts.of(key).size()]
+		tag += tr("  ·  FITTED %d") % Parts.decode(key, mine).size()
 	elif not unlocked:
 		tag += "  ·  LOCKED"
 	if unlocked and Profile.kills(key) > 0:
@@ -1680,15 +1852,36 @@ func _refresh_detail(w: int) -> void:
 		if lp != null:
 			var km: float = lp.kit_mass()
 			tag += tr("  ·  KIT %.1f kg  (run noise %+d%%)") % [km, int(round((lp.mass_noise_mult() - 1.0) * 100.0))]   # masa ekwipunku (W5)
+	if cur.uses_ammo():
+		tag += tr("  ·  AMMO %s") % Ammo.name_of(String(cur.caliber), ammo_type)
+	_d_tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_d_tag.custom_minimum_size.x = DETAIL_W
 	_d_tag.text = tag
-	# statystyki: broń, jaką masz teraz, i ta sama z częścią spod kursora (zielone — lepiej, czerwone — gorzej niż teraz)
+	var jobs := _queue_summary()
+	if jobs != "":
+		_d_tag.text += "\n" + jobs
+	# statystyki: broń, jaką masz teraz, i ta sama z częścią spod kursora (złote wartości — zmiany względem bieżącego montażu)
 	for ch in _d_stats.get_children():
 		_d_stats.remove_child(ch)
 		ch.free()
-	var now_rows: Array = Codex._weapon_stats(cur)
-	var next_rows: Array = Codex._weapon_stats(preview) if preview != null else []
+	var now_rows: Array = _comparison_rows(cur)
+	var next_rows: Array = _comparison_rows(preview) if preview != null else []
+	if next_rows.is_empty():
+		next_rows = now_rows.duplicate(true)
+	if controller != null and (controller.loadout.has(w) or controller.melee_id == w):
+		var km: float = controller.kit_mass()
+		var next_mass: float = km + (preview.mass - cur.mass if preview != null else 0.0)
+		now_rows.append([tr("Kit mass"), tr("%.2f kg") % km])
+		next_rows.append([tr("Kit mass"), tr("%.2f kg") % next_mass])
+		var speed: float = clampf(1.0 - Controller.MASS_SPEED * (next_mass - Controller.mass_ref()), Controller.MASS_SPEED_RANGE.x, Controller.MASS_SPEED_RANGE.y) if Settings.realistic_handling else 1.0
+		var noise: float = clampf(1.0 + Controller.MASS_NOISE * (next_mass - Controller.mass_ref()), Controller.MASS_NOISE_RANGE.x, Controller.MASS_NOISE_RANGE.y) if Settings.realistic_handling else 1.0
+		now_rows.append([tr("Run speed / noise"), "%+.1f%% / %+.1f%%" % [(controller.mass_speed_mult() - 1.0) * 100.0, (controller.mass_noise_mult() - 1.0) * 100.0]])
+		next_rows.append([tr("Run speed / noise"), "%+.1f%% / %+.1f%%" % [(speed - 1.0) * 100.0, (noise - 1.0) * 100.0]])
 	for i in now_rows.size():
 		var r: Array = now_rows[i]
+		# Podgląd części/zestawu zaczyna od rzeczywistych zmian. Pełna karta jest widoczna bez zmiany montażu.
+		if preview != null and i < next_rows.size() and String(next_rows[i][1]) == String(r[1]):
+			continue
 		_d_stats.add_child(UiTheme.label(String(r[0]), 9, UiTheme.BP_MUTED))
 		_d_stats.add_child(UiTheme.label(String(r[1]), 9, UiTheme.BP_TEXT))
 		var nv := ""

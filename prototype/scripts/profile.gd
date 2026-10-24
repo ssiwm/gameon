@@ -397,16 +397,28 @@ func set_fit(key: String, slot: String, id: String) -> void:
 	save()
 	changed.emit()
 
-## Część zamontowana w gnieździe: wybór gracza (o ile drużyna ją ma), a bez wyboru — pierwsza odblokowana z listy gniazda.
+## Część zamontowana w gnieździe: jawny wybór gracza; brak wyboru oznacza element fabryczny.
 func fitted(key: String, slot: String) -> String:
 	var f: Dictionary = fits.get(key, {}) as Dictionary
 	if f.has(slot):
 		var id := String(f[slot])
 		return id if id == "" or Scrap.has_part(id) else ""
-	for p in Parts.in_slot(key, slot):
-		if Scrap.has_part(String(p["id"])):
-			return String(p["id"])
 	return ""
+
+## Jednorazowo utrwala automatyczny montaż ze starych zapisów. Nowe odblokowania nie zmieniają zestawu.
+func migrate_fits() -> void:
+	for w in Weapons.COUNT:
+		var key := String(Weapons.base_def(w).key)
+		var f: Dictionary = (fits.get(key, {}) as Dictionary).duplicate()
+		for slot in Parts.slots_of(key):
+			if f.has(slot):
+				continue
+			f[slot] = ""
+			for p in Parts.in_slot(key, String(slot)):
+				if Scrap.has_part(String(p["id"])):
+					f[slot] = String(p["id"])
+					break
+		fits[key] = f
 
 ## Zestaw `i` broni `key` ({} — pusty): {gniazdo: id części | ""}.
 func preset(key: String, i: int) -> Dictionary:
@@ -471,6 +483,7 @@ func save_to(path: String) -> void:
 	cfg.set_value("profile", "equipped", equipped)
 	cfg.set_value("profile", "look", look)
 	cfg.set_value("profile", "fits", fits)
+	cfg.set_value("profile", "fits_version", 1)
 	cfg.set_value("profile", "presets", presets)
 	cfg.set_value("profile", "cond", cond)
 	cfg.set_value("profile", "worn", worn)
@@ -483,6 +496,9 @@ func save_to(path: String) -> void:
 func load_from(path: String) -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(path) != OK:
+		if not FileAccess.file_exists(path) and Scrap.legacy_fits:
+			migrate_fits()             # postęp sprzed wprowadzenia pliku profilu
+			save_to(path)
 		return
 	xp = maxi(0, int(cfg.get_value("profile", "xp", 0)))
 	completed.clear()
@@ -495,6 +511,12 @@ func load_from(path: String) -> void:
 		if Perks.is_valid(id):
 			equipped[i] = id
 	fits = (cfg.get_value("profile", "fits", {}) as Dictionary).duplicate(true)
+	if int(cfg.get_value("profile", "fits_version", 0)) < 1:
+		migrate_fits()
+		# Zapis wersji od razu: ponowny start nie powtarza migracji po nowych zakupach drużyny.
+		cfg.set_value("profile", "fits", fits)
+		cfg.set_value("profile", "fits_version", 1)
+		cfg.save(path)
 	presets = (cfg.get_value("profile", "presets", {}) as Dictionary).duplicate(true)
 	edge = {}
 	var ed_in := cfg.get_value("profile", "edge", {}) as Dictionary

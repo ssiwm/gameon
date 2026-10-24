@@ -1,4 +1,5 @@
 extends Node
+const Ammo := preload("res://scripts/ammo.gd")
 ## Autoload „Scrap": złom — waluta drużyny (GDD §10.1). Portfel jest WSPÓLNY, autorytet ma serwer, klienci dostają stan przez sync.
 ##
 ## Dwa stany: `loot` to złom zebrany w TEJ misji (jeszcze nie bezpieczny) i `bank` — portfel, z którego płaci się w warsztacie.
@@ -72,23 +73,67 @@ var samples_loot := 0                 ## próbki zebrane w tej misji — do bank
 var schematics: Dictionary = {}      ## id części → true: schemat z pracowni, czeka na tokarkę (zapis u hosta)
 var lathe: Array = []                 ## tokarka: wykonywane części (id), gotowe po udanej misji (zapis u hosta)
 var research: Array = []              ## pracownia: badane części (id z parts.gd), gotowe po udanej misji (zapis u hosta)
+var deliveries: Dictionary = {}           ## opłacone naboje oczekujące na miejsce we wspólnym zapasie
+var _action_at: Dictionary = {}      ## ograniczenie powtórzeń płatnych żądań tego samego peera
+var _serviced: Dictionary = {}       ## jedna wymiana danego elementu na pobyt w kryjówce
 var orders: Array = []                ## prasa: zamówione partie (wpisy `ammo_*` z throwables.gd), dostawa po udanej misji (zapis u hosta)
 var unlocked: Dictionary = {}         ## id broni → true: kupione w warsztacie (zapis u hosta)
 var trophies: Dictionary = {}         ## id misji (boss) → true: ukończona, odblokowuje broń-trofeum (zapis u hosta)
 var last_gain := 0                    ## ile trafiło do banku po ostatniej misji (karta wyniku, ściana wyników)
 var persist := DisplayServer.get_name() != "headless"      ## testy headless nie czytają ani nie nadpisują prawdziwego zapisu
+var legacy_fits := false              ## stary postęp bez osobnego profilu także korzystał z automatycznego montażu
+var _delivery_snapshot: Dictionary = {}
+var _delivery_checkpointed := false
+var _delivery_committed := false
 
 func _ready() -> void:
 	load_progress()
 	multiplayer.peer_connected.connect(func(id: int) -> void:
 		if NoiseMgr.is_server():
-			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe))
+			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe, deliveries))
 
 ## Złom nie obowiązuje w Nocnym Dyżurze (osobna seria z własnymi zasadami).
 func enabled() -> bool:
 	return not NightShift.active
 
 # ---------------------------------------------------------------- serwer
+
+## Autoryzacja stanowiska dla konkretnego nadawcy; lokalny zasięg UI nie autoryzuje innych peerów.
+func station_reason(peer_id: int, group: String) -> String:
+	if not NoiseMgr.is_server() or not enabled():
+		return "off"
+	var level := get_tree().get_first_node_in_group("level")
+	if not NoiseMgr.safe_zone or level == null or String(level.map_id) != "z1_hub":
+		return "station"
+	if peer_id != NoiseMgr.local_id() and (not NoiseMgr.has_network() or not multiplayer.get_peers().has(peer_id)):
+		return "station"
+	var human: Node2D = null
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and int(p.player_id) == peer_id and not p.dead:
+			human = p
+			break
+	if human == null:
+		return "station"
+	for station in get_tree().get_nodes_in_group(group):
+		if absf(human.global_position.x - station.global_position.x) <= float(station.REACH_X) and absf(human.global_position.y - station.global_position.y) <= float(station.REACH_Y):
+			return "ok"
+	return "station"
+
+## Stacja dostawy/zakupu zależy od rzeczywistego rodzaju przedmiotu, także dla RPC.
+func supply_station(kind: String) -> String:
+	if Throwables.is_ammo(kind):
+		return "pyro_bench" if String(Ammo.from_kind(kind).get("cal", "")) == "40mm" else "press_bench"
+	var mode := String(Throwables.KINDS.get(kind, {}).get("mode", ""))
+	return "pyro_bench" if mode == "throw" or mode == "place" else "workshop"
+
+func _permit_action(peer_id: int, action: String) -> bool:
+	var key := "%d:%s" % [peer_id, action]
+	var now := Time.get_ticks_msec()
+	if now - int(_action_at.get(key, -1000)) < 350:
+		return false
+	_action_at[key] = now
+	return true
+
 
 ## Zebrany złom wpada do łupu misji.
 func add_loot(n: int) -> void:
@@ -111,6 +156,7 @@ func bank_loot(bonus: int) -> int:
 	found.clear()
 	samples += samples_loot
 	samples_loot = 0
+	_reconcile_jobs()
 	var learned: Array = research.duplicate()
 	for id in learned:
 		schematics[String(id)] = true                                 # badanie skończone: schemat dla tokarki (W6b)
@@ -122,8 +168,14 @@ func bank_loot(bonus: int) -> int:
 	lathe.clear()
 	var done: Array = orders.duplicate()
 	for k in done:
-		Arsenal.add_throwable(String(k), Throwables.box_of(String(k)))     # partie z prasy: pudełka do wspólnego zapasu
+		deliveries[String(k)] = int(deliveries.get(String(k), 0)) + Throwables.box_of(String(k))
 	orders.clear()
+	for k in deliveries.keys():
+		_deliver_ready(String(k))
+	_serviced.clear()
+	_action_at.clear()
+	_delivery_snapshot = deliveries.duplicate()       # sukces zatwierdza również zwroty nabojów z tej misji
+	_delivery_committed = true
 	save_progress()
 	_push()
 	if not newp.is_empty():
@@ -161,13 +213,18 @@ func reset_loot() -> void:
 ## Część do znalezienia: losowa część z modelem (leży na ziemi albo w skrytce) dla broni, którą drużyna ma, jeszcze nieodblokowana
 ## i nieznaleziona w tej misji; "" — wszystko już jest.
 func pick_find() -> String:
+	var pool := find_candidates()
+	return "" if pool.is_empty() else String(pool[randi() % pool.size()])
+
+## Jawna pula pozwala sprawdzić wykluczenia bez probabilistycznego testu losowania.
+func find_candidates() -> Array:
 	var pool: Array = []
 	for id in Parts.all_ids():
 		var w := Weapons.index_of(String(Parts.get_part(id)["weapon"]))
-		if w < 0 or not is_unlocked(w) or parts.has(id) or found.has(id) or not GunModel.has_model(id):
+		if w < 0 or not is_unlocked(w) or parts.has(id) or found.has(id) or research.has(id) or schematics.has(id) or lathe.has(id) or not GunModel.has_model(id):
 			continue
 		pool.append(id)
-	return "" if pool.is_empty() else String(pool[randi() % pool.size()])
+	return pool
 
 ## Indeks części w Parts.all_ids() (arg znajdźki „part”).
 func part_index(id: String) -> int:
@@ -175,7 +232,7 @@ func part_index(id: String) -> int:
 
 ## Serwer: drużyna znalazła część — czeka do ekstrakcji. false: nieznana, już odblokowana albo już znaleziona.
 func find_part(id: String) -> bool:
-	if not NoiseMgr.is_server() or not enabled() or not Parts.is_valid(id) or parts.has(id) or found.has(id):
+	if not NoiseMgr.is_server() or not enabled() or not Parts.is_valid(id) or parts.has(id) or found.has(id) or research.has(id) or schematics.has(id) or lathe.has(id):
 		return false
 	found[id] = true
 	_push()
@@ -196,7 +253,7 @@ func _found_rpc(id: String) -> void:
 func _banked_rpc(ids: Array) -> void:
 	for id in ids:
 		Msg.post("banked.%s" % id, Msg.Ch.TOAST, tr("%s unlocked for the squad") % tr(String(Parts.get_part(String(id)).get("name", id))),
-			{"style": Msg.Style.SUCCESS, "ttl": 6.0, "prio": 70})
+			{"sub": tr("Mount new parts at the workbench"), "style": Msg.Style.SUCCESS, "ttl": 6.0, "prio": 70})
 
 ## Wydatek z banku (warsztat, faza B). false = za mało.
 func spend(n: int) -> bool:
@@ -268,8 +325,10 @@ func _buy_rpc(w: int) -> void:
 		_buy_server(w, multiplayer.get_remote_sender_id())
 
 func _buy_server(w: int, peer_id: int) -> void:
-	var reason := "ok"
-	if not Weapons.is_valid(w):
+	var reason := station_reason(peer_id, "workshop")
+	if reason != "ok":
+		pass
+	elif not Weapons.is_valid(w):
 		reason = "invalid"
 	elif LATER.has(w):
 		reason = "later"
@@ -279,6 +338,8 @@ func _buy_server(w: int, peer_id: int) -> void:
 		reason = "invalid"
 	elif unlocked.has(w):
 		reason = "owned"
+	elif bank >= int(PRICES[w]) and not _permit_action(peer_id, "weapon:%d" % w):
+		reason = "repeat"
 	elif not spend(int(PRICES[w])):
 		reason = "poor"
 	else:
@@ -307,14 +368,18 @@ func _buy_supply_rpc(kind: String) -> void:
 		_buy_supply_server(kind, multiplayer.get_remote_sender_id())
 
 func _buy_supply_server(kind: String, peer_id: int) -> void:
-	var reason := "ok"
+	var reason := station_reason(peer_id, supply_station(kind))
 	var price := Throwables.price_of(kind)
-	if not Throwables.is_valid(kind) or price <= 0 or String(Throwables.KINDS[kind]["mode"]) == "ammo":     # amunicja: tylko prasa (1.7.354)
+	if reason != "ok":
+		pass
+	elif not Throwables.is_valid(kind) or price <= 0 or String(Throwables.KINDS[kind]["mode"]) == "ammo":     # amunicja: tylko prasa (1.7.354)
 		reason = "invalid"
 	elif not enabled():
 		reason = "off"
 	elif Arsenal.get_throwable(kind) >= int(Throwables.KINDS[kind]["max"]):
 		reason = "full"
+	elif bank >= price and not _permit_action(peer_id, "supply:" + kind):
+		reason = "repeat"
 	elif not spend(price):
 		reason = "poor"
 	else:
@@ -343,16 +408,18 @@ func fuse_index(kind: String) -> int:
 ## Gracz przy stole pirotechnicznym zmienia zapalnik `kind` na `idx` (ustawienie drużyny — serwer zapisuje i rozsyła).
 func request_fuse(kind: String, idx: int) -> void:
 	if not NoiseMgr.has_network() or NoiseMgr.is_server():
-		_fuse_server(kind, idx)
+		_fuse_server(kind, idx, NoiseMgr.local_id())
 	else:
 		_fuse_rpc.rpc_id(1, kind, idx)
 
 @rpc("any_peer", "call_remote", "reliable")
 func _fuse_rpc(kind: String, idx: int) -> void:
 	if NoiseMgr.is_server():
-		_fuse_server(kind, idx)
+		_fuse_server(kind, idx, multiplayer.get_remote_sender_id())
 
-func _fuse_server(kind: String, idx: int) -> void:
+func _fuse_server(kind: String, idx: int, peer_id: int) -> void:
+	if station_reason(peer_id, "pyro_bench") != "ok":
+		return
 	var opts: Array = Throwables.FUSES.get(kind, []) as Array
 	if opts.is_empty() or idx < 0 or idx >= opts.size():
 		return
@@ -417,17 +484,23 @@ func _machining_rpc(id: String) -> void:
 		_machining_server(id, multiplayer.get_remote_sender_id())
 
 func _machining_server(id: String, peer_id: int) -> void:
-	var reason := "ok"
-	if Parts.get_part(id).is_empty():
+	var reason := station_reason(peer_id, "lathe_bench")
+	if reason != "ok":
+		pass
+	elif Parts.get_part(id).is_empty() or not is_lab_part(id):
 		reason = "invalid"
+	elif not is_unlocked(Weapons.index_of(String(Parts.get_part(id)["weapon"]))):
+		reason = "locked"
 	elif not enabled():
 		reason = "off"
-	elif parts.has(id) or lathe.has(id):
+	elif found.has(id) or parts.has(id) or lathe.has(id):
 		reason = "owned"
 	elif not schematics.has(id):
 		reason = "noschem"
 	elif lathe.size() >= LATHE_SLOTS:
 		reason = "busy"
+	elif bank >= machine_price(id) and not _permit_action(peer_id, "machine:" + id):
+		reason = "repeat"
 	elif not spend(machine_price(id)):
 		reason = "poor"
 	else:
@@ -456,21 +529,25 @@ func _research_rpc(id: String) -> void:
 		_research_server(id, multiplayer.get_remote_sender_id())
 
 func _research_server(id: String, peer_id: int) -> void:
-	var reason := "ok"
+	var reason := station_reason(peer_id, "lab_bench")
 	var w := Weapons.index_of(String(Parts.get_part(id).get("weapon", "")))
 	var cost := research_cost(id)
-	if Parts.get_part(id).is_empty() or w < 0 or not is_lab_part(id):
+	if reason != "ok":
+		pass
+	elif Parts.get_part(id).is_empty() or w < 0 or not is_lab_part(id):
 		reason = "invalid"
 	elif not enabled():
 		reason = "off"
 	elif not is_unlocked(w):
 		reason = "locked"
-	elif parts.has(id) or research.has(id) or schematics.has(id) or lathe.has(id):
+	elif found.has(id) or parts.has(id) or research.has(id) or schematics.has(id) or lathe.has(id):
 		reason = "owned"
 	elif research.size() >= LAB_SLOTS:
 		reason = "busy"
 	elif samples < cost.x:
 		reason = "samples"
+	elif bank >= cost.y and not _permit_action(peer_id, "research:" + id):
+		reason = "repeat"
 	elif not spend(cost.y):
 		reason = "poor"
 	else:
@@ -508,15 +585,19 @@ func _order_rpc(kind: String) -> void:
 		_order_server(kind, multiplayer.get_remote_sender_id())
 
 func _order_server(kind: String, peer_id: int) -> void:
-	var reason := "ok"
-	if not Throwables.is_valid(kind) or String(Throwables.KINDS[kind]["mode"]) != "ammo":
+	var reason := station_reason(peer_id, supply_station(kind))
+	if reason != "ok":
+		pass
+	elif not Throwables.is_valid(kind) or String(Throwables.KINDS[kind]["mode"]) != "ammo":
 		reason = "invalid"
 	elif not enabled():
 		reason = "off"
 	elif orders.size() >= PRESS_SLOTS:
 		reason = "busy"
-	elif Arsenal.get_throwable(kind) + (ordered(kind) + 1) * Throwables.box_of(kind) > int(Throwables.KINDS[kind]["max"]):
+	elif Arsenal.get_throwable(kind) + int(deliveries.get(kind, 0)) + (ordered(kind) + 1) * Throwables.box_of(kind) > int(Throwables.KINDS[kind]["max"]):
 		reason = "full"
+	elif bank >= press_price(kind) and not _permit_action(peer_id, "order:" + kind):
+		reason = "repeat"
 	elif not spend(press_price(kind)):
 		reason = "poor"
 	else:
@@ -553,14 +634,23 @@ func _service_rpc(w: int, part: String) -> void:
 		_service_server(w, part, multiplayer.get_remote_sender_id())
 
 func _service_server(w: int, part: String, peer_id: int) -> void:
-	var reason := "ok"
-	if not Weapons.is_valid(w) or not SERVICE_COST.has(part) or not Weapons.def(w).can_jam():
+	var reason := station_reason(peer_id, "service_bench")
+	if reason != "ok":
+		pass
+	elif not Weapons.is_valid(w) or not SERVICE_COST.has(part) or not Weapons.def(w).can_jam():
 		reason = "invalid"
+	elif not is_unlocked(w):
+		reason = "locked"
 	elif not enabled():
 		reason = "off"
+	elif _serviced.has("%d:%d:%s" % [peer_id, w, part]):
+		reason = "serviced"
+	elif bank >= int(SERVICE_COST[part]) and not _permit_action(peer_id, "service:%d:%s" % [w, part]):
+		reason = "repeat"
 	elif not spend(int(SERVICE_COST[part])):
 		reason = "poor"
 	else:
+		_serviced["%d:%d:%s" % [peer_id, w, part]] = true
 		save_progress()
 	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
 		_service_done(w, part, reason)
@@ -607,17 +697,21 @@ func _perks_of(peer_id: int) -> Array:
 	return []
 
 func _part_server(id: String, peer_id: int) -> void:
-	var reason := "ok"
+	var reason := station_reason(peer_id, "workshop")
 	var p := Parts.get_part(id)
 	var w := Weapons.index_of(String(p.get("weapon", "")))
-	if p.is_empty() or w < 0:
+	if reason != "ok":
+		pass
+	elif p.is_empty() or w < 0:
 		reason = "invalid"
 	elif not is_unlocked(w):
 		reason = "locked"
-	elif parts.has(id):
+	elif found.has(id) or parts.has(id):
 		reason = "owned"
 	elif is_lab_part(id):
 		reason = "lab"                                                # część broni specjalnej: badanie w pracowni (W6a)
+	elif bank >= part_cost(id, peer_id) and not _permit_action(peer_id, "part:" + id):
+		reason = "repeat"
 	elif not spend(part_cost(id, peer_id)):
 		reason = "poor"
 	else:
@@ -643,15 +737,16 @@ func _part_done(id: String, reason: String) -> void:
 func _push() -> void:
 	changed.emit()
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe)
+		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe, deliveries)
 
 @rpc("authority", "call_remote", "reliable")
 func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array, fnd: Array = [], ord: Array = [], fz: Dictionary = {},
-		smp: int = 0, smp_l: int = 0, res: Array = [], sch: Array = [], lth: Array = []) -> void:
+		smp: int = 0, smp_l: int = 0, res: Array = [], sch: Array = [], lth: Array = [], rdy: Dictionary = {}) -> void:
 	schematics.clear()
 	for id in sch:
 		schematics[String(id)] = true
 	lathe = lth.duplicate()
+	deliveries = rdy.duplicate()
 	samples = smp
 	samples_loot = smp_l
 	research = res.duplicate()
@@ -672,16 +767,104 @@ func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array, fnd: Arra
 	_set_parts(pts)
 	changed.emit()
 
+## Starszy zapis lub równoczesne odblokowanie: część > tokarka > schemat > badanie; anulowany opłacony etap zwraca koszt.
+func _reconcile_jobs() -> void:
+	var keep: Array = []
+	for value in lathe:
+		var id := String(value)
+		if not Parts.is_valid(id) or not is_lab_part(id):
+			continue
+		if parts.has(id) or keep.has(id):
+			bank += machine_price(id)
+		else:
+			keep.append(id)
+	lathe = keep
+	for id in schematics.keys():
+		if parts.has(id) or not is_lab_part(String(id)):
+			schematics.erase(id)
+	keep = []
+	for value in research:
+		var id := String(value)
+		if not Parts.is_valid(id) or not is_lab_part(id):
+			continue
+		if parts.has(id) or schematics.has(id) or lathe.has(id) or keep.has(id):
+			var cost := research_cost(id)
+			bank += cost.y
+			samples += cost.x
+		else:
+			keep.append(id)
+	research = keep
+
+## Zwraca liczbę przyjętych nabojów; nieprzyjęta reszta nadal należy do drużyny.
+func _deliver_ready(kind: String) -> int:
+	var n := int(deliveries.get(kind, 0))
+	if n <= 0:
+		return 0
+	var accepted := Arsenal.add_throwable(kind, n)
+	if accepted >= n:
+		deliveries.erase(kind)
+	else:
+		deliveries[kind] = n - accepted
+	return accepted
+
+## Naboje odłożone z magazynka podczas misji podlegają tej samej próbie co stock w Arsenal.
+func delivery_checkpoint(new_run: bool) -> void:
+	if not NoiseMgr.is_server():
+		return
+	if new_run:
+		_delivery_snapshot = deliveries.duplicate()
+		_delivery_checkpointed = true
+		_delivery_committed = NoiseMgr.safe_zone
+		if NoiseMgr.safe_zone:
+			save_progress()
+	elif _delivery_checkpointed and deliveries != _delivery_snapshot:
+		deliveries = _delivery_snapshot.duplicate()
+		_push()
+
+func request_claim(kind: String) -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_claim_server(kind, NoiseMgr.local_id())
+	else:
+		_claim_rpc.rpc_id(1, kind)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _claim_rpc(kind: String) -> void:
+	if NoiseMgr.is_server():
+		_claim_server(kind, multiplayer.get_remote_sender_id())
+
+func _claim_server(kind: String, peer_id: int) -> void:
+	var reason := station_reason(peer_id, supply_station(kind))
+	if reason == "ok":
+		if not Throwables.is_ammo(kind) or int(deliveries.get(kind, 0)) <= 0:
+			reason = "empty"
+		elif _deliver_ready(kind) <= 0:
+			reason = "full"
+		else:
+			save_progress()
+			_push()
+	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
+		order_result.emit(kind, reason == "ok", reason)
+	else:
+		_order_result_rpc.rpc_id(peer_id, kind, reason)
+
 # ---------------------------------------------------------------- zapis (host)
 
-func load_progress() -> void:
+func load_progress(path := SAVE_PATH) -> void:
 	var cfg := ConfigFile.new()
-	var ok: bool = persist and cfg.load(SAVE_PATH) == OK
-	bank = int(cfg.get_value("scrap", "bank", 0)) if ok else 0
+	var ok: bool = persist and cfg.load(path) == OK
+	legacy_fits = ok and int(cfg.get_value("workshop", "fit_policy_version", 0)) < 1
+	_delivery_snapshot.clear()
+	_delivery_checkpointed = false
+	_delivery_committed = false
+	bank = maxi(0, int(cfg.get_value("scrap", "bank", 0))) if ok else 0
+	found.clear()
 	unlocked.clear()
 	trophies.clear()
 	parts.clear()
 	orders.clear()
+	deliveries.clear()
+	_action_at.clear()
+	_serviced.clear()
 	fuses.clear()
 	research.clear()
 	schematics.clear()
@@ -704,7 +887,7 @@ func load_progress() -> void:
 			if Throwables.FUSES.has(String(k)):
 				fuses[String(k)] = clampi(int(fz_in[k]), 0, (Throwables.FUSES[String(k)] as Array).size() - 1)
 		for k in Array(cfg.get_value("workshop", "orders", [])):
-			if Throwables.is_valid(String(k)):
+			if Throwables.is_ammo(String(k)):
 				orders.append(String(k))
 		for w in Array(cfg.get_value("workshop", "unlocked", [])):
 			unlocked[int(w)] = true
@@ -713,12 +896,18 @@ func load_progress() -> void:
 		Arsenal.load_gear(cfg.get_value("gear", "stock", {}) as Dictionary)       # zapas zaopatrzenia z poprzednich sesji
 		_set_parts(Array(cfg.get_value("workshop", "parts", [])))
 		migrate_levels(cfg.get_value("workshop", "levels", {}) as Dictionary)
+		var saved_ready: Dictionary = cfg.get_value("workshop", "deliveries", {}) as Dictionary
+		for k in saved_ready:
+			if Throwables.is_ammo(String(k)) and int(saved_ready[k]) > 0:
+				deliveries[String(k)] = int(saved_ready[k])
+		_reconcile_jobs()
+		save_progress(path)
 	loot = 0
 	last_gain = 0
 	changed.emit()
 
 ## Zapis sprzed 1.7.319: poziomy ulepszeń (id broni → 0..3) → części tych poziomów. Gniazdo bez wyboru gracza montuje je samo
-## (Profile.fitted), więc broń zostaje taka, jaka była — z kosztami, które części dostały w 1.7.319.
+## (Profile.migrate_fits utrwala ten wybór jednorazowo), więc stary zestaw zachowuje części i ich koszty.
 func migrate_levels(old_levels: Dictionary) -> void:
 	for k in old_levels:
 		var w := int(k)
@@ -726,17 +915,21 @@ func migrate_levels(old_levels: Dictionary) -> void:
 			for id in Parts.from_level(String(Weapons.def(w).key), int(old_levels[k])):
 				parts[String(id)] = true
 
-func save_progress() -> void:
+func save_progress(path := SAVE_PATH) -> void:
 	if not persist or not NoiseMgr.is_server():
 		return
 	var cfg := ConfigFile.new()
-	cfg.load(SAVE_PATH)
+	# Np. trofeum bossa może zapisać postęp jeszcze przed ekstrakcją. Nie utrwalamy przy tym tymczasowych nabojów.
+	var use_checkpoint := _delivery_checkpointed and not NoiseMgr.safe_zone and not _delivery_committed
+	cfg.load(path)
 	cfg.set_value("scrap", "bank", bank)
 	cfg.set_value("workshop", "unlocked", unlocked.keys())
 	cfg.set_value("workshop", "trophies", trophies.keys())
-	cfg.set_value("gear", "stock", Arsenal.stock)
+	cfg.set_value("gear", "stock", Arsenal._snapshot if use_checkpoint else Arsenal.stock)
 	cfg.set_value("workshop", "parts", parts.keys())
+	cfg.set_value("workshop", "fit_policy_version", 1)
 	cfg.set_value("workshop", "orders", orders)
+	cfg.set_value("workshop", "deliveries", _delivery_snapshot if use_checkpoint else deliveries)
 	cfg.set_value("workshop", "fuses", fuses)
 	cfg.set_value("workshop", "samples", samples)
 	cfg.set_value("workshop", "research", research)
@@ -744,4 +937,4 @@ func save_progress() -> void:
 	cfg.set_value("workshop", "lathe", lathe)
 	if cfg.has_section_key("workshop", "levels"):
 		cfg.erase_section_key("workshop", "levels")             # przeniesione do części (migracja w load_progress)
-	cfg.save(SAVE_PATH)
+	cfg.save(path)
