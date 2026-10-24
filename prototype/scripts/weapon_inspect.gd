@@ -1,8 +1,8 @@
 extends Control
-## Oględziny broni ([F] przy broni na stojaku albo na ziemi; weapon_controller.gd: _tick_inspect). Widok 3D przechodzi w tym czasie do widoku
+## Oględziny broni ([H] przy broni na stojaku albo na ziemi; weapon_controller.gd: _tick_inspect). Widok 3D przechodzi w tym czasie do widoku
 ## z oczu gracza (view3d.gd: _sync_camera), a ten ekran kładzie na niego trzy warstwy: rozmycie i przyciemnienie tła, broń unoszącą się przed
 ## oczami (model 3D pod jedną ciepłą, migoczącą lampą — obracasz ją myszą z wciśniętym przyciskiem albo prawym drążkiem) oraz po prawej panel
-## ze statystykami: ta broń i broń trzymana w ręku. Gra się nie zatrzymuje (co-op): [F] zamyka, [E] bierze broń, odejście albo trafienie
+## ze statystykami: ta broń i broń trzymana w ręku. Gra się nie zatrzymuje (co-op): [H] zamyka, [E] bierze broń, odejście albo trafienie
 ## też zamyka. Zablokowana broń (kryjówka, nie kupiona w warsztacie) zostaje w półmroku z czerwoną kontrą i warunkiem odblokowania.
 
 const UiTheme := preload("res://scripts/ui_theme.gd")
@@ -239,7 +239,7 @@ func _process(delta: float) -> void:
 		return
 	_t += delta
 	_idle += delta
-	var stick := Vector2(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
+	var stick := Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
 	if stick.length() > 0.25:
 		_yaw += stick.x * delta * 2.6
 		_pitch = clampf(_pitch + stick.y * delta * 1.8, -1.1, 1.1)

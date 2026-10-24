@@ -667,8 +667,8 @@ func _t_actions() -> void:
 	var rows := {}
 	for r in sheet:
 		rows[String(r[1])] = String(r[0])
-	check("ściąga: ruch „WASD / Arrows”, ogień „J / LMB”, przedmiot „L-Alt / X”, broń „1 2 3 / Wheel” (%s | %s | %s | %s)" % [rows.get("Move & aim"), rows.get("Fire — makes NOISE"), rows.get("Use item / switch item"), rows.get("Switch weapon")],
-		rows.get("Move & aim") == "WASD / Arrows" and rows.get("Fire — makes NOISE") == "J / LMB" 		and rows.get("Use item / switch item") == ("L-Cmd / X" if OS.get_name() == "macOS" else "L-Alt / X") and rows.get("Switch weapon") == "1 2 3 / Wheel")
+	check("ściąga: ruch „WASD / Arrows”, ogień „J / LMB”, przedmiot „L-Alt / X”, broń „1 2 3 / Wheel ↓” (%s | %s | %s | %s)" % [rows.get("Move & aim"), rows.get("Fire — makes NOISE"), rows.get("Use item / switch item"), rows.get("Switch weapon")],
+		rows.get("Move & aim") == "WASD / Arrows" and rows.get("Fire — makes NOISE") == "J / LMB" 		and rows.get("Use item / switch item") == ("L-Cmd / X" if OS.get_name() == "macOS" else "L-Alt / X") and rows.get("Switch weapon") == "1 2 3 / Wheel ↓")
 	var ev_a := InputEventKey.new()
 	ev_a.physical_keycode = KEY_A
 	var ev_e := InputEventKey.new()
@@ -739,7 +739,8 @@ func _t_rebind() -> void:
 	Actions.load_from(cf)
 	var reload_ok: bool = InputMap.event_is_action(k_h, "flare") and InputMap.event_is_action(k_e, "reload") and InputMap.event_is_action(k_r, "interact")
 	check("zapis: tylko zmienione akcje (%s), reset przywraca domyślne, wczytanie odtwarza przypisania" % ", ".join(saved),
-		saved.size() == 3 and back_ok and reload_ok)
+		saved.size() == 4 and saved.has("inspect_weapon") and back_ok and reload_ok
+		and InputMap.event_is_action(k_f, "inspect_weapon"))
 	Actions.reset_defaults(false)
 	var k_k := InputEventKey.new()
 	k_k.physical_keycode = KEY_K
@@ -3504,18 +3505,18 @@ func _t_pickups() -> void:
 	await _step_on_item("weapon", Weapons.SRUT8)
 	await wait(0.2)
 	check("broń na ziemi jest w zasięgu E", wc.nearby_weapon_item() != null)
-	# [F] przy broni = oględziny (nie rzuca flary i nic nie bierze), drugie [F] zamyka; [E] bierze broń
+	# [H] przy broni = oględziny (nie rzuca flary i nic nie bierze), drugie [H] zamyka; [E] bierze broń
 	var flares0: int = NoiseMgr.flares
-	Input.action_press("flare")
+	Input.action_press("inspect_weapon")
 	await wait(0.12)
-	Input.action_release("flare")
+	Input.action_release("inspect_weapon")
 	await wait(0.12)
-	check("F przy broni otwiera oględziny: bez flary i bez zamiany", wc.inspect_item != null and NoiseMgr.flares == flares0 and wc.loadout[0] == old)
-	Input.action_press("flare")
+	check("H przy broni otwiera oględziny: bez flary i bez zamiany", wc.inspect_item != null and NoiseMgr.flares == flares0 and wc.loadout[0] == old)
+	Input.action_press("inspect_weapon")
 	await wait(0.12)
-	Input.action_release("flare")
+	Input.action_release("inspect_weapon")
 	await wait(0.12)
-	check("drugie F zamyka oględziny", wc.inspect_item == null and wc.loadout[0] == old)
+	check("drugie H zamyka oględziny", wc.inspect_item == null and wc.loadout[0] == old)
 	Input.action_press("interact")
 	await wait(0.12)
 	Input.action_release("interact")

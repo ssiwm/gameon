@@ -34,6 +34,7 @@ var yaw := 0.0                        ## rad — w lewo dodatnie
 var pitch := 0.0                      ## rad — w górę dodatnie
 var station := 1
 var braced_pose := false              ## [Shift] przy ławie
+var _brace_latched := false           ## tryb TOGGLE; zerowany przez zmianę stanowiska i każdą nakładkę
 var brace_t := 0.0                    ## 0 stoi … 1 przyklęk (obraz i wysokość oczu)
 var ads := false
 var ads_t := 0.0
@@ -176,7 +177,7 @@ func _blocked() -> bool:
 	return _paused() or locker_open
 
 func _paused() -> bool:
-	if get_tree().paused:
+	if get_tree().paused or Settings.blocked:
 		return true
 	var pm := get_tree().current_scene.get_node_or_null("UI/PauseMenu")
 	return pm != null and bool(pm.get("_open"))
@@ -342,8 +343,10 @@ func tick(delta: float) -> void:
 	sim.tick(delta)
 	shot_climb = float(player.weapons.climb)
 	if _paused():
+		_reset_brace()
 		return
 	if locker_open:
+		_reset_brace()
 		_tick_locker()
 		return
 	if Input.is_action_just_pressed("range_locker") and Engine.get_physics_frames() != _enter_frame:
@@ -353,8 +356,10 @@ func tick(delta: float) -> void:
 	if stick.length() > 0.0:
 		look(-stick.x * PAD_SENS * Settings.fp_sens() * delta, -stick.y * PAD_SENS * Settings.fp_sens() * _y_sign() * delta)
 	if Input.is_action_just_pressed("move_left"):
+		_reset_brace()
 		station = maxi(0, station - 1)
 	if Input.is_action_just_pressed("move_right"):
+		_reset_brace()
 		station = mini(RangeSim.STATIONS.size() - 1, station + 1)
 	if Input.is_action_just_pressed("range_exercise"):
 		sim.set_exercise(sim.next_exercise())                  # w trakcie przebiegu nic (set_exercise sam pilnuje)
@@ -364,7 +369,7 @@ func tick(delta: float) -> void:
 		_paper_sig = sig
 		sim.paper_break()                                      # inna broń albo obsługa — następna przestrzelina to nowa seria
 	x = move_toward(x, float(RangeSim.STATIONS[station]), STATION_SPEED * delta)
-	braced_pose = Input.is_action_pressed("crouch") and is_equal_approx(x, float(RangeSim.STATIONS[station]))
+	_update_brace()
 	brace_t = move_toward(brace_t, 1.0 if braced_pose else 0.0, BRACE_SPEED * delta)
 	ads = Input.is_action_pressed("aim_sights") or dev_ads
 	ads_t = move_toward(ads_t, 1.0 if ads else 0.0, ADS_SPEED * delta)
@@ -402,6 +407,19 @@ func range_shot(d: WeaponDef, seed: int, extra: float) -> void:
 ## Czy przeładowanie tej broni ma w widoku klip z własnymi dźwiękami mechaniki (weapon_controller._reload_sfx wtedy milczy).
 func clip_sounds(d: WeaponDef) -> bool:
 	return view != null and is_instance_valid(view) and bool(view.call("has_reload_clip", String(d.key)))
+
+func _reset_brace() -> void:
+	_brace_latched = false
+	braced_pose = false
+
+func _update_brace() -> void:
+	if Settings.fp_brace_toggle:
+		if Input.is_action_just_pressed("crouch"):
+			_brace_latched = not _brace_latched
+	else:
+		_brace_latched = false
+	var requested := _brace_latched if Settings.fp_brace_toggle else Input.is_action_pressed("crouch")
+	braced_pose = requested and is_equal_approx(x, float(RangeSim.STATIONS[station]))
 
 func braced() -> bool:
 	return braced_pose and brace_t > 0.9

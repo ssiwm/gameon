@@ -497,7 +497,7 @@ zacięcia ×2). Stan każdej broni gracza (0–100 %) siedzi w jego profilu (`Pr
 | **Niewypał** (50 %) | kurek uderza, strzału nie ma (klik). [R] — przeładowanie rączką 0,6 s, nabój wylatuje. **P-83** (podwójne działanie): drugie pociągnięcie spustu strzela | `_handle_shot`, `_start_clear` |
 | **Zacięcie łuski** (40 %) | strzał wychodzi, następny — klik. [R] — przeładowanie rączką 0,6 s, bez straty naboju | |
 | **Podwójne podanie** (10 %) | strzał wychodzi, następny — klik. [R] — wyjęcie magazynka i przeładowanie rączką 1,6 s, jeden nabój stracony | |
-| **Widać** | HUD pod licznikiem: „JAMMED — [R] CLEAR” (P-83: „MISFIRE — PULL AGAIN”), w trakcie „CLEARING”, poniżej 40 % stanu „DIRTY”; celownik — czerwony X; oględziny [F] — „CONDITION”; podpowiedź po pierwszym zacięciu | `hud.gd`, `weapon_view.gd`, `weapon_inspect.gd`, `hints.gd` |
+| **Widać** | HUD pod licznikiem: „JAMMED — [R] CLEAR” (P-83: „MISFIRE — PULL AGAIN”), w trakcie „CLEARING”, poniżej 40 % stanu „DIRTY”; celownik — czerwony X; oględziny [H] — „CONDITION”; podpowiedź po pierwszym zacięciu | `hud.gd`, `weapon_view.gd`, `weapon_inspect.gd`, `hints.gd` |
 | **Czyszczenie** | warsztat, zakładka ARMS: wiersz „SERVICE · Clean” pod częściami — od 1.7.347 bez złomu: 1,5 s przy ławie za każde rozpoczęte 10 % zużycia (`Profile.CLEAN_STEP`), broń wraca do 100 %; odejście od ławy, zmiana broni albo ponowne [E] przerywa. Stan siedzi w profilu gracza, więc serwer nie bierze udziału | `workshop_ui.gd` (`_start_clean`, `tick_clean`), `profile.gd` (`clean_time`) |
 
 Boty się nie zacinają. Zacięcie dotyczy broni, nie gracza — zostaje po zmianie broni i wraca z nią. Dev: `--shotjam` (broń gracza 1 brudna
@@ -530,14 +530,14 @@ trafienia (`Arsenal.confirm` → sygnał `weapon_hit` tylko u strzelca).
 | V | 1500 | −10 % / −20 % |
 
 Małe liczby — wyszkolenie, nie supermoc; boty bez wprawy. Awans — komunikat (toast) „M-83 · MASTERY II”; stopień i punkty do następnego
-pokazuje warsztat (szczegóły broni), stopień — oględziny [F]. Kod: `weapon_controller.gd` (`mastery_of`, `mastery_mult`, `_on_weapon_hit`),
+pokazuje warsztat (szczegóły broni), stopień — oględziny [H]. Kod: `weapon_controller.gd` (`mastery_of`, `mastery_mult`, `_on_weapon_hit`),
 `profile.gd` (`MASTERY_XP`, `add_mastery`), `combat.gd`, `arsenal.gd`.
 
 ## 27. Historia broni, etap 5b (1.7.331)
 
 | Element | Jak działa | Kod |
 |---|---|---|
-| **Zabójstwa** | każde zabójstwo żywego celu z danej broni trafia do historii gracza (`Profile.history`: klucz broni → zabójstwa, elity, bossowie); oględziny [F] i warsztat pokazują „KILLS” | `profile.gd` (`add_kill`, `kills`) |
+| **Zabójstwa** | każde zabójstwo żywego celu z danej broni trafia do historii gracza (`Profile.history`: klucz broni → zabójstwa, elity, bossowie); oględziny [H] i warsztat pokazują „KILLS” | `profile.gd` (`add_kill`, `kills`) |
 | **Nacięcia** | za każdą elitę (Kapłan, Rzeźnik, Żerca) i bossa — rysa nożem na kolbie (pistolet: z tyłu zamka), najwyżej 12; za bossa głęboka (×1,6). Serwer rozpoznaje rangę zabitego (`Combat.apply`: `rank` 1 elita, 2 boss) i dokleja ją do potwierdzenia trafienia — przy randze przez sieć niezawodnie. Toast „A notch on the M-83” | `combat.gd`, `arsenal.gd` (`weapon_hit(kind, weapon, rank)`), `weapon_controller.gd` |
 | **Na modelu** | `GunModel.build(…, notches, deep)`: rysy po obu bokach od tyłu broni, każda na prawdziwej powierzchni — promienie z boku w siatkę trójkątów modelu (górna krawędź kolby, potem bok na wysokości środka rysy). Widać je w dłoniach postaci (u wszystkich graczy — `player.notches`, replikowane), na ławie w warsztacie i w oględzinach | `gun_model.gd` (`add_notches`), `char3d.gd`, `gun_stage.gd`, `weapon_inspect.gd` |
 

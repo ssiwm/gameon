@@ -40,6 +40,9 @@ var _quit_t := 0.0                   ## >0: QUIT czeka na potwierdzenie
 var _refreshers: Array[Callable] = []
 var _rebind_list: VBoxContainer
 var _rebind_msg: Label
+var _pending_plan := {}
+var _confirm_controls: ConfirmationDialog
+var _profile_label: Label
 var _cap := {}                       ## trwające przypisywanie: id, dev, btn, text
 
 func _ready() -> void:
@@ -185,9 +188,20 @@ func _wrap_scaled(page: Control, _holder: Control) -> Control:
 	w.add_child(inner)
 	inner.add_child(page)
 	page.scale = Vector2(CODEX_K, CODEX_K)
-	inner.resized.connect(func() -> void:
-		page.size = inner.size / CODEX_K)
+	var fit := _fit_scaled_page.bind(page, inner)
+	inner.resized.connect(fit)
+	if page is VBoxContainer:
+		# VBox może urosnąć przy przebudowie listy przed zakończeniem sortowania kontenerów.
+		page.resized.connect(fit.call_deferred)
+		page.minimum_size_changed.connect(fit.call_deferred)
 	return w
+
+func _fit_scaled_page(page: Control, inner: Control) -> void:
+	if not is_instance_valid(page) or not is_instance_valid(inner):
+		return
+	var target := (inner.size / CODEX_K).max(page.get_combined_minimum_size())
+	if not page.size.is_equal_approx(target):
+		page.size = target
 
 func _build_settings(scroll: ScrollContainer) -> void:
 	var margin := MarginContainer.new()
@@ -234,6 +248,10 @@ func _build_settings(scroll: ScrollContainer) -> void:
 	left.add_child(W.section(tr("FIRST PERSON (RANGE)")))
 	_drop(left, tr("Field of view"), func() -> String: return "%d°" % int(Settings.fp_fov()), Settings.cycle_fp_fov)
 	_drop(left, tr("Look sensitivity"), func() -> String: return "×%.2f" % Settings.fp_sens(), Settings.cycle_fp_sens)
+	_seg(left, tr("Range brace key"), ["HOLD", "TOGGLE"], func() -> int: return 1 if Settings.fp_brace_toggle else 0,
+		func(i: int) -> void:
+			if (i == 1) != Settings.fp_brace_toggle:
+				Settings.toggle_fp_brace())
 	_toggle(left, tr("Invert look Y"), func() -> bool: return Settings.fp_invert_y, Settings.toggle_fp_invert_y)
 	left.add_child(_gap())
 	left.add_child(W.section(tr("SYSTEM")))
@@ -403,37 +421,43 @@ func _build_footer() -> Control:
 	return m
 
 ## Zakładka CONTROLS: lista akcji z przyciskami klawisza i pada. Klik → „press a key…" → następny klawisz (Esc anuluje)
-## trafia do akcji; ten sam klawisz miała inna akcja? — zamieniają się miejscami. Zapis w settings.cfg, RESET przywraca domyślne.
+## tworzy plan z walidacją kontekstów i listą zmienianych akcji. Zatwierdzenie zapisuje settings.cfg; profile są opt-in.
 ## (Strona powstała dla skali 0,8 — osadza ją `_wrap_scaled`.)
 func _build_controls(page: VBoxContainer) -> void:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.follow_focus = true
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	page.add_child(scroll)
 	_rebind_list = VBoxContainer.new()
 	_rebind_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_rebind_list.add_theme_constant_override("separation", 2)
 	scroll.add_child(_rebind_list)
-	var foot := HBoxContainer.new()
-	_rebind_msg = UiTheme.label(tr("Click a key, then press the new one  (Esc cancels)"), 8, UiTheme.MUTED)
-	_rebind_msg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	foot.add_child(_rebind_msg)
-	var reset := Button.new()
-	_compact(reset)
-	reset.text = tr("RESET TO DEFAULTS")
-	reset.pressed.connect(func() -> void:
-		_cancel_capture()
-		Actions.reset_defaults()
-		_rebind_msg.text = tr("All controls reset to defaults.")
-		Audio.play("ui_click", Audio.BUS_UI, -10.0))
-	foot.add_child(reset)
-	page.add_child(foot)
+	_profile_label = UiTheme.label("", 8, UiTheme.ACCENT)
+	page.add_child(_profile_label)
+	var presets := HBoxContainer.new()
+	for name in ["classic", "modern"]:
+		var button := Button.new()
+		_compact(button)
+		button.text = tr("APPLY CLASSIC") if name == "classic" else tr("APPLY MODERN")
+		button.pressed.connect(_request_preset.bind(name))
+		presets.add_child(button)
+	page.add_child(presets)
+	_rebind_msg = UiTheme.label(tr("Click to edit · + add · × remove · Esc cancels"), 8, UiTheme.MUTED)
+	_rebind_msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	page.add_child(_rebind_msg)
+	_confirm_controls = ConfirmationDialog.new()
+	_confirm_controls.title = tr("Confirm control changes")
+	_confirm_controls.confirmed.connect(_apply_pending_controls)
+	_confirm_controls.canceled.connect(func() -> void: _pending_plan = {})
+	add_child(_confirm_controls)
 	_fill_rebind()
 	Settings.bindings_changed.connect(_fill_rebind)
 	InputSetup.device_changed.connect(func(_pad: bool) -> void: _fill_rebind())
 
 func _fill_rebind() -> void:
-	_cap = {}
+	if not _cap.is_empty():
+		return # zmiana urządzenia podczas oczekiwania nie anuluje przechwytywania
 	for c in _rebind_list.get_children():
 		_rebind_list.remove_child(c)
 		c.queue_free()
@@ -441,84 +465,147 @@ func _fill_rebind() -> void:
 	var h0 := UiTheme.label(tr("ACTION"), 7, UiTheme.MUTED)
 	h0.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(h0)
-	var h1 := UiTheme.label(tr("KEYBOARD / MOUSE"), 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
-	h1.custom_minimum_size = Vector2(118, 0)
-	head.add_child(h1)
-	var h2 := UiTheme.label(tr("PAD"), 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
-	h2.custom_minimum_size = Vector2(92, 0)
-	head.add_child(h2)
+	for spec in [["KEYBOARD / MOUSE", 114.0], ["PAD", 96.0]]:
+		var label := UiTheme.label(tr(spec[0]), 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+		label.custom_minimum_size.x = spec[1]
+		head.add_child(label)
 	_rebind_list.add_child(head)
 	for id in Actions.rebindable():
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 3)
-		var l := UiTheme.label(Actions.label_of(id), 8, UiTheme.TEXT)
-		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(l)
-		row.add_child(_rebind_button(id, Actions.DEV_KEY, 118.0))
-		row.add_child(_rebind_button(id, Actions.DEV_PAD, 92.0))
+		row.add_theme_constant_override("separation", 5)
+		var label := UiTheme.label(tr(Actions.label_of(id)), 8, UiTheme.TEXT)
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.custom_minimum_size.x = 100.0
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(label)
+		row.add_child(_binding_cell(id, Actions.DEV_KEY, 114.0))
+		row.add_child(_binding_cell(id, Actions.DEV_PAD, 96.0))
 		_rebind_list.add_child(row)
+	_profile_label.text = tr("Control profile: %s") % tr(Actions.preset_name())
+	if not Actions.load_repairs.is_empty():
+		_rebind_msg.text = tr("Conflicting saved controls restored: %s") % _changed_names(Actions.load_repairs)
 
-func _rebind_button(id: String, dev: int, w: float) -> Button:
-	var b := Button.new()
-	_compact(b)
-	b.custom_minimum_size = Vector2(w, 0)
-	b.clip_text = true
-	b.text = Actions.text(id, false, dev)
+func _binding_cell(id: String, dev: int, width: float) -> Control:
+	var col := VBoxContainer.new()
+	col.custom_minimum_size.x = width
+	col.add_theme_constant_override("separation", 1)
 	if dev == Actions.DEV_PAD and not Actions.pad_rebindable(id):
-		b.disabled = true                        # drążki ruchu i celowania mają stałe osie
-		b.tooltip_text = tr("Fixed")
-	else:
-		b.tooltip_text = tr("Click, then press the new %s") % (tr("key") if dev == Actions.DEV_KEY else tr("pad button"))
-		b.pressed.connect(_start_capture.bind(id, dev, b))
-	return b
+		var axes := UiTheme.label(Actions.text(id, false, dev), 7, UiTheme.MUTED)
+		axes.tooltip_text = tr("Fixed axes")
+		col.add_child(axes)
+		return col
+	if id == "pause" and dev == Actions.DEV_KEY:
+		var escape := UiTheme.label("Esc", 8, UiTheme.MUTED)
+		escape.tooltip_text = tr("Esc is reserved for cancel and pause.")
+		col.add_child(escape)
+	var slots := Actions.editable_slots(id, dev)
+	var add := Button.new()
+	_compact(add)
+	add.text = "+"
+	add.tooltip_text = tr("Add binding")
+	add.custom_minimum_size.x = 18.0
+	add.pressed.connect(_start_capture.bind(id, dev, add, -1))
+	for slot in slots:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 2)
+		row.add_child(_rebind_button(id, dev, width - 44.0, slot))
+		var remove := Button.new()
+		_compact(remove)
+		remove.text = "×"
+		remove.tooltip_text = tr("Remove binding")
+		remove.custom_minimum_size.x = 18.0
+		remove.pressed.connect(_request_remove.bind(id, slot))
+		row.add_child(remove)
+		if slot == slots[0]:
+			row.add_child(add)
+		col.add_child(row)
+	if slots.is_empty():
+		col.add_child(add)
+	return col
 
-func _start_capture(id: String, dev: int, b: Button) -> void:
+func _rebind_button(id: String, dev: int, width: float, slot := -2) -> Button:
+	var button := Button.new()
+	_compact(button)
+	button.custom_minimum_size.x = width
+	button.clip_text = true
+	button.text = Actions.binding_name(id, slot) if slot >= 0 else Actions.text(id, false, dev)
+	button.tooltip_text = button.text + " · " + tr("Click, then press the new %s") % (tr("key or mouse button") if dev == Actions.DEV_KEY else tr("pad button"))
+	button.pressed.connect(_start_capture.bind(id, dev, button, slot))
+	return button
+
+func _start_capture(id: String, dev: int, button: Button, slot := -2) -> void:
 	_cancel_capture()
-	_cap = {"id": id, "dev": dev, "btn": b, "text": b.text}
-	b.text = tr("press a key…") if dev == Actions.DEV_KEY else tr("press a button…")
-	_rebind_msg.text = tr("%s: press the new %s  (Esc cancels)") % [tr(Actions.label_of(id)), tr("key") if dev == Actions.DEV_KEY else tr("pad button")]
+	_cap = {"id": id, "dev": dev, "btn": button, "text": button.text, "slot": slot}
+	button.text = tr("press a key…") if dev == Actions.DEV_KEY else tr("press a button…")
+	_rebind_msg.text = tr("%s: press a key or button  (Esc cancels)") % tr(Actions.label_of(id))
 	Audio.play("ui_click", Audio.BUS_UI, -10.0)
 
 func _cancel_capture() -> void:
-	if not _cap.is_empty() and is_instance_valid(_cap["btn"]):
-		(_cap["btn"] as Button).text = String(_cap["text"])
+	if not _cap.is_empty() and is_instance_valid(_cap.btn):
+		_cap.btn.text = String(_cap.text)
 	_cap = {}
 
-## Zdarzenie dla trwającego przypisywania; true = zużyte.
 func _capture_event(event: InputEvent) -> bool:
 	if _cap.is_empty():
 		return false
-	var dev: int = _cap["dev"]
-	var is_key: bool = event is InputEventKey and event.pressed and not event.echo
-	if dev == Actions.DEV_KEY and is_key:
-		if (event as InputEventKey).physical_keycode == KEY_ESCAPE:
-			_cancel_capture()
-			_rebind_msg.text = tr("Cancelled.")
-			return true
-		return _finish_capture(event)
-	if dev == Actions.DEV_PAD and (event is InputEventJoypadButton and event.pressed or event is InputEventJoypadMotion):
-		var res := Actions.binding_from_event(event, dev)
-		if not res.is_empty():
-			return _finish_capture(event)
-		return event is InputEventJoypadButton
-	if is_key and (event as InputEventKey).physical_keycode == KEY_ESCAPE:
-		_cancel_capture()                        # Esc anuluje też przypisywanie pada
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
+		_cancel_capture()
 		_rebind_msg.text = tr("Cancelled.")
+		_fill_rebind()
 		return true
-	return false
+	var pressed: bool = (event is InputEventKey and event.pressed and not event.echo) or (event is InputEventMouseButton and event.pressed) or (event is InputEventJoypadButton and event.pressed)
+	if pressed or event is InputEventJoypadMotion:
+		var binding := Actions.binding_from_event(event, _cap.dev)
+		if not binding.is_empty():
+			return _finish_capture(event)
+	# Niewłaściwe urządzenie i ruch drążka nie przenoszą fokusu ani nie zamykają panelu.
+	return event is InputEventKey or event is InputEventMouseButton or event is InputEventJoypadButton or event is InputEventJoypadMotion
 
 func _finish_capture(event: InputEvent) -> bool:
-	var id: String = _cap["id"]
-	var dev: int = _cap["dev"]
-	var res := Actions.set_binding(id, dev, event)
-	if bool(res["ok"]):
-		var sw := String(res["swapped"])
-		_rebind_msg.text = "%s → %s" % [tr(Actions.label_of(id)), Actions.text(id, true, dev)] + (tr("   (swapped with %s)") % tr(Actions.label_of(sw)) if sw != "" else "")
-		Audio.play("ui_confirm", Audio.BUS_UI, -8.0)
-	else:
-		_cancel_capture()
-		_rebind_msg.text = tr("That key cannot be used here.")
+	var plan := Actions.plan_binding(_cap.id, _cap.dev, event, _cap.slot)
+	_cancel_capture()
+	_confirm_plan(plan)
 	return true
+
+func _request_remove(id: String, slot: int) -> void:
+	_confirm_plan(Actions.plan_remove(id, slot))
+
+func _changed_names(ids: Array) -> String:
+	var names := PackedStringArray()
+	for id in ids:
+		names.append(tr(Actions.label_of(id)))
+	return ", ".join(names)
+
+func _confirm_plan(plan: Dictionary) -> void:
+	if not plan.ok:
+		_rebind_msg.text = String(plan.reason)
+		Audio.play("ui_click", Audio.BUS_UI, -16.0)
+		return
+	_pending_plan = plan
+	_confirm_controls.dialog_text = tr("Apply changes to: %s?") % _changed_names(plan.changed)
+	for id in plan.changed:
+		var names := PackedStringArray()
+		for b in plan.bindings[id]:
+			names.append(Actions._name_of(b))
+		_confirm_controls.dialog_text += "\n%s: %s" % [tr(Actions.label_of(id)), " / ".join(names) if not names.is_empty() else "—"]
+	_confirm_controls.popup_centered(Vector2i(440, 160))
+
+func _request_preset(name: String) -> void:
+	_cancel_capture()
+	var plan := Actions.plan_preset(name)
+	if not plan.ok:
+		_rebind_msg.text = String(plan.reason)
+		return
+	_pending_plan = plan
+	_confirm_controls.dialog_text = tr("Apply %s? This replaces your current bindings.") % name.capitalize()
+	_confirm_controls.popup_centered(Vector2i(440, 160))
+
+func _apply_pending_controls() -> void:
+	_confirm_controls.hide()
+	var result := Actions.apply_plan(_pending_plan)
+	_pending_plan = {}
+	_rebind_msg.text = tr("Controls updated.") if result.ok else String(result.reason)
+	Audio.play("ui_confirm", Audio.BUS_UI, -8.0) if result.ok else Audio.play("ui_click", Audio.BUS_UI, -16.0)
 
 ## Niższy przycisk (strony kodeksu i sterowania — skala 0,8).
 func _compact(b: Button) -> void:
@@ -617,6 +704,8 @@ func close() -> void:
 		return
 	_open = false
 	_cancel_capture()
+	_pending_plan = {}
+	_confirm_controls.hide()
 	visible = false
 	get_tree().paused = false
 	Settings.block_game_input(false)
@@ -634,7 +723,13 @@ func _process(delta: float) -> void:
 		_set_chip()
 
 func _input(event: InputEvent) -> void:
+	if _confirm_controls.visible:
+		return
 	if _open and _capture_event(event):
+		get_viewport().set_input_as_handled()
+		return
+	if _open and event.is_action_pressed("ui_cancel"):
+		close()
 		get_viewport().set_input_as_handled()
 		return
 	if _open and event is InputEventJoypadButton:

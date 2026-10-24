@@ -60,6 +60,7 @@ var vsync_idx := 0
 var fps_idx := 0
 var fp_fov_idx := FP_FOV_DEFAULT       ## widok z oczu: indeks FP_FOV_LIST
 var fp_sens_idx := FP_SENS_DEFAULT     ## widok z oczu: indeks FP_SENS_LIST
+var fp_brace_toggle := false          ## osobny tryb oparcia na strzelnicy: HOLD domyślnie, TOGGLE opcjonalnie
 var fp_invert_y := false               ## widok z oczu: ruch myszy / drążka w górę pochyla w dół
 var quality_idx := 2                   ## LOW / MEDIUM / HIGH — cząsteczki, aberracja, efekty pogody
 var mono_audio := false                ## bez panoramy w dźwięku pozycyjnym (osoby z jednostronnym słuchem)
@@ -185,6 +186,10 @@ func cycle_fp_fov() -> void:
 
 func cycle_fp_sens() -> void:
 	fp_sens_idx = (fp_sens_idx + 1) % FP_SENS_LIST.size()
+	_commit()
+
+func toggle_fp_brace() -> void:
+	fp_brace_toggle = not fp_brace_toggle
 	_commit()
 
 func toggle_fp_invert_y() -> void:
@@ -359,6 +364,7 @@ func _load() -> void:
 	fps_idx = clampi(int(cf.get_value("game", "fps", 0)), 0, FPS_LIST.size() - 1)
 	fp_fov_idx = clampi(int(cf.get_value("fp", "fov", FP_FOV_DEFAULT)), 0, FP_FOV_LIST.size() - 1)
 	fp_sens_idx = clampi(int(cf.get_value("fp", "sens", FP_SENS_DEFAULT)), 0, FP_SENS_LIST.size() - 1)
+	fp_brace_toggle = bool(cf.get_value("fp", "brace_toggle", false))
 	fp_invert_y = bool(cf.get_value("fp", "invert_y", false))
 	quality_idx = clampi(int(cf.get_value("game", "quality", 2)), 0, QUALITY_NAMES.size() - 1)
 	reduce_fx = bool(cf.get_value("game", "reduce_fx", false))
@@ -393,6 +399,7 @@ func _save() -> void:
 	cf.set_value("game", "fps", fps_idx)
 	cf.set_value("fp", "fov", fp_fov_idx)
 	cf.set_value("fp", "sens", fp_sens_idx)
+	cf.set_value("fp", "brace_toggle", fp_brace_toggle)
 	cf.set_value("fp", "invert_y", fp_invert_y)
 	cf.set_value("game", "quality", quality_idx)
 	cf.set_value("game", "reduce_fx", reduce_fx)

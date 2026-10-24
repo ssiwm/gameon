@@ -1233,7 +1233,15 @@ func _pick_opt(i: int) -> void:
 func _reveal_option() -> void:
 	var buttons := _d_tiers.get_children().filter(func(c: Node) -> bool: return c is Button)
 	if _opt >= 0 and _opt < buttons.size():
-		_arms_body.get_parent().call_deferred("ensure_control_visible", buttons[_opt])
+		_ensure_arm_option_visible.call_deferred(buttons[_opt])
+
+## Przebudowa części może odłączyć przycisk przed odroczonym przewinięciem fokusu.
+func _ensure_arm_option_visible(button: Control) -> void:
+	if not is_instance_valid(button) or not is_instance_valid(_arms_body):
+		return
+	var scroll := _arms_body.get_parent() as ScrollContainer
+	if scroll != null and scroll.is_ancestor_of(button):
+		scroll.ensure_control_visible(button)
 
 func _move(d: int) -> void:
 	var choices := _arms_list()
