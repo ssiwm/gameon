@@ -1,0 +1,1004 @@
+{
+  "version": "1.7.369",
+  "baseline_version": "1.7.368",
+  "baseline_commit": "8082981e19a411128fa6f9f07677f6f6fc15a164",
+  "units": "metres; Blender X forward, Y lateral, Z up",
+  "models": {
+    "male_medic": {
+      "path": "prototype/art/char3d/mpfb/male_medic.glb",
+      "bytes": 4187124,
+      "sha256": "5451b054ec061259b9653639c566f46288e22bfba1d523886b5fe87b5be4a9de",
+      "runtime_triangles": 33710,
+      "runtime_mesh_nodes": 13,
+      "before": {
+        "jaldmic_m1951_72": {
+          "lo": [
+            -0.0860287994146347,
+            -0.11170174926519394,
+            1.4773708581924438
+          ],
+          "hi": [
+            0.18978728353977203,
+            0.11170168966054916,
+            1.8473714590072632
+          ],
+          "size": [
+            0.27581608295440674,
+            0.2234034389257431,
+            0.37000060081481934
+          ],
+          "tris": 1800,
+          "weights": {
+            "mixamorig:Head": 1828,
+            "mixamorig:Neck": 514,
+            "mixamorig:Spine2": 141,
+            "mixamorig:LeftShoulder": 52,
+            "mixamorig:LeftArm": 91
+          },
+          "materials": [
+            "Human.jaldmic_m1951_72"
+          ]
+        },
+        "punkduck_stethoscope": {
+          "lo": [
+            0.046556659042835236,
+            -0.09097881615161896,
+            1.0558468103408813
+          ],
+          "hi": [
+            0.19237861037254333,
+            0.09114814549684525,
+            1.6833258867263794
+          ],
+          "size": [
+            0.1458219513297081,
+            0.1821269616484642,
+            0.627479076385498
+          ],
+          "tris": 599,
+          "weights": {
+            "mixamorig:Hips": 472,
+            "mixamorig:Head": 624
+          },
+          "materials": [
+            "Human.punkduck_stethoscope"
+          ]
+        },
+        "medbag": {
+          "lo": [
+            -0.22805346548557281,
+            -0.12748679518699646,
+            1.2020437717437744
+          ],
+          "hi": [
+            -0.05864187330007553,
+            0.1302100569009781,
+            1.5541578531265259
+          ],
+          "size": [
+            0.16941159218549728,
+            0.25769685208797455,
+            0.35211408138275146
+          ],
+          "tris": 4000,
+          "weights": {
+            "mixamorig:Spine2": 5547
+          },
+          "materials": [
+            "Material_0"
+          ]
+        },
+        "gear": {
+          "lo": [
+            -0.11031824350357056,
+            -0.1841968595981598,
+            1.0847969055175781
+          ],
+          "hi": [
+            0.20937861502170563,
+            0.1895117461681366,
+            1.822371482849121
+          ],
+          "size": [
+            0.3196968585252762,
+            0.3737086057662964,
+            0.737574577331543
+          ],
+          "tris": 620,
+          "weights": {
+            "mixamorig:Hips": 152,
+            "mixamorig:Spine2": 480,
+            "mixamorig:Head": 48
+          },
+          "materials": [
+            "gear"
+          ]
+        },
+        "pouch_L": {
+          "lo": [
+            0.1804649382829666,
+            0.062236011028289795,
+            0.9980214834213257
+          ],
+          "hi": [
+            0.24693356454372406,
+            0.16056114435195923,
+            1.1222970485687256
+          ],
+          "size": [
+            0.06646862626075745,
+            0.09832513332366943,
+            0.1242755651473999
+          ],
+          "tris": 1500,
+          "weights": {
+            "mixamorig:Hips": 2440
+          },
+          "materials": [
+            "Material_0.002"
+          ]
+        },
+        "pouch_R": {
+          "lo": [
+            0.18046490848064423,
+            -0.1552463322877884,
+            0.9980214834213257
+          ],
+          "hi": [
+            0.24693353474140167,
+            -0.05692116543650627,
+            1.1222970485687256
+          ],
+          "size": [
+            0.06646862626075745,
+            0.09832516685128212,
+            0.1242755651473999
+          ],
+          "tris": 1500,
+          "weights": {
+            "mixamorig:Hips": 2440
+          },
+          "materials": [
+            "Material_0.001"
+          ]
+        },
+        "canteen": {
+          "lo": [
+            -0.17068739235401154,
+            0.03910350427031517,
+            0.9201710820198059
+          ],
+          "hi": [
+            -0.08367159217596054,
+            0.1759200394153595,
+            1.127297043800354
+          ],
+          "size": [
+            0.087015800178051,
+            0.13681653514504433,
+            0.2071259617805481
+          ],
+          "tris": 1500,
+          "weights": {
+            "mixamorig:Hips": 2430
+          },
+          "materials": [
+            "Material_0.003"
+          ]
+        }
+      },
+      "after": {
+        "jaldmic_m1951_72": {
+          "lo": [
+            -0.0860287994146347,
+            -0.11170174926519394,
+            1.4773708581924438
+          ],
+          "hi": [
+            0.18978728353977203,
+            0.11170168966054916,
+            1.8473714590072632
+          ],
+          "size": [
+            0.27581608295440674,
+            0.2234034389257431,
+            0.37000060081481934
+          ],
+          "tris": 1800,
+          "weights": {
+            "mixamorig:Head": 1872
+          },
+          "materials": [
+            "Human.jaldmic_m1951_72"
+          ]
+        },
+        "punkduck_stethoscope": {
+          "lo": [
+            0.04655667021870613,
+            -0.09097880870103836,
+            1.2272218465805054
+          ],
+          "hi": [
+            0.18125507235527039,
+            0.09114813059568405,
+            1.600048542022705
+          ],
+          "size": [
+            0.13469840213656425,
+            0.1821269392967224,
+            0.3728266954421997
+          ],
+          "tris": 599,
+          "weights": {
+            "mixamorig:Spine2": 787,
+            "mixamorig:Neck": 361
+          },
+          "materials": [
+            "Human.punkduck_stethoscope"
+          ]
+        },
+        "medbag": {
+          "lo": [
+            -0.22461402416229248,
+            -0.12748679518699646,
+            1.2020437717437744
+          ],
+          "hi": [
+            -0.10118824243545532,
+            0.1302100569009781,
+            1.5541578531265259
+          ],
+          "size": [
+            0.12342578172683716,
+            0.25769685208797455,
+            0.35211408138275146
+          ],
+          "tris": 4000,
+          "weights": {
+            "mixamorig:Spine2": 5547
+          },
+          "materials": [
+            "Material_0"
+          ]
+        },
+        "gear": {
+          "lo": [
+            -0.11031824350357056,
+            -0.1841968595981598,
+            1.0847969055175781
+          ],
+          "hi": [
+            0.18441513180732727,
+            0.1895117461681366,
+            1.582283854484558
+          ],
+          "size": [
+            0.2947333753108978,
+            0.3737086057662964,
+            0.49748694896698
+          ],
+          "tris": 564,
+          "weights": {
+            "mixamorig:Hips": 152,
+            "mixamorig:Spine2": 448
+          },
+          "materials": [
+            "gear"
+          ]
+        },
+        "pouch_L": {
+          "lo": [
+            0.15624530613422394,
+            0.06223601475358009,
+            0.9980214834213257
+          ],
+          "hi": [
+            0.22271393239498138,
+            0.16056114435195923,
+            1.1222970485687256
+          ],
+          "size": [
+            0.06646862626075745,
+            0.09832512959837914,
+            0.1242755651473999
+          ],
+          "tris": 1500,
+          "weights": {
+            "mixamorig:Hips": 2440
+          },
+          "materials": [
+            "Material_0.002"
+          ]
+        },
+        "pouch_R": {
+          "lo": [
+            0.15624527633190155,
+            -0.1552463173866272,
+            0.9980214834213257
+          ],
+          "hi": [
+            0.222713902592659,
+            -0.05692116171121597,
+            1.1222970485687256
+          ],
+          "size": [
+            0.06646862626075745,
+            0.09832515567541122,
+            0.1242755651473999
+          ],
+          "tris": 1500,
+          "weights": {
+            "mixamorig:Hips": 2440
+          },
+          "materials": [
+            "Material_0.001"
+          ]
+        },
+        "canteen": {
+          "lo": [
+            -0.17068739235401154,
+            0.03910350427031517,
+            0.9201710820198059
+          ],
+          "hi": [
+            -0.08367159217596054,
+            0.1759200394153595,
+            1.127297043800354
+          ],
+          "size": [
+            0.087015800178051,
+            0.13681653514504433,
+            0.2071259617805481
+          ],
+          "tris": 1500,
+          "weights": {
+            "mixamorig:Hips": 2430
+          },
+          "materials": [
+            "Material_0.003"
+          ]
+        }
+      },
+      "quality": {
+        "model": "male_medic",
+        "mesh_objects": 13,
+        "armatures": 1,
+        "unweighted_vertices": 0,
+        "degenerate_faces": 0,
+        "nonfinite_vertices": 0,
+        "no_uv": [],
+        "images": [
+          {
+            "name": "brown_eye",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "canteen_normal",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "eyebrow001",
+            "width": 512,
+            "height": 512
+          },
+          {
+            "name": "gear_albedo",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "gear_normal",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "Image_0",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "Image_0.001",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "Image_0.002",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "Image_1",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "Image_1.001",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "Image_1.002",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "m1951_72",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "male_medic_boots_albedo",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "male_medic_boots_normal",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "male_medic_emt_jacket_albedo",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "male_medic_emt_jacket_normal",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "male_medic_emt_jacket_orm",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "male_medic_emt_trousers_albedo",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "male_medic_emt_trousers_normal",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "male_medic_emt_trousers_orm",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "medbag_normal",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "middleage_darkskinned_male_diffuse",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "pouch_normal",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "uv_punkduck_stethoscope",
+            "width": 1024,
+            "height": 1024
+          }
+        ]
+      }
+    },
+    "female_medic": {
+      "path": "prototype/art/char3d/mpfb/female_medic.glb",
+      "bytes": 4388480,
+      "sha256": "a8f2c508e346c66bdb5baa4fcf5202b73ff2a35b7f3e097100fe0b7caefa7cb0",
+      "runtime_triangles": 33830,
+      "runtime_mesh_nodes": 14,
+      "before": {
+        "jaldmic_m1951_72": {
+          "lo": [
+            -0.07241792976856232,
+            -0.11474897712469101,
+            1.3714032173156738
+          ],
+          "hi": [
+            0.1909174919128418,
+            0.11474902182817459,
+            1.746183156967163
+          ],
+          "size": [
+            0.2633354216814041,
+            0.2294979989528656,
+            0.37477993965148926
+          ],
+          "tris": 1800,
+          "weights": {
+            "mixamorig:Head": 1826,
+            "mixamorig:Neck": 491,
+            "mixamorig:Spine2": 120,
+            "mixamorig:LeftShoulder": 34,
+            "mixamorig:LeftArm": 74
+          },
+          "materials": [
+            "Human.jaldmic_m1951_72"
+          ]
+        },
+        "punkduck_stethoscope": {
+          "lo": [
+            0.054009612649679184,
+            -0.093180350959301,
+            0.9761240482330322
+          ],
+          "hi": [
+            0.17288093268871307,
+            0.09316276013851166,
+            1.5810497999191284
+          ],
+          "size": [
+            0.11887132003903389,
+            0.18634311109781265,
+            0.6049257516860962
+          ],
+          "tris": 599,
+          "weights": {
+            "mixamorig:Hips": 488,
+            "mixamorig:Head": 627
+          },
+          "materials": [
+            "Human.punkduck_stethoscope"
+          ]
+        },
+        "medbag": {
+          "lo": [
+            -0.18769918382167816,
+            -0.11788444966077805,
+            1.1099985837936401
+          ],
+          "hi": [
+            -0.031047683209180832,
+            0.12040264904499054,
+            1.435591459274292
+          ],
+          "size": [
+            0.15665150061249733,
+            0.23828709870576859,
+            0.32559287548065186
+          ],
+          "tris": 4000,
+          "weights": {
+            "mixamorig:Spine2": 5547
+          },
+          "materials": [
+            "Material_0"
+          ]
+        },
+        "gear": {
+          "lo": [
+            -0.11323937773704529,
+            -0.19637644290924072,
+            0.9900566339492798
+          ],
+          "hi": [
+            0.1903965324163437,
+            0.1966901421546936,
+            1.721183180809021
+          ],
+          "size": [
+            0.303635910153389,
+            0.3930665850639343,
+            0.7311265468597412
+          ],
+          "tris": 604,
+          "weights": {
+            "mixamorig:Hips": 152,
+            "mixamorig:Spine2": 494,
+            "mixamorig:Head": 48
+          },
+          "materials": [
+            "gear"
+          ]
+        },
+        "pouch_L": {
+          "lo": [
+            0.16067416965961456,
+            0.0552479550242424,
+            0.9126415252685547
+          ],
+          "hi": [
+            0.22213634848594666,
+            0.14616723358631134,
+            1.0275567770004272
+          ],
+          "size": [
+            0.06146217882633209,
+            0.09091927856206894,
+            0.11491525173187256
+          ],
+          "tris": 1500,
+          "weights": {
+            "mixamorig:Hips": 2440
+          },
+          "materials": [
+            "Material_0.002"
+          ]
+        },
+        "pouch_R": {
+          "lo": [
+            0.16067416965961456,
+            -0.14585357904434204,
+            0.9126415252685547
+          ],
+          "hi": [
+            0.22213634848594666,
+            -0.05493428558111191,
+            1.0275567770004272
+          ],
+          "size": [
+            0.06146217882633209,
+            0.09091929346323013,
+            0.11491525173187256
+          ],
+          "tris": 1500,
+          "weights": {
+            "mixamorig:Hips": 2440
+          },
+          "materials": [
+            "Material_0.001"
+          ]
+        },
+        "canteen": {
+          "lo": [
+            -0.16702789068222046,
+            0.051434386521577835,
+            0.8410313725471497
+          ],
+          "hi": [
+            -0.08656611293554306,
+            0.17794589698314667,
+            1.0325567722320557
+          ],
+          "size": [
+            0.0804617777466774,
+            0.12651151046156883,
+            0.191525399684906
+          ],
+          "tris": 1500,
+          "weights": {
+            "mixamorig:Hips": 2430
+          },
+          "materials": [
+            "Material_0.003"
+          ]
+        }
+      },
+      "after": {
+        "jaldmic_m1951_72": {
+          "lo": [
+            -0.07241792976856232,
+            -0.11474897712469101,
+            1.3714030981063843
+          ],
+          "hi": [
+            0.1909174919128418,
+            0.11474902182817459,
+            1.746183156967163
+          ],
+          "size": [
+            0.2633354216814041,
+            0.2294979989528656,
+            0.3747800588607788
+          ],
+          "tris": 1800,
+          "weights": {
+            "mixamorig:Head": 1855
+          },
+          "materials": [
+            "Human.jaldmic_m1951_72"
+          ]
+        },
+        "punkduck_stethoscope": {
+          "lo": [
+            0.05400959402322769,
+            -0.09318035840988159,
+            1.1347867250442505
+          ],
+          "hi": [
+            0.19284853339195251,
+            0.09316275268793106,
+            1.479532241821289
+          ],
+          "size": [
+            0.13883893936872482,
+            0.18634311109781265,
+            0.3447455167770386
+          ],
+          "tris": 599,
+          "weights": {
+            "mixamorig:Spine2": 833,
+            "mixamorig:Neck": 400
+          },
+          "materials": [
+            "Human.punkduck_stethoscope"
+          ]
+        },
+        "medbag": {
+          "lo": [
+            -0.1859498769044876,
+            -0.11788444221019745,
+            1.1099985837936401
+          ],
+          "hi": [
+            -0.07182052731513977,
+            0.12040264904499054,
+            1.435591459274292
+          ],
+          "size": [
+            0.11412934958934784,
+            0.238287091255188,
+            0.32559287548065186
+          ],
+          "tris": 4000,
+          "weights": {
+            "mixamorig:Spine2": 5547
+          },
+          "materials": [
+            "Material_0"
+          ]
+        },
+        "gear": {
+          "lo": [
+            -0.11323937773704529,
+            -0.19637644290924072,
+            0.9900566339492798
+          ],
+          "hi": [
+            0.18755774199962616,
+            0.1966901421546936,
+            1.477134108543396
+          ],
+          "size": [
+            0.30079711973667145,
+            0.3930665850639343,
+            0.4870774745941162
+          ],
+          "tris": 564,
+          "weights": {
+            "mixamorig:Hips": 152,
+            "mixamorig:Spine2": 461
+          },
+          "materials": [
+            "gear"
+          ]
+        },
+        "pouch_L": {
+          "lo": [
+            0.15286800265312195,
+            0.0552479550242424,
+            0.9126415252685547
+          ],
+          "hi": [
+            0.21433018147945404,
+            0.14616723358631134,
+            1.0275567770004272
+          ],
+          "size": [
+            0.06146217882633209,
+            0.09091927856206894,
+            0.11491525173187256
+          ],
+          "tris": 1500,
+          "weights": {
+            "mixamorig:Hips": 2440
+          },
+          "materials": [
+            "Material_0.002"
+          ]
+        },
+        "pouch_R": {
+          "lo": [
+            0.15286800265312195,
+            -0.14585357904434204,
+            0.9126415252685547
+          ],
+          "hi": [
+            0.21433018147945404,
+            -0.05493428558111191,
+            1.0275567770004272
+          ],
+          "size": [
+            0.06146217882633209,
+            0.09091929346323013,
+            0.11491525173187256
+          ],
+          "tris": 1500,
+          "weights": {
+            "mixamorig:Hips": 2440
+          },
+          "materials": [
+            "Material_0.001"
+          ]
+        },
+        "canteen": {
+          "lo": [
+            -0.16702789068222046,
+            0.051434386521577835,
+            0.8410313725471497
+          ],
+          "hi": [
+            -0.08656611293554306,
+            0.17794589698314667,
+            1.0325567722320557
+          ],
+          "size": [
+            0.0804617777466774,
+            0.12651151046156883,
+            0.191525399684906
+          ],
+          "tris": 1500,
+          "weights": {
+            "mixamorig:Hips": 2430
+          },
+          "materials": [
+            "Material_0.003"
+          ]
+        }
+      },
+      "quality": {
+        "model": "female_medic",
+        "mesh_objects": 14,
+        "armatures": 1,
+        "unweighted_vertices": 0,
+        "degenerate_faces": 0,
+        "nonfinite_vertices": 0,
+        "no_uv": [],
+        "images": [
+          {
+            "name": "brown_eye",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "canteen_normal",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "eyebrow002",
+            "width": 512,
+            "height": 512
+          },
+          {
+            "name": "female_medic_boots_albedo",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "female_medic_boots_normal",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "female_medic_emt_jacket_albedo",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "female_medic_emt_jacket_normal",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "female_medic_emt_jacket_orm",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "female_medic_emt_trousers_albedo",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "female_medic_emt_trousers_normal",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "female_medic_emt_trousers_orm",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "gear_albedo",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "gear_normal",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "Image_0",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "Image_0.001",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "Image_0.002",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "Image_1",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "Image_1.001",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "Image_1.002",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "m1951_72",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "medbag_normal",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "ponytail01_diffuse",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "pouch_normal",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "uv_punkduck_stethoscope",
+            "width": 1024,
+            "height": 1024
+          },
+          {
+            "name": "young_lightskinned_female_diffuse3",
+            "width": 1024,
+            "height": 1024
+          }
+        ]
+      }
+    }
+  },
+  "validation": {
+    "proportions_passed": 154,
+    "aim_points_max_world_px": 0.47,
+    "aim_points_limit_world_px": 1.5,
+    "vram_textures_to_fix": 0,
+    "regression_failures_before": 12,
+    "visual_renderer": "Godot 4.7.2 Forward+ Vulkan, RTX 3080",
+    "motion_frames": 45,
+    "visual_poses": [
+      "idle M83 0 degrees",
+      "crouch M83 +50 degrees",
+      "run M83 -50 degrees",
+      "motion M83 +50 degrees and P64 crouch_walk/run"
+    ],
+    "palette": "standard",
+    "remaining_viewer_error": "Attempted to free invalid ID at shutdown after frames saved"
+  }
+}
