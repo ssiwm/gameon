@@ -1,7 +1,8 @@
 """Ubrania szyte symulacją tkaniny na ciele MPFB — `art_src/clothes/<strój>_<ubranie>.glb` (CHARACTER_PLAN.md).
 
 Uruchomienie (z korzenia repo; Blender z dodatkiem MPFB2, jak `char_mpfb.py`):
-    blender -b -P prototype/tools/cloth_garments.py -- male_scav [male_medic male_hazmat | --all] [--stage=shell|sim|all] [--tex=2048]
+    blender -b -P prototype/tools/cloth_garments.py -- male_scav [female_medic male_medic male_hazmat | --all] [--stage=shell|sim|all] [--tex=2048]
+    blender -b -P prototype/tools/cloth_garments.py -- male_medic female_medic --reuse-boots --tex=1024
     blender -b -P prototype/tools/cloth_garments.py -- male_scav --only=m65 --fp [--fp-tris=36000]   # same rękawy do widoku z oczu
 
 Zamiast gotowych ubrań z paczek MakeHuman, dla każdego stroju z tabeli WARDROBE (od warstwy spodniej do wierzchniej):
@@ -222,9 +223,9 @@ def make_shell(rig, body, dom, look, name, obst=()):
         boots = [BVHTree.FromObject(o, dg) for o in obst if "boots" in o.name or "shoes" in o.name]
         top = max((max(v.co.z for v in o.data.vertices) for o in obst if "boots" in o.name or "shoes" in o.name), default=-1.0)
         for i in np.nonzero((co[:, 2] < top + 0.02) & np.array([_is_leg(b) for b in dom]))[0]:
-            o = Vector(co[i]) + Vector(nr[i]) * 0.15                     # z zewnątrz do nogi: pierwsze trafienie to wierzch cholewki
+            o = Vector(co[i])                                          # od nogi na zewnątrz: nie trafiamy najpierw w but drugiej nogi
             for bv in boots:
-                hit = bv.ray_cast(o, -Vector(nr[i]), 0.15)[0]
+                hit = bv.ray_cast(o, Vector(nr[i]), 0.15)[0]
                 if hit is not None:
                     disp[i] = max(disp[i], (hit - Vector(co[i])).length + look["ease_leg"][2] * 0.6)
     fat = co + nr * disp[:, None]
@@ -405,7 +406,7 @@ def _dist_to_rim(co, rim_co):
 
 def push_out(ob, rig, obst, margin=0.012):
     """Tkanina nie może zaczynać symulacji w bucie (kolizja wypchnęłaby nogawkę w górę): przy cholewce wierzchołki odsunięte
-    promieniście od osi nogi na zewnętrzną powierzchnię buta + `margin` (promień z zewnątrz do osi: pierwsze trafienie = wierzch)."""
+    promieniście od osi nogi na zewnętrzną powierzchnię buta + `margin` (promień od osi na zewnątrz: pierwsze trafienie = własna cholewka)."""
     from mathutils.bvhtree import BVHTree
     dg = bpy.context.evaluated_depsgraph_get()
     boots = [o for o in obst if "boots" in o.name or "shoes" in o.name]
@@ -429,7 +430,7 @@ def push_out(ob, rig, obst, margin=0.012):
         d.normalize()
         r_boot = 0.0
         for bv in bvs:
-            hit = bv.ray_cast(ax + d * 0.3, -d, 0.3)[0]
+            hit = bv.ray_cast(ax, d, 0.3)[0]
             if hit is not None:
                 r_boot = max(r_boot, (hit - ax).length)
         if r_boot and (v.co - ax).length < r_boot + margin:
@@ -1615,6 +1616,21 @@ def _final_material(low, mat, alb, nrm, look):
     nm = nt.nodes.new("ShaderNodeNormalMap")
     nt.links.new(tn.outputs["Color"], nm.inputs["Color"])
     nt.links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
+    if look.get("cloth_roughness"):
+        # glTF pakuje szorstkość w G, metaliczność w B. R=1: okluzja jest już w albedo,
+        # więc shader Char3D nie powinien ponownie przyciemniać kieszeni i szwów.
+        size = alb.size[0]
+        grain = C.smooth_noise(size, size, max(2, size // 8), 117).ravel()
+        rough = np.clip(look.get("rough", 0.85) + (grain - 0.5) * 0.14, 0.0, 1.0)
+        orm = bpy.data.images.new(low.name + "_orm", size, size)
+        orm.colorspace_settings.name = "Non-Color"
+        orm.pixels[:] = np.c_[np.ones(size * size), rough, np.zeros(size * size), np.ones(size * size)].ravel()
+        tx = nt.nodes.new("ShaderNodeTexImage")
+        tx.image = orm
+        channels = nt.nodes.new("ShaderNodeSeparateColor")
+        nt.links.new(tx.outputs["Color"], channels.inputs["Color"])
+        nt.links.new(channels.outputs["Green"], bsdf.inputs["Roughness"])
+        nt.links.new(channels.outputs["Blue"], bsdf.inputs["Metallic"])
 
 
 def make_low(ob, collar, tris, name):
@@ -1674,9 +1690,11 @@ BDU = {
 # mundur ratownika: kurtka do bioder (ściągacz w pasie), niska stójka, kieszenie piersiowe, pagony; spodnie z kieszeniami bocznymi na buty
 NAVY = (0.13, 0.18, 0.31)                  # jaśniejszy granat niż w CAMO (detale ginęły w ciemnym)
 EMT_JACKET = dict(M65, hem_dz=0.075, collar_h=0.042, hip_pocket=None, chest_pocket=(0.11, 0.12, 0.14), waist_shrink=0.0,
-                  hem_band=0.045, camo="navy", base=NAVY, ao=0.6, stitch=STITCH_NAVY_LIGHT, mottle=0.06, low_tris=4500)
+                  hem_band=0.045, camo="navy", base=NAVY, ao=0.6, stitch=STITCH_NAVY_LIGHT, mottle=0.06, low_tris=4500,
+                  cloth_roughness=True)
 EMT_TROUSERS = dict(BDU, leg_end="boot", leg_dz=-0.03, leg_shrink=0.0, ease_leg=(0.026, 0.022, 0.020), knee_patch=None,
-                    camo="navy", base=NAVY, ao=0.6, stitch=STITCH_NAVY_LIGHT, mottle=0.06)     # nogawka oparta na cholewce
+                    camo="navy", base=NAVY, ao=0.6, stitch=STITCH_NAVY_LIGHT, mottle=0.06,
+                    cloth_roughness=True)     # nogawka oparta na cholewce
 # kombinezon ochronny: jedna część od szyi do kostek, pas, nakolanniki, gumowany (gładszy), szwy podklejone taśmą
 COVERALL = {
     "kind": "coverall", "waist_dz": 0.0, "loft_dz": 0.035,
@@ -1704,7 +1722,7 @@ WARDROBE = {
     "male_medic": [("boots", COMBAT_BOOTS), ("emt_trousers", EMT_TROUSERS), ("emt_jacket", EMT_JACKET)],
     "male_hazmat": [("boots", RUBBER_BOOTS), ("coverall", COVERALL)],
     "female_scav": [("boots", COMBAT_BOOTS)],
-    "female_medic": [("boots", COMBAT_BOOTS)],
+    "female_medic": [("boots", COMBAT_BOOTS), ("emt_trousers", EMT_TROUSERS), ("emt_jacket", EMT_JACKET)],
     "female_hazmat": [("boots", RUBBER_BOOTS)],
 }
 
@@ -1807,7 +1825,17 @@ def build(outfit):
     lows = []
     for gname, base in items:
         if base["kind"] == "boots":
-            low = build_boots(outfit, gname, base, rig, body, dom, L)
+            src = os.path.join(OUT, "%s_%s.glb" % (outfit, gname))
+            if "--reuse-boots" in argv and os.path.isfile(src):
+                before = set(bpy.data.objects)
+                bpy.ops.import_scene.gltf(filepath=src)
+                added = set(bpy.data.objects) - before
+                low = next(o for o in added if o.type == "MESH")
+                for o in added - {low}:
+                    bpy.data.objects.remove(o, do_unlink=True)
+                print("REUSE", src)
+            else:
+                low = build_boots(outfit, gname, base, rig, body, dom, L)
             obst.append(low)                                           # przeszkoda i krawędź cholewki dla nogawek
             colliders.append(low)
             L = landmarks(rig, body, obst)

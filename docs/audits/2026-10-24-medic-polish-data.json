@@ -1,0 +1,380 @@
+{
+  "version": "1.7.368",
+  "godot": "4.7.2",
+  "blender": "5.2.2 LTS",
+  "runtime": [
+    {
+      "model": "female_medic",
+      "bytes": 4377524,
+      "unique_mesh_triangles": 33870,
+      "instanced_triangles": 33870,
+      "skins": 1,
+      "bones": 52,
+      "sha256": "ed937faf6418f9fd93d8ab9d146cb0e321d2a5ccc7fc8f9ad4e4248f1ac57635"
+    },
+    {
+      "model": "male_medic",
+      "bytes": 4168976,
+      "unique_mesh_triangles": 33766,
+      "instanced_triangles": 33766,
+      "skins": 1,
+      "bones": 52,
+      "sha256": "113482f293ba5c5e797eec6d2d80c56ca7779519f684b6ebb261b86482ede0cf"
+    }
+  ],
+  "geometry": [
+    {
+      "model": "female_medic",
+      "mesh_objects": 15,
+      "armatures": 1,
+      "unweighted_vertices": 0,
+      "degenerate_faces": 0,
+      "nonfinite_vertices": 0,
+      "no_uv": [],
+      "images": [
+        {
+          "name": "brown_eye",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "canteen_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "eyebrow002",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "name": "female_medic_boots_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "female_medic_boots_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "female_medic_emt_jacket_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "female_medic_emt_jacket_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "female_medic_emt_jacket_orm",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "female_medic_emt_trousers_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "female_medic_emt_trousers_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "female_medic_emt_trousers_orm",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gear_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gear_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "m1951_72",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "medbag_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "ponytail01_diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "pouch_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_punkduck_stethoscope",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "young_lightskinned_female_diffuse3",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "model": "male_medic",
+      "mesh_objects": 14,
+      "armatures": 1,
+      "unweighted_vertices": 0,
+      "degenerate_faces": 0,
+      "nonfinite_vertices": 0,
+      "no_uv": [],
+      "images": [
+        {
+          "name": "brown_eye",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "canteen_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "eyebrow001",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "name": "gear_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gear_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "m1951_72",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_medic_boots_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_medic_boots_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_medic_emt_jacket_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_medic_emt_jacket_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_medic_emt_jacket_orm",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_medic_emt_trousers_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_medic_emt_trousers_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_medic_emt_trousers_orm",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "medbag_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "middleage_darkskinned_male_diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "pouch_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_punkduck_stethoscope",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    }
+  ],
+  "normal_imports": [
+    {
+      "file": "prototype/art/char3d/mpfb/female_medic_canteen_normal.webp.import",
+      "vram": true,
+      "normal_rg": true
+    },
+    {
+      "file": "prototype/art/char3d/mpfb/female_medic_female_medic_boots_normal.webp.import",
+      "vram": true,
+      "normal_rg": true
+    },
+    {
+      "file": "prototype/art/char3d/mpfb/female_medic_female_medic_emt_jacket_normal.webp.import",
+      "vram": true,
+      "normal_rg": true
+    },
+    {
+      "file": "prototype/art/char3d/mpfb/female_medic_female_medic_emt_trousers_normal.webp.import",
+      "vram": true,
+      "normal_rg": true
+    },
+    {
+      "file": "prototype/art/char3d/mpfb/female_medic_gear_normal.webp.import",
+      "vram": true,
+      "normal_rg": true
+    },
+    {
+      "file": "prototype/art/char3d/mpfb/female_medic_medbag_normal.webp.import",
+      "vram": true,
+      "normal_rg": true
+    },
+    {
+      "file": "prototype/art/char3d/mpfb/female_medic_pouch_normal.webp.import",
+      "vram": true,
+      "normal_rg": true
+    },
+    {
+      "file": "prototype/art/char3d/mpfb/male_medic_canteen_normal.webp.import",
+      "vram": true,
+      "normal_rg": true
+    },
+    {
+      "file": "prototype/art/char3d/mpfb/male_medic_gear_normal.webp.import",
+      "vram": true,
+      "normal_rg": true
+    },
+    {
+      "file": "prototype/art/char3d/mpfb/male_medic_male_medic_boots_normal.webp.import",
+      "vram": true,
+      "normal_rg": true
+    },
+    {
+      "file": "prototype/art/char3d/mpfb/male_medic_male_medic_emt_jacket_normal.webp.import",
+      "vram": true,
+      "normal_rg": true
+    },
+    {
+      "file": "prototype/art/char3d/mpfb/male_medic_male_medic_emt_trousers_normal.webp.import",
+      "vram": true,
+      "normal_rg": true
+    },
+    {
+      "file": "prototype/art/char3d/mpfb/male_medic_medbag_normal.webp.import",
+      "vram": true,
+      "normal_rg": true
+    },
+    {
+      "file": "prototype/art/char3d/mpfb/male_medic_pouch_normal.webp.import",
+      "vram": true,
+      "normal_rg": true
+    }
+  ],
+  "checks": {
+    "proportions": {
+      "passed": 138,
+      "result": "PASS"
+    },
+    "aim_points": {
+      "result": "PASS",
+      "max_deviation_world_px": 0.47
+    },
+    "pistol_support_max_gap_m": 0.088,
+    "glove_weights": "PASS",
+    "vram": "PASS"
+  },
+  "visual_renderer": "Forward+ Vulkan / RTX 3080"
+}

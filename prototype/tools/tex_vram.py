@@ -22,6 +22,17 @@ ROOT = os.path.abspath(os.path.join(HERE, ".."))
 DIRS = ["art/enemy3d", "art/items3d", "art/world3d", "art/char3d"]
 
 
+def image_source(texture):
+    """WebP/KTX2 zapisują źródło w rozszerzeniu, zamiast w podstawowym polu glTF `source`."""
+    if "source" in texture:
+        return texture["source"]
+    extensions = texture.get("extensions", {})
+    for key in ("EXT_texture_webp", "KHR_texture_basisu"):
+        if key in extensions:
+            return extensions[key].get("source", -1)
+    return -1
+
+
 def glb_json(path):
     with open(path, "rb") as f:
         d = f.read(20)
@@ -47,12 +58,18 @@ def normal_files(d):
             names.append(nm if nm not in seen else "%s_%d" % (nm, i))
             seen[nm] = True
         textures = j.get("textures", [])
+        # MPFB potrafi użyć obrazu brwi jednocześnie jako albedo i normalnej; nie niszczymy wtedy kanałów koloru kompresją RG.
+        color_sources = set()
+        for m in j.get("materials", []):
+            for ct in (m.get("pbrMetallicRoughness", {}).get("baseColorTexture"), m.get("emissiveTexture")):
+                if ct is not None and 0 <= ct.get("index", -1) < len(textures):
+                    color_sources.add(image_source(textures[ct["index"]]))
         for m in j.get("materials", []):
             nt = m.get("normalTexture")
-            if nt is None or nt.get("index", -1) >= len(textures):
+            if nt is None or not 0 <= nt.get("index", -1) < len(textures):
                 continue
-            src = textures[nt["index"]].get("source", -1)
-            if 0 <= src < len(names):
+            src = image_source(textures[nt["index"]])
+            if 0 <= src < len(names) and src not in color_sources:
                 out.add("%s_%s" % (model, names[src]))
     return out
 
@@ -63,7 +80,9 @@ def main():
     changed = 0
     bad = []
     stale = []
-    for d in DIRS:
+    # Zestawy postaci (np. mpfb) i kolejne modele mogą leżeć w podkatalogach; płaski glob pomijał ich tekstury w CI.
+    asset_dirs = [d for base in DIRS for d, _, _ in os.walk(base)]
+    for d in sorted(asset_dirs):
         normals = normal_files(d)
         for f in sorted(glob.glob(os.path.join(d, "*.import"))):
             if f.endswith(".glb.import"):
