@@ -1,8 +1,14 @@
 extends SceneTree
 ## Zrzut HUD-u przy zadanej rozdzielczości okna, rozmiarze HUD-u i liczbie graczy (test układu kart):
 ##   godot --path prototype --rendering-driver opengl3 --script tools/shot_hud.gd -- --size=1280x720 --ui=2 --humans=4 --out=hud.png
+## --parts=m83_drum75,m83_rpkbar,m83_pbs1 --item=cleankit: wyposażenie tylko w pamięci sesji, bez zapisu profilu.
 ## --ui: 0 SMALL, 1 NORMAL, 2 LARGE, --cam: 0 WIDE, 1 NORMAL, 2 CLOSE (nie zapisują się do settings.cfg); --humans: ile osób w drużynie (1–4, pozostałe sloty zajmują boty
 ## wg zasad sesji); --down: ostatnia osoba jest powalona (wiersz DOWN); --noise=N: poziom hałasu na mierniku; --wait=N: klatki.
+const Parts := preload("res://scripts/parts.gd")
+const Throwables := preload("res://scripts/throwables.gd")
+var _parts: Array = []
+var _parts_override := false
+var _item := ""
 var _frames := 0
 var _main: Node
 var _out := "hud.png"
@@ -16,7 +22,12 @@ var _size := Vector2i(1280, 720)
 
 func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
-		if a.begins_with("--out="):
+		if a.begins_with("--parts="):
+			_parts = Array(a.substr(8).split(",", false))
+			_parts_override = true
+		elif a.begins_with("--item="):
+			_item = a.substr(7)
+		elif a.begins_with("--out="):
 			_out = a.substr(6)
 		elif a.begins_with("--wait="):
 			_wait = int(a.substr(7))
@@ -53,6 +64,17 @@ func _process(_d: float) -> bool:
 		if _quality >= 0:
 			st.quality_idx = _quality
 		st.changed.emit()
+	if _frames == 60:
+		for p in get_nodes_in_group("players"):
+			if p.is_bot or not p.is_multiplayer_authority():
+				continue
+			if _parts_override:
+				p.fits[0] = Parts.encode_ids("m83", _parts)
+				p.weapons.configuration_changed()
+		if _item in Throwables.ORDER:
+			var arsenal := root.get_node("Arsenal")
+			arsenal.throw_sel = Throwables.ORDER.find(_item)
+			arsenal.stock[_item] = 2
 	if _frames == 60 and _down and _humans > 1:
 		for p in get_nodes_in_group("players"):
 			if not p.is_bot and int(p.display_id) == _humans:

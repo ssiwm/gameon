@@ -25,6 +25,7 @@ const JOBS := [
 	["smoke", "res://art/items3d/smoke.glb", Vector3(0.6, 0.5, 1.0), 0.0, 384],
 	["mine", "res://art/items3d/mine.glb", Vector3(0.6, 0.6, 1.0), 0.0, 384],
 	["charge", "res://art/items3d/charge.glb", Vector3(0.6, 0.5, 1.0), 0.0, 384],
+	["cleankit", "res://art/items3d/cleankit.glb", Vector3(0.45, 0.30, 1.0), 0.0, 384],
 	["medkit", "res://art/items3d/medkit.glb", Vector3(0.6, 0.5, 1.0), 0.0, 384],
 	["defib", "res://art/items3d/defib.glb", Vector3(0.6, 0.5, 1.0), 0.0, 384],
 	["scanner", "res://art/items3d/scanner.glb", Vector3(0.6, 0.4, 1.0), 0.0, 384],

@@ -15,7 +15,9 @@ func _enter_tree() -> void:
 
 func _on_node_added(n: Node) -> void:
 	if n is BaseButton and DisplayServer.get_name() != "headless":
-		(n as BaseButton).mouse_entered.connect(_hover.bind(n))
+		var hover := _hover.bind(n)
+		if not (n as BaseButton).mouse_entered.is_connected(hover):
+			(n as BaseButton).mouse_entered.connect(hover) # reparent przycisków warsztatu ponownie emituje node_added
 
 func _hover(b: BaseButton) -> void:
 	if is_instance_valid(b) and not b.disabled and b.is_visible_in_tree():

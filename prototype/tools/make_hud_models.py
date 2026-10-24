@@ -1,7 +1,7 @@
-"""Modele 3D do HUD-u, których brakuje w grze: latarka (L) i wabik (Q, megafon / nadajnik hałasu).
+"""Modele 3D do HUD-u, których brakuje w grze: latarka (L), wabik (Q, megafon / nadajnik hałasu) i zestaw czyszczący (Alt).
 
     blender -b --factory-startup -P prototype/tools/make_hud_models.py            # zapis do prototype/art/items3d
-    blender -b --factory-startup -P prototype/tools/make_hud_models.py -- --out=<katalog> [--only=lure|flashlight]
+    blender -b --factory-startup -P prototype/tools/make_hud_models.py -- --out=<katalog> [--only=lure|flashlight|cleankit]
 Potem ikony: godot --path prototype --rendering-driver opengl3 --script tools/bake_hud_icons.gd
 
 Jednostka = metr, oś długa modelu wzdłuż +X (jak bronie: lufa w prawo), wylot / głowica w stronę +X.
@@ -152,10 +152,64 @@ def lure():
     export("lure.glb")
 
 
+# ---------------------------------------------------------------- zestaw czyszczący (Alt): płócienne etui z przyborami
+
+def cleankit():
+    reset()
+    canvas = mat("ck_canvas", (0.23, 0.27, 0.12), rough=0.96)
+    trim = mat("ck_binding", (0.10, 0.13, 0.065), rough=0.9)
+    stitch = mat("ck_stitch", (0.49, 0.44, 0.28), rough=0.9)
+    steel = mat("ck_steel", (0.50, 0.53, 0.54), metal=0.85, rough=0.35)
+    brass = mat("ck_brass", (0.56, 0.31, 0.075), metal=0.75, rough=0.58)
+    rubber = mat("ck_rubber", (0.045, 0.05, 0.04), rough=0.85)
+    bottle = mat("ck_oil", (0.16, 0.22, 0.12), metal=0.25, rough=0.55)
+    cream = mat("ck_label", (0.69, 0.63, 0.44), rough=0.86)
+    # Przód etui w -Y Blendera (+Z Godota); wycior i szczotka wystają z kieszeni.
+    box("canvas_pouch", (0.27, 0.052, 0.14), (0, 0, 0.085), canvas, 0.012)
+    box("open_flap", (0.27, 0.014, 0.075), (0, 0.024, 0.182), canvas, 0.010, rot=(10, 0, 0))
+    box("pocket_binding", (0.255, 0.009, 0.012), (0, -0.029, 0.151), trim, 0.003)
+    for x in (-0.13, 0.13):
+        box("side_binding", (0.009, 0.01, 0.12), (x, -0.026, 0.082), trim, 0.002)
+    for x in (-0.065, 0.016, 0.095):
+        box("pocket_seam", (0.0025, 0.004, 0.102), (x, -0.029, 0.079), stitch, 0.0005)
+    # Oliwiarka z wąską szyjką i czytelną etykietą — żadnych symboli apteczki.
+    box("oil_bottle", (0.048, 0.035, 0.065), (-0.097, -0.017, 0.172), bottle, 0.006)
+    cap = cyl("oil_cap", 0.013, 0.012, 0, rubber, segs=20)
+    cap.rotation_euler[1] = math.radians(-90)
+    cap.location = (-0.097, -0.017, 0.211)
+    box("oil_label", (0.036, 0.002, 0.024), (-0.097, -0.036, 0.172), cream, 0.001)
+    box("label_stripe", (0.026, 0.002, 0.003), (-0.097, -0.0375, 0.173), trim, 0.0004)
+    # Dwa segmenty wyciora i szczotka mosiężna.
+    for i, x in enumerate((-0.043, -0.020, 0.049)):
+        rod = cyl("cleaning_rod_%d" % i, 0.003, 0.178 if i < 2 else 0.146, 0, steel, segs=12, bevel=0.0005)
+        rod.rotation_euler[1] = math.radians(-90)
+        rod.location = (x, -0.006, 0.153)
+    box("rod_t_handle", (0.043, 0.012, 0.012), (-0.043, -0.006, 0.242), rubber, 0.003)
+    tip = cyl("threaded_tip", 0.004, 0.012, 0, brass, segs=12, bevel=0.0005)
+    tip.rotation_euler[1] = math.radians(-90)
+    tip.location = (-0.020, -0.006, 0.244)
+    for i in range(12):
+        ring = cyl("brush_bristles_%02d" % i, 0.012 if i in range(1, 11) else 0.008, 0.002, 0, brass, segs=16, bevel=0.0003)
+        ring.rotation_euler[1] = math.radians(-90)
+        ring.location = (0.049, -0.006, 0.219 + i * 0.0025)
+    # Szmatki w osobnej kieszeni; pasek etui i metalowe napy.
+    for i in range(3):
+        box("cotton_patch_%d" % i, (0.038, 0.007, 0.040), (0.109, -0.004 - i * 0.005, 0.155 + i * 0.003), cream, 0.002, rot=(0, 0, i * 4))
+    box("closure_strap", (0.017, 0.008, 0.103), (0.007, -0.030, 0.067), trim, 0.002)
+    for x in (-0.116, 0.116):
+        snap = cyl("snap", 0.004, 0.0025, 0, brass, segs=16, bevel=0.0005)
+        snap.rotation_euler[2] = math.radians(90)
+        snap.location = (x, -0.032, 0.141)
+    export("cleankit.glb")
+
+
 if "--only=flashlight" in sys.argv:
     flashlight()
+elif "--only=cleankit" in sys.argv:
+    cleankit()
 elif "--only=lure" in sys.argv:
     lure()
 else:
     flashlight()
     lure()
+    cleankit()
