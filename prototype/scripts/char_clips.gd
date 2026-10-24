@@ -35,6 +35,12 @@ const CLIPS := {
 	"revive": {"file": "kneel", "hold": [0.3, 1.0, 3.6, 0.4], "arms": true},
 	"down": {"file": "down", "scrub": [0.15, 1.65], "drop": -0.05},
 	"getup": {"file": "getup", "scrub": [0.1, 1.5]},
+	"combat_chop": {"file": "combat_chop", "scrub": [0.0, 1.0], "additive": true},
+	"combat_slash": {"file": "combat_slash", "scrub": [0.0, 1.0], "additive": true},
+	"combat_reload": {"file": "combat_reload", "scrub": [0.0, 1.0], "additive": true},
+	"combat_fire_rifle": {"file": "combat_fire_rifle", "scrub": [0.0, 1.0], "additive": true},
+	"combat_fire_pistol": {"file": "combat_fire_pistol", "scrub": [0.0, 1.0], "additive": true},
+	"combat_fire_heavy": {"file": "combat_fire_heavy", "scrub": [0.0, 1.0], "additive": true},
 }
 ## Klipy wrogów dwunożnych (enemy3d.gd): chód. Faza kroku wroga ma lądowanie prawej stopy w połowie obrotu (u gracza w ćwierci), stąd phase0.
 ## Postawę potwora (pochylenie, ręce) dalej daje profil z enemy3d.gd; z klipu idą biodra, nogi i część ruchu tułowia.
@@ -287,13 +293,20 @@ static func _blend_tree(set_name: String) -> AnimationNodeBlendTree:
 		_blend.add_node(StringName("a_" + st), na)
 		_blend.add_node(StringName("seek_" + st), AnimationNodeTimeSeek.new())
 		_blend.connect_node(StringName("seek_" + st), 0, StringName("a_" + st))
-		_blend.add_node(StringName("mix_" + st), AnimationNodeBlend2.new())
+		var c: Dictionary = tab[st]
+		var additive := bool(c.get("additive", false))
+		var mix: AnimationNode = AnimationNodeAdd2.new() if additive else AnimationNodeBlend2.new()
+		if additive:
+			mix.filter_enabled = true
+			# Nogi idą z lokomocji; IK utrzymuje stopy na ziemi po przeniesieniu ciężaru bioder.
+			for bone in [HIPS, "mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2", "mixamorig_Neck", "mixamorig_Head"]:
+				mix.set_filter_path(NodePath("Skeleton3D:" + bone), true)
+		_blend.add_node(StringName("mix_" + st), mix)
 		_blend.connect_node(StringName("mix_" + st), 0, prev)
 		_blend.connect_node(StringName("mix_" + st), 1, StringName("seek_" + st))
 		prev = StringName("mix_" + st)
-		var c: Dictionary = tab[st]
-		_order.append([st, StringName("parameters/mix_%s/blend_amount" % st), StringName("parameters/seek_%s/seek_request" % st),
-				(_source(st, set_name)["anim"] as Animation).length, bool(c.get("step", false)), float(c.get("phase0", 0.0)), c.get("scrub"), c.get("hold")])
+		_order.append([st, StringName("parameters/mix_%s/%s" % [st, "add_amount" if additive else "blend_amount"]), StringName("parameters/seek_%s/seek_request" % st),
+				(_source(st, set_name)["anim"] as Animation).length, bool(c.get("step", false)), float(c.get("phase0", 0.0)), c.get("scrub"), c.get("hold"), additive])
 	_blend.connect_node(&"output", 0, prev)
 	return _blend
 
@@ -357,12 +370,14 @@ static func bounce_fix(tree: AnimationTree, weights: Dictionary, hips_up: float)
 static func drive(tree: AnimationTree, weights: Dictionary, phase: float, time: float, progress: Dictionary) -> void:
 	var acc := 1.0
 	for st in weights:
-		acc -= float(weights[st])
+		if not bool((SETS[tree.get_meta("set", "player")][st] as Dictionary).get("additive", false)):
+			acc -= float(weights[st])
 	acc = maxf(acc, 0.0)
 	for o in (_orders[tree.get_meta("set", "player")] as Array):
 		var w := float(weights.get(o[0], 0.0))
-		acc += w
-		tree.set(o[1], w / acc if acc > 0.0001 else 0.0)
+		if not bool(o[8]):
+			acc += w
+		tree.set(o[1], w if bool(o[8]) else (w / acc if acc > 0.0001 else 0.0))
 		if w > 0.0:                                               # klip bez wagi nie jest liczony — czas dostanie w klatce, w której wejdzie
 			var dur: float = o[3]
 			if o[6] != null:

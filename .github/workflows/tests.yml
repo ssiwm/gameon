@@ -66,6 +66,15 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_aim_points.gd 2>&1 | tee aimpoints.log
           grep -a "^PASS" aimpoints.log
+      - name: Faza walki, kilof, podparcie stóp i części broni (test_combat_motion.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_combat_motion.gd 2>&1 | tee combat-motion.log
+          grep -a "PASS combat motion" combat-motion.log
+          ! grep -a -E "SCRIPT ERROR|Parse Error|FAIL combat" combat-motion.log
+      - name: Kontakt dłoni z bronią (test_weapon_grips.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_weapon_grips.gd 2>&1 | tee grips.log
+          grep -a "^PASS weapon grips" grips.log
       - name: Proporcje świata (test_proportions.gd)
         run: |
           godot --headless --path prototype -s tools/test_proportions.gd 2>&1 | tee proportions.log
