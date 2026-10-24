@@ -2,20 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://to6init703s8"
-path.s3tc="res://.godot/imported/wolek_ORM_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg-458c53caad042040b51370906438938c.s3tc.ctex"
+uid="uid://bo4lppk2vedhc"
+path.s3tc="res://.godot/imported/rzeznik_ORM.png-ed487c05d4c20f6e4cd2b22e014a3da9.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "9d1cd303be099627726987e30fb4295c"
+"md5": "77032858abf3eeda2edd546bb1a9c460"
 }
 
 [deps]
 
-source_file="res://art/enemy3d/wolek_ORM_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg"
-dest_files=["res://.godot/imported/wolek_ORM_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg-458c53caad042040b51370906438938c.s3tc.ctex"]
+source_file="res://art/enemy3d/rzeznik_ORM.png"
+dest_files=["res://.godot/imported/rzeznik_ORM.png-ed487c05d4c20f6e4cd2b22e014a3da9.s3tc.ctex"]
 
 [params]
 

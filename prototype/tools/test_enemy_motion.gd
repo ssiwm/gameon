@@ -7,6 +7,101 @@ var ran := false
 var failed := 0
 var total := 0
 
+func charge_motion(kind: String) -> void:
+	if kind not in ["wolek", "rzeznik"]: return
+	var reference: float = Defs.DEFS[kind].speed
+	var multiplier := 3.2 if kind == "rzeznik" else 2.4
+	for fps in [30, 60, 120]:
+		var e := Enemy.new()
+		root.add_child(e)
+		e.setup(kind)
+		var low := INF
+		var high := -INF
+		for frame in fps * 2:
+			e.position.x += reference * multiplier * Enemy.PX / fps
+			e.pose(1.0 / fps, "walk", false, Color.WHITE, 0.0, 1, true, 0.0, 2, false, reference * multiplier)
+			if frame >= fps:
+				var p: Dictionary = e.get("_last_p")
+				low = minf(low, (p["fR"] as Vector3).x)
+				high = maxf(high, (p["fR"] as Vector3).x)
+			if frame % 10 == 0: geometry(e, kind)
+		var distance := 2.0 * (high - low) * float(e.get("_scale"))
+		check(kind + " charge stride follows root at " + str(fps), absf(distance - reference * Enemy.PX) / distance < 0.05)
+		e.free()
+
+func stride_calibration(kind: String) -> void:
+	if kind not in ["wolek", "rzeznik"]: return
+	var e := Enemy.new()
+	root.add_child(e)
+	e.setup(kind)
+	var speed: float = Defs.DEFS[kind].speed
+	var low := INF
+	var high := -INF
+	for frame in 240:
+		e.pose(1.0 / 120.0, "walk", false, Color.WHITE, 0.0, 1, true, 0.0, 0, false, speed)
+		if frame < 120: continue
+		var foot: Transform3D = (e.get("_cfoot") as Dictionary)["Right"]
+		low = minf(low, foot.origin.x)
+		high = maxf(high, foot.origin.x)
+	var distance := 2.0 * (high - low) * float(e.get("_scale"))
+	var cycle: float = Enemy.SPEC[kind].cycle
+	check(kind + " stride matches actual travel", absf(distance - speed * Enemy.PX * cycle) / distance < 0.05)
+	e.free()
+
+func heavy_body(kind: String) -> void:
+	if kind not in ["wolek", "rzeznik"]: return
+	for fps in [30, 60, 120]:
+		var e := Enemy.new()
+		root.add_child(e)
+		e.setup(kind)
+		check(kind + " skeletal locomotion connected", e.get("_tree") != null)
+		var sk: Skeleton3D = e.get("_sk")
+		var bones: Dictionary = e.get("_b")
+		var peak_clearance := -INF
+		var reach_error := 0.0
+		var blade: Array[Vector3] = []
+		var bind := Transform3D.IDENTITY
+		if kind == "rzeznik":
+			var mesh: MeshInstance3D = e.get("_mesh")
+			var arrays := mesh.mesh.surface_get_arrays(1)
+			var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+			var indices: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+			var top := vertices[0]
+			var bottom := vertices[0]
+			for v in vertices:
+				if v.y > top.y: top = v
+				if v.y < bottom.y: bottom = v
+			blade.assign([top, bottom])
+			bind = mesh.skin.get_bind_pose(indices[0])
+			for vertex in vertices.size():
+				check("cleaver rigid grip", weights[vertex * 4] > 0.999 and String(mesh.skin.get_bind_name(indices[vertex * 4])).ends_with("RightHand"))
+		var blade_up := -1.0
+		for frame in roundi(0.9 * fps):
+			e.motion_context({"grounded": true, "winding": true, "windup_duration": 0.9, "windup_remaining": 0.9 - frame / float(fps)})
+			e.pose(1.0 / fps, "windup", false, Color.WHITE)
+			var hand := sk.get_bone_global_pose(bones["RightHand"])
+			var head := sk.get_bone_global_pose(bones["Head"])
+			peak_clearance = maxf(peak_clearance, hand.origin.y - head.origin.y)
+			var p: Dictionary = e.get("_last_p")
+			reach_error = maxf(reach_error, hand.origin.distance_to(p["hR"]))
+			if not blade.is_empty():
+				var direction := ((hand * bind * blade[1]) - (hand * bind * blade[0])).normalized()
+				blade_up = maxf(blade_up, direction.y)
+			geometry(e, kind)
+		check(kind + " hands rise above head at " + str(fps), peak_clearance > 0.08)
+		check(kind + " authored arm goals reachable error=" + str(reach_error), reach_error < 0.045)
+		e.motion_context({"grounded": true, "winding": false})
+		e.trigger("attack")
+		e.pose(1.0 / fps, "idle", false, Color.WHITE)
+		if not blade.is_empty():
+			var hand := sk.get_bone_global_pose(bones["RightHand"])
+			var direction := ((hand * bind * blade[1]) - (hand * bind * blade[0])).normalized()
+			check("cleaver lifts blade before contact", blade_up > 0.35)
+			check("cleaver edge swings forward at contact", direction.x > 0.7)
+			check("cleaver preserves length", absf((hand * bind * blade[1]).distance_to(hand * bind * blade[0]) - blade[0].distance_to(blade[1])) < 0.001)
+		e.free()
+
 func authored(e: Node3D, kind: String) -> void:
 	var name := Motion.action(kind)
 	if name == "": return
@@ -167,6 +262,9 @@ func _process(_dt: float) -> bool:
 		var e: Node3D = Enemy.new()
 		root.add_child(e)
 		check(kind + " setup", e.setup(kind))
+		heavy_body(kind)
+		stride_calibration(kind)
+		charge_motion(kind)
 		authored(e, kind)
 		landing(e, kind)
 		grab_height(e, kind)

@@ -4,6 +4,7 @@ Uruchomienie (z korzenia repo, Blender w PATH): python prototype/tools/prep_enem
 albo bezpośrednio: blender -b --factory-startup -P prototype/tools/prep_enemy3d.py -- SRC.glb DST.glb [--faces=6000] [--tex=1024] [--anim]
 Co robi: usuwa śmieciowe siatki (bez wag kości), scala geometryczne szwy UV, upraszcza siatkę (Decimate), normalizuje maks. cztery wagi,
 zmniejsza tekstury do --tex px i eksportuje GLB. --surface-weights: przelicza wagi ciała po jego powierzchni; materiał 1 = tasak prawej dłoni (Rzeźnik).
+Wołek i Rzeźnik używają --hero: enemy_hero_mesh.py odtwarza powierzchnię, UV i PBR z pełnego źródła zamiast samej decymacji.
 Skala zostaje natywna (pozy w `enemy3d.gd` używają stałych z tego samego modelu, co wypiek 2D w `concept/monster_tripo_bake.py`); wysokość
 dopasowuje gra w czasie działania. --uvkeep: decymacja respektuje granice wysp UV (modele z TRELLIS-a; wymaga większej liczby trójkątów). --anim: zachowuje animację z pliku (Trzosek — „preset:quadruped:walk").
 """
@@ -24,12 +25,13 @@ OUT = os.path.join(ROOT, "prototype", "art", "enemy3d")
 # `concept/static_tripo_bake.py`: obrót ROT_Z, postawienie na podłodze (z = 0) i wyśrodkowanie w x, y.
 UVKEEP = {"kaplan", "rzeznik", "zerca"}             ## rodzaje z atlasem z TRELLIS-a: decymacja z `--uvkeep`
 SURFACE_WEIGHTS = {"rzeznik"}
+HERO = {"wolek", "rzeznik"}
 
 KINDS = {
-    "wolek": ("wolek_01_rig.glb", False, None, 6000, 1024),
+    "wolek": ("wolek_01_rig.glb", False, None, 40000, 2048),
     # elity F4 (TRELLIS 2 → rig_trellis.py): szkieletowane statyczne siatki z art_src/enemies_f4
     "kaplan": ("../../enemies_f4/kaplan_rig.glb", False, None, 20000, 2048),
-    "rzeznik": ("../../enemies_f4/rzeznik_rig.glb", False, None, 30000, 2048),
+    "rzeznik": ("../../enemies_f4/rzeznik_rig.glb", False, None, 50000, 2048),
     "zerca": ("../../enemies_f4/zerca_rig.glb", False, None, 20000, 2048),
     "slepiec": ("slepiec_01_rig.glb", False, None, 6000, 1024),
     "podsluchacz": ("podsluchacz_01_rig.glb", False, None, 6000, 1024),
@@ -56,6 +58,10 @@ def run_in_blender():
     uvkeep = "--uvkeep" in argv
     surface_weights = "--surface-weights" in argv
     rot = next((float(a.split("=")[1]) for a in argv if a.startswith("--rot=")), None)      # model statyczny: obrót wokół pionu (°)
+    if "--hero" in argv:
+        from enemy_hero_mesh import prepare
+        prepare(src, dst, faces, tex)
+        return
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=src)
@@ -166,6 +172,8 @@ def main():
             cmd.append("--uvkeep")
         if k in SURFACE_WEIGHTS:
             cmd.append("--surface-weights")
+        if k in HERO:
+            cmd.append("--hero")
         if rot is not None:
             cmd.append("--rot=%s" % rot)
         print(">>", k)

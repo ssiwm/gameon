@@ -2,20 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c28ej6147bxdn"
-path.s3tc="res://.godot/imported/wolek_Color_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg-035decc77cba917535e2cf1d3565ea8b.s3tc.ctex"
+uid="uid://1duf4rylemug"
+path.s3tc="res://.godot/imported/wolek_ORM.png-df12bfdc584beb5d9284efde40d48450.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "77daedf2d3b9879da33012e447c9c92a"
+"md5": "dd87606203291e46f2b2ed56c85b182d"
 }
 
 [deps]
 
-source_file="res://art/enemy3d/wolek_Color_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg"
-dest_files=["res://.godot/imported/wolek_Color_38b9ba90-7f26-4311-aa58-0711d9e936c5.jpg-035decc77cba917535e2cf1d3565ea8b.s3tc.ctex"]
+source_file="res://art/enemy3d/wolek_ORM.png"
+dest_files=["res://.godot/imported/wolek_ORM.png-df12bfdc584beb5d9284efde40d48450.s3tc.ctex"]
 
 [params]
 

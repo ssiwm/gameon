@@ -2,20 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://j2sahb8itj3s"
-path.s3tc="res://.godot/imported/rzeznik_Image_2_3.jpg-a26edd5b236a6336bccdc4f31a8f89a3.s3tc.ctex"
+uid="uid://f4rgoh84jesi"
+path.s3tc="res://.godot/imported/wolek_Albedo.png-8ba4497c84f0b7e88ed1599d36bce3ef.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "4f21bc7f039411d3df19c8930233e3f0"
+"md5": "9e1b83caf833dd6db52d8e51e093111c"
 }
 
 [deps]
 
-source_file="res://art/enemy3d/rzeznik_Image_2_3.jpg"
-dest_files=["res://.godot/imported/rzeznik_Image_2_3.jpg-a26edd5b236a6336bccdc4f31a8f89a3.s3tc.ctex"]
+source_file="res://art/enemy3d/wolek_Albedo.png"
+dest_files=["res://.godot/imported/wolek_Albedo.png-8ba4497c84f0b7e88ed1599d36bce3ef.s3tc.ctex"]
 
 [params]
 
@@ -25,7 +25,7 @@ compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=1
+compress/normal_map=0
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
