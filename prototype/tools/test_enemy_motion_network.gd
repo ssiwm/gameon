@@ -109,5 +109,6 @@ func _process(dt: float) -> bool:
 			saw_wind = true
 		if sequence == 3 and previous_grab == 3:
 			stalker._visual_attack(1, -100.0, 1.0)
+			stalker._sync(Vector2.ZERO, true, false, 0.0, 0.0, -100.0)
 			finish(saw_wind and saw_contact and saw_grab and stalker._facing == -1.0 and is_equal_approx(float(stalker.view_info()["target_y"]), -14.3), "client: snapshot, contact, action, 3 attacks, Stalker target/facing")
 	return false

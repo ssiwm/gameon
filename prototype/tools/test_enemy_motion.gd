@@ -81,6 +81,8 @@ func stalker_facing() -> void:
 	check("stalker backstep keeps victim facing", bool(actor._spr[0].flip_h))
 	actor._visual_attack(0, -100.0, 1.0)
 	check("stalker old contact keeps target and facing", is_equal_approx(float(actor.view_info()["target_y"]), -14.3) and bool(actor._spr[0].flip_h))
+	actor._sync(actor.position, true, false, 0.0, 0.0, -100.0)
+	check("stalker delayed snapshot keeps resolved grab", is_equal_approx(float(actor.view_info()["target_y"]), -14.3))
 	actor.reset_enemy()
 	check("stalker reset clears recovery", actor._grab_recovery_t == 0.0)
 	actor.free()

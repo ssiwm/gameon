@@ -657,7 +657,8 @@ func _sync(pos: Vector2, is_awake: bool, is_winding: bool, wind_remaining := 0.0
 	winding = is_winding
 	_view_windup_remaining = maxf(wind_remaining, 0.0)
 	_view_windup_duration = maxf(wind_duration, _view_windup_remaining)
-	_visual_target_y = target_y
+	# Migawka sprzed kontaktu może dotrzeć po niezawodnym zdarzeniu na innym kanale.
+	if _grab_recovery_t <= 0.0: _visual_target_y = target_y
 
 	visible = awake
 	# Klient nie symuluje AI (GDD §8.5), więc audio też musi iść tu —

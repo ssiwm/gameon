@@ -28,7 +28,7 @@
 
 Obrażenia, zasięgi i czasy gameplayu nadal rozstrzyga serwer. Obserwator widzi zdarzenie po jego dostarczeniu przez sieć; ta zmiana nie usuwa fizycznego opóźnienia transmisji. Zmieniony kontrakt RPC wymaga tej samej wersji gry na peerach.
 
-Stalker replikuje wysokość tułowia rzeczywistej ofiary, uwzględniając przysiad oraz poziom mapy. Model obniża biodra i dłonie do celu zamiast chwytać na wysokości własnej klatki piersiowej. Zasięg rąk nadal ogranicza IK. Niezawodne zdarzenie niesie także kierunek chwytu, który pozostaje skierowany do ofiary podczas cofania przez czas powrotu klipu. Na hoście model zachowuje pozycję w klatce kontaktu i płynnie odtwarza serwerowe odsunięcie po ciosie; klient zachowuje interpolację symulacji.
+Stalker replikuje wysokość tułowia rzeczywistej ofiary, uwzględniając przysiad oraz poziom mapy. Model obniża biodra i dłonie do celu zamiast chwytać na wysokości własnej klatki piersiowej. Zasięg rąk nadal ogranicza IK. Niezawodne zdarzenie niesie także kierunek chwytu, który pozostaje skierowany do ofiary podczas cofania przez czas powrotu klipu. Spóźniona migawka z innego kanału nie nadpisuje wysokości rozstrzygniętego chwytu podczas tej fazy. Na hoście model zachowuje pozycję w klatce kontaktu i płynnie odtwarza serwerowe odsunięcie po ciosie; klient zachowuje interpolację symulacji.
 
 ## Lokomocja i podparcie
 
