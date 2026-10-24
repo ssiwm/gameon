@@ -194,6 +194,7 @@ var _curl := {"Left": 0.0, "Right": 0.0}     ## zacisk palców w tej klatce (0 =
 static var _hand_cache := {}                 ## nazwa modelu → to samo (pomiar raz na model)
 var _face := 1.0                             ## −1..1: zwrot w trakcie obrotu (1 = w prawo, −1 = w lewo); w połowie postać stoi przodem do kamery
 var _cam_c := 1.0                            ## −1..1: po której stronie modelu jest kamera (+1 = +Z, prawy bok); przy obrocie przechodzi płynnie przez 0
+var _grip_depth_offset := 0.0                ## poprzednia korekta głębokości: wybiera ciągłą gałąź rozwiązania IK
 var model_yaw := 0.0                         ## rad: obrót modelu wokół pionu w widoku 3D (czyta view3d.gd zamiast odbicia lustrzanego)
 var _vis_aim := NAN                          ## rad: kąt broni modelu (goni kąt celowania sprężyną — broń ma bezwładność); NAN = pierwsza klatka
 var _vis_vel := 0.0                          ## rad/s
@@ -641,6 +642,7 @@ func set_look(char_name: String) -> bool:
 		_char_node.queue_free()
 	_char_node = scene
 	_char_name = char_name
+	_grip_depth_offset = 0.0
 	_sk = sk
 	_prepare_materials(scene)
 	_root3d.add_child(scene)
@@ -719,6 +721,7 @@ func set_gun(key: String, fit := 0, notch := 0) -> void:
 			(mi as MeshInstance3D).layers = 2
 			(mi as MeshInstance3D).material_override = _normal_mat
 	_gun_key = key
+	_grip_depth_offset = 0.0
 	_gun_fit = fit
 	_gun_notch = notch
 	_gun_info = info_with(key, ids)
@@ -853,6 +856,52 @@ func _arm_ik(side: String, target: Vector3, pole: Vector3) -> void:
 	_point_bone(m, e, tip)
 	if roll:
 		_roll_to(m, (tip - mid).normalized(), hl[1], bend)
+
+## Chwyt wymaga zasięgu barku i łokcia prowadzącego przedramię ku palcom, zamiast wyginać nadgarstek do tyłu.
+func _grip_shoulder(side: String, target: Vector3, pistol: bool) -> Array:
+	var reach: float = float(_arm_len[side][0]) + float(_arm_len[side][1])
+	var start := _gp(_b[side + "Arm"]).origin
+	var stretch := target.distance_to(start) / reach
+	var blend := 1.0 if pistol else smoothstep(0.80, 0.97, stretch)
+	var follow := lerpf(0.22, PISTOL_CLAVICLE_FOLLOW, blend)
+	var max_deg := lerpf(16.0, PISTOL_CLAVICLE_MAX, blend)
+	var clavicle: int = _b[side + "Shoulder"]
+	if clavicle < 0:
+		return [start, follow, max_deg]
+	var c := _gp(clavicle).origin
+	var cur := start - c
+	var to := target - c
+	var axis := cur.cross(to)
+	if axis.length() > 0.0001:
+		start = c + Basis(axis.normalized(), minf(cur.angle_to(to) * follow, deg_to_rad(max_deg))) * cur
+	return [start, follow, max_deg]
+
+func _grip_arm(side: String, hand: Transform3D, pole: Vector3, pistol := false) -> void:
+	var shoulder := _grip_shoulder(side, hand.origin, pistol)
+	_reach_clavicle(side, hand.origin, shoulder[1], shoulder[2])
+	_arm_ik(side, hand.origin, _grip_pole(side, hand, pole))
+
+func _grip_pole(side: String, hand: Transform3D, pole: Vector3) -> Vector3:
+	var s := _gp(_b[side + "Arm"]).origin
+	var la: float = _arm_len[side][0]
+	var lb: float = _arm_len[side][1]
+	var d := hand.origin - s
+	var dist := clampf(d.length(), absf(la - lb) + 0.001, (la + lb) * 0.999)
+	var dn := d.normalized()
+	var x := (la * la - lb * lb + dist * dist) / (2.0 * dist)
+	var h := sqrt(maxf(la * la - x * x, 0.0))
+	var forward := (hand.basis * (_hand[side]["fix"] as Basis).inverse()).x.normalized()
+	var normal := (pole - dn * pole.dot(dn)).normalized()
+	var best := -forward + dn * forward.dot(dn)
+	if best.length() < 0.001:
+		return pole
+	best = best.normalized()
+	for i in 9:
+		var pv := normal.slerp(best, float(i) / 8.0)
+		var forearm := dn * (dist - x) - pv * h
+		if forearm.angle_to(forward) <= deg_to_rad(65.0):
+			return pv
+	return best
 
 ## Obraca kość wokół jej osi tak, żeby kierunek `local_ref` (w układzie kości) wskazywał `want` (rzut na płaszczyznę prostopadłą do osi).
 func _roll_to(i: int, axis: Vector3, local_ref: Vector3, want: Vector3) -> void:
@@ -1217,7 +1266,7 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 	if swing_t >= 0.0 and _down < 0.2:
 		_mc = _melee_curve(swing_t, "chop" if _gun_key == "kilof" else "slash")
 	sink_m = 0.45 * smoothstep(0.0, 1.0, dying)
-	_pose_body(delta, anim, speed, theta)
+	_pose_body(delta, anim, speed, _reload_pose_theta(theta) if armed and _down < 0.2 else theta)
 	if not _posed:
 		_posed = true
 		_stance.clear()
@@ -1514,10 +1563,15 @@ func _pose_legs(e: float) -> void:
 			flat = _gp(foot).basis.slerp(flat, 1.0 - smoothstep(0.3, 0.8, e))
 		_set_global_basis(foot, flat)
 
+## Podczas przeładowania tułów i broń schodzą ku dłoniom; skrajne celowanie nie chowa chwytu za plecami.
+func _reload_pose_theta(theta: float) -> float:
+	return lerpf(theta, 0.0, sin(PI * clampf(reload_t, 0.0, 1.0))) if reload_t >= 0.0 else theta
+
 ## Broń wokół barku: dłoń tylna obejmuje chwyt (grzbietem do kamery, palce wzdłuż broni), przednia podchodzi pod łoże (broń dwuręczna), sięga po
 ## magazynek przy przeładowaniu, przy pistolecie dokłada się do chwytu, a przy broni białej zwisa. Gdy łoże jest za daleko, broń jest wsuwana ku ciału.
 ## Ustawia też `muzzle_px` / `grip_px` — punkty MODELU dla efektów; rozgrywka liczy swoje z `aim_points`.
 func _pose_arms(theta: float) -> void:
+	theta = _reload_pose_theta(theta)
 	var sr := _gp(_b["RightArm"]).origin
 	var sl := _gp(_b["LeftArm"]).origin
 	var swinging := not _mc.is_empty()
@@ -1531,13 +1585,17 @@ func _pose_arms(theta: float) -> void:
 	var aim_t := theta - (float(_mc["ang"]) if swinging else gun_extra) + MELEE_GUARD * guard
 	if not swinging:
 		if reload_t >= 0.0 and wpa.has("reload"):
-			aim_t = theta - _reload_tilt(String(wpa["reload"]), clampf(reload_t, 0.0, 1.0))   # pochylenie broni wg rodzaju przeładowania (zamiast jednej sinusoidy)
+			var u := clampf(reload_t, 0.0, 1.0)
+			aim_t = theta - _reload_tilt(String(wpa["reload"]), u)   # pochylenie broni wg rodzaju przeładowania (zamiast jednej sinusoidy)
 		aim_t += clampf(recoil_px * 0.012 * float(wpa.get("climb", 1.0)), 0.0, 0.18)       # wznos lufy po strzale
 	var gun_b := Basis(Vector3.BACK, aim_t)
 	var radial := lerpf(float(_mc["rad"]) if swinging else float(wpa.get("radial", 0.30)), 0.25, guard)
 	var perp := lerpf(0.11 if swinging else float(wpa.get("perp", 0.11)), 0.30, guard)
 	var two := (_hands == 2 or pistol) and not swinging
 	var hd := lerpf(aim_t, theta, guard) if swinging else theta    # przy ciosie dłoń wędruje po łuku wokół barku (razem z ostrzem)
+	if reload_t >= 0.0:
+		hd = aim_t
+		radial = lerpf(radial, 0.45 if pistol else 0.35, sin(PI * clampf(reload_t, 0.0, 1.0)))
 	# broń palna trzyma się pozy nominalnej (tej, z której rozgrywka liczy wylot), a ruch barku z animacji — krok, kołysanie, odrzut ciała, trafienie —
 	# przechodzi na nią tylko w części: ciało pracuje pod bronią, ręce to wybierają, a lufa zostaje przy torze pocisku
 	var anchor := sr
@@ -1559,59 +1617,134 @@ func _pose_arms(theta: float) -> void:
 		var fol := float(wp.get("follow", GUN_FOLLOW))
 		anchor = (base[0] as Vector3) + (sr - (now[0] as Vector3)) * fol
 		anchor_l = (base[1] as Vector3) + (sl - (now[1] as Vector3)) * fol
+	# W przeładowaniu lewa dłoń opuszcza łoże: nominalny test tego chwytu cofał pistolet w tułów.
 	var rear := _gun_origin(anchor, anchor_l, hd, gun_b, radial, perp, _gun_info, wpa, two, _cam_c)
+	if reload_t >= 0.0:
+		var free_rear := _gun_origin(anchor, anchor_l, hd, gun_b, radial, perp, _gun_info, wpa, false, _cam_c)
+		rear = rear.lerp(free_rear, sin(PI * clampf(reload_t, 0.0, 1.0)))
 	rear -= gun_b.x * (gun_kick_px / WP_PER_M * 0.6)
 	if charge_t > 0.0:                                            # ładowanie szyny: drżenie trzymanej broni
 		rear += Vector3(randf() - 0.5, randf() - 0.5, 0.0) * 0.018 * charge_t
-	var gx := Transform3D(gun_b, rear)
+	var gx := _fit_weapon_grips(Transform3D(gun_b, rear), wp, pistol, two)
 	if _gun != null:
 		_gun.transform = gx
 		if _gun_n != null:
 			_gun_n.transform = gx
-	var rh := _hand_target("Right", gx, (_gun_info["grip"] as Vector3) + Vector3(0.0, float(wp.get("grip_dy", 0.0)), 0.0), _wrist_dir(wp), Vector3.BACK, GRIP_HALF)
-	_reach_clavicle("Right", rh.origin, PISTOL_CLAVICLE_FOLLOW if pistol else 0.22, PISTOL_CLAVICLE_MAX if pistol else 16.0)
-	_arm_ik("Right", rh.origin, Vector3(-0.35, -1.0, 0.55))
+	var rh := _right_weapon_hand(gx, wp)
+	_grip_arm("Right", rh, Vector3(-0.35, -1.0, 0.55), pistol)
 	_set_hand("Right", rh.basis)
 	_curl["Right"] = 1.0                                          # dłoń tylna obejmuje chwyt / rękojeść
 	if swinging or _gun_key == "kilof":
 		_pose_left_melee(gx, "chop" if _gun_key == "kilof" else "slash")
 	elif two:
-		var lh := _left_hold(gx, _gun_info, wp)
-		var keep := 1.0                                           # ile orientacji chwytu zostaje dłoni (w drodze po magazynek dłoń idzie za przedramieniem)
-		var reach_l: float = float(_arm_len["Left"][0]) + float(_arm_len["Left"][1])
-		if climb_t >= 0.0 and not pistol:                         # podciągnięcie: wolna ręka podpiera się o krawędź platformy
-			var cw := sin(PI * climb_t)
-			lh.origin = lh.origin.lerp(sl + Vector3(0.20, -reach_l * 0.97, 0.08), cw)
-			keep = 1.0 - cw
-		elif reload_t >= 0.0:
-			var u := clampf(reload_t, 0.0, 1.0)
-			keep = 1.0 - 0.85 * sin(PI * u)
-			if pistol:
-				# pistolet: lewa dłoń schodzi po magazynek do pasa, wsuwa go od dołu w chwyt i wraca do chwytu oburącz
-				var belt := sl + Vector3(-0.06, -reach_l * 0.95, 0.04)
-				var well := gx * ((_gun_info["grip"] as Vector3) + Vector3(-0.02, -0.14, -0.04))
-				if u < 0.35:
-					lh.origin = lh.origin.lerp(belt, smoothstep(0.0, 0.35, u))
-				elif u < 0.75:
-					lh.origin = belt.lerp(well, smoothstep(0.35, 0.75, u))
-				else:
-					lh.origin = well.lerp(lh.origin, smoothstep(0.75, 1.0, u))
-			else:                                                 # przeładowanie wg rodzaju broni: środek lewej dłoni po torze (magazynek, naboje, ogniwo, zamek)
-				var palm := _left_path(String(wpa.get("reload", "mag")), u, _gun_info["hold"] as Vector3)
-				lh.origin += gx * palm - gx * (_gun_info["hold"] as Vector3)
-		elif cycle_t >= 0.0 and String(wpa.get("cycle", "")) != "":   # cykl po strzale: pompka (dłoń po łożu tam i z powrotem) / zamek
-			if String(wpa["cycle"]) == "pump":
-				lh.origin += gun_b.x * (-0.17 * sin(clampf((cycle_t - 0.12) / 0.6, 0.0, 1.0) * PI))
-			else:
-				lh.origin += gx * _left_path("bolt", clampf(cycle_t / 0.9, 0.0, 1.0), _gun_info["hold"] as Vector3) - gx * (_gun_info["hold"] as Vector3)
-		_reach_clavicle("Left", lh.origin, PISTOL_CLAVICLE_FOLLOW if pistol else 0.22, PISTOL_CLAVICLE_MAX if pistol else 16.0)
-		_arm_ik("Left", lh.origin, Vector3(-0.25, -1.0, -0.4))
+		var left_pose := _left_weapon_pose(gx, wp, pistol)
+		var lh: Transform3D = left_pose[0]
+		var keep: float = left_pose[1]
+		_grip_arm("Left", lh, Vector3(-0.25, -1.0, -0.4), pistol)
 		_set_hand("Left", lh.basis, keep)
-		_curl["Left"] = lerpf(0.45, 1.0 if pistol else CURL_HOLD, keep)  # przy pistolecie palce obejmują drugą dłoń; w drodze po magazynek chwyt luźniejszy
+		_curl["Left"] = lerpf(0.45, 1.0 if pistol else CURL_HOLD, keep)
 	else:
 		_pose_left_relaxed()
 	muzzle_px = _to_px(gx * (_gun_info["muzzle"] as Vector3))
-	grip_px = _to_px(rear)
+	grip_px = _to_px(gx.origin)
+
+## Punkt lewej dłoni dla chwytu, przeładowania i cyklu; pas pozostaje w układzie ciała.
+func _left_weapon_pose(gx: Transform3D, wp: Dictionary, pistol: bool) -> Array:
+	var sl := _gp(_b["LeftArm"]).origin
+	var gun_b := gx.basis
+	var lh := _left_hold(gx, _gun_info, wp)
+	var keep := 1.0                                           # ile orientacji chwytu zostaje dłoni (w drodze po magazynek dłoń idzie za przedramieniem)
+	var reach_l: float = float(_arm_len["Left"][0]) + float(_arm_len["Left"][1])
+	if climb_t >= 0.0 and not pistol:                         # podciągnięcie: wolna ręka podpiera się o krawędź platformy
+		var cw := sin(PI * climb_t)
+		lh.origin = lh.origin.lerp(sl + Vector3(0.20, -reach_l * 0.97, 0.08), cw)
+		keep = 1.0 - cw
+	elif reload_t >= 0.0:
+		var u := clampf(reload_t, 0.0, 1.0)
+		keep = 1.0 - 0.85 * sin(PI * u)
+		if pistol:
+			# pistolet: lewa dłoń schodzi po magazynek do pasa, wsuwa go od dołu w chwyt i wraca do chwytu oburącz
+			var belt := sl + Vector3(-0.06, -reach_l * 0.95, 0.04)
+			var well := gx * ((_gun_info["grip"] as Vector3) + Vector3(-0.02, -0.14, -0.04))
+			if u < 0.35:
+				lh.origin = lh.origin.lerp(belt, smoothstep(0.0, 0.35, u))
+			elif u < 0.75:
+				lh.origin = belt.lerp(well, smoothstep(0.35, 0.75, u))
+			else:
+				lh.origin = well.lerp(lh.origin, smoothstep(0.75, 1.0, u))
+		else:                                                 # przeładowanie wg rodzaju broni: środek lewej dłoni po torze (magazynek, naboje, ogniwo, zamek)
+			var belt := sl + Vector3(-0.06, -reach_l * 0.88, 0.04)
+			var belt_palm := gx.affine_inverse() * (belt + gx * (_gun_info["hold"] as Vector3) - lh.origin)
+			var palm := _left_path(String(wp.get("reload", "mag")), u, _gun_info["hold"] as Vector3, belt_palm)
+			lh.origin += gx * palm - gx * (_gun_info["hold"] as Vector3)
+	elif cycle_t >= 0.0 and String(wp.get("cycle", "")) != "":   # cykl po strzale: pompka (dłoń po łożu tam i z powrotem) / zamek
+		if String(wp["cycle"]) == "pump":
+			lh.origin += gun_b.x * (-0.17 * sin(clampf((cycle_t - 0.12) / 0.6, 0.0, 1.0) * PI))
+		else:
+			lh.origin += gx * _left_path("bolt", clampf(cycle_t / 0.9, 0.0, 1.0), _gun_info["hold"] as Vector3) - gx * (_gun_info["hold"] as Vector3)
+	return [lh, keep]
+
+## Dopasowanie widocznej broni do obu rąk bez rozciągania kości. Rozgrywka nadal korzysta z nominalnego `_gun_origin`.
+func _grip_shift(side: String, hand: Transform3D, pistol: bool) -> Vector3:
+	var start: Vector3 = _grip_shoulder(side, hand.origin, pistol)[0]
+	var la: float = _arm_len[side][0]
+	var lb: float = _arm_len[side][1]
+	var delta := hand.origin - start
+	var minimum := sqrt(la * la + lb * lb + 2.0 * la * lb * cos(deg_to_rad(145.0)))
+	var distance := clampf(delta.length(), minimum, (la + lb) * 0.985)
+	return delta.normalized() * distance - delta
+
+func _weapon_hand(side: String, gx: Transform3D, wp: Dictionary, pistol: bool) -> Transform3D:
+	if side == "Right":
+		return _right_weapon_hand(gx, wp)
+	return _pickaxe_hand(gx) if _gun_key == "kilof" else _left_weapon_pose(gx, wp, pistol)[0]
+
+func _grip_cost(gx: Transform3D, wp: Dictionary, pistol: bool, sides: Array) -> float:
+	var cost := 0.0
+	for side in sides:
+		cost += _grip_shift(side, _weapon_hand(side, gx, wp, pistol), pistol).length_squared()
+	return cost
+
+func _fit_weapon_grips(gx: Transform3D, wp: Dictionary, pistol: bool, two: bool) -> Transform3D:
+	var sides: Array = ["Right", "Left"] if two or _gun_key == "kilof" else ["Right"]
+	if absf(_grip_depth_offset) < 0.0001 and _grip_cost(gx, wp, pistol, sides) < 0.00000001:
+		return gx
+	# Najpierw dobieramy głębokość: po zakończonym zwrocie nie przesuwa ona lufy na ekranie.
+	var original := gx.origin
+	var reference := original.z + _grip_depth_offset * 0.9
+	var best := gx
+	var score := _grip_cost(gx, wp, pistol, sides) + pow(gx.origin.z - reference, 2.0) * 0.001
+	var center := original.z
+	var span := 0.4
+	for pass_index in 3:
+		for i in 17:
+			var candidate := gx
+			candidate.origin.z = center + span * (float(i) / 8.0 - 1.0)
+			var cost := _grip_cost(candidate, wp, pistol, sides) + pow(candidate.origin.z - reference, 2.0) * 0.001
+			if cost < score:
+				score = cost
+				best = candidate
+		center = best.origin.z
+		span /= 8.0
+	gx = best
+	# Pozostałą korektę rozdzielamy między obie ręce; długości kości pozostają stałe.
+	for iteration in 32:
+		var moved := false
+		for side in sides:
+			var shift := _grip_shift(side, _weapon_hand(side, gx, wp, pistol), pistol)
+			if shift.length() > 0.0001:
+				gx.origin += shift
+				moved = true
+		if not moved:
+			break
+	_grip_depth_offset = gx.origin.z - original.z
+	return gx
+
+func _right_weapon_hand(gx: Transform3D, wp: Dictionary) -> Transform3D:
+	return _hand_target("Right", gx, (_gun_info["grip"] as Vector3) + Vector3(0.0, float(wp.get("grip_dy", 0.0)), 0.0), _wrist_dir(wp), Vector3.BACK, GRIP_HALF)
+
+func _pickaxe_hand(gx: Transform3D) -> Transform3D:
+	return _hand_target("Left", gx, (_gun_info["grip"] as Vector3) + Vector3(0.2, 0.0, 0.0), _wrist_dir(WEAPON_POSE.get(_gun_key, {})), Vector3.FORWARD, GRIP_HALF)
 
 ## Rzut: prawa ręka zamach z tyłu nad głową → wyprost w przód i w dół (zwolnienie ok. 60% czasu), lewa ręka swobodnie.
 func _pose_throw(theta: float) -> void:
@@ -1649,22 +1782,22 @@ func _reload_tilt(kind: String, u: float) -> float:
 ## Tor środka lewej dłoni przy przeładowaniu w układzie broni (względem początku układu modelu); u ∈ 0..1 to postęp przeładowania, fore_l = punkt chwytu łoża.
 ## mag — wysuń magazynek, weź nowy z pasa, wsuń, przeładuj zamek; shell — kilka razy: nabój z pasa do gniazda; cell — ogniwo z góry; rail — jak cell, wolniej;
 ## bolt — odciągnięcie i dosunięcie zamka. Pozycje zależne od długości broni.
-func _left_path(kind: String, u: float, fore_l: Vector3) -> Vector3:
+func _left_path(kind: String, u: float, fore_l: Vector3, belt := Vector3(-0.08, -0.50, 0.0)) -> Vector3:
 	var L := _gun_len
 	var P: Array = []
 	match kind:
 		"shell":
 			var v := fposmod(u * 3.0, 1.0)                            # trzy ładowania
-			P = [[0.0, fore_l], [0.25, Vector3(-0.04, -0.50, 0.0)], [0.55, Vector3(L * 0.16, -0.02, 0.0)], [0.72, Vector3(L * 0.16, -0.02, 0.0)], [1.0, fore_l]]
+			P = [[0.0, fore_l], [0.25, belt], [0.55, Vector3(L * 0.16, -0.02, 0.0)], [0.72, Vector3(L * 0.16, -0.02, 0.0)], [1.0, fore_l]]
 			return _path_eval(P, v)
 		"cell", "rail":
-			P = [[0.0, fore_l], [0.18, Vector3(L * 0.08, 0.14, 0.0)], [0.38, Vector3(L * 0.08, 0.36, 0.0)], [0.55, Vector3(-0.10, -0.55, 0.0)],
+			P = [[0.0, fore_l], [0.18, Vector3(L * 0.08, 0.14, 0.0)], [0.38, Vector3(L * 0.08, 0.36, 0.0)], [0.55, belt - Vector3(0.0, 0.1, 0.0)],
 				[0.72, Vector3(L * 0.08, 0.32, 0.0)], [0.86, Vector3(L * 0.08, 0.10, 0.0)], [1.0, fore_l]]
 		"bolt":
 			P = [[0.0, fore_l], [0.25, Vector3(L * 0.16, 0.07, 0.0)], [0.45, Vector3(L * 0.16, 0.07, 0.0)], [0.6, Vector3(L * 0.04, 0.07, 0.0)],
 				[0.8, Vector3(L * 0.16, 0.07, 0.0)], [1.0, fore_l]]
 		_:
-			P = [[0.0, fore_l], [0.18, Vector3(L * 0.10, -0.22, 0.0)], [0.34, Vector3(L * 0.10, -0.46, 0.0)], [0.48, Vector3(-0.08, -0.60, 0.0)],
+			P = [[0.0, fore_l], [0.18, Vector3(L * 0.10, -0.22, 0.0)], [0.34, Vector3(L * 0.10, -0.46, 0.0)], [0.48, belt - Vector3(0.0, 0.1, 0.0)],
 				[0.64, Vector3(L * 0.10, -0.30, 0.0)], [0.74, Vector3(L * 0.10, -0.12, 0.0)], [0.84, Vector3(L * 0.14, 0.05, 0.0)], [1.0, fore_l]]
 	for i in range(1, P.size() - 1):                              # punkty pośrednie opisywały nadgarstek dłoni sięgającej w górę — środek dłoni leży 0,1 m wyżej
 		P[i][1] = (P[i][1] as Vector3) + Vector3(0.0, 0.1, 0.0)
@@ -1726,8 +1859,8 @@ func _keyframes(keys: Array, u: float) -> float:
 ## Druga ręka przy ciosie: kilof — na trzonku (chwyt oburącz), maczeta — przeciwwaga: zamach w przeciwną stronę.
 func _pose_left_melee(gx: Transform3D, style: String) -> void:
 	if style == "chop":
-		var lh := _hand_target("Left", gx, (_gun_info["grip"] as Vector3) + Vector3(0.2, 0.0, 0.0), _wrist_dir(WEAPON_POSE.get(_gun_key, {})), Vector3.FORWARD, GRIP_HALF)
-		_arm_ik("Left", lh.origin, Vector3(-0.25, -1.0, -0.4))
+		var lh := _pickaxe_hand(gx)
+		_grip_arm("Left", lh, Vector3(-0.25, -1.0, -0.4))
 		_set_hand("Left", lh.basis)
 		_curl["Left"] = 1.0                                       # kilof oburącz: druga dłoń też obejmuje trzonek
 		return

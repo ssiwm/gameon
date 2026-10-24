@@ -1,0 +1,454 @@
+{
+  "baseline_commit": "514ae07",
+  "engine": "Godot 4.7.2",
+  "version_after": "1.7.370",
+  "units": "meters and degrees; wrist gap is requested IK wrist target versus posed wrist bone, not mesh surface distance",
+  "scope": {
+    "looks": [
+      "male_scav",
+      "female_scav",
+      "male_hazmat",
+      "female_hazmat",
+      "male_medic",
+      "female_medic"
+    ],
+    "weapons": [
+      "m83",
+      "spread12",
+      "p64",
+      "srut8",
+      "lr7",
+      "hkm9",
+      "gniew4",
+      "sokol6",
+      "widmo1",
+      "ciegno6",
+      "maczeta",
+      "kilof"
+    ],
+    "hold_states": [
+      "idle",
+      "run",
+      "jump",
+      "fall",
+      "crouch",
+      "crouch_walk"
+    ],
+    "aim_deg": [
+      -80,
+      -50,
+      0,
+      50,
+      85
+    ],
+    "facings": [
+      1,
+      -1
+    ],
+    "action_samples": "0 through 1 every 0.05; reload/cycle in idle/crouch, melee swing in idle"
+  },
+  "phases": {
+    "before": {
+      "hold": {
+        "samples": 8640,
+        "max_wrist_target_gap_m": 0.179483845829964,
+        "over_5mm": 999,
+        "over_20mm": 892,
+        "max_wrist_flex_deg": 178.145103215299,
+        "max_elbow_bend_deg": 177.188589863552,
+        "worst_gap": {
+          "aim": 85,
+          "anim": "crouch",
+          "elbow_bend": 5.12864945577141,
+          "error": 0.179483845829964,
+          "face": -1.0,
+          "gun": "srut8",
+          "hand": "Left",
+          "look": "female_medic",
+          "phase": "hold",
+          "reach_ratio": 1.37544266181334,
+          "target": [
+            -0.128511071205139,
+            1.42288482189178,
+            -0.0535542108118534
+          ],
+          "u": -1.0,
+          "wrist": [
+            -0.147270619869232,
+            1.25932323932648,
+            -0.12503944337368
+          ],
+          "wrist_flex": 44.6954601926211
+        }
+      },
+      "reload": {
+        "samples": 50400,
+        "max_wrist_target_gap_m": 0.435654699802399,
+        "over_5mm": 4247,
+        "over_20mm": 3616,
+        "max_wrist_flex_deg": 175.588317522153,
+        "max_elbow_bend_deg": 179.369674171213,
+        "worst_gap": {
+          "aim": -80,
+          "anim": "idle",
+          "elbow_bend": 5.12516648618153,
+          "error": 0.435654699802399,
+          "face": 1.0,
+          "gun": "hkm9",
+          "hand": "Left",
+          "look": "male_hazmat",
+          "phase": "reload",
+          "reach_ratio": 1.82579644676786,
+          "target": [
+            -0.686166107654572,
+            1.29834973812103,
+            0.287550181150436
+          ],
+          "u": 0.55,
+          "wrist": [
+            -0.298513293266296,
+            1.2956371307373,
+            0.0887715518474579
+          ],
+          "wrist_flex": 14.5491686586045
+        }
+      },
+      "cycle": {
+        "samples": 10080,
+        "max_wrist_target_gap_m": 0.178371638059616,
+        "over_5mm": 1056,
+        "over_20mm": 893,
+        "max_wrist_flex_deg": 162.854754871364,
+        "max_elbow_bend_deg": 176.166329110855,
+        "worst_gap": {
+          "aim": 85,
+          "anim": "crouch",
+          "elbow_bend": 5.1283907623566,
+          "error": 0.178371638059616,
+          "face": -1.0,
+          "gun": "srut8",
+          "hand": "Left",
+          "look": "female_hazmat",
+          "phase": "cycle",
+          "reach_ratio": 1.37300854391292,
+          "target": [
+            -0.121735498309135,
+            1.41693270206451,
+            -0.0571652762591839
+          ],
+          "u": 1.0,
+          "wrist": [
+            -0.14153179526329,
+            1.25434470176697,
+            -0.127803027629852
+          ],
+          "wrist_flex": 44.9525997393992
+        }
+      },
+      "swing": {
+        "samples": 5040,
+        "max_wrist_target_gap_m": 0.248107358813286,
+        "over_5mm": 615,
+        "over_20mm": 556,
+        "max_wrist_flex_deg": 140.265242908624,
+        "max_elbow_bend_deg": 157.255570695462,
+        "worst_gap": {
+          "aim": -80,
+          "anim": "idle",
+          "elbow_bend": 5.12866653124434,
+          "error": 0.248107358813286,
+          "face": 1.0,
+          "gun": "kilof",
+          "hand": "Left",
+          "look": "female_medic",
+          "phase": "swing",
+          "reach_ratio": 1.51937092158103,
+          "target": [
+            -0.165199875831604,
+            0.73354035615921,
+            0.226605132222176
+          ],
+          "u": 0.45,
+          "wrist": [
+            0.0403351783752441,
+            0.827478110790253,
+            0.124192737042904
+          ],
+          "wrist_flex": 40.6281918249053
+        }
+      }
+    },
+    "after": {
+      "hold": {
+        "samples": 8640,
+        "max_wrist_target_gap_m": 0.000346825720043853,
+        "over_5mm": 0,
+        "over_20mm": 0,
+        "max_wrist_flex_deg": 88.5047716423248,
+        "max_elbow_bend_deg": 145.025119778936,
+        "worst_gap": {
+          "aim": 0,
+          "anim": "crouch",
+          "elbow_bend": 144.08842763616,
+          "error": 0.000346825720043853,
+          "face": -1.0,
+          "gun": "sokol6",
+          "hand": "Right",
+          "look": "female_scav",
+          "phase": "hold",
+          "reach_ratio": 0.31015067446712,
+          "target": [
+            0.144617915153503,
+            0.79553097486496,
+            -0.0865952372550964
+          ],
+          "u": -1.0,
+          "wrist": [
+            0.144520312547684,
+            0.795205235481262,
+            -0.0865270048379898
+          ],
+          "wrist_flex": 62.5706253260565
+        }
+      },
+      "reload": {
+        "samples": 50400,
+        "max_wrist_target_gap_m": 0.000234085746342316,
+        "over_5mm": 0,
+        "over_20mm": 0,
+        "max_wrist_flex_deg": 77.754907662371,
+        "max_elbow_bend_deg": 145.267236324634,
+        "worst_gap": {
+          "aim": 0,
+          "anim": "crouch",
+          "elbow_bend": 144.041408613914,
+          "error": 0.000234085746342316,
+          "face": -1.0,
+          "gun": "sokol6",
+          "hand": "Right",
+          "look": "female_scav",
+          "phase": "reload",
+          "reach_ratio": 0.310530328094659,
+          "target": [
+            0.144472450017929,
+            0.795647263526917,
+            -0.0865117013454437
+          ],
+          "u": 0.0,
+          "wrist": [
+            0.144408762454987,
+            0.795426428318024,
+            -0.0864672958850861
+          ],
+          "wrist_flex": 62.5876256669006
+        }
+      },
+      "cycle": {
+        "samples": 10080,
+        "max_wrist_target_gap_m": 1.46061790928798e-06,
+        "over_5mm": 0,
+        "over_20mm": 0,
+        "max_wrist_flex_deg": 76.7645165723408,
+        "max_elbow_bend_deg": 145.023084382563,
+        "worst_gap": {
+          "aim": 85,
+          "anim": "crouch",
+          "elbow_bend": 81.65501398034,
+          "error": 1.46061790928798e-06,
+          "face": 1.0,
+          "gun": "ciegno6",
+          "hand": "Left",
+          "look": "female_scav",
+          "phase": "cycle",
+          "reach_ratio": 0.757038129118298,
+          "target": [
+            -0.190109059214592,
+            1.26446855068207,
+            -0.0576813220977783
+          ],
+          "u": 0.8,
+          "wrist": [
+            -0.190108433365822,
+            1.26446974277496,
+            -0.057680755853653
+          ],
+          "wrist_flex": 56.1445511284767
+        }
+      },
+      "swing": {
+        "samples": 5040,
+        "max_wrist_target_gap_m": 1.14545252927201e-06,
+        "over_5mm": 0,
+        "over_20mm": 0,
+        "max_wrist_flex_deg": 67.1717890906247,
+        "max_elbow_bend_deg": 145.023152684455,
+        "worst_gap": {
+          "aim": 85,
+          "anim": "idle",
+          "elbow_bend": 109.620041914231,
+          "error": 1.14545252927201e-06,
+          "face": 1.0,
+          "gun": "kilof",
+          "hand": "Left",
+          "look": "male_scav",
+          "phase": "swing",
+          "reach_ratio": 0.576296785892994,
+          "target": [
+            -0.203286692500114,
+            1.76203632354736,
+            -0.0130606442689896
+          ],
+          "u": 0.95,
+          "wrist": [
+            -0.203286066651344,
+            1.76203727722168,
+            -0.0130607485771179
+          ],
+          "wrist_flex": 26.9979499870452
+        }
+      }
+    }
+  },
+  "cpu_update_benchmark": [
+    {
+      "case": [
+        "m83",
+        "idle",
+        0,
+        1.0,
+        -1.0,
+        -1.0
+      ],
+      "max_ms": 0.273,
+      "median_ms": 0.157,
+      "p95_ms": 0.216,
+      "stage": "before"
+    },
+    {
+      "case": [
+        "srut8",
+        "crouch",
+        85,
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "max_ms": 0.351,
+      "median_ms": 0.187,
+      "p95_ms": 0.252,
+      "stage": "before"
+    },
+    {
+      "case": [
+        "p64",
+        "idle",
+        85,
+        -1.0,
+        0.5,
+        -1.0
+      ],
+      "max_ms": 0.259,
+      "median_ms": 0.156,
+      "p95_ms": 0.209,
+      "stage": "before"
+    },
+    {
+      "case": [
+        "kilof",
+        "crouch",
+        85,
+        -1.0,
+        -1.0,
+        0.85
+      ],
+      "max_ms": 0.221,
+      "median_ms": 0.141,
+      "p95_ms": 0.19,
+      "stage": "before"
+    },
+    {
+      "case": [
+        "m83",
+        "run",
+        -50,
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "max_ms": 0.354,
+      "median_ms": 0.158,
+      "p95_ms": 0.297,
+      "stage": "before"
+    },
+    {
+      "case": [
+        "m83",
+        "idle",
+        0,
+        1.0,
+        -1.0,
+        -1.0
+      ],
+      "max_ms": 0.392,
+      "median_ms": 0.172,
+      "p95_ms": 0.337,
+      "stage": "after"
+    },
+    {
+      "case": [
+        "srut8",
+        "crouch",
+        85,
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "max_ms": 1.273,
+      "median_ms": 0.655,
+      "p95_ms": 1.024,
+      "stage": "after"
+    },
+    {
+      "case": [
+        "p64",
+        "idle",
+        85,
+        -1.0,
+        0.5,
+        -1.0
+      ],
+      "max_ms": 0.398,
+      "median_ms": 0.181,
+      "p95_ms": 0.268,
+      "stage": "after"
+    },
+    {
+      "case": [
+        "kilof",
+        "crouch",
+        85,
+        -1.0,
+        -1.0,
+        0.85
+      ],
+      "max_ms": 1.511,
+      "median_ms": 0.611,
+      "p95_ms": 0.906,
+      "stage": "after"
+    },
+    {
+      "case": [
+        "m83",
+        "run",
+        -50,
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "max_ms": 1.486,
+      "median_ms": 0.634,
+      "p95_ms": 1.405,
+      "stage": "after"
+    }
+  ]
+}

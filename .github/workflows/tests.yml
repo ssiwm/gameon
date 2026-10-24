@@ -66,6 +66,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_aim_points.gd 2>&1 | tee aimpoints.log
           grep -a "^PASS" aimpoints.log
+      - name: Kontakt dłoni z bronią (test_weapon_grips.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_weapon_grips.gd 2>&1 | tee grips.log
+          grep -a "^PASS weapon grips" grips.log
       - name: Proporcje świata (test_proportions.gd)
         run: |
           godot --headless --path prototype -s tools/test_proportions.gd 2>&1 | tee proportions.log
