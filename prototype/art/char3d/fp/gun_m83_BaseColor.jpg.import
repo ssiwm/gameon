@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://w4qvp50rwihi"
-path="res://.godot/imported/gun_m83_BaseColor.jpg-4f1f59e70e9c2a87e0f8c8935395b412.ctex"
+path.s3tc="res://.godot/imported/gun_m83_BaseColor.jpg-4f1f59e70e9c2a87e0f8c8935395b412.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "828048eff56651f41fe1089c10fbfe67"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/char3d/fp/gun_m83_BaseColor.jpg"
-dest_files=["res://.godot/imported/gun_m83_BaseColor.jpg-4f1f59e70e9c2a87e0f8c8935395b412.ctex"]
+dest_files=["res://.godot/imported/gun_m83_BaseColor.jpg-4f1f59e70e9c2a87e0f8c8935395b412.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

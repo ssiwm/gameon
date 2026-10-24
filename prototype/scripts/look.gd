@@ -12,7 +12,7 @@ const OUTFIT_NAMES := {"scavenger": "SCAVENGER '87", "hazmat": "HAZMAT TECH", "m
 const OUTFIT_TEXT := {
 	"scavenger": "Olive field jacket, cargo trousers, a canvas pack with a bedroll, a gas mask round the neck. What the patrol wore when it went into the trees.",
 	"hazmat": "Yellow coverall with reflective strips, a hooded respirator and goggles, a small air tank and a geiger counter on the belt. Built for the stations nobody cleaned up.",
-	"medic": "Grey-blue combat uniform, a white vest and helmet with red crosses and a heavy medical pack. The one you look for when the lights go out.",
+	"medic": "Navy field uniform, a white helmet with a red cross, a stethoscope and a heavy medical pack. The one you look for when the lights go out.",
 }
 ## Poziom profilu potrzebny do stroju (Scavenger od początku).
 const UNLOCK_LEVEL := {"scavenger": 1, "hazmat": 3, "medic": 5}

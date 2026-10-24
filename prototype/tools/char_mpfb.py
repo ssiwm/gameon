@@ -153,6 +153,7 @@ OUTFITS = {
     },
     "male_medic": {
         "sex": "male", "height": 1.80, "phenotype": MALE, "race": {"asian": 0.05, "caucasian": 0.15, "african": 0.8},
+        "sewn_default": True,
         "skin": "middleage_african_male", "hair": "short01", "eyebrows": "eyebrow001",
         "clothes": {
             "elvs_emt_uniform_jacket_male": {"recolor": [ALL_TO_NAVY]},   # mundur ratownika (CC-BY, Elvaerwyn) w granacie
@@ -169,6 +170,7 @@ OUTFITS = {
     },
     "female_medic": {
         "sex": "female", "height": 1.70, "phenotype": FEMALE, "race": {"asian": 0.6, "caucasian": 0.35, "african": 0.05},
+        "sewn_default": True,
         "skin": "young_asian_female", "hair": "ponytail01", "eyebrows": "eyebrow002",
         "clothes": {
             "elvs_emt_uniform_jacket_female": {"recolor": [ALL_TO_NAVY]},
@@ -180,6 +182,8 @@ OUTFITS = {
         # buty wojskowe / gumowe z cloth_garments.py zamiast butów z paczki MPFB (zawsze, nie tylko z --sewn)
         "parts": {"boots": {"file": "female_medic_boots.glb", "replaces": "toigo_ankle_boots_female", "tris": 5200, "floor": True}},
         "gear": ["medkit_pack", "helmet_cross", "belt_pouches"],
+        "sewn": {"emt_trousers": {"file": "female_medic_emt_trousers.glb", "replaces": "elvs_emt_uniform_pants_female", "tris": 4200},
+                 "emt_jacket": {"file": "female_medic_emt_jacket.glb", "replaces": "elvs_emt_uniform_jacket_female", "tris": 6000}},
     },
 }
 
@@ -568,6 +572,13 @@ def _import_gear(rig, key, ks):
         for n in mt.node_tree.nodes:
             if n.type == "BSDF_PRINCIPLED":
                 n.inputs["Metallic"].default_value = 0.0
+            elif n.type == "NORMAL_MAP":
+                # Importowane elementy mają ogólne nazwy Image_2; jawna nazwa pozwala tex_vram.py
+                # rozpoznać normalne także w GLB z EXT_texture_webp i ustawić kompresję RG bez sRGB.
+                for link in n.inputs["Color"].links:
+                    tex = link.from_node
+                    if tex.type == "TEX_IMAGE" and tex.image and tex.image.name.startswith("Image_"):
+                        tex.image.name = key + "_normal"
     vs = [v.co for v in o.data.vertices]
     ext = Vector([max(v[i] for v in vs) - min(v[i] for v in vs) for i in range(3)])
     want = g.get("height", g.get("length")) * ks
@@ -1439,7 +1450,7 @@ def build(name, spec):
                         n.inputs["Base Color"].default_value = tuple(conf["tint"]) + (1.0,)
 
     boots = add_sewn(rig, body, spec, spec.get("parts", {}))      # części stałe (buty)
-    if SEWN:
+    if SEWN or spec.get("sewn_default", False):
         add_sewn(rig, body, spec)
 
     # ciało: zapiecz klucze kształtu (cele fenotypu), zastosuj maski (pomocnicze bryły MPFB, ciało pod ubraniami), uprość

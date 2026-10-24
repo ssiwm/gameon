@@ -3,22 +3,23 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cowytovdnxfjk"
-path="res://.godot/imported/female_medic_m1951_72.webp-513a89f40d27ee0df1b51545b3ff8c78.ctex"
+path.s3tc="res://.godot/imported/female_medic_m1951_72.webp-513a89f40d27ee0df1b51545b3ff8c78.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
-"md5": "649b1894d39b2e73f413ae66dc6359a3"
+"md5": "d7b8a3c4cda4e3f420a27f6e1297d0e7"
 }
 
 [deps]
 
 source_file="res://art/char3d/mpfb/female_medic_m1951_72.webp"
-dest_files=["res://.godot/imported/female_medic_m1951_72.webp-513a89f40d27ee0df1b51545b3ff8c78.ctex"]
+dest_files=["res://.godot/imported/female_medic_m1951_72.webp-513a89f40d27ee0df1b51545b3ff8c78.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

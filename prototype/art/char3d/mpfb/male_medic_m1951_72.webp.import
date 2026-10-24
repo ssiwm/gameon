@@ -3,22 +3,23 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dqvk3sqx3m2ov"
-path="res://.godot/imported/male_medic_m1951_72.webp-ad3c2fddfd0123f7a15617cde5865a0e.ctex"
+path.s3tc="res://.godot/imported/male_medic_m1951_72.webp-ad3c2fddfd0123f7a15617cde5865a0e.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
-"md5": "f13890d06fe410cedc3e6972111186de"
+"md5": "362908c187b3f95e5b21027343456464"
 }
 
 [deps]
 
 source_file="res://art/char3d/mpfb/male_medic_m1951_72.webp"
-dest_files=["res://.godot/imported/male_medic_m1951_72.webp-ad3c2fddfd0123f7a15617cde5865a0e.ctex"]
+dest_files=["res://.godot/imported/male_medic_m1951_72.webp-ad3c2fddfd0123f7a15617cde5865a0e.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

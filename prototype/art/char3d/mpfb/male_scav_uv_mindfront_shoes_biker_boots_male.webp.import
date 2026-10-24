@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bbt6p1o8w3xy3"
-path="res://.godot/imported/male_scav_uv_mindfront_shoes_biker_boots_male.webp-73b38f82c9547c2500c0467a902eb209.ctex"
+path.s3tc="res://.godot/imported/male_scav_uv_mindfront_shoes_biker_boots_male.webp-73b38f82c9547c2500c0467a902eb209.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "c410c179fe0b6391a2726bb7df7cd8cb"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://art/char3d/mpfb/male_scav_uv_mindfront_shoes_biker_boots_male.webp"
-dest_files=["res://.godot/imported/male_scav_uv_mindfront_shoes_biker_boots_male.webp-73b38f82c9547c2500c0467a902eb209.ctex"]
+dest_files=["res://.godot/imported/male_scav_uv_mindfront_shoes_biker_boots_male.webp-73b38f82c9547c2500c0467a902eb209.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

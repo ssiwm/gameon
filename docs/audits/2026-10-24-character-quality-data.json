@@ -1,0 +1,797 @@
+{
+  "repository": "ssiwm/gameon",
+  "commit": "657b8fb58d0b4250d19cf2593b5e068f3737ad6a",
+  "date": "2026-10-24",
+  "renderer": "Godot 4.7.2 Forward+ Vulkan RTX 3080",
+  "models": [
+    {
+      "model": "female_hazmat",
+      "triangles": 30128,
+      "vertices": 25245,
+      "materials": 11,
+      "joints": 52,
+      "images": 16,
+      "file_mb": 3.13,
+      "clothing_materials": [
+        {
+          "mesh": "elvs_race_suit_female1",
+          "normal_map": false,
+          "roughness_map": false
+        }
+      ]
+    },
+    {
+      "model": "female_medic",
+      "triangles": 30978,
+      "vertices": 31773,
+      "materials": 14,
+      "joints": 52,
+      "images": 21,
+      "file_mb": 4.19,
+      "clothing_materials": [
+        {
+          "mesh": "rescueteam_jacket_female",
+          "normal_map": false,
+          "roughness_map": false
+        },
+        {
+          "mesh": "rescueteam_pants_female",
+          "normal_map": false,
+          "roughness_map": false
+        }
+      ]
+    },
+    {
+      "model": "female_scav",
+      "triangles": 41216,
+      "vertices": 41294,
+      "materials": 16,
+      "joints": 53,
+      "images": 25,
+      "file_mb": 5.35,
+      "clothing_materials": [
+        {
+          "mesh": "rescueteam_jacket_female",
+          "normal_map": false,
+          "roughness_map": false
+        },
+        {
+          "mesh": "rescueteam_pants_female",
+          "normal_map": false,
+          "roughness_map": false
+        }
+      ]
+    },
+    {
+      "model": "male_hazmat",
+      "triangles": 29807,
+      "vertices": 26002,
+      "materials": 11,
+      "joints": 52,
+      "images": 16,
+      "file_mb": 3.24,
+      "clothing_materials": [
+        {
+          "mesh": "elvs_male_mechanics_coverall1a",
+          "normal_map": false,
+          "roughness_map": false
+        }
+      ]
+    },
+    {
+      "model": "male_medic",
+      "triangles": 30937,
+      "vertices": 31442,
+      "materials": 13,
+      "joints": 52,
+      "images": 20,
+      "file_mb": 3.99,
+      "clothing_materials": [
+        {
+          "mesh": "rescueteam_jacket_male",
+          "normal_map": false,
+          "roughness_map": false
+        },
+        {
+          "mesh": "rescueteam_pants_male",
+          "normal_map": false,
+          "roughness_map": false
+        }
+      ]
+    },
+    {
+      "model": "male_scav",
+      "triangles": 37486,
+      "vertices": 35647,
+      "materials": 14,
+      "joints": 52,
+      "images": 24,
+      "file_mb": 4.68,
+      "clothing_materials": [
+        {
+          "mesh": "male_casualsuit05",
+          "normal_map": true,
+          "roughness_map": false
+        }
+      ]
+    }
+  ],
+  "blender": [
+    {
+      "model": "female_hazmat",
+      "mesh_objects": 12,
+      "armatures": 1,
+      "unweighted_vertices": 0,
+      "degenerate_faces": 1,
+      "nonfinite_vertices": 0,
+      "no_uv": [],
+      "images": [
+        {
+          "name": "brown_eye",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "female_hazmat_boots_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "female_hazmat_boots_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "femaleracetex1",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gaas_Albedo2",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gear_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gear_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Gloves03UV",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_culturalibre_hero-heroine_hood_1",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "young_lightskinned_female_diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "model": "female_medic",
+      "mesh_objects": 15,
+      "armatures": 1,
+      "unweighted_vertices": 0,
+      "degenerate_faces": 0,
+      "nonfinite_vertices": 0,
+      "no_uv": [],
+      "images": [
+        {
+          "name": "brown_eye",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "eyebrow002",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "name": "female_medic_boots_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "female_medic_boots_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gear_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gear_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "m1951_72",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "ponytail01_diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_elvs_emt_uniform_jacket_female",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_elvs_emt_uniform_pants_female",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_punkduck_stethoscope",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "young_lightskinned_female_diffuse3",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "model": "female_scav",
+      "mesh_objects": 17,
+      "armatures": 1,
+      "unweighted_vertices": 0,
+      "degenerate_faces": 1,
+      "nonfinite_vertices": 0,
+      "no_uv": [],
+      "images": [
+        {
+          "name": "brown_eye",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "eyebrow002",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "name": "female_scav_boots_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "female_scav_boots_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gaas_Albedo2",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gear_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gear_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Gloves03UV",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "ponytail01_diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_elvs_emt_uniform_jacket_female",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_elvs_emt_uniform_pants_female",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_mindfront_helmet_kz45",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_mindfront_tactical_vest_female",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uvn_mindfront_helmet_kz45",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uvn_mindfront_tactical_vest_female",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "young_lightskinned_female_diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "model": "male_hazmat",
+      "mesh_objects": 12,
+      "armatures": 1,
+      "unweighted_vertices": 0,
+      "degenerate_faces": 0,
+      "nonfinite_vertices": 0,
+      "no_uv": [],
+      "images": [
+        {
+          "name": "brown_eye",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gaas_Albedo2",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gear_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gear_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Gloves03UV",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_hazmat_boots_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_hazmat_boots_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_culturalibre_hero-heroine_hood_1",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_elvs_male_coveralls_1",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "young_lightskinned_male_diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "model": "male_medic",
+      "mesh_objects": 14,
+      "armatures": 1,
+      "unweighted_vertices": 0,
+      "degenerate_faces": 0,
+      "nonfinite_vertices": 0,
+      "no_uv": [],
+      "images": [
+        {
+          "name": "brown_eye",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "eyebrow001",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "name": "gear_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gear_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "m1951_72",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_medic_boots_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_medic_boots_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "middleage_darkskinned_male_diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_elvs_emt_uniform_jacket_male",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_elvs_emt_uniform_pants_male",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_punkduck_stethoscope",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "model": "male_scav",
+      "mesh_objects": 15,
+      "armatures": 1,
+      "unweighted_vertices": 0,
+      "degenerate_faces": 0,
+      "nonfinite_vertices": 0,
+      "no_uv": [],
+      "images": [
+        {
+          "name": "brown_eye",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "eyebrow001",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "name": "gaas_Albedo2",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gear_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "gear_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Gloves03UV",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_0.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_1.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2.001",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "Image_2.002",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_casualsuit05_diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_casualsuit05_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_scav_boots_albedo",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "male_scav_boots_normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "middleage_lightskinned_male_diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_mindfront_helmet_kz45",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uv_mindfront_tactical_vest_male",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uvn_mindfront_helmet_kz45",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "uvn_mindfront_tactical_vest_male",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    }
+  ]
+}

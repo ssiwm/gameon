@@ -252,7 +252,9 @@ const FINGERS := ["Index", "Middle", "Ring", "Pinky"]
 const FINGER_CURL := [75.0, 85.0, 55.0]      ## ° zgięcia członów palca (u nasady, środkowego, końcowego) przy pełnym chwycie
 const THUMB_CURL := [15.0, 30.0, 25.0]       ## ° zgięcia członów kciuka przy pełnym chwycie
 const CURL_RELAX := 0.25                     ## luźna dłoń: palce lekko zgięte (w spoczynku modelu są wyprostowane i rozczapierzone)
-const CURL_HOLD := 0.7                       ## dłoń przednia pod łożem (szersze niż chwyt) i podpierająca pistolet
+const CURL_HOLD := 0.7                       ## dłoń przednia pod łożem (szersze niż chwyt) / na chwycie pionowym
+const PISTOL_CLAVICLE_FOLLOW := 1.0          ## oburęczny chwyt z przodu: barki podążają za dłońmi także przy zwrocie i celowaniu w górę
+const PISTOL_CLAVICLE_MAX := 75.0            ## limit obrotu obojczyka; długości ramienia i przedramienia pozostają bez zmian
 const GRIP_HALF := 0.013                     ## pół grubości chwytu / rękojeści (m): o tyle dłoń leży obok jego osi
 const GUN_FOLLOW := 0.5                      ## ile ruchu barku względem pozy nominalnej przechodzi na broń (1 = broń sztywno przy barku, 0 = nieruchoma w pozie nominalnej)
 const AIM_SPRING := 34.0                     ## 1/s: sztywność sprężyny, którą broń MODELU goni kierunek celowania (rozgrywka celuje od razu)
@@ -1051,11 +1053,11 @@ static func _wrist_dir(wp: Dictionary) -> Vector3:
 	var a := deg_to_rad(float(wp.get("wrist", 12.0)))
 	return Vector3(cos(a), sin(a), 0.0)
 
-## Cel dłoni przedniej w chwycie: pod łożem (wnętrzem do góry, palce owijają łoże od strony kamery), na chwycie pionowym albo — przy pistolecie —
-## pod stopką chwytu (podparcie od dołu: dłonie modelu są otwarte, więc złożone bokami wyglądałyby jak do oklasków).
+## Cel dłoni przedniej w chwycie: pod łożem, na chwycie pionowym albo wokół dłoni trzymającej pistolet.
 func _left_hold(gx: Transform3D, info: Dictionary, wp: Dictionary) -> Transform3D:
 	if String(wp.get("reload", "")) == "pistol":
-		return _hand_target("Left", gx, (info["grip"] as Vector3) + Vector3(-0.01, -0.105, 0.0), Vector3(0.42, 0.22, 0.88), Vector3.DOWN, 0.0)
+		var point := (info["grip"] as Vector3) + Vector3(0.018, float(wp.get("grip_dy", 0.0)) - 0.012, 0.0)
+		return _hand_target("Left", gx, point, _wrist_dir(wp), Vector3.FORWARD, 0.025)
 	if bool(info.get("hold_v", false)):
 		return _hand_target("Left", gx, info["hold"], _wrist_dir(wp), Vector3.FORWARD, GRIP_HALF)
 	return _hand_target("Left", gx, info["hold"], Vector3(0.42, 0.22, 0.88), Vector3.DOWN, 0.0)
@@ -1072,7 +1074,17 @@ func _gun_origin(sr: Vector3, sl: Vector3, hd: float, gun_b: Basis, radial: floa
 		# celowanie w górę: broń odsuwa się od barku, żeby ręce nie zasłaniały twarzy
 		var r := radial + UP_REACH * maxf(0.0, sin(hd))
 		rear = sr + Vector3(cos(hd), sin(hd), 0.0) * r - Vector3(-sin(hd), cos(hd), 0.0) * perp + Vector3(0.0, 0.0, side_z + 0.28 * maxf(0.0, -sin(hd)))
-		if not two or _left_hold(Transform3D(gun_b, rear), info, wp).origin.distance_to(sl) <= reach_l:
+		if not two:
+			break
+		var gx := Transform3D(gun_b, rear)
+		var reach: Vector3
+		if String(wp.get("reload", "")) == "pistol":
+			# Zachowujemy dotychczasowy punkt zasięgu broni: zmiana wizualnego chwytu nie przesuwa toru pocisku
+			# ani nie wysuwa pistoletu poza zasięg prawej ręki.
+			reach = _hand_target("Left", gx, (info["grip"] as Vector3) + Vector3(-0.01, -0.105, 0.0), Vector3(0.42, 0.22, 0.88), Vector3.DOWN, 0.0).origin
+		else:
+			reach = _left_hold(gx, info, wp).origin
+		if reach.distance_to(sl) <= reach_l:
 			break
 		radial -= 0.035
 	rear.z += 0.28 * maxf(0.0, -sin(hd)) * (cam - 1.0)        # ku kamerze po drugiej stronie dopiero na końcu: wsunięcie broni nie zależy od strony, więc wylot w obie strony jest lustrzany
@@ -1557,7 +1569,7 @@ func _pose_arms(theta: float) -> void:
 		if _gun_n != null:
 			_gun_n.transform = gx
 	var rh := _hand_target("Right", gx, (_gun_info["grip"] as Vector3) + Vector3(0.0, float(wp.get("grip_dy", 0.0)), 0.0), _wrist_dir(wp), Vector3.BACK, GRIP_HALF)
-	_reach_clavicle("Right", rh.origin, 0.22)
+	_reach_clavicle("Right", rh.origin, PISTOL_CLAVICLE_FOLLOW if pistol else 0.22, PISTOL_CLAVICLE_MAX if pistol else 16.0)
 	_arm_ik("Right", rh.origin, Vector3(-0.35, -1.0, 0.55))
 	_set_hand("Right", rh.basis)
 	_curl["Right"] = 1.0                                          # dłoń tylna obejmuje chwyt / rękojeść
@@ -1592,10 +1604,10 @@ func _pose_arms(theta: float) -> void:
 				lh.origin += gun_b.x * (-0.17 * sin(clampf((cycle_t - 0.12) / 0.6, 0.0, 1.0) * PI))
 			else:
 				lh.origin += gx * _left_path("bolt", clampf(cycle_t / 0.9, 0.0, 1.0), _gun_info["hold"] as Vector3) - gx * (_gun_info["hold"] as Vector3)
-		_reach_clavicle("Left", lh.origin, 0.22)
+		_reach_clavicle("Left", lh.origin, PISTOL_CLAVICLE_FOLLOW if pistol else 0.22, PISTOL_CLAVICLE_MAX if pistol else 16.0)
 		_arm_ik("Left", lh.origin, Vector3(-0.25, -1.0, -0.4))
 		_set_hand("Left", lh.basis, keep)
-		_curl["Left"] = lerpf(0.45, CURL_HOLD, keep)              # w drodze po magazynek / naboje palce trzymają go luźniej
+		_curl["Left"] = lerpf(0.45, 1.0 if pistol else CURL_HOLD, keep)  # przy pistolecie palce obejmują drugą dłoń; w drodze po magazynek chwyt luźniejszy
 	else:
 		_pose_left_relaxed()
 	muzzle_px = _to_px(gx * (_gun_info["muzzle"] as Vector3))

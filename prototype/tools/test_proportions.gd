@@ -79,9 +79,12 @@ func _hands() -> void:
 		_check(false, "dłonie: brak postaci 3D")
 		return
 	_hc._set_on_screen(true)
-	for look in ["male_scav", "female_scav", "male_hazmat", "female_hazmat"]:
+	for look in ["male_scav", "female_scav", "male_hazmat", "female_hazmat", "male_medic", "female_medic"]:
 		if not _hc.set_look(look):
+			_check(false, "dłonie: brak modelu " + look)
 			continue
+		if look.ends_with("medic"):
+			_medic_uniform(look)
 		for gun in ["m83", "spread12", "p64"]:
 			_hc.set_gun(gun)
 			for i in 40:
@@ -130,6 +133,46 @@ func _hands() -> void:
 			if idx >= 0:
 				var bend := rad_to_deg(sk.get_bone_rest(idx).basis.get_rotation_quaternion().angle_to(sk.get_bone_pose_rotation(idx)))
 				_check(bend > 50.0, "%s + %s: palce prawej dłoni zgięte na chwycie (palec wskazujący %.0f°)" % [look, gun, bend])
+		_pistol_support(look)
+
+## Medycy muszą korzystać z dopasowanych ubrań, a relief i szorstkość muszą przetrwać import GLB i konwersję na shader gry.
+func _medic_uniform(look: String) -> void:
+	for part in ["emt_jacket", "emt_trousers"]:
+		var mi := _hc._char_node.find_child(part, true, false) as MeshInstance3D
+		_check(mi != null, "%s: dopasowane ubranie %s" % [look, part])
+		if mi == null:
+			continue
+		var src := mi.mesh.surface_get_material(0) as BaseMaterial3D
+		_check(src != null and src.normal_texture != null and src.roughness_texture != null,
+				"%s/%s: mapy normalnych i szorstkości w GLB" % [look, part])
+		var mat := mi.get_surface_override_material(0) as ShaderMaterial
+		_check(mat != null and mat.get_shader_parameter("has_normal") == true and mat.get_shader_parameter("has_orm") == true,
+				"%s/%s: shader gry używa obu map" % [look, part])
+
+## Rzeczywiste środki dłoni po IK mają stykać się w chwycie P-64; kontrola kątów, kucania i obu kierunków bez klatki przeładowania.
+func _pistol_support(look: String) -> void:
+	_hc.set_gun("p64")
+	var worst := 0.0
+	var least_bend := 180.0
+	for anim in ["idle", "crouch"]:
+		for angle in [-50, 0, 50]:
+			for side in [1.0, -1.0]:
+				var a := deg_to_rad(float(angle))
+				for i in 40:
+					_hc.update(1.0 / 60.0, anim, side, Vector2(cos(a) * side, -sin(a)), 0.0)
+				var palms: Array[Vector3] = []
+				for hand in ["Right", "Left"]:
+					var hd: Dictionary = _hc._hand[hand]
+					var bone: int = _hc._sk.find_bone("mixamorig_" + hand + "Hand")
+					var xf: Transform3D = _hc._sk.get_bone_global_pose(bone)
+					var axes := xf.basis * (hd["fix"] as Basis).inverse()
+					palms.append(xf.origin + axes.x * float(hd["len"]) * Char3D.PALM_AT)
+				worst = maxf(worst, palms[0].distance_to(palms[1]))
+				var idx: int = _hc._sk.find_bone("mixamorig_LeftHandIndex1")
+				var bend := rad_to_deg(_hc._sk.get_bone_rest(idx).basis.get_rotation_quaternion().angle_to(_hc._sk.get_bone_pose_rotation(idx)))
+				least_bend = minf(least_bend, bend)
+	_check(worst <= 0.10, "%s + p64: środki dłoni oddalone najwyżej %.3f m (≤ 0,10)" % [look, worst])
+	_check(least_bend > 50.0, "%s + p64: palce lewej dłoni obejmują chwyt (co najmniej %.0f°)" % [look, least_bend])
 
 ## (4) promień poziomy na wysokości głowy wysokiego wroga trafia go (strefa trafień, hurtbox.gd), a nad modelem — nie.
 func _rays() -> void:
