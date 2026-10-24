@@ -404,3 +404,27 @@ godot --headless --path prototype -- --host --rangetest --autoquit=75
 ```
 
 Test warsztatu obejmuje autoryzację, duplikaty, amunicję podczas zmiany części i zestawu, opóźnione przeładowanie, cofanie tymczasowego zwrotu amunicji po wipe, migrację profilu, badania/tokarkę, częściowe dostawy, zapis, snapshot dołączającego oraz UI. Poza podsumowaniem PASS log nie może zawierać `SCRIPT ERROR` ani `Parse Error`. W dzienniku sesji `mission_start` ma `hub_seconds` (czas przygotowań), `equipment` (broń, kody części, masa każdego człowieka) i `workshop` (stan ekonomii/kolejek na wyjściu). Dane zostają w lokalnym dzienniku hosta; pozwalają zestawić przygotowania z obrażeniami, zabójstwami i hałasem w `mission_end`.
+
+## Sylwetki wrogów 1.7.377
+
+Wołek i Rzeźnik korzystają z przebudowanych siatek. `tools/enemy_mesh_repair.py`
+scala punkty geometryczne przed Decimate, zachowując UV na narożnikach.
+Rzeźnik ma wagi liczone wzdłuż powierzchni, a jego tasak ma sztywny wpływ
+prawej dłoni. Pełny rig wejściowy jest w `art_src/enemies_f4/rzeznik_rig.glb`
+(Git LFS); wypiek nie wymaga generowania nowej postaci.
+
+```bash
+python prototype/tools/prep_enemy3d.py --only=wolek,rzeznik
+godot --headless --path prototype --import
+python prototype/tools/tex_vram.py
+godot --headless --path prototype --import
+godot --headless --path prototype -s tools/test_enemy_surface.gd
+godot --headless --path prototype -s tools/audit_enemy_assets.gd
+godot --headless --path prototype -s tools/test_enemy_motion.gd
+```
+
+Zrealizowane: naprawa siatek i wag, zachowanie cullingu materiału, MSAA 2×
+w podglądzie animacji oraz regresje skinningu. Pozostałe lokalne brzegi i
+krawędzie niemanifold pochodzą z generowanych źródeł; te modele nie są
+pełną ręczną retopologią. Test topologii ma jawne budżety, a ocenę detali
+stroju wykonuje się również w renderze gry.

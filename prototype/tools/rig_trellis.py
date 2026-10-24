@@ -4,8 +4,8 @@ poruszać (IK nóg i rąk, klipy). Blender headless:
     blender -b --factory-startup -P prototype/tools/rig_trellis.py -- SRC.glb DST_rig.glb [--face=-y] [--height=1.8] [--preset=humanoid|brute|crawler] [--preview=PREFIX] [--attach=PROP.glb --attach-bone=RightHand --attach-length=0.8 --attach-handle=auto|lo|hi]
 
 Co robi: scala siatki, obraca model przodem do +X (jak modele Tripo w grze), skaluje do `--height` m i stawia stopami na z = 0; wykrywa punkty orientacyjne ciała na przekrojach siatki
-(biodra, kolana, kostki, barki, nadgarstki z skrajnych punktów rąk), buduje 23 kości Mixamo w tych punktach, liczy wagi na uproszczonej, szczelnej kopii (voxel remesh + automatyczne wagi)
-i przenosi je na pełną siatkę (najbliższa powierzchnia). `--preview=PREFIX` zapisuje trzy renderowane pozy (spoczynek, krok, ręka w górze) do oceny wag.
+(biodra, kolana, kostki, barki, nadgarstki z skrajnych punktów rąk), buduje 23 kości Mixamo w tych punktach, scala geometryczne szwy
+i liczy wagi przez odległość po powierzchni. `--preview=PREFIX` zapisuje trzy renderowane pozy (spoczynek, krok, ręka w górze) do oceny wag.
 Gra liczy pozę przez IK po długościach kości i pozycjach spoczynkowych (nie po osiach lokalnych), więc dokładne role kości nie mają znaczenia.
 """
 import math
@@ -155,48 +155,16 @@ def build_armature(L, H):
 
 
 def skin(body, arm, H):
-    # szczelna, uproszczona kopia do automatycznych wag (siatka z TRELLIS-a bywa nieszczelna / samoprzecinająca się)
-    proxy = body.copy()
-    proxy.data = body.data.copy()
-    proxy.name = "proxy"
-    bpy.context.scene.collection.objects.link(proxy)
-    proxy.modifiers.clear()
-    mod = proxy.modifiers.new("remesh", "REMESH")
-    mod.mode = "VOXEL"
-    mod.voxel_size = H / 90.0
-    bpy.context.view_layer.objects.active = proxy
-    bpy.ops.object.modifier_apply(modifier=mod.name)
-    bpy.ops.object.select_all(action="DESELECT")
-    proxy.select_set(True)
-    arm.select_set(True)
-    bpy.context.view_layer.objects.active = arm
-    bpy.ops.object.parent_set(type="ARMATURE_AUTO")
-    print("PROXY groups", len(proxy.vertex_groups), "verts", len(proxy.data.vertices))
-    # przeniesienie wag na pełną siatkę
-    bpy.context.view_layer.objects.active = body
-    for vg in proxy.vertex_groups:
-        body.vertex_groups.new(name=vg.name)
-    dt = body.modifiers.new("wt", "DATA_TRANSFER")
-    dt.object = proxy
-    dt.use_vert_data = True
-    dt.data_types_verts = {"VGROUP_WEIGHTS"}
-    dt.vert_mapping = "POLYINTERP_NEAREST"
-    dt.layers_vgroup_select_src = "ALL"
-    dt.layers_vgroup_select_dst = "NAME"
-    bpy.ops.object.select_all(action="DESELECT")
-    body.select_set(True)
-    bpy.context.view_layer.objects.active = body
-    bpy.ops.object.modifier_apply(modifier=dt.name)
-    bpy.data.objects.remove(proxy, do_unlink=True)
+    # Połącz szwy UV przed liczeniem wag. Klasyfikowanie luźnych wysp atlasu
+    # przenosiło kawałki uda/fartucha do ręki. Graf powierzchni zachowuje anatomię.
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from enemy_mesh_repair import skin_by_surface_distance, weld_seams
+    weld_seams(body)
+    skin_by_surface_distance(body, arm)
     body.parent = arm
     am = body.modifiers.new("Armature", "ARMATURE")
     am.object = arm
-    unweighted = sum(1 for v in body.data.vertices if not any(g.weight > 0.001 for g in v.groups))
-    print("WEIGHTS body groups", len(body.vertex_groups), "unweighted verts", unweighted, "of", len(body.data.vertices))
-    if unweighted > 0.03 * len(body.data.vertices):
-        skin_by_distance(body, arm, H)
-    fix_hands(body, arm, H)
-    split_islands(body)
 
 
 def fix_hands(body, arm, H):
@@ -465,4 +433,5 @@ def main():
     print("OK", dst)
 
 
-main()
+if __name__ == "__main__":
+    main()

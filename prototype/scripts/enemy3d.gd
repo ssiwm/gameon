@@ -602,16 +602,24 @@ func _rest_dist(a: String, b: String) -> float:
 	return _sk.get_bone_global_rest(_b[a]).origin.distance_to(_sk.get_bone_global_rest(_b[b]).origin)
 
 func _prepare_materials(translucent: bool) -> void:
-	var sh := Shader.new()
 	var code := SHADER
 	code = code.replace("//VERTEX", String(DEFORM.get(String(_spec.get("deform", "")), "")))
-	code = code.replace("//RENDER", "render_mode blend_mix, depth_prepass_alpha;" if translucent else "")
 	code = code.replace("//ALPHA", "ALPHA = clamp(mod.a, 0.0, 1.0);" if translucent else "")
-	sh.code = code
+	var shaders: Dictionary = {}
 	for i in _mesh.mesh.get_surface_count():
 		var src := _mesh.mesh.surface_get_material(i)
+		var cull := BaseMaterial3D.CULL_BACK
+		if src is StandardMaterial3D: cull = (src as StandardMaterial3D).cull_mode
+		if not shaders.has(cull):
+			var modes: Array[String] = []
+			if translucent: modes.append_array(["blend_mix", "depth_prepass_alpha"])
+			if cull == BaseMaterial3D.CULL_DISABLED: modes.append("cull_disabled")
+			elif cull == BaseMaterial3D.CULL_FRONT: modes.append("cull_front")
+			var sh := Shader.new()
+			sh.code = code.replace("//RENDER", "render_mode " + ", ".join(modes) + ";" if not modes.is_empty() else "")
+			shaders[cull] = sh
 		var sm := ShaderMaterial.new()
-		sm.shader = sh
+		sm.shader = shaders[cull]
 		if src is StandardMaterial3D:
 			var s := src as StandardMaterial3D
 			sm.set_shader_parameter("albedo_tex", s.albedo_texture)
