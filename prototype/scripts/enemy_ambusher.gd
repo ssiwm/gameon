@@ -31,6 +31,7 @@ func returns_home() -> bool:
 func land_hit() -> void:
 	drop_attack = false
 	e.winding = false
+	e.visual_attack()
 	for p in e.get_tree().get_nodes_in_group("players"):
 		if not p.dead and absf(p.global_position.x - e.global_position.x) < 16.0 and absf(p.global_position.y - e.global_position.y) < 22.0:
 			p.deliver_hit(e._scaled_damage(2), e.global_position, e.kind)

@@ -1,29 +1,68 @@
 # Ruch wrogów 3D
 
-Stan wdrożony: tempo kroku od przemieszczenia, płynny obrót modeli szkieletowych, korekta bioder i kotwiczenie stóp humanoidów w fazie podparcia, cele IK dłoni/stóp pełzaków, osobne proceduralne pozy pazura/chwytu/tasaka oraz widoczna pełna śmierć Pijawki.
+## Stan implementacji
 
-`enemy3d.gd:pose` otrzymuje prędkość w pikselach świata/s z `view3d.gd`. Biblioteka chodu i animacja Trzoska są próbkowane z tej samej fazy kroku. Bez prędkości podglądy narzędzi zachowują nominalny cykl. Przejście kierunku zwalnia kotwice, podobnie jak skok pozycji, zmiana stanu i rozpoczęcie zdarzenia.
+`enemy_motion.gd` opisuje autorskie klatki riga, a `tools/bake_enemy_motion.gd` zapisuje je w natywnej Godot AnimationLibrary `art/enemy3d/motion.tres`. Klipy zawierają kanały ciała i cele kończyn normalizowane wysokością bioder. `Enemy3D` próbkuje zasób i retargetuje cele przez IK. Są to ręcznie opracowane klipy riga sterującego, nie nagrania motion capture ani nowe GLB z animacjami wszystkich kości. Chód zachowuje istniejące biblioteki, a bossowie swoje sekwencje deformacji.
 
-Humanoidy: cel stopy jest kotwiczony w świecie przy niskim uniesieniu; biodra obniżają się do zasięgu obu nóg. Widok próbkuje wysokość i normalną podłoża promieniami fizyki 2D pod stopami (u pełzaków również pod dłońmi), w zakresie ±8 px i korekty do 45 cm. Stopa podporowa dopasowuje orientację do normalnej. Poza tym zakresem oraz w locie korekta terenu wygasa. Nie jest to kontrola każdego wierzchołka podeszwy ani fizyczny ragdoll. Pełzaki mają przeciwfazowe kończyny oraz osobne cele IK. Trzosek zachowuje istniejącą animację i zbudowaną przez IK pozycję siadu.
+| Rodzaj / działanie | Klip | Kontakt w zasobie / powrót (s) |
+|---|---|---|
+| Wołek | smash | 0,60 / 0,76 |
+| Rzeźnik | cleave | 0,50 / 0,64 |
+| Ślepiec | claw | 0,35 / 0,46 |
+| Stalker | grab | 0,40 / 0,68 |
+| Mimik | reveal_grab | 0,40 / 0,55 |
+| Podsłuchacz | scream | 0,90 / 0,60 |
+| Kapłan | ritual | 0,70 / 0,82 |
+| Skoczek | pounce | 0,30 / 0,38 |
+| Żerca | snatch | 0,40 / 0,56 |
+| Trzosek | bite | 0,28 / 0,42 |
+| Ćma | dive | 0,20 / 0,40 |
+| Szarża / rzut Wołka | charge / throw | 0,70 / 0,25; 0,60 / 0,52 |
+| Amortyzacja lądowania | landing | 0,00 / 0,24 |
 
-Ataki: niedopasowany wspólny klip został zastąpiony przez ręcznie ustalone, ograniczone anatomicznie cele w runtime. Chód nadal korzysta z biblioteki. Rzeźnik ma odrębną prawą rękę z tasakiem; Stalker sięga do ofiary bez składania tułowia ku ziemi. Nie zmieniono czasu zadawania obrażeń, zasięgów ani balansu gameplayu.
+## Zegar i autorytet
 
-`enemy.gd` i `stalker.gd` udostępniają `attack_seq`. Serwer zwiększa numer przy rozstrzygnięciu ciosu, także chybionego. Zdarzenie jest wysyłane przez niezawodne RPC autorytetu; klient ignoruje starsze numery. Przerwanie zapowiedzi nie wysyła zdarzenia. Podsłuchacz, Kapłan i specjalne działania Wołka wysyłają zdarzenia w miejscach wykonania. Bossowie z własnymi sekwencjami sprite'a zachowują swój kontrakt. Spóźniony obserwator nie odtwarza historycznych ataków.
+`enemy.gd:view_info` i `stalker.gd:view_info` przekazują pozostały i całkowity czas zapowiedzi oraz stan podłoża. Zachowania Wołka, Kapłana, Podsłuchacza i Mimika dostarczają własne czasy. Zapowiedź klipu skaluje się do czasu gameplayu, w tym trudności. Samo wyzerowanie licznika nie odtwarza ciosu.
 
-Pijawka ma własny czas śmierci niezależny od ogólnych klipów. `die()` nie ukrywa jej natychmiast: deformacja death jest próbkowana z czasu śmierci, po czym działa wspólne zatrzymanie i zapadanie modelu.
+`attack_seq` zwiększa serwer przy rozstrzygnięciu, również chybionego ciosu. Niezawodne RPC przenosi numer i rodzaj działania (np. szarżę lub rzut); starszy numer nie zmienia rodzaju. `view3d.gd:_sync_enemies` przekazuje kontekst przed zdarzeniem. Pierwsza poza po zdarzeniu wypada dokładnie w punkcie kontaktu zasobu, a potem odtwarza osobny powrót. Nie wykonuje dodatkowego zamachu. Przerwanie zapowiedzi wygasza nakładkę bez zdarzenia; obrót zostaje wstrzymany w pierwszej ćwiartce powrotu.
 
-Ćma porusza skrzydłami w płaszczyźnie pionowej wokół osi korpusu, zamiast obracać je poziomo. Shader obraca również normalne, styczne i binormalne skrzydła.
+Obrażenia, zasięgi i czasy gameplayu nadal rozstrzyga serwer. Obserwator widzi zdarzenie po jego dostarczeniu przez sieć; ta zmiana nie usuwa fizycznego opóźnienia transmisji. Zmieniony kontrakt RPC wymaga tej samej wersji gry na peerach.
 
-## Weryfikacja
+## Lokomocja i podparcie
+
+`pose` otrzymuje prędkość poziomą w pikselach świata/s. Faza chodu i biblioteka Trzoska podążają za rzeczywistym tempem. Bez tego argumentu narzędzia zachowują nominalny cykl. Zmiana kierunku, stanu lub skok pozycji zwalniają kotwice stóp.
+
+Humanoidy korygują biodra do zasięgu nóg. Podporowe stopy mają cele w świecie i orientację normalnej podłoża. Pełzaki prowadzą dłonie i stopy przez IK w przeciwfazie. Cztery łapy Trzoska korzystają z animacji źródłowej i korekty dwukostkowej również podczas przejścia z siadu. Orientacje krótkich kości łapy pozostają z klipu, bez skręcania skóry.
+
+`_prepare_soles` raz na rodzaj oblicza otoczkę podeszwy i niewielką próbkę wierzchołków ze skóry. Uwzględnia inverse bind, w tym przesunięcie bind pose Trzoska. Wierzchołki z mieszanymi wagami piszczeli, stopy i palców również uczestniczą w korekcie. W klatce sprawdzane są wybrane punkty, a cele IK podnoszone w razie zagłębiania; długości kości i wagi pozostają bez zmian. Dane geometrii i neutralny poziom podparcia są buforowane.
+
+Widok próbuje wysokość i normalną podłoża promieniami fizyki 2D w zakresie ±8 px, z maksymalną korektą terenu 45 cm. Stan `grounded` utrzymuje pozę lotu także przy zerowej prędkości w szczycie skoku. Lądowanie po opadaniu uruchamia amortyzację zależną od prędkości. Pełzak wiszący pod stropem nie jest traktowany jak spadający.
+
+Pijawka odtwarza pełną własną śmierć przed zatrzymaniem i zapadaniem modelu. Ćma porusza skrzydłami pionowo i obraca normalne oraz styczne. Materiały pozostałych modeli i geometria GLB zostały zachowane.
+
+## Testy i narzędzia odbioru
 
 ```text
+godot --headless --path prototype --editor --import
+godot --headless --path prototype -s tools/bake_enemy_motion.gd
 godot --headless --path prototype -s tools/test_enemy_motion.gd
+godot --headless --path prototype -s tools/audit_enemy_assets.gd -- --out=/tmp/enemy-assets.json
+python3 prototype/tools/test_enemy_motion_proxy.py
 godot --headless --path prototype -s tools/test_enemy_motion_network.gd -- --motion-server
-godot --headless --path prototype -s tools/test_enemy_motion_network.gd -- --motion-client
+godot --headless --path prototype -s tools/test_enemy_motion_network.gd -- --motion-client --motion-port=19074
 godot --headless --path prototype -- --host --enemytest --autoquit=150
 godot --headless --path prototype -- --host --stalkertest --autoquit=70
+godot --path prototype -s tools/shot_enemy_motion.gd -- --dir=/tmp/enemy-film
+godot --path prototype -s tools/bench_enemy_motion.gd -- --count=36 --out=/tmp/enemy-bench.json
+godot --path prototype -s tools/shot_enemies.gd -- --mission=z1_m2 --dir=/tmp/enemy-map --reveal
 ```
 
-Serwer i klient testu ENet uruchamiają się jednocześnie; używają portu 18974 lub `--motion-port=N`. Regresja modeli obejmuje 14 rodzajów, 30/60/120 kl./s, prędkości 0/0,25/1/1,5, długości kości, dryf stopy podczas podparcia, płynny obrót, podparcie w postoju i zapowiedzi, nierówne wysokości i normalną podłoża, wysokość dłoni w ataku, śmierć oraz powrót do życia. Testy zachowań obejmują ogłuszenie podczas błysku, chybiony cios i starszy numer zdarzenia.
+Relay, serwer i klient działają jednocześnie: serwer na 18974, relay na 19074. Relay wprowadza 75 ms w każdą stronę oraz stratę co 13. datagramu po zestawieniu połączenia. Test sprawdza zapowiedź, stan podłoża, punkt kontaktu, typ działania i trzy niezawodne zdarzenia.
 
-Kontrola obrazu: `tools/shot_enemy_clip3d.gd -- --anim=attackseq --movie=KATALOG --kinds=wolek,rzeznik,slepiec,stalker` oraz `tools/shot_enemies.gd -- --mission=z1_m2 --port=8970 --dir=KATALOG --reveal`. Podgląd studyjny ocenia anatomię; zrzuty mapy oceniają obraz z docelowej kamery. Materiały, LOD i fizyczny ragdoll nie są częścią tej poprawki.
+Regresja modeli obejmuje 14 rodzajów, 30/60/120 kl./s, prędkości 0/0,25/1/1,5, długości kości, podparcie, obrót, kontakt przy różnych długościach zapowiedzi, przerwanie, skok, lądowanie, śmierć i powrót do życia. Audyt siatek dodatkowo sprawdza bindy, sumy wag i wszystkie wierzchołki regionu stóp w wybranych sekwencjach przy tych samych FPS; tolerancja zagłębiania wynosi 2,5 cm. Nie jest to test każdej kolizji całej skóry.
+
+Film zapisuje 240 klatek 30 kl./s po wyrenderowaniu obrazu. Każda komórka ma własną skalę kamery, więc atlas nie porównuje wzrostu gatunków. Zrzuty mapy korzystają z docelowej kamery gry. Benchmark zapisuje koszt CPU pozowania, rzeczywisty czas klatki, liczbę draw calls i pamięć wideo w stanowisku 1280×720 po rozgrzaniu. Wynik stanowiska nie zastępuje pomiaru całej misji na docelowym sprzęcie.
+
+## Granice weryfikacji
+
+Regresje numeryczne i render nie gwarantują filmowej jakości ruchu w każdej sytuacji. Ragdoll, motion capture i przebudowa topologii nie są częścią tej implementacji. Ustawienia importu włączają generowanie LOD oraz kompresję VRAM, lecz pomiar nie stanowi certyfikacji wydajności na słabszych kartach ani osobnego odbioru każdego poziomu LOD. Shaderowe deformacje bossów nie uczestniczą w CPU pomiarze podeszew.

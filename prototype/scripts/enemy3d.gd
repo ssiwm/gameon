@@ -11,6 +11,7 @@ const TURN_TIME := 0.16                      ## s: obrót przy zmianie kierunku 
 const BODY_YAW := -22.0                      ## °: tułów zwrócony ku kamerze (jak Char3D.BODY_YAW)
 const CharClips := preload("res://scripts/char_clips.gd")
 const EnemyDefs := preload("res://scripts/enemy_defs.gd")
+const Motion := preload("res://scripts/enemy_motion.gd")
 const DIR := "res://art/enemy3d/"
 const PRE := "mixamorig_"
 const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Level3D.PX)
@@ -223,11 +224,76 @@ var _foot_locks: Dictionary = {}
 var _last_position := Vector3.ZERO
 var _last_flip := false
 var ground_profile: Dictionary = {}
+var _motion_name := ""
+var _motion_pending := ""
+var _motion_weight := 0.0
+var _motion_time := 0.0
+var _motion_wind_clock := 0.0
+var _motion_remaining := NAN
+var _motion_duration := 0.0
+var _motion_values: Dictionary = {}
+var _contact_frame := false
+var _grounded_hint := -1
+var _landing_t := 10.0
+var _landing_strength := 0.0
+var _q_limbs: Dictionary = {}
+var _sole_points: Dictionary = {}
+var _sole_samples: Dictionary = {}
+var _ground_cache: Dictionary = {}
+static var _sole_cache: Dictionary = {}
+
+## Migawka zapowiedzi z symulacji. Zegar modelu nie rozstrzyga trafień.
+func motion_context(info: Dictionary) -> void:
+	_grounded_hint = int(bool(info["grounded"])) if info.has("grounded") else -1
+	_motion_remaining = float(info.get("windup_remaining", NAN)) if bool(info.get("winding", false)) else NAN
+	_motion_duration = float(info.get("windup_duration", 0.0))
+	if bool(info.get("winding", false)):
+		_motion_pending = String(info.get("motion_action", Motion.action(kind)))
+
+func clip_duration(clip: String) -> float:
+	return Motion.recovery(_motion_name) if clip == "attack" and _motion_name != "" else float(CLIP_DUR.get(clip, 0.42))
+
+func motion_phase() -> String:
+	if _dead or _motion_weight < 0.001: return "idle"
+	if _clip == "attack": return "contact" if _clip_t <= 0.0001 else "recovery"
+	return "anticipation" if _prev_anim == "windup" else "cancelled"
+
+func _advance_motion(delta: float, anim: String) -> void:
+	var active := false
+	if anim == "windup" and not _dead and _clip not in ["hit", "attack"]:
+		_motion_wind_clock += delta
+		_motion_name = _motion_pending if _motion_pending != "" else Motion.action(kind)
+		var contact := Motion.contact(_motion_name)
+		_motion_time = contact * clampf(1.0 - _motion_remaining / maxf(_motion_duration, 0.001), 0.0, 0.999) if is_finite(_motion_remaining) else minf(_motion_wind_clock, contact * 0.999)
+		active = _motion_name != ""
+	elif _clip == "attack" and not _dead:
+		_motion_time = Motion.contact(_motion_name) + _clip_t
+		active = _motion_name != ""
+	else:
+		_motion_wind_clock = 0.0
+	_motion_weight = move_toward(_motion_weight, 1.0 if active and clips_on else 0.0, delta * 12.0)
+	_motion_values = Motion.sample(_motion_name, _motion_time) if _motion_weight > 0.001 else {}
+
+func _authored_biped(p: Dictionary) -> Dictionary:
+	var out := p.duplicate()
+	var height := _sk.get_bone_global_rest(_b["Hips"]).origin.y
+	for channel in _motion_values:
+		var key: String = "hk" if channel == "head" else String(channel)
+		if not out.has(key): continue
+		var value = _motion_values[channel]
+		if key in ["hR", "hL"]: value = Vector3(_x0, 0, 0) + (value as Vector3) * height
+		elif key in ["drop", "fR", "fL"]: value *= height
+		out[key] = lerp(out[key], value, _motion_weight)
+	return out
 
 ## Punkty próbkowania podłoża; widok pyta fizykę 2D, model nie uruchamia fizyki 3D.
 func ground_probes() -> Dictionary:
 	var points := {}
-	if _sk == null or _spec.has("deform") or _spec.get("quad", false): return points
+	if _sk == null or _spec.has("deform"): return points
+	if _spec.get("quad", false):
+		for key in _q_limbs:
+			points[key] = _sk.global_transform * _gp(_q_limbs[key][4]).origin
+		return points
 	for side in ["Right", "Left"]:
 		points[side] = _sk.global_transform * _gp(_b[side + "Foot"]).origin
 		if _spec.get("crawler", false):
@@ -235,8 +301,133 @@ func ground_probes() -> Dictionary:
 	return points
 
 func _ground_y(side: String) -> float:
+	if _ground_cache.has(side): return float(_ground_cache[side])
 	var rest := _sk.get_bone_global_rest(_b[side + "Foot"])
-	return rest.origin.y + float((ground_profile.get(side, {}) as Dictionary).get("height", 0.0)) / _scale
+	if not _sole_points.has(side):
+		return rest.origin.y + float((ground_profile.get(side, {}) as Dictionary).get("height", 0.0)) / _scale
+	var point := _sk.global_transform * rest.origin
+	point.y = _sole_floor(side, rest.basis)
+	var height := (_sk.global_transform.affine_inverse() * point).y
+	_ground_cache[side] = height
+	return height
+
+## Rzeczywiste punkty skóry łapy, względem kości podporowej; uwzględniają inverse bind,
+## także przesunięcie bind pose Trzoska. Obliczane raz na model, nie na klatkę.
+func _prepare_soles() -> void:
+	if _sole_cache.has(kind):
+		_sole_points = _sole_cache[kind][0]
+		_sole_samples = _sole_cache[kind][1]
+		return
+	var anchors := {}
+	if _spec.get("quad", false):
+		for key in _q_limbs: anchors[key] = _q_limbs[key][3]
+	elif not _spec.get("crawler", false) and _b.has("RightFoot"):
+		for side in ["Right", "Left"]: anchors[side] = _b[side + "Foot"]
+	if anchors.is_empty(): return
+	var clouds := {}
+	var skin_clouds := {}
+	for key in anchors: clouds[key] = []
+	for key in anchors: skin_clouds[key] = []
+	for node in _model.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.skin == null or mi.mesh == null: continue
+		var xf := _transform_under(_sk, _model).affine_inverse() * _transform_under(mi, _model)
+		for surface in mi.mesh.get_surface_count():
+			var arrays := mi.mesh.surface_get_arrays(surface)
+			if arrays[Mesh.ARRAY_BONES] == null: continue
+			var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+			var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+			var per := bones.size() / vertices.size()
+			for vertex in vertices.size():
+				var point := Vector3.ZERO
+				var support := {}
+				var skin_sample := []
+				for slot in per:
+					var index := vertex * per + slot
+					var weight := weights[index]
+					if weight < 0.0001: continue
+					var bone := mi.skin.get_bind_bone(bones[index])
+					if bone < 0: bone = _sk.find_bone(mi.skin.get_bind_name(bones[index]))
+					if bone < 0: continue
+					point += _sk.get_bone_global_rest(bone) * mi.skin.get_bind_pose(bones[index]) * (xf * vertices[vertex]) * weight
+					skin_sample.append([bone, mi.skin.get_bind_pose(bones[index]) * (xf * vertices[vertex]), weight])
+					var name := String(_sk.get_bone_name(bone))
+					for key in anchors:
+						var match_foot: bool = (name.begins_with(key) and (name.ends_with("Limb_3") or name.ends_with("Limb_4"))) if _spec.get("quad", false) else (key in name and ("Foot" in name or "Toe" in name))
+						if match_foot: support[key] = float(support.get(key, 0.0)) + weight
+				for key in support:
+					if support[key] >= 0.4:
+						clouds[key].append(_sk.get_bone_global_rest(anchors[key]).affine_inverse() * point)
+						skin_clouds[key].append(skin_sample)
+	# Otoczka z 26 skrajnych punktów zachowuje palce i piętę bez kosztu całej siatki.
+	for key in clouds:
+		if (clouds[key] as Array).is_empty(): continue
+		var points := []
+		var samples := []
+		var selected := []
+		for x in [-1.0, 0.0, 1.0]:
+			for y in [-1.0, 0.0, 1.0]:
+				for z in [-1.0, 0.0, 1.0]:
+					var direction := Vector3(x, y, z)
+					if direction == Vector3.ZERO: continue
+					var best: Vector3 = clouds[key][0]
+					var best_index := 0
+					for index in (clouds[key] as Array).size():
+						var point: Vector3 = clouds[key][index]
+						if point.dot(direction) > best.dot(direction):
+							best = point
+							best_index = index
+					if not best in points:
+						points.append(best)
+						samples.append(skin_clouds[key][best_index])
+						selected.append(best_index)
+		# Dolna powierzchnia zawiera też punkty o mieszanych wagach piszczeli i palców.
+		# Po zgięciu nogi skrajny punkt skóry nie musi być skrajnym punktem rest pose.
+		var bottom := range((clouds[key] as Array).size())
+		var rest_basis := _sk.get_bone_global_rest(anchors[key]).basis
+		bottom.sort_custom(func(a: int, b: int) -> bool: return (rest_basis * (clouds[key][a] as Vector3)).y < (rest_basis * (clouds[key][b] as Vector3)).y)
+		for index in bottom.slice(0, 64):
+			if not index in selected:
+				samples.append(skin_clouds[key][index])
+		_sole_points[key] = points
+		_sole_samples[key] = samples
+	_sole_cache[kind] = [_sole_points, _sole_samples]
+
+func _sole_floor(key: String, foot_basis: Basis) -> float:
+	var offset := 0.0
+	var first := true
+	var basis := _sk.global_transform.basis * foot_basis
+	for point in _sole_points.get(key, []):
+		var height := (basis * (point as Vector3)).y
+		if first or height < offset: offset = height
+		first = false
+	return global_position.y + float((ground_profile.get(key, {}) as Dictionary).get("height", 0.0)) - offset + 0.003
+
+## Mała próbka faktycznie skinned wierzchołków wykrywa wpływ piszczeli/palców,
+## którego nie opisuje sztywna otoczka kości stopy. Nie modyfikujemy wag ani długości kości.
+func _sole_penetration(key: String) -> float:
+	var lowest := INF
+	var poses := {}
+	var transform := _sk.global_transform
+	for sample in _sole_samples.get(key, []):
+		var point := Vector3.ZERO
+		for influence in sample:
+			var bone: int = influence[0]
+			if not poses.has(bone): poses[bone] = _gp(bone)
+			point += (poses[bone] as Transform3D) * (influence[1] as Vector3) * float(influence[2])
+		lowest = minf(lowest, (transform * point).y)
+	if not is_finite(lowest): return 0.0
+	return clampf(global_position.y + float((ground_profile.get(key, {}) as Dictionary).get("height", 0.0)) + 0.003 - lowest, 0.0, 0.12)
+
+## Działa również podczas setup() przed wejściem modelu do drzewa.
+static func _transform_under(node: Node3D, ancestor: Node3D) -> Transform3D:
+	var result := Transform3D.IDENTITY
+	var current := node
+	while current != null and current != ancestor:
+		result = current.transform * result
+		current = current.get_parent() as Node3D
+	return result
 var _eyes: Array = []
 
 ## Klipy jednorazowe i śmierć (modele z `"clips": true` w SPEC): trafienie, atak, śmierć; poza bazowa przechodzi płynnie (wagi), klip leży na wierzchu.
@@ -364,6 +555,12 @@ func setup(k: String, translucent := false) -> bool:
 			if bi >= 0:
 				_spine.append(bi)
 	_prepare_materials(translucent)
+	if _spec.get("quad", false):
+		for pre in ["tripo__0_Left", "tripo__0_Right", "tripo__1_Left", "tripo__1_Right"]:
+			var chain := []
+			for segment in 5: chain.append(_sk.find_bone(pre + "_Limb_" + str(segment)))
+			if not -1 in chain: _q_limbs[pre] = chain
+	_prepare_soles()
 	if _spec.get("eyes", false):
 		for sd in [-1.0, 1.0]:
 			var mi := MeshInstance3D.new()
@@ -461,6 +658,7 @@ func _two_bone(a: int, m: int, e: int, la: float, lb: float, target: Vector3, po
 ## flip: sprite odbity (patrzy w lewo). mod: modulate sprite'a. fr: numer klatki + postęp w klatce, nfr: liczba klatek animacji, loop: czy pętla
 ## (modele statyczne dostają pozę z numeru klatki, żeby animacja szła w tempie gry — np. trafienie Pijawki na klatce 2).
 func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 1, loop := true, air_vy := 0.0, sp := 0, alert := false, horizontal_speed := NAN) -> void:
+	_ground_cache.clear()
 	_t += delta
 	if flip != _last_flip or anim != _prev_anim or global_position.distance_to(_last_position) > 0.8:
 		_foot_locks.clear()
@@ -469,7 +667,8 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 	if not _spec.has("deform"):
 		# Mimik udaje gracza, więc odwraca się jak postać gracza (char3d.gd): obrót przodem do kamery w TURN_TIME, tułów zwrócony ku kamerze
 		# w obie strony (_apply_biped). Odbicie lustrem w jednej klatce zdradzało go na tle graczy, którzy od 1.7.216 się obracają.
-		_face = move_toward(_face, -1.0 if flip else 1.0, delta * 2.0 / TURN_TIME) if _t > delta else (-1.0 if flip else 1.0)
+		if not (_clip == "attack" and _clip_t < clip_duration("attack") * 0.25):
+			_face = move_toward(_face, -1.0 if flip else 1.0, delta * 2.0 / TURN_TIME) if _t > delta else (-1.0 if flip else 1.0)
 		_cam_c = sin(PI * 0.5 * _face)
 		scale.x = 1.0
 		rotation.y = -PI * 0.5 + PI * 0.5 * _cam_c
@@ -478,8 +677,15 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 	_sp = sp
 	var hang: bool = anim == "sleep" and not _dead and (bool(_spec.get("crawler", false)) or String(_spec.get("deform", "")) == "cma")
 	_inv_w = move_toward(_inv_w, 1.0 if hang else 0.0, delta / 0.30)
+	var was_airborne := _airborne
+	var previous_vy := _air_vy
 	_air_vy = air_vy
-	_airborne = absf(air_vy) > 55.0 and not _spec.has("deform") and not _dead
+	_airborne = (_grounded_hint == 0 if _grounded_hint >= 0 else absf(air_vy) > 55.0) and not _spec.has("deform") and not _dead and not hang
+	if was_airborne and not _airborne and previous_vy > 55.0 and not _dead:
+		_landing_t = 0.0
+		_landing_strength = clampf(previous_vy / 380.0, 0.2, 1.0)
+	else:
+		_landing_t += delta
 	_air_w = move_toward(_air_w, 1.0 if _airborne else 0.0, delta * 12.0)
 	if _dead:
 		_dead_t += delta
@@ -487,8 +693,11 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		if _dead_t >= total:
 			finished = true
 	if _clip != "":
-		_clip_t += delta
-		if _clip_t >= float(CLIP_DUR[_clip]):
+		if _clip == "attack" and _contact_frame:
+			_contact_frame = false
+		else:
+			_clip_t += delta
+		if _clip_t >= clip_duration(_clip):
 			_clip = ""
 	var eye := 1.4
 	# zapowiedź ciosu: oczy rozżarzają się i pulsują (zamiast czerwienienia całego modelu); po ciosie gasną do zwykłej jasności
@@ -508,6 +717,7 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		_phase += delta * TAU / float(_spec.get("cycle", 1.0)) * rate
 		if is_finite(horizontal_speed) and absf(horizontal_speed) < 0.5:
 			anim = "idle"
+	_advance_motion(delta, anim)
 	if _spec.has("deform"):
 		_pose_deform(anim, fr, nfr, loop)
 	elif _spec.get("quad", false):
@@ -521,13 +731,18 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 	_prev_anim = anim
 
 ## Zdarzenia z gry (view3d.gd): "hit" — trafienie, "attack" — cios po zapowiedzi. Tylko modele z klipami.
-func trigger(clip: String) -> void:
+func trigger(clip: String, action := "") -> void:
 	if _dead or not _spec.get("clips", false) or not CLIP_DUR.has(clip):
 		return
-	if clip == "hit" and _clip == "attack" and _clip_t < 0.8 * float(CLIP_DUR["attack"]):
+	if clip == "hit" and _clip == "attack" and _clip_t < 0.8 * clip_duration("attack"):
 		return                                    # trafienie nie przerywa trwającego ciosu
 	_clip = clip
 	_clip_t = 0.0
+	if clip == "attack":
+		_motion_name = action if action != "" else (_motion_pending if _motion_pending != "" else Motion.action(kind))
+		_motion_pending = ""
+		_motion_weight = 1.0 if clips_on and _motion_name != "" else 0.0
+		_contact_frame = _motion_weight > 0.0
 	_foot_locks.clear()
 
 ## Śmierć: odtwarza upadek, potem leży, zapada się i `finished` = true. Modele bez klipów kończą od razu.
@@ -543,6 +758,19 @@ func die() -> void:
 
 ## Powrót do życia (respawn / reset wroga).
 func revive() -> void:
+	_landing_t = 10.0
+	_landing_strength = 0.0
+	_motion_name = ""
+	_motion_wind_clock = 0.0
+	_motion_remaining = NAN
+	_motion_duration = 0.0
+	_motion_weight = 0.0
+	_motion_values.clear()
+	_motion_pending = ""
+	_contact_frame = false
+	_grounded_hint = -1
+	_airborne = false
+	_air_w = 0.0
 	_foot_locks.clear()
 	_dead = false
 	_dead_t = 0.0
@@ -677,7 +905,7 @@ func _deform_overlay(d: String, prm: Dictionary, fh: float) -> void:
 				off.x = sin(_dead_t * 50.0) * 0.06 * (1.0 - u)
 		_sink(_dead_t - dd)
 	elif _clip == "hit":
-		var u := _clip_t / float(CLIP_DUR["hit"])
+		var u := _clip_t / clip_duration("hit")
 		var k := sin(PI * minf(u * 1.35, 1.0)) * (1.0 - u)
 		match d:
 			"cma":
@@ -690,12 +918,17 @@ func _deform_overlay(d: String, prm: Dictionary, fh: float) -> void:
 			"vein":
 				off.x = sin(_clip_t * 60.0) * 0.05 * k
 				sc.y = 1.0 - 0.04 * k
-	elif _clip == "attack" and d == "cma":                                  # nurkuje na ofiarę
-		var u := _clip_t / float(CLIP_DUR["attack"])
+	elif _clip == "attack" and d == "cma" and _motion_weight < 0.001:
+		var u := _clip_t / clip_duration("attack")
 		var snap := smoothstep(0.0, 0.35, u) * (1.0 - smoothstep(0.55, 1.0, u))
 		roll = -deg_to_rad(40.0) * snap
 		off.x = 0.22 * snap
 		off.y = -0.14 * snap
+	if not _dead and d == "cma" and not _motion_values.is_empty():
+		roll = lerpf(roll, deg_to_rad(float(_motion_values.get("roll", 0.0))), _motion_weight)
+		off.x = lerpf(off.x, float(_motion_values.get("shift", 0.0)), _motion_weight)
+		off.y = lerpf(off.y, float(_motion_values.get("lift", 0.0)), _motion_weight)
+		prm["wing"] = lerpf(float(prm.get("wing", 0.0)), float(_motion_values.get("wing", 0.0)), _motion_weight)
 	_tilt.position = Vector3(off.x, off.y + _sink_y, off.z)
 	_pivot.scale = Vector3(_scale * sc.x, _scale * sc.y, _scale * sc.z)
 	if roll != 0.0 and _pivot.rotation.x == 0.0:                            # (Ćma śpiąca do góry nogami nie przechyla się)
@@ -893,13 +1126,13 @@ func _pose_quad(anim: String, delta: float) -> void:
 		sy = lerpf(1.0, 0.9, fall)
 		_sink(_dead_t - dd)
 	elif _clip == "hit":
-		var u := _clip_t / float(CLIP_DUR["hit"])
+		var u := _clip_t / clip_duration("hit")
 		var k := sin(PI * minf(u * 1.35, 1.0)) * (1.0 - u)
 		pitch = deg_to_rad(15.0) * k
 		arch = deg_to_rad(14.0) * k
 		shift = -0.14 * k
-	elif _clip == "attack":
-		var u := _clip_t / float(CLIP_DUR["attack"])
+	elif _clip == "attack" and _motion_weight < 0.001:
+		var u := _clip_t / clip_duration("attack")
 		var up := smoothstep(0.0, 0.34, u)                               # zamach: nos w górę, zad się zapada
 		var snap := smoothstep(0.34, 0.5, u)                             # kłapnięcie: nos gwałtownie w dół
 		var back := smoothstep(0.5, 1.0, u)
@@ -907,15 +1140,72 @@ func _pose_quad(anim: String, delta: float) -> void:
 		arch = deg_to_rad(10.0) * up * (1.0 - snap) - deg_to_rad(12.0) * snap * (1.0 - back)
 		shift = 0.18 * snap * (1.0 - back) - 0.06 * up * (1.0 - snap)
 		sy = lerpf(sy, 0.93, up * (1.0 - snap))
+	if not _dead and not _motion_values.is_empty():
+		pitch = lerpf(pitch, deg_to_rad(float(_motion_values.get("pitch", 0.0))), _motion_weight)
+		arch = lerpf(arch, deg_to_rad(float(_motion_values.get("arch", 0.0))), _motion_weight)
+		shift = lerpf(shift, float(_motion_values.get("shift", 0.0)), _motion_weight)
+	if _landing_t < Motion.recovery("landing"):
+		var landing := Motion.sample("landing", _landing_t)
+		pitch += deg_to_rad(float(landing.get("pitch", 0.0))) * _landing_strength
+		sy -= float(landing.get("drop", 0.0)) * _landing_strength
 	if not _spine.is_empty():
 		for bi in _spine:
-			_rot_world(bi, Vector3.BACK, arch / float(_spine.size()))
+			_rot_world(bi, Vector3.RIGHT, arch / float(_spine.size()))
 	var yaw := deg_to_rad(float(_spec.get("yaw", 0.0)))
 	_tilt.basis = Basis.IDENTITY
 	_pivot.basis = Basis(Vector3.BACK, pitch) * Basis(Vector3.RIGHT, roll) * Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(_scale, _scale * sy, _scale))
 	if not _dead:
 		_sink_y = 0.0
 	_tilt.position = Vector3(shift, lift + _sink_y, 0.0)
+	if not _dead and not _airborne:
+		_quad_support()
+	else:
+		_foot_locks.clear()
+
+## Cztery łapy: cele w świecie i IK bez rozciągania kości, także podczas kłapnięcia pyskiem.
+func _quad_support() -> void:
+	for key in _q_limbs:
+		var chain: Array = _q_limbs[key]
+		var toe := _gp(chain[4])
+		var world := _sk.global_transform * toe.origin
+		var rest := _sk.global_transform * _sk.get_bone_global_rest(chain[4]).origin
+		var foot_delta := toe.origin - _gp(chain[3]).origin
+		var height: float = _sole_floor(key, _gp(chain[3]).basis) + (_sk.global_transform.basis * foot_delta).y if _sole_points.has(key) else global_position.y + float((ground_profile.get(key, {}) as Dictionary).get("height", 0.0)) + maxf(rest.y - global_position.y, 0.0)
+		if world.y > height + 0.12:
+			_foot_locks.erase(key)
+			continue
+		var target := world
+		target.y = height
+		if not _foot_locks.has(key): _foot_locks[key] = target
+		var locked: Vector3 = _foot_locks[key]
+		if locked.distance_to(target) > 0.32 or absf(locked.y - target.y) > 0.02:
+			_foot_locks[key] = target
+		else:
+			target = locked
+		target = _sk.global_transform.affine_inverse() * target
+		var ankle_delta := _gp(chain[3]).origin - _gp(chain[2]).origin
+		var ankle_basis := _gp(chain[2]).basis
+		var foot_basis := _gp(chain[3]).basis
+		var a := _gp(chain[0]).origin
+		var mid := _gp(chain[1]).origin
+		var end := _gp(chain[2]).origin
+		var pole := (mid - (a + end) * 0.5).normalized()
+		_two_bone(chain[0], chain[1], chain[2], a.distance_to(mid), mid.distance_to(end), target - foot_delta - ankle_delta, pole)
+		# Zachowaj orientację stawu skokowego i palców z klipu. Dodatkowe celowanie
+		# krótkimi kośćmi stopy skręcało skórę łapy przy prawie prostym kolanie.
+		_set_global_basis(chain[2], ankle_basis)
+		_set_global_basis(chain[3], foot_basis)
+		for correction in 2:
+			var penetration := _sole_penetration(key)
+			if penetration < 0.001: break
+			var world_target := _sk.global_transform * target
+			world_target.y += penetration * 1.25
+			target = _sk.global_transform.affine_inverse() * world_target
+			_two_bone(chain[0], chain[1], chain[2], a.distance_to(mid), mid.distance_to(end), target - foot_delta - ankle_delta, pole)
+			_set_global_basis(chain[2], ankle_basis)
+			_set_global_basis(chain[3], foot_basis)
+			_foot_locks[key] = world_target
+		if (_sk.global_transform * _gp(chain[4]).origin).distance_to(_foot_locks[key]) > 0.02: _foot_locks.erase(key)
 
 ## Próbka „siad” czworonoga (Trzosek czeka na atak): budowana raz z pozy idle i zapamiętana jak próbki z animacji, więc `_pose_quad` miesza ją
 ## kość po kości z postawą stojącą i biegiem. Przestrzeń szkieletu: Y w górę, głowa w −Z, ogon w +Z.
@@ -1038,23 +1328,32 @@ func _pose_crawler(anim: String) -> void:
 		lean_x = -18.0 * jerk
 		_sink(_dead_t - dd)
 	elif _clip == "hit":
-		var u := _clip_t / float(CLIP_DUR["hit"])
+		var u := _clip_t / clip_duration("hit")
 		var k := sin(PI * minf(u * 1.35, 1.0)) * (1.0 - u)
 		back = -0.10 * k
 		lean_x = -16.0 * k
 		arms_x = -18.0 * k
-	elif _clip == "attack":                                              # skok: kuli się i wyrzuca przód ciała z wyciągniętymi łapami
-		var u := _clip_t / float(CLIP_DUR["attack"])
+	elif _clip == "attack" and _motion_weight < 0.001:
+		var u := _clip_t / clip_duration("attack")
 		var load := smoothstep(0.0, 0.25, u) * (1.0 - smoothstep(0.25, 0.4, u))
 		var spring := smoothstep(0.25, 0.45, u) * (1.0 - smoothstep(0.55, 1.0, u))
 		back = -0.10 * load + 0.16 * spring
 		lean_x = 14.0 * load + 24.0 * spring
 		arms_x = -50.0 * spring + 20.0 * load
+	if not _dead and not _motion_values.is_empty():
+		lean_x = lerpf(lean_x, float(_motion_values.get("lean", 0.0)), _motion_weight)
+		arms_x = lerpf(arms_x, float(_motion_values.get("arm", 0.0)), _motion_weight)
+		back = lerpf(back, float(_motion_values.get("shift", 0.0)), _motion_weight)
+		curl = lerpf(curl, deg_to_rad(float(_motion_values.get("leg", 0.0))), _motion_weight)
 	if _air_w > 0.002:                              # skok: ręce wyrzucone do przodu, nogi odrzucone w tył, tułów pochylony — jak w ataku z sufitu
 		var rise_c := clampf(-_air_vy / 275.0, 0.0, 1.0)
 		lean_x += (16.0 * rise_c + 6.0) * _air_w
 		arms_x += -48.0 * _air_w
 		curl += deg_to_rad(-26.0) * _air_w * (1.0 - clampf(_air_vy / 380.0, 0.0, 1.0) * 0.7)
+	if _landing_t < Motion.recovery("landing"):
+		var landing := Motion.sample("landing", _landing_t)
+		hd.y -= float(landing.get("drop", 0.0)) * _landing_strength
+		lean_x += float(landing.get("lean", 0.0)) * _landing_strength
 	_move_global(hips, hd + Vector3(back, 0.0, 0.0))
 	if lean_x != 0.0:
 		_rot_world(hips, Vector3.BACK, -deg_to_rad(lean_x))
@@ -1228,7 +1527,7 @@ func _pose_biped(anim: String, delta: float) -> void:
 		_windup_t = 0.0
 	var w_att := 0.0                                              # cios: klip przejmuje pozę na czas ciosu (szybko wchodzi, miękko wraca)
 	if _catt and _clip == "attack" and not _dead:
-		var ua := _clip_t / float(CLIP_DUR["attack"])
+		var ua := _clip_t / clip_duration("attack")
 		w_att = smoothstep(0.0, 0.12, ua) * (1.0 - smoothstep(0.8, 1.0, ua)) * _ck
 		_cprog["attack"] = ua
 	var w_walk := float(_w["walk"]) / maxf(sum, 0.0001) * _ck * (1.0 - w_att)
@@ -1272,6 +1571,16 @@ func _pose_biped(anim: String, delta: float) -> void:
 			p = _mix_p(p, bp, w / acc)
 	if p.is_empty():
 		p = _biped_params("idle")
+	if not _dead and not _motion_values.is_empty():
+		p = _authored_biped(p)
+		_cwalk *= 1.0 - _motion_weight
+	if not _dead and _landing_t < Motion.recovery("landing"):
+		var landing := Motion.sample("landing", _landing_t)
+		p["drop"] = float(p["drop"]) + float(landing.get("drop", 0.0)) * _landing_strength
+		p["lean"] = float(p["lean"]) + float(landing.get("lean", 0.0)) * _landing_strength
+		# Tułów amortyzuje i wygasza lot, ale stopy mają kontakt już w klatce lądowania.
+		p["fR"].y = 0.0
+		p["fL"].y = 0.0
 	_last_p = p.duplicate()
 	var tilt := 0.0
 	var lift := 0.0
@@ -1300,15 +1609,15 @@ func _pose_biped(anim: String, delta: float) -> void:
 		lift = 0.22 * absf(sin(tilt))
 		_sink(_dead_t - dd)
 	elif _clip == "hit":
-		var u := _clip_t / float(CLIP_DUR["hit"])
+		var u := _clip_t / clip_duration("hit")
 		var k := sin(PI * minf(u * 1.35, 1.0)) * (1.0 - u) * amp
 		p["lean"] = float(p["lean"]) - 14.0 * k
 		p["drop"] = float(p["drop"]) + 0.05 * k
 		p["hk"] = 0.8 - 0.9 * k
 		p["hR"] = (p["hR"] as Vector3) + Vector3(-0.16 * k, 0.10 * k, 0.0)
 		p["hL"] = (p["hL"] as Vector3) + Vector3(-0.16 * k, 0.10 * k, 0.0)
-	elif _clip == "attack":
-		var u := _clip_t / float(CLIP_DUR["attack"])
+	elif _clip == "attack" and _motion_weight < 0.001:
+		var u := _clip_t / clip_duration("attack")
 		var s_in := smoothstep(0.0, 0.26, u)
 		var w := s_in * (1.0 - smoothstep(0.34, 1.0, u))                               # uderzenie szybko, powrót miękko
 		if _catt:
@@ -1407,12 +1716,27 @@ func _apply_biped(p: Dictionary) -> void:
 		# Cel ograniczamy zawsze, także przy proceduralnym kroku bez biblioteki klipów.
 		if grounded:
 			target.y = maxf(target.y, _ground_y(side))
+		var tilt_f := 0.0 if planted else 0.2 * maxf(0.0, (target.y - _ground_y(side)) / 0.14)
+		fb = Basis(Vector3.BACK, -tilt_f) * fb
+		if grounded and _sole_points.has(side):
+			var world := _sk.global_transform * target
+			world.y = maxf(world.y, _sole_floor(side, fb))
+			target = _sk.global_transform.affine_inverse() * world
 		_two_bone(_b[side + "UpLeg"], _b[side + "Leg"], foot, _leg_len[side][0], _leg_len[side][1], target, pole)
 		if _foot_locks.has(side) and _gp(foot).origin.distance_to(target) > 0.015:
 			# IK nie może utrzymać podpory poza zasięgiem: zwolnij kotwicę, nie deklaruj nieruchomej stopy.
 			_foot_locks.erase(side)
-		var tilt_f := 0.2 * maxf(0.0, (target.y - _ground_y(side)) / 0.14)
-		_set_global_basis(foot, Basis(Vector3.BACK, -tilt_f) * fb)
+		_set_global_basis(foot, fb)
+		if grounded:
+			for correction in 2:
+				var penetration := _sole_penetration(side)
+				if penetration < 0.001: break
+				var world := _sk.global_transform * target
+				world.y += penetration * 1.25
+				target = _sk.global_transform.affine_inverse() * world
+				_two_bone(_b[side + "UpLeg"], _b[side + "Leg"], foot, _leg_len[side][0], _leg_len[side][1], target, pole)
+				_set_global_basis(foot, fb)
+				if _foot_locks.has(side): _foot_locks[side] = world
 	for side in ["Right", "Left"]:
 		var sg := 1.0 if side == "Right" else -1.0                # prawa ręka po stronie kamery (+z)
 		var target: Vector3 = p["hR"] if side == "Right" else p["hL"]

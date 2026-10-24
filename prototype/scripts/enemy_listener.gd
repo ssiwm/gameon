@@ -93,6 +93,7 @@ func begin_scream() -> void:
 		return
 	var blind := 1.0 if e._target != null else float(cfg.get("blind", 1.0))
 	e._windup = float(e._def["windup"]) * Difficulty.m("enemy_windup") * blind
+	e._windup_duration = e._windup
 	e.winding = true
 
 func scream() -> void:

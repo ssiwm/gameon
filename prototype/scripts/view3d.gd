@@ -746,11 +746,12 @@ func _sync_enemies(delta: float) -> void:
 			e.call("revive")
 		var dying: bool = not alive and not bool(e.get("finished"))
 		var flash: bool = body != null and bool(info["flash"])
+		e.call("motion_context", info)
 		if alive and body != null:
 			if flash and not bool(st["flash"]):
 				e.call("trigger", "hit")
 			if (info.has("attack_seq") and int(info["attack_seq"]) > int(st.get("attack_seq", 0))) or (not info.has("attack_seq") and bool(st["wind"]) and not winding):
-				e.call("trigger", "attack")
+				e.call("trigger", "attack", String(info.get("attack_action", "")))
 		st["alive"] = alive
 		st["flash"] = flash
 		st["wind"] = winding

@@ -86,6 +86,9 @@ var target_pos := Vector2.ZERO
 ## Zapowiedź ataku trwa (synchronizowane, żeby klient grał sygnał i rysował błysk)
 var winding := false
 var visual_attack_seq := 0
+var _windup_duration := 0.0
+var _view_windup_remaining := 0.0
+var _view_windup_duration := 0.0
 
 var _attack_timer := 0.0
 var _hesitate := 0.0
@@ -144,7 +147,9 @@ func _ready() -> void:
 
 ## Kontrakt widoku (view3d.gd) — patrz enemy.gd: view_info. Stalker jest nieśmiertelny i nie błyska po trafieniu.
 func view_info() -> Dictionary:
-	return {"kind": "stalker", "alive": true, "winding": winding, "sp": 0, "flash": false, "attack_seq": visual_attack_seq}
+	return {"kind": "stalker", "alive": true, "winding": winding, "sp": 0, "flash": false, "attack_seq": visual_attack_seq,
+		"grounded": true, "windup_remaining": maxf(_windup, 0.0) if NoiseMgr.is_server() else _view_windup_remaining,
+		"windup_duration": maxf(_windup_duration, _windup) if NoiseMgr.is_server() else _view_windup_duration}
 
 ## Skaner z perkiem „Scout" pokazuje śpiącego (niewidocznego) Stalkera z bliska.
 func is_stalker() -> bool:
@@ -180,6 +185,7 @@ func _physics_process(delta: float) -> void:
 	# więc cache'owany _server_sim bywał błędny i klient wysyłał _sync do serwera
 	if not NoiseMgr.is_server():
 		global_position = global_position.lerp(_remote_pos, 0.25)
+		_view_windup_remaining = maxf(0.0, _view_windup_remaining - delta)
 		_redraw()
 		return
 
@@ -481,6 +487,7 @@ func _try_begin_windup() -> void:
 			continue
 		if global_position.distance_to(pp.global_position) <= _reach_for(pp):
 			_windup = WINDUP_TIME * Difficulty.m("stalker_windup")
+			_windup_duration = _windup
 			_windup_target = pp
 			winding = true
 			return
@@ -622,15 +629,17 @@ func _send_state(delta: float) -> void:
 	if _net_timer > 0.0:
 		return
 	_net_timer = 0.05
-	_sync.rpc(global_position, awake, winding)
+	_sync.rpc(global_position, awake, winding, maxf(_windup, 0.0), _windup_duration)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(pos: Vector2, is_awake: bool, is_winding: bool) -> void:
+func _sync(pos: Vector2, is_awake: bool, is_winding: bool, wind_remaining := 0.0, wind_duration := 0.0) -> void:
 	if pos.distance_to(global_position) > 200.0:
 		global_position = pos                 # przeskok (wyjście z ciemności, zniknięcie, restart): bez przelotu przez mapę
 	_remote_pos = pos
 	awake = is_awake
 	winding = is_winding
+	_view_windup_remaining = maxf(wind_remaining, 0.0)
+	_view_windup_duration = maxf(wind_duration, _view_windup_remaining)
 
 	visible = awake
 	# Klient nie symuluje AI (GDD §8.5), więc audio też musi iść tu —

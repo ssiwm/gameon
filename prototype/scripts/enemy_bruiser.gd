@@ -16,6 +16,7 @@ const RUN_FLOOR_STEP := 16.0         ## px: co tyle sprawdzamy, czy pod rozbiegi
 const RUN_FLOOR_DEPTH := 28.0        ## px w dół od poziomu stóp: głębiej to już przepaść, nie stopień
 
 var sp_t := 0.0
+var sp_duration := 0.0
 var sp_dir := 1.0
 var sp_crate: Node = null
 var sp_boulder := false      ## zapowiedź rzutu (`_sp` 3) dotyczy głazu, nie skrzyni (F3.9)
@@ -27,6 +28,12 @@ var charge_hit := false
 ## Parametr szarży z danych rodzaju (`charge`: min, max, windup, time, mult, cd, crash_stun, damage); brak wpisu = stałe Wołka. Dzięki temu Rzeźnik to ten sam kod z innymi liczbami.
 func _c(key: String, base: float) -> float:
 	return float((e._def.get("charge", {}) as Dictionary).get(key, base))
+
+func view_extra(d: Dictionary) -> void:
+	if e._sp in [1, 3]:
+		d["windup_remaining"] = maxf(sp_t, 0.0)
+		d["windup_duration"] = sp_duration
+		d["motion_action"] = "charge" if e._sp == 1 else "throw"
 
 func reset() -> void:
 	e._sp = 0
@@ -51,6 +58,7 @@ func tick_phase(delta: float, target: Node2D) -> bool:
 			if level and ax > _c("min", 100.0) and ax < _c("max", 280.0) and charge_cd <= 0.0 and _run_clear(signf(d.x), ax):
 				e._sp = 1
 				sp_t = _c("windup", CHARGE_WINDUP) * Difficulty.m("enemy_windup")
+				sp_duration = sp_t
 				sp_dir = signf(d.x)
 				charge_hit = false
 				e.winding = true
@@ -63,6 +71,7 @@ func tick_phase(delta: float, target: Node2D) -> bool:
 					if throw_cd <= 0.0 and _throw_clear(target):
 						e._sp = 3
 						sp_t = THROW_WINDUP * Difficulty.m("enemy_windup")
+						sp_duration = sp_t
 						sp_dir = signf(d.x) if absf(d.x) > 1.0 else e._facing
 						sp_crate = c
 						sp_boulder = false
@@ -72,6 +81,7 @@ func tick_phase(delta: float, target: Node2D) -> bool:
 					# głaz (F3.9): zawsze pod ręką, gdy w pobliżu nie ma skrzyni — słabszy, ale częstszy; przerwa zależy od trudności
 					e._sp = 3
 					sp_t = float(e._def["boulder"].get("windup", 0.6)) * Difficulty.m("enemy_windup")
+					sp_duration = sp_t
 					sp_dir = signf(d.x) if absf(d.x) > 1.0 else e._facing
 					sp_crate = null
 					sp_boulder = true
@@ -84,8 +94,9 @@ func tick_phase(delta: float, target: Node2D) -> bool:
 			if sp_t <= 0.0:
 				e._sp = 2
 				sp_t = _c("time", CHARGE_TIME)
+				sp_duration = sp_t
 				e.winding = false
-				e.visual_attack()
+				e.visual_attack("charge")
 			return true
 		2:
 			sp_t -= delta
@@ -157,6 +168,7 @@ func after_phase_move() -> void:
 func _crash() -> void:
 	e._sp = 4
 	sp_t = _c("crash_stun", CRASH_STUN)
+	sp_duration = sp_t
 	e.winding = false
 	charge_cd = _c("cd", CHARGE_CD) * Difficulty.m("enemy_cd")
 	e.velocity.x = -sp_dir * 40.0
@@ -210,7 +222,7 @@ func _throw_boulder(target: Node2D) -> void:
 	var lvl = e.get_tree().get_first_node_in_group("level")
 	if lvl != null and lvl.has_method("spawn_boulder"):
 		lvl.spawn_boulder(from, vel, float(cfg.get("dmg", 0.5)))
-		e.visual_attack()
+		e.visual_attack("throw")
 	NoiseMgr.add_noise(float(cfg.get("noise", 2.0)), e.global_position)
 
 ## Rzut: balistyczny łuk w gracza (grawitacja ciał fizycznych 980), skrzynia rani przy trafieniu (prop.gd).
@@ -230,6 +242,6 @@ func _throw_crate(target: Node2D) -> void:
 	var t := clampf(maxf(absf(aim.x) / 300.0, absf(aim.y) / 500.0), 0.3, 0.9)        # rzut pionowy dostaje więcej czasu lotu (mniejsza prędkość początkowa)
 	var vel := Vector2(clampf(aim.x / t, -420.0, 420.0), (aim.y - 0.5 * 980.0 * t * t) / t)
 	crate.throw_to(from, vel)
-	e.visual_attack()
+	e.visual_attack("throw")
 	NoiseMgr.add_noise(4.0, e.global_position)
 

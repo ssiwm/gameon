@@ -15,6 +15,7 @@ func on_wake() -> void:
 	else:
 		e._scream_fx()
 	e._windup = 0.35
+	e._windup_duration = e._windup
 	e.winding = true
 
 func scream_pitch() -> float:
