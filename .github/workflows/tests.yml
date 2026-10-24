@@ -75,6 +75,11 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_weapon_grips.gd 2>&1 | tee grips.log
           grep -a "^PASS weapon grips" grips.log
+      - name: Postój, kolana, podeszwy i przejścia (test_standing_legs.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_standing_legs.gd 2>&1 | tee standing.log
+          grep -a "^PASS standing legs" standing.log
+          ! grep -a -E "SCRIPT ERROR|Parse Error|ERROR:|FAIL standing" standing.log
       - name: Proporcje świata (test_proportions.gd)
         run: |
           godot --headless --path prototype -s tools/test_proportions.gd 2>&1 | tee proportions.log

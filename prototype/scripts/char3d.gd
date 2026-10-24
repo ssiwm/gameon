@@ -189,6 +189,10 @@ var _gun_info := {"rear": Vector3.ZERO, "fore": Vector3(0.4, 0.03, 0.0), "muzzle
 static var _gun_infos := {}                  ## klucz broni → dane z gun_<klucz>.json (raz na sesję)
 var _b := {}                                 ## nazwa kości → indeks
 var _leg_len := {}                           ## długości [udo, goleń] (m)
+var _leg_hinge := {}                         ## anatomiczna oś kolana w układzie uda i goleni
+var _stand_foot := {}                        ## strona → docelowe podparcie stopy, dopasowane do szerokości bioder
+var _leg_toe := {}                           ## kość palców: przy podparciu zachowuje płaską podeszwę z pozy spoczynkowej
+var _stand_w := 0.0                          ## udział korekty postoju; wygaszany przy kroku, skoku, upadku i chwytaniu
 var _arm_len := {}                           ## długości [ramię, przedramię] (m)
 var _arm_hinge := {}                         ## strona → [oś zgięcia łokcia w układzie kości ramienia, … przedramienia] (z pozy spoczynkowej); brak = ręka prosta w spoczynku
 var _hand_rel := {}                          ## strona → orientacja dłoni względem przedramienia w spoczynku (do podziału skrętu nadgarstka)
@@ -662,8 +666,26 @@ func set_look(char_name: String) -> bool:
 			"LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand", "RightShoulder", "RightArm", "RightForeArm", "RightHand"]:
 		_b[n] = _sk.find_bone(PRE + n)
 	_arm_hinge.clear()
+	_leg_hinge.clear()
+	_stand_foot.clear()
+	_leg_toe.clear()
 	for side in ["Left", "Right"]:
 		_leg_len[side] = [_rest_dist(side + "UpLeg", side + "Leg"), _rest_dist(side + "Leg", side + "Foot")]
+		var thigh := _sk.get_bone_global_rest(_b[side + "UpLeg"])
+		var shin := _sk.get_bone_global_rest(_b[side + "Leg"])
+		var foot := _sk.get_bone_global_rest(_b[side + "Foot"])
+		var knee_axis := (shin.origin - thigh.origin).cross(foot.origin - shin.origin)
+		if knee_axis.length() < 0.0001:
+			knee_axis = Vector3.RIGHT.cross(foot.origin - thigh.origin)
+		knee_axis = knee_axis.normalized()
+		_leg_hinge[side] = [thigh.basis.orthonormalized().inverse() * knee_axis, shin.basis.orthonormalized().inverse() * knee_axis]
+		var length: float = _leg_len[side][0] + _leg_len[side][1]
+		var outward := -1.0 if side == "Left" else 1.0
+		var yaw := -outward * deg_to_rad(6.0)
+		var centre := _sk.get_bone_global_rest(_b["Hips"]).origin.x
+		var support := Vector3(centre - outward * 0.055 * length, foot.origin.y, thigh.origin.z + outward * 0.045 * length)
+		_stand_foot[side] = Transform3D(Basis(Vector3.UP, yaw) * foot.basis.orthonormalized(), support)
+		_leg_toe[side] = _sk.find_bone(PRE + side + "ToeBase")
 		_arm_len[side] = [_rest_dist(side + "Arm", side + "ForeArm"), _rest_dist(side + "ForeArm", side + "Hand")]
 		# oś zgięcia łokcia: w spoczynku ręka jest lekko ugięta — normalna tej płaszczyzny, zapisana w układach obu kości, mówi, w którą stronę zgina się łokieć
 		var ga := _sk.get_bone_global_rest(_b[side + "Arm"])
@@ -833,7 +855,7 @@ func _point_bone(i: int, child: int, target: Vector3) -> void:
 	_set_global_basis(i, Basis(Quaternion(from, to)) * g.basis)
 
 ## Dwukostkowe IK: staw środkowy tak, by koniec sięgał celu; pole = kierunek wygięcia (łokieć / kolano).
-func _two_bone(a: int, m: int, e: int, la: float, lb: float, target: Vector3, pole: Vector3) -> void:
+func _two_bone(a: int, m: int, e: int, la: float, lb: float, target: Vector3, pole: Vector3, hinge: Array = [], roll_weight := 0.0) -> void:
 	var s := _gp(a).origin
 	var d := target - s
 	var dist := clampf(d.length(), absf(la - lb) + 0.001, (la + lb) * 0.999)
@@ -843,8 +865,15 @@ func _two_bone(a: int, m: int, e: int, la: float, lb: float, target: Vector3, po
 	var pv := pole - dn * pole.dot(dn)
 	pv = pv.normalized() if pv.length() > 0.0001 else Vector3.UP
 	var mid := s + dn * x + pv * h
+	var tip := s + dn * dist
+	var bend := (mid - s).cross(tip - mid)
+	var roll := roll_weight > 0.001 and not hinge.is_empty() and bend.length() > 0.02 * la * lb
 	_point_bone(a, m, mid)
-	_point_bone(m, e, s + dn * dist)
+	if roll:
+		_roll_to(a, (mid - s).normalized(), hinge[0], bend, roll_weight)
+	_point_bone(m, e, tip)
+	if roll:
+		_roll_to(m, (tip - mid).normalized(), hinge[1], bend, roll_weight)
 
 ## IK ręki: jak `_two_bone`, ale ramię i przedramię są jeszcze obracane wokół własnej osi tak, żeby łokieć zginał się w swojej anatomicznej osi
 ## (z pozy spoczynkowej). Bez tego obrót wokół osi kości jest przypadkowy (najkrótszy łuk od poprzedniej pozy) i siatka łokcia łamie się w bok.
@@ -921,14 +950,14 @@ func _grip_pole(side: String, hand: Transform3D, pole: Vector3) -> Vector3:
 	return best
 
 ## Obraca kość wokół jej osi tak, żeby kierunek `local_ref` (w układzie kości) wskazywał `want` (rzut na płaszczyznę prostopadłą do osi).
-func _roll_to(i: int, axis: Vector3, local_ref: Vector3, want: Vector3) -> void:
+func _roll_to(i: int, axis: Vector3, local_ref: Vector3, want: Vector3, weight := 1.0) -> void:
 	var g := _gp(i).basis
 	var cur := g.orthonormalized() * local_ref
 	cur -= axis * cur.dot(axis)
 	want -= axis * want.dot(axis)
 	if cur.length() < 0.01 or want.length() < 0.0001:
 		return
-	_set_global_basis(i, Basis(axis, cur.normalized().signed_angle_to(want.normalized(), axis)) * g)
+	_set_global_basis(i, Basis(axis, cur.normalized().signed_angle_to(want.normalized(), axis) * weight) * g)
 
 ## Ustawia orientację dłoni (w przestrzeni szkieletu) i oddaje część skrętu nadgarstka przedramieniu — model nie ma kości skrętu, więc cały skręt
 ## w jednym stawie zwijał rękaw jak cukierek. w < 1 miesza orientację z tą, którą dłoń ma sama z siebie (przedłużenie przedramienia).
@@ -1372,6 +1401,8 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	for n in AW_STATES:
 		_aw[n] = lerpf(float(_aw.get(n, 0.0)), 1.0 if n == key else 0.0, kk)
 		sum += float(_aw[n])
+	_stand_w = float(_aw["idle"]) / maxf(sum, 0.0001) * (1.0 - smoothstep(0.0, 0.12, _down)) * (1.0 - _grab_w) if climb_t < 0.0 else 0.0
+	var stand_offset := Vector3.ZERO
 	if anim == "run" or anim == "crouch_walk":
 		_phase += (-1.0 if back_run else 1.0) * delta * clampf(speed / 95.0, 0.4, 1.4) * TAU * 2.0
 	# klipy: drzewo ustawia biodra, tułów, głowę i nogi w stanach, które mają klip; zapamiętujemy stopy i kolana z klipu, zanim nakładki ruszą biodra.
@@ -1409,6 +1440,9 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 			_clip_w += _clip_down
 		if _clip_w > 0.0:
 			CharClips.drive(_clips, _clip_ws, _phase / TAU, _time, _clip_prog)
+			# Biblioteczny postój ma głęboki wykrok i obniżone biodra. Przy krótszym podparciu
+			# wracają nad stopy; zapis przed nakładką zachowuje ruch bioder z ciosu i odrzutu.
+			stand_offset = (_sk.get_bone_global_rest(hips).origin - _gp(hips).origin) * _stand_w
 			for side in ["Left", "Right"]:
 				var cf := _gp(_b[side + "Foot"])
 				_clip_foot[side] = cf
@@ -1419,6 +1453,7 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 			_clip_ws[_combat_clip] = 1.0 - _clip_down
 			_clip_prog[_combat_clip] = swing_t if not _mc.is_empty() else (reload_t if reload_t >= 0.0 else clampf(fire_t / 0.30, 0.0, 1.0))
 			CharClips.drive(_clips, _clip_ws, _phase / TAU, _time, _clip_prog)
+	_move_global(hips, stand_offset)
 	# poza bazowa = mieszanka stanów wg wag (faza kroku ciągła, więc bez przeskoków przy zmianie stanu)
 	var lean := 0.0
 	var drop := 0.0
@@ -1510,18 +1545,24 @@ func _ground_hips() -> void:
 	for value in _aw.values():
 		sum += float(value)
 	var planted := (float(_aw.get("idle", 0.0)) + float(_aw.get("crouch", 0.0))) / maxf(sum, 0.0001)
-	if planted <= 0.995 or _down >= 0.01 or _grab_w >= 0.01 or climb_t >= 0.0:
+	if (planted <= 0.995 and _stand_w < 0.001) or _down >= 0.12 or _grab_w >= 0.01 or climb_t >= 0.0:
 		return
 	var drop := 0.0
 	for side in ["Left", "Right"]:
 		var start := _gp(_b[side + "UpLeg"]).origin
 		var target := (_clip_foot[side] as Transform3D).origin if _clip_w > 0.0 else Vector3(_origin_x, _ankle_y, _sk.get_bone_global_rest(_b[side + "Foot"]).origin.z)
-		var reach := (float(_leg_len[side][0]) + float(_leg_len[side][1])) * 0.995
+		target = target.lerp((_stand_foot[side] as Transform3D).origin, _stand_w)
+		target.y = lerpf(target.y, _ankle_y, planted)
+		var la: float = _leg_len[side][0]
+		var lb: float = _leg_len[side][1]
+		# 18° przy postoju zostawia zapas amortyzacji, bez przeprostu jednej nogi.
+		var reach := lerpf((la + lb) * 0.995, sqrt(la * la + lb * lb + 2.0 * la * lb * cos(deg_to_rad(18.0))), _stand_w)
 		var horizontal := Vector2(target.x - start.x, target.z - start.z).length_squared()
 		var height := sqrt(maxf(reach * reach - horizontal, 0.0))
-		drop = maxf(drop, start.y - _ankle_y - height)
+		drop = maxf(drop, start.y - target.y - height)
 	if drop > 0.0:
-		_move_global(_b["Hips"], Vector3.DOWN * drop)
+		var weight := (1.0 if planted > 0.995 else _stand_w) * (1.0 - smoothstep(0.0, 0.12, _down))
+		_move_global(_b["Hips"], Vector3.DOWN * drop * weight)
 
 ## Pomocnicze parametry lotu z prędkości pionowej i czasu w powietrzu: tk — wyprost tuż po odbiciu, tuck — podciągnięte kolana (najmocniej w apeksie),
 ## ext — nogi sięgają w dół przed lądowaniem, fl — jak szybko spada (0..1).
@@ -1610,16 +1651,25 @@ func _pose_legs(e: float) -> void:
 		var planted := (float(_aw.get("idle", 0.0)) + float(_aw.get("crouch", 0.0))) / maxf(sum, 0.0001)
 		if planted > 0.995 and _down < 0.01 and _grab_w < 0.01 and climb_t < 0.0:
 			target.y = _ankle_y # statyczna postawa: podparcie na ziemi, bez pionowego pływania klipu
+		if _stand_w > 0.001:
+			var support: Transform3D = _stand_foot[side]
+			target = target.lerp(support.origin, _stand_w)
+			rest_gb = rest_gb.orthonormalized().slerp(support.basis, _stand_w)
+			var outward := -1.0 if side == "Left" else 1.0
+			pole = pole.lerp(Basis(Vector3.UP, -outward * deg_to_rad(6.0)) * Vector3.RIGHT, _stand_w)
 		if e > 0.001:
 			# upadek: stopy zostają na ziemi, dopóki biodra opadają (kolana się uginają), potem nogi podążają sztywno za ciałem
 			var rigid := _gp(foot).origin
 			target = target.lerp(rigid, smoothstep(0.5, 0.9, e))
-		_two_bone(_b[side + "UpLeg"], _b[side + "Leg"], foot, _leg_len[side][0], _leg_len[side][1], target, pole)
+		_two_bone(_b[side + "UpLeg"], _b[side + "Leg"], foot, _leg_len[side][0], _leg_len[side][1], target, pole, _leg_hinge[side], _stand_w)
 		# stopa płasko (z lekkim obrotem czubka); przy upadku obraca się razem z ciałem
 		var flat := Basis(Vector3.BACK, tilt) * rest_gb
 		if e > 0.001:
-			flat = _gp(foot).basis.slerp(flat, 1.0 - smoothstep(0.3, 0.8, e))
+			flat = _gp(foot).basis.orthonormalized().slerp(flat.orthonormalized(), 1.0 - smoothstep(0.3, 0.8, e))
 		_set_global_basis(foot, flat)
+		var toe: int = _leg_toe[side]
+		if toe >= 0 and _stand_w > 0.001:
+			_sk.set_bone_pose_rotation(toe, _sk.get_bone_pose_rotation(toe).slerp(_sk.get_bone_rest(toe).basis.get_rotation_quaternion(), _stand_w))
 
 ## Podczas przeładowania tułów i broń schodzą ku dłoniom; skrajne celowanie nie chowa chwytu za plecami.
 func _reload_pose_theta(theta: float) -> float:
