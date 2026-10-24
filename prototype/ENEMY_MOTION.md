@@ -28,7 +28,7 @@
 
 Obrażenia, zasięgi i czasy gameplayu nadal rozstrzyga serwer. Obserwator widzi zdarzenie po jego dostarczeniu przez sieć; ta zmiana nie usuwa fizycznego opóźnienia transmisji. Zmieniony kontrakt RPC wymaga tej samej wersji gry na peerach.
 
-Stalker replikuje wysokość tułowia rzeczywistej ofiary, uwzględniając przysiad oraz poziom mapy. Model obniża biodra i dłonie do celu zamiast chwytać na wysokości własnej klatki piersiowej. Zasięg rąk nadal ogranicza IK. Na hoście model zachowuje pozycję w klatce kontaktu i płynnie odtwarza serwerowe odsunięcie po ciosie; klient zachowuje interpolację symulacji.
+Stalker replikuje wysokość tułowia rzeczywistej ofiary, uwzględniając przysiad oraz poziom mapy. Model obniża biodra i dłonie do celu zamiast chwytać na wysokości własnej klatki piersiowej. Zasięg rąk nadal ogranicza IK. Niezawodne zdarzenie niesie także kierunek chwytu, który pozostaje skierowany do ofiary podczas cofania przez czas powrotu klipu. Na hoście model zachowuje pozycję w klatce kontaktu i płynnie odtwarza serwerowe odsunięcie po ciosie; klient zachowuje interpolację symulacji.
 
 ## Lokomocja i podparcie
 
@@ -59,7 +59,7 @@ godot --path prototype -s tools/bench_enemy_motion.gd -- --count=36 --out=/tmp/e
 godot --path prototype -s tools/shot_enemies.gd -- --mission=z1_m2 --dir=/tmp/enemy-map --reveal
 ```
 
-Relay, serwer i klient działają jednocześnie: serwer na 18974, relay na 19074. Relay wprowadza 75 ms w każdą stronę oraz stratę co 13. datagramu po zestawieniu połączenia. Test sprawdza zapowiedź, stan podłoża, punkt kontaktu, typ działania i trzy niezawodne zdarzenia.
+Relay, serwer i klient działają jednocześnie: serwer na 18974, relay na 19074. Relay wprowadza 75 ms w każdą stronę oraz stratę co 13. datagramu po zestawieniu połączenia. Test sprawdza zapowiedź, stan podłoża, punkt kontaktu, typ działania, trzy niezawodne zdarzenia oraz wysokość i kierunek chwytu Stalkera, także po spóźnionym zdarzeniu ze starszym numerem.
 
 Regresja modeli obejmuje 14 rodzajów, 30/60/120 kl./s, prędkości 0/0,25/1/1,5, długości kości, podparcie, obrót, kontakt przy różnych długościach zapowiedzi, przerwanie, skok, lądowanie, śmierć i powrót do życia. Audyt siatek dodatkowo sprawdza bindy, sumy wag i wszystkie wierzchołki regionu stóp w wybranych sekwencjach przy tych samych FPS; tolerancja zagłębiania wynosi 2,5 cm. Nie jest to test każdej kolizji całej skóry.
 

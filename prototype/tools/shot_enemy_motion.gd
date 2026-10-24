@@ -13,7 +13,11 @@ func _initialize() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--dir="): directory = arg.substr(6)
 		if arg.begins_with("--frames="): count = arg.substr(9).to_int()
-	DirAccess.make_dir_recursive_absolute(directory)
+	var mkdir_error := DirAccess.make_dir_recursive_absolute(directory)
+	if mkdir_error != OK or not DirAccess.dir_exists_absolute(directory):
+		push_error("FAIL enemy motion render: output directory error=" + str(mkdir_error))
+		quit(1)
+		return
 	RenderingServer.frame_post_draw.connect(_capture)
 	var kinds := Enemy.SPEC.keys()
 	for i in kinds.size():
@@ -109,7 +113,11 @@ func _capture() -> void:
 			var img: Image = cells[i][0].get_texture().get_image()
 			img.convert(Image.FORMAT_RGBA8)
 			atlas.blit_rect(img, Rect2i(0,0,300,320), Vector2i((i % 4) * 300, (i / 4) * 320))
-		atlas.save_png("%s/f_%03d.png" % [directory, frame / 2 - 1])
+		var save_error := atlas.save_png("%s/f_%03d.png" % [directory, frame / 2 - 1])
+		if save_error != OK:
+			push_error("FAIL enemy motion render: PNG save error=" + str(save_error))
+			quit(1)
+			return
 		if frame / 2 >= count:
 			print("PASS enemy motion render: ", count, " frames, ", cells.size(), " kinds")
 			quit()

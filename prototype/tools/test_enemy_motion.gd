@@ -62,6 +62,30 @@ func library_check() -> void:
 			var end = clip.value_track_interpolate(track, clip.length)
 			check(name + " returns to base", start.is_equal_approx(end) if start is Vector3 else is_equal_approx(float(start), float(end)))
 
+func stalker_facing() -> void:
+	var actor := (load("res://scenes/stalker.tscn") as PackedScene).instantiate()
+	root.add_child(actor)
+	actor.set_physics_process(false)
+	var target := Node2D.new()
+	root.add_child(target)
+	target.position.x = -10.0
+	actor._windup_target = target
+	actor.winding = true
+	actor._sprite_frame(1.0, false, 0.0)
+	check("stalker windup faces victim", bool(actor._spr[0].flip_h))
+	actor._windup_target = null
+	actor.winding = false
+	actor._visual_attack(1, -14.3, -1.0)
+	actor.position.x += 6.0
+	actor._sprite_frame(1.0, false, 0.0)
+	check("stalker backstep keeps victim facing", bool(actor._spr[0].flip_h))
+	actor._visual_attack(0, -100.0, 1.0)
+	check("stalker old contact keeps target and facing", is_equal_approx(float(actor.view_info()["target_y"]), -14.3) and bool(actor._spr[0].flip_h))
+	actor.reset_enemy()
+	check("stalker reset clears recovery", actor._grab_recovery_t == 0.0)
+	actor.free()
+	target.free()
+
 func landing(e: Node3D, kind: String) -> void:
 	if Enemy.SPEC[kind].has("deform"): return
 	for vy in [-250.0, 0.0, 250.0]:
@@ -136,6 +160,7 @@ func _process(_dt: float) -> bool:
 	if ran: return false
 	ran = true
 	library_check()
+	stalker_facing()
 	for kind in Enemy.SPEC:
 		var e: Node3D = Enemy.new()
 		root.add_child(e)

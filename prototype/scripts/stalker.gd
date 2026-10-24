@@ -19,6 +19,7 @@ extends CharacterBody2D
 ## i po tym, jak Uwaga spadnie poniżej progu — lekcja „hałas ściąga Istotę", nie stałe zagrożenie samouczka.
 
 const Hurtbox := preload("res://scripts/hurtbox.gd")
+const Motion := preload("res://scripts/enemy_motion.gd")
 const HURT_H := 54.0                         ## px: wysokość strefy trafień = model (enemy3d.gd SPEC „fit")
 const Lights := preload("res://scripts/lights.gd")
 const Nav := preload("res://scripts/nav.gd")
@@ -90,6 +91,8 @@ var _windup_duration := 0.0
 var _view_windup_remaining := 0.0
 var _view_windup_duration := 0.0
 var _visual_target_y := NAN
+var _grab_recovery_t := 0.0
+var _grab_face := 1.0
 
 var _attack_timer := 0.0
 var _hesitate := 0.0
@@ -178,6 +181,7 @@ func reset_enemy() -> void:
 	_windup = 0.0
 	_windup_target = null
 	_listen = 0.0
+	_grab_recovery_t = 0.0
 	_arrived = false
 	visible = false
 	_path = []
@@ -188,6 +192,7 @@ func reset_enemy() -> void:
 	_pass_armed = true
 
 func _physics_process(delta: float) -> void:
+	_grab_recovery_t = maxf(0.0, _grab_recovery_t - delta)
 	# sprawdzamy NA BIEŻĄCO: peer w _ready() to jeszcze OfflineMultiplayerPeer,
 	# więc cache'owany _server_sim bywał błędny i klient wysyłał _sync do serwera
 	if not NoiseMgr.is_server():
@@ -506,9 +511,13 @@ func _tick_windup(delta: float) -> void:
 	winding = false
 	var pp := _windup_target
 	_visual_target_y = _grab_target_y(pp)
+	if is_instance_valid(pp) and not is_zero_approx(pp.global_position.x - global_position.x):
+		_facing = signf(pp.global_position.x - global_position.x)
+	_grab_face = _facing
+	_grab_recovery_t = Motion.recovery("grab")
 	visual_attack_seq += 1
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_visual_attack.rpc(visual_attack_seq, _visual_target_y)
+		_visual_attack.rpc(visual_attack_seq, _visual_target_y, _grab_face)
 	_windup_target = null
 	# cios trafia tylko jeśli gracz nie zdążył odejść poza zasięg (+ mała tolerancja)
 	if pp != null and is_instance_valid(pp) and not pp.dead \
@@ -657,10 +666,13 @@ func _sync(pos: Vector2, is_awake: bool, is_winding: bool, wind_remaining := 0.0
 	_redraw()
 
 @rpc("authority", "call_remote", "reliable")
-func _visual_attack(sequence: int, target_y := NAN) -> void:
+func _visual_attack(sequence: int, target_y := NAN, face := 0.0) -> void:
 	if sequence > visual_attack_seq:
 		visual_attack_seq = sequence
 		_visual_target_y = target_y
+		_grab_face = signf(face) if not is_zero_approx(face) else _facing
+		_facing = _grab_face
+		_grab_recovery_t = Motion.recovery("grab")
 
 ## Sylwetka — cieniowana: w ciemności (CanvasModulate) niemal niewidoczna,
 ## w snopie latarki albo przy rozbłysku strzału wychodzi z mroku. Kolor jest
@@ -676,6 +688,11 @@ func _sprite_frame(reveal: float, hunting: bool, t: float) -> void:
 	_last_x = global_position.x
 	if absf(dx) > 0.05:
 		_facing = signf(dx)
+	if winding and is_instance_valid(_windup_target):
+		var to_target := _windup_target.global_position.x - global_position.x
+		if not is_zero_approx(to_target): _facing = signf(to_target)
+	elif _grab_recovery_t > 0.0:
+		_facing = _grab_face
 	var anim := "windup" if winding else ("walk" if absf(dx) > 0.05 else "idle")
 	Sprites.play(_spr, anim, _facing < 0.0)
 	var body: AnimatedSprite2D = _spr[0]

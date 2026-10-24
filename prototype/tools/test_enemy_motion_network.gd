@@ -50,6 +50,8 @@ func _start() -> void:
 func finish(ok: bool, label: String) -> void:
 	print(("PASS" if ok else "FAIL") + " enemy motion network: " + label)
 	peer.close()
+	for node in [model, stalker_model, actor, stalker]:
+		if is_instance_valid(node): node.free()
 	quit(0 if ok else 1)
 
 func _process(dt: float) -> bool:
@@ -68,11 +70,11 @@ func _process(dt: float) -> bool:
 		if not sent and age >= 0.9:
 			sent = true
 			actor.visual_attack("throw")
-			stalker._visual_attack.rpc(1, -14.3)
+			stalker._visual_attack.rpc(1, -14.3, -1.0)
 		if sent and age > 2.0 and int(actor.view_info()["attack_seq"]) == 1:
 			actor.visual_attack("charge")
 			actor.visual_attack("throw")
-			stalker._visual_attack.rpc(3, -14.3)
+			stalker._visual_attack.rpc(3, -14.3, -1.0)
 		if age > 5.0: finish(true, "server: windup + 3 resolved attacks")
 	else:
 		var info: Dictionary = actor.view_info()
@@ -82,7 +84,7 @@ func _process(dt: float) -> bool:
 			previous_grab = int(grab["attack_seq"])
 			stalker_model.trigger("attack")
 			stalker_model.pose(dt, "idle", false, Color.WHITE)
-			if stalker_model.motion_phase() != "contact" or not is_equal_approx(float(grab["target_y"]), -14.3):
+			if stalker_model.motion_phase() != "contact" or not is_equal_approx(float(grab["target_y"]), -14.3) or stalker._facing != -1.0:
 				finish(false, "Stalker target/contact mismatch")
 				return false
 			saw_grab = true
@@ -106,6 +108,6 @@ func _process(dt: float) -> bool:
 				return false
 			saw_wind = true
 		if sequence == 3 and previous_grab == 3:
-			stalker._visual_attack(1, -100.0)
-			finish(saw_wind and saw_contact and saw_grab and is_equal_approx(float(stalker.view_info()["target_y"]), -14.3), "client: snapshot, contact, action, 3 attacks, Stalker target")
+			stalker._visual_attack(1, -100.0, 1.0)
+			finish(saw_wind and saw_contact and saw_grab and stalker._facing == -1.0 and is_equal_approx(float(stalker.view_info()["target_y"]), -14.3), "client: snapshot, contact, action, 3 attacks, Stalker target/facing")
 	return false
