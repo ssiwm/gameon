@@ -89,6 +89,7 @@ var visual_attack_seq := 0
 var _windup_duration := 0.0
 var _view_windup_remaining := 0.0
 var _view_windup_duration := 0.0
+var _visual_target_y := NAN
 
 var _attack_timer := 0.0
 var _hesitate := 0.0
@@ -148,8 +149,14 @@ func _ready() -> void:
 ## Kontrakt widoku (view3d.gd) — patrz enemy.gd: view_info. Stalker jest nieśmiertelny i nie błyska po trafieniu.
 func view_info() -> Dictionary:
 	return {"kind": "stalker", "alive": true, "winding": winding, "sp": 0, "flash": false, "attack_seq": visual_attack_seq,
+		"target_y": _grab_target_y(_windup_target) if NoiseMgr.is_server() and winding else _visual_target_y,
 		"grounded": true, "windup_remaining": maxf(_windup, 0.0) if NoiseMgr.is_server() else _view_windup_remaining,
 		"windup_duration": maxf(_windup_duration, _windup) if NoiseMgr.is_server() else _view_windup_duration}
+
+## Wysokość tułowia rzeczywistej ofiary, także w przysiadzie i na innym poziomie mapy.
+func _grab_target_y(player: Node2D) -> float:
+	if not is_instance_valid(player): return NAN
+	return player.global_position.y - (float(player.HURT_H_CROUCH) if player.crouching else float(player.HURT_H)) * 0.65
 
 ## Skaner z perkiem „Scout" pokazuje śpiącego (niewidocznego) Stalkera z bliska.
 func is_stalker() -> bool:
@@ -497,10 +504,11 @@ func _tick_windup(delta: float) -> void:
 	if _windup > 0.0:
 		return
 	winding = false
+	var pp := _windup_target
+	_visual_target_y = _grab_target_y(pp)
 	visual_attack_seq += 1
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_visual_attack.rpc(visual_attack_seq)
-	var pp := _windup_target
+		_visual_attack.rpc(visual_attack_seq, _visual_target_y)
 	_windup_target = null
 	# cios trafia tylko jeśli gracz nie zdążył odejść poza zasięg (+ mała tolerancja)
 	if pp != null and is_instance_valid(pp) and not pp.dead \
@@ -629,10 +637,10 @@ func _send_state(delta: float) -> void:
 	if _net_timer > 0.0:
 		return
 	_net_timer = 0.05
-	_sync.rpc(global_position, awake, winding, maxf(_windup, 0.0), _windup_duration)
+	_sync.rpc(global_position, awake, winding, maxf(_windup, 0.0), _windup_duration, _grab_target_y(_windup_target) if winding else _visual_target_y)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(pos: Vector2, is_awake: bool, is_winding: bool, wind_remaining := 0.0, wind_duration := 0.0) -> void:
+func _sync(pos: Vector2, is_awake: bool, is_winding: bool, wind_remaining := 0.0, wind_duration := 0.0, target_y := NAN) -> void:
 	if pos.distance_to(global_position) > 200.0:
 		global_position = pos                 # przeskok (wyjście z ciemności, zniknięcie, restart): bez przelotu przez mapę
 	_remote_pos = pos
@@ -640,6 +648,7 @@ func _sync(pos: Vector2, is_awake: bool, is_winding: bool, wind_remaining := 0.0
 	winding = is_winding
 	_view_windup_remaining = maxf(wind_remaining, 0.0)
 	_view_windup_duration = maxf(wind_duration, _view_windup_remaining)
+	_visual_target_y = target_y
 
 	visible = awake
 	# Klient nie symuluje AI (GDD §8.5), więc audio też musi iść tu —
@@ -648,8 +657,10 @@ func _sync(pos: Vector2, is_awake: bool, is_winding: bool, wind_remaining := 0.0
 	_redraw()
 
 @rpc("authority", "call_remote", "reliable")
-func _visual_attack(sequence: int) -> void:
-	visual_attack_seq = maxi(visual_attack_seq, sequence)
+func _visual_attack(sequence: int, target_y := NAN) -> void:
+	if sequence > visual_attack_seq:
+		visual_attack_seq = sequence
+		_visual_target_y = target_y
 
 ## Sylwetka — cieniowana: w ciemności (CanvasModulate) niemal niewidoczna,
 ## w snopie latarki albo przy rozbłysku strzału wychodzi z mroku. Kolor jest

@@ -2,7 +2,9 @@ extends SceneTree
 ## ENet z migawką zapowiedzi i jawnym kontaktem; relay UDP wprowadza opóźnienie i straty.
 const Enemy3D := preload("res://scripts/enemy3d.gd")
 var actor: Node
+var stalker: Node
 var model: Node3D
+var stalker_model: Node3D
 var elapsed := 0.0
 var started := -1.0
 var sent := false
@@ -10,6 +12,8 @@ var server := false
 var saw_wind := false
 var saw_contact := false
 var previous_seq := 0
+var previous_grab := 0
+var saw_grab := false
 var peer := ENetMultiplayerPeer.new()
 
 func _initialize() -> void:
@@ -30,10 +34,18 @@ func _start() -> void:
 	root.add_child(actor)
 	actor.set_physics_process(false)
 	actor.set_process(false)
+	stalker = (load("res://scenes/stalker.tscn") as PackedScene).instantiate()
+	stalker.name = "MotionStalker"
+	root.add_child(stalker)
+	stalker.set_physics_process(false)
+	stalker.set_process(false)
 	if not server:
 		model = Enemy3D.new()
 		root.add_child(model)
 		model.setup("wolek")
+		stalker_model = Enemy3D.new()
+		root.add_child(stalker_model)
+		stalker_model.setup("stalker")
 
 func finish(ok: bool, label: String) -> void:
 	print(("PASS" if ok else "FAIL") + " enemy motion network: " + label)
@@ -52,15 +64,30 @@ func _process(dt: float) -> bool:
 		if started < 0.0: return false
 		var age := elapsed - started
 		actor._sync.rpc(Vector2.ZERO, 10.0, true, true, age < 0.9, 3 if age < 0.9 else 0, -1, 1.0, maxf(0.9 - age, 0.0), 0.9, false)
+		stalker._sync.rpc(Vector2.ZERO, true, age < 0.9, maxf(0.9 - age, 0.0), 0.9, -14.3)
 		if not sent and age >= 0.9:
 			sent = true
 			actor.visual_attack("throw")
+			stalker._visual_attack.rpc(1, -14.3)
 		if sent and age > 2.0 and int(actor.view_info()["attack_seq"]) == 1:
 			actor.visual_attack("charge")
 			actor.visual_attack("throw")
+			stalker._visual_attack.rpc(3, -14.3)
 		if age > 5.0: finish(true, "server: windup + 3 resolved attacks")
 	else:
 		var info: Dictionary = actor.view_info()
+		var grab: Dictionary = stalker.view_info()
+		stalker_model.motion_context(grab)
+		if int(grab["attack_seq"]) > previous_grab:
+			previous_grab = int(grab["attack_seq"])
+			stalker_model.trigger("attack")
+			stalker_model.pose(dt, "idle", false, Color.WHITE)
+			if stalker_model.motion_phase() != "contact" or not is_equal_approx(float(grab["target_y"]), -14.3):
+				finish(false, "Stalker target/contact mismatch")
+				return false
+			saw_grab = true
+		else:
+			stalker_model.pose(dt, "windup" if grab["winding"] else "idle", false, Color.WHITE)
 		model.motion_context(info)
 		var sequence := int(info["attack_seq"])
 		if sequence > previous_seq:
@@ -78,6 +105,7 @@ func _process(dt: float) -> bool:
 				finish(false, "windup/grounded snapshot mismatch")
 				return false
 			saw_wind = true
-		if sequence == 3:
-			finish(saw_wind and saw_contact, "client: snapshot, exact contact, action, 3 reliable attacks")
+		if sequence == 3 and previous_grab == 3:
+			stalker._visual_attack(1, -100.0)
+			finish(saw_wind and saw_contact and saw_grab and is_equal_approx(float(stalker.view_info()["target_y"]), -14.3), "client: snapshot, contact, action, 3 attacks, Stalker target")
 	return false

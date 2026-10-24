@@ -234,6 +234,7 @@ var _motion_duration := 0.0
 var _motion_values: Dictionary = {}
 var _contact_frame := false
 var _grounded_hint := -1
+var _target_world_y := NAN
 var _landing_t := 10.0
 var _landing_strength := 0.0
 var _q_limbs: Dictionary = {}
@@ -245,6 +246,7 @@ static var _sole_cache: Dictionary = {}
 ## Migawka zapowiedzi z symulacji. Zegar modelu nie rozstrzyga trafień.
 func motion_context(info: Dictionary) -> void:
 	_grounded_hint = int(bool(info["grounded"])) if info.has("grounded") else -1
+	_target_world_y = -float(info.get("target_y", NAN)) * PX
 	_motion_remaining = float(info.get("windup_remaining", NAN)) if bool(info.get("winding", false)) else NAN
 	_motion_duration = float(info.get("windup_duration", 0.0))
 	if bool(info.get("winding", false)):
@@ -284,6 +286,22 @@ func _authored_biped(p: Dictionary) -> Dictionary:
 		if key in ["hR", "hL"]: value = Vector3(_x0, 0, 0) + (value as Vector3) * height
 		elif key in ["drop", "fR", "fL"]: value *= height
 		out[key] = lerp(out[key], value, _motion_weight)
+	if kind == "stalker" and _motion_name == "grab":
+		var progress := _motion_time / maxf(Motion.contact("grab"), 0.001)
+		var reach := smoothstep(0.05, 0.9, progress)
+		if progress > 1.0: reach *= 1.0 - smoothstep(0.35, 1.0, (progress - 1.0) * Motion.contact("grab") / Motion.recovery("grab"))
+		reach *= _motion_weight
+		var world_y := _target_world_y if is_finite(_target_world_y) else global_position.y + 1.2
+		var target := _sk.global_transform.affine_inverse() * Vector3(global_position.x, world_y, global_position.z)
+		var lower := 0.0
+		for hand in ["hR", "hL"]:
+			var goal: Vector3 = out[hand]
+			lower = maxf(lower, maxf(goal.y - target.y, 0.0) * 0.28)
+			goal.y = lerpf(goal.y, target.y, reach)
+			goal.x = lerpf(goal.x, _x0 + height * 0.50, reach)
+			out[hand] = goal
+		out["drop"] = float(out["drop"]) + minf(lower, height * 0.28) * reach
+		out["lean"] = float(out["lean"]) + 6.0 * reach
 	return out
 
 ## Punkty próbkowania podłoża; widok pyta fizykę 2D, model nie uruchamia fizyki 3D.
@@ -769,6 +787,7 @@ func revive() -> void:
 	_motion_pending = ""
 	_contact_frame = false
 	_grounded_hint = -1
+	_target_world_y = NAN
 	_airborne = false
 	_air_w = 0.0
 	_foot_locks.clear()

@@ -69,6 +69,7 @@ func landing(e: Node3D, kind: String) -> void:
 		e.pose(1.0 / 60.0, "idle", false, Color.WHITE, 0.0, 1, true, vy)
 		check(kind + " airborne including apex", bool(e.get("_airborne")))
 	e.motion_context({"grounded": true})
+
 	e.pose(1.0 / 60.0, "idle", false, Color.WHITE)
 	check(kind + " landing starts", not bool(e.get("_airborne")) and float(e.get("_landing_t")) == 0.0)
 	if not Enemy.SPEC[kind].get("crawler", false) and not Enemy.SPEC[kind].get("quad", false):
@@ -81,6 +82,20 @@ func landing(e: Node3D, kind: String) -> void:
 		e.pose(1.0 / 60.0, "sleep", false, Color.WHITE)
 		check(kind + " ceiling hold not falling", not bool(e.get("_airborne")))
 	e.motion_context({"grounded": true})
+
+func grab_height(e: Node3D, kind: String) -> void:
+	if kind != "stalker": return
+	var sk: Skeleton3D = e.get("_sk")
+	var bones: Dictionary = e.get("_b")
+	for height in [1.2, 2.8]:
+		e.motion_context({"grounded": true, "target_y": -height / Enemy.PX})
+		e.trigger("attack")
+		e.pose(1.0 / 60.0, "idle", false, Color.WHITE)
+		for side in ["Right", "Left"]:
+			var hand := sk.global_transform * sk.get_bone_global_pose(bones[side + "Hand"]).origin
+			check("stalker grabs actual torso height=" + str(height) + " hand=" + str(hand.y), absf(hand.y - height) < 0.45)
+		geometry(e, kind)
+	e.revive()
 
 func geometry(e: Node3D, kind: String) -> void:
 	var sk: Skeleton3D = e.get("_sk")
@@ -127,6 +142,7 @@ func _process(_dt: float) -> bool:
 		check(kind + " setup", e.setup(kind))
 		authored(e, kind)
 		landing(e, kind)
+		grab_height(e, kind)
 		var reference: float = maxf(float((Defs.DEFS.get(kind, {}) as Dictionary).get("speed", 95.0)), 1.0)
 		for fps in [30, 60, 120]:
 			var dt := 1.0 / float(fps)
@@ -162,7 +178,7 @@ func _process(_dt: float) -> bool:
 				check(kind + " attack lean", absf(float(p["lean"])) < 30.0)
 				for side in ["Right", "Left"]:
 					var hand: Transform3D = e.call("_gp", bones[side + "Hand"])
-					check(kind + " attack hand height", hand.origin.y > 0.75)
+					check(kind + " attack hand height", (sk.global_transform * hand.origin).y > 0.65 if kind == "stalker" else hand.origin.y > 0.75)
 			if not Enemy.SPEC[kind].get("crawler", false):
 				var normal := Vector3(0.10, 0.995, 0.0).normalized()
 				e.set("ground_profile", {"Right": {"height": 0.08, "normal": normal}, "Left": {"height": 0.02, "normal": normal}})
