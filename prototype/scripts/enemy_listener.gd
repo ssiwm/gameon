@@ -96,6 +96,7 @@ func begin_scream() -> void:
 	e.winding = true
 
 func scream() -> void:
+	e.visual_attack()
 	var cfg := e._def.get("scream", {}) as Dictionary
 	scream_cd = float(e._def["cooldown"]) * Difficulty.m("enemy_cd")
 	screams += 1

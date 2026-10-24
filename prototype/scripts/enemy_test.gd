@@ -1686,6 +1686,13 @@ func _test_windup_interrupt() -> void:
 	e.take_hit(_hit_info(e, 0.5))
 	check("zapowiedź: ogłuszenie 0,5 s przerywa cios (bez zapowiedzi, bez celu)", e._windup == 0.0 and not e.winding and e._windup_target == null)
 	check("zapowiedź: po przerwaniu przerwa przed kolejnym ciosem", e._cd >= 0.5, str(e._cd))
+	check("widok: ogłuszenie podczas aktywnego błysku nie wysyła zdarzenia ciosu", e.visual_attack_seq == 0)
+	e._windup_target = null
+	e._resolve_attack()
+	check("widok: chybiony rozstrzygnięty cios ma jawne zdarzenie", int(e.view_info()["attack_seq"]) == 1)
+	e._visual_attack(7)
+	e._visual_attack(3)
+	check("widok: obserwator ignoruje spóźniony numer zdarzenia", e.visual_attack_seq == 7)
 	var w := _spawn("wolek", Vector2(FAR_X + 16200.0, y))
 	w.set_physics_process(false)
 	w._windup = 0.3

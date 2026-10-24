@@ -79,6 +79,7 @@ func _player_in_trigger() -> bool:
 
 ## Koniec zapowiedzi: fala krzyku — hałas, ogłuszenie graczy w zasięgu, dźwięk i pierścień na wszystkich peerach.
 func _scream() -> void:
+	e.visual_attack()
 	var c := cfg()
 	e._sp = 0
 	e.winding = false

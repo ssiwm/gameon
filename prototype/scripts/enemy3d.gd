@@ -10,6 +10,7 @@ extends Node3D
 const TURN_TIME := 0.16                      ## s: obrót przy zmianie kierunku (jak Char3D.TURN_TIME)
 const BODY_YAW := -22.0                      ## °: tułów zwrócony ku kamerze (jak Char3D.BODY_YAW)
 const CharClips := preload("res://scripts/char_clips.gd")
+const EnemyDefs := preload("res://scripts/enemy_defs.gd")
 const DIR := "res://art/enemy3d/"
 const PRE := "mixamorig_"
 const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Level3D.PX)
@@ -21,8 +22,8 @@ const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Lev
 const SPEC := {
 	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 1.0, "prof": {}, "clips": true, "clip_amp": 0.6, "stun": true},
 	# Rzeźnik (F4e): model z TRELLIS-a z osobnym tasakiem przypiętym do prawej dłoni (`tools/rig_trellis.py`, art/enemy3d/rzeznik.glb)
-	"rzeznik": {"fit": ["height", 44.0], "frame_h": 58.0, "cycle": 1.0, "prof": {}, "clips": true, "clip_amp": 0.6, "stun": true},
-	"slepiec": {"fit": ["height", 27.0], "frame_h": 32.0, "cycle": 1.0, "prof": {"hy": 0.50, "hz": 0.35}, "clips": true, "attack_kind": "claw", "walk_clip": "zombie", "attack_clip": true,
+	"rzeznik": {"fit": ["height", 44.0], "frame_h": 58.0, "cycle": 1.0, "prof": {"windup": "cleave"}, "attack_kind": "cleave", "clips": true, "clip_amp": 0.6, "stun": true},
+	"slepiec": {"fit": ["height", 27.0], "frame_h": 32.0, "cycle": 1.0, "prof": {"hy": 0.50, "hz": 0.35, "windup": "claw"}, "clips": true, "attack_kind": "claw", "walk_clip": "zombie",
 		"death": {"dir": 1.0, "lean": -8.0, "dur": 0.95, "tilt": 86.0}},
 	"podsluchacz": {"fit": ["height", 34.0], "frame_h": 40.0, "cycle": 1.0,
 		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}, "clips": true, "attack_kind": "scream", "walk_clip": "zombie",
@@ -32,7 +33,7 @@ const SPEC := {
 		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}, "clips": true, "attack_kind": "scream", "walk_clip": "zombie",
 		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}},
 	"stalker": {"fit": ["height", 54.0], "frame_h": 60.0, "cycle": 1.1,
-		"prof": {"lean": 5.0, "lean_walk": 8.0, "hy": 0.42, "hz": 0.62, "stride": 0.28, "windup": "reach"}, "clips": true, "attack_kind": "grab", "walk_clip": "zombie", "attack_clip": true,
+		"prof": {"lean": 5.0, "lean_walk": 8.0, "hy": 0.42, "hz": 0.62, "stride": 0.28, "windup": "reach"}, "clips": true, "attack_kind": "grab", "walk_clip": "zombie",
 		"death": {"dir": 1.0, "lean": 0.0, "dur": 1.0, "tilt": 88.0}},
 	"skoczek": {"fit": ["height", 17.0], "frame_h": 26.0, "cycle": 0.5, "crawler": true, "clips": true},
 	# Żerca (F4e): model z TRELLIS-a szkieletowany `tools/rig_trellis.py` (art/enemy3d/zerca.glb)
@@ -46,7 +47,7 @@ const SPEC := {
 	"cma": {"fit": ["width", 18.0], "frame_h": 20.0, "deform": "cma", "float": true, "clips": true, "death_dur": 0.9},
 	"nest": {"fit": ["height", 30.0], "frame_h": 34.0, "deform": "nest", "clips": true, "death_dur": 0.6},
 	"vein": {"fit": ["height", 66.0], "frame_h": 80.0, "deform": "vein", "clips": true, "death_dur": 1.8},
-	"leech": {"fit": ["height", 66.0], "frame_h": 80.0, "deform": "leech"},
+	"leech": {"fit": ["height", 66.0], "frame_h": 80.0, "deform": "leech", "death_dur": 1.4},
 }
 
 ## Materiał: kolor + normalne + ORM z modelu, bez metaliczności; oczy świecą (maska jak `pack_monsters_hd.py::glow_mask`);
@@ -103,8 +104,19 @@ void vertex() {
 	float a = radians(wing) * w * (b.y > 0.0 ? 1.0 : -1.0);
 	float c = cos(a);
 	float s = sin(a);
-	b = vec3(b.x * c - b.y * s, b.x * s + b.y * c, b.z);
+	float hinge = 0.025 * sign(b.y);
+	float span = b.y - hinge;
+	b = vec3(b.x, hinge + span * c - b.z * s, span * s + b.z * c);
 	VERTEX = vec3(b.x, b.z, -b.y);
+	vec3 n = vec3(NORMAL.x, -NORMAL.z, NORMAL.y);
+	n = vec3(n.x, n.y * c - n.z * s, n.y * s + n.z * c);
+	NORMAL = normalize(vec3(n.x, n.z, -n.y));
+	vec3 t = vec3(TANGENT.x, -TANGENT.z, TANGENT.y);
+	t = vec3(t.x, t.y * c - t.z * s, t.y * s + t.z * c);
+	TANGENT = normalize(vec3(t.x, t.z, -t.y));
+	vec3 bn = vec3(BINORMAL.x, -BINORMAL.z, BINORMAL.y);
+	bn = vec3(bn.x, bn.y * c - bn.z * s, bn.y * s + bn.z * c);
+	BINORMAL = normalize(vec3(bn.x, bn.z, -bn.y));
 }
 """,
 	"nest": """
@@ -207,6 +219,24 @@ var _face := 1.0                             ## −1..1: zwrot w trakcie obrotu 
 var _cam_c := 1.0                            ## −1..1: strona kamery względem modelu (znak zwrotu tułowia ku kamerze)
 var _phase := 0.0
 var _prev_anim := ""
+var _foot_locks: Dictionary = {}
+var _last_position := Vector3.ZERO
+var _last_flip := false
+var ground_profile: Dictionary = {}
+
+## Punkty próbkowania podłoża; widok pyta fizykę 2D, model nie uruchamia fizyki 3D.
+func ground_probes() -> Dictionary:
+	var points := {}
+	if _sk == null or _spec.has("deform") or _spec.get("quad", false): return points
+	for side in ["Right", "Left"]:
+		points[side] = _sk.global_transform * _gp(_b[side + "Foot"]).origin
+		if _spec.get("crawler", false):
+			points[side + "Hand"] = _sk.global_transform * _gp(_b[side + "Hand"]).origin
+	return points
+
+func _ground_y(side: String) -> float:
+	var rest := _sk.get_bone_global_rest(_b[side + "Foot"])
+	return rest.origin.y + float((ground_profile.get(side, {}) as Dictionary).get("height", 0.0)) / _scale
 var _eyes: Array = []
 
 ## Klipy jednorazowe i śmierć (modele z `"clips": true` w SPEC): trafienie, atak, śmierć; poza bazowa przechodzi płynnie (wagi), klip leży na wierzchu.
@@ -430,9 +460,13 @@ func _two_bone(a: int, m: int, e: int, la: float, lb: float, target: Vector3, po
 ## anim: nazwa animacji sprite'a 2D (sleep / idle / walk / run / windup, bossowie: dormant / open / spit / peek / strike / grab / dive / ...).
 ## flip: sprite odbity (patrzy w lewo). mod: modulate sprite'a. fr: numer klatki + postęp w klatce, nfr: liczba klatek animacji, loop: czy pętla
 ## (modele statyczne dostają pozę z numeru klatki, żeby animacja szła w tempie gry — np. trafienie Pijawki na klatce 2).
-func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 1, loop := true, air_vy := 0.0, sp := 0, alert := false) -> void:
+func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 1, loop := true, air_vy := 0.0, sp := 0, alert := false, horizontal_speed := NAN) -> void:
 	_t += delta
-	if bool(_spec.get("turn", false)):
+	if flip != _last_flip or anim != _prev_anim or global_position.distance_to(_last_position) > 0.8:
+		_foot_locks.clear()
+	_last_flip = flip
+	_last_position = global_position
+	if not _spec.has("deform"):
 		# Mimik udaje gracza, więc odwraca się jak postać gracza (char3d.gd): obrót przodem do kamery w TURN_TIME, tułów zwrócony ku kamerze
 		# w obie strony (_apply_biped). Odbicie lustrem w jednej klatce zdradzało go na tle graczy, którzy od 1.7.216 się obracają.
 		_face = move_toward(_face, -1.0 if flip else 1.0, delta * 2.0 / TURN_TIME) if _t > delta else (-1.0 if flip else 1.0)
@@ -469,7 +503,11 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		sm.set_shader_parameter("eye_glow", eye)
 	var moving := anim == "walk" or anim == "run"
 	if moving:
-		_phase += delta * TAU / float(_spec.get("cycle", 1.0)) * (2.4 if _sp == 2 else 1.0)       # szarża: kroki szybciej
+		var reference: float = float((EnemyDefs.DEFS.get(kind, {}) as Dictionary).get("speed", 95.0))
+		var rate := absf(horizontal_speed) / maxf(reference, 1.0) if is_finite(horizontal_speed) else (2.4 if _sp == 2 else 1.0)
+		_phase += delta * TAU / float(_spec.get("cycle", 1.0)) * rate
+		if is_finite(horizontal_speed) and absf(horizontal_speed) < 0.5:
+			anim = "idle"
 	if _spec.has("deform"):
 		_pose_deform(anim, fr, nfr, loop)
 	elif _spec.get("quad", false):
@@ -490,6 +528,7 @@ func trigger(clip: String) -> void:
 		return                                    # trafienie nie przerywa trwającego ciosu
 	_clip = clip
 	_clip_t = 0.0
+	_foot_locks.clear()
 
 ## Śmierć: odtwarza upadek, potem leży, zapada się i `finished` = true. Modele bez klipów kończą od razu.
 func die() -> void:
@@ -499,11 +538,12 @@ func die() -> void:
 	_dead_t = 0.0
 	_clip = ""
 	_dead_from = _last_p.duplicate()
-	if not _spec.get("clips", false):
+	if not _spec.get("clips", false) and not _spec.has("death_dur"):
 		finished = true
 
 ## Powrót do życia (respawn / reset wroga).
 func revive() -> void:
+	_foot_locks.clear()
 	_dead = false
 	_dead_t = 0.0
 	_clip = ""
@@ -579,6 +619,11 @@ func _pose_deform(anim: String, fr: float, nfr: int, loop: bool) -> void:
 			prm["jaw"] = jaw
 			prm["sxz"] = Vector2(sx, sz)
 		"leech":
+			if _dead:
+				anim = "death"
+				fr = clampf(_dead_t / _death_dur(), 0.0, 1.0) * 7.0
+				n = 8
+				loop = false
 			var i := int(floor(fr))
 			var k2 := fr - float(i)
 			var i0 := posmod(i, n) if loop else clampi(i, 0, n - 1)
@@ -974,7 +1019,7 @@ func _pose_crawler(anim: String) -> void:
 		for side in ["Right", "Left"]:
 			var sw := sin(_phase + (0.0 if side == "Right" else PI))
 			_rot_world(_b[side + "Arm"], Vector3.BACK, deg_to_rad(-30.0 * sw))
-			_rot_world(_b[side + "UpLeg"], Vector3.BACK, deg_to_rad(26.0 * sw))
+			_rot_world(_b[side + "UpLeg"], Vector3.BACK, deg_to_rad(-26.0 * sw))
 	elif anim == "windup":
 		hd = Vector3(0.0, -0.18, 0.0)
 		_rot_world(hips, Vector3.BACK, deg_to_rad(-22.0))
@@ -1028,6 +1073,25 @@ func _pose_crawler(anim: String) -> void:
 	var iw := smoothstep(0.0, 1.0, _inv_w)
 	_pivot.rotation = Vector3(PI * iw, 0.0, 0.0)
 	_pivot.position.y = float(_spec["frame_h"]) * PX * iw
+	if not _dead and not _airborne and _clip == "" and iw < 0.01 and anim in ["idle", "walk", "run"]:
+		# Dłonie i stopy pełzaka są punktami podparcia, nie swobodnie obracanymi wahadłami.
+		for side in ["Right", "Left"]:
+			var phase := _phase + (0.0 if side == "Right" else PI)
+			var locomotion := anim in ["walk", "run"]
+			for limb in ["arm", "leg"]:
+				var endpoint: int = _b[side + ("Hand" if limb == "arm" else "Foot")]
+				var rest := _sk.get_bone_global_rest(endpoint)
+				var ph_limb := phase + (PI if limb == "leg" else 0.0)
+				var target := rest.origin
+				var key: String = side + ("Hand" if limb == "arm" else "")
+				target.y += float((ground_profile.get(key, {}) as Dictionary).get("height", 0.0)) / _scale
+				if locomotion:
+					target += Vector3(-0.20 * cos(ph_limb), 0.10 * maxf(0.0, sin(ph_limb)), 0.0)
+				var upper: int = _b[side + ("Arm" if limb == "arm" else "UpLeg")]
+				var middle: int = _b[side + ("ForeArm" if limb == "arm" else "Leg")]
+				var lengths: Array = _arm_len[side] if limb == "arm" else _leg_len[side]
+				_two_bone(upper, middle, endpoint, lengths[0], lengths[1], target, Vector3(1.0, 0.2, 0.0))
+				_set_global_basis(endpoint, rest.basis)
 
 ## Parametry pozy bazowej dla animacji 2D (jak w wypieku `monster_tripo_bake.py`).
 func _biped_params(anim: String) -> Dictionary:
@@ -1078,6 +1142,14 @@ func _biped_params(anim: String) -> Dictionary:
 				p["lean"] = 2.0
 				p["hR"] = Vector3(_x0 + 0.85, 1.30, 0.22)
 				p["hL"] = Vector3(_x0 + 0.85, 1.30, -0.22)
+			elif wk == "claw":
+				p["lean"] = 4.0
+				p["hR"] = Vector3(_x0 - 0.18, 1.35, hy * 1.15)
+				p["hL"] = Vector3(_x0 + 0.38, 1.10, -hy)
+			elif wk == "cleave":
+				p["lean"] = -8.0
+				p["hR"] = Vector3(_x0 - 0.15, 1.85, hy * 0.8)
+				p["hL"] = Vector3(_x0 + 0.18, 1.05, -hy)
 		"stun":
 			# oszołomiony: tułów zgarbiony, głowa zwisa i kołysze się, kolana ugięte, ręce bezwładne; ciało zatacza się na boki
 			var dz := sin(_t * 3.4)
@@ -1245,6 +1317,7 @@ func _pose_biped(anim: String, delta: float) -> void:
 		var ak := String(_spec.get("attack_kind", "smash"))
 		# lean, drop, x ręki, wysokość ręki, rozstaw rąk (ułamek hy), stopa prawa, stopa lewa, głowa
 		var A: Dictionary = {
+			"cleave": [18.0, 0.10, 0.12, 1.15, 0.70, 0.14, -0.10, 0.8],
 			"smash": [26.0, 0.16, 0.80, 0.45, 0.45, 0.20, -0.14, 0.8],
 			"claw": [20.0, 0.10, 0.78, 1.10, 0.90, 0.22, -0.10, 0.8],
 			"scream": [-26.0, 0.0, 0.25, 1.72, 0.90, 0.06, -0.06, 1.1],
@@ -1255,6 +1328,8 @@ func _pose_biped(anim: String, delta: float) -> void:
 		p["drop"] = lerp(float(p["drop"]), float(a[1]), w)
 		p["hR"] = (p["hR"] as Vector3).lerp(Vector3(_x0 + float(a[2]), float(a[3]), hy2 * float(a[4])), w)
 		p["hL"] = (p["hL"] as Vector3).lerp(Vector3(_x0 + float(a[2]), float(a[3]), -hy2 * float(a[4])), w)
+		if ak == "cleave":
+			p["hR"] = (p["hR"] as Vector3).lerp(Vector3(_x0 + 0.85, 0.85, hy2 * 0.7), w)
 		p["fR"] = (p["fR"] as Vector3).lerp(Vector3(float(a[5]), 0.0, 0.0), w * 0.8)
 		p["fL"] = (p["fL"] as Vector3).lerp(Vector3(float(a[6]), 0.0, 0.0), w * 0.8)
 		p["hk"] = lerp(float(p["hk"]), float(a[7]), w)
@@ -1271,23 +1346,72 @@ func _apply_biped(p: Dictionary) -> void:
 	if bool(_spec.get("turn", false)):                            # jak postać gracza: tułów zwrócony ku kamerze (Char3D.BODY_YAW)
 		_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(BODY_YAW) * _cam_c)
 	_rot_world(_b["Head"], Vector3.BACK, deg_to_rad(float(p["lean"])) * float(p["hk"]))
+	if not _dead and not _airborne:
+		# Korekta bioder do zasięgu obu nóg; samo ograniczenie celu IK unosiłoby podporową stopę.
+		var lower := 0.0
+		for side in ["Right", "Left"]:
+			var rest := _sk.get_bone_global_rest(_b[side + "Foot"])
+			var off: Vector3 = p["fR"] if side == "Right" else p["fL"]
+			var hip := _gp(_b[side + "UpLeg"]).origin
+			var target := rest.origin + off
+			target.y += _ground_y(side) - rest.origin.y
+			if _cwalk > 0.0:
+				target += (_cfoot[side] as Transform3D).origin - rest.origin
+			if _foot_locks.has(side) and target.y <= _ground_y(side) + 0.015:
+				var locked: Vector3 = _sk.global_transform.affine_inverse() * (_foot_locks[side] as Vector3)
+				if locked.distance_to(target) < 0.55:
+					target = locked
+			var reach: float = (_leg_len[side][0] + _leg_len[side][1]) * 0.97
+			var horizontal := Vector2(hip.x - target.x, hip.z - target.z).length_squared()
+			var height := sqrt(maxf(reach * reach - horizontal, 0.0))
+			lower = maxf(lower, hip.y - target.y - height)
+		_shift_global(hips, Vector3(0.0, -minf(lower, 0.25), 0.0))
 	for side in ["Right", "Left"]:
 		var foot: int = _b[side + "Foot"]
 		var rest := _sk.get_bone_global_rest(foot)
 		var off: Vector3 = p["fR"] if side == "Right" else p["fL"]
 		var target := rest.origin + off
+		target.y += _ground_y(side) - rest.origin.y
 		var fb := rest.basis
 		var pole := Vector3(1.0, 0.1, 0.0)
 		if _cwalk > 0.0:                                          # stopa i kolano z klipu (odchylenie od spoczynku niesie już wagę klipu)
 			var cf: Transform3D = _cfoot[side]
 			target += cf.origin - rest.origin
-			target.y = maxf(target.y, rest.origin.y)              # potwór ma inne proporcje nóg niż człowiek z klipu: stopa nie schodzi pod podłoże
+			target.y = maxf(target.y, _ground_y(side))
 			fb = cf.basis
 			var ck: Vector3 = _cknee[side]
 			if ck.length() > 0.02:
 				pole = pole.lerp(ck.normalized(), _cwalk)
+		var grounded := not _dead and not _airborne and _inv_w < 0.01
+		var planted := grounded and target.y <= _ground_y(side) + 0.015
+		if planted:
+			target.y = _ground_y(side)
+			fb = rest.basis
+			var normal: Vector3 = (ground_profile.get(side, {}) as Dictionary).get("normal", Vector3.UP)
+			var local_normal := (_sk.global_transform.basis.inverse() * normal).normalized()
+			fb = Basis(Quaternion(Vector3.UP, local_normal)) * fb
+			var world_target := _sk.global_transform * target
+			if not _foot_locks.has(side):
+				_foot_locks[side] = world_target
+			var locked: Vector3 = _sk.global_transform.affine_inverse() * (_foot_locks[side] as Vector3)
+			if absf(locked.y - target.y) > 0.02:
+				locked = target
+				_foot_locks[side] = world_target
+			# Skok pozycji, obrót albo przekroczenie zasięgu kończy podporę zamiast rozciągać kończynę.
+			if locked.distance_to(target) < 0.55 and (absf(rotation.y) < 0.05 or absf(rotation.y + PI) < 0.05):
+				target = locked
+			else:
+				_foot_locks.erase(side)
+		else:
+			_foot_locks.erase(side)
+		# Cel ograniczamy zawsze, także przy proceduralnym kroku bez biblioteki klipów.
+		if grounded:
+			target.y = maxf(target.y, _ground_y(side))
 		_two_bone(_b[side + "UpLeg"], _b[side + "Leg"], foot, _leg_len[side][0], _leg_len[side][1], target, pole)
-		var tilt_f := 0.2 * maxf(0.0, off.y / 0.14)
+		if _foot_locks.has(side) and _gp(foot).origin.distance_to(target) > 0.015:
+			# IK nie może utrzymać podpory poza zasięgiem: zwolnij kotwicę, nie deklaruj nieruchomej stopy.
+			_foot_locks.erase(side)
+		var tilt_f := 0.2 * maxf(0.0, (target.y - _ground_y(side)) / 0.14)
 		_set_global_basis(foot, Basis(Vector3.BACK, -tilt_f) * fb)
 	for side in ["Right", "Left"]:
 		var sg := 1.0 if side == "Right" else -1.0                # prawa ręka po stronie kamery (+z)

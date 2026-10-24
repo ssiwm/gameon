@@ -92,6 +92,22 @@ jobs:
           godot --headless --path prototype -s tools/test_standing_legs.gd 2>&1 | tee standing.log
           grep -a "^PASS standing legs" standing.log
           ! grep -a -E "SCRIPT ERROR|Parse Error|ERROR:|FAIL standing" standing.log
+      - name: Animacje wrogów — tempo, podparcie i śmierć
+        run: |
+          set -o pipefail
+          timeout 120 godot --headless --path prototype -s tools/test_enemy_motion.gd 2>&1 | tee enemy-motion.log
+          grep -a "^PASS enemy motion" enemy-motion.log
+          ! grep -a -E "SCRIPT ERROR|Parse Error|FAIL enemy motion" enemy-motion.log
+      - name: Animacje wrogów — obserwator ENet
+        run: |
+          set -o pipefail
+          timeout 30 godot --headless --path prototype -s tools/test_enemy_motion_network.gd -- --motion-server > enemy-motion-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          timeout 30 godot --headless --path prototype -s tools/test_enemy_motion_network.gd -- --motion-client 2>&1 | tee enemy-motion-client.log
+          wait "$server_pid"
+          grep -a "^PASS enemy motion network" enemy-motion-server.log enemy-motion-client.log
+          ! grep -a -E "SCRIPT ERROR|Parse Error|FAIL enemy motion" enemy-motion-server.log enemy-motion-client.log
       - name: Proporcje świata (test_proportions.gd)
         run: |
           godot --headless --path prototype -s tools/test_proportions.gd 2>&1 | tee proportions.log

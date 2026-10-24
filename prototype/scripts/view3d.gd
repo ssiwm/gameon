@@ -749,11 +749,12 @@ func _sync_enemies(delta: float) -> void:
 		if alive and body != null:
 			if flash and not bool(st["flash"]):
 				e.call("trigger", "hit")
-			elif bool(st["wind"]) and not winding:
+			if (info.has("attack_seq") and int(info["attack_seq"]) > int(st.get("attack_seq", 0))) or (not info.has("attack_seq") and bool(st["wind"]) and not winding):
 				e.call("trigger", "attack")
 		st["alive"] = alive
 		st["flash"] = flash
 		st["wind"] = winding
+		st["attack_seq"] = int(info.get("attack_seq", 0))
 		_estate[id] = st
 		var show: bool = (src.is_visible_in_tree() or dying) and body != null
 		var near: bool = absf(pos.x - cam_x) < 90.0
@@ -791,7 +792,21 @@ func _sync_enemies(delta: float) -> void:
 		st["vx"] = lerpf(float(st.get("vx", 0.0)), vx_now, 0.5)
 		st["vy"] = lerpf(float(st["vy"]), vy_now, 0.45)
 		_estate[id] = st
-		e.call("pose", delta, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), int(info["sp"]), bool(info.get("alert", false)))      # sp: stan specjalny (Wołek: szarża, oszołomienie); alert: reakcja „zauważył" (oczy)
+		var ground := {}
+		if alive and absf(float(st["vy"])) < 55.0:
+			var probes: Dictionary = e.call("ground_probes")
+			for side in probes:
+				var point: Vector3 = probes[side]
+				var origin := Vector2(point.x / Level3D.PX, -e.position.y / Level3D.PX)
+				var query := PhysicsRayQueryParameters2D.create(origin + Vector2(0, -8), origin + Vector2(0, 8), 1)
+				var hit := src.get_world_2d().direct_space_state.intersect_ray(query)
+				if not hit.is_empty():
+					var height: float = -float(hit["position"].y) * Level3D.PX - e.position.y
+					if absf(height) <= 0.45:
+						var normal: Vector2 = hit["normal"]
+						ground[side] = {"height": height, "normal": Vector3(normal.x, -normal.y, 0.0)}
+		e.set("ground_profile", ground)
+		e.call("pose", delta, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), int(info["sp"]), bool(info.get("alert", false)), vx_now)      # tempo kroków z przebytej drogi, także u obserwatora sieciowego
 
 ## Rodzaj cieczy pod stopami (0 błoto, 1 olej, 2 woda), −1 gdy stoi na zwykłym gruncie.
 func _liquid_kind(px: Vector2) -> int:
