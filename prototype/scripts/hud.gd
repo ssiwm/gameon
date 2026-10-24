@@ -26,7 +26,7 @@ const UiTheme := preload("res://scripts/ui_theme.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Ammo := preload("res://scripts/ammo.gd")
 const Hints := preload("res://scripts/hints.gd")
-const GunIcon := preload("res://scripts/gun_icon.gd")
+const EquippedGunIcon := preload("res://scripts/equipped_gun_icon.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const NotePaper := preload("res://scripts/note_paper.gd")
 const MessageView := preload("res://scripts/message_view.gd")
@@ -445,11 +445,11 @@ var _reload_bar: Bar
 var _gren_name: Label
 var _slots: Array[PanelContainer] = []
 var _slot_labels: Array[Label] = []
-var _slot_icons: Array[HudIcon] = []
+var _slot_icons: Array[EquippedGunIcon] = []
 var _slot_row: Control               ## rząd miniatur broni (1–4, V): widoczny chwilę po zmianie broni
 var _slot_t := 0.0
 var _slot_sig := -1
-var _gun_main: HudIcon
+var _gun_main: EquippedGunIcon
 var _q_icon: HudIcon
 var _q_count: Label
 var _f_icon: HudIcon
@@ -722,7 +722,7 @@ func _build_gear_card() -> void:
 		sl.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 		var v := VBoxContainer.new()
 		v.add_theme_constant_override("separation", 1)
-		var ic := HudIcon.new()
+		var ic := EquippedGunIcon.new()
 		ic.custom_minimum_size = Vector2(46, 13)
 		v.add_child(ic)
 		var l := UiTheme.mono(UiTheme.label("", 6, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
@@ -739,7 +739,7 @@ func _build_gear_card() -> void:
 	row.add_theme_constant_override("separation", 10)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_child(row)
-	_gun_main = HudIcon.new()
+	_gun_main = EquippedGunIcon.new()
 	_gun_main.custom_minimum_size = Vector2(166, 50)
 	_gun_main.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(_gun_main)
@@ -1507,12 +1507,12 @@ func _drive_weapons() -> void:
 		var key := str(i + 1) if i < 3 else "V"
 		_slot_labels[i].text = key
 		var d: RefCounted = wc.def_of_slot(i) if i < 3 else Weapons.def(wc.melee_id)
-		_slot_icons[i].set_key(String(GunIcon.HD_KEYS.get(int(d.gun_row), "")), Color.WHITE if sel else Color(1, 1, 1, 0.45))
+		_slot_icons[i].set_weapon(String(d.key), wc.fit_of(d.id), wc.notches_of(d.id), Color.WHITE if sel else Color(1, 1, 1, 0.45))
 		_slots[i].tooltip_text = names[i]
 		_slot_labels[i].add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.MUTED)
 	_ammo_name.text = cur.name
 	var mode_tag := "BURST" if wc.is_burst(cur) else ("AUTO" if cur.burst_size > 0 else "")
-	_gun_main.set_key(String(GunIcon.HD_KEYS.get(int(cur.gun_row), "")))
+	_gun_main.set_weapon(String(cur.key), wc.fit_of(cur.id), wc.notches_of(cur.id))
 	# rząd miniatur pokazujemy ~2,5 s po zmianie slotu / rodzaju broni
 	var sig: int = wc.slot * 10 + (1 if wc.state == wc.State.MELEE else 0)
 	if _slot_sig >= 0 and sig != _slot_sig:

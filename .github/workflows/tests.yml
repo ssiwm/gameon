@@ -66,6 +66,12 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_aim_points.gd 2>&1 | tee aimpoints.log
           grep -a "^PASS" aimpoints.log
+      - name: HUD wyposażonej broni i zestaw czyszczący (test_equipped_ui.gd)
+        run: |
+          set -o pipefail
+          godot --headless --path prototype -s tools/test_equipped_ui.gd 2>&1 | tee equipped-ui.log
+          grep -a "PASS equipped UI" equipped-ui.log
+          ! grep -a -E "SCRIPT ERROR|Parse Error|FAIL equipped UI" equipped-ui.log
       - name: Faza walki, kilof, podparcie stóp i części broni (test_combat_motion.gd)
         run: |
           godot --headless --path prototype -s tools/test_combat_motion.gd 2>&1 | tee combat-motion.log
@@ -157,6 +163,14 @@ jobs:
             if [ "$size" -lt 30000 ]; then echo "$m: brak zrzutu albo pusty kadr"; rc=1; fi
           done
           exit $rc
+      - name: Render wyposażonej broni — wspólny cache i zmiana slotu
+        run: |
+          set -o pipefail
+          command -v xvfb-run >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq xvfb; }
+          mkdir -p shots
+          timeout 120 xvfb-run -a -s "-screen 0 1024x720x24" godot --path prototype --rendering-driver opengl3 -s tools/test_gun_preview_render.gd 2>&1 | tee shots/gun-preview.log
+          grep -a "PASS gun preview render" shots/gun-preview.log
+          ! grep -a -E "SCRIPT ERROR|Parse Error|FAIL gun preview render" shots/gun-preview.log
       - name: Zrzuty jako artefakt
         if: always()
         uses: actions/upload-artifact@v4
