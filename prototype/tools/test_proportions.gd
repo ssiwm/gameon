@@ -85,6 +85,7 @@ func _hands() -> void:
 			continue
 		if look.ends_with("medic"):
 			_medic_uniform(look)
+			_medic_equipment(look)
 		for gun in ["m83", "spread12", "p64"]:
 			_hc.set_gun(gun)
 			for i in 40:
@@ -148,6 +149,54 @@ func _medic_uniform(look: String) -> void:
 		var mat := mi.get_surface_override_material(0) as ShaderMaterial
 		_check(mat != null and mat.get_shader_parameter("has_normal") == true and mat.get_shader_parameter("has_orm") == true,
 				"%s/%s: shader gry używa obu map" % [look, part])
+
+## Osprzęt nie może rozciągać się między odległymi kośćmi; krzyż ma należeć do tekstury skorupy, bez geometrii na głowie.
+func _medic_equipment(look: String) -> void:
+	var helmet := _hc._char_node.find_child("jaldmic_m1951_72", true, false) as MeshInstance3D
+	var steth := _hc._char_node.find_child("punkduck_stethoscope", true, false) as MeshInstance3D
+	var gear := _hc._char_node.find_child("gear", true, false) as MeshInstance3D
+	var pack := _hc._char_node.find_child("medbag", true, false) as MeshInstance3D
+	_check(helmet != null and steth != null and gear != null and pack != null, look + ": komplet osprzętu medyka")
+	if helmet == null or steth == null or gear == null or pack == null:
+		return
+	_check(_stray_weights(helmet, ["mixamorig_Head"]) == 0, look + ": kask przypięty wyłącznie do głowy")
+	_check(_stray_weights(steth, ["mixamorig_Spine2", "mixamorig_Neck"]) == 0, look + ": stetoskop przypięty do tułowia i szyi")
+	_check(_stray_weights(gear, ["mixamorig_Spine2", "mixamorig_Hips"]) == 0, look + ": brak osobnego krzyża 3D na głowie")
+	var steth_size := steth.mesh.get_aabb().size
+	_check(steth_size.y >= 0.32 and steth_size.y <= 0.40, "%s: stetoskop na klatce piersiowej (%.3f m)" % [look, steth_size.y])
+	var neck: int = _hc._sk.find_bone("mixamorig_Neck")
+	var neck_y: float = _hc._sk.get_bone_global_rest(neck).origin.y
+	var collar_gap := steth.mesh.get_aabb().end.y - neck_y
+	_check(collar_gap >= -0.02 and collar_gap <= 0.05, "%s: pałąk stetoskopu przy kołnierzu (%.3f m od szyi)" % [look, collar_gap])
+	_check(pack.mesh.get_aabb().size.x <= 0.14, "%s: głębokość plecaka medycznego %.3f m (≤ 0,14)" % [look, pack.mesh.get_aabb().size.x])
+	var src := helmet.mesh.surface_get_material(0) as BaseMaterial3D
+	var red := 0
+	if src != null and src.albedo_texture != null:
+		var image := src.albedo_texture.get_image()
+		if image.is_compressed():
+			image.decompress()
+		for y in range(0, image.get_height(), 4):
+			for x in range(0, image.get_width(), 4):
+				var c := image.get_pixel(x, y)
+				if c.r > 0.15 and c.r > c.g * 2.0 and c.r > c.b * 2.0:
+					red += 1
+	_check(red >= 20, "%s: czerwony krzyż wypieczony w albedo skorupy (%d próbek)" % [look, red])
+
+func _stray_weights(mi: MeshInstance3D, allowed: Array[String]) -> int:
+	var stray := 0
+	var sk: Skeleton3D = _hc._sk
+	for si in mi.mesh.get_surface_count():
+		var arr := mi.mesh.surface_get_arrays(si)
+		var bs: PackedInt32Array = arr[Mesh.ARRAY_BONES]
+		var ws: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
+		for i in ws.size():
+			if ws[i] <= 0.0001:
+				continue
+			var bone := mi.skin.get_bind_bone(bs[i])
+			var name := String(mi.skin.get_bind_name(bs[i])) if bone < 0 else String(sk.get_bone_name(bone))
+			if name not in allowed:
+				stray += 1
+	return stray
 
 ## Rzeczywiste środki dłoni po IK mają stykać się w chwycie P-64; kontrola kątów, kucania i obu kierunków bez klatki przeładowania.
 func _pistol_support(look: String) -> void:

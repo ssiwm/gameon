@@ -37,7 +37,7 @@ GEAR_SRC = os.path.join(os.path.dirname(os.path.dirname(HERE)), "art_src", "gear
 # obrót wokół pionu (°: przód modelu → od pleców; śpiwór w poprzek pleców), budżet trójkątów
 GEAR_MODELS = {
     "backpack": {"file": "backpack.glb", "bone": "Spine2", "height": 0.58, "yaw": -90.0, "tris": 4000},
-    "medbag": {"file": "medbag.glb", "bone": "Spine2", "height": 0.34, "yaw": -90.0, "tris": 4000},      # plecak medyczny (0,42 wystawał spod pach)
+    "medbag": {"file": "medbag.glb", "bone": "Spine2", "height": 0.34, "depth": 0.12, "yaw": -90.0, "tris": 4000},  # kompaktowy plecak, bez nadmiernie głębokiej bryły TRELLIS
     "pouch": {"file": "pouch.glb", "bone": "Hips", "height": 0.12, "depth": 0.065, "yaw": 0.0, "tris": 1500},      # ładownica na pas
     "canteen": {"file": "canteen.glb", "bone": "Hips", "height": 0.20, "depth": 0.085, "yaw": -90.0, "tris": 1500},  # manierka w pokrowcu   # oś walca w poprzek pleców
 }
@@ -367,7 +367,7 @@ def _strap(rig, p0, p1, bone):
     _part(rig, "strap", _box((0.012, 0.045, v.length + 0.02), (p0 + p1) * 0.5, 0.004, rot), bone, "strap")
 
 
-def _surface(rig, skip=("gear", "low-poly", "eyebrow", "eyelash", "short", "ponytail", "helmet", "m1951", "hood", "gas_mask")):
+def _surface(rig, skip=("gear", "low-poly", "eyebrow", "eyelash", "short", "ponytail", "helmet", "m1951", "hood", "gas_mask", "stethoscope")):
     """BVH powierzchni postaci (ciało i ubrania, bez ekwipunku, włosów, oczu i nakryć głowy) — do przyklejania pasków i chusty."""
     from mathutils.bvhtree import BVHTree
     verts, polys = [], []
@@ -603,7 +603,9 @@ def gear_model(rig, pts, key, neck, sh):
     zc = top - GEAR_MODELS[key]["height"] * ks * 0.5
     back = _section(pts, zc, y_max=0.12)[0]
     xs = sorted(v.x for v in vs)
-    o.data.transform(Matrix.Translation((back + 0.015 - xs[int(len(xs) * 0.9)], 0.0, zc)))
+    # Plecak medyczny opiera się o kurtkę; kwantyl wpuszczał część klapy i pasków głęboko w plecy.
+    contact = back - 0.004 - xs[-1] if key == "medbag" else back + 0.015 - xs[int(len(xs) * 0.9)]
+    o.data.transform(Matrix.Translation((contact, 0.0, zc)))
     vs = [v.co for v in o.data.vertices]
     z1 = max(v.z for v in vs)
     crown = [v for v in vs if v.z > z1 - 0.08]
@@ -688,18 +690,7 @@ def _add_gear(rig, gear):
             top = max((bt.matrix_world @ v.co).z for v in bt.data.vertices) if bt is not None else None
             _ring(rig, cl, side + "Foot", side + "Leg", side + "Leg", 0.06, "tape", shift=0.10, bvh=bvh,
                   at_z=None if top is None else top + 0.01)                                                  # styk nogawki i cholewki
-    if "helmet_cross" in gear:
-        # biały hełm medyka: czerwony krzyż z przodu (Head)
-        hm = next((o for o in rig.children if o.type == "MESH" and ("helmet" in o.name or "m1951" in o.name)), None)
-        if hm is not None:
-            hv = [hm.matrix_world @ v.co for v in hm.data.vertices]
-            z1 = max(p.z for p in hv)
-            zc = z1 - 0.06                                       # czasza hełmu (bez paska pod brodą)
-            band = [p.x for p in hv if abs(p.z - zc) < 0.02 and abs(p.y) < 0.04]
-            xf = max(band) if band else max(p.x for p in hv)
-            # krzyż odsunięty od czaszy (na zakrzywionej powierzchni płaskie kostki częściowo chowały się w hełmie)
-            _part(rig, "helmet_cross", _box((0.008, 0.07, 0.022), (xf + 0.004, 0.0, zc), 0.0), "Head", "red")
-            _part(rig, "helmet_cross", _box((0.008, 0.022, 0.07), (xf + 0.004, 0.0, zc), 0.0), "Head", "red")
+    # Krzyż hełmu jest farbą w albedo, po rozdzieleniu lustrzanego UV (paint_helmet_cross).
     if "backpack_model" in gear:
         xc, d, top, zc = gear_model(rig, pts, "backpack", neck, sh)
         _harness(rig, pts, xc, d, top, zc, sh)
@@ -1368,6 +1359,106 @@ def hair_under_hat(rig):
             bpy.data.objects.remove(o)
 
 
+def fit_medic_equipment(rig):
+    """Hełm sztywny na głowie; stetoskop krótszy, na kurtce, z wagami szyi i tułowia zamiast głowy i bioder."""
+    helmet = next((o for o in rig.children if o.type == "MESH" and "m1951" in o.name), None)
+    if helmet is not None:
+        helmet.vertex_groups.clear()
+        head = helmet.vertex_groups.new(name="mixamorig:Head")
+        head.add(list(range(len(helmet.data.vertices))), 1.0, "REPLACE")
+    steth = next((o for o in rig.children if o.type == "MESH" and "stethoscope" in o.name), None)
+    if steth is None:
+        return
+    neck = _bone(rig, "Neck")
+    ks = neck.z / 1.52
+    world = steth.matrix_world
+    inv = world.inverted()
+    vs = [world @ v.co for v in steth.data.vertices]
+    top, bottom = max(p.z for p in vs), min(p.z for p in vs)
+    collar_top = neck.z + 0.025 * ks
+    scale = 0.36 * ks / (top - bottom)
+    for p in vs:
+        p.z = collar_top - (top - p.z) * scale
+    coords = np.array([p[:] for p in vs])
+    surface = _surface(rig)
+    steth.vertex_groups.clear()
+    spine = steth.vertex_groups.new(name="mixamorig:Spine2")
+    collar = steth.vertex_groups.new(name="mixamorig:Neck")
+    moved = 0
+    for v, p in zip(steth.data.vertices, vs):
+        # Przednia część węża na kurtce; przy karku zachowujemy kształt pałąka.
+        if p.z < neck.z - 0.025:
+            hit, normal, _, _ = surface.ray_cast(Vector((p.x + 0.5, p.y, p.z)), Vector((-1, 0, 0)), 0.8)
+            if hit is not None and normal.x > 0.25:
+                # Przesuwamy środek lokalnego przekroju, zachowując jego grubość (nie spłaszczamy rurki).
+                nearby = np.linalg.norm(coords[:, 1:] - np.array((p.y, p.z)), axis=1) < 0.008
+                centre_x = float(np.median(coords[nearby, 0]))
+                p.x += hit.x + 0.008 - centre_x
+                moved += 1
+        v.co = inv @ p
+        w = min(max((p.z - (neck.z - 0.06)) / 0.12, 0.0), 1.0)
+        w = w * w * (3.0 - 2.0 * w)
+        if w < 1.0:
+            spine.add([v.index], 1.0 - w, "REPLACE")
+        if w > 0.0:
+            collar.add([v.index], w, "REPLACE")
+    print("MEDIC FIT helmet rigid, stethoscope height %.3f m, on jacket %d verts" % (0.36 * ks, moved))
+
+
+def paint_helmet_cross(rig):
+    """Krzyż farbą na zakrzywionej czaszy: rasteryzacja istniejącego UV, bez siatki, wypukłości i osobnego materiału."""
+    helmet = next((o for o in rig.children if o.type == "MESH" and "m1951" in o.name), None)
+    if helmet is None:
+        raise RuntimeError("Medyczny hełm bez skorupy M1951")
+    img = obj_images(helmet).get("diffuseTexture")
+    if img is None or not helmet.data.uv_layers:
+        raise RuntimeError("Medyczny hełm bez albedo lub UV")
+    img.name = "medic_helmet_albedo"
+    w, h = img.size
+    px = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)
+    world = helmet.matrix_world
+    coords = np.array([(world @ v.co)[:] for v in helmet.data.vertices])
+    top = coords[:, 2].max()
+    centre_z = top - 0.07
+    centre_y = (coords[:, 1].min() + coords[:, 1].max()) * 0.5
+    front = coords[:, 0].max()
+    mask = np.zeros((h, w), dtype=bool)
+    uv = helmet.data.uv_layers.active.data
+    for face in helmet.data.polygons:
+        for k in range(1, len(face.vertices) - 1):
+            ids = [0, k, k + 1]
+            xyz = coords[[face.vertices[i] for i in ids]]
+            normal = np.cross(xyz[1] - xyz[0], xyz[2] - xyz[0])
+            if normal[0] <= 0.2 * np.linalg.norm(normal):
+                continue
+            q = np.array([uv[face.loop_indices[i]].uv[:] for i in ids]) * (w, h)
+            x0 = max(0, int(np.floor(q[:, 0].min())))
+            x1 = min(w - 1, int(np.ceil(q[:, 0].max())))
+            y0 = max(0, int(np.floor(q[:, 1].min())))
+            y1 = min(h - 1, int(np.ceil(q[:, 1].max())))
+            if x1 < x0 or y1 < y0:
+                continue
+            a, b, c = q
+            det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+            if abs(det) < 1e-9:
+                continue
+            xs, ys = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
+            l1 = ((b[1] - c[1]) * (xs - c[0]) + (c[0] - b[0]) * (ys - c[1])) / det
+            l2 = ((c[1] - a[1]) * (xs - c[0]) + (a[0] - c[0]) * (ys - c[1])) / det
+            pos = l1[..., None] * xyz[0] + l2[..., None] * xyz[1] + (1 - l1 - l2)[..., None] * xyz[2]
+            dy, dz = abs(pos[..., 1] - centre_y), abs(pos[..., 2] - centre_z)
+            cross = ((dy <= 0.011) & (dz <= 0.035)) | ((dy <= 0.035) & (dz <= 0.011))
+            cross &= (l1 >= 0) & (l2 >= 0) & (l1 + l2 <= 1) & (pos[..., 0] > front - 0.11)
+            mask[y0:y1 + 1, x0:x1 + 1] |= cross
+    # Zachowana drobna faktura farby; AO skorupy zostanie wypieczone w następnym kroku.
+    wear = np.clip(px[:, :, :3].mean(axis=2) / max(float(px[:, :, :3].mean()), 1e-6), 0.9, 1.05)
+    px[mask, :3] = np.array(COL["red"][0]) * wear[mask, None]
+    img.pixels[:] = px.ravel()
+    if mask.sum() < 100:
+        raise RuntimeError("Brak krzyża w albedo hełmu")
+    print("HELMET PAINT", int(mask.sum()), "texels, 0 new vertices")
+
+
 def fix_alpha(rig):
     """Tryby przezroczystości do GLB: ciało, ubrania i ekwipunek nieprzezroczyste (MPFB daje wszystkim „blend” — źle sortowane trójkąty,
     w grze i tak bez przezroczystości), karty włosów, brwi i rzęs z przycinaniem alfa (węzeł Round → glTF MASK)."""
@@ -1510,12 +1601,16 @@ def build(name, spec):
     for k, c in spec["clothes"].items():
         if c.get("relocate"):
             relocate(rig, bpy.data.objects[k], c["relocate"])
+    if "helmet_cross" in spec.get("gear", []):
+        fit_medic_equipment(rig)
     hair_under_hat(rig)
     add_gear(rig, spec.get("gear", []))
     _cycles(SAMPLES)
     texture_gear(rig)
     for o in [o for o in rig.children if o.type == "MESH" and o != body and not _is_hair(o.name) and o.name != "low-poly"]:
         unique_uv(o, BAKE_TEX)
+    if "helmet_cross" in spec.get("gear", []):
+        paint_helmet_cross(rig)
     bake_shading(rig, body, BAKE_TEX)
 
     # tekstury i metaliczność; w GLB tekstury idą jako WebP (z przezroczystością, kilka razy mniejsze niż PNG)
