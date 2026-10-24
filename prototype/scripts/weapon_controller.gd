@@ -121,7 +121,7 @@ var player: CharacterBody2D
 var loadout: Array[int] = [Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Weapons.START_SIDEARM]
 var melee_id := Weapons.START_MELEE
 var slot := 0
-var inspect_item: Node2D               ## lokalnie: broń w oględzinach ([F]; widok z oczu gracza i panel HUD)
+var inspect_item: Node2D               ## lokalnie: broń w oględzinach ([H]; widok z oczu gracza i panel HUD)
 var _inspect_hp := 0.0                 ## zdrowie w chwili otwarcia oględzin (spadek je zamyka)
 var mags: Dictionary = {}
 var burst_on: Dictionary = {}     ## id broni → true: wybrany tryb serii (klawisz B; lokalnie, serwer go nie potrzebuje)
@@ -1537,9 +1537,9 @@ func nearby_weapon_item() -> Node2D:
 		return null
 	return lvl.weapon_item_near(player.global_position + Vector2(0, -8))
 
-## Przy broni (stojak albo łup na ziemi): [F] otwiera / zamyka oględziny (widok z oczu gracza, broń unosi się przed nim, statystyki obok —
-## weapon_inspect.gd i view3d.gd, lokalnie), [E] bierze broń (zamianę rozstrzyga serwer). Klawisz flary przy broni służy do oględzin,
-## więc flara w tym miejscu nie leci (player.gd). Odejście od broni albo utrata zdrowia zamyka oględziny.
+## Przy broni (stojak albo łup na ziemi): [H] otwiera / zamyka oględziny (widok z oczu gracza, broń unosi się przed nim, statystyki obok —
+## weapon_inspect.gd i view3d.gd, lokalnie), [E] bierze broń (zamianę rozstrzyga serwer). Oględziny mają osobną akcję inspect_weapon,
+## więc [F] nadal rzuca flarę obok broni (player.gd). Odejście od broni albo utrata zdrowia zamyka oględziny.
 ## Gablota (cabinet.gd): oględziny obejmują całą gablotę — ↑ / ↓ wybiera broń rząd wyżej / niżej, [E] bierze wybraną; zamyka je dopiero odejście
 ## od gabloty (najbliższa broń jest wtedy z innej gabloty albo żadna).
 func _tick_inspect() -> void:
@@ -1556,7 +1556,7 @@ func _tick_inspect() -> void:
 			_cycle_cabinet(-1)
 		elif Input.is_action_just_pressed("move_down"):
 			_cycle_cabinet(1)
-	if Input.is_action_just_pressed("flare"):
+	if Input.is_action_just_pressed("inspect_weapon"):
 		inspect_item = null if (inspect_item == it or _same_cabinet(inspect_item, it)) else it
 		_inspect_hp = hp_now
 		Audio.play("ui_click", Audio.BUS_UI, -16.0)

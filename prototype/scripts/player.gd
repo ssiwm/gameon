@@ -802,7 +802,7 @@ func _local_brain(delta: float) -> void:
 		_try_overcharge()
 	if Input.is_action_just_pressed("scream"):
 		Voice.try_scream(self)
-	if Input.is_action_just_pressed("flare") and weapons.nearby_weapon_item() == null:      # przy broni ten klawisz otwiera oględziny
+	if Input.is_action_just_pressed("flare"):
 		_throw_flare()
 
 	if Input.is_action_just_pressed("flashlight"):

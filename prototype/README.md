@@ -45,7 +45,10 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7 (Forward+). Rozgrywka to sym
   boss Żyła — animowany portret z arkusza, statystyki liczone z `Enemy.KINDS`, opis i wskazówka) · **WEAPONS** (wszystkie 12 pozycji:
   miniatura, obrażenia, tempo, zasięg, magazynek/zapas, przeładowanie, hałas, opis i wskazówka — statystyki liczone z `WeaponDef`,
   więc nie rozjeżdżają się z grą) · GEAR · PERKS · **CONTROLS** (edytor przypisań: klik w klawisz lub przycisk pada, potem nowy;
-  konflikt = zamiana miejscami; RESET TO DEFAULTS; zapis w sekcji `keys` pliku ustawień). Dane i teksty: `codex.gd`, widok: `codex_page.gd`.
+  obsługuje także mysz, kółko, przyciski M4/M5, dodawanie (+), usuwanie (×) i akcje bez początkowego przycisku pada.
+  Plan pokazuje wszystkie zmieniane akcje przed zatwierdzeniem; zamiana jest atomowa i sprawdzana w kontekstach misji,
+  strzelnicy i menu. Niebezpieczny konflikt jest odrzucany. Esc zawsze anuluje/zamyka/pauzuje; osie ruchu są stałe.
+  APPLY CLASSIC / APPLY MODERN wymagają świadomego zatwierdzenia. Zapis w sekcji `keys` pliku ustawień). Dane i teksty: `codex.gd`, widok: `codex_page.gd`.
 - **Podpowiedzi** (`hints.gd`): krótkie, jednorazowe wskazówki w chwili, gdy mechanika się przydaje (pierwszy ruch, pierwszy
   hałas, „SOMETHING IS LISTENING", leżący kolega, latarka, flara, kryjówka). Zapamiętane — weteran ich nie zobaczy; wyłącznik w menu.
   Teksty używają znaczników `{id}` (np. `{interact}`) — klawisz bierze się z rejestru akcji, więc zmiana przypisania zmienia podpowiedź.
@@ -165,6 +168,7 @@ Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP =
 | Rodzaj amunicji (następny magazynek; od 1.7.317) | Z | — (do przypisania) |
 | Latarka | L | D-pad ← |
 | Flara (rzut łukiem w stronę celowania) | F | D-pad → |
+| Oględziny broni przy łupie / gablocie (nie blokują klawisza flary) | H | — (do przypisania) |
 | **Krzyk** (także mikrofon, jeśli włączony w lobby) | G | LT |
 | Zeskok z kładki | dół + SPACJA | lewy drążek ↓ + A |
 | Pokaż / ukryj sterowanie | F1 | – |
@@ -175,6 +179,17 @@ Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP =
 | Pełny ekran | F11 | – |
 
 Podpowiedzi w grze i ściąga sterowania pokazują klawisze albo przyciski pada — zależnie od tego, czego gracz użył ostatnio. W menu pauzy: D-pad / drążek i A nawigują, B zamyka, LB / RB przełączają zakładki. Wszystkie akcje i ich wiązania są w `scripts/actions.gd`.
+
+Tabela powyżej opisuje profil **Classic**. Opcjonalny **Modern** zmienia latarkę na C (L pozostaje drugim klawiszem),
+przedmiot na M4 (lewy Alt/Cmd pozostaje), dodaje M5 i Share/Create do oględzin H oraz zamienia na padzie przeładowanie
+na X i cios na R3. Bieżące własne przypisania pozostają przy starcie gry. HUD, sloty broni i ściągi korzystają z aktualnej
+mapy; brak przypisania na padzie pokazują jako —. Oznaczenia Xbox / PlayStation / Nintendo wynikają z nazwy zgłaszanej
+przez sterownik (Steam Input może zgłaszać wirtualny Xbox). Na strzelnicy osobne **Range brace key: HOLD / TOGGLE**
+steruje podparciem broni; zmiana stanowiska lub otwarcie nakładki wyłącza przełączone podparcie.
+
+Regresje: `godot --headless --path prototype -s tools/test_input_bindings.gd` oraz
+`xvfb-run godot --path prototype --rendering-driver opengl3 -s tools/test_controls_render.gd`.
+Szczegóły zakresu i ograniczeń: [`CONTROLS.md`](CONTROLS.md).
 
 ## Testy broni
 

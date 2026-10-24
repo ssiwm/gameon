@@ -450,6 +450,7 @@ var _slot_row: Control               ## rząd miniatur broni (1–4, V): widoczn
 var _slot_t := 0.0
 var _slot_sig := -1
 var _gun_main: EquippedGunIcon
+var _gear_keys: Dictionary = {}
 var _q_icon: HudIcon
 var _q_count: Label
 var _f_icon: HudIcon
@@ -784,19 +785,19 @@ func _build_gear_card() -> void:
 	res.add_theme_constant_override("separation", 12)
 	res.alignment = BoxContainer.ALIGNMENT_END
 	_equip_card.add_child(res)
-	var q := _tile("Q", "lure", true)
+	var q := _tile("overcharge", "lure", true)
 	_q_icon = q["icon"]
 	_q_count = q["count"]
 	res.add_child(q["root"])
-	var f := _tile("F", "flare", true)
+	var f := _tile("flare", "flare", true)
 	_f_icon = f["icon"]
 	_f_count = f["count"]
 	res.add_child(f["root"])
-	var a := _tile("ALT" if OS.get_name() != "macOS" else "CMD", "frag", true)      # przedmiot (lewy Alt użyj, X zmiana rodzaju)
+	var a := _tile("throw", "frag", true)      # przedmiot (lewy Alt użyj, X zmiana rodzaju)
 	_a_icon = a["icon"]
 	_gren_name = a["count"]
 	res.add_child(a["root"])
-	var lt := _tile("L", "flashlight", false)
+	var lt := _tile("flashlight", "flashlight", false)
 	_l_icon = lt["icon"]
 	_battery = Bar.new()
 	_battery.custom_minimum_size = Vector2(26, 1.6)
@@ -808,7 +809,7 @@ func _build_gear_card() -> void:
 	res.add_child(lt["root"])
 
 ## Kafelek sprzętu: model 3D (36×40) z liczbą w prawym górnym rogu i klawiszem pod spodem (podkreślona litera).
-func _tile(key_text: String, icon_key: String, counted: bool) -> Dictionary:
+func _tile(action_id: String, icon_key: String, counted: bool) -> Dictionary:
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 3)
 	root.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -830,7 +831,9 @@ func _tile(key_text: String, icon_key: String, counted: bool) -> Dictionary:
 	var kr := HBoxContainer.new()
 	kr.add_theme_constant_override("separation", 4)
 	kr.alignment = BoxContainer.ALIGNMENT_CENTER
-	kr.add_child(_key(key_text))
+	var key_label := _key(Actions.key(action_id))
+	_gear_keys[action_id] = key_label
+	kr.add_child(key_label)
 	root.add_child(kr)
 	return {"root": root, "box": box, "icon": icon, "count": count, "keyrow": kr}
 
@@ -1129,11 +1132,16 @@ func _build_controls() -> void:
 	add_child(_controls)
 	_f1 = UiTheme.label(tr("%s  controls") % Actions.key("help"), 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
 	var refresh_keys := func() -> void:        # klawiatura ↔ pad albo zmiana przypisań: podpowiedzi pokazują właściwe klawisze
+		_refresh_gear_keys()
 		_controls.text = Actions.range_hud_line() if _controls_range else Actions.hud_line()
 		_f1.text = tr("%s  controls") % Actions.key("help")
 	InputSetup.device_changed.connect(func(_pad: bool) -> void: refresh_keys.call())
 	Settings.bindings_changed.connect(refresh_keys)
 	add_child(_f1)
+
+func _refresh_gear_keys() -> void:
+	for id in _gear_keys:
+		(_gear_keys[id] as Label).text = Actions.key(id)
 
 ## Ściemnienie pod modalami: nad kartami HUD (z_index), pod kartą wyniku i warsztatem.
 func _build_dim() -> void:
@@ -1504,7 +1512,7 @@ func _drive_weapons() -> void:
 	names.append(Weapons.def(wc.melee_id).name)
 	for i in _slots.size():
 		var sel: bool = (i == wc.slot) if i < 3 else (wc.state == wc.State.MELEE)
-		var key := str(i + 1) if i < 3 else "V"
+		var key := Actions.key(Actions.WEAPON_IDS[i]) if i < 3 else Actions.key("melee")
 		_slot_labels[i].text = key
 		var d: RefCounted = wc.def_of_slot(i) if i < 3 else Weapons.def(wc.melee_id)
 		_slot_icons[i].set_weapon(String(d.key), wc.fit_of(d.id), wc.notches_of(d.id), Color.WHITE if sel else Color(1, 1, 1, 0.45))
@@ -2282,12 +2290,12 @@ func _prompt_candidates() -> Array:
 		var nd: RefCounted = Weapons.def(it.arg)
 		var lvl_p := get_tree().get_first_node_in_group("level")
 		if lvl_p != null and lvl_p.is_locked_item(it):
-			add.call(tr("LOCKED  ·  %s   ·   [%s]  Inspect") % [Scrap.lock_text(it.arg), Actions.key("flare")], -1.0, UiTheme.MUTED)
+			add.call(tr("LOCKED  ·  %s   ·   [%s]  Inspect") % [Scrap.lock_text(it.arg), Actions.key("inspect_weapon")], -1.0, UiTheme.MUTED)
 		else:
 			var wc2: Node = _player.weapons
 			var swap_out: String = Weapons.def(wc2.loadout[wc2.slot if wc2.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc2.melee_id).name
 			var take_key := Actions.key("interact")
-			var look_key := Actions.key("flare")
+			var look_key := Actions.key("inspect_weapon")
 			add.call(tr("[%s]  Take %s  (drops %s)   ·   [%s]  Inspect") % [take_key, nd.name, swap_out, look_key] if not wc2.carries(it.arg) else tr("[%s]  Take ammo for %s   ·   [%s]  Inspect") % [take_key, nd.name, look_key], -1.0, UiTheme.ACCENT)
 	if m != null and m.phase == Mission.Phase.EXTRACT:
 		var st: Dictionary = m.local_extract_state()
