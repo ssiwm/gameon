@@ -10,17 +10,24 @@ const TIMING := {"smash": [0.60, 0.76], "cleave": [0.50, 0.64], "claw": [0.35, 0
 ## Klatki: [ułamek zapowiedzi lub odzyskania równowagi, kanały riga]. Ujemny czas = przed kontaktem.
 const KEYS := {
 	"landing": [[-1.0,{"drop": 0.0,"lean": 0.0,"pitch": 0.0}],[0.25,{"drop": 0.09,"lean": 6.0,"pitch": -7.0}],[0.58,{"drop": 0.03,"lean": 2.0,"pitch": -2.0}]],
-	"smash": [[-1.0, {"lean": 2.0, "drop": 0.02, "hR": Vector3(0.05,0.70,0.46), "hL": Vector3(0.05,0.70,-0.46)}],
-		[-0.65,{"lean": -7.0,"drop": 0.09,"hR": Vector3(-0.20,1.45,0.44),"hL": Vector3(-0.20,1.45,-0.44)}],
-		[-0.18,{"lean": -12.0,"drop": 0.05,"hR": Vector3(-0.14,1.80,0.36),"hL": Vector3(-0.14,1.80,-0.36)}],
-		[0.0,{"lean": 25.0,"drop": 0.16,"hR": Vector3(0.85,0.60,0.25),"hL": Vector3(0.85,0.60,-0.25),"fR": Vector3(0.18,0,0),"fL": Vector3(-0.14,0,0)}],
-		[0.16,{"lean": 29.0,"drop": 0.18,"hR": Vector3(0.65,0.48,0.29),"hL": Vector3(0.65,0.48,-0.29)}],
-		[0.64,{"lean": 10.0,"drop": 0.07,"hR": Vector3(0.22,0.65,0.46),"hL": Vector3(0.22,0.65,-0.46)}]],
-	"cleave": [[-1.0,{"lean": 2.0,"drop": 0.02,"hR": Vector3(0.05,0.68,0.44),"hL": Vector3(0.10,0.72,-0.44)}],
-		[-0.62,{"lean": -5.0,"hR": Vector3(-0.23,1.55,0.55),"hL": Vector3(0.15,1.05,-0.42)}],
-		[-0.18,{"lean": -8.0,"hR": Vector3(-0.12,1.86,0.34)}],
-		[0.0,{"lean": 17.0,"drop": 0.10,"hR": Vector3(0.88,0.95,0.26),"hL": Vector3(0.12,1.10,-0.44),"fR": Vector3(0.14,0,0),"fL": Vector3(-0.10,0,0)}],
-		[0.20,{"lean": 21.0,"hR": Vector3(0.55,0.62,0.30)}], [0.65,{"lean": 7.0,"drop": 0.04,"hR": Vector3(0.12,0.78,0.44)}]],
+	# Ciężkie ciosy mają pracę całego ciała i jawny obrót dłoni. Stopy pozostają
+	# podporą; ciężar przesuwa miednica, a odzyskanie równowagi trwa dłużej niż zamach.
+	"smash": [[-1.0,{"lean": 1.0,"drop": 0.01,"shift": 0.0,"pelvis_yaw": 0.0,"chest_yaw": 0.0,"wristR": 0.0,"wristL": 0.0,"hR": Vector3(0.33,1.02,1.04),"hL": Vector3(0.30,1.02,-1.04)}],
+		[-0.72,{"lean": -4.0,"drop": 0.07,"shift": -0.05,"hR": Vector3(0.02,1.45,0.98),"hL": Vector3(0.07,1.42,-0.98),"wristR": -25.0,"wristL": -22.0}],
+		[-0.28,{"lean": -8.0,"drop": 0.02,"shift": -0.06,"hR": Vector3(0.22,2.30,0.71),"hL": Vector3(0.26,2.23,-0.71),"wristR": -95.0,"wristL": -92.0}],
+		[-0.12,{"lean": 1.0,"drop": 0.025,"shift": 0.015,"hR": Vector3(0.64,1.81,0.68),"hL": Vector3(0.60,1.78,-0.68),"wristR": -30.0,"wristL": -30.0}],
+		[0.0,{"lean": 20.0,"drop": 0.09,"shift": 0.10,"hR": Vector3(1.09,1.03,0.66),"hL": Vector3(1.04,1.01,-0.66),"wristR": 55.0,"wristL": 52.0}],
+		[0.13,{"lean": 24.0,"drop": 0.12,"shift": 0.10,"hR": Vector3(0.98,0.86,0.68),"hL": Vector3(0.94,0.86,-0.68),"wristR": 50.0,"wristL": 48.0}],
+		[0.48,{"lean": 13.0,"drop": 0.065,"shift": 0.05,"hR": Vector3(0.60,0.98,0.93),"hL": Vector3(0.56,0.98,-0.93),"wristR": 20.0,"wristL": 18.0}],
+		[0.84,{"lean": 3.0,"drop": 0.02,"shift": 0.005,"hR": Vector3(0.35,1.02,1.04),"hL": Vector3(0.32,1.02,-1.04),"wristR": 2.0,"wristL": 2.0}]],
+	"cleave": [[-1.0,{"lean": 2.0,"drop": 0.01,"shift": 0.0,"sway": 0.0,"pelvis_yaw": 0.0,"chest_yaw": 0.0,"wristR": 0.0,"wristL": 0.0,"hR": Vector3(0.09,0.88,0.72),"hL": Vector3(0.16,0.89,-0.72)}],
+		[-0.68,{"lean": -3.0,"drop": 0.04,"shift": -0.04,"sway": 0.015,"pelvis_yaw": -5.0,"chest_yaw": -12.0,"hR": Vector3(-0.10,1.48,0.79),"hL": Vector3(0.22,1.10,-0.71),"wristR": -65.0,"wristL": 8.0}],
+		[-0.25,{"lean": -6.0,"drop": 0.01,"shift": -0.035,"pelvis_yaw": -7.0,"chest_yaw": -18.0,"hR": Vector3(0.15,2.30,0.47),"hL": Vector3(0.32,1.20,-0.68),"wristR": -155.0,"wristL": 12.0}],
+		[-0.10,{"lean": 5.0,"shift": 0.03,"pelvis_yaw": 3.0,"chest_yaw": 1.0,"hR": Vector3(0.58,1.95,0.44),"hL": Vector3(0.27,1.13,-0.73),"wristR": -25.0}],
+		[0.0,{"lean": 17.0,"drop": 0.065,"shift": 0.09,"sway": -0.015,"pelvis_yaw": 7.0,"chest_yaw": 12.0,"hR": Vector3(1.15,1.18,0.44),"hL": Vector3(0.16,1.05,-0.76),"wristR": 72.0,"wristL": -8.0}],
+		[0.14,{"lean": 22.0,"drop": 0.085,"shift": 0.10,"pelvis_yaw": 8.0,"chest_yaw": 15.0,"hR": Vector3(0.90,0.84,0.49),"hL": Vector3(0.12,0.97,-0.76),"wristR": 28.0}],
+		[0.48,{"lean": 12.0,"drop": 0.045,"shift": 0.04,"pelvis_yaw": 4.0,"chest_yaw": 6.0,"hR": Vector3(0.35,0.88,0.67),"hL": Vector3(0.15,0.90,-0.72),"wristR": 8.0,"wristL": 0.0}],
+		[0.84,{"lean": 3.0,"drop": 0.015,"shift": 0.004,"sway": 0.0,"pelvis_yaw": 0.0,"chest_yaw": 0.0,"hR": Vector3(0.11,0.88,0.72),"hL": Vector3(0.16,0.89,-0.72),"wristR": 1.0}]],
 	"claw": [[-1.0,{"lean": 4.0,"hR": Vector3(0.08,0.85,0.44),"hL": Vector3(0.22,0.85,-0.44)}],
 		[-0.40,{"lean": 1.0,"drop": 0.03,"hR": Vector3(-0.20,1.48,0.62),"hL": Vector3(0.38,1.15,-0.38)}],
 		[0.0,{"lean": 15.0,"drop": 0.08,"hR": Vector3(0.88,1.22,0.18),"hL": Vector3(0.56,1.08,-0.34),"fR": Vector3(0.15,0,0),"fL": Vector3(-0.10,0,0)}],
@@ -107,5 +114,49 @@ static func build() -> AnimationLibrary:
 					var t: float = contact(name) * (1.0 + float(entry[0])) if float(entry[0]) < 0.0 else contact(name) + recovery(name) * float(entry[0])
 					clip.track_insert_key(tracks[channel], t, entry[1][channel])
 			clip.track_insert_key(tracks[channel], clip.length, initial)
+			if name in ["smash", "cleave"]: _bounded_track(clip, tracks[channel])
 		lib.add_animation(name, clip)
 	return lib
+
+## Monotoniczny Hermite, wypieczony w 120 Hz. Swobodny spline kubiczny
+## przestrzeliwał cele IK i kąty nadgarstka przy nierównych odstępach klatek.
+static func _slope(times: Array[float], values: Array[float], index: int) -> float:
+	if index == 0 or index == times.size() - 1: return 0.0
+	var before := times[index] - times[index - 1]
+	var after := times[index + 1] - times[index]
+	var a := (values[index] - values[index - 1]) / before
+	var b := (values[index + 1] - values[index]) / after
+	if a * b <= 0.0: return 0.0
+	var w1 := 2.0 * after + before
+	var w2 := after + 2.0 * before
+	return (w1 + w2) / (w1 / a + w2 / b)
+
+static func _hermite(times: Array[float], values: Array[float], time: float) -> float:
+	var i := 0
+	while i < times.size() - 2 and time > times[i + 1]: i += 1
+	var duration := times[i + 1] - times[i]
+	var u := clampf((time - times[i]) / duration, 0.0, 1.0)
+	var u2 := u * u
+	var u3 := u2 * u
+	return (2.0 * u3 - 3.0 * u2 + 1.0) * values[i] + (u3 - 2.0 * u2 + u) * duration * _slope(times, values, i) + (-2.0 * u3 + 3.0 * u2) * values[i + 1] + (u3 - u2) * duration * _slope(times, values, i + 1)
+
+static func _bounded_track(clip: Animation, track: int) -> void:
+	var times: Array[float] = []
+	var components: Array = [[], [], []]
+	var vector := clip.track_get_key_value(track, 0) is Vector3
+	for key in clip.track_get_key_count(track):
+		times.append(clip.track_get_key_time(track, key))
+		var value = clip.track_get_key_value(track, key)
+		for axis in (3 if vector else 1): components[axis].append(float(value[axis]) if vector else float(value))
+	var samples: Array[float] = times.duplicate()
+	for frame in ceili(clip.length * 120.0): samples.append(minf(frame / 120.0, clip.length))
+	samples.sort()
+	for key in range(clip.track_get_key_count(track) - 1, -1, -1): clip.track_remove_key(track, key)
+	clip.track_set_interpolation_type(track, Animation.INTERPOLATION_LINEAR)
+	for time in samples:
+		var value := Vector3.ZERO
+		for axis in (3 if vector else 1):
+			var values: Array[float] = []
+			values.assign(components[axis])
+			value[axis] = _hermite(times, values, time)
+		clip.track_insert_key(track, time, value if vector else value.x)

@@ -2,20 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://de64q5ov1c7nw"
-path.s3tc="res://.godot/imported/rzeznik_Image_0_5.jpg-a554dff0f20d62c44a9f31fb12952a73.s3tc.ctex"
+uid="uid://by7ktcaq131l3"
+path.s3tc="res://.godot/imported/rzeznik_Albedo.png-300accd7e2b503a2c7b931e670aa9b24.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "75f7de177dff82b13803abebbd51ae95"
+"md5": "759b5614cb688a432cdbe1a018d3b5b3"
 }
 
 [deps]
 
-source_file="res://art/enemy3d/rzeznik_Image_0_5.jpg"
-dest_files=["res://.godot/imported/rzeznik_Image_0_5.jpg-a554dff0f20d62c44a9f31fb12952a73.s3tc.ctex"]
+source_file="res://art/enemy3d/rzeznik_Albedo.png"
+dest_files=["res://.godot/imported/rzeznik_Albedo.png-300accd7e2b503a2c7b931e670aa9b24.s3tc.ctex"]
 
 [params]
 

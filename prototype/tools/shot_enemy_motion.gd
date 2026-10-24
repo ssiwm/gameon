@@ -1,6 +1,6 @@
 extends SceneTree
 ## Odbiór 14 modeli: chód, zapowiedź, kontakt, przerwanie, obrót, lot/lądowanie i śmierć.
-## Godot -s tools/shot_enemy_motion.gd -- --dir=KATALOG [--frames=240]
+## Godot -s tools/shot_enemy_motion.gd -- --dir=KATALOG [--frames=240] [--kinds=wolek,rzeznik --closeup --angle=35]
 ## Każda komórka ma własną skalę kamery; atlas nie porównuje wzrostu gatunków.
 const Enemy := preload("res://scripts/enemy3d.gd")
 const Defs := preload("res://scripts/enemy_defs.gd")
@@ -8,21 +8,33 @@ var cells: Array = []
 var frame := 0
 var count := 240
 var directory := "/tmp/enemy-motion"
+var kinds: Array = Enemy.SPEC.keys()
+var cell_size := Vector2i(300, 320)
+var columns := 4
+var angle := 5.33
 
 func _initialize() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--dir="): directory = arg.substr(6)
 		if arg.begins_with("--frames="): count = arg.substr(9).to_int()
+		if arg.begins_with("--kinds="): kinds = Array(arg.substr(8).split(","))
+		if arg == "--closeup": cell_size = Vector2i(600, 640); columns = 2
+		if arg.begins_with("--angle="): angle = arg.substr(8).to_float()
+	for kind in kinds:
+		if not Enemy.SPEC.has(kind):
+			push_error("Unknown enemy kind: " + str(kind))
+			quit(1)
+			return
+	columns = mini(columns, kinds.size())
 	var mkdir_error := DirAccess.make_dir_recursive_absolute(directory)
 	if mkdir_error != OK or not DirAccess.dir_exists_absolute(directory):
 		push_error("FAIL enemy motion render: output directory error=" + str(mkdir_error))
 		quit(1)
 		return
 	RenderingServer.frame_post_draw.connect(_capture)
-	var kinds := Enemy.SPEC.keys()
 	for i in kinds.size():
 		var vp := SubViewport.new()
-		vp.size = Vector2i(300, 320)
+		vp.size = cell_size
 		vp.own_world_3d = true
 		vp.msaa_3d = Viewport.MSAA_2X
 		vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -60,7 +72,7 @@ func _initialize() -> void:
 		vp.add_child(cam)
 		cam.current = true
 		var label := Label.new()
-		label.position = Vector2(8, 294)
+		label.position = Vector2(8, cell_size.y - 32)
 		label.add_theme_font_size_override("font_size", 16)
 		vp.add_child(label)
 		cells.append([vp, e, kinds[i], cam, h, label])
@@ -102,18 +114,19 @@ func _process(_dt: float) -> bool:
 		e.pose(1.0 / 60.0, anim, flip, Color.WHITE, fposmod(frame / 10.0, 6.0), 6, true, vy, 0, false, speed)
 		var h: float = cell[4]
 		var offset := e.position
-		(cell[3] as Camera3D).look_at_from_position(offset + Vector3(h * 0.28, h * 0.75, h * 3), offset + Vector3(0, h * 0.48, 0))
+		var radians := deg_to_rad(angle)
+		(cell[3] as Camera3D).look_at_from_position(offset + Vector3(sin(radians) * h * 3.0, h * 0.75, cos(radians) * h * 3.0), offset + Vector3(0, h * 0.48, 0))
 		(cell[5] as Label).text = "%s | %s" % [kind, e.motion_phase() if anim in ["windup", "idle"] and e.motion_phase() != "idle" else ("lot" if not grounded else anim)]
 	return false
 
 func _capture() -> void:
 	if frame > 0 and frame % 2 == 0:
-		var atlas := Image.create(1200, 1280, false, Image.FORMAT_RGBA8)
+		var atlas := Image.create(columns * cell_size.x, ceili(cells.size() / float(columns)) * cell_size.y, false, Image.FORMAT_RGBA8)
 		atlas.fill(Color(0.12, 0.13, 0.15))
 		for i in cells.size():
 			var img: Image = cells[i][0].get_texture().get_image()
 			img.convert(Image.FORMAT_RGBA8)
-			atlas.blit_rect(img, Rect2i(0,0,300,320), Vector2i((i % 4) * 300, (i / 4) * 320))
+			atlas.blit_rect(img, Rect2i(Vector2i.ZERO, cell_size), Vector2i((i % columns) * cell_size.x, (i / columns) * cell_size.y))
 		var save_error := atlas.save_png("%s/f_%03d.png" % [directory, frame / 2 - 1])
 		if save_error != OK:
 			push_error("FAIL enemy motion render: PNG save error=" + str(save_error))

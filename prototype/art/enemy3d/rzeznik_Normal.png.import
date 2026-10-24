@@ -2,20 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c8mdybrk11po8"
-path.s3tc="res://.godot/imported/rzeznik_Image_1_4.jpg-433e29f1b17307fb54b698b1bbe68996.s3tc.ctex"
+uid="uid://byqdv2ppfn6go"
+path.s3tc="res://.godot/imported/rzeznik_Normal.png-c5bf3cf883e62b2f41a84f03a2920658.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "c61ca91b1e4dfec8ad41c0cf4d0f0a84"
+"md5": "bc9b164a5c672edd8b25e4bd17a7ba57"
 }
 
 [deps]
 
-source_file="res://art/enemy3d/rzeznik_Image_1_4.jpg"
-dest_files=["res://.godot/imported/rzeznik_Image_1_4.jpg-433e29f1b17307fb54b698b1bbe68996.s3tc.ctex"]
+source_file="res://art/enemy3d/rzeznik_Normal.png"
+dest_files=["res://.godot/imported/rzeznik_Normal.png-c5bf3cf883e62b2f41a84f03a2920658.s3tc.ctex"]
 
 [params]
 
@@ -25,7 +25,7 @@ compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1

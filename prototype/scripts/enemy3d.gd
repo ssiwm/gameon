@@ -21,9 +21,11 @@ const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Lev
 ## walk_clip: zestaw klipów chodu z char_clips.gd — „zombie" (powłóczysty krok) albo „human" (zwykły chód: Mimik udaje człowieka);
 ## bez tego klucza rodzaj chodzi pozą z kodu. attack_clip: zapowiedź i cios z klipu (zestaw musi je mieć), ręce wtedy z klipu.
 const SPEC := {
-	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 1.0, "prof": {}, "clips": true, "clip_amp": 0.6, "stun": true},
+	# Cykl 0.5 s: dwie długości kroku z retargetowanego klipu / prędkość z DEFS.
+	# Przy cyklu 1 s ciało przemieszczało się dwa razy szybciej niż podparcie nóg.
+	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 0.5, "prof": {"lean": 1.0, "lean_walk": 4.0}, "body_motion": true, "walk_clip": "zombie", "clips": true, "clip_amp": 0.6, "stun": true},
 	# Rzeźnik (F4e): model z TRELLIS-a z osobnym tasakiem przypiętym do prawej dłoni (`tools/rig_trellis.py`, art/enemy3d/rzeznik.glb)
-	"rzeznik": {"fit": ["height", 44.0], "frame_h": 58.0, "cycle": 1.0, "prof": {"windup": "cleave"}, "attack_kind": "cleave", "clips": true, "clip_amp": 0.6, "stun": true},
+	"rzeznik": {"fit": ["height", 44.0], "frame_h": 58.0, "cycle": 0.5, "prof": {"windup": "cleave", "lean": 2.0, "lean_walk": 5.0}, "body_motion": true, "walk_clip": "human", "eye_glow": 0.0, "attack_kind": "cleave", "clips": true, "clip_amp": 0.6, "stun": true},
 	"slepiec": {"fit": ["height", 27.0], "frame_h": 32.0, "cycle": 1.0, "prof": {"hy": 0.50, "hz": 0.35, "windup": "claw"}, "clips": true, "attack_kind": "claw", "walk_clip": "zombie",
 		"death": {"dir": 1.0, "lean": -8.0, "dur": 0.95, "tilt": 86.0}},
 	"podsluchacz": {"fit": ["height", 34.0], "frame_h": 40.0, "cycle": 1.0,
@@ -61,6 +63,8 @@ uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D orm_tex : hint_default_white, filter_linear_mipmap, repeat_enable;
 uniform bool has_normal = false;
 uniform bool has_orm = false;
+uniform float metallic_factor = 0.0;
+uniform float normal_strength = 1.0;
 uniform vec4 mod = vec4(1.0);
 uniform float eye_glow = 1.4;
 uniform float sil = 0.06;              // słaba, chłodna sylwetka widoczna w całkowitej ciemności (jak warstwa `Silhouette` arkuszy HD w 2D)
@@ -74,6 +78,11 @@ vec3 rgb2hsv(vec3 c) {
 	return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
 }
 void fragment() {
+	if (!FRONT_FACING) {
+		NORMAL = -NORMAL;
+		TANGENT = -TANGENT;
+		BINORMAL = -BINORMAL;
+	}
 	vec3 c = texture(albedo_tex, UV).rgb;
 	vec3 h = rgb2hsv(c);
 	float eye = smoothstep(0.05, 0.075, h.x) * (1.0 - smoothstep(0.17, 0.2, h.x)) * smoothstep(0.55, 0.68, h.y) * smoothstep(0.5, 0.65, h.z);
@@ -82,15 +91,17 @@ void fragment() {
 	//ALPHA
 	if (has_normal) {
 		NORMAL_MAP = texture(normal_tex, UV).xyz;
+		NORMAL_MAP_DEPTH = normal_strength;
 	}
 	if (has_orm) {
 		vec4 o = texture(orm_tex, UV);
 		AO = o.r;
 		ROUGHNESS = o.g;
+		METALLIC = o.b * metallic_factor;
 	} else {
 		ROUGHNESS = 0.85;
+		METALLIC = metallic_factor;
 	}
-	METALLIC = 0.0;
 }
 """
 
@@ -284,7 +295,7 @@ func _authored_biped(p: Dictionary) -> Dictionary:
 		if not out.has(key): continue
 		var value = _motion_values[channel]
 		if key in ["hR", "hL"]: value = Vector3(_x0, 0, 0) + (value as Vector3) * height
-		elif key in ["drop", "fR", "fL"]: value *= height
+		elif key in ["drop", "fR", "fL", "shift", "sway"]: value *= height
 		out[key] = lerp(out[key], value, _motion_weight)
 	if kind == "stalker" and _motion_name == "grab":
 		var progress := _motion_time / maxf(Motion.contact("grab"), 0.001)
@@ -405,9 +416,37 @@ func _prepare_soles() -> void:
 		var bottom := range((clouds[key] as Array).size())
 		var rest_basis := _sk.get_bone_global_rest(anchors[key]).basis
 		bottom.sort_custom(func(a: int, b: int) -> bool: return (rest_basis * (clouds[key][a] as Vector3)).y < (rest_basis * (clouds[key][b] as Vector3)).y)
-		for index in bottom.slice(0, 64):
+		# Gęste UV dają wiele kopii tego samego punktu. Limit dotyczy
+		# pozycji geometrycznych, aby 64 próbki obejmowały całą podeszwę.
+		var bottom_positions: Dictionary = {}
+		for index in bottom:
+			var position_key := Vector3i(((clouds[key][index] as Vector3) * 100000.0).round())
+			if bottom_positions.has(position_key): continue
+			bottom_positions[position_key] = true
 			if not index in selected:
 				samples.append(skin_clouds[key][index])
+				selected.append(index)
+			if bottom_positions.size() >= 64: break
+		if bool(_spec.get("body_motion", false)):
+			# Mieszane wagi mogą obniżyć środek podeszwy, a nie jej punkt
+			# najniższy w rest pose. Próba na siatce 8x8 pokrywa piętę i palce.
+			var low := Vector2(INF, INF)
+			var high := Vector2(-INF, -INF)
+			var projected: Array[Vector3] = []
+			for point in clouds[key]:
+				var pos: Vector3 = rest_basis * (point as Vector3)
+				projected.append(pos)
+				low = low.min(Vector2(pos.x, pos.z))
+				high = high.max(Vector2(pos.x, pos.z))
+			var span := (high - low).max(Vector2(0.0001, 0.0001))
+			var grid: Dictionary = {}
+			for index in projected.size():
+				var pos := projected[index]
+				var at := Vector2i(clampi(int((pos.x - low.x) / span.x * 8.0), 0, 7), clampi(int((pos.z - low.y) / span.y * 8.0), 0, 7))
+				if not grid.has(at) or pos.y < projected[int(grid[at])].y: grid[at] = index
+			for index in grid.values():
+				if not int(index) in selected:
+					samples.append(skin_clouds[key][int(index)])
 		_sole_points[key] = points
 		_sole_samples[key] = samples
 	_sole_cache[kind] = [_sole_points, _sole_samples]
@@ -555,6 +594,8 @@ func setup(k: String, translucent := false) -> bool:
 		for side in ["Left", "Right"]:
 			_leg_len[side] = [_rest_dist(side + "UpLeg", side + "Leg"), _rest_dist(side + "Leg", side + "Foot")]
 			_arm_len[side] = [_rest_dist(side + "Arm", side + "ForeArm"), _rest_dist(side + "ForeArm", side + "Hand")]
+			var shoulder := _sk.find_bone(PRE + side + "Shoulder")
+			if shoulder >= 0: _b[side + "Shoulder"] = shoulder
 		var hips_x := _sk.get_bone_global_rest(_b["Hips"]).origin.x
 		_x0 = hips_x - 0.05
 		if _spec.get("crawler", false):
@@ -620,9 +661,14 @@ func _prepare_materials(translucent: bool) -> void:
 			shaders[cull] = sh
 		var sm := ShaderMaterial.new()
 		sm.shader = shaders[cull]
+		# Maska HSV jest bezpieczna tylko dla palet z odrębnym kolorem oczu;
+		# pomarańczowa skóra Rzeźnika nie może świecić jak jego oczy.
+		sm.set_shader_parameter("eye_glow", float(_spec.get("eye_glow", 1.4)))
 		if src is StandardMaterial3D:
 			var s := src as StandardMaterial3D
 			sm.set_shader_parameter("albedo_tex", s.albedo_texture)
+			sm.set_shader_parameter("metallic_factor", s.metallic)
+			sm.set_shader_parameter("normal_strength", s.normal_scale)
 			if s.normal_texture != null:
 				sm.set_shader_parameter("normal_tex", s.normal_texture)
 				sm.set_shader_parameter("has_normal", true)
@@ -725,13 +771,14 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 			_clip_t += delta
 		if _clip_t >= clip_duration(_clip):
 			_clip = ""
-	var eye := 1.4
+	var eye_base := float(_spec.get("eye_glow", 1.4))
+	var eye := eye_base
 	# zapowiedź ciosu: oczy rozżarzają się i pulsują (zamiast czerwienienia całego modelu); po ciosie gasną do zwykłej jasności
 	var hot := (anim == "windup" or alert) and not _dead
 	_eye_w = move_toward(_eye_w, 1.0 if hot else 0.0, delta * (9.0 if hot else 4.0))
-	eye += _eye_w * ((4.2 + 1.4 * sin(_t * 24.0)) if anim == "windup" else 3.0)        # zapowiedź ciosu pulsuje; reakcja „zauważył" (alert) żarzy się równo i słabiej
+	eye += _eye_w * ((4.2 + 1.4 * sin(_t * 24.0)) if anim == "windup" else 3.0) * (eye_base / 1.4)        # zapowiedź ciosu pulsuje; reakcja „zauważył" (alert) żarzy się równo i słabiej
 	if _dead:
-		eye = 1.4 * (1.0 - smoothstep(0.0, 0.35, _dead_t))        # oczy gasną po śmierci
+		eye = eye_base * (1.0 - smoothstep(0.0, 0.35, _dead_t))        # oczy gasną po śmierci
 	for m in _mats:
 		var sm := m as ShaderMaterial
 		sm.set_shader_parameter("mod", Vector4(mod.r, mod.g, mod.b, mod.a))
@@ -740,7 +787,9 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 	if moving:
 		var reference: float = float((EnemyDefs.DEFS.get(kind, {}) as Dictionary).get("speed", 95.0))
 		var rate := absf(horizontal_speed) / maxf(reference, 1.0) if is_finite(horizontal_speed) else (2.4 if _sp == 2 else 1.0)
-		_phase += delta * TAU / float(_spec.get("cycle", 1.0)) * rate
+		var cycle := float(_spec.get("cycle", 1.0))
+		if _sp == 2 and bool(_spec.get("body_motion", false)): cycle = 1.0
+		_phase += delta * TAU / cycle * rate
 		if is_finite(horizontal_speed) and absf(horizontal_speed) < 0.5:
 			anim = "idle"
 	_advance_motion(delta, anim)
@@ -1430,6 +1479,7 @@ func _biped_params(anim: String) -> Dictionary:
 	var sl: float = prof.get("sleep_lean", 27.0)
 	var stride: float = prof.get("stride", 0.22)
 	var p := {"lean": l0, "bob": 0.0, "drop": 0.0, "hk": 0.8,
+		"pelvis_yaw": 0.0, "chest_yaw": 0.0, "shift": 0.0, "sway": 0.0, "wristR": 0.0, "wristL": 0.0,
 		"fR": Vector3.ZERO, "fL": Vector3.ZERO,
 		"hR": Vector3(_x0 + 0.05, hz, hy), "hL": Vector3(_x0 + 0.05, hz, -hy)}
 	match anim:
@@ -1497,6 +1547,21 @@ func _biped_params(anim: String) -> Dictionary:
 			p["fL"] = Vector3(-stride * 1.5 * cos(ph + PI), 0.17 * maxf(0.0, sin(ph + PI)), 0.0)
 			p["hR"] = Vector3(_x0 - 0.25, hz + 0.15, hy)
 			p["hL"] = Vector3(_x0 - 0.25, hz + 0.15, -hy)
+			if bool(_spec.get("body_motion", false)):
+				# Dłuższy krok zamiast podwajania częstotliwości nóg.
+				# Dwa kroki w cyklu pokrywają drogę przebytą przez root;
+				# zasięg wynika z anatomii, a podpory są centrowane pod biodrami.
+				var reference: float = EnemyDefs.DEFS[kind].speed
+				p["drop"] = 0.16
+				for side in ["Right", "Left"]:
+					var sg := 1.0 if side == "Right" else -1.0
+					var lengths: Array = _leg_len[side]
+					var step := minf(reference * PX / (4.0 * _scale), float(lengths[0] + lengths[1]) * 0.8)
+					var foot := _sk.get_bone_global_rest(_b[side + "Foot"]).origin
+					var hip := _sk.get_bone_global_rest(_b[side + "UpLeg"]).origin
+					p["fR" if side == "Right" else "fL"] = Vector3(hip.x - foot.x - step * cos(ph) * sg, 0.20 * maxf(0.0, sin(ph) * sg), 0.0)
+					var hand := _sk.get_bone_global_rest(_b[side + "Hand"]).origin
+					p["hR" if side == "Right" else "hL"] = hand + Vector3(0.16 + 0.12 * cos(ph) * sg, 0.20, 0.0)
 		"air":
 			# skok / spadanie: tułów lekko do przodu, kolana podciągnięte przy wznoszeniu i sięgające w dół przy spadaniu, ręce unoszone
 			var rise := clampf(-_air_vy / 275.0, 0.0, 1.0)
@@ -1516,6 +1581,19 @@ func _biped_params(anim: String) -> Dictionary:
 			p["fL"] = Vector3(-0.05, 0, 0)
 			p["hR"] = Vector3(_x0 + 0.26, 0.40, 0.50)
 			p["hL"] = Vector3(_x0 + 0.26, 0.40, -0.50)
+	if bool(_spec.get("body_motion", false)) and anim in ["idle", "walk", "run"]:
+		# Postawa wynika z anatomii źródła; stała wysokość dłoni 0.42 m
+		# ciągnęła długie ramiona do podłoża i pogłębiała garb Wołka.
+		var moving := anim != "idle"
+		var amplitude := 0.07 if moving else 0.015
+		for side in ["Right", "Left"]:
+			var sg := 1.0 if side == "Right" else -1.0
+			var rest := _sk.get_bone_global_rest(_b[side + "Hand"]).origin
+			p["hR" if side == "Right" else "hL"] = rest + Vector3(0.05 + amplitude * sin(ph) * sg, 0.015, 0.0)
+		p["pelvis_yaw"] = 3.0 * sin(ph) if moving else 0.0
+		p["chest_yaw"] = -5.0 * sin(ph) if moving else 0.0
+		p["sway"] = 0.012 * sin(ph) if moving else 0.0
+		if moving: p["drop"] = 0.01
 	return p
 
 func _mix_p(a: Dictionary, b: Dictionary, k: float) -> Dictionary:
@@ -1677,11 +1755,22 @@ func _pose_biped(anim: String, delta: float) -> void:
 
 func _apply_biped(p: Dictionary) -> void:
 	var hips: int = _b["Hips"]
-	_shift_global(hips, Vector3(0.0, -float(p["drop"]) + float(p["bob"]) + _crise, 0.0))
-	_rot_world(hips, Vector3.BACK, -deg_to_rad(float(p["lean"])))
+	var body_motion := bool(_spec.get("body_motion", false))
+	_shift_global(hips, Vector3(float(p["shift"]), -float(p["drop"]) + float(p["bob"]) + _crise, float(p["sway"])))
+	var lean := deg_to_rad(float(p["lean"]))
+	if body_motion:
+		# Łańcuch ruchu: miednica -> kręgosłup -> klatka -> obręcz barkowa.
+		# Jedna rotacja bioder zapadała całe ciało i nie dawała kontrrotacji.
+		_rot_world(hips, Vector3.UP, deg_to_rad(float(p["pelvis_yaw"])))
+		_rot_world(hips, Vector3.BACK, -lean * 0.25)
+		for spine in ["Spine", "Spine1", "Spine2"]:
+			_rot_world(_b[spine], Vector3.BACK, -lean * 0.25)
+			_rot_world(_b[spine], Vector3.UP, deg_to_rad(float(p["chest_yaw"])) / 3.0)
+	else:
+		_rot_world(hips, Vector3.BACK, -lean)
 	if bool(_spec.get("turn", false)):                            # jak postać gracza: tułów zwrócony ku kamerze (Char3D.BODY_YAW)
 		_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(BODY_YAW) * _cam_c)
-	_rot_world(_b["Head"], Vector3.BACK, deg_to_rad(float(p["lean"])) * float(p["hk"]))
+	_rot_world(_b["Head"], Vector3.BACK, lean * float(p["hk"]))
 	if not _dead and not _airborne:
 		# Korekta bioder do zasięgu obu nóg; samo ograniczenie celu IK unosiłoby podporową stopę.
 		var lower := 0.0
@@ -1771,4 +1860,16 @@ func _apply_biped(p: Dictionary) -> void:
 			target += _chips                                      # ręce idą za biodrami z klipu (kołysanie kroku)
 			if _carm > 0.0:
 				target = target.lerp(_chand[side], _carm)         # zapowiedź i cios: dłoń tam, gdzie w klipie
-		_two_bone(_b[side + "Arm"], _b[side + "ForeArm"], _b[side + "Hand"], _arm_len[side][0], _arm_len[side][1], target, Vector3(-0.4, -0.5, sg * 0.8))
+		var elevation := smoothstep(_gp(_b[side + "Arm"]).origin.y - 0.12, _gp(_b[side + "Arm"]).origin.y + 0.45, target.y)
+		var pole := Vector3(-0.4, -0.5, sg * 0.8)
+		if body_motion:
+			if _b.has(side + "Shoulder"):
+				_rot_world(_b[side + "Shoulder"], Vector3.RIGHT, -sg * deg_to_rad(14.0) * elevation)
+			pole = pole.lerp(Vector3(0.1, -0.35, sg * 0.9), elevation)
+		_two_bone(_b[side + "Arm"], _b[side + "ForeArm"], _b[side + "Hand"], _arm_len[side][0], _arm_len[side][1], target, pole)
+		if body_motion:
+			var hand: int = _b[side + "Hand"]
+			var wrist: float = p["wristR"] if side == "Right" else p["wristL"]
+			var authored := Basis(Vector3.BACK, deg_to_rad(wrist)) * _sk.get_bone_global_rest(hand).basis
+			var blend := _motion_weight if _motion_name in ["smash", "cleave"] else 0.0
+			_set_global_basis(hand, _gp(hand).basis.slerp(authored, blend))

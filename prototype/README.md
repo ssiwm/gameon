@@ -1,5 +1,7 @@
 # Dead Air '87 — prototyp
 
+Modele i ruch Wołka/Rzeźnika (1.7.378): [zakres przebudowy i odbiór](ENEMY_ART_AND_MOTION_REPORT.md). Podgląd zbliżeń: `-s tools/shot_enemy_motion.gd -- --kinds=wolek,rzeznik --closeup --angle=35 --dir=KATALOG`.
+
 Co-op horror run-and-gun (retro Contra) w Godot 4.7 (Forward+). Rozgrywka to symulacja 2D, obraz jest renderowany wyłącznie w 3D (niżej: „Widok 3D”). Zakres:
 
 - ruch 8-kierunkowy (WASD/strzałki) + strzelanie (J/LPM) + przeładowanie (R) + cios (V/PPM) + skok (SPACJA) + skradanie (SHIFT)

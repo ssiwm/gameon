@@ -2,7 +2,7 @@ extends SceneTree
 ## Regresja prawdziwej geometrii: szczeliny UV, skinning szwów i dolne nogi.
 ## Godot --headless --path prototype -s tools/test_enemy_surface.gd [-- --report=PLIK]
 const Enemy := preload("res://scripts/enemy3d.gd")
-const BUDGET := {"wolek": 100, "rzeznik": 300}
+const BUDGET := {"wolek": 0, "rzeznik": 100}
 var failures := 0
 var report: Dictionary = {}
 
@@ -18,6 +18,8 @@ func _topology(mi: MeshInstance3D, kind: String) -> Array:
 	var seams: Array = []
 	var triangles := 0
 	var boundary := 0
+	var nonmanifold_body := 0
+	var body_boundary := 0
 	var lower_hand := 0.0
 	var sk: Skeleton3D = mi.get_node(mi.skeleton)
 	var bounds := mi.mesh.get_aabb()
@@ -70,10 +72,14 @@ func _topology(mi: MeshInstance3D, kind: String) -> Array:
 				var key := Vector2i(mini(a, b), maxi(a, b))
 				edges[key] = int(edges.get(key, 0)) + 1
 		for count in edges.values():
-			if count == 1: boundary += 1
+			if count == 1:
+				boundary += 1
+				if surface == 0: body_boundary += 1
+			if count > 2 and surface == 0: nonmanifold_body += 1
 	check(kind + " boundary budget", boundary <= int(BUDGET[kind]))
-	check(kind + " geometry present", triangles >= (5000 if kind == "wolek" else 20000))
-	check(kind + " triangle budget", triangles <= (6000 if kind == "wolek" else 30000))
+	check(kind + " closed body", body_boundary == 0 and nonmanifold_body == 0)
+	check(kind + " geometry present", triangles >= (35000 if kind == "wolek" else 45000))
+	check(kind + " triangle budget", triangles <= (40000 if kind == "wolek" else 50000))
 	check(kind + " lower legs do not follow hands", lower_hand < 0.05)
 	if kind == "rzeznik": check(kind + " actual leg samples", leg_samples > 100)
 	check(kind + " actual UV seams present", seams.size() > 100)
@@ -82,7 +88,10 @@ func _topology(mi: MeshInstance3D, kind: String) -> Array:
 		var source := mi.mesh.surface_get_material(surface) as StandardMaterial3D
 		var material := mi.get_surface_override_material(surface) as ShaderMaterial
 		check(kind + " source culling preserved", source != null and material != null and (("cull_disabled" in material.shader.code) == (source.cull_mode == BaseMaterial3D.CULL_DISABLED)))
-	report[kind] = {"triangles": triangles, "boundary_edges": boundary, "seam_groups": seams.size(), "lower_leg_hand_weight_max": lower_hand, "poses": {}}
+		if surface == 0:
+			check(kind + " rebaked PBR", source.albedo_texture != null and source.normal_texture != null and source.roughness_texture != null)
+			check(kind + " 2k albedo", source.albedo_texture.get_width() == 2048)
+	report[kind] = {"triangles": triangles, "boundary_edges": boundary, "body_boundary_edges": body_boundary, "nonmanifold_body_edges": nonmanifold_body, "seam_groups": seams.size(), "lower_leg_hand_weight_max": lower_hand, "poses": {}}
 	return seams
 
 func _skin_gap(mi: MeshInstance3D, seams: Array) -> float:

@@ -91,7 +91,7 @@ func _process(_dt: float) -> bool:
 					if not samples.is_empty(): low = minf(low, soles(e, samples))
 				if is_finite(low):
 					stats.sole_min[state] = minf(float(stats.sole_min.get(state, INF)), low)
-					if low < -0.025:
+					if low < (-0.003 if kind in ["wolek", "rzeznik"] else -0.025):
 						failures += 1
 						print("FAIL enemy assets: %s/%s/%d fps sole=%s" % [kind, state, fps, low])
 				else: stats.sole_min[state] = null

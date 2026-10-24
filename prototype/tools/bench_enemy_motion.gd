@@ -1,6 +1,6 @@
 extends SceneTree
 ## Powtarzalny pomiar kosztu pozowania oraz czasu klatki przy widocznych modelach.
-## Wymaga renderera: -s tools/bench_enemy_motion.gd -- --count=12 --out=WYNIK.json
+## Wymaga renderera: -s tools/bench_enemy_motion.gd -- --count=12 --kinds=wolek,rzeznik --out=WYNIK.json
 const Enemy := preload("res://scripts/enemy3d.gd")
 var actors: Array[Node3D] = []
 var frame := 0
@@ -9,11 +9,19 @@ var output := "/tmp/enemy-bench.json"
 var pose_ms: Array[float] = []
 var frame_ms: Array[float] = []
 var previous_us := 0
+var kinds: Array = Enemy.SPEC.keys()
 
 func _initialize() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--count="): count = clampi(arg.substr(8).to_int(), 1, 48)
 		if arg.begins_with("--out="): output = arg.substr(6)
+		if arg.begins_with("--kinds="): kinds = Array(arg.substr(8).split(","))
+	for kind in kinds:
+		if not Enemy.SPEC.has(kind):
+			push_error("Unknown enemy kind: " + str(kind))
+			quit(1)
+			return
+	Engine.max_fps = 0
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	var vp := SubViewport.new()
 	vp.size = Vector2i(1280, 720)
@@ -40,7 +48,6 @@ func _initialize() -> void:
 	vp.add_child(cam)
 	cam.look_at_from_position(Vector3(0, rows * 2.25, 35), Vector3(0, rows * 2.25, 0))
 	cam.current = true
-	var kinds := Enemy.SPEC.keys()
 	for index in count:
 		var actor := Enemy.new()
 		vp.add_child(actor)
@@ -55,6 +62,10 @@ func percentile(values: Array[float], ratio: float) -> float:
 
 func _process(_dt: float) -> bool:
 	frame += 1
+	if frame == 120:
+		# Ustawienia profilu mogły przy starcie przywrócić limit klatek.
+		Engine.max_fps = 0
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	var start := Time.get_ticks_usec()
 	var time := fposmod(frame / 60.0, 2.5)
 	for actor in actors:
@@ -66,7 +77,7 @@ func _process(_dt: float) -> bool:
 		frame_ms.append((start - previous_us) / 1000.0)
 	previous_us = start
 	if frame == 420:
-		var report := {"count": count, "renderer": RenderingServer.get_current_rendering_method(), "gpu": RenderingServer.get_video_adapter_name(),
+		var report := {"count": count, "kinds": kinds, "renderer": RenderingServer.get_current_rendering_method(), "gpu": RenderingServer.get_video_adapter_name(),
 			"resolution": [1280,720], "pose_p50_ms": percentile(pose_ms,0.5), "pose_p95_ms": percentile(pose_ms,0.95),
 			"frame_p50_ms": percentile(frame_ms,0.5), "frame_p95_ms": percentile(frame_ms,0.95),
 			"draw_calls": Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
