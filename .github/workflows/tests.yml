@@ -104,8 +104,8 @@ jobs:
         run: |
           set -o pipefail
           godot --headless --path prototype -- --host --port=8952 --workshoptest --autoquit=60 2>&1 | tee workshop.log
-          ! rg -a "SCRIPT ERROR|Parse Error" workshop.log
-          rg -a "\[WORKSHOP-TEST\] ==== .*błędów: 0" workshop.log
+          if grep -a -E "SCRIPT ERROR|Parse Error" workshop.log; then exit 1; fi
+          grep -a -E "\[WORKSHOP-TEST\] ==== .*błędów: 0" workshop.log
       - name: Bronie i sieć (test_weapons.sh)
         run: bash prototype/tools/test_weapons.sh
       - name: Logi testów broni
