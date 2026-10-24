@@ -101,13 +101,23 @@ jobs:
       - name: Animacje wrogów — obserwator ENet
         run: |
           set -o pipefail
+          python3 prototype/tools/test_enemy_motion_proxy.py > enemy-motion-relay.log 2>&1 &
+          relay_pid=$!
           timeout 30 godot --headless --path prototype -s tools/test_enemy_motion_network.gd -- --motion-server > enemy-motion-server.log 2>&1 &
           server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          timeout 30 godot --headless --path prototype -s tools/test_enemy_motion_network.gd -- --motion-client 2>&1 | tee enemy-motion-client.log
+          trap 'kill "$server_pid" "$relay_pid" 2>/dev/null || true' EXIT
+          timeout 30 godot --headless --path prototype -s tools/test_enemy_motion_network.gd -- --motion-client --motion-port=19074 2>&1 | tee enemy-motion-client.log
           wait "$server_pid"
+          wait "$relay_pid"
           grep -a "^PASS enemy motion network" enemy-motion-server.log enemy-motion-client.log
+          grep -a "^PASS enemy motion relay" enemy-motion-relay.log
           ! grep -a -E "SCRIPT ERROR|Parse Error|FAIL enemy motion" enemy-motion-server.log enemy-motion-client.log
+      - name: Siatki wrogów — bindy, wagi i rzeczywiste podeszwy
+        run: |
+          set -o pipefail
+          timeout 120 godot --headless --path prototype -s tools/audit_enemy_assets.gd -- --out=/tmp/enemy-assets.json 2>&1 | tee enemy-assets.log
+          grep -a "^PASS enemy assets" enemy-assets.log
+          ! grep -a -E "SCRIPT ERROR|Parse Error|FAIL enemy assets" enemy-assets.log
       - name: Proporcje świata (test_proportions.gd)
         run: |
           godot --headless --path prototype -s tools/test_proportions.gd 2>&1 | tee proportions.log

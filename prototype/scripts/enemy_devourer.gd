@@ -142,6 +142,7 @@ func _take(p: Node2D, c: Dictionary) -> void:
 	else:
 		e._scream_fx()
 	p.deliver_take(true, e.global_position + Vector2(0.0, -4.0), float(c.get("time", 20.0)))
+	e.visual_attack("snatch")
 
 func _carry(delta: float, c: Dictionary) -> bool:
 	if not is_instance_valid(prey) or not prey.dead or not prey.taken:

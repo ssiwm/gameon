@@ -7,6 +7,7 @@ extends CharacterBody2D
 ## cisza i skradanie mają realną wartość także wobec zwykłych wrogów (filar 2).
 
 const EnemyDefs := preload("res://scripts/enemy_defs.gd")
+const EnemyMotion := preload("res://scripts/enemy_motion.gd")
 ## Dane rodzajów (statystyki, zmysły, dropy, XP, głos) żyją w `enemy_defs.gd`; `Enemy.KINDS` zostaje jako ta sama tabela dla kodeksu, HUD-u i testów.
 const KINDS := EnemyDefs.DEFS
 
@@ -88,6 +89,11 @@ var active := false
 var alive := true
 var winding := false
 var visual_attack_seq := 0
+var visual_attack_action := ""
+var _windup_duration := 0.0
+var _view_windup_remaining := 0.0
+var _view_windup_duration := 0.0
+var _view_grounded := true
 var _voiced_winding := false  ## czy zapowiedź ciosu już się odezwała (zbocze `winding`, lokalnie na każdym peerze)
 var _was_hidden := false      ## zamaskowany (np. Żerca przed porwaniem): niewidoczny i nietrafialny — stan z zachowania, na każdym peerze
 var burning := false          ## replikowane wizualnie przez RPC (_ignite_fx); logika tylko na serwerze
@@ -333,6 +339,7 @@ func _phys_tick(delta: float) -> void:
 	_flash = maxf(0.0, _flash - delta)
 	if not NoiseMgr.is_server():
 		global_position = global_position.lerp(_remote_pos, 0.35)
+		_view_windup_remaining = maxf(0.0, _view_windup_remaining - delta)
 		return
 	if not alive:
 		return
@@ -1068,6 +1075,7 @@ func _try_begin_attack(target: Node2D) -> void:
 		return
 	if _in_reach(target, 0.0) and not _wall_between(target):
 		_windup = windup_time(float(_def["windup"]), Difficulty.m("enemy_windup"))
+		_windup_duration = _windup
 		_windup_target = target
 		winding = true
 
@@ -1279,10 +1287,11 @@ func _send_state(delta: float) -> void:
 	if _net_timer > 0.0:
 		return
 	_net_timer = 0.05
-	_sync.rpc(global_position, hp, active, alive, winding, _sp, _ai, _facing)
+	var info := view_info()
+	_sync.rpc(global_position, hp, active, alive, winding, _sp, _ai, _facing, float(info["windup_remaining"]), float(info["windup_duration"]), bool(info["grounded"]))
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_winding: bool, new_sp := 0, new_ai := -1, new_face := 0.0) -> void:
+func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_winding: bool, new_sp := 0, new_ai := -1, new_face := 0.0, wind_remaining := 0.0, wind_duration := 0.0, grounded := true) -> void:
 	_remote_pos = pos
 	if new_hp < hp - 0.01:
 		_flash = 0.1
@@ -1290,6 +1299,9 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 	hp = new_hp
 	active = is_active
 	winding = is_winding
+	_view_windup_remaining = maxf(wind_remaining, 0.0)
+	_view_windup_duration = maxf(wind_duration, _view_windup_remaining)
+	_view_grounded = grounded
 	_sp = new_sp                          # stan specjalny Wołka (szarża, rzut, oszołomienie) — bez niego klient nie widział póz w modelu 3D
 	if alive and not is_alive:
 		_set_alive(false)
@@ -1307,21 +1319,32 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 ## Klucze: kind (rodzaj modelu), alive, winding (zapowiedź ciosu), sp (stan specjalny Wołka), flash (świeże trafienie), ai (stan AI, `Ai`),
 ## alert (reakcja „zauważył cię": oczy rozżarzone, wróg stoi i patrzy na źródło).
 ## Zdarzenie prezentacji rozstrzygniętego ataku, także chybionego; przerwanie nie wysyła zdarzenia.
-func visual_attack() -> void:
+func visual_attack(action := "") -> void:
 	if not NoiseMgr.is_server():
 		return
+	if action == "": action = EnemyMotion.action(kind)
 	visual_attack_seq += 1
+	visual_attack_action = action
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_visual_attack.rpc(visual_attack_seq)
+		_visual_attack.rpc(visual_attack_seq, action)
 
 @rpc("authority", "call_remote", "reliable")
-func _visual_attack(sequence: int) -> void:
-	visual_attack_seq = maxi(visual_attack_seq, sequence)
+func _visual_attack(sequence: int, action := "") -> void:
+	if sequence > visual_attack_seq:
+		visual_attack_seq = sequence
+		visual_attack_action = action
 
 func view_info() -> Dictionary:
 	var d := {"kind": kind, "alive": alive, "winding": winding, "sp": _sp, "flash": _flash > 0.0, "ai": _ai, "alert": _ai == Ai.ALERT, "shield": false, "tele": 0.0, "beams": PackedVector2Array()}
+	d["windup_remaining"] = maxf(_windup, 0.0)
+	d["windup_duration"] = maxf(_windup_duration, _windup)
 	_beh.view_extra(d)
+	if not NoiseMgr.is_server():
+		d["windup_remaining"] = _view_windup_remaining
+		d["windup_duration"] = _view_windup_duration
 	d["attack_seq"] = visual_attack_seq
+	d["attack_action"] = visual_attack_action
+	d["grounded"] = is_on_floor() if NoiseMgr.is_server() else _view_grounded
 	return d
 
 ## Głos gatunku dla zdarzenia (`enemy_defs.gd`: voice); gatunek bez wpisu milczy.

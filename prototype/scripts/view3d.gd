@@ -746,11 +746,12 @@ func _sync_enemies(delta: float) -> void:
 			e.call("revive")
 		var dying: bool = not alive and not bool(e.get("finished"))
 		var flash: bool = body != null and bool(info["flash"])
+		e.call("motion_context", info)
 		if alive and body != null:
 			if flash and not bool(st["flash"]):
 				e.call("trigger", "hit")
 			if (info.has("attack_seq") and int(info["attack_seq"]) > int(st.get("attack_seq", 0))) or (not info.has("attack_seq") and bool(st["wind"]) and not winding):
-				e.call("trigger", "attack")
+				e.call("trigger", "attack", String(info.get("attack_action", "")))
 		st["alive"] = alive
 		st["flash"] = flash
 		st["wind"] = winding
@@ -766,7 +767,14 @@ func _sync_enemies(delta: float) -> void:
 		var sp_v2 = float(st.get("vx", 0.0))
 		var wades: bool = not ["cma", "nest", "vein", "leech"].has(String(e.get("kind")))
 		st["wade"] = _wade_step(float(st.get("wade", 0.0)), src.global_position) if wades else 0.0
-		e.position = pos + Vector3(0.0, -float(st["wade"]), 0.3)          # brodzenie: tafla (warstwa świata) sama zakrywa zanurzone nogi
+		var desired := pos + Vector3(0.0, -float(st["wade"]), 0.3)     # brodzenie: tafla (warstwa świata) sama zakrywa zanurzone nogi
+		# Serwer po trafieniu natychmiast odsuwa Stalkera. Model najpierw pokazuje kontakt,
+		# potem płynnie odtwarza cofnięcie; klienci już interpolują pozycję symulacji.
+		if String(info["kind"]) == "stalker" and NoiseMgr.is_server() and String(e.get("_clip")) == "attack" and e.position.distance_to(desired) < 4.0:
+			var retreat_weight := 0.0 if bool(e.get("_contact_frame")) else 1.0 - exp(-14.0 * delta)
+			e.position = e.position.lerp(desired, retreat_weight)
+		else:
+			e.position = desired
 		if wades:
 			_splash_update(e, src.global_position, sp_v2, LAYER_WORLD, float(st["wade"]))
 		var sf := body.sprite_frames

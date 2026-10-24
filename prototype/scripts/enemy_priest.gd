@@ -8,6 +8,8 @@ var scream_cd := 3.0         ## s do następnego krzyku (pierwszy zaraz po wejś
 var heal_t := 0.0            ## s do następnego tiku leczenia
 var tele_t := 0.0            ## s do końca zapowiedzi krzyku (stan `_sp` = 1)
 
+var tele_duration := 0.0
+
 func cfg() -> Dictionary:
 	return e._def.get("priest", {}) as Dictionary
 
@@ -38,6 +40,7 @@ func tick_phase(delta: float, _target: Node2D) -> bool:
 		e._sp = 1
 		e.winding = true
 		tele_t = float(cfg().get("tele", 0.7)) * Difficulty.m("enemy_windup")
+		tele_duration = tele_t
 	return false
 
 ## Trzyma dystans: za blisko → cofa się (nie z krawędzi), w komfortowym pasie stoi, dalej zostawia pościg rdzeniowi.
@@ -54,6 +57,9 @@ func chase_hold(_target: Node2D, d: Vector2, speed: float) -> bool:
 	return false
 
 func view_extra(d: Dictionary) -> void:
+	if e._sp == 1:
+		d["windup_remaining"] = maxf(tele_t, 0.0)
+		d["windup_duration"] = tele_duration
 	d["alert"] = bool(d["alert"]) or e._sp == 1                                      # w zapowiedzi oczy żarzą się
 	d["tele"] = float(cfg().get("radius", 96.0)) if (e._sp == 1 and e.winding) else 0.0   # promień (px) pierścienia zapowiedzi fali
 	d["beams"] = e._heal_pts if e._heal_fx_t > 0.0 else PackedVector2Array()         # punkty leczonych Trzosków (zielone wiązki)

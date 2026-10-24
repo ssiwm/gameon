@@ -852,6 +852,7 @@ func _test_devourer() -> void:
 	await get_tree().process_frame
 	check("Żerca/porwanie: przy ofierze (< 14 px) porywa ją i **ujawnia się** — widoczny, trafialny, stan special, ofiara zabrana z czasem 20 s",
 		z._beh.prey == player and player.taken and z._sp == 1 and not z._beh.is_hidden() and z.visible and not bool(hs.disabled) and player.taken_t > 19.0 and bool(z.view_info()["carrying"]) and not bool(z.view_info()["hidden"]) and z.is_threat(), "taken=%s sp=%d vis=%s" % [player.taken, z._sp, z.visible])
+	check("Żerca/widok: ujawnione porwanie ma jawny kontakt snatch", z.visual_attack_seq > 0 and z.view_info()["attack_action"] == "snatch")
 	var bleed_before: float = player.bleed_left
 	z._beh.lair = Vector2(x0 + 400.0, y)
 	z._beh.tick_phase(1.0, null)
@@ -1676,6 +1677,11 @@ func _hit_info(e: Node, stun: float) -> Dictionary:
 func _test_windup_interrupt() -> void:
 	var y := -7500.0
 	var strip := _floor(FAR_X + 16000.0, FAR_X + 16600.0, y)
+	var jumper := _spawn("skoczek", Vector2(FAR_X + 16500.0, y))
+	jumper.set_physics_process(false)
+	jumper._beh.land_hit()
+	check("Skoczek/widok: lądowanie zasadzki ma jawny kontakt pounce", jumper.visual_attack_seq == 1 and jumper.view_info()["attack_action"] == "pounce")
+	jumper.queue_free()
 	var e := _spawn("trzosek", Vector2(FAR_X + 16100.0, y))
 	e.set_physics_process(false)
 	e._windup = 0.3
@@ -1690,9 +1696,10 @@ func _test_windup_interrupt() -> void:
 	e._windup_target = null
 	e._resolve_attack()
 	check("widok: chybiony rozstrzygnięty cios ma jawne zdarzenie", int(e.view_info()["attack_seq"]) == 1)
-	e._visual_attack(7)
-	e._visual_attack(3)
+	e._visual_attack(7, "throw")
+	e._visual_attack(3, "charge")
 	check("widok: obserwator ignoruje spóźniony numer zdarzenia", e.visual_attack_seq == 7)
+	check("widok: starszy numer nie zmienia rodzaju ataku", e.view_info()["attack_action"] == "throw")
 	var w := _spawn("wolek", Vector2(FAR_X + 16200.0, y))
 	w.set_physics_process(false)
 	w._windup = 0.3
