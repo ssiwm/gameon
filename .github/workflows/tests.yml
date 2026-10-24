@@ -87,6 +87,12 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_weapon_grips.gd 2>&1 | tee grips.log
           grep -a "^PASS weapon grips" grips.log
+      - name: Ciągłość powierzchni Wołka i Rzeźnika (test_enemy_surface.gd)
+        run: |
+          set -o pipefail
+          timeout 120 godot --headless --path prototype -s tools/test_enemy_surface.gd 2>&1 | tee enemy-surface.log
+          grep -a "^PASS enemy surface" enemy-surface.log
+          ! grep -a -E "SCRIPT ERROR|Parse Error|ERROR:|FAIL enemy surface" enemy-surface.log
       - name: Postój, kolana, podeszwy i przejścia (test_standing_legs.gd)
         run: |
           godot --headless --path prototype -s tools/test_standing_legs.gd 2>&1 | tee standing.log

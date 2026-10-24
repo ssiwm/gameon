@@ -24,6 +24,7 @@ func _initialize() -> void:
 		var vp := SubViewport.new()
 		vp.size = Vector2i(300, 320)
 		vp.own_world_3d = true
+		vp.msaa_3d = Viewport.MSAA_2X
 		vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 		root.add_child(vp)
 		var env := Environment.new()
