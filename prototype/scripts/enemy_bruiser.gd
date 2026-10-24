@@ -85,6 +85,7 @@ func tick_phase(delta: float, target: Node2D) -> bool:
 				e._sp = 2
 				sp_t = _c("time", CHARGE_TIME)
 				e.winding = false
+				e.visual_attack()
 			return true
 		2:
 			sp_t -= delta
@@ -209,6 +210,7 @@ func _throw_boulder(target: Node2D) -> void:
 	var lvl = e.get_tree().get_first_node_in_group("level")
 	if lvl != null and lvl.has_method("spawn_boulder"):
 		lvl.spawn_boulder(from, vel, float(cfg.get("dmg", 0.5)))
+		e.visual_attack()
 	NoiseMgr.add_noise(float(cfg.get("noise", 2.0)), e.global_position)
 
 ## Rzut: balistyczny łuk w gracza (grawitacja ciał fizycznych 980), skrzynia rani przy trafieniu (prop.gd).
@@ -228,5 +230,6 @@ func _throw_crate(target: Node2D) -> void:
 	var t := clampf(maxf(absf(aim.x) / 300.0, absf(aim.y) / 500.0), 0.3, 0.9)        # rzut pionowy dostaje więcej czasu lotu (mniejsza prędkość początkowa)
 	var vel := Vector2(clampf(aim.x / t, -420.0, 420.0), (aim.y - 0.5 * 980.0 * t * t) / t)
 	crate.throw_to(from, vel)
+	e.visual_attack()
 	NoiseMgr.add_noise(4.0, e.global_position)
 

@@ -85,6 +85,7 @@ var awake := false
 var target_pos := Vector2.ZERO
 ## Zapowiedź ataku trwa (synchronizowane, żeby klient grał sygnał i rysował błysk)
 var winding := false
+var visual_attack_seq := 0
 
 var _attack_timer := 0.0
 var _hesitate := 0.0
@@ -143,7 +144,7 @@ func _ready() -> void:
 
 ## Kontrakt widoku (view3d.gd) — patrz enemy.gd: view_info. Stalker jest nieśmiertelny i nie błyska po trafieniu.
 func view_info() -> Dictionary:
-	return {"kind": "stalker", "alive": true, "winding": winding, "sp": 0, "flash": false}
+	return {"kind": "stalker", "alive": true, "winding": winding, "sp": 0, "flash": false, "attack_seq": visual_attack_seq}
 
 ## Skaner z perkiem „Scout" pokazuje śpiącego (niewidocznego) Stalkera z bliska.
 func is_stalker() -> bool:
@@ -489,6 +490,9 @@ func _tick_windup(delta: float) -> void:
 	if _windup > 0.0:
 		return
 	winding = false
+	visual_attack_seq += 1
+	if NoiseMgr.has_network() and NoiseMgr.is_server():
+		_visual_attack.rpc(visual_attack_seq)
 	var pp := _windup_target
 	_windup_target = null
 	# cios trafia tylko jeśli gracz nie zdążył odejść poza zasięg (+ mała tolerancja)
@@ -627,11 +631,16 @@ func _sync(pos: Vector2, is_awake: bool, is_winding: bool) -> void:
 	_remote_pos = pos
 	awake = is_awake
 	winding = is_winding
+
 	visible = awake
 	# Klient nie symuluje AI (GDD §8.5), więc audio też musi iść tu —
 	# inaczej zdalny gracz usłyszy stalkera dopiero przy trafieniu.
 	_update_audio(get_process_delta_time(), awake, NoiseMgr.level)
 	_redraw()
+
+@rpc("authority", "call_remote", "reliable")
+func _visual_attack(sequence: int) -> void:
+	visual_attack_seq = maxi(visual_attack_seq, sequence)
 
 ## Sylwetka — cieniowana: w ciemności (CanvasModulate) niemal niewidoczna,
 ## w snopie latarki albo przy rozbłysku strzału wychodzi z mroku. Kolor jest

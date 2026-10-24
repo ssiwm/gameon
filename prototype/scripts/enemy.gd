@@ -87,6 +87,7 @@ var hp := 30.0
 var active := false
 var alive := true
 var winding := false
+var visual_attack_seq := 0
 var _voiced_winding := false  ## czy zapowiedź ciosu już się odezwała (zbocze `winding`, lokalnie na każdym peerze)
 var _was_hidden := false      ## zamaskowany (np. Żerca przed porwaniem): niewidoczny i nietrafialny — stan z zachowania, na każdym peerze
 var burning := false          ## replikowane wizualnie przez RPC (_ignite_fx); logika tylko na serwerze
@@ -1072,6 +1073,7 @@ func _try_begin_attack(target: Node2D) -> void:
 
 func _resolve_attack() -> void:
 	winding = false
+	visual_attack()
 	var pp := _windup_target
 	_windup_target = null
 	_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
@@ -1304,9 +1306,22 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 ## (`_sp`), z koloru sprite'a (błysk trafienia) i ze ścieżki skryptu (rodzaj). Tę samą metodę mają Stalker, Żyła, Pijawka i gniazdo.
 ## Klucze: kind (rodzaj modelu), alive, winding (zapowiedź ciosu), sp (stan specjalny Wołka), flash (świeże trafienie), ai (stan AI, `Ai`),
 ## alert (reakcja „zauważył cię": oczy rozżarzone, wróg stoi i patrzy na źródło).
+## Zdarzenie prezentacji rozstrzygniętego ataku, także chybionego; przerwanie nie wysyła zdarzenia.
+func visual_attack() -> void:
+	if not NoiseMgr.is_server():
+		return
+	visual_attack_seq += 1
+	if NoiseMgr.has_network() and NoiseMgr.is_server():
+		_visual_attack.rpc(visual_attack_seq)
+
+@rpc("authority", "call_remote", "reliable")
+func _visual_attack(sequence: int) -> void:
+	visual_attack_seq = maxi(visual_attack_seq, sequence)
+
 func view_info() -> Dictionary:
 	var d := {"kind": kind, "alive": alive, "winding": winding, "sp": _sp, "flash": _flash > 0.0, "ai": _ai, "alert": _ai == Ai.ALERT, "shield": false, "tele": 0.0, "beams": PackedVector2Array()}
 	_beh.view_extra(d)
+	d["attack_seq"] = visual_attack_seq
 	return d
 
 ## Głos gatunku dla zdarzenia (`enemy_defs.gd`: voice); gatunek bez wpisu milczy.
