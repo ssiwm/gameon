@@ -386,7 +386,7 @@ tools/
 
 ## Znane ograniczenia (świadome, prototyp)
 
-- serwer nie sprawdza, czy gracz miał daną broń i ile ma naboi (`_fire_request` waliduje nadawcę, tempo i wylot, ale nie magazynek); upuszczenie broni (`_drop_rpc`) sprawdza tylko nadawcę i odległość
+- serwer nie sprawdza pełnego wyposażenia i magazynka przy strzale (`_fire_request` waliduje nadawcę, tempo i wylot). Zamiana broni ma osobny serwerowy rejestr zestawu; `_drop_rpc` nie tworzy przedmiotów, a starą broń odkłada wyłącznie serwer po przyjętym podniesieniu
 - wydajność mierzona wyłącznie na RTX 3080 (HD: ok. 260 MB pamięci wideo na misję); brak pomiaru na słabszym GPU, a grzbiety i mgła tła HD są importowane jako S3TC (PC, Steam Deck; bez S3TC trzeba je przełączyć z powrotem na bezstratne)
 - hitbox wynurzonej Pijawki nie podąża za wychyleniem głowy w ataku; arkusze HD potworów mają warstwę glow tylko u Mimika i Trzoska
 - pozycje zdalnych graczy ufane (OK dla kooperacji, blokuje host migration)
@@ -430,3 +430,17 @@ w podglądzie animacji oraz regresje skinningu. Pozostałe lokalne brzegi i
 krawędzie niemanifold pochodzą z generowanych źródeł; te modele nie są
 pełną ręczną retopologią. Test topologii ma jawne budżety, a ocenę detali
 stroju wykonuje się również w renderze gry.
+
+## Gabloty 1.7.379 — wymiana i weryfikacja
+
+Cała gablota ma wspólny zasięg interakcji, niezależny od wybranego rzędu. H otwiera/zamyka, góra/dół wybiera broń, 1/2 wskazuje zastępowany slot, E pobiera. Panel ma też przyciski myszy; pad używa zarejestrowanych akcji menu. Odmowa pobrania zablokowanej broni zachowuje podgląd. Szczegóły przewijają się, a akcja pobrania pozostaje widoczna.
+
+Egzemplarze są wspólne dla drużyny. Panel pokazuje dostępne, zablokowane i wydane miejsca, z etykietą odbiorcy; dołączający otrzymuje snapshot. Znana już broń daje tylko naboje do wspólnej puli, w granicach jej pojemności. Zamiana zwraca stary magazynek z jego typem amunicji i odkłada starą broń bez nowego przydziału. Serwer ustala ją na podstawie zatwierdzonego zestawu, a nie replikowanej deklaracji klienta. Zestaw przechodzi z carry, resetuje się po wipe i karze porwania. Ekspozycja pozostaje fabryczna; statystyki dotyczą montażu gracza, a porównanie uwzględnia aktualny nabój i zastępowany slot. Pistolet i magazynki na dolnej półce nadal są dekoracją.
+
+```bash
+godot --headless --path prototype --import
+godot --headless --path prototype -- --host --port=8953 --cabinettest --autoquit=40
+bash prototype/tools/test_cabinets.sh
+```
+
+Testy obejmują rzeczywiste gabloty, odległość, blokady, klawiaturę/akcje pada/przyciski, amunicję, porównanie i lifecycle. Dwa procesy ENet sprawdzają późne dołączenie, duplikaty, fałszywe porzucenie i sfałszowany replikowany zestaw. Host i klienci muszą używać tej samej wersji gry (zmienione RPC zamiany). Regresje dodano do CI; nie zastępują próby WAN/Steam i nie oznaczają pełnego systemu przeciw oszustwom.

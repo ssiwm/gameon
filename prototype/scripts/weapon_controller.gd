@@ -122,6 +122,7 @@ var loadout: Array[int] = [Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Wea
 var melee_id := Weapons.START_MELEE
 var slot := 0
 var inspect_item: Node2D               ## lokalnie: broń w oględzinach ([H]; widok z oczu gracza i panel HUD)
+var inspect_slot := 0                  ## docelowy slot broni głównej w oględzinach
 var _inspect_hp := 0.0                 ## zdrowie w chwili otwarcia oględzin (spadek je zamyka)
 var mags: Dictionary = {}
 var burst_on: Dictionary = {}     ## id broni → true: wybrany tryb serii (klawisz B; lokalnie, serwer go nie potrzebuje)
@@ -660,6 +661,8 @@ func reset() -> void:
 		ammo_enabled = false
 	melee_id = Weapons.START_MELEE
 	slot = 0
+	inspect_item = null
+	inspect_slot = 0
 	mags.clear()
 	loaded.clear()
 	want_ammo.clear()
@@ -1552,18 +1555,22 @@ func _tick_inspect() -> void:
 	if it == null:
 		return
 	if inspect_item != null and inspect_item.has_meta("cabinet"):
-		if Input.is_action_just_pressed("move_up"):
+		if Input.is_action_just_pressed("move_up") or Input.is_action_just_pressed("menu_up"):
 			_cycle_cabinet(-1)
-		elif Input.is_action_just_pressed("move_down"):
+		elif Input.is_action_just_pressed("move_down") or Input.is_action_just_pressed("menu_down"):
 			_cycle_cabinet(1)
+	if inspect_item != null:
+		if Input.is_action_just_pressed("menu_slot_1"):
+			inspect_slot = 0
+		elif Input.is_action_just_pressed("menu_slot_2"):
+			inspect_slot = 1
 	if Input.is_action_just_pressed("inspect_weapon"):
 		inspect_item = null if (inspect_item == it or _same_cabinet(inspect_item, it)) else it
+		inspect_slot = slot if slot < 2 else 0
 		_inspect_hp = hp_now
 		Audio.play("ui_click", Audio.BUS_UI, -16.0)
 	elif Input.is_action_just_pressed("interact"):
-		var target := inspect_item
-		inspect_item = null
-		_try_pickup(target)
+		_try_pickup(inspect_item)
 
 ## Czy dwa przedmioty broni wiszą w tej samej gablocie (meta „cabinet" z level.gd).
 static func _same_cabinet(a: Node, b: Node) -> bool:
@@ -1572,6 +1579,8 @@ static func _same_cabinet(a: Node, b: Node) -> bool:
 
 ## Oględziny gabloty: wybór broni rząd wyżej (step −1) albo niżej (+1); puste haki (broń wzięta) są pomijane, na krańcach wybór stoi.
 func _cycle_cabinet(step: int) -> void:
+	if inspect_item == null or not is_instance_valid(inspect_item):
+		return
 	var cab := int(inspect_item.get_meta("cabinet"))
 	var items: Array = get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool:
 		return n.has_meta("cabinet") and int(n.get_meta("cabinet")) == cab and not n.is_queued_for_deletion())
@@ -1583,6 +1592,17 @@ func _cycle_cabinet(step: int) -> void:
 	inspect_item = items[j]
 	Audio.play("ui_click", Audio.BUS_UI, -18.0)
 
+func select_cabinet_slot(row: int) -> void:
+	if inspect_item == null or not is_instance_valid(inspect_item) or not inspect_item.has_meta("cabinet"):
+		return
+	var level := get_tree().get_first_node_in_group("level")
+	if level == null or row < 0 or row >= int(level._cab_slots):
+		return
+	var name := "MapGun%d" % (int(inspect_item.get_meta("cabinet")) * int(level._cab_slots) + row)
+	var item := level.get_node_or_null(name) as Node2D
+	if item != null and not item.is_queued_for_deletion() and item.in_reach(player):
+		inspect_item = item
+
 ## [E]: bierze `target` (broń wybraną w oględzinach), a bez niej — najbliższą. Zamianę rozstrzyga serwer (odległość, blokada).
 func _try_pickup(target: Node2D = null) -> void:
 	var it := target if target != null and is_instance_valid(target) and not target.is_queued_for_deletion() else nearby_weapon_item()
@@ -1590,9 +1610,10 @@ func _try_pickup(target: Node2D = null) -> void:
 		return
 	var lvl := get_tree().get_first_node_in_group("level")
 	if lvl.is_locked_item(it):
-		Audio.play("ui_click", Audio.BUS_UI, -14.0)         # zablokowany stojak: najpierw kup w warsztacie
+		Audio.play("ui_deny", Audio.BUS_UI, -14.0)
+		Msg.post("armory.locked", Msg.Ch.TOAST, tr("LOCKED  ·  %s") % Scrap.lock_text(int(it.arg)), {"ttl": 3.0, "style": Msg.Style.WARN})
 		return
-	lvl.request_weapon_pickup(it.name)
+	lvl.request_weapon_pickup(it.name, inspect_slot if inspect_item != null else (slot if slot < 2 else 0))
 
 ## Strzelnica FPP (fp_mode.gd): zestaw w chwili wejścia — bronie, magazynki, typy naboi, zacięcia, temperatury. Przy wyjściu `range_restore`
 ## przywraca go w całości: broń z szafy strzelnicy i strzały ćwiczebne nie zmieniają sprzętu, z którym gracz wraca do kryjówki.
@@ -1680,7 +1701,7 @@ func range_trial(w: int) -> bool:
 ## Serwer przyznał broń (po sprawdzeniu odległości). Zastępuje bieżącą główną, jeśli nie masz
 ## już tej samej; porzucona broń leży pod stopami, jej magazynek wraca do wspólnego zapasu.
 @rpc("any_peer", "call_remote", "reliable")
-func grant_weapon(w: int) -> void:
+func grant_weapon(w: int, target_slot := -1) -> void:
 	var sender := multiplayer.get_remote_sender_id() if NoiseMgr.has_network() else 0
 	if sender != 0 and sender != 1:
 		return
@@ -1690,14 +1711,12 @@ func grant_weapon(w: int) -> void:
 	if carries(w):
 		return          # znana broń: naboje już poszły do zapasu (level.gd)
 	if d.slot == Weapons.Slot.MELEE:
-		var old_m := melee_id
 		melee_id = w
-		_drop(old_m)
 		_sync_player()
 		return
 	if d.slot != Weapons.Slot.PRIMARY:
 		return
-	var target := slot if slot < 2 else 0
+	var target := target_slot if target_slot >= 0 and target_slot < 2 else (slot if slot < 2 else 0)
 	var old := loadout[target]
 	_cancel_actions()
 	if mag_of(old) > 0:
@@ -1707,16 +1726,8 @@ func grant_weapon(w: int) -> void:
 	want_ammo.erase(old)
 	loadout[target] = w
 	mags[w] = 0
-	_drop(old)
 	if target == slot:
 		state = State.DRAW
 		state_t = d.draw_time * mastery_mult(d.id)
 	Audio.play("weapon_pickup", Audio.BUS_UI, -8.0)
 	_sync_player()          # pusty magazynek nowej broni ładuje się sam po dobyciu
-
-func _drop(old: int) -> void:
-	if Weapons.def(old).infinite and Weapons.def(old).slot == Weapons.Slot.SIDEARM:
-		return
-	var lvl := get_tree().get_first_node_in_group("level")
-	if lvl != null:
-		lvl.request_drop(old, player.global_position + Vector2(0, -4))

@@ -2036,13 +2036,19 @@ func _drive_cards() -> void:
 		var nd: RefCounted = Weapons.def(wid)
 		var lvl_i := get_tree().get_first_node_in_group("level")
 		var locked: bool = lvl_i != null and lvl_i.is_locked_item(it)
-		var hand: int = wc.melee_id if nd.slot == Weapons.Slot.MELEE else wc.loadout[wc.slot if wc.slot < 2 else 0]
+		var hand: int = wc.melee_id if nd.slot == Weapons.Slot.MELEE else wc.loadout[wc.inspect_slot]
+		if nd.slot != Weapons.Slot.MELEE and wc.carries(wid):
+			hand = wc.loadout[wc.slot]
 		var gk = it.get("_hd_gun")
-		var foot := Actions.fmt(tr("[{flare}]  Close")) if locked else Actions.fmt(tr("[{interact}]  Take   ·   [{flare}]  Close"))
+		var foot := Actions.fmt(tr("[{inspect_weapon}]  Close")) if locked else Actions.fmt(tr("[{interact}]  Take   ·   [{inspect_weapon}]  Close"))
+		if not locked and wc.carries(wid):
+			foot = Actions.fmt(tr("[{interact}]  Collect ammo   ·   [{inspect_weapon}]  Close"))
+		elif nd.slot == Weapons.Slot.PRIMARY:
+			foot = Actions.fmt(tr("[{menu_slot_1}] [{menu_slot_2}]  Target slot")) + "   ·   " + foot
 		var cab := it.has_meta("cabinet")                     # gablota: kamera patrzy na gablotę, ↑ / ↓ wybiera broń
 		if cab:
 			foot = Actions.fmt(tr("[{move_up}] [{move_down}]  Select")) + "   ·   " + foot
-		_inspect.show_weapon(wid, String(gk) if gk != null and String(gk) != "" else String(nd.key), hand, Scrap.lock_text(wid) if locked else "", foot, cab)
+		_inspect.show_weapon(wid, String(gk) if gk != null and String(gk) != "" else String(nd.key), hand, Scrap.lock_text(wid) if locked else "", foot, cab, wc, it)
 	else:
 		_inspect.close()
 	# --- odprawa przy tablicy

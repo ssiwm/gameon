@@ -170,6 +170,8 @@ var _rows := 2                         ## wierszy w atlasie (2 = kod, 4 = art/ti
 var _decal_list: Array = []            ## [pos, radius, seed]
 var _map: Array = []                   ## MAP bieżącej misji
 var _weapons: Array = []               ## broń z „g” (po kolei od lewej)
+var _weapon_kits: Dictionary = {}      ## serwer: peer → zatwierdzony zestaw; nigdy z kit klienta
+var _cabinet_issued: Dictionary = {}   ## MapGun → etykieta odbiorcy (snapshot dołączających)
 var _accents: Array = []
 var _ts: TileSet
 var _stable: Array = []                ## węzły stałe (tło, warstwy) — reszta to encje misji
@@ -200,6 +202,7 @@ func _ready() -> void:
 func load_map(id: String) -> void:
 	if id == map_id or not MAPS.has(id):
 		return
+	_cabinet_issued.clear()
 	for c in get_children():
 		if not _stable.has(c):
 			remove_child(c)
@@ -965,7 +968,7 @@ func _add_map_item(n: String, kind: String, arg: int, pos: Vector2, value := 0) 
 	it.name = n
 	it.kind = kind
 	it.arg = arg
-	it.rounds = value
+	it.rounds = int(Weapons.def(arg).pickup_rounds) if kind == "weapon" else value
 	it.position = pos + Vector2(0, -2)
 	it.static_display = kind == "weapon" and _racks      # broń na stojaku stoi w miejscu
 	add_child(it)
@@ -1323,9 +1326,13 @@ func spawn_health(pos: Vector2) -> void:
 
 ## Serwer: przedmiot na ziemi — "health", "ammo" (arg = broń, rounds = naboje)
 ## albo "weapon" (arg = broń). Nazwa węzła jest stała na każdym peerze.
-func spawn_item(kind: String, arg: int, pos: Vector2, rounds := 0) -> void:
+func spawn_item(kind: String, arg: int, pos: Vector2, rounds := -1) -> void:
 	if not NoiseMgr.is_server():
 		return
+	if kind == "weapon" and not Weapons.is_valid(arg):
+		return
+	# Nowy łup daje przydział; porzucona broń ma 0 (magazynek zwrócono osobno).
+	rounds = int(Weapons.def(arg).pickup_rounds) if kind == "weapon" and rounds < 0 else maxi(rounds, 0)
 	if kind == "scrap":
 		SessionLog.note_scrap_drop(rounds)              # złom z trupów i bossa (dziennik: ile wypadło, ile drużyna zebrała)
 	_pickup_serial += 1
@@ -1380,6 +1387,9 @@ func clear_pickups() -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _clear_pickups_rpc() -> void:
+	_cabinet_issued.clear()
+	for cabinet in get_tree().get_nodes_in_group("cabinets"):
+		cabinet.issued.clear()
 	for f in get_tree().get_nodes_in_group("flares"):
 		f.queue_free()
 	for gr in get_tree().get_nodes_in_group("grenades"):
@@ -1405,7 +1415,10 @@ func weapon_item_near(pos: Vector2) -> Node2D:
 	for h in get_tree().get_nodes_in_group("pickups"):
 		if h.kind != "weapon" or h.is_queued_for_deletion():
 			continue
-		var d: float = h.global_position.distance_to(pos)
+		var point: Vector2 = h.global_position + Vector2(0, -6)
+		if h.has_meta("cab_x"):
+			point = CABINET.interaction_point(Vector2(float(h.get_meta("cab_x")), h.global_position.y + 2))
+		var d := point.distance_to(pos)
 		if d <= h.WEAPON_R and d < best_d:
 			best_d = d
 			best = h
@@ -1417,56 +1430,111 @@ func weapon_item_near(pos: Vector2) -> Node2D:
 func is_locked_item(it: Node2D) -> bool:
 	return it != null and it.kind == "weapon" and it.static_display and not Scrap.is_unlocked(int(it.arg))
 
-func request_weapon_pickup(item_name: String) -> void:
+func request_weapon_pickup(item_name: String, target_slot := -1) -> void:
 	if NoiseMgr.has_network() and not NoiseMgr.is_server():
-		_weapon_pickup_rpc.rpc_id(1, item_name)
+		_weapon_pickup_rpc.rpc_id(1, item_name, target_slot)
 	else:
-		_weapon_pickup_server(item_name, NoiseMgr.local_id())
+		_weapon_pickup_server(item_name, NoiseMgr.local_id(), target_slot)
 
 @rpc("any_peer", "call_remote", "reliable")
-func _weapon_pickup_rpc(item_name: String) -> void:
+func _weapon_pickup_rpc(item_name: String, target_slot := -1) -> void:
 	if NoiseMgr.is_server():
-		_weapon_pickup_server(item_name, multiplayer.get_remote_sender_id())
+		_weapon_pickup_server(item_name, multiplayer.get_remote_sender_id(), target_slot)
 
-func _weapon_pickup_server(item_name: String, peer_id: int) -> void:
+func _weapon_pickup_server(item_name: String, peer_id: int, target_slot := -1) -> void:
+	if item_name.is_empty() or item_name.validate_node_name() != item_name or target_slot < -1 or target_slot > 1:
+		return
 	var it := get_node_or_null(item_name)
-	if it == null or it.kind != "weapon" or it.is_queued_for_deletion() or is_locked_item(it):
+	if it == null or not it.is_in_group("pickups") or it.kind != "weapon" or not Weapons.is_valid(int(it.arg)) or it.is_queued_for_deletion() or is_locked_item(it):
 		return
 	var pl: Node2D = null
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.player_id == peer_id and not p.is_bot:
 			pl = p
-	if pl == null or pl.dead or not it.in_reach(pl):
+	if pl == null or pl.dead or pl.in_range or not it.in_reach(pl):
 		return
 	var w: int = it.arg
-	Arsenal.add_reserve(w, int(Weapons.def(w).pickup_rounds))
+	var d := Weapons.def(w)
+	if d.slot == Weapons.Slot.SIDEARM:
+		return
+	var kit := server_weapon_kit(pl)
+	var have := w == kit.x or w == kit.y or w == kit.z
+	if target_slot < 0:
+		target_slot = 1 if int(pl.weapon) == kit.y else 0
+	if not have:
+		var old: int = kit.z if d.slot == Weapons.Slot.MELEE else kit[target_slot]
+		if d.slot == Weapons.Slot.MELEE:
+			kit.z = w
+		else:
+			kit[target_slot] = w
+		_weapon_kits[peer_id] = kit
+		spawn_item("weapon", old, pl.global_position + Vector2(0, -4), 0)
+	Arsenal.add_reserve(w, maxi(int(it.rounds), 0))
+	var in_cabinet := it.has_meta("cabinet")
+	if in_cabinet:
+		_cabinet_issued[item_name] = "P%d" % int(pl.display_id)
 	take_item(item_name)
+	if in_cabinet:
+		if NoiseMgr.has_network():
+			_cabinet_state_rpc.rpc(_cabinet_issued)
+		else:
+			_cabinet_state_rpc(_cabinet_issued)
 	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
-		pl.weapons.grant_weapon(w)
+		pl.weapons.grant_weapon(w, target_slot)
 	else:
-		pl.weapons.grant_weapon.rpc_id(peer_id, w)
+		pl.weapons.grant_weapon.rpc_id(peer_id, w, target_slot)
+
+func register_weapon_kit(peer_id: int) -> void:
+	if NoiseMgr.is_server():
+		_weapon_kits[peer_id] = Vector3i(Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Weapons.START_MELEE)
+
+func forget_weapon_kit(peer_id: int) -> void:
+	_weapon_kits.erase(peer_id)
+
+func server_weapon_kit(pl: Node2D) -> Vector3i:
+	if int(pl.player_id) == NoiseMgr.local_id():
+		return pl.weapons.kit()   # lokalny kontroler hosta jest zaufany
+	return _weapon_kits.get(int(pl.player_id), Vector3i(Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Weapons.START_MELEE))
+
+func cabinet_rows(index: int) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if index < 0:
+		return rows
+	for slot in _cab_slots:
+		var wi := index * _cab_slots + slot
+		if wi >= _weapons.size():
+			break
+		var w := int(_weapons[wi])
+		rows.append({"slot": slot, "weapon": w, "name": "MapGun%d" % wi, "locked": not Scrap.is_unlocked(w),
+			"issued": String(_cabinet_issued.get("MapGun%d" % wi, ""))})
+	return rows
+
+func send_cabinets_to(peer_id: int) -> void:
+	if NoiseMgr.is_server() and not _cabinet_issued.is_empty():
+		_cabinet_state_rpc.rpc_id(peer_id, _cabinet_issued)
+
+@rpc("authority", "call_local", "reliable")
+func _cabinet_state_rpc(issued: Dictionary) -> void:
+	_cabinet_issued = issued.duplicate()
+	for cabinet in get_tree().get_nodes_in_group("cabinets"):
+		cabinet.issued.clear()
+		for row in cabinet_rows(int(cabinet.index)):
+			if String(row["issued"]) != "":
+				cabinet.issued[int(row["slot"])] = String(row["issued"])
+				var item := get_node_or_null(String(row["name"]))
+				if item != null and not item.is_queued_for_deletion():
+					item.queue_free()
 
 ## Gracz porzuca zastąpioną broń (leży pod stopami) — przez serwer, żeby miała stałą nazwę.
 func request_drop(w: int, pos: Vector2) -> void:
-	if NoiseMgr.has_network() and not NoiseMgr.is_server():
-		_drop_rpc.rpc_id(1, w, pos)
-	else:
-		spawn_item("weapon", w, pos)
-
-const DROP_MAX_DIST := 64.0          ## broń porzucona przez klienta musi wylądować tuż przy jego postaci
+	# Wymianę tworzy _weapon_pickup_server, bez deklaracji klienta.
+	if NoiseMgr.is_server() and Weapons.is_valid(w):
+		spawn_item("weapon", w, pos, 0)
 
 @rpc("any_peer", "call_remote", "reliable")
-func _drop_rpc(w: int, pos: Vector2) -> void:
-	if not NoiseMgr.is_server() or not Weapons.is_valid(w):
-		return
-	var pl: Node2D = null
-	var sender := multiplayer.get_remote_sender_id()
-	for p in get_tree().get_nodes_in_group("players"):
-		if p.player_id == sender and not p.is_bot:
-			pl = p
-	if pl == null or pl.dead or pos.distance_to(pl.global_position) > DROP_MAX_DIST:
-		return                                                    # nie wstawimy broni w dowolne miejsce mapy (czy gracz ją miał, serwer nie wie — zostaje tylko ta luka)
-	spawn_item("weapon", w, pos)
+func _drop_rpc(_w: int, _pos: Vector2) -> void:
+	# Bez skutków odrzuca stare/fałszywe żądania porzucenia.
+	return
 
 ## Plama krwi na powierzchni (vfx.splat). Lokalna, kosmetyczna.
 func add_decal(pos: Vector2, radius: float) -> void:

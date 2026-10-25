@@ -1886,6 +1886,11 @@ func apply_take(on: bool, pos: Vector2, remaining := 0.0) -> void:
 
 ## Kara po 20 s porwania: postać wraca na start misji z wyposażeniem początkowym (nie ginie na stałe — GDD §4: kara dystansem i czasem).
 func deliver_devour() -> void:
+	if not taken:
+		return
+	var level := get_tree().get_first_node_in_group("level")
+	if level != null and NoiseMgr.is_server():
+		level.register_weapon_kit(player_id)
 	if not NoiseMgr.has_network() or is_multiplayer_authority():
 		apply_devour()
 	else:
