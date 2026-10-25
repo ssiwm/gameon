@@ -545,12 +545,33 @@ func _bench_box(parent: Node3D, dimensions: Vector3, at: Vector3, material: Mate
 	parent.add_child(mesh)
 	return mesh
 
+func _bench_metal(color: Color, roughness: float) -> Material:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.metallic = 0.75
+	material.roughness = roughness
+	return material
+
+## Walec leżący na macie (oś wzdłuż x, obrócony o `angle_deg` w płaszczyźnie maty); `upright` — stojący (łeb śruby).
+func _bench_rod(parent: Node3D, length: float, radius: float, at: Vector3, angle_deg: float, material: Material, upright := false) -> MeshInstance3D:
+	var mesh := MeshInstance3D.new()
+	var rod := CylinderMesh.new()
+	rod.height = length
+	rod.top_radius = radius
+	rod.bottom_radius = radius
+	rod.radial_segments = 16
+	mesh.mesh = rod
+	mesh.material_override = material
+	mesh.position = at
+	mesh.rotation = Vector3(PI * 0.5, 0.0, 0.0) if upright else Vector3(0.0, 0.0, PI * 0.5 + deg_to_rad(angle_deg))
+	parent.add_child(mesh)
+	return mesh
+
 func _build_bench() -> void:
 	_table = Node3D.new()
 	_vp.add_child(_table)
 	var wood := _bench_material(Color("57402d"), true)
 	var mat := _bench_material(Color("344838"), true)
-	var steel := _bench_material(Color("5b655c"))
 	var brass := _bench_material(Color("96784a"))
 	_bench_box(_table, Vector3(2.9, 1.55, 0.09), Vector3(0, 0, -0.52), wood)
 	_bench_box(_table, Vector3(2.33, 1.24, 0.014), Vector3(-0.05, 0.03, -0.465), mat)
@@ -559,14 +580,22 @@ func _build_bench() -> void:
 		_bench_box(_table, Vector3(0.0015, 1.19, 0.002), Vector3(-1.1 + i * 0.12, 0.03, -0.455), grid)
 	for i in 10:
 		_bench_box(_table, Vector3(2.28, 0.0015, 0.002), Vector3(-0.05, -0.51 + i * 0.12, -0.455), grid)
-	# Płytka taca, śrubokręt i stalowy wybijak: prawdziwe bryły 3D, jedna scena i bez nowych tekstur.
-	_bench_box(_table, Vector3(0.49, 0.30, 0.02), Vector3(0.81, -0.47, -0.435), steel)
+	# Płytka taca, śrubokręt i stalowy wybijak: prawdziwe bryły 3D, jedna scena i bez nowych tekstur. Taca ma gumowe dno i wyższy,
+	# jaśniejszy metalowy rant ze śrubami w rogach — płaska szara płyta wyglądała jak pusty prostokąt interfejsu.
+	var rubber := _bench_material(Color("1f211c"), true)
+	var rim := _bench_metal(Color("8b918a"), 0.35)
+	_bench_box(_table, Vector3(0.49, 0.30, 0.02), Vector3(0.81, -0.47, -0.435), _bench_metal(Color("454a44"), 0.55))
+	_bench_box(_table, Vector3(0.45, 0.26, 0.006), Vector3(0.81, -0.47, -0.423), rubber)
 	for side in [-1.0, 1.0]:
-		_bench_box(_table, Vector3(0.49, 0.014, 0.025), Vector3(0.81, -0.47 + side * 0.15, -0.415), steel)
-		_bench_box(_table, Vector3(0.014, 0.3, 0.025), Vector3(0.81 + side * 0.245, -0.47, -0.415), steel)
-	_bench_box(_table, Vector3(0.23, 0.035, 0.032), Vector3(-0.89, 0.60, -0.42), _bench_material(Color("734630")))
-	_bench_box(_table, Vector3(0.22, 0.01, 0.012), Vector3(-0.665, 0.60, -0.42), steel)
-	_bench_box(_table, Vector3(0.31, 0.012, 0.012), Vector3(-0.81, 0.55, -0.42), brass)
+		_bench_box(_table, Vector3(0.49, 0.02, 0.04), Vector3(0.81, -0.47 + side * 0.14, -0.41), rim)
+		_bench_box(_table, Vector3(0.02, 0.3, 0.04), Vector3(0.81 + side * 0.235, -0.47, -0.41), rim)
+		for end in [-1.0, 1.0]:
+			_bench_rod(_table, 0.008, 0.009, Vector3(0.81 + end * 0.235, -0.47 + side * 0.14, -0.386), 0.0, brass, true)
+	# Narzędzia: walce z cieniowaniem i lekko skośnie — płaskie prostokąty w rzędzie czytały się jak paski postępu.
+	var handle := _bench_material(Color("7a3424"))
+	_bench_rod(_table, 0.2, 0.022, Vector3(-0.9, 0.6, -0.42), 7.0, handle)
+	_bench_rod(_table, 0.2, 0.0065, Vector3(-0.7, 0.625, -0.43), 7.0, _bench_metal(Color("a9aea6"), 0.3))
+	_bench_rod(_table, 0.3, 0.008, Vector3(-0.84, 0.52, -0.432), -4.0, brass)
 	_lamp.shadow_enabled = true
 	_lamp.position = Vector3(0.2, 0.65, 3.5)
 	_lamp.look_at(Vector3.ZERO)
