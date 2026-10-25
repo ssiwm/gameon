@@ -20,3 +20,12 @@ art_src/world_decals/
 art_src/audio_lib/
 # assety zmiksowane z tych nagrań (bake_common.hybrid): tylko lokalnie i w buildach, gra woli je od prototype/audio/
 prototype/audio_licensed/
+
+# nagrania trailera (trailer/capture.sh, encode.sh): wyniki tylko lokalnie — gotowy materiał publikować poza repo
+trailer/raw/
+trailer/out/
+# jednorazowe sondy i ich logi w narzędziach
+prototype/tools/_probe_*
+prototype/tools/_blender_*
+# wtyczka edytora Tripo DCC Bridge: instalowana lokalnie, nie jest częścią gry (brak licencji do redystrybucji)
+prototype/addons/Tripo3d_Godot_Bridge/

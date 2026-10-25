@@ -14,13 +14,13 @@ Data: 25.10.2026. Repozytorium: `C:\deadair87\gameon`, gałąź `fix/weapon-work
 
 | Pliki | Wdrożenie |
 |---|---|
-| [gunsmith_panel.gd](/C:/deadair87/gameon/prototype/scripts/gunsmith_panel.gd:175) i `.gd.uid` | Nowy panel otrzymuje dane od WorkshopUI i emituje wybory. `present`, `_present_rack`, `_present_slots`, `_present_parts`, `_present_summary`. Papierowa karta, limit czterech głównych zmian, pełne szczegóły i przewijanie. |
-| [gun_stage.gd](/C:/deadair87/gameon/prototype/scripts/gun_stage.gd:278) | Tryb ławy, proceduralny stół / mata / narzędzia i fizyczna taca. `slot_at`, `slot_screen_position`, `animate_mount`, `cancel_mount`, `stable_bounds`, `_fit_viewport`. Dotychczasowy kompaktowy tryb pozostaje domyślny. |
-| [workshop_ui.gd](/C:/deadair87/gameon/prototype/scripts/workshop_ui.gd:1733) | Kompozycja ARMS, neutralny wybór, pełna konfiguracja i aktualna amunicja, kontekst żądania, reakcja na wynik, zachowanie przy zamknięciu / zmianie wyboru / utracie połączenia. `_present_committed`, `_present_bench`, `_comparison_rows`. |
-| [actions.gd](/C:/deadair87/gameon/prototype/scripts/actions.gd:78) | Akcje oględzin, pełnej karty i przewijania. Podpowiedzi pobierają nazwy z rejestru; nie są niezależnymi deklaracjami sterowania. |
-| [workshop_test.gd](/C:/deadair87/gameon/prototype/scripts/workshop_test.gd:311) | Regresje danych, operacji i rzeczywistych węzłów panelu, przycisków, geometrii, obrotu, wszystkich konfiguracji i spóźnionych odpowiedzi. |
-| [weapon_test.gd](/C:/deadair87/gameon/prototype/scripts/weapon_test.gd) | Test klienta kupuje część przez nowy panel i wymaga oczekiwania przed odpowiedzią. Host sprawdza także zachowanie własnego montażu. |
-| [workbench_qa.gd](/C:/deadair87/gameon/prototype/tools/workbench_qa.gd) i `.gd.uid` | Render rzeczywistej kryjówki, PNG + JSON, kontrola granic panelu, warianty języka / skali / części / montażu oraz pomiar prezentacji. Profile i Scrap mają wyłączony zapis. |
+| [gunsmith_panel.gd](../../prototype/scripts/gunsmith_panel.gd#L175) i `.gd.uid` | Nowy panel otrzymuje dane od WorkshopUI i emituje wybory. `present`, `_present_rack`, `_present_slots`, `_present_parts`, `_present_summary`. Papierowa karta, limit czterech głównych zmian, pełne szczegóły i przewijanie. |
+| [gun_stage.gd](../../prototype/scripts/gun_stage.gd#L278) | Tryb ławy, proceduralny stół / mata / narzędzia i fizyczna taca. `slot_at`, `slot_screen_position`, `animate_mount`, `cancel_mount`, `stable_bounds`, `_fit_viewport`. Dotychczasowy kompaktowy tryb pozostaje domyślny. |
+| [workshop_ui.gd](../../prototype/scripts/workshop_ui.gd#L2305) | Kompozycja ARMS, neutralny wybór, pełna konfiguracja i aktualna amunicja, kontekst żądania, reakcja na wynik, zachowanie przy zamknięciu / zmianie wyboru / utracie połączenia. `_present_committed`, `_present_bench`, `_comparison_rows`. |
+| [actions.gd](../../prototype/scripts/actions.gd#L82) | Akcje oględzin, pełnej karty i przewijania. Podpowiedzi pobierają nazwy z rejestru; nie są niezależnymi deklaracjami sterowania. |
+| [workshop_test.gd](../../prototype/scripts/workshop_test.gd#L311) | Regresje danych, operacji i rzeczywistych węzłów panelu, przycisków, geometrii, obrotu, wszystkich konfiguracji i spóźnionych odpowiedzi. |
+| [weapon_test.gd](../../prototype/scripts/weapon_test.gd) | Test klienta kupuje część przez nowy panel i wymaga oczekiwania przed odpowiedzią. Host sprawdza także zachowanie własnego montażu. |
+| [workbench_qa.gd](../../prototype/tools/workbench_qa.gd) i `.gd.uid` | Render rzeczywistej kryjówki, PNG + JSON, kontrola granic panelu, warianty języka / skali / części / montażu oraz pomiar prezentacji. Profile i Scrap mają wyłączony zapis. |
 | `prototype/translations/ui.csv`, `ui.pl.translation` | Nowe teksty EN / PL oraz import tłumaczenia. Dotychczasowe wiersze CSV zachowane. |
 | `prototype/project.godot`, `CHANGELOG.md`, `prototype/README.md`, `prototype/WEAPONS.md` | Wersja 1.7.369, dokumentacja sterowania, prezentacji i QA. Pozostała konfiguracja projektu zachowana. |
 
@@ -73,7 +73,7 @@ Regresje obejmują wszystkie 12 modeli, gniazda, obwiednie każdej kombinacji mo
 
 Testy wykorzystują osobne aplikacje `DeadAirAudit-20261025-workshop` / `...-weapons` w `C:\deadair87\reports\weapon-workshop-verification-2026-10-25`. Zasoby są junctionami do aktualnego checkoutu, a userdata jest odrębne. Nie są to kopie starego kodu. Końcowe testy wymuszają osobno locale=0 (EN) i locale=1 (PL), bez równoległego narzędzia renderu zapisującego ustawienia tej aplikacji. Poprzednia zawartość odizolowanych ustawień jest przywracana; wejścia językowe i kody wyjścia zapisano w `locale-test-inputs.json`.
 
-Logi i dane: [katalog wyników](/C:/deadair87/reports/weapon-workshop-implementation-2026-10-25), [walidacja JSON](/C:/deadair87/reports/weapon-workshop-implementation-2026-10-25/final-validation.json), [zachowanie checkoutu](/C:/deadair87/reports/weapon-workshop-implementation-2026-10-25/checkout-verification.json). Dane bazowe i weryfikacja planu: [poprzedni raport](/C:/deadair87/reports/weapon-workshop-verification-2026-10-25/weryfikacja-planu.md).
+Logi i dane: katalog wyników (`C:/deadair87/reports/weapon-workshop-implementation-2026-10-25`, lokalnie), walidacja JSON (`C:/deadair87/reports/weapon-workshop-implementation-2026-10-25/final-validation.json`, lokalnie), zachowanie checkoutu (`C:/deadair87/reports/weapon-workshop-implementation-2026-10-25/checkout-verification.json`, lokalnie). Dane bazowe i weryfikacja planu: poprzedni raport (`C:/deadair87/reports/weapon-workshop-verification-2026-10-25/weryfikacja-planu.md`, lokalnie).
 
 ## Wydajność i ograniczenia
 
@@ -97,12 +97,12 @@ Następny zalecany krok odbioru: krótki playtest nowego gracza, fizyczny pad i 
 
 ## Rzeczywisty render
 
-![M-83, polski podgląd bębna, 1280×720](C:/deadair87/gameon/docs/audits/images/weapon-workbench-pl-1.7.369.png)
+![M-83, polski podgląd bębna, 1280×720](images/weapon-workbench-pl-1.7.369.png)
 
-![Pełne parametry strzelby, PL, większe UI i podpowiedzi pada](C:/deadair87/gameon/docs/audits/images/weapon-workbench-pad-1.7.369.png)
+![Pełne parametry strzelby, PL, większe UI i podpowiedzi pada](images/weapon-workbench-pad-1.7.369.png)
 
-![Zatwierdzony montaż bębna, 1920×1080](C:/deadair87/gameon/docs/audits/images/weapon-workbench-mount-1.7.369.png)
+![Zatwierdzony montaż bębna, 1920×1080](images/weapon-workbench-mount-1.7.369.png)
 
 ## Uzupełnienie: zamykanie gry 1.7.370
 
-Komunikaty o pozostawionych obiektach z przebiegów 1.7.369 powyżej są historycznymi wynikami. Ustalono przyczyny i dodano poprawki: leniwe tworzenie pomocniczego węzła grozy oraz wcześniejsze zatrzymanie i opróżnienie audio przez wspólną ścieżkę wyjścia. Szczegółowa diagnoza, powtórzone testy i ograniczenia: [raport zamykania](/C:/deadair87/gameon/docs/audits/2026-10-25-shutdown-leaks.md).
+Komunikaty o pozostawionych obiektach z przebiegów 1.7.369 powyżej są historycznymi wynikami. Ustalono przyczyny i dodano poprawki: leniwe tworzenie pomocniczego węzła grozy oraz wcześniejsze zatrzymanie i opróżnienie audio przez wspólną ścieżkę wyjścia. Szczegółowa diagnoza, powtórzone testy i ograniczenia: [raport zamykania](2026-10-25-shutdown-leaks.md).

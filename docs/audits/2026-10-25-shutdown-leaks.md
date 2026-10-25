@@ -83,7 +83,7 @@ Poniższe logi pochodzą z końcowej poprawki opartej na zegarze monotonicznym. 
 
 Test zamknięcia okna emituje `close_requested` i sprawdza podłączony callback; nie automatyzuje fizycznego naciśnięcia Alt+F4. Audio w regresji jest faktycznie uruchamiane, zatrzymywane i ponownie uruchamiane. Sprawdzane są puste pętle i cache, zatrzymanie odtwarzaczy, brak ich strumieni oraz brak nowych osieroconych węzłów. Import projektu i `git diff --check` zakończone kodem 0.
 
-Artefakty: [final-validation.json](C:/deadair87/reports/shutdown-leaks-2026-10-25/final-validation.json), [verify_final.py](C:/deadair87/reports/shutdown-leaks-2026-10-25/verify_final.py). Katalog zawiera także logi wcześniejszych, nieudanych wariantów; nie są one końcowym wynikiem. Weryfikator wybiera jawnie 13 końcowych przebiegów.
+Artefakty: final-validation.json (`C:/deadair87/reports/shutdown-leaks-2026-10-25/final-validation.json`, lokalnie), verify_final.py (`C:/deadair87/reports/shutdown-leaks-2026-10-25/verify_final.py`, lokalnie). Katalog zawiera także logi wcześniejszych, nieudanych wariantów; nie są one końcowym wynikiem. Weryfikator wybiera jawnie 13 końcowych przebiegów.
 
 ## Osobne komunikaty i ograniczenia
 
