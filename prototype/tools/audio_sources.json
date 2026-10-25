@@ -345,12 +345,12 @@
    "supplier": "Epic Stock Media",
    "license": "sonniss-gdc-2.0"
   },
-  "forest_winter_night": {
+  "forest_night_woods": {
    "kind": "lib",
-   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 1of8/Articulated Sounds - Winter Forest Ambience/WINTER Forest night dark moon with distant wolves howls, North Laurentian Woods, Canada_LOOP.LR.wav",
-   "sha256": "66005f583460e63d05699fc7f955c4f77c845c80d87425be9f2e096468da66d5",
-   "pack": "Sonniss GDC 2018 — Winter Forest Ambience",
-   "supplier": "Articulated Sounds",
+   "file": "sonniss/2024/Systematic Sound - General Ambience Series - Nightscapes 01/AMBForst_Nighttime-Woodlands Windy Trees Rustling Quiet_SYSO_SYSO009.wav",
+   "sha256": "f75fc6ef1280b10980779fd65aa349f00bb1437a666eb73cb81f05be7b385745",
+   "pack": "Sonniss GDC 2024 — General Ambience Series - Nightscapes 01",
+   "supplier": "Systematic Sound",
    "license": "sonniss-gdc-2.0"
   },
   "g36c_mag_foley": {

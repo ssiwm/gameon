@@ -563,18 +563,20 @@ def player() -> None:
 
 # ============================================================ AMBIENT (bake_amb.build_ambience)
 
-# Pętle stereo: 16 s z najrówniejszego fragmentu nagrania (audio_probe.py --steady), szew przenikany 1,5 s.
-AMB_LOOPS = (                       # klucz, źródło, start [s], głośność docelowa = zmierzona głośność syntezy, ścięcie szczytów [dB]
-    ("amb_forest", "forest_winter_night", 0.5, -14.6, 0.0),
-    ("amb_rain", "rain_hard_loop", 1.0, -16.0, 0.0),
-    ("amb_rain_roof", "rain_on_plastic", 0.5, -17.0, -12.0),      # pojedyncze głośne krople: bez ścięcia pętla wychodzi za cicha
-    ("amb_wind", "wind_mountain_loop", 10.25, -19.6, 0.0),
+# Pętle stereo z najrówniejszego fragmentu nagrania (audio_probe.py --steady), szew przenikany 1,5 s.
+# Las gra przez całą misję, więc ma 60 s: krótszą pętlę z nagrania przyrody słychać jako powtórkę (16 s z wyciem wilków
+# wracało ok. 225 razy na godzinę). Źródło lasu nie ma głosów zwierząt — szum koron nocą.
+AMB_LOOPS = (                       # klucz, źródło, start [s], długość [s], głośność docelowa = zmierzona głośność syntezy, ścięcie szczytów [dB]
+    ("amb_forest", "forest_night_woods", 92.0, 60.0, -14.6, -7.0),     # ciche nagranie z pojedynczymi szczytami (ścina ok. 1% czasu)
+    ("amb_rain", "rain_hard_loop", 1.0, 16.0, -16.0, 0.0),
+    ("amb_rain_roof", "rain_on_plastic", 0.5, 16.0, -17.0, -12.0),      # pojedyncze głośne krople: bez ścięcia pętla wychodzi za cicha
+    ("amb_wind", "wind_mountain_loop", 10.25, 16.0, -19.6, 0.0),
 )
 
 
-def _amb_loop_bake(key: str, sid: str, t0: float, lufs: float, ceil: float) -> None:
+def _amb_loop_bake(key: str, sid: str, t0: float, dur: float, lufs: float, ceil: float) -> None:
     xf = d.sec(1.5)
-    x = d.filt(bc.src(sid, t0, 16.0 + 1.5, mono=False), "hp", 40.0, order=2)
+    x = d.filt(bc.src(sid, t0, dur + 1.5, mono=False), "hp", 40.0, order=2)
     if ceil < 0.0:
         x = d.limiter(_unit(x), ceil)
     finalize(key, d.seam_xfade(x, xf), loop=True, lufs=lufs)
