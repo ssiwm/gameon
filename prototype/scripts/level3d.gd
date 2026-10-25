@@ -23,6 +23,7 @@ const POST_PROP := 0.65                    ## przekrój pozostałych słupów �
 const POST_BITE := 0.02                    ## m: o tyle słup przy pomoście wchodzi w tylną krawędź pomostu (styk bez szczeliny)
 const DEPTH_BACK := 2.4                    ## m: w głąb
 const LAYER_FOREST := 32                   ## warstwa wizualna lasu i jego dna (oprócz warstwy świata): tylko ją oświetla `MoonRim`
+const LAYER_FAR := 64                      ## dno lasu za planem gry (oprócz warstwy świata): oświetla je tylko błysk burzy (`StormFlash`)
 const MOON_RIM := 0.35                     ## energia poświaty księżyca na lesie (`MoonRim`) w noc bez pogody; `view3d._sync_weather` mnoży ją wg pogody
 
 static func is_solid_ch(ch: String) -> bool:
@@ -2615,6 +2616,7 @@ static func build_forest_floor(parent: Node3D, rows: Array) -> void:
 	mi.mesh = mesh
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.layers = 1 | LAYER_FAR                                  # w błysku burzy dno rozbłyskuje razem z lasem (`StormFlash`), plan gry nie
 	parent.add_child(mi)
 static func build_forest(parent: Node3D, rows: Array) -> void:
 	var nrows := rows.size()
@@ -3403,4 +3405,16 @@ static func build_environment(parent: Node3D,ambient := Color(0.0245, 0.0266, 0.
 		rim.light_volumetric_fog_energy = 0.0
 		rim.layers = 3
 		parent.add_child(rim)
+		# błyskawica na lesie: z kierunku księżyca, tylko warstwa lasu — las rozbłyskuje w pełni, a plan gry dostaje mały udział błysku
+		# przez księżyc i światło otoczenia (`view3d._sync_weather`, FLASH_PLANE); bez cieni i bez mgły wolumetrycznej (ta nie zna masek warstw)
+		var bolt := DirectionalLight3D.new()
+		bolt.name = "StormFlash"
+		bolt.basis = Basis.looking_at(Vector3(0.45, -0.35, -0.82), Vector3.UP)    # płaściej niż księżyc: pnie i korony bardziej niż dno lasu
+		bolt.light_color = Color(0.70, 0.79, 1.0)                 # chłodniej niż biel: dawniej las barwiło niebieskie światło otoczenia w błysku
+		bolt.light_energy = 0.0
+		bolt.light_cull_mask = LAYER_FOREST | LAYER_FAR
+		bolt.light_volumetric_fog_energy = 0.0
+		bolt.layers = 3
+		bolt.visible = false
+		parent.add_child(bolt)
 	return env

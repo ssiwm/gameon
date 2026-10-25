@@ -2345,7 +2345,7 @@ func _post_title(m: Node) -> void:
 			for rl in lvl.radio:
 				lines.append(tr(String(rl)))
 	if not NightShift.active and Weather.active_id() != "":
-		lines.append(tr("WEATHER — %s: %s") % [Weather.name_of(Weather.active_id()), Weather.text_of(Weather.active_id())])
+		lines.append(tr("WEATHER — %s: %s") % [tr(Weather.name_of(Weather.active_id())), tr(Weather.text_of(Weather.active_id()))])     # złożony wiersz: etykieta sama go nie przetłumaczy
 	Msg.hold("hud.title", Msg.Ch.TITLE, head, {"sub": "\n".join(lines), "kicker": kicker, "style": Msg.Style.DANGER, "prio": 50, "log": true})
 
 func _drive_prompt() -> void:
