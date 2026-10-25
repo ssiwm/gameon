@@ -31,6 +31,9 @@ func charge_motion(kind: String) -> void:
 
 func stride_calibration(kind: String) -> void:
 	if kind not in ["wolek", "rzeznik"]: return
+	if Enemy.SPEC[kind].get("gait", "") == "heavy":
+		heavy_gait(kind)
+		return
 	var e := Enemy.new()
 	root.add_child(e)
 	e.setup(kind)
@@ -48,13 +51,67 @@ func stride_calibration(kind: String) -> void:
 	check(kind + " stride matches actual travel", absf(distance - speed * Enemy.PX * cycle) / distance < 0.05)
 	e.free()
 
+## Chód z kodu (`gait: heavy`): stopa podporowa stoi w świecie (bez ślizgu) w każdym tempie, podpora trwa większość kroku,
+## ręce wymachują przeciwnie do nogi tej samej strony, ciało kołysze się na boki i nie chodzi na palcach (stopa płasko w podporze).
+func heavy_gait(kind: String) -> void:
+	var reference: float = Defs.DEFS[kind].speed
+	for fps in [30, 60, 120]:
+		for rate in [0.5, 1.0, 1.5]:
+			var e := Enemy.new()
+			root.add_child(e)
+			e.setup(kind)
+			var sk: Skeleton3D = e.get("_sk")
+			var bones: Dictionary = e.get("_b")
+			var dt := 1.0 / float(fps)
+			var drift := 0.0
+			var planted := 0
+			var samples := 0
+			var anchor := {}
+			var hand_span := 0.0
+			var opposite := 0
+			var sway_low := INF
+			var sway_high := -INF
+			var cycle: float = Enemy.SPEC[kind].cycle
+			var frames := ceili(3.0 * cycle / float(rate) * fps)
+			for frame in frames:
+				e.position.x += reference * float(rate) * Enemy.PX * dt
+				e.pose(dt, "walk", false, Color.WHITE, 0.0, 1, true, 0.0, 0, false, reference * float(rate))
+				if frame < frames / 3: continue
+				var locks: Dictionary = e.get("_foot_locks")
+				for side in ["Right", "Left"]:
+					samples += 1
+					var foot := sk.global_transform * sk.get_bone_global_pose(bones[side + "Foot"]).origin
+					if locks.has(side):
+						planted += 1
+						if not anchor.has(side): anchor[side] = foot
+						drift = maxf(drift, Vector2(foot.x - (anchor[side] as Vector3).x, foot.z - (anchor[side] as Vector3).z).length())
+					else:
+						anchor.erase(side)
+				var p: Dictionary = e.get("_last_p")
+				var hand_r := (p["hR"] as Vector3).x
+				var hand_l := (p["hL"] as Vector3).x
+				hand_span = maxf(hand_span, absf(hand_r - hand_l))
+				# prawa ręka z przodu ⇔ prawa stopa z tyłu
+				if absf(hand_r - hand_l) > 0.2 and signf(hand_r - hand_l) != signf((p["fR"] as Vector3).x - (p["fL"] as Vector3).x): opposite += 1
+				sway_low = minf(sway_low, float(p["sway"]))
+				sway_high = maxf(sway_high, float(p["sway"]))
+				if frame % 10 == 0: geometry(e, kind)
+			var label := "%s heavy gait %d fps rate=%s" % [kind, fps, rate]
+			check(label + " planted foot does not slide=" + str(drift), drift < 0.03)
+			check(label + " stance share=" + str(float(planted) / samples), float(planted) / samples > 0.45)
+			check(label + " arm swing span=" + str(hand_span), hand_span > 0.45)
+			check(label + " arms swing against legs", opposite > 0)
+			check(label + " body rolls side to side", sway_high - sway_low > 0.06)
+			e.free()
+
 func heavy_body(kind: String) -> void:
 	if kind not in ["wolek", "rzeznik"]: return
 	for fps in [30, 60, 120]:
 		var e := Enemy.new()
 		root.add_child(e)
 		e.setup(kind)
-		check(kind + " skeletal locomotion connected", e.get("_tree") != null)
+		if Enemy.SPEC[kind].has("walk_clip"):
+			check(kind + " skeletal locomotion connected", e.get("_tree") != null)
 		var sk: Skeleton3D = e.get("_sk")
 		var bones: Dictionary = e.get("_b")
 		var peak_clearance := -INF
