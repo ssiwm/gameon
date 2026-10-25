@@ -30,19 +30,24 @@ const SPEC := {
 		"eyes": true, "eye_off": [0.33, 0.118, 0.073], "eye_r": 0.028, "eye_lamp": true, "flare": 0.7,
 		"death": {"dir": -1.0, "lean": 12.0, "tilt": 70.0, "dur": 1.2}, "death_floor": true},
 	# Rzeźnik (F4e): model z TRELLIS-a z osobnym tasakiem przypiętym do prawej dłoni (`tools/rig_trellis.py`, art/enemy3d/rzeznik.glb)
-	"rzeznik": {"fit": ["height", 44.0], "frame_h": 58.0, "cycle": 0.5, "prof": {"windup": "cleave", "lean": 2.0, "lean_walk": 5.0}, "body_motion": true, "walk_clip": "human", "eye_glow": 0.0, "attack_kind": "cleave", "clips": true, "clip_amp": 0.6, "stun": true},
+	# Śmierć: domyślny przewrót (lean 32 + tilt 84) stawiał go na głowie ok. 1 m pod podłogą; teraz pada na twarz z prostymi nogami
+	# i rozrzuconymi rękami (opuszczone pod klatkę podpierały go po przewrocie jak przy pompce).
+	# `death_blade`: tasak (powierzchnia 1 siatki) wisi z dłoni ostrzem w dół i podpierał zwłoki na sztorc — w przewrocie
+	# dłoń kładzie go płasko na ziemi w kierunku `dir` (układ wroga: +x przód, +z strona kamery).
+	"rzeznik": {"fit": ["height", 44.0], "frame_h": 58.0, "cycle": 0.5, "prof": {"windup": "cleave", "lean": 2.0, "lean_walk": 5.0}, "body_motion": true, "walk_clip": "human", "eye_glow": 0.0, "attack_kind": "cleave", "clips": true, "clip_amp": 0.6, "stun": true,
+		"death": {"dir": -1.0, "lean": 0.0, "tilt": 82.0, "dur": 1.2, "hands": [0.2, 1.0, 0.9], "feet": [-0.10, -0.25], "shift": 0.10, "straighten": 1.0}, "death_floor": true, "death_blade": {"surface": 1, "dir": [1.0, -0.5, 0.5]}},
 	"slepiec": {"fit": ["height", 27.0], "frame_h": 32.0, "cycle": 1.0, "prof": {"hy": 0.50, "hz": 0.35, "windup": "claw"}, "clips": true, "attack_kind": "claw", "walk_clip": "zombie",
-		"death": {"dir": 1.0, "lean": -8.0, "dur": 0.95, "tilt": 86.0}},
+		"death": {"dir": 1.0, "lean": -8.0, "dur": 0.95, "tilt": 86.0}, "death_floor": true},
 	"podsluchacz": {"fit": ["height", 34.0], "frame_h": 40.0, "cycle": 1.0,
 		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}, "clips": true, "attack_kind": "scream", "walk_clip": "zombie",
-		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}},
+		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}, "death_floor": true},
 	# Kapłan (F4e): model z TRELLIS-a szkieletowany `tools/rig_trellis.py` (art/enemy3d/kaplan.glb); poza i klipy jak u Podsłuchacza
 	"kaplan": {"fit": ["height", 44.0], "frame_h": 52.0, "cycle": 1.0,
 		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}, "clips": true, "attack_kind": "scream", "walk_clip": "zombie",
-		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}},
+		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}, "death_floor": true},
 	"stalker": {"fit": ["height", 54.0], "frame_h": 60.0, "cycle": 1.1,
 		"prof": {"lean": 5.0, "lean_walk": 8.0, "hy": 0.42, "hz": 0.62, "stride": 0.28, "windup": "reach"}, "clips": true, "attack_kind": "grab", "walk_clip": "zombie",
-		"death": {"dir": 1.0, "lean": 0.0, "dur": 1.0, "tilt": 88.0}},
+		"death": {"dir": 1.0, "lean": 0.0, "dur": 1.0, "tilt": 88.0}, "death_floor": true},
 	"skoczek": {"fit": ["height", 17.0], "frame_h": 26.0, "cycle": 0.5, "crawler": true, "clips": true},
 	# Żerca (F4e): model z TRELLIS-a szkieletowany `tools/rig_trellis.py` (art/enemy3d/zerca.glb)
 	"zerca": {"fit": ["height", 30.0], "frame_h": 40.0, "cycle": 0.5, "crawler": true, "clips": true},
@@ -51,7 +56,7 @@ const SPEC := {
 	# (`DEFORM`), tak jak wypiek `concept/static_tripo_bake.py` — poza z numeru klatki sprite'a 2D (animacja idzie w tempie gry).
 	"mimik": {"model": "res://art/char3d/mpfb/male_scav.glb", "eye_off": [0.12, 0.095, 0.033], "fit": ["height", 22.0], "fit_mesh": "body", "frame_h": 28.0, "cycle": 0.8, "eyes": true, "turn": true,
 		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human",
-		"death": {"dir": 1.0, "lean": 8.0, "dur": 1.2, "tilt": 84.0}},
+		"death": {"dir": 1.0, "lean": 8.0, "dur": 1.2, "tilt": 84.0}, "death_floor": true},
 	"cma": {"fit": ["width", 18.0], "frame_h": 20.0, "deform": "cma", "float": true, "clips": true, "death_dur": 0.9},
 	"nest": {"fit": ["height", 30.0], "frame_h": 34.0, "deform": "nest", "clips": true, "death_dur": 0.6},
 	"vein": {"fit": ["height", 66.0], "frame_h": 80.0, "deform": "vein", "clips": true, "death_dur": 1.8},
@@ -262,6 +267,7 @@ var _ground_cache: Dictionary = {}
 static var _sole_cache: Dictionary = {}
 var _hull: Array = []                        ## próbki otoczki skóry (śmierć: ciało nie wchodzi w podłogę)
 static var _hull_cache: Dictionary = {}
+var _blade: Array = []                       ## SPEC `death_blade`: [kość dłoni, oś ostrza, jego szerokość] w przestrzeni kości
 
 ## Migawka zapowiedzi z symulacji. Zegar modelu nie rozstrzyga trafień.
 func motion_context(info: Dictionary) -> void:
@@ -572,6 +578,50 @@ func _prepare_hull() -> void:
 	_hull = hull
 	_hull_cache[kind] = hull
 
+## Broń przypięta do dłoni (SPEC `death_blade`): oś od rękojeści do czubka i szerokość ostrza (oś x siatki) w przestrzeni kości dłoni.
+func _prepare_blade() -> void:
+	var arrays := _mesh.mesh.surface_get_arrays(int(_spec["death_blade"]["surface"]))
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+	var top := vertices[0]
+	var bottom := vertices[0]
+	for v in vertices:
+		if v.y > top.y: top = v
+		if v.y < bottom.y: bottom = v
+	var bone := _mesh.skin.get_bind_bone(bones[0])
+	if bone < 0: bone = _sk.find_bone(_mesh.skin.get_bind_name(bones[0]))
+	var bind := _mesh.skin.get_bind_pose(bones[0]).basis
+	var axis := (bind * (bottom - top)).normalized()
+	var width := bind * Vector3.RIGHT
+	_blade = [bone, axis, (width - axis * width.dot(axis)).normalized()]
+
+## Przewrót: dłoń obraca broń tak, by leżała płasko (szerokością poziomo) w kierunku `dir` — nie podpiera zwłok ostrzem.
+func _lay_blade(weight: float) -> void:
+	if _blade.is_empty() or weight <= 0.0: return
+	var d: Array = _spec["death_blade"]["dir"]
+	var to_skeleton := _transform_under(_sk, self).basis.orthonormalized().inverse()
+	var axis := (to_skeleton * Vector3(float(d[0]), float(d[1]), float(d[2]))).normalized()
+	var width := (to_skeleton * Vector3.UP).cross(axis).normalized()
+	var bone_axis: Vector3 = _blade[1]
+	var bone_width: Vector3 = _blade[2]
+	var target := Basis(axis, width, axis.cross(width)) * Basis(bone_axis, bone_width, bone_axis.cross(bone_width)).inverse()
+	var hand: int = _blade[0]
+	_set_global_basis(hand, _gp(hand).basis.orthonormalized().slerp(target, weight))
+
+## Przewrót wokół stopy po stronie upadku (pięta przy upadku na plecy), nie wokół punktu między stopami: stopa zostaje w miejscu,
+## zamiast ślizgać się po ziemi o ok. 0,5 m. Wysokości to nie zmienia — tę ustala `_hull_penetration`.
+func _pivot_on_foot() -> void:
+	var to_tilt := _transform_under(_sk, _tilt)
+	var pivot := Vector3.ZERO
+	var lowest := INF
+	for side in ["Right", "Left"]:
+		var ankle := to_tilt * _gp(_b[side + "Foot"]).origin
+		var y := (_tilt.basis * ankle).y
+		if y < lowest:
+			lowest = y
+			pivot = Vector3(ankle.x, 0.0, 0.0)
+	_tilt.position = Vector3(0.0, _tilt.position.y, 0.0) + pivot - _tilt.basis * pivot
+
 ## O ile (m) najniższy punkt otoczki skóry jest pod gruntem pod stopami; 0, gdy nic nie wchodzi w podłogę.
 func _hull_penetration() -> float:
 	if _hull.is_empty():
@@ -740,6 +790,8 @@ func setup(k: String, translucent := false) -> bool:
 	_prepare_soles()
 	if _spec.get("death_floor", false):
 		_prepare_hull()                           # przy budowie modelu, jak podeszwy — nie przycina gry w chwili pierwszej śmierci
+	if _spec.has("death_blade"):
+		_prepare_blade()
 	if _spec.get("eyes", false):
 		var radius := float(_spec.get("eye_r", 0.012))
 		var lamp := bool(_spec.get("eye_lamp", false))
@@ -1866,17 +1918,43 @@ func _pose_biped(anim: String, delta: float) -> void:
 			p = _dead_from.duplicate()
 		var jerk := smoothstep(0.0, 0.14, u) * (1.0 - smoothstep(0.14, 0.34, u))     # szarpnięcie w tył od trafienia
 		var buckle := smoothstep(0.16, 0.6, u)                                         # kolana się uginają, ciało wiotczeje
-		var topple := smoothstep(0.52, 1.0, u)                                         # przewraca się
 		p["lean"] = lerp(p["lean"], -16.0, jerk) + dlean * buckle
 		p["drop"] = lerp(p["drop"], 0.0, jerk) + 0.40 * buckle
 		p["bob"] = 0.0
 		var limp := 0.3 + 0.7 * buckle
-		p["hR"] = (p["hR"] as Vector3).lerp(Vector3(hx + 0.34 * limp, 0.95 - 0.55 * buckle, 0.55), buckle * 0.9 + jerk * 0.3)
-		p["hL"] = (p["hL"] as Vector3).lerp(Vector3(hx + 0.34 * limp, 0.95 - 0.55 * buckle, -0.55), buckle * 0.9 + jerk * 0.3)
-		p["fR"] = (p["fR"] as Vector3).lerp(Vector3(0.16, 0.0, 0.0), buckle)
-		p["fL"] = (p["fL"] as Vector3).lerp(Vector3(-0.20, 0.0, 0.0), buckle)
+		var hand_goal := Vector3(hx + 0.34 * limp, 0.95 - 0.55 * buckle, 0.55)
+		if dk.has("hands"):
+			# ręce rozrzucone (x od bioder, wysokość, rozstaw): opuszczone pod klatkę podpierały po przewrocie zwłoki jak przy pompce
+			var hands: Array = dk["hands"]
+			hand_goal = Vector3(hx + float(hands[0]), float(hands[1]), float(hands[2]))
+		p["hR"] = (p["hR"] as Vector3).lerp(hand_goal, buckle * 0.9 + jerk * 0.3)
+		p["hL"] = (p["hL"] as Vector3).lerp(hand_goal * Vector3(1.0, 1.0, -1.0), buckle * 0.9 + jerk * 0.3)
+		# Stopy (x prawej i lewej) i przesunięcie bioder w ugięciu. Biodra kończą upadek mniej więcej tak wysoko, jak daleko leżą od
+		# stopy po stronie upadku, więc na plecy obie stopy idą przed biodra (pośladki ku piętom), a na twarz — za biodra (klęk).
+		# Krok w tył przy upadku na plecy zostawiał stopę ok. 0,5 m za biodrami i zwłoki leżały oparte na złożonej nodze.
+		var back := dir > 0.0 and bool(_spec.get("death_floor", false))
+		var feet: Array = dk.get("feet", [0.20, 0.12] if back else [0.16, -0.20])
+		p["fR"] = (p["fR"] as Vector3).lerp(Vector3(float(feet[0]), 0.0, 0.0), buckle)
+		p["fL"] = (p["fL"] as Vector3).lerp(Vector3(float(feet[1]), 0.0, 0.0), buckle)
+		if back or dk.has("shift"):
+			p["shift"] = lerp(float(p["shift"]), float(dk.get("shift", -0.10)), buckle)
+		var topple := smoothstep(0.52, 1.0, u)                                         # przewraca się
+		if dk.has("straighten"):
+			# leżący na brzuchu ma proste nogi: sztywno obrócony przysiad zadzierał biodra i stopy nad ziemię
+			# (Rzeźnik ma ugięte kolana już w spoczynku: biodra idą do pełnego zasięgu nogi, stopy pod biodra).
+			var straight := float(dk["straighten"]) * topple
+			for side in ["Right", "Left"]:
+				var hip := _sk.get_bone_global_rest(_b[side + "UpLeg"]).origin
+				var foot := _sk.get_bone_global_rest(_b[side + "Foot"]).origin
+				var reach: float = (_leg_len[side][0] + _leg_len[side][1]) * 0.995
+				var foot_key := "fR" if side == "Right" else "fL"
+				p[foot_key] = (p[foot_key] as Vector3).lerp(Vector3(hip.x + float(p["shift"]) - foot.x, 0.0, 0.0), straight)
+				if side == "Right":
+					p["drop"] = lerp(float(p["drop"]), -maxf(reach - (hip.y - foot.y), 0.0), straight)
+			p["toe"] = deg_to_rad(70.0) * straight                                   # stopy wyprostowane: palce nie wbijają się w ziemię
 		tilt = deg_to_rad(float(dk.get("tilt", 84.0))) * dir * topple * topple   # wokół stóp (przyspiesza jak w grawitacji)
-		lift = 0.22 * absf(sin(tilt))
+		if not _spec.get("death_floor", false):
+			lift = 0.22 * absf(sin(tilt))                                          # z podparciem otoczką wysokość ustala `_hull_penetration`
 		_sink(_dead_t - dd)
 	elif _clip == "hit":
 		var u := _clip_t / clip_duration("hit")
@@ -1918,9 +1996,11 @@ func _pose_biped(anim: String, delta: float) -> void:
 	_tilt.position = Vector3(0.0, lift, 0.0)
 	_apply_biped(p)
 	if _dead:
-		# Przewrót wokół stóp wbijał zgarbionego Wołka głową i rogami w podłogę: ciało (SPEC `death_floor`) opiera się na najniższym
-		# punkcie skóry. Inne rodzaje jeszcze nie: Rzeźnik oparłby się na sztorc na tasaku. Zapadanie się (_sink_y) liczymy od podparcia.
+		_lay_blade(smoothstep(0.3, 0.85, clampf(_dead_t / _death_dur(), 0.0, 1.0)))
+		# Przewrót wokół stóp wbijał dwunożnych głową, rogami i barkami w podłogę: ciało (SPEC `death_floor`) opiera się na najniższym
+		# punkcie skóry (broń w dłoni kładzie najpierw `_lay_blade`). Zapadanie się (_sink_y) liczymy od podparcia.
 		if _spec.get("death_floor", false):
+			_pivot_on_foot()
 			_tilt.position.y += _hull_penetration()
 		_tilt.position.y += _sink_y
 
@@ -2004,7 +2084,7 @@ func _apply_biped(p: Dictionary) -> void:
 		if grounded:
 			target.y = maxf(target.y, _ground_y(side))
 		var tilt_f := 0.0 if planted else 0.2 * maxf(0.0, (target.y - _ground_y(side)) / 0.14)
-		fb = Basis(Vector3.BACK, -tilt_f) * fb
+		fb = Basis(Vector3.BACK, -tilt_f - float(p.get("toe", 0.0))) * fb
 		if grounded and _sole_points.has(side):
 			var world := _sk.global_transform * target
 			world.y = maxf(world.y, _sole_floor(side, fb))
