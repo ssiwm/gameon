@@ -176,7 +176,7 @@ CC0, 43 klipy; patrz `SOURCE.md`). Zestaw klipów wybiera na rodzaj klucz `walk_
 | Stalker | `zombie` | klip `Zombie_Scratch` | jak wyżej |
 | Podsłuchacz | `zombie` | z kodu (krzyk) | klip ataku to zamach pazurami, nie pasuje do krzyku |
 | Mimik | `human` (`Walk_Loop`) | z kodu | udaje człowieka, więc chodzi jak człowiek |
-| Wołek | z kodu | z kodu | za krótkie nogi: z klipem kuca i unosi kolana pod brzuch |
+| Wołek | z kodu (`gait: heavy`) | z kodu | za krótkie nogi: z klipem kuca i unosi kolana pod brzuch (1.7.378–1.7.380 próbowano klipu `zombie`: drobny krok na palcach); od 1.7.382 ciężki, kołyszący chód goryli z wymachem rąk |
 | Skoczek, Trzosek, Ćma, gniazdo, bossowie | nie dotyczy | nie dotyczy | pełzacz, czworonóg i modele bez szkieletu mają własny ruch |
 
 - Chód zombie obniża sylwetkę. Z klipu zostaje 20% ruchu tułowia (`upper`), a biodra stoją o 5% swojej wysokości wyżej niż w klipie

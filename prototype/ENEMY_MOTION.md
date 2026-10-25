@@ -42,6 +42,10 @@ Widok próbuje wysokość i normalną podłoża promieniami fizyki 2D w zakresie
 
 Pijawka odtwarza pełną własną śmierć przed zatrzymaniem i zapadaniem modelu. Ćma porusza skrzydłami pionowo i obraca normalne oraz styczne. Materiały pozostałych modeli i geometria GLB zostały zachowane.
 
+## Chód Wołka
+
+Wołek chodzi pozą z kodu (SPEC `gait: heavy`, `enemy3d.gd::_heavy_gait`), nie klipem: klip `zombie` dawał przy jego krótkich nogach drobny krok na palcach z głową pod barkami. Każda stopa przez `GAIT_STANCE` (0,62) cyklu stoi w podporze i przesuwa się liniowo do tyłu z prędkością ciała — długość kroku to prędkość z `DEFS` × cykl (0,62 s) × podpora, więc stopa nie ślizga się w żadnym tempie — potem przenoszenie z uniesieniem. Ciało jest najniżej przy postawieniu stopy (krótkie osiadanie ciężaru) i najwyżej nad podporą, ciężar i barki przechylają się nad stopę podporową (kanał `roll`, głowa trzyma poziom), miednica i klatka skręcają się przeciwnie. Długie ręce zwisają nisko przy ciele i wymachują przeciwnie do nogi tej samej strony; dłoń z przodu unosi się. `test_enemy_motion.gd::heavy_gait` sprawdza brak poślizgu podpory przy 30/60/120 kl./s i tempie 0,5/1/1,5, udział podpory, wymach i kołysanie.
+
 ## Zapowiedź i śmierć Wołka
 
 Kamera gry patrzy z boku, więc pięści Wołka w szczycie `smash` stoją wysoko i za głową; nad samymi barkami chowały się za garbem i rogami. Po krótkim zawieszeniu cios to młot obiema pięściami w grunt przed nim z wykrokiem przedniej nogi, a nie poziome pchnięcie. Tekstura ma tylko kilka ciepłych pikseli, więc maska HSV nie dawała żaru oczu: SPEC `eye_lamp` stawia przy kości głowy dwie emisyjne kulki (jasność jak `eye_glow`, w zapowiedzi pulsuje), a w zapowiedzi zapala ciepłe `OmniLight3D` przed pyskiem, czytelne w nocy. SPEC `flare` dodaje ciepłą obwódkę ciała w ostatnich 0,25 s zapowiedzi (czas z symulacji) i krótko po kontakcie; dotyczy też zapowiedzi szarży i rzutu.

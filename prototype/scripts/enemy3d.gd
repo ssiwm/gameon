@@ -21,12 +21,12 @@ const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Lev
 ## walk_clip: zestaw klipów chodu z char_clips.gd — „zombie" (powłóczysty krok) albo „human" (zwykły chód: Mimik udaje człowieka);
 ## bez tego klucza rodzaj chodzi pozą z kodu. attack_clip: zapowiedź i cios z klipu (zestaw musi je mieć), ręce wtedy z klipu.
 const SPEC := {
-	# Cykl 0.5 s: dwie długości kroku z retargetowanego klipu / prędkość z DEFS.
-	# Przy cyklu 1 s ciało przemieszczało się dwa razy szybciej niż podparcie nóg.
+	# Chód z kodu (`gait: heavy`, `_heavy_gait`): ciężki, kołyszący krok goryli z wymachem długich rąk. Klip `zombie` dawał drobny
+	# krok na palcach z głową opuszczoną pod barki (krótkie nogi Wołka). Cykl 0.62 s: podpora przesuwa stopę z prędkością ciała z DEFS.
 	# Oczy: tekstura ma ledwie kilka ciepłych pikseli, więc maska HSV nie dawała zapowiedzi — świecą kulki przy kości głowy (`eye_lamp`:
 	# emisja jak `eye_glow` + ciepłe światło w zapowiedzi). `flare`: ciepła obwódka ciała w ostatniej ćwiartce sekundy zapowiedzi.
 	# `death_floor`: upadek opiera się na najniższym punkcie skóry (przewrót wokół stóp wbijał głowę i rogi w podłogę).
-	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 0.5, "prof": {"lean": 1.0, "lean_walk": 4.0}, "body_motion": true, "walk_clip": "zombie", "clips": true, "clip_amp": 0.6, "stun": true,
+	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 0.62, "prof": {"lean": 1.0, "lean_walk": 7.0}, "body_motion": true, "gait": "heavy", "clips": true, "clip_amp": 0.6, "stun": true,
 		"eyes": true, "eye_off": [0.33, 0.118, 0.073], "eye_r": 0.028, "eye_lamp": true, "flare": 0.7,
 		"death": {"dir": -1.0, "lean": 12.0, "tilt": 70.0, "dur": 1.2}, "death_floor": true},
 	# Rzeźnik (F4e): model z TRELLIS-a z osobnym tasakiem przypiętym do prawej dłoni (`tools/rig_trellis.py`, art/enemy3d/rzeznik.glb)
@@ -1644,7 +1644,7 @@ func _biped_params(anim: String) -> Dictionary:
 	var sl: float = prof.get("sleep_lean", 27.0)
 	var stride: float = prof.get("stride", 0.22)
 	var p := {"lean": l0, "bob": 0.0, "drop": 0.0, "hk": 0.8,
-		"pelvis_yaw": 0.0, "chest_yaw": 0.0, "shift": 0.0, "sway": 0.0, "wristR": 0.0, "wristL": 0.0,
+		"pelvis_yaw": 0.0, "chest_yaw": 0.0, "shift": 0.0, "sway": 0.0, "roll": 0.0, "wristR": 0.0, "wristL": 0.0,
 		"fR": Vector3.ZERO, "fL": Vector3.ZERO,
 		"hR": Vector3(_x0 + 0.05, hz, hy), "hL": Vector3(_x0 + 0.05, hz, -hy)}
 	match anim:
@@ -1759,7 +1759,52 @@ func _biped_params(anim: String) -> Dictionary:
 		p["chest_yaw"] = -5.0 * sin(ph) if moving else 0.0
 		p["sway"] = 0.012 * sin(ph) if moving else 0.0
 		if moving: p["drop"] = 0.01
+		if moving and String(_spec.get("gait", "")) == "heavy":
+			_heavy_gait(p, ph)
 	return p
+
+## Ciężki chód goryli (SPEC `gait: heavy`). Każda stopa: podpora przez GAIT_STANCE cyklu przesuwa ją liniowo do tyłu z prędkością
+## ciała (długość kroku = prędkość z DEFS × cykl × podpora, więc stopa nie ślizga się w żadnym tempie), potem przenoszenie z uniesieniem.
+## Ciało: najniżej przy postawieniu stopy i najwyżej nad podporą (odwrócone wahadło), ciężar przenosi się nad stopę podporową,
+## miednica i klatka skręcają się przeciwnie, barki przechylają się ku podporze. Ręce: długi wymach przeciwny do nogi tej samej strony,
+## dłoń z przodu unosi się, z tyłu zostaje nisko — jak przy podpieraniu na kostkach.
+const GAIT_STANCE := 0.62
+func _heavy_gait(p: Dictionary, ph: float) -> void:
+	var u := fposmod(ph / TAU, 1.0)
+	var reference: float = float((EnemyDefs.DEFS.get(kind, {}) as Dictionary).get("speed", 95.0))
+	var stride := reference * PX * float(_spec.get("cycle", 1.0)) * GAIT_STANCE / _scale
+	var swing := {}
+	for side in ["Right", "Left"]:
+		var k := fposmod(u + (0.0 if side == "Right" else 0.5), 1.0)
+		var x := 0.0
+		var y := 0.0
+		if k < GAIT_STANCE:
+			x = 0.5 - k / GAIT_STANCE                                  # +½ → −½ długości kroku, stała prędkość
+		else:
+			var s := (k - GAIT_STANCE) / (1.0 - GAIT_STANCE)
+			x = -0.5 + smoothstep(0.0, 1.0, s)
+			y = 0.16 * sin(PI * s)
+		swing[side] = x
+		var foot := _sk.get_bone_global_rest(_b[side + "Foot"]).origin
+		var hip := _sk.get_bone_global_rest(_b[side + "UpLeg"]).origin
+		var sg := 1.0 if side == "Right" else -1.0
+		# stopy pod biodrami (w spoczynku Wołek trzyma je daleko z tyłu), rozstawione szerzej niż w spoczynku
+		p["fR" if side == "Right" else "fL"] = Vector3(hip.x - foot.x - 0.04 + stride * x, y, 0.035 * sg)
+	for side in ["Right", "Left"]:
+		var sg := 1.0 if side == "Right" else -1.0
+		var rest := _sk.get_bone_global_rest(_b[side + "Hand"]).origin
+		var a := -float(swing[side]) * 2.0                                 # −1..1: dłoń z przodu, gdy noga tej strony z tyłu
+		var forward := maxf(a, 0.0)
+		# ramiona zwisają niżej i bliżej ciała niż w rozłożonej pozie spoczynkowej modelu
+		p["hR" if side == "Right" else "hL"] = rest + Vector3(0.10 + 0.30 * a, -0.20 + 0.16 * forward * forward - 0.04 * maxf(-a, 0.0), -0.12 * sg)
+	var w := fposmod(2.0 * u, 1.0)                                           # 0 = postawienie stopy (dwa na cykl)
+	p["bob"] = -0.045 * cos(TAU * w) - 0.025 * exp(-w * 18.0)                   # odwrócone wahadło + krótkie osiadanie ciężaru
+	p["drop"] = 0.04
+	p["sway"] = 0.045 * sin(TAU * u)                                         # ciężar nad stopą podporową
+	p["roll"] = 7.0 * sin(TAU * u)
+	p["pelvis_yaw"] = 7.0 * cos(TAU * u)
+	p["chest_yaw"] = -11.0 * cos(TAU * u)
+	p["hk"] = 0.45                                                           # głowa podniesiona względem tułowia: twarz widać
 
 func _mix_p(a: Dictionary, b: Dictionary, k: float) -> Dictionary:
 	var o := {}
@@ -1934,9 +1979,13 @@ func _apply_biped(p: Dictionary) -> void:
 		# Jedna rotacja bioder zapadała całe ciało i nie dawała kontrrotacji.
 		_rot_world(hips, Vector3.UP, deg_to_rad(float(p["pelvis_yaw"])))
 		_rot_world(hips, Vector3.BACK, -lean * 0.25)
+		var roll := deg_to_rad(float(p["roll"]))
 		for spine in ["Spine", "Spine1", "Spine2"]:
 			_rot_world(_b[spine], Vector3.BACK, -lean * 0.25)
 			_rot_world(_b[spine], Vector3.UP, deg_to_rad(float(p["chest_yaw"])) / 3.0)
+			_rot_world(_b[spine], Vector3.RIGHT, roll / 3.0)             # przechył barków ku nodze podporowej (`_heavy_gait`)
+		if roll != 0.0:
+			_rot_world(_b["Head"], Vector3.RIGHT, -roll * 0.7)           # głowa trzyma poziom
 	else:
 		_rot_world(hips, Vector3.BACK, -lean)
 	if bool(_spec.get("turn", false)):                            # jak postać gracza: tułów zwrócony ku kamerze (Char3D.BODY_YAW)
