@@ -46,6 +46,8 @@ const PART_METRICS := {
 	"stun": ["Stun duration", "%.2f s", 1.0], "suppressor": ["Suppressor fitted", "bool", 1.0],
 	"wall_pierce": ["Wall penetration", "%.2f m", 1.0 / 16.0],
 }
+## Gniazdo nazwane inaczej niż wspólne SLOT_NAMES, bo jego części siedzą gdzie indziej (PELLET-8: ładownica na komorze w gnieździe „stock”).
+const SLOT_LABELS := {"srut8:stock": "Carrier"}
 ## Kolejność siatki: bronie od początku, potem do kupienia za złom, na końcu zablokowane do późniejszych stref.
 const LIST := [Weapons.M83, Weapons.SPREAD12, Weapons.P64, Weapons.LR7, Weapons.HKM9, Weapons.SRUT8, Weapons.GNIEW4, Weapons.WIDMO1, Weapons.SOKOL6, Weapons.CIEGNO6, Weapons.MACZETA, Weapons.KILOF]
 
@@ -433,7 +435,7 @@ func _ready() -> void:
 	root.add_child(_rule())
 	_msg = UiTheme.label("", 9, UiTheme.BP_TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	root.add_child(_msg)
-	_hint = UiTheme.label(_controls_hint(), 8, UiTheme.BP_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	_hint = UiTheme.label(_controls_hint(), 8, UiTheme.BP_TEXT.darkened(0.12), HORIZONTAL_ALIGNMENT_CENTER)
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_hint.custom_minimum_size.x = 606
 	root.add_child(_hint)
@@ -1055,6 +1057,7 @@ func _build_detail() -> Control:
 	_action = Button.new()
 	_action.focus_mode = Control.FOCUS_NONE
 	_action.add_theme_font_size_override("font_size", 10)
+	_action.add_theme_color_override("font_disabled_color", UiTheme.BONE_DIM)     # wyłączona akcja niesie podpowiedź („wybierz gniazdo”)
 	_action.pressed.connect(_act)
 	v.add_child(_action)
 	return v
@@ -1422,6 +1425,9 @@ func _queue_summary() -> String:
 		var station := tr("PYROTECHNICS") if Scrap.supply_station(String(kind)) == "pyro_bench" else tr("RELOADING PRESS")
 		lines.append(tr("Ready: %s · %d rounds — collect at %s") % [tr(String(Throwables.KINDS[String(kind)]["name"])), int(Scrap.deliveries[kind]), station])
 	return "\n".join(lines)
+
+func _slot_label(key: String, slot: String) -> String:
+	return tr(String(SLOT_LABELS.get("%s:%s" % [key, slot], Parts.SLOT_NAMES[slot])))
 
 ## Te same dane broni dla obu kolumn; porównanie nie zakłada naboju standardowego.
 func _comparison_rows(d: RefCounted) -> Array:
@@ -2069,7 +2075,7 @@ func _refresh_detail(w: int) -> void:
 		var slot := String(op["slot"])
 		if slot != last_slot:
 			last_slot = slot
-			var head_txt := tr("Service") if slot == "service" else (tr("Sets") if slot == "preset" else tr(Parts.SLOT_NAMES[slot]))
+			var head_txt := tr("Service") if slot == "service" else (tr("Sets") if slot == "preset" else _slot_label(String(Weapons.def(int(LIST[_sel])).key), slot))
 			_d_tiers.add_child(UiTheme.label(head_txt.to_upper(), 7, UiTheme.BP_MUTED))
 		if slot == "preset":
 			var pi := int(op["id"])
@@ -2308,8 +2314,8 @@ func _present_bench(w: int, cur: RefCounted, preview: RefCounted, now_rows: Arra
 	var slots: Array = []
 	for slot in _bench_slots():
 		var fitted := Profile.fitted(key, String(slot))
-		var name := tr("Sets") if slot == "preset" else tr(Parts.SLOT_NAMES[slot])
-		var short_name: String = {"stock": tr("Stock"), "optic": tr("Sight"), "preset": tr("Sets")}.get(slot, name)
+		var name := tr("Sets") if slot == "preset" else _slot_label(key, String(slot))
+		var short_name: String = name if SLOT_LABELS.has("%s:%s" % [key, slot]) else {"stock": tr("Grip") if cur.is_melee() else tr("Stock"), "optic": tr("Sight"), "preset": tr("Sets")}.get(slot, name)
 		slots.append({"id": slot, "name": name, "short": short_name,
 			"fitted": tr("Factory") if fitted == "" else tr(String(Parts.get_part(fitted)["name"]))})
 	if _bench_slot == "" and not slots.is_empty():
@@ -2370,7 +2376,8 @@ func _present_bench(w: int, cur: RefCounted, preview: RefCounted, now_rows: Arra
 		else:
 			_action.disabled = Profile.fitted(key, String(selected["slot"])) == id
 	var meta := tr("Condition %d%%") % int(Profile.condition(key)) if not cur.is_melee() else tr("Edge %d%%") % int(Profile.edge_of(key))
-	meta += " · " + tr("Mastery %s · %d kills") % [["0", "I", "II", "III", "IV", "V"][Profile.mastery_level(key)], Profile.kills(key)]
+	var kills := Profile.kills(key)
+	meta += " · " + tr("Mastery %s") % ["0", "I", "II", "III", "IV", "V"][Profile.mastery_level(key)] + " · " + tr_n("%d kill", "%d kills", kills) % kills
 	if cur.uses_ammo():
 		meta += "\n" + tr(Ammo.name_of(String(cur.caliber), wc.ammo_of(w) if wc != null else 0))
 	var description := _d_text.text
@@ -2378,7 +2385,7 @@ func _present_bench(w: int, cur: RefCounted, preview: RefCounted, now_rows: Arra
 		description += "\n" + tr("Internal modification · compare its effects on the card.")
 	_workbench.present({"name": String(cur.name), "meta": meta, "tag": _d_tag.text, "preview": preview != null,
 		"pending": pending, "part_name": part_name, "option": _opt, "unlocked": unlocked, "slot": _bench_slot,
-		"weapons": weapons, "slots": slots, "options": records, "rows": rows, "description": description})
+		"weapons": weapons, "slots": slots, "options": records, "rows": rows, "description": description, "melee": cur.is_melee()})
 
 ## Kolor jest pomocniczy: korzyści i kompromisy mają również podpis. Mieszane zmiany pozostają neutralne.
 func _change_kind(metric: String, before: RefCounted, after: RefCounted) -> int:
@@ -2398,9 +2405,9 @@ func _change_kind(metric: String, before: RefCounted, after: RefCounted) -> int:
 	if fields.has(metric):
 		var spec: Array = fields[metric]
 		return int(signf((float(after.get(spec[0])) - float(before.get(spec[0]))) * float(spec[1])))
-	if metric == tr("Range"):
+	if metric == tr("Range") or metric == tr("Reach"):
 		return int(signf(after.range_m() - before.range_m()))
-	if metric == tr("Fire rate"):
+	if metric == tr("Fire rate") or metric == tr("Swing rate"):
 		return int(signf(after.rpm() - before.rpm()))
 	if metric == tr("Reload"):
 		return int(signf(before.full_reload_time() - after.full_reload_time()))

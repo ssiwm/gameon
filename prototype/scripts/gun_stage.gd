@@ -66,6 +66,17 @@ const PULL_DIR := {
 	"stock": Vector3(-1.0, 0.0, 0.0), "optic": Vector3(0.0, 1.0, 0.0), "edge": Vector3(0.0, 1.0, 0.0), "head": Vector3(0.0, 1.0, 0.0),
 	"special": Vector3(0.0, -1.0, 0.0),
 }
+## Fabryczne podzespoły typowe dla gniazda, gdy żadna jego część nie ma `hides` (P-83: magazynek, PELLET-8: czółenko). Pomijane, jeśli
+## podzespół należy już do innego gniazda tej broni (kilof: głowica to gniazdo „head”, nie „edge”).
+const SLOT_COMPS := {
+	"feed": ["mag", "tube", "tank"], "barrel": ["front", "barrel"], "muzzle": ["muzzle"], "action": ["bolt", "pump"],
+	"stock": ["stock", "grip", "saddle"], "optic": ["optic"], "edge": ["blade"], "head": ["head"],
+}
+## Gniazdo bez żadnego podzespołu (mechanizm, lufa w osłonie): punkt na długości broni, 0 = tył, 1 = wylot. Lufa i wylot leżą na osi
+## przewodu, reszta w środku przekroju bryły w tym miejscu — nie w środku obrysu, który u SPREAD-12 wypada w bębnie.
+const SLOT_ALONG := {
+	"stock": 0.1, "feed": 0.38, "action": 0.55, "special": 0.65, "optic": 0.5, "barrel": 0.78, "edge": 0.92, "head": 0.92, "muzzle": 1.0,
+}
 
 var _vp: SubViewport
 var _camera: Camera3D
@@ -91,6 +102,7 @@ var _sig := ""                                ## co pokazujemy (broń, części,
 var _fit_key := ""                            ## broń i proporcje, dla których liczono kadr (kadr stały dla broni — nie skacze przy zmianie części)
 var _fit_k := 1.0
 var _fit_c := Vector3.ZERO
+var _anchors := {}                            ## gniazdo bez podzespołu → punkt w układzie modelu (dla bieżącego modelu)
 var _hl: Array = []                           ## węzły podświetlone (część albo fabryczne podzespoły gniazda)
 var _hl_dir := Vector3.ZERO
 var _pull := 0.0
@@ -202,6 +214,7 @@ func show_gun(w: int, ids: Array, hl_part: String, hl_slot: String, locked: bool
 			return
 		var bm: Vector3 = Char3D.gun_info(key)["muzzle"]
 		_model = GunModel.build(key, ids, bm, nt, deep)
+		_anchors.clear()
 		_pivot.add_child(_model)
 		_place()
 		_collect_comps()
@@ -248,7 +261,64 @@ func _slot_targets(root: Node3D, key: String, id: String, slot: String) -> Array
 		for mesh in root.find_children("*__*", "MeshInstance3D", true, false):
 			if names.has(String(mesh.name).get_slice("__", 1)):
 				targets.append(mesh)
+		if names.is_empty():
+			var claimed := {}
+			for part in Parts.of(key):
+				for hidden in GunModel.part_info(String(part["id"])).get("hides", []):
+					claimed[String(hidden)] = true
+			var typical := {}
+			for comp in SLOT_COMPS.get(slot, []):
+				if not claimed.has(comp):
+					typical[comp] = true
+			for mesh in root.find_children("*__*", "MeshInstance3D", true, false):
+				if typical.has(String(mesh.name).get_slice("__", 1)):
+					targets.append(mesh)
 	return targets
+
+## Punkt gniazda bez podzespołu w układzie modelu: przekrój bryły w miejscu z SLOT_ALONG (lufa i wylot na osi przewodu).
+func _slot_anchor(slot: String) -> Vector3:
+	if _anchors.has(slot):
+		return _anchors[slot]
+	var points := PackedVector3Array()
+	for mesh in _model.find_children("*", "MeshInstance3D", true, false):
+		var mi := mesh as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var xf := GunModel._xf_in(mi, _model)
+		for v in mi.mesh.get_faces():
+			points.append(xf * v)
+	if points.is_empty():
+		return _fit_c
+	var lo := points[0]
+	var hi := points[0]
+	for v in points:
+		lo = lo.min(v)
+		hi = hi.max(v)
+	var muzzle := GunModel.barrel_muzzle(Char3D.gun_info(String(Weapons.def(_weapon).key))["muzzle"], _ids)
+	var fwd := 1.0 if muzzle.x >= (lo.x + hi.x) * 0.5 else -1.0
+	var rear := lo.x if fwd > 0.0 else hi.x
+	var length := maxf(absf(muzzle.x - rear), 0.001)
+	var x := rear + fwd * float(SLOT_ALONG.get(slot, 0.5)) * length
+	var anchor := Vector3(x, (lo.y + hi.y) * 0.5, (lo.z + hi.z) * 0.5)
+	if slot == "barrel" or slot == "muzzle":
+		anchor = Vector3(x, muzzle.y, muzzle.z)
+	else:
+		for half in [0.04 * length, 0.1 * length]:
+			var sum := Vector3.ZERO
+			var top := -INF
+			var count := 0
+			for v in points:
+				if absf(v.x - x) <= half:
+					sum += v
+					top = maxf(top, v.y)
+					count += 1
+			if count > 0:
+				anchor = sum / float(count)
+				if slot == "optic":
+					anchor.y = top
+				break
+	_anchors[slot] = anchor
+	return anchor
 
 func _slot_id(ids: Array, slot: String) -> String:
 	for id in ids:
@@ -268,8 +338,8 @@ func slot_screen_position(slot: String) -> Vector2:
 			center += (mesh as Node3D).global_transform * (mesh as MeshInstance3D).get_aabb().get_center()
 			count += 1
 	if count == 0:
-		# Wewnętrzny mechanizm: rzeczywisty środek korpusu, bez fikcyjnego zewnętrznego modelu.
-		center = _model.global_transform * _fit_c
+		# Wewnętrzny mechanizm albo lufa w osłonie: punkt na bryle w miejscu tego gniazda, bez fikcyjnego zewnętrznego modelu.
+		center = _model.global_transform * _slot_anchor(slot)
 	else:
 		center /= float(count)
 	return _camera.unproject_position(center) * size / Vector2(_vp.size)
@@ -475,12 +545,33 @@ func _bench_box(parent: Node3D, dimensions: Vector3, at: Vector3, material: Mate
 	parent.add_child(mesh)
 	return mesh
 
+func _bench_metal(color: Color, roughness: float) -> Material:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.metallic = 0.75
+	material.roughness = roughness
+	return material
+
+## Walec leżący na macie (oś wzdłuż x, obrócony o `angle_deg` w płaszczyźnie maty); `upright` — stojący (łeb śruby).
+func _bench_rod(parent: Node3D, length: float, radius: float, at: Vector3, angle_deg: float, material: Material, upright := false) -> MeshInstance3D:
+	var mesh := MeshInstance3D.new()
+	var rod := CylinderMesh.new()
+	rod.height = length
+	rod.top_radius = radius
+	rod.bottom_radius = radius
+	rod.radial_segments = 16
+	mesh.mesh = rod
+	mesh.material_override = material
+	mesh.position = at
+	mesh.rotation = Vector3(PI * 0.5, 0.0, 0.0) if upright else Vector3(0.0, 0.0, PI * 0.5 + deg_to_rad(angle_deg))
+	parent.add_child(mesh)
+	return mesh
+
 func _build_bench() -> void:
 	_table = Node3D.new()
 	_vp.add_child(_table)
 	var wood := _bench_material(Color("57402d"), true)
 	var mat := _bench_material(Color("344838"), true)
-	var steel := _bench_material(Color("5b655c"))
 	var brass := _bench_material(Color("96784a"))
 	_bench_box(_table, Vector3(2.9, 1.55, 0.09), Vector3(0, 0, -0.52), wood)
 	_bench_box(_table, Vector3(2.33, 1.24, 0.014), Vector3(-0.05, 0.03, -0.465), mat)
@@ -489,14 +580,22 @@ func _build_bench() -> void:
 		_bench_box(_table, Vector3(0.0015, 1.19, 0.002), Vector3(-1.1 + i * 0.12, 0.03, -0.455), grid)
 	for i in 10:
 		_bench_box(_table, Vector3(2.28, 0.0015, 0.002), Vector3(-0.05, -0.51 + i * 0.12, -0.455), grid)
-	# Płytka taca, śrubokręt i stalowy wybijak: prawdziwe bryły 3D, jedna scena i bez nowych tekstur.
-	_bench_box(_table, Vector3(0.49, 0.30, 0.02), Vector3(0.81, -0.47, -0.435), steel)
+	# Płytka taca, śrubokręt i stalowy wybijak: prawdziwe bryły 3D, jedna scena i bez nowych tekstur. Taca ma gumowe dno i wyższy,
+	# jaśniejszy metalowy rant ze śrubami w rogach — płaska szara płyta wyglądała jak pusty prostokąt interfejsu.
+	var rubber := _bench_material(Color("1f211c"), true)
+	var rim := _bench_metal(Color("8b918a"), 0.35)
+	_bench_box(_table, Vector3(0.49, 0.30, 0.02), Vector3(0.81, -0.47, -0.435), _bench_metal(Color("454a44"), 0.55))
+	_bench_box(_table, Vector3(0.45, 0.26, 0.006), Vector3(0.81, -0.47, -0.423), rubber)
 	for side in [-1.0, 1.0]:
-		_bench_box(_table, Vector3(0.49, 0.014, 0.025), Vector3(0.81, -0.47 + side * 0.15, -0.415), steel)
-		_bench_box(_table, Vector3(0.014, 0.3, 0.025), Vector3(0.81 + side * 0.245, -0.47, -0.415), steel)
-	_bench_box(_table, Vector3(0.23, 0.035, 0.032), Vector3(-0.89, 0.60, -0.42), _bench_material(Color("734630")))
-	_bench_box(_table, Vector3(0.22, 0.01, 0.012), Vector3(-0.665, 0.60, -0.42), steel)
-	_bench_box(_table, Vector3(0.31, 0.012, 0.012), Vector3(-0.81, 0.55, -0.42), brass)
+		_bench_box(_table, Vector3(0.49, 0.02, 0.04), Vector3(0.81, -0.47 + side * 0.14, -0.41), rim)
+		_bench_box(_table, Vector3(0.02, 0.3, 0.04), Vector3(0.81 + side * 0.235, -0.47, -0.41), rim)
+		for end in [-1.0, 1.0]:
+			_bench_rod(_table, 0.008, 0.009, Vector3(0.81 + end * 0.235, -0.47 + side * 0.14, -0.386), 0.0, brass, true)
+	# Narzędzia: walce z cieniowaniem i lekko skośnie — płaskie prostokąty w rzędzie czytały się jak paski postępu.
+	var handle := _bench_material(Color("7a3424"))
+	_bench_rod(_table, 0.2, 0.022, Vector3(-0.9, 0.6, -0.42), 7.0, handle)
+	_bench_rod(_table, 0.2, 0.0065, Vector3(-0.7, 0.625, -0.43), 7.0, _bench_metal(Color("a9aea6"), 0.3))
+	_bench_rod(_table, 0.3, 0.008, Vector3(-0.84, 0.52, -0.432), -4.0, brass)
 	_lamp.shadow_enabled = true
 	_lamp.position = Vector3(0.2, 0.65, 3.5)
 	_lamp.look_at(Vector3.ZERO)

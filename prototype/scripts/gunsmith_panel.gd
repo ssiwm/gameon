@@ -15,6 +15,7 @@ var stage: GunStage
 var _rack: VBoxContainer
 var _rack_scroll: ScrollContainer
 var _rack_all: Button
+var _rack_carried: Button
 var _slots: HBoxContainer
 var _parts: HBoxContainer
 var _part_scroll: ScrollContainer
@@ -51,9 +52,16 @@ func _ready() -> void:
 	var rack_box := VBoxContainer.new()
 	rack_box.custom_minimum_size.x = 98
 	add_child(rack_box)
-	_rack_all = _button(tr("ALL ARMS"), _toggle_rack)
-	_rack_all.tooltip_text = tr("Switch between carried weapons and the full armoury.")
-	rack_box.add_child(_rack_all)
+	var rack_modes := HBoxContainer.new()
+	rack_modes.add_theme_constant_override("separation", 2)
+	rack_box.add_child(rack_modes)
+	_rack_carried = _button(tr("CARRIED"), func(): _set_rack(false))
+	_rack_carried.tooltip_text = tr("Weapons you carry.")
+	_rack_all = _button(tr("ALL"), func(): _set_rack(true))
+	_rack_all.tooltip_text = tr("The full armoury, including weapons you do not carry.")
+	for b in [_rack_carried, _rack_all]:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rack_modes.add_child(b)
 	_rack_scroll = _scroll(rack_box)
 	_rack = VBoxContainer.new()
 	_rack.add_theme_constant_override("separation", 3)
@@ -69,7 +77,8 @@ func _ready() -> void:
 	head.add_child(_title)
 	_inspect = _button(tr("Inspect"), func(): inspect_requested.emit())
 	head.add_child(_inspect)
-	_motion = _button(tr("Motion: on"), _toggle_motion)
+	_motion = _button(tr("Animations: on"), _toggle_motion)
+	_motion.tooltip_text = tr("Part pull-out, camera drift and the mount animation on the bench (reduced motion turns them off).")
 	head.add_child(_motion)
 	middle.add_child(head)
 	stage = GunStage.new()
@@ -86,7 +95,7 @@ func _ready() -> void:
 	_slots.add_theme_constant_override("separation", 2)
 	middle.add_child(_slots)
 	_part_scroll = ScrollContainer.new()
-	_part_scroll.custom_minimum_size.y = 63
+	_part_scroll.custom_minimum_size.y = 71
 	_part_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	middle.add_child(_part_scroll)
 	_parts = HBoxContainer.new()
@@ -123,7 +132,7 @@ func _ready() -> void:
 	card.add_child(_save)
 	visibility_changed.connect(_visibility)
 	stage.set_reduced_motion(Settings.reduce_fx)
-	_motion.text = tr("Motion: off") if stage.reduced_motion else tr("Motion: on")
+	_motion.text = tr("Animations: off") if stage.reduced_motion else tr("Animations: on")
 
 func _scroll(parent: Control) -> ScrollContainer:
 	var scroll := ScrollContainer.new()
@@ -139,14 +148,15 @@ func _button(text: String, callback: Callable) -> Button:
 	b.add_theme_font_size_override("font_size", 8)
 	for state_name in ["normal", "hover", "pressed", "disabled"]:
 		var box := StyleBoxFlat.new()
-		box.bg_color = Color("22281f") if state_name == "normal" else Color("3b3827")
-		box.border_color = Color("68664b")
+		box.bg_color = {"normal": Color("22281f"), "disabled": Color("181b15")}.get(state_name, Color("3b3827"))
+		box.border_color = Color("4a4836") if state_name == "disabled" else Color("68664b")
 		box.set_border_width_all(1)
 		box.content_margin_left = 4
 		box.content_margin_right = 4
 		box.content_margin_top = 3
 		box.content_margin_bottom = 3
 		b.add_theme_stylebox_override(state_name, box)
+	b.add_theme_color_override("font_disabled_color", UiTheme.MUTED)        # wyłączony = stan („oglądasz”), musi dać się przeczytać
 	b.pressed.connect(callback)
 	return b
 
@@ -191,7 +201,8 @@ func _present_rack() -> void:
 	for record in records:
 		if bool(record["selected"]) and not bool(record["carried"]):
 			_show_all = true
-	_rack_all.text = tr("CARRIED ARMS") if _show_all else tr("ALL ARMS")
+	_rack_all.add_theme_color_override("font_color", UiTheme.ACCENT if _show_all else UiTheme.TEXT)
+	_rack_carried.add_theme_color_override("font_color", UiTheme.TEXT if _show_all else UiTheme.ACCENT)
 	var sig := str(records) + str(_show_all)
 	if sig == _rack_signature:
 		return
@@ -231,13 +242,17 @@ func _present_slots() -> void:
 	for i in slots.size():
 		var slot: Dictionary = slots[i]
 		var selected := String(slot["id"]) == String(_payload["slot"])
-		var b := _button(str(i + 1), func(): slot_selected.emit(String(slot["id"])))
-		b.text += " " + String(slot["short"])
+		var preset := String(slot["id"]) == "preset"
+		if preset:
+			var gap := Control.new()
+			gap.custom_minimum_size.x = 8
+			_slots.add_child(gap)
+		var b := _button(String(slot["short"]) if preset else "%d %s" % [i + 1, slot["short"]], func(): slot_selected.emit(String(slot["id"])))
 		b.tooltip_text = String(slot["name"]) + " · " + String(slot["fitted"])
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.size_flags_horizontal = Control.SIZE_FILL if preset else Control.SIZE_EXPAND_FILL
 		b.add_theme_color_override("font_color", UiTheme.ACCENT if selected else UiTheme.TEXT)
 		_slots.add_child(b)
-		if String(slot["id"]) == "preset":
+		if preset:
 			continue
 		var hotspot := _button(str(i + 1), func(): slot_selected.emit(String(slot["id"])))
 		hotspot.custom_minimum_size = Vector2(20, 18)
@@ -255,7 +270,7 @@ func _present_parts() -> void:
 	_clear(_parts)
 	for record in records:
 		var b := _button("", func(): option_selected.emit(int(record["index"])))
-		b.custom_minimum_size = Vector2(83, 46)
+		b.custom_minimum_size = Vector2(83, 54)
 		b.tooltip_text = String(record["name"]) + " · " + String(record["status"])
 		var box := VBoxContainer.new()
 		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -269,6 +284,7 @@ func _present_parts() -> void:
 		nm.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		nm.custom_minimum_size.x = 73
 		nm.max_lines_visible = 2
+		nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		box.add_child(nm)
 		box.add_child(UiTheme.label(String(record["status"]), 8, UiTheme.OK if bool(record["fitted"]) else UiTheme.TEXT))
 		_parts.add_child(b)
@@ -295,27 +311,42 @@ func _present_summary() -> void:
 		var caption := String(row[0])
 		if String(row[1]) != String(row[2]) and kind != 0:
 			caption += " · " + (tr("Gain") if kind > 0 else tr("Trade-off"))
-		_summary.add_child(_ink(caption, 8))
+		var changed := String(row[1]) != String(row[2])
 		var value := String(row[1])
-		if String(row[1]) != String(row[2]):
+		if changed:
 			value = ("[%s] → [%s]" if value.contains("→") or String(row[2]).contains("→") else "%s → %s") % [row[1], row[2]]
 		var value_label := _ink(value, 10)
-		if String(row[1]) != String(row[2]) and kind != 0:
+		if changed and kind != 0:
 			value_label.add_theme_color_override("font_color", Color("285135") if kind > 0 else Color("713b21"))
-		_summary.add_child(value_label)
+		var line: BoxContainer = VBoxContainer.new() if changed else HBoxContainer.new()
+		line.add_theme_constant_override("separation", 0 if changed else 4)
+		var caption_label := _ink(caption, 8)
+		if not changed:
+			caption_label.custom_minimum_size.x = 0                       # _ink daje pełną szerokość karty — w wierszu dzielą ją dwa napisy
+			value_label.custom_minimum_size.x = 0
+			caption_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			caption_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		line.add_child(caption_label)
+		line.add_child(value_label)
+		_summary.add_child(line)
 	if not _show_details and changes.size() > 4:
-		_summary.add_child(_ink(tr("%d more changes in parameters") % (changes.size() - 4), 8))
+		var more := changes.size() - 4
+		_summary.add_child(_ink(tr_n("%d more change in parameters", "%d more changes in parameters", more) % more, 8))      # formy mnogie: translations/plural.csv
 	var desc := _ink(String(_payload["description"]), 8)
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_summary.add_child(desc)
-	var scope := _ink(tr("Configuration + loaded ammo. Handling also depends on wear, heat and mastery."), 7)
+	var scope := _ink(tr("Configuration only. Handling also depends on the edge and mastery.") if bool(_payload.get("melee", false))
+		else tr("Configuration + loaded ammo. Handling also depends on wear, heat and mastery."), 7)
 	scope.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_summary.add_child(scope)
 	_details.text = (tr("Main changes") if _show_details else tr("All parameters")) + " · " + Actions.text("menu_details")
 	_scroll_hint.text = tr("Scroll card: %s") % Actions.cluster(["menu_scroll_up", "menu_scroll_down"], " / ")
 
-func _toggle_rack() -> void:
-	_show_all = not _show_all
+func _set_rack(all: bool) -> void:
+	if all == _show_all:
+		return
+	_show_all = all
 	# Wybrana broń spoza ekwipunku nie wymusza powrotu do pełnej listy podczas tego przełączenia.
 	_rack_signature = ""
 	if not _show_all:
@@ -332,7 +363,7 @@ func _toggle_details() -> void:
 
 func _toggle_motion() -> void:
 	stage.set_reduced_motion(not stage.reduced_motion)
-	_motion.text = tr("Motion: off") if stage.reduced_motion else tr("Motion: on")
+	_motion.text = tr("Animations: off") if stage.reduced_motion else tr("Animations: on")
 
 func _visibility() -> void:
 	stage.set_rendering(is_visible_in_tree())

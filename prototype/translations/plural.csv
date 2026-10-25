@@ -1,0 +1,8 @@
+keys,?plural,pl,_comment
+?pluralrule,,"nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);",Polski: 1 / 2–4 (bez 12–14) / reszta
+"%d more change in parameters","%d more changes in parameters","Jeszcze %d zmiana w parametrach",Ława ARMS: karta rusznikarska
+,,"Jeszcze %d zmiany w parametrach",
+,,"Jeszcze %d zmian w parametrach",
+"%d kill","%d kills","%d zabójstwo",Ława ARMS: karta rusznikarska
+,,"%d zabójstwa",
+,,"%d zabójstw",
