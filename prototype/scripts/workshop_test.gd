@@ -5,6 +5,9 @@ const Parts := preload("res://scripts/parts.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Ammo := preload("res://scripts/ammo.gd")
 const Controller := preload("res://scripts/weapon_controller.gd")
+const GunStage := preload("res://scripts/gun_stage.gd")
+const GunModel := preload("res://scripts/gun_model.gd")
+const Char3D := preload("res://scripts/char3d.gd")
 var total := 0
 var failed := 0
 var main: Node
@@ -37,7 +40,7 @@ func run(m: Node) -> void:
 			p.queue_free()
 	check("prawdziwa kryjówka i człowiek", player != null and main.level.map_id == "z1_hub")
 	if player == null:
-		get_tree().quit(1)
+		Audio.quit_game(1)
 		return
 	player.process_mode = Node.PROCESS_MODE_DISABLED
 	wc = player.weapons
@@ -52,8 +55,9 @@ func run(m: Node) -> void:
 	await _migration()
 	await _jobs_deliveries()
 	await _ui()
+	await _immersive()
 	print("[WORKSHOP-TEST] ==== %d/%d OK, błędów: %d ====" % [total - failed, total, failed])
-	get_tree().quit(1 if failed else 0)
+	Audio.quit_game(1 if failed else 0)
 
 func _authorization() -> void:
 	var peer: int = player.player_id
@@ -288,8 +292,11 @@ func _ui() -> void:
 	var labels: Array = ui._d_stats.get_children().filter(func(c: Node) -> bool: return c is Label).map(func(c: Label) -> String: return c.text)
 	var metrics: Array = ui._comparison_rows(wc.def_of(Weapons.SPREAD12)).map(func(row: Array) -> String: return String(row[0]))
 	check("porównanie zawiera dobycie, celność, przebicie, grzanie i masę zestawu", metrics.has(tr("Draw")) and metrics.has(tr("Spread")) and metrics.has(tr("Penetration")) and metrics.has(tr("Heating")) and labels.has(tr("Kit mass")))
-	check("podgląd części pokazuje zmiany zamiast niezmienionych statystyk", labels.has("Magazine") and not labels.has("Damage"))
-	check("odblokowane części odróżnione od zamontowanych", ui._d_tag.text.contains("UNLOCKED") and ui._d_tag.text.contains("FITTED"))
+	check("otwarcie ławy pokazuje aktualny montaż i pełne statystyki", ui._opt == -1 and labels.has(tr("Damage")) and not ui._workbench._payload["preview"])
+	ui._pick_opt(ui._options(Weapons.SPREAD12).find({"slot": "feed", "id": "sp12_drum30"}))
+	labels = ui._d_stats.get_children().filter(func(c: Node) -> bool: return c is Label).map(func(c: Label) -> String: return c.text)
+	check("jawny podgląd pokazuje zmiany zamiast niezmienionych statystyk", labels.has(tr("Magazine")) and not labels.has(tr("Damage")) and ui._workbench._payload["preview"])
+	check("odblokowane części odróżnione od zamontowanych", ui._d_tag.text.contains(tr("  ·  UNLOCKED %d / %d") % [Scrap.parts_owned(Weapons.SPREAD12), Parts.of("spread12").size()]) and ui._d_tag.text.contains(tr("  ·  FITTED %d") % Parts.decode("spread12", Profile.fit_code(Weapons.SPREAD12)).size()))
 	check("długi panel mieści się w przewijanym korpusie", ui._arms_body.get_parent() is ScrollContainer)
 	check("główna akcja pozostaje poza przewijaną treścią", ui._action.get_parent() == ui._arms_body.get_parent().get_parent() and ui._action.visible)
 	ui.close()
@@ -299,3 +306,212 @@ func _ui() -> void:
 	ui._refresh()
 	check("prasa pokazuje odbiór już opłaconej dostawy", ui._s_action.text == tr("Collect ready delivery · %d rounds") % 5)
 	ui.close()
+
+## Rzeczywista konfiguracja, operacje serwera i sceny 3D — bez osobnego kalkulatora w makiecie.
+func _immersive() -> void:
+	var ui := get_tree().get_first_node_in_group("workshop_ui")
+	station("workshop")
+	ui.open("bench")
+	ui._select(0)
+	ui._inspect()
+	ui._workbench._show_all = true
+	ui._workbench._present_rack()
+	(ui._workbench._rack.get_child(2) as Button).pressed.emit()
+	check("przycisk nowego stojaka wybiera właściwą broń", ui._sel == 2 and ui._opt == -1)
+	ui._select(0)
+	ui._pick_slot("feed")
+	(ui._workbench._parts.get_child(1) as Button).pressed.emit()
+	check("karta na nowej tacy wybiera wariant bez zatwierdzania", ui._opt == ui._options(Weapons.M83).find({"slot": "feed", "id": "m83_rpk40"}))
+	ui._inspect()
+	var key := "m83"
+	var bank: int = Scrap.bank
+	var fit: int = Profile.fit_code(Weapons.M83)
+	var stock: Dictionary = Arsenal.stock.duplicate()
+	var loaded: Dictionary = wc.loaded.duplicate()
+	var ops: Array = ui._options(Weapons.M83)
+	ui._pick_opt(ops.find({"slot": "muzzle", "id": "m83_pbs1"}))
+	check("podgląd nie zmienia profilu, banku, nabojów ani zapasu", Profile.fit_code(Weapons.M83) == fit and Scrap.bank == bank and Arsenal.stock == stock and wc.loaded == loaded)
+	check("podgląd zachowuje pozostałe gniazda i aktualną amunicję", ui._d_stage._ids == Parts.decode(key, Parts.encode(key, _preview_choice(key, "muzzle", "m83_pbs1"))) and ui._workbench._payload["preview"])
+	ui._inspect()
+	check("oględziny przywracają prawdziwą konfigurację bez zapisu", ui._d_stage._ids == Parts.decode(key, fit) and ui._opt == -1 and Profile.fit_code(Weapons.M83) == fit)
+	ui._pick_opt(ops.find({"slot": "feed", "id": "m83_drum75"}))
+	var changes: Array = ui._workbench._payload["rows"]
+	check("korzyść magazynka i kompromis masy są podpisane z danych konfiguracji", changes.any(func(row: Array) -> bool: return row[0] == tr("Magazine") and int(row[3]) > 0) and changes.any(func(row: Array) -> bool: return row[0] == tr("Mass") and int(row[3]) < 0))
+	var details_key := InputEventKey.new()
+	details_key.physical_keycode = KEY_V
+	details_key.pressed = true
+	ui._input(details_key)
+	check("klawiatura otwiera pełne parametry bez montażu", ui._workbench._show_details and Profile.fit_code(Weapons.M83) == fit and Scrap.bank == bank)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	Input.action_press("menu_scroll_down")
+	ui._workbench._process(0.5)
+	Input.action_release("menu_scroll_down")
+	check("karta parametrów przewija się akcją klawiatury / osi pada", ui._workbench._summary_scroll.scroll_vertical > 0)
+	var details_pad := InputEventJoypadButton.new()
+	details_pad.button_index = JOY_BUTTON_BACK
+	details_pad.pressed = true
+	ui._input(details_pad)
+	check("pad wraca do głównych zmian na karcie", not ui._workbench._show_details)
+	ui._workbench._summary_scroll.scroll_vertical = 0
+	ui._inspect()
+	var model: Node3D = ui._d_stage._model
+	ui._pick_slot("feed")
+	ui._inspect()
+	check("samo podświetlenie gniazda nie przebudowuje modelu", ui._d_stage._model == model)
+	ui._pick_opt(ops.find({"slot": "feed", "id": ""}))
+	check("fabryczny element ma osobny podgląd i nie usuwa części bez akcji", Profile.fit_code(Weapons.M83) == fit and ui._opt >= 0)
+	ui._inspect()
+	# Ograniczenie ruchu jest lokalną prezentacją, nie ustawieniem symulacji.
+	ui._workbench.stage.set_reduced_motion(true)
+	ui._pick_opt(ops.find({"slot": "muzzle", "id": "m83_pbs1"}))
+	ui._d_stage._process(0.5)
+	check("ograniczony ruch zostawia gniazdo na miejscu", ui._d_stage._hl.all(func(item: Dictionary) -> bool: return (item["node"] as Node3D).position.is_equal_approx(item["base"])))
+	ui._workbench.stage.set_reduced_motion(false)
+	ui._inspect()
+	ui._d_stage.size = Vector2(300, 150)
+	ui._d_stage._fit_viewport()
+	ui._d_stage._process(0.1)
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = ui._d_stage.slot_screen_position("feed")
+	ui._d_stage._gui_input(press)
+	var release := press.duplicate() as InputEventMouseButton
+	release.pressed = false
+	ui._d_stage._gui_input(release)
+	check("kliknięcie powierzchni magazynka wybiera jego gniazdo", ui._bench_slot == "feed" and ui._opt >= 0)
+	ui._d_stage._gui_input(press)
+	var motion := InputEventMouseMotion.new()
+	motion.relative = Vector2(10, 0)
+	motion.button_mask = MOUSE_BUTTON_MASK_LEFT
+	ui._d_stage._gui_input(motion)
+	release.position = ui._d_stage.slot_screen_position("stock")
+	ui._d_stage._gui_input(release)
+	check("przeciągnięcie obraca broń bez kliknięcia innego gniazda przy puszczeniu", ui._bench_slot == "feed" and ui._d_stage._yaw != 0)
+	ui._d_stage._yaw = 0
+	ui._d_stage._pitch = 0
+	ui._inspect()
+	var all_models := true
+	var all_slots := true
+	var all_bounds := true
+	var all_effects := true
+	var all_rotations := true
+	var shotgun: RefCounted = Weapons.base_def(Weapons.SPREAD12)
+	check("wartość obrażeń śrutu korzysta z tłumaczenia karty", ui._comparison_rows(shotgun).any(func(row: Array) -> bool: return row[0] == tr("Damage") and row[1] == tr("%d × %d pellets") % [int(shotgun.damage), shotgun.pellets]))
+	var unlocked: Dictionary = Scrap.unlocked.duplicate()
+	for i in ui.LIST.size():
+		var w := int(ui.LIST[i])
+		Scrap.unlocked[w] = true
+		ui._select(i)
+		ui._d_stage.size = Vector2(300, 150)
+		ui._d_stage._fit_viewport()
+		ui._d_stage._process(0.1)
+		all_models = all_models and ui._d_stage._model != null and ui._opt == -1
+		var gun_key := String(Weapons.def(w).key)
+		var metrics: Array = ui._comparison_rows(Weapons.def(w)).map(func(row: Array) -> String: return String(row[0]))
+		for part in Parts.of(gun_key):
+			for modifier in part["mods"]:
+				if ui.PART_METRICS.has(String(modifier[0])):
+					all_effects = all_effects and metrics.has(tr(String(ui.PART_METRICS[String(modifier[0])][0])))
+		for slot in Parts.slots_of(gun_key):
+			ui._pick_slot(String(slot))
+			var point: Vector2 = ui._d_stage.slot_screen_position(String(slot))
+			all_slots = all_slots and ui._bench_slot == slot and point.is_finite() and Rect2(Vector2.ZERO, ui._d_stage.size).has_point(point)
+		ui._d_stage._yaw = 0.65
+		ui._d_stage._pitch = 0.45
+		ui._d_stage._idle = 0
+		ui._d_stage._process(0.1)
+		var rotated: AABB = ui._d_stage._model.global_transform * GunStage.model_bounds(ui._d_stage._model)
+		all_rotations = all_rotations and rotated.position.z > -0.455
+		ui._d_stage._yaw = 0
+		ui._d_stage._pitch = 0
+		var builds: Array = [[]]
+		for slot in Parts.slots_of(gun_key):
+			var expanded: Array = []
+			for ids in builds:
+				expanded.append(ids.duplicate())
+				for part in Parts.in_slot(gun_key, String(slot)):
+					if GunModel.has_model(String(part["id"])):
+						expanded.append(ids + [String(part["id"])])
+			builds = expanded
+		var frame: AABB = GunStage.stable_bounds(gun_key).grow(0.0001)
+		for ids in builds:
+			var probe := GunModel.build(gun_key, ids, Char3D.gun_info(gun_key)["muzzle"])
+			all_bounds = all_bounds and frame.encloses(GunStage.model_bounds(probe))
+			probe.free()
+	Scrap.unlocked = unlocked
+	check("nowa ława pokazuje wszystkie 12 rzeczywistych modeli", all_models)
+	check("wszystkie gniazda mają dostępny wybór i kotwicę w kadrze", all_slots)
+	check("stały kadr obejmuje wszystkie kombinacje części z modelami", all_bounds)
+	check("pełna karta obejmuje dodatkowe efekty części każdej broni", all_effects)
+	check("obrót żadnej broni nie chowa jej wewnątrz blatu", all_rotations)
+	ui._select(0)
+	ui._inspect()
+	var right := InputEventKey.new()
+	right.physical_keycode = KEY_RIGHT
+	right.pressed = true
+	ui._input(right)
+	check("strzałka wybiera gniazdo z tego samego rejestru co mysz", ui._bench_slot == "barrel")
+	var pad := InputEventJoypadButton.new()
+	pad.button_index = JOY_BUTTON_Y
+	pad.pressed = true
+	ui._input(pad)
+	check("pad wybiera wariant w aktywnym gnieździe", String(ui._options(Weapons.M83)[ui._opt]["slot"]) == "barrel" and ui._opt >= 0)
+	ui._inspect()
+	# Odpowiedź opóźniona: UI może zmienić zaznaczenie, profil kupującego aktualizuje Scrap.
+	ui._pending_part = {"id": "m83_pbs1", "w": Weapons.M83, "fit": Profile.fit_code(Weapons.M83), "session": ui._session, "revision": ui._selection_revision}
+	var fits: Dictionary = Profile.fits.duplicate(true)
+	ui._pick_opt(ui._options(Weapons.M83).find({"slot": "barrel", "id": "m83_short"}))
+	ui._act()
+	check("oczekujące żądanie blokuje drugą operację także po zmianie kursora", Scrap.bank == bank and Profile.fits == fits)
+	ui._select(ui.LIST.find(Weapons.SPREAD12))
+	Scrap.parts["m83_pbs1"] = true
+	Scrap._part_done("m83_pbs1", "ok")
+	check("opóźniony wynik nie animuje ani nie przekłada części nowo oglądanej broni", ui._pending_part.is_empty() and ui._d_stage._weapon == Weapons.SPREAD12 and ui._d_stage._mount_time < 0 and Profile.fitted(key, "muzzle") == "m83_pbs1")
+	ui._select(0)
+	ui._pending_part = {"id": "m83_hider", "w": Weapons.M83, "fit": Profile.fit_code(Weapons.M83), "session": ui._session, "revision": ui._selection_revision}
+	ui.close()
+	ui.open("bench")
+	Scrap.parts["m83_hider"] = true
+	Scrap._part_done("m83_hider", "ok")
+	check("zamknięcie i ponowne otwarcie nie odtwarza spóźnionej animacji", ui._pending_part.is_empty() and ui._d_stage._mount_time < 0 and Profile.fitted(key, "muzzle") == "m83_hider")
+	ui._select(0)
+	ui._inspect()
+	Scrap.parts.erase("m83_short")
+	Scrap.found.erase("m83_short")
+	Scrap.bank = 0
+	fit = Profile.fit_code(Weapons.M83)
+	ui._pick_opt(ui._options(Weapons.M83).find({"slot": "barrel", "id": "m83_short"}))
+	ui._act()
+	check("odmowa serwera usuwa oczekiwanie bez montażu i animacji", ui._pending_part.is_empty() and Profile.fit_code(Weapons.M83) == fit and ui._d_stage._mount_time < 0 and ui._action.disabled)
+	Scrap.bank = 4000
+	bank = Scrap.bank
+	ui._act()
+	var after: int = Profile.fit_code(Weapons.M83)
+	check("udany zakup rozlicza raz i rozpoczyna prezentację dopiero po wyniku", ui._pending_part.is_empty() and Scrap.bank == bank - Scrap.part_cost("m83_short") and after != fit and ui._d_stage._mount_time == 0)
+	var paid: int = Scrap.bank
+	ui._d_stage._process(0.56)
+	var on_tray := false
+	for item in ui._d_stage._mount_nodes:
+		if bool(item["old"]):
+			var center: Vector3 = (item["node"] as Node3D).to_global(item["center"])
+			on_tray = on_tray or ui._d_stage._table.to_local(center).distance_to(Vector3(0.69, -0.47, -0.32)) < 0.03
+	check("animacja odkłada stary podzespół na fizyczną tacę", on_tray and Profile.fit_code(Weapons.M83) == after and Scrap.bank == paid)
+	ui._d_stage._process(1.0)
+	check("koniec animacji nie zapisuje ani nie rozlicza operacji ponownie", Profile.fit_code(Weapons.M83) == after and Scrap.bank == paid and ui._d_stage._mount_time < 0 and ui._d_stage._outgoing == null)
+	ui._pick_slot("preset")
+	ui._save_current_preset()
+	check("zestawy zapisują aktualny montaż, nie podgląd", Profile.is_preset_fitted(key, 0))
+	ui._pick_opt(ui._options(Weapons.M83).find({"slot": "barrel", "id": ""}))
+	ui._act()
+	check("montaż posiadanej / fabrycznej części uruchamia tę samą prezentację", ui._d_stage._mount_time == 0 and Scrap.bank == paid and Profile.fitted(key, "barrel") == "")
+	ui.close()
+	check("zamknięcie przerywa efekt i wyłącza ukryte viewporty", ui._workbench.stage._outgoing == null and ui._workbench.stage._vp.render_target_update_mode == SubViewport.UPDATE_DISABLED and ui._legacy_stage._vp.render_target_update_mode == SubViewport.UPDATE_DISABLED)
+	await frames(3) # obsługa odroczonego przewijania po wymianie i usunięciu wierszy
+
+func _preview_choice(key: String, slot: String, id: String) -> Dictionary:
+	var choice := {}
+	for s in Parts.slots_of(key):
+		choice[s] = id if s == slot else Profile.fitted(key, String(s))
+	return choice

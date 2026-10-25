@@ -654,7 +654,7 @@ func open_settings() -> void:
 func _on_quit() -> void:
 	if _quit_t > 0.0:
 		close()
-		get_tree().quit()
+		Audio.quit_game()
 		return
 	_quit_t = QUIT_CONFIRM_S
 	_quit.text = tr("CLICK AGAIN TO QUIT")

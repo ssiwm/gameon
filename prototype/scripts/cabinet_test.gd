@@ -59,7 +59,7 @@ func run(m: Node, network := false) -> void:
 	else:
 		await _unit()
 	print("[CABINET-TEST] ==== %d/%d OK, błędów: %d ====" % [total - failed, total, failed])
-	get_tree().quit(1 if failed else 0)
+	Audio.quit_game(1 if failed else 0)
 
 func _unit() -> void:
 	player = main.get_node("Players/1")

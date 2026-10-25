@@ -54,7 +54,7 @@ func run(m: Node2D) -> void:
 
 func _finish() -> void:
 	print("[STALKER-TEST] ==== %s (%d/%d) ====" % ["PASS" if failed == 0 else "FAIL", total - failed, total])
-	get_tree().quit(1 if failed > 0 else 0)
+	Audio.quit_game(1 if failed > 0 else 0)
 
 # ---------------------------------------------------------------- przygotowanie sceny
 

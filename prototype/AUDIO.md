@@ -201,3 +201,9 @@ Wybieranie wycinków z nagrań: `python3 tools/audio_probe.py "fragment nazwy" [
 * Dalsze kroki: UI napisów (sygnał `caption`), suwaki głośności (Master/Music/SFX/Voice) i mono-audio w opcjach (GDD §14),
   profil ogłuszenia/szumu per trudność, miksowanie „na słuchawkach" co sprint (GDD ryzyko „Groza nie działa w 2D"),
   obsługa hot-reload banku w edytorze.
+
+## Cykl zamykania — weryfikacja 25.10.2026, 1.7.370
+
+`_exit_tree` zatrzymuje audio jako zabezpieczenie, ale podczas niszczenia SceneTree jest za późno na pewne zwolnienie asynchronicznego playback. Przy normalnym wyjściu należy użyć `Audio.quit_game(code)`: stop / stream=null / zwolnienie pętli / wyczyszczenie cache, pauza symulacji i co najmniej 100 ms czasu rzeczywistego dla miksera, potem zakończenie z pierwotnym kodem. Czas liczy `Time.get_ticks_usec()` przy nadal działających klatkach; SceneTreeTimer w przyspieszonym headless nie jest pewnym pomiarem czasu dla wątku audio. Callback okna oraz aplikacja i testy sceny używają tej ścieżki. Wyłączone audio odrzuca również tworzenie nowych pętli.
+
+`tools/test_shutdown.gd` celowo odtwarza audio także na driverze Dummy, zamiast ukrywać problem przez całkowite wyłączenie dźwięku w headless. Weryfikuje własność węzłów grozy, aktywne pętle i muzykę, idempotentne shutdown, brak referencji stream w odtwarzaczach i ponowny start. Kontrola obejmuje zwykłe wyjście, sygnał zamknięcia okna i kod 7, także na natywnym Windows / WASAPI. Raport i ograniczenia: `docs/audits/2026-10-25-shutdown-leaks.md`.

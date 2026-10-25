@@ -1,0 +1,101 @@
+{
+  "version": "1.7.385",
+  "base": "origin/main 237a515 (1.7.384)",
+  "platform": "native Windows, Godot 4.7.2; Dummy and WASAPI; Forward+ D3D12",
+  "results": [
+    {
+      "test": "controls-final",
+      "expected": "100 checks, 0 errors",
+      "exit_code": 0,
+      "shutdown_elapsed_ms": [
+        114.045
+      ],
+      "errors": [],
+      "passed": true
+    },
+    {
+      "test": "shutdown",
+      "expected": "10/10",
+      "exit_code": 0,
+      "shutdown_elapsed_ms": [
+        102.868
+      ],
+      "errors": [],
+      "passed": true
+    },
+    {
+      "test": "workshop",
+      "expected": "85/85",
+      "exit_code": 0,
+      "shutdown_elapsed_ms": [
+        106.862
+      ],
+      "errors": [],
+      "passed": true
+    },
+    {
+      "test": "cabinets",
+      "expected": "50/50",
+      "exit_code": 0,
+      "shutdown_elapsed_ms": [
+        104.137
+      ],
+      "errors": [],
+      "passed": true
+    },
+    {
+      "test": "range",
+      "expected": "79/79",
+      "exit_code": 0,
+      "shutdown_elapsed_ms": [
+        110.893
+      ],
+      "errors": [],
+      "passed": true
+    },
+    {
+      "test": "weapons",
+      "expected": "379/379",
+      "exit_code": 0,
+      "shutdown_elapsed_ms": [
+        109.303
+      ],
+      "errors": [],
+      "passed": true
+    },
+    {
+      "test": "net-host",
+      "expected": "14/14",
+      "exit_code": 0,
+      "shutdown_elapsed_ms": [
+        114.941
+      ],
+      "errors": [],
+      "passed": true
+    },
+    {
+      "test": "net-client",
+      "expected": "klient: koniec",
+      "exit_code": 0,
+      "shutdown_elapsed_ms": [
+        109.436
+      ],
+      "errors": [],
+      "passed": true
+    },
+    {
+      "test": "workbench",
+      "expected": "[WORKBENCH-QA]",
+      "exit_code": 0,
+      "shutdown_elapsed_ms": [
+        103.259
+      ],
+      "errors": [],
+      "passed": true
+    }
+  ],
+  "import_clean": true,
+  "layout_ok": true,
+  "remote_ci_run": false,
+  "passed": true
+}

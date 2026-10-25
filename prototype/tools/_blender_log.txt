@@ -1,0 +1,69 @@
+12:31:49 | INFO: Data are loaded, start creating Blender stuff
+12:31:49 | INFO: Blender create Mesh node tripo_mesh_4a92701e-6fc9-4a86-859b-c27374f772a1
+12:31:49 | INFO: glTF import finished in 0.07s
+C:\deadair87\gameon\prototype\tools\_blender_probe_trzosek.py:49: DeprecationWarning: 'World.use_nodes' is expected to be removed in Blender 6.0
+  world.use_nodes = True
+00:03.110  render           | Saved: 'C:\deadair87\gameon\concepts\trzosek_pose_f01_side.png'
+00:03.672  render           | Saved: 'C:\deadair87\gameon\concepts\trzosek_pose_f31_side.png'
+00:04.047  render           | Saved: 'C:\deadair87\gameon\concepts\trzosek_pose_f01_top.png'
+ARMATURE= Armature
+=== BONES (name | head_world | tail_world) ===
+BONE | tripo::Root | parent=- | head=(0.000,0.000,0.023) | tail=(-0.000,-0.000,0.810)
+BONE | bone_31 | parent=tripo::Root | head=(0.010,-0.423,0.792) | tail=(0.010,-0.479,0.757)
+BONE | bone_32 | parent=bone_31 | head=(0.010,-0.479,0.757) | tail=(0.010,-0.535,0.694)
+BONE | bone_33 | parent=bone_32 | head=(0.010,-0.535,0.694) | tail=(0.010,-0.598,0.617)
+BONE | tripo::Tail_0 | parent=bone_33 | head=(0.010,-0.598,0.617) | tail=(0.003,-0.668,0.541)
+BONE | tripo::Tail_1 | parent=tripo::Tail_0 | head=(0.003,-0.668,0.541) | tail=(0.003,-0.738,0.471)
+BONE | tripo::Tail_2 | parent=tripo::Tail_1 | head=(0.003,-0.738,0.471) | tail=(-0.011,-0.857,0.436)
+BONE | tripo::Tail_3 | parent=tripo::Tail_2 | head=(-0.011,-0.857,0.436) | tail=(-0.024,-0.976,0.401)
+BONE | tripo::1_Left_Limb_0 | parent=tripo::Root | head=(-0.122,-0.353,0.715) | tail=(-0.199,-0.269,0.422)
+BONE | tripo::1_Left_Limb_1 | parent=tripo::1_Left_Limb_0 | head=(-0.199,-0.269,0.422) | tail=(-0.199,-0.458,0.324)
+BONE | tripo::1_Left_Limb_2 | parent=tripo::1_Left_Limb_1 | head=(-0.199,-0.458,0.324) | tail=(-0.248,-0.381,0.093)
+BONE | tripo::1_Left_Limb_3 | parent=tripo::1_Left_Limb_2 | head=(-0.248,-0.381,0.093) | tail=(-0.276,-0.321,0.038)
+BONE | bone_48 | parent=tripo::1_Left_Limb_3 | head=(-0.290,-0.325,0.037) | tail=(-0.331,-0.272,-0.017)
+BONE | bone_49 | parent=tripo::1_Left_Limb_3 | head=(-0.255,-0.311,0.044) | tail=(-0.262,-0.241,-0.005)
+BONE | tripo::1_Left_Limb_4 | parent=tripo::1_Left_Limb_3 | head=(-0.213,-0.325,0.037) | tail=(-0.179,-0.270,-0.019)
+BONE | tripo::1_Right_Limb_0 | parent=tripo::Root | head=(0.150,-0.353,0.715) | tail=(0.199,-0.346,0.422)
+BONE | tripo::1_Right_Limb_1 | parent=tripo::1_Right_Limb_0 | head=(0.199,-0.346,0.422) | tail=(0.157,-0.570,0.352)
+BONE | tripo::1_Right_Limb_2 | parent=tripo::1_Right_Limb_1 | head=(0.157,-0.570,0.352) | tail=(0.199,-0.584,0.093)
+BONE | tripo::1_Right_Limb_3 | parent=tripo::1_Right_Limb_2 | head=(0.199,-0.584,0.093) | tail=(0.248,-0.554,0.047)
+BONE | bone_42 | parent=tripo::1_Right_Limb_3 | head=(0.255,-0.556,0.044) | tail=(0.307,-0.531,-0.002)
+BONE | tripo::1_Right_Limb_4 | parent=tripo::1_Right_Limb_3 | head=(0.220,-0.528,0.051) | tail=(0.241,-0.472,0.009)
+BONE | tripo::Spine_0 | parent=tripo::Root | head=(0.010,-0.199,0.834) | tail=(0.010,-0.059,0.869)
+BONE | tripo::Spine_1 | parent=tripo::Spine_0 | head=(0.010,-0.059,0.869) | tail=(0.010,0.080,0.883)
+BONE | tripo::Spine_2 | parent=tripo::Spine_1 | head=(0.010,0.080,0.883) | tail=(0.010,0.199,0.876)
+BONE | tripo::Spine_3 | parent=tripo::Spine_2 | head=(0.010,0.199,0.876) | tail=(0.010,0.274,0.852)
+BONE | bone_13 | parent=tripo::Spine_3 | head=(0.094,0.234,0.862) | tail=(0.185,0.248,0.750)
+BONE | tripo::0_Right_Limb_0 | parent=bone_13 | head=(0.185,0.248,0.750) | tail=(0.220,0.066,0.513)
+BONE | tripo::0_Right_Limb_1 | parent=tripo::0_Right_Limb_0 | head=(0.220,0.066,0.513) | tail=(0.213,0.199,0.191)
+BONE | tripo::0_Right_Limb_2 | parent=tripo::0_Right_Limb_1 | head=(0.213,0.199,0.191) | tail=(0.213,0.241,0.051)
+BONE | tripo::0_Right_Limb_3 | parent=tripo::0_Right_Limb_2 | head=(0.213,0.241,0.051) | tail=(0.262,0.265,0.029)
+BONE | bone_18 | parent=tripo::0_Right_Limb_3 | head=(0.178,0.297,0.051) | tail=(0.148,0.346,0.051)
+BONE | bone_20 | parent=tripo::0_Right_Limb_3 | head=(0.262,0.276,0.037) | tail=(0.308,0.309,0.023)
+BONE | bone_21 | parent=tripo::0_Right_Limb_3 | head=(0.269,0.248,0.023) | tail=(0.321,0.255,-0.003)
+BONE | tripo::0_Right_Limb_4 | parent=tripo::0_Right_Limb_3 | head=(0.227,0.297,0.051) | tail=(0.241,0.353,0.051)
+BONE | bone_22 | parent=tripo::Spine_3 | head=(-0.059,0.234,0.869) | tail=(-0.150,0.248,0.750)
+BONE | tripo::0_Left_Limb_0 | parent=bone_22 | head=(-0.150,0.248,0.750) | tail=(-0.206,0.066,0.513)
+BONE | tripo::0_Left_Limb_1 | parent=tripo::0_Left_Limb_0 | head=(-0.206,0.066,0.513) | tail=(-0.192,0.199,0.191)
+BONE | tripo::0_Left_Limb_2 | parent=tripo::0_Left_Limb_1 | head=(-0.192,0.199,0.191) | tail=(-0.192,0.241,0.051)
+BONE | tripo::0_Left_Limb_3 | parent=tripo::0_Left_Limb_2 | head=(-0.192,0.241,0.051) | tail=(-0.249,0.266,0.028)
+BONE | bone_27 | parent=tripo::0_Left_Limb_3 | head=(-0.157,0.297,0.051) | tail=(-0.122,0.353,0.051)
+BONE | bone_29 | parent=tripo::0_Left_Limb_3 | head=(-0.248,0.276,0.037) | tail=(-0.303,0.311,0.023)
+BONE | bone_30 | parent=tripo::0_Left_Limb_3 | head=(-0.255,0.248,0.023) | tail=(-0.316,0.255,-0.004)
+BONE | tripo::0_Left_Limb_4 | parent=tripo::0_Left_Limb_3 | head=(-0.213,0.304,0.051) | tail=(-0.234,0.367,0.051)
+BONE | tripo::Spine_4 | parent=tripo::Spine_3 | head=(0.010,0.325,0.834) | tail=(0.017,0.388,0.841)
+BONE | tripo::Head_0 | parent=tripo::Spine_4 | head=(0.017,0.388,0.841) | tail=(0.026,0.458,0.836)
+BONE | bone_12 | parent=tripo::Head_0 | head=(0.031,0.444,0.799) | tail=(0.045,0.500,0.758)
+BONE | tripo::Head_1 | parent=tripo::Head_0 | head=(0.024,0.458,0.841) | tail=(0.031,0.514,0.848)
+BONE | tripo::Head_2 | parent=tripo::Head_1 | head=(0.031,0.514,0.848) | tail=(0.085,0.617,0.931)
+BONE | bone_10 | parent=tripo::Head_2 | head=(0.122,0.591,0.925) | tail=(0.213,0.668,1.002)
+BONE | bone_11 | parent=tripo::Head_2 | head=(-0.059,0.591,0.925) | tail=(-0.150,0.668,1.002)
+BONE | tripo::Head_3 | parent=tripo::Head_2 | head=(0.031,0.584,0.708) | tail=(0.031,0.648,0.582)
+FPS= 24
+RENDERED trzosek_pose_f01_side.png frame 1
+RENDERED trzosek_pose_f31_side.png frame 31
+RENDERED trzosek_pose_f01_top.png frame 1
+DONE
+Blender 5.2.2 LTS (hash d13f752e3b9c built 2026-09-15 01:37:04)
+
+Blender quit

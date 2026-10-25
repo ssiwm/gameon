@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HUD minimal — Dead Air '87</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Display:wght@600;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500&family=Special+Elite&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#050605; --deck:#0B0C0B; --bone:#D9D4C3; --muted:#8D8A7C; --blood:#E5483A; --lamp:#D9922E; --fog:#6FA39B; --moss:#8AA879;
+  --p1:#E89E38; --p3:#DB4759; --p4:#73CC4D; --p2:#40B8D9;
+  --ui:#e6e2d4; --ui-dim:#9a968a; --line:#2b2a25; --page:#101110;
+}
+*{box-sizing:border-box;margin:0}
+body{background:var(--page);color:var(--ui);font:15px/1.5 "IBM Plex Sans Condensed",system-ui,sans-serif;padding:20px 16px 48px}
+.wrap{max-width:1280px;margin:0 auto}
+h1{font:800 26px "Big Shoulders Stencil Display";letter-spacing:.08em;text-transform:uppercase}
+.sub{color:var(--ui-dim);margin:2px 0 14px;max-width:70ch}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.bar .grp{display:flex;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.bar button{background:#14150f;color:var(--ui-dim);border:0;border-right:1px solid var(--line);padding:7px 13px;font:500 13px "IBM Plex Mono";letter-spacing:.06em;cursor:pointer}
+.bar button:last-child{border-right:0}
+.bar button[aria-pressed=true]{background:#2a2418;color:var(--lamp)}
+.bar button:focus-visible{outline:2px solid var(--lamp);outline-offset:-2px}
+.lbl{font:500 11px "IBM Plex Mono";letter-spacing:.16em;color:var(--ui-dim);text-transform:uppercase;margin-right:2px}
+
+/* ------- scena 1920×1080, wszystko w jednostkach --u ------- */
+.stage{--u:calc(100cqw/1920);container-type:inline-size;position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:#07080a}
+.stage>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.scene{position:absolute;inset:0;background:
+  radial-gradient(60% 40% at 78% 32%,rgba(110,70,120,.35),transparent 70%),
+  radial-gradient(40% 18% at 62% 70%,rgba(190,70,20,.22),transparent 70%),
+  linear-gradient(180deg,#171320 0%,#120f1a 38%,#0a0a0d 62%,#050506 100%)}
+.tree{position:absolute;bottom:34%;background:linear-gradient(180deg,#05050a,#0b0a10);border-radius:50% 50% 0 0/14% 14% 0 0}
+.ground{position:absolute;left:0;right:0;bottom:0;height:34%;background:linear-gradient(180deg,#0a090c,#030304)}
+.fig{position:absolute;bottom:20%;width:calc(var(--u)*36);height:calc(var(--u)*118);background:#1d1b22;border-radius:40% 40% 10% 10%;box-shadow:inset calc(var(--u)*-6) 0 0 rgba(255,255,255,.04)}
+.fig::before{content:"";position:absolute;left:50%;top:calc(var(--u)*-22);width:calc(var(--u)*26);height:calc(var(--u)*26);margin-left:calc(var(--u)*-13);background:#1d1b22;border-radius:50%}
+.fig::after{content:"";position:absolute;left:70%;top:calc(var(--u)*30);width:calc(var(--u)*46);height:calc(var(--u)*6);background:#1d1b22}
+.dot{position:absolute;left:60%;top:61%;width:calc(var(--u)*6);height:calc(var(--u)*6);margin:calc(var(--u)*-3);border-radius:50%;background:#fff;opacity:.85}
+
+/* ------- HUD: bez paneli ------- */
+.hud{position:absolute;inset:0;font-family:"IBM Plex Mono",monospace;color:var(--bone);text-shadow:0 0 calc(var(--u)*8) rgba(0,0,0,.95),0 calc(var(--u)*1) calc(var(--u)*2) rgba(0,0,0,.9)}
+.scrimT,.scrimB{position:absolute;left:0;right:0;pointer-events:none}
+.scrimT{top:0;height:22%;background:linear-gradient(180deg,rgba(0,0,0,.55),transparent)}
+.scrimB{bottom:0;height:26%;background:linear-gradient(0deg,rgba(0,0,0,.6),transparent)}
+.cap{font:500 calc(var(--u)*13) "IBM Plex Mono";letter-spacing:.24em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:"IBM Plex Mono"}
+.st{font-family:"Big Shoulders Stencil Display";font-weight:800;text-transform:uppercase}
+.key{display:inline-block;min-width:calc(var(--u)*26);padding:calc(var(--u)*1) calc(var(--u)*6);border:1px solid #4a473d;border-bottom-width:calc(var(--u)*3);border-radius:calc(var(--u)*3);background:#0b0c0a;color:var(--bone);font:500 calc(var(--u)*13) "IBM Plex Mono";text-align:center;text-shadow:none}
+
+/* 1 góra-lewo: reszta drużyny */
+.squad{position:absolute;left:calc(var(--u)*48);top:calc(var(--u)*40);display:flex;flex-direction:column;gap:calc(var(--u)*14)}
+.mate{display:flex;flex-direction:column;gap:calc(var(--u)*6);opacity:.85}
+.mate .n{display:flex;align-items:center;gap:calc(var(--u)*8);font:500 calc(var(--u)*16) "IBM Plex Mono";letter-spacing:.12em}
+.mate .n i{width:calc(var(--u)*9);height:calc(var(--u)*9);transform:rotate(45deg);background:var(--c)}
+.mate .n s{text-decoration:none;color:var(--muted);font-size:calc(var(--u)*12);letter-spacing:.18em}
+.segs{display:flex;gap:calc(var(--u)*3)}
+.segs b{display:block;width:calc(var(--u)*40);height:calc(var(--u)*4);background:var(--bone)}
+.segs b.off{background:rgba(255,255,255,.14)}
+.segs.hp b{background:var(--blood)} .segs.hp b.off{background:rgba(255,255,255,.14)}
+.mate.down .n{color:var(--blood)} .mate.down .segs b{background:rgba(255,255,255,.14)}
+.mate.down .bleed{display:block}
+.bleed{display:none;width:calc(var(--u)*123);height:calc(var(--u)*3);background:linear-gradient(90deg,var(--blood) 45%,rgba(255,255,255,.12) 45%)}
+
+/* 2 góra-środek: pasek kierunku */
+.strip{position:absolute;left:50%;top:calc(var(--u)*38);width:calc(var(--u)*760);margin-left:calc(var(--u)*-380);height:calc(var(--u)*70)}
+.strip .ln{position:absolute;left:0;right:0;top:calc(var(--u)*34);height:1px;background:linear-gradient(90deg,transparent,rgba(217,212,195,.7) 18%,rgba(217,212,195,.7) 82%,transparent)}
+.strip .tk{position:absolute;top:calc(var(--u)*30);width:1px;height:calc(var(--u)*8);background:rgba(217,212,195,.55)}
+.strip .tk.big{height:calc(var(--u)*13);top:calc(var(--u)*27)}
+.strip .me{position:absolute;left:50%;top:calc(var(--u)*24);margin-left:calc(var(--u)*-6);width:calc(var(--u)*12);height:calc(var(--u)*12);transform:rotate(45deg);background:var(--bone)}
+.mk{position:absolute;top:0;transform:translateX(-50%);text-align:center;font:500 calc(var(--u)*13) "IBM Plex Mono";letter-spacing:.12em;color:var(--muted)}
+.mk i{display:block;margin:0 auto calc(var(--u)*5);width:calc(var(--u)*11);height:calc(var(--u)*11);transform:rotate(45deg);background:var(--c)}
+.mk.o i{background:transparent;border:2px solid var(--c);width:calc(var(--u)*9);height:calc(var(--u)*9)}
+.mk u{display:block;text-decoration:none;margin-top:calc(var(--u)*34)}
+
+/* toast celu — pojawia się na zmianę, potem gaśnie */
+.toast{position:absolute;left:50%;top:calc(var(--u)*128);width:calc(var(--u)*760);margin-left:calc(var(--u)*-380);text-align:center;transition:opacity .5s}
+.toast .t{font:600 calc(var(--u)*38) "Big Shoulders Stencil Display";letter-spacing:.08em;text-transform:uppercase;color:var(--bone)}
+.toast .s{font:800 calc(var(--u)*24) "Big Shoulders Stencil Display";letter-spacing:.24em;text-transform:uppercase;color:var(--lamp);margin-top:calc(var(--u)*-2)}
+.toast .w{font:400 calc(var(--u)*18) "Special Elite";color:#bdb8a6;margin-top:calc(var(--u)*6)}
+.toast .r{display:flex;align-items:center;justify-content:center;gap:calc(var(--u)*14);margin-top:calc(var(--u)*8);color:var(--muted)}
+.toast .r:before,.toast .r:after{content:"";width:calc(var(--u)*80);height:1px;background:rgba(217,212,195,.4)}
+.toast .r span{font:500 calc(var(--u)*15) "IBM Plex Mono";letter-spacing:.2em;text-transform:uppercase}
+.off-toast .toast{opacity:0}
+
+/* 3 góra-prawo: tekst, bez karty */
+.run{position:absolute;right:calc(var(--u)*48);top:calc(var(--u)*40);text-align:right;display:flex;flex-direction:column;gap:calc(var(--u)*6);align-items:flex-end}
+.run .z{font:800 calc(var(--u)*26) "Big Shoulders Stencil Display";letter-spacing:.14em;text-transform:uppercase}
+.run .d{font:500 calc(var(--u)*15) "IBM Plex Mono";letter-spacing:.16em;color:var(--muted);text-transform:uppercase}
+.run .d b{color:var(--lamp);font-weight:500}
+.run .sc{font:500 calc(var(--u)*18) "IBM Plex Mono";color:var(--lamp);display:flex;align-items:center;gap:calc(var(--u)*8)}
+.run .sc i{width:calc(var(--u)*11);height:calc(var(--u)*11);border-radius:50%;border:2px solid var(--lamp)}
+.run .xp{opacity:0;font:500 calc(var(--u)*14) "IBM Plex Mono";color:var(--moss);letter-spacing:.14em}
+.show-xp .run .xp{opacity:1}
+
+/* 4 dół-lewo: ja + hałas */
+.me-blk{position:absolute;left:calc(var(--u)*48);bottom:calc(var(--u)*44);display:flex;align-items:flex-end;gap:calc(var(--u)*18)}
+.vu{width:calc(var(--u)*104);height:calc(var(--u)*62)}
+.me-blk .col{display:flex;flex-direction:column;gap:calc(var(--u)*7);padding-bottom:calc(var(--u)*4)}
+.me-blk .nm{display:flex;gap:calc(var(--u)*10);align-items:baseline}
+.me-blk .nm b{font:500 calc(var(--u)*17) "IBM Plex Mono";letter-spacing:.14em;color:var(--p1)}
+.me-blk .segs b{width:calc(var(--u)*56);height:calc(var(--u)*6)}
+.me-blk .nz{font:500 calc(var(--u)*14) "IBM Plex Mono";letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
+.me-blk .nz b{font-weight:500;color:var(--bone)}
+.vu .needle{transform-origin:52px 54px;transition:transform .5s}
+.vu .arc{fill:none;stroke-width:3;stroke-linecap:butt}
+
+/* 5 dół-środek: broń jako model 3D, bez ramki */
+.weapon{position:absolute;left:50%;bottom:calc(var(--u)*40);transform:translateX(-50%);width:calc(var(--u)*540);display:flex;flex-direction:column;align-items:center;gap:calc(var(--u)*10)}
+.slots{display:flex;gap:calc(var(--u)*26);align-items:flex-end;height:calc(var(--u)*46);opacity:0;transition:opacity .35s}
+.show-slots .slots{opacity:1}
+.slots div{display:flex;flex-direction:column;align-items:center;gap:calc(var(--u)*4);opacity:.45}
+.slots div.on{opacity:1}
+.slots img{height:calc(var(--u)*24);width:calc(var(--u)*92);object-fit:contain;filter:drop-shadow(0 calc(var(--u)*3) calc(var(--u)*4) rgba(0,0,0,.8))}
+.slots span{font:500 calc(var(--u)*13) "IBM Plex Mono";letter-spacing:.1em;color:var(--muted)}
+.slots .on span{color:var(--lamp)}
+.wmain{display:flex;align-items:center;justify-content:center;gap:calc(var(--u)*26);width:100%}
+.wmain .gun{width:calc(var(--u)*340);height:calc(var(--u)*100);object-fit:contain;filter:drop-shadow(0 calc(var(--u)*8) calc(var(--u)*8) rgba(0,0,0,.85))}
+.wmain .am{display:flex;align-items:baseline;gap:calc(var(--u)*8)}
+.wmain .am b{font:800 calc(var(--u)*72) "Big Shoulders Stencil Display";line-height:.9}
+.wmain .am i{font:500 calc(var(--u)*18) "IBM Plex Mono";font-style:normal;color:var(--muted)}
+.wname{display:flex;align-items:baseline;gap:calc(var(--u)*14);margin-top:calc(var(--u)*-2)}
+.wname b{font:800 calc(var(--u)*24) "Big Shoulders Stencil Display";letter-spacing:.1em}
+.wname span{font:500 calc(var(--u)*13) "IBM Plex Mono";letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
+.wline{position:relative;width:calc(var(--u)*300);height:calc(var(--u)*3);background:rgba(255,255,255,.1)}
+.wline:after{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--rl,0%);background:var(--lamp)}
+.wline.heat{height:calc(var(--u)*2);margin-top:calc(var(--u)*-6)}
+.wline.heat:after{background:var(--blood)}
+
+/* 6 dół-prawo: sprzęt jako modele 3D, bez ramek */
+.gear{position:absolute;right:calc(var(--u)*48);bottom:calc(var(--u)*44);display:flex;gap:calc(var(--u)*22);align-items:flex-end}
+.tile{display:flex;flex-direction:column;align-items:center;gap:calc(var(--u)*8);width:calc(var(--u)*76)}
+.tile .im{position:relative;width:calc(var(--u)*76);height:calc(var(--u)*84);display:flex;align-items:center;justify-content:center}
+.tile .im img{max-width:calc(var(--u)*64);max-height:calc(var(--u)*80);object-fit:contain;filter:drop-shadow(0 calc(var(--u)*6) calc(var(--u)*6) rgba(0,0,0,.85))}
+.tile .n{position:absolute;right:calc(var(--u)*-2);top:calc(var(--u)*2);font:500 calc(var(--u)*17) "IBM Plex Mono";color:var(--bone)}
+.tile.empty img{opacity:.25;filter:grayscale(1)} .tile.empty .n{color:var(--blood)}
+.tile .bat{position:absolute;left:calc(var(--u)*10);right:calc(var(--u)*10);bottom:calc(var(--u)*-2);height:calc(var(--u)*3);background:rgba(255,255,255,.14)}
+.tile .bat:after{content:"";position:absolute;inset:0;width:100%;background:var(--fog)}
+.k{font:500 calc(var(--u)*14) "IBM Plex Mono";letter-spacing:.14em;color:var(--bone);padding-bottom:calc(var(--u)*2);border-bottom:1px solid rgba(217,212,195,.45);min-width:calc(var(--u)*26);text-align:center}
+
+/* kontekstowy komunikat (dół-środek) */
+.prompt{position:absolute;left:50%;bottom:calc(var(--u)*290);transform:translateX(-50%);display:flex;align-items:center;gap:calc(var(--u)*12);font:500 calc(var(--u)*18) "IBM Plex Mono";letter-spacing:.06em;opacity:0;transition:opacity .3s}
+.show-prompt .prompt{opacity:1}
+
+/* stany hałasu */
+.vig{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .6s;background:radial-gradient(ellipse at center,transparent 55%,rgba(140,10,10,.55) 100%)}
+.hunted .vig{opacity:1}
+.hunted .hide-hunted{opacity:.0}
+.calm-fade .t2{opacity:.35}
+.t2{transition:opacity .8s}
+.warn{position:absolute;left:50%;top:calc(var(--u)*330);transform:translateX(-50%);font:400 calc(var(--u)*30) "Special Elite";color:var(--blood);opacity:0;transition:opacity .4s;white-space:nowrap}
+.hunted .warn{opacity:1;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.55}}
+@media (prefers-reduced-motion:reduce){.hunted .warn{animation:none}}
+
+/* adnotacje */
+.notes{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s}
+.show-notes .notes{opacity:1}
+.nt{position:absolute;display:flex;align-items:center;justify-content:center;width:calc(var(--u)*30);height:calc(var(--u)*30);border-radius:50%;background:var(--lamp);color:#1a1205;font:600 calc(var(--u)*16) "IBM Plex Mono";text-shadow:none}
+
+/* legenda pod sceną */
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:16px}
+.card{background:#14150f;border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.card h3{font:800 17px "Big Shoulders Stencil Display";letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+.card h3 em{font-style:normal;color:var(--lamp);font-family:"IBM Plex Mono";font-weight:500;font-size:13px;margin-right:8px}
+.card p{color:var(--ui-dim);font-size:14px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>HUD: mniej paneli, więcej gry</h1>
+  <p class="sub">Kierunek ze zrzutu (New World): zero ramek, jeden pasek u góry, informacje o zdrowiu i sprzęcie w rogach, reszta pojawia się, gdy jest potrzebna. Wersja „Propozycja” jest schematem układu na tej samej scenie 1920×1080, nie renderem z gry.</p>
+
+  <div class="bar" role="toolbar" aria-label="Widok">
+    <span class="lbl">Widok</span>
+    <div class="grp">
+      <button data-view="ref" aria-pressed="false">WZÓR</button>
+      <button data-view="now" aria-pressed="false">TERAZ</button>
+      <button data-view="new" aria-pressed="true">PROPOZYCJA</button>
+    </div>
+    <span class="lbl" style="margin-left:10px">Stan</span>
+    <div class="grp" id="states">
+      <button data-st="calm" aria-pressed="true">SPOKÓJ</button>
+      <button data-st="uneasy" aria-pressed="false">NIEPOKÓJ</button>
+      <button data-st="hunted" aria-pressed="false">POŚCIG</button>
+    </div>
+    <div class="grp">
+      <button data-tg="toast" aria-pressed="true">CEL</button>
+      <button data-tg="prompt" aria-pressed="false">PODPOWIEDŹ</button>
+      <button data-tg="slots" aria-pressed="false">ZMIANA BRONI</button>
+      <button data-tg="xp" aria-pressed="false">+XP</button>
+      <button data-tg="fade" aria-pressed="false">WYGASZ. T2</button>
+      <button data-tg="notes" aria-pressed="false">NUMERY</button>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <img id="imgRef" class="hidden" src="reference.webp" alt="Zrzut wzorcowy z cudzej gry">
+    <img id="imgNow" class="hidden" src="now.png" alt="Obecny HUD Dead Air '87 w 1920×1080">
+
+    <div id="mock">
+      <div class="scene">
+        <div class="tree" style="left:5%;width:3.5%;height:62%"></div>
+        <div class="tree" style="left:13%;width:2%;height:48%"></div>
+        <div class="tree" style="left:71%;width:3%;height:66%"></div>
+        <div class="tree" style="left:86%;width:4%;height:54%"></div>
+        <div class="tree" style="left:93%;width:2%;height:44%"></div>
+        <div class="ground"></div>
+        <div class="fig" style="left:31%"></div><div class="fig" style="left:35%"></div><div class="fig" style="left:52%"></div>
+        <div class="dot"></div>
+      </div>
+
+      <div class="hud show-toast" id="hud">
+        <div class="scrimT"></div><div class="scrimB"></div>
+
+        <!-- 1 -->
+        <div class="squad t2">
+          <div class="mate" style="--c:var(--p3)"><div class="n"><i></i>P3 <s>BOT</s></div><div class="segs"><b></b><b></b><b></b><b class="off"></b></div></div>
+          <div class="mate" style="--c:var(--p4)"><div class="n"><i></i>P4</div><div class="segs"><b></b><b></b><b></b><b></b></div></div>
+        </div>
+
+        <!-- 2 -->
+        <div class="strip t2">
+          <div class="ln"></div>
+          <div id="ticks"></div>
+          <div class="me"></div>
+          <div class="mk" style="left:21%;--c:var(--p3)"><i></i><u>P3 · 38 m</u></div>
+          <div class="mk" style="left:34%;--c:var(--p4)"><i></i><u>P4 · 22 m</u></div>
+          <div class="mk" style="left:80%;--c:var(--lamp);color:var(--bone)"><i></i><u>CEL · 180 m</u></div>
+          <div class="mk o" style="left:97%;--c:var(--muted)"><i></i><u>WYJŚCIE</u></div>
+        </div>
+
+        <div class="toast">
+          <div class="t">Find the patrol's dog tags</div>
+          <div class="s">0 / 4</div>
+          <div class="w">Walk over a dog tag to take it</div>
+          <div class="r"><span>1.1 · Missing Patrol</span></div>
+        </div>
+
+        <div class="warn">SOMETHING IS LISTENING</div>
+
+        <!-- 3 -->
+        <div class="run t2">
+          <div class="z">Missing Patrol</div>
+          <div class="d">1.1 · <b>NORMAL</b> · 00:03</div>
+          <div class="sc"><i></i>661</div>
+          <div class="xp">+12 XP · LV 23</div>
+        </div>
+
+        <div class="prompt"><span class="k">E</span> Take dog tag</div>
+
+        <!-- 4 -->
+        <div class="me-blk">
+          <svg class="vu" viewBox="0 0 104 62" aria-label="Miernik hałasu">
+            <path class="arc" d="M8 54 A44 44 0 0 1 28 18" stroke="#6FA39B"/>
+            <path class="arc" d="M30 17 A44 44 0 0 1 64 12" stroke="#D9922E"/>
+            <path class="arc" d="M66 12.6 A44 44 0 0 1 96 54" stroke="#E5483A"/>
+            <g class="needle" id="needle" style="transform:rotate(-70deg)"><line x1="52" y1="54" x2="52" y2="18" stroke="#D9D4C3" stroke-width="2"/><circle cx="52" cy="54" r="3.5" fill="#D9D4C3"/></g>
+          </svg>
+          <div class="col">
+            <div class="nm"><b>P1</b><span class="cap">YOU</span></div>
+            <div class="segs hp"><b></b><b></b><b></b><b></b></div>
+            <div class="nz">NOISE <b id="nzS">CALM</b> · <span id="nzV">6</span>%</div>
+          </div>
+        </div>
+
+        <!-- 5 -->
+        <div class="weapon t2w" id="weapon">
+          <div class="slots" id="slots">
+            <div class="on"><img src="icons/gun_m83.png" alt=""><span>1</span></div>
+            <div><img src="icons/gun_spread12.png" alt=""><span>2</span></div>
+            <div><img src="icons/gun_p64.png" alt=""><span>3</span></div>
+            <div><img src="icons/gun_maczeta.png" alt=""><span>V</span></div>
+          </div>
+          <div class="wmain">
+            <img class="gun" src="icons/gun_m83.png" alt="Model 3D: M-83">
+            <div class="am"><b>40</b><i>/ 150</i></div>
+          </div>
+          <div class="wname"><b>M-83</b><span>AUTO · 0.4→1.0</span></div>
+          <div class="wline" style="--rl:0%"></div>
+          <div class="wline heat" style="--rl:22%"></div>
+        </div>
+
+        <!-- 6 -->
+        <div class="gear t2">
+          <div class="tile"><div class="im"><img src="icons/lure.png" alt="Wabik"><span class="n">3</span></div><span class="k">Q</span></div>
+          <div class="tile"><div class="im"><img src="icons/flare.png" alt="Flara"><span class="n">3</span></div><span class="k">F</span></div>
+          <div class="tile"><div class="im"><img src="icons/frag.png" alt="Granat"><span class="n">4</span></div><span class="k">ALT</span></div>
+          <div class="tile"><div class="im"><img src="icons/flashlight.png" alt="Latarka"><span class="bat"></span></div><span class="k">L</span></div>
+        </div>
+
+        <div class="vig"></div>
+
+        <div class="notes" aria-hidden="true">
+          <span class="nt" style="left:1.2%;top:2%">1</span>
+          <span class="nt" style="left:24.5%;top:3.2%">2</span>
+          <span class="nt" style="left:95%;top:2%">3</span>
+          <span class="nt" style="left:1.2%;top:84%">4</span>
+          <span class="nt" style="left:35.5%;top:84%">5</span>
+          <span class="nt" style="left:95%;top:80%">6</span>
+          <span class="nt" style="left:41%;top:72%">7</span>
+          <span class="nt" style="left:61.5%;top:58%">8</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cols" id="legend">
+    <div class="card"><h3><em>1</em>Reszta drużyny</h3><p>Nazwa, kolor slotu jako romb, 4 cienkie segmenty życia. Znika w grze solo. Powalony: czerwony napis i cienki pasek wykrwawienia.</p></div>
+    <div class="card"><h3><em>2</em>Pasek kierunku</h3><p>Jedna cienka linia z rombami: cel, wyjście, koledzy, powaleni, z dystansem. Zastępuje dużą kartę celu. Tu poszedł kompas ze wzoru.</p></div>
+    <div class="card"><h3><em>3</em>Misja jako tekst</h3><p>Nazwa strefy, trudność, zegar, złom. Bez karty, bez paska XP (XP wjeżdża tylko po zdobyciu).</p></div>
+    <div class="card"><h3><em>4</em>Ja + hałas</h3><p>Mały miernik VU, cztery segmenty życia i jedna linia stanu. Dół-lewo jak w pasku zdrowia ze wzoru, ale hałas zostaje znakiem firmowym.</p></div>
+    <div class="card"><h3><em>5</em>Broń, środek dołu</h3><p>Model 3D aktualnej broni (ten sam .glb co w grze), obok amunicja, pod spodem nazwa i tryb. Bez ramki; przeładowanie i ciepło lufy to dwie cienkie linie. Rząd 1–4 z miniaturami 3D pokazuje się 2 s po zmianie broni.</p></div>
+    <div class="card"><h3><em>6</em>Sprzęt, dół-prawo</h3><p>Cztery modele 3D bez ramek: wabik Q, flara F, wybrany przedmiot ALT (tu granat), latarka L z paskiem baterii. Liczba przy rogu modelu, klawisz pod spodem jako podkreślona litera. Pusty: model szary, liczba w kolorze krwi.</p></div>
+    <div class="card"><h3><em>7</em>Podpowiedź kontekstowa</h3><p>Klawisz + czynność nad bronią, tylko gdy jest czego dotknąć. Klawisze w całym HUD-zie to podkreślona litera, nie kapsel. Pasek sterowania znika po pierwszej misji.</p></div>
+    <div class="card"><h3><em>8</em>Celownik</h3><p>Pojedyncza kropka, bez kresek. Rozszerza się dopiero przy koszcie hałasu strzału (opcja).</p></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+  var stage=$('#stage'), hud=$('#hud');
+  // znaczniki na pasku
+  var t=$('#ticks'), h='';
+  for(var i=0;i<=50;i++){var big=i%5===0;h+='<div class="tk'+(big?' big':'')+'" style="left:'+(i*2)+'%"></div>'}
+  t.innerHTML=h;
+
+  function view(v){
+    $('#imgRef').classList.toggle('hidden',v!=='ref');
+    $('#imgNow').classList.toggle('hidden',v!=='now');
+    $('#mock').classList.toggle('hidden',v!=='new');
+    $$('[data-view]').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.view===v)});
+    var onNew=v==='new';
+    $('#states').parentNode.style.opacity=onNew?1:.4;
+    $('#legend').classList.toggle('hidden',!onNew);
+  }
+  $$('[data-view]').forEach(function(b){b.onclick=function(){view(b.dataset.view)}});
+
+  var ST={calm:{a:-70,s:'CALM',v:6,c:'var(--bone)'},uneasy:{a:-8,s:'UNEASY',v:47,c:'var(--lamp)'},hunted:{a:55,s:'HUNTED',v:78,c:'var(--blood)'}};
+  function state(k){
+    var s=ST[k];
+    $('#needle').style.transform='rotate('+s.a+'deg)';
+    $('#nzS').textContent=s.s; $('#nzS').style.color=s.c; $('#nzV').textContent=s.v;
+    hud.classList.toggle('hunted',k==='hunted');
+    $$('#states button').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.st===k)});
+  }
+  $$('#states button').forEach(function(b){b.onclick=function(){state(b.dataset.st)}});
+
+  var TG={slots:'show-slots',toast:'show-toast',prompt:'show-prompt',xp:'show-xp',fade:'calm-fade',notes:'show-notes'};
+  $$('[data-tg]').forEach(function(b){
+    var c=TG[b.dataset.tg];
+    if(b.dataset.tg==='toast'){hud.classList.add('show-toast')}
+    b.onclick=function(){
+      var on=b.getAttribute('aria-pressed')!=='true';
+      b.setAttribute('aria-pressed',on);
+      if(b.dataset.tg==='toast'){hud.classList.toggle('off-toast',!on)}
+      else hud.classList.toggle(c,on);
+      if(b.dataset.tg==='fade'){stage.classList.toggle('calm-fade',on)}
+    };
+  });
+  // kontener .calm-fade ma działać na całej scenie
+  var mo=new MutationObserver(function(){});
+  state('calm'); view('new');
+})();
+</script>
+</body>
+</html>

@@ -6,3 +6,5 @@ art_src/audio_gen/** filter=lfs diff=lfs merge=lfs -text
 *.tres text eol=lf
 *.tscn text eol=lf
 art_src/animations/combat.blend filter=lfs diff=lfs merge=lfs -text
+trailer/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+trailer/**/*.avi filter=lfs diff=lfs merge=lfs -text

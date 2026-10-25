@@ -446,3 +446,39 @@ bash prototype/tools/test_cabinets.sh
 ```
 
 Testy obejmują rzeczywiste gabloty, odległość, blokady, klawiaturę/akcje pada/przyciski, amunicję, porównanie i lifecycle. Dwa procesy ENet sprawdzają późne dołączenie, duplikaty, fałszywe porzucenie i sfałszowany replikowany zestaw. Host i klienci muszą używać tej samej wersji gry (zmienione RPC zamiany). Regresje dodano do CI; nie zastępują próby WAN/Steam i nie oznaczają pełnego systemu przeciw oszustwom.
+
+### Immersyjna ława ARMS od 1.7.385
+
+Duży model broni leży na macie 3D; wybrana część ma osobny podgląd na stalowej tacy. Boczny stojak przełącza noszoną broń i pełną zbrojownię. Kliknięcie powierzchni części, numeru gniazda lub przycisku pod modelem wybiera to samo gniazdo. Przeciągnięcie obraca broń; nieruchome oględziny i ograniczenie ruchu ułatwiają pracę.
+
+Oględziny pokazują faktyczny montaż. Wybór wariantu tworzy jawny podgląd bez zmiany profilu, nabojów i portfela. Papierowa karta pokazuje cztery główne zmiany z podpisami „Korzyść” / „Kompromis”, a wszystkie parametry są dostępne osobno. Porównanie korzysta z pełnej konfiguracji i aktualnie załadowanej amunicji; zużycie, temperatura, wprawa i sytuacja podczas strzelania nadal należą do kontrolera broni.
+
+Góra / dół wybiera broń, lewo / prawo gniazdo, 1 / 2 wariant; Enter zatwierdza, C przywraca oględziny, R wybiera miejsce zapisu / zapisuje aktualny zestaw. V przełącza pełne parametry, PageUp / PageDown przewijają kartę. Pad: D-pad, X / Y, A, R3 / L3, Back do parametrów, oś pionowa prawego drążka do przewijania oraz barki do zakładek. Etykiety korzystają z rejestru `actions.gd`. Koszt i główna akcja pozostają poza przewijaną treścią. EN i PL.
+
+Zakup nadal rozstrzyga `Scrap`, montaż posiadanej części `Profile`. Animacja ze zrzutu konfiguracji sprzed operacji rusza po powodzeniu, nigdy nie zatwierdza ponownie ani nie dodaje kosztu. W toku żądania drugie działanie jest blokowane. Zmiana wyboru lub zamknięcie panelu nie cofa zatwierdzonego zakupu, ale usuwa jego spóźnioną prezentację. Ukryte viewporty nie renderują. Pozostałe sześć stanowisk zachowuje dotychczasowy układ i zasady.
+
+Kod: `scripts/gunsmith_panel.gd`, `workshop_ui.gd`, `gun_stage.gd`. Test: `--host --workshoptest --autoquit=60`; pełne regresje `tools/test_weapons.sh` sprawdzają też prawdziwy zakup klienta ENet. Render wymaga uruchomienia bez `--headless`.
+
+`tools/workbench_qa.gd` uruchamia rzeczywistą kryjówkę z testowym montażem i wyłączonym zapisem Profile / Scrap. Najpierw import. Dla pełnej izolacji ustawień i dziennika uruchamiać na kopii projektu z inną nazwą aplikacji; raport 25.10 opisuje użyte katalogi. Polecenie renderu (Forward+ zgodnie z obecnym `project.godot`):
+
+```powershell
+godot_console --path prototype --rendering-method forward_plus --resolution 1280x720 --script res://tools/workbench_qa.gd -- --host --port=18964 --mission=z1_hub --qa-locale=pl --qa-part=m83_drum75 --qa-out=C:/Temp/workbench.png
+```
+
+Opcje: `--qa-weapon=0..11`, `--qa-fit=id,id`, `--qa-mount`, `--qa-large-ui`, `--qa-pad`, `--qa-details`, `--qa-perf=4`. Narzędzie zapisuje PNG i JSON z granicami panelu oraz wynikiem `layout_ok`; katalog wyjściowy musi istnieć. Test renderu nie zastępuje playtestu, a test ENet nie potwierdza transportu Steam / WAN.
+
+### Zamykanie gry od 1.7.385
+
+Wyjście z menu, przez okno i z testów sceny korzysta z `Audio.quit_game(exit_code)`. Audio jest zatrzymywane przed niszczeniem drzewa, symulacja zamrożona, a zegar monotoniczny i kolejne klatki silnika dają wątkowi miksu co najmniej 100 ms rzeczywistego czasu na zwolnienie playback. To działa także podczas pauzy, przy time_scale=0 i przyspieszonym headless; na czas wyjścia FPS jest ograniczany do 60. Kolejne żądanie nie nadpisuje kodu wyjścia. `Audio.shutdown()` można wywołać wielokrotnie; przed ponownym użyciem audio trzeba wywołać `Audio.set_enabled(true)`.
+
+Pomocniczy Node2D oczu w `dread.gd` jest tworzony po sprawdzeniu headless, więc instancja bez obrazu lub bez wejścia do drzewa nie zostawia osieroconego węzła. Diagnostyka: `docs/audits/2026-10-25-shutdown-leaks.md`. Nie wyciszamy komunikatów silnika ani nie wyłączamy audio dla całego testu.
+
+```powershell
+godot_console --headless --path prototype --script res://tools/test_shutdown.gd
+godot_console --headless --path prototype --script res://tools/test_shutdown.gd -- --shutdown-window
+godot_console --headless --path prototype --script res://tools/test_shutdown.gd -- --shutdown-exit=7
+```
+
+Ostatnie polecenie ma zakończyć się kodem **7**; to kontrola zachowania kodu, a nie błąd asercji. `test_shutdown.gd` sprawdza faktycznie uruchomione ambienty / stemy / SFX, zwolnienie strumieni, ponowny start i własność węzłów. Obok podsumowania PASS log nie może zawierać SCRIPT ERROR, Parse Error ani komunikatów o pozostawionych zasobach. Samo `SceneTree.quit()` w zewnętrznym narzędziu z aktywnym audio pomija wspólną ścieżkę zamknięcia; takie narzędzia powinny wywoływać `root.get_node("Audio").quit_game(code)`.
+
+`--shutdown-paused --shutdown-exit=7` sprawdza zamknięcie przy pauzie i time_scale=0. `--shutdowntrace` wypisuje stan audio i faktyczny czas sprzątania z zegara monotonicznego.

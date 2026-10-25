@@ -717,3 +717,15 @@ Gabloty używają jednego punktu interakcji na wszystkie rzędy. Panel pokazuje 
 Porównanie korzysta z `weapon_controller.def_of`, więc uwzględnia faktyczny nabój i części zastępowanej broni. Model gabloty pozostaje fabryczny; panel wyjaśnia, że montaż gracza dotyczy broni po pobraniu. Przy znanej broni porównanie ma nagłówek „IN HAND”, ponieważ pobranie nie zastępuje slotu. Obraz gabloty nie tworzy już dodatkowego niewidocznego modelu w podglądzie. Szczegóły są przewijane, a pobranie można wykonać klawiaturą lub przyciskiem.
 
 Regresje: `scripts/cabinet_test.gd` i `tools/test_cabinets.sh` (lokalne oraz dwa procesy ENet). Założenie kooperacyjne o replikowanej pozycji i kontrolerze magazynka pozostaje; rejestr zamiany nie jest pełnym systemem walidacji strzałów.
+
+### Prezentacja montażu na ławie od 1.7.385
+
+ARMS używa `gunsmith_panel.gd`: stojak noszonej broni / pełna lista, model na macie 3D, kotwice gniazd z istniejących mesh i metadanych `hides`, taca wybranej części oraz karta konfiguracji. Wszystkie 12 broni korzysta z `Parts.slots_of`; podzespoły wewnętrzne bez widocznej zmiany wskazują korpus i opis na karcie. Nie powstaje drugi system części ani cen.
+
+`WorkshopUI._inspect` ustawia neutralny wybór; fabryczny element jest osobną operacją. `_refresh_detail` porównuje bieżący montaż i kopię z wybranym wariantem / całym zestawem przy zachowaniu rodzaju naboju. Cztery główne różnice mają podpisy korzyści i kompromisów; pełne parametry obejmują także masę zestawu. Karta opisuje konfigurację, a nie dynamiczny wynik strzału z ruchem, zużyciem, temperaturą i wprawą.
+
+`_pending_part` przechowuje konfigurację sprzed żądania, broń, sesję panelu i rewizję wyboru. `Scrap._part_done` nadal montuje zakup przed `part_result`; `_on_part_result` uruchamia efekt tylko dla zgodnej sesji i wyboru. `_present_committed` obsługuje także lokalny montaż i zestawy. `GunStage.animate_mount` jedynie pokazuje zdjęcie / osadzenie części przez 0,8 s i odtwarza istniejące dźwięki. Żadnego zapisu, kosztu ani rozliczenia magazynka po końcu animacji. Zamknięcie, ukrycie strony, zmiana wyboru i utrata połączenia sprzątają stan prezentacji; przyjęty zakup pozostaje w prawdziwym profilu.
+
+Obwiednia kadru obejmuje części na ramie i wszystkie pary lufa + wylot, ponieważ wylot przesuwa się wraz z lufą. Podświetlenie nie przebudowuje modelu. Przeciągnięcie ma próg oddzielający obrót od kliknięcia powierzchni. Ograniczony ruch usuwa kołysanie, wysuwanie i animację montażu, a ukryta scena ma `UPDATE_DISABLED`. Osobne tryby konserwacji, pracowni, tokarki i zaopatrzenia nie zmieniają ekonomii ani swojego podziału.
+
+Pełna karta uzupełnia wspólne parametry o pola faktycznie modyfikowane przez części danej broni, m.in. błysk, działanie pocisku, naprowadzanie i efekty broni białej. Długości w pikselach symulacji przelicza przez 16 px/m; współczynnik hałasu pozostaje współczynnikiem. V / Back przełącza kartę, PageUp / PageDown lub oś pionowa prawego drążka ją przewija. Przy obrocie model jest unoszony nad matę, aby lufa i kolba nie wchodziły w blat.

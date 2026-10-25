@@ -80,6 +80,7 @@ const ROUTE_SMOOTH := 8.0             ## 1/s: jak szybko pętla pozycyjna przesu
 
 const ONESHOT_POOL := 32
 const POSITIONAL_POOL := 28
+const SHUTDOWN_DRAIN_USEC := 100000
 const MAX_DISTANCE := 1600.0
 ## Bliska i daleka wersja tej samej rodziny (`<broń>_shot` → `<broń>_far`, `explosion` → `explosion_far`) przenikają się
 ## wg odległości od słuchacza: do FAR_START gra sama bliska, od FAR_FULL sama daleka (stała moc pomiędzy).
@@ -132,6 +133,7 @@ var _listener_pos := Vector2.ZERO
 var _occl: Dictionary = {}           # Vector2i -> int (próg okluzji)
 var _heart_key := ""
 var _enabled := true
+var _quitting := false
 var _use_licensed := not ("--synthaudio" in OS.get_cmdline_user_args())
 var _use_routes := not ("--nosoundpath" in OS.get_cmdline_user_args())   ## dev: bez drogi po mapie (porównanie w grze)
 var _use_far := not ("--nofar" in OS.get_cmdline_user_args())             ## dev: bez dalekich wersji strzałów (porównanie w grze)
@@ -202,6 +204,9 @@ func _ready() -> void:
 
 	_bind_effects()
 	_verify_manifest()
+	# Alt+F4 / zamknięcie okna musi przejść przez ten sam cykl co przycisk Quit.
+	get_tree().set_auto_accept_quit(false)
+	get_tree().root.close_requested.connect(quit_game)
 
 
 func _exit_tree() -> void:
@@ -213,11 +218,35 @@ func shutdown() -> void:
 	_shutdown()
 
 
+## AudioServer musi otrzymać stop przed końcem ostatniej klatki, a nie dopiero
+## podczas niszczenia SceneTree. Pierwsze żądanie zachowuje swój kod wyjścia.
+func quit_game(exit_code := 0) -> void:
+	if _quitting:
+		return
+	_quitting = true
+	var trace := "--shutdowntrace" in OS.get_cmdline_user_args()
+	var started := Time.get_ticks_usec()
+	if trace:
+		print("[AUDIO-SHUTDOWN] start loops=", _loops.size(), " positional=", _pos_loops.size(), " music=", _music_started, " driver=", AudioServer.get_driver_name())
+	_shutdown()
+	get_tree().paused = true # wyjście jest ostateczne; symulacja nie biegnie podczas opróżniania miksu
+	# Wątek miksu zwalnia playback asynchronicznie. Same referencje stream=null
+	# nie wystarczają przy wyjściu w tej samej klatce (także driver Dummy).
+	# SceneTreeTimer korzysta z kroku silnika; szybki headless może odmierzyć
+	# 100 ms symulacji w kilka ms. Mikser potrzebuje czasu zegara monotonicznego.
+	Engine.max_fps = 60
+	var release_at := Time.get_ticks_usec() + SHUTDOWN_DRAIN_USEC
+	while Time.get_ticks_usec() < release_at:
+		await get_tree().process_frame
+	if trace:
+		print("[AUDIO-SHUTDOWN] finish elapsed_ms=", (Time.get_ticks_usec() - started) / 1000.0, " since_mix=", AudioServer.get_time_since_last_mix(), " cache=", _cache.size())
+	get_tree().quit.call_deferred(exit_code)
+
+
 ## Zamykanie audio: stop + zwolnienie referencji do strumieni, potem free()
-## (nie queue_free() — kolejka nie zdąża się przetworzyć przy wyjściu).
-## Zweryfikowane eksperymentem: nie eliminuje ostrzeżenia „leaked instances" w headless
-## (referencje do zapętlonych AudioStreamWAV trzyma wątek audio Godota) — kosmetyka.
+## pętli. _exit_tree jest zabezpieczeniem, zwykłe wyjście korzysta z quit_game.
 func _shutdown() -> void:
+	_enabled = false
 	for key in _loops.keys():
 		var p: AudioStreamPlayer = _loops[key]
 		_loops.erase(key)
@@ -579,6 +608,8 @@ func lvl_sky_open(pos: Vector2) -> bool:
 # ---------------------------------------------------------------- pętle
 
 func start_loop(key: String, bus: String = BUS_PLAYER, vol_db := -6.0, pitch := 1.0) -> void:
+	if not _enabled:
+		return
 	if _loops.has(key):
 		set_loop_volume(key, vol_db)
 		return
@@ -602,6 +633,8 @@ func start_loop(key: String, bus: String = BUS_PLAYER, vol_db := -6.0, pitch := 
 ## graczy); stop_loop / set_loop_volume / loop_playing przyjmują wtedy to `id`.
 func start_loop_at(key: String, node: Node2D, bus: String = BUS_WORLD, vol_db := -6.0,
 		spatial := false, id := "") -> void:
+	if not _enabled:
+		return
 	var reg := id if id != "" else key
 	if _pos_loops.has(reg):
 		set_loop_volume(reg, vol_db)
@@ -1122,7 +1155,7 @@ func _update_heart(_delta: float) -> void:
 
 ## Wyłącza cały dźwięk (np. przy starcie lobby, żeby nie grało na pustce).
 func set_enabled(on: bool) -> void:
-	_enabled = on
-	if on:
+	_enabled = on and not _quitting
+	if _enabled:
 		return
 	stop_all()

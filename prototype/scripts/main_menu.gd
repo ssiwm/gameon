@@ -175,7 +175,7 @@ func _play(which: String) -> void:
 
 func _on_quit() -> void:
 	if _quit_t > 0.0:
-		get_tree().quit()
+		Audio.quit_game()
 		return
 	_quit_t = QUIT_CONFIRM_S
 	(_quit as Item).label = "CLICK AGAIN TO QUIT"
