@@ -2089,7 +2089,7 @@ func _sync_guns() -> void:
 			lean = 0.0
 		(g[5] as Node3D).transform = Transform3D(turn, Vector3.ZERO) * Transform3D(Basis(Vector3.RIGHT, lean).scaled(Vector3.ONE * float(g[12])), g[11] as Vector3)
 		if sway > 0.0:
-			_place_inspect_lights(pv.position + (Vector3(0.0, 0.0, 0.0) if not in_cab else Vector3(0.0, 0.1, 0.0)), sway)
+			_place_inspect_lights(pv.position + (Vector3(0.0, 0.0, 0.0) if not in_cab else Vector3(0.0, 0.1, 0.0)), sway * (0.35 if in_cab else 1.0))
 		var floor_px := (g[0] as Node2D).global_position
 		if in_cab:
 			# gablota: broń na haku w swoim rzędzie, na osi gabloty (meta „cab_x"), środek bryły na wysokości rzędu

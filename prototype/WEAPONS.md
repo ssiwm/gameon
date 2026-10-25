@@ -707,3 +707,13 @@ Dostawy są zapisywane u hosta i synchronizowane przy dołączeniu. Odbiór zwyk
 Panel pokazuje osobno liczbę odblokowanych i zamontowanych części, podsumowanie pracy drużyny oraz wartości teraz → po montażu: z rzeczywistym nabojem w magazynku, dobyciem, rozrzutem, narastaniem rozrzutu, odrzutem, przebiciem, grzaniem i masą zestawu wraz z wpływem na bieg. Pracownia i tokarka pokazują tylko obsługiwane bronie, a wybór jest zapamiętywany osobno dla każdego stanowiska.
 
 Zwrot specjalnych nabojów podczas misji jest tymczasowy: `Scrap.delivery_checkpoint` cofa go przy nieudanej próbie razem z zapasem `Arsenal.stock`; sukces zatwierdza go w `bank_loot`. W kryjówce jest od razu zapisywany. Zapobiega to podwajaniu amunicji przez zwrot przy pełnym zapasie i kolejne wipe.
+
+### Gabloty i zamiana od 1.7.379
+
+Gabloty używają jednego punktu interakcji na wszystkie rzędy. Panel pokazuje dostępność i odbiorcę wspólnego egzemplarza; wybór slotu 1/2 wskazuje, którą broń gracz zastąpi. Znany egzemplarz daje jedynie naboje. Porzucona broń ma `rounds = 0`, a nowy łup i egzemplarz z mapy mają jawny przydział `pickup_rounds`; podniesienie korzysta z wartości przedmiotu. Magazynek wymienianej broni wraca do wspólnego zapasu z zachowaniem rodzaju amunicji.
+
+`level._weapon_pickup_server` sprawdza nadawcę, blokadę, życie, zasięg i docelowy slot, aktualizuje zatwierdzony zestaw oraz sam tworzy porzucony egzemplarz. Klient nie może zadeklarować upuszczanej broni przez `_drop_rpc`. Rejestr zestawu zachowuje carry, a spawn, wipe i kara porwania przywracają zestaw startowy. `level.send_cabinets_to` odtwarza wydane miejsca u późno dołączających.
+
+Porównanie korzysta z `weapon_controller.def_of`, więc uwzględnia faktyczny nabój i części zastępowanej broni. Model gabloty pozostaje fabryczny; panel wyjaśnia, że montaż gracza dotyczy broni po pobraniu. Przy znanej broni porównanie ma nagłówek „IN HAND”, ponieważ pobranie nie zastępuje slotu. Obraz gabloty nie tworzy już dodatkowego niewidocznego modelu w podglądzie. Szczegóły są przewijane, a pobranie można wykonać klawiaturą lub przyciskiem.
+
+Regresje: `scripts/cabinet_test.gd` i `tools/test_cabinets.sh` (lokalne oraz dwa procesy ENet). Założenie kooperacyjne o replikowanej pozycji i kontrolerze magazynka pozostaje; rejestr zamiany nie jest pełnym systemem walidacji strzałów.

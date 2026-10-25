@@ -1,6 +1,6 @@
 # DEAD AIR '87 — Game Design Document
 
-**Wersja:** 1.7.366 — numer gry z `prototype/project.godot` (`config/version`); historia zmian: [`CHANGELOG.md`](CHANGELOG.md). Zręby dokumentu pochodzą z 1.6.0 (analiza „wciągająca, przyjemna gra”: game feel, Stalker, down/revive, zakres; patrz §23)
+**Wersja:** 1.7.379 — numer gry z `prototype/project.godot` (`config/version`); historia zmian: [`CHANGELOG.md`](CHANGELOG.md). Zręby dokumentu pochodzą z 1.6.0 (analiza „wciągająca, przyjemna gra”: game feel, Stalker, down/revive, zakres; patrz §23)
 **Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
 **Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
 **Silnik:** Godot 4.7 (renderer Forward+) + GodotSteam
@@ -475,7 +475,7 @@ Inny wymiar: organiczne korytarze, grawitacja się zmienia, radio mówi głosami
 - **Prasa elaboracyjna** (magazyn na dole, od 1.7.354) — amunicję specjalną się zamawia (taniej niż dawny sklep, najwyżej 3 partie), partia jest gotowa po następnej udanej misji; tylko tu powstają ładunki gorące (7.62 HOT, 12/70 MAG: mocniej, ale broń zużywa się dwa razy szybciej).
 - **Stół konserwacji** (od 1.7.350) — czyszczenie broni (bez złomu, za czas; broń rozłożona na ławie 3D) i wymiana części eksploatacyjnych: lufa (zużyta rozrzuca) i sprężyny (zmęczone nie pozwalają doczyścić broni do 100 %) za złom drużyny.
 - **Szafki osobiste** (świetlica, od 1.7.349) — perki i wygląd postaci (wcześniej zakładki warsztatu). Kolejne stanowiska warsztatu: `WORKSHOP_PLAN.md`.
-- **Zbrojownia** — dwie gabloty po cztery broni (w prototypie od 1.7.219): [H] przy gablocie, ↑ / ↓ wybór, [E] bierze; zamknięta broń z ceną w złomie (odblokowanie w warsztacie).
+- **Zbrojownia** — dwie gabloty po cztery bronie: [H] otwiera, ↑ / ↓ wybiera rząd, 1 / 2 wskazuje zastępowany slot, [E] bierze. Panel obsługuje też mysz i akcje pada; pokazuje blokadę oraz odbiorcę wspólnego egzemplarza. Serwer odblokowuje pobranie po zakupie w warsztacie, rozlicza zamianę i odkłada starą broń bez świeżych nabojów. Cała gablota ma wspólny zasięg; dołączający gracz widzi wcześniej pobrane egzemplarze jako wydane (1.7.379).
 - **Szpital** — stan uratowanych NPC, bonusy fabularne (np. uratowany naukowiec daje schemat EMP).
 - **Układ (od 1.7.265, „Stacja Dead Air”)** — bunkier pod nieczynną stacją radiową, trzy poziomy połączone szybami: środek (śluza → ściana pamięci → warsztat → świetlica z izbą chorych → zbrojownia → odprawa i wyjście), góra (radiostacja nad tablicą odpraw), dół (maszynownia i magazyn ze skrytkami). Wyjście na misję: strefa startu przed drzwiami z lampą ON AIR (gotowość przez stanie w strefie albo [Enter]), odliczanie 3 s (cyfra w HUD) ze świecącym padem, poświatą przy podłodze i polami graczy. Klimat: generator buczy i mruga w burzy, zza zamkniętych drzwi D-7 co jakiś czas ktoś puka, okno radiostacji pokazuje prognozowaną pogodę.
 - **Radiostacja** — wywiad: prognoza pogody (modyfikatory misji), tygodniowe wyzwania.

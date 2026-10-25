@@ -166,6 +166,8 @@ jobs:
           grep -a -E "\[WORKSHOP-TEST\] ==== .*błędów: 0" workshop.log
       - name: Bronie i sieć (test_weapons.sh)
         run: bash prototype/tools/test_weapons.sh
+      - name: Gabloty — zamiana, amunicja, blokady i dołączenie ENet
+        run: bash prototype/tools/test_cabinets.sh
       - name: Logi testów broni
         if: failure()
         uses: actions/upload-artifact@v4

@@ -23,6 +23,7 @@ const SessionLog := preload("res://scripts/session_log.gd")
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
 const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
 const WORKSHOP_TEST := preload("res://scripts/workshop_test.gd")
+const CABINET_TEST := preload("res://scripts/cabinet_test.gd")
 const STALKER_TEST := preload("res://scripts/stalker_test.gd")
 const RANGE_TEST := preload("res://scripts/range3d/range_test.gd")
 const FP_RANGE := preload("res://scripts/range3d/fp_mode.gd")
@@ -206,6 +207,8 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 		car.reset_handcar()
 	level.reset_collapse()
 	for c in _players.get_children():
+		if not carry and not c.is_bot:
+			level.register_weapon_kit(int(c.player_id))
 		c.request_full_reset(carry)
 	level.clear_pickups()
 	mission.on_restart(new_run)
@@ -497,7 +500,7 @@ func _handle_cmdline() -> void:
 	if hd_world:
 		Sprites.newworld = true
 	# testy headless zakładają mapę 1.3 (gniazda, boss), chyba że flaga --mission wskaże inną
-	if _start_map == "" and (args.has("--range3d") or args.has("--rangetest") or args.has("--workshoptest")):
+	if _start_map == "" and (args.has("--range3d") or args.has("--rangetest") or args.has("--workshoptest") or args.has("--cabinettest") or args.has("--cabinetnet")):
 		_start_map = "z1_hub"                       # strzelnica FPP (RANGE_FPS_PLAN.md): szpic startuje w kryjówce
 	if _start_map == "":
 		for a in args:
@@ -649,6 +652,11 @@ func _handle_cmdline() -> void:
 		wt.name = "WorkshopTest"
 		add_child(wt)
 		wt.run(self)
+	if args.has("--cabinettest") or args.has("--cabinetnet"):
+		var ct := CABINET_TEST.new()
+		ct.name = "CabinetTest"
+		add_child(ct)
+		ct.run(self, args.has("--cabinetnet"))
 	if range3d:
 		_dev_range3d()
 	if stalkertest:
@@ -1565,7 +1573,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				ip.global_position.x = (racks[ri] as Node2D).global_position.x
 				ip.velocity = Vector2.ZERO
 				get_tree().create_timer(0.4).timeout.connect(func() -> void:
-					ip.weapons.inspect_item = ip.weapons.nearby_weapon_item())
+					ip.weapons.inspect_item = racks[ri]
+					ip.weapons._inspect_hp = float(ip.hp))
 				if "--shotswap" in OS.get_cmdline_user_args():             # …oględziny, potem [E]: zamiana broni po 1,6 s (podgląd postaci po zamianie)
 					get_tree().create_timer(1.6).timeout.connect(func() -> void:
 						ip.weapons.inspect_item = null
@@ -1579,7 +1588,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					get_tree().create_timer(2.2).timeout.connect(func() -> void:
 						ip.global_position.x = (racks[ri + 1] as Node2D).global_position.x)
 					get_tree().create_timer(2.6).timeout.connect(func() -> void:
-						ip.weapons.inspect_item = ip.weapons.nearby_weapon_item())
+						ip.weapons.inspect_item = racks[ri + 1]
+						ip.weapons._inspect_hp = float(ip.hp))
 					if "--shotinspectclose" in OS.get_cmdline_user_args():
 						get_tree().create_timer(4.4).timeout.connect(func() -> void:
 							ip.weapons.inspect_item = null)
@@ -3484,6 +3494,7 @@ func _on_peer_connected(id: int) -> void:
 		_load_map_rpc.rpc_id(id, level.map_id)       # mapa zanim pojawi się postać
 		level.send_collapse_to(id)                   # zawały, które już się wydarzyły w tej misji
 		level.send_walls_to(id)                      # rozbite zamurowane przejścia
+		level.send_cabinets_to(id)
 		_spawn_player(id)
 
 ## Trudność ustala host; klient dostaje ją przy dołączeniu (HP wrogów, paski, czasy).
@@ -3495,6 +3506,7 @@ func _sync_difficulty(level: int) -> void:
 func _on_peer_disconnected(id: int) -> void:
 	print("[NET] peer disconnected: %d" % id)
 	LagComp.forget(id)
+	level.forget_weapon_kit(id)
 	var p := _players.get_node_or_null(str(id))
 	if p != null:
 		p.queue_free()
@@ -3530,6 +3542,7 @@ func _on_server_disconnected() -> void:
 func _spawn_player(id: int) -> void:
 	if _players.has_node(str(id)):
 		return
+	level.register_weapon_kit(id)
 	var display := _next_display_id()
 	var p := _spawner.spawn({"name": str(id), "display": display,
 		"pos": _spawn_pos_for(display), "bot": false})

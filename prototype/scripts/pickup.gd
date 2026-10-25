@@ -22,6 +22,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const Parts := preload("res://scripts/parts.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
+const Cabinet := preload("res://scripts/cabinet.gd")
 
 const HEAL := 1
 const PICK_R := 12.0
@@ -456,4 +457,6 @@ func _try_cache() -> void:
 
 ## Broń leży na ziemi i czeka na E — czy ten gracz stoi dość blisko?
 func in_reach(p: Node2D) -> bool:
+	if has_meta("cab_x"):
+		return Cabinet.in_range(Vector2(float(get_meta("cab_x")), global_position.y + 2), p.global_position + Vector2(0, -8), WEAPON_R)
 	return (p.global_position + Vector2(0, -8)).distance_to(global_position + Vector2(0, -6)) <= WEAPON_R
