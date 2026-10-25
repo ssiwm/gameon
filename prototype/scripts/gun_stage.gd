@@ -83,6 +83,7 @@ var _camera: Camera3D
 var _table: Node3D
 var _tray_model: Node3D
 var _tray_sig := ""
+var _tray_box := AABB()
 var _model_sig := ""
 var _weapon := -1
 var _ids: Array = []
@@ -475,6 +476,7 @@ func _place() -> void:
 	if bench_mode and is_instance_valid(_table):
 		var vis_w := 2.0 * CAM_DIST * tan(deg_to_rad(CAM_FOV * 0.5))
 		_table.scale.y = (vis_w / aspect) / 1.55
+		_fit_tray()
 
 ## Części na ramie mają niezależne obwiednie; wylot zależy też od wybranej lufy. Badamy wszystkie takie pary.
 static func stable_bounds(key: String) -> AABB:
@@ -614,11 +616,18 @@ func _show_tray(id: String, slot: String) -> void:
 	if id == "" or not GunModel.has_model(id):
 		return
 	_tray_model = (load(GunModel.DIR + "gunpart_%s.glb" % id) as PackedScene).instantiate()
-	var box := model_bounds(_tray_model)
-	var scale_k := minf(0.37 / maxf(box.size.x, 0.001), 0.20 / maxf(box.size.y, 0.001))
-	_tray_model.scale = Vector3.ONE * scale_k
-	_tray_model.position = Vector3(0.81, -0.47, -0.32) - box.get_center() * scale_k
+	_tray_box = model_bounds(_tray_model)
 	_table.add_child(_tray_model)
+	_fit_tray()
+
+## Stół jest skalowany tylko w pionie (wysokość kadru), więc część na tacy dostaje odwrotną skalę y — inaczej bęben wychodził owalny.
+func _fit_tray() -> void:
+	if not is_instance_valid(_tray_model):
+		return
+	var squash := maxf(_table.scale.y, 0.001)
+	var scale_k := minf(0.37 / maxf(_tray_box.size.x, 0.001), 0.20 * squash / maxf(_tray_box.size.y, 0.001))
+	_tray_model.scale = Vector3(scale_k, scale_k / squash, scale_k)
+	_tray_model.position = Vector3(0.81, -0.47, -0.32) - _tray_box.get_center() * _tray_model.scale
 
 ## Scena renderuje się w pikselach ekranu prostokąta (interfejs 640×360 jest skalowany do okna) — inaczej broń byłaby rozmyta.
 func _fit_viewport() -> void:

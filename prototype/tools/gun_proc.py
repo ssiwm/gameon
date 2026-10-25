@@ -1232,6 +1232,28 @@ def s12_drum(cx, cz, R, hw, drum_m, small):
     revolve("drum_hub_r", [(-hw - 8.0, 0.0), (-hw - 8.0, 15.0), (-hw - 6.0, 19.0), (-hw + 1.0, 20.0), (-hw + 1.0, 0.0)], (cx, cz), small, axis="Y", seg=24, bv=0.4)
 
 
+def s12_front(st, small, fore_m, end=912.0, sawn=False):
+    """Przód SPREAD-12: lufa do x = `end` (dławik siedzi na jej końcu), rura gazowa, łoże z orzecha, blok gazowy z regulatorem, strzemiączko
+    i muszka w osłonie 50 mm przed końcem lufy. Obrzynek (`sawn`): lufa ucięta tuż za blokiem gazowym, zamiast osłony muszki słupek na bloku."""
+    cyl("barrel", 560.0, end, 11.4, (0.0, 0.0), st, seg=20, bv=0.0)
+    cyl("gas_tube", 562.0, 762.0, 7.4, (0.0, 27.0), st, seg=16, bv=0.0)
+    cyl("hg_upper", 606.0, 748.0, 15.5, (0.0, 26.0), fore_m, seg=18, bv=1.2)
+    prism("hg_lower", fillet([(566.0, 10.0), (750.0, 10.0), (750.0, -24.0, 6.0), (660.0, -36.0, 34.0), (566.0, -33.0, 9.0)]), -18.5, 18.5, fore_m, bv=2.5, seg=2)
+    box("hg_cap", 749.0, 760.0, -28.0, 14.0, 19.0, st, bv=0.8, r=3.0)
+    prism("gas_block", fillet([(758.0, -12.0), (798.0, -12.0), (798.0, 13.0, 2.0), (782.0, 37.0, 3.0), (758.0, 37.0, 2.0)]), -12.0, 12.0, st, bv=1.0, seg=2)
+    revolve("gas_plug", [(798.0, 0.0), (798.0, 8.5), (812.0, 8.5), (814.0, 6.0), (814.0, 0.0)], (0.0, 27.0), small, seg=16, bv=0.4)
+    swivel(776.0, -31.0, small, 7.0)
+    if sawn:
+        revolve("fs_post", [(36.0, 0.0), (36.0, 1.6), (48.0, 1.6), (48.0, 0.0)], (770.0, 0.0), small, axis="Z", seg=8, bv=0.0)
+        return
+    fs = end - 50.0
+    box("fs_base", fs, fs + 30.0, -13.0, 13.0, 12.5, st, bv=1.0, r=3.0)
+    prism("fs_tower", [(fs + 3.0, 9.0), (fs + 27.0, 9.0), (fs + 24.0, 34.0), (fs + 6.0, 34.0)], -4.0, 4.0, st, bv=0.6, seg=1)
+    for sy in (-1.0, 1.0):
+        prism("fs_ear", fillet([(fs + 6.0, 32.0), (fs + 24.0, 32.0), (fs + 22.0, 50.0, 2.0), (fs + 8.0, 50.0, 2.0)]), sy * 3.0, sy * 5.8, st, bv=0.4, seg=1)
+    revolve("fs_post", [(32.0, 0.0), (32.0, 1.3), (47.0, 1.3), (47.0, 0.0)], (fs + 15.0, 0.0), small, axis="Z", seg=8, bv=0.0)
+
+
 def build_spread12():
     """SPREAD-12 (od 1.7.313): samopowtarzalna strzelba kal. 12 na komorze wzoru AK z bębnem na 25 naboi — jak radzieckie strzelby na mechanizmie
     Kałasznikowa. Niebieska oksyda (znak rozpoznawczy tej broni) i jasny orzech, bęben lakierowany na czarno z kluczem naciągu sprężyny.
@@ -1262,20 +1284,9 @@ def build_spread12():
     box("sight_base", 560.0, 604.0, 12.0, 38.0, 12.5, st, bv=1.0, r=3.0)
     prism("sight_leaf", [(566.0, 37.0), (622.0, 40.0), (622.0, 44.0), (566.0, 42.5)], -5.5, 5.5, small, bv=0.5, seg=1)
     box("sight_slider", 604.0, 613.0, 39.0, 46.5, 7.5, small, bv=0.6, seg=1)
-    cyl("barrel", 560.0, 912.0, 11.4, (0.0, 0.0), st, seg=20, bv=0.0)
-    cyl("gas_tube", 562.0, 762.0, 7.4, (0.0, 27.0), st, seg=16, bv=0.0)
-    cyl("hg_upper", 606.0, 748.0, 15.5, (0.0, 26.0), fore_m, seg=18, bv=1.2)
-    prism("hg_lower", fillet([(566.0, 10.0), (750.0, 10.0), (750.0, -24.0, 6.0), (660.0, -36.0, 34.0), (566.0, -33.0, 9.0)]), -18.5, 18.5, fore_m, bv=2.5, seg=2)
-    box("hg_cap", 749.0, 760.0, -28.0, 14.0, 19.0, st, bv=0.8, r=3.0)
-    # blok gazowy z regulatorem, muszka w osłonie, strzemiączko, dławik wylotowy z nacięciami
-    prism("gas_block", fillet([(758.0, -12.0), (798.0, -12.0), (798.0, 13.0, 2.0), (782.0, 37.0, 3.0), (758.0, 37.0, 2.0)]), -12.0, 12.0, st, bv=1.0, seg=2)
-    revolve("gas_plug", [(798.0, 0.0), (798.0, 8.5), (812.0, 8.5), (814.0, 6.0), (814.0, 0.0)], (0.0, 27.0), small, seg=16, bv=0.4)
-    swivel(776.0, -31.0, small, 7.0)
-    box("fs_base", 862.0, 892.0, -13.0, 13.0, 12.5, st, bv=1.0, r=3.0)
-    prism("fs_tower", [(865.0, 9.0), (889.0, 9.0), (886.0, 34.0), (868.0, 34.0)], -4.0, 4.0, st, bv=0.6, seg=1)
-    for sy in (-1.0, 1.0):
-        prism("fs_ear", fillet([(868.0, 32.0), (886.0, 32.0), (884.0, 50.0, 2.0), (870.0, 50.0, 2.0)]), sy * 3.0, sy * 5.8, st, bv=0.4, seg=1)
-    revolve("fs_post", [(32.0, 0.0), (32.0, 1.3), (47.0, 1.3), (47.0, 0.0)], (877.0, 0.0), small, axis="Z", seg=8, bv=0.0)
+    # przód z lufą, łożem, blokiem gazowym i muszką („front” — obrzynek i lufa z dławikiem go zastępują), dławik wylotowy z nacięciami („muzzle”)
+    with comp("front"):
+        s12_front(st, small, fore_m)
     with comp("muzzle"):
         barrel("choke", 910.0, 960.0, 14.6, 9.25, (0.0, 0.0), choke, bore, depth=40.0, seg=24)
     # dłoń tylna na chwycie pistoletowym, przednia pod łożem
@@ -1860,6 +1871,20 @@ def part_sp12_box8(spec):
     return {"mount": "frame", "hides": ["mag"]}
 
 
+def part_sp12_sawn(spec):
+    """Obrzynek: lufa ucięta za blokiem gazowym (82 mm krócej), muszka-słupek na bloku; dławik z gniazda wylotu siedzi na nowym końcu."""
+    mm = s12_mats()
+    s12_front(mm["st"], mm["small"], mm["fore"], end=830.0, sawn=True)
+    return {"mount": "frame", "hides": ["front"], "muzzle": Vector((878.0, 0.0, 0.0))}
+
+
+def part_sp12_choke(spec):
+    """Lufa z dławikiem: o 60 mm dłuższa, muszka przesunięta na jej koniec."""
+    mm = s12_mats()
+    s12_front(mm["st"], mm["small"], mm["fore"], end=972.0)
+    return {"mount": "frame", "hides": ["front"], "muzzle": Vector((1020.0, 0.0, 0.0))}
+
+
 def part_sp12_ported(spec):
     """Lufa z portami: dławik z rzędem owalnych portów gazowych na górze (zamiast gładkiego dławika)."""
     mm = s12_mats()
@@ -2002,7 +2027,8 @@ PART_BUILDERS = {
     "m83_rpk40": part_m83_rpk40, "m83_drum75": part_m83_drum75, "m83_rpkbar": part_m83_rpkbar, "m83_short": part_m83_short,
     "m83_pbs1": part_m83_pbs1, "m83_hider": part_m83_hider, "m83_akms": part_m83_akms,
     "p64_supp": part_p64_supp,
-    "sp12_drum30": part_sp12_drum30, "sp12_box8": part_sp12_box8, "sp12_ported": part_sp12_ported,
+    "sp12_drum30": part_sp12_drum30, "sp12_box8": part_sp12_box8, "sp12_ported": part_sp12_ported, "sp12_sawn": part_sp12_sawn,
+    "sp12_choke": part_sp12_choke,
     "s8_tube": part_s8_tube, "s8_carrier": part_s8_carrier, "lr7_cell": part_lr7_cell, "lr7_lens": part_lr7_lens,
     "hkm_tank": part_hkm_tank, "hkm_nozzle": part_hkm_nozzle, "g4_loader": part_g4_loader, "f6_belt": part_f6_belt, "f6_seeker": part_f6_seeker,
     "w1_cap": part_w1_cap, "w1_fast": part_w1_fast, "c6_twin": part_c6_twin, "c6_bands": part_c6_bands, "c6_tether": part_c6_tether,
