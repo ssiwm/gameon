@@ -140,6 +140,11 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_note_contrast.gd 2>&1 | tee notecontrast.log
           grep -a "^PASS" notecontrast.log
+      - name: Jasność i ekran kalibracji (test_brightness.gd)
+        run: |
+          timeout 120 godot --headless --path prototype -s tools/test_brightness.gd 2>&1 | tee brightness.log
+          grep -a "^PASS$" brightness.log
+          ! grep -a -E "SCRIPT ERROR|Parse Error" brightness.log
       - name: Logi testów
         if: failure()
         uses: actions/upload-artifact@v4

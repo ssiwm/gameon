@@ -176,6 +176,7 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_geo = Node3D.new()
 	_geo.name = "Geometry"
 	_world.add_child(_geo)
+	Settings.changed.connect(_apply_brightness)
 	# szczątki wczytane z góry: przy pierwszym zabójstwie w sesji modele (z teksturami) wczytywały się synchronicznie — przestój ok. 0,3–0,4 s
 	for names in GIB_MODELS:
 		for gn in names:
@@ -462,6 +463,13 @@ func _sync_camera() -> void:
 		(s as Sprite2D).global_position = ctr
 		(s as Sprite2D).scale = Vector2(k, k)
 
+## Jasność z ustawień (ekran kalibracji): ta sama ekspozycja dla świata i warstwy graczy, inaczej postacie odklejałyby się od tła.
+func _apply_brightness() -> void:
+	for cam in [_cam_a, _cam_b]:
+		var env := (cam as Camera3D).environment
+		if env != null:
+			env.tonemap_exposure = Settings.exposure_mult()
+
 # ---------------------------------------------------------------- świat statyczny
 
 func _sync_geometry() -> void:
@@ -505,6 +513,7 @@ func _sync_geometry() -> void:
 	env_b.ambient_light_energy = ACTOR_AMBIENT
 	env_b.fog_enabled = false
 	_cam_b.environment = env_b
+	_apply_brightness()
 	_apply_geo_state(_build_world(_geo, rows, hub))
 	# mapa z zawałem w danych (finał 1.1): geometria „po zawale” od razu, w czasie wczytywania (ukryta, bez przetwarzania)
 	var cr = _level.get("collapse_rects")

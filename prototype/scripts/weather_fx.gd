@@ -1,9 +1,9 @@
 extends CanvasLayer
-## Efekty wizualne pogody (weather.gd, GDD §10.3 „Radiostacja"): deszcz i burza z błyskawicami, tint ciemności (faza A; mgła, dźwięk i HUD to kolejne fazy).
+## Stan efektów pogody (weather.gd, GDD §10.3 „Radiostacja") i jej dźwięk. Obraz (deszcz, mgła, niebo, księżyc, błysk) składa widok 3D
+## z tego stanu (view3d.gd: `_sync_weather` czyta `_id`, `_k`, `_sky` i `_flash`) — sam węzeł nic nie rysuje.
 ##
-## Czysta kosmetyka, lokalna: nic tu nie rozstrzyga gameplayu. Warstwa leży tuż przed `horror_fx` (winieta kładzie się na wierzch) i pod HUD-em.
-## Deszcz pada tylko pod otwartym niebem (nad lokalnym graczem nie ma bryły aż do górnej krawędzi mapy), a pod dachem i w podziemiach
-## płynnie zanika. Burza ma błyskawice: harmonogram wynika z ziarna misji (`Weather.seed`, replikowane razem z pogodą) i zegara misji
+## Czysta kosmetyka, lokalna: nic tu nie rozstrzyga gameplayu. Otwartość nieba nad lokalnym graczem (nad nim nie ma bryły aż do górnej
+## krawędzi mapy) i podziemia sterują pętlami deszczu na zewnątrz / pod dachem i tłem miejsca. Burza ma błyskawice: harmonogram wynika z ziarna misji (`Weather.seed`, replikowane razem z pogodą) i zegara misji
 ## (`mission.elapsed`), więc u wszystkich graczy błyska mniej więcej w tej samej chwili bez żadnego RPC.
 ## Ustawienie Weather effects: FULL (pełny błysk) / REDUCED (miękka poświata zamiast błysku, mniej cząsteczek — domyślnie) / OFF.
 
@@ -11,13 +11,6 @@ const Weather := preload("res://scripts/weather.gd")
 
 const FADE_IN := 0.25                       ## 1/s: ok. 4 s narastania po starcie misji
 const FADE_OUT := 0.5
-## Tint ciemności (mnożnik koloru `level.ambient`) przy pełnej pogodzie.
-const TINTS := {
-	"clear": Color(1.15, 1.25, 1.5),
-	"rain": Color(0.85, 0.95, 1.05),
-	"storm": Color(0.7, 0.78, 0.95),
-	"fog": Color(1.1, 1.15, 1.1),
-}
 ## Dźwięk (faza C): bazowa głośność pętli [dB] przy pełnej pogodzie. `rain` = deszcz pod otwartym niebem (amb_rain), `roof` = deszcz nad głową
 ## (amb_rain_roof, pod dachem), `wind` = wiatr (amb_wind). Efektywna głośność = baza + 20·log10(siła pogody × udział nieba).
 const AUDIO := {
@@ -36,8 +29,6 @@ const BED_DRIPS_DB := -22.0
 ## Dev (--shotflash): błysk na stałe (zrzuty).
 static var dev_flash := false
 
-var _bd_id := ""
-var _bd_k := -1.0
 var _thunder_done := {}                     ## indeksy błysków, których grzmot już zagrał (dla bieżącego ziarna)
 var _thunder_seed := -1
 var _loops_on := {}                         ## klucze pętli dźwięku uruchomionych przez pogodę
@@ -57,8 +48,6 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	_stop_audio()
-	_apply_level(Color.WHITE, 0.0)
-	_set_backdrop("", 0.0)
 
 func _process(delta: float) -> void:
 	_t += delta
@@ -73,16 +62,6 @@ func _process(delta: float) -> void:
 	_deep = move_toward(_deep, 1.0 if (lp != null and _level != null and lp.global_position.y >= float(_level.underground_y)) else 0.0, 1.0 * delta)
 	_audio(mode, lp)
 	_beds()
-	# tło parallax: noc pogodna wzmacnia księżyc i gwiazdy, deszcz przyciemnia niebo, mgła rozjaśnia grzbiety (tylko gdy się zmieniło)
-	if _id != _bd_id or absf(_k - _bd_k) > 0.004:
-		_bd_id = _id
-		_bd_k = _k
-		_set_backdrop(_id, _k)
-	# tint ciemności + błysk (tylko burza)
-	var tint := Color.WHITE
-	if TINTS.has(_id):
-		tint = Color.WHITE.lerp(TINTS[_id], _k)
-	_apply_level(tint, _flash(mode) * _k if _id == "storm" else 0.0)
 
 ## Zapamiętuje bieżącą pogodę (czyta ją widok 3D: deszcz, plusk, mgła i błysk są w scenie — view3d.gd: _sync_weather).
 func _use_weather(id: String, _mode: int) -> void:
@@ -219,12 +198,3 @@ func _thunder() -> void:
 		var variant := 1 if delay < 1.4 else (2 if delay < 2.6 else 3)
 		Audio.play("thunder_%d" % variant, Audio.BUS_AMB, -3.0 - 2.2 * delay, r.randf_range(0.93, 1.07))
 
-func _set_backdrop(id: String, k: float) -> void:
-	_level = _level if is_instance_valid(_level) else get_tree().get_first_node_in_group("level")
-	if _level != null:
-		_level.set_backdrop_weather(id, k)
-
-func _apply_level(tint: Color, flash: float) -> void:
-	_level = _level if is_instance_valid(_level) else get_tree().get_first_node_in_group("level")
-	if _level != null:
-		_level.apply_weather_darkness(tint, flash)

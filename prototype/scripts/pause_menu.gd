@@ -13,6 +13,7 @@ const W := preload("res://scripts/ui_widgets.gd")
 const Actions := preload("res://scripts/actions.gd")
 const Codex := preload("res://scripts/codex.gd")
 const CodexPage := preload("res://scripts/codex_page.gd")
+const BrightnessScreen := preload("res://scripts/brightness_screen.gd")
 
 signal leave_requested               ## „LEAVE SESSION": main.gd kończy sesję i wraca do ekranu startowego
 
@@ -275,6 +276,10 @@ func _build_settings(scroll: ScrollContainer) -> void:
 		func(i: int) -> void: _to_idx(func() -> int: return Settings.ui_idx, Settings.cycle_ui, i, 3))
 	_seg(right, tr("Camera zoom"), Settings.CAM_NAMES, func() -> int: return Settings.cam_idx,
 		func(i: int) -> void: _to_idx(func() -> int: return Settings.cam_idx, Settings.cycle_cam, i, 3))
+	_drop(right, tr("Brightness"), func() -> String:
+			var ev := Settings.brightness_ev()
+			return "0 EV" if is_zero_approx(ev) else "%+.2f EV" % ev,
+		open_brightness)
 	right.add_child(_gap())
 	right.add_child(W.section(tr("ACCESSIBILITY")))
 	_toggle(right, tr("Reduce effects"), func() -> bool: return Settings.reduce_fx, Settings.toggle_reduce_fx)
@@ -632,6 +637,14 @@ func _show_tab(i: int) -> void:
 func _steam_net() -> Node:
 	var cs := get_tree().current_scene
 	return cs.get_node_or_null("SteamNet") if cs != null else null
+
+## Ekran kalibracji jasności (brightness_screen.gd) nad menu; po zamknięciu fokus wraca do przycisku RESUME.
+func open_brightness() -> void:
+	var bs := BrightnessScreen.new()
+	get_parent().add_child(bs)                      # rodzeństwo za menu: dostaje wejście pierwsze (Esc zamyka kalibrację, nie pauzę)
+	bs.closed.connect(func() -> void:
+		if _open:
+			_resume.grab_focus())
 
 ## Menu główne / lobby: otwiera menu w trybie ustawień (bez sesji).
 func open_settings() -> void:
