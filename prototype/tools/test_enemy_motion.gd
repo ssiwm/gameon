@@ -77,12 +77,19 @@ func heavy_body(kind: String) -> void:
 			for vertex in vertices.size():
 				check("cleaver rigid grip", weights[vertex * 4] > 0.999 and String(mesh.skin.get_bind_name(indices[vertex * 4])).ends_with("RightHand"))
 		var blade_up := -1.0
+		var behind_head := -INF
+		var flare_late := 0.0
+		var flare_early := 0.0
 		for frame in roundi(0.9 * fps):
 			e.motion_context({"grounded": true, "winding": true, "windup_duration": 0.9, "windup_remaining": 0.9 - frame / float(fps)})
 			e.pose(1.0 / fps, "windup", false, Color.WHITE)
 			var hand := sk.get_bone_global_pose(bones["RightHand"])
 			var head := sk.get_bone_global_pose(bones["Head"])
+			if hand.origin.y - head.origin.y > peak_clearance:
+				behind_head = head.origin.x - hand.origin.x
 			peak_clearance = maxf(peak_clearance, hand.origin.y - head.origin.y)
+			if frame < fps / 2: flare_early = maxf(flare_early, float(e.get("_flare")))
+			else: flare_late = maxf(flare_late, float(e.get("_flare")))
 			var p: Dictionary = e.get("_last_p")
 			reach_error = maxf(reach_error, hand.origin.distance_to(p["hR"]))
 			if not blade.is_empty():
@@ -91,9 +98,19 @@ func heavy_body(kind: String) -> void:
 			geometry(e, kind)
 		check(kind + " hands rise above head at " + str(fps), peak_clearance > 0.08)
 		check(kind + " authored arm goals reachable error=" + str(reach_error), reach_error < 0.045)
+		if kind == "wolek":
+			# Kamera gry patrzy z boku: pięści nad samymi barkami chowały się za garbem i rogami.
+			var arm: Array = e.get("_arm_len")["Right"]
+			check("wolek smash fists clear head by half an arm=" + str(peak_clearance), peak_clearance > 0.5 * (float(arm[0]) + float(arm[1])))
+			check("wolek smash fists behind head in profile=" + str(behind_head), behind_head > 0.2)
+			check("wolek flare only at the end of windup", flare_early < 0.01 and flare_late > 0.9 * float(Enemy.SPEC[kind]["flare"]))
 		e.motion_context({"grounded": true, "winding": false})
 		e.trigger("attack")
 		e.pose(1.0 / fps, "idle", false, Color.WHITE)
+		if kind == "wolek":
+			var hand := sk.get_bone_global_pose(bones["RightHand"])
+			var hips := sk.get_bone_global_rest(bones["Hips"])
+			check("wolek smash strikes down, not a shove=" + str(hand.origin.y), hand.origin.y < 0.7 * hips.origin.y and hand.origin.x > hips.origin.x + 0.4)
 		if not blade.is_empty():
 			var hand := sk.get_bone_global_pose(bones["RightHand"])
 			var direction := ((hand * bind * blade[1]) - (hand * bind * blade[0])).normalized()
@@ -101,6 +118,62 @@ func heavy_body(kind: String) -> void:
 			check("cleaver edge swings forward at contact", direction.x > 0.7)
 			check("cleaver preserves length", absf((hand * bind * blade[1]).distance_to(hand * bind * blade[0]) - blade[0].distance_to(blade[1])) < 0.001)
 		e.free()
+
+## Oczy Wołka: kulki przy kości głowy przed pyskiem, żar rośnie w zapowiedzi, światło z pyska tylko w zapowiedzi.
+func eye_lamps(kind: String) -> void:
+	if not Enemy.SPEC[kind].get("eye_lamp", false): return
+	var e := Enemy.new()
+	root.add_child(e)
+	e.setup(kind)
+	var eyes: Array = e.get("_eyes")
+	var light: OmniLight3D = e.get("_eye_light")
+	check(kind + " eye lamps built", eyes.size() == 2 and light != null)
+	if eyes.size() != 2 or light == null:
+		e.free()
+		return
+	for f in 30: e.pose(1.0 / 60.0, "idle", false, Color.WHITE)
+	var sk: Skeleton3D = e.get("_sk")
+	var head := sk.global_transform * sk.get_bone_global_pose((e.get("_b") as Dictionary)["Head"]).origin
+	var calm := ((eyes[0] as MeshInstance3D).material_override as StandardMaterial3D).emission_energy_multiplier
+	check(kind + " eyes in front of head", (eyes[0] as Node3D).global_position.x > head.x + 0.2 and (eyes[1] as Node3D).global_position.x > head.x + 0.2)
+	check(kind + " eyes on both sides", signf((eyes[0] as Node3D).global_position.z - head.z) != signf((eyes[1] as Node3D).global_position.z - head.z))
+	check(kind + " no light while calm", not light.visible)
+	var hot := 0.0
+	for f in 30:
+		e.motion_context({"grounded": true, "winding": true, "windup_duration": 0.6, "windup_remaining": 0.6 - f / 60.0})
+		e.pose(1.0 / 60.0, "windup", false, Color.WHITE)
+		hot = maxf(hot, ((eyes[0] as MeshInstance3D).material_override as StandardMaterial3D).emission_energy_multiplier)
+	check(kind + " eyes flare in windup", hot > 3.0 * calm and light.visible and light.light_energy > 1.0)
+	e.motion_context({"grounded": true, "winding": false})
+	e.die()
+	for f in 60: e.pose(1.0 / 60.0, "death", false, Color.WHITE)
+	check(kind + " eyes out after death", not (eyes[0] as Node3D).visible and not light.visible)
+	e.free()
+
+## Najniższy punkt skóry po skinningu (co trzeci wierzchołek, wszystkie siatki ze szkieletem) względem gruntu pod stopami.
+func lowest_skin(e: Node3D) -> float:
+	var low := INF
+	for node in (e as Node).find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.skin == null or mi.mesh == null or not mi.visible: continue
+		var sk := mi.get_node(mi.skeleton) as Skeleton3D
+		var transforms: Array[Transform3D] = []
+		for bind in mi.skin.get_bind_count():
+			var bone := mi.skin.get_bind_bone(bind)
+			if mi.skin.get_bind_name(bind) != &"": bone = sk.find_bone(mi.skin.get_bind_name(bind))
+			transforms.append(sk.global_transform * sk.get_bone_global_pose(bone) * mi.skin.get_bind_pose(bind))
+		for surface in mi.mesh.get_surface_count():
+			var arrays := mi.mesh.surface_get_arrays(surface)
+			if arrays[Mesh.ARRAY_BONES] == null: continue
+			var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+			var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+			var per := bones.size() / vertices.size()
+			for i in range(0, vertices.size(), 3):
+				var p := Vector3.ZERO
+				for k in per: p += (transforms[bones[i * per + k]] * vertices[i]) * weights[i * per + k]
+				low = minf(low, p.y)
+	return low - e.global_position.y
 
 func authored(e: Node3D, kind: String) -> void:
 	var name := Motion.action(kind)
@@ -263,6 +336,7 @@ func _process(_dt: float) -> bool:
 		root.add_child(e)
 		check(kind + " setup", e.setup(kind))
 		heavy_body(kind)
+		eye_lamps(kind)
 		stride_calibration(kind)
 		charge_motion(kind)
 		authored(e, kind)
@@ -320,7 +394,15 @@ func _process(_dt: float) -> bool:
 		check(kind + " death remains visible", not bool(e.get("finished")))
 		for f in 15: e.pose(1.0 / 60.0, "death", false, Color.WHITE)
 		check(kind + " death not cut short", not bool(e.get("finished")))
-		for f in 180: e.pose(1.0 / 60.0, "death", false, Color.WHITE)
+		var floor_check: bool = Enemy.SPEC[kind].get("death_floor", false)
+		var deepest := INF
+		for f in 180:
+			e.pose(1.0 / 60.0, "death", false, Color.WHITE)
+			# upadek i leżenie (przed zapadaniem się zwłok): skóra nie wchodzi w podłogę — Wołek wbijał w nią głowę i rogi
+			if floor_check and f % 12 == 0 and float(e.get("_dead_t")) < float(e.call("_death_dur")) + Enemy.CORPSE_HOLD:
+				deepest = minf(deepest, lowest_skin(e))
+		if floor_check:
+			check(kind + " corpse stays on the floor, deepest=" + str(deepest), deepest > -0.03)
 		check(kind + " death finishes", bool(e.get("finished")))
 		e.revive()
 		check(kind + " revive", not bool(e.get("finished")))

@@ -42,6 +42,12 @@ Widok próbuje wysokość i normalną podłoża promieniami fizyki 2D w zakresie
 
 Pijawka odtwarza pełną własną śmierć przed zatrzymaniem i zapadaniem modelu. Ćma porusza skrzydłami pionowo i obraca normalne oraz styczne. Materiały pozostałych modeli i geometria GLB zostały zachowane.
 
+## Zapowiedź i śmierć Wołka
+
+Kamera gry patrzy z boku, więc pięści Wołka w szczycie `smash` stoją wysoko i za głową; nad samymi barkami chowały się za garbem i rogami. Po krótkim zawieszeniu cios to młot obiema pięściami w grunt przed nim z wykrokiem przedniej nogi, a nie poziome pchnięcie. Tekstura ma tylko kilka ciepłych pikseli, więc maska HSV nie dawała żaru oczu: SPEC `eye_lamp` stawia przy kości głowy dwie emisyjne kulki (jasność jak `eye_glow`, w zapowiedzi pulsuje), a w zapowiedzi zapala ciepłe `OmniLight3D` przed pyskiem, czytelne w nocy. SPEC `flare` dodaje ciepłą obwódkę ciała w ostatnich 0,25 s zapowiedzi (czas z symulacji) i krótko po kontakcie; dotyczy też zapowiedzi szarży i rzutu.
+
+Przewrót wokół stóp wbijał zgarbionego Wołka głową i rogami ok. 1 m w podłogę. SPEC `death_floor` liczy przy budowie modelu otoczkę skóry (skrajne wierzchołki każdej kości w 26 kierunkach, ok. 400 próbek, ok. 40 ms raz na rodzaj) i w czasie upadku podnosi ciało do najniższego punktu; zapadanie zwłok liczy się od tego podparcia. Pozostałe dwunożne też wchodzą w podłogę przy śmierci (Rzeźnik ok. 1 m, Podsłuchacz i Kapłan ok. 0,3 m), ale samo podparcie ich nie naprawia — Rzeźnik oparłby się na sztorc na tasaku — więc flaga jest na razie tylko u Wołka. `test_enemy_motion.gd` mierzy najniższy punkt całej skóry po skinningu w upadku i leżeniu rodzajów z tą flagą.
+
 ## Testy i narzędzia odbioru
 
 ```text
