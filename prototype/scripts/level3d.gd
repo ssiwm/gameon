@@ -3308,7 +3308,17 @@ static func build_fog_volumes(parent: Node3D, rows: Array, density := 0.035) -> 
 
 ## Środowisko nocy (niebo, mgła głębi, glow, filmic) i księżyc z cieniami. `ambient` — kolor ciemności poziomu (jak w 2D) służy do ocieplenia
 ## światła otoczenia (kryjówka); `moon` = false dla wnętrz.
-static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0.0406), moon := true, quality := 2) -> Environment:
+## Gradacja obrazu świata: tonemapping, kontrast i ekspozycja z ustawienia jasności (`Settings.exposure_mult`). Jedno miejsce dla
+## środowiska świata, warstwy graczy (kopia w view3d.gd) i karty kalibracji jasności (brightness_screen.gd) — symbole kalibracji
+## przechodzą przez tę samą krzywą co noc w grze.
+static func apply_grade(env: Environment, exposure := 1.0) -> void:
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_exposure = exposure
+	env.adjustment_enabled = true
+	env.adjustment_contrast = 1.10
+	env.adjustment_saturation = 1.0
+
+static func build_environment(parent: Node3D,ambient := Color(0.0245, 0.0266, 0.0406), moon := true, quality := 2) -> Environment:
 	var env := Environment.new()
 	var sky := Sky.new()
 	var sm := ShaderMaterial.new()
@@ -3324,7 +3334,7 @@ static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0
 	# noc ma być czarna jak w 2D (GDD §8.3: ciemność jest mechaniką) — otoczenie tylko odcina bryły od nieba, widoczność dają światła (aura, latarka, flara, ognisko)
 	env.ambient_light_color = Color(0.15, 0.18, 0.25).lerp(Color(0.42, 0.30, 0.20), warm)
 	env.ambient_light_energy = 0.03 + 0.37 * warm            # prawie zero poza kryjówką: bez własnego światła nie widać terenu
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	apply_grade(env)
 	env.glow_enabled = true
 	env.glow_intensity = 0.7
 	env.glow_bloom = 0.05
@@ -3358,10 +3368,7 @@ static func build_environment(parent: Node3D, ambient := Color(0.0245, 0.0266, 0
 	env.volumetric_fog_ambient_inject = 0.0
 	env.volumetric_fog_sky_affect = 0.0
 	env.volumetric_fog_gi_inject = 0.0
-	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.10
-	env.adjustment_saturation = 1.0
-	if "--view3dlit" in OS.get_cmdline_user_args():                # dev: pełne, białe światło otoczenia — podgląd geometrii i materiałów bez nocy
+	if "--view3dlit" in OS.get_cmdline_user_args():               # dev: pełne, białe światło otoczenia — podgląd geometrii i materiałów bez nocy
 		env.ambient_light_color = Color.WHITE
 		env.ambient_light_energy = 0.55
 		env.fog_enabled = false

@@ -118,7 +118,7 @@ var map_id := ""
 var title := ""
 var objective := "nests"
 var radio: Array = []             ## linie radia z danych mapy (kryjówka)
-var ambient := Color(0.0245, 0.0266, 0.0406)   ## kolor ciemności mapy (stan; obraz daje scena 3D): domyślny z lights.gd albo z AMBIENT mapy
+var ambient := Color(0.0245, 0.0266, 0.0406)   ## kolor ciemności mapy (stan): domyślny z lights.gd albo z AMBIENT mapy; w 3D liczy się z niego tylko „ciepło” kryjówki
 var _racks := false
 var launch_zone := Rect2()                ## strefa startu kryjówki w pikselach świata (LAUNCH_ZONE z danych mapy); pusta poza kryjówką
 ## HINT_ZONES z danych mapy: id podpowiedzi (hints.gd) → Rect2 w pikselach świata, gdzie ta podpowiedź ma sens (1.1: podejście do obozu).
@@ -130,10 +130,6 @@ var _cab_slots := 0                   ## CABINET_SLOTS z danych mapy: > 0 = każ
 var _gun_cab: Array = []              ## Vector2i(gablota, rząd) dla kolejnych przedmiotów broni z „g" (puste bez gablot)
 var _gun_cab_x: Array = []            ## środek gabloty [px] dla kolejnych przedmiotów broni
 var hp_mult := 1.0               ## mnożnik HP wrogów tej mapy (ENEMY_HP w danych mapy)
-## Pogoda (weather_fx.gd): tint i błysk ciemności nałożone na `ambient` — sam stan, czyta go widok 3D.
-const WEATHER_FLASH := Color(0.34, 0.38, 0.52)           ## kolor ciemności w szczycie błysku (zimne światło burzy)
-var weather_tint := Color.WHITE
-var weather_flash := 0.0
 var depth_mult := 1.0                                    ## mnożnik ambientu od głębi podziemi (dread.gd)
 var underground_y := 0.0         ## od tej wysokości (px) postać jest w podziemiach
 var bounds := Rect2()
@@ -239,7 +235,6 @@ func _load(id: String) -> void:
 	var lz: Array = (m as GDScript).get_script_constant_map().get("LAUNCH_ZONE", [])
 	launch_zone = Rect2(float(lz[0]) * TILE, float(lz[2] - 4) * TILE, float(lz[1] - lz[0] + 1) * TILE, 4.0 * TILE + 4.0) if lz.size() == 3 else Rect2()
 	ambient = m.AMBIENT if m.AMBIENT.a > 0.0 else Lights.AMBIENT      # alfa 0 = domyślna ciemność gry
-	_apply_darkness()
 	NoiseMgr.safe_zone = objective == "hub"
 	underground_y = float(m.UNDERGROUND_ROW * TILE)
 	_orig_map = m.MAP
@@ -285,27 +280,10 @@ func _build_map() -> void:
 	_place_deco()
 	_build_reed_cells()
 
-## Ciemność to sam stan (`depth_mult` z głębi podziemi, `weather_tint` i `weather_flash` z pogody): czyta go widok 3D
-## (view3d.gd: _sync_weather — światło otoczenia sceny). Węzła CanvasModulate już nie ma.
-func _apply_darkness() -> void:
-	pass
-
-## Niebo i las są w scenie 3D (level3d.gd; pogodę stosuje view3d.gd: _sync_weather) — tła 2D już nie ma.
-func set_backdrop_weather(_id: String, _k: float) -> void:
-	pass
-
+## Mnożnik głębi podziemi (dread.gd) — sam stan: światło otoczenia sceny mnoży nim widok 3D (view3d.gd: `_sync_weather`),
+## tam też pogoda i błysk burzy zmieniają światło (księżyc, niebo, mgła).
 func apply_depth_darkness(m: float) -> void:
-	if is_equal_approx(m, depth_mult):
-		return
 	depth_mult = m
-	_apply_darkness()
-
-func apply_weather_darkness(tint: Color, flash: float) -> void:
-	if tint == weather_tint and is_equal_approx(flash, weather_flash):
-		return
-	weather_tint = tint
-	weather_flash = flash
-	_apply_darkness()
 
 ## Czy w punkcie `p` (świat) jest otwarte niebo: nad ziemią i bez bryły (dachu, skały) aż do górnej krawędzi mapy.
 func sky_open_at(p: Vector2) -> bool:

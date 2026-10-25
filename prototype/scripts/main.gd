@@ -31,6 +31,7 @@ const ENEMY_TEST := preload("res://scripts/enemy_test.gd")
 const DREAD := preload("res://scripts/dread.gd")
 const STEAM_NET := preload("res://scripts/steam_net.gd")
 const PAUSE_MENU := preload("res://scripts/pause_menu.gd")
+const BRIGHTNESS_SCREEN := preload("res://scripts/brightness_screen.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Weapons := preload("res://scripts/weapons.gd")
@@ -811,6 +812,10 @@ func _setup_main_menu(pause_menu: Control) -> void:
 	_lobby.back_requested.connect(func() -> void:
 		_lobby.visible = false
 		menu.visible = true)
+	if not Settings.brightness_calibrated:
+		var bs: Control = BRIGHTNESS_SCREEN.new()       # pierwszy start: kalibracja jasności przed menu (potem tylko z ustawień)
+		bs.setup(true)
+		$UI.add_child(bs)
 
 ## Wyjście z sesji (host i klient) do ekranu startowego: wyłącza dźwięk, zamyka połączenie i lobby Steam i ładuje scenę od nowa,
 ## więc misja, wrogowie i gracze zaczynają od czystego stanu (profil i zapis złomu zostają).

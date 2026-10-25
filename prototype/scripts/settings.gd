@@ -47,6 +47,11 @@ const CAM_ZOOM := [1.6, 2.0, 2.4]      ## zoom kamery gracza; baza 640×360 → 
 const UI_NAMES := ["SMALL", "NORMAL", "LARGE"]
 ## Rozmiar HUD-u: SMALL / NORMAL / LARGE. NORMAL = dawne SMALL (0,85), LARGE = dawne NORMAL (1,0); nowy SMALL jest o tyle samo mniejszy (×0,85).
 const UI_MULT := [0.72, 0.85, 1.0]
+## Jasność obrazu świata: ekspozycja przed tonemappingiem w EV (krokach przysłony), w wąskim zakresie ±1 EV — tyle wystarcza na monitor
+## z „zjedzoną” albo podniesioną czernią, a nie pozwala rozjaśnić nocy (GDD §8.3: ciemność jest mechaniką). Ustawia ją ekran kalibracji
+## (brightness_screen.gd) albo wiersz „Brightness” w menu.
+const BRIGHTNESS_EV := [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0]
+const BRIGHTNESS_DEFAULT := 4
 const Actions := preload("res://scripts/actions.gd")
 
 var volume := {"master": 1.0, "music": 1.0, "ambience": 1.0, "sfx": 1.0}
@@ -74,6 +79,8 @@ var reliability_idx := 1
 var realistic_handling := true         ## obsługa broni: podrzut przy myszy, oparcie o krawędź, gorąca lufa i dwa przeładowania (REALISTIC) albo dawne zachowanie (CLASSIC) — GUNSMITH_PLAN etap 3
 var colorblind_idx := 0
 var locale_idx := 0
+var brightness_idx := BRIGHTNESS_DEFAULT
+var brightness_calibrated := false     ## gracz przeszedł już ekran kalibracji (inaczej menu główne pokazuje go przy pierwszym starcie)
 var _res_dirty := false                ## gracz zmienił rozmiar okna (inaczej zostaje domyślny z projektu)
 var dev_nohud: bool = "--nohud" in OS.get_cmdline_user_args()   ## dev: ukrywa HUD, celownik i plakietki graczy (nagrania i zrzuty do materiałów promocyjnych)
 var fullscreen := false
@@ -93,6 +100,9 @@ func _ready() -> void:
 			if i >= 0:
 				_base_db[b] = AudioServer.get_bus_volume_db(i)
 	_load()
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--brightness="):                 # dev: jasność bez zapisu (indeks BRIGHTNESS_EV, 4 = 0 EV) — zrzuty porównawcze
+			brightness_idx = clampi(int(a.substr("--brightness=".length())), 0, BRIGHTNESS_EV.size() - 1)
 	_apply_all()
 
 func _exit_tree() -> void:
@@ -119,6 +129,21 @@ func weather_fx_effective() -> int:
 	if weather_fx_idx == WEATHER_FX_FULL and (reduce_fx or quality_idx == 0):
 		return WEATHER_FX_REDUCED
 	return weather_fx_idx
+
+## Mnożnik ekspozycji obrazu świata (Environment.tonemap_exposure) z ustawienia jasności.
+func exposure_mult() -> float:
+	return pow(2.0, float(BRIGHTNESS_EV[brightness_idx]))
+
+func brightness_ev() -> float:
+	return float(BRIGHTNESS_EV[brightness_idx])
+
+func set_brightness(i: int) -> void:
+	brightness_idx = clampi(i, 0, BRIGHTNESS_EV.size() - 1)
+	_commit()
+
+func mark_brightness_calibrated() -> void:
+	brightness_calibrated = true
+	_commit()
 
 func ui_mult() -> float:
 	return UI_MULT[ui_idx]
@@ -375,6 +400,8 @@ func _load() -> void:
 	reliability_idx = clampi(int(cf.get_value("game", "reliability", 1)), 0, RELIABILITY_NAMES.size() - 1)
 	colorblind_idx = clampi(int(cf.get_value("game", "colorblind", 0)), 0, COLORBLIND_NAMES.size() - 1)
 	locale_idx = clampi(int(cf.get_value("game", "locale", 0)), 0, LOCALES.size() - 1)
+	brightness_idx = clampi(int(cf.get_value("game", "brightness", BRIGHTNESS_DEFAULT)), 0, BRIGHTNESS_EV.size() - 1)
+	brightness_calibrated = bool(cf.get_value("game", "brightness_calibrated", false))
 	seen_tips = Array(cf.get_value("game", "seen_tips", []))
 	Actions.load_from(cf)
 	shift_best_cleared = int(cf.get_value("shift", "best_cleared", 0))
@@ -409,6 +436,8 @@ func _save() -> void:
 	cf.set_value("game", "realistic_handling", realistic_handling)
 	cf.set_value("game", "reliability", reliability_idx)
 	cf.set_value("game", "colorblind", colorblind_idx)
+	cf.set_value("game", "brightness", brightness_idx)
+	cf.set_value("game", "brightness_calibrated", brightness_calibrated)
 	cf.set_value("game", "locale", locale_idx)
 	cf.set_value("game", "seen_tips", seen_tips)
 	Actions.save_to(cf)

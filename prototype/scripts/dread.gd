@@ -78,7 +78,7 @@ func _process(delta: float) -> void:
 ## Głębiej = ciemniej: bez latarki w podziemiach widać tylko aurę gracza.
 func _update_darkness(delta: float, pl: Node2D, lvl: Node) -> void:
 	var depth := clampf((pl.global_position.y - (lvl.underground_y - DEEP_FADE_PX)) / DEEP_FADE_PX, 0.0, 1.0)
-	# jedynym właścicielem koloru ciemności jest poziom (ambient × głębia × tint i błysk pogody — weather_fx.gd); tu tylko wygładzamy mnożnik głębi
+	# światło otoczenia sceny 3D mnoży ten współczynnik (view3d.gd: _sync_weather); tu tylko wygładzamy mnożnik głębi
 	_depth_mult = lerpf(_depth_mult, lerpf(1.0, DEEP_DARK, depth), clampf(delta * 1.5, 0.0, 1.0))
 	lvl.apply_depth_darkness(_depth_mult)
 

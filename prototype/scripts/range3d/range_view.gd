@@ -22,6 +22,7 @@ const RangeOptic := preload("res://scripts/range3d/range_optic.gd")
 const OPTIC_IN := Vector2(0.8, 0.97)          ## postęp przyrządów, w którym model broni z optyką gaśnie, a nakładka optyki wchodzi (range_optic.gd)
 const GUN_BASIS := Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))   ## układ broni (x lufa, y góra, z prawo) → kamera (−z w przód)
 
+const RANGE_EXPOSURE := 1.3                   ## ekspozycja tunelu przy jasności 0 EV (AgX)
 const VM_FOV := 58.0                          ## ° — kąt kamery rąk i broni (węższy: bez rozciągania na brzegach, jak w grach FPP)
 const LAYER_VM := 2                           ## warstwa rąk i broni: rysuje je tylko kamera rąk, zawsze nad tunelem (bez wchodzenia w ławę)
 const TEX := "res://art/world3d/"
@@ -722,7 +723,7 @@ func _build_env() -> void:
 	env.ambient_light_color = Color(0.30, 0.29, 0.28)
 	env.ambient_light_energy = 0.3
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX                # AgX: jasne partie (podłoga pod lampą, rękawy) bez przepalenia do bieli
-	env.tonemap_exposure = 1.3
+	env.tonemap_exposure = RANGE_EXPOSURE * Settings.exposure_mult()    # jasność z ustawień (ekran kalibracji) także w tunelu
 	env.glow_enabled = true
 	env.glow_intensity = 0.5
 	env.glow_bloom = 0.04
@@ -737,6 +738,7 @@ func _build_env() -> void:
 	var we := WorldEnvironment.new()
 	we.environment = env
 	_world.add_child(we)
+	Settings.changed.connect(func() -> void: env.tonemap_exposure = RANGE_EXPOSURE * Settings.exposure_mult())
 
 func _build_tunnel() -> void:
 	var w := RangeSim.LANE_W
