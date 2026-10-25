@@ -1238,8 +1238,10 @@ func _drive_tiers(delta: float) -> void:
 		(c as Control).self_modulate.a = lerpf(1.0, 0.45, (1.0 - _tier_k) * 2.0)
 	# ściemnienie pod karta wyniku i warsztatem
 	var ws := get_tree().get_first_node_in_group("workshop_ui")
-	var modal: bool = _result.visible or (ws != null and ws.is_open())
+	var bench: bool = ws != null and ws.is_open()
+	var modal: bool = _result.visible or bench
 	_dim.visible = modal
+	_dim.color.a = 0.92 if bench and not _result.visible else 0.5      # warsztat zakrywa cały ekran: karty HUD nie prześwitują przez panel
 	if modal:
 		_dim.size = size
 

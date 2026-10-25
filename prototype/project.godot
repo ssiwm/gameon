@@ -4,7 +4,7 @@ config_version=5
 [application]
 
 config/name="Dead Air '87 Prototype"
-config/version="1.7.385"
+config/version="1.7.386"
 config/description="Co-op horror run-and-gun prototype: 8-dir movement, 2-player online, noise-driven stalker."
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
@@ -55,5 +55,5 @@ environment/defaults/default_clear_color=Color(0.035, 0.045, 0.07, 1)
 
 [internationalization]
 
-locale/translations=PackedStringArray("res://translations/ui.pl.translation")
+locale/translations=PackedStringArray("res://translations/ui.pl.translation", "res://translations/plural.pl.translation")
 locale/fallback="en"

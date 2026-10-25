@@ -304,11 +304,13 @@ func _present_summary() -> void:
 			value_label.add_theme_color_override("font_color", Color("285135") if kind > 0 else Color("713b21"))
 		_summary.add_child(value_label)
 	if not _show_details and changes.size() > 4:
-		_summary.add_child(_ink(tr("%d more changes in parameters") % (changes.size() - 4), 8))
+		var more := changes.size() - 4
+		_summary.add_child(_ink(tr_n("%d more change in parameters", "%d more changes in parameters", more) % more, 8))      # formy mnogie: translations/plural.csv
 	var desc := _ink(String(_payload["description"]), 8)
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_summary.add_child(desc)
-	var scope := _ink(tr("Configuration + loaded ammo. Handling also depends on wear, heat and mastery."), 7)
+	var scope := _ink(tr("Configuration only. Handling also depends on the edge and mastery.") if bool(_payload.get("melee", false))
+		else tr("Configuration + loaded ammo. Handling also depends on wear, heat and mastery."), 7)
 	scope.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_summary.add_child(scope)
 	_details.text = (tr("Main changes") if _show_details else tr("All parameters")) + " · " + Actions.text("menu_details")

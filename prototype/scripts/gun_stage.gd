@@ -66,6 +66,17 @@ const PULL_DIR := {
 	"stock": Vector3(-1.0, 0.0, 0.0), "optic": Vector3(0.0, 1.0, 0.0), "edge": Vector3(0.0, 1.0, 0.0), "head": Vector3(0.0, 1.0, 0.0),
 	"special": Vector3(0.0, -1.0, 0.0),
 }
+## Fabryczne podzespoły typowe dla gniazda, gdy żadna jego część nie ma `hides` (P-83: magazynek, PELLET-8: czółenko). Pomijane, jeśli
+## podzespół należy już do innego gniazda tej broni (kilof: głowica to gniazdo „head”, nie „edge”).
+const SLOT_COMPS := {
+	"feed": ["mag", "tube", "tank"], "barrel": ["front", "barrel"], "muzzle": ["muzzle"], "action": ["bolt", "pump"],
+	"stock": ["stock", "grip", "saddle"], "optic": ["optic"], "edge": ["blade"], "head": ["head"],
+}
+## Gniazdo bez żadnego podzespołu (mechanizm, lufa w osłonie): punkt na długości broni, 0 = tył, 1 = wylot. Lufa i wylot leżą na osi
+## przewodu, reszta w środku przekroju bryły w tym miejscu — nie w środku obrysu, który u SPREAD-12 wypada w bębnie.
+const SLOT_ALONG := {
+	"stock": 0.1, "feed": 0.38, "action": 0.55, "special": 0.65, "optic": 0.5, "barrel": 0.78, "edge": 0.92, "head": 0.92, "muzzle": 1.0,
+}
 
 var _vp: SubViewport
 var _camera: Camera3D
@@ -91,6 +102,7 @@ var _sig := ""                                ## co pokazujemy (broń, części,
 var _fit_key := ""                            ## broń i proporcje, dla których liczono kadr (kadr stały dla broni — nie skacze przy zmianie części)
 var _fit_k := 1.0
 var _fit_c := Vector3.ZERO
+var _anchors := {}                            ## gniazdo bez podzespołu → punkt w układzie modelu (dla bieżącego modelu)
 var _hl: Array = []                           ## węzły podświetlone (część albo fabryczne podzespoły gniazda)
 var _hl_dir := Vector3.ZERO
 var _pull := 0.0
@@ -202,6 +214,7 @@ func show_gun(w: int, ids: Array, hl_part: String, hl_slot: String, locked: bool
 			return
 		var bm: Vector3 = Char3D.gun_info(key)["muzzle"]
 		_model = GunModel.build(key, ids, bm, nt, deep)
+		_anchors.clear()
 		_pivot.add_child(_model)
 		_place()
 		_collect_comps()
@@ -248,7 +261,64 @@ func _slot_targets(root: Node3D, key: String, id: String, slot: String) -> Array
 		for mesh in root.find_children("*__*", "MeshInstance3D", true, false):
 			if names.has(String(mesh.name).get_slice("__", 1)):
 				targets.append(mesh)
+		if names.is_empty():
+			var claimed := {}
+			for part in Parts.of(key):
+				for hidden in GunModel.part_info(String(part["id"])).get("hides", []):
+					claimed[String(hidden)] = true
+			var typical := {}
+			for comp in SLOT_COMPS.get(slot, []):
+				if not claimed.has(comp):
+					typical[comp] = true
+			for mesh in root.find_children("*__*", "MeshInstance3D", true, false):
+				if typical.has(String(mesh.name).get_slice("__", 1)):
+					targets.append(mesh)
 	return targets
+
+## Punkt gniazda bez podzespołu w układzie modelu: przekrój bryły w miejscu z SLOT_ALONG (lufa i wylot na osi przewodu).
+func _slot_anchor(slot: String) -> Vector3:
+	if _anchors.has(slot):
+		return _anchors[slot]
+	var points := PackedVector3Array()
+	for mesh in _model.find_children("*", "MeshInstance3D", true, false):
+		var mi := mesh as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var xf := GunModel._xf_in(mi, _model)
+		for v in mi.mesh.get_faces():
+			points.append(xf * v)
+	if points.is_empty():
+		return _fit_c
+	var lo := points[0]
+	var hi := points[0]
+	for v in points:
+		lo = lo.min(v)
+		hi = hi.max(v)
+	var muzzle := GunModel.barrel_muzzle(Char3D.gun_info(String(Weapons.def(_weapon).key))["muzzle"], _ids)
+	var fwd := 1.0 if muzzle.x >= (lo.x + hi.x) * 0.5 else -1.0
+	var rear := lo.x if fwd > 0.0 else hi.x
+	var length := maxf(absf(muzzle.x - rear), 0.001)
+	var x := rear + fwd * float(SLOT_ALONG.get(slot, 0.5)) * length
+	var anchor := Vector3(x, (lo.y + hi.y) * 0.5, (lo.z + hi.z) * 0.5)
+	if slot == "barrel" or slot == "muzzle":
+		anchor = Vector3(x, muzzle.y, muzzle.z)
+	else:
+		for half in [0.04 * length, 0.1 * length]:
+			var sum := Vector3.ZERO
+			var top := -INF
+			var count := 0
+			for v in points:
+				if absf(v.x - x) <= half:
+					sum += v
+					top = maxf(top, v.y)
+					count += 1
+			if count > 0:
+				anchor = sum / float(count)
+				if slot == "optic":
+					anchor.y = top
+				break
+	_anchors[slot] = anchor
+	return anchor
 
 func _slot_id(ids: Array, slot: String) -> String:
 	for id in ids:
@@ -268,8 +338,8 @@ func slot_screen_position(slot: String) -> Vector2:
 			center += (mesh as Node3D).global_transform * (mesh as MeshInstance3D).get_aabb().get_center()
 			count += 1
 	if count == 0:
-		# Wewnętrzny mechanizm: rzeczywisty środek korpusu, bez fikcyjnego zewnętrznego modelu.
-		center = _model.global_transform * _fit_c
+		# Wewnętrzny mechanizm albo lufa w osłonie: punkt na bryle w miejscu tego gniazda, bez fikcyjnego zewnętrznego modelu.
+		center = _model.global_transform * _slot_anchor(slot)
 	else:
 		center /= float(count)
 	return _camera.unproject_position(center) * size / Vector2(_vp.size)

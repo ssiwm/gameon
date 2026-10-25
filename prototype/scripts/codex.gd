@@ -254,7 +254,8 @@ static func _weapon_stats(d: WeaponDef) -> Array:
 	elif d.kind == WeaponDef.Kind.RAIL:
 		rate = "%.1f s charge" % d.charge_time
 	var noise := "%.1f" % d.n_min if is_equal_approx(d.n_min, d.n_max) else "%.1f → %.1f" % [d.n_min, d.n_max]
-	var out: Array = [["Damage", dmg], ["Fire rate", rate], ["Range", "%d m" % int(round(d.range_m()))]]
+	var melee := d.kind == WeaponDef.Kind.MELEE                       # broń biała: tempo ciosów i zasięg ręki, nie szybkostrzelność
+	var out: Array = [["Damage", dmg], ["Swing rate" if melee else "Fire rate", rate], ["Reach" if melee else "Range", "%d m" % int(round(d.range_m()))]]
 	if d.uses_ammo():
 		var ammo := "%d" % d.mag
 		ammo += " + ∞" if d.infinite else " + %d" % d.reserve_start

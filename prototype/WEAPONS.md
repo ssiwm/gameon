@@ -720,7 +720,7 @@ Regresje: `scripts/cabinet_test.gd` i `tools/test_cabinets.sh` (lokalne oraz dwa
 
 ### Prezentacja montażu na ławie od 1.7.385
 
-ARMS używa `gunsmith_panel.gd`: stojak noszonej broni / pełna lista, model na macie 3D, kotwice gniazd z istniejących mesh i metadanych `hides`, taca wybranej części oraz karta konfiguracji. Wszystkie 12 broni korzysta z `Parts.slots_of`; podzespoły wewnętrzne bez widocznej zmiany wskazują korpus i opis na karcie. Nie powstaje drugi system części ani cen.
+ARMS używa `gunsmith_panel.gd`: stojak noszonej broni / pełna lista, model na macie 3D, kotwice gniazd z istniejących mesh i metadanych `hides`, taca wybranej części oraz karta konfiguracji. Wszystkie 12 broni korzysta z `Parts.slots_of`; gniazdo bez części z `hides` wskazuje typowy fabryczny podzespół (`GunStage.SLOT_COMPS`: magazynek, czółenko, ostrze…), a bez niego punkt na bryle w miejscu gniazda (`SLOT_ALONG`: lufa na osi przewodu, kolba z tyłu) — od 1.7.386 każde gniazdo ma własny znacznik i klik w niego wybiera to gniazdo. Broń biała ma na karcie „Tempo ciosów” (Swing rate) i „Reach” zamiast „Range”, a gniazdo kolby nazywa się „Rękojeść”. Nie powstaje drugi system części ani cen.
 
 `WorkshopUI._inspect` ustawia neutralny wybór; fabryczny element jest osobną operacją. `_refresh_detail` porównuje bieżący montaż i kopię z wybranym wariantem / całym zestawem przy zachowaniu rodzaju naboju. Cztery główne różnice mają podpisy korzyści i kompromisów; pełne parametry obejmują także masę zestawu. Karta opisuje konfigurację, a nie dynamiczny wynik strzału z ruchem, zużyciem, temperaturą i wprawą.
 

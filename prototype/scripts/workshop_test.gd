@@ -397,6 +397,9 @@ func _immersive() -> void:
 	var all_bounds := true
 	var all_effects := true
 	var all_rotations := true
+	var all_anchors := true
+	var distinct_fail: Array = []
+	var sp12_barrel := false
 	var shotgun: RefCounted = Weapons.base_def(Weapons.SPREAD12)
 	check("wartość obrażeń śrutu korzysta z tłumaczenia karty", ui._comparison_rows(shotgun).any(func(row: Array) -> bool: return row[0] == tr("Damage") and row[1] == tr("%d × %d pellets") % [int(shotgun.damage), shotgun.pellets]))
 	var unlocked: Dictionary = Scrap.unlocked.duplicate()
@@ -418,6 +421,21 @@ func _immersive() -> void:
 			ui._pick_slot(String(slot))
 			var point: Vector2 = ui._d_stage.slot_screen_position(String(slot))
 			all_slots = all_slots and ui._bench_slot == slot and point.is_finite() and Rect2(Vector2.ZERO, ui._d_stage.size).has_point(point)
+		# Gniazda bez własnego podzespołu nie dzielą jednego punktu (dawniej środek obrysu: u SPREAD-12 lufa wskazywała bęben).
+		var anchors := {}
+		for slot in Parts.slots_of(gun_key):
+			anchors[String(slot)] = ui._d_stage.slot_screen_position(String(slot))
+		for a in anchors:
+			for b in anchors:
+				if String(a) < String(b) and (anchors[a] as Vector2).distance_to(anchors[b]) < 2.0:
+					all_anchors = false
+					distinct_fail.append("%s %s/%s" % [gun_key, a, b])
+			if ui._d_stage.slot_at(anchors[a]) != String(a):
+				all_anchors = false
+				distinct_fail.append("%s klik %s→%s" % [gun_key, a, ui._d_stage.slot_at(anchors[a])])
+		if gun_key == "spread12":
+			var barrel: Vector2 = anchors["barrel"]
+			sp12_barrel = barrel.distance_to(anchors["muzzle"]) < barrel.distance_to(anchors["feed"])
 		ui._d_stage._yaw = 0.65
 		ui._d_stage._pitch = 0.45
 		ui._d_stage._idle = 0
@@ -443,6 +461,8 @@ func _immersive() -> void:
 	Scrap.unlocked = unlocked
 	check("nowa ława pokazuje wszystkie 12 rzeczywistych modeli", all_models)
 	check("wszystkie gniazda mają dostępny wybór i kotwicę w kadrze", all_slots)
+	check("każde gniazdo ma własny znacznik, a klik w znacznik wybiera to gniazdo %s" % str(distinct_fail), all_anchors)
+	check("znacznik lufy SPREAD-12 leży przy lufie, nie na bębnie", sp12_barrel)
 	check("stały kadr obejmuje wszystkie kombinacje części z modelami", all_bounds)
 	check("pełna karta obejmuje dodatkowe efekty części każdej broni", all_effects)
 	check("obrót żadnej broni nie chowa jej wewnątrz blatu", all_rotations)
