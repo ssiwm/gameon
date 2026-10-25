@@ -172,7 +172,8 @@ pieką się deterministycznie (dwa przebiegi = te same sumy).
 | `stalker_whisper_loop` | z nagrań | niski, powolny oddech: nagrany wydech obniżony o oktawę, wdech to ten sam wydech odwrócony, pod spodem falujący niski ton; cykl 7 s. Wcześniej: nagrany ludzki szept odrzucony na rzecz syntezy, a jasny syk syntezy okazał się w grze za mało mroczny. Synteza w repo też jest teraz o oktawę niżej, z dronem |
 | `step_metal` ×5, `step_dirt` ×5, `step_water` ×5 | z nagrań | pojedyncze kroki z nagranych marszów (blacha, ziemia, kałuża), jak beton z bramki A |
 | `land_hard` | z nagrań | lądowanie w butach na obie stopy, obniżone, z uderzeniem w dole pasma (pierwsza wersja — nagrany upadek ciała — w grze brzmiała jak przewrócenie się po każdym podskoku) |
-| `amb_forest`, `amb_rain`, `amb_rain_roof` | z nagrań | pętle stereo 16 s z najrówniejszego fragmentu nagrania (zimowy las nocą, ulewa, deszcz o daszek), szew przenikany 1,5 s |
+| `amb_forest` | z nagrań | nocny las bez zwierząt (szum koron), pętla stereo 60 s z najrówniejszego fragmentu, szew przenikany 1,5 s. Wcześniej: zimowy las nocą z wyciem wilków w pętli 16 s — wycie wracało ok. 225 razy na godzinę i męczyło w dłuższej grze (2026-10-25) |
+| `amb_rain`, `amb_rain_roof` | z nagrań | pętle stereo 16 s z najrówniejszego fragmentu nagrania (ulewa, deszcz o daszek), szew przenikany 1,5 s |
 | `amb_wind` | z nagrań | górski wiatr, ta sama technika pętli; przy pierwszym odsłuchu odrzucony, przy drugim wybrany |
 | `door` ×2 | z nagrań | skrzyp metalowego zawiasu + uderzenie skrzydła, pogłos blaszanego korytarza |
 | `glass_break` ×2 | z nagrań | wybite okno z odłamkami; uderzenie w szkło + rozsypanie odłamków |
