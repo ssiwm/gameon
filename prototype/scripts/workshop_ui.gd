@@ -583,7 +583,7 @@ func _build_look() -> HBoxContainer:
 	v.add_child(_l_tag)
 	_pal_row = HBoxContainer.new()                       # paleta kolorów stroju: tylko dla modeli 3D
 	_pal_row.add_theme_constant_override("separation", 5)
-	_pal_row.add_child(UiTheme.label("COLOR", 8, UiTheme.BP_MUTED))
+	_pal_row.add_child(UiTheme.label(tr("COLOR"), 8, UiTheme.BP_MUTED))
 	for pi in Look.PALETTES.size():
 		var pb := Button.new()
 		pb.focus_mode = Control.FOCUS_NONE
@@ -623,7 +623,7 @@ func _act_look() -> void:
 		_say(tr("Already wearing %s.") % Look.display_name(c), UiTheme.BP_MUTED)
 	elif Profile.set_look(c):
 		Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
-		_say(tr("%s (%s) equipped.") % [Look.display_name(c), Look.gender_id(c)], UiTheme.OK)
+		_say(tr("%s (%s) equipped.") % [Look.display_name(c), tr(Look.gender_id(c).capitalize())], UiTheme.OK)
 	else:
 		_say(tr("Unlocks at level %d.") % Look.unlock_level(c), UiTheme.DANGER)
 
@@ -665,8 +665,8 @@ func _refresh_look() -> void:
 	vw.call("set_code", c)
 	vw.modulate = Color.WHITE if Look.is_unlocked(c, lvl) else Color(0.35, 0.4, 0.45)
 	_l_title.text = Look.display_name(c)
-	_l_tag.text = tr("%s  ·  unlocks at level %d") % [Look.gender_id(c).to_upper(), Look.unlock_level(c)]
-	_l_text.text = String(Look.OUTFIT_TEXT[Look.outfit_id(c)]) + "\n\nCosmetic only — other players see your look too."
+	_l_tag.text = tr("%s  ·  unlocks at level %d") % [tr(Look.gender_id(c).capitalize()).to_upper(), Look.unlock_level(c)]
+	_l_text.text = tr(String(Look.OUTFIT_TEXT[Look.outfit_id(c)])) + "\n\n" + tr("Cosmetic only — other players see your look too.")
 	_l_action.disabled = false
 	_l_action.text = "Wearing" if Profile.look == c else ("Equip" if Look.is_unlocked(c, lvl) else "Locked — level %d" % Look.unlock_level(c))
 
@@ -867,13 +867,13 @@ func _refresh_perks() -> void:
 	var unlocked2 := Profile.is_unlocked(id2)
 	var at2 := _perk_slot_of(id2)
 	_p_icon.set_perk(id2, Color.WHITE if unlocked2 else Color(0.55, 0.6, 0.65))
-	_p_title.text = String(d["name"]).to_upper()
+	_p_title.text = tr(String(d["name"])).to_upper()
 	_p_tag.text = tr("Perk  ·  unlocks at level %d") % int(d["level"])
 	for ch in _p_stats.get_children():
 		_p_stats.remove_child(ch)
 		ch.free()
-	var status := "Equipped — slot %d" % (at2 + 1) if at2 >= 0 else ("Available" if unlocked2 else "Locked — reach level %d" % int(d["level"]))
-	for r in [["Status", status], ["Slots", "%d of 2 open" % Profile.slots()]]:
+	var status := tr("Equipped — slot %d") % (at2 + 1) if at2 >= 0 else (tr("Available") if unlocked2 else tr("Locked — reach level %d") % int(d["level"]))
+	for r in [["Status", status], ["Slots", tr("%d of 2 open") % Profile.slots()]]:
 		_p_stats.add_child(UiTheme.label(String(r[0]), 9, UiTheme.BP_MUTED))
 		_p_stats.add_child(UiTheme.label(String(r[1]), 9, UiTheme.OK if at2 >= 0 and String(r[0]) == "Status" else UiTheme.BP_TEXT))
 		_p_stats.add_child(Control.new())
@@ -1129,6 +1129,9 @@ func _process(delta: float) -> void:
 	var overhead := maxf(118.0, _card.size.y - _workbench.size.y)
 	_workbench.custom_minimum_size = Vector2(clampf(size.x / card_scale - 34.0, 606.0, 1050.0), clampf(size.y / card_scale - overhead - 14.0, 190.0, 620.0))
 	_card.scale = Vector2.ONE * card_scale
+	# Kontener sam się nie kurczy: po wyższej stronie (zaopatrzenie, inne stanowisko) karta ławy ×1,4 wychodziła poza ekran.
+	if not _card.size.is_equal_approx(_card.get_combined_minimum_size()):
+		_card.reset_size()
 	_card.position = ((size - _card.size * card_scale) * 0.5).round()
 
 func _exit_tree() -> void:
@@ -1866,11 +1869,11 @@ func _refresh_supplies() -> void:
 	_s_icon.set_item(k2, Color.WHITE)
 	_s_title.text = String(d["name"])
 	var mode: String = {"throw": "Throwable", "place": "Placed", "use": "Tool", "ammo": "Ammunition"}[String(d["mode"])]
-	_s_tag.text = "%s  ·  %s" % [String(d["full"]), mode]
+	_s_tag.text = "%s  ·  %s" % [tr(String(d["full"])), tr(mode)]
 	for ch in _s_stats.get_children():
 		_s_stats.remove_child(ch)
 		ch.free()
-	var rows: Array = [["Carried", "%d / %d" % [have2, maxn]], ["Issued free", "%d per mission" % int(d["issue"]) if int(d["issue"]) > 0 else "—"]]
+	var rows: Array = [["Carried", "%d / %d" % [have2, maxn]], ["Issued free", tr("%d per mission") % int(d["issue"]) if int(d["issue"]) > 0 else "—"]]
 	if Throwables.is_ammo(k2):
 		var ct := Ammo.from_kind(k2)
 		var users: Array = []
@@ -1882,7 +1885,7 @@ func _refresh_supplies() -> void:
 	elif d.has("noise"):
 		rows.append(["Noise", "%.0f" % float(d["noise"])])
 	elif k2 in ["frag", "charge"]:
-		rows.append(["Noise", "explosion"])
+		rows.append(["Noise", tr("explosion")])
 	if Throwables.FUSES.has(k2):
 		var fo: Array = Throwables.FUSES[k2]
 		var fi := Scrap.fuse_index(k2)
@@ -2006,12 +2009,12 @@ func _refresh_detail(w: int) -> void:
 	(_d_stage as GunStage).set_dirt((1.0 - Profile.condition(key) / 100.0) if unlocked and not base.is_melee() else 0.0)   # brud wg stanu broni (W2)
 	(_d_stage as GunStage).set_strip(_clean_w == w)
 	_d_title.text = String(base.name)
-	var tag := Codex._slot_name(base)
+	var tag := tr(Codex._slot_name(base))
 	if unlocked and not Parts.of(key).is_empty():
 		tag += tr("  ·  UNLOCKED %d / %d") % [Scrap.parts_owned(w), Parts.of(key).size()]
 		tag += tr("  ·  FITTED %d") % Parts.decode(key, mine).size()
 	elif not unlocked:
-		tag += "  ·  LOCKED"
+		tag += tr("  ·  LOCKED")
 	if unlocked and Profile.kills(key) > 0:
 		tag += tr("  ·  KILLS %d") % Profile.kills(key)                    # historia broni (etap 5b)
 	if unlocked:

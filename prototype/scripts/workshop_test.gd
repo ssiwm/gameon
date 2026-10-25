@@ -312,6 +312,15 @@ func _immersive() -> void:
 	var ui := get_tree().get_first_node_in_group("workshop_ui")
 	station("workshop")
 	ui.open("bench")
+	# Wyższa karta zaopatrzenia nie może zostać po powrocie na ławę 3D (skala 1,4) — panel wychodził w lewo i w górę poza ekran.
+	ui._set_page(1)
+	for i in 3:
+		await get_tree().process_frame
+	ui._set_page(0)
+	for i in 3:
+		await get_tree().process_frame
+	var shown := Rect2(ui._card.position, ui._card.size * ui._card.scale)
+	check("po stronie zaopatrzenia ława mieści się na ekranie %s w %s" % [shown, ui.size], Rect2(Vector2.ZERO, ui.size).grow(1.0).encloses(shown))
 	ui._select(0)
 	ui._inspect()
 	ui._workbench._show_all = true

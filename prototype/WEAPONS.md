@@ -404,8 +404,8 @@ LR-7: większy zasobnik ogniw z przewodem (`mag`), obiektyw z osłoną (mocowani
 dysza z lufą i osłoną (`front`, wylot +120 mm); WRATH-4: szybkoładowacz z dwoma granatami pod lufą; FALCON-6: większy bęben taśmy (`mag`), większy
 obiektyw i reflektor IR (`optic`); SPECTER-1: większe kondensatory (`mag`), żeberka chłodzące na cewkach; SINEW-6: zapasowy harpun na boku belki,
 trzecia para gum, grot z dwoma zadziorami i obejmą linki (`tip`); maczeta: długi chwyt (`grip`), cięższa i szersza głownia (`blade`); kilof:
-ciężka głowa i głowa sejsmiczna z obuchem (`head`). Bez modelu zostają części bez widocznej zmiany (mechanizm, mieszanka, głowice granatów,
-dławik, szlif). Test `--weapontest` sprawdza, że każdy zastępowany podzespół istnieje w modelu bazowym.
+ciężka głowa i głowa sejsmiczna z obuchem (`head`); SPREAD-12 (od 1.7.387): obrzynek (lufa ucięta za blokiem gazowym, muszka na bloku) i lufa
+z dławikiem (+60 mm) zastępują przód z lufą (`front`). Bez modelu zostają części bez widocznej zmiany (mechanizm, mieszanka, głowice granatów, szlif). Test `--weapontest` sprawdza, że każdy zastępowany podzespół istnieje w modelu bazowym.
 
 ## 19. Ława rusznikarska w 3D, etap 2c (1.7.323)
 
