@@ -12,14 +12,17 @@ const KEYS := {
 	"landing": [[-1.0,{"drop": 0.0,"lean": 0.0,"pitch": 0.0}],[0.25,{"drop": 0.09,"lean": 6.0,"pitch": -7.0}],[0.58,{"drop": 0.03,"lean": 2.0,"pitch": -2.0}]],
 	# Ciężkie ciosy mają pracę całego ciała i jawny obrót dłoni. Stopy pozostają
 	# podporą; ciężar przesuwa miednica, a odzyskanie równowagi trwa dłużej niż zamach.
-	"smash": [[-1.0,{"lean": 1.0,"drop": 0.01,"shift": 0.0,"pelvis_yaw": 0.0,"chest_yaw": 0.0,"wristR": 0.0,"wristL": 0.0,"hR": Vector3(0.33,1.02,1.04),"hL": Vector3(0.30,1.02,-1.04)}],
-		[-0.72,{"lean": -4.0,"drop": 0.07,"shift": -0.05,"hR": Vector3(0.02,1.45,0.98),"hL": Vector3(0.07,1.42,-0.98),"wristR": -25.0,"wristL": -22.0}],
-		[-0.28,{"lean": -8.0,"drop": 0.02,"shift": -0.06,"hR": Vector3(0.22,2.30,0.71),"hL": Vector3(0.26,2.23,-0.71),"wristR": -95.0,"wristL": -92.0}],
-		[-0.12,{"lean": 1.0,"drop": 0.025,"shift": 0.015,"hR": Vector3(0.64,1.81,0.68),"hL": Vector3(0.60,1.78,-0.68),"wristR": -30.0,"wristL": -30.0}],
-		[0.0,{"lean": 20.0,"drop": 0.09,"shift": 0.10,"hR": Vector3(1.09,1.03,0.66),"hL": Vector3(1.04,1.01,-0.66),"wristR": 55.0,"wristL": 52.0}],
-		[0.13,{"lean": 24.0,"drop": 0.12,"shift": 0.10,"hR": Vector3(0.98,0.86,0.68),"hL": Vector3(0.94,0.86,-0.68),"wristR": 50.0,"wristL": 48.0}],
-		[0.48,{"lean": 13.0,"drop": 0.065,"shift": 0.05,"hR": Vector3(0.60,0.98,0.93),"hL": Vector3(0.56,0.98,-0.93),"wristR": 20.0,"wristL": 18.0}],
-		[0.84,{"lean": 3.0,"drop": 0.02,"shift": 0.005,"hR": Vector3(0.35,1.02,1.04),"hL": Vector3(0.32,1.02,-1.04),"wristR": 2.0,"wristL": 2.0}]],
+	# Wołek (smash): pięści splecione wysoko i za głową — z boku, w kamerze gry, muszą wystawać ponad garb, a nie chować się nad barkami;
+	# krótkie zawieszenie w szczycie, potem młot obiema pięściami w grunt przed sobą z wykrokiem przedniej nogi (fR).
+	"smash": [[-1.0,{"lean": 1.0,"drop": 0.01,"shift": 0.0,"pelvis_yaw": 0.0,"chest_yaw": 0.0,"wristR": 0.0,"wristL": 0.0,"hR": Vector3(0.33,1.02,1.04),"hL": Vector3(0.30,1.02,-1.04),"fR": Vector3.ZERO}],
+		[-0.72,{"lean": -3.0,"drop": 0.09,"shift": -0.04,"hR": Vector3(-0.02,1.55,0.92),"hL": Vector3(0.02,1.52,-0.92),"wristR": -30.0,"wristL": -28.0}],
+		[-0.40,{"lean": -14.0,"drop": 0.0,"shift": -0.08,"hR": Vector3(-0.30,2.62,0.42),"hL": Vector3(-0.27,2.58,-0.42),"wristR": -100.0,"wristL": -98.0,"fR": Vector3(0.0,0.10,0.0)}],
+		[-0.20,{"lean": -15.0,"drop": 0.0,"shift": -0.08,"hR": Vector3(-0.32,2.66,0.40),"hL": Vector3(-0.29,2.62,-0.40),"wristR": -105.0,"wristL": -102.0,"fR": Vector3(0.06,0.12,0.0)}],
+		[-0.08,{"lean": 2.0,"drop": 0.03,"shift": 0.03,"hR": Vector3(0.50,2.15,0.36),"hL": Vector3(0.47,2.12,-0.36),"wristR": -30.0,"wristL": -30.0,"fR": Vector3(0.20,0.05,0.0)}],
+		[0.0,{"lean": 26.0,"drop": 0.15,"shift": 0.12,"hR": Vector3(1.08,0.58,0.32),"hL": Vector3(1.05,0.58,-0.32),"wristR": 60.0,"wristL": 58.0,"fR": Vector3(0.24,0.0,0.0)}],
+		[0.13,{"lean": 28.0,"drop": 0.18,"shift": 0.12,"hR": Vector3(1.02,0.48,0.34),"hL": Vector3(0.99,0.48,-0.34),"wristR": 55.0,"wristL": 52.0,"fR": Vector3(0.24,0.0,0.0)}],
+		[0.48,{"lean": 14.0,"drop": 0.08,"shift": 0.05,"hR": Vector3(0.62,0.90,0.85),"hL": Vector3(0.58,0.90,-0.85),"wristR": 20.0,"wristL": 18.0,"fR": Vector3(0.12,0.0,0.0)}],
+		[0.84,{"lean": 3.0,"drop": 0.02,"shift": 0.005,"hR": Vector3(0.35,1.02,1.04),"hL": Vector3(0.32,1.02,-1.04),"wristR": 2.0,"wristL": 2.0,"fR": Vector3(0.02,0.0,0.0)}]],
 	"cleave": [[-1.0,{"lean": 2.0,"drop": 0.01,"shift": 0.0,"sway": 0.0,"pelvis_yaw": 0.0,"chest_yaw": 0.0,"wristR": 0.0,"wristL": 0.0,"hR": Vector3(0.09,0.88,0.72),"hL": Vector3(0.16,0.89,-0.72)}],
 		[-0.68,{"lean": -3.0,"drop": 0.04,"shift": -0.04,"sway": 0.015,"pelvis_yaw": -5.0,"chest_yaw": -12.0,"hR": Vector3(-0.10,1.48,0.79),"hL": Vector3(0.22,1.10,-0.71),"wristR": -65.0,"wristL": 8.0}],
 		[-0.25,{"lean": -6.0,"drop": 0.01,"shift": -0.035,"pelvis_yaw": -7.0,"chest_yaw": -18.0,"hR": Vector3(0.15,2.30,0.47),"hL": Vector3(0.32,1.20,-0.68),"wristR": -155.0,"wristL": 12.0}],

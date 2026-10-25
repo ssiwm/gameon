@@ -23,7 +23,12 @@ const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Lev
 const SPEC := {
 	# Cykl 0.5 s: dwie długości kroku z retargetowanego klipu / prędkość z DEFS.
 	# Przy cyklu 1 s ciało przemieszczało się dwa razy szybciej niż podparcie nóg.
-	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 0.5, "prof": {"lean": 1.0, "lean_walk": 4.0}, "body_motion": true, "walk_clip": "zombie", "clips": true, "clip_amp": 0.6, "stun": true},
+	# Oczy: tekstura ma ledwie kilka ciepłych pikseli, więc maska HSV nie dawała zapowiedzi — świecą kulki przy kości głowy (`eye_lamp`:
+	# emisja jak `eye_glow` + ciepłe światło w zapowiedzi). `flare`: ciepła obwódka ciała w ostatniej ćwiartce sekundy zapowiedzi.
+	# `death_floor`: upadek opiera się na najniższym punkcie skóry (przewrót wokół stóp wbijał głowę i rogi w podłogę).
+	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 0.5, "prof": {"lean": 1.0, "lean_walk": 4.0}, "body_motion": true, "walk_clip": "zombie", "clips": true, "clip_amp": 0.6, "stun": true,
+		"eyes": true, "eye_off": [0.33, 0.118, 0.073], "eye_r": 0.028, "eye_lamp": true, "flare": 0.7,
+		"death": {"dir": -1.0, "lean": 12.0, "tilt": 70.0, "dur": 1.2}, "death_floor": true},
 	# Rzeźnik (F4e): model z TRELLIS-a z osobnym tasakiem przypiętym do prawej dłoni (`tools/rig_trellis.py`, art/enemy3d/rzeznik.glb)
 	"rzeznik": {"fit": ["height", 44.0], "frame_h": 58.0, "cycle": 0.5, "prof": {"windup": "cleave", "lean": 2.0, "lean_walk": 5.0}, "body_motion": true, "walk_clip": "human", "eye_glow": 0.0, "attack_kind": "cleave", "clips": true, "clip_amp": 0.6, "stun": true},
 	"slepiec": {"fit": ["height", 27.0], "frame_h": 32.0, "cycle": 1.0, "prof": {"hy": 0.50, "hz": 0.35, "windup": "claw"}, "clips": true, "attack_kind": "claw", "walk_clip": "zombie",
@@ -68,6 +73,7 @@ uniform float normal_strength = 1.0;
 uniform vec4 mod = vec4(1.0);
 uniform float eye_glow = 1.4;
 uniform float sil = 0.06;              // słaba, chłodna sylwetka widoczna w całkowitej ciemności (jak warstwa `Silhouette` arkuszy HD w 2D)
+uniform float flare = 0.0;             // 0..1: ciepła obwódka ciała tuż przed ciosem (SPEC `flare`), czytelna także w ciemności
 //VERTEX
 vec3 rgb2hsv(vec3 c) {
 	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
@@ -88,6 +94,7 @@ void fragment() {
 	float eye = smoothstep(0.05, 0.075, h.x) * (1.0 - smoothstep(0.17, 0.2, h.x)) * smoothstep(0.55, 0.68, h.y) * smoothstep(0.5, 0.65, h.z);
 	ALBEDO = c * clamp(mod.rgb, 0.0, 1.0);
 	EMISSION = c * eye * eye_glow + max(mod.rgb - vec3(1.0), vec3(0.0)) * 0.28 + c * vec3(0.55, 0.70, 1.0) * sil;
+	EMISSION += vec3(1.0, 0.42, 0.12) * flare * pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.5);
 	//ALPHA
 	if (has_normal) {
 		NORMAL_MAP = texture(normal_tex, UV).xyz;
@@ -253,6 +260,8 @@ var _sole_points: Dictionary = {}
 var _sole_samples: Dictionary = {}
 var _ground_cache: Dictionary = {}
 static var _sole_cache: Dictionary = {}
+var _hull: Array = []                        ## próbki otoczki skóry (śmierć: ciało nie wchodzi w podłogę)
+static var _hull_cache: Dictionary = {}
 
 ## Migawka zapowiedzi z symulacji. Zegar modelu nie rozstrzyga trafień.
 func motion_context(info: Dictionary) -> void:
@@ -477,6 +486,109 @@ func _sole_penetration(key: String) -> float:
 	if not is_finite(lowest): return 0.0
 	return clampf(global_position.y + float((ground_profile.get(key, {}) as Dictionary).get("height", 0.0)) + 0.003 - lowest, 0.0, 0.12)
 
+## Otoczka całej skóry: dla każdej kości skrajne punkty jej wierzchołków w 26 kierunkach (rogi, pięści, garb), jak próbki podeszwy.
+## Liczona raz na rodzaj przy budowie modelu (SPEC `death_floor`, ok. 40 ms); koszt w klatce upadku to kilkaset punktów, nie cała siatka.
+func _prepare_hull() -> void:
+	if _hull_cache.has(kind):
+		_hull = _hull_cache[kind]
+		return
+	var directions: Array[Vector3] = []
+	for x in [-1.0, 0.0, 1.0]:
+		for y in [-1.0, 0.0, 1.0]:
+			for z in [-1.0, 0.0, 1.0]:
+				if Vector3(x, y, z) != Vector3.ZERO: directions.append(Vector3(x, y, z))
+	# Pierwszy przebieg tylko szuka skrajnych wierzchołków (bez tablic na wierzchołek); co drugi wierzchołek gęstej siatki wystarcza.
+	var best := {}                               ## kość → [PackedFloat32Array iloczynów, Array [siatka, powierzchnia, wierzchołek]]
+	var meshes := []
+	for node in _model.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.skin == null or mi.mesh == null: continue
+		var xf := _transform_under(_sk, _model).affine_inverse() * _transform_under(mi, _model)
+		var bind_bone := PackedInt32Array()
+		var bind_rest: Array[Transform3D] = []
+		for bind in mi.skin.get_bind_count():
+			var bone := mi.skin.get_bind_bone(bind)
+			if bone < 0: bone = _sk.find_bone(mi.skin.get_bind_name(bind))
+			bind_bone.append(bone)
+			bind_rest.append((_sk.get_bone_global_rest(bone) if bone >= 0 else Transform3D.IDENTITY) * mi.skin.get_bind_pose(bind) * xf)
+		var surfaces := []
+		for surface in mi.mesh.get_surface_count():
+			var arrays := mi.mesh.surface_get_arrays(surface)
+			surfaces.append(arrays)
+			if arrays[Mesh.ARRAY_BONES] == null: continue
+			var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+			var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+			var per := bones.size() / vertices.size()
+			for vertex in range(0, vertices.size(), 2):
+				var point := Vector3.ZERO
+				var main := -1
+				var main_w := 0.0
+				for slot in per:
+					var index := vertex * per + slot
+					var weight := weights[index]
+					if weight < 0.0001 or bind_bone[bones[index]] < 0: continue
+					point += bind_rest[bones[index]] * vertices[vertex] * weight
+					if weight > main_w:
+						main_w = weight
+						main = bind_bone[bones[index]]
+				if main < 0: continue
+				if not best.has(main):
+					var dots := PackedFloat32Array()
+					dots.resize(directions.size())
+					dots.fill(-INF)
+					var refs := []
+					refs.resize(directions.size())
+					best[main] = [dots, refs]
+				var entry: Array = best[main]
+				var dots: PackedFloat32Array = entry[0]
+				for d in directions.size():
+					var value := point.dot(directions[d])
+					if value > dots[d]:
+						dots[d] = value
+						entry[1][d] = Vector3i(meshes.size(), surface, vertex)
+		meshes.append([mi, xf, surfaces, bind_bone])
+	# Drugi przebieg: próbki skinningu (kość, punkt w przestrzeni kości, waga) tylko dla wybranych wierzchołków.
+	var hull := []
+	var seen := {}
+	for bone in best:
+		for ref in (best[bone] as Array)[1]:
+			if ref == null or seen.has(ref): continue
+			seen[ref] = true
+			var at: Vector3i = ref
+			var mi: MeshInstance3D = meshes[at.x][0]
+			var arrays: Array = meshes[at.x][2][at.y]
+			var bind_bone: PackedInt32Array = meshes[at.x][3]
+			var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+			var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+			var per := bones.size() / vertices.size()
+			var sample := []
+			for slot in per:
+				var index := at.z * per + slot
+				if weights[index] < 0.0001 or bind_bone[bones[index]] < 0: continue
+				sample.append([bind_bone[bones[index]], mi.skin.get_bind_pose(bones[index]) * ((meshes[at.x][1] as Transform3D) * vertices[at.z]), weights[index]])
+			hull.append(sample)
+	_hull = hull
+	_hull_cache[kind] = hull
+
+## O ile (m) najniższy punkt otoczki skóry jest pod gruntem pod stopami; 0, gdy nic nie wchodzi w podłogę.
+func _hull_penetration() -> float:
+	if _hull.is_empty():
+		_prepare_hull()
+	var lowest := INF
+	var poses := {}
+	var transform := _sk.global_transform
+	for sample in _hull:
+		var point := Vector3.ZERO
+		for influence in sample:
+			var bone: int = influence[0]
+			if not poses.has(bone): poses[bone] = _gp(bone)
+			point += (poses[bone] as Transform3D) * (influence[1] as Vector3) * float(influence[2])
+		lowest = minf(lowest, (transform * point).y)
+	if not is_finite(lowest): return 0.0
+	return maxf(global_position.y + 0.004 - lowest, 0.0)
+
 ## Działa również podczas setup() przed wejściem modelu do drzewa.
 static func _transform_under(node: Node3D, ancestor: Node3D) -> Transform3D:
 	var result := Transform3D.IDENTITY
@@ -486,6 +598,12 @@ static func _transform_under(node: Node3D, ancestor: Node3D) -> Transform3D:
 		current = current.get_parent() as Node3D
 	return result
 var _eyes: Array = []
+var _eye_light: OmniLight3D                  ## SPEC `eye_lamp`: ciepłe światło z pyska w zapowiedzi ciosu
+const EYE_LIGHT_RANGE := 2.6                 ## m: pysk, ręce i grunt pod Wołkiem
+const EYE_LIGHT_ENERGY := 2.2
+const FLARE_LEAD := 0.25                     ## s przed ciosem: narasta obwódka (SPEC `flare`)
+var _lamp_w := 0.0                           ## 0..1 waga światła z pyska (tylko zapowiedź, nie „zauważył")
+var _flare := 0.0                            ## bieżąca siła obwódki (testy, zrzuty)
 
 ## Klipy jednorazowe i śmierć (modele z `"clips": true` w SPEC): trafienie, atak, śmierć; poza bazowa przechodzi płynnie (wagi), klip leży na wierzchu.
 const CLIP_DUR := {"hit": 0.32, "attack": 0.42}
@@ -620,23 +738,43 @@ func setup(k: String, translucent := false) -> bool:
 			for segment in 5: chain.append(_sk.find_bone(pre + "_Limb_" + str(segment)))
 			if not -1 in chain: _q_limbs[pre] = chain
 	_prepare_soles()
+	if _spec.get("death_floor", false):
+		_prepare_hull()                           # przy budowie modelu, jak podeszwy — nie przycina gry w chwili pierwszej śmierci
 	if _spec.get("eyes", false):
+		var radius := float(_spec.get("eye_r", 0.012))
+		var lamp := bool(_spec.get("eye_lamp", false))
 		for sd in [-1.0, 1.0]:
 			var mi := MeshInstance3D.new()
 			var sph := SphereMesh.new()
-			sph.radius = 0.012
-			sph.height = 0.024
+			sph.radius = radius
+			sph.height = radius * 2.0
 			sph.radial_segments = 8
 			sph.rings = 4
 			mi.mesh = sph
 			var em := StandardMaterial3D.new()
-			em.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			em.albedo_color = Color(1.0, 0.8, 0.25)
+			if lamp:
+				# żar oka jako emisja: jasność ustawia `pose` (jak `eye_glow` tekstury), widoczna bez światła
+				em.albedo_color = Color.BLACK
+				em.emission_enabled = true
+				em.emission = Color(1.0, 0.5, 0.12)
+				em.emission_energy_multiplier = float(_spec.get("eye_glow", 1.4))
+			else:
+				em.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+				em.albedo_color = Color(1.0, 0.8, 0.25)
 			mi.material_override = em
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			mi.set_meta("side", sd)
 			_model.add_child(mi)
 			_eyes.append(mi)
+		if lamp:
+			# zapowiedź ciosu oświetla pysk i grunt przed potworem — sygnał czytelny w nocy, gdy samo ciało ginie w ciemności
+			_eye_light = OmniLight3D.new()
+			_eye_light.light_color = Color(1.0, 0.45, 0.15)
+			_eye_light.omni_range = EYE_LIGHT_RANGE
+			_eye_light.light_energy = 0.0
+			_eye_light.shadow_enabled = false
+			_eye_light.visible = false
+			add_child(_eye_light)                     # pod węzłem bez skali: zasięg w metrach świata
 	return true
 
 func _rest_dist(a: String, b: String) -> float:
@@ -783,6 +921,10 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		var sm := m as ShaderMaterial
 		sm.set_shader_parameter("mod", Vector4(mod.r, mod.g, mod.b, mod.a))
 		sm.set_shader_parameter("eye_glow", eye)
+	if _spec.get("eye_lamp", false):
+		for e in _eyes:
+			((e as MeshInstance3D).material_override as StandardMaterial3D).emission_energy_multiplier = eye
+		_lamp_w = move_toward(_lamp_w, 1.0 if anim == "windup" and not _dead else 0.0, delta * (8.0 if anim == "windup" else 5.0))
 	var moving := anim == "walk" or anim == "run"
 	if moving:
 		var reference: float = float((EnemyDefs.DEFS.get(kind, {}) as Dictionary).get("speed", 95.0))
@@ -793,6 +935,8 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		if is_finite(horizontal_speed) and absf(horizontal_speed) < 0.5:
 			anim = "idle"
 	_advance_motion(delta, anim)
+	if _spec.has("flare"):
+		_update_flare(anim)
 	if _spec.has("deform"):
 		_pose_deform(anim, fr, nfr, loop)
 	elif _spec.get("quad", false):
@@ -804,6 +948,18 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		if not _eyes.is_empty():
 			_place_eyes()
 	_prev_anim = anim
+
+## Obwódka tuż przed ciosem: rośnie w ostatnich FLARE_LEAD s zapowiedzi (czas z symulacji, a bez niego z zegara klipu) i gaśnie po kontakcie.
+func _update_flare(anim: String) -> void:
+	var f := 0.0
+	if not _dead and anim == "windup" and _motion_name != "":
+		var left := _motion_remaining if is_finite(_motion_remaining) else Motion.contact(_motion_name) - _motion_time
+		f = 1.0 - smoothstep(0.0, FLARE_LEAD, left)
+	elif not _dead and _clip == "attack":
+		f = 1.0 - smoothstep(0.0, 0.15, _clip_t)
+	_flare = f * float(_spec["flare"])
+	for m in _mats:
+		(m as ShaderMaterial).set_shader_parameter("flare", _flare)
 
 ## Zdarzenia z gry (view3d.gd): "hit" — trafienie, "attack" — cios po zapowiedzi. Tylko modele z klipami.
 func trigger(clip: String, action := "") -> void:
@@ -867,6 +1023,15 @@ func _place_eyes() -> void:
 		var off: Array = _spec.get("eye_off", [0.085, 0.115, 0.035])
 		var p := rest.origin + Vector3(float(off[0]), float(off[1]), float(off[2]) * float(mi.get_meta("side")))
 		mi.position = rel * (hp * (rest.affine_inverse() * p))
+		mi.visible = not _dead or _dead_t < 0.35                  # zgaszone oczy nie sterczą z leżącego ciała
+	if _eye_light != null:
+		_eye_light.visible = _lamp_w > 0.01
+		_eye_light.light_energy = EYE_LIGHT_ENERGY * _lamp_w * (0.85 + 0.15 * sin(_t * 24.0))
+		if _eye_light.visible and is_inside_tree():
+			# przed pyskiem, by światło padało na ręce i grunt, a nie od środka głowy
+			var eyes_at: Vector3 = ((_eyes[0] as Node3D).global_position + (_eyes[1] as Node3D).global_position) * 0.5
+			var forward := global_transform.basis * Vector3(1.0, 0.0, 0.0)
+			_eye_light.global_position = eyes_at + forward.normalized() * 0.25
 
 ## Wartość z tabeli klatek (liniowo między klatkami; loop: ostatnia łączy się z pierwszą).
 func _tab(a: Array, f: float, loop: bool) -> float:
@@ -1750,8 +1915,14 @@ func _pose_biped(anim: String, delta: float) -> void:
 	if not _dead:
 		_sink_y = 0.0
 	_tilt.basis = Basis(Vector3.BACK, tilt)
-	_tilt.position = Vector3(0.0, lift + _sink_y, 0.0)
+	_tilt.position = Vector3(0.0, lift, 0.0)
 	_apply_biped(p)
+	if _dead:
+		# Przewrót wokół stóp wbijał zgarbionego Wołka głową i rogami w podłogę: ciało (SPEC `death_floor`) opiera się na najniższym
+		# punkcie skóry. Inne rodzaje jeszcze nie: Rzeźnik oparłby się na sztorc na tasaku. Zapadanie się (_sink_y) liczymy od podparcia.
+		if _spec.get("death_floor", false):
+			_tilt.position.y += _hull_penetration()
+		_tilt.position.y += _sink_y
 
 func _apply_biped(p: Dictionary) -> void:
 	var hips: int = _b["Hips"]
