@@ -4473,12 +4473,18 @@ const SKY_STARS := {"clear": 1.0, "rain": 0.0, "storm": 0.0, "fog": 0.1}        
 const SKY_MOON := {"clear": 1.0, "rain": 0.08, "storm": 0.0, "fog": 0.22}         # tarcza księżyca (za chmurami deszczu i w mgle blednie)
 const WIND_K := {"clear": 0.3, "rain": 0.85, "storm": 1.9, "fog": 0.12}             # wiatr w koronach i runie (`Level3D.set_wind`); bez pogody 0,5
 const BACKDROP_VIS := {"clear": 1.0, "rain": 0.55, "storm": 0.45, "fog": 0.25}     # lampki masztu i okno wieży (`backdrop3d.gd`) za deszczem i mgłą
+## Błysk burzy: jaka część błysku pada na plan gry (księżyc i światło otoczenia — oświetlają też postacie). Niebo, chmury, mgła głębi
+## i las (`StormFlash`, warstwa lasu) rozbłyskują w pełni, a plan gry tylko lekko jaśnieje: błyskawica nie odsłania na chwilę całej
+## ciemności, w której stoją postacie i wrogowie (GDD §8.3). Pomiar (1.1, start, burza): plan gry ×2,5 przy pełnym błysku i ×1,4 przy
+## REDUCED (wcześniej ×20,5 i ×4,3); niebo ×29, korony ×37, dno lasu ×67 jak dotąd w tym rzędzie wielkości.
+const FLASH_PLANE := 0.12
+const FLASH_FOREST := 1.3                       ## energia `StormFlash` na lesie przy pełnym błysku (zastępuje dawny pełny błysk księżyca i otoczenia)
 const CANOPY_HAZE_K := {"clear": 1.15, "rain": 0.7, "storm": 0.6, "fog": 0.35}   # zamglenie koron (`Level3D.build_canopy_haze`); w mgle warstwy daje mgła głębi
 
 ## Pogoda w scenie 3D (stan z `weather_fx.gd`: siła `_k`, otwartość nieba `_sky`, rodzaj `_id`, błysk `_flash`; dźwięk zostaje tam):
 ##  - deszcz: smugi kropel w całej głębi sceny (od planu przed graczami po las), pochylone wiatrem, z podmuchami burzy, plus plusk na gruncie;
 ##  - mgła: gęstsza bryła mgły wolumetrycznej z własną bladą poświatą (światła latarki i flar rysują w niej snopy) i bliższa mgła głębi;
-##  - burza: błyskawica to chwilowo jasny księżyc, niebo i światło otoczenia — cienie drzew i postaci na ułamek sekundy.
+##  - burza: błyskawica rozświetla niebo, chmury, mgłę głębi i las w pełni, a plan gry tylko w małej części (FLASH_PLANE).
 func _sync_weather(delta: float) -> void:
 	var wx := get_tree().root.find_child("WeatherFx", true, false)
 	if wx == null:
@@ -4605,7 +4611,7 @@ func _sync_weather(delta: float) -> void:
 			env.set_meta("base_amb", env.ambient_light_energy)
 			env.set_meta("base_fog", env.fog_light_color)
 		var deep = _level.get("depth_mult")                          # głębiej = ciemniej (dread.gd): pod ziemią światło otoczenia słabnie
-		env.ambient_light_energy = float(env.get_meta("base_amb")) * (float(deep) if deep != null else 1.0) + 0.3 * flash
+		env.ambient_light_energy = float(env.get_meta("base_amb")) * (float(deep) if deep != null else 1.0) + 0.3 * flash * FLASH_PLANE
 		env.fog_light_color = (env.get_meta("base_fog") as Color) * (1.0 + 1.6 * fogk + 3.0 * flash)       # w błysku las zostaje sylwetką na jasnym niebie (nie tonie w bieli)
 		if id == "fog":
 			env.fog_depth_begin -= 1.5 * k                        # mgła głębi podchodzi pod sam plan gry (początek ustawia co klatkę _sync_camera)
@@ -4637,8 +4643,12 @@ func _sync_weather(delta: float) -> void:
 	if moon != null:
 		if not moon.has_meta("base_e"):
 			moon.set_meta("base_e", moon.light_energy)
-		moon.light_energy = float(moon.get_meta("base_e")) * lerpf(1.0, float(MOON_K.get(id, 1.0)), k) + 0.7 * flash       # błysk: krótkie cienie drzew i postaci, ale nie dzień
+		moon.light_energy = float(moon.get_meta("base_e")) * lerpf(1.0, float(MOON_K.get(id, 1.0)), k) + 0.7 * flash * FLASH_PLANE      # na planie gry tylko mały udział błysku
 		moon.light_color = Color(0.62, 0.72, 0.95).lerp(Color(0.9, 0.93, 1.0), clampf(flash, 0.0, 1.0))
+	var bolt := _geo.get_node_or_null("StormFlash") as DirectionalLight3D
+	if bolt != null:
+		bolt.visible = flash > 0.001
+		bolt.light_energy = FLASH_FOREST * flash
 
 # ---------------------------------------------------------------- krew
 

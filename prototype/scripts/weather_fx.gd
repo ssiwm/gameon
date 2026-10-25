@@ -26,8 +26,8 @@ const BED_FOREST_ROOF_DB := -19.0
 const BED_AIR_DB := -20.0
 const BED_DRIPS_DB := -22.0
 
-## Dev (--shotflash): błysk na stałe (zrzuty).
-static var dev_flash := false
+## Dev (--shotflash[=K]): stała siła błysku 0..1 zamiast harmonogramu (zrzuty i pomiary; 0 = bez błysków); −1 = harmonogram.
+static var dev_flash := -1.0
 
 var _thunder_done := {}                     ## indeksy błysków, których grzmot już zagrał (dla bieżącego ziarna)
 var _thunder_seed := -1
@@ -81,8 +81,8 @@ func _local_player() -> Node2D:
 
 ## Siła błysku 0..1 w tej chwili. FULL: ostry dwuimpulsowy błysk; REDUCED: miękka poświata (wolne narastanie, 40% amplitudy); dev_flash: stały.
 func _flash(mode: int) -> float:
-	if dev_flash:
-		return 1.0
+	if dev_flash >= 0.0:
+		return dev_flash
 	if mode == Settings.WEATHER_FX_OFF:
 		return 0.0
 	_main = _main if is_instance_valid(_main) else get_tree().current_scene

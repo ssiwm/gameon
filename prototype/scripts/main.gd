@@ -477,7 +477,9 @@ func _handle_cmdline() -> void:
 		if a.begins_with("--shotweather="):
 			Weather.dev_id = a.substr("--shotweather=".length())                                  # dev: wymuś pogodę (clear|rain|storm|fog) do zrzutów
 		if a == "--shotflash":
-			WEATHER_FX.dev_flash = true                                                            # dev: błysk błyskawicy na stałe
+			WEATHER_FX.dev_flash = 1.0                                                             # dev: błysk błyskawicy na stałe
+		elif a.begins_with("--shotflash="):
+			WEATHER_FX.dev_flash = clampf(float(a.substr("--shotflash=".length())), 0.0, 1.0)     # dev: stała siła błysku 0..1 (0 = bez błysków; pomiary A/B)
 		if a == "--char3d-lq":
 			Sprites.char3d = true                                                                  # dev: postać 3D w niskiej jakości (SS 2, bez MSAA) — test kosztu na słabszym GPU
 			load("res://scripts/char3d.gd").set_low_quality(true)
