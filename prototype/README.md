@@ -482,3 +482,9 @@ godot_console --headless --path prototype --script res://tools/test_shutdown.gd 
 Ostatnie polecenie ma zakończyć się kodem **7**; to kontrola zachowania kodu, a nie błąd asercji. `test_shutdown.gd` sprawdza faktycznie uruchomione ambienty / stemy / SFX, zwolnienie strumieni, ponowny start i własność węzłów. Obok podsumowania PASS log nie może zawierać SCRIPT ERROR, Parse Error ani komunikatów o pozostawionych zasobach. Samo `SceneTree.quit()` w zewnętrznym narzędziu z aktywnym audio pomija wspólną ścieżkę zamknięcia; takie narzędzia powinny wywoływać `root.get_node("Audio").quit_game(code)`.
 
 `--shutdown-paused --shutdown-exit=7` sprawdza zamknięcie przy pauzie i time_scale=0. `--shutdowntrace` wypisuje stan audio i faktyczny czas sprzątania z zegara monotonicznego.
+
+Od 1.7.388: komunikaty RenderingDevice przy wyjściu („Attempted to free invalid ID”, „RIDs of type Texture were leaked”) widać tylko z prawdziwym rendererem, nie w headless. Podgląd postaci w szafce (`Char3D`, tryb preview) zostawiał je za każdym razem — `char3d.gd` przy `NOTIFICATION_PREDELETE` odpina teraz tekstury viewportów od sprite'a i `CanvasTexture`, zanim Godot usunie SubViewporty. Kontrola w oknie (ustawienia gracza izolować, np. nieśledzonym `prototype/override.cfg` z `application/config/custom_user_dir_name`):
+
+```powershell
+godot_console --path prototype --resolution 1280x720 --script res://tools/shutdown_render_qa.gd -- --host --mission=z1_hub [--qa-modes=locker]
+```

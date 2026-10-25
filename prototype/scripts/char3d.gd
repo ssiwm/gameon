@@ -382,6 +382,16 @@ func apply_view(zoom: float, win_h: float) -> void:
 	_sprite.scale = Vector2.ONE / float(n)
 	(_sprite.material as ShaderMaterial).set_shader_parameter("width", 0.5 * n)
 
+## Zwolnienie postaci (też przy zamknięciu gry): sprite i CanvasTexture puszczają tekstury viewportów, zanim Godot usunie SubViewporty.
+## Bez tego podgląd z szafki (MSAA, cienie) zostawiał przy wyjściu „Attempted to free invalid ID” w RenderingDevice.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		if _sprite != null:
+			_sprite.texture = null
+		if _canvas_tex != null:
+			_canvas_tex.diffuse_texture = null
+			_canvas_tex.normal_texture = null
+
 func setup(char_name := DEFAULT_CHAR, gun_key := DEFAULT_GUN) -> bool:
 	_ss_now = _q_ss()
 	_vp = SubViewport.new()
