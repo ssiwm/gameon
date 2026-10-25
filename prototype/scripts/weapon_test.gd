@@ -251,7 +251,7 @@ func run_unit(m: Node2D) -> void:
 	await _t_lag()
 	await _t_bot()
 	print("[WTEST] ==== %d/%d OK, błędów: %d ====" % [total - failed, total, failed])
-	get_tree().quit(1 if failed > 0 else 0)
+	Audio.quit_game(1 if failed > 0 else 0)
 
 func _t_data() -> void:
 	var errs := Weapons.validate()
@@ -3661,7 +3661,7 @@ func run_shots(m: Node2D, out_dir: String) -> void:
 	player.aim_dir = Vector2.RIGHT
 	await _snap(out_dir, "13_marks", 2)
 	print("[WTEST] zrzuty zapisane w %s" % out_dir)
-	get_tree().quit(0)
+	Audio.quit_game(0)
 
 func _snap(dir: String, name: String, extra_frames: int) -> void:
 	for i in extra_frames:
@@ -3682,7 +3682,7 @@ func run_net_host(m: Node2D) -> void:
 		waited += 0.25
 	check("klient dołączył", not multiplayer.get_peers().is_empty())
 	if multiplayer.get_peers().is_empty():
-		get_tree().quit(1)
+		Audio.quit_game(1)
 		return
 	await wait(2.0)
 	var cid: int = multiplayer.get_peers()[0]
@@ -3782,6 +3782,7 @@ func run_net_host(m: Node2D) -> void:
 	Arsenal.stock["ammo_slug"] = 0
 	Scrap._push()
 	var cost := Scrap.part_cost("m83_rpk40", cid) + Scrap.press_price("ammo_slug") + int(Scrap.SERVICE_COST["barrel"]) + Scrap.research_cost("lr7_lens").y
+	var host_fit := Profile.fit_code(Weapons.M83)
 	_net_shop_phase.rpc_id(cid)
 	var shop_wait := 0.0
 	while not _net_shop_finished and shop_wait < 20.0:
@@ -3789,9 +3790,10 @@ func run_net_host(m: Node2D) -> void:
 		shop_wait += 0.2
 	check("sieć: zdalny gracz kupuje i bada przy właściwych stanowiskach", _net_shop_finished and Scrap.has_part("m83_rpk40") and Scrap.research == ["lr7_lens"] and Scrap.orders == ["ammo_slug"] and Scrap.bank == 1000 - cost)
 	check("sieć: zdalny odbiór dostawy i jego duplikat zachowują naboje", Arsenal.get_throwable("ammo_slug") == 5 and not Scrap.deliveries.has("ammo_slug") and Scrap.fuse_index("frag") == 0)
+	check("sieć: zakup w panelu klienta nie zmienia osobistego montażu hosta", Profile.fit_code(Weapons.M83) == host_fit)
 	print("[WTEST] ==== sieć: %d/%d OK ====" % [total - failed, total])
 	await wait(0.5)                    # klient kończy po potwierdzeniu; nie odpinamy mu peera podczas rysowania HUD/audio
-	get_tree().quit(1 if failed > 0 else 0)
+	Audio.quit_game(1 if failed > 0 else 0)
 
 ## Klient: strzela 10 razy (legalnie, z rytmem), potem próbuje „zalać” serwer żądaniami.
 func run_net_client(m: Node2D) -> void:
@@ -3805,7 +3807,7 @@ func run_net_client(m: Node2D) -> void:
 			if not c.is_bot and c.is_multiplayer_authority():
 				me = c
 	if me == null:
-		get_tree().quit(1)
+		Audio.quit_game(1)
 		return
 	Profile.fits = {}
 	Profile.add_xp(1800, "test")                  # L6: oba sloty i Weteran
@@ -3847,7 +3849,7 @@ func run_net_client(m: Node2D) -> void:
 		shop_wait += 0.2
 	check("sieć: klient zakończył operacje warsztatu", _net_shop_finished)
 	print("[WTEST] klient: koniec")
-	get_tree().quit(1 if failed else 0)
+	Audio.quit_game(1 if failed else 0)
 
 ## Prawdziwy klient publikuje zamach i przeładowanie; host obserwuje normalną replikację.
 @rpc("authority", "call_remote", "reliable")
@@ -3874,9 +3876,18 @@ func _net_shop_phase() -> void:
 	player.set_physics_process(false)
 	_station_move("workshop")
 	await wait(0.4)                              # replikacja pozycji do hosta
-	Scrap.request_part("m83_rpk40")
-	Scrap.request_part("m83_rpk40")              # powtórzenie bez drugiej opłaty
+	var ui := get_tree().get_first_node_in_group("workshop_ui")
+	ui.open("bench")
+	ui._select(0)
+	ui._pick_opt(ui._options(Weapons.M83).find({"slot": "feed", "id": "m83_rpk40"}))
+	var fit_before := Profile.fit_code(Weapons.M83)
+	ui._act()
+	ui._act()                                  # UI blokuje duplikat przed odpowiedzią z prawdziwego hosta
+	check("sieć: klient czeka na wynik zakupu bez przedwczesnego montażu", not ui._pending_part.is_empty() and Profile.fit_code(Weapons.M83) == fit_before)
 	await wait(0.4)
+	check("sieć: odpowiedź hosta zatwierdza montaż i uruchamia efekt klienta", ui._pending_part.is_empty() and Profile.fitted("m83", "feed") == "m83_rpk40" and ui._d_stage._mount_time >= 0)
+	ui.close()
+	Scrap.request_part("m83_rpk40")              # powtórzenie normalnego RPC nadal nie pobiera drugiej opłaty
 	_station_move("press_bench")
 	await wait(0.4)
 	check("sieć: klient otrzymał snapshot gotowej dostawy", int(Scrap.deliveries.get("ammo_slug", 0)) == 5)

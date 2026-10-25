@@ -246,4 +246,4 @@ func run() -> void:
 	await process_frame
 	await process_frame
 	print("%s input bindings: %d checks, %d errors" % ["PASS" if failed == 0 else "FAIL", total, failed])
-	quit.call_deferred(0 if failed == 0 else 1)
+	root.get_node("Audio").quit_game(0 if failed == 0 else 1)

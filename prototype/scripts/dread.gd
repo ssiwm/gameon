@@ -24,7 +24,7 @@ const EYES_VANISH_LIGHT := 150.0
 var _t_event := randf_range(20.0, 35.0)
 var _t_flicker := randf_range(60.0, 100.0)
 var _t_eyes := randf_range(40.0, 70.0)
-var _eyes := Node2D.new()
+var _eyes: Node2D
 var _eyes_life := 0.0
 var _eyes_age := 0.0
 var _depth_mult := 1.0              ## wygładzony mnożnik ambientu od głębi (1 na powierzchni, DEEP_DARK na dnie)
@@ -34,6 +34,7 @@ func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
 		set_process(false)
 		return
+	_eyes = Node2D.new()
 	_eyes.name = "Eyes"
 	_eyes.visible = false
 	add_child(_eyes)

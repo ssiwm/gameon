@@ -454,7 +454,7 @@ func _process(delta: float) -> void:
 				sum += v
 			print("[BENCH3D] %d klatek: średnia %.2f ms (%.0f fps), p50 %.2f, p95 %.2f, max %.2f ms  okno=%s" % [a.size(), sum / float(a.size()), 1000.0 * float(a.size()) / sum,
 				a[a.size() / 2], a[int(float(a.size()) * 0.95)], a[a.size() - 1], str(get_window().size)])
-			get_tree().quit()
+			Audio.quit_game()
 	_fps_acc += delta
 	_fps_n += 1
 	if _fps_acc >= 0.5:
@@ -477,7 +477,7 @@ func _process(delta: float) -> void:
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(_shot_path)
 		print("[SHOT3D] %s (%dx%d)" % [_shot_path, img.get_width(), img.get_height()])
-		get_tree().quit()
+		Audio.quit_game()
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.echo:

@@ -17,17 +17,35 @@ const PerkIcon := preload("res://scripts/perk_icon.gd")
 const Perks := preload("res://scripts/perks.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const GunStage := preload("res://scripts/gun_stage.gd")
+const GunsmithPanel := preload("res://scripts/gunsmith_panel.gd")
 const Look := preload("res://scripts/look.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const Char3D := preload("res://scripts/char3d.gd")
 const Actions := preload("res://scripts/actions.gd")
 const Ammo := preload("res://scripts/ammo.gd")
+const WeaponDefinition := preload("res://scripts/weapon_def.gd")
 
 const GOLD := Color(0.95, 0.8, 0.4)
 const COLS := 2
 const TILE_W := 150.0
 const TILE_H := 46.0
 const DETAIL_W := 270.0
+## Dodatkowe pola zmieniane przez części, poza podstawową kartą. Jednostki symulacji: 16 px = 1 m.
+const PART_METRICS := {
+	"ammo_per_shot": ["Ammo per shot", "%d", 1.0], "arc_deg": ["Swing half arc", "%.1f°", 1.0],
+	"arm_dist": ["Arming distance", "%.2f m", 1.0 / 16.0], "auto": ["Automatic fire", "bool", 1.0],
+	"blast_damage": ["Blast damage", "%.1f", 1.0], "blast_radius": ["Blast radius", "%.2f m", 1.0 / 16.0],
+	"charge_time": ["Charge time", "%.2f s", 1.0], "cluster": ["Cluster bomblets", "%d", 1.0],
+	"execute_frac": ["Finisher threshold", "%.0f%%", 100.0], "falloff_start": ["Damage falloff starts", "%.2f m", 1.0 / 16.0],
+	"flash_light": ["Flash light", "%.2f", 1.0], "flash_size": ["Flash radius", "%.2f m", 1.0 / 16.0],
+	"homing": ["Tracking turn rate", "%.1f°/s", 180.0 / PI], "homing_cone": ["Acquisition cone", "%.1f°", 1.0],
+	"homing_range": ["Acquisition range", "%.2f m", 1.0 / 16.0], "ignite": ["Burn duration", "%.2f s", 1.0],
+	"knock": ["Impact push speed", "%.2f m/s", 1.0 / 16.0], "patch_every": ["Fire patch interval", "%.2f s", 1.0],
+	"patch_life": ["Fire patch duration", "%.2f s", 1.0], "pull": ["Pull speed", "%.2f m/s", 1.0 / 16.0],
+	"shake": ["Camera shake", "%.2f", 1.0], "speed": ["Projectile speed", "%.2f m/s", 1.0 / 16.0],
+	"stun": ["Stun duration", "%.2f s", 1.0], "suppressor": ["Suppressor fitted", "bool", 1.0],
+	"wall_pierce": ["Wall penetration", "%.2f m", 1.0 / 16.0],
+}
 ## Kolejność siatki: bronie od początku, potem do kupienia za złom, na końcu zablokowane do późniejszych stref.
 const LIST := [Weapons.M83, Weapons.SPREAD12, Weapons.P64, Weapons.LR7, Weapons.HKM9, Weapons.SRUT8, Weapons.GNIEW4, Weapons.WIDMO1, Weapons.SOKOL6, Weapons.CIEGNO6, Weapons.MACZETA, Weapons.KILOF]
 
@@ -321,11 +339,24 @@ var _action: Button
 var _msg: Label
 var _hint: Label
 var _msg_t := 0.0
+var _workbench: GunsmithPanel
+var _legacy_stage: GunStage
+var _shade: ColorRect
+var _bench_slot := ""
+var _session := 0
+var _selection_revision := 0
+var _pending_part: Dictionary = {}
+var _buying := -1
 
 func _ready() -> void:
 	add_to_group("workshop_ui")
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_shade = ColorRect.new()
+	_shade.color = Color(0.015, 0.018, 0.014, 0.65)
+	_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_shade)
 	_card = PanelContainer.new()
 	_card.add_theme_stylebox_override("panel", UiTheme.blueprint_box())
 	_card.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -385,6 +416,16 @@ func _ready() -> void:
 		grid.add_child(t)
 		_tiles.append(t)
 	body.add_child(_build_detail())
+	_legacy_stage = _d_stage as GunStage
+	_workbench = GunsmithPanel.new()
+	_workbench.custom_minimum_size = Vector2(606, 240)
+	root.add_child(_workbench)
+	_workbench.visible = false
+	_workbench.weapon_selected.connect(_select)
+	_workbench.slot_selected.connect(_pick_slot)
+	_workbench.option_selected.connect(_pick_opt)
+	_workbench.inspect_requested.connect(_inspect)
+	_workbench.save_requested.connect(_save_current_preset)
 	# Główna akcja zawsze pod ręką; przewija się treść, nie przycisk zakupu/montażu/odbioru.
 	_action.reparent(root)
 	_s_action.reparent(root)
@@ -393,6 +434,8 @@ func _ready() -> void:
 	_msg = UiTheme.label("", 9, UiTheme.BP_TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	root.add_child(_msg)
 	_hint = UiTheme.label(_controls_hint(), 8, UiTheme.BP_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_hint.custom_minimum_size.x = 606
 	root.add_child(_hint)
 	Scrap.changed.connect(_refresh)
 	Scrap.purchase_result.connect(_on_result)
@@ -404,6 +447,8 @@ func _ready() -> void:
 	Scrap.machining_result.connect(_on_machining_result)
 	Profile.changed.connect(_refresh)
 	Arsenal.stock_changed.connect(_refresh)
+	multiplayer.server_disconnected.connect(_connection_lost)
+	multiplayer.connection_failed.connect(_connection_lost)
 
 ## Zakładka SUPPLIES: ten sam układ co ARMS — siatka kafli po lewej (miniatura, nazwa, cena, zapas), szczegóły po prawej.
 func _build_supplies() -> HBoxContainer:
@@ -1026,6 +1071,8 @@ func open(mode := "bench") -> void:
 	_open = true
 	visible = true
 	_mode = mode if MODE_PAGES.has(mode) else "bench"
+	_session += 1
+	_bench_slot = ""
 	_title.text = {"locker": tr("LOCKER"), "service": tr("MAINTENANCE"), "press": tr("RELOADING PRESS"), "pyro": tr("PYROTECHNICS"), "lab": tr("LAB"), "lathe": tr("LATHE")}.get(_mode, tr("WORKSHOP"))
 	for pi in _page_btns.size():
 		(_page_btns[pi] as Button).visible = (MODE_PAGES[_mode] as Array).has(pi) and (MODE_PAGES[_mode] as Array).size() > 1
@@ -1047,6 +1094,10 @@ func close() -> void:
 	if not _open:
 		return
 	_remembered[_mode] = _sel
+	_session += 1
+	_workbench.stage.cancel_mount()
+	_workbench.stage.set_rendering(false)
+	_legacy_stage.set_rendering(false)
 	_stop_clean()
 	_open = false
 	visible = false
@@ -1071,7 +1122,11 @@ func _process(delta: float) -> void:
 		size = hud.size
 	for body in [_arms_body, _sup_body, _perk_body, _look_body]:
 		(body.get_parent() as ScrollContainer).custom_minimum_size.y = clampf(size.y - 132.0, 150.0, 520.0)
-	_card.position = ((size - _card.size) * 0.5).round()
+	var card_scale := 1.4 if _mode == "bench" and _page == 0 else 1.0
+	var overhead := maxf(118.0, _card.size.y - _workbench.size.y)
+	_workbench.custom_minimum_size = Vector2(clampf(size.x / card_scale - 34.0, 606.0, 1050.0), clampf(size.y / card_scale - overhead - 14.0, 190.0, 620.0))
+	_card.scale = Vector2.ONE * card_scale
+	_card.position = ((size - _card.size * card_scale) * 0.5).round()
 
 func _exit_tree() -> void:
 	if _open:
@@ -1084,6 +1139,11 @@ func _exit_tree() -> void:
 func _controls_hint() -> String:
 	var pad := Actions.pad_mode
 	var nav := "D-PAD" if pad else Actions.cluster(["menu_up", "menu_left", "menu_down", "menu_right"]).to_upper()
+	if _mode == "bench" and _page == 0:
+		return tr("%s weapon · %s slot · %s / %s part · %s fit · %s inspect · %s tabs · %s close") % [
+			_menu_key("menu_up", pad) + "/" + _menu_key("menu_down", pad), _menu_key("menu_left", pad) + "/" + _menu_key("menu_right", pad),
+			_menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_inspect", pad),
+			_menu_key("menu_tab", pad), _menu_key("menu_back", pad)]
 	if _mode == "lathe":
 		return tr("%s select   ·   %s / %s job   ·   %s machine / sharpen   ·   %s close   ·   or click") % [
 			nav, _menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_back", pad)]
@@ -1122,15 +1182,32 @@ func _nav_step(event: InputEvent) -> int:
 func _input(event: InputEvent) -> void:
 	if not _open or not (event is InputEventKey or event is InputEventJoypadButton) or not event.is_pressed() or event.is_echo():
 		return
-	if event.is_action_pressed("menu_tab"):
+	if event.is_action_pressed("menu_tab") or event.is_action_pressed("menu_tab_prev"):
 		var pages: Array = MODE_PAGES[_mode]
-		_set_page(int(pages[(pages.find(_page) + 1) % pages.size()]))
+		_set_page(int(pages[posmod(pages.find(_page) + (1 if event.is_action_pressed("menu_tab") else -1), pages.size())]))
 		get_viewport().set_input_as_handled()
 		return
 	var step := _nav_step(event)
 	var accept := event.is_action_pressed("menu_accept")
 	var back := event.is_action_pressed("menu_back")
-	if _page == 3:
+	if _mode == "bench" and _page == 0:
+		if event.is_action_pressed("menu_up") or event.is_action_pressed("menu_down"):
+			_move(-1 if event.is_action_pressed("menu_up") else 1)
+		elif event.is_action_pressed("menu_left") or event.is_action_pressed("menu_right"):
+			_move_slot(-1 if event.is_action_pressed("menu_left") else 1)
+		elif event.is_action_pressed("menu_slot_1") or event.is_action_pressed("menu_slot_2"):
+			_move_opt(-1 if event.is_action_pressed("menu_slot_1") else 1)
+		elif event.is_action_pressed("menu_inspect"):
+			_inspect()
+		elif event.is_action_pressed("menu_details"):
+			_workbench._toggle_details()
+		elif event.is_action_pressed("menu_alt"):
+			_save_current_preset()
+		elif accept:
+			_act()
+		elif back:
+			close()
+	elif _page == 3:
 		if step != 0 and _look_sel + step >= 0 and _look_sel + step < Look.GENDERS.size() * Look.OUTFITS.size():
 			_look_sel += step
 			Audio.play("ui_click", Audio.BUS_UI, -14.0)
@@ -1214,6 +1291,15 @@ func _options(w: int) -> Array:
 	return out
 
 func _move_opt(d: int) -> void:
+	if _mode == "bench":
+		var ops := _options(int(LIST[_sel]))
+		var indices: Array = []
+		for i in ops.size():
+			if String(ops[i]["slot"]) == _bench_slot:
+				indices.append(i)
+		if not indices.is_empty():
+			_pick_opt(int(indices[posmod(indices.find(_opt) + d, indices.size())]))
+		return
 	var n := _options(int(LIST[_sel])).size()
 	if n == 0:
 		return
@@ -1223,14 +1309,26 @@ func _move_opt(d: int) -> void:
 	_reveal_option()
 
 func _pick_opt(i: int) -> void:
+	var ops := _options(int(LIST[_sel]))
+	if i < 0 or i >= ops.size():
+		return
 	if i != _opt:
 		Audio.play("ui_click", Audio.BUS_UI, -14.0)
 	_opt = i
+	_selection_revision += 1
+	if _mode == "bench":
+		_bench_slot = String(ops[i]["slot"])
+		_workbench.stage.cancel_mount()
 	_refresh()
 	_reveal_option()
 
 ## Nawigacja klawiszami/padem nie zostawia wybranej operacji poza przewijanym kadrem.
 func _reveal_option() -> void:
+	call_deferred("_reveal_current_option")
+
+func _reveal_current_option() -> void:
+	if not _open or _page != 0 or _mode == "bench":
+		return
 	var buttons := _d_tiers.get_children().filter(func(c: Node) -> bool: return c is Button)
 	if _opt >= 0 and _opt < buttons.size():
 		_ensure_arm_option_visible.call_deferred(buttons[_opt])
@@ -1254,6 +1352,8 @@ func _move(d: int) -> void:
 		return
 	_stop_clean()
 	_sel = n
+	_selection_revision += 1
+	_bench_slot = ""
 	(_arms_body.get_parent() as ScrollContainer).scroll_vertical = 0
 	_opt = _first_part_opt()
 	Audio.play("ui_click", Audio.BUS_UI, -14.0)
@@ -1266,6 +1366,8 @@ func _select(i: int) -> void:
 		Audio.play("ui_click", Audio.BUS_UI, -14.0)
 		_stop_clean()
 		_sel = i
+		_selection_revision += 1
+		_bench_slot = ""
 		(_arms_body.get_parent() as ScrollContainer).scroll_vertical = 0
 		_opt = _first_part_opt()
 	_refresh()
@@ -1325,8 +1427,28 @@ func _queue_summary() -> String:
 func _comparison_rows(d: RefCounted) -> Array:
 	var rows: Array = Codex._weapon_stats(d)
 	for row in rows:
-		if String(row[0]) == "Magazine":
-			row[1] = "%d%s" % [d.mag, "+1" if d.chamber else ""]
+		match String(row[0]):
+			"Magazine":
+				row[1] = "%d%s" % [d.mag, "+1" if d.chamber else ""]
+			"Damage":
+				if d.kind == WeaponDefinition.Kind.LAUNCHER:
+					row[1] = tr("%d blast") % int(d.blast_damage)
+				elif d.pellets > 1:
+					row[1] = tr("%d × %d pellets") % [int(d.damage), d.pellets]
+				elif d.is_continuous():
+					row[1] = tr("%d / tick") % int(d.damage)
+			"Fire rate":
+				if d.is_continuous():
+					row[1] = tr("continuous")
+				elif d.kind == WeaponDefinition.Kind.RAIL:
+					row[1] = tr("%.1f s charge") % d.charge_time
+			"Reload":
+				if d.reload_per_round:
+					row[1] = tr("%.2f s / round") % d.reload_time
+			"Noise":
+				if d.n_max <= 0.0:
+					row[1] = tr("silent")
+		row[0] = tr(String(row[0]))
 	if d.uses_ammo():
 		rows.append([tr("Shared reserve"), "∞" if d.infinite else "%d" % Arsenal.get_reserve(d.id, d.ammo)])
 	rows.append([tr("Draw"), tr("%.2f s") % d.draw_time])
@@ -1337,9 +1459,22 @@ func _comparison_rows(d: RefCounted) -> Array:
 		rows.append([tr("Penetration"), "%.2f / %d" % [d.pen, d.pierce]])
 		rows.append([tr("Armour bypass"), "%d%%" % int(d.armor_pen * 100.0)])
 		rows.append([tr("Heating"), "%.1f%% / %.1f%%" % [d.barrel_heat * 100.0, d.heat_gain * 100.0]])
+	var fields := {}
+	for part in Parts.of(String(d.key)):
+		for modifier in part.get("mods", []):
+			fields[String(modifier[0])] = true
+	for field in PART_METRICS:
+		if not fields.has(field):
+			continue
+		var spec: Array = PART_METRICS[field]
+		var value := float(d.get(field))
+		var text := (tr("Yes") if value != 0 else tr("No")) if spec[1] == "bool" else String(spec[1]) % (value * float(spec[2]))
+		rows.append([tr(String(spec[0])), text])
 	return rows
 
 func _first_part_opt() -> int:
+	if _mode == "bench":
+		return -1
 	var ops := _options(int(LIST[_sel]))
 	for i in ops.size():
 		if String(ops[i]["id"]) != "":
@@ -1348,15 +1483,20 @@ func _first_part_opt() -> int:
 
 ## Akcja na wybranej broni: kup broń (zablokowana), a odblokowanej — kup część pod kursorem, zamontuj ją albo wróć do fabrycznej.
 func _act() -> void:
+	if not _pending_part.is_empty() or _buying >= 0:
+		return
 	var w: int = LIST[_sel]
 	if not Scrap.is_unlocked(w):
 		if _mode in ["service", "lab", "lathe"]:
 			_say(tr("Buy it at the workshop bench first."), UiTheme.BP_MUTED)
 		else:
+			_buying = w
 			Scrap.request_buy(w)
 		return
 	var ops := _options(w)
 	if ops.is_empty():
+		return
+	if _mode == "bench" and _opt < 0:
 		return
 	var o: Dictionary = ops[clampi(_opt, 0, ops.size() - 1)]
 	var key := String(Weapons.def(w).key)
@@ -1368,11 +1508,12 @@ func _act() -> void:
 		elif Profile.is_preset_fitted(key, pi):
 			_say(tr("Set %d is already fitted.") % (pi + 1), UiTheme.BP_MUTED)
 		else:
+			var before := Profile.fit_code(w)
 			var skipped := Profile.load_preset(key, pi)
 			Audio.play("ui_confirm", Audio.BUS_UI, -6.0)
 			_say((tr("Fitted set %d.") % (pi + 1)) if skipped == 0 else (tr("Fitted set %d — %d parts the squad no longer has stay as they were.") % [pi + 1, skipped]),
 				UiTheme.OK if skipped == 0 else UiTheme.BP_MUTED)
-			_refresh()
+			_present_committed(w, before)
 		return
 	if String(o["slot"]) == "service" and id in Profile.WEAR_PARTS:
 		if Profile.part_wear(key, id) < 0.5:
@@ -1417,14 +1558,19 @@ func _act() -> void:
 		if Scrap.is_lab_part(id) and not Scrap.found.has(id):
 			_say(tr("Special-weapon parts are researched at the lab upstairs."), UiTheme.BP_MUTED)
 		else:
+			_pending_part = {"id": id, "w": w, "fit": Profile.fit_code(w), "session": _session, "revision": _selection_revision}
+			_refresh()
 			Scrap.request_part(id)
 	elif Profile.fitted(key, String(o["slot"])) != id:
+		var before := Profile.fit_code(w)
 		Profile.set_fit(key, String(o["slot"]), id)
 		Audio.play("ui_confirm", Audio.BUS_UI, -6.0)
 		_say(tr("Fitted: %s.") % (tr(Parts.get_part(id)["name"]) if id != "" else tr("factory part")), UiTheme.OK)
-		_refresh()
+		_present_committed(w, before)
 
 func _on_result(w: int, ok: bool, reason: String) -> void:
+	if _buying == w:
+		_buying = -1
 	if not _open:
 		return
 	var name := String(Weapons.def(w).name)
@@ -1610,6 +1756,9 @@ func _on_research_result(id: String, ok: bool, reason: String) -> void:
 	_refresh()
 
 func _on_part_result(id: String, ok: bool, reason: String) -> void:
+	var context: Dictionary = _pending_part.duplicate() if String(_pending_part.get("id", "")) == id else {}
+	if not context.is_empty():
+		_pending_part.clear()
 	if not _open:
 		return
 	var nm := tr(String(Parts.get_part(id).get("name", id)))
@@ -1631,7 +1780,10 @@ func _on_part_result(id: String, ok: bool, reason: String) -> void:
 			_say("Unlock the weapon first.", UiTheme.BP_MUTED)
 		_:
 			_say("Cannot do that.", UiTheme.DANGER)
-	_refresh()
+	if ok and not context.is_empty() and int(context["session"]) == _session and int(context["revision"]) == _selection_revision and int(LIST[_sel]) == int(context["w"]):
+		_present_committed(int(context["w"]), int(context["fit"]))
+	else:
+		_refresh()
 
 func _say(text: String, col: Color) -> void:
 	_msg.text = text
@@ -1646,7 +1798,15 @@ func _refresh() -> void:
 	_wallet.text = "%d" % Scrap.bank
 	for pi in _page_btns.size():
 		_page_btns[pi].set_pressed_no_signal(pi == _page)
-	_arms_body.visible = _page == 0
+	var immersive := _mode == "bench" and _page == 0
+	_workbench.visible = immersive
+	_shade.visible = immersive
+	_d_stage = _workbench.stage if immersive else _legacy_stage
+	_legacy_stage.set_rendering(_page == 0 and not immersive)
+	_workbench.stage.set_rendering(immersive)
+	_hint.text = _controls_hint()
+	_card.add_theme_stylebox_override("panel", UiTheme.panel_box() if immersive else UiTheme.blueprint_box())
+	_arms_body.visible = _page == 0 and not immersive
 	_sup_body.visible = _page == 1
 	_perk_body.visible = _page == 2
 	_look_body.visible = _page == 3
@@ -1803,18 +1963,21 @@ func _refresh_tile(t: Tile, selected: bool) -> void:
 		t.price_label.add_theme_color_override("font_color", GOLD if Scrap.bank >= price else UiTheme.DANGER)
 
 func _refresh_detail(w: int) -> void:
+	_action.disabled = false
 	var base: RefCounted = Weapons.base_def(w)
 	var key := String(base.key)
 	var unlocked := Scrap.is_unlocked(w)
 	var ops := _options(w)
-	_opt = clampi(_opt, 0, maxi(ops.size() - 1, 0))
+	_opt = clampi(_opt, -1 if _mode == "bench" else 0, maxi(ops.size() - 1, 0))
 	var mine := Profile.fit_code(w)
 	var controller := _local_wc()
 	var ammo_type: int = controller.ammo_of(w) if controller != null else 0
 	var cur: RefCounted = Weapons.def_build(w, Weapons.build_of(ammo_type, mine))
 	# podgląd: broń z częścią spod kursora zamontowaną w jej gnieździe (reszta jak teraz)
 	var preview: RefCounted = null
-	var o: Dictionary = ops[_opt] if not ops.is_empty() else {}
+	var o: Dictionary = ops[_opt] if not ops.is_empty() and _opt >= 0 else {}
+	if _mode == "bench" and not o.is_empty():
+		_bench_slot = String(o["slot"])
 	var pv_code := mine
 	if unlocked and not o.is_empty():
 		var choice := {}
@@ -2078,7 +2241,179 @@ func _refresh_detail(w: int) -> void:
 			_action.text = "Fitted"
 		else:
 			_action.text = "Fit to my gun" if id2 != "" else "Fit the factory part"
+	if _mode == "bench":
+		_present_bench(w, cur, preview, now_rows, next_rows, ops, o)
 	_card.reset_size()
+
+## Jawne oględziny nie oznaczają wyboru fabrycznego elementu do montażu.
+func _connection_lost() -> void:
+	_pending_part.clear()
+	_buying = -1
+	if _open:
+		close()
+
+func _inspect() -> void:
+	_opt = -1
+	_selection_revision += 1
+	_workbench.stage.cancel_mount()
+	_refresh()
+
+func _bench_slots() -> Array:
+	var slots: Array = Parts.slots_of(String(Weapons.def(int(LIST[_sel])).key)).duplicate()
+	if Scrap.is_unlocked(int(LIST[_sel])) and not slots.is_empty():
+		slots.append("preset")
+	return slots
+
+func _pick_slot(slot: String) -> void:
+	if not _bench_slots().has(slot):
+		return
+	var w := int(LIST[_sel])
+	var key := String(Weapons.def(w).key)
+	var ops := _options(w)
+	var fitted := Profile.fitted(key, slot)
+	for i in ops.size():
+		if String(ops[i]["slot"]) == slot and (slot == "preset" or String(ops[i]["id"]) == fitted):
+			_pick_opt(i)
+			return
+
+func _move_slot(direction: int) -> void:
+	var slots := _bench_slots()
+	if slots.is_empty():
+		return
+	_pick_slot(String(slots[posmod(slots.find(_bench_slot) + direction, slots.size())]))
+
+func _save_current_preset() -> void:
+	if not _pending_part.is_empty() or _buying >= 0:
+		return
+	if _bench_slot != "preset":
+		_pick_slot("preset")
+		_say(tr("Choose a set, then save your current fit."), UiTheme.BP_TEXT)
+		return
+	_save_preset()
+
+func _present_committed(w: int, before: int) -> void:
+	var key := String(Weapons.def(w).key)
+	var after := Profile.fit_code(w)
+	if _mode == "bench" and _page == 0 and int(LIST[_sel]) == w:
+		_opt = -1
+		_refresh()
+		if before != after:
+			_workbench.stage.animate_mount(w, Parts.decode(key, before), Parts.decode(key, after))
+	else:
+		_refresh()
+
+func _present_bench(w: int, cur: RefCounted, preview: RefCounted, now_rows: Array, next_rows: Array, ops: Array, selected: Dictionary) -> void:
+	var key := String(cur.key)
+	var unlocked := Scrap.is_unlocked(w)
+	var slots: Array = []
+	for slot in _bench_slots():
+		var fitted := Profile.fitted(key, String(slot))
+		var name := tr("Sets") if slot == "preset" else tr(Parts.SLOT_NAMES[slot])
+		var short_name: String = {"stock": tr("Stock"), "optic": tr("Sight"), "preset": tr("Sets")}.get(slot, name)
+		slots.append({"id": slot, "name": name, "short": short_name,
+			"fitted": tr("Factory") if fitted == "" else tr(String(Parts.get_part(fitted)["name"]))})
+	if _bench_slot == "" and not slots.is_empty():
+		_bench_slot = String(slots[0]["id"])
+	var records: Array = []
+	for i in ops.size():
+		var op: Dictionary = ops[i]
+		if String(op["slot"]) != _bench_slot:
+			continue
+		var id := String(op["id"])
+		var name := tr("Factory") if id == "" else tr(String(Parts.get_part(id).get("name", id)))
+		var fitted := Profile.fitted(key, String(op["slot"])) == id
+		var status := tr("fitted") if fitted else (tr("owned") if id == "" or Scrap.has_part(id) else tr("%d scrap") % Scrap.part_cost(id))
+		if String(op["slot"]) == "preset":
+			name = tr("Set %d") % (int(id) + 1)
+			fitted = Profile.is_preset_fitted(key, int(id))
+			status = tr("empty") if Profile.preset(key, int(id)).is_empty() else (tr("fitted") if fitted else tr("saved"))
+		elif id != "" and not Scrap.has_part(id):
+			if Scrap.found.has(id):
+				status = tr("found — extract")
+			elif Scrap.is_lab_part(id):
+				status = tr("on the lathe") if Scrap.lathe.has(id) else (tr("schematic") if Scrap.schematics.has(id) else (tr("researching") if Scrap.research.has(id) else tr("lab")))
+		records.append({"index": i, "name": name, "status": status, "fitted": fitted})
+	var weapons: Array = []
+	var wc := _local_wc()
+	for i in LIST.size():
+		var wid := int(LIST[i])
+		var definition: RefCounted = Weapons.base_def(wid)
+		var carried: bool = wc != null and (wc.loadout.has(wid) or wc.melee_id == wid)
+		var status := tr("Carried") if carried else (tr("Unlocked") if Scrap.is_unlocked(wid) else (tr("Boss reward") if Scrap.is_gated(wid) else (tr("Later zone") if Scrap.is_later(wid) else tr("%d scrap") % Scrap.price_of(wid))))
+		weapons.append({"index": i, "name": String(definition.name), "row": int(definition.gun_row), "color": definition.tracer_color,
+			"status": status, "carried": carried, "selected": i == _sel})
+	var rows: Array = []
+	for i in now_rows.size():
+		rows.append([now_rows[i][0], now_rows[i][1], next_rows[i][1] if i < next_rows.size() else now_rows[i][1],
+			_change_kind(String(now_rows[i][0]), cur, preview) if preview != null else 0])
+	var part_name := ""
+	var id := String(selected.get("id", ""))
+	if not selected.is_empty():
+		part_name = tr("Set %d") % (int(id) + 1) if String(selected["slot"]) == "preset" else (tr("Factory") if id == "" else tr(String(Parts.get_part(id).get("name", id))))
+	var pending := not _pending_part.is_empty() or _buying >= 0
+	_action.disabled = pending or (unlocked and selected.is_empty()) or (not unlocked and (Scrap.is_later(w) or Scrap.bank < Scrap.price_of(w)))
+	if pending:
+		_action.text = tr("Waiting for confirmation…")
+	elif unlocked and selected.is_empty():
+		_action.text = tr("Inspecting · choose a slot or a part")
+	elif unlocked and String(selected.get("slot", "")) != "preset":
+		if id != "" and not Scrap.has_part(id):
+			if Scrap.found.has(id):
+				_action.text = tr("Found · extract to unlock")
+				_action.disabled = true
+			elif Scrap.is_lab_part(id):
+				_action.text = tr("Research and make it at the lab / lathe")
+				_action.disabled = true
+			else:
+				_action.text = tr("Unlock & fit · %d scrap") % Scrap.part_cost(id)
+				_action.disabled = Scrap.bank < Scrap.part_cost(id)
+		else:
+			_action.disabled = Profile.fitted(key, String(selected["slot"])) == id
+	var meta := tr("Condition %d%%") % int(Profile.condition(key)) if not cur.is_melee() else tr("Edge %d%%") % int(Profile.edge_of(key))
+	meta += " · " + tr("Mastery %s · %d kills") % [["0", "I", "II", "III", "IV", "V"][Profile.mastery_level(key)], Profile.kills(key)]
+	if cur.uses_ammo():
+		meta += "\n" + tr(Ammo.name_of(String(cur.caliber), wc.ammo_of(w) if wc != null else 0))
+	var description := _d_text.text
+	if id != "" and String(selected.get("slot", "")) != "preset" and not GunStage.GunModel.has_model(id):
+		description += "\n" + tr("Internal modification · compare its effects on the card.")
+	_workbench.present({"name": String(cur.name), "meta": meta, "tag": _d_tag.text, "preview": preview != null,
+		"pending": pending, "part_name": part_name, "option": _opt, "unlocked": unlocked, "slot": _bench_slot,
+		"weapons": weapons, "slots": slots, "options": records, "rows": rows, "description": description})
+
+## Kolor jest pomocniczy: korzyści i kompromisy mają również podpis. Mieszane zmiany pozostają neutralne.
+func _change_kind(metric: String, before: RefCounted, after: RefCounted) -> int:
+	for field in PART_METRICS:
+		if metric == tr(String(PART_METRICS[field][0])):
+			if field == "auto":
+				return 0 # tryb ognia jest wyborem sposobu użycia
+			var direction := -1.0 if Parts.LOWER_IS_BETTER.has(field) or field == "ammo_per_shot" else 1.0
+			return int(signf((float(after.get(field)) - float(before.get(field))) * direction))
+	if metric == tr("Damage"):
+		var old_damage: float = before.blast_damage if before.kind == WeaponDefinition.Kind.LAUNCHER else before.damage * before.pellets
+		var new_damage: float = after.blast_damage if after.kind == WeaponDefinition.Kind.LAUNCHER else after.damage * after.pellets
+		return int(signf(new_damage - old_damage))
+	var fields := {tr("Damage"): ["damage", 1], tr("Magazine"): ["mag", 1], tr("Noise"): ["n_max", -1],
+		tr("Mass"): ["mass", -1], tr("Kit mass"): ["mass", -1], tr("Run speed / noise"): ["mass", -1],
+		tr("Draw"): ["draw_time", -1], tr("Armour bypass"): ["armor_pen", 1]}
+	if fields.has(metric):
+		var spec: Array = fields[metric]
+		return int(signf((float(after.get(spec[0])) - float(before.get(spec[0]))) * float(spec[1])))
+	if metric == tr("Range"):
+		return int(signf(after.range_m() - before.range_m()))
+	if metric == tr("Fire rate"):
+		return int(signf(after.rpm() - before.rpm()))
+	if metric == tr("Reload"):
+		return int(signf(before.full_reload_time() - after.full_reload_time()))
+	if metric == tr("DPS"):
+		return int(signf(after.dps() - before.dps()))
+	var pairs := {tr("Spread"): ["jitter_deg", "spread_deg", -1], tr("Bloom"): ["bloom_per_shot", "bloom_max", -1],
+		tr("Recoil"): ["cam_kick", "recoil", -1], tr("Penetration"): ["pen", "pierce", 1], tr("Heating"): ["barrel_heat", "heat_gain", -1]}
+	if pairs.has(metric):
+		var spec: Array = pairs[metric]
+		var a := signf((float(after.get(spec[0])) - float(before.get(spec[0]))) * float(spec[2]))
+		var b := signf((float(after.get(spec[1])) - float(before.get(spec[1]))) * float(spec[2]))
+		return int(signf(a + b)) if a * b >= 0 else 0
+	return 0
 
 func _rule() -> ColorRect:
 	var r := ColorRect.new()

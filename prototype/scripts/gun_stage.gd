@@ -1,13 +1,18 @@
 extends Control
-## Ława rusznikarska w 3D (GUNSMITH_PLAN.md etap 2c, od 1.7.323): broń z częściami gracza w małej scenie 3D warsztatu — ciepła lampa nad ławą,
-## chłodna kontra, broń leży bokiem i lekko się kołysze; przeciągnięcie myszą obraca ją. Część pod kursorem panelu (albo element fabryczny jej
-## gniazda) świeci i jest wysunięta ze swojego gniazda w stronę, w którą się ją zdejmuje (magazynek w dół, tłumik do przodu, kolba do tyłu) —
-## jak broń rozłożona na stole. Model składa gun_model.gd (te same części, które widać w dłoniach postaci).
+## Scena broni 3D: zwarty podgląd stanowisk albo pełna ława z matą, tacą, projekcją gniazd i montażem po zatwierdzeniu.
+## Te same modele i części co w dłoniach postaci (GunModel). Podświetlenie nie przebudowuje broni.
+## Efekt montażu pokazuje migawkę sprzed zmiany, odkłada część na tacę i osadza nową; nie zmienia stanu gry.
 
 const Weapons := preload("res://scripts/weapons.gd")
 const GunModel := preload("res://scripts/gun_model.gd")
 const Parts := preload("res://scripts/parts.gd")
 const Char3D := preload("res://scripts/char3d.gd")
+
+signal mount_finished
+signal slot_clicked(slot: String)
+var bench_mode := false
+var reduced_motion := false
+static var _bounds_cache: Dictionary = {}
 
 const MAX_PX := Vector2i(1600, 640)           ## górna granica rozdzielczości sceny (renderujemy w pikselach ekranu prostokąta, nie w 640×360 interfejsu)
 const CAM_DIST := 4.6
@@ -63,6 +68,19 @@ const PULL_DIR := {
 }
 
 var _vp: SubViewport
+var _camera: Camera3D
+var _table: Node3D
+var _tray_model: Node3D
+var _tray_sig := ""
+var _model_sig := ""
+var _weapon := -1
+var _ids: Array = []
+var _focus_slot := ""
+var _dragging := false
+var _drag_distance := 0.0
+var _outgoing: Node3D
+var _mount_nodes: Array = []
+var _mount_time := -1.0
 var _view: TextureRect
 var _pivot: Node3D
 var _model: Node3D
@@ -103,15 +121,19 @@ func _ready() -> void:
 	env.background_mode = Environment.BG_CLEAR_COLOR
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.55, 0.6, 0.75)
-	env.ambient_light_energy = 0.05
+	env.ambient_light_energy = 0.22 if bench_mode else 0.05
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var we := WorldEnvironment.new()
 	we.environment = env
 	_vp.add_child(we)
 	var cam := Camera3D.new()
+	_camera = cam
 	cam.keep_aspect = Camera3D.KEEP_WIDTH
 	cam.fov = CAM_FOV
 	cam.position = Vector3(0.0, 0.0, CAM_DIST)
+	if bench_mode:
+		cam.projection = Camera3D.PROJECTION_ORTHOGONAL
+		cam.size = 2.0 * CAM_DIST * tan(deg_to_rad(CAM_FOV * 0.5))
 	_vp.add_child(cam)
 	_lamp = SpotLight3D.new()
 	_lamp.light_color = LAMP
@@ -141,6 +163,8 @@ func _ready() -> void:
 	dsh.code = DIRT_SHADER
 	_dirt = ShaderMaterial.new()                             # brud: nakładka na resztę broni
 	_dirt.shader = dsh
+	if bench_mode:
+		_build_bench()
 
 ## Brud na broni: 0 — czysta, 1 — zaniedbana (stan 0 %).
 func set_dirt(x: float) -> void:
@@ -163,33 +187,33 @@ func show_gun(w: int, ids: Array, hl_part: String, hl_slot: String, locked: bool
 	var same_gun := _sig.get_slice("|", 0) == key
 	_sig = sig
 	_locked = locked
-	if _model != null and is_instance_valid(_model):
-		_model.queue_free()
-	_model = null
+	_weapon = w
+	_ids = ids.duplicate()
+	var model_sig := "%s|%s|%d|%d" % [key, ",".join(ids), nt, deep]
+	if model_sig != _model_sig:
+		cancel_mount()
+		_model_sig = model_sig
+		if is_instance_valid(_model):
+			_pivot.remove_child(_model)
+			_model.queue_free()
+		_model = null
+		if key == "" or not ResourceLoader.exists(GunModel.DIR + "gun_%s.glb" % key):
+			_hl.clear()
+			return
+		var bm: Vector3 = Char3D.gun_info(key)["muzzle"]
+		_model = GunModel.build(key, ids, bm, nt, deep)
+		_pivot.add_child(_model)
+		_place()
+		_collect_comps()
+	# Zmiana podświetlenia nie przebudowuje modelu ani nie zostawia wysuniętego podzespołu.
+	for c in _comps:
+		(c["node"] as Node3D).position = c["base"]
+		c["hl"] = false
 	_hl.clear()
-	if key == "" or not ResourceLoader.exists(GunModel.DIR + "gun_%s.glb" % key):
-		return
-	var bm: Vector3 = Char3D.gun_info(key)["muzzle"]
-	_model = GunModel.build(key, ids, bm, nt, deep)          # nacięcia na kolbie (historia broni)
-	_pivot.add_child(_model)
-	_place()
 	for mi in _model.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).material_overlay = _dirt
-	_collect_comps()
 	# podświetlenie: węzeł części albo fabryczne podzespoły, które części tego gniazda zastępują
-	var targets: Array = []
-	if hl_part != "" and GunModel.has_model(hl_part):
-		for n in _model.get_children():
-			if String(n.name).begins_with("gunpart_" + hl_part):
-				targets.append(n)
-	elif hl_slot != "":
-		var comps := {}
-		for p in Parts.in_slot(key, hl_slot):
-			for h in GunModel.part_info(String(p["id"])).get("hides", []):
-				comps[String(h)] = true
-		for n in _model.find_children("*__*", "MeshInstance3D", true, false):
-			if comps.has(String(n.name).get_slice("__", 1)):
-				targets.append(n)
+	var targets: Array = _slot_targets(_model, key, hl_part, hl_slot)
 	for n in targets:
 		_hl.append({"node": n, "base": (n as Node3D).position})
 		for mi in ([n] if n is MeshInstance3D else []) + n.find_children("*", "MeshInstance3D", true, false):
@@ -200,11 +224,137 @@ func show_gun(w: int, ids: Array, hl_part: String, hl_slot: String, locked: bool
 				c["hl"] = true
 	var slot := hl_slot if hl_slot != "" else String(Parts.get_part(hl_part).get("slot", ""))
 	_hl_dir = PULL_DIR.get(slot, Vector3.ZERO)
+	_focus_slot = hl_slot if bench_mode else ""
+	_show_tray(hl_part, hl_slot)
 	_pull = 0.0
 	if not same_gun:
 		_yaw = 0.0
 		_pitch = 0.0
 		_idle = 9.0
+		_camera.position = Vector3(0, 0, CAM_DIST)
+
+## Gniazda z istniejących części i metadanych hides, także gdy zamontowana część ukryła fabryczny mesh.
+func _slot_targets(root: Node3D, key: String, id: String, slot: String) -> Array:
+	var targets: Array = []
+	if id != "" and GunModel.has_model(id):
+		for child in root.get_children():
+			if String(child.name).begins_with("gunpart_" + id):
+				targets.append(child)
+	elif slot != "":
+		var names := {}
+		for part in Parts.in_slot(key, slot):
+			for hidden in GunModel.part_info(String(part["id"])).get("hides", []):
+				names[String(hidden)] = true
+		for mesh in root.find_children("*__*", "MeshInstance3D", true, false):
+			if names.has(String(mesh.name).get_slice("__", 1)):
+				targets.append(mesh)
+	return targets
+
+func _slot_id(ids: Array, slot: String) -> String:
+	for id in ids:
+		if String(Parts.get_part(String(id)).get("slot", "")) == slot:
+			return String(id)
+	return ""
+
+func slot_screen_position(slot: String) -> Vector2:
+	if not is_instance_valid(_model) or _weapon < 0:
+		return Vector2(INF, INF)
+	var key := String(Weapons.def(_weapon).key)
+	var nodes := _slot_targets(_model, key, _slot_id(_ids, slot), slot)
+	var center := Vector3.ZERO
+	var count := 0
+	for node in nodes:
+		for mesh in ([node] if node is MeshInstance3D else []) + node.find_children("*", "MeshInstance3D", true, false):
+			center += (mesh as Node3D).global_transform * (mesh as MeshInstance3D).get_aabb().get_center()
+			count += 1
+	if count == 0:
+		# Wewnętrzny mechanizm: rzeczywisty środek korpusu, bez fikcyjnego zewnętrznego modelu.
+		center = _model.global_transform * _fit_c
+	else:
+		center /= float(count)
+	return _camera.unproject_position(center) * size / Vector2(_vp.size)
+
+## Wybór powierzchni podzespołu po projekcji jego mesh, bez dodatkowych kolizji w symulacji gry.
+func slot_at(point: Vector2) -> String:
+	if not bench_mode or not is_instance_valid(_model):
+		return ""
+	var key := String(Weapons.def(_weapon).key)
+	var selected := ""
+	var distance := INF
+	for slot in Parts.slots_of(key):
+		var targets := _slot_targets(_model, key, _slot_id(_ids, String(slot)), String(slot))
+		var center := slot_screen_position(String(slot))
+		var hit := targets.is_empty() and point.distance_to(center) < 12.0
+		for target in targets:
+			for mesh in ([target] if target is MeshInstance3D else []) + target.find_children("*", "MeshInstance3D", true, false):
+				var box: AABB = (mesh as MeshInstance3D).get_aabb()
+				var rect := Rect2()
+				for i in 8:
+					var world: Vector3 = (mesh as Node3D).global_transform * box.get_endpoint(i)
+					var pixel := _camera.unproject_position(world) * size / Vector2(_vp.size)
+					rect = Rect2(pixel, Vector2.ZERO) if i == 0 else rect.expand(pixel)
+				hit = hit or rect.grow(3.0).has_point(point)
+		var dist := point.distance_squared_to(center)
+		if hit and dist < distance:
+			distance = dist
+			selected = String(slot)
+	return selected
+
+func set_rendering(on: bool) -> void:
+	_vp.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE if on else SubViewport.UPDATE_DISABLED
+
+func set_reduced_motion(on: bool) -> void:
+	reduced_motion = on
+	if on:
+		cancel_mount()
+		_yaw = 0
+		_pitch = 0
+		_camera.position = Vector3(0, 0, CAM_DIST)
+
+## Wyłącznie efekt po zatwierdzonym montażu. Nigdy nie zapisuje profilu ani nie obciąża banku.
+func animate_mount(w: int, before: Array, after: Array) -> void:
+	cancel_mount()
+	if reduced_motion or not is_visible_in_tree() or w != _weapon or not is_instance_valid(_model):
+		return
+	var key := String(Weapons.def(w).key)
+	_outgoing = GunModel.build(key, before, Char3D.gun_info(key)["muzzle"])
+	_outgoing.scale = _model.scale
+	_outgoing.position = _model.position
+	_pivot.add_child(_outgoing)
+	var old_targets: Array = []
+	for slot in Parts.slots_of(key):
+		var old_id := _slot_id(before, String(slot))
+		var new_id := _slot_id(after, String(slot))
+		if old_id == new_id:
+			continue
+		for node in _slot_targets(_outgoing, key, old_id, String(slot)):
+			old_targets.append(node)
+			var center := Vector3.ZERO
+			var count := 0
+			for mesh in ([node] if node is MeshInstance3D else []) + node.find_children("*", "MeshInstance3D", true, false):
+				center += (mesh as Node3D).global_transform * (mesh as MeshInstance3D).get_aabb().get_center()
+				count += 1
+			center /= float(maxi(1, count))
+			_mount_nodes.append({"node": node, "base": node.position, "scale": node.scale,
+				"center": node.global_transform.affine_inverse() * center, "dir": PULL_DIR.get(slot, Vector3.UP), "old": true})
+		for node in _slot_targets(_model, key, new_id, String(slot)):
+			_mount_nodes.append({"node": node, "base": node.position, "dir": PULL_DIR.get(slot, Vector3.UP), "old": false})
+	for mesh in _outgoing.find_children("*", "MeshInstance3D", true, false):
+		mesh.visible = old_targets.any(func(target: Node) -> bool: return target == mesh or target.is_ancestor_of(mesh))
+	_mount_time = 0.0
+	if DisplayServer.get_name() != "headless":
+		Audio.play("mech_mag_out_1" if _slot_id(before, "feed") != _slot_id(after, "feed") else "mech_regrip_1", Audio.BUS_UI, -13.0)
+
+func cancel_mount() -> void:
+	for item in _mount_nodes:
+		if not bool(item["old"]) and is_instance_valid(item["node"]):
+			(item["node"] as Node3D).position = item["base"]
+	_mount_nodes.clear()
+	if is_instance_valid(_outgoing):
+		_outgoing.get_parent().remove_child(_outgoing)
+		_outgoing.queue_free()
+	_outgoing = null
+	_mount_time = -1.0
 
 ## Podzespoły do rozłożenia: węzły „…__<podzespół>” i części; kierunek = od środka broni do środka podzespołu (głównie w górę/dół i wzdłuż lufy).
 func _collect_comps() -> void:
@@ -245,46 +395,160 @@ func _place() -> void:
 	var fk := "%s|%.2f" % [key, aspect]
 	if fk != _fit_key:
 		_fit_key = fk
-		var bm: Vector3 = Char3D.gun_info(key)["muzzle"]
-		var box := AABB()
-		var first := true
-		var sets: Array = [[]]
-		for p in Parts.of(key):
-			if GunModel.has_model(String(p["id"])):
-				sets.append([String(p["id"])])
-		for ids in sets:
-			var probe := GunModel.build(key, ids, bm)
-			for mi in probe.find_children("*", "MeshInstance3D", true, false):
-				var xf := (mi as Node3D).transform
-				var up := mi.get_parent()
-				while up != probe and up is Node3D:
-					xf = (up as Node3D).transform * xf
-					up = up.get_parent()
-				var ab: AABB = xf * (mi as MeshInstance3D).get_aabb()
-				box = ab if first else box.merge(ab)
-				first = false
-			probe.free()
-		box = box.grow(PULL_M)
+		var box: AABB = stable_bounds(key).grow(0.08 if bench_mode else PULL_M)
 		var vis_w := 2.0 * CAM_DIST * tan(deg_to_rad(CAM_FOV * 0.5))
 		var vis_h := vis_w / aspect
 		_fit_k = minf(FILL_W * vis_w / maxf(box.size.x, 0.001), FILL_H * vis_h / maxf(box.size.y, 0.001))
 		_fit_c = box.get_center()
 	_model.scale = Vector3.ONE * _fit_k
 	_model.position = -_fit_c * _fit_k
+	if bench_mode and is_instance_valid(_table):
+		var vis_w := 2.0 * CAM_DIST * tan(deg_to_rad(CAM_FOV * 0.5))
+		_table.scale.y = (vis_w / aspect) / 1.55
+
+## Części na ramie mają niezależne obwiednie; wylot zależy też od wybranej lufy. Badamy wszystkie takie pary.
+static func stable_bounds(key: String) -> AABB:
+	if _bounds_cache.has(key):
+		return _bounds_cache[key]
+	var sets: Array = [[]]
+	for part in Parts.of(key):
+		if GunModel.has_model(String(part["id"])):
+			sets.append([String(part["id"])])
+	for barrel in Parts.in_slot(key, "barrel"):
+		for muzzle in Parts.in_slot(key, "muzzle"):
+			sets.append([String(barrel["id"]), String(muzzle["id"])])
+	var box := AABB()
+	var first := true
+	for ids in sets:
+		var probe := GunModel.build(key, ids, Char3D.gun_info(key)["muzzle"])
+		var bound := model_bounds(probe)
+		box = bound if first else box.merge(bound)
+		first = false
+		probe.free()
+	_bounds_cache[key] = box
+	return box
+
+static func model_bounds(root: Node3D) -> AABB:
+	var box := AABB()
+	var first := true
+	for mesh in root.find_children("*", "MeshInstance3D", true, false):
+		var transform: Transform3D = mesh.transform
+		var up: Node = mesh.get_parent()
+		while up != root and up is Node3D:
+			transform = (up as Node3D).transform * transform
+			up = up.get_parent()
+		var bound: AABB = transform * (mesh as MeshInstance3D).get_aabb()
+		box = bound if first else box.merge(bound)
+		first = false
+	return box
+
+func _bench_material(color: Color, grain := false) -> Material:
+	if not grain:
+		var material := StandardMaterial3D.new()
+		material.albedo_color = color
+		material.roughness = 0.88
+		return material
+	var shader := Shader.new()
+	shader.code = """
+shader_type spatial;
+uniform vec4 base : source_color;
+void fragment() {
+	float grain = sin(UV.x * 290.0 + sin(UV.y * 29.0) * 3.0);
+	float fleck = fract(sin(dot(floor(UV * 430.0), vec2(12.9898, 78.233))) * 43758.5453);
+	ALBEDO = base.rgb * (0.85 + grain * 0.07 + fleck * 0.15);
+	ROUGHNESS = 0.9;
+}
+"""
+	var material := ShaderMaterial.new()
+	material.shader = shader
+	material.set_shader_parameter("base", color)
+	return material
+
+func _bench_box(parent: Node3D, dimensions: Vector3, at: Vector3, material: Material) -> MeshInstance3D:
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = dimensions
+	mesh.mesh = box
+	mesh.material_override = material
+	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mesh.position = at
+	parent.add_child(mesh)
+	return mesh
+
+func _build_bench() -> void:
+	_table = Node3D.new()
+	_vp.add_child(_table)
+	var wood := _bench_material(Color("57402d"), true)
+	var mat := _bench_material(Color("344838"), true)
+	var steel := _bench_material(Color("5b655c"))
+	var brass := _bench_material(Color("96784a"))
+	_bench_box(_table, Vector3(2.9, 1.55, 0.09), Vector3(0, 0, -0.52), wood)
+	_bench_box(_table, Vector3(2.33, 1.24, 0.014), Vector3(-0.05, 0.03, -0.465), mat)
+	var grid := _bench_material(Color("52604c"))
+	for i in 19:
+		_bench_box(_table, Vector3(0.0015, 1.19, 0.002), Vector3(-1.1 + i * 0.12, 0.03, -0.455), grid)
+	for i in 10:
+		_bench_box(_table, Vector3(2.28, 0.0015, 0.002), Vector3(-0.05, -0.51 + i * 0.12, -0.455), grid)
+	# Płytka taca, śrubokręt i stalowy wybijak: prawdziwe bryły 3D, jedna scena i bez nowych tekstur.
+	_bench_box(_table, Vector3(0.49, 0.30, 0.02), Vector3(0.81, -0.47, -0.435), steel)
+	for side in [-1.0, 1.0]:
+		_bench_box(_table, Vector3(0.49, 0.014, 0.025), Vector3(0.81, -0.47 + side * 0.15, -0.415), steel)
+		_bench_box(_table, Vector3(0.014, 0.3, 0.025), Vector3(0.81 + side * 0.245, -0.47, -0.415), steel)
+	_bench_box(_table, Vector3(0.23, 0.035, 0.032), Vector3(-0.89, 0.60, -0.42), _bench_material(Color("734630")))
+	_bench_box(_table, Vector3(0.22, 0.01, 0.012), Vector3(-0.665, 0.60, -0.42), steel)
+	_bench_box(_table, Vector3(0.31, 0.012, 0.012), Vector3(-0.81, 0.55, -0.42), brass)
+	_lamp.shadow_enabled = true
+	_lamp.position = Vector3(0.2, 0.65, 3.5)
+	_lamp.look_at(Vector3.ZERO)
+
+func _show_tray(id: String, slot: String) -> void:
+	if not bench_mode:
+		return
+	var sig := "%s|%s|%d" % [id, slot, _weapon]
+	if sig == _tray_sig:
+		return
+	_tray_sig = sig
+	if is_instance_valid(_tray_model):
+		_table.remove_child(_tray_model)
+		_tray_model.queue_free()
+	_tray_model = null
+	if id == "" or not GunModel.has_model(id):
+		return
+	_tray_model = (load(GunModel.DIR + "gunpart_%s.glb" % id) as PackedScene).instantiate()
+	var box := model_bounds(_tray_model)
+	var scale_k := minf(0.37 / maxf(box.size.x, 0.001), 0.20 / maxf(box.size.y, 0.001))
+	_tray_model.scale = Vector3.ONE * scale_k
+	_tray_model.position = Vector3(0.81, -0.47, -0.32) - box.get_center() * scale_k
+	_table.add_child(_tray_model)
 
 ## Scena renderuje się w pikselach ekranu prostokąta (interfejs 640×360 jest skalowany do okna) — inaczej broń byłaby rozmyta.
 func _fit_viewport() -> void:
 	var px := size * get_global_transform_with_canvas().get_scale() * get_viewport().get_final_transform().get_scale()
-	var want := Vector2i(clampi(int(px.x), 64, MAX_PX.x), clampi(int(px.y), 32, MAX_PX.y))
+	var k := minf(1.0, minf(float(MAX_PX.x) / maxf(1, px.x), float(MAX_PX.y) / maxf(1, px.y)))
+	var want := Vector2i(maxi(int(px.x * k), 64), maxi(int(px.y * k), 32))
 	if want != _vp.size:
 		_vp.size = want
 		_place()
 
 func _gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and (event as InputEventMouseMotion).button_mask != 0:
+	if event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+		if event.is_pressed():
+			_dragging = true
+			_drag_distance = 0.0
+		else:
+			if _dragging and _drag_distance < 3.0:
+				var slot := slot_at((event as InputEventMouseButton).position)
+				if slot != "":
+					slot_clicked.emit(slot)
+			_dragging = false
+		accept_event()
+	if event is InputEventMouseMotion and _dragging and ((event as InputEventMouseMotion).button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
 		var rel := (event as InputEventMouseMotion).relative
-		_yaw += rel.x * 0.01
-		_pitch = clampf(_pitch + rel.y * 0.008, -1.0, 1.0)
+		_drag_distance += rel.length()
+		if _drag_distance < 3.0:
+			return
+		_yaw = clampf(_yaw + rel.x * 0.01, -0.65, 0.65) if bench_mode else _yaw + rel.x * 0.01
+		_pitch = clampf(_pitch + rel.y * 0.008, -0.45 if bench_mode else -1.0, 0.45 if bench_mode else 1.0)
 		_idle = 0.0
 		accept_event()
 
@@ -294,14 +558,28 @@ func _process(delta: float) -> void:
 	_fit_viewport()
 	_t += delta
 	_idle += delta
-	if _idle > 2.0:
+	if _idle > 2.0 and not reduced_motion:
 		# nikt nie obraca: broń wraca bokiem do lampy i lekko się kołysze (bok czyta się najlepiej — widać, co jest w gnieździe)
-		_yaw = lerpf(_yaw, 0.28 * sin(_t * 0.45), minf(1.0, delta * 1.5))
-		_pitch = lerpf(_pitch, 0.12 + 0.05 * sin(_t * 0.6), minf(1.0, delta * 1.5))
+		_yaw = lerpf(_yaw, 0.0 if bench_mode or reduced_motion else 0.28 * sin(_t * 0.45), minf(1.0, delta * 1.5))
+		_pitch = lerpf(_pitch, 0.0 if bench_mode or reduced_motion else 0.12 + 0.05 * sin(_t * 0.6), minf(1.0, delta * 1.5))
 	_pivot.rotation = Vector3(_pitch, _yaw, 0.0)
+	if bench_mode and is_instance_valid(_model):
+		var frame: AABB = stable_bounds(String(Weapons.def(_weapon).key)).grow(0.14 if _mount_time >= 0 else PULL_M)
+		var half := frame.size * 0.5 * _fit_k
+		var z_radius := absf(_pivot.basis.x.z) * half.x + absf(_pivot.basis.y.z) * half.y + absf(_pivot.basis.z.z) * half.z
+		# Podczas oglądania unosimy broń ponad matę; obrót nie wciska końców lufy i kolby w blat.
+		_pivot.position.z = maxf(0.0, z_radius - 0.35)
+	if bench_mode and not reduced_motion:
+		var target := Vector3(0, 0, CAM_DIST)
+		if _focus_slot != "" and is_instance_valid(_model):
+			var anchor := slot_screen_position(_focus_slot)
+			var world := _camera.project_position(anchor * Vector2(_vp.size) / size.max(Vector2.ONE), CAM_DIST)
+			target.x = clampf(world.x * 0.12, -0.08, 0.08)
+			target.y = clampf(world.y * 0.12, -0.05, 0.05)
+		_camera.position = _camera.position.lerp(target, minf(1.0, delta * 4.0))
 	# część pod kursorem wysuwa się z gniazda i pulsuje
 	_pull = move_toward(_pull, 1.0, delta * 3.0)
-	var off := _hl_dir * PULL_M * ease(_pull, 0.4) * (0.85 + 0.15 * sin(_t * 3.0))
+	var off := Vector3.ZERO if reduced_motion else _hl_dir * PULL_M * ease(_pull, 0.4) * (1.0 if bench_mode else (0.85 + 0.15 * sin(_t * 3.0)))
 	for h in _hl:
 		var n: Node3D = h["node"]
 		if is_instance_valid(n):
@@ -315,8 +593,30 @@ func _process(delta: float) -> void:
 			continue
 		var so: Vector3 = (c["dir"] as Vector3) * k
 		cn.position = (cn.position + so) if bool(c["hl"]) else ((c["base"] as Vector3) + so)
-	_glow.set_shader_parameter("strength", 0.6 + 0.4 * sin(_t * 4.0))
+	if _mount_time >= 0.0:
+		_mount_time += delta
+		var phase := clampf(_mount_time / 0.8, 0.0, 1.0)
+		for item in _mount_nodes:
+			if not is_instance_valid(item["node"]):
+				continue
+			var node: Node3D = item["node"]
+			if bool(item["old"]) and bench_mode:
+				var transfer := smoothstep(0.25, 0.7, phase)
+				node.scale = (item["scale"] as Vector3).lerp((item["scale"] as Vector3) * 0.45, transfer)
+				var tray := (node.get_parent() as Node3D).to_local(_table.to_global(Vector3(0.69, -0.47, -0.32)))
+				var target := tray - node.basis * (item["center"] as Vector3)
+				var removed: Vector3 = item["base"] + item["dir"] * smoothstep(0.0, 0.3, phase) * 0.14
+				node.position = removed.lerp(target, transfer)
+			else:
+				var amount := smoothstep(0.0, 0.55, phase) if bool(item["old"]) else 1.0 - smoothstep(0.55, 1.0, phase)
+				node.position = (item["base"] as Vector3) + (item["dir"] as Vector3) * amount * 0.14
+		if phase >= 1.0:
+			cancel_mount()
+			if DisplayServer.get_name() != "headless":
+				Audio.play("mech_mag_in_1", Audio.BUS_UI, -12.0)
+			mount_finished.emit()
+	_glow.set_shader_parameter("strength", 0.65 if bench_mode or reduced_motion else 0.6 + 0.4 * sin(_t * 4.0))
 	_view.modulate = Color(0.42, 0.46, 0.52) if _locked else Color.WHITE
-	_lamp.light_energy = 2.5 if _locked else 5.0
+	_lamp.light_energy = 1.3 if _locked and bench_mode else (2.5 if _locked or bench_mode else 5.0)
 	_rim.light_color = Color(0.9, 0.12, 0.08) if _locked else Color(0.45, 0.6, 0.9)
 	_rim.light_energy = 1.6 if _locked else 1.0

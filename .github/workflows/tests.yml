@@ -62,6 +62,13 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_audio_loops.gd 2>&1 | tee audioloops.log
           grep -a "\[AUDIOLOOPS\] PASS" audioloops.log
+      - name: Zamykanie gry — własność węzłów i aktywne audio
+        run: |
+          set -o pipefail
+          godot --headless --path prototype -s tools/test_shutdown.gd --quit-after 1800 -- --shutdown-window --shutdowntrace 2>&1 | tee shutdown.log
+          grep -a -E "\[SHUTDOWN-TEST\] ==== .*błędów: 0" shutdown.log
+          grep -a -E "\[AUDIO-SHUTDOWN\] finish elapsed_ms=" shutdown.log
+          if grep -a -E "SCRIPT ERROR|Parse Error|WARNING:|ERROR:|Leaked instance:" shutdown.log; then exit 1; fi
       - name: Punkty celowania postaci 3D (test_aim_points.gd)
         run: |
           godot --headless --path prototype -s tools/test_aim_points.gd 2>&1 | tee aimpoints.log

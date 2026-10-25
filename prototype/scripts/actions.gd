@@ -79,6 +79,10 @@ const DEFS := {
 	"menu_slot_1": {"keys": [KEY_1], "pad": [JOY_BUTTON_X], "menu": true},
 	"menu_slot_2": {"keys": [KEY_2], "pad": [JOY_BUTTON_Y], "menu": true},
 	"menu_alt": {"keys": [KEY_R], "pad": [JOY_BUTTON_LEFT_STICK], "menu": true},          # warsztat: zapisz bieżący montaż do zestawu (nadpisz)
+	"menu_inspect": {"keys": [KEY_C], "pad": [JOY_BUTTON_RIGHT_STICK], "menu": true},   # ława: wróć do aktualnego montażu bez zatwierdzania podglądu
+	"menu_details": {"keys": [KEY_V], "pad": [JOY_BUTTON_BACK], "menu": true},        # ława: pełna karta konfiguracji
+	"menu_scroll_up": {"keys": [KEY_PAGEUP], "axis": [[JOY_AXIS_RIGHT_Y, -1.0]], "menu": true},
+	"menu_scroll_down": {"keys": [KEY_PAGEDOWN], "axis": [[JOY_AXIS_RIGHT_Y, 1.0]], "menu": true},
 }
 
 ## Akcje, które gracz może przypisywać, w kolejności ekranu CONTROLS: id → etykieta. (Celowanie prawym drążkiem i akcje

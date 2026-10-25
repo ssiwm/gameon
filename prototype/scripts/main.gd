@@ -683,7 +683,7 @@ func _handle_cmdline() -> void:
 			"shots": wt.run_shots(self, shots_dir)
 	if autoquit >= 0.0:
 		await get_tree().create_timer(autoquit).timeout
-		get_tree().quit()
+		Audio.quit_game()
 
 ## Test weryfikujący, czy da się wygrać ciszą: podnosimy hałas do progu
 ## przebudzenia stalkera, potem NIE strzelamy i czekamy, aż zasnie (GDD §18).
@@ -849,7 +849,7 @@ func _leave_test() -> void:
 		humans += 0 if p.is_bot else 1
 	var ok := NoiseMgr.has_network() and multiplayer.is_server() and humans == 1 and not NightShift.active
 	print("[LEAVE-TEST] %s po ponownym starcie: sieć=%s serwer=%s ludzi=%d (graczy %d)" % ["PASS" if ok else "FAIL", str(NoiseMgr.has_network()), str(multiplayer.is_server()), humans, _players.get_child_count()])
-	get_tree().quit()
+	Audio.quit_game()
 
 func host_game() -> void:
 	if NoiseMgr.has_network():
@@ -908,7 +908,7 @@ func _nav_stat() -> void:
 		else:
 			fixed += 1
 	print("[NAVSTAT] mapa=%s par=%d, zwykła trasa ze skokiem=%d → na piechotę istnieje (naprawione)=%d, nieosiągalne bez skoku=%d" % [level.map_id, total, jump_default, fixed, blocked])
-	get_tree().quit()
+	Audio.quit_game()
 
 func _perf_sweep(secs: float, step: int) -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -973,7 +973,7 @@ func _perf_sweep(secs: float, step: int) -> void:
 	for i in mini(results.size(), 12):
 		var r: Dictionary = results[i]
 		print("[SWEEP]  kol %3d wiersz %2d  avg %.2f  p95 %.2f  max %.1f ms  calls %.0f  wrogów w 400 px: %d (obudzonych %d)" % [r["col"], r["row"], r["avg"], r["p95"], r["max"], r["calls"], r["near"], r["awake"]])
-	get_tree().quit()
+	Audio.quit_game()
 
 func _perf_run(secs: float, col: int) -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -1130,7 +1130,7 @@ func _perf_run(secs: float, col: int) -> void:
 		proc_t / float(maxi(n, 1)) * 1000.0, phys_t / float(maxi(n, 1)) * 1000.0, float(NavGraph.stat_calls) / secs, float(NavGraph.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_slide_usec) / 1000.0 / float(maxi(n, 1)), float(VIEW3D.stat_usec) / 1000.0 / float(maxi(n, 1)), pairs / float(maxi(n, 1)), active_o / float(maxi(n, 1))])
 	if "--perfreport" in OS.get_cmdline_user_args():
 		await _perf_report(vps, v3d)
-	get_tree().quit()
+	Audio.quit_game()
 
 ## Dev (--perf=SEK --perfreport): po pomiarze rozbicie kosztu klatki — czas GPU każdego viewportu, najcięższe siatki w kadrze każdej kamery
 ## widoku 3D (prymitywy wg nazwy węzła, cienie), światła z cieniami w kadrze, największe tekstury materiałów sceny (szacunek pamięci z wymiarów
@@ -1983,12 +1983,12 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			get_viewport().get_texture().get_image().save_png(path.replace(".png", "_%d.png" % i))
 			await get_tree().create_timer(seq_dt).timeout
 		print("[SHOT] sekwencja %d klatek: %s" % [seq_n, path])
-		get_tree().quit()
+		Audio.quit_game()
 		return
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(path)
 	print("[SHOT] %s (%dx%d)" % [path, img.get_width(), img.get_height()])
-	get_tree().quit()
+	Audio.quit_game()
 
 ## Dev (--shotplayer): zdarzenia gracza 1 — hit, down, revive, melee / chop (cios maczetą / kilofem), dying (końcówka wykrwawiania), jump (skok), grab (chwycenie przez Pijawkę), reload (przeładowanie), look (zmiana wyglądu).
 func _dev_player(what: String) -> void:
@@ -2114,7 +2114,7 @@ func _leech_sim(acc: float, dps: float) -> void:
 	Engine.time_scale = 1.0
 	print("[LEECH-SIM] celność %.2f, DPS %.0f (%.0f efektywnie): Pijawka %s po %.0f s gry (%.1f min); okna wynurzenia %.0f s (%d), w świetle %.0f s, faza końcowa %d, HP bossa %.0f" % [
 		acc, dps, rate, "ginie" if lc.state == lc.State.DEAD else "NIE ginie", t, t / 60.0, surfaced_t, ambushes, lit_t, lc.phase, lc.max_hp])
-	get_tree().quit()
+	Audio.quit_game()
 
 ## Czas w bieżącym stanie fali przypływu bossa (test).
 func _surge_t_check(b: Node) -> float:
