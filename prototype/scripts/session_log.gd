@@ -6,7 +6,8 @@ extends RefCounted
 ## (jak profil i zapis złomu), chyba że test poda katalog flagą `--sessionlog=KATALOG`.
 ##
 ## Zdarzenia (`ev`), każde z `t` = sekundy od startu misji:
-##   mission_start  build, audio, map, kind, difficulty, mode, attempt, humans, bots, weather
+##   mission_start  build, audio, map, kind, difficulty, mode, attempt, humans, bots, weather, equipment (ludzie: who, kit, fits, mass, a od 1.7.391
+##                  także xp, level, perks, look — profil właściciela replikowany przez player.prof_xp), workshop (stan zapisu hosta), hub_seconds
 ##   phase          phase (OBJECTIVE / BOSS / EXTRACT / SUCCESS / FAILED)
 ##   down           who, bot, source (rodzaj wroga / stalker / vein / leech / acid / blast / prop), noise, weapon, pos, phase
 ##   revive         who, bot, after (s leżenia)
@@ -16,12 +17,17 @@ extends RefCounted
 ##   pos            phase, noise, p: lista graczy [{who, bot, pos, hp, crouch, dead}] — próbka co POS_EVERY s (mapy cieplne tras, MAPS_PLAN.md P1)
 ##   objective      what (tag / stash / generator / nest / boss), n, of, pos, who, bot — zaliczony cel lub cel poboczny (czas odcinków trasy, P2)
 ##   mission_end    result (success / failed / wipe), time, downs, attempts, peak_noise, side, players, weapons, noise, scrap
+##   xp             who, mission (XP za wynik misji), rows (etykiety bonusów), xp (łącznie w profilu po misji), level — po udanej misji,
+##                  raport właściciela profilu (u klienta przez RPC do hosta); pisany po mission_end (PROGRESSION_PLAN.md P0.1)
+##   hub_buy        clock, who, kind (weapon / part / supply / order / research / machining / service), id, cost, ok, reason, bank (po operacji)
+##                  — rozstrzygnięta operacja warsztatu na serwerze, także w kryjówce, poza misją (P0.4); bez odmów „station” i „repeat”
 ##   system         gpu, gpu_vendor, cpu, threads, ram_gb, os, screen, window, fullscreen, quality, render_scale, vsync, fps_cap — raz na plik, przy jego otwarciu
 ##   perf           map, fps, avg, p50, p95, max (ms klatki), spikes (klatki > PERF_SPIKE_MS), gpu (ms GPU viewportów widoku 3D), up (s od startu gry)
 ##                  — próbka co PERF_EVERY s, także w kryjówce i u klienta (od 1.7.367): klient pisze własny plik z samymi wierszami system i perf,
 ##                  bo wydajność jest jego sprzętu, a reszta dziennika to symulacja hosta
 ## Wipe w kampanii kończy próbę wierszem mission_end, po którym idzie mission_start z kolejnym numerem próby.
 ## `weapons`: klucz broni → {shots, noise, dmg, kills}; `noise`: źródło → {n, sum} (strzały pod kluczem `shot`).
+## `players[id]` (od 1.7.391): oprócz name, kills, downs, revived, dmg także `kinds` (rodzaj wroga → zabójstwa) i `xp_kills` (XP za te zabójstwa) — P0.1, P0.3.
 ## `scrap` (od 1.7.347, strojenie ekonomii warsztatu): {dropped — złom, który wypadł z wrogów i bossa w tej próbie, loot — zebrany łup,
 ## bonus — premia za misję (0 przy wipe)}; do banku trafia loot + bonus, tylko przy sukcesie.
 
@@ -42,6 +48,8 @@ static var _noise := {}                ## źródło → [liczba zdarzeń, suma U
 static var _weapons := {}              ## klucz broni → {shots, noise, dmg, kills}
 static var _dmg_by := {}               ## id gracza → {klucz broni → obrażenia}
 static var _scrap_drop := 0            ## złom wyrzucony przez wrogów i bossa w tej próbie (podniesiony czy nie)
+static var _kills_by := {}             ## id gracza → {rodzaj wroga → zabójstwa} (tylko zabójstwa dające XP: ludzie)
+static var _xp_by := {}                ## id gracza → XP za zabójstwa w tej próbie
 static var _build := ""
 static var _ft := PackedFloat32Array()  ## ms klatek od ostatniej próbki `perf`
 static var _gpu := 0.0                 ## suma ms GPU obserwowanych viewportów od ostatniej próbki
@@ -116,6 +124,8 @@ static func mission_start(data: Dictionary) -> void:
 	_weapons = {}
 	_dmg_by = {}
 	_scrap_drop = 0
+	_kills_by = {}
+	_xp_by = {}
 	row.merge(data)
 	_write("mission_start", row)
 
@@ -139,6 +149,10 @@ static func mission_end(data: Dictionary) -> void:
 			for k in _dmg_by[id]:
 				by[k] = roundi(float(_dmg_by[id][k]))
 			(players[id] as Dictionary)["dmg"] = by
+	for id in _kills_by:
+		if players.has(id):
+			(players[id] as Dictionary)["kinds"] = (_kills_by[id] as Dictionary).duplicate()
+			(players[id] as Dictionary)["xp_kills"] = int(_xp_by.get(id, 0))
 	var scrap: Dictionary = row.get("scrap", {})
 	scrap["dropped"] = _scrap_drop
 	row["scrap"] = scrap
@@ -182,6 +196,23 @@ static func note_damage(shooter: int, key: String, dealt: float, killed: bool) -
 	if not _dmg_by.has(shooter):
 		_dmg_by[shooter] = {}
 	_dmg_by[shooter][key] = float((_dmg_by[shooter] as Dictionary).get(key, 0.0)) + dealt
+
+## Zabójstwo wroga `kind` przez człowieka `shooter` za `xp` XP (Profile.server_award_kill, serwer).
+static func note_kill(shooter: int, kind: String, xp: int) -> void:
+	if not active() or not _in_mission:
+		return
+	if not _kills_by.has(shooter):
+		_kills_by[shooter] = {}
+	_kills_by[shooter][kind] = int((_kills_by[shooter] as Dictionary).get(kind, 0)) + 1
+	_xp_by[shooter] = int(_xp_by.get(shooter, 0)) + xp
+
+## Zdarzenie spoza próby misji (zakupy w kryjówce, raport XP po mission_end): pisze, gdy dziennik jest aktywny, z zegarem ściennym.
+static func note(ev: String, data := {}) -> void:
+	if not active():
+		return
+	var row := {"clock": Time.get_datetime_string_from_system()}
+	row.merge(data)
+	_write(ev, row)
 
 ## Złom `n`, który wypadł z wroga albo bossa (enemy.gd, boss_base.gd; serwer).
 static func note_scrap_drop(n: int) -> void:

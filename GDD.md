@@ -809,6 +809,13 @@ Wypełniane po playteście „kiedy się nudziłeś, a kiedy się bałeś" (§16
 |---|---|---|---|---|
 | — | — | — | — | — |
 
+Pytania o progresję do każdej sesji (`PROGRESSION_PLAN.md` P0.7, od 1.7.391; liczby z tej samej sesji daje `tools/session_progress.py`):
+1. Na co wydałeś złom i czy wiedziałeś, na co zbierasz?
+2. Czy zauważyłeś perki i szafki osobiste? Czy założyłeś perk po awansie?
+3. Czy wiesz, do czego służą próbki?
+4. Czy chciałeś zacząć od innej misji niż ta, którą dała gra?
+5. Czy powtórka misji była nudna, a jeśli tak — która i za którym razem?
+
 ## Doprecyzowanie istniejącego warsztatu — 1.7.367
 
 Odblokowane części są własnością drużyny, a montaż należy do konkretnego gracza. Nowe odblokowanie nie zmienia samoczynnie jego broni; stare zapisane konfiguracje zachowuje jednorazowa migracja profilu. Operacje ekonomiczne i zapalniki wymagają żywego gracza przy właściwym stanowisku w kryjówce i są sprawdzane na serwerze. Zmiana magazynka zachowuje naboje, opłacona nieprzyjęta dostawa czeka na odbiór, a części w kolejce badań lub produkcji nie zajmują także puli znalezisk.

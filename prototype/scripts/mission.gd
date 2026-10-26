@@ -25,6 +25,7 @@ const RunLog := preload("res://scripts/run_log.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Actions := preload("res://scripts/actions.gd")
+const Perks := preload("res://scripts/perks.gd")
 
 const EXTRACT_TIME := 3.0
 const EXIT_RADIUS_X := 34.0
@@ -489,7 +490,8 @@ func log_start() -> void:
 			bots += 1
 		else:
 			humans += 1
-			equipment.append({"who": int(p.display_id), "kit": p.weapons.kit(), "fits": Array(p.fits), "mass": snappedf(p.weapons.kit_mass(), 0.01)})
+			equipment.append({"who": int(p.display_id), "kit": p.weapons.kit(), "fits": Array(p.fits), "mass": snappedf(p.weapons.kit_mass(), 0.01),
+				"xp": int(p.prof_xp), "level": Profile.level_of(int(p.prof_xp)), "perks": Perks.ids_of(p.perks), "look": int(p.look)})
 	var lvl := get_tree().get_first_node_in_group("level")
 	var row := {"audio": Audio.source_set(), "map": String(lvl.map_id) if lvl != null else "", "kind": kind,
 		"difficulty": Difficulty.level_name(), "mode": "night_shift" if NightShift.active else "campaign", "attempt": attempts,

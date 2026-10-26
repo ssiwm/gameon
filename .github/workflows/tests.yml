@@ -50,6 +50,9 @@ jobs:
           grep -h '"ev":"pos"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"who":"P1"'
           grep -h '"ev":"objective"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"what":"nest"'
           grep -h '"ev":"objective"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"what":"boss"'
+          grep -h '"ev":"mission_end"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"kinds":{"trzosek":1}' | grep '"xp_kills":2'
+          grep -h '"ev":"mission_start"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"level":1' | grep '"perks":\[\]'
+          grep -h '"ev":"xp"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"First clear"'
       - name: Przechodzący Stalker w misji 1.1 (--passtest)
         run: |
           godot --headless --path prototype -- --host --mission=z1_m1 --passtest --autoquit=20 2>&1 | tee passtest.log
@@ -173,9 +176,10 @@ jobs:
       - name: Warsztat — autoryzacja, magazynki, migracja i dostawy
         run: |
           set -o pipefail
-          godot --headless --path prototype -- --host --port=8952 --workshoptest --autoquit=60 2>&1 | tee workshop.log
+          godot --headless --path prototype -- --host --port=8952 --workshoptest --sessionlog="$RUNNER_TEMP/workshop-sessions" --autoquit=60 2>&1 | tee workshop.log
           if grep -a -E "SCRIPT ERROR|Parse Error" workshop.log; then exit 1; fi
           grep -a -E "\[WORKSHOP-TEST\] ==== .*błędów: 0" workshop.log
+          grep -h '"ev":"hub_buy"' "$RUNNER_TEMP"/workshop-sessions/*.jsonl | grep '"kind":"weapon"' | grep '"ok":true'
       - name: Bronie i sieć (test_weapons.sh)
         run: bash prototype/tools/test_weapons.sh
       - name: Gabloty — zamiana, amunicja, blokady i dołączenie ENet
