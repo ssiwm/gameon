@@ -22,6 +22,7 @@ const Throwables := preload("res://scripts/throwables.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const GunModel := preload("res://scripts/gun_model.gd")
+const Parts := preload("res://scripts/parts.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Backdrop3D := preload("res://scripts/backdrop3d.gd")
@@ -30,6 +31,7 @@ const RangeDoor := preload("res://scripts/range3d/range_door.gd")
 
 const PX := Level3D.PX
 const FOV := 40.0
+const ENEMY_MODELS_PER_FRAME := 1        ## nowe modele wrogów na klatkę poza budową mapy (`_sync_enemies`)
 const ENEMY_CULL_R := 3.5                ## m: promień sfery wroga przy teście kadru (`_sync_enemies`); bossowie ×3
 const MAX_LIGHTS := 14
 const SHADOW_LIGHTS := 5
@@ -140,6 +142,7 @@ var _item_scenes := {}                   ## nazwa przedmiotu → PackedScene mod
 var _items := {}                         ## id sprite'a przedmiotu HD → [Sprite2D, MeshInstance3D, materiał, z, ukryte węzły 2D]
 var _cache_piles := {}                   ## id sprite'a skrzyni z mapy → klucze broni, z których zbudowano jej stertę (_build_cache_pile)
 var _scan_t := 0.0
+var _spawn_burst_until := 2.0           ## s `_life`: do tej chwili modele wrogów powstają bez limitu (start widoku, nowa mapa)
 var _life := 0.0
 var _saved := false
 
@@ -216,6 +219,9 @@ func setup(level: Node2D, players: Node2D) -> void:
 	add_child(_spr_fg)
 
 # ---------------------------------------------------------------- cykl życia
+
+func _exit_tree() -> void:
+	GunModel.drain()                                   # wczytywanie broni w tle odebrane przed zamknięciem (inaczej wyciek przy wyjściu)
 
 func release() -> void:
 	Vfx.view3d = null
@@ -305,8 +311,18 @@ static var stat_usec := 0
 
 func _process(delta: float) -> void:
 	var t0 := Time.get_ticks_usec()
+	var before: Dictionary = stat_parts.duplicate() if OS.is_stdout_verbose() else {}
 	_tick(delta)
-	stat_usec += Time.get_ticks_usec() - t0
+	var us := Time.get_ticks_usec() - t0
+	stat_usec += us
+	if us > 20000 and OS.is_stdout_verbose():
+		# dev (--verbose): wolna klatka widoku 3D z najdroższymi częściami — obok [SPIKE-MARK] z dziennika sesji
+		var d := {}
+		for k in stat_parts:
+			d[k] = int(stat_parts[k]) - int(before.get(k, 0))
+		var keys := d.keys()
+		keys.sort_custom(func(a, b) -> bool: return d[a] > d[b])
+		print("[V3D-SLOW] %.0f ms: " % (us / 1000.0), ", ".join(keys.slice(0, 4).map(func(k) -> String: return "%s %.0f" % [k, d[k] / 1000.0])))
 
 ## Dev (--perf): czas części `_tick` w µs (klucz = nazwa `_sync_*` bez przedrostka); main.gd drukuje najdroższe w wierszu [PERF-V3D].
 static var stat_parts := {}
@@ -552,6 +568,7 @@ func _sync_geometry() -> void:
 		_apply_geo_state(_geo_alt_state)
 		return
 	_drop_geo_alt()
+	_spawn_burst_until = _life + 1.5                      # nowa mapa: wrogowie mapy powstają razem z nią (przestój ładowania i tak jest)
 	var amb: Color = _level.get("ambient") if _level.get("ambient") != null else Color(0.0245, 0.0266, 0.0406)
 	var hub := String(_level.get("objective")) == "hub"
 	Level3D.build_environment(_geo, amb, not hub, Settings.quality_idx)
@@ -765,6 +782,9 @@ func _enemy_kind(n: Node) -> String:
 
 ## Wrogowie z modelem 3D: model stoi na pozycji węzła 2D, poza z nazwy animacji sprite'a (`Body`), sprite'y 2D są przezroczyste.
 func _sync_enemies(delta: float) -> void:
+	# model wroga kosztuje ok. 10–20 ms (scena GLB, szkielet, materiały): przy budowie mapy wszystkie naraz, w grze (finał 1.1 wypuszcza
+	# 6 wrogów w jednej klatce, gniazda, wędrowcy) najwyżej ENEMY_MODELS_PER_FRAME na klatkę
+	var budget := 1000 if _life < _spawn_burst_until else ENEMY_MODELS_PER_FRAME
 	for g in ["enemies", "roamers", "boss", "nests"]:
 		for n in get_tree().get_nodes_in_group(g):
 			if not (n is Node2D) or n.is_queued_for_deletion():
@@ -775,14 +795,17 @@ func _sync_enemies(delta: float) -> void:
 			var k := _enemy_kind(n)
 			if k == "":
 				continue
+			for c in n.get_children():
+				if c is AnimatedSprite2D:
+					(c as AnimatedSprite2D).self_modulate = Color(1, 1, 1, 0)
+			if budget <= 0:
+				continue                                  # model w następnej klatce (sprite 2D już przezroczysty)
+			budget -= 1
 			var e := Enemy3D.new()
 			if not e.setup(k, k == "stalker"):
 				e.free()
 				_enemies[id] = [n, null]                  # bez modelu nic nie widać (wszystkie rodzaje mają modele)
 				continue
-			for c in n.get_children():
-				if c is AnimatedSprite2D:
-					(c as AnimatedSprite2D).self_modulate = Color(1, 1, 1, 0)
 			_set_layer(e, LAYER_WORLD)
 			_world.add_child(e)
 			_enemies[id] = [n, e]
@@ -2213,7 +2236,7 @@ func _cab_box(parent: Node3D, size: Vector3, pos: Vector3, m: Material) -> MeshI
 	parent.add_child(mi)
 	return mi
 
-## Broń z ekwipunku każdego gracza (główne, boczna, biała) wczytywana w tle, zanim trafi do ręki (GunModel.warm).
+## Broń z ekwipunku każdego gracza (główne, boczna, biała) i jej zamontowane części wczytywane w tle, zanim trafią do ręki (GunModel.warm).
 func _warm_loadouts() -> void:
 	for p in get_tree().get_nodes_in_group("players"):
 		var wc = p.get("weapons")
@@ -2223,7 +2246,11 @@ func _warm_loadouts() -> void:
 		ids.append(int(wc.get("melee_id")) if wc.get("melee_id") != null else -1)
 		for id in ids:
 			if int(id) >= 0 and int(id) < Weapons.defs().size():
-				GunModel.warm(GUN_DIR + "gun_%s.glb" % String(Weapons.def(int(id)).key))
+				var key := String(Weapons.def(int(id)).key)
+				GunModel.warm(GUN_DIR + "gun_%s.glb" % key)
+				if wc.has_method("fit_of"):
+					for part in Parts.decode(key, int(wc.fit_of(int(id)))):      # zamontowane części (lufa RPK, bęben…): na starcie misji 143 ms
+						GunModel.warm(GUN_DIR + "gunpart_%s.glb" % String(part))
 
 ## Skala renderu świata z ustawień (Settings.RENDER_SCALE_LIST): poniżej 100% viewport świata skaluje FSR 1. Warstwa graczy zostaje
 ## w pełnej rozdzielczości — postacie są małe na ekranie i rozmyłyby się pierwsze, a kosztują ok. 0,7 ms GPU w 4K.
@@ -4439,9 +4466,12 @@ const DUST_ROWS := 8                     ## pół wysokości tego pasa [kafle]
 ## Dwie warstwy: drobny pył z całego stropu i gęstsze strużki z kilku pęknięć (stałych dla miejsca). Cząsteczki są oświetlane — widać je w latarce i flarach.
 func _sync_mine_dust() -> void:
 	var m := get_tree().get_first_node_in_group("mission")
-	var on: bool = m != null and m.get("finale") == true and Settings.quality_idx >= 1 and Settings.fx_mult() > 0.0 and not _rows.is_empty()
+	var can: bool = Settings.quality_idx >= 1 and Settings.fx_mult() > 0.0 and not _rows.is_empty()
+	var on: bool = m != null and m.get("finale") == true and can
 	if _mine_dust.is_empty():
-		if not on:
+		# mapa z finałem: pył budowany od razu (wyłączony) — budowa w chwili zawału to ok. 65 ms przestoju razem z wypuszczeniem grup
+		var fs = _level.get("finale_spawns")
+		if not (on or (can and fs is Array and not (fs as Array).is_empty())):
 			return
 		var sh := Shader.new()
 		sh.code = DUST_SHADER

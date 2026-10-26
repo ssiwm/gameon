@@ -270,6 +270,12 @@ static var _sole_cache: Dictionary = {}
 static var _sole_flat_cache: Dictionary = {}
 var _hull: Array = []                        ## próbki otoczki skóry (śmierć: ciało nie wchodzi w podłogę)
 static var _hull_cache: Dictionary = {}
+## Kod shadera → Shader wspólny dla wszystkich egzemplarzy (rodzaj deformacji, przezroczystość, culling). Dawniej każdy wróg dostawał
+## własny Shader z tym samym kodem — Godot kompilował go od nowa (8 wariantów SceneForwardClustered), ok. 60 ms na wroga przy pojawieniu się.
+static var _shader_cache: Dictionary = {}
+## Ścieżka modelu → PackedScene trzymana przez sesję: egzemplarze nie trzymają sceny, więc każdy wróg wypuszczony w grze (finał 1.1, gniazda)
+## czytał GLB z dysku od nowa.
+static var _scene_cache: Dictionary = {}
 var _blade: Array = []                       ## SPEC `death_blade`: [kość dłoni, oś ostrza, jego szerokość] w przestrzeni kości
 
 ## Migawka zapowiedzi z symulacji. Zegar modelu nie rozstrzyga trafień.
@@ -752,7 +758,10 @@ func setup(k: String, translucent := false) -> bool:
 	_spec = SPEC.get(k, {})
 	if _spec.is_empty():
 		return false
-	var ps := load(String(_spec.get("model", DIR + k + ".glb"))) as PackedScene
+	var mp := String(_spec.get("model", DIR + k + ".glb"))
+	if not _scene_cache.has(mp):
+		_scene_cache[mp] = load(mp) as PackedScene
+	var ps: PackedScene = _scene_cache[mp]
 	if ps == null:
 		return false
 	_tilt = Node3D.new()
@@ -889,9 +898,12 @@ func _prepare_materials(translucent: bool) -> void:
 			if translucent: modes.append_array(["blend_mix", "depth_prepass_alpha"])
 			if cull == BaseMaterial3D.CULL_DISABLED: modes.append("cull_disabled")
 			elif cull == BaseMaterial3D.CULL_FRONT: modes.append("cull_front")
-			var sh := Shader.new()
-			sh.code = code.replace("//RENDER", "render_mode " + ", ".join(modes) + ";" if not modes.is_empty() else "")
-			shaders[cull] = sh
+			var full := code.replace("//RENDER", "render_mode " + ", ".join(modes) + ";" if not modes.is_empty() else "")
+			if not _shader_cache.has(full):
+				var sh := Shader.new()
+				sh.code = full
+				_shader_cache[full] = sh
+			shaders[cull] = _shader_cache[full]
 		var sm := ShaderMaterial.new()
 		sm.shader = shaders[cull]
 		# Maska HSV jest bezpieczna tylko dla palet z odrębnym kolorem oczu;
