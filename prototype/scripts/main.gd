@@ -1695,6 +1695,10 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if hp1 != null:
 			hp1.hp = 1
 			NoiseMgr.level = 60.0
+	if "--shotchip" in OS.get_cmdline_user_args():
+		var cp: Node2D = _players.get_node_or_null("1")       # --shotchip: gracz 1 z ukrytym pół punktem zabranym głazem Wołka (pół kreski życia)
+		if cp != null:
+			cp.chip = 0.5
 	if "--shottoast" in OS.get_cmdline_user_args():
 		_toast("Steam overlay unavailable (start the game from Steam / add it as a non-Steam game). Lobby ID 109775240944 copied — send it to friends: paste + STEAM JOIN.", 20.0)      # --shottoast: podgląd komunikatu F2
 	if "--shotgen" in OS.get_cmdline_user_args():

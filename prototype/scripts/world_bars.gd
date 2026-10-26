@@ -6,7 +6,11 @@ extends Control
 ## Symulacja tylko podaje stan: `bar_state()` wroga i gniazda, `plate_state()` gracza.
 ##
 ## Pasek wroga: kość na ciemnym torze z obwódką, poniżej LOW_FRAC rdzawy; po trafieniu jasny ślad obrażeń trzyma się GHOST_HOLD s
-## i spływa; pasek gaśnie SHOW_S s po ostatnim trafieniu (elita pokazuje go też przy pierwszym wejściu w kadr).
+## i spływa; pasek gaśnie SHOW_S s po ostatnim trafieniu (elita pokazuje go też przy pierwszym wejściu w kadr). Elita ma grubszy pasek
+## w bursztynowym obrysie, romb przed nim, nazwę z kodeksu przez NAME_S s od pierwszego wejścia w kadr i tarcze pancerza za paskiem.
+## Plakietka gracza: imię w kolorze slotu i pod nim te same kreski życia co na karcie drużyny w HUD-zie (bez ramki).
+
+const UiTheme := preload("res://scripts/ui_theme.gd")
 
 const SHOW_S := 4.0                 ## s widoczności paska wroga po ostatnim trafieniu
 const FADE_S := 0.6                 ## s gaśnięcia
@@ -24,9 +28,17 @@ const GHOST := Color(1.0, 0.98, 0.9)
 const TRACK := Color(0.043, 0.039, 0.035, 0.85)
 const EDGE := Color(0.0, 0.0, 0.0, 0.8)
 const MIMIC_COL := Color(0.72, 0.8, 0.72)
-## Plakietka gracza (projekt jak dotąd, w px świata przed skalą PLATE_SCALE): font NAME_SIZE, tarcza PLATE_PIP.
+const NAME_S := 3.0                 ## s widoczności nazwy elity od pierwszego wejścia w kadr
+const ARMOR := Color(0.66, 0.65, 0.61)
+## Kreski życia na plakietce (jednostki projektu przed skalą PLATE_SCALE), jak `Pips` „seg” na karcie drużyny.
+const SEG := Vector2(5.0, 1.1)
+const SEG_GAP := 0.9
+const SEG_OFF := Color(1, 1, 1, 0.16)
+const SEG_BONUS := Color(1.0, 0.8, 0.25)
+const MATE := Color("d8d2c4")
+const BOT := Color("8d8a7c")
+## Plakietka gracza (w px świata przed skalą PLATE_SCALE): font NAME_SIZE.
 const NAME_SIZE := 4.0
-const PLATE_PIP := Vector2(3.4, 4.0)
 const PLATE_SCALE := 0.5
 const FONT_BASE := 16               ## rozmiar, w jakim rasteryzujemy tekst przed skalowaniem do rozmiaru docelowego
 
@@ -36,6 +48,7 @@ var _rigs := {}                     ## id modelu 3D → {bones, off, meshes, sk}
 var _bars: Array = []               ## paski do narysowania w tej klatce
 var _plates: Array = []             ## plakietki graczy do narysowania w tej klatce
 var _font: Font
+var _names := {}                    ## rodzaj elity → nazwa z kodeksu
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -76,7 +89,7 @@ func _enemy(src: Node2D, model, id: int, delta: float, cx: Transform2D, zoom: fl
 	var f: float = bs["frac"]
 	var s: Dictionary = _st.get(id, {})
 	if s.is_empty():
-		s = {"frac": f, "ghost": f, "hold": 0.0, "t": 0.0, "a": 0.0, "seen": false}
+		s = {"frac": f, "ghost": f, "hold": 0.0, "t": 0.0, "a": 0.0, "seen": false, "name_t": 0.0}
 		_st[id] = s
 	if f < float(s["frac"]) - 0.0001:
 		s["ghost"] = maxf(float(s["ghost"]), float(s["frac"]))       # trafienie: ślad od poprzedniej wartości
@@ -94,7 +107,9 @@ func _enemy(src: Node2D, model, id: int, delta: float, cx: Transform2D, zoom: fl
 	if bool(bs["elite"]) and alive and on_screen and not bool(s["seen"]):
 		s["seen"] = true
 		s["t"] = SHOW_S
+		s["name_t"] = NAME_S
 	s["t"] = maxf(0.0, float(s["t"]) - delta)
+	s["name_t"] = maxf(0.0, float(s["name_t"]) - delta)
 	var want: bool = alive and on_screen and float(s["t"]) > 0.0
 	s["a"] = move_toward(float(s["a"]), 1.0 if want else 0.0, delta / (0.12 if want else FADE_S))
 	if not alive or not on_screen:
@@ -108,8 +123,20 @@ func _enemy(src: Node2D, model, id: int, delta: float, cx: Transform2D, zoom: fl
 	if label != "":
 		_plates.append({"pos": top, "u": PLATE_SCALE * zoom, "label": label})
 	if float(s["a"]) > 0.005:
+		var elite: bool = bs["elite"]
 		_bars.append({"pos": top, "w": maxf(float(bs["w"]) * zoom, BAR_MIN_W), "frac": f, "ghost": float(s["ghost"]), "a": float(s["a"]),
-			"elite": bool(bs["elite"])})
+			"elite": elite, "armor": int(round(float(bs.get("armor", 0.0)))) if elite else 0,
+			"name": _elite_name(String(bs.get("kind", ""))) if elite else "", "name_a": clampf(float(s["name_t"]) / 0.5, 0.0, 1.0)})
+
+## Nazwa elity z kodeksu (THE PRIEST…), przetłumaczona.
+func _elite_name(kind: String) -> String:
+	if not _names.has(kind):
+		var nm := ""
+		for e in load("res://scripts/codex.gd").ENEMIES:
+			if String(e[0]) == kind:
+				nm = String(e[3])
+		_names[kind] = nm
+	return tr(String(_names[kind]))
 
 func _player(p: Node2D, cx: Transform2D, zoom: float) -> void:
 	var ps: Dictionary = p.call("plate_state")
@@ -217,7 +244,10 @@ func _draw_bar(b: Dictionary) -> void:
 	var h := ELITE_H if bool(b["elite"]) else BAR_H
 	var w: float = b["w"]
 	var pos: Vector2 = b["pos"]
-	var x := clampf(pos.x, w * 0.5 + 2.0, maxf(size.x - w * 0.5 - 2.0, w * 0.5 + 2.0))     # przy krawędzi ekranu pasek zostaje cały w kadrze
+	var left := (1.6 + h * 1.8) if bool(b["elite"]) else 0.0                               # romb elity przed paskiem
+	var right := (1.3 + float(int(b["armor"])) * (h * 0.85 + 0.45)) if bool(b["elite"]) else 0.0     # tarcze pancerza za paskiem
+	var lo := w * 0.5 + left + 2.0
+	var x := clampf(pos.x, lo, maxf(size.x - w * 0.5 - right - 2.0, lo))     # przy krawędzi ekranu pasek z rombem i tarczami zostaje cały w kadrze
 	var r := Rect2(x - w * 0.5, pos.y - GAP - h, w, h)
 	var f: float = b["frac"]
 	draw_rect(r.grow(0.35), Color(EDGE, EDGE.a * a))
@@ -225,6 +255,24 @@ func _draw_bar(b: Dictionary) -> void:
 	draw_rect(Rect2(r.position + Vector2(0.0, h - 0.22), Vector2(w, 0.22)), Color(1, 1, 1, 0.12 * a))     # dno toru: pusty pasek widać na ciemnym tle
 	draw_rect(Rect2(r.position, Vector2(w * float(b["ghost"]), h)), Color(GHOST, a))
 	draw_rect(Rect2(r.position, Vector2(w * f, h)), Color(LOW if f < LOW_FRAC else BONE, a))
+	if not bool(b["elite"]):
+		return
+	var acc := Color(UiTheme.ACCENT, 0.7 * a)
+	draw_rect(r.grow(0.75), acc, false, 0.35)
+	# romb przed paskiem
+	var c := Vector2(r.position.x - 1.6 - h * 0.9, r.get_center().y)
+	var d := h * 0.9
+	draw_colored_polygon(PackedVector2Array([c + Vector2(0, -d), c + Vector2(d, 0), c + Vector2(0, d), c + Vector2(-d, 0)]), Color(UiTheme.ACCENT, a))
+	# tarcze pancerza za paskiem: szare, ścięte u dołu — pociski tracą na nich część obrażeń
+	var ax := r.end.x + 1.3
+	for i in int(b["armor"]):
+		var sx := ax + float(i) * (h * 0.85 + 0.45)
+		var sw := h * 0.85
+		draw_colored_polygon(PackedVector2Array([Vector2(sx, r.position.y), Vector2(sx + sw, r.position.y), Vector2(sx + sw, r.position.y + h * 0.65),
+			Vector2(sx + sw * 0.5, r.end.y + 0.15), Vector2(sx, r.position.y + h * 0.65)]), Color(ARMOR, a))
+	var na := float(b["name_a"]) * a
+	if na > 0.01 and String(b["name"]) != "":
+		_text(Vector2(r.get_center().x, r.position.y - 1.2), String(b["name"]), 2.6, Color(UiTheme.ACCENT, na), true)
 
 ## Tekst o wysokości `size` [jednostki okna]: rasteryzowany w FONT_BASE i skalowany, bo rozmiar fontu jest całkowity.
 func _text(pos: Vector2, txt: String, size: float, col: Color, center: bool) -> void:
@@ -253,13 +301,14 @@ func _draw_down(feet: Vector2, zoom: float, ps: Dictionary) -> void:
 		draw_rect(r, Color(0.1, 0.1, 0.12, 0.9))
 		draw_rect(Rect2(r.position, Vector2(r.size.x * clampf(rv, 0.0, 1.0), r.size.y)), Color(0.4, 0.95, 0.5))
 
-## Plakietka życia nad głową: ciemna płytka z imieniem (kolor slotu) i tarczami jak na karcie drużyny — pełna krwista, pusta tylko obrysem,
-## bonusowa złota; przy 1 życiu ramka czerwieni się i pulsuje (puls wyłącza „Reduce effects”). Przy pełnym życiu rysujemy samo imię.
-## `o` to środek dolnej krawędzi płytki, `u` — jednostki okna na jednostkę projektu.
+## Plakietka życia nad głową: imię w kolorze slotu, pod nim kreski życia jak na karcie drużyny (własne czerwone, kolegów jasne, bota
+## szare, ponad bazę złote, puste ledwo widoczne, pół punktu z głazu Wołka jako pół kreski z nacięciem); utracona kreska błyska,
+## a przy 1 życiu pod kreskami pulsuje czerwona linia (puls wyłącza „Reduce effects”). Przy pełnym życiu rysujemy samo przygaszone imię.
+## `o` to środek dolnej krawędzi plakietki, `u` — jednostki okna na jednostkę projektu.
 func _draw_plate(o: Vector2, u: float, ps: Dictionary) -> void:
 	var hp: int = ps["hp"]
 	var base: int = ps["base"]
-	var hearts := maxi(base, hp)
+	var n := maxi(base, hp)
 	var a: float = ps["a"]
 	var col: Color = ps["col"]
 	var name_txt: String = ps["name"]
@@ -268,35 +317,29 @@ func _draw_plate(o: Vector2, u: float, ps: Dictionary) -> void:
 	if a < 0.02:
 		_text(o + Vector2(0.0, -2.0 * u), name_txt, fs, label_col, true)
 		return
-	var label_w := _text_w(name_txt, fs) / u
-	var pips_w := float(hearts) * PLATE_PIP.x + float(hearts - 1) * 1.2
-	var pad := 2.0
-	var w := pad + label_w + 2.2 + pips_w + pad
+	_text(o + Vector2(0.0, -4.2 * u), name_txt, fs, label_col, true)
+	var on: Color = UiTheme.DANGER if bool(ps["self"]) else (BOT if bool(ps["bot"]) else MATE)
+	var w := float(n) * SEG.x + float(n - 1) * SEG_GAP
 	var x0 := -w * 0.5
-	var y := -7.0
-	var low := hp <= 1 and base > 1
-	var pulse := 1.0
-	if low and Settings.fx_mult() > 0.0:
-		pulse = 0.65 + 0.35 * sin(float(ps["wound_t"]) * 5.0)
-	var edge := Color(0.62, 0.13, 0.13, a * pulse) if low else Color(0.30, 0.26, 0.22, 0.9 * a)
-	var r := Rect2(o + Vector2(x0, y) * u, Vector2(w, 7.0) * u)
-	draw_rect(r, Color(0.035, 0.03, 0.026, 0.84 * a))
-	draw_rect(r, edge, false, maxf(0.5 * u, 0.25))
-	_text(o + Vector2(x0 + pad, y + 4.6) * u, name_txt, fs, label_col, false)
-	var px := x0 + pad + label_w + 2.2
-	var py := y + (7.0 - PLATE_PIP.y) * 0.5
+	var y := -2.6
 	var flash: float = ps["flash"]
-	for i in hearts:
-		var ix := px + float(i) * (PLATE_PIP.x + 1.2)
-		var pts := PackedVector2Array()
-		for q in [Vector2(ix, py), Vector2(ix + PLATE_PIP.x, py), Vector2(ix + PLATE_PIP.x, py + PLATE_PIP.y * 0.6),
-				Vector2(ix + PLATE_PIP.x * 0.5, py + PLATE_PIP.y), Vector2(ix, py + PLATE_PIP.y * 0.6)]:
-			pts.append(o + (q as Vector2) * u)
-		if i < hp:
-			draw_colored_polygon(pts, Color(0.84, 0.66, 0.23, a) if i >= base else Color(0.6, 0.1, 0.12, a))     # ponad bazę — złote
+	var cracked := hp - 1 if hp > 0 and bool(ps["chip"]) else -1
+	for i in n:
+		var r := Rect2(o + Vector2(x0 + float(i) * (SEG.x + SEG_GAP), y) * u, SEG * u)
+		draw_rect(r.grow(0.25), Color(EDGE, 0.6 * a))
+		var c := SEG_BONUS if i >= base else on
+		if i >= hp:
+			draw_rect(r, Color(SEG_OFF, SEG_OFF.a * a))
+			if flash > 0.0 and i < base:
+				draw_rect(r, Color(1.0, 0.85, 0.85, minf(1.0, flash * 2.0) * a))          # kreska utracona przed chwilą błyska
+		elif i == cracked:
+			draw_rect(r, Color(SEG_OFF, SEG_OFF.a * a))
+			draw_rect(Rect2(r.position, Vector2(r.size.x * 0.5, r.size.y)), Color(c, a))
 		else:
-			var ring := Color(0.42, 0.36, 0.31, 0.85 * a)
-			if flash > 0.0 and i >= hp and i < base:
-				ring = Color(0.95, 0.62, 0.62, minf(1.0, flash * 2.0) * a)          # tarcza utracona przed chwilą błyska obrysem
-			pts.append(pts[0])
-			draw_polyline(pts, ring, maxf(0.5 * u, 0.25), true)
+			draw_rect(r, Color(c, a))
+	if hp <= 1 and base > 1:
+		var pulse := 1.0
+		if Settings.fx_mult() > 0.0:
+			pulse = 0.35 + 0.65 * (0.5 + 0.5 * sin(float(ps["wound_t"]) * 5.0))
+		draw_rect(Rect2(o + Vector2(x0, y + SEG.y + 0.9) * u, Vector2(w, 0.35) * u), Color(UiTheme.DANGER, pulse * a))
+

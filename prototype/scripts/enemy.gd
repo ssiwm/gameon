@@ -1411,8 +1411,8 @@ func _update_sprite() -> void:
 	body.modulate = m
 
 ## Stan paska życia nad modelem — rysuje go warstwa ekranu (world_bars.gd), nie nakładka 2D: ułamek życia, elita (pasek od pierwszego
-## wejścia w kadr), szerokość wg sprite'a [px świata] i etykieta przebrania (Mimik udaje gracza).
+## wejścia w kadr; nazwa z kodeksu i tarcze pancerza), szerokość wg sprite'a [px świata] i etykieta przebrania (Mimik udaje gracza).
 func bar_state() -> Dictionary:
 	var size: Vector2 = _def["size"]
 	return {"frac": clampf(hp / maxf(_max_hp, 0.001), 0.0, 1.0), "alive": alive and is_visible_in_tree(), "elite": bool(_def.get("elite", false)),
-		"w": size.x + 4.0, "h": size.y + 7.0, "label": _beh.disguise_label()}
+		"w": size.x + 4.0, "h": size.y + 7.0, "label": _beh.disguise_label(), "kind": kind, "armor": float(_def.get("armor", 0.0))}
