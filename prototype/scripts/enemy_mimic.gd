@@ -28,14 +28,11 @@ func anim(a: String, _moving: bool) -> String:
 func disguised() -> bool:
 	return true
 
-func draw_overlay(ov: Node2D) -> void:
+func disguise_label() -> String:
 	if e.active:
-		return
-	# etykieta jak u gracza, ale bez serduszek (zdradza go) i z numerem, którego nie ma w drużynie
-	var f := ThemeDB.fallback_font
-	var txt := "P%d" % (2 + int(e.get_instance_id() % 3))
-	ov.draw_string(f, Vector2(-30 + 0.5, -31 + 0.5), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, 4, Color(0, 0, 0, 0.8))
-	ov.draw_string(f, Vector2(-30, -31), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, 4, Color(0.72, 0.8, 0.72))
+		return ""
+	# imię jak u gracza, ale bez plakietki życia (zdradza go) i z numerem, którego nie ma w drużynie
+	return "P%d" % (2 + int(e.get_instance_id() % 3))
 
 ## Zamaskowany Mimik woła o pomoc głosem gracza (próbka bólu), gdy ktoś jest w zasięgu słuchu, ale jeszcze
 ## nie przy nim — wabi do zasadzki. Kto podejdzie, poświeci albo strzeli, ten go demaskuje (e.wake()).

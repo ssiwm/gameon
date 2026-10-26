@@ -112,7 +112,6 @@ var _seen_serial := 0
 var _net_timer := 0.0
 var _remote_pos := Vector2.ZERO
 var _max_hp := 30.0
-var _overlay: Node2D
 var _spr: Array = []
 var _facing := 1.0             ## SYMULACJA (serwer): w którą stronę patrzy wróg — cios w plecy, ucieczka w panice; liczone z ruchu w `_update_facing`, bez warstwy animacji
 var _phys_x := 0.0
@@ -197,7 +196,6 @@ func _ready() -> void:
 	_hanging = bool(_def.get("hang", false)) or bool(_def.get("moth", false))
 	if _def.get("fly", false):
 		motion_mode = CharacterBody2D.MOTION_MODE_FLOATING     # ćma lata — bez „podłogi" i grawitacji
-	_overlay = Lights.add_overlay(self)
 	_beh.on_ready()
 
 ## Aktywny, żywy wróg = realne zagrożenie (boty strzelają tylko do takich).
@@ -1369,7 +1367,6 @@ func _process(delta: float) -> void:
 	if visible:
 		_update_sprite()
 		queue_redraw()
-		_overlay.queue_redraw()
 
 ## Animacja: sen / zapowiedź / bieg / czuwanie. Kierunek z przesunięcia pozycji
 ## (u klientów prędkość wroga nie jest replikowana).
@@ -1413,15 +1410,9 @@ func _update_sprite() -> void:
 		m = Color(0.8, 0.8, 0.8)
 	body.modulate = m
 
-## Oczy, kontur zapowiedzi ataku i HP — unshaded, widoczne w ciemności.
-func _draw_overlay(ov: Node2D) -> void:
+## Stan paska życia nad modelem — rysuje go warstwa ekranu (world_bars.gd), nie nakładka 2D: ułamek życia, elita (pasek od pierwszego
+## wejścia w kadr), szerokość wg sprite'a [px świata] i etykieta przebrania (Mimik udaje gracza).
+func bar_state() -> Dictionary:
 	var size: Vector2 = _def["size"]
-	_beh.draw_overlay(ov)
-	# pasek HP po pierwszym trafieniu
-	if hp < _max_hp or bool(_def.get("elite", false)):
-		var w := size.x + 4.0
-		if Sprites.newitem:
-			Vfx.draw_bar(ov, Rect2(-w * 0.5, -size.y - 7.0, w, 2.0), hp / _max_hp, Color(0.15, 0.05, 0.05, 0.9), Color(0.9, 0.25, 0.2))
-		else:
-			ov.draw_rect(Rect2(-w * 0.5, -size.y - 7.0, w, 2.0), Color(0.15, 0.05, 0.05))
-			ov.draw_rect(Rect2(-w * 0.5, -size.y - 7.0, w * clampf(hp / _max_hp, 0.0, 1.0), 2.0), Color(0.9, 0.25, 0.2))
+	return {"frac": clampf(hp / maxf(_max_hp, 0.001), 0.0, 1.0), "alive": alive and is_visible_in_tree(), "elite": bool(_def.get("elite", false)),
+		"w": size.x + 4.0, "h": size.y + 7.0, "label": _beh.disguise_label()}
