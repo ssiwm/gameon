@@ -80,6 +80,8 @@ var _serviced: Dictionary = {}       ## jedna wymiana danego elementu na pobyt w
 var orders: Array = []                ## prasa: zamówione partie (wpisy `ammo_*` z throwables.gd), dostawa po udanej misji (zapis u hosta)
 var unlocked: Dictionary = {}         ## id broni → true: kupione w warsztacie (zapis u hosta)
 var trophies: Dictionary = {}         ## id misji (boss) → true: ukończona, odblokowuje broń-trofeum (zapis u hosta)
+var cleared: Dictionary = {}          ## id misji kampanii → true: ukończona przez tę drużynę (zapis u hosta, [campaign]) — skąd startuje kampania
+                                      ## i co można wybrać przy tablicy odpraw (PROGRESSION_PLAN.md P1.1, od 1.7.392)
 var last_gain := 0                    ## ile trafiło do banku po ostatniej misji (karta wyniku, ściana wyników)
 var persist := DisplayServer.get_name() != "headless"      ## testy headless nie czytają ani nie nadpisują prawdziwego zapisu
 var legacy_fits := false              ## stary postęp bez osobnego profilu także korzystał z automatycznego montażu
@@ -91,7 +93,7 @@ func _ready() -> void:
 	load_progress()
 	multiplayer.peer_connected.connect(func(id: int) -> void:
 		if NoiseMgr.is_server():
-			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe, deliveries))
+			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe, deliveries, cleared.keys()))
 
 ## Złom nie obowiązuje w Nocnym Dyżurze (osobna seria z własnymi zasadami).
 func enabled() -> bool:
@@ -311,6 +313,14 @@ func add_trophy(map_id: String) -> void:
 	save_progress()
 	_push()
 
+## Misja kampanii `map_id` ukończona przez drużynę (mission._success; Nocny Dyżur się nie liczy). Serwer; zapis i sync.
+func add_cleared(map_id: String) -> void:
+	if not NoiseMgr.is_server() or not enabled() or map_id == "" or cleared.has(map_id):
+		return
+	cleared[map_id] = true
+	save_progress()
+	_push()
+
 ## Czemu stojak jest zablokowany (HUD, katalog, warsztat).
 func lock_text(w: int) -> String:
 	if is_gated(w):
@@ -469,8 +479,17 @@ func add_samples(n: int) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _sample_rpc(n: int) -> void:
+	var sub := tr("The lab gets it after extraction") if has_lab_weapon() else tr("Research needs a special weapon from the workshop: LR-7, HKM-9 or WRATH-4")
 	Msg.post("sample.%d" % samples_loot, Msg.Ch.TOAST, tr("Sample taken (+%d)") % n,
-		{"sub": tr("The lab gets it after extraction"), "style": Msg.Style.SUCCESS, "ttl": 4.0, "prio": 60})
+		{"sub": sub, "style": Msg.Style.SUCCESS, "ttl": 4.0 if has_lab_weapon() else 6.0, "prio": 60})
+
+## Czy drużyna ma broń specjalną, której części bada pracownia — bez niej próbki czekają (PROGRESSION_PLAN.md P1.3).
+func has_lab_weapon() -> bool:
+	for k in LAB_WEAPONS:
+		var w := Weapons.index_of(String(k))
+		if w >= 0 and is_unlocked(w):
+			return true
+	return false
 
 @rpc("authority", "call_local", "reliable")
 func _learned_rpc(ids: Array) -> void:
@@ -759,11 +778,14 @@ func _part_done(id: String, reason: String) -> void:
 func _push() -> void:
 	changed.emit()
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe, deliveries)
+		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe, deliveries, cleared.keys())
 
 @rpc("authority", "call_remote", "reliable")
 func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array, fnd: Array = [], ord: Array = [], fz: Dictionary = {},
-		smp: int = 0, smp_l: int = 0, res: Array = [], sch: Array = [], lth: Array = [], rdy: Dictionary = {}) -> void:
+		smp: int = 0, smp_l: int = 0, res: Array = [], sch: Array = [], lth: Array = [], rdy: Dictionary = {}, clr: Array = []) -> void:
+	cleared.clear()
+	for m in clr:
+		cleared[String(m)] = true
 	schematics.clear()
 	for id in sch:
 		schematics[String(id)] = true
@@ -882,6 +904,7 @@ func load_progress(path := SAVE_PATH) -> void:
 	found.clear()
 	unlocked.clear()
 	trophies.clear()
+	cleared.clear()
 	parts.clear()
 	orders.clear()
 	deliveries.clear()
@@ -915,6 +938,8 @@ func load_progress(path := SAVE_PATH) -> void:
 			unlocked[int(w)] = true
 		for m in Array(cfg.get_value("workshop", "trophies", [])):
 			trophies[String(m)] = true
+		for m in Array(cfg.get_value("campaign", "cleared", [])):
+			cleared[String(m)] = true
 		Arsenal.load_gear(cfg.get_value("gear", "stock", {}) as Dictionary)       # zapas zaopatrzenia z poprzednich sesji
 		_set_parts(Array(cfg.get_value("workshop", "parts", [])))
 		migrate_levels(cfg.get_value("workshop", "levels", {}) as Dictionary)
@@ -947,6 +972,7 @@ func save_progress(path := SAVE_PATH) -> void:
 	cfg.set_value("scrap", "bank", bank)
 	cfg.set_value("workshop", "unlocked", unlocked.keys())
 	cfg.set_value("workshop", "trophies", trophies.keys())
+	cfg.set_value("campaign", "cleared", cleared.keys())
 	cfg.set_value("gear", "stock", Arsenal._snapshot if use_checkpoint else Arsenal.stock)
 	cfg.set_value("workshop", "parts", parts.keys())
 	cfg.set_value("workshop", "fit_policy_version", 1)

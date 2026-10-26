@@ -56,6 +56,7 @@ func run(m: Node) -> void:
 	await _jobs_deliveries()
 	await _ui()
 	await _immersive()
+	await _progression()
 	print("[WORKSHOP-TEST] ==== %d/%d OK, błędów: %d ====" % [total - failed, total, failed])
 	Audio.quit_game(1 if failed else 0)
 
@@ -544,3 +545,57 @@ func _preview_choice(key: String, slot: String, id: String) -> Dictionary:
 	for s in Parts.slots_of(key):
 		choice[s] = id if s == slot else Profile.fitted(key, String(s))
 	return choice
+
+## PROGRESSION_PLAN.md P1: postęp kampanii drużyny i wybór misji przy tablicy odpraw (P1.1), pełne XP na karcie wyniku (P1.2), próbki bez broni
+## specjalnej (P1.3). Ostatni krok: tablica stoi w strefie startu, więc gracz schodzi z niej, zanim odliczanie wyprowadzi drużynę z kryjówki.
+func _progression() -> void:
+	if main.level.map_id != "z1_hub":
+		main._set_map("z1_hub")
+		await frames(3)
+	var peer := NoiseMgr.local_id()
+	Scrap.cleared.clear()
+	check("kampania bez postępu: start od 1.1, do wyboru tylko 1.1", main.campaign_start_map() == "z1_m1" and main.campaign_unlocked() == ["z1_m1"])
+	Scrap.add_cleared("z1_m1")
+	Scrap.add_cleared("z1_m2")
+	check("po 1.1 i 1.2: start od 1.3, do wyboru 1.1–1.3", main.campaign_start_map() == "z1_m3" and main.campaign_unlocked() == ["z1_m1", "z1_m2", "z1_m3"])
+	main.after_hub = "z1_m3"
+	station("workshop")
+	await frames(2)
+	check("zmiana misji z dala od tablicy odrzucona", not main._brief_cycle_server(peer) and main.after_hub == "z1_m3")
+	station("board")
+	await frames(2)
+	var first_ok: bool = main._brief_cycle_server(peer)
+	var first := String(main.after_hub)
+	var second_ok: bool = main._brief_cycle_server(peer)
+	check("tablica odpraw: 1.3 → 1.1 → 1.2 (%s, %s)" % [first, main.after_hub], first_ok and first == "z1_m1" and second_ok and main.after_hub == "z1_m2")
+	check("obcy nadawca nie zmienia misji", not main._brief_cycle_server(987654321) and main.after_hub == "z1_m2")
+	main.hub_countdown = 1.0
+	main._brief_cycle_server(peer)
+	check("zmiana misji odnawia odliczanie wyjścia (%.1f s)" % main.hub_countdown, main.after_hub == "z1_m3" and main.hub_countdown >= main.HUB_COUNTDOWN - 0.05)
+	station("workshop")
+	await frames(2)
+	main.hub_countdown = -1.0
+	Scrap.persist = true
+	var path := "user://workshop_campaign_test.cfg"
+	Scrap.save_progress(path)
+	Scrap.persist = false
+	var cfg := ConfigFile.new()
+	cfg.load(path)
+	var saved: Array = Array(cfg.get_value("campaign", "cleared", []))
+	check("postęp kampanii w zapisie hosta (%s)" % str(saved), saved.has("z1_m1") and saved.has("z1_m2") and saved.size() == 2)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	Scrap.add_cleared("z1_m3")
+	Scrap.add_cleared("z1_b1")
+	check("po bossie: start znowu od 1.1, do wyboru cała Strefa I", main.campaign_start_map() == "z1_m1" and main.campaign_unlocked().size() == 4)
+	# P1.2: karta wyniku liczy XP za zabójstwa i podniesienia razem z wynikiem misji
+	Profile.reset_for_test()
+	Profile.add_xp(12, "Kill")
+	Profile.add_xp(Profile.XP_REVIVE, "Revive")
+	var mission_xp := Profile.apply_mission_result("z1_m1", false, false, false)
+	check("XP na karcie: wynik %d + zabójstwa i podniesienia %d" % [Profile.last_mission_xp, Profile.last_run_xp],
+		mission_xp == Profile.XP_MISSION + Profile.XP_FIRST_CLEAR and Profile.last_run_xp == 12 + Profile.XP_REVIVE and Profile.run_xp == 0
+		and Profile.xp == mission_xp + Profile.last_run_xp)
+	# P1.3: próbki bez broni specjalnej mówią, czego brakuje
+	var had_lab: bool = Scrap.has_lab_weapon()
+	Scrap.unlocked.clear()
+	check("broń specjalna do badań: po zakupie LR-7 tak (%s), bez zakupów nie (%s)" % [had_lab, Scrap.has_lab_weapon()], had_lab and not Scrap.has_lab_weapon())

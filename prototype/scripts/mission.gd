@@ -377,10 +377,11 @@ func _success() -> void:
 			Scrap.add_samples(Scrap.SAMPLE_SIDE)                  # cel poboczny: próbka do pracowni (W6a)
 		var gain := Scrap.bank_loot(bonus)
 		print("[SCRAP] mission banked +%d (bonus %d), wallet %d" % [gain, bonus, Scrap.bank])
-		if kind == "boss":
-			var tl := get_tree().get_first_node_in_group("level")
-			if tl != null:
-				Scrap.add_trophy(String(tl.map_id))        # pokonany boss odblokowuje broń-trofeum w warsztacie (SPECTER-1)
+		var cl := get_tree().get_first_node_in_group("level")
+		if cl != null:
+			Scrap.add_cleared(String(cl.map_id))           # postęp kampanii drużyny: skąd startuje następna sesja (PROGRESSION_PLAN.md P1.1)
+			if kind == "boss":
+				Scrap.add_trophy(String(cl.map_id))        # pokonany boss odblokowuje broń-trofeum w warsztacie (SPECTER-1)
 	_record_result()
 	if kind != "hub":
 		var xl := get_tree().get_first_node_in_group("level")
@@ -628,7 +629,7 @@ func _broadcast() -> void:
 	_sync_t = SYNC_INTERVAL
 	if NoiseMgr.has_network() and multiplayer.is_server():
 		_sync.rpc(phase, nests_left, nests_total, exit_pos, extract_progress, elapsed, downs, attempts,
-			[NightShift.active, NightShift.stage, NightShift.mods, shift_cleared, shift_time, shift_downs, shift_record, Weather.forecast, Weather.current, Weather.seed], peak_noise, finale, stashes_found, stash_total)
+			[NightShift.active, NightShift.stage, NightShift.mods, shift_cleared, shift_time, shift_downs, shift_record, Weather.forecast, Weather.current, Weather.seed, _after_hub()], peak_noise, finale, stashes_found, stash_total)
 
 @rpc("authority", "call_remote", "reliable")
 func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d: int, att: int, shift: Array, peak: float, fin: bool, st_found: int, st_total: int) -> void:
@@ -648,6 +649,8 @@ func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d
 		Weather.current = String(shift[8])
 	if shift.size() > 9:
 		Weather.seed = int(shift[9])
+	if shift.size() > 10 and get_tree().current_scene != null and "after_hub" in get_tree().current_scene:
+		get_tree().current_scene.set("after_hub", String(shift[10]))       # cel wyjścia z kryjówki (odprawa i wybór misji przy tablicy u klienta)
 	var was_success := phase == Phase.SUCCESS
 	phase = p
 	nests_left = left
@@ -702,6 +705,11 @@ func objective_caption() -> String:
 	if base != "" and NightShift.active:
 		return tr("NIGHT SHIFT %d/%d  ·  %s") % [NightShift.stage, NightShift.MISSIONS, base]
 	return base
+
+## Cel wyjścia z kryjówki (main.after_hub) — serwer rozsyła go w _sync.
+func _after_hub() -> String:
+	var main := get_tree().current_scene
+	return String(main.get("after_hub")) if main != null and "after_hub" in main else ""
 
 ## Tytuł następnej misji (kryjówka): z danych mapy wskazanej przez main.after_hub.
 func _hub_next_title() -> String:

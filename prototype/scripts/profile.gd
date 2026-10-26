@@ -62,6 +62,8 @@ const COND_SAVE_EVERY := 30.0                 ## s — stan zmienia się co strz
 const CLEAN_STEP := 1.5                       ## s czyszczenia przy ławie za każde rozpoczęte 10 % zużycia (od 1.7.347 zamiast złomu: koszt to czas w kryjówce)
 var last_mission_xp := 0                      ## XP z ostatniej misji (karta wyniku)
 var last_mission_rows: Array = []             ## [[etykieta, XP], …] z ostatniej misji
+var run_xp := 0                               ## XP spoza wyniku (zabójstwa, podniesienia) od ostatniego wyniku misji — także z prób zakończonych wipe'em
+var last_run_xp := 0                          ## run_xp zamknięte przy ostatnim wyniku: karta wyniku pokazuje last_mission_xp + last_run_xp (P1.2)
 var persist := DisplayServer.get_name() != "headless"      ## testy headless nie ruszają prawdziwego profilu
 
 func _ready() -> void:
@@ -105,6 +107,8 @@ func add_xp(amount: int, reason := "") -> void:
 		return
 	var before := level()
 	xp += amount
+	if reason != "Mission":
+		run_xp += amount
 	xp_gained.emit(amount, reason)
 	var after := level()
 	for lv in range(before + 1, after + 1):
@@ -132,6 +136,8 @@ func apply_mission_result(map_id: String, side_ok: bool, no_downs: bool, boss: b
 		completed[map_id] = true
 	last_mission_xp = total
 	last_mission_rows = rows
+	last_run_xp = run_xp
+	run_xp = 0
 	add_xp(total, "Mission")
 	_report_mission_xp(total, rows)
 	return total
@@ -607,3 +613,5 @@ func reset_for_test() -> void:
 	_cond_dirty = false
 	last_mission_xp = 0
 	last_mission_rows = []
+	run_xp = 0
+	last_run_xp = 0
