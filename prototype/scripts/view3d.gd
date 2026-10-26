@@ -20,6 +20,8 @@ const Enemy3D := preload("res://scripts/enemy3d.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
+const GunModel := preload("res://scripts/gun_model.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Backdrop3D := preload("res://scripts/backdrop3d.gd")
@@ -28,6 +30,7 @@ const RangeDoor := preload("res://scripts/range3d/range_door.gd")
 
 const PX := Level3D.PX
 const FOV := 40.0
+const ENEMY_CULL_R := 3.5                ## m: promień sfery wroga przy teście kadru (`_sync_enemies`); bossowie ×3
 const MAX_LIGHTS := 14
 const SHADOW_LIGHTS := 5
 const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wrogów
@@ -91,6 +94,7 @@ var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D pr
 var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
 var _cabinets := {}                      ## id gabloty (cabinet.gd) → {node, root, door, ghosts: [Node3D], open}
 var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
+var _gun_warm_t := 0.0                   ## s do następnego przeglądu ekwipunku graczy (_warm_loadouts)
 var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D, MeshInstance3D, losowe odchylenie]
 var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
 var _ws_lamps := {}                      ## id warsztatu → lampa nad nim (Node3D w geometrii mapy)
@@ -156,6 +160,9 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_vp_fg.world_3d = _vp_bg.world_3d                     # ten sam świat 3D: wspólne światła i cienie
 	_vp_fg.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(_vp_fg)
+	SessionLog.watch_viewports([_vp_bg, _vp_fg])              # czas GPU świata i graczy w próbkach `perf` dziennika sesji
+	_apply_render_scale()
+	Settings.changed.connect(_apply_render_scale)
 	_world = Node3D.new()
 	_world.name = "World"
 	_vp_bg.add_child(_world)
@@ -301,9 +308,24 @@ func _process(delta: float) -> void:
 	_tick(delta)
 	stat_usec += Time.get_ticks_usec() - t0
 
+## Dev (--perf): czas części `_tick` w µs (klucz = nazwa `_sync_*` bez przedrostka); main.gd drukuje najdroższe w wierszu [PERF-V3D].
+static var stat_parts := {}
+
+func _tp(part: String, t0: int) -> int:
+	var t := Time.get_ticks_usec()
+	stat_parts[part] = int(stat_parts.get(part, 0)) + t - t0
+	return t
+
 func _tick(delta: float) -> void:
 	if _level == null or not is_instance_valid(_level):
 		return
+	SessionLog.frame(delta, String(_level.get("map_id")))
+	_gun_warm_t -= delta
+	if _gun_warm_t <= 0.0:
+		_gun_warm_t = 1.0
+		_warm_loadouts()
+	if GunModel.pending():
+		GunModel.poll()
 	_life += delta
 	if _life > 3.0 and "--view3dtoggle" in OS.get_cmdline_user_args():
 		release()                                       # dev: sprawdzenie, że wyłączenie przywraca obraz 2D
@@ -316,44 +338,79 @@ func _tick(delta: float) -> void:
 			elif ar.begins_with("--view3dsavebg="):                 # dev: zapis obrazu świata 3D (bez interfejsu i warstw 2D) — ocena materiałów w nocnym oświetleniu
 				_saved = true
 				_vp_bg.get_texture().get_image().save_png(ar.substr("--view3dsavebg=".length()))
+	var tp := Time.get_ticks_usec()
 	_sync_camera()
+	tp = _tp("camera", tp)
 	_geo_t -= delta
 	if _geo_t <= 0.0:
 		_geo_t = 0.25
 		_sync_geometry()
+		tp = _tp("geometry", tp)
 	_sync_rigs()
+	tp = _tp("rigs", tp)
 	_sync_enemies(delta)
+	tp = _tp("enemies", tp)
 	_sync_reeds(delta)
+	tp = _tp("reeds", tp)
 	_sync_mud_prints()
+	tp = _tp("mud_prints", tp)
 	_sync_projectiles()
+	tp = _tp("projectiles", tp)
 	_sync_props()
+	tp = _tp("props", tp)
 	_sync_items()
+	tp = _tp("items", tp)
 	_build_rails()
 	_sync_drawn()
+	tp = _tp("drawn", tp)
 	_sync_launch_doors()
+	tp = _tp("launch_doors", tp)
 	_sync_range_doors()
+	tp = _tp("range_doors", tp)
 	_sync_hub_props()
+	tp = _tp("hub_props", tp)
 	_sync_station_props()
+	tp = _tp("station_props", tp)
 	_sync_world_notes()
+	tp = _tp("world_notes", tp)
 	_sync_guns()
+	tp = _tp("guns", tp)
 	_sync_cabinets(delta)
+	tp = _tp("cabinets", tp)
 	_sync_fires()
+	tp = _tp("fires", tp)
 	_sync_weapon_fx()
+	tp = _tp("weapon_fx", tp)
 	_sync_casings()
+	tp = _tp("casings", tp)
 	_sync_burning()
+	tp = _tp("burning", tp)
 	_sync_blood(delta)
+	tp = _tp("blood", tp)
 	_sync_drag_trails()
+	tp = _tp("drag_trails", tp)
 	_sync_weather(delta)
+	tp = _tp("weather", tp)
 	_sync_mine_dust()
+	tp = _tp("mine_dust", tp)
 	_sync_globs()
+	tp = _tp("globs", tp)
 	_sync_boulders()
+	tp = _tp("boulders", tp)
 	_sync_boss_fx()
+	tp = _tp("boss_fx", tp)
 	_sync_leech_fx()
+	tp = _tp("leech_fx", tp)
 	_sync_lamps()
+	tp = _tp("lamps", tp)
 	_sync_nests()
+	tp = _tp("nests", tp)
 	_sync_enemy_rings()
+	tp = _tp("enemy_rings", tp)
 	_sync_ambient()
+	tp = _tp("ambient", tp)
 	_sync_world_fx(delta)
+	tp = _tp("world_fx", tp)
 	# widok z oczu gracza: jego własny model znika z kadru (stałby tuż przed kamerą) i wraca, gdy kamera odjeżdża
 	var hide_me: Node3D = null
 	if _fp > 0.35 and _fp_last != null and is_instance_valid(_fp_last) and _rigs.has(_fp_last):
@@ -369,7 +426,9 @@ func _tick(delta: float) -> void:
 	if _scan_t <= 0.0:
 		_scan_t = 0.5
 		_scan_lights()
+		tp = _tp("scan_lights", tp)
 	_sync_lights()
+	tp = _tp("lights", tp)
 
 # ---------------------------------------------------------------- kamera i obraz
 
@@ -728,6 +787,7 @@ func _sync_enemies(delta: float) -> void:
 			_world.add_child(e)
 			_enemies[id] = [n, e]
 	var cam_x := _cam_a.global_position.x
+	var planes := _cam_a.get_frustum()
 	for id in _enemies.keys():
 		var pair: Array = _enemies[id]
 		var src_v = pair[0]
@@ -770,9 +830,15 @@ func _sync_enemies(delta: float) -> void:
 		var near: bool = absf(pos.x - cam_x) < 90.0
 		if dying and not near:
 			e.set("finished", true)
-		e.visible = show and near and not (not alive and bool(e.get("finished")))
-		if not e.visible:
+		if not (show and near and not (not alive and bool(e.get("finished")))):
+			e.visible = false
 			continue
+		# poza kadrem kamery świata model jest ukryty, a szkielet nie jest liczony (klipy, IK, podparcie stóp: ok. 0,3 ms na wroga) —
+		# biegną tylko zegary klipów i prędkości, więc po wejściu w kadr poza toczy się dalej. W walce na z1_m2 pozowano 46 wrogów
+		# na klatkę, w kadrze było kilkunastu. Promień sfery z zapasem na wysokość modelu i wychylenia (bossowie są więksi).
+		var on_screen := _in_frustum(pos + Vector3(0.0, 1.2, 0.0), ENEMY_CULL_R * (3.0 if src.is_in_group("boss") else 1.0), planes)
+		e.visible = on_screen
+		e.set("skip_skeleton", not on_screen)
 		var sp_v2 = float(st.get("vx", 0.0))
 		var wades: bool = not ["cma", "nest", "vein", "leech"].has(String(e.get("kind")))
 		st["wade"] = _wade_step(float(st.get("wade", 0.0)), src.global_position) if wades else 0.0
@@ -784,7 +850,7 @@ func _sync_enemies(delta: float) -> void:
 			e.position = e.position.lerp(desired, retreat_weight)
 		else:
 			e.position = desired
-		if wades:
+		if wades and on_screen:
 			_splash_update(e, src.global_position, sp_v2, LAYER_WORLD, float(st["wade"]))
 		var sf := body.sprite_frames
 		var anim := body.animation
@@ -810,7 +876,7 @@ func _sync_enemies(delta: float) -> void:
 		st["vy"] = lerpf(float(st["vy"]), vy_now, 0.45)
 		_estate[id] = st
 		var ground := {}
-		if alive and absf(float(st["vy"])) < 55.0:
+		if alive and on_screen and absf(float(st["vy"])) < 55.0:
 			var probes: Dictionary = e.call("ground_probes")
 			for side in probes:
 				var point: Vector3 = probes[side]
@@ -824,6 +890,13 @@ func _sync_enemies(delta: float) -> void:
 						ground[side] = {"height": height, "normal": Vector3(normal.x, -normal.y, 0.0)}
 		e.set("ground_profile", ground)
 		e.call("pose", delta, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), int(info["sp"]), bool(info.get("alert", false)), vx_now)      # tempo kroków z przebytej drogi, także u obserwatora sieciowego
+
+## Sfera (środek, promień w m) choć częściowo w bryle widzenia (`Camera3D.get_frustum`: normalne płaszczyzn na zewnątrz).
+func _in_frustum(c: Vector3, r: float, planes: Array[Plane]) -> bool:
+	for pl in planes:
+		if pl.distance_to(c) > r:
+			return false
+	return true
 
 ## Rodzaj cieczy pod stopami (0 błoto, 1 olej, 2 woda), −1 gdy stoi na zwykłym gruncie.
 func _liquid_kind(px: Vector2) -> int:
@@ -1972,7 +2045,7 @@ func _sync_guns() -> void:
 		var spr := (hd as Node).get_node_or_null("GunMark") as Node2D
 		if spr == null:
 			continue
-		var model := (load(path) as PackedScene).instantiate() as Node3D
+		var model := GunModel.scene(path).instantiate() as Node3D
 		var is_mag := String(n.get("kind")) == "mag"
 		if is_mag:                                                 # upuszczony magazynek: z modelu broni zostaje tylko podzespół `__mag`
 			for mn in model.find_children("*", "MeshInstance3D", true, false):
@@ -2140,12 +2213,33 @@ func _cab_box(parent: Node3D, size: Vector3, pos: Vector3, m: Material) -> MeshI
 	parent.add_child(mi)
 	return mi
 
+## Broń z ekwipunku każdego gracza (główne, boczna, biała) wczytywana w tle, zanim trafi do ręki (GunModel.warm).
+func _warm_loadouts() -> void:
+	for p in get_tree().get_nodes_in_group("players"):
+		var wc = p.get("weapons")
+		if wc == null:
+			continue
+		var ids: Array = (wc.get("loadout") as Array).duplicate() if wc.get("loadout") != null else []
+		ids.append(int(wc.get("melee_id")) if wc.get("melee_id") != null else -1)
+		for id in ids:
+			if int(id) >= 0 and int(id) < Weapons.defs().size():
+				GunModel.warm(GUN_DIR + "gun_%s.glb" % String(Weapons.def(int(id)).key))
+
+## Skala renderu świata z ustawień (Settings.RENDER_SCALE_LIST): poniżej 100% viewport świata skaluje FSR 1. Warstwa graczy zostaje
+## w pełnej rozdzielczości — postacie są małe na ekranie i rozmyłyby się pierwsze, a kosztują ok. 0,7 ms GPU w 4K.
+func _apply_render_scale() -> void:
+	if _vp_bg == null:
+		return
+	var sc := Settings.render_scale()
+	_vp_bg.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if sc < 0.999 else Viewport.SCALING_3D_MODE_BILINEAR
+	_vp_bg.scaling_3d_scale = sc
+
 ## Model broni do gabloty (pistolet na półce, ślad pustego haka): naturalna długość z gun_proc.py, środek bryły w (0, 0, 0).
 func _cab_gun(key: String) -> Node3D:
 	var path := GUN_DIR + "gun_%s.glb" % key
 	if not ResourceLoader.exists(path):
 		return null
-	var g := (load(path) as PackedScene).instantiate() as Node3D
+	var g := GunModel.scene(path).instantiate() as Node3D
 	var box := AABB()
 	var first := true
 	for n in g.find_children("*", "MeshInstance3D", true, false):

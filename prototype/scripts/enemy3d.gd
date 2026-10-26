@@ -265,6 +265,9 @@ var _sole_points: Dictionary = {}
 var _sole_samples: Dictionary = {}
 var _ground_cache: Dictionary = {}
 static var _sole_cache: Dictionary = {}
+## `_sole_samples` spłaszczone na rodzaj i łapę („rodzaj/klucz”): [kości bez powtórzeń, numer kości wpływu, punkt w przestrzeni kości, waga,
+## koniec próbki] — `_sole_penetration` w klatce liczy po jednym iloczynie skalarnym na wpływ zamiast tablic tablic i słownika póz.
+static var _sole_flat_cache: Dictionary = {}
 var _hull: Array = []                        ## próbki otoczki skóry (śmierć: ciało nie wchodzi w podłogę)
 static var _hull_cache: Dictionary = {}
 var _blade: Array = []                       ## SPEC `death_blade`: [kość dłoni, oś ostrza, jego szerokość] w przestrzeni kości
@@ -479,18 +482,57 @@ func _sole_floor(key: String, foot_basis: Basis) -> float:
 ## Mała próbka faktycznie skinned wierzchołków wykrywa wpływ piszczeli/palców,
 ## którego nie opisuje sztywna otoczka kości stopy. Nie modyfikujemy wag ani długości kości.
 func _sole_penetration(key: String) -> float:
-	var lowest := INF
-	var poses := {}
+	var flat := _sole_flat(key)
+	var bones: PackedInt32Array = flat[0]
+	var ends: PackedInt32Array = flat[4]
+	if ends.is_empty(): return 0.0
+	# wysokość punktu skóry w świecie: (T · Σ wᵢ·Pᵢ·lᵢ).y = Σ wᵢ·(wiersz Y macierzy T.basis·Pᵢ.basis · lᵢ + (T.basis·Pᵢ.origin).y) + T.origin.y
 	var transform := _sk.global_transform
+	var rows := PackedVector3Array()
+	var offs := PackedFloat32Array()
+	rows.resize(bones.size())
+	offs.resize(bones.size())
+	for i in bones.size():
+		var pose := _gp(bones[i])
+		var b := transform.basis * pose.basis
+		rows[i] = Vector3(b.x.y, b.y.y, b.z.y)
+		offs[i] = (transform.basis * pose.origin).y
+	var slot: PackedInt32Array = flat[1]
+	var local: PackedVector3Array = flat[2]
+	var weight: PackedFloat32Array = flat[3]
+	var lowest := INF
+	var j := 0
+	for e in ends:
+		var y := 0.0
+		while j < e:
+			var k := slot[j]
+			y += (rows[k].dot(local[j]) + offs[k]) * weight[j]
+			j += 1
+		lowest = minf(lowest, y)
+	lowest += transform.origin.y
+	return clampf(global_position.y + float((ground_profile.get(key, {}) as Dictionary).get("height", 0.0)) + 0.003 - lowest, 0.0, 0.12)
+
+func _sole_flat(key: String) -> Array:
+	var ck := kind + "/" + key
+	if _sole_flat_cache.has(ck): return _sole_flat_cache[ck]
+	var bones := PackedInt32Array()
+	var slot := PackedInt32Array()
+	var local := PackedVector3Array()
+	var weight := PackedFloat32Array()
+	var ends := PackedInt32Array()
 	for sample in _sole_samples.get(key, []):
-		var point := Vector3.ZERO
 		for influence in sample:
 			var bone: int = influence[0]
-			if not poses.has(bone): poses[bone] = _gp(bone)
-			point += (poses[bone] as Transform3D) * (influence[1] as Vector3) * float(influence[2])
-		lowest = minf(lowest, (transform * point).y)
-	if not is_finite(lowest): return 0.0
-	return clampf(global_position.y + float((ground_profile.get(key, {}) as Dictionary).get("height", 0.0)) + 0.003 - lowest, 0.0, 0.12)
+			var k := bones.find(bone)
+			if k < 0:
+				k = bones.size()
+				bones.append(bone)
+			slot.append(k)
+			local.append(influence[1] as Vector3)
+			weight.append(float(influence[2]))
+		ends.append(slot.size())
+	_sole_flat_cache[ck] = [bones, slot, local, weight, ends]
+	return _sole_flat_cache[ck]
 
 ## Otoczka całej skóry: dla każdej kości skrajne punkty jej wierzchołków w 26 kierunkach (rogi, pięści, garb), jak próbki podeszwy.
 ## Liczona raz na rodzaj przy budowie modelu (SPEC `death_floor`, ok. 40 ms); koszt w klatce upadku to kilkaset punktów, nie cała siatka.
@@ -670,6 +712,7 @@ var _dead := false
 var _dead_t := 0.0
 var _dead_from := {}                       ## poza w chwili śmierci (płynne wejście w upadek)
 var finished := false                      ## martwy i po animacji — można ukryć
+var skip_skeleton := false                 ## poza kadrem (view3d.gd): `pose` prowadzi tylko zegary klipów, fazę kroku i wagi, bez szkieletu i materiałów
 var _qsamp := {}                           ## próbki animacji czworonoga: nazwa → [rotacje, pozycje]
 var _eye_w := 0.0                          ## waga rozżarzenia oczu przy zapowiedzi ciosu 0..1
 var _qs := 0.0                             ## waga siadu czworonoga 0..1 (idle = siedzi i czeka)
@@ -969,10 +1012,11 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 	eye += _eye_w * ((4.2 + 1.4 * sin(_t * 24.0)) if anim == "windup" else 3.0) * (eye_base / 1.4)        # zapowiedź ciosu pulsuje; reakcja „zauważył" (alert) żarzy się równo i słabiej
 	if _dead:
 		eye = eye_base * (1.0 - smoothstep(0.0, 0.35, _dead_t))        # oczy gasną po śmierci
-	for m in _mats:
-		var sm := m as ShaderMaterial
-		sm.set_shader_parameter("mod", Vector4(mod.r, mod.g, mod.b, mod.a))
-		sm.set_shader_parameter("eye_glow", eye)
+	if not skip_skeleton:
+		for m in _mats:
+			var sm := m as ShaderMaterial
+			sm.set_shader_parameter("mod", Vector4(mod.r, mod.g, mod.b, mod.a))
+			sm.set_shader_parameter("eye_glow", eye)
 	if _spec.get("eye_lamp", false):
 		for e in _eyes:
 			((e as MeshInstance3D).material_override as StandardMaterial3D).emission_energy_multiplier = eye
@@ -987,6 +1031,9 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		if is_finite(horizontal_speed) and absf(horizontal_speed) < 0.5:
 			anim = "idle"
 	_advance_motion(delta, anim)
+	if skip_skeleton:
+		_prev_anim = anim
+		return
 	if _spec.has("flare"):
 		_update_flare(anim)
 	if _spec.has("deform"):

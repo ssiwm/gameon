@@ -119,6 +119,8 @@ const EMITTERS := [
 ]
 
 var _cache: Dictionary = {}          # String -> AudioStream
+var _warm: Dictionary = {}           # String -> ścieżka: klucz wczytywany w tle (_warm_all), jeszcze nie w _cache
+var _warm_paths: Dictionary = {}     # ścieżka -> true: zlecenie ResourceLoader.load_threaded_request czeka na odbiór
 var _pool: Array[AudioStreamPlayer] = []
 var _pos_pool: Array[AudioStreamPlayer2D] = []
 var _loops: Dictionary = {}          # String -> AudioStreamPlayer
@@ -207,6 +209,8 @@ func _ready() -> void:
 	# Alt+F4 / zamknięcie okna musi przejść przez ten sam cykl co przycisk Quit.
 	get_tree().set_auto_accept_quit(false)
 	get_tree().root.close_requested.connect(quit_game)
+	if DisplayServer.get_name() != "headless":
+		_warm_all()
 
 
 func _exit_tree() -> void:
@@ -273,6 +277,10 @@ func _shutdown() -> void:
 	_heart_key = ""
 	_music_layer = -1
 	_music_started = false
+	for wp in _warm_paths:                 # wczytywanie w tle (`_warm_all`) odbieramy przed wyjściem — wątek nie trzyma zasobu przy zamykaniu
+		ResourceLoader.load_threaded_get(wp)
+	_warm.clear()
+	_warm_paths.clear()
 	_cache.clear()
 	_reported.clear()
 	_occl.clear()
@@ -289,7 +297,15 @@ func stream(key: String) -> AudioStream:
 	if not Manifest.PATHS.has(key):
 		_report_missing(key, "brak wpisu w PATHS")
 		return null
-	var res: Resource = load(_path(key))
+	var res: Resource = null
+	if _warm.has(key):
+		var wp: String = _warm[key]
+		_warm.erase(key)
+		if _warm_paths.has(wp):
+			_warm_paths.erase(wp)
+			res = ResourceLoader.load_threaded_get(wp)       # czeka na wątek, jeśli jeszcze wczytuje (zwykle już gotowe)
+	if res == null:
+		res = load(_path(key))
 	var s := res as AudioStream
 	if s == null:
 		_report_missing(key, "nie załadował się jako AudioStream")
@@ -302,6 +318,39 @@ func stream(key: String) -> AudioStream:
 	_cache[key] = s
 	return s
 
+
+## Cały manifest wczytywany w tle zaraz po starcie (efekty WAV to ok. 30 MB): pierwsze zagranie dźwięku czytało plik w wątku głównym
+## i zacinało klatkę o 46–54 ms (pomiar --perf 2026-10-23: amb_thud, tape_stop, revive, foley_gear w środku misji). Gotowe pliki odbiera
+## `_poll_warm` w `_process`, a `stream()` klucza jeszcze w drodze czeka na jego wątek. W trybie headless (testy) bez tego.
+func _warm_all() -> void:
+	for key in Manifest.PATHS:
+		var k := String(key)
+		if _cache.has(k):
+			continue
+		var p := _path(k)
+		if not _warm_paths.has(p):
+			if not ResourceLoader.exists(p) or ResourceLoader.load_threaded_request(p) != OK:
+				continue
+			_warm_paths[p] = true
+		_warm[k] = p
+
+## Odbiera do 8 gotowych dźwięków z wczytywania w tle na klatkę.
+func _poll_warm() -> void:
+	var n := 0
+	for k in _warm.keys():
+		var p: String = _warm[k]
+		if not _warm_paths.has(p):
+			stream(String(k))                                # ta sama ścieżka odebrana pod innym kluczem: już w cache'u zasobów
+			continue
+		var st := ResourceLoader.load_threaded_get_status(p)
+		if st == ResourceLoader.THREAD_LOAD_LOADED:
+			stream(String(k))
+			n += 1
+			if n >= 8:
+				return
+		elif st == ResourceLoader.THREAD_LOAD_FAILED or st == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+			_warm.erase(k)
+			_warm_paths.erase(p)
 
 ## Wczytuje z góry warianty rodziny (`base_1` … `base_N`) do cache'u — żeby pierwsze zagranie w środku walki nie zacinało klatki ładowaniem pliku
 ## (zacięcie w złym momencie potrafi przepuścić pocisk przez cel; wróg warmuje swoje głosy w `_ready`).
@@ -1117,6 +1166,8 @@ func _update_emitters(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	_clock += delta
+	if not _warm.is_empty():
+		_poll_warm()
 	_listener_pos = _listener.global_position
 	_occl.clear()                      # przeszkody zmieniają się dynamicznie
 	_follow_listener()

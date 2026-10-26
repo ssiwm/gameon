@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://e5u36asodn4q"
-path.s3tc="res://.godot/imported/gun_m83_ORM.jpg-010cbb249171340a8ae4dc54d8d9da0d.s3tc.ctex"
+path.bptc="res://.godot/imported/gun_m83_ORM.jpg-010cbb249171340a8ae4dc54d8d9da0d.bptc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -15,12 +15,12 @@ generator_parameters={
 [deps]
 
 source_file="res://art/char3d/fp/gun_m83_ORM.jpg"
-dest_files=["res://.godot/imported/gun_m83_ORM.jpg-010cbb249171340a8ae4dc54d8d9da0d.s3tc.ctex"]
+dest_files=["res://.godot/imported/gun_m83_ORM.jpg-010cbb249171340a8ae4dc54d8d9da0d.bptc.ctex"]
 
 [params]
 
 compress/mode=2
-compress/high_quality=false
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

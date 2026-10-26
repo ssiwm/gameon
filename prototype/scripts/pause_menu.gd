@@ -272,6 +272,10 @@ func _build_settings(scroll: ScrollContainer) -> void:
 		Settings.cycle_fps)
 	_seg(right, tr("Effects quality"), ["LOW", "MED", "HIGH"], func() -> int: return Settings.quality_idx,
 		func(i: int) -> void: _to_idx(func() -> int: return Settings.quality_idx, Settings.cycle_quality, i, 3))
+	_drop(right, tr("Render scale"), func() -> String:
+			var sc := Settings.render_scale()
+			return "100%" if sc >= 0.999 else "%d%% (FSR)" % roundi(sc * 100.0),
+		Settings.cycle_render_scale)
 	_seg(right, tr("HUD size"), ["S", "M", "L"], func() -> int: return Settings.ui_idx,
 		func(i: int) -> void: _to_idx(func() -> int: return Settings.ui_idx, Settings.cycle_ui, i, 3))
 	_seg(right, tr("Camera zoom"), Settings.CAM_NAMES, func() -> int: return Settings.cam_idx,
