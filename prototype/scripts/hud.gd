@@ -1781,7 +1781,8 @@ func _fill_result(m: Node) -> void:
 ## przelewa i pojawia się „LEVEL UP”. XP przychodzi od serwera chwilę po zmianie fazy — zmiana wartości zaczyna animację od nowa.
 func _drive_xp(delta: float) -> void:
 	var end_xp: int = Profile.xp
-	var start_xp: int = maxi(0, end_xp - Profile.last_mission_xp)
+	var earned: int = Profile.last_mission_xp + Profile.last_run_xp          # wynik misji + zabójstwa i podniesienia (od 1.7.392)
+	var start_xp: int = maxi(0, end_xp - earned)
 	var key := Vector2i(start_xp, end_xp)
 	if key != _xp_key:
 		_xp_key = key
@@ -1794,7 +1795,7 @@ func _drive_xp(delta: float) -> void:
 	var hi: int = Profile.xp_for_level(lv + 1)
 	_xp_bar.value = float(shown - lo) / float(maxi(1, hi - lo))
 	_xp_bar.queue_redraw()
-	var gained: int = int(round(float(Profile.last_mission_xp) * e))
+	var gained: int = int(round(float(earned) * e))
 	var xt := "+%d  ·  LV %d" % [gained, lv]
 	if _result_xp_val.text != xt:
 		_result_xp_val.text = xt
@@ -2193,6 +2194,17 @@ func _near_service() -> bool:
 	return false
 
 ## Czy lokalny gracz stoi przy szafkach osobistych (kryjówka, perki i wygląd) i panel jest zamknięty.
+## Przy tablicy odpraw: ile misji kampanii można wybrać (0 — gracz nie stoi przy tablicy albo panel jest otwarty).
+func _brief_choices() -> int:
+	var main := get_tree().current_scene
+	if main == null or not main.has_method("campaign_unlocked") or NightShift.active:
+		return 0
+	for b in get_tree().get_nodes_in_group("board"):
+		if b.local_in_range:
+			var ui := get_tree().get_first_node_in_group("workshop_ui")
+			return main.campaign_unlocked().size() if ui == null or not ui.is_open() else 0
+	return 0
+
 func _near_lockers() -> bool:
 	for w in get_tree().get_nodes_in_group("locker_station"):
 		if w.local_in_range:
@@ -2278,7 +2290,10 @@ func _prompt_candidates() -> Array:
 	if _near_lathe():
 		add.call(tr("[%s]  Lathe and grinder  ·  %d schematics") % [Actions.key("interact"), Scrap.schematics.size()], -1.0, UiTheme.ACCENT)
 	if _near_lab():
-		add.call(tr("[%s]  Lab  ·  %d samples  ·  research for special weapons") % [Actions.key("interact"), Scrap.samples], -1.0, UiTheme.ACCENT)
+		if Scrap.has_lab_weapon():
+			add.call(tr("[%s]  Lab  ·  %d samples  ·  research for special weapons") % [Actions.key("interact"), Scrap.samples], -1.0, UiTheme.ACCENT)
+		else:
+			add.call(tr("[%s]  Lab  ·  %d samples  ·  buy a special weapon at the workshop first") % [Actions.key("interact"), Scrap.samples], -1.0, UiTheme.ACCENT)
 	if _near_pyro():
 		add.call(tr("[%s]  Pyrotechnics  ·  grenades, mines, fuses") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
 	if _near_press():
@@ -2287,6 +2302,9 @@ func _prompt_candidates() -> Array:
 		add.call(tr("[%s]  Maintenance  ·  clean, barrels, springs") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
 	if _near_lockers():
 		add.call(tr("[%s]  Locker  ·  perks and look") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
+	var brief_opts := _brief_choices()
+	if brief_opts > 1:
+		add.call(tr("[%s]  Change mission  ·  %d unlocked") % [Actions.key("interact"), brief_opts], -1.0, UiTheme.ACCENT)
 	var rdoor := _near_range_door()
 	if rdoor != null:
 		var rb := float(rdoor.best())

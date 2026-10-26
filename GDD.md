@@ -73,6 +73,8 @@ WEJŚCIE → ROZPOZNANIE → WYKONANIE CELU → ALARM/STALKER → EKSTRAKCJA
 ```
 Misja → złom + wroga wiedza + próbki → Ulepszenia broni / Perki / Bezpieczna Kryjówka → trudniejsze misje
 ```
+**Stan w prototypie (1.7.392):** złom i próbki → warsztat i stanowiska Kryjówki; XP → poziom profilu → perki i stroje; kolejne misje kampanii są
+trudniejsze z założenia mapy, a nie ze skalowania z postępem (skaluje tylko Nocny Dyżur). Analiza i plan: `PROGRESSION_PLAN.md`.
 
 ### Zasady śmierci
 - HP: 3 serca (Weteran), 1 trafienie (Koszmar).
@@ -370,7 +372,7 @@ Las, posterunek, tartak. Kolory: mgła, brąz, zieleń. Wprowadza: strzelanie, s
 
 **Stan w prototypie (1.7.24):** zaimplementowane są **1.2 „Przerwa w Nadawaniu"** (w v2 — 1.7.25 — **4 generatory** na mapie 288×44, skok Uwagi po ostatnim, lekcja Q na Stalkerze, cel poboczny „Uwaga < 40") i **1.3 „Gniazdo"** (gniazda + Żyła zamiast Pijawki). Kampania gra je po kolei (1.2 → kryjówka → 1.3 → kryjówka → od początku); w 1.2 powrót to **ucieczka drezyną** (1.7.26); brakuje 1.1 „Zaginiony Patrol" i bossa Pijawki. **(Aktualizacja od 1.7.54:** kampania `z1_m1 → z1_m2 → z1_m3 → z1_b1` ma wszystkie trzy misje i bossa Pijawkę, więc Strefa I jest kompletna; ten akapit opisuje stan z 1.7.24.)
 
-**Nagroda strefy:** odblokowanie sklepu broni (SPREAD-12, PELLET-8), postać Igła.
+**Nagroda strefy:** odblokowanie sklepu broni (SPREAD-12, PELLET-8), postać Igła. **(Stan 1.7.392:** SPREAD-12 jest od startu, PELLET-8 i pozostałe bronie kupuje się w warsztacie od początku, Pijawka daje SPECTER-1 jako trofeum; postaci grywalnych z imionami w EA nie ma — wygląd wybiera się w szafkach.)
 
 ---
 
@@ -449,9 +451,12 @@ Inny wymiar: organiczne korytarze, grawitacja się zmienia, radio mówi głosami
 ### 10.1 Waluty
 | Waluta | Źródło | Wydatki |
 |--------|--------|---------|
-| **Złom** | Skrytki, sprzedaż próbek | Bronie, ulepszenia, granaty, perki |
-| **Wroga wiedza** (XP) | Zabójstwa, cele, pierwsze ukończenie | Poziomy gracza → sloty perków |
-| **Próbki** | Cele poboczne, elitki | Odblokowanie stref, badania w Kryjówce |
+| **Złom** | Trupy wrogów, skrytki, premia za misję (ukończenie, cel poboczny, bez upadków) | Bronie, części broni, zaopatrzenie, prasa, serwis, połowa badań, tokarka |
+| **XP — poziom profilu** | Zabójstwa, wynik misji (cel poboczny, bez upadków, boss, pierwsze ukończenie), podniesienie kolegi | Poziomy gracza → sloty perków, perki, stroje i palety (do L6) |
+| **Próbki** | Cele poboczne, elity, bossowie | Badania części broni specjalnych w pracowni |
+
+Stan 1.7.392: perków się nie kupuje (odblokowuje je poziom), próbek się nie sprzedaje, strefy nie wymagają próbek. „Wroga wiedza” jako waluta
+fabularna (np. wiedza o rodzajach wrogów) zostaje celem 1.0; w EA XP to tylko poziom profilu (§16.0a).
 | **Taśmy** | Ukryte znajdźki | Fabuła, zakończenia, tapety koncept-artów |
 
 ### 10.2 Perki (2 sloty na postać; zaimplementowane — 1.7.73)
@@ -480,7 +485,7 @@ Inny wymiar: organiczne korytarze, grawitacja się zmienia, radio mówi głosami
 - **Układ (od 1.7.265, „Stacja Dead Air”)** — bunkier pod nieczynną stacją radiową, trzy poziomy połączone szybami: środek (śluza → ściana pamięci → warsztat → świetlica z izbą chorych → zbrojownia → odprawa i wyjście), góra (radiostacja nad tablicą odpraw), dół (maszynownia i magazyn ze skrytkami). Wyjście na misję: strefa startu przed drzwiami z lampą ON AIR (gotowość przez stanie w strefie albo [Enter]), odliczanie 3 s (cyfra w HUD) ze świecącym padem, poświatą przy podłodze i polami graczy. Klimat: generator buczy i mruga w burzy, zza zamkniętych drzwi D-7 co jakiś czas ktoś puka, okno radiostacji pokazuje prognozowaną pogodę.
 - **Radiostacja** — wywiad: prognoza pogody (modyfikatory misji), tygodniowe wyzwania.
 - **Ściana pamięci** — statystyki drużyny, osiągnięcia.
-- **Tablica misji** — kampania + tryby dodatkowe.
+- **Tablica misji** — tablica odpraw w strefie startu (od 1.7.392): kampania zaczyna się od misji po najdalszej ukończonej przez drużynę (zapis hosta), a [Interakcja] przy tablicy przełącza cel wyjścia na każdą ukończoną misję Strefy I albo następną; zmiana odnawia odliczanie wyjścia. Tryby dodatkowe (Nocny Dyżur) wybiera się w lobby.
 
 ---
 
@@ -572,7 +577,8 @@ Budżet z §16.4 (10–16 mies. do EA) jest ryzykiem, dopóki nie wiemy, że rdz
 Pkt 4 z §16.0 przestał opisywać grę: między 1.7.316 a 1.7.365 (ok. 50 wydań, `GUNSMITH_PLAN.md`, `RANGE_FPS_PLAN.md`, `WORKSHOP_PLAN.md`)
 powstały pełne rusznikarstwo, Kryjówka-hub ze stanowiskami i strzelnica FPP — przed playtestem z pkt 2. Nie cofamy tego; zakres EA to teraz:
 - **Bronie:** wszystkie 9 głównych z §6.1, P-83, maczeta i kilof (zamiast 3 do kupienia), z częściami w gniazdach zamiast poziomów ulepszeń.
-- **Waluty:** złom (wszystko) i próbki (tylko badania części broni specjalnych w pracowni). Wroga wiedza i Taśmy zostają celem 1.0.
+- **Waluty:** złom (wszystko) i próbki (tylko badania części broni specjalnych w pracowni). XP zostaje jako poziom profilu (perki, stroje — od 1.7.73);
+  „Wroga wiedza” jako waluta fabularna i Taśmy zostają celem 1.0.
 - **Kryjówka:** hub z §10.3 — ława, szafki osobiste, stół konserwacji, prasa elaboracyjna, stół pirotechniczny, pracownia, tokarka, zbrojownia,
   strzelnica FPP. Szpital, wyzwania tygodniowe i osiągnięcia na ścianie pamięci zostają poza EA.
 - **Głębia obsługi broni jest opcjonalna:** zużycie i zacięcia wyłącza ustawienie „Weapon reliability” (OFF / STANDARD / VETERAN), podrzut,
@@ -596,7 +602,7 @@ Zasady na czas do Gate 0 (§16.5):
 - [ ] Demo
 
 ### 16.2 Czego świadomie NIE ma w EA
-Strefy II–VI, Bliźniak/Kolekcjoner, Wyzwania tygodniowe, Szpital, Wroga wiedza i Taśmy, mod support, konsola. To świadome odcięcie — patrz 16.5.
+Strefy II–VI, Bliźniak/Kolekcjoner, Wyzwania tygodniowe, Szpital, Wroga wiedza jako waluta fabularna (poziom profilu z XP jest w EA) i Taśmy, mod support, konsola. To świadome odcięcie — patrz 16.5.
 (Do 1.7.365 lista obejmowała też „większość broni” — weszły do EA, patrz §16.0a.)
 
 ### 16.3 AI towarzysz — dlaczego nie może być „opcjonalne w 1.0"

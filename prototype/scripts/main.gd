@@ -370,9 +370,53 @@ func _update_weather(new_run: bool, carry: bool) -> void:
 
 ## Wyjście z kryjówki (wszyscy ludzie gotowi): wyjście do kolejnej misji kampanii z zachowanym ekwipunkiem.
 func _depart_hub() -> void:
-	var target := after_hub if after_hub != "" else String(level.CAMPAIGN[0])
+	var target := after_hub if after_hub != "" else campaign_start_map()
 	after_hub = ""
 	_restart_mission(true, target, true)
+
+## Postęp kampanii drużyny (Scrap.cleared, zapis hosta; PROGRESSION_PLAN.md P1.1): indeks najdalszej ukończonej misji Strefy I, −1 — żadnej.
+func _campaign_furthest() -> int:
+	var far := -1
+	for i in level.CAMPAIGN.size():
+		if Scrap.cleared.has(String(level.CAMPAIGN[i])):
+			far = i
+	return far
+
+## Misje do wyboru przy tablicy odpraw: wszystkie do najdalszej ukończonej i jedna następna (kolejność nauki zostaje: 1.1 cisza, 1.2 Q…).
+func campaign_unlocked() -> Array:
+	return level.CAMPAIGN.slice(0, mini(_campaign_furthest() + 2, level.CAMPAIGN.size()))
+
+## Skąd startuje kampania: misja po najdalszej ukończonej; po bossie — znowu od 1.1 (wybór innej przy tablicy odpraw).
+func campaign_start_map() -> String:
+	var nxt := _campaign_furthest() + 1
+	return String(level.CAMPAIGN[nxt if nxt < level.CAMPAIGN.size() else 0])
+
+## Gracz przy tablicy odpraw w kryjówce przełącza cel wyjścia na kolejną odblokowaną misję (serwer rozstrzyga i rozsyła w mission._sync).
+func request_brief_cycle() -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_brief_cycle_server(NoiseMgr.local_id())
+	else:
+		_brief_cycle_rpc.rpc_id(1)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _brief_cycle_rpc() -> void:
+	if NoiseMgr.is_server():
+		_brief_cycle_server(multiplayer.get_remote_sender_id())
+
+## Serwer: żywy człowiek stoi przy tablicy w kryjówce. Tablica stoi w strefie startu, więc zwykle trwa już odliczanie — zmiana celu
+## odnawia je do pełnego HUB_COUNTDOWN, żeby drużyna zdążyła przeczytać nową odprawę. Zwraca, czy cel się zmienił.
+func _brief_cycle_server(peer_id: int) -> bool:
+	if NightShift.active or _departing or Scrap.station_reason(peer_id, "board") != "ok":
+		return false
+	var opts := campaign_unlocked()
+	if opts.size() < 2:
+		return false
+	after_hub = String(opts[(opts.find(after_hub) + 1) % opts.size()])
+	if hub_countdown > 0.0:
+		hub_countdown = HUB_COUNTDOWN
+		_hub_sync_t = 0.0
+	mission._broadcast()
+	return true
 
 ## [Enter] na ekranie wyniku (host): kolejna misja kampanii (po ostatniej — od początku) albo kolejna misja / nowa seria
 ## Nocnego Dyżuru. Po porażce w kampanii (nie występuje: wipe = powtórka) zostałaby ta sama mapa.
@@ -3440,12 +3484,16 @@ func _begin_hosting(where: String) -> void:
 	print("[NET] difficulty: %s" % Difficulty.level_name())
 	if NightShift.selected:
 		mission.begin_shift()
-	var first_map: String = _start_map if _start_map != "" else ("z1_hub" if _lobby.start_in_hub else (_shift_map() if NightShift.selected else level.CAMPAIGN[0]))
 	Scrap.load_progress()                # host zaczyna od zapisanego portfela
+	if Scrap.cleared.is_empty():
+		for m in level.CAMPAIGN:             # zapis sprzed 1.7.392: postęp kampanii z ukończonych misji profilu hosta (jednorazowo)
+			if Profile.completed.has(String(m)):
+				Scrap.add_cleared(String(m))
+	var first_map: String = _start_map if _start_map != "" else ("z1_hub" if _lobby.start_in_hub else (_shift_map() if NightShift.selected else campaign_start_map()))
 	if first_map != level.map_id:
 		_set_map(first_map)
 	if first_map == "z1_hub" and after_hub == "":
-		after_hub = String(level.CAMPAIGN[0])        # start w kryjówce z lobby: odprawa i „Depart" muszą znać pierwszą misję
+		after_hub = campaign_start_map()             # start w kryjówce z lobby: odprawa i „Depart" muszą znać pierwszą misję
 	print("[NET] mode: %s" % ("NIGHT SHIFT" if NightShift.active else "CAMPAIGN"))
 	_start_ambience()
 	NoiseMgr.reset_mission()

@@ -212,6 +212,8 @@ func _net_host() -> void:
 	Arsenal.set_reserve(Weapons.SPREAD12, 0, 0)
 	Arsenal.set_reserve(Weapons.SPREAD12, 0, 1)
 	Arsenal.set_reserve(Weapons.SRUT8, 0, 0)
+	Scrap.cleared = {"z1_m1": true}                 # postęp kampanii drużyny (PROGRESSION_PLAN.md P1.1): klient dostaje go w sync
+	main.after_hub = "z1_m2"
 	print("[CABINET-TEST] HOST READY — pobrana broń przed dołączeniem")
 	var elapsed := 0.0
 	while multiplayer.get_peers().is_empty() and elapsed < 20:
@@ -265,6 +267,12 @@ func _net_client() -> void:
 	wc = player.weapons
 	await wait(0.5)
 	check("dołączenie nie odtwarza wcześniej pobranej broni", item(Weapons.SPREAD12) == null and level._cabinet_issued.get("MapGun0", "") == "P1")
+	check("ENet: klient zna cel wyjścia i postęp kampanii hosta (%s, %s)" % [main.after_hub, str(Scrap.cleared.keys())], main.after_hub == "z1_m2" and Scrap.cleared.has("z1_m1"))
+	var board: Node2D = get_tree().get_first_node_in_group("board")
+	await _move_to(board.global_position + Vector2(0, -2), "board")
+	main.request_brief_cycle()
+	await wait(0.6)
+	check("ENet: wybór misji przy tablicy rozstrzyga serwer (%s)" % main.after_hub, main.after_hub == "z1_m1")
 	var locked: Node2D = item(Weapons.LR7)
 	await _move_to(locked.global_position, "locked")
 	level.request_weapon_pickup(locked.name, 1)
