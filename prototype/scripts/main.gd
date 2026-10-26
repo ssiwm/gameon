@@ -765,6 +765,9 @@ func _mission_test() -> void:
 	if boss != null:
 		boss.take_bullet(boss.global_position + Vector2(-20, 0), 50.0)
 		print("[TEST] mission: strzał w śpiącą Żyłę -> hp=%.0f (oczekiwane %.0f, nietykalna)" % [boss.hp, boss.BASE_HP])
+	var kp: Node2D = _players.get_node_or_null("1")
+	if kp != null:
+		Profile.server_award_kill(int(kp.player_id), "trzosek")      # dziennik sesji: zabójstwo człowieka → players[id].kinds i xp_kills (PROGRESSION_PLAN.md P0.3)
 	var q_before := NoiseMgr.overcharge_charges
 	for n in get_tree().get_nodes_in_group("nests"):
 		n.take_bullet(n.global_position + Vector2(-10, 0), 999.0)

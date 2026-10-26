@@ -129,6 +129,7 @@ var perks := Vector2i(-1, -1)
 var fits := PackedInt32Array()          ## id broni → kod zamontowanych części (Profile.fit_code); replikowane od właściciela, boty = fabryczne
 ## Wygląd (Look.code), replikowany; −1 = jeszcze nieznany. Ustawia właściciel z lokalnego profilu; kosmetyka — serwer niczego z niego nie liczy.
 var look := -1
+var prof_xp := 0                         ## XP profilu właściciela (Profile.xp) — replikowane przy zmianie, host zapisuje poziom w dzienniku sesji (PROGRESSION_PLAN.md P0.2)
 var _spr_sheet := ""
 var _second_used := false
 var _down_t := 0.0
@@ -454,6 +455,8 @@ func _setup_sync() -> void:
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
 	for path in [":position", ":velocity", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":is_bot", ":display_id"]:
 		cfg.property_set_spawn(path, true)
+	cfg.add_property(":prof_xp")
+	cfg.property_set_replication_mode(":prof_xp", SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE)
 	sync.replication_config = cfg
 	add_child(sync)
 
@@ -488,6 +491,7 @@ func perk_param(id: String, key: String, fallback: float) -> float:
 ## Lokalny człowiek publikuje założone perki (zmieniają się tylko w kryjówce); zmiana perka „Veteran" od razu dolicza/odejmuje serce.
 func _sync_perks() -> void:
 	look = Profile.look
+	prof_xp = Profile.xp
 	var f := PackedInt32Array()
 	for w in Weapons.COUNT:
 		f.append(Profile.fit_code(w))

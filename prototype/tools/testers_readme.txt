@@ -43,3 +43,9 @@ Lista klawiszy jest na dole ekranu w grze oraz pod klawiszem pomocy. Gra obsług
   (wklej tę ścieżkę w pasek adresu Eksploratora; pliki nigdzie nie są wysyłane same).
 - Opis błędu: co robiłeś, co się stało, ilu było graczy i kto był hostem.
   Zrzut ekranu albo nagranie bardzo pomagają.
+- Kilka zdań o postępie (każdy gracz):
+  1. Na co wydałeś złom i czy wiedziałeś, na co zbierasz?
+  2. Czy zauważyłeś perki i szafki osobiste? Czy założyłeś perk po awansie?
+  3. Czy wiesz, do czego służą próbki?
+  4. Czy chciałeś zacząć od innej misji niż ta, którą dała gra?
+  5. Czy powtórka misji była nudna, a jeśli tak — która i za którym razem?
