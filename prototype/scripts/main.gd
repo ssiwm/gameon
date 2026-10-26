@@ -1055,6 +1055,7 @@ func _perf_run(secs: float, col: int) -> void:
 	NavGraph.stat_calls = 0
 	NavGraph.stat_usec = 0
 	VIEW3D.stat_usec = 0
+	VIEW3D.stat_parts.clear()
 	var t_end := Time.get_ticks_msec() + int(secs * 1000.0)
 	var last := Time.get_ticks_usec()
 	var fxs := ""
@@ -1128,6 +1129,10 @@ func _perf_run(secs: float, col: int) -> void:
 		calls / float(maxi(n, 1)), prims / float(maxi(n, 1)), int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
 		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0,
 		proc_t / float(maxi(n, 1)) * 1000.0, phys_t / float(maxi(n, 1)) * 1000.0, float(NavGraph.stat_calls) / secs, float(NavGraph.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_usec) / 1000.0 / float(maxi(n, 1)), float(ENEMY.stat_slide_usec) / 1000.0 / float(maxi(n, 1)), float(VIEW3D.stat_usec) / 1000.0 / float(maxi(n, 1)), pairs / float(maxi(n, 1)), active_o / float(maxi(n, 1))])
+	var parts: Dictionary = VIEW3D.stat_parts
+	var pk := parts.keys()
+	pk.sort_custom(func(a, b) -> bool: return int(parts[a]) > int(parts[b]))
+	print("[PERF-V3D] ", "  ".join(pk.slice(0, 24).map(func(k) -> String: return "%s=%.2f" % [k, float(parts[k]) / 1000.0 / float(maxi(n, 1))])))
 	if "--perfreport" in OS.get_cmdline_user_args():
 		await _perf_report(vps, v3d)
 	Audio.quit_game()

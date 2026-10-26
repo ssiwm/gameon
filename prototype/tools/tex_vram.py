@@ -20,6 +20,9 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
 DIRS = ["art/enemy3d", "art/items3d", "art/world3d", "art/char3d"]
+# BC7 zamiast BC1/DXT5 (compress/high_quality): ręce i bronie strzelnicy FPP (char3d/fp, 4K) ogląda się z bliska — BC1 dawał „kostkę”
+# na ciemnym metalu broni. Dwa razy więcej pamięci niż BC1, wciąż 4× mniej niż RGBA8.
+HQ_DIRS = {"fp"}
 
 
 def image_source(texture):
@@ -93,9 +96,11 @@ def main():
                 continue
             base = os.path.basename(f)[: -len(".import")]
             stem = os.path.splitext(base)[0]
-            is_normal = stem in normals or "normal" in stem.lower()
+            is_normal = stem in normals or "normal" in stem.lower() or re.search(r"[-_]norm$", stem.lower()) is not None
             want = s.replace("\ncompress/mode=0\n", "\ncompress/mode=2\n").replace("\ncompress/mode=1\n", "\ncompress/mode=2\n")
             want = want.replace("\ndetect_3d/compress_to=1", "\ndetect_3d/compress_to=0")
+            if os.path.basename(d) in HQ_DIRS:
+                want = want.replace("\ncompress/high_quality=false\n", "\ncompress/high_quality=true\n")
             if is_normal:
                 want = want.replace("\ncompress/normal_map=0\n", "\ncompress/normal_map=1\n")
             if want != s:

@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://oijup60bhh7p"
-path.s3tc="res://.godot/imported/fp_arms_scav_glovepad_albedo.webp-bd1658b43053b7814e3f30383ed49256.s3tc.ctex"
+path.bptc="res://.godot/imported/fp_arms_scav_glovepad_albedo.webp-bd1658b43053b7814e3f30383ed49256.bptc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -15,12 +15,12 @@ generator_parameters={
 [deps]
 
 source_file="res://art/char3d/fp/fp_arms_scav_glovepad_albedo.webp"
-dest_files=["res://.godot/imported/fp_arms_scav_glovepad_albedo.webp-bd1658b43053b7814e3f30383ed49256.s3tc.ctex"]
+dest_files=["res://.godot/imported/fp_arms_scav_glovepad_albedo.webp-bd1658b43053b7814e3f30383ed49256.bptc.ctex"]
 
 [params]
 
 compress/mode=2
-compress/high_quality=false
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

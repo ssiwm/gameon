@@ -35,6 +35,10 @@ const FP_FOV_DEFAULT := 3                                          ## 74° — t
 const FP_SENS_LIST := [0.4, 0.6, 0.8, 1.0, 1.25, 1.5, 2.0, 2.5]
 const FP_SENS_DEFAULT := 3
 const QUALITY_NAMES := ["LOW", "MEDIUM", "HIGH"]
+## Skala renderu świata 3D (tylko viewport świata; postacie i interfejs jej nie podlegają). Poniżej 100% skaluje AMD FSR 1 —
+## w 4K 75% to ok. −3 ms GPU (--perfreport 2026-10-23, RTX 3080); dla słabszych kart największa dźwignia wydajności. Mnoży się ze skalą
+## z „Effects quality” (View3D._res_scale: LOW 50%, MEDIUM 75% rozdzielczości okna dla świata i postaci).
+const RENDER_SCALE_LIST := [1.0, 0.85, 0.75, 0.67, 0.5]
 const VFX_MULT := [0.4, 0.7, 1.0]                                  ## ile cząsteczek i szczątków (Vfx.burst / gibs)
 const POST_MULT := [0.0, 0.6, 1.0]                                 ## siła aberracji (horror_fx.gd)
 ## Tryb dla osób z zaburzeniami widzenia barw: filtr całego obrazu (colorblind_fx.gd).
@@ -68,6 +72,7 @@ var fp_sens_idx := FP_SENS_DEFAULT     ## widok z oczu: indeks FP_SENS_LIST
 var fp_brace_toggle := false          ## osobny tryb oparcia na strzelnicy: HOLD domyślnie, TOGGLE opcjonalnie
 var fp_invert_y := false               ## widok z oczu: ruch myszy / drążka w górę pochyla w dół
 var quality_idx := 2                   ## LOW / MEDIUM / HIGH — cząsteczki, aberracja, efekty pogody
+var render_scale_idx := 0              ## indeks RENDER_SCALE_LIST (0 = 100%)
 var mono_audio := false                ## bez panoramy w dźwięku pozycyjnym (osoby z jednostronnym słuchem)
 var captions := false                  ## napisy dla dźwięków (HUD, captions.gd)
 var reduce_fx := false                 ## „Reduce Effects": bez wstrząsów, aberracji, pulsu zdrowia, błysku burzy i migotania
@@ -224,6 +229,13 @@ func toggle_fp_invert_y() -> void:
 func cycle_quality() -> void:
 	quality_idx = (quality_idx + 1) % QUALITY_NAMES.size()
 	_commit()
+
+func cycle_render_scale() -> void:
+	render_scale_idx = (render_scale_idx + 1) % RENDER_SCALE_LIST.size()
+	_commit()
+
+func render_scale() -> float:
+	return float(RENDER_SCALE_LIST[clampi(render_scale_idx, 0, RENDER_SCALE_LIST.size() - 1)])
 
 func toggle_mono_audio() -> void:
 	mono_audio = not mono_audio
@@ -392,6 +404,13 @@ func _load() -> void:
 	fp_brace_toggle = bool(cf.get_value("fp", "brace_toggle", false))
 	fp_invert_y = bool(cf.get_value("fp", "invert_y", false))
 	quality_idx = clampi(int(cf.get_value("game", "quality", 2)), 0, QUALITY_NAMES.size() - 1)
+	render_scale_idx = clampi(int(cf.get_value("game", "render_scale", 0)), 0, RENDER_SCALE_LIST.size() - 1)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--renderscale="):                 # dev: skala renderu w procentach (pomiar --perf), bez zmiany zapisu, dopóki gracz nie zmieni ustawień
+			var want := float(a.substr("--renderscale=".length())) / 100.0
+			for i in RENDER_SCALE_LIST.size():
+				if absf(float(RENDER_SCALE_LIST[i]) - want) < absf(float(RENDER_SCALE_LIST[render_scale_idx]) - want):
+					render_scale_idx = i
 	reduce_fx = bool(cf.get_value("game", "reduce_fx", false))
 	captions = bool(cf.get_value("game", "captions", false))
 	mono_audio = bool(cf.get_value("game", "mono_audio", false))
@@ -429,6 +448,7 @@ func _save() -> void:
 	cf.set_value("fp", "brace_toggle", fp_brace_toggle)
 	cf.set_value("fp", "invert_y", fp_invert_y)
 	cf.set_value("game", "quality", quality_idx)
+	cf.set_value("game", "render_scale", render_scale_idx)
 	cf.set_value("game", "reduce_fx", reduce_fx)
 	cf.set_value("game", "captions", captions)
 	cf.set_value("game", "mono_audio", mono_audio)
