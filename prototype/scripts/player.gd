@@ -2036,13 +2036,15 @@ func _head_top_px() -> float:
 	return -11.0 if crouching else -17.0
 
 ## Stan plakietki nad głową dla warstwy ekranu (world_bars.gd): imię i kolor slotu, życie (z bonusem ponad bazę), płynna widoczność
-## plakietki, błysk utraconej tarczy, zegar ran (puls przy 1 życiu) oraz powalenie: odliczanie i postęp podnoszenia.
+## plakietki, błysk utraconej kreski, pół punktu z głazu Wołka, zegar ran (puls przy 1 życiu), czy to własna postać / bot
+## oraz powalenie: odliczanie i postęp podnoszenia.
 func plate_state() -> Dictionary:
 	var name_txt := "BOT" if is_bot else "P%d" % display_id
 	if in_range:
 		name_txt += "  ·  " + tr("RANGE")               # zaparkowany przy drzwiach strzelnicy (gra z oczu w tunelu)
 	return {"name": name_txt, "col": _body_color(), "hp": hp, "base": max_hp(), "a": _plate_a, "flash": _pip_flash, "wound_t": _wound_t,
-		"dead": dead, "taken": taken, "timer": ceili(taken_t if taken else bleed_left), "revive": revive_progress, "top": _head_top_px()}
+		"dead": dead, "taken": taken, "timer": ceili(taken_t if taken else bleed_left), "revive": revive_progress, "top": _head_top_px(),
+		"self": not is_bot and is_multiplayer_authority(), "bot": is_bot, "chip": float(chip) > 0.0}
 
 ## Rany na ciele (HD): za każdy brakujący punkt życia ciemna plama krwi na tułowiu, ramieniu i udzie; przy niskim życiu z kapiącą strużką.
 func _draw_wounds(ov: Node2D, top: float) -> void:

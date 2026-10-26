@@ -74,8 +74,24 @@ class Bar extends Control:
 	var back := Color(1, 1, 1, 0.08)
 	var ticks: Array = []          ## [[0..1, Color], ...]
 	var seg := 0.0                 ## > 0: pasek „diodowy" — bloki szerokości seg z 1-pikselową przerwą (pixel art), zamiast gładkiej wypełnionej belki
+	var ghost := -1.0              ## ≥ 0: jasny ślad obrażeń od `value` do `ghost` (spływa, prowadzi go właściciel)
+	var notch := false             ## znaczniki `ticks` jako nacięcia (ciemna przerwa z jasną kreską) zamiast samych kresek
+	var pulse := 0.0               ## 0..1: rozjaśnienie wypełnienia (furia bossa)
 	var _sb_back: StyleBoxFlat
 	var _sb_fill: StyleBoxFlat
+	var _sb_ghost: StyleBoxFlat
+
+	func _fill_col() -> Color:
+		return fill.lightened(0.35 * pulse) if pulse > 0.0 else fill
+
+	func _draw_ticks() -> void:
+		for t in ticks:
+			var tx: float = size.x * float(t[0])
+			if notch:
+				draw_rect(Rect2(tx - 1.0, -1.5, 2.0, size.y + 3.0), Color(0, 0, 0, 0.85))
+				draw_rect(Rect2(tx - 0.25, -1.5, 0.5, size.y + 3.0), t[1])
+			else:
+				draw_rect(Rect2(tx - 0.5, -2.0, 1.0, size.y + 4.0), t[1])
 
 	## HD (--newui): gładka, zaokrąglona belka z jaśniejszą górną połową i delikatnymi rowkami segmentów zamiast bloków pikseli.
 	func _draw_hd() -> void:
@@ -87,8 +103,15 @@ class Bar extends Control:
 		_sb_back.set_corner_radius_all(rad)
 		draw_style_box(_sb_back, Rect2(Vector2.ZERO, size))
 		var fw := size.x * clampf(value, 0.0, 1.0)
+		var gw := size.x * clampf(ghost, 0.0, 1.0)
+		if gw > fw + 0.25:
+			if _sb_ghost == null:
+				_sb_ghost = StyleBoxFlat.new()
+			_sb_ghost.bg_color = Color(1.0, 0.95, 0.85, 0.92)
+			_sb_ghost.set_corner_radius_all(mini(rad, int(gw * 0.5)))
+			draw_style_box(_sb_ghost, Rect2(Vector2.ZERO, Vector2(gw, size.y)))
 		if fw > 0.5:
-			_sb_fill.bg_color = fill
+			_sb_fill.bg_color = _fill_col()
 			_sb_fill.set_corner_radius_all(mini(rad, int(fw * 0.5)))
 			draw_style_box(_sb_fill, Rect2(Vector2.ZERO, Vector2(fw, size.y)))
 			draw_rect(Rect2(Vector2(rad * 0.4, 0.5), Vector2(maxf(0.0, fw - rad * 0.8), size.y * 0.35)), Color(1, 1, 1, 0.22))
@@ -97,9 +120,7 @@ class Bar extends Control:
 			while x < size.x - 0.5:
 				draw_rect(Rect2(x - 0.5, 0, 1.0, size.y), Color(0, 0, 0, 0.35))
 				x += seg
-		for t in ticks:
-			var tx: float = size.x * float(t[0])
-			draw_rect(Rect2(tx - 0.5, -2.0, 1.0, size.y + 4.0), t[1])
+		_draw_ticks()
 
 	func _draw() -> void:
 		if UiTheme.hd_on():
@@ -115,10 +136,10 @@ class Bar extends Control:
 				x += seg
 		else:
 			draw_rect(r, back)
-			draw_rect(Rect2(Vector2.ZERO, Vector2(size.x * clampf(value, 0.0, 1.0), size.y)), fill)
-		for t in ticks:
-			var x: float = size.x * float(t[0])
-			draw_rect(Rect2(x - 0.5, -2.0, 1.0, size.y + 4.0), t[1])
+			if ghost > value:
+				draw_rect(Rect2(Vector2.ZERO, Vector2(size.x * clampf(ghost, 0.0, 1.0), size.y)), Color(1.0, 0.95, 0.85, 0.92))
+			draw_rect(Rect2(Vector2.ZERO, Vector2(size.x * clampf(value, 0.0, 1.0), size.y)), _fill_col())
+		_draw_ticks()
 
 ## Wskaźnik hałasu jako analogowy VU-metr (UI_PLAN.md): półokrągła skala z trzema strefami CALM / UNEASY / HUNTED (progi z
 ## NoiseMgr, więc zgodne z Nocnym Dyżurem) i wskazówką z opóźnieniem. W strefie HUNTED wskazówka drży (nie przy „Reduce effects”).
@@ -191,6 +212,8 @@ class Pips extends Control:
 	var cracked := -1             ## indeks serca „stłuczonego" (głaz Wołka: ukryte 0,5 HP) — przygaszone z pęknięciem
 	var bonus := Color(1.0, 0.8, 0.25)
 	var u := 1.0                  ## skala ikon (własne serca w karcie drużyny są większe)
+	var seg_h := 2.6              ## "seg": grubość kreski (własny wiersz drużyny grubszy)
+	var breaks := {}              ## "seg": indeks kreski → 1..0, kreska właśnie utracona (biały błysk i odpryski)
 	var edge_off := Color(0.29, 0.12, 0.10)   ## "drop": kontur pustej kropli
 	var _sb := StyleBoxFlat.new()
 	## Minimalny rozmiar wg kształtu: "drop" (makieta karty drużyny) 9×11 co 12 j.; reszta jak dotąd.
@@ -198,8 +221,25 @@ class Pips extends Control:
 		if shape == "drop":
 			return Vector2(count * 12.0 - 3.0, 11.0)
 		if shape == "seg":
-			return Vector2(count * 17.0 - 2.0, 2.6)
+			return Vector2(count * 17.0 - 2.0, seg_h)
 		return Vector2(count * 11.0 * u - 2.0, 9.0 * u)
+	## Upływ czasu odprysków kresek (wołane co klatkę przez właściciela).
+	func tick(delta: float) -> void:
+		for k in breaks.keys():
+			breaks[k] = float(breaks[k]) - delta / 0.55
+			if float(breaks[k]) <= 0.0:
+				breaks.erase(k)
+	## Utracona kreska: biały błysk, potem cztery odpryski w kolorze kreski spadają i gasną (bez odprysków przy „Reduce effects”).
+	func _draw_break(r: Rect2, bt: float) -> void:
+		var k := 1.0 - bt
+		var flash := clampf((bt - 0.55) / 0.45, 0.0, 1.0)
+		if flash > 0.0:
+			draw_rect(r.grow(0.6), Color(1, 1, 1, flash))
+		if Settings.fx_mult() <= 0.0:
+			return
+		for j in 4:
+			var p := r.position + Vector2(1.5 + 3.4 * float(j), 0.0) + Vector2((float(j) - 1.5) * 3.2 * k, 9.0 * k * k + 2.0 * k)
+			draw_rect(Rect2(p, Vector2(2.4, r.size.y)), Color(on, bt))
 	## Serce 9×8 pikseli: ciemny obrys (przesunięcia o 1 px) pod wypełnieniem i jasny piksel odblasku — jak sprite'y świata.
 	const HEART := ["011000110", "111101111", "111111111", "111111111", "011111110", "001111100", "000111000", "000010000"]
 	func _pixel_heart(o: Vector2, c: Color) -> void:
@@ -258,14 +298,23 @@ class Pips extends Control:
 		draw_colored_polygon(PackedVector2Array([o + Vector2(2.7, 4.2), o + Vector2(3.4, 3.4), o + Vector2(3.9, 4.2), o + Vector2(3.5, 5.6), o + Vector2(2.8, 5.7)]), Color(1.0, 0.75, 0.75, 0.55))
 	func _draw() -> void:
 		if shape == "seg":
-			# cienkie segmenty życia (HUD bez ramek): pełny = kolor, pusty = ledwo widoczna linia, bonus = złoty, pęknięty = ciemniejszy
+			# cienkie segmenty życia (HUD bez ramek): pełny = kolor, pusty = ledwo widoczna linia, bonus = złoty; pół punktu zabrane głazem
+			# Wołka = pół kreski z nacięciem (kolejne trafienie zabierze resztę); utracona kreska błyska i rozpada się na odpryski
+			var sh := size.y if size.y > 0.5 else seg_h
 			for i in count:
+				var r := Rect2(Vector2(i * 17.0, 0.0), Vector2(15.0, sh))
 				var sc := on if i < filled else off
 				if i >= bonus_from:
 					sc = bonus
 				if i == cracked:
-					sc = sc.darkened(0.35)
-				draw_rect(Rect2(Vector2(i * 17.0, 0.0), Vector2(15.0, size.y if size.y > 0.5 else 2.6)), sc)
+					draw_rect(r, off)
+					draw_rect(Rect2(r.position, Vector2(7.0, sh)), sc)
+					draw_line(Vector2(r.position.x + 8.0, -1.4), Vector2(r.position.x + 6.6, sh + 1.4), Color(0.06, 0.02, 0.02, 0.95), 1.2)
+				else:
+					draw_rect(r, sc)
+				var bt: float = breaks.get(i, 0.0)
+				if bt > 0.0:
+					_draw_break(r, bt)
 			return
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(u, u))
 		for i in count:
@@ -320,10 +369,13 @@ class Pips extends Control:
 				draw_polyline(PackedVector2Array([Vector2(ox + 5.0, -0.5), Vector2(ox + 3.4, 3.2), Vector2(ox + 5.7, 5.0), Vector2(ox + 4.2, 8.5)]), Color(0.06, 0.02, 0.02, 0.95), 1.2)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-## Mały przebieg EKG obok serc własnego gracza (makieta): linia "biegnie" co 1,2 s; przy "Reduce effects" stała.
+## Mały przebieg EKG obok serc własnego gracza (makieta): linia "biegnie" co `period` s (1,2 s przy pełnym życiu, szybciej przy niższym),
+## po powaleniu płaska; przy "Reduce effects" stała.
 class Ecg extends Control:
 	const PTS := [Vector2(0, 8), Vector2(10, 8), Vector2(13, 2), Vector2(17, 14), Vector2(21, 8), Vector2(40, 8)]
 	var color := Color(0.9, 0.28, 0.23)
+	var period := 1.2             ## s na uderzenie (szybciej przy niskim życiu)
+	var flat := false             ## powalony: płaska linia
 	var _t := 0.0
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -334,7 +386,10 @@ class Ecg extends Control:
 	func _draw() -> void:
 		var kx := size.x / 40.0
 		var ky := size.y / 16.0
-		var head := 40.0 if Settings.fx_mult() <= 0.0 else fposmod(_t / 1.2, 1.0) * 52.0
+		if flat:
+			draw_line(Vector2(0.0, 8.0 * ky), Vector2(40.0 * kx, 8.0 * ky), Color(color, 0.6), 1.0, true)
+			return
+		var head := 40.0 if Settings.fx_mult() <= 0.0 else fposmod(_t / period, 1.0) * 52.0
 		var pts := PackedVector2Array()
 		for p in PTS:
 			pts.append(Vector2(p.x * kx, p.y * ky))
@@ -481,6 +536,9 @@ var _run_title: Label
 var _xp_row: HBoxContainer
 var _xp_show_t := 0.0
 var _boss_bar: Bar
+var _boss_ghost := 0.0                ## ślad obrażeń paska bossa (ułamek)
+var _boss_hold := 0.0                 ## s do spłynięcia śladu
+var _boss_last := -1.0                ## poprzednia wartość paska (−1: pasek dopiero się pokazał)
 var _boss_name: Label
 
 var _session: Label
@@ -884,9 +942,12 @@ func _make_squad_row(p: Node, is_self: bool) -> Dictionary:
 	pips.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	pips.on = UiTheme.DANGER if is_self else (Color("8d8a7c") if p.is_bot else UiTheme.TEXT)
 	pips.off = Color(1, 1, 1, 0.14)
-	prow.add_child(pips)
 	if is_self:
-		var ecg := Ecg.new()
+		pips.seg_h = 4.0
+	prow.add_child(pips)
+	var ecg: Ecg = null
+	if is_self:
+		ecg = Ecg.new()
 		ecg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		prow.add_child(ecg)
 	root.add_child(prow)
@@ -895,7 +956,7 @@ func _make_squad_row(p: Node, is_self: bool) -> Dictionary:
 	bar.visible = false
 	root.add_child(bar)
 	(_self_box if is_self else _squad_box).add_child(root)
-	return {"root": root, "pips": pips, "status": status, "bar": bar, "hp": maxi(p.hp, 0), "flash": 0.0, "self": is_self, "bot": p.is_bot}
+	return {"root": root, "pips": pips, "status": status, "bar": bar, "hp": maxi(p.hp, 0), "flash": 0.0, "self": is_self, "bot": p.is_bot, "ecg": ecg}
 
 func _drive_squad(delta: float) -> void:
 	var list: Array = []
@@ -942,9 +1003,18 @@ func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 	pips.on = Color(0.45, 0.17, 0.15) if p.dead else base_col
 	pips.custom_minimum_size = pips.min_size()
 	pips.queue_redraw()
-	# błysk wiersza po utracie zdrowia
+	# błysk wiersza po utracie zdrowia; utracone kreski rozpadają się
 	if hp < int(row["hp"]):
 		row["flash"] = 1.0
+		for i in range(hp, int(row["hp"])):
+			pips.breaks[i] = 1.0
+	pips.tick(delta)
+	var ecg = row.get("ecg")
+	if ecg != null and is_instance_valid(ecg):
+		# tętno: pełne życie 1,2 s na uderzenie, ubytek 0,9 s, ostatni punkt 0,55 s; po powaleniu płaska szara linia
+		(ecg as Ecg).flat = p.dead
+		(ecg as Ecg).period = 1.2 if hp >= p.max_hp() else (0.55 if hp <= 1 else 0.9)
+		(ecg as Ecg).color = Color("8d8a7c") if p.dead else Color(0.9, 0.28, 0.23)
 	row["hp"] = hp
 	row["flash"] = maxf(0.0, float(row["flash"]) - delta * 2.2)
 	var f := float(row["flash"])
@@ -993,14 +1063,20 @@ func _build_objective_card() -> void:
 	box.add_child(_minimap)
 	_boss_row = VBoxContainer.new()
 	_boss_row.add_theme_constant_override("separation", 2)
-	_boss_name = UiTheme.heading("THE VEIN — MOTHER OF NESTS", 8, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
+	_boss_name = UiTheme.heading("THE VEIN — MOTHER OF NESTS", 11, UiTheme.DANGER, HORIZONTAL_ALIGNMENT_CENTER)
 	_boss_row.add_child(_boss_name)
+	# ciągła belka (bloki „diodowe” w 4K czytały się jak linia przerywana): progi faz jako nacięcia, ślad obrażeń, puls w furii
 	_boss_bar = Bar.new()
-	_boss_bar.custom_minimum_size = Vector2(OBJ_W, 4)
+	_boss_bar.custom_minimum_size = Vector2(OBJ_W, 5)
 	_boss_bar.fill = Color(0.88, 0.22, 0.2)
-	_boss_bar.seg = 4.0
-	_boss_bar.ticks = [[0.66, Color(1, 1, 1, 0.5)], [0.33, Color(1, 1, 1, 0.5)]]
+	_boss_bar.back = Color(0.1, 0.05, 0.04, 0.85)
+	_boss_bar.notch = true
+	_boss_bar.ticks = [[0.66, Color(1, 1, 1, 0.6)], [0.33, Color(1, 1, 1, 0.6)]]
 	_boss_row.add_child(_boss_bar)
+	var gap := Control.new()                                   # odstęp: podpis celu niżej należy do celu, nie do paska
+	gap.custom_minimum_size = Vector2(0, 6)
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_boss_row.add_child(gap)
 	box.add_child(_boss_row)
 	_toast_box = VBoxContainer.new()
 	_toast_box.add_theme_constant_override("separation", 2)
@@ -1646,10 +1722,29 @@ func _drive_mission() -> void:
 			Msg.hold("hud.hubcount", Msg.Ch.ALERT, str(ceili(cd)), {"big": true, "sub": sub, "style": Msg.Style.SUCCESS, "prio": 70})
 	_boss_row.visible = boss != null and m.phase == Mission.Phase.BOSS
 	if _boss_row.visible:
-		_boss_bar.value = boss.hp / maxf(1.0, boss.max_hp)
+		var bv := clampf(boss.hp / maxf(1.0, boss.max_hp), 0.0, 1.0)
+		var bdt := get_process_delta_time()
+		if _boss_last < 0.0:
+			_boss_ghost = bv
+		elif bv < _boss_last - 0.0001:
+			_boss_ghost = maxf(_boss_ghost, _boss_last)                 # trafienie: ślad od poprzedniej wartości
+			_boss_hold = 0.35
+		_boss_last = bv
+		if _boss_hold > 0.0:
+			_boss_hold -= bdt
+		else:
+			_boss_ghost = move_toward(_boss_ghost, bv, 0.8 * bdt)
+		_boss_ghost = maxf(_boss_ghost, bv)
+		_boss_bar.value = bv
+		_boss_bar.ghost = _boss_ghost
+		for t in _boss_bar.ticks:
+			t[1] = Color(1, 1, 1, 0.15) if bv < float(t[0]) else Color(1, 1, 1, 0.6)      # miniony próg fazy gaśnie
+		_boss_bar.pulse = (0.5 + 0.5 * sin(_blink * 9.0)) if boss.phase >= 2 and Settings.fx_mult() > 0.0 else 0.0
 		_boss_bar.queue_redraw()
 		var bname: String = String(boss.get("boss_name")) if boss.get("boss_name") != null else "THE VEIN — MOTHER OF NESTS"
 		_boss_name.text = bname + ("   ·   ENRAGED" if boss.phase >= 2 else "")
+	else:
+		_boss_last = -1.0
 	_drive_strip(m)
 	# opis celu pokazuje się po zmianie celu / fazy (i w kryjówce, i na F1), potem gaśnie; rzut mapy zostaje
 	var sig := "%s|%d|%d|%d|%d" % [m.kind, m.phase, m.goal_left, m.nests_left, m.stashes_found]
