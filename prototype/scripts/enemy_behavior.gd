@@ -115,9 +115,9 @@ func scream_pitch() -> float:
 func disguised() -> bool:
 	return false
 
-## Dodatkowe rysowanie w nakładce (etykieta Mimika).
-func draw_overlay(_ov: Node2D) -> void:
-	pass
+## Etykieta nad głową, gdy wróg udaje gracza (Mimik); pusta = brak. Rysuje ją warstwa ekranu (world_bars.gd) jak imię gracza.
+func disguise_label() -> String:
+	return ""
 
 ## Wstęp tiku serwera (liczniki zachowania: cooldowny watahy, rzutu na dźwięk).
 func tick_prelude(_delta: float) -> void:

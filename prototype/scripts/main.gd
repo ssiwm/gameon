@@ -1792,6 +1792,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			var spots := [["ShotS", "slepiec", 110.0], ["ShotW", "wolek", 150.0], ["ShotT", "trzosek", 205.0], ["ShotT2", "trzosek", 240.0]]
 			if kinds_arg == "b":          # --shotmon=b: reszta wrogów (Skoczek, Podsłuchacz, Mimik, Ćma) bez bossów
 				spots = [["ShotK", "skoczek", 120.0], ["ShotP", "podsluchacz", 165.0], ["ShotM", "mimik", 205.0], ["ShotC", "cma", 245.0]]
+			if kinds_arg == "e":          # --shotmon=e: Ślepiec obok elit (Kapłan, Rzeźnik, Żerca)
+				spots = [["ShotS", "slepiec", 110.0], ["ShotKa", "kaplan", 150.0], ["ShotR", "rzeznik", 200.0], ["ShotZ", "zerca", 250.0]]
 			level.spawn_flare(mp.global_position + Vector2(190.0, -26.0), Vector2.ZERO)
 			for pl in _players.get_children():
 				if pl.get("is_bot") == true:
@@ -1803,6 +1805,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					var live := "--shotlive" in OS.get_cmdline_user_args()      # --shotlive: AI nie jest zamrożone (podgląd póz ruchu)
 					if not live:
 						en.set_physics_process(false)
+					if "--shotdmg" in OS.get_cmdline_user_args():      # --shotdmg: po 0,8 s wrogowie tracą życie do 80 / 55 / 30 / 12% (paski, ślad obrażeń)
+						var frac: float = [0.8, 0.55, 0.3, 0.12][spots.find(sp)]
+						get_tree().create_timer(0.8).timeout.connect(func() -> void:
+							if is_instance_valid(en):
+								en.hp = en._max_hp * frac)
 					if sp[0] != "ShotT2" or live:
 						en.call("wake")
 					if "--shotidle" in OS.get_cmdline_user_args():          # --shotidle: wszyscy obudzeni i stoją w miejscu (poza oczekiwania; Trzosek siedzi)

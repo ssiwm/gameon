@@ -25,7 +25,6 @@ var _flash := 0.0
 var _net_timer := 0.0
 var _glow: Lights.GameLight
 var _spr: Array = []
-var _overlay: Node2D
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -39,7 +38,6 @@ func _ready() -> void:
 	if Sprites.has(Sprites.enemy_sheet("nest")):
 		_spr = Sprites.attach(self, Sprites.enemy_sheet("nest"))
 		Sprites.play(_spr, "pulse", position.x > 1000.0)
-	_overlay = Lights.add_overlay(self)
 	# żar unoszący się nad gniazdem (widać je z daleka w mroku) to iskry 3D — view3d.gd: _sync_nests
 
 func is_threat() -> bool:
@@ -131,7 +129,6 @@ func _sync(new_hp: float, is_alive: bool) -> void:
 func _process(_delta: float) -> void:
 	if visible:
 		queue_redraw()
-		_overlay.queue_redraw()
 		_glow.energy = 0.5 + 0.3 * (0.5 + 0.5 * sin(Time.get_ticks_msec() / 1000.0 * 2.2 + position.x * 0.01))
 
 func _draw() -> void:
@@ -140,9 +137,6 @@ func _draw() -> void:
 		if _spr[1] != null:
 			(_spr[1] as AnimatedSprite2D).frame = (_spr[0] as AnimatedSprite2D).frame
 
-## Żyłki i HP — unshaded, pulsują w ciemności.
-func _draw_overlay(ov: Node2D) -> void:
-	if hp < MAX_HP:
-		var bar_y := -38.0 if not _spr.is_empty() else -24.0       # sprite gniazda 40x34 jest wyższy niż stary rysunek
-		ov.draw_rect(Rect2(-14, bar_y, 28, 2), Color(0.15, 0.05, 0.05))
-		ov.draw_rect(Rect2(-14, bar_y, 28.0 * clampf(hp / MAX_HP, 0.0, 1.0), 2), Color(1.0, 0.5, 0.2))
+## Stan paska życia nad modelem gniazda (world_bars.gd, warstwa ekranu).
+func bar_state() -> Dictionary:
+	return {"frac": clampf(hp / MAX_HP, 0.0, 1.0), "alive": alive and is_visible_in_tree(), "elite": false, "w": 28.0, "h": 38.0, "label": ""}

@@ -28,6 +28,7 @@ const Weather := preload("res://scripts/weather.gd")
 const Backdrop3D := preload("res://scripts/backdrop3d.gd")
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
 const RangeDoor := preload("res://scripts/range3d/range_door.gd")
+const WorldBars := preload("res://scripts/world_bars.gd")
 
 const PX := Level3D.PX
 const FOV := 40.0
@@ -145,6 +146,8 @@ var _scan_t := 0.0
 var _spawn_burst_until := 2.0           ## s `_life`: do tej chwili modele wrogów powstają bez limitu (start widoku, nowa mapa)
 var _life := 0.0
 var _saved := false
+var label_fade := 1.0                     ## 1 = paski i plakietki nad postaciami widoczne; gasną w widoku z oczu (oględziny, strzelnica)
+var _bars_layer: CanvasLayer              ## warstwa ekranu z paskami życia i plakietkami (world_bars.gd), tuż pod HUD-em
 
 func setup(level: Node2D, players: Node2D) -> void:
 	_level = level
@@ -217,14 +220,54 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_spr_fg.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	_spr_fg.material = Lights.unshaded()                      # bez mnożenia przez CanvasModulate „ciemności” 2D (3D ma własne światło)
 	add_child(_spr_fg)
+	# paski życia i plakietki nad postaciami: osobna warstwa ekranu nad efektami obrazu (winieta, aberracja), tuż pod HUD-em
+	_bars_layer = CanvasLayer.new()
+	_bars_layer.name = "WorldBars"
+	var bars := WorldBars.new()
+	bars.view = self
+	_bars_layer.add_child(bars)
+	_attach_bars.call_deferred()
 
 # ---------------------------------------------------------------- cykl życia
 
+## Warstwa pasków w głównej scenie (rodzic widoku) tuż przed warstwą HUD-u „UI”: nad winietą i aberracją, pod interfejsem.
+func _attach_bars() -> void:
+	var host := get_parent()
+	if host == null or _bars_layer == null or not is_instance_valid(_bars_layer):
+		return
+	host.add_child(_bars_layer)
+	var ui := host.get_node_or_null("UI")
+	if ui != null:
+		host.move_child(_bars_layer, ui.get_index())
+
+func _free_bars() -> void:
+	if _bars_layer != null and is_instance_valid(_bars_layer):
+		_bars_layer.queue_free()
+	_bars_layer = null
+
+## Punkt świata 3D → współrzędne warstwy ekranu (jednostki okna, jak HUD): kamera świata → piksel obrazu 3D → sprite tego obrazu
+## w świecie 2D → przekształcenie płótna (Camera2D). Punkt za kamerą: NAN.
+func screen_point(p: Vector3) -> Vector2:
+	if _cam_a == null or _cam_a.is_position_behind(p):
+		return Vector2(NAN, NAN)
+	var px := _cam_a.unproject_position(p)
+	return get_viewport().get_canvas_transform() * (_spr_bg.global_transform * (px - Vector2(_vp_bg.size) * 0.5))
+
+## Wrogowie, bossowie i gniazda z modelami: pary [węzeł 2D, Enemy3D albo null] (world_bars.gd).
+func bar_targets() -> Array:
+	return _enemies.values()
+
+## Char3D gracza, którego model stoi w scenie (z kośćmi do czubka głowy), albo null.
+func player_model(p: Node) -> Node:
+	return p.get("c3d") if _rigs.has(p) else null
+
 func _exit_tree() -> void:
+	_free_bars()
 	GunModel.drain()                                   # wczytywanie broni w tle odebrane przed zamknięciem (inaczej wyciek przy wyjściu)
 
 func release() -> void:
 	Vfx.view3d = null
+	_free_bars()
 	if _fp_hidden != null and is_instance_valid(_fp_hidden):
 		_fp_hidden.visible = true
 	for ci in [_level, _players]:
@@ -516,6 +559,7 @@ func _sync_camera() -> void:
 		fsize = 2.0 * near * tan(deg_to_rad(lerpf(FOV, FP_FOV, re) * 0.5))
 		foff *= 1.0 - re
 	var hide_2d := maxf(fe, re)
+	label_fade = 1.0 - hide_2d
 	for ci in [_level, _players]:                              # etykiety i paski 2D nad postaciami nie pasują do widoku z oczu — gasną
 		if ci is CanvasItem and absf((ci as CanvasItem).modulate.a - (1.0 - hide_2d)) > 0.001:
 			(ci as CanvasItem).modulate.a = 1.0 - hide_2d

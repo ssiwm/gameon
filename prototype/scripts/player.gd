@@ -57,10 +57,7 @@ const FF_KICK := 70.0          ## odrzut od pocisku kolegi (px/s, wygasa KICK_DE
 const FF_COOLDOWN := 0.6       ## krzyk/hałas od FF najwyżej raz na tyle sekund
 
 # Down / revive (GDD §4)
-const NAME_SIZE := 4            ## etykieta nad głową (px świata) — mała, żeby nie dominowała nad sylwetką
 const PLATE_SHOW := 2.0        ## sekundy widoczności plakietki życia po trafieniu / leczeniu
-const PLATE_PIP := Vector2(3.4, 4.0)   ## tarcza życia na plakietce (px, przed skalą)
-const PLATE_SCALE := 0.5               ## skala całej plakietki i imienia względem projektu (miarę podaje PLATE_PIP, font NAME_SIZE)
 const BLEED_TIME := 10.0
 const REVIVE_TIME := 4.0
 const REVIVE_RANGE := 26.0
@@ -2023,86 +2020,29 @@ func _update_plate(delta: float) -> void:
 	var want := _plate_t > 0.0 or hp != max_hp() or dead
 	_plate_a = move_toward(_plate_a, 1.0 if want else 0.0, delta * 4.0)
 
-## Rzeczy czytelne w ciemności (materiał unshaded): etykieta, HP, rozbłysk,
-## stan „DOWN" i pasek podnoszenia. Teksty wyśrodkowane nad postacią.
+## Rzeczy czytelne w ciemności (materiał unshaded): krąg krzyku i rany na sprite'cie. Imię, plakietkę życia, stan „DOWN”
+## i pasek podnoszenia rysuje warstwa ekranu (world_bars.gd) ze stanu `plate_state()`.
 func _draw_overlay(ov: Node2D) -> void:
-	var font := ThemeDB.fallback_font
 	if _scream_ring > 0.0:
 		var k := 1.0 - _scream_ring / 0.6
 		ov.draw_arc(Vector2(0, -12), 6.0 + k * 52.0, 0.0, TAU, 28, Color(1.0, 0.85, 0.5, (1.0 - k) * 0.7), 1.5)
-	if Settings.dev_nohud:
-		return                                  # dev: --nohud — bez plakietek i licznika wykrwawienia
-	var col := _body_color()
+	if not dead and Sprites.newitem and hp < max_hp() and c3d == null:
+		_draw_wounds(ov, _head_top_px())                  # postać 3D ma krew w materiale (char3d.gd)
+
+## Czubek głowy nad stopami [px świata] — miejsce plakietki, gdy postać nie ma modelu 3D.
+func _head_top_px() -> float:
+	if not _spr.is_empty() or c3d != null:
+		return -16.0 if crouching else -22.0
+	return -11.0 if crouching else -17.0
+
+## Stan plakietki nad głową dla warstwy ekranu (world_bars.gd): imię i kolor slotu, życie (z bonusem ponad bazę), płynna widoczność
+## plakietki, błysk utraconej tarczy, zegar ran (puls przy 1 życiu) oraz powalenie: odliczanie i postęp podnoszenia.
+func plate_state() -> Dictionary:
 	var name_txt := "BOT" if is_bot else "P%d" % display_id
 	if in_range:
 		name_txt += "  ·  " + tr("RANGE")               # zaparkowany przy drzwiach strzelnicy (gra z oczu w tunelu)
-	if dead:
-		_center_text(ov, font, name_txt, -26.0, NAME_SIZE, col)
-		_center_text(ov, font, "%ds" % ceili(taken_t if taken else bleed_left), -18.0, NAME_SIZE, Color(1.0, 0.5, 0.25) if taken else Color(0.95, 0.4, 0.4))
-		if revive_progress > 0.0:
-			if Sprites.newitem:
-				Vfx.draw_bar(ov, Rect2(-12, -12, 24, 3), revive_progress, Color(0.1, 0.1, 0.12, 0.9), Color(0.4, 0.95, 0.5))
-			else:
-				ov.draw_rect(Rect2(-12, -12, 24, 3), Color(0.1, 0.1, 0.12))
-				ov.draw_rect(Rect2(-12, -12, 24.0 * revive_progress, 3), Color(0.4, 0.95, 0.5))
-		return
-	var top := -11.0 if crouching else -17.0
-	if not _spr.is_empty() or c3d != null:
-		top = -16.0 if crouching else -22.0
-	if Sprites.newitem and hp < max_hp() and c3d == null:
-		_draw_wounds(ov, top)                  # postać 3D ma krew w materiale (char3d.gd)
-	_draw_plate(ov, font, name_txt, col, top)
-
-## Plakietka życia nad głową: ciemna płytka z imieniem (kolor slotu) i tarczami jak na karcie drużyny — pełna krwista, pusta tylko obrysem,
-## bonusowa złota; przy 1 życiu ramka czerwieni się i pulsuje (puls wyłącza „Reduce effects”). Przy pełnym życiu rysujemy samo imię.
-func _draw_plate(ov: Node2D, font: Font, name_txt: String, col: Color, top: float) -> void:
-	var hearts := maxi(max_hp(), hp)
-	var base := max_hp()
-	var name_a := lerpf(0.45, 1.0, _plate_a)
-	var label_col := Color(col.r, col.g, col.b, name_a)
-	# rysujemy w układzie plakietki: początek tuż nad głową (dół płytki), skala PLATE_SCALE — rozmiar, imię i ramka maleją razem
-	ov.draw_set_transform(Vector2(0.0, top - 4.5), 0.0, Vector2.ONE * PLATE_SCALE)
-	var y := -7.0
-	if _plate_a < 0.02:
-		_center_text(ov, font, name_txt, -2.0, NAME_SIZE, label_col)
-		ov.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		return
-	var a := _plate_a
-	var label_w := font.get_string_size(name_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_SIZE).x
-	var pips_w := float(hearts) * PLATE_PIP.x + float(hearts - 1) * 1.2
-	var pad := 2.0
-	var w := pad + label_w + 2.2 + pips_w + pad
-	var x0 := -w * 0.5
-	var r := Rect2(x0, y, w, 7.0)
-	var low := hp <= 1 and base > 1
-	var pulse := 1.0
-	if low and Settings.fx_mult() > 0.0:
-		pulse = 0.65 + 0.35 * sin(_wound_t * 5.0)
-	var edge := Color(0.62, 0.13, 0.13, a * (pulse if low else 1.0)) if low else Color(0.30, 0.26, 0.22, 0.9 * a)
-	ov.draw_rect(r, Color(0.035, 0.03, 0.026, 0.84 * a))
-	ov.draw_rect(r, edge, false, 0.5)
-	ov.draw_string(font, Vector2(x0 + pad + 0.4, y + 5.0), name_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_SIZE, Color(0, 0, 0, 0.8 * a))
-	ov.draw_string(font, Vector2(x0 + pad, y + 4.6), name_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_SIZE, label_col)
-	var px := x0 + pad + label_w + 2.2
-	var py := y + (7.0 - PLATE_PIP.y) * 0.5
-	var lost_from := hp                          # tarcze od `hp` w górę (do poprzedniej wartości) błyskają jako obrys
-	for i in hearts:
-		var ix := px + float(i) * (PLATE_PIP.x + 1.2)
-		var pts := PackedVector2Array([
-			Vector2(ix, py), Vector2(ix + PLATE_PIP.x, py), Vector2(ix + PLATE_PIP.x, py + PLATE_PIP.y * 0.6),
-			Vector2(ix + PLATE_PIP.x * 0.5, py + PLATE_PIP.y), Vector2(ix, py + PLATE_PIP.y * 0.6)])
-		if i < hp:
-			var fill := Color(0.6, 0.1, 0.12, a)
-			if i >= base:
-				fill = Color(0.84, 0.66, 0.23, a)       # serca ponad podstawowe — złote
-			ov.draw_colored_polygon(pts, fill)
-		else:
-			var ring := Color(0.42, 0.36, 0.31, 0.85 * a)
-			if _pip_flash > 0.0 and i >= lost_from and i < base:
-				ring = Color(0.95, 0.62, 0.62, minf(1.0, _pip_flash * 2.0) * a)
-			pts.append(pts[0])
-			ov.draw_polyline(pts, ring, 0.5)
-	ov.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	return {"name": name_txt, "col": _body_color(), "hp": hp, "base": max_hp(), "a": _plate_a, "flash": _pip_flash, "wound_t": _wound_t,
+		"dead": dead, "taken": taken, "timer": ceili(taken_t if taken else bleed_left), "revive": revive_progress, "top": _head_top_px()}
 
 ## Rany na ciele (HD): za każdy brakujący punkt życia ciemna plama krwi na tułowiu, ramieniu i udzie; przy niskim życiu z kapiącą strużką.
 func _draw_wounds(ov: Node2D, top: float) -> void:
@@ -2121,7 +2061,3 @@ func _draw_wounds(ov: Node2D, top: float) -> void:
 
 var _wound_t := 0.0
 
-func _center_text(ov: Node2D, font: Font, txt: String, y: float, sz: int, c: Color) -> void:
-	# cień pod tekstem — czytelność na jasnym tle (snop latarki, flara)
-	ov.draw_string(font, Vector2(-30 + 0.5, y + 0.5), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, sz, Color(0, 0, 0, 0.8))
-	ov.draw_string(font, Vector2(-30, y), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, sz, c)
