@@ -1,6 +1,7 @@
 # Progresja gracza — analiza i plan ulepszenia
 
-**Stan:** `main` 7f7ad66 (1.7.389), 2026-10-26. Dokument analityczny: **niczego w grze nie zmienia**. Kontynuacja `GUNSMITH_PLAN.md`
+**Stan:** analiza na `main` 7f7ad66 (1.7.390), 2026-10-26. Wdrożenie: **P0 → 1.7.391** (gałąź `feat/progression-measure`),
+**P1 → 1.7.392** (gałąź `feat/campaign-continue`) — patrz §7. P2 i P3 czekają na warunki z §5. Kontynuacja `GUNSMITH_PLAN.md`
 i `WORKSHOP_PLAN.md`; zasady zakresu z `GDD.md` §16.0a obowiązują w całości (patrz §5).
 
 Źródła: `profile.gd`, `perks.gd`, `look.gd`, `scrap.gd`, `parts.gd`, `throwables.gd`, `arsenal.gd`, `mission.gd`, `night_shift.gd`,
@@ -151,10 +152,13 @@ broni, która już ma bonus — w tę samą stronę co ustalenie WORKSHOP_PLAN �
 - §9 „Nagroda strefy: sklep broni (SPREAD-12, PELLET-8), postać Igła” — SPREAD-12 jest od startu, PELLET-8 za złom, postaci brak.
 - §4 „Pętla meta → trudniejsze misje” — trudność nie zależy od postępu (tylko Nocny Dyżur +12 % HP na misję).
 
-### 2.9 Ryzyko dla prawdziwego profilu (błąd narzędzi dev)
-`--shotperks`, `--shotperkcard` i `--shotlook` wołają `Profile.reset_for_test()` + `add_xp(800)` w oknie, gdzie `Profile.persist == true` —
-zapis **nadpisuje prawdziwy `profile.cfg`** (XP, `completed`, montaż, wprawa, historia). Może tłumaczyć, czemu profil autora ma `completed`
-bez 1.3, choć dziennik ma 7 jej sukcesów (niepotwierdzone). Ten sam rodzaj ryzyka co 230 złomu dopisane przez testy 26.10.
+### 2.9 ~~Ryzyko dla prawdziwego profilu~~ — wycofane
+Pierwsza wersja planu twierdziła, że `--shotperks`, `--shotperkcard` i `--shotlook` nadpisują prawdziwy `profile.cfg`. To nieprawda: wszystkie
+trzy działają wewnątrz `main._take_shot`, który na początku ustawia `Profile.persist = false`. Punkt P0.6 odpadł.
+
+### 2.10 Klient nie znał następnej misji (znalezione przy wdrożeniu P1)
+`main.after_hub` ustawiał tylko serwer i nigdzie go nie rozsyłał — u klienta odprawa na tablicy, tytuł „Next: …” i radiostacja pokazywały
+„the next mission”. Naprawione w P1.1 (cel wyjścia w `mission._sync`).
 
 ## 3. Plan
 
@@ -170,11 +174,10 @@ Kolejność wynika z §16.0a: najpierw pomiar i naprawy bez nowych systemów, st
 | P0.3 | `mission_end.kills_by_kind` (rodzaj → liczba) | `session_log.gd`, `profile.gd` | XP i złom z zabójstw wg mapy |
 | P0.4 | zdarzenie `hub_buy` przy każdym rozstrzygniętym zakupie (`kind`: weapon / part / supply / order / research / machining / service, `id`, `cost`, `ok`, `reason`, `who`) | `scrap.gd`, `session_log.gd` | struktura wydatków, odmowy „poor” = frustracja |
 | P0.5 | `tools/session_progress.py`: raport z dzienników — złom i XP na sukces wg mapy, saldo banku w czasie, wydatki wg kategorii, odsetek wizyt w kryjówce z zakupem, wipe'y na sukces, mapy na sesję | `prototype/tools/` | jedno polecenie po każdym playteście |
-| P0.6 | Bezpieczne flagi zrzutów: `--shotperks / --shotperkcard / --shotlook` ustawiają `Profile.persist = false` przed `reset_for_test` | `main.gd` | §2.9 |
+| ~~P0.6~~ | wycofane — flagi zrzutów już nie zapisują profilu (§2.9) | — | — |
 | P0.7 | Pytania do §23.3 (ankieta po sesji): „Na co wydałeś złom? Czy wiedziałeś, na co zbierasz? Czy zauważyłeś perki / próbki? Czy chciałeś zacząć od innej misji?” | `GDD.md` §23.3, `tools/testers_readme.txt` | odczucia, których dziennik nie złapie |
 
-Gotowe, gdy: raport P0.5 działa na dziennikach autora i jednej testowej sesji co-op; `--shotperks` w oknie nie zmienia `profile.cfg`.
-Jeden PR (pomiar + narzędzie) i jeden mały PR (P0.6).
+Gotowe, gdy: raport P0.5 działa na dziennikach autora i jednej testowej sesji co-op. Jeden PR (pomiar + narzędzie).
 
 ### P1 — Naprawy martwych nagród i zgodności (przed / w trakcie playtestów, bez nowych stanowisk i walut) — priorytet 2
 
@@ -246,5 +249,19 @@ Wroga wiedza jako waluta fabularna, Taśmy, Szpital, osiągnięcia, wyzwania tyg
 - **Profil gracza a zapis hosta.** Zmiany ekonomii dotykają `progress.cfg` hostów z playtestów — migracja zapisu jak `migrate_levels`,
   nigdy kasowanie postępu testera.
 - **Wybór misji a kolejność nauki.** 1.1 uczy ciszy, 1.2 Przesterowania; tablica misji musi odblokowywać po kolei (tylko ukończone + następna).
-- **Testy w oknie piszą prawdziwe zapisy** (§2.9, notatka 26.10): każdy przebieg w oknie przy tej pracy — `override.cfg` z `custom_user_dir`.
+- **Testy w oknie piszą prawdziwe zapisy** (notatka 26.10: +230 złomu): każdy przebieg w oknie przy tej pracy — `override.cfg` z `custom_user_dir`.
 - **Rozjazd dokumentów.** Każdy etap aktualizuje ten plik, GDD §10 / §16.0a i README „Profil, XP i perki”.
+
+## 7. Stan wdrożenia
+
+| Etap | Wersja / gałąź | Co weszło | Weryfikacja |
+|---|---|---|---|
+| P0.1–P0.5, P0.7 | 1.7.391, `feat/progression-measure` | `equipment` z `xp`, `level`, `perks`, `look` (replikowane `player.prof_xp`, tylko przy zmianie); `players[id].kinds` i `xp_kills`; wiersz `xp` po udanej misji (u klienta RPC do hosta); `hub_buy`; `tools/session_progress.py`; pytania w GDD §23.3 i `CZYTAJ.txt` | `--missiontest` i `--workshoptest` z `--sessionlog` (nowe kontrole w CI), test sieciowy broni (XP klienta widoczne na hoście), `test_weapons.sh` 379/379 + 15/15; raport na dziennikach autora zgłasza §2.1, §2.2, §2.4, §2.7 |
+| P0.6 | — | wycofane (§2.9) | — |
+| P1.1 | 1.7.392, `feat/campaign-continue` | `Scrap.cleared` (`[campaign]` w zapisie hosta, migracja z profilu hosta), start od misji po najdalszej ukończonej, wybór przy tablicy odpraw ([Interakcja], serwer, odnawia odliczanie), `after_hub` u klientów | `--workshoptest` 98/98, `test_cabinets.sh` (ENet: klient zna cel i postęp, wybór klienta rozstrzyga serwer) |
+| P1.2 | 1.7.392 | karta wyniku: XP za wynik + zabójstwa i podniesienia od poprzedniego wyniku (`Profile.last_run_xp`) | `--workshoptest` |
+| P1.3 | 1.7.392 | toast próbki i podpowiedź przy pracowni bez broni specjalnej; części FALCON-6 / SINEW-6 zostają w pracowni z napisem „Available in a later zone” (już czytelne, nie ukrywamy) | `--workshoptest` |
+| P1.4 | 1.7.392 | GDD §4, §9, §10.1, §10.3, §16.0a, §16.2 | — |
+| P2, P3 | — | czekają: ≥ 3 sesje zewnętrzne w §23.3 (P2), Gate 0 / decyzja użytkownika (P3) | — |
+
+Nie sprawdzone w prawdziwej grze w oknie ani w co-op przez Steam: wygląd podpowiedzi „Change mission”, odczucie odnowionego odliczania.
