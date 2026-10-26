@@ -11,6 +11,7 @@ const NightShift := preload("res://scripts/night_shift.gd")
 const Look := preload("res://scripts/look.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Parts := preload("res://scripts/parts.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 
 signal xp_gained(amount: int, reason: String)
 signal leveled_up(level: int)
@@ -138,7 +139,33 @@ func apply_mission_result(map_id: String, side_ok: bool, no_downs: bool, boss: b
 	last_run_xp = run_xp
 	run_xp = 0
 	add_xp(total, "Mission")
+	_report_mission_xp(total, rows)
 	return total
+
+## Raport XP z misji do dziennika sesji hosta (PROGRESSION_PLAN.md P0.1): host zapisuje od razu, klient wysyła go hostowi.
+func _report_mission_xp(total: int, rows: Array) -> void:
+	var labels: Array = []
+	for r in rows:
+		labels.append(String(r[0]))
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_log_mission_xp(NoiseMgr.local_id(), total, labels, xp)
+	else:
+		_xp_report.rpc_id(1, total, labels, xp)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _xp_report(total: int, labels: Array, now_xp: int) -> void:
+	if NoiseMgr.is_server():
+		_log_mission_xp(multiplayer.get_remote_sender_id(), total, labels, now_xp)
+
+## Serwer: wiersz `xp` w dzienniku sesji. Dane pochodzą od właściciela profilu — tylko statystyka, gra niczego z nich nie liczy.
+func _log_mission_xp(pid: int, total: int, labels: Array, now_xp: int) -> void:
+	var p := _human_by_id(pid)
+	if p == null:
+		return
+	var rows: Array = []
+	for l in labels.slice(0, 8):
+		rows.append(String(l).left(32))
+	SessionLog.note("xp", {"who": int(p.display_id), "mission": clampi(total, 0, 10000), "rows": rows, "xp": maxi(0, now_xp), "level": level_of(maxi(0, now_xp))})
 
 # ---------------------------------------------------------------- przyznawanie (serwer → właściciel)
 
@@ -161,6 +188,7 @@ func server_award_kill(shooter_id: int, kind: String) -> void:
 	var amount := EnemyDefs.xp(kind)
 	if NightShift.active:
 		amount = maxi(1, amount / 2)
+	SessionLog.note_kill(shooter_id, kind, amount)                 # dziennik sesji: zabójstwa wg rodzaju i XP (PROGRESSION_PLAN.md P0.3)
 	if _is_local(shooter_id):
 		add_xp(amount, "Kill")
 	else:

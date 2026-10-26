@@ -3709,6 +3709,7 @@ func run_net_host(m: Node2D) -> void:
 		await wait(0.2)
 		pw += 0.2
 	check("sieć: host widzi perki klienta (%s)" % str(Perks.ids_of(cp.perks)), Perks.ids_of(cp.perks) == ["veteran", "smith"])
+	check("sieć: host widzi XP profilu klienta do dziennika sesji (%d, poziom %d)" % [cp.prof_xp, Profile.level_of(cp.prof_xp)], cp.prof_xp >= 1800 and Profile.level_of(cp.prof_xp) == 6)
 	check("sieć: serce Weterana klienta liczy serwer (max %d), a cena Kowala dla peera klienta %d zamiast %d" % [cp.max_hp(), Scrap.part_cost("m83_rpkbar", cid), Parts.cost("m83_rpkbar")],
 		cp.max_hp() == cp.MAX_HP + 1 and Scrap.part_cost("m83_rpkbar", cid) == Parts.cost("m83_rpkbar", 0.8) and Scrap.part_cost("m83_rpkbar") == Parts.cost("m83_rpkbar"))
 	# czat: host zbiera linie rozesłane przez serwer (klient wysyła jedną wiadomość i serię 10 „flood")

@@ -42,6 +42,7 @@ const Parts := preload("res://scripts/parts.gd")
 const Perks := preload("res://scripts/perks.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const GunModel := preload("res://scripts/gun_model.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 
 const SAVE_PATH := "user://progress.cfg"
 
@@ -127,6 +128,20 @@ func supply_station(kind: String) -> String:
 		return "pyro_bench" if String(Ammo.from_kind(kind).get("cal", "")) == "40mm" else "press_bench"
 	var mode := String(Throwables.KINDS.get(kind, {}).get("mode", ""))
 	return "pyro_bench" if mode == "throw" or mode == "place" else "workshop"
+
+## Dziennik sesji: rozstrzygnięta operacja warsztatu (PROGRESSION_PLAN.md P0.4). Bez odmów „station”, „repeat” i „off”
+## (gracz poza stanowiskiem, podwójne kliknięcie, Nocny Dyżur) — nie mówią nic o ekonomii.
+func _log_buy(kind: String, id: String, cost: int, reason: String, peer_id: int, extra := {}) -> void:
+	if reason == "station" or reason == "repeat" or reason == "off":
+		return
+	var who := 0
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and int(p.player_id) == peer_id:
+			who = int(p.display_id)
+			break
+	var row := {"who": who, "kind": kind, "id": id, "cost": cost, "ok": reason == "ok", "reason": reason, "bank": bank}
+	row.merge(extra)
+	SessionLog.note("hub_buy", row)
 
 func _permit_action(peer_id: int, action: String) -> bool:
 	var key := "%d:%s" % [peer_id, action]
@@ -356,6 +371,7 @@ func _buy_server(w: int, peer_id: int) -> void:
 		unlocked[w] = true
 		save_progress()
 		_push()
+	_log_buy("weapon", String(Weapons.def(w).key) if Weapons.is_valid(w) else str(w), price_of(w), reason, peer_id)
 	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
 		purchase_result.emit(w, reason == "ok", reason)
 	else:
@@ -395,6 +411,7 @@ func _buy_supply_server(kind: String, peer_id: int) -> void:
 	else:
 		Arsenal.add_throwable(kind, Throwables.box_of(kind))        # amunicja specjalna: całe pudełko naboi (sufit w nabojach)
 		save_progress()
+	_log_buy("supply", kind, price, reason, peer_id)
 	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
 		supply_result.emit(kind, reason == "ok", reason)
 	else:
@@ -526,6 +543,7 @@ func _machining_server(id: String, peer_id: int) -> void:
 		lathe.append(id)
 		save_progress()
 		_push()
+	_log_buy("machining", id, machine_price(id), reason, peer_id)
 	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
 		machining_result.emit(id, reason == "ok", reason)
 	else:
@@ -574,6 +592,7 @@ func _research_server(id: String, peer_id: int) -> void:
 		research.append(id)
 		save_progress()
 		_push()
+	_log_buy("research", id, cost.y, reason, peer_id, {"samples": cost.x})
 	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
 		research_result.emit(id, reason == "ok", reason)
 	else:
@@ -623,6 +642,7 @@ func _order_server(kind: String, peer_id: int) -> void:
 		orders.append(kind)
 		save_progress()
 		_push()
+	_log_buy("order", kind, press_price(kind), reason, peer_id)
 	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
 		order_result.emit(kind, reason == "ok", reason)
 	else:
@@ -671,6 +691,7 @@ func _service_server(w: int, part: String, peer_id: int) -> void:
 	else:
 		_serviced["%d:%d:%s" % [peer_id, w, part]] = true
 		save_progress()
+	_log_buy("service", "%s:%s" % [String(Weapons.def(w).key) if Weapons.is_valid(w) else str(w), part], int(SERVICE_COST.get(part, 0)), reason, peer_id)
 	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
 		_service_done(w, part, reason)
 	else:
@@ -737,6 +758,7 @@ func _part_server(id: String, peer_id: int) -> void:
 		parts[id] = true
 		save_progress()
 		_push()
+	_log_buy("part", id, part_cost(id, peer_id) if Parts.is_valid(id) else 0, reason, peer_id)
 	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
 		_part_done(id, reason)
 	else:
