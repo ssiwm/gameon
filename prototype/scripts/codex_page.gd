@@ -7,7 +7,7 @@ const Portrait := preload("res://scripts/codex_portrait.gd")
 const Codex := preload("res://scripts/codex.gd")
 
 const LIST_W := 128.0
-const DETAIL_W := 290.0
+const DETAIL_W := 240.0                    ## najmniejsza szerokość szczegółów; rozciągają się na resztę strony
 const PORTRAIT_H := 84.0
 const THUMB_W := 34.0
 const THUMB_H := 20.0
@@ -63,11 +63,13 @@ func setup(entries: Array) -> void:
 	# szczegóły
 	var detail := VBoxContainer.new()
 	detail.custom_minimum_size = Vector2(DETAIL_W, 0)
+	detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	detail.add_theme_constant_override("separation", 3)
 	# szczegóły mogą być wyższe niż strona (portret + statystyki + opis + lista ulepszeń) — przewijane, strona ma stałą wysokość
 	var dscroll := ScrollContainer.new()
 	dscroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	dscroll.custom_minimum_size = Vector2(DETAIL_W + 8.0, 0)
+	dscroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	add_child(dscroll)
 	dscroll.add_child(detail)
 	_portrait = Portrait.new()
@@ -84,15 +86,12 @@ func setup(entries: Array) -> void:
 	detail.add_child(_stats)
 	_text = UiTheme.label("", 8, UiTheme.TEXT)
 	_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_text.custom_minimum_size = Vector2(DETAIL_W, 0)
 	detail.add_child(_text)
 	_tip = UiTheme.label("", 8, UiTheme.ACCENT)
 	_tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_tip.custom_minimum_size = Vector2(DETAIL_W, 0)
 	detail.add_child(_tip)
 	_access = UiTheme.label("", 8, UiTheme.DANGER)
 	_access.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_access.custom_minimum_size = Vector2(DETAIL_W, 0)
 	detail.add_child(_access)
 	_tiers = VBoxContainer.new()
 	_tiers.add_theme_constant_override("separation", 1)
@@ -138,5 +137,4 @@ func select(i: int) -> void:
 			var tail := tr("fitted") if st == 0 else (tr("owned") if st == 1 else tr("%d scrap") % int(t["cost"]))
 			var l := UiTheme.label("%s  —  %s   [%s]" % [t["head"], t["desc"], tail], 8, col)
 			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			l.custom_minimum_size = Vector2(DETAIL_W, 0)
 			_tiers.add_child(l)

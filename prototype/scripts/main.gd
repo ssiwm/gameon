@@ -473,6 +473,7 @@ func _handle_cmdline() -> void:
 	var enemytest := false
 	var shifttest := false
 	var maptest := false
+	var uifittest := false
 	var ridetest := false
 	var ridehost := false
 	var rideclient := false
@@ -589,6 +590,8 @@ func _handle_cmdline() -> void:
 			shifttest = true
 		elif a == "--maptest":
 			maptest = true
+		elif a == "--uifittest":
+			uifittest = true
 		elif a == "--gentest":
 			gentest = true
 		elif a == "--tagtest":
@@ -652,6 +655,8 @@ func _handle_cmdline() -> void:
 		_shift_test()
 	if maptest:
 		_map_test()
+	if uifittest:
+		_ui_fit_test()
 	if gentest:
 		_gen_test()
 	if tagtest:
@@ -1543,6 +1548,12 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			if a.begins_with("--codexentry="):
 				ci = clampi(int(a.substr("--codexentry=".length())), 0, bp._entries.size() - 1)       # dev: wpis bestiariusza do zrzutu
 		bp.select(ci)
+	if _has_arg_prefix("--shotpause"):
+		var spm: Node = $UI.get_node("PauseMenu")           # --shotpause[=N]: menu pauzy na karcie N (0 SETTINGS … 5 CONTROLS; z --lang=pl — przegląd tłumaczeń)
+		spm.open()
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--shotpause="):
+				spm._show_tab(clampi(int(a.substr("--shotpause=".length())), 0, 5))
 	if "--shotperkcard" in OS.get_cmdline_user_args():
 		Profile.reset_for_test()                      # --shotperkcard: karta PERKS w menu pauzy (L4, Smith w slocie 1)
 		Profile.add_xp(800, "demo")
@@ -3339,6 +3350,12 @@ func _ride_client_test() -> void:
 
 ## Test map (--maptest): dla każdej misji kampanii sprawdza kształt siatki i że z punktów startu da się dojść (po grafie
 ## nawigacji, z uwzględnieniem skoków i spadania) do wszystkich celów, wrogów, przedmiotów i wyjść oraz wrócić na start.
+## Test mieszczenia się menu pauzy w każdym języku (--uifittest, tools/test_ui_fit.gd): kończy grę kodem 1 przy błędach.
+func _ui_fit_test() -> void:
+	await get_tree().process_frame
+	var fails: int = await load("res://tools/test_ui_fit.gd").new().run(self)
+	get_tree().quit(1 if fails > 0 else 0)
+
 func _map_test() -> void:
 	var fails := 0
 	var original: String = level.map_id

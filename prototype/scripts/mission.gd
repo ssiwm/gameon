@@ -720,7 +720,8 @@ func _hub_next_title() -> String:
 
 func objective_text() -> String:
 	if kind == "hub":
-		return "Next: %s" % _hub_next_title()
+		var nt := _hub_next_title()
+		return tr("Next: %s") % (tr(nt).replace("  ", " ") if nt != "the next mission" else tr("Next mission").to_lower())
 	match phase:
 		Phase.OBJECTIVE:
 			if kind == "boss":

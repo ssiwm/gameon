@@ -19,7 +19,7 @@ signal leave_requested               ## „LEAVE SESSION": main.gd kończy sesj�
 
 const QUIT_CONFIRM_S := 3.0
 const REF_SCALE := 0.5               ## viewport 640×360 → 1280×720 jednostek makiety
-const CARD_SIZE := Vector2(900, 648)
+const CARD_SIZE := Vector2(1060, 648)          ## szerokość z zapasem na dłuższe teksty (polskie segmenty i opisy); test: --uifittest
 const TABS := ["SETTINGS", "BESTIARY", "WEAPONS", "GEAR", "PERKS", "CONTROLS"]
 const CODEX_K := 1.6                 ## strony kodeksu i sterowania powstały dla skali 0,8 (1 jednostka = 1,6 px makiety)
 
@@ -45,6 +45,8 @@ var _pending_plan := {}
 var _confirm_controls: ConfirmationDialog
 var _profile_label: Label
 var _cap := {}                       ## trwające przypisywanie: id, dev, btn, text
+var _center: CenterContainer         ## cała karta — po zmianie języka budowana od nowa (teksty powstają przez tr() przy budowie)
+var _built_locale := ""
 
 func _ready() -> void:
 	theme = UiTheme.get_theme()
@@ -59,9 +61,20 @@ func _ready() -> void:
 	dim.color = Color(0.012, 0.016, 0.012, 0.72)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(dim)
+	_build_ui()
+	Settings.changed.connect(_refresh)
+	Voice.changed.connect(_refresh)
+	Settings.bindings_changed.connect(_fill_rebind)
+	InputSetup.device_changed.connect(func(_pad: bool) -> void: _fill_rebind())
+	_refresh()
+
+## Karta menu (nagłówek, nawigacja, strony, stopka). Wołana w _ready i po zmianie języka (`_rebuild`).
+func _build_ui() -> void:
+	_built_locale = TranslationServer.get_locale()
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
+	_center = center
 
 	_card = PanelContainer.new()
 	_card.custom_minimum_size = CARD_SIZE
@@ -97,8 +110,23 @@ func _ready() -> void:
 	col.add_child(W.hairline())
 	col.add_child(_build_footer())
 
-	Settings.changed.connect(_refresh)
-	Voice.changed.connect(_refresh)
+## Zmiana języka w ustawieniach: karta powstaje od nowa w nowym języku, z tą samą kartą i stanem nagłówka.
+func _rebuild() -> void:
+	if TranslationServer.get_locale() == _built_locale:
+		return
+	if is_instance_valid(_confirm_controls):
+		_confirm_controls.queue_free()
+	_cancel_capture()
+	remove_child(_center)
+	_center.queue_free()
+	_pages.clear()
+	_nav.clear()
+	_refreshers.clear()
+	_build_ui()
+	_show_tab(_tab)
+	if _open:
+		_fill_header()
+		_resume.grab_focus()
 	_refresh()
 
 func _exit_tree() -> void:
@@ -108,7 +136,7 @@ func _exit_tree() -> void:
 ## Korzeń skalujemy tak, żeby przy standardowym rozmiarze HUD 1 jednostka = 1 piksel makiety 1280×720.
 func _fit() -> void:
 	var vp := get_viewport_rect().size
-	var k := minf(REF_SCALE * Settings.ui_rel(), vp.y / (CARD_SIZE.y + 24.0))     # duży HUD nie wypycha karty poza ekran
+	var k := minf(REF_SCALE * Settings.ui_rel(), minf(vp.y / (CARD_SIZE.y + 24.0), vp.x / (CARD_SIZE.x + 24.0)))     # duży HUD nie wypycha karty poza ekran
 	scale = Vector2(k, k)
 	size = vp / k
 
@@ -304,6 +332,8 @@ func _row(parent: Control, label: String) -> HBoxContainer:
 	var l := W.body(label, 16, UiTheme.TEXT)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART           # długi opis (np. po polsku) łamie się w dwa wiersze zamiast wypychać kolumnę
+	l.custom_minimum_size.x = 96
 	r.add_child(l)
 	parent.add_child(r)
 	return r
@@ -461,8 +491,6 @@ func _build_controls(page: VBoxContainer) -> void:
 	_confirm_controls.canceled.connect(func() -> void: _pending_plan = {})
 	add_child(_confirm_controls)
 	_fill_rebind()
-	Settings.bindings_changed.connect(_fill_rebind)
-	InputSetup.device_changed.connect(func(_pad: bool) -> void: _fill_rebind())
 
 func _fill_rebind() -> void:
 	if not _cap.is_empty():
@@ -628,6 +656,9 @@ func _compact(b: Button) -> void:
 # ---------------------------------------------------------------- stan
 
 func _refresh() -> void:
+	if TranslationServer.get_locale() != _built_locale:
+		_rebuild.call_deferred()                    # po przebudowie _rebuild sam odświeży wartości
+		return
 	for r in _refreshers:
 		r.call()
 
@@ -677,7 +708,7 @@ func _mission_line() -> String:
 	var title := ""
 	var id: String = String(lvl.get("map_id"))
 	if lvl.MAPS.has(id):
-		title = String(lvl.MAPS[id].TITLE).replace("  ", " ")
+		title = tr(String(lvl.MAPS[id].TITLE)).replace("  ", " ")          # tytuł mapy jest kluczem tłumaczenia (np. „1.3  THE NEST”)
 	var secs := int(m.get("elapsed"))
 	return ("%s · %02d:%02d" % [title, secs / 60, secs % 60]).to_upper()
 
@@ -691,11 +722,8 @@ func _set_chip() -> void:
 	else:
 		_chip_holder.add_child(W.chip(tr("CO-OP · THE WORLD KEEPS RUNNING"), UiTheme.DANGER, UiTheme.BLOOD_LINE, true))
 
-func open() -> void:
-	if _open:
-		return
-	_open = true
-	visible = true
+## Teksty zależne od stanu gry: tytuł (PAUSED / SETTINGS), misja i czas, chip, przyciski stopki.
+func _fill_header() -> void:
 	var online := NoiseMgr.has_network()
 	_title.text = tr("PAUSED") if online else tr("SETTINGS")
 	_sub.text = _mission_line() if online else tr("Changes are saved automatically.")
@@ -704,8 +732,16 @@ func open() -> void:
 	_leave.visible = online
 	var sn := _steam_net()
 	_copy_id.visible = online and sn != null and int(sn.get("lobby_id")) != 0       # tylko w sesji ze Steamowym lobby
-	_quit_t = 0.0
 	_quit.text = tr("QUIT GAME")
+
+func open() -> void:
+	if _open:
+		return
+	_open = true
+	visible = true
+	var online := NoiseMgr.has_network()
+	_fill_header()
+	_quit_t = 0.0
 	get_tree().paused = online and _solo()
 	Settings.block_game_input(true)
 	_prev_mouse = Input.mouse_mode
