@@ -1920,7 +1920,7 @@ func _fill_players(m: Node) -> void:
 		var st: Dictionary = m.player_stats[id]
 		var mine: bool = int(id) == NoiseMgr.local_id()
 		var col: Color = UiTheme.ACCENT if mine else UiTheme.TEXT
-		_result_players.add_child(UiTheme.label(("%s  (you)" % st["name"]) if mine else String(st["name"]), 9, col))
+		_result_players.add_child(UiTheme.label((tr("%s  (you)") % st["name"]) if mine else String(st["name"]), 9, col))
 		for k in ["kills", "downs", "revived"]:
 			_result_players.add_child(UiTheme.label(str(int(st[k])), 9, col, HORIZONTAL_ALIGNMENT_RIGHT))
 	_result.reset_size()
@@ -2181,7 +2181,7 @@ func _drive_cards() -> void:
 func _fill_radio(c: Dictionary, target: String) -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
 	var info: Dictionary = lvl.briefing(target) if lvl != null and target != "" else {}
-	var tag := ("Next: " + String(info["title"])) if not info.is_empty() else "Next mission"
+	var tag := (tr("Next: %s") % tr(String(info["title"]))) if not info.is_empty() else tr("Next mission")
 	var id: String = Weather.forecast
 	_fill_info(c, "WEATHER FORECAST", tag, [[Weather.color_of(id), Weather.name_of(id)]], Weather.text_of(id), UiTheme.ACCENT)
 

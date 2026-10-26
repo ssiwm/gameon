@@ -146,6 +146,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_messages.gd 2>&1 | tee messages.log
           grep -a "^PASS" messages.log
+      - name: Menu pauzy mieści się po angielsku i po polsku (--uifittest)
+        run: |
+          timeout 300 godot --headless --path prototype -- --uifittest 2>&1 | tee uifit.log
+          grep -a "\[UI-FIT\] PASS (0" uifit.log
       - name: Kontrast notatek (test_note_contrast.gd)
         run: |
           godot --headless --path prototype -s tools/test_note_contrast.gd 2>&1 | tee notecontrast.log

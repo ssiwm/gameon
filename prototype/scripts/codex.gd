@@ -61,7 +61,7 @@ static func bestiary() -> Array:
 		var stats: Array = [
 			["HP", "%d" % int(d["hp"])],
 			["Speed", "%.1f m/s" % (float(d["speed"]) / PX_PER_M) if float(d["speed"]) > 0.0 else "stationary"],
-			["Damage", "%d heart%s" % [int(d["damage"]), "" if int(d["damage"]) == 1 else "s"] if int(d["damage"]) > 0 else "—"],
+			["Damage", TranslationServer.translate_plural("%d heart", "%d hearts", int(d["damage"])) % int(d["damage"]) if int(d["damage"]) > 0 else "—"],
 			["Hearing", "%d m" % int(float(d["hear"]) / PX_PER_M) if float(d["hear"]) > 0.0 else "—"],
 			["Sight", "%d m" % int(float(d["sight"]) / PX_PER_M) if float(d["sight"]) > 0.0 else "—"],
 		]
@@ -165,7 +165,7 @@ static func perk_entry(id: String) -> Dictionary:
 	var status: String = tl.call("Equipped — slot %d") % (at + 1) if at >= 0 else (tl.call("Available") if Profile.is_unlocked(id) else tl.call("Locked — level %d") % int(d["level"]))
 	return {"title": String(tl.call(String(d["name"]))).to_upper(), "tag": String(tl.call("Perk  ·  unlocks at level %d")) % int(d["level"]), "accent": d["color"],
 		"portrait": {"type": "perk", "id": id}, "perk_id": id,
-		"stats": [["Status", status], ["Your level", "%d" % Profile.level()], ["Slots open", "%d of 2" % Profile.slots()]],
+		"stats": [["Status", status], ["Your level", "%d" % Profile.level()], ["Slots open", TranslationServer.translate("%d of %d") % [Profile.slots(), 2]]],
 		"text": String(d["desc"]),
 		"tip": "Equip perks at the workshop bench in the safe room (PERKS tab). The first slot opens at level 2, the second at level 4."}
 
@@ -176,19 +176,19 @@ static func gear() -> Array:
 		var text: Array = GEAR_TEXT.get(k, ["", ""])
 		var mode: String = {"throw": "Throwable", "place": "Placed", "use": "Tool"}[String(d["mode"])]
 		var price := Throwables.price_of(k)
-		var stats: Array = [["Type", mode], ["Carry", "%d (issued %d)" % [int(d["max"]), int(d["issue"])]],
+		var stats: Array = [["Type", mode], ["Carry", TranslationServer.translate("%d (issued %d)") % [int(d["max"]), int(d["issue"])]],
 			["Price", TranslationServer.translate("%d scrap") % price if price > 0 else "issued only"]]
 		match k:
 			"frag":
-				stats.append_array([["Fuse", "%.1f s" % float(d["fuse"])], ["Blast", "%d m · %d dmg" % [int(float(d["radius"]) / PX_PER_M), int(d["damage"])]]])
+				stats.append_array([["Fuse", "%.1f s" % float(d["fuse"])], ["Blast", TranslationServer.translate("%d m · %d dmg") % [int(float(d["radius"]) / PX_PER_M), int(d["damage"])]]])
 			"phos":
-				stats.append_array([["Fuse", "%.1f s" % float(d["fuse"])], ["Fire", "%d s · 4.5 m wide" % int(d["field_life"])]])
+				stats.append_array([["Fuse", "%.1f s" % float(d["fuse"])], ["Fire", TranslationServer.translate("%d s · 4.5 m wide") % int(d["field_life"])]])
 			"smoke":
 				stats.append_array([["Fuse", "%.1f s" % float(d["fuse"])], ["Cloud", "3.5 m · %d s" % int(d["cloud_life"])]])
 			"mine":
 				stats.append_array([["Arms in", "%.0f s" % float(d["arm"])], ["Cone", "±%d° · %d m" % [int(d["half_deg"]), int(float(d["range"]) / PX_PER_M)]], ["Damage", "%d" % int(d["damage"])]])
 			"charge":
-				stats.append_array([["Fuse", "%.0f s" % float(d["fuse"])], ["Blast", "%d m · %d dmg" % [int(float(d["radius"]) / PX_PER_M), int(d["damage"])]]])
+				stats.append_array([["Fuse", "%.0f s" % float(d["fuse"])], ["Blast", TranslationServer.translate("%d m · %d dmg") % [int(float(d["radius"]) / PX_PER_M), int(d["damage"])]]])
 			"medkit":
 				stats.append_array([["Use time", "%.0f s" % float(d["time"])], ["Heals", "+1 heart"]])
 			"defib":
