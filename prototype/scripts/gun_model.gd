@@ -49,8 +49,9 @@ static func muzzle(base_muzzle: Vector3, ids: Array) -> Vector3:
 
 ## Model bazowy broni: wczytany raz na sesję i trzymany. Dawniej po wipe nowa postać wczytywała broń od nowa (stara zwolniła ostatnią
 ## referencję, więc model wypadał z cache'u zasobów) — przestój do 110 ms w chwili odrodzenia (pomiar --perf 2026-10-23: gun_ciegno6, gun_kilof).
-## Trzymane są tylko bronie użyte w sesji (najwyżej 12 modeli). Broń z ekwipunku graczy wczytuje się w tle (`warm`, view3d co sekundę),
-## zanim pierwszy raz trafi do ręki — maczeta przy pierwszym cięciu w misji to był przestój 50 ms (pomiar --perf 2026-10-23, z1_m3).
+## Trzymane są tylko bronie i części użyte w sesji. Broń z ekwipunku graczy i jej zamontowane części wczytują się w tle (`warm`, view3d
+## co sekundę), zanim pierwszy raz trafią do ręki — maczeta przy pierwszym cięciu w misji to był przestój 50 ms (pomiar --perf 2026-10-23,
+## z1_m3), lufa RPK i bęben M-83 na starcie misji 143 ms (2026-10-26).
 static var _scenes := {}
 static var _pending := {}            ## ścieżka → true: zlecenie ResourceLoader.load_threaded_request czeka na odbiór
 
@@ -83,6 +84,15 @@ static func poll() -> void:
 static func pending() -> bool:
 	return not _pending.is_empty()
 
+## Odbiera wszystkie zlecenia wczytywania w tle (czeka na wątki). Przy zamykaniu gry: zlecenie nieodebrane przed wyjściem zostaje
+## w ResourceLoaderze („ObjectDB instances leaked at exit”), a `poll` woła widok 3D, który po `Audio.quit_game` (pauza) już nie biegnie.
+static func drain() -> void:
+	for path in _pending.keys():
+		_pending.erase(path)
+		var ps := ResourceLoader.load_threaded_get(String(path)) as PackedScene
+		if ps != null:
+			_scenes[path] = ps
+
 ## Składa model broni `key` z częściami `ids` (Parts.decode). `base_muzzle` = wylot fabryczny (Char3D.gun_info). `notches` — nacięcia na kolbie
 ## (historia broni, GUNSMITH_PLAN §7.4), z czego `deep` głębokich (bossowie). `src_dir` — katalog modelu bazowego (strzelnica FPP: `fp/` z
 ## teksturami 4K; brak pliku — model z gry). Zwraca nowy węzeł (do dodania przez wołającego).
@@ -105,7 +115,7 @@ static func build(key: String, ids: Array, base_muzzle: Vector3, notches := 0, d
 		var pi := part_info(String(id))
 		if pi.is_empty():
 			continue
-		var pn := (load(DIR + "gunpart_%s.glb" % id) as PackedScene).instantiate() as Node3D
+		var pn := scene(DIR + "gunpart_%s.glb" % id).instantiate() as Node3D
 		if String(pi["mount"]) == "muzzle":
 			pn.position = bm
 		pn.set_meta("replaces", pi.get("hides", []))

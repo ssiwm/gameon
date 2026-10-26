@@ -46,6 +46,7 @@ static var _build := ""
 static var _ft := PackedFloat32Array()  ## ms klatek od ostatniej próbki `perf`
 static var _gpu := 0.0                 ## suma ms GPU obserwowanych viewportów od ostatniej próbki
 static var _perf_t := 0.0
+static var _frame_us := 0              ## Time.get_ticks_usec() poprzedniej klatki (frame): czas klatki z zegara, nie z `delta`
 static var _gpu_vps: Array = []        ## viewporty widoku 3D z pomiarem czasu GPU (watch_viewports)
 
 static func active() -> bool:
@@ -200,11 +201,21 @@ static func watch_viewports(vps: Array) -> void:
 static func frame(delta: float, map_id: String) -> void:
 	if not enabled or _open_failed:
 		return
-	_ft.append(delta * 1000.0)
+	# `delta` silnik przycina do max_physics_steps_per_frame (8 kroków fizyki ≈ 133 ms przy 60 Hz), więc przestój 0,5 s zapisywał się jako
+	# ok. 133–150 ms (dziennik do 1.7.389). Przy przyciętej delcie liczy zegar od poprzedniej klatki; krótsza delta jest dokładna, a zegar
+	# po pauzie (węzeł nie dostawał klatek) dałby fałszywy przestój.
+	var now := Time.get_ticks_usec()
+	var ms := delta * 1000.0
+	if ms >= 120.0 and _frame_us != 0:
+		ms = maxf(ms, float(now - _frame_us) / 1000.0)
+	_frame_us = now
+	_ft.append(ms)
+	if ms > PERF_SPIKE_MS and OS.is_stdout_verbose():
+		print("[SPIKE-MARK] %.0f ms (%s)" % [ms, map_id])       # z --verbose: wiersze tuż nad znacznikiem mówią, co się wczytywało w tej klatce
 	for v in _gpu_vps:
 		if is_instance_valid(v):
 			_gpu += RenderingServer.viewport_get_measured_render_time_gpu((v as Viewport).get_viewport_rid())
-	_perf_t += delta
+	_perf_t += ms / 1000.0
 	if _perf_t < PERF_EVERY:
 		return
 	var n := _ft.size()
