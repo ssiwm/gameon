@@ -51,8 +51,11 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7 (Forward+). Rozgrywka to sym
   zajmują całą szerokość strony; `--uifittest` sprawdza, że nic nie wystaje (oba języki), a `--shotpause=N` robi zrzut karty N (z `--lang=pl`).
   Ustawienia zapisują się w `user://settings.cfg`. W trybie solo gra jest zatrzymana; w kooperacji świat idzie dalej (menu to mówi)
   i klawisze gry są wyłączone na czas menu. Nawigacja: mysz, strzałki / D-pad + A, B zamyka, LB / RB przełączają zakładki.
-- **Zakładki menu:** SETTINGS · **BESTIARY** (Trzosek, Wołek, Skoczek, Ślepiec, Podsłuchacz, Mimik, Cma, elity Kapłan / Rzeźnik / Żerca (portret z wycinka konceptu, `art/portraits/`), Stalker „ON", gniazdo,
-  boss Żyła — animowany portret z arkusza, statystyki liczone z `Enemy.KINDS`, opis i wskazówka) · **WEAPONS** (wszystkie 12 pozycji:
+- **Zakładki menu:** SETTINGS · **BESTIARY** (grupy: zwykli — Trzosek, Wołek, Skoczek, Ślepiec, Podsłuchacz, Mimik, Cma; elity — Kapłan / Rzeźnik / Żerca;
+  szczególni — Stalker „ON", gniazdo; bossowie — Żyła, Pijawka. Portrety to rendery modeli 3D gry (`tools/bake_portraits.gd` → `art/portraits/`), statystyki liczone
+  z `Enemy.KINDS`, opis, wskazówka i licznik twoich zabójstw. Od 1.7.407 z odkrywaniem: wpis wroga, którego jeszcze nie spotkałeś, to sylwetka „???”
+  (`Profile.bestiary`, `bestiary_watch.gd` — wróg na ekranie albo zabity odsłania wpis i daje komunikat; profil sprzed 1.7.407 z postępem zna wszystko;
+  dev: `--bestiaryfresh`) · **WEAPONS** (grupy: główna / boczna / biała; paski porównawcze siły ognia, zasięgu, głośności i masy z kreską broni przy sobie; wszystkie 12 pozycji:
   miniatura, obrażenia, tempo, zasięg, magazynek/zapas, przeładowanie, hałas, opis i wskazówka — statystyki liczone z `WeaponDef`,
   więc nie rozjeżdżają się z grą) · GEAR · PERKS · **CONTROLS** (edytor przypisań: klik w klawisz lub przycisk pada, potem nowy;
   obsługuje także mysz, kółko, przyciski M4/M5, dodawanie (+), usuwanie (×) i akcje bez początkowego przycisku pada.
