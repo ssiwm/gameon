@@ -1,6 +1,6 @@
 # Rozgrywka bez bota — plan
 
-Status: **plan z 2026-10-27 (main 1.7.399, 632efdf), nic nie wdrożone.** Do decyzji: punkty D1–D4 w §3.
+Status: **plan z 2026-10-27 (main 1.7.399, 632efdf), nic nie wdrożone.** Decyzje D1–D4 podjęte 2026-10-27 (§3): D1a, D2a, D3a, D4 — tylko drezyna.
 
 ## 1. Cel
 
@@ -27,22 +27,22 @@ w `mission_start`), a my sami możemy grać mapy bez bota, który zabiera częś
 | Kryjówka, gotowość | liczy tylko ludzi — bez zmian | `main._hub_humans` |
 | Testy | `--bottest`, unik bota w `--stalkertest`, `--wipetest` (wypisuje bota) zakładają bota | `scripts/*_test.gd`, `main.gd` |
 
-## 3. Decyzje do podjęcia
+## 3. Decyzje (podjęte 2026-10-27 — wybrane warianty oznaczone ✅)
 
 **D1. Co znaczy upadek, gdy nie ma kto podnieść (sam bez bota)?**
-- (a) **Wykrwawienie zamiast wipe'u (polecane):** wipe tylko wtedy, gdy leżą wszyscy *i* nikt nie wstanie (jest drugi człowiek albo bot,
+- ✅ (a) **Wykrwawienie zamiast wipe'u:** wipe tylko wtedy, gdy leżą wszyscy *i* nikt nie wstanie (jest drugi człowiek albo bot,
   który może podnieść). Sam bez bota: po upadku biegnie zegar wykrwawienia, potem powrót na start z 1 HP (dzisiejsza kara „dystansem
   i czasem” z GDD §4), łup zostaje. Druga śmierć w tej samej próbie = wipe, żeby porażka nadal była możliwa.
 - (b) Wipe od razu (jak dziś bez zmian) — najostrzejsze, pasuje do „hardcore”, ale nowy gracz traci misję po jednym błędzie.
 - (c) Raz na misję wstaje sam po zegarze (jak „Second chance” dla każdego), drugi upadek = wipe.
 
-**D2. Kiedy host wybiera?** (a) w lobby przed startem i w kryjówce (polecane — w misji zmiana składu zmienia trudność w pół walki);
+**D2. Kiedy host wybiera?** ✅ (a) w lobby przed startem i w kryjówce (w misji zmiana składu zmieniałaby trudność w pół walki);
 (b) także w menu pauzy w trakcie misji.
 
-**D3. Zakres przełącznika:** (a) ON / OFF (polecane); (b) ON / OFF / FILL — „dopełnij do 4” (GDD §16.3 mówi o wypełnianiu pustych
+**D3. Zakres przełącznika:** ✅ (a) ON / OFF; (b) ON / OFF / FILL — „dopełnij do 4” (GDD §16.3 mówi o wypełnianiu pustych
 slotów, dziś bot jest najwyżej jeden). FILL to osobna, większa praca (kilku botów naraz, `_behind_side` dla wielu) — po playteście.
 
-**D4. Strojenie solo bez bota przed playtestem?** Drezyna (moc 1,0 zamiast 1,5) i Mimik. Polecam: drezyna — minimalna moc 1,5 dla
+**D4. Strojenie solo bez bota przed playtestem?** Drezyna (moc 1,0 zamiast 1,5) i Mimik. ✅ Wybrane: drezyna — minimalna moc 1,5 dla
 jednego człowieka bez bota (bez tego tunel 1.2 jest dużo trudniejszy niż z botem); Mimik — bez zmian, ale pomiar w dzienniku
 (czy samotny gracz daje się nabrać). Reszta (agresja wrogów, Stalker) — bez zmian, mierzymy.
 
