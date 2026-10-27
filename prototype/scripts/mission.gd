@@ -71,6 +71,7 @@ var attempts := 1
 ## Statystyki graczy do ekranu wyniku: peer id → {name, kills, downs, revived}. Liczy serwer, klienci dostają wynik raz na końcu
 ## misji (`_recv_stats`). Boty nie są liczone (nie dają XP).
 var player_stats := {}
+var stalker_woke := false      ## Stalker obudził się w tej próbie (serwer; replikowane z player_stats — wyróżnienie GHOST w pojedynkę)
 ## Nocny Dyżur (night_shift.gd): suma z ukończonych misji serii
 var shift_cleared := 0
 var shift_time := 0.0
@@ -87,6 +88,10 @@ var _pos_t := 0.0            # s do następnej próbki pozycji graczy w dziennik
 var _peak_all := 0.0         # najwyższa Uwaga w całej misji (peak_noise liczy tylko do końca celu głównego)
 
 var _boss: Node = null
+## Punkt kontrolny walki z bossem (FUN_PLAN.md P0.3, serwer): nazwa postaci → pozycja w chwili przebudzenia bossa misji z gniazdami (1.3).
+## Wipe w fazie BOSS wraca tu (main._restart_from_checkpoint) zamiast na start mapy; czyści go zwykły restart.
+var _checkpoint := {}
+const CHECKPOINT_GRACE := 2.5         ## s od powrotu do punktu kontrolnego do przebudzenia bossa
 var finale := false                    ## misja 1.1: ostatni nieśmiertelnik wziął kopalnię w obroty (zawał + wyjście po drugiej stronie)
 var finale_clock := 0.0               ## s od startu finału (wszystkie peery liczą lokalnie — radio na HUD)
 var _finale_t := -1.0                  ## serwer: odliczanie do zawału (s); < 0 = brak
@@ -106,6 +111,8 @@ func _ready() -> void:
 	_exit_fx.name = "ExitFlare"
 	add_child(_exit_fx)
 	_exit_fx.setup(self)
+	NoiseMgr.lure_used.connect(_on_lure_used)
+	NoiseMgr.noise_added.connect(_on_noise_added)
 	rebind()
 
 ## Podpina cel do bieżącego poziomu: gniazda i boss (misja 1.3) albo generatory (misja 1.2). Wołane na starcie i po
@@ -114,6 +121,7 @@ func rebind() -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
 	kind = String(lvl.objective) if lvl != null else "nests"
 	_boss = get_tree().get_first_node_in_group("boss")
+	_checkpoint.clear()
 	_tags_taken = 0
 	stashes_found = 0
 	if _boss != null and not _boss.died.is_connected(_on_boss_died):
@@ -164,6 +172,8 @@ func _physics_process(delta: float) -> void:
 		elapsed += delta
 	_track_downs()
 	_peak_all = maxf(_peak_all, NoiseMgr.level)
+	if NoiseMgr.stalker_awake and _live():
+		stalker_woke = true
 	if phase != _logged_phase:
 		_logged_phase = phase
 		SessionLog.event("phase", {"phase": SessionLog.PHASES[phase]})
@@ -317,7 +327,49 @@ func _start_boss() -> void:
 	phase = Phase.BOSS
 	NoiseMgr.objective_bonus()
 	_boss.awaken()
+	if kind != "boss":
+		_save_checkpoint()
 	print("[MISSION] gniazda zniszczone -> Żyła")
+
+func _save_checkpoint() -> void:
+	_checkpoint.clear()
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_queued_for_deletion():
+			_checkpoint[p.name] = (p as Node2D).global_position
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_queued_for_deletion():
+			p.deliver_spawn(checkpoint_pos(p))       # wykrwawienie w walce odradza przy arenie, nie na starcie mapy
+	if NoiseMgr.has_network():
+		_event.rpc("checkpoint")
+
+## Czy wipe ma wrócić do punktu kontrolnego (tylko w trakcie walki z bossem).
+func has_checkpoint() -> bool:
+	return not _checkpoint.is_empty() and phase == Phase.BOSS
+
+## Pozycja postaci w punkcie kontrolnym; kto dołączył później, staje tam, gdzie pierwszy z zapisanych.
+func checkpoint_pos(p: Node) -> Vector2:
+	if _checkpoint.has(p.name):
+		return _checkpoint[p.name]
+	return _checkpoint.values()[0] if not _checkpoint.is_empty() else Vector2.INF
+
+## Wołane przez main._restart_from_checkpoint(): kolejna próba od początku walki z bossem — gniazda zostają zniszczone, faza BOSS.
+func on_checkpoint() -> void:
+	phase = Phase.BOSS
+	extract_progress = 0.0
+	attempts += 1
+	_was_dead.clear()
+	stalker_woke = false
+	_count_goal()
+	log_start("boss")
+	_broadcast()
+
+## Serwer: boss budzi się po CHECKPOINT_GRACE s od powrotu do punktu kontrolnego (drużyna zdąży stanąć na nogi).
+func wake_boss_after_checkpoint() -> void:
+	var att := attempts
+	await get_tree().create_timer(CHECKPOINT_GRACE).timeout
+	if att == attempts and phase == Phase.BOSS and _boss != null and is_instance_valid(_boss):
+		_boss.nests_left = 0
+		_boss.awaken()
 
 func _on_boss_died() -> void:
 	if NoiseMgr.is_server() and _boss != null and is_instance_valid(_boss):
@@ -428,6 +480,8 @@ func _track_downs() -> void:
 			_stat(p)["downs"] += 1
 		elif was and not p.dead and not p.is_bot and live:
 			_stat(p)["revived"] += 1
+		if was and not p.dead and live and not _bled_out(p):
+			_credit_reviver(p)
 		_was_dead[p.name] = p.dead
 
 # ---------------------------------------------------------------- dziennik sesji (session_log.gd, tylko serwer)
@@ -440,11 +494,33 @@ func _log_down(p: Node2D) -> void:
 		"weapon": String(Weapons.base_def(w).key) if Weapons.is_valid(w) else "", "pos": SessionLog.xy(p.global_position),
 		"phase": SessionLog.PHASES[phase]})
 
+## Wstał po wykrwawieniu (odrodzony na starcie z jednym sercem), a nie podniesiony na miejscu.
+func _bled_out(p: Node2D) -> bool:
+	var d: Array = _down_at.get(p.name, [elapsed, p.global_position])
+	return int(p.hp) <= 1 and p.global_position.distance_to(d[1]) > 32.0
+
+## Podniesienie rozstrzyga właściciel podnoszącego, więc serwer nie wie, kto podniósł — liczymy najbliższego stojącego człowieka obok
+## (wyróżnienie MEDIC, FUN_PLAN.md P0.5).
+const REVIVER_R := 48.0
+
+func _credit_reviver(p: Node2D) -> void:
+	var best: Node2D = null
+	var best_d := REVIVER_R
+	for o in get_tree().get_nodes_in_group("players"):
+		if o == p or o.dead or o.is_bot:
+			continue
+		var d: float = (o as Node2D).global_position.distance_to(p.global_position)
+		if d <= best_d:
+			best_d = d
+			best = o
+	if best != null:
+		_stat(best)["revives"] = int(_stat(best).get("revives", 0)) + 1
+
 ## Gracz znów stoi: podniesiony na miejscu albo — po wykrwawieniu — odrodzony na starcie misji z jednym sercem.
 func _log_up(p: Node2D) -> void:
 	var d: Array = _down_at.get(p.name, [elapsed, p.global_position])
 	var who := {"who": "P%d" % int(p.display_id), "bot": bool(p.is_bot)}
-	if int(p.hp) <= 1 and p.global_position.distance_to(d[1]) > 32.0:
+	if _bled_out(p):
 		SessionLog.event("bleed_out", who)
 	else:
 		who["after"] = snappedf(elapsed - float(d[0]), 0.1)
@@ -472,7 +548,7 @@ func _log_objective(what: String, n: int, of: int, at: Vector2, by: Node2D = nul
 	SessionLog.event("objective", row)
 
 ## Start próby misji: wołane przy restarcie (on_restart) i raz przez main.gd, gdy host zaczyna pierwszą misję.
-func log_start() -> void:
+func log_start(checkpoint := "") -> void:
 	_logged_phase = phase
 	_pos_t = 0.0                 # pierwsza próbka pozycji zaraz po starcie (punkt wyjścia trasy)
 	_peak_all = 0.0
@@ -500,6 +576,8 @@ func log_start() -> void:
 	if NightShift.active:
 		row["stage"] = NightShift.stage
 		row["mods"] = NightShift.mods
+	if checkpoint != "":
+		row["checkpoint"] = checkpoint             # próba od punktu kontrolnego (FUN_PLAN.md P0.3)
 	row["equipment"] = equipment
 	row["workshop"] = {"bank": Scrap.bank, "samples": Scrap.samples, "orders": Scrap.orders.duplicate(), "research": Scrap.research.duplicate(), "lathe": Scrap.lathe.duplicate(), "deliveries": Scrap.deliveries.duplicate()}
 	if _hub_at >= 0:
@@ -531,8 +609,81 @@ func scrap_bonus() -> int:
 func _stat(p: Node) -> Dictionary:
 	var id := int(p.player_id)
 	if not player_stats.has(id):
-		player_stats[id] = {"name": "P%d" % int(p.display_id), "kills": 0, "downs": 0, "revived": 0}
+		player_stats[id] = {"name": "P%d" % int(p.display_id), "kills": 0, "downs": 0, "revived": 0, "revives": 0, "escapes": 0, "lures": 0, "noise": 0.0}
 	return player_stats[id]
+
+func _live() -> bool:
+	return phase == Phase.OBJECTIVE or phase == Phase.BOSS or phase == Phase.EXTRACT
+
+## Serwer: Stalker chybił człowieka tuż obok (stalker._close_call) — ucieczka o włos na karcie wyniku (FUN_PLAN.md P0.1).
+func note_escape(p: Node) -> void:
+	if NoiseMgr.is_server() and kind != "hub" and _live() and not p.is_bot:
+		_stat(p)["escapes"] += 1
+
+## Serwer: udane Q (nie „zwietrzałe”) — wyróżnienie BAIT (FUN_PLAN.md P0.5).
+func _on_lure_used(by: Node) -> void:
+	if by != null and is_instance_valid(by) and not by.is_bot and kind != "hub" and _live():
+		_stat(by)["lures"] += 1
+
+## Hałas, który gracz robi sam (strzały, bieg, przeładowania, latarka, krzyk) — wyróżnienie GHOST. Serwer dostaje tylko pozycję zdarzenia,
+## więc przypisujemy je najbliższej postaci (zgłasza je z własnej pozycji); hałas bota nie idzie na konto nikogo.
+const OWN_NOISE := ["run", "reload", "mag_drop", "light", "dry", "scream"]
+const OWN_NOISE_R := 24.0
+
+func _on_noise_added(amount: float, pos: Vector2, tag: String) -> void:
+	if not NoiseMgr.is_server() or kind == "hub" or not _live() or not (tag.begins_with("shot:") or tag in OWN_NOISE):
+		return
+	var best: Node2D = null
+	var best_d := OWN_NOISE_R
+	for p in get_tree().get_nodes_in_group("players"):
+		var d: float = (p as Node2D).global_position.distance_to(pos)
+		if d <= best_d:
+			best_d = d
+			best = p
+	if best != null and not best.is_bot:
+		_stat(best)["noise"] = float(_stat(best)["noise"]) + amount
+
+## Wyróżnienia na karcie wyniku (FUN_PLAN.md P0.5) z `player_stats` — statycznie, więc każdy peer liczy to samo z replikowanych liczb.
+## `stalker_woke`: czy Stalker obudził się w tej misji (GHOST w pojedynkę). Zwraca [[id, nazwa gracza, wartość]] w stałej kolejności.
+const AWARDS := ["ghost", "medic", "bait", "close_shave", "butcher"]
+const AWARD_TITLES := {"ghost": "GHOST", "medic": "MEDIC", "bait": "BAIT", "close_shave": "CLOSE SHAVE", "butcher": "BUTCHER"}
+const AWARD_NOTES := {"ghost": "the quietest", "medic": "revives", "bait": "lures that worked", "close_shave": "Stalker misses", "butcher": "kills"}
+
+static func awards(stats: Dictionary, stalker_woke := true) -> Array:
+	var out: Array = []
+	var ids: Array = stats.keys()
+	ids.sort()
+	if ids.is_empty():
+		return out
+	for a in AWARDS:
+		var key: String = {"medic": "revives", "bait": "lures", "close_shave": "escapes", "butcher": "kills"}.get(a, "noise")
+		var best_id = null
+		var best := 0.0
+		for id in ids:
+			var st: Dictionary = stats[id]
+			var v: float = float(st.get(key, 0))
+			if a == "ghost":
+				if best_id == null or v < best:
+					best_id = id
+					best = v
+			elif v > best:
+				best_id = id
+				best = v
+		if a == "ghost":
+			# drużyna: najcichszy, jeśli jest różnica; w pojedynkę: Stalker ani razu się nie obudził
+			if ids.size() == 1:
+				if stalker_woke:
+					continue
+			else:
+				var loudest := 0.0
+				for id in ids:
+					loudest = maxf(loudest, float((stats[id] as Dictionary).get("noise", 0.0)))
+				if loudest - best < 1.0:
+					continue
+		elif best_id == null or best < 1.0:
+			continue
+		out.append([a, String((stats[best_id] as Dictionary).get("name", "?")), best])
+	return out
 
 ## Serwer: zabójstwo przez człowieka (woła Profile.server_award_kill).
 func note_kill(shooter_id: int) -> void:
@@ -545,11 +696,12 @@ func note_kill(shooter_id: int) -> void:
 
 func _send_stats() -> void:
 	if NoiseMgr.has_network():
-		_recv_stats.rpc(player_stats)
+		_recv_stats.rpc(player_stats, stalker_woke)
 
 @rpc("authority", "call_local", "reliable")
-func _recv_stats(stats: Dictionary) -> void:
+func _recv_stats(stats: Dictionary, woke := true) -> void:
 	player_stats = stats
+	stalker_woke = woke
 
 func _humans_centroid() -> Vector2:
 	var sum := Vector2.ZERO
@@ -618,6 +770,8 @@ func on_restart(new_run: bool) -> void:
 	else:
 		attempts += 1
 	_was_dead.clear()
+	stalker_woke = false
+	_checkpoint.clear()
 	_boss_wait = 0.0
 	_tags_taken = 0
 	stashes_found = 0
@@ -692,6 +846,10 @@ func _event(kind: String) -> void:
 		"broadcast":
 			Audio.play("alarm_bell", Audio.BUS_UI, -6.0)
 			Audio.sting(2)
+		"checkpoint":
+			if not NoiseMgr.is_server():
+				_checkpoint = {"remote": Vector2.INF}     # klient nie zna pozycji, tylko to, że wipe w tej walce wraca do punktu kontrolnego (HUD)
+			Msg.post("mission.checkpoint", Msg.Ch.TOAST, tr("CHECKPOINT"), {"sub": tr("A wipe now restarts this fight, not the mission"), "style": Msg.Style.SUCCESS, "ttl": 4.0, "prio": 50})
 
 # ---------------------------------------------------------------- HUD
 

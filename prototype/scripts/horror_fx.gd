@@ -111,9 +111,11 @@ func _process(delta: float) -> void:
 	# jakość (aberracja) i „Reduce Effects" (bez aberracji i pulsu tętna) — ustawienia gracza
 	var post: float = Settings.post_mult()
 	var calm: float = Settings.fx_mult()
-	_mat.set_shader_parameter("vignette", BASE_VIGNETTE + _attn * 0.28 + _hurt * 0.2)
-	_mat.set_shader_parameter("aberration", (BASE_ABERRATION + _attn * 0.0025 + _hurt * 0.0022) * post)
-	_mat.set_shader_parameter("desat", _hurt * 0.55)
+	# ucieczka o włos przed Stalkerem (Feel.close_call, FUN_PLAN.md P0.1): kadr zwęża się i traci kolor na ułamek sekundy
+	var cc: float = pow(Feel.close_call, 1.6) * calm
+	_mat.set_shader_parameter("vignette", BASE_VIGNETTE + _attn * 0.28 + _hurt * 0.2 + cc * 0.45)
+	_mat.set_shader_parameter("aberration", (BASE_ABERRATION + _attn * 0.0025 + _hurt * 0.0022 + cc * 0.004) * post)
+	_mat.set_shader_parameter("desat", maxf(_hurt * 0.55, cc * 0.5))
 	_mat.set_shader_parameter("bloom", BLOOM * post)
 	_update_grade(delta)
 	_mat.set_shader_parameter("hurt_pulse", _hurt * (0.18 + 0.38 * beat * calm))

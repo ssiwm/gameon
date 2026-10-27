@@ -472,6 +472,7 @@ var _calm_t := 0.0                    ## sekundy spokoju (poziomy HUD: T2 / T3 w
 var _tier_k := 1.0                    ## 1 = pełny HUD, ~0.5 = wyciszony w spokoju
 var _stats_sig := -1                  ## podpis statystyk graczy w karcie wyniku
 var _result_players: GridContainer
+var _result_awards: VBoxContainer          ## wyróżnienia (Mission.awards, FUN_PLAN.md P0.5)
 var _xp_bar: Bar                      ## pasek poziomu na karcie wyniku (animowany: XP z misji „wlewa się” w poziom)
 var _xp_note: Label
 var _xp_anim := 0.0                   ## 0..1 postęp animacji
@@ -1165,6 +1166,7 @@ func _build_center() -> void:
 	_journal = JournalView.new()
 	add_child(_journal)
 	NoiseMgr.overcharge_stale.connect(func() -> void: show_note(tr("They know this trick — move before you lure again")))
+	NoiseMgr.lured.connect(_on_lured)
 	add_child((load("res://scripts/taken_arrow.gd") as GDScript).new())      # strzałka ku porwanemu graczowi poza kadrem (Żerca, F4d)
 	if "--shotjournal" in OS.get_cmdline_user_args():
 		# dev: dziennik otwarty z kilkoma przykładowymi wpisami (zrzut: --shotjournal --shot=PLIK)
@@ -1408,6 +1410,10 @@ func _build_result() -> void:
 	_result_players.add_theme_constant_override("h_separation", 14)
 	_result_players.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	box.add_child(_result_players)
+	_result_awards = VBoxContainer.new()
+	_result_awards.add_theme_constant_override("separation", 1)
+	_result_awards.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(_result_awards)
 	_xp_bar = Bar.new()
 	_xp_bar.custom_minimum_size = Vector2(0, 5)
 	_xp_bar.fill = UiTheme.CALM
@@ -1678,11 +1684,52 @@ func _drive_weapons() -> void:
 	_equip_card.position = Vector2(size.x - 2.0 * MARGIN - _equip_card.size.x, size.y - BOTTOM_PAD - _equip_card.size.y)
 	_equip_card.modulate.a = lerpf(1.0, 0.55, (1.0 - _tier_k) * 2.0)
 
+func _wipe_to_checkpoint() -> bool:
+	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
+	return m != null and m.has_checkpoint()
+
+## Wabik wzięty (FUN_PLAN.md P0.2): drużyna widzi i słyszy, że Q zadziałało — komunikat i warkot Stalkera, który zawraca.
+func _on_lured(lock: float) -> void:
+	if lock <= 0.0 or not NoiseMgr.stalker_awake:
+		return
+	Msg.post("hud.lured", Msg.Ch.TOAST, tr("HE TAKES THE BAIT"), {"ttl": 2.5, "style": Msg.Style.SUCCESS, "prio": 70})
+	var st := _stalker()
+	if st != null:
+		Audio.play_variant_at("stalker_growl", 2, st.global_position, Audio.BUS_STALKER, -4.0, 0.85)
+
+func _stalker() -> Node2D:
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e.has_method("is_stalker") and e.is_stalker():
+			return e as Node2D
+	return null
+
+## Stalker poluje tuż przy koledze, a ja mam ładunek Q: nazwa kolegi do podpowiedzi „odciągnij go” ("" = nie ma kogo ratować).
+func _teammate_hunted() -> String:
+	if _player == null or _player.dead or NoiseMgr.overcharge_charges <= 0 or NoiseMgr.lure_left > 0.0:
+		return ""
+	var st := _stalker()
+	if st == null or not st.visible:
+		return ""
+	for p in get_tree().get_nodes_in_group("players"):
+		if p == _player or p.dead or p.is_queued_for_deletion():
+			continue
+		var d: Vector2 = (p as Node2D).global_position - st.global_position
+		if absf(d.x) < 90.0 and absf(d.y) < 40.0 and _player.global_position.distance_to((p as Node2D).global_position) > 60.0:
+			return "P%d" % int(p.display_id)
+	return ""
+
 ## Ostrzeżenie przed karą (GDD §8.1): niepokój ZANIM ON się obudzi.
 func _drive_warning() -> void:
 	var awake: bool = NoiseMgr.stalker_awake
 	var uneasy: bool = (not awake) and NoiseMgr.level >= NoiseMgr.UNEASY_THRESHOLD
-	if awake:
+	var hunted := _teammate_hunted() if awake else ""
+	if awake and NoiseMgr.lure_left > 0.0:
+		Msg.hold("hud.noise.lured", Msg.Ch.ALERT, tr("He's chasing the lure · %d s") % ceili(NoiseMgr.lure_left),
+			{"sub": tr("Move now — new noise won't turn him until the lure runs out"), "style": Msg.Style.SUCCESS, "prio": 62})
+	elif hunted != "":
+		Msg.hold("hud.noise.hunted", Msg.Ch.ALERT, tr("He's on %s!") % hunted,
+			{"sub": Actions.fmt(tr("{overcharge} lures him away from them")), "style": Msg.Style.DANGER, "prio": 70})
+	elif awake:
 		Msg.hold("hud.noise.awake", Msg.Ch.ALERT, tr("He hears you…"), {"sub": tr("Go quiet until the noise drops below 30% — or use Q to lure him off"), "style": Msg.Style.DANGER, "prio": 60})
 	elif uneasy:
 		Msg.hold("hud.noise.uneasy", Msg.Ch.ALERT, tr("Something is listening…"), {"sub": tr("Above 60% noise he wakes up"), "style": Msg.Style.WARN, "prio": 40})
@@ -1866,7 +1913,10 @@ func _fill_result(m: Node) -> void:
 	_result_stats.add_child(UiTheme.label("XP", 9, UiTheme.MUTED))
 	_result_xp_val = UiTheme.label("", 9, Color(0.55, 0.8, 1.0), HORIZONTAL_ALIGNMENT_RIGHT)      # uzupełniany co klatkę — XP przychodzi od serwera chwilę po zmianie fazy
 	_result_stats.add_child(_result_xp_val)
-	_result_prompt.text = "[%s]  %s" % [Actions.key("restart"), tr(prompt)] if multiplayer.is_server() else "Waiting for the host to continue…"
+	_result_prompt.text = "[%s]  %s" % [Actions.key("restart"), tr(prompt)] if multiplayer.is_server() else tr("Waiting for the host to continue…")
+	if multiplayer.is_server() and not NightShift.active and m.phase == Mission.Phase.SUCCESS:
+		# kampania: kryjówka albo od razu następna misja (FUN_PLAN.md P0.4, main._continue_without_hub)
+		_result_prompt.text = "[%s]  %s      [%s]  %s" % [Actions.key("restart"), tr("Safe room"), Actions.key("interact"), tr("Next mission now")]
 	if _demo_footer != null:
 		# stopka dema: koniec kampanii (ostatnia misja Strefy I) albo koniec serii Nocnego Dyżuru
 		var lvl := get_tree().get_first_node_in_group("level")
@@ -1905,13 +1955,14 @@ func _drive_xp(delta: float) -> void:
 
 ## Tabela graczy na karcie wyniku (odświeżana, gdy statystyki od serwera się zmienią).
 func _fill_players(m: Node) -> void:
-	var sig: int = hash(str(m.player_stats))
+	var sig: int = hash(str(m.player_stats) + str(m.stalker_woke))
 	if sig == _stats_sig:
 		return
 	_stats_sig = sig
 	for c in _result_players.get_children():
 		_result_players.remove_child(c)
 		c.free()
+	_fill_awards(m)
 	var ids: Array = m.player_stats.keys()
 	ids.sort()
 	_result_players.visible = not ids.is_empty()
@@ -1928,6 +1979,20 @@ func _fill_players(m: Node) -> void:
 			_result_players.add_child(UiTheme.label(str(int(st[k])), 9, col, HORIZONTAL_ALIGNMENT_RIGHT))
 	_result.reset_size()
 	_result.position = (size - _result.size) * 0.5
+
+## Wyróżnienia pod tabelą graczy: tytuł, gracz i za co (Mission.awards liczy to samo na każdym peerze).
+func _fill_awards(m: Node) -> void:
+	for c in _result_awards.get_children():
+		_result_awards.remove_child(c)
+		c.free()
+	var rows: Array = Mission.awards(m.player_stats, bool(m.stalker_woke))
+	_result_awards.visible = not rows.is_empty()
+	for r in rows:
+		var id: String = r[0]
+		var note: String = tr(Mission.AWARD_NOTES[id])
+		var why: String = note if id == "ghost" else "%s: %d" % [note, int(r[2])]       # „revives: 1” — bez odmiany liczby mnogiej
+		var line := UiTheme.label("%s  ·  %s  ·  %s" % [tr(Mission.AWARD_TITLES[id]), r[1], why], 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
+		_result_awards.add_child(line)
 
 func _mmss(secs: float) -> String:
 	var s := int(secs)
@@ -2473,7 +2538,7 @@ func _drive_prompt() -> void:
 	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	if wipe_left > 0.0:
-		Msg.hold("hud.wipe", Msg.Ch.ALERT, tr("SQUAD DOWN"), {"sub": (tr("Extraction failed — the shift ends in %d") if NightShift.active else tr("Extraction failed — restarting the mission in %d")) % ceili(wipe_left), "style": Msg.Style.DANGER, "prio": 90})
+		Msg.hold("hud.wipe", Msg.Ch.ALERT, tr("SQUAD DOWN"), {"sub": (tr("Extraction failed — the shift ends in %d") if NightShift.active else (tr("Back to the checkpoint — the fight restarts in %d") if _wipe_to_checkpoint() else tr("Extraction failed — restarting the mission in %d"))) % ceili(wipe_left), "style": Msg.Style.DANGER, "prio": 90})
 	var in_range := _in_range()
 	var cands := [] if in_range else _prompt_candidates()
 	for i in cands.size():

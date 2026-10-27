@@ -15,6 +15,9 @@ var _amp := 0.0
 var _kick := Vector2.ZERO        ## szarpnięcie kamery (kierunkowe, wygasa szybciej niż shake)
 var _hitstop_until_ms := 0
 var _hitstop_ready_at_ms := 0
+## Ucieczka o włos przed Stalkerem (FUN_PLAN.md P0.1): 1 w chwili uniku, wygasa w CLOSE_CALL_FADE s; horror_fx.gd zwęża nim kadr.
+var close_call := 0.0
+const CLOSE_CALL_FADE := 1.4
 
 ## amount w pikselach (viewport 640x360, kamera zoom 1.6).
 func shake(amount: float) -> void:
@@ -31,6 +34,11 @@ func shake_offset() -> Vector2:
 	if _amp >= 0.05:
 		rnd = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _amp
 	return (rnd + _kick) * Settings.shake_mult()   # ustawienie gracza: FULL / HALF / OFF
+
+## Lokalny gracz uniknął zamachu Stalkera tuż przed nim: impuls „tunelu” w obrazie (horror_fx.gd) i lekki shake.
+func close_call_pulse() -> void:
+	close_call = 1.0
+	shake(2.2)
 
 ## Krótkie „zamrożenie\" przy ważnym zdarzeniu. Ignorowane, jeśli poprzedni
 ## hitstop był niedawno — gra ma być responsywna, nie szarpana.
@@ -53,6 +61,7 @@ func _process(delta: float) -> void:
 	var real_delta := delta / maxf(Engine.time_scale, 0.001)
 	_amp = move_toward(_amp, 0.0, SHAKE_DECAY * real_delta)
 	_kick = _kick.move_toward(Vector2.ZERO, KICK_DECAY * real_delta * maxf(1.0, _kick.length() * 0.25))
+	close_call = move_toward(close_call, 0.0, real_delta / CLOSE_CALL_FADE)
 	if _hitstop_until_ms > 0 and Time.get_ticks_msec() >= _hitstop_until_ms:
 		Engine.time_scale = 1.0
 		_hitstop_until_ms = 0

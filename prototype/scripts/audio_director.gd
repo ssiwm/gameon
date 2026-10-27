@@ -993,6 +993,13 @@ func on_player_hurt(severe := false) -> void:
 		play("ear_ring", BUS_UI, -20.0)
 
 
+## Ucieczka o włos przed Stalkerem (FUN_PLAN.md P0.1): świat i muzyka na chwilę cichną, zostaje puls ostrzegawczy — „czas zwalnia”.
+func on_close_call() -> void:
+	deafen(0.4, 0.5)
+	duck_music(-9.0, 1.2)
+	play("warn_pulse", BUS_UI, -7.0, 0.8)
+
+
 ## amount 0..1 (1 = głęboko przytłumiony), hold = ile sekund trzymać zanim zacznie się odbudowywać słuch.
 func deafen(amount: float, hold: float) -> void:
 	_deaf = maxf(_deaf, clampf(amount, 0.0, 1.0))
