@@ -27,6 +27,8 @@ const UNDERGROUND_ROW := 30
 const WEAPONS := [Weapons.SRUT8, Weapons.CIEGNO6, Weapons.KILOF]
 ## Skrzynie mocy (FUN_PLAN.md P1.3): [kolumna, rząd, broń, naboje] — FALCON-6 w podziemnym korytarzu (obok skrzynki amunicji).
 const POWER_CRATES := [[149, 39, Weapons.SOKOL6, 60]]
+## Sejfy (FUN_PLAN.md P2.2): [kolumna, rząd, złom] — wyważanie trzymanym [E] jest głośne; tuż obok Podsłuchacza przy generatorze.
+const STRONGBOXES := [[100, 25, 40]]
 ## (8+) Poly Haven: koksownik przy kłodach za chatą radiową, opona w bagnie, pniak za bagnem.
 const ACCENTS := [[Vector2(152, 416), 6], [Vector2(184, 416), 6], [Vector2(648, 416), 7], [Vector2(2000, 416), 7], [Vector2(3500, 416), 7], [Vector2(696, 416), 11], [Vector2(808, 416), 13], [Vector2(968, 416), 9], [Vector2(3592, 416), 17], [Vector2(3624, 416), 15], [Vector2(3704, 416), 18], [Vector2(3752, 416), 17], [Vector2(3816, 416), 20], [Vector2(3864, 416), 19], [Vector2(3928, 416), 17], [Vector2(3624, 353), 17], [Vector2(3656, 353), 15], [Vector2(3704, 353), 20], [Vector2(3816, 353), 17], [Vector2(3848, 353), 18], [Vector2(3928, 353), 15], [Vector2(3896, 416), 21], [Vector2(3832, 405), 22]]
 

@@ -67,12 +67,14 @@ Na prośbę użytkownika wdrożone przed playtestem P0 — liczby (budżet 6 / 2
 | P1.3 | ✅ Skrzynie mocy (decyzja: broń tymczasowa poza slotami): 1.1 WRATH-4 × 8, 1.2 FALCON-6 × 60; bez przeładowania i zacięć, zmiana broni zablokowana, po ostatnim naboju wraca broń ze slotu; serwer liczy przydział i odrzuca strzał z broni spoza zestawu | D6 |
 | P1.4 | ✅ Pancerz zbija strzał śrutem raz, nie każdą śrucinę (SPREAD-12 w Wołka ok. 32 zamiast 20; GNIEW-4 jako wybuch pancerza i tak nie zna); cios przechodzi przez pole Podsłuchacza | D6 |
 
-## 4. P2 — po playtestach
+## 4. P2 — wdrożone w 1.7.403 (`feat/fun-p2`)
+
+Na prośbę użytkownika przed playtestami — wartości (próg 60, +30 złomu, sejf 3 s / 3 na s / +12 / 40 złomu) do strojenia.
 
 | # | Zmiana | Problem |
 |---|---|---|
-| P2.1 | Cel „w ciszy”: podwójny złom, gdy Uwaga < 60 przez cały cel (dzisiejsze „< 40” w 1.2 przepada po 25 s) | D1 |
-| P2.2 | Skrytki otwierane hałasem — więcej łupu za świadome podniesienie Uwagi | D1, D5 |
+| P2.1 | ✅ Cichy cel w 1.1–1.3: Uwaga < 60 przez cały cel główny → +30 złomu (podwaja premię za ukończenie), toast „SILENT RUN LOST”, wiersz na karcie wyniku; cel poboczny 1.2 (< 40) zostaje | D1 |
+| P2.2 | ✅ Sejfy (`strongbox.gd`, `STRONGBOXES`): trzymany [E] 3 s, 3 Uwagi/s i łoskot +12, 40 złomu (2× skrytka); 1.1 przy strażnicy, 1.2 obok Podsłuchacza | D1, D5 |
 
 ## 5. Pomiar po P0
 

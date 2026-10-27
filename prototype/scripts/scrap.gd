@@ -54,6 +54,7 @@ const STASH_VALUE := 20               ## ukryta skrytka (cel poboczny misji 1.1)
 const BONUS_CLEAR := 30               ## za ukończenie misji
 const BONUS_SIDE := 15                ## za cel poboczny
 const BONUS_NO_DOWNS := 10            ## za misję bez upadków
+const BONUS_SILENT := 30              ## cichy cel: Uwaga nie przekroczyła 60 przez cały cel główny (FUN_PLAN.md P2.1) — podwaja premię za ukończenie
 ## Części jako znaleziska (GUNSMITH_PLAN §7.1, od 1.7.333): skrytka misji zawiera część, elita czasem ją zostawia. Znaleziona część czeka
 ## w `found` do ekstrakcji (jak łup złomu) i dopiero wtedy jest odblokowana dla drużyny; wipe ją zabiera.
 const ELITE_PART_DROP := 0.3

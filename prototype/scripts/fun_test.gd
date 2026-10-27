@@ -15,6 +15,8 @@ extends "res://scripts/stalker_test.gd"
 ## opada do PEAK_RELEASE i zaczyna się oddech (pół hałasu); 8. pancerz zbija strzał śrutem raz, nie każdą śrucinę;
 ## 9. skrzynia mocy: dotknięcie daje broń poza slotami z przydziałem naboi, bez przeładowania i zmiany broni, druga skrzynia nie działa,
 ##    po ostatnim naboju wraca broń ze slotu, a licznik serwera się zeruje.
+## P2: 10. cichy cel — premia za Uwagę < 60 przez cały cel, toast przy utracie; 11. sejf — wyważanie trzymanym [E] jest głośne,
+##    otwarcie dodaje łup i łoskot, odejście przerywa pracę, restart zamyka sejf.
 ## Mapa 1.3 (gniazda, Żyła, Stalker). Zwykli wrogowie usunięci, bot i Dyrektor stoją. Wynik: linie [FUN-TEST] i kod wyjścia.
 
 const Mission := preload("res://scripts/mission.gd")
@@ -58,6 +60,8 @@ func run(m: Node2D) -> void:
 	await _peak()
 	await _pellet_armor()
 	await _power_crate()
+	await _silent_run()
+	await _strongbox()
 	await _checkpoint()
 	await _skip_hub()
 	_finish()
@@ -232,6 +236,48 @@ func _power_crate() -> void:
 		t += 1.0 / float(Engine.physics_ticks_per_second)
 	check("po ostatnim naboju wraca broń ze slotu (%s, po %.1f s)" % [wc.cur().name, t], not wc.power_active() and wc.cur().id == before and int(player.weapon) == before)
 	check("licznik serwera wyzerowany, można wziąć następną skrzynię", wc._srv_power_left == 0 and wc._srv_power_w == -1)
+
+# ---------------------------------------------------------------- 10–11. P2: cichy cel, sejf
+
+func _silent_run() -> void:
+	var mission: Node = main.mission
+	NoiseMgr.level = 10.0
+	mission.peak_noise = 10.0
+	mission._silent_lost_sent = false
+	var base: int = mission.scrap_bonus()
+	check("cichy cel liczy się w 1.3 i jest dotrzymany przy szczycie 10", mission.silent_counts() and mission.silent_ok())
+	check("premia złomu +%d za cichy cel" % Scrap.BONUS_SILENT, Scrap.BONUS_SILENT > 0)
+	NoiseMgr.level = 65.0
+	await _ticks(3)
+	check("Uwaga 65 w trakcie celu: cichy cel stracony (szczyt %d), toast wysłany" % int(mission.peak_noise), not mission.silent_ok() and mission._silent_lost_sent)
+	check("premia złomu spada o %d (%d → %d)" % [Scrap.BONUS_SILENT, base, mission.scrap_bonus()], base - mission.scrap_bonus() == Scrap.BONUS_SILENT)
+	NoiseMgr.level = 0.0
+
+func _strongbox() -> void:
+	var box: Node2D = (load("res://scripts/strongbox.gd") as GDScript).new()
+	box.name = "FunStrongbox"
+	box.value = 40
+	box.position = level.to_local(player.global_position + Vector2(6, 0))
+	level.add_child(box)
+	await _ticks(2)
+	NoiseMgr.level = 0.0
+	NoiseMgr.breath_left = 0.0
+	var loot0: int = Scrap.loot
+	box.set_worker(int(player.player_id), true)
+	await get_tree().create_timer(box.PRY_TIME * 0.5).timeout
+	check("wyważanie trwa i hałasuje (postęp %.2f, Uwaga %.1f)" % [box.progress, NoiseMgr.level], box.progress > 0.3 and box.progress < 1.0 and NoiseMgr.level > 2.0)
+	box.set_worker(int(player.player_id), false)
+	var p_stop: float = box.progress
+	await get_tree().create_timer(0.6).timeout
+	check("puszczony [E]: postęp się cofa (%.2f → %.2f)" % [p_stop, box.progress], box.progress < p_stop)
+	box.set_worker(int(player.player_id), true)
+	await get_tree().create_timer(box.PRY_TIME + 0.4).timeout
+	check("sejf otwarty: łup +%d (%d → %d), łoskot (Uwaga %.1f)" % [box.value, loot0, Scrap.loot, NoiseMgr.level],
+		box.opened and Scrap.loot - loot0 == box.value and NoiseMgr.level >= box.OPEN_BURST * Difficulty.m("noise") * 0.9)
+	box.reset_strongbox()
+	check("restart misji zamyka sejf", not box.opened and box.progress == 0.0)
+	box.queue_free()
+	NoiseMgr.level = 0.0
 
 # ---------------------------------------------------------------- 4. punkt kontrolny
 

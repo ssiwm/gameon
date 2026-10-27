@@ -1911,6 +1911,10 @@ func _fill_result(m: Node) -> void:
 			_style_result("EXTRACTION COMPLETE", "The squad made it out of the woods.", UiTheme.OK)
 			rows = [["Time", _mmss(m.elapsed)], ["Nests destroyed", "%d / %d" % [m.nests_total, m.nests_total]],
 				["The Vein", "slain"], ["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts], ["Scrap banked", "+%d" % Scrap.last_gain]]
+	if not NightShift.active and m.has_method("silent_counts") and m.silent_counts():
+		# cichy cel (FUN_PLAN.md P2.1): premia za Uwagę poniżej progu przebudzenia przez cały cel główny
+		var keep: String = (tr("kept  +%d scrap") % Scrap.BONUS_SILENT) if m.silent_ok() else (tr("lost  (peak %d)") % int(m.peak_noise))
+		rows.insert(rows.size() - 1, [tr("Silent run (Attention < %d)") % int(m.SILENT_CAP), keep])
 	var main_node := get_tree().current_scene
 	if main_node != null and main_node.get("companion_on") == false:
 		rows.append(["AI companion", "off"])               # NOBOT_PLAN.md: wynik bez bota widać na karcie (zrzuty, nagrania playtestu)
@@ -2397,6 +2401,12 @@ func _grab_boss() -> Node:
 	return null
 
 ## Generator, przy którym stoi lokalny gracz (misja 1.2) albo null.
+func _near_strongbox() -> Node:
+	for sb in get_tree().get_nodes_in_group("strongboxes"):
+		if bool(sb.get("local_in_range")):
+			return sb
+	return null
+
 func _near_generator() -> Node:
 	for g in get_tree().get_nodes_in_group("generators"):
 		if g.local_in_range:
@@ -2455,6 +2465,13 @@ func _prompt_candidates() -> Array:
 			add.call(tr("Starting the generator…"), gen.progress, UiTheme.OK)
 		else:
 			add.call(Actions.fmt(tr("Hold [{interact}]  Start the generator  (loud)")), -1.0, UiTheme.ACCENT)
+	var box := _near_strongbox()
+	if box != null and _player != null and _player.weapons.nearby_weapon_item() == null:
+		# sejf (FUN_PLAN.md P2.2): łup za świadomy hałas
+		if box.progress > 0.0:
+			add.call(tr("Prying the strongbox open…  it's loud"), box.progress, UiTheme.ACCENT)
+		else:
+			add.call(Actions.fmt(tr("Hold [{interact}]  Pry open the strongbox  (LOUD · +%d scrap)")) % int(box.value), -1.0, UiTheme.ACCENT)
 	if _near_workshop():
 		add.call(tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], -1.0, UiTheme.ACCENT)
 	if _near_lathe():
