@@ -248,7 +248,14 @@ func _on_join_requested(id: int, _friend := 0) -> void:
 # ---------------------------------------------------------------- start przez zaproszenie
 
 ## Gra uruchomiona z „Dołącz do gry": Steam dokleja `+connect_lobby <id>` do wiersza poleceń.
+## Raz na proces: scena ładuje się od nowa po wyjściu z sesji albo utracie hosta (Main._reset_session) i bez tego dołączalibyśmy
+## znowu do tego samego lobby z wiersza poleceń.
+static var _launch_checked := false
+
 func _check_launch_args() -> void:
+	if _launch_checked:
+		return
+	_launch_checked = true
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	for i in args.size():
 		if args[i] == "+connect_lobby" and i + 1 < args.size():

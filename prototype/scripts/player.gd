@@ -458,6 +458,8 @@ func _setup_sync() -> void:
 	add_child(sync)
 
 func _setup_local() -> void:
+	if not is_inside_tree():
+		return          # usunięty, zanim odroczone wywołanie doszło (bot znika, gdy dołącza trzeci człowiek — spawn i despawn w jednej klatce)
 	# Człowiek: autorytet = jego peer. Bot: autorytet = serwer (steruje nim host).
 	_is_remote = not is_multiplayer_authority()
 	var local_human := not is_bot and not _is_remote
@@ -1367,7 +1369,8 @@ var _bot_gear_target := 0
 ## Bot używa zapasu drużyny: defibrylatorem stawia leżącego CZŁOWIEKA w zasięgu 10 m i linii wzroku (1,5 s), a gdy nikt nie jest
 ## zagrożony — apteczką leczy rannego człowieka obok (5 s), na końcu siebie. Stoi w miejscu na czas użycia. Zwraca true, gdy zajęty.
 func _bot_gear(delta: float, downed: Node2D) -> bool:
-	if not NoiseMgr.is_server() or dead:
+	# zapowiedź ciosu obok (także Stalkera, którego `_nearest_enemy` nie widzi) przerywa apteczkę i defibrylator — najpierw unik
+	if not NoiseMgr.is_server() or dead or _winding_near(BOT_EVADE_RANGE) != null:
 		_bot_gear_hold = 0.0
 		return false
 	var kind := ""
@@ -1470,6 +1473,9 @@ func _bot_brain(delta: float) -> void:
 	# unik: wróg w zasięgu ciosu albo w zapowiedzi → bot odskakuje (nie stoi, żeby oberwać)
 	if not reviving and is_on_floor() and not on_deck:
 		var close := _nearest_enemy(BOT_EVADE_RANGE)
+		var swing := _winding_near(BOT_EVADE_RANGE)
+		if swing != null:
+			close = swing
 		if close != null and (bool(close.get("winding")) or absf(close.global_position.x - global_position.x) < BOT_KITE_RANGE):
 			var away := signf(global_position.x - close.global_position.x)
 			velocity.x = (away if away != 0.0 else -_facing) * SPEED
@@ -1704,6 +1710,21 @@ func _nearest_enemy(max_dist: float) -> Node2D:
 			continue
 		# tylko realne zagrożenia: aktywni wrogowie (nie Stalker, nie śpiący)
 		if not ee.has_method("is_threat") or not ee.is_threat():
+			continue
+		var d := global_position.distance_to(ee.global_position)
+		if d < best_d:
+			best_d = d
+			best = ee
+	return best
+
+## Najbliższy wróg w zapowiedzi ciosu bliżej niż `max_dist` — także Stalker, którego `_nearest_enemy` pomija (nie jest celem
+## ognia bota). Bez tego bot stał w zasięgu zamachu Stalkera: w dziennikach sesji 27% zamachów w boty trafiało, w ludzi 6%.
+func _winding_near(max_dist: float) -> Node2D:
+	var best: Node2D = null
+	var best_d := max_dist
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var ee := e as Node2D
+		if ee == null or ee.get("winding") != true:
 			continue
 		var d := global_position.distance_to(ee.global_position)
 		if d < best_d:

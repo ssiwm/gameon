@@ -84,6 +84,10 @@ func _ready() -> void:
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
+	var sm := multiplayer as SceneMultiplayer
+	sm.auth_callback = _on_peer_auth
+	sm.peer_authenticating.connect(_on_peer_authenticating)
+	sm.peer_authentication_failed.connect(_on_peer_auth_failed)
 	_lobby.host_requested.connect(host_game)
 	steam = STEAM_NET.new()
 	steam.name = "SteamNet"
@@ -106,6 +110,8 @@ func _ready() -> void:
 	add_child(chat)
 	pause_menu.leave_requested.connect(leave_session)
 	_setup_main_menu(pause_menu)
+	if _drop_note != "":
+		_show_drop_note()
 	if "--leavetest" in OS.get_cmdline_user_args():
 		_leave_test.call_deferred()
 	if DisplayServer.get_name() != "headless":
@@ -541,6 +547,8 @@ func _handle_cmdline() -> void:
 		if a.begins_with("--sessionlog="):               # dziennik sesji także w headless, do wskazanego katalogu (testy)
 			SessionLog.enabled = true
 			SessionLog.dir = a.substr("--sessionlog=".length())
+		if a.begins_with("--fakebuild="):                 # dev: inna wersja przy łączeniu (test sprawdzenia wersji, tools/test_net_session.sh)
+			_fake_build = a.substr("--fakebuild=".length())
 		if a.begins_with("--port="):
 			port = a.substr("--port=".length()).to_int()
 		elif a.begins_with("--mission="):
@@ -558,11 +566,11 @@ func _handle_cmdline() -> void:
 	for a in args:
 		if a == "--host":
 			host_game()
-		elif a.begins_with("--join="):
+		elif a.begins_with("--join=") and not _session_ended:
 			join_game(a.substr("--join=".length()))
 		elif a == "--steam-host":
 			steam.host.call_deferred()
-		elif a.begins_with("--steam-join="):
+		elif a.begins_with("--steam-join=") and not _session_ended:
 			steam.join.call_deferred(a.substr("--steam-join=".length()))
 		elif a.begins_with("--difficulty="):
 			var d := Difficulty.parse(a.substr("--difficulty=".length()))
@@ -876,6 +884,28 @@ func _setup_main_menu(pause_menu: Control) -> void:
 func leave_session() -> void:
 	if not NoiseMgr.has_network():
 		return
+	_reset_session()
+
+## Komunikat do lobby po końcu sesji bez woli gracza (utrata hosta, inna wersja). Scena ładuje się od nowa, więc trzyma go static.
+static var _drop_note := ""
+static var _drop_reason := ""       ## to samo jako stały kod do logu i testów (komunikat jest tłumaczony): host_lost / version / auth
+## Sesja w tym procesie już raz się skończyła: po przeładowaniu sceny nie dołączamy znowu z --join / --steam-join / +connect_lobby
+## (host z --host hostuje ponownie — na tym stoi --leavetest).
+static var _session_ended := false
+var _resetting := false
+
+## Koniec sesji bez woli gracza: to samo co leave_session (czysta scena, wyjście z lobby Steam, reset pogody i Nocnego Dyżuru),
+## a lobby po przeładowaniu pokazuje powód. Wcześniej klient po utracie hosta zostawał w starym świecie i w lobby Steam.
+func _end_session(reason: String, note: String) -> void:
+	_drop_reason = reason
+	_drop_note = note
+	_reset_session()
+
+func _reset_session() -> void:
+	if _resetting:
+		return
+	_resetting = true
+	_session_ended = true
 	Audio.stop_all()
 	if steam != null:
 		steam.leave()
@@ -884,6 +914,49 @@ func leave_session() -> void:
 	Weather.current = ""
 	get_tree().paused = false
 	get_tree().reload_current_scene.call_deferred()
+
+## Po przeładowaniu sceny: lobby z powodem końca sesji zamiast ekranu startowego.
+func _show_drop_note() -> void:
+	var menu := $UI.get_node_or_null("MainMenu")
+	if menu != null:
+		menu.visible = false
+	_lobby.visible = true
+	_lobby.set_status(_drop_note, true)
+	print("[NET] po końcu sesji: sieć=%s graczy=%d lobby=%s powód=%s" % [str(NoiseMgr.has_network()), _players.get_child_count(), str(_lobby.visible), _drop_reason])
+	_drop_note = ""
+	_drop_reason = ""
+
+# ---------------------------------------------------------------- sprawdzenie wersji
+
+var _fake_build := ""
+
+## Wersja, którą peer pokazuje przy łączeniu: SessionLog.build() (config/version + commit, ta sama co w stopce menu).
+func net_build() -> String:
+	return _fake_build if _fake_build != "" else SessionLog.build()
+
+## Uwierzytelnienie SceneMultiplayer = sprawdzenie wersji, zanim peer w ogóle zostanie połączony (przed mapą, postaciami i RPC).
+## Oba końce wysyłają swój build surowymi bajtami — nie RPC, bo numeracja RPC różni się między buildami — i dopuszczają peera tylko
+## przy identycznym. Wcześniej klient z innym buildem wchodził do gry, a niezgodne RPC psuły się po cichu.
+func _on_peer_authenticating(id: int) -> void:
+	(multiplayer as SceneMultiplayer).send_auth(id, net_build().to_utf8_buffer())
+
+func _on_peer_auth(id: int, data: PackedByteArray) -> void:
+	var theirs := data.get_string_from_utf8()
+	if theirs == net_build():
+		(multiplayer as SceneMultiplayer).complete_auth(id)
+		return
+	print("[NET] version mismatch: peer %d has %s, local %s" % [id, theirs, net_build()])
+	if multiplayer.is_server():
+		return                  # bez complete_auth peer odpada po auth_timeout; powód pokazuje klient
+	_end_session.call_deferred("version", tr("Version mismatch — the host has %s, you have %s. Everyone needs the same build.") % [theirs, net_build()])
+
+## Peer nie przeszedł sprawdzenia w czasie `auth_timeout`: po stronie klienta to host, który nic nie wysłał (build sprzed sprawdzenia
+## wersji) albo odrzucił nas po swojej stronie.
+func _on_peer_auth_failed(id: int) -> void:
+	print("[NET] authentication failed: peer %d" % id)
+	if multiplayer.is_server() or _resetting:
+		return
+	_end_session.call_deferred("auth", tr("The host did not pass the version check — it may be running a different build."))
 
 ## Test (--host --leavetest): host → leave_session() → scena ładuje się od nowa i hostuje ponownie (flaga --host zostaje):
 ## sprawdza, że port jest wolny, a stan jest czysty (jeden gracz, brak starych botów). Stan między instancjami trzyma static.
@@ -3622,13 +3695,7 @@ func _on_connection_failed() -> void:
 
 func _on_server_disconnected() -> void:
 	print("[NET] server disconnected")
-	# ambient, serce, szept i muzyka grałyby dalej nad lobby
-	Audio.stop_all()
-	for c in _players.get_children():
-		c.queue_free()
-	multiplayer.multiplayer_peer = null
-	_lobby.visible = true
-	_lobby.set_status("Disconnected from the host.", true)
+	_end_session.call_deferred("host_lost", tr("Disconnected from the host."))
 
 func _spawn_player(id: int) -> void:
 	if _players.has_node(str(id)):
@@ -3640,13 +3707,29 @@ func _spawn_player(id: int) -> void:
 	print("[NET] spawned player %d (display P%d)" % [id, p.display_id])
 	_reconcile_bots()
 
-## display_id jest stabilny wobec dołączania/rozłączania — nadawany z licznika,
-## nie z ilości graczy (błąd z §19 poz. 6).
-var _display_counter := 0
-
-func _next_display_id() -> int:
-	_display_counter += 1
-	return _display_counter
+## display_id (P1–P4, kolor slotu w HUD) — nie z liczby graczy (błąd z §19 poz. 6), tylko najniższy wolny numer: człowiek bierze
+## najniższy, którego nie ma inny człowiek, bot najwyższy wolny. Wcześniej licznik rósł bez końca, a bot zajmował P2, więc
+## czterech ludzi dostawało P1, P3, P4, P5, a P5 miał kolor P1. Gdy 1–4 są zajęte (nie powinno się zdarzyć: MAX_PLAYERS 4 i bot
+## znika przy 3+ ludziach) — kolejny numer ponad zajęte.
+func _next_display_id(bot := false) -> int:
+	var humans := {}
+	var taken := {}
+	for c in _players.get_children():
+		taken[int(c.display_id)] = true            # także usuwane w tej klatce: nowy bot nie może dostać nazwy „bot_N” węzła, który jeszcze jest w drzewie
+		if not c.is_bot:
+			humans[int(c.display_id)] = true
+	var order := range(MAX_PLAYERS, 0, -1) if bot else range(1, MAX_PLAYERS + 1)
+	for i in order:
+		if not taken.has(i):
+			return i
+	if not bot:
+		for i in range(1, MAX_PLAYERS + 1):
+			if not humans.has(i):
+				return i
+	var top := MAX_PLAYERS
+	for k in taken:
+		top = maxi(top, int(k))
+	return top + 1
 
 ## AI towarzysz: wypełnia puste sloty, żeby sesja nie była pusta (GDD §16.3).
 ## Boty to gracze z is_bot=true, sterowane wyłącznie przez właściciela (serwer/hosta).
@@ -3680,10 +3763,10 @@ func _bot_target_count(humans: int) -> int:
 		return 1
 	return 0
 
-## Bot dostaje display_id z tego samego licznika co ludzie — wcześniej numer
-## liczony z ilości graczy kolidował z kolejnym dołączającym (bot i klient = P2).
+## Bot dostaje najwyższy wolny display_id (`_next_display_id(true)`), więc nie zabiera numeru dołączającemu człowiekowi —
+## wcześniej numer liczony z ilości graczy kolidował z kolejnym dołączającym (bot i klient = P2).
 func _spawn_bot() -> void:
-	var slot := _next_display_id()
+	var slot := _next_display_id(true)
 	_spawner.spawn({"name": "bot_%d" % slot, "display": slot,
 		"pos": _spawn_pos_for(slot), "bot": true})
 	print("[BOT] spawned companion slot %d (display P%d/AI)" % [slot, slot])

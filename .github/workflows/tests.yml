@@ -188,12 +188,16 @@ jobs:
         run: bash prototype/tools/test_weapons.sh
       - name: Gabloty — zamiana, amunicja, blokady i dołączenie ENet
         run: bash prototype/tools/test_cabinets.sh
+      - name: Sesja sieciowa — inna wersja, utrata hosta, numery P1–P4 (test_net_session.sh)
+        run: bash prototype/tools/test_net_session.sh
       - name: Logi testów broni
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: logi-testow-broni
-          path: /tmp/dead_air_weapon_tests/
+          path: |
+            /tmp/dead_air_weapon_tests/
+            /tmp/dead_air_net_session/
           if-no-files-found: ignore
 
   shots:
