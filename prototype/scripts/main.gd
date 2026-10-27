@@ -25,6 +25,7 @@ const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
 const WORKSHOP_TEST := preload("res://scripts/workshop_test.gd")
 const CABINET_TEST := preload("res://scripts/cabinet_test.gd")
 const STALKER_TEST := preload("res://scripts/stalker_test.gd")
+const BOT_TEST := preload("res://scripts/bot_test.gd")
 const RANGE_TEST := preload("res://scripts/range3d/range_test.gd")
 const FP_RANGE := preload("res://scripts/range3d/fp_mode.gd")
 const ENEMY_TEST := preload("res://scripts/enemy_test.gd")
@@ -88,6 +89,7 @@ func _ready() -> void:
 	sm.auth_callback = _on_peer_auth
 	sm.peer_authenticating.connect(_on_peer_authenticating)
 	sm.peer_authentication_failed.connect(_on_peer_auth_failed)
+	Audio.quitting.connect(_log_quit.bind("exit"))
 	_lobby.host_requested.connect(host_game)
 	steam = STEAM_NET.new()
 	steam.name = "SteamNet"
@@ -474,6 +476,7 @@ func _handle_cmdline() -> void:
 	var wipetest := -1.0
 	var missiontest := false
 	var stalkertest := false
+	var bottest := false
 	var rangetest := false
 	var range3d := false
 	var enemytest := false
@@ -561,7 +564,7 @@ func _handle_cmdline() -> void:
 	if _start_map == "":
 		for a in args:
 			if a.begins_with("--stealthtest") or a.begins_with("--wipetest") or a == "--missiontest" or a == "--shifttest" \
-					or a == "--weapontest" or a.begins_with("--weaponshots=") or a == "--weaptestnet" or a == "--weaptestclient" 					or a == "--stalkertest" or a == "--enemytest":
+					or a == "--weapontest" or a.begins_with("--weaponshots=") or a == "--weaptestnet" or a == "--weaptestclient" 					or a == "--stalkertest" or a == "--bottest" or a == "--enemytest":
 				_start_map = "z1_m3"
 	for a in args:
 		if a == "--host":
@@ -588,6 +591,8 @@ func _handle_cmdline() -> void:
 			missiontest = true
 		elif a == "--stalkertest":
 			stalkertest = true
+		elif a == "--bottest":
+			bottest = true
 		elif a == "--rangetest":
 			rangetest = true
 		elif a == "--range3d":
@@ -724,6 +729,11 @@ func _handle_cmdline() -> void:
 		st.name = "StalkerTest"
 		add_child(st)
 		st.run(self)
+	if bottest:
+		var bt := BOT_TEST.new()
+		bt.name = "BotTest"
+		add_child(bt)
+		bt.run(self)
 	if enemytest:
 		var et := ENEMY_TEST.new()
 		et.name = "EnemyTest"
@@ -906,6 +916,7 @@ func _reset_session() -> void:
 		return
 	_resetting = true
 	_session_ended = true
+	_log_quit("leave")
 	Audio.stop_all()
 	if steam != null:
 		steam.leave()
@@ -914,6 +925,12 @@ func _reset_session() -> void:
 	Weather.current = ""
 	get_tree().paused = false
 	get_tree().reload_current_scene.call_deferred()
+
+## Misja w toku kończy się w dzienniku wynikiem "quit" (serwer — tylko on pisze dziennik). Wcześniej wyjście z gry albo z sesji
+## zostawiało `mission_start` bez `mission_end` i raporty nie odróżniały rezygnacji od urwanego pliku.
+func _log_quit(how: String) -> void:
+	if NoiseMgr.is_server() and SessionLog.recording() and mission != null:
+		mission.log_end("quit", how)
 
 ## Po przeładowaniu sceny: lobby z powodem końca sesji zamiast ekranu startowego.
 func _show_drop_note() -> void:

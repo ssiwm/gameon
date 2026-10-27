@@ -108,6 +108,7 @@ def report(sessions):
             continue
         succ = [a for a in rows if a["end"].get("result") == "success"]
         wipes = [a for a in rows if a["end"].get("result") == "wipe"]
+        quits = [a for a in rows if a["end"].get("result") == "quit"]       # od 1.7.397: drużyna wyszła w trakcie (how: exit / leave)
         t = [float(a["end"].get("time", 0)) for a in succ]
         banked = [int(a["end"]["scrap"].get("loot", 0)) + int(a["end"]["scrap"].get("bonus", 0)) for a in succ if "scrap" in a["end"]]
         per_min = [b / (float(a["end"]["time"]) / 60.0) for a, b in zip([a for a in succ if "scrap" in a["end"]], banked) if float(a["end"].get("time", 0)) > 0]
@@ -120,7 +121,8 @@ def report(sessions):
                     xp_kills.append(int(p["xp_kills"]))
                 kinds.update(p.get("kinds", {}))
         xp_total = (med(xp_mission) or 0) + (med(xp_kills) or 0) if xp_mission else None
-        maps[m] = {"attempts": len(rows), "success": len(succ), "wipes": len(wipes),
+        maps[m] = {"attempts": len(rows), "success": len(succ), "wipes": len(wipes), "quits": len(quits),
+                   "quit_after_wipe": sum(1 for a in quits if int(a["end"].get("attempts", 1)) > 1),
                    "wipes_per_success": round(len(wipes) / len(succ), 2) if succ else None,
                    "time_success_median_s": med(t), "scrap_banked_median": med(banked),
                    "scrap_per_min_median": med(per_min), "side_rate": round(sum(1 for a in succ if a["end"].get("side")) / len(succ), 2) if succ else None,
@@ -226,11 +228,13 @@ def print_report(rep):
     print("== Sesje: %d plików, mediana %s prób na sesję" % (s["files"], s["attempts_per_session_median"]))
     print("   pierwsza mapa: %s;  najdalsza: %s" % (s["first_map"], s["furthest_map"]))
     print("\n== Mapy (kampania, udane próby)")
-    print("   %-6s %5s %5s %5s %6s %7s %8s %7s %6s %7s %7s %6s" % ("mapa", "prób", "sukc", "wipe", "w/s", "czas s", "złom", "zł/min", "cel%", "XP mis", "XP zab", "XP/min"))
+    print("   %-6s %5s %5s %5s %6s %6s %7s %8s %7s %6s %7s %7s %6s" % ("mapa", "prób", "sukc", "wipe", "przerw", "w/s", "czas s", "złom", "zł/min", "cel%", "XP mis", "XP zab", "XP/min"))
     for k, m in rep["maps"].items():
-        print("   %-6s %5d %5d %5d %6s %7s %8s %7s %6s %7s %7s %6s" % (k, m["attempts"], m["success"], m["wipes"], m["wipes_per_success"],
+        print("   %-6s %5d %5d %5d %6d %6s %7s %8s %7s %6s %7s %7s %6s" % (k, m["attempts"], m["success"], m["wipes"], m["quits"], m["wipes_per_success"],
               m["time_success_median_s"], m["scrap_banked_median"], m["scrap_per_min_median"],
               None if m["side_rate"] is None else int(m["side_rate"] * 100), m["xp_mission_median"], m["xp_kills_median"], m["xp_per_min"]))
+        if m["quits"]:
+            print("          przerwane: %d, w tym po wipe'ie (próba > 1): %d" % (m["quits"], m["quit_after_wipe"]))
         if m["kills_by_kind"]:
             print("          zabójstwa ludzi wg rodzaju: %s" % m["kills_by_kind"])
     p = rep["profile"]

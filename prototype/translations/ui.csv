@@ -1272,3 +1272,4 @@
 "Disconnected from the host.","Rozłączono z hostem."
 "Version mismatch — the host has %s, you have %s. Everyone needs the same build.","Inna wersja gry — host ma %s, ty masz %s. Wszyscy muszą mieć ten sam build."
 "The host did not pass the version check — it may be running a different build.","Host nie przeszedł sprawdzenia wersji — może mieć inny build."
+"LOADING…","WCZYTYWANIE…"
