@@ -121,7 +121,14 @@ def report(sessions):
                     xp_kills.append(int(p["xp_kills"]))
                 kinds.update(p.get("kinds", {}))
         xp_total = (med(xp_mission) or 0) + (med(xp_kills) or 0) if xp_mission else None
-        maps[m] = {"attempts": len(rows), "success": len(succ), "wipes": len(wipes), "quits": len(quits),
+        # od 1.7.400 (NOBOT_PLAN.md): próby bez bota — host wyłączył towarzysza albo w sesji nie było bota (3+ ludzi)
+        nobot = [a for a in rows if a["start"].get("ai_companion") is False or int(a["start"].get("bots", 1)) == 0]
+        split = {}
+        for name, part in (("z botem", [a for a in rows if a not in nobot]), ("bez bota", nobot)):
+            if part:
+                split[name] = {"attempts": len(part), "success": sum(1 for a in part if a["end"].get("result") == "success"),
+                               "wipes": sum(1 for a in part if a["end"].get("result") == "wipe")}
+        maps[m] = {"attempts": len(rows), "success": len(succ), "wipes": len(wipes), "quits": len(quits), "bot_split": split,
                    "quit_after_wipe": sum(1 for a in quits if int(a["end"].get("attempts", 1)) > 1),
                    "wipes_per_success": round(len(wipes) / len(succ), 2) if succ else None,
                    "time_success_median_s": med(t), "scrap_banked_median": med(banked),
@@ -235,6 +242,8 @@ def print_report(rep):
               None if m["side_rate"] is None else int(m["side_rate"] * 100), m["xp_mission_median"], m["xp_kills_median"], m["xp_per_min"]))
         if m["quits"]:
             print("          przerwane: %d, w tym po wipe'ie (próba > 1): %d" % (m["quits"], m["quit_after_wipe"]))
+        if "bez bota" in m.get("bot_split", {}):
+            print("          %s" % ";  ".join("%s: prób %d, sukc %d, wipe %d" % (k, v["attempts"], v["success"], v["wipes"]) for k, v in m["bot_split"].items()))
         if m["kills_by_kind"]:
             print("          zabójstwa ludzi wg rodzaju: %s" % m["kills_by_kind"])
     p = rep["profile"]

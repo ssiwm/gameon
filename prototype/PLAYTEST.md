@@ -32,7 +32,8 @@ decydują o priorytetach przed jakąkolwiek nową zawartością.
 
 - **Nie tłumacz gry.** Gracz dostaje tylko: „Wyjdźcie z lasu żywi." Jeśli czegoś nie rozumie — to jest wynik testu.
 - Nie podpowiadaj, nie komentuj, nie broń decyzji projektowych. Notuj.
-- Pierwsza próba: 1 gracz solo z botem (większość graczy dema zagra solo). Druga: 2–4 osoby w koopie.
+- Pierwsza próba: 1 gracz solo z botem (większość graczy dema zagra solo). Druga: 2–4 osoby w koopie. Od 1.7.400 opcjonalnie trzecia:
+  solo **bez bota** (lobby → AI companion: OFF) — porównanie strachu i trudności; dziennik i raport rozdzielają wyniki „z botem / bez bota”.
 - Po sesji 5 pytań, bez sugerowania odpowiedzi: (1) co było najstraszniejsze? (2) kiedy się nudziłeś? (3) co Cię
   zdziwiło / nie zrozumiałeś? (4) dlaczego zginąłeś? (5) zagrałbyś jeszcze raz — i dlaczego tak/nie?
 

@@ -39,6 +39,12 @@ jobs:
           godot --headless --path prototype -- --host --bottest --sessionlog="$RUNNER_TEMP/bot-sessions" --autoquit=40 2>&1 | tee bottest.log
           grep -a -q "\[BOT-TEST\] ==== PASS" bottest.log
           grep -h '"ev":"ff"' "$RUNNER_TEMP"/bot-sessions/*.jsonl | grep '"shooter":"P1"' | grep '"victim_bot":true'
+      - name: Bez AI towarzysza — misja z drezyną i kryjówka (--nobottest)
+        run: |
+          godot --headless --path prototype -- --host --nobot --mission=z1_m2 --nobottest --autoquit=60 2>&1 | tee nobot.log
+          grep -a -q "\[NOBOT-TEST\] ==== PASS" nobot.log
+          godot --headless --path prototype -- --host --nobot --mission=z1_hub --nobottest --autoquit=30 2>&1 | tee nobot_hub.log
+          grep -a -q "\[NOBOT-TEST\] ==== PASS" nobot_hub.log
       - name: Strzelnica FPP (--rangetest)
         run: |
           godot --headless --path prototype -- --host --rangetest --autoquit=60 2>&1 | tee rangetest.log

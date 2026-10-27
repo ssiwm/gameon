@@ -21,6 +21,7 @@ const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 
 const HALF_W := 44.0                 ## połowa długości pokładu
+const SOLO_POWER := 1.5              ## moc pompowania jedynego człowieka w sesji bez bota (jak człowiek + bot: 1 + 0,5)
 const DECK_TOP := 5.35               ## wysokość górnej krawędzi pokładu nad torem [px świata] — do tej wysokości drezyna zasłania nogi graczy
 const FRONT_Z := 10                  ## z względem drezyny: osłona pokładu i koła leżą przed graczami
 const SPEED_MAX := 130.0
@@ -220,6 +221,8 @@ func _server_tick(delta: float) -> void:
 			_workers.erase(k)
 	humans = _workers.size()
 	power = float(humans) + (0.5 * float(bots) if humans > 0 else 0.0)
+	if humans == 1 and bots == 0 and _alone_in_session():
+		power = SOLO_POWER                   # sam bez bota (NOBOT_PLAN.md D4): pompuje jak z botem, inaczej tunel 1.2 był o 1/3 wolniejszy
 	var target := 0.0
 	if enabled and not arrived and power > 0.0:
 		target = minf(SPEED_MAX, SPEED_BASE + SPEED_PER_PUMPER * power)
@@ -304,3 +307,11 @@ func _update_audio() -> void:
 
 # ---------------------------------------------------------------- rysowanie (stopy w (0, 0), jedzie na zachód = w lewo)
 # Pokład leży płasko na torze (wysokość 3 px) — gracz stoi na y = 0, jak na ziemi.
+
+## W sesji jest tylko jeden gracz (człowiek, bez bota i bez kolegów) — nikt inny nie może pompować.
+func _alone_in_session() -> bool:
+	var n := 0
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_queued_for_deletion():
+			n += 1
+	return n == 1

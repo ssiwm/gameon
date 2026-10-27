@@ -273,6 +273,12 @@ func _build_settings(scroll: ScrollContainer) -> void:
 			if (i == 0) != Settings.realistic_handling:
 				Settings.toggle_realistic_handling())
 	_seg(left, tr("Weapon reliability"), Settings.RELIABILITY_NAMES, func() -> int: return Settings.reliability_idx, Settings.set_reliability)
+	# AI towarzysz (NOBOT_PLAN.md): wybiera host, tylko w lobby i w kryjówce — w misji i u klienta przycisk zablokowany
+	var bot_seg := _seg(left, tr("AI companion"), ["ON", "OFF"], func() -> int: return 0 if Settings.ai_companion else 1,
+		func(i: int) -> void: Settings.set_ai_companion(i == 0))
+	_refreshers.append(func() -> void:
+		var m := get_tree().current_scene
+		bot_seg.set_locked(m == null or not m.has_method("companion_editable") or not m.companion_editable()))
 	left.add_child(_gap())
 	left.add_child(W.section(tr("FIRST PERSON (RANGE)")))
 	_drop(left, tr("Field of view"), func() -> String: return "%d°" % int(Settings.fp_fov()), Settings.cycle_fp_fov)
@@ -374,7 +380,7 @@ func _toggle(parent: Control, label: String, get_on: Callable, flip: Callable) -
 		st.text = "ON" if on else "OFF"
 		st.add_theme_color_override("font_color", UiTheme.TEXT if on else Color("7d7a6d")))
 
-func _seg(parent: Control, label: String, options: Array, get_idx: Callable, set_idx: Callable) -> void:
+func _seg(parent: Control, label: String, options: Array, get_idx: Callable, set_idx: Callable) -> W.Segmented:
 	var r := _row(parent, label)
 	var s := W.Segmented.new()
 	var names: Array = []
@@ -386,6 +392,7 @@ func _seg(parent: Control, label: String, options: Array, get_idx: Callable, set
 		Audio.play("ui_click", Audio.BUS_UI, -10.0))
 	r.add_child(s)
 	_refreshers.append(func() -> void: s.set_index(int(get_idx.call())))
+	return s
 
 func _drop(parent: Control, label: String, get_text: Callable, action: Callable) -> void:
 	var r := _row(parent, label)

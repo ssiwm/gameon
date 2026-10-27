@@ -80,6 +80,9 @@ trudniejsze z założenia mapy, a nie ze skalowania z postępem (skaluje tylko N
 - HP: 3 serca (Weteran), 1 trafienie (Koszmar).
 - **Down** — gracz pada, **wykrwawia się 10 s** (licznik widoczny na HUD i nad postacią). Kolega staje obok i **trzyma E przez 4 s** (perk Krwioobieg: 2,5 s) — gracz wstaje z 2 serc. Bot też podnosi (z tym samym czasem — nie jest szybszy od człowieka).
 - **Wykrwawienie** (10 s bez pomocy) = powrót w punkcie startu misji z 1 sercem. To kara dystansem i czasem, nie ekranem „game over".
+- **Sam bez bota** (od 1.7.400, host wyłączył AI towarzysza — §16.3, `NOBOT_PLAN.md`): nikt nie podniesie, więc pierwszy upadek w próbie to
+  wykrwawienie i powrót na start z 1 sercem (łup zostaje), a **drugi upadek w tej samej próbie = wipe**. Z botem albo drugim człowiekiem
+  wipe jak zawsze: wszyscy leżą jednocześnie.
 - **Wipe** (wszyscy down jednocześnie) = **nieudana ekstrakcja**: po 3 s restart misji (Uwaga, wrogowie, ładunki Q), tracicie łup misji, ale nie postęp fabularny.
 - **Dlaczego bez auto-respawnu:** darmowy respawn po 3 s zabija napięcie i sens Przesterowania. Down + revive tworzy momenty, o których drużyna opowiada po sesji.
 - Uratowani NPC mogą zginąć na stałe (wpływ na zakończenie i sklep).
@@ -611,6 +614,10 @@ Strefy II–VI, Bliźniak/Kolekcjoner, Wyzwania tygodniowe, Szpital, Wroga wiedz
 Multiplayer jest najsilniejszym czynnikiem sukcesu w tej niszy (10x hit rate vs singleplayer), ale zakłada, że **gracz ma kogo zaprosić**. Realnie to połowa dostępnej publiczności: nie każdy ma znajomego w grze, a multiplayer o 3 w nocy jest pusty. Hot-join do botów musi działać bez gadżetu sieciowego (Peer-to-peer LAN feel) — inaczej „gra co-op" staje się „gra, w której potrzebujesz znajomego".
 
 AI towarzysz w EA: podąża, strzela, dźwiga, reaguje na stalkera. To 2–4 mies. pracy i ratuje całą bazę graczy solo.
+
+**Wyłączanie (od 1.7.400, `NOBOT_PLAN.md`):** towarzysz jest domyślny, ale host może go wyłączyć (lobby: „AI companion” ON / OFF; zmiana
+także w kryjówce, nie w misji) — dla graczy, którzy chcą grać sami albo we dwóch bez bota. Sam bez bota: reguła upadku z §4, drezyna
+(1.2) pompowana z mocą jak z botem (1,5). Dziennik sesji zapisuje `ai_companion`, a raport rozdziela wyniki „z botem / bez bota”.
 
 ### 16.4 Realny budżet i czas (liczby z researchu zestawione z kosztem)
 Dane rynkowe: mediana przychodu gry na Steam ~$250–300; mediana kosztu developmentu indie ~$30–60k. To znaczy, że **mediana projektu nie zwraca kosztu** — potrzebujemy albo lepszej realizacji, albo akceptujemy, że to portfolio +uczenie. Budżetujemy to świadomie.

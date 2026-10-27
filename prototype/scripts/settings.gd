@@ -64,6 +64,9 @@ var weather_fx_idx := WEATHER_FX_REDUCED
 var ui_idx := 1
 var cam_idx := 1                       ## zbliżenie kamery: WIDE / NORMAL / CLOSE (CAM_ZOOM) — większe postacie kosztem pola widzenia
 var hints_on := true
+## AI towarzysz (NOBOT_PLAN.md): host może grać bez bota — sam (upadek = wykrwawienie i powrót na start, druga śmierć w próbie = wipe)
+## albo w dwie osoby. Decyduje host; zmiana tylko w lobby i w kryjówce (`Main.companion_editable`). Dev: `--nobot` (bez zapisu).
+var ai_companion := true
 var res_idx := 0                       ## rozmiar okna z RES_LIST (tylko tryb okienkowy)
 var vsync_idx := 0
 var fps_idx := 0
@@ -285,6 +288,12 @@ func toggle_hints() -> void:
 	hints_on = not hints_on
 	_commit()
 
+func set_ai_companion(on: bool) -> void:
+	if on == ai_companion:
+		return
+	ai_companion = on
+	_commit()
+
 ## Zasoby HD (modele, tekstury) są używane zawsze poza trybem headless — testy liczą wariant bez grafiki.
 func hd_active() -> bool:
 	return DisplayServer.get_name() != "headless"
@@ -415,6 +424,7 @@ func _load() -> void:
 	ui_idx = clampi(int(cf.get_value("game", "ui", 1)), 0, UI_NAMES.size() - 1)
 	cam_idx = clampi(int(cf.get_value("game", "cam", 1)), 0, CAM_NAMES.size() - 1)
 	hints_on = bool(cf.get_value("game", "hints", true))
+	ai_companion = bool(cf.get_value("game", "ai_companion", true))
 	fullscreen = bool(cf.get_value("game", "fullscreen", false))
 	res_idx = clampi(int(cf.get_value("game", "res", 0)), 0, RES_LIST.size() - 1)
 	_res_dirty = cf.has_section_key("game", "res")
@@ -459,6 +469,7 @@ func _save() -> void:
 	cf.set_value("game", "ui", ui_idx)
 	cf.set_value("game", "cam", cam_idx)
 	cf.set_value("game", "hints", hints_on)
+	cf.set_value("game", "ai_companion", ai_companion)
 	cf.set_value("game", "fullscreen", fullscreen)
 	if _res_dirty:
 		cf.set_value("game", "res", res_idx)

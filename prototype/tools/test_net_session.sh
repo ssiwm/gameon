@@ -3,6 +3,7 @@
 #   tools/test_net_session.sh        # z katalogu prototype/
 # 1. Inna wersja: klient z --fakebuild nie wchodzi do gry (host nie tworzy mu postaci), lobby klienta podaje powód.
 # 2. Utrata hosta: klient przeładowuje scenę (jak leave_session), wraca do lobby z komunikatem i nie dołącza ponownie z --join.
+# 4. Bez AI towarzysza (NOBOT_PLAN.md): host z --nobot, klient dostaje ustawienie hosta, przy dwóch ludziach nie ma bota.
 # 3. Czterech ludzi: numery P1–P4 (bot nie zabiera numeru, P5 się nie pojawia); klienci wychodzą po kolei, a ci, którzy zostają, nie dostają
 #    błędu silnika `on_despawn_receive … ERR_UNAUTHORIZED` (postać wychodzącego usuwa tylko serwer).
 # Wymaga `godot` w PATH i zaimportowanego projektu (godot --headless --path . --import).
@@ -56,6 +57,16 @@ grep -a -q "display P[5-9]" "$LOG/four_host.log" && fail "numer ponad P4 przy cz
 grep -a -q "\[BOT\] spawned companion slot 4" "$LOG/four_host.log" && ok "bot zajmuje najwyższy wolny numer (P4)" || fail "bot nie wziął P4"
 [ "$(grep -a -c "\[NET\] peer disconnected" "$LOG/four_c3.log")" -ge 2 ] && ok "ostatni klient widzi odejście dwóch kolegów" || fail "ostatni klient nie widział odejść kolegów"
 if grep -a -q "ERR_UNAUTHORIZED" "$LOG"/four_c*.log; then fail "błąd despawnu u klienta po odejściu kolegi (ERR_UNAUTHORIZED)"; else ok "bez błędów despawnu u klientów po odejściu kolegów"; fi
+
+echo "== bez AI towarzysza =="
+godot --headless --path . -- --host --nobot --port=8963 --autoquit=12 >"$LOG/nobot_host.log" 2>&1 &
+HOST=$!
+sleep 4
+godot --headless --path . -- --join=127.0.0.1 --port=8963 --autoquit=6 >"$LOG/nobot_client.log" 2>&1
+wait $HOST
+grep -a -q "\[NET\] AI companion (host): OFF" "$LOG/nobot_client.log" && ok "klient dostaje od hosta: towarzysz OFF" || fail "klient nie dostał ustawienia towarzysza"
+grep -a -q "\[NET\] spawned player [0-9]* (display P2)" "$LOG/nobot_host.log" && ok "klient dołączył (P2)" || fail "klient nie dołączył"
+grep -a -q "\[BOT\] spawned" "$LOG/nobot_host.log" && fail "host z --nobot stworzył bota" || ok "host z --nobot: bez bota solo i przy dwóch ludziach"
 
 # Błąd GDScript może przerwać pojedynczą korutynę bez niezerowego kodu procesu.
 for f in "$LOG"/*.log; do

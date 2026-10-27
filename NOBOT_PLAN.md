@@ -1,6 +1,6 @@
 # Rozgrywka bez bota — plan
 
-Status: **plan z 2026-10-27 (main 1.7.399, 632efdf), nic nie wdrożone.** Decyzje D1–D4 podjęte 2026-10-27 (§3): D1a, D2a, D3a, D4 — tylko drezyna.
+Status: **plan z 2026-10-27 (main 1.7.399, 632efdf); N1–N8 wdrożone w 1.7.400** (gałąź `docs/nobot-plan`). Decyzje D1–D4 podjęte 2026-10-27 (§3): D1a, D2a, D3a, D4 — tylko drezyna.
 
 ## 1. Cel
 

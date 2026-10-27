@@ -1857,6 +1857,9 @@ func _fill_result(m: Node) -> void:
 			_style_result("EXTRACTION COMPLETE", "The squad made it out of the woods.", UiTheme.OK)
 			rows = [["Time", _mmss(m.elapsed)], ["Nests destroyed", "%d / %d" % [m.nests_total, m.nests_total]],
 				["The Vein", "slain"], ["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts], ["Scrap banked", "+%d" % Scrap.last_gain]]
+	var main_node := get_tree().current_scene
+	if main_node != null and main_node.get("companion_on") == false:
+		rows.append(["AI companion", "off"])               # NOBOT_PLAN.md: wynik bez bota widać na karcie (zrzuty, nagrania playtestu)
 	for row in rows:
 		_result_stats.add_child(UiTheme.label(row[0], 9, UiTheme.MUTED))
 		_result_stats.add_child(UiTheme.label(row[1], 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))

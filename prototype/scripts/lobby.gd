@@ -46,6 +46,7 @@ var _host: Button
 var _diff: W.Segmented
 var _mode: W.Segmented
 var _mic: W.Segmented
+var _bot: W.Segmented
 var _steam_host: Button
 var _steam_join: Button
 var _steam_id: LineEdit
@@ -209,6 +210,15 @@ func _build_options(box: VBoxContainer) -> void:
 		NightShift.selected = mode == Mode.NIGHT_SHIFT
 		_refresh_mode()
 		Audio.play("ui_click", Audio.BUS_UI, -10.0))
+	_bot = _seg_row(box, tr("AI companion"), ["ON", "OFF"],
+		tr("Chosen by the host. ON: a bot fills the squad when you play alone or in two. OFF: no bot — alone, a fall is a bleed-out back to the start, a second fall loses the attempt."))
+	_bot.selected.connect(func(i: int) -> void:
+		Settings.set_ai_companion(i == 0)
+		Audio.play("ui_click", Audio.BUS_UI, -10.0))
+	Settings.changed.connect(func() -> void:
+		if not _bot.locked:
+			_bot.set_index(0 if Settings.ai_companion else 1))
+	_bot.set_index(0 if Settings.ai_companion else 1)
 	_mic = _seg_row(box, tr("Microphone scream"), ["OFF", "LOW", "MED", "HIGH"],
 		tr("Shout into the microphone to scream (same as G). Processed locally, never recorded. Click: OFF > LOW > MED > HIGH sensitivity."))
 	_mic.selected.connect(func(i: int) -> void:
@@ -356,6 +366,12 @@ func set_steam_available(on: bool) -> void:
 func lock_difficulty() -> void:
 	_diff.set_locked(true)
 	_mode.set_locked(true)
+	_bot.set_locked(true)
+
+## Wybór AI towarzysza: klient pokazuje wartość hosta (zablokowaną), host — swoje ustawienie.
+func show_companion(on: bool, locked: bool) -> void:
+	_bot.set_index(0 if on else 1)
+	_bot.set_locked(locked)
 
 func _refresh_mode() -> void:
 	_mode.set_index(mode)
