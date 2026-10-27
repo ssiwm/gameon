@@ -253,6 +253,17 @@ static func label(text: String, size: int, color: Color = TEXT, align := HORIZON
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
 
+static var _decimal_re: RegEx
+
+## Wartość liczbowa w zapisie języka gry: po polsku przecinek dziesiętny („3,0 s”, „0,6 → 1,5”), jak w opisach części.
+## Tylko dla pól z wartościami (statystyki), nie dla nazw — „7.62 HOT” czy „M-83” zostają bez zmian.
+static func num_text(text: String) -> String:
+	if not TranslationServer.get_locale().begins_with("pl"):
+		return text
+	if _decimal_re == null:
+		_decimal_re = RegEx.create_from_string("(?<=\\d)\\.(?=\\d)")
+	return _decimal_re.sub(text, ",", true)
+
 static var _heading_font: Font
 static var _mono_font: Font
 static var _whisper_font: Font

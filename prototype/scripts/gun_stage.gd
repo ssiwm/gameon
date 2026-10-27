@@ -584,7 +584,7 @@ func _build_bench() -> void:
 		_bench_box(_table, Vector3(2.28, 0.0015, 0.002), Vector3(-0.05, -0.51 + i * 0.12, -0.455), grid)
 	# Płytka taca, śrubokręt i stalowy wybijak: prawdziwe bryły 3D, jedna scena i bez nowych tekstur. Taca ma gumowe dno i wyższy,
 	# jaśniejszy metalowy rant ze śrubami w rogach — płaska szara płyta wyglądała jak pusty prostokąt interfejsu.
-	var rubber := _bench_material(Color("1f211c"), true)
+	var rubber := _bench_material(Color("33362e"), true)
 	var rim := _bench_metal(Color("8b918a"), 0.35)
 	_bench_box(_table, Vector3(0.49, 0.30, 0.02), Vector3(0.81, -0.47, -0.435), _bench_metal(Color("454a44"), 0.55))
 	_bench_box(_table, Vector3(0.45, 0.26, 0.006), Vector3(0.81, -0.47, -0.423), rubber)
@@ -593,6 +593,12 @@ func _build_bench() -> void:
 		_bench_box(_table, Vector3(0.02, 0.3, 0.04), Vector3(0.81 + side * 0.235, -0.47, -0.41), rim)
 		for end in [-1.0, 1.0]:
 			_bench_rod(_table, 0.008, 0.009, Vector3(0.81 + end * 0.235, -0.47 + side * 0.14, -0.386), 0.0, brass, true)
+	# Drobiazgi w rogach tacy (śrubki, kołek, łuska): bez wysuniętej części ciemne gumowe dno czytało się jak pusta ramka interfejsu.
+	var steel := _bench_metal(Color("b7bab2"), 0.3)
+	_bench_rod(_table, 0.055, 0.008, Vector3(0.63, -0.56, -0.411), 28.0, steel)
+	_bench_rod(_table, 0.045, 0.008, Vector3(0.675, -0.575, -0.411), -12.0, steel)
+	_bench_rod(_table, 0.07, 0.006, Vector3(0.975, -0.385, -0.412), 64.0, steel)
+	_bench_rod(_table, 0.06, 0.012, Vector3(0.965, -0.555, -0.408), -35.0, brass)
 	# Narzędzia: walce z cieniowaniem i lekko skośnie — płaskie prostokąty w rzędzie czytały się jak paski postępu.
 	var handle := _bench_material(Color("7a3424"))
 	_bench_rod(_table, 0.2, 0.022, Vector3(-0.9, 0.6, -0.42), 7.0, handle)

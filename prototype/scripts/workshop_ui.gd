@@ -650,7 +650,7 @@ func _refresh_look() -> void:
 		t.view.modulate = Color.WHITE if ok else Color(0.35, 0.4, 0.45)
 		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.BP_TEXT)
 		var worn := Look.base(Profile.look) == t.code
-		t.state_label.text = ("EQUIPPED" if worn else "AVAILABLE") if ok else "LV %d" % Look.unlock_level(t.code)
+		t.state_label.text = (tr("EQUIPPED") if worn else tr("AVAILABLE")) if ok else tr("LV %d") % Look.unlock_level(t.code)
 		t.state_label.add_theme_color_override("font_color", UiTheme.OK if worn else (UiTheme.BP_MUTED if ok else UiTheme.DANGER))
 	for pi in _pal_btns.size():
 		var pb := _pal_btns[pi] as Button
@@ -668,7 +668,7 @@ func _refresh_look() -> void:
 	_l_tag.text = tr("%s  ·  unlocks at level %d") % [tr(Look.gender_id(c).capitalize()).to_upper(), Look.unlock_level(c)]
 	_l_text.text = tr(String(Look.OUTFIT_TEXT[Look.outfit_id(c)])) + "\n\n" + tr("Cosmetic only — other players see your look too.")
 	_l_action.disabled = false
-	_l_action.text = "Wearing" if Profile.look == c else ("Equip" if Look.is_unlocked(c, lvl) else "Locked — level %d" % Look.unlock_level(c))
+	_l_action.text = tr("Wearing") if Profile.look == c else (tr("Equip") if Look.is_unlocked(c, lvl) else tr("Locked — level %d") % Look.unlock_level(c))
 
 ## Zakładka PERKS: ten sam układ co ARMS i SUPPLIES — po lewej pasek poziomu, siatka kafli i dwa sloty, po prawej szczegóły wybranego perku.
 func _build_perks() -> HBoxContainer:
@@ -1164,6 +1164,12 @@ func _controls_hint() -> String:
 	if _mode == "service":
 		return tr("%s select   ·   %s / %s job   ·   %s clean / replace   ·   %s close   ·   or click") % [
 			nav, _menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_back", pad)]
+	if _mode == "locker" and _page == 3:
+		return tr("%s select   ·   %s wear   ·   %s perks / look   ·   %s close   ·   or click") % [
+			nav, _menu_key("menu_accept", pad), _menu_key("menu_tab", pad), _menu_key("menu_back", pad)]
+	if _mode == "bench" and _page == 1:
+		return tr("%s select   ·   %s buy   ·   %s arms / supplies   ·   %s close   ·   or click") % [
+			nav, _menu_key("menu_accept", pad), _menu_key("menu_tab", pad), _menu_key("menu_back", pad)]
 	if _mode == "locker":
 		return tr("%s select   ·   %s / %s perk slot   ·   %s equip   ·   %s perks / look   ·   %s close   ·   or click") % [
 			nav, _menu_key("menu_slot_1", pad), _menu_key("menu_slot_2", pad), _menu_key("menu_accept", pad), _menu_key("menu_tab", pad), _menu_key("menu_back", pad)]
@@ -1882,17 +1888,15 @@ func _refresh_supplies() -> void:
 				users.append(String(wd.name))
 		rows = [["Carried", tr("%d / %d rounds") % [have2, maxn]], ["Box", tr("%d rounds") % Throwables.box_of(k2)], ["Fits", ", ".join(users)],
 			["In the press", tr("%d of %d batches") % [Scrap.orders.size(), Scrap.PRESS_SLOTS]]]
-	elif d.has("noise"):
-		rows.append(["Noise", "%.0f" % float(d["noise"])])
-	elif k2 in ["frag", "charge"]:
-		rows.append(["Noise", tr("explosion")])
+	elif d.has("noise") or k2 in ["frag", "charge"]:
+		rows.append(["Noise", Codex.noise_text(k2)])
 	if Throwables.FUSES.has(k2):
 		var fo: Array = Throwables.FUSES[k2]
 		var fi := Scrap.fuse_index(k2)
 		rows.append(["Fuse", tr("%.1f s  (%d of %d)") % [float(fo[fi]), fi + 1, fo.size()] + ((tr("  ·  %s / %s change") % [_menu_key("menu_slot_1", Actions.pad_mode), _menu_key("menu_slot_2", Actions.pad_mode)]) if _mode == "pyro" else "")])
 	for r in rows:
 		_s_stats.add_child(UiTheme.label(String(r[0]), 9, UiTheme.BP_MUTED))
-		_s_stats.add_child(UiTheme.label(String(r[1]), 9, UiTheme.BP_TEXT))
+		_s_stats.add_child(UiTheme.label(UiTheme.num_text(tr(String(r[1]))), 9, UiTheme.BP_TEXT))
 		_s_stats.add_child(Control.new())
 	_s_text.text = tr(String(d["note"]))
 	var summary := _queue_summary()
@@ -1952,9 +1956,10 @@ func _refresh_tile(t: Tile, selected: bool) -> void:
 	(t.icon_node as GunIcon).set_gun(int(Weapons.base_def(w).gun_row), Weapons.base_def(w).tracer_color, Color.WHITE if unlocked else Color(0.45, 0.5, 0.55))
 	t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if selected else (UiTheme.BP_TEXT if unlocked else UiTheme.BP_MUTED))
 	t.bar.visible = unlocked
-	t.coin.visible = not unlocked and not later
-	t.price_label.visible = not unlocked and not later
-	t.state_label.visible = later
+	# Kafle są tylko na stanowiskach pomocniczych (ława ma własny stojak): broń kupuje się wyłącznie przy ławie, więc bez ceny
+	t.coin.visible = false
+	t.price_label.visible = false
+	t.state_label.visible = not unlocked
 	if unlocked:
 		var total := Parts.of(String(Weapons.def(w).key)).size()
 		var owned := Scrap.parts_owned(w)
@@ -1965,11 +1970,9 @@ func _refresh_tile(t: Tile, selected: bool) -> void:
 		t.bar.maxed = owned >= total
 		t.bar.queue_redraw()
 	elif later:
-		t.state_label.text = "BOSS REWARD" if Scrap.is_gated(w) else "LATER ZONE"
+		t.state_label.text = tr("BOSS REWARD") if Scrap.is_gated(w) else tr("LATER ZONE")
 	else:
-		var price := Scrap.price_of(w)
-		t.price_label.text = "%d" % price
-		t.price_label.add_theme_color_override("font_color", GOLD if Scrap.bank >= price else UiTheme.DANGER)
+		t.state_label.text = tr("BUY AT THE BENCH")
 
 func _refresh_detail(w: int) -> void:
 	_action.disabled = false
@@ -2031,8 +2034,8 @@ func _refresh_detail(w: int) -> void:
 		var lp := _local_wc()
 		if lp != null:
 			var km: float = lp.kit_mass()
-			tag += tr("  ·  KIT %.1f kg  (run noise %+d%%)") % [km, int(round((lp.mass_noise_mult() - 1.0) * 100.0))]   # masa ekwipunku (W5)
-	if cur.uses_ammo():
+			tag += UiTheme.num_text(tr("  ·  KIT %.1f kg  (run noise %+d%%)") % [km, int(round((lp.mass_noise_mult() - 1.0) * 100.0))])   # masa ekwipunku (W5)
+	if cur.uses_ammo() and Ammo.name_of(String(cur.caliber), ammo_type) != "":         # ogniwo LR-7 nie ma nazwy naboju
 		tag += tr("  ·  AMMO %s") % Ammo.name_of(String(cur.caliber), ammo_type)
 	_d_tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_d_tag.custom_minimum_size.x = DETAIL_W
@@ -2063,11 +2066,11 @@ func _refresh_detail(w: int) -> void:
 		if preview != null and i < next_rows.size() and String(next_rows[i][1]) == String(r[1]):
 			continue
 		_d_stats.add_child(UiTheme.label(String(r[0]), 9, UiTheme.BP_MUTED))
-		_d_stats.add_child(UiTheme.label(String(r[1]), 9, UiTheme.BP_TEXT))
+		_d_stats.add_child(UiTheme.label(UiTheme.num_text(String(r[1])), 9, UiTheme.BP_TEXT))
 		var nv := ""
 		if i < next_rows.size() and String(next_rows[i][1]) != String(r[1]):
 			nv = "» %s" % String(next_rows[i][1])
-		_d_stats.add_child(UiTheme.label(nv, 9, GOLD))
+		_d_stats.add_child(UiTheme.label(UiTheme.num_text(nv), 9, GOLD))
 	# części w gniazdach: nagłówek gniazda, element fabryczny i części (zamontowana — zielona, odblokowana — jasna, do kupienia — z ceną)
 	for ch in _d_tiers.get_children():
 		_d_tiers.remove_child(ch)
@@ -2170,7 +2173,7 @@ func _refresh_detail(w: int) -> void:
 		b.pressed.connect(_pick_opt.bind(i))
 		_d_tiers.add_child(b)
 	var notes: Array = Codex.WEAPON_TEXT.get(key, ["", ""])
-	var desc := String(notes[0])
+	var desc := Actions.fmt(tr(String(notes[0])))
 	if unlocked and not o.is_empty() and String(o["slot"]) == "preset":
 		desc = tr("Your saved sets of parts for this gun (only yours — the squad shares the unlocks, not the build). %s fits the set, %s saves your current fit over it.") % [
 			_menu_key("menu_accept", Actions.pad_mode), _menu_key("menu_alt", Actions.pad_mode)]
@@ -2381,8 +2384,9 @@ func _present_bench(w: int, cur: RefCounted, preview: RefCounted, now_rows: Arra
 	var meta := tr("Condition %d%%") % int(Profile.condition(key)) if not cur.is_melee() else tr("Edge %d%%") % int(Profile.edge_of(key))
 	var kills := Profile.kills(key)
 	meta += " · " + tr("Mastery %s") % ["0", "I", "II", "III", "IV", "V"][Profile.mastery_level(key)] + " · " + tr_n("%d kill", "%d kills", kills) % kills
-	if cur.uses_ammo():
-		meta += "\n" + tr(Ammo.name_of(String(cur.caliber), wc.ammo_of(w) if wc != null else 0))
+	var ammo_name := Ammo.name_of(String(cur.caliber), wc.ammo_of(w) if wc != null else 0) if cur.uses_ammo() else ""
+	if ammo_name != "":
+		meta += "\n" + tr(ammo_name)
 	var description := _d_text.text
 	if id != "" and String(selected.get("slot", "")) != "preset" and not GunStage.GunModel.has_model(id):
 		description += "\n" + tr("Internal modification · compare its effects on the card.")

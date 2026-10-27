@@ -5,6 +5,7 @@ extends HBoxContainer
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Portrait := preload("res://scripts/codex_portrait.gd")
 const Codex := preload("res://scripts/codex.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 const LIST_W := 128.0
 const DETAIL_W := 240.0                    ## najmniejsza szerokość szczegółów; rozciągają się na resztę strony
@@ -120,9 +121,9 @@ func select(i: int) -> void:
 		c.queue_free()
 	for st in e["stats"]:
 		_stats.add_child(UiTheme.label(st[0], 8, UiTheme.MUTED))
-		_stats.add_child(UiTheme.label(st[1], 8, UiTheme.TEXT))
-	_text.text = e["text"]
-	_tip.text = tr("TIP  ") + tr(e["tip"])
+		_stats.add_child(UiTheme.label(UiTheme.num_text(tr(String(st[1]))), 8, UiTheme.TEXT))
+	_text.text = Actions.fmt(tr(e["text"]))                  # klawisze w opisach to znaczniki {akcja} — po przypisaniu gracza
+	_tip.text = tr("TIP  ") + Actions.fmt(tr(e["tip"]))
 	_access.text = String(e.get("access", ""))
 	_access.visible = _access.text != ""
 	for c in _tiers.get_children():
