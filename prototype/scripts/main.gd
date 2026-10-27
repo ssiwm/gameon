@@ -1720,6 +1720,8 @@ func _dev_range3d() -> void:
 
 func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false, workshop := false, result := false, boss := false, codex := false) -> void:
 	Profile.persist = false              # zrzuty dev nie zapisują profilu gracza (XP z podglądu karty wyniku itp.)
+	if "--bestiaryfresh" in OS.get_cmdline_user_args():
+		Profile.bestiary = {"wolek": 2}                       # dev: bestiariusz nowego gracza (spotkał tylko Wołka) — zakryte wpisy na zrzucie i odkrywanie w misji
 	await get_tree().create_timer(1.0).timeout
 	if codex:
 		var pm: Node = $UI.get_node("PauseMenu")             # podgląd bestiariusza: ostatni wpis (boss)
@@ -1749,7 +1751,10 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var wpm: Node = $UI.get_node("PauseMenu")           # --shotweapons[=N]: karta WEAPONS kodeksu (wpis N, domyślnie P-83)
 		wpm.open()
 		wpm._show_tab(2)
-		var wi := 2
+		var wi := 0
+		for ei in wpm.page_of(2)._entries.size():                 # lista pogrupowana wg slotu (1.7.407): P-83 szukamy po id
+			if int(wpm.page_of(2)._entries[ei].get("weapon_id", -1)) == Weapons.P64:
+				wi = ei
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("--shotweapons="):
 				wi = int(a.substr("--shotweapons=".length()))

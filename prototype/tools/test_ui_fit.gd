@@ -6,6 +6,7 @@ extends RefCounted
 ##   godot --headless --path prototype -- --uifittest     → ostatni wiersz: PASS / FAIL (flaga w main.gd, bo menu potrzebuje autoloadów)
 
 const PauseMenu := preload("res://scripts/pause_menu.gd")
+const Codex := preload("res://scripts/codex.gd")
 
 const LOCALES := ["en", "pl"]
 const TAB_NAMES := ["SETTINGS", "BESTIARY", "WEAPONS", "GEAR", "PERKS", "CONTROLS"]
@@ -35,6 +36,9 @@ func run(host: Node) -> int:
 	if Settings.REALISTIC_DEFAULT or Settings.RELIABILITY_NAMES[Settings.RELIABILITY_DEFAULT] != "OFF":
 		_fail("domyślna obsługa broni nowego gracza nie jest CLASSIC + OFF")
 	var keep := TranslationServer.get_locale()
+	# układ kodeksu sprawdzamy na pełnych wpisach (najdłuższe teksty) — bestiariusz odsłonięty w całości
+	for id in Profile.bestiary_ids():
+		Profile.bestiary[String(id)] = 0
 	for loc in LOCALES:
 		TranslationServer.set_locale(loc)
 		var pm: Control = PauseMenu.new()
@@ -67,9 +71,42 @@ func run(host: Node) -> int:
 		pm.queue_free()
 		await tree.process_frame
 	TranslationServer.set_locale(keep)
+	_bestiary_checks()
 	print("[UI-FIT] %s (%d błędów)" % ["PASS" if _fails == 0 else "FAIL", _fails])
 	return _fails
 
+
+## Bestiariusz z odkrywaniem (1.7.407): nieznany wpis zakryty, spotkanie odsłania, zabójstwo liczy, profil sprzed 1.7.407 z postępem zna wszystko.
+func _bestiary_checks() -> void:
+	Profile.bestiary = {}
+	var beasts: Array = Codex.bestiary()
+	var cutpurse: Dictionary = beasts[0]
+	var hidden := Codex.beast_view(cutpurse)
+	var stalker: Dictionary = beasts.filter(func(e: Dictionary) -> bool: return e.get("beast", "") == "stalker")[0]
+	var ok: bool = hidden["title"] == "???" and (hidden["stats"] as Array).is_empty() and String(hidden["tip"]) == "" 		and bool((hidden["portrait"] as Dictionary).get("unknown", false)) and Codex.beast_view(stalker)["title"] == "STALKER"
+	Profile.discover("trzosek")
+	var shown := Codex.beast_view(cutpurse)
+	ok = ok and shown["title"] == cutpurse["title"] and (shown["stats"] as Array).any(func(r: Array) -> bool: return r[0] == "Your kills" and r[1] == "0")
+	Profile.note_beast_kill("trzosek")
+	Profile.note_beast_kill("trzosek")
+	Profile.note_beast_kill("wolek")
+	ok = ok and Profile.beast_kills("trzosek") == 2 and Profile.knows("wolek") and not Profile.knows("vein")
+	var path := "user://uifit_bestiary.cfg"
+	var cases := [[{"xp": 500}, "vein", true], [{"xp": 0}, "trzosek", false], [{"xp": 500, "bestiary": {"skoczek": 3}}, "trzosek", false]]
+	for c in cases:
+		var cfg := ConfigFile.new()
+		for k in c[0]:
+			cfg.set_value("profile", String(k), c[0][k])
+		cfg.save(path)
+		Profile.load_from(path)
+		ok = ok and Profile.knows(String(c[1])) == bool(c[2])
+	ok = ok and Profile.beast_kills("skoczek") == 3
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	Profile.reset_for_test()
+	if ok:
+		print("[UI-FIT] PASS  bestiariusz: nieznany wpis zakryty, spotkanie odsłania, zabójstwa liczone, stary profil z postępem zna wszystko")
+	else:
+		_fail("bestiariusz z odkrywaniem: zakrycie / odsłonięcie / licznik / migracja")
 
 func _check_tab(pm: Control, loc: String, t: int, what := "") -> void:
 	var card: Control = pm._card

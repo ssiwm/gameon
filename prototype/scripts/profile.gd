@@ -16,6 +16,7 @@ const SessionLog := preload("res://scripts/session_log.gd")
 signal xp_gained(amount: int, reason: String)
 signal leveled_up(level: int)
 signal changed
+signal discovered(id: String)                 ## nowy wpis bestiariusza (bestiary_watch.gd pokazuje komunikat)
 
 const SAVE_PATH := "user://profile.cfg"
 const STEP_BASE := 50                 ## próg poziomu n+1 minus n = STEP_BASE + STEP_PER_LEVEL × n
@@ -52,8 +53,12 @@ const WEAR_PARTS := ["barrel", "springs"]
 const SPRINGS_CAP := 0.5                      ## górna granica stanu po czyszczeniu = 100 − 0,5 × zużycie sprężyn (60 % zużycia → 70 %, próg zacięć)
 var mastery: Dictionary = {}                  ## klucz broni → punkty wprawy (GUNSMITH_PLAN §7.3, od 1.7.330): trafienia i zabójstwa tym graczem z tej broni
 var history: Dictionary = {}                  ## klucz broni → {"k": zabójstwa, "e": elity, "b": bossowie} (GUNSMITH_PLAN §7.4, od 1.7.331)
+var bestiary: Dictionary = {}                 ## id wpisu bestiariusza → zabójstwa tego gracza; wpis jest = gracz spotkał tego wroga (od 1.7.407)
 var range_best: Dictionary = {}               ## strzelnica FPP, rekordy osobiste: "<ćwiczenie>:<klucz broni>" → wynik (czas w s; papier — grupa w MOA), mniej = lepiej
 const NOTCH_MAX := 12                         ## tyle nacięć najwyżej mieści się na kolbie
+## Bestiariusz (od 1.7.407): wpisy znane od początku (Stalker poluje w każdej misji, gniazda są celem) i specjalne wpisy spoza enemy_defs.gd.
+const BESTIARY_ALWAYS := ["stalker", "nest"]
+const BESTIARY_EXTRA := ["stalker", "nest", "vein", "leech"]
 ## Progi stopni wprawy 0..5 (punkty: trafienie 1, krytyk 2, zabójstwo 5 — weapon_controller.gd). Pierwszy stopień po jednej misji, piąty po kilkunastu.
 const MASTERY_XP := [0, 60, 200, 450, 850, 1500]
 var _cond_dirty := false
@@ -191,8 +196,10 @@ func server_award_kill(shooter_id: int, kind: String) -> void:
 	SessionLog.note_kill(shooter_id, kind, amount)                 # dziennik sesji: zabójstwa wg rodzaju i XP (PROGRESSION_PLAN.md P0.3)
 	if _is_local(shooter_id):
 		add_xp(amount, "Kill")
+		note_beast_kill(kind)
 	else:
 		_recv_xp.rpc_id(shooter_id, amount, "Kill")
+		_recv_beast_kill.rpc_id(shooter_id, kind)
 
 ## Serwer: misja ukończona — każdy człowiek dostaje XP za wynik (bonusy liczy jego profil: pierwsze ukończenie).
 func server_award_mission(map_id: String, side_ok: bool, no_downs: bool, boss: bool) -> void:
@@ -210,6 +217,40 @@ func server_award_mission(map_id: String, side_ok: bool, no_downs: bool, boss: b
 @rpc("authority", "call_remote", "reliable")
 func _recv_xp(amount: int, reason: String) -> void:
 	add_xp(amount, reason)
+
+@rpc("authority", "call_remote", "reliable")
+func _recv_beast_kill(kind: String) -> void:
+	if EnemyDefs.DEFS.has(kind):
+		note_beast_kill(kind)
+
+## Bestiariusz: czy gracz zna wpis `id` (rodzaj z enemy_defs.gd albo stalker / nest / vein / leech).
+func knows(id: String) -> bool:
+	return bestiary.has(id) or id in BESTIARY_ALWAYS
+
+## Pierwsze spotkanie: wpis bestiariusza się odsłania. Zapis jak stanu broni (co COND_SAVE_EVERY s).
+func discover(id: String) -> void:
+	if knows(id):
+		return
+	bestiary[id] = 0
+	_cond_dirty = true
+	discovered.emit(id)
+
+## Zabójstwo wroga rodzaju `kind` przez tego gracza (serwer: server_award_kill). Zabity wróg jest też spotkany.
+func note_beast_kill(kind: String) -> void:
+	discover(kind)
+	bestiary[kind] = int(bestiary.get(kind, 0)) + 1
+	_cond_dirty = true
+
+func beast_kills(id: String) -> int:
+	return int(bestiary.get(id, 0))
+
+## Wszystkie wpisy bestiariusza (migracja starych profili, testy).
+static func bestiary_ids() -> Array:
+	var out: Array = EnemyDefs.DEFS.keys()
+	for id in BESTIARY_EXTRA:
+		if not out.has(id):
+			out.append(id)
+	return out
 
 @rpc("authority", "call_remote", "reliable")
 func _recv_mission(map_id: String, side_ok: bool, no_downs: bool, boss: bool, night: bool) -> void:
@@ -525,6 +566,7 @@ func save_to(path: String) -> void:
 	cfg.set_value("profile", "mastery", mastery)
 	cfg.set_value("profile", "history", history)
 	cfg.set_value("profile", "range_best", range_best)
+	cfg.set_value("profile", "bestiary", bestiary)
 	cfg.save(path)
 
 func load_from(path: String) -> void:
@@ -584,6 +626,15 @@ func load_from(path: String) -> void:
 	for k in rb_in:
 		if float(rb_in[k]) > 0.0:
 			range_best[String(k)] = float(rb_in[k])
+	bestiary = {}
+	if cfg.has_section_key("profile", "bestiary"):
+		var bs_in := cfg.get_value("profile", "bestiary", {}) as Dictionary
+		for k in bs_in:
+			bestiary[String(k)] = maxi(0, int(bs_in[k]))
+	elif xp > 0:
+		# profil sprzed bestiariusza z odkrywaniem (< 1.7.407): gracz z postępem widział już kodeks w całości — zostaje mu cały
+		for id in bestiary_ids():
+			bestiary[String(id)] = 0
 	look = int(cfg.get_value("profile", "look", Look.DEFAULT))
 	if not Look.is_unlocked(look, level()):
 		look = Look.DEFAULT
@@ -610,6 +661,7 @@ func reset_for_test() -> void:
 	mastery = {}
 	history = {}
 	range_best = {}
+	bestiary = {}
 	_cond_dirty = false
 	last_mission_xp = 0
 	last_mission_rows = []

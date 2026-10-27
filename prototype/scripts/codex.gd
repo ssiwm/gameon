@@ -2,7 +2,9 @@ extends RefCounted
 ## Kodeks (menu pauzy): bestiariusz i opisy broni. Liczby bierzemy Z KODU (Enemy.KINDS, WeaponDef) — tabela
 ## nie rozjedzie się z grą; tutaj są tylko opisy i wskazówki. Pozycje mają wspólny format dla codex_page.gd:
 ##   {title, tag, portrait: {type, ...}, stats: [[etykieta, wartość], ...], text, tip}
-## Portrety: "sprite" (arkusz + animacja z manifestu), "gun" (wiersz guns.png), "vein" (rysowany w kodzie).
+## Portrety: "image" (render modelu 3D gry, tools/bake_portraits.gd → art/portraits/), "sprite" (arkusz — zapas, gdy brak renderu),
+## "gun" (render broni), "vein" / "leech" (rysowane w kodzie — zapas). Bestiariusz z odkrywaniem (od 1.7.407): wpis z `beast` jest zakryty,
+## dopóki gracz nie spotka tego wroga (Profile.knows, bestiary_watch.gd); `group` — nagłówek na liście kodeksu.
 
 const Enemy := preload("res://scripts/enemy.gd")
 const Leech := preload("res://scripts/leech.gd")
@@ -12,8 +14,10 @@ const Parts := preload("res://scripts/parts.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
+const EnemyDefs := preload("res://scripts/enemy_defs.gd")
 
 const PX_PER_M := 16.0               ## lights.gd: 1 m projektowy = 16 px (w świecie 3D ok. 1,31 m)
+const PORTRAITS := "res://art/portraits/"
 
 # ---------------------------------------------------------------- bestiariusz
 
@@ -72,32 +76,71 @@ static func bestiary() -> Array:
 		if float(d.get("head", 0.0)) > 0.0:
 			stats.append(["Weak spot", "head"])
 		var col: Color = (d["color"] as Color).lerp(Color(1.0, 0.85, 0.7), 0.35)
-		var portrait := {"type": "image", "path": e[7]} if e.size() > 7 else {"type": "sprite", "sheet": e[1], "anim": e[2]}
-		out.append({"title": e[3], "tag": e[4], "accent": col, "portrait": portrait,
-			"stats": stats, "text": e[5], "tip": e[6]})
-	out.append({"title": "STALKER", "tag": "Cannot be killed", "accent": Color(0.55, 0.75, 1.0),
-		"portrait": {"type": "sprite", "sheet": "stalker", "anim": "idle"},
+		var portrait := _portrait_of(String(e[0]), {"type": "image", "path": e[7]} if e.size() > 7 else {"type": "sprite", "sheet": e[1], "anim": e[2]})
+		out.append({"title": e[3], "tag": e[4], "accent": col, "portrait": portrait, "beast": String(e[0]),
+			"group": "ELITES" if EnemyDefs.is_elite(String(e[0])) else "COMMON", "stats": stats, "text": e[5], "tip": e[6]})
+	out.append({"title": "STALKER", "tag": "Cannot be killed", "accent": Color(0.55, 0.75, 1.0), "beast": "stalker", "group": "SPECIAL",
+		"portrait": _portrait_of("stalker", {"type": "sprite", "sheet": "stalker", "anim": "idle"}),
 		"stats": [["HP", "∞"], ["Hunting", "5.5 m/s"], ["Lurking", "3.4 m/s"], ["Wakes at", "60% noise"], ["Sleeps at", "30% noise"], ["Reach", "0.9 m (0.5 m crouched)"]],
 		"text": "Reacts to noise only, never to you directly. Walks to the loudest recent sound, listens there, then strikes — with a wind-up you can run from. Light draws him. Attacks make no noise.",
 		"tip": "Stop shooting and let the meter fall below 30%. {overcharge} lures him away for 20–30 s. Crouch in the dark. You can outrun him (slower than you)."})
-	out.append({"title": "NEST", "tag": "Mission objective", "accent": Color(1.0, 0.5, 0.2),
-		"portrait": {"type": "sprite", "sheet": "nest", "anim": "pulse"},
+	out.append({"title": "NEST", "tag": "Mission objective", "accent": Color(1.0, 0.5, 0.2), "beast": "nest", "group": "SPECIAL",
+		"portrait": _portrait_of("nest", {"type": "sprite", "sheet": "nest", "anim": "pulse"}),
 		"stats": [["HP", "60"], ["Noise when destroyed", "+8"]],
 		"text": "The Vein's limbs. As long as one lives, the mother sleeps and cannot be hurt. A nest is not a threat — bots will not shoot it; destroying one is the squad's decision. It is loud.",
 		"tip": "Clear the area first, destroy nests one at a time and let the noise settle between them."})
-	out.append({"title": "THE VEIN", "tag": "Boss — Mother of Nests", "accent": Color(0.85, 0.28, 0.22),
-		"portrait": {"type": "sprite", "sheet": "vein", "anim": "idle"} if Sprites.has("vein") else {"type": "vein"},
+	out.append({"title": "THE VEIN", "tag": "Boss — Mother of Nests", "accent": Color(0.85, 0.28, 0.22), "beast": "vein", "group": "BOSSES",
+		"portrait": _portrait_of("vein", {"type": "sprite", "sheet": "vein", "anim": "idle"} if Sprites.has("vein") else {"type": "vein"}),
 		"stats": [["HP", "750 (+250 per extra player)"], ["Maw closed", "5% damage"], ["Phase 2", "below 66% — enraged"], ["Phase 3", "below 33% — scream"]],
 		"text": "Wakes when the last nest dies. Her maw is shut and armoured — it opens only briefly after each attack. Lash up close, tail sweep along the floor, spore spit at range. She spawns young. At 33% she screams: noise goes to 100% and the Stalker wakes.",
 		"tip": "Dodge, then shoot while the maw is open. Light her maw during a wind-up to blind her. {overcharge} pulls her fire to the lure. Shots from above at a steep angle always do 5%."})
-	out.append({"title": "THE LEECH", "tag": "Boss — hides under water", "accent": Color(0.35, 0.68, 0.62),
-		"portrait": {"type": "leech"},
+	out.append({"title": "THE LEECH", "tag": "Boss — hides under water", "accent": Color(0.35, 0.68, 0.62), "beast": "leech", "group": "BOSSES",
+		"portrait": _portrait_of("leech", {"type": "leech"}),
 		"stats": [["HP", _t("%d (+%d per extra player)") % [int(Leech.BASE_HP), int(Leech.HP_PER_EXTRA_HUMAN)]],
 			["Hidden", _t("%d%% (lit %d%%)") % [int(Leech.SUB_MULT * 100.0), int(Leech.LIT_MULT * 100.0)]], ["Phase 2", "below 66% — adds"], ["Phase 3", "below 33% — scream"],
 			["Surfaced", "full damage"], ["Grab", _t("%.1f s — free: %d%% HP") % [Leech.GRAB_TIME, int(Leech.GRAB_FRAC * 100.0)]]],   # krótkie etykiety i wartości: siatka 4-kolumnowa nie może być szersza niż DETAIL_W (jak u Żyły)
 		"text": "Lives under the flooded hall's pool. Unseen in the dark: only ripples betray it — and in the dark it heals. It swims under whoever wades in the water, stands on a low catwalk or crowds the shore, telegraphs with churning rings, then bursts out, bites and grabs. A grabbed player is dragged under in three and a half seconds and goes down. From the second phase it also spits acid at anyone it cannot reach, even on the high catwalks. Its minions crawl out of the water from the start. In the later phases a tidal wave floods the low catwalks and the shore every ~25 s — it hurts and douses flares there.",
 		"tip": "Throw a flare ({flare}) or sweep the flashlight over the ripples — the shadow shows, but only 40% of your damage lands on it. Bait the ambush, then hit it while it is out of the water. A flare that lands in the water burns out in 8 s. Keep moving: the high catwalks stop its bite and the tide, but not its acid. Shoot a surfaced leech with everything; if someone is grabbed, the whole squad must hurt it and their melee counts double."})
 	return out
+
+## Portret wpisu: render modelu 3D z art/portraits/, a gdy go brak — dotychczasowy rysunek (`fallback`).
+static func _portrait_of(id: String, fallback: Dictionary) -> Dictionary:
+	var path := PORTRAITS + id + ".png"
+	return {"type": "image", "path": path} if ResourceLoader.exists(path) else fallback
+
+## Nazwa wpisu bestiariusza (klucz tłumaczenia) — komunikat o nowym wpisie.
+static func beast_name(id: String) -> String:
+	for e in ENEMIES:
+		if e[0] == id:
+			return String(e[3])
+	return {"stalker": "STALKER", "nest": "NEST", "vein": "THE VEIN", "leech": "THE LEECH"}.get(id, id.to_upper())
+
+## Wpis bestiariusza taki, jak go widzi gracz: nieznany — sylwetka, „???” i bez opisu; znany — z licznikiem zabójstw tego gracza.
+static func beast_view(e: Dictionary) -> Dictionary:
+	var id := String(e.get("beast", ""))
+	if id == "":
+		return e
+	var v := e.duplicate()
+	if not Profile.knows(id):
+		var p: Dictionary = (e["portrait"] as Dictionary).duplicate()
+		p["unknown"] = true
+		v["title"] = "???"
+		v["tag"] = "Not encountered yet"
+		v["accent"] = Color(0.45, 0.45, 0.42)
+		v["portrait"] = p
+		v["stats"] = []
+		v["text"] = "You have not met it yet. The entry fills in after the first encounter — or the first kill."
+		v["tip"] = ""
+		return v
+	if _counts_kills(id):
+		var stats: Array = (e["stats"] as Array).duplicate()
+		stats.append(["Your kills", "%d" % Profile.beast_kills(id)])
+		v["stats"] = stats
+	return v
+
+## Licznik zabójstw ma sens dla wrogów z enemy_defs.gd (Stalker jest nieśmiertelny, gniazd i bossów nie liczy server_award_kill).
+static func _counts_kills(id: String) -> bool:
+	return Enemy.KINDS.has(id)
 
 # ---------------------------------------------------------------- bronie
 
@@ -164,10 +207,12 @@ static func perk_entry(id: String) -> Dictionary:
 	var tl := func(s: String) -> String: return TranslationServer.translate(s)
 	var status: String = tl.call("Equipped — slot %d") % (at + 1) if at >= 0 else (tl.call("Available") if Profile.is_unlocked(id) else tl.call("Locked — level %d") % int(d["level"]))
 	return {"title": String(tl.call(String(d["name"]))).to_upper(), "tag": String(tl.call("Perk  ·  unlocks at level %d")) % int(d["level"]), "accent": d["color"],
-		"portrait": {"type": "perk", "id": id}, "perk_id": id,
+		"portrait": {"type": "perk", "id": id}, "perk_id": id, "group": String(tl.call("LEVEL %d")) % int(d["level"]),
 		"stats": [["Status", status], ["Your level", "%d" % Profile.level()], ["Slots open", TranslationServer.translate("%d of %d") % [Profile.slots(), Profile.SLOT_LEVELS.size()]]],
 		"text": String(d["desc"]),
 		"tip": _t("Equip perks at your locker in the safe room. The first slot opens at level %d, the second at level %d.") % [int(Profile.SLOT_LEVELS[0]), int(Profile.SLOT_LEVELS[1])]}
+
+const GEAR_GROUPS := ["THROWN", "PLACED", "TOOLS"]
 
 static func gear() -> Array:
 	var out: Array = []
@@ -199,8 +244,12 @@ static func gear() -> Array:
 				stats.append_array([["Duration", "%d s" % int(d["time"])], ["Range", "%d m" % int(float(d["range"]) / PX_PER_M)]])
 		stats.append(["Noise", noise_text(k)])
 		out.append({"title": String(d["name"]), "tag": TranslationServer.translate(String(d["full"])) + "  ·  " + TranslationServer.translate(mode), "accent": d["color"],
-			"portrait": {"type": "item", "kind": k}, "stats": stats, "text": text[0], "tip": text[1]})
-	return out
+			"portrait": {"type": "item", "kind": k}, "stats": stats, "text": text[0], "tip": text[1],
+			"group": {"throw": "THROWN", "place": "PLACED", "use": "TOOLS"}[String(d["mode"])]})
+	var grouped: Array = []                                      # sort_custom nie jest stabilny — grupy składamy po kolei, kolejność w grupie z Throwables.ORDER
+	for g in GEAR_GROUPS:
+		grouped.append_array(out.filter(func(x: Dictionary) -> bool: return x["group"] == g))
+	return grouped
 
 ## Hałas przedmiotu w punktach miernika Uwagi (0–100); skaner hałasuje co sekundę, wybuchy mają własną głośność.
 static func noise_text(k: String) -> String:
@@ -211,9 +260,31 @@ static func noise_text(k: String) -> String:
 
 static func arsenal() -> Array:
 	var out: Array = []
-	for d: WeaponDef in Weapons.defs():
-		out.append(weapon_entry(d.id))
+	for slot in [WeaponDef.Slot.PRIMARY, WeaponDef.Slot.SIDEARM, WeaponDef.Slot.MELEE]:
+		for d: WeaponDef in Weapons.defs():
+			if d.slot == slot:
+				out.append(weapon_entry(d.id))
 	return out
+
+## Paski porównawcze karty broni: [etykieta, ułamek 0..1 względem najlepszej broni arsenału, napis, ułamek broni przy sobie z tego slotu
+## albo −1]. `carried` — id broni lokalnego gracza w tym samym slocie (−1: brak albo to ta sama broń). Normalizacja po broniach fabrycznych.
+static func weapon_bars(d: WeaponDef, carried: WeaponDef = null) -> Array:
+	var top := {"dps": 0.0, "range": 0.0, "noise": 0.0, "mass": 0.0}
+	for b: WeaponDef in Weapons.defs():
+		top["dps"] = maxf(top["dps"], b.dps())
+		top["range"] = maxf(top["range"], b.range_m())
+		top["noise"] = maxf(top["noise"], b.n_max)
+		top["mass"] = maxf(top["mass"], b.mass)
+	var frac := func(v: float, m: float) -> float: return clampf(v / maxf(m, 0.001), 0.0, 1.0)
+	var mark := func(f: Callable, m: float) -> float: return -1.0 if carried == null else frac.call(f.call(carried), m)
+	var rows: Array = [
+		["Firepower", frac.call(d.dps(), top["dps"]), _t("%d dmg/s") % int(round(d.dps())), mark.call(func(w: WeaponDef) -> float: return w.dps(), top["dps"])],
+		["Range" if d.kind != WeaponDef.Kind.MELEE else "Reach", frac.call(d.range_m(), top["range"]), "%d m" % int(round(d.range_m())), mark.call(func(w: WeaponDef) -> float: return w.range_m(), top["range"])],
+		["Loudness", frac.call(d.n_max, top["noise"]), _t("silent") if d.n_max <= 0.0 else "+%.1f" % d.n_max, mark.call(func(w: WeaponDef) -> float: return w.n_max, top["noise"])],
+	]
+	if d.mass > 0.0:
+		rows.append(["Mass", frac.call(d.mass, top["mass"]), "%.2f kg" % d.mass, mark.call(func(w: WeaponDef) -> float: return w.mass, top["mass"])])
+	return rows
 
 ## Wpis katalogu dla broni `id` — liczony świeżo (statystyki z częściami zamontowanymi przez TEGO gracza, części, dostęp),
 ## bo zmieniają się w kryjówce.
@@ -237,7 +308,8 @@ static func weapon_entry(id: int) -> Dictionary:
 				tiers.append({"head": "%s  %s" % [TranslationServer.translate(Parts.SLOT_NAMES[s]).to_upper(), TranslationServer.translate(p["name"])],
 					"desc": TranslationServer.translate(p["desc"]), "cost": Scrap.part_cost(pid), "state": state})
 	return {"title": base.name, "tag": tag, "accent": base.tracer_color, "portrait": {"type": "gun", "row": base.gun_row, "color": base.tracer_color},
-		"stats": _weapon_stats(d), "text": notes[0], "tip": notes[1], "weapon_id": id, "tiers": tiers, "access": access}
+		"stats": _weapon_stats(d), "text": notes[0], "tip": notes[1], "weapon_id": id, "tiers": tiers, "access": access,
+		"group": {WeaponDef.Slot.PRIMARY: "PRIMARY WEAPONS", WeaponDef.Slot.SIDEARM: "SIDEARMS"}.get(d.slot, "MELEE")}
 
 ## Szablon tłumaczony PRZED podstawieniem liczb — gotowy napis („120 blast”) nie trafiłby w klucz ui.csv.
 static func _t(s: String) -> String:

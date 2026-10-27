@@ -148,8 +148,8 @@ func _button(text: String, callback: Callable) -> Button:
 	b.add_theme_font_size_override("font_size", 8)
 	for state_name in ["normal", "hover", "pressed", "disabled"]:
 		var box := StyleBoxFlat.new()
-		box.bg_color = {"normal": Color("22281f"), "disabled": Color("181b15")}.get(state_name, Color("3b3827"))
-		box.border_color = Color("4a4836") if state_name == "disabled" else Color("68664b")
+		box.bg_color = {"normal": UiTheme.TILE_BG, "disabled": Color("181b15")}.get(state_name, UiTheme.TILE_BG_SEL)
+		box.border_color = UiTheme.TILE_EDGE if state_name == "disabled" else UiTheme.TILE_EDGE_HOVER
 		box.set_border_width_all(1)
 		box.content_margin_left = 4
 		box.content_margin_right = 4
@@ -161,19 +161,10 @@ func _button(text: String, callback: Callable) -> Button:
 	return b
 
 func _paper_box() -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = Color("c3b795")
-	box.border_color = Color("7a7158")
-	box.set_border_width_all(1)
-	box.content_margin_left = 7
-	box.content_margin_right = 7
-	box.content_margin_top = 7
-	box.content_margin_bottom = 7
-	return box
+	return UiTheme.paper_box()
 
 func _ink(text: String, font_size: int) -> Label:
-	var label := UiTheme.label(text, font_size, Color("272d25"))
-	label.add_theme_constant_override("outline_size", 0)
+	var label := UiTheme.ink(text, font_size)
 	label.custom_minimum_size.x = 149
 	return label
 
@@ -317,7 +308,7 @@ func _present_summary() -> void:
 			value = ("[%s] → [%s]" if value.contains("→") or String(row[2]).contains("→") else "%s → %s") % [UiTheme.num_text(String(row[1])), UiTheme.num_text(String(row[2]))]
 		var value_label := _ink(value, 10)
 		if changed and kind != 0:
-			value_label.add_theme_color_override("font_color", Color("285135") if kind > 0 else Color("713b21"))
+			value_label.add_theme_color_override("font_color", UiTheme.INK_GAIN if kind > 0 else UiTheme.INK_COST)
 		var line: BoxContainer = VBoxContainer.new() if changed else HBoxContainer.new()
 		line.add_theme_constant_override("separation", 0 if changed else 4)
 		var caption_label := _ink(caption, 8)

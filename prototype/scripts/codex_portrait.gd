@@ -193,17 +193,26 @@ func _shadow(center_x: float, floor_y: float, width: float) -> void:
 	draw_circle(Vector2.ZERO, width * 0.32, Color(0, 0, 0, 0.35))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-## Portret z wycinka konceptu (elity): wpisany w kartę, stopami na podłodze, z cieniem.
+## Portret z renderu modelu 3D (tools/bake_portraits.gd): wpisany w kartę, stopami na podłodze, z cieniem. Miniatura wysokiej postaci pokazuje
+## górną część (głowa i tułów) — cała sylwetka w polu 34×20 miała kilka pikseli szerokości. Nieznany wpis bestiariusza (`unknown`) — czarna sylwetka.
 func _draw_image(floor_y: float) -> void:
 	if _tex == null:
 		return
 	var tsz := _tex.get_size()
 	var avail := Vector2(size.x - 6.0, floor_y - 3.0)
-	var s := minf(avail.x / tsz.x, avail.y / tsz.y)
-	var w := tsz * s
+	var src := Rect2(Vector2.ZERO, tsz)
+	if thumb and tsz.y / tsz.x > avail.y / avail.x * 1.4:
+		src.size.y = minf(tsz.y, tsz.x * avail.y / avail.x * 1.4)
+	var s := minf(avail.x / src.size.x, avail.y / src.size.y)
+	var w := src.size * s
 	var pos := Vector2(roundf((size.x - w.x) * 0.5), floor_y - w.y)
-	_shadow(pos.x + w.x * 0.5, floor_y, w.x * 0.9)
-	draw_texture_rect(_tex, Rect2(pos, w), false)
+	var unknown := bool(spec.get("unknown", false))
+	if not thumb or src.size.y >= tsz.y:
+		_shadow(pos.x + w.x * 0.5, floor_y, w.x * 0.9)
+	draw_texture_rect_region(_tex, Rect2(pos, w), src, Color(0.03, 0.03, 0.03, 0.92) if unknown else Color.WHITE)
+	if unknown and not thumb:
+		var f := get_theme_default_font()
+		draw_string(f, Vector2(0.0, size.y * 0.5 + 10.0), "?", HORIZONTAL_ALIGNMENT_CENTER, size.x, 28, Color(accent.r, accent.g, accent.b, 0.7))
 
 func _draw_sprite(floor_y: float) -> void:
 	var sheet: String = _sheet
