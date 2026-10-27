@@ -1256,7 +1256,8 @@ func _test_boss_base() -> void:
 	var m: float = Difficulty.m("boss_hp")
 	check("boss: HP skalowane liczbą ludzi (1 → baza, 3 → baza + 2 dodatki)",
 		is_equal_approx(Base.scaled_hp(750.0, 250.0, 1), 750.0 * m) and is_equal_approx(Base.scaled_hp(750.0, 250.0, 3), 1250.0 * m) and is_equal_approx(Base.scaled_hp(750.0, 250.0, 0), 750.0 * m))
-	check("boss: Pijawka 5000 + 1500 za każdego dodatkowego człowieka", is_equal_approx(Leech.hp_for(1), 5000.0 * m) and is_equal_approx(Leech.hp_for(3), 8000.0 * m))
+	check("boss: Pijawka %.0f + %.0f za każdego dodatkowego człowieka" % [Leech.BASE_HP, Leech.HP_PER_EXTRA_HUMAN],
+		is_equal_approx(Leech.hp_for(1), Leech.BASE_HP * m) and is_equal_approx(Leech.hp_for(3), (Leech.BASE_HP + 2.0 * Leech.HP_PER_EXTRA_HUMAN) * m))
 	check("boss: śpiąca Żyła ma pełne HP z `_init` (750)", is_equal_approx(boss.hp, 750.0) and is_equal_approx(boss.max_hp, 750.0) and boss.state == Base.State.DORMANT)
 
 	# potomstwo Żyły: lista żywych tylko na serwerze, sprzątanie po prefiksie
@@ -1271,7 +1272,7 @@ func _test_boss_base() -> void:
 	var lc: Node = Leech.new()
 	level.add_child(lc)
 	lc.global_position = Vector2(FAR_X + 10000.0, -2000.0)
-	check("boss: Pijawka ma pełne HP z `_init` (5000)", is_equal_approx(lc.hp, 5000.0) and lc.state == Base.State.DORMANT)
+	check("boss: Pijawka ma pełne HP z `_init` (%.0f)" % Leech.BASE_HP, is_equal_approx(lc.hp, Leech.BASE_HP) and lc.state == Base.State.DORMANT)
 	lc._spawn_minion("LeechSpawnT9", Vector2(FAR_X + 10100.0, -2000.0))
 	var mn := level.get_node_or_null("LeechSpawnT9")
 	check("boss: Trzosek Pijawki jest przywołany i na liście serwera", mn != null and bool(mn.summoned) and lc._minions.has(mn))

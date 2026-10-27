@@ -24,6 +24,16 @@ func run(host: Node) -> int:
 		if got != int(case[1]):
 			_fail("język systemu „%s” → %s, oczekiwano %s" % [case[0], Settings.LOCALES[got], Settings.LOCALES[int(case[1])]])
 	print("[UI-FIT] PASS  język systemu przy pierwszym starcie: pl → POLSKI, inne → ENGLISH" if _fails == 0 else "[UI-FIT] FAIL  język systemu")
+	# pierwszy start: zintegrowana karta → MEDIUM i 75%, osobna i inne → HIGH 100% (Settings.first_run_graphics)
+	var igpu: Array = Settings.first_run_graphics(RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU)
+	var dgpu: Array = Settings.first_run_graphics(RenderingDevice.DEVICE_TYPE_DISCRETE_GPU)
+	if Settings.QUALITY_NAMES[int(igpu[0])] != "MEDIUM" or not is_equal_approx(float(Settings.RENDER_SCALE_LIST[int(igpu[1])]), 0.75) 			or Settings.QUALITY_NAMES[int(dgpu[0])] != "HIGH" or int(dgpu[1]) != 0:
+		_fail("grafika pierwszego startu: zintegrowana %s, osobna %s" % [igpu, dgpu])
+	else:
+		print("[UI-FIT] PASS  grafika pierwszego startu: zintegrowana karta MEDIUM 75%, osobna HIGH 100%")
+	# nowy gracz: obsługa CLASSIC i bez zacięć (GDD §16.0a)
+	if Settings.REALISTIC_DEFAULT or Settings.RELIABILITY_NAMES[Settings.RELIABILITY_DEFAULT] != "OFF":
+		_fail("domyślna obsługa broni nowego gracza nie jest CLASSIC + OFF")
 	var keep := TranslationServer.get_locale()
 	for loc in LOCALES:
 		TranslationServer.set_locale(loc)

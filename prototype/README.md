@@ -41,7 +41,9 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7 (Forward+). Rozgrywka to sym
   skradania (HOLD / TOGGLE), obsługa broni (REALISTIC — podrzut przy myszy, oparcie, gorąca lufa i dwa przeładowania, CLASSIC — dawny rozrzut serii i dopełnianie magazynka; `WEAPONS.md` §20–22), niezawodność broni (OFF / STANDARD / VETERAN — zużycie i zacięcia, `WEAPONS.md` §24), podpowiedzi, mikrofon (krzyk), **obraz bez restartu** (rozmiar okna, V-Sync, limit klatek, jakość efektów
   LOW / MEDIUM / HIGH, efekty pogody, **jasność** ±1 EV z ekranem kalibracji), pełny ekran (też F11), **dostępność** („Reduce effects” — bez wstrząsów, aberracji, pulsu
   tętna i migotania; napisy dźwięków; filtr widzenia barw: protanopia / deuteranopia / tritanopia) i **język** (ENGLISH / POLSKI; zmiana przebudowuje
-  menu od razu w nowym języku; przy pierwszym starcie bez zapisu ustawień — język systemu, od 1.7.397). Karta ma szerokość z zapasem na dłuższe polskie teksty, opisy ustawień łamią się w dwa wiersze, a szczegóły kodeksu
+  menu od razu w nowym języku; przy pierwszym starcie bez zapisu ustawień — język systemu, od 1.7.397). **Pierwszy start bez zapisu
+  ustawień (od 1.7.398):** obsługa broni CLASSIC i zacięcia OFF (GDD §16.0a), a na zintegrowanej karcie graficznej Effects quality MEDIUM
+  i Render scale 75% (`Settings.first_run_graphics`; osobna karta — HIGH 100%). Karta ma szerokość z zapasem na dłuższe polskie teksty, opisy ustawień łamią się w dwa wiersze, a szczegóły kodeksu
   zajmują całą szerokość strony; `--uifittest` sprawdza, że nic nie wystaje (oba języki), a `--shotpause=N` robi zrzut karty N (z `--lang=pl`).
   Ustawienia zapisują się w `user://settings.cfg`. W trybie solo gra jest zatrzymana; w kooperacji świat idzie dalej (menu to mówi)
   i klawisze gry są wyłączone na czas menu. Nawigacja: mysz, strzałki / D-pad + A, B zamyka, LB / RB przełączają zakładki.

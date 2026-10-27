@@ -80,8 +80,12 @@ var crouch_toggle := false             ## skradanie przełączane klawiszem zami
 ## Niezawodność broni (GUNSMITH_PLAN §6): OFF — bez zużycia i zacięć, STANDARD, VETERAN — zużycie i szansa zacięcia ×2.
 const RELIABILITY_NAMES := ["OFF", "STANDARD", "VETERAN"]
 const RELIABILITY_MULT := [0.0, 1.0, 2.0]
-var reliability_idx := 1
-var realistic_handling := true         ## obsługa broni: podrzut przy myszy, oparcie o krawędź, gorąca lufa i dwa przeładowania (REALISTIC) albo dawne zachowanie (CLASSIC) — GUNSMITH_PLAN etap 3
+## Nowy gracz (bez zapisu ustawień) gra rdzeń bez nauki warsztatu (GDD §16.0a): zacięcia OFF i obsługa CLASSIC. Do 1.7.397 domyślnie
+## STANDARD i REALISTIC; zapisany wybór gracza zostaje bez zmian.
+const RELIABILITY_DEFAULT := 0
+const REALISTIC_DEFAULT := false
+var reliability_idx := RELIABILITY_DEFAULT
+var realistic_handling := REALISTIC_DEFAULT  ## obsługa broni: podrzut przy myszy, oparcie o krawędź, gorąca lufa i dwa przeładowania (REALISTIC) albo dawne zachowanie (CLASSIC) — GUNSMITH_PLAN etap 3
 var colorblind_idx := 0
 var locale_idx := 0
 var brightness_idx := BRIGHTNESS_DEFAULT
@@ -386,10 +390,21 @@ func save_range_board(board: Array) -> void:
 static func system_locale_idx(os_lang: String) -> int:
 	return maxi(LOCALES.find(os_lang.substr(0, 2).to_lower()), 0)
 
+## Grafika przy pierwszym starcie (brak zapisu ustawień): na zintegrowanej karcie (laptop) MEDIUM i 75% rozdzielczości świata zamiast
+## HIGH i 100% — pierwsze minuty playtestu nie mogą iść w kilku klatkach na sekundę (pomiaru na słabszym sprzęcie wciąż nie ma,
+## REVIEW_PLAN R7). Zwraca [quality_idx, render_scale_idx]; zapis gracza ma pierwszeństwo.
+static func first_run_graphics(adapter: int) -> Array:
+	if adapter == RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU:
+		return [1, RENDER_SCALE_LIST.find(0.75)]
+	return [2, 0]
+
 func _load() -> void:
 	var cf := ConfigFile.new()
 	if cf.load(SAVE_PATH) != OK:
 		locale_idx = system_locale_idx(OS.get_locale_language())
+		var gfx := first_run_graphics(RenderingServer.get_video_adapter_type())
+		quality_idx = int(gfx[0])
+		render_scale_idx = int(gfx[1])
 		return
 	for kind in volume:
 		# otoczenie miało kiedyś wspólny suwak z muzyką: zapis sprzed rozdzielenia daje mu tę samą wartość
@@ -421,8 +436,8 @@ func _load() -> void:
 	captions = bool(cf.get_value("game", "captions", false))
 	mono_audio = bool(cf.get_value("game", "mono_audio", false))
 	crouch_toggle = bool(cf.get_value("game", "crouch_toggle", false))
-	realistic_handling = bool(cf.get_value("game", "realistic_handling", true))
-	reliability_idx = clampi(int(cf.get_value("game", "reliability", 1)), 0, RELIABILITY_NAMES.size() - 1)
+	realistic_handling = bool(cf.get_value("game", "realistic_handling", REALISTIC_DEFAULT))
+	reliability_idx = clampi(int(cf.get_value("game", "reliability", RELIABILITY_DEFAULT)), 0, RELIABILITY_NAMES.size() - 1)
 	colorblind_idx = clampi(int(cf.get_value("game", "colorblind", 0)), 0, COLORBLIND_NAMES.size() - 1)
 	locale_idx = clampi(int(cf.get_value("game", "locale", system_locale_idx(OS.get_locale_language()))), 0, LOCALES.size() - 1)
 	brightness_idx = clampi(int(cf.get_value("game", "brightness", BRIGHTNESS_DEFAULT)), 0, BRIGHTNESS_EV.size() - 1)

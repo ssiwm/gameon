@@ -17,8 +17,11 @@ decydują o priorytetach przed jakąkolwiek nową zawartością.
 - [ ] Ustaw poziom trudności w menu głównym: **EASY** dla nowych graczy. Gra startuje na NORMAL i zapamiętuje ostatni wybór,
       więc sprawdź go na każdym komputerze, który będzie hostem.
 - [ ] Język: przy pierwszym starcie gra bierze język systemu (od 1.7.397: polski Windows → POLSKI). Zanotuj, w jakim języku grał tester.
-- [ ] Zakres: kampania to 1.1 → 1.2 → 1.3 → boss B1. **B1 Pijawka nie została dotąd pokonana w żadnej sesji autora** (13 podejść,
-      także na EASY) — zdecyduj przed sesją, czy test kończy się na 1.3, i powiedz to testerom tylko jako „gramy do X”.
+- [ ] Zakres: kampania to 1.1 → 1.2 → 1.3 → boss B1. Do 1.7.397 **B1 Pijawka nie została pokonana w żadnej sesji autora** (13 podejść,
+      także na EASY); od 1.7.398 ma 2000 HP zamiast 5000 (symulacja przy 20 DPS: EASY ok. 2 min, NORMAL ok. 3 min). Zanotuj czas walki
+      i liczbę podejść — to pierwszy pomiar nowego HP.
+- [ ] Nowy gracz (bez zapisu ustawień) zaczyna od obsługi broni CLASSIC i bez zacięć (od 1.7.398, GDD §16.0a). Gdy tester sam włączy
+      REALISTIC albo zacięcia w ustawieniach — zanotuj kiedy i dlaczego. Na zintegrowanej karcie gra startuje w MEDIUM i 75%.
 - [ ] Gracze mają słuchawki. Bez nich cały filar „dźwięk jako groza" przepada.
 - [ ] Dziennik sesji pisze się sam u hosta (`%APPDATA%\Godot\app_userdata\Dead Air '87 Prototype\sessions\`). Po sesji skopiuj
       ten katalog razem z nagraniem — jest w nim źródło każdego upadku, Uwaga, zamachy Stalkera i statystyki broni (README, „Dziennik sesji”).

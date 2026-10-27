@@ -420,7 +420,8 @@ Broń zablokowana leży w półmroku z czerwoną kontrą. Dev: `--shotws --shotw
 
 ## 20. Podrzut i oparcie, etap 3a (1.7.324)
 
-Ustawienie **Weapon handling** (Ustawienia → Rozgrywka): **REALISTIC** (domyślnie) albo **CLASSIC** — dawne zachowanie, do porównania na playteście.
+Ustawienie **Weapon handling** (Ustawienia → Rozgrywka): **REALISTIC** albo **CLASSIC** — dawne zachowanie, do porównania na playteście. Od 1.7.398 nowy gracz (bez zapisu ustawień) zaczyna od
+**CLASSIC** (GDD §16.0a: rdzeń bez nauki warsztatu); zapisany wybór zostaje.
 
 | Element | Jak działa | Kod |
 |---|---|---|
@@ -487,7 +488,7 @@ Kod: `projectile.gd` (`PEN_*`, `_pass_through`, `pen_cost`, `_ricochet`), `weapo
 
 ## 24. Stan techniczny i zacięcia, etap 4a (1.7.328)
 
-Ustawienie **Weapon reliability** (Ustawienia → Rozgrywka): OFF (bez zużycia i zacięć), **STANDARD** (domyślnie), VETERAN (zużycie i szansa
+Ustawienie **Weapon reliability** (Ustawienia → Rozgrywka): **OFF** (bez zużycia i zacięć; domyślnie dla nowego gracza od 1.7.398, wcześniej STANDARD), STANDARD, VETERAN (zużycie i szansa
 zacięcia ×2). Stan każdej broni gracza (0–100 %) siedzi w jego profilu (`Profile.cond`, zapis co 30 s i przy wyjściu).
 
 | Element | Jak działa | Kod |
