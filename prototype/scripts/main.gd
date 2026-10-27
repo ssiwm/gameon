@@ -2308,7 +2308,7 @@ func _leech_test() -> void:
 	# stoimy daleko od basenu, więc walka rusza dopiero po czasie / zbliżeniu — wymuszamy start
 	mission._start_boss()
 	await get_tree().create_timer(0.3).timeout
-	check.call("walka: Pijawka obudzona, faza BOSS, HP %.0f (≥ 5000)" % lc.hp, lc.state == lc.State.AWAKE and mission.phase == MISSION_SCRIPT.Phase.BOSS and lc.hp >= 5000.0)
+	check.call("walka: Pijawka obudzona, faza BOSS, HP %.0f (≥ %.0f)" % [lc.hp, lc.BASE_HP], lc.state == lc.State.AWAKE and mission.phase == MISSION_SCRIPT.Phase.BOSS and lc.hp >= lc.BASE_HP)
 	# Trzoski od fazy 1 (1.7.68): po pierwszym odliczeniu pojawiają się z brzegów; potem je usuwamy, żeby nie psuły pomiarów
 	lc._minion_t = 0.05
 	await get_tree().create_timer(0.6).timeout
@@ -2579,7 +2579,7 @@ func _leech_test() -> void:
 	var dn: Dictionary = dstats[Difficulty.Level.NORMAL]
 	var dh: Dictionary = dstats[Difficulty.Level.HARD]
 	check.call("poziomy trudności: HP %.0f / %.0f / %.0f (EASY/NORMAL/HARD, z 2 ludźmi %.0f / %.0f / %.0f), Trzoski maks. %d / %d / %d, przerwy ×%.2f / ×%.2f / ×%.2f" % [de["hp"], dn["hp"], dh["hp"], de["hp2"], dn["hp2"], dh["hp2"], de["adds"], dn["adds"], dh["adds"], de["cd"], dn["cd"], dh["cd"]],
-		float(de["hp"]) < float(dn["hp"]) and float(dn["hp"]) < float(dh["hp"]) and absf(float(dn["hp"]) - 5000.0) < 0.5 and float(dh["hp"]) >= 6500.0
+		float(de["hp"]) < float(dn["hp"]) and float(dn["hp"]) < float(dh["hp"]) and absf(float(dn["hp"]) - lc.BASE_HP) < 0.5 and float(dh["hp"]) >= lc.BASE_HP * 1.3
 		and float(de["regen"]) < float(dn["regen"]) and float(dn["regen"]) < float(dh["regen"])
 		and int(de["adds"]) < int(dn["adds"]) and int(dn["adds"]) < int(dh["adds"])
 		and float(de["tide"]) > float(dn["tide"]) and float(dn["tide"]) > float(dh["tide"])
@@ -3688,6 +3688,9 @@ func _on_peer_disconnected(id: int) -> void:
 	print("[NET] peer disconnected: %d" % id)
 	LagComp.forget(id)
 	level.forget_weapon_kit(id)
+	if not multiplayer.is_server():
+		return              # postać wychodzącego usuwa serwer, a MultiplayerSpawner rozsyła to klientom; własne queue_free u klienta wyprzedzało
+		                    # ten despawn i silnik zgłaszał „on_despawn_receive … ERR_UNAUTHORIZED” u każdego, kto został w sesji
 	var p := _players.get_node_or_null(str(id))
 	if p != null:
 		p.queue_free()

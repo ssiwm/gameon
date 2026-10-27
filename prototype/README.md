@@ -41,7 +41,9 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7 (Forward+). Rozgrywka to sym
   skradania (HOLD / TOGGLE), obsługa broni (REALISTIC — podrzut przy myszy, oparcie, gorąca lufa i dwa przeładowania, CLASSIC — dawny rozrzut serii i dopełnianie magazynka; `WEAPONS.md` §20–22), niezawodność broni (OFF / STANDARD / VETERAN — zużycie i zacięcia, `WEAPONS.md` §24), podpowiedzi, mikrofon (krzyk), **obraz bez restartu** (rozmiar okna, V-Sync, limit klatek, jakość efektów
   LOW / MEDIUM / HIGH, efekty pogody, **jasność** ±1 EV z ekranem kalibracji), pełny ekran (też F11), **dostępność** („Reduce effects” — bez wstrząsów, aberracji, pulsu
   tętna i migotania; napisy dźwięków; filtr widzenia barw: protanopia / deuteranopia / tritanopia) i **język** (ENGLISH / POLSKI; zmiana przebudowuje
-  menu od razu w nowym języku; przy pierwszym starcie bez zapisu ustawień — język systemu, od 1.7.397). Karta ma szerokość z zapasem na dłuższe polskie teksty, opisy ustawień łamią się w dwa wiersze, a szczegóły kodeksu
+  menu od razu w nowym języku; przy pierwszym starcie bez zapisu ustawień — język systemu, od 1.7.397). **Pierwszy start bez zapisu
+  ustawień (od 1.7.398):** obsługa broni CLASSIC i zacięcia OFF (GDD §16.0a), a na zintegrowanej karcie graficznej Effects quality MEDIUM
+  i Render scale 75% (`Settings.first_run_graphics`; osobna karta — HIGH 100%). Karta ma szerokość z zapasem na dłuższe polskie teksty, opisy ustawień łamią się w dwa wiersze, a szczegóły kodeksu
   zajmują całą szerokość strony; `--uifittest` sprawdza, że nic nie wystaje (oba języki), a `--shotpause=N` robi zrzut karty N (z `--lang=pl`).
   Ustawienia zapisują się w `user://settings.cfg`. W trybie solo gra jest zatrzymana; w kooperacji świat idzie dalej (menu to mówi)
   i klawisze gry są wyłączone na czas menu. Nawigacja: mysz, strzałki / D-pad + A, B zamyka, LB / RB przełączają zakładki.
@@ -161,9 +163,12 @@ godot --path . -- --join=127.0.0.1
 
 Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP = dołącz). Interfejs po angielsku albo po polsku (ustawienie języka).
 
-**Wczytywanie mapy (od 1.7.397):** nowa mapa buduje się w widoku 3D w jednej klatce (kilka sekund), więc najpierw rysuje się czarna plansza
-„LOADING…” (`view3d._show_curtain`), budowa idzie w następnej klatce, a plansza znika kilka klatek po niej. Bez planszy przy zrzutach
-(`--shot*`, `--view3dsave*`, `-s tools/…`), pomiarach `--perf*` i nagraniach `--write-movie`; z `--verbose` w logu `[LOAD-CURTAIN] on/off`.
+**Wczytywanie mapy (od 1.7.397, krokami od 1.7.399):** najpierw rysuje się czarna plansza „LOADING…” (`view3d._show_curtain`), potem
+świat 3D buduje się krokami po jednym na klatkę (`_build_steps`: teren, kratownice, ciecze, dekale, runo, dekoracje, mgła, las, tło), a po nim
+w kolejnych klatkach wchodzą grupy modeli (`_warm_stage`: wrogowie → przedmioty → rekwizyty kryjówki → stanowiska → bronie). Najdłuższa
+klatka spadła z 4–8 s do ok. 1–2 s (i9 + RTX 3080, z `--verbose`), więc okno nie „zawiesza się” dla systemu. Bez planszy i krokami nie
+przy zrzutach (`--shot*`, `--view3dsave*`, `-s tools/…`), pomiarach `--perf*` i nagraniach `--write-movie` — tam wszystko w jednej klatce,
+jak dawniej. Dev: `--verbose` → `[LOAD-CURTAIN] on/off`, `[V3D-BUILD] krok ms`; `--loadshot=PLIK` — zrzut 1 s po zejściu planszy i koniec.
 
 ## Sterowanie
 

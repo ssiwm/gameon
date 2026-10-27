@@ -232,6 +232,12 @@ jobs:
             # jednolity (pusty) kadr 1280x720 kompresuje się do kilku kB; prawdziwa scena ma setki
             if [ "$size" -lt 30000 ]; then echo "$m: brak zrzutu albo pusty kadr"; rc=1; fi
           done
+          # świat zbudowany krokami pod planszą wczytywania (zwykłe --shot buduje wszystko w jednej klatce, bez planszy)
+          timeout 180 xvfb-run -a -s "-screen 0 1280x720x24" godot --path prototype --rendering-driver opengl3 -- --host --mission=z1_m1 --loadshot="$PWD/shots/z1_m1_load.png" > shots/z1_m1_load.log 2>&1 || true
+          if grep -a -E "SCRIPT ERROR|Parse Error" shots/z1_m1_load.log; then echo "loadshot: błąd skryptu"; rc=1; fi
+          size=$(stat -c%s shots/z1_m1_load.png 2>/dev/null || echo 0)
+          echo "z1_m1 po planszy: zrzut $size B"
+          if [ "$size" -lt 30000 ]; then echo "loadshot: brak zrzutu albo pusty kadr"; rc=1; fi
           exit $rc
       - name: Render wyposażonej broni — wspólny cache i zmiana slotu
         run: |

@@ -710,9 +710,8 @@ func _t_plates() -> void:
 ## Podrzut: pięć strzałów ogniem ciągłym bez ruchu myszy — ostatni trafia wyżej niż pierwszy.
 func _t_climb() -> void:
 	var wc = player.weapons
-	if not wc.climb_mode() and not Settings.realistic_handling:
-		info("obsługa CLASSIC — pomijam podrzut")
-		return
+	var real0: bool = Settings.realistic_handling
+	Settings.realistic_handling = true          # podrzut jest częścią REALISTIC; od 1.7.398 nowy profil (CI) ma CLASSIC, więc włączamy jawnie
 	var fp: Node = _enter()
 	await _frames(2)
 	fp.yaw = 0.0
@@ -745,6 +744,7 @@ func _t_climb() -> void:
 		check("podrzut: strzały 5–6 średnio %.2f m wyżej niż 1–2 (climb %.2f°)" % [last - first, wc.climb], last > first + 0.15 and wc.climb > 1.5)
 	fp.leave()
 	await _frames(2)
+	Settings.realistic_handling = real0
 
 func _t_practice() -> void:
 	var wc = player.weapons

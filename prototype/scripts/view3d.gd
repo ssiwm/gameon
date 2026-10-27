@@ -82,6 +82,15 @@ var _curtain_left := 0.0
 ## Bez zasłony przy przebiegach, które robią obraz po stałym czasie: zrzuty (`--shot*`, `--view3dsave*`, narzędzia `-s tools/…`),
 ## pomiary `--perf*` i nagrania Movie Maker (`--write-movie`, trailer/capture.sh) — plansza trafiłaby do kadru albo pomiaru.
 static var curtain_enabled := _curtain_allowed()
+## Budowa świata nowej mapy pod planszą idzie krokami (`_build_steps`) — po jednym na klatkę, więc okno odbiera komunikaty systemu
+## między krokami (wcześniej 4–8 s w jednej klatce: Windows mógł oznaczyć grę jako „Nie odpowiada”). W tym czasie reszta `_tick` czeka.
+var _building := false
+## Pierwsze klatki po budowie (plansza dalej wisi): ciężkie synchronizacje tworzą wtedy wszystkie modele naraz (1.1: wrogowie 1,5 s
+## + przedmioty 1 s; kryjówka: stanowiska 2,4 s + przedmioty 1,4 s + bronie 0,8 s), więc wchodzą po jednej grupie na klatkę.
+## −1 = zwykła klatka; 0…WARM_LAST = numer etapu (`_tick` kończy klatkę po grupie z tym numerem).
+const WARM_LAST := 4
+var _warm_stage := -1
+signal _build_frame                     ## co klatkę obrazu, gdy trwa budowa; zwolniony węzeł nie wznowi już budowy (sygnał nie przyjdzie)
 
 static func _curtain_allowed() -> bool:
 	for a in OS.get_cmdline_user_args():
@@ -372,6 +381,8 @@ func release() -> void:
 static var stat_usec := 0
 
 func _process(delta: float) -> void:
+	if _building:
+		_build_frame.emit()
 	var t0 := Time.get_ticks_usec()
 	var before: Dictionary = stat_parts.duplicate() if OS.is_stdout_verbose() else {}
 	_tick(delta)
@@ -427,10 +438,17 @@ func _tick(delta: float) -> void:
 		tp = _tp("geometry", tp)
 		if _curtain_key != _geo_key and _curtain != null and _curtain.visible:
 			return                                        # klatka zasłony: lekka, żeby plansza pojawiła się od razu (wrogowie i przedmioty w następnej)
+	if _building:
+		return                                            # świat nowej mapy jeszcze się buduje (kroki pod planszą)
+	var warm := _warm_stage
+	if warm >= 0:
+		_warm_stage = warm + 1 if warm < WARM_LAST else -1
 	_sync_rigs()
 	tp = _tp("rigs", tp)
 	_sync_enemies(delta)
 	tp = _tp("enemies", tp)
+	if warm == 0:
+		return
 	_sync_reeds(delta)
 	tp = _tp("reeds", tp)
 	_sync_mud_prints()
@@ -441,6 +459,8 @@ func _tick(delta: float) -> void:
 	tp = _tp("props", tp)
 	_sync_items()
 	tp = _tp("items", tp)
+	if warm == 1:
+		return
 	_build_rails()
 	_sync_drawn()
 	tp = _tp("drawn", tp)
@@ -450,8 +470,12 @@ func _tick(delta: float) -> void:
 	tp = _tp("range_doors", tp)
 	_sync_hub_props()
 	tp = _tp("hub_props", tp)
+	if warm == 2:
+		return
 	_sync_station_props()
 	tp = _tp("station_props", tp)
+	if warm == 3:
+		return
 	_sync_world_notes()
 	tp = _tp("world_notes", tp)
 	_sync_guns()
@@ -642,7 +666,7 @@ func _show_curtain(key: String) -> void:
 
 ## Zasłona znika dopiero, gdy geometria tej mapy już stoi i minęło kilka lekkich klatek (czas liczony bez klatki budowy).
 func _tick_curtain(delta: float) -> void:
-	if _curtain == null or not _curtain.visible or _geo_key != _curtain_key:
+	if _curtain == null or not _curtain.visible or _geo_key != _curtain_key or _building or _warm_stage >= 0:
 		return
 	_curtain_frames -= 1
 	_curtain_left -= minf(delta, 0.05)
@@ -650,8 +674,21 @@ func _tick_curtain(delta: float) -> void:
 		_curtain.visible = false
 		if OS.is_stdout_verbose():
 			print("[LOAD-CURTAIN] off")
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--loadshot="):
+				_load_shot(a.substr("--loadshot=".length()))
+
+## Dev (--loadshot=PLIK): zrzut okna 1 s po zejściu planszy i koniec — obraz świata zbudowanego krokami pod planszą (zwykłe --shot
+## buduje wszystko w jednej klatce, bez planszy). CI: krok zrzutów pod xvfb.
+func _load_shot(path: String) -> void:
+	await get_tree().create_timer(1.0).timeout
+	get_viewport().get_texture().get_image().save_png(path)
+	print("[LOAD-SHOT] %s" % path)
+	Audio.quit_game()
 
 func _sync_geometry() -> void:
+	if _building:
+		return                                            # następna zmiana mapy po zakończeniu bieżącej budowy (klucz się nie zgodzi)
 	var rows: Array = _level.get("_map")
 	if rows == null or rows.is_empty():
 		return
@@ -677,7 +714,12 @@ func _sync_geometry() -> void:
 		_apply_geo_state(_geo_alt_state)
 		return
 	_drop_geo_alt()
-	_spawn_burst_until = _life + 1.5                      # nowa mapa: wrogowie mapy powstają razem z nią (przestój ładowania i tak jest)
+	_rebuild_geometry(rows, curtain_enabled and _curtain_key == key)
+
+## Środowisko, kamery i świat mapy od zera. `spread`: kroki świata po jednym na klatkę (pod planszą wczytywania); bez planszy (zrzuty,
+## pomiary, nagrania) — wszystko w tej klatce, jak dawniej.
+func _rebuild_geometry(rows: Array, spread: bool) -> void:
+	_building = spread
 	var amb: Color = _level.get("ambient") if _level.get("ambient") != null else Color(0.0245, 0.0266, 0.0406)
 	var hub := String(_level.get("objective")) == "hub"
 	Level3D.build_environment(_geo, amb, not hub, Settings.quality_idx)
@@ -699,7 +741,7 @@ func _sync_geometry() -> void:
 	env_b.fog_enabled = false
 	_cam_b.environment = env_b
 	_apply_brightness()
-	_apply_geo_state(_build_world(_geo, rows, hub))
+	_apply_geo_state(await _build_world(_geo, rows, hub, spread))
 	# mapa z zawałem w danych (finał 1.1): geometria „po zawale” od razu, w czasie wczytywania (ukryta, bez przetwarzania)
 	var cr = _level.get("collapse_rects")
 	if cr is Array and not (cr as Array).is_empty() and (_level.get("_blocks") as Array).is_empty() and _level.has_method("rows_after"):
@@ -711,10 +753,15 @@ func _sync_geometry() -> void:
 			_geo_alt.process_mode = Node.PROCESS_MODE_DISABLED
 			_world.add_child(_geo_alt)
 			var keep := _static_lists()                      # builders zapisują materiały wiatru / mgły i trzciny statycznie — widoczna mapa zostaje przy swoich
-			_geo_alt_state = _build_world(_geo_alt, after, hub)
+			_geo_alt_state = await _build_world(_geo_alt, after, hub, spread)
 			_geo_alt_state["lists"] = _static_lists()
 			_set_static_lists(keep)
 			_geo_alt_key = "%s:%d:%s" % [String(_level.get("map_id")), str(after).hash(), str(get_tree().get_first_node_in_group("handcar") != null)]
+	_spawn_burst_until = _life + 1.5                      # nowa mapa: wrogowie mapy powstają razem z nią (pod planszą, zaraz po świecie)
+	if spread:
+		_warm_stage = 0
+	_building = false
+	_geo_t = 0.0                                          # w trakcie budowy klucz mógł się zmienić (zawał, inna mapa) — sprawdź od razu
 
 ## Statyczne listy builders (materiały wiatru kart lasu i runa, materiały konstrukcji tła pod mgłę, punkty trzcin) — należą do jednej geometrii naraz.
 func _static_lists() -> Dictionary:
@@ -738,35 +785,52 @@ func _drop_geo_alt() -> void:
 
 ## Geometria mapy z wierszy `rows` pod węzłem `root` (teren, kładki, ciecze, dekale, runo, dekoracje, las, tło, mgła); zwraca stan widoku z niej
 ## wyliczony (`_apply_geo_state`). Bez środowiska i kamer — te ustawia `_sync_geometry` raz na mapę.
-func _build_world(root: Node3D, rows: Array, hub: bool) -> Dictionary:
-	var span := _rail_span()
-	var trench := {}
-	if not span.is_empty():
-		trench = {"row": int(float(span[2]) / 16.0), "c0": int(float(span[0]) / 16.0), "c1": int(float(span[1]) / 16.0)}
-	Level3D.build_level(root, rows, trench)
-	Backdrop3D.build_frames(root, rows)
-	Level3D.set_streams(_level.get("streams") if _level.get("streams") != null else [])
-	Level3D.build_liquids(root, rows)
-	Level3D.build_liquid_props(root, rows)
-	Level3D.build_wade_veils(root, rows, LAYER_ACTORS)
-	Level3D.build_decals(root, rows)
-	Level3D.build_undergrowth(root, rows)
-	Level3D.build_front_edge(root, rows)
-	_build_deco(root)
-	Level3D.build_fog_volumes(root, rows, 0.02 if hub else 0.035)
-	if not hub:
-		Level3D.build_forest_floor(root, rows)
-		Level3D.build_streams(root, rows)
-		Level3D.build_forest(root, rows)
-		Level3D.build_canopy_haze(root, rows)
-		Backdrop3D.build(root, rows, _level.get("backdrop") if _level.get("backdrop") != null else [])
-		Level3D.build_ground_fog(root, rows)
+func _build_world(root: Node3D, rows: Array, hub: bool, spread := false) -> Dictionary:
+	var verbose := OS.is_stdout_verbose()
+	for step in _build_steps(root, rows, hub):
+		var t0 := Time.get_ticks_usec()
+		(step[1] as Callable).call()
+		if verbose:
+			print("[V3D-BUILD] %s %.0f ms" % [step[0], (Time.get_ticks_usec() - t0) / 1000.0])
+		if spread:
+			await _build_frame                             # klatka obrazu między krokami: plansza stoi, system widzi żywe okno
 	var mud: Array = []
 	for mi in root.get_children():
 		if mi is MeshInstance3D and String(mi.name).begins_with("LiquidTop_m_"):
 			mud.append((mi as MeshInstance3D).material_override)
 	var reeds := root.get_node_or_null("ShoreReeds") as MeshInstance3D
 	return {"rows": rows, "reeds": reeds.material_override as ShaderMaterial if reeds != null else null, "mud": mud}
+
+## Kroki `_build_world` w kolejności (nazwa do pomiaru, wywołanie). Kolejność ma znaczenie: ciecze potrzebują strumieni, las — dna lasu itd.
+func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
+	var span := _rail_span()
+	var trench := {}
+	if not span.is_empty():
+		trench = {"row": int(float(span[2]) / 16.0), "c0": int(float(span[0]) / 16.0), "c1": int(float(span[1]) / 16.0)}
+	var steps := [
+		["level", func() -> void: Level3D.build_level(root, rows, trench)],
+		["frames", func() -> void: Backdrop3D.build_frames(root, rows)],
+		["liquids", func() -> void:
+			Level3D.set_streams(_level.get("streams") if _level.get("streams") != null else [])
+			Level3D.build_liquids(root, rows)],
+		["liquid_props", func() -> void: Level3D.build_liquid_props(root, rows)],
+		["wade_veils", func() -> void: Level3D.build_wade_veils(root, rows, LAYER_ACTORS)],
+		["decals", func() -> void: Level3D.build_decals(root, rows)],
+		["undergrowth", func() -> void: Level3D.build_undergrowth(root, rows)],
+		["front_edge", func() -> void: Level3D.build_front_edge(root, rows)],
+		["deco", func() -> void: _build_deco(root)],
+		["fog_volumes", func() -> void: Level3D.build_fog_volumes(root, rows, 0.02 if hub else 0.035)],
+	]
+	if not hub:
+		steps.append_array([
+			["forest_floor", func() -> void: Level3D.build_forest_floor(root, rows)],
+			["streams", func() -> void: Level3D.build_streams(root, rows)],
+			["forest", func() -> void: Level3D.build_forest(root, rows)],
+			["canopy_haze", func() -> void: Level3D.build_canopy_haze(root, rows)],
+			["backdrop", func() -> void: Backdrop3D.build(root, rows, _level.get("backdrop") if _level.get("backdrop") != null else [])],
+			["ground_fog", func() -> void: Level3D.build_ground_fog(root, rows)],
+		])
+	return steps
 
 ## Stan widoku zależny od zbudowanej geometrii (materiały trzcin i błota, ślady stóp w błocie, mapa brodzenia).
 func _apply_geo_state(st: Dictionary) -> void:
