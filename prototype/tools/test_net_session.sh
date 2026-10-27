@@ -3,7 +3,8 @@
 #   tools/test_net_session.sh        # z katalogu prototype/
 # 1. Inna wersja: klient z --fakebuild nie wchodzi do gry (host nie tworzy mu postaci), lobby klienta podaje powód.
 # 2. Utrata hosta: klient przeładowuje scenę (jak leave_session), wraca do lobby z komunikatem i nie dołącza ponownie z --join.
-# 3. Czterech ludzi: numery P1–P4 (bot nie zabiera numeru, P5 się nie pojawia).
+# 3. Czterech ludzi: numery P1–P4 (bot nie zabiera numeru, P5 się nie pojawia); klienci wychodzą po kolei, a ci, którzy zostają, nie dostają
+#    błędu silnika `on_despawn_receive … ERR_UNAUTHORIZED` (postać wychodzącego usuwa tylko serwer).
 # Wymaga `godot` w PATH i zaimportowanego projektu (godot --headless --path . --import).
 set -u
 cd "$(dirname "$0")/.."
@@ -37,12 +38,13 @@ grep -a -q "\[NET\] po końcu sesji: sieć=false graczy=0 lobby=true powód=host
 [ "$(grep -a -c "\[NET\] connected as peer" "$LOG/drop_client.log")" -eq 1 ] && ok "bez ponownego dołączenia z --join" || fail "klient dołączył ponownie po przeładowaniu"
 
 echo "== czterech ludzi =="
-godot --headless --path . -- --host --port=8962 --autoquit=30 >"$LOG/four_host.log" 2>&1 &
+godot --headless --path . -- --host --port=8962 --autoquit=40 >"$LOG/four_host.log" 2>&1 &
 HOST=$!
 sleep 4
 CLIENTS=()
 for i in 1 2 3; do
-	godot --headless --path . -- --join=127.0.0.1 --port=8962 --autoquit=$((24 - 2 * i)) >"$LOG/four_c$i.log" 2>&1 &
+	# start co 2 s, wyjście co 6 s (c1 pierwszy): pozostali widzą odejście kolegi
+	godot --headless --path . -- --join=127.0.0.1 --port=8962 --autoquit=$((10 + 4 * i)) >"$LOG/four_c$i.log" 2>&1 &
 	CLIENTS+=($!)
 	sleep 2
 done
@@ -52,6 +54,8 @@ for n in 2 3 4; do
 done
 grep -a -q "display P[5-9]" "$LOG/four_host.log" && fail "numer ponad P4 przy czterech ludziach" || ok "bez numerów ponad P4"
 grep -a -q "\[BOT\] spawned companion slot 4" "$LOG/four_host.log" && ok "bot zajmuje najwyższy wolny numer (P4)" || fail "bot nie wziął P4"
+[ "$(grep -a -c "\[NET\] peer disconnected" "$LOG/four_c3.log")" -ge 2 ] && ok "ostatni klient widzi odejście dwóch kolegów" || fail "ostatni klient nie widział odejść kolegów"
+if grep -a -q "ERR_UNAUTHORIZED" "$LOG"/four_c*.log; then fail "błąd despawnu u klienta po odejściu kolegi (ERR_UNAUTHORIZED)"; else ok "bez błędów despawnu u klientów po odejściu kolegów"; fi
 
 # Błąd GDScript może przerwać pojedynczą korutynę bez niezerowego kodu procesu.
 for f in "$LOG"/*.log; do

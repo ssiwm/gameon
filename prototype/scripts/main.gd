@@ -3688,6 +3688,9 @@ func _on_peer_disconnected(id: int) -> void:
 	print("[NET] peer disconnected: %d" % id)
 	LagComp.forget(id)
 	level.forget_weapon_kit(id)
+	if not multiplayer.is_server():
+		return              # postać wychodzącego usuwa serwer, a MultiplayerSpawner rozsyła to klientom; własne queue_free u klienta wyprzedzało
+		                    # ten despawn i silnik zgłaszał „on_despawn_receive … ERR_UNAUTHORIZED” u każdego, kto został w sesji
 	var p := _players.get_node_or_null(str(id))
 	if p != null:
 		p.queue_free()
