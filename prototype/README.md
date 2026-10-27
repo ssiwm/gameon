@@ -163,9 +163,12 @@ godot --path . -- --join=127.0.0.1
 
 Bez parametrów: lobby z przyciskami **HOST GAME** / **JOIN** (Enter w polu IP = dołącz). Interfejs po angielsku albo po polsku (ustawienie języka).
 
-**Wczytywanie mapy (od 1.7.397):** nowa mapa buduje się w widoku 3D w jednej klatce (kilka sekund), więc najpierw rysuje się czarna plansza
-„LOADING…” (`view3d._show_curtain`), budowa idzie w następnej klatce, a plansza znika kilka klatek po niej. Bez planszy przy zrzutach
-(`--shot*`, `--view3dsave*`, `-s tools/…`), pomiarach `--perf*` i nagraniach `--write-movie`; z `--verbose` w logu `[LOAD-CURTAIN] on/off`.
+**Wczytywanie mapy (od 1.7.397, krokami od 1.7.399):** najpierw rysuje się czarna plansza „LOADING…” (`view3d._show_curtain`), potem
+świat 3D buduje się krokami po jednym na klatkę (`_build_steps`: teren, kratownice, ciecze, dekale, runo, dekoracje, mgła, las, tło), a po nim
+w kolejnych klatkach wchodzą grupy modeli (`_warm_stage`: wrogowie → przedmioty → rekwizyty kryjówki → stanowiska → bronie). Najdłuższa
+klatka spadła z 4–8 s do ok. 1–2 s (i9 + RTX 3080, z `--verbose`), więc okno nie „zawiesza się” dla systemu. Bez planszy i krokami nie
+przy zrzutach (`--shot*`, `--view3dsave*`, `-s tools/…`), pomiarach `--perf*` i nagraniach `--write-movie` — tam wszystko w jednej klatce,
+jak dawniej. Dev: `--verbose` → `[LOAD-CURTAIN] on/off`, `[V3D-BUILD] krok ms`; `--loadshot=PLIK` — zrzut 1 s po zejściu planszy i koniec.
 
 ## Sterowanie
 

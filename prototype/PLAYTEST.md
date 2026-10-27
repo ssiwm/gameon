@@ -77,8 +77,8 @@ decydują o priorytetach przed jakąkolwiek nową zawartością.
 
 - [ ] Stabilne 60 fps na najsłabszym dostępnym komputerze (walka z wieloma wrogami + boss + flary).
 - [ ] 1080p i 1440p: HUD czytelny? (menu pauzy → HUD size: L, jeśli za mały).
-- [ ] Wczytywanie mapy: od 1.7.397 czarna plansza „LOADING…” — ile trwa u testera i czy Windows pokazuje „Nie odpowiada” (budowa świata
-      trwa kilka sekund w jednej klatce; na i9 + RTX 3080: 1.1 ok. 6 s, kryjówka ok. 4 s z pustym profilem).
+- [ ] Wczytywanie mapy: czarna plansza „LOADING…” — ile trwa u testera i czy Windows pokazuje „Nie odpowiada”. Od 1.7.399 świat buduje się
+      krokami (najdłuższa klatka ok. 1–2 s na i9 + RTX 3080 zamiast 4–8 s), więc „Nie odpowiada” nie powinno się już pojawić.
 - [ ] Menu pauzy (Esc / P): ustawienia zapisują się po restarcie; Esc w lobby nic nie robi; w solo gra się zatrzymuje,
       w koopie idzie dalej.
 - [ ] Mikrofon: czułość LOW/MED/HIGH u kogoś z innym mikrofonem; „NO MIC" gdy brak urządzenia.
