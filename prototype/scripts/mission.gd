@@ -507,8 +507,9 @@ func log_start() -> void:
 		_hub_at = -1
 	SessionLog.mission_start(row)
 
-## Koniec próby: "success", "failed" (Nocny Dyżur) albo "wipe" (kampania: zaraz po nim nowa próba tej samej misji).
-func log_end(result: String) -> void:
+## Koniec próby: "success", "failed" (Nocny Dyżur), "wipe" (kampania: zaraz po nim nowa próba tej samej misji) albo "quit" — drużyna
+## wyszła w trakcie (`how`: "exit" = wyjście z gry, "leave" = LEAVE SESSION hosta); playtest pyta, ilu graczy rezygnuje po wipe'ie.
+func log_end(result: String, how := "") -> void:
 	if result != "success":
 		_track_downs()                  # wipe wykrywa main.gd, zanim ta klatka policzy ostatnie upadki
 	_peak_all = maxf(_peak_all, NoiseMgr.level)
@@ -516,8 +517,12 @@ func log_end(result: String) -> void:
 	for id in player_stats:
 		players[id] = (player_stats[id] as Dictionary).duplicate()
 	var scrap := {"loot": Scrap.loot, "samples": Scrap.samples_loot, "bonus": scrap_bonus() if result == "success" and kind != "hub" and Scrap.enabled() else 0}
-	SessionLog.mission_end({"result": result, "time": snappedf(elapsed, 0.1), "downs": downs, "attempts": attempts,
-		"peak_noise": roundi(_peak_all), "peak_noise_objective": roundi(peak_noise), "side": side_done(), "players": players, "scrap": scrap})
+	var row := {"result": result, "time": snappedf(elapsed, 0.1), "downs": downs, "attempts": attempts,
+		"peak_noise": roundi(_peak_all), "peak_noise_objective": roundi(peak_noise), "side": side_done(), "players": players, "scrap": scrap}
+	if how != "":
+		row["how"] = how
+		row["phase"] = String(Phase.keys()[phase]).to_lower()      # w której fazie drużyna zrezygnowała
+	SessionLog.mission_end(row)
 
 ## Premia złomu za udaną misję: ukończenie, cel poboczny, bez upadków.
 func scrap_bonus() -> int:

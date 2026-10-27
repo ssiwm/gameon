@@ -70,6 +70,25 @@ var _vp_fg: SubViewport
 var _world: Node3D
 var _geo: Node3D
 var _geo_key := ""
+## Zasłona wczytywania (interfejs, nie świat): nowa mapa buduje się w jednej klatce przez kilka sekund (pomiar 2026-10-27, pusty profil,
+## i9 + RTX 3080: 1.1 ok. 6 s, kryjówka ok. 4,4 s), a obraz stał wtedy zamrożony w pół ruchu. Teraz najpierw rysuje się czarna plansza,
+## budowa idzie w następnej klatce, a plansza znika po CURTAIN_FRAMES klatkach i CURTAIN_HOLD s od budowy (doczytują się wtedy modele).
+const CURTAIN_FRAMES := 3
+const CURTAIN_HOLD := 0.3
+var _curtain: CanvasLayer = null
+var _curtain_key := ""                  ## klucz geometrii, dla której wisi zasłona (budowa w następnej klatce)
+var _curtain_frames := 0
+var _curtain_left := 0.0
+## Bez zasłony przy przebiegach, które robią obraz po stałym czasie: zrzuty (`--shot*`, `--view3dsave*`, narzędzia `-s tools/…`),
+## pomiary `--perf*` i nagrania Movie Maker (`--write-movie`, trailer/capture.sh) — plansza trafiłaby do kadru albo pomiaru.
+static var curtain_enabled := _curtain_allowed()
+
+static func _curtain_allowed() -> bool:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--shot") or a.begins_with("--perf") or a.begins_with("--view3dsave"):
+			return false
+	var engine_args := OS.get_cmdline_args()
+	return not (engine_args.has("-s") or engine_args.has("--script") or engine_args.has("--write-movie"))
 var _geo_alt: Node3D = null                 ## ukryta geometria mapy po zawale (budowana razem z mapą; zawał tylko ją podmienia — bez ok. 0,6 s przestoju)
 var _geo_alt_key := ""
 var _geo_alt_state := {}
@@ -397,6 +416,7 @@ func _tick(delta: float) -> void:
 			elif ar.begins_with("--view3dsavebg="):                 # dev: zapis obrazu świata 3D (bez interfejsu i warstw 2D) — ocena materiałów w nocnym oświetleniu
 				_saved = true
 				_vp_bg.get_texture().get_image().save_png(ar.substr("--view3dsavebg=".length()))
+	_tick_curtain(delta)
 	var tp := Time.get_ticks_usec()
 	_sync_camera()
 	tp = _tp("camera", tp)
@@ -405,6 +425,8 @@ func _tick(delta: float) -> void:
 		_geo_t = 0.25
 		_sync_geometry()
 		tp = _tp("geometry", tp)
+		if _curtain_key != _geo_key and _curtain != null and _curtain.visible:
+			return                                        # klatka zasłony: lekka, żeby plansza pojawiła się od razu (wrogowie i przedmioty w następnej)
 	_sync_rigs()
 	tp = _tp("rigs", tp)
 	_sync_enemies(delta)
@@ -591,12 +613,55 @@ func _apply_brightness() -> void:
 
 # ---------------------------------------------------------------- świat statyczny
 
+func _show_curtain(key: String) -> void:
+	_curtain_key = key
+	_curtain_frames = CURTAIN_FRAMES
+	_curtain_left = CURTAIN_HOLD
+	if _curtain == null:
+		_curtain = CanvasLayer.new()
+		_curtain.name = "LoadCurtain"
+		_curtain.layer = 100                                # nad HUD-em i menu: na czas budowy nic pod spodem nie jest aktualne
+		var bg := ColorRect.new()
+		bg.color = Color.BLACK
+		bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+		bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_curtain.add_child(bg)
+		var lbl := Label.new()
+		lbl.text = "LOADING…"
+		lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lbl.add_theme_font_override("font", UiTheme.heading_font())
+		lbl.add_theme_font_size_override("font_size", 28)
+		lbl.add_theme_color_override("font_color", UiTheme.MUTED)
+		bg.add_child(lbl)
+		add_child(_curtain)
+	_curtain.visible = true
+	if OS.is_stdout_verbose():
+		print("[LOAD-CURTAIN] on (%s)" % key.get_slice(":", 0))
+
+## Zasłona znika dopiero, gdy geometria tej mapy już stoi i minęło kilka lekkich klatek (czas liczony bez klatki budowy).
+func _tick_curtain(delta: float) -> void:
+	if _curtain == null or not _curtain.visible or _geo_key != _curtain_key:
+		return
+	_curtain_frames -= 1
+	_curtain_left -= minf(delta, 0.05)
+	if _curtain_frames <= 0 and _curtain_left <= 0.0:
+		_curtain.visible = false
+		if OS.is_stdout_verbose():
+			print("[LOAD-CURTAIN] off")
+
 func _sync_geometry() -> void:
 	var rows: Array = _level.get("_map")
 	if rows == null or rows.is_empty():
 		return
 	var key := "%s:%d:%s" % [String(_level.get("map_id")), str(rows).hash(), str(get_tree().get_first_node_in_group("handcar") != null)]
 	if key == _geo_key:
+		return
+	var new_map := _geo_key == "" or _geo_key.get_slice(":", 0) != String(_level.get("map_id"))
+	if new_map and curtain_enabled and _curtain_key != key:
+		_show_curtain(key)
+		_geo_t = 0.0                                      # budowa w następnej klatce — ta jeszcze narysuje planszę
 		return
 	_geo_key = key
 	_span_map = ""

@@ -205,7 +205,7 @@ func _sweep(from: Vector2, to: Vector2, rewind := -1.0) -> bool:
 			# własny pocisk (celowanie w dół) i leżący — przelot; kolega — przelot + krzyk (FF)
 			_skip.append(hit["rid"])
 			if authoritative and node.player_id != shooter_id and not node.dead:
-				node.deliver_ff(p)
+				node.deliver_ff(p, shooter_id)
 			cur = p
 			continue
 		if node != null and node.is_in_group("enemies"):

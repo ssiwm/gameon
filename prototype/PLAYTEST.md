@@ -6,17 +6,24 @@ decydują o priorytetach przed jakąkolwiek nową zawartością.
 ## 1. Przed sesją (10 min)
 
 - [ ] Eksport skryptem `tools/export_build.sh Windows` (**nie z edytora**) z drzewa, w którym jest komplet `audio_licensed/`
-      (`python3 tools/audio_lib_fetch.py sync`, potem `python3 tools/bake_audio.py`; kontrola: `python3 tools/audio_audit.py --licensed`).
+      (`python tools/audio_lib_fetch.py sync`, potem `python tools/bake_audio.py`; kontrola: `python tools/audio_audit.py --licensed`;
+      na Windows w Git Bash `python3` to alias Microsoft Store — używaj `python`). Paczka dla testerów: `tools/package_build.sh Windows`.
       Skrypt odmawia eksportu bez nagrań: build z samej syntezy brzmi inaczej, a groza Stalkera stoi na dźwięku — wszyscy
       uczestnicy muszą dostać ten sam zestaw. Sprawdź build na komputerze, na którym nie ma Godota ani repozytorium.
 - [ ] Uruchom eksport: menu → host → cała misja → ekran wyniku → [ENTER] → druga misja. Zero błędów w konsoli.
 - [ ] Włącz nagrywanie ekranu **z dźwiękiem i mikrofonem** (OBS). Reakcje graczy są ważniejsze od ich opinii.
-- [ ] Zapisz wersję buildu ze stopki menu głównego (np. `1.7.208+abc1234`; ta sama trafia do dziennika sesji).
+- [ ] Zapisz wersję buildu ze stopki menu głównego (np. `1.7.397+abc1234`; ta sama trafia do dziennika sesji). Od 1.7.396 gra sama
+      odrzuca dołączenie z innym buildem (komunikat w lobby) — wszyscy muszą mieć tę samą paczkę.
 - [ ] Ustaw poziom trudności w menu głównym: **EASY** dla nowych graczy. Gra startuje na NORMAL i zapamiętuje ostatni wybór,
       więc sprawdź go na każdym komputerze, który będzie hostem.
+- [ ] Język: przy pierwszym starcie gra bierze język systemu (od 1.7.397: polski Windows → POLSKI). Zanotuj, w jakim języku grał tester.
+- [ ] Zakres: kampania to 1.1 → 1.2 → 1.3 → boss B1. **B1 Pijawka nie została dotąd pokonana w żadnej sesji autora** (13 podejść,
+      także na EASY) — zdecyduj przed sesją, czy test kończy się na 1.3, i powiedz to testerom tylko jako „gramy do X”.
 - [ ] Gracze mają słuchawki. Bez nich cały filar „dźwięk jako groza" przepada.
 - [ ] Dziennik sesji pisze się sam u hosta (`%APPDATA%\Godot\app_userdata\Dead Air '87 Prototype\sessions\`). Po sesji skopiuj
       ten katalog razem z nagraniem — jest w nim źródło każdego upadku, Uwaga, zamachy Stalkera i statystyki broni (README, „Dziennik sesji”).
+      Od 1.7.397 dziennik zapisuje też misje przerwane wyjściem z gry (`"result":"quit"`) i każde friendly fire ze strzelcem (`"ev":"ff"`).
+      Raport: `python tools/session_progress.py --dir KATALOG --since RRRR-MM-DD` (mapy, przerwane próby, kryjówka, perki, broń).
 
 ## 2. Zasady sesji
 
@@ -38,7 +45,7 @@ decydują o priorytetach przed jakąkolwiek nową zawartością.
 | Reakcje na głos / śmiech / krzyk do mikrofonu | Czy VAD działa u kogoś innego niż my? |
 | Ile powtórek bez znudzenia | Powtarzalność mapy (GDD §16.0) |
 
-## 3b. Misja 1.2 „Przerwa w Nadawaniu" (druga misja kampanii; pierwsza to samouczek 1.1 bez Stalkera)
+## 3b. Misja 1.2 „Przerwa w Nadawaniu" (druga misja kampanii; pierwsza to 1.1 — zbieranie, Stalker tylko przechodzi za hałas)
 
 - [ ] Czy gracz rozumie, co robić z generatorem (podpowiedź „Hold E”, pasek postępu)? Ile prób, zanim to zrobi?
 - [ ] Czy generator jest „za głośny / za cichy”? Ile Uwagi zwykle wyrabia drużyna do końca celu (karta wyniku: stealth kept/lost)?
@@ -59,13 +66,16 @@ decydują o priorytetach przed jakąkolwiek nową zawartością.
 - [ ] Steam P2P: host + klient przez internet (własny App ID — `steam_appid.txt`; 480 działa tylko do testów).
 - [ ] Opóźnienie 50–150 ms (np. klient na VPN / hotspot): strzały trafiają, wrogowie nie „skaczą".
 - [ ] Dołączenie w środku misji (znane ograniczenie GDD §19 poz. 23 — sprawdź, jak bardzo przeszkadza).
-- [ ] Host wychodzi w trakcie gry: klient dostaje czytelny komunikat, nie zawieszenie.
+- [ ] Host wychodzi w trakcie gry: klient wraca do lobby z komunikatem „Rozłączono z hostem” (od 1.7.396 czysta scena, wyjście z lobby Steam).
+- [ ] Klient ze starszym/innym buildem: komunikat o innej wersji w lobby, host nie tworzy mu postaci.
 - [ ] Rozłączenie klienta i ponowne dołączenie.
 
 ## 5. Wydajność i komfort
 
 - [ ] Stabilne 60 fps na najsłabszym dostępnym komputerze (walka z wieloma wrogami + boss + flary).
-- [ ] 1080p i 1440p: HUD czytelny? (menu pauzy → HUD SIZE: LARGE, jeśli za mały).
+- [ ] 1080p i 1440p: HUD czytelny? (menu pauzy → HUD size: L, jeśli za mały).
+- [ ] Wczytywanie mapy: od 1.7.397 czarna plansza „LOADING…” — ile trwa u testera i czy Windows pokazuje „Nie odpowiada” (budowa świata
+      trwa kilka sekund w jednej klatce; na i9 + RTX 3080: 1.1 ok. 6 s, kryjówka ok. 4 s z pustym profilem).
 - [ ] Menu pauzy (Esc / P): ustawienia zapisują się po restarcie; Esc w lobby nic nie robi; w solo gra się zatrzymuje,
       w koopie idzie dalej.
 - [ ] Mikrofon: czułość LOW/MED/HIGH u kogoś z innym mikrofonem; „NO MIC" gdy brak urządzenia.

@@ -381,9 +381,15 @@ func save_range_board(board: Array) -> void:
 
 # ---------------------------------------------------------------- zapis
 
+## Język przy pierwszym starcie (brak zapisu ustawień): język systemu, jeśli gra go ma (`pl_PL` → POLSKI), inaczej angielski.
+## Wcześniej gra zawsze startowała po angielsku, a testerzy dostają instrukcję po polsku.
+static func system_locale_idx(os_lang: String) -> int:
+	return maxi(LOCALES.find(os_lang.substr(0, 2).to_lower()), 0)
+
 func _load() -> void:
 	var cf := ConfigFile.new()
 	if cf.load(SAVE_PATH) != OK:
+		locale_idx = system_locale_idx(OS.get_locale_language())
 		return
 	for kind in volume:
 		# otoczenie miało kiedyś wspólny suwak z muzyką: zapis sprzed rozdzielenia daje mu tę samą wartość
@@ -418,7 +424,7 @@ func _load() -> void:
 	realistic_handling = bool(cf.get_value("game", "realistic_handling", true))
 	reliability_idx = clampi(int(cf.get_value("game", "reliability", 1)), 0, RELIABILITY_NAMES.size() - 1)
 	colorblind_idx = clampi(int(cf.get_value("game", "colorblind", 0)), 0, COLORBLIND_NAMES.size() - 1)
-	locale_idx = clampi(int(cf.get_value("game", "locale", 0)), 0, LOCALES.size() - 1)
+	locale_idx = clampi(int(cf.get_value("game", "locale", system_locale_idx(OS.get_locale_language()))), 0, LOCALES.size() - 1)
 	brightness_idx = clampi(int(cf.get_value("game", "brightness", BRIGHTNESS_DEFAULT)), 0, BRIGHTNESS_EV.size() - 1)
 	brightness_calibrated = bool(cf.get_value("game", "brightness_calibrated", false))
 	seen_tips = Array(cf.get_value("game", "seen_tips", []))

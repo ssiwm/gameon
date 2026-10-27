@@ -34,6 +34,11 @@ jobs:
         run: |
           godot --headless --path prototype -- --host --stalkertest --autoquit=70 2>&1 | tee stalkertest.log
           grep -a "\[STALKER-TEST\] ==== PASS" stalkertest.log
+      - name: Bot za plecami dowódcy i zdarzenie FF w dzienniku (--bottest)
+        run: |
+          godot --headless --path prototype -- --host --bottest --sessionlog="$RUNNER_TEMP/bot-sessions" --autoquit=40 2>&1 | tee bottest.log
+          grep -a -q "\[BOT-TEST\] ==== PASS" bottest.log
+          grep -h '"ev":"ff"' "$RUNNER_TEMP"/bot-sessions/*.jsonl | grep '"shooter":"P1"' | grep '"victim_bot":true'
       - name: Strzelnica FPP (--rangetest)
         run: |
           godot --headless --path prototype -- --host --rangetest --autoquit=60 2>&1 | tee rangetest.log
@@ -53,6 +58,7 @@ jobs:
           grep -h '"ev":"mission_end"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"kinds":{"trzosek":1}' | grep '"xp_kills":2'
           grep -h '"ev":"mission_start"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"level":1' | grep '"perks":\[\]'
           grep -h '"ev":"xp"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"First clear"'
+          grep -h '"ev":"mission_end"' "$RUNNER_TEMP"/sessions/*.jsonl | grep '"result":"quit"' | grep '"how":"exit"'
       - name: Przechodzący Stalker w misji 1.1 (--passtest)
         run: |
           godot --headless --path prototype -- --host --mission=z1_m1 --passtest --autoquit=20 2>&1 | tee passtest.log

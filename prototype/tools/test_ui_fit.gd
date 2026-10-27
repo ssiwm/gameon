@@ -18,6 +18,12 @@ var _seen := {}                        ## zgłoszone już (język, karta, kontro
 ## Wynik: liczba błędów (0 = PASS). `host` — węzeł w drzewie (main.gd), pod nim powstaje próbne menu.
 func run(host: Node) -> int:
 	var tree := host.get_tree()
+	# pierwszy start bez zapisu ustawień: język z systemu (Settings.system_locale_idx)
+	for case in [["pl", 1], ["PL", 1], ["en", 0], ["de", 0], ["", 0]]:
+		var got: int = Settings.system_locale_idx(String(case[0]))
+		if got != int(case[1]):
+			_fail("język systemu „%s” → %s, oczekiwano %s" % [case[0], Settings.LOCALES[got], Settings.LOCALES[int(case[1])]])
+	print("[UI-FIT] PASS  język systemu przy pierwszym starcie: pl → POLSKI, inne → ENGLISH" if _fails == 0 else "[UI-FIT] FAIL  język systemu")
 	var keep := TranslationServer.get_locale()
 	for loc in LOCALES:
 		TranslationServer.set_locale(loc)

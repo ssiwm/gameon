@@ -11,6 +11,7 @@ const Actions := preload("res://scripts/actions.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
 const WeaponController := preload("res://scripts/weapon_controller.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 const BloodDecals := preload("res://scripts/blood_decals.gd")
 const WeaponView := preload("res://scripts/weapon_view.gd")
 const Char3D := preload("res://scripts/char3d.gd")
@@ -73,6 +74,7 @@ const BOT_CAR_LAG := 150.0      ## drezyna (handcar.gd): bot dalej od niej niż 
 const BOT_CAR_LAG_T := 1.5      ## ... i po tylu sekundach bez dogonienia ląduje na pokładzie (bot chodzi wolniej niż drezyna)
 const BOT_KITE_RANGE := 30.0    ## ... i cofa się, gdy jest bliżej niż to (strzela w biegu, M-83 nie ma minimalnego zasięgu)
 const BOT_MEDKIT_RANGE := 180.0 ## ranny bot szuka apteczki w takim promieniu
+const BOT_SIDE_HOLD := 0.8      ## s: stojący dowódca patrzy w nową stronę tyle, zanim bot przejdzie mu za plecy (`_behind_side`)
 
 # Latarka (GDD §6.6 / §8.3): stożek 8 m, bateria 3 min, światło = hałas
 const BATTERY_MAX := 180.0
@@ -1340,6 +1342,8 @@ var _bot_path_i := 0
 var _bot_stuck := 0.0
 var _bot_prev_x := 0.0
 var _bot_leader: Node2D = null
+var _bot_side := 0.0                ## strona bota względem dowódcy (±1; 0 = jeszcze nie wybrana) — `_behind_side`
+var _bot_side_since := 0            ## ms: od kiedy obecna strona się zgadza (albo dowódca nie wskazuje kierunku)
 var _bot_wants_jump := false
 var _bot_repath := 0.0
 var _bot_car_lag := 0.0
@@ -1642,10 +1646,27 @@ func _pick_bot_goal() -> void:
 	var leader := _leader()
 	if leader != null:
 		# trzyma się za dowódcą; kilku botów ustawia się w różnych odstępach, a nie w jednym punkcie
-		var side := 1.0 if display_id % 2 == 0 else -1.0
-		_bot_target_pos = leader.global_position + Vector2(side * (22.0 + float(display_id % 3) * 10.0), 0)
+		_bot_target_pos = leader.global_position + Vector2(_behind_side(leader) * (22.0 + float(display_id % 3) * 10.0), 0)
 		return
 	_bot_target_pos = _spawn_point
+
+## Strona „za plecami” dowódcy: przeciwna do kierunku, w którym idzie, a gdy stoi — do kierunku celowania (oba replikowane, więc
+## serwer zna je także u klientów). Wcześniej strona wynikała z numeru bota i bot szedł przed człowiekiem w 33% próbek dziennika —
+## w linii jego ognia (friendly fire = 9% hałasu). Stojący dowódca musi patrzeć w nową stronę BOT_SIDE_HOLD s, zanim bot przejdzie
+## mu za plecy: krótki strzał do tyłu nie przeciąga bota przez linię ognia tam i z powrotem.
+func _behind_side(leader: Node2D) -> float:
+	var vx: float = leader.velocity.x
+	var ax: float = leader.aim_dir.x
+	var front := signf(vx) if absf(vx) > 20.0 else (signf(ax) if absf(ax) > 0.3 else 0.0)
+	var now := Time.get_ticks_msec()
+	if _bot_side == 0.0:
+		_bot_side = -front if front != 0.0 else (1.0 if display_id % 2 == 0 else -1.0)
+	if front == 0.0 or -front == _bot_side:
+		_bot_side_since = now
+	elif absf(vx) > 20.0 or float(now - _bot_side_since) >= BOT_SIDE_HOLD * 1000.0:
+		_bot_side = -front
+		_bot_side_since = now
+	return _bot_side
 
 ## Najbliższa apteczka na ziemi w zasięgu, o ile żaden ranny człowiek nie stoi przy niej.
 func _nearest_medkit(max_dist: float) -> Node2D:
@@ -1739,7 +1760,8 @@ func _winding_near(max_dist: float) -> Node2D:
 ## cudzej postaci kończyło się po cichu — gracze-klienci nie dostawali obrażeń
 ## od Stalkera ani od friendly fire. Wszystkie źródła obrażeń wołają tę metodę.
 ## Friendly fire bez obrażeń (projectile.gd): rozstrzyga właściciel postaci.
-func deliver_ff(from_pos: Vector2) -> void:
+func deliver_ff(from_pos: Vector2, shooter_id := 0) -> void:
+	_log_ff(shooter_id)
 	if not NoiseMgr.has_network() or is_multiplayer_authority():
 		apply_ff(from_pos)
 	else:
@@ -1796,6 +1818,22 @@ func apply_stun(seconds: float) -> void:
 
 func is_stunned() -> bool:
 	return stun_t > 0.0
+
+## Dziennik sesji (serwer): kto trafił kogo przez friendly fire — w dziennikach FF to 9% hałasu, a bez strzelca nie wiadomo, czy to
+## bot w linii ognia człowieka, czy bot strzelający w plecy. Najwyżej raz na FF_COOLDOWN na ofiarę (śrut to kilka trafień naraz).
+var _ff_log_ms := -100000
+
+func _log_ff(shooter_id: int) -> void:
+	var now := Time.get_ticks_msec()
+	if not SessionLog.recording() or float(now - _ff_log_ms) < FF_COOLDOWN * 1000.0:
+		return
+	_ff_log_ms = now
+	var row := {"victim": "P%d" % display_id, "victim_bot": is_bot}
+	for p in get_tree().get_nodes_in_group("players"):
+		if int(p.player_id) == shooter_id:
+			row["shooter"] = "P%d" % int(p.display_id)
+			row["shooter_bot"] = bool(p.is_bot)
+	SessionLog.event("ff", row)
 
 ## Trafienie przez kolegę: odrzut, błysk i krzyk = HAŁAS (Uwaga), zero HP.
 @rpc("any_peer", "call_remote", "reliable")

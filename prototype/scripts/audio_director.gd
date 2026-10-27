@@ -39,6 +39,8 @@ extends Node
 ## Napisy dla niesłyszących: sygnał `caption` (manifest: CAPTIONS).
 
 signal caption(text: String, pos: Vector2, priority: int)
+## Początek wyjścia z gry (przycisk Quit, zamknięcie okna, koniec testu) — main.gd domyka wtedy dziennik misji w toku.
+signal quitting
 
 const Surfaces := preload("res://scripts/surfaces.gd")
 const Weather := preload("res://scripts/weather.gd")
@@ -228,6 +230,7 @@ func quit_game(exit_code := 0) -> void:
 	if _quitting:
 		return
 	_quitting = true
+	quitting.emit()
 	var trace := "--shutdowntrace" in OS.get_cmdline_user_args()
 	var started := Time.get_ticks_usec()
 	if trace:
