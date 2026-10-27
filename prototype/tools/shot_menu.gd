@@ -33,7 +33,7 @@ func _process(_d: float) -> bool:
 		_menu.open()
 		_menu._show_tab(_tab)
 		if _entry >= 0:
-			_menu._pages[_tab].get_child(0).get_child(0).select(_entry)     # MarginContainer → inner → strona kodeksu
+			_menu.page_of(_tab).select(_entry)
 	if _frames == 12:
 		var img := root.get_texture().get_image()
 		img.save_png(_out)

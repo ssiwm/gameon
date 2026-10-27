@@ -312,9 +312,9 @@ func _present_summary() -> void:
 		if String(row[1]) != String(row[2]) and kind != 0:
 			caption += " · " + (tr("Gain") if kind > 0 else tr("Trade-off"))
 		var changed := String(row[1]) != String(row[2])
-		var value := String(row[1])
+		var value := UiTheme.num_text(String(row[1]))
 		if changed:
-			value = ("[%s] → [%s]" if value.contains("→") or String(row[2]).contains("→") else "%s → %s") % [row[1], row[2]]
+			value = ("[%s] → [%s]" if value.contains("→") or String(row[2]).contains("→") else "%s → %s") % [UiTheme.num_text(String(row[1])), UiTheme.num_text(String(row[2]))]
 		var value_label := _ink(value, 10)
 		if changed and kind != 0:
 			value_label.add_theme_color_override("font_color", Color("285135") if kind > 0 else Color("713b21"))

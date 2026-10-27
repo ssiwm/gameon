@@ -225,6 +225,11 @@ func _wrap_scaled(page: Control, _holder: Control) -> Control:
 		page.minimum_size_changed.connect(fit.call_deferred)
 	return w
 
+## Strona zakładki `tab` bez opakowania skalującego (kodeks: CodexPage z `select`); zrzuty dev i testy sięgają przez to, nie przez `_pages`.
+func page_of(tab: int) -> Control:
+	var p := _pages[tab]
+	return p.get_child(0).get_child(0) if p is MarginContainer else p
+
 func _fit_scaled_page(page: Control, inner: Control) -> void:
 	if not is_instance_valid(page) or not is_instance_valid(inner):
 		return

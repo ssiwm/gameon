@@ -1725,7 +1725,7 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var pm: Node = $UI.get_node("PauseMenu")             # podgląd bestiariusza: ostatni wpis (boss)
 		pm.open()
 		pm._show_tab(1)
-		var bp: Node = pm._pages[1]
+		var bp: Node = pm.page_of(1)
 		var ci: int = bp._entries.size() - 1
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("--codexentry="):
@@ -1744,7 +1744,7 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var ppm: Node = $UI.get_node("PauseMenu")
 		ppm.open()
 		ppm._show_tab(4)
-		(ppm._pages[4]).select(3)
+		ppm.page_of(4).select(3)
 	if _has_arg_prefix("--shotweapons"):
 		var wpm: Node = $UI.get_node("PauseMenu")           # --shotweapons[=N]: karta WEAPONS kodeksu (wpis N, domyślnie P-83)
 		wpm.open()
@@ -1753,12 +1753,12 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("--shotweapons="):
 				wi = int(a.substr("--shotweapons=".length()))
-		(wpm._pages[2]).select(wi)
+		wpm.page_of(2).select(wi)
 	if "--shotgear" in OS.get_cmdline_user_args():
 		var gpm: Node = $UI.get_node("PauseMenu")           # --shotgear: karta GEAR kodeksu (mina)
 		gpm.open()
 		gpm._show_tab(3)
-		(gpm._pages[3]).select(3)
+		gpm.page_of(3).select(3)
 	if boss:
 		mission._start_boss()               # podgląd walki z bossem: budzi bossa i rzuca flarę nad jego cień
 		await get_tree().create_timer(0.6).timeout

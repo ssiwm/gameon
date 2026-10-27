@@ -47,7 +47,7 @@ func run(host: Node) -> int:
 			_check_tab(pm, loc, t)
 			if t == 1 or t == 2:
 				# każdy wpis kodeksu: opisy i statystyki zmieniają szerokość
-				var page: Node = pm._pages[t].get_child(0).get_child(0)
+				var page: Node = pm.page_of(t)
 				for i in page._entries.size():
 					page.select(i)
 					for _f in 2:

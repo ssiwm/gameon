@@ -30,7 +30,7 @@ const ENEMIES := [
 		"Look up before you cross a gap, and keep moving."],
 	["slepiec", "slepiec", "idle", "BLIND ONE", "Blind hunter",
 		"Cannot see — only hears. Walks to the source of the last noise and searches around it.",
-		"Crouch (SHIFT) and walk past. Throw a lure (Q) to pull it away. Shots will bring it running."],
+		"Crouch ({crouch}) and walk past. Throw a lure ({overcharge}) to pull it away. Shots will bring it running."],
 	["podsluchacz", "podsluchacz", "idle", "EAVESDROPPER", "Listener",
 		"Stands motionless and listens. If it sees or hears you it screams, and every enemy nearby gets a trail to your position.",
 		"Kill it quietly — the machete is almost silent — or avoid its line of sight altogether."],
@@ -79,7 +79,7 @@ static func bestiary() -> Array:
 		"portrait": {"type": "sprite", "sheet": "stalker", "anim": "idle"},
 		"stats": [["HP", "∞"], ["Hunting", "5.5 m/s"], ["Lurking", "3.4 m/s"], ["Wakes at", "60% noise"], ["Sleeps at", "30% noise"], ["Reach", "0.9 m (0.5 m crouched)"]],
 		"text": "Reacts to noise only, never to you directly. Walks to the loudest recent sound, listens there, then strikes — with a wind-up you can run from. Light draws him. Attacks make no noise.",
-		"tip": "Stop shooting and let the meter fall below 30%. Q lures him away for 20–30 s. Crouch in the dark. You can outrun him (slower than you)."})
+		"tip": "Stop shooting and let the meter fall below 30%. {overcharge} lures him away for 20–30 s. Crouch in the dark. You can outrun him (slower than you)."})
 	out.append({"title": "NEST", "tag": "Mission objective", "accent": Color(1.0, 0.5, 0.2),
 		"portrait": {"type": "sprite", "sheet": "nest", "anim": "pulse"},
 		"stats": [["HP", "60"], ["Noise when destroyed", "+8"]],
@@ -89,21 +89,21 @@ static func bestiary() -> Array:
 		"portrait": {"type": "sprite", "sheet": "vein", "anim": "idle"} if Sprites.has("vein") else {"type": "vein"},
 		"stats": [["HP", "750 (+250 per extra player)"], ["Maw closed", "5% damage"], ["Phase 2", "below 66% — enraged"], ["Phase 3", "below 33% — scream"]],
 		"text": "Wakes when the last nest dies. Her maw is shut and armoured — it opens only briefly after each attack. Lash up close, tail sweep along the floor, spore spit at range. She spawns young. At 33% she screams: noise goes to 100% and the Stalker wakes.",
-		"tip": "Dodge, then shoot while the maw is open. Light her maw during a wind-up to blind her. Q pulls her fire to the lure. Shots from above at a steep angle always do 5%."})
+		"tip": "Dodge, then shoot while the maw is open. Light her maw during a wind-up to blind her. {overcharge} pulls her fire to the lure. Shots from above at a steep angle always do 5%."})
 	out.append({"title": "THE LEECH", "tag": "Boss — hides under water", "accent": Color(0.35, 0.68, 0.62),
 		"portrait": {"type": "leech"},
-		"stats": [["HP", "%d (+%d per extra player)" % [int(Leech.BASE_HP), int(Leech.HP_PER_EXTRA_HUMAN)]],
-			["Hidden", "%d%% (lit %d%%)" % [int(Leech.SUB_MULT * 100.0), int(Leech.LIT_MULT * 100.0)]], ["Phase 2", "below 66% — adds"], ["Phase 3", "below 33% — scream"],
-			["Surfaced", "full damage"], ["Grab", "%.1f s — free: %d%% HP" % [Leech.GRAB_TIME, int(Leech.GRAB_FRAC * 100.0)]]],   # krótkie etykiety i wartości: siatka 4-kolumnowa nie może być szersza niż DETAIL_W (jak u Żyły)
+		"stats": [["HP", _t("%d (+%d per extra player)") % [int(Leech.BASE_HP), int(Leech.HP_PER_EXTRA_HUMAN)]],
+			["Hidden", _t("%d%% (lit %d%%)") % [int(Leech.SUB_MULT * 100.0), int(Leech.LIT_MULT * 100.0)]], ["Phase 2", "below 66% — adds"], ["Phase 3", "below 33% — scream"],
+			["Surfaced", "full damage"], ["Grab", _t("%.1f s — free: %d%% HP") % [Leech.GRAB_TIME, int(Leech.GRAB_FRAC * 100.0)]]],   # krótkie etykiety i wartości: siatka 4-kolumnowa nie może być szersza niż DETAIL_W (jak u Żyły)
 		"text": "Lives under the flooded hall's pool. Unseen in the dark: only ripples betray it — and in the dark it heals. It swims under whoever wades in the water, stands on a low catwalk or crowds the shore, telegraphs with churning rings, then bursts out, bites and grabs. A grabbed player is dragged under in three and a half seconds and goes down. From the second phase it also spits acid at anyone it cannot reach, even on the high catwalks. Its minions crawl out of the water from the start. In the later phases a tidal wave floods the low catwalks and the shore every ~25 s — it hurts and douses flares there.",
-		"tip": "Throw a flare (F) or sweep the flashlight over the ripples — the shadow shows, but only 40% of your damage lands on it. Bait the ambush, then hit it while it is out of the water. A flare that lands in the water burns out in 8 s. Keep moving: the high catwalks stop its bite and the tide, but not its acid. Shoot a surfaced leech with everything; if someone is grabbed, the whole squad must hurt it and their melee counts double."})
+		"tip": "Throw a flare ({flare}) or sweep the flashlight over the ripples — the shadow shows, but only 40% of your damage lands on it. Bait the ambush, then hit it while it is out of the water. A flare that lands in the water burns out in 8 s. Keep moving: the high catwalks stop its bite and the tide, but not its acid. Shoot a surfaced leech with everything; if someone is grabbed, the whole squad must hurt it and their melee counts double."})
 	return out
 
 # ---------------------------------------------------------------- bronie
 
 ## Krótki opis i wskazówka; klucz = WeaponDef.key
 const WEAPON_TEXT := {
-	"m83": ["Standard-issue assault rifle. Quiet while the barrel is cold and louder as it heats. B switches between full auto and a 3-round burst: slower, tighter and much quieter.",
+	"m83": ["Standard-issue assault rifle. Quiet while the barrel is cold and louder as it heats. {firemode} switches between full auto and a 3-round burst: slower, tighter and much quieter.",
 		"Burst mode is the sneaking mode: about 20% less damage per second for half the noise, and the barrel heats up much slower. A long full-auto spray costs you the night."],
 	"spread12": ["Drum-fed semi-auto shotgun on a Kalashnikov action: five pellets a shot, 25-shell drum, brutal point-blank, nearly useless past a few metres.",
 		"One of the loudest cold shots you own. Use it on a Bullock's back, not across a room."],
@@ -165,9 +165,9 @@ static func perk_entry(id: String) -> Dictionary:
 	var status: String = tl.call("Equipped — slot %d") % (at + 1) if at >= 0 else (tl.call("Available") if Profile.is_unlocked(id) else tl.call("Locked — level %d") % int(d["level"]))
 	return {"title": String(tl.call(String(d["name"]))).to_upper(), "tag": String(tl.call("Perk  ·  unlocks at level %d")) % int(d["level"]), "accent": d["color"],
 		"portrait": {"type": "perk", "id": id}, "perk_id": id,
-		"stats": [["Status", status], ["Your level", "%d" % Profile.level()], ["Slots open", TranslationServer.translate("%d of %d") % [Profile.slots(), 2]]],
+		"stats": [["Status", status], ["Your level", "%d" % Profile.level()], ["Slots open", TranslationServer.translate("%d of %d") % [Profile.slots(), Profile.SLOT_LEVELS.size()]]],
 		"text": String(d["desc"]),
-		"tip": "Equip perks at the workshop bench in the safe room (PERKS tab). The first slot opens at level 2, the second at level 4."}
+		"tip": _t("Equip perks at your locker in the safe room. The first slot opens at level %d, the second at level %d.") % [int(Profile.SLOT_LEVELS[0]), int(Profile.SLOT_LEVELS[1])]}
 
 static func gear() -> Array:
 	var out: Array = []
@@ -197,10 +197,17 @@ static func gear() -> Array:
 				stats.append_array([["Use time", "%.0f s" % float(d["time"])], ["Condition", "+%d%%" % int(d["restore"])]])
 			"scanner":
 				stats.append_array([["Duration", "%d s" % int(d["time"])], ["Range", "%d m" % int(float(d["range"]) / PX_PER_M)]])
-		stats.append(["Noise", "%.0f" % float(d["noise"]) if d.has("noise") else ("explosion" if k in ["frag", "charge"] else "—")])
+		stats.append(["Noise", noise_text(k)])
 		out.append({"title": String(d["name"]), "tag": TranslationServer.translate(String(d["full"])) + "  ·  " + TranslationServer.translate(mode), "accent": d["color"],
 			"portrait": {"type": "item", "kind": k}, "stats": stats, "text": text[0], "tip": text[1]})
 	return out
+
+## Hałas przedmiotu w punktach miernika Uwagi (0–100); skaner hałasuje co sekundę, wybuchy mają własną głośność.
+static func noise_text(k: String) -> String:
+	var d: Dictionary = Throwables.KINDS[k]
+	if not d.has("noise"):
+		return _t("explosion") if k in ["frag", "charge"] else "—"
+	return (_t("+%d / s") if k == "scanner" else _t("+%d of 100")) % int(round(float(d["noise"])))
 
 static func arsenal() -> Array:
 	var out: Array = []
@@ -232,6 +239,10 @@ static func weapon_entry(id: int) -> Dictionary:
 	return {"title": base.name, "tag": tag, "accent": base.tracer_color, "portrait": {"type": "gun", "row": base.gun_row, "color": base.tracer_color},
 		"stats": _weapon_stats(d), "text": notes[0], "tip": notes[1], "weapon_id": id, "tiers": tiers, "access": access}
 
+## Szablon tłumaczony PRZED podstawieniem liczb — gotowy napis („120 blast”) nie trafiłby w klucz ui.csv.
+static func _t(s: String) -> String:
+	return TranslationServer.translate(s)
+
 static func _slot_name(d: WeaponDef) -> String:
 	match d.slot:
 		WeaponDef.Slot.PRIMARY:
@@ -243,24 +254,22 @@ static func _slot_name(d: WeaponDef) -> String:
 static func _weapon_stats(d: WeaponDef) -> Array:
 	var dmg := "%d" % int(d.damage)
 	if d.kind == WeaponDef.Kind.LAUNCHER:
-		dmg = "%d blast" % int(d.blast_damage)
+		dmg = _t("%d blast") % int(d.blast_damage)
 	elif d.pellets > 1:
-		dmg = "%d × %d pellets" % [int(d.damage), d.pellets]
+		dmg = _t("%d × %d pellets") % [int(d.damage), d.pellets]
 	elif d.is_continuous():
-		dmg = "%d / tick" % int(d.damage)
+		dmg = _t("%d / tick") % int(d.damage)
 	var rate := "%d / min" % int(round(d.rpm()))
 	if d.is_continuous():
 		rate = "continuous"
 	elif d.kind == WeaponDef.Kind.RAIL:
-		rate = "%.1f s charge" % d.charge_time
-	var noise := "%.1f" % d.n_min if is_equal_approx(d.n_min, d.n_max) else "%.1f → %.1f" % [d.n_min, d.n_max]
+		rate = _t("%.1f s charge") % d.charge_time
+	var noise := _t("+%.1f per shot") % d.n_min if is_equal_approx(d.n_min, d.n_max) else _t("+%.1f → +%.1f per shot") % [d.n_min, d.n_max]      # punkty miernika Uwagi (0–100)
 	var melee := d.kind == WeaponDef.Kind.MELEE                       # broń biała: tempo ciosów i zasięg ręki, nie szybkostrzelność
 	var out: Array = [["Damage", dmg], ["Swing rate" if melee else "Fire rate", rate], ["Reach" if melee else "Range", "%d m" % int(round(d.range_m()))]]
 	if d.uses_ammo():
-		var ammo := "%d" % d.mag
-		ammo += " + ∞" if d.infinite else " + %d" % d.reserve_start
-		out.append(["Magazine", ammo])
-		out.append(["Reload", "%.1f s" % d.full_reload_time() if not d.reload_per_round else "%.2f s / round" % d.reload_time])
+		out.append(["Magazine", _t("%d · reserve ∞") % d.mag if d.infinite else _t("%d · reserve %d") % [d.mag, d.reserve_start]])
+		out.append(["Reload", "%.1f s" % d.full_reload_time() if not d.reload_per_round else _t("%.2f s / round") % d.reload_time])
 	out.append(["Noise", noise if d.n_max > 0.0 else "silent"])
 	if d.kind == WeaponDef.Kind.MELEE:
 		out.append(["DPS", "%d" % int(round(d.dps()))])
