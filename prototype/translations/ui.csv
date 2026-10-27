@@ -1326,3 +1326,6 @@
 "%s select   ·   %s wear   ·   %s perks / look   ·   %s close   ·   or click","%s wybór   ·   %s załóż   ·   %s perki / wygląd   ·   %s zamknij   ·   albo kliknij"
 "%s select   ·   %s buy   ·   %s arms / supplies   ·   %s close   ·   or click","%s wybór   ·   %s kup   ·   %s broń / zaopatrzenie   ·   %s zamknij   ·   albo kliknij"
 "BUY AT THE BENCH","KUP PRZY ŁAWIE"
+"Grenades, mines and 40 mm rounds are at the pyrotechnics table, special ammo at the reloading press.","Granaty, miny i naboje 40 mm są na stole pirotechnicznym, amunicja specjalna — w prasie elaboracyjnej."
+"Below 70% a gun starts to jam.","Poniżej 70% broń zaczyna się zacinać."
+"The squad carries %d of %d.","Drużyna niesie %d z %d."

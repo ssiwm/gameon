@@ -89,23 +89,35 @@ class TierBar extends Control:
 				else:
 					draw_rect(r, fc)
 			elif UiTheme.hd_on():
-				UiTheme.pill(self, r, Color(0.5, 0.66, 0.7, 0.8), false)
+				UiTheme.pill(self, r, Color(UiTheme.BONE_DIM, 0.8), false)
 			else:
-				draw_rect(r, Color(0.5, 0.66, 0.7, 0.8), false, 1.0)
+				draw_rect(r, Color(UiTheme.BONE_DIM, 0.8), false, 1.0)
 
-## Kafel broni w siatce: miniatura + nazwa + stan (poziom / cena / „późniejsza strefa”).
-class Tile extends Button:
-	var weapon := 0
+## Wspólny kafel stanowisk (bronie, zaopatrzenie, perki, wygląd): miniatura po lewej, nazwa, jedna linia stanu (albo cena z monetą)
+## i najwyżej jeden wskaźnik z kropek przy prawej krawędzi — zawsze z podpisem w linii stanu albo z podpowiedzią.
+class CardTile extends Button:
 	var icon_node: Control
 	var name_label: Label
-	var bar: TierBar
-	var price_label: Label
-	var coin: Coin
 	var state_label: Label
+	var coin: Coin
+	var price_label: Label
+	var bar: Control
 	func _init() -> void:
 		focus_mode = Control.FOCUS_NONE
 		toggle_mode = false
 		custom_minimum_size = Vector2(150.0, 46.0)
+	## Kropki wskaźnika przy prawej krawędzi, w linii stanu (szerokość z liczby kropek).
+	func place_bar() -> void:
+		if bar == null:
+			return
+		var n := int(bar.get("maxn")) if bar.get("maxn") != null else int(bar.get("total"))
+		var w := maxf(7.0, float(n) * 9.0 - 2.0)
+		bar.custom_minimum_size.x = w
+		bar.position = Vector2(custom_minimum_size.x - 6.0 - w, custom_minimum_size.y - 19.0)
+
+## Kafel broni w siatce stanowiska: stan zależny od stanowiska (stan techniczny, ostrze, części) albo miejsce zakupu.
+class Tile extends CardTile:
+	var weapon := 0
 
 ## Kropki zapasu drużyny: `have` wypełnionych z `maxn` (jak kwadraciki poziomu ulepszeń broni).
 class StockBar extends Control:
@@ -124,9 +136,9 @@ class StockBar extends Control:
 				else:
 					draw_rect(r, fc)
 			elif UiTheme.hd_on():
-				UiTheme.pill(self, r, Color(0.5, 0.66, 0.7, 0.8), false)
+				UiTheme.pill(self, r, Color(UiTheme.BONE_DIM, 0.8), false)
 			else:
-				draw_rect(r, Color(0.5, 0.66, 0.7, 0.8), false, 1.0)
+				draw_rect(r, Color(UiTheme.BONE_DIM, 0.8), false, 1.0)
 
 ## Pasek poziomu profilu: wypełnienie = postęp XP w bieżącym poziomie.
 class LevelBar extends Control:
@@ -140,10 +152,10 @@ class LevelBar extends Control:
 			UiTheme.pill(self, Rect2(Vector2.ZERO, size), Color(0.04, 0.05, 0.07, 0.9), true)
 			if frac > 0.0:
 				UiTheme.pill(self, Rect2(1, 1, maxf(size.y - 2.0, (size.x - 2.0) * frac), size.y - 2.0), Color(0.55, 0.8, 1.0), true)
-			UiTheme.pill(self, Rect2(Vector2.ZERO, size), Color(0.5, 0.66, 0.7, 0.8), false)
+			UiTheme.pill(self, Rect2(Vector2.ZERO, size), Color(UiTheme.BONE_DIM, 0.8), false)
 			return
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.04, 0.05, 0.07, 0.9))
-		draw_rect(Rect2(Vector2.ZERO, size), Color(0.5, 0.66, 0.7, 0.8), false, 1.0)
+		draw_rect(Rect2(Vector2.ZERO, size), Color(UiTheme.BONE_DIM, 0.8), false, 1.0)
 		draw_rect(Rect2(1, 1, maxf(0.0, (size.x - 2.0) * frac), size.y - 2.0), Color(0.55, 0.8, 1.0))
 
 ## Kafel perku w siatce: miniatura + nazwa + stan (poziom odblokowania / założony / dostępny).
@@ -240,34 +252,18 @@ class Look3DView extends Control:
 		_c3d.set_view_yaw(fmod(_t * 28.0, 360.0))
 		_c3d.update(delta, "idle", 1.0, Vector2(1.0, 0.0), 0.0, true, Color.WHITE)
 
-class LookTile extends Button:
+## Kafel stroju (wyższy — postać na całą wysokość).
+class LookTile extends CardTile:
 	var code := 0
 	var view: LookView
-	var name_label: Label
-	var state_label: Label
 
-class PerkTile extends Button:
+## Kafel perku: stan (założony / dostępny / poziom odblokowania).
+class PerkTile extends CardTile:
 	var perk := ""
-	var icon_node: Control
-	var name_label: Label
-	var state_label: Label
-	func _init() -> void:
-		focus_mode = Control.FOCUS_NONE
-		toggle_mode = false
-		custom_minimum_size = Vector2(150.0, 46.0)
 
-## Kafel zaopatrzenia w siatce: miniatura przedmiotu + nazwa + cena (moneta) + zapas drużyny.
-class SupplyTile extends Button:
+## Kafel zaopatrzenia: cena z monetą w linii stanu, kropki = zapas drużyny.
+class SupplyTile extends CardTile:
 	var kind := ""
-	var icon_node: Control
-	var name_label: Label
-	var coin: Coin
-	var price_label: Label
-	var bar: StockBar
-	func _init() -> void:
-		focus_mode = Control.FOCUS_NONE
-		toggle_mode = false
-		custom_minimum_size = Vector2(150.0, 46.0)
 
 var _open := false
 var _page := 0                        ## 0 = ARMS (bronie i ulepszenia), 1 = SUPPLIES (granaty, miny, narzędzia), 2 = PERKS, 3 = LOOK
@@ -292,6 +288,7 @@ var _s_tag: Label
 var _s_stats: GridContainer
 var _s_text: Label
 var _s_action: Button
+var _sup_note: Label                  ## podpowiedź pod siatką zaopatrzenia ławy: gdzie kupić granaty, miny i amunicję
 var _page_btns: Array[Button] = []
 var _look_body: HBoxContainer
 var _look_sel := 0
@@ -360,7 +357,7 @@ func _ready() -> void:
 	_shade.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_shade)
 	_card = PanelContainer.new()
-	_card.add_theme_stylebox_override("panel", UiTheme.blueprint_box())
+	_card.add_theme_stylebox_override("panel", UiTheme.station_box())
 	_card.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_card)
 	var root := VBoxContainer.new()
@@ -417,7 +414,7 @@ func _ready() -> void:
 		var t := _make_tile(int(LIST[i]), i)
 		grid.add_child(t)
 		_tiles.append(t)
-	body.add_child(_build_detail())
+	body.add_child(_paper(_build_detail()))
 	_legacy_stage = _d_stage as GunStage
 	_workbench = GunsmithPanel.new()
 	_workbench.custom_minimum_size = Vector2(606, 240)
@@ -432,10 +429,13 @@ func _ready() -> void:
 	_action.reparent(root)
 	_s_action.reparent(root)
 	_s_action.visible = false
+	for extra in [_p_action, _l_action]:
+		extra.reparent(root)
+		extra.visible = false
 	root.add_child(_rule())
-	_msg = UiTheme.label("", 9, UiTheme.BP_TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	_msg = UiTheme.label("", 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	root.add_child(_msg)
-	_hint = UiTheme.label(_controls_hint(), 8, UiTheme.BP_TEXT.darkened(0.12), HORIZONTAL_ALIGNMENT_CENTER)
+	_hint = UiTheme.label(_controls_hint(), 8, UiTheme.TEXT.darkened(0.12), HORIZONTAL_ALIGNMENT_CENTER)
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_hint.custom_minimum_size.x = 606
 	root.add_child(_hint)
@@ -461,42 +461,36 @@ func _build_supplies() -> HBoxContainer:
 	grid.columns = COLS
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 6)
-	grid.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	body.add_child(grid)
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 8)
+	left.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	body.add_child(left)
+	left.add_child(grid)
+	# pusty stan: na ławie zostały same narzędzia — reszta zaopatrzenia ma własne stanowiska
+	_sup_note = UiTheme.label("", 8, UiTheme.MUTED)
+	_sup_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_sup_note.custom_minimum_size.x = TILE_W * COLS + 6.0
+	left.add_child(_sup_note)
 	var kinds := _supply_kinds()
 	for i in kinds.size():
 		var t := _make_supply_tile(String(kinds[i]), i)
 		grid.add_child(t)
 		_sup_tiles.append(t)
-	body.add_child(_build_supply_detail())
+	body.add_child(_paper(_build_supply_detail()))
 	return body
 
 func _make_supply_tile(kd: String, idx: int) -> SupplyTile:
 	var data: Dictionary = Throwables.KINDS[kd]
 	var t := SupplyTile.new()
 	t.kind = kd
-	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
-		t.add_theme_stylebox_override(st, UiTheme.tile_box("hover" if st == "hover" else "normal"))
 	var ic := ItemIcon.new()
 	ic.k = 1.0
-	ic.position = Vector2(4, 5)
-	ic.size = Vector2(54, 36)
 	ic.set_item(kd, Color.WHITE)
-	t.add_child(ic)
-	t.icon_node = ic
-	t.name_label = UiTheme.label(String(data["name"]), 10, UiTheme.BP_TEXT)
-	t.name_label.position = Vector2(64, 6)
-	t.add_child(t.name_label)
-	t.coin = Coin.new()
-	t.coin.position = Vector2(64, 26)
-	t.add_child(t.coin)
-	t.price_label = UiTheme.label("%d" % Throwables.price_of(kd), 10, GOLD)
-	t.price_label.position = Vector2(76, 23)
-	t.add_child(t.price_label)
-	t.bar = StockBar.new()
-	t.bar.maxn = Throwables.units(kd, int(data["max"]))        # amunicja: w pudełkach
-	t.bar.position = Vector2(150.0 - 6.0 - float(t.bar.maxn) * 9.0 + 2.0, 27)
-	t.add_child(t.bar)
+	_dress_tile(t, ic, String(data["name"]))
+	_add_price(t)
+	var bar := StockBar.new()
+	bar.maxn = Throwables.units(kd, int(data["max"]))        # amunicja: w pudełkach
+	_add_bar(t, bar)
 	t.pressed.connect(_select_supply.bind(idx))
 	return t
 
@@ -508,17 +502,17 @@ func _build_supply_detail() -> Control:
 	_s_icon.k = 2.0
 	_s_icon.custom_minimum_size = Vector2(0, 58)
 	v.add_child(_s_icon)
-	_s_title = UiTheme.heading("", 16, UiTheme.ACCENT)
+	_s_title = _ink_heading()
 	v.add_child(_s_title)
-	_s_tag = UiTheme.label("", 8, UiTheme.BP_MUTED)
+	_s_tag = UiTheme.ink("", 8, UiTheme.INK_MUTED)
 	v.add_child(_s_tag)
 	_s_stats = GridContainer.new()
 	_s_stats.columns = 3
 	_s_stats.add_theme_constant_override("h_separation", 10)
 	_s_stats.add_theme_constant_override("v_separation", 1)
 	v.add_child(_s_stats)
-	v.add_child(_rule())
-	_s_text = UiTheme.label("", 8, UiTheme.BP_TEXT)
+	v.add_child(_paper_rule())
+	_s_text = UiTheme.ink("", 8)
 	_s_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_s_text.custom_minimum_size = Vector2(DETAIL_W, 0)
 	v.add_child(_s_text)
@@ -551,20 +545,9 @@ func _build_look() -> HBoxContainer:
 		var t := LookTile.new()
 		t.code = _look_code(i)
 		t.custom_minimum_size = Vector2(TILE_W, TILE_H * 1.5)
-		t.focus_mode = Control.FOCUS_NONE
-		for st in ["normal", "hover", "pressed", "disabled", "focus"]:
-			t.add_theme_stylebox_override(st, UiTheme.tile_box("hover" if st == "hover" else "normal"))
 		t.view = LookView.new()
-		t.view.position = Vector2(4, 3)
-		t.view.size = Vector2(46, TILE_H * 1.5 - 6.0)
 		t.view.set_code(t.code)
-		t.add_child(t.view)
-		t.name_label = UiTheme.label(Look.display_name(t.code), 9, UiTheme.BP_TEXT)
-		t.name_label.position = Vector2(56, 14)
-		t.add_child(t.name_label)
-		t.state_label = UiTheme.label("", 8, UiTheme.BP_MUTED)
-		t.state_label.position = Vector2(56, 34)
-		t.add_child(t.state_label)
+		_dress_tile(t, t.view, Look.display_name(t.code))
 		t.pressed.connect(_select_look.bind(i))
 		grid.add_child(t)
 		_look_tiles.append(t)
@@ -577,13 +560,13 @@ func _build_look() -> HBoxContainer:
 	_l_view = lv
 	_l_box = v
 	v.add_child(_l_view)
-	_l_title = UiTheme.heading("", 16, UiTheme.ACCENT)
+	_l_title = _ink_heading()
 	v.add_child(_l_title)
-	_l_tag = UiTheme.label("", 8, UiTheme.BP_MUTED)
+	_l_tag = UiTheme.ink("", 8, UiTheme.INK_MUTED)
 	v.add_child(_l_tag)
 	_pal_row = HBoxContainer.new()                       # paleta kolorów stroju: tylko dla modeli 3D
 	_pal_row.add_theme_constant_override("separation", 5)
-	_pal_row.add_child(UiTheme.label(tr("COLOR"), 8, UiTheme.BP_MUTED))
+	_pal_row.add_child(UiTheme.ink(tr("COLOR"), 8, UiTheme.INK_MUTED))
 	for pi in Look.PALETTES.size():
 		var pb := Button.new()
 		pb.focus_mode = Control.FOCUS_NONE
@@ -594,8 +577,8 @@ func _build_look() -> HBoxContainer:
 		_pal_btns.append(pb)
 	_pal_row.visible = false
 	v.add_child(_pal_row)
-	v.add_child(_rule())
-	_l_text = UiTheme.label("", 8, UiTheme.BP_TEXT)
+	v.add_child(_paper_rule())
+	_l_text = UiTheme.ink("", 8)
 	_l_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_l_text.custom_minimum_size = Vector2(DETAIL_W, 0)
 	v.add_child(_l_text)
@@ -604,7 +587,7 @@ func _build_look() -> HBoxContainer:
 	_l_action.add_theme_font_size_override("font_size", 10)
 	_l_action.pressed.connect(_act_look)
 	v.add_child(_l_action)
-	body.add_child(v)
+	body.add_child(_paper(v))
 	return body
 
 func _select_palette(pi: int) -> void:
@@ -620,7 +603,7 @@ func _select_look(i: int) -> void:
 func _act_look() -> void:
 	var c := Look.with_palette(_look_code(_look_sel), _look_pal)
 	if Profile.look == c:
-		_say(tr("Already wearing %s.") % Look.display_name(c), UiTheme.BP_MUTED)
+		_say(tr("Already wearing %s.") % Look.display_name(c), UiTheme.MUTED)
 	elif Profile.set_look(c):
 		Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 		_say(tr("%s (%s) equipped.") % [Look.display_name(c), tr(Look.gender_id(c).capitalize())], UiTheme.OK)
@@ -648,16 +631,16 @@ func _refresh_look() -> void:
 		t.add_theme_stylebox_override("focus", sbox)
 		var ok := Look.is_unlocked(t.code, lvl)
 		t.view.modulate = Color.WHITE if ok else Color(0.35, 0.4, 0.45)
-		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.BP_TEXT)
+		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.TEXT)
 		var worn := Look.base(Profile.look) == t.code
 		t.state_label.text = (tr("EQUIPPED") if worn else tr("AVAILABLE")) if ok else tr("LV %d") % Look.unlock_level(t.code)
-		t.state_label.add_theme_color_override("font_color", UiTheme.OK if worn else (UiTheme.BP_MUTED if ok else UiTheme.DANGER))
+		t.state_label.add_theme_color_override("font_color", UiTheme.OK if worn else (UiTheme.MUTED if ok else UiTheme.DANGER))
 	for pi in _pal_btns.size():
 		var pb := _pal_btns[pi] as Button
 		var d: Dictionary = Look.PALETTES[pi]
 		var pbox := StyleBoxFlat.new()
 		pbox.bg_color = (d["swatch"] as Color) if lvl >= int(d["level"]) else (d["swatch"] as Color).darkened(0.65)
-		pbox.border_color = UiTheme.ACCENT if pi == _look_pal else Color(1, 1, 1, 0.18)
+		pbox.border_color = UiTheme.INK if pi == _look_pal else Color(UiTheme.PAPER_EDGE, 0.8)
 		pbox.set_border_width_all(2 if pi == _look_pal else 1)
 		for st in ["normal", "hover", "pressed", "focus", "disabled"]:
 			pb.add_theme_stylebox_override(st, pbox)
@@ -704,27 +687,16 @@ func _build_perks() -> HBoxContainer:
 	left.add_child(slots)
 	for si in 2:
 		slots.add_child(_make_slot_chip(si))
-	body.add_child(_build_perk_detail())
+	body.add_child(_paper(_build_perk_detail()))
 	return body
 
 func _make_perk_tile(id: String, idx: int) -> PerkTile:
 	var t := PerkTile.new()
 	t.perk = id
-	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
-		t.add_theme_stylebox_override(st, UiTheme.tile_box("hover" if st == "hover" else "normal"))
 	var ic := PerkIcon.new()
 	ic.k = 1.0
-	ic.position = Vector2(4, 5)
-	ic.size = Vector2(54, 36)
 	ic.set_perk(id, Color.WHITE)
-	t.add_child(ic)
-	t.icon_node = ic
-	t.name_label = UiTheme.label(Perks.display_name(id), 10, UiTheme.BP_TEXT)
-	t.name_label.position = Vector2(64, 6)
-	t.add_child(t.name_label)
-	t.state_label = UiTheme.label("", 8, UiTheme.BP_MUTED)
-	t.state_label.position = Vector2(64, 25)
-	t.add_child(t.state_label)
+	_dress_tile(t, ic, Perks.display_name(id))
 	t.pressed.connect(_select_perk.bind(idx))
 	return t
 
@@ -746,9 +718,9 @@ func _make_slot_chip(si: int) -> Control:
 	col.add_theme_constant_override("separation", 0)
 	col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(col)
-	var cap := UiTheme.label("SLOT %d  [%d]" % [si + 1, si + 1], 8, UiTheme.BP_MUTED)
+	var cap := UiTheme.label("SLOT %d  [%d]" % [si + 1, si + 1], 8, UiTheme.MUTED)
 	col.add_child(cap)
-	var nm := UiTheme.label("", 9, UiTheme.BP_TEXT)
+	var nm := UiTheme.label("", 9, UiTheme.TEXT)
 	col.add_child(nm)
 	root.gui_input.connect(func(ev: InputEvent) -> void:
 		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
@@ -765,17 +737,17 @@ func _build_perk_detail() -> Control:
 	_p_icon.k = 2.0
 	_p_icon.custom_minimum_size = Vector2(0, 58)
 	v.add_child(_p_icon)
-	_p_title = UiTheme.heading("", 16, UiTheme.ACCENT)
+	_p_title = _ink_heading()
 	v.add_child(_p_title)
-	_p_tag = UiTheme.label("", 8, UiTheme.BP_MUTED)
+	_p_tag = UiTheme.ink("", 8, UiTheme.INK_MUTED)
 	v.add_child(_p_tag)
 	_p_stats = GridContainer.new()
 	_p_stats.columns = 3
 	_p_stats.add_theme_constant_override("h_separation", 10)
 	_p_stats.add_theme_constant_override("v_separation", 1)
 	v.add_child(_p_stats)
-	v.add_child(_rule())
-	_p_text = UiTheme.label("", 8, UiTheme.BP_TEXT)
+	v.add_child(_paper_rule())
+	_p_text = UiTheme.ink("", 8)
 	_p_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_p_text.custom_minimum_size = Vector2(DETAIL_W, 0)
 	v.add_child(_p_text)
@@ -802,14 +774,14 @@ func _act_perk() -> void:
 	var have := _perk_slot_of(id)
 	if have >= 0:
 		Profile.unequip(have)
-		_say(tr("%s removed.") % Perks.display_name(id), UiTheme.BP_MUTED)
+		_say(tr("%s removed.") % Perks.display_name(id), UiTheme.MUTED)
 		Audio.play("ui_click", Audio.BUS_UI, -10.0)
 		return
 	if not Profile.is_unlocked(id):
-		_say(tr("Reach level %d to unlock %s.") % [Perks.unlock_level(id), Perks.display_name(id)], UiTheme.BP_MUTED)
+		_say(tr("Reach level %d to unlock %s.") % [Perks.unlock_level(id), Perks.display_name(id)], UiTheme.MUTED)
 		return
 	if _perk_slot >= Profile.slots():
-		_say(tr("Slot %d unlocks at level %d.") % [_perk_slot + 1, int(Profile.SLOT_LEVELS[_perk_slot])], UiTheme.BP_MUTED)
+		_say(tr("Slot %d unlocks at level %d.") % [_perk_slot + 1, int(Profile.SLOT_LEVELS[_perk_slot])], UiTheme.MUTED)
 		return
 	if Profile.equip(_perk_slot, id):
 		_say(tr("%s equipped in slot %d.") % [Perks.display_name(id), _perk_slot + 1], UiTheme.OK)
@@ -834,13 +806,13 @@ func _refresh_perks() -> void:
 		var unlocked := Profile.is_unlocked(id)
 		var at := _perk_slot_of(id)
 		(t.icon_node as PerkIcon).set_perk(id, Color.WHITE if unlocked else Color(0.45, 0.5, 0.55))
-		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else (UiTheme.BP_TEXT if unlocked else UiTheme.BP_MUTED))
+		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else (UiTheme.TEXT if unlocked else UiTheme.MUTED))
 		if at >= 0:
 			t.state_label.text = tr("EQUIPPED  ·  SLOT %d") % (at + 1)
 			t.state_label.add_theme_color_override("font_color", UiTheme.OK)
 		elif unlocked:
 			t.state_label.text = "AVAILABLE"
-			t.state_label.add_theme_color_override("font_color", UiTheme.BP_MUTED)
+			t.state_label.add_theme_color_override("font_color", UiTheme.MUTED)
 		else:
 			t.state_label.text = "LV %d" % Perks.unlock_level(id)
 			t.state_label.add_theme_color_override("font_color", GOLD if Profile.level() + 1 >= Perks.unlock_level(id) else UiTheme.DANGER)
@@ -857,11 +829,11 @@ func _refresh_perks() -> void:
 		elif eq == "":
 			(c["icon"] as PerkIcon).set_perk(String(Perks.ORDER[0]), Color(0.25, 0.28, 0.32, 0.6))
 			(c["name"] as Label).text = "empty"
-			(c["name"] as Label).add_theme_color_override("font_color", UiTheme.BP_MUTED)
+			(c["name"] as Label).add_theme_color_override("font_color", UiTheme.MUTED)
 		else:
 			(c["icon"] as PerkIcon).set_perk(eq, Color.WHITE)
 			(c["name"] as Label).text = Perks.display_name(eq)
-			(c["name"] as Label).add_theme_color_override("font_color", UiTheme.BP_TEXT)
+			(c["name"] as Label).add_theme_color_override("font_color", UiTheme.TEXT)
 	var id2 := String(Perks.ORDER[_perk_sel])
 	var d: Dictionary = Perks.PERKS[id2]
 	var unlocked2 := Profile.is_unlocked(id2)
@@ -874,8 +846,8 @@ func _refresh_perks() -> void:
 		ch.free()
 	var status := tr("Equipped — slot %d") % (at2 + 1) if at2 >= 0 else (tr("Available") if unlocked2 else tr("Locked — reach level %d") % int(d["level"]))
 	for r in [["Status", status], ["Slots", tr("%d of 2 open") % Profile.slots()]]:
-		_p_stats.add_child(UiTheme.label(String(r[0]), 9, UiTheme.BP_MUTED))
-		_p_stats.add_child(UiTheme.label(String(r[1]), 9, UiTheme.OK if at2 >= 0 and String(r[0]) == "Status" else UiTheme.BP_TEXT))
+		_p_stats.add_child(UiTheme.ink(tr(String(r[0])), 9, UiTheme.INK_MUTED))
+		_p_stats.add_child(UiTheme.ink(String(r[1]), 9, UiTheme.INK_GAIN if at2 >= 0 and String(r[0]) == "Status" else UiTheme.INK))
 		_p_stats.add_child(Control.new())
 	_p_text.text = String(d["desc"])
 	if at2 >= 0:
@@ -953,22 +925,22 @@ func _on_order_result(kind: String, ok: bool, reason: String) -> void:
 	var nm := String(Throwables.KINDS[kind]["name"]) if Throwables.is_valid(kind) else kind
 	match reason:
 		"station":
-			_say(tr("Approach the correct station in the hideout."), UiTheme.BP_MUTED)
+			_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
 		"repeat":
-			_say(tr("Please wait before repeating this action."), UiTheme.BP_MUTED)
+			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
 		"serviced":
-			_say(tr("This part was already replaced during this visit."), UiTheme.BP_MUTED)
+			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
 		"ok":
 			_say(tr("%s collected. Remaining delivery: %d rounds.") % [nm, int(Scrap.deliveries.get(kind, 0))] if _claiming else tr("%s ordered — ready after the next mission (%d / %d batches in the press).") % [nm, Scrap.orders.size(), Scrap.PRESS_SLOTS], UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 		"poor":
 			_say(tr("Not enough scrap (%d needed).") % Scrap.press_price(kind), UiTheme.DANGER)
 		"busy":
-			_say(tr("The press is full — %d batches per mission.") % Scrap.PRESS_SLOTS, UiTheme.BP_MUTED)
+			_say(tr("The press is full — %d batches per mission.") % Scrap.PRESS_SLOTS, UiTheme.MUTED)
 		"full":
-			_say(tr("The squad cannot carry more %s.") % nm, UiTheme.BP_MUTED)
+			_say(tr("The squad cannot carry more %s.") % nm, UiTheme.MUTED)
 		"off":
-			_say("No scrap in this mode.", UiTheme.BP_MUTED)
+			_say("No scrap in this mode.", UiTheme.MUTED)
 		_:
 			_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
@@ -992,7 +964,7 @@ func _set_page(p: int) -> void:
 ## Długie porównania i kolejki pozostają dostępne także w bazowej rozdzielczości 640×360.
 func _scroll_body(body: Control) -> ScrollContainer:
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(TILE_W * COLS + DETAIL_W + 36.0, 250.0)
+	scroll.custom_minimum_size = Vector2(TILE_W * COLS + DETAIL_W + 50.0, 250.0)        # +14: marginesy papierowej karty
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(body)
@@ -1001,34 +973,46 @@ func _scroll_body(body: Control) -> ScrollContainer:
 func _make_tile(w: int, idx: int) -> Tile:
 	var t := Tile.new()
 	t.weapon = w
-	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
-		t.add_theme_stylebox_override(st, UiTheme.tile_box("hover" if st == "hover" else "normal"))
 	var ic := GunIcon.new()
 	var d: RefCounted = Weapons.base_def(w)
 	ic.plate = true
 	ic.k = 0.3
-	ic.position = Vector2(4, 5)
-	ic.size = Vector2(54, 36)
 	ic.set_gun(int(d.gun_row), d.tracer_color, Color.WHITE)
-	t.add_child(ic)
-	t.icon_node = ic
-	t.name_label = UiTheme.label(String(d.name), 10, UiTheme.BP_TEXT)
-	t.name_label.position = Vector2(64, 6)
-	t.add_child(t.name_label)
-	t.bar = TierBar.new()
-	t.bar.position = Vector2(64, 27)
-	t.add_child(t.bar)
-	t.coin = Coin.new()
-	t.coin.position = Vector2(64, 25)
-	t.add_child(t.coin)
-	t.price_label = UiTheme.label("", 10, GOLD)
-	t.price_label.position = Vector2(76, 22)
-	t.add_child(t.price_label)
-	t.state_label = UiTheme.label("", 8, UiTheme.BP_MUTED)
-	t.state_label.position = Vector2(64, 25)
-	t.add_child(t.state_label)
+	_dress_tile(t, ic, String(d.name))
+	_add_bar(t, TierBar.new())
 	t.pressed.connect(_select.bind(idx))
 	return t
+
+## Wspólna ramka kafla: style stanów, miniatura w polu po lewej, nazwa i (pusta) linia stanu. Wysoki kafel (wygląd) — obie linie wyśrodkowane.
+func _dress_tile(t: CardTile, icon: Control, title: String) -> void:
+	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
+		t.add_theme_stylebox_override(st, UiTheme.tile_box("hover" if st == "hover" else "normal"))
+	icon.position = Vector2(4, 5)
+	icon.size = Vector2(54, t.custom_minimum_size.y - 10.0)
+	t.add_child(icon)
+	t.icon_node = icon
+	var mid := (t.custom_minimum_size.y - TILE_H) * 0.5
+	t.name_label = UiTheme.label(title, 10, UiTheme.TEXT)
+	t.name_label.position = Vector2(64, 6.0 + mid)
+	t.add_child(t.name_label)
+	t.state_label = UiTheme.label("", 8, UiTheme.MUTED)
+	t.state_label.position = Vector2(64, 25.0 + mid)
+	t.add_child(t.state_label)
+
+## Cena z monetą w linii stanu (zaopatrzenie).
+func _add_price(t: CardTile) -> void:
+	t.coin = Coin.new()
+	t.coin.position = Vector2(64, 26)
+	t.add_child(t.coin)
+	t.price_label = UiTheme.label("", 10, GOLD)
+	t.price_label.position = Vector2(76, 23)
+	t.add_child(t.price_label)
+
+## Jedyny wskaźnik kafla: kropki przy prawej krawędzi.
+func _add_bar(t: CardTile, bar: Control) -> void:
+	t.bar = bar
+	t.add_child(bar)
+	t.place_bar()
 
 func _build_detail() -> Control:
 	var v := VBoxContainer.new()
@@ -1037,20 +1021,20 @@ func _build_detail() -> Control:
 	_d_stage = GunStage.new()
 	_d_stage.custom_minimum_size = Vector2(0, 76)
 	v.add_child(_d_stage)
-	_d_title = UiTheme.heading("", 16, UiTheme.ACCENT)
+	_d_title = _ink_heading()
 	v.add_child(_d_title)
-	_d_tag = UiTheme.label("", 8, UiTheme.BP_MUTED)
+	_d_tag = UiTheme.ink("", 8, UiTheme.INK_MUTED)
 	v.add_child(_d_tag)
 	_d_stats = GridContainer.new()
-	_d_stats.columns = 3
+	_d_stats.columns = 4                                  # parametr | teraz | → po zmianie | korzyść / kompromis
 	_d_stats.add_theme_constant_override("h_separation", 10)
 	_d_stats.add_theme_constant_override("v_separation", 1)
 	v.add_child(_d_stats)
-	v.add_child(_rule())
+	v.add_child(_paper_rule())
 	_d_tiers = VBoxContainer.new()
 	_d_tiers.add_theme_constant_override("separation", 1)
 	v.add_child(_d_tiers)
-	_d_text = UiTheme.label("", 8, UiTheme.BP_TEXT)
+	_d_text = UiTheme.ink("", 8)
 	_d_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_d_text.custom_minimum_size = Vector2(DETAIL_W, 0)
 	v.add_child(_d_text)
@@ -1123,9 +1107,12 @@ func _process(delta: float) -> void:
 	var hud := get_parent() as Control
 	if hud != null:
 		size = hud.size
+	# Ława 3D ma stałą skalę ×1,4; pozostałe stanowiska dostają tyle samo, ile zmieści szerokość ekranu (dawniej ×1 — drobny tekst
+	# w ~46% szerokości ekranu). Wysokość przewijanej treści liczona już w jednostkach skali, żeby karta nie wyszła poza ekran.
+	var immersive := _mode == "bench" and _page == 0
+	var card_scale := 1.4 if immersive else clampf((size.x - 48.0) / maxf(1.0, _card.get_combined_minimum_size().x), 1.0, 1.4)
 	for body in [_arms_body, _sup_body, _perk_body, _look_body]:
-		(body.get_parent() as ScrollContainer).custom_minimum_size.y = clampf(size.y - 132.0, 150.0, 520.0)
-	var card_scale := 1.4 if _mode == "bench" and _page == 0 else 1.0
+		(body.get_parent() as ScrollContainer).custom_minimum_size.y = clampf(size.y / card_scale - 132.0, 150.0, 400.0)
 	var overhead := maxf(118.0, _card.size.y - _workbench.size.y)
 	_workbench.custom_minimum_size = Vector2(clampf(size.x / card_scale - 34.0, 606.0, 1050.0), clampf(size.y / card_scale - overhead - 14.0, 190.0, 620.0))
 	_card.scale = Vector2.ONE * card_scale
@@ -1503,7 +1490,7 @@ func _act() -> void:
 	var w: int = LIST[_sel]
 	if not Scrap.is_unlocked(w):
 		if _mode in ["service", "lab", "lathe"]:
-			_say(tr("Buy it at the workshop bench first."), UiTheme.BP_MUTED)
+			_say(tr("Buy it at the workshop bench first."), UiTheme.MUTED)
 		else:
 			_buying = w
 			Scrap.request_buy(w)
@@ -1521,57 +1508,57 @@ func _act() -> void:
 		if Profile.preset(key, pi).is_empty():
 			_save_preset()
 		elif Profile.is_preset_fitted(key, pi):
-			_say(tr("Set %d is already fitted.") % (pi + 1), UiTheme.BP_MUTED)
+			_say(tr("Set %d is already fitted.") % (pi + 1), UiTheme.MUTED)
 		else:
 			var before := Profile.fit_code(w)
 			var skipped := Profile.load_preset(key, pi)
 			Audio.play("ui_confirm", Audio.BUS_UI, -6.0)
 			_say((tr("Fitted set %d.") % (pi + 1)) if skipped == 0 else (tr("Fitted set %d — %d parts the squad no longer has stay as they were.") % [pi + 1, skipped]),
-				UiTheme.OK if skipped == 0 else UiTheme.BP_MUTED)
+				UiTheme.OK if skipped == 0 else UiTheme.MUTED)
 			_present_committed(w, before)
 		return
 	if String(o["slot"]) == "service" and id in Profile.WEAR_PARTS:
 		if Profile.part_wear(key, id) < 0.5:
-			_say(tr("Still like new — nothing to replace."), UiTheme.BP_MUTED)
+			_say(tr("Still like new — nothing to replace."), UiTheme.MUTED)
 		else:
 			Scrap.request_service(w, id)
 		return
 	if String(o["slot"]) == "service":
 		if _clean_w == w:
 			_stop_clean()
-			_say(tr("Cleaning stopped."), UiTheme.BP_MUTED)
+			_say(tr("Cleaning stopped."), UiTheme.MUTED)
 			_refresh()
 		elif id == "sharpen" and Profile.sharpen_time(key) <= 0.0:
-			_say(tr("Already sharp."), UiTheme.BP_MUTED)
+			_say(tr("Already sharp."), UiTheme.MUTED)
 		elif id != "sharpen" and Profile.clean_time(key) <= 0.0:
-			_say(tr("Already clean."), UiTheme.BP_MUTED)
+			_say(tr("Already clean."), UiTheme.MUTED)
 		else:
 			_start_clean(w)
 		return
 	if _mode == "lathe" and String(o["slot"]) != "service":
 		if Scrap.has_part(id):
-			_say(tr("Already made — fit it at the workshop bench."), UiTheme.BP_MUTED)
+			_say(tr("Already made — fit it at the workshop bench."), UiTheme.MUTED)
 		elif Scrap.lathe.has(id):
-			_say(tr("On the lathe — ready after the next mission."), UiTheme.BP_MUTED)
+			_say(tr("On the lathe — ready after the next mission."), UiTheme.MUTED)
 		elif Scrap.schematics.has(id):
 			Scrap.request_machining(id)
 		else:
-			_say(tr("No schematic — research it at the lab first."), UiTheme.BP_MUTED)
+			_say(tr("No schematic — research it at the lab first."), UiTheme.MUTED)
 		return
 	if _mode == "lab":
 		if Scrap.schematics.has(id) or Scrap.lathe.has(id):
-			_say(tr("Already researched — make it on the lathe downstairs."), UiTheme.BP_MUTED)
+			_say(tr("Already researched — make it on the lathe downstairs."), UiTheme.MUTED)
 			return
 		if Scrap.has_part(id):
-			_say(tr("Already known — fit it at the workshop bench."), UiTheme.BP_MUTED)
+			_say(tr("Already known — fit it at the workshop bench."), UiTheme.MUTED)
 		elif Scrap.research.has(id):
-			_say(tr("Being researched — ready after the next mission."), UiTheme.BP_MUTED)
+			_say(tr("Being researched — ready after the next mission."), UiTheme.MUTED)
 		else:
 			Scrap.request_research(id)
 		return
 	if id != "" and not Scrap.has_part(id):
 		if Scrap.is_lab_part(id) and not Scrap.found.has(id):
-			_say(tr("Special-weapon parts are researched at the lab upstairs."), UiTheme.BP_MUTED)
+			_say(tr("Special-weapon parts are researched at the lab upstairs."), UiTheme.MUTED)
 		else:
 			_pending_part = {"id": id, "w": w, "fit": Profile.fit_code(w), "session": _session, "revision": _selection_revision}
 			_refresh()
@@ -1591,22 +1578,22 @@ func _on_result(w: int, ok: bool, reason: String) -> void:
 	var name := String(Weapons.def(w).name)
 	match reason:
 		"station":
-			_say(tr("Approach the correct station in the hideout."), UiTheme.BP_MUTED)
+			_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
 		"repeat":
-			_say(tr("Please wait before repeating this action."), UiTheme.BP_MUTED)
+			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
 		"serviced":
-			_say(tr("This part was already replaced during this visit."), UiTheme.BP_MUTED)
+			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
 		"ok":
 			_say(tr("%s unlocked — take it from the rack.") % name, UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 		"poor":
 			_say(tr("Not enough scrap (%d needed).") % Scrap.price_of(w), UiTheme.DANGER)
 		"owned":
-			_say(tr("%s is already unlocked.") % name, UiTheme.BP_MUTED)
+			_say(tr("%s is already unlocked.") % name, UiTheme.MUTED)
 		"later":
-			_say("Not available yet — a later zone.", UiTheme.BP_MUTED)
+			_say("Not available yet — a later zone.", UiTheme.MUTED)
 		"reward":
-			_say("Defeat the Leech to unlock it.", UiTheme.BP_MUTED)
+			_say("Defeat the Leech to unlock it.", UiTheme.MUTED)
 		_:
 			_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
@@ -1659,7 +1646,7 @@ func _start_clean(w: int) -> void:
 	var melee := Weapons.def(w).is_melee()
 	_clean_total = Profile.sharpen_time(String(Weapons.def(w).key)) if melee else Profile.clean_time(String(Weapons.def(w).key))
 	Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -8.0, 0.85)
-	_say((tr("Sharpening the %s…") if melee else tr("Stripping the %s…")) % String(Weapons.def(w).name), UiTheme.BP_TEXT)
+	_say((tr("Sharpening the %s…") if melee else tr("Stripping the %s…")) % String(Weapons.def(w).name), UiTheme.TEXT)
 	_refresh()
 
 func _stop_clean() -> void:
@@ -1698,24 +1685,24 @@ func _on_machining_result(id: String, ok: bool, reason: String) -> void:
 	var nm := tr(String(Parts.get_part(id).get("name", id)))
 	match reason:
 		"station":
-			_say(tr("Approach the correct station in the hideout."), UiTheme.BP_MUTED)
+			_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
 		"repeat":
-			_say(tr("Please wait before repeating this action."), UiTheme.BP_MUTED)
+			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
 		"serviced":
-			_say(tr("This part was already replaced during this visit."), UiTheme.BP_MUTED)
+			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
 		"ok":
 			_say(tr("%s on the lathe — ready after the next mission.") % nm, UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 		"poor":
 			_say(tr("Not enough scrap (%d needed).") % Scrap.machine_price(id), UiTheme.DANGER)
 		"busy":
-			_say(tr("The lathe is busy — %d job per mission.") % Scrap.LATHE_SLOTS, UiTheme.BP_MUTED)
+			_say(tr("The lathe is busy — %d job per mission.") % Scrap.LATHE_SLOTS, UiTheme.MUTED)
 		"noschem":
-			_say(tr("No schematic — research it at the lab first."), UiTheme.BP_MUTED)
+			_say(tr("No schematic — research it at the lab first."), UiTheme.MUTED)
 		"owned":
-			_say(tr("Already made."), UiTheme.BP_MUTED)
+			_say(tr("Already made."), UiTheme.MUTED)
 		"off":
-			_say("No scrap in this mode.", UiTheme.BP_MUTED)
+			_say("No scrap in this mode.", UiTheme.MUTED)
 		_:
 			_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
@@ -1725,11 +1712,11 @@ func _on_service_result(w: int, part: String, ok: bool, reason: String) -> void:
 		return
 	match reason:
 		"station":
-			_say(tr("Approach the correct station in the hideout."), UiTheme.BP_MUTED)
+			_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
 		"repeat":
-			_say(tr("Please wait before repeating this action."), UiTheme.BP_MUTED)
+			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
 		"serviced":
-			_say(tr("This part was already replaced during this visit."), UiTheme.BP_MUTED)
+			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
 		"ok":
 			_say((tr("New barrel in the %s.") if part == "barrel" else tr("New springs in the %s.")) % String(Weapons.def(w).name), UiTheme.OK)
 			Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.1)
@@ -1746,11 +1733,11 @@ func _on_research_result(id: String, ok: bool, reason: String) -> void:
 	var cost := Scrap.research_cost(id)
 	match reason:
 		"station":
-			_say(tr("Approach the correct station in the hideout."), UiTheme.BP_MUTED)
+			_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
 		"repeat":
-			_say(tr("Please wait before repeating this action."), UiTheme.BP_MUTED)
+			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
 		"serviced":
-			_say(tr("This part was already replaced during this visit."), UiTheme.BP_MUTED)
+			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
 		"ok":
 			_say(tr("%s: research started — ready after the next mission.") % nm, UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
@@ -1759,13 +1746,13 @@ func _on_research_result(id: String, ok: bool, reason: String) -> void:
 		"poor":
 			_say(tr("Not enough scrap (%d needed).") % cost.y, UiTheme.DANGER)
 		"busy":
-			_say(tr("The lab is busy — %d project per mission.") % Scrap.LAB_SLOTS, UiTheme.BP_MUTED)
+			_say(tr("The lab is busy — %d project per mission.") % Scrap.LAB_SLOTS, UiTheme.MUTED)
 		"locked":
-			_say(tr("Buy the gun at the workshop bench first."), UiTheme.BP_MUTED)
+			_say(tr("Buy the gun at the workshop bench first."), UiTheme.MUTED)
 		"owned":
-			_say(tr("Already known."), UiTheme.BP_MUTED)
+			_say(tr("Already known."), UiTheme.MUTED)
 		"off":
-			_say("No scrap in this mode.", UiTheme.BP_MUTED)
+			_say("No scrap in this mode.", UiTheme.MUTED)
 		_:
 			_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
@@ -1779,20 +1766,20 @@ func _on_part_result(id: String, ok: bool, reason: String) -> void:
 	var nm := tr(String(Parts.get_part(id).get("name", id)))
 	match reason:
 		"station":
-			_say(tr("Approach the correct station in the hideout."), UiTheme.BP_MUTED)
+			_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
 		"repeat":
-			_say(tr("Please wait before repeating this action."), UiTheme.BP_MUTED)
+			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
 		"serviced":
-			_say(tr("This part was already replaced during this visit."), UiTheme.BP_MUTED)
+			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
 		"ok":
 			_say(tr("%s unlocked for the squad and fitted to your gun.") % nm, UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 		"poor":
 			_say(tr("Not enough scrap (%d needed).") % Scrap.part_cost(id), UiTheme.DANGER)
 		"owned":
-			_say(tr("The squad already has %s.") % nm, UiTheme.BP_MUTED)
+			_say(tr("The squad already has %s.") % nm, UiTheme.MUTED)
 		"locked":
-			_say("Unlock the weapon first.", UiTheme.BP_MUTED)
+			_say("Unlock the weapon first.", UiTheme.MUTED)
 		_:
 			_say("Cannot do that.", UiTheme.DANGER)
 	if ok and not context.is_empty() and int(context["session"]) == _session and int(context["revision"]) == _selection_revision and int(LIST[_sel]) == int(context["w"]):
@@ -1815,18 +1802,20 @@ func _refresh() -> void:
 		_page_btns[pi].set_pressed_no_signal(pi == _page)
 	var immersive := _mode == "bench" and _page == 0
 	_workbench.visible = immersive
-	_shade.visible = immersive
+	_shade.visible = true                              # każde stanowisko przygasza scenę jak ława — uwaga na panelu
 	_d_stage = _workbench.stage if immersive else _legacy_stage
 	_legacy_stage.set_rendering(_page == 0 and not immersive)
 	_workbench.stage.set_rendering(immersive)
 	_hint.text = _controls_hint()
-	_card.add_theme_stylebox_override("panel", UiTheme.panel_box() if immersive else UiTheme.blueprint_box())
+	_card.add_theme_stylebox_override("panel", UiTheme.panel_box() if immersive else UiTheme.station_box())
 	_arms_body.visible = _page == 0 and not immersive
 	_sup_body.visible = _page == 1
 	_perk_body.visible = _page == 2
 	_look_body.visible = _page == 3
 	_action.visible = _page == 0
 	_s_action.visible = _page == 1
+	_p_action.visible = _page == 2
+	_l_action.visible = _page == 3
 	for body in [_arms_body, _sup_body, _perk_body, _look_body]:
 		body.get_parent().visible = body.visible
 	if _page == 3:
@@ -1864,10 +1853,13 @@ func _refresh_supplies() -> void:
 		var price := _sup_price(k)
 		t.price_label.text = ("%d" % price) + (("  +%d" % Scrap.ordered(k)) if Scrap.ordered(k) > 0 else "")
 		(t.icon_node as ItemIcon).set_item(k, Color.WHITE if have > 0 or Scrap.bank >= price else Color(0.6, 0.64, 0.68))
-		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.BP_TEXT)
+		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.TEXT)
 		t.price_label.add_theme_color_override("font_color", GOLD if Scrap.bank >= price else UiTheme.DANGER)
 		t.bar.have = Throwables.units(k, have)
 		t.bar.queue_redraw()
+		t.tooltip_text = tr("The squad carries %d of %d.") % [have, int(Throwables.KINDS[k]["max"])]
+	_sup_note.text = tr("Grenades, mines and 40 mm rounds are at the pyrotechnics table, special ammo at the reloading press.") if _mode == "bench" else ""
+	_sup_note.visible = _sup_note.text != ""
 	var k2 := String(kinds[_sup_sel])
 	var d: Dictionary = Throwables.KINDS[k2]
 	var have2 := Arsenal.get_throwable(k2)
@@ -1895,8 +1887,8 @@ func _refresh_supplies() -> void:
 		var fi := Scrap.fuse_index(k2)
 		rows.append(["Fuse", tr("%.1f s  (%d of %d)") % [float(fo[fi]), fi + 1, fo.size()] + ((tr("  ·  %s / %s change") % [_menu_key("menu_slot_1", Actions.pad_mode), _menu_key("menu_slot_2", Actions.pad_mode)]) if _mode == "pyro" else "")])
 	for r in rows:
-		_s_stats.add_child(UiTheme.label(String(r[0]), 9, UiTheme.BP_MUTED))
-		_s_stats.add_child(UiTheme.label(UiTheme.num_text(tr(String(r[1]))), 9, UiTheme.BP_TEXT))
+		_s_stats.add_child(UiTheme.ink(tr(String(r[0])), 9, UiTheme.INK_MUTED))
+		_s_stats.add_child(UiTheme.ink(UiTheme.num_text(tr(String(r[1]))), 9))
 		_s_stats.add_child(Control.new())
 	_s_text.text = tr(String(d["note"]))
 	var summary := _queue_summary()
@@ -1927,20 +1919,20 @@ func _on_supply_result(kind: String, ok: bool, reason: String) -> void:
 	var nm := String(Throwables.KINDS[kind]["name"]) if Throwables.is_valid(kind) else kind
 	match reason:
 		"station":
-			_say(tr("Approach the correct station in the hideout."), UiTheme.BP_MUTED)
+			_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
 		"repeat":
-			_say(tr("Please wait before repeating this action."), UiTheme.BP_MUTED)
+			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
 		"serviced":
-			_say(tr("This part was already replaced during this visit."), UiTheme.BP_MUTED)
+			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
 		"ok":
 			_say(tr("%s bought — the squad now carries %d.") % [nm, Arsenal.get_throwable(kind)], UiTheme.OK)
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 		"poor":
 			_say(tr("Not enough scrap (%d needed).") % Throwables.price_of(kind), UiTheme.DANGER)
 		"full":
-			_say(tr("The squad cannot carry more %s.") % nm, UiTheme.BP_MUTED)
+			_say(tr("The squad cannot carry more %s.") % nm, UiTheme.MUTED)
 		"off":
-			_say("No scrap in this mode.", UiTheme.BP_MUTED)
+			_say("No scrap in this mode.", UiTheme.MUTED)
 		_:
 			_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
@@ -1954,21 +1946,32 @@ func _refresh_tile(t: Tile, selected: bool) -> void:
 	var unlocked := Scrap.is_unlocked(w)
 	var later := Scrap.is_later(w)
 	(t.icon_node as GunIcon).set_gun(int(Weapons.base_def(w).gun_row), Weapons.base_def(w).tracer_color, Color.WHITE if unlocked else Color(0.45, 0.5, 0.55))
-	t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if selected else (UiTheme.BP_TEXT if unlocked else UiTheme.BP_MUTED))
-	t.bar.visible = unlocked
-	# Kafle są tylko na stanowiskach pomocniczych (ława ma własny stojak): broń kupuje się wyłącznie przy ławie, więc bez ceny
-	t.coin.visible = false
-	t.price_label.visible = false
-	t.state_label.visible = not unlocked
+	t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if selected else (UiTheme.TEXT if unlocked else UiTheme.MUTED))
+	t.bar.visible = false
+	t.state_label.add_theme_color_override("font_color", UiTheme.MUTED)
+	# Kafle są tylko na stanowiskach pomocniczych (ława ma własny stojak): broń kupuje się wyłącznie przy ławie, więc bez ceny.
+	# Linia stanu mówi to, co liczy się PRZY TYM stanowisku: stół konserwacji — stan, szlifierka — ostrze, reszta — odblokowane części.
 	if unlocked:
-		var total := Parts.of(String(Weapons.def(w).key)).size()
+		var key := String(Weapons.def(w).key)
+		var melee: bool = Weapons.base_def(w).is_melee()
+		var total := Parts.of(key).size()
 		var owned := Scrap.parts_owned(w)
-		t.bar.level = owned
-		t.bar.total = total
-		t.bar.custom_minimum_size.x = maxf(26.0, total * 9.0 - 2.0)
 		t.tooltip_text = tr("Unlocked parts: %d / %d. Equipment is chosen separately.") % [owned, total]
-		t.bar.maxed = owned >= total
-		t.bar.queue_redraw()
+		if _mode == "service" and not melee:
+			var cond := Profile.condition(key)
+			t.state_label.text = (tr("Condition %d%%") % int(cond)).to_upper()
+			t.state_label.add_theme_color_override("font_color", UiTheme.DANGER if cond < 70.0 else (GOLD if cond < 95.0 else UiTheme.OK))
+			t.tooltip_text = tr("Below 70% a gun starts to jam.")
+		elif _mode == "lathe" and melee:
+			t.state_label.text = (tr("Edge %d%%") % int(Profile.edge_of(key))).to_upper()
+		else:
+			t.state_label.text = tr("PARTS") if total > 0 else ""
+			t.bar.visible = total > 0
+			t.bar.set("level", owned)
+			t.bar.set("total", total)
+			t.bar.set("maxed", owned >= total)
+			t.place_bar()
+			t.bar.queue_redraw()
 	elif later:
 		t.state_label.text = tr("BOSS REWARD") if Scrap.is_gated(w) else tr("LATER ZONE")
 	else:
@@ -2065,13 +2068,21 @@ func _refresh_detail(w: int) -> void:
 		# Podgląd części/zestawu zaczyna od rzeczywistych zmian. Pełna karta jest widoczna bez zmiany montażu.
 		if preview != null and i < next_rows.size() and String(next_rows[i][1]) == String(r[1]):
 			continue
-		_d_stats.add_child(UiTheme.label(String(r[0]), 9, UiTheme.BP_MUTED))
-		_d_stats.add_child(UiTheme.label(UiTheme.num_text(String(r[1])), 9, UiTheme.BP_TEXT))
+		_d_stats.add_child(UiTheme.ink(String(r[0]), 9, UiTheme.INK_MUTED))
+		_d_stats.add_child(UiTheme.ink(UiTheme.num_text(String(r[1])), 9))
+		# zmiana: nowa wartość i słowna ocena („korzyść” / „kompromis”) — kolor tylko ją wzmacnia. Strzałka „→” nie ocenia: więcej
+		# nie zawsze znaczy lepiej (masa, grzanie), więc ↑ / ↓ myliłyby kierunek liczby z oceną.
 		var nv := ""
+		var verdict := ""
+		var kind := 0
 		if i < next_rows.size() and String(next_rows[i][1]) != String(r[1]):
-			nv = "» %s" % String(next_rows[i][1])
-		_d_stats.add_child(UiTheme.label(UiTheme.num_text(nv), 9, GOLD))
-	# części w gniazdach: nagłówek gniazda, element fabryczny i części (zamontowana — zielona, odblokowana — jasna, do kupienia — z ceną)
+			kind = _change_kind(String(r[0]), cur, preview) if preview != null else 0
+			nv = "→ %s" % String(next_rows[i][1])
+			verdict = tr("Gain") if kind > 0 else (tr("Trade-off") if kind < 0 else "")
+		var col := UiTheme.INK_GAIN if kind > 0 else (UiTheme.INK_COST if kind < 0 else UiTheme.INK)
+		_d_stats.add_child(UiTheme.ink(UiTheme.num_text(nv), 9, col))
+		_d_stats.add_child(UiTheme.ink(verdict.to_lower(), 7, col))
+	# części w gniazdach: nagłówek gniazda, element fabryczny i części (zamontowana — zielona, odblokowana — atrament, do kupienia — z ceną)
 	for ch in _d_tiers.get_children():
 		_d_tiers.remove_child(ch)
 		ch.queue_free()                  # wiersz może właśnie obsługiwać swoje kliknięcie (_pick_opt) — natychmiastowe free() jest wtedy błędem
@@ -2082,59 +2093,28 @@ func _refresh_detail(w: int) -> void:
 		if slot != last_slot:
 			last_slot = slot
 			var head_txt := tr("Service") if slot == "service" else (tr("Sets") if slot == "preset" else _slot_label(String(Weapons.def(int(LIST[_sel])).key), slot))
-			_d_tiers.add_child(UiTheme.label(head_txt.to_upper(), 7, UiTheme.BP_MUTED))
+			_d_tiers.add_child(UiTheme.ink(head_txt.to_upper(), 7, UiTheme.INK_MUTED))
 		if slot == "preset":
 			var pi := int(op["id"])
-			var pb := Button.new()
-			pb.flat = true
-			pb.focus_mode = Control.FOCUS_NONE
-			pb.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			pb.add_theme_font_size_override("font_size", 8)
 			var pfit := Profile.is_preset_fitted(key, pi)
-			pb.add_theme_color_override("font_color", UiTheme.ACCENT if i == _opt else (UiTheme.OK if pfit else UiTheme.BP_TEXT))
-			pb.add_theme_color_override("font_hover_color", UiTheme.ACCENT)
-			pb.text = "%s %s   [%s]" % ["»" if i == _opt else " ", tr("Set %d  ·  %s") % [pi + 1, _preset_summary(key, pi)],
-				tr("empty") if Profile.preset(key, pi).is_empty() else (tr("fitted") if pfit else tr("saved"))]
-			pb.custom_minimum_size = Vector2(DETAIL_W, 0)
-			for st in ["normal", "hover", "pressed", "focus"]:
-				var psb := StyleBoxEmpty.new()
-				psb.content_margin_top = 1.0
-				psb.content_margin_bottom = 1.0
-				pb.add_theme_stylebox_override(st, psb)
-			pb.pressed.connect(_pick_opt.bind(i))
-			_d_tiers.add_child(pb)
+			_tier_row(i, tr("Set %d  ·  %s") % [pi + 1, _preset_summary(key, pi)],
+				tr("empty") if Profile.preset(key, pi).is_empty() else (tr("fitted") if pfit else tr("saved")), UiTheme.INK_GAIN if pfit else UiTheme.INK)
 			continue
 		if slot == "service":
 			var cc := Profile.clean_time(key)
 			var sid := String(op["id"])
 			var pw := Profile.part_wear(key, sid) if sid != "clean" else 0.0
-			var cb := Button.new()
-			cb.flat = true
-			cb.focus_mode = Control.FOCUS_NONE
-			cb.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			cb.add_theme_font_size_override("font_size", 8)
 			var due := (cc > 0.0) if sid == "clean" else (pw >= 0.5)
-			cb.add_theme_color_override("font_color", UiTheme.ACCENT if i == _opt else (GOLD if due else UiTheme.OK))
-			cb.add_theme_color_override("font_hover_color", UiTheme.ACCENT)
 			var cap := Profile.clean_cap(key)
 			if sid == "sharpen":
 				var st := Profile.sharpen_time(key)
-				cb.add_theme_color_override("font_color", UiTheme.ACCENT if i == _opt else (GOLD if st > 0.0 else UiTheme.OK))
-				cb.text = "%s %s   [%s]" % ["»" if i == _opt else " ", tr("Sharpen  ·  edge %d%%") % int(Profile.edge_of(key)), tr("%d s") % ceili(st) if st > 0.0 else tr("sharp")]
+				_tier_row(i, tr("Sharpen  ·  edge %d%%") % int(Profile.edge_of(key)), tr("%d s") % ceili(st) if st > 0.0 else tr("sharp"), UiTheme.INK_COST if st > 0.0 else UiTheme.INK_GAIN)
 			elif sid == "clean":
 				var ctxt := (tr("Clean  ·  condition %d%%") % int(Profile.condition(key))) if cap >= 99.5 else (tr("Clean  ·  condition %d%% (max %d%%)") % [int(Profile.condition(key)), int(cap)])
-				cb.text = "%s %s   [%s]" % ["»" if i == _opt else " ", ctxt, tr("%d s") % ceili(cc) if cc > 0.0 else tr("clean")]
+				_tier_row(i, ctxt, tr("%d s") % ceili(cc) if cc > 0.0 else tr("clean"), UiTheme.INK_COST if due else UiTheme.INK_GAIN)
 			else:
 				var pname := tr("Barrel") if sid == "barrel" else tr("Springs")
-				cb.text = "%s %s   [%s]" % ["»" if i == _opt else " ", tr("%s  ·  worn %d%%") % [pname, int(pw)], tr("%d scrap") % int(Scrap.SERVICE_COST[sid]) if due else tr("like new")]
-			cb.custom_minimum_size = Vector2(DETAIL_W, 0)
-			for st in ["normal", "hover", "pressed", "focus"]:
-				var csb := StyleBoxEmpty.new()
-				csb.content_margin_top = 1.0
-				csb.content_margin_bottom = 1.0
-				cb.add_theme_stylebox_override(st, csb)
-			cb.pressed.connect(_pick_opt.bind(i))
-			_d_tiers.add_child(cb)
+				_tier_row(i, tr("%s  ·  worn %d%%") % [pname, int(pw)], tr("%d scrap") % int(Scrap.SERVICE_COST[sid]) if due else tr("like new"), UiTheme.INK_COST if due else UiTheme.INK_GAIN)
 			continue
 		var id := String(op["id"])
 		var fitted := Profile.fitted(key, slot) == id
@@ -2155,23 +2135,7 @@ func _refresh_detail(w: int) -> void:
 				tail = tr("no schematic") if _mode == "lathe" else tr("lab")
 		elif (_mode == "lab" or _mode == "lathe") and owned:
 			tail = tr("known") if _mode == "lab" else tr("made")
-		var col: Color = UiTheme.OK if fitted else (UiTheme.BP_TEXT if owned else GOLD)
-		var b := Button.new()
-		b.flat = true
-		b.focus_mode = Control.FOCUS_NONE
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.add_theme_font_size_override("font_size", 8)
-		b.add_theme_color_override("font_color", UiTheme.ACCENT if i == _opt else col)
-		b.add_theme_color_override("font_hover_color", UiTheme.ACCENT)
-		b.text = ("%s %s   [%s]" % ["»" if i == _opt else " ", nm, tail]) if tail != "" else ("%s %s" % ["»" if i == _opt else " ", nm])
-		b.custom_minimum_size = Vector2(DETAIL_W, 0)
-		for st in ["normal", "hover", "pressed", "focus"]:
-			var sb := StyleBoxEmpty.new()                  # wiersz bez marginesów przycisku — lista części mieści się w karcie
-			sb.content_margin_top = 1.0
-			sb.content_margin_bottom = 1.0
-			b.add_theme_stylebox_override(st, sb)
-		b.pressed.connect(_pick_opt.bind(i))
-		_d_tiers.add_child(b)
+		_tier_row(i, nm, tail, UiTheme.INK_GAIN if fitted else (UiTheme.INK if owned else UiTheme.INK_PRICE))
 	var notes: Array = Codex.WEAPON_TEXT.get(key, ["", ""])
 	var desc := Actions.fmt(tr(String(notes[0])))
 	if unlocked and not o.is_empty() and String(o["slot"]) == "preset":
@@ -2299,7 +2263,7 @@ func _save_current_preset() -> void:
 		return
 	if _bench_slot != "preset":
 		_pick_slot("preset")
-		_say(tr("Choose a set, then save your current fit."), UiTheme.BP_TEXT)
+		_say(tr("Choose a set, then save your current fit."), UiTheme.TEXT)
 		return
 	_save_preset()
 
@@ -2429,9 +2393,55 @@ func _change_kind(metric: String, before: RefCounted, after: RefCounted) -> int:
 		return int(signf(a + b)) if a * b >= 0 else 0
 	return 0
 
+## Kolumna szczegółów na papierze (jak karta ławy): marginesy karty, napisy atramentem (UiTheme.ink).
+func _paper(inner: Control) -> PanelContainer:
+	var paper := PanelContainer.new()
+	paper.add_theme_stylebox_override("panel", UiTheme.paper_box())
+	paper.add_child(inner)
+	return paper
+
+func _paper_rule() -> ColorRect:
+	var r := ColorRect.new()
+	r.color = UiTheme.PAPER_EDGE
+	r.custom_minimum_size = Vector2(0, 1)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return r
+
+## Tytuł karty na papierze: krój nagłówków, atrament, bez obrysu.
+func _ink_heading() -> Label:
+	var l := UiTheme.heading("", 16, UiTheme.INK)
+	l.add_theme_constant_override("outline_size", 0)
+	return l
+
+## Wiersz listy części / czynności na papierze. Zaznaczony ma ciemniejszy pasek i znacznik „»” (nie tylko inny kolor), stan w nawiasie.
+func _tier_row(i: int, text: String, tail: String, col: Color) -> void:
+	var sel := i == _opt
+	var b := Button.new()
+	b.flat = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.add_theme_font_size_override("font_size", 8)
+	b.add_theme_constant_override("outline_size", 0)
+	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+		b.add_theme_color_override(c, col)
+	b.text = ("%s %s   [%s]" % ["»" if sel else " ", text, tail]) if tail != "" else ("%s %s" % ["»" if sel else " ", text])
+	b.custom_minimum_size = Vector2(DETAIL_W, 0)
+	for st in ["normal", "hover", "pressed", "focus"]:
+		var sb: StyleBox = StyleBoxEmpty.new()
+		if sel or st == "hover":
+			var band := StyleBoxFlat.new()
+			band.bg_color = UiTheme.PAPER_SEL if sel else Color(UiTheme.PAPER_SEL, 0.55)
+			sb = band
+		sb.content_margin_top = 1.0                         # wiersz bez marginesów przycisku — lista części mieści się w karcie
+		sb.content_margin_bottom = 1.0
+		sb.content_margin_left = 2.0
+		b.add_theme_stylebox_override(st, sb)
+	b.pressed.connect(_pick_opt.bind(i))
+	_d_tiers.add_child(b)
+
 func _rule() -> ColorRect:
 	var r := ColorRect.new()
-	r.color = Color(UiTheme.BP_LINE, 0.35)
+	r.color = UiTheme.LINE2
 	r.custom_minimum_size = Vector2(0, 1)
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return r

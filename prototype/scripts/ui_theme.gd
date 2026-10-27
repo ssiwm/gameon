@@ -68,12 +68,21 @@ static func keycaps(text: String, fg := "f0e8d4", bg := "2a211a") -> String:
 	var re := RegEx.new()
 	re.compile("\\[([A-Za-z0-9↑↓←→ +/\\-]{1,9})\\]")
 	return re.sub(text, "[bgcolor=#" + bg + "][color=#" + fg + "] $1 [/color][/bgcolor]", true)
-## Szkic techniczny (warsztat): ciemny błękitno-zielony arkusz z jasnymi liniami rysunku.
-const BP_BG := Color(0.045, 0.085, 0.10, 0.97)
-const BP_LINE := Color(0.36, 0.62, 0.68)
-const BP_LINE_DIM := Color(0.2, 0.36, 0.40)
-const BP_TEXT := Color(0.80, 0.92, 0.92)
-const BP_MUTED := Color(0.5, 0.66, 0.70)
+## Stanowiska kryjówki (warsztat i sześć pozostałych): ten sam język co ława — ciemny blat „deck”, oliwkowe kafle z mosiężną ramką
+## i karta szczegółów na papierze, pisana atramentem. Kontrast atramentu na papierze >= 4,5:1 (PAPER ok. 0,47 luminancji).
+const TILE_BG := Color("22281f")
+const TILE_BG_HOVER := Color("2b2f24")
+const TILE_BG_SEL := Color("3b3827")
+const TILE_EDGE := Color("4a4836")
+const TILE_EDGE_HOVER := Color("68664b")
+const PAPER := Color("c3b795")
+const PAPER_EDGE := Color("7a7158")
+const PAPER_SEL := Color("b2a57f")              ## wiersz zaznaczony na papierze (pasek, nie sam kolor)
+const INK := Color("272d25")
+const INK_MUTED := Color("4a4639")
+const INK_GAIN := Color("285135")
+const INK_COST := Color("713b21")
+const INK_PRICE := Color("5e420e")
 ## Skala typograficzna komunikatów (MESSAGES_PLAN.md §3): cztery rozmiary w jednostkach logicznych HUD zamiast 7, 8, 9, 10, 14, 16, 21, 24 i 56.
 const T_DISPLAY := 24                          ## duży alert, cyfra odliczania (cyfra: ×2)
 const T_TITLE := 16                            ## tytuł notatki, tytuł karty tytułowej
@@ -209,25 +218,24 @@ static func panel_box() -> StyleBoxFlat:
 	b.content_margin_bottom = 6
 	return b
 
-## Szkic techniczny: panel warsztatu.
-static func blueprint_box() -> StyleBoxFlat:
-	var b := _box(BP_BG, BP_LINE)
-	b.set_corner_radius_all(3 if hd_on() else 0)
+## Panel stanowiska: blat „deck” jak na ławie, ale nieprzezroczysty (okno stoi nad sceną, nie nad przyciemnieniem całego ekranu).
+static func station_box() -> StyleBoxFlat:
+	var b := _box(Color(DECK_BG, 0.97), PANEL_EDGE)
 	b.border_width_bottom = 2
+	b.border_color = PANEL_EDGE
 	b.set_content_margin_all(10)
 	return b
 
-## Kafel (pole siatki) na szkicu: stan „normal”, „hover” albo „selected”.
+## Kafel (pole siatki) stanowiska: stan „normal”, „hover” albo „selected” — kolory przycisków stojaka na ławie.
 static func tile_box(state: String) -> StyleBoxFlat:
-	var b := _box(Color(0.07, 0.12, 0.14, 0.95), BP_LINE_DIM)
-	b.set_corner_radius_all(2 if hd_on() else 0)
+	var b := _box(TILE_BG, TILE_EDGE)
 	match state:
 		"hover":
-			b.border_color = BP_LINE
-			b.bg_color = Color(0.09, 0.15, 0.17, 0.98)
+			b.border_color = TILE_EDGE_HOVER
+			b.bg_color = TILE_BG_HOVER
 		"selected":
 			b.border_color = ACCENT
-			b.bg_color = Color(0.12, 0.17, 0.15, 1.0)
+			b.bg_color = TILE_BG_SEL
 			b.set_border_width_all(2)
 	b.content_margin_left = 0
 	b.content_margin_right = 0
@@ -251,6 +259,18 @@ static func label(text: String, size: int, color: Color = TEXT, align := HORIZON
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+## Karta szczegółów na papierze (ława i stanowiska).
+static func paper_box() -> StyleBoxFlat:
+	var b := _box(PAPER, PAPER_EDGE)
+	b.set_content_margin_all(7)
+	return b
+
+## Napis atramentem na papierze: bez obrysu (obrys czytelności z motywu brudzi jasne tło).
+static func ink(text: String, size: int, color: Color = INK, align := HORIZONTAL_ALIGNMENT_LEFT) -> Label:
+	var l := label(text, size, color, align)
+	l.add_theme_constant_override("outline_size", 0)
 	return l
 
 static var _decimal_re: RegEx

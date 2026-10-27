@@ -15,7 +15,7 @@ lokalizacja EN/PL **razem z kodeksem, ulepszeniami, perkami i przedmiotami**. **
 
 - **Spójny styl:** ciemne tło z bursztynowym akcentem, czytelne ikony, bez nadmiaru ozdób. Wygląd jest zdefiniowany w jednym miejscu (`ui_theme.gd`), więc zmiana motywu to edycja tokenów, a nie przebudowa ekranów.
 - **Warsztat** jest najbliżej poziomu komercyjnego: statystyki broni, ulepszenia z cenami, stany „BOSS REWARD” i „LATER ZONE”, podpowiedź klawiszy.
-- **Pomysł z materiałami:** deska z mosiężną krawędzią (HUD, menu), papier z tuszem (tablice w kryjówce), niebieski szkic techniczny (warsztat). Każdy ekran wygląda jak przedmiot ze świata gry.
+- **Pomysł z materiałami:** deska z mosiężną krawędzią (HUD, menu), papier z tuszem (tablice w kryjówce), blat ławy z kartą rusznikarską na papierze (warsztat i wszystkie stanowiska kryjówki — od 1.7.406 jeden język zamiast niebieskiego szkicu). Każdy ekran wygląda jak przedmiot ze świata gry.
 - **Podpowiedzi i kontekst:** podpowiedzi dla nowych graczy, pasek sterowania na dole, informacje o hałasie w HUD.
 
 ## 2. Czego brakuje (funkcje)
