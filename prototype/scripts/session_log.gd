@@ -14,6 +14,7 @@ extends RefCounted
 ##   bleed_out      who, bot (wykrwawienie: powrót na start misji)
 ##   stalker        what (awake / asleep / swing_hit / swing_miss / close_call — ucieczka o włos od 1.7.401 / pass_in / pass_out — przechodzący
 ##                  Stalker 1.1), noise, target, bot, pos
+##   strongbox      pos, value, noise, workers — sejf wyważony (FUN_PLAN.md P2.2, od 1.7.403)
 ##   power          who, weapon, rounds — gracz wziął skrzynię mocy (FUN_PLAN.md P1.3, od 1.7.402)
 ##   peak           hold, to — Uwaga za długo na 100 opadła i zaczął się oddech (FUN_PLAN.md P1.2, od 1.7.402)
 ##   overcharge     pos, noise, stale, charges, awake (Stalker obudzony), locked (s przytrzymania na wabiku, 0 przy zwietrzałym — FUN_PLAN.md P0.2)
@@ -30,7 +31,8 @@ extends RefCounted
 ##                  bo wydajność jest jego sprzętu, a reszta dziennika to symulacja hosta
 ## Wipe w kampanii kończy próbę wierszem mission_end, po którym idzie mission_start z kolejnym numerem próby.
 ## `weapons`: klucz broni → {shots, noise, dmg, kills}; `noise`: źródło → {n, sum} (strzały pod kluczem `shot`; od 1.7.402 świat ma znaczniki
-## `enemy` — po limicie budżetu, `alarm`, `boss`, `nest`, `generator`, `handcar`, `prop`, `wall` zamiast wspólnego `world`).
+## `enemy` — po limicie budżetu, `alarm`, `boss`, `nest`, `generator`, `handcar`, `prop`, `wall`, od 1.7.403 `strongbox` zamiast wspólnego `world`).
+## `mission_end.silent` (od 1.7.403): cichy cel dotrzymany — Uwaga < 60 przez cały cel główny (FUN_PLAN.md P2.1).
 ## `players[id]` (od 1.7.391): oprócz name, kills, downs, revived, dmg także `kinds` (rodzaj wroga → zabójstwa) i `xp_kills` (XP za te zabójstwa) — P0.1, P0.3;
 ## od 1.7.401 (FUN_PLAN.md P0.5) `revives` (podniesienia kolegów), `escapes` (ucieczki o włos), `lures` (udane Q), `noise` (własny hałas gracza).
 ## `mission_start.checkpoint` = "boss": próba od punktu kontrolnego walki z bossem (FUN_PLAN.md P0.3).

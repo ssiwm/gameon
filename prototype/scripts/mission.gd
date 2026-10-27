@@ -33,6 +33,10 @@ const EXIT_RADIUS_Y := 40.0
 const SYNC_INTERVAL := 0.2
 
 const STEALTH_CAP := 40.0              ## cel poboczny misji 1.2: Uwaga poniżej tej wartości do końca celu głównego
+## Cichy cel (FUN_PLAN.md P2.1): Uwaga ani razu nie doszła do progu przebudzenia Stalkera przez cały cel główny — premia Scrap.BONUS_SILENT
+## w każdej misji z celem (nie w bossie B1 ani w kryjówce). Dziennik: 50 % czasu poniżej 40, ale szczyt prawie zawsze 100 — nagroda za
+## pasmo, w którym gra ma decyzje, a nie zakaz strzelania. Utratę ogłasza toast w chwili przekroczenia.
+const SILENT_CAP := 60.0
 const BOSS_WAIT := 40.0               ## s, po których budzi się boss misji „boss", nawet jeśli nikt nie podszedł
 const FINALE_DELAY := 2.5             ## s od ostatniego nieśmiertelnika do zawału rampy
 const FINALE_NOISE := 14.0            ## skok Uwagi przy wstrząsie (budzi to, co śpi w sali)
@@ -62,6 +66,7 @@ var nests_left: int:
 	set(v):
 		goal_left = v
 var peak_noise := 0.0                  ## najwyższa Uwaga od startu do końca celu głównego (cel poboczny)
+var _silent_lost_sent := false         ## serwer: toast o utracie cichego celu już poszedł w tej próbie
 var exit_pos := Vector2.ZERO
 var extract_progress := 0.0
 ## Statystyki do ekranu wyniku
@@ -184,6 +189,9 @@ func _physics_process(delta: float) -> void:
 			_log_positions()
 	if phase == Phase.OBJECTIVE:
 		peak_noise = maxf(peak_noise, NoiseMgr.level)
+		if silent_counts() and not _silent_lost_sent and peak_noise >= SILENT_CAP:
+			_silent_lost_sent = true
+			_event.rpc("silent_lost")
 		_tick_boss_start(delta)
 	if phase == Phase.EXTRACT:
 		_tick_extract(delta)
@@ -320,6 +328,13 @@ func _last_generator_pos(gen: Node) -> Vector2:
 ## Czy cel poboczny „Uwaga poniżej 40" jest nadal w grze (misja 1.2).
 func stealth_ok() -> bool:
 	return peak_noise < STEALTH_CAP
+
+## Czy w tej misji liczy się cichy cel (misje z celem, bez bossa B1 i kryjówki).
+func silent_counts() -> bool:
+	return kind == "tags" or kind == "generators" or kind == "nests"
+
+func silent_ok() -> bool:
+	return silent_counts() and peak_noise < SILENT_CAP
 
 ## Ostatnie gniazdo padło — matka się budzi. Ładunek Q wraca tu (GDD §8.4:
 ## „przy wykonaniu celu"), bo na walkę z Żyłą jest najbardziej potrzebny.
@@ -596,7 +611,7 @@ func log_end(result: String, how := "") -> void:
 		players[id] = (player_stats[id] as Dictionary).duplicate()
 	var scrap := {"loot": Scrap.loot, "samples": Scrap.samples_loot, "bonus": scrap_bonus() if result == "success" and kind != "hub" and Scrap.enabled() else 0}
 	var row := {"result": result, "time": snappedf(elapsed, 0.1), "downs": downs, "attempts": attempts,
-		"peak_noise": roundi(_peak_all), "peak_noise_objective": roundi(peak_noise), "side": side_done(), "players": players, "scrap": scrap}
+		"peak_noise": roundi(_peak_all), "peak_noise_objective": roundi(peak_noise), "side": side_done(), "silent": silent_ok(), "players": players, "scrap": scrap}
 	if how != "":
 		row["how"] = how
 		row["phase"] = String(Phase.keys()[phase]).to_lower()      # w której fazie drużyna zrezygnowała
@@ -604,7 +619,8 @@ func log_end(result: String, how := "") -> void:
 
 ## Premia złomu za udaną misję: ukończenie, cel poboczny, bez upadków.
 func scrap_bonus() -> int:
-	return Scrap.BONUS_CLEAR + (Scrap.BONUS_SIDE if side_done() else 0) + (Scrap.BONUS_NO_DOWNS if downs == 0 else 0)
+	return Scrap.BONUS_CLEAR + (Scrap.BONUS_SIDE if side_done() else 0) + (Scrap.BONUS_NO_DOWNS if downs == 0 else 0) \
+		+ (Scrap.BONUS_SILENT if silent_ok() else 0)
 
 func _stat(p: Node) -> Dictionary:
 	var id := int(p.player_id)
@@ -779,6 +795,7 @@ func on_restart(new_run: bool) -> void:
 	_finale_t = -1.0
 	# cele wróciły (reset_enemy / reset_generator) — liczymy od nowa
 	peak_noise = 0.0
+	_silent_lost_sent = false
 	_count_goal()
 	goal_left = goal_total
 	log_start()
@@ -846,6 +863,8 @@ func _event(kind: String) -> void:
 		"broadcast":
 			Audio.play("alarm_bell", Audio.BUS_UI, -6.0)
 			Audio.sting(2)
+		"silent_lost":
+			Msg.post("mission.silent", Msg.Ch.TOAST, tr("SILENT RUN LOST"), {"sub": tr("Attention reached 60% — the quiet bonus is gone for this attempt"), "style": Msg.Style.WARN, "ttl": 3.5, "prio": 45})
 		"checkpoint":
 			if not NoiseMgr.is_server():
 				_checkpoint = {"remote": Vector2.INF}     # klient nie zna pozycji, tylko to, że wipe w tej walce wraca do punktu kontrolnego (HUD)

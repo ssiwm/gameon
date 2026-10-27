@@ -58,6 +58,7 @@ const PLACED := preload("res://scripts/placed.gd")
 const SMOKE_CLOUD := preload("res://scripts/smoke_cloud.gd")
 const FLARE := preload("res://scripts/flare.gd")
 const GENERATOR := preload("res://scripts/generator.gd")
+const STRONGBOX := preload("res://scripts/strongbox.gd")
 const HANDCAR := preload("res://scripts/handcar.gd")
 const RACK := preload("res://scripts/rack.gd")
 const CABINET := preload("res://scripts/cabinet.gd")
@@ -147,6 +148,7 @@ var collapse_rects: Array = []
 ## FINALE_SPAWNS z danych mapy: [rodzaj, kolumna, wiersz podłogi] — śpiący wrogowie, których finał 1.1 wypuszcza na drogę powrotną („obudzony las”).
 var finale_spawns: Array = []
 var backdrop: Array = []                  ## BACKDROP z danych mapy: dalekie punkty orientacyjne tła 3D (`backdrop3d.gd`); czysta kosmetyka
+var _strongboxes: Array = []              ## STRONGBOXES z danych mapy: [kolumna, rząd, złom] — sejfy wyważane hałasem (FUN_PLAN.md P2.2, strongbox.gd)
 var _power_crates: Array = []             ## POWER_CRATES z danych mapy: [kolumna, rząd, broń, naboje] — skrzynie mocy (FUN_PLAN.md P1.3, pickup „power”)
 var streams: Array = []                   ## STREAMS z danych mapy: [kolumna od, kolumna do] — strumień z lasu przez ciąg wody (`Level3D.build_streams`); kosmetyka
 var _finale_on := false
@@ -245,6 +247,7 @@ func _load(id: String) -> void:
 	backdrop = ((m as GDScript).get_script_constant_map().get("BACKDROP", []) as Array).duplicate()
 	streams = ((m as GDScript).get_script_constant_map().get("STREAMS", []) as Array).duplicate()
 	_power_crates = ((m as GDScript).get_script_constant_map().get("POWER_CRATES", []) as Array).duplicate()
+	_strongboxes = ((m as GDScript).get_script_constant_map().get("STRONGBOXES", []) as Array).duplicate()
 	_finale_on = false
 	_blocks.clear()
 	_wall_cells.clear()
@@ -655,6 +658,13 @@ func _spawn_entities() -> void:
 		g.name = "Generator%d" % (i + 1)
 		g.position = found["G"][i]
 		add_child(g)
+	for i in _strongboxes.size():
+		var sb: Array = _strongboxes[i]
+		var box: Node2D = STRONGBOX.new()
+		box.name = "Strongbox%d" % (i + 1)
+		box.value = int(sb[2])
+		box.position = Vector2(int(sb[0]) * TILE + TILE * 0.5, (int(sb[1]) + 1) * TILE)      # stopy na podłodze, jak znaczniki mapy
+		add_child(box)
 	for i in found["D"].size():
 		var car: AnimatableBody2D = HANDCAR.new()
 		car.name = "Handcar" if i == 0 else "Handcar%d" % (i + 1)
