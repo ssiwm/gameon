@@ -147,6 +147,7 @@ var collapse_rects: Array = []
 ## FINALE_SPAWNS z danych mapy: [rodzaj, kolumna, wiersz podłogi] — śpiący wrogowie, których finał 1.1 wypuszcza na drogę powrotną („obudzony las”).
 var finale_spawns: Array = []
 var backdrop: Array = []                  ## BACKDROP z danych mapy: dalekie punkty orientacyjne tła 3D (`backdrop3d.gd`); czysta kosmetyka
+var _power_crates: Array = []             ## POWER_CRATES z danych mapy: [kolumna, rząd, broń, naboje] — skrzynie mocy (FUN_PLAN.md P1.3, pickup „power”)
 var streams: Array = []                   ## STREAMS z danych mapy: [kolumna od, kolumna do] — strumień z lasu przez ciąg wody (`Level3D.build_streams`); kosmetyka
 var _finale_on := false
 var exits_alt: Array[Vector2] = []
@@ -243,6 +244,7 @@ func _load(id: String) -> void:
 	finale_spawns = ((m as GDScript).get_script_constant_map().get("FINALE_SPAWNS", []) as Array).duplicate()
 	backdrop = ((m as GDScript).get_script_constant_map().get("BACKDROP", []) as Array).duplicate()
 	streams = ((m as GDScript).get_script_constant_map().get("STREAMS", []) as Array).duplicate()
+	_power_crates = ((m as GDScript).get_script_constant_map().get("POWER_CRATES", []) as Array).duplicate()
 	_finale_on = false
 	_blocks.clear()
 	_wall_cells.clear()
@@ -925,6 +927,10 @@ func _spawn_map_items() -> void:
 		var stash: Array = _map_items.get("H", [])
 		for i in stash.size():
 			_add_map_item("MapStash%d" % i, "stash", 0, stash[i], Scrap.STASH_VALUE)
+	for i in _power_crates.size():
+		var pc: Array = _power_crates[i]
+		# punkt na podłodze jak przy znacznikach mapy: środek kafla w poziomie, dół kafla w pionie
+		_add_map_item("MapPower%d" % i, "power", int(pc[2]), Vector2(int(pc[0]) * TILE + TILE * 0.5, (int(pc[1]) + 1) * TILE), int(pc[3]))
 	var flare_boxes: Array = _map_items.get("f", [])
 	for i in flare_boxes.size():
 		_add_map_item("MapFlares%d" % i, "flares", 0, flare_boxes[i], 2)
@@ -1342,7 +1348,7 @@ func take_item(n: String, quiet := false) -> void:
 ## Dźwięk podniesienia wg rodzaju przedmiotu (pickup.gd: kind); reszta (flary, zaopatrzenie) gra „item_pickup”.
 const PICKUP_SOUND := {
 	"ammo": "ammo_pickup", "cache": "ammo_pickup", "weapon": "weapon_pickup", "health": "medkit_pickup",
-	"scrap": "scrap_pickup", "stash": "scrap_pickup", "tag": "tag_pickup", "mag": "ammo_pickup", "part": "weapon_pickup",
+	"scrap": "scrap_pickup", "stash": "scrap_pickup", "tag": "tag_pickup", "mag": "ammo_pickup", "part": "weapon_pickup", "power": "weapon_pickup",
 }
 
 @rpc("authority", "call_local", "reliable")

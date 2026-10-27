@@ -56,7 +56,7 @@ Mapa 1.3 zostaje nietknięta (`MAPS_PLAN.md`).
   w 48 px od wstającego (przy „Drugiej szansie” albo podniesieniu przez bota obok może trafić do kogoś obok); hałas GHOST przypisuje serwer
   najbliższej postaci w 24 px od zdarzenia (gracz zgłasza je z własnej pozycji, hałas bota nie idzie na niczyje konto).
 
-## 3. P1 — P1.1, P1.2 i P1.4 wdrożone w 1.7.402 (`feat/fun-p1`), P1.3 czeka na decyzję
+## 3. P1 — wdrożone w 1.7.402 (`feat/fun-p1`)
 
 Na prośbę użytkownika wdrożone przed playtestem P0 — liczby (budżet 6 / 2 na s, 15 s → 70, oddech 8 s × 0,5) są punktem wyjścia do strojenia.
 
@@ -64,7 +64,7 @@ Na prośbę użytkownika wdrożone przed playtestem P0 — liczby (budżet 6 / 2
 |---|---|---|
 | P1.1 | ✅ Hałas wrogów (`enemy`) z budżetem Uwagi (6, odnowa 2/s); `alarm` i skryptowe skoki bez limitu; źródła świata z własnymi znacznikami w dzienniku | D1, D2 |
 | P1.2 | ✅ 15 s na 100 → spadek do 70 i 8 s oddechu (hałas × 0,5), HUD „THE NOISE FADES”, zdarzenie `peak` | D1 |
-| P1.3 | ⏸ Bronie na mapie w stylu Contry — do decyzji: broń tymczasowa poza slotami (nowa mechanika w `weapon_controller.gd`) albo zwykła broń z mapy („g”) w 1.1 przed salą kopalni | D6 |
+| P1.3 | ✅ Skrzynie mocy (decyzja: broń tymczasowa poza slotami): 1.1 WRATH-4 × 8, 1.2 FALCON-6 × 60; bez przeładowania i zacięć, zmiana broni zablokowana, po ostatnim naboju wraca broń ze slotu; serwer liczy przydział i odrzuca strzał z broni spoza zestawu | D6 |
 | P1.4 | ✅ Pancerz zbija strzał śrutem raz, nie każdą śrucinę (SPREAD-12 w Wołka ok. 32 zamiast 20; GNIEW-4 jako wybuch pancerza i tak nie zna); cios przechodzi przez pole Podsłuchacza | D6 |
 
 ## 4. P2 — po playtestach

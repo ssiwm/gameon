@@ -12,7 +12,9 @@ extends "res://scripts/stalker_test.gd"
 ##    próba +1, Żyła śpi i budzi się po CHECKPOINT_GRACE s), a nie na start mapy.
 ## 5. Następna misja z karty wyniku: po sukcesie `_continue_without_hub` ładuje następną misję kampanii z pominięciem kryjówki.
 ## P1: 6. hałas wrogów ("enemy") podnosi Uwagę najwyżej z budżetu, krzyk Podsłuchacza ("alarm") bez limitu; 7. Uwaga na 100 przez PEAK_HOLD s
-## opada do PEAK_RELEASE i zaczyna się oddech (pół hałasu); 8. pancerz zbija strzał śrutem raz, nie każdą śrucinę.
+## opada do PEAK_RELEASE i zaczyna się oddech (pół hałasu); 8. pancerz zbija strzał śrutem raz, nie każdą śrucinę;
+## 9. skrzynia mocy: dotknięcie daje broń poza slotami z przydziałem naboi, bez przeładowania i zmiany broni, druga skrzynia nie działa,
+##    po ostatnim naboju wraca broń ze slotu, a licznik serwera się zeruje.
 ## Mapa 1.3 (gniazda, Żyła, Stalker). Zwykli wrogowie usunięci, bot i Dyrektor stoją. Wynik: linie [FUN-TEST] i kod wyjścia.
 
 const Mission := preload("res://scripts/mission.gd")
@@ -55,6 +57,7 @@ func run(m: Node2D) -> void:
 	await _enemy_noise()
 	await _peak()
 	await _pellet_armor()
+	await _power_crate()
 	await _checkpoint()
 	await _skip_hub()
 	_finish()
@@ -207,6 +210,28 @@ func _pellet_armor() -> void:
 	Combat.apply(w, Combat.make_info(Weapons.M83, 8.0, w.global_position + Vector2(-4, -6), Vector2.RIGHT, 1, "bullet"))
 	check("kula M-83 bez zmian: 8 → %.2f" % (hp0 - w.hp), absf((hp0 - w.hp) - 5.0) < 0.01)
 	w.queue_free()
+
+# ---------------------------------------------------------------- 9. skrzynia mocy (P1.3)
+
+func _power_crate() -> void:
+	var wc: Node = player.weapons
+	var before: int = int(wc.loadout[wc.slot])
+	level._add_map_item("FunPower", "power", Weapons.GNIEW4, player.global_position + Vector2(0, 2), 3)
+	await get_tree().create_timer(1.2).timeout
+	check("skrzynia mocy: broń WRATH-4 w rękach poza slotami (%s, %d naboje)" % [wc.cur().name, wc.mag_of(wc.cur().id)],
+		wc.power_active() and wc.cur().id == Weapons.GNIEW4 and wc.mag_of(Weapons.GNIEW4) == 3 and int(player.weapon) == Weapons.GNIEW4)
+	check("zestaw bez zmian (slot %d = %s)" % [wc.slot, Weapons.def(int(wc.loadout[wc.slot])).name], int(wc.loadout[wc.slot]) == before)
+	check("skrzynia zniknęła", level.get_node_or_null("FunPower") == null or level.get_node("FunPower").is_queued_for_deletion())
+	check("bez przeładowania i zmiany broni", not wc.try_reload() and (func() -> bool: wc.select_slot((wc.slot + 1) % 3); return wc.power_active() and int(wc.loadout[wc.slot]) == before).call())
+	check("druga broń mocy nie wchodzi, dopóki trwa pierwsza", not wc.server_grant_power(Weapons.SOKOL6, 10))
+	var t := 0.0
+	while wc.power_active() and t < 8.0:
+		if wc.cd <= 0.0 and wc.state == wc.State.READY:
+			wc.sim_press = true
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+	check("po ostatnim naboju wraca broń ze slotu (%s, po %.1f s)" % [wc.cur().name, t], not wc.power_active() and wc.cur().id == before and int(player.weapon) == before)
+	check("licznik serwera wyzerowany, można wziąć następną skrzynię", wc._srv_power_left == 0 and wc._srv_power_w == -1)
 
 # ---------------------------------------------------------------- 4. punkt kontrolny
 

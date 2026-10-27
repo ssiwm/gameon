@@ -15,10 +15,10 @@ grep -a "\[WTEST\]" "$LOG/unit.log" | grep -a -E "FAIL|====" || true
 [ $u -ne 0 ] && rc=1
 
 echo "== sieć (host + klient) =="
-godot --headless --path . -- --host --port=8951 --weaptestnet --autoquit=60 >"$LOG/net_host.log" 2>&1 &
+godot --headless --path . -- --host --port=8951 --weaptestnet --autoquit=75 >"$LOG/net_host.log" 2>&1 &
 HOST=$!
 sleep 4
-godot --headless --path . -- --join=127.0.0.1 --port=8951 --weaptestclient --autoquit=40 >"$LOG/net_client.log" 2>&1
+godot --headless --path . -- --join=127.0.0.1 --port=8951 --weaptestclient --autoquit=55 >"$LOG/net_client.log" 2>&1
 client_status=$?
 wait $HOST
 n=$?

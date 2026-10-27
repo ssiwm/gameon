@@ -14,6 +14,7 @@ extends RefCounted
 ##   bleed_out      who, bot (wykrwawienie: powrót na start misji)
 ##   stalker        what (awake / asleep / swing_hit / swing_miss / close_call — ucieczka o włos od 1.7.401 / pass_in / pass_out — przechodzący
 ##                  Stalker 1.1), noise, target, bot, pos
+##   power          who, weapon, rounds — gracz wziął skrzynię mocy (FUN_PLAN.md P1.3, od 1.7.402)
 ##   peak           hold, to — Uwaga za długo na 100 opadła i zaczął się oddech (FUN_PLAN.md P1.2, od 1.7.402)
 ##   overcharge     pos, noise, stale, charges, awake (Stalker obudzony), locked (s przytrzymania na wabiku, 0 przy zwietrzałym — FUN_PLAN.md P0.2)
 ##   pos            phase, noise, p: lista graczy [{who, bot, pos, hp, crouch, dead}] — próbka co POS_EVERY s (mapy cieplne tras, MAPS_PLAN.md P1)

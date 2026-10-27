@@ -34,9 +34,9 @@ jobs:
         run: |
           godot --headless --path prototype -- --host --stalkertest --autoquit=70 2>&1 | tee stalkertest.log
           grep -a "\[STALKER-TEST\] ==== PASS" stalkertest.log
-      - name: Pakiet P0 z FUN_PLAN.md — ucieczka o włos, wabik, wyróżnienia, punkt kontrolny bossa, następna misja (--funtest)
+      - name: Pakiet P0–P1 z FUN_PLAN.md — ucieczka o włos, wabik, wyróżnienia, rytm Uwagi, śrut na pancerz, skrzynia mocy, punkt kontrolny bossa, następna misja (--funtest)
         run: |
-          godot --headless --path prototype -- --host --funtest --autoquit=60 2>&1 | tee funtest.log
+          godot --headless --path prototype -- --host --funtest --autoquit=80 2>&1 | tee funtest.log
           grep -a "\[FUN-TEST\] ==== PASS" funtest.log
       - name: Bot za plecami dowódcy i zdarzenie FF w dzienniku (--bottest)
         run: |

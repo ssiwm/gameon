@@ -200,6 +200,8 @@ Ping drużyny i radio z pierwotnego projektu nie są zaimplementowane.
 
 ### 6.7 Stan implementacji w prototypie (1.6)
 
+**Skrzynie mocy (od 1.7.402, `FUN_PLAN.md` P1.3):** power-up w stylu Contry — skrzynia na mapie (1.1: WRATH-4 × 8, 1.2: FALCON-6 × 60) daje temu, kto jej dotknie, broń poza slotami z ograniczoną amunicją: bez przeładowania i zacięć, zmiana broni zablokowana, po ostatnim naboju albo upadku wraca broń ze slotu. Po co: w dziennikach M-83 dawało 81% zabójstw — broń mocy to chwila „Contry”, która zmusza do innej broni bez nauki warsztatu.
+
 Pełna analiza i architektura: `prototype/WEAPONS.md`. W prototypie działa **12 pozycji**: M-83, SPREAD-12,
 P-83, PELLET-8, LR-7, HKM-9, WRATH-4, FALCON-6, SPECTER-1, SINEW-6, maczeta, kilof (w HUD nazwy ASCII). Różnice
 względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapons.gd`, testy `--weapontest`):
