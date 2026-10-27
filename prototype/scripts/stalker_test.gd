@@ -6,6 +6,7 @@ extends Node
 ## 1. Ostrzał: trafienia go spowalniają, ale nie zatrzymują — przy trafieniu co 0,6 s dochodzi do strzelca i zamachuje się.
 ## 2. Teren: na zwykłym gruncie, w wodzie i w błocie biegnący gracz jest szybszy od Stalkera.
 ## 3. Po ciosie: o ile się cofa i po jakim czasie zamachuje się znowu (pomiar, bez progu — pytanie do playtestu).
+## 4. Bot: zapowiedź zamachu wystarcza mu na odskok — nie stoi w zasięgu ciosu jak cel (GDD §16.3 „reaguje na stalkera”).
 ##
 ## Mapa 1.3 (ma Stalkera, długi pas wody i błoto). Zwykli wrogowie i gniazda są usuwani, bot i Dyrektor grozy stoją —
 ## każdy obcy hałas zmieniłby cel Stalkera. Wynik: linie [STALKER-TEST] i kod wyjścia (0 = OK) — nadaje się do CI.
@@ -49,6 +50,7 @@ func run(m: Node2D) -> void:
 	if int(ground.get("len", 0)) >= 16:
 		await _measure_fire(ground)
 		await _measure_after_hit(ground)
+		await _measure_bot_dodge(ground)
 	await _measure_terrain(ground)
 	_finish()
 
@@ -239,5 +241,48 @@ func _measure_after_hit(ground: Dictionary) -> void:
 	if float(st["hit_t"]) >= 0.0:
 		info("po ciosie: cofnięcie %.0f px, odstęp od gracza %.0f px, następny zamach po %s" % [
 			float(st["retreat"]), float(st["gap"]), ("%.1f s" % (float(st["next_t"]) - float(st["hit_t"]))) if float(st["next_t"]) >= 0.0 else "ponad %.0f s" % (8.0 - float(st["hit_t"]))])
+	_sleep()
+	await _frames(0.2)
+
+# ---------------------------------------------------------------- 4. bot kontra zamach
+
+## Bot stoi przy dowódcy (tak w grze pada najczęściej), a Stalker podchodzi do niego od zewnętrznej strony i zaczyna zamach
+## na bota. Bot ma odskoczyć w czasie zapowiedzi (0,55 s) — wcześniej unik pomijał Stalkera i bot stał jak cel.
+func _measure_bot_dodge(ground: Dictionary) -> void:
+	var bot: CharacterBody2D = null
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot:
+			bot = p
+	check("bot w drużynie do testu uniku", bot != null)
+	if bot == null:
+		return
+	var p0: Vector2 = (ground["a"] as Vector2) + Vector2(110, 0)
+	_place_player(p0)
+	player.hp = player.max_hp() - 1                   # ranny dowódca: bot chce go leczyć apteczką i stoi — zapowiedź ciosu ma to przerwać
+	bot.global_position = p0
+	bot.velocity = Vector2.ZERO
+	bot.hp = bot.max_hp()
+	bot.set_physics_process(true)
+	bot.set_process(true)
+	await _frames(0.5)                                 # bot wybiera miejsce przy dowódcy — stawiamy go tam, żeby stał (bez marszu po grafie)
+	bot.global_position = Vector2(bot._bot_target_pos.x, p0.y)
+	bot.velocity = Vector2.ZERO
+	await _frames(0.5)
+	var side := signf(bot.global_position.x - player.global_position.x)
+	if side == 0.0:
+		side = 1.0
+	_place_stalker(bot.global_position + Vector2(side * 10.0, 0))
+	_wake(bot.global_position)
+	var st := {"hp": int(bot.hp), "swings": 0, "was": false}
+	await _frames(4.0, func(_t: float, _dt: float) -> void:
+		if stalker.winding and not bool(st["was"]) and stalker._windup_target == bot:
+			st["swings"] = int(st["swings"]) + 1
+		st["was"] = stalker.winding)
+	check("bot odskakuje przed zamachem Stalkera: zamachów na bota %d, bot stracił %d HP" % [int(st["swings"]), int(st["hp"]) - int(bot.hp)],
+		int(st["swings"]) >= 1 and int(bot.hp) == int(st["hp"]))
+	bot.set_physics_process(false)
+	bot.set_process(false)
+	bot.global_position = Vector2(-4000, -4000)
+	player.hp = player.max_hp()
 	_sleep()
 	await _frames(0.2)
