@@ -172,7 +172,7 @@ func awaken() -> void:
 	_brood_t = 2.0
 	_stun_cd = 0.0                    # po wipe poprzednia próba nie może zostawić cooldownu oślepienia
 	_light_check = 0.0
-	NoiseMgr.add_noise(N_SCREAM, global_position)
+	NoiseMgr.add_noise(N_SCREAM, global_position, "boss")
 	print("[BOSS] Żyła budzi się, HP=%.0f" % max_hp)
 	_event.rpc("awaken")
 	_send_state(true)
@@ -252,7 +252,7 @@ func _tick_flashlight(delta: float) -> void:
 	_stun_cd = STUN_CD
 	_set_atk(Atk.NONE)
 	_open_maw(STUN_TIME, true)
-	NoiseMgr.add_noise(N_STUN, global_position)
+	NoiseMgr.add_noise(N_STUN, global_position, "boss")
 	print("[BOSS] oślepiona latarką (P%d)" % lighter.display_id)
 	_event.rpc("blinded")
 
@@ -396,7 +396,7 @@ func _tick_spits(delta: float) -> void:
 				break
 		var cell := Vector2i(int(floor(sp.pos.x / 16.0)), int(floor(sp.pos.y / 16.0)))
 		if hit or lvl._is_solid(cell.x, cell.y) or sp.pos.y > lvl.bounds.end.y:
-			NoiseMgr.add_noise(N_SPLASH, sp.pos)
+			NoiseMgr.add_noise(N_SPLASH, sp.pos, "boss")
 			_splash_fx.rpc(sp.pos)
 			continue
 		keep.append(sp)
@@ -507,7 +507,7 @@ func _hit(from_pos: Vector2, dmg: float, from_above: bool, fx := true) -> void:
 	if phase == 1 and hp <= max_hp * 0.66:
 		phase = 2
 		enraged = true
-		NoiseMgr.add_noise(N_SCREAM * 0.5, global_position)
+		NoiseMgr.add_noise(N_SCREAM * 0.5, global_position, "boss")
 		_event.rpc("enrage")
 	if phase == 2 and hp <= max_hp * 0.33:
 		_phase3()
@@ -519,7 +519,7 @@ func _hit(from_pos: Vector2, dmg: float, from_above: bool, fx := true) -> void:
 ## Faza 3: krzyk przyzywa Stalkera — Uwaga 100%, światła graczy migoczą.
 func _phase3() -> void:
 	phase = 3
-	NoiseMgr.add_noise(NoiseMgr.MAX_LEVEL, global_position)
+	NoiseMgr.add_noise(NoiseMgr.MAX_LEVEL, global_position, "boss")
 	_spawn_one()
 	print("[BOSS] faza 3 — krzyk, Uwaga %.0f" % NoiseMgr.level)
 	_event.rpc("phase3")
@@ -542,7 +542,7 @@ func _die() -> void:
 	hp = 0.0
 	maw_open = false
 	_wave_r = -1.0
-	NoiseMgr.add_noise(N_DEATH, global_position)
+	NoiseMgr.add_noise(N_DEATH, global_position, "boss")
 	_kill_summoned(_brood)
 	_brood.clear()
 	print("[BOSS] Żyła nie żyje")

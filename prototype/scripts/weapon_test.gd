@@ -336,7 +336,7 @@ func _t_phase1() -> void:
 	check("pancerz Wołka: kula 8 → 5, znacznik ARMOR (mat 1)", absf(dealt(w) - 5.0) < 0.01 and int(r1["mat"]) == 1, "dealt %.2f mat %d" % [dealt(w), int(r1["mat"])])
 	var b0 := dealt(w)
 	Combat.apply(w, Combat.make_info(Weapons.SRUT8, 10.0, w.global_position + Vector2(-4, -6), Vector2.RIGHT, 1, "bullet"))
-	check("pancerz Wołka: śrucina PELLET-8 (10) traci 3, nie więcej", absf(dealt(w) - b0 - 7.0) < 0.01)
+	check("pancerz Wołka: śrucina PELLET-8 (10) traci 3/8 — pancerz zbija cały strzał raz, nie każdą śrucinę (FUN_PLAN.md P1.4)", absf(dealt(w) - b0 - (10.0 - 3.0 / 8.0)) < 0.01)
 	var b1 := dealt(w)
 	Combat.apply(w, Combat.make_info(Weapons.HKM9, 3.0, w.global_position + Vector2(-4, -6), Vector2.RIGHT, 1, "fire"))
 	check("pancerz nie działa na ogień (3 → 3)", absf(dealt(w) - b1 - 3.0) < 0.01)
@@ -3771,6 +3771,19 @@ func run_net_host(m: Node2D) -> void:
 			previous_id = motion.action.x
 	check("sieć: zamach kilofa dociera przed trafieniem 45%", first_melee < 0.25, "pierwsza faza %.3f" % first_melee)
 	check("sieć: przeładowanie ma rosnącą fazę i rzeczywisty czas", reload_samples > 30 and not backwards)
+	# broń mocy (FUN_PLAN.md P1.3): serwer przydziela 2 naboje FALCON-6 spoza zestawu — przyjmuje dokładnie tyle, a sfałszowane strzały
+	# po wyczerpaniu przydziału odrzuca; koniec broni mocy u klienta zeruje licznik serwera
+	var shots0 := int(cp.weapons.srv_shots)
+	check("sieć: serwer przyznaje klientowi broń mocy", cp.weapons.server_grant_power(Weapons.SOKOL6, 2))
+	_net_power_phase.rpc_id(cid)
+	var pwait := 0.0
+	while pwait < 9.0 and is_instance_valid(cp) and not _net_power_done:
+		await wait(0.2)
+		pwait += 0.2
+	await wait(0.5)
+	check("sieć: broń mocy klienta — przyjęte dokładnie 2 strzały z przydziału, sfałszowane odrzucone (%d)" % (int(cp.weapons.srv_shots) - shots0),
+		int(cp.weapons.srv_shots) - shots0 == 2)
+	check("sieć: koniec broni mocy u klienta zeruje licznik serwera", cp.weapons._srv_power_w == -1 and cp.weapons._srv_power_left == 0)
 	# Rzeczywisty zdalny człowiek, przy każdym właściwym stanowisku; lokalny host stoi poza ławą.
 	main._set_map("z1_hub")
 	await frames(3)
@@ -3851,6 +3864,38 @@ func run_net_client(m: Node2D) -> void:
 	check("sieć: klient zakończył operacje warsztatu", _net_shop_finished)
 	print("[WTEST] klient: koniec")
 	Audio.quit_game(1 if failed else 0)
+
+var _net_power_done := false
+
+## Klient: czeka na broń mocy, oddaje 2 strzały z przydziału, po jej końcu próbuje 3 sfałszowanych strzałów tą bronią.
+@rpc("authority", "call_remote", "reliable")
+func _net_power_phase() -> void:
+	var w8 := 0.0
+	while not wc.power_active() and w8 < 4.0:
+		await wait(0.1)
+		w8 += 0.1
+	check("sieć: klient dostał broń mocy poza slotami", wc.power_active() and wc.cur().id == Weapons.SOKOL6 and wc.mag_of(Weapons.SOKOL6) == 2)
+	await wait(0.4)
+	for i in 2:
+		wc.cd = 0.0
+		wc.state = wc.State.READY
+		wc._fire_shot(wc.cur())
+		await wait(0.4)
+	var e8 := 0.0
+	while wc.power_active() and e8 < 3.0:
+		await wait(0.1)
+		e8 += 0.1
+	check("sieć: po przydziale klient wraca do broni ze slotu", not wc.power_active())
+	await wait(0.5)
+	var muzzle: Vector2 = wc.muzzle_pos(Vector2.RIGHT, Weapons.def(Weapons.SOKOL6))
+	for i in 3:
+		wc._fire_request.rpc_id(1, muzzle, Vector2.RIGHT, Weapons.SOKOL6, randi(), 0.0, 0)
+		await wait(0.5)
+	_net_power_report.rpc_id(1)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _net_power_report() -> void:
+	_net_power_done = true
 
 ## Prawdziwy klient publikuje zamach i przeładowanie; host obserwuje normalną replikację.
 @rpc("authority", "call_remote", "reliable")

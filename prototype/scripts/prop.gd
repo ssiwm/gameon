@@ -206,7 +206,7 @@ func _on_body_entered(_body: Node) -> void:
 	if not NoiseMgr.is_server() or exploded or _prev_speed < IMPACT_SPEED:
 		return
 	var k := clampf(_prev_speed / 400.0, 0.4, 1.0)
-	NoiseMgr.add_noise(N_IMPACT * k * 1.5, global_position)
+	NoiseMgr.add_noise(N_IMPACT * k * 1.5, global_position, "prop")
 	_impact_fx.rpc(global_position, k)
 
 @rpc("authority", "call_local", "unreliable")
@@ -224,7 +224,7 @@ func explode() -> void:
 		return
 	exploded = true
 	var pos := global_position + Vector2(0, -8)
-	NoiseMgr.add_noise(N_BLAST, pos)
+	NoiseMgr.add_noise(N_BLAST, pos, "prop")
 	print("[PROP] beczka wybucha w %s" % pos.round())
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e == self or not is_instance_valid(e):

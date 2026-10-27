@@ -114,6 +114,7 @@ signal weapon_changed(w: int)
 signal fire_mode_changed(w: int, burst: bool)
 signal melee_swung(w: int)
 signal ammo_changed(w: int, t: int)        ## gracz wybrał typ naboju na następny magazynek (klawisz Z)
+signal power_changed(w: int, rounds: int)   ## broń mocy wzięta (w, naboje) albo skończona (-1, 0) — u właściciela
 
 var player: CharacterBody2D
 
@@ -201,6 +202,15 @@ var _action_duration := 0.0
 var _action_elapsed := 0.0
 var _action_progress := 0.0
 
+## Broń mocy (FUN_PLAN.md P1.3, power-up w stylu Contry): skrzynia z mapy (pickup.gd, rodzaj „power”) daje broń POZA slotami z ograniczoną
+## liczbą naboi — bez przeładowania, zużycia i zacięć, z zablokowaną zmianą broni. Po ostatnim naboju albo upadku wraca broń ze slotu.
+## Licznik naboi trzyma właściciel (jak magazynki), a serwer własny (`_srv_power_*`): strzał bronią mocy ponad przydział odrzuca.
+const POWER_DRAW := 0.25                   ## s dobycia broni mocy (szybciej niż zwykła zmiana — to nagroda, nie koszt)
+var power_w := -1                          ## id broni mocy w rękach (-1 = brak)
+var power_left := 0                        ## ile naboi zostało
+var _srv_power_w := -1
+var _srv_power_left := 0
+
 ## Zegar wizualny nie zadaje obrażeń; właściciel publikuje go razem ze stanem, serwer nadal liczy trafienie.
 func _begin_motion(kind: int, w: int, duration: float, variant := 0) -> void:
 	_action_seq += 1
@@ -268,7 +278,82 @@ func _on_weapon_hit(kind: int, w: int, rank := 0) -> void:
 
 ## Trzymana broń: zamontowane części gracza i typ naboju w magazynku (Weapons.def_build).
 func cur() -> WeaponDef:
+	if power_w >= 0:
+		return Weapons.def(power_w)                       # broń mocy: fabryczna, bez części i amunicji specjalnej
 	return def_of(loadout[slot])
+
+func power_active() -> bool:
+	return power_w >= 0
+
+## Serwer: skrzynia mocy (pickup.gd) przyznaje graczowi broń `w` z `rounds` nabojami. False, gdy gracz już ma broń mocy, leży albo jest botem.
+func server_grant_power(w: int, rounds: int) -> bool:
+	if not NoiseMgr.is_server() or player == null or player.is_bot or player.dead or _srv_power_left > 0 or not Weapons.is_valid(w) or rounds <= 0:
+		return false
+	_srv_power_w = w
+	_srv_power_left = rounds
+	if not NoiseMgr.has_network() or is_owner():
+		_power_rpc(w, rounds)
+	else:
+		_power_rpc.rpc_id(player.get_multiplayer_authority(), w, rounds)
+	return true
+
+@rpc("any_peer", "call_remote", "reliable")
+func _power_rpc(w: int, rounds: int) -> void:
+	var sender := multiplayer.get_remote_sender_id() if NoiseMgr.has_network() else 0
+	if sender != 0 and sender != 1:
+		return
+	if not Weapons.is_valid(w):
+		return
+	_cancel_actions()
+	power_w = w
+	power_left = rounds
+	state = State.DRAW
+	state_t = POWER_DRAW
+	cd = 0.0
+	_dry_latch = false
+	Audio.play("weapon_pickup", Audio.BUS_UI, -4.0, 0.9)
+	Audio.sting(1)
+	Msg.post("hud.power", Msg.Ch.TOAST, tr("POWER WEAPON: %s") % Weapons.def(w).name,
+		{"sub": tr("%d rounds — no reloads; your own gun comes back when it runs dry") % rounds, "style": Msg.Style.SUCCESS, "ttl": 3.5, "prio": 75})
+	power_changed.emit(w, rounds)
+	_sync_player()
+
+## Koniec broni mocy (ostatni nabój, upadek, reset): wraca broń ze slotu. Właściciel melduje to serwerowi.
+func _end_power() -> void:
+	if power_w < 0:
+		return
+	power_w = -1
+	power_left = 0
+	_cancel_actions()
+	var d := cur()
+	state = State.DRAW
+	state_t = d.draw_time * mastery_mult(d.id)
+	Audio.play_variant("foley_gear", 3, Audio.BUS_PLAYER, -12.0, 0.9)
+	power_changed.emit(-1, 0)
+	_sync_player()
+	if NoiseMgr.has_network() and not NoiseMgr.is_server():
+		_power_end_rpc.rpc_id(1)
+	else:
+		_srv_power_w = -1
+		_srv_power_left = 0
+
+@rpc("any_peer", "call_remote", "reliable")
+func _power_end_rpc() -> void:
+	if NoiseMgr.is_server() and player != null and multiplayer.get_remote_sender_id() == player.get_multiplayer_authority():
+		_srv_power_w = -1
+		_srv_power_left = 0
+
+## Serwer: czy gracz nosi `w` — replikowany `player.kit`, zestaw znany serwerowi (level.server_weapon_kit: podniesienia i gabloty
+## rozstrzyga serwer, więc zna je przed replikacją) albo sidearm. Inaczej strzał może iść tylko z przydziału broni mocy.
+func _kit_has(w: int) -> bool:
+	var k: Vector3i = player.kit
+	if w == k.x or w == k.y or w == k.z or w == loadout[2] or w == Weapons.START_SIDEARM:
+		return true
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl != null and lvl.has_method("server_weapon_kit"):
+		var sk: Vector3i = lvl.server_weapon_kit(player)
+		return w == sk.x or w == sk.y or w == sk.z
+	return false
 
 ## Serwer: broń `w` tego gracza do ognia ciągłego i ciosów — części gracza (player.fits), ale tylko te, które drużyna odblokowała (Scrap.parts).
 ## Do 1.7.350 ogień ciągły brał tu fabryczną broń, więc części LR-7 i HKM-9 nie zmieniały obrażeń ani zasięgu; kule niosą kod części w strzale.
@@ -337,6 +422,8 @@ func def_of_slot(i: int) -> WeaponDef:
 	return def_of(loadout[i])
 
 func mag_of(w: int) -> int:
+	if power_w >= 0 and w == power_w:
+		return power_left
 	return int(mags.get(w, 0))
 
 func heat_of(w: int) -> float:
@@ -655,6 +742,7 @@ func eject_pos(dir: Vector2, d: WeaponDef) -> Vector2:
 
 ## Pełny reset (spawn, restart misji): zestaw startowy, pełne magazynki, zimne lufy.
 func reset() -> void:
+	_end_power()
 	loadout = [Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Weapons.START_SIDEARM]
 	if player != null and player.is_bot:
 		loadout = [Weapons.M83, Weapons.M83, Weapons.P64]
@@ -689,6 +777,7 @@ func reset() -> void:
 
 ## Gracz padł (down): przerwij wszystko — w tym ciągły ogień, żeby nie palił po śmierci.
 func on_down() -> void:
+	_end_power()                                          # broń mocy przepada razem z upadkiem (jak w Contrze)
 	_cancel_actions()
 	firing = false
 	wear_carried(WEAR_DOWN, true)                         # broń upada razem z graczem
@@ -705,7 +794,7 @@ func cool() -> void:
 func _sync_player() -> void:
 	if player == null:
 		return
-	player.weapon = loadout[slot]
+	player.weapon = power_w if power_w >= 0 else loadout[slot]
 	player.w_state = state
 	_sync_motion()
 	player.w_charge = charge
@@ -778,6 +867,8 @@ func _tick_common(delta: float) -> void:
 		if _cycle_t < 0.0:
 			_cycle_t = -1.0
 			_cycle_fx()
+	if power_w >= 0 and power_left <= 0 and cd <= 0.0 and state != State.DRAW and is_owner():
+		_end_power()                                      # ostatni nabój poszedł i broń odbiła — wraca broń ze slotu
 	match state:
 		State.DRAW:
 			state_t -= delta
@@ -809,6 +900,8 @@ func _cancel_actions() -> void:
 # ---------------------------------------------------------------- zmiana broni
 
 func _handle_switch_input() -> void:
+	if power_w >= 0:
+		return                                            # broń mocy trzyma się w rękach do ostatniego naboju
 	if Input.is_action_just_pressed("weapon_1"):
 		select_slot(0)
 	elif Input.is_action_just_pressed("weapon_2"):
@@ -821,7 +914,7 @@ func _handle_switch_input() -> void:
 		select_slot((slot + 2) % 3)
 
 func select_slot(i: int) -> void:
-	if i == slot or i < 0 or i > 2:
+	if i == slot or i < 0 or i > 2 or power_w >= 0:
 		return
 	_cancel_actions()
 	slot = i
@@ -858,6 +951,8 @@ func _handle_fire(held: bool, pressed: bool, delta: float) -> void:
 			_handle_shot(d, held)
 
 func _has_ammo(d: WeaponDef) -> bool:
+	if power_w >= 0:
+		return power_left >= d.ammo_per_shot
 	return not ammo_enabled or not d.uses_ammo() or mag_of(d.id) >= d.ammo_per_shot
 
 func _handle_shot(d: WeaponDef, held: bool) -> void:
@@ -872,7 +967,7 @@ func _handle_shot(d: WeaponDef, held: bool) -> void:
 		_cancel_reload()
 	if state != State.READY or cd > 0.0:
 		return
-	var jam := jammed(d.id)
+	var jam := "" if power_w >= 0 else jammed(d.id)
 	if jam != "":
 		if jam == "misfire" and d.key == "p64" and _buf_t > 0.0 and not _dry_latch:
 			jams.erase(d.id)                               # P-83 (podwójne działanie): drugie pociągnięcie spustu uderza kurkiem jeszcze raz
@@ -883,7 +978,7 @@ func _handle_shot(d: WeaponDef, held: bool) -> void:
 		_burst_left = 0
 		_dry_fire(d)
 		return
-	if jam == "":
+	if jam == "" and power_w < 0:
 		var j := _roll_jam(d)
 		if j != "":
 			_start_jam(d, j)
@@ -969,10 +1064,12 @@ func _fire_shot(d: WeaponDef) -> void:
 	var muzzle := muzzle_pos(dir, d)
 	var extra := spread_extra(d)
 	var seed := randi()
-	if ammo_enabled and d.uses_ammo():
+	if power_w >= 0:
+		power_left = maxi(0, power_left - d.ammo_per_shot)
+	elif ammo_enabled and d.uses_ammo():
 		mags[d.id] = mag_of(d.id) - d.ammo_per_shot
 	_shots_mag[d.id] = int(_shots_mag.get(d.id, 0)) + 1
-	if not practice:
+	if not practice and power_w < 0:
 		_wear_shot(d)
 	var heat := heat_of(d.id)
 	var bursting := is_burst(d)
@@ -1112,6 +1209,11 @@ func _fire_request(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: floa
 	srv_last_build = d.build
 	if d.is_melee() or d.is_continuous():
 		return
+	if not _kit_has(w):
+		# broń spoza zestawu strzela tylko z przydziału skrzyni mocy (FUN_PLAN.md P1.3); wcześniej serwer przyjmował strzał z każdej broni
+		if w != _srv_power_w or _srv_power_left < d.ammo_per_shot:
+			return
+		_srv_power_left -= d.ammo_per_shot
 	# tempo: token bucket — lag może skumulować kilka strzałów, ale nie więcej niż RATE_CAP
 	var now := Time.get_ticks_msec()
 	_srv_tokens = minf(RATE_CAP, _srv_tokens + float(now - _srv_last_ms) / (maxf(d.cooldown, 0.05) * 1000.0))
@@ -1254,6 +1356,8 @@ func _continuous_hit(d: WeaponDef, target: Node, pos: Vector2, dir: Vector2, typ
 # ---------------------------------------------------------------- przeładowanie
 
 func try_reload(auto := false) -> bool:
+	if power_w >= 0:
+		return false                                      # broń mocy nie ma przeładowania
 	var d := cur()
 	if not d.uses_ammo() or state != State.READY:
 		return false

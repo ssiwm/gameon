@@ -90,7 +90,7 @@ func _scream() -> void:
 	e._sp = 0
 	e.winding = false
 	scream_cd = float(e._def["cooldown"]) * Difficulty.m("enemy_cd")
-	NoiseMgr.add_noise(float(c.get("noise", 8.0)), e.global_position)
+	NoiseMgr.add_noise(float(c.get("noise", 8.0)), e.global_position, "enemy")
 	var origin: Vector2 = e.body_center()
 	var r := float(c.get("radius", 96.0))
 	for p in e.get_tree().get_nodes_in_group("players"):

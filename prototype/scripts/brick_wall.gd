@@ -62,7 +62,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 	if not breaker and t != "blast":
 		return {"hit": false, "dealt": 0.0, "killed": false, "mat": 0}
 	hp -= float(info["amount"])
-	NoiseMgr.add_noise(N_HIT, global_position)
+	NoiseMgr.add_noise(N_HIT, global_position, "wall")
 	var broken := hp <= 0.0
 	var frac := clampf(hp / WALL_HP, 0.0, 1.0)
 	if NoiseMgr.has_network():
@@ -70,7 +70,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 	else:
 		_hit_fx(frac)
 	if broken:
-		NoiseMgr.add_noise(N_BREAK, global_position)
+		NoiseMgr.add_noise(N_BREAK, global_position, "wall")
 		var lvl := get_tree().get_first_node_in_group("level")
 		if lvl != null:
 			lvl.break_wall(String(name))

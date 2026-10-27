@@ -36,6 +36,7 @@ static func make_info(w: int, amount: float, pos: Vector2, dir: Vector2, shooter
 		"knock": d.knock, "stun": d.stun, "ignite": d.ignite, "crit_mult": d.crit_mult,
 		"backstab": false, "heavy": d.pellets >= 5 or d.kind == Weapons.Kind.RAIL,
 		"silent": false, "crit": false, "execute": d.execute_frac, "pull": d.pull, "ap": d.armor_pen, "build": build,
+		"pellets": maxi(1, int(d.pellets)),
 	}
 
 ## Zadaje obrażenia celowi (serwer). Zwraca {hit, dealt, killed, mat, crit}.

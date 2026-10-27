@@ -105,7 +105,7 @@ func scream() -> void:
 	shield_t = float((e._def.get("shield", {}) as Dictionary).get("time", 0.0))
 	alerted = true
 	e._has_lead = false
-	NoiseMgr.add_noise(SCREAM_NOISE, e.global_position)
+	NoiseMgr.add_noise(SCREAM_NOISE, e.global_position, "alarm")
 	# ściąga hordę: wrogowie w promieniu idą w stronę krzyku (śpiących budzi); kolejne krzyki sięgają bliżej, bo reszta już idzie
 	var radius := float(cfg.get("radius", ALARM_R)) * (float(cfg.get("repeat", 1.0)) if screams > 1 else 1.0)
 	for o in e.get_tree().get_nodes_in_group("enemies"):

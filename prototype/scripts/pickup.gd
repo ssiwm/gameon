@@ -13,6 +13,8 @@ extends Node2D
 ##   flares  skrzynka z flarami (arena Pijawki): +rounds flar do wspólnej puli (NoiseMgr.add_flare), o ile pula nie jest pełna
 ##   supply  zrzut zaopatrzenia (arg = indeks w Throwables.ORDER): +1 przedmiot do wspólnego zapasu, o ile nie jest pełny; leży jako
 ##           sam przedmiot (granat, mina, skaner…) z poświatą w jego kolorze
+##   power   skrzynia mocy z mapy (FUN_PLAN.md P1.3, arg = broń, rounds = naboje): dotknięcie przez żywego człowieka bez broni mocy daje mu
+##           ją poza slotami (weapon_controller.server_grant_power); w kadrze leży model broni z mocną, pulsującą poświatą
 ##   weapon  nie podnosi się samo: gracz naciska E (wymiana broni to decyzja, a nie
 ##           wypadek); serwer sprawdza odległość i przyznaje (level.gd)
 
@@ -23,6 +25,7 @@ const Parts := preload("res://scripts/parts.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const Cabinet := preload("res://scripts/cabinet.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 
 const HEAL := 1
 const PICK_R := 12.0
@@ -42,6 +45,7 @@ const GLOW := {
 	"supply": Color(0.7, 0.85, 0.6),       # zastępowany kolorem zawartości (Throwables.KINDS), patrz _glow_color
 	"mag": Color(1.0, 0.78, 0.3),
 	"part": Color(0.5, 0.85, 1.0),
+	"power": Color(1.0, 0.42, 0.18),
 }
 const MAG_EMPTY_LIFE := 30.0      ## s — pusty magazynek (nic do podniesienia) potem znika
 
@@ -86,7 +90,7 @@ func _ready() -> void:
 		modulate = Color(0.88, 0.88, 0.88)
 	# poświata — przedmiot widać w ciemności, ale nie oświetla okolicy (pusty magazynek nie świeci — nie ma po co po niego iść)
 	if not (kind == "mag" and rounds <= 0):
-		_glow = Lights.make_light(Lights.radial(), 0.9 if kind in ["stash", "mag"] else 1.6, _glow_color(), 0.6, false)      # skrytka i magazynek świecą słabo
+		_glow = Lights.make_light(Lights.radial(), 0.9 if kind in ["stash", "mag"] else (2.4 if kind == "power" else 1.6), _glow_color(), 0.6, false)      # skrytka i magazynek świecą słabo, skrzynia mocy — mocno
 		_glow.position = Vector2(0, -8)
 		add_child(_glow)
 	if static_display:
@@ -160,7 +164,7 @@ func _physics_process(delta: float) -> void:
 	elif kind != "health":
 		queue_redraw()
 	if _glow != null:
-		_glow.energy = 0.5 + 0.2 * sin(_t * 4.0)
+		_glow.energy = (0.9 + 0.5 * sin(_t * 6.0)) if kind == "power" else (0.5 + 0.2 * sin(_t * 4.0))
 	if _landed and NoiseMgr.is_server():
 		_try_pickup()
 		if kind == "mag" and rounds <= 0 and _t > MAG_EMPTY_LIFE and not is_queued_for_deletion():
@@ -197,7 +201,7 @@ func _hd_scale() -> float:
 
 func _setup_hd() -> void:
 	var gun_key := ""
-	if kind == "weapon" and Sprites.newgun:
+	if (kind == "weapon" or kind == "power") and Sprites.newgun:
 		gun_key = String(Weapons.def(arg).key)
 		if Sprites.gun_hd(gun_key) == null:
 			return
@@ -278,6 +282,20 @@ func _try_pickup() -> void:
 			_try_flares()
 		"supply":
 			_try_supply()
+		"power":
+			_try_power()
+
+## Skrzynia mocy: pierwszy żywy człowiek, który jej dotknie i nie ma już broni mocy, dostaje ją poza slotami (boty nie biorą).
+func _try_power() -> void:
+	for pl in get_tree().get_nodes_in_group("players"):
+		if pl.dead or pl.is_bot or not _near(pl) or pl.weapons == null:
+			continue
+		if pl.weapons.server_grant_power(arg, rounds):
+			SessionLog.event("power", {"who": "P%d" % int(pl.display_id), "weapon": String(Weapons.def(arg).key), "rounds": rounds})
+			var lvl := _level()
+			if lvl != null:
+				lvl.take_item(String(name))
+			return
 
 ## Złom zbiera każdy żywy gracz (też bot) — wspólny łup drużyny.
 func _try_scrap() -> void:

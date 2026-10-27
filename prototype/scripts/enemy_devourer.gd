@@ -136,7 +136,7 @@ func _take(p: Node2D, c: Dictionary) -> void:
 	e._sp = 1
 	lair = _pick_lair()
 	e.velocity.x = 0.0
-	NoiseMgr.add_noise(float(c.get("noise", 6.0)), e.global_position)
+	NoiseMgr.add_noise(float(c.get("noise", 6.0)), e.global_position, "enemy")
 	if NoiseMgr.has_network():
 		e._scream_fx.rpc()
 	else:

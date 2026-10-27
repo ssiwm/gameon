@@ -198,7 +198,7 @@ func awaken() -> void:
 	_surge_t = 0.0
 	_surge_cd = SURGE_FIRST
 	_fury_on = false
-	NoiseMgr.add_noise(6.0, global_position)
+	NoiseMgr.add_noise(6.0, global_position, "boss")
 	print("[BOSS] Pijawka budzi się, HP=%.0f" % max_hp)
 	_event.rpc("awaken")
 	_send_state(true)
@@ -517,7 +517,7 @@ func _surface() -> void:
 	mode = Mode.UP
 	_t_mode = float(UP_TIME[ph])
 	_set_hitbox(true)
-	NoiseMgr.add_noise(N_AMBUSH, global_position)
+	NoiseMgr.add_noise(N_AMBUSH, global_position, "boss")
 	var victim: Node2D = null
 	var best_d := INF
 	for p in get_tree().get_nodes_in_group("players"):
@@ -549,7 +549,7 @@ func _spit() -> void:
 	mode = Mode.UP
 	_t_mode = SPIT_UP
 	_set_hitbox(true)
-	NoiseMgr.add_noise(N_AMBUSH * 0.6, global_position)
+	NoiseMgr.add_noise(N_AMBUSH * 0.6, global_position, "boss")
 	var st := _spit_ref if (_spit_ref != null and is_instance_valid(_spit_ref) and not _spit_ref.dead) else _spit_target()
 	_spit_ref = null
 	_event.rpc("spit")
@@ -642,7 +642,7 @@ func _hit(dmg: float, surfaced: bool) -> void:
 	if phase == 2 and hp <= max_hp * 0.33:
 		phase = 3
 		_minion_t = _minion_every(2)
-		NoiseMgr.add_noise(NoiseMgr.MAX_LEVEL, global_position)       # krzyk: Uwaga na maksimum
+		NoiseMgr.add_noise(NoiseMgr.MAX_LEVEL, global_position, "boss")       # krzyk: Uwaga na maksimum
 		_spawn_minions(3)
 		_event.rpc("phase3")
 	if hp <= 0.0:
@@ -663,7 +663,7 @@ func _die() -> void:
 	_kill_summoned(_minions)
 	_minions.clear()
 	hp = 0.0
-	NoiseMgr.add_noise(N_DEATH, global_position)
+	NoiseMgr.add_noise(N_DEATH, global_position, "boss")
 	print("[BOSS] Pijawka nie żyje")
 	_drop_boss_loot()
 	_event.rpc("death")

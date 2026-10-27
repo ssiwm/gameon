@@ -11,9 +11,15 @@ extends "res://scripts/stalker_test.gd"
 ## 4. Punkt kontrolny: zniszczone gniazda → faza BOSS zapisuje pozycje; wipe w walce wraca do niej (gniazda zostają zniszczone,
 ##    próba +1, Żyła śpi i budzi się po CHECKPOINT_GRACE s), a nie na start mapy.
 ## 5. Następna misja z karty wyniku: po sukcesie `_continue_without_hub` ładuje następną misję kampanii z pominięciem kryjówki.
+## P1: 6. hałas wrogów ("enemy") podnosi Uwagę najwyżej z budżetu, krzyk Podsłuchacza ("alarm") bez limitu; 7. Uwaga na 100 przez PEAK_HOLD s
+## opada do PEAK_RELEASE i zaczyna się oddech (pół hałasu); 8. pancerz zbija strzał śrutem raz, nie każdą śrucinę;
+## 9. skrzynia mocy: dotknięcie daje broń poza slotami z przydziałem naboi, bez przeładowania i zmiany broni, druga skrzynia nie działa,
+##    po ostatnim naboju wraca broń ze slotu, a licznik serwera się zeruje.
 ## Mapa 1.3 (gniazda, Żyła, Stalker). Zwykli wrogowie usunięci, bot i Dyrektor stoją. Wynik: linie [FUN-TEST] i kod wyjścia.
 
 const Mission := preload("res://scripts/mission.gd")
+const Combat := preload("res://scripts/combat.gd")
+const Weapons := preload("res://scripts/weapons.gd")
 
 func check(label: String, ok: bool) -> void:
 	total += 1
@@ -48,6 +54,10 @@ func run(m: Node2D) -> void:
 	else:
 		check("pas gruntu do testu Stalkera", false)
 	_awards()
+	await _enemy_noise()
+	await _peak()
+	await _pellet_armor()
+	await _power_crate()
 	await _checkpoint()
 	await _skip_hub()
 	_finish()
@@ -149,6 +159,79 @@ func _awards() -> void:
 	var ids_quiet: Array = Mission.awards(solo, false).map(func(r: Array) -> String: return r[0])
 	var ids_loud: Array = Mission.awards(solo, true).map(func(r: Array) -> String: return r[0])
 	check("pojedynka: GHOST tylko, gdy Stalker spał (%s / %s)" % [str(ids_quiet), str(ids_loud)], ids_quiet == ["ghost", "butcher"] and ids_loud == ["butcher"])
+
+# ---------------------------------------------------------------- 6–8. P1: hałas wrogów, oddech, pancerz a śrut
+
+func _enemy_noise() -> void:
+	stalker.set_physics_process(false)
+	NoiseMgr.level = 20.0
+	NoiseMgr._enemy_budget = NoiseMgr.ENEMY_NOISE_CAP
+	var far := player.global_position + Vector2(300, 0)
+	for i in 4:
+		NoiseMgr.add_noise(7.0, far, "enemy")             # cztery szarże Wołka naraz: 28 surowego hałasu
+	var got: float = NoiseMgr.level - 20.0
+	check("hałas wrogów z limitem: 4 × 7 → +%.1f Uwagi (budżet %.0f)" % [got, NoiseMgr.ENEMY_NOISE_CAP], got <= NoiseMgr.ENEMY_NOISE_CAP + 0.01 and got > 0.0)
+	check("słuch dostaje zdarzenie bez zmian (głośność %.0f, pozycja)" % NoiseMgr.last_noise_amount, is_equal_approx(NoiseMgr.last_noise_amount, 7.0) and NoiseMgr.last_noise_pos.distance_to(far) < 1.0)
+	var before: float = NoiseMgr.level
+	NoiseMgr.add_noise(14.0, far, "alarm")
+	check("krzyk Podsłuchacza bez limitu (+%.1f)" % (NoiseMgr.level - before), NoiseMgr.level - before >= 14.0 * Difficulty.m("noise") - 0.01)
+	await get_tree().create_timer(1.0).timeout
+	check("budżet się odnawia (%.1f po 1 s)" % NoiseMgr._enemy_budget, NoiseMgr._enemy_budget >= NoiseMgr.ENEMY_NOISE_RATE * 0.8)
+	NoiseMgr.level = 0.0
+
+func _peak() -> void:
+	NoiseMgr.breath_left = 0.0
+	NoiseMgr.level = NoiseMgr.MAX_LEVEL
+	NoiseMgr._peak_t = NoiseMgr.PEAK_HOLD - 0.2
+	await get_tree().create_timer(0.4).timeout
+	check("Uwaga na 100 przez %.0f s opada do %.0f (jest %.1f)" % [NoiseMgr.PEAK_HOLD, NoiseMgr.PEAK_RELEASE, NoiseMgr.level],
+		NoiseMgr.level <= NoiseMgr.PEAK_RELEASE + 0.01 and NoiseMgr.level > NoiseMgr.PEAK_RELEASE - 5.0)
+	check("zaczyna się oddech (%.1f s)" % NoiseMgr.breath_left, NoiseMgr.breath_left > NoiseMgr.BREATH_TIME - 1.0)
+	var before: float = NoiseMgr.level
+	NoiseMgr.add_noise(10.0, player.global_position + Vector2(300, 0), "shot:m83")
+	var got: float = NoiseMgr.level - before
+	check("w oddechu hałas liczy się w połowie (10 → +%.1f)" % got, absf(got - 10.0 * Difficulty.m("noise") * NoiseMgr.BREATH_MULT) < 0.3)
+	NoiseMgr.breath_left = 0.0
+	NoiseMgr.level = 0.0
+
+func _pellet_armor() -> void:
+	var w: Node2D = (load("res://scenes/enemy.tscn") as PackedScene).instantiate()
+	w.name = "FunWolek"
+	w.kind = "wolek"
+	w.position = player.global_position + Vector2(400, -4)
+	level.add_child(w)
+	await _ticks(2)
+	w.set_physics_process(false)
+	var hp0: float = w.hp
+	Combat.apply(w, Combat.make_info(Weapons.SPREAD12, 7.0, w.global_position + Vector2(-4, -6), Vector2.RIGHT, 1, "bullet"))
+	var pellet: float = hp0 - w.hp
+	check("śrucina SPREAD-12 w Wołka: 7 → %.2f (pancerz 3 dzielony na 5 śrucin)" % pellet, absf(pellet - (7.0 - 3.0 / 5.0)) < 0.01)
+	hp0 = w.hp
+	Combat.apply(w, Combat.make_info(Weapons.M83, 8.0, w.global_position + Vector2(-4, -6), Vector2.RIGHT, 1, "bullet"))
+	check("kula M-83 bez zmian: 8 → %.2f" % (hp0 - w.hp), absf((hp0 - w.hp) - 5.0) < 0.01)
+	w.queue_free()
+
+# ---------------------------------------------------------------- 9. skrzynia mocy (P1.3)
+
+func _power_crate() -> void:
+	var wc: Node = player.weapons
+	var before: int = int(wc.loadout[wc.slot])
+	level._add_map_item("FunPower", "power", Weapons.GNIEW4, player.global_position + Vector2(0, 2), 3)
+	await get_tree().create_timer(1.2).timeout
+	check("skrzynia mocy: broń WRATH-4 w rękach poza slotami (%s, %d naboje)" % [wc.cur().name, wc.mag_of(wc.cur().id)],
+		wc.power_active() and wc.cur().id == Weapons.GNIEW4 and wc.mag_of(Weapons.GNIEW4) == 3 and int(player.weapon) == Weapons.GNIEW4)
+	check("zestaw bez zmian (slot %d = %s)" % [wc.slot, Weapons.def(int(wc.loadout[wc.slot])).name], int(wc.loadout[wc.slot]) == before)
+	check("skrzynia zniknęła", level.get_node_or_null("FunPower") == null or level.get_node("FunPower").is_queued_for_deletion())
+	check("bez przeładowania i zmiany broni", not wc.try_reload() and (func() -> bool: wc.select_slot((wc.slot + 1) % 3); return wc.power_active() and int(wc.loadout[wc.slot]) == before).call())
+	check("druga broń mocy nie wchodzi, dopóki trwa pierwsza", not wc.server_grant_power(Weapons.SOKOL6, 10))
+	var t := 0.0
+	while wc.power_active() and t < 8.0:
+		if wc.cd <= 0.0 and wc.state == wc.State.READY:
+			wc.sim_press = true
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+	check("po ostatnim naboju wraca broń ze slotu (%s, po %.1f s)" % [wc.cur().name, t], not wc.power_active() and wc.cur().id == before and int(player.weapon) == before)
+	check("licznik serwera wyzerowany, można wziąć następną skrzynię", wc._srv_power_left == 0 and wc._srv_power_w == -1)
 
 # ---------------------------------------------------------------- 4. punkt kontrolny
 

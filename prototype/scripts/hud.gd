@@ -1167,6 +1167,9 @@ func _build_center() -> void:
 	add_child(_journal)
 	NoiseMgr.overcharge_stale.connect(func() -> void: show_note(tr("They know this trick — move before you lure again")))
 	NoiseMgr.lured.connect(_on_lured)
+	NoiseMgr.peak_released.connect(func() -> void:
+		Msg.post("hud.breath", Msg.Ch.TOAST, tr("THE NOISE FADES"), {"sub": tr("A breath, not safety — for a few seconds every sound counts half"), "style": Msg.Style.INFO, "ttl": 4.0, "prio": 55})
+		Audio.duck_music(-6.0, 2.0))
 	add_child((load("res://scripts/taken_arrow.gd") as GDScript).new())      # strzałka ku porwanemu graczowi poza kadrem (Żerca, F4d)
 	if "--shotjournal" in OS.get_cmdline_user_args():
 		# dev: dziennik otwarty z kilkoma przykładowymi wpisami (zrzut: --shotjournal --shot=PLIK)
@@ -1621,6 +1624,10 @@ func _drive_weapons() -> void:
 	elif cur.infinite:
 		_ammo_mag.text = str(mag)
 		_ammo_res.text = "/ ∞"
+	elif wc.power_active():
+		_ammo_mag.text = str(mag)                         # broń mocy (FUN_PLAN.md P1.3): tylko naboje ze skrzyni, bez zapasu
+		_ammo_res.text = tr("POWER")
+		col = UiTheme.ACCENT if mag > 0 else UiTheme.DANGER
 	else:
 		var t_next: int = wc.next_ammo_of(cur.id)
 		var res := Arsenal.get_reserve(cur.id, t_next)
@@ -1637,7 +1644,7 @@ func _drive_weapons() -> void:
 			note = "NO AMMO"
 		elif mag <= maxi(1, int(cur.mag * 0.25)):
 			col = UiTheme.ACCENT if mag > 0 else UiTheme.DANGER
-	var jam: String = wc.jammed(cur.id)
+	var jam: String = "" if wc.power_active() else wc.jammed(cur.id)
 	if wc.state == wc.State.RELOAD and wc.clearing:
 		note = tr("CLEARING %d%%") % int(wc.reload_progress() * 100.0)
 	elif jam == "overheat":
@@ -1653,9 +1660,9 @@ func _drive_weapons() -> void:
 		note = tr("RELOADING %d%%") % int(wc.reload_progress() * 100.0)
 	elif wc.state == wc.State.CHARGE:
 		note = tr("CHARGING %d%%") % int(wc.charge * 100.0)
-	elif note == "" and cur.uses_ammo() and mag <= 0 and wc.ammo_enabled:
+	elif note == "" and cur.uses_ammo() and mag <= 0 and wc.ammo_enabled and not wc.power_active():
 		note = tr("[%s] RELOAD") % Actions.key("reload")
-	elif note == "" and Settings.reliability_mult() > 0.0 and not cur.is_melee() and wc.condition_of(cur.id) < wc.DIRTY_AT:
+	elif note == "" and Settings.reliability_mult() > 0.0 and not cur.is_melee() and not wc.power_active() and wc.condition_of(cur.id) < wc.DIRTY_AT:
 		note = tr("DIRTY %d%%") % int(wc.condition_of(cur.id))           # brudna broń zacina się częściej — wyczyść ją przy ławie
 	_ammo_mag.add_theme_color_override("font_color", col)
 	_ammo_note.text = note
