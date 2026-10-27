@@ -9,7 +9,7 @@ func reset() -> void:
 
 ## Demaskacja: krzyk, fala i chwila na zmianę postaci (zapowiedź), potem normalny pościg.
 func on_wake() -> void:
-	NoiseMgr.add_noise(6.0, e.global_position)
+	NoiseMgr.add_noise(6.0, e.global_position, "enemy")
 	if NoiseMgr.has_network():
 		e._scream_fx.rpc()
 	else:

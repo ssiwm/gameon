@@ -35,7 +35,7 @@ func land_hit() -> void:
 	for p in e.get_tree().get_nodes_in_group("players"):
 		if not p.dead and absf(p.global_position.x - e.global_position.x) < 16.0 and absf(p.global_position.y - e.global_position.y) < 22.0:
 			p.deliver_hit(e._scaled_damage(2), e.global_position, e.kind)
-	NoiseMgr.add_noise(5.0, e.global_position)
+	NoiseMgr.add_noise(5.0, e.global_position, "enemy")
 	if NoiseMgr.has_network():
 		e._crash_fx.rpc()
 	else:

@@ -208,6 +208,12 @@ func _test_listener() -> void:
 	hp0 = l.hp
 	l.take_bullet(l.global_position, 10.0)
 	check("Podsłuchacz/pole: pocisk bota (take_bullet) też −90%", absf((hp0 - l.hp) - 1.0) < 0.01, "%.2f" % (hp0 - l.hp))
+	hp0 = l.hp
+	var melee := info.duplicate()
+	melee["type"] = "melee"
+	melee["amount"] = 4.0
+	l.take_hit(melee)
+	check("Podsłuchacz/pole: cios w zwarciu przechodzi przez pole w całości (FUN_PLAN.md P1.4)", absf((hp0 - l.hp) - 4.0) < 0.01, "%.2f" % (hp0 - l.hp))
 	await get_tree().create_timer(0.35).timeout
 	check("Podsłuchacz/fala: bliższy wrogi budzi się pierwszy (po ≈ 0,2–0,4 s), dalszy jeszcze nie musiał", near.active and near._has_lead, "near=%s far=%s" % [near.active, far.active])
 	await get_tree().create_timer(0.9).timeout

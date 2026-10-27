@@ -172,7 +172,7 @@ func _crash() -> void:
 	e.winding = false
 	charge_cd = _c("cd", CHARGE_CD) * Difficulty.m("enemy_cd")
 	e.velocity.x = -sp_dir * 40.0
-	NoiseMgr.add_noise(7.0, e.global_position)
+	NoiseMgr.add_noise(7.0, e.global_position, "enemy")
 	if NoiseMgr.has_network():
 		e._crash_fx.rpc()
 	else:
@@ -223,7 +223,7 @@ func _throw_boulder(target: Node2D) -> void:
 	if lvl != null and lvl.has_method("spawn_boulder"):
 		lvl.spawn_boulder(from, vel, float(cfg.get("dmg", 0.5)))
 		e.visual_attack("throw")
-	NoiseMgr.add_noise(float(cfg.get("noise", 2.0)), e.global_position)
+	NoiseMgr.add_noise(float(cfg.get("noise", 2.0)), e.global_position, "enemy")
 
 ## Rzut: balistyczny łuk w gracza (grawitacja ciał fizycznych 980), skrzynia rani przy trafieniu (prop.gd).
 func _throw_crate(target: Node2D) -> void:
@@ -243,5 +243,5 @@ func _throw_crate(target: Node2D) -> void:
 	var vel := Vector2(clampf(aim.x / t, -420.0, 420.0), (aim.y - 0.5 * 980.0 * t * t) / t)
 	crate.throw_to(from, vel)
 	e.visual_attack("throw")
-	NoiseMgr.add_noise(4.0, e.global_position)
+	NoiseMgr.add_noise(4.0, e.global_position, "enemy")
 

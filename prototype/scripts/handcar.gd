@@ -232,7 +232,7 @@ func _server_tick(delta: float) -> void:
 		_noise_t -= delta
 		if _noise_t <= 0.0 and speed > 20.0:
 			_noise_t = NOISE_EVERY
-			NoiseMgr.add_noise(NOISE_AMOUNT, global_position)
+			NoiseMgr.add_noise(NOISE_AMOUNT, global_position, "handcar")
 		if position.x <= end_x and _inited:
 			position.x = end_x
 			speed = 0.0

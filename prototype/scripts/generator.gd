@@ -111,7 +111,7 @@ func _physics_process(delta: float) -> void:
 			progress = minf(1.0, progress + delta / WORK_TIME * minf(float(_workers.size()), 2.0))
 			_noise_acc += WORK_NOISE_PER_S * float(_workers.size()) * delta
 			if _noise_acc >= NOISE_CHUNK:
-				NoiseMgr.add_noise(_noise_acc, global_position)
+				NoiseMgr.add_noise(_noise_acc, global_position, "generator")
 				_noise_acc = 0.0
 			if progress >= 1.0:
 				_start()
@@ -121,7 +121,7 @@ func _physics_process(delta: float) -> void:
 		_hum_t -= delta
 		if _hum_t <= 0.0:
 			_hum_t = HUM_INTERVAL
-			NoiseMgr.add_noise(HUM_NOISE, global_position)
+			NoiseMgr.add_noise(HUM_NOISE, global_position, "generator")
 	_sync_t -= delta
 	if _sync_t <= 0.0 and not is_equal_approx(progress, _sent_progress):
 		_sync_t = SYNC_INTERVAL
@@ -145,7 +145,7 @@ func _start() -> void:
 	progress = 1.0
 	_workers.clear()
 	_hum_t = HUM_INTERVAL
-	NoiseMgr.add_noise(START_BURST, global_position)
+	NoiseMgr.add_noise(START_BURST, global_position, "generator")
 	_set_running(true)
 	if NoiseMgr.has_network():
 		_sync_state.rpc(true)

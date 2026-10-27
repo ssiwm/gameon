@@ -244,11 +244,11 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 | Wróg | HP | Szybkość | Zachowanie | Kontra |
 |------|----|----------|------------|--------|
 | **Trzosek** | 30 | szybka | Wataha 3–6, biegnie wprost; po zauważeniu gracza staje na ok. 0,4 s (odwraca się, oczy żarzą się, cichy warkot) — czytelny sygnał „zauważył cię"; kto pierwszy zauważy gracza, daje znać kolegom z watahy w ok. 14 m, więc schodzą się razem | Ogień ciągły, maczeta; mocne ogłuszenie (strzelba, szyna, harpun) przerywa jego cios w zapowiedzi |
-| **Wołek** | 140 | wolna | Tankuje, potężny cios; szarża po poziomie, rzut skrzynią także w górę i w dół (do ok. 10 kafli różnicy poziomów); bez skrzyni w pobliżu rzuca **głazem** (0,5 HP — dwa trafienia = jedno serce, przerwa 8 / 5 / 3,2 s wg trudności) | Unik, strzelba w plecy |
+| **Wołek** | 140 | wolna | Tankuje (pancerz 3 na trafienie; od 1.7.402 śrut traci go raz na cały strzał, nie na każdą śrucinę), potężny cios; szarża po poziomie, rzut skrzynią także w górę i w dół (do ok. 10 kafli różnicy poziomów); bez skrzyni w pobliżu rzuca **głazem** (0,5 HP — dwa trafienia = jedno serce, przerwa 8 / 5 / 3,2 s wg trudności) | Unik, strzelba w plecy |
 | **Skoczek** | 40 | skok | Spada z sufitu/wysokości | Ciągły ogień w górę, FALCON |
 | **Pijawka** | 15 | pełznie | Dopada, wysysa HP, QTE (30 s) | Maczeta, strzał w twarz kolegi? (friendly fire) |
 | **Ślepiec** | 100 | węszy | **Nie widzi — słyszy.** Idzie w okolice ostatniego hałasu (z błędem lokalizacji — z daleka i przy cichych dźwiękach mniej dokładnie), po dojściu **przeszukuje okolicę** (±4 m, 6 s), a na **głośny dźwięk w 19 m** (rozgrzana M-83 i głośniejsze: strzelba, granat, krzyk) po krótkiej zapowiedzi **szarżuje** w jego stronę (do 1,4 s, 2,4× szybciej, z błędem celu; 2 obrażenia za cios; skacze przez przeszkody) — kroki w błocie i oleju go nie budzą | Kucnij i przejdź; harpun |
-| **Podsłuchacz** | 35 | stoi | Nieruchomy „słuchacz" — widzi (240 px) albo słyszy (kroki z bliska, strzały z dalej); po zapowiedzi 0,9 s (dłuższej o 30%, gdy tylko usłyszał) **krzyczy**: przez 1,4 s stoi w **polu ochronnym (−90% obrażeń)**, a horda w 26 m budzi się **falą** (dalsi później) i idzie na krzyk. Kolejne krzyki sięgają bliżej, po trzecim milknie do uspokojenia (12 s) | Priorytet: zabić cicho (harpun) albo w zapowiedzi; w polu przeczekać |
+| **Podsłuchacz** | 35 | stoi | Nieruchomy „słuchacz" — widzi (240 px) albo słyszy (kroki z bliska, strzały z dalej); po zapowiedzi 0,9 s (dłuższej o 30%, gdy tylko usłyszał) **krzyczy**: przez 1,4 s stoi w **polu ochronnym (−90% obrażeń)**, a horda w 26 m budzi się **falą** (dalsi później) i idzie na krzyk. Kolejne krzyki sięgają bliżej, po trzecim milknie do uspokojenia (12 s) | Priorytet: zabić cicho (harpun) albo w zapowiedzi; w polu przeczekać albo dobić w zwarciu — cios przechodzi przez pole w całości (od 1.7.402) |
 | **Mimik** | 70 | udaje | Udaje sylwetkę/radio kolegi z drużyny | Sprawdź pingiem/kodem drużyny |
 | **Żyła** | 200 | rośnie | Splot 5–10 m, rodzi Trzoski | Ogień, WRATH-4, ładunek |
 
@@ -314,6 +314,8 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 - Wartości startowe (prototyp): M-83 `0,6 → 2,6`, gain `0,10`; P-64 `1,0 → 1,6`, gain `0,08`; SPREAD-12 `3,5 → 5,0`, gain `0,40`.
 - Wszystkie wartości hałasu pochodzą z jednej tabeli (`weapons.gd` / `noise_manager.gd`) i są identyczne w trybie solo i sieciowym. Stare „połowienie w sieci" usunięte (to było obejście, nie balans).
 - Bieg: **0,5 pkt/s** (dokładnie jak w tabeli). Trafienie gracza: +6 (krzyk bólu), niezależnie od trybu.
+
+**Hałas wrogów i szczyt (od 1.7.402, `FUN_PLAN.md` P1.1–P1.2):** hałas samych wrogów (szarże, rzuty, krzyki elit) podnosi Uwagę najwyżej o 6 naraz, z odnową 2 na s — słyszą go wrogowie i Stalker jak dotąd, ale licznik ma mówić o decyzjach drużyny. Krzyk Podsłuchacza (kara za wykrycie) i skryptowe skoki są poza limitem. Uwaga trzymana na 100 przez 15 s sama opada do 70 i zaczyna się **oddech**: przez 8 s każdy hałas liczy się w połowie (HUD „THE NOISE FADES”) — rytm szczyt → oddech zamiast stałego maksimum.
 
 **Faza niepokoju (40–60): ostrzeżenie zanim zacznie się kara.**
 - Poniżej 40: cisza. **40–59:** Stalker jeszcze śpi, ale słychać szept i HUD pokazuje „COŚ SŁUCHA". To okno na decyzję: przestań strzelać, użyj Wabika, kucnij.

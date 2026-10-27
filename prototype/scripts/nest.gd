@@ -78,7 +78,7 @@ func take_bullet(_from_pos: Vector2, dmg: float = 8.0) -> void:
 
 func _destroy() -> void:
 	_set_alive(false)
-	NoiseMgr.add_noise(N_DESTROY, global_position)
+	NoiseMgr.add_noise(N_DESTROY, global_position, "nest")
 	_destroy_fx()
 	_send_state(999.0)
 	destroyed.emit(self)

@@ -14,6 +14,7 @@ signal flares_changed(n: int)
 signal lure_used(by: Node)                  ## serwer: udane Q (nie „zwietrzałe”); `by` = gracz, który je użył (mission.gd: wyróżnienie BAIT)
 signal lured(lock: float)                   ## każdy peer: Stalker przytrzymany na wabiku przez `lock` s (0 = przytrzymanie przerwane)
 signal noise_added(amount: float, pos: Vector2, tag: String)   ## serwer: każde zdarzenie hałasu po mnożnikach (mission.gd: hałas graczy)
+signal peak_released                        ## każdy peer: Uwaga za długo na 100 — sama opadła do PEAK_RELEASE (hud.gd: komunikat „oddech”)
 
 const MAX_LEVEL := 100.0
 
@@ -87,6 +88,24 @@ var last_overcharge_pos := Vector2.ZERO
 const LURE_LOCK := 15.0
 var lure_left := 0.0
 var lure_pos := Vector2.ZERO
+
+## Hałas wrogów (znacznik "enemy": szarże, rzuty, krzyki elit, Mimik, Żerca) podnosi Uwagę najwyżej z budżetu, który odnawia się
+## ENEMY_NOISE_RATE na s do ENEMY_NOISE_CAP (FUN_PLAN.md P1.1): Uwaga ma mówić o decyzjach drużyny, a nie o tym, że Wołek szarżuje.
+## Słuch wrogów i Stalkera dostaje zdarzenie bez zmian (pozycja, głośność) — limit dotyczy tylko licznika Uwagi.
+## Krzyk Podsłuchacza ("alarm") i skryptowe skoki (boss, nadajnik, gniazda) są poza limitem: to kara za wykrycie albo część scenariusza.
+const ENEMY_NOISE_RATE := 2.0
+const ENEMY_NOISE_CAP := 6.0
+var _enemy_budget := ENEMY_NOISE_CAP
+
+## Szczyt i oddech (FUN_PLAN.md P1.2): Uwaga trzymana na 100 przez PEAK_HOLD s sama opada do PEAK_RELEASE, a przez BREATH_TIME s
+## każdy hałas liczy się w połowie (BREATH_MULT) — rytm napięcie → szczyt → oddech zamiast stałego maksimum (dzienniki: mediana szczytu = 100
+## na każdej mapie). Stalker nie zasypia (70 > próg snu), hordy przy 80+ na chwilę słabną.
+const PEAK_HOLD := 15.0
+const PEAK_RELEASE := 70.0
+const BREATH_TIME := 8.0
+const BREATH_MULT := 0.5
+var _peak_t := 0.0
+var breath_left := 0.0                 ## s oddechu (serwer liczy, klienci dostają start w `_peak_rpc` i odliczają sami)
 
 func has_network() -> bool:
 	var peer := multiplayer.multiplayer_peer
@@ -215,6 +234,9 @@ func seconds_since_overcharge() -> float:
 func reset_mission() -> void:
 	_last_overcharge = -INF
 	lure_left = 0.0
+	_enemy_budget = ENEMY_NOISE_CAP
+	_peak_t = 0.0
+	breath_left = 0.0
 	level = NightShift.start_noise(20.0)
 	stalker_awake = level >= NightShift.awake_threshold(AWAKE_THRESHOLD)
 	last_noise_pos = Vector2.ZERO
@@ -300,6 +322,11 @@ func _apply(amount: float, pos: Vector2, track := true, tag := "") -> void:
 		if amount >= HOT_SPOT_MIN:
 			_note_hot_spot(pos)
 	var add := amount * Difficulty.m("noise") * NightShift.noise_mult() if amount > 0.0 else amount
+	if add > 0.0 and breath_left > 0.0:
+		add *= BREATH_MULT
+	if add > 0.0 and tag == "enemy":
+		add = minf(add, _enemy_budget)
+		_enemy_budget -= add
 	level = clampf(level + add, 0.0, MAX_LEVEL)
 	if amount > 0.0:
 		SessionLog.note_noise(tag, add)
@@ -310,8 +337,11 @@ func _apply(amount: float, pos: Vector2, track := true, tag := "") -> void:
 
 func _process(delta: float) -> void:
 	lure_left = maxf(0.0, lure_left - delta)          # każdy peer odlicza sam (HUD); serwer rozstrzyga
+	breath_left = maxf(0.0, breath_left - delta)
 	if not is_server():
 		return
+	_enemy_budget = minf(ENEMY_NOISE_CAP, _enemy_budget + ENEMY_NOISE_RATE * delta)
+	_tick_peak(delta)
 
 	# regen ładunku przesterowania
 	if _regen_needed and overcharge_charges < OVERCHARGE_MAX:
@@ -337,6 +367,29 @@ func _process(delta: float) -> void:
 			_sync_timer = 0.1
 			_push.rpc(level, last_noise_pos, stalker_awake, overcharge_charges)
 
+
+## Serwer: Uwaga na maksimum dłużej niż PEAK_HOLD s → oddech (spadek do PEAK_RELEASE i pół hałasu przez BREATH_TIME s).
+func _tick_peak(delta: float) -> void:
+	if safe_zone or level < MAX_LEVEL - 0.5:
+		_peak_t = 0.0
+		return
+	_peak_t += delta
+	if _peak_t < PEAK_HOLD:
+		return
+	_peak_t = 0.0
+	level = PEAK_RELEASE
+	SessionLog.event("peak", {"hold": PEAK_HOLD, "to": PEAK_RELEASE})
+	print("[NOISE] peak held %.0fs -> breath, level %.0f" % [PEAK_HOLD, level])
+	level_changed.emit(level, stalker_awake)
+	if has_network():
+		_peak_rpc.rpc()
+	_peak_rpc()
+	_push_now()
+
+@rpc("authority", "call_remote", "reliable")
+func _peak_rpc() -> void:
+	breath_left = BREATH_TIME
+	peak_released.emit()
 
 # ---------------------------------------------------------------- pamięć: gorące miejsca
 

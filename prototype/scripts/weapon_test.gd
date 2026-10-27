@@ -336,7 +336,7 @@ func _t_phase1() -> void:
 	check("pancerz Wołka: kula 8 → 5, znacznik ARMOR (mat 1)", absf(dealt(w) - 5.0) < 0.01 and int(r1["mat"]) == 1, "dealt %.2f mat %d" % [dealt(w), int(r1["mat"])])
 	var b0 := dealt(w)
 	Combat.apply(w, Combat.make_info(Weapons.SRUT8, 10.0, w.global_position + Vector2(-4, -6), Vector2.RIGHT, 1, "bullet"))
-	check("pancerz Wołka: śrucina PELLET-8 (10) traci 3, nie więcej", absf(dealt(w) - b0 - 7.0) < 0.01)
+	check("pancerz Wołka: śrucina PELLET-8 (10) traci 3/8 — pancerz zbija cały strzał raz, nie każdą śrucinę (FUN_PLAN.md P1.4)", absf(dealt(w) - b0 - (10.0 - 3.0 / 8.0)) < 0.01)
 	var b1 := dealt(w)
 	Combat.apply(w, Combat.make_info(Weapons.HKM9, 3.0, w.global_position + Vector2(-4, -6), Vector2.RIGHT, 1, "fire"))
 	check("pancerz nie działa na ogień (3 → 3)", absf(dealt(w) - b1 - 3.0) < 0.01)

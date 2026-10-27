@@ -1139,12 +1139,13 @@ func take_hit(info: Dictionary) -> Dictionary:
 	if armor > 0.0 and (info.get("type", "bullet") == "bullet" or info.get("type", "") == "beam"):
 		# pancerz: stała redukcja na trafienie (min. 40% obrażeń) — rozrzut i seria słabną, ciężkie trafienia nie
 		armor *= 1.0 - clampf(float(info.get("ap", 0.0)), 0.0, 1.0)          # amunicja przeciwpancerna (BZ, breneka) ignoruje część pancerza
+		armor /= maxf(1.0, float(info.get("pellets", 1)))                   # śrut: pancerz zbija cały strzał raz, nie każdą śrucinę (FUN_PLAN.md P1.4)
 		var reduced := maxf(dmg - armor, dmg * ARMOR_MIN_FRAC)
 		if reduced < dmg * 0.7:
 			mat = 1                      # Arsenal.Mat.ARMOR: iskry i szary hitmarker
 		dmg = reduced
 	var shield_mult: float = _beh.damage_mult()
-	if shield_mult < 1.0:
+	if shield_mult < 1.0 and info.get("type", "") != "melee":          # cios w zwarciu przechodzi przez pole Podsłuchacza (FUN_PLAN.md P1.4)
 		dmg *= shield_mult
 		mat = 1                          # pole ochronne: iskry i szary hitmarker jak przy pancerzu
 	hp -= dmg

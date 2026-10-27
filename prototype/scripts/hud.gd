@@ -1167,6 +1167,9 @@ func _build_center() -> void:
 	add_child(_journal)
 	NoiseMgr.overcharge_stale.connect(func() -> void: show_note(tr("They know this trick — move before you lure again")))
 	NoiseMgr.lured.connect(_on_lured)
+	NoiseMgr.peak_released.connect(func() -> void:
+		Msg.post("hud.breath", Msg.Ch.TOAST, tr("THE NOISE FADES"), {"sub": tr("A breath, not safety — for a few seconds every sound counts half"), "style": Msg.Style.INFO, "ttl": 4.0, "prio": 55})
+		Audio.duck_music(-6.0, 2.0))
 	add_child((load("res://scripts/taken_arrow.gd") as GDScript).new())      # strzałka ku porwanemu graczowi poza kadrem (Żerca, F4d)
 	if "--shotjournal" in OS.get_cmdline_user_args():
 		# dev: dziennik otwarty z kilkoma przykładowymi wpisami (zrzut: --shotjournal --shot=PLIK)
