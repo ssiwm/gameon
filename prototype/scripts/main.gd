@@ -509,6 +509,7 @@ func _continue_without_hub() -> void:
 		return
 	Weather.forecast = Weather.roll()
 	after_hub = ""
+	mission.start_via = "direct"                  # dziennik: mission_start.via (tools/fun_report.py)
 	_restart_mission(true, _next_campaign_map(), true)
 
 ## Serwer: przełącza poziom na `id` u wszystkich peerów (przebudowa mapy, nowy punkt startu, nowy cel).

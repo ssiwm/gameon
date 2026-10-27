@@ -35,7 +35,8 @@ extends RefCounted
 ## `mission_end.silent` (od 1.7.403): cichy cel dotrzymany — Uwaga < 60 przez cały cel główny (FUN_PLAN.md P2.1).
 ## `players[id]` (od 1.7.391): oprócz name, kills, downs, revived, dmg także `kinds` (rodzaj wroga → zabójstwa) i `xp_kills` (XP za te zabójstwa) — P0.1, P0.3;
 ## od 1.7.401 (FUN_PLAN.md P0.5) `revives` (podniesienia kolegów), `escapes` (ucieczki o włos), `lures` (udane Q), `noise` (własny hałas gracza).
-## `mission_start.checkpoint` = "boss": próba od punktu kontrolnego walki z bossem (FUN_PLAN.md P0.3).
+## `mission_start.checkpoint` = "boss": próba od punktu kontrolnego walki z bossem (FUN_PLAN.md P0.3); `mission_start.via` = "direct" (od 1.7.404):
+## próba wybrana na karcie wyniku jako „od razu następna misja”, bez kryjówki (P0.4). Raport przed / po: `tools/fun_report.py`.
 ## `scrap` (od 1.7.347, strojenie ekonomii warsztatu): {dropped — złom, który wypadł z wrogów i bossa w tej próbie, loot — zebrany łup,
 ## bonus — premia za misję (0 przy wipe)}; do banku trafia loot + bonus, tylko przy sukcesie.
 

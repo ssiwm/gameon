@@ -76,6 +76,9 @@ var attempts := 1
 ## Statystyki graczy do ekranu wyniku: peer id → {name, kills, downs, revived}. Liczy serwer, klienci dostają wynik raz na końcu
 ## misji (`_recv_stats`). Boty nie są liczone (nie dają XP).
 var player_stats := {}
+## Skąd zaczyna się następna próba (serwer, dziennik `mission_start.via`): "direct" = [Interakcja] na karcie wyniku, bez kryjówki
+## (FUN_PLAN.md P0.4); log_start zapisuje i czyści.
+var start_via := ""
 var stalker_woke := false      ## Stalker obudził się w tej próbie (serwer; replikowane z player_stats — wyróżnienie GHOST w pojedynkę)
 ## Nocny Dyżur (night_shift.gd): suma z ukończonych misji serii
 var shift_cleared := 0
@@ -593,6 +596,9 @@ func log_start(checkpoint := "") -> void:
 		row["mods"] = NightShift.mods
 	if checkpoint != "":
 		row["checkpoint"] = checkpoint             # próba od punktu kontrolnego (FUN_PLAN.md P0.3)
+	if start_via != "":
+		row["via"] = start_via
+		start_via = ""
 	row["equipment"] = equipment
 	row["workshop"] = {"bank": Scrap.bank, "samples": Scrap.samples, "orders": Scrap.orders.duplicate(), "research": Scrap.research.duplicate(), "lathe": Scrap.lathe.duplicate(), "deliveries": Scrap.deliveries.duplicate()}
 	if _hub_at >= 0:
