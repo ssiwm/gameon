@@ -27,6 +27,7 @@ const TIPS := [
 	["uneasy", "Something is listening. Stop shooting, sneak ({crouch}) — or press {overcharge} to lure it away"],
 	["revive", "A friend is down — stand next to them and HOLD {interact} to revive"],
 	["downed", "You are down. Stay still — a teammate can revive you before you bleed out"],
+	["downed_solo", "You are down and no one can revive you. Bleed out and you wake up back at the start — fall again and the attempt is lost"],
 	["light", "{flashlight} toggles the flashlight. Light is noise too — turn it off to hide"],
 	["moths", "Moths nest under the watchtower roof and fly at any light — your flashlight, even muzzle flashes. Throw a flare ({flare}) away from you: they burn in it"],
 	["flare", "{flare} throws a flare: bait that draws enemies with light instead of noise"],
@@ -110,7 +111,9 @@ func _collect(p: Node) -> void:
 	_queue("magdrop", p.weapons != null and int(p.weapons.dropped_mags) > 0, true)          # szybkie przeładowanie upuściło magazynek z nabojami (etap 3c)
 	# chwilowe: gdy sytuacja minie, zanim przyjdzie kolej, podpowiedź przepada
 	_queue("uneasy", NoiseMgr.level >= NoiseMgr.UNEASY_THRESHOLD or NoiseMgr.stalker_awake, false)
-	_queue("downed", bool(p.dead), false)
+	var alone := p.get_tree().get_nodes_in_group("players").filter(func(q: Node) -> bool: return not q.is_queued_for_deletion()).size() == 1
+	_queue("downed", bool(p.dead) and not alone, false)
+	_queue("downed_solo", bool(p.dead) and alone, false)             # sam bez bota (NOBOT_PLAN.md D1a): nikt nie podniesie
 	# cisza (misja 1.1): śpiący wróg tuż obok, a gracz idzie wyprostowany; po strzelaninie — nic nie goni, a Uwaga wciąż wysoka
 	var sleeper_near := false
 	var threat_near := false

@@ -1273,3 +1273,7 @@
 "Version mismatch — the host has %s, you have %s. Everyone needs the same build.","Inna wersja gry — host ma %s, ty masz %s. Wszyscy muszą mieć ten sam build."
 "The host did not pass the version check — it may be running a different build.","Host nie przeszedł sprawdzenia wersji — może mieć inny build."
 "LOADING…","WCZYTYWANIE…"
+"AI companion","Towarzysz AI"
+"off","wył."
+"Chosen by the host. ON: a bot fills the squad when you play alone or in two. OFF: no bot — alone, a fall is a bleed-out back to the start, a second fall loses the attempt.","Wybiera host. WŁ.: bot dopełnia drużynę, gdy grasz sam albo we dwóch. WYŁ.: bez bota — sam po upadku wykrwawiasz się i wracasz na start, drugi upadek przegrywa próbę."
+"You are down and no one can revive you. Bleed out and you wake up back at the start — fall again and the attempt is lost","Leżysz i nikt cię nie podniesie. Wykrwawisz się i ockniesz na starcie — drugi upadek przegrywa próbę"

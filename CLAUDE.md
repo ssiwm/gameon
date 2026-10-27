@@ -28,6 +28,8 @@ godot --headless --path prototype --import                      # po zmianach za
 godot --headless --path prototype -- --maptest --autoquit=4     # mapy (~6 s), ma wypisać PASS
 godot --headless --path prototype -- --host --stalkertest --autoquit=70   # Stalker: ostrzał, teren, po ciosie, unik bota przed zamachem (~50 s), ma wypisać PASS
 godot --headless --path prototype -- --host --bottest --autoquit=40      # bot za plecami dowódcy (marsz w obie strony, krótki i długi obrót, ~20 s), ma wypisać PASS
+godot --headless --path prototype -- --host --nobot --mission=z1_m2 --nobottest --autoquit=60   # bez AI towarzysza: brak bota, drezyna solo, upadek → wykrwawienie, drugi → wipe (~20 s), ma wypisać PASS
+godot --headless --path prototype -- --host --nobot --mission=z1_hub --nobottest --autoquit=30  # bez AI towarzysza w kryjówce: przełącznik hosta dodaje i usuwa bota, ma wypisać PASS
 godot --headless --path prototype -- --host --enemytest --autoquit=150    # wrogowie i hałas (walidacja, zasięgi, zachowania rodzajów, elity, ~50 s lokalnie, ~2 min w CI), ma wypisać PASS
 godot --headless --path prototype -s tools/test_sound_grid.gd   # droga dźwięku po mapie, ma wypisać PASS
 godot --headless --path prototype -s tools/test_audio_loops.gd  # pętle dźwięku na całej długości, ma wypisać PASS
@@ -39,7 +41,7 @@ godot --headless --path prototype -s tools/test_note_contrast.gd # kontrast i ja
 godot --headless --path prototype -- --uifittest                # menu pauzy (ustawienia, kodeks, sterowanie) mieści się po angielsku i po polsku, zmiana języka przebudowuje menu, ma wypisać PASS
 godot --headless --path prototype -- --host --rangetest --autoquit=60   # strzelnica FPP: drzwi, opcje widoku z oczu, akcje „range”, blachy, bronie specjalne, papier, wózek, co-op, przyrządy z modelu, ćwiczenie z przeładowaniem, rekordy osobiste, porównanie grup, szafa z bronią, podrzut, amunicja ćwiczebna, oparcie, tablica drużyny (serwer), wyjście (~30 s), ma wypisać PASS
 prototype/tools/test_weapons.sh                                 # bronie + sieć (~3 min)
-prototype/tools/test_net_session.sh                             # sesja sieciowa: inna wersja, utrata hosta, czterech ludzi P1–P4 (~1 min)
+prototype/tools/test_net_session.sh                             # sesja sieciowa: inna wersja, utrata hosta, czterech ludzi P1–P4, host bez bota (~1 min)
 ```
 
 CI (`.github/workflows/tests.yml`) odpala te testy na każdym PR.

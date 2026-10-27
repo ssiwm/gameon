@@ -496,7 +496,7 @@ func log_start() -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
 	var row := {"audio": Audio.source_set(), "map": String(lvl.map_id) if lvl != null else "", "kind": kind,
 		"difficulty": Difficulty.level_name(), "mode": "night_shift" if NightShift.active else "campaign", "attempt": attempts,
-		"humans": humans, "bots": bots, "weather": String(Weather.current)}
+		"humans": humans, "bots": bots, "weather": String(Weather.current), "ai_companion": get_parent().get("companion_on") != false}
 	if NightShift.active:
 		row["stage"] = NightShift.stage
 		row["mods"] = NightShift.mods

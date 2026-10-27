@@ -26,6 +26,7 @@ const WORKSHOP_TEST := preload("res://scripts/workshop_test.gd")
 const CABINET_TEST := preload("res://scripts/cabinet_test.gd")
 const STALKER_TEST := preload("res://scripts/stalker_test.gd")
 const BOT_TEST := preload("res://scripts/bot_test.gd")
+const NOBOT_TEST := preload("res://scripts/nobot_test.gd")
 const RANGE_TEST := preload("res://scripts/range3d/range_test.gd")
 const FP_RANGE := preload("res://scripts/range3d/fp_mode.gd")
 const ENEMY_TEST := preload("res://scripts/enemy_test.gd")
@@ -129,6 +130,7 @@ func _ready() -> void:
 		move_child(wfx, $UI.get_index())
 	# widok 3D (ustawienie „3D view” / `--view3d`): ten sam świat 2D renderowany w 3D, przełączany w trakcie gry
 	Settings.changed.connect(_apply_view3d)
+	Settings.changed.connect(_on_companion_setting)
 	_apply_view3d.call_deferred()
 	# obraz horroru (winieta, aberracja, ostrzeżenie o zdrowiu) — tylko w grafice HD; `--nofx` wyłącza
 	if Sprites.newitem and DisplayServer.get_name() != "headless" and not ("--nofx" in OS.get_cmdline_user_args()):
@@ -173,7 +175,8 @@ func _physics_process(delta: float) -> void:
 	if mission.kind == "hub":
 		_hub_server_tick(delta)
 		return
-	if _all_down():
+	_track_solo_fall()
+	if _all_down() and not _solo_may_bleed():
 		print("[WIPE] all players down -> mission restart in %.0fs" % WIPE_DELAY)
 		mission.log_end("wipe")
 		_announce_wipe.rpc(WIPE_DELAY)
@@ -189,6 +192,32 @@ func _all_down() -> bool:
 			return false
 	return any
 
+## Upadek, gdy nikt nie podniesie (NOBOT_PLAN.md D1a): drużyna to jeden człowiek bez bota. Pierwszy upadek w próbie nie kończy jej
+## wipe'em — biegnie wykrwawienie i powrót na start z 1 HP (player.gd, kara dystansem z GDD §4), łup zostaje. Drugi upadek w tej
+## samej próbie = wipe jak zawsze. Z botem albo drugim człowiekiem wipe bez zmian (wszyscy leżą).
+var _solo_falls := 0
+var _solo_was_dead := false
+
+func _lone_player() -> Node:
+	var lone: Node = null
+	for c in _players.get_children():
+		if c.is_queued_for_deletion():
+			continue
+		if lone != null:
+			return null
+		lone = c
+	return lone if lone != null and not lone.is_bot else null
+
+func _track_solo_fall() -> void:
+	var lone := _lone_player()
+	var d: bool = lone != null and bool(lone.dead)
+	if d and not _solo_was_dead:
+		_solo_falls += 1
+	_solo_was_dead = d
+
+func _solo_may_bleed() -> bool:
+	return _lone_player() != null and _solo_falls <= 1
+
 @rpc("authority", "call_local", "reliable")
 func _announce_wipe(seconds: float) -> void:
 	wipe_left = seconds
@@ -200,6 +229,8 @@ func _announce_wipe(seconds: float) -> void:
 ## fabularny nie (GDD §4).
 func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 	print("[MISSION] restart (%s)%s" % ["nowa misja" if new_run else "wipe", (" -> " + map_id) if map_id != "" else ""])
+	_solo_falls = 0
+	_solo_was_dead = false
 	if map_id != "" and map_id != level.map_id:
 		_set_map(map_id)
 	NoiseMgr.reset_mission()
@@ -477,6 +508,7 @@ func _handle_cmdline() -> void:
 	var missiontest := false
 	var stalkertest := false
 	var bottest := false
+	var nobottest := false
 	var rangetest := false
 	var range3d := false
 	var enemytest := false
@@ -550,6 +582,8 @@ func _handle_cmdline() -> void:
 		if a.begins_with("--sessionlog="):               # dziennik sesji także w headless, do wskazanego katalogu (testy)
 			SessionLog.enabled = true
 			SessionLog.dir = a.substr("--sessionlog=".length())
+		if a == "--nobot":
+			Settings.ai_companion = false                 # dev / testy: gra bez AI towarzysza, bez zapisu ustawień (NOBOT_PLAN.md); przed --host
 		if a.begins_with("--fakebuild="):                 # dev: inna wersja przy łączeniu (test sprawdzenia wersji, tools/test_net_session.sh)
 			_fake_build = a.substr("--fakebuild=".length())
 		if a.begins_with("--port="):
@@ -593,6 +627,8 @@ func _handle_cmdline() -> void:
 			stalkertest = true
 		elif a == "--bottest":
 			bottest = true
+		elif a == "--nobottest":
+			nobottest = true
 		elif a == "--rangetest":
 			rangetest = true
 		elif a == "--range3d":
@@ -734,6 +770,11 @@ func _handle_cmdline() -> void:
 		bt.name = "BotTest"
 		add_child(bt)
 		bt.run(self)
+	if nobottest:
+		var nt := NOBOT_TEST.new()
+		nt.name = "NobotTest"
+		add_child(nt)
+		nt.run(self)
 	if enemytest:
 		var et := ENEMY_TEST.new()
 		et.name = "EnemyTest"
@@ -881,6 +922,8 @@ func _setup_main_menu(pause_menu: Control) -> void:
 		_lobby.visible = true
 		_lobby.enter(menu.entry))
 	menu.settings_requested.connect(pause_menu.open_settings)
+	if "--shotlobby" in OS.get_cmdline_user_args():
+		menu._play.call_deferred("host")              # dev: z --shot=PLIK — zrzut lobby (opcje hosta, np. towarzysz AI) zamiast menu głównego
 	_lobby.back_requested.connect(func() -> void:
 		_lobby.visible = false
 		menu.visible = true)
@@ -3603,6 +3646,8 @@ func _begin_hosting(where: String) -> void:
 	_lobby.visible = false
 	Audio.play("mission_start", Audio.BUS_UI, -8.0)
 	print("[NET] difficulty: %s" % Difficulty.level_name())
+	companion_on = Settings.ai_companion
+	print("[NET] AI companion: %s" % ("ON" if companion_on else "OFF"))
 	if NightShift.selected:
 		mission.begin_shift()
 	Scrap.load_progress()                # host zaczyna od zapisanego portfela
@@ -3672,11 +3717,38 @@ func _on_peer_connected(id: int) -> void:
 	print("[NET] peer connected: %d" % id)
 	if multiplayer.is_server():
 		_sync_difficulty.rpc_id(id, Difficulty.level)
+		_sync_companion.rpc_id(id, companion_on)
 		_load_map_rpc.rpc_id(id, level.map_id)       # mapa zanim pojawi się postać
 		level.send_collapse_to(id)                   # zawały, które już się wydarzyły w tej misji
 		level.send_walls_to(id)                      # rozbite zamurowane przejścia
 		level.send_cabinets_to(id)
 		_spawn_player(id)
+
+## AI towarzysz w tej sesji (NOBOT_PLAN.md): serwer bierze go z ustawień hosta (`Settings.ai_companion`), klient dostaje od serwera
+## (lobby pokazuje wybór hosta, karta wyniku — „bez bota”). Zmiana tylko poza misją: w lobby i w kryjówce (`companion_editable`).
+var companion_on := true
+
+func companion_editable() -> bool:
+	if not NoiseMgr.has_network():
+		return true
+	return multiplayer.is_server() and mission != null and mission.kind == "hub"
+
+func _on_companion_setting() -> void:
+	if not NoiseMgr.has_network():
+		companion_on = Settings.ai_companion
+		return
+	if not multiplayer.is_server() or companion_on == Settings.ai_companion or not companion_editable():
+		return
+	companion_on = Settings.ai_companion
+	print("[BOT] AI companion: %s (host, kryjówka)" % ("ON" if companion_on else "OFF"))
+	_sync_companion.rpc(companion_on)
+	_reconcile_bots()
+
+@rpc("authority", "call_remote", "reliable")
+func _sync_companion(on: bool) -> void:
+	companion_on = on
+	_lobby.show_companion(on, true)
+	print("[NET] AI companion (host): %s" % ("ON" if on else "OFF"))
 
 ## Trudność ustala host; klient dostaje ją przy dołączeniu (HP wrogów, paski, czasy).
 @rpc("authority", "call_remote", "reliable")
@@ -3776,7 +3848,9 @@ func _reconcile_bots() -> void:
 				break
 
 func _bot_target_count(humans: int) -> int:
-	# solo = 1 bot (gracz + AI); dwa ludzie = 1 bot; 3+ ludzi = 0 botów
+	# solo = 1 bot (gracz + AI); dwa ludzie = 1 bot; 3+ ludzi = 0 botów; host wyłączył towarzysza — 0 (NOBOT_PLAN.md)
+	if not companion_on:
+		return 0
 	if humans <= 1:
 		return 1
 	if humans == 2:

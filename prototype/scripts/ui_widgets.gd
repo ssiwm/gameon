@@ -246,7 +246,9 @@ class Segmented extends PanelContainer:
 			h.add_child(b)
 			_buttons.append(b)
 		set_index(0)
+	var locked := false                 ## wybór należy do kogoś innego (np. hosta) — przyciski wyłączone
 	func set_locked(on: bool) -> void:
+		locked = on
 		for b in _buttons:
 			b.disabled = on
 	func set_index(i: int) -> void:
