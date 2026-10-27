@@ -76,7 +76,9 @@ Na prośbę użytkownika przed playtestami — wartości (próg 60, +30 złomu, 
 | P2.1 | ✅ Cichy cel w 1.1–1.3: Uwaga < 60 przez cały cel główny → +30 złomu (podwaja premię za ukończenie), toast „SILENT RUN LOST”, wiersz na karcie wyniku; cel poboczny 1.2 (< 40) zostaje | D1 |
 | P2.2 | ✅ Sejfy (`strongbox.gd`, `STRONGBOXES`): trzymany [E] 3 s, 3 Uwagi/s i łoskot +12, 40 złomu (2× skrytka); 1.1 przy strażnicy, 1.2 obok Podsłuchacza | D1, D5 |
 
-## 5. Pomiar po P0
+## 5. Pomiar po P0–P2
+
+Raport: `python tools/fun_report.py [--split 1.7.401] [--since RRRR-MM-DD] [--difficulty NORMAL] [--min-humans 2]` (z `prototype/`) — te same liczby co §1 dla prób przed i po wskazanym buildzie (od 1.7.404; `mission_start.via` = "direct" od 1.7.404).
 
 `mission_end.players[id]` ma `escapes`, `lures` i `noise`; zdarzenia `stalker` z `close_call` i `overcharge` z `locked`; `mission_start.checkpoint`.
 Do porównania przed/po: użycia Q na misję, ucieczki o włos na minutę z obudzonym Stalkerem, sukcesy 1.3 NORMAL, misje na sesję.
