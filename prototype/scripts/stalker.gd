@@ -42,7 +42,9 @@ const WINDUP_TIME := 0.55
 const REACH_STAND := 14.0
 const REACH_CROUCH := 8.0
 const REACH_SLACK := 6.0       ## o tyle gracz może się wycofać w trakcie zapowiedzi i nadal oberwać
-const MISS_COOLDOWN := 0.8
+const MISS_COOLDOWN := 1.5     ## = ATTACK_COOLDOWN: unik nie może dawać szybszego kolejnego ciosu niż trafienie (FUN_PLAN.md D4)
+const CLOSE_CALL_R := 22.0     ## px ponad zasięg ciosu (z tolerancją): tak blisko chybiony człowiek „uciekł o włos" (FUN_PLAN.md P0.1)
+const CLOSE_CALL_GAP := 5.0    ## s: seria pudeł w jednego gracza to jedna ucieczka
 ## Trafienie: spowolnienie na HIT_SLOW_TIME s zawsze, zatrzymanie na HIT_STAGGER s najwyżej raz na STAGGER_COOLDOWN s.
 ## Bez tego limitu strzał co 0,6 s trzymał go w miejscu bez końca (test `--stalkertest`: 1 px z 200 w 10 s).
 const HIT_SLOW_TIME := 1.2
@@ -84,6 +86,8 @@ var _pass_armed := true                ## Uwaga spadła poniżej progu od ostatn
 var _pass_from := Vector2.ZERO         ## skąd wyszedł — tam się wycofuje
 var awake := false
 var target_pos := Vector2.ZERO
+## Ucieczki o włos od wczytania mapy (serwer; licznik dla `--stalkertest`).
+var close_calls := 0
 ## Zapowiedź ataku trwa (synchronizowane, żeby klient grał sygnał i rysował błysk)
 var winding := false
 var visual_attack_seq := 0
@@ -190,6 +194,7 @@ func reset_enemy() -> void:
 	_pass_t = 0.0
 	_pass_cd = 0.0
 	_pass_armed = true
+	_close_at.clear()
 
 func _physics_process(delta: float) -> void:
 	_grab_recovery_t = maxf(0.0, _grab_recovery_t - delta)
@@ -237,13 +242,22 @@ func _physics_process(delta: float) -> void:
 		if lighter == null:
 			lighter = Lights.light_weapon_on(global_position + Vector2(0, -20), get_tree(), get_world_2d().direct_space_state)   # LR-7 i HKM-9 świecą bez hałasu
 		if lighter != null:
+			NoiseMgr.break_lure()             # snop latarki przerywa przytrzymanie na wabiku (FUN_PLAN.md P0.2)
 			target_pos = lighter.global_position
 			_arrived = false
 			_listen = 0.0
 
 	if awake:
+		# Udane Q przytrzymuje go na wabiku (FUN_PLAN.md P0.2): nowy hałas w tym czasie go nie zawraca, a po przytrzymaniu
+		# nasłuchuje przy wabiku, aż padnie kolejny hałas (stary serial jest już „zjedzony”).
+		if NoiseMgr.lure_left > 0.0 and not leaving:
+			_seen_serial = NoiseMgr.noise_serial
+			if NoiseMgr.lure_pos.distance_to(target_pos) > 2.0:
+				target_pos = NoiseMgr.lure_pos
+				_arrived = false
+				_listen = 0.0
 		# Idzie do ostatniego NOWEGO źródła hałasu — nigdy do gracza.
-		if NoiseMgr.noise_serial != _seen_serial and not leaving:
+		elif NoiseMgr.noise_serial != _seen_serial and not leaving:
 			_seen_serial = NoiseMgr.noise_serial
 			if NoiseMgr.last_noise_pos.distance_to(target_pos) > 2.0:
 				target_pos = NoiseMgr.last_noise_pos
@@ -539,6 +553,24 @@ func _tick_windup(delta: float) -> void:
 			miss["bot"] = bool(pp.is_bot)
 		SessionLog.event("stalker", miss)
 		_attack_timer = MISS_COOLDOWN * Difficulty.m("stalker_cd")
+		if pp != null and is_instance_valid(pp) and not pp.is_bot and not pp.dead \
+				and global_position.distance_to(pp.global_position) <= _reach_for(pp) + REACH_SLACK + CLOSE_CALL_R:
+			_close_call(pp)
+
+## Ucieczka o włos (serwer): człowiek wyszedł z zasięgu w ostatniej chwili. Efekt u niego (player.deliver_close_call), licznik na karcie wyniku.
+var _close_at := {}                ## nazwa gracza → czas ostatniej ucieczki (s, zegar silnika)
+
+func _close_call(pp: Node2D) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - float(_close_at.get(pp.name, -INF)) < CLOSE_CALL_GAP:
+		return
+	_close_at[pp.name] = now
+	close_calls += 1
+	SessionLog.event("stalker", {"what": "close_call", "noise": roundi(NoiseMgr.level), "target": "P%d" % int(pp.display_id), "pos": SessionLog.xy(pp.global_position)})
+	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
+	if m != null and m.has_method("note_escape"):
+		m.note_escape(pp)
+	pp.deliver_close_call()
 
 ## Dźwięk stalkera: szept gdy czatuje (też w fazie niepokoju, zanim się obudzi),
 ## ryk przy przebudzeniu i zapowiedzi ataku, kroki gdy poluje.

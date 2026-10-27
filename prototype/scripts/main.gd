@@ -27,6 +27,7 @@ const CABINET_TEST := preload("res://scripts/cabinet_test.gd")
 const STALKER_TEST := preload("res://scripts/stalker_test.gd")
 const BOT_TEST := preload("res://scripts/bot_test.gd")
 const NOBOT_TEST := preload("res://scripts/nobot_test.gd")
+const FUN_TEST := preload("res://scripts/fun_test.gd")
 const RANGE_TEST := preload("res://scripts/range3d/range_test.gd")
 const FP_RANGE := preload("res://scripts/range3d/fp_mode.gd")
 const ENEMY_TEST := preload("res://scripts/enemy_test.gd")
@@ -164,6 +165,8 @@ func _physics_process(delta: float) -> void:
 			wipe_left = 0.0
 			if NightShift.active:
 				mission.fail_shift()          # Nocny Dyżur: wipe kończy serię
+			elif mission.has_checkpoint():
+				_restart_from_checkpoint()    # wipe w walce z bossem: od początku walki, nie od startu mapy (FUN_PLAN.md P0.3)
 			else:
 				_restart_mission(false)
 		return
@@ -171,6 +174,8 @@ func _physics_process(delta: float) -> void:
 	if mission.phase == MISSION_SCRIPT.Phase.SUCCESS or mission.phase == MISSION_SCRIPT.Phase.FAILED:
 		if Input.is_action_just_pressed("restart"):
 			_continue_after_result.call_deferred()       # jak wyjście z kryjówki: zmiana mapy poza krokiem fizyki
+		elif Input.is_action_just_pressed("interact") and not NightShift.active and mission.phase == MISSION_SCRIPT.Phase.SUCCESS:
+			_continue_without_hub.call_deferred()
 		return
 	if mission.kind == "hub":
 		_hub_server_tick(delta)
@@ -249,6 +254,7 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 	for c in _players.get_children():
 		if not carry and not c.is_bot:
 			level.register_weapon_kit(int(c.player_id))
+		c.deliver_spawn(Vector2.INF)     # punkt kontrolny bossa (jeśli był) przestaje obowiązywać
 		c.request_full_reset(carry)
 	level.clear_pickups()
 	mission.on_restart(new_run)
@@ -261,6 +267,30 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 	_update_weather(new_run, carry)
 	if level.objective == "hub":
 		NoiseMgr.calm()                  # w kryjówce jest cicho
+
+## Wipe w fazie BOSS misji z gniazdami (FUN_PLAN.md P0.3): jak zwykły wipe (Uwaga, ekwipunek z początku misji, łup próby przepada,
+## wrogowie wracają), ale gniazda zostają zniszczone, drużyna staje w punkcie kontrolnym, a boss budzi się po chwili od nowa.
+func _restart_from_checkpoint() -> void:
+	print("[MISSION] restart od punktu kontrolnego (boss)")
+	_solo_falls = 0
+	_solo_was_dead = false
+	NoiseMgr.reset_mission()
+	Arsenal.begin_mission(false)
+	Arsenal.reset_mission()
+	Director.reset()
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not e.is_in_group("nests") and e.has_method("reset_enemy"):
+			e.reset_enemy()
+	for c in _players.get_children():
+		if not c.is_bot:
+			level.register_weapon_kit(int(c.player_id))
+		c.deliver_spawn(mission.checkpoint_pos(c))
+		c.request_full_reset(false)
+	level.clear_pickups()
+	Scrap.reset_loot()
+	mission.on_checkpoint()
+	NoiseMgr.objective_bonus()           # jak przy pierwszym przebudzeniu bossa
+	mission.wake_boss_after_checkpoint()
 
 # ---------------------------------------------------------------- mapy / kampania
 
@@ -470,6 +500,15 @@ func _continue_after_result() -> void:
 		return
 	_restart_mission(true, next_map)
 
+## [Interakcja] na karcie wyniku kampanii (host, FUN_PLAN.md P0.4): od razu następna misja z zachowanym ekwipunkiem, bez kryjówki —
+## jak wyjście z niej (carry), z nową prognozą pogody. Kto chce do warsztatu, wybiera [Enter].
+func _continue_without_hub() -> void:
+	if NightShift.active or mission.phase != MISSION_SCRIPT.Phase.SUCCESS:
+		return
+	Weather.forecast = Weather.roll()
+	after_hub = ""
+	_restart_mission(true, _next_campaign_map(), true)
+
 ## Serwer: przełącza poziom na `id` u wszystkich peerów (przebudowa mapy, nowy punkt startu, nowy cel).
 func _set_map(id: String) -> void:
 	if not level.MAPS.has(id):
@@ -509,6 +548,7 @@ func _handle_cmdline() -> void:
 	var stalkertest := false
 	var bottest := false
 	var nobottest := false
+	var funtest := false
 	var rangetest := false
 	var range3d := false
 	var enemytest := false
@@ -598,7 +638,7 @@ func _handle_cmdline() -> void:
 	if _start_map == "":
 		for a in args:
 			if a.begins_with("--stealthtest") or a.begins_with("--wipetest") or a == "--missiontest" or a == "--shifttest" \
-					or a == "--weapontest" or a.begins_with("--weaponshots=") or a == "--weaptestnet" or a == "--weaptestclient" 					or a == "--stalkertest" or a == "--bottest" or a == "--enemytest":
+					or a == "--weapontest" or a.begins_with("--weaponshots=") or a == "--weaptestnet" or a == "--weaptestclient" 					or a == "--stalkertest" or a == "--bottest" or a == "--enemytest" or a == "--funtest":
 				_start_map = "z1_m3"
 	for a in args:
 		if a == "--host":
@@ -629,6 +669,8 @@ func _handle_cmdline() -> void:
 			bottest = true
 		elif a == "--nobottest":
 			nobottest = true
+		elif a == "--funtest":
+			funtest = true
 		elif a == "--rangetest":
 			rangetest = true
 		elif a == "--range3d":
@@ -775,6 +817,11 @@ func _handle_cmdline() -> void:
 		nt.name = "NobotTest"
 		add_child(nt)
 		nt.run(self)
+	if funtest:
+		var ft := FUN_TEST.new()
+		ft.name = "FunTest"
+		add_child(ft)
+		ft.run(self)
 	if enemytest:
 		var et := ENEMY_TEST.new()
 		et.name = "EnemyTest"
@@ -2002,8 +2049,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				level.spawn_fire_patch(fp.global_position + Vector2(44.0 + 22.0 * float(i), -1.0), Weapons.HKM9, 1)
 	if result:
 		mission.elapsed = 214.0
-		mission.player_stats = {NoiseMgr.local_id(): {"name": "P1", "kills": 14, "downs": 1, "revived": 0},
-			2: {"name": "P2", "kills": 9, "downs": 0, "revived": 1}}          # przykładowa tabela graczy
+		mission.player_stats = {NoiseMgr.local_id(): {"name": "P1", "kills": 14, "downs": 1, "revived": 0, "revives": 1, "escapes": 2, "lures": 1, "noise": 64.0},
+			2: {"name": "P2", "kills": 9, "downs": 0, "revived": 1, "revives": 0, "escapes": 0, "lures": 0, "noise": 31.0}}    # przykładowa tabela graczy i wyróżnienia
 		mission._success()                 # podgląd karty wyniku
 	if workshop:
 		# podgląd panelu warsztatu: portfel, jedna kupiona broń i ulepszenia (tylko w pamięci; zapis wyłączony w trybie podglądu)

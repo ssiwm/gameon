@@ -191,6 +191,8 @@ var _overlay: Node2D
 var _jump_buf := 0.0
 var _was_on_floor := true
 var _spawn_point := Vector2.ZERO
+var _base_spawn := Vector2.ZERO        ## start mapy, gdy `_spawn_point` wskazuje punkt kontrolny bossa (FUN_PLAN.md P0.3)
+var _at_checkpoint := false
 var _is_remote := true
 var _revive_hold := 0.0
 var _revive_target_ref: Node2D = null
@@ -530,6 +532,7 @@ func _apply_level_bounds() -> void:
 ## Nowa mapa (level.load_map): punkt startu i granice kamery z nowej mapy, postać wraca na start.
 func _on_map_changed(_id: String) -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
+	_at_checkpoint = false
 	_spawn_point = lvl.spawn_for(display_id)
 	global_position = _spawn_point
 	velocity = Vector2.ZERO
@@ -1084,16 +1087,16 @@ func _try_overcharge() -> void:
 	Audio.play("oc_load", Audio.BUS_UI, -10.0)
 	var pos := global_position
 	if not NoiseMgr.has_network():
-		NoiseMgr.use_overcharge(pos)
+		NoiseMgr.use_overcharge(pos, self)
 	elif multiplayer.is_server():
-		NoiseMgr.use_overcharge(pos)
+		NoiseMgr.use_overcharge(pos, self)
 	else:
 		_noise_manager_request.rpc_id(1, pos)
 
 @rpc("any_peer", "call_remote", "reliable")
 func _noise_manager_request(pos: Vector2) -> void:
-	if multiplayer.is_server():
-		NoiseMgr.use_overcharge(pos)
+	if multiplayer.is_server() and multiplayer.get_remote_sender_id() == get_multiplayer_authority():
+		NoiseMgr.use_overcharge(pos, self)
 
 # ---------------------------------------------------------------- down / revive
 
@@ -1262,6 +1265,27 @@ func full_reset(keep_loadout := false) -> void:
 	_kick = 0.0
 	_revive_hold = 0.0
 	_revive_target_ref = null
+
+## Punkt odrodzenia (serwer → właściciel postaci, FUN_PLAN.md P0.3): skończona pozycja = punkt kontrolny walki z bossem (tam odradza
+## wykrwawienie i restart od punktu kontrolnego), `Vector2.INF` = z powrotem start mapy. Serwer wysyła to przed `request_full_reset`.
+func deliver_spawn(at: Vector2) -> void:
+	if not NoiseMgr.has_network() or is_multiplayer_authority():
+		apply_spawn(at)
+	else:
+		apply_spawn.rpc_id(get_multiplayer_authority(), at)
+
+@rpc("any_peer", "call_remote", "reliable")
+func apply_spawn(at: Vector2) -> void:
+	if not is_multiplayer_authority() or not _from_server():
+		return
+	if at.is_finite():
+		if not _at_checkpoint:
+			_base_spawn = _spawn_point
+		_at_checkpoint = true
+		_spawn_point = at
+	elif _at_checkpoint:
+		_at_checkpoint = false
+		_spawn_point = _base_spawn
 
 ## Wołane przez serwer po wipe — reset wykonuje właściciel postaci, bo tylko on
 ## ma autorytet nad jej pozycją i HP (synchronizator by to nadpisał).
@@ -1902,6 +1926,21 @@ func apply_hit(amount: int, _from_pos: Vector2, force := false) -> void:
 		Audio.on_player_hurt(hp <= 1)
 	if hp <= 0:
 		_go_down()
+
+## Ucieczka o włos (FUN_PLAN.md P0.1, serwer → właściciel postaci): Stalker chybił tuż obok. Efekt widzi i słyszy tylko ten gracz.
+func deliver_close_call() -> void:
+	if not NoiseMgr.has_network() or is_multiplayer_authority():
+		apply_close_call()
+	else:
+		apply_close_call.rpc_id(get_multiplayer_authority())
+
+@rpc("any_peer", "call_remote", "reliable")
+func apply_close_call() -> void:
+	if not is_multiplayer_authority() or not _from_server() or is_bot or dead:
+		return
+	Feel.close_call_pulse()
+	Audio.on_close_call()
+	Msg.post("hud.close_call", Msg.Ch.TOAST, tr("CLOSE CALL"), {"ttl": 1.6, "style": Msg.Style.WARN, "prio": 40, "log": false})
 
 ## Chwyt Pijawki (serwer → właściciel postaci): `on` przypina gracza w `pos`, wyłączenie go uwalnia.
 func deliver_grab(on: bool, pos: Vector2) -> void:

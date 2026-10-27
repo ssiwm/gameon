@@ -84,6 +84,7 @@ trudniejsze z założenia mapy, a nie ze skalowania z postępem (skaluje tylko N
   wykrwawienie i powrót na start z 1 sercem (łup zostaje), a **drugi upadek w tej samej próbie = wipe**. Z botem albo drugim człowiekiem
   wipe jak zawsze: wszyscy leżą jednocześnie.
 - **Wipe** (wszyscy down jednocześnie) = **nieudana ekstrakcja**: po 3 s restart misji (Uwaga, wrogowie, ładunki Q), tracicie łup misji, ale nie postęp fabularny.
+- **Punkt kontrolny bossa** (od 1.7.401, `FUN_PLAN.md` P0.3): w misji z gniazdami i bossem (1.3) przebudzenie bossa zapisuje pozycje drużyny. Wipe w walce z bossem wraca do jej początku (gniazda zostają zniszczone, reszta jak przy wipe'ie, boss budzi się po 2,5 s), a wykrwawienie w walce odradza przy arenie — połowa wipe'ów 1.3 była w fazie BOSS, a powtórka całej mapy karała czasem, nie decyzją.
 - **Dlaczego bez auto-respawnu:** darmowy respawn po 3 s zabija napięcie i sens Przesterowania. Down + revive tworzy momenty, o których drużyna opowiada po sesji.
 - Uratowani NPC mogą zginąć na stałe (wpływ na zakończenie i sklep).
 
@@ -264,7 +265,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 - **Nie da się go zabić.** HP ∞. Trafienie spowalnia go na 1,2 s (do 40% prędkości) i zatrzymuje na 0,7 s, ale zatrzymanie działa najwyżej raz na 3 s — ostrzałem kupuje się czas, nie unieruchamia go.
 - Aktywuje się, gdy Poziom Uwagi misji przekroczy próg (start: 60/100).
 - Porusza się poza kadrem (dźwięk z głośników 3D), atakuje znienacka.
-- **Mechanika tropu:** idzie do ostatniego głośnego punktu. Wabik odciąga go na 20–30 s.
+- **Mechanika tropu:** idzie do ostatniego głośnego punktu. Wabik odciąga go na 20–30 s: udane Q (§8.4) **przytrzymuje** go przy wabiku przez 15 s (`NoiseMgr.LURE_LOCK`, od 1.7.401) — nowy hałas w tym czasie go nie zawraca, przerywa to tylko snop latarki na nim albo kolejne Q; potem nasłuchuje przy wabiku do następnego hałasu.
 - **Światło go przyciąga** (latarka na wrogu = śmierć). Ciemność i kucanie = szansa ucieczki.
 - Można go „uspokoić": obniżyć Uwagę poniżej progu przez 60 s (żadnych strzałów, wabik gdzieś daleko).
 - Pojawia się w 3 formach zależnie od strefy (sylwetka, dźwięk, cień).
@@ -345,6 +346,7 @@ Sedno poprawki. Problem: pierwotna wersja traktowała hałas jako coś, czego si
 
 - **Ładunek przesterowania:** misja startuje z 2. Regeneracja: +1 co 45 s (albo natychmiast przy wykonaniu celu głównego). Max 3.
 - **Efekt taktyczny:** jeśli Stalker właśnie poluje na kolegę, gracz używa Q *daleko od niego* i Stalker przekierowuje się na gracza-innego-człowieka (albo na podstawiony Wabik). Drużyna zyskuje 20 s.
+- **Widać, że zadziałało (od 1.7.401, `FUN_PLAN.md` P0.2):** w dziennikach Q użyto 8 razy na 129 misji — skutku nie było widać, a następny strzał kolegi i tak zawracał Stalkera. Teraz udane Q przytrzymuje go 15 s (§7.3), HUD pokazuje „HE TAKES THE BAIT” i odliczanie zamiast „He hears you…”, słychać jego zawracający warkot, a gdy Stalker poluje tuż przy koledze, a gracz ma ładunek, HUD podpowiada „He's on P2! [Q] lures him away from them”. Udane wabiki gracza liczy wyróżnienie BAIT na karcie wyniku.
 - **Dlaczego to jest hook, a nie nerf:** aktywne „przesterowanie" brzmi jak coś, co *ty* robisz celowo — sygnał dla streamera „spróbujcie tego", zamiast statystyki, której się unika.
 
 **Napięcie gatunków rozstrzygnięte w ten sposób:** w trybie **szumu** (walka) hałas jest nieunikniony i Stalker ciśnie — tu grasz jak w Contra. W trybie **napięcia** (cele, skradanie) cisza jest możliwa i oszczędzasz ładunek Q. Misje przełączają te tryby jawnie, żeby gracz wiedział, w którym jest. Bez tego GDD opisywał dwa różne produkty.
@@ -356,7 +358,7 @@ Sedno poprawki. Problem: pierwotna wersja traktowała hałas jako coś, czego si
 - **Nasłuchiwanie (v2):** po dotarciu do źródła hałasu Stalker **zatrzymuje się i nasłuchuje 4 s**. Idzie dalej tylko do *nowego* hałasu. Nigdy nie przełącza się na pozycję gracza — to oddaje ciszy realną wartość (wcześniej kod po dotarciu do punktu celował w najbliższego gracza, co robiło z niego zwykłego goniącego wroga).
 - **Kucający gracz jest niemal niewidoczny:** Stalker zauważa go dopiero z **8 px** (stojącego z 14 px). Kucanie obok przechodzącego Stalkera to świadoma, nagradzana decyzja.
 - **Widoczność — „słyszysz, nigdy nie widzisz":** ciało pojawia się dopiero w promieniu ~60 px od lokalnego gracza (płynnie do 160 px), poza tym widać tylko słabo błyszczące oczy. Gdy dojdzie oświetlenie 2D, widoczny jest w świetle latarki/flary.
-- **Atak z zapowiedzią (v2):** zamach 1 HP, cooldown 1,5 s, **bez generowania hałasu**. Przed ciosem jest **0,55 s zapowiedzi** (szept milknie, oczy rozbłyskują, ryk) — gracz może uciec; jeśli odejdzie poza zasięg, cios chybia. Po ciosie Stalker odsuwa się o 6 px (ok. 0,5 m), stoi 0,8 s i może zamachnąć się ponownie najwcześniej po 1,5 s — okno na decyzję, nie natychmiastowy kolejny cios. W praktyce trafiony gracz ląduje tuż poza zasięgiem 14 px i Stalker nasłuchuje, dopóki nie padnie nowy hałas albo gracz sam nie podejdzie (pomiar: `--stalkertest`). Zasada: **śmierć od Stalkera jest zawsze „fair" i zapowiedziana.**
+- **Atak z zapowiedzią (v2):** zamach 1 HP, cooldown 1,5 s, **bez generowania hałasu**. Przed ciosem jest **0,55 s zapowiedzi** (szept milknie, oczy rozbłyskują, ryk) — gracz może uciec; jeśli odejdzie poza zasięg, cios chybia. Po ciosie Stalker odsuwa się o 6 px (ok. 0,5 m), stoi 0,8 s i może zamachnąć się ponownie najwcześniej po 1,5 s — okno na decyzję, nie natychmiastowy kolejny cios. Po **pudle** przerwa jest taka sama (do 1.7.400 była krótsza, 0,8 s, więc unik sypał serią szybszych zamachów bez skutku). Pudło w człowieka tuż obok to **ucieczka o włos** (od 1.7.401, `FUN_PLAN.md` P0.1): u tego gracza kadr na chwilę się zwęża, świat i muzyka cichną, HUD mówi „CLOSE CALL” — najwyżej raz na 5 s; licznik trafia na kartę wyniku (CLOSE SHAVE). W praktyce trafiony gracz ląduje tuż poza zasięgiem 14 px i Stalker nasłuchuje, dopóki nie padnie nowy hałas albo gracz sam nie podejdzie (pomiar: `--stalkertest`). Zasada: **śmierć od Stalkera jest zawsze „fair" i zapowiedziana.**
 - **Poruszanie się:** idzie po powierzchniach poziomu ścieżką A* (`nav.gd`, 1.3.7) — chodzi, wspina się na wyższe poziomy i zeskakuje, nie przenika przez ściany. Ten sam graf prowadzi bota.
 
 ---

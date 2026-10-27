@@ -12,8 +12,9 @@ extends RefCounted
 ##   down           who, bot, source (rodzaj wroga / stalker / vein / leech / acid / blast / prop), noise, weapon, pos, phase
 ##   revive         who, bot, after (s leżenia)
 ##   bleed_out      who, bot (wykrwawienie: powrót na start misji)
-##   stalker        what (awake / asleep / swing_hit / swing_miss / pass_in / pass_out — przechodzący Stalker 1.1), noise, target, bot, pos
-##   overcharge     pos, noise, stale
+##   stalker        what (awake / asleep / swing_hit / swing_miss / close_call — ucieczka o włos od 1.7.401 / pass_in / pass_out — przechodzący
+##                  Stalker 1.1), noise, target, bot, pos
+##   overcharge     pos, noise, stale, charges, awake (Stalker obudzony), locked (s przytrzymania na wabiku, 0 przy zwietrzałym — FUN_PLAN.md P0.2)
 ##   pos            phase, noise, p: lista graczy [{who, bot, pos, hp, crouch, dead}] — próbka co POS_EVERY s (mapy cieplne tras, MAPS_PLAN.md P1)
 ##   objective      what (tag / stash / generator / nest / boss), n, of, pos, who, bot — zaliczony cel lub cel poboczny (czas odcinków trasy, P2)
 ##   mission_end    result (success / failed / wipe), time, downs, attempts, peak_noise, side, players, weapons, noise, scrap
@@ -27,7 +28,9 @@ extends RefCounted
 ##                  bo wydajność jest jego sprzętu, a reszta dziennika to symulacja hosta
 ## Wipe w kampanii kończy próbę wierszem mission_end, po którym idzie mission_start z kolejnym numerem próby.
 ## `weapons`: klucz broni → {shots, noise, dmg, kills}; `noise`: źródło → {n, sum} (strzały pod kluczem `shot`).
-## `players[id]` (od 1.7.391): oprócz name, kills, downs, revived, dmg także `kinds` (rodzaj wroga → zabójstwa) i `xp_kills` (XP za te zabójstwa) — P0.1, P0.3.
+## `players[id]` (od 1.7.391): oprócz name, kills, downs, revived, dmg także `kinds` (rodzaj wroga → zabójstwa) i `xp_kills` (XP za te zabójstwa) — P0.1, P0.3;
+## od 1.7.401 (FUN_PLAN.md P0.5) `revives` (podniesienia kolegów), `escapes` (ucieczki o włos), `lures` (udane Q), `noise` (własny hałas gracza).
+## `mission_start.checkpoint` = "boss": próba od punktu kontrolnego walki z bossem (FUN_PLAN.md P0.3).
 ## `scrap` (od 1.7.347, strojenie ekonomii warsztatu): {dropped — złom, który wypadł z wrogów i bossa w tej próbie, loot — zebrany łup,
 ## bonus — premia za misję (0 przy wipe)}; do banku trafia loot + bonus, tylko przy sukcesie.
 

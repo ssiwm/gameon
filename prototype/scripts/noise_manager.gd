@@ -11,6 +11,9 @@ signal level_changed(level: float, awake: bool)
 signal overcharge_used(charges: int)
 signal overcharge_stale                  ## wabik użyty drugi raz w tym samym miejscu — „przestaje działać"
 signal flares_changed(n: int)
+signal lure_used(by: Node)                  ## serwer: udane Q (nie „zwietrzałe”); `by` = gracz, który je użył (mission.gd: wyróżnienie BAIT)
+signal lured(lock: float)                   ## każdy peer: Stalker przytrzymany na wabiku przez `lock` s (0 = przytrzymanie przerwane)
+signal noise_added(amount: float, pos: Vector2, tag: String)   ## serwer: każde zdarzenie hałasu po mnożnikach (mission.gd: hałas graczy)
 
 const MAX_LEVEL := 100.0
 
@@ -78,6 +81,12 @@ var _server_last_active := 0.0
 var _last_overcharge := -INF
 ## Gdzie ostatnio użyto Q (serwer) — Żyła daje się tam odciągnąć (boss.gd).
 var last_overcharge_pos := Vector2.ZERO
+## Przytrzymanie na wabiku (FUN_PLAN.md P0.2, GDD §7.3 „wabik odciąga go na 20–30 s"): po udanym Q obudzony Stalker idzie do `lure_pos`
+## i przez `lure_left` s nie zawraca go nowy hałas — tylko snop latarki (`break_lure`) albo kolejne Q. Serwer rozstrzyga, klienci dostają
+## odliczanie w `_lure_rpc` i liczą je sami (HUD).
+const LURE_LOCK := 15.0
+var lure_left := 0.0
+var lure_pos := Vector2.ZERO
 
 func has_network() -> bool:
 	var peer := multiplayer.multiplayer_peer
@@ -114,7 +123,7 @@ func add_noise(amount: float, pos: Vector2, tag := "") -> void:
 
 ## Przesterowanie: celowy +12 Uwagi i przekierowanie stalkera na to źródło.
 ## Zwraca true, jeśli ładunek był dostępny.
-func use_overcharge(pos: Vector2) -> bool:
+func use_overcharge(pos: Vector2, by: Node = null) -> bool:
 	if not is_server():
 		return false
 	if overcharge_charges <= 0:
@@ -143,7 +152,14 @@ func use_overcharge(pos: Vector2) -> bool:
 			_stale_fx.rpc()
 	else:
 		_apply(N_OVERCHARGE, pos, true, "q")
-	SessionLog.event("overcharge", {"pos": SessionLog.xy(pos), "noise": roundi(level), "stale": stale, "charges": overcharge_charges})
+		lure_pos = pos
+		lure_left = LURE_LOCK
+		lure_used.emit(by)
+		if has_network():
+			_lure_rpc.rpc(pos, LURE_LOCK)
+		lured.emit(LURE_LOCK)
+	SessionLog.event("overcharge", {"pos": SessionLog.xy(pos), "noise": roundi(level), "stale": stale, "charges": overcharge_charges,
+		"awake": stalker_awake, "locked": LURE_LOCK if not stale else 0.0})
 	# przekieruj: last_noise_pos już = pos, stalker pójdzie tutaj (GDD §8.4)
 	if has_network():
 		_push.rpc(level, last_noise_pos, stalker_awake, overcharge_charges)
@@ -182,6 +198,8 @@ func calm() -> void:
 	if not is_server():
 		return
 	level = 0.0
+	if lure_left > 0.0:
+		break_lure()
 	stalker_awake = false
 	level_changed.emit(level, stalker_awake)
 	_push_now()
@@ -196,6 +214,7 @@ func seconds_since_overcharge() -> float:
 
 func reset_mission() -> void:
 	_last_overcharge = -INF
+	lure_left = 0.0
 	level = NightShift.start_noise(20.0)
 	stalker_awake = level >= NightShift.awake_threshold(AWAKE_THRESHOLD)
 	last_noise_pos = Vector2.ZERO
@@ -284,11 +303,13 @@ func _apply(amount: float, pos: Vector2, track := true, tag := "") -> void:
 	level = clampf(level + add, 0.0, MAX_LEVEL)
 	if amount > 0.0:
 		SessionLog.note_noise(tag, add)
+		noise_added.emit(add, pos, tag)
 	if level >= NightShift.awake_threshold(AWAKE_THRESHOLD):
 		stalker_awake = true
 	level_changed.emit(level, stalker_awake)
 
 func _process(delta: float) -> void:
+	lure_left = maxf(0.0, lure_left - delta)          # każdy peer odlicza sam (HUD); serwer rozstrzyga
 	if not is_server():
 		return
 
@@ -343,6 +364,22 @@ func hot_spot_near(from: Vector2, radius: float, max_age: float) -> Variant:
 			best_t = v.z
 			best = Vector2(v.x, v.y)
 	return best
+
+## Snop latarki na Stalkerze (stalker.gd) albo cisza po misji przerywa przytrzymanie na wabiku.
+func break_lure() -> void:
+	if not is_server() or lure_left <= 0.0:
+		return
+	lure_left = 0.0
+	if has_network():
+		_lure_rpc.rpc(lure_pos, 0.0)
+	lured.emit(0.0)
+
+## Wabik wzięty (`lock` > 0) albo przerwany (0): odliczanie dla HUD i sygnał `lured` (hud.gd: komunikat, warkot Stalkera, który zawraca).
+@rpc("authority", "call_remote", "reliable")
+func _lure_rpc(pos: Vector2, lock: float) -> void:
+	lure_pos = pos
+	lure_left = lock
+	lured.emit(lock)
 
 @rpc("authority", "call_remote", "reliable")
 func _stale_fx() -> void:
