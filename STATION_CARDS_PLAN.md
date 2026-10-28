@@ -3,7 +3,7 @@
 Status: **plan z 2026-10-28 (main 1.7.412, 71e4aa6; zrzuty z 1.7.413, gałąź #505)**, nic nie wdrożone. Zmienia się tylko
 prezentacja kart siedmiu stanowisk (`workshop_ui.gd`); logika, serwer, `Scrap.*` i dane zostają. Makiety i rendery w
 [`docs/station_cards/`](docs/station_cards/). Decyzje D1–D4 podjęte 2026-10-28 (§9): D1a, D2a, D3a, D4a — E0 i E1 przed playtestem,
-E2–E5 po nim.
+E2–E5 po nim. Poprawki z przeglądu planu (2026-10-28): VU na karcie w skali HUD (§5a), nazwy statystyk z `ui.csv` (§4.8).
 
 ## 1. Cel
 
@@ -25,7 +25,10 @@ GDD §16.0a nie pozwala dokładać systemów warsztatu przed Gate 0 — ten plan
 | Materiały notatek | `DOSSIER` (maszynopis), `PRINTOUT` (wydruk z radia, zielony na ciemnym), `SCRAWL` (kartka odręczna) | `note_palette.gd` |
 | Hałas przedmiotów | granat +15 Uwagi (`N_GRENADE`), mina +10, ładunek +20, fosfor +3, dym +2, skaner 1/s | `noise_manager.gd`, `throwables.gd` |
 | Hałas broni i amunicji | M-83 0,6–1,5 na strzał (`n_min`/`n_max`), US ×0,85, z tłumikiem ×0,5; bieg 0,5/s, Ciche kroki ×0,5 | `weapons.gd`, `ammo.gd`, `perks.gd` |
-| Progi Uwagi | niepokój 40, przebudzenie 60, uśpienie 30 | `NoiseMgr.*_THRESHOLD` |
+| Progi Uwagi | niepokój 40, przebudzenie 60, uśpienie 30 (Nocny Dyżur je zmienia) | `NoiseMgr.*_THRESHOLD`, `NightShift` |
+| Wygaszanie Uwagi | 4/s w ciszy, 1,5/s przez 1,5 s po każdym hałasie (`_apply` odnotowuje aktywność); bieg 0,5/s jest mniejszy od wygaszania, więc sam nie podnosi poziomu | `noise_manager.gd` `DECAY_*`, `player.gd` |
+| VU w HUD | `VuMeter` — klasa wewnętrzna `hud.gd`, skala liniowa 0–100 Uwagi, strefy z `NoiseMgr` / `NightShift`, wskazówka = bieżący poziom | `hud.gd:147` |
+| Nazwy statystyk | `Recoil` → „Odrzut” (`cam_kick`, `recoil`), `Knock-back` → „Odrzut celu” (`knock`); perk mówi „podrzut” („Przeładowanie, dobycie i podrzut”) — dwa odrzuty na jednej karcie amunicji (SLUG) | `translations/ui.csv`, `workshop_ui.gd` `AMMO_FIELDS` |
 | Zdarzenia Kryjówki | generator przygasa w burzy; pukanie do D-7 (`knock_flash`, czerwony pas pod drzwiami) | `view3d.gd`, `hub_prop.gd` |
 | Modele przedmiotów | `art/items3d`: frag, phos, smoke, mine, charge, ammo, flare (i inne); **brak** amunicji 40 mm | `art/items3d/*.glb` |
 | Portrety z modeli | wrogowie i stroje już mają rendery z 3D | `tools/bake_portraits.gd`, `tools/bake_look_portraits.gd` |
@@ -62,6 +65,9 @@ najważniejszych:
 5. **Krew racjonowana**: czerwień tylko dla zagrożenia (zacięcia, brak złomu, blokada). Lampa = wybór i akcja, mech = gotowe.
 6. **Bez łupowych rzadkości**: w grze nie ma rzadkości przedmiotów, więc nie ma złotych i fioletowych ramek.
 7. **Ruch tylko przy zdarzeniu** (pieczątka, bęben licznika, pokrętło, wysunięcie pudełka); wszystko wyłącza „Reduce effects”.
+8. **Nazwy statystyk tylko z `ui.csv`**, te same na kartach, w HUD i w perkach. Makieta prasy ma „Podrzut”, którego gra nie używa;
+   w E1 zamiast tego: `Knock-back` → „Odepchnięcie” (jak już istniejące „Prędkość odepchnięcia”), `Recoil` zostaje „Odrzut”, a perk
+   „…i podrzut” → „…i odrzut”. Zmiana tylko w kolumnie `pl`, w całym UI naraz.
 
 ## 5. Wspólny korpus (wszystkie stanowiska)
 
@@ -75,8 +81,26 @@ najważniejszych:
 | Taśma sterowania | taśma maskująca z klawiszami w kształcie klawiszy | `KeyTape` ← `_controls_hint`, `Actions.key()` |
 | Materiały | `DOSSIER` (akta: metryka, etykieta partii, karta w wieku skrzyni, teczka), `PRINTOUT` (odczyt pracowni, rysunek dla tokarki, perforacja), `SCRAWL` (lista do zrobienia, zlecenie, książeczka) | `UiTheme.note_palette()` |
 | Światło jako kursor | wybrany przedmiot w snopie lampy, reszta pod ciemną nakładką; ceny i nazwy na tabliczkach zostają czytelne; ramka tylko w trybie wysokiego kontrastu | nakładka i gradient (`TextureRect`) w warstwie UI, bez świateł 2D |
-| VU-metr hałasu | skala logarytmiczna 0,2–100 Uwagi, strefy z `NoiseMgr` (40, 60); igła = po zmianie, cień = przed, pasmo = zakres (zimna/gorąca lufa); tylko gdy przedmiot zmienia hałas | `NoiseVU` (Control, `_draw()`), ta sama klasa co VU w HUD |
+| VU-metr hałasu | ta sama skala co HUD (liniowa 0–100 Uwagi, strefy z `NoiseMgr` / `NightShift`); igła = poziom po typowym użyciu od ciszy (§5a), cień = to samo bez zmiany; tylko gdy przedmiot zmienia hałas | `VuMeter` wydzielony z `hud.gd` do własnego pliku, wspólny dla HUD i kart |
 | Zdarzenia Kryjówki | burza: karta przygasa z generatorem; pukanie do D-7: papiery drgają, czerwony błysk od strony drzwi, napis dźwięku z kierunkiem | sygnały z `view3d` / `hub_prop` |
+
+### 5a. VU na karcie — skala i wskazówka (poprawka z przeglądu)
+
+Pierwsza wersja planu dawała kartom skalę logarytmiczną 0,2–100 i wskazówkę z przyrostem jednego zdarzenia (granat „+15”) na tle
+stref 40/60. To dwa błędy: na skali log strefy 40 i 60 lądują przy samym końcu łuku (wygląd HUD, inna skala), a strefy dotyczą
+poziomu Uwagi, nie przyrostu. Dlatego:
+
+- **Skala jak w HUD**: liniowa 0–100, strefy z `NoiseMgr` (z Nocnym Dyżurem). Gracz czyta kartę tak samo jak róg ekranu.
+- **Wskazówka = poziom od ciszy po typowym użyciu**, liczony z danych i wygaszania 1,5/s (§2), nie wpisany ręcznie:
+  - broń i amunicja: jeden magazynek ciągłym ogniem (`n_min`→`n_max` z `heat_gain`, `cooldown`, `mag`); M-83 ok. 31, z US ok. 26,
+    z tłumikiem ok. 13 (szacunek z danych 1.7.412);
+  - przedmioty rzucane i ładunki: jeden przedmiot (granat 15, mina 10, ładunek 20) i obok liczba „ile naraz do niepokoju”
+    (granat: 3 = 45; rzucane co 2 s już tylko ok. 36);
+- **Cień** = to samo bez zmiany (zwykły nabój, broń bez tłumika); bez pasma, bo nagrzewanie jest już w wyniku.
+- **Bez VU**, gdy na poziomie nic nie widać: bieg (0,5/s) nie przebija wygaszania, więc Ciche kroki i ciężar ekwipunku dostają
+  wiersz z mnożnikiem (▼ bieg ×0,5), nie igłę na zerze.
+- Funkcja licząca poziom (`StationNoise.level_after(...)`) jest czysta i ma test w E1, żeby karta nie rozjechała się z `NoiseMgr`
+  po zmianie stałych.
 
 ## 6. Stanowiska
 
@@ -87,8 +111,8 @@ Makiety (HTML, nie Godot) z danymi z gry; zużycie, zabójstwa i wprawa na ławi
 ![ST-01](docs/station_cards/01_lawa.jpg)
 
 - Broń zostaje na macie 3D (#472), przyciemnionej; gniazda jako szablony na macie. Bronie i części to zawieszki na hakach.
-- Prawa karta to **metryka broni** (`DOSSIER`): parametry, VU z pasmem `n_min`–`n_max`, zabójstwa kreskami po pięć, wprawa kółkami.
-- Na częściach korzyść i koszt ze znakami ▲▼ (`_part_delta`). Tłumik przesuwa pasmo VU, stare zostaje jako cień.
+- Prawa karta to **metryka broni** (`DOSSIER`): parametry, VU z poziomem po magazynku (§5a), zabójstwa kreskami po pięć, wprawa kółkami.
+- Na częściach korzyść i koszt ze znakami ▲▼ (`_part_delta`). Tłumik przesuwa igłę VU (M-83 ok. 31 → 13), stara zostaje jako cień.
 
 ### ST-02 Stół konserwacji — trzy przyrządy
 
@@ -105,7 +129,8 @@ Makiety (HTML, nie Godot) z danymi z gry; zużycie, zabójstwa i wprawa na ławi
 
 - Regał (ammo_shelf z #441), półka na kaliber. Pasek na pudełku jak oznaczenie czubka: US czarny z zielonym, BZ czarny z czerwonym.
 - Etykieta partii (`DOSSIER`) wisi pod półką z ząbkiem wskazującym wybrane pudełko; wiersze z `mods` w `ammo.gd` jako paski od zera.
-- VU tylko przy naboju, który zmienia hałas (US); przy innych napis „hałas strzału bez zmian”. Matryce prasy pionowo, po prawej.
+- VU tylko przy naboju, który zmienia hałas (US: magazynek M-83 ok. 31 → 26); przy innych napis „hałas strzału bez zmian”. Matryce prasy pionowo, po prawej.
+- Makieta ma wiersz „Podrzut”; w E2 nazwy jak w §4.8: „Odepchnięcie” (`knock`) i „Odrzut” (`cam_kick`).
 
 ### ST-04 Stół pirotechniczny — skrzynia i wieko
 
@@ -113,7 +138,8 @@ Makiety (HTML, nie Godot) z danymi z gry; zużycie, zabójstwa i wprawa na ławi
 
 - Skrzynia z magazynu Obiektu 86 (napisy radzieckie na krawędzi), przegrody z **renderami modeli** pod lampą; 40 mm z ikoną i napisem „brak 3D”.
 - Karta (`DOSSIER`) leży w otwartym wieku: pokrętło zapalnika (`Throwables.FUSES`, pad lewo/prawo), lont o długości czasu,
-  schemat wybuchu w skali z sylwetką kolegi (granat rani drużynę), VU z Uwagami przedmiotu.
+  schemat wybuchu w skali z sylwetką kolegi (granat rani drużynę), VU z poziomem po jednym przedmiocie i liczbą „3 naraz = niepokój” (§5a).
+  Makieta ma jeszcze „+15” na tle stref — do zmiany w E2.
 
 ![Rendery modeli z art/items3d](docs/station_cards/rendery_items3d.jpg)
 
@@ -140,7 +166,8 @@ Makiety (HTML, nie Godot) z danymi z gry; zużycie, zabójstwa i wprawa na ławi
 
 - Polska tabliczka oddziału, drzwi szafki (locker_row z #445): perki jako naszywki ze szwem, sloty jako paski rzepu,
   zdjęcie przyklejone taśmą (miejsce na portret z #502).
-- Książeczka wojskowa (`SCRAWL`) z pieczątkami poziomów; perk zmieniający hałas ma VU (Ciche kroki: 0,5 → 0,25 Uwagi/s).
+- Książeczka wojskowa (`SCRAWL`) z pieczątkami poziomów; perk zmieniający hałas ma wiersz z mnożnikiem (Ciche kroki: ▼ bieg ×0,5),
+  bez VU — bieg nie podnosi poziomu (§5a).
 - Stany jak dziś: dostępny, założony, nowy (kropka lampy z `Profile.is_new`), zablokowany (w folii, LV na czerwono).
 
 ## 7. Etapy (jedno stanowisko na PR)
@@ -148,7 +175,7 @@ Makiety (HTML, nie Godot) z danymi z gry; zużycie, zabójstwa i wprawa na ławi
 | Etap | Zakres | Nowe elementy | Sprawdzenie |
 |---|---|---|---|
 | E0 | Rendery przedmiotów | `tools/bake_items.gd` na wzór `bake_portraits.gd`: modele z `art/items3d` pod lampą stanowiska, przezroczyste tło, 2× dla 4K; lista braków (40 mm) | porównanie z ikonami w skrzyni i na półce |
-| E1 | Korpus na 7 stanowiskach | §5 w całości; podział `workshop_ui.gd` (ok. 3000 linii) na widoki stanowisk | `test_note_contrast.gd` rozszerzony o papier stanowisk, `--uifittest` 1280×720 PL/EN, `--workshoptest` |
+| E1 | Korpus na 7 stanowiskach | §5 w całości; podział `workshop_ui.gd` (ok. 3000 linii) na widoki stanowisk; `VuMeter` z `hud.gd` do własnego pliku; nazwy z §4.8 w `ui.csv` | `test_note_contrast.gd` rozszerzony o papier stanowisk, `--uifittest` 1280×720 PL/EN, `--workshoptest`, test `StationNoise.level_after` kontra `NoiseMgr` |
 | E2 | Prasa i pirotechnika | półka z etykietą, matryce; skrzynia z renderami, wieko, pokrętło, schemat wybuchu | pad: światło za fokusem, pokrętło lewo/prawo |
 | E3 | Konserwacja i szafka | przyrządy z manometrami; tabliczka oddziału, naszywki, książeczka | `--shotclean`, `--shotperks`, `--cabinettest` |
 | E4 | Pracownia i tokarka | akta z zaczernieniami, wydruki, słoje; rysunek, szpikulec, szlifierka | `--shotlab`, `--shotlathe` |
