@@ -52,6 +52,9 @@ const AMMO_FIELDS := {
 	"falloff_start": ["Full-damage range", 1, "m"], "cam_kick": ["Recoil", -1, "num"], "wear": ["Gun wear", -1, "num"], "ignite": ["Sets on fire", 1, "s"],
 	"knock": ["Knock-back", 1, "num"], "stun": ["Stun", 1, "s"], "crit_mult": ["Headshot bonus", 1, "num"],
 }
+## Dźwięk udanej operacji przy stanowisku (obok potwierdzenia UI): [nagranie, liczba wariantów; 0 = jedno bez numeru].
+const STATION_SOUNDS := {"bench": ["mech_mag_in", 3], "service": ["mech_bolt_fwd", 3], "press": ["reload_shell", 3], "pyro": ["item_pickup", 0],
+	"lab": ["reload_cell", 2], "lathe": ["mech_bolt_back", 2], "locker": ["item_pickup", 0]}
 const FUSE_NAMES := ["SHORT", "MID", "LONG"]                 ## „MEDIUM” ma już tłumaczenie żeńskie (jakość efektów) — zapalnik jest męski
 ## Pracownia i tokarka: droga części broni specjalnej od próbek do montażu.
 const LAB_STEPS := ["SAMPLES", "RESEARCH", "SCHEMATIC", "LATHE", "BENCH"]
@@ -119,6 +122,16 @@ class PaperBar extends Control:
 			var x := clampf(size.x * cap, 1.0, size.x - 1.0)
 			draw_rect(Rect2(x - 0.75, -2.0, 1.5, size.y + 4.0), UiTheme.INK_COST)
 
+## Kropka „nowe” (perk właśnie odblokowany, część, której gracz jeszcze nie oglądał) — kolor lampy z ciemnym obrysem.
+class NewDot extends Control:
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(7, 7)
+		size = Vector2(7, 7)
+	func _draw() -> void:
+		draw_circle(Vector2(3.5, 3.5), 3.5, Color(0, 0, 0, 0.6))
+		draw_circle(Vector2(3.5, 3.5), 2.6, UiTheme.ACCENT)
+
 ## Wspólny kafel stanowisk (bronie, zaopatrzenie, perki, wygląd): miniatura po lewej, nazwa, jedna linia stanu (albo cena z monetą)
 ## i najwyżej jeden wskaźnik z kropek przy prawej krawędzi — zawsze z podpisem w linii stanu albo z podpowiedzią.
 class CardTile extends Button:
@@ -128,10 +141,19 @@ class CardTile extends Button:
 	var coin: Coin
 	var price_label: Label
 	var bar: Control
+	var _new_dot: NewDot
 	func _init() -> void:
 		focus_mode = Control.FOCUS_NONE
 		toggle_mode = false
 		custom_minimum_size = Vector2(150.0, 46.0)
+	## Kropka „nowe” w prawym górnym rogu kafla.
+	func set_new(on: bool) -> void:
+		if on and _new_dot == null:
+			_new_dot = NewDot.new()
+			_new_dot.position = Vector2(custom_minimum_size.x - 11.0, 4.0)
+			add_child(_new_dot)
+		if _new_dot != null:
+			_new_dot.visible = on
 	## Kropki wskaźnika przy prawej krawędzi, w linii stanu (szerokość z liczby kropek).
 	func place_bar() -> void:
 		if bar == null:
@@ -368,6 +390,8 @@ var _action: Button
 var _msg: Label
 var _hint: Label
 var _msg_t := 0.0
+var _bank_shown := -1                 ## kwota w portfelu na ekranie (odlicza do Scrap.bank po zakupie)
+var _wallet_tween: Tween
 var _workbench: GunsmithPanel
 var _legacy_stage: GunStage
 var _shade: ColorRect
@@ -640,7 +664,7 @@ func _act_look() -> void:
 	if Profile.look == c:
 		_say(tr("Already wearing %s.") % Look.display_name(c), UiTheme.MUTED)
 	elif Profile.set_look(c):
-		Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
+		_success_fx()
 		_say(tr("%s (%s) equipped.") % [Look.display_name(c), tr(Look.gender_id(c).capitalize())], UiTheme.OK)
 	else:
 		_say(tr("Unlocks at level %d.") % Look.unlock_level(c), UiTheme.DANGER)
@@ -820,7 +844,7 @@ func _act_perk() -> void:
 		return
 	if Profile.equip(_perk_slot, id):
 		_say(tr("%s equipped in slot %d.") % [Perks.display_name(id), _perk_slot + 1], UiTheme.OK)
-		Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
+		_success_fx()
 
 func _refresh_perks() -> void:
 	var lp := Profile.level_progress()
@@ -830,6 +854,7 @@ func _refresh_perks() -> void:
 	_xp_label.text = "%d / %d XP" % [int(lp[0]), int(lp[1])]
 	if _perk_slot >= maxi(1, Profile.slots()):
 		_perk_slot = 0
+	Profile.mark_seen("perk:" + String(Perks.ORDER[_perk_sel]))       # perk pod kursorem jest obejrzany — kropka „nowe” gaśnie
 	for i in _perk_tiles.size():
 		var t := _perk_tiles[i] as PerkTile
 		var id := t.perk
@@ -840,6 +865,7 @@ func _refresh_perks() -> void:
 		t.add_theme_stylebox_override("focus", sbox)
 		var unlocked := Profile.is_unlocked(id)
 		var at := _perk_slot_of(id)
+		t.set_new(Profile.is_new("perk:" + id))
 		(t.icon_node as PerkIcon).set_perk(id, Color.WHITE if unlocked else Color(0.45, 0.5, 0.55))
 		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else (UiTheme.TEXT if unlocked else UiTheme.MUTED))
 		if at >= 0:
@@ -1073,6 +1099,55 @@ func _fill_press_queue() -> void:
 			UiTheme.INK if filled else UiTheme.INK_MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 		row.add_child(slot)
 
+## Portfel odlicza do nowej kwoty (zakup, zamówienie, odbiór) zamiast skakać i krótko przygasa na czerwono przy wydatku — widać, ile kosztowało.
+func _tick_wallet() -> void:
+	var target := Scrap.bank
+	if _bank_shown < 0 or Settings.reduce_fx:
+		_bank_shown = target
+		_wallet.text = "%d" % target
+		return
+	if target == _bank_shown and (_wallet_tween == null or not _wallet_tween.is_running()):
+		return
+	if _wallet_tween != null and _wallet_tween.is_running():
+		if _wallet_tween.get_meta("to", -1) == target:
+			return
+		_wallet_tween.kill()
+	var from := _bank_shown
+	_wallet_tween = create_tween()
+	_wallet_tween.set_meta("to", target)
+	_wallet_tween.tween_method(func(v: float) -> void:
+		_bank_shown = int(round(v))
+		_wallet.text = "%d" % _bank_shown, float(from), float(target), 0.45).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	if target < from:
+		_wallet.modulate = Color(1.5, 0.75, 0.65)
+		_wallet_tween.parallel().tween_property(_wallet, "modulate", Color.WHITE, 0.45)
+
+## Udana operacja: potwierdzenie UI, dźwięk stanowiska (magazynek na ławie, łuski przy prasie, ogniwo w pracowni…) i krótki błysk wybranego kafla.
+func _success_fx(vol_db := -4.0) -> void:
+	Audio.play("ui_confirm", Audio.BUS_UI, vol_db)
+	var snd: Array = STATION_SOUNDS.get(_mode, [])
+	if not snd.is_empty():
+		if int(snd[1]) > 0:
+			Audio.play_variant(String(snd[0]), int(snd[1]), Audio.BUS_UI, vol_db - 2.0)
+		else:
+			Audio.play(String(snd[0]), Audio.BUS_UI, vol_db - 2.0)
+	if Settings.reduce_fx:
+		return
+	var tile: Control = null
+	match _page:
+		0:
+			tile = _tiles[_sel] if not (_mode == "bench") else null      # ława 3D ma własną animację montażu
+		1:
+			tile = _sup_tiles[_sup_sel]
+		2:
+			tile = _perk_tiles[_perk_sel]
+		3:
+			tile = _look_tiles[_look_sel]
+	if tile == null or not tile.is_visible_in_tree():
+		return
+	tile.modulate = Color(1.55, 1.4, 0.95)
+	create_tween().tween_property(tile, "modulate", Color.WHITE, 0.35)
+
 func _clear_children(node: Node) -> void:
 	for c in node.get_children():
 		node.remove_child(c)
@@ -1095,7 +1170,7 @@ func _on_order_result(kind: String, ok: bool, reason: String) -> void:
 			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
 		"ok":
 			_say(tr("%s collected. Remaining delivery: %d rounds.") % [nm, int(Scrap.deliveries.get(kind, 0))] if _claiming else tr("%s ordered — ready after the next mission (%d / %d batches in the press).") % [nm, Scrap.orders.size(), Scrap.PRESS_SLOTS], UiTheme.OK)
-			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
+			_success_fx()
 		"poor":
 			_say(tr("Not enough scrap (%d needed).") % Scrap.press_price(kind), UiTheme.DANGER)
 		"busy":
@@ -1233,6 +1308,7 @@ func open(mode := "bench") -> void:
 	_hint.text = _controls_hint()
 	_sel = _initial_selection()
 	_opt = _first_part_opt()
+	_bank_shown = -1                                       # po otwarciu portfel od razu pokazuje stan, odlicza dopiero zmianę
 	_page = int((MODE_PAGES[_mode] as Array)[0])
 	var allowed := _sup_list()
 	if not allowed.has(_sup_sel) and not allowed.is_empty():
@@ -1783,7 +1859,7 @@ func _act() -> void:
 		else:
 			var before := Profile.fit_code(w)
 			var skipped := Profile.load_preset(key, pi)
-			Audio.play("ui_confirm", Audio.BUS_UI, -6.0)
+			_success_fx(-6.0)
 			_say((tr("Fitted set %d.") % (pi + 1)) if skipped == 0 else (tr("Fitted set %d — %d parts the squad no longer has stay as they were.") % [pi + 1, skipped]),
 				UiTheme.OK if skipped == 0 else UiTheme.MUTED)
 			_present_committed(w, before)
@@ -1837,7 +1913,7 @@ func _act() -> void:
 	elif Profile.fitted(key, String(o["slot"])) != id:
 		var before := Profile.fit_code(w)
 		Profile.set_fit(key, String(o["slot"]), id)
-		Audio.play("ui_confirm", Audio.BUS_UI, -6.0)
+		_success_fx(-6.0)
 		_say(tr("Fitted: %s.") % (tr(Parts.get_part(id)["name"]) if id != "" else tr("factory part")), UiTheme.OK)
 		_present_committed(w, before)
 
@@ -1856,7 +1932,7 @@ func _on_result(w: int, ok: bool, reason: String) -> void:
 			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
 		"ok":
 			_say(tr("%s unlocked — take it from the rack.") % name, UiTheme.OK)
-			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
+			_success_fx()
 		"poor":
 			_say(tr("Not enough scrap (%d needed).") % Scrap.price_of(w), UiTheme.DANGER)
 		"owned":
@@ -1881,7 +1957,7 @@ func _save_preset() -> void:
 	if String(o["slot"]) != "preset":
 		return
 	Profile.save_preset(String(Weapons.def(w).key), int(o["id"]))
-	Audio.play("ui_confirm", Audio.BUS_UI, -6.0)
+	_success_fx(-6.0)
 	_say(tr("Current fit saved as set %d.") % (int(o["id"]) + 1), UiTheme.OK)
 	_refresh()
 
@@ -1963,7 +2039,7 @@ func _on_machining_result(id: String, ok: bool, reason: String) -> void:
 			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
 		"ok":
 			_say(tr("%s on the lathe — ready after the next mission.") % nm, UiTheme.OK)
-			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
+			_success_fx()
 		"poor":
 			_say(tr("Not enough scrap (%d needed).") % Scrap.machine_price(id), UiTheme.DANGER)
 		"busy":
@@ -2011,7 +2087,7 @@ func _on_research_result(id: String, ok: bool, reason: String) -> void:
 			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
 		"ok":
 			_say(tr("%s: research started — ready after the next mission.") % nm, UiTheme.OK)
-			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
+			_success_fx()
 		"samples":
 			_say(tr("Not enough samples (%d needed) — elites and bosses drop them.") % cost.x, UiTheme.DANGER)
 		"poor":
@@ -2044,7 +2120,7 @@ func _on_part_result(id: String, ok: bool, reason: String) -> void:
 			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
 		"ok":
 			_say(tr("%s unlocked for the squad and fitted to your gun.") % nm, UiTheme.OK)
-			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
+			_success_fx()
 		"poor":
 			_say(tr("Not enough scrap (%d needed).") % Scrap.part_cost(id), UiTheme.DANGER)
 		"owned":
@@ -2068,7 +2144,7 @@ func _say(text: String, col: Color) -> void:
 func _refresh() -> void:
 	if not _open:
 		return
-	_wallet.text = "%d" % Scrap.bank
+	_tick_wallet()
 	for pi in _page_btns.size():
 		_page_btns[pi].set_pressed_no_signal(pi == _page)
 	var immersive := _mode == "bench" and _page == 0
@@ -2200,7 +2276,7 @@ func _on_supply_result(kind: String, ok: bool, reason: String) -> void:
 			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
 		"ok":
 			_say(tr("%s bought — the squad now carries %d.") % [nm, Arsenal.get_throwable(kind)], UiTheme.OK)
-			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
+			_success_fx()
 		"poor":
 			_say(tr("Not enough scrap (%d needed).") % Throwables.price_of(kind), UiTheme.DANGER)
 		"full":
@@ -2267,6 +2343,8 @@ func _refresh_detail(w: int) -> void:
 	var o: Dictionary = ops[_opt] if not ops.is_empty() and _opt >= 0 else {}
 	if _mode == "bench" and not o.is_empty():
 		_bench_slot = String(o["slot"])
+	if unlocked and not o.is_empty() and String(o["id"]) != "" and not String(o["slot"]) in ["preset", "service"]:
+		Profile.mark_seen("part:" + String(o["id"]))          # część pod kursorem jest obejrzana — kropka „nowe” gaśnie
 	var pv_code := mine
 	if unlocked and not o.is_empty():
 		var choice := {}
@@ -2588,7 +2666,8 @@ func _present_bench(w: int, cur: RefCounted, preview: RefCounted, now_rows: Arra
 				status = tr("found — extract")
 			elif Scrap.is_lab_part(id):
 				status = tr("on the lathe") if Scrap.lathe.has(id) else (tr("schematic") if Scrap.schematics.has(id) else (tr("researching") if Scrap.research.has(id) else tr("lab")))
-		records.append({"index": i, "name": name, "status": status, "fitted": fitted})
+		records.append({"index": i, "name": name, "status": status, "fitted": fitted,
+			"new": id != "" and String(op["slot"]) != "preset" and Profile.is_new("part:" + id)})
 	var weapons: Array = []
 	var wc := _local_wc()
 	for i in LIST.size():
@@ -2596,8 +2675,9 @@ func _present_bench(w: int, cur: RefCounted, preview: RefCounted, now_rows: Arra
 		var definition: RefCounted = Weapons.base_def(wid)
 		var carried: bool = wc != null and (wc.loadout.has(wid) or wc.melee_id == wid)
 		var status := tr("Carried") if carried else (tr("Unlocked") if Scrap.is_unlocked(wid) else (tr("Boss reward") if Scrap.is_gated(wid) else (tr("Later zone") if Scrap.is_later(wid) else tr("%d scrap") % Scrap.price_of(wid))))
+		var fresh := Parts.of(String(definition.key)).any(func(pp: Dictionary) -> bool: return Profile.is_new("part:" + String(pp["id"])))
 		weapons.append({"index": i, "name": String(definition.name), "row": int(definition.gun_row), "color": definition.tracer_color,
-			"status": status, "carried": carried, "selected": i == _sel})
+			"status": status, "carried": carried, "selected": i == _sel, "new": fresh})
 	var rows: Array = []
 	for i in now_rows.size():
 		rows.append([now_rows[i][0], now_rows[i][1], next_rows[i][1] if i < next_rows.size() else now_rows[i][1],

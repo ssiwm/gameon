@@ -53,6 +53,8 @@ const WEAR_PARTS := ["barrel", "springs"]
 const SPRINGS_CAP := 0.5                      ## górna granica stanu po czyszczeniu = 100 − 0,5 × zużycie sprężyn (60 % zużycia → 70 %, próg zacięć)
 var mastery: Dictionary = {}                  ## klucz broni → punkty wprawy (GUNSMITH_PLAN §7.3, od 1.7.330): trafienia i zabójstwa tym graczem z tej broni
 var history: Dictionary = {}                  ## klucz broni → {"k": zabójstwa, "e": elity, "b": bossowie} (GUNSMITH_PLAN §7.4, od 1.7.331)
+var seen: Dictionary = {}                     ## znaczniki „nowe” (od 1.7.409): "perk:<id>" / "part:<id>" / "beast:<id>" → gracz już to obejrzał
+var _seen_baseline := true                    ## profil bez listy obejrzanych: pierwsze zapytanie uznaje wszystko, co już jest, za obejrzane
 var bestiary: Dictionary = {}                 ## id wpisu bestiariusza → zabójstwa tego gracza; wpis jest = gracz spotkał tego wroga (od 1.7.407)
 var range_best: Dictionary = {}               ## strzelnica FPP, rekordy osobiste: "<ćwiczenie>:<klucz broni>" → wynik (czas w s; papier — grupa w MOA), mniej = lepiej
 const NOTCH_MAX := 12                         ## tyle nacięć najwyżej mieści się na kolbie
@@ -243,6 +245,41 @@ func note_beast_kill(kind: String) -> void:
 
 func beast_kills(id: String) -> int:
 	return int(bestiary.get(id, 0))
+
+## Znacznik „nowe”: rzecz jest dostępna (perk odblokowany, część drużyny, spotkany wróg), a gracz jej jeszcze nie obejrzał w panelu.
+func is_new(key: String) -> bool:
+	_seen_baseline_now()
+	if seen.has(key):
+		return false
+	var id := key.get_slice(":", 1)
+	match key.get_slice(":", 0):
+		"perk":
+			return is_unlocked(id)
+		"part":
+			return Scrap.has_part(id)
+		"beast":
+			return bestiary.has(id) and not id in BESTIARY_ALWAYS
+	return false
+
+func mark_seen(key: String) -> void:
+	if not seen.has(key):
+		seen[key] = true
+		_cond_dirty = true
+
+## Profil sprzed znaczników (albo nowy): wszystko, co gracz już ma, jest obejrzane — kropki dostaje dopiero to, co przybędzie.
+func _seen_baseline_now() -> void:
+	if not _seen_baseline:
+		return
+	_seen_baseline = false
+	for id in Perks.ORDER:
+		if is_unlocked(String(id)):
+			seen["perk:" + String(id)] = true
+	for pid in Scrap.parts:
+		if Scrap.has_part(String(pid)):
+			seen["part:" + String(pid)] = true
+	for id in bestiary:
+		seen["beast:" + String(id)] = true
+	_cond_dirty = true
 
 ## Wszystkie wpisy bestiariusza (migracja starych profili, testy).
 static func bestiary_ids() -> Array:
@@ -567,6 +604,8 @@ func save_to(path: String) -> void:
 	cfg.set_value("profile", "history", history)
 	cfg.set_value("profile", "range_best", range_best)
 	cfg.set_value("profile", "bestiary", bestiary)
+	if not _seen_baseline:
+		cfg.set_value("profile", "seen", seen.keys())
 	cfg.save(path)
 
 func load_from(path: String) -> void:
@@ -635,6 +674,10 @@ func load_from(path: String) -> void:
 		# profil sprzed bestiariusza z odkrywaniem (< 1.7.407): gracz z postępem widział już kodeks w całości — zostaje mu cały
 		for id in bestiary_ids():
 			bestiary[String(id)] = 0
+	seen = {}
+	_seen_baseline = not cfg.has_section_key("profile", "seen")
+	for k in Array(cfg.get_value("profile", "seen", [])):
+		seen[String(k)] = true
 	look = int(cfg.get_value("profile", "look", Look.DEFAULT))
 	if not Look.is_unlocked(look, level()):
 		look = Look.DEFAULT
@@ -662,6 +705,8 @@ func reset_for_test() -> void:
 	history = {}
 	range_best = {}
 	bestiary = {}
+	seen = {}
+	_seen_baseline = false
 	_cond_dirty = false
 	last_mission_xp = 0
 	last_mission_rows = []

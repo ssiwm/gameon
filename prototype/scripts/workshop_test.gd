@@ -57,6 +57,7 @@ func run(m: Node) -> void:
 	await _ui()
 	await _immersive()
 	await _progression()
+	await _layout()                                   # na końcu: przegląda wszystkie stanowiska i kafle, zmienia wybory w panelu
 	print("[WORKSHOP-TEST] ==== %d/%d OK, błędów: %d ====" % [total - failed, total, failed])
 	Audio.quit_game(1 if failed else 0)
 
@@ -307,6 +308,66 @@ func _ui() -> void:
 	ui._refresh()
 	check("prasa pokazuje odbiór już opłaconej dostawy", ui._s_action.text == tr("Collect ready delivery · %d rounds") % 5)
 	ui.close()
+
+## Układ każdego stanowiska i zakładki po angielsku i po polsku (etap 4 przeglądu UI, 1.7.409): karta na ekranie, żadna widoczna kontrolka
+## nie wystaje w poziomie poza przodka, który ją przycina (przewijany korpus, karta) — dla każdego kafla, bo opisy i porównania zmieniają szerokość.
+func _layout() -> void:
+	var ui := get_tree().get_first_node_in_group("workshop_ui")
+	var keep := TranslationServer.get_locale()
+	var bad: Array = []
+	for loc in ["en", "pl"]:
+		TranslationServer.set_locale(loc)
+		for mode in ui.MODE_PAGES:
+			station(String(ui.MODE_GROUP[mode]))
+			await frames()
+			ui.open(String(mode))
+			for page in ui.MODE_PAGES[mode]:
+				if String(mode) == "bench" and int(page) == 0:
+					continue                                     # ława 3D: osobna kontrola w _immersive
+				ui._set_page(int(page))
+				var count: int = {0: ui._tiles.size(), 1: ui._sup_tiles.size(), 2: ui._perk_tiles.size(), 3: ui._look_tiles.size()}[int(page)]
+				for i in count:
+					var tiles: Array = [ui._tiles, ui._sup_tiles, ui._perk_tiles, ui._look_tiles][int(page)]
+					if not (tiles[i] as Control).visible:
+						continue
+					match int(page):
+						0: ui._select(i)
+						1: ui._sup_sel = i
+						2: ui._perk_sel = i
+						3: ui._look_sel = i
+					ui._refresh()
+					for f in 3:
+						await get_tree().process_frame
+					_layout_check(ui, "%s %s/%d #%d" % [loc, mode, page, i], bad)
+			ui.close()
+	TranslationServer.set_locale(keep)
+	check("układ stanowisk po angielsku i po polsku: karta na ekranie, nic nie wystaje%s" % ("" if bad.is_empty() else " — " + "; ".join(bad.slice(0, 6))), bad.is_empty())
+
+func _layout_check(ui: Control, what: String, bad: Array) -> void:
+	var card: Control = ui._card
+	var cr := card.get_global_rect()
+	var screen := Rect2(Vector2.ZERO, ui.get_viewport_rect().size).grow(1.0)
+	if not screen.encloses(cr):
+		bad.append("%s: karta %s poza ekranem %s" % [what, cr, screen])
+		return
+	for n in card.find_children("*", "Control", true, false):
+		var c := n as Control
+		if not c.is_visible_in_tree() or c.size.x <= 0.0 or c is ScrollBar:
+			continue
+		var clip := card.get_global_rect()
+		var pa := c.get_parent()
+		while pa != null and pa != card:
+			if pa is Control and ((pa as Control).clip_contents or pa is ScrollContainer):
+				clip = (pa as Control).get_global_rect()
+				break
+			pa = pa.get_parent()
+		var r := c.get_global_rect()
+		if r.end.x > clip.end.x + 1.0 or r.position.x < clip.position.x - 1.0:
+			var label := (c as Label).text.left(30) if c is Label else ((c as Button).text.left(30) if c is Button else c.get_class())
+			var key := "%s: %s" % [what.split(" #")[0], label]
+			if not bad.has(key):
+				bad.append(key)
+			return
 
 ## Rzeczywista konfiguracja, operacje serwera i sceny 3D — bez osobnego kalkulatora w makiecie.
 func _immersive() -> void:
