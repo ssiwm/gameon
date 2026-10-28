@@ -95,7 +95,7 @@ func _ready() -> void:
 	_slots.add_theme_constant_override("separation", 2)
 	middle.add_child(_slots)
 	_part_scroll = ScrollContainer.new()
-	_part_scroll.custom_minimum_size.y = 71
+	_part_scroll.custom_minimum_size.y = 77
 	_part_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	middle.add_child(_part_scroll)
 	_parts = HBoxContainer.new()
@@ -213,7 +213,7 @@ func _present_rack() -> void:
 		if not _show_all and not bool(record["carried"]):
 			continue
 		var b := _button("", func(): weapon_selected.emit(int(record["index"])))
-		b.custom_minimum_size = Vector2(94, 46)
+		b.custom_minimum_size = Vector2(94, 50)                       # podpis stanu nie dotyka dolnej ramki
 		b.tooltip_text = String(record["name"]) + " · " + String(record["status"])
 		var icon := GunIcon.new()
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -225,7 +225,7 @@ func _present_rack() -> void:
 		label.position = Vector2(4, 26)
 		b.add_child(label)
 		var status := UiTheme.label(String(record["status"]), 7, UiTheme.TEXT)
-		status.position = Vector2(4, 36)
+		status.position = Vector2(4, 37)
 		b.add_child(status)
 		if bool(record["selected"]):
 			b.modulate = Color(1.15, 1.1, 0.85)
@@ -273,7 +273,7 @@ func _present_parts() -> void:
 	_clear(_parts)
 	for record in records:
 		var b := _button("", func(): option_selected.emit(int(record["index"])))
-		b.custom_minimum_size = Vector2(83, 54)
+		b.custom_minimum_size = Vector2(83, 66)
 		b.tooltip_text = String(record["name"]) + " · " + String(record["status"])
 		var box := VBoxContainer.new()
 		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -290,6 +290,14 @@ func _present_parts() -> void:
 		nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		box.add_child(nm)
 		box.add_child(UiTheme.label(String(record["status"]), 8, UiTheme.OK if bool(record["fitted"]) else UiTheme.TEXT))
+		for delta in record.get("delta", []):
+			# główne zmiany tej części względem obecnego montażu (korzyść i kompromis): parametr i nowa wartość; kolor wzmacnia ocenę
+			var dl := UiTheme.label("%s → %s" % [delta[0], delta[1]], 7, UiTheme.OK if int(delta[2]) > 0 else (UiTheme.DANGER if int(delta[2]) < 0 else UiTheme.MUTED))
+			dl.clip_text = true
+			dl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			dl.custom_minimum_size.x = 73
+			dl.tooltip_text = dl.text
+			box.add_child(dl)
 		if bool(record.get("new", false)):
 			b.add_child(_new_dot(Vector2(b.custom_minimum_size.x - 10.0, 3.0)))
 		_parts.add_child(b)
