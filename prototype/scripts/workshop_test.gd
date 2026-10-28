@@ -9,6 +9,8 @@ const GunStage := preload("res://scripts/gun_stage.gd")
 const GunModel := preload("res://scripts/gun_model.gd")
 const Char3D := preload("res://scripts/char3d.gd")
 const SupplyArtRef := preload("res://scripts/station_supply_art.gd")
+const ServiceArtRef := preload("res://scripts/station_service_art.gd")
+const Perks := preload("res://scripts/perks.gd")
 var total := 0
 var failed := 0
 var main: Node
@@ -831,6 +833,15 @@ func _outside_px(stage: Control) -> float:
 
 ## Stół konserwacji (K3, 1.7.413): zalecenie na górze karty i kursor na zalecanym wierszu, lista „do zrobienia” pod kaflami, ikonki wymian
 ## na kafelku, skutek wymiany na przycisku, wygaszony przycisk poniżej progu.
+## Zdarzenie klawisza przypisanego do akcji menu (pierwszy klawisz z InputMap) — panel czyta tylko klawiaturę i pad, nie InputEventAction.
+func _key_event(action: String, pressed: bool) -> InputEvent:
+	for ev in InputMap.action_get_events(action):
+		if ev is InputEventKey:
+			var e := (ev as InputEventKey).duplicate() as InputEventKey
+			e.pressed = pressed
+			return e
+	return null
+
 func _service_card() -> void:
 	var ui := get_tree().get_first_node_in_group("workshop_ui")
 	station("service_bench")
@@ -853,9 +864,48 @@ func _service_card() -> void:
 	check("przycisk wymiany sprężyn podaje skutek: %s" % ui._action.text, not ui._action.disabled and ui._action.text.contains("→ 100%"))
 	ui._pick_opt(ops.find({"slot": "service", "id": "barrel"}))
 	check("lufa zużyta w 10%%: przycisk wygaszony z progiem: %s" % ui._action.text, ui._action.disabled and ui._action.text.contains(str(int(Profile.SERVICE_DUE))))
+	# E3 (ST-02): karta znika, trzy przyrządy z manometrem, kartka do zrobienia, w lewo / w prawo = przyrząd, przytrzymanie czyszczenia
+	check("konserwacja: trzy przyrządy, wybrany pod lampą, karta bez papieru", ui._gauges.size() == 3 and ui._gauges["barrel"].dial.lit
+		and not ui._gauges["clean"].dial.lit and bool(ui._arms_paper.get_meta("service", false)) and not ui._d_tiers.visible)
+	check("konserwacja: stan 90%% na tarczy, cień do limitu %d%%, kropka lampy na limicie" % int(Profile.clean_cap("m83")),
+		is_equal_approx(ui._gauges["clean"].dial.value, 0.9) and is_equal_approx(ui._gauges["clean"].dial.mark, Profile.clean_cap("m83") / 100.0)
+		and is_equal_approx(ui._gauges["springs"].dial.value, 0.65) and ui._gauges["springs"].dial.ghost == 0.0)
+	check("konserwacja: lista do zrobienia na kartce odręcznej", ui._svc_note.visible and ui._svc_note is ServiceArtRef.Scrawl)
+	var left_ev := _key_event("menu_left", true)
+	var opt0: int = ui._opt
+	ui._input(left_ev)
+	check("konserwacja: strzałka w lewo przechodzi na poprzedni przyrząd", ui._opt == opt0 - 1 or ui._opt == 0)
+	ui._pick_opt(ops.find({"slot": "service", "id": "clean"}))
+	Profile.cond = {"m83": 50.0}
+	ui._refresh()
+	var acc_down := _key_event("menu_accept", true)
+	var acc_up := _key_event("menu_accept", false)
+	if acc_down != null:
+		ui._input(acc_down)
+		var started: bool = ui._clean_w == Weapons.M83 and ui._hold_clean
+		ui.tick_clean(0.5)
+		var moved: bool = ui._gauges["clean"].dial.value > 0.5
+		ui._input(acc_up)
+		check("konserwacja: przytrzymanie czyści (wskazówka idzie), puszczenie przerywa", started and moved and ui._clean_w < 0 and not ui._hold_clean and is_equal_approx(Profile.condition("m83"), 50.0))
 	Profile.cond = {}
 	Profile.worn = {}
 	ui._refresh()
 	check("broń sprawna: zalecenie bez pracy, lista pusta", int(ui._service_advice(Weapons.M83)["level"]) == -1 and ui._svc_todo.text.contains(tr("All guns in good order.")))
 	ui.close()
 	check("lista do zrobienia tylko na stole konserwacji", not ui._svc_todo.visible or not ui._open)
+	# E3 (ST-07): szafka — drzwi, książeczka z pieczątkami poziomów, zdjęcie, naszywki ze ściegiem, zablokowany perk w folii, rzepy
+	station("locker_station")
+	ui.open("locker")
+	ui._perk_sel = Perks.ORDER.find("quiet_steps")
+	ui._refresh()
+	var veteran = ui._perk_tiles[Perks.ORDER.find("veteran")]
+	check("szafka: pieczątki poziomów = poziom profilu (%d), zdjęcie wyglądu" % Profile.level(), ui._book_stamps.level == Profile.level() and ui._book_photo.tex != null)
+	check("szafka: naszywki ze ściegiem, zablokowany perk w folii", ui._perk_tiles.all(func(t) -> bool: return t.has_meta("stitch"))
+		and bool(veteran.get_meta("stitch").foil) == not Profile.is_unlocked("veteran"))
+	var prow: Array = ui._p_stats.get_children().map(func(c: Node) -> String: return (c as Label).text if c is Label else "")
+	check("szafka: Ciche kroki — wiersz biegu z mnożnikiem, bez VU (bieg nie przebija wygaszania)", prow.has(tr("Running")) and prow.any(func(s: String) -> bool: return s.contains("×0")) and not ui._p_vu.visible)
+	ui._perk_sel = Perks.ORDER.find("cold_blood")
+	ui._refresh()
+	check("szafka: Zimna krew — VU krzyku %d%% → %d%% (cień = bez perka)" % [int(NoiseMgr.N_SCREAM), int(Perks.PERKS["cold_blood"]["params"]["scream_cap"])],
+		ui._p_vu.visible and is_equal_approx(ui._p_vu_meter.ghost, NoiseMgr.N_SCREAM / 100.0) and ui._p_vu_meter.value < ui._p_vu_meter.ghost)
+	ui.close()

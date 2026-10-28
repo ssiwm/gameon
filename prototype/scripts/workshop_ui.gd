@@ -30,6 +30,8 @@ const VuMeter := preload("res://scripts/vu_meter.gd")
 const HubProp := preload("res://scripts/hub_prop.gd")
 const Weather := preload("res://scripts/weather.gd")
 const SupplyArt := preload("res://scripts/station_supply_art.gd")
+const NotePaletteRef := preload("res://scripts/note_palette.gd")
+const ServiceArt := preload("res://scripts/station_service_art.gd")
 
 const GOLD := Color(0.95, 0.8, 0.4)
 const COLS := 2
@@ -459,6 +461,16 @@ var _card: PanelContainer
 var _wallet: Label
 var _tiles: Array = []
 var _svc_todo: Label                  ## stół konserwacji: co zrobić z każdą bronią (lewa kolumna pod kaflami)
+var _svc_note: Control                ## kartka (SCRAWL) z listą do zrobienia, przypięta taśmą
+var _arms_paper: PanelContainer       ## karta szczegółów broni (na stole konserwacji bez papieru — przyrządy na blacie)
+var _gauges := {}                     ## stół konserwacji: przyrządy „clean” / „barrel” / „springs” (ServiceArt.Gauge)
+var _hold_clean := false              ## czyszczenie trzymane klawiszem: puszczenie przerywa
+var _perk_paper: PanelContainer       ## szafka: strona książeczki (SCRAWL) z opisem perka
+var _book_stamps: Control             ## szafka: pieczątki poziomów w książeczce
+var _book_photo: Control              ## szafka: zdjęcie przyklejone taśmą (portret założonego wyglądu)
+var _p_vu: HBoxContainer              ## szafka: VU perka zmieniającego hałas (krzyk)
+var _p_vu_meter: VuMeter
+var _p_vu_text: Label
 var _d_stage: Control                 ## ława 3D: wybrana broń z częściami, część spod kursora świeci i wysuwa się z gniazda (gun_stage.gd)
 var _d_title: Label
 var _d_tag: Label
@@ -565,10 +577,20 @@ func _ready() -> void:
 		_tiles.append(t)
 	_svc_todo = UiTheme.label("", 9, UiTheme.MUTED)                   # stół konserwacji: lista „do zrobienia” pod kaflami (puste miejsce przy kilku broniach)
 	_svc_todo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_svc_todo.custom_minimum_size.x = COLS * TILE_W
+	_svc_todo.custom_minimum_size.x = COLS * TILE_W - 24.0
 	_svc_todo.visible = false
-	left.add_child(_svc_todo)
-	body.add_child(_paper(_build_detail()))
+	var scrawl := NotePaletteRef.palette(NotePaletteRef.Note.SCRAWL)
+	_svc_todo.add_theme_font_override("font", UiTheme.note_font(NotePaletteRef.Note.SCRAWL))   # kartka odręczna (ST-02): Caveat, atrament kartki
+	_svc_todo.add_theme_font_size_override("font_size", UiTheme.note_size(NotePaletteRef.Note.SCRAWL, 10))
+	_svc_todo.add_theme_color_override("font_color", scrawl["ink"])
+	_svc_todo.add_theme_constant_override("outline_size", 0)
+	_svc_note = ServiceArt.Scrawl.new()
+	_svc_note.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_svc_note.visible = false
+	_svc_note.add_child(_svc_todo)
+	left.add_child(_svc_note)
+	_arms_paper = _paper(_build_detail())
+	body.add_child(_arms_paper)
 	_legacy_stage = _d_stage as GunStage
 	_workbench = GunsmithPanel.new()
 	_workbench.custom_minimum_size = Vector2(606, 240)
@@ -1053,20 +1075,56 @@ func _build_perks() -> HBoxContainer:
 	var body := HBoxContainer.new()
 	body.add_theme_constant_override("separation", 12)
 	body.custom_minimum_size = Vector2(0, 6.0 * (TILE_H + 6.0))
+	# drzwi szafki osobistej (ST-07): blacha w zieleni munduru, szczeliny, na drzwiach zdjęcie, książeczka, naszywki perków i rzepy slotów
+	var door := PanelContainer.new()
+	door.add_theme_stylebox_override("panel", ServiceArt.locker_door())
+	door.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	body.add_child(door)
+	var vents := ServiceArt.Vents.new()
+	door.add_child(vents)
 	var left := VBoxContainer.new()
 	left.add_theme_constant_override("separation", 6)
 	left.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	body.add_child(left)
+	door.add_child(left)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 10)
+	left.add_child(top)
+	var photo := PanelContainer.new()                      # zdjęcie przyklejone taśmą: portret założonego wyglądu
+	var pb := StyleBoxFlat.new()
+	pb.bg_color = Color("1a1c17")
+	pb.border_color = Color("8a8574")
+	pb.set_border_width_all(2)
+	pb.border_width_bottom = 6
+	photo.add_theme_stylebox_override("panel", pb)
+	photo.rotation_degrees = 2.5
+	var lp := LookPortrait.new()
+	lp.custom_minimum_size = Vector2(40, 52)
+	photo.add_child(lp)
+	_book_photo = lp
+	top.add_child(photo)
+	var book := ServiceArt.Scrawl.new()                     # książeczka wojskowa (SCRAWL): poziom, XP, pieczątki poziomów
+	book.stains = false
+	book.rotation_degrees = 0.0
+	book.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(book)
+	var bv := VBoxContainer.new()
+	bv.add_theme_constant_override("separation", 1)
+	book.add_child(bv)
+	var bcap := UiTheme.ink(tr("SERVICE RECORD"), 7, UiTheme.INK_MUTED)
+	bv.add_child(bcap)
 	var lv := HBoxContainer.new()
 	lv.add_theme_constant_override("separation", 6)
-	_lvl_label = UiTheme.heading("LV 1", 12, UiTheme.ACCENT)
+	_lvl_label = UiTheme.heading("LV 1", 12, UiTheme.INK)
+	_lvl_label.add_theme_constant_override("outline_size", 0)
 	lv.add_child(_lvl_label)
 	_lvl_bar = LevelBar.new()
 	_lvl_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	lv.add_child(_lvl_bar)
-	_xp_label = UiTheme.label("", 9, Color(0.55, 0.8, 1.0), HORIZONTAL_ALIGNMENT_RIGHT)
+	_xp_label = UiTheme.ink("", 9, UiTheme.INK, HORIZONTAL_ALIGNMENT_RIGHT)
 	lv.add_child(_xp_label)
-	left.add_child(lv)
+	bv.add_child(lv)
+	_book_stamps = ServiceArt.LevelStamps.new()
+	bv.add_child(_book_stamps)
 	var grid := GridContainer.new()
 	grid.columns = COLS
 	grid.add_theme_constant_override("h_separation", 6)
@@ -1076,13 +1134,17 @@ func _build_perks() -> HBoxContainer:
 		var t := _make_perk_tile(String(Perks.ORDER[i]), i)
 		grid.add_child(t)
 		_perk_tiles.append(t)
-	left.add_child(_rule())
 	var slots := HBoxContainer.new()
 	slots.add_theme_constant_override("separation", 6)
 	left.add_child(slots)
 	for si in 2:
 		slots.add_child(_make_slot_chip(si))
-	body.add_child(_paper(_build_perk_detail()))
+	_perk_paper = _paper(_build_perk_detail())             # strona książeczki: kartka odręczna (SCRAWL)
+	var pp := UiTheme.paper_box()
+	pp.bg_color = NotePaletteRef.palette(NotePaletteRef.Note.SCRAWL)["bg"]
+	pp.border_color = NotePaletteRef.palette(NotePaletteRef.Note.SCRAWL)["edge"]
+	_perk_paper.add_theme_stylebox_override("panel", pp)
+	body.add_child(_perk_paper)
 	return body
 
 func _make_perk_tile(id: String, idx: int) -> PerkTile:
@@ -1092,6 +1154,16 @@ func _make_perk_tile(id: String, idx: int) -> PerkTile:
 	ic.k = 1.0
 	ic.set_perk(id, Color.WHITE)
 	_dress_tile(t, ic, Perks.display_name(id))
+	var col: Color = Perks.PERKS[id]["color"]              # naszywka: tkanina w kolorze perka z obszyciem
+	t.box_normal = ServiceArt.patch_box(col, false)
+	t.box_lit = ServiceArt.patch_box(col, true)
+	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
+		t.add_theme_stylebox_override(st, t.box_lit if st == "hover" else t.box_normal)
+	var stitch := ServiceArt.Stitch.new()
+	stitch.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	stitch.color = Color(col, 0.45)
+	t.add_child(stitch)
+	t.set_meta("stitch", stitch)
 	t.pressed.connect(_select_perk.bind(idx))
 	return t
 
@@ -1101,6 +1173,7 @@ func _make_slot_chip(si: int) -> Control:
 	root.custom_minimum_size = Vector2(150, 40)
 	root.add_theme_stylebox_override("panel", UiTheme.tile_box("normal"))
 	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.add_child(ServiceArt.Velcro.new())               # slot = pasek rzepu na drzwiach (naszywka perka przypina się do niego)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 6)
 	root.add_child(h)
@@ -1141,6 +1214,16 @@ func _build_perk_detail() -> Control:
 	_p_stats.add_theme_constant_override("h_separation", 10)
 	_p_stats.add_theme_constant_override("v_separation", 1)
 	v.add_child(_p_stats)
+	_p_vu = HBoxContainer.new()
+	_p_vu.add_theme_constant_override("separation", 8)
+	v.add_child(_p_vu)
+	_p_vu_meter = VuMeter.new()
+	_p_vu_meter.custom_minimum_size = Vector2(58, 34)
+	_p_vu_meter.ticks = StationNoise.ticks()
+	_p_vu.add_child(_p_vu_meter)
+	_p_vu_text = UiTheme.ink("", 8)
+	_p_vu_text.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_p_vu.add_child(_p_vu_text)
 	v.add_child(_paper_rule())
 	_p_text = UiTheme.ink("", 8)
 	_p_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1188,6 +1271,9 @@ func _refresh_perks() -> void:
 	_lvl_bar.frac = clampf(float(lp[0]) / maxf(1.0, float(lp[1])), 0.0, 1.0)
 	_lvl_bar.queue_redraw()
 	_xp_label.text = "%d / %d XP" % [int(lp[0]), int(lp[1])]
+	(_book_stamps as ServiceArt.LevelStamps).level = Profile.level()
+	_book_stamps.queue_redraw()
+	(_book_photo as LookPortrait).set_code(Look.base(Profile.look))
 	if _perk_slot >= maxi(1, Profile.slots()):
 		_perk_slot = 0
 	Profile.mark_seen("perk:" + String(Perks.ORDER[_perk_sel]))       # perk pod kursorem jest obejrzany — kropka „nowe” gaśnie
@@ -1200,6 +1286,9 @@ func _refresh_perks() -> void:
 		var at := _perk_slot_of(id)
 		t.set_new(Profile.is_new("perk:" + id))
 		(t.icon_node as PerkIcon).set_perk(id, Color.WHITE if unlocked else Color(0.45, 0.5, 0.55))
+		var sti := t.get_meta("stitch") as ServiceArt.Stitch
+		sti.foil = not unlocked                              # zablokowany perk w folii
+		sti.queue_redraw()
 		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else (UiTheme.TEXT if unlocked else UiTheme.MUTED))
 		if at >= 0:
 			t.state_label.text = tr("EQUIPPED  ·  SLOT %d") % (at + 1)
@@ -1215,7 +1304,12 @@ func _refresh_perks() -> void:
 		var open := si < Profile.slots()
 		var eq := String(Profile.equipped[si])
 		var chosen := si == _perk_slot
-		(c["root"] as PanelContainer).add_theme_stylebox_override("panel", UiTheme.tile_box("selected") if chosen else UiTheme.tile_box("normal"))
+		var vb := StyleBoxFlat.new()                             # rzep: wybrany slot w świetle lampy
+		vb.bg_color = Color(0, 0, 0, 0)
+		vb.border_color = UiTheme.LAMP_LINE if chosen else Color("15170f")
+		vb.set_border_width_all(2 if chosen else 1)
+		vb.set_content_margin_all(4)
+		(c["root"] as PanelContainer).add_theme_stylebox_override("panel", vb)
 		if not open:
 			(c["icon"] as PerkIcon).set_perk(String(Perks.ORDER[0]), Color(0.25, 0.28, 0.32, 0.6))
 			(c["name"] as Label).text = "LV %d" % int(Profile.SLOT_LEVELS[si])
@@ -1239,7 +1333,17 @@ func _refresh_perks() -> void:
 		_p_stats.remove_child(ch)
 		ch.free()
 	var status := tr("Equipped — slot %d") % (at2 + 1) if at2 >= 0 else (tr("Available") if unlocked2 else tr("Locked — reach level %d") % int(d["level"]))
-	for r in [["Status", status], ["Slots", tr("%d of 2 open") % Profile.slots()]]:
+	var prows: Array = [["Status", status], ["Slots", tr("%d of 2 open") % Profile.slots()]]
+	var pp: Dictionary = d.get("params", {})
+	if pp.has("run_noise_mult"):                           # bieg nie przebija wygaszania Uwagi (§5a) — mnożnik w wierszu, bez VU
+		prows.append(["Running", UiTheme.num_text("▼ ×%.1f  (%.2f / s)" % [float(pp["run_noise_mult"]), NoiseMgr.N_RUN_PER_SEC * float(pp["run_noise_mult"])])])
+	_p_vu.visible = pp.has("scream_cap")
+	if _p_vu.visible:                                      # krzyk to jedno zdarzenie: poziom po krzyku od ciszy, cień = bez perka
+		_p_vu_meter.value = float(pp["scream_cap"]) / 100.0
+		_p_vu_meter.ghost = NoiseMgr.N_SCREAM / 100.0
+		_p_vu_meter.fill = UiTheme.OK
+		_p_vu_text.text = tr("Scream: %d%% → %d%% noise") % [int(NoiseMgr.N_SCREAM), int(pp["scream_cap"])]
+	for r in prows:
 		_p_stats.add_child(UiTheme.ink(tr(String(r[0])), 9, UiTheme.INK_MUTED))
 		_p_stats.add_child(UiTheme.ink(String(r[1]), 9, UiTheme.INK_GAIN if at2 >= 0 and String(r[0]) == "Status" else UiTheme.INK))
 		_p_stats.add_child(Control.new())
@@ -1873,8 +1977,8 @@ func _controls_hint() -> String:
 		return tr("%s select   ·   %s / %s fuse   ·   %s buy / order   ·   %s close   ·   or click") % [
 			nav, _cap("menu_slot_1", pad), _cap("menu_slot_2", pad), _cap("menu_accept", pad), _cap("menu_back", pad)]
 	if _mode == "service":
-		return tr("%s select   ·   %s / %s job   ·   %s clean / replace   ·   %s close   ·   or click") % [
-			nav, _cap("menu_slot_1", pad), _cap("menu_slot_2", pad), _cap("menu_accept", pad), _cap("menu_back", pad)]
+		return tr("%s gun   ·   %s instrument   ·   %s hold: clean / replace   ·   %s close   ·   or click") % [
+			_cap("menu_up", pad) + " " + _cap("menu_down", pad), _cap("menu_left", pad) + " " + _cap("menu_right", pad), _cap("menu_accept", pad), _cap("menu_back", pad)]
 	if _mode == "locker" and _page == 3:
 		return tr("%s select   ·   %s wear   ·   %s perks / look   ·   %s close   ·   or click") % [
 			nav, _cap("menu_accept", pad), _cap("menu_tab", pad), _cap("menu_back", pad)]
@@ -1936,6 +2040,14 @@ func _spatial_step(tiles: Array, vis: Array, cur: int, step: int) -> int:
 	return best
 
 func _input(event: InputEvent) -> void:
+	if _open and _hold_clean and (event is InputEventKey or event is InputEventJoypadButton) and event.is_action_released("menu_accept"):
+		_hold_clean = false
+		if _clean_w >= 0:                                  # czynność w czasie trzymana klawiszem: puszczenie przerywa (ST-02)
+			_stop_clean()
+			_say(tr("Interrupted — hold to finish."), UiTheme.MUTED)
+			_refresh()
+		get_viewport().set_input_as_handled()
+		return
 	if not _open or not (event is InputEventKey or event is InputEventJoypadButton) or not event.is_pressed() or event.is_echo():
 		return
 	if event.is_action_pressed("menu_tab") or event.is_action_pressed("menu_tab_prev"):
@@ -1997,6 +2109,12 @@ func _input(event: InputEvent) -> void:
 			_buy_selected_supply()
 		elif back:
 			close()
+	elif _mode == "service" and step != 0:
+		# stół konserwacji (ST-02): w górę / w dół — broń, w lewo / w prawo — przyrząd
+		if absi(step) == 1:
+			_move_opt(step)
+		else:
+			_move(signi(step))
 	elif step != 0:
 		_move(step)
 	elif event.is_action_pressed("menu_slot_1") or event.is_action_pressed("menu_slot_2"):
@@ -2004,7 +2122,10 @@ func _input(event: InputEvent) -> void:
 	elif event.is_action_pressed("menu_alt"):
 		_save_preset()
 	elif accept:
+		var ops2 := _options(int(LIST[_sel]))
+		var timed := _opt >= 0 and _opt < ops2.size() and String(ops2[_opt]["slot"]) == "service" and String(ops2[_opt]["id"]) in ["clean", "sharpen"]
 		_act()
+		_hold_clean = timed and _clean_w >= 0
 	elif back:
 		close()
 	get_viewport().set_input_as_handled()
@@ -2296,6 +2417,7 @@ static func _advice_ink(level: int) -> Color:
 ## Lewa kolumna stołu konserwacji: co zrobić z całym ekwipunkiem — jedna linia na broń, która czegoś potrzebuje (pilne pierwsze).
 func _refresh_service_todo() -> void:
 	_svc_todo.visible = _mode == "service" and _page == 0
+	_svc_note.visible = _svc_todo.visible
 	if not _svc_todo.visible:
 		return
 	var rows: Array = []
@@ -2307,7 +2429,7 @@ func _refresh_service_todo() -> void:
 		if not adv.is_empty() and int(adv["level"]) >= 0:
 			rows.append([int(adv["level"]), "%s — %s" % [String(Weapons.base_def(w).name), String(adv["short"])]])
 	rows.sort_custom(func(a: Array, b: Array) -> bool: return int(a[0]) > int(b[0]))
-	var lines: Array[String] = [tr("TO DO")]
+	var lines: Array[String] = [tr("To do:")]
 	for r in rows:
 		lines.append(("! " if int(r[0]) >= 2 else "· ") + String(r[1]))
 	if rows.is_empty():
@@ -2328,28 +2450,80 @@ func _fill_service_panel(base: RefCounted, cur: RefCounted) -> void:
 		return
 	var adv := _service_advice(int(LIST[_sel]))
 	if not adv.is_empty():
-		var al := UiTheme.ink(String(adv["text"]), 10, _advice_ink(int(adv["level"])))
+		var lv := int(adv["level"])
+		var al := UiTheme.ink(String(adv["text"]), 10, [UiTheme.OK, UiTheme.TEXT, UiTheme.ACCENT, UiTheme.DANGER][clampi(lv + 1, 0, 3)] if _mode == "service" else _advice_ink(lv))
 		al.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		al.custom_minimum_size.x = DETAIL_W
 		_d_panel.add_child(al)
 	var cond := Profile.condition(key)
 	var cap := Profile.clean_cap(key)
-	var cond_col := UiTheme.INK_GAIN if cond >= 95.0 else (UiTheme.INK if cond >= Controller.JAM_FROM else UiTheme.INK_COST)
-	_paper_bar(tr("Condition"), cond / 100.0, (tr("%d%% (max %d%%)") % [int(cond), int(cap)]) if cap < 99.5 else "%d%%" % int(cond), cond_col, cap / 100.0 if cap < 99.5 else -1.0)
 	var bw := Profile.part_wear(key, "barrel")
 	var spread := int(round(Controller.BARREL_SPREAD * pow(bw / 100.0, 2.0) * 100.0))
-	_paper_bar(tr("Barrel wear"), bw / 100.0, tr("%d%% · spread +%d%%") % [int(bw), spread], _wear_ink(bw), Profile.SERVICE_DUE / 100.0)
 	var sw := Profile.part_wear(key, "springs")
-	_paper_bar(tr("Spring wear"), sw / 100.0, tr("%d%% · cleans to %d%%") % [int(sw), int(cap)], _wear_ink(sw), Profile.SERVICE_DUE / 100.0)
+	# trzy przyrządy z manometrem (ST-02): czyszczenie — stan, czerwona strefa zacięć poniżej JAM_FROM, kropka lampy na limicie sprężyn,
+	# cień wskazówki = dokąd dojdzie czyszczenie; lufa i sprężyny — zużycie ze strefą wymiany i pilną, cień = po wymianie
+	var ops := _options(int(LIST[_sel]))
+	var cur_id := String(ops[_opt]["id"]) if _opt >= 0 and _opt < ops.size() else ""
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	_d_panel.add_child(row)
+	_gauges.clear()
+	var due := Profile.SERVICE_DUE / 100.0
+	var urgent := Profile.SERVICE_URGENT / 100.0
+	var ctime := Profile.clean_time(key)
+	var specs := [
+		["clean", tr("CLEANING"), tr("%d s") % ceili(ctime) if ctime > 0.0 else "—", cond / 100.0, cap / 100.0 if cond < cap - 0.5 else -1.0, cap / 100.0 if cap < 99.5 else -1.0,
+			[[0.0, Controller.JAM_FROM / 100.0, Color(UiTheme.DANGER, 0.75)]],
+			(tr("condition %d%% → %d%%") % [int(cond), int(cap)] if cond < cap - 0.5 else tr("condition %d%%") % int(cond)) + (" · " + tr("jams") if cond < Controller.JAM_FROM else "")],
+		["barrel", tr("BARREL"), "%d" % int(Scrap.SERVICE_COST["barrel"]), bw / 100.0, 0.0 if Profile.service_due(key, "barrel") else -1.0, -1.0,
+			[[due, urgent, Color(UiTheme.ACCENT, 0.6)], [urgent, 1.0, Color(UiTheme.DANGER, 0.75)]], tr("wear %d%% · spread +%d%%") % [int(bw), spread]],
+		["springs", tr("SPRINGS"), "%d" % int(Scrap.SERVICE_COST["springs"]), sw / 100.0, 0.0 if Profile.service_due(key, "springs") else -1.0, -1.0,
+			[[due, urgent, Color(UiTheme.ACCENT, 0.6)], [urgent, 1.0, Color(UiTheme.DANGER, 0.75)]], tr("wear %d%% · cleans to %d%%") % [int(sw), int(cap)]],
+	]
+	for s in specs:
+		var g := ServiceArt.Gauge.new()
+		g.job = String(s[0])
+		g.title.text = String(s[1])
+		g.right.text = String(s[2])
+		g.dial.value = float(s[3])
+		g.dial.ghost = float(s[4])
+		g.dial.mark = float(s[5])
+		g.dial.zones = s[6]
+		g.sub.text = UiTheme.num_text(String(s[7]))
+		g.set_lit(cur_id == g.job)
+		var oi := ops.find({"slot": "service", "id": g.job})
+		g.gui_input.connect(func(ev: InputEvent) -> void:
+			if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and oi >= 0:
+				_pick_opt(oi))
+		row.add_child(g)
+		_gauges[g.job] = g
 	var wc := _local_wc()
 	var jam: float = wc.jam_chance(cur) if wc != null else 0.0
 	var grid := GridContainer.new()
 	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 1)
-	grid.add_child(UiTheme.ink(tr("Jam chance"), 9, UiTheme.INK_MUTED))
-	grid.add_child(UiTheme.ink(tr("none") if jam <= 0.0 else tr("1 in %d shots") % maxi(1, roundi(1.0 / jam)), 9, UiTheme.INK_COST if jam > 0.0 else UiTheme.INK_GAIN))
+	var deck := _mode == "service"                         # na blacie stołu konserwacji kolory blatu, nie atramentu
+	grid.add_child(UiTheme.ink(tr("Jam chance"), 9, UiTheme.MUTED if deck else UiTheme.INK_MUTED))
+	grid.add_child(UiTheme.ink(tr("none") if jam <= 0.0 else tr("1 in %d shots") % maxi(1, roundi(1.0 / jam)), 9,
+		(UiTheme.DANGER if jam > 0.0 else UiTheme.OK) if deck else (UiTheme.INK_COST if jam > 0.0 else UiTheme.INK_GAIN)))
 	_d_panel.add_child(grid)                              # czas czyszczenia stoi w wierszu „Czyszczenie” i na przycisku — nie trzeci raz tutaj
+
+## Stół konserwacji (ST-02): karta znika — rozłożona broń na płótnie i przyrządy stoją na ciemnym blacie, napisy w kolorach blatu,
+## lista części zastąpiona wyborem przyrządu (strzałki w lewo / w prawo albo klik). Pozostałe stanowiska: karta na papierze.
+func _service_skin(on: bool) -> void:
+	if _arms_paper.get_meta("service", false) == on:
+		return
+	_arms_paper.set_meta("service", on)
+	var deck := StyleBoxFlat.new()
+	deck.bg_color = Color(0, 0, 0, 0)
+	deck.set_content_margin_all(2)
+	_arms_paper.add_theme_stylebox_override("panel", deck if on else UiTheme.paper_box())
+	_d_title.add_theme_color_override("font_color", UiTheme.TEXT if on else UiTheme.INK)
+	_d_tag.add_theme_color_override("font_color", UiTheme.MUTED if on else UiTheme.INK_MUTED)
+	_d_text.add_theme_color_override("font_color", UiTheme.MUTED if on else UiTheme.INK)
+	_d_tiers.visible = not on
+	_d_stage.modulate = Color(0.78, 0.76, 0.72) if on else Color.WHITE       # płótno z rozłożoną bronią przyciemnione — światło na przyrządach
 
 ## Pracownia / tokarka: droga części broni specjalnej PRÓBKI › BADANIE › SCHEMAT › TOKARKA › ŁAWA — zrobione kroki zielone, bieżący z paskiem,
 ## pod spodem jedno zdanie, co dalej (dawniej trzeba było to wyczytać z nawiasów przy częściach).
@@ -2600,16 +2774,20 @@ func tick_clean(delta: float) -> void:
 		if not melee:
 			var c0 := Profile.condition(ck)                 # brud schodzi z broni w trakcie (ława 3D)
 			(_d_stage as GunStage).set_dirt(1.0 - lerpf(c0, Profile.clean_cap(ck), _clean_t / _clean_total) / 100.0)
+			if _gauges.has("clean") and is_instance_valid(_gauges["clean"]):            # przyrząd czyszczenia: wskazówka idzie do limitu
+				(_gauges["clean"] as ServiceArt.Gauge).dial.value = lerpf(c0, Profile.clean_cap(ck), _clean_t / _clean_total) / 100.0
 		return
 	var w := _clean_w
 	_stop_clean()
 	if melee:
 		Profile.sharpen(ck)                                 # szlifierka (W6b)
+		_stamp()
 		_say(tr("%s sharpened — edge 100%%.") % String(Weapons.def(w).name), UiTheme.OK)
 		Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.3)
 		_refresh()
 		return
 	Profile.clean(ck)
+	_stamp()
 	_say(tr("%s stripped and cleaned — condition %d%%.") % [String(Weapons.def(w).name), int(Profile.condition(ck))], UiTheme.OK)
 	Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.0)
 	_refresh()
@@ -2956,6 +3134,7 @@ func _refresh_tile(t: Tile, selected: bool) -> void:
 		t.state_label.text = tr("BUY AT THE BENCH")
 
 func _refresh_detail(w: int) -> void:
+	_service_skin(_mode == "service")
 	_action.disabled = false
 	_act_state(_action, "", 0)
 	var base: RefCounted = Weapons.base_def(w)
