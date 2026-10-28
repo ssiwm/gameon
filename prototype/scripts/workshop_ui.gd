@@ -31,6 +31,10 @@ const HubProp := preload("res://scripts/hub_prop.gd")
 const Weather := preload("res://scripts/weather.gd")
 const SupplyArt := preload("res://scripts/station_supply_art.gd")
 const NotePaletteRef := preload("res://scripts/note_palette.gd")
+const SupplyView := preload("res://scripts/stations/supply_view.gd")
+const ServiceView := preload("res://scripts/stations/service_view.gd")
+const LabView := preload("res://scripts/stations/lab_view.gd")
+const LockerView := preload("res://scripts/stations/locker_view.gd")
 const ServiceArt := preload("res://scripts/station_service_art.gd")
 const LabArt := preload("res://scripts/station_lab_art.gd")
 
@@ -521,6 +525,11 @@ var _selection_revision := 0
 var _pending_part: Dictionary = {}
 var _buying := -1
 
+var _v_supply = SupplyView.new(self)          # widok stanowiska (stations/supply_view.gd)
+var _v_service = ServiceView.new(self)          # widok stanowiska (stations/service_view.gd)
+var _v_lab = LabView.new(self)          # widok stanowiska (stations/lab_view.gd)
+var _v_locker = LockerView.new(self)          # widok stanowiska (stations/locker_view.gd)
+
 func _ready() -> void:
 	add_to_group("workshop_ui")
 	visible = false
@@ -668,719 +677,97 @@ func _ready() -> void:
 	multiplayer.server_disconnected.connect(_connection_lost)
 	multiplayer.connection_failed.connect(_connection_lost)
 
-## Zakładka SUPPLIES: ten sam układ co ARMS — siatka kafli po lewej (miniatura, nazwa, cena, zapas), szczegóły po prawej.
+## Zob. stations/supply_view.gd.
 func _build_supplies() -> HBoxContainer:
-	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 12)
-	body.custom_minimum_size = Vector2(0, 6.0 * (TILE_H + 6.0))            # tyle co ARMS — karta nie skacze przy przełączaniu
-	var grid := GridContainer.new()
-	grid.columns = COLS
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 6)
-	var left := VBoxContainer.new()
-	left.add_theme_constant_override("separation", 8)
-	left.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	body.add_child(left)
-	left.add_child(grid)
-	# pusty stan: na ławie zostały same narzędzia — reszta zaopatrzenia ma własne stanowiska
-	_sup_note = UiTheme.label("", 8, UiTheme.MUTED)
-	_sup_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_sup_note.custom_minimum_size.x = TILE_W * COLS + 6.0
-	left.add_child(_sup_note)
-	# prasa (ST-03): regał — półka na kaliber, pudełka na deskach; pod regałem etykieta partii z ząbkiem, matryce w kolumnie po prawej
-	_shelves = VBoxContainer.new()
-	_shelves.add_theme_constant_override("separation", 6)
-	left.add_child(_shelves)
-	_notch = SupplyArt.Notch.new()
-	left.add_child(_notch)
-	# stół pirotechniczny (ST-04): skrzynia saperska z magazynu Obiektu 86, przegrody 4 × 2, karta w otwartym wieku po prawej
-	_crate = PanelContainer.new()
-	_crate.add_theme_stylebox_override("panel", SupplyArt.wood_box(6))
-	var cv := VBoxContainer.new()
-	cv.add_theme_constant_override("separation", 5)
-	_crate.add_child(cv)
-	var stencil := UiTheme.mono(UiTheme.label("ЯЩИК № 4  ·  ВЗРЫВЧАТЫЕ ВЕЩЕСТВА  ·  НЕ БРОСАТЬ", 8, UiTheme.BONE_DIM, HORIZONTAL_ALIGNMENT_CENTER))
-	stencil.add_theme_constant_override("outline_size", 0)
-	cv.add_child(stencil)                                # napis na krawędzi skrzyni (sprzęt bunkra — cyrylica, D1a)
-	_crate_grid = GridContainer.new()
-	_crate_grid.columns = 4
-	_crate_grid.add_theme_constant_override("h_separation", 5)
-	_crate_grid.add_theme_constant_override("v_separation", 5)
-	cv.add_child(_crate_grid)
-	left.add_child(_crate)
-	var rows := {}
-	var kinds := _supply_kinds()
-	for i in kinds.size():
-		var k := String(kinds[i])
-		var t := _make_supply_tile(k, i)
-		_sup_tiles.append(t)
-		if _is_press_kind(k):
-			var cal := String(Ammo.from_kind(k)["cal"])
-			if not rows.has(cal):
-				rows[cal] = _make_shelf(cal)
-			(rows[cal] as Control).get_meta("boxes").add_child(t)
-		elif _is_pyro_kind(k):
-			_crate_grid.add_child(t)
-		else:
-			grid.add_child(t)
-	_sup_grid = grid
-	_sup_left = left
-	_lid = PanelContainer.new()                          # wieko skrzyni wokół karty (pirotechnika); gdzie indziej bez ramki
-	_lid.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	_sup_paper = _paper(_build_supply_detail())
-	_lid.add_child(_sup_paper)
-	body.add_child(_lid)
-	_dies = PanelContainer.new()                         # prasa: matryce (miejsca na partie) pionowo po prawej
-	_dies.add_theme_stylebox_override("panel", UiTheme.panel_box())
-	_dies.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	_dies_list = VBoxContainer.new()
-	_dies_list.add_theme_constant_override("separation", 6)
-	_dies_list.custom_minimum_size.x = 104
-	_dies.add_child(_dies_list)
-	body.add_child(_dies)
-	return body
+	return _v_supply._build_supplies()
 
-## Półka regału prasy dla kalibru `cal`: podpis kalibru nad półką, rząd pudełek, deska pod spodem.
+## Zob. stations/supply_view.gd.
 func _make_shelf(cal: String) -> Control:
-	var shelf := VBoxContainer.new()
-	shelf.add_theme_constant_override("separation", 0)
-	var cap := UiTheme.mono(UiTheme.label(String(Ammo.CALIBERS.get(cal, {}).get("name", cal)), 8, UiTheme.BONE_DIM))      # kaliber nad półką
-	shelf.add_child(cap)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	shelf.add_child(row)
-	var boxes := HBoxContainer.new()
-	boxes.add_theme_constant_override("separation", 4)
-	row.add_child(boxes)
-	shelf.add_child(SupplyArt.Plank.new())
-	shelf.set_meta("boxes", boxes)
-	_shelves.add_child(shelf)
-	return shelf
+	return _v_supply._make_shelf(cal)
 
-## Układ zakładki zaopatrzenia dla stanowiska: ława — siatka kafli i karta po prawej, prasa — regał, etykieta partii pod regałem
-## i matryce po prawej, pirotechnika — skrzynia i karta w wieku. Kafle stoją na stałe w swoim pojemniku (rodzaj należy do jednego stanowiska).
+## Zob. stations/supply_view.gd.
 func _arrange_supplies() -> void:
-	var press := _mode == "press"
-	var pyro := _mode == "pyro"
-	_sup_grid.visible = not (press or pyro)
-	_shelves.visible = press
-	_notch.visible = press
-	_crate.visible = pyro
-	_dies.visible = press
-	_s_icon.visible = not (press or pyro)                # prasa i skrzynia pokazują przedmiot na regale / w przegrodzie
-	_lid.add_theme_stylebox_override("panel", SupplyArt.wood_box(6) if pyro else StyleBoxEmpty.new())
-	var body := _sup_left.get_parent()
-	if press and _lid.get_parent() != _sup_left:
-		_lid.reparent(_sup_left)
-	elif not press and _lid.get_parent() != body:
-		_lid.reparent(body)
-		body.move_child(_lid, 1)
-	if press:
-		_sup_left.move_child(_lid, _notch.get_index() + 1)
-	_s_side.visible = press
-	for n in [_s_vu, _s_cmp]:
-		var want: Control = _s_side if press else _s_main
-		if n.get_parent() != want:
-			n.reparent(want)
-			if not press:
-				_s_main.move_child(n, _s_stats.get_index() + (1 if n == _s_vu else 3))
-	_s_text.custom_minimum_size.x = 230.0 if press else DETAIL_W
-	_s_main.custom_minimum_size.x = 230.0 if press else DETAIL_W
+	_v_supply._arrange_supplies()
 
+## Zob. stations/supply_view.gd.
 func _make_supply_tile(kd: String, idx: int) -> SupplyTile:
-	if _is_press_kind(kd):
-		return _make_box_tile(kd, idx)
-	if _is_pyro_kind(kd):
-		return _make_bay_tile(kd, idx)
-	var data: Dictionary = Throwables.KINDS[kd]
-	var t := SupplyTile.new()
-	t.kind = kd
-	var ic := ItemIcon.new()
-	ic.k = 1.0
-	ic.set_item(kd, Color.WHITE)
-	_dress_tile(t, ic, String(data["name"]))
-	_add_price(t)
-	var bar := StockBar.new()
-	bar.maxn = Throwables.units(kd, int(data["max"]))        # amunicja: w pudełkach
-	_add_bar(t, bar)
-	t.pressed.connect(_select_supply.bind(idx))
-	return t
+	return _v_supply._make_supply_tile(kd, idx)
 
+## Zob. stations/supply_view.gd.
 func _build_supply_detail() -> Control:
-	var v := VBoxContainer.new()
-	v.custom_minimum_size = Vector2(DETAIL_W, 0)
-	v.add_theme_constant_override("separation", 4)
-	_s_icon = ItemIcon.new()
-	_s_icon.k = 2.0
-	_s_icon.custom_minimum_size = Vector2(0, 58)
-	v.add_child(_s_icon)
-	_s_title = _ink_heading()
-	v.add_child(_s_title)
-	_s_tag = UiTheme.ink("", 8, UiTheme.INK_MUTED)
-	v.add_child(_s_tag)
-	_s_stats = GridContainer.new()
-	_s_stats.columns = 3
-	_s_stats.add_theme_constant_override("h_separation", 10)
-	_s_stats.add_theme_constant_override("v_separation", 1)
-	v.add_child(_s_stats)
-	_s_vu = HBoxContainer.new()                           # VU-metr hałasu (§5a): ta sama skala co w HUD
-	_s_vu.add_theme_constant_override("separation", 8)
-	v.add_child(_s_vu)
-	_s_vu_meter = VuMeter.new()
-	_s_vu_meter.custom_minimum_size = Vector2(58, 34)
-	_s_vu_meter.ticks = StationNoise.ticks()
-	_s_vu.add_child(_s_vu_meter)
-	_s_vu_text = UiTheme.ink("", 8)
-	_s_vu_text.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_s_vu_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_s_vu_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_s_vu.add_child(_s_vu_text)
-	for box in ["_s_fuse", "_s_cmp", "_s_queue"]:
-		var c := VBoxContainer.new()
-		c.add_theme_constant_override("separation", 3)
-		v.add_child(c)
-		set(box, c)
-	_s_blast = SupplyArt.BlastDiagram.new()               # pirotechnika: schemat działania w skali (za zapalnikiem)
-	v.add_child(_s_blast)
-	v.move_child(_s_blast, _s_fuse.get_index() + 1)
-	v.add_child(_paper_rule())
-	_s_text = UiTheme.ink("", 8)
-	_s_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_s_text.custom_minimum_size = Vector2(DETAIL_W, 0)
-	v.add_child(_s_text)
-	_s_action = Button.new()
-	_s_action.focus_mode = Control.FOCUS_NONE
-	_s_action.add_theme_font_size_override("font_size", 10)
-	_s_action.pressed.connect(_buy_selected_supply)
-	v.add_child(_s_action)
-	_s_main = v
-	var cols := HBoxContainer.new()                       # druga kolumna tylko na etykiecie partii (prasa): porównanie i hałas
-	cols.add_theme_constant_override("separation", 14)
-	cols.add_child(v)
-	_s_side = VBoxContainer.new()
-	_s_side.add_theme_constant_override("separation", 6)
-	_s_side.custom_minimum_size.x = 196
-	_s_side.visible = false
-	cols.add_child(_s_side)
-	return cols
+	return _v_supply._build_supply_detail()
 
-## Rodzaj z prasy (amunicja specjalna bez 40 mm) / ze stołu pirotechnicznego (granaty, miny, ładunki, 40 mm) — jak `_sup_in_mode`.
+## Zob. stations/supply_view.gd.
 func _is_press_kind(k: String) -> bool:
-	return Throwables.is_ammo(k) and String(Ammo.from_kind(k).get("cal", "")) != "40mm"
+	return _v_supply._is_press_kind(k)
 
+## Zob. stations/supply_view.gd.
 func _is_pyro_kind(k: String) -> bool:
-	var m := String(Throwables.KINDS[k]["mode"])
-	return m == "throw" or m == "place" or (Throwables.is_ammo(k) and not _is_press_kind(k))
+	return _v_supply._is_pyro_kind(k)
 
-## Prasa (ST-03): pudełko na półce regału — nazwa na etykiecie pudełka, pasek oznaczenia czubka, okienka z pudełkami przy sobie,
-## cena na krawędzi półki. Wybór = światło lampy (bez ramki).
+## Zob. stations/supply_view.gd.
 func _make_box_tile(kd: String, idx: int) -> SupplyTile:
-	var data: Dictionary = Throwables.KINDS[kd]
-	var t := SupplyTile.new()
-	t.kind = kd
-	t.custom_minimum_size = Vector2(86, 74)
-	var face := SupplyArt.BoxFace.new()
-	face.title = String(data["name"])
-	face.stock_max = Throwables.units(kd, int(data["max"]))
-	face.set_item(kd, Color.WHITE)
-	_dress_tile(t, face, String(data["name"]))
-	face.position = Vector2(4, 2)
-	face.size = Vector2(78, 54)
-	t.name_label.visible = false                         # nazwa jest na etykiecie pudełka
-	t.state_label.visible = false
-	_add_price(t)
-	t.coin.position = Vector2(8, 60)
-	t.price_label.position = Vector2(20, 57)
-	var bar := StockBar.new()                            # zapas: okienka na pudełku (wskaźnik kafla ukryty, zostaje dla kodu odświeżania)
-	bar.maxn = face.stock_max
-	_add_bar(t, bar)
-	bar.visible = false
-	t.box_normal = StyleBoxEmpty.new()
-	var lit := StyleBoxFlat.new()
-	lit.bg_color = Color(1.0, 0.8, 0.45, 0.07)
-	lit.border_color = UiTheme.LAMP_LINE
-	lit.border_width_bottom = 2
-	t.box_lit = lit
-	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
-		t.add_theme_stylebox_override(st, t.box_normal if st != "hover" else lit)
-	t.pressed.connect(_select_supply.bind(idx))
-	return t
+	return _v_supply._make_box_tile(kd, idx)
 
-## Stół pirotechniczny (ST-04): przegroda skrzyni saperskiej — render przedmiotu pod lampą, licznik „przy sobie / maks.” w rogu,
-## nazwa i cena na pasku jak napis na przegrodzie.
+## Zob. stations/supply_view.gd.
 func _make_bay_tile(kd: String, idx: int) -> SupplyTile:
-	var data: Dictionary = Throwables.KINDS[kd]
-	var t := SupplyTile.new()
-	t.kind = kd
-	t.custom_minimum_size = Vector2(98, 96)
-	var ic := ItemIcon.new()
-	ic.plate = false
-	ic.set_item(kd, Color.WHITE)
-	_dress_tile(t, ic, String(data["name"]))
-	ic.position = Vector2(8, 14)
-	ic.size = Vector2(82, 56)
-	var strip := ColorRect.new()
-	strip.color = SupplyArt.LABEL_PAPER
-	strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	strip.position = Vector2(4, 74)
-	strip.size = Vector2(90, 18)
-	t.add_child(strip)
-	t.move_child(strip, 0)
-	t.name_label.position = Vector2(8, 75)
-	t.name_label.add_theme_font_size_override("font_size", 9)
-	t.state_label.position = Vector2(70, 2)              # „1/4” w rogu przegrody
-	_add_price(t)
-	t.coin.visible = false
-	t.price_label.position = Vector2(66, 76)
-	t.price_label.add_theme_font_size_override("font_size", 9)
-	var bar := StockBar.new()
-	bar.maxn = Throwables.units(kd, int(data["max"]))
-	_add_bar(t, bar)
-	bar.visible = false
-	t.box_normal = SupplyArt.bay_box()
-	var lit := SupplyArt.bay_box()
-	lit.bg_color = Color("2a2216")
-	lit.border_color = UiTheme.ACCENT.darkened(0.35)
-	t.box_lit = lit
-	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
-		t.add_theme_stylebox_override(st, t.box_normal if st != "hover" else lit)
-	t.pressed.connect(_select_supply.bind(idx))
-	return t
+	return _v_supply._make_bay_tile(kd, idx)
 
-## Zakładka LOOK: siatka 2 × 3 (kolumny: mężczyzna / kobieta, wiersze: stroje) z animowanymi podglądami i szczegóły z przyciskiem Equip.
-## Kod wyglądu kafla i = wiersz (strój) × 2 + kolumna (płeć). Stroje odblokowuje poziom profilu (Look.UNLOCK_LEVEL); wygląd jest tylko kosmetyką.
+## Zob. stations/locker_view.gd.
 func _look_code(i: int) -> int:
-	return Look.code(i % COLS, i / COLS)
+	return _v_locker._look_code(i)
 
+## Zob. stations/locker_view.gd.
 func _build_look() -> HBoxContainer:
-	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 12)
-	body.custom_minimum_size = Vector2(0, 6.0 * (TILE_H + 6.0))
-	var left := VBoxContainer.new()
-	left.add_theme_constant_override("separation", 6)
-	left.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	body.add_child(left)
-	var grid := GridContainer.new()
-	grid.columns = COLS
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 6)
-	left.add_child(grid)
-	# kolumny siatki to płeć — ta sama nazwa stroju stoi w obu, więc kolumny mają podpis
-	var heads := HBoxContainer.new()
-	heads.add_theme_constant_override("separation", 6)
-	for g in Look.GENDERS:
-		var hl := UiTheme.label(tr(String(g).capitalize()).to_upper(), 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
-		hl.custom_minimum_size.x = TILE_W
-		heads.add_child(hl)
-	left.add_child(heads)
-	left.move_child(heads, grid.get_index())
-	for i in Look.GENDERS.size() * Look.OUTFITS.size():
-		var t := LookTile.new()
-		t.code = _look_code(i)
-		t.custom_minimum_size = Vector2(TILE_W, TILE_H * 1.5)
-		var portrait := "res://art/portraits/look_%s_%s.png" % [Look.gender_id(t.code), Look.outfit_id(t.code)]
-		t.view = LookPortrait.new() if ResourceLoader.exists(portrait) else LookView.new()       # render 3D jak duży podgląd; bez niego stary arkusz
-		t.view.call("set_code", t.code)
-		_dress_tile(t, t.view, Look.display_name(t.code))
-		t.pressed.connect(_select_look.bind(i))
-		grid.add_child(t)
-		_look_tiles.append(t)
-	var v := VBoxContainer.new()
-	v.custom_minimum_size = Vector2(DETAIL_W, 0)
-	v.add_theme_constant_override("separation", 4)
-	var lv := LookView.new()                              # podgląd 2D z arkusza; model 3D na żywo dochodzi w _refresh_look (Sprites.char3d bywa ustawione później)
-	lv.anim = "run"
-	lv.custom_minimum_size = Vector2(0, 150)
-	_l_view = lv
-	_l_box = v
-	v.add_child(_l_view)
-	_l_title = _ink_heading()
-	v.add_child(_l_title)
-	_l_tag = UiTheme.ink("", 8, UiTheme.INK_MUTED)
-	v.add_child(_l_tag)
-	_pal_row = HBoxContainer.new()                       # paleta kolorów stroju: tylko dla modeli 3D
-	_pal_row.add_theme_constant_override("separation", 5)
-	_pal_row.add_child(UiTheme.ink(tr("COLOR"), 8, UiTheme.INK_MUTED))
-	for pi in Look.PALETTES.size():
-		var pb := Button.new()
-		pb.focus_mode = Control.FOCUS_NONE
-		pb.custom_minimum_size = Vector2(20, 14)
-		pb.tooltip_text = Look.palette_name(pi)
-		pb.pressed.connect(_select_palette.bind(pi))
-		_pal_row.add_child(pb)
-		_pal_btns.append(pb)
-	_pal_row.visible = false
-	v.add_child(_pal_row)
-	v.add_child(_paper_rule())
-	_l_text = UiTheme.ink("", 8)
-	_l_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_l_text.custom_minimum_size = Vector2(DETAIL_W, 0)
-	v.add_child(_l_text)
-	_l_action = Button.new()
-	_l_action.focus_mode = Control.FOCUS_NONE
-	_l_action.add_theme_font_size_override("font_size", 10)
-	_l_action.pressed.connect(_act_look)
-	v.add_child(_l_action)
-	body.add_child(_paper(v))
-	return body
+	return _v_locker._build_look()
 
+## Zob. stations/locker_view.gd.
 func _select_palette(pi: int) -> void:
-	_look_pal = pi
-	Audio.play("ui_click", Audio.BUS_UI, -14.0)
-	_refresh()
+	_v_locker._select_palette(pi)
 
+## Zob. stations/locker_view.gd.
 func _select_look(i: int) -> void:
-	_look_sel = i
-	Audio.play("ui_click", Audio.BUS_UI, -14.0)
-	_refresh()
+	_v_locker._select_look(i)
 
+## Zob. stations/locker_view.gd.
 func _act_look() -> void:
-	var c := Look.with_palette(_look_code(_look_sel), _look_pal)
-	if Profile.look == c:
-		_say(tr("Already wearing %s.") % Look.display_name(c), UiTheme.MUTED)
-	elif Profile.set_look(c):
-		_success_fx()
-		_say(tr("%s (%s) equipped.") % [Look.display_name(c), tr(Look.gender_id(c).capitalize())], UiTheme.OK)
-	else:
-		_say(tr("Unlocks at level %d.") % Look.unlock_level(c), UiTheme.DANGER)
+	_v_locker._act_look()
 
+## Zob. stations/locker_view.gd.
 func _refresh_look() -> void:
-	var lvl := Profile.level()
-	var use3d := Sprites.char3d and Char3D.available()
-	if use3d and _l_view3 == null:
-		_l_view3 = Look3DView.new()
-		_l_box.add_child(_l_view3)
-		_l_box.move_child(_l_view3, _l_view.get_index())
-	_l_view.visible = not use3d
-	if _l_view3 != null:
-		_l_view3.visible = use3d
-	_pal_row.visible = use3d
-	var vw: Control = _l_view3 if use3d else _l_view
-	for i in _look_tiles.size():
-		var t := _look_tiles[i] as LookTile
-		var sel := i == _look_sel
-		t.set_lit(sel)
-		var ok := Look.is_unlocked(t.code, lvl)
-		t.view.modulate = Color.WHITE if ok else Color(0.35, 0.4, 0.45)
-		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.TEXT)
-		var worn := Look.base(Profile.look) == t.code
-		t.state_label.text = (tr("EQUIPPED") if worn else tr("AVAILABLE")) if ok else tr("LV %d") % Look.unlock_level(t.code)
-		t.state_label.add_theme_color_override("font_color", UiTheme.OK if worn else (UiTheme.MUTED if ok else UiTheme.DANGER))
-	for pi in _pal_btns.size():
-		var pb := _pal_btns[pi] as Button
-		var d: Dictionary = Look.PALETTES[pi]
-		var pbox := StyleBoxFlat.new()
-		pbox.bg_color = (d["swatch"] as Color) if lvl >= int(d["level"]) else (d["swatch"] as Color).darkened(0.65)
-		pbox.border_color = UiTheme.INK if pi == _look_pal else Color(UiTheme.PAPER_EDGE, 0.8)
-		pbox.set_border_width_all(2 if pi == _look_pal else 1)
-		for st in ["normal", "hover", "pressed", "focus", "disabled"]:
-			pb.add_theme_stylebox_override(st, pbox)
-		var locked := lvl < int(d["level"])
-		pb.text = str(int(d["level"])) if locked else ""                  # zablokowany kolor: numer poziomu na próbce (nie tylko ciemniejszy odcień)
-		pb.add_theme_font_size_override("font_size", 7)
-		for fc in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
-			pb.add_theme_color_override(fc, UiTheme.TEXT)
-		pb.tooltip_text = Look.palette_name(pi) + ((" · " + tr("Locked — level %d") % int(d["level"])) if locked else "")
-	var c := Look.with_palette(_look_code(_look_sel), _look_pal)
-	vw.call("set_code", c)
-	vw.modulate = Color.WHITE if Look.is_unlocked(c, lvl) else Color(0.35, 0.4, 0.45)
-	_l_title.text = Look.display_name(c)
-	_l_tag.text = tr("%s  ·  unlocks at level %d") % [tr(Look.gender_id(c).capitalize()).to_upper(), Look.unlock_level(c)]
-	_l_text.text = tr(String(Look.OUTFIT_TEXT[Look.outfit_id(c)])) + "\n\n" + tr("Cosmetic only — other players see your look too.")
-	_l_action.disabled = false
-	_l_action.text = tr("Wearing") if Profile.look == c else (tr("Equip") if Look.is_unlocked(c, lvl) else tr("Locked — level %d") % Look.unlock_level(c))
-	_act_state(_l_action, "ready" if Profile.look != c and Look.is_unlocked(c, lvl) else "wait", 0)      # założony albo zablokowany — ciemna dźwignia
+	_v_locker._refresh_look()
 
-## Zakładka PERKS: ten sam układ co ARMS i SUPPLIES — po lewej pasek poziomu, siatka kafli i dwa sloty, po prawej szczegóły wybranego perku.
+## Zob. stations/locker_view.gd.
 func _build_perks() -> HBoxContainer:
-	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 12)
-	body.custom_minimum_size = Vector2(0, 6.0 * (TILE_H + 6.0))
-	# drzwi szafki osobistej (ST-07): blacha w zieleni munduru, szczeliny, na drzwiach zdjęcie, książeczka, naszywki perków i rzepy slotów
-	var door := PanelContainer.new()
-	door.add_theme_stylebox_override("panel", ServiceArt.locker_door())
-	door.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	body.add_child(door)
-	var vents := ServiceArt.Vents.new()
-	door.add_child(vents)
-	var left := VBoxContainer.new()
-	left.add_theme_constant_override("separation", 6)
-	left.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	door.add_child(left)
-	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 10)
-	left.add_child(top)
-	var photo := PanelContainer.new()                      # zdjęcie przyklejone taśmą: portret założonego wyglądu
-	var pb := StyleBoxFlat.new()
-	pb.bg_color = Color("1a1c17")
-	pb.border_color = Color("8a8574")
-	pb.set_border_width_all(2)
-	pb.border_width_bottom = 6
-	photo.add_theme_stylebox_override("panel", pb)
-	photo.rotation_degrees = 2.5
-	var lp := LookPortrait.new()
-	lp.custom_minimum_size = Vector2(40, 52)
-	photo.add_child(lp)
-	_book_photo = lp
-	top.add_child(photo)
-	var book := ServiceArt.Scrawl.new()                     # książeczka wojskowa (SCRAWL): poziom, XP, pieczątki poziomów
-	book.stains = false
-	book.rotation_degrees = 0.0
-	book.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(book)
-	var bv := VBoxContainer.new()
-	bv.add_theme_constant_override("separation", 1)
-	book.add_child(bv)
-	var bcap := UiTheme.ink(tr("SERVICE RECORD"), 7, UiTheme.INK_MUTED)
-	bv.add_child(bcap)
-	var lv := HBoxContainer.new()
-	lv.add_theme_constant_override("separation", 6)
-	_lvl_label = UiTheme.heading("LV 1", 12, UiTheme.INK)
-	_lvl_label.add_theme_constant_override("outline_size", 0)
-	lv.add_child(_lvl_label)
-	_lvl_bar = LevelBar.new()
-	_lvl_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	lv.add_child(_lvl_bar)
-	_xp_label = UiTheme.ink("", 9, UiTheme.INK, HORIZONTAL_ALIGNMENT_RIGHT)
-	lv.add_child(_xp_label)
-	bv.add_child(lv)
-	_book_stamps = ServiceArt.LevelStamps.new()
-	bv.add_child(_book_stamps)
-	var grid := GridContainer.new()
-	grid.columns = COLS
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 6)
-	left.add_child(grid)
-	for i in Perks.ORDER.size():
-		var t := _make_perk_tile(String(Perks.ORDER[i]), i)
-		grid.add_child(t)
-		_perk_tiles.append(t)
-	var slots := HBoxContainer.new()
-	slots.add_theme_constant_override("separation", 6)
-	left.add_child(slots)
-	for si in 2:
-		slots.add_child(_make_slot_chip(si))
-	_perk_paper = _paper(_build_perk_detail())             # strona książeczki: kartka odręczna (SCRAWL)
-	var pp := UiTheme.paper_box()
-	pp.bg_color = NotePaletteRef.palette(NotePaletteRef.Note.SCRAWL)["bg"]
-	pp.border_color = NotePaletteRef.palette(NotePaletteRef.Note.SCRAWL)["edge"]
-	_perk_paper.add_theme_stylebox_override("panel", pp)
-	body.add_child(_perk_paper)
-	return body
+	return _v_locker._build_perks()
 
+## Zob. stations/locker_view.gd.
 func _make_perk_tile(id: String, idx: int) -> PerkTile:
-	var t := PerkTile.new()
-	t.perk = id
-	var ic := PerkIcon.new()
-	ic.k = 1.0
-	ic.set_perk(id, Color.WHITE)
-	_dress_tile(t, ic, Perks.display_name(id))
-	var col: Color = Perks.PERKS[id]["color"]              # naszywka: tkanina w kolorze perka z obszyciem
-	t.box_normal = ServiceArt.patch_box(col, false)
-	t.box_lit = ServiceArt.patch_box(col, true)
-	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
-		t.add_theme_stylebox_override(st, t.box_lit if st == "hover" else t.box_normal)
-	var stitch := ServiceArt.Stitch.new()
-	stitch.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	stitch.color = Color(col, 0.45)
-	t.add_child(stitch)
-	t.set_meta("stitch", stitch)
-	t.pressed.connect(_select_perk.bind(idx))
-	return t
+	return _v_locker._make_perk_tile(id, idx)
 
-## Slot perka (0–1) pod siatką: miniatura założonego perka, nazwa albo „empty” / poziom odblokowania. Klik albo klawisz 1 / 2 wybiera slot docelowy.
+## Zob. stations/locker_view.gd.
 func _make_slot_chip(si: int) -> Control:
-	var root := PanelContainer.new()
-	root.custom_minimum_size = Vector2(150, 40)
-	root.add_theme_stylebox_override("panel", UiTheme.tile_box("normal"))
-	root.mouse_filter = Control.MOUSE_FILTER_STOP
-	root.add_child(ServiceArt.Velcro.new())               # slot = pasek rzepu na drzwiach (naszywka perka przypina się do niego)
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 6)
-	root.add_child(h)
-	var ic := PerkIcon.new()
-	ic.k = 1.0
-	ic.custom_minimum_size = Vector2(40, 30)
-	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	h.add_child(ic)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 0)
-	col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	h.add_child(col)
-	var cap := UiTheme.label("SLOT %d  [%d]" % [si + 1, si + 1], 8, UiTheme.MUTED)
-	col.add_child(cap)
-	var nm := UiTheme.label("", 9, UiTheme.TEXT)
-	col.add_child(nm)
-	root.gui_input.connect(func(ev: InputEvent) -> void:
-		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
-			_perk_slot = si
-			_refresh())
-	_slot_chips.append({"root": root, "icon": ic, "name": nm})
-	return root
+	return _v_locker._make_slot_chip(si)
 
+## Zob. stations/locker_view.gd.
 func _build_perk_detail() -> Control:
-	var v := VBoxContainer.new()
-	v.custom_minimum_size = Vector2(DETAIL_W, 0)
-	v.add_theme_constant_override("separation", 4)
-	_p_icon = PerkIcon.new()
-	_p_icon.k = 2.0
-	_p_icon.custom_minimum_size = Vector2(0, 58)
-	v.add_child(_p_icon)
-	_p_title = _ink_heading()
-	v.add_child(_p_title)
-	_p_tag = UiTheme.ink("", 8, UiTheme.INK_MUTED)
-	v.add_child(_p_tag)
-	_p_stats = GridContainer.new()
-	_p_stats.columns = 3
-	_p_stats.add_theme_constant_override("h_separation", 10)
-	_p_stats.add_theme_constant_override("v_separation", 1)
-	v.add_child(_p_stats)
-	_p_vu = HBoxContainer.new()
-	_p_vu.add_theme_constant_override("separation", 8)
-	v.add_child(_p_vu)
-	_p_vu_meter = VuMeter.new()
-	_p_vu_meter.custom_minimum_size = Vector2(58, 34)
-	_p_vu_meter.ticks = StationNoise.ticks()
-	_p_vu.add_child(_p_vu_meter)
-	_p_vu_text = UiTheme.ink("", 8)
-	_p_vu_text.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_p_vu.add_child(_p_vu_text)
-	v.add_child(_paper_rule())
-	_p_text = UiTheme.ink("", 8)
-	_p_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_p_text.custom_minimum_size = Vector2(DETAIL_W, 0)
-	v.add_child(_p_text)
-	_p_action = Button.new()
-	_p_action.focus_mode = Control.FOCUS_NONE
-	_p_action.add_theme_font_size_override("font_size", 10)
-	_p_action.pressed.connect(_act_perk)
-	v.add_child(_p_action)
-	return v
+	return _v_locker._build_perk_detail()
 
+## Zob. stations/locker_view.gd.
 func _select_perk(i: int) -> void:
-	if i != _perk_sel:
-		Audio.play("ui_click", Audio.BUS_UI, -14.0)
-	_perk_sel = i
-	_refresh()
+	_v_locker._select_perk(i)
 
-## Które sloty zajmuje perk: indeks slotu albo -1.
+## Zob. stations/locker_view.gd.
 func _perk_slot_of(id: String) -> int:
-	return Profile.equipped.find(id)
+	return _v_locker._perk_slot_of(id)
 
-## Akcja na wybranym perku: zdejmij (jeśli założony) albo załóż w wybranym slocie.
+## Zob. stations/locker_view.gd.
 func _act_perk() -> void:
-	var id := String(Perks.ORDER[_perk_sel])
-	var have := _perk_slot_of(id)
-	if have >= 0:
-		Profile.unequip(have)
-		_say(tr("%s removed.") % Perks.display_name(id), UiTheme.MUTED)
-		Audio.play("ui_click", Audio.BUS_UI, -10.0)
-		return
-	if not Profile.is_unlocked(id):
-		_say(tr("Reach level %d to unlock %s.") % [Perks.unlock_level(id), Perks.display_name(id)], UiTheme.MUTED)
-		return
-	if _perk_slot >= Profile.slots():
-		_say(tr("Slot %d unlocks at level %d.") % [_perk_slot + 1, int(Profile.SLOT_LEVELS[_perk_slot])], UiTheme.MUTED)
-		return
-	if Profile.equip(_perk_slot, id):
-		_say(tr("%s equipped in slot %d.") % [Perks.display_name(id), _perk_slot + 1], UiTheme.OK)
-		_success_fx()
+	_v_locker._act_perk()
 
+## Zob. stations/locker_view.gd.
 func _refresh_perks() -> void:
-	var lp := Profile.level_progress()
-	_lvl_label.text = "LV %d" % Profile.level()
-	_lvl_bar.frac = clampf(float(lp[0]) / maxf(1.0, float(lp[1])), 0.0, 1.0)
-	_lvl_bar.queue_redraw()
-	_xp_label.text = "%d / %d XP" % [int(lp[0]), int(lp[1])]
-	(_book_stamps as ServiceArt.LevelStamps).level = Profile.level()
-	_book_stamps.queue_redraw()
-	(_book_photo as LookPortrait).set_code(Look.base(Profile.look))
-	if _perk_slot >= maxi(1, Profile.slots()):
-		_perk_slot = 0
-	Profile.mark_seen("perk:" + String(Perks.ORDER[_perk_sel]))       # perk pod kursorem jest obejrzany — kropka „nowe” gaśnie
-	for i in _perk_tiles.size():
-		var t := _perk_tiles[i] as PerkTile
-		var id := t.perk
-		var sel := i == _perk_sel
-		t.set_lit(sel)
-		var unlocked := Profile.is_unlocked(id)
-		var at := _perk_slot_of(id)
-		t.set_new(Profile.is_new("perk:" + id))
-		(t.icon_node as PerkIcon).set_perk(id, Color.WHITE if unlocked else Color(0.45, 0.5, 0.55))
-		var sti := t.get_meta("stitch") as ServiceArt.Stitch
-		sti.foil = not unlocked                              # zablokowany perk w folii
-		sti.queue_redraw()
-		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else (UiTheme.TEXT if unlocked else UiTheme.MUTED))
-		if at >= 0:
-			t.state_label.text = tr("EQUIPPED  ·  SLOT %d") % (at + 1)
-			t.state_label.add_theme_color_override("font_color", UiTheme.OK)
-		elif unlocked:
-			t.state_label.text = "AVAILABLE"
-			t.state_label.add_theme_color_override("font_color", UiTheme.MUTED)
-		else:
-			t.state_label.text = "LV %d" % Perks.unlock_level(id)
-			t.state_label.add_theme_color_override("font_color", GOLD if Profile.level() + 1 >= Perks.unlock_level(id) else UiTheme.DANGER)
-	for si in _slot_chips.size():
-		var c: Dictionary = _slot_chips[si]
-		var open := si < Profile.slots()
-		var eq := String(Profile.equipped[si])
-		var chosen := si == _perk_slot
-		var vb := StyleBoxFlat.new()                             # rzep: wybrany slot w świetle lampy
-		vb.bg_color = Color(0, 0, 0, 0)
-		vb.border_color = UiTheme.LAMP_LINE if chosen else Color("15170f")
-		vb.set_border_width_all(2 if chosen else 1)
-		vb.set_content_margin_all(4)
-		(c["root"] as PanelContainer).add_theme_stylebox_override("panel", vb)
-		if not open:
-			(c["icon"] as PerkIcon).set_perk(String(Perks.ORDER[0]), Color(0.25, 0.28, 0.32, 0.6))
-			(c["name"] as Label).text = "LV %d" % int(Profile.SLOT_LEVELS[si])
-			(c["name"] as Label).add_theme_color_override("font_color", UiTheme.DANGER)
-		elif eq == "":
-			(c["icon"] as PerkIcon).set_perk(String(Perks.ORDER[0]), Color(0.25, 0.28, 0.32, 0.6))
-			(c["name"] as Label).text = "empty"
-			(c["name"] as Label).add_theme_color_override("font_color", UiTheme.MUTED)
-		else:
-			(c["icon"] as PerkIcon).set_perk(eq, Color.WHITE)
-			(c["name"] as Label).text = Perks.display_name(eq)
-			(c["name"] as Label).add_theme_color_override("font_color", UiTheme.TEXT)
-	var id2 := String(Perks.ORDER[_perk_sel])
-	var d: Dictionary = Perks.PERKS[id2]
-	var unlocked2 := Profile.is_unlocked(id2)
-	var at2 := _perk_slot_of(id2)
-	_p_icon.set_perk(id2, Color.WHITE if unlocked2 else Color(0.55, 0.6, 0.65))
-	_p_title.text = tr(String(d["name"])).to_upper()
-	_p_tag.text = tr("Perk  ·  unlocks at level %d") % int(d["level"])
-	for ch in _p_stats.get_children():
-		_p_stats.remove_child(ch)
-		ch.free()
-	var status := tr("Equipped — slot %d") % (at2 + 1) if at2 >= 0 else (tr("Available") if unlocked2 else tr("Locked — reach level %d") % int(d["level"]))
-	var prows: Array = [["Status", status], ["Slots", tr("%d of 2 open") % Profile.slots()]]
-	var pp: Dictionary = d.get("params", {})
-	if pp.has("run_noise_mult"):                           # bieg nie przebija wygaszania Uwagi (§5a) — mnożnik w wierszu, bez VU
-		prows.append(["Running", UiTheme.num_text("▼ ×%.1f  (%.2f / s)" % [float(pp["run_noise_mult"]), NoiseMgr.N_RUN_PER_SEC * float(pp["run_noise_mult"])])])
-	_p_vu.visible = pp.has("scream_cap")
-	if _p_vu.visible:                                      # krzyk to jedno zdarzenie: poziom po krzyku od ciszy, cień = bez perka
-		_p_vu_meter.value = float(pp["scream_cap"]) / 100.0
-		_p_vu_meter.ghost = NoiseMgr.N_SCREAM / 100.0
-		_p_vu_meter.fill = UiTheme.OK
-		_p_vu_text.text = tr("Scream: %d%% → %d%% noise") % [int(NoiseMgr.N_SCREAM), int(pp["scream_cap"])]
-	for r in prows:
-		_p_stats.add_child(UiTheme.ink(tr(String(r[0])), 9, UiTheme.INK_MUTED))
-		_p_stats.add_child(UiTheme.ink(String(r[1]), 9, UiTheme.INK_GAIN if at2 >= 0 and String(r[0]) == "Status" else UiTheme.INK))
-		_p_stats.add_child(Control.new())
-	_p_text.text = String(d["desc"])
-	if at2 >= 0:
-		_p_action.text = tr("Remove from slot %d") % (at2 + 1)
-		_p_action.disabled = false
-	elif not unlocked2:
-		_p_action.text = tr("Locked  ·  reach level %d") % int(d["level"])
-		_p_action.disabled = true
-	elif _perk_slot >= Profile.slots():
-		_p_action.text = tr("Slot %d unlocks at level %d") % [_perk_slot + 1, int(Profile.SLOT_LEVELS[_perk_slot])]
-		_p_action.disabled = true
-	else:
-		_p_action.text = tr("Equip in slot %d") % (_perk_slot + 1)
-		_p_action.disabled = false
+	_v_locker._refresh_perks()
 
 func _select_supply(i: int) -> void:
 	if i != _sup_sel:
@@ -1420,237 +807,41 @@ func _sup_in_mode(k: String) -> bool:
 		_:
 			return m == "use"
 
-## VU-metr hałasu na karcie zaopatrzenia (STATION_CARDS_PLAN.md §5a): przedmiot rzucany / ładunek — poziom po jednym od ciszy i ile naraz
-## do niepokoju; amunicja zmieniająca hałas — poziom po magazynku pierwszej broni tego kalibru (cień = nabój zwykły); reszta bez VU.
+## Zob. stations/supply_view.gd.
 func _fill_noise(k: String) -> void:
-	_s_vu.visible = false
-	var uneasy := float(NoiseMgr.UNEASY_THRESHOLD)
-	var item := StationNoise.item_noise(k)
-	if item > 0.0:
-		_s_vu.visible = true
-		_s_vu_meter.visible = true
-		_s_vu_meter.value = item / 100.0
-		_s_vu_meter.ghost = -1.0
-		_s_vu_meter.fill = UiTheme.ACCENT if item * 2.0 >= uneasy else UiTheme.TEXT
-		var n := StationNoise.count_to(item, uneasy)
-		_s_vu_text.text = UiTheme.num_text(tr("+%s%% noise per item") % ("%.0f" % item if item >= 1.0 else "%.1f" % item)) + "
-" + tr("%d at once = unease") % n
-		return
-	var ct := Ammo.from_kind(k)
-	if ct.is_empty() or String(ct["cal"]) == "40mm":
-		return
-	var w := -1
-	for id in LIST:
-		if String(Weapons.base_def(int(id)).caliber) == String(ct["cal"]):
-			w = int(id)
-			break
-	if w < 0:
-		return
-	var wc := _local_wc()
-	var fit: int = wc.fit_of(w) if wc != null else 0
-	var plain: RefCounted = Weapons.def_build(w, Weapons.build_of(0, fit))
-	var with: RefCounted = Weapons.def_build(w, Weapons.build_of(int(ct["t"]), fit))
-	var a := StationNoise.mag_level(plain)
-	var b := StationNoise.mag_level(with)
-	if absf(a - b) < 0.5:
-		_s_vu_text.text = tr("Shot noise unchanged.")         # VU tylko przy naboju, który zmienia hałas (§6 ST-03)
-		_s_vu.visible = true
-		_s_vu_meter.visible = false
-		return
-	_s_vu.visible = true
-	_s_vu_meter.visible = true
-	_s_vu_meter.value = b / 100.0
-	_s_vu_meter.ghost = a / 100.0
-	_s_vu_meter.fill = UiTheme.OK if b < a else UiTheme.DANGER
-	_s_vu_text.text = tr("One %s magazine: %d%% → %d%% noise") % [String(plain.name), roundi(a), roundi(b)]
+	_v_supply._fill_noise(k)
 
-## Stół pirotechniczny: schemat działania przedmiotu w skali z sylwetką kolegi (granat i ładunek ranią drużynę, mina nie) — z danych przedmiotu.
+## Zob. stations/supply_view.gd.
 func _fill_blast(k: String) -> void:
-	var d: Dictionary = Throwables.KINDS[k]
-	var b := _s_blast as SupplyArt.BlastDiagram
-	b.visible = _mode == "pyro" and k in ["frag", "charge", "mine", "phos", "smoke"]
-	if not b.visible:
-		return
-	b.kind = k
-	match k:
-		"frag", "charge":
-			b.lines = [UiTheme.num_text(tr("%s m · %d damage") % ["%.0f" % (float(d["radius"]) / SupplyArt.PX_PER_M), int(d["damage"])]),
-				tr("squad mate: hurt"), tr("safe")]
-		"mine":
-			b.lines = [UiTheme.num_text(tr("%s m · %d damage · %d° cone") % ["%.0f" % (float(d["range"]) / SupplyArt.PX_PER_M), int(d["damage"]), roundi(2.0 * float(d["half_deg"]))]),
-				tr("squad mate: spared"), tr("safe")]
-		"phos":
-			b.lines = [tr("fire field · %d s") % int(d["field_life"])]
-		"smoke":
-			b.lines = [tr("cloud · %d s · blocks sight, not sound") % int(d["cloud_life"])]
-	b.queue_redraw()
+	_v_supply._fill_blast(k)
 
-## Stół pirotechniczny: krótszy (−1) albo dłuższy (+1) zapalnik zaznaczonego przedmiotu — dla całej drużyny (serwer).
+## Zob. stations/supply_view.gd.
 func _step_fuse(d: int) -> void:
-	var k := String(_supply_kinds()[_sup_sel])
-	var opts: Array = Throwables.FUSES.get(k, []) as Array
-	if opts.is_empty():
-		return
-	_set_fuse(k, clampi(Scrap.fuse_index(k) + d, 0, opts.size() - 1))
+	_v_supply._step_fuse(d)
 
-## Zapalnik `k` na pozycję `ni` (przełącznik na karcie albo klawisze 1 / 2) — ustawienie drużyny rozstrzyga serwer.
+## Zob. stations/supply_view.gd.
 func _set_fuse(k: String, ni: int) -> void:
-	var opts: Array = Throwables.FUSES.get(k, []) as Array
-	if ni < 0 or ni >= opts.size() or ni == Scrap.fuse_index(k):
-		return
-	Scrap.request_fuse(k, ni)
-	Audio.play("ui_click", Audio.BUS_UI, -10.0, 1.2)
-	_say(tr("%s fuse: %.1f s — for the whole squad.") % [tr(String(Throwables.KINDS[k]["name"])), float(opts[ni])], UiTheme.OK)
-	_refresh()
+	_v_supply._set_fuse(k, ni)
 
-## Stół pirotechniczny: trzy pozycje zapalnika jako przełącznik (zamiast „1,8 s (2 z 3) · 1 / 2 zmień”), z dopiskiem, że to ustawienie drużyny.
+## Zob. stations/supply_view.gd.
 func _fill_fuse(k: String) -> void:
-	_clear_children(_s_fuse)
-	_s_fuse.visible = _mode == "pyro" and Throwables.FUSES.has(k)
-	if not _s_fuse.visible:
-		return
-	_s_fuse.add_child(UiTheme.ink(tr("FUSE  ·  %s / %s") % [_menu_key("menu_slot_1", Actions.pad_mode), _menu_key("menu_slot_2", Actions.pad_mode)], 7, UiTheme.INK_MUTED))
-	# pokrętło zapalnika (ST-04): tarcza z pozycjami, obok lista pozycji z czasem; klawisze pozycji obracają pokrętło
-	var dial_row := HBoxContainer.new()
-	dial_row.add_theme_constant_override("separation", 10)
-	_s_fuse.add_child(dial_row)
-	var opts: Array = Throwables.FUSES[k]
-	var dial := SupplyArt.FuseDial.new()
-	dial.count = opts.size()
-	dial.index = Scrap.fuse_index(k)
-	dial.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	dial_row.add_child(dial)
-	var row := VBoxContainer.new()
-	row.add_theme_constant_override("separation", 2)
-	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	dial_row.add_child(row)
-	for i in opts.size():
-		var b := Button.new()
-		b.focus_mode = Control.FOCUS_NONE
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.text = "%s   %s" % [tr(FUSE_NAMES[mini(i, FUSE_NAMES.size() - 1)]), UiTheme.num_text("%.1f s" % float(opts[i]))]
-		b.add_theme_font_size_override("font_size", 8)
-		b.add_theme_constant_override("outline_size", 0)
-		for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
-			b.add_theme_color_override(c, UiTheme.INK if i == Scrap.fuse_index(k) else UiTheme.INK_MUTED)
-		for st in ["normal", "hover", "pressed", "focus"]:
-			var box := StyleBoxFlat.new()
-			var sel := i == Scrap.fuse_index(k)
-			box.bg_color = UiTheme.PAPER_SEL if sel else (Color(UiTheme.PAPER_SEL, 0.5) if st == "hover" else Color(0, 0, 0, 0))
-			box.border_color = UiTheme.INK if sel else UiTheme.PAPER_EDGE
-			box.set_border_width_all(2 if sel else 1)
-			box.set_content_margin_all(3)
-			b.add_theme_stylebox_override(st, box)
-		b.pressed.connect(_set_fuse.bind(k, i))
-		row.add_child(b)
-	var cord := SupplyArt.FuseCord.new()                 # lont: długość = czas zapalnika (pełna szerokość = najdłuższa pozycja)
-	cord.seconds = float(opts[Scrap.fuse_index(k)])
-	cord.max_s = float(opts.back())
-	_s_fuse.add_child(cord)
-	var note := UiTheme.ink(tr("Squad setting: everyone's %s uses this fuse.") % tr(String(Throwables.KINDS[k]["name"])), 7, UiTheme.INK_MUTED)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.custom_minimum_size.x = DETAIL_W
-	_s_fuse.add_child(note)
+	_v_supply._fill_fuse(k)
 
-## Prasa: co nabój zmienia względem zwykłego tego kalibru (modyfikatory ammo.gd) — wartość i ocena słowem, kolor tylko ją wzmacnia.
+## Zob. stations/supply_view.gd.
 func _fill_ammo_cmp(k: String) -> void:
-	_clear_children(_s_cmp)
-	var rows := _ammo_rows(k)
-	_s_cmp.visible = not rows.is_empty()
-	if rows.is_empty():
-		return
-	_s_cmp.add_child(UiTheme.ink(tr("VS. STANDARD ROUND"), 7, UiTheme.INK_MUTED))
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 10)
-	grid.add_theme_constant_override("v_separation", 1)
-	_s_cmp.add_child(grid)
-	for r in rows:
-		var kind := int(r[2])
-		var col := UiTheme.INK_GAIN if kind > 0 else (UiTheme.INK_COST if kind < 0 else UiTheme.INK)
-		grid.add_child(UiTheme.ink(tr(String(r[0])), 9, UiTheme.INK_MUTED))
-		if _mode == "press":
-			# etykieta partii (ST-03): pasek od zera — zysk w prawo, koszt w lewo — i wartość ze znakiem ▲▼ (kolor tylko wzmacnia)
-			var bar := SupplyArt.CmpBar.new()
-			bar.value = float(kind) * (float(r[3]) if r.size() > 3 else 0.3)
-			bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			grid.add_child(bar)
-			grid.add_child(UiTheme.ink(("▲ " if kind > 0 else ("▼ " if kind < 0 else "")) + UiTheme.num_text(String(r[1])), 9, col))
-			continue
-		grid.add_child(UiTheme.ink(UiTheme.num_text(String(r[1])), 9, col))
-		grid.add_child(UiTheme.ink((tr("Gain") if kind > 0 else (tr("Trade-off") if kind < 0 else "")).to_lower(), 7, col))
+	_v_supply._fill_ammo_cmp(k)
 
-## Wiersze porównania naboju `k` z nabojem zwykłym: [etykieta, zmiana, ocena −1 / 0 / 1]. Granaty 40 mm to inny ładunek, nie wariant — bez porównania.
+## Zob. stations/supply_view.gd.
 func _ammo_rows(k: String) -> Array:
-	var ct := Ammo.from_kind(k)
-	if ct.is_empty() or String(ct["cal"]) == "40mm":
-		return []
-	var t := Ammo.type_of(String(ct["cal"]), int(ct["t"]))
-	var out: Array = []
-	if bool(t.get("slug", false)):
-		out.append(["Pellets", tr("one heavy slug"), 0])
-	if bool(t.get("subsonic", false)):
-		out.append(["Bullet crack", tr("none — quieter"), 1])
-	for m in t.get("mods", []):
-		var f := String(m[0])
-		if not AMMO_FIELDS.has(f):
-			continue
-		var spec: Array = AMMO_FIELDS[f]
-		var v := float(m[2])
-		var text := ""
-		var sgn := 0.0
-		match String(m[1]):
-			"mul":
-				text = "%+d%%" % roundi((v - 1.0) * 100.0)
-				sgn = v - 1.0
-			"add":
-				match String(spec[2]):
-					"pct":
-						text = "+%d%%" % roundi(v * 100.0)
-					"s":
-						text = tr("+%.1f s") % v
-					"m":
-						text = "+%.1f m" % (v / 16.0)
-					_:
-						text = "%+.1f" % v
-				sgn = v
-			"set":
-				text = tr("none") if f == "crit_mult" and v <= 1.0 else "%.1f" % v
-				sgn = -1.0 if f == "crit_mult" else 1.0
-		out.append([String(spec[0]), text, int(signf(sgn) * float(spec[1])), clampf(absf(sgn) if String(m[1]) != "set" else 0.5, 0.1, 1.0)])
-	return out
+	return _v_supply._ammo_rows(k)
 
-## Prasa: miejsca na partie — zajęte z nazwą naboju, wolne puste (dawniej wiersz „1 z 3 partii”).
+## Zob. stations/supply_view.gd.
 func _fill_press_queue() -> void:
-	_clear_children(_s_queue)
-	_s_queue.visible = false                             # od E2 partie stoją na matrycach w kolumnie po prawej (_fill_dies)
-	_fill_dies()
+	_v_supply._fill_press_queue()
 
-## Prasa (ST-03): matryce pionowo po prawej — zajęta pokazuje nabój i „po udanej misji”, wolna jest pusta.
+## Zob. stations/supply_view.gd.
 func _fill_dies() -> void:
-	_clear_children(_dies_list)
-	if _mode != "press":
-		return
-	_dies_list.add_child(UiTheme.mono(UiTheme.label(tr("DIES"), 8, UiTheme.MUTED)))
-	for i in Scrap.PRESS_SLOTS:
-		var filled := i < Scrap.orders.size()
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
-		var die := SupplyArt.FuseDial.new()                  # matryca: okrągłe gniazdo, zajęte ze wskazówką w kolorze lampy
-		die.count = 1
-		die.index = 0
-		die.custom_minimum_size = Vector2(26, 26)
-		die.modulate = Color.WHITE if filled else Color(0.5, 0.5, 0.5)
-		die.set_meta("filled", filled)
-		row.add_child(die)
-		var col := VBoxContainer.new()
-		col.add_theme_constant_override("separation", -2)
-		col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		col.add_child(UiTheme.label(String(Throwables.KINDS[String(Scrap.orders[i])]["name"]) if filled else tr("free"), 9, UiTheme.TEXT if filled else UiTheme.MUTED))
-		col.add_child(UiTheme.label(tr("after a successful mission") if filled else "—", 7, UiTheme.MUTED))
-		row.add_child(col)
-		_dies_list.add_child(row)
+	_v_supply._fill_dies()
 
 ## Portfel odlicza do nowej kwoty (zakup, zamówienie, odbiór) zamiast skakać i krótko przygasa na czerwono przy wydatku — widać, ile kosztowało.
 func _tick_wallet() -> void:
@@ -2415,383 +1606,49 @@ func _paper_bar(label: String, frac: float, value: String, col: Color, cap := -1
 	h.add_child(v)
 	_d_panel.add_child(h)
 
-## Zalecenie stołu konserwacji dla broni `w`: jedna rzecz do zrobienia teraz, od najpilniejszej (od 1.7.413 — panel podawał same liczby).
-## {level, id, text, short}: level 2 — pilne (broń się zacina albo czyszczenie nie wyprowadzi jej ponad próg zacięć, lufa ≥ SERVICE_URGENT),
-## 1 — warto (część od progu wymiany), 0 — drobiazg (brud), -1 — nic do roboty; `id` — wiersz SERVICE, na który trafia kursor. {} — broń biała.
+## Zob. stations/service_view.gd.
 func _service_advice(w: int) -> Dictionary:
-	var base: RefCounted = Weapons.base_def(w)
-	var key := String(base.key)
-	if base.is_melee():
-		return {}
-	var cond := Profile.condition(key)
-	var cap := Profile.clean_cap(key)
-	var ct := Profile.clean_time(key)
-	var bw := Profile.part_wear(key, "barrel")
-	var spread := int(round(Controller.BARREL_SPREAD * pow(bw / 100.0, 2.0) * 100.0))
-	var jams: bool = base.can_jam()
-	var springs := jams and Profile.service_due(key, "springs")
-	var barrel := jams and Profile.service_due(key, "barrel")
-	if springs and cap < Controller.JAM_FROM:
-		return {"level": 2, "id": "springs", "short": tr("replace springs"),
-			"text": tr("Replace the springs: cleaning only reaches %d%% — below %d%% the gun jams.") % [int(cap), int(Controller.JAM_FROM)]}
-	if jams and cond < Controller.JAM_FROM and ct > 0.0:
-		return {"level": 2, "id": "clean", "short": tr("clean (%d%%)") % int(cond),
-			"text": tr("Clean it (%d s): at %d%% the gun jams.") % [ceili(ct), int(cond)]}
-	if barrel and bw >= Profile.SERVICE_URGENT:
-		return {"level": 2, "id": "barrel", "short": tr("replace barrel"), "text": tr("Replace the barrel: shots spread %d%% wider.") % spread}
-	if springs:
-		return {"level": 1, "id": "springs", "short": tr("replace springs"), "text": tr("Replace the springs: cleaning only reaches %d%%.") % int(cap)}
-	if barrel:
-		return {"level": 1, "id": "barrel", "short": tr("replace barrel"), "text": tr("Replace the barrel: shots spread %d%% wider.") % spread}
-	if ct > 0.0:
-		return {"level": 0, "id": "clean", "short": tr("clean (%d%%)") % int(cond), "text": tr("Clean it when you can (%d s) — condition %d%%.") % [ceili(ct), int(cond)]}
-	return {"level": -1, "id": "clean", "short": "", "text": tr("In good order — nothing to do.")}
+	return _v_service._service_advice(w)
 
 ## Kolor zalecenia na papierze: pilne — koszt, warto — cena, drobiazg — atrament, nic — zysk.
 static func _advice_ink(level: int) -> Color:
 	return [UiTheme.INK_GAIN, UiTheme.INK, UiTheme.INK_PRICE, UiTheme.INK_COST][clampi(level + 1, 0, 3)]
 
-## Lewa kolumna stołu konserwacji: co zrobić z całym ekwipunkiem — jedna linia na broń, która czegoś potrzebuje (pilne pierwsze).
+## Zob. stations/service_view.gd.
 func _refresh_service_todo() -> void:
-	_svc_todo.visible = _mode == "service" and _page == 0
-	_svc_note.visible = _svc_todo.visible
-	if not _svc_todo.visible:
-		return
-	var rows: Array = []
-	for i in _arms_list():
-		var w := int(LIST[int(i)])
-		if not Scrap.is_unlocked(w):
-			continue
-		var adv := _service_advice(w)
-		if not adv.is_empty() and int(adv["level"]) >= 0:
-			rows.append([int(adv["level"]), "%s — %s" % [String(Weapons.base_def(w).name), String(adv["short"])]])
-	rows.sort_custom(func(a: Array, b: Array) -> bool: return int(a[0]) > int(b[0]))
-	var lines: Array[String] = [tr("To do:")]
-	for r in rows:
-		lines.append(("! " if int(r[0]) >= 2 else "· ") + String(r[1]))
-	if rows.is_empty():
-		lines.append(tr("All guns in good order."))
-	_svc_todo.text = "\n".join(lines)
+	_v_service._refresh_service_todo()
 
-## Kolor zużycia części eksploatacyjnej: zwykły poniżej progu wymiany, cena od Profile.SERVICE_DUE, koszt (pilne) od SERVICE_URGENT.
+## Zob. stations/service_view.gd.
 func _wear_ink(wear: float) -> Color:
-	return UiTheme.INK_COST if wear >= Profile.SERVICE_URGENT else (UiTheme.INK_PRICE if wear >= Profile.SERVICE_DUE else UiTheme.INK)
+	return _v_service._wear_ink(wear)
 
-## Stół konserwacji: stan broni, zużycie lufy i sprężyn ze skutkami (rozrzut, granica czyszczenia), szansa zacięcia i czas czyszczenia.
-## Kreska na paskach zużycia = próg, od którego część da się wymienić.
+## Zob. stations/service_view.gd.
 func _fill_service_panel(base: RefCounted, cur: RefCounted) -> void:
-	var key := String(base.key)
-	if base.is_melee():
-		var edge := Profile.edge_of(key)
-		_paper_bar(tr("Edge"), edge / 100.0, "%d%%" % int(edge), UiTheme.INK_GAIN if edge >= 95.0 else UiTheme.INK)
-		return
-	var adv := _service_advice(int(LIST[_sel]))
-	if not adv.is_empty():
-		var lv := int(adv["level"])
-		var al := UiTheme.ink(String(adv["text"]), 10, [UiTheme.OK, UiTheme.TEXT, UiTheme.ACCENT, UiTheme.DANGER][clampi(lv + 1, 0, 3)] if _mode == "service" else _advice_ink(lv))
-		al.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		al.custom_minimum_size.x = DETAIL_W
-		_d_panel.add_child(al)
-	var cond := Profile.condition(key)
-	var cap := Profile.clean_cap(key)
-	var bw := Profile.part_wear(key, "barrel")
-	var spread := int(round(Controller.BARREL_SPREAD * pow(bw / 100.0, 2.0) * 100.0))
-	var sw := Profile.part_wear(key, "springs")
-	# trzy przyrządy z manometrem (ST-02): czyszczenie — stan, czerwona strefa zacięć poniżej JAM_FROM, kropka lampy na limicie sprężyn,
-	# cień wskazówki = dokąd dojdzie czyszczenie; lufa i sprężyny — zużycie ze strefą wymiany i pilną, cień = po wymianie
-	var ops := _options(int(LIST[_sel]))
-	var cur_id := String(ops[_opt]["id"]) if _opt >= 0 and _opt < ops.size() else ""
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	_d_panel.add_child(row)
-	_gauges.clear()
-	var due := Profile.SERVICE_DUE / 100.0
-	var urgent := Profile.SERVICE_URGENT / 100.0
-	var ctime := Profile.clean_time(key)
-	var specs := [
-		["clean", tr("CLEANING"), tr("%d s") % ceili(ctime) if ctime > 0.0 else "—", cond / 100.0, cap / 100.0 if cond < cap - 0.5 else -1.0, cap / 100.0 if cap < 99.5 else -1.0,
-			[[0.0, Controller.JAM_FROM / 100.0, Color(UiTheme.DANGER, 0.75)]],
-			(tr("condition %d%% → %d%%") % [int(cond), int(cap)] if cond < cap - 0.5 else tr("condition %d%%") % int(cond)) + (" · " + tr("jams") if cond < Controller.JAM_FROM else "")],
-		["barrel", tr("BARREL"), "%d" % int(Scrap.SERVICE_COST["barrel"]), bw / 100.0, 0.0 if Profile.service_due(key, "barrel") else -1.0, -1.0,
-			[[due, urgent, Color(UiTheme.ACCENT, 0.6)], [urgent, 1.0, Color(UiTheme.DANGER, 0.75)]], tr("wear %d%% · spread +%d%%") % [int(bw), spread]],
-		["springs", tr("SPRINGS"), "%d" % int(Scrap.SERVICE_COST["springs"]), sw / 100.0, 0.0 if Profile.service_due(key, "springs") else -1.0, -1.0,
-			[[due, urgent, Color(UiTheme.ACCENT, 0.6)], [urgent, 1.0, Color(UiTheme.DANGER, 0.75)]], tr("wear %d%% · cleans to %d%%") % [int(sw), int(cap)]],
-	]
-	for s in specs:
-		var g := ServiceArt.Gauge.new()
-		g.job = String(s[0])
-		g.title.text = String(s[1])
-		g.right.text = String(s[2])
-		g.dial.value = float(s[3])
-		g.dial.ghost = float(s[4])
-		g.dial.mark = float(s[5])
-		g.dial.zones = s[6]
-		g.sub.text = UiTheme.num_text(String(s[7]))
-		g.set_lit(cur_id == g.job)
-		var oi := ops.find({"slot": "service", "id": g.job})
-		g.gui_input.connect(func(ev: InputEvent) -> void:
-			if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and oi >= 0:
-				_pick_opt(oi))
-		row.add_child(g)
-		_gauges[g.job] = g
-	var wc := _local_wc()
-	var jam: float = wc.jam_chance(cur) if wc != null else 0.0
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 10)
-	grid.add_theme_constant_override("v_separation", 1)
-	var deck := _mode == "service"                         # na blacie stołu konserwacji kolory blatu, nie atramentu
-	grid.add_child(UiTheme.ink(tr("Jam chance"), 9, UiTheme.MUTED if deck else UiTheme.INK_MUTED))
-	grid.add_child(UiTheme.ink(tr("none") if jam <= 0.0 else tr("1 in %d shots") % maxi(1, roundi(1.0 / jam)), 9,
-		(UiTheme.DANGER if jam > 0.0 else UiTheme.OK) if deck else (UiTheme.INK_COST if jam > 0.0 else UiTheme.INK_GAIN)))
-	_d_panel.add_child(grid)                              # czas czyszczenia stoi w wierszu „Czyszczenie” i na przycisku — nie trzeci raz tutaj
+	_v_service._fill_service_panel(base, cur)
 
-## Pracownia i tokarka (ST-05, ST-06): prawa kolumna (słoje z próbkami i odczyt części / zlecenie na szpikulcu) i szlifierka pod kaflami.
+## Zob. stations/lab_view.gd.
 func _build_lab_lathe(left: VBoxContainer, body: HBoxContainer) -> void:
-	_arms_side = VBoxContainer.new()
-	_arms_side.add_theme_constant_override("separation", 10)
-	_arms_side.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	_arms_side.visible = false
-	body.add_child(_arms_side)
-	var jp := PanelContainer.new()
-	jp.add_theme_stylebox_override("panel", UiTheme.panel_box())
-	var jv := VBoxContainer.new()
-	jv.add_theme_constant_override("separation", 4)
-	jp.add_child(jv)
-	_jars_cap = UiTheme.mono(UiTheme.label("", 8, UiTheme.MUTED))
-	jv.add_child(_jars_cap)
-	_jars = LabArt.Jars.new()
-	jv.add_child(_jars)
-	_arms_side.add_child(jp)
-	jp.set_meta("lab", true)
-	_printout = PanelContainer.new()                      # odczyt części: wydruk z perforacją
-	_printout.add_theme_stylebox_override("panel", LabArt.printout_box())
-	_printout.add_child(LabArt.Perforation.new())
-	var pv := VBoxContainer.new()
-	pv.add_theme_constant_override("separation", 3)
-	_printout.add_child(pv)
-	_printout_head = UiTheme.label("", 10, LabArt.printout()["ink"])
-	_printout_head.add_theme_font_override("font", UiTheme.note_font(NotePaletteRef.Note.PRINTOUT))
-	_printout_head.add_theme_constant_override("outline_size", 0)
-	pv.add_child(_printout_head)
-	_printout.set_meta("body", pv)
-	_printout.set_meta("lab", true)
-	_arms_side.add_child(_printout)
-	_order = ServiceArt.Scrawl.new()                      # zlecenie odręczne nabite na szpikulec
-	(_order as ServiceArt.Scrawl).stains = false
-	_order.rotation_degrees = 1.5
-	_order.custom_minimum_size.x = 150
-	_order_box = VBoxContainer.new()
-	_order_box.add_theme_constant_override("separation", 1)
-	_order.add_child(_order_box)
-	_order_stamp = StationKit.Stamp.new()
-	_order.add_child(_order_stamp)
-	var spike := LabArt.Spike.new()
-	_arms_side.add_child(spike)
-	spike.set_meta("lathe", true)
-	_arms_side.add_child(_order)
-	_order.set_meta("lathe", true)
-	_grinder = PanelContainer.new()                       # szlifierka: ostrze broni białej, iskry tylko w trakcie
-	_grinder.add_theme_stylebox_override("panel", UiTheme.panel_box())
-	var gv := VBoxContainer.new()
-	gv.add_theme_constant_override("separation", 3)
-	_grinder.add_child(gv)
-	gv.add_child(UiTheme.mono(UiTheme.label(tr("GRINDER"), 8, UiTheme.MUTED)))
-	_grinder_text = UiTheme.label("", 9, UiTheme.TEXT)
-	gv.add_child(_grinder_text)
-	var track := ColorRect.new()
-	track.color = Color("23221d")
-	track.custom_minimum_size = Vector2(COLS * TILE_W - 30.0, 5)
-	gv.add_child(track)
-	_grinder_bar = ColorRect.new()
-	_grinder_bar.color = UiTheme.BONE_DIM
-	_grinder_bar.size = Vector2(0, 5)
-	track.add_child(_grinder_bar)
-	_sparks = LabArt.Sparks.new()
-	gv.add_child(_sparks)
-	_grinder.visible = false
-	left.add_child(_grinder)
+	_v_lab._build_lab_lathe(left, body)
 
-## Pracownia i tokarka: akta z zaczernieniami i korek (pracownia), rysunek, zlecenie, rulony schematów i szlifierka (tokarka), wydruk
-## odczytu w prawej kolumnie. Wołane z `_refresh_detail` po wypełnieniu karty.
+## Zob. stations/lab_view.gd.
 func _dress_lab_lathe(w: int, o: Dictionary) -> void:
-	var lab := _mode == "lab"
-	var lathe := _mode == "lathe"
-	var base: RefCounted = Weapons.base_def(w)
-	var key := String(base.key)
-	var part := not o.is_empty() and String(o.get("slot", "")) != "service" and String(o.get("id", "")) != ""
-	_arms_side.visible = lab or lathe
-	for c in _arms_side.get_children():
-		c.visible = (lab and c.has_meta("lab")) or (lathe and c.has_meta("lathe") and part)
-	_cork.visible = lab and part
-	_dossier_head.visible = lab
-	_redacted.visible = lab
-	_legacy_stage.visible = not ((lab and part) or (lathe and part))
-	_blueprint.visible = lathe and part
-	_grinder.visible = lathe and base.is_melee()
-	# rulony schematów (tokarka): lista części przy kaflach zamiast na rysunku
-	var want: Control = _arms_left if lathe else _arms_detail
-	if _d_tiers.get_parent() != want:
-		_d_tiers.reparent(want)
-		if not lathe:
-			_arms_detail.move_child(_d_tiers, _d_text.get_index())
-	if lathe:                                              # nagłówki gniazd przy rulonach w kolorach blatu
-		for c in _d_tiers.get_children():
-			if c is Label:
-				(c as Label).add_theme_color_override("font_color", UiTheme.MUTED)
-	if not (lab or lathe):
-		if _d_stats.get_parent() != _arms_detail:
-			_d_stats.reparent(_arms_detail)
-			_arms_detail.move_child(_d_stats, _d_panel.get_index() + 1)
-		return
-	if lab:
-		_dossier_head.text = "ОБЪЕКТ 86  ·  ОТДЕЛ 3  ·  " + tr("FILE %s") % String(base.name)
-		(_redacted as LabArt.Redacted).text = tr("Recovered from █ — do not point at █.")
-		_redacted.queue_redraw()
-		_jars_cap.text = tr("SAMPLES  ·  %d") % Scrap.samples
-		(_jars as LabArt.Jars).count = mini(Scrap.samples, 6)
-		# odczyt części na wydruku: porównanie przenosi się z karty na wydruk (kolory wydruku)
-		var body: VBoxContainer = _printout.get_meta("body")
-		if _d_stats.get_parent() != body:
-			_d_stats.reparent(body)
-		_printout_head.text = "== " + tr("READOUT") + " · " + (tr(String(Parts.get_part(String(o["id"])).get("name", ""))).to_upper() if part else String(base.name)) + " =="
-		_printout.visible = part and _d_stats.get_child_count() > 0
-		_recolor_printout(_printout)
-	if lathe:
-		_dress_lathe(w, o, key, part)
+	_v_lab._dress_lab_lathe(w, o)
 
-## Tokarka: rysunek części (szablon wg gniazda), zlecenie odręczne z pieczątką PRZYJĘTO, gdy część jest na tokarce, szlifierka.
+## Zob. stations/lab_view.gd.
 func _dress_lathe(w: int, o: Dictionary, key: String, part: bool) -> void:
-	var base: RefCounted = Weapons.base_def(w)
-	if base.is_melee():
-		var edge := Profile.edge_of(key)
-		_grinder_text.text = UiTheme.num_text("%s · %s %d%%" % [String(base.name), tr("edge"), int(edge)])
-		_grinder_bar.size.x = (_grinder_bar.get_parent() as Control).custom_minimum_size.x * edge / 100.0
-		(_sparks as LabArt.Sparks).active = _clean_w == w
-	if not part:
-		return
-	var id := String(o["id"])
-	var pd := Parts.get_part(id)
-	var bp := _blueprint as LabArt.Blueprint
-	bp.slot = String(o["slot"])
-	bp.title = tr(String(pd.get("name", id))).to_upper()
-	bp.line2 = "%s · %s · %s" % [String(base.name), _slot_label(key, String(o["slot"])).to_upper(), tr("1 PC.")]
-	var hsh := absi(hash(id))
-	bp.dims = Vector2(30 + hsh % 30, 12 + (hsh / 31) % 20)
-	bp.has_schematic = Scrap.schematics.has(id) or Scrap.lathe.has(id) or Scrap.has_part(id)
-	bp.queue_redraw()
-	_clear_children(_order_box)
-	var pal := NotePaletteRef.palette(NotePaletteRef.Note.SCRAWL)
-	var hand := UiTheme.note_font(NotePaletteRef.Note.SCRAWL)
-	_order_box.add_child(UiTheme.mono(UiTheme.ink(tr("WORK ORDER No. %04d") % (417 + hsh % 400), 7, pal["dim"])))
-	var nm := UiTheme.ink(tr(String(pd.get("name", id))), 12, pal["ink"])
-	nm.add_theme_font_override("font", hand)
-	_order_box.add_child(nm)
-	for r in [[tr("For"), String(base.name)], [tr("Cost"), "%d" % Scrap.machine_price(id)], [tr("Lathe"), "%d / %d" % [Scrap.lathe.size(), Scrap.LATHE_SLOTS]]]:
-		var h := HBoxContainer.new()
-		var a := UiTheme.ink(String(r[0]), 8, pal["dim"])
-		a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		h.add_child(a)
-		h.add_child(UiTheme.ink(String(r[1]), 8, pal["ink"]))
-		_order_box.add_child(h)
-	_order_box.add_child(UiTheme.ink(tr("Collect after a successful mission"), 7, pal["dim"]))
-	var st := _order_stamp as StationKit.Stamp
-	if Scrap.lathe.has(id):
-		st.hold(tr("ACCEPTED"))
-	else:
-		st.hold("")
+	_v_lab._dress_lathe(w, o, key, part)
 
-## Napisy pod wydrukiem / rysunkiem: kolory atramentu na papierze zamienione na kolory wydruku (zielony na ciemnym).
+## Zob. stations/lab_view.gd.
 func _recolor_printout(root: Node) -> void:
-	var p := LabArt.printout()
-	var map := {UiTheme.INK: p["ink"], UiTheme.INK_MUTED: p["dim"], UiTheme.INK_GAIN: p["ink"], UiTheme.INK_COST: Color("e3b46e"), UiTheme.INK_PRICE: p["dim"]}
-	for n in root.find_children("*", "Control", true, false):
-		if n is Label or n is Button:
-			var c := n as Control
-			if c.has_theme_color_override("font_color"):
-				var col := c.get_theme_color("font_color")
-				if map.has(col):
-					c.add_theme_color_override("font_color", map[col])
+	_v_lab._recolor_printout(root)
 
-## Stół konserwacji (ST-02): karta znika — rozłożona broń na płótnie i przyrządy stoją na ciemnym blacie, napisy w kolorach blatu,
-## lista części zastąpiona wyborem przyrządu (strzałki w lewo / w prawo albo klik). Pozostałe stanowiska: karta na papierze.
+## Zob. stations/service_view.gd.
 func _service_skin(on: bool) -> void:
-	if _arms_paper.get_meta("service", false) == on:
-		return
-	_arms_paper.set_meta("service", on)
-	var deck := StyleBoxFlat.new()
-	deck.bg_color = Color(0, 0, 0, 0)
-	deck.set_content_margin_all(2)
-	_arms_paper.add_theme_stylebox_override("panel", deck if on else UiTheme.paper_box())
-	_d_title.add_theme_color_override("font_color", UiTheme.TEXT if on else UiTheme.INK)
-	_d_tag.add_theme_color_override("font_color", UiTheme.MUTED if on else UiTheme.INK_MUTED)
-	_d_text.add_theme_color_override("font_color", UiTheme.MUTED if on else UiTheme.INK)
-	_d_tiers.visible = not on
-	_legacy_stage.modulate = Color(0.78, 0.76, 0.72) if on else Color.WHITE  # płótno z rozłożoną bronią przyciemnione — światło na przyrządach
+	_v_service._service_skin(on)
 
-## Pracownia / tokarka: droga części broni specjalnej PRÓBKI › BADANIE › SCHEMAT › TOKARKA › ŁAWA — zrobione kroki zielone, bieżący z paskiem,
-## pod spodem jedno zdanie, co dalej (dawniej trzeba było to wyczytać z nawiasów przy częściach).
+## Zob. stations/lab_view.gd.
 func _fill_lab_chain(key: String, slot: String, id: String) -> void:
-	if id == "" or not Scrap.is_lab_part(id):
-		return
-	var rc := Scrap.research_cost(id)
-	var step := 0
-	var busy := false
-	var note := ""
-	if Scrap.has_part(id):
-		step = 5 if Profile.fitted(key, slot) == id else 4
-		note = tr("Fitted to your gun.") if step == 5 else tr("Part made — fit it at the workshop bench.")
-	elif Scrap.lathe.has(id):
-		step = 3
-		busy = true
-		note = tr("On the lathe — ready after a successful mission.")
-	elif Scrap.schematics.has(id):
-		step = 3
-		note = tr("Schematic ready — make the part on the lathe.")
-	elif Scrap.research.has(id):
-		step = 1
-		busy = true
-		note = tr("Being researched — ready after a successful mission.")
-	elif Scrap.samples >= rc.x:
-		step = 1
-		note = tr("You have %s — enough to research it at the lab.") % _samples_text(Scrap.samples)
-	else:
-		note = tr("Research needs %s, you have %d. Elites, bosses and side goals drop samples.") % [_samples_text(rc.x), Scrap.samples]
-	if _mode == "lab":                                     # tablica korkowa (ST-05): kartki kroków na pinezkach, czerwona nić
-		var subs := [tr("%d in jars") % Scrap.samples, tr("here"), tr("printout"), "ST-06", tr("fitting")]
-		var steps: Array = []
-		for i in LAB_STEPS.size():
-			steps.append([tr(LAB_STEPS[i]), subs[i]])
-		var ck := _cork as LabArt.CorkChain
-		ck.steps = steps
-		ck.step = step
-		ck.busy = busy
-		ck.queue_redraw()
-		var nl := UiTheme.ink(note, 8)
-		nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		nl.custom_minimum_size.x = DETAIL_W
-		_d_panel.add_child(nl)
-		return
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 3)
-	for i in LAB_STEPS.size():
-		if i > 0:
-			row.add_child(UiTheme.ink("›", 8, UiTheme.INK_MUTED))
-		var done := i < step
-		var cell := PanelContainer.new()
-		var box := StyleBoxFlat.new()
-		box.bg_color = UiTheme.PAPER_SEL if i == step else Color(0, 0, 0, 0)
-		box.set_content_margin_all(1)
-		box.content_margin_left = 3
-		box.content_margin_right = 3
-		cell.add_theme_stylebox_override("panel", box)
-		cell.add_child(UiTheme.ink(tr(LAB_STEPS[i]) + ("…" if busy and i == step else ""), 8, UiTheme.INK_GAIN if done else (UiTheme.INK if i == step else UiTheme.INK_MUTED)))
-		row.add_child(cell)
-	_d_panel.add_child(row)
-	var l := UiTheme.ink(note, 8)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.custom_minimum_size.x = DETAIL_W
-	_d_panel.add_child(l)
+	_v_lab._fill_lab_chain(key, slot, id)
 
 func _first_part_opt() -> int:
 	if _mode == "bench":
@@ -3184,97 +2041,9 @@ func _refresh_body() -> void:
 	_refresh_service_todo()
 	_refresh_detail(int(LIST[_sel]))
 
+## Zob. stations/supply_view.gd.
 func _refresh_supplies() -> void:
-	var kinds := _supply_kinds()
-	for i in _sup_tiles.size():
-		var t := _sup_tiles[i] as SupplyTile
-		var sel := i == _sup_sel
-		t.set_lit(sel)
-		var k := String(kinds[i])
-		t.visible = _sup_in_mode(k)
-		var have := Arsenal.get_throwable(k)
-		var price := _sup_price(k)
-		t.price_label.text = ("%d" % price) + (("  +%d" % Scrap.ordered(k)) if Scrap.ordered(k) > 0 else "")
-		(t.icon_node as ItemIcon).set_item(k, Color.WHITE if have > 0 or Scrap.bank >= price else Color(0.6, 0.64, 0.68))
-		t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.TEXT)
-		t.price_label.add_theme_color_override("font_color", GOLD if Scrap.bank >= price else UiTheme.DANGER)
-		t.bar.have = Throwables.units(k, have)
-		t.bar.queue_redraw()
-		if t.icon_node is SupplyArt.BoxFace:                 # pudełko na półce: okienka = pudełka przy sobie, cena na desce
-			(t.icon_node as SupplyArt.BoxFace).stock = t.bar.have
-			t.icon_node.queue_redraw()
-		elif _is_pyro_kind(k):                               # przegroda skrzyni: napis atramentem na pasku, licznik w rogu
-			t.name_label.add_theme_color_override("font_color", UiTheme.INK)
-			t.name_label.add_theme_constant_override("outline_size", 0)
-			t.price_label.add_theme_color_override("font_color", UiTheme.INK_PRICE if Scrap.bank >= price else UiTheme.INK_COST)
-			t.price_label.add_theme_constant_override("outline_size", 0)
-			t.state_label.text = "%d/%d" % [Throwables.units(k, have), t.bar.maxn]
-			t.state_label.add_theme_color_override("font_color", UiTheme.TEXT if have > 0 else UiTheme.MUTED)
-		t.tooltip_text = tr("The squad carries %d of %d.") % [have, int(Throwables.KINDS[k]["max"])]
-	_sup_note.text = tr("Grenades, mines and 40 mm rounds are at the pyrotechnics table, special ammo at the reloading press.") if _mode == "bench" else ""
-	_sup_note.visible = _sup_note.text != ""
-	var k2 := String(kinds[_sup_sel])
-	var d: Dictionary = Throwables.KINDS[k2]
-	var have2 := Arsenal.get_throwable(k2)
-	var maxn := int(d["max"])
-	_s_icon.set_item(k2, Color.WHITE)
-	_s_title.text = String(d["name"])
-	var mode: String = {"throw": "Throwable", "place": "Placed", "use": "Tool", "ammo": "Ammunition"}[String(d["mode"])]
-	_s_tag.text = "%s  ·  %s" % [tr(String(d["full"])), tr(mode)]
-	if Throwables.is_ammo(k2):
-		_s_title.text = tr(String(d["full"]))               # pełna nazwa naboju zamiast skrótu z kafla („7.62 HOT” → „7.62×39 ładunek wzmocniony”)
-		_s_tag.text = "%s  ·  %s" % [String(d["name"]), tr(mode)]
-	for ch in _s_stats.get_children():
-		_s_stats.remove_child(ch)
-		ch.free()
-	var rows: Array = [["Carried", "%d / %d" % [have2, maxn]], ["Issued free", tr("%d per mission") % int(d["issue"]) if int(d["issue"]) > 0 else "—"]]
-	if Throwables.is_ammo(k2):
-		var ct := Ammo.from_kind(k2)
-		var users: Array = []
-		for wd in Weapons.defs():
-			if String(wd.caliber) == String(ct.get("cal", "")):
-				users.append(String(wd.name))
-		rows = [["Carried", tr("%d / %d rounds") % [have2, maxn]], ["Box", tr("%d rounds") % Throwables.box_of(k2)], ["Fits", ", ".join(users)]]
-	elif (d.has("noise") or k2 in ["frag", "charge"]) and _mode != "pyro":
-		rows.append(["Noise", Codex.noise_text(k2)])                       # przy stole pirotechnicznym hałas pokazuje VU-metr
-	if Throwables.FUSES.has(k2) and _mode != "pyro":
-		rows.append(["Fuse", "%.1f s" % Scrap.fuse_of(k2)])              # przy stole pirotechnicznym zapalnik ma własny przełącznik
-	for r in rows:
-		_s_stats.add_child(UiTheme.ink(tr(String(r[0])), 9, UiTheme.INK_MUTED))
-		_s_stats.add_child(UiTheme.ink(UiTheme.num_text(tr(String(r[1]))), 9))
-		_s_stats.add_child(Control.new())
-	_fill_noise(k2)
-	_fill_fuse(k2)
-	_fill_blast(k2)
-	_fill_ammo_cmp(k2)
-	_notch.target = _sup_tiles[_sup_sel]
-	_fill_press_queue()
-	_s_text.text = tr(String(d["note"]))
-	var summary := _queue_summary(_mode == "press")
-	if summary != "":
-		_s_text.text += "\n\n" + summary
-	if Throwables.is_ammo(k2):
-		_s_text.text += "\n" + tr("[%s] in the field picks the ammo type for the next magazine.") % Actions.key("ammo_type")
-	var price2 := _sup_price(k2)
-	var queued := Scrap.ordered(k2) * Throwables.box_of(k2) + int(Scrap.deliveries.get(k2, 0))
-	_act_state(_s_action, "", 0)
-	_s_action.disabled = have2 + queued >= maxn or not Scrap.enabled()
-	if not Scrap.enabled():
-		_s_action.text = "No scrap in this mode"
-	elif int(Scrap.deliveries.get(k2, 0)) > 0:
-		_s_action.disabled = have2 >= maxn
-		_s_action.text = tr("Collect ready delivery · %d rounds") % int(Scrap.deliveries[k2])
-		_act_state(_s_action, "collect", 0)
-	elif have2 + queued >= maxn:
-		_s_action.text = "The squad is carrying the maximum"
-	elif Throwables.is_ammo(k2) and Scrap.orders.size() >= Scrap.PRESS_SLOTS:
-		_s_action.text = tr("The press is full — %d batches per mission") % Scrap.PRESS_SLOTS
-	elif Throwables.is_ammo(k2):
-		_s_action.text = tr("Order a batch  ·  %d scrap  ·  ready after the mission") % price2
-		_act_state(_s_action, "ready", price2)
-	else:
-		_s_action.text = (tr("Buy a box  ·  %d scrap") % price2) if Throwables.is_ammo(k2) else (tr("Buy +1  ·  %d scrap") % price2)
-		_act_state(_s_action, "ready", price2)
+	_v_supply._refresh_supplies()
 
 func _on_supply_result(kind: String, ok: bool, reason: String) -> void:
 	if not _open:
