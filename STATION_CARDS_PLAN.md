@@ -82,7 +82,7 @@ najważniejszych:
 | Materiały | `DOSSIER` (akta: metryka, etykieta partii, karta w wieku skrzyni, teczka), `PRINTOUT` (odczyt pracowni, rysunek dla tokarki, perforacja), `SCRAWL` (lista do zrobienia, zlecenie, książeczka) | `UiTheme.note_palette()` |
 | Światło jako kursor | wybrany przedmiot w snopie lampy, reszta pod ciemną nakładką; ceny i nazwy na tabliczkach zostają czytelne; ramka tylko w trybie wysokiego kontrastu | nakładka i gradient (`TextureRect`) w warstwie UI, bez świateł 2D |
 | VU-metr hałasu | ta sama skala co HUD (liniowa 0–100 Uwagi, strefy z `NoiseMgr` / `NightShift`); igła = poziom po typowym użyciu od ciszy (§5a), cień = to samo bez zmiany; tylko gdy przedmiot zmienia hałas | `VuMeter` wydzielony z `hud.gd` do własnego pliku, wspólny dla HUD i kart |
-| Zdarzenia Kryjówki | burza: karta przygasa z generatorem; pukanie do D-7: papiery drgają, czerwony błysk od strony drzwi, napis dźwięku z kierunkiem | sygnały z `view3d` / `hub_prop` |
+| Zdarzenia Kryjówki | burza: przygasa tylko lampa generatora w świecie, karta nie (1.7.421 — skok jasności karty wyglądał jak migotanie); pukanie do D-7: papiery drgają, czerwony błysk od strony drzwi, napis dźwięku z kierunkiem | sygnały z `view3d` / `hub_prop` |
 
 ### 5a. VU na karcie — skala i wskazówka (poprawka z przeglądu)
 
