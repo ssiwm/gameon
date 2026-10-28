@@ -166,6 +166,30 @@ class CardTile extends Button:
 ## Kafel broni w siatce stanowiska: stan zależny od stanowiska (stan techniczny, ostrze, części) albo miejsce zakupu.
 class Tile extends CardTile:
 	var weapon := 0
+	var marks: ServiceMarks
+
+## Stół konserwacji, kafel broni: dwie ikonki części eksploatacyjnych przy prawej krawędzi — lufa (rura z wylotem) i sprężyny (zygzak).
+## Stan 0 — ukryta, 1 — do wymiany (złoto), 2 — pilna (czerwień). Same wymiany: stan czyszczenia mówi linia STAN.
+class ServiceMarks extends Control:
+	var barrel := 0
+	var springs := 0
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(30, 9)
+		size = custom_minimum_size
+	func _col(state: int) -> Color:
+		return UiTheme.DANGER if state >= 2 else Color(0.95, 0.8, 0.4)          # złoto jak GOLD panelu
+	func _draw() -> void:
+		if barrel > 0:
+			var c := _col(barrel)
+			draw_rect(Rect2(0, 3, 11, 3), c)                          # rura lufy
+			draw_rect(Rect2(10, 2, 2, 5), c)                          # wylot
+		if springs > 0:
+			var c2 := _col(springs)
+			var pts := PackedVector2Array()
+			for i in 7:
+				pts.append(Vector2(17.0 + i * 2.0, 1.0 if i % 2 == 0 else 8.0))
+			draw_polyline(pts, c2, 1.5)
 
 ## Kropki zapasu drużyny: `have` wypełnionych z `maxn` (jak kwadraciki poziomu ulepszeń broni).
 class StockBar extends Control:
@@ -398,6 +422,7 @@ var _prev_mouse := Input.MOUSE_MODE_VISIBLE
 var _card: PanelContainer
 var _wallet: Label
 var _tiles: Array = []
+var _svc_todo: Label                  ## stół konserwacji: co zrobić z każdą bronią (lewa kolumna pod kaflami)
 var _d_stage: Control                 ## ława 3D: wybrana broń z częściami, część spod kursora świeci i wysuwa się z gniazda (gun_stage.gd)
 var _d_title: Label
 var _d_tag: Label
@@ -478,15 +503,23 @@ func _ready() -> void:
 	root.add_child(_scroll_body(_look_body))
 	_look_body.get_parent().visible = false
 	_look_body.visible = false
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 10)
+	body.add_child(left)
 	var grid := GridContainer.new()
 	grid.columns = COLS
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 6)
-	body.add_child(grid)
+	left.add_child(grid)
 	for i in LIST.size():
 		var t := _make_tile(int(LIST[i]), i)
 		grid.add_child(t)
 		_tiles.append(t)
+	_svc_todo = UiTheme.label("", 9, UiTheme.MUTED)                   # stół konserwacji: lista „do zrobienia” pod kaflami (puste miejsce przy kilku broniach)
+	_svc_todo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_svc_todo.custom_minimum_size.x = COLS * TILE_W
+	_svc_todo.visible = false
+	left.add_child(_svc_todo)
 	body.add_child(_paper(_build_detail()))
 	_legacy_stage = _d_stage as GunStage
 	_workbench = GunsmithPanel.new()
@@ -1778,6 +1811,63 @@ func _paper_bar(label: String, frac: float, value: String, col: Color, cap := -1
 	h.add_child(v)
 	_d_panel.add_child(h)
 
+## Zalecenie stołu konserwacji dla broni `w`: jedna rzecz do zrobienia teraz, od najpilniejszej (od 1.7.413 — panel podawał same liczby).
+## {level, id, text, short}: level 2 — pilne (broń się zacina albo czyszczenie nie wyprowadzi jej ponad próg zacięć, lufa ≥ SERVICE_URGENT),
+## 1 — warto (część od progu wymiany), 0 — drobiazg (brud), -1 — nic do roboty; `id` — wiersz SERVICE, na który trafia kursor. {} — broń biała.
+func _service_advice(w: int) -> Dictionary:
+	var base: RefCounted = Weapons.base_def(w)
+	var key := String(base.key)
+	if base.is_melee():
+		return {}
+	var cond := Profile.condition(key)
+	var cap := Profile.clean_cap(key)
+	var ct := Profile.clean_time(key)
+	var bw := Profile.part_wear(key, "barrel")
+	var spread := int(round(Controller.BARREL_SPREAD * pow(bw / 100.0, 2.0) * 100.0))
+	var jams: bool = base.can_jam()
+	var springs := jams and Profile.service_due(key, "springs")
+	var barrel := jams and Profile.service_due(key, "barrel")
+	if springs and cap < Controller.JAM_FROM:
+		return {"level": 2, "id": "springs", "short": tr("replace springs"),
+			"text": tr("Replace the springs: cleaning only reaches %d%% — below %d%% the gun jams.") % [int(cap), int(Controller.JAM_FROM)]}
+	if jams and cond < Controller.JAM_FROM and ct > 0.0:
+		return {"level": 2, "id": "clean", "short": tr("clean (%d%%)") % int(cond),
+			"text": tr("Clean it (%d s): at %d%% the gun jams.") % [ceili(ct), int(cond)]}
+	if barrel and bw >= Profile.SERVICE_URGENT:
+		return {"level": 2, "id": "barrel", "short": tr("replace barrel"), "text": tr("Replace the barrel: shots spread %d%% wider.") % spread}
+	if springs:
+		return {"level": 1, "id": "springs", "short": tr("replace springs"), "text": tr("Replace the springs: cleaning only reaches %d%%.") % int(cap)}
+	if barrel:
+		return {"level": 1, "id": "barrel", "short": tr("replace barrel"), "text": tr("Replace the barrel: shots spread %d%% wider.") % spread}
+	if ct > 0.0:
+		return {"level": 0, "id": "clean", "short": tr("clean (%d%%)") % int(cond), "text": tr("Clean it when you can (%d s) — condition %d%%.") % [ceili(ct), int(cond)]}
+	return {"level": -1, "id": "clean", "short": "", "text": tr("In good order — nothing to do.")}
+
+## Kolor zalecenia na papierze: pilne — koszt, warto — cena, drobiazg — atrament, nic — zysk.
+static func _advice_ink(level: int) -> Color:
+	return [UiTheme.INK_GAIN, UiTheme.INK, UiTheme.INK_PRICE, UiTheme.INK_COST][clampi(level + 1, 0, 3)]
+
+## Lewa kolumna stołu konserwacji: co zrobić z całym ekwipunkiem — jedna linia na broń, która czegoś potrzebuje (pilne pierwsze).
+func _refresh_service_todo() -> void:
+	_svc_todo.visible = _mode == "service" and _page == 0
+	if not _svc_todo.visible:
+		return
+	var rows: Array = []
+	for i in _arms_list():
+		var w := int(LIST[int(i)])
+		if not Scrap.is_unlocked(w):
+			continue
+		var adv := _service_advice(w)
+		if not adv.is_empty() and int(adv["level"]) >= 0:
+			rows.append([int(adv["level"]), "%s — %s" % [String(Weapons.base_def(w).name), String(adv["short"])]])
+	rows.sort_custom(func(a: Array, b: Array) -> bool: return int(a[0]) > int(b[0]))
+	var lines: Array[String] = [tr("TO DO")]
+	for r in rows:
+		lines.append(("! " if int(r[0]) >= 2 else "· ") + String(r[1]))
+	if rows.is_empty():
+		lines.append(tr("All guns in good order."))
+	_svc_todo.text = "\n".join(lines)
+
 ## Kolor zużycia części eksploatacyjnej: zwykły poniżej progu wymiany, cena od Profile.SERVICE_DUE, koszt (pilne) od SERVICE_URGENT.
 func _wear_ink(wear: float) -> Color:
 	return UiTheme.INK_COST if wear >= Profile.SERVICE_URGENT else (UiTheme.INK_PRICE if wear >= Profile.SERVICE_DUE else UiTheme.INK)
@@ -1790,6 +1880,12 @@ func _fill_service_panel(base: RefCounted, cur: RefCounted) -> void:
 		var edge := Profile.edge_of(key)
 		_paper_bar(tr("Edge"), edge / 100.0, "%d%%" % int(edge), UiTheme.INK_GAIN if edge >= 95.0 else UiTheme.INK)
 		return
+	var adv := _service_advice(int(LIST[_sel]))
+	if not adv.is_empty():
+		var al := UiTheme.ink(String(adv["text"]), 10, _advice_ink(int(adv["level"])))
+		al.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		al.custom_minimum_size.x = DETAIL_W
+		_d_panel.add_child(al)
 	var cond := Profile.condition(key)
 	var cap := Profile.clean_cap(key)
 	var cond_col := UiTheme.INK_GAIN if cond >= 95.0 else (UiTheme.INK if cond >= Controller.JAM_FROM else UiTheme.INK_COST)
@@ -1807,10 +1903,7 @@ func _fill_service_panel(base: RefCounted, cur: RefCounted) -> void:
 	grid.add_theme_constant_override("v_separation", 1)
 	grid.add_child(UiTheme.ink(tr("Jam chance"), 9, UiTheme.INK_MUTED))
 	grid.add_child(UiTheme.ink(tr("none") if jam <= 0.0 else tr("1 in %d shots") % maxi(1, roundi(1.0 / jam)), 9, UiTheme.INK_COST if jam > 0.0 else UiTheme.INK_GAIN))
-	var ct := Profile.clean_time(key)
-	grid.add_child(UiTheme.ink(tr("Cleaning"), 9, UiTheme.INK_MUTED))
-	grid.add_child(UiTheme.ink(tr("%d s") % ceili(ct) if ct > 0.0 else tr("clean"), 9))
-	_d_panel.add_child(grid)
+	_d_panel.add_child(grid)                              # czas czyszczenia stoi w wierszu „Czyszczenie” i na przycisku — nie trzeci raz tutaj
 
 ## Pracownia / tokarka: droga części broni specjalnej PRÓBKI › BADANIE › SCHEMAT › TOKARKA › ŁAWA — zrobione kroki zielone, bieżący z paskiem,
 ## pod spodem jedno zdanie, co dalej (dawniej trzeba było to wyczytać z nawiasów przy częściach).
@@ -1865,6 +1958,11 @@ func _first_part_opt() -> int:
 	if _mode == "bench":
 		return -1
 	var ops := _options(int(LIST[_sel]))
+	if _mode == "service":                                # stół konserwacji: kursor od razu na tym, co zalecane
+		var adv := _service_advice(int(LIST[_sel]))
+		for i in ops.size():
+			if not adv.is_empty() and String(ops[i]["id"]) == String(adv["id"]):
+				return i
 	for i in ops.size():
 		if String(ops[i]["id"]) != "":
 			return i
@@ -2225,6 +2323,7 @@ func _refresh() -> void:
 	for i in _tiles.size():
 		(_tiles[i] as Tile).visible = arms.has(i)
 		_refresh_tile(_tiles[i] as Tile, i == _sel)
+	_refresh_service_todo()
 	_refresh_detail(int(LIST[_sel]))
 
 func _refresh_supplies() -> void:
@@ -2340,6 +2439,8 @@ func _refresh_tile(t: Tile, selected: bool) -> void:
 	(t.icon_node as GunIcon).set_gun(int(Weapons.base_def(w).gun_row), Weapons.base_def(w).tracer_color, Color.WHITE if unlocked else Color(0.45, 0.5, 0.55))
 	t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if selected else (UiTheme.TEXT if unlocked else UiTheme.MUTED))
 	t.bar.visible = false
+	if t.marks != null:
+		t.marks.visible = false                       # ikonki wymian tylko na stole konserwacji (włącza je gałąź „service” niżej)
 	t.state_label.add_theme_color_override("font_color", UiTheme.MUTED)
 	# Kafle są tylko na stanowiskach pomocniczych (ława ma własny stojak): broń kupuje się wyłącznie przy ławie, więc bez ceny.
 	# Linia stanu mówi to, co liczy się PRZY TYM stanowisku: stół konserwacji — stan, szlifierka — ostrze, reszta — odblokowane części.
@@ -2354,6 +2455,19 @@ func _refresh_tile(t: Tile, selected: bool) -> void:
 			t.state_label.text = (tr("Condition %d%%") % int(cond)).to_upper()
 			t.state_label.add_theme_color_override("font_color", UiTheme.DANGER if cond < 70.0 else (GOLD if cond < 95.0 else UiTheme.OK))
 			t.tooltip_text = tr("Below 70% a gun starts to jam.")
+			# ikonki części do wymiany (lufa, sprężyny) w miejscu kropek części — na stole konserwacji kropek nie ma
+			var tile := t as Tile
+			if tile != null:
+				if tile.marks == null:
+					tile.marks = ServiceMarks.new()
+					tile.marks.position = Vector2(TILE_W - 6.0 - tile.marks.size.x, TILE_H - 19.0)
+					tile.add_child(tile.marks)
+				for pid in Profile.WEAR_PARTS:
+					var pw := Profile.part_wear(key, String(pid))
+					var st := 0 if not (Weapons.def(w).can_jam() and Profile.service_due(key, String(pid))) else (2 if pw >= Profile.SERVICE_URGENT else 1)
+					tile.marks.set(String(pid), st)
+				tile.marks.visible = true
+				tile.marks.queue_redraw()
 		elif _mode == "lathe" and melee:
 			t.state_label.text = (tr("Edge %d%%") % int(Profile.edge_of(key))).to_upper()
 		else:
@@ -2545,13 +2659,13 @@ func _refresh_detail(w: int) -> void:
 		desc = tr("Your saved sets of parts for this gun (only yours — the squad shares the unlocks, not the build). %s fits the set, %s saves your current fit over it.") % [
 			_menu_key("menu_accept", Actions.pad_mode), _menu_key("menu_alt", Actions.pad_mode)]
 	elif unlocked and not o.is_empty() and String(o["slot"]) == "service" and String(o["id"]) == "barrel":
-		desc = tr("Every shot wears the bore, a hot barrel three times faster. A worn barrel throws the shots wider (at 100%% wear the cone is 60%% wider). A new one costs %d scrap from the squad — replaceable once the barrel is %d%% worn.") % [int(Scrap.SERVICE_COST["barrel"]), int(Profile.SERVICE_DUE)]
+		desc = tr("Every shot wears the bore, a hot one three times faster; a worn barrel spreads wider (up to +60%%). Replace from %d%% wear for %d scrap.") % [int(Profile.SERVICE_DUE), int(Scrap.SERVICE_COST["barrel"])]
 	elif unlocked and not o.is_empty() and String(o["slot"]) == "service" and String(o["id"]) == "sharpen":
 		desc = tr("Every swing dulls the edge a little. A dull blade hurts less — down to %d%% damage when fully blunt. Sharpening costs no scrap, only time at the grinder.") % int(Profile.EDGE_MIN * 100.0)
 	elif unlocked and not o.is_empty() and String(o["slot"]) == "service" and String(o["id"]) == "springs":
-		desc = tr("Recoil and firing-pin springs tire with every shot. Tired springs feed badly: cleaning can no longer bring the gun back to 100%%, only to 100 − half the spring wear. New springs cost %d scrap — replaceable once they are %d%% worn.") % [int(Scrap.SERVICE_COST["springs"]), int(Profile.SERVICE_DUE)]
+		desc = tr("Springs tire with every shot; tired ones keep cleaning from restoring the gun fully (100 − half the wear). Replace from %d%% wear for %d scrap.") % [int(Profile.SERVICE_DUE), int(Scrap.SERVICE_COST["springs"])]
 	elif unlocked and not o.is_empty() and String(o["slot"]) == "service":
-		desc = tr("Strip and clean the gun on the table: condition back to 100% (less with tired springs). It costs no scrap, only time — the dirtier the gun, the longer. Below 70% a gun starts to jam, and every shot wears it — faster with a hot barrel or a suppressor.")
+		desc = tr("Strip and clean the gun: no scrap, only time — the dirtier, the longer. Every shot fouls it (faster hot or suppressed); below 70% it starts to jam.")
 	elif unlocked and not o.is_empty() and String(o["id"]) != "":
 		desc = tr(String(Parts.get_part(String(o["id"]))["desc"]))
 	elif unlocked and not o.is_empty():
@@ -2579,8 +2693,16 @@ func _refresh_detail(w: int) -> void:
 		else:
 			_action.text = tr("Sharpen  ·  %d s") % ceili(stime) if stime > 0.0 else tr("Already sharp")
 	elif String(o["slot"]) == "service" and String(o["id"]) in Profile.WEAR_PARTS:
+		# skutek wymiany w liczbach (lufa: rozrzut, sprężyny: granica czyszczenia); poniżej progu przycisk wygaszony z progiem
 		var sid2 := String(o["id"])
-		_action.text = (tr("Replace  ·  %d scrap") % int(Scrap.SERVICE_COST[sid2])) if Profile.part_wear(key, sid2) >= 0.5 else tr("Like new")
+		var pw2 := Profile.part_wear(key, sid2)
+		if not Profile.service_due(key, sid2):
+			_action.text = tr("Like new") if pw2 < 0.5 else tr("Still serviceable  ·  replace from %d%% wear") % int(Profile.SERVICE_DUE)
+			_action.disabled = true
+		elif sid2 == "barrel":
+			_action.text = tr("Replace barrel  ·  %d scrap  ·  spread +%d%% → +0%%") % [int(Scrap.SERVICE_COST[sid2]), int(round(Controller.BARREL_SPREAD * pow(pw2 / 100.0, 2.0) * 100.0))]
+		else:
+			_action.text = tr("Replace springs  ·  %d scrap  ·  cleans to %d%% → 100%%") % [int(Scrap.SERVICE_COST[sid2]), int(Profile.clean_cap(key))]
 	elif String(o["slot"]) == "service":
 		var ctime := Profile.clean_time(key)
 		if _clean_w == w:

@@ -55,6 +55,7 @@ func run(m: Node) -> void:
 	await _migration()
 	await _jobs_deliveries()
 	await _ui()
+	await _service_card()
 	await _immersive()
 	await _progression()
 	await _strip_frame()
@@ -743,3 +744,34 @@ func _outside_px(stage: Control) -> float:
 			var p := cam.unproject_position((mi as Node3D).global_transform * box.get_endpoint(i))
 			out = maxf(out, maxf(maxf(-p.x, p.x - size.x), maxf(-p.y, p.y - size.y)))
 	return out
+
+## Stół konserwacji (K3, 1.7.413): zalecenie na górze karty i kursor na zalecanym wierszu, lista „do zrobienia” pod kaflami, ikonki wymian
+## na kafelku, skutek wymiany na przycisku, wygaszony przycisk poniżej progu.
+func _service_card() -> void:
+	var ui := get_tree().get_first_node_in_group("workshop_ui")
+	station("service_bench")
+	Profile.cond = {"m83": 90.0}
+	Profile.worn = {"m83": {"springs": 65.0, "barrel": 10.0}}
+	ui.open("service")
+	ui._sel = ui.LIST.find(Weapons.M83)
+	ui._opt = ui._first_part_opt()
+	ui._refresh()
+	var adv: Dictionary = ui._service_advice(Weapons.M83)
+	var ops: Array = ui._options(Weapons.M83)
+	var top: Label = ui._d_panel.get_child(0) as Label
+	check("zalecenie: zmęczone sprężyny (czyszczenie do 67%%) są pilne, kursor na ich wierszu: %s" % str(adv),
+		int(adv.get("level", -9)) == 2 and String(adv.get("id", "")) == "springs" and String(ops[ui._opt]["id"]) == "springs" and top != null and top.text == String(adv["text"]))
+	var tile = ui._tiles[ui._sel]
+	check("kafel M-83: ikonka sprężyn zapalona, lufy nie", tile.marks != null and tile.marks.visible and tile.marks.springs == 1 and tile.marks.barrel == 0)
+	check("lista do zrobienia pod kaflami wymienia M-83: %s" % ui._svc_todo.text.replace("
+", " / "),
+		ui._svc_todo.visible and ui._svc_todo.text.contains("M-83 — " + tr("replace springs")))
+	check("przycisk wymiany sprężyn podaje skutek: %s" % ui._action.text, not ui._action.disabled and ui._action.text.contains("→ 100%"))
+	ui._pick_opt(ops.find({"slot": "service", "id": "barrel"}))
+	check("lufa zużyta w 10%%: przycisk wygaszony z progiem: %s" % ui._action.text, ui._action.disabled and ui._action.text.contains(str(int(Profile.SERVICE_DUE))))
+	Profile.cond = {}
+	Profile.worn = {}
+	ui._refresh()
+	check("broń sprawna: zalecenie bez pracy, lista pusta", int(ui._service_advice(Weapons.M83)["level"]) == -1 and ui._svc_todo.text.contains(tr("All guns in good order.")))
+	ui.close()
+	check("lista do zrobienia tylko na stole konserwacji", not ui._svc_todo.visible or not ui._open)
