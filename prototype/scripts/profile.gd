@@ -51,6 +51,10 @@ var worn: Dictionary = {}                     ## klucz broni → {część ekspl
 ## zużyte nie dają się doczyścić: czyszczenie przywraca stan najwyżej do clean_cap. Wymiana za złom (Scrap.SERVICE_COST).
 const WEAR_PARTS := ["barrel", "springs"]
 const SPRINGS_CAP := 0.5                      ## górna granica stanu po czyszczeniu = 100 − 0,5 × zużycie sprężyn (60 % zużycia → 70 %, próg zacięć)
+## Wymiana części eksploatacyjnej dopiero od SERVICE_DUE % zużycia (od 1.7.412): niżej skutek jest pomijalny (lufa 40 % = rozrzut +10 %,
+## sprężyny 40 % = czyszczenie do 80 %), a gra pozwalała zapłacić 40 złomu za lufę zużytą w 0,7 %. Od SERVICE_URGENT % — pilna.
+const SERVICE_DUE := 40.0
+const SERVICE_URGENT := 70.0
 var mastery: Dictionary = {}                  ## klucz broni → punkty wprawy (GUNSMITH_PLAN §7.3, od 1.7.330): trafienia i zabójstwa tym graczem z tej broni
 var history: Dictionary = {}                  ## klucz broni → {"k": zabójstwa, "e": elity, "b": bossowie} (GUNSMITH_PLAN §7.4, od 1.7.331)
 var seen: Dictionary = {}                     ## znaczniki „nowe” (od 1.7.409): "perk:<id>" / "part:<id>" / "beast:<id>" → gracz już to obejrzał
@@ -380,6 +384,10 @@ func wear_part(key: String, part: String, amount: float) -> void:
 	w[part] = minf(100.0, float(w.get(part, 0.0)) + amount)
 	worn[key] = w
 	_cond_dirty = true
+
+## Czy część `part` broni `key` jest już na tyle zużyta, że stół konserwacji pozwala ją wymienić.
+func service_due(key: String, part: String) -> bool:
+	return part_wear(key, part) >= SERVICE_DUE
 
 ## Nowa część `part` w broni `key` (stół konserwacji, po opłaceniu złomem przez serwer).
 func replace_part(key: String, part: String) -> void:

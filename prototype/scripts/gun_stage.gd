@@ -117,6 +117,9 @@ var _dirt_amount := 0.0
 var _strip_target := 0.0                     ## 1 — broń rozłożona na podzespoły (czyszczenie przy stole konserwacji)
 var _strip := 0.0
 var _comps: Array = []                        ## [{node, base, dir}] — podzespoły i części modelu do rozłożenia
+var _strip_box := AABB()                      ## obrys bieżącego modelu rozłożonego do końca (układ modelu); pusty — brak podzespołów
+var _strip_k := 1.0                           ## kadr rozłożonej broni: skala i środek; między nim a kadrem złożonej przechodzimy płynnie z _strip
+var _strip_c := Vector3.ZERO
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -217,8 +220,8 @@ func show_gun(w: int, ids: Array, hl_part: String, hl_slot: String, locked: bool
 		_model = GunModel.build(key, ids, bm, nt, deep)
 		_anchors.clear()
 		_pivot.add_child(_model)
-		_place()
 		_collect_comps()
+		_place()
 	# Zmiana podświetlenia nie przebudowuje modelu ani nie zostawia wysuniętego podzespołu.
 	for c in _comps:
 		(c["node"] as Node3D).position = c["base"]
@@ -454,6 +457,12 @@ func _collect_comps() -> void:
 		dv.z = 0.0
 		var dir := dv.normalized() if dv.length() > 0.001 else Vector3.UP
 		_comps.append({"node": nodes[i], "base": (nodes[i] as Node3D).position, "dir": dir, "hl": false})
+	# Obrys rozłożonej broni: podzespoły na chwilę w końcowym położeniu (zagnieżdżone sumują przesunięcia jak w _process).
+	for c in _comps:
+		(c["node"] as Node3D).position = (c["base"] as Vector3) + (c["dir"] as Vector3) * STRIP_M
+	_strip_box = model_bounds(_model)
+	for c in _comps:
+		(c["node"] as Node3D).position = c["base"]
 
 ## Kadr broni: skala i środek z obrysu broni fabrycznej i każdej jej części z modelem (z zapasem na wysunięcie), więc żadna część — także długi
 ## tłumik — nie wychodzi poza ławę, a kadr nie skacze przy zmianie części. Broń leży bokiem, więc mieści się długością (x) w szerokości kadru
@@ -471,12 +480,61 @@ func _place() -> void:
 		var vis_h := vis_w / aspect
 		_fit_k = minf(FILL_W * vis_w / maxf(box.size.x, 0.001), FILL_H * vis_h / maxf(box.size.y, 0.001))
 		_fit_c = box.get_center()
-	_model.scale = Vector3.ONE * _fit_k
-	_model.position = -_fit_c * _fit_k
+	_strip_k = _fit_k
+	_strip_c = _fit_c
+	if not bench_mode and _strip_box.has_volume():
+		var sbox := _strip_box.grow(PULL_M)
+		_strip_c = sbox.get_center()
+		_strip_k = _sway_fit(sbox, aspect, _fit_k)
+	_apply_fit()
 	if bench_mode and is_instance_valid(_table):
 		var vis_w := 2.0 * CAM_DIST * tan(deg_to_rad(CAM_FOV * 0.5))
 		_table.scale.y = (vis_w / aspect) / 1.55
 		_fit_tray()
+
+## Skala modelu wg postępu rozłożenia: kadr złożonej broni (stały dla broni) przechodzi w kadr rozłożonej (bieżące części), który
+## nigdy nie przybliża — rozłożona broń najwyżej się oddala, żeby żaden podzespół nie wyszedł poza okno.
+func _apply_fit() -> void:
+	if _model == null or not is_instance_valid(_model):
+		return
+	var s := ease(_strip, -1.8)
+	var k := lerpf(_fit_k, _strip_k, s)
+	_model.scale = Vector3.ONE * k
+	_model.position = -(_fit_c * _fit_k).lerp(_strip_c * _strip_k, s)
+
+## Kąty (odchylenie, pochylenie) rozłożonej broni, w których ma się mieścić w kadrze: bez dotyku leży bokiem (kołysanie wygasa z rozłożeniem).
+const STRIP_POSES := [Vector2(0.0, 0.0)]
+
+## Największa skala ≤ `k_max`, przy której obrys `box` (układ modelu, środek w osi obrotu) mieści się w FILL_W × FILL_H kadru
+## kamery perspektywicznej w każdym z kątów STRIP_POSES (bliższy koniec obróconej broni wychodzi na ekranie dalej).
+func _sway_fit(box: AABB, aspect: float, k_max: float) -> float:
+	var half_w := tan(deg_to_rad(CAM_FOV * 0.5))
+	var c := box.get_center()
+	var corners: Array[Vector3] = []
+	for i in 8:
+		corners.append(box.get_endpoint(i) - c)
+	var fits := func(k: float) -> bool:
+		for a in STRIP_POSES:
+			var basis := Basis.from_euler(Vector3((a as Vector2).y, (a as Vector2).x, 0.0))
+			for p in corners:
+				var q: Vector3 = basis * (p * k)
+				var depth := CAM_DIST - q.z
+				if depth <= 0.01:
+					return false
+				if absf(q.x) / (depth * half_w) > FILL_W or absf(q.y) * aspect / (depth * half_w) > FILL_H:
+					return false
+		return true
+	if fits.call(k_max):
+		return k_max
+	var lo := 0.0
+	var hi := k_max
+	for _i in 24:
+		var mid := (lo + hi) * 0.5
+		if fits.call(mid):
+			lo = mid
+		else:
+			hi = mid
+	return lo
 
 ## Części na ramie mają niezależne obwiednie; wylot zależy też od wybranej lufy. Badamy wszystkie takie pary.
 static func stable_bounds(key: String) -> AABB:
@@ -673,9 +731,11 @@ func _process(delta: float) -> void:
 	_t += delta
 	_idle += delta
 	if _idle > 2.0 and not reduced_motion:
-		# nikt nie obraca: broń wraca bokiem do lampy i lekko się kołysze (bok czyta się najlepiej — widać, co jest w gnieździe)
-		_yaw = lerpf(_yaw, 0.0 if bench_mode or reduced_motion else 0.28 * sin(_t * 0.45), minf(1.0, delta * 1.5))
-		_pitch = lerpf(_pitch, 0.0 if bench_mode or reduced_motion else 0.12 + 0.05 * sin(_t * 0.6), minf(1.0, delta * 1.5))
+		# nikt nie obraca: broń wraca bokiem do lampy i lekko się kołysze (bok czyta się najlepiej — widać, co jest w gnieździe);
+		# rozłożona leży nieruchomo bokiem jak podzespoły na stole — kołysanie długich końców zabierałoby kadrowi miejsce
+		var sway := 0.0 if bench_mode or reduced_motion else 1.0 - ease(_strip, -1.8)
+		_yaw = lerpf(_yaw, sway * 0.28 * sin(_t * 0.45), minf(1.0, delta * 1.5))
+		_pitch = lerpf(_pitch, sway * (0.12 + 0.05 * sin(_t * 0.6)), minf(1.0, delta * 1.5))
 	_pivot.rotation = Vector3(_pitch, _yaw, 0.0)
 	if bench_mode and is_instance_valid(_model):
 		var frame: AABB = stable_bounds(String(Weapons.def(_weapon).key)).grow(0.14 if _mount_time >= 0 else PULL_M)
@@ -700,6 +760,8 @@ func _process(delta: float) -> void:
 			n.position = (h["base"] as Vector3) + off
 	# rozłożona broń (czyszczenie): podzespoły odjeżdżają od środka; podświetlony dostaje to samo przesunięcie do swojego wysunięcia
 	_strip = move_toward(_strip, _strip_target, delta * 1.6)
+	if not bench_mode:
+		_apply_fit()
 	var k := STRIP_M * ease(_strip, -1.8)
 	for c in _comps:
 		var cn: Node3D = c["node"]

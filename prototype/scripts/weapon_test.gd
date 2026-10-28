@@ -2325,6 +2325,7 @@ func _t_maintenance() -> void:
 	var res: Array = []
 	var cb := func(w: int, part: String, ok: bool, reason: String) -> void: res.append(reason)
 	Scrap.service_result.connect(cb)
+	Profile.worn = {"m83": {"springs": 60.0, "barrel": 50.0}}          # od progu wymiany (Profile.SERVICE_DUE) — niżej prośba nie wychodzi z klienta
 	Scrap.bank = 30
 	Scrap.request_service(Weapons.M83, "springs")
 	Scrap.request_service(Weapons.M83, "barrel")                 # 40 złomu, w banku 10 — za mało
@@ -3842,6 +3843,7 @@ func run_net_client(m: Node2D) -> void:
 	Profile.set_fit("m83", "muzzle", "m83_pbs1")
 	Scrap.request_part("m83_rpk40")                  # próba zakupu poza kryjówką: serwer musi odrzucić
 	Scrap.request_order("ammo_slug")
+	Profile.worn = {"m83": {"barrel": 80.0}}          # ponad progiem wymiany — prośba dociera do serwera, który ją odrzuca poza kryjówką
 	Scrap.request_service(Weapons.M83, "barrel")
 	var d: WeaponDef = wc.cur()                   # tłumik zamontowany świadomie przez klienta
 	var predicted_before := get_tree().current_scene.get_child_count()
