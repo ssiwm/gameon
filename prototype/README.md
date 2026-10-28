@@ -498,6 +498,8 @@ Kod: `scripts/gunsmith_panel.gd`, `workshop_ui.gd`, `gun_stage.gd`. Test: `--hos
 
 **Pracownia i tokarka (od 1.7.418, E4, `station_lab_art.gd`):** pracownia — łańcuch PRÓBKI › BADANIE › SCHEMAT › TOKARKA › ŁAWA jako kartki na tablicy korkowej z czerwoną nicią (bieżąca w świetle lampy), akta Obiektu 86 z zaczernieniami, słoje z próbkami w prawej kolumnie (kształty powoli obracają się w stronę stukania zza D-7 i pracy pracowni — decyzja D2a, „Reduce effects” wyłącza), odczyt części na wydruku z perforacją (`PRINTOUT`). Tokarka — rysunek części z drukarki (szablon wg gniazda: soczewka, ogniwo, cewka; wymiary, linia osiowa, tabliczka rysunkowa cyrylicą), zlecenie odręczne na szpikulcu z pieczątką PRZYJĘTO, gdy część jest na tokarce, schematy jako rulony przy kaflach, szlifierka z ostrzem broni białej i iskrami tylko w trakcie ostrzenia.
 
+**Ława (od 1.7.419, E5, `gunsmith_panel.gd`):** prawa karta to metryka broni (akta): numer, stan, VU — hałas jednego magazynka od ciszy (przy podglądzie części cień = obecny montaż, np. tłumik PBS-1 na M-83 32% → 20%), zabójstwa kreskami po pięć, wprawa kółkami. Bronie na stojaku i części pod matą to zawieszki na hakach (wybrana w świetle lampy), zmiany części ze znakiem ▲▼. Mata przyciemniona, gniazda na niej jak szablony z nazwą. Sprawdza `tools/workbench_qa.gd` i `--workshoptest`.
+
 `tools/workbench_qa.gd` uruchamia rzeczywistą kryjówkę z testowym montażem i wyłączonym zapisem Profile / Scrap. Najpierw import. Dla pełnej izolacji ustawień i dziennika uruchamiać na kopii projektu z inną nazwą aplikacji; raport 25.10 opisuje użyte katalogi. Polecenie renderu (Forward+ zgodnie z obecnym `project.godot`):
 
 ```powershell

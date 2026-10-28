@@ -3780,7 +3780,14 @@ func _present_bench(w: int, cur: RefCounted, preview: RefCounted, now_rows: Arra
 	var description := _d_text.text
 	if id != "" and String(selected.get("slot", "")) != "preset" and not GunStage.GunModel.has_model(id):
 		description += "\n" + tr("Internal modification · compare its effects on the card.")
+	# metryka broni (E5, ST-01): numer, zabójstwa, wprawa i hałas magazynka od ciszy (§5a; cień = obecny montaż przy podglądzie)
+	var mp := Profile.mastery_points(key)
+	var ml := Profile.mastery_level(key)
+	var noise_now := StationNoise.mag_level(cur) if cur.uses_ammo() else -1.0
+	var noise_new := StationNoise.mag_level(preview) if preview != null and cur.uses_ammo() else -1.0
 	_workbench.present({"name": String(cur.name), "meta": meta, "tag": _d_tag.text, "preview": preview != null,
+		"serial": "86-%04d" % (absi(hash(key)) % 10000), "kills": kills, "mastery": ml, "mastery_points": mp,
+		"mastery_next": int(Profile.MASTERY_XP[mini(ml + 1, Profile.MASTERY_XP.size() - 1)]), "ammo": ammo_name, "noise": [noise_now, noise_new],
 		"pending": pending, "part_name": part_name, "option": _opt, "unlocked": unlocked, "slot": _bench_slot,
 		"weapons": weapons, "slots": slots, "options": records, "rows": rows, "description": description, "melee": cur.is_melee()})
 

@@ -60,6 +60,7 @@ func run(m: Node) -> void:
 	await _ui()
 	await _service_card()
 	await _lab_lathe()
+	await _bench_record()
 	await _immersive()
 	await _progression()
 	await _strip_frame()
@@ -888,6 +889,23 @@ func _lab_lathe() -> void:
 	check("ława: bez kolumny pracowni i z listą części na karcie", not ui._arms_side.visible or ui._page != 0)
 	ui.close()
 	Scrap.samples = samples0
+
+## Ława (STATION_CARDS_PLAN.md E5, ST-01): metryka broni z VU magazynka (cień = obecny montaż przy podglądzie tłumika), zabójstwa kreskami,
+## wprawa kółkami; bronie i części jako zawieszki, gniazda jako szablony na przyciemnionej macie.
+func _bench_record() -> void:
+	var ui := get_tree().get_first_node_in_group("workshop_ui")
+	station("workshop")
+	ui.open("bench")
+	ui._select(ui.LIST.find(Weapons.M83))
+	ui._pick_opt(ui._options(Weapons.M83).find({"slot": "muzzle", "id": "m83_pbs1"}))
+	await frames(3)
+	var wb = ui._workbench
+	check("ława: metryka z numerem, zabójstwami i wprawą", wb._serial.text.contains("86-") and wb._tally.count == Profile.kills("m83") and wb._mastery.level == Profile.mastery_level("m83"))
+	check("ława: VU magazynka — tłumik ścisza, cień = obecny montaż", wb._vu.visible and wb._vu_meter.ghost > wb._vu_meter.value and wb._vu_meter.value > 0.0)
+	var tags_ok: bool = wb._rack.get_children().all(func(c: Node) -> bool: return c.has_meta("tag")) and wb._parts.get_children().all(func(c: Node) -> bool: return c.has_meta("tag"))
+	check("ława: bronie i części jako zawieszki", tags_ok and wb._rack.get_child_count() > 0 and wb._parts.get_child_count() > 0)
+	check("ława: gniazda jako szablony z nazwą na przyciemnionej macie", wb._hotspots.size() > 0 and String(wb._hotspots[0]["button"].text).length() > 2 and wb.stage.modulate.r < 1.0)
+	ui.close()
 
 func _service_card() -> void:
 	var ui := get_tree().get_first_node_in_group("workshop_ui")

@@ -1458,3 +1458,8 @@
 "printout","wydruk"
 "fitting","montaż"
 "NO SCHEMATIC — RESEARCH IT AT THE LAB","BRAK SCHEMATU — ZBADAJ W PRACOWNI"
+"WEAPON RECORD · No. %s","METRYKA BRONI · NR %s"
+"One magazine: %d%% → %d%% noise","Magazynek: %d%% → %d%% hałasu"
+"One magazine: %d%% noise, from silence","Magazynek: %d%% hałasu od ciszy"
+"KILLS · %d","ZABÓJSTWA · %d"
+"MASTERY %s · %d / %d","WPRAWA %s · %d / %d"
