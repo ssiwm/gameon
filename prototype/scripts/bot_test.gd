@@ -7,6 +7,9 @@ extends "res://scripts/stalker_test.gd"
 ##    człowiekiem w 33% próbek, a friendly fire dawał 9% hałasu).
 ## 2. Stojący dowódca odwrócony na dłużej: bot przechodzi mu za plecy.
 ## 3. Krótki obrót (strzał do tyłu): bot zostaje po swojej stronie.
+## 4. Linia ognia (`player._los_state`): bot za dowódcą, wróg kilkanaście stopni wyżej — kierunek strzału przycięty do 8 stron
+##    jest poziomy, więc kula trafia dowódcę w plecy, choć promień prosto do wroga mija mu głowę. Bot ma uznać, że kolega stoi
+##    na linii (dziennik 1.7.399: 61 trafień bota w człowieka w jednej sesji).
 ## Mapa 1.3, reszta świata wyciszona jak w stalker_test.gd (helpery stamtąd). Wynik: linie [BOT-TEST] i kod wyjścia.
 
 const WALK := 60.0                    ## px/s dowódcy — wolniej niż bot (0,85 × 95), żeby nadążał
@@ -60,6 +63,7 @@ func run(m: Node2D) -> void:
 		await _walk(1.0, b.x - 30.0)
 		await _walk(-1.0, a.x + 30.0)
 		await _turn(ground)
+		await _line_of_fire(ground)
 	if SessionLog.recording():
 		bot.deliver_ff(player.global_position, int(player.player_id))     # CI: zdarzenie „ff” ze strzelcem w dzienniku (--sessionlog)
 	_finish()
@@ -96,3 +100,41 @@ func _turn(ground: Dictionary) -> void:
 	check("krótki obrót do tyłu (0,3 s): bot zostaje po lewej", signf(bot.global_position.x - player.global_position.x) < 0.0)
 	await _frames(3.0, func(_t: float, _dt: float) -> void: _lead(Vector2.ZERO, Vector2(-1, 0)))
 	check("dowódca odwrócony na dłużej: bot przechodzi na prawo (za plecy)", signf(bot.global_position.x - player.global_position.x) > 0.0)
+
+## Linia ognia: dowódca 80 px przed botem, cel 200 px przed botem i 45 px wyżej (kąt ok. 13° → strzał poziomo).
+func _line_of_fire(ground: Dictionary) -> void:
+	var a: Vector2 = ground["a"]
+	bot.set_physics_process(false)                 # bez mózgu bota: test sam ustawia miejsca i sam strzela
+	_lead(Vector2.ZERO, Vector2(1, 0), a + Vector2(110, 0))
+	bot.global_position = a + Vector2(30, 0)
+	bot.velocity = Vector2.ZERO
+	bot.crouching = false
+	var target := Node2D.new()                     # sam punkt celu — bez grupy „enemies”, nic innego go nie widzi
+	level.add_child(target)
+	target.global_position = a + Vector2(230, -45)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var d := target.global_position - bot.global_position
+	var dir: Vector2 = bot._snap8(d)
+	check("cel %.0f° wyżej: kierunek strzału bota przycięty do poziomu" % rad_to_deg(-d.angle()), dir.is_equal_approx(Vector2(1, 0)))
+	var q := PhysicsRayQueryParameters2D.create(bot.global_position + Vector2(0, -9), target.global_position + Vector2(0, -6), 1 | 2)
+	q.exclude = [bot.get_rid()]
+	var old_ray := bot.get_world_2d().direct_space_state.intersect_ray(q)
+	info("promień prosto do celu (stary test linii) %s" % ("mija dowódcę" if old_ray.is_empty() else "trafia w %s" % old_ray["collider"].name))
+	var hits := 0
+	for _i in 3:
+		player.set("_kick", 0.0)
+		bot.weapons.cd = 0.0
+		bot.weapons.bot_fire(dir)
+		await _frames(0.4)
+		if absf(float(player.get("_kick"))) > 0.0:
+			hits += 1
+	player.set("_kick", 0.0)
+	check("kula bota po przyciętym kierunku trafia dowódcę (%d/3)" % hits, hits > 0)
+	check("bot widzi kolegę na torze strzału", bot._los_state(target, dir) == bot.Los.TEAMMATE)
+	_lead(Vector2.ZERO, Vector2(1, 0), a + Vector2(10, 0))
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("dowódca za botem: tor strzału czysty", bot._los_state(target, dir) == bot.Los.CLEAR)
+	target.queue_free()
+	bot.set_physics_process(true)

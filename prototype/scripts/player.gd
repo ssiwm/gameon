@@ -69,6 +69,9 @@ const REVIVE_SYNC_MS := 100     ## postęp podnoszenia wysyłany do innych peer�
 const BOT_ENGAGE_RANGE := 220.0   ## ≤ zasięg M-83 (240 px): bot nie strzela pociskami, które zgasną w locie
 const BOT_SELF_DEFENSE := 70.0  ## w tym promieniu strzela zawsze — obrona własna
 const BOT_Q_HOLD := 8.0         ## po Q wstrzymuje ogień, żeby nie nadpisać celu stalkera
+const BOT_FIRE_PAST := 16.0     ## px: tor strzału sprawdzany kawałek za wroga
+const BOT_FIRE_HALF := 3.0      ## px: połowa szerokości toru przy końcu promienia (skrajne promienie)
+const BOT_FIRE_CONE := 1.5      ## °: rozchylenie skrajnych promieni (rozrzut M-83 bota 0,8° + zapas)
 const BOT_EVADE_RANGE := 46.0   ## wróg bliżej niż tyle: bot rozważa unik
 const BOT_CAR_LAG := 150.0      ## drezyna (handcar.gd): bot dalej od niej niż tyle px, gdy już jedzie, goni ją...
 const BOT_CAR_LAG_T := 1.5      ## ... i po tylu sekundach bez dogonienia ląduje na pokładzie (bot chodzi wolniej niż drezyna)
@@ -1535,7 +1538,7 @@ func _bot_brain(delta: float) -> void:
 		var d := (enemy.global_position - global_position)
 		if d.length() > 6.0:
 			aim_dir = _snap8(d)
-		var los := _los_state(enemy) if weapons.cd <= 0.0 else Los.WALL
+		var los := _los_state(enemy, aim_dir) if weapons.cd <= 0.0 else Los.WALL
 		if los == Los.TEAMMATE and is_on_floor() and not crouching and not on_deck:
 			# kolega na linii — podskok daje czystą linię nad nim
 			_bot_wants_jump = true
@@ -1556,13 +1559,26 @@ func _bot_may_fire(d: Vector2) -> bool:
 enum Los { CLEAR, WALL, TEAMMATE }
 
 ## Linia strzału bota: ściana (strzał w nią to sam hałas) albo stojący kolega.
-## Wcześniej promień widział tylko ściany (maska 1), więc bot strzelał
-## w wroga przez plecy człowieka. Leżących kolegów pomijamy — pocisk i tak
-## przez nich przelatuje (projectile.gd).
-func _los_state(target: Node2D) -> int:
-	var from := global_position + Vector2(0, -9)
-	var to := target.global_position + Vector2(0, -6)
-	var q := PhysicsRayQueryParameters2D.create(from, to, 1 | 2)
+## Sprawdzamy tor, którym naprawdę poleci kula: od wylotu lufy wzdłuż `dir` (kierunek przycięty do 8 stron), na odległość
+## wroga. Promień prosto do wroga mijał głowę dowódcy, gdy wróg był kilkanaście stopni wyżej, a kula leciała poziomo
+## w jego plecy (dziennik 1.7.399: 61 trafień bota w człowieka w jednej sesji). Dwa skrajne promienie łapią kolegę, którego
+## środek toru tylko muska (rozrzut M-83).
+func _los_state(target: Node2D, dir: Vector2) -> int:
+	var from: Vector2 = weapons.muzzle_pos(dir, Weapons.def(Weapons.M83))
+	var reach := from.distance_to(target.global_position + Vector2(0, -6)) + BOT_FIRE_PAST
+	var state := _ray_state(from, from + dir * reach, 1 | 2)
+	if state != Los.CLEAR:
+		return state
+	var side := dir.orthogonal() * (BOT_FIRE_HALF + reach * tan(deg_to_rad(BOT_FIRE_CONE)))
+	for s in [side, -side]:
+		if _ray_state(from, from + dir * reach + s, 2) == Los.TEAMMATE:
+			return Los.TEAMMATE
+	return Los.CLEAR
+
+## Jeden promień toru strzału. Wcześniej promień widział tylko ściany (maska 1), więc bot strzelał w wroga przez plecy
+## człowieka. Leżących kolegów pomijamy — pocisk i tak przez nich przelatuje (projectile.gd).
+func _ray_state(from: Vector2, to: Vector2, mask: int) -> int:
+	var q := PhysicsRayQueryParameters2D.create(from, to, mask)
 	var exclude: Array[RID] = [get_rid()]
 	var space := get_world_2d().direct_space_state
 	for _i in 4:
