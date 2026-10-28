@@ -13,6 +13,13 @@ var knock_flash := 0.0                ## d7: 1 w chwili stuknięcia, zanika do 0
 
 var _knock_t := 0.0
 
+## Lampa przy generatorze (mnożnik jasności): buczy i lekko pulsuje, a w burzy co jakiś czas siada. Widok 3D gasi nią światło generatora,
+## karta stanowiska przygasa razem z nią (workshop_ui.gd) — oba liczą to samo z tego samego czasu.
+static func generator_light(t: float, storm: bool) -> float:
+	if storm and sin(t * 1.7) * sin(t * 0.6 + 1.0) > 0.78:
+		return 0.15
+	return 0.85 + 0.15 * sin(t * 9.0) * sin(t * 3.3)
+
 func _ready() -> void:
 	add_to_group("hub_props")
 	z_index = 0

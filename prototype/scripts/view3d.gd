@@ -18,6 +18,7 @@ const Lights := preload("res://scripts/lights.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Enemy3D := preload("res://scripts/enemy3d.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
+const HubProp := preload("res://scripts/hub_prop.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
@@ -1876,10 +1877,7 @@ func _sync_hub_props() -> void:
 		var t := float(Time.get_ticks_msec()) * 0.001
 		match String(d["kind"]):
 			"generator":
-				var storm: bool = Weather.forecast == "storm"
-				var f := 0.85 + 0.15 * sin(t * 9.0) * sin(t * 3.3)
-				if storm and sin(t * 1.7) * sin(t * 0.6 + 1.0) > 0.78:
-					f = 0.15                                   # burza: lampa przy generatorze na chwilę siada
+				var f := HubProp.generator_light(t, Weather.forecast == "storm")     # burza: lampa przy generatorze na chwilę siada
 				(d["light"] as OmniLight3D).light_energy = 2.4 * f
 			"d7":
 				var k := float(n.get("knock_flash"))

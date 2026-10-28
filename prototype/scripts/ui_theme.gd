@@ -69,20 +69,20 @@ static func keycaps(text: String, fg := "f0e8d4", bg := "2a211a") -> String:
 	re.compile("\\[([A-Za-z0-9↑↓←→ +/\\-]{1,9})\\]")
 	return re.sub(text, "[bgcolor=#" + bg + "][color=#" + fg + "] $1 [/color][/bgcolor]", true)
 ## Stanowiska kryjówki (warsztat i sześć pozostałych): ten sam język co ława — ciemny blat „deck”, oliwkowe kafle z mosiężną ramką
-## i karta szczegółów na papierze, pisana atramentem. Kontrast atramentu na papierze >= 4,5:1 (PAPER ok. 0,47 luminancji).
+## i karta szczegółów na papierze, pisana atramentem. Papier to akta w palecie nocnej (note_palette.gd, od 1.7.415: luminancja 0,25 zamiast 0,47), atrament >= 4,5:1.
 const TILE_BG := Color("22281f")
 const TILE_BG_HOVER := Color("2b2f24")
 const TILE_BG_SEL := Color("3b3827")
 const TILE_EDGE := Color("4a4836")
 const TILE_EDGE_HOVER := Color("68664b")
-const PAPER := Color("c3b795")
-const PAPER_EDGE := Color("7a7158")
-const PAPER_SEL := Color("b2a57f")              ## wiersz zaznaczony na papierze (pasek, nie sam kolor)
-const INK := Color("272d25")
-const INK_MUTED := Color("4a4639")
-const INK_GAIN := Color("285135")
-const INK_COST := Color("713b21")
-const INK_PRICE := Color("5e420e")
+const PAPER := NotePalette.STATION_PAPER
+const PAPER_EDGE := NotePalette.STATION_PAPER_EDGE
+const PAPER_SEL := NotePalette.STATION_PAPER_SEL   ## wiersz zaznaczony na papierze: plama lampy (pasek, nie sam kolor)
+const INK := NotePalette.STATION_INK
+const INK_MUTED := NotePalette.STATION_INK_MUTED
+const INK_GAIN := NotePalette.STATION_INK_GAIN
+const INK_COST := NotePalette.STATION_INK_COST
+const INK_PRICE := NotePalette.STATION_INK_PRICE
 ## Skala typograficzna komunikatów (MESSAGES_PLAN.md §3): cztery rozmiary w jednostkach logicznych HUD zamiast 7, 8, 9, 10, 14, 16, 21, 24 i 56.
 const T_DISPLAY := 24                          ## duży alert, cyfra odliczania (cyfra: ×2)
 const T_TITLE := 16                            ## tytuł notatki, tytuł karty tytułowej
@@ -234,14 +234,33 @@ static func tile_box(state: String) -> StyleBoxFlat:
 			b.border_color = TILE_EDGE_HOVER
 			b.bg_color = TILE_BG_HOVER
 		"selected":
-			b.border_color = ACCENT
+			# światło jako kursor (STATION_CARDS_PLAN.md §5): kafel w snopie lampy — cieplejsze tło i ciepła krawędź zamiast pomarańczowej ramki
+			b.border_color = LAMP_LINE
 			b.bg_color = TILE_BG_SEL
-			b.set_border_width_all(2)
+			b.border_width_bottom = 2
 	b.content_margin_left = 0
 	b.content_margin_right = 0
 	b.content_margin_top = 0
 	b.content_margin_bottom = 0
 	return b
+
+static var _lamp_pool: GradientTexture2D
+
+## Snop lampy nad wybranym kafelkiem stanowiska: miękka, ciepła plama (radialny gradient), rysowana pod miniaturą i napisami.
+static func lamp_pool() -> GradientTexture2D:
+	if _lamp_pool == null:
+		var g := Gradient.new()
+		g.set_color(0, Color(1.0, 0.8, 0.48, 0.30))
+		g.set_color(1, Color(1.0, 0.7, 0.35, 0.0))
+		g.add_point(0.45, Color(1.0, 0.76, 0.42, 0.12))
+		_lamp_pool = GradientTexture2D.new()
+		_lamp_pool.gradient = g
+		_lamp_pool.fill = GradientTexture2D.FILL_RADIAL
+		_lamp_pool.fill_from = Vector2(0.5, 0.5)
+		_lamp_pool.fill_to = Vector2(1.0, 0.5)
+		_lamp_pool.width = 128
+		_lamp_pool.height = 128
+	return _lamp_pool
 
 static func _box(bg: Color, edge: Color, width: int = 1) -> StyleBoxFlat:
 	var b := StyleBoxFlat.new()
