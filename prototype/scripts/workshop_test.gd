@@ -324,6 +324,58 @@ func _ui() -> void:
 	ui._refresh()
 	check("prasa pokazuje odbiór już opłaconej dostawy", ui._s_action.text == tr("Collect ready delivery · %d rounds") % 5)
 	ui.close()
+	# rendery modeli 3D zamiast ikon (STATION_CARDS_PLAN.md E0): każdy rodzaj z modelem ma wypalony render, 40 mm zostaje przy ikonie (D3a)
+	var ItemIcon := preload("res://scripts/item_icon.gd")
+	var no_render: Array = []
+	for k in Throwables.SHOP_ORDER:
+		if ItemIcon.render_model(String(k)) != "" and ItemIcon.render_of(String(k)) == null:
+			no_render.append(k)
+	check("rendery przedmiotów: każdy rodzaj z modelem ma render %s" % str(no_render), no_render.is_empty())
+	check("rendery przedmiotów: 40 mm bez modelu zostaje przy ikonie", ItemIcon.render_model("ammo_40buck") == "" and ItemIcon.render_model("frag") == "frag")
+	station("pyro_bench")
+	ui.open("pyro")
+	var frag_tile: Control = ui._sup_tiles[ui._supply_kinds().find("frag")]
+	check("kafel pirotechniki rysuje render modelu", ItemIcon.render_of(String(frag_tile.icon_node.kind)) != null and frag_tile.visible)
+	# korpus kart (STATION_CARDS_PLAN.md E1): tabliczka, światło jako kursor, VU w skali HUD, stany dźwigni akcji
+	check("tabliczka stanowiska: numer i radziecki numer inwentarzowy", ui._plate.code.text == "04" and ui._plate.sub.text.contains("86/0104") and ui._title.text == tr("PYROTECHNICS"))
+	check("światło jako kursor: wybrany kafel w snopie lampy, reszta przygaszona", frag_tile.lit and frag_tile.icon_node.self_modulate == Color.WHITE
+		and ui._sup_tiles.filter(func(t: Control) -> bool: return t.visible and t != frag_tile).all(func(t: Control) -> bool: return not t.lit and t.icon_node.self_modulate != Color.WHITE))
+	check("VU granatu: +15 od ciszy, 3 naraz do niepokoju", ui._s_vu.visible and is_equal_approx(ui._s_vu_meter.value, NoiseMgr.N_GRENADE / 100.0) and ui._s_vu_text.text.contains(tr("%d at once = unease") % 3))
+	var bank0 := Scrap.bank
+	Scrap.bank = 0
+	ui._refresh()
+	check("dźwignia akcji bez złomu: stan „brak złomu”", String(ui._s_action.get_meta("dressed", "")) == "broke")
+	Scrap.bank = 100000
+	ui._refresh()
+	check("dźwignia akcji ze złomem: stan „gotowe” (lampa)", String(ui._s_action.get_meta("dressed", "")) == "ready")
+	Scrap.bank = bank0
+	ui.close()
+	var StationNoise := preload("res://scripts/station_noise.gd")
+	check("StationNoise: progi skali = progi NoiseMgr (jak w HUD)", StationNoise.ticks().map(func(r: Array) -> float: return float(r[0])) == [NoiseMgr.SLEEP_THRESHOLD / 100.0, NoiseMgr.UNEASY_THRESHOLD / 100.0, NoiseMgr.AWAKE_THRESHOLD / 100.0])
+	check("StationNoise: granat = N_GRENADE, mina i ładunek z danych przedmiotu", StationNoise.item_noise("frag") == NoiseMgr.N_GRENADE and StationNoise.item_noise("mine") == float(Throwables.KINDS["mine"]["noise"])
+		and StationNoise.item_noise("scanner") == 0.0 and StationNoise.count_to(NoiseMgr.N_GRENADE, NoiseMgr.UNEASY_THRESHOLD) == 3)
+	var m83 := Weapons.def_build(Weapons.M83, Weapons.build_of(0, 0))
+	var m83_us := Weapons.def_build(Weapons.M83, Weapons.build_of(Ammo.from_kind("ammo_us")["t"], 0))
+	var lv := StationNoise.mag_level(m83)
+	var lv_us := StationNoise.mag_level(m83_us)
+	# bez wygaszania magazynek dałby sumę hałasu strzałów; wygaszanie NoiseMgr.DECAY_LOUD przez czas magazynka musi ją obniżyć dokładnie o tyle
+	var raw := 0.0
+	var heat := 0.0
+	for i in int(m83.mag):
+		raw += m83.noise(heat)
+		heat = minf(1.0, maxf(0.0, heat + m83.heat_gain - m83.heat_decay * m83.cooldown))
+	check("StationNoise: magazynek M-83 %.1f (suma strzałów %.1f − wygaszanie %.1f/s), z US %.1f" % [lv, raw, NoiseMgr.DECAY_LOUD, lv_us],
+		lv > 20.0 and lv < 45.0 and absf(lv - (raw - NoiseMgr.DECAY_LOUD * m83.cooldown * float(int(m83.mag) - 1))) < 2.5 and lv_us < lv)
+	station("press_bench")
+	ui.open("press")
+	ui._sup_sel = ui._supply_kinds().find("ammo_us")
+	ui._refresh()
+	check("VU prasy: nabój poddźwiękowy ciszej niż zwykły (cień = zwykły)", ui._s_vu_meter.visible and ui._s_vu_meter.ghost > ui._s_vu_meter.value and ui._s_vu_meter.value > 0.0)
+	ui._sup_sel = ui._supply_kinds().find("ammo_slug")
+	ui._refresh()
+	check("VU prasy: nabój bez zmiany hałasu — sam napis, bez miernika", ui._s_vu.visible and not ui._s_vu_meter.visible and ui._s_vu_text.text == tr("Shot noise unchanged."))
+	check("taśma sterowania: klawisze w ramkach z rejestru akcji", ui._hint.text.contains("[bgcolor=") and ui._hint.text.contains(ui._menu_key("menu_back", false)))
+	ui.close()
 
 ## Układ każdego stanowiska i zakładki po angielsku i po polsku (etap 4 przeglądu UI, 1.7.409): karta na ekranie, żadna widoczna kontrolka
 ## nie wystaje w poziomie poza przodka, który ją przycina (przewijany korpus, karta) — dla każdego kafla, bo opisy i porównania zmieniają szerokość.

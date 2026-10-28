@@ -8,6 +8,17 @@ const Throwables := preload("res://scripts/throwables.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
+const Ammo := preload("res://scripts/ammo.gd")
+
+## Rendery modeli 3D (tools/bake_items.gd, STATION_CARDS_PLAN.md E0): rodzaj → model z art/items3d/. Mają pierwszeństwo przed rysunkiem HD;
+## amunicja specjalna ma jedno pudełko (rodzaj odróżnia pasek płytki), amunicja 40 mm nie ma modelu i zostaje przy ikonie (D3a).
+const RENDER_DIR := "res://art/item_renders/"
+const RENDERS := {
+	"frag": "frag", "phos": "phos", "smoke": "smoke", "mine": "mine", "charge": "charge",
+	"medkit": "medkit", "cleankit": "cleankit", "defib": "defib", "scanner": "scanner",
+}
+const AMMO_MODEL := "ammo"
+static var _renders := {}
 
 var kind := "frag"
 var k := 2.0                  ## żądana skala lokalna (piksel rysunku w jednostkach lokalnych)
@@ -27,8 +38,35 @@ func set_item(kd: String, t: Color) -> void:
 	_preload_hd()
 	queue_redraw()
 
+## Model, którego render pokazuje rodzaj `kd`, albo "" (brak modelu — ikona).
+static func render_model(kd: String) -> String:
+	if Throwables.is_ammo(kd):
+		return "" if String(Ammo.from_kind(kd).get("cal", "")) == "40mm" else AMMO_MODEL
+	return String(RENDERS.get(kd, ""))
+
+## Wszystkie modele do wypalenia (bez powtórzeń), w kolejności sklepu.
+static func render_models() -> Array:
+	var out: Array = []
+	for k in Throwables.SHOP_ORDER:
+		var m := render_model(String(k))
+		if m != "" and not m in out:
+			out.append(m)
+	return out
+
+## Render rodzaju `kd` albo null (brak modelu lub jeszcze niewypalony); tekstury trzymane w pamięci.
+static func render_of(kd: String) -> Texture2D:
+	var m := render_model(kd)
+	if m == "":
+		return null
+	if not _renders.has(m):
+		var path := RENDER_DIR + m + ".png"
+		_renders[m] = load(path) as Texture2D if ResourceLoader.exists(path) else null
+	return _renders[m]
+
 ## Tekstury HD wczytujemy poza `_draw` (pierwsze wczytanie w trakcie rysowania daje białe prostokąty).
 func _preload_hd() -> void:
+	if render_of(kind) != null:
+		return
 	if UiTheme.hd_on() and ItemsHd.has(kind):
 		ItemsHd.albedo(kind)
 		ItemsHd.glow_texture(kind)
@@ -45,6 +83,18 @@ func _draw() -> void:
 			var inset := 2.0 + i * 4.0
 			draw_rect(Rect2(inset, inset * 0.5, size.x - 2.0 * inset, size.y - 2.0 - inset), Color(accent.r, accent.g, accent.b, 0.045))
 	var body_h := size.y - (2.0 if plate else 0.0)
+	var rt := render_of(kind)
+	if rt != null:
+		# render wpisany w płytkę z zachowaniem proporcji, podstawą na dole (przedmiot leży na blacie stanowiska), z miękkim cieniem
+		var area := Rect2(3.0, 2.0, size.x - 6.0, body_h - 4.0)
+		var ts := rt.get_size()
+		var s := minf(area.size.x / ts.x, area.size.y / ts.y)
+		var dst := Rect2(area.position.x + (area.size.x - ts.x * s) * 0.5, area.end.y - ts.y * s, ts.x * s, ts.y * s)
+		draw_set_transform(Vector2(dst.get_center().x, area.end.y - 1.0), 0.0, Vector2(1.0, 0.18))
+		draw_circle(Vector2.ZERO, dst.size.x * 0.42, Color(0, 0, 0, 0.35 * tint.a))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_texture_rect(rt, dst, false, tint)
+		return
 	if UiTheme.hd_on() and ItemsHd.has(kind):
 		ItemsHd.draw_fit(self, kind, Rect2(4.0, 3.0, size.x - 8.0, body_h - 6.0), tint, Vector2(11.0, 10.0))
 		return

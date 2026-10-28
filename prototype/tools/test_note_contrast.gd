@@ -44,5 +44,15 @@ func _init() -> void:
 			_check("%s: tekst (ink) na %s %.1f:1 >= %.1f" % [names[m], key, _ratio(pal["ink"], bg), MIN_TEXT], _ratio(pal["ink"], bg) >= MIN_TEXT)
 			_check("%s: tekst przygaszony (dim) na %s %.1f:1 >= %.1f" % [names[m], key, _ratio(pal["dim"], bg), MIN_TEXT], _ratio(pal["dim"], bg) >= MIN_TEXT)
 			_check("%s: tytuł (accent) na %s %.1f:1 >= %.1f" % [names[m], key, _ratio(pal["accent"], bg), MIN_LARGE], _ratio(pal["accent"], bg) >= MIN_LARGE)
+	# papier kart stanowisk (STATION_CARDS_PLAN.md E1): tło i plama lampy <= 0,3, atrament, przygaszony, zysk, koszt i cena >= 4,5:1 na obu
+	var inks := {"STATION_INK": NotePalette.STATION_INK, "STATION_INK_MUTED": NotePalette.STATION_INK_MUTED, "STATION_INK_GAIN": NotePalette.STATION_INK_GAIN,
+		"STATION_INK_COST": NotePalette.STATION_INK_COST, "STATION_INK_PRICE": NotePalette.STATION_INK_PRICE}
+	var papers := {"STATION_PAPER": NotePalette.STATION_PAPER, "STATION_PAPER_SEL": NotePalette.STATION_PAPER_SEL}
+	for bg_name in papers:
+		var bg: Color = papers[bg_name]
+		_check("karta stanowiska: luminancja %s = %.2f <= %.2f" % [bg_name, _lum(bg), MAX_BG_LUMINANCE], _lum(bg) <= MAX_BG_LUMINANCE)
+		for ink_name in inks:
+			var ink: Color = inks[ink_name]
+			_check("karta stanowiska: %s na %s %.1f:1 >= %.1f" % [ink_name, bg_name, _ratio(ink, bg), MIN_TEXT], _ratio(ink, bg) >= MIN_TEXT)
 	print("PASS" if _fails == 0 else "FAIL (%d)" % _fails)
 	quit(0 if _fails == 0 else 1)
