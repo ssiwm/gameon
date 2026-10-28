@@ -301,9 +301,28 @@ class Look3DView extends Control:
 		_c3d.update(delta, "idle", 1.0, Vector2(1.0, 0.0), 0.0, true, Color.WHITE)
 
 ## Kafel stroju (wyższy — postać na całą wysokość).
+## Miniatura stroju z renderu modelu 3D (tools/bake_look_portraits.gd → art/portraits/look_<płeć>_<strój>.png), stopami na dole kafla.
+class LookPortrait extends Control:
+	var tex: Texture2D
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	func set_code(c: int) -> void:
+		var path := "res://art/portraits/look_%s_%s.png" % [Look.gender_id(c), Look.outfit_id(c)]
+		tex = load(path) as Texture2D if ResourceLoader.exists(path) else null
+		queue_redraw()
+	func _draw() -> void:
+		if tex == null:
+			return
+		var ts := tex.get_size()
+		var s := minf(size.x / ts.x, size.y / ts.y)
+		var w := ts * s
+		draw_texture_rect(tex, Rect2(Vector2((size.x - w.x) * 0.5, size.y - w.y), w), false)
+
+## Kafel stroju (wyższy — postać na całą wysokość).
 class LookTile extends CardTile:
 	var code := 0
-	var view: LookView
+	var view: Control
 
 ## Kafel perku: stan (założony / dostępny / poziom odblokowania).
 class PerkTile extends CardTile:
@@ -600,12 +619,22 @@ func _build_look() -> HBoxContainer:
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 6)
 	left.add_child(grid)
+	# kolumny siatki to płeć — ta sama nazwa stroju stoi w obu, więc kolumny mają podpis
+	var heads := HBoxContainer.new()
+	heads.add_theme_constant_override("separation", 6)
+	for g in Look.GENDERS:
+		var hl := UiTheme.label(tr(String(g).capitalize()).to_upper(), 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+		hl.custom_minimum_size.x = TILE_W
+		heads.add_child(hl)
+	left.add_child(heads)
+	left.move_child(heads, grid.get_index())
 	for i in Look.GENDERS.size() * Look.OUTFITS.size():
 		var t := LookTile.new()
 		t.code = _look_code(i)
 		t.custom_minimum_size = Vector2(TILE_W, TILE_H * 1.5)
-		t.view = LookView.new()
-		t.view.set_code(t.code)
+		var portrait := "res://art/portraits/look_%s_%s.png" % [Look.gender_id(t.code), Look.outfit_id(t.code)]
+		t.view = LookPortrait.new() if ResourceLoader.exists(portrait) else LookView.new()       # render 3D jak duży podgląd; bez niego stary arkusz
+		t.view.call("set_code", t.code)
 		_dress_tile(t, t.view, Look.display_name(t.code))
 		t.pressed.connect(_select_look.bind(i))
 		grid.add_child(t)
@@ -703,6 +732,12 @@ func _refresh_look() -> void:
 		pbox.set_border_width_all(2 if pi == _look_pal else 1)
 		for st in ["normal", "hover", "pressed", "focus", "disabled"]:
 			pb.add_theme_stylebox_override(st, pbox)
+		var locked := lvl < int(d["level"])
+		pb.text = str(int(d["level"])) if locked else ""                  # zablokowany kolor: numer poziomu na próbce (nie tylko ciemniejszy odcień)
+		pb.add_theme_font_size_override("font_size", 7)
+		for fc in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+			pb.add_theme_color_override(fc, UiTheme.TEXT)
+		pb.tooltip_text = Look.palette_name(pi) + ((" · " + tr("Locked — level %d") % int(d["level"])) if locked else "")
 	var c := Look.with_palette(_look_code(_look_sel), _look_pal)
 	vw.call("set_code", c)
 	vw.modulate = Color.WHITE if Look.is_unlocked(c, lvl) else Color(0.35, 0.4, 0.45)
@@ -2666,8 +2701,9 @@ func _present_bench(w: int, cur: RefCounted, preview: RefCounted, now_rows: Arra
 				status = tr("found — extract")
 			elif Scrap.is_lab_part(id):
 				status = tr("on the lathe") if Scrap.lathe.has(id) else (tr("schematic") if Scrap.schematics.has(id) else (tr("researching") if Scrap.research.has(id) else tr("lab")))
+		var delta := _part_delta(w, cur, String(op["slot"]), id) if String(op["slot"]) != "preset" and not fitted else []
 		records.append({"index": i, "name": name, "status": status, "fitted": fitted,
-			"new": id != "" and String(op["slot"]) != "preset" and Profile.is_new("part:" + id)})
+			"new": id != "" and String(op["slot"]) != "preset" and Profile.is_new("part:" + id), "delta": delta})
 	var weapons: Array = []
 	var wc := _local_wc()
 	for i in LIST.size():
@@ -2717,6 +2753,41 @@ func _present_bench(w: int, cur: RefCounted, preview: RefCounted, now_rows: Arra
 	_workbench.present({"name": String(cur.name), "meta": meta, "tag": _d_tag.text, "preview": preview != null,
 		"pending": pending, "part_name": part_name, "option": _opt, "unlocked": unlocked, "slot": _bench_slot,
 		"weapons": weapons, "slots": slots, "options": records, "rows": rows, "description": description, "melee": cur.is_melee()})
+
+## Główne zmiany po zamontowaniu części `id` w gnieździe `slot` broni `w` (kafel części na ławie): do dwóch wierszy [parametr, nowa wartość,
+## ocena −1 / 0 / 1] — pierwsza korzyść i pierwszy kompromis (albo zmiana bez oceny); [] — bez zmian w liczbach (część o samym opisie).
+func _part_delta(w: int, cur: RefCounted, slot: String, id: String) -> Array:
+	var key := String(cur.key)
+	var choice := {}
+	for s in Parts.slots_of(key):
+		choice[s] = Profile.fitted(key, String(s))
+	choice[slot] = id
+	var wc := _local_wc()
+	var ammo_type: int = wc.ammo_of(w) if wc != null else 0
+	var after: RefCounted = Weapons.def_build(w, Weapons.build_of(ammo_type, Parts.encode(key, choice)))
+	var before_rows := _comparison_rows(cur)
+	var after_rows := _comparison_rows(after)
+	var gain: Array = []
+	var cost: Array = []
+	var neutral: Array = []
+	for i in mini(before_rows.size(), after_rows.size()):
+		if String(before_rows[i][1]) == String(after_rows[i][1]):
+			continue
+		var kind := _change_kind(String(before_rows[i][0]), cur, after)
+		var row := [String(before_rows[i][0]), UiTheme.num_text(String(after_rows[i][1])), kind]
+		if kind > 0 and gain.is_empty():
+			gain = row
+		elif kind < 0 and cost.is_empty():
+			cost = row
+		elif kind == 0 and neutral.is_empty():
+			neutral = row
+	var out: Array = []
+	for r in [gain, cost]:
+		if not r.is_empty():
+			out.append(r)
+	if out.is_empty() and not neutral.is_empty():
+		out.append(neutral)
+	return out
 
 ## Kolor jest pomocniczy: korzyści i kompromisy mają również podpis. Mieszane zmiany pozostają neutralne.
 func _change_kind(metric: String, before: RefCounted, after: RefCounted) -> int:
