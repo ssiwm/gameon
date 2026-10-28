@@ -57,7 +57,8 @@ func run(m: Node) -> void:
 	await _ui()
 	await _immersive()
 	await _progression()
-	await _layout()                                   # na końcu: przegląda wszystkie stanowiska i kafle, zmienia wybory w panelu
+	await _strip_frame()
+	await _layout()                                  # na końcu: przegląda wszystkie stanowiska i kafle, zmienia wybory w panelu
 	print("[WORKSHOP-TEST] ==== %d/%d OK, błędów: %d ====" % [total - failed, total, failed])
 	Audio.quit_game(1 if failed else 0)
 
@@ -106,6 +107,20 @@ func _authorization() -> void:
 	await get_tree().create_timer(0.4).timeout
 	Scrap.request_service(Weapons.M83, "barrel")
 	check("wymiana raz na pobyt w kryjówce, także opóźnione ponowienie", Scrap.bank == after and Profile.part_wear("m83", "barrel") == 0.0)
+	# próg wymiany (Profile.SERVICE_DUE): sprężyny zużyte w 0,7 % — odmowa bez złomu; od progu — wymiana
+	var why := [""]
+	var on_result := func(_w: int, _p: String, _ok: bool, r: String) -> void: why[0] = r
+	Scrap.service_result.connect(on_result)
+	Profile.worn = {"m83": {"springs": 0.7}}
+	after = Scrap.bank
+	Scrap.request_service(Weapons.M83, "springs")
+	check("sprężyny 0,7 %%: wymiana odrzucona przed serwerem (%s), złom i zużycie bez zmian" % why[0],
+		why[0] == "early" and Scrap.bank == after and is_equal_approx(Profile.part_wear("m83", "springs"), 0.7))
+	Profile.worn = {"m83": {"springs": Profile.SERVICE_DUE + 5.0}}
+	Scrap.request_service(Weapons.M83, "springs")
+	check("sprężyny od progu %d%%: wymiana za %d złomu" % [int(Profile.SERVICE_DUE), int(Scrap.SERVICE_COST["springs"])],
+		why[0] == "ok" and Scrap.bank == after - int(Scrap.SERVICE_COST["springs"]) and Profile.part_wear("m83", "springs") == 0.0)
+	Scrap.service_result.disconnect(on_result)
 	station("press_bench")
 	Arsenal.stock["ammo_slug"] = 0
 	Scrap.request_order("ammo_slug")
@@ -660,3 +675,71 @@ func _progression() -> void:
 	var had_lab: bool = Scrap.has_lab_weapon()
 	Scrap.unlocked.clear()
 	check("broń specjalna do badań: po zakupie LR-7 tak (%s), bez zakupów nie (%s)" % [had_lab, Scrap.has_lab_weapon()], had_lab and not Scrap.has_lab_weapon())
+
+## Czyszczenie przy stole konserwacji: rozłożona broń (GunStage.set_strip) mieści się w podglądzie — każda broń z modelem, fabryczna i z najdłuższą
+## częścią w każdym gnieździe, w dwóch proporcjach podglądu, po wygaśnięciu kołysania (dawniej bęben M-83 wychodził dołem, tłumik bokiem).
+func _strip_frame() -> void:
+	var stage: Control = GunStage.new()
+	get_tree().root.add_child(stage)
+	var worst := ""
+	var worst_px := 0.0
+	var cases := 0
+	for aspect_size in [Vector2(600, 225), Vector2(640, 200)]:
+		stage.size = aspect_size
+		for w in Weapons.COUNT:
+			var key := String(Weapons.def(w).key)
+			if not ResourceLoader.exists(GunModel.DIR + "gun_%s.glb" % key):
+				continue
+			for ids in [[], _longest_parts(key)]:
+				stage.set_strip(false)
+				stage.show_gun(w, ids, "", "", false)
+				stage.set_strip(true)
+				await get_tree().create_timer(0.9).timeout
+				stage.set("_idle", 3.0)
+				for a in GunStage.STRIP_POSES:
+					stage.set("_yaw", (a as Vector2).x)
+					stage.set("_pitch", (a as Vector2).y)
+					stage._process(0.0)
+					var out := _outside_px(stage)
+					cases += 1
+					if out > worst_px:
+						worst_px = out
+						worst = "%s %s %s" % [key, ",".join(ids), str(aspect_size)]
+	check("rozłożona broń w kadrze czyszczenia (%d ujęć; najgorsze %.1f px poza: %s)" % [cases, worst_px, worst if worst != "" else "—"], cases > 0 and worst_px <= 1.0)
+	stage.queue_free()
+
+## Po jednej części z modelem na gniazdo — ta o najdłuższej bryle (bęben, długa lufa, tłumik): najtrudniejszy kadr.
+func _longest_parts(key: String) -> Array:
+	var best := {}
+	for part in Parts.of(key):
+		var id := String(part["id"])
+		if not GunModel.has_model(id):
+			continue
+		var probe := GunModel.build(key, [id], Char3D.gun_info(key)["muzzle"])
+		var span := GunStage.model_bounds(probe).size.length()
+		probe.free()
+		var slot := String(part["slot"])
+		if not best.has(slot) or span > float(best[slot][1]):
+			best[slot] = [id, span]
+	var ids := []
+	for slot in best:
+		ids.append(best[slot][0])
+	return ids
+
+## Ile pikseli podglądu (najwięcej) wystaje któryś wierzchołek obrysu siatek modelu poza obraz SubViewport.
+func _outside_px(stage: Control) -> float:
+	var model: Node3D = stage.get("_model")
+	var cam: Camera3D = stage.get("_camera")
+	var vp: SubViewport = stage.get("_vp")
+	if model == null or cam == null:
+		return 0.0
+	var size := Vector2(vp.size)
+	var out := 0.0
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		if not (mi as MeshInstance3D).is_visible_in_tree():
+			continue
+		var box: AABB = (mi as MeshInstance3D).get_aabb()
+		for i in 8:
+			var p := cam.unproject_position((mi as Node3D).global_transform * box.get_endpoint(i))
+			out = maxf(out, maxf(maxf(-p.x, p.x - size.x), maxf(-p.y, p.y - size.y)))
+	return out

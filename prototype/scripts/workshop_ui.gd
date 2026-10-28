@@ -1778,7 +1778,12 @@ func _paper_bar(label: String, frac: float, value: String, col: Color, cap := -1
 	h.add_child(v)
 	_d_panel.add_child(h)
 
+## Kolor zużycia części eksploatacyjnej: zwykły poniżej progu wymiany, cena od Profile.SERVICE_DUE, koszt (pilne) od SERVICE_URGENT.
+func _wear_ink(wear: float) -> Color:
+	return UiTheme.INK_COST if wear >= Profile.SERVICE_URGENT else (UiTheme.INK_PRICE if wear >= Profile.SERVICE_DUE else UiTheme.INK)
+
 ## Stół konserwacji: stan broni, zużycie lufy i sprężyn ze skutkami (rozrzut, granica czyszczenia), szansa zacięcia i czas czyszczenia.
+## Kreska na paskach zużycia = próg, od którego część da się wymienić.
 func _fill_service_panel(base: RefCounted, cur: RefCounted) -> void:
 	var key := String(base.key)
 	if base.is_melee():
@@ -1791,9 +1796,9 @@ func _fill_service_panel(base: RefCounted, cur: RefCounted) -> void:
 	_paper_bar(tr("Condition"), cond / 100.0, (tr("%d%% (max %d%%)") % [int(cond), int(cap)]) if cap < 99.5 else "%d%%" % int(cond), cond_col, cap / 100.0 if cap < 99.5 else -1.0)
 	var bw := Profile.part_wear(key, "barrel")
 	var spread := int(round(Controller.BARREL_SPREAD * pow(bw / 100.0, 2.0) * 100.0))
-	_paper_bar(tr("Barrel wear"), bw / 100.0, tr("%d%% · spread +%d%%") % [int(bw), spread], UiTheme.INK_COST if bw >= 50.0 else UiTheme.INK)
+	_paper_bar(tr("Barrel wear"), bw / 100.0, tr("%d%% · spread +%d%%") % [int(bw), spread], _wear_ink(bw), Profile.SERVICE_DUE / 100.0)
 	var sw := Profile.part_wear(key, "springs")
-	_paper_bar(tr("Spring wear"), sw / 100.0, tr("%d%% · cleans to %d%%") % [int(sw), int(cap)], UiTheme.INK_COST if sw >= 50.0 else UiTheme.INK)
+	_paper_bar(tr("Spring wear"), sw / 100.0, tr("%d%% · cleans to %d%%") % [int(sw), int(cap)], _wear_ink(sw), Profile.SERVICE_DUE / 100.0)
 	var wc := _local_wc()
 	var jam: float = wc.jam_chance(cur) if wc != null else 0.0
 	var grid := GridContainer.new()
@@ -1900,8 +1905,8 @@ func _act() -> void:
 			_present_committed(w, before)
 		return
 	if String(o["slot"]) == "service" and id in Profile.WEAR_PARTS:
-		if Profile.part_wear(key, id) < 0.5:
-			_say(tr("Still like new — nothing to replace."), UiTheme.MUTED)
+		if not Profile.service_due(key, id):
+			_say(tr("Still serviceable — replace from %d%% wear.") % int(Profile.SERVICE_DUE), UiTheme.MUTED)
 		else:
 			Scrap.request_service(w, id)
 		return
@@ -2099,6 +2104,8 @@ func _on_service_result(w: int, part: String, ok: bool, reason: String) -> void:
 			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
 		"serviced":
 			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
+		"early":
+			_say(tr("Still serviceable — replace from %d%% wear.") % int(Profile.SERVICE_DUE), UiTheme.MUTED)
 		"ok":
 			_say((tr("New barrel in the %s.") if part == "barrel" else tr("New springs in the %s.")) % String(Weapons.def(w).name), UiTheme.OK)
 			Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.1)
@@ -2497,7 +2504,7 @@ func _refresh_detail(w: int) -> void:
 			var cc := Profile.clean_time(key)
 			var sid := String(op["id"])
 			var pw := Profile.part_wear(key, sid) if sid != "clean" else 0.0
-			var due := (cc > 0.0) if sid == "clean" else (pw >= 0.5)
+			var due := (cc > 0.0) if sid == "clean" else Profile.service_due(key, sid)
 			var cap := Profile.clean_cap(key)
 			if sid == "sharpen":
 				var st := Profile.sharpen_time(key)
@@ -2507,7 +2514,10 @@ func _refresh_detail(w: int) -> void:
 				_tier_row(i, ctxt, tr("%d s") % ceili(cc) if cc > 0.0 else tr("clean"), UiTheme.INK_COST if due else UiTheme.INK_GAIN)
 			else:
 				var pname := tr("Barrel") if sid == "barrel" else tr("Springs")
-				_tier_row(i, tr("%s  ·  worn %d%%") % [pname, int(pw)], tr("%d scrap") % int(Scrap.SERVICE_COST[sid]) if due else tr("like new"), UiTheme.INK_COST if due else UiTheme.INK_GAIN)
+				# poniżej progu bez ceny (nie da się wymienić), od progu cena, od SERVICE_URGENT cena w kolorze kosztu
+				var ptail := tr("%d scrap") % int(Scrap.SERVICE_COST[sid]) if due else (tr("like new") if pw < 0.5 else tr("from %d%%") % int(Profile.SERVICE_DUE))
+				var pcol := (UiTheme.INK_COST if pw >= Profile.SERVICE_URGENT else UiTheme.INK_PRICE) if due else (UiTheme.INK_GAIN if pw < 0.5 else UiTheme.INK_MUTED)
+				_tier_row(i, tr("%s  ·  worn %d%%") % [pname, int(pw)], ptail, pcol)
 			continue
 		var id := String(op["id"])
 		var fitted := Profile.fitted(key, slot) == id
@@ -2535,11 +2545,11 @@ func _refresh_detail(w: int) -> void:
 		desc = tr("Your saved sets of parts for this gun (only yours — the squad shares the unlocks, not the build). %s fits the set, %s saves your current fit over it.") % [
 			_menu_key("menu_accept", Actions.pad_mode), _menu_key("menu_alt", Actions.pad_mode)]
 	elif unlocked and not o.is_empty() and String(o["slot"]) == "service" and String(o["id"]) == "barrel":
-		desc = tr("Every shot wears the bore, a hot barrel three times faster. A worn barrel throws the shots wider (at 100%% wear the cone is 60%% wider). A new one costs %d scrap from the squad.") % int(Scrap.SERVICE_COST["barrel"])
+		desc = tr("Every shot wears the bore, a hot barrel three times faster. A worn barrel throws the shots wider (at 100%% wear the cone is 60%% wider). A new one costs %d scrap from the squad — replaceable once the barrel is %d%% worn.") % [int(Scrap.SERVICE_COST["barrel"]), int(Profile.SERVICE_DUE)]
 	elif unlocked and not o.is_empty() and String(o["slot"]) == "service" and String(o["id"]) == "sharpen":
 		desc = tr("Every swing dulls the edge a little. A dull blade hurts less — down to %d%% damage when fully blunt. Sharpening costs no scrap, only time at the grinder.") % int(Profile.EDGE_MIN * 100.0)
 	elif unlocked and not o.is_empty() and String(o["slot"]) == "service" and String(o["id"]) == "springs":
-		desc = tr("Recoil and firing-pin springs tire with every shot. Tired springs feed badly: cleaning can no longer bring the gun back to 100%%, only to 100 − half the spring wear. New springs cost %d scrap.") % int(Scrap.SERVICE_COST["springs"])
+		desc = tr("Recoil and firing-pin springs tire with every shot. Tired springs feed badly: cleaning can no longer bring the gun back to 100%%, only to 100 − half the spring wear. New springs cost %d scrap — replaceable once they are %d%% worn.") % [int(Scrap.SERVICE_COST["springs"]), int(Profile.SERVICE_DUE)]
 	elif unlocked and not o.is_empty() and String(o["slot"]) == "service":
 		desc = tr("Strip and clean the gun on the table: condition back to 100% (less with tired springs). It costs no scrap, only time — the dirtier the gun, the longer. Below 70% a gun starts to jam, and every shot wears it — faster with a hot barrel or a suppressor.")
 	elif unlocked and not o.is_empty() and String(o["id"]) != "":

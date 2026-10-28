@@ -662,7 +662,11 @@ func _delivered_rpc(kinds: Array) -> void:
 	Msg.post("press.ready", Msg.Ch.TOAST, tr("Reloading press: %s ready") % ", ".join(names), {"style": Msg.Style.SUCCESS, "ttl": 6.0, "prio": 65})
 
 ## Gracz wymienia część eksploatacyjną `part` broni `w` przy stole konserwacji: złom płaci drużyna (serwer), zużycie siedzi w profilu gracza.
+## Próg zużycia (Profile.SERVICE_DUE) sprawdza prośba u gracza — serwer nie zna cudzego profilu, więc część mniej zużyta nie wychodzi z klienta.
 func request_service(w: int, part: String) -> void:
+	if Weapons.is_valid(w) and SERVICE_COST.has(part) and Weapons.def(w).can_jam() and not Profile.service_due(String(Weapons.def(w).key), part):
+		service_result.emit(w, part, false, "early")
+		return
 	if not NoiseMgr.has_network() or NoiseMgr.is_server():
 		_service_server(w, part, NoiseMgr.local_id())
 	else:
