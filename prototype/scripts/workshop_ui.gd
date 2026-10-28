@@ -46,6 +46,15 @@ const PART_METRICS := {
 	"stun": ["Stun duration", "%.2f s", 1.0], "suppressor": ["Suppressor fitted", "bool", 1.0],
 	"wall_pierce": ["Wall penetration", "%.2f m", 1.0 / 16.0],
 }
+## Karta prasy: modyfikatory naboju (ammo.gd) jako porównanie z nabojem zwykłym — [etykieta, kierunek (1: więcej = lepiej), zapis dodawania].
+const AMMO_FIELDS := {
+	"damage": ["Damage", 1, "num"], "speed": ["Bullet speed", 1, "num"], "pen": ["Penetration", 1, "num"], "armor_pen": ["Armour bypass", 1, "pct"],
+	"falloff_start": ["Full-damage range", 1, "m"], "cam_kick": ["Recoil", -1, "num"], "wear": ["Gun wear", -1, "num"], "ignite": ["Sets on fire", 1, "s"],
+	"knock": ["Knock-back", 1, "num"], "stun": ["Stun", 1, "s"], "crit_mult": ["Headshot bonus", 1, "num"],
+}
+const FUSE_NAMES := ["SHORT", "MID", "LONG"]                 ## „MEDIUM” ma już tłumaczenie żeńskie (jakość efektów) — zapalnik jest męski
+## Pracownia i tokarka: droga części broni specjalnej od próbek do montażu.
+const LAB_STEPS := ["SAMPLES", "RESEARCH", "SCHEMATIC", "LATHE", "BENCH"]
 ## Gniazdo nazwane inaczej niż wspólne SLOT_NAMES, bo jego części siedzą gdzie indziej (PELLET-8: ładownica na komorze w gnieździe „stock”).
 const SLOT_LABELS := {"srut8:stock": "Carrier"}
 ## Kolejność siatki: bronie od początku, potem do kupienia za złom, na końcu zablokowane do późniejszych stref.
@@ -92,6 +101,23 @@ class TierBar extends Control:
 				UiTheme.pill(self, r, Color(UiTheme.BONE_DIM, 0.8), false)
 			else:
 				draw_rect(r, Color(UiTheme.BONE_DIM, 0.8), false, 1.0)
+
+## Pasek na papierowej karcie (stan broni, zużycie części): ślad, wypełnienie i opcjonalna kreska granicy (np. do ilu czyszczenie przywróci stan).
+class PaperBar extends Control:
+	var frac := 0.0
+	var cap := -1.0
+	var col := UiTheme.INK
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(60, 6)
+		size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), UiTheme.PAPER_SEL)
+		draw_rect(Rect2(0, 0, roundf(size.x * clampf(frac, 0.0, 1.0)), size.y), col)
+		if cap >= 0.0:
+			var x := clampf(size.x * cap, 1.0, size.x - 1.0)
+			draw_rect(Rect2(x - 0.75, -2.0, 1.5, size.y + 4.0), UiTheme.INK_COST)
 
 ## Wspólny kafel stanowisk (bronie, zaopatrzenie, perki, wygląd): miniatura po lewej, nazwa, jedna linia stanu (albo cena z monetą)
 ## i najwyżej jeden wskaźnik z kropek przy prawej krawędzi — zawsze z podpisem w linii stanu albo z podpowiedzią.
@@ -289,6 +315,9 @@ var _s_stats: GridContainer
 var _s_text: Label
 var _s_action: Button
 var _sup_note: Label                  ## podpowiedź pod siatką zaopatrzenia ławy: gdzie kupić granaty, miny i amunicję
+var _s_fuse: VBoxContainer            ## stół pirotechniczny: przełącznik krótki / średni / długi zapalnik (ustawienie drużyny)
+var _s_cmp: VBoxContainer             ## prasa: porównanie naboju z nabojem zwykłym
+var _s_queue: VBoxContainer           ## prasa: miejsca na partie (Scrap.PRESS_SLOTS)
 var _page_btns: Array[Button] = []
 var _look_body: HBoxContainer
 var _look_sel := 0
@@ -331,6 +360,7 @@ var _tiles: Array = []
 var _d_stage: Control                 ## ława 3D: wybrana broń z częściami, część spod kursora świeci i wysuwa się z gniazda (gun_stage.gd)
 var _d_title: Label
 var _d_tag: Label
+var _d_panel: VBoxContainer           ## karta stanowiska: konserwacja — paski stanu i zużycia, pracownia / tokarka — droga części
 var _d_stats: GridContainer
 var _d_tiers: VBoxContainer
 var _d_text: Label
@@ -511,6 +541,11 @@ func _build_supply_detail() -> Control:
 	_s_stats.add_theme_constant_override("h_separation", 10)
 	_s_stats.add_theme_constant_override("v_separation", 1)
 	v.add_child(_s_stats)
+	for box in ["_s_fuse", "_s_cmp", "_s_queue"]:
+		var c := VBoxContainer.new()
+		c.add_theme_constant_override("separation", 3)
+		v.add_child(c)
+		set(box, c)
 	v.add_child(_paper_rule())
 	_s_text = UiTheme.ink("", 8)
 	_s_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -907,13 +942,141 @@ func _step_fuse(d: int) -> void:
 	var opts: Array = Throwables.FUSES.get(k, []) as Array
 	if opts.is_empty():
 		return
-	var ni := clampi(Scrap.fuse_index(k) + d, 0, opts.size() - 1)
-	if ni == Scrap.fuse_index(k):
+	_set_fuse(k, clampi(Scrap.fuse_index(k) + d, 0, opts.size() - 1))
+
+## Zapalnik `k` na pozycję `ni` (przełącznik na karcie albo klawisze 1 / 2) — ustawienie drużyny rozstrzyga serwer.
+func _set_fuse(k: String, ni: int) -> void:
+	var opts: Array = Throwables.FUSES.get(k, []) as Array
+	if ni < 0 or ni >= opts.size() or ni == Scrap.fuse_index(k):
 		return
 	Scrap.request_fuse(k, ni)
 	Audio.play("ui_click", Audio.BUS_UI, -10.0, 1.2)
-	_say(tr("%s fuse: %.1f s — for the whole squad.") % [String(Throwables.KINDS[k]["name"]), float(opts[ni])], UiTheme.OK)
+	_say(tr("%s fuse: %.1f s — for the whole squad.") % [tr(String(Throwables.KINDS[k]["name"])), float(opts[ni])], UiTheme.OK)
 	_refresh()
+
+## Stół pirotechniczny: trzy pozycje zapalnika jako przełącznik (zamiast „1,8 s (2 z 3) · 1 / 2 zmień”), z dopiskiem, że to ustawienie drużyny.
+func _fill_fuse(k: String) -> void:
+	_clear_children(_s_fuse)
+	_s_fuse.visible = _mode == "pyro" and Throwables.FUSES.has(k)
+	if not _s_fuse.visible:
+		return
+	_s_fuse.add_child(UiTheme.ink(tr("FUSE  ·  %s / %s") % [_menu_key("menu_slot_1", Actions.pad_mode), _menu_key("menu_slot_2", Actions.pad_mode)], 7, UiTheme.INK_MUTED))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	_s_fuse.add_child(row)
+	var opts: Array = Throwables.FUSES[k]
+	for i in opts.size():
+		var b := Button.new()
+		b.focus_mode = Control.FOCUS_NONE
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.text = "%s\n%s" % [tr(FUSE_NAMES[mini(i, FUSE_NAMES.size() - 1)]), UiTheme.num_text("%.1f s" % float(opts[i]))]
+		b.add_theme_font_size_override("font_size", 8)
+		b.add_theme_constant_override("outline_size", 0)
+		for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+			b.add_theme_color_override(c, UiTheme.INK if i == Scrap.fuse_index(k) else UiTheme.INK_MUTED)
+		for st in ["normal", "hover", "pressed", "focus"]:
+			var box := StyleBoxFlat.new()
+			var sel := i == Scrap.fuse_index(k)
+			box.bg_color = UiTheme.PAPER_SEL if sel else (Color(UiTheme.PAPER_SEL, 0.5) if st == "hover" else Color(0, 0, 0, 0))
+			box.border_color = UiTheme.INK if sel else UiTheme.PAPER_EDGE
+			box.set_border_width_all(2 if sel else 1)
+			box.set_content_margin_all(3)
+			b.add_theme_stylebox_override(st, box)
+		b.pressed.connect(_set_fuse.bind(k, i))
+		row.add_child(b)
+	var note := UiTheme.ink(tr("Squad setting: everyone's %s uses this fuse.") % tr(String(Throwables.KINDS[k]["name"])), 7, UiTheme.INK_MUTED)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.custom_minimum_size.x = DETAIL_W
+	_s_fuse.add_child(note)
+
+## Prasa: co nabój zmienia względem zwykłego tego kalibru (modyfikatory ammo.gd) — wartość i ocena słowem, kolor tylko ją wzmacnia.
+func _fill_ammo_cmp(k: String) -> void:
+	_clear_children(_s_cmp)
+	var rows := _ammo_rows(k)
+	_s_cmp.visible = not rows.is_empty()
+	if rows.is_empty():
+		return
+	_s_cmp.add_child(UiTheme.ink(tr("VS. STANDARD ROUND"), 7, UiTheme.INK_MUTED))
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 1)
+	_s_cmp.add_child(grid)
+	for r in rows:
+		var kind := int(r[2])
+		var col := UiTheme.INK_GAIN if kind > 0 else (UiTheme.INK_COST if kind < 0 else UiTheme.INK)
+		grid.add_child(UiTheme.ink(tr(String(r[0])), 9, UiTheme.INK_MUTED))
+		grid.add_child(UiTheme.ink(UiTheme.num_text(String(r[1])), 9, col))
+		grid.add_child(UiTheme.ink((tr("Gain") if kind > 0 else (tr("Trade-off") if kind < 0 else "")).to_lower(), 7, col))
+
+## Wiersze porównania naboju `k` z nabojem zwykłym: [etykieta, zmiana, ocena −1 / 0 / 1]. Granaty 40 mm to inny ładunek, nie wariant — bez porównania.
+func _ammo_rows(k: String) -> Array:
+	var ct := Ammo.from_kind(k)
+	if ct.is_empty() or String(ct["cal"]) == "40mm":
+		return []
+	var t := Ammo.type_of(String(ct["cal"]), int(ct["t"]))
+	var out: Array = []
+	if bool(t.get("slug", false)):
+		out.append(["Pellets", tr("one heavy slug"), 0])
+	if bool(t.get("subsonic", false)):
+		out.append(["Bullet crack", tr("none — quieter"), 1])
+	for m in t.get("mods", []):
+		var f := String(m[0])
+		if not AMMO_FIELDS.has(f):
+			continue
+		var spec: Array = AMMO_FIELDS[f]
+		var v := float(m[2])
+		var text := ""
+		var sgn := 0.0
+		match String(m[1]):
+			"mul":
+				text = "%+d%%" % roundi((v - 1.0) * 100.0)
+				sgn = v - 1.0
+			"add":
+				match String(spec[2]):
+					"pct":
+						text = "+%d%%" % roundi(v * 100.0)
+					"s":
+						text = tr("+%.1f s") % v
+					"m":
+						text = "+%.1f m" % (v / 16.0)
+					_:
+						text = "%+.1f" % v
+				sgn = v
+			"set":
+				text = tr("none") if f == "crit_mult" and v <= 1.0 else "%.1f" % v
+				sgn = -1.0 if f == "crit_mult" else 1.0
+		out.append([String(spec[0]), text, int(signf(sgn) * float(spec[1]))])
+	return out
+
+## Prasa: miejsca na partie — zajęte z nazwą naboju, wolne puste (dawniej wiersz „1 z 3 partii”).
+func _fill_press_queue() -> void:
+	_clear_children(_s_queue)
+	_s_queue.visible = _mode == "press"
+	if not _s_queue.visible:
+		return
+	_s_queue.add_child(UiTheme.ink(tr("IN THE PRESS  ·  READY AFTER A SUCCESSFUL MISSION"), 7, UiTheme.INK_MUTED))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	_s_queue.add_child(row)
+	for i in Scrap.PRESS_SLOTS:
+		var filled := i < Scrap.orders.size()
+		var slot := PanelContainer.new()
+		slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var box := StyleBoxFlat.new()
+		box.bg_color = UiTheme.PAPER_SEL if filled else Color(0, 0, 0, 0)
+		box.border_color = UiTheme.INK if filled else UiTheme.PAPER_EDGE
+		box.set_border_width_all(1)
+		box.set_content_margin_all(3)
+		slot.add_theme_stylebox_override("panel", box)
+		slot.add_child(UiTheme.ink(String(Throwables.KINDS[String(Scrap.orders[i])]["name"]) if filled else tr("free"), 8,
+			UiTheme.INK if filled else UiTheme.INK_MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		row.add_child(slot)
+
+func _clear_children(node: Node) -> void:
+	for c in node.get_children():
+		node.remove_child(c)
+		c.queue_free()
 
 ## Cena kafla: przedmiot — sklep ławy, amunicja — partia w prasie.
 func _sup_price(k: String) -> int:
@@ -1025,6 +1188,9 @@ func _build_detail() -> Control:
 	v.add_child(_d_title)
 	_d_tag = UiTheme.ink("", 8, UiTheme.INK_MUTED)
 	v.add_child(_d_tag)
+	_d_panel = VBoxContainer.new()
+	_d_panel.add_theme_constant_override("separation", 3)
+	v.add_child(_d_panel)
 	_d_stats = GridContainer.new()
 	_d_stats.columns = 4                                  # parametr | teraz | → po zmianie | korzyść / kompromis
 	_d_stats.add_theme_constant_override("h_separation", 10)
@@ -1407,7 +1573,7 @@ func _initial_selection() -> int:
 	return int(choices[0])
 
 ## Stan wspólnej pracy, także gdy panel pokazuje inną broń.
-func _queue_summary() -> String:
+func _queue_summary(skip_batches := false) -> String:
 	var lines: Array[String] = []
 	for entry in [[tr("Research"), Scrap.research], [tr("Machining"), Scrap.lathe]]:
 		for id in entry[1]:
@@ -1415,7 +1581,7 @@ func _queue_summary() -> String:
 	for id in Scrap.schematics:
 		if not Scrap.lathe.has(id):
 			lines.append(tr("Schematic: %s — take to the lathe") % tr(String(Parts.get_part(String(id)).get("name", id))))
-	for kind in Scrap.orders:
+	for kind in ([] if skip_batches else Scrap.orders):          # prasa pokazuje partie w swoich miejscach (_fill_press_queue)
 		lines.append(tr("Batch: %s — after a successful mission") % tr(String(Throwables.KINDS[String(kind)]["name"])))
 	for kind in Scrap.deliveries:
 		var station := tr("PYROTECHNICS") if Scrap.supply_station(String(kind)) == "pyro_bench" else tr("RELOADING PRESS")
@@ -1458,7 +1624,7 @@ func _comparison_rows(d: RefCounted) -> Array:
 		rows.append([tr("Spread"), "±%.2f°" % d.jitter_deg + (" / ±%.2f°" % d.spread_deg if d.pellets > 1 else "")])
 		rows.append([tr("Bloom"), "+%.2f° / %.2f°" % [d.bloom_per_shot, d.bloom_max]])
 		rows.append([tr("Recoil"), "%.2f / %.2f" % [d.cam_kick, d.recoil]])
-		rows.append([tr("Penetration"), "%.2f / %d" % [d.pen, d.pierce]])
+		rows.append([tr("Penetration"), _penetration_text(d)])
 		rows.append([tr("Armour bypass"), "%d%%" % int(d.armor_pen * 100.0)])
 		rows.append([tr("Heating"), "%.1f%% / %.1f%%" % [d.barrel_heat * 100.0, d.heat_gain * 100.0]])
 	var fields := {}
@@ -1473,6 +1639,111 @@ func _comparison_rows(d: RefCounted) -> Array:
 		var text := (tr("Yes") if value != 0 else tr("No")) if spec[1] == "bool" else String(spec[1]) % (value * float(spec[2]))
 		rows.append([tr(String(spec[0])), text])
 	return rows
+
+## Przebicie zrozumiale: energia kuli w przeszkodach (skrzynia, ciało) i dodatkowe cele promienia, szyny, bełtu (dawniej „0,00 / 1”).
+func _penetration_text(d: RefCounted) -> String:
+	var parts: Array = []
+	if d.pen > 0.0:
+		parts.append(tr("%.1f obstacles") % d.pen)
+	if d.pierce > 0:
+		parts.append(tr_n("+%d target", "+%d targets", d.pierce) % d.pierce)          # formy mnogie: translations/plural.csv
+	return " · ".join(parts) if not parts.is_empty() else "—"
+
+## Wiersz z paskiem na papierowej karcie: etykieta, pasek, napis wartości.
+func _paper_bar(label: String, frac: float, value: String, col: Color, cap := -1.0) -> void:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	var l := UiTheme.ink(label, 9, UiTheme.INK_MUTED)
+	l.custom_minimum_size.x = 84
+	h.add_child(l)
+	var bar := PaperBar.new()
+	bar.custom_minimum_size.x = 90
+	bar.frac = frac
+	bar.cap = cap
+	bar.col = col
+	h.add_child(bar)
+	var v := UiTheme.ink(UiTheme.num_text(value), 9, col, HORIZONTAL_ALIGNMENT_RIGHT)
+	v.custom_minimum_size.x = 100
+	h.add_child(v)
+	_d_panel.add_child(h)
+
+## Stół konserwacji: stan broni, zużycie lufy i sprężyn ze skutkami (rozrzut, granica czyszczenia), szansa zacięcia i czas czyszczenia.
+func _fill_service_panel(base: RefCounted, cur: RefCounted) -> void:
+	var key := String(base.key)
+	if base.is_melee():
+		var edge := Profile.edge_of(key)
+		_paper_bar(tr("Edge"), edge / 100.0, "%d%%" % int(edge), UiTheme.INK_GAIN if edge >= 95.0 else UiTheme.INK)
+		return
+	var cond := Profile.condition(key)
+	var cap := Profile.clean_cap(key)
+	var cond_col := UiTheme.INK_GAIN if cond >= 95.0 else (UiTheme.INK if cond >= Controller.JAM_FROM else UiTheme.INK_COST)
+	_paper_bar(tr("Condition"), cond / 100.0, (tr("%d%% (max %d%%)") % [int(cond), int(cap)]) if cap < 99.5 else "%d%%" % int(cond), cond_col, cap / 100.0 if cap < 99.5 else -1.0)
+	var bw := Profile.part_wear(key, "barrel")
+	var spread := int(round(Controller.BARREL_SPREAD * pow(bw / 100.0, 2.0) * 100.0))
+	_paper_bar(tr("Barrel wear"), bw / 100.0, tr("%d%% · spread +%d%%") % [int(bw), spread], UiTheme.INK_COST if bw >= 50.0 else UiTheme.INK)
+	var sw := Profile.part_wear(key, "springs")
+	_paper_bar(tr("Spring wear"), sw / 100.0, tr("%d%% · cleans to %d%%") % [int(sw), int(cap)], UiTheme.INK_COST if sw >= 50.0 else UiTheme.INK)
+	var wc := _local_wc()
+	var jam: float = wc.jam_chance(cur) if wc != null else 0.0
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 1)
+	grid.add_child(UiTheme.ink(tr("Jam chance"), 9, UiTheme.INK_MUTED))
+	grid.add_child(UiTheme.ink(tr("none") if jam <= 0.0 else tr("1 in %d shots") % maxi(1, roundi(1.0 / jam)), 9, UiTheme.INK_COST if jam > 0.0 else UiTheme.INK_GAIN))
+	var ct := Profile.clean_time(key)
+	grid.add_child(UiTheme.ink(tr("Cleaning"), 9, UiTheme.INK_MUTED))
+	grid.add_child(UiTheme.ink(tr("%d s") % ceili(ct) if ct > 0.0 else tr("clean"), 9))
+	_d_panel.add_child(grid)
+
+## Pracownia / tokarka: droga części broni specjalnej PRÓBKI › BADANIE › SCHEMAT › TOKARKA › ŁAWA — zrobione kroki zielone, bieżący z paskiem,
+## pod spodem jedno zdanie, co dalej (dawniej trzeba było to wyczytać z nawiasów przy częściach).
+func _fill_lab_chain(key: String, slot: String, id: String) -> void:
+	if id == "" or not Scrap.is_lab_part(id):
+		return
+	var rc := Scrap.research_cost(id)
+	var step := 0
+	var busy := false
+	var note := ""
+	if Scrap.has_part(id):
+		step = 5 if Profile.fitted(key, slot) == id else 4
+		note = tr("Fitted to your gun.") if step == 5 else tr("Part made — fit it at the workshop bench.")
+	elif Scrap.lathe.has(id):
+		step = 3
+		busy = true
+		note = tr("On the lathe — ready after a successful mission.")
+	elif Scrap.schematics.has(id):
+		step = 3
+		note = tr("Schematic ready — make the part on the lathe.")
+	elif Scrap.research.has(id):
+		step = 1
+		busy = true
+		note = tr("Being researched — ready after a successful mission.")
+	elif Scrap.samples >= rc.x:
+		step = 1
+		note = tr("You have %s — enough to research it at the lab.") % _samples_text(Scrap.samples)
+	else:
+		note = tr("Research needs %s, you have %d. Elites, bosses and side goals drop samples.") % [_samples_text(rc.x), Scrap.samples]
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 3)
+	for i in LAB_STEPS.size():
+		if i > 0:
+			row.add_child(UiTheme.ink("›", 8, UiTheme.INK_MUTED))
+		var done := i < step
+		var cell := PanelContainer.new()
+		var box := StyleBoxFlat.new()
+		box.bg_color = UiTheme.PAPER_SEL if i == step else Color(0, 0, 0, 0)
+		box.set_content_margin_all(1)
+		box.content_margin_left = 3
+		box.content_margin_right = 3
+		cell.add_theme_stylebox_override("panel", box)
+		cell.add_child(UiTheme.ink(tr(LAB_STEPS[i]) + ("…" if busy and i == step else ""), 8, UiTheme.INK_GAIN if done else (UiTheme.INK if i == step else UiTheme.INK_MUTED)))
+		row.add_child(cell)
+	_d_panel.add_child(row)
+	var l := UiTheme.ink(note, 8)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size.x = DETAIL_W
+	_d_panel.add_child(l)
 
 func _first_part_opt() -> int:
 	if _mode == "bench":
@@ -1868,6 +2139,9 @@ func _refresh_supplies() -> void:
 	_s_title.text = String(d["name"])
 	var mode: String = {"throw": "Throwable", "place": "Placed", "use": "Tool", "ammo": "Ammunition"}[String(d["mode"])]
 	_s_tag.text = "%s  ·  %s" % [tr(String(d["full"])), tr(mode)]
+	if Throwables.is_ammo(k2):
+		_s_title.text = tr(String(d["full"]))               # pełna nazwa naboju zamiast skrótu z kafla („7.62 HOT” → „7.62×39 ładunek wzmocniony”)
+		_s_tag.text = "%s  ·  %s" % [String(d["name"]), tr(mode)]
 	for ch in _s_stats.get_children():
 		_s_stats.remove_child(ch)
 		ch.free()
@@ -1878,20 +2152,20 @@ func _refresh_supplies() -> void:
 		for wd in Weapons.defs():
 			if String(wd.caliber) == String(ct.get("cal", "")):
 				users.append(String(wd.name))
-		rows = [["Carried", tr("%d / %d rounds") % [have2, maxn]], ["Box", tr("%d rounds") % Throwables.box_of(k2)], ["Fits", ", ".join(users)],
-			["In the press", tr("%d of %d batches") % [Scrap.orders.size(), Scrap.PRESS_SLOTS]]]
+		rows = [["Carried", tr("%d / %d rounds") % [have2, maxn]], ["Box", tr("%d rounds") % Throwables.box_of(k2)], ["Fits", ", ".join(users)]]
 	elif d.has("noise") or k2 in ["frag", "charge"]:
 		rows.append(["Noise", Codex.noise_text(k2)])
-	if Throwables.FUSES.has(k2):
-		var fo: Array = Throwables.FUSES[k2]
-		var fi := Scrap.fuse_index(k2)
-		rows.append(["Fuse", tr("%.1f s  (%d of %d)") % [float(fo[fi]), fi + 1, fo.size()] + ((tr("  ·  %s / %s change") % [_menu_key("menu_slot_1", Actions.pad_mode), _menu_key("menu_slot_2", Actions.pad_mode)]) if _mode == "pyro" else "")])
+	if Throwables.FUSES.has(k2) and _mode != "pyro":
+		rows.append(["Fuse", "%.1f s" % Scrap.fuse_of(k2)])              # przy stole pirotechnicznym zapalnik ma własny przełącznik
 	for r in rows:
 		_s_stats.add_child(UiTheme.ink(tr(String(r[0])), 9, UiTheme.INK_MUTED))
 		_s_stats.add_child(UiTheme.ink(UiTheme.num_text(tr(String(r[1]))), 9))
 		_s_stats.add_child(Control.new())
+	_fill_fuse(k2)
+	_fill_ammo_cmp(k2)
+	_fill_press_queue()
 	_s_text.text = tr(String(d["note"]))
-	var summary := _queue_summary()
+	var summary := _queue_summary(_mode == "press")
 	if summary != "":
 		_s_text.text += "\n\n" + summary
 	if Throwables.is_ammo(k2):
@@ -2082,6 +2356,12 @@ func _refresh_detail(w: int) -> void:
 		var col := UiTheme.INK_GAIN if kind > 0 else (UiTheme.INK_COST if kind < 0 else UiTheme.INK)
 		_d_stats.add_child(UiTheme.ink(UiTheme.num_text(nv), 9, col))
 		_d_stats.add_child(UiTheme.ink(verdict.to_lower(), 7, col))
+	_clear_children(_d_panel)
+	if unlocked and (_mode == "service" or (_mode == "lathe" and base.is_melee())):          # szlifierka: pasek ostrza
+		_clear_children(_d_stats)                         # przy czyszczeniu liczy się stan i zużycie, nie 22 parametry balistyczne
+		_fill_service_panel(base, cur)
+	elif (_mode == "lab" or _mode == "lathe") and not o.is_empty() and String(o["slot"]) != "service":
+		_fill_lab_chain(key, String(o["slot"]), String(o["id"]))
 	# części w gniazdach: nagłówek gniazda, element fabryczny i części (zamontowana — zielona, odblokowana — atrament, do kupienia — z ceną)
 	for ch in _d_tiers.get_children():
 		_d_tiers.remove_child(ch)
