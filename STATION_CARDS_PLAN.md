@@ -2,7 +2,8 @@
 
 Status: **plan z 2026-10-28 (main 1.7.412, 71e4aa6; zrzuty z 1.7.413, gałąź #505)**, nic nie wdrożone. Zmienia się tylko
 prezentacja kart siedmiu stanowisk (`workshop_ui.gd`); logika, serwer, `Scrap.*` i dane zostają. Makiety i rendery w
-[`docs/station_cards/`](docs/station_cards/). Decyzje do podjęcia: §9.
+[`docs/station_cards/`](docs/station_cards/). Decyzje D1–D4 podjęte 2026-10-28 (§9): D1a, D2a, D3a, D4a — E0 i E1 przed playtestem,
+E2–E5 po nim.
 
 ## 1. Cel
 
@@ -153,7 +154,7 @@ Makiety (HTML, nie Godot) z danymi z gry; zużycie, zabójstwa i wprawa na ławi
 | E4 | Pracownia i tokarka | akta z zaczernieniami, wydruki, słoje; rysunek, szpikulec, szlifierka | `--shotlab`, `--shotlathe` |
 | E5 | Ława | metryka z VU, przyciemniona mata, zawieszki | `tools/workbench_qa.gd` |
 
-Każdy etap kończy się zrzutami `--shotws*` (z `override.cfg` i `custom_user_dir`, żeby nie ruszać profilu gracza) i można
+Kolejność wg D4a: E0 i E1 przed playtestem (GDD §23.3), E2–E5 po nim. Każdy etap kończy się zrzutami `--shotws*` (z `override.cfg` i `custom_user_dir`, żeby nie ruszać profilu gracza) i można
 po nim przerwać, gdyby playtest (GDD §23.3) schował część stanowisk.
 
 ## 8. Ryzyka
@@ -165,9 +166,10 @@ po nim przerwać, gdyby playtest (GDD §23.3) schował część stanowisk.
   E0 dotyczy tylko kart stanowisk, reszta osobno.
 - **Koszt grafiki** — faktury z generatora Pythona w `tools/`, bez ręcznego malowania (zasada repo).
 
-## 9. Decyzje do podjęcia
+## 9. Decyzje (podjęte 2026-10-28 — wybrane warianty oznaczone ✅)
 
-- **D1. Cyrylica na tabliczkach** — a) drugi wiersz cyrylicą tylko na sprzęcie bunkra (rekomendacja); b) wszystko po polsku.
-- **D2. Reakcja słojów na dźwięk** — a) tak, tylko w pracowni, wyłączana przez „Reduce effects” (rekomendacja); b) bez ruchu.
-- **D3. Amunicja 40 mm** — a) zostaje ikona do czasu modeli (rekomendacja); b) modele (Meshy / Blender) w E0.
-- **D4. Kolejność** — a) E0 i E1 przed playtestem, E2–E5 po nim (rekomendacja); b) całość przed playtestem.
+- **D1. Cyrylica na tabliczkach** — ✅ a) drugi wiersz cyrylicą tylko na sprzęcie bunkra (w IBM Plex Mono); b) wszystko po polsku.
+- **D2. Reakcja słojów na dźwięk** — ✅ a) tak, tylko w pracowni, wyłączana przez „Reduce effects”; b) bez ruchu.
+- **D3. Amunicja 40 mm** — ✅ a) zostaje ikona do czasu modeli (w E0 lista braków); b) modele (Meshy / Blender) w E0.
+- **D4. Kolejność** — ✅ a) E0 i E1 przed playtestem, E2–E5 po nim (wyniki playtestu mogą zmienić albo skreślić te etapy);
+  b) całość przed playtestem.
