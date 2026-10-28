@@ -59,6 +59,7 @@ func run(m: Node) -> void:
 	await _jobs_deliveries()
 	await _ui()
 	await _service_card()
+	await _lab_lathe()
 	await _immersive()
 	await _progression()
 	await _strip_frame()
@@ -841,6 +842,52 @@ func _key_event(action: String, pressed: bool) -> InputEvent:
 			e.pressed = pressed
 			return e
 	return null
+
+## Pracownia i tokarka (STATION_CARDS_PLAN.md E4, ST-05 / ST-06): korek z łańcuchem, słoje słyszą dźwięk (D2a), akta, odczyt na wydruku;
+## rysunek części, zlecenie z pieczątką, rulony schematów przy kaflach, szlifierka z iskrami tylko w trakcie ostrzenia.
+func _lab_lathe() -> void:
+	var ui := get_tree().get_first_node_in_group("workshop_ui")
+	var samples0 := Scrap.samples
+	Scrap.samples = 4
+	station("lab_bench")
+	ui.open("lab")
+	ui._select(ui.LIST.find(Weapons.LR7))
+	ui._pick_opt(ui._options(Weapons.LR7).find({"slot": "muzzle", "id": "lr7_lens"}))
+	await frames(2)
+	check("pracownia: łańcuch kroków na korku, 5 kartek", ui._cork.visible and ui._cork.steps.size() == ui.LAB_STEPS.size())
+	check("pracownia: akta Obiektu 86 z zaczernieniem i teczką broni", ui._dossier_head.visible and ui._dossier_head.text.contains("LR-7") and ui._redacted.text.contains("█"))
+	check("pracownia: słoje = próbki (4 z 6), odczyt części na wydruku", ui._jars.count == 4 and ui._printout.visible and ui._printout.is_ancestor_of(ui._d_stats))
+	var fx0 := Settings.reduce_fx
+	Settings.reduce_fx = false
+	ui._jars.hear(1.0)
+	await frames(30)
+	var turned: float = ui._jars.looking()
+	check("pracownia: kształty w słojach obracają się w stronę dźwięku (D2a): %.2f" % turned, turned > 0.1)
+	Settings.reduce_fx = true
+	ui._jars.hear(-1.0)
+	await frames(10)
+	check("pracownia: „Reduce effects” — słoje nie reagują na nowy dźwięk", ui._jars.looking() > 0.0)          # dźwięk z lewej zignorowany
+	Settings.reduce_fx = fx0
+	ui.close()
+	Scrap.schematics["lr7_lens"] = true
+	station("lathe_bench")
+	ui.open("lathe")
+	ui._select(ui.LIST.find(Weapons.LR7))
+	ui._pick_opt(ui._options(Weapons.LR7).find({"slot": "muzzle", "id": "lr7_lens"}))
+	await frames(2)
+	check("tokarka: rysunek części z drukarki zamiast sceny, szablon soczewki", ui._blueprint.visible and ui._blueprint.slot == "muzzle" and ui._blueprint.has_schematic and not ui._legacy_stage.visible)
+	check("tokarka: zlecenie na szpikulcu z częścią i kosztem", ui._order.visible and ui._order_box.get_children().any(func(c: Node) -> bool: return c is Label and (c as Label).text == tr("Focusing lens")))
+	check("tokarka: schematy jako rulony przy kaflach", ui._d_tiers.get_parent() == ui._arms_left)
+	Scrap.lathe = ["lr7_lens"]
+	ui._refresh()
+	check("tokarka: część na tokarce — pieczątka PRZYJĘTO na zleceniu", ui._order_stamp.text == tr("ACCEPTED"))
+	Scrap.lathe = []
+	Scrap.schematics.erase("lr7_lens")
+	ui.close()
+	ui.open("bench")
+	check("ława: bez kolumny pracowni i z listą części na karcie", not ui._arms_side.visible or ui._page != 0)
+	ui.close()
+	Scrap.samples = samples0
 
 func _service_card() -> void:
 	var ui := get_tree().get_first_node_in_group("workshop_ui")

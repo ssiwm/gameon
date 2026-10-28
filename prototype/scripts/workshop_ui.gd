@@ -32,6 +32,7 @@ const Weather := preload("res://scripts/weather.gd")
 const SupplyArt := preload("res://scripts/station_supply_art.gd")
 const NotePaletteRef := preload("res://scripts/note_palette.gd")
 const ServiceArt := preload("res://scripts/station_service_art.gd")
+const LabArt := preload("res://scripts/station_lab_art.gd")
 
 const GOLD := Color(0.95, 0.8, 0.4)
 const COLS := 2
@@ -464,6 +465,24 @@ var _svc_todo: Label                  ## stół konserwacji: co zrobić z każd�
 var _svc_note: Control                ## kartka (SCRAWL) z listą do zrobienia, przypięta taśmą
 var _arms_paper: PanelContainer       ## karta szczegółów broni (na stole konserwacji bez papieru — przyrządy na blacie)
 var _gauges := {}                     ## stół konserwacji: przyrządy „clean” / „barrel” / „springs” (ServiceArt.Gauge)
+var _arms_left: VBoxContainer         ## lewa kolumna zakładki broni (kafle, kartka, rulony schematów, szlifierka)
+var _arms_side: VBoxContainer         ## prawa kolumna pracowni / tokarki (słoje i odczyt / zlecenie)
+var _arms_detail: VBoxContainer       ## zawartość karty broni (kolejność: akta, scena, tytuł…)
+var _cork: Control                    ## pracownia: tablica korkowa z łańcuchem kroków
+var _dossier_head: Label              ## pracownia: nagłówek akt Obiektu 86
+var _redacted: Control                ## pracownia: linia akt z zaczernieniami
+var _jars: Control                    ## pracownia: słoje z próbkami (D2a)
+var _jars_cap: Label
+var _printout: PanelContainer         ## pracownia: odczyt części na wydruku (PRINTOUT)
+var _printout_head: Label
+var _blueprint: Control               ## tokarka: rysunek części z drukarki
+var _order: Control                   ## tokarka: zlecenie na szpikulcu (SCRAWL)
+var _order_box: VBoxContainer
+var _order_stamp: Control
+var _grinder: PanelContainer          ## tokarka: szlifierka (ostrze broni białej, iskry w trakcie)
+var _grinder_text: Label
+var _grinder_bar: ColorRect
+var _sparks: Control
 var _hold_clean := false              ## czyszczenie trzymane klawiszem: puszczenie przerywa
 var _perk_paper: PanelContainer       ## szafka: strona książeczki (SCRAWL) z opisem perka
 var _book_stamps: Control             ## szafka: pieczątki poziomów w książeczce
@@ -566,6 +585,7 @@ func _ready() -> void:
 	var left := VBoxContainer.new()
 	left.add_theme_constant_override("separation", 10)
 	body.add_child(left)
+	_arms_left = left
 	var grid := GridContainer.new()
 	grid.columns = COLS
 	grid.add_theme_constant_override("h_separation", 6)
@@ -591,6 +611,7 @@ func _ready() -> void:
 	left.add_child(_svc_note)
 	_arms_paper = _paper(_build_detail())
 	body.add_child(_arms_paper)
+	_build_lab_lathe(left, body)
 	_legacy_stage = _d_stage as GunStage
 	_workbench = GunsmithPanel.new()
 	_workbench.custom_minimum_size = Vector2(606, 240)
@@ -1789,6 +1810,20 @@ func _build_detail() -> Control:
 	var v := VBoxContainer.new()
 	v.custom_minimum_size = Vector2(DETAIL_W, 0)
 	v.add_theme_constant_override("separation", 4)
+	_arms_detail = v
+	_cork = LabArt.CorkChain.new()                        # pracownia (ST-05): tablica korkowa z łańcuchem kroków
+	_cork.visible = false
+	v.add_child(_cork)
+	_dossier_head = UiTheme.mono(UiTheme.ink("", 7, UiTheme.INK_MUTED))       # akta Obiektu 86 (sprzęt bunkra — cyrylica, D1a)
+	_dossier_head.visible = false
+	v.add_child(_dossier_head)
+	_redacted = LabArt.Redacted.new()
+	_redacted.color = UiTheme.INK
+	_redacted.visible = false
+	v.add_child(_redacted)
+	_blueprint = LabArt.Blueprint.new()                   # tokarka (ST-06): rysunek części z drukarki zamiast sceny z bronią
+	_blueprint.visible = false
+	v.add_child(_blueprint)
 	_d_stage = GunStage.new()
 	_d_stage.custom_minimum_size = Vector2(0, 76)
 	v.add_child(_d_stage)
@@ -1925,6 +1960,8 @@ func _on_knock(d7: Node2D) -> void:
 		if not p.is_bot and p.is_multiplayer_authority():
 			me = p
 	var left := me != null and d7.global_position.x < me.global_position.x
+	if _jars != null and _jars.is_visible_in_tree():
+		(_jars as LabArt.Jars).hear(-1.0 if left else 1.0)         # D2a: kształty w słojach zwracają się w stronę stukania
 	# napis dźwięku po stronie drzwi, nad kartą — nie zmienia układu karty (wiersz komunikatów zostaje dla wyników operacji)
 	_knock_label.text = ("◀  " if left else "") + tr("Knocking behind D-7") + ("" if left else "  ▶")
 	_knock_label.reset_size()
@@ -2509,6 +2546,173 @@ func _fill_service_panel(base: RefCounted, cur: RefCounted) -> void:
 		(UiTheme.DANGER if jam > 0.0 else UiTheme.OK) if deck else (UiTheme.INK_COST if jam > 0.0 else UiTheme.INK_GAIN)))
 	_d_panel.add_child(grid)                              # czas czyszczenia stoi w wierszu „Czyszczenie” i na przycisku — nie trzeci raz tutaj
 
+## Pracownia i tokarka (ST-05, ST-06): prawa kolumna (słoje z próbkami i odczyt części / zlecenie na szpikulcu) i szlifierka pod kaflami.
+func _build_lab_lathe(left: VBoxContainer, body: HBoxContainer) -> void:
+	_arms_side = VBoxContainer.new()
+	_arms_side.add_theme_constant_override("separation", 10)
+	_arms_side.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_arms_side.visible = false
+	body.add_child(_arms_side)
+	var jp := PanelContainer.new()
+	jp.add_theme_stylebox_override("panel", UiTheme.panel_box())
+	var jv := VBoxContainer.new()
+	jv.add_theme_constant_override("separation", 4)
+	jp.add_child(jv)
+	_jars_cap = UiTheme.mono(UiTheme.label("", 8, UiTheme.MUTED))
+	jv.add_child(_jars_cap)
+	_jars = LabArt.Jars.new()
+	jv.add_child(_jars)
+	_arms_side.add_child(jp)
+	jp.set_meta("lab", true)
+	_printout = PanelContainer.new()                      # odczyt części: wydruk z perforacją
+	_printout.add_theme_stylebox_override("panel", LabArt.printout_box())
+	_printout.add_child(LabArt.Perforation.new())
+	var pv := VBoxContainer.new()
+	pv.add_theme_constant_override("separation", 3)
+	_printout.add_child(pv)
+	_printout_head = UiTheme.label("", 10, LabArt.printout()["ink"])
+	_printout_head.add_theme_font_override("font", UiTheme.note_font(NotePaletteRef.Note.PRINTOUT))
+	_printout_head.add_theme_constant_override("outline_size", 0)
+	pv.add_child(_printout_head)
+	_printout.set_meta("body", pv)
+	_printout.set_meta("lab", true)
+	_arms_side.add_child(_printout)
+	_order = ServiceArt.Scrawl.new()                      # zlecenie odręczne nabite na szpikulec
+	(_order as ServiceArt.Scrawl).stains = false
+	_order.rotation_degrees = 1.5
+	_order.custom_minimum_size.x = 150
+	_order_box = VBoxContainer.new()
+	_order_box.add_theme_constant_override("separation", 1)
+	_order.add_child(_order_box)
+	_order_stamp = StationKit.Stamp.new()
+	_order.add_child(_order_stamp)
+	var spike := LabArt.Spike.new()
+	_arms_side.add_child(spike)
+	spike.set_meta("lathe", true)
+	_arms_side.add_child(_order)
+	_order.set_meta("lathe", true)
+	_grinder = PanelContainer.new()                       # szlifierka: ostrze broni białej, iskry tylko w trakcie
+	_grinder.add_theme_stylebox_override("panel", UiTheme.panel_box())
+	var gv := VBoxContainer.new()
+	gv.add_theme_constant_override("separation", 3)
+	_grinder.add_child(gv)
+	gv.add_child(UiTheme.mono(UiTheme.label(tr("GRINDER"), 8, UiTheme.MUTED)))
+	_grinder_text = UiTheme.label("", 9, UiTheme.TEXT)
+	gv.add_child(_grinder_text)
+	var track := ColorRect.new()
+	track.color = Color("23221d")
+	track.custom_minimum_size = Vector2(COLS * TILE_W - 30.0, 5)
+	gv.add_child(track)
+	_grinder_bar = ColorRect.new()
+	_grinder_bar.color = UiTheme.BONE_DIM
+	_grinder_bar.size = Vector2(0, 5)
+	track.add_child(_grinder_bar)
+	_sparks = LabArt.Sparks.new()
+	gv.add_child(_sparks)
+	_grinder.visible = false
+	left.add_child(_grinder)
+
+## Pracownia i tokarka: akta z zaczernieniami i korek (pracownia), rysunek, zlecenie, rulony schematów i szlifierka (tokarka), wydruk
+## odczytu w prawej kolumnie. Wołane z `_refresh_detail` po wypełnieniu karty.
+func _dress_lab_lathe(w: int, o: Dictionary) -> void:
+	var lab := _mode == "lab"
+	var lathe := _mode == "lathe"
+	var base: RefCounted = Weapons.base_def(w)
+	var key := String(base.key)
+	var part := not o.is_empty() and String(o.get("slot", "")) != "service" and String(o.get("id", "")) != ""
+	_arms_side.visible = lab or lathe
+	for c in _arms_side.get_children():
+		c.visible = (lab and c.has_meta("lab")) or (lathe and c.has_meta("lathe") and part)
+	_cork.visible = lab and part
+	_dossier_head.visible = lab
+	_redacted.visible = lab
+	_legacy_stage.visible = not ((lab and part) or (lathe and part))
+	_blueprint.visible = lathe and part
+	_grinder.visible = lathe and base.is_melee()
+	# rulony schematów (tokarka): lista części przy kaflach zamiast na rysunku
+	var want: Control = _arms_left if lathe else _arms_detail
+	if _d_tiers.get_parent() != want:
+		_d_tiers.reparent(want)
+		if not lathe:
+			_arms_detail.move_child(_d_tiers, _d_text.get_index())
+	if lathe:                                              # nagłówki gniazd przy rulonach w kolorach blatu
+		for c in _d_tiers.get_children():
+			if c is Label:
+				(c as Label).add_theme_color_override("font_color", UiTheme.MUTED)
+	if not (lab or lathe):
+		if _d_stats.get_parent() != _arms_detail:
+			_d_stats.reparent(_arms_detail)
+			_arms_detail.move_child(_d_stats, _d_panel.get_index() + 1)
+		return
+	if lab:
+		_dossier_head.text = "ОБЪЕКТ 86  ·  ОТДЕЛ 3  ·  " + tr("FILE %s") % String(base.name)
+		(_redacted as LabArt.Redacted).text = tr("Recovered from █ — do not point at █.")
+		_redacted.queue_redraw()
+		_jars_cap.text = tr("SAMPLES  ·  %d") % Scrap.samples
+		(_jars as LabArt.Jars).count = mini(Scrap.samples, 6)
+		# odczyt części na wydruku: porównanie przenosi się z karty na wydruk (kolory wydruku)
+		var body: VBoxContainer = _printout.get_meta("body")
+		if _d_stats.get_parent() != body:
+			_d_stats.reparent(body)
+		_printout_head.text = "== " + tr("READOUT") + " · " + (tr(String(Parts.get_part(String(o["id"])).get("name", ""))).to_upper() if part else String(base.name)) + " =="
+		_printout.visible = part and _d_stats.get_child_count() > 0
+		_recolor_printout(_printout)
+	if lathe:
+		_dress_lathe(w, o, key, part)
+
+## Tokarka: rysunek części (szablon wg gniazda), zlecenie odręczne z pieczątką PRZYJĘTO, gdy część jest na tokarce, szlifierka.
+func _dress_lathe(w: int, o: Dictionary, key: String, part: bool) -> void:
+	var base: RefCounted = Weapons.base_def(w)
+	if base.is_melee():
+		var edge := Profile.edge_of(key)
+		_grinder_text.text = UiTheme.num_text("%s · %s %d%%" % [String(base.name), tr("edge"), int(edge)])
+		_grinder_bar.size.x = (_grinder_bar.get_parent() as Control).custom_minimum_size.x * edge / 100.0
+		(_sparks as LabArt.Sparks).active = _clean_w == w
+	if not part:
+		return
+	var id := String(o["id"])
+	var pd := Parts.get_part(id)
+	var bp := _blueprint as LabArt.Blueprint
+	bp.slot = String(o["slot"])
+	bp.title = tr(String(pd.get("name", id))).to_upper()
+	bp.line2 = "%s · %s · %s" % [String(base.name), _slot_label(key, String(o["slot"])).to_upper(), tr("1 PC.")]
+	var hsh := absi(hash(id))
+	bp.dims = Vector2(30 + hsh % 30, 12 + (hsh / 31) % 20)
+	bp.has_schematic = Scrap.schematics.has(id) or Scrap.lathe.has(id) or Scrap.has_part(id)
+	bp.queue_redraw()
+	_clear_children(_order_box)
+	var pal := NotePaletteRef.palette(NotePaletteRef.Note.SCRAWL)
+	var hand := UiTheme.note_font(NotePaletteRef.Note.SCRAWL)
+	_order_box.add_child(UiTheme.mono(UiTheme.ink(tr("WORK ORDER No. %04d") % (417 + hsh % 400), 7, pal["dim"])))
+	var nm := UiTheme.ink(tr(String(pd.get("name", id))), 12, pal["ink"])
+	nm.add_theme_font_override("font", hand)
+	_order_box.add_child(nm)
+	for r in [[tr("For"), String(base.name)], [tr("Cost"), "%d" % Scrap.machine_price(id)], [tr("Lathe"), "%d / %d" % [Scrap.lathe.size(), Scrap.LATHE_SLOTS]]]:
+		var h := HBoxContainer.new()
+		var a := UiTheme.ink(String(r[0]), 8, pal["dim"])
+		a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(a)
+		h.add_child(UiTheme.ink(String(r[1]), 8, pal["ink"]))
+		_order_box.add_child(h)
+	_order_box.add_child(UiTheme.ink(tr("Collect after a successful mission"), 7, pal["dim"]))
+	var st := _order_stamp as StationKit.Stamp
+	if Scrap.lathe.has(id):
+		st.hold(tr("ACCEPTED"))
+	else:
+		st.hold("")
+
+## Napisy pod wydrukiem / rysunkiem: kolory atramentu na papierze zamienione na kolory wydruku (zielony na ciemnym).
+func _recolor_printout(root: Node) -> void:
+	var p := LabArt.printout()
+	var map := {UiTheme.INK: p["ink"], UiTheme.INK_MUTED: p["dim"], UiTheme.INK_GAIN: p["ink"], UiTheme.INK_COST: Color("e3b46e"), UiTheme.INK_PRICE: p["dim"]}
+	for n in root.find_children("*", "Control", true, false):
+		if n is Label or n is Button:
+			var c := n as Control
+			if c.has_theme_color_override("font_color"):
+				var col := c.get_theme_color("font_color")
+				if map.has(col):
+					c.add_theme_color_override("font_color", map[col])
+
 ## Stół konserwacji (ST-02): karta znika — rozłożona broń na płótnie i przyrządy stoją na ciemnym blacie, napisy w kolorach blatu,
 ## lista części zastąpiona wyborem przyrządu (strzałki w lewo / w prawo albo klik). Pozostałe stanowiska: karta na papierze.
 func _service_skin(on: bool) -> void:
@@ -2523,7 +2727,7 @@ func _service_skin(on: bool) -> void:
 	_d_tag.add_theme_color_override("font_color", UiTheme.MUTED if on else UiTheme.INK_MUTED)
 	_d_text.add_theme_color_override("font_color", UiTheme.MUTED if on else UiTheme.INK)
 	_d_tiers.visible = not on
-	_d_stage.modulate = Color(0.78, 0.76, 0.72) if on else Color.WHITE       # płótno z rozłożoną bronią przyciemnione — światło na przyrządach
+	_legacy_stage.modulate = Color(0.78, 0.76, 0.72) if on else Color.WHITE  # płótno z rozłożoną bronią przyciemnione — światło na przyrządach
 
 ## Pracownia / tokarka: droga części broni specjalnej PRÓBKI › BADANIE › SCHEMAT › TOKARKA › ŁAWA — zrobione kroki zielone, bieżący z paskiem,
 ## pod spodem jedno zdanie, co dalej (dawniej trzeba było to wyczytać z nawiasów przy częściach).
@@ -2553,6 +2757,21 @@ func _fill_lab_chain(key: String, slot: String, id: String) -> void:
 		note = tr("You have %s — enough to research it at the lab.") % _samples_text(Scrap.samples)
 	else:
 		note = tr("Research needs %s, you have %d. Elites, bosses and side goals drop samples.") % [_samples_text(rc.x), Scrap.samples]
+	if _mode == "lab":                                     # tablica korkowa (ST-05): kartki kroków na pinezkach, czerwona nić
+		var subs := [tr("%d in jars") % Scrap.samples, tr("here"), tr("printout"), "ST-06", tr("fitting")]
+		var steps: Array = []
+		for i in LAB_STEPS.size():
+			steps.append([tr(LAB_STEPS[i]), subs[i]])
+		var ck := _cork as LabArt.CorkChain
+		ck.steps = steps
+		ck.step = step
+		ck.busy = busy
+		ck.queue_redraw()
+		var nl := UiTheme.ink(note, 8)
+		nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		nl.custom_minimum_size.x = DETAIL_W
+		_d_panel.add_child(nl)
+		return
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 3)
 	for i in LAB_STEPS.size():
@@ -2858,6 +3077,7 @@ func _on_research_result(id: String, ok: bool, reason: String) -> void:
 		"ok":
 			_say(tr("%s: research started — ready after the next mission.") % nm, UiTheme.OK)
 			_success_fx()
+			(_jars as LabArt.Jars).hear(1.0 if randf() < 0.5 else -1.0)  # D2a: próbki „słyszą” pracę pracowni
 		"samples":
 			_say(tr("Not enough samples (%d needed) — elites and bosses drop them.") % cost.x, UiTheme.DANGER)
 		"poor":
@@ -3419,6 +3639,7 @@ func _refresh_detail(w: int) -> void:
 			_action.text = "Fit to my gun" if id2 != "" else "Fit the factory part"
 	if _mode == "bench":
 		_present_bench(w, cur, preview, now_rows, next_rows, ops, o)
+	_dress_lab_lathe(w, o)
 	_card.reset_size()
 
 ## Jawne oględziny nie oznaczają wyboru fabrycznego elementu do montażu.
@@ -3701,6 +3922,25 @@ func _tier_row(i: int, text: String, tail: String, col: Color) -> void:
 		b.add_theme_color_override(c, col)
 	b.text = ("%s %s   [%s]" % ["»" if sel else " ", text, tail]) if tail != "" else ("%s %s" % ["»" if sel else " ", text])
 	b.custom_minimum_size = Vector2(DETAIL_W, 0)
+	if _mode == "lathe":                                  # tokarka (ST-06): schematy jako rulony przy kaflach — kolory blatu
+		b.flat = false
+		var light := {UiTheme.INK: UiTheme.TEXT, UiTheme.INK_MUTED: UiTheme.MUTED, UiTheme.INK_GAIN: UiTheme.OK, UiTheme.INK_COST: UiTheme.DANGER, UiTheme.INK_PRICE: UiTheme.ACCENT}
+		for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+			b.add_theme_color_override(c, light.get(col, UiTheme.TEXT))
+		b.custom_minimum_size = Vector2(COLS * TILE_W, 22)
+		for st in ["normal", "hover", "pressed", "focus"]:
+			var roll := StyleBoxFlat.new()
+			roll.bg_color = Color("2a2216") if sel else (Color("1b1c18") if st != "hover" else Color("23241f"))
+			roll.border_color = UiTheme.LAMP_LINE if sel else UiTheme.LINE
+			roll.set_border_width_all(1)
+			roll.set_corner_radius_all(9)
+			roll.content_margin_left = 12.0
+			roll.content_margin_top = 2.0
+			roll.content_margin_bottom = 2.0
+			b.add_theme_stylebox_override(st, roll)
+		b.pressed.connect(_pick_opt.bind(i))
+		_d_tiers.add_child(b)
+		return
 	for st in ["normal", "hover", "pressed", "focus"]:
 		var sb: StyleBox = StyleBoxEmpty.new()
 		if sel or st == "hover":
