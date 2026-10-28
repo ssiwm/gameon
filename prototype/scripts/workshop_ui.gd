@@ -27,8 +27,6 @@ const WeaponDefinition := preload("res://scripts/weapon_def.gd")
 const StationKit := preload("res://scripts/station_kit.gd")
 const StationNoise := preload("res://scripts/station_noise.gd")
 const VuMeter := preload("res://scripts/vu_meter.gd")
-const HubProp := preload("res://scripts/hub_prop.gd")
-const Weather := preload("res://scripts/weather.gd")
 const SupplyArt := preload("res://scripts/station_supply_art.gd")
 const NotePaletteRef := preload("res://scripts/note_palette.gd")
 const SupplyView := preload("res://scripts/stations/supply_view.gd")
@@ -1125,14 +1123,11 @@ func _process(delta: float) -> void:
 		_card.reset_size()
 	_card.position = ((size - _card.size * card_scale) * 0.5).round()
 
-## Zdarzenia Kryjówki na karcie (STATION_CARDS_PLAN.md §5): w burzy karta przygasa razem z lampą generatora; stuknięcie zza D-7 — papiery
+## Zdarzenia Kryjówki na karcie (STATION_CARDS_PLAN.md §5): stuknięcie zza D-7 — papiery
 ## drgają, czerwony błysk od strony drzwi i napis dźwięku z kierunkiem. „Reduce effects” wyłącza migotanie, drganie i błysk (napis zostaje).
 func _hub_events() -> void:
-	var fx := Settings.fx_mult() > 0.0
-	var dim := 1.0
-	if fx and Weather.forecast == "storm":
-		dim = lerpf(0.6, 1.0, clampf((HubProp.generator_light(float(Time.get_ticks_msec()) * 0.001, true) - 0.15) / 0.55, 0.0, 1.0))
-	_card.modulate = Color(dim, dim, dim)
+	# burza: przygasa tylko lampa generatora w świecie (view3d.gd) — karta nie (od 1.7.421: skok jasności całej karty z tekstem
+	# co kilka sekund wyglądał jak migotanie ekranu i utrudniał czytanie)
 	var d7: Node2D = null
 	for n in get_tree().get_nodes_in_group("hub_props"):
 		if String(n.get("kind")) == "d7":

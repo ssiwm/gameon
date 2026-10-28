@@ -371,6 +371,19 @@ func _ui() -> void:
 		heat = minf(1.0, maxf(0.0, heat + m83.heat_gain - m83.heat_decay * m83.cooldown))
 	check("StationNoise: magazynek M-83 %.1f (suma strzałów %.1f − wygaszanie %.1f/s), z US %.1f" % [lv, raw, NoiseMgr.DECAY_LOUD, lv_us],
 		lv > 20.0 and lv < 45.0 and absf(lv - (raw - NoiseMgr.DECAY_LOUD * m83.cooldown * float(int(m83.mag) - 1))) < 2.5 and lv_us < lv)
+	# burza (1.7.421): przygasa tylko lampa generatora w świecie — karta nie pulsuje jasnością
+	var WeatherRef := preload("res://scripts/weather.gd")
+	var fc0 := WeatherRef.forecast
+	WeatherRef.forecast = "storm"
+	station("pyro_bench")
+	ui.open("pyro")
+	var steady := true
+	for f in 420:                                          # ok. 7 s: obejmuje przynajmniej jedno przygaśnięcie lampy w burzy
+		await get_tree().process_frame
+		steady = steady and ui._card.modulate == Color.WHITE
+	WeatherRef.forecast = fc0
+	check("burza: karta stanowiska nie przygasa razem z lampą generatora", steady)
+	ui.close()
 	station("press_bench")
 	ui.open("press")
 	ui._sup_sel = ui._supply_kinds().find("ammo_us")
