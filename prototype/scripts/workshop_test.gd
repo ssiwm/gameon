@@ -8,6 +8,7 @@ const Controller := preload("res://scripts/weapon_controller.gd")
 const GunStage := preload("res://scripts/gun_stage.gd")
 const GunModel := preload("res://scripts/gun_model.gd")
 const Char3D := preload("res://scripts/char3d.gd")
+const SupplyArtRef := preload("res://scripts/station_supply_art.gd")
 var total := 0
 var failed := 0
 var main: Node
@@ -375,6 +376,37 @@ func _ui() -> void:
 	ui._refresh()
 	check("VU prasy: nabój bez zmiany hałasu — sam napis, bez miernika", ui._s_vu.visible and not ui._s_vu_meter.visible and ui._s_vu_text.text == tr("Shot noise unchanged."))
 	check("taśma sterowania: klawisze w ramkach z rejestru akcji", ui._hint.text.contains("[bgcolor=") and ui._hint.text.contains(ui._menu_key("menu_back", false)))
+	# prasa (STATION_CARDS_PLAN.md E2, ST-03): regał z półką na kaliber, etykieta partii z ząbkiem pod wybranym pudełkiem, matryce po prawej
+	await frames(3)
+	var press_tiles: Array = ui._sup_list().map(func(i: int) -> Control: return ui._sup_tiles[i])
+	check("prasa: pudełka stoją na regale, półka na kaliber", ui._shelves.visible and ui._shelves.get_child_count() == 2
+		and press_tiles.all(func(c: Control) -> bool: return ui._shelves.is_ancestor_of(c)) and not ui._sup_grid.visible and not ui._crate.visible)
+	check("prasa: etykieta partii pod regałem, ząbek pod wybranym pudełkiem", ui._lid.get_parent() == ui._sup_left and ui._notch.target == ui._sup_tiles[ui._sup_sel] and ui._s_side.visible)
+	check("prasa: matryce = miejsca na partie (%d), zajęte jak zamówienia" % Scrap.PRESS_SLOTS, ui._dies.visible and ui._dies_list.get_child_count() == Scrap.PRESS_SLOTS + 1 and not ui._s_queue.visible)
+	var us: int = ui._supply_kinds().find("ammo_us")
+	var hot: int = ui._supply_kinds().find("ammo_hot762")
+	var slug: int = ui._supply_kinds().find("ammo_slug")
+	check("prasa: strzałka w dół z 7.62 US na półkę 12/70 pod spodem", ui._spatial_step(ui._sup_tiles, ui._sup_list(), us, ui.COLS) == slug)
+	check("prasa: strzałka w prawo z końca półki przechodzi na następną", ui._spatial_step(ui._sup_tiles, ui._sup_list(), hot, 1) == slug)
+	ui.close()
+	# stół pirotechniczny (E2, ST-04): skrzynia z przegrodami 4 × 2, karta w wieku, pokrętło zapalnika, lont, schemat działania w skali
+	station("pyro_bench")
+	ui.open("pyro")
+	ui._sup_sel = ui._supply_kinds().find("frag")
+	ui._refresh()
+	await frames(3)
+	var pyro_tiles: Array = ui._sup_list().map(func(i: int) -> Control: return ui._sup_tiles[i])
+	check("pirotechnika: przedmioty w przegrodach skrzyni (4 w rzędzie), karta w wieku", ui._crate.visible and ui._crate_grid.columns == 4
+		and pyro_tiles.all(func(c: Control) -> bool: return ui._crate_grid.is_ancestor_of(c)) and ui._lid.get_parent() != ui._sup_left and not ui._s_icon.visible)
+	var dials: Array = ui._s_fuse.find_children("*", "Control", true, false).filter(func(c: Node) -> bool: return c.get_script() == SupplyArtRef.FuseDial)
+	check("pirotechnika: pokrętło zapalnika na pozycji drużyny, lont o długości czasu", dials.size() == 1 and int(dials[0].index) == Scrap.fuse_index("frag")
+		and ui._s_fuse.find_children("*", "Control", true, false).any(func(c: Node) -> bool: return c.get_script() == SupplyArtRef.FuseCord and is_equal_approx(float(c.seconds), Scrap.fuse_of("frag"))))
+	check("pirotechnika: schemat wybuchu w skali z kolegą w zasięgu", ui._s_blast.visible and ui._s_blast.kind == "frag" and String(ui._s_blast.lines[1]) == tr("squad mate: hurt"))
+	var charge: int = ui._supply_kinds().find("charge")
+	check("pirotechnika: strzałka w dół z granatu na przegrodę pod nim", ui._spatial_step(ui._sup_tiles, ui._sup_list(), ui._sup_sel, ui.COLS) == charge)
+	ui._sup_sel = ui._supply_kinds().find("ammo_40buck")
+	ui._refresh()
+	check("pirotechnika: 40 mm bez schematu wybuchu (inny ładunek)", not ui._s_blast.visible)
 	ui.close()
 
 ## Układ każdego stanowiska i zakładki po angielsku i po polsku (etap 4 przeglądu UI, 1.7.409): karta na ekranie, żadna widoczna kontrolka

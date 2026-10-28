@@ -29,6 +29,7 @@ const StationNoise := preload("res://scripts/station_noise.gd")
 const VuMeter := preload("res://scripts/vu_meter.gd")
 const HubProp := preload("res://scripts/hub_prop.gd")
 const Weather := preload("res://scripts/weather.gd")
+const SupplyArt := preload("res://scripts/station_supply_art.gd")
 
 const GOLD := Color(0.95, 0.8, 0.4)
 const COLS := 2
@@ -152,11 +153,13 @@ class CardTile extends Button:
 		toggle_mode = false
 		custom_minimum_size = Vector2(150.0, 46.0)
 	var lit := false
+	var box_normal: StyleBox              ## własne tło kafla (pudełko na półce, przegroda skrzyni); null — kafel stanowiska
+	var box_lit: StyleBox
 	## Światło jako kursor (STATION_CARDS_PLAN.md §5): wybrany kafel stoi w snopie lampy, reszta jest przygaszona — miniatura ciemnieje,
 	## nazwa i cena zostają czytelne. Bez pomarańczowej ramki.
 	func set_lit(on: bool) -> void:
 		lit = on
-		var sbox := UiTheme.tile_box("selected" if on else "normal")
+		var sbox: StyleBox = (box_lit if on else box_normal) if box_normal != null else UiTheme.tile_box("selected" if on else "normal")
 		for st in ["normal", "pressed", "focus"]:
 			add_theme_stylebox_override(st, sbox)
 		if icon_node != null:
@@ -392,6 +395,20 @@ var _sup_sel := 0
 var _arms_body: HBoxContainer
 var _sup_body: HBoxContainer
 var _sup_tiles: Array = []            ## kafle zaopatrzenia (SupplyTile) — kolejność = _supply_kinds()
+var _sup_grid: GridContainer          ## ława: siatka narzędzi
+var _sup_left: VBoxContainer          ## lewa kolumna zaopatrzenia (siatka / regał / skrzynia)
+var _shelves: VBoxContainer           ## prasa: regał, półka na kaliber
+var _notch: Control                   ## prasa: ząbek etykiety partii pod wybranym pudełkiem
+var _crate: PanelContainer            ## stół pirotechniczny: skrzynia z przegrodami
+var _crate_grid: GridContainer
+var _lid: PanelContainer              ## ramka karty zaopatrzenia (wieko skrzyni przy pirotechnice)
+var _sup_paper: PanelContainer
+var _dies: PanelContainer             ## prasa: matryce — miejsca na partie
+var _dies_list: VBoxContainer
+var _s_main: VBoxContainer            ## karta zaopatrzenia: kolumna główna
+var _s_side: VBoxContainer            ## karta zaopatrzenia: druga kolumna (prasa — porównanie i hałas)
+var _s_blast: Control                 ## pirotechnika: schemat działania w skali
+var _s_cord: Control                  ## pirotechnika: lont o długości czasu zapalnika
 var _s_icon: ItemIcon
 var _s_title: Label
 var _s_tag: Label
@@ -627,15 +644,111 @@ func _build_supplies() -> HBoxContainer:
 	_sup_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_sup_note.custom_minimum_size.x = TILE_W * COLS + 6.0
 	left.add_child(_sup_note)
+	# prasa (ST-03): regał — półka na kaliber, pudełka na deskach; pod regałem etykieta partii z ząbkiem, matryce w kolumnie po prawej
+	_shelves = VBoxContainer.new()
+	_shelves.add_theme_constant_override("separation", 6)
+	left.add_child(_shelves)
+	_notch = SupplyArt.Notch.new()
+	left.add_child(_notch)
+	# stół pirotechniczny (ST-04): skrzynia saperska z magazynu Obiektu 86, przegrody 4 × 2, karta w otwartym wieku po prawej
+	_crate = PanelContainer.new()
+	_crate.add_theme_stylebox_override("panel", SupplyArt.wood_box(6))
+	var cv := VBoxContainer.new()
+	cv.add_theme_constant_override("separation", 5)
+	_crate.add_child(cv)
+	var stencil := UiTheme.mono(UiTheme.label("ЯЩИК № 4  ·  ВЗРЫВЧАТЫЕ ВЕЩЕСТВА  ·  НЕ БРОСАТЬ", 8, UiTheme.BONE_DIM, HORIZONTAL_ALIGNMENT_CENTER))
+	stencil.add_theme_constant_override("outline_size", 0)
+	cv.add_child(stencil)                                # napis na krawędzi skrzyni (sprzęt bunkra — cyrylica, D1a)
+	_crate_grid = GridContainer.new()
+	_crate_grid.columns = 4
+	_crate_grid.add_theme_constant_override("h_separation", 5)
+	_crate_grid.add_theme_constant_override("v_separation", 5)
+	cv.add_child(_crate_grid)
+	left.add_child(_crate)
+	var rows := {}
 	var kinds := _supply_kinds()
 	for i in kinds.size():
-		var t := _make_supply_tile(String(kinds[i]), i)
-		grid.add_child(t)
+		var k := String(kinds[i])
+		var t := _make_supply_tile(k, i)
 		_sup_tiles.append(t)
-	body.add_child(_paper(_build_supply_detail()))
+		if _is_press_kind(k):
+			var cal := String(Ammo.from_kind(k)["cal"])
+			if not rows.has(cal):
+				rows[cal] = _make_shelf(cal)
+			(rows[cal] as Control).get_meta("boxes").add_child(t)
+		elif _is_pyro_kind(k):
+			_crate_grid.add_child(t)
+		else:
+			grid.add_child(t)
+	_sup_grid = grid
+	_sup_left = left
+	_lid = PanelContainer.new()                          # wieko skrzyni wokół karty (pirotechnika); gdzie indziej bez ramki
+	_lid.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_sup_paper = _paper(_build_supply_detail())
+	_lid.add_child(_sup_paper)
+	body.add_child(_lid)
+	_dies = PanelContainer.new()                         # prasa: matryce (miejsca na partie) pionowo po prawej
+	_dies.add_theme_stylebox_override("panel", UiTheme.panel_box())
+	_dies.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_dies_list = VBoxContainer.new()
+	_dies_list.add_theme_constant_override("separation", 6)
+	_dies_list.custom_minimum_size.x = 104
+	_dies.add_child(_dies_list)
+	body.add_child(_dies)
 	return body
 
+## Półka regału prasy dla kalibru `cal`: podpis kalibru nad półką, rząd pudełek, deska pod spodem.
+func _make_shelf(cal: String) -> Control:
+	var shelf := VBoxContainer.new()
+	shelf.add_theme_constant_override("separation", 0)
+	var cap := UiTheme.mono(UiTheme.label(String(Ammo.CALIBERS.get(cal, {}).get("name", cal)), 8, UiTheme.BONE_DIM))      # kaliber nad półką
+	shelf.add_child(cap)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	shelf.add_child(row)
+	var boxes := HBoxContainer.new()
+	boxes.add_theme_constant_override("separation", 4)
+	row.add_child(boxes)
+	shelf.add_child(SupplyArt.Plank.new())
+	shelf.set_meta("boxes", boxes)
+	_shelves.add_child(shelf)
+	return shelf
+
+## Układ zakładki zaopatrzenia dla stanowiska: ława — siatka kafli i karta po prawej, prasa — regał, etykieta partii pod regałem
+## i matryce po prawej, pirotechnika — skrzynia i karta w wieku. Kafle stoją na stałe w swoim pojemniku (rodzaj należy do jednego stanowiska).
+func _arrange_supplies() -> void:
+	var press := _mode == "press"
+	var pyro := _mode == "pyro"
+	_sup_grid.visible = not (press or pyro)
+	_shelves.visible = press
+	_notch.visible = press
+	_crate.visible = pyro
+	_dies.visible = press
+	_s_icon.visible = not (press or pyro)                # prasa i skrzynia pokazują przedmiot na regale / w przegrodzie
+	_lid.add_theme_stylebox_override("panel", SupplyArt.wood_box(6) if pyro else StyleBoxEmpty.new())
+	var body := _sup_left.get_parent()
+	if press and _lid.get_parent() != _sup_left:
+		_lid.reparent(_sup_left)
+	elif not press and _lid.get_parent() != body:
+		_lid.reparent(body)
+		body.move_child(_lid, 1)
+	if press:
+		_sup_left.move_child(_lid, _notch.get_index() + 1)
+	_s_side.visible = press
+	for n in [_s_vu, _s_cmp]:
+		var want: Control = _s_side if press else _s_main
+		if n.get_parent() != want:
+			n.reparent(want)
+			if not press:
+				_s_main.move_child(n, _s_stats.get_index() + (1 if n == _s_vu else 3))
+	_s_text.custom_minimum_size.x = 230.0 if press else DETAIL_W
+	_s_main.custom_minimum_size.x = 230.0 if press else DETAIL_W
+
 func _make_supply_tile(kd: String, idx: int) -> SupplyTile:
+	if _is_press_kind(kd):
+		return _make_box_tile(kd, idx)
+	if _is_pyro_kind(kd):
+		return _make_bay_tile(kd, idx)
 	var data: Dictionary = Throwables.KINDS[kd]
 	var t := SupplyTile.new()
 	t.kind = kd
@@ -684,6 +797,9 @@ func _build_supply_detail() -> Control:
 		c.add_theme_constant_override("separation", 3)
 		v.add_child(c)
 		set(box, c)
+	_s_blast = SupplyArt.BlastDiagram.new()               # pirotechnika: schemat działania w skali (za zapalnikiem)
+	v.add_child(_s_blast)
+	v.move_child(_s_blast, _s_fuse.get_index() + 1)
 	v.add_child(_paper_rule())
 	_s_text = UiTheme.ink("", 8)
 	_s_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -694,7 +810,99 @@ func _build_supply_detail() -> Control:
 	_s_action.add_theme_font_size_override("font_size", 10)
 	_s_action.pressed.connect(_buy_selected_supply)
 	v.add_child(_s_action)
-	return v
+	_s_main = v
+	var cols := HBoxContainer.new()                       # druga kolumna tylko na etykiecie partii (prasa): porównanie i hałas
+	cols.add_theme_constant_override("separation", 14)
+	cols.add_child(v)
+	_s_side = VBoxContainer.new()
+	_s_side.add_theme_constant_override("separation", 6)
+	_s_side.custom_minimum_size.x = 196
+	_s_side.visible = false
+	cols.add_child(_s_side)
+	return cols
+
+## Rodzaj z prasy (amunicja specjalna bez 40 mm) / ze stołu pirotechnicznego (granaty, miny, ładunki, 40 mm) — jak `_sup_in_mode`.
+func _is_press_kind(k: String) -> bool:
+	return Throwables.is_ammo(k) and String(Ammo.from_kind(k).get("cal", "")) != "40mm"
+
+func _is_pyro_kind(k: String) -> bool:
+	var m := String(Throwables.KINDS[k]["mode"])
+	return m == "throw" or m == "place" or (Throwables.is_ammo(k) and not _is_press_kind(k))
+
+## Prasa (ST-03): pudełko na półce regału — nazwa na etykiecie pudełka, pasek oznaczenia czubka, okienka z pudełkami przy sobie,
+## cena na krawędzi półki. Wybór = światło lampy (bez ramki).
+func _make_box_tile(kd: String, idx: int) -> SupplyTile:
+	var data: Dictionary = Throwables.KINDS[kd]
+	var t := SupplyTile.new()
+	t.kind = kd
+	t.custom_minimum_size = Vector2(86, 74)
+	var face := SupplyArt.BoxFace.new()
+	face.title = String(data["name"])
+	face.stock_max = Throwables.units(kd, int(data["max"]))
+	face.set_item(kd, Color.WHITE)
+	_dress_tile(t, face, String(data["name"]))
+	face.position = Vector2(4, 2)
+	face.size = Vector2(78, 54)
+	t.name_label.visible = false                         # nazwa jest na etykiecie pudełka
+	t.state_label.visible = false
+	_add_price(t)
+	t.coin.position = Vector2(8, 60)
+	t.price_label.position = Vector2(20, 57)
+	var bar := StockBar.new()                            # zapas: okienka na pudełku (wskaźnik kafla ukryty, zostaje dla kodu odświeżania)
+	bar.maxn = face.stock_max
+	_add_bar(t, bar)
+	bar.visible = false
+	t.box_normal = StyleBoxEmpty.new()
+	var lit := StyleBoxFlat.new()
+	lit.bg_color = Color(1.0, 0.8, 0.45, 0.07)
+	lit.border_color = UiTheme.LAMP_LINE
+	lit.border_width_bottom = 2
+	t.box_lit = lit
+	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
+		t.add_theme_stylebox_override(st, t.box_normal if st != "hover" else lit)
+	t.pressed.connect(_select_supply.bind(idx))
+	return t
+
+## Stół pirotechniczny (ST-04): przegroda skrzyni saperskiej — render przedmiotu pod lampą, licznik „przy sobie / maks.” w rogu,
+## nazwa i cena na pasku jak napis na przegrodzie.
+func _make_bay_tile(kd: String, idx: int) -> SupplyTile:
+	var data: Dictionary = Throwables.KINDS[kd]
+	var t := SupplyTile.new()
+	t.kind = kd
+	t.custom_minimum_size = Vector2(98, 96)
+	var ic := ItemIcon.new()
+	ic.plate = false
+	ic.set_item(kd, Color.WHITE)
+	_dress_tile(t, ic, String(data["name"]))
+	ic.position = Vector2(8, 14)
+	ic.size = Vector2(82, 56)
+	var strip := ColorRect.new()
+	strip.color = SupplyArt.LABEL_PAPER
+	strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	strip.position = Vector2(4, 74)
+	strip.size = Vector2(90, 18)
+	t.add_child(strip)
+	t.move_child(strip, 0)
+	t.name_label.position = Vector2(8, 75)
+	t.name_label.add_theme_font_size_override("font_size", 9)
+	t.state_label.position = Vector2(70, 2)              # „1/4” w rogu przegrody
+	_add_price(t)
+	t.coin.visible = false
+	t.price_label.position = Vector2(66, 76)
+	t.price_label.add_theme_font_size_override("font_size", 9)
+	var bar := StockBar.new()
+	bar.maxn = Throwables.units(kd, int(data["max"]))
+	_add_bar(t, bar)
+	bar.visible = false
+	t.box_normal = SupplyArt.bay_box()
+	var lit := SupplyArt.bay_box()
+	lit.bg_color = Color("2a2216")
+	lit.border_color = UiTheme.ACCENT.darkened(0.35)
+	t.box_lit = lit
+	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
+		t.add_theme_stylebox_override(st, t.box_normal if st != "hover" else lit)
+	t.pressed.connect(_select_supply.bind(idx))
+	return t
 
 ## Zakładka LOOK: siatka 2 × 3 (kolumny: mężczyzna / kobieta, wiersze: stroje) z animowanymi podglądami i szczegóły z przyciskiem Equip.
 ## Kod wyglądu kafla i = wiersz (strój) × 2 + kolumna (płeć). Stroje odblokowuje poziom profilu (Look.UNLOCK_LEVEL); wygląd jest tylko kosmetyką.
@@ -1131,6 +1339,27 @@ func _fill_noise(k: String) -> void:
 	_s_vu_meter.fill = UiTheme.OK if b < a else UiTheme.DANGER
 	_s_vu_text.text = tr("One %s magazine: %d%% → %d%% noise") % [String(plain.name), roundi(a), roundi(b)]
 
+## Stół pirotechniczny: schemat działania przedmiotu w skali z sylwetką kolegi (granat i ładunek ranią drużynę, mina nie) — z danych przedmiotu.
+func _fill_blast(k: String) -> void:
+	var d: Dictionary = Throwables.KINDS[k]
+	var b := _s_blast as SupplyArt.BlastDiagram
+	b.visible = _mode == "pyro" and k in ["frag", "charge", "mine", "phos", "smoke"]
+	if not b.visible:
+		return
+	b.kind = k
+	match k:
+		"frag", "charge":
+			b.lines = [UiTheme.num_text(tr("%s m · %d damage") % ["%.0f" % (float(d["radius"]) / SupplyArt.PX_PER_M), int(d["damage"])]),
+				tr("squad mate: hurt"), tr("safe")]
+		"mine":
+			b.lines = [UiTheme.num_text(tr("%s m · %d damage · %d° cone") % ["%.0f" % (float(d["range"]) / SupplyArt.PX_PER_M), int(d["damage"]), roundi(2.0 * float(d["half_deg"]))]),
+				tr("squad mate: spared"), tr("safe")]
+		"phos":
+			b.lines = [tr("fire field · %d s") % int(d["field_life"])]
+		"smoke":
+			b.lines = [tr("cloud · %d s · blocks sight, not sound") % int(d["cloud_life"])]
+	b.queue_redraw()
+
 ## Stół pirotechniczny: krótszy (−1) albo dłuższy (+1) zapalnik zaznaczonego przedmiotu — dla całej drużyny (serwer).
 func _step_fuse(d: int) -> void:
 	var k := String(_supply_kinds()[_sup_sel])
@@ -1156,15 +1385,26 @@ func _fill_fuse(k: String) -> void:
 	if not _s_fuse.visible:
 		return
 	_s_fuse.add_child(UiTheme.ink(tr("FUSE  ·  %s / %s") % [_menu_key("menu_slot_1", Actions.pad_mode), _menu_key("menu_slot_2", Actions.pad_mode)], 7, UiTheme.INK_MUTED))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 4)
-	_s_fuse.add_child(row)
+	# pokrętło zapalnika (ST-04): tarcza z pozycjami, obok lista pozycji z czasem; klawisze pozycji obracają pokrętło
+	var dial_row := HBoxContainer.new()
+	dial_row.add_theme_constant_override("separation", 10)
+	_s_fuse.add_child(dial_row)
 	var opts: Array = Throwables.FUSES[k]
+	var dial := SupplyArt.FuseDial.new()
+	dial.count = opts.size()
+	dial.index = Scrap.fuse_index(k)
+	dial.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	dial_row.add_child(dial)
+	var row := VBoxContainer.new()
+	row.add_theme_constant_override("separation", 2)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dial_row.add_child(row)
 	for i in opts.size():
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.text = "%s\n%s" % [tr(FUSE_NAMES[mini(i, FUSE_NAMES.size() - 1)]), UiTheme.num_text("%.1f s" % float(opts[i]))]
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.text = "%s   %s" % [tr(FUSE_NAMES[mini(i, FUSE_NAMES.size() - 1)]), UiTheme.num_text("%.1f s" % float(opts[i]))]
 		b.add_theme_font_size_override("font_size", 8)
 		b.add_theme_constant_override("outline_size", 0)
 		for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
@@ -1179,6 +1419,10 @@ func _fill_fuse(k: String) -> void:
 			b.add_theme_stylebox_override(st, box)
 		b.pressed.connect(_set_fuse.bind(k, i))
 		row.add_child(b)
+	var cord := SupplyArt.FuseCord.new()                 # lont: długość = czas zapalnika (pełna szerokość = najdłuższa pozycja)
+	cord.seconds = float(opts[Scrap.fuse_index(k)])
+	cord.max_s = float(opts.back())
+	_s_fuse.add_child(cord)
 	var note := UiTheme.ink(tr("Squad setting: everyone's %s uses this fuse.") % tr(String(Throwables.KINDS[k]["name"])), 7, UiTheme.INK_MUTED)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.custom_minimum_size.x = DETAIL_W
@@ -1201,6 +1445,14 @@ func _fill_ammo_cmp(k: String) -> void:
 		var kind := int(r[2])
 		var col := UiTheme.INK_GAIN if kind > 0 else (UiTheme.INK_COST if kind < 0 else UiTheme.INK)
 		grid.add_child(UiTheme.ink(tr(String(r[0])), 9, UiTheme.INK_MUTED))
+		if _mode == "press":
+			# etykieta partii (ST-03): pasek od zera — zysk w prawo, koszt w lewo — i wartość ze znakiem ▲▼ (kolor tylko wzmacnia)
+			var bar := SupplyArt.CmpBar.new()
+			bar.value = float(kind) * (float(r[3]) if r.size() > 3 else 0.3)
+			bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			grid.add_child(bar)
+			grid.add_child(UiTheme.ink(("▲ " if kind > 0 else ("▼ " if kind < 0 else "")) + UiTheme.num_text(String(r[1])), 9, col))
+			continue
 		grid.add_child(UiTheme.ink(UiTheme.num_text(String(r[1])), 9, col))
 		grid.add_child(UiTheme.ink((tr("Gain") if kind > 0 else (tr("Trade-off") if kind < 0 else "")).to_lower(), 7, col))
 
@@ -1241,32 +1493,39 @@ func _ammo_rows(k: String) -> Array:
 			"set":
 				text = tr("none") if f == "crit_mult" and v <= 1.0 else "%.1f" % v
 				sgn = -1.0 if f == "crit_mult" else 1.0
-		out.append([String(spec[0]), text, int(signf(sgn) * float(spec[1]))])
+		out.append([String(spec[0]), text, int(signf(sgn) * float(spec[1])), clampf(absf(sgn) if String(m[1]) != "set" else 0.5, 0.1, 1.0)])
 	return out
 
 ## Prasa: miejsca na partie — zajęte z nazwą naboju, wolne puste (dawniej wiersz „1 z 3 partii”).
 func _fill_press_queue() -> void:
 	_clear_children(_s_queue)
-	_s_queue.visible = _mode == "press"
-	if not _s_queue.visible:
+	_s_queue.visible = false                             # od E2 partie stoją na matrycach w kolumnie po prawej (_fill_dies)
+	_fill_dies()
+
+## Prasa (ST-03): matryce pionowo po prawej — zajęta pokazuje nabój i „po udanej misji”, wolna jest pusta.
+func _fill_dies() -> void:
+	_clear_children(_dies_list)
+	if _mode != "press":
 		return
-	_s_queue.add_child(UiTheme.ink(tr("IN THE PRESS  ·  READY AFTER A SUCCESSFUL MISSION"), 7, UiTheme.INK_MUTED))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 4)
-	_s_queue.add_child(row)
+	_dies_list.add_child(UiTheme.mono(UiTheme.label(tr("DIES"), 8, UiTheme.MUTED)))
 	for i in Scrap.PRESS_SLOTS:
 		var filled := i < Scrap.orders.size()
-		var slot := PanelContainer.new()
-		slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var box := StyleBoxFlat.new()
-		box.bg_color = UiTheme.PAPER_SEL if filled else Color(0, 0, 0, 0)
-		box.border_color = UiTheme.INK if filled else UiTheme.PAPER_EDGE
-		box.set_border_width_all(1)
-		box.set_content_margin_all(3)
-		slot.add_theme_stylebox_override("panel", box)
-		slot.add_child(UiTheme.ink(String(Throwables.KINDS[String(Scrap.orders[i])]["name"]) if filled else tr("free"), 8,
-			UiTheme.INK if filled else UiTheme.INK_MUTED, HORIZONTAL_ALIGNMENT_CENTER))
-		row.add_child(slot)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var die := SupplyArt.FuseDial.new()                  # matryca: okrągłe gniazdo, zajęte ze wskazówką w kolorze lampy
+		die.count = 1
+		die.index = 0
+		die.custom_minimum_size = Vector2(26, 26)
+		die.modulate = Color.WHITE if filled else Color(0.5, 0.5, 0.5)
+		die.set_meta("filled", filled)
+		row.add_child(die)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", -2)
+		col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		col.add_child(UiTheme.label(String(Throwables.KINDS[String(Scrap.orders[i])]["name"]) if filled else tr("free"), 9, UiTheme.TEXT if filled else UiTheme.MUTED))
+		col.add_child(UiTheme.label(tr("after a successful mission") if filled else "—", 7, UiTheme.MUTED))
+		row.add_child(col)
+		_dies_list.add_child(row)
 
 ## Portfel odlicza do nowej kwoty (zakup, zamówienie, odbiór) zamiast skakać i krótko przygasa na czerwono przy wydatku — widać, ile kosztowało.
 func _tick_wallet() -> void:
@@ -1473,6 +1732,7 @@ func open(mode := "bench") -> void:
 	_bench_slot = ""
 	_title.text = {"locker": tr("LOCKER"), "service": tr("MAINTENANCE"), "press": tr("RELOADING PRESS"), "pyro": tr("PYROTECHNICS"), "lab": tr("LAB"), "lathe": tr("LATHE")}.get(_mode, tr("WORKSHOP"))
 	_plate.set_station(_mode)
+	_arrange_supplies()
 	for pi in _page_btns.size():
 		(_page_btns[pi] as Button).visible = (MODE_PAGES[_mode] as Array).has(pi) and (MODE_PAGES[_mode] as Array).size() > 1
 	_msg.text = ""
@@ -1646,6 +1906,35 @@ func _nav_step(event: InputEvent) -> int:
 		return COLS
 	return 0
 
+## Następny kafel w kierunku kroku `step` (±1 poziomo, ±COLS pionowo) wg położenia na ekranie: regał prasy ma półki różnej długości,
+## skrzynia 4 przegrody w rzędzie, siatka ławy 2 kolumny — światło idzie za fokusem tak, jak kafle stoją. -1, gdy w tę stronę nic nie ma.
+func _spatial_step(tiles: Array, vis: Array, cur: int, step: int) -> int:
+	if vis.is_empty() or not vis.has(cur):
+		return int(vis[0]) if not vis.is_empty() else -1
+	var horiz := absi(step) == 1
+	var c := (tiles[cur] as Control).get_global_rect().get_center()
+	var best := -1
+	var best_d := INF
+	for i in vis:
+		if int(i) == cur:
+			continue
+		var p := (tiles[int(i)] as Control).get_global_rect().get_center()
+		var d := p - c
+		var along := d.x if horiz else d.y
+		var across := d.y if horiz else d.x
+		if signf(along) != signf(float(step)) or absf(along) < 4.0:
+			continue
+		if horiz and absf(across) > 8.0:
+			continue                                       # w poziomie tylko ten sam rząd (półka, rząd przegród)
+		var score := absf(along) + absf(across) * 3.0
+		if score < best_d:
+			best_d = score
+			best = int(i)
+	if best < 0 and horiz:
+		var at := vis.find(cur) + signi(step)                 # koniec rzędu: dalej po kolejności (następna półka)
+		best = int(vis[at]) if at >= 0 and at < vis.size() else -1
+	return best
+
 func _input(event: InputEvent) -> void:
 	if not _open or not (event is InputEventKey or event is InputEventJoypadButton) or not event.is_pressed() or event.is_echo():
 		return
@@ -1697,10 +1986,9 @@ func _input(event: InputEvent) -> void:
 		elif back:
 			close()
 	elif _page == 1:
-		var vis := _sup_list()
-		var np := vis.find(_sup_sel) + step
-		if step != 0 and np >= 0 and np < vis.size():
-			_sup_sel = int(vis[np])
+		var nxt := _spatial_step(_sup_tiles, _sup_list(), _sup_sel, step) if step != 0 else -1
+		if nxt >= 0:
+			_sup_sel = nxt
 			Audio.play("ui_click", Audio.BUS_UI, -14.0)
 			_refresh()
 		elif _mode == "pyro" and (event.is_action_pressed("menu_slot_1") or event.is_action_pressed("menu_slot_2")):
@@ -2514,6 +2802,16 @@ func _refresh_supplies() -> void:
 		t.price_label.add_theme_color_override("font_color", GOLD if Scrap.bank >= price else UiTheme.DANGER)
 		t.bar.have = Throwables.units(k, have)
 		t.bar.queue_redraw()
+		if t.icon_node is SupplyArt.BoxFace:                 # pudełko na półce: okienka = pudełka przy sobie, cena na desce
+			(t.icon_node as SupplyArt.BoxFace).stock = t.bar.have
+			t.icon_node.queue_redraw()
+		elif _is_pyro_kind(k):                               # przegroda skrzyni: napis atramentem na pasku, licznik w rogu
+			t.name_label.add_theme_color_override("font_color", UiTheme.INK)
+			t.name_label.add_theme_constant_override("outline_size", 0)
+			t.price_label.add_theme_color_override("font_color", UiTheme.INK_PRICE if Scrap.bank >= price else UiTheme.INK_COST)
+			t.price_label.add_theme_constant_override("outline_size", 0)
+			t.state_label.text = "%d/%d" % [Throwables.units(k, have), t.bar.maxn]
+			t.state_label.add_theme_color_override("font_color", UiTheme.TEXT if have > 0 else UiTheme.MUTED)
 		t.tooltip_text = tr("The squad carries %d of %d.") % [have, int(Throwables.KINDS[k]["max"])]
 	_sup_note.text = tr("Grenades, mines and 40 mm rounds are at the pyrotechnics table, special ammo at the reloading press.") if _mode == "bench" else ""
 	_sup_note.visible = _sup_note.text != ""
@@ -2539,8 +2837,8 @@ func _refresh_supplies() -> void:
 			if String(wd.caliber) == String(ct.get("cal", "")):
 				users.append(String(wd.name))
 		rows = [["Carried", tr("%d / %d rounds") % [have2, maxn]], ["Box", tr("%d rounds") % Throwables.box_of(k2)], ["Fits", ", ".join(users)]]
-	elif d.has("noise") or k2 in ["frag", "charge"]:
-		rows.append(["Noise", Codex.noise_text(k2)])
+	elif (d.has("noise") or k2 in ["frag", "charge"]) and _mode != "pyro":
+		rows.append(["Noise", Codex.noise_text(k2)])                       # przy stole pirotechnicznym hałas pokazuje VU-metr
 	if Throwables.FUSES.has(k2) and _mode != "pyro":
 		rows.append(["Fuse", "%.1f s" % Scrap.fuse_of(k2)])              # przy stole pirotechnicznym zapalnik ma własny przełącznik
 	for r in rows:
@@ -2549,7 +2847,9 @@ func _refresh_supplies() -> void:
 		_s_stats.add_child(Control.new())
 	_fill_noise(k2)
 	_fill_fuse(k2)
+	_fill_blast(k2)
 	_fill_ammo_cmp(k2)
+	_notch.target = _sup_tiles[_sup_sel]
 	_fill_press_queue()
 	_s_text.text = tr(String(d["note"]))
 	var summary := _queue_summary(_mode == "press")
