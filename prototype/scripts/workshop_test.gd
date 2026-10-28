@@ -324,6 +324,19 @@ func _ui() -> void:
 	ui._refresh()
 	check("prasa pokazuje odbiór już opłaconej dostawy", ui._s_action.text == tr("Collect ready delivery · %d rounds") % 5)
 	ui.close()
+	# rendery modeli 3D zamiast ikon (STATION_CARDS_PLAN.md E0): każdy rodzaj z modelem ma wypalony render, 40 mm zostaje przy ikonie (D3a)
+	var ItemIcon := preload("res://scripts/item_icon.gd")
+	var no_render: Array = []
+	for k in Throwables.SHOP_ORDER:
+		if ItemIcon.render_model(String(k)) != "" and ItemIcon.render_of(String(k)) == null:
+			no_render.append(k)
+	check("rendery przedmiotów: każdy rodzaj z modelem ma render %s" % str(no_render), no_render.is_empty())
+	check("rendery przedmiotów: 40 mm bez modelu zostaje przy ikonie", ItemIcon.render_model("ammo_40buck") == "" and ItemIcon.render_model("frag") == "frag")
+	station("pyro_bench")
+	ui.open("pyro")
+	var frag_tile: Control = ui._sup_tiles[ui._supply_kinds().find("frag")]
+	check("kafel pirotechniki rysuje render modelu", ItemIcon.render_of(String(frag_tile.icon_node.kind)) != null and frag_tile.visible)
+	ui.close()
 
 ## Układ każdego stanowiska i zakładki po angielsku i po polsku (etap 4 przeglądu UI, 1.7.409): karta na ekranie, żadna widoczna kontrolka
 ## nie wystaje w poziomie poza przodka, który ją przycina (przewijany korpus, karta) — dla każdego kafla, bo opisy i porównania zmieniają szerokość.

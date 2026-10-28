@@ -488,6 +488,8 @@ Zakup nadal rozstrzyga `Scrap`, montaż posiadanej części `Profile`. Animacja 
 
 Kod: `scripts/gunsmith_panel.gd`, `workshop_ui.gd`, `gun_stage.gd`. Test: `--host --workshoptest --autoquit=60`; pełne regresje `tools/test_weapons.sh` sprawdzają też prawdziwy zakup klienta ENet. Render wymaga uruchomienia bez `--headless`.
 
+**Rendery przedmiotów na kartach stanowisk (od 1.7.414, `STATION_CARDS_PLAN.md` E0):** kafle i karta zaopatrzenia (ława, prasa, stół pirotechniczny) pokazują render modelu 3D przedmiotu z `art/items3d/` zamiast rysunku 2D — te same modele co w świecie gry, pod ciepłą lampą stanowiska. Mapowanie rodzaj → model: `ItemIcon.RENDERS` (amunicja specjalna ma jedno pudełko, rodzaj odróżnia pasek płytki; amunicja 40 mm nie ma modelu i zostaje przy ikonie). Wypalanie: `godot --path prototype --rendering-driver opengl3 --script tools/bake_items.gd [-- --only=frag,mine]` → `art/item_renders/<model>.png`, potem import (pliki `.import` mają mipmapy — miniatury są kilka razy mniejsze od renderu). `--workshoptest` sprawdza, że każdy rodzaj z modelem ma render.
+
 `tools/workbench_qa.gd` uruchamia rzeczywistą kryjówkę z testowym montażem i wyłączonym zapisem Profile / Scrap. Najpierw import. Dla pełnej izolacji ustawień i dziennika uruchamiać na kopii projektu z inną nazwą aplikacji; raport 25.10 opisuje użyte katalogi. Polecenie renderu (Forward+ zgodnie z obecnym `project.godot`):
 
 ```powershell
