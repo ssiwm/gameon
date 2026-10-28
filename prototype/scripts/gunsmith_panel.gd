@@ -4,6 +4,9 @@ const UiTheme := preload("res://scripts/ui_theme.gd")
 const GunStage := preload("res://scripts/gun_stage.gd")
 const GunIcon := preload("res://scripts/gun_icon.gd")
 const Actions := preload("res://scripts/actions.gd")
+const VuMeter := preload("res://scripts/vu_meter.gd")
+const StationNoise := preload("res://scripts/station_noise.gd")
+const StationKit := preload("res://scripts/station_kit.gd")
 
 signal weapon_selected(index: int)
 signal slot_selected(slot: String)
@@ -39,6 +42,78 @@ var _slot_signature := ""
 var _part_signature := ""
 var _show_all := false
 var _show_details := false
+var _serial: Label                     ## metryka (E5): „METRYKA BRONI · NR 86-…”
+var _vu: HBoxContainer                 ## metryka: VU — Uwaga po magazynku od ciszy (cień = obecny montaż przy podglądzie)
+var _vu_meter: VuMeter
+var _vu_text: Label
+var _tally: Control                    ## metryka: zabójstwa kreskami po pięć
+var _tally_cap: Label
+var _mastery: Control                  ## metryka: wprawa kółkami (stopnie 1–5)
+var _mastery_cap: Label
+
+## Zawieszka (ława, ST-01): kartonik na sznurku — broń na haku stojaka (`point` = "left") albo część na listwie pod matą („up”).
+## Papier w palecie nocnej; wybrana w świetle lampy. Rysowana pod napisami przycisku.
+class Tag extends Control:
+	var point := "left"
+	var lit := false
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		var w := size.x
+		var h := size.y
+		var pts: PackedVector2Array
+		var hole: Vector2
+		if point == "left":
+			pts = PackedVector2Array([Vector2(10, 0), Vector2(w, 0), Vector2(w, h), Vector2(10, h), Vector2(0, h * 0.5)])
+			hole = Vector2(8, h * 0.5)
+			draw_line(hole, Vector2(-8, h * 0.5 - 6), Color(0.6, 0.58, 0.5, 0.8), 1.0)           # sznurek do haka
+		else:
+			pts = PackedVector2Array([Vector2(0, 8), Vector2(w * 0.5, 0), Vector2(w, 8), Vector2(w, h), Vector2(0, h)])
+			hole = Vector2(w * 0.5, 6)
+			draw_line(hole, Vector2(w * 0.5, -6), Color(0.6, 0.58, 0.5, 0.8), 1.0)
+		if lit:
+			draw_texture_rect(UiTheme.lamp_pool(), Rect2(Vector2(-w * 0.25, -h * 0.4), Vector2(w * 1.5, h * 1.8)), false)
+		var shadow := PackedVector2Array()
+		for q in pts:
+			shadow.append(q + Vector2(2, 3))
+		draw_colored_polygon(shadow, Color(0, 0, 0, 0.45))
+		draw_colored_polygon(pts, UiTheme.PAPER_SEL if lit else UiTheme.PAPER.darkened(0.12))
+		draw_polyline(pts + PackedVector2Array([pts[0]]), UiTheme.PAPER_EDGE, 1.0)
+		draw_circle(hole, 2.2, Color("1a1712"))
+
+## Zabójstwa kreskami po pięć (cztery pionowe i skos), najwyżej 40 kresek, reszta jako „+N”.
+class Tally extends Control:
+	var count := 0
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(0, 16)
+	func _draw() -> void:
+		var n := mini(count, 40)
+		var x := 2.0
+		for g in range(0, n, 5):
+			var k := mini(5, n - g)
+			for i in mini(k, 4):
+				draw_line(Vector2(x + i * 4.0, 2), Vector2(x + i * 4.0 - 1.0, 14), UiTheme.INK, 1.6)
+			if k == 5:
+				draw_line(Vector2(x - 3.0, 12), Vector2(x + 15.0, 4), UiTheme.INK, 1.6)
+			x += 24.0
+		if count > 40:
+			draw_string(UiTheme.mono_font(), Vector2(x, 13), "+%d" % (count - 40), HORIZONTAL_ALIGNMENT_LEFT, -1, 8, UiTheme.INK)
+		if count == 0:
+			draw_string(UiTheme.mono_font(), Vector2(2, 12), "—", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, UiTheme.INK_MUTED)
+
+## Wprawa: pięć kółek, wypełnione do osiągniętego stopnia (fioletowy tusz jak pieczątki).
+class MasteryRings extends Control:
+	var level := 0
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(0, 16)
+	func _draw() -> void:
+		for i in 5:
+			var c := Vector2(8.0 + i * 18.0, 8.0)
+			draw_arc(c, 6.5, 0, TAU, 18, Color(StationKit.STAMP_INK, 0.9) if i < level else UiTheme.INK_MUTED, 1.5, true)
+			if i < level:
+				draw_circle(c, 4.0, Color(StationKit.STAMP_INK, 0.85))
 
 class Anchors extends Control:
 	var lines: Array = []
@@ -83,6 +158,7 @@ func _ready() -> void:
 	middle.add_child(head)
 	stage = GunStage.new()
 	stage.bench_mode = true
+	stage.modulate = Color(0.86, 0.85, 0.8)               # mata przyciemniona — światło lampy pada na metrykę i zawieszki (ST-01)
 	stage.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stage.custom_minimum_size.y = 104
 	middle.add_child(stage)
@@ -108,6 +184,9 @@ func _ready() -> void:
 	var card := VBoxContainer.new()
 	card.add_theme_constant_override("separation", 4)
 	paper.add_child(card)
+	_serial = UiTheme.mono(_ink("", 7))                    # metryka broni (ST-01): akta, nie karta sklepu
+	_serial.add_theme_color_override("font_color", UiTheme.INK_MUTED)
+	card.add_child(_serial)
 	_state = _ink("", 9)
 	card.add_child(_state)
 	_part_title = _ink("", 12)
@@ -117,6 +196,29 @@ func _ready() -> void:
 	_meta.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_meta.max_lines_visible = 3
 	card.add_child(_meta)
+	_vu = HBoxContainer.new()
+	_vu.add_theme_constant_override("separation", 6)
+	card.add_child(_vu)
+	_vu_meter = VuMeter.new()
+	_vu_meter.custom_minimum_size = Vector2(52, 31)
+	_vu_meter.ticks = StationNoise.ticks()
+	_vu.add_child(_vu_meter)
+	_vu_text = _ink("", 7)
+	_vu_text.custom_minimum_size.x = 0
+	_vu_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_vu_text.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_vu_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_vu.add_child(_vu_text)
+	_tally_cap = UiTheme.mono(_ink("", 7))
+	_tally_cap.add_theme_color_override("font_color", UiTheme.INK_MUTED)
+	card.add_child(_tally_cap)
+	_tally = Tally.new()
+	card.add_child(_tally)
+	_mastery_cap = UiTheme.mono(_ink("", 7))
+	_mastery_cap.add_theme_color_override("font_color", UiTheme.INK_MUTED)
+	card.add_child(_mastery_cap)
+	_mastery = MasteryRings.new()
+	card.add_child(_mastery)
 	var content := _scroll(card)
 	_summary_scroll = content
 	_summary = VBoxContainer.new()
@@ -133,6 +235,30 @@ func _ready() -> void:
 	visibility_changed.connect(_visibility)
 	stage.set_reduced_motion(Settings.reduce_fx)
 	_motion.text = tr("Animations: off") if stage.reduced_motion else tr("Animations: on")
+
+## Przycisk jako zawieszka: tło rysuje Tag (pod napisami), styl przycisku przezroczysty.
+func _as_tag(b: Button, point: String, lit: bool) -> void:
+	for st in ["normal", "hover", "pressed", "focus", "disabled"]:
+		b.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+	var tag := Tag.new()
+	tag.point = point
+	tag.lit = lit
+	tag.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	b.add_child(tag)
+	b.move_child(tag, 0)
+	b.set_meta("tag", tag)
+
+## Napis gniazda na macie jak szablon malarski: ciemne pole z jasną ramką, wybrane w kolorze lampy.
+func _as_stencil(b: Button, selected: bool) -> void:
+	for st in ["normal", "hover", "pressed", "focus"]:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.02, 0.02, 0.02, 0.62 if st != "hover" else 0.78)
+		sb.border_color = UiTheme.ACCENT if selected else Color(UiTheme.TEXT, 0.7)
+		sb.set_border_width_all(1)
+		sb.content_margin_left = 4
+		sb.content_margin_right = 4
+		b.add_theme_stylebox_override(st, sb)
+	b.add_theme_font_override("font", UiTheme.heading_font())
 
 func _scroll(parent: Control) -> ScrollContainer:
 	var scroll := ScrollContainer.new()
@@ -196,6 +322,29 @@ func present(data: Dictionary) -> void:
 	_present_slots()
 	_present_parts()
 	_present_summary()
+	_present_record()
+
+## Metryka broni (ST-01): numer, VU magazynka (§5a), zabójstwa kreskami, wprawa kółkami.
+func _present_record() -> void:
+	_serial.text = tr("WEAPON RECORD · No. %s") % String(_payload.get("serial", "86-0000"))
+	var nz: Array = _payload.get("noise", [-1.0, -1.0])
+	var now := float(nz[0])
+	var nxt := float(nz[1])
+	_vu.visible = now >= 0.0
+	if _vu.visible:
+		var changed := nxt >= 0.0 and absf(nxt - now) >= 0.5
+		_vu_meter.value = (nxt if changed else now) / 100.0
+		_vu_meter.ghost = now / 100.0 if changed else -1.0
+		_vu_meter.fill = (UiTheme.OK if nxt < now else UiTheme.DANGER) if changed else UiTheme.TEXT
+		_vu_text.text = (tr("One magazine: %d%% → %d%% noise") % [roundi(now), roundi(nxt)]) if changed else tr("One magazine: %d%% noise, from silence") % roundi(now)
+	var k := int(_payload.get("kills", 0))
+	_tally_cap.text = tr("KILLS · %d") % k
+	(_tally as Tally).count = k
+	_tally.queue_redraw()
+	var ml := int(_payload.get("mastery", 0))
+	_mastery_cap.text = tr("MASTERY %s · %d / %d") % [["0", "I", "II", "III", "IV", "V"][clampi(ml, 0, 5)], int(_payload.get("mastery_points", 0)), int(_payload.get("mastery_next", 0))]
+	(_mastery as MasteryRings).level = ml
+	_mastery.queue_redraw()
 
 func _present_rack() -> void:
 	var records: Array = _payload["weapons"]
@@ -215,20 +364,21 @@ func _present_rack() -> void:
 		var b := _button("", func(): weapon_selected.emit(int(record["index"])))
 		b.custom_minimum_size = Vector2(94, 50)                       # podpis stanu nie dotyka dolnej ramki
 		b.tooltip_text = String(record["name"]) + " · " + String(record["status"])
+		_as_tag(b, "left", bool(record["selected"]))                  # zawieszka na haku stojaka (ST-01)
 		var icon := GunIcon.new()
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		icon.position = Vector2(4, 4)
 		icon.size = Vector2(86, 22)
 		icon.set_gun(int(record["row"]), record["color"], Color.WHITE)
 		b.add_child(icon)
-		var label := UiTheme.label(String(record["name"]), 9, UiTheme.ACCENT if bool(record["selected"]) else UiTheme.TEXT)
-		label.position = Vector2(4, 26)
+		var label := UiTheme.ink(String(record["name"]), 9, UiTheme.INK)
+		label.position = Vector2(14, 26)
 		b.add_child(label)
-		var status := UiTheme.label(String(record["status"]), 7, UiTheme.TEXT)
-		status.position = Vector2(4, 37)
+		var status := UiTheme.ink(String(record["status"]), 7, UiTheme.INK_MUTED)
+		status.position = Vector2(14, 37)
 		b.add_child(status)
-		if bool(record["selected"]):
-			b.modulate = Color(1.15, 1.1, 0.85)
+		icon.position = Vector2(14, 4)
+		icon.size = Vector2(76, 22)
 		if bool(record.get("new", false)):
 			b.add_child(_new_dot(Vector2(b.custom_minimum_size.x - 10.0, 3.0)))       # broń ma część, której gracz jeszcze nie oglądał
 		_rack.add_child(b)
@@ -257,8 +407,9 @@ func _present_slots() -> void:
 		_slots.add_child(b)
 		if preset:
 			continue
-		var hotspot := _button(str(i + 1), func(): slot_selected.emit(String(slot["id"])))
+		var hotspot := _button("%d %s" % [i + 1, String(slot["short"]).to_upper()], func(): slot_selected.emit(String(slot["id"])))
 		hotspot.custom_minimum_size = Vector2(20, 18)
+		_as_stencil(hotspot, selected)                                # gniazdo jako szablon na macie (ST-01)
 		hotspot.tooltip_text = b.tooltip_text
 		hotspot.add_theme_color_override("font_color", UiTheme.ACCENT if selected else UiTheme.TEXT)
 		_overlay.add_child(hotspot)
@@ -274,25 +425,27 @@ func _present_parts() -> void:
 	for record in records:
 		var b := _button("", func(): option_selected.emit(int(record["index"])))
 		b.custom_minimum_size = Vector2(83, 66)
+		_as_tag(b, "up", int(record["index"]) == int(_payload["option"]))     # zawieszka części na listwie pod matą
 		b.tooltip_text = String(record["name"]) + " · " + String(record["status"])
 		var box := VBoxContainer.new()
 		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		box.offset_left = 5
 		box.offset_right = -5
-		box.offset_top = 4
+		box.offset_top = 10
 		box.add_theme_constant_override("separation", 2)
 		b.add_child(box)
-		var nm := UiTheme.label(String(record["name"]), 9, UiTheme.ACCENT if int(record["index"]) == int(_payload["option"]) else UiTheme.TEXT)
+		var nm := UiTheme.ink(String(record["name"]), 9, UiTheme.INK)
 		nm.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		nm.custom_minimum_size.x = 73
 		nm.max_lines_visible = 2
 		nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		box.add_child(nm)
-		box.add_child(UiTheme.label(String(record["status"]), 8, UiTheme.OK if bool(record["fitted"]) else UiTheme.TEXT))
+		box.add_child(UiTheme.ink(String(record["status"]), 8, UiTheme.INK_GAIN if bool(record["fitted"]) else UiTheme.INK_MUTED))
 		for delta in record.get("delta", []):
-			# główne zmiany tej części względem obecnego montażu (korzyść i kompromis): parametr i nowa wartość; kolor wzmacnia ocenę
-			var dl := UiTheme.label("%s → %s" % [delta[0], delta[1]], 7, UiTheme.OK if int(delta[2]) > 0 else (UiTheme.DANGER if int(delta[2]) < 0 else UiTheme.MUTED))
+			# główne zmiany tej części względem obecnego montażu (korzyść i kompromis): znak ▲▼, parametr i nowa wartość; kolor wzmacnia ocenę
+			var sign := "▲ " if int(delta[2]) > 0 else ("▼ " if int(delta[2]) < 0 else "")
+			var dl := UiTheme.ink(sign + "%s → %s" % [delta[0], delta[1]], 7, UiTheme.INK_GAIN if int(delta[2]) > 0 else (UiTheme.INK_COST if int(delta[2]) < 0 else UiTheme.INK_MUTED))
 			dl.clip_text = true
 			dl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 			dl.custom_minimum_size.x = 73

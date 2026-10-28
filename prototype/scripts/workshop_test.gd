@@ -8,6 +8,9 @@ const Controller := preload("res://scripts/weapon_controller.gd")
 const GunStage := preload("res://scripts/gun_stage.gd")
 const GunModel := preload("res://scripts/gun_model.gd")
 const Char3D := preload("res://scripts/char3d.gd")
+const SupplyArtRef := preload("res://scripts/station_supply_art.gd")
+const ServiceArtRef := preload("res://scripts/station_service_art.gd")
+const Perks := preload("res://scripts/perks.gd")
 var total := 0
 var failed := 0
 var main: Node
@@ -56,6 +59,8 @@ func run(m: Node) -> void:
 	await _jobs_deliveries()
 	await _ui()
 	await _service_card()
+	await _lab_lathe()
+	await _bench_record()
 	await _immersive()
 	await _progression()
 	await _strip_frame()
@@ -375,6 +380,37 @@ func _ui() -> void:
 	ui._refresh()
 	check("VU prasy: nabój bez zmiany hałasu — sam napis, bez miernika", ui._s_vu.visible and not ui._s_vu_meter.visible and ui._s_vu_text.text == tr("Shot noise unchanged."))
 	check("taśma sterowania: klawisze w ramkach z rejestru akcji", ui._hint.text.contains("[bgcolor=") and ui._hint.text.contains(ui._menu_key("menu_back", false)))
+	# prasa (STATION_CARDS_PLAN.md E2, ST-03): regał z półką na kaliber, etykieta partii z ząbkiem pod wybranym pudełkiem, matryce po prawej
+	await frames(3)
+	var press_tiles: Array = ui._sup_list().map(func(i: int) -> Control: return ui._sup_tiles[i])
+	check("prasa: pudełka stoją na regale, półka na kaliber", ui._shelves.visible and ui._shelves.get_child_count() == 2
+		and press_tiles.all(func(c: Control) -> bool: return ui._shelves.is_ancestor_of(c)) and not ui._sup_grid.visible and not ui._crate.visible)
+	check("prasa: etykieta partii pod regałem, ząbek pod wybranym pudełkiem", ui._lid.get_parent() == ui._sup_left and ui._notch.target == ui._sup_tiles[ui._sup_sel] and ui._s_side.visible)
+	check("prasa: matryce = miejsca na partie (%d), zajęte jak zamówienia" % Scrap.PRESS_SLOTS, ui._dies.visible and ui._dies_list.get_child_count() == Scrap.PRESS_SLOTS + 1 and not ui._s_queue.visible)
+	var us: int = ui._supply_kinds().find("ammo_us")
+	var hot: int = ui._supply_kinds().find("ammo_hot762")
+	var slug: int = ui._supply_kinds().find("ammo_slug")
+	check("prasa: strzałka w dół z 7.62 US na półkę 12/70 pod spodem", ui._spatial_step(ui._sup_tiles, ui._sup_list(), us, ui.COLS) == slug)
+	check("prasa: strzałka w prawo z końca półki przechodzi na następną", ui._spatial_step(ui._sup_tiles, ui._sup_list(), hot, 1) == slug)
+	ui.close()
+	# stół pirotechniczny (E2, ST-04): skrzynia z przegrodami 4 × 2, karta w wieku, pokrętło zapalnika, lont, schemat działania w skali
+	station("pyro_bench")
+	ui.open("pyro")
+	ui._sup_sel = ui._supply_kinds().find("frag")
+	ui._refresh()
+	await frames(3)
+	var pyro_tiles: Array = ui._sup_list().map(func(i: int) -> Control: return ui._sup_tiles[i])
+	check("pirotechnika: przedmioty w przegrodach skrzyni (4 w rzędzie), karta w wieku", ui._crate.visible and ui._crate_grid.columns == 4
+		and pyro_tiles.all(func(c: Control) -> bool: return ui._crate_grid.is_ancestor_of(c)) and ui._lid.get_parent() != ui._sup_left and not ui._s_icon.visible)
+	var dials: Array = ui._s_fuse.find_children("*", "Control", true, false).filter(func(c: Node) -> bool: return c.get_script() == SupplyArtRef.FuseDial)
+	check("pirotechnika: pokrętło zapalnika na pozycji drużyny, lont o długości czasu", dials.size() == 1 and int(dials[0].index) == Scrap.fuse_index("frag")
+		and ui._s_fuse.find_children("*", "Control", true, false).any(func(c: Node) -> bool: return c.get_script() == SupplyArtRef.FuseCord and is_equal_approx(float(c.seconds), Scrap.fuse_of("frag"))))
+	check("pirotechnika: schemat wybuchu w skali z kolegą w zasięgu", ui._s_blast.visible and ui._s_blast.kind == "frag" and String(ui._s_blast.lines[1]) == tr("squad mate: hurt"))
+	var charge: int = ui._supply_kinds().find("charge")
+	check("pirotechnika: strzałka w dół z granatu na przegrodę pod nim", ui._spatial_step(ui._sup_tiles, ui._sup_list(), ui._sup_sel, ui.COLS) == charge)
+	ui._sup_sel = ui._supply_kinds().find("ammo_40buck")
+	ui._refresh()
+	check("pirotechnika: 40 mm bez schematu wybuchu (inny ładunek)", not ui._s_blast.visible)
 	ui.close()
 
 ## Układ każdego stanowiska i zakładki po angielsku i po polsku (etap 4 przeglądu UI, 1.7.409): karta na ekranie, żadna widoczna kontrolka
@@ -799,6 +835,78 @@ func _outside_px(stage: Control) -> float:
 
 ## Stół konserwacji (K3, 1.7.413): zalecenie na górze karty i kursor na zalecanym wierszu, lista „do zrobienia” pod kaflami, ikonki wymian
 ## na kafelku, skutek wymiany na przycisku, wygaszony przycisk poniżej progu.
+## Zdarzenie klawisza przypisanego do akcji menu (pierwszy klawisz z InputMap) — panel czyta tylko klawiaturę i pad, nie InputEventAction.
+func _key_event(action: String, pressed: bool) -> InputEvent:
+	for ev in InputMap.action_get_events(action):
+		if ev is InputEventKey:
+			var e := (ev as InputEventKey).duplicate() as InputEventKey
+			e.pressed = pressed
+			return e
+	return null
+
+## Pracownia i tokarka (STATION_CARDS_PLAN.md E4, ST-05 / ST-06): korek z łańcuchem, słoje słyszą dźwięk (D2a), akta, odczyt na wydruku;
+## rysunek części, zlecenie z pieczątką, rulony schematów przy kaflach, szlifierka z iskrami tylko w trakcie ostrzenia.
+func _lab_lathe() -> void:
+	var ui := get_tree().get_first_node_in_group("workshop_ui")
+	var samples0 := Scrap.samples
+	Scrap.samples = 4
+	station("lab_bench")
+	ui.open("lab")
+	ui._select(ui.LIST.find(Weapons.LR7))
+	ui._pick_opt(ui._options(Weapons.LR7).find({"slot": "muzzle", "id": "lr7_lens"}))
+	await frames(2)
+	check("pracownia: łańcuch kroków na korku, 5 kartek", ui._cork.visible and ui._cork.steps.size() == ui.LAB_STEPS.size())
+	check("pracownia: akta Obiektu 86 z zaczernieniem i teczką broni", ui._dossier_head.visible and ui._dossier_head.text.contains("LR-7") and ui._redacted.text.contains("█"))
+	check("pracownia: słoje = próbki (4 z 6), odczyt części na wydruku", ui._jars.count == 4 and ui._printout.visible and ui._printout.is_ancestor_of(ui._d_stats))
+	var fx0 := Settings.reduce_fx
+	Settings.reduce_fx = false
+	ui._jars.hear(1.0)
+	await frames(30)
+	var turned: float = ui._jars.looking()
+	check("pracownia: kształty w słojach obracają się w stronę dźwięku (D2a): %.2f" % turned, turned > 0.1)
+	Settings.reduce_fx = true
+	ui._jars.hear(-1.0)
+	await frames(10)
+	check("pracownia: „Reduce effects” — słoje nie reagują na nowy dźwięk", ui._jars.looking() > 0.0)          # dźwięk z lewej zignorowany
+	Settings.reduce_fx = fx0
+	ui.close()
+	Scrap.schematics["lr7_lens"] = true
+	station("lathe_bench")
+	ui.open("lathe")
+	ui._select(ui.LIST.find(Weapons.LR7))
+	ui._pick_opt(ui._options(Weapons.LR7).find({"slot": "muzzle", "id": "lr7_lens"}))
+	await frames(2)
+	check("tokarka: rysunek części z drukarki zamiast sceny, szablon soczewki", ui._blueprint.visible and ui._blueprint.slot == "muzzle" and ui._blueprint.has_schematic and not ui._legacy_stage.visible)
+	check("tokarka: zlecenie na szpikulcu z częścią i kosztem", ui._order.visible and ui._order_box.get_children().any(func(c: Node) -> bool: return c is Label and (c as Label).text == tr("Focusing lens")))
+	check("tokarka: schematy jako rulony przy kaflach", ui._d_tiers.get_parent() == ui._arms_left)
+	Scrap.lathe = ["lr7_lens"]
+	ui._refresh()
+	check("tokarka: część na tokarce — pieczątka PRZYJĘTO na zleceniu", ui._order_stamp.text == tr("ACCEPTED"))
+	Scrap.lathe = []
+	Scrap.schematics.erase("lr7_lens")
+	ui.close()
+	ui.open("bench")
+	check("ława: bez kolumny pracowni i z listą części na karcie", not ui._arms_side.visible or ui._page != 0)
+	ui.close()
+	Scrap.samples = samples0
+
+## Ława (STATION_CARDS_PLAN.md E5, ST-01): metryka broni z VU magazynka (cień = obecny montaż przy podglądzie tłumika), zabójstwa kreskami,
+## wprawa kółkami; bronie i części jako zawieszki, gniazda jako szablony na przyciemnionej macie.
+func _bench_record() -> void:
+	var ui := get_tree().get_first_node_in_group("workshop_ui")
+	station("workshop")
+	ui.open("bench")
+	ui._select(ui.LIST.find(Weapons.M83))
+	ui._pick_opt(ui._options(Weapons.M83).find({"slot": "muzzle", "id": "m83_pbs1"}))
+	await frames(3)
+	var wb = ui._workbench
+	check("ława: metryka z numerem, zabójstwami i wprawą", wb._serial.text.contains("86-") and wb._tally.count == Profile.kills("m83") and wb._mastery.level == Profile.mastery_level("m83"))
+	check("ława: VU magazynka — tłumik ścisza, cień = obecny montaż", wb._vu.visible and wb._vu_meter.ghost > wb._vu_meter.value and wb._vu_meter.value > 0.0)
+	var tags_ok: bool = wb._rack.get_children().all(func(c: Node) -> bool: return c.has_meta("tag")) and wb._parts.get_children().all(func(c: Node) -> bool: return c.has_meta("tag"))
+	check("ława: bronie i części jako zawieszki", tags_ok and wb._rack.get_child_count() > 0 and wb._parts.get_child_count() > 0)
+	check("ława: gniazda jako szablony z nazwą na przyciemnionej macie", wb._hotspots.size() > 0 and String(wb._hotspots[0]["button"].text).length() > 2 and wb.stage.modulate.r < 1.0)
+	ui.close()
+
 func _service_card() -> void:
 	var ui := get_tree().get_first_node_in_group("workshop_ui")
 	station("service_bench")
@@ -821,9 +929,48 @@ func _service_card() -> void:
 	check("przycisk wymiany sprężyn podaje skutek: %s" % ui._action.text, not ui._action.disabled and ui._action.text.contains("→ 100%"))
 	ui._pick_opt(ops.find({"slot": "service", "id": "barrel"}))
 	check("lufa zużyta w 10%%: przycisk wygaszony z progiem: %s" % ui._action.text, ui._action.disabled and ui._action.text.contains(str(int(Profile.SERVICE_DUE))))
+	# E3 (ST-02): karta znika, trzy przyrządy z manometrem, kartka do zrobienia, w lewo / w prawo = przyrząd, przytrzymanie czyszczenia
+	check("konserwacja: trzy przyrządy, wybrany pod lampą, karta bez papieru", ui._gauges.size() == 3 and ui._gauges["barrel"].dial.lit
+		and not ui._gauges["clean"].dial.lit and bool(ui._arms_paper.get_meta("service", false)) and not ui._d_tiers.visible)
+	check("konserwacja: stan 90%% na tarczy, cień do limitu %d%%, kropka lampy na limicie" % int(Profile.clean_cap("m83")),
+		is_equal_approx(ui._gauges["clean"].dial.value, 0.9) and is_equal_approx(ui._gauges["clean"].dial.mark, Profile.clean_cap("m83") / 100.0)
+		and is_equal_approx(ui._gauges["springs"].dial.value, 0.65) and ui._gauges["springs"].dial.ghost == 0.0)
+	check("konserwacja: lista do zrobienia na kartce odręcznej", ui._svc_note.visible and ui._svc_note is ServiceArtRef.Scrawl)
+	var left_ev := _key_event("menu_left", true)
+	var opt0: int = ui._opt
+	ui._input(left_ev)
+	check("konserwacja: strzałka w lewo przechodzi na poprzedni przyrząd", ui._opt == opt0 - 1 or ui._opt == 0)
+	ui._pick_opt(ops.find({"slot": "service", "id": "clean"}))
+	Profile.cond = {"m83": 50.0}
+	ui._refresh()
+	var acc_down := _key_event("menu_accept", true)
+	var acc_up := _key_event("menu_accept", false)
+	if acc_down != null:
+		ui._input(acc_down)
+		var started: bool = ui._clean_w == Weapons.M83 and ui._hold_clean
+		ui.tick_clean(0.5)
+		var moved: bool = ui._gauges["clean"].dial.value > 0.5
+		ui._input(acc_up)
+		check("konserwacja: przytrzymanie czyści (wskazówka idzie), puszczenie przerywa", started and moved and ui._clean_w < 0 and not ui._hold_clean and is_equal_approx(Profile.condition("m83"), 50.0))
 	Profile.cond = {}
 	Profile.worn = {}
 	ui._refresh()
 	check("broń sprawna: zalecenie bez pracy, lista pusta", int(ui._service_advice(Weapons.M83)["level"]) == -1 and ui._svc_todo.text.contains(tr("All guns in good order.")))
 	ui.close()
 	check("lista do zrobienia tylko na stole konserwacji", not ui._svc_todo.visible or not ui._open)
+	# E3 (ST-07): szafka — drzwi, książeczka z pieczątkami poziomów, zdjęcie, naszywki ze ściegiem, zablokowany perk w folii, rzepy
+	station("locker_station")
+	ui.open("locker")
+	ui._perk_sel = Perks.ORDER.find("quiet_steps")
+	ui._refresh()
+	var veteran = ui._perk_tiles[Perks.ORDER.find("veteran")]
+	check("szafka: pieczątki poziomów = poziom profilu (%d), zdjęcie wyglądu" % Profile.level(), ui._book_stamps.level == Profile.level() and ui._book_photo.tex != null)
+	check("szafka: naszywki ze ściegiem, zablokowany perk w folii", ui._perk_tiles.all(func(t) -> bool: return t.has_meta("stitch"))
+		and bool(veteran.get_meta("stitch").foil) == not Profile.is_unlocked("veteran"))
+	var prow: Array = ui._p_stats.get_children().map(func(c: Node) -> String: return (c as Label).text if c is Label else "")
+	check("szafka: Ciche kroki — wiersz biegu z mnożnikiem, bez VU (bieg nie przebija wygaszania)", prow.has(tr("Running")) and prow.any(func(s: String) -> bool: return s.contains("×0")) and not ui._p_vu.visible)
+	ui._perk_sel = Perks.ORDER.find("cold_blood")
+	ui._refresh()
+	check("szafka: Zimna krew — VU krzyku %d%% → %d%% (cień = bez perka)" % [int(NoiseMgr.N_SCREAM), int(Perks.PERKS["cold_blood"]["params"]["scream_cap"])],
+		ui._p_vu.visible and is_equal_approx(ui._p_vu_meter.ghost, NoiseMgr.N_SCREAM / 100.0) and ui._p_vu_meter.value < ui._p_vu_meter.ghost)
+	ui.close()

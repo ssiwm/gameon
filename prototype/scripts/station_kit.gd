@@ -163,6 +163,14 @@ class Stamp extends Control:
 	var _tw: Tween
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	## Pieczątka stała (bez uderzenia i blednięcia), np. PRZYJĘTO na zleceniu; "" zdejmuje.
+	func hold(t: String) -> void:
+		if _tw != null and _tw.is_running():
+			_tw.kill()
+		text = t
+		_a = 1.0 if t != "" else 0.0
+		_k = 1.0
+		queue_redraw()
 	func play(t: String) -> void:
 		text = t
 		if _tw != null and _tw.is_running():
