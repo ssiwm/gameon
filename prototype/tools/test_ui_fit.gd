@@ -72,6 +72,7 @@ func run(host: Node) -> int:
 		await tree.process_frame
 	TranslationServer.set_locale(keep)
 	_bestiary_checks()
+	_new_marks_checks()
 	print("[UI-FIT] %s (%d błędów)" % ["PASS" if _fails == 0 else "FAIL", _fails])
 	return _fails
 
@@ -107,6 +108,32 @@ func _bestiary_checks() -> void:
 		print("[UI-FIT] PASS  bestiariusz: nieznany wpis zakryty, spotkanie odsłania, zabójstwa liczone, stary profil z postępem zna wszystko")
 	else:
 		_fail("bestiariusz z odkrywaniem: zakrycie / odsłonięcie / licznik / migracja")
+
+## Znaczniki „nowe” (1.7.409): odblokowany perk i spotkany wróg mają kropkę do obejrzenia, Stalker nie; profil bez listy obejrzanych nie dostaje kropek.
+func _new_marks_checks() -> void:
+	Profile.reset_for_test()
+	var ok: bool = not Profile.is_new("perk:quiet_steps")
+	Profile.add_xp(300, "test")                                     # poziom 2: pierwsze perki
+	ok = ok and Profile.is_unlocked("quiet_steps") and Profile.is_new("perk:quiet_steps")
+	Profile.mark_seen("perk:quiet_steps")
+	ok = ok and not Profile.is_new("perk:quiet_steps") and Profile.is_new("perk:smith")
+	Profile.discover("trzosek")
+	ok = ok and Profile.is_new("beast:trzosek") and not Profile.is_new("beast:stalker")
+	var path := "user://uifit_seen.cfg"
+	var cfg := ConfigFile.new()
+	cfg.set_value("profile", "xp", 800)
+	cfg.set_value("profile", "bestiary", {"wolek": 1})
+	cfg.save(path)
+	Profile.load_from(path)
+	ok = ok and not Profile.is_new("perk:smith") and not Profile.is_new("beast:wolek")
+	Profile.discover("skoczek")
+	ok = ok and Profile.is_new("beast:skoczek")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	Profile.reset_for_test()
+	if ok:
+		print("[UI-FIT] PASS  znaczniki „nowe”: nowy perk i wróg z kropką do obejrzenia, stary profil bez kropek")
+	else:
+		_fail("znaczniki „nowe”: nowy / obejrzany / migracja")
 
 func _check_tab(pm: Control, loc: String, t: int, what := "") -> void:
 	var card: Control = pm._card

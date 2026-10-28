@@ -154,7 +154,8 @@ func _view(i: int) -> Dictionary:
 func _refresh_list() -> void:
 	for i in _buttons.size():
 		var e := Codex.beast_view(_entries[i])
-		_buttons[i].text = e["title"]
+		var id := String(_entries[i].get("beast", ""))
+		_buttons[i].text = String(e["title"]) + ("  •" if id != "" and Profile.is_new("beast:" + id) else "")     # nowy wpis — kropka do pierwszego obejrzenia
 		(_thumbs[i] as Portrait).show_spec(e["portrait"], e["accent"])
 
 func select(i: int) -> void:
@@ -164,6 +165,10 @@ func select(i: int) -> void:
 	for j in _buttons.size():
 		_buttons[j].set_pressed_no_signal(j == i)
 	var e := _view(i)
+	var beast := String(_entries[i].get("beast", ""))
+	if beast != "" and Profile.is_new("beast:" + beast):
+		Profile.mark_seen("beast:" + beast)
+		_buttons[i].text = String(e["title"])
 	_portrait.show_spec(e["portrait"], e["accent"])
 	_title.text = e["title"]
 	_tag.text = e["tag"]

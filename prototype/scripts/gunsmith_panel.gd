@@ -168,6 +168,16 @@ func _ink(text: String, font_size: int) -> Label:
 	label.custom_minimum_size.x = 149
 	return label
 
+## Kropka „nowe” w kolorze lampy (część odblokowana, a jeszcze nieoglądana).
+func _new_dot(at: Vector2) -> Control:
+	var d := ColorRect.new()
+	d.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	d.color = UiTheme.ACCENT
+	d.position = at
+	d.size = Vector2(6, 6)
+	d.tooltip_text = tr("New")
+	return d
+
 func _clear(node: Node) -> void:
 	for child in node.get_children():
 		node.remove_child(child)
@@ -219,6 +229,8 @@ func _present_rack() -> void:
 		b.add_child(status)
 		if bool(record["selected"]):
 			b.modulate = Color(1.15, 1.1, 0.85)
+		if bool(record.get("new", false)):
+			b.add_child(_new_dot(Vector2(b.custom_minimum_size.x - 10.0, 3.0)))       # broń ma część, której gracz jeszcze nie oglądał
 		_rack.add_child(b)
 
 func _present_slots() -> void:
@@ -278,6 +290,8 @@ func _present_parts() -> void:
 		nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		box.add_child(nm)
 		box.add_child(UiTheme.label(String(record["status"]), 8, UiTheme.OK if bool(record["fitted"]) else UiTheme.TEXT))
+		if bool(record.get("new", false)):
+			b.add_child(_new_dot(Vector2(b.custom_minimum_size.x - 10.0, 3.0)))
 		_parts.add_child(b)
 	call_deferred("_reveal_part")
 
