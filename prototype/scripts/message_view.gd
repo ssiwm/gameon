@@ -1,7 +1,7 @@
 extends Control
 ## Renderer kanałów komunikatów (MESSAGES_PLAN.md §3), dziecko hud.gd: ALERT pod kartą celu, TOAST (stos) pod kartą RUN po prawej,
-## TITLE (dolna trzecia po lewej, nad kartą drużyny). Treść bierze z autoloadu `Msg` (arbiter wybiera, co wygrywa w kanale); producenci
-## (hud.gd, mission.gd, main.gd) tylko wołają `Msg.post()` / `Msg.hold()`. Pozycje podaje hud.gd przez `obj_bottom`, `run_bottom` i `squad_top`.
+## TITLE (lewy górny róg, pod kartą hałasu). Treść bierze z autoloadu `Msg` (arbiter wybiera, co wygrywa w kanale); producenci
+## (hud.gd, mission.gd, main.gd) tylko wołają `Msg.post()` / `Msg.hold()`. Pozycje podaje hud.gd przez `obj_bottom`, `run_bottom` i `noise_bottom`.
 
 const UiTheme := preload("res://scripts/ui_theme.gd")
 
@@ -13,7 +13,7 @@ const BG := Color(0.043, 0.047, 0.043, 0.92)
 
 var obj_bottom := 70.0                 ## dolna krawędź karty celu [jednostki logiczne HUD]
 var run_bottom := 70.0                 ## dolna krawędź karty RUN (prawy górny róg)
-var squad_top := 380.0                 ## górna krawędź karty drużyny (lewy dół)
+var noise_bottom := 60.0               ## dolna krawędź karty hałasu (lewy górny róg)
 
 var _alert: PanelContainer
 var _a_title: Label
@@ -219,12 +219,12 @@ func _drive_title(delta: float) -> void:
 	_t_sub.text = String(_t_last["sub"])
 	_t_sub.visible = _t_sub.text != ""
 	_title.reset_size()
-	_title.position = Vector2(MARGIN, squad_top - _title.size.y - 10.0)
+	_title.position = Vector2(MARGIN, noise_bottom + 6.0)
 	_title.modulate.a = _t_alpha
 
 # ---------------------------------------------------------------- TIP
 
-## Porada dla nowego gracza (kanał TIP): lewy dół nad kartą drużyny; gdy trwa karta tytułowa, staje nad nią.
+## Porada dla nowego gracza (kanał TIP): lewy górny róg pod kartą hałasu; gdy trwa karta tytułowa, staje pod nią.
 func _drive_tip() -> void:
 	var m: Dictionary = Msg.current(Msg.Ch.TIP)
 	_tip.visible = not m.is_empty()
@@ -232,8 +232,8 @@ func _drive_tip() -> void:
 		return
 	_tip_label.text = String(m["text"])
 	_tip.reset_size()
-	var base_y := squad_top - 10.0
+	var base_y := noise_bottom + 6.0
 	if _title.visible:
-		base_y = _title.position.y - 6.0
-	_tip.position = Vector2(MARGIN, base_y - _tip.size.y)
+		base_y = _title.position.y + _title.size.y + 6.0
+	_tip.position = Vector2(MARGIN, base_y)
 	_tip.modulate.a = float(m["alpha"])
