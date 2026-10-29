@@ -3840,7 +3840,9 @@ func _sync_boulders() -> void:
 ##  - żar paszczy (słaby punkt): poświata i światło przed pyskiem — tli się, gdy zamknięta; płonie, gdy otwarta; zielona przy pluciu; biała, gdy oślepiona;
 ##  - zapowiedź ciosu macką: czerwony łuk zasięgu;
 ##  - zapowiedź zamachu: drżące pasmo na wodzie na całym zasięgu fali, najsilniejsze przy Żyle;
-##  - fala: dwa grzbiety wody biegnące od Żyły — bryły o stromym czole i łagodnym ogonie, z pianą na grzbiecie.
+##  - fala: dwa grzbiety wody biegnące od Żyły — bryły o stromym czole i łagodnym ogonie, z pianą na grzbiecie;
+##  - plucie: kwasowo-zielony krąg na podłodze tam, gdzie spadnie plwocina (`spit_mark`) — od zapowiedzi do rozbryzgu, zaciska się
+##    i pulsuje szybciej w locie.
 func _sync_boss_fx() -> void:
 	for n in get_tree().get_nodes_in_group("boss"):
 		if not (n is Node2D) or n.is_queued_for_deletion() or _bossfx.has(n.get_instance_id()) or not n.has_method("_tick_wave_spray"):
@@ -3868,8 +3870,14 @@ func _sync_boss_fx() -> void:
 		wm.vertex_color_use_as_albedo = true
 		wm.roughness = 0.12
 		wm.emission_enabled = true
-		wm.emission = Color(0.10, 0.20, 0.26)
+		wm.emission = Color(0.30, 0.55, 0.70)
+		# jak pasmo zapowiedzi: bez testu głębi — śnieg, lód i woda na dnie tartaku zakrywały dolną część grzbietu, a w mroku resztę
+		# (opinia testera 2026-10-29: „fale, jak stoi się na dole w wodzie, są bardzo ciężkie do zobaczenia”)
+		wm.no_depth_test = true
 		_imm(root, wm).name = "Wave"
+		var km := _add_mat()
+		km.no_depth_test = true
+		_imm(root, km).name = "SpitMark"
 		_bossfx[n.get_instance_id()] = [n, root]
 	var t := Time.get_ticks_msec() / 1000.0
 	for id in _bossfx.keys():
@@ -3910,6 +3918,41 @@ func _sync_boss_fx() -> void:
 		ml.position = mpos + Vector3(0.0, 0.0, 0.35)
 		ml.light_color = Color(maw.r, maw.g, maw.b)
 		ml.light_energy = 4.0 * maw.a * r / 9.0
+		# znacznik lądowania plwociny
+		var mark := (root.get_node("SpitMark") as MeshInstance3D).mesh as ImmediateMesh
+		mark.clear_surfaces()
+		var sm: Vector2 = b.spit_mark
+		if sm != Vector2.INF:
+			var c := Level3D.px_to_m(sm) - base + Vector3(0.0, 0.06, 0.0)
+			var hit_r: float = float(b.SPIT_HIT_R) * PX
+			var flying: bool = not b.spitting
+			var mp2 := 0.5 + 0.5 * sin(t * (16.0 if flying else 8.0))
+			var acid := Color(0.55, 1.0, 0.25)
+			var rr := hit_r * 1.6
+			# kamera patrzy prawie poziomo, więc sam krąg na podłodze był kreską — plama na podłodze + pionowa poświata nad nią
+			mark.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+			for i in 24:
+				var a0 := TAU * float(i) / 24.0
+				var a1 := TAU * float(i + 1) / 24.0
+				mark.surface_set_color(Color(acid, 0.30 + 0.30 * mp2))
+				mark.surface_add_vertex(c)
+				mark.surface_set_color(Color(acid, 0.0))
+				mark.surface_add_vertex(c + Vector3(cos(a0) * rr, 0.0, sin(a0) * rr * 0.55))
+				mark.surface_set_color(Color(acid, 0.0))
+				mark.surface_add_vertex(c + Vector3(cos(a1) * rr, 0.0, sin(a1) * rr * 0.55))
+			mark.surface_end()
+			var hh := 1.4 + 0.3 * mp2
+			mark.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+			for i in 9:
+				var u := float(i) / 8.0
+				var x := (u * 2.0 - 1.0) * rr
+				var edge := 1.0 - absf(u * 2.0 - 1.0)
+				mark.surface_set_color(Color(acid, (0.25 + 0.35 * mp2) * edge))
+				mark.surface_add_vertex(c + Vector3(x, 0.0, 0.45))
+				mark.surface_set_color(Color(acid, 0.0))
+				mark.surface_add_vertex(c + Vector3(x, hh, 0.45))
+			mark.surface_end()
+			_water_ring(mark, c, hit_r, 0.05, Color(acid, 0.6 + 0.4 * mp2))
 		# łuk zasięgu macki
 		var arc := (root.get_node("Arc") as MeshInstance3D).mesh as ImmediateMesh
 		arc.clear_surfaces()

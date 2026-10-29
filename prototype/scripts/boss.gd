@@ -34,6 +34,12 @@ enum Atk { NONE, LASH, SPIT, SWEEP }
 const BASE_HP := 750.0
 const HP_PER_EXTRA_HUMAN := 250.0
 const CLOSED_MULT := 0.05         ## zamknięta paszcza / pancerny grzbiet
+## Opinia testera 2026-10-29 (ok. 10 prób, WRATH-4 „praktycznie nic”, SPREAD-12 „od razu”): wybuch nad Żyłą liczył się jako
+## pocisk „z góry” (kierunek od środka wybuchu w dół), a granat w locie ponad 1 s zwykle trafiał w już zamkniętą paszczę — 5%.
+## Wybuch nie ma kierunku: nigdy nie jest „z góry”, a w zamkniętą paszczę wchodzi BLAST_CLOSED_MULT. Śrut z kolei trafiał
+## olbrzymi cel każdą śruciną (5 × 7 co 0,26 s ≈ 135 DPS w okno paszczy) — na Żyle śrucina waży PELLET_MULT.
+const BLAST_CLOSED_MULT := 0.35
+const PELLET_MULT := 0.6
 const ARMOR_DOWN := 0.45          ## pocisk „z góry": składowa pionowa kierunku > tego
 const MAW_WINDOW := 1.0           ## paszcza otwarta po ataku
 const STUN_TIME := 2.0            ## oślepienie latarką
@@ -98,6 +104,9 @@ var _maw_t := 0.0
 var _stun_cd := 0.0
 var _light_check := 0.0
 var _spit_target := Vector2.ZERO
+## Gdzie spadnie plwocina (stopy celu, rzutowane na podłogę) od początku zapowiedzi do rozbryzgu; INF = brak. Synchronizowane —
+## widok 3D rysuje tu znacznik (opinia testera 2026-10-29: kule trudno uniknąć, bo nie widać, gdzie spadną).
+var spit_mark := Vector2.INF
 var _spits: Array[Dictionary] = []    ## serwer: {pos, vel}
 var _wave_r := -1.0                   ## serwer: promień fali ogona (<0 = brak)
 var _wave_hit := {}
@@ -189,6 +198,7 @@ func reset_enemy() -> void:
 	stunned = false
 	enraged = false
 	_spits.clear()
+	spit_mark = Vector2.INF
 	_wave_r = -1.0
 	_wave_start_ms = -1
 	visible = true
@@ -210,6 +220,9 @@ func _physics_process(delta: float) -> void:
 		_tick_attacks(delta)
 		_tick_brood(delta)
 	_tick_spits(delta)
+	if spit_mark != Vector2.INF and atk != Atk.SPIT and _spits.is_empty():
+		spit_mark = Vector2.INF                      # rozbryzg albo przerwana zapowiedź (oślepienie)
+		_send_state(true)
 	_tick_wave(delta)
 	_net_t -= delta
 	if _net_t <= 0.0:
@@ -293,6 +306,8 @@ func _begin(a: int, windup: float, target: Vector2) -> void:
 	_set_atk(a)
 	_atk_t = windup * Difficulty.m("boss_cd")
 	_spit_target = target
+	if a == Atk.SPIT:
+		spit_mark = _floor_below(target + Vector2(0, 8))
 	_event.rpc(["", "lash_windup", "spit_windup", "sweep_windup"][a])
 	_send_state(true)
 
@@ -316,6 +331,16 @@ func _resolve_attack() -> void:
 	# po każdym ataku paszcza się otwiera — okno na ostrzał
 	_open_maw(MAW_WINDOW, false)
 	_atk_gap = (ATK_GAP_ENRAGED if phase >= 2 else ATK_GAP) * Difficulty.m("boss_cd")
+
+## Pierwsza pełna komórka pod punktem (najwyżej 12 kafli) — znacznik plucia leży na podłodze, także gdy cel był w skoku.
+func _floor_below(p: Vector2) -> Vector2:
+	var lvl := get_parent()
+	var cx := int(floor(p.x / 16.0))
+	var cy := int(floor((p.y - 1.0) / 16.0))
+	for i in 12:
+		if lvl._is_solid(cx, cy + i):
+			return Vector2(p.x, float(cy + i) * 16.0)
+	return p
 
 func _players_in_reach(slack: float) -> Array:
 	var out := []
@@ -485,20 +510,24 @@ func take_hit(info: Dictionary) -> Dictionary:
 		return {}
 	var dir: Vector2 = info["dir"]
 	var pos: Vector2 = info["pos"]
-	var from_above := dir.y > ARMOR_DOWN and pos.y < global_position.y - 26.0
+	var blast := String(info.get("type", "")) == "blast"
+	var from_above := not blast and dir.y > ARMOR_DOWN and pos.y < global_position.y - 26.0
 	var armored := state != State.AWAKE or from_above or not maw_open
+	var amount := float(info["amount"])
+	if int(info.get("pellets", 1)) > 1:
+		amount *= PELLET_MULT
 	var before := hp
-	_hit(pos, float(info["amount"]), from_above, false)
+	_hit(pos, amount, from_above, false, BLAST_CLOSED_MULT if blast else CLOSED_MULT)
 	return {"hit": true, "dealt": before - hp, "killed": state == State.DEAD,
 		"mat": Arsenal.Mat.ARMOR if armored else Arsenal.Mat.FLESH}
 
-func _hit(from_pos: Vector2, dmg: float, from_above: bool, fx := true) -> void:
+func _hit(from_pos: Vector2, dmg: float, from_above: bool, fx := true, closed_mult := CLOSED_MULT) -> void:
 	if state != State.AWAKE:
 		if state == State.DORMANT and fx:
 			Audio.play_variant_at("ricochet", 2, global_position, Audio.BUS_WORLD, -16.0)
 		return
 	if from_above or not maw_open:
-		dmg *= CLOSED_MULT
+		dmg *= closed_mult
 		if fx:
 			_armor_fx.rpc(from_pos)
 	else:
@@ -559,10 +588,10 @@ func _send_state(now: bool) -> void:
 	if not now and _net_t > 0.0:
 		return
 	_net_t = 0.1
-	_sync.rpc(state, hp, max_hp, atk, maw_open, stunned, phase, nests_left)
+	_sync.rpc(state, hp, max_hp, atk, maw_open, stunned, phase, nests_left, spit_mark)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(s: int, h: float, mh: float, a: int, mo: bool, st: bool, ph: int, nl: int) -> void:
+func _sync(s: int, h: float, mh: float, a: int, mo: bool, st: bool, ph: int, nl: int, sm := Vector2.INF) -> void:
 	if h < hp - 0.01 and mo:
 		_flash = 0.08
 	state = s
@@ -576,6 +605,7 @@ func _sync(s: int, h: float, mh: float, a: int, mo: bool, st: bool, ph: int, nl:
 	if nl < nests_left:
 		_flinch = 0.6
 	nests_left = nl
+	spit_mark = sm
 	if s != State.DEAD and not visible:
 		visible = true
 		Hurtbox.set_enabled(self, true)

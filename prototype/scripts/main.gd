@@ -1780,8 +1780,9 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			if "--shotsweep" in OS.get_cmdline_user_args() and bs.has_method("_tick_wave"):
 				bs.call("_begin", 3, 0.9, Vector2.ZERO)        # --shotsweep: Żyła od razu zamachuje się falą (--shotdelay=0.4 zapowiedź, =1.0 fala)
 			if "--shotspit" in OS.get_cmdline_user_args() and bs.has_method("_tick_wave"):
-				var sp1: Node2D = _players.get_node_or_null("1")       # --shotspit: Żyła od razu pluje w gracza 1 (--shotdelay=1.0 zapowiedź, =1.6 plwocina w locie)
-				bs.call("_begin", 2, 0.9, (sp1.global_position if sp1 != null else bs.global_position) + Vector2(0, -8))
+				var sp1: Node2D = _players.get_node_or_null("1")       # --shotspit: Żyła pluje w gracza 1 po 0,3 s, gdy --shotat już go przeniósł (--shotdelay=1.0 zapowiedź, =1.6 plwocina w locie)
+				get_tree().create_timer(0.3).timeout.connect(func() -> void:
+					bs.call("_begin", 2, 0.9, (sp1.global_position if sp1 != null else bs.global_position) + Vector2(0, -8)))
 			if "--shotup" in OS.get_cmdline_user_args() and bs.has_method("_surface"):
 				bs.call("_surface")         # --shotup: Pijawka od razu wynurzona (podgląd arkusza, z chwytem, jeśli gracz stoi w zasięgu)
 	for sa in OS.get_cmdline_user_args():
@@ -2519,6 +2520,22 @@ func _leech_test() -> void:
 	await get_tree().create_timer(1.5).timeout
 	var far_shore: bool = await bitten.call(Vector2(lc.pool_x0 - 120.0, surf))
 	check.call("zasięg zasadzki: niska kładka (32 px) ugryziona=%s, brzeg tuż przy basenie ugryziony=%s, dalszy brzeg (120 px) bezpieczny w fazie 1=%s" % [str(low_hit), str(shore_hit), str(not far_shore)], low_hit and shore_hit and not far_shore)
+	# odpoczynek od brzegu (opinia testera 2026-10-29): po zasadzce z brzegu Pijawka nie parkuje przy nim, tylko odpływa na środek
+	lc._shore_rest = 0.0
+	await get_tree().create_timer(1.5).timeout
+	var first_bite: bool = await bitten.call(Vector2(lc.pool_x0 - 30.0, surf))
+	await get_tree().create_timer(float(lc.UP_TIME[0]) + 0.2).timeout
+	p.hp = 3
+	p.dead = false
+	p._invuln = 0.0
+	p.global_position = Vector2(lc.pool_x0 - 30.0, surf)
+	p.velocity = Vector2.ZERO
+	lc._cd = 0.0
+	await get_tree().create_timer(2.0).timeout
+	var mid: float = 0.5 * (lc.pool_x0 + lc.pool_x1)
+	check.call("po zasadzce z brzegu odpoczynek: gracz na brzegu nietknięty (HP %d), Pijawka odpływa ku środkowi (%.0f px od brzegu, środek %.0f px)" % [p.hp, lc.global_position.x - lc.pool_x0, mid - lc.pool_x0],
+		first_bite and p.hp == 3 and not p.dead and lc.global_position.x - lc.pool_x0 > 40.0)
+	lc._shore_rest = 0.0
 	p.hp = 3
 	p.dead = false
 	p.grabbed = false

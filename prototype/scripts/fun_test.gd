@@ -17,6 +17,8 @@ extends "res://scripts/stalker_test.gd"
 ##    po ostatnim naboju wraca broń ze slotu, a licznik serwera się zeruje.
 ## P2: 10. cichy cel — premia za Uwagę < 60 przez cały cel, toast przy utracie; 11. sejf — wyważanie trzymanym [E] jest głośne,
 ##    otwarcie dodaje łup i łoskot, odejście przerywa pracę, restart zamyka sejf.
+## Opinia testera 2026-10-29: 12. obrażenia Żyły — wybuch nie jest „z góry”, w zamkniętą paszczę wchodzi BLAST_CLOSED_MULT, pocisk
+##    z góry nadal 5%, śrucina waży PELLET_MULT.
 ## Mapa 1.3 (gniazda, Żyła, Stalker). Zwykli wrogowie usunięci, bot i Dyrektor stoją. Wynik: linie [FUN-TEST] i kod wyjścia.
 
 const Mission := preload("res://scripts/mission.gd")
@@ -63,6 +65,7 @@ func run(m: Node2D) -> void:
 	await _silent_run()
 	await _strongbox()
 	await _checkpoint()
+	await _vein_damage()
 	await _skip_hub()
 	_finish()
 
@@ -325,6 +328,32 @@ func _checkpoint() -> void:
 	check("Żyła budzi się po %.1f s" % mission.CHECKPOINT_GRACE, boss != null and int(boss.state) == 1)
 	# wykrwawienie w walce też odradza w punkcie kontrolnym (spawn właściciela postaci)
 	check("odrodzenie po wykrwawieniu też w punkcie kontrolnym", player._spawn_point.distance_to(cp) < 2.0)
+
+# ---------------------------------------------------------------- 12. obrażenia Żyły (opinia testera 2026-10-29)
+
+func _vein_damage() -> void:
+	var boss: Node2D = get_tree().get_first_node_in_group("boss")
+	if boss == null or int(boss.state) != 1:
+		check("Żyła przebudzona do testu obrażeń", false)
+		return
+	var above: Vector2 = boss.global_position + Vector2(0, -60)
+	var deal := func(info: Dictionary, open: bool) -> float:
+		boss.hp = boss.max_hp
+		boss.maw_open = open
+		return float(boss.take_hit(info)["dealt"])
+	var blast := Combat.make_info(Weapons.GNIEW4, 80.0, above, Vector2.DOWN, 1, "blast")
+	var shell := Combat.make_info(Weapons.GNIEW4, 80.0, above, Vector2.DOWN, 1, "bullet")
+	var pellet := Combat.make_info(Weapons.SPREAD12, 7.0, boss.global_position + Vector2(-30, -20), Vector2.RIGHT, 1, "bullet")
+	var d_blast_closed: float = deal.call(blast, false)
+	var d_blast_open: float = deal.call(blast, true)
+	var d_shell_above: float = deal.call(shell, true)
+	var d_pellet: float = deal.call(pellet, true)
+	boss.hp = boss.max_hp
+	boss.maw_open = false
+	check("Żyła: wybuch nad nią w zamkniętą paszczę %.1f (35%%), w otwartą %.1f (100%%), pocisk z góry %.1f (5%%), śrucina %.1f (60%%)" % [d_blast_closed, d_blast_open, d_shell_above, d_pellet],
+		is_equal_approx(d_blast_closed, 80.0 * boss.BLAST_CLOSED_MULT) and is_equal_approx(d_blast_open, 80.0)
+		and is_equal_approx(d_shell_above, 80.0 * boss.CLOSED_MULT) and is_equal_approx(d_pellet, 7.0 * boss.PELLET_MULT))
+	await _ticks(2)
 
 # ---------------------------------------------------------------- 5. następna misja bez kryjówki
 

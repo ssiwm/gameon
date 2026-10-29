@@ -67,6 +67,7 @@ const REVIVE_SYNC_MS := 100     ## postęp podnoszenia wysyłany do innych peer�
 
 # Bot a cisza (filar 2): bot nie może sam psuć skradania ani Przesterowania
 const BOT_ENGAGE_RANGE := 220.0   ## ≤ zasięg M-83 (240 px): bot nie strzela pociskami, które zgasną w locie
+const BOT_SPIT_MARGIN := 14.0   ## px poza promieniem trafienia plwociny Żyły, które bot uznaje jeszcze za niebezpieczne
 const BOT_REVIVE_DY := 12.0     ## bot podnosi leżącego tylko z tej samej kładki (różnica stóp w px)
 const BOT_SELF_DEFENSE := 70.0  ## w tym promieniu strzela zawsze — obrona własna
 const BOT_SELF_DEFENSE_STEALTH := 36.0   ## … a gdy dowódca się skrada — dopiero wróg na wyciągnięcie ręki
@@ -1409,6 +1410,18 @@ func _bot_dodge_acid() -> void:
 				velocity.y = JUMP_VELOCITY
 			return
 
+## x znacznika plwociny Żyły (`boss.gd: spit_mark`), w którego zasięgu stoi bot; INF = bezpiecznie. Opinia testera 2026-10-29:
+## bot podnosił leżącego pod ostrzałem i padał od plucia — teraz najpierw schodzi ze znacznika, a podnosi po rozbryzgu.
+func _spit_danger_x() -> float:
+	for b in get_tree().get_nodes_in_group("boss"):
+		var sm: Variant = b.get("spit_mark")
+		if sm == null or sm == Vector2.INF:
+			continue
+		var m: Vector2 = sm
+		if absf(m.x - global_position.x) < float(b.SPIT_HIT_R) + BOT_SPIT_MARGIN and absf(m.y - global_position.y) < 30.0:
+			return m.x
+	return INF
+
 var _bot_gear_hold := 0.0
 var _bot_gear_kind := ""
 var _bot_gear_target := 0
@@ -1480,7 +1493,8 @@ func _bot_brain(delta: float) -> void:
 	# podnoszenie leżącego towarzysza — bot nie jest szybszy od człowieka (GDD §4). Tylko stojąc na ziemi i na poziomie leżącego:
 	# zaczęte w skoku na platformę zatrzymywało bota w powietrzu, spadał z krawędzi i skakał od nowa (opinia testera 2026-10-29)
 	var downed := _downed_teammate()
-	var near_downed := downed != null and is_on_floor() \
+	var spit_x := _spit_danger_x()
+	var near_downed := downed != null and is_on_floor() and spit_x == INF \
 		and absf(downed.global_position.x - global_position.x) < REVIVE_RANGE - 6.0 \
 		and absf(downed.global_position.y - global_position.y) < BOT_REVIVE_DY
 	var reviving := _handle_revive(delta, near_downed)
@@ -1530,6 +1544,10 @@ func _bot_brain(delta: float) -> void:
 			if is_on_wall():
 				_bot_wants_jump = true
 				crouching = false
+	# plwocina Żyły spadnie tutaj: zejść ze znacznika (bot podnoszący pod ostrzałem ginął razem z leżącym)
+	if spit_x != INF and not on_deck:
+		var off := signf(global_position.x - spit_x)
+		velocity.x = (off if off != 0.0 else -_facing) * SPEED
 	# skrzynia / beczka na drodze: przeskakujemy ją (graf A* nie zna rekwizytów)
 	if is_on_floor() and not reviving and absf(velocity.x) > 0.0 and _prop_ahead(signf(velocity.x)):
 		_bot_wants_jump = true

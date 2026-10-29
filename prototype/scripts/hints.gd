@@ -37,6 +37,7 @@ const TIPS := [
 	["pickaxe", "Swing the pickaxe ({melee}) at the cracked brick wall to break through — it is loud"],
 	["firemode", "{firemode} switches the M-83 between full auto and a quiet 3-round burst"],
 	["jam", "Jammed! Tap {reload} to clear it. A dirty gun jams more often — clean it at the maintenance table in the safe room"],
+	["samples", "SAMPLES (from elites, bosses and side goals) go to the LAB bench here in the safe room ({interact}): they research parts for special weapons"],
 	["magdrop", "A quick tap of {reload} drops the magazine with the rounds still in it — crouch ({crouch}) over it to get them back. Hold {reload} for a slower reload that keeps them"],
 ]
 
@@ -97,6 +98,8 @@ func _collect(p: Node) -> void:
 	_queue("move", _session > 2.0, true)
 	var mn = p.get_tree().current_scene.get("mission") if p.get_tree().current_scene != null else null
 	_queue("hub", mn != null and mn.kind == "hub" and _session > 4.0, true)
+	# próbki (opinia testera 2026-10-29: „nie wiem, do czego służą próbki”): pierwsza wizyta w kryjówce z próbkami w banku
+	_queue("samples", mn != null and mn.kind == "hub" and _session > 12.0 and Scrap.samples > 0, true)
 	_queue("noise", NoiseMgr.level >= 8.0, true)
 	var lvl_n = p.get_tree().get_first_node_in_group("level")
 	var below: bool = lvl_n != null and p.global_position.y > float(lvl_n.underground_y) and float(lvl_n.underground_y) > 0.0
