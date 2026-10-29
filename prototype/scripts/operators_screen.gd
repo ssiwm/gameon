@@ -6,7 +6,11 @@ extends Control
 ##
 ## Kreator (D2, D3): kryptonim (2–16 znaków, Characters.validate_name) z „LOSUJ” z puli w klimacie radia (pierwsza propozycja: nazwa
 ## Steam), wybór sylwetki (płeć, strój Scavenger z L1 — reszta wyglądu w szafce w kryjówce). Pierwsze uruchomienie (postać z migracji albo
-## świeża instalacja, `needs_name`) otwiera kreator bez „ANULUJ”. Reset i usuwanie postaci — etap E4.
+## świeża instalacja, `needs_name`) otwiera kreator bez „ANULUJ”.
+##
+## Reset i usuwanie (E4, D4): RESETUJ — nowa kampania albo reset operatora, USUŃ — cała postać. Okno pokazuje, co przepada, a co
+## zostaje (liczby z zapisu), i wymaga przytrzymania przycisku (2 s reset, 3 s usunięcie; mysz albo [Enter] / przycisk pada). Przed każdą
+## operacją kopia (Characters, `_trash/`), COFNIJ przywraca ostatnią. Usunięcie ostatniej postaci zostawia pustą i otwiera kreator.
 ##
 ## Współrzędne w pikselach makiety 1280×720 (korzeń skalowany jak w main_menu.gd).
 
@@ -52,6 +56,51 @@ var _dlg_mode := ""                   ## "new" / "rename" / "first"
 var _dlg_id := ""
 var _gender := 0
 var _gender_tiles: Array = []
+var _reset_btn: Button
+var _delete_btn: Button
+var _undo_btn: Button
+var _note: Label                      ## wynik ostatniej operacji (reset / usunięcie) nad przyciskami
+var _act: PanelContainer              ## okno resetu / usuwania
+var _act_title: Label
+var _act_modes: HBoxContainer
+var _act_mode_btns: Array = []
+var _act_lose: VBoxContainer
+var _act_keep: VBoxContainer
+var _act_hold: Button
+var _act_kind := ""                   ## "campaign" / "character" / "delete"
+var _act_id := ""
+const HOLD_RESET := 2.0
+const HOLD_DELETE := 3.0
+const OP_NOTE := {"campaign": "New campaign for %s", "character": "%s reset", "delete": "%s deleted"}
+
+## Przycisk z przytrzymaniem: `confirmed` dopiero po `hold_time` s trzymania (mysz albo ui_accept); puszczenie albo utrata fokusu zeruje.
+class HoldButton extends Button:
+	signal confirmed
+	var hold_time := 2.0
+	var _t := 0.0
+	var _down := false
+	func _ready() -> void:
+		button_down.connect(func() -> void: _down = true)
+		button_up.connect(_cancel)
+		focus_exited.connect(_cancel)
+	func _cancel() -> void:
+		_down = false
+		_t = 0.0
+		queue_redraw()
+	func _process(delta: float) -> void:
+		if not _down or disabled:
+			return
+		_t += delta
+		queue_redraw()
+		if _t >= hold_time:
+			_cancel()
+			confirmed.emit()
+	func _draw() -> void:
+		if _t > 0.0:
+			var UT := preload("res://scripts/ui_theme.gd")
+			var k := clampf(_t / hold_time, 0.0, 1.0)
+			draw_rect(Rect2(0, 0, size.x * k, size.y), Color(UT.DANGER, 0.35))
+			draw_rect(Rect2(0, size.y - 4.0, size.x * k, 4.0), UT.DANGER)
 
 ## Karta postaci: panel z fokusem (pad, klawiatura, mysz); `pressed` przy kliknięciu albo ui_accept.
 class Card extends PanelContainer:
@@ -136,8 +185,19 @@ func _ready() -> void:
 	_rename_btn = _button(foot, "RENAME", "", func() -> void:
 		if _focus_id != "" and Characters.has(_focus_id):
 			_open_dialog("rename", _focus_id))
+	_reset_btn = _button(foot, "RESET", "", func() -> void:
+		if _focus_id != "" and Characters.has(_focus_id):
+			_open_action("campaign", _focus_id))
+	_delete_btn = _button(foot, "DELETE", "danger", func() -> void:
+		if _focus_id != "" and Characters.has(_focus_id):
+			_open_action("delete", _focus_id))
+	_undo_btn = _button(foot, "UNDO", "", _undo)
 	_back_btn = _button(foot, "BACK", "", close)
+	_note = W.mono("", 13, UiTheme.ACCENT, 0.06)
+	_note.position = Vector2(88, 612)
+	_root.add_child(_note)
 	_build_dialog()
+	_build_action()
 	get_viewport().size_changed.connect(_fit)
 	visible = false
 	_fit()
@@ -164,6 +224,8 @@ func _fit() -> void:
 func open() -> void:
 	visible = true
 	_dlg.visible = false
+	_act.visible = false
+	_note.text = ""
 	_rebuild()
 
 ## Kreator przy pierwszym uruchomieniu: postać z migracji albo świeża czeka na kryptonim; bez „ANULUJ”.
@@ -175,6 +237,10 @@ func open_creator_first_run() -> void:
 func close() -> void:
 	if _dlg.visible and _dlg_mode == "first":
 		return
+	# po usunięciu ostatniej została pusta postać: COFNIJ jest jeszcze na ekranie, a wyjście prosi o kryptonim (jak pierwsze uruchomienie)
+	if Characters.active_id != "" and bool(Characters.meta(Characters.active_id)["needs_name"]):
+		_open_dialog("first", Characters.active_id)
+		return
 	visible = false
 	closed.emit()
 
@@ -182,7 +248,10 @@ func _unhandled_input(e: InputEvent) -> void:
 	if not visible:
 		return
 	if e.is_action_pressed("ui_cancel"):
-		if _dlg.visible and _dlg_mode != "first":
+		if _act.visible:
+			_act.visible = false
+			_rebuild()
+		elif _dlg.visible and _dlg_mode != "first":
 			_dlg.visible = false
 			_rebuild()
 		elif not _dlg.visible:
@@ -215,6 +284,7 @@ func _rebuild() -> void:
 		_grid.add_child(free)
 		_cards.append(free)
 	_new_btn.disabled = Characters.count() >= Characters.MAX
+	_undo_btn.visible = Characters.can_undo()
 	if not _dlg.visible:
 		if focus_card != null:
 			focus_card.call_deferred("grab_focus")
@@ -443,3 +513,127 @@ func _random_name() -> String:
 		if Characters.validate_name(String(n), _dlg_id) == "" and String(n) != _dlg_edit.text:
 			return String(n)
 	return "%s %d" % [String(pool[0]), randi_range(2, 99)]
+
+# ---------------------------------------------------------------- reset i usuwanie (E4)
+
+func _build_action() -> void:
+	_act = PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color("0b0c0b")
+	sb.border_color = UiTheme.BLOOD_LINE
+	sb.set_border_width_all(1)
+	sb.content_margin_left = 28
+	sb.content_margin_right = 28
+	sb.content_margin_top = 24
+	sb.content_margin_bottom = 24
+	_act.add_theme_stylebox_override("panel", sb)
+	_act.custom_minimum_size = Vector2(680, 0)
+	_act.position = Vector2(300, 120)
+	_act.visibility_changed.connect(func() -> void: _dlg_dim.visible = _act.visible or _dlg.visible)
+	_root.add_child(_act)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 14)
+	_act.add_child(v)
+	_act_title = W.stencil("", 30, Color("f1ecdc"), 0.02)
+	_act_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_act_title.clip_text = true
+	v.add_child(_act_title)
+	_act_modes = HBoxContainer.new()
+	_act_modes.add_theme_constant_override("separation", 12)
+	v.add_child(_act_modes)
+	for kind in ["campaign", "character"]:
+		var b := _button(_act_modes, "NEW CAMPAIGN" if kind == "campaign" else "RESET OPERATOR", "", func() -> void: _set_action(kind))
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_act_mode_btns.append(b)
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 24)
+	v.add_child(cols)
+	for which in ["lose", "keep"]:
+		var col := VBoxContainer.new()
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.add_theme_constant_override("separation", 6)
+		col.add_child(W.mono("YOU LOSE" if which == "lose" else "YOU KEEP", 12, UiTheme.DANGER if which == "lose" else UiTheme.OK, 0.22))
+		var list := VBoxContainer.new()
+		list.add_theme_constant_override("separation", 4)
+		col.add_child(list)
+		cols.add_child(col)
+		if which == "lose":
+			_act_lose = list
+		else:
+			_act_keep = list
+	var br := HBoxContainer.new()
+	br.add_theme_constant_override("separation", 16)
+	v.add_child(br)
+	_act_hold = HoldButton.new()
+	W.style_button(_act_hold, "danger", 18)
+	_act_hold.confirmed.connect(_do_action)
+	br.add_child(_act_hold)
+	_button(br, "CANCEL", "", func() -> void:
+		_act.visible = false
+		_rebuild())
+	_act.visible = false
+
+## Okno dla postaci `id`: "campaign" (z przełącznikiem na reset operatora) albo "delete".
+func _open_action(kind: String, id: String) -> void:
+	_act_id = id
+	_act_modes.visible = kind != "delete"
+	_set_action(kind)
+	_act.visible = true
+	_act_hold.call_deferred("grab_focus")
+
+func _set_action(kind: String) -> void:
+	_act_kind = kind
+	var sm: Dictionary = Characters.summary(_act_id)
+	var cs := String(sm["name"]) if String(sm["name"]) != "" else tr("UNNAMED")
+	_act_title.text = (tr("DELETE %s?") if kind == "delete" else tr("RESET %s?")) % cs
+	for i in _act_mode_btns.size():
+		W.style_button(_act_mode_btns[i], "primary" if ["campaign", "character"][i] == kind else "", 18)
+	(_act_hold as HoldButton).hold_time = HOLD_DELETE if kind == "delete" else HOLD_RESET
+	_act_hold.text = tr("HOLD TO DELETE") if kind == "delete" else tr("HOLD TO RESET")
+	for c in _act_lose.get_children() + _act_keep.get_children():
+		c.queue_free()
+	var lv := ProfileScript.level_of(int(sm["xp"]))
+	var cleared := (sm["cleared"] as Array).size()
+	var camp := [tr("Scrap: %d") % int(sm["bank"]), tr("Missions cleared: %d / %d") % [cleared, Level.CAMPAIGN.size()],
+		tr("Weapons bought: %d") % int(sm["weapons"]), tr("Weapon parts: %d") % int(sm["parts"]), tr("Samples: %d") % int(sm["samples"])]
+	var prof := [tr("Level %d · %d XP") % [lv, int(sm["xp"])], tr("Perks and weapon mastery"), tr("Play time: %s") % _duration(float(sm["play_time"]))]
+	var lose: Array = []
+	var keep: Array = []
+	match kind:
+		"campaign":
+			lose = camp
+			keep = prof + [tr("Callsign and look")]
+		"character":
+			lose = prof + camp
+			keep = [tr("Callsign and look")]
+		"delete":
+			lose = [tr("Callsign: %s") % cs] + prof + camp
+			keep = [tr("A backup copy — UNDO right after")]
+	for t in lose:
+		_act_lose.add_child(_line(String(t), UiTheme.TEXT))
+	for t in keep:
+		_act_keep.add_child(_line(String(t), UiTheme.BONE_DIM))
+
+func _do_action() -> void:
+	var before := String(Characters.meta(_act_id)["name"])
+	match _act_kind:
+		"campaign":
+			Characters.reset_campaign(_act_id)
+		"character":
+			Characters.reset_character(_act_id)
+		"delete":
+			Characters.delete(_act_id)
+	Audio.play("ui_confirm", Audio.BUS_UI, -8.0)
+	_note.text = tr(String(OP_NOTE[_act_kind])) % (before if before != "" else tr("UNNAMED"))
+	_act.visible = false
+	_focus_id = Characters.active_id if _act_kind == "delete" else _act_id
+	_rebuild()
+
+func _undo() -> void:
+	var info := Characters.undo_info()
+	if info.is_empty() or not Characters.undo():
+		return
+	Audio.play("ui_confirm", Audio.BUS_UI, -8.0)
+	_note.text = tr("Restored: %s") % (String(info["name"]) if String(info["name"]) != "" else tr("UNNAMED"))
+	_dlg.visible = false
+	_rebuild()

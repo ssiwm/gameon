@@ -131,6 +131,80 @@ func _init() -> void:
 		and not DirAccess.dir_exists_absolute(BASE + "fresh_backup/"))
 	fresh.free()
 
+	_reset_checks()
+
 	_rm_tree(BASE)
 	print("[CHARS-TEST] %s (%d błędów)" % ["PASS" if _fails == 0 else "FAIL", _fails])
 	quit(1 if _fails > 0 else 0)
+
+
+## 8. Reset i usuwanie (PROFILES_PLAN.md E4): nowa kampania, reset postaci, usunięcie (aktywnej i ostatniej), Cofnij, limit kopii.
+func _seed(c: Node, id: String, xp: int, bank: int, look: int) -> void:
+	var pf := ConfigFile.new()
+	pf.set_value("profile", "xp", xp)
+	pf.set_value("profile", "look", look)
+	pf.set_value("profile", "equipped", ["second_chance", ""])
+	pf.save(c.dir_of(id) + "profile.cfg")
+	var gf := ConfigFile.new()
+	gf.set_value("scrap", "bank", bank)
+	gf.set_value("campaign", "cleared", ["z1_m1", "z1_m2"])
+	gf.set_value("workshop", "parts", ["m83_pbs1", "sp12_choke"])
+	gf.save(c.dir_of(id) + "progress.cfg")
+	var pl := ConfigFile.new()
+	pl.set_value("game", "seen_tips", ["move"])
+	pl.save(c.dir_of(id) + "player.cfg")
+	c._set_meta(id, "play_time", 3600.0)
+
+
+func _reset_checks() -> void:
+	var c := _store(BASE + "ops/")
+	c.ensure_ready(BASE + "empty/", BASE + "ops_backup/")
+	var a: String = c.active_id
+	c.rename(a, "Sowa")
+	var b: String = c.create("Iskra")
+	_seed(c, a, 2918, 82, 9)
+	_seed(c, b, 760, 40, 1)
+	var sm: Dictionary = c.summary(a)
+	_check("podsumowanie: złom, części, misje, perki (%s)" % str([sm["bank"], sm["parts"], (sm["cleared"] as Array).size(), sm["perks"]]),
+		int(sm["bank"]) == 82 and int(sm["parts"]) == 2 and (sm["cleared"] as Array).size() == 2 and int(sm["perks"]) == 1)
+
+	# nowa kampania: kampania znika, profil i rzeczy gracza zostają
+	_check("nowa kampania: wykonana, jest Cofnij", c.reset_campaign(b) and c.can_undo() and String(c.undo_info()["op"]) == "campaign")
+	var sb: Dictionary = c.summary(b)
+	_check("nowa kampania: złom 0, bez misji i części; XP %d i porady zostały" % int(sb["xp"]), int(sb["bank"]) == 0 and (sb["cleared"] as Array).is_empty()
+		and int(sb["parts"]) == 0 and int(sb["xp"]) == 760 and FileAccess.file_exists(c.dir_of(b) + "player.cfg"))
+	_check("cofnij nową kampanię: złom %d wrócił" % int(c.summary(b)["bank"]) if c.undo() else "cofnij nową kampanię: nie wykonano", int(c.summary(b)["bank"]) == 40 and not c.can_undo())
+
+	# reset postaci: zostaje kryptonim i wygląd
+	_check("reset postaci: wykonany", c.reset_character(a))
+	var ra: Dictionary = c.summary(a)
+	_check("reset postaci: XP 0, złom 0, bez perków i porad, czas 0; kryptonim „%s” i wygląd %d zostały" % [ra["name"], int(ra["look"])],
+		int(ra["xp"]) == 0 and int(ra["bank"]) == 0 and int(ra["perks"]) == 0 and not FileAccess.file_exists(c.dir_of(a) + "player.cfg")
+		and is_zero_approx(float(ra["play_time"])) and String(ra["name"]) == "Sowa" and int(ra["look"]) == 9)
+	c.undo()
+	_check("cofnij reset postaci: XP %d, czas %.0f s" % [int(c.summary(a)["xp"]), float(c.summary(a)["play_time"])], int(c.summary(a)["xp"]) == 2918 and is_equal_approx(float(c.summary(a)["play_time"]), 3600.0))
+
+	# usunięcie aktywnej: aktywna zostaje inna, folder znika, Cofnij przywraca na to samo miejsce i jako aktywną
+	_check("przed usunięciem aktywna jest pierwsza", c.active_id == a)
+	var now_active: String = c.delete(a)
+	_check("usunięcie aktywnej: zostaje jedna postać, aktywna %s, folderu brak" % now_active, c.count() == 1 and now_active == b and not DirAccess.dir_exists_absolute(c.dir_of(a)))
+	c.undo()
+	var order: Array = c.list().map(func(m: Dictionary) -> String: return String(m["id"]))
+	_check("cofnij usunięcie: postać wraca na swoje miejsce i jako aktywna (%s)" % str(order), order == [a, b] and c.active_id == a and int(c.summary(a)["xp"]) == 2918)
+
+	# usunięcie ostatniej: nowa pusta postać czeka na kryptonim; Cofnij ją sprząta
+	c.delete(b)
+	c.delete(a)
+	var after: Array = c.list()
+	_check("usunięcie ostatniej: nowa pusta postać z needs_name", after.size() == 1 and bool(after[0]["needs_name"]) and String(after[0]["id"]) != a)
+	c.undo()
+	var back: Array = c.list().map(func(m: Dictionary) -> String: return String(m["name"]))
+	_check("cofnij usunięcie ostatniej: wraca „Sowa”, pusta znika (%s)" % str(back), back == ["Sowa"] and c.active_id == a)
+
+	# limit kopii
+	for i in 5:
+		c.reset_campaign(a)
+	var d := DirAccess.open(c.root + Store.TRASH)
+	var kept: int = d.get_directories().size() if d != null else -1
+	_check("kopie: najwyżej %d w koszu (jest %d)" % [Store.TRASH_KEEP, kept], kept == Store.TRASH_KEEP)
+	c.free()

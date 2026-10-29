@@ -22,6 +22,8 @@ const NAME_MAX := 16
 ## Litery łacińskie z polskimi (Latin-1 i Latin Extended-A — kroje UI je mają), cyfry, spacja, „-” i „_” (D2).
 const NAME_PATTERN := "^[A-Za-z0-9À-ÖØ-öø-ſ _\\-]+$"
 const LEGACY_FILES := ["profile.cfg", "progress.cfg"]
+const TRASH := "_trash/"              ## kopie przed resetem / usunięciem (E4) — w katalogu magazynu, ostatnie TRASH_KEEP
+const TRASH_KEEP := 3
 ## Klucze gracza przeniesione z settings.cfg do player.cfg postaci (D5): [sekcja, klucz].
 const PLAYER_KEYS := [["game", "seen_tips"], ["game", "difficulty"], ["shift", "best_cleared"], ["shift", "best_time"], ["range", "board"]]
 
@@ -34,6 +36,8 @@ static var _strip_re: RegEx
 var _order: Array = []
 var _start_ms := 0
 var _time_saved := false
+## Ostatnia operacja do cofnięcia (E4, tylko w tej sesji gry): {op, id, copy, index, was_active}; {} = nic.
+var _undo := {}
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -141,6 +145,9 @@ func meta(id: String) -> Dictionary:
 func select(id: String) -> bool:
 	if not _order.has(id):
 		return false
+	if id == active_id:
+		active_name = String(meta(id)["name"])      # ta sama postać (przeładowanie po resecie): czas gry liczy się dalej od tego samego startu
+		return true
 	_flush_time()
 	active_id = id
 	active_name = String(meta(id)["name"])
@@ -152,11 +159,12 @@ func select(id: String) -> bool:
 
 ## Przełączenie postaci w menu (E3): zapis obecnej, wybór i przeładowanie kampanii (Scrap), profilu, rzeczy gracza (Settings) i trudności.
 ## Tylko poza sesją — w trakcie gry profil i kampania są w użyciu. false: nieznana postać.
-func activate(id: String) -> bool:
+## `save_current` = false po resecie / usunięciu: profil w pamięci należy do starego stanu i nie może nadpisać świeżo wyczyszczonych plików.
+func activate(id: String, save_current := true) -> bool:
 	if not _order.has(id):
 		return false
 	var profile := _auto("Profile")
-	if persist and profile != null:
+	if save_current and persist and profile != null and active_id != "":
 		profile.save()
 	select(id)
 	# autoloady po nazwie: characters.gd ładują też narzędzia `-s` (tools/test_characters.gd), gdzie autoloadów nie ma
@@ -182,6 +190,10 @@ func summary(id: String) -> Dictionary:
 	m["look"] = int(pf.get_value("profile", "look", 0))
 	m["cleared"] = Array(gf.get_value("campaign", "cleared", []))
 	m["bank"] = maxi(0, int(gf.get_value("scrap", "bank", 0)))
+	m["parts"] = Array(gf.get_value("workshop", "parts", [])).size()
+	m["weapons"] = Array(gf.get_value("workshop", "unlocked", [])).size()
+	m["samples"] = maxi(0, int(gf.get_value("workshop", "samples", 0)))
+	m["perks"] = Array(pf.get_value("profile", "equipped", [])).filter(func(e: Variant) -> bool: return String(e) != "").size()
 	return m
 
 func has(id: String) -> bool:
@@ -240,6 +252,135 @@ func validate_name(s: String, except_id := "") -> String:
 		if String(id) != except_id and String(meta(String(id))["name"]).to_lower() == n.to_lower():
 			return "taken"
 	return ""
+
+# ---------------------------------------------------------------- reset i usuwanie (PROFILES_PLAN.md E4, D4)
+
+## Nowa kampania: zeruje progress.cfg postaci (złom, bronie, części, próbki, przejdzione misje, zapas). Profil, rzeczy gracza i kryptonim
+## zostają. Najpierw kopia (Cofnij). Aktywna postać przeładowuje się od razu.
+func reset_campaign(id: String) -> bool:
+	if not _order.has(id):
+		return false
+	_backup("campaign", id)
+	DirAccess.remove_absolute(dir_of(id) + "progress.cfg")
+	_after_change(id)
+	return true
+
+## Reset postaci: wszystko poza kryptonimem i wyglądem — profil od zera (z tym samym `look`), kampania, rzeczy gracza, czas gry, awanse.
+func reset_character(id: String) -> bool:
+	if not _order.has(id):
+		return false
+	_backup("character", id)
+	var pf := ConfigFile.new()
+	pf.load(dir_of(id) + "profile.cfg")
+	var look := int(pf.get_value("profile", "look", 0))
+	for f in ["profile.cfg", "progress.cfg", "player.cfg"]:
+		DirAccess.remove_absolute(dir_of(id) + f)
+	var fresh := ConfigFile.new()
+	fresh.set_value("profile", "look", look)
+	fresh.save(dir_of(id) + "profile.cfg")
+	_set_meta(id, "play_time", 0.0)
+	_set_meta(id, "promotions", 0)
+	if id == active_id:
+		_start_ms = Time.get_ticks_msec()
+		_time_saved = false
+	_after_change(id)
+	return true
+
+## Usunięcie postaci (folder do kopii, Cofnij). Aktywna → aktywna zostaje pierwsza z listy; ostatnia → nowa pusta postać z `needs_name`
+## (menu otworzy kreator). Zwraca id postaci aktywnej po operacji.
+func delete(id: String) -> String:
+	if not _order.has(id):
+		return active_id
+	_backup("delete", id)
+	_rm_tree(dir_of(id))
+	_order.erase(id)
+	if _order.is_empty():
+		active_id = ""
+		create("", true)
+	if id == active_id or not _order.has(active_id):
+		active_id = ""
+		_save_index()
+		activate(String(_order[0]), false)
+	else:
+		_save_index()
+	changed.emit()
+	return active_id
+
+func can_undo() -> bool:
+	return not _undo.is_empty() and DirAccess.dir_exists_absolute(String(_undo["copy"]))
+
+## Opis ostatniej operacji do cofnięcia: {op: "campaign" / "character" / "delete", name}; {} = nic.
+func undo_info() -> Dictionary:
+	return {"op": _undo["op"], "name": _undo["name"]} if can_undo() else {}
+
+## Cofa ostatni reset albo usunięcie: folder postaci wraca z kopii, usunięta wraca na swoje miejsce na liście (i jako aktywna, jeśli była).
+func undo() -> bool:
+	if not can_undo():
+		return false
+	var id := String(_undo["id"])
+	var copy := String(_undo["copy"])
+	if _order.has(id):
+		_rm_tree(dir_of(id))
+	_copy_tree(copy, dir_of(id))
+	if not _order.has(id):
+		_order.insert(clampi(int(_undo["index"]), 0, _order.size()), id)
+		# pusta postać utworzona po usunięciu ostatniej znika razem z cofnięciem
+		for other in _order.duplicate():
+			if String(other) != id and bool(meta(String(other))["needs_name"]) and not FileAccess.file_exists(dir_of(String(other)) + "profile.cfg"):
+				_rm_tree(dir_of(String(other)))
+				_order.erase(other)
+	_save_index()
+	var was_active := bool(_undo["was_active"])
+	_undo = {}
+	if was_active or id == active_id or not _order.has(active_id):
+		var profile := _auto("Profile")
+		if persist and profile != null and active_id != id and _order.has(active_id):
+			profile.save()                  # inna aktywna postać (np. po usunięciu): jej stan zostaje zapisany, zanim wróci przywrócona
+		active_id = ""
+		activate(id, false)
+	else:
+		changed.emit()
+	return true
+
+func _backup(op: String, id: String) -> void:
+	var copy := root + TRASH + "%s_%d_%s/" % [id, int(Time.get_unix_time_from_system()), op]
+	_copy_tree(dir_of(id), copy)
+	_undo = {"op": op, "id": id, "copy": copy, "index": _order.find(id), "was_active": id == active_id, "name": String(meta(id)["name"])}
+	# najstarsze kopie poza TRASH_KEEP znikają (nazwa zaczyna się od id, więc sortujemy po czasie z nazwy)
+	var d := DirAccess.open(root + TRASH)
+	if d == null:
+		return
+	var dirs: Array = Array(d.get_directories())
+	dirs.sort_custom(func(a: String, b: String) -> bool: return int(a.split("_")[1]) > int(b.split("_")[1]) if a.split("_").size() > 2 and b.split("_").size() > 2 else a > b)
+	for i in range(TRASH_KEEP, dirs.size()):
+		if root + TRASH + String(dirs[i]) + "/" != copy:
+			_rm_tree(root + TRASH + String(dirs[i]))
+
+func _after_change(id: String) -> void:
+	if id == active_id:
+		activate(id, false)
+	else:
+		changed.emit()
+
+static func _copy_tree(src: String, dst: String) -> void:
+	DirAccess.make_dir_recursive_absolute(dst)
+	var d := DirAccess.open(src)
+	if d == null:
+		return
+	for f in d.get_files():
+		DirAccess.copy_absolute(src.path_join(f), dst.path_join(f))
+	for sub in d.get_directories():
+		_copy_tree(src.path_join(sub), dst.path_join(sub))
+
+static func _rm_tree(path: String) -> void:
+	var d := DirAccess.open(path)
+	if d == null:
+		return
+	for f in d.get_files():
+		d.remove(f)
+	for sub in d.get_directories():
+		_rm_tree(path.path_join(sub))
+	DirAccess.remove_absolute(path.trim_suffix("/"))
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
