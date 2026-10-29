@@ -1,6 +1,6 @@
 # DEAD AIR '87 — Game Design Document
 
-**Wersja:** 1.7.388 — numer gry z `prototype/project.godot` (`config/version`); historia zmian: [`CHANGELOG.md`](CHANGELOG.md). Zręby dokumentu pochodzą z 1.6.0 (analiza „wciągająca, przyjemna gra”: game feel, Stalker, down/revive, zakres; patrz §23)
+**Wersja:** 1.7.423 — numer gry z `prototype/project.godot` (`config/version`); historia zmian: [`CHANGELOG.md`](CHANGELOG.md). Zręby dokumentu pochodzą z 1.6.0 (analiza „wciągająca, przyjemna gra”: game feel, Stalker, down/revive, zakres; patrz §23)
 **Gatunek:** Co-op survival horror / retro run-and-gun (side-scroll)
 **Gracze:** 1–4 online (2–3 to projektowany default; **AI towarzysz od premiery EA**)
 **Silnik:** Godot 4.7 (renderer Forward+) + GodotSteam
@@ -326,7 +326,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 **Start misji — jedna liczba:** misja zaczyna się od **20**. „45–55" to *typowy poziom w środku misji* (po kilku seriach i biegu), nie wartość startowa. Zasypianie: ≤30.
 
 ### 8.2 Mikrofon (Voice Activity Detection)
-- Opcjonalny w menu (domyślnie ON w trybie co-op, z push-to-talk).
+- Opcjonalny: lobby „Microphone scream” OFF / LOW / MED / HIGH. **Domyślnie wyłączony** (prywatność — gra nie włącza mikrofonu bez zgody); od 1.7.423 podpowiedź w misji uczy krzyku klawiszem G i mówi, gdzie włączyć mikrofon, a PLAYTEST.md każe włączyć go testerom.
 - **Krzyk** = Uwaga +20 i przyciągnięcie wrogów w promieniu 25 m. Wideo-reakcje = marketing.
 - **Szept** (niski wolumen) — działa jak interkom, nie generuje hałasu.
 - **Ślepcy** w misji 4.2 reagują na mikrofon gracza, nie tylko postać.

@@ -8,7 +8,7 @@ pierwszy build z pakietem P0). Dla każdej grupy liczy to, co FUN_PLAN.md §1 zm
   Stalker    minuty obudzonego Stalkera, ucieczki o włos (`close_call`) na minutę, udział Stalkera w upadkach ludzi
   Q          użycia na próbę, udział udanych (nie zwietrzałych), udział użytych przy obudzonym Stalkerze
   wyniki     sukcesy / próby wg mapy i trudności, próby od punktu kontrolnego (`mission_start.checkpoint`) i ich sukcesy, próby na sesję,
-             wejścia „od razu następna misja” (`mission_start.via` = direct)
+             wejścia „od razu następna misja” (`mission_start.via` = direct), HP bossa przy nieudanej próbie (`mission_end.boss`, od 1.7.423)
   broń       udział największej broni w zabójstwach, skrzynie mocy (`power`) na próbę
   nagrody    cichy cel (`mission_end.silent`) wg mapy, sejfy (`strongbox`) na próbę, suma ucieczek / wabików / podniesień z `players`
 
@@ -162,6 +162,13 @@ def group_report(attempts, n_sessions):
                     "attempts_per_session": rate(len(attempts), n_sessions),
                     "checkpoint_attempts": len(cp), "checkpoint_success": sum(1 for a in cp if a["end"].get("result") == "success"),
                     "direct_next": len(direct)}
+    # --- boss: ile HP zostało przy nieudanej próbie (`mission_end.boss`, od 1.7.423)
+    left = defaultdict(list)
+    for a in attempts:
+        b = a["end"].get("boss")
+        if b and a["end"].get("result") != "success" and b.get("max_hp"):
+            left["%s %s" % (b.get("kind"), a["start"].get("difficulty"))].append(100.0 * float(b.get("hp", 0)) / float(b["max_hp"]))
+    r["results"]["boss_hp_left_pct"] = {k: "mediana %s%% (min %d%%, n=%d)" % (med(v), round(min(v)), len(v)) for k, v in sorted(left.items())}
     # --- broń i skrzynie mocy
     wk = Counter()
     for a in attempts:
@@ -219,6 +226,8 @@ def print_report(rep):
         print("   wyniki: %s" % rs["by_map"])
         print("           prób na plik %s;  od punktu kontrolnego %d (sukcesy %d);  „od razu następna misja” %d"
               % (rs["attempts_per_session"], rs["checkpoint_attempts"], rs["checkpoint_success"], rs["direct_next"]))
+        if rs["boss_hp_left_pct"]:
+            print("           HP bossa przy nieudanej próbie: %s" % rs["boss_hp_left_pct"])
         print("   broń: największy udział %s;  skrzynie mocy %d %s" % (wp["top"], wp["power_pickups"], wp["power_by_weapon"] or ""))
         print("   nagrody: cichy cel (dotrzymany/sukcesy) %s;  sejfy %d (%s na próbę);  gracze %s"
               % (rw["silent_kept"], rw["strongboxes"], rw["strongboxes_per_attempt"], rw["players"]))

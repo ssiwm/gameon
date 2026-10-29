@@ -29,6 +29,7 @@ godot --headless --path prototype -- --maptest --autoquit=4     # mapy (~6 s), m
 godot --headless --path prototype -- --host --stalkertest --autoquit=70   # Stalker: ostrzał, teren, po ciosie, unik bota przed zamachem (~50 s), ma wypisać PASS
 godot --headless --path prototype -- --host --funtest --autoquit=100     # FUN_PLAN.md P0–P2: ucieczka o włos, wabik, wyróżnienia, limit hałasu wrogów, oddech, śrut na pancerz, skrzynia mocy, cichy cel, sejf, punkt kontrolny bossa, następna misja bez kryjówki (~45 s), ma wypisać PASS
 godot --headless --path prototype -- --host --bottest --autoquit=40      # bot za plecami dowódcy (marsz w obie strony, krótki i długi obrót, ~20 s), ma wypisać PASS
+godot --headless --path prototype -- --host --mission=z1_b1 --leechtest --autoquit=120   # boss B1: obrażenia, zasadzka, QTE, fazy, poziomy trudności, stan bossa w dzienniku, śmierć → ekstrakcja → sukces (~40 s), ma wypisać PASS (0 błędów)
 godot --headless --path prototype -- --host --nobot --mission=z1_m2 --nobottest --autoquit=60   # bez AI towarzysza: brak bota, drezyna solo, upadek → wykrwawienie, drugi → wipe (~20 s), ma wypisać PASS
 godot --headless --path prototype -- --host --nobot --mission=z1_hub --nobottest --autoquit=30  # bez AI towarzysza w kryjówce: przełącznik hosta dodaje i usuwa bota, ma wypisać PASS
 godot --headless --path prototype -- --host --enemytest --autoquit=150    # wrogowie i hałas (walidacja, zasięgi, zachowania rodzajów, elity, ~50 s lokalnie, ~2 min w CI), ma wypisać PASS

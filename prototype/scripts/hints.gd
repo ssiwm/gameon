@@ -31,6 +31,8 @@ const TIPS := [
 	["light", "{flashlight} toggles the flashlight. Light is noise too — turn it off to hide"],
 	["moths", "Moths nest under the watchtower roof and fly at any light — your flashlight, even muzzle flashes. Throw a flare ({flare}) away from you: they burn in it"],
 	["flare", "{flare} throws a flare: bait that draws enemies with light instead of noise"],
+	["scream", "{scream} screams: a burst of NOISE that pulls every enemy nearby — and HIM. Turn on the microphone in the lobby and the game hears your real scream"],
+	["scream_mic", "The microphone is on: scream for real (or press {scream}) and everything nearby comes running. Whispering is safe"],
 	["grenade", "{throw} uses the selected item (grenades, mine, charge, medkit, defibrillator, scanner), {throw_next} switches. A frag or a charge hurts the squad too"],
 	["pickaxe", "Swing the pickaxe ({melee}) at the cracked brick wall to break through — it is loud"],
 	["firemode", "{firemode} switches the M-83 between full auto and a quiet 3-round burst"],
@@ -100,6 +102,9 @@ func _collect(p: Node) -> void:
 	var below: bool = lvl_n != null and p.global_position.y > float(lvl_n.underground_y) and float(lvl_n.underground_y) > 0.0
 	_queue("light", _session > 45.0 or (below and not p.flashlight == true), true)
 	_queue("flare", _session > 150.0, true)
+	# krzyk (GDD §8.2): hak gry, którego dotąd nic nie uczyło — mikrofon jest opt-in w lobby, więc podpowiedź mówi, gdzie go włączyć
+	_queue("scream", _session > 210.0 and not Voice.enabled, true)
+	_queue("scream_mic", _session > 210.0 and Voice.enabled, true)
 	var wall_near := false
 	for bw in p.get_tree().get_nodes_in_group("breakables"):
 		if p.global_position.distance_to(bw.global_position) < 70.0:

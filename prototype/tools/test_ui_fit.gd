@@ -35,6 +35,17 @@ func run(host: Node) -> int:
 	# nowy gracz: obsługa CLASSIC i bez zacięć (GDD §16.0a)
 	if Settings.REALISTIC_DEFAULT or Settings.RELIABILITY_NAMES[Settings.RELIABILITY_DEFAULT] != "OFF":
 		_fail("domyślna obsługa broni nowego gracza nie jest CLASSIC + OFF")
+	# nowy gracz: EASY, dopóki sam nie wybierze poziomu; zapamiętany wybór (także NORMAL) zostaje
+	var picked := ConfigFile.new()
+	picked.set_value("game", "difficulty", Difficulty.Level.NORMAL)
+	var other := ConfigFile.new()
+	other.set_value("game", "lang", 1)
+	if Difficulty.saved_level(null) != Difficulty.Level.EASY or Difficulty.saved_level(other) != Difficulty.Level.EASY \
+			or Difficulty.saved_level(picked) != Difficulty.Level.NORMAL:
+		_fail("poziom trudności pierwszego startu: brak pliku %d, plik bez wyboru %d, wybrany NORMAL %d" % [
+			Difficulty.saved_level(null), Difficulty.saved_level(other), Difficulty.saved_level(picked)])
+	else:
+		print("[UI-FIT] PASS  pierwszy start na EASY, zapamiętany wybór zostaje")
 	var keep := TranslationServer.get_locale()
 	# układ kodeksu sprawdzamy na pełnych wpisach (najdłuższe teksty) — bestiariusz odsłonięty w całości
 	for id in Profile.bestiary_ids():
