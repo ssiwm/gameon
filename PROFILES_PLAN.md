@@ -83,10 +83,10 @@ o kryptonim). Świeża instalacja też dostaje postać nr 1 z `needs_name`. Test
 
 | Etap | Zakres | Test |
 |------|--------|------|
-| **E1** | autoload `Characters` (przed `Settings`), foldery, `index.cfg`, `character.cfg`, migracja, D5, ścieżki `Profile` / `Scrap` / `Settings` / `Difficulty` z aktywnej postaci, walidacja kryptonimu (funkcja, bez UI), anonimowy id w dzienniku | `--charactertest` |
-| **E2** | kryptonim w grze i w sieci (zamiast P1–P4 w UI, Mimik, „(2)”), funkcja czyszcząca na każdym peerze | `test_net_session.sh` + `--charactertest` |
+| **E1** | autoload `Characters` (przed `Settings`), foldery, `index.cfg`, `character.cfg`, migracja, D5, ścieżki `Profile` / `Scrap` / `Settings` / `Difficulty` z aktywnej postaci, walidacja kryptonimu (funkcja, bez UI), anonimowy id w dzienniku | `tools/test_characters.gd` |
+| **E2** | kryptonim w grze i w sieci (zamiast P1–P4 w UI, Mimik, „(2)”), funkcja czyszcząca na każdym peerze | `test_net_session.sh` + `tools/test_characters.gd` |
 | **E3** | ekran OPERATORZY, kreator (kryptonim + wygląd), zmiana nazwy, przełączanie postaci w menu | `--uifittest`, zrzut `--shotchars` |
-| **E4** | reset (kampania / postać) i usuwanie z kopią i „Cofnij” | `--charactertest` |
+| **E4** | reset (kampania / postać) i usuwanie z kopią i „Cofnij” | `tools/test_characters.gd` |
 | **E5** | awans / prestiż — po playtestach | — |
 
 Każdy etap: PR do `main`, podbicie `config/version`, wiersz w `CHANGELOG.md`, opis w README/GDD tam, gdzie mechanika jest opisana.
