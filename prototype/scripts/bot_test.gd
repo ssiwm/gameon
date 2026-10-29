@@ -14,6 +14,7 @@ extends "res://scripts/stalker_test.gd"
 ##    wyciągnięcie ręki.
 ## 6. Podnoszenie w locie (opinia testera 2026-10-29): bot spadający obok leżącego nie zaczyna podnosić w powietrzu, dopiero
 ##    po wylądowaniu.
+## 7. Znacznik plwociny Żyły: bot schodzi z niego i nie podnosi pod ostrzałem, po rozbryzgu podnosi.
 ## Mapa 1.3, reszta świata wyciszona jak w stalker_test.gd (helpery stamtąd). Wynik: linie [BOT-TEST] i kod wyjścia.
 
 const WALK := 60.0                    ## px/s dowódcy — wolniej niż bot (0,85 × 95), żeby nadążał
@@ -48,6 +49,10 @@ func run(m: Node2D) -> void:
 	if player == null or bot == null:
 		_finish()
 		return
+	var vein: Node2D = get_tree().get_first_node_in_group("boss")
+	if vein != null:
+		vein.remove_from_group("enemies")           # Żyła zostaje (punkt 7: znacznik plucia), ale śpi i nie jest celem bota
+		vein.set_physics_process(false)
 	_isolate()
 	if stalker != null:
 		stalker.queue_free()
@@ -70,6 +75,7 @@ func run(m: Node2D) -> void:
 		await _line_of_fire(ground)
 		await _stealth_fire()
 		await _airborne_revive(ground)
+		await _spit_dodge(ground)
 	if SessionLog.recording():
 		bot.deliver_ff(player.global_position, int(player.player_id))     # CI: zdarzenie „ff” ze strzelcem w dzienniku (--sessionlog)
 	_finish()
@@ -173,5 +179,35 @@ func _airborne_revive(ground: Dictionary) -> void:
 			st["landed_rev"] = true)
 	check("bot w powietrzu nie podnosi (%d klatek lotu, %d z postępem), po wylądowaniu podnosi=%s" % [st["air"], st["air_rev"], str(st["landed_rev"])],
 		int(st["air"]) > 3 and int(st["air_rev"]) == 0 and bool(st["landed_rev"]))
+	player.dead = false
+	player.revive_progress = 0.0
+
+## 7. Znacznik plwociny Żyły (opinia testera 2026-10-29): bot obok leżącego dowódcy nie podnosi go, gdy plwocina ma spaść
+##    tutaj — schodzi ze znacznika, a po rozbryzgu wraca i podnosi.
+func _spit_dodge(ground: Dictionary) -> void:
+	var boss: Node2D = get_tree().get_first_node_in_group("boss")
+	if boss == null:
+		check("Żyła na mapie do testu plucia", false)
+		return
+	var a: Vector2 = ground["a"]
+	_lead(Vector2.ZERO, Vector2(1, 0), a + Vector2(60, 0))
+	player.dead = true
+	player.revive_progress = 0.0
+	bot.global_position = a + Vector2(68, 0)
+	bot.velocity = Vector2.ZERO
+	await _frames(0.2)
+	boss.atk = 2                                    # Atk.SPIT: zapowiedź trwa, znacznik nie znika
+	boss.spit_mark = a + Vector2(64, 0)
+	var st := {"rev": 0.0, "far": 0.0}
+	await _frames(0.8, func(_t: float, _dt: float) -> void:
+		st["rev"] = maxf(float(st["rev"]), player.revive_progress)
+		st["far"] = maxf(float(st["far"]), absf(bot.global_position.x - boss.spit_mark.x)))
+	boss.atk = 0
+	boss.spit_mark = Vector2.INF
+	var after := {"rev": 0.0}
+	await _frames(1.5, func(_t: float, _dt: float) -> void:
+		after["rev"] = maxf(float(after["rev"]), player.revive_progress))
+	check("znacznik plucia: bot schodzi (%.0f px od środka), nie podnosi pod nim (postęp %.2f), po rozbryzgu podnosi (%.2f)" % [st["far"], st["rev"], after["rev"]],
+		float(st["far"]) >= float(boss.SPIT_HIT_R) + bot.BOT_SPIT_MARGIN - 2.0 and is_zero_approx(float(st["rev"])) and float(after["rev"]) > 0.0)
 	player.dead = false
 	player.revive_progress = 0.0

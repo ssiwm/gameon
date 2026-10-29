@@ -33,6 +33,9 @@ const STRIKE_HALF_X := 24.0               ## zasięg poziomy ugryzienia
 const STRIKE_Y := 44.0                    ## ile nad poziomem wody gracz jest jeszcze w zasięgu (niska kładka 32 px — tak, wysoka 64 px — nie)
 const SHORE_REACH := 44.0                 ## gracz na brzegu tak blisko basenu też jest celem zasadzki…
 const SHORE_LUNGE := 22.0                 ## …a Pijawka wyskakuje z wody dalej (zasięg ugryzienia +22 px), żeby go dosięgnąć
+## …po czym na SHORE_REST s (od wynurzenia) odpuszcza brzeg i odpływa na środek basenu. Opinia testera 2026-10-29: kto nie wbiegł
+## na arenę od razu, ten miał Pijawkę zaparkowaną przy brzegu — co 1,8 s zasadzka w tym samym miejscu, wejście na kładki odcięte.
+const SHORE_REST := 5.0
 const SPIT_RANGE := 340.0                 ## faza 2+: gracz poza zasięgiem zasadzki w tej odległości dostaje kwasem
 const SPIT_WINDUP := [0.0, 0.9, 0.7]      ## zapowiedź plucia (s) w fazach 1–3
 const SPIT_CD := [0.0, 5.0, 3.5]          ## przerwa po pluciu
@@ -111,6 +114,8 @@ var surge_state := "idle"                  ## idle / warn / on / fall — serwer
 var _surge_t := 0.0
 var _surge_cd := 0.0
 var _target_x := 0.0
+var _shore_ambush := false                ## trwająca zapowiedź celuje w gracza na brzegu
+var _shore_rest := 0.0                    ## serwer: s do końca odpoczynku od brzegu (SHORE_REST)
 var _reveal_t := 0.0
 var _net_t := 0.0
 var _flash := 0.0
@@ -222,6 +227,8 @@ func reset_enemy() -> void:
 			_clear_minions()
 	_spit_pending = false
 	_spat = false
+	_shore_ambush = false
+	_shore_rest = 0.0
 	_fury_on = false
 	surge_state = "idle"
 	_surge_t = 0.0
@@ -273,6 +280,8 @@ func _in_reach(p: Node2D) -> bool:
 	var px := p.global_position.x
 	var py := p.global_position.y
 	if px < pool_x0 - SHORE_REACH or px > pool_x1 + SHORE_REACH:
+		return false
+	if _shore_rest > 0.0 and (px < pool_x0 or px > pool_x1):
 		return false
 	return py >= surf_y - _strike_y() and py <= surf_y + POOL_FLOOR_TOL
 
@@ -397,6 +406,7 @@ func _tick_reveal(delta: float) -> void:
 
 func _tick_mode(delta: float) -> void:
 	_cd = maxf(0.0, _cd - delta)
+	_shore_rest = maxf(0.0, _shore_rest - delta)
 	var ph := clampi(phase - 1, 0, 2)
 	match mode:
 		Mode.SUB:
@@ -412,6 +422,8 @@ func _tick_mode(delta: float) -> void:
 				spitter = _spit_target() if phase >= 2 else null
 				if spitter != null:
 					_target_x = spitter.global_position.x          # nikt w zasięgu zasadzki — podpływa pod tego, w którego może pluć
+				elif _shore_rest > 0.0:
+					_target_x = 0.5 * (pool_x0 + pool_x1)       # odpoczynek od brzegu: środek basenu, wejście na kładki wolne
 				elif NoiseMgr.last_noise_pos.distance_to(global_position) < NOISE_FOLLOW_R and NoiseMgr.level > 5.0:
 					_target_x = NoiseMgr.last_noise_pos.x
 				else:
@@ -426,6 +438,7 @@ func _tick_mode(delta: float) -> void:
 				mode = Mode.WIND
 				_t_mode = float(WINDUP[ph]) * timing * _dmul()
 				second_x = _pick_second_x(tgt) if phase >= 3 else -1.0
+				_shore_ambush = tgt.global_position.x < pool_x0 or tgt.global_position.x > pool_x1
 				_event.rpc("windup")
 			elif tgt == null and spitter != null and _cd <= 0.0 and absf(spitter.global_position.x - global_position.x) <= SPIT_RANGE * 0.9:
 				_spit_pending = true
@@ -520,6 +533,9 @@ func _surface() -> void:
 	_t_mode = float(UP_TIME[ph])
 	_set_hitbox(true)
 	NoiseMgr.add_noise(N_AMBUSH, global_position, "boss")
+	if _shore_ambush:
+		_shore_rest = SHORE_REST
+		_shore_ambush = false
 	var victim: Node2D = null
 	var best_d := INF
 	for p in get_tree().get_nodes_in_group("players"):

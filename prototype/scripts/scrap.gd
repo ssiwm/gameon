@@ -505,7 +505,7 @@ func add_samples(n: int) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _sample_rpc(n: int) -> void:
-	var sub := tr("The lab gets it after extraction") if has_lab_weapon() else tr("Research needs a special weapon from the workshop: LR-7, HKM-9 or WRATH-4")
+	var sub := tr("After extraction: the LAB bench in the safe room researches special-weapon parts with it") if has_lab_weapon() else tr("Research needs a special weapon from the workshop: LR-7, HKM-9 or WRATH-4")
 	Msg.post("sample.%d" % samples_loot, Msg.Ch.TOAST, tr("Sample taken (+%d)") % n,
 		{"sub": sub, "style": Msg.Style.SUCCESS, "ttl": 4.0 if has_lab_weapon() else 6.0, "prio": 60})
 

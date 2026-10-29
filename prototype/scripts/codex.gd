@@ -91,9 +91,9 @@ static func bestiary() -> Array:
 		"tip": "Clear the area first, destroy nests one at a time and let the noise settle between them."})
 	out.append({"title": "THE VEIN", "tag": "Boss — Mother of Nests", "accent": Color(0.85, 0.28, 0.22), "beast": "vein", "group": "BOSSES",
 		"portrait": _portrait_of("vein", {"type": "sprite", "sheet": "vein", "anim": "idle"} if Sprites.has("vein") else {"type": "vein"}),
-		"stats": [["HP", "750 (+250 per extra player)"], ["Maw closed", "5% damage"], ["Phase 2", "below 66% — enraged"], ["Phase 3", "below 33% — scream"]],
+		"stats": [["HP", "750 (+250 per extra player)"], ["Maw closed", "5% damage, blasts 35%"], ["Phase 2", "below 66% — enraged"], ["Phase 3", "below 33% — scream"]],
 		"text": "Wakes when the last nest dies. Her maw is shut and armoured — it opens only briefly after each attack. Lash up close, tail sweep along the floor, spore spit at range. She spawns young. At 33% she screams: noise goes to 100% and the Stalker wakes.",
-		"tip": "Dodge, then shoot while the maw is open. Light her maw during a wind-up to blind her. {overcharge} pulls her fire to the lure. Shots from above at a steep angle always do 5%."})
+		"tip": "Dodge, then shoot while the maw is open. Light her maw during a wind-up to blind her. {overcharge} pulls her fire to the lure. Shots from above at a steep angle always do 5%; blasts have no direction."})
 	out.append({"title": "THE LEECH", "tag": "Boss — hides under water", "accent": Color(0.35, 0.68, 0.62), "beast": "leech", "group": "BOSSES",
 		"portrait": _portrait_of("leech", {"type": "leech"}),
 		"stats": [["HP", _t("%d (+%d per extra player)") % [int(Leech.BASE_HP), int(Leech.HP_PER_EXTRA_HUMAN)]],
