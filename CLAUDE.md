@@ -44,7 +44,7 @@ godot --headless --path prototype -s tools/test_note_contrast.gd # kontrast i ja
 godot --headless --path prototype -- --uifittest                # menu pauzy (ustawienia, kodeks, sterowanie) i ekran OPERATORZY (karty, okno kryptonimu, walidacja, przełączenie postaci, okna resetu i usuwania, przytrzymanie myszą i [Enter], COFNIJ) mieszczą się po angielsku i po polsku, zmiana języka przebudowuje menu, ma wypisać PASS
 godot --headless --path prototype -- --host --rangetest --autoquit=60   # strzelnica FPP: drzwi, opcje widoku z oczu, akcje „range”, blachy, bronie specjalne, papier, wózek, co-op, przyrządy z modelu, ćwiczenie z przeładowaniem, rekordy osobiste, porównanie grup, szafa z bronią, podrzut, amunicja ćwiczebna, oparcie, tablica drużyny (serwer), wyjście (~30 s), ma wypisać PASS
 prototype/tools/test_weapons.sh                                 # bronie + sieć (~3 min)
-prototype/tools/test_net_session.sh                             # sesja sieciowa: inna wersja, utrata hosta, czterech ludzi P1–P4, kryptonimy (powtórka „(2)”, czyszczenie), host bez bota (~1 min)
+prototype/tools/test_net_session.sh                             # sesja sieciowa: inna wersja, utrata hosta, czterech ludzi P1–P4, wyjście z sesji w kryjówce bez błędów peera, kryptonimy (powtórka „(2)”, czyszczenie), host bez bota (~1 min)
 ```
 
 CI (`.github/workflows/tests.yml`) odpala te testy na każdym PR.

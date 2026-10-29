@@ -58,6 +58,12 @@ grep -a -q "\[BOT\] spawned companion slot 4" "$LOG/four_host.log" && ok "bot za
 [ "$(grep -a -c "\[NET\] peer disconnected" "$LOG/four_c3.log")" -ge 2 ] && ok "ostatni klient widzi odejście dwóch kolegów" || fail "ostatni klient nie widział odejść kolegów"
 if grep -a -q "ERR_UNAUTHORIZED" "$LOG"/four_c*.log; then fail "błąd despawnu u klienta po odejściu kolegi (ERR_UNAUTHORIZED)"; else ok "bez błędów despawnu u klientów po odejściu kolegów"; fi
 
+echo "== wyjście z sesji w kryjówce =="
+# jak „Wyjdź” z menu pauzy: wyjście przed krokiem fizyki; stanowiska kryjówki nie mogą pytać o peera, którego już nie ma
+godot --headless --path . -- --host --mission=z1_hub --leavetest --port=8965 --autoquit=20 >"$LOG/leave.log" 2>&1
+grep -a -q "\[LEAVE-TEST\] PASS" "$LOG/leave.log" && ok "po wyjściu scena od nowa, host hostuje ponownie" || fail "wyjście z sesji: brak PASS"
+[ "$(grep -a -c "No multiplayer peer is assigned" "$LOG/leave.log")" -eq 0 ] && ok "wyjście bez błędów „No multiplayer peer” (stanowiska, broń)" || fail "wyjście z sesji: $(grep -a -c "No multiplayer peer is assigned" "$LOG/leave.log") × „No multiplayer peer”"
+
 echo "== kryptonimy =="
 # host i pierwszy klient mają ten sam kryptonim (drugi dostaje „(2)”), drugi klient wysyła śmieci w nazwie (czyszczenie na każdym peerze)
 godot --headless --path . -- --host --nobot --port=8964 --callsign=Sowa --printsquad=9 --autoquit=12 >"$LOG/call_host.log" 2>&1 &

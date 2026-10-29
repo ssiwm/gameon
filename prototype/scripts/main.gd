@@ -1046,6 +1046,12 @@ func _reset_session() -> void:
 	Audio.stop_all()
 	if steam != null:
 		steam.leave()
+	# Postacie znikają ze świata, zanim zniknie peer: wyjście z menu pauzy przychodzi przed krokiem fizyki, a przeładowanie sceny
+	# dopiero na koniec klatki — w tym jednym kroku stanowiska kryjówki i kontroler broni pytały `is_multiplayer_authority()` bez peera
+	# (12 × „No multiplayer peer is assigned” w logu).
+	for c in _players.get_children():
+		c.remove_from_group("players")
+		c.process_mode = Node.PROCESS_MODE_DISABLED
 	multiplayer.multiplayer_peer = null
 	NightShift.reset_state()
 	Weather.current = ""
@@ -1110,7 +1116,9 @@ func _leave_test() -> void:
 	if _leave_stage == 0:
 		_leave_stage = 1
 		print("[LEAVE-TEST] sesja: sieć=%s graczy=%d — wychodzę" % [str(NoiseMgr.has_network()), _players.get_child_count()])
-		leave_session()
+		# jak przycisk w menu pauzy: gra zatrzymana, a wyjście przychodzi przed krokiem fizyki (wejście jest obsługiwane na początku klatki)
+		get_tree().paused = true
+		get_tree().physics_frame.connect(leave_session, CONNECT_ONE_SHOT)
 		return
 	var humans := 0
 	for p in _players.get_children():
