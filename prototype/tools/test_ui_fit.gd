@@ -6,6 +6,7 @@ extends RefCounted
 ##   godot --headless --path prototype -- --uifittest     → ostatni wiersz: PASS / FAIL (flaga w main.gd, bo menu potrzebuje autoloadów)
 
 const PauseMenu := preload("res://scripts/pause_menu.gd")
+const OperatorsScreen := preload("res://scripts/operators_screen.gd")
 const Codex := preload("res://scripts/codex.gd")
 
 const LOCALES := ["en", "pl"]
@@ -81,12 +82,100 @@ func run(host: Node) -> int:
 				print("[UI-FIT] PASS  zmiana języka en → pl przebudowuje menu („%s”)" % nav0)
 		pm.queue_free()
 		await tree.process_frame
+	await _operators_checks(host)
 	TranslationServer.set_locale(keep)
 	_bestiary_checks()
 	_new_marks_checks()
 	print("[UI-FIT] %s (%d błędów)" % ["PASS" if _fails == 0 else "FAIL", _fails])
 	return _fails
 
+
+## Ekran OPERATORZY (PROFILES_PLAN.md E3) po angielsku i po polsku: sześć kart z najszerszymi kryptonimami mieści się w karcie i na ekranie,
+## okno zmiany nazwy też; zły kryptonim pokazuje błąd i niczego nie zapisuje, dobry zmienia nazwę. Magazyn postaci w osobnym katalogu.
+func _operators_checks(host: Node) -> void:
+	var tree := host.get_tree()
+	const ROOT := "user://uifit_chars/"
+	Characters.use_root(ROOT)
+	DirAccess.make_dir_recursive_absolute(ROOT)
+	var ids: Array = []
+	for i in Characters.MAX:
+		ids.append(Characters.create("WWWWWWWWWWWWWW%02d" % i))
+	Characters.select(String(ids[0]))
+	for loc in LOCALES:
+		TranslationServer.set_locale(loc)
+		var ops: Control = OperatorsScreen.new()
+		host.add_child(ops)
+		ops.open()
+		for _f in 4:
+			await tree.process_frame
+		var vp := Rect2(Vector2.ZERO, ops.get_viewport_rect().size)
+		var bad := 0
+		for card in ops._cards:
+			var cr: Rect2 = (card as Control).get_global_rect()
+			if not vp.encloses(cr.grow(-SLACK)):
+				bad += 1
+				_fail("%s OPERATORZY: karta %s poza ekranem %s" % [loc, cr, vp])
+			for n in (card as Control).find_children("*", "Control", true, false):
+				var c := n as Control
+				if c.is_visible_in_tree() and c.size.x > 0.0 and c.get_global_rect().end.x > cr.end.x + SLACK:
+					bad += 1
+					_fail("%s OPERATORZY: %s %s wystaje poza kartę" % [loc, c.get_class(), _desc(c)])
+		for b in [ops._new_btn, ops._rename_btn, ops._back_btn]:
+			if not vp.encloses((b as Control).get_global_rect().grow(-SLACK)):
+				bad += 1
+				_fail("%s OPERATORZY: przycisk %s poza ekranem" % [loc, _desc(b)])
+		ops._open_dialog("rename", String(ids[1]))
+		for _f in 3:
+			await tree.process_frame
+		var dr: Rect2 = ops._dlg.get_global_rect()
+		if not vp.encloses(dr.grow(-SLACK)):
+			bad += 1
+			_fail("%s OPERATORZY: okno kryptonimu %s poza ekranem" % [loc, dr])
+		for n in ops._dlg.find_children("*", "Control", true, false):
+			var c := n as Control
+			if c.is_visible_in_tree() and c.size.x > 0.0 and c.get_global_rect().end.x > dr.end.x + SLACK:
+				bad += 1
+				_fail("%s OPERATORZY: %s %s wystaje poza okno" % [loc, c.get_class(), _desc(c)])
+		if bad == 0:
+			print("[UI-FIT] PASS  %s OPERATORZY: %d kart, przyciski i okno kryptonimu mieszczą się" % [loc, ops._cards.size()])
+		if loc == "en":
+			ops._dlg_edit.text = "S"
+			ops._confirm()
+			var short_err: String = ops._dlg_err.text
+			ops._dlg_edit.text = "Sowa"
+			ops._confirm()
+			if short_err == "" or String(Characters.meta(String(ids[1]))["name"]) != "Sowa" or ops._dlg.visible:
+				_fail("OPERATORZY: zmiana nazwy — błąd za krótkiej „%s”, nazwa po zatwierdzeniu „%s”" % [short_err, Characters.meta(String(ids[1]))["name"]])
+			else:
+				print("[UI-FIT] PASS  OPERATORZY: za krótki kryptonim pokazuje błąd („%s”), poprawny zmienia nazwę" % short_err)
+		ops.queue_free()
+		await tree.process_frame
+	# przełączenie postaci (Characters.activate): profil i kryptonim wybranej, nie poprzedniej
+	var pf := ConfigFile.new()
+	pf.set_value("profile", "xp", 760)
+	pf.save(Characters.dir_of(String(ids[2])) + "profile.cfg")
+	Profile.persist = true                       # odczyt z katalogu testu (Characters.persist zostaje false — bez zapisu poprzedniej)
+	var ok: bool = Characters.activate(String(ids[2]))
+	var got_xp: int = Profile.xp
+	var got_name := Characters.callsign()
+	Profile.persist = false
+	Profile.reset_for_test()
+	if not ok or got_xp != 760 or got_name != String(Characters.meta(String(ids[2]))["name"]):
+		_fail("OPERATORZY: przełączenie postaci — XP %d (oczekiwano 760), kryptonim „%s”" % [got_xp, got_name])
+	else:
+		print("[UI-FIT] PASS  OPERATORZY: przełączenie postaci wczytuje jej profil (XP %d) i kryptonim „%s”" % [got_xp, got_name])
+	_rm_tree(ROOT)
+	Characters.use_root(Characters.ROOT)
+
+func _rm_tree(path: String) -> void:
+	var d := DirAccess.open(path)
+	if d == null:
+		return
+	for f in d.get_files():
+		d.remove(f)
+	for sub in d.get_directories():
+		_rm_tree(path.path_join(sub))
+	DirAccess.remove_absolute(path)
 
 ## Bestiariusz z odkrywaniem (1.7.407): nieznany wpis zakryty, spotkanie odsłania, zabójstwo liczy, profil sprzed 1.7.407 z postępem zna wszystko.
 func _bestiary_checks() -> void:

@@ -65,6 +65,14 @@ static func saved_level(cf: ConfigFile) -> int:
 		return FIRST_RUN
 	return clampi(int(cf.get_value("game", "difficulty")), 0, TABLE.size() - 1)
 
+## Przełączenie postaci (Characters.activate): poziom z player.cfg nowej postaci, a bez wpisu FIRST_RUN.
+func reload_saved() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var cf := ConfigFile.new()
+	var path := Characters.file(SAVE_FILE)
+	set_level(saved_level(cf if path != "" and cf.load(path) == OK else null))
+
 ## Wybór gracza (menu główne, lobby): ustawia poziom i zapamiętuje go na następne uruchomienie.
 func choose(new_level: int) -> void:
 	set_level(new_level)

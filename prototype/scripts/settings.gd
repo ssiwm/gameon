@@ -426,6 +426,15 @@ func _load_player() -> void:
 	var rb = cf.get_value("range", "board", [])
 	range_board = rb if rb is Array else []
 
+## Przełączenie postaci (Characters.activate): rzeczy gracza od zera, potem z player.cfg nowej postaci.
+func reload_player() -> void:
+	seen_tips = []
+	shift_best_cleared = 0
+	shift_best_time = 0.0
+	range_board = []
+	_load_player()
+	changed.emit()
+
 func _save_player() -> void:
 	var path := Characters.file(PLAYER_FILE)
 	if path == "":

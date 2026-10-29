@@ -11,6 +11,8 @@ extends Node
 ## postaci nr 1 (z `needs_name`, kreator kryptonimu to etap E3); oryginały zostają w `user://backup_characters_migration/`. Świeża instalacja
 ## też dostaje postać nr 1. Testy headless nie dotykają zapisu (`persist`); test magazynu: tools/test_characters.gd (osobny katalog `use_root`).
 
+signal changed                        ## inna aktywna postać albo zmiana listy / kryptonimu (menu odświeża kartę i panel)
+
 const ROOT := "user://characters/"
 const LEGACY_DIR := "user://"
 const BACKUP_DIR := "user://backup_characters_migration/"
@@ -148,6 +150,46 @@ func select(id: String) -> bool:
 	_time_saved = false
 	return true
 
+## Przełączenie postaci w menu (E3): zapis obecnej, wybór i przeładowanie kampanii (Scrap), profilu, rzeczy gracza (Settings) i trudności.
+## Tylko poza sesją — w trakcie gry profil i kampania są w użyciu. false: nieznana postać.
+func activate(id: String) -> bool:
+	if not _order.has(id):
+		return false
+	var profile := _auto("Profile")
+	if persist and profile != null:
+		profile.save()
+	select(id)
+	# autoloady po nazwie: characters.gd ładują też narzędzia `-s` (tools/test_characters.gd), gdzie autoloadów nie ma
+	for step in [["Scrap", "load_progress"], ["Profile", "reload"], ["Settings", "reload_player"], ["Difficulty", "reload_saved"]]:
+		var n := _auto(String(step[0]))
+		if n != null:
+			n.call(String(step[1]))
+	changed.emit()
+	return true
+
+func _auto(n: String) -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	return tree.root.get_node_or_null(n) if tree != null else null
+
+## Podsumowanie dla karty postaci (E3) prosto z plików, bez wczytywania profilu: meta + XP, wygląd, przejdzione misje, złom.
+func summary(id: String) -> Dictionary:
+	var m := meta(id)
+	var pf := ConfigFile.new()
+	pf.load(dir_of(id) + "profile.cfg")
+	var gf := ConfigFile.new()
+	gf.load(dir_of(id) + "progress.cfg")
+	m["xp"] = maxi(0, int(pf.get_value("profile", "xp", 0)))
+	m["look"] = int(pf.get_value("profile", "look", 0))
+	m["cleared"] = Array(gf.get_value("campaign", "cleared", []))
+	m["bank"] = maxi(0, int(gf.get_value("scrap", "bank", 0)))
+	return m
+
+func has(id: String) -> bool:
+	return _order.has(id)
+
+func count() -> int:
+	return _order.size()
+
 ## Kryptonim postaci: "" = zmieniony, inaczej kod błędu z validate_name.
 func rename(id: String, name: String) -> String:
 	var err := validate_name(name, id)
@@ -157,6 +199,7 @@ func rename(id: String, name: String) -> String:
 	_set_meta(id, "needs_name", false)
 	if id == active_id:
 		active_name = clean_name(name)
+	changed.emit()
 	return ""
 
 ## Ścieżka pliku aktywnej postaci; "" bez postaci (headless).

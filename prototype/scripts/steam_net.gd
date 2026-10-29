@@ -85,6 +85,12 @@ func init_steam() -> bool:
 	print("[STEAM] initialized (app %d), user %s" % [APP_ID, str(_steam.call("getPersonaName")) if _steam.has_method("getPersonaName") else "?"])
 	return true
 
+## Nazwa gracza na Steamie (pierwsza propozycja kryptonimu w kreatorze postaci, PROFILES_PLAN.md D2); "" bez Steama.
+func persona_name() -> String:
+	if not _inited or _steam == null or not _steam.has_method("getPersonaName"):
+		return ""
+	return String(_steam.call("getPersonaName"))
+
 func _process(delta: float) -> void:
 	if not _inited:
 		return

@@ -41,7 +41,7 @@ godot --headless --path prototype -s tools/test_structures.gd   # słupy widoku 
 godot --headless --path prototype -s tools/test_characters.gd   # postacie: magazyn user://characters, migracja starego zapisu, kryptonimy, limit, czas gry (osobny katalog, zapis gracza nietknięty), ma wypisać PASS
 godot --headless --path prototype -s tools/test_messages.gd     # arbiter komunikatów (priorytet, duplikaty, czas życia, toasty, dziennik), ma wypisać PASS
 godot --headless --path prototype -s tools/test_note_contrast.gd # kontrast i jasność papieru notatek (ciemna paleta po zmroku), ma wypisać PASS
-godot --headless --path prototype -- --uifittest                # menu pauzy (ustawienia, kodeks, sterowanie) mieści się po angielsku i po polsku, zmiana języka przebudowuje menu, ma wypisać PASS
+godot --headless --path prototype -- --uifittest                # menu pauzy (ustawienia, kodeks, sterowanie) i ekran OPERATORZY (karty, okno kryptonimu, walidacja, przełączenie postaci) mieszczą się po angielsku i po polsku, zmiana języka przebudowuje menu, ma wypisać PASS
 godot --headless --path prototype -- --host --rangetest --autoquit=60   # strzelnica FPP: drzwi, opcje widoku z oczu, akcje „range”, blachy, bronie specjalne, papier, wózek, co-op, przyrządy z modelu, ćwiczenie z przeładowaniem, rekordy osobiste, porównanie grup, szafa z bronią, podrzut, amunicja ćwiczebna, oparcie, tablica drużyny (serwer), wyjście (~30 s), ma wypisać PASS
 prototype/tools/test_weapons.sh                                 # bronie + sieć (~3 min)
 prototype/tools/test_net_session.sh                             # sesja sieciowa: inna wersja, utrata hosta, czterech ludzi P1–P4, kryptonimy (powtórka „(2)”, czyszczenie), host bez bota (~1 min)
