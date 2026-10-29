@@ -4,7 +4,7 @@ extends Control
 ## Skala: cały HUD jest rysowany w 70% (UI_SCALE) — węzeł ma `scale` i logiczny rozmiar
 ## viewport / UI_SCALE (≈914×514), więc układ liczy się względem `size`, nie stałych 640×360.
 ## Layout — HUD bez ramek (HUD_PLAN.md): czytelność dają dwa gradienty (góra, dół), a ważne rzeczy stoją w rogach:
-##   top-left    noise: small VU meter, one NOISE line (safe room: SAFE), mission weather under it
+##   top-left    noise: VU meter, one NOISE line (safe room: SAFE), mission weather under it; title card and tips under the noise card
 ##   top-centre  map view (hud_minimap.gd): ±38 m window of the level grid with fog (only tiles the squad has seen), goal / exit /
 ##               teammates / downed markers with distance; under it the boss bar
 ##               and the objective text, which shows for TOAST_S after the goal changes (always in the safe room, F1 recalls it)
@@ -666,7 +666,7 @@ func _build_noise_card() -> void:
 	outer.alignment = BoxContainer.ALIGNMENT_BEGIN
 	card.add_child(outer)
 	_noise_bar = VuMeter.new()                 # analogowy VU-metr; progi z NoiseMgr: 30 = zasypia, 40 = niepokój, 60 = budzi się ON
-	_noise_bar.custom_minimum_size = Vector2(52, 31)
+	_noise_bar.custom_minimum_size = Vector2(68, 40)          # o 30% większy niż 52×31 (1.7.422)
 	_noise_bar.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_noise_bar.ticks = StationNoise.ticks()            # te same progi na kartach stanowisk (station_noise.gd)
 	outer.add_child(_noise_bar)
@@ -1760,7 +1760,7 @@ func _drive_mission() -> void:
 	_obj_card.position = Vector2((size.x - _obj_card.size.x) * 0.5, 2.0 * MARGIN)
 	_msgs.obj_bottom = (_obj_card.position.y + _obj_card.size.y) / MSG_SCALE
 	_msgs.run_bottom = (_run_card.position.y + _run_card.size.y) / MSG_SCALE
-	_msgs.squad_top = _squad_card.position.y / MSG_SCALE
+	_msgs.noise_bottom = (_noise_card.position.y + _noise_card.size.y) / MSG_SCALE
 
 	var show_result: bool = m.phase == Mission.Phase.SUCCESS or m.phase == Mission.Phase.FAILED
 	var just_shown: bool = show_result and not _result.visible
