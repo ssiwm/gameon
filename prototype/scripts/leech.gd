@@ -19,8 +19,10 @@ enum Mode { SUB, WIND, UP, GRAB }         ## zanurzona / zapowiedź zasadzki / w
 ## 1.7.398: 5000 → 2000. Dzienniki sesji: 13 podejść, 13 wipe'ów (11 na EASY), wipe po 42–120 s, a drużyna zadawała przez całe
 ## podejście 1500–2600 obrażeń razem z dorzuconymi Trzoskami — realnie ~20 DPS w oknach wynurzenia, nie 77. Przy 20 DPS stare HP
 ## dawało na EASY 5,9 min walki bez trafienia; nowe ok. 2–2,5 min na EASY i 3–3,5 min na NORMAL (pomiar --leechsim=1,20 w CHANGELOG).
-const BASE_HP := 2000.0
-const HP_PER_EXTRA_HUMAN := 600.0           ## ta sama proporcja co wcześniej (0,3 × BASE_HP na każdego człowieka ponad jednego)
+## 1.7.423: 2000 → 1300. Po 1.7.398 nadal 0 zwycięstw (6 prób EASY solo na 1.7.421–422): gracz zadawał całej walce 700–1300 obrażeń
+## z Trzoskami i padał po 60–100 s, a symulacja przy 20 DPS dawała na EASY 2,1 min (realnie ok. 2× dłużej, CHANGELOG 1.7.70).
+const BASE_HP := 1300.0
+const HP_PER_EXTRA_HUMAN := 390.0           ## ta sama proporcja co wcześniej (0,3 × BASE_HP na każdego człowieka ponad jednego)
 const SUB_MULT := 0.05                    ## zanurzona i nieoświetlona
 const LIT_MULT := 0.4                     ## zanurzona, ale cień oświetlony flarą / latarką (1.7.70; wcześniej 100%) — pełne obrażenia dopiero, gdy wynurzona
 const SPEED := [105.0, 140.0, 175.0]      ## px/s w fazach 1–3

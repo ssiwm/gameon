@@ -2407,6 +2407,9 @@ func _leech_test() -> void:
 	mission._start_boss()
 	await get_tree().create_timer(0.3).timeout
 	check.call("walka: Pijawka obudzona, faza BOSS, HP %.0f (≥ %.0f)" % [lc.hp, lc.BASE_HP], lc.state == lc.State.AWAKE and mission.phase == MISSION_SCRIPT.Phase.BOSS and lc.hp >= lc.BASE_HP)
+	var bs: Dictionary = mission.boss_state()
+	check.call("dziennik: stan bossa do mission_end %s" % str(bs), bs.get("kind", "") == "leech" and int(bs.get("hp", -1)) == roundi(lc.hp)
+		and int(bs.get("max_hp", -1)) == roundi(lc.max_hp) and int(bs.get("phase", 0)) == 1)
 	# Trzoski od fazy 1 (1.7.68): po pierwszym odliczeniu pojawiają się z brzegów; potem je usuwamy, żeby nie psuły pomiarów
 	lc._minion_t = 0.05
 	await get_tree().create_timer(0.6).timeout

@@ -621,7 +621,18 @@ func log_end(result: String, how := "") -> void:
 	if how != "":
 		row["how"] = how
 		row["phase"] = String(Phase.keys()[phase]).to_lower()      # w której fazie drużyna zrezygnowała
+	var boss := boss_state()
+	if not boss.is_empty():
+		row["boss"] = boss
 	SessionLog.mission_end(row)
+
+## Stan obudzonego bossa do dziennika (`mission_end.boss`): ile HP zostało przy wipe'ie albo wyjściu — strojenie B1 i 1.3 po playteście.
+## Pusty słownik, gdy w misji nie ma bossa albo jeszcze śpi.
+func boss_state() -> Dictionary:
+	if _boss == null or not is_instance_valid(_boss) or int(_boss.state) == _boss.State.DORMANT:
+		return {}
+	return {"kind": "leech" if kind == "boss" else "vein", "hp": roundi(maxf(0.0, float(_boss.hp))), "max_hp": roundi(float(_boss.max_hp)),
+		"phase": int(_boss.phase)}
 
 ## Premia złomu za udaną misję: ukończenie, cel poboczny, bez upadków.
 func scrap_bonus() -> int:

@@ -48,6 +48,10 @@ jobs:
           godot --headless --path prototype -- --host --bottest --sessionlog="$RUNNER_TEMP/bot-sessions" --autoquit=40 2>&1 | tee bottest.log
           grep -a -q "\[BOT-TEST\] ==== PASS" bottest.log
           grep -h '"ev":"ff"' "$RUNNER_TEMP"/bot-sessions/*.jsonl | grep '"shooter":"P1"' | grep '"victim_bot":true'
+      - name: Boss B1 Pijawka — obrażenia, zasadzka, fazy, stan bossa w dzienniku, śmierć → ekstrakcja → sukces (--leechtest)
+        run: |
+          godot --headless --path prototype -- --host --mission=z1_b1 --leechtest --autoquit=120 2>&1 | tee leechtest.log
+          grep -a -q "\[LEECH-TEST\] PASS (0 błędów)" leechtest.log
       - name: Bez AI towarzysza — misja z drezyną i kryjówka (--nobottest)
         run: |
           godot --headless --path prototype -- --host --nobot --mission=z1_m2 --nobottest --autoquit=60 2>&1 | tee nobot.log

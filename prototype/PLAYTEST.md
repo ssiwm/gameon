@@ -14,12 +14,15 @@ decydują o priorytetach przed jakąkolwiek nową zawartością.
 - [ ] Włącz nagrywanie ekranu **z dźwiękiem i mikrofonem** (OBS). Reakcje graczy są ważniejsze od ich opinii.
 - [ ] Zapisz wersję buildu ze stopki menu głównego (np. `1.7.397+abc1234`; ta sama trafia do dziennika sesji). Od 1.7.396 gra sama
       odrzuca dołączenie z innym buildem (komunikat w lobby) — wszyscy muszą mieć tę samą paczkę.
-- [ ] Ustaw poziom trudności w menu głównym: **EASY** dla nowych graczy. Gra startuje na NORMAL i zapamiętuje ostatni wybór,
-      więc sprawdź go na każdym komputerze, który będzie hostem.
+- [ ] Poziom trudności: nowy gracz (bez zapisanego wyboru) zaczyna od 1.7.423 na **EASY**. Gra zapamiętuje ostatni wybór,
+      więc na komputerze, na którym ktoś już grał, sprawdź poziom w menu głównym hosta.
+- [ ] **Mikrofon:** w lobby „Microphone scream” ustaw MED (domyślnie OFF — gra nie włącza mikrofonu sama). Bez tego nikt nie sprawdzi
+      krzyku, a to hak gry (GDD §8.2). Jeśli tester odmówi — zanotuj; krzyk działa też klawiszem G (od 1.7.423 uczy go podpowiedź).
 - [ ] Język: przy pierwszym starcie gra bierze język systemu (od 1.7.397: polski Windows → POLSKI). Zanotuj, w jakim języku grał tester.
 - [ ] Zakres: kampania to 1.1 → 1.2 → 1.3 → boss B1. Do 1.7.397 **B1 Pijawka nie została pokonana w żadnej sesji autora** (13 podejść,
-      także na EASY); od 1.7.398 ma 2000 HP zamiast 5000 (symulacja przy 20 DPS: EASY ok. 2 min, NORMAL ok. 3 min). Zanotuj czas walki
-      i liczbę podejść — to pierwszy pomiar nowego HP.
+      także na EASY); od 1.7.398 ma 2000 HP zamiast 5000, a od 1.7.423 — po kolejnych 6 przegranych próbach EASY — 1300 (EASY 910;
+      symulacja przy 20 DPS: EASY ok. 1,5 min, NORMAL ok. 1,8 min, realnie ok. 2× dłużej). Zanotuj czas walki i liczbę podejść;
+      dziennik zapisuje HP bossa przy każdym wipe'ie (`mission_end.boss`, raport `fun_report.py`).
 - [ ] Nowy gracz (bez zapisu ustawień) zaczyna od obsługi broni CLASSIC i bez zacięć (od 1.7.398, GDD §16.0a). Gdy tester sam włączy
       REALISTIC albo zacięcia w ustawieniach — zanotuj kiedy i dlaczego. Na zintegrowanej karcie gra startuje w MEDIUM i 75%.
 - [ ] Gracze mają słuchawki. Bez nich cały filar „dźwięk jako groza" przepada.

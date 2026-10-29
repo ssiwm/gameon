@@ -160,7 +160,7 @@ Działa też na starych logach (same upadki i wyniki). Wymaga Pillow tylko do ob
 
 ## 3. B1 The Leech: stan HP (do decyzji, bez zmian)
 
-- `leech.gd`: `BASE_HP` 5000, +1500 za każdego dodatkowego człowieka (od 1.7.398: 2000 i +600 — strojenie po 13 wipe'ach z 13 podejść) (boty się nie liczą), razy `boss_hp` z trudności: EASY ×0,7, NORMAL ×1,0, HARD ×1,4.
+- `leech.gd`: `BASE_HP` 5000, +1500 za każdego dodatkowego człowieka (od 1.7.398: 2000 i +600 — strojenie po 13 wipe'ach z 13 podejść; od 1.7.423: 1300 i +390 — wciąż 0 zwycięstw, 6 prób EASY solo na 1.7.421–422; `mission_end.boss` zapisuje HP przy wipe'ie) (boty się nie liczą), razy `boss_hp` z trudności: EASY ×0,7, NORMAL ×1,0, HARD ×1,4.
   Solo + bot: EASY **3500**, NORMAL **5000**, HARD **7000**. Dwóch ludzi na NORMAL: 6500. Dla porównania Żyła ma 750 (+250 za człowieka).
 - Mnożniki obrażeń: zanurzona 5%, zanurzona w świetle flary lub latarki 40%, wynurzona 100%; w ciemności regeneruje 0,5% maks. HP/s (EASY ×0,5).
 - Komentarz przy stałej zakłada dla duetu ok. 77 efektywnych DPS, czyli ok. 130 s walki. W logach (11 podejść, wszystkie EASY) drużyna zadała łącznie 700–2600 obrażeń w 42–120 s,

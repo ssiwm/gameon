@@ -278,6 +278,8 @@
 "You are down. Stay still — a teammate can revive you before you bleed out","Leżysz. Nie ruszaj się — kolega może cię podnieść, zanim się wykrwawisz"
 "{flashlight} toggles the flashlight. Light is noise too — turn it off to hide","{flashlight} przełącza latarkę. Światło to też hałas — wyłącz je, by się ukryć"
 "{flare} throws a flare: bait that draws enemies with light instead of noise","{flare} rzuca flarę: przynętę, która wabi wrogów światłem zamiast hałasem"
+"{scream} screams: a burst of NOISE that pulls every enemy nearby — and HIM. Turn on the microphone in the lobby and the game hears your real scream","{scream} to krzyk: wybuch HAŁASU, który ściąga wszystkich wrogów w pobliżu — i JEGO. Włącz mikrofon w lobby, a gra usłyszy twój prawdziwy krzyk"
+"The microphone is on: scream for real (or press {scream}) and everything nearby comes running. Whispering is safe","Mikrofon jest włączony: krzyknij naprawdę (albo naciśnij {scream}), a zbiegnie się wszystko w pobliżu. Szept jest bezpieczny"
 "{throw} uses the selected item (grenades, mine, charge, medkit, defibrillator, scanner), {throw_next} switches. A frag or a charge hurts the squad too","{throw} używa wybranego przedmiotu (granaty, mina, ładunek, apteczka, defibrylator, skaner), {throw_next} zmienia. Odłamkowy i ładunek ranią też drużynę"
 "Swing the pickaxe ({melee}) at the cracked brick wall to break through — it is loud","Uderz kilofem ({melee}) w spękany murek, by się przebić — to głośne"
 "{firemode} switches the M-83 between full auto and a quiet 3-round burst","{firemode} przełącza M-83 między pełnym automatem a cichą serią 3 strzałów"

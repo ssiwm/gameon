@@ -1,5 +1,5 @@
 extends Node
-## Poziom trudności (autoload). Domyślnie NORMAL = dotychczasowa gra (wszystkie mnożniki 1,0).
+## Poziom trudności (autoload). NORMAL = dotychczasowa gra (wszystkie mnożniki 1,0); nowy gracz zaczyna na EASY (`FIRST_RUN`), testy headless na NORMAL.
 ## Wybór gracza z menu albo lobby jest zapamiętywany (`user://settings.cfg`, sekcja „game”); poziom narzucony przez hosta
 ## albo flagę nie jest.
 ## Wybiera host (lobby albo --difficulty=easy|normal|hard); main.gd rozsyła wybór
@@ -46,14 +46,23 @@ const TABLE := [
 	},
 ]
 
+## Gracz, który jeszcze nie wybrał poziomu (od 1.7.423): EASY. Dzienniki autora: 1.3 na NORMAL 2/24, B1 nigdy nie pokonana — nowy gracz
+## ma najpierw zobaczyć Stalkera i bossa, a nie ścianę; PLAYTEST.md kazał dotąd przełączać to ręcznie na każdym komputerze.
+const FIRST_RUN := Level.EASY
+
 var level: int = Level.NORMAL
 
 func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
 		return                          # testy zawsze startują na NORMAL
 	var cf := ConfigFile.new()
-	if cf.load(SAVE_PATH) == OK:
-		level = clampi(int(cf.get_value("game", "difficulty", Level.NORMAL)), 0, TABLE.size() - 1)
+	level = saved_level(cf if cf.load(SAVE_PATH) == OK else null)
+
+## Poziom przy starcie gry: zapamiętany wybór gracza, a bez niego (brak pliku albo klucza) FIRST_RUN.
+static func saved_level(cf: ConfigFile) -> int:
+	if cf == null or not cf.has_section_key("game", "difficulty"):
+		return FIRST_RUN
+	return clampi(int(cf.get_value("game", "difficulty")), 0, TABLE.size() - 1)
 
 ## Wybór gracza (menu główne, lobby): ustawia poziom i zapamiętuje go na następne uruchomienie.
 func choose(new_level: int) -> void:

@@ -85,7 +85,7 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7 (Forward+). Rozgrywka to sym
 
 ## Poziomy trudności
 
-Host wybiera w lobby przyciskiem **DIFFICULTY** albo flagą `--difficulty=easy|normal|hard` (domyślnie **NORMAL** = dotychczasowa gra; wybór z menu głównego albo lobby jest zapamiętywany w `user://settings.cfg`). Wartość trafia do klientów przy dołączeniu, widać ją w HUD (prawy górny róg). Mnożniki: `scripts/difficulty.gd` (autoload `Difficulty`).
+Host wybiera w lobby przyciskiem **DIFFICULTY** albo flagą `--difficulty=easy|normal|hard` (NORMAL = dotychczasowa gra; **nowy gracz zaczyna na EASY**, dopóki sam nie wybierze poziomu — od 1.7.423; wybór z menu głównego albo lobby jest zapamiętywany w `user://settings.cfg`; testy headless startują na NORMAL). Wartość trafia do klientów przy dołączeniu, widać ją w HUD (prawy górny róg). Mnożniki: `scripts/difficulty.gd` (autoload `Difficulty`).
 
 | | EASY | NORMAL | HARD |
 |---|---|---|---|
