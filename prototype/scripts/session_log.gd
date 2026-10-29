@@ -105,7 +105,7 @@ static func _open() -> bool:
 		"cpu": OS.get_processor_name(), "threads": OS.get_processor_count(), "ram_gb": snappedf(float(mem.get("physical", 0)) / 1073741824.0, 0.1),
 		"os": OS.get_name(), "screen": xy(Vector2(DisplayServer.screen_get_size())), "window": xy(Vector2(DisplayServer.window_get_size())),
 		"fullscreen": Settings.fullscreen, "quality": Settings.QUALITY_NAMES[Settings.quality_idx], "render_scale": Settings.render_scale(), "vsync": Settings.VSYNC_NAMES[Settings.vsync_idx],
-		"fps_cap": Settings.FPS_LIST[Settings.fps_idx]}
+		"fps_cap": Settings.FPS_LIST[Settings.fps_idx], "char": Characters.active_id}       # anonimowy id postaci (PROFILES_PLAN.md D2), nie kryptonim
 	_file.store_line(JSON.stringify(row))
 	return true
 

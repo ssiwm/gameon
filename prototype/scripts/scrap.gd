@@ -4,7 +4,7 @@ const Ammo := preload("res://scripts/ammo.gd")
 ##
 ## Dwa stany: `loot` to złom zebrany w TEJ misji (jeszcze nie bezpieczny) i `bank` — portfel, z którego płaci się w warsztacie.
 ## Udana ekstrakcja przenosi loot do banku (`bank_loot`); wipe albo restart misji kasuje loot (GDD §4: „tracicie łup misji") —
-## bank zostaje. Bank zapisuje się u hosta w user://progress.cfg i wraca przy starcie hostowania. Nocny Dyżur nie daje złomu.
+## bank zostaje. Bank zapisuje się u hosta w progress.cfg aktywnej postaci (characters.gd) i wraca przy starcie hostowania. Nocny Dyżur nie daje złomu.
 ##
 ## Źródła: wrogowie (enemy.gd, szansa), skrytki na mapie (znacznik „u", pickup „scrap"), bonus za misję (mission.gd).
 
@@ -44,7 +44,7 @@ const Throwables := preload("res://scripts/throwables.gd")
 const GunModel := preload("res://scripts/gun_model.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 
-const SAVE_PATH := "user://progress.cfg"
+const SAVE_FILE := "progress.cfg"            ## kampania aktywnej postaci (Characters.file, PROFILES_PLAN.md E1; do 1.7.425 user://progress.cfg)
 
 ## Stałe balansu w jednym miejscu — do strojenia po playtestach.
 const DROP_CHANCE := 0.35              ## szansa na złom z trupa; ile złomu daje rodzaj — pole `scrap` w enemy_defs.gd
@@ -923,7 +923,9 @@ func _claim_server(kind: String, peer_id: int) -> void:
 
 # ---------------------------------------------------------------- zapis (host)
 
-func load_progress(path := SAVE_PATH) -> void:
+func load_progress(path := "") -> void:
+	if path == "":
+		path = Characters.file(SAVE_FILE)
 	var cfg := ConfigFile.new()
 	var ok: bool = persist and cfg.load(path) == OK
 	legacy_fits = ok and int(cfg.get_value("workshop", "fit_policy_version", 0)) < 1
@@ -992,9 +994,13 @@ func migrate_levels(old_levels: Dictionary) -> void:
 			for id in Parts.from_level(String(Weapons.def(w).key), int(old_levels[k])):
 				parts[String(id)] = true
 
-func save_progress(path := SAVE_PATH) -> void:
+func save_progress(path := "") -> void:
 	if not persist or not NoiseMgr.is_server():
 		return
+	if path == "":
+		path = Characters.file(SAVE_FILE)
+		if path == "":
+			return
 	var cfg := ConfigFile.new()
 	# Np. trofeum bossa może zapisać postęp jeszcze przed ekstrakcją. Nie utrwalamy przy tym tymczasowych nabojów.
 	var use_checkpoint := _delivery_checkpointed and not NoiseMgr.safe_zone and not _delivery_committed

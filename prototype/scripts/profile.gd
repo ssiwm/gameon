@@ -1,6 +1,6 @@
 extends Node
 ## Autoload „Profile”: lokalny profil gracza (GDD §10.1 „Wroga wiedza”, §10.2 perki). Każdy człowiek ma własny — XP, poziom i założone perki
-## żyją na JEGO komputerze (`user://profile.cfg`), nie w zapisie hosta (złom i ulepszenia są wspólne, perk jest osobisty).
+## żyją na JEGO komputerze (`profile.cfg` aktywnej postaci, characters.gd), nie w zapisie hosta (złom i ulepszenia są wspólne, perk jest osobisty).
 ##
 ## XP (liczone na serwerze, wysyłane do właściciela profilu): zabójstwa (pole `xp` w enemy_defs.gd, ostatni trafiający), ukończenie misji (+bonusy: cel
 ## poboczny, bez upadków, boss, pierwsze ukończenie danej misji), podniesienie kolegi. Nocny Dyżur: połowa. Poziom: próg kolejnego rośnie
@@ -18,7 +18,7 @@ signal leveled_up(level: int)
 signal changed
 signal discovered(id: String)                 ## nowy wpis bestiariusza (bestiary_watch.gd pokazuje komunikat)
 
-const SAVE_PATH := "user://profile.cfg"
+const SAVE_FILE := "profile.cfg"             ## w folderze aktywnej postaci (Characters.file, PROFILES_PLAN.md E1; do 1.7.425 user://profile.cfg)
 const STEP_BASE := 50                 ## próg poziomu n+1 minus n = STEP_BASE + STEP_PER_LEVEL × n
 const STEP_PER_LEVEL := 100
 const SLOT_LEVELS := [2, 4]           ## poziom odblokowujący 1. i 2. slot perka
@@ -79,7 +79,7 @@ var persist := DisplayServer.get_name() != "headless"      ## testy headless nie
 
 func _ready() -> void:
 	if persist:
-		load_from(SAVE_PATH)
+		load_from(save_path())
 
 # ---------------------------------------------------------------- poziomy
 
@@ -505,9 +505,12 @@ func _notification(what: int) -> void:
 
 # ---------------------------------------------------------------- zapis
 
+func save_path() -> String:
+	return Characters.file(SAVE_FILE)
+
 func save() -> void:
 	if persist:
-		save_to(SAVE_PATH)
+		save_to(save_path())
 
 ## Wybór części w gnieździe broni `key` (montaż prywatny gracza). `id` = "" — element fabryczny.
 func set_fit(key: String, slot: String, id: String) -> void:

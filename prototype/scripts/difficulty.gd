@@ -1,6 +1,6 @@
 extends Node
 ## Poziom trudności (autoload). NORMAL = dotychczasowa gra (wszystkie mnożniki 1,0); nowy gracz zaczyna na EASY (`FIRST_RUN`), testy headless na NORMAL.
-## Wybór gracza z menu albo lobby jest zapamiętywany (`user://settings.cfg`, sekcja „game”); poziom narzucony przez hosta
+## Wybór gracza z menu albo lobby jest zapamiętywany (`player.cfg` aktywnej postaci, sekcja „game”); poziom narzucony przez hosta
 ## albo flagę nie jest.
 ## Wybiera host (lobby albo --difficulty=easy|normal|hard); main.gd rozsyła wybór
 ## do klientów. Mnożniki czytają systemy symulowane na serwerze (wrogowie, Stalker,
@@ -11,7 +11,7 @@ signal changed(level: int)
 enum Level { EASY, NORMAL, HARD }
 
 const NAMES := ["EASY", "NORMAL", "HARD"]
-const SAVE_PATH := "user://settings.cfg"       ## wspólny plik ustawień, jak w settings.gd i voice.gd
+const SAVE_FILE := "player.cfg"                ## rzecz gracza: plik aktywnej postaci (Characters.file, PROFILES_PLAN.md D5; do 1.7.425 settings.cfg)
 
 ## Wiersze w kolejności enum Level. Opis kluczy:
 ##   enemy_hp / enemy_speed   Trzosek i Wołek
@@ -56,7 +56,8 @@ func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
 		return                          # testy zawsze startują na NORMAL
 	var cf := ConfigFile.new()
-	level = saved_level(cf if cf.load(SAVE_PATH) == OK else null)
+	var path := Characters.file(SAVE_FILE)
+	level = saved_level(cf if path != "" and cf.load(path) == OK else null)
 
 ## Poziom przy starcie gry: zapamiętany wybór gracza, a bez niego (brak pliku albo klucza) FIRST_RUN.
 static func saved_level(cf: ConfigFile) -> int:
@@ -69,10 +70,13 @@ func choose(new_level: int) -> void:
 	set_level(new_level)
 	if DisplayServer.get_name() == "headless":
 		return
+	var path := Characters.file(SAVE_FILE)
+	if path == "":
+		return
 	var cf := ConfigFile.new()
-	cf.load(SAVE_PATH)
+	cf.load(path)
 	cf.set_value("game", "difficulty", level)
-	cf.save(SAVE_PATH)
+	cf.save(path)
 
 func set_level(new_level: int) -> void:
 	new_level = clampi(new_level, 0, TABLE.size() - 1)
