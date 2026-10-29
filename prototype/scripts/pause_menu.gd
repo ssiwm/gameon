@@ -817,6 +817,11 @@ func _input(event: InputEvent) -> void:
 	var ws := get_tree().get_first_node_in_group("workshop_ui")
 	if ws != null and ws.is_open():
 		return                                  # Esc zamyka panel warsztatu (workshop_ui.gd), nie otwiera pauzy
+	if not _open:
+		for p in get_tree().get_nodes_in_group("players"):
+			if not p.is_bot and p.is_multiplayer_authority() and p.weapons != null and p.weapons.close_inspect():
+				get_viewport().set_input_as_handled()      # Esc / Start zamyka oględziny broni i gabloty, nie otwiera pauzy
+				return
 	if _open:
 		close()
 	else:

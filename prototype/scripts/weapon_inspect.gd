@@ -250,12 +250,33 @@ func _fill_rows(rows: Array, selected: int) -> void:
 	_rows.visible = not rows.is_empty()
 	for row in rows:
 		var button := Button.new()
-		var state := tr("Issued to %s") % String(row["issued"]) if String(row["issued"]) != "" else (tr("LOCKED") if row["locked"] else tr("Available"))
-		button.text = "%s%s · %s" % ["› " if int(row["slot"]) == selected else "", Weapons.def(int(row["weapon"])).name, state]
+		# stan rzędu (1.7.431): do wzięcia / zablokowana z warunkiem (cena — wcześniej tylko na tabliczce w 3D) / wydana z kryptonimem
+		var w := int(row["weapon"])
+		var state := tr("Issued to %s") % String(row["issued"]) if String(row["issued"]) != "" \
+			else (tr("Locked · %s") % tr(Scrap.lock_text(w)) if row["locked"] else tr("Ready to take"))
+		var sel := int(row["slot"]) == selected
+		button.text = "%s%s · %s" % ["▶ " if sel else "", Weapons.def(w).name, state]
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		button.focus_mode = Control.FOCUS_NONE
 		button.add_theme_font_size_override("font_size", 12)
+		button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		button.clip_text = true
 		button.disabled = String(row["issued"]) != ""
+		if sel:
+			# wybrany rząd: jasne tło jak przycisk główny — widać go od razu, nie tylko po znaczku przed nazwą
+			var sb := StyleBoxFlat.new()
+			sb.bg_color = Color(UiTheme.ACCENT, 0.28)
+			sb.border_color = UiTheme.ACCENT
+			sb.set_border_width_all(1)
+			sb.border_width_left = 3
+			sb.content_margin_left = 6
+			sb.content_margin_right = 6
+			for st in ["normal", "hover", "pressed", "disabled"]:
+				button.add_theme_stylebox_override(st, sb)
+			button.add_theme_color_override("font_color", UiTheme.WARM)
+			button.add_theme_color_override("font_hover_color", UiTheme.WARM)
+		elif row["locked"]:
+			button.add_theme_color_override("font_color", UiTheme.MUTED)
 		button.pressed.connect(_select_row.bind(int(row["slot"])))
 		_rows.add_child(button)
 

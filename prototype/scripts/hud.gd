@@ -512,7 +512,7 @@ var _result_prompt: Label
 var _result_title: Label
 var _result_sub: Label
 var _result_box: StyleBoxFlat
-var _inspect: Control                   ## oględziny broni ([F]): rozmyte tło, model 3D i statystyki — weapon_inspect.gd
+var _inspect: Control                   ## oględziny broni ([H], gablota też [E]): rozmyte tło, model 3D i statystyki — weapon_inspect.gd
 var _noise_card: PanelContainer      ## karta hałasu (w kryjówce zastępuje ją znacznik SAFE)
 var _safe_chip: Control
 var _ready_pips: Pips              ## kwadraciki gotowości w pasku misji kryjówki
@@ -2148,7 +2148,7 @@ func _drive_cards() -> void:
 		(_brief["card"] as Control).visible = false
 		(_radio["card"] as Control).visible = false
 		return
-	# --- oględziny broni ([F] przy stojaku albo broni na ziemi): ekran z rozmytym tłem, bronią i panelem statystyk; gra się nie zatrzymuje
+	# --- oględziny broni ([H] przy stojaku, gablocie albo broni na ziemi; gablotę otwiera też [E]): ekran z rozmytym tłem, bronią i panelem statystyk; gra się nie zatrzymuje
 	var it: Node2D = null
 	if _player != null and not _player.dead and _player.weapons.inspect_item != null and is_instance_valid(_player.weapons.inspect_item):
 		it = _player.weapons.inspect_item
@@ -2164,9 +2164,11 @@ func _drive_cards() -> void:
 		if nd.slot != Weapons.Slot.MELEE and wc.carries(wid):
 			hand = wc.loadout[wc.slot]
 		var gk = it.get("_hd_gun")
-		var foot := Actions.fmt(tr("[{inspect_weapon}]  Close")) if locked else Actions.fmt(tr("[{interact}]  Take   ·   [{inspect_weapon}]  Close"))
+		# Esc / Start też zamyka (pause_menu.gd → close_inspect, 1.7.431); części stopki tłumaczone osobno
+		var close_txt := Actions.fmt(tr("[{inspect_weapon}] [{pause}]  Close"))
+		var foot := close_txt if locked else Actions.fmt(tr("[{interact}]  Take")) + "   ·   " + close_txt
 		if not locked and wc.carries(wid):
-			foot = Actions.fmt(tr("[{interact}]  Collect ammo   ·   [{inspect_weapon}]  Close"))
+			foot = Actions.fmt(tr("[{interact}]  Collect ammo")) + "   ·   " + close_txt
 		elif nd.slot == Weapons.Slot.PRIMARY:
 			foot = Actions.fmt(tr("[{menu_slot_1}] [{menu_slot_2}]  Target slot")) + "   ·   " + foot
 		var cab := it.has_meta("cabinet")                     # gablota: kamera patrzy na gablotę, ↑ / ↓ wybiera broń
@@ -2445,7 +2447,14 @@ func _prompt_candidates() -> Array:
 		add.call((tr("[%s]  Shooting range  ·  squad record %.2f s") % [Actions.key("interact"), rb]) if rb >= 0.0 else tr("[%s]  Shooting range") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
 	if _player != null and _player.weapons.inspect_item != null:
 		add.call("")                                                      # klawisze są w panelu oględzin
-	if _player != null and _player.weapons.nearby_weapon_item() != null:
+	if _player != null and _player.weapons.inspect_item == null and _player.weapons.nearby_weapon_item() != null \
+			and _player.weapons.nearby_weapon_item().has_meta("cabinet"):
+		# gablota (1.7.431): [E] ją otwiera — wcześniej podpowiedź i [E] dotyczyły broni najbliższej w poziomie, czyli zależnej od miejsca
+		var lvl_c := get_tree().get_first_node_in_group("level")
+		var cab_rows: Array = lvl_c.cabinet_rows(int(_player.weapons.nearby_weapon_item().get_meta("cabinet"))) if lvl_c != null else []
+		var ready := cab_rows.filter(func(r: Dictionary) -> bool: return not bool(r["locked"]) and String(r["issued"]) == "").size()
+		add.call(tr("[%s]  Open the cabinet  ·  %d of %d ready to take") % [Actions.key("interact"), ready, cab_rows.size()], -1.0, UiTheme.ACCENT)
+	elif _player != null and _player.weapons.nearby_weapon_item() != null:
 		var it: Node2D = _player.weapons.nearby_weapon_item()
 		var nd: RefCounted = Weapons.def(it.arg)
 		var lvl_p := get_tree().get_first_node_in_group("level")

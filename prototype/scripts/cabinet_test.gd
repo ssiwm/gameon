@@ -83,6 +83,30 @@ func _unit() -> void:
 				wc.select_cabinet_slot(row)
 				await frames()
 				check("gablota %d bok %d rząd %d pozostaje w zasięgu" % [cabinet.index, side, row], wc.inspect_item != null and int(wc.inspect_item.get_meta("slot")) == row)
+	# 1.7.431: [E] (pad [B]) przy zamkniętej gablocie ją otwiera, niczego nie biorąc; start zawsze na pierwszej broni do wzięcia, z każdego miejsca
+	var starts: Array = []
+	var kit0: Array = wc.loadout.duplicate()
+	for side in [-20, -6, 6, 20]:
+		player.global_position = (cabinets[0] as Node2D).global_position + Vector2(side, -2)
+		wc.inspect_item = null
+		await pulse("interact")
+		starts.append(String(wc.inspect_item.name) if wc.inspect_item != null else "")
+	check("E przy gablocie otwiera ją, nic nie bierze, start zawsze ten sam (%s)" % str(starts),
+		not starts.has("") and starts.count(starts[0]) == starts.size() and wc.loadout == kit0 and not level.is_locked_item(wc.inspect_item))
+	# Esc / Start (akcja pause) zamyka oględziny i nie otwiera menu pauzy
+	var pm: Node = main.get_node("UI/PauseMenu")
+	player.process_mode = Node.PROCESS_MODE_INHERIT
+	var esc := InputEventAction.new()
+	esc.action = "pause"
+	esc.pressed = true
+	Input.parse_input_event(esc)
+	await frames()
+	var esc_up := InputEventAction.new()
+	esc_up.action = "pause"
+	Input.parse_input_event(esc_up)
+	await frames()
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+	check("Esc / Start zamyka oględziny gabloty bez menu pauzy", wc.inspect_item == null and not bool(pm.get("_open")))
 	var cab: Node2D = cabinets[0]
 	player.global_position = cab.global_position + Vector2(-20, -2)
 	wc.inspect_item = item(Weapons.SPREAD12)
@@ -135,6 +159,11 @@ func _unit() -> void:
 	wc.inspect_slot = 0
 	inspector.show_weapon(Weapons.SRUT8, "srut8", Weapons.M83, "", "", true, wc, locked)
 	check("porównanie uwzględnia specjalny nabój", inspector._comparison_def.damage == wc.def_of(Weapons.M83).damage and inspector._comparison_def.ammo == 1)
+	# wiersze (1.7.431): zablokowana z warunkiem (cena), wybrana z wyraźnym znacznikiem i własnym tłem
+	var row_txt: Array = inspector._rows.get_children().map(func(b: Node) -> String: return String((b as Button).text))
+	var sel_rows: Array = inspector._rows.get_children().filter(func(b: Node) -> bool: return (b as Button).has_theme_stylebox_override("normal"))
+	check("wiersze: zablokowana z ceną, jeden wybrany z tłem (%s)" % str(row_txt),
+		row_txt.any(func(t: String) -> bool: return t.contains("Locked ·") and t.contains("scrap")) and sel_rows.size() == 1 and String((sel_rows[0] as Button).text).begins_with("▶"))
 	var expected: String = Codex._weapon_stats(wc.def_of(Weapons.M83))[0][1]
 	check("kolumna obrażeń pokazuje rzeczywistą wartość", inspector._grid.get_child(5).text == expected)
 	wc.loaded[Weapons.M83] = 0
