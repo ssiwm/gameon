@@ -84,7 +84,7 @@ trudniejsze z założenia mapy, a nie ze skalowania z postępem (skaluje tylko N
   wykrwawienie i powrót na start z 1 sercem (łup zostaje), a **drugi upadek w tej samej próbie = wipe**. Z botem albo drugim człowiekiem
   wipe jak zawsze: wszyscy leżą jednocześnie.
 - **Wipe** (wszyscy down jednocześnie) = **nieudana ekstrakcja**: po 3 s restart misji (Uwaga, wrogowie, ładunki Q), tracicie łup misji, ale nie postęp fabularny.
-- **Punkt kontrolny bossa** (od 1.7.401, `FUN_PLAN.md` P0.3): w misji z gniazdami i bossem (1.3) przebudzenie bossa zapisuje pozycje drużyny. Wipe w walce z bossem wraca do jej początku (gniazda zostają zniszczone, reszta jak przy wipe'ie, boss budzi się po 2,5 s), a wykrwawienie w walce odradza przy arenie — połowa wipe'ów 1.3 była w fazie BOSS, a powtórka całej mapy karała czasem, nie decyzją.
+- **Punkt kontrolny bossa** (od 1.7.401, `FUN_PLAN.md` P0.3): w misji z gniazdami i bossem (1.3) przebudzenie bossa zapisuje pozycje drużyny. Wipe w walce z bossem wraca do jej początku (gniazda zostają zniszczone, reszta jak przy wipe'ie, boss budzi się po 2,5 s; od 1.7.424 łup — złom, części, próbki — wraca do stanu z przebudzenia bossa, przepada tylko zebrany w samej walce), a wykrwawienie w walce odradza przy arenie — połowa wipe'ów 1.3 była w fazie BOSS, a powtórka całej mapy karała czasem, nie decyzją.
 - **Dlaczego bez auto-respawnu:** darmowy respawn po 3 s zabija napięcie i sens Przesterowania. Down + revive tworzy momenty, o których drużyna opowiada po sesji.
 - Uratowani NPC mogą zginąć na stałe (wpływ na zakończenie i sklep).
 
@@ -104,7 +104,7 @@ trudniejsze z założenia mapy, a nie ze skalowania z postępem (skaluje tylko N
 | Tryb ognia (seria M-83) | B | D-pad ↓ |
 | Rodzaj amunicji (następny magazynek) | Z | — (do przypisania) |
 | Cios (maczeta / kilof) | V / PPM | X |
-| Przedmiot (granat, mina, apteczka…) / zmiana przedmiotu | lewy Alt / X | RB / D-pad ↑ |
+| Przedmiot (granat, mina, apteczka…) / zmiana przedmiotu | lewy Alt (rzut przy puszczeniu; Alt+Tab nie rzuca) / X | RB / D-pad ↑ |
 | Flara | F | D-pad → |
 | Latarka | L | D-pad ← |
 | Interakcja / dźwiganie | E | B |
@@ -340,7 +340,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 - **Trzcina kryje kucającego** (od 1.7.306): przy brzegach wody, błota i oleju (kafel brzegu i pierwszy kafel cieczy) kucający jest widoczny z 0,3 zasięgu wzroku wroga zamiast 0,6. Stojącego nie kryje; słuchu (hałas, Ślepiec) ani budzenia z bliska nie zmienia. Stalker, który zauważa z bliska i idzie na hałas, działa bez zmian.
 - Tilesety mają „dark zones” — pokoje, gdzie bez światła nie widzisz podłogowych pułapek.
 - CRT/scanline filter opcjonalny; głębia tła sterowana warstwami parallax.
-- **W prototypie (1.3.5):** zasięgi świateł, wzroku, słuchu i wybuchów są w **metrach projektowych: 16 px = 1 m** (`Lights.PX_PER_M`, kodeks). Świat 3D ma inną, prawdziwą skalę: **1 px = 0,082 m** (`Level3D.PX`; postać 1,8 m = 22 px, kafel 16 px = 1,31 m), więc metr projektowy to w obrazie ok. 1,31 m — aura „6 m” sięga w 3D na ok. 7,9 m. `CanvasModulate` przyciemnia świat (`Lights.AMBIENT`, strojone pomiarem luminancji ekranu: bez latarki przy graczu ~0,056, 6–9 m dalej ~0,007 — wcześniej tło było prawie tak jasne jak krąg gracza); każdy gracz ma aurę 6 m, latarka (L) to stożek 8 m (±24°) z baterią 180 s, kosztem +1 Uwagi co 10 s świecenia i budzeniem wrogów, na których padnie snop (z linią widzenia). Snop na Stalkerze ściąga go na świecącego (§7.3) i odsłania sylwetkę. Flara ekstrakcji = zielone światło 12 m, gniazda słabo się żarzą, strzał daje rozbłysk 4 m. Kafle rzucają cienie (okluder cofnięty o 4 px na odsłoniętych bokach — wierzch i lica łapią światło). Oczy wrogów, etykiety i paski są „unshaded" — widać je w ciemności. **Do playtestu:** bateria odnawia się 0,25 s/s przy zgaszonej latarce (GDD nie przewiduje ładowania — bez tego misja po 3 min byłaby czarna).
+- **W prototypie (1.3.5):** zasięgi świateł, wzroku, słuchu i wybuchów są w **metrach projektowych: 16 px = 1 m** (`Lights.PX_PER_M`, kodeks). Świat 3D ma inną, prawdziwą skalę: **1 px = 0,082 m** (`Level3D.PX`; postać 1,8 m = 22 px, kafel 16 px = 1,31 m), więc metr projektowy to w obrazie ok. 1,31 m — aura „6 m” sięga w 3D na ok. 7,9 m. `CanvasModulate` przyciemnia świat (`Lights.AMBIENT`, strojone pomiarem luminancji ekranu: bez latarki przy graczu ~0,056, 6–9 m dalej ~0,007 — wcześniej tło było prawie tak jasne jak krąg gracza); każdy gracz ma aurę 6 m, latarka (L) to stożek 8 m (±24°) z baterią 180 s, kosztem +1 Uwagi co 10 s świecenia i budzeniem wrogów, na których padnie snop (z linią widzenia). Snop na Stalkerze ściąga go na świecącego (§7.3) i odsłania sylwetkę. Flara ekstrakcji = zielone światło 12 m, gniazda słabo się żarzą, strzał daje rozbłysk 4 m. Kafle rzucają cienie (okluder cofnięty o 4 px na odsłoniętych bokach — wierzch i lica łapią światło). Oczy wrogów, etykiety i paski są „unshaded" — widać je w ciemności. **Do playtestu:** bateria odnawia się 0,25 s/s przy zgaszonej latarce (GDD nie przewiduje ładowania — bez tego misja po 3 min byłaby czarna); od 1.7.424 wipe, punkt kontrolny bossa, nowa misja i kryjówka dają pełną baterię, a odrodzenie po wykrwawieniu co najmniej połowę.
 
 ### 8.4 PRZESTEROWANIE — hałas jako zasób (nie zakaz)
 

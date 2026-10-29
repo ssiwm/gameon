@@ -67,7 +67,9 @@ const REVIVE_SYNC_MS := 100     ## postęp podnoszenia wysyłany do innych peer�
 
 # Bot a cisza (filar 2): bot nie może sam psuć skradania ani Przesterowania
 const BOT_ENGAGE_RANGE := 220.0   ## ≤ zasięg M-83 (240 px): bot nie strzela pociskami, które zgasną w locie
+const BOT_REVIVE_DY := 12.0     ## bot podnosi leżącego tylko z tej samej kładki (różnica stóp w px)
 const BOT_SELF_DEFENSE := 70.0  ## w tym promieniu strzela zawsze — obrona własna
+const BOT_SELF_DEFENSE_STEALTH := 36.0   ## … a gdy dowódca się skrada — dopiero wróg na wyciągnięcie ręki
 const BOT_Q_HOLD := 8.0         ## po Q wstrzymuje ogień, żeby nie nadpisać celu stalkera
 const BOT_FIRE_PAST := 16.0     ## px: tor strzału sprawdzany kawałek za wroga
 const BOT_FIRE_HALF := 3.0      ## px: połowa szerokości toru przy końcu promienia (skrajne promienie)
@@ -84,6 +86,9 @@ const BATTERY_MAX := 180.0
 ## Prototyp: bateria wolno się odnawia przy zgaszonej latarce (do playtestu —
 ## GDD nie mówi o ładowaniu; bez tego po 3 min misja byłaby czarna).
 const BATTERY_RECHARGE := 0.25
+## Postać przechodzi między mapami, więc bateria nie wracała ani po wipe, ani w kryjówce (opinia testera 2026-10-29: kolejne
+## podejścia do bossa bez latarki). Pełny reset (`full_reset`) daje pełną baterię, odrodzenie po wykrwawieniu — co najmniej tyle.
+const BATTERY_RESPAWN := 0.5
 const LIGHT_NOISE_EVERY := 10.0   ## +1 Uwagi co tyle sekund świecenia
 
 const BODY_COLORS := [
@@ -893,7 +898,11 @@ func _gear_tick(delta: float) -> bool:
 		"throw", "place":
 			_gear_cancel()
 			if Input.is_action_just_pressed("throw"):
-				_throw_item(kind)
+				_throw_armed = true
+			elif Input.is_action_just_released("throw"):
+				if _throw_armed:
+					_throw_item(kind)
+				_throw_armed = false
 			return false
 		"use":
 			match kind:
@@ -910,6 +919,11 @@ func _gear_tick(delta: float) -> bool:
 					elif scan_left <= 0.0 and Arsenal.get_throwable("scanner") > 0:
 						gear_text = tr("[%s]  Owl scanner — %d s, shows enemies through walls (emits noise)") % [Throwables.key_name(), int(Throwables.KINDS["scanner"]["time"])]
 	return false
+
+## Rzut i podłożenie idą przy PUSZCZENIU klawisza (opinia testera 2026-10-29): lewy Alt to też pół skrótu systemu — Alt+Tab
+## rzucał granat pod nogi, także w kryjówce. Inny klawisz wciśnięty w trakcie trzymania (Tab, Enter, F4) albo utrata fokusu okna
+## rozbraja rzut; puszczenie samego Alta rzuca.
+var _throw_armed := false
 
 func _gear_cancel() -> void:
 	_clean_hold = 0.0
@@ -1257,12 +1271,14 @@ func _respawn(hp_amount: int) -> void:
 	_run_vx = 0.0
 	_last_step_pos = global_position
 	_step_dist = 0.0
+	battery = maxf(battery, BATTERY_MAX * BATTERY_RESPAWN)
 	Audio.play("revive", Audio.BUS_PLAYER, -9.0)
 
 ## Restart po wipe (wszyscy leżą): pełne zdrowie w punkcie startu.
 func full_reset(keep_loadout := false) -> void:
 	_second_used = false            # „Second chance" — raz na misję
 	_respawn(max_hp())
+	battery = BATTERY_MAX           # wipe, punkt kontrolny bossa, nowa misja i kryjówka: świeża bateria
 	if not keep_loadout:
 		weapons.reset()            # przejście między misjami kampanii (kryjówka) zachowuje ekwipunek
 	_kick = 0.0
@@ -1461,11 +1477,12 @@ func _bot_brain(delta: float) -> void:
 		_pick_bot_goal()
 		_bot_plan()
 
-	# podnoszenie leżącego towarzysza — bot nie jest szybszy od człowieka (GDD §4)
+	# podnoszenie leżącego towarzysza — bot nie jest szybszy od człowieka (GDD §4). Tylko stojąc na ziemi i na poziomie leżącego:
+	# zaczęte w skoku na platformę zatrzymywało bota w powietrzu, spadał z krawędzi i skakał od nowa (opinia testera 2026-10-29)
 	var downed := _downed_teammate()
-	var near_downed := downed != null \
+	var near_downed := downed != null and is_on_floor() \
 		and absf(downed.global_position.x - global_position.x) < REVIVE_RANGE - 6.0 \
-		and absf(downed.global_position.y - global_position.y) < 30.0
+		and absf(downed.global_position.y - global_position.y) < BOT_REVIVE_DY
 	var reviving := _handle_revive(delta, near_downed)
 	is_reviving = reviving
 	reviving = _bot_gear(delta, downed) or reviving
@@ -1549,10 +1566,14 @@ func _bot_brain(delta: float) -> void:
 ## Dyscyplina ognia bota (filar 2). Strzał to hałas, a każdy nowy hałas
 ## przekierowuje stalkera — bot strzelający „bo widzi wroga" kasował Q drużyny
 ## i nie pozwalał Uwadze opaść. Z bliska broni się zawsze.
+## Skradanie liczy się od DOWÓDCY: własne `crouching` bot gubi w każdym skoku i zeskoku, a wtedy strzelał (opinia testera
+## 2026-10-29: „kucam, a bot sam zaczyna strzelać”). W skradaniu obrona własna dopiero z bliska (BOT_SELF_DEFENSE_STEALTH).
 func _bot_may_fire(d: Vector2) -> bool:
-	if d.length() <= BOT_SELF_DEFENSE:
+	var leader := _leader()
+	var stealth: bool = crouching or (leader != null and not leader.dead and leader.crouching)
+	if d.length() <= (BOT_SELF_DEFENSE_STEALTH if stealth else BOT_SELF_DEFENSE):
 		return true
-	if crouching:
+	if stealth:
 		return false
 	return NoiseMgr.seconds_since_overcharge() >= BOT_Q_HOLD
 
@@ -2076,6 +2097,12 @@ func _input(event: InputEvent) -> void:
 	if is_bot or not is_multiplayer_authority():
 		return
 	mouse_aim = aim_mode_after(mouse_aim, event)
+	if _throw_armed and event is InputEventKey and event.is_pressed() and not event.is_echo() and not event.is_action("throw"):
+		_throw_armed = false                 # Alt+Tab / Alt+Enter / Alt+F4: skrót, nie rzut
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		_throw_armed = false
 
 func _body_color() -> Color:
 	if is_bot:

@@ -1741,7 +1741,8 @@ func _drive_mission() -> void:
 		_boss_bar.pulse = (0.5 + 0.5 * sin(_blink * 9.0)) if boss.phase >= 2 and Settings.fx_mult() > 0.0 else 0.0
 		_boss_bar.queue_redraw()
 		var bname: String = String(boss.get("boss_name")) if boss.get("boss_name") != null else "THE VEIN — MOTHER OF NESTS"
-		_boss_name.text = bname + ("   ·   ENRAGED" if boss.phase >= 2 else "")
+		# sklejony napis nie jest kluczem tłumaczenia — etykieta pokazywała po polsku angielski od wejścia w furię (opinia testera 2026-10-29)
+		_boss_name.text = tr(bname) + (("   ·   " + tr("ENRAGED")) if boss.phase >= 2 else "")
 	else:
 		_boss_last = -1.0
 	_drive_strip(m)

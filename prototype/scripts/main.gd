@@ -270,8 +270,9 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 	if level.objective == "hub":
 		NoiseMgr.calm()                  # w kryjówce jest cicho
 
-## Wipe w fazie BOSS misji z gniazdami (FUN_PLAN.md P0.3): jak zwykły wipe (Uwaga, ekwipunek z początku misji, łup próby przepada,
-## wrogowie wracają), ale gniazda zostają zniszczone, drużyna staje w punkcie kontrolnym, a boss budzi się po chwili od nowa.
+## Wipe w fazie BOSS misji z gniazdami (FUN_PLAN.md P0.3): jak zwykły wipe (Uwaga, ekwipunek z początku misji, wrogowie wracają),
+## ale gniazda zostają zniszczone, drużyna staje w punkcie kontrolnym, a boss budzi się po chwili od nowa. Łup wraca do stanu
+## z przebudzenia bossa (Scrap.restore_checkpoint_loot) — przepada tylko to, co zebrano w samej walce.
 func _restart_from_checkpoint() -> void:
 	print("[MISSION] restart od punktu kontrolnego (boss)")
 	_solo_falls = 0
@@ -289,7 +290,7 @@ func _restart_from_checkpoint() -> void:
 		c.deliver_spawn(mission.checkpoint_pos(c))
 		c.request_full_reset(false)
 	level.clear_pickups()
-	Scrap.reset_loot()
+	Scrap.restore_checkpoint_loot()
 	mission.on_checkpoint()
 	NoiseMgr.objective_bonus()           # jak przy pierwszym przebudzeniu bossa
 	mission.wake_boss_after_checkpoint()

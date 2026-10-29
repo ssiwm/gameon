@@ -625,6 +625,7 @@ func _t_throwables() -> void:
 	Arsenal.reset_throwables()
 	check("reset przywraca zestaw wydawany (frag %d, phos %d)" % [Arsenal.get_throwable("frag"), Arsenal.get_throwable("phos")], Arsenal.get_throwable("frag") == 1 and Arsenal.get_throwable("phos") == 0 and Arsenal.get_throwable("medkit") == 1)
 	_t_item_key()
+	await _t_alt_release()
 	_t_actions()
 	await _t_pad_aim()
 	_t_rebind()
@@ -651,6 +652,36 @@ func _t_item_key() -> void:
 	tk.physical_keycode = KEY_T
 	t_bad = InputMap.event_is_action(tk, "throw")
 	check("klawisz użycia przedmiotu: lewy Alt tak (%s), prawy Alt nie (%s), T nie (%s)" % [str(left_ok), str(right_bad), str(t_bad)], left_ok and not right_bad and not t_bad)
+
+## Rzut przy puszczeniu lewego Alta (opinia testera 2026-10-29: Alt+Tab rzucał granat pod nogi): samo wciśnięcie nie rzuca,
+## puszczenie rzuca, a inny klawisz w trakcie trzymania (Tab) rozbraja rzut.
+func _t_alt_release() -> void:
+	give_gear(0, 0, 3)
+	Arsenal.throw_sel = Throwables.ORDER.find("smoke")
+	Input.action_press("throw")
+	await frames(3)
+	var on_press: int = Arsenal.get_throwable("smoke")
+	Input.action_release("throw")
+	await frames(3)
+	var on_release: int = Arsenal.get_throwable("smoke")
+	Input.action_press("throw")
+	await frames(2)
+	var tab := InputEventKey.new()
+	tab.keycode = KEY_TAB
+	tab.physical_keycode = KEY_TAB
+	tab.pressed = true
+	Input.parse_input_event(tab)
+	await frames(2)
+	var tab_up := tab.duplicate() as InputEventKey
+	tab_up.pressed = false
+	Input.parse_input_event(tab_up)
+	Input.action_release("throw")
+	await frames(3)
+	var after_tab: int = Arsenal.get_throwable("smoke")
+	check("lewy Alt: wciśnięcie nie rzuca (%d), puszczenie rzuca (%d), Alt+Tab nie rzuca (%d)" % [on_press, on_release, after_tab],
+		on_press == 3 and on_release == 2 and after_tab == 2)
+	free_dummies()
+	give_gear()
 
 ## Rejestr akcji (actions.gd): każda akcja jest w InputMap, menu wycina wszystko poza oznaczonymi, a ściąga i podpowiedzi
 ## pokazują klawisze z wiązań (domyślnie te same napisy co dawniej wpisane ręcznie).

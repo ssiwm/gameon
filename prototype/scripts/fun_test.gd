@@ -289,9 +289,17 @@ func _checkpoint() -> void:
 	_place_player(nest0.global_position + Vector2(0, -8))
 	await get_tree().create_timer(1.0).timeout
 	var cp: Vector2 = player.global_position
+	Scrap.reset_loot()
+	Scrap.add_loot(20)                            # łup sprzed walki: zostaje po wipe'ie na bossie (opinia testera 2026-10-29)
+	var cands: Array = Scrap.find_candidates()
+	var part_id: String = String(cands[0]) if not cands.is_empty() else ""
+	if part_id != "":
+		Scrap.find_part(part_id)
 	for n in nests:
 		n.take_bullet(n.global_position + Vector2(-10, 0), 999.0)
 	await _ticks(5)
+	Scrap.add_loot(7)                             # łup z samej walki: przepada
+	player.battery = 10.0
 	check("zniszczone gniazda → faza BOSS z punktem kontrolnym", mission.phase == Mission.Phase.BOSS and mission.has_checkpoint())
 	check("punkt kontrolny = pozycja w chwili przebudzenia Żyły", mission.checkpoint_pos(player).distance_to(cp) < 2.0)
 	var spawn: Vector2 = level.spawn_for(int(player.display_id))
@@ -310,6 +318,9 @@ func _checkpoint() -> void:
 	check("gracz w punkcie kontrolnym (%.0f px od niego), żywy" % player.global_position.distance_to(cp),
 		player.global_position.distance_to(cp) < 24.0 and not player.dead)
 	check("Żyła śpi chwilę po powrocie", boss != null and int(boss.state) == 0)
+	check("łup sprzed walki zostaje (złom %d, część %s znaleziona=%s), z walki przepada" % [Scrap.loot, part_id, str(Scrap.found.has(part_id))],
+		Scrap.loot == 20 and (part_id == "" or Scrap.found.has(part_id)))
+	check("po wipe'ie pełna bateria latarki (%.0f s)" % player.battery, is_equal_approx(player.battery, player.BATTERY_MAX))
 	await get_tree().create_timer(mission.CHECKPOINT_GRACE + 0.5).timeout
 	check("Żyła budzi się po %.1f s" % mission.CHECKPOINT_GRACE, boss != null and int(boss.state) == 1)
 	# wykrwawienie w walce też odradza w punkcie kontrolnym (spawn właściciela postaci)

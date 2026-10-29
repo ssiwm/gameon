@@ -351,6 +351,7 @@ func _start_boss() -> void:
 
 func _save_checkpoint() -> void:
 	_checkpoint.clear()
+	Scrap.save_checkpoint_loot()                     # łup sprzed walki przetrwa wipe na bossie
 	for p in get_tree().get_nodes_in_group("players"):
 		if not p.is_queued_for_deletion():
 			_checkpoint[p.name] = (p as Node2D).global_position
