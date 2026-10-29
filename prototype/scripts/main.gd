@@ -40,6 +40,7 @@ const Weather := preload("res://scripts/weather.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const HORROR_FX := preload("res://scripts/horror_fx.gd")
 const MAIN_MENU := preload("res://scripts/main_menu.gd")
+const OPERATORS_SCREEN := preload("res://scripts/operators_screen.gd")
 const CHAT := preload("res://scripts/chat.gd")
 const COLORBLIND_FX := preload("res://scripts/colorblind_fx.gd")
 const WEATHER_FX := preload("res://scripts/weather_fx.gd")
@@ -984,6 +985,23 @@ func _setup_main_menu(pause_menu: Control) -> void:
 		_lobby.visible = true
 		_lobby.enter(menu.entry))
 	menu.settings_requested.connect(pause_menu.open_settings)
+	# OPERATORZY (PROFILES_PLAN.md E3): lista postaci nad menu; pierwsze uruchomienie (postać bez kryptonimu) — od razu kreator
+	var ops: Control = OPERATORS_SCREEN.new()
+	ops.name = "OperatorsScreen"
+	$UI.add_child(ops)
+	$UI.move_child(ops, menu.get_index() + 1)
+	ops.steam_name = func() -> String: return steam.persona_name() if steam != null and steam.has_method("persona_name") else ""
+	menu.operators_requested.connect(func() -> void:
+		menu.visible = false
+		ops.open())
+	ops.closed.connect(func() -> void:
+		menu.visible = true)
+	if Characters.active_id != "" and bool(Characters.meta(Characters.active_id)["needs_name"]):
+		menu.visible = false
+		ops.open_creator_first_run.call_deferred()
+	elif "--shotchars" in OS.get_cmdline_user_args():
+		menu.visible = false
+		ops.open.call_deferred()                     # dev: z --shot=PLIK — zrzut ekranu OPERATORZY
 	if "--shotlobby" in OS.get_cmdline_user_args():
 		menu._play.call_deferred("host")              # dev: z --shot=PLIK — zrzut lobby (opcje hosta, np. towarzysz AI) zamiast menu głównego
 	_lobby.back_requested.connect(func() -> void:

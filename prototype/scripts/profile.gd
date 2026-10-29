@@ -701,6 +701,14 @@ func _sanitize_equipped() -> void:
 		if equipped[i] != "" and (i >= slots() or not is_unlocked(String(equipped[i]))):
 			equipped[i] = ""
 
+## Przełączenie postaci (Characters.activate): czysty stan i odczyt profilu nowej postaci; brak pliku = nowa postać od zera.
+func reload() -> void:
+	reset_for_test()
+	_cond_dirty = false
+	if persist:
+		load_from(save_path())
+	changed.emit()
+
 ## Testy: czysty profil.
 func reset_for_test() -> void:
 	look = Look.DEFAULT

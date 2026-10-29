@@ -8,6 +8,7 @@ extends Control
 
 signal play_requested                ## otwórz lobby (patrz `entry`)
 signal settings_requested
+signal operators_requested           ## ekran OPERATORZY (operators_screen.gd, PROFILES_PLAN.md E3)
 
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const W := preload("res://scripts/ui_widgets.gd")
@@ -36,6 +37,8 @@ var _squad: Control
 var _foot: Control
 var _nav: Control
 var _title_box: Control
+var _ops_item: Control
+var _callsign: Label
 
 ## Pozycja listy: etykieta stencil 30 px i podpis mono po prawej; aktywna (fokus / mysz) ma czerwony pasek, trójkąt i poświatę.
 class Item extends Control:
@@ -89,6 +92,8 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_fit)
 	Settings.changed.connect(_fit)
 	Difficulty.changed.connect(func(_l: int) -> void: _refresh())
+	Characters.changed.connect(_refresh)
+	Profile.changed.connect(_refresh)
 	visibility_changed.connect(func() -> void:
 		if visible and is_inside_tree():
 			_refresh()
@@ -151,6 +156,7 @@ func _build_nav() -> void:
 	_add_item(nav, "HOST GAME", "LAN / STEAM", func() -> void: _play("host"))
 	_add_item(nav, "JOIN GAME", "IP OR LOBBY ID", func() -> void: _play("join"))
 	_add_item(nav, "NIGHT SHIFT", "ENDLESS · 5 MISSIONS", func() -> void: _play("night"))
+	_ops_item = _add_item(nav, "OPERATORS", "", func() -> void: operators_requested.emit())
 	_add_item(nav, "SETTINGS", "", func() -> void: settings_requested.emit())
 	_quit = _add_item(nav, "QUIT", "", _on_quit)
 	for i in _items.size():
@@ -215,7 +221,8 @@ func _build_squad_panel() -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			Difficulty.choose((Difficulty.level + 1) % Difficulty.NAMES.size())
 			Audio.play("ui_click", Audio.BUS_UI, -10.0))
-	_oper = _kv(v, "Operator", "")
+	_callsign = _kv(v, "Operator", "")
+	_oper = _kv(v, "Level", "")
 	v.add_child(W.hairline(UiTheme.LINE))
 	var sec := VBoxContainer.new()
 	sec.add_theme_constant_override("separation", 6)
@@ -267,6 +274,10 @@ func _refresh() -> void:
 	if pr != null:
 		var prog: Array = pr.level_progress()
 		_oper.text = "LV %d  ·  %d / %d XP" % [pr.level(), int(prog[0]), int(prog[1])]
+	var cs := Characters.callsign()
+	_callsign.text = cs if cs != "" else tr("UNNAMED")
+	(_ops_item as Item).sub = "%s · %d / %d" % [cs if cs != "" else tr("UNNAMED"), Characters.count(), Characters.MAX]
+	_ops_item.queue_redraw()
 	if _note.text == "":
 		_note.text = tr(_NOTES[int(Time.get_ticks_msec() / 1000) % _NOTES.size()])
 
