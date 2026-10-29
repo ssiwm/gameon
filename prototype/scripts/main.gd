@@ -999,9 +999,12 @@ func _setup_main_menu(pause_menu: Control) -> void:
 	if Characters.active_id != "" and bool(Characters.meta(Characters.active_id)["needs_name"]):
 		menu.visible = false
 		ops.open_creator_first_run.call_deferred()
-	elif "--shotchars" in OS.get_cmdline_user_args():
+	elif _has_arg_prefix("--shotchars"):
 		menu.visible = false
-		ops.open.call_deferred()                     # dev: z --shot=PLIK — zrzut ekranu OPERATORZY
+		ops.open.call_deferred()                     # dev: z --shot=PLIK — zrzut ekranu OPERATORZY; =reset / =delete — z oknem dla aktywnej postaci
+		for a in OS.get_cmdline_user_args():
+			if a in ["--shotchars=reset", "--shotchars=delete"]:
+				ops._open_action.call_deferred("campaign" if a.ends_with("reset") else "delete", Characters.active_id)
 	if "--shotlobby" in OS.get_cmdline_user_args():
 		menu._play.call_deferred("host")              # dev: z --shot=PLIK — zrzut lobby (opcje hosta, np. towarzysz AI) zamiast menu głównego
 	_lobby.back_requested.connect(func() -> void:

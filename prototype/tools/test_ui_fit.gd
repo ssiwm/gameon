@@ -104,7 +104,10 @@ func _operators_checks(host: Node) -> void:
 	for loc in LOCALES:
 		TranslationServer.set_locale(loc)
 		var ops: Control = OperatorsScreen.new()
-		host.add_child(ops)
+		var layer := CanvasLayer.new()             # nad lobby (pełny ekran na warstwie UI łapałby kliknięcia myszą)
+		layer.layer = 120
+		host.add_child(layer)
+		layer.add_child(ops)
 		ops.open()
 		for _f in 4:
 			await tree.process_frame
@@ -120,7 +123,10 @@ func _operators_checks(host: Node) -> void:
 				if c.is_visible_in_tree() and c.size.x > 0.0 and c.get_global_rect().end.x > cr.end.x + SLACK:
 					bad += 1
 					_fail("%s OPERATORZY: %s %s wystaje poza kartę" % [loc, c.get_class(), _desc(c)])
-		for b in [ops._new_btn, ops._rename_btn, ops._back_btn]:
+		ops._undo_btn.visible = true                # COFNIJ widać po operacji — stopka musi się zmieścić razem z nim
+		for _f in 2:
+			await tree.process_frame
+		for b in [ops._new_btn, ops._rename_btn, ops._reset_btn, ops._delete_btn, ops._undo_btn, ops._back_btn]:
 			if not vp.encloses((b as Control).get_global_rect().grow(-SLACK)):
 				bad += 1
 				_fail("%s OPERATORZY: przycisk %s poza ekranem" % [loc, _desc(b)])
@@ -148,7 +154,81 @@ func _operators_checks(host: Node) -> void:
 				_fail("OPERATORZY: zmiana nazwy — błąd za krótkiej „%s”, nazwa po zatwierdzeniu „%s”" % [short_err, Characters.meta(String(ids[1]))["name"]])
 			else:
 				print("[UI-FIT] PASS  OPERATORZY: za krótki kryptonim pokazuje błąd („%s”), poprawny zmienia nazwę" % short_err)
-		ops.queue_free()
+		# okna resetu i usuwania (E4): mieszczą się w obu językach
+		var abad := 0
+		for kind in ["campaign", "character", "delete"]:
+			ops._open_action(kind, String(ids[3]))
+			for _f in 3:
+				await tree.process_frame
+			var ar: Rect2 = ops._act.get_global_rect()
+			if not vp.encloses(ar.grow(-SLACK)):
+				abad += 1
+				_fail("%s OPERATORZY: okno „%s” %s poza ekranem" % [loc, kind, ar])
+			for n in ops._act.find_children("*", "Control", true, false):
+				var c := n as Control
+				if c.is_visible_in_tree() and c.size.x > 0.0 and c.get_global_rect().end.x > ar.end.x + SLACK:
+					abad += 1
+					_fail("%s OPERATORZY: okno „%s”: %s %s wystaje" % [loc, kind, c.get_class(), _desc(c)])
+		if abad == 0:
+			print("[UI-FIT] PASS  %s OPERATORZY: okna nowej kampanii, resetu operatora i usunięcia mieszczą się" % loc)
+		if loc == "en":
+			# usunięcie z ekranu (bez przytrzymania — sygnał `confirmed` jak po 3 s) i COFNIJ
+			ops._open_action("delete", String(ids[4]))
+			ops._act_hold.confirmed.emit()
+			var gone: bool = not Characters.has(String(ids[4])) and ops._undo_btn.visible and ops._note.text != ""
+			ops._undo()
+			if not gone or not Characters.has(String(ids[4])) or ops._undo_btn.visible:
+				_fail("OPERATORZY: usunięcie z ekranu i COFNIJ (usunięta=%s, wróciła=%s)" % [str(gone), str(Characters.has(String(ids[4])))])
+			else:
+				print("[UI-FIT] PASS  OPERATORZY: usunięcie po przytrzymaniu, komunikat i COFNIJ przywraca postać („%s”)" % ops._note.text)
+			# prawdziwe przytrzymanie: mysz krótko (0,6 s) — nic; mysz pełne 2 s — nowa kampania; [Enter] trzymany — tak samo
+			var target := String(ids[5])
+			var hold := func(seconds: float, use_key: bool) -> void:
+				var at: Vector2 = ops._act_hold.get_global_rect().get_center()
+				var ev: InputEvent
+				if use_key:
+					ops._act_hold.grab_focus()
+					ev = InputEventAction.new()
+					(ev as InputEventAction).action = "ui_accept"
+				else:
+					ev = InputEventMouseButton.new()
+					(ev as InputEventMouseButton).button_index = MOUSE_BUTTON_LEFT
+					(ev as InputEventMouseButton).position = at
+					(ev as InputEventMouseButton).global_position = at
+				ev.pressed = true
+				# mysz prosto do viewportu (headless nie przekazuje kliknięć z Input do GUI); akcja przez Input jak z klawiatury / pada
+				var send := func(e: InputEvent) -> void:
+					if use_key:
+						Input.parse_input_event(e)
+					else:
+						ops.get_viewport().push_input(e, true)          # współrzędne płótna
+				send.call(ev)
+				await tree.create_timer(seconds).timeout
+				var up: InputEvent = ev.duplicate()
+				up.pressed = false
+				send.call(up)
+				for _f in 3:
+					await tree.process_frame
+			ops._open_action("campaign", target)
+			for _f in 3:
+				await tree.process_frame
+			await hold.call(0.6, false)
+			var short_ok: bool = ops._act.visible and not Characters.can_undo()
+			await hold.call(ops.HOLD_RESET + 0.4, false)
+			var mouse_ok: bool = not ops._act.visible and String(Characters.undo_info().get("op", "")) == "campaign"
+			Characters.undo()
+			ops._open_action("delete", target)
+			for _f in 3:
+				await tree.process_frame
+			await hold.call(ops.HOLD_DELETE + 0.4, true)
+			var key_ok: bool = not Characters.has(target)
+			Characters.undo()
+			ops._rebuild()
+			if short_ok and mouse_ok and key_ok and Characters.has(target):
+				print("[UI-FIT] PASS  OPERATORZY: krótkie przytrzymanie nic nie robi, pełne myszą (2 s) resetuje, [Enter] trzymany 3 s usuwa")
+			else:
+				_fail("OPERATORZY: przytrzymanie — krótkie bez skutku=%s, mysz=%s, klawisz=%s" % [str(short_ok), str(mouse_ok), str(key_ok)])
+		layer.queue_free()
 		await tree.process_frame
 	# przełączenie postaci (Characters.activate): profil i kryptonim wybranej, nie poprzedniej
 	var pf := ConfigFile.new()
