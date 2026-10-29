@@ -222,11 +222,36 @@ func bank_loot(bonus: int) -> int:
 func reset_loot() -> void:
 	if not NoiseMgr.is_server():
 		return
+	_checkpoint_loot.clear()
 	if loot != 0 or not found.is_empty() or samples_loot != 0:
 		loot = 0
 		found.clear()
 		samples_loot = 0
 		_push()
+
+## Łup w chwili przebudzenia bossa (mission._save_checkpoint, serwer). Wipe w walce z bossem wraca do niego zamiast do zera:
+## restart od punktu kontrolnego zostawia zniszczone gniazda, więc kasowanie złomu, próbek i części sprzed walki zabierało drużynie
+## całą drogę przez mapę (opinia testera 2026-10-29: ~10 prób Żyły, znalezione części nigdy nie dotarły do kryjówki).
+var _checkpoint_loot := {}
+
+func save_checkpoint_loot() -> void:
+	if not NoiseMgr.is_server():
+		return
+	_checkpoint_loot = {"loot": loot, "found": found.keys(), "samples": samples_loot}
+
+## Wipe w walce z bossem (main._restart_from_checkpoint): łup z samej walki przepada, sprzed niej zostaje. Bez zapisu = reset_loot().
+func restore_checkpoint_loot() -> void:
+	if not NoiseMgr.is_server():
+		return
+	if _checkpoint_loot.is_empty():
+		reset_loot()
+		return
+	loot = int(_checkpoint_loot["loot"])
+	found.clear()
+	for id in _checkpoint_loot["found"]:
+		found[String(id)] = true
+	samples_loot = int(_checkpoint_loot["samples"])
+	_push()
 
 ## Część do znalezienia: losowa część z modelem (leży na ziemi albo w skrytce) dla broni, którą drużyna ma, jeszcze nieodblokowana
 ## i nieznaleziona w tej misji; "" — wszystko już jest.

@@ -155,7 +155,8 @@ func _refresh_list() -> void:
 	for i in _buttons.size():
 		var e := Codex.beast_view(_entries[i])
 		var id := String(_entries[i].get("beast", ""))
-		_buttons[i].text = String(e["title"]) + ("  •" if id != "" and Profile.is_new("beast:" + id) else "")     # nowy wpis — kropka do pierwszego obejrzenia
+		# nowy wpis — kropka do pierwszego obejrzenia; tr() przed sklejeniem, inaczej przycisk nie znajduje klucza i zostaje po angielsku
+		_buttons[i].text = tr(String(e["title"])) + ("  •" if id != "" and Profile.is_new("beast:" + id) else "")
 		(_thumbs[i] as Portrait).show_spec(e["portrait"], e["accent"])
 
 func select(i: int) -> void:

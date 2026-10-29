@@ -10,6 +10,10 @@ extends "res://scripts/stalker_test.gd"
 ## 4. Linia ognia (`player._los_state`): bot za dowódcą, wróg kilkanaście stopni wyżej — kierunek strzału przycięty do 8 stron
 ##    jest poziomy, więc kula trafia dowódcę w plecy, choć promień prosto do wroga mija mu głowę. Bot ma uznać, że kolega stoi
 ##    na linii (dziennik 1.7.399: 61 trafień bota w człowieka w jednej sesji).
+## 5. Skradanie (opinia testera 2026-10-29): dowódca kuca, bot w skoku nie kuca — mimo to nie strzela do wroga dalej niż na
+##    wyciągnięcie ręki.
+## 6. Podnoszenie w locie (opinia testera 2026-10-29): bot spadający obok leżącego nie zaczyna podnosić w powietrzu, dopiero
+##    po wylądowaniu.
 ## Mapa 1.3, reszta świata wyciszona jak w stalker_test.gd (helpery stamtąd). Wynik: linie [BOT-TEST] i kod wyjścia.
 
 const WALK := 60.0                    ## px/s dowódcy — wolniej niż bot (0,85 × 95), żeby nadążał
@@ -64,6 +68,8 @@ func run(m: Node2D) -> void:
 		await _walk(-1.0, a.x + 30.0)
 		await _turn(ground)
 		await _line_of_fire(ground)
+		await _stealth_fire()
+		await _airborne_revive(ground)
 	if SessionLog.recording():
 		bot.deliver_ff(player.global_position, int(player.player_id))     # CI: zdarzenie „ff” ze strzelcem w dzienniku (--sessionlog)
 	_finish()
@@ -138,3 +144,34 @@ func _line_of_fire(ground: Dictionary) -> void:
 	check("dowódca za botem: tor strzału czysty", bot._los_state(target, dir) == bot.Los.CLEAR)
 	target.queue_free()
 	bot.set_physics_process(true)
+
+## 5. Dyscyplina ognia przy skradaniu liczy się od dowódcy, nie od własnego `crouching` bota (gubi je w skoku i zeskoku).
+func _stealth_fire() -> void:
+	player.crouching = true
+	bot.crouching = false
+	var far_ok: bool = not bot._bot_may_fire(Vector2(60.0, 0.0))
+	var near_ok: bool = bot._bot_may_fire(Vector2(30.0, 0.0))
+	player.crouching = false
+	check("dowódca kuca, bot w skoku: wróg 60 px — bez strzału, 30 px — obrona własna", far_ok and near_ok)
+	await get_tree().physics_frame
+
+## 6. Bot spada obok leżącego dowódcy: w powietrzu postęp podnoszenia stoi na zero, po wylądowaniu rośnie.
+func _airborne_revive(ground: Dictionary) -> void:
+	var a: Vector2 = ground["a"]
+	_lead(Vector2.ZERO, Vector2(1, 0), a + Vector2(60, 0))
+	player.dead = true
+	player.revive_progress = 0.0
+	bot.global_position = a + Vector2(72, -40)
+	bot.velocity = Vector2.ZERO
+	var st := {"air": 0, "air_rev": 0, "landed_rev": false}
+	await _frames(2.0, func(_t: float, _dt: float) -> void:
+		if not bot.is_on_floor():
+			st["air"] += 1
+			if player.revive_progress > 0.0:
+				st["air_rev"] += 1
+		elif player.revive_progress > 0.0:
+			st["landed_rev"] = true)
+	check("bot w powietrzu nie podnosi (%d klatek lotu, %d z postępem), po wylądowaniu podnosi=%s" % [st["air"], st["air_rev"], str(st["landed_rev"])],
+		int(st["air"]) > 3 and int(st["air_rev"]) == 0 and bool(st["landed_rev"]))
+	player.dead = false
+	player.revive_progress = 0.0
