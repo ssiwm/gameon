@@ -180,7 +180,7 @@ func _reset_checks() -> void:
 	var ra: Dictionary = c.summary(a)
 	_check("reset postaci: XP 0, złom 0, bez perków i porad, czas 0; kryptonim „%s” i wygląd %d zostały" % [ra["name"], int(ra["look"])],
 		int(ra["xp"]) == 0 and int(ra["bank"]) == 0 and int(ra["perks"]) == 0 and not FileAccess.file_exists(c.dir_of(a) + "player.cfg")
-		and is_zero_approx(float(ra["play_time"])) and String(ra["name"]) == "Sowa" and int(ra["look"]) == 9)
+		and float(ra["play_time"]) < 1.0 and String(ra["name"]) == "Sowa" and int(ra["look"]) == 9)
 	c.undo()
 	_check("cofnij reset postaci: XP %d, czas %.0f s" % [int(c.summary(a)["xp"]), float(c.summary(a)["play_time"])], int(c.summary(a)["xp"]) == 2918 and is_equal_approx(float(c.summary(a)["play_time"]), 3600.0))
 

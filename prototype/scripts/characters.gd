@@ -1,7 +1,7 @@
 extends Node
 ## Autoload „Characters” (PROFILES_PLAN.md E1): operatorzy — kilka postaci na jednym komputerze. Każda ma folder `user://characters/<id>/`:
 ##   profile.cfg    — Profile (XP, perki, wygląd, montaż, stan broni, wprawa, bestiariusz…), jak dawniej `user://profile.cfg`
-##   progress.cfg   — Scrap: kampania postaci (złom, bronie, części, próbki, przejdzione misje); liczy się, gdy ta postać hostuje
+##   progress.cfg   — Scrap: kampania postaci (złom, bronie, części, próbki, ukończone misje); liczy się, gdy ta postać hostuje
 ##   player.cfg     — rzeczy gracza wyjęte z ustawień (PLAYER_KEYS: obejrzane porady, trudność, rekord Nocnego Dyżuru, tablica strzelnicy)
 ##   character.cfg  — meta: kryptonim, `needs_name`, daty, czas gry, `promotions` (awans — PROFILES_PLAN.md E5)
 ## Kolejność i aktywna postać w `index.cfg`. Pierwszy na liście autoloadów: Settings, Scrap, Profile i Difficulty biorą ścieżki z `file()`.
@@ -179,13 +179,15 @@ func _auto(n: String) -> Node:
 	var tree := Engine.get_main_loop() as SceneTree
 	return tree.root.get_node_or_null(n) if tree != null else null
 
-## Podsumowanie dla karty postaci (E3) prosto z plików, bez wczytywania profilu: meta + XP, wygląd, przejdzione misje, złom.
+## Podsumowanie dla karty postaci (E3) prosto z plików, bez wczytywania profilu: meta + XP, wygląd, ukończone misje, złom.
 func summary(id: String) -> Dictionary:
 	var m := meta(id)
 	var pf := ConfigFile.new()
 	pf.load(dir_of(id) + "profile.cfg")
 	var gf := ConfigFile.new()
 	gf.load(dir_of(id) + "progress.cfg")
+	if id == active_id and persist and not _time_saved:
+		m["play_time"] = float(m["play_time"]) + float(Time.get_ticks_msec() - _start_ms) / 1000.0     # bieżąca sesja (zapis dopiero przy wyjściu)
 	m["xp"] = maxi(0, int(pf.get_value("profile", "xp", 0)))
 	m["look"] = int(pf.get_value("profile", "look", 0))
 	m["cleared"] = Array(gf.get_value("campaign", "cleared", []))
@@ -255,7 +257,7 @@ func validate_name(s: String, except_id := "") -> String:
 
 # ---------------------------------------------------------------- reset i usuwanie (PROFILES_PLAN.md E4, D4)
 
-## Nowa kampania: zeruje progress.cfg postaci (złom, bronie, części, próbki, przejdzione misje, zapas). Profil, rzeczy gracza i kryptonim
+## Nowa kampania: zeruje progress.cfg postaci (złom, bronie, części, próbki, ukończone misje, zapas). Profil, rzeczy gracza i kryptonim
 ## zostają. Najpierw kopia (Cofnij). Aktywna postać przeładowuje się od razu.
 func reset_campaign(id: String) -> bool:
 	if not _order.has(id):

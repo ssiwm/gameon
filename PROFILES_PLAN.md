@@ -62,7 +62,7 @@ Wariant Valheim (osobny wybór postaci i kampanii) odrzucony na EA — struktura
 - Całość padem; nazwę z pada daje „Losuj” (Steam Deck ma klawiaturę ekranową).
 
 ### D4. Reset postępu
-1. **Nowa kampania** — zeruje `progress.cfg` (złom, bronie, części, próbki, przejdzione misje, zapas); zostaje XP, perki, wygląd, wprawa.
+1. **Nowa kampania** — zeruje `progress.cfg` (złom, bronie, części, próbki, ukończone misje, zapas); zostaje XP, perki, wygląd, wprawa.
 2. **Reset postaci** — wszystko poza kryptonimem i wyglądem.
 3. **Usuń postać.**
 
