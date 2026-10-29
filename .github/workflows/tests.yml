@@ -171,6 +171,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_messages.gd 2>&1 | tee messages.log
           grep -a "^PASS" messages.log
+      - name: Postacie — magazyn i migracja zapisu (test_characters.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_characters.gd 2>&1 | tee characters.log
+          grep -a "\[CHARS-TEST\] PASS (0" characters.log
       - name: Menu pauzy mieści się po angielsku i po polsku (--uifittest)
         run: |
           timeout 300 godot --headless --path prototype -- --uifittest 2>&1 | tee uifit.log

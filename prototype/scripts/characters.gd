@@ -1,0 +1,218 @@
+extends Node
+## Autoload „Characters” (PROFILES_PLAN.md E1): operatorzy — kilka postaci na jednym komputerze. Każda ma folder `user://characters/<id>/`:
+##   profile.cfg    — Profile (XP, perki, wygląd, montaż, stan broni, wprawa, bestiariusz…), jak dawniej `user://profile.cfg`
+##   progress.cfg   — Scrap: kampania postaci (złom, bronie, części, próbki, przejdzione misje); liczy się, gdy ta postać hostuje
+##   player.cfg     — rzeczy gracza wyjęte z ustawień (PLAYER_KEYS: obejrzane porady, trudność, rekord Nocnego Dyżuru, tablica strzelnicy)
+##   character.cfg  — meta: kryptonim, `needs_name`, daty, czas gry, `promotions` (awans — PROFILES_PLAN.md E5)
+## Kolejność i aktywna postać w `index.cfg`. Pierwszy na liście autoloadów: Settings, Scrap, Profile i Difficulty biorą ścieżki z `file()`.
+## `<id>` to losowy hex, nie kryptonim — zmiana nazwy nie przenosi folderu.
+##
+## Migracja (D6): zapis sprzed 1.7.426 — `user://profile.cfg`, `user://progress.cfg` i klucze gracza w `user://settings.cfg` — przechodzi do
+## postaci nr 1 (z `needs_name`, kreator kryptonimu to etap E3); oryginały zostają w `user://backup_characters_migration/`. Świeża instalacja
+## też dostaje postać nr 1. Testy headless nie dotykają zapisu (`persist`); test magazynu: tools/test_characters.gd (osobny katalog `use_root`).
+
+const ROOT := "user://characters/"
+const LEGACY_DIR := "user://"
+const BACKUP_DIR := "user://backup_characters_migration/"
+const MAX := 6                        ## tyle postaci mieści ekran OPERATORZY (D3)
+const NAME_MIN := 2
+const NAME_MAX := 16
+## Litery łacińskie z polskimi (Latin-1 i Latin Extended-A — kroje UI je mają), cyfry, spacja, „-” i „_” (D2).
+const NAME_PATTERN := "^[A-Za-z0-9À-ÖØ-öø-ſ _\\-]+$"
+const LEGACY_FILES := ["profile.cfg", "progress.cfg"]
+## Klucze gracza przeniesione z settings.cfg do player.cfg postaci (D5): [sekcja, klucz].
+const PLAYER_KEYS := [["game", "seen_tips"], ["game", "difficulty"], ["shift", "best_cleared"], ["shift", "best_time"], ["range", "board"]]
+
+var persist := DisplayServer.get_name() != "headless"      ## testy headless nie ruszają prawdziwego zapisu
+var root := ROOT
+var active_id := ""
+var _order: Array = []
+var _start_ms := 0
+var _time_saved := false
+
+func _ready() -> void:
+	if persist:
+		ensure_ready()
+
+## Katalog magazynu (test: osobny katalog w `user://`, żeby nie dotykać postaci gracza).
+func use_root(path: String) -> void:
+	root = path.trim_suffix("/") + "/"
+	active_id = ""
+	_order.clear()
+
+## Wczytuje listę; bez listy — migracja starego zapisu z `legacy_dir` (albo pusta postać nr 1). Aktywna postać zawsze istnieje.
+func ensure_ready(legacy_dir := LEGACY_DIR, backup_dir := BACKUP_DIR) -> void:
+	DirAccess.make_dir_recursive_absolute(root)
+	_load_index()
+	if _order.is_empty():
+		migrate_legacy(legacy_dir, backup_dir)
+	if not _order.has(active_id):
+		active_id = String(_order[0])
+		_save_index()
+	_set_meta(active_id, "last_played", int(Time.get_unix_time_from_system()))
+	_start_ms = Time.get_ticks_msec()
+	_time_saved = false
+	print("[CHARS] %d postaci, aktywna %s" % [_order.size(), active_id])
+
+## Zapis sprzed postaci → postać nr 1. Pliki profilu i kampanii przenosi, klucze gracza wycina z settings.cfg do player.cfg; każdy
+## oryginał najpierw kopiuje do `backup_dir`. Zwraca id nowej postaci.
+func migrate_legacy(legacy_dir := LEGACY_DIR, backup_dir := BACKUP_DIR) -> String:
+	legacy_dir = legacy_dir.trim_suffix("/") + "/"
+	backup_dir = backup_dir.trim_suffix("/") + "/"
+	var id := create("", true)
+	var moved: Array = []
+	for f in LEGACY_FILES:
+		var src: String = legacy_dir + f
+		if not FileAccess.file_exists(src):
+			continue
+		DirAccess.make_dir_recursive_absolute(backup_dir)
+		DirAccess.copy_absolute(src, backup_dir + f)
+		if DirAccess.copy_absolute(src, dir_of(id) + f) == OK:
+			DirAccess.remove_absolute(src)
+			moved.append(f)
+	var settings := ConfigFile.new()
+	if settings.load(legacy_dir + "settings.cfg") == OK:
+		var player := ConfigFile.new()
+		var any := false
+		for k in PLAYER_KEYS:
+			if settings.has_section_key(k[0], k[1]):
+				player.set_value(k[0], k[1], settings.get_value(k[0], k[1]))
+				settings.erase_section_key(k[0], k[1])
+				any = true
+		if any:
+			DirAccess.make_dir_recursive_absolute(backup_dir)
+			DirAccess.copy_absolute(legacy_dir + "settings.cfg", backup_dir + "settings.cfg")
+			player.save(dir_of(id) + "player.cfg")
+			settings.save(legacy_dir + "settings.cfg")
+			moved.append("settings.cfg (klucze gracza)")
+	print("[CHARS] migracja do postaci %s: %s" % [id, ", ".join(moved) if not moved.is_empty() else "świeży start"])
+	return id
+
+## Nowa postać (pusty folder, meta). "" — limit MAX. Nie zmienia aktywnej postaci.
+func create(name: String, needs_name := false) -> String:
+	if _order.size() >= MAX:
+		return ""
+	var id := _new_id()
+	DirAccess.make_dir_recursive_absolute(dir_of(id))
+	var cf := ConfigFile.new()
+	var now := int(Time.get_unix_time_from_system())
+	cf.set_value("character", "id", id)
+	cf.set_value("character", "name", clean_name(name))
+	cf.set_value("character", "needs_name", needs_name)
+	cf.set_value("character", "created", now)
+	cf.set_value("character", "last_played", now)
+	cf.set_value("character", "play_time", 0.0)
+	cf.set_value("character", "promotions", 0)
+	cf.save(dir_of(id) + "character.cfg")
+	_order.append(id)
+	if active_id == "":
+		active_id = id
+	_save_index()
+	return id
+
+## Meta wszystkich postaci w kolejności z listy.
+func list() -> Array:
+	var out: Array = []
+	for id in _order:
+		out.append(meta(String(id)))
+	return out
+
+func meta(id: String) -> Dictionary:
+	var cf := ConfigFile.new()
+	cf.load(dir_of(id) + "character.cfg")
+	return {"id": id, "name": String(cf.get_value("character", "name", "")), "needs_name": bool(cf.get_value("character", "needs_name", false)),
+		"created": int(cf.get_value("character", "created", 0)), "last_played": int(cf.get_value("character", "last_played", 0)),
+		"play_time": float(cf.get_value("character", "play_time", 0.0)), "promotions": int(cf.get_value("character", "promotions", 0))}
+
+## Ustawia aktywną postać (zapamiętaną na następne uruchomienie). Przeładowanie Profile / Scrap / ustawień gracza w trakcie gry — etap E3.
+func select(id: String) -> bool:
+	if not _order.has(id):
+		return false
+	_flush_time()
+	active_id = id
+	_save_index()
+	_set_meta(id, "last_played", int(Time.get_unix_time_from_system()))
+	_start_ms = Time.get_ticks_msec()
+	_time_saved = false
+	return true
+
+## Kryptonim postaci: "" = zmieniony, inaczej kod błędu z validate_name.
+func rename(id: String, name: String) -> String:
+	var err := validate_name(name, id)
+	if err != "":
+		return err
+	_set_meta(id, "name", clean_name(name))
+	_set_meta(id, "needs_name", false)
+	return ""
+
+## Ścieżka pliku aktywnej postaci; "" bez postaci (headless).
+func file(name: String) -> String:
+	return "" if active_id == "" else dir_of(active_id) + name
+
+func dir_of(id: String) -> String:
+	return root + id + "/"
+
+## Kryptonim po obcięciu spacji na brzegach i zwinięciu podwójnych; dłuższy niż NAME_MAX — ucięty.
+static func clean_name(s: String) -> String:
+	var out := s.strip_edges()
+	while out.contains("  "):
+		out = out.replace("  ", " ")
+	return out.substr(0, NAME_MAX)
+
+## "" — dobry kryptonim; "short" / "long" / "chars" / "taken" (inna postać na tym komputerze, bez rozróżniania wielkości liter).
+func validate_name(s: String, except_id := "") -> String:
+	var n := s.strip_edges()
+	while n.contains("  "):
+		n = n.replace("  ", " ")
+	if n.length() < NAME_MIN:
+		return "short"
+	if n.length() > NAME_MAX:
+		return "long"
+	var re := RegEx.create_from_string(NAME_PATTERN)
+	if re.search(n) == null:
+		return "chars"
+	for id in _order:
+		if String(id) != except_id and String(meta(String(id))["name"]).to_lower() == n.to_lower():
+			return "taken"
+	return ""
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
+		_flush_time()
+
+## Czas gry: przy wyjściu (i przy zmianie postaci) dopisuje czas od startu / wyboru do `play_time` aktywnej postaci.
+func _flush_time() -> void:
+	if not persist or active_id == "" or _time_saved:
+		return
+	_time_saved = true
+	var m := meta(active_id)
+	_set_meta(active_id, "play_time", float(m["play_time"]) + float(Time.get_ticks_msec() - _start_ms) / 1000.0)
+
+func _set_meta(id: String, key: String, value: Variant) -> void:
+	var cf := ConfigFile.new()
+	cf.load(dir_of(id) + "character.cfg")
+	cf.set_value("character", key, value)
+	cf.save(dir_of(id) + "character.cfg")
+
+func _load_index() -> void:
+	var cf := ConfigFile.new()
+	_order.clear()
+	active_id = ""
+	if cf.load(root + "index.cfg") != OK:
+		return
+	for id in Array(cf.get_value("characters", "order", [])):
+		if DirAccess.dir_exists_absolute(dir_of(String(id))):
+			_order.append(String(id))
+	active_id = String(cf.get_value("characters", "active", ""))
+
+func _save_index() -> void:
+	var cf := ConfigFile.new()
+	cf.set_value("characters", "order", _order)
+	cf.set_value("characters", "active", active_id)
+	cf.save(root + "index.cfg")
+
+func _new_id() -> String:
+	var id := ""
+	while id == "" or _order.has(id) or DirAccess.dir_exists_absolute(dir_of(id)):
+		id = "%08x" % (randi() & 0x7fffffff)
+	return id

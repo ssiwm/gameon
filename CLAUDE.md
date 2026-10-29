@@ -38,6 +38,7 @@ godot --headless --path prototype -s tools/test_audio_loops.gd  # pętle dźwię
 godot --headless --path prototype -s tools/test_aim_points.gd   # wylot pocisku: niezależny od animacji i zgodny z lufą modelu, ma wypisać PASS
 godot --headless --path prototype -s tools/test_proportions.gd  # hitboxy kontra modele, meble i znajdźki w naturalnej skali, anatomia postaci, ma wypisać PASS
 godot --headless --path prototype -s tools/test_structures.gd   # słupy widoku 3D: ciągłość przez kładki i znaczniki, podstawa, styk z pokładem, ma wypisać PASS
+godot --headless --path prototype -s tools/test_characters.gd   # postacie: magazyn user://characters, migracja starego zapisu, kryptonimy, limit, czas gry (osobny katalog, zapis gracza nietknięty), ma wypisać PASS
 godot --headless --path prototype -s tools/test_messages.gd     # arbiter komunikatów (priorytet, duplikaty, czas życia, toasty, dziennik), ma wypisać PASS
 godot --headless --path prototype -s tools/test_note_contrast.gd # kontrast i jasność papieru notatek (ciemna paleta po zmroku), ma wypisać PASS
 godot --headless --path prototype -- --uifittest                # menu pauzy (ustawienia, kodeks, sterowanie) mieści się po angielsku i po polsku, zmiana języka przebudowuje menu, ma wypisać PASS

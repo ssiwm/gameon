@@ -1,6 +1,7 @@
 extends Node
 ## Ustawienia gracza (autoload „Settings"): głośność, wstrząsy kamery, rozmiar HUD, podpowiedzi,
-## pełny ekran. Zapis w user://settings.cfg (sekcja „game"; sekcję „voice" prowadzi voice.gd —
+## pełny ekran. Zapis w user://settings.cfg (sekcja „game"; sekcję „voice" prowadzi voice.gd — rzeczy gracza (porady, rekordy) od 1.7.426
+## w player.cfg aktywnej postaci, characters.gd;
 ## oba moduły wczytują plik przed zapisem, więc sobie nie przeszkadzają).
 ##
 ## Dodatkowo `block_game_input()` wycina akcje gry z InputMap na czas menu pauzy (lista: `Actions.blockable()`):
@@ -10,6 +11,7 @@ signal changed
 signal bindings_changed             ## gracz przypisał / zresetował klawisze (ściągi i podpowiedzi się odświeżają)
 
 const SAVE_PATH := "user://settings.cfg"
+const PLAYER_FILE := "player.cfg"
 const STEP := 0.1
 ## Wersja demo: ekran końcowy misji zachęca do dodania gry do listy życzeń. STORE_URL uzupełnić, gdy strona
 ## sklepu Steam będzie publiczna (puste = bez przycisku [O]).
@@ -408,6 +410,35 @@ static func first_run_graphics(adapter: int) -> Array:
 	return [2, 0]
 
 func _load() -> void:
+	_load_global()
+	_load_player()
+
+## Rzeczy gracza (PROFILES_PLAN.md D5): obejrzane porady, rekord Nocnego Dyżuru i tablica strzelnicy żyją w `player.cfg` aktywnej postaci
+## (Characters.file), nie w ustawieniach komputera. Bez postaci (headless) — tylko w pamięci.
+func _load_player() -> void:
+	var path := Characters.file(PLAYER_FILE)
+	var cf := ConfigFile.new()
+	if path == "" or cf.load(path) != OK:
+		return
+	seen_tips = Array(cf.get_value("game", "seen_tips", []))
+	shift_best_cleared = int(cf.get_value("shift", "best_cleared", 0))
+	shift_best_time = float(cf.get_value("shift", "best_time", 0.0))
+	var rb = cf.get_value("range", "board", [])
+	range_board = rb if rb is Array else []
+
+func _save_player() -> void:
+	var path := Characters.file(PLAYER_FILE)
+	if path == "":
+		return
+	var cf := ConfigFile.new()
+	cf.load(path)                       # trudność (difficulty.gd) leży w tym samym pliku
+	cf.set_value("game", "seen_tips", seen_tips)
+	cf.set_value("shift", "best_cleared", shift_best_cleared)
+	cf.set_value("shift", "best_time", shift_best_time)
+	cf.set_value("range", "board", range_board)
+	cf.save(path)
+
+func _load_global() -> void:
 	var cf := ConfigFile.new()
 	if cf.load(SAVE_PATH) != OK:
 		locale_idx = system_locale_idx(OS.get_locale_language())
@@ -452,12 +483,7 @@ func _load() -> void:
 	locale_idx = clampi(int(cf.get_value("game", "locale", system_locale_idx(OS.get_locale_language()))), 0, LOCALES.size() - 1)
 	brightness_idx = clampi(int(cf.get_value("game", "brightness", BRIGHTNESS_DEFAULT)), 0, BRIGHTNESS_EV.size() - 1)
 	brightness_calibrated = bool(cf.get_value("game", "brightness_calibrated", false))
-	seen_tips = Array(cf.get_value("game", "seen_tips", []))
 	Actions.load_from(cf)
-	shift_best_cleared = int(cf.get_value("shift", "best_cleared", 0))
-	shift_best_time = float(cf.get_value("shift", "best_time", 0.0))
-	var rb = cf.get_value("range", "board", [])
-	range_board = rb if rb is Array else []
 
 func _save() -> void:
 	var cf := ConfigFile.new()
@@ -491,9 +517,11 @@ func _save() -> void:
 	cf.set_value("game", "brightness", brightness_idx)
 	cf.set_value("game", "brightness_calibrated", brightness_calibrated)
 	cf.set_value("game", "locale", locale_idx)
-	cf.set_value("game", "seen_tips", seen_tips)
 	Actions.save_to(cf)
-	cf.set_value("shift", "best_cleared", shift_best_cleared)
-	cf.set_value("shift", "best_time", shift_best_time)
-	cf.set_value("range", "board", range_board)
+	# zapis sprzed postaci: po migracji (characters.gd) klucze gracza są już w player.cfg; headless nie migruje, więc nie może ich też skasować
+	if Characters.active_id != "":
+		for k in Characters.PLAYER_KEYS:
+			if cf.has_section_key(k[0], k[1]):
+				cf.erase_section_key(k[0], k[1])
 	cf.save(SAVE_PATH)
+	_save_player()
