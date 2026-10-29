@@ -616,6 +616,7 @@ func log_end(result: String, how := "") -> void:
 	var players := {}
 	for id in player_stats:
 		players[id] = (player_stats[id] as Dictionary).duplicate()
+		(players[id] as Dictionary).erase("call")          # dziennik zostaje anonimowy: „P<n>” bez kryptonimu (PROFILES_PLAN.md D2)
 	var scrap := {"loot": Scrap.loot, "samples": Scrap.samples_loot, "bonus": scrap_bonus() if result == "success" and kind != "hub" and Scrap.enabled() else 0}
 	var row := {"result": result, "time": snappedf(elapsed, 0.1), "downs": downs, "attempts": attempts,
 		"peak_noise": roundi(_peak_all), "peak_noise_objective": roundi(peak_noise), "side": side_done(), "silent": silent_ok(), "players": players, "scrap": scrap}
@@ -643,7 +644,7 @@ func scrap_bonus() -> int:
 func _stat(p: Node) -> Dictionary:
 	var id := int(p.player_id)
 	if not player_stats.has(id):
-		player_stats[id] = {"name": "P%d" % int(p.display_id), "kills": 0, "downs": 0, "revived": 0, "revives": 0, "escapes": 0, "lures": 0, "noise": 0.0}
+		player_stats[id] = {"name": "P%d" % int(p.display_id), "call": p.label(), "kills": 0, "downs": 0, "revived": 0, "revives": 0, "escapes": 0, "lures": 0, "noise": 0.0}
 	return player_stats[id]
 
 func _live() -> bool:
@@ -716,7 +717,7 @@ static func awards(stats: Dictionary, stalker_woke := true) -> Array:
 					continue
 		elif best_id == null or best < 1.0:
 			continue
-		out.append([a, String((stats[best_id] as Dictionary).get("name", "?")), best])
+		out.append([a, String((stats[best_id] as Dictionary).get("call", (stats[best_id] as Dictionary).get("name", "?"))), best])
 	return out
 
 ## Serwer: zabójstwo przez człowieka (woła Profile.server_award_kill).
@@ -729,6 +730,9 @@ func note_kill(shooter_id: int) -> void:
 			return
 
 func _send_stats() -> void:
+	for p in get_tree().get_nodes_in_group("players"):
+		if player_stats.has(int(p.player_id)) and not p.is_bot:
+			player_stats[int(p.player_id)]["call"] = p.label()      # kryptonim klienta dochodzi replikacją chwilę po starcie misji
 	if NoiseMgr.has_network():
 		_recv_stats.rpc(player_stats, stalker_woke)
 

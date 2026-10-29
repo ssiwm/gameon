@@ -31,7 +31,15 @@ func disguised() -> bool:
 func disguise_label() -> String:
 	if e.active:
 		return ""
-	# imię jak u gracza, ale bez plakietki życia (zdradza go) i z numerem, którego nie ma w drużynie
+	# imię jak u gracza, ale bez plakietki życia (zdradza go). W co-opie kryptonim innego człowieka z drużyny (PROFILES_PLAN.md D2) —
+	# każdy widzi imię kolegi, nie swoje; sam (albo tylko z botem) — numer, którego nie ma w drużynie
+	var mates: Array = []
+	for p in e.get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and not p.is_queued_for_deletion() and not p.is_multiplayer_authority():
+			mates.append(p)
+	if not mates.is_empty():
+		mates.sort_custom(func(a: Node, b: Node) -> bool: return int(a.display_id) < int(b.display_id))
+		return String(mates[int(e.get_instance_id() % mates.size())].label())
 	return "P%d" % (2 + int(e.get_instance_id() % 3))
 
 ## Zamaskowany Mimik woła o pomoc głosem gracza (próbka bólu), gdy ktoś jest w zasięgu słuchu, ale jeszcze

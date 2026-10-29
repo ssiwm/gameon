@@ -137,6 +137,9 @@ var perks := Vector2i(-1, -1)
 var fits := PackedInt32Array()          ## id broni → kod zamontowanych części (Profile.fit_code); replikowane od właściciela, boty = fabryczne
 ## Wygląd (Look.code), replikowany; −1 = jeszcze nieznany. Ustawia właściciel z lokalnego profilu; kosmetyka — serwer niczego z niego nie liczy.
 var look := -1
+## Kryptonim właściciela (Characters.callsign, PROFILES_PLAN.md E2) — replikowany przy zmianie jak `look`, surowy: każdy peer czyści go
+## w `label()` (kosmetyka, serwer nic z niego nie liczy). "" = bez kryptonimu → „P<n>”.
+var callsign := ""
 var prof_xp := 0                         ## XP profilu właściciela (Profile.xp) — replikowane przy zmianie, host zapisuje poziom w dzienniku sesji (PROGRESSION_PLAN.md P0.2)
 var _spr_sheet := ""
 var _second_used := false
@@ -465,8 +468,9 @@ func _setup_sync() -> void:
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
 	for path in [":position", ":velocity", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":is_bot", ":display_id"]:
 		cfg.property_set_spawn(path, true)
-	cfg.add_property(":prof_xp")
-	cfg.property_set_replication_mode(":prof_xp", SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE)
+	for path in [":prof_xp", ":callsign"]:
+		cfg.add_property(path)
+		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE)
 	sync.replication_config = cfg
 	add_child(sync)
 
@@ -504,6 +508,7 @@ func perk_param(id: String, key: String, fallback: float) -> float:
 func _sync_perks() -> void:
 	look = Profile.look
 	prof_xp = Profile.xp
+	callsign = Characters.callsign()
 	var f := PackedInt32Array()
 	for w in Weapons.COUNT:
 		f.append(Profile.fit_code(w))
@@ -521,6 +526,21 @@ func _sync_perks() -> void:
 	if hp == before:
 		hp = after                      # pełne zdrowie zostaje pełne
 	hp = mini(hp, stack_hp())
+
+## Nazwa gracza w UI (plakietka, karta drużyny, czat, wyniki, podpowiedzi): bot „BOT”, człowiek bez kryptonimu „P<n>”. Dwa takie same
+## kryptonimy w drużynie — późniejszy slot dostaje dopisek „(2)”, „(3)”. Dziennik sesji zostaje przy „P<n>” (anonimowy, D2).
+func label() -> String:
+	if is_bot:
+		return "BOT"
+	var n := Characters.display_clean(callsign)
+	if n == "":
+		return "P%d" % display_id
+	var k := 1
+	for q in get_tree().get_nodes_in_group("players"):
+		if q != self and not q.is_bot and not q.is_queued_for_deletion() and int(q.display_id) < display_id \
+				and Characters.display_clean(String(q.callsign)).to_lower() == n.to_lower():
+			k += 1
+	return n if k == 1 else "%s (%d)" % [n, k]
 
 func max_hp() -> int:
 	return MAX_HP + int(perk_param("veteran", "extra_hearts", 0.0))
@@ -1004,7 +1024,7 @@ func _tick_medkit(delta: float, held: bool) -> bool:
 	if Arsenal.get_throwable("medkit") <= 0 or t == null:
 		_med_hold = 0.0
 		return false
-	var who := "yourself" if t == self else ("the bot" if t.is_bot else "P%d" % t.display_id)
+	var who: String = "yourself" if t == self else ("the bot" if t.is_bot else t.label())
 	if not held:
 		_med_hold = 0.0
 		gear_text = tr("Hold [%s]  Use the medkit on %s  (%d s)") % [Throwables.key_name(), who, int(data["time"])]
@@ -1047,7 +1067,7 @@ func _tick_defib(delta: float, held: bool) -> bool:
 	if Arsenal.get_throwable("defib") <= 0 or t == null:
 		_gear_cancel()
 		return false
-	var who := "the bot" if t.is_bot else "P%d" % t.display_id
+	var who: String = "the bot" if t.is_bot else t.label()
 	if not held:
 		_gear_cancel()
 		gear_text = tr("Hold [%s]  Defibrillate %s  (%d m away)") % [Throwables.key_name(), who, int(t.global_position.distance_to(global_position) / 16.0)]
@@ -1229,7 +1249,7 @@ func revive_hint() -> String:
 	var t := _revive_target()
 	if t == null:
 		return ""
-	return tr("Hold [%s] to revive %s") % [Actions.key("interact"), "the bot" if t.is_bot else "P%d" % t.display_id]
+	return tr("Hold [%s] to revive %s") % [Actions.key("interact"), "the bot" if t.is_bot else t.label()]
 
 ## Prośba o podniesienie — rozstrzyga właściciel leżącej postaci.
 func request_revive() -> void:
@@ -2198,7 +2218,7 @@ func _head_top_px() -> float:
 ## plakietki, błysk utraconej kreski, pół punktu z głazu Wołka, zegar ran (puls przy 1 życiu), czy to własna postać / bot
 ## oraz powalenie: odliczanie i postęp podnoszenia.
 func plate_state() -> Dictionary:
-	var name_txt := "BOT" if is_bot else "P%d" % display_id
+	var name_txt := label()
 	if in_range:
 		name_txt += "  ·  " + tr("RANGE")               # zaparkowany przy drzwiach strzelnicy (gra z oczu w tunelu)
 	return {"name": name_txt, "col": _body_color(), "hp": hp, "base": max_hp(), "a": _plate_a, "flash": _pip_flash, "wound_t": _wound_t,

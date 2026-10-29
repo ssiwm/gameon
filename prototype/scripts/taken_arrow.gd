@@ -36,7 +36,7 @@ func _process(delta: float) -> void:
 			continue                                  # ofiara w kadrze: bez strzałki
 		var d := s - c
 		var k := minf(half.x / maxf(absf(d.x), 0.001), half.y / maxf(absf(d.y), 0.001))
-		var who := "BOT" if p.is_bot else "P%d" % int(p.display_id)
+		var who: String = p.label()
 		var line := "%d s" % ceili(float(p.taken_t))
 		if me != null and is_instance_valid(me):
 			line += "  ·  %d m" % roundi((me.global_position as Vector2).distance_to(p.global_position) / PX_PER_M)

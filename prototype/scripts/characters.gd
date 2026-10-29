@@ -26,13 +26,23 @@ const PLAYER_KEYS := [["game", "seen_tips"], ["game", "difficulty"], ["shift", "
 var persist := DisplayServer.get_name() != "headless"      ## testy headless nie ruszają prawdziwego zapisu
 var root := ROOT
 var active_id := ""
+var active_name := ""                 ## kryptonim aktywnej postaci ("" = jeszcze bez kryptonimu — w grze „P<n>”)
+var _override_name := ""              ## dev/test: --callsign=NAZWA (bez zapisu)
+static var _strip_re: RegEx
 var _order: Array = []
 var _start_ms := 0
 var _time_saved := false
 
 func _ready() -> void:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--callsign="):
+			_override_name = a.substr("--callsign=".length())
 	if persist:
 		ensure_ready()
+
+## Kryptonim, który ta instancja gry pokazuje drużynie (player.callsign; PROFILES_PLAN.md E2). Surowy — każdy peer czyści go `display_clean`.
+func callsign() -> String:
+	return _override_name if _override_name != "" else active_name
 
 ## Katalog magazynu (test: osobny katalog w `user://`, żeby nie dotykać postaci gracza).
 func use_root(path: String) -> void:
@@ -50,6 +60,7 @@ func ensure_ready(legacy_dir := LEGACY_DIR, backup_dir := BACKUP_DIR) -> void:
 		active_id = String(_order[0])
 		_save_index()
 	_set_meta(active_id, "last_played", int(Time.get_unix_time_from_system()))
+	active_name = String(meta(active_id)["name"])
 	_start_ms = Time.get_ticks_msec()
 	_time_saved = false
 	print("[CHARS] %d postaci, aktywna %s" % [_order.size(), active_id])
@@ -130,6 +141,7 @@ func select(id: String) -> bool:
 		return false
 	_flush_time()
 	active_id = id
+	active_name = String(meta(id)["name"])
 	_save_index()
 	_set_meta(id, "last_played", int(Time.get_unix_time_from_system()))
 	_start_ms = Time.get_ticks_msec()
@@ -143,6 +155,8 @@ func rename(id: String, name: String) -> String:
 		return err
 	_set_meta(id, "name", clean_name(name))
 	_set_meta(id, "needs_name", false)
+	if id == active_id:
+		active_name = clean_name(name)
 	return ""
 
 ## Ścieżka pliku aktywnej postaci; "" bez postaci (headless).
@@ -158,6 +172,14 @@ static func clean_name(s: String) -> String:
 	while out.contains("  "):
 		out = out.replace("  ", " ")
 	return out.substr(0, NAME_MAX)
+
+## Kryptonim do wyświetlenia z cudzego peera (sieć: kosmetyka bez walidacji serwera, jak wygląd): wycina znaki spoza NAME_PATTERN,
+## zwija spacje, przycina do NAME_MAX. Za krótki po czyszczeniu → "" (UI pokaże „P<n>”).
+static func display_clean(s: String) -> String:
+	if _strip_re == null:
+		_strip_re = RegEx.create_from_string("[^A-Za-z0-9À-ÖØ-öø-ſ _\\-]")
+	var out := clean_name(_strip_re.sub(s.substr(0, 64), "", true))
+	return out if out.length() >= NAME_MIN else ""
 
 ## "" — dobry kryptonim; "short" / "long" / "chars" / "taken" (inna postać na tym komputerze, bez rozróżniania wielkości liter).
 func validate_name(s: String, except_id := "") -> String:
