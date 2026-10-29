@@ -46,10 +46,10 @@ func _server_accept(id: int, raw: String) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _broadcast(who: String, text: String) -> void:
-	line_added.emit(who.substr(0, 12), sanitize(text))
+	line_added.emit(who.substr(0, 20), sanitize(text))         # kryptonim do 16 znaków + „ (2)”
 
 func _who(id: int) -> String:
 	for p in get_tree().get_nodes_in_group("players"):
 		if not p.is_bot and int(p.player_id) == id:
-			return "P%d" % int(p.display_id)
+			return p.label()
 	return "P?"

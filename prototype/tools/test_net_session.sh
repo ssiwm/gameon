@@ -58,6 +58,19 @@ grep -a -q "\[BOT\] spawned companion slot 4" "$LOG/four_host.log" && ok "bot za
 [ "$(grep -a -c "\[NET\] peer disconnected" "$LOG/four_c3.log")" -ge 2 ] && ok "ostatni klient widzi odejście dwóch kolegów" || fail "ostatni klient nie widział odejść kolegów"
 if grep -a -q "ERR_UNAUTHORIZED" "$LOG"/four_c*.log; then fail "błąd despawnu u klienta po odejściu kolegi (ERR_UNAUTHORIZED)"; else ok "bez błędów despawnu u klientów po odejściu kolegów"; fi
 
+echo "== kryptonimy =="
+# host i pierwszy klient mają ten sam kryptonim (drugi dostaje „(2)”), drugi klient wysyła śmieci w nazwie (czyszczenie na każdym peerze)
+godot --headless --path . -- --host --nobot --port=8964 --callsign=Sowa --printsquad=9 --autoquit=12 >"$LOG/call_host.log" 2>&1 &
+HOST=$!
+sleep 4
+godot --headless --path . -- --join=127.0.0.1 --port=8964 --callsign=sowa --printsquad=6 --autoquit=9 >"$LOG/call_c1.log" 2>&1 &
+C1=$!
+sleep 1
+godot --headless --path . -- --join=127.0.0.1 --port=8964 '--callsign=<b>Wi!lk</b>' --printsquad=5 --autoquit=8 >"$LOG/call_c2.log" 2>&1
+wait $C1 $HOST
+grep -a -q "\[SQUAD\] P1=Sowa | P2=sowa (2) | P3=bWilkb" "$LOG/call_host.log" && ok "host widzi kryptonimy klientów, powtórka z „(2)”, śmieci wycięte" || fail "host: zła lista kryptonimów ($(grep -a "\[SQUAD\]" "$LOG/call_host.log"))"
+grep -a -q "\[SQUAD\] P1=Sowa | P2=sowa (2) | P3=bWilkb" "$LOG/call_c2.log" && ok "klient widzi te same kryptonimy co host" || fail "klient: zła lista kryptonimów ($(grep -a "\[SQUAD\]" "$LOG/call_c2.log"))"
+
 echo "== bez AI towarzysza =="
 godot --headless --path . -- --host --nobot --port=8963 --autoquit=12 >"$LOG/nobot_host.log" 2>&1 &
 HOST=$!

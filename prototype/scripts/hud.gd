@@ -871,7 +871,7 @@ func _make_squad_row(p: Node, is_self: bool) -> Dictionary:
 		dia.col = Color("8d8a7c") if p.is_bot else slot_col
 		dia.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		top.add_child(dia)
-	var nm := UiTheme.mono(UiTheme.label("P%d" % int(p.display_id), 9, slot_col if is_self else UiTheme.TEXT))
+	var nm := UiTheme.mono(UiTheme.label(p.label(), 9, slot_col if is_self else UiTheme.TEXT))
 	nm.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(nm)
 	var tag := _cap(tr("YOU") if is_self else (tr("BOT") if p.is_bot else ""), UiTheme.MUTED, 0.18, 6)
@@ -1667,7 +1667,7 @@ func _teammate_hunted() -> String:
 			continue
 		var d: Vector2 = (p as Node2D).global_position - st.global_position
 		if absf(d.x) < 90.0 and absf(d.y) < 40.0 and _player.global_position.distance_to((p as Node2D).global_position) > 60.0:
-			return "P%d" % int(p.display_id)
+			return p.label()
 	return ""
 
 ## Ostrzeżenie przed karą (GDD §8.1): niepokój ZANIM ON się obudzi.
@@ -1827,7 +1827,7 @@ func _drive_strip(m: Node) -> void:
 			continue
 		var slot := ((int(pl.display_id) - 1) % 4) + 1
 		var col: Color = UiTheme.DANGER if pl.dead else (Color("8d8a7c") if pl.is_bot else SLOT_COLORS[slot - 1])
-		mk.append({"pos": (pl as Node2D).global_position, "kind": "down" if pl.dead else "mate", "label": "P%d" % int(pl.display_id), "col": col})
+		mk.append({"pos": (pl as Node2D).global_position, "kind": "down" if pl.dead else "mate", "label": String(pl.label()).substr(0, 8), "col": col})      # rzut mapy: krótko
 	_minimap.markers = mk
 
 func _fill_result(m: Node) -> void:
@@ -1931,7 +1931,8 @@ func _fill_players(m: Node) -> void:
 		var st: Dictionary = m.player_stats[id]
 		var mine: bool = int(id) == NoiseMgr.local_id()
 		var col: Color = UiTheme.ACCENT if mine else UiTheme.TEXT
-		_result_players.add_child(UiTheme.label((tr("%s  (you)") % st["name"]) if mine else String(st["name"]), 9, col))
+		var who := String(st.get("call", st["name"]))
+		_result_players.add_child(UiTheme.label((tr("%s  (you)") % who) if mine else who, 9, col))
 		for k in ["kills", "downs", "revived"]:
 			_result_players.add_child(UiTheme.label(str(int(st[k])), 9, col, HORIZONTAL_ALIGNMENT_RIGHT))
 	_result.reset_size()

@@ -535,6 +535,14 @@ func _load_map_rpc(id: String) -> void:
 		Weather.current = ""
 	print("[MISSION] map: %s (%s)" % [level.map_id, level.title])
 
+func _print_squad() -> void:
+	var rows: Array = []
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_queued_for_deletion():
+			rows.append([int(p.display_id), String(p.label())])
+	rows.sort_custom(func(a: Array, b: Array) -> bool: return int(a[0]) < int(b[0]))
+	print("[SQUAD] " + " | ".join(rows.map(func(r: Array) -> String: return "P%d=%s" % [r[0], r[1]])))
+
 func _next_campaign_map() -> String:
 	var order: Array = level.CAMPAIGN
 	return order[(order.find(level.map_id) + 1) % order.size()]
@@ -545,6 +553,9 @@ func _shift_map() -> String:
 	return order[randi() % order.size()]
 
 func _handle_cmdline() -> void:
+	for sa in OS.get_cmdline_user_args():
+		if sa.begins_with("--printsquad="):                 # test sieci (test_net_session.sh): etykiety drużyny po N s — kryptonimy, „(2)”, czyszczenie
+			get_tree().create_timer(float(sa.substr("--printsquad=".length()))).timeout.connect(_print_squad)
 	var autoquit := -1.0
 	var stealthtest := -1.0
 	var wipetest := -1.0

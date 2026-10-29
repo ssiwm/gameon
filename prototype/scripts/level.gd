@@ -1466,7 +1466,7 @@ func _weapon_pickup_server(item_name: String, peer_id: int, target_slot := -1) -
 	Arsenal.add_reserve(w, maxi(int(it.rounds), 0))
 	var in_cabinet := it.has_meta("cabinet")
 	if in_cabinet:
-		_cabinet_issued[item_name] = "P%d" % int(pl.display_id)
+		_cabinet_issued[item_name] = pl.label()
 	take_item(item_name)
 	if in_cabinet:
 		if NoiseMgr.has_network():
