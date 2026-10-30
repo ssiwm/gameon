@@ -2141,7 +2141,6 @@ const CAB_FELT := Color(0.09, 0.095, 0.1)   ## tło: grafitowy filc (wariant A z
 const CAB_LED := Color(1.0, 0.84, 0.62)     ## punkty LED ok. 3000 K
 const CAB_ROMAN := ["I", "II", "III", "IV"]
 const CAB_NEAR_OPEN := 0.16                 ## lokalny gracz w zasięgu [E]: drzwi uchylają się do tej części pełnego otwarcia (1.7.433)
-const CAB_PROMPT_UP := 0.12                 ## podpowiedź HUD przy gablocie kotwiczy się tyle nad daszkiem [m] (hud.gd, 1.7.433)
 const RACK_LAMP_PX := 32.0                  ## spód lampy nad podłogą [px świata] (stojak kończy się ok. 24 px nad podłogą)
 
 ## Lampa wisząca nad stojakiem z bronią (kryjówka): emaliowany klosz z modelu `lamp`, przewód do stropu i ciepły reflektor w dół — stojak i broń
@@ -2496,14 +2495,6 @@ func _local_cabinet_near() -> int:
 			if it != null and it.has_meta("cabinet"):
 				return int(it.get_meta("cabinet"))
 	return -1
-
-## Punkt ekranu (jednostki okna, jak HUD) tuż nad daszkiem gabloty o danym indeksie albo NAN, gdy gabloty nie ma w scenie.
-## Pasek akcji przy gablocie stoi tam zamiast na dole ekranu: na dole był mały, a postać przed gablotą zasłaniała ją samą (hud.gd).
-func cabinet_screen_top(idx: int) -> Vector2:
-	for c in _cabinets.values():
-		if is_instance_valid(c["node"]) and int(c["node"].get("index")) == idx and is_instance_valid(c["root"]):
-			return screen_point((c["root"] as Node3D).global_position + Vector3(0.0, CAB_H + CAB_PROMPT_UP, 0.0))
-	return Vector2(NAN, NAN)
 
 func _build_cabinet(n: Node2D) -> Dictionary:
 	var root := Node3D.new()
