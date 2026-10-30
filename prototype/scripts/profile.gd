@@ -60,6 +60,12 @@ var history: Dictionary = {}                  ## klucz broni → {"k": zabójstw
 var seen: Dictionary = {}                     ## znaczniki „nowe” (od 1.7.409): "perk:<id>" / "part:<id>" / "beast:<id>" → gracz już to obejrzał
 var _seen_baseline := true                    ## profil bez listy obejrzanych: pierwsze zapytanie uznaje wszystko, co już jest, za obejrzane
 var bestiary: Dictionary = {}                 ## id wpisu bestiariusza → zabójstwa tego gracza; wpis jest = gracz spotkał tego wroga (od 1.7.407)
+var map_best: Dictionary = {}                 ## rekord osobisty misji kampanii (raport po akcji, RESULTS_PLAN.md P1): id mapy → {"time": s}
+var last_record: Dictionary = {}              ## ostatni wynik misji wobec rekordu: {map, time, prev, best, new, first} (raport)
+var result_ms := 0                            ## Time.get_ticks_msec() ostatniego wyniku misji — raport wie, że XP już doszło od serwera
+var _snap_mastery: Dictionary = {}            ## migawka z początku misji: klucz broni → stopień wprawy
+var _snap_beasts: Dictionary = {}             ## … i znane wpisy bestiariusza
+var _snap_valid := false
 var range_best: Dictionary = {}               ## strzelnica FPP, rekordy osobiste: "<ćwiczenie>:<klucz broni>" → wynik (czas w s; papier — grupa w MOA), mniej = lepiej
 const NOTCH_MAX := 12                         ## tyle nacięć najwyżej mieści się na kolbie
 ## Bestiariusz (od 1.7.407): wpisy znane od początku (Stalker poluje w każdej misji, gniazda są celem) i specjalne wpisy spoza enemy_defs.gd.
@@ -128,7 +134,16 @@ func add_xp(amount: int, reason := "") -> void:
 	save()
 
 ## Wynik misji (u właściciela profilu): XP za ukończenie + bonusy; pierwsze ukończenie danej misji daje dodatkowe XP. Nocny Dyżur: połowa.
-func apply_mission_result(map_id: String, side_ok: bool, no_downs: bool, boss: bool, night := false) -> int:
+## `time` (s): czas misji — rekord osobisty na mapie (tylko kampania, raport po akcji).
+func apply_mission_result(map_id: String, side_ok: bool, no_downs: bool, boss: bool, night := false, time := 0.0) -> int:
+	var first := not night and not completed.has(map_id)
+	last_record = {}
+	if not night and map_id != "" and time > 0.0:
+		var prev := float((map_best.get(map_id, {}) as Dictionary).get("time", 0.0))
+		var better := prev <= 0.0 or time < prev
+		if better:
+			map_best[map_id] = {"time": snappedf(time, 0.1)}
+		last_record = {"map": map_id, "time": time, "prev": prev, "best": minf(time, prev) if prev > 0.0 else time, "new": better, "first": first}
 	var rows: Array = [["Mission cleared", XP_MISSION]]
 	if side_ok:
 		rows.append(["Side objective", XP_SIDE])
@@ -149,9 +164,37 @@ func apply_mission_result(map_id: String, side_ok: bool, no_downs: bool, boss: b
 	last_mission_rows = rows
 	last_run_xp = run_xp
 	run_xp = 0
+	var lv_from := level_of(maxi(0, xp - last_run_xp))
 	add_xp(total, "Mission")
+	result_ms = Time.get_ticks_msec()
 	_report_mission_xp(total, rows)
+	var ms: Variant = get_tree().current_scene.get("mission") if get_tree() != null and get_tree().current_scene != null else null
+	if ms != null and ms.has_method("report_level"):
+		ms.report_level(lv_from, level())                           # awans widać też na karcie u kolegów
 	return total
+
+## Początek misji (mission.rebind, każdy peer): migawka wprawy i bestiariusza — raport pokaże, co przybyło.
+func begin_mission() -> void:
+	_snap_mastery = {}
+	for k in mastery:
+		_snap_mastery[k] = mastery_level(String(k))
+	_snap_beasts = bestiary.duplicate()
+	_snap_valid = true
+
+## Co przybyło od begin_mission(): {"mastery": [[klucz broni, stopień przed, po]], "beasts": [nowe wpisy bestiariusza]}.
+func mission_gains() -> Dictionary:
+	var out := {"mastery": [], "beasts": []}
+	if not _snap_valid:
+		return out
+	for k in mastery:
+		var now := mastery_level(String(k))
+		var was := int(_snap_mastery.get(k, 0))
+		if now > was:
+			(out["mastery"] as Array).append([String(k), was, now])
+	for b in bestiary:
+		if not _snap_beasts.has(b):
+			(out["beasts"] as Array).append(String(b))
+	return out
 
 ## Raport XP z misji do dziennika sesji hosta (PROGRESSION_PLAN.md P0.1): host zapisuje od razu, klient wysyła go hostowi.
 func _report_mission_xp(total: int, rows: Array) -> void:
@@ -208,7 +251,7 @@ func server_award_kill(shooter_id: int, kind: String) -> void:
 		_recv_beast_kill.rpc_id(shooter_id, kind)
 
 ## Serwer: misja ukończona — każdy człowiek dostaje XP za wynik (bonusy liczy jego profil: pierwsze ukończenie).
-func server_award_mission(map_id: String, side_ok: bool, no_downs: bool, boss: bool) -> void:
+func server_award_mission(map_id: String, side_ok: bool, no_downs: bool, boss: bool, time := 0.0) -> void:
 	if not NoiseMgr.is_server():
 		return
 	for p in get_tree().get_nodes_in_group("players"):
@@ -216,9 +259,9 @@ func server_award_mission(map_id: String, side_ok: bool, no_downs: bool, boss: b
 			continue
 		var pid := int(p.player_id)
 		if _is_local(pid):
-			apply_mission_result(map_id, side_ok, no_downs, boss, NightShift.active)
+			apply_mission_result(map_id, side_ok, no_downs, boss, NightShift.active, time)
 		else:
-			_recv_mission.rpc_id(pid, map_id, side_ok, no_downs, boss, NightShift.active)
+			_recv_mission.rpc_id(pid, map_id, side_ok, no_downs, boss, NightShift.active, time)
 
 @rpc("authority", "call_remote", "reliable")
 func _recv_xp(amount: int, reason: String) -> void:
@@ -294,8 +337,8 @@ static func bestiary_ids() -> Array:
 	return out
 
 @rpc("authority", "call_remote", "reliable")
-func _recv_mission(map_id: String, side_ok: bool, no_downs: bool, boss: bool, night: bool) -> void:
-	apply_mission_result(map_id, side_ok, no_downs, boss, night)
+func _recv_mission(map_id: String, side_ok: bool, no_downs: bool, boss: bool, night: bool, time := 0.0) -> void:
+	apply_mission_result(map_id, side_ok, no_downs, boss, night, clampf(time, 0.0, 36000.0))
 
 # ---------------------------------------------------------------- perki
 
@@ -614,6 +657,7 @@ func save_to(path: String) -> void:
 	cfg.set_value("profile", "mastery", mastery)
 	cfg.set_value("profile", "history", history)
 	cfg.set_value("profile", "range_best", range_best)
+	cfg.set_value("profile", "map_best", map_best)
 	cfg.set_value("profile", "bestiary", bestiary)
 	if not _seen_baseline:
 		cfg.set_value("profile", "seen", seen.keys())
@@ -676,6 +720,11 @@ func load_from(path: String) -> void:
 	for k in rb_in:
 		if float(rb_in[k]) > 0.0:
 			range_best[String(k)] = float(rb_in[k])
+	map_best = {}
+	var mb_in := cfg.get_value("profile", "map_best", {}) as Dictionary
+	for k in mb_in:
+		if mb_in[k] is Dictionary and float((mb_in[k] as Dictionary).get("time", 0.0)) > 0.0:
+			map_best[String(k)] = {"time": float((mb_in[k] as Dictionary)["time"])}
 	bestiary = {}
 	if cfg.has_section_key("profile", "bestiary"):
 		var bs_in := cfg.get_value("profile", "bestiary", {}) as Dictionary
@@ -723,6 +772,10 @@ func reset_for_test() -> void:
 	mastery = {}
 	history = {}
 	range_best = {}
+	map_best = {}
+	last_record = {}
+	result_ms = 0
+	_snap_valid = false
 	bestiary = {}
 	seen = {}
 	_seen_baseline = false

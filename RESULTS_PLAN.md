@@ -5,6 +5,9 @@ pokazać awans i wyróżnienia drużyny — a nie wyświetlać naraz jedenaście
 z akcji, pieczątki, taśma), bez cukierkowych gwiazdek i fajerwerków. Mockup do oceny (odtwarzana sekwencja, przełączniki solo / drużyna,
 awans, cichy cel, „Ogranicz efekty”): https://claude.ai/artifact/T5HGFeYtam9e5o4nCCuFLt (prywatny — udostępnia autor).
 
+**Stan (2026-10-30):** P0, P1 i P2 wdrożone razem w 1.7.436 (gałąź `feat/results-report`) z decyzjami z §12 według rekomendacji.
+Różnice wobec projektu i to, czego nie zrobiono — §14.
+
 Zakres zgodny z GDD §16.0a: zmienia się prezentacja istniejących danych (misja, złom, XP, wyróżnienia). Nowe dane są dwie: rekord czasu mapy
 w profilu postaci (P1) i przebieg misji (P2). Nie ma nowej waluty, stanowiska ani warstwy warsztatu.
 
@@ -217,7 +220,7 @@ przed scaleniem (jak w AUDIO_PLAN.md).
 - HUD tylko pokazuje / chowa `ResultScreen` i ukrywa karty rozgrywki, gdy raport jest widoczny.
 - Nocny Dyżur i boss to warianty modelu, nie osobne ekrany.
 
-## 11. Etapy wdrożenia (każdy to osobny PR z `config/version` + `CHANGELOG.md` i zrzutami przed / po)
+## 11. Etapy wdrożenia (zamiast trzech PR-ów — jeden, 1.7.436, na prośbę o wdrożenie całości)
 
 ### P0 — raport z sekwencją (dane, które już są)
 - `result_screen.gd` z modelem, sekwencją i układem A–F; pieczątki celów z nagrodami; liczniki złomu i XP; awans z linią „Odblokowano”;
@@ -249,12 +252,12 @@ przed scaleniem (jak w AUDIO_PLAN.md).
 - Awans kolegów na ich kartach (§5).
 - Opcjonalnie: powolne oddalenie kamery 3D nad miejscem ekstrakcji w czasie raportu (`view3d.gd`, wyłączone przy „Ogranicz efekty”).
 
-## 12. Decyzje do podjęcia przed P0
-1. **Pad**: A = kryjówka / gotowy, Y = od razu następna misja (propozycja) — czy zostawić dzisiejsze BACK / B?
-2. **Gotowość**: tylko informacja dla hosta (propozycja) czy host czeka, aż wszyscy będą gotowi?
-3. **Rekordy**: per postać (propozycja, pasuje do PROFILES_PLAN) czy per drużyna (zapis hosta)? Czy nowa kampania kasuje rekordy?
-4. **Materiał panelu**: ciemny panel z pieczątkami (mockup) czy pełny papier raportu (`NotePaper`, jak notatki w świecie)?
-5. **HUD rozgrywki** chowany na czas raportu (propozycja) — czy zostawić np. licznik złomu w rogu?
+## 12. Decyzje (rozstrzygnięte 2026-10-30: według rekomendacji)
+1. **Pad**: A = kryjówka / gotowy, Y = od razu następna misja. Stare `restart` (Enter / pad BACK) działa dalej jako „dalej”.
+2. **Gotowość**: tylko informacja dla hosta — host decyduje sam, widzi „N / M gotowych”.
+3. **Rekordy**: per postać (`Profile.map_best` w `profile.cfg` postaci); nowa kampania ich nie kasuje (kasuje je tylko reset postaci).
+4. **Materiał panelu**: ciemny panel z pieczątkami (jak w mockupie).
+5. **HUD rozgrywki** gaśnie na czas raportu w całości (także komunikaty); wraca po zmianie mapy.
 
 ## 13. Ryzyka
 - Za długa sekwencja męczy przy szybkim „od razu następna misja” — dlatego pominięcie jednym naciśnięciem i ≤ 5,5 s; po playteście
@@ -262,3 +265,21 @@ przed scaleniem (jak w AUDIO_PLAN.md).
 - Dane od serwera dochodzą w różnych chwilach — sekwencja nie może zależeć od kolejności RPC (bramki z limitem czasu, test 6).
 - Polski tekst w pieczątkach — stała szerokość + test mieszczenia, skróty uzgodnione w `ui.csv`.
 - Dźwięki pieczątek łatwo przesadzić — głośność i wysokość w jednej tablicy, odsłuch przed scaleniem.
+
+## 14. Wdrożenie 1.7.436 — co inaczej niż w projekcie
+- **Każdy człowiek ma kartę.** Serwer zakłada wpis `player_stats` każdemu człowiekowi przy sukcesie — wcześniej gracz bez zabójstw i hałasu
+  nie trafiał do tabeli, a serwer odrzucałby jego gotowość i poziom.
+- **Bez znaku ✓ w liczbach.** IBM Plex Mono nie ma tego znaku (rysował „√”), więc stan celu niosą pieczątka (ZALICZONE / STRACONE),
+  kolor ramki i szary kolor wartości; „GOTOWY” też bez ptaszka.
+- **Rozmiary.** HUD rysuje w ok. 0,48 (UI_SCALE × NORMAL), więc raport ma własny mnożnik krojów (`FS` = 1,4) i panel 880 jednostek —
+  ok. 2/3 szerokości ekranu; przy skali UI LARGE panel się pomniejsza, żeby zmieścić się w pionie.
+- **Mieszczenie** sprawdza `--resulttest` dla trzech skal UI (SMALL / NORMAL / LARGE) zamiast rozdzielczości — logiczny ekran gry ma zawsze
+  640×360 (stretch `canvas_items`), więc rozdzielczość okna nie zmienia układu.
+- **Dźwięki** `ui_stamp`, `ui_tick`, `ui_type`, `ui_levelup` z `tools/bake_sfx.py` (synteza; wersji z nagrań brak). Odsłuch A/B — do zrobienia.
+- **Przebieg misji**: serwer zapisuje cel, skrytkę, przebudzenie Stalkera, start walki z bossem, upadki i podniesienia ludzi, ucieczki
+  o włos, wabiki i otwarcie ewakuacji (najwyżej 64 zdarzenia na próbę); taśma rozwija się razem z kartami drużyny.
+- **Awans kolegów**: każdy peer po własnym wyniku XP zgłasza serwerowi poziom przed i po (`mission.report_level`, walidacja zakresu),
+  serwer rozsyła — karta kolegi dostaje pieczątkę „AWANS → n”.
+- **Nie zrobione:** oddalenie kamery 3D w czasie raportu (opcja z P2) i pomiar w dzienniku czasu od SUCCESS do akcji hosta (§13).
+- Testy: `--resulttest` (62 sprawdzenia), `tools/test_net_session.sh` sekcja „raport po akcji” (`--resultnet=N`), zrzuty
+  `--shotresult`, `--shotresult4`, `--shotresultt=S`.

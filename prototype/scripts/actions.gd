@@ -83,6 +83,10 @@ const DEFS := {
 	"menu_details": {"keys": [KEY_V], "pad": [JOY_BUTTON_BACK], "menu": true},        # ława: pełna karta konfiguracji
 	"menu_scroll_up": {"keys": [KEY_PAGEUP], "axis": [[JOY_AXIS_RIGHT_Y, -1.0]], "menu": true},
 	"menu_scroll_down": {"keys": [KEY_PAGEDOWN], "axis": [[JOY_AXIS_RIGHT_Y, 1.0]], "menu": true},
+	# raport po akcji (result_screen.gd, RESULTS_PLAN.md): pierwsze naciśnięcie pomija sekwencję, drugie — kryjówka / gotowy albo od razu
+	# następna misja. „Następna misja” na Y, nie na B (B w menu znaczy „wstecz”, a tu to akcja nieodwracalna). Kontekst „result” (bindings_policy).
+	"result_continue": {"keys": [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE], "pad": [JOY_BUTTON_A]},
+	"result_next": {"keys": [KEY_E], "pad": [JOY_BUTTON_Y]},
 }
 
 ## Akcje, które gracz może przypisywać, w kolejności ekranu CONTROLS: id → etykieta. (Celowanie prawym drążkiem i akcje

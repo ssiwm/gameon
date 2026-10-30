@@ -28,6 +28,7 @@ godot --headless --path prototype --import                      # po zmianach za
 godot --headless --path prototype -- --maptest --autoquit=4     # mapy (~6 s), ma wypisać PASS
 godot --headless --path prototype -- --host --stalkertest --autoquit=70   # Stalker: ostrzał, teren, po ciosie, unik bota przed zamachem (~50 s), ma wypisać PASS
 godot --headless --path prototype -- --host --funtest --autoquit=100     # FUN_PLAN.md P0–P2: ucieczka o włos, wabik, wyróżnienia, limit hałasu wrogów, oddech, śrut na pancerz, skrzynia mocy, cichy cel, sejf, punkt kontrolny bossa (z łupem i baterią), obrażenia Żyły (wybuch, śrut), następna misja bez kryjówki (~45 s), ma wypisać PASS
+godot --headless --path prototype -- --host --mission=z1_m1 --resulttest --autoquit=60   # raport po akcji (RESULTS_PLAN.md): model i warianty misji, rozbicie złomu i XP, awanse, drużyna i gotowość, rekordy mapy, sekwencja i pominięcie, „Reduce Effects”, spóźnione XP, mieszczenie (EN/PL, skale UI, 1–4 graczy), blokada wejścia, następna misja (~15 s), ma wypisać PASS
 godot --headless --path prototype -- --host --bottest --autoquit=40      # bot za plecami dowódcy (marsz w obie strony, krótki i długi obrót), linia ognia, skradanie, podnoszenie dopiero po wylądowaniu, zejście ze znacznika plucia Żyły (~20 s), ma wypisać PASS
 godot --headless --path prototype -- --host --mission=z1_b1 --leechtest --autoquit=120   # boss B1: obrażenia, zasadzka, QTE, odpoczynek od brzegu, fazy, poziomy trudności, stan bossa w dzienniku, śmierć → ekstrakcja → sukces (~40 s), ma wypisać PASS (0 błędów)
 godot --headless --path prototype -- --host --nobot --mission=z1_m2 --nobottest --autoquit=60   # bez AI towarzysza: brak bota, drezyna solo, upadek → wykrwawienie, drugi → wipe (~20 s), ma wypisać PASS
@@ -45,7 +46,7 @@ godot --headless --path prototype -- --uifittest                # menu pauzy (us
 godot --headless --path prototype -- --host --rangetest --autoquit=60   # strzelnica FPP: drzwi, opcje widoku z oczu, akcje „range”, blachy, bronie specjalne, papier, wózek, co-op, przyrządy z modelu, ćwiczenie z przeładowaniem, rekordy osobiste, porównanie grup, szafa z bronią, podrzut, amunicja ćwiczebna, oparcie, tablica drużyny (serwer), wyjście (~30 s), ma wypisać PASS
 prototype/tools/test_weapons.sh                                 # bronie + sieć (~3 min)
 prototype/tools/test_cabinets.sh                                # gabloty: otwieranie [E] / [H], Esc, rzędy, blokady, zamiana, sieć (~1 min)
-prototype/tools/test_net_session.sh                             # sesja sieciowa: inna wersja, utrata hosta, czterech ludzi P1–P4, wyjście z sesji w kryjówce bez błędów peera, kryptonimy (powtórka „(2)”, czyszczenie), host bez bota (~1 min)
+prototype/tools/test_net_session.sh                             # sesja sieciowa: inna wersja, utrata hosta, czterech ludzi P1–P4, wyjście z sesji w kryjówce bez błędów peera, kryptonimy (powtórka „(2)”, czyszczenie), host bez bota, raport po akcji (gotowość klienta, poziomy, złom) (~1 min)
 ```
 
 CI (`.github/workflows/tests.yml`) odpala te testy na każdym PR.

@@ -80,6 +80,15 @@ var player_stats := {}
 ## (FUN_PLAN.md P0.4); log_start zapisuje i czyści.
 var start_via := ""
 var stalker_woke := false      ## Stalker obudził się w tej próbie (serwer; replikowane z player_stats — wyróżnienie GHOST w pojedynkę)
+## Raport po akcji (RESULTS_PLAN.md, result_screen.gd). Serwer liczy przy sukcesie i wysyła razem ze statystykami (`_recv_stats`):
+## {"gain": złom do banku, "bonus": [[id premii, złom]], "finds": {"parts": [id części], "samples": n, "trophy": bool},
+##  "timeline": [[s, rodzaj, gracz]]}. Pusty = raport jeszcze nie dostał danych.
+var result_info := {}
+var result_ready := {}         ## peer id → true: gracz przeczytał raport i czeka (informacja dla hosta — decyduje i tak host)
+var result_levels := {}        ## peer id → [poziom przed, poziom po] z misji — awans kolegi na jego karcie w raporcie
+## Przebieg próby (serwer): [[czas misji, rodzaj, gracz (display_id, 0 = brak)]] — taśma w raporcie. Rodzaje: result_screen.MARKS.
+var timeline: Array = []
+const TIMELINE_MAX := 64
 ## Nocny Dyżur (night_shift.gd): suma z ukończonych misji serii
 var shift_cleared := 0
 var shift_time := 0.0
@@ -132,6 +141,9 @@ func rebind() -> void:
 	_checkpoint.clear()
 	_tags_taken = 0
 	stashes_found = 0
+	_clear_report()
+	if kind != "hub":
+		Profile.begin_mission()                    # migawka wprawy i bestiariusza: raport pokaże, co przybyło w tej misji
 	if _boss != null and not _boss.died.is_connected(_on_boss_died):
 		_boss.died.connect(_on_boss_died)
 	# cele są w scenie (ta sama ścieżka na każdym peerze)
@@ -181,6 +193,8 @@ func _physics_process(delta: float) -> void:
 	_track_downs()
 	_peak_all = maxf(_peak_all, NoiseMgr.level)
 	if NoiseMgr.stalker_awake and _live():
+		if not stalker_woke:
+			mark("woke")
 		stalker_woke = true
 	if phase != _logged_phase:
 		_logged_phase = phase
@@ -345,6 +359,7 @@ func _start_boss() -> void:
 	phase = Phase.BOSS
 	NoiseMgr.objective_bonus()
 	_boss.awaken()
+	mark("boss")
 	if kind != "boss":
 		_save_checkpoint()
 	print("[MISSION] gniazda zniszczone -> Żyła")
@@ -414,6 +429,7 @@ func _open_extraction(q_bonus: bool = true) -> void:
 	if q_bonus:
 		NoiseMgr.objective_bonus()
 	print("[MISSION] objective complete -> extraction at %s" % exit_pos)
+	mark("extract")
 	for c in get_tree().get_nodes_in_group("handcar"):
 		c.activate()                 # misja 1.2: zasilanie drezyny — ucieczka podziemnym torem
 	_event.rpc("objective")
@@ -442,8 +458,11 @@ func _success() -> void:
 	extract_progress = 1.0
 	print("[MISSION] SUCCESS time=%.1fs downs=%d attempts=%d" % [elapsed, downs, attempts])
 	log_end("success")
+	var finds := {"parts": Scrap.found.keys(), "samples": Scrap.samples_loot + (Scrap.SAMPLE_SIDE if side_done() else 0), "trophy": false}
 	if kind != "hub" and Scrap.enabled():
 		var bonus := scrap_bonus()
+		var lv0 := get_tree().get_first_node_in_group("level")
+		finds["trophy"] = kind == "boss" and lv0 != null and not Scrap.trophies.has(String(lv0.map_id))
 		if side_done():
 			Scrap.add_samples(Scrap.SAMPLE_SIDE)                  # cel poboczny: próbka do pracowni (W6a)
 		var gain := Scrap.bank_loot(bonus)
@@ -455,8 +474,9 @@ func _success() -> void:
 				Scrap.add_trophy(String(cl.map_id))        # pokonany boss odblokowuje broń-trofeum w warsztacie (SPECTER-1)
 	_record_result()
 	if kind != "hub":
+		result_info = {"gain": Scrap.last_gain if Scrap.enabled() else 0, "bonus": bonus_rows(), "finds": finds, "timeline": timeline.duplicate(true)}
 		var xl := get_tree().get_first_node_in_group("level")
-		Profile.server_award_mission(String(xl.map_id) if xl != null else "", side_done(), downs == 0, kind == "boss")      # XP profili ludzi
+		Profile.server_award_mission(String(xl.map_id) if xl != null else "", side_done(), downs == 0, kind == "boss", elapsed)      # XP profili ludzi
 	if NightShift.active:
 		shift_cleared += 1
 		shift_time += elapsed
@@ -469,6 +489,9 @@ func _success() -> void:
 		if not e.is_in_group("nests") and not e.is_in_group("boss") and e.has_method("reset_enemy"):
 			e.reset_enemy()
 	NoiseMgr.calm()
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and not p.is_queued_for_deletion():
+			_stat(p)                                  # raport: karta dla każdego człowieka, także bez zabójstw i hałasu
 	_send_stats()
 	_event.rpc("success")
 	_broadcast()
@@ -507,6 +530,8 @@ func _track_downs() -> void:
 
 func _log_down(p: Node2D) -> void:
 	_down_at[p.name] = [elapsed, p.global_position]
+	if not p.is_bot:
+		mark("down", p)
 	var w := int(p.weapon)
 	SessionLog.event("down", {"who": "P%d" % int(p.display_id), "bot": bool(p.is_bot),
 		"source": String(p.last_hit_source) if String(p.last_hit_source) != "" else "unknown", "noise": roundi(NoiseMgr.level),
@@ -544,6 +569,8 @@ func _log_up(p: Node2D) -> void:
 	else:
 		who["after"] = snappedf(elapsed - float(d[0]), 0.1)
 		SessionLog.event("revive", who)
+		if not p.is_bot:
+			mark("revive", p)
 
 ## Próbka pozycji wszystkich graczy (ludzie i boty) — z niej mapy cieplne czasu i tras (MAPS_PLAN.md P1).
 func _log_positions() -> void:
@@ -560,6 +587,7 @@ func _log_positions() -> void:
 
 ## Zaliczony cel `what` (n-ty z `of`) w punkcie `at`; `by` = gracz, który go zebrał (nieśmiertelnik, skrytka), jeśli wiadomo (MAPS_PLAN.md P2).
 func _log_objective(what: String, n: int, of: int, at: Vector2, by: Node2D = null) -> void:
+	mark("stash" if what == "stash" else "objective", by)
 	var row := {"what": what, "n": n, "of": of, "pos": SessionLog.xy(at if at != Vector2.ZERO or by == null else by.global_position)}
 	if by != null:
 		row["who"] = "P%d" % int(by.display_id)
@@ -641,6 +669,17 @@ func scrap_bonus() -> int:
 	return Scrap.BONUS_CLEAR + (Scrap.BONUS_SIDE if side_done() else 0) + (Scrap.BONUS_NO_DOWNS if downs == 0 else 0) \
 		+ (Scrap.BONUS_SILENT if silent_ok() else 0)
 
+## Premie złomu za tę misję z podziałem (raport po akcji): [[id, złom]] — suma = scrap_bonus().
+func bonus_rows() -> Array:
+	var out: Array = [["clear", Scrap.BONUS_CLEAR]]
+	if side_done():
+		out.append(["side", Scrap.BONUS_SIDE])
+	if downs == 0:
+		out.append(["no_downs", Scrap.BONUS_NO_DOWNS])
+	if silent_ok():
+		out.append(["silent", Scrap.BONUS_SILENT])
+	return out
+
 func _stat(p: Node) -> Dictionary:
 	var id := int(p.player_id)
 	if not player_stats.has(id):
@@ -654,11 +693,13 @@ func _live() -> bool:
 func note_escape(p: Node) -> void:
 	if NoiseMgr.is_server() and kind != "hub" and _live() and not p.is_bot:
 		_stat(p)["escapes"] += 1
+		mark("escape", p)
 
 ## Serwer: udane Q (nie „zwietrzałe”) — wyróżnienie BAIT (FUN_PLAN.md P0.5).
 func _on_lure_used(by: Node) -> void:
 	if by != null and is_instance_valid(by) and not by.is_bot and kind != "hub" and _live():
 		_stat(by)["lures"] += 1
+		mark("lure", by)
 
 ## Hałas, który gracz robi sam (strzały, bieg, przeładowania, latarka, krzyk) — wyróżnienie GHOST. Serwer dostaje tylko pozycję zdarzenia,
 ## więc przypisujemy je najbliższej postaci (zgłasza je z własnej pozycji); hałas bota nie idzie na konto nikogo.
@@ -679,7 +720,7 @@ func _on_noise_added(amount: float, pos: Vector2, tag: String) -> void:
 		_stat(best)["noise"] = float(_stat(best)["noise"]) + amount
 
 ## Wyróżnienia na karcie wyniku (FUN_PLAN.md P0.5) z `player_stats` — statycznie, więc każdy peer liczy to samo z replikowanych liczb.
-## `stalker_woke`: czy Stalker obudził się w tej misji (GHOST w pojedynkę). Zwraca [[id, nazwa gracza, wartość]] w stałej kolejności.
+## `stalker_woke`: czy Stalker obudził się w tej misji (GHOST w pojedynkę). Zwraca [[id, nazwa gracza, wartość, peer id]] w stałej kolejności.
 const AWARDS := ["ghost", "medic", "bait", "close_shave", "butcher"]
 const AWARD_TITLES := {"ghost": "GHOST", "medic": "MEDIC", "bait": "BAIT", "close_shave": "CLOSE SHAVE", "butcher": "BUTCHER"}
 const AWARD_NOTES := {"ghost": "the quietest", "medic": "revives", "bait": "lures that worked", "close_shave": "Stalker misses", "butcher": "kills"}
@@ -717,7 +758,7 @@ static func awards(stats: Dictionary, stalker_woke := true) -> Array:
 					continue
 		elif best_id == null or best < 1.0:
 			continue
-		out.append([a, String((stats[best_id] as Dictionary).get("call", (stats[best_id] as Dictionary).get("name", "?"))), best])
+		out.append([a, String((stats[best_id] as Dictionary).get("call", (stats[best_id] as Dictionary).get("name", "?"))), best, int(best_id)])
 	return out
 
 ## Serwer: zabójstwo przez człowieka (woła Profile.server_award_kill).
@@ -734,12 +775,74 @@ func _send_stats() -> void:
 		if player_stats.has(int(p.player_id)) and not p.is_bot:
 			player_stats[int(p.player_id)]["call"] = p.label()      # kryptonim klienta dochodzi replikacją chwilę po starcie misji
 	if NoiseMgr.has_network():
-		_recv_stats.rpc(player_stats, stalker_woke)
+		_recv_stats.rpc(player_stats, stalker_woke, result_info)
 
 @rpc("authority", "call_local", "reliable")
-func _recv_stats(stats: Dictionary, woke := true) -> void:
+func _recv_stats(stats: Dictionary, woke := true, info := {}) -> void:
 	player_stats = stats
 	stalker_woke = woke
+	result_info = info
+
+# ---------------------------------------------------------------- raport po akcji (RESULTS_PLAN.md)
+
+## Serwer: zdarzenie na taśmie przebiegu (tylko w trakcie próby, najwyżej TIMELINE_MAX).
+func mark(what: String, who: Node = null) -> void:
+	if not NoiseMgr.is_server() or kind == "hub" or not _live() or timeline.size() >= TIMELINE_MAX:
+		return
+	timeline.append([snappedf(elapsed, 0.1), what, int(who.display_id) if who != null and is_instance_valid(who) else 0])
+
+func _is_human(pid: int) -> bool:
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and int(p.player_id) == pid:
+			return true
+	return false
+
+func _clear_report() -> void:
+	result_info = {}
+	result_ready = {}
+	result_levels = {}
+	timeline = []
+
+## Gracz zamyka raport („gotowy”). Klient zgłasza to serwerowi; host decyduje sam, więc u niego to nic nie zmienia.
+func send_ready() -> void:
+	if not NoiseMgr.has_network() or multiplayer.is_server():
+		return
+	_server_ready.rpc_id(1)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _server_ready() -> void:
+	var pid := multiplayer.get_remote_sender_id()
+	if not NoiseMgr.is_server() or (phase != Phase.SUCCESS and phase != Phase.FAILED) or not _is_human(pid):
+		return
+	result_ready[pid] = true
+	_recv_ready.rpc(result_ready)
+
+@rpc("authority", "call_local", "reliable")
+func _recv_ready(ready: Dictionary) -> void:
+	result_ready = ready
+
+## Poziom gracza przed i po misji (Profile.apply_mission_result, każdy peer o sobie) — karta kolegi w raporcie pokazuje awans.
+func report_level(from_lv: int, to_lv: int) -> void:
+	if not NoiseMgr.has_network() or multiplayer.is_server():
+		_store_level(NoiseMgr.local_id(), from_lv, to_lv)
+	else:
+		_server_level.rpc_id(1, from_lv, to_lv)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _server_level(from_lv: int, to_lv: int) -> void:
+	if NoiseMgr.is_server():
+		_store_level(multiplayer.get_remote_sender_id(), from_lv, to_lv)
+
+func _store_level(pid: int, from_lv: int, to_lv: int) -> void:
+	if phase != Phase.SUCCESS or not _is_human(pid) or from_lv < 0 or to_lv < from_lv or to_lv > 99:
+		return
+	result_levels[pid] = [from_lv, to_lv]
+	if NoiseMgr.has_network():
+		_recv_levels.rpc(result_levels)
+
+@rpc("authority", "call_remote", "reliable")
+func _recv_levels(levels: Dictionary) -> void:
+	result_levels = levels
 
 func _humans_centroid() -> Vector2:
 	var sum := Vector2.ZERO
@@ -818,6 +921,7 @@ func on_restart(new_run: bool) -> void:
 	# cele wróciły (reset_enemy / reset_generator) — liczymy od nowa
 	peak_noise = 0.0
 	_silent_lost_sent = false
+	_clear_report()
 	_count_goal()
 	goal_left = goal_total
 	log_start()
