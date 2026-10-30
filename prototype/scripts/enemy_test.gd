@@ -54,6 +54,7 @@ func run(m: Node2D) -> void:
 	await _test_target_weights()
 	await _test_hear_error()
 	await _test_pack_shout()
+	await _test_pack_morale()
 	await _test_windup_interrupt()
 	await _test_director()
 	await _test_pincer()
@@ -681,7 +682,7 @@ func _test_priest() -> void:
 	# śmierć: Trzoski w pobliżu tracą morale, leczenie ustaje
 	var fear0: float = whole._beh.fear
 	k._beh.on_death()
-	check("Kapłan/śmierć: Trzosek w pobliżu traci morale (+0,34), daleki nie", is_equal_approx(whole._beh.fear - fear0, 0.34) and far_t._beh.fear == 0.0, "%.2f / %.2f" % [whole._beh.fear, far_t._beh.fear])
+	check("Kapłan/śmierć: Trzosek w pobliżu traci morale (jak po śmierci kolegi), daleki nie", is_equal_approx(whole._beh.fear - fear0, whole._beh.FEAR_PER_DEATH) and far_t._beh.fear == 0.0, "%.2f / %.2f" % [whole._beh.fear, far_t._beh.fear])
 
 	# Dyrektor: elita w zestawie, limit jednej elity
 	var D := Director
@@ -1673,6 +1674,53 @@ func _test_pack_shout() -> void:
 	for n in [a, b, c, d, up, far, busy, minion, strip]:
 		n.queue_free()
 	await get_tree().physics_frame
+
+## Morale watahy w tempie zwykłej walki (zabójstwo co ~1–2 s): dwie zwykłe śmierci jej nie łamią, trzecia w ciągu ~3 s już tak; przewodnik i kolega
+## w ciągu 2 s rozbijają resztę, przy powolnym zabijaniu (co 3,5 s) strach zdąży opaść. Przewodnik = najstarszy żywy w watasze (najniższy instance id).
+## Przed 1.7.440 zanik 0,12/s pozwalał rozbić watahę tylko przy trzech śmierciach w 0,17 s.
+func _test_pack_morale() -> void:
+	var at := Vector2(FAR_X + 24000.0, -11500.0)
+	var pack: Array = []
+	for i in 4:
+		var t := _spawn("trzosek", at + Vector2(i * 30.0, 0.0))
+		_idle_ally(t)
+		pack.append(t)
+	var kill := func(t: Node) -> void:
+		t._beh.on_death()
+		t.alive = false
+	var wait := func(s: float) -> void:
+		for t in pack:
+			if t.alive: t._beh.tick_prelude(s)
+	# zwykłe śmierci od najmłodszego (nigdy przewodnik), co 1,5 s
+	kill.call(pack[3])
+	wait.call(1.5)
+	kill.call(pack[2])
+	check("wataha/morale: dwie zwykłe śmierci w 1,5 s jeszcze nie łamią watahy", pack[0]._panic == 0.0 and pack[1]._panic == 0.0 and pack[0]._beh.fear > 0.6, "strach %.2f" % pack[0]._beh.fear)
+	wait.call(1.5)
+	kill.call(pack[1])
+	check("wataha/morale: trzecia śmierć 1,5 s później — ostatni ucieka (panika)", pack[0]._panic > 0.0 and pack[0]._beh.fear == 0.0, "panika %.2f" % pack[0]._panic)
+	for t in pack:
+		t.queue_free()
+	await get_tree().physics_frame
+
+	# przewodnik + kolega
+	for gap in [2.0, 3.5]:
+		pack.clear()
+		for i in 4:
+			var t := _spawn("trzosek", at + Vector2(i * 30.0, 0.0))
+			_idle_ally(t)
+			pack.append(t)
+		kill.call(pack[0])                                  # przewodnik (najstarszy)
+		wait.call(gap)
+		kill.call(pack[3])                                  # zwykły kolega
+		var broke: bool = pack[1]._panic > 0.0 and pack[2]._panic > 0.0
+		if gap < 3.0:
+			check("wataha/morale: przewodnik i kolega w ciągu 2 s rozbijają resztę", broke, "strach %.2f / %.2f" % [pack[1]._beh.fear, pack[2]._beh.fear])
+		else:
+			check("wataha/morale: przewodnik i kolega co 3,5 s — strach zdążył opaść, wataha walczy", not broke and pack[1]._beh.fear > 0.9, "strach %.2f" % pack[1]._beh.fear)
+		for t in pack:
+			t.queue_free()
+		await get_tree().physics_frame
 
 # ---------------------------------------------------------------- uczciwe zapowiedzi (ENEMY_PLAN.md F3.6)
 

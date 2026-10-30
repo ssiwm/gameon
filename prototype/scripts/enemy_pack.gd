@@ -10,9 +10,12 @@ const PACK_R := 220.0
 const SHARE_RADIUS := 220.0          ## px w poziomie: tyle słyszą krzyk kolegi, który zauważył gracza (F3.4a)
 const SHARE_DY := 40.0               ## px w pionie: kolega z innego piętra go nie słyszy
 const SHARE_COOLDOWN := 3.0          ## s: ten sam wróg daje znać najwyżej raz na tyle
-const FEAR_PER_DEATH := 0.34
-const FEAR_ALPHA := 0.7              ## śmierć przewodnika (najstarszy w watasze) łamie morale mocniej
-const FEAR_DECAY := 0.12             ## /s
+## Morale (1.7.440): przy dawnych 0,34 / 0,7 i zaniku 0,12/s wataha pękała tylko, gdy trzy śmierci zmieściły się w 0,17 s (przewodnik i kolega
+## w 0,33 s) — czyli praktycznie tylko od granatu. Teraz pęka przy przewodniku i koledze w ciągu 3 s albo przy trzech śmierciach w ciągu 4 s
+## (zwykła walka: zabójstwo co ~1–2 s), a dwie zwykłe śmierci jeszcze jej nie łamią.
+const FEAR_PER_DEATH := 0.4
+const FEAR_ALPHA := 0.75             ## śmierć przewodnika (najstarszy w watasze) łamie morale mocniej
+const FEAR_DECAY := 0.05             ## /s
 const PANIC_TIME := 2.4
 const STALKER_FEAR_R := 260.0
 
