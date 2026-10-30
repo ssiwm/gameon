@@ -245,7 +245,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 
 | Wróg | HP | Szybkość | Zachowanie | Kontra |
 |------|----|----------|------------|--------|
-| **Trzosek** | 30 | szybka | Wataha 3–6, biegnie wprost; po zauważeniu gracza staje na ok. 0,4 s (odwraca się, oczy żarzą się, cichy warkot) — czytelny sygnał „zauważył cię"; kto pierwszy zauważy gracza, daje znać kolegom z watahy w ok. 14 m, więc schodzą się razem | Ogień ciągły, maczeta; mocne ogłuszenie (strzelba, szyna, harpun) przerywa jego cios w zapowiedzi |
+| **Trzosek** | 30 | szybka | Wataha 3–6, biegnie wprost; po zauważeniu gracza staje na ok. 0,4 s (odwraca się, oczy żarzą się, cichy warkot) — czytelny sygnał „zauważył cię"; kto pierwszy zauważy gracza, daje znać kolegom z watahy w ok. 14 m, więc schodzą się razem; **morale:** śmierć przewodnika i kolegi w ciągu ok. 3 s albo trzech z watahy w ciągu ok. 4 s rozbija resztę (uciekają 2,4 s, potem wracają) | Ogień ciągły, maczeta; mocne ogłuszenie (strzelba, szyna, harpun) przerywa jego cios w zapowiedzi |
 | **Wołek** | 140 | wolna | Tankuje (pancerz 3 na trafienie; od 1.7.402 śrut traci go raz na cały strzał, nie na każdą śrucinę), potężny cios; szarża po poziomie, rzut skrzynią także w górę i w dół (do ok. 10 kafli różnicy poziomów); bez skrzyni w pobliżu rzuca **głazem** (0,5 HP — dwa trafienia = jedno serce, przerwa 8 / 5 / 3,2 s wg trudności) | Unik, strzelba w plecy |
 | **Skoczek** | 40 | skok | Spada z sufitu/wysokości | Ciągły ogień w górę, FALCON |
 | **Pijawka** | 15 | pełznie | Dopada, wysysa HP, QTE (30 s) | Maczeta, strzał w twarz kolegi? (friendly fire) |
