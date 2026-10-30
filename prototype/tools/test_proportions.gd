@@ -16,7 +16,7 @@ var _frames := 0
 ## przedmiot → [wymiar: "h" wysokość / "max" najdłuższy bok, górna granica w m]
 const LIMITS := {
 	"table": ["h", 1.25], "chair": ["h", 1.0], "stool": ["h", 0.7], "cot": ["max", 2.0], "workshop": ["h", 1.45], "locker": ["h", 1.95],
-	"shelf": ["h", 2.0], "radio_set": ["h", 1.25], "lamp": ["h", 0.55],
+	"shelf": ["h", 2.0], "radio_set": ["h", 1.25], "lamp": ["h", 0.55], "strongbox": ["h", 0.6], "strongbox_open": ["h", 1.1],
 	"frag": ["max", 0.25], "smoke": ["max", 0.35], "phos": ["max", 0.35], "flare": ["max", 0.55], "mine": ["max", 0.55], "ammo": ["max", 0.55],
 	"medkit": ["max", 0.75], "charge": ["max", 0.5], "defib": ["max", 0.6], "scanner": ["max", 0.6], "tag": ["max", 0.45], "padlock": ["max", 0.25],
 }
