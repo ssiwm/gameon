@@ -2,6 +2,8 @@ extends SceneTree
 ## Zrzut kontrolny Trzoska (czworonog) w dowolnej pozie — lekki renderer pojedynczego modelu,
 ## do kalibracji animacji bez uruchamiania pelnej gry. Wymaga GPU (bez --headless).
 ##   godot --path prototype --script res://tools/shot_trzosek.gd -- [--anim=idle|run|sleep|windup] [--flip] [--out=PLIK.png] [--wait=12]
+##       [--speed=PX_S] (prędkość biegu: chód / galop) [--vy=PX_S] (lot: − wznosi się, + opada) [--die] (śmierć od 1. klatki)
+##       [--hit=N] / [--attack=N] (trafienie / cios N klatek przed zrzutem; cios po pełnej zapowiedzi)
 const Enemy3D := preload("res://scripts/enemy3d.gd")
 var _frames := 0
 var _wait := 12
@@ -10,6 +12,11 @@ var _anim := "idle"
 var _flip := false
 var _e: Node3D
 var _dt := 1.0 / 60.0
+var _speed := NAN
+var _vy := 0.0
+var _die := false
+var _hit := -1
+var _attack := -1
 
 func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -17,6 +24,11 @@ func _initialize() -> void:
 		elif a.begins_with("--wait="): _wait = int(a.substr(7))
 		elif a.begins_with("--anim="): _anim = a.substr(7)
 		elif a == "--flip": _flip = true
+		elif a.begins_with("--speed="): _speed = float(a.substr(8))
+		elif a.begins_with("--vy="): _vy = float(a.substr(5))
+		elif a == "--die": _die = true
+		elif a.begins_with("--hit="): _hit = int(a.substr(6))
+		elif a.begins_with("--attack="): _attack = int(a.substr(9))
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
 	root.size = Vector2i(640, 640)
 	var bg := ColorRect.new()
@@ -53,7 +65,12 @@ func _initialize() -> void:
 func _process(_d: float) -> bool:
 	_frames += 1
 	if _e != null and is_instance_valid(_e):
-		_e.pose(_dt, _anim, _flip, Color.WHITE)
+		if _die and _frames == 1: _e.die()
+		if _hit >= 0 and _frames == _wait - _hit: _e.trigger("hit")
+		if _attack >= 0 and _frames == _wait - _attack: _e.trigger("attack")
+		var anim := _anim
+		if _attack >= 0 and _frames < _wait - _attack: anim = "windup"          # zapowiedź do chwili ciosu
+		_e.pose(_dt, anim, _flip, Color.WHITE, 0.0, 1, true, _vy, 0, false, _speed)
 	if _frames == _wait:
 		var img := root.get_texture().get_image()
 		var err := img.save_png(_out)

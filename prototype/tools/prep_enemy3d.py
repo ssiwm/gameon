@@ -6,7 +6,7 @@ Co robi: usuwa śmieciowe siatki (bez wag kości), scala geometryczne szwy UV, u
 zmniejsza tekstury do --tex px i eksportuje GLB. --surface-weights: przelicza wagi ciała po jego powierzchni; materiał 1 = tasak prawej dłoni (Rzeźnik).
 Wołek i Rzeźnik używają --hero: enemy_hero_mesh.py odtwarza powierzchnię, UV i PBR z pełnego źródła zamiast samej decymacji.
 Skala zostaje natywna (pozy w `enemy3d.gd` używają stałych z tego samego modelu, co wypiek 2D w `concept/monster_tripo_bake.py`); wysokość
-dopasowuje gra w czasie działania. --uvkeep: decymacja respektuje granice wysp UV (modele z TRELLIS-a; wymaga większej liczby trójkątów). --anim: zachowuje animację z pliku (Trzosek — „preset:quadruped:walk").
+dopasowuje gra w czasie działania. --uvkeep: decymacja respektuje granice wysp UV (modele z TRELLIS-a; wymaga większej liczby trójkątów). --anim: zachowuje animacje z pliku (Trzosek — klipy wilka Quaterniusa przeniesione `retarget_quad.py`).
 """
 import glob
 import math
@@ -37,7 +37,7 @@ KINDS = {
     "podsluchacz": ("podsluchacz_01_rig.glb", False, None, 6000, 1024),
     "stalker": ("stalker_01_rig.glb", False, None, 6000, 1024),
     "skoczek": ("skoczek_01_rig.glb", False, None, 6000, 1024),
-    "trzosek": ("trzosek_01_anims.glb", True, None, 6000, 1024),
+    "trzosek": ("trzosek_01_clips.glb", True, None, 6000, 1024),          # klipy wilka (retarget_quad.py) na rigu z Tripo
     "cma": ("cma_01.glb", False, -90.0, 6000, 1024),
     "nest": ("nest_01.glb", False, 0.0, 6000, 1024),
     "vein": ("vein_01.glb", False, -90.0, 14000, 2048),
