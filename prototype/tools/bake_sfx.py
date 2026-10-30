@@ -785,4 +785,27 @@ def build_ui() -> None:
     x = d.mix([(clunk, 1.0), (static / (d.peak(static) + 1e-9), .45), (tick(r, 1100, 1.5, 10, .003), .5, 1.06)], n)
     x = d.limiter(d.lp(x, 4500.0) / (d.peak(x) + 1e-9), -6.0)
     finalize("mission_start", d.reverb(x, ir("room"), wet=.15), lufs=-15.0, fade_out_ms=120)
+
+    # Raport po akcji (RESULTS_PLAN.md, result_screen.gd): biuro jednostki z 1987 — pieczątka, licznik, maszyna do pisania, awans.
+    # Mechanika i taśma, bez dzwoneczków i fanfar. Własne ziarno: `r` z oc_load / mission_start zostaje nietknięte.
+    rs = Rng(0xA0A7)
+    # Pieczątka: głuche uderzenie gumy w papier na drewnianym blacie (tytuł, cele, wyróżnienia)
+    body = thump(.12, 120, 58, .015, .045)
+    slap = d.filt(d.white(ms(60), rs), "bp", 1800.0, .9) * d.env_perc(ms(60), .0004, .012)
+    x = d.mix([(body, 1.0), (slap, .55), (tick(rs, 700, 1.2, 14, .004), .5)], ms(200))
+    finalize("ui_stamp", d.reverb(d.lp(x, 4200.0), ir("dead"), wet=.06), peak=-3.0)
+    # Licznik: klik mechanicznego licznika (złom, XP); wysokość zmienia gra
+    x = d.mix([(tick(rs, 2400, 1.8, 10, .0025), 1.0), (tick(rs, 5200, 2.2, 6, .0012), .35, .002)], ms(60))
+    finalize("ui_tick", x, peak=-6.0, trim=False)
+    # Maszyna do pisania: czcionka uderza w wałek (podpis raportu)
+    x = d.mix([(tick(rs, 1600, 1.4, 14, .003), 1.0), (thump(.03, 260, 140, .006, .008), .4), (tick(rs, 3800, 2.0, 8, .0015), .3, .012)], ms(60))
+    finalize("ui_type", d.reverb(x, ir("dead"), wet=.05), peak=-6.0)
+    # Awans: niski akord smyczków syntezatora z lat 80. z lekkim „wow” taśmy (g-moll), nie dzwonek
+    n = ms(1300)
+    t = np.arange(n) / SR
+    wow = 1.0 + .004 * np.sin(TAU * 0.9 * t)
+    chord = sum(a * d.osc("saw", f * wow, n) for f, a in [(98.0, 1.0), (146.83, .7), (196.0, .55), (233.08, .35)])
+    chord = d.sweep(chord, "lp", d.env_pts(n, [(0, 300), (.35, 1800), (1.3, 700)]), 1.0)
+    x = chord * d.env_pts(n, [(0, 0), (.08, 1), (.7, .7), (1.3, 0)])
+    finalize("ui_levelup", d.reverb(x, ir("room"), wet=.25), lufs=-16.0, fade_out_ms=200)
     bake_hybrid.ui()                                        # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)

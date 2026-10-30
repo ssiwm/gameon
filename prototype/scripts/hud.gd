@@ -16,7 +16,7 @@ extends Control
 ##   bottom-right gear as four 3D models: LURE (Q), FLARE (F), selected item (ALT), flashlight (L, battery line); count and key under each
 ##   centre      messages (message_view.gd): alerts, toasts, title card, tips; wipe
 ##   bottom      controls strip — only for beginners in the first seconds (TOAST_LEVEL_MAX), F1 toggles
-##   full screen damage vignette; result card after extraction
+##   full screen damage vignette; after-action report after extraction (result_screen.gd, RESULTS_PLAN.md) — the gameplay HUD fades out under it
 ## Adaptive music and the warning sting are driven from here (GDD §13).
 
 const WeaponInspect := preload("res://scripts/weapon_inspect.gd")
@@ -41,6 +41,7 @@ const Actions := preload("res://scripts/actions.gd")
 const Captions := preload("res://scripts/captions.gd")
 const W := preload("res://scripts/ui_widgets.gd")
 const HudIcon := preload("res://scripts/hud_icon.gd")
+const ResultScreen := preload("res://scripts/result_screen.gd")
 
 ## HUD o kolejne 30% mniejszy (0,8 → 0,56) po przebudowie na układ bez ramek; razem z mnożnikiem SMALL / NORMAL / LARGE (celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.56
@@ -418,13 +419,10 @@ var _dev_noise := -1.0
 var _dim: ColorRect                   ## ściemnienie HUD-u pod modalami (karta wyniku, warsztat)
 var _calm_t := 0.0                    ## sekundy spokoju (poziomy HUD: T2 / T3 wygaszane po 4 s)
 var _tier_k := 1.0                    ## 1 = pełny HUD, ~0.5 = wyciszony w spokoju
-var _stats_sig := -1                  ## podpis statystyk graczy w karcie wyniku
-var _result_players: GridContainer
-var _result_awards: VBoxContainer          ## wyróżnienia (Mission.awards, FUN_PLAN.md P0.5)
-var _xp_bar: Bar                      ## pasek poziomu na karcie wyniku (animowany: XP z misji „wlewa się” w poziom)
-var _xp_note: Label
-var _xp_anim := 0.0                   ## 0..1 postęp animacji
-var _xp_key := Vector2i(-1, -1)       ## (XP przed, XP po) — zmiana zaczyna animację od nowa
+var _report: Control                  ## raport po akcji (result_screen.gd): sekwencja odsłaniania wyniku misji
+var _game_nodes: Array = []           ## karty HUD-u rozgrywki — gasną pod raportem
+var _tier_nodes: Array = []           ## … z nich te, którym _drive_tiers co klatkę ustawia własną alfę
+var _hud_hidden := false
 var _captions := Captions.new()       ## napisy dla dźwięków (ustawienie „Sound captions”)
 var _cap_card: PanelContainer
 var _chat: Node                       ## węzeł Chat (main.gd; tworzony po HUD-zie, więc wiązany leniwie)
@@ -498,20 +496,13 @@ var _run_card: PanelContainer        ## karta RUN (prawy górny róg): trudnoś�
 var _run_xp_bar: Bar                  ## pasek XP w karcie RUN
 var _xp_txt: Label
 var _squad_info: Label               ## „HOST · 1/4 +1 AI” w nagłówku karty drużyny
-var _result_xp_val: Label
 var _prompt_card: PanelContainer
 var _prompt: RichTextLabel             ## pasek akcji: tekst z klawiszami jako klawisze (UiTheme.keycaps)
 var _prompt_bar: Bar
 var _controls: Label
 var _controls_range := false            ## pasek sterowania pokazuje ściągę strzelnicy (kontekst „range”)
 var _f1: Label
-var _result: PanelContainer
 var _hints := Hints.new()
-var _result_stats: GridContainer
-var _result_prompt: Label
-var _result_title: Label
-var _result_sub: Label
-var _result_box: StyleBoxFlat
 var _inspect: Control                   ## oględziny broni ([H], gablota też [E]): rozmyte tło, model 3D i statystyki — weapon_inspect.gd
 var _noise_card: PanelContainer      ## karta hałasu (w kryjówce zastępuje ją znacznik SAFE)
 var _safe_chip: Control
@@ -521,7 +512,6 @@ var _brief: Dictionary = {}               ## karta odprawy przy tablicy w kryjó
 var _radio: Dictionary = {}               ## karta prognozy pogody przy radiostacji w kryjówce
 var _radio_key := ""
 var _brief_id := ""
-var _demo_footer: Control = null     ## stopka dema na ekranie wyniku — tylko na końcu kampanii / serii
 
 
 func _ready() -> void:
@@ -542,7 +532,6 @@ func _ready() -> void:
 	_build_controls()
 	_build_captions()
 	_build_chat()
-	_build_result()
 	_build_dim()
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shotnoise="):
@@ -556,6 +545,7 @@ func _ready() -> void:
 	var wsp := WorkshopUi.new()
 	wsp.z_index = 11                                           # nad ściemnieniem (_dim, z_index 10)
 	add_child(wsp)
+	_build_result()                                            # po wszystkich kartach: lista _game_nodes to to, co było przed raportem
 	get_viewport().size_changed.connect(_fit)
 	Settings.changed.connect(_apply_scale)
 	_fit()
@@ -1177,7 +1167,6 @@ func _build_dim() -> void:
 	_dim.z_index = 10
 	_dim.visible = false
 	add_child(_dim)
-	_result.z_index = 11
 
 ## Czat drużyny (chat.gd): log nad kartą drużyny i pole wpisywania pod klawiszem T (Enter wysyła, Esc anuluje). Na czas pisania
 ## akcje gry są wycięte (Settings.block_game_input), więc klawisze nie ruszają postaci.
@@ -1247,7 +1236,7 @@ func _drive_chat(delta: float) -> void:
 	_chat_edit.position = Vector2(MARGIN, base_y - 20.0)
 	_chat_log.reset_size()
 	_chat_log.position = Vector2(MARGIN, base_y - _chat_log.size.y - (22.0 if _chat_edit.visible else 0.0))
-	_chat_log.visible = not _result.visible
+	_chat_log.visible = not _report.visible
 
 ## Poziomy HUD: T1 (zdrowie, amunicja, wskaźnik hałasu) zawsze w pełni; T2 (karta celu) i T3 (zegar, XP, sesja, sterowanie)
 ## przygasają po 4 s spokoju — bez wystrzałów i bez Uwagi ponad próg niepokoju — i wracają przy pierwszym hałasie.
@@ -1265,9 +1254,9 @@ func _drive_tiers(delta: float) -> void:
 	# ściemnienie pod karta wyniku i warsztatem
 	var ws := get_tree().get_first_node_in_group("workshop_ui")
 	var bench: bool = ws != null and ws.is_open()
-	var modal: bool = _result.visible or bench
+	var modal: bool = _report.visible or bench
 	_dim.visible = modal
-	_dim.color.a = 0.92 if bench and not _result.visible else 0.5      # warsztat zakrywa cały ekran: karty HUD nie prześwitują przez panel
+	_dim.color.a = 0.92 if bench and not _report.visible else (_report.dim_alpha() if _report.visible else 0.5)      # warsztat zakrywa cały ekran: karty HUD nie prześwitują przez panel
 	if modal:
 		_dim.size = size
 
@@ -1320,7 +1309,7 @@ func _drive_captions(delta: float) -> void:
 	if _captions.tick(delta) or _cap_card.visible:
 		_rebuild_captions()
 	var any := _cap_box.get_child_count() > 0
-	_cap_card.visible = any and not _result.visible
+	_cap_card.visible = any and not _report.visible
 	if _cap_card.visible:
 		_cap_card.reset_size()
 		_cap_card.position = Vector2(size.x - _cap_card.size.x - MARGIN, size.y * 0.30)
@@ -1329,62 +1318,31 @@ func _drive_hint(delta: float) -> void:
 	# jeden komunikat naraz: alert, toast i karta tytułowa mają pierwszeństwo — porada czeka (jej czas stoi), pokazuje się w spokojnej chwili
 	var busy := not Msg.current(Msg.Ch.ALERT).is_empty() or not Msg.toasts().is_empty() or not Msg.current(Msg.Ch.TITLE).is_empty()
 	var text := _hints.update(0.0 if busy else delta, _player)
-	if text != "" and not _result.visible and not busy:
+	if text != "" and not _report.visible and not busy:
 		Msg.hold("hud.tip", Msg.Ch.TIP, text, {"style": Msg.Style.INFO, "prio": 30, "alpha": _hints.alpha, "log": true})
 
+## Raport po akcji (result_screen.gd) nad ściemnieniem; wszystko, co HUD zbudował wcześniej, to HUD rozgrywki — gaśnie pod raportem.
 func _build_result() -> void:
-	_result = _card(Vector2(MARGIN, MARGIN))
-	_result.custom_minimum_size = Vector2(240, 0)
-	var rb := UiTheme.panel_box()
-	rb.bg_color = Color(0.02, 0.025, 0.035, 0.95)
-	rb.border_color = Color(UiTheme.OK, 0.5)
-	rb.set_content_margin_all(12)
-	_result.add_theme_stylebox_override("panel", rb)
-	_result_box = rb
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
-	_result.add_child(box)
-	_result_title = UiTheme.heading("EXTRACTION COMPLETE", 16, UiTheme.OK, HORIZONTAL_ALIGNMENT_CENTER)
-	box.add_child(_result_title)
-	_result_sub = UiTheme.label("The squad made it out of the woods.", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
-	box.add_child(_result_sub)
-	_result_stats = GridContainer.new()
-	_result_stats.columns = 2
-	_result_stats.add_theme_constant_override("h_separation", 16)
-	_result_stats.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	box.add_child(_result_stats)
-	_result_players = GridContainer.new()                 # tabela graczy: zabójstwa / upadki / podniesienia (mission.player_stats)
-	_result_players.columns = 4
-	_result_players.add_theme_constant_override("h_separation", 14)
-	_result_players.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	box.add_child(_result_players)
-	_result_awards = VBoxContainer.new()
-	_result_awards.add_theme_constant_override("separation", 1)
-	_result_awards.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	box.add_child(_result_awards)
-	_xp_bar = Bar.new()
-	_xp_bar.custom_minimum_size = Vector2(0, 5)
-	_xp_bar.fill = UiTheme.CALM
-	box.add_child(_xp_bar)
-	_xp_note = UiTheme.label("", 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
-	box.add_child(_xp_note)
-	_result_prompt = UiTheme.label("", 9, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
-	box.add_child(_result_prompt)
-	if Settings.DEMO:
-		# wersja demo: zachęta do listy życzeń (tekst do dopracowania razem ze stroną sklepu); pokazuje ją _fill_result
-		var foot := VBoxContainer.new()
-		foot.add_theme_constant_override("separation", 6)
-		var rule := ColorRect.new()
-		rule.color = Color(1, 1, 1, 0.10)
-		rule.custom_minimum_size = Vector2(0, 1)
-		foot.add_child(rule)
-		foot.add_child(UiTheme.heading("THANKS FOR PLAYING THE DEMO", 8, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-		foot.add_child(UiTheme.label("Wishlist DEAD AIR '87 on Steam — more zones, weapons and monsters are coming.", 8, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
-		if Settings.STORE_URL != "":
-			foot.add_child(UiTheme.label(tr("[%s]  Open the Steam page") % Actions.key("open_store"), 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
-		box.add_child(foot)
-		_demo_footer = foot
-	_result.visible = false
+	for c in get_children():
+		if c != _dim and c != _inspect and c != _journal and c is CanvasItem and not c.is_in_group("workshop_ui"):
+			_game_nodes.append(c)
+	_tier_nodes = [_obj_card, _run_card, _equip_card]
+	_report = ResultScreen.new()
+	_report.name = "ResultScreen"
+	_report.z_index = 11
+	add_child(_report)
+
+## Pod raportem HUD rozgrywki gaśnie (RESULTS_PLAN.md §3); po zamknięciu raportu wraca. Karty z własną alfą (_drive_tiers) mnożymy.
+func _drive_report_fade() -> void:
+	var k: float = _report.hud_fade()
+	if k >= 1.0 and not _hud_hidden:
+		return
+	_hud_hidden = k < 1.0
+	for c in _game_nodes:
+		if not is_instance_valid(c):
+			continue
+		var base: float = (c as CanvasItem).modulate.a if c in _tier_nodes else 1.0
+		(c as CanvasItem).modulate.a = base * k
 
 # ---------------------------------------------------------------- klatka
 
@@ -1414,6 +1372,7 @@ func _process(delta: float) -> void:
 	_drive_chat(delta)
 	_drive_tiers(delta)
 	_drive_controls()
+	_drive_report_fade()
 	queue_redraw()
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1427,7 +1386,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif _journal.open and event.is_action_pressed("pause"):
 		_journal.set_open(false)                      # Esc zamyka dziennik (menu pauzy otwiera się jak zwykle)
-	elif Settings.STORE_URL != "" and _result.visible and _demo_footer != null and _demo_footer.visible and event.is_action_pressed("open_store"):
+	elif Settings.STORE_URL != "" and _report.visible and bool(_report.model.get("demo_footer", false)) and event.is_action_pressed("open_store"):
 		OS.shell_open(Settings.STORE_URL)
 
 ## Krótki komunikat środkowy (znika po `secs`).
@@ -1480,10 +1439,14 @@ func _drive_noise() -> void:
 
 func _on_xp_gained(amount: int, _reason: String) -> void:
 	_xp_show_t = 4.0
+	if _report != null and _report.visible:
+		return                                     # raport po akcji liczy XP sam — bez osobnego toastu
 	Msg.post("hud.xp", Msg.Ch.TOAST, "", {"amount": amount, "fmt": "+%d XP", "style": Msg.Style.SUCCESS, "ttl": 2.5, "prio": 20, "log": false})
 
 func _on_level_up(lv: int) -> void:
 	_xp_show_t = 6.0
+	if _report != null and _report.visible:
+		return                                     # awans pokazuje raport (pieczątka, odblokowania, własny dźwięk)
 	var msg := tr("LEVEL %d") % lv
 	if Profile.SLOT_LEVELS.has(lv):
 		msg += "  —  " + tr("perk slot unlocked")
@@ -1700,7 +1663,8 @@ func _drive_mission() -> void:
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	if m == null:
 		_obj_card.visible = false
-		_result.visible = false
+		if _report.visible:
+			_report.close()
 		return
 	var boss := get_tree().get_first_node_in_group("boss")
 	var in_range := _in_range()                      # strzelnica FPP: cel kryjówki i jej opis zasłaniałyby tunel i tablicę wyników
@@ -1771,15 +1735,12 @@ func _drive_mission() -> void:
 	_msgs.noise_bottom = (_noise_card.position.y + _noise_card.size.y) / MSG_SCALE
 
 	var show_result: bool = m.phase == Mission.Phase.SUCCESS or m.phase == Mission.Phase.FAILED
-	var just_shown: bool = show_result and not _result.visible
-	if just_shown:
-		_fill_result(m)
-		UiTheme.fade_in(_result)
-	_result.visible = show_result
-	if show_result:
-		_fill_players(m)
-	if show_result and _result_xp_val != null and is_instance_valid(_result_xp_val):
-		_drive_xp(get_process_delta_time())
+	if show_result and not _report.visible:
+		_report.open(m)
+	elif not show_result and _report.visible:
+		_report.close()
+	if _report.visible:
+		_report.refresh(get_process_delta_time())
 
 ## Najbliższy węzeł grupy (po osi X względem gracza), który spełnia warunek; null, gdy brak.
 func _nearest(group: String, ok: Callable) -> Node2D:
@@ -1836,159 +1797,6 @@ func _drive_strip(m: Node) -> void:
 		var col: Color = UiTheme.DANGER if pl.dead else (Color("8d8a7c") if pl.is_bot else SLOT_COLORS[slot - 1])
 		mk.append({"pos": (pl as Node2D).global_position, "kind": "down" if pl.dead else "mate", "label": String(pl.label()).substr(0, 8), "col": col})      # rzut mapy: krótko
 	_minimap.markers = mk
-
-func _fill_result(m: Node) -> void:
-	for c in _result_stats.get_children():
-		_result_stats.remove_child(c)
-		c.free()
-	var rows: Array
-	var prompt := "Continue"
-	if NightShift.active:
-		rows = _shift_result(m)
-		prompt = "New shift" if (m.phase == Mission.Phase.FAILED or m.shift_complete()) else "Next mission"
-	else:
-		if m.kind == "tags":
-			_style_result("EXTRACTION COMPLETE", "The patrol's tags are with the squad — time to go home.", UiTheme.OK)
-			rows = [["Time", _mmss(m.elapsed)], ["Dog tags found", "%d / %d" % [m.goal_total, m.goal_total]],
-				["Hidden stashes", ("%d / %d" % [m.stashes_found, m.stash_total]) + ("  — bonus" if m.side_done() else "")],
-				["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts], ["Scrap banked", "+%d" % Scrap.last_gain]]
-		elif m.kind == "boss":
-			_style_result("THE LEECH IS DEAD", "The hall is quiet again — only the water drips.", UiTheme.OK)
-			rows = [["Time", _mmss(m.elapsed)], ["The Leech", "slain"], ["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts], ["Scrap banked", "+%d" % Scrap.last_gain]]
-		elif m.kind == "generators":
-			_style_result("EXTRACTION COMPLETE", "The broadcast is over — the squad is out.", UiTheme.OK)
-			rows = [["Time", _mmss(m.elapsed)], ["Generators started", "%d / %d" % [m.goal_total, m.goal_total]],
-				["Stealth (Attention < %d)" % int(m.STEALTH_CAP), "kept" if m.stealth_ok() else "lost  (peak %d)" % int(m.peak_noise)],
-				["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts], ["Scrap banked", "+%d" % Scrap.last_gain]]
-		else:
-			_style_result("EXTRACTION COMPLETE", "The squad made it out of the woods.", UiTheme.OK)
-			rows = [["Time", _mmss(m.elapsed)], ["Nests destroyed", "%d / %d" % [m.nests_total, m.nests_total]],
-				["The Vein", "slain"], ["Squad downs", str(m.downs)], ["Attempt", "#%d" % m.attempts], ["Scrap banked", "+%d" % Scrap.last_gain]]
-	if not NightShift.active and m.has_method("silent_counts") and m.silent_counts():
-		# cichy cel (FUN_PLAN.md P2.1): premia za Uwagę poniżej progu przebudzenia przez cały cel główny
-		var keep: String = (tr("kept  +%d scrap") % Scrap.BONUS_SILENT) if m.silent_ok() else (tr("lost  (peak %d)") % int(m.peak_noise))
-		rows.insert(rows.size() - 1, [tr("Silent run (Attention < %d)") % int(m.SILENT_CAP), keep])
-	var main_node := get_tree().current_scene
-	if main_node != null and main_node.get("companion_on") == false:
-		rows.append(["AI companion", "off"])               # NOBOT_PLAN.md: wynik bez bota widać na karcie (zrzuty, nagrania playtestu)
-	for row in rows:
-		_result_stats.add_child(UiTheme.label(row[0], 9, UiTheme.MUTED))
-		_result_stats.add_child(UiTheme.label(row[1], 9, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT))
-	_result_stats.add_child(UiTheme.label("XP", 9, UiTheme.MUTED))
-	_result_xp_val = UiTheme.label("", 9, Color(0.55, 0.8, 1.0), HORIZONTAL_ALIGNMENT_RIGHT)      # uzupełniany co klatkę — XP przychodzi od serwera chwilę po zmianie fazy
-	_result_stats.add_child(_result_xp_val)
-	_result_prompt.text = "[%s]  %s" % [Actions.key("restart"), tr(prompt)] if multiplayer.is_server() else tr("Waiting for the host to continue…")
-	if multiplayer.is_server() and not NightShift.active and m.phase == Mission.Phase.SUCCESS:
-		# kampania: kryjówka albo od razu następna misja (FUN_PLAN.md P0.4, main._continue_without_hub)
-		_result_prompt.text = "[%s]  %s      [%s]  %s" % [Actions.key("restart"), tr("Safe room"), Actions.key("interact"), tr("Next mission now")]
-	if _demo_footer != null:
-		# stopka dema: koniec kampanii (ostatnia misja Strefy I) albo koniec serii Nocnego Dyżuru
-		var lvl := get_tree().get_first_node_in_group("level")
-		var last: bool = lvl != null and lvl.map_id == String(lvl.CAMPAIGN[lvl.CAMPAIGN.size() - 1])
-		_demo_footer.visible = (m.phase == Mission.Phase.FAILED or m.shift_complete()) if NightShift.active else last
-	_result.reset_size()
-	_result.position = (size - _result.size) * 0.5
-
-## XP z misji „wlewa się” w pasek poziomu (1,6 s; przy „Reduce effects” od razu): licznik rośnie, a przy awansie pasek się
-## przelewa i pojawia się „LEVEL UP”. XP przychodzi od serwera chwilę po zmianie fazy — zmiana wartości zaczyna animację od nowa.
-func _drive_xp(delta: float) -> void:
-	var end_xp: int = Profile.xp
-	var earned: int = Profile.last_mission_xp + Profile.last_run_xp          # wynik misji + zabójstwa i podniesienia (od 1.7.392)
-	var start_xp: int = maxi(0, end_xp - earned)
-	var key := Vector2i(start_xp, end_xp)
-	if key != _xp_key:
-		_xp_key = key
-		_xp_anim = 0.0 if Settings.fx_mult() > 0.0 else 1.0
-	_xp_anim = minf(1.0, _xp_anim + delta / 1.6)
-	var e: float = 1.0 - pow(1.0 - _xp_anim, 3.0)
-	var shown: int = start_xp + int(round(float(end_xp - start_xp) * e))
-	var lv: int = Profile.level_of(shown)
-	var lo: int = Profile.xp_for_level(lv)
-	var hi: int = Profile.xp_for_level(lv + 1)
-	_xp_bar.value = float(shown - lo) / float(maxi(1, hi - lo))
-	_xp_bar.queue_redraw()
-	var gained: int = int(round(float(earned) * e))
-	var xt := "+%d  ·  LV %d" % [gained, lv]
-	if _result_xp_val.text != xt:
-		_result_xp_val.text = xt
-		_result.reset_size()
-	var leveled: bool = Profile.level_of(end_xp) > Profile.level_of(start_xp)
-	var note: String = (tr("LEVEL UP — LV %d") % Profile.level_of(end_xp)) if (leveled and _xp_anim >= 1.0) else ""
-	if _xp_note.text != note:
-		_xp_note.text = note
-
-## Tabela graczy na karcie wyniku (odświeżana, gdy statystyki od serwera się zmienią).
-func _fill_players(m: Node) -> void:
-	var sig: int = hash(str(m.player_stats) + str(m.stalker_woke))
-	if sig == _stats_sig:
-		return
-	_stats_sig = sig
-	for c in _result_players.get_children():
-		_result_players.remove_child(c)
-		c.free()
-	_fill_awards(m)
-	var ids: Array = m.player_stats.keys()
-	ids.sort()
-	_result_players.visible = not ids.is_empty()
-	if ids.is_empty():
-		return
-	for h in ["", "KILLS", "DOWNS", "REVIVED"]:
-		_result_players.add_child(UiTheme.label(h, 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT if h != "" else HORIZONTAL_ALIGNMENT_LEFT))
-	for id in ids:
-		var st: Dictionary = m.player_stats[id]
-		var mine: bool = int(id) == NoiseMgr.local_id()
-		var col: Color = UiTheme.ACCENT if mine else UiTheme.TEXT
-		var who := String(st.get("call", st["name"]))
-		_result_players.add_child(UiTheme.label((tr("%s  (you)") % who) if mine else who, 9, col))
-		for k in ["kills", "downs", "revived"]:
-			_result_players.add_child(UiTheme.label(str(int(st[k])), 9, col, HORIZONTAL_ALIGNMENT_RIGHT))
-	_result.reset_size()
-	_result.position = (size - _result.size) * 0.5
-
-## Wyróżnienia pod tabelą graczy: tytuł, gracz i za co (Mission.awards liczy to samo na każdym peerze).
-func _fill_awards(m: Node) -> void:
-	for c in _result_awards.get_children():
-		_result_awards.remove_child(c)
-		c.free()
-	var rows: Array = Mission.awards(m.player_stats, bool(m.stalker_woke))
-	_result_awards.visible = not rows.is_empty()
-	for r in rows:
-		var id: String = r[0]
-		var note: String = tr(Mission.AWARD_NOTES[id])
-		var why: String = note if id == "ghost" else "%s: %d" % [note, int(r[2])]       # „revives: 1” — bez odmiany liczby mnogiej
-		var line := UiTheme.label("%s  ·  %s  ·  %s" % [tr(Mission.AWARD_TITLES[id]), r[1], why], 8, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
-		_result_awards.add_child(line)
-
-func _mmss(secs: float) -> String:
-	var s := int(secs)
-	return "%d:%02d" % [s / 60, s % 60]
-
-func _style_result(title: String, sub: String, col: Color) -> void:
-	_result_title.text = title
-	_result_title.add_theme_color_override("font_color", col)
-	_result_sub.text = sub
-	_result_box.border_color = Color(col, 0.5)
-
-## Karta wyniku w Nocnym Dyżurze: ukończona misja, koniec serii (porażka) albo cała seria.
-func _shift_result(m: Node) -> Array:
-	var best_c: int = Settings.shift_best_cleared
-	var best_t: float = Settings.shift_best_time
-	var rows: Array
-	if m.phase == Mission.Phase.FAILED:
-		_style_result("SHIFT OVER", "The night took the squad.", UiTheme.DANGER)
-		rows = [["Missions cleared", "%d / %d" % [m.shift_cleared, NightShift.MISSIONS]], ["Series time", _mmss(m.shift_time)],
-			["Squad downs", str(m.shift_downs)], ["Best", "%d / %d" % [best_c, NightShift.MISSIONS]]]
-	elif m.shift_complete():
-		_style_result("SHIFT COMPLETE", "The whole night, survived.", UiTheme.OK)
-		rows = [["Series time", _mmss(m.shift_time)], ["Squad downs", str(m.shift_downs)],
-			["Best time", _mmss(best_t) if best_t > 0.0 else "—"]]
-	else:
-		_style_result("MISSION %d CLEARED" % NightShift.stage, "Night Shift — the next one is harder.", UiTheme.OK)
-		rows = [["Mission time", _mmss(m.elapsed)], ["Missions cleared", "%d / %d" % [m.shift_cleared, NightShift.MISSIONS]],
-			["Series time", _mmss(m.shift_time)], ["Squad downs", str(m.shift_downs)]]
-	if m.shift_record:
-		rows.append(["", "NEW RECORD"])
-	return rows
 
 ## Karta informacyjna: tytuł, podpis, siatka wierszy i opis. `cols` = liczba kolumn siatki (2 = etykieta + wartość).
 ## `paper`: karta przy obiekcie świata — papier z tekstem tuszem i ogonkiem wskazującym obiekt (zamiast ciemnego panelu HUD).

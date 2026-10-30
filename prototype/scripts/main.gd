@@ -28,6 +28,7 @@ const STALKER_TEST := preload("res://scripts/stalker_test.gd")
 const BOT_TEST := preload("res://scripts/bot_test.gd")
 const NOBOT_TEST := preload("res://scripts/nobot_test.gd")
 const FUN_TEST := preload("res://scripts/fun_test.gd")
+const RESULT_TEST := preload("res://scripts/result_test.gd")
 const RANGE_TEST := preload("res://scripts/range3d/range_test.gd")
 const FP_RANGE := preload("res://scripts/range3d/fp_mode.gd")
 const ENEMY_TEST := preload("res://scripts/enemy_test.gd")
@@ -171,12 +172,8 @@ func _physics_process(delta: float) -> void:
 			else:
 				_restart_mission(false)
 		return
-	# po udanej ekstrakcji (albo końcu serii Nocnego Dyżuru) host zaczyna nową misję
+	# po udanej ekstrakcji (albo końcu serii Nocnego Dyżuru) czeka raport po akcji — host zaczyna nową misję z niego (result_action)
 	if mission.phase == MISSION_SCRIPT.Phase.SUCCESS or mission.phase == MISSION_SCRIPT.Phase.FAILED:
-		if Input.is_action_just_pressed("restart"):
-			_continue_after_result.call_deferred()       # jak wyjście z kryjówki: zmiana mapy poza krokiem fizyki
-		elif Input.is_action_just_pressed("interact") and not NightShift.active and mission.phase == MISSION_SCRIPT.Phase.SUCCESS:
-			_continue_without_hub.call_deferred()
 		return
 	if mission.kind == "hub":
 		_hub_server_tick(delta)
@@ -491,6 +488,19 @@ func _brief_cycle_server(peer_id: int) -> bool:
 	mission._broadcast()
 	return true
 
+## Akcja z raportu po akcji (result_screen.gd, po sekwencji albo jej pominięciu): host — "continue" kryjówka / dalej w Nocnym Dyżurze,
+## "next" od razu następna misja kampanii; klient — gotowość (informacja dla hosta, RESULTS_PLAN.md §5).
+func result_action(kind: String) -> void:
+	if mission == null or (mission.phase != MISSION_SCRIPT.Phase.SUCCESS and mission.phase != MISSION_SCRIPT.Phase.FAILED):
+		return
+	if NoiseMgr.has_network() and not multiplayer.is_server():
+		mission.send_ready()
+		return
+	if kind == "next" and not NightShift.active and mission.phase == MISSION_SCRIPT.Phase.SUCCESS:
+		_continue_without_hub.call_deferred()
+	else:
+		_continue_after_result.call_deferred()       # jak wyjście z kryjówki: zmiana mapy poza krokiem fizyki
+
 ## [Enter] na ekranie wyniku (host): kolejna misja kampanii (po ostatniej — od początku) albo kolejna misja / nowa seria
 ## Nocnego Dyżuru. Po porażce w kampanii (nie występuje: wipe = powtórka) zostałaby ta sama mapa.
 func _continue_after_result() -> void:
@@ -544,6 +554,19 @@ func _print_squad() -> void:
 	rows.sort_custom(func(a: Array, b: Array) -> bool: return int(a[0]) < int(b[0]))
 	print("[SQUAD] " + " | ".join(rows.map(func(r: Array) -> String: return "P%d=%s" % [r[0], r[1]])))
 
+## Test sieci raportu po akcji (--resultnet=N, tools/test_net_session.sh): host — sukces misji; klient — „gotowy” z raportu.
+## Po chwili (host 5,5 s, klient 3 s) obie strony wypisują, co widzą: gotowość, poziomy z misji, rozbicie złomu od serwera, otwarty raport.
+func _result_net_step() -> void:
+	if multiplayer.is_server():
+		mission.elapsed = 200.0
+		mission._success()
+	else:
+		result_action("continue")
+	await get_tree().create_timer(5.5 if multiplayer.is_server() else 3.0).timeout      # host czeka, aż klient zgłosi gotowość
+	var rs := get_tree().root.find_child("ResultScreen", true, false)
+	print("[RESULT-NET] %s ready=%s levels=%d gain=%s report=%s" % ["host" if multiplayer.is_server() else "client", str(mission.result_ready.keys()),
+		mission.result_levels.size(), str(mission.result_info.get("gain", "-")), str(rs != null and rs.visible)])
+
 func _next_campaign_map() -> String:
 	var order: Array = level.CAMPAIGN
 	return order[(order.find(level.map_id) + 1) % order.size()]
@@ -557,6 +580,8 @@ func _handle_cmdline() -> void:
 	for sa in OS.get_cmdline_user_args():
 		if sa.begins_with("--printsquad="):                 # test sieci (test_net_session.sh): etykiety drużyny po N s — kryptonimy, „(2)”, czyszczenie
 			get_tree().create_timer(float(sa.substr("--printsquad=".length()))).timeout.connect(_print_squad)
+		if sa.begins_with("--resultnet="):                 # test sieci: raport po akcji — host kończy misję po N s, klient po N s zgłasza gotowość
+			get_tree().create_timer(float(sa.substr("--resultnet=".length()))).timeout.connect(_result_net_step)
 	var autoquit := -1.0
 	var stealthtest := -1.0
 	var wipetest := -1.0
@@ -565,6 +590,7 @@ func _handle_cmdline() -> void:
 	var bottest := false
 	var nobottest := false
 	var funtest := false
+	var resulttest := false
 	var rangetest := false
 	var range3d := false
 	var enemytest := false
@@ -687,6 +713,8 @@ func _handle_cmdline() -> void:
 			nobottest = true
 		elif a == "--funtest":
 			funtest = true
+		elif a == "--resulttest":
+			resulttest = true
 		elif a == "--rangetest":
 			rangetest = true
 		elif a == "--range3d":
@@ -719,7 +747,7 @@ func _handle_cmdline() -> void:
 			shot_codex = true
 		elif a == "--shotboss":
 			shot_boss = true
-		elif a == "--shotresult":
+		elif a == "--shotresult" or a == "--shotresult4" or a.begins_with("--shotresultt="):
 			shot_result = true
 		elif a == "--shotws":
 			shot_ws = true
@@ -833,6 +861,11 @@ func _handle_cmdline() -> void:
 		nt.name = "NobotTest"
 		add_child(nt)
 		nt.run(self)
+	if resulttest:
+		var rt := RESULT_TEST.new()
+		rt.name = "ResultTest"
+		add_child(rt)
+		rt.run(self)
 	if funtest:
 		var ft := FUN_TEST.new()
 		ft.name = "FunTest"
@@ -2098,10 +2131,35 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			for i in 3:
 				level.spawn_fire_patch(fp.global_position + Vector2(44.0 + 22.0 * float(i), -1.0), Weapons.HKM9, 1)
 	if result:
-		mission.elapsed = 214.0
-		mission.player_stats = {NoiseMgr.local_id(): {"name": "P1", "kills": 14, "downs": 1, "revived": 0, "revives": 1, "escapes": 2, "lures": 1, "noise": 64.0},
-			2: {"name": "P2", "kills": 9, "downs": 0, "revived": 1, "revives": 0, "escapes": 0, "lures": 0, "noise": 31.0}}    # przykładowa tabela graczy i wyróżnienia
-		mission._success()                 # podgląd karty wyniku
+		# podgląd raportu po akcji (RESULTS_PLAN.md): --shotresult (2 graczy), --shotresult4 (4 graczy, gotowość, awans kolegi),
+		# --shotresultt=S — sekwencja zatrzymana w chwili S (zrzut z połowy animacji)
+		mission.elapsed = 312.0
+		mission.peak_noise = 41.0
+		var me := NoiseMgr.local_id()
+		mission.player_stats = {me: {"name": "P1", "call": "macvv", "kills": 40, "downs": 0, "revived": 0, "revives": 0, "escapes": 0, "lures": 1, "noise": 64.0},
+			2: {"name": "P2", "call": "Wilk", "kills": 22, "downs": 0, "revived": 0, "revives": 0, "escapes": 0, "lures": 0, "noise": 12.0}}
+		if "--shotresult4" in OS.get_cmdline_user_args():
+			mission.player_stats[3] = {"name": "P3", "call": "Kos", "kills": 9, "downs": 0, "revived": 0, "revives": 0, "escapes": 3, "lures": 0, "noise": 40.0}
+			mission.player_stats[4] = {"name": "P4", "call": "Sowa", "kills": 14, "downs": 0, "revived": 0, "revives": 2, "escapes": 0, "lures": 0, "noise": 30.0}
+		var shot_pl: Node2D = _players.get_node_or_null(str(me))
+		for at in [[14.0, "objective"], [61.0, "objective"], [95.5, "woke"], [120.0, "escape"], [133.0, "lure"], [180.0, "objective"], [240.0, "stash"],
+				[262.0, "objective"], [300.0, "extract"]]:
+			mission.elapsed = float(at[0])
+			mission.mark(String(at[1]), shot_pl)
+		mission.elapsed = 312.0
+		Scrap.loot = 158
+		Scrap.found["m83_pbs1"] = true
+		Profile.xp = Profile.xp_for_level(6) - 150             # awans w trakcie licznika XP
+		Profile.run_xp = 155
+		for sa in OS.get_cmdline_user_args():
+			if sa.begins_with("--shotresultt="):
+				var rs_node := get_tree().root.find_child("ResultScreen", true, false)
+				if rs_node != null:
+					rs_node.set("hold_at", float(sa.substr("--shotresultt=".length())))
+		mission._success()
+		if "--shotresult4" in OS.get_cmdline_user_args():
+			mission.result_ready = {2: true, 4: true}
+			mission.result_levels = {2: [4, 5]}
 	if workshop:
 		# podgląd panelu warsztatu: portfel, jedna kupiona broń i ulepszenia (tylko w pamięci; zapis wyłączony w trybie podglądu)
 		Scrap.persist = false

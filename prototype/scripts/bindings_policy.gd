@@ -1,6 +1,6 @@
 extends RefCounted
 ## Czysta polityka wiązań: migracja, konteksty i nakładanie zdarzeń. Nie zmienia InputMap ani ustawień.
-const CONTEXTS := ["mission", "range", "menu", "range_menu", "chat"]
+const CONTEXTS := ["mission", "range", "menu", "range_menu", "chat", "result"]
 const GLOBAL := ["pause", "fullscreen", "steam_invite"]
 const SHARED := ["fire", "reload", "firemode", "ammo_type", "move_left", "move_right", "crouch", "interact", "help", "chat", "journal"]
 
@@ -9,6 +9,8 @@ static func contexts(id: String) -> Array:
 		return CONTEXTS
 	if id.begins_with("menu_"):
 		return ["menu", "range_menu"]
+	if id.begins_with("result_"):
+		return ["result"]               # raport po akcji: własny ekran, klawisze nie walczą z misją
 	if id == "range_locker":
 		return ["range", "range_menu"]
 	if id.begins_with("range_") or id == "aim_sights":

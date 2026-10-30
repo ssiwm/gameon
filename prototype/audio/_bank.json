@@ -827,6 +827,22 @@
   "sfx/ui/ui_deny",
   0
  ],
+ "ui_levelup": [
+  "sfx/ui/ui_levelup",
+  0
+ ],
+ "ui_stamp": [
+  "sfx/ui/ui_stamp",
+  0
+ ],
+ "ui_tick": [
+  "sfx/ui/ui_tick",
+  0
+ ],
+ "ui_type": [
+  "sfx/ui/ui_type",
+  0
+ ],
  "warn_pulse": [
   "sfx/ui/warn_pulse",
   0

@@ -43,6 +43,10 @@ jobs:
           grep -q "następna misja” 1" funreport.log
           grep -q "skrzynie mocy 1" funreport.log
           grep -q "sejfy 1" funreport.log
+      - name: Raport po akcji — model, sekwencja, pominięcie, spóźnione XP, rekordy, mieszczenie, następna misja (--resulttest)
+        run: |
+          godot --headless --path prototype -- --host --mission=z1_m1 --resulttest --autoquit=60 2>&1 | tee resulttest.log
+          grep -a "\[RESULT-TEST\] ==== PASS" resulttest.log
       - name: Bot za plecami dowódcy i zdarzenie FF w dzienniku (--bottest)
         run: |
           godot --headless --path prototype -- --host --bottest --sessionlog="$RUNNER_TEMP/bot-sessions" --autoquit=40 2>&1 | tee bottest.log
