@@ -57,11 +57,13 @@ static func blob_texture() -> Texture2D:
 ## `shaded`: krople cieczy (woda, błoto, olej) widać tylko w świetle sceny — nocą nie świecą (GDD §8.3).
 static func burst(parent: Node, pos: Vector2, color: Color, amount: int, vmin: float, vmax: float,
 		dir := Vector2.UP, spread := 60.0, gravity := 500.0, life := 0.5, size := Vector2(1.0, 2.0),
-		_unshaded := false, shaded := false) -> void:
+		_unshaded := false, shaded := false, extra := {}) -> void:
 	if parent == null or not parent.is_inside_tree():
 		return
-	burst_fx(pos, {"color": color, "amount": maxi(1, int(round(float(amount) * Settings.vfx_mult()))), "life": life, "dir": dir, "spread": spread,
-		"vmin": vmin, "vmax": vmax, "gravity": Vector2(0.0, gravity), "smin": size.x, "smax": size.y, "shaded": shaded})
+	var cfg := {"color": color, "amount": maxi(1, int(round(float(amount) * Settings.vfx_mult()))), "life": life, "dir": dir, "spread": spread,
+		"vmin": vmin, "vmax": vmax, "gravity": Vector2(0.0, gravity), "smin": size.x, "smax": size.y, "shaded": shaded}
+	cfg.merge(extra, true)
+	burst_fx(pos, cfg)
 
 ## Wybuch cząsteczek z gotowego opisu: color, amount, life, explosiveness (domyślnie 0,95), dir, spread, vmin, vmax, gravity (Vector2), smin, smax.
 static func burst_fx(pos: Vector2, cfg: Dictionary) -> void:
@@ -78,9 +80,10 @@ static func sparks(parent: Node, pos: Vector2, dir: Vector2) -> void:
 	burst(parent, pos, Color(1.0, 0.85, 0.45), 8, 40.0, 130.0, -dir, 55.0, 380.0, 0.25, Vector2(0.8, 1.4), true)
 
 ## Rozbryzg wody: mętne krople, cieniowane (w ciemności nie świecą). `water = false`: inna ciecz (kwas) — jasne krople widoczne zawsze.
+## Krople wody nikną na tafli w `pos` (`floor_px`); kwas trafia też w ściany, więc spada swobodnie.
 static func splash(parent: Node, pos: Vector2, strength := 1.0, water := true) -> void:
 	burst(parent, pos + Vector2(0, -1), Color(0.42, 0.40, 0.32, 0.85) if water else Color(0.55, 0.78, 0.9, 0.85), int(8 + 8 * strength), 25.0, 70.0 * strength,
-		Vector2.UP, 40.0, 420.0, 0.55, Vector2(0.8, 1.8), false, water)
+		Vector2.UP, 40.0, 420.0, 0.55, Vector2(0.8, 1.8), false, water, {"floor_px": pos.y} if water else {})
 
 ## Para z wody gaszącej płomień: blady, cieniowany kłąb unoszący się powoli (w ciemności widać go tylko w świetle sceny).
 static func steam(parent: Node, pos: Vector2) -> void:
