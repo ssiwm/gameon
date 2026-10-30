@@ -5,6 +5,7 @@ extends Node
 ##   godot --headless --path . -- --host --nobot --mission=z1_hub --nobottest --autoquit=30  # kryjówka: przełącznik hosta
 ##
 ## Misja: bez bota w drużynie; przełącznik zablokowany (zmiana tylko w lobby i kryjówce); samotny człowiek pompuje drezynę z mocą 1,5;
+## stojący na jadącej drezynie nie tupie (idący po pokładzie tak); przy wysokiej Uwadze nie bije serce;
 ## pierwszy upadek nie kończy próby — wykrwawienie i powrót na start z 1 HP; drugi upadek w tej samej próbie = wipe.
 ## Kryjówka: włączenie towarzysza dodaje bota od razu, wyłączenie go usuwa. Wynik: linie [NOBOT-TEST] i kod wyjścia.
 
@@ -33,6 +34,7 @@ func run(m: Node2D) -> void:
 	else:
 		check("w misji przełącznik zablokowany (zmiana tylko w lobby i kryjówce)", not m.companion_editable())
 		await _handcar()
+		await _heart()
 		await _falls()
 	_finish()
 
@@ -75,9 +77,59 @@ func _handcar() -> void:
 	car._workers[String(player.name)] = true
 	await _frames(3)
 	check("drezyna: sam bez bota pompuje z mocą %.1f (= %.1f)" % [float(car.power), float(car.SOLO_POWER)], is_equal_approx(float(car.power), float(car.SOLO_POWER)))
+	await _ride_steps(car)
 	car._workers.clear()
+	car.reset_handcar()
 	player.global_position = start
 	await _frames(3)
+
+## Kroki na jadącej drezynie (zgłoszenie po 1.7.436): stojący pasażer nie tupie — wozi go drezyna, nie nogi; idący
+## po pokładzie tupie jak dotąd; cudza postać (pozycja z replikacji co 0,05 s, schodkami) też nie tupie, gdy stoi.
+func _ride_steps(car: Node2D) -> void:
+	car.enabled = true
+	player.global_position = car.global_position + Vector2(-30, -1)
+	await _frames(3)
+	var x0: float = car.global_position.x
+	var steps0: int = player.footsteps
+	await _frames(120)
+	var ride: float = x0 - float(car.global_position.x)
+	check("drezyna: stojący na jadącej (%.0f px) nie tupie (kroków %d)" % [ride, player.footsteps - steps0],
+		ride > 80.0 and car.aboard(player) and player.footsteps == steps0)
+	steps0 = player.footsteps
+	Input.action_press("move_right")
+	for _i in 60:
+		await get_tree().physics_frame
+		if player.global_position.x - car.global_position.x > 30.0:
+			break
+	Input.action_release("move_right")
+	check("drezyna: idący po pokładzie (%.0f px od środka) tupie (kroków %d)" % [player.global_position.x - car.global_position.x, player.footsteps - steps0],
+		player.footsteps > steps0 and car.aboard(player))
+	await _frames(5)
+	player.set_physics_process(false)
+	var off: float = player.global_position.x - car.global_position.x
+	var at := player.global_position
+	steps0 = player.footsteps
+	x0 = car.global_position.x
+	for i in 90:
+		await get_tree().physics_frame
+		if i % 3 == 0:
+			at.x = car.global_position.x + off
+		player.global_position = at
+		player._update_footsteps_passive()
+	player.set_physics_process(true)
+	ride = x0 - float(car.global_position.x)
+	check("drezyna: cudza postać z replikacji stoi na jadącej (%.0f px) i nie tupie (kroków %d)" % [ride, player.footsteps - steps0],
+		ride > 80.0 and player.footsteps == steps0)
+
+## Bicie serca przy wysokiej Uwadze usunięte (kolidowało z muzyką): żadna pętla serca nie gra.
+func _heart() -> void:
+	var lvl0: float = NoiseMgr.level
+	NoiseMgr.level = NoiseMgr.MAX_LEVEL * 0.6
+	await _frames(10)
+	var playing: bool = Audio.loop_playing("heart_fast_loop") or Audio.loop_playing("heart_slow_loop")
+	NoiseMgr.level = lvl0
+	await _frames(2)
+	check("Uwaga 60%%: serce nie bije (pętla gra: %s)" % [playing], not playing)
 
 ## Upadki samotnego gracza: pierwszy → wykrwawienie i start z 1 HP (bez wipe'u), drugi → wipe.
 func _falls() -> void:
