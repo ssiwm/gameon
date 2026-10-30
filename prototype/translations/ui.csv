@@ -1525,3 +1525,5 @@
 "Ready to take","Do wzięcia"
 "Locked · %s","Zablokowana · %s"
 "[%s]  Open the cabinet  ·  %d of %d ready to take","[%s]  Otwórz gablotę  ·  do wzięcia %d z %d"
+"ARMORY · %s","ZBROJOWNIA · %s"
+"[{move_left}] [{move_right}]  Cabinet","[{move_left}] [{move_right}]  Gablota"

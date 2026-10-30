@@ -69,10 +69,10 @@ echo "== kryptonimy =="
 godot --headless --path . -- --host --nobot --port=8964 --callsign=Sowa --printsquad=9 --autoquit=12 >"$LOG/call_host.log" 2>&1 &
 HOST=$!
 sleep 4
-godot --headless --path . -- --join=127.0.0.1 --port=8964 --callsign=sowa --printsquad=6 --autoquit=9 >"$LOG/call_c1.log" 2>&1 &
+godot --headless --path . -- --join=127.0.0.1 --port=8964 --callsign=sowa --printsquad=7 --autoquit=10 >"$LOG/call_c1.log" 2>&1 &
 C1=$!
 sleep 1
-godot --headless --path . -- --join=127.0.0.1 --port=8964 '--callsign=<b>Wi!lk</b>' --printsquad=5 --autoquit=8 >"$LOG/call_c2.log" 2>&1
+godot --headless --path . -- --join=127.0.0.1 --port=8964 '--callsign=<b>Wi!lk</b>' --printsquad=6 --autoquit=9 >"$LOG/call_c2.log" 2>&1
 wait $C1 $HOST
 grep -a -q "\[SQUAD\] P1=Sowa | P2=sowa (2) | P3=bWilkb" "$LOG/call_host.log" && ok "host widzi kryptonimy klientów, powtórka z „(2)”, śmieci wycięte" || fail "host: zła lista kryptonimów ($(grep -a "\[SQUAD\]" "$LOG/call_host.log"))"
 grep -a -q "\[SQUAD\] P1=Sowa | P2=sowa (2) | P3=bWilkb" "$LOG/call_c2.log" && ok "klient widzi te same kryptonimy co host" || fail "klient: zła lista kryptonimów ($(grep -a "\[SQUAD\]" "$LOG/call_c2.log"))"

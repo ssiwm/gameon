@@ -2560,7 +2560,7 @@ func _build_cabinet(n: Node2D) -> Dictionary:
 		sl.layers = LAYER_WORLD | LAYER_ACTORS
 		root.add_child(sl)
 	var title := Label3D.new()
-	title.text = "ARMORY · %s" % CAB_ROMAN[int(n.get("index")) % CAB_ROMAN.size()]
+	title.text = tr("ARMORY · %s") % CAB_ROMAN[int(n.get("index")) % CAB_ROMAN.size()]     # po polsku „ZBROJOWNIA · I” (1.7.432)
 	title.font = UiTheme.display_font(700)
 	title.font_size = 64
 	title.pixel_size = 0.0011

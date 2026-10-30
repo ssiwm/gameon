@@ -1518,7 +1518,7 @@ func _drive_status() -> void:
 	_xp_row.visible = _xp_show_t > 0.0
 	_run_card.reset_size()
 	_run_card.position = Vector2(size.x - 2.0 * MARGIN - _run_card.size.x, 2.0 * MARGIN)
-	_gear_card.visible = _player != null
+	_gear_card.visible = _player != null and not _cabinet_view()          # oględziny gabloty: karta broni zasłaniała dolną półkę (1.7.432)
 	_equip_card.visible = _player != null
 	if _player == null:
 		return
@@ -1689,6 +1689,13 @@ func _drive_warning() -> void:
 		Audio.play("warn_pulse", Audio.BUS_UI, -12.0)
 	_warn_was = awake
 
+## Kamera patrzy na gablotę (oględziny broni z gabloty): karta broni i cel misji nachodziły na nią, więc wtedy znikają.
+func _cabinet_view() -> bool:
+	if _player == null or _player.weapons == null:
+		return false
+	var it = _player.weapons.inspect_item
+	return it != null and is_instance_valid(it) and (it as Node).has_meta("cabinet")
+
 func _drive_mission() -> void:
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	if m == null:
@@ -1697,7 +1704,7 @@ func _drive_mission() -> void:
 		return
 	var boss := get_tree().get_first_node_in_group("boss")
 	var in_range := _in_range()                      # strzelnica FPP: cel kryjówki i jej opis zasłaniałyby tunel i tablicę wyników
-	_obj_card.visible = m.phase != Mission.Phase.SUCCESS and m.phase != Mission.Phase.FAILED and not in_range
+	_obj_card.visible = m.phase != Mission.Phase.SUCCESS and m.phase != Mission.Phase.FAILED and not in_range and not _cabinet_view()
 	_obj_caption.text = m.objective_caption()
 	_obj_caption.add_theme_color_override("font_color", UiTheme.DANGER if m.phase == Mission.Phase.BOSS else (UiTheme.OK if m.phase == Mission.Phase.EXTRACT else UiTheme.ACCENT))
 	_obj_text.text = m.objective_text()
@@ -2174,6 +2181,8 @@ func _drive_cards() -> void:
 		var cab := it.has_meta("cabinet")                     # gablota: kamera patrzy na gablotę, ↑ / ↓ wybiera broń
 		if cab:
 			foot = Actions.fmt(tr("[{move_up}] [{move_down}]  Select")) + "   ·   " + foot
+			if wc.cabinet_count() > 1:
+				foot = Actions.fmt(tr("[{move_left}] [{move_right}]  Cabinet")) + "   ·   " + foot
 		_inspect.show_weapon(wid, String(gk) if gk != null and String(gk) != "" else String(nd.key), hand, Scrap.lock_text(wid) if locked else "", foot, cab, wc, it)
 	else:
 		_inspect.close()

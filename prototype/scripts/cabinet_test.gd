@@ -3,6 +3,7 @@ extends Node
 const Weapons := preload("res://scripts/weapons.gd")
 const Inspector := preload("res://scripts/weapon_inspect.gd")
 const Codex := preload("res://scripts/codex.gd")
+const Pickup := preload("res://scripts/pickup.gd")
 var total := 0
 var failed := 0
 var main: Node
@@ -226,6 +227,50 @@ func _unit() -> void:
 	level.load_map("z1_hub")
 	await frames()
 	check("powrót do kryjówki przywraca rzędy", item(Weapons.SRUT8) != null and level._cabinet_issued.is_empty())
+	await _hook_and_switch()
+
+## 1.7.432: broń z gabloty wraca na hak przy zamianie w gablocie, startowa ląduje obok gablot (poza ich [E]), [A] / [D] zmienia gablotę,
+## a karta broni i cel misji znikają w oględzinach gabloty.
+func _hook_and_switch() -> void:
+	_drive_input = true
+	var cabinets: Array = get_tree().get_nodes_in_group("cabinets")
+	cabinets.sort_custom(func(a: Node, b: Node) -> bool: return int(a.get("index")) < int(b.get("index")))
+	var cab0: Node2D = cabinets[0]
+	var cab1: Node2D = cabinets[1]
+	Scrap.unlocked[Weapons.SRUT8] = true
+	Scrap.unlocked[Weapons.LR7] = true
+	player.global_position = cab0.global_position + Vector2(-6, -2)
+	wc.inspect_item = item(Weapons.SRUT8)
+	wc.inspect_slot = 0
+	await pulse("interact")
+	var start_drop: Array = loose(Weapons.M83)
+	var far := not start_drop.is_empty()
+	for c in cabinets:
+		for n in start_drop:
+			far = far and (n as Node2D).global_position.distance_to((c as Node2D).global_position) > Pickup.WEAPON_R
+	check("broń startowa oddana przy gablocie leży obok gablot, poza ich zasięgiem (%s)" % str(start_drop.map(func(n: Node) -> Vector2: return (n as Node2D).global_position)),
+		wc.loadout[0] == Weapons.SRUT8 and start_drop.size() == 1 and far and level.weapon_item_near(player.global_position + Vector2(0, -8)) != start_drop[0])
+	wc.inspect_item = item(Weapons.LR7)
+	wc.inspect_slot = 0
+	await pulse("interact")
+	var back: Node2D = item(Weapons.SRUT8)
+	check("broń z gabloty wraca na swój hak przy zamianie (bez przydziału nabojów), rząd znów wolny",
+		wc.loadout[0] == Weapons.LR7 and back != null and int(back.rounds) == 0 and loose(Weapons.SRUT8).is_empty()
+		and not level._cabinet_issued.has(String(back.name)) and level._cabinet_issued.size() == 1)
+	wc.inspect_item = back
+	player.process_mode = Node.PROCESS_MODE_INHERIT
+	await frames(4)
+	var hud: Node = main.get_node("UI").find_child("HUD", false, false)
+	var hidden: bool = hud != null and not bool(hud._gear_card.visible) and not bool(hud._obj_card.visible)
+	await pulse("move_right")
+	var switched: bool = wc.inspect_item != null and int(wc.inspect_item.get_meta("cabinet")) == int(cab1.get("index")) and is_equal_approx(player.global_position.x, cab1.global_position.x)
+	await pulse("move_left")
+	var back_left: bool = wc.inspect_item != null and int(wc.inspect_item.get_meta("cabinet")) == int(cab0.get("index"))
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+	check("oględziny gabloty chowają kartę broni i cel misji (HUD %s)" % str(hud != null), hidden)
+	check("[D] przechodzi do sąsiedniej gabloty, [A] wraca", switched and back_left)
+	wc.inspect_item = null
+	_drive_input = false
 
 func _net_host() -> void:
 	player = main.get_node("Players/1")
