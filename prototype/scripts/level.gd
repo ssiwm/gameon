@@ -127,6 +127,7 @@ var hint_zones: Dictionary = {}
 var _range_door: Array = []               ## RANGE_DOOR z danych mapy: [kolumna, wiersz podłogi] drzwi strzelnicy FPP (range_door.gd); puste poza kryjówką
 var _hub_props: Array = []                ## HUB_PROPS z danych mapy: [rodzaj, kolumna, wiersz podłogi, parametry] (hub_prop.gd)
 var _shafts: Array = []                ## SHAFTS z danych mapy: [pierwsza, ostatnia] kolumna szybów między poziomami (bez mebli z hub_decor.gd)
+const CABINET_DROP_GAP := 54.0         ## px od środka skrajnej gabloty: broń oddana przy gablocie leży poza zasięgiem jej [E] (26 px)
 var _cab_slots := 0                   ## CABINET_SLOTS z danych mapy: > 0 = każde „g" to gablota na tyle broni (cabinet.gd), 0 = stojaki
 var _gun_cab: Array = []              ## Vector2i(gablota, rząd) dla kolejnych przedmiotów broni z „g" (puste bez gablot)
 var _gun_cab_x: Array = []            ## środek gabloty [px] dla kolejnych przedmiotów broni
@@ -171,6 +172,7 @@ var _map: Array = []                   ## MAP bieżącej misji
 var _weapons: Array = []               ## broń z „g” (po kolei od lewej)
 var _weapon_kits: Dictionary = {}      ## serwer: peer → zatwierdzony zestaw; nigdy z kit klienta
 var _cabinet_issued: Dictionary = {}   ## MapGun → etykieta odbiorcy (snapshot dołączających)
+var _cabinet_owner: Dictionary = {}    ## serwer: MapGun → peer odbiorcy (zwrot na hak przy zamianie w gablocie, 1.7.432)
 var _accents: Array = []
 var _ts: TileSet
 var _stable: Array = []                ## węzły stałe (tło, warstwy) — reszta to encje misji
@@ -202,6 +204,7 @@ func load_map(id: String) -> void:
 	if id == map_id or not MAPS.has(id):
 		return
 	_cabinet_issued.clear()
+	_cabinet_owner.clear()
 	for c in get_children():
 		if not _stable.has(c):
 			remove_child(c)
@@ -923,16 +926,24 @@ func _add_enemy(n: String, kind: String, p: Vector2) -> void:
 ## z amunicją dla wszystkich noszonych broni głównych (zapas jest wspólny).
 var _map_items := {}
 
+## Broń mapy nr `i` („MapGun<i>”); w gablocie z numerem gabloty, rzędem i środkiem gabloty (wybór, obraz 3D).
+func _spawn_map_gun(i: int) -> Node2D:
+	var guns: Array = _map_items.get("g", [])
+	if i < 0 or i >= guns.size():
+		return null
+	var gi := _add_map_item("MapGun%d" % i, "weapon", _weapons[i % _weapons.size()], guns[i])
+	if gi != null and i < _gun_cab.size():
+		gi.set_meta("cabinet", (_gun_cab[i] as Vector2i).x)
+		gi.set_meta("slot", (_gun_cab[i] as Vector2i).y)
+		gi.set_meta("cab_x", float(_gun_cab_x[i]))
+	return gi
+
 ## Każdy peer tworzy te same przedmioty o tych samych nazwach (mapa jest statyczna), więc
 ## podniesienie rozstrzygane przez serwer znika wszędzie. Wołane też po restarcie misji.
 func _spawn_map_items() -> void:
 	var guns: Array = _map_items.get("g", [])
 	for i in guns.size():
-		var gi := _add_map_item("MapGun%d" % i, "weapon", _weapons[i % _weapons.size()], guns[i])
-		if gi != null and i < _gun_cab.size():                # broń w gablocie: numer gabloty, rząd i środek gabloty (wybór, obraz 3D)
-			gi.set_meta("cabinet", (_gun_cab[i] as Vector2i).x)
-			gi.set_meta("slot", (_gun_cab[i] as Vector2i).y)
-			gi.set_meta("cab_x", float(_gun_cab_x[i]))
+		_spawn_map_gun(i)
 	if Scrap.enabled():
 		var stash: Array = _map_items.get("H", [])
 		for i in stash.size():
@@ -1382,6 +1393,7 @@ func clear_pickups() -> void:
 @rpc("authority", "call_local", "reliable")
 func _clear_pickups_rpc() -> void:
 	_cabinet_issued.clear()
+	_cabinet_owner.clear()
 	for cabinet in get_tree().get_nodes_in_group("cabinets"):
 		cabinet.issued.clear()
 	for f in get_tree().get_nodes_in_group("flares"):
@@ -1455,6 +1467,8 @@ func _weapon_pickup_server(item_name: String, peer_id: int, target_slot := -1) -
 	var have := w == kit.x or w == kit.y or w == kit.z
 	if target_slot < 0:
 		target_slot = 1 if int(pl.weapon) == kit.y else 0
+	var in_cabinet := it.has_meta("cabinet")
+	var returned := ""
 	if not have:
 		var old: int = kit.z if d.slot == Weapons.Slot.MELEE else kit[target_slot]
 		if d.slot == Weapons.Slot.MELEE:
@@ -1462,11 +1476,22 @@ func _weapon_pickup_server(item_name: String, peer_id: int, target_slot := -1) -
 		else:
 			kit[target_slot] = w
 		_weapon_kits[peer_id] = kit
-		spawn_item("weapon", old, pl.global_position + Vector2(0, -4), 0)
+		# zamiana przy gablocie (1.7.432): broń wzięta wcześniej z gabloty przez tego gracza wraca na swój hak; inna (startowa, z ziemi)
+		# ląduje obok gablot, poza ich zasięgiem — pod nogami stawała się „najbliższą bronią” i przejmowała [E] przy gablocie
+		returned = _cabinet_row_of(peer_id, old) if in_cabinet else ""
+		if returned == "":
+			spawn_item("weapon", old, _drop_point(pl, in_cabinet), 0)
 	Arsenal.add_reserve(w, maxi(int(it.rounds), 0))
-	var in_cabinet := it.has_meta("cabinet")
 	if in_cabinet:
 		_cabinet_issued[item_name] = pl.label()
+		_cabinet_owner[item_name] = peer_id
+	if returned != "":
+		_cabinet_issued.erase(returned)
+		_cabinet_owner.erase(returned)
+		if NoiseMgr.has_network():
+			_cabinet_return_rpc.rpc(returned)
+		else:
+			_cabinet_return_rpc(returned)
 	take_item(item_name)
 	if in_cabinet:
 		if NoiseMgr.has_network():
@@ -1502,6 +1527,36 @@ func cabinet_rows(index: int) -> Array[Dictionary]:
 		rows.append({"slot": slot, "weapon": w, "name": "MapGun%d" % wi, "locked": not Scrap.is_unlocked(w),
 			"issued": String(_cabinet_issued.get("MapGun%d" % wi, ""))})
 	return rows
+
+## Serwer: rząd gabloty („MapGun<i>”), z którego `peer_id` wziął broń `w` i wciąż ją ma wydaną; "" — żaden.
+func _cabinet_row_of(peer_id: int, w: int) -> String:
+	for n in _cabinet_owner:
+		var i := int(String(n).trim_prefix("MapGun"))
+		if int(_cabinet_owner[n]) == peer_id and i >= 0 and not _weapons.is_empty() and int(_weapons[i % _weapons.size()]) == w:
+			return String(n)
+	return ""
+
+## Gdzie położyć oddaną broń: zwykle pod nogami; przy gablocie — obok skrajnej gabloty po stronie gracza, poza zasięgiem [E] gablot.
+func _drop_point(pl: Node2D, at_cabinet: bool) -> Vector2:
+	var feet := pl.global_position + Vector2(0, -4)
+	if not at_cabinet:
+		return feet
+	var xs: Array = get_tree().get_nodes_in_group("cabinets").map(func(c: Node) -> float: return (c as Node2D).global_position.x)
+	if xs.is_empty():
+		return feet
+	var left: float = float(xs.min()) - CABINET_DROP_GAP
+	var right: float = float(xs.max()) + CABINET_DROP_GAP
+	return Vector2(left if absf(feet.x - left) <= absf(feet.x - right) else right, feet.y)
+
+## Broń wraca na hak gabloty u wszystkich peerów (zamiana w gablocie). Bez nabojów w przydziale — inaczej oddanie i ponowne wzięcie
+## dokładałoby zapas za darmo; pełny przydział wraca dopiero z restartem misji (clear_pickups).
+@rpc("authority", "call_local", "reliable")
+func _cabinet_return_rpc(item_name: String) -> void:
+	if not item_name.begins_with("MapGun") or has_node(item_name):
+		return
+	var gi := _spawn_map_gun(int(item_name.trim_prefix("MapGun")))
+	if gi != null:
+		gi.rounds = 0
 
 func send_cabinets_to(peer_id: int) -> void:
 	if NoiseMgr.is_server() and not _cabinet_issued.is_empty():

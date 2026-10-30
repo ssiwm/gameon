@@ -1665,6 +1665,10 @@ func _tick_inspect() -> void:
 			_cycle_cabinet(-1)
 		elif Input.is_action_just_pressed("move_down") or Input.is_action_just_pressed("menu_down"):
 			_cycle_cabinet(1)
+		elif Input.is_action_just_pressed("move_left"):
+			_switch_cabinet(-1)
+		elif Input.is_action_just_pressed("move_right"):
+			_switch_cabinet(1)
 	if inspect_item != null:
 		if Input.is_action_just_pressed("menu_slot_1"):
 			inspect_slot = 0
@@ -1725,6 +1729,33 @@ func _cycle_cabinet(step: int) -> void:
 		return
 	inspect_item = items[j]
 	Audio.play("ui_click", Audio.BUS_UI, -18.0)
+
+## Oględziny gabloty: [A] / [D] (lewa gałka) przechodzą do sąsiedniej gabloty (1.7.432) — postać staje przed nią (w oględzinach stoi,
+## więc wcześniej trzeba było zamknąć, przejść i otworzyć od nowa). Gablota bez żadnej broni na hakach jest pomijana.
+func _switch_cabinet(step: int) -> void:
+	if inspect_item == null or not is_instance_valid(inspect_item) or not inspect_item.has_meta("cabinet"):
+		return
+	var cur := int(inspect_item.get_meta("cabinet"))
+	var cabs: Array = get_tree().get_nodes_in_group("cabinets")
+	cabs.sort_custom(func(a: Node, b: Node) -> bool: return int(a.get("index")) < int(b.get("index")))
+	var idx := cur + step
+	while idx >= 0 and idx < cabs.size():
+		var cab: Node2D = cabs[idx]
+		var first: Node = null
+		for n in get_tree().get_nodes_in_group("pickups"):
+			if n.has_meta("cabinet") and int(n.get_meta("cabinet")) == int(cab.get("index")) and not n.is_queued_for_deletion():
+				first = n
+				break
+		if first != null:
+			player.global_position.x = cab.global_position.x
+			player.velocity = Vector2.ZERO
+			inspect_item = _cabinet_start(first as Node2D)
+			Audio.play("ui_click", Audio.BUS_UI, -14.0, 0.9)
+			return
+		idx += step
+
+func cabinet_count() -> int:
+	return get_tree().get_nodes_in_group("cabinets").size()
 
 func select_cabinet_slot(row: int) -> void:
 	if inspect_item == null or not is_instance_valid(inspect_item) or not inspect_item.has_meta("cabinet"):
