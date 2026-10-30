@@ -2,7 +2,8 @@ extends Node3D
 ## Wróg jako prawdziwy model 3D w widoku 3D (view3d.gd). Model to rig Tripo z `tools/prep_enemy3d.py` (art/enemy3d/<rodzaj>.glb); pozę liczymy
 ## co klatkę z nazwy animacji 2D (sleep / idle / walk / run / windup), tak jak arkusze HD były wypiekane w `concept/monster_tripo_bake.py` —
 ## te same pozy (kąty tułowia, kroki, ręce), tylko w czasie rzeczywistym na szkielecie Mixamo (dwukostkowe IK jak w `char3d.gd`).
-## Trzosek (czworonóg) odtwarza animację chodu z pliku, reszta póz to skalowanie. Oczy (żółto-pomarańczowe piksele tekstury) świecą emisją.
+## Trzosek (czworonóg) odtwarza klipy z pliku (ruch wilka Quaterniusa przeniesiony `tools/retarget_quad.py`: galop, chód, atak, trafienie, skok, śmierć);
+## siad przy czekaniu i śnie składa kod (`_build_sit`). Oczy (żółto-pomarańczowe piksele tekstury) świecą emisją.
 ##
 ## Układ: Enemy3D (pozycja stóp, skala.x = ±1 odbicie) → pivot (skala dopasowana do rozmiaru sprite'a 2D) → model.
 ## Model w układzie Godota: +X to przód, Y w górę, Z do kamery (blenderowe −Y); stąd przeliczenia osi względem skryptu wypieku.
@@ -51,7 +52,7 @@ const SPEC := {
 	"skoczek": {"fit": ["height", 17.0], "frame_h": 26.0, "cycle": 0.5, "crawler": true, "clips": true},
 	# Żerca (F4e): model z TRELLIS-a szkieletowany `tools/rig_trellis.py` (art/enemy3d/zerca.glb)
 	"zerca": {"fit": ["height", 30.0], "frame_h": 40.0, "cycle": 0.5, "crawler": true, "clips": true},
-	"trzosek": {"fit": ["length", 21.0], "frame_h": 22.0, "cycle": 0.55, "quad": true, "yaw": -90.0, "clips": true, "idle_t": 0.0},
+	"trzosek": {"fit": ["length", 21.0], "frame_h": 22.0, "cycle": 0.55, "quad": true, "yaw": -90.0, "clips": true, "idle_t": 0.0, "death_dur": 1.0},
 	# Mimik to model gracza z kolorem „kolegi” i świecącymi oczami; pozostałe poniżej to modele statyczne animowane deformacją wierzchołków w shaderze
 	# (`DEFORM`), tak jak wypiek `concept/static_tripo_bake.py` — poza z numeru klatki sprite'a 2D (animacja idzie w tempie gry).
 	"mimik": {"model": "res://art/char3d/mpfb/male_scav.glb", "eye_off": [0.12, 0.095, 0.033], "fit": ["height", 22.0], "fit_mesh": "body", "frame_h": 28.0, "cycle": 0.8, "eyes": true, "turn": true,
@@ -1037,6 +1038,7 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 	if moving:
 		var reference: float = float((EnemyDefs.DEFS.get(kind, {}) as Dictionary).get("speed", 95.0))
 		var rate := absf(horizontal_speed) / maxf(reference, 1.0) if is_finite(horizontal_speed) else (2.4 if _sp == 2 else 1.0)
+		_run_rate = rate
 		var cycle := float(_spec.get("cycle", 1.0))
 		if _sp == 2 and bool(_spec.get("body_motion", false)): cycle = 1.0
 		_phase += delta * TAU / cycle * rate
@@ -1080,6 +1082,8 @@ func trigger(clip: String, action := "") -> void:
 		return                                    # trafienie nie przerywa trwającego ciosu
 	_clip = clip
 	_clip_t = 0.0
+	if clip == "hit":
+		_hit_side += 1
 	if clip == "attack":
 		_motion_name = action if action != "" else (_motion_pending if _motion_pending != "" else Motion.action(kind))
 		_motion_pending = ""
@@ -1381,8 +1385,26 @@ func _leech_pose(anim: String, i: int, n: int) -> Array:
 	return [yaw, bend, dz, sz, close, wide, amp, ph, shake, ht, ox]
 
 ## Próbka animacji chodu z pliku (rotacje i pozycje kości lokalne) w chwili t.
-func _sample_quad(t: float) -> Array:
-	_ap.assigned_animation = _ap_name
+## Klipy czworonoga w modelu: ruch wilka Quaterniusa (CC0) przeniesiony na rig Trzoska przez `tools/retarget_quad.py`
+## (gallop, walk, idle, attack, death, hit_l / hit_r, jump, land, idle_low). Model bez nich (stary GLB z jednym chodem Tripo) idzie
+## dawną ścieżką: chód z pliku + nakładki pochylenia z kodu.
+const QUAD_ATTACK_CONTACT := 9.0 / 32.0      ## ułamek klipu „attack”: pysk najdalej z przodu (kłapnięcie) — zgrany z kontaktem ciosu w grze
+const QUAD_GALLOP := [0.45, 0.8]             ## prędkość / prędkość rodzaju: poniżej chód, powyżej galop (wataha krążąca czeka stępem)
+const QUAD_JUMP := [0.6, 0.8]                ## ułamki klipu „jump”: wznoszenie (łapy podkulone) → opadanie (wyciągnięty do lądowania)
+const QUAD_HIT_W := 0.85                     ## waga klipu trafienia: reakcja z miejsca, nogi biegu zostają po części widoczne
+static var _no_sit := "--nosit" in OS.get_cmdline_user_args()
+var _run_rate := 1.0                         ## prędkość / prędkość rodzaju (z `pose`): chód albo galop
+var _gallop_w := 0.0
+var _hit_side := 0                           ## naprzemiennie hit_l / hit_r
+
+func _qhas(clip: String) -> bool:
+	return _ap != null and _ap.has_animation(clip)
+
+func _qlen(clip: String) -> float:
+	return _ap.get_animation(clip).length
+
+func _sample_quad(t: float, clip := "") -> Array:
+	_ap.assigned_animation = clip if clip != "" else _ap_name
 	_ap.seek(t, true)
 	var rots := []
 	var poss := []
@@ -1391,45 +1413,86 @@ func _sample_quad(t: float) -> Array:
 		poss.append(_sk.get_bone_pose_position(bi))
 	return [rots, poss]
 
+## Ustawia szkielet na próbkę (w = 1) albo miesza bieżącą pozę z próbką kość po kości.
+func _mix_quad(sample: Array, w: float) -> void:
+	var rs: Array = sample[0]
+	var ps: Array = sample[1]
+	if w >= 0.999:
+		for bi in rs.size():
+			_sk.set_bone_pose_rotation(bi, rs[bi])
+			_sk.set_bone_pose_position(bi, ps[bi])
+		return
+	for bi in rs.size():
+		_sk.set_bone_pose_rotation(bi, _sk.get_bone_pose_rotation(bi).slerp(rs[bi], w))
+		_sk.set_bone_pose_position(bi, _sk.get_bone_pose_position(bi).lerp(ps[bi], w))
+
 func _pose_quad(anim: String, delta: float) -> void:
 	var len := 1.0
 	if _ap != null and _ap_name == "":
 		var names := _ap.get_animation_list()
 		if not names.is_empty():
-			_ap_name = names[0]
-			_ap.get_animation(_ap_name).loop_mode = Animation.LOOP_LINEAR
+			_ap_name = "walk" if _ap.has_animation("walk") else names[0]
+			for n in [_ap_name, "gallop", "idle"]:
+				if _ap.has_animation(n):
+					_ap.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 	if _ap != null and _ap_name != "":
 		len = _ap.get_animation(_ap_name).length
+	var clips := _qhas("gallop")
 	var idle_t := float(_spec.get("idle_t", 0.0)) * len
 	var running := anim == "run" or anim == "walk"
 	_qw = move_toward(_qw, 1.0 if running else 0.0, delta * BLEND_RATE * 0.5)
+	_gallop_w = move_toward(_gallop_w, smoothstep(QUAD_GALLOP[0], QUAD_GALLOP[1], _run_rate) if running else _gallop_w, delta * 4.0)
 	var sy := 1.0
 	if anim == "sleep":                           # zwinięty: spłaszczony, powoli oddycha
-		sy = (0.60 if "--nosit" in OS.get_cmdline_user_args() else 1.0) + 0.012 * sin(_t * 1.7)      # siedzi (siad niżej), oddycha wolniej niż obudzony
+		sy = (0.60 if _no_sit else 1.0) + 0.012 * sin(_t * 1.7)      # siedzi (siad niżej), oddycha wolniej niż obudzony
 	else:
 		sy = 1.0 + 0.018 * sin(_t * 2.6)
+	# próbki klipów zbierane przed składaniem pozy (każda próbka przestawia szkielet)
+	var s_run: Array = []
+	var s_gallop: Array = []
+	var s_air: Array = []
+	var s_attack: Array = []
+	var s_hit: Array = []
+	var s_death: Array = []
+	var attack_clip := false
 	if _ap != null and _ap_name != "":
-		# idle i bieg próbkujemy osobno i mieszamy kość po kości (płynne wejście i wyjście z biegu, bez przeskoku nóg)
 		if not _qsamp.has("idle"):
-			_qsamp["idle"] = _sample_quad(idle_t)
-		if not _qsamp.has("air"):
+			_qsamp["idle"] = _sample_quad(0.0, "idle") if clips else _sample_quad(idle_t)     # klip idle: cztery łapy na ziemi
+		if not clips and not _qsamp.has("air"):
 			_qsamp["air"] = _sample_quad(float(_spec.get("air_t", 0.25)) * len)       # faza „wyciągnięta” chodu = skok
-		var ri: Array = _qsamp["idle"][0]
-		var pi_: Array = _qsamp["idle"][1]
+		var cyc := fposmod(_phase / TAU, 1.0)
 		if _qw > 0.001:
-			var run := _sample_quad(fposmod(_phase / TAU, 1.0) * len)
-			var rr: Array = run[0]
-			var pr: Array = run[1]
-			for bi in ri.size():
-				_sk.set_bone_pose_rotation(bi, (ri[bi] as Quaternion).slerp(rr[bi], _qw))
-				_sk.set_bone_pose_position(bi, (pi_[bi] as Vector3).lerp(pr[bi], _qw))
-		else:
-			for bi in ri.size():
-				_sk.set_bone_pose_rotation(bi, ri[bi])
-				_sk.set_bone_pose_position(bi, pi_[bi])
+			s_run = _sample_quad(cyc * len)
+			if clips and _gallop_w > 0.001:
+				s_gallop = _sample_quad(cyc * _qlen("gallop"), "gallop")
+		if clips and _air_w > 0.002 and _qhas("jump"):
+			var f := lerpf(QUAD_JUMP[0], QUAD_JUMP[1], clampf(0.5 + _air_vy / 550.0, 0.0, 1.0))
+			s_air = _sample_quad(f * _qlen("jump"), "jump")
+		elif _air_w > 0.002:
+			s_air = _qsamp["air"]
+		if not _dead and _motion_weight > 0.001 and _motion_name == "bite" and _qhas("attack"):
+			# zapowiedź (do kontaktu) i odzyskanie równowagi (po nim) w czasie gry, klip rozciągnięty do obu odcinków
+			var c := Motion.contact("bite")
+			var r := Motion.recovery("bite")
+			var al := _qlen("attack")
+			var tc := al * QUAD_ATTACK_CONTACT
+			var at := tc * clampf(_motion_time / c, 0.0, 1.0) if _motion_time < c else tc + (al - tc) * clampf((_motion_time - c) / r, 0.0, 1.0)
+			s_attack = _sample_quad(at, "attack")
+			attack_clip = true
+		if not _dead and _clip == "hit" and _qhas("hit_l"):
+			var hn := "hit_l" if _hit_side % 2 == 0 else "hit_r"
+			s_hit = _sample_quad(clampf(_clip_t / clip_duration("hit"), 0.0, 1.0) * _qlen(hn), hn)
+		if _dead and _qhas("death"):
+			s_death = _sample_quad(clampf(_dead_t / _death_dur(), 0.0, 1.0) * _qlen("death"), "death")
+		# idle i bieg mieszamy kość po kości (płynne wejście i wyjście z biegu, bez przeskoku nóg); chód → galop wraz z prędkością
+		_mix_quad(_qsamp["idle"], 1.0)
+		if not s_run.is_empty():
+			_mix_quad(s_run, _qw)
+		if not s_gallop.is_empty():
+			_mix_quad(s_gallop, _qw * _gallop_w)
 	# siad: Trzosek nieobudzony (sleep — pozycja startowa na mapie) i obudzony czekający (idle) siedzi; wstaje do biegu, zapowiedzi ataku (windup), ciosu, trafienia i w locie
 	if _qsamp.has("idle"):
-		var want_sit := (anim == "idle" or anim == "sleep") and not _dead and _clip == "" and _air_w < 0.01 and not "--nosit" in OS.get_cmdline_user_args()
+		var want_sit := (anim == "idle" or anim == "sleep") and not _dead and _clip == "" and _air_w < 0.01 and not _no_sit
 		_qs = move_toward(_qs, 1.0 if want_sit else 0.0, delta * (3.0 if want_sit else 7.0))
 		if _qs > 0.001:
 			if not _qsamp.has("sit"):
@@ -1443,29 +1506,31 @@ func _pose_quad(anim: String, delta: float) -> void:
 					_sk.set_bone_pose_rotation(bi, keep_r[bi])
 					_sk.set_bone_pose_position(bi, keep_p[bi])
 			var k := _qs * _qs * (3.0 - 2.0 * _qs)
-			var rs: Array = _qsamp["sit"][0]
-			var ps: Array = _qsamp["sit"][1]
-			for bi in rs.size():
-				_sk.set_bone_pose_rotation(bi, _sk.get_bone_pose_rotation(bi).slerp(rs[bi], k))
-				_sk.set_bone_pose_position(bi, _sk.get_bone_pose_position(bi).lerp(ps[bi], k))
-	if _air_w > 0.002 and _qsamp.has("air"):
-		# lot: mieszamy z próbką „wyciągnięta” kość po kości (po bazowej pozie idle / bieg)
-		var ra: Array = _qsamp["air"][0]
-		var pa: Array = _qsamp["air"][1]
-		for bi in ra.size():
-			_sk.set_bone_pose_rotation(bi, _sk.get_bone_pose_rotation(bi).slerp(ra[bi], _air_w))
-			_sk.set_bone_pose_position(bi, _sk.get_bone_pose_position(bi).lerp(pa[bi], _air_w))
-	# nakładki: oddech, trafienie, atak, śmierć
+			_mix_quad(_qsamp["sit"], k)
+	if not s_air.is_empty():
+		_mix_quad(s_air, _air_w)                  # lot: klip skoku (albo faza „wyciągnięta” chodu) po bazowej pozie idle / bieg
+	if attack_clip:
+		_mix_quad(s_attack, _motion_weight)
+	if not s_hit.is_empty():
+		var u := _clip_t / clip_duration("hit")
+		_mix_quad(s_hit, QUAD_HIT_W * minf(1.0, u * 8.0) * (1.0 - smoothstep(0.7, 1.0, u)))
+	if not s_death.is_empty():
+		_mix_quad(s_death, minf(1.0, _dead_t / 0.12))
+	# nakładki: oddech; bez klipów także trafienie, atak, śmierć i lot (pochylenia z kodu)
 	var pitch := 0.0                              # + = nos w górę
 	var roll := 0.0
 	var shift := 0.0
 	var lift := 0.0
 	var arch := 0.0                               # rad: wygięcie kręgosłupa (+ = grzbiet w dół, głowa w górę)
 	arch += deg_to_rad(1.6) * sin(_t * 2.6)
-	if _air_w > 0.002:                            # wznosząc się: nos w górę, spadając: w dół
+	if _air_w > 0.002 and not clips:              # wznosząc się: nos w górę, spadając: w dół
 		pitch += deg_to_rad(22.0) * clampf(-_air_vy / 275.0, -1.0, 1.0) * _air_w
 		arch += deg_to_rad(6.0) * clampf(-_air_vy / 275.0, -1.0, 1.0) * _air_w
-	if _dead:
+	if _dead and not s_death.is_empty():
+		arch = 0.0
+		sy = 1.0
+		_sink(_dead_t - _death_dur())
+	elif _dead:
 		var dd := _death_dur()
 		var u := clampf(_dead_t / dd, 0.0, 1.0)
 		var yelp := sin(clampf(u / 0.25, 0.0, 1.0) * PI * 0.5)         # 0..1: szarpnięcie głowy w górę
@@ -1477,7 +1542,7 @@ func _pose_quad(anim: String, delta: float) -> void:
 		lift = 0.34 * absf(sin(roll))
 		sy = lerpf(1.0, 0.9, fall)
 		_sink(_dead_t - dd)
-	elif _clip == "hit":
+	elif _clip == "hit" and s_hit.is_empty():
 		var u := _clip_t / clip_duration("hit")
 		var k := sin(PI * minf(u * 1.35, 1.0)) * (1.0 - u)
 		pitch = deg_to_rad(15.0) * k
@@ -1492,7 +1557,7 @@ func _pose_quad(anim: String, delta: float) -> void:
 		arch = deg_to_rad(10.0) * up * (1.0 - snap) - deg_to_rad(12.0) * snap * (1.0 - back)
 		shift = 0.18 * snap * (1.0 - back) - 0.06 * up * (1.0 - snap)
 		sy = lerpf(sy, 0.93, up * (1.0 - snap))
-	if not _dead and not _motion_values.is_empty():
+	if not _dead and not _motion_values.is_empty() and not attack_clip:
 		pitch = lerpf(pitch, deg_to_rad(float(_motion_values.get("pitch", 0.0))), _motion_weight)
 		arch = lerpf(arch, deg_to_rad(float(_motion_values.get("arch", 0.0))), _motion_weight)
 		shift = lerpf(shift, float(_motion_values.get("shift", 0.0)), _motion_weight)
@@ -1562,7 +1627,7 @@ func _quad_support() -> void:
 ## Próbka „siad” czworonoga (Trzosek czeka na atak): budowana raz z pozy idle i zapamiętana jak próbki z animacji, więc `_pose_quad` miesza ją
 ## kość po kości z postawą stojącą i biegiem. Przestrzeń szkieletu: Y w górę, głowa w −Z, ogon w +Z.
 ##  - tułów obrócony o SIT_ANGLE wokół osi poprzecznej przez barki (barki zostają na wysokości, zad schodzi do ziemi),
-##  - przednie nogi proste, obie łapy równo na ziemi pod barkami (IK; próbka idle to klatka chodu z jedną łapą w górze),
+##  - przednie nogi proste, obie łapy równo na ziemi pod barkami (IK; przy starym modelu próbka idle to klatka chodu z jedną łapą w górze),
 ##  - tylne nogi złożone: kolano w przód przy brzuchu, staw skokowy na ziemi pod zadem, śródstopie płasko w przód,
 ##  - szyja i głowa odgięte z powrotem (pysk poziomo, czujnie), ogon położony na ziemi za psem.
 const SIT_ANGLE := 56.0
