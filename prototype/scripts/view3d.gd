@@ -5262,6 +5262,9 @@ const ITEM_SCALE := {
 	"scanner": 0.45, "tag": 0.6, "padlock": 0.4,
 }
 const ITEM_BACK := ["shelf", "table", "chair", "locker", "cot", "stool", "board", "results_board", "workshop", "tools_wall", "rack"]
+## Głębia (z, m) przedmiotów stojących między płaszczyzną gry a meblami: sejf (skrzynia patrolu) stoi tuż za graczem, poza ślizgowym
+## światłem latarki przy samej płaszczyźnie, a niski nie ginie w głębi jak meble z ITEM_BACK.
+const ITEM_Z := {"strongbox": -0.85, "strongbox_open": -0.85}
 
 ## Każdy sprite z `ItemsHd.make` (grupa „items_hd”) dostaje w scenie 3D kartę z tym samym albedo i mapą normalnych: oświetlają ją światła 3D,
 ## rzuca cień na ścianę za sobą, łapie SSAO i mgłę — zamiast płaskiego rysunku 2D z osobnym oświetleniem nałożonego na obraz 3D.
@@ -5604,7 +5607,7 @@ func _make_item(sp: ItemsHd.ItemMark) -> void:
 			if apron != null:
 				apron.visible = false
 				hid.append(apron)
-		var zoff := -1.45 if ITEM_BACK.has(name) else (TRACK_ZC if name.begins_with("handcar") else -0.2)
+		var zoff := -1.45 if ITEM_BACK.has(name) else (TRACK_ZC if name.begins_with("handcar") else float(ITEM_Z.get(name, -0.2)))
 		if name == "rack":                                     # drewno z generatora jest jaskrawopomarańczowe w ciepłym świetle lamp — tonujemy
 			_tint_model(model, Color(0.56, 0.5, 0.46))
 		if sp.offset == Vector2.ZERO:

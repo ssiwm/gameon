@@ -42,6 +42,7 @@ var arrived := false
 var speed := 0.0                     ## px/s w stronę zachodu
 var power := 0.0                     ## efektywna liczba pompujących (do rysowania)
 var local_state := ""                ## dla HUD: "" | "nopower" | "near" | "aboard" | "pumping"
+var travel_x := 0.0                  ## suma kroków, o które drezyna wiozła pasażerów (ze znakiem) — kroki gracza odejmują ją od swojej drogi
 var start_x := 0.0
 var end_x := 0.0
 
@@ -133,6 +134,7 @@ func slot_x(slot: int) -> float:
 func _carry_riders(dx: float) -> void:
 	if absf(dx) < 0.001 or absf(dx) > CARRY_MAX_STEP:
 		return
+	travel_x += dx
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.is_queued_for_deletion() or not p.is_multiplayer_authority() or not aboard(p):
 			continue

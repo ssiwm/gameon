@@ -992,6 +992,66 @@ def m_locker(P):
     box((0, -3.9, 29.5), (11.0, 0.2, 1.4), P["paper"], 0.05)                     # tabliczka
 
 
+def stencil(text, loc, size, m, depth=0.03):
+    """Napis szablonem na froncie bryły: tekst w płaszczyźnie XZ, czołem ku −Y (kamera gry), lekko wytłoczony."""
+    cu = bpy.data.curves.new("txt", "FONT")
+    cu.body = text
+    cu.size = size
+    cu.align_x = "CENTER"
+    cu.align_y = "CENTER"
+    cu.extrude = depth
+    cu.materials.append(m)
+    ob = bpy.data.objects.new("txt", cu)
+    bpy.context.scene.collection.objects.link(ob)
+    ob.location = loc
+    ob.rotation_euler = (math.radians(90), 0, 0)
+    OBJS.append(ob)
+    return ob
+
+
+def m_strongbox(P, opened=False):
+    """Sejf (FUN_PLAN.md P2.2): stalowa skrzynia sprzętowa zaginionego patrolu, 1,0 × 0,55 m, wysoka na 0,48 m (1 jednostka = 0,082 m).
+    Zamknięta: kłódka na skoblu i łańcuch między zapięciami — „trzeba siłą”. Otwarta: wieko odchylone na zawiasach, w środku pusto,
+    kłódka z rozgiętym kabłąkiem leży przed skrzynią."""
+    box((0, 0, 2.5), (12.2, 6.7, 5.0), P["olive"], 0.15)                          # korpus
+    box((0, 0, 0.25), (12.4, 6.9, 0.5), P["olive_d"], 0.1)                        # stopka
+    box((0, 0, 4.85), (12.4, 6.9, 0.3), P["olive_d"], 0.08)                       # obrzeże pod wiekiem
+    for x in (-4.6, 4.6):
+        box((x, 0, 2.5), (0.6, 6.9, 5.0), P["olive_d"], 0.1)                      # przetłoczenia
+    for x in (-6.35, 6.35):
+        box((x, 0, 3.4), (0.35, 1.8, 0.5), P["steel_d"], 0.06)                    # wsporniki uchwytów
+        tor((x - 0.05 if x < 0 else x + 0.05, 0, 2.8), 0.75, 0.15, P["steel"], axis="X", seg=24)
+    if opened:
+        # wieko na zawiasie przy tylnej krawędzi (y = 3.5, z = 5.0), odchylone o 100°
+        box((0, 4.55, 8.37), (12.5, 7.0, 0.9), P["olive_d"], 0.2, rot=(-100, 0, 0))
+        for x in (-4.6, 4.6):
+            box((x, 4.62, 8.37), (0.6, 7.1, 1.0), P["olive"], 0.1, rot=(-100, 0, 0))
+        box((0, 0, 4.98), (11.4, 6.0, 0.1), P["black"], 0.02)                     # pusto w środku
+        for x in (-2.5, 2.5):
+            box((x, -3.45, 3.9), (0.8, 0.3, 1.4), P["steel"], 0.08)                # opuszczone zapięcia
+        box((2.2, -5.2, 0.5), (1.0, 1.0, 0.5), P["brass"], 0.15, rot=(0, 0, 25))   # kłódka na ziemi
+        tor((2.6, -5.5, 0.62), 0.32, 0.09, P["steel"], axis="Z", seg=20)
+    else:
+        box((0, 0, 5.45), (12.5, 7.0, 0.9), P["olive_d"], 0.2)                    # wieko
+        for x in (-4.6, 4.6):
+            box((x, 0, 5.45), (0.6, 7.1, 1.0), P["olive"], 0.1)
+        for x in (-2.5, 2.5):
+            box((x, -3.45, 4.7), (0.8, 0.3, 1.4), P["steel"], 0.08)                # zapięcia
+        box((0, -3.45, 4.9), (0.7, 0.25, 1.6), P["steel_d"], 0.06)                # skobel
+        tor((0, -3.85, 4.3), 0.32, 0.09, P["steel"], axis="Y", seg=20)            # kabłąk kłódki
+        box((0, -3.85, 3.7), (1.0, 0.5, 1.0), P["brass"], 0.15)                   # kłódka
+        # łańcuch od zapięć do kłódki: ogniwa na przemian w płaszczyźnie frontu i w poprzek
+        for side in (-1, 1):
+            for i in range(5):
+                t = (i + 0.5) / 5.0
+                x = side * (2.5 - 2.2 * t)
+                z = 4.3 - 0.9 * math.sin(math.pi * t)
+                tor((x, -3.8, z), 0.3, 0.07, P["steel_d"], axis="Y" if i % 2 == 0 else "Z", seg=16)
+    stencil("JW 2187", (-2.3, -3.37, 2.0), 1.0, P["white"])
+    stencil("ŁĄCZN.", (2.3, -3.37, 2.0), 0.85, P["white"])
+    stencil("07", (-5.5, -3.37, 3.0), 0.8, P["white"])
+
+
 def m_cot(P):
     for x in (-17.0, 17.0):
         for y in (-5.5, 5.5):
@@ -1011,6 +1071,7 @@ MODELS = {
     "supply": (m_supply, 32), "ammo": (m_ammo, 32), "cache": (m_cache, 32), "stash": (m_stash, 32), "tag": (m_tag, 32),
     "bones": (m_bones, 32), "reeds": (m_reeds, 32), "board": (m_board, 16), "results_board": (m_results_board, 12), "range_target": (m_range_target, 24), "range_sign": (m_range_sign, 24), "handcar": (m_handcar, 12), "handcar_wheel": (m_handcar_wheel, 64), "handcar_lever": (m_handcar_lever, 24), "generator": (m_generator, 28), "generator": (m_generator, 40), "crate": (m_crate, 24), "barrel": (m_barrel, 24), "rack": (m_rack, 16), "tools_wall": (m_tools_wall, 20), "lamp": (m_lamp, 24),
     "table": (m_table, 24), "chair": (m_chair, 32), "stool": (m_stool, 32), "shelf": (m_shelf, 20), "locker": (m_locker, 24), "cot": (m_cot, 24),
+    "strongbox": (m_strongbox, 32), "strongbox_open": (lambda P: m_strongbox(P, True), 32),
 }
 
 # ---------------------------------------------------------------- render
