@@ -1,5 +1,5 @@
 extends Node2D
-## Sejf (FUN_PLAN.md P2.2): zamknięta szafa z łupem, którą trzeba wyważyć — ryzyko za nagrodę. Stoi w punktach STRONGBOXES z danych mapy
+## Sejf (FUN_PLAN.md P2.2): zamknięta skrzynia z łupem, którą trzeba wyważyć — ryzyko za nagrodę. Stoi w punktach STRONGBOXES z danych mapy
 ## (level.gd: [kolumna, rząd, złom]).
 ##
 ## Gracz TRZYMA [E] przez PRY_TIME s (dwie osoby = 2× szybciej). Wyważanie jest głośne (PRY_NOISE_PER_S), a otwarcie robi łoskot
@@ -11,8 +11,11 @@ const Lights := preload("res://scripts/lights.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 
-const MODEL := "locker"
-const HD_SCALE := 0.7
+## Stalowa skrzynia sprzętowa zaginionego patrolu (items_proc_bake.py: m_strongbox): zamknięta na kłódkę z łańcuchem; po otwarciu
+## osobny model z odchylonym wiekiem i pustym wnętrzem. Modele są w naturalnej skali (1 jednostka = 1 piksel świata), stąd skala 1.
+const MODEL := "strongbox"
+const MODEL_OPEN := "strongbox_open"
+const HD_SCALE := 1.0
 const PRY_TIME := 3.0
 const REACH_X := 26.0
 const REACH_Y := 40.0
@@ -34,6 +37,7 @@ var _noise_acc := 0.0
 var _sent_progress := -1.0
 var _light: Lights.GameLight
 var _hd: ItemsHd.ItemMark
+var _hd_open: ItemsHd.ItemMark       ## otwarta skrzynia (ukryta, dopóki sejf zamknięty)
 var _t := 0.0
 
 func _ready() -> void:
@@ -42,6 +46,10 @@ func _ready() -> void:
 	if ItemsHd.has(MODEL):
 		_hd = ItemsHd.make(MODEL, self, HD_SCALE, 0.15)
 		_hd.position = Vector2(ItemsHd.cx(MODEL) * HD_SCALE, 0.0)
+	if ItemsHd.has(MODEL_OPEN):
+		_hd_open = ItemsHd.make(MODEL_OPEN, self, HD_SCALE, 0.15)
+		_hd_open.position = Vector2(ItemsHd.cx(MODEL_OPEN) * HD_SCALE, 0.0)
+		_hd_open.visible = false
 	_light = Lights.make_light(Lights.radial(), 1.8, Color(1.0, 0.72, 0.3), 0.5, false)
 	_light.position = Vector2(0, -10)
 	add_child(_light)
@@ -171,4 +179,7 @@ func _set_open(on: bool, v: int) -> void:
 		Feel.shake(1.5 if _local_human() != null and _in_reach(_local_human().global_position, 3.0) else 0.0)
 		Msg.post("strongbox.%s" % name, Msg.Ch.TOAST, tr("STRONGBOX OPEN  +%d scrap") % v, {"style": Msg.Style.SUCCESS, "ttl": 2.5, "prio": 40})
 	if _hd != null:
-		_hd.modulate.a = 0.45 if on else 1.0              # otwarta szafa ciemnieje (pusta)
+		_hd.visible = not on or _hd_open == null           # otwarta: podmiana na skrzynię z odchylonym wiekiem
+		_hd.modulate.a = 0.45 if on and _hd_open == null else 1.0
+	if _hd_open != null:
+		_hd_open.visible = on
