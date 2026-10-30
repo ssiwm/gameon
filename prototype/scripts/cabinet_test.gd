@@ -271,6 +271,10 @@ func _hook_and_switch() -> void:
 	check("oględziny gabloty chowają kartę broni i cel misji (HUD %s)" % str(hud != null), hidden)
 	check("[D] przechodzi do sąsiedniej gabloty, [A] wraca", switched and back_left)
 	wc.inspect_item = null
+	# 1.7.433: podpowiedź „Otwórz gablotę” wie, nad którą gablotą stanąć (hud.gd kotwiczy ją nad daszkiem w widoku 3D)
+	var cands: Array = hud._prompt_candidates() if hud != null else []
+	check("podpowiedź przy gablocie zna swoją gablotę (%d)" % (int(hud._cab_prompt_idx) if hud != null else -2),
+		hud != null and int(hud._cab_prompt_idx) == int(cab0.get("index")) and cands.any(func(c: Dictionary) -> bool: return String(c["text"]) == String(hud._cab_prompt)))
 	_drive_input = false
 
 func _net_host() -> void:
