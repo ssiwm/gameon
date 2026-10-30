@@ -78,12 +78,13 @@ static func recording() -> bool:
 static func build() -> String:
 	if _build == "":
 		var stamp := ""
-		if FileAccess.file_exists("res://build_stamp.txt"):
-			stamp = FileAccess.get_file_as_string("res://build_stamp.txt").strip_edges()
-		elif OS.has_feature("editor"):
+		if OS.has_feature("editor"):
+			# ze źródeł zawsze git: build_stamp.txt zostaje w drzewie po eksporcie (package_build.sh go czyta) i przypinał stary commit (1.7.435)
 			var out: Array = []
 			if OS.execute("git", ["-C", ProjectSettings.globalize_path("res://"), "rev-parse", "--short", "HEAD"], out) == 0 and not out.is_empty():
 				stamp = String(out[0]).strip_edges()
+		elif FileAccess.file_exists("res://build_stamp.txt"):
+			stamp = FileAccess.get_file_as_string("res://build_stamp.txt").strip_edges()
 		var v := String(ProjectSettings.get_setting("application/config/version", "dev"))
 		_build = v if stamp == "" else "%s+%s" % [v, stamp]
 	return _build
