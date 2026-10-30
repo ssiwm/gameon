@@ -132,7 +132,7 @@ static func flashlight_on(pos: Vector2, tree: SceneTree, space: PhysicsDirectSpa
 			continue
 		var from: Vector2 = p.global_position + Vector2(0, -9)
 		var d := pos - from
-		if d.length() > reach or d.length() < 1.0:
+		if d.length() > reach * float(p.get("beam_mult") if p.get("beam_mult") != null else 1.0) or d.length() < 1.0:      # ćmy na szkle skracają snop
 			continue
 		if absf(d.angle_to(p.aim_dir)) > half:
 			continue

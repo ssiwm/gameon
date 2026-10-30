@@ -639,8 +639,10 @@ func _spawn_entities() -> void:
 		_add_enemy("Mimik%d" % (i + 1), "mimik", found["Y"][i])
 	for i in found["J"].size():
 		_add_enemy("Skoczek%d" % (i + 1), "skoczek", _hang_pos(found["J"][i], 14.0))
-	for i in found["Z"].size():
-		_add_enemy("Cma%d" % (i + 1), "cma", _hang_pos(found["Z"][i], 8.0))
+	var moth_n := 0
+	for spot in moth_swarm_spots(found["Z"]):
+		moth_n += 1
+		_add_enemy("Cma%d" % moth_n, "cma", _hang_pos(spot, 8.0))
 	for i in found["A"].size():
 		_add_enemy("Kaplan%d" % (i + 1), "kaplan", found["A"][i])
 	for i in found["U"].size():
@@ -904,6 +906,40 @@ func briefing(id: String) -> Dictionary:
 
 ## Punkt zawieszenia pod sufitem nad znacznikiem: pierwsza bryła w górę (kolumna znacznika), a wróg
 ## wisi tuż pod nią (stopy = dół sprite'a). Bez sufitu zostaje na podłodze.
+## Gniazda ćm (enemy_moth.gd, rój od 1.7.442): znaczniki `Z` w jednym rzędzie bliżej niż SWARM_MERGE_PX tworzą jedno gniazdo; każde gniazdo
+## ma co najmniej `swarm` ćm (enemy_defs.gd), rozstawionych co SWARM_GAP_PX wokół środka (bez wchodzenia w ścianę). Zwraca punkty znaczników.
+const SWARM_MERGE_PX := 96.0
+const SWARM_GAP_PX := 10.0
+
+func moth_swarm_spots(marks: Array) -> Array:
+	var want := int(EnemyDefs.value("cma", "swarm"))
+	var nests: Array = []
+	for m in marks:
+		var p: Vector2 = m
+		var joined := false
+		for nest in nests:
+			var last: Vector2 = (nest as Array).back()
+			if is_equal_approx(last.y, p.y) and absf(p.x - last.x) < SWARM_MERGE_PX:
+				(nest as Array).append(p)
+				joined = true
+				break
+		if not joined:
+			nests.append([p])
+	var out: Array = []
+	for nest in nests:
+		var pts: Array = (nest as Array).duplicate()
+		var mid: Vector2 = (pts[0] + pts.back()) * 0.5
+		var k := 0
+		while pts.size() < want:
+			k += 1
+			var off := SWARM_GAP_PX * float((k + 1) / 2) * (1.0 if k % 2 == 1 else -1.0)
+			var q := mid + Vector2(off, 0.0)
+			if _is_solid(int(q.x / TILE), int(q.y / TILE)):
+				q = mid + Vector2(off * 0.3, 0.0)           # ściana obok: ciaśniej przy środku
+			pts.append(q)
+		out.append_array(pts)
+	return out
+
 func _hang_pos(p: Vector2, body_h: float) -> Vector2:
 	var c := int(p.x / TILE)
 	var r := int(p.y / TILE) - 1

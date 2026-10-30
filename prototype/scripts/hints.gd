@@ -29,7 +29,8 @@ const TIPS := [
 	["downed", "You are down. Stay still — a teammate can revive you before you bleed out"],
 	["downed_solo", "You are down and no one can revive you. Bleed out and you wake up back at the start — fall again and the attempt is lost"],
 	["light", "{flashlight} toggles the flashlight. Light is noise too — turn it off to hide"],
-	["moths", "Moths nest under the watchtower roof and fly at any light — your flashlight, even muzzle flashes. Throw a flare ({flare}) away from you: they burn in it"],
+	["moths", "Moths nest under the watchtower roof and swarm any light they can see — your flashlight, even muzzle flashes. Throw a flare ({flare}) away from you: the whole swarm burns in it"],
+	["moths_on", "Moths are smothering your flashlight: the beam dims, the battery drains and their fluttering is loud. Switch it off ({flashlight}) to shake them — and do not shoot them up close: the dust makes you cough"],
 	["flare", "{flare} throws a flare: bait that draws enemies with light instead of noise"],
 	["scream", "{scream} screams: a burst of NOISE that pulls every enemy nearby — and HIM. Turn on the microphone in the lobby and the game hears your real scream"],
 	["scream_mic", "The microphone is on: scream for real (or press {scream}) and everything nearby comes running. Whispering is safe"],
@@ -158,6 +159,7 @@ func _collect(p: Node) -> void:
 				moths_hang = true
 				break
 	_queue("moths", moths_hang, false)
+	_queue("moths_on", int(p.get("moth_cover")) > 0, false)        # rój na latarce: jak go strząsnąć
 	_queue("quiet", NoiseMgr.level >= 22.0 and NoiseMgr.level < NoiseMgr.AWAKE_THRESHOLD and not threat_near, false)
 	var friend_down := false
 	for o in p.get_tree().get_nodes_in_group("players"):

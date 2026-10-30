@@ -30,14 +30,14 @@ const DEFS := {
 		"color": Color(0.62, 0.2, 0.22), "size": Vector2(10, 14), "knock": 70.0, "knock_mult": 1.0, "head": 0.0,
 		"xp": 2, "scrap": 2, "ammo": 0.22, "alert": 0.4, "voice": {"attack": ["trzosek_attack", 3, -6.0, 1.0], "alert": ["trzosek_attack", 3, -12.0, 1.35], "death": ["trzosek_death", 2, -4.0, 1.0]},
 	},
-	# Ćma (1.7.5): światłolubna — wisi pod sufitem, budzi ją światło (latarka, flara) i leci na nie.
-	# Przy flarze spala się, przy latarce gryzie gracza: rzuć flarę daleko, żeby ją odciągnąć.
+	# Ćma (1.7.5, rój od 1.7.442): światłolubna — wisi w gnieździe pod sufitem (`swarm` ćm na znacznik), budzi ją widoczne światło i leci na nie.
+	# Nie gryzie: obsiada latarkę (krótszy, ciemniejszy snop, bateria, trzepot = hałas). Flara i ogień spalają cały rój — enemy_moth.gd.
 	"cma": {
-		"hp": 18.0, "speed": 74.0, "damage": 1, "windup": 0.2, "reach": 10.0,
+		"hp": 18.0, "speed": 74.0, "damage": 0, "windup": 0.35, "reach": 10.0, "swarm": 3,
 		"cooldown": 1.2, "leap": false, "hear": 0.0, "wake_near": 0.0, "sight": 0.0,
 		"fly": true, "moth": true, "phototaxis": true, "behavior": "moth",
 		"color": Color(0.74, 0.7, 0.55), "size": Vector2(10, 8), "hurt_h": 18.0, "hurt_w": 16.0, "knock": 40.0, "knock_mult": 1.0, "head": 0.0,
-		"xp": 3, "scrap": 4,
+		"xp": 1, "scrap": 2,
 	},
 	# Skoczek (GDD §7.1): wisi pod sufitem nad przejściem i spada na tego, kto pod nim przejdzie (2 obrażenia).
 	"skoczek": {

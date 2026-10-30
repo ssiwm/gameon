@@ -8,6 +8,8 @@ extends Node
 
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const Enemy := preload("res://scripts/enemy.gd")
+const Player := preload("res://scripts/player.gd")
+const Lights := preload("res://scripts/lights.gd")
 const Bruiser := preload("res://scripts/enemy_bruiser.gd")
 const Codex := preload("res://scripts/codex.gd")
 const Blind := preload("res://scripts/enemy_blind.gd")
@@ -74,7 +76,131 @@ func run(m: Node2D) -> void:
 	await _test_wolek_boulder()
 	await _test_ledge_fall()
 	await _test_reed_cover()
+	await _test_moth_swarm()
 	_finish()
+
+# ---------------------------------------------------------------- rój ćm (od 1.7.442)
+
+## Ćma (enemy_moth.gd): nie widzi światła przez ścianę; rój budzi tylko ćmy; nurkuje na latarkę i ją obsiada (krótszy snop, szybsza bateria, hałas
+## trzepotu, bez obrażeń); zgaszona latarka strząsa rój; flara ściąga go z latarki i spala; zabita przy twarzy sypie pyłem (hałas); gniazda z mapy.
+func _test_moth_swarm() -> void:
+	var MothB := load("res://scripts/enemy_moth.gd")
+	var y := -14000.0
+	var x0 := FAR_X + 29000.0
+	var others: Array = []
+	for o in get_tree().get_nodes_in_group("players"):
+		if o != player:
+			o.set_physics_process(false)
+			others.append(o)
+	var orig := player.global_position
+	var orig_hp: int = player.hp
+	player.set_physics_process(false)
+	player.flashlight = false
+	Lights.flashes.clear()
+	var noises := {}
+	var on_noise := func(_a: float, _p: Vector2, tag: String) -> void: noises[tag] = int(noises.get(tag, 0)) + 1
+	NoiseMgr.noise_added.connect(on_noise)
+
+	# ściana między latarką a ćmą: śpi dalej
+	player.global_position = Vector2(x0, y)
+	player.aim_dir = Vector2.RIGHT
+	var wall := _block(Vector2(x0 + 100.0, y - 40.0), Vector2(24.0, 400.0))
+	var hidden := _spawn("cma", Vector2(x0 + 200.0, y - 20.0))
+	player.flashlight = true
+	for i in 6:
+		await get_tree().physics_frame
+	check("ćma: latarka za ścianą jej nie budzi", not hidden.active)
+	player.flashlight = false
+	hidden.queue_free()
+	wall.queue_free()
+
+	# rój budzi tylko ćmy
+	var sx := x0 + 3000.0
+	var swarm: Array = []
+	for k in 3:
+		swarm.append(_spawn("cma", Vector2(sx + 10.0 * float(k - 1), y - 60.0)))
+	var pack := _spawn("trzosek", Vector2(sx + 30.0, y - 20.0))
+	pack.set_physics_process(false)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	player.global_position = Vector2(sx + 130.0, y)
+	player.aim_dir = (Vector2(sx, y - 60.0) - player.global_position).normalized()
+	player.flashlight = true
+	player.battery = Player.BATTERY_MAX
+	for i in 4:
+		await get_tree().physics_frame
+	check("ćma: rój budzi się razem od latarki", swarm.all(func(m) -> bool: return m.active))
+	check("ćma: obudzony rój nie budzi Trzoska pod gniazdem", not pack.active)
+	pack.queue_free()
+
+	# nurkowanie z zapowiedzią i obsiadanie latarki
+	var wound := false
+	var t := 0.0
+	while t < 8.0 and int(player.moth_cover) < 2:
+		await get_tree().physics_frame
+		t += 1.0 / 60.0
+		player.aim_dir = Vector2.LEFT
+		wound = wound or swarm.any(func(m) -> bool: return is_instance_valid(m) and m.winding)
+	check("ćma: przed nurkowaniem zapowiedź (winding)", wound)
+	check("ćma: rój obsiada latarkę (%d ćm po %.1f s)" % [player.moth_cover, t], int(player.moth_cover) >= 2)
+	await get_tree().create_timer(0.3).timeout
+	var cover: int = player.moth_cover
+	check("ćma: przesłonięty snop krótszy i ciemniejszy (×%.2f, zasięg %.0f px)" % [player.beam_mult, player._beam.range_px],
+		is_equal_approx(player.beam_mult, 1.0 - Player.MOTH_BEAM_CUT * float(cover)) and player._beam.range_px < Lights.FLASHLIGHT_M * Lights.PX_PER_M - 1.0)
+	var b0: float = player.battery
+	player._update_flashlight(1.0)
+	check("ćma: bateria drenuje się szybciej (−%.2f s za 1 s)" % (b0 - player.battery), is_equal_approx(b0 - player.battery, 1.0 + Player.MOTH_DRAIN * float(cover)))
+	await get_tree().create_timer(1.6).timeout
+	check("ćma: trzepot na latarce to hałas (%d zdarzeń „moth”)" % int(noises.get("moth", 0)), int(noises.get("moth", 0)) >= 1)
+	check("ćma: nie gryzie — HP gracza bez zmian", int(player.hp) == orig_hp, "%d → %d" % [orig_hp, player.hp])
+
+	# zgaszona latarka strząsa rój
+	player.flashlight = false
+	await get_tree().create_timer(MothB.CLING_LINGER + 0.4).timeout
+	check("ćma: zgaszona latarka strząsa rój", swarm.all(func(m) -> bool: return int(m._sp) != MothB.SP_CLING) and int(player.moth_cover) == 0)
+
+	# flara ściąga rój z latarki i go spala
+	player.flashlight = true
+	t = 0.0
+	while t < 8.0 and int(player.moth_cover) < 1:
+		await get_tree().physics_frame
+		t += 1.0 / 60.0
+	var flare := Node2D.new()
+	flare.add_to_group("flares")
+	level.add_child(flare)
+	flare.global_position = player.global_position + Vector2(-160.0, 0.0)
+	noises.erase("moth_dust")
+	t = 0.0
+	while t < 8.0 and swarm.any(func(m) -> bool: return m.alive):
+		await get_tree().physics_frame
+		t += 1.0 / 60.0
+	check("ćma: flara ściąga rój z latarki i spala cały (%.1f s)" % t, swarm.all(func(m) -> bool: return not m.alive and m._beh._burned))
+	check("ćma: spalone nie sypią pyłem", not noises.has("moth_dust"))
+	flare.queue_free()
+
+	# zabita tuż przy latarce sypie pyłem (hałas „moth_dust”)
+	var near := _spawn("cma", MothB.lamp_pos(player) + Vector2(6.0, 0.0))
+	near.active = true
+	await get_tree().physics_frame
+	near.take_hit({"amount": 9999.0, "dir": Vector2.RIGHT, "pos": near.global_position, "shooter": 0, "type": "bullet"})
+	check("ćma: zabita przy twarzy sypie pyłem (hałas)", int(noises.get("moth_dust", 0)) == 1)
+
+	# gniazda z mapy: znaczniki blisko siebie łączą się, każde gniazdo ma co najmniej `swarm` ćm
+	var spots: Array = level.moth_swarm_spots([Vector2(-5000.0, 200.0), Vector2(-4936.0, 200.0), Vector2(-4000.0, 200.0)])
+	check("ćma: dwa bliskie znaczniki = jedno gniazdo; razem 2 gniazda po 3 ćmy", spots.size() == 6, str(spots))
+	var on_map := get_tree().get_nodes_in_group("moths").filter(func(m) -> bool: return String(m.name).begins_with("Cma")).size()
+	check("ćma: mapa ma gniazda po co najmniej 3 ćmy (%d ćm)" % on_map, on_map >= 3 and on_map % 3 == 0)
+
+	NoiseMgr.noise_added.disconnect(on_noise)
+	for m in swarm:
+		m.queue_free()
+	near.queue_free()
+	player.flashlight = false
+	player.global_position = orig
+	player.set_physics_process(true)
+	for o in others:
+		o.set_physics_process(true)
+	await get_tree().physics_frame
 
 # ---------------------------------------------------------------- trzcina jako kryjówka (od 1.7.306)
 
@@ -1191,7 +1317,7 @@ const STAT_KEYS := ["hp", "speed", "damage", "windup", "reach", "cooldown", "lea
 ## Wartości sprzed przeniesienia do `enemy_defs.gd` (SUPPLY_DROP, AMMO_DROP, HEALTH_DROP, KILL_XP, Scrap.DROP, VOICES): przeniesienie nie zmienia balansu.
 const GOLDEN := {
 	"trzosek": {"xp": 2, "scrap": 2, "supply": 0.0, "ammo": 0.22, "health": 0.0, "voice": ["trzosek_attack", 3, -6.0, 1.0]},
-	"cma": {"xp": 3, "scrap": 4, "supply": 0.0, "ammo": 0.0, "health": 0.0, "voice": []},
+	"cma": {"xp": 1, "scrap": 2, "supply": 0.0, "ammo": 0.0, "health": 0.0, "voice": []},            # rój od 1.7.442: trzy ćmy w gnieździe zamiast jednej (było 3 / 4)
 	"skoczek": {"xp": 5, "scrap": 5, "supply": 0.08, "ammo": 0.25, "health": 0.0, "voice": ["trzosek_attack", 3, -5.0, 0.8]},
 	"mimik": {"xp": 10, "scrap": 10, "supply": 0.4, "ammo": 0.3, "health": 0.0, "voice": ["slepiec_attack", 2, -4.0, 1.2]},
 	"slepiec": {"xp": 6, "scrap": 5, "supply": 0.1, "ammo": 0.3, "health": 0.0, "voice": ["slepiec_attack", 2, -4.0, 1.0]},

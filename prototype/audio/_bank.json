@@ -387,6 +387,18 @@
   "sfx/ui/mission_start",
   0
  ],
+ "moth_dust_1": [
+  "sfx/enemies/moth_dust_1",
+  0
+ ],
+ "moth_dust_2": [
+  "sfx/enemies/moth_dust_2",
+  0
+ ],
+ "moth_flutter_loop": [
+  "sfx/enemies/moth_flutter_loop",
+  1
+ ],
  "mus_chase": [
   "music/mus_chase",
   1

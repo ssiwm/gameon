@@ -18,7 +18,7 @@ extends RefCounted
 ##   power          who, weapon, rounds — gracz wziął skrzynię mocy (FUN_PLAN.md P1.3, od 1.7.402)
 ##   peak           hold, to — Uwaga za długo na 100 opadła i zaczął się oddech (FUN_PLAN.md P1.2, od 1.7.402)
 ##   overcharge     pos, noise, stale, charges, awake (Stalker obudzony), locked (s przytrzymania na wabiku, 0 przy zwietrzałym — FUN_PLAN.md P0.2)
-##   pos            phase, noise, p: lista graczy [{who, bot, pos, hp, crouch, dead}] — próbka co POS_EVERY s (mapy cieplne tras, MAPS_PLAN.md P1)
+##   pos            phase, noise, p: lista graczy [{who, bot, pos, hp, crouch, dead, lamp, moths}] — próbka co POS_EVERY s (mapy cieplne tras, MAPS_PLAN.md P1)
 ##   objective      what (tag / stash / generator / nest / boss), n, of, pos, who, bot — zaliczony cel lub cel poboczny (czas odcinków trasy, P2)
 ##   mission_end    result (success / failed / wipe), time, downs, attempts, peak_noise, side, players, weapons, noise, scrap
 ##   xp             who, mission (XP za wynik misji), rows (etykiety bonusów), xp (łącznie w profilu po misji), level — po udanej misji,
