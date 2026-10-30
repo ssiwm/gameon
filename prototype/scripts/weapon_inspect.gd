@@ -28,6 +28,8 @@ void fragment() {
 
 var level := 0.0                              ## 0..1: wygładzone otwarcie (rozmycie tła, przezroczystość broni i panelu)
 var _open := false
+var _prev_mouse := Input.MOUSE_MODE_HIDDEN      ## tryb myszy sprzed otwarcia (celownik gry ukrywa kursor — weapon_view.gd)
+var cursor_shown := false                        ## panel pokazał kursor i odda tryb przy zamknięciu (headless nie zmienia trybu myszy — test patrzy tutaj)
 var _blur: ColorRect
 var _blur_mat: ShaderMaterial
 var _vp: SubViewport
@@ -226,6 +228,9 @@ func show_weapon(wid: int, gun_key: String, hand: int, lock_text: String, foot: 
 	_take.text = tr("Collect ammo") if controller != null and controller.carries(wid) else tr("Take weapon")
 	if not _open:
 		_open = true
+		_prev_mouse = Input.mouse_mode
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE        # w grze celownik zastępuje kursor; wiersze i „Weź” klika się myszą (1.7.434)
+		cursor_shown = true
 		_yaw = -0.5
 		_pitch = 0.08
 		_idle = 9.0
@@ -281,6 +286,9 @@ func _fill_rows(rows: Array, selected: int) -> void:
 		_rows.add_child(button)
 
 func close() -> void:
+	if _open:
+		Input.mouse_mode = _prev_mouse
+		cursor_shown = false
 	_open = false
 
 ## Broń w oględzinach pokazujemy taką, jaką ma ten gracz: z jego częściami (statystyki i model — gun_model.gd).

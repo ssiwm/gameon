@@ -258,6 +258,9 @@ func _hook_and_switch() -> void:
 	check("broń z gabloty wraca na swój hak przy zamianie (bez przydziału nabojów), rząd znów wolny",
 		wc.loadout[0] == Weapons.LR7 and back != null and int(back.rounds) == 0 and loose(Weapons.SRUT8).is_empty()
 		and not level._cabinet_issued.has(String(back.name)) and level._cabinet_issued.size() == 1)
+	wc.inspect_item = null
+	await frames(2)
+	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN          # jak w grze: celownik zamiast kursora (weapon_view.gd)
 	wc.inspect_item = back
 	player.process_mode = Node.PROCESS_MODE_INHERIT
 	await frames(4)
@@ -270,11 +273,19 @@ func _hook_and_switch() -> void:
 	player.process_mode = Node.PROCESS_MODE_DISABLED
 	check("oględziny gabloty chowają kartę broni i cel misji (HUD %s)" % str(hud != null), hidden)
 	check("[D] przechodzi do sąsiedniej gabloty, [A] wraca", switched and back_left)
+	# 1.7.434: w oględzinach widać kursor myszy (wiersze i „Weź” klika się myszą), po zamknięciu wraca tryb gry (celownik zamiast kursora)
+	var cursor_in: bool = hud != null and bool(hud._inspect.cursor_shown)
+	var mode_in := Input.mouse_mode
 	wc.inspect_item = null
-	# 1.7.433: podpowiedź „Otwórz gablotę” wie, nad którą gablotą stanąć (hud.gd kotwiczy ją nad daszkiem w widoku 3D)
+	await frames(3)
+	var cursor_out: bool = hud != null and bool(hud._inspect.cursor_shown)
+	var mode_out := Input.mouse_mode
+	var real := DisplayServer.get_name() != "headless"      # headless nie zmienia trybu myszy — tam liczy się stan panelu
+	check("kursor myszy widoczny w oględzinach, po zamknięciu oddany grze (%s → %s, tryb myszy %d → %d)" % [cursor_in, cursor_out, mode_in, mode_out],
+		cursor_in and not cursor_out and (not real or (mode_in == Input.MOUSE_MODE_VISIBLE and mode_out == Input.MOUSE_MODE_HIDDEN)))
+	# podpowiedź przy gablocie: ten sam pasek akcji na dole co przy stanowiskach (1.7.433 wisiała nad gablotą — wycofane)
 	var cands: Array = hud._prompt_candidates() if hud != null else []
-	check("podpowiedź przy gablocie zna swoją gablotę (%d)" % (int(hud._cab_prompt_idx) if hud != null else -2),
-		hud != null and int(hud._cab_prompt_idx) == int(cab0.get("index")) and cands.any(func(c: Dictionary) -> bool: return String(c["text"]) == String(hud._cab_prompt)))
+	check("podpowiedź przy gablocie w pasku akcji", cands.any(func(c: Dictionary) -> bool: return String(c["text"]).contains(tr("[%s]  Open the cabinet  ·  %d of %d ready to take").split("·")[0].strip_edges().trim_prefix("[%s]").strip_edges())))
 	_drive_input = false
 
 func _net_host() -> void:
