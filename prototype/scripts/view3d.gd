@@ -2135,6 +2135,8 @@ const CAB_BACK_Z := -1.80                   ## plecy gabloty (jak deska stojaka)
 const CAB_ROWS := [1.74, 1.38, 1.02, 0.66]  ## wysokość osi broni w kolejnych rzędach od góry [m]
 const CAB_SHELF_Y := 0.30                   ## półka na dole [m]
 const CAB_GUN_Z := 0.12                     ## oś broni przed tłem [m]
+const CAB_SEL_OUT := 0.13                   ## wybrana broń w oględzinach wysuwa się tyle ku szybie [m] (do 1.7.430: 0,07)
+const CAB_SEL_PLATE := Color(2.2, 1.7, 0.9) ## jasność tabliczki wybranej broni (HDR — świeci przy poświacie)
 const CAB_FELT := Color(0.09, 0.095, 0.1)   ## tło: grafitowy filc (wariant A z projektu)
 const CAB_LED := Color(1.0, 0.84, 0.62)     ## punkty LED ok. 3000 K
 const CAB_ROMAN := ["I", "II", "III", "IV"]
@@ -2365,16 +2367,19 @@ func _sync_guns() -> void:
 			lean = 0.0
 		(g[5] as Node3D).transform = Transform3D(turn, Vector3.ZERO) * Transform3D(Basis(Vector3.RIGHT, lean).scaled(Vector3.ONE * float(g[12])), g[11] as Vector3)
 		if sway > 0.0:
-			_place_inspect_lights(pv.position + (Vector3(0.0, 0.0, 0.0) if not in_cab else Vector3(0.0, 0.1, 0.0)), sway * (0.35 if in_cab else 1.0))
+			_place_inspect_lights(pv.position + (Vector3(0.0, 0.0, 0.0) if not in_cab else Vector3(0.0, 0.1, 0.0)), sway * (0.75 if in_cab else 1.0))
 		var floor_px := (g[0] as Node2D).global_position
 		if in_cab:
 			# gablota: broń na haku w swoim rzędzie, na osi gabloty (meta „cab_x"), środek bryły na wysokości rzędu
 			var slot := int((g[0] as Node).get_meta("slot"))
 			var hh := float(g[13]) * 0.5
-			pv.position = Level3D.px_to_m(Vector2(float((g[0] as Node).get_meta("cab_x")), floor_px.y + 2.0)) 					+ Vector3(0.0, float(CAB_ROWS[mini(slot, CAB_ROWS.size() - 1)]) - hh, CAB_BACK_Z + CAB_GUN_Z + 0.07 * sway)
+			pv.position = Level3D.px_to_m(Vector2(float((g[0] as Node).get_meta("cab_x")), floor_px.y + 2.0)) 					+ Vector3(0.0, float(CAB_ROWS[mini(slot, CAB_ROWS.size() - 1)]) - hh, CAB_BACK_Z + CAB_GUN_Z + CAB_SEL_OUT * sway)
 		else:
 			# stojak: broń na półce (podłoga = początek pickupu), stan blokady z warsztatu
 			pv.position = Level3D.px_to_m(floor_px) + Vector3(0.0, (RACK_UP_PX + RACK_SHELF_PX * RACK_SCALE - 2.6) * PX, float(g[3]))
+		if in_cab and g[8] != null:
+			# wybrana broń w oględzinach gabloty: tabliczka pod nią rozjaśnia się (1.7.431 — wcześniej wybór widać było tylko po 7 cm wysunięcia)
+			(g[8] as Label3D).modulate = Color(1.0, 1.0, 1.0).lerp(CAB_SEL_PLATE, sway)
 		var arg = (g[0] as Node).get("arg")
 		var locked := not Scrap.is_unlocked(arg)
 		var price := int(Scrap.price_of(arg))

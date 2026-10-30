@@ -1647,8 +1647,10 @@ func nearby_weapon_item() -> Node2D:
 ## Przy broni (stojak albo łup na ziemi): [H] otwiera / zamyka oględziny (widok z oczu gracza, broń unosi się przed nim, statystyki obok —
 ## weapon_inspect.gd i view3d.gd, lokalnie), [E] bierze broń (zamianę rozstrzyga serwer). Oględziny mają osobną akcję inspect_weapon,
 ## więc [F] nadal rzuca flarę obok broni (player.gd). Odejście od broni albo utrata zdrowia zamyka oględziny.
-## Gablota (cabinet.gd): oględziny obejmują całą gablotę — ↑ / ↓ wybiera broń rząd wyżej / niżej, [E] bierze wybraną; zamyka je dopiero odejście
-## od gabloty (najbliższa broń jest wtedy z innej gabloty albo żadna).
+## Gablota (cabinet.gd): oględziny obejmują całą gablotę — ↑ / ↓ wybiera broń rząd wyżej / niżej, [E] bierze wybraną. Od 1.7.431 [E] (pad: [B])
+## przy zamkniętej gablocie ją OTWIERA: w symulacji rzędy wiszą obok siebie co 5 px, więc „najbliższa broń” zależała od tego, gdzie gracz stanął,
+## i [E] brało przypadkową. W oględzinach postać stoi (player.gd), więc zamyka je [H], Esc / Start (pause_menu.gd → close_inspect) albo obrażenia.
+## Pad nie ma wolnego przycisku na [H] (R3 = przeładowanie), dlatego gablota otwiera się interakcją.
 func _tick_inspect() -> void:
 	var it := nearby_weapon_item()
 	var hp_v = player.get("hp")
@@ -1669,12 +1671,40 @@ func _tick_inspect() -> void:
 		elif Input.is_action_just_pressed("menu_slot_2"):
 			inspect_slot = 1
 	if Input.is_action_just_pressed("inspect_weapon"):
-		inspect_item = null if (inspect_item == it or _same_cabinet(inspect_item, it)) else it
+		var opening: bool = inspect_item == null or not (inspect_item == it or _same_cabinet(inspect_item, it))
+		inspect_item = (_cabinet_start(it) if it.has_meta("cabinet") else it) if opening else null
 		inspect_slot = slot if slot < 2 else 0
 		_inspect_hp = hp_now
 		Audio.play("ui_click", Audio.BUS_UI, -16.0)
 	elif Input.is_action_just_pressed("interact"):
-		_try_pickup(inspect_item)
+		if inspect_item == null and it.has_meta("cabinet"):
+			inspect_item = _cabinet_start(it)                # gablota: [E] otwiera, dopiero w oględzinach bierze wybraną
+			inspect_slot = slot if slot < 2 else 0
+			_inspect_hp = hp_now
+			Audio.play("ui_click", Audio.BUS_UI, -16.0)
+		else:
+			_try_pickup(inspect_item)
+
+## Zamyka oględziny (Esc / Start w pause_menu.gd). false — nic nie było otwarte.
+func close_inspect() -> bool:
+	if inspect_item == null:
+		return false
+	inspect_item = null
+	Audio.play("ui_click", Audio.BUS_UI, -16.0)
+	return true
+
+## Broń, od której zaczynają się oględziny gabloty `near` (dowolny jej przedmiot): pierwsza od góry do wzięcia (odblokowana), a gdy takiej
+## nie ma — najwyżej wisząca. Wybór nie zależy już od tego, gdzie gracz stanął.
+func _cabinet_start(near: Node2D) -> Node2D:
+	var cab := int(near.get_meta("cabinet"))
+	var items: Array = get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool:
+		return n.has_meta("cabinet") and int(n.get_meta("cabinet")) == cab and not n.is_queued_for_deletion())
+	items.sort_custom(func(a: Node, b: Node) -> bool: return int(a.get_meta("slot")) < int(b.get_meta("slot")))
+	var lvl := get_tree().get_first_node_in_group("level")
+	for n in items:
+		if lvl == null or not lvl.is_locked_item(n):
+			return n
+	return items[0] if not items.is_empty() else near
 
 ## Czy dwa przedmioty broni wiszą w tej samej gablocie (meta „cabinet" z level.gd).
 static func _same_cabinet(a: Node, b: Node) -> bool:
