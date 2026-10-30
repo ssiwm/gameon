@@ -104,6 +104,7 @@ var _geo_alt_key := ""
 var _geo_alt_state := {}
 var _rows: Array = []                    ## wiersze bieżącej mapy (rozbryzgi od kroków: rodzaj cieczy pod stopami)
 var _splash := {}                        ## id węzła (gracz / wróg) → CPUParticles3D rozbryzgu
+var _drop_shaders := {}                  ## [billboard, cieniowany] → Shader kropel z podłogą (`DROP_SHADER`)
 var _reeds_mat: ShaderMaterial           ## materiał trzciny przy cieczach (`Level3D.build_liquid_props`): uginanie przy przechodzących
 var _reed_push := {}                     ## id postaci / wroga → wygładzona siła uginania 0..1
 var _rustle_t := {}                      ## id → s do następnego szelestu
@@ -1209,7 +1210,45 @@ func _wade_step(cur: float, feet_px: Vector2) -> float:
 	var want := Level3D.wade_at(_wade, feet_px)
 	return move_toward(cur, want, get_process_delta_time() * (1.6 if want > cur else 3.0))
 
+## Krople cieczy z podłogą: część kropli poniżej `floor_y` (m, świat) znika — kropla wpada w taflę zamiast lecieć dalej pod grunt.
+## Bez tego krople z grawitacją spadały do końca życia metr i więcej pod taflę, a gracze są w warstwie rysowanej na wierzchu świata
+## (nic ich tam nie zasłania). //MODE → unshaded, //BILLBOARD → billboard z zachowaną skalą (jak BILLBOARD_ENABLED + billboard_keep_scale).
+const DROP_SHADER := "shader_type spatial;
+render_mode blend_mix, depth_draw_never, shadows_disabled//MODE;
+uniform sampler2D tex : source_color, filter_linear, repeat_disable, hint_default_white;
+uniform vec4 albedo : source_color = vec4(1.0);
+uniform float roughness = 0.15;
+uniform float floor_y = -1000.0;
+void vertex() {
+	//BILLBOARD
+}
+void fragment() {
+	if ((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).y < floor_y) {
+		discard;
+	}
+	vec4 c = COLOR * albedo * texture(tex, UV);
+	ALBEDO = c.rgb;
+	ALPHA = c.a;
+	ROUGHNESS = roughness;
+}
+"
+const DROP_BILLBOARD := "MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
+	MODELVIEW_MATRIX = MODELVIEW_MATRIX * mat4(vec4(length(MODEL_MATRIX[0].xyz), 0.0, 0.0, 0.0), vec4(0.0, length(MODEL_MATRIX[1].xyz), 0.0, 0.0), vec4(0.0, 0.0, length(MODEL_MATRIX[2].xyz), 0.0), vec4(0.0, 0.0, 0.0, 1.0));
+	MODELVIEW_NORMAL_MATRIX = mat3(MODELVIEW_MATRIX);"
+
+func _drop_material(billboard: bool, shaded: bool, floor_y: float) -> ShaderMaterial:
+	var key := Vector2i(int(billboard), int(shaded))
+	if not _drop_shaders.has(key):
+		var sh := Shader.new()
+		sh.code = DROP_SHADER.replace("//MODE", "" if shaded else ", unshaded").replace("//BILLBOARD", DROP_BILLBOARD if billboard else "")
+		_drop_shaders[key] = sh
+	var m := ShaderMaterial.new()
+	m.shader = _drop_shaders[key]
+	m.set_shader_parameter("floor_y", floor_y)
+	return m
+
 ## Rozbryzg od kroków w błocie / oleju / wodzie: strumień kropel z poziomu tafli (węzeł `host` to model postaci lub wroga, opuszczony o `wade`).
+## Krople nikną na tafli (`DROP_SHADER`), nie pod nią.
 func _splash_update(host: Node3D, feet_px: Vector2, speed_px: float, layer: int, wade := 0.0) -> void:
 	var id := host.get_instance_id()
 	var kind := _liquid_kind(feet_px)
@@ -1239,10 +1278,7 @@ func _splash_update(host: Node3D, feet_px: Vector2, speed_px: float, layer: int,
 		dm.height = 1.0
 		dm.radial_segments = 6
 		dm.rings = 3
-		var mat := StandardMaterial3D.new()                   # cieniowane: krople widać w świetle sceny, w ciemności nie świecą (GDD §8.3)
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.roughness = 0.15
-		dm.material = mat
+		dm.material = _drop_material(false, true, -1000.0)    # cieniowane: krople widać w świetle sceny, w ciemności nie świecą (GDD §8.3)
 		sp.mesh = dm
 		sp.scale_amount_min = 0.025
 		sp.scale_amount_max = 0.075
@@ -1254,8 +1290,11 @@ func _splash_update(host: Node3D, feet_px: Vector2, speed_px: float, layer: int,
 		_splash[id] = sp
 	if int(sp.get_meta("kind")) != kind:
 		sp.set_meta("kind", kind)
-		var m := (sp.mesh as SphereMesh).material as StandardMaterial3D
-		m.albedo_color = [Color(0.075, 0.056, 0.040, 0.95), Color(0.03, 0.03, 0.036, 0.95), Color(0.20, 0.18, 0.12, 0.8)][kind]
+		var m := (sp.mesh as SphereMesh).material as ShaderMaterial
+		m.set_shader_parameter("albedo", [Color(0.075, 0.056, 0.040, 0.95), Color(0.03, 0.03, 0.036, 0.95), Color(0.20, 0.18, 0.12, 0.8)][kind])
+	var r := int(floor((feet_px.y + 1.0) / 16.0))                    # wiersz cieczy jak w `_liquid_kind`; tafla = krawędź kafla minus osiadanie
+	var surf := Level3D.px_to_m(Vector2(0.0, float(r) * 16.0)).y - (Level3D.LIQUID_SINK_MUD if kind == 0 else Level3D.LIQUID_SINK)
+	((sp.mesh as SphereMesh).material as ShaderMaterial).set_shader_parameter("floor_y", surf)
 	sp.position.y = wade - 0.03
 	sp.emitting = speed_px > 22.0
 
@@ -1390,6 +1429,20 @@ func spawn_burst(pos: Vector2, cfg: Dictionary) -> void:
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var q := QuadMesh.new()
 	q.size = Vector2(8.0, 8.0) * PX
+	if cfg.has("floor_px"):                  # krople cieczy (`Vfx.splash`): nikną na tafli w `floor_px` zamiast spadać metrami pod grunt
+		var fm := _drop_material(true, bool(cfg.get("shaded", false)), Level3D.px_to_m(Vector2(0.0, float(cfg["floor_px"]))).y - Level3D.LIQUID_SINK)
+		fm.set_shader_parameter("tex", Vfx.blob_texture())
+		fm.set_shader_parameter("roughness", 1.0)        # jak domyślny StandardMaterial3D pozostałych wybuchów
+		q.material = fm
+	else:
+		q.material = _burst_material(cfg)
+	p.mesh = q
+	p.position = Level3D.px_to_m(pos) + Vector3(0.0, 0.0, 0.2)
+	_world.add_child(p)
+	p.emitting = true
+	get_tree().create_timer(life + 0.6).timeout.connect(p.queue_free)
+
+func _burst_material(cfg: Dictionary) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	if not bool(cfg.get("shaded", false)):
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -1398,12 +1451,7 @@ func spawn_burst(pos: Vector2, cfg: Dictionary) -> void:
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	m.billboard_keep_scale = true
 	m.albedo_texture = Vfx.blob_texture()
-	q.material = m
-	p.mesh = q
-	p.position = Level3D.px_to_m(pos) + Vector3(0.0, 0.0, 0.2)
-	_world.add_child(p)
-	p.emitting = true
-	get_tree().create_timer(life + 0.6).timeout.connect(p.queue_free)
+	return m
 
 # ---------------------------------------------------------------- dekoracje mapy (kamienie, kłody, płoty, kości)
 
