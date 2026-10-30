@@ -158,13 +158,14 @@ func _unit() -> void:
 	wc.loaded[Weapons.M83] = 1
 	wc.inspect_item = locked
 	wc.inspect_slot = 0
+	Scrap.unlocked.erase(Weapons.LR7)  # zapis gracza (headless czyta prawdziwy profil) może mieć LR-7 kupioną
 	inspector.show_weapon(Weapons.SRUT8, "srut8", Weapons.M83, "", "", true, wc, locked)
 	check("porównanie uwzględnia specjalny nabój", inspector._comparison_def.damage == wc.def_of(Weapons.M83).damage and inspector._comparison_def.ammo == 1)
 	# wiersze (1.7.431): zablokowana z warunkiem (cena), wybrana z wyraźnym znacznikiem i własnym tłem
 	var row_txt: Array = inspector._rows.get_children().map(func(b: Node) -> String: return String((b as Button).text))
 	var sel_rows: Array = inspector._rows.get_children().filter(func(b: Node) -> bool: return (b as Button).has_theme_stylebox_override("normal"))
 	check("wiersze: zablokowana z ceną, jeden wybrany z tłem (%s)" % str(row_txt),
-		row_txt.any(func(t: String) -> bool: return t.contains("Locked ·") and t.contains("scrap")) and sel_rows.size() == 1 and String((sel_rows[0] as Button).text).begins_with("▶"))
+		row_txt.any(func(t: String) -> bool: return t.contains(tr("Locked · %s") % tr("%d scrap at the workshop") % Scrap.price_of(Weapons.LR7))) and sel_rows.size() == 1 and String((sel_rows[0] as Button).text).begins_with("▶"))
 	var expected: String = Codex._weapon_stats(wc.def_of(Weapons.M83))[0][1]
 	check("kolumna obrażeń pokazuje rzeczywistą wartość", inspector._grid.get_child(5).text == expected)
 	wc.loaded[Weapons.M83] = 0
@@ -270,6 +271,10 @@ func _hook_and_switch() -> void:
 	check("oględziny gabloty chowają kartę broni i cel misji (HUD %s)" % str(hud != null), hidden)
 	check("[D] przechodzi do sąsiedniej gabloty, [A] wraca", switched and back_left)
 	wc.inspect_item = null
+	# 1.7.433: podpowiedź „Otwórz gablotę” wie, nad którą gablotą stanąć (hud.gd kotwiczy ją nad daszkiem w widoku 3D)
+	var cands: Array = hud._prompt_candidates() if hud != null else []
+	check("podpowiedź przy gablocie zna swoją gablotę (%d)" % (int(hud._cab_prompt_idx) if hud != null else -2),
+		hud != null and int(hud._cab_prompt_idx) == int(cab0.get("index")) and cands.any(func(c: Dictionary) -> bool: return String(c["text"]) == String(hud._cab_prompt)))
 	_drive_input = false
 
 func _net_host() -> void:

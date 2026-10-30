@@ -13,7 +13,7 @@ Zasada nadrzędna: broń zachowuje się jak prawdziwa, ale tempo gry zostaje jak
 - **Hałas jako waluta** (rozgrzanie lufy → koszt strzału, tryb serii, błysk lufy budzący ćmy). To najlepsza mechanika broni w grze i nowy system ma ją wzmacniać.
 - **Serwer rozstrzyga**, seed rozrzutu, wspólny zapas autorytatywny na serwerze, testy `--weapontest`.
 - Realizm już poprawiony w 1.7.310–1.7.313: szybkie kule ze smugami, łuski z okna wyrzutowego, P-83 z magazynkiem 8, SPREAD-12 z bębnem, bełt z prawdziwym g, broń nie przesuwa strzelca.
-- Oględziny broni w 3D ([F]), gabloty, modele budowane skryptem (`gun_proc.py`) — gotowe miejsce na widoczne części.
+- Oględziny broni w 3D ([H]), gabloty, modele budowane skryptem (`gun_proc.py`) — gotowe miejsce na widoczne części.
 
 ### 1.2 Słabości systemu ulepszeń
 
@@ -155,7 +155,7 @@ Trzy przykładowe zestawy, które wychodzą same z siebie:
 ### 4.4 Widoczne na modelu
 
 - `gun_proc.py` buduje części jako osobne bryły z gniazdami (puste węzły `socket_muzzle`, `socket_mag`, `socket_optic`, `socket_stock`, `socket_light`) w GLB broni; części mają własne GLB (`art/char3d/parts/`).
-- `char3d.gd` i oględziny ([F]) przypinają części do gniazd. Długość broni (`gun_len`) liczona z zestawu — wylot pocisku dalej z pozy nominalnej (`Char3D.aim_points`), więc animacja nic nie psuje.
+- `char3d.gd` i oględziny ([H]) przypinają części do gniazd. Długość broni (`gun_len`) liczona z zestawu — wylot pocisku dalej z pozy nominalnej (`Char3D.aim_points`), więc animacja nic nie psuje.
 - Tłumik zmienia też dźwięk strzału (nowe klucze audio: `m83_shot_supp`, `p64_shot_supp`) i błysk.
 
 ### 4.5 Kto ma jaką broń
@@ -252,7 +252,7 @@ Szansa na strzał ≈ 0 powyżej 70 % stanu, potem rośnie do ok. 1 na 150 strza
 | podwójne podanie | dwa naboje w komorze | pełne przeładowanie, +1 s |
 | broń eksperymentalna | LR-7: przegrzanie ogniwa (pauza 1 s); SPECTER-1: przebicie kondensatora (ładowanie od nowa) | czekanie / ponowne ładowanie |
 
-To ma dawać **dwie sekundy napięcia** w horrorze, a nie karę: zacięcie zawsze da się usunąć jednym klawiszem, a jego szansę widać (oględziny [F] i warsztat pokazują stan, HUD ostrzega „broń brudna” poniżej 40 %).
+To ma dawać **dwie sekundy napięcia** w horrorze, a nie karę: zacięcie zawsze da się usunąć jednym klawiszem, a jego szansę widać (oględziny [H] i warsztat pokazują stan, HUD ostrzega „broń brudna” poniżej 40 %).
 
 ### 6.3 Konserwacja
 

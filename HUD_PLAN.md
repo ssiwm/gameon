@@ -65,7 +65,7 @@ Broń i sprzęt rysujemy z modeli gry, nie z ikon 2D. Zrobione w makiecie: rende
 
 - **Są modele:** wszystkie bronie (`art/char3d/gun_*.glb`), granat, flara, dym, fosfor, mina, ładunek, skaner, apteczka (`art/items3d/*.glb`).
 - **Brakowało modeli wabika Q i latarki L** (Overcharge to w grze wybuch hałasu broni, `lamp.glb` to lampa sufitowa). Zamodelowane skryptem: `concepts/hud_minimal/models/make_hud_models.py` (Blender 5.2, bryły z fazowaniem, czyste materiały PBR bez tekstur) → `flashlight.glb` (olive, radełkowany uchwyt, przełącznik, szkło) i `lure.glb` (megafon z chwytem pistoletowym: wabik jako „nadajnik hałasu”). Ikony wyrenderowane tym samym skryptem Godota co reszta, więc światło jest spójne. Modele są proste (bez zużycia i tekstur Tripo); przed wejściem do gry warto je zestarzyć (wypalone tekstury jak `prep_items3d.py`) albo wygenerować nowe.
-- **Wdrożenie w Godocie:** wypiekanie PNG przy imporcie (jak `bake_sprites.py`, bez kosztu w grze) jest tańsze niż żywy `SubViewport` w HUD-zie. Żywy model (obrót przy zmianie broni) tylko w oględzinach `[F]` (`weapon_inspect.gd`, już istnieje).
+- **Wdrożenie w Godocie:** wypiekanie PNG przy imporcie (jak `bake_sprites.py`, bez kosztu w grze) jest tańsze niż żywy `SubViewport` w HUD-zie. Żywy model (obrót przy zmianie broni) tylko w oględzinach `[H]` (`weapon_inspect.gd`, już istnieje).
 - **Klawisze:** w całym HUD-zie podkreślona litera zamiast kapsla (`W.keycap` zostaje w menu).
 
 Tło czytelności: dwa gradienty (góra 22%, dół 26% wysokości), alfa 0,55–0,6, zamiast kart. Cień tekstu 8 px, nie obrys 3 px (obrys na małym tekście robi szum, UI_PLAN §3 pkt 2).

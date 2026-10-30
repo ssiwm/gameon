@@ -562,7 +562,7 @@ func _sync_camera() -> void:
 	var near := 0.3
 	var fsize := 2.0 * near * tan(deg_to_rad(FOV * 0.5))
 	var foff := Vector2(0.0, -EYE_UP_M * near / dist)
-	# oględziny broni ([F], weapon_controller.gd): kamera dojeżdża do oczu lokalnego gracza i patrzy w głąb sceny (stojak, ściana, las);
+	# oględziny broni ([H], weapon_controller.gd): kamera dojeżdża do oczu lokalnego gracza i patrzy w głąb sceny (stojak, ściana, las);
 	# bryła widzenia przechodzi z przesuniętej na zwykłą perspektywę o szerszym kącie. Tło rozmywa ekran oględzin (weapon_inspect.gd).
 	_fp_player = null
 	for p in _rigs.keys():
@@ -2140,6 +2140,8 @@ const CAB_SEL_PLATE := Color(2.2, 1.7, 0.9) ## jasność tabliczki wybranej bron
 const CAB_FELT := Color(0.09, 0.095, 0.1)   ## tło: grafitowy filc (wariant A z projektu)
 const CAB_LED := Color(1.0, 0.84, 0.62)     ## punkty LED ok. 3000 K
 const CAB_ROMAN := ["I", "II", "III", "IV"]
+const CAB_NEAR_OPEN := 0.16                 ## lokalny gracz w zasięgu [E]: drzwi uchylają się do tej części pełnego otwarcia (1.7.433)
+const CAB_PROMPT_UP := 0.12                 ## podpowiedź HUD przy gablocie kotwiczy się tyle nad daszkiem [m] (hud.gd, 1.7.433)
 const RACK_LAMP_PX := 32.0                  ## spód lampy nad podłogą [px świata] (stojak kończy się ok. 24 px nad podłogą)
 
 ## Lampa wisząca nad stojakiem z bronią (kryjówka): emaliowany klosz z modelu `lamp`, przewód do stropu i ciepły reflektor w dół — stojak i broń
@@ -2469,6 +2471,7 @@ func _sync_cabinets(delta: float) -> void:
 	var looking := -1
 	if _fp_player != null and _fp_item != null and is_instance_valid(_fp_item) and _fp_item.has_meta("cabinet"):
 		looking = int(_fp_item.get_meta("cabinet"))
+	var near := _local_cabinet_near()
 	for id in _cabinets.keys():
 		var c: Dictionary = _cabinets[id]
 		var node = c["node"]
@@ -2478,12 +2481,29 @@ func _sync_cabinets(delta: float) -> void:
 			_cabinets.erase(id)
 			continue
 		var idx := int(node.get("index"))
-		c["open"] = move_toward(float(c["open"]), 1.0 if looking == idx else 0.0, delta * 2.2)
+		c["open"] = move_toward(float(c["open"]), 1.0 if looking == idx else (CAB_NEAR_OPEN if near == idx else 0.0), delta * 2.2)
 		(c["door"] as Node3D).rotation.y = deg_to_rad(-105.0) * smoothstep(0.0, 1.0, float(c["open"]))
 		var ghosts: Array = c["ghosts"]
 		for s in ghosts.size():
 			if ghosts[s] != null:
 				(ghosts[s] as Node3D).visible = not held.has("%d:%d" % [idx, s])
+
+## Indeks gabloty, w której zasięgu [E] stoi lokalny gracz (poza oględzinami), albo -1.
+func _local_cabinet_near() -> int:
+	for p in _rigs.keys():
+		if is_instance_valid(p) and p.get("is_bot") == false and (p as Node).is_multiplayer_authority() and p.get("weapons") != null 				and p.weapons.inspect_item == null and not bool(p.get("dead")):
+			var it: Node2D = p.weapons.nearby_weapon_item()
+			if it != null and it.has_meta("cabinet"):
+				return int(it.get_meta("cabinet"))
+	return -1
+
+## Punkt ekranu (jednostki okna, jak HUD) tuż nad daszkiem gabloty o danym indeksie albo NAN, gdy gabloty nie ma w scenie.
+## Pasek akcji przy gablocie stoi tam zamiast na dole ekranu: na dole był mały, a postać przed gablotą zasłaniała ją samą (hud.gd).
+func cabinet_screen_top(idx: int) -> Vector2:
+	for c in _cabinets.values():
+		if is_instance_valid(c["node"]) and int(c["node"].get("index")) == idx and is_instance_valid(c["root"]):
+			return screen_point((c["root"] as Node3D).global_position + Vector3(0.0, CAB_H + CAB_PROMPT_UP, 0.0))
+	return Vector2(NAN, NAN)
 
 func _build_cabinet(n: Node2D) -> Dictionary:
 	var root := Node3D.new()

@@ -22,6 +22,7 @@ extends Control
 const WeaponInspect := preload("res://scripts/weapon_inspect.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Mission := preload("res://scripts/mission.gd")
+const Vfx := preload("res://scripts/vfx.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Ammo := preload("res://scripts/ammo.gd")
@@ -45,6 +46,7 @@ const HudIcon := preload("res://scripts/hud_icon.gd")
 ## HUD o kolejne 30% mniejszy (0,8 → 0,56) po przebudowie na układ bez ramek; razem z mnożnikiem SMALL / NORMAL / LARGE (celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.56
 const MSG_SCALE := 0.8            ## komunikaty (alerty, toasty, karta tytułowa, porady, dziennik, notatki, pasek akcji) o 20% mniejsze niż reszta HUD-u
+const CAB_PROMPT_SCALE := 1.3      ## pasek akcji nad gablotą (1.7.433): większy niż zwykły (MSG_SCALE), bo stoi w świecie, a nie w stałym miejscu ekranu
 const MARGIN := 8.0              ## odstęp kart od krawędzi (jednostki logiczne HUD)
 const CONTROLS_SHOW_S := 20.0
 const TOAST_S := 9.0               ## s, przez które opis celu jest widoczny po zmianie celu / fazy (potem gaśnie; F1 przywołuje)
@@ -502,6 +504,8 @@ var _result_xp_val: Label
 var _prompt_card: PanelContainer
 var _prompt: RichTextLabel             ## pasek akcji: tekst z klawiszami jako klawisze (UiTheme.keycaps)
 var _prompt_bar: Bar
+var _cab_prompt := ""                   ## tekst podpowiedzi „Otwórz gablotę” z bieżącej klatki ("" = gracz nie stoi przy gablocie)
+var _cab_prompt_idx := -1               ## …i indeks tej gabloty: pasek akcji kotwiczy się wtedy nad jej daszkiem (1.7.433)
 var _controls: Label
 var _controls_range := false            ## pasek sterowania pokazuje ściągę strzelnicy (kontekst „range”)
 var _f1: Label
@@ -2376,6 +2380,8 @@ func _near_generator() -> Node:
 ## najwyższą wagę — dawny łańcuch elif jako dane. Pusty tekst też bywa kandydatem: zagłusza niższe wagi (panel oględzin, wipe).
 func _prompt_candidates() -> Array:
 	var out: Array = []
+	_cab_prompt = ""
+	_cab_prompt_idx = -1
 	var add := func(text: String, prog := -1.0, col := UiTheme.TEXT) -> void:
 		out.append({"text": text, "prog": prog, "col": col})
 	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
@@ -2462,7 +2468,9 @@ func _prompt_candidates() -> Array:
 		var lvl_c := get_tree().get_first_node_in_group("level")
 		var cab_rows: Array = lvl_c.cabinet_rows(int(_player.weapons.nearby_weapon_item().get_meta("cabinet"))) if lvl_c != null else []
 		var ready := cab_rows.filter(func(r: Dictionary) -> bool: return not bool(r["locked"]) and String(r["issued"]) == "").size()
-		add.call(tr("[%s]  Open the cabinet  ·  %d of %d ready to take") % [Actions.key("interact"), ready, cab_rows.size()], -1.0, UiTheme.ACCENT)
+		_cab_prompt = tr("[%s]  Open the cabinet  ·  %d of %d ready to take") % [Actions.key("interact"), ready, cab_rows.size()]
+		_cab_prompt_idx = int(_player.weapons.nearby_weapon_item().get_meta("cabinet"))
+		add.call(_cab_prompt, -1.0, UiTheme.ACCENT)
 	elif _player != null and _player.weapons.nearby_weapon_item() != null:
 		var it: Node2D = _player.weapons.nearby_weapon_item()
 		var nd: RefCounted = Weapons.def(it.arg)
@@ -2555,6 +2563,15 @@ func _drive_prompt() -> void:
 		_prompt_card.scale = Vector2.ONE * MSG_SCALE
 		_prompt_card.pivot_offset = Vector2(_prompt_card.size.x * 0.5, 0.0)
 		_prompt_card.position = Vector2((size.x - _prompt_card.size.x) * 0.5, _gear_card.position.y - _prompt_card.size.y * MSG_SCALE - 8.0)
+		# gablota (1.7.433): podpowiedź nad daszkiem, w pełnym rozmiarze — na dole była mała, a postać przed gablotą zasłaniała gablotę
+		var v3d: Node = Vfx.view3d if text == _cab_prompt and _cab_prompt != "" else null
+		var top: Vector2 = v3d.call("cabinet_screen_top", _cab_prompt_idx) if v3d != null else Vector2(NAN, NAN)
+		top = get_global_transform_with_canvas().affine_inverse() * top          # jednostki okna → współrzędne HUD-u (skala interfejsu)
+		if not is_nan(top.x):
+			var sz := _prompt_card.size * CAB_PROMPT_SCALE
+			_prompt_card.scale = Vector2.ONE * CAB_PROMPT_SCALE
+			_prompt_card.pivot_offset = Vector2.ZERO
+			_prompt_card.position = Vector2(clampf(top.x - sz.x * 0.5, 8.0, size.x - sz.x - 8.0), clampf(top.y - sz.y, 8.0, _gear_card.position.y - sz.y - 8.0))
 
 ## Drzwi strzelnicy FPP, przy których stoi lokalny gracz (range_door.gd), albo null.
 func _near_range_door() -> Node:
