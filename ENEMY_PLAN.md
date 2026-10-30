@@ -260,7 +260,7 @@ Cel: nowe rodzaje (F4) nie dopisują `if kind ==` w rdzeniu. Wynik: `enemy.gd` 1
 - trzyma dystans ≈ 140 px od graczy za plecami Trzosków, bez ciosu w zwarciu (groźny wsparciem, nie obrażeniami);
 - **krzyk:** zapowiedź 0,7 s z pierścieniem o promieniu fali (6 m ≈ 96 px; `_ring` w widoku 3D skalowany), potem stun częściowy 0,8 s wszystkich graczy w zasięgu, przerwa 8 s (× `enemy_cd`), hałas jak krzyk Podsłuchacza;
 - **leczenie:** co 1 s +10% maks. HP rannym Trzoskom w 7 m z czystą linią, wstrzymane w zapowiedzi krzyku i po jego śmierci; zielona wiązka w 3D;
-- „zabij pierwszego": śmierć Kapłana daje Trzoskom w pobliżu strach (+0,34 morale, jak śmierć kolegi z watahy) i zatrzymuje leczenie.
+- „zabij pierwszego": śmierć Kapłana daje Trzoskom w pobliżu strach (jak śmierć kolegi z watahy: +0,4 morale od 1.7.440, wcześniej +0,34) i zatrzymuje leczenie.
 
 **Rzeźnik** (`rzeznik`, 600 HP, pancerz 4, odporny na odrzut i ogłuszenie z trafień; prędkość ≈ 60, miniboss):
 - **to sparametryzowany Wołek:** `enemy_bruiser.gd` dostaje dane `charge` (zapowiedź 1,0 s, czas 1,4 s, mnożnik ×3,2, przerwa 9 s), `breaks_barricades` i `throws: false` — bez nowego kodu szarży, bo szarża już rozbija skrzynie i beczki;
