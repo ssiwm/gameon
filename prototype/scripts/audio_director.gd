@@ -89,11 +89,6 @@ const MAX_DISTANCE := 1600.0
 const FAR_START := 300.0
 const FAR_FULL := 900.0
 
-# Serce: próg, od którego bije szybciej (GDD: Uwaga napędza strach).
-const HEART_FAST_AT := 0.45
-const HEART_SLOW_KEY := "heart_slow_loop"
-const HEART_FAST_KEY := "heart_fast_loop"
-
 ## Rodzina dźwięku -> [priorytet 0-100, max równoczesnych, min odstęp ms]. Dopasowanie
 ## po NAJDŁUŻSZYM prefiksie; wszystko inne dostaje DEFAULT_VOICE.
 const VOICE := {
@@ -135,7 +130,6 @@ var _last_caption: Dictionary = {}   # tekst -> czas (ms)
 var _listener: AudioListener2D
 var _listener_pos := Vector2.ZERO
 var _occl: Dictionary = {}           # Vector2i -> int (próg okluzji)
-var _heart_key := ""
 var _enabled := true
 var _quitting := false
 var _use_licensed := not ("--synthaudio" in OS.get_cmdline_user_args())
@@ -277,7 +271,6 @@ func _shutdown() -> void:
 	for n in _music:
 		n.stop()
 		n.stream = null
-	_heart_key = ""
 	_music_layer = -1
 	_music_started = false
 	for wp in _warm_paths:                 # wczytywanie w tle (`_warm_all`) odbieramy przed wyjściem — wątek nie trzyma zasobu przy zamykaniu
@@ -1190,28 +1183,6 @@ func _process(delta: float) -> void:
 	_update_deafness(delta)
 	_update_music(delta)
 	_update_emitters(delta)
-	_update_heart(delta)
-
-
-## Serce: powyżej progu bije szybciej i głośniej. Cisza = cisza (GDD §13).
-func _update_heart(_delta: float) -> void:
-	if not _enabled:
-		return
-	var lvl := NoiseMgr.level / NoiseMgr.MAX_LEVEL
-	var want := HEART_FAST_KEY if lvl >= HEART_FAST_AT else HEART_SLOW_KEY
-	var want_vol := -80.0
-	if lvl >= 0.12:
-		want_vol = lerpf(-22.0, -9.0, clampf((lvl - 0.12) / 0.6, 0.0, 1.0))
-	if want != _heart_key:
-		if _heart_key != "":
-			stop_loop(_heart_key)
-		_heart_key = want
-	# Startujemy też wtedy, gdy klucz się nie zmienił, a pętla nie gra (np. wejście z lobby
-	# przy Uwadze 0 ustawiło klucz bez startu).
-	if want_vol > -80.0 and not loop_playing(_heart_key):
-		start_loop(_heart_key, BUS_PLAYER, want_vol)
-	elif loop_playing(_heart_key):
-		set_loop_volume(_heart_key, want_vol)
 
 
 ## Wyłącza cały dźwięk (np. przy starcie lobby, żeby nie grało na pustce).

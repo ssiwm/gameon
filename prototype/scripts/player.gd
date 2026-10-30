@@ -213,6 +213,10 @@ var _revive_sent_ms := 0
 ## po stopniowaniu w dół albo lata w powietrzu.
 var _step_dist := 0.0
 var _last_step_pos := Vector2.ZERO
+var footsteps := 0                     ## zagrane kroki tej postaci (testy: --nobottest na drezynie)
+var _deck_car: Node2D = null           ## drezyna pod nogami przy ostatnim liczeniu kroków
+var _deck_x := 0.0                     ## jej travel_x wtedy
+var _deck_rel := 0.0                   ## droga po pokładzie względem drezyny od ostatniego kroku (ze znakiem)
 var _breath_on := false
 var _air_time_accum := 0.0
 
@@ -1351,12 +1355,18 @@ func _update_footsteps() -> void:
 		return
 	var moved := global_position - _last_step_pos
 	_last_step_pos = global_position
-	if moved.length() < 0.5:
+	var deck := _deck_walk(moved.x)
+	if deck >= 0.0:
+		_step_dist = deck
+	elif moved.length() < 0.5:
 		return
-	_step_dist += moved.length()
+	else:
+		_step_dist += moved.length()
 	var stride := 34.0 if crouching else 22.0
 	if _step_dist >= stride:
 		_step_dist = 0.0
+		_deck_rel = 0.0
+		footsteps += 1
 		Audio.play_footstep(global_position, crouching)
 
 
@@ -1368,15 +1378,40 @@ func _update_footsteps() -> void:
 func _update_footsteps_passive() -> void:
 	var moved := global_position - _last_step_pos
 	_last_step_pos = global_position
+	var deck := _deck_walk(moved.x)
 	# w powietrzu, leży albo teleport (respawn/wipe) — bez kroku
 	if dead or absf(moved.y) > 0.6 or moved.length() > 40.0:
 		_step_dist = 0.0
+		_deck_rel = 0.0
 		return
-	_step_dist += absf(moved.x)
+	_step_dist = deck if deck >= 0.0 else _step_dist + absf(moved.x)
 	var stride := 34.0 if crouching else 22.0
 	if _step_dist >= stride:
 		_step_dist = 0.0
+		_deck_rel = 0.0
+		footsteps += 1
 		Audio.play_footstep(global_position, crouching, -13.0)
+
+## Droga nóg po pokładzie drezyny od ostatniego kroku albo -1, gdy postać na niej nie stoi. handcar.gd wozi pasażerów
+## o swój krok, więc z przesunięcia odejmujemy ruch drezyny (travel_x) — inaczej stojący na jadącej tupał jak w biegu
+## (zgłoszenie po 1.7.436). Resztę sumujemy ZE ZNAKIEM: cudza postać przychodzi z replikacji co 0,05 s, więc względem
+## płynnie jadącej drezyny klatka po klatce raz stoi, raz skacze, a suma modułów tupałaby dalej.
+func _deck_walk(moved_x: float) -> float:
+	var car: Node2D = null
+	for c in get_tree().get_nodes_in_group("handcar"):
+		if c.aboard(self):
+			car = c
+			break
+	if car == null:
+		_deck_car = null
+		return -1.0
+	if car == _deck_car:
+		_deck_rel += moved_x - (float(car.travel_x) - _deck_x)
+	else:
+		_deck_car = car
+		_deck_rel = 0.0
+	_deck_x = car.travel_x
+	return absf(_deck_rel)
 
 ## Oddech: ciągły przy wysiłku (skradanie w napięciu, bieg) i cisza gdy stoisz.
 func _update_breath() -> void:
