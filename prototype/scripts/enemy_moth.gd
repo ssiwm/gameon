@@ -8,10 +8,13 @@ extends "res://scripts/enemy_behavior.gd"
 ## w bok (JINK_*), z szybkim skrętem (STEER); w snopie latarki świeci (`view_extra` → `lit`, każdy peer).
 ## Od 1.7.444 zabija ją tylko cios wręcz (`enemy_defs.gd: melee_only`) — maczeta albo kilof, jednym ciosem każdą w łuku. Flara i ogień już nie
 ## spalają: rój krąży przy płomieniu, dopóki ten płonie, a potem wraca do latarki.
+## Od 1.7.445 gniazdo to 12 ćm (`swarm`, meta „nest” z level.gd): trzepot gra jedna ćma na gniazdo (głośniej), hałas trzepotu na latarce ma
+## sufit niezależny od liczby ćm (FLUTTER_CAP), a ostatnia ćma gniazda zabita ciosem zostawia złom (`nest_scrap`).
 
 const Lights := preload("res://scripts/lights.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Vfx := preload("res://scripts/vfx.gd")
+const EnemyDefs := preload("res://scripts/enemy_defs.gd")
 
 const MOTH_SEEK_R := 420.0           ## z tej odległości ćma widzi światło
 const BURN_R := 8.0                  ## krąży przy płomieniu (flara, ogień) tak blisko — bez obrażeń, zabija tylko cios wręcz
@@ -25,7 +28,8 @@ const DIVE_CD := 1.2                 ## przerwa po chybionym nurkowaniu i po str
 const CLING_R := 6.0                 ## z tej odległości od lampy siada na szkle
 const CLING_SPOT := 2.0              ## promień miejsc na szkle latarki (szkło ok. 16 cm)
 const CLING_LINGER := 0.8            ## s, przez które trzyma się zgaszonej latarki, zanim odleci
-const FLUTTER_NOISE := 0.7           ## hałas trzepotu jednej ćmy na latarce [na s] (tag „moth”, poza budżetem hałasu wrogów)
+const FLUTTER_NOISE := 0.7           ## hałas trzepotu jednej ćmy na latarce [na s] (tag „moth”, poza budżetem hałasu wrogów)…
+const FLUTTER_CAP := 4.0             ## …ale od tylu ćm na latarce więcej już nie hałasuje (cały rój: 2,8 zdarzenia na s, nie 8,4)
 const DUST_R := 40.0                 ## ćma zabita tak blisko gracza wybucha pyłem…
 const DUST_NOISE := 6.0              ## …a kaszel słychać jak okrzyk bólu (NoiseMgr.N_HURT)
 const DUST_ONCE_MS := 400            ## jeden pył na cios, choć cios zabija kilka ćm
@@ -39,6 +43,8 @@ const JINK_MAX := 0.4
 const JINK_SPEED := 1.1              ## …zryw: nagły skok prędkości w losową stronę (× prędkość)
 const STEER := 0.32                  ## wygładzanie skrętu na klatkę (było 0.18 — ćma skręcała jak szybowiec)
 const LIT_EVERY := 0.1               ## s między sprawdzeniami, czy ćma jest w snopie (raycast, każdy peer)
+const LIGHT_EVERY := 0.1             ## s między pełnymi poszukiwaniami światła (raycasty) obudzonej ćmy; pomiędzy — to samo źródło, pozycja na bieżąco
+const SLEEP_SYNC := 1.0              ## s między wysyłkami stanu śpiącej ćmy (wisi bez ruchu; budzi się — od razu zwykłe 20 Hz)
 
 enum Mode { SEEK, WIND, DIVE, CLING }
 
@@ -49,17 +55,25 @@ var _mode_t := 0.0
 var _dark_t := 0.0                   ## s od zgaszenia latarki gospodarza
 var _noise_acc := 0.0
 var _slot := 0.0                     ## kąt miejsca na szkle
+var _slot_r := 1.0                   ## …i odległość od środka szkła (× CLING_SPOT) — 12 ćm nie siada w jednym punkcie
 var _last_pos := Vector2(INF, INF)   ## ostatnie widziane światło
 var _loop_on := false
 static var _dust_ms := -100000       ## czas ostatniego pyłu (serwer, wspólny dla wszystkich ćm)
+static var _voice := {}              ## gniazdo → ćma, która gra trzepot całego roju (każdy peer)
 var _jink_t := 0.0                   ## s do następnego zrywu
+var _lt := {}                        ## ostatnio znalezione światło (`nearest_light`)
+var _lt_t := 0.0                     ## s do następnego pełnego poszukiwania
+var _sleep_sync := 0.0
 var _lit := 0.0                      ## 0..1 poświaty w snopie latarki (tylko widok)
 var _lit_want := 0.0
 var _lit_t := 0.0
 
 func on_ready() -> void:
 	e.add_to_group("moths")
-	_slot = float(e.get_instance_id() % 7) * TAU / 7.0
+	_slot = fmod(float(e.get_instance_id() % 997) * 2.39996, TAU)        # złoty kąt: kolejne ćmy rozkładają się równo wokół szkła
+	_slot_r = 0.45 + 0.55 * fmod(float(e.get_instance_id() % 991) * 0.618034, 1.0)
+	_lt_t = randf() * LIGHT_EVERY                 # rój nie szuka światła w tej samej klatce
+	_sleep_sync = randf() * SLEEP_SYNC
 	# przelatuje przez szpary w kładkach (warstwa 16, level.gd LAYER_PLATFORM): widzi przez nie (`_sees` bada tylko teren), więc musi też przez nie
 	# dolecieć — inaczej rój z dachu strażnicy utykał na podeście nad graczem
 	e.set_collision_mask_value(PLATFORM_LAYER_BIT, false)
@@ -134,6 +148,29 @@ func nearest_light(max_r: float) -> Dictionary:
 			best = {"pos": lp, "kind": "player", "node": p}
 	return best
 
+## Światło do lotu: śpiąca ćma szuka co klatkę (daleko od świateł bez raycastów — `nearest_light` odsiewa odległością), obudzona co LIGHT_EVERY s
+## (rój przy flarze albo latarce to dziesiątki raycastów na klatkę). Między poszukiwaniami leci na to samo źródło, z pozycją liczoną na bieżąco;
+## zgaszona latarka albo usunięta flara — od razu pusto.
+func _light(delta: float) -> Dictionary:
+	_lt_t -= delta
+	if not e.active or _lt_t <= 0.0:
+		_lt_t = LIGHT_EVERY
+		_lt = nearest_light(MOTH_SEEK_R)
+		return _lt
+	if _lt.is_empty():
+		return _lt
+	var n = _lt.get("node")
+	if n == null or not is_instance_valid(n) or (n as Node).is_queued_for_deletion():
+		_lt = {}
+	elif _lt["kind"] == "player":
+		if lamp_lit(n):
+			_lt["pos"] = lamp_pos(n)
+	elif (n as Node).is_in_group("fire_patches"):
+		_lt["pos"] = (n as Node2D).global_position + Vector2(0, -4)
+	else:
+		_lt["pos"] = (n as Node2D).global_position
+	return _lt
+
 ## Gracz strzela wiązką (LR-7): świeci jak latarka, ćmy lecą na tę wiązkę.
 func beam_lit(p: Node) -> bool:
 	return bool(p.w_firing) and Weapons.def(int(p.weapon)).kind == Weapons.Kind.BEAM
@@ -158,12 +195,15 @@ func _set_mode(m: int) -> void:
 func _moth_tick(delta: float) -> void:
 	t_moth += delta
 	_mode_t += delta
-	var lt := nearest_light(MOTH_SEEK_R)
+	var lt := _light(delta)
 	if not e.active:
 		e.velocity = Vector2.ZERO
 		if not lt.is_empty():
 			e.wake()
-		e._send_state(delta)
+		_sleep_sync -= delta
+		if e.active or _sleep_sync <= 0.0:
+			_sleep_sync = SLEEP_SYNC
+			e._send_state(delta)
 		return
 	if mode == Mode.CLING:
 		_cling_tick(delta, lt)
@@ -267,7 +307,7 @@ func _cling_tick(delta: float, lt: Dictionary) -> void:
 		return
 	if lamp_lit(p):
 		_dark_t = 0.0
-		_noise_acc += delta * FLUTTER_NOISE
+		_noise_acc += delta * FLUTTER_NOISE * FLUTTER_CAP / maxf(FLUTTER_CAP, float(p.moth_cover))
 		if _noise_acc >= 1.0:
 			_noise_acc -= 1.0
 			NoiseMgr.add_noise(1.0, e.global_position, "moth")
@@ -277,7 +317,7 @@ func _cling_tick(delta: float, lt: Dictionary) -> void:
 			_detach()
 			return
 	var wob := sin(t_moth * 7.0 + _slot) * 0.6
-	e.global_position = lamp_pos(p) + Vector2.from_angle(_slot + wob) * CLING_SPOT
+	e.global_position = lamp_pos(p) + Vector2.from_angle(_slot + wob) * CLING_SPOT * _slot_r
 	e.velocity = Vector2.ZERO
 
 ## Zabita ćma tuż przy graczu wybucha pyłem: kaszel to hałas, chmurę widać u wszystkich. Cios zdejmuje kilka ćm naraz — pył (i kaszel) najwyżej
@@ -285,7 +325,10 @@ func _cling_tick(delta: float, lt: Dictionary) -> void:
 func on_death() -> void:
 	host = null
 	_set_mode(Mode.SEEK)
-	if not NoiseMgr.is_server() or Time.get_ticks_msec() - _dust_ms < DUST_ONCE_MS:
+	if not NoiseMgr.is_server():
+		return
+	_nest_cleared()
+	if Time.get_ticks_msec() - _dust_ms < DUST_ONCE_MS:
 		return
 	for p in e.get_tree().get_nodes_in_group("players"):
 		if not bool(p.dead) and (p as Node2D).global_position.distance_to(e.global_position) < DUST_R + 16.0 \
@@ -294,6 +337,19 @@ func on_death() -> void:
 			NoiseMgr.add_noise(DUST_NOISE, e.global_position, "moth_dust")
 			e.behavior_fx("dust")
 			return
+
+## Ostatnia żywa ćma gniazda (meta „nest”) zginęła: na pewno zostawia złom `nest_scrap` (serwer). Pojedyncze ćmy złomu nie dają.
+func _nest_cleared() -> void:
+	var n := int(e.get_meta("nest", 0))
+	var amount := int(EnemyDefs.value("cma", "nest_scrap"))
+	if n <= 0 or amount <= 0 or not Scrap.enabled():
+		return
+	for m in e.get_tree().get_nodes_in_group("moths"):
+		if m != e and bool(m.alive) and int(m.get_meta("nest", 0)) == n and m.get_parent() == e.get_parent():
+			return
+	var lv: Node = e.get_tree().get_first_node_in_group("level")
+	if lv != null:
+		lv.spawn_item("scrap", 0, e.global_position + Vector2(randf_range(-6.0, 6.0), -14), amount)
 
 ## Efekt na każdym peerze (`enemy.gd: _behavior_fx`).
 func fx(event: String) -> void:
@@ -305,15 +361,17 @@ func fx(event: String) -> void:
 func view_extra(d: Dictionary) -> void:
 	d["lit"] = _lit
 
-## Trzepot skrzydeł (pętla pozycyjna na każdym peerze): cichy w locie, głośny przy nurkowaniu i na latarce. Do tego poświata: ćma na szkle
-## świeci w pełni, w snopie (Lights.flashlight_on — zasięg, kąt, ściana) słabiej; sprawdzane co LIT_EVERY s i wygładzane.
+## Trzepot skrzydeł (pętla pozycyjna na każdym peerze): cichy w locie, głośny przy nurkowaniu i na latarce — gra go jedna obudzona ćma gniazda
+## (`_is_voice`), nie każda z dwunastu. Do tego poświata: ćma na szkle świeci w pełni, w snopie (Lights.flashlight_on — zasięg, kąt, ściana)
+## słabiej; sprawdzane co LIT_EVERY s i wygładzane.
 func present(delta: float) -> void:
-	var on: bool = e.alive and e.active and e.is_inside_tree()
+	var awake: bool = e.alive and e.active and e.is_inside_tree()
+	var on: bool = awake and _is_voice()
 	_lit_t -= delta
 	if _lit_t <= 0.0:
 		_lit_t = LIT_EVERY
 		_lit_want = 0.0
-		if on:
+		if awake:
 			if int(e._sp) == SP_CLING:
 				_lit_want = 1.0
 			elif Lights.flashlight_on(e.global_position + Vector2(0, -1), e.get_tree(), e.get_world_2d().direct_space_state) != null:
@@ -327,7 +385,17 @@ func present(delta: float) -> void:
 		else:
 			Audio.stop_loop(id)
 	if on:
-		Audio.set_loop_volume(id, -6.0 if int(e._sp) == SP_CLING else (-9.0 if int(e._sp) == SP_DIVE else -16.0))
+		Audio.set_loop_volume(id, -3.0 if int(e._sp) == SP_CLING else (-6.0 if int(e._sp) == SP_DIVE else -12.0))       # głos całego gniazda — głośniej niż jedna ćma
+
+## Czy ta ćma gra trzepot swojego gniazda: pierwsza obudzona przejmuje głos, a gdy zginie albo zaśnie — następna. Ćma spoza gniazda
+## (testy, `--perfmobs`) gra sama.
+func _is_voice() -> bool:
+	var nest := int(e.get_meta("nest", -int(e.get_instance_id() % 1000000)))
+	var v = _voice.get(nest)
+	if v == null or not is_instance_valid(v) or not bool(v.alive) or not bool(v.active) or not (v as Node).is_inside_tree():
+		_voice[nest] = e
+		return true
+	return v == e
 
 ## Węzeł znika (koniec misji): pętla przypięta do węzła ginie z nim, a wpis w AudioDirector trzeba zwolnić.
 func on_exit() -> void:

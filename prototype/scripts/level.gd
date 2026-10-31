@@ -640,9 +640,13 @@ func _spawn_entities() -> void:
 	for i in found["J"].size():
 		_add_enemy("Skoczek%d" % (i + 1), "skoczek", _hang_pos(found["J"][i], 14.0))
 	var moth_n := 0
-	for spot in moth_swarm_spots(found["Z"]):
-		moth_n += 1
-		_add_enemy("Cma%d" % moth_n, "cma", _hang_pos(spot, 2.0))
+	var nest_i := 0
+	for nest in moth_swarm_nests(found["Z"]):
+		nest_i += 1
+		for spot in nest:
+			moth_n += 1
+			_add_enemy("Cma%d" % moth_n, "cma", _hang_pos(spot, 2.0))
+			get_node("Cma%d" % moth_n).set_meta("nest", nest_i)          # enemy_moth.gd: jeden trzepot na gniazdo, złom za rozbite gniazdo
 	for i in found["A"].size():
 		_add_enemy("Kaplan%d" % (i + 1), "kaplan", found["A"][i])
 	for i in found["U"].size():
@@ -909,9 +913,16 @@ func briefing(id: String) -> Dictionary:
 ## Gniazda ćm (enemy_moth.gd, rój od 1.7.442): znaczniki `Z` w jednym rzędzie bliżej niż SWARM_MERGE_PX tworzą jedno gniazdo; każde gniazdo
 ## ma co najmniej `swarm` ćm (enemy_defs.gd), rozstawionych co SWARM_GAP_PX wokół środka (bez wchodzenia w ścianę). Zwraca punkty znaczników.
 const SWARM_MERGE_PX := 96.0
-const SWARM_GAP_PX := 4.0
+const SWARM_GAP_PX := 2.0
 
 func moth_swarm_spots(marks: Array) -> Array:
+	var out: Array = []
+	for nest in moth_swarm_nests(marks):
+		out.append_array(nest)
+	return out
+
+## Jak `moth_swarm_spots`, ale osobno dla każdego gniazda: [[punkty gniazda 1], [punkty gniazda 2], …].
+func moth_swarm_nests(marks: Array) -> Array:
 	var want := int(EnemyDefs.value("cma", "swarm"))
 	var nests: Array = []
 	for m in marks:
@@ -937,7 +948,7 @@ func moth_swarm_spots(marks: Array) -> Array:
 			if _is_solid(int(q.x / TILE), int(q.y / TILE)):
 				q = mid + Vector2(off * 0.3, 0.0)           # ściana obok: ciaśniej przy środku
 			pts.append(q)
-		out.append_array(pts)
+		out.append(pts)
 	return out
 
 func _hang_pos(p: Vector2, body_h: float) -> Vector2:

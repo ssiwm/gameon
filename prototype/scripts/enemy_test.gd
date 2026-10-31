@@ -12,6 +12,7 @@ const Player := preload("res://scripts/player.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Combat := preload("res://scripts/combat.gd")
+const EnemyDefs := preload("res://scripts/enemy_defs.gd")
 const Bruiser := preload("res://scripts/enemy_bruiser.gd")
 const Codex := preload("res://scripts/codex.gd")
 const Blind := preload("res://scripts/enemy_blind.gd")
@@ -218,11 +219,42 @@ func _test_moth_swarm() -> void:
 	player.weapons._server_melee(player.global_position + Vector2(0, -9), player.aim_dir, Weapons.KILOF, player.player_id)
 	check("ćma: kilof też ją zabija", not near.alive)
 
+	# gniazdo: jeden trzepot na gniazdo, złom dopiero za ostatnią ćmę
+	var nest_ms: Array = []
+	for k in 3:
+		var nm := _spawn("cma", MothB.lamp_pos(player) + Vector2(-3.0 - float(k), -40.0))
+		nm.set_meta("nest", 9001)
+		nm.active = true
+		nest_ms.append(nm)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var voices := nest_ms.filter(func(m) -> bool: return bool(m._beh._loop_on)).size()
+	check("ćma: trzepot gra jedna ćma gniazda, nie każda (%d z 3)" % voices, voices == 1)
+	var serial0: int = level._pickup_serial
+	nest_ms[0].take_hit({"amount": 5.0, "dir": Vector2.LEFT, "pos": nest_ms[0].global_position, "shooter": 0, "type": "melee"})
+	nest_ms[1].take_hit({"amount": 5.0, "dir": Vector2.LEFT, "pos": nest_ms[1].global_position, "shooter": 0, "type": "melee"})
+	var mid_drop: int = level._pickup_serial - serial0
+	await get_tree().process_frame
+	await get_tree().process_frame
+	voices = nest_ms.filter(func(m) -> bool: return bool(m._beh._loop_on)).size()
+	check("ćma: głos gniazda przejmuje żywa ćma", voices == 1 and bool(nest_ms[2]._beh._loop_on))
+	nest_ms[2].take_hit({"amount": 5.0, "dir": Vector2.LEFT, "pos": nest_ms[2].global_position, "shooter": 0, "type": "melee"})
+	check("ćma: złom tylko za rozbite gniazdo (%d przed ostatnią, %d po)" % [mid_drop, level._pickup_serial - serial0], mid_drop == 0 and level._pickup_serial - serial0 == 1)
+	for nm in nest_ms:
+		nm.queue_free()
+
 	# gniazda z mapy: znaczniki blisko siebie łączą się, każde gniazdo ma co najmniej `swarm` ćm
 	var spots: Array = level.moth_swarm_spots([Vector2(-5000.0, 200.0), Vector2(-4936.0, 200.0), Vector2(-4000.0, 200.0)])
-	check("ćma: dwa bliskie znaczniki = jedno gniazdo; razem 2 gniazda po 3 ćmy", spots.size() == 6, str(spots))
-	var on_map := get_tree().get_nodes_in_group("moths").filter(func(m) -> bool: return String(m.name).begins_with("Cma")).size()
-	check("ćma: mapa ma gniazda po co najmniej 3 ćmy (%d ćm)" % on_map, on_map >= 3 and on_map % 3 == 0)
+	var swarm_n := int(EnemyDefs.value("cma", "swarm"))
+	check("ćma: dwa bliskie znaczniki = jedno gniazdo; razem 2 gniazda po %d ćm" % swarm_n, spots.size() == 2 * swarm_n and swarm_n >= 12, "%d punktów" % spots.size())
+	var map_moths := get_tree().get_nodes_in_group("moths").filter(func(m) -> bool: return String(m.name).begins_with("Cma"))
+	var nests_seen := {}
+	for m in map_moths:
+		nests_seen[int(m.get_meta("nest", 0))] = int(nests_seen.get(int(m.get_meta("nest", 0)), 0)) + 1
+	check("ćma: mapa ma gniazda po co najmniej %d ćm (%d ćm, gniazda %s)" % [swarm_n, map_moths.size(), str(nests_seen)],
+		not map_moths.is_empty() and not nests_seen.has(0) and nests_seen.values().all(func(c) -> bool: return int(c) >= swarm_n))
+	var hung := map_moths.filter(func(m) -> bool: return level._is_solid(int(m.global_position.x / 16.0), int((m.global_position.y - 4.0) / 16.0)))
+	check("ćma: każda ćma gniazda wisi pod sufitem (%d z %d)" % [hung.size(), map_moths.size()], hung.size() == map_moths.size())
 
 	NoiseMgr.noise_added.disconnect(on_noise)
 	for m in swarm:
@@ -1350,7 +1382,7 @@ const STAT_KEYS := ["hp", "speed", "damage", "windup", "reach", "cooldown", "lea
 ## Wartości sprzed przeniesienia do `enemy_defs.gd` (SUPPLY_DROP, AMMO_DROP, HEALTH_DROP, KILL_XP, Scrap.DROP, VOICES): przeniesienie nie zmienia balansu.
 const GOLDEN := {
 	"trzosek": {"xp": 2, "scrap": 2, "supply": 0.0, "ammo": 0.22, "health": 0.0, "voice": ["trzosek_attack", 3, -6.0, 1.0]},
-	"cma": {"xp": 1, "scrap": 2, "supply": 0.0, "ammo": 0.0, "health": 0.0, "voice": []},            # rój od 1.7.442: trzy ćmy w gnieździe zamiast jednej (było 3 / 4)
+	"cma": {"xp": 1, "scrap": 0, "supply": 0.0, "ammo": 0.0, "health": 0.0, "voice": []},            # rój od 1.7.442 (było 3 / 4); od 1.7.445 12 ćm w gnieździe, złom tylko za gniazdo (`nest_scrap`)
 	"skoczek": {"xp": 5, "scrap": 5, "supply": 0.08, "ammo": 0.25, "health": 0.0, "voice": ["trzosek_attack", 3, -5.0, 0.8]},
 	"mimik": {"xp": 10, "scrap": 10, "supply": 0.4, "ammo": 0.3, "health": 0.0, "voice": ["slepiec_attack", 2, -4.0, 1.2]},
 	"slepiec": {"xp": 6, "scrap": 5, "supply": 0.1, "ammo": 0.3, "health": 0.0, "voice": ["slepiec_attack", 2, -4.0, 1.0]},

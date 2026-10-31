@@ -22,6 +22,7 @@ const LIT_GLOW := 1.6                      ## Ćma: emisja ciała w snopie latar
 
 ## fit: [„height" | „length", rozmiar w pikselach świata] — jak w wypieku; frame_h: wysokość ramki sprite'a (Skoczek wisi u jej góry);
 ## cycle: okres cyklu kroku (s); prof: profil pozy (jak PROF w wypieku); yaw: obrót modelu (stopnie), by przód patrzył w +X.
+## no_shadow: model nie rzuca cienia (Ćma — rój małych siatek byłby rysowany w każdym przebiegu cieni).
 ## walk_clip: zestaw klipów chodu z char_clips.gd — „zombie" (powłóczysty krok) albo „human" (zwykły chód: Mimik udaje człowieka);
 ## bez tego klucza rodzaj chodzi pozą z kodu. attack_clip: zapowiedź i cios z klipu (zestaw musi je mieć), ręce wtedy z klipu.
 const SPEC := {
@@ -62,7 +63,7 @@ const SPEC := {
 		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human",
 		"death": {"dir": 1.0, "lean": 8.0, "dur": 1.2, "tilt": 84.0}, "death_floor": true},
 	# Ćma: naturalna rozpiętość ok. 14 cm (1,7 px; było 18 px = 1,5 m); skrzydła machają z własnego zegara (WING_HZ), nie w tempie klatek sprite'a
-	"cma": {"fit": ["width", 1.7], "frame_h": 2.0, "deform": "cma", "float": true, "clips": true, "death_dur": 0.9},
+	"cma": {"fit": ["width", 1.7], "frame_h": 2.0, "deform": "cma", "float": true, "clips": true, "death_dur": 0.9, "no_shadow": true},
 	"nest": {"fit": ["height", 30.0], "frame_h": 34.0, "deform": "nest", "clips": true, "death_dur": 0.6},
 	"vein": {"fit": ["height", 66.0], "frame_h": 80.0, "deform": "vein", "clips": true, "death_dur": 1.8},
 	"leech": {"fit": ["height", 66.0], "frame_h": 80.0, "deform": "leech", "death_dur": 1.4},
@@ -781,6 +782,9 @@ func setup(k: String, translucent := false) -> bool:
 	_pivot.add_child(_model)
 	var sks := _model.find_children("*", "Skeleton3D", true, false)
 	var mis := _model.find_children("*", "MeshInstance3D", true, false)
+	if bool(_spec.get("no_shadow", false)):
+		for m in mis:
+			(m as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF      # cień 14-centymetrowej ćmy jest niewidoczny, a rój to dziesiątki siatek w każdym przebiegu cieni
 	var deform := String(_spec.get("deform", ""))
 	if mis.is_empty() or (sks.is_empty() and deform == ""):
 		return false
