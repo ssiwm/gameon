@@ -1,6 +1,6 @@
 extends Control
 ## Lobby: host / join (LAN po IP, Steam po lobby ID), trudność, mikrofon, tryb startu (kampania / kryjówka / Nocny Dyżur), ściąga sterowania.
-## Budowane w kodzie w stylu deski z makiety (ui_widgets.gd) na tym samym tle co menu główne (menu_scene.gd). main.gd słucha
+## Budowane w kodzie w stylu deski z makiety (ui_widgets.gd) na tym samym tle co menu główne (menu_stage.gd). main.gd słucha
 ## sygnałów i ustawia status.
 ##
 ## Układ w pikselach makiety 1280×720: nagłówek → dwie kolumny (POŁĄCZENIE: host / IP / Steam | OPCJE: trudność, mikrofon, tryb)
@@ -15,7 +15,7 @@ signal settings_requested            ## ustawienia (menu pauzy w trybie ustawie�
 
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const W := preload("res://scripts/ui_widgets.gd")
-const Scene := preload("res://scripts/menu_scene.gd")
+const Scene := preload("res://scripts/menu_stage.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Actions := preload("res://scripts/actions.gd")
 

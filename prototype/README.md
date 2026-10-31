@@ -38,8 +38,17 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7 (Forward+). Rozgrywka to sym
 
 ## Menu główne, ustawienia, podpowiedzi (demo)
 
-- **Ekran startowy** (`main_menu.gd`): GRAJ → lobby (host / dołączanie / tryb / trudność, `lobby.gd`, przycisk WSTECZ), USTAWIENIA, WYJŚCIE
-  (drugi klik w 3 s). Pomijany w headless i przy starcie z `--host` / `--join` / `--steam-*`. **Esc / Start** otwiera menu ustawień także
+- **Ekran startowy „FIELD TERMINAL”** (od 1.7.447, `main_menu.gd`, `MAIN_MENU_PLAN.md`): tło to key art z klatki gry (`menu_stage.gd`:
+  `art/menu/backdrop.jpg` z `tools/menu_backdrop.py`, źródło `art_src/menu/` w LFS; powolny najazd kamery, dwie mgły, iskry i migotanie
+  ogniska, „Reduce effects” = stały obraz; to samo tło ma lobby). Trzy karty: **KAMPANIA** (następna misja, pasek 4 misji, jedyny wypełniony
+  przycisk OPEN LOBBY → lobby jako host), **NOCNY DYŻUR** (lobby w trybie Nocnego Dyżuru), **OPERATORZY**; pod nimi szuflada ze szczegółami
+  wskazanej karty (kampania: następna misja, postęp, trudność, skład; Nocny Dyżur: misje, modyfikatory, najlepszy bieg, nagroda;
+  operatorzy: aktywny, strój, oddział, ostatnia misja). Po prawej karta operatora (z fokusem: XP i złom, [Enter] → OPERATORZY) i ŁĄCZNOŚĆ
+  DRUŻYNY: kropka Steama (○ / ●), przełącznik towarzysza AI, DOŁĄCZ → lobby na polu IP (LAN działa bez Steama). U dołu USTAWIENIA,
+  WYJŚCIE (drugi klik w 3 s), wersja, ostatni komunikat (cytat pod kursorem / przy fokusie w pasku). Fokus: kursor nad elementem daje mu
+  fokus; strzałki / pad chodzą po siatce kart, prawej kolumny i paska. Trudność wybiera się w lobby. Zrzuty: `godot --path prototype
+  --script tools/shot_ui.gd -- --screen=main [--hover=campaign|night|operators|player|ai|join|settings|quit] [--lang=en|pl] [--size=SZERxWYS]
+  --out=PLIK.png`. Pomijany w headless i przy starcie z `--host` / `--join` / `--steam-*`. **Esc / Start** otwiera menu ustawień także
   przed grą; w sesji **LEAVE SESSION** wraca do ekranu startowego (`Main.leave_session`).
 - **Esc / P / Start** — menu pauzy: głośność (suwaki: ogólna, muzyka, otoczenie, efekty), wstrząsy kamery (FULL / HALF / OFF), klawisz
   skradania (HOLD / TOGGLE), obsługa broni (REALISTIC — podrzut przy myszy, oparcie, gorąca lufa i dwa przeładowania, CLASSIC — dawny rozrzut serii i dopełnianie magazynka; `WEAPONS.md` §20–22), niezawodność broni (OFF / STANDARD / VETERAN — zużycie i zacięcia, `WEAPONS.md` §24), podpowiedzi, mikrofon (krzyk), **obraz bez restartu** (rozmiar okna, V-Sync, limit klatek, jakość efektów
@@ -364,7 +373,7 @@ Artysta może podmienić PNG w `art/` zachowując układ z `art/sprites.json` (r
 ```
 scripts/
   input_setup.gd    # autoload: rejestruje akcje wejściowe (woła Actions.register)
-  main_menu.gd      # ekran startowy: GRAJ / USTAWIENIA / WYJŚCIE (tło: maszt radiowy)
+  main_menu.gd      # ekran startowy: kampania / Nocny Dyżur / operatorzy, szuflada szczegółów, łączność drużyny; menu_stage.gd — tło (key art)
   colorblind_fx.gd  # filtr widzenia barw nad całym obrazem; captions.gd — napisy dźwięków
   actions.gd        # rejestr akcji: id → klawisze/mysz, które akcje wycina menu pauzy, ściąga sterowania i `{id}` w podpowiedziach — nazwy klawiszy nie wpisujemy ręcznie
   noise_manager.gd  # autoload: autorytatywny hałas + ładunek Przesterowania
