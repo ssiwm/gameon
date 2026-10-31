@@ -162,6 +162,10 @@ func _on_ai_changed(_from: int, to: int) -> void:
 	if to == Ai.ALERT and alive:
 		_voice("alert")                   # cichy, wysoki warkot — na każdym peerze, z własnej zmiany stanu
 
+func _exit_tree() -> void:
+	if _beh != null:
+		_beh.on_exit()
+
 func _ready() -> void:
 	add_to_group("enemies")
 	ai_changed.connect(_on_ai_changed)
@@ -214,7 +218,7 @@ func wake() -> void:
 	_begin_alert()                       # obudzony hałasem lub światłem: chwila na zorientowanie się, zanim ruszy
 	# cała wataha budzi się razem
 	for e in _near(global_position, SIBLING_WAKE_RADIUS):
-		if is_instance_valid(e) and e != self and e.has_method("wake") and e.global_position.distance_to(global_position) < SIBLING_WAKE_RADIUS:
+		if is_instance_valid(e) and e != self and e.has_method("wake") and e.global_position.distance_to(global_position) < SIBLING_WAKE_RADIUS 				and _beh.sibling_wake_ok(e) and (e.get("_beh") == null or e._beh.sibling_wake_ok(self)):
 			e.wake()
 
 ## HP z uwzględnieniem poziomu trudności (difficulty.gd).
@@ -618,6 +622,19 @@ func _scream_fx() -> void:
 @rpc("authority", "call_local", "unreliable")
 func _cue_fx(event: String) -> void:
 	_voice(event)
+
+## Efekt zachowania rodzaju na każdym peerze (`enemy_behavior.gd: fx`), np. pył zabitej ćmy. Woła serwer.
+func behavior_fx(event: String) -> void:
+	if not NoiseMgr.is_server():
+		return
+	if NoiseMgr.has_network():
+		_behavior_fx.rpc(event)
+	else:
+		_beh.fx(event)
+
+@rpc("authority", "call_local", "reliable")
+func _behavior_fx(event: String) -> void:
+	_beh.fx(event)
 
 ## --- percepcja ------------------------------------------------------------
 
@@ -1353,6 +1370,7 @@ func _voice(event: String) -> void:
 		Audio.play_variant_at(String(v[0]), int(v[1]), global_position, Audio.BUS_WORLD, float(v[2]), float(v[3]))
 
 func _process(delta: float) -> void:
+	_beh.present(delta)
 	if winding != _voiced_winding:
 		_voiced_winding = winding
 		if winding and alive and _ring <= 0.0:                  # krzyk demaskacji / alarmu (_scream_fx) zastępuje zapowiedź

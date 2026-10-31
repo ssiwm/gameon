@@ -375,6 +375,41 @@ def build_enemies() -> None:
     low = _voice(n, d.env_pts(n, [(0, 70), (T, 52)]), r, (("u", 1.0), ("gutt", .6)), jitter=.06, shimmer=.5, breath=.5, rough_hz=14.0, rough=.6, bw=6.0)
     x = d.mix([(breath, 1.0), (rustle, .35), (low * d.env_pts(n, [(0, 0), (.6, .8), (T, 0)]), .5)], n)
     finalize("zerca_warn_1", d.reverb(x, ir("close"), wet=.25, keep_len=True), lufs=-24.0, fade_out_ms=300)
+
+    # Ćma (rój, 1.7.442): trzepot skrzydeł — pętla. Każde uderzenie to papierowy szelest (szum 2–5 kHz) i miękkie „fuk" powietrza (60–110 Hz);
+    # kilka ćm w roju = kilka uderzeń o różnym tempie na pętlę (całkowite liczby okresów), więc brzmi jak chmara, a nie silniczek. Grą sterowana głośność.
+    asset("moth_flutter_loop", "sfx/enemies/moth_flutter_loop", loop=True)
+    r = Rng(0xF100)
+    n = sec(1.5)
+    T = n / SR
+    t = np.arange(n) / SR
+    x = np.zeros(n)
+    for k, (rate, amp) in enumerate([(23.0, 1.0), (27.0, .7), (19.0, .55)]):
+        beats = int(round(rate * T))
+        ph = (t * beats / T + .37 * k) % 1.0
+        stroke = np.exp(-ph / .09) * (ph < .5) + .45 * np.exp(-((ph - .5) % 1.0) / .07) * (ph >= .5)       # w dół mocniej, w górę słabiej
+        wob = 0.7 + 0.3 * np.sin(TAU * (2 + k) * t / T + 1.3 * k)
+        x += amp * stroke * wob
+    paper = d.circ_filter(d.white(n, r), lambda z: d.filt(d.filt(z, "hp", 1800.0, .7), "lp", 5200.0, .7))
+    puff = d.circ_filter(d.colored(n, r, 1.0), lambda z: d.filt(z, "bp", 85.0, .9))
+    y = paper / (d.peak(paper) + 1e-9) * x * .6 + puff / (d.peak(puff) + 1e-9) * x * 1.0
+    finalize("moth_flutter_loop", y, loop=True, lufs=-20.0)
+
+    # Ćma zabita tuż przy twarzy: suchy obłok pyłu (miękki wydmuch) i stłumiony, dwukrotny kaszel gracza
+    for i in range(2):
+        r = Rng(0xF200 + i * 3907)
+        n = ms(900)
+        puff = d.filt(d.colored(n, r, .8), "lp", 1400.0, .7) * d.env_pts(n, [(0, 0), (.008, 1), (.08, .45), (.35, 0), (n / SR, 0)])
+        cough = np.zeros(n)
+        for at, f in [(.16 + .02 * i, 210.0 + 15 * i), (.44 + .03 * i, 190.0 + 10 * i)]:
+            m = ms(150)
+            f0 = d.env_pts(m, [(0, f), (m / SR, f * .75)])
+            v = _voice(m, f0, r, (("a", 1.0), ("gutt", .5)), jitter=.08, shimmer=.5, breath=.95, rough_hz=40.0, rough=.6, bw=8.0)
+            v = v * d.env_pts(m, [(0, 0), (.006, 1), (.05, .5), (m / SR, 0)])
+            a0 = int(at * SR)
+            cough[a0:a0 + m] += v[: max(0, min(m, n - a0))]
+        x = d.mix([(puff, .9), (d.lp(cough, 2600.0), .8)], n)
+        finalize("moth_dust_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15, keep_len=True), lufs=-15.0, fade_out_ms=120)
     bake_hybrid.enemies()                                   # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
 
 

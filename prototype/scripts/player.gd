@@ -91,6 +91,14 @@ const BATTERY_RECHARGE := 0.25
 ## podejścia do bossa bez latarki). Pełny reset (`full_reset`) daje pełną baterię, odrodzenie po wykrwawieniu — co najmniej tyle.
 const BATTERY_RESPAWN := 0.5
 const LIGHT_NOISE_EVERY := 10.0   ## +1 Uwagi co tyle sekund świecenia
+## Ćmy na szkle latarki (enemy_moth.gd, rój od 1.7.442): każda skraca i przyciemnia snop i szybciej drenuje baterię. Liczone na każdym peerze
+## z replikowanych pozycji ćm i ich `_sp`, bez osobnego RPC — właściciel liczy z tego baterię, wszyscy widzą przygaszony snop.
+const MOTH_COVER_MAX := 4         ## od tylu ćm efekt już nie rośnie
+const MOTH_BEAM_CUT := 0.18       ## −18% zasięgu i jasności snopu za każdą ćmę
+const MOTH_DRAIN := 0.75          ## +75% zużycia baterii za każdą ćmę
+const MOTH_COVER_R := 16.0        ## ćma tak blisko szkła (i w stanie „na latarce") przesłania snop
+const MOTH_COVER_EVERY := 0.15
+const MOTH_SP_CLING := 3          ## enemy_moth.gd: SP_CLING
 
 const BODY_COLORS := [
 	Color(0.91, 0.69, 0.29),
@@ -168,6 +176,9 @@ var revive_progress := 0.0
 ## (serwer) reagują na światło.
 var flashlight := false
 var battery := BATTERY_MAX
+var moth_cover := 0               ## ćmy na latarce (patrz MOTH_COVER_*)
+var beam_mult := 1.0              ## zasięg snopu latarki jako ułamek pełnego (Lights.flashlight_on, widok 3D)
+var _moth_cover_t := 0.0
 
 var _run_noise_tick := 0.0
 var _flash := 0.0
@@ -662,13 +673,33 @@ func _update_lights() -> void:
 			_beam.position = c3d.muzzle_px
 		else:
 			_beam.position = Vector2(0.0, -9.0 if crouching else -14.0) + aim_dir * 4.0
-		# lekkie drżenie snopu — latarka w ręku, nie reflektor
-		_beam.energy = (0.85 + 0.04 * sin(Time.get_ticks_msec() * 0.023)) * fl
+		# lekkie drżenie snopu — latarka w ręku, nie reflektor; ćmy na szkle przygaszają i skracają snop i rzucają drgające cienie
+		_update_moth_cover()
+		var flick := 0.04 * sin(Time.get_ticks_msec() * 0.023) + (0.07 * float(moth_cover) * sin(Time.get_ticks_msec() * 0.09) if moth_cover > 0 else 0.0)
+		_beam.energy = (0.85 + flick) * fl * beam_mult
+		_beam.range_px = Lights.FLASHLIGHT_M * Lights.PX_PER_M * beam_mult
+	elif moth_cover > 0:
+		moth_cover = 0
+		beam_mult = 1.0
+
+## Ćmy siedzące na szkle latarki (`enemy_moth.gd`: `_sp` == SP_CLING tuż przy lampie); co MOTH_COVER_EVERY s.
+func _update_moth_cover() -> void:
+	_moth_cover_t -= get_process_delta_time()
+	if _moth_cover_t > 0.0:
+		return
+	_moth_cover_t = MOTH_COVER_EVERY
+	var lamp := _beam.global_position
+	var n := 0
+	for m in get_tree().get_nodes_in_group("moths"):
+		if bool(m.alive) and int(m._sp) == MOTH_SP_CLING and (m as Node2D).global_position.distance_to(lamp) < MOTH_COVER_R:
+			n += 1
+	moth_cover = mini(n, MOTH_COVER_MAX)
+	beam_mult = 1.0 - MOTH_BEAM_CUT * float(moth_cover)
 
 ## Latarka: bateria, hałas „+1 Uwagi co 10 s" (GDD §6.6). Tylko właściciel.
 func _update_flashlight(delta: float) -> void:
 	if flashlight and not dead:
-		battery = maxf(0.0, battery - delta)
+		battery = maxf(0.0, battery - delta * (1.0 + MOTH_DRAIN * float(moth_cover)))
 		_light_noise_t += delta
 		if _light_noise_t >= LIGHT_NOISE_EVERY:
 			_light_noise_t = 0.0

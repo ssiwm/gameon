@@ -69,15 +69,18 @@ echo "== kryptonimy =="
 # host i pierwszy klient mają ten sam kryptonim (drugi dostaje „(2)”), drugi klient wysyła śmieci w nazwie (czyszczenie na każdym peerze)
 # Drugi klient startuje dopiero, gdy host stworzy postać pierwszemu (stałe `sleep 1` dawało na CI odwróconą kolejność P2/P3).
 # Liczniki --printsquad/--autoquit biegną od startu każdego procesu, a start Godota trwa kilka sekund: host i pierwszy klient muszą
-# żyć, aż drugi wypisze listę (przy autoquit=12 hosta drugi klient wypisywał już pustą listę po utracie hosta).
-godot --headless --path . -- --host --nobot --port=8964 --callsign=Sowa --printsquad=20 --autoquit=40 >"$LOG/call_host.log" 2>&1 &
+# żyć, aż drugi wypisze listę (przy autoquit=12 hosta drugi klient wypisywał już pustą listę po utracie hosta), a drugi klient —
+# aż wypisze ją host. Drugi startuje najwcześniej ok. 7 s po hoście i najpóźniej po 14 s, więc host wypisuje listę w 26 s, a drugi
+# żyje 24 s (przy autoquit=12 szybki runner rozłączał go przed wypisaniem listy hosta: „P1=Sowa | P2=sowa (2)” bez P3).
+godot --headless --path . -- --host --nobot --port=8964 --callsign=Sowa --printsquad=26 --autoquit=44 >"$LOG/call_host.log" 2>&1 &
 HOST=$!
 sleep 4
-godot --headless --path . -- --join=127.0.0.1 --port=8964 --callsign=sowa --printsquad=7 --autoquit=34 >"$LOG/call_c1.log" 2>&1 &
+godot --headless --path . -- --join=127.0.0.1 --port=8964 --callsign=sowa --printsquad=7 --autoquit=38 >"$LOG/call_c1.log" 2>&1 &
 C1=$!
 for _ in $(seq 40); do grep -a -q "display P2)" "$LOG/call_host.log" && break; sleep 0.25; done
-godot --headless --path . -- --join=127.0.0.1 --port=8964 '--callsign=<b>Wi!lk</b>' --printsquad=10 --autoquit=12 >"$LOG/call_c2.log" 2>&1
-wait $C1 $HOST
+godot --headless --path . -- --join=127.0.0.1 --port=8964 '--callsign=<b>Wi!lk</b>' --printsquad=10 --autoquit=24 >"$LOG/call_c2.log" 2>&1 &
+C2=$!
+wait $C2 $C1 $HOST
 grep -a -q "\[SQUAD\] P1=Sowa | P2=sowa (2) | P3=bWilkb" "$LOG/call_host.log" && ok "host widzi kryptonimy klientów, powtórka z „(2)”, śmieci wycięte" || fail "host: zła lista kryptonimów ($(grep -a "\[SQUAD\]" "$LOG/call_host.log"))"
 grep -a -q "\[SQUAD\] P1=Sowa | P2=sowa (2) | P3=bWilkb" "$LOG/call_c2.log" && ok "klient widzi te same kryptonimy co host" || fail "klient: zła lista kryptonimów ($(grep -a "\[SQUAD\]" "$LOG/call_c2.log"))"
 

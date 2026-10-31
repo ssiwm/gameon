@@ -178,3 +178,19 @@ func on_ready() -> void:
 ## Czy wróg jest zamaskowany: niewidoczny i nietrafialny na każdym peerze (stan musi wynikać ze stanu replikowanego, np. `_sp`). Żerca do chwili porwania.
 func is_hidden() -> bool:
 	return false
+
+## Czy obudzenie tego wroga budzi sąsiada `other` (i odwrotnie — rdzeń pyta obie strony); domyślnie cała okolica budzi się razem. Ćma budzi tylko ćmy.
+func sibling_wake_ok(_other) -> bool:
+	return true
+
+## Efekt zachowania na każdym peerze (`enemy.gd: behavior_fx` → RPC), np. pył zabitej ćmy.
+func fx(_event: String) -> void:
+	pass
+
+## Prezentacja na każdym peerze, co klatkę (`enemy.gd: _process`): pętle dźwięku zależne od stanu replikowanego.
+func present(_delta: float) -> void:
+	pass
+
+## Węzeł wroga opuszcza drzewo (koniec misji, sprzątanie): zwolnienie zasobów prezentacji.
+func on_exit() -> void:
+	pass
