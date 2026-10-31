@@ -194,6 +194,28 @@ def group_report(attempts, n_sessions):
                 pl[k] += int(p.get(k, 0))
     r["rewards"] = {"silent_kept": {m: "%d/%d" % (v[1], v[0]) for m, v in sorted(silent.items())},
                     "strongboxes": boxes, "strongboxes_per_attempt": rate(boxes, len(attempts)), "players": dict(pl)}
+    # --- latarka i baterie (BATTERY_PLAN.md B0, od 1.7.450): próbki pos ludzi z `bat`, liczniki mission_end.battery
+    lamp_on, low, samples, mins = 0, 0, 0, []
+    for a in attempts:
+        lo = {}
+        for e in a["events"]:
+            if e.get("ev") != "pos":
+                continue
+            for q in e.get("p", []):
+                if q.get("bot") or "bat" not in q:
+                    continue
+                samples += 1
+                lamp_on += 1 if q.get("lamp") else 0
+                low += 1 if int(q["bat"]) < 20 else 0
+                lo[q.get("who")] = min(lo.get(q.get("who"), 100), int(q["bat"]))
+        mins.extend(lo.values())
+    bat = Counter()
+    for a in attempts:
+        for k, v in (a["end"].get("battery") or {}).items():
+            bat[k] += int(v)
+    r["battery"] = {"lamp_share": rate(lamp_on, samples), "below_20_share": rate(low, samples), "min_pct_median": med(mins) if mins else None,
+                    "empty_per_attempt": rate(bat["empty"], len(attempts)), "picked": bat["picked"], "dropped": bat["dropped"],
+                    "attempts_with_data": sum(1 for a in attempts if "battery" in a["end"])}
     return r
 
 
@@ -229,6 +251,10 @@ def print_report(rep):
         if rs["boss_hp_left_pct"]:
             print("           HP bossa przy nieudanej próbie: %s" % rs["boss_hp_left_pct"])
         print("   broń: największy udział %s;  skrzynie mocy %d %s" % (wp["top"], wp["power_pickups"], wp["power_by_weapon"] or ""))
+        bt = r.get("battery") or {}
+        if bt.get("attempts_with_data"):
+            print("   latarka: świeci %s czasu, poniżej 20%% %s;  najniższa bateria (mediana) %s%%;  puste na próbę %s;  baterie zebrane %d, wypadło %d (prób z danymi %d)"
+                  % (bt["lamp_share"], bt["below_20_share"], bt["min_pct_median"], bt["empty_per_attempt"], bt["picked"], bt["dropped"], bt["attempts_with_data"]))
         print("   nagrody: cichy cel (dotrzymany/sukcesy) %s;  sejfy %d (%s na próbę);  gracze %s"
               % (rw["silent_kept"], rw["strongboxes"], rw["strongboxes_per_attempt"], rw["players"]))
 

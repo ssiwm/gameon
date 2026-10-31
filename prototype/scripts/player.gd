@@ -90,6 +90,9 @@ const BATTERY_RECHARGE := 0.25
 ## Postać przechodzi między mapami, więc bateria nie wracała ani po wipe, ani w kryjówce (opinia testera 2026-10-29: kolejne
 ## podejścia do bossa bez latarki). Pełny reset (`full_reset`) daje pełną baterię, odrodzenie po wykrwawieniu — co najmniej tyle.
 const BATTERY_RESPAWN := 0.5
+## Bateria 4,5 V do znalezienia (BATTERY_PLAN.md B1, pickup.gd „battery”): tyle sekund świecenia; bierze ją tylko ktoś poniżej BATTERY_TAKE_BELOW.
+const BATTERY_PICKUP := 90.0
+const BATTERY_TAKE_BELOW := 0.9
 const LIGHT_NOISE_EVERY := 10.0   ## +1 Uwagi co tyle sekund świecenia
 ## Ćmy na szkle latarki (enemy_moth.gd, rój od 1.7.442): każda skraca i przyciemnia snop i szybciej drenuje baterię. Liczone na każdym peerze
 ## z replikowanych pozycji ćm i ich `_sp`, bez osobnego RPC — właściciel liczy z tego baterię, wszyscy widzą przygaszony snop.
@@ -176,6 +179,9 @@ var revive_progress := 0.0
 ## (serwer) reagują na światło.
 var flashlight := false
 var battery := BATTERY_MAX
+## Procent baterii (replikowany przy zmianie): serwer rozstrzyga po nim, komu dać baterię z ziemi, a dziennik sesji zapisuje go w próbkach `pos`.
+## Liczy go właściciel postaci — samą baterię zna tylko on.
+var bat_pct := 100
 var moth_cover := 0               ## ćmy na latarce (patrz MOTH_COVER_*)
 var beam_mult := 1.0              ## zasięg snopu latarki jako ułamek pełnego (Lights.flashlight_on, widok 3D)
 var _moth_cover_t := 0.0
@@ -483,7 +489,7 @@ func _setup_sync() -> void:
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
 	for path in [":position", ":velocity", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":is_bot", ":display_id"]:
 		cfg.property_set_spawn(path, true)
-	for path in [":prof_xp", ":callsign"]:
+	for path in [":prof_xp", ":callsign", ":bat_pct"]:
 		cfg.add_property(path)
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE)
 	sync.replication_config = cfg
@@ -706,10 +712,39 @@ func _update_flashlight(delta: float) -> void:
 			NoiseMgr.add_noise(1.0, global_position, "light")
 		if battery <= 0.0:
 			flashlight = false
+			if NoiseMgr.has_network() and not multiplayer.is_server():
+				_report_battery_empty.rpc_id(1)
+			else:
+				_report_battery_empty()
 			if not is_bot:
 				Audio.play("dry_fire", Audio.BUS_UI, -10.0, 0.6)
 	else:
 		battery = minf(BATTERY_MAX, battery + delta * BATTERY_RECHARGE)
+	bat_pct = battery_pct()
+
+## Procent baterii u właściciela (zaokrąglony w górę: 1 s świecenia to jeszcze nie 0%).
+func battery_pct() -> int:
+	return int(ceil(battery / BATTERY_MAX * 100.0))
+
+## Bateria jako ułamek 0..1 — na każdym peerze: właściciel zna ją dokładnie, reszta (też serwer) z replikowanego `bat_pct`.
+func battery_level() -> float:
+	if not NoiseMgr.has_network() or is_multiplayer_authority():
+		return battery / BATTERY_MAX
+	return float(bat_pct) / 100.0
+
+## Dziennik sesji (serwer): latarka zgasła, bo bateria się skończyła (BATTERY_PLAN.md B0).
+@rpc("any_peer", "call_remote", "reliable")
+func _report_battery_empty() -> void:
+	if not NoiseMgr.is_server():
+		return
+	if NoiseMgr.has_network() and multiplayer.get_remote_sender_id() not in [0, get_multiplayer_authority()]:
+		return
+	SessionLog.note_battery("empty")
+	SessionLog.event("battery_empty", {"who": "P%d" % int(display_id), "bot": is_bot, "phase": _mission_phase(), "pos": SessionLog.xy(global_position)})
+
+func _mission_phase() -> String:
+	var mis := get_tree().get_first_node_in_group("mission")
+	return String(SessionLog.PHASES[int(mis.phase)]) if mis != null else ""
 
 func _toggle_flashlight() -> void:
 	if not flashlight and battery < 1.0:
@@ -1328,6 +1363,7 @@ func _respawn(hp_amount: int) -> void:
 	_last_step_pos = global_position
 	_step_dist = 0.0
 	battery = maxf(battery, BATTERY_MAX * BATTERY_RESPAWN)
+	bat_pct = battery_pct()
 	Audio.play("revive", Audio.BUS_PLAYER, -9.0)
 
 ## Restart po wipe (wszyscy leżą): pełne zdrowie w punkcie startu.
@@ -1335,6 +1371,7 @@ func full_reset(keep_loadout := false) -> void:
 	_second_used = false            # „Second chance" — raz na misję
 	_respawn(max_hp())
 	battery = BATTERY_MAX           # wipe, punkt kontrolny bossa, nowa misja i kryjówka: świeża bateria
+	bat_pct = 100
 	if not keep_loadout:
 		weapons.reset()            # przejście między misjami kampanii (kryjówka) zachowuje ekwipunek
 	_kick = 0.0
@@ -2037,6 +2074,26 @@ func apply_heal(amount: int) -> void:
 		Vector2.UP, 60.0, -30.0, 0.6, Vector2(1.0, 1.8), true)
 	if not is_bot:
 		Audio.play("revive", Audio.BUS_PLAYER, -6.0, 1.4)
+
+## Bateria z ziemi (pickup.gd „battery”): rozstrzyga serwer, dolicza właściciel postaci — jak leczenie.
+func deliver_battery(amount: float) -> void:
+	if not NoiseMgr.has_network() or is_multiplayer_authority():
+		apply_battery(amount)
+	else:
+		apply_battery.rpc_id(get_multiplayer_authority(), amount)
+
+@rpc("any_peer", "call_remote", "reliable")
+func apply_battery(amount: float) -> void:
+	if not is_multiplayer_authority():
+		return
+	if NoiseMgr.has_network() and multiplayer.get_remote_sender_id() not in [0, 1]:
+		return          # tylko serwer (albo lokalnie) daje baterię
+	battery = minf(BATTERY_MAX, battery + amount)
+	bat_pct = battery_pct()
+	if not is_bot:
+		Audio.play("ui_click", Audio.BUS_PLAYER, -6.0, 1.3)
+		Msg.post("battery_pickup", Msg.Ch.TOAST, tr("+%d%% BATTERY") % roundi(amount / BATTERY_MAX * 100.0),
+			{"sub": tr("Flat 4.5 V cell — flashlight at %d%%") % bat_pct, "style": Msg.Style.SUCCESS, "ttl": 3.5, "prio": 55})
 
 ## Najbliższy punkt sylwetki gracza (pion od stóp po czubek głowy: 22 px stojąc, 13 px w przysiadzie — jak model 3D) do punktu `pos`.
 ## Ataki wrogów liczą odległość do niego zamiast do środka korpusu, więc trafia też to, co leci w głowę.

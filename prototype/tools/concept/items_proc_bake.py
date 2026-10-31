@@ -615,6 +615,20 @@ def m_tag(P):
         cyl((x - 0.1 * math.sin(math.radians(rz)), 0, z + 2.2), 0.3, 0.5, P["black"], axis="Y", seg=12)
 
 
+def m_battery(P):
+    """Płaska bateria 4,5 V (3R12, BATTERY_PLAN.md B1): papierowa koszulka, dwie mosiężne blaszki u góry — krótka (+) i długa (−)."""
+    box((0, 0, 3.35), (6.2, 2.2, 6.7), P["yellow"], 0.2)                      # koszulka
+    box((0, -1.12, 2.1), (6.25, 0.08, 2.2), P["black"], 0.03)                 # czarny pas z napisem
+    box((0, -1.12, 3.5), (6.25, 0.08, 0.45), P["red"], 0.02)                  # czerwony pasek nad nim
+    box((0, 0, 6.75), (6.0, 2.0, 0.2), P["tan"], 0.08)                        # tekturowe denko z wierzchu
+    stencil("4,5V", (0, -1.2, 2.1), 1.5, P["yellow"])
+    stencil("+", (-1.6, -1.2, 5.5), 0.9, P["black"])
+    stencil("-", (1.6, -1.2, 5.5), 1.0, P["black"])
+    box((-1.6, 0.2, 7.3), (1.0, 0.14, 1.1), P["brass"], 0.04)                  # krótka blaszka (+)
+    box((1.6, 0.2, 7.85), (1.0, 0.14, 2.2), P["brass"], 0.04)                  # długa blaszka (−), zagięta na końcu
+    box((1.6, -0.15, 8.9), (1.0, 0.7, 0.14), P["brass"], 0.04)
+
+
 def m_crate(P):
     for x in (-6.2, 6.2):
         box((x, 0, 7.0), (1.6, 1.8, 14.0), P["wood_d"], 0.2)
@@ -1068,7 +1082,7 @@ MODELS = {
     "frag": (m_frag, 32), "phos": (m_phos, 32), "smoke": (m_smoke, 32), "mine": (m_mine, 32), "charge": (m_charge, 32),
     "medkit": (m_medkit, 32), "defib": (m_defib, 32), "scanner": (m_scanner, 32),
     "flare": (m_flare, 32), "flare_stuck": (lambda P: m_flare(P, True), 32), "flare_box": (m_flare_box, 32), "stake": (m_stake, 48),
-    "supply": (m_supply, 32), "ammo": (m_ammo, 32), "cache": (m_cache, 32), "stash": (m_stash, 32), "tag": (m_tag, 32),
+    "supply": (m_supply, 32), "ammo": (m_ammo, 32), "cache": (m_cache, 32), "stash": (m_stash, 32), "tag": (m_tag, 32), "battery": (m_battery, 32),
     "bones": (m_bones, 32), "reeds": (m_reeds, 32), "board": (m_board, 16), "results_board": (m_results_board, 12), "range_target": (m_range_target, 24), "range_sign": (m_range_sign, 24), "handcar": (m_handcar, 12), "handcar_wheel": (m_handcar_wheel, 64), "handcar_lever": (m_handcar_lever, 24), "generator": (m_generator, 28), "generator": (m_generator, 40), "crate": (m_crate, 24), "barrel": (m_barrel, 24), "rack": (m_rack, 16), "tools_wall": (m_tools_wall, 20), "lamp": (m_lamp, 24),
     "table": (m_table, 24), "chair": (m_chair, 32), "stool": (m_stool, 32), "shelf": (m_shelf, 20), "locker": (m_locker, 24), "cot": (m_cot, 24),
     "strongbox": (m_strongbox, 32), "strongbox_open": (lambda P: m_strongbox(P, True), 32),

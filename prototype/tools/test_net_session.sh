@@ -5,6 +5,7 @@
 # 2. Utrata hosta: klient przeładowuje scenę (jak leave_session), wraca do lobby z komunikatem i nie dołącza ponownie z --join.
 # 4. Bez AI towarzysza (NOBOT_PLAN.md): host z --nobot, klient dostaje ustawienie hosta, przy dwóch ludziach nie ma bota.
 # 5. Raport po akcji (RESULTS_PLAN.md): gotowość klienta dochodzi do hosta, poziomy z misji i rozbicie złomu do wszystkich.
+# 6. Bateria 4,5 V (BATTERY_PLAN.md): klient z 20% baterii bierze baterię z ziemi — rozstrzyga serwer, dolicza właściciel.
 # 3. Czterech ludzi: numery P1–P4 (bot nie zabiera numeru, P5 się nie pojawia); klienci wychodzą po kolei, a ci, którzy zostają, nie dostają
 #    błędu silnika `on_despawn_receive … ERR_UNAUTHORIZED` (postać wychodzącego usuwa tylko serwer).
 # Wymaga `godot` w PATH i zaimportowanego projektu (godot --headless --path . --import).
@@ -103,6 +104,16 @@ godot --headless --path . -- --join=127.0.0.1 --port=8966 --resultnet=6 --autoqu
 wait $HOST
 grep -a -q "\[RESULT-NET\] host ready=\[[0-9]\+\] levels=2 gain=[0-9]\+ report=true" "$LOG/result_host.log" && ok "host widzi gotowość klienta i poziomy obu graczy" || fail "host: $(grep -a "\[RESULT-NET\]" "$LOG/result_host.log")"
 grep -a -q "\[RESULT-NET\] client ready=\[[0-9]\+\] levels=2 gain=[0-9]\+ report=true" "$LOG/result_client.log" && ok "klient: raport otwarty, złom od serwera, własna gotowość odbita" || fail "klient: $(grep -a "\[RESULT-NET\]" "$LOG/result_client.log")"
+
+echo "== bateria 4,5 V =="
+# BATTERY_PLAN.md B1: serwer rozstrzyga podniesienie po replikowanym `bat_pct` klienta, a baterię dolicza właściciel postaci (RPC apply_battery)
+godot --headless --path . -- --host --mission=z1_m1 --port=8967 --batterynet=9 --autoquit=16 >"$LOG/battery_host.log" 2>&1 &
+HOST=$!
+sleep 3
+godot --headless --path . -- --join=127.0.0.1 --port=8967 --batterynet=5 --autoquit=12 >"$LOG/battery_client.log" 2>&1
+wait $HOST
+grep -a -q "\[BATTERY-NET\] host client_pct=\(6[89]\|7[0-9]\) taken=true" "$LOG/battery_host.log" && ok "host: klient z 20% wziął baterię, bat_pct po replikacji ok. 70%" || fail "host: $(grep -a "\[BATTERY-NET\]" "$LOG/battery_host.log")"
+grep -a -q "\[BATTERY-NET\] client battery=12[0-9] pct=\(6[89]\|7[0-9]\)" "$LOG/battery_client.log" && ok "klient: +90 s baterii od serwera" || fail "klient: $(grep -a "\[BATTERY-NET\]" "$LOG/battery_client.log")"
 
 # Błąd GDScript może przerwać pojedynczą korutynę bez niezerowego kodu procesu.
 for f in "$LOG"/*.log; do

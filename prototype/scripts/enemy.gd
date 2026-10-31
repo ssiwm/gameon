@@ -1260,6 +1260,11 @@ func _die() -> void:
 		if lsup != null:
 			var sk := Throwables.drop_kind()                     # skrzynka zaopatrzenia: granat, apteczka, mina… do wspólnego zapasu
 			lsup.spawn_item("supply", Throwables.ORDER.find(sk), global_position + Vector2(randf_range(-6.0, 6.0), -14))
+	if NoiseMgr.is_server() and not summoned and not NightShift.active and not is_in_group("roamers") \
+			and randf() < minf(1.0, EnemyDefs.value(kind, "battery") * Difficulty.m("drops")):
+		var lbat := get_tree().get_first_node_in_group("level")
+		if lbat != null:
+			lbat.spawn_item("battery", 0, global_position + Vector2(randf_range(-6.0, 6.0), -14))        # bateria 4,5 V (BATTERY_PLAN.md B1)
 	if NoiseMgr.is_server() and not summoned and not NightShift.active and EnemyDefs.is_elite(kind) and randf() < minf(1.0, ELITE_AMMO_DROP * Difficulty.m("drops")):
 		var lam := get_tree().get_first_node_in_group("level")
 		var ak := Arsenal.pick_special_drop()                     # elita: pudełko amunicji specjalnej do noszonej broni (US, breneka, kartacz…)

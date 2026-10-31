@@ -339,17 +339,21 @@ func on_death() -> void:
 			e.behavior_fx("dust")
 			return
 
-## Ostatnia żywa ćma gniazda (meta „nest”) zginęła: na pewno zostawia złom `nest_scrap` (serwer). Pojedyncze ćmy złomu nie dają.
+## Ostatnia żywa ćma gniazda (meta „nest”) zginęła: na pewno zostawia złom `nest_scrap` (serwer) i baterię 4,5 V — rój drenował latarkę,
+## rozbite gniazdo ją oddaje (BATTERY_PLAN.md B1). Pojedyncze ćmy nic nie dają.
 func _nest_cleared() -> void:
 	var n := int(e.get_meta("nest", 0))
-	var amount := int(EnemyDefs.value("cma", "nest_scrap"))
-	if n <= 0 or amount <= 0 or not Scrap.enabled():
+	if n <= 0:
 		return
 	for m in e.get_tree().get_nodes_in_group("moths"):
 		if m != e and bool(m.alive) and int(m.get_meta("nest", 0)) == n and m.get_parent() == e.get_parent():
 			return
 	var lv: Node = e.get_tree().get_first_node_in_group("level")
-	if lv != null:
+	if lv == null:
+		return
+	lv.spawn_item("battery", 0, e.global_position + Vector2(randf_range(-6.0, 6.0), -14))
+	var amount := int(EnemyDefs.value("cma", "nest_scrap"))
+	if amount > 0 and Scrap.enabled():
 		lv.spawn_item("scrap", 0, e.global_position + Vector2(randf_range(-6.0, 6.0), -14), amount)
 
 ## Efekt na każdym peerze (`enemy.gd: _behavior_fx`).
