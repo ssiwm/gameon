@@ -1,6 +1,6 @@
 extends RefCounted
 ## Misja B1 „Pijawka" (GDD §9, Strefa I — boss): zalana hala z płytkim basenem na całej długości; w wodzie żyje Pijawka (leech.gd).
-## Dane mapy dla level.gd; legenda znaczników w level.gd (K = Pijawka, f = skrzynka z flarami). 140 × 44 kafli.
+## Dane mapy dla level.gd; legenda znaczników w level.gd (K = Pijawka, f = skrzynka z flarami, y = bateria, Q = ładowarka latarki). 140 × 44 kafli.
 ##
 ## Układ (od zachodu): suchy brzeg ze startem → basen (kolumny POOL, kafle „~") z trzema kładkami nad wodą (rząd 27, metal) i kładkami
 ## pośrednimi (rząd 29, jednokierunkowe) → suchy brzeg ze strefą ewakuacji. W zasięgu zasadzki Pijawki są gracze w wodzie, na niskich kładkach
@@ -54,7 +54,7 @@ const MAP := [
 	"##bbbbbbbbbbbbbbbbbbbbbbbbbbbbb=================bbbbbbbbb===================bbbbbbbbb==========================bbbbbbbbbbbbbbbbbbbbbbbbbbb##",
 	"##bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb##",
 	"##bbbbbbbbbbbbbbbbbbbbbbb-----bbbbbbbbbbbbbbbbbbb-------bbbbbbbbbbbbbbbbbbbbb-------bbbbbbbbbbbbbbbbbbb-----------bbbbbbbbbbbbbbbbbbbbbbbb##",
-	"##bbbbSbbSbbbbfbbbabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbfbabbbEbbbbbbbbbbb##",
+	"##bbbbSbbSbbbbfbbbabQbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbfbabbbEbbbbbbbbbbb##",
 	"############################~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#############################",
 	"############################################################################################################################################",
 	"############################################################################################################################################",

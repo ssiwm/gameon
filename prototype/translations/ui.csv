@@ -1649,3 +1649,5 @@
 "{flashlight} toggles an 8 m cone of light. A full battery lasts 180 s; switched off, it slowly recharges. Light wakes the enemies it touches, draws the Stalker and moths, and adds noise. Below 20% the beam starts to stutter.","{flashlight} włącza stożek światła na 8 m. Pełna bateria starcza na 180 s; zgaszona latarka powoli się ładuje. Światło budzi wrogów, na których padnie, ściąga Stalkera i ćmy, i podnosi hałas. Poniżej 20% snop zaczyna przygasać."
 "Flat 4.5 V batteries give +90 s: they lie around the maps, drop from enemies (Blind Ones most often) and always from a smashed moth nest or a patrol strongbox. Whoever is lowest picks it up — the AI companion leaves it for you.","Płaska bateria 4,5 V daje +90 s: leżą na mapach, wypadają z wrogów (najczęściej ze Ślepców) i zawsze z rozbitego gniazda ćm i sejfu patrolu. Bierze ją ten, komu zostało najmniej — towarzysz AI zostawia ją tobie."
 "4.5 V batteries picked up: %d","Zebrane baterie 4,5 V: %d"
+"Charging the flashlight — keep the light off","Ładowanie latarki — nie zapalaj światła"
+"The charger hums: things nearby can hear it","Ładowarka buczy: w pobliżu ją słychać"

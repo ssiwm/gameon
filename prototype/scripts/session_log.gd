@@ -43,7 +43,7 @@ extends RefCounted
 ## `scrap` (od 1.7.347, strojenie ekonomii warsztatu): {dropped — złom, który wypadł z wrogów i bossa w tej próbie, loot — zebrany łup,
 ## bonus — premia za misję (0 przy wipe)}; do banku trafia loot + bonus, tylko przy sukcesie.
 ## `battery` (od 1.7.450, BATTERY_PLAN.md B0): {dropped — baterie, które wypadły z wrogów, gniazd ćm i sejfów (bez leżących na mapie), picked — zebrane,
-## empty — ile razy komuś zgasła pusta latarka}.
+## empty — ile razy komuś zgasła pusta latarka, charger — ile razy ktoś zaczął się ładować przy ładowarce (od 1.7.452, B3)}.
 
 const DIR := "user://sessions"
 const PHASES := ["OBJECTIVE", "BOSS", "EXTRACT", "SUCCESS", "FAILED"]
