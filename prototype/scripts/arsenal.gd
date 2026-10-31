@@ -20,8 +20,8 @@ const Throwables := preload("res://scripts/throwables.gd")
 const Ammo := preload("res://scripts/ammo.gd")
 const Parts := preload("res://scripts/parts.gd")
 
-## Materiał trafionego celu — dobiera efekt i dźwięk uderzenia.
-enum Mat { FLESH, ARMOR, WOOD, METAL, WORLD }
+## Materiał trafionego celu — dobiera efekt i dźwięk uderzenia. DUST: Ćma (pyłek ze skrzydeł zamiast krwi; nie liczy się do wprawy).
+enum Mat { FLESH, ARMOR, WOOD, METAL, WORLD, DUST }
 ## Co strzelec widzi po trafieniu (hitmarker).
 enum Confirm { HIT, CRIT, KILL, ARMOR }
 

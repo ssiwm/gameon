@@ -94,7 +94,7 @@ const LIGHT_NOISE_EVERY := 10.0   ## +1 Uwagi co tyle sekund świecenia
 ## Ćmy na szkle latarki (enemy_moth.gd, rój od 1.7.442): każda skraca i przyciemnia snop i szybciej drenuje baterię. Liczone na każdym peerze
 ## z replikowanych pozycji ćm i ich `_sp`, bez osobnego RPC — właściciel liczy z tego baterię, wszyscy widzą przygaszony snop.
 const MOTH_COVER_MAX := 12        ## od tylu ćm (cały rój z gniazda, 1.7.445) efekt już nie rośnie
-const MOTH_BEAM_CUT := 0.06       ## −6% zasięgu i jasności snopu za każdą ćmę (cały rój: −72%)
+const MOTH_BEAM_CUT := 0.075      ## −7,5% zasięgu i jasności snopu za każdą ćmę (cały rój: −90%, zostaje słaba poświata przy szkle)
 const MOTH_DRAIN := 0.25          ## +25% zużycia baterii za każdą ćmę (cały rój: +300%)
 const MOTH_COVER_R := 16.0        ## ćma tak blisko szkła (i w stanie „na latarce") przesłania snop
 const MOTH_COVER_EVERY := 0.15

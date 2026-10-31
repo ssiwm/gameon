@@ -126,10 +126,31 @@ func add_xp(amount: int, reason := "") -> void:
 	xp += amount
 	if reason != "Mission":
 		run_xp += amount
-	xp_gained.emit(amount, reason)
 	var after := level()
 	for lv in range(before + 1, after + 1):
 		leveled_up.emit(lv)
+	if reason == "Kill":
+		# zabójstwa zbierane do końca klatki: cios w rój ćm (11 naraz) albo granat w watahę to jeden zapis profilu, jedno `changed` i jeden
+		# toast „+N XP” — po kolei każde zabójstwo zapisywało cały profil i przebudowywało słuchaczy (1.7.446: ok. 5 ms na ćmę, 55 ms na cios)
+		_kill_xp += amount
+		if not _kill_flush:
+			_kill_flush = true
+			_flush_kill_xp.call_deferred()
+		return
+	xp_gained.emit(amount, reason)
+	changed.emit()
+	save()
+
+var _kill_xp := 0                    ## XP za zabójstwa z bieżącej klatki, jeszcze niezgłoszone (`add_xp`)
+var _kill_flush := false
+
+func _flush_kill_xp() -> void:
+	_kill_flush = false
+	if _kill_xp <= 0:
+		return
+	var n := _kill_xp
+	_kill_xp = 0
+	xp_gained.emit(n, "Kill")
 	changed.emit()
 	save()
 

@@ -175,6 +175,9 @@ func _ready() -> void:
 		var vo: Array = EnemyDefs.voice(kind, ev)
 		if not vo.is_empty():
 			Audio.warm_family(String(vo[0]), int(vo[1]))
+	var dsnd = (_def.get("death_fx", {}) as Dictionary).get("sound")
+	if dsnd is Array:
+		Audio.warm_family(String(dsnd[0]), int(dsnd[1]))                # własny dźwięk śmierci (Ćma: trzask skrzydełek)
 	_max_hp = _scaled_hp()
 	hp = _max_hp
 	Difficulty.changed.connect(_on_difficulty_changed)
@@ -1155,7 +1158,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 	if exec > 0.0 and hp <= _max_hp * exec:
 		dmg = maxf(dmg, hp + 1.0)        # dobicie: maczeta z ulepszeniem „Executioner”
 		info["crit"] = true
-	var mat := 0
+	var mat := Arsenal.Mat.DUST if String(_def.get("hit_mat", "")) == "dust" else Arsenal.Mat.FLESH
 	var armor: float = _def.get("armor", 0.0)
 	if armor > 0.0 and (info.get("type", "bullet") == "bullet" or info.get("type", "") == "beam"):
 		# pancerz: stała redukcja na trafienie (min. 40% obrażeń) — rozrzut i seria słabną, ciężkie trafienia nie
@@ -1283,15 +1286,21 @@ func _die() -> void:
 
 ## Efekty śmierci na KAŻDYM peerze (serwer wywołuje wprost, klient po zmianie alive).
 func _death_fx() -> void:
-	Audio.play_variant_at("impact_flesh", 3, global_position, Audio.BUS_WORLD, -4.0, 0.8)
-	var local := _local_player_pos()
 	var fx := _def.get("death_fx", {}) as Dictionary        # drobny wróg (Trzosek) pada ciszej: słabszy wstrząs i mniej szczątków (domyślnie ciężki)
+	var snd := fx.get("sound", ["impact_flesh", 3, -4.0, 0.8]) as Array
+	Audio.play_variant_at(String(snd[0]), int(snd[1]), global_position, Audio.BUS_WORLD, float(snd[2]), float(snd[3]))
+	var local := _local_player_pos()
 	if local.distance_to(global_position) < 220.0:
-		Feel.shake(float(fx.get("shake", 3.0)))
-		Feel.hitstop(float(fx.get("hitstop", 0.09)))
+		if float(fx.get("shake", 3.0)) > 0.0:
+			Feel.shake(float(fx.get("shake", 3.0)))
+		if float(fx.get("hitstop", 0.09)) > 0.0:
+			Feel.hitstop(float(fx.get("hitstop", 0.09)))
 	# szczątki (fizyczne, lokalne) + krew na podłożu; odrzut z kierunku trafienia
-	Vfx.gibs(get_parent(), global_position + Vector2(0, -6), (_def["color"] as Color).lightened(DEATH_FX_COLOR_VAR),
-		int(fx.get("gibs", 11)), Vector2(signf(velocity.x) * 60.0, 0))
+	if int(fx.get("gibs", 11)) > 0:
+		Vfx.gibs(get_parent(), global_position + Vector2(0, -6), (_def["color"] as Color).lightened(DEATH_FX_COLOR_VAR),
+			int(fx.get("gibs", 11)), Vector2(signf(velocity.x) * 60.0, 0))
+	if int(fx.get("pollen", 0)) > 0:
+		Vfx.pollen(get_parent(), global_position + Vector2(0, -1), int(fx.get("pollen", 0)))       # Ćma: pyłek ze skrzydeł zamiast mięsa
 
 func _local_player_pos() -> Vector2:
 	for p in get_tree().get_nodes_in_group("players"):
@@ -1315,7 +1324,8 @@ func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_wind
 	_remote_pos = pos
 	if new_hp < hp - 0.01:
 		_flash = 0.1
-		Vfx.blood(get_parent(), global_position + Vector2(0, -8), Vector2.UP, 5)
+		if String(_def.get("hit_mat", "")) != "dust":                   # Ćma nie krwawi (pyłek daje _death_fx)
+			Vfx.blood(get_parent(), global_position + Vector2(0, -8), Vector2.UP, 5)
 	hp = new_hp
 	active = is_active
 	winding = is_winding
