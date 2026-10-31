@@ -170,6 +170,7 @@ var _span: Array = []                    ## trasa drezyny (_rail_span)
 var _span_map := ""
 var _item_tuned := {}                    ## nazwy modeli z już dostrojonymi materiałami
 var _item_scenes := {}                   ## nazwa przedmiotu → PackedScene modelu 3D albo null
+var _item_pending := {}                  ## nazwa przedmiotu → ścieżka: model wczytuje się w tle (`_item_ready`)
 var _items := {}                         ## id sprite'a przedmiotu HD → [Sprite2D, MeshInstance3D, materiał, z, ukryte węzły 2D]
 var _cache_piles := {}                   ## id sprite'a skrzyni z mapy → klucze broni, z których zbudowano jej stertę (_build_cache_pile)
 var _scan_t := 0.0
@@ -294,6 +295,8 @@ func player_model(p: Node) -> Node:
 func _exit_tree() -> void:
 	_free_bars()
 	GunModel.drain()                                   # wczytywanie broni w tle odebrane przed zamknięciem (inaczej wyciek przy wyjściu)
+	for nm in _item_pending.keys():
+		_item_scene(String(nm))                            # to samo dla modeli przedmiotów
 
 func release() -> void:
 	Vfx.view3d = null
@@ -410,7 +413,7 @@ func _tp(part: String, t0: int) -> int:
 func _tick(delta: float) -> void:
 	if _level == null or not is_instance_valid(_level):
 		return
-	SessionLog.frame(delta, String(_level.get("map_id")))
+	SessionLog.frame(delta, String(_level.get("map_id")), _curtain != null and _curtain.visible)
 	_gun_warm_t -= delta
 	if _gun_warm_t <= 0.0:
 		_gun_warm_t = 1.0
@@ -434,11 +437,17 @@ func _tick(delta: float) -> void:
 	_sync_camera()
 	tp = _tp("camera", tp)
 	_geo_t -= delta
-	if _geo_t <= 0.0:
+	var pre := _curtain_key == PRE_CURTAIN_KEY and _curtain != null and _curtain.visible
+	if _geo_t <= 0.0 or pre:
 		_geo_t = 0.25
 		_sync_geometry()
 		tp = _tp("geometry", tp)
 		if _curtain_key != _geo_key and _curtain != null and _curtain.visible:
+			if _curtain_key == PRE_CURTAIN_KEY:
+				_pre_curtain_t -= delta
+				if _pre_curtain_t <= 0.0:                 # zmiana mapy nie przyszła: plansza schodzi
+					_curtain.visible = false
+					_curtain_key = _geo_key
 			return                                        # klatka zasłony: lekka, żeby plansza pojawiła się od razu (wrogowie i przedmioty w następnej)
 	if _building:
 		return                                            # świat nowej mapy jeszcze się buduje (kroki pod planszą)
@@ -665,6 +674,23 @@ func _show_curtain(key: String) -> void:
 	_curtain.visible = true
 	if OS.is_stdout_verbose():
 		print("[LOAD-CURTAIN] on (%s)" % key.get_slice(":", 0))
+
+## Plansza przed zmianą mapy (main._curtain_first): wisi pod kluczem, którego żadna geometria nie ma, aż `_sync_geometry` zobaczy nową mapę
+## i przejmie ją pod jej klucz — dzięki temu przebudowa poziomu 2D idzie już pod planszą, a nie na zamrożonym obrazie poprzedniej mapy.
+## Do tego czasu `_tick` sprawdza mapę co klatkę i nie synchronizuje reszty: inaczej modele nowej mapy (stanowiska, przedmioty, bronie kryjówki)
+## powstawały wszystkie w jednej klatce na starym świecie — 2,8 s, z pominięciem rozłożenia na etapy `_warm_stage`. Gdy mapa się
+## nie zmieni (PRE_CURTAIN_MAX), plansza schodzi.
+const PRE_CURTAIN_MAX := 3.0
+var _pre_curtain_t := 0.0
+
+func pre_curtain() -> void:
+	if not curtain_enabled:
+		return
+	_show_curtain(PRE_CURTAIN_KEY)
+	_pre_curtain_t = PRE_CURTAIN_MAX
+	_geo_t = 0.0
+
+const PRE_CURTAIN_KEY := "pending"
 
 ## Zasłona znika dopiero, gdy geometria tej mapy już stoi i minęło kilka lekkich klatek (czas liczony bez klatki budowy).
 func _tick_curtain(delta: float) -> void:
@@ -2304,6 +2330,8 @@ func _sync_guns() -> void:
 		var spr := (hd as Node).get_node_or_null("GunMark") as Node2D
 		if spr == null:
 			continue
+		if not _load_now() and not GunModel.is_ready(path):
+			continue                                               # broń / część pierwszy raz w sesji: model w tle, stanie za kilka klatek
 		var model := GunModel.scene(path).instantiate() as Node3D
 		var is_mag := String(n.get("kind")) == "mag"
 		if is_mag:                                                 # upuszczony magazynek: z modelu broni zostaje tylko podzespół `__mag`
@@ -5291,6 +5319,9 @@ func _sync_items() -> void:
 		var par := sp.get_parent()
 		if par != null and par.is_in_group("props"):
 			continue                                  # skrzynie i beczki mają własne bryły (_sync_props)
+		var nm := String(sp.get_meta("hd_name", ""))
+		if not _item_ready("ammo" if nm == "cache" else nm):
+			continue                                  # model w drodze (wątek wczytywania) — postawimy go w jednej z następnych klatek
 		_make_item(sp)
 	for id in _items.keys():
 		var it: Array = _items[id]
@@ -5346,8 +5377,31 @@ func _sync_items() -> void:
 func _item_scene(name: String) -> PackedScene:
 	if not _item_scenes.has(name):
 		var path := ITEM3D_DIR + name + ".glb"
-		_item_scenes[name] = load(path) as PackedScene if (ResourceLoader.exists(path) and not "--noitems3d" in OS.get_cmdline_user_args()) else null
+		var ps: PackedScene = null
+		if _item_pending.has(name):
+			_item_pending.erase(name)
+			ps = ResourceLoader.load_threaded_get(path) as PackedScene       # czeka na wątek, jeśli jeszcze wczytuje
+		if ps == null and ResourceLoader.exists(path) and not "--noitems3d" in OS.get_cmdline_user_args():
+			ps = load(path) as PackedScene
+		_item_scenes[name] = ps
 	return _item_scenes[name]
+
+## Czy model przedmiotu `name` można już postawić. W trakcie gry nowy model (pierwsza apteczka, zaopatrzenie z wroga, kołki wyjścia
+## po zaliczeniu celu) wczytuje się w tle, a przedmiot pojawia się w 3D kilka klatek później — `load` w wątku gry zacinał klatkę
+## na 40–160 ms (--hitchtest, i9 + RTX 3080, 2026-10-31). Pod planszą wczytywania i bez niej (zrzuty, pomiary) — od razu.
+func _item_ready(name: String) -> bool:
+	if _item_scenes.has(name) or _load_now():
+		return true
+	var path := ITEM3D_DIR + name + ".glb"
+	if not _item_pending.has(name):
+		if not ResourceLoader.exists(path) or "--noitems3d" in OS.get_cmdline_user_args() or ResourceLoader.load_threaded_request(path) != OK:
+			return true                                        # bez modelu albo bez wątku: `_item_scene` rozstrzygnie od razu
+		_item_pending[name] = path
+	return ResourceLoader.load_threaded_get_status(path) != ResourceLoader.THREAD_LOAD_IN_PROGRESS
+
+## Modele wczytywać od razu (w tej klatce): pod planszą wczytywania albo tam, gdzie planszy nie ma (zrzuty, pomiary, nagrania).
+func _load_now() -> bool:
+	return not curtain_enabled or (_curtain != null and _curtain.visible)
 
 ## Egzemplarz modelu przedmiotu na warstwie świata; `glow` > 0 dodaje słabą emisję z koloru (przedmioty widoczne w ciemności).
 func _item_model(name: String, glow := 0.0) -> Node3D:

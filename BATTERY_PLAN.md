@@ -1,6 +1,6 @@
 # Baterie i ładowarki latarki — plan
 
-Status: **plan z 2026-10-31 (main 1.7.448, cc6064d); B0 + B1 wdrożone w 1.7.449** (gałąź `feat/battery-pickup`). Decyzje D1–D4 (§4):
+Status: **plan z 2026-10-31 (main 1.7.448, cc6064d); B0 + B1 wdrożone w 1.7.450** (gałąź `feat/battery-pickup`). Decyzje D1–D4 (§4):
 przyjęte warianty zalecane (2026-10-31). Zostają B2, B3, B4.
 
 ## 1. Skąd to

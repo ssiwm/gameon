@@ -72,7 +72,6 @@ var _glow: Lights.GameLight
 var _hd: Node2D
 var _hd_gun := ""
 var _hd_part := ""                ## znajdźka „part”: id części (model gunpart_<id>.glb w view3d.gd)
-var _hd_gun_rect := Rect2()
 static var _bbox := {}            ## wiersz arkusza broni → prostokąt nieprzezroczystych pikseli w klatce (do wyśrodkowania na stojaku)
 
 func _ready() -> void:
@@ -208,14 +207,14 @@ func _setup_hd() -> void:
 	var gun_key := ""
 	if (kind == "weapon" or kind == "power") and Sprites.newgun:
 		gun_key = String(Weapons.def(arg).key)
-		if Sprites.gun_hd(gun_key) == null:
+		if not Sprites.has_gun_hd(gun_key):
 			return
 	elif kind == "mag":
 		gun_key = String(Weapons.def(arg & 255).key)          # magazynek: podzespół `__mag` modelu broni (view3d.gd: _sync_guns)
 	elif kind == "part":
 		_hd_part = String(Parts.all_ids()[clampi(arg, 0, Parts.all_ids().size() - 1)])
 		gun_key = String(Parts.get_part(_hd_part).get("weapon", ""))     # część: jej własny model (view3d.gd: _sync_guns)
-		if Sprites.gun_hd(gun_key) == null:
+		if not Sprites.has_gun_hd(gun_key):
 			return
 	var nm := _hd_name()
 	if gun_key == "" and (not Sprites.newitem or nm == "" or not ItemsHd.has(nm)):
@@ -224,7 +223,6 @@ func _setup_hd() -> void:
 	add_child(_hd)
 	if gun_key != "":
 		_hd_gun = gun_key
-		_hd_gun_rect = Sprites.gun_hd_rect(gun_key)
 		# znacznik położenia broni: model na stojaku / na ziemi, kłódkę i tabliczkę z ceną stawia widok 3D (view3d.gd: _sync_guns)
 		var sp := Node2D.new()
 		sp.name = "GunMark"

@@ -194,7 +194,7 @@ def group_report(attempts, n_sessions):
                 pl[k] += int(p.get(k, 0))
     r["rewards"] = {"silent_kept": {m: "%d/%d" % (v[1], v[0]) for m, v in sorted(silent.items())},
                     "strongboxes": boxes, "strongboxes_per_attempt": rate(boxes, len(attempts)), "players": dict(pl)}
-    # --- latarka i baterie (BATTERY_PLAN.md B0, od 1.7.449): próbki pos ludzi z `bat`, liczniki mission_end.battery
+    # --- latarka i baterie (BATTERY_PLAN.md B0, od 1.7.450): próbki pos ludzi z `bat`, liczniki mission_end.battery
     lamp_on, low, samples, mins = 0, 0, 0, []
     for a in attempts:
         lo = {}
